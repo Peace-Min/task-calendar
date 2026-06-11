@@ -1,17 +1,22 @@
 # 배포 가이드 (수행과제 캘린더 위젯)
 
-폐쇄망(오프라인) Windows 11 환경 기준.
+폐쇄망(오프라인) Windows 11 환경 기준. clone한 PC에서 **직접 빌드**해 exe를 만드는 흐름입니다.
 
-## ⭐ 가장 쉬운 방법 — Release에서 단일 exe 받기 (빌드 불필요)
-[Releases](https://github.com/Peace-Min/task-calendar/releases/latest)의 **`TaskCalendarWidget-x.y.z-win-x64.exe`** 1개를 폐쇄망 PC로 복사 → 더블클릭.
-- .NET 설치 불필요(런타임 내장), WebView2는 Win11 기본 내장. **빌드·NuGet 복원이 전혀 필요 없습니다.**
-- clone이 되는 PC면 Release 다운로드도 됩니다.
+## 사전 요구 (한 번만)
+- **.NET 9 SDK** 설치 (또는 .NET 9 지원 **Visual Studio 2022 17.12+**).
+  - 폐쇄망: [.NET 9 SDK 오프라인 설치 파일](https://dotnet.microsoft.com/download/dotnet/9.0)(x64)을 인터넷 PC에서 받아 USB로 반입 → 설치.
+  - 확인: `dotnet --version` 이 `9.x`(또는 그 이상) 출력.
+- WebView2 런타임: Windows 11 기본 내장(별도 작업 불필요).
+- WebView2 **NuGet 패키지**는 저장소에 동봉(`widget/nuget-packages/`)되어 **인터넷 없이 복원**됩니다.
 
-아래는 직접 빌드해서 배포하려는 경우입니다.
+## 빌드 (셋 중 택1)
+- **원클릭**: 저장소 루트의 **`build.cmd`** 더블클릭.
+- **명령줄**: `dotnet publish widget\TaskCalendarWidget.csproj -c Release -o dist\app`
+- **Visual Studio**: `TaskCalendarWidget.sln` 열고 Release 빌드.
 
----
+→ 결과: `dist\app\TaskCalendarWidget.exe` (+ dll 약 10개). **이 PC에서 빌드하면 같은 PC에서 바로 실행 가능**(SDK에 런타임 포함).
 
-빌드는 **.NET SDK가 있는 PC**에서 한 번 하고, 결과물을 다른 PC로 복사하는 흐름을 권장합니다. WebView2 패키지는 저장소에 동봉(`widget/nuget-packages/`)되어 **인터넷 없이도 복원·빌드**됩니다(자체포함 단일 exe만 인터넷 필요 — 런타임 팩 다운로드).
+> "Visual Studio에서 빌드가 안 됐다"면 대개 ① `.sln`이 없었거나 ② VS가 .NET 9을 모르는 옛 버전이었기 때문입니다. 이제 `.sln`이 포함됐고, VS 2022 **17.12 이상**(또는 .NET 9 SDK)만 있으면 빌드됩니다.
 
 ---
 

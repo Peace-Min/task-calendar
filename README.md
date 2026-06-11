@@ -50,22 +50,22 @@
 
 ## 🚀 시작하기
 
-### ① 위젯 바로 받기 (빌드 불필요 · 권장)
-[**Releases**](https://github.com/Peace-Min/task-calendar/releases/latest)에서 **`TaskCalendarWidget-x.y.z-win-x64.exe`** 하나만 내려받아 더블클릭하면 끝입니다.
-- **.NET 설치 불필요**(런타임 내장 자체포함 단일 exe). 폐쇄망 PC에 복사만 하면 실행됩니다.
-- WebView2 런타임은 Windows 11 기본 내장.
+> **사전 요구**: **.NET 9 SDK** (또는 .NET 9을 지원하는 **Visual Studio 2022 17.12 이상**).
+> 폐쇄망이면 [.NET 9 SDK 오프라인 설치 파일](https://dotnet.microsoft.com/download/dotnet/9.0)(x64)을 USB로 반입해 1회 설치하면 됩니다. WebView2 NuGet 패키지는 **저장소에 동봉**되어 인터넷 없이 복원됩니다.
+
+### ① 직접 빌드 (권장)
+clone 후 셋 중 편한 방법으로:
+```powershell
+# 방법 A — 원클릭: build.cmd 더블클릭 → dist\app\TaskCalendarWidget.exe 생성
+# 방법 B — 명령줄:
+dotnet publish widget\TaskCalendarWidget.csproj -c Release -o dist\app
+# 방법 C — Visual Studio: TaskCalendarWidget.sln 열고 Release 빌드
+```
+- 결과: `dist\app\TaskCalendarWidget.exe` 실행 → 바탕화면 위젯 시작. (exe 하나만 떼지 말고 폴더째 두세요)
+- 배포·다른 PC 이전·시작프로그램 등록·단일 exe(인터넷 PC) 는 **[DEPLOY.md](DEPLOY.md)** 참고.
 
 ### ② 브라우저로 바로 써보기 (빌드 없이)
 - `task-calendar-prototype.html` 을 더블클릭해 Edge로 열면 캘린더가 그대로 동작합니다(오프라인).
-
-### ③ 직접 빌드 (.NET 9 SDK 필요 · 폐쇄망 OK)
-WebView2 패키지를 저장소에 동봉(`widget/nuget-packages/`)해 **인터넷 없이도 복원·빌드**됩니다.
-```powershell
-# 프레임워크 종속(설치된 .NET 9 런타임 사용, exe+dll 폴더)
-dotnet publish widget\TaskCalendarWidget.csproj -c Release -o dist\app
-```
-- 결과: `dist\app\TaskCalendarWidget.exe`.
-- 배포·런타임·시작프로그램 등록·단일 exe 만들기는 **[DEPLOY.md](DEPLOY.md)** 참고.
 
 ## 🧩 사용법
 
