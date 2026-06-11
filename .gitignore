@@ -1,0 +1,21 @@
+# ── .NET 빌드/배포 산출물 (소스만 버전관리, 결과물은 제외) ──
+[Bb]in/
+[Oo]bj/
+dist/
+publish/
+*.user
+*.suo
+.vs/
+
+# ── 도구/에디터 ──
+.claude/
+.idea/
+*.tmp
+
+# ── OS ──
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 참고: 실제 캘린더 데이터·위젯 설정은 %APPDATA%\TaskCalendar\ 에 저장되며
+#       저장소(소스)에는 포함되지 않습니다. 백업은 앱의 [데이터 → XML 내보내기]를 사용하세요.

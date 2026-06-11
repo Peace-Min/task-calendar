@@ -1,0 +1,17 @@
+<Window x:Class="TaskCalendarWidget.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="수행과제 캘린더"
+        Height="470" Width="380" MinWidth="300" MinHeight="320"
+        WindowStyle="None" ResizeMode="CanResize"
+        ShowInTaskbar="False" WindowStartupLocation="Manual"
+        Topmost="False" Background="#FFFFFF" UseLayoutRounding="True"
+        SourceInitialized="Window_SourceInitialized"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        Deactivated="Window_Deactivated">
+  <!-- 창 전체를 WebView2가 100% 채운다. (WPF가 그리는 영역을 두면 바탕화면 부착 시 그 부분이 검게 렌더됨)
+       타이틀바/이동/설정/닫기 컨트롤은 HTML 안(hostbar)에서 처리하고 메시지로 호스트에 전달. -->
+  <wv2:WebView2 x:Name="web"/>
+</Window>

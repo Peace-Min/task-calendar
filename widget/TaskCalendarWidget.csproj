@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>TaskCalendarWidget</AssemblyName>
+    <RootNamespace>TaskCalendarWidget</RootNamespace>
+    <ApplicationIcon></ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 폐쇄망: 런타임 다운로드 없이 설치된 .NET 9 Desktop 런타임 사용 (프레임워크 종속) -->
+    <SelfContained>false</SelfContained>
+    <!-- 최신 패치를 NuGet에서 받지 않고 설치된 런타임/apphost 팩(9.0.17)을 사용 -->
+    <TargetLatestRuntimePatch>false</TargetLatestRuntimePatch>
+    <RuntimeFrameworkVersion>9.0.17</RuntimeFrameworkVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3179.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 검증 완료된 단일 HTML 프로토타입을 위젯 본체로 임베드 (단일 소스 유지) -->
+    <EmbeddedResource Include="..\task-calendar-prototype.html" Link="index.html" />
+  </ItemGroup>
+
+</Project>
