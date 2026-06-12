@@ -441,46 +441,24 @@ namespace TaskCalendarWidget
             SetWindowLong(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW);
         }
 
+        // 바탕화면 배치: 창을 Progman 자식으로 reparent하면 일부 환경(VM/RDP/그래픽 제한)에서
+        // WebView2가 흰 화면이 됨이 확인됨 → reparent하지 않고 '톱레벨 최하위'로 앱들 뒤(바탕화면 레이어)에 둔다.
+        // (멀티 모니터 자유 배치도 가능해짐. 📌는 이동 잠금 역할.)
         private void ApplyDesktopMode()
         {
-            if (_settings.Pinned) EmbedIntoDesktop();
-            else FloatBottomMost();
-        }
-
-        private void EmbedIntoDesktop()
-        {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
-            try
-            {
-                IntPtr progman = FindWindow("Progman", null);
-                if (progman == IntPtr.Zero) { FloatBottomMost(); return; }
-                GetWindowRect(hwnd, out RECT r);
-                SetParent(hwnd, progman);
-                MoveWindow(hwnd, r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top, true);
-                SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine("바탕화면 임베드 실패 → 플로팅 폴백: " + ex);
-                FloatBottomMost();
-            }
-        }
-
-        private void FloatBottomMost()
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero) return;
-            SetParent(hwnd, IntPtr.Zero);
+            SetParent(hwnd, IntPtr.Zero);   // 항상 톱레벨 (reparent 안 함 → 렌더 안전)
             SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            Log("바탕화면 모드 적용(톱레벨 최하위)");
         }
 
         private void Window_Deactivated(object? sender, EventArgs e)
         {
+            // 다른 창을 클릭해 비활성화되면 다시 최하위로 보내 바탕화면 뒤에 유지
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
-            SetWindowPos(hwnd, _settings.Pinned ? HWND_TOP : HWND_BOTTOM,
-                0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
 
         private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e) => SaveSettings();
@@ -511,7 +489,6 @@ namespace TaskCalendarWidget
         // ============ Win32 ============
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TOOLWINDOW = 0x00000080;
-        private static readonly IntPtr HWND_TOP = IntPtr.Zero;
         private static readonly IntPtr HWND_BOTTOM = new(1);
         private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
 
