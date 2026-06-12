@@ -22,9 +22,11 @@ namespace TaskCalendarWidget
         private readonly string _dataFile;
         private readonly string _settingsFile;
         private readonly string _webviewDir;
+        private readonly string _logFile;
 
         private WidgetSettings _settings = new();
         private RECT _gestureRect;   // 이동/리사이즈 시작 시점의 창 물리 좌표
+        private bool _desktopApplied = false;   // 바탕화면 모드 1회 적용 플래그
 
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "TaskCalendarWidget";
@@ -49,6 +51,7 @@ namespace TaskCalendarWidget
             _dataFile = Path.Combine(_dataDir, "data.xml");
             _settingsFile = Path.Combine(_dataDir, "widget.settings.json");
             _webviewDir = Path.Combine(_dataDir, "WebView2");
+            _logFile = Path.Combine(_dataDir, "widget.log");
 
             LoadSettings();
             ApplyWindowBounds();
@@ -136,7 +139,11 @@ namespace TaskCalendarWidget
         // ============ WebView2 + 브리지 ============
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            if (_settings.FirstRun)
+            bool firstRun = _settings.FirstRun;
+            try { Directory.CreateDirectory(_dataDir); File.WriteAllText(_logFile, ""); } catch { }
+            Log($"=== 시작 v1.0.0 === pinned={_settings.Pinned} firstRun={firstRun}");
+
+            if (firstRun)
             {
                 SetAutoStart(true);
                 _settings.AutoStart = true;
@@ -148,8 +155,23 @@ namespace TaskCalendarWidget
             {
                 web.DefaultBackgroundColor = System.Drawing.Color.White;
                 Directory.CreateDirectory(_webviewDir);
-                var env = await CoreWebView2Environment.CreateAsync(null, _webviewDir);
+
+                string ver = "";
+                try { ver = CoreWebView2Environment.GetAvailableBrowserVersionString(); }
+                catch (Exception vx) { Log("런타임 조회 예외: " + vx.Message); }
+                Log("WebView2 런타임: " + (string.IsNullOrEmpty(ver) ? "미설치/미탐지" : ver));
+                if (string.IsNullOrEmpty(ver))
+                    MessageBox.Show("이 PC에 WebView2 런타임이 없습니다.\nMicrosoft Edge WebView2(Evergreen) 런타임을 설치한 뒤 다시 실행하세요.",
+                        "수행과제 캘린더", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                // VM/원격데스크톱/그래픽 드라이버 환경의 '흰 화면' 방지 — GPU 가속/합성 끄기
+                var opts = new CoreWebView2EnvironmentOptions
+                {
+                    AdditionalBrowserArguments = "--disable-gpu --disable-gpu-compositing --disable-features=msWebView2EnableDraggableRegions"
+                };
+                var env = await CoreWebView2Environment.CreateAsync(null, _webviewDir, opts);
                 await web.EnsureCoreWebView2Async(env);
+                Log("CoreWebView2 준비: " + web.CoreWebView2.Environment.BrowserVersionString);
 
                 var s = web.CoreWebView2.Settings;
                 s.AreDevToolsEnabled = false;
@@ -159,15 +181,41 @@ namespace TaskCalendarWidget
                 s.IsZoomControlEnabled = false;
 
                 web.CoreWebView2.WebMessageReceived += OnWebMessage;
-                web.CoreWebView2.NavigateToString(LoadHtml());
+                web.CoreWebView2.NavigationCompleted += (_, ev) =>
+                {
+                    Log($"NavigationCompleted: success={ev.IsSuccess} status={ev.WebErrorStatus}");
+                    if (!_desktopApplied)
+                    {
+                        _desktopApplied = true;
+                        ApplyDesktopMode();              // 렌더 완료 후 부착(렌더-우선 → 흰화면 회피)
+                        if (firstRun) MoveToCursorMonitor();
+                    }
+                };
+                string html = LoadHtml();
+                Log($"NavigateToString 호출 (HTML {html.Length}자)");
+                web.CoreWebView2.NavigateToString(html);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("WebView2 초기화에 실패했습니다.\n\n" + ex.Message,
+                Log("초기화 예외: " + ex);
+                MessageBox.Show("WebView2 초기화 실패:\n\n" + ex.Message + "\n\n로그: " + _logFile,
                     "수행과제 캘린더", MessageBoxButton.OK, MessageBoxImage.Error);
             }
 
-            ApplyDesktopMode();
+            // 안전장치: NavigationCompleted가 안 와도 4초 뒤 부착 적용
+            var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+            t.Tick += (_, _) =>
+            {
+                t.Stop();
+                if (!_desktopApplied)
+                {
+                    _desktopApplied = true;
+                    Log("타이머 폴백으로 부착 적용");
+                    ApplyDesktopMode();
+                    if (firstRun) MoveToCursorMonitor();
+                }
+            };
+            t.Start();
         }
 
         private static string LoadHtml()
@@ -179,6 +227,61 @@ namespace TaskCalendarWidget
             using var stream = asm.GetManifestResourceStream(name)!;
             using var reader = new StreamReader(stream, Encoding.UTF8);
             return reader.ReadToEnd();
+        }
+
+        private void Log(string msg)
+        {
+            try { Directory.CreateDirectory(_dataDir); File.AppendAllText(_logFile, DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + Environment.NewLine); }
+            catch { }
+        }
+
+        // 최초 실행 시 커서가 있는 모니터(주로 쓰는 화면)의 우하단에 배치
+        private void MoveToCursorMonitor()
+        {
+            try
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero || !GetCursorPos(out POINT pt)) return;
+                IntPtr mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+                var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                if (!GetMonitorInfo(mon, ref mi)) return;
+                GetWindowRect(hwnd, out RECT wr);
+                int w = wr.Right - wr.Left, h = wr.Bottom - wr.Top;
+                int x = mi.rcWork.Right - w - 16, y = mi.rcWork.Bottom - h - 16;
+                SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                SaveSettings();
+                Log($"커서 모니터로 이동 ({x},{y})");
+            }
+            catch (Exception ex) { Log("MoveToCursorMonitor 오류: " + ex.Message); }
+        }
+
+        // ⚙ 메뉴: 다음 모니터의 우하단으로 이동
+        private void MoveToNextMonitor()
+        {
+            try
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return;
+                var mons = new System.Collections.Generic.List<RECT>();
+                EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, (IntPtr h, IntPtr hdc, ref RECT r, IntPtr d) =>
+                {
+                    var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                    if (GetMonitorInfo(h, ref info)) mons.Add(info.rcWork);
+                    return true;
+                }, IntPtr.Zero);
+                if (mons.Count < 2) { Log("모니터 1개 — 이동 안 함"); return; }
+                var curMi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref curMi);
+                int idx = mons.FindIndex(m => m.Left == curMi.rcWork.Left && m.Top == curMi.rcWork.Top);
+                var next = mons[(idx + 1) % mons.Count];
+                GetWindowRect(hwnd, out RECT wr);
+                int w = wr.Right - wr.Left, h = wr.Bottom - wr.Top;
+                int x = next.Right - w - 16, y = next.Bottom - h - 16;
+                SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                SaveSettings();
+                Log($"다음 모니터로 이동 ({x},{y})");
+            }
+            catch (Exception ex) { Log("MoveToNextMonitor 오류: " + ex.Message); }
         }
 
         private static int GetInt(JsonDocument d, string key) =>
@@ -309,6 +412,9 @@ namespace TaskCalendarWidget
                 SaveSettings();
             };
 
+            var nextMon = new MenuItem { Header = "다른 모니터로 이동" };
+            nextMon.Click += (_, _) => MoveToNextMonitor();
+
             var reset = new MenuItem { Header = "위치·크기 초기화" };
             reset.Click += (_, _) => ResetBounds();
 
@@ -317,6 +423,7 @@ namespace TaskCalendarWidget
 
             menu.Items.Add(pin);
             menu.Items.Add(size);
+            menu.Items.Add(nextMon);
             menu.Items.Add(auto);
             menu.Items.Add(reset);
             menu.Items.Add(new Separator());
@@ -421,6 +528,17 @@ namespace TaskCalendarWidget
         private static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+        // ----- 멀티 모니터 -----
+        [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+        private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT lprc, IntPtr data);
+        [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT pt);
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+        [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
         [DllImport("user32.dll", SetLastError = true, EntryPoint = "GetWindowLongPtr")]
         private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll", SetLastError = true, EntryPoint = "GetWindowLong")]
