@@ -191,3 +191,17 @@
 - 요구: 바탕화면 부착 상태에서는 이동(드래그)을 막아야 함(제자리 고정). 리사이즈는 유지(좌상단 고정·크기만 변경이라 위치 고정과 무충돌).
 - 구현: HTML에서 `__pinned`일 때 드래그 제스처 시작 안 함(+ 이동 커서 제거) / 호스트도 `_settings.Pinned`면 drag* 메시지 무시(이중 차단). 리사이즈는 양쪽 모드 모두 허용.
 - **자체 검증(Win+D로 부착 위젯 노출 후 마우스 시뮬레이션)**: 부착 상태에서 드래그 시도 → 이동량 0,0(잠금) ✅, 같은 위젯에서 리사이즈 → +120,+80 정확 ✅(리사이즈가 먹혔다는 건 클릭이 위젯에 명중했다는 증거 → 드래그 0,0은 빗나감이 아니라 잠금). 부착 위젯이 Win+D 후에도 표시됨도 함께 확인 ✅.
+
+---
+
+## 7. 최종 상태 / 변경 이력 (2026-06-12 갱신)
+위 §6의 "Progman 자식 reparent" 방식은 **폐쇄망 실제 PC(VM/RDP 추정)에서 WebView2 흰 화면**이 되어 폐기했다. 사용자 진단 로그(`widget.log`: 런타임 OK·init OK·NavigationCompleted success인데 흰 화면)와 "플로팅(reparent 안 함)으로는 정상 렌더" 확인으로 reparent가 원인임을 규명.
+
+**현재 설계(최종)**:
+- **바탕화면 배치**: reparent하지 않고 **톱레벨 최하위(HWND_BOTTOM)** 창 + 도구 창(작업표시줄/Alt+Tab 제외). 모든 앱 뒤(바탕화면 레이어)에 상주, 모든 환경에서 정상 렌더. Win+D 노출 보장은 포기(트레이드오프). 비활성화 시 다시 최하위로.
+- **흰 화면 대비**: WebView2 환경 옵션 `--disable-gpu --disable-gpu-compositing`(VM/RDP 대비), 진단 로그 `%APPDATA%\TaskCalendar\widget.log`, WebView2 런타임 부재 시 안내.
+- **멀티 모니터**: 톱레벨이라 자유 배치. 최초 실행 시 커서 모니터에 배치(MoveToCursorMonitor), ⚙ "다른 모니터로 이동"(EnumDisplayMonitors). (이전 Progman 방식의 주모니터 제약 해소)
+- **자동 시작**: 최초 실행 1회 예/아니오 질문 후 선택대로 HKCU\Run 등록(몰래 등록 안 함). 이후 ⚙ 토글.
+- **더블클릭 버그 수정**: 단일 클릭의 `selectDate`가 매번 `renderGrid()`로 그리드를 재생성 → 더블클릭 첫 클릭 후 셀이 교체돼 더블클릭 미발생 → '새 기록' 안 열림. 같은 달이면 `.sel` 클래스만 갱신(재생성 안 함)하도록 수정. 브라우저에서 더블클릭→해당 날짜 새 기록 모달 검증 ✅.
+
+**배포/버전관리**: GitHub `Peace-Min/task-calendar`(공개). WebView2 NuGet 패키지 동봉(`widget/nuget-packages/`)으로 오프라인 빌드 가능, `.sln`+`build.cmd` 제공. SDK는 별도 공개 저장소 `Peace-Min/dotnet9-sdk-offline`에 9.0.315 win-x64 설치파일을 90MB×3 분할(+reassemble.cmd) — clone→재결합→설치 검증 완료.
