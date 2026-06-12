@@ -145,10 +145,17 @@ namespace TaskCalendarWidget
 
             if (firstRun)
             {
-                SetAutoStart(true);
-                _settings.AutoStart = true;
+                // 최초 실행 시 1회만 묻는다(묻지 않고 자동 등록하지 않음). 이후 ⚙에서 변경.
+                var ans = MessageBox.Show(
+                    "Windows를 켤 때 이 위젯을 자동으로 실행할까요?\n\n나중에 ⚙(설정) 메뉴에서 언제든 바꿀 수 있습니다.",
+                    "수행과제 캘린더 — 자동 시작 설정",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question);
+                bool on = ans == MessageBoxResult.Yes;
+                SetAutoStart(on);
+                _settings.AutoStart = on;
                 _settings.FirstRun = false;
                 SaveSettings();
+                Log("최초 실행 자동시작 선택: " + on);
             }
 
             try
