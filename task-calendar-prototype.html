@@ -197,6 +197,24 @@ main{flex:1;display:flex;min-height:0}
 @keyframes flashAnim{0%{box-shadow:0 0 0 3px rgba(62,91,224,.6)}100%{box-shadow:0 0 0 3px rgba(62,91,224,0)}}
 .card.flash{animation:flashAnim 1.2s ease-out 2}
 
+/* ---------- Git 작업일지 (커밋 연동) ---------- */
+.badge-git{background:#eef1f6;color:#5b6b7d;border:1px solid var(--line-2)}
+.card-memo.git{font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:11.5px;color:#566072;
+  background:#f7f8fb;border:1px solid var(--line);border-radius:6px;padding:6px 8px;max-height:140px}
+.chip-git{border-left-style:dashed !important}
+.fbar-sep{width:1px;height:18px;background:var(--line-2);margin:0 3px;flex:none}
+.fchip-git.on{background:#eef1f6;border-color:#5b6b7d;color:#3c4658}
+.cat-git{font-size:12px;margin-left:4px;flex:none;cursor:help}
+/* 기록 모달의 Git 불러오기 줄 */
+.git-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;
+  padding:10px 12px;border:1px dashed var(--line-2);border-radius:9px;background:#f7f8fb}
+.git-row .git-hint{font-size:12px;color:var(--muted)}
+/* 과제 모달의 Git 전역 설정 */
+.git-settings{border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:14px;background:#f9fafc}
+.git-settings .git-note{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px}
+.git-detect-row{display:flex;gap:8px;align-items:center}
+.git-detect-row input{flex:1;min-width:0}
+
 /* ---------- footer hint ---------- */
 .hint{
   flex:none;padding:6px 16px;font-size:11.5px;color:var(--muted);
@@ -386,6 +404,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
         <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
       </div>
+      <div class="git-row hidden" id="gitRow">
+        <button class="btn sm" type="button" id="btnGitFetch">📥 이 과제의 Git 커밋 불러오기</button>
+        <span class="git-hint" id="gitHint"></span>
+      </div>
       <label for="fMemo">메모</label>
       <textarea id="fMemo" placeholder="상세 내용, 진행 상황, 참고 사항…"></textarea>
     </div>
@@ -403,6 +425,15 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   <div class="modal">
     <div class="modal-head"><h2>과제 관리</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
+      <div class="git-settings">
+        <label for="cGitAuthor" style="margin-top:0">🔧 내 Git 작성자 (author 필터 — 내 커밋만 가져오기)</label>
+        <div class="git-detect-row">
+          <input type="text" id="cGitAuthor" maxlength="120" placeholder="예: hong@corp.com 또는 홍길동">
+          <button class="btn sm" type="button" id="btnGitDetect">자동 감지</button>
+        </div>
+        <div class="git-note">비워두면 <b>모든 사람</b>의 커밋이 들어옵니다. 보통 <b>회사 git 이메일</b>(git config user.email)을 넣으세요.
+          커밋 가져오기는 <b>데스크톱 위젯</b>에서만 동작합니다.</div>
+      </div>
       <div id="catList"></div>
       <div class="cat-form">
         <label for="cName" id="catFormTitle">새 과제 추가</label>
@@ -411,6 +442,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <div class="palette" id="cPalette"></div>
         <label for="cDesc">설명 (선택)</label>
         <input type="text" id="cDesc" maxlength="200" placeholder="이 과제에 대한 간단한 설명">
+        <label for="cGit">Git 저장소 로컬 경로 (선택)</label>
+        <input type="text" id="cGit" maxlength="400" placeholder="예: C:\work\과제A  (이 과제의 git 작업 폴더)">
       </div>
     </div>
     <div class="modal-foot">
@@ -522,9 +555,10 @@ function defaultState(){
   const d2 = ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate()+2));
   const c1 = uid('c'), c2 = uid('c');
   return {
+    gitAuthor: '',
     categories: [
-      {id:c1, name:'보고서 작성', color:'#3e5be0', desc:'주간/월간 보고서 작업', createdAt:nowIso()},
-      {id:c2, name:'시스템 점검', color:'#2e9e6b', desc:'정기 시스템·서버 점검', createdAt:nowIso()},
+      {id:c1, name:'보고서 작성', color:'#3e5be0', desc:'주간/월간 보고서 작업', gitRepo:'', createdAt:nowIso()},
+      {id:c2, name:'시스템 점검', color:'#2e9e6b', desc:'정기 시스템·서버 점검', gitRepo:'', createdAt:nowIso()},
     ],
     entries: [
       {id:uid('e'), date:d0, title:'프로토타입 요구사항 정리', categoryId:c1, allDay:false,
@@ -545,8 +579,10 @@ function load(){
       if(s && Array.isArray(s.categories) && Array.isArray(s.entries)){
         // 손상/외부편집 데이터 방어: 필수 텍스트 필드를 문자열로 정규화 (검색의 toLowerCase 등 보호)
         s.entries.forEach(e => { e.title = String(e.title ?? ''); e.memo = String(e.memo ?? '');
-          e.startTime = String(e.startTime ?? ''); e.endTime = String(e.endTime ?? ''); e.date = String(e.date ?? ''); });
-        s.categories.forEach(c => { c.name = String(c.name ?? ''); c.desc = String(c.desc ?? ''); });
+          e.startTime = String(e.startTime ?? ''); e.endTime = String(e.endTime ?? ''); e.date = String(e.date ?? '');
+          e.source = e.source === 'git' ? 'git' : ''; });
+        s.categories.forEach(c => { c.name = String(c.name ?? ''); c.desc = String(c.desc ?? ''); c.gitRepo = String(c.gitRepo ?? ''); });
+        s.gitAuthor = String(s.gitAuthor ?? '');
         return s;
       }
     }
@@ -567,8 +603,8 @@ window.__applyXml = function(text){
   try{
     if(text && text.trim()){
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries};
-      filterCatId = null;
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||''};
+      filterCatId = null; filterSource = null;
       renderAll();
       return;
     }
@@ -583,14 +619,14 @@ const entryById = id => state.entries.find(e => e.id === id) || null;
 function addEntry(d){
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
-    memo:d.memo||'', createdAt:nowIso(), updatedAt:nowIso()};
+    memo:d.memo||'', source:d.source==='git'?'git':'', createdAt:nowIso(), updatedAt:nowIso()};
   state.entries.push(e); save(); return e;
 }
 function updateEntry(id, d){
   const e = entryById(id); if(!e) return;
   Object.assign(e, {date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
-    memo:d.memo||'', updatedAt:nowIso()});
+    memo:d.memo||'', source:d.source==='git'?'git':'', updatedAt:nowIso()});
   save();
 }
 function deleteEntry(id){
@@ -601,18 +637,21 @@ function entrySort(a,b){
   return (a.startTime||'99:99').localeCompare(b.startTime||'99:99')
       || String(a.createdAt).localeCompare(String(b.createdAt));
 }
+function passFilter(e){
+  return (!filterCatId || e.categoryId === filterCatId) && (!filterSource || e.source === filterSource);
+}
 function entriesOn(date){
   return state.entries
-    .filter(e => e.date === date && (!filterCatId || e.categoryId === filterCatId))
+    .filter(e => e.date === date && passFilter(e))
     .sort(entrySort);
 }
-function addCategory(name, color, desc){
-  const c = {id:uid('c'), name, color, desc:desc||'', createdAt:nowIso()};
+function addCategory(name, color, desc, gitRepo){
+  const c = {id:uid('c'), name, color, desc:desc||'', gitRepo:gitRepo||'', createdAt:nowIso()};
   state.categories.push(c); save(); return c;
 }
-function updateCategory(id, name, color, desc){
+function updateCategory(id, name, color, desc, gitRepo){
   const c = catById(id); if(!c) return;
-  Object.assign(c, {name, color, desc:desc||''}); save();
+  Object.assign(c, {name, color, desc:desc||'', gitRepo:gitRepo||''}); save();
 }
 function deleteCategory(id){
   state.entries.forEach(e => { if(e.categoryId === id) e.categoryId = null; });
@@ -628,12 +667,14 @@ function toXML(){
   root.setAttribute('version', '1');
   root.setAttribute('generator', 'TaskCalendar-Prototype');
   root.setAttribute('exportedAt', nowIso());
+  if(state.gitAuthor) root.setAttribute('gitAuthor', state.gitAuthor);
 
   const cats = doc.createElement('categories');
   for(const c of state.categories){
     const el = doc.createElement('category');
     el.setAttribute('id', c.id);
     el.setAttribute('color', c.color);
+    if(c.gitRepo) el.setAttribute('gitRepo', c.gitRepo);
     el.setAttribute('createdAt', c.createdAt || '');
     const n = doc.createElement('name'); n.textContent = c.name; el.appendChild(n);
     const ds = doc.createElement('description'); ds.textContent = c.desc || ''; el.appendChild(ds);
@@ -647,6 +688,7 @@ function toXML(){
     el.setAttribute('id', e.id);
     el.setAttribute('date', e.date);
     if(e.categoryId) el.setAttribute('categoryId', e.categoryId);
+    if(e.source === 'git') el.setAttribute('source', 'git');
     el.setAttribute('allDay', e.allDay ? 'true' : 'false');
     el.setAttribute('startTime', e.startTime || '');
     el.setAttribute('endTime', e.endTime || '');
@@ -684,6 +726,7 @@ function fromXML(text){
     name: txt(c,'name') || '(이름 없음)',
     color: /^#[0-9a-fA-F]{6}$/.test(c.getAttribute('color')||'') ? c.getAttribute('color') : '#5b6b7d',
     desc: txt(c,'description'),
+    gitRepo: c.getAttribute('gitRepo') || '',
     createdAt: c.getAttribute('createdAt') || nowIso(),
   }));
   const entries = [...root.getElementsByTagName('entry')].map(e => {
@@ -697,17 +740,19 @@ function fromXML(text){
       startTime: allDay ? '' : validTime(e.getAttribute('startTime')),
       endTime: allDay ? '' : validTime(e.getAttribute('endTime')),
       memo: txt(e,'memo'),
+      source: e.getAttribute('source') === 'git' ? 'git' : '',
       createdAt: e.getAttribute('createdAt') || nowIso(),
       updatedAt: e.getAttribute('updatedAt') || nowIso(),
     };
   }).filter(e => isRealDate(e.date));
-  return {categories, entries};
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || ''};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
   const norm = s => ({
-    c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'']),
-    e: s.entries.map(e=>[e.id,e.date,e.title,e.categoryId||null,!!e.allDay,e.startTime||'',e.endTime||'',e.memo||'']),
+    g: s.gitAuthor||'',
+    c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'',c.gitRepo||'']),
+    e: s.entries.map(e=>[e.id,e.date,e.title,e.categoryId||null,!!e.allDay,e.startTime||'',e.endTime||'',e.memo||'',e.source||'']),
   });
   const p = fromXML(toXML());
   const ok = JSON.stringify(norm(state)) === JSON.stringify(norm(p));
@@ -719,6 +764,8 @@ const _t = new Date();
 let view = {y:_t.getFullYear(), m:_t.getMonth()};
 let selectedDate = todayYmd();
 let filterCatId = null;
+let filterSource = null;     // null | 'git' (작업일지만 보기)
+let __entryGitLoaded = false; // 기록 모달에서 Git 커밋을 불러왔는지 → 저장 시 source='git'
 let editingId = null;        // 기록 모달: 수정 대상
 let editingCatId = null;     // 과제 모달: 수정 대상
 let selColor = PALETTE[0];   // 과제 모달: 선택 색상
@@ -747,6 +794,11 @@ function renderFilterbar(){
     html += `<button class="fchip ${filterCatId===c.id?'on':''}" data-cat="${esc(c.id)}">
       <span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span> <span style="opacity:.6">${n}</span></button>`;
   }
+  const gitN = state.entries.filter(e => e.source === 'git').length;
+  if(gitN || filterSource){
+    html += `<span class="fbar-sep"></span>`;
+    html += `<button class="fchip fchip-git ${filterSource==='git'?'on':''}" data-src="git" title="Git에서 가져온 작업일지만 보기">🔧 작업일지 <span style="opacity:.6">${gitN}</span></button>`;
+  }
   bar.innerHTML = html;
 }
 
@@ -754,9 +806,10 @@ function chipHtml(e){
   const c = catById(e.categoryId);
   const col = validColor(c && c.color);
   const time = chipTime(e);
-  return `<div class="chip" draggable="true" data-id="${esc(e.id)}"
+  const git = e.source === 'git';
+  return `<div class="chip${git?' chip-git':''}" draggable="true" data-id="${esc(e.id)}"
     style="border-left-color:${col};background:${tint(col)}"
-    title="${esc(e.title)}${c?' · '+esc(c.name):''}">${time?`<span class="chip-t">${esc(time)}</span>`:''}${esc(e.title)}</div>`;
+    title="${git?'🔧 작업일지 · ':''}${esc(e.title)}${c?' · '+esc(c.name):''}">${time?`<span class="chip-t">${esc(time)}</span>`:''}${git?'🔧 ':''}${esc(e.title)}</div>`;
 }
 
 function renderGrid(){
@@ -768,7 +821,7 @@ function renderGrid(){
 
   const byDate = {};
   for(const e of state.entries){
-    if(filterCatId && e.categoryId !== filterCatId) continue;
+    if(!passFilter(e)) continue;
     (byDate[e.date] = byDate[e.date] || []).push(e);
   }
   for(const k in byDate) byDate[k].sort(entrySort);
@@ -800,13 +853,15 @@ function cardHtml(e){
   const c = catById(e.categoryId);
   const col = validColor(c && c.color);
   const time = timeLabel(e);
+  const git = e.source === 'git';
   return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" style="--c:${col}">
     <div class="card-top">
       <span class="card-time">${esc(time)}</span>
+      ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 작업일지">🔧 작업일지</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
     </div>
     <div class="card-title">${esc(e.title)}</div>
-    ${e.memo?`<div class="card-memo">${esc(e.memo)}</div>`:''}
+    ${e.memo?`<div class="card-memo${git?' git':''}">${esc(e.memo)}</div>`:''}
     <div class="card-actions">
       <button class="link" data-act="edit">수정</button>
       <button class="link danger" data-act="del">삭제</button>
@@ -824,9 +879,12 @@ function renderDayPanel(){
     <div>
       <div class="dp-date">${d.getMonth()+1}월 ${d.getDate()}일 <span class="dp-dow ${dowCls}">${WEEKDAYS[dow]}요일</span></div>
       ${hol?`<div class="dp-hol">🎌 ${esc(hol)}</div>`:''}
-      <div class="dp-count">${list.length ? `${list.length}개의 기록${filterCatId?' (필터 적용 중)':''}` : '기록 없음'}</div>
+      <div class="dp-count">${list.length ? `${list.length}개의 기록${(filterCatId||filterSource)?' (필터 적용 중)':''}` : '기록 없음'}</div>
     </div>
-    <button class="btn primary sm" id="btnAddHere">＋ 추가</button>
+    <div style="display:flex;gap:6px;flex:none">
+      ${(HOST && gitEnabledCats().length) ? `<button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">📥 커밋</button>` : ''}
+      <button class="btn primary sm" id="btnAddHere">＋ 추가</button>
+    </div>
   </div>`;
   html += list.length
     ? `<div class="dp-list">${list.map(cardHtml).join('')}</div>`
@@ -919,6 +977,9 @@ function openEntryModal(mode, ref){
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
   }
+  __entryGitLoaded = false;
+  $('#gitHint').textContent = '';
+  updateGitRow();
   toggleTimeRow();
   openModal('#entryModal');
   setTimeout(() => $('#fTitle').focus(), 30);
@@ -934,8 +995,10 @@ function saveEntryFromForm(){
   if(startTime && endTime && endTime < startTime){
     toast('종료 시간이 시작 시간보다 빠릅니다', 'warn'); $('#fEnd').focus(); return;
   }
+  const existing = editingId ? entryById(editingId) : null;
+  const source = __entryGitLoaded ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
-                memo: $('#fMemo').value.trim()};
+                memo: $('#fMemo').value.trim(), source};
   if(editingId){ updateEntry(editingId, data); toast('기록이 수정되었습니다'); }
   else{ addEntry(data); toast('기록이 추가되었습니다'); }
   closeModal('#entryModal');
@@ -961,8 +1024,9 @@ function renderCatModal(){
       return `<div class="cat-row" data-id="${esc(c.id)}">
         <span class="cat-dot" style="background:${validColor(c.color)}"></span>
         <div style="min-width:0">
-          <div class="cat-name">${esc(c.name)}</div>
+          <div class="cat-name">${esc(c.name)}${c.gitRepo?`<span class="cat-git" title="Git 연결: ${esc(c.gitRepo)}">🔧</span>`:''}</div>
           ${c.desc?`<div class="cat-desc">${esc(c.desc)}</div>`:''}
+          ${c.gitRepo?`<div class="cat-desc" title="${esc(c.gitRepo)}">🔧 ${esc(c.gitRepo)}</div>`:''}
         </div>
         <span class="cat-count">${n}건</span>
         <button class="link" data-act="edit">수정</button>
@@ -977,10 +1041,12 @@ function renderCatModal(){
 }
 function resetCatForm(){
   editingCatId = null; selColor = PALETTE[0];
-  $('#cName').value = ''; $('#cDesc').value = '';
+  $('#cName').value = ''; $('#cDesc').value = ''; $('#cGit').value = '';
 }
 function openCatModal(){
-  resetCatForm(); renderCatModal(); openModal('#categoryModal');
+  resetCatForm(); renderCatModal();
+  $('#cGitAuthor').value = getGitAuthor();
+  openModal('#categoryModal');
 }
 function saveCatFromForm(){
   const name = $('#cName').value.trim();
@@ -988,8 +1054,10 @@ function saveCatFromForm(){
   const dup = state.categories.find(c => c.name === name && c.id !== editingCatId);
   if(dup){ toast('같은 이름의 과제가 이미 있습니다', 'warn'); return; }
   const desc = $('#cDesc').value.trim();
-  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc); toast('과제가 수정되었습니다'); }
-  else{ addCategory(name, selColor, desc); toast('과제가 추가되었습니다'); }
+  const gitRepo = $('#cGit').value.trim();
+  setGitAuthor($('#cGitAuthor').value.trim());  // 전역 작성자도 함께 저장
+  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo); toast('과제가 수정되었습니다'); }
+  else{ addCategory(name, selColor, desc, gitRepo); toast('과제가 추가되었습니다'); }
   resetCatForm(); renderCatModal(); renderAll();
 }
 
@@ -1112,10 +1180,11 @@ function applyImport(mode){
     // 파일 내부 중복 ID도 제거 (첫 항목만 유지) — 중복 ID는 수정/삭제 오동작을 유발
     const cseen = new Set(), eseen = new Set();
     state = {
+      gitAuthor: pendingImport.gitAuthor || '',
       categories: pendingImport.categories.filter(c => !cseen.has(c.id) && cseen.add(c.id)),
       entries: pendingImport.entries.filter(e => !eseen.has(e.id) && eseen.add(e.id)),
     };
-    filterCatId = null;
+    filterCatId = null; filterSource = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
   }else{
     const catIds = new Set(state.categories.map(c => c.id));
@@ -1124,6 +1193,7 @@ function applyImport(mode){
     // push 직후 Set에 추가해 파일 내부 중복도 한 번만 들어가게 한다
     for(const c of pendingImport.categories) if(!catIds.has(c.id)){ state.categories.push(c); catIds.add(c.id); nc++; }
     for(const e of pendingImport.entries)    if(!entIds.has(e.id)){ state.entries.push(e); entIds.add(e.id); ne++; }
+    if(!state.gitAuthor && pendingImport.gitAuthor) state.gitAuthor = pendingImport.gitAuthor;  // 현재 비어있을 때만 채택
     toast(`병합 완료 — 과제 ${nc}개 · 기록 ${ne}개 추가됨 (중복 ${pendingImport.categories.length-nc+pendingImport.entries.length-ne}개 제외)`);
   }
   pendingImport = null;
@@ -1131,8 +1201,8 @@ function applyImport(mode){
 }
 function clearAll(){
   if(!confirm(`전체 데이터를 삭제할까요?\n과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n(삭제 전 XML 내보내기로 백업을 권장합니다)`)) return;
-  state = {categories:[], entries:[]};
-  filterCatId = null;
+  state = {gitAuthor:'', categories:[], entries:[]};
+  filterCatId = null; filterSource = null;
   save(); renderAll();
   toast('전체 데이터가 초기화되었습니다');
 }
@@ -1193,6 +1263,7 @@ function bind(){
   $('#filterbar').addEventListener('click', ev => {
     const chip = ev.target.closest('.fchip');
     if(!chip) return;
+    if(chip.dataset.src === 'git'){ filterSource = filterSource === 'git' ? null : 'git'; renderAll(); return; }
     filterCatId = chip.dataset.cat || null;
     renderAll();
   });
@@ -1245,6 +1316,7 @@ function bind(){
 
   /* 날짜 패널 */
   $('#dayPanel').addEventListener('click', ev => {
+    if(ev.target.id === 'btnGitHere'){ openGitFetch(selectedDate); return; }
     if(ev.target.id === 'btnAddHere'){ openEntryModal('new', selectedDate); return; }
     const act = ev.target.dataset.act;
     if(!act) return;
@@ -1261,6 +1333,8 @@ function bind(){
 
   /* 기록 모달 */
   $('#fAllDay').addEventListener('change', toggleTimeRow);
+  $('#fCat').addEventListener('change', updateGitRow);
+  $('#btnGitFetch').addEventListener('click', fetchCommitsIntoModal);
   $('#btnEntrySave').addEventListener('click', saveEntryFromForm);
   $('#fTitle').addEventListener('keydown', ev => { if(ev.key === 'Enter') saveEntryFromForm(); });
   $('#btnEntryDelete').addEventListener('click', () => {
@@ -1282,6 +1356,8 @@ function bind(){
   });
   $('#btnCatSave').addEventListener('click', saveCatFromForm);
   $('#cName').addEventListener('keydown', ev => { if(ev.key === 'Enter') saveCatFromForm(); });
+  $('#cGitAuthor').addEventListener('change', () => setGitAuthor($('#cGitAuthor').value.trim()));
+  $('#btnGitDetect').addEventListener('click', detectGitAuthor);
   $('#btnCatCancelEdit').addEventListener('click', () => { resetCatForm(); renderCatModal(); });
   $('#catList').addEventListener('click', ev => {
     const act = ev.target.dataset.act;
@@ -1291,7 +1367,7 @@ function bind(){
     if(!c) return;
     if(act === 'edit'){
       editingCatId = c.id; selColor = c.color;
-      $('#cName').value = c.name; $('#cDesc').value = c.desc || '';
+      $('#cName').value = c.name; $('#cDesc').value = c.desc || ''; $('#cGit').value = c.gitRepo || '';
       renderCatModal(); $('#cName').focus();
     }else if(act === 'del'){
       const n = state.entries.filter(e => e.categoryId === c.id).length;
@@ -1352,6 +1428,9 @@ window.__test = {
   view: () => ({...view}),
   importXml(text, mode){ pendingImport = fromXML(text); applyImport(mode || 'merge'); },
   reset(){ localStorage.removeItem(LS_KEY); location.reload(); },
+  // Git 연동 검증용: 가져온 커밋을 폼에 채우는 흐름을 호스트 없이 시뮬레이션
+  applyCommits(commits, catId, date){ const d = date || selectedDate; openEntryModal('new', d); $('#fCat').value = catId; applyCommitsToForm(commits, catById(catId), d); },
+  gitAuthor: () => getGitAuthor(),
 };
 
 /* ---------- 좌/우 너비 조절 분할바 ---------- */
@@ -1382,6 +1461,91 @@ function setupSplitter(){
   sp.addEventListener('pointerup', end);
   sp.addEventListener('pointercancel', end);
 }
+
+/* ---------- Git 커밋 연동 (작업일지) ---------- */
+function gitEnabledCats(){ return state.categories.filter(c => c.gitRepo); }
+function getGitAuthor(){ return (state && state.gitAuthor) || ''; }
+function setGitAuthor(v){ if(!state) return; if(state.gitAuthor === (v||'')) return; state.gitAuthor = v || ''; save(); }
+
+// 기록 모달의 'Git 커밋 불러오기' 줄: 위젯 모드 + 선택 과제에 저장소가 있을 때만 노출
+function updateGitRow(){
+  const row = $('#gitRow'); if(!row) return;
+  const cat = catById($('#fCat').value);
+  const show = HOST && cat && !!cat.gitRepo;
+  row.classList.toggle('hidden', !show);
+}
+
+function commitTime(c){
+  try{ const d = new Date(c.date); if(isNaN(d)) return ''; return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  catch(_){ return ''; }
+}
+// 가져온 커밋을 현재 기록 모달의 메모/제목에 채운다 (사용자가 다듬어 저장 → source='git')
+function applyCommitsToForm(commits, cat, date){
+  const lines = commits.map(c => {
+    const t = commitTime(c); const sh = c.short ? ` (${c.short})` : '';
+    return `• ${t ? t + '  ' : ''}${(c.subject || '(메시지 없음)')}${sh}`;
+  }).join('\n');
+  const header = `[Git 커밋 ${commits.length}건 · ${cat ? cat.name : '과제'} · ${date}]`;
+  const block = header + '\n' + lines;
+  const cur = $('#fMemo').value.trim();
+  $('#fMemo').value = cur ? (cur + '\n\n' + block) : block;
+  if(!$('#fTitle').value.trim()) $('#fTitle').value = `작업일지 — ${cat ? cat.name : ''}`.trim();
+  __entryGitLoaded = true;   // 저장 시 작업일지(source='git')로 표시
+  $('#gitHint').textContent = `✓ ${commits.length}건 불러옴 — 내용을 다듬어 저장하세요`;
+}
+async function fetchCommitsIntoModal(){
+  if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  const cat = catById($('#fCat').value);
+  if(!cat || !cat.gitRepo){ toast('이 과제에 Git 저장소가 설정되어 있지 않습니다 — [과제 관리]에서 경로를 입력하세요', 'warn'); return; }
+  const date = $('#fDate').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 먼저 선택하세요', 'warn'); $('#fDate').focus(); return; }
+  $('#gitHint').textContent = '⏳ 불러오는 중…';
+  const res = await hostRequest('gitlog', {repo: cat.gitRepo, author: getGitAuthor(), since: date, until: date});
+  if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'warn'); return; }
+  if(!res.commits || !res.commits.length){
+    const who = getGitAuthor() ? `작성자 '${getGitAuthor()}'의 ` : '';
+    $('#gitHint').textContent = `해당 날짜에 ${who}커밋이 없습니다`;
+    toast('해당 날짜에 가져올 커밋이 없습니다', 'warn'); return;
+  }
+  applyCommitsToForm(res.commits, cat, date);
+}
+// 날짜 패널의 '📥 커밋' → 새 기록 모달을 열고 Git 과제를 선택해 자동으로 불러온다
+function openGitFetch(date){
+  const cats = gitEnabledCats();
+  if(!cats.length){ toast('Git 저장소가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
+  openEntryModal('new', date);
+  $('#fCat').value = cats[0].id;
+  updateGitRow();
+  fetchCommitsIntoModal();
+}
+async function detectGitAuthor(){
+  if(!HOST){ toast('자동 감지는 데스크톱 위젯에서만 가능합니다 — 직접 입력하세요', 'warn'); return; }
+  const repo = $('#cGit').value.trim() || (gitEnabledCats()[0] || {}).gitRepo || '';
+  const res = await hostRequest('gitauthor', {repo});
+  if(res && res.ok && res.email){
+    $('#cGitAuthor').value = res.email; setGitAuthor(res.email);
+    toast('내 Git 작성자 감지: ' + res.email + (res.name ? ` (${res.name})` : ''));
+  } else {
+    toast((res && res.error) || '작성자를 감지하지 못했습니다 — 직접 입력하세요', 'warn');
+  }
+}
+
+/* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */
+let __reqSeq = 0;
+const __hostPending = {};
+function hostRequest(cmd, params, timeoutMs){
+  return new Promise(resolve => {
+    if(!HOST){ resolve({ok:false, error:'호스트(위젯)가 아닙니다'}); return; }
+    const reqId = cmd + '-' + (++__reqSeq);
+    const to = setTimeout(() => { if(__hostPending[reqId]){ delete __hostPending[reqId]; resolve({ok:false, error:'호스트 응답 시간 초과'}); } }, timeoutMs || 20000);
+    __hostPending[reqId] = res => { clearTimeout(to); resolve(res); };
+    hpost(Object.assign({cmd, reqId}, params || {}));
+  });
+}
+window.__hostReply = function(reqId, res){
+  const cb = __hostPending[reqId];
+  if(cb){ delete __hostPending[reqId]; cb(res); }
+};
 
 /* ---------- 시작 ---------- */
 renderWeekdays();

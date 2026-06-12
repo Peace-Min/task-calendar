@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -6,6 +7,8 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -294,6 +297,9 @@ namespace TaskCalendarWidget
         private static int GetInt(JsonDocument d, string key) =>
             d.RootElement.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
 
+        private static string GetStr(JsonDocument d, string key) =>
+            d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+
         private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string raw;
@@ -350,6 +356,21 @@ namespace TaskCalendarWidget
                         SaveSettings();
                         break;
 
+                    // ----- Git 커밋 연동 (과제별 저장소에서 내 커밋 읽기) -----
+                    case "gitlog":
+                    {
+                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"),
+                               author = GetStr(doc, "author"), since = GetStr(doc, "since"), until = GetStr(doc, "until");
+                        _ = RunGitLogAsync(reqId, repo, author, since, until);
+                        break;
+                    }
+                    case "gitauthor":
+                    {
+                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo");
+                        _ = RunGitAuthorAsync(reqId, repo);
+                        break;
+                    }
+
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
                     case "close": Application.Current.Shutdown(); break;
@@ -378,6 +399,151 @@ namespace TaskCalendarWidget
                 File.Move(tmp, _dataFile, true);
             }
             catch (Exception ex) { Debug.WriteLine("데이터 저장 오류: " + ex); }
+        }
+
+        // ============ Git 커밋 연동 ============
+        // 과제별 로컬 저장소에서 git log/config를 실행해 '내 커밋'을 읽어 웹(HTML)으로 회신한다.
+        // git CLI를 사용하므로 이 PC에 git이 설치돼 있어야 한다(보고서 작성용 개발 PC라면 보통 설치됨).
+
+        private async Task RunGitLogAsync(string reqId, string repo, string author, string since, string until)
+        {
+            object payload;
+            try { payload = await Task.Run(() => GitLog(repo, author, since, until)); }
+            catch (Exception ex) { payload = new GitResult { ok = false, error = "예외: " + ex.Message }; }
+            GitReply(reqId, payload);
+        }
+
+        private async Task RunGitAuthorAsync(string reqId, string repo)
+        {
+            object payload;
+            try
+            {
+                var (ok, email, name, err) = await Task.Run(() => GitAuthor(repo));
+                payload = new { ok, email, name, error = err };
+            }
+            catch (Exception ex) { payload = new { ok = false, email = "", name = "", error = ex.Message }; }
+            GitReply(reqId, payload);
+        }
+
+        private GitResult GitLog(string repo, string author, string since, string until)
+        {
+            var r = new GitResult();
+            if (string.IsNullOrWhiteSpace(repo)) { r.ok = false; r.error = "Git 저장소 경로가 비어 있습니다."; return r; }
+            if (!Directory.Exists(repo)) { r.ok = false; r.error = "경로를 찾을 수 없습니다: " + repo; return r; }
+
+            try
+            {
+                var psi = new ProcessStartInfo("git")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8,
+                };
+                psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(repo);
+                psi.ArgumentList.Add("log");
+                psi.ArgumentList.Add("--no-merges");
+                if (!string.IsNullOrWhiteSpace(since)) psi.ArgumentList.Add("--since=" + since + " 00:00:00");
+                if (!string.IsNullOrWhiteSpace(until)) psi.ArgumentList.Add("--until=" + until + " 23:59:59");
+                if (!string.IsNullOrWhiteSpace(author)) psi.ArgumentList.Add("--author=" + author);
+                // 필드 구분자 (단위구분), 커밋은 줄바꿈으로 구분. %aI=작성일(ISO), %s=제목(한 줄)
+                psi.ArgumentList.Add("--pretty=format:%H%h%aI%an%ae%s");
+                psi.Environment["GIT_PAGER"] = "cat";
+                psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+
+                using var p = Process.Start(psi);
+                if (p == null) { r.ok = false; r.error = "git 프로세스를 시작할 수 없습니다."; return r; }
+                string outp = p.StandardOutput.ReadToEnd();
+                string errp = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(15000)) { try { p.Kill(true); } catch { } r.ok = false; r.error = "git 실행 시간 초과"; return r; }
+                if (p.ExitCode != 0)
+                {
+                    r.ok = false;
+                    r.error = string.IsNullOrWhiteSpace(errp) ? ("git 종료코드 " + p.ExitCode) : errp.Trim();
+                    return r;
+                }
+
+                foreach (var raw in outp.Split('\n'))
+                {
+                    var line = raw.TrimEnd('\r');
+                    if (line.Length == 0) continue;
+                    var f = line.Split('');
+                    if (f.Length < 6) continue;
+                    r.commits.Add(new GitCommit { hash = f[0], shortHash = f[1], date = f[2], author = f[3], email = f[4], subject = f[5] });
+                }
+                r.ok = true;
+                return r;
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                r.ok = false; r.error = "git 명령을 찾을 수 없습니다. 이 PC에 git이 설치되어 있는지 확인하세요."; return r;
+            }
+            catch (Exception ex) { r.ok = false; r.error = ex.Message; return r; }
+        }
+
+        private (bool ok, string email, string name, string err) GitAuthor(string repo)
+        {
+            try
+            {
+                string email = RunGitConfig(repo, "user.email");
+                string name = RunGitConfig(repo, "user.name");
+                if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(name))
+                    return (false, "", "", "git 사용자 정보를 찾을 수 없습니다. 'git config user.email' 를 설정하세요.");
+                return (true, email, name, "");
+            }
+            catch (System.ComponentModel.Win32Exception) { return (false, "", "", "git 명령을 찾을 수 없습니다."); }
+            catch (Exception ex) { return (false, "", "", ex.Message); }
+        }
+
+        private static string RunGitConfig(string repo, string key)
+        {
+            var psi = new ProcessStartInfo("git")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                StandardOutputEncoding = Encoding.UTF8,
+            };
+            if (!string.IsNullOrWhiteSpace(repo) && Directory.Exists(repo)) { psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(repo); }
+            psi.ArgumentList.Add("config"); psi.ArgumentList.Add(key);
+            using var p = Process.Start(psi);
+            if (p == null) return "";
+            string o = p.StandardOutput.ReadToEnd();
+            _ = p.StandardError.ReadToEnd();
+            p.WaitForExit(8000);   // 미설정 시 git이 종료코드 1 → stdout 빈 문자열 그대로 반환
+            return o.Trim();
+        }
+
+        // 결과를 window.__hostReply(reqId, payload) 로 전달 (UI 스레드에서 호출)
+        private void GitReply(string reqId, object payload)
+        {
+            if (string.IsNullOrEmpty(reqId)) return;
+            try
+            {
+                string json = JsonSerializer.Serialize(payload);
+                string call = "window.__hostReply(" + JsonSerializer.Serialize(reqId) + "," + json + ")";
+                _ = web.CoreWebView2?.ExecuteScriptAsync(call);
+            }
+            catch (Exception ex) { Log("GitReply 오류: " + ex.Message); }
+        }
+
+        private class GitResult
+        {
+            public bool ok { get; set; }
+            public string? error { get; set; }
+            public List<GitCommit> commits { get; set; } = new();
+        }
+        private class GitCommit
+        {
+            public string hash { get; set; } = "";
+            [JsonPropertyName("short")] public string shortHash { get; set; } = "";
+            public string date { get; set; } = "";
+            public string author { get; set; } = "";
+            public string email { get; set; } = "";
+            public string subject { get; set; } = "";
         }
 
         private void TogglePin()
