@@ -853,9 +853,18 @@ function goToday(){
 function selectDate(ds){
   selectedDate = ds;
   const d = parseYmd(ds);
-  if(d.getFullYear() !== view.y || d.getMonth() !== view.m)
+  if(d.getFullYear() !== view.y || d.getMonth() !== view.m){
     view = {y:d.getFullYear(), m:d.getMonth()};
-  renderGrid(); renderDayPanel();
+    renderGrid();   // 다른 달로 이동할 때만 그리드 재생성
+  } else {
+    // 같은 달이면 그리드를 다시 그리지 않고 선택 표시(.sel)만 갱신한다.
+    // (단일 클릭이 매번 그리드를 재생성하면, 더블클릭의 첫 클릭에서 셀이 교체돼
+    //  더블클릭이 안 잡히고 '새 기록' 창이 안 열린다 — 그 버그 방지)
+    $$('#grid .cell.sel').forEach(c => c.classList.remove('sel'));
+    const cell = document.querySelector('#grid .cell[data-date="' + ds + '"]');
+    if(cell) cell.classList.add('sel');
+  }
+  renderDayPanel();
 }
 function goto(ds, entryId){
   closeModal('#searchModal');
