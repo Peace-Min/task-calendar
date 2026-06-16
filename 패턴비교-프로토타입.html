@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>우측 패널 패턴 비교 — 상용 앱 예시 + 제안안</title>
+<style>
+:root{--bg:#f3f4f7;--panel:#fff;--line:#e4e7ee;--line2:#d6dbe6;--text:#1d2433;--muted:#5b6373;--accent:#3e5be0;--accent-soft:#eef1fd;--titlebar:#2b2f3a;--ok:#2e9e6b}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI','Malgun Gothic',system-ui,sans-serif;background:#eceef3;color:var(--text);padding:22px}
+h1{font-size:19px;margin:0 0 4px}
+.sub{font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.6}
+.sel{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;max-width:760px}
+.sel button{border:1px solid var(--line2);background:#fff;border-radius:8px;padding:7px 11px;font:inherit;font-size:13px;cursor:pointer;color:var(--text)}
+.sel button:hover{background:#f7f8fb}
+.sel button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.sel button.ours{border-color:var(--ok);color:var(--ok);font-weight:600}
+.sel button.ours.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.sel .tag{font-size:10px;opacity:.75;margin-left:5px}
+#stage{display:flex;justify-content:center;margin-bottom:14px;min-height:430px;align-items:flex-start}
+.win{width:720px;max-width:100%;height:420px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 8px 28px rgba(20,28,55,.12)}
+.win.narrow{width:300px;height:460px}
+.win-bar{height:30px;background:var(--titlebar);color:#fff;display:flex;align-items:center;padding:0 11px;font-size:12px;gap:7px;flex:none;font-weight:600}
+.win-bar .dot{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.35)}
+.win-body{flex:1;display:flex;min-height:0}
+.win-body.col{flex-direction:column}
+.cal{flex:1;min-width:0;padding:9px 10px;display:flex;flex-direction:column;background:var(--panel)}
+.cal-h{font-size:15px;font-weight:700;margin:0 0 7px}
+.cal-grid{flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:3px}
+.cal-grid div{background:var(--bg);border-radius:4px;font-size:9px;color:var(--muted);padding:2px 0 0 3px}
+.cal-grid div.sel{outline:2px solid var(--accent);outline-offset:-2px;background:var(--accent-soft)}
+.cal-grid div.tdy{background:var(--accent);color:#fff;font-weight:700}
+.cal-grid div .bar{display:block;height:3px;border-radius:2px;background:var(--accent);margin:2px 2px 0 0;opacity:.7}
+.pan{width:218px;flex:none;border-left:1px solid var(--line);background:#fcfcfe;display:flex;flex-direction:column}
+.pan.bottom{width:auto;border-left:none;border-top:1px solid var(--line);flex:1 1 46%}
+.seg{display:flex;align-items:flex-end;gap:2px;padding:7px 7px 0;border-bottom:1px solid var(--line);flex:none}
+.seg b{font-weight:400;font-size:11.5px;padding:6px 8px;border-radius:6px 6px 0 0;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+.seg b.on{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+.seg .act{margin-left:auto;font-size:10.5px;color:var(--muted);border:1px solid var(--line2);border-radius:5px;padding:2px 7px;align-self:center;margin-bottom:3px}
+.pan-b{flex:1;padding:9px 10px;font-size:11px;overflow:hidden}
+.pan-date{font-size:12px;font-weight:700;margin-bottom:6px}
+.row{display:flex;align-items:center;gap:6px;padding:5px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:none}
+.dot2{width:7px;height:7px;border-radius:50%;flex:none}
+.card{border-left:3px solid var(--accent);background:#fff;border:1px solid var(--line);border-left-width:3px;border-radius:6px;padding:5px 7px;margin-bottom:5px}
+.card .t{font-size:9px;color:var(--muted);font-weight:700}
+.card .ti{font-size:11px;font-weight:600}
+.sec{font-size:10px;font-weight:700;color:var(--muted);margin:8px 0 3px}
+.sec.dng{color:#c0392b}
+.add{display:flex;gap:5px;margin-bottom:7px}
+.add input{flex:1;border:1px solid var(--line2);border-radius:5px;padding:5px 7px;font:inherit;font-size:11px;background:#fff}
+.add b{background:var(--accent);color:#fff;border-radius:5px;padding:5px 9px;font-size:11px;font-weight:600;display:flex;align-items:center}
+.rail{width:40px;flex:none;border-left:1px solid var(--line);background:#f6f7fa;display:flex;flex-direction:column;align-items:center;gap:9px;padding:9px 0}
+.rail i{width:26px;height:26px;border-radius:7px;background:#e4e7ee;display:flex;align-items:center;justify-content:center;font-size:13px;font-style:normal;color:var(--muted)}
+.rail i.on{background:var(--accent);color:#fff}
+.activity{width:42px;flex:none;background:#22262f;display:flex;flex-direction:column;align-items:center;gap:12px;padding:11px 0}
+.activity i{font-style:normal;color:#8a93a6;font-size:15px;width:100%;text-align:center}
+.activity i.on{color:#fff;box-shadow:inset 2px 0 0 var(--accent)}
+.hl{outline:2px dashed var(--accent);outline-offset:-1px;border-radius:7px}
+.note{max-width:720px;margin:0 auto;font-size:13px;color:var(--text);background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 15px;line-height:1.65}
+.note .nm{font-weight:700;font-size:14px}
+.note .nm .tg{font-size:11px;font-weight:600;color:#fff;background:var(--muted);border-radius:10px;padding:1px 8px;margin-left:6px}
+.note .nm .tg.one{background:var(--accent)} .note .nm .tg.ours{background:var(--ok)}
+.note .k{color:var(--accent);font-weight:600}
+.note .take{color:var(--muted);margin-top:7px;display:block}
+.note .src{color:#9aa2b3;font-size:11px;margin-top:7px;display:block}
+.legend{max-width:720px;margin:8px auto 0;font-size:11px;color:var(--muted)}
+.legend b{display:inline-block;border:1px dashed var(--accent);border-radius:4px;padding:0 5px;color:var(--accent)}
+</style>
+</head>
+<body>
+<h1>우측 패널 패턴 비교 — 상용 앱 예시 + 제안안</h1>
+<p class="sub">버튼을 눌러 각 상용 앱이 캘린더 옆 패널·탭을 어떻게 두는지 비교하세요. <b style="color:var(--ok)">초록 버튼</b>이 제 제안안입니다. <span class="legend"><b>점선</b> = 그 앱의 핵심 메커니즘 강조</span></p>
+<div class="sel" id="sel"></div>
+<div id="stage"></div>
+<div class="note" id="note"></div>
+
+<script>
+function calGrid(opts){
+  opts=opts||{};
+  let cells='';
+  for(let i=1;i<=35;i++){
+    const d=i-2; const has=(d>0&&d<=30);
+    let cls=''; if(d===15) cls='tdy'; else if(d===opts.sel) cls='sel';
+    let inner=has?d:'';
+    if(has&&opts.bars&&opts.bars.indexOf(d)>=0) inner+='<span class="bar"></span>';
+    cells+=`<div class="${cls}">${inner}</div>`;
+  }
+  return cells;
+}
+function cal(opts){ return `<div class="cal"><div class="cal-h">2026. 6</div><div class="cal-grid">${calGrid(opts)}</div></div>`; }
+
+const todoRows = `<div class="add"><input placeholder="할 일 한 줄 추가"><b>+</b></div>
+  <div class="sec dng">지남 1</div><div class="row"><span>☐</span><span style="flex:1">API 명세 검토</span><span style="color:#c0392b;font-size:10px">6/13</span><span class="dot2" style="background:#185fa5"></span></div>
+  <div class="sec">오늘 2</div><div class="row"><span>☐</span><span style="flex:1">보고서 초안</span><span class="dot2" style="background:#185fa5"></span></div><div class="row"><span>☐</span><span style="flex:1">회의 자료</span><span class="dot2" style="background:var(--ok)"></span></div>`;
+const detailRows = `<div class="pan-date">6월 15일 (월) · 2개</div>
+  <div class="card"><div class="t">10:00</div><div class="ti">요구사항 정리</div></div>
+  <div class="card" style="border-left-color:var(--ok)"><div class="t">종일</div><div class="ti">서버 점검 로그</div></div>
+  <div class="add" style="margin-top:6px"><input placeholder="+ 한 줄로 일정 추가"><b>+</b></div>`;
+const gitRows = `<div class="sec">6월 13일 (금)</div><div class="row"><span style="color:var(--muted);font-size:9px">14:20</span><span style="flex:1">fix: 토큰 만료 처리</span></div>
+  <div class="row"><span style="color:var(--muted);font-size:9px">11:05</span><span style="flex:1">feat: 주간보고 내보내기</span></div>
+  <div class="sec">6월 12일 (목)</div><div class="row"><span style="color:var(--muted);font-size:9px">09:30</span><span style="flex:1">refactor: XML 정리</span></div>`;
+
+const V = {
+  outlook:{ name:"Microsoft Outlook · 'My Day'", tag:'1:1 선례', tagc:'one',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>Outlook — My Day</div><div class="win-body">${cal({sel:0,bars:[]})}<div class="pan hl"><div class="seg"><b class="on">할 일</b><b>캘린더</b></div><div class="pan-b">${todoRows}</div></div></div></div>`,
+    note:`우측 패널 <span class="k">안에 [할 일 | 캘린더] 세그먼트 탭</span>. 기본=할 일, 추가는 패널 내 인라인('Add a task'). <b>우리 제안과 1:1로 같은 구조.</b><span class="take">차용: 이 구조 그대로. 단 우리는 캘린더 앱이라 기본 탭을 '일정 상세'로 뒤집음.</span><span class="src">출처: support.microsoft.com 'Use My Day with To Do in Outlook' (WebSearch 확인)</span>` },
+
+  google:{ name:'Google Calendar / Tasks', tag:'레일 단일선택', tagc:'',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>Google Calendar</div><div class="win-body">${cal({sel:11,bars:[]})}<div class="pan"><div class="seg" style="border-bottom:1px solid var(--line)"><b class="on" style="color:var(--text);font-weight:700">Tasks</b></div><div class="pan-b"><div class="add"><input placeholder="Add a task"><b>+</b></div><div class="row"><span>☐</span><span style="flex:1">Draft report</span></div><div class="row"><span>☐</span><span style="flex:1">Review PR</span></div></div></div><div class="rail hl"><i class="on">✓</i><i>📝</i><i>👥</i></div></div></div>`,
+    note:`맨 우측 <span class="k">아이콘 레일(한 번에 하나만 펼침, 라디오)</span> + 'Add a task' 인라인 생성. 이벤트 상세는 레일이 아니라 그리드 클릭에 종속.<span class="take">차용: ① 한 번에 하나만(380px 동시표시 금지) ② 인라인 한 줄 추가 ③ 상세는 '날짜 클릭'에 종속.</span><span class="src">출처: support.google.com/calendar/answer/106237, /tasks/answer/7675838 (WebFetch 확인)</span>` },
+
+  notion:{ name:'Notion Calendar (구 Cron)', tag:'선택 종속', tagc:'',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>Notion Calendar</div><div class="win-body">${cal({sel:11,bars:[11]})}<div class="pan hl"><div class="pan-b"><div class="pan-date">팀 회의</div><div class="row" style="border:none">📅 6/12 · 14:00–15:00</div><div class="row" style="border:none">📍 회의실 A</div><div class="row" style="border:none">👤 참석자 3명</div><div class="row" style="border:none;color:var(--muted)">선택한 항목을 따라 내용이 바뀜</div></div></div></div></div>`,
+    note:`<span class="k">컨텍스트 패널</span> — 탭이 아니라 '좌측에서 무엇을 선택했는가'에 종속(이벤트 클릭→상세 인라인). 패널 접기 토글.<span class="take">차용: 우리 selectedDate가 이미 전역 → '날짜 클릭=일정 상세 탭'이 거의 공짜. 인라인 편집.</span><span class="src">출처: notion.com/help/manage-your-calendars-and-events (WebFetch 확인)</span>` },
+
+  vscode:{ name:'VS Code — Side Bar', tag:'탭 3–5 가드레일', tagc:'',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>VS Code</div><div class="win-body"><div class="activity"><i class="on">📁</i><i>🔍</i><i>⎇</i><i>🐞</i></div><div class="pan hl" style="border-left:none;border-right:1px solid var(--line);width:170px"><div class="seg" style="border-bottom:1px solid var(--line)"><b class="on" style="color:var(--text);font-weight:700">EXPLORER</b></div><div class="pan-b"><div class="row" style="border:none">▾ src</div><div class="row" style="border:none;padding-left:12px">app.js</div><div class="row" style="border:none">▸ docs</div></div></div><div class="cal" style="background:#fbfbfd;align-items:center;justify-content:center;color:var(--muted);font-size:12px">에디터 영역</div></div></div>`,
+    note:`아이콘 레일(Activity Bar)로 뷰 컨테이너 전환. 공식 가이드라인: <span class="k">"뷰 3–5개가 편안한 최대"</span>, 뷰 1개면 자동 통합.<span class="take">차용: 우리 탭 3개(일정/할일/작업일지)=하한 안전. 보고서를 4번째 탭으로 만들지 않는 근거. Git 미연동 시 작업일지 탭 숨김.</span><span class="src">출처: code.visualstudio.com/api/ux-guidelines/sidebars (원문 "3-5 is a comfortable max" 확인)</span>` },
+
+  intellij:{ name:'JetBrains IntelliJ IDEA', tag:'한 번에 하나', tagc:'',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>IntelliJ IDEA</div><div class="win-body"><div class="cal" style="background:#fbfbfd;align-items:center;justify-content:center;color:var(--muted);font-size:12px">에디터</div><div class="pan hl"><div class="seg" style="border-bottom:1px solid var(--line)"><b class="on" style="color:var(--text);font-weight:700">Git</b></div><div class="pan-b"><div class="row" style="border:none">▾ Local Changes</div><div class="row" style="border:none;padding-left:12px">main.kt</div></div></div><div class="rail" style="background:#eceef3"><i class="on">⎇</i><i>▤</i><i>▶</i></div></div></div>`,
+    note:`가장자리 stripe(아이콘 레일) — <span class="k">한 변(edge)당 tool window 하나만</span> 펼침(다른 걸 누르면 교체=라디오). 레이아웃 상태 저장.<span class="take">차용: 좁은 폭(380px)에서 '한 번에 한 탭만 패널 전체'. 선택 탭/필터/접힘을 localStorage 보존.</span><span class="src">출처: jetbrains.com/help/idea/tool-windows.html (WebFetch 확인)</span>` },
+
+  ticktick:{ name:'TickTick — Show Tasks with Calendar', tag:'분할+드래그', tagc:'',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>TickTick</div><div class="win-body"><div class="pan" style="border-left:none;border-right:1px solid var(--line);width:200px"><div class="seg" style="border-bottom:1px solid var(--line)"><b class="on" style="color:var(--text);font-weight:700">오늘 할 일</b></div><div class="pan-b"><div class="row"><span>☐</span><span style="flex:1">보고서 초안 ↗</span></div><div class="row"><span>☐</span><span style="flex:1">회의 자료 ↗</span></div><div class="row" style="border:none;color:var(--muted);font-size:10px">→ 캘린더로 드래그해 시간 배정</div></div></div>${cal({sel:0,bars:[]})}</div></div>`,
+    note:`태스크 리스트 + 캘린더를 <span class="k">한 화면에 동시</span> 표시, 리스트→그리드 드래그로 날짜/시간 배정.<span class="take">차용: '드래그-투-스케줄'(미배정 할 일→그리드) 아이디어만. 동시표시는 폭을 먹어 380px엔 비차용.</span><span class="src">출처: help.ticktick.com/articles/7358389904469917696 (WebSearch 확인)</span>` },
+
+  apple:{ name:'Apple Calendar + Reminders', tag:'대비축(미채택)', tagc:'',
+    body:`<div class="win"><div class="win-bar"><span class="dot"></span>Apple Calendar</div><div class="win-body">${cal({sel:0,bars:[]})}</div></div>`,
+    note:`<span class="k">별도 패널 없이 캘린더 격자에 리마인더를 직접 인라인.</span> 상세는 popover.<span class="take">사용자가 원한 'Outlook식 분리 탭'과 달라 <b>미채택</b>. 다만 '레이어 on/off 토글'·'좁을 때 popover 생성' 아이디어만 대비용 참고.</span><span class="src">출처: support.apple.com/guide/calendar/icl873b9a527 (WebSearch 확인)</span>` },
+
+  ours:{ name:'★ 제안안 — 우측 패널 탭 뷰어 (넓은 폭)', tag:'제안', tagc:'ours',
+    body:`<div class="win"><div class="win-bar"><span class="dot" style="background:var(--ok)"></span>수행과제 캘린더 — 제안안</div><div class="win-body">${cal({sel:0,bars:[16]})}<div class="pan" style="width:240px"><div class="seg"><b class="on">일정 상세</b><b>할 일</b><b>작업일지</b><span class="act">📋 보고서</span></div><div class="pan-b">${detailRows}</div></div></div></div>`,
+    note:`<span class="nm">제안안 — 넓은 폭<span class="tg ours">우리</span></span><br>'작업' 버튼·드로어·스크림을 <b>제거</b>하고, 기존 우측 패널을 <span class="k">[일정 상세 | 할 일 | 작업일지] 탭 뷰어</span>로 승격. 기본=일정 상세(날짜 클릭 시 자동). 📋 보고서는 탭이 아니라 헤더 액션. 추가는 인라인 한 줄, 상세만 모달.<span class="take">근거: Outlook My Day(1:1) + VS Code(3탭 가드레일) + Google/Notion(선택 종속·인라인) + IntelliJ(한 번에 하나).</span>` },
+
+  ours_narrow:{ name:'★ 제안안 — 380px (위젯 실폭)', tag:'제안', tagc:'ours',
+    body:`<div class="win narrow"><div class="win-bar"><span class="dot" style="background:var(--ok)"></span>수행과제 캘린더 380px</div><div class="win-body col">${cal({sel:0,bars:[16]})}<div class="pan bottom"><div class="seg"><b class="on">일정 상세</b><b>할 일</b><b>작업일지</b></div><div class="pan-b">${detailRows}</div></div></div></div>`,
+    note:`<span class="nm">제안안 — 380px 좁은 폭<span class="tg ours">우리</span></span><br>위젯 실폭에선 패널이 '우측'이 아니라 <span class="k">'하단 시트'</span>(검증 지적). 평소 캘린더 위, 날짜 클릭 시 하단 시트(약 46%)에 탭바+내용. 분할바 숨김. 같은 기능이 넓을 땐 우측, 좁을 땐 하단으로 reflow.<span class="take">근거: 모바일 사이드패널 reflow 규범 + IntelliJ 한 번에 하나. (이 좁은 폭 동작이 검증이 짚은 핵심 결정 포인트)</span>` },
+};
+
+const ORDER = ['outlook','google','notion','vscode','intellij','ticktick','apple','ours','ours_narrow'];
+const sel=document.getElementById('sel'), stage=document.getElementById('stage'), note=document.getElementById('note');
+ORDER.forEach(id=>{
+  const b=document.createElement('button');
+  b.innerHTML = V[id].name.replace('★ 제안안 — ','제안: ').replace(' (넓은 폭)','(넓음)').replace(' (위젯 실폭)','') + `<span class="tag">${V[id].tag}</span>`;
+  if(V[id].tagc==='ours') b.className='ours';
+  b.onclick=()=>show(id);
+  sel.appendChild(b);
+});
+function show(id){
+  [...sel.children].forEach((b,i)=>b.classList.toggle('on',ORDER[i]===id));
+  stage.innerHTML=V[id].body;
+  note.innerHTML=V[id].note;
+}
+show('ours');
+</script>
+</body>
+</html>

@@ -38,7 +38,11 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -o dist\app
 - 결과: `dist\app\` 폴더에 **`TaskCalendarWidget.exe` + dll 약 10개**.
 - 이 PC에는 .NET 9 데스크톱 런타임(9.0.x)과 WebView2 NuGet 캐시가 있어 **오프라인으로 빌드됩니다.**
 
-> ⚠️ `--self-contained`(런타임 번들 단일 exe)는 폐쇄망에서 **빌드 실패**합니다(런타임 팩을 NuGet에서 받아야 함). 인터넷 되는 PC에서만 가능 — 아래 4번 참고.
+> ⚠️ `--self-contained`(런타임 번들 단일 exe)는 **런타임 팩이 없는 폐쇄망 PC에서는 빌드 실패**합니다(NuGet에서 받아야 함). 인터넷 되는 PC 또는 런타임 팩이 캐시된 PC에서만 가능 — 아래 4번 참고.
+
+> ℹ️ **현재 개발/빌드 PC는 인터넷 연결됨**(망분리 대상은 *배포될* 위젯이지 이 빌드 PC가 아님) + win-x64 런타임 팩/WindowsDesktop 런타임 캐시 보유 → **실제 운영 산출물은 자체포함 단일 exe(~163MB)** 이며 `C:\Users\<사용자>\Desktop\수행과제캘린더\수행과제캘린더.exe` 로 **파일명을 한글 rename해 배포**한다. 명령·함정 포함 **운영 빌드·배포 런북은 [CHANGELOG.md](CHANGELOG.md)** 참고.
+>
+> ⚠️ **재빌드 전 파일 락 해제**: 두 프로세스명(`TaskCalendarWidget`, `수행과제캘린더`)을 **모두** 종료해야 publish가 락에 안 걸린다(배포본은 rename돼 프로세스명이 다름). `Get-Process -Name 'TaskCalendarWidget','수행과제캘린더' -EA SilentlyContinue | Stop-Process -Force`
 
 ---
 
@@ -68,11 +72,13 @@ Microsoft "**.NET Desktop Runtime 9.x (x64)**" **오프라인 설치 파일**(�
 ## 4. (선택) 진짜 단일 exe — 인터넷 되는 PC에서
 무설치 단일 exe가 필요하면 인터넷 연결된 PC에서:
 ```powershell
-dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o dist\single
+dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist\portable
 ```
-- 결과: `dist\single\TaskCalendarWidget.exe` **1개**(~150MB, .NET 설치 불필요).
-- 이 exe 하나만 폐쇄망 PC로 복사 → 실행. 시작프로그램에도 이 1개만 등록하면 됨.
-- (대안) 폐쇄망에서 굳이 하려면 위 런타임 팩들을 NuGet 캐시에 미리 채워야 함.
+- 결과: `dist\portable\TaskCalendarWidget.exe` **1개**(~163MB, WinForms 트레이 포함, .NET 설치 불필요).
+- 이 exe 하나만 폐쇄망 PC로 복사(원하면 한글 rename) → 실행. 시작프로그램에도 이 1개만 등록.
+- (대안) 런타임 팩 없는 폐쇄망에서 굳이 하려면 win-x64 런타임 팩/WindowsDesktop 런타임을 NuGet 캐시에 미리 채워야 함.
+- 첫 실행 시 `%TEMP%\.net`으로 네이티브 추출 → 초기 시작이 프레임워크 종속본보다 느릴 수 있음.
 
 ---
 

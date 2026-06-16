@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>창 모드 시각 비교 — 트레이·작업표시줄·Alt+Tab·바탕화면 상주</title>
+<style>
+:root{
+  --bg:#eceef3; --panel:#fff; --line:#d6dbe6; --line2:#c2c9d6; --ink:#1d2433; --muted:#5b6373; --faint:#8a93a6;
+  --accent:#3e5be0; --accent2:#2e44ad; --ok:#1d9e75; --okbg:#e1f5ee; --no:#d04a4a; --nobg:#fbe9e9;
+  --wall:#cdd4df; --bar:#222a3d;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:26px 18px 60px}
+.wrap{max-width:1080px;margin:0 auto}
+h1{font-size:23px;margin:0 0 4px}
+.lede{font-size:14px;color:var(--muted);line-height:1.65;margin:0 0 6px;max-width:760px}
+.note{font-size:12.5px;color:#7a5a12;background:#fdf3dd;border:1px solid #f0dca8;border-radius:8px;padding:9px 12px;margin:14px 0 26px;line-height:1.6;max-width:780px}
+h2{font-size:17px;margin:34px 0 4px;padding-top:10px;border-top:1px solid var(--line)}
+.sub{font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.6;max-width:780px}
+/* 데스크톱 장면 */
+.scene{position:relative;width:100%;aspect-ratio:16/10;background:
+  linear-gradient(135deg,#cdd4df,#bcc5d4);border-radius:9px;overflow:hidden;border:1px solid var(--line2);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+.win{position:absolute;border-radius:5px;box-shadow:0 3px 10px rgba(20,28,55,.22);border:1px solid #aab2c1;overflow:hidden}
+.win .tb{height:13px;background:#cad1dc}
+.win .bd{background:#fff;height:calc(100% - 13px)}
+.win.app .bd{background:#f4f6fa}
+.win.app .tb{background:#cdd4df}
+.win.me .tb{background:var(--accent)}
+.win.me .bd{background:#fff;background-image:repeating-linear-gradient(0deg,#eef1f8 0 9px,#fff 9px 18px)}
+.win .cal{position:absolute;left:8px;top:6px;font-size:9px;color:var(--accent2);font-weight:700}
+.tag{position:absolute;font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.9);color:var(--muted);border:1px solid var(--line)}
+/* 작업표시줄 */
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:26px;background:var(--bar);display:flex;align-items:center;gap:5px;padding:0 8px}
+.tstart{width:16px;height:16px;border-radius:3px;background:#4a587a;flex:none}
+.tbtn{width:26px;height:18px;border-radius:3px;background:#3b4763;flex:none}
+.tbtn.me{background:var(--accent);box-shadow:0 0 0 2px rgba(62,91,224,.4);position:relative}
+.tbtn.me::after{content:'';position:absolute;left:5px;top:4px;width:16px;height:9px;background:repeating-linear-gradient(0deg,#cdd6f7 0 3px,#fff 3px 6px);border-radius:1px}
+.tspacer{flex:1}
+.tclock{font-size:9px;color:#aeb6c8}
+/* 카드 그리드 */
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-top:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card .cap{padding:12px 14px}
+.ttl{font-size:14.5px;font-weight:700;margin:0 0 2px;display:flex;align-items:center;gap:7px}
+.desc{font-size:12px;color:var(--muted);line-height:1.55;margin:4px 0 0}
+.facts{display:flex;flex-wrap:wrap;gap:6px;margin:9px 0 0}
+.chip{font-size:11px;font-weight:600;border-radius:20px;padding:3px 9px;display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line)}
+.chip.y{background:var(--okbg);color:#0f6e56;border-color:#a9ddca}
+.chip.n{background:var(--nobg);color:#9a2d2d;border-color:#eebcbc}
+.chip.m{background:#eef1f6;color:#3c4658}
+.how{font-size:11.5px;color:var(--ink);margin-top:9px;background:#f5f7fb;border-left:3px solid var(--accent);border-radius:0 6px 6px 0;padding:6px 10px;line-height:1.5}
+/* 실제 스크린샷 */
+.shotwrap{height:200px;background:#0f1115;display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid var(--line)}
+.shot{max-width:100%;max-height:200px;width:auto;height:auto;display:block}
+.attr{font-size:10px;color:var(--faint);margin-top:8px;line-height:1.45}
+.attr a{color:var(--faint)}
+.realtag{font-size:10px;font-weight:700;color:#0f6e56;background:var(--okbg);border:1px solid #a9ddca;border-radius:5px;padding:1px 6px;margin-left:6px}
+figure.tbfig{margin:14px 0 0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+figure.tbfig img{max-width:100%;border-radius:6px;border:1px solid var(--line);display:block}
+figure.tbfig figcaption{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+/* Alt+Tab 오버레이 미니목업 */
+.alttab{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);background:rgba(40,46,66,.92);border-radius:8px;padding:8px;display:flex;gap:6px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.atile{width:42px;height:30px;border-radius:4px;background:#56617e;border:1px solid #6b7488}
+.atile.sel{outline:2px solid #fff;outline-offset:1px}
+.atile.me{background:var(--accent)}
+.atile.me::after{content:'';display:block;margin:7px auto 0;width:24px;height:13px;background:repeating-linear-gradient(0deg,#cdd6f7 0 3px,#56617e 3px 6px);border-radius:1px}
+/* 핵심 트레이드오프 히어로 */
+.hero{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin-top:8px}
+.hero .vs{font-size:13px;font-weight:800;color:var(--no);text-align:center;line-height:1.4}
+.hbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;overflow:hidden}
+.hbox h3{font-size:13.5px;margin:0 0 8px;text-align:center}
+@media(max-width:680px){.hero{grid-template-columns:1fr}.hero .vs{padding:6px 0}}
+/* 옵션 */
+.opt{display:flex;gap:12px;align-items:flex-start;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.opt .k{flex:none;width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+.opt.rec{border-color:#a9ddca;box-shadow:0 0 0 2px rgba(29,158,117,.18)}
+.opt.rec .k{background:var(--ok)}
+.opt h4{margin:0 0 3px;font-size:13.5px}
+.opt p{margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+.legend{font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin:2px 0 4px}
+.legend b{color:var(--ink)}
+.foot{margin-top:30px;font-size:12px;color:var(--faint);border-top:1px solid var(--line);padding-top:12px}
+.scenecap{font-size:11px;color:var(--faint);text-align:center;padding:6px 0 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>창 모드 시각 비교</h1>
+  <p class="lede">트레이 · 작업표시줄 · Alt+Tab · 항상 위/아래 · 바탕화면 상주 — 상용 앱이 각각을 어떻게 처리하는지 <b>그림으로</b> 비교합니다. 텍스트 보고서: <code>창모드-조사-보고서.md</code></p>
+  <div class="note">⚠️ 이 그림들은 실제 앱의 스크린샷이 아니라, 조사로 확인한 <b>창 동작을 정확히 재현한 다이어그램</b>입니다. (이 PC는 폐쇄망·오프라인이라 실제 앱 스크린샷을 받아 넣을 수 없고, 실제 캡처는 화면마다 달라 '작업표시줄/Alt+Tab 노출 여부·Z순서'라는 핵심 차이가 오히려 안 보입니다.) 각 그림은 <b>① 바탕화면 위 창의 앞뒤 순서 ② 아래 작업표시줄의 버튼 유무 ③ Alt+Tab 목록 포함 여부</b>를 나타냅니다.</div>
+
+  <div class="legend">
+    <span>🟦 = 우리 캘린더/해당 앱</span>
+    <span>⬜ = 다른 앱 창</span>
+    <span><b>아래 검은 띠</b> = 작업표시줄(버튼 있으면 노출)</span>
+    <span class="chip y">✓ 노출</span><span class="chip n">✗ 제외</span>
+  </div>
+
+  <h2>핵심 — 동시에 가질 수 없는 두 가지</h2>
+  <p class="sub">Windows 규칙상 <b>Alt+Tab은 창을 "활성화 = 맨 앞으로"</b> 올립니다. 그래서 <b>"항상 바탕화면 아래에 깔려 있기"</b>와 <b>"Alt+Tab으로 불러오기"</b>는 <b>동시에 불가능</b>합니다. 둘 중 하나를 골라야 합니다.</p>
+  <div class="hero">
+    <div class="hbox">
+      <h3>① 바탕화면 상주 (항상 아래)</h3>
+      <div class="scene">
+        <div class="win app" style="left:10%;top:14%;width:46%;height:52%"><div class="tb"></div><div class="bd"></div></div>
+        <div class="win app" style="left:40%;top:30%;width:48%;height:50%"><div class="tb"></div><div class="bd"></div></div>
+        <!-- 위젯이 가장 뒤(다른 창에 가림) -->
+        <div class="win me" style="left:62%;top:8%;width:30%;height:40%;box-shadow:none;opacity:.96"><div class="tb"></div><div class="bd"><span class="cal">📅 캘린더</span></div></div>
+        <div class="taskbar">
+          <div class="tstart"></div><div class="tbtn"></div><div class="tbtn"></div>
+          <div class="tspacer"></div><div class="tclock">2:14</div>
+        </div>
+        <span class="tag" style="left:63%;top:2%;color:#9a2d2d">뒤에 깔림</span>
+      </div>
+      <div class="scenecap">작업표시줄 버튼 없음 · Alt+Tab 없음 · 늘 바탕화면에 깔림</div>
+    </div>
+    <div class="vs">동시<br>불가<br>✕</div>
+    <div class="hbox">
+      <h3>② Alt+Tab으로 호출 (일반 앱 창)</h3>
+      <div class="scene">
+        <div class="win app" style="left:8%;top:16%;width:44%;height:50%"><div class="tb"></div><div class="bd"></div></div>
+        <!-- 위젯이 맨 앞 -->
+        <div class="win me" style="left:40%;top:24%;width:42%;height:54%"><div class="tb"></div><div class="bd"><span class="cal">📅 캘린더</span></div></div>
+        <div class="taskbar">
+          <div class="tstart"></div><div class="tbtn"></div><div class="tbtn me"></div>
+          <div class="tspacer"></div><div class="tclock">2:14</div>
+        </div>
+        <span class="tag" style="left:41%;top:18%;color:#0f6e56">맨 앞</span>
+      </div>
+      <div class="scenecap">작업표시줄 버튼 있음 · Alt+Tab 포함 · 바탕화면 상주는 포기</div>
+    </div>
+  </div>
+
+  <h2>상용 앱은 어떻게 하나 (실제 화면)</h2>
+  <p class="sub">아래는 <b>실제 앱 스크린샷</b>입니다(출처·라이선스 각 이미지 아래 표기). "다른 앱 쓰는 중 불러보기"를 <b>바탕화면 상주 위젯류</b>(Rainmeter·Win11 위젯)는 핫키·'항상 위'로, <b>트레이 앱(Slack·Discord)</b>은 일반 앱 창+Alt+Tab으로 해결합니다.</p>
+
+  <figure class="tbfig">
+    <img src="img/win11-taskbar.jpg" alt="Windows 11 작업표시줄 앱 버튼">
+    <figcaption><b>먼저 '작업표시줄'이란?</b> 일반 앱은 이렇게 작업표시줄에 버튼으로 뜨고, 그 버튼이 곧 Alt+Tab 목록 항목이 됩니다. 우리 위젯은 기본(트레이 OFF)에선 여기서 <b>빠져</b> 있고, 트레이 ON이면 <b>이 줄에 캘린더 버튼이 생깁니다</b>. <span class="attr">"Taskbar Windows 11" © Yuika Izumi · CC BY-SA 4.0 · via Wikimedia Commons</span></figcaption>
+  </figure>
+
+  <div class="grid">
+
+    <!-- Slack (실제) -->
+    <div class="card">
+      <div class="shotwrap"><img class="shot" src="img/slack.png" alt="Slack 데스크톱 앱 창"></div>
+      <div class="cap">
+        <p class="ttl">💬 Slack <span class="realtag">실제 화면</span></p>
+        <p class="desc">평범한 데스크톱 앱 창. 보일 때 작업표시줄·Alt+Tab에 그대로 — '바탕화면 상주'는 안 함.</p>
+        <div class="facts"><span class="chip y">작업표시줄 ✓</span><span class="chip y">Alt+Tab ✓</span><span class="chip n">바탕화면 상주 ✗</span></div>
+        <div class="how">호출: <b>Alt+Tab</b> 그대로. ✕로 트레이에 숨기면 그동안만 목록에서 빠짐 → 트레이 클릭 복귀.</div>
+        <p class="attr">"Dracula Theme being used on Slack" © Carolinedmoreschi · CC BY-SA 4.0 · via Wikimedia Commons</p>
+      </div>
+    </div>
+
+    <!-- Discord (실제) -->
+    <div class="card">
+      <div class="shotwrap"><img class="shot" src="img/discord.png" alt="Discord 데스크톱 앱 창"></div>
+      <div class="cap">
+        <p class="ttl">💬 Discord <span class="realtag">실제 화면</span></p>
+        <p class="desc">일반 앱 창. 설정에서 <b>‘최소화=작업표시줄’ / ‘닫기(✕)=트레이로’</b>를 분리해 고를 수 있음(축 분리의 좋은 예).</p>
+        <div class="facts"><span class="chip y">작업표시줄 ✓</span><span class="chip y">Alt+Tab ✓</span><span class="chip m">✕/– 분리</span></div>
+        <div class="how">호출: <b>Alt+Tab</b>. 우리 옵션 B(축 분리)가 이 모델.</div>
+        <p class="attr">"DiscordServerExample" © Emtra · CC BY-SA 4.0 · via Wikimedia Commons</p>
+      </div>
+    </div>
+
+    <!-- Win11 위젯 보드 (실제) -->
+    <div class="card">
+      <div class="shotwrap"><img class="shot" src="img/win11-widgets.png" alt="Windows 11 위젯 보드"></div>
+      <div class="cap">
+        <p class="ttl">🪟 Windows 11 위젯 보드 <span class="realtag">실제 화면</span></p>
+        <p class="desc">독립 창이 아니라 화면 위로 덮이는 <b>오버레이 패널</b>. 작업표시줄엔 ‘위젯 버튼’ 하나만, Alt+Tab엔 안 나옴.</p>
+        <div class="facts"><span class="chip n">작업표시줄 ✗</span><span class="chip n">Alt+Tab ✗</span><span class="chip m">오버레이</span></div>
+        <div class="how">호출: <b>Win+W</b> 단축키 / 작업표시줄 위젯 버튼. Alt+Tab 아님.</div>
+        <p class="attr">Windows 11 Widgets hero image © Microsoft · Microsoft Learn 문서</p>
+      </div>
+    </div>
+
+    <!-- Rainmeter (실제) -->
+    <div class="card">
+      <div class="shotwrap"><img class="shot" src="img/rainmeter-skin.png" alt="Rainmeter 스킨"></div>
+      <div class="cap">
+        <p class="ttl">🌧 Rainmeter 스킨 <span class="realtag">실제 화면</span></p>
+        <p class="desc">바탕화면에 상주하는 위젯형 스킨. 사용자가 Z순서를 <b>Stay Topmost / Topmost / Normal / Bottom / On Desktop</b> 5단계로 직접 고름(참고 모델).</p>
+        <div class="facts"><span class="chip n">작업표시줄 ✗</span><span class="chip n">Alt+Tab ✗</span><span class="chip y">Z순서 5단계 ✓</span></div>
+        <div class="how">호출: ‘<b>Topmost</b>’로 늘 보이게 / 스킨별 핫키. Alt+Tab 아님.</div>
+        <p class="attr">"Zerox Project Rainmeter Skin" © Shark-oxi · CC BY-SA 3.0 · via Wikimedia Commons</p>
+      </div>
+    </div>
+
+    <!-- 계산기 항상 위 (실제) -->
+    <div class="card">
+      <div class="shotwrap"><img class="shot" src="img/win11-calculator.png" alt="Windows 11 계산기 — 항상 위 아이콘"></div>
+      <div class="cap">
+        <p class="ttl">📌 계산기 · Sticky · OneNote <span class="realtag">실제 화면</span></p>
+        <p class="desc">제목줄 우측의 <b>‘항상 위(Keep on top)’ 아이콘</b>(↗가 있는 작은 사각형). Alt+Tab 대신 <b>늘 다른 창 위에</b> 떠서 흘끗 보기.</p>
+        <div class="facts"><span class="chip m">작업표시줄 선택</span><span class="chip y">항상 위 ✓</span><span class="chip y">늘 보임 ✓</span></div>
+        <div class="how">호출: 토글만 켜면 <b>항상 보임</b>(계산기 Alt+↑, OneNote Always on Top).</div>
+        <p class="attr">"Calculator on Windows 11" © Microsoft · MIT License · via Wikimedia Commons</p>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>우리 위젯의 두 상태 (이미 구현됨)</h2>
+  <p class="sub">⚙ 메뉴의 <b>“트레이 아이콘 사용”</b> 하나로 두 모드가 전환됩니다 — 사용자가 고르신 방식입니다.</p>
+  <div class="grid">
+    <div class="card">
+      <div class="scene">
+        <div class="win app" style="left:10%;top:14%;width:46%;height:52%"><div class="tb"></div><div class="bd"></div></div>
+        <div class="win app" style="left:42%;top:30%;width:46%;height:50%"><div class="tb"></div><div class="bd"></div></div>
+        <div class="win me" style="left:64%;top:8%;width:28%;height:40%;box-shadow:none"><div class="tb"></div><div class="bd"><span class="cal">📅</span></div></div>
+        <div class="taskbar"><div class="tstart"></div><div class="tbtn"></div><div class="tbtn"></div><div class="tspacer"></div><div class="tclock">2:14</div></div>
+        <span class="tag" style="left:65%;top:2%;color:#9a2d2d">뒤에 깔림</span>
+      </div>
+      <div class="cap">
+        <p class="ttl">트레이 <b>OFF</b> — 바탕화면 위젯 <span class="chip m">기본</span></p>
+        <div class="facts"><span class="chip n">작업표시줄 ✗</span><span class="chip n">Alt+Tab ✗</span><span class="chip y">바탕화면 상주 ✓</span></div>
+        <div class="how">Win+D(바탕화면 보기) 때 드러남. 늘 깔려 있음.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="scene">
+        <div class="win app" style="left:8%;top:16%;width:42%;height:50%"><div class="tb"></div><div class="bd"></div></div>
+        <div class="win me" style="left:40%;top:22%;width:44%;height:56%"><div class="tb"></div><div class="bd"><span class="cal">📅 캘린더</span></div></div>
+        <div class="taskbar"><div class="tstart"></div><div class="tbtn"></div><div class="tbtn me"></div><div class="tspacer"></div><div class="tclock">2:14</div></div>
+        <span class="tag" style="left:41%;top:16%;color:#0f6e56">맨 앞</span>
+        <div class="alttab"><div class="atile"></div><div class="atile me sel"></div><div class="atile"></div></div>
+      </div>
+      <div class="cap">
+        <p class="ttl">트레이 <b>ON</b> — 일반 앱 창 <span class="chip y">현재 설정</span></p>
+        <div class="facts"><span class="chip y">작업표시줄 ✓</span><span class="chip y">Alt+Tab ✓</span><span class="chip n">바탕화면 상주 ✗</span></div>
+        <div class="how"><b>Alt+Tab으로 전환 가능</b>(가운데 강조). ✕=트레이로 숨김(숨긴 동안만 목록에서 빠짐).</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>선택지 (텍스트 보고서 요약)</h2>
+  <div class="opt rec">
+    <div class="k">B</div>
+    <div><h4>축 분리 — ‘작업표시줄 표시’ / ‘트레이 숨김’ / ‘Z순서’를 따로 (권장)</h4>
+    <p>Slack·Discord식. 바탕화면 상주와 무관하게 Alt+Tab 켜기 가능. 유연하지만 토글 4개 재배선 필요.</p></div>
+  </div>
+  <div class="opt">
+    <div class="k">A</div>
+    <div><h4>현행 트레이 토글 유지 (지금 동작) — 사용자 선택</h4>
+    <p>트레이 켜면 작업표시줄·Alt+Tab 노출. 이미 됨. 추가 구현 없음.</p></div>
+  </div>
+  <div class="opt">
+    <div class="k">C</div>
+    <div><h4>B + Rainmeter식 Z순서(항상위/일반/항상아래) 선택</h4>
+    <p>자유도 최대. ‘항상 위’로 Alt+Tab 없이 늘 보기 가능. 작업량 최대.</p></div>
+  </div>
+  <div class="opt">
+    <div class="k">D</div>
+    <div><h4>전역 핫키 소환 — 바탕화면 상주 유지 + 단축키로 잠깐 앞으로</h4>
+    <p>‘항상 아래’ 정체성 유지하며 다른 앱 중 호출. Alt+Tab은 여전히 불가.</p></div>
+  </div>
+
+  <div class="foot">재현 다이어그램 · 조사 워크플로 wjv9arrep 기반 · 출처/세부는 <code>창모드-조사-보고서.md</code> 참조. 실제 앱 스크린샷이 아님(폐쇄망·오프라인).</div>
+</div>
+</body>
+</html>

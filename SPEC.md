@@ -209,3 +209,48 @@
 - ❌→✅ **발견·수정**: 카테고리 다수(43개) 시 **필터바가 276px로 폭증해 달력이 88px로 찌부러짐**. → `.filterbar{max-height:66px;overflow-y:auto;align-content:flex-start}` (2줄+스크롤)로 달력 영역 보호(그리드 88→298 복원). 긴 카테고리명은 `.fc-name`·`.badge` 말줄임(…)으로 처리. 재측정/스크린샷 확인 완료.
 
 **배포/버전관리**: GitHub `Peace-Min/task-calendar`(공개). WebView2 NuGet 패키지 동봉(`widget/nuget-packages/`)으로 오프라인 빌드 가능, `.sln`+`build.cmd` 제공. SDK는 별도 공개 저장소 `Peace-Min/dotnet9-sdk-offline`에 9.0.315 win-x64 설치파일을 90MB×3 분할(+reassemble.cmd) — clone→재결합→설치 검증 완료.
+
+---
+
+## 8. 데이터·기능 확장 (2026-06-12 ~ 06-16)
+
+> §3의 `taskCalendar` v1 스키마를 **하위호환으로 확장**했다(누락 필드는 기본값, 구버전 XML 그대로 로드). 단일일·비-git 기록은 byte-identical하게 round-trip된다. 전체 기능 이력·근거는 **[CHANGELOG.md](CHANGELOG.md)** 와 각 보고서 참조. 직렬화 기준은 `task-calendar-prototype.html`의 `toXML()`/`fromXML()`/`xmlRoundTrip()`.
+
+### 확장된 스키마 (v1, 추가 필드/요소)
+
+| 위치 | 추가 | 설명 |
+|---|---|---|
+| `<taskCalendar>` 루트 | `gitAuthor` (속성) | 전역 git 작성자(이메일/이름). `git log --author=`에 사용 |
+| `<category>` | `gitRepo` (속성) | 과제별 로컬 git 저장소 경로 |
+| `<entry>` | `source="git"` (속성) | git 커밋에서 만든 작업일지 기록 |
+| `<entry>` | `endDate` (속성) | 기간(다일) 일정의 종료일(있을 때만, `> date`) |
+| `<entry>` | `<recur freq interval until count>` + `<except date>` | 반복(weekly/monthly), `recurExcept`는 `<except>` 자식. git/단일일은 직렬화 안 함 |
+| `<entry>` | `<commits><commit hash short time>subject</commit></commits>` | 구조화 커밋 목록(subject=텍스트 콘텐츠 → 검색·round-trip 안전) |
+| `<todos><todo>` (신규 컬렉션) | `id, done, categoryId, due, endDate, prio="high", completedAt, createdAt, updatedAt` (속성) + `<text>`, `<note>` (자식) | 할 일(TODO). entries/categories와 형제, 캘린더 데이터와 독립 |
+
+```xml
+<entry id="e-..." date="2026-06-15" endDate="2026-06-19" categoryId="c-..." allDay="true">
+  <title>출장</title><memo/>
+  <recur freq="weekly" interval="1" until="2026-09-01"><except date="2026-06-26"/></recur>
+</entry>
+<entry id="e-..." date="2026-06-12" categoryId="c-..." source="git" allDay="true">
+  <title>리팩터링</title><memo/>
+  <commits><commit hash="9a8f..." short="abc123" time="10:14">fix: 그리드 칩 정렬</commit></commits>
+</entry>
+<todos>
+  <todo id="t-..." done="false" categoryId="c-..." due="2026-06-16" endDate="2026-06-18" prio="high">
+    <text>주간 보고서 초안</text><note/>
+  </todo>
+  <todo id="t-..." done="true" due="2026-06-14" completedAt="2026-06-14T09:00:00.000Z"><text>API 명세 검토</text><note/></todo>
+</todos>
+```
+
+- 검증: `xmlRoundTrip().ok === true`(확장 필드 포함). 비실재 날짜 거부(`isRealDate`), id/time/color 이스케이프·검증(`safeId`/`validTime`/`validColor`)는 §5의 XSS 방어를 그대로 적용.
+
+### 주요 기능 확장 (요약 — 상세는 CHANGELOG)
+- **Git 커밋 → 작업일지 → 보고서** (06-12): 과제별 `gitRepo`+전역 `gitAuthor`로 내 커밋 수집(`source=git`), 기간별 Markdown 보고서 초안.
+- **기간 + 반복 일정** (06-12): `expandOccurrences`로 그리드 세그먼트 칩/패널/보고서 전개.
+- **할 일(TODO)** (06-15~16): ★중요/완료/기한/기간, 캘린더에 HOLLOW 체크 칩(일정 SOLID 막대와 색-독립 구분).
+- **한 줄 빠른 캡처(quick-create)** (06-16): 모든 등록 진입점 일원화, 16필드 모달은 편집 전용.
+- **우측 패널 탭 + 선택 날짜 종속** (06-15~16): `[일정 상세|할 일|작업일지]`, 380px 하단 시트.
+- **창 모드/트레이** (06-16): 트레이 ON=일반 앱 창(작업표시줄·Alt+Tab), OFF=바탕화면 위젯. (보고서: `창모드-조사-보고서.md`)
