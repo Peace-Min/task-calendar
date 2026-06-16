@@ -4,6 +4,10 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- 트레이 아이콘(System.Windows.Forms.NotifyIcon) — 인박스, NuGet 불필요, 오프라인 OK -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- DPI는 app.manifest(PerMonitorV2)로 WPF가 처리 — WinForms 전용 DPI 경고 억제 -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>

@@ -31,6 +31,11 @@ namespace TaskCalendarWidget
         private RECT _gestureRect;   // 이동/리사이즈 시작 시점의 창 물리 좌표
         private bool _desktopApplied = false;   // 바탕화면 모드 1회 적용 플래그
 
+        private System.Windows.Forms.NotifyIcon? _tray;   // 옵션 트레이 아이콘 (DisposeTray가 멱등이라 별도 플래그 불필요)
+        private bool _focusMode = false;                  // 넓게 보기(일시 맨앞·확대) 활성 여부
+        private RECT _preFocusRect;                       // 넓게 보기 진입 전 창 물리 좌표
+        private Window? _scrim;                            // 넓게 보기 딤 배경 창
+
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "TaskCalendarWidget";
 
@@ -144,7 +149,8 @@ namespace TaskCalendarWidget
         {
             bool firstRun = _settings.FirstRun;
             try { Directory.CreateDirectory(_dataDir); File.WriteAllText(_logFile, ""); } catch { }
-            Log($"=== 시작 v1.0.0 === pinned={_settings.Pinned} firstRun={firstRun}");
+            Log($"=== 시작 v1.0.0 === pinned={_settings.Pinned} firstRun={firstRun} tray={_settings.TrayEnabled}");
+            if (_settings.TrayEnabled) EnsureTray();   // 설정돼 있으면 트레이 아이콘 생성
 
             if (firstRun)
             {
@@ -319,10 +325,20 @@ namespace TaskCalendarWidget
                         string xml = File.Exists(_dataFile) ? File.ReadAllText(_dataFile, Encoding.UTF8) : "";
                         _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyXml(" + JsonSerializer.Serialize(xml) + ")");
                         SendPinState();
+                        SendTrayState();
+                        SendFocusState();
                         break;
                     case "save":
                         if (doc.RootElement.TryGetProperty("xml", out var xmlEl))
                             SaveData(xmlEl.GetString() ?? "");
+                        break;
+                    case "backupdata":   // 손상된 data.xml 보존(웹이 파싱 실패 시 요청 — 덮어쓰기 전 백업)
+                        try
+                        {
+                            if (File.Exists(_dataFile)) File.Copy(_dataFile, _dataFile + ".bak", true);
+                            Log("data.xml → data.xml.bak 백업(파싱 실패 보호)");
+                        }
+                        catch (Exception bx) { Log("백업 실패: " + bx.Message); }
                         break;
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
@@ -370,10 +386,27 @@ namespace TaskCalendarWidget
                         _ = RunGitAuthorAsync(reqId, repo);
                         break;
                     }
+                    case "pickfolder":   // 네이티브 폴더 선택 다이얼로그(텍스트 입력 대체)
+                    {
+                        string reqId = GetStr(doc, "reqId"), start = GetStr(doc, "start");
+                        PickFolder(reqId, start);   // UI 스레드에서 모달 다이얼로그
+                        break;
+                    }
+                    case "gitcheck":     // 저장된 경로 검증(존재/저장소여부/작성자)
+                    {
+                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo");
+                        _ = RunGitCheckAsync(reqId, repo);
+                        break;
+                    }
 
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
-                    case "close": Application.Current.Shutdown(); break;
+                    case "focus": ToggleFocusMode(); break;
+                    case "hide": HideToTray(); break;   // 트레이 켜졌을 때만 HTML이 버튼 노출
+                    case "close":
+                        if (_settings.TrayEnabled) HideToTray();   // 트레이 사용 시 ✕ = 트레이로 숨김
+                        else ExitApp();                            // 기본(트레이 미사용) = 종료
+                        break;
                 }
             }
             catch (Exception ex) { Debug.WriteLine("웹 메시지 처리 오류: " + ex); }
@@ -398,7 +431,12 @@ namespace TaskCalendarWidget
                 File.WriteAllText(tmp, xml, new UTF8Encoding(false));
                 File.Move(tmp, _dataFile, true);
             }
-            catch (Exception ex) { Debug.WriteLine("데이터 저장 오류: " + ex); }
+            catch (Exception ex)
+            {
+                Log("데이터 저장 실패: " + ex.Message);
+                // 무음 손실 방지 — 웹에 즉시 알림(경고 토스트)
+                try { _ = web.CoreWebView2?.ExecuteScriptAsync("window.__saveFailed && window.__saveFailed()"); } catch { }
+            }
         }
 
         // ============ Git 커밋 연동 ============
@@ -497,6 +535,73 @@ namespace TaskCalendarWidget
             catch (Exception ex) { return (false, "", "", ex.Message); }
         }
 
+        // 네이티브 폴더 선택(.NET 9 WPF OpenFolderDialog). 선택 즉시 저장소 여부 + 작성자까지 회신.
+        private void PickFolder(string reqId, string start)
+        {
+            try
+            {
+                var dlg = new OpenFolderDialog { Title = "이 과제의 Git 작업 폴더 선택", Multiselect = false };
+                if (!string.IsNullOrWhiteSpace(start) && Directory.Exists(start)) dlg.InitialDirectory = start;
+                bool ok = dlg.ShowDialog(this) == true;
+                string path = ok ? dlg.FolderName : "";
+                bool isRepo = ok && IsGitRepo(path);
+                string email = isRepo ? RunGitConfig(path, "user.email") : "";
+                GitReply(reqId, new { ok, path, isRepo, email, error = "" });
+            }
+            catch (Exception ex)
+            {
+                GitReply(reqId, new { ok = false, path = "", isRepo = false, email = "", error = ex.Message });
+            }
+        }
+
+        // 저장된 경로 점검: 존재 여부 / git 저장소 여부 / (저장소면) 작성자 이메일
+        private async Task RunGitCheckAsync(string reqId, string repo)
+        {
+            object payload;
+            try
+            {
+                payload = await Task.Run(() =>
+                {
+                    bool exists = !string.IsNullOrWhiteSpace(repo) && Directory.Exists(repo);
+                    bool isRepo = exists && IsGitRepo(repo);
+                    string email = isRepo ? RunGitConfig(repo, "user.email") : "";
+                    return (object)new { ok = true, exists, isRepo, email, error = "" };
+                });
+            }
+            catch (Exception ex) { payload = new { ok = false, exists = false, isRepo = false, email = "", error = ex.Message }; }
+            GitReply(reqId, payload);
+        }
+
+        // 폴더가 git 작업트리인지 판정. .git 존재로 빠르게, 아니면 rev-parse로 확인.
+        // (RunGitConfig는 폴더가 없으면 -C를 빼고 전역 신원으로 폴백하므로, 비-git/이동된 폴더 판정엔 이 함수가 필수)
+        private static bool IsGitRepo(string path)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return false;
+                if (Directory.Exists(Path.Combine(path, ".git")) || File.Exists(Path.Combine(path, ".git"))) return true;
+                var psi = new ProcessStartInfo("git")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                };
+                psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(path);
+                psi.ArgumentList.Add("rev-parse"); psi.ArgumentList.Add("--is-inside-work-tree");
+                psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+                using var p = Process.Start(psi);
+                if (p == null) return false;
+                string o = p.StandardOutput.ReadToEnd().Trim();
+                _ = p.StandardError.ReadToEnd();
+                p.WaitForExit(8000);
+                return p.ExitCode == 0 && o == "true";
+            }
+            catch (System.ComponentModel.Win32Exception) { return false; }
+            catch { return false; }
+        }
+
         private static string RunGitConfig(string repo, string key)
         {
             var psi = new ProcessStartInfo("git")
@@ -576,6 +681,12 @@ namespace TaskCalendarWidget
                 size.Items.Add(mi);
             }
 
+            var tray = new MenuItem { Header = "트레이 아이콘 사용 (작업표시줄·Alt+Tab에 표시, 닫기→트레이)", IsCheckable = true, IsChecked = _settings.TrayEnabled };
+            tray.Click += (_, _) => SetTrayEnabled(!_settings.TrayEnabled);
+
+            var focus = new MenuItem { Header = _focusMode ? "넓게 보기 닫기" : "넓게 보기" };
+            focus.Click += (_, _) => ToggleFocusMode();
+
             var auto = new MenuItem { Header = "Windows 시작 시 자동 실행", IsCheckable = true, IsChecked = IsAutoStart() };
             auto.Click += (_, _) =>
             {
@@ -592,11 +703,13 @@ namespace TaskCalendarWidget
             reset.Click += (_, _) => ResetBounds();
 
             var quit = new MenuItem { Header = "위젯 종료" };
-            quit.Click += (_, _) => Application.Current.Shutdown();
+            quit.Click += (_, _) => ExitApp();
 
             menu.Items.Add(pin);
+            menu.Items.Add(focus);
             menu.Items.Add(size);
             menu.Items.Add(nextMon);
+            menu.Items.Add(tray);
             menu.Items.Add(auto);
             menu.Items.Add(reset);
             menu.Items.Add(new Separator());
@@ -609,9 +722,40 @@ namespace TaskCalendarWidget
         // ============ 바탕화면 부착 ============
         private void Window_SourceInitialized(object? sender, EventArgs e)
         {
+            ApplyWindowMode();   // 트레이 모드면 일반 앱 창(작업표시줄+Alt+Tab), 아니면 도구 창(제외)
+        }
+
+        // 창 노출 모드: 트레이 모드 = '일반 앱 창'(작업표시줄+Alt+Tab 노출, 최하위 강제 해제 → 다른 앱 쓰는 중 Alt+Tab으로 불러와 볼 수 있음).
+        // 트레이 OFF = '바탕화면 위젯'(WS_EX_TOOLWINDOW로 작업표시줄·Alt+Tab 제외 + 항상 최하위).
+        private void ApplyWindowMode()
+        {
+            bool normal = _settings.TrayEnabled;
+            ShowInTaskbar = normal;   // WPF: 작업표시줄/Alt+Tab 등록(owner 정리 포함)
             var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
             int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
-            SetWindowLong(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW);
+            if (normal) ex = (ex & ~WS_EX_TOOLWINDOW) | WS_EX_APPWINDOW;   // 노출 강제(Alt+Tab 확실)
+            else        ex = (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;   // 제외
+            SetWindowLong(hwnd, GWL_EXSTYLE, ex);
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            Log("창 모드: " + (normal ? "일반(작업표시줄+Alt+Tab)" : "바탕화면 위젯(제외)"));
+        }
+
+        // 런타임 토글: 모드 재적용 + z-order 전환(일반=앞으로, 위젯=최하위)
+        private void RefreshWindowMode()
+        {
+            ApplyWindowMode();
+            if (_settings.TrayEnabled)
+            {
+                var hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero && IsVisible)
+                {
+                    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    Activate();
+                }
+            }
+            else ApplyDesktopMode();   // 위젯 모드: 다시 최하위로
         }
 
         // 바탕화면 배치: 창을 Progman 자식으로 reparent하면 일부 환경(VM/RDP/그래픽 제한)에서
@@ -619,22 +763,244 @@ namespace TaskCalendarWidget
         // (멀티 모니터 자유 배치도 가능해짐. 📌는 이동 잠금 역할.)
         private void ApplyDesktopMode()
         {
+            if (_focusMode) return;   // 포커스 모드 중에는 최하위로 내리지 않음(늦은 타이머/핀 토글 방어)
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
             SetParent(hwnd, IntPtr.Zero);   // 항상 톱레벨 (reparent 안 함 → 렌더 안전)
+            if (_settings.TrayEnabled) { Log("일반 창 모드 — 최하위 강제 안 함"); return; }   // Alt+Tab으로 띄우면 앞에 와야 함
             SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             Log("바탕화면 모드 적용(톱레벨 최하위)");
         }
 
         private void Window_Deactivated(object? sender, EventArgs e)
         {
+            if (_focusMode) return;   // 포커스 모드 중에는 맨 앞 유지(클릭해도 안 내려감)
+            if (_settings.TrayEnabled) return;   // 일반 창 모드: 비활성화돼도 가라앉지 않음(Alt+Tab으로 보기)
             // 다른 창을 클릭해 비활성화되면 다시 최하위로 보내 바탕화면 뒤에 유지
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
             SetWindowPos(hwnd, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
 
-        private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e) => SaveSettings();
+        private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            SaveSettings();
+            CleanupScrim();  // 넓게 보기 중 종료 시 딤 배경 고스트 방지
+            CleanupTray();   // 창이 실제로 닫히면 트레이 정리(잔상 방지)
+        }
+
+        // ============ 트레이 아이콘 (옵션) ============
+        // WinForms NotifyIcon을 WPF Dispatcher 펌프로 구동(Application.Run 미사용). 종료 시 1회 정리해 잔상 방지.
+        private void EnsureTray()
+        {
+            if (_tray != null) return;
+            try
+            {
+                var menu = new System.Windows.Forms.ContextMenuStrip();
+                menu.Items.Add("보이기", null, (_, __) => ShowFromTray());
+                menu.Items.Add("숨기기", null, (_, __) => HideToTray());
+                menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+                menu.Items.Add("설정…", null, (_, __) => ShowSettingsMenu());
+                menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+                menu.Items.Add("종료", null, (_, __) => ExitApp());
+                _tray = new System.Windows.Forms.NotifyIcon
+                {
+                    Icon = BuildTrayIcon(),
+                    Text = "수행과제 캘린더",
+                    Visible = true,
+                    ContextMenuStrip = menu
+                };
+                _tray.DoubleClick += (_, __) => ShowFromTray();
+                _tray.MouseClick += (_, ev) => { if (ev.Button == System.Windows.Forms.MouseButtons.Left) ShowFromTray(); };
+                Log("트레이 아이콘 생성");
+            }
+            catch (Exception ex) { Log("트레이 생성 오류: " + ex.Message); }
+        }
+
+        // 외부 .ico 의존 없이 코드로 브랜드 아이콘을 그린다(단일파일 publish 안전, 오프라인).
+        private static System.Drawing.Icon BuildTrayIcon()
+        {
+            try
+            {
+                using var bmp = new System.Drawing.Bitmap(32, 32);
+                using (var g = System.Drawing.Graphics.FromImage(bmp))
+                {
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    using var bg = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(62, 91, 224)); // var(--accent)
+                    g.FillRectangle(bg, 1, 1, 30, 30);
+                    using var white = new System.Drawing.SolidBrush(System.Drawing.Color.White);
+                    g.FillRectangle(white, 6, 9, 20, 16);          // 달력 본체
+                    using var top = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(46, 68, 173));
+                    g.FillRectangle(top, 6, 9, 20, 5);             // 상단 띠
+                    using var dot = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(62, 91, 224));
+                    g.FillRectangle(dot, 9, 17, 4, 4); g.FillRectangle(dot, 15, 17, 4, 4); g.FillRectangle(dot, 21, 17, 3, 4);
+                }
+                IntPtr h = bmp.GetHicon();
+                try { using var tmp = System.Drawing.Icon.FromHandle(h); return (System.Drawing.Icon)tmp.Clone(); }
+                finally { DestroyIcon(h); }   // GDI 핸들 누수 방지
+            }
+            catch
+            {
+                try { var ico = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? ""); if (ico != null) return ico; } catch { }
+                return System.Drawing.SystemIcons.Application;
+            }
+        }
+
+        private void ShowFromTray()
+        {
+            Show();
+            if (_settings.TrayEnabled) { Activate(); Log("트레이에서 복귀(앞으로)"); }   // 일반 창: 앞으로
+            else { ApplyDesktopMode(); Log("트레이에서 복귀"); }                         // 위젯: 다시 최하위
+        }
+
+        private void HideToTray()
+        {
+            if (_focusMode) CloseBig();   // 넓게 보기 중이면 먼저 닫아 스크림 고스트 방지
+            if (_tray == null) EnsureTray();
+            Hide();
+            if (!_settings.TrayHintShown)
+            {
+                try { _tray?.ShowBalloonTip(3000, "수행과제 캘린더", "트레이로 숨겼습니다. 아이콘을 클릭하면 다시 표시됩니다.", System.Windows.Forms.ToolTipIcon.Info); } catch { }
+                _settings.TrayHintShown = true; SaveSettings();
+            }
+            Log("트레이로 숨김");
+        }
+
+        private void SetTrayEnabled(bool on)
+        {
+            _settings.TrayEnabled = on;
+            if (on) EnsureTray();
+            else { if (!IsVisible) ShowFromTray(); DisposeTray(); }   // 숨김 상태에서 끄면 먼저 창 복귀(고립 방지)
+            SaveSettings();
+            SendTrayState();
+            RefreshWindowMode();   // 작업표시줄/Alt+Tab 노출 + z-order 전환(일반↔위젯)
+        }
+
+        private void DisposeTray()
+        {
+            if (_tray == null) return;
+            try
+            {
+                _tray.Visible = false;
+                _tray.ContextMenuStrip?.Dispose();
+                var ico = _tray.Icon; _tray.Icon = null;
+                _tray.Dispose();
+                if (ico != null && ico != System.Drawing.SystemIcons.Application) ico.Dispose();
+            }
+            catch { }
+            _tray = null;
+        }
+
+        // App.OnExit / 크래시 훅 / 창 종료에서 호출 — 1회만 실제 정리
+        public void CleanupTray() => DisposeTray();
+
+        private void ExitApp()
+        {
+            CleanupScrim();
+            DisposeTray();
+            Application.Current.Shutdown();
+        }
+
+        private void SendTrayState()
+        {
+            try { _ = web.CoreWebView2?.ExecuteScriptAsync("window.__setTray && window.__setTray(" + (_settings.TrayEnabled ? "true" : "false") + ")"); } catch { }
+        }
+        private void SendFocusState()
+        {
+            try { _ = web.CoreWebView2?.ExecuteScriptAsync("window.__setFocus && window.__setFocus(" + (_focusMode ? "true" : "false") + ")"); } catch { }
+        }
+
+        // ============ 넓게 보기 (모달식 — 딤 배경 + 중앙 확대, 최대화 대체) ============
+        private void ToggleFocusMode() { if (!_focusMode) OpenBig(); else CloseBig(); }
+
+        private void OpenBig()
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero || _focusMode || _scrim != null) return;
+            GetWindowRect(hwnd, out _preFocusRect);   // 복원 기준(절대 settings 재계산 안 함)
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref mi);
+            int waW = mi.rcWork.Right - mi.rcWork.Left, waH = mi.rcWork.Bottom - mi.rcWork.Top;
+            int w = Math.Min((int)(1100 * dpi.DpiScaleX), (int)(waW * 0.9));
+            int h = Math.Min((int)(800 * dpi.DpiScaleY), (int)(waH * 0.9));
+            int x = mi.rcWork.Left + (waW - w) / 2, y = mi.rcWork.Top + (waH - h) / 2;
+            _focusMode = true;                    // 어떤 SetWindowPos보다 먼저 → Deactivated/ApplyDesktopMode 가드 무장
+            ShowScrim(mi.rcMonitor);              // 딤 배경 먼저(TOPMOST) → 위젯이 그 위에
+            SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
+            Activate();                           // Esc 수신용 키보드 포커스
+            SendFocusState();
+            Log("넓게 보기 진입");
+        }
+
+        private void CloseBig()
+        {
+            if (!_focusMode) return;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            _focusMode = false;                   // 복원 전에 해제(가드 재무장)
+            CleanupScrim();                       // 즉시 닫기(페이드 없음 → 고스트/이중스크림 원천 차단)
+            // 화면 구성 변경 대비: 복원 좌표를 가상 화면 안으로 클램프
+            double vl = SystemParameters.VirtualScreenLeft, vt = SystemParameters.VirtualScreenTop;
+            var pdpi = VisualTreeHelper.GetDpi(this);
+            int vlp = (int)(vl * pdpi.DpiScaleX), vtp = (int)(vt * pdpi.DpiScaleY);
+            int vrp = vlp + (int)(SystemParameters.VirtualScreenWidth * pdpi.DpiScaleX);
+            int vbp = vtp + (int)(SystemParameters.VirtualScreenHeight * pdpi.DpiScaleY);
+            int w = _preFocusRect.Right - _preFocusRect.Left, h = _preFocusRect.Bottom - _preFocusRect.Top;
+            int rx = Math.Min(Math.Max(_preFocusRect.Left, vlp), Math.Max(vlp, vrp - w));
+            int ry = Math.Min(Math.Max(_preFocusRect.Top, vtp), Math.Max(vtp, vbp - h));
+            if (hwnd != IntPtr.Zero)
+            {
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                // 일반 창 모드면 최하위로 내리지 않고 현재 위치(비-topmost)에 둠 → Alt+Tab 유지
+                IntPtr z = _settings.TrayEnabled ? HWND_NOTOPMOST : HWND_BOTTOM;
+                SetWindowPos(hwnd, z, rx, ry, w, h, SWP_NOACTIVATE);
+            }
+            ApplyDesktopMode();                   // 이제 _focusMode=false라 안전하게 다시 최하위로(위젯 모드만)
+            SaveSettings();
+            SendFocusState();
+            Log("넓게 보기 해제");
+        }
+
+        // 딤 배경(스크림) 창 — 별도 테두리 없는 반투명 WPF Window. 위젯 바로 아래(TOPMOST 밴드).
+        private void ShowScrim(RECT mon)
+        {
+            try
+            {
+                _scrim = new Window
+                {
+                    WindowStyle = WindowStyle.None,
+                    ResizeMode = ResizeMode.NoResize,
+                    AllowsTransparency = true,
+                    ShowInTaskbar = false,
+                    ShowActivated = false,
+                    Topmost = true,
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    Left = -32000, Top = -32000, Width = 1, Height = 1,   // 첫 프레임 플래시 방지(즉시 화면 밖)
+                    Opacity = 0,
+                    Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x6B, 0, 0, 0)), // 약 0.42, 히트테스트 위해 non-null
+                };
+                _scrim.MouseLeftButtonDown += (_, __) => CloseBig();   // 바깥(스크림) 클릭 = 닫기
+                _scrim.SourceInitialized += (_, __) =>
+                {
+                    var sh = new WindowInteropHelper(_scrim!).Handle;
+                    int ex = GetWindowLong(sh, GWL_EXSTYLE);
+                    SetWindowLong(sh, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW);
+                    SetWindowPos(sh, HWND_TOPMOST, mon.Left, mon.Top, mon.Right - mon.Left, mon.Bottom - mon.Top,
+                        SWP_NOACTIVATE | SWP_SHOWWINDOW);   // 물리 px 직접 배치(혼합 DPI 정확)
+                    _scrim.BeginAnimation(Window.OpacityProperty,
+                        new System.Windows.Media.Animation.DoubleAnimation(0, 0.42, TimeSpan.FromMilliseconds(130)));
+                };
+                _scrim.Show();
+            }
+            catch (Exception ex) { Log("스크림 생성 오류: " + ex.Message); }
+        }
+
+        // 스크림 즉시 닫기(페이드 없음) — 멱등. 종료/크래시/트레이숨김/닫기 모든 경로에서 안전.
+        public void CleanupScrim()
+        {
+            var s = _scrim; _scrim = null;
+            if (s != null) { try { s.Close(); } catch { } }
+        }
 
         // ============ 자동 시작 ============
         private static string ExePath =>
@@ -662,8 +1028,13 @@ namespace TaskCalendarWidget
         // ============ Win32 ============
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TOOLWINDOW = 0x00000080;
+        private const int WS_EX_APPWINDOW = 0x00040000;
         private static readonly IntPtr HWND_BOTTOM = new(1);
-        private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010;
+        private static readonly IntPtr HWND_TOPMOST = new(-1);
+        private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+        private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_FRAMECHANGED = 0x0020, SWP_SHOWWINDOW = 0x0040;
+
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool DestroyIcon(IntPtr hIcon);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT { public int Left, Top, Right, Bottom; }
@@ -717,5 +1088,7 @@ namespace TaskCalendarWidget
         public bool AutoStart { get; set; } = true;
         public bool FirstRun { get; set; } = true;
         public bool Pinned { get; set; } = true;
+        public bool TrayEnabled { get; set; } = false;   // 기본 OFF(위젯 우선)
+        public bool TrayHintShown { get; set; } = false;  // '트레이로 숨김' 안내는 1회만
     }
 }

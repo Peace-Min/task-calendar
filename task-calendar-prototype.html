@@ -3,68 +3,72 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>수행과제 캘린더 — 오프라인 프로토타입</title>
+<title>수행과제 캘린더</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
+  /* 디자인 토큰 — 색은 역할로, 크기는 스케일로만 사용 */
   --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
-  --text:#1d2433; --muted:#7c8498; --faint:#aab1c2;
+  --text:#1d2433; --muted:#5b6373; /* AA 5.6:1 — 보조 텍스트 */ --faint:#9aa2b3; /* 테두리·비활성 전용(본문 금지) */
+  --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --danger:#d6494e; --danger-soft:#fdeeee;
-  --sun:#d6494e; --sat:#3e5be0;
+  --sun:#d6494e; --sat:#5871ad;   /* 토요일은 채도 낮춘 청회색(선택/액션 파랑과 분리) */
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
   --radius:10px; --shadow:0 10px 32px rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-head:18px;
 }
 html,body{height:100%}
 body{
   font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;
-  background:var(--bg); color:var(--text); font-size:14px;
+  background:var(--bg); color:var(--text); font-size:var(--fs-emph);
   display:flex; flex-direction:column; overflow:hidden;
 }
 button{font-family:inherit}
 .hidden{display:none !important}
 
 /* ---------- 데스크톱 위젯 호스트바 (WebView2 모드 전용) ---------- */
-#hostbar{display:flex;align-items:center;height:28px;background:var(--accent);color:#fff;flex:none;user-select:none;-webkit-user-select:none}
-#hostbar .hb-drag{flex:1;display:flex;align-items:center;gap:6px;padding-left:10px;font-size:11.5px;font-weight:600;cursor:default;height:100%}
+#hostbar{display:flex;align-items:center;height:32px;background:var(--titlebar);color:#fff;flex:none;user-select:none;-webkit-user-select:none}
+#hostbar .hb-drag{flex:1;display:flex;align-items:center;gap:6px;padding-left:10px;font-size:var(--fs-meta);font-weight:600;cursor:default;height:100%}
 body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) 시에만 이동 커서 */
 #hostbar .hb-btns{display:flex;height:100%}
-#hostbar .hb-btns button{border:none;background:transparent;color:#fff;width:34px;height:28px;cursor:pointer;font-size:13px;line-height:1}
+#hostbar .hb-btns button{border:none;background:transparent;color:#fff;width:36px;height:32px;cursor:pointer;font-size:var(--fs-body);line-height:1}
 #hostbar .hb-btns button:hover{background:rgba(255,255,255,.2)}
 #hostbar .hb-btns button.pinon{background:rgba(255,255,255,.28)}
-#hostresize{position:fixed;right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;z-index:200;touch-action:none;
+#hostresize{position:fixed;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;z-index:200;touch-action:none;
   background:repeating-linear-gradient(135deg, transparent 0 3px, rgba(110,120,140,.55) 3px 4px);
   border-bottom-right-radius:2px}
 /* 위젯 모드: body 스크롤바 제거(코너 그립 확보) + 좁은 폭에서도 날짜패널은 내부 스크롤 */
 body.host{overflow:hidden !important}
+body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제거로 한 행 회수 */
 @media (max-width:760px){
   body.host main{flex-direction:column;min-height:0}
-  body.host .cal{flex:1 1 auto;min-height:160px}
-  body.host .grid{min-height:120px}
-  body.host .day-panel{flex:1 1 42%;min-height:110px;max-height:none}
+  body.host .cal{flex:1 1 auto;min-height:0}
+  body.host .grid{min-height:0}
 }
 
 /* ---------- top bar ---------- */
 .topbar{
   display:flex; align-items:center; gap:14px; flex-wrap:wrap;
   background:var(--panel); border-bottom:1px solid var(--line);
-  padding:10px 16px; position:relative; z-index:20;
+  padding:12px 16px; position:relative; z-index:20;
 }
 .brand{display:flex; align-items:center; gap:10px}
 .logo{
-  width:34px;height:34px;border-radius:9px;background:var(--accent);color:#fff;
-  display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;
+  width:34px;height:34px;border-radius:var(--r-md);background:var(--accent);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:var(--fs-head);flex:none;
 }
-.brand h1{font-size:15.5px;font-weight:700;line-height:1.15}
-.brand .sub{font-size:11px;color:var(--muted)}
+.brand h1{font-size:var(--fs-title);font-weight:700;line-height:1.15}
+.brand .sub{font-size:var(--fs-micro);color:var(--muted)}
 .nav{display:flex;align-items:center;gap:6px;position:relative}
 .title-btn{
-  border:none;background:transparent;font-size:17px;font-weight:700;color:var(--text);
-  padding:6px 10px;border-radius:8px;cursor:pointer;min-width:118px;
+  border:none;background:transparent;font-size:20px;font-weight:700;color:var(--text);line-height:1.15;
+  padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;min-width:120px;letter-spacing:-.01em;
 }
 .title-btn:hover{background:var(--accent-soft)}
 .jump{
   position:absolute;left:50%;top:calc(100% + 4px);transform:translateX(-50%);
-  border:1px solid var(--line-2);border-radius:8px;padding:6px 8px;font-family:inherit;
+  border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-family:inherit;
   background:#fff;box-shadow:var(--shadow);z-index:30;
 }
 .spacer{flex:1}
@@ -73,12 +77,12 @@ body.host{overflow:hidden !important}
 .btn{
   display:inline-flex;align-items:center;gap:6px;
   border:1px solid var(--line-2);background:#fff;color:var(--text);
-  padding:7px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;
+  padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-emph);
   transition:background .15s,border-color .15s;white-space:nowrap;
 }
 .btn:hover{border-color:#bcc4d6;background:#f7f8fb}
-.btn.icon{padding:7px 10px}
-.btn.sm{padding:5px 10px;font-size:12.5px}
+.btn.icon{padding:8px 10px}
+.btn.sm{padding:4px 10px;font-size:var(--fs-body)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
 .btn.danger{color:var(--danger);border-color:#efc7c9}
@@ -87,11 +91,11 @@ body.host{overflow:hidden !important}
 .menu-wrap{position:relative}
 .menu{
   position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--line);
-  border-radius:10px;box-shadow:var(--shadow);min-width:190px;padding:6px;z-index:40;
+  border-radius:var(--r-md);box-shadow:var(--shadow);min-width:190px;padding:6px;z-index:40;
 }
 .menu button{
   display:block;width:100%;text-align:left;border:none;background:transparent;
-  padding:9px 12px;border-radius:7px;cursor:pointer;font-size:13.5px;color:var(--text);
+  padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-emph);color:var(--text);
 }
 .menu button:hover{background:#f3f5fa}
 .menu button.danger{color:var(--danger)}
@@ -103,10 +107,10 @@ body.host{overflow:hidden !important}
   padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);
   flex:none;max-height:66px;overflow-y:auto;   /* 카테고리 많아도 ~2줄로 제한 + 스크롤(달력 영역 보호) */
 }
-.filterbar .lbl{font-size:12px;color:var(--muted);margin-right:2px;flex:none}
+.filterbar .lbl{font-size:var(--fs-meta);color:var(--muted);margin-right:2px;flex:none}
 .fchip{
   display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
-  background:#fff;border-radius:999px;padding:4px 11px;font-size:12.5px;cursor:pointer;color:var(--text);
+  background:#fff;border-radius:999px;padding:4px 11px;font-size:var(--fs-body);cursor:pointer;color:var(--text);
   flex:none;max-width:200px;
 }
 .fchip .fc-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* 긴 카테고리명 말줄임 */
@@ -119,7 +123,7 @@ main{flex:1;display:flex;min-height:0}
 .cal{flex:1;display:flex;flex-direction:column;min-width:0;padding:12px 12px 8px}
 .weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px}
 .weekdays div{
-  text-align:center;font-size:12px;font-weight:600;color:var(--muted);padding:4px 0;
+  text-align:center;font-size:var(--fs-meta);font-weight:600;color:var(--muted);padding:4px 0;
 }
 .weekdays .sun{color:var(--sun)} .weekdays .sat{color:var(--sat)}
 .grid{
@@ -133,32 +137,50 @@ main{flex:1;display:flex;min-height:0}
 }
 .cell:hover{background:#f8f9fc}
 .cell.dim{background:#fafbfd}
-.cell.dim .num{color:var(--faint)}
-.cell.sel{outline:2px solid var(--accent);outline-offset:-2px;border-radius:2px}
+.cell.dim .num{color:#7a8294}
+.cell.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
 .cell.drop{background:var(--accent-soft);outline:2px dashed var(--accent);outline-offset:-2px}
 .cell-top{display:flex;align-items:center;gap:5px;flex:none}
 .num{
-  font-size:12.5px;font-weight:600;width:22px;height:22px;border-radius:50%;
+  font-size:var(--fs-body);font-weight:600;width:22px;height:22px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
 }
 .num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
-.cell.today .num{background:var(--accent);color:#fff !important}
-.hol{font-size:10.5px;color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cell.today .num{background:var(--accent);color:#fff !important;font-weight:700}
+.hol{font-size:var(--fs-micro);color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0}
 .chip{
-  font-size:11.5px;line-height:1.25;padding:2px 5px 2px 6px;border-radius:4px;
+  font-size:var(--fs-meta);line-height:1.25;padding:2px 5px 2px 6px;border-radius:var(--r-sm);
   border-left:3px solid #8a93a6;background:#eef0f4;color:var(--text);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:none;
 }
 .chip:hover{filter:brightness(.96)}
-.chip .chip-t{font-weight:600;font-size:10.5px;opacity:.75;margin-right:3px}
-.more{font-size:11px;color:var(--muted);padding-left:6px;flex:none}
+.chip .chip-t{font-weight:600;font-size:var(--fs-micro);opacity:.75;margin-right:3px}
+.more{font-size:var(--fs-micro);color:var(--muted);padding:1px 6px;flex:none;border:none;background:none;
+  text-align:left;cursor:pointer;border-radius:var(--r-sm);width:100%}
+.more:hover{background:var(--accent-soft);color:var(--accent-2)}
+/* 기간 막대(연속 칩) — gap:1px 그리드에서 인접 셀이 이어져 보이도록 */
+.chip-range.chip-start{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:-1px}
+.chip-range.chip-mid{border-radius:0;margin:0 -1px;border-left-width:0;color:transparent}
+.chip-range.chip-end{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px;border-left-width:0;color:transparent}
+.chip-range.chip-relabel{color:var(--text)}   /* 주 시작 칸엔 제목 재표기 */
+/* 좁은 위젯에서도 기간 막대는 균일 높이 유지(5px 붕괴 제거 — '깨진 선'처럼 보이던 문제) */
 
 /* ---------- day panel ---------- */
 .day-panel{
   width:var(--dpw,340px);flex:none;background:var(--panel);border-left:1px solid var(--line);
-  display:flex;flex-direction:column;min-height:0;overflow-y:auto;
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
 }
+/* 우측 패널 기능 탭 (일정 상세 · 할 일 · 작업일지 + 보고서) */
+.dp-sheet-handle{display:none}
+.dp-tabs{display:flex;align-items:flex-end;gap:2px;padding:7px 8px 0;border-bottom:1px solid var(--line);flex:none;background:var(--panel)}
+.dp-tab{border:none;background:transparent;padding:8px 10px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.dp-tab:hover{background:var(--accent-soft)}
+.dp-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+.dp-action{margin-left:auto;align-self:center;margin-bottom:4px;font-size:var(--fs-meta);color:var(--muted);border:1px solid var(--line-2);background:#fff;border-radius:var(--r-sm);padding:4px 9px;cursor:pointer;flex:none}
+.dp-action:hover{border-color:#bcc4d6;background:#f7f8fb}
+.dp-body{flex:1;min-height:0;overflow-y:auto}
+.dp-pad{padding:10px 12px}
 /* 좌측 캘린더 / 우측 기록 사이 너비 조절 분할바 */
 .splitter{flex:none;width:7px;cursor:col-resize;background:var(--line);position:relative;touch-action:none;transition:background .12s}
 .splitter:hover,.splitter.dragging{background:var(--accent)}
@@ -169,29 +191,29 @@ main{flex:1;display:flex;min-height:0}
   padding:16px 16px 12px;border-bottom:1px solid var(--line);
   position:sticky;top:0;background:var(--panel);z-index:5;
 }
-.dp-date{font-size:17px;font-weight:700}
-.dp-dow{font-size:13px;font-weight:600;color:var(--muted)}
+.dp-date{font-size:var(--fs-head);font-weight:700}
+.dp-dow{font-size:var(--fs-body);font-weight:600;color:var(--muted)}
 .dp-dow.sun{color:var(--sun)} .dp-dow.sat{color:var(--sat)}
-.dp-hol{font-size:12px;color:var(--sun);margin-top:2px}
-.dp-count{font-size:12px;color:var(--muted);margin-top:4px}
-.dp-list{padding:12px 14px;display:flex;flex-direction:column;gap:9px}
+.dp-hol{font-size:var(--fs-meta);color:var(--sun);margin-top:2px}
+.dp-count{font-size:var(--fs-meta);color:var(--muted);margin-top:4px}
+.dp-list{padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 .dp-empty{
-  padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8;
+  padding:36px 20px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.8;
 }
 .card{
   border:1px solid var(--line);border-left:4px solid var(--c,#8a93a6);
-  border-radius:9px;padding:9px 11px;background:#fff;
+  border-radius:var(--r-md);padding:8px 12px;background:#fff;
 }
 .card-top{display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap}
-.card-time{font-size:11.5px;font-weight:700;color:var(--muted)}
-.badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-title{font-size:13.5px;font-weight:600;word-break:break-all}
+.card-time{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.badge{font-size:var(--fs-micro);font-weight:600;padding:2px 8px;border-radius:999px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-title{font-size:var(--fs-emph);font-weight:600;word-break:keep-all;overflow-wrap:anywhere}
 .card-memo{
-  font-size:12.5px;color:var(--muted);margin-top:4px;white-space:pre-wrap;word-break:break-all;
+  font-size:var(--fs-body);color:var(--muted);margin-top:4px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;line-height:1.5;
   max-height:72px;overflow:hidden;
 }
-.card-actions{display:flex;gap:10px;margin-top:7px}
-.link{border:none;background:none;color:var(--accent);font-size:12px;cursor:pointer;padding:0}
+.card-actions{display:flex;gap:12px;margin-top:8px}
+.link{border:none;background:none;color:var(--accent);font-size:var(--fs-meta);cursor:pointer;padding:0}
 .link:hover{text-decoration:underline}
 .link.danger{color:var(--danger)}
 @keyframes flashAnim{0%{box-shadow:0 0 0 3px rgba(62,91,224,.6)}100%{box-shadow:0 0 0 3px rgba(62,91,224,0)}}
@@ -199,28 +221,71 @@ main{flex:1;display:flex;min-height:0}
 
 /* ---------- Git 작업일지 (커밋 연동) ---------- */
 .badge-git{background:#eef1f6;color:#5b6b7d;border:1px solid var(--line-2)}
-.card-memo.git{font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:11.5px;color:#566072;
-  background:#f7f8fb;border:1px solid var(--line);border-radius:6px;padding:6px 8px;max-height:140px}
+/* 작업일지 카드: 사용자 메모(일반) + 구조화 커밋 목록(행 단위) */
+.commit-head{font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin-top:8px;margin-bottom:2px}
+.commit-list{list-style:none;margin:0;padding:0}
+.commit-row{display:flex;gap:7px;align-items:baseline;min-width:0;padding:3px 0;border-top:1px solid var(--line)}
+.commit-row:first-child{border-top:none}
+.commit-row.hidden{display:none}
+.commit-time{flex:none;font-size:var(--fs-micro);color:var(--muted);font-variant-numeric:tabular-nums}
+.commit-subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);color:var(--text)}
+.commit-hash{flex:none;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-micro);color:var(--muted)}
+.commit-more{margin-top:5px}
 .chip-git{border-left-style:dashed !important}
+/* 할 일 칩 = HOLLOW(투명 본체+얇은 외곽선+선행 원형 링) — 일정의 SOLID(채운 색막대)와 색이 같아도 모양/채움으로 구분(Google·Apple·Notion·TickTick 공통 패턴, 색맹 안전) */
+.chip-todo{background:transparent !important;color:var(--text) !important;border:1px solid var(--faint);border-left:1px solid var(--faint) !important;display:flex;align-items:center;gap:3px;padding:2px 5px 2px 4px}
+.chip-todo .todo-ring{width:9px;height:9px;box-sizing:border-box;border:1.5px solid var(--faint);border-radius:50%;flex:none}
+.chip-todo .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chip-todo.done{opacity:.55}
+.chip-todo.done .txt{text-decoration:line-through;color:var(--faint)}
+.chip-todo.chip-range.chip-mid,.chip-todo.chip-range.chip-end{border-style:dashed;border-left-width:1px !important}  /* 기간 할 일은 점선 밴드(일정 실선 색밴드와 구분) */
 .fbar-sep{width:1px;height:18px;background:var(--line-2);margin:0 3px;flex:none}
 .fchip-git.on{background:#eef1f6;border-color:#5b6b7d;color:#3c4658}
-.cat-git{font-size:12px;margin-left:4px;flex:none;cursor:help}
+.cat-git{font-size:var(--fs-meta);margin-left:4px;flex:none;cursor:help}
 /* 기록 모달의 Git 불러오기 줄 */
 .git-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;
-  padding:10px 12px;border:1px dashed var(--line-2);border-radius:9px;background:#f7f8fb}
-.git-row .git-hint{font-size:12px;color:var(--muted)}
-/* 과제 모달의 Git 전역 설정 */
-.git-settings{border:1px solid var(--line);border-radius:10px;padding:12px 13px;margin-bottom:14px;background:#f9fafc}
-.git-settings .git-note{font-size:11.5px;color:var(--muted);line-height:1.7;margin-top:6px}
-.git-detect-row{display:flex;gap:8px;align-items:center}
+  padding:10px 12px;border:1px dashed var(--line-2);border-radius:var(--r-md);background:#f7f8fb}
+.git-row .git-hint{font-size:var(--fs-meta);color:var(--muted)}
+/* 과제 모달의 Git 연동 카드 (저장소 + 작성자 한 묶음) */
+.git-detect-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .git-detect-row input{flex:1;min-width:0}
+.git-note{font-size:var(--fs-meta);color:var(--muted);line-height:1.7;margin-top:8px}
+.git-note.warn-text{color:var(--danger)}
+.git-note .link{font-size:inherit;font-weight:600}
+.git-card{border:1px solid var(--line);border-left:4px solid var(--faint);border-radius:var(--r-md);padding:12px 13px;margin-top:12px;background:#f9fafc}
+.git-card.ok{border-left-color:#2e9e6b}
+.git-card.warn{border-left-color:#b8860b}
+.git-card .modal-label,.git-card label{margin-top:10px}
+.git-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.git-card-title{font-size:var(--fs-body);font-weight:700;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.git-opt{font-weight:500;color:var(--muted)}
+.git-badge{flex:none;font-size:var(--fs-micro);font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.git-badge.off{background:#eef1f6;color:#7c8498;border:1px dashed var(--line-2)}
+.git-badge.ok{background:#e7f4ec;color:#2e7d52}
+.git-badge.warn{background:#fbf2dd;color:#8a6400}
+.git-pick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.git-pick-row.empty #gitPath{display:none}
+.git-pick-row.empty #btnGitBrowse{flex:1 1 100%;width:100%}
+.git-path{flex:1;min-width:0;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;border:1px solid var(--line-2);border-radius:6px;padding:6px 8px;color:var(--text)}
+.git-path.empty{color:var(--muted);font-family:inherit}
+.git-path.missing{color:var(--danger);text-decoration:line-through}
+.git-scope-pill{display:inline-block;font-weight:600;font-size:var(--fs-micro);color:var(--muted);background:#fff;border:1px solid var(--line-2);border-radius:999px;padding:0 6px;margin-left:4px}
 
-/* ---------- footer hint ---------- */
-.hint{
-  flex:none;padding:6px 16px;font-size:11.5px;color:var(--muted);
-  background:var(--panel);border-top:1px solid var(--line);
-  display:flex;gap:14px;flex-wrap:wrap;
-}
+/* ---------- 도움말 팝오버 (footer 밴드 대체) ---------- */
+.help-row{padding:6px 12px;font-size:var(--fs-body);color:var(--muted);line-height:1.6}
+
+/* ---------- 상태 · 포커스 · 모션 ---------- */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#hostbar button:focus-visible{outline-color:#fff;outline-offset:-3px}
+.btn:disabled,button:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary:disabled{background:var(--line-2);border-color:var(--line-2)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.btn.danger-solid:hover{background:#b93a3f;border-color:#b93a3f}
+@keyframes ovIn{from{opacity:0}to{opacity:1}}
+@keyframes mdIn{from{transform:scale(.97);opacity:.8}to{transform:scale(1);opacity:1}}
+.overlay:not(.hidden){animation:ovIn .15s ease-out}
+.overlay:not(.hidden) .modal{animation:mdIn .15s ease-out}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
 
 /* ---------- modal ---------- */
 .overlay{
@@ -228,7 +293,7 @@ main{flex:1;display:flex;min-height:0}
   display:flex;align-items:center;justify-content:center;z-index:50;padding:20px;
 }
 .modal{
-  background:#fff;border-radius:14px;box-shadow:var(--shadow);
+  background:#fff;border-radius:var(--r-lg);box-shadow:var(--shadow);
   width:min(540px,100%);max-height:92vh;display:flex;flex-direction:column;
 }
 .modal.wide{width:min(720px,100%)}
@@ -236,41 +301,41 @@ main{flex:1;display:flex;min-height:0}
   display:flex;align-items:center;justify-content:space-between;
   padding:15px 20px;border-bottom:1px solid var(--line);flex:none;
 }
-.modal-head h2{font-size:15.5px}
+.modal-head h2{font-size:var(--fs-title)}
 .x{
-  border:none;background:transparent;font-size:21px;line-height:1;color:var(--muted);
-  cursor:pointer;padding:2px 7px;border-radius:7px;
+  border:none;background:transparent;font-size:20px;line-height:1;color:var(--muted);
+  cursor:pointer;padding:2px 7px;border-radius:var(--r-sm);
 }
 .x:hover{background:#f1f3f8;color:var(--text)}
 .modal-body{padding:16px 20px;overflow-y:auto}
-.modal-foot{display:flex;align-items:center;gap:8px;padding:13px 20px;border-top:1px solid var(--line);flex:none}
+.modal-foot{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
 .modal-foot .spacer{flex:1}
-.modal label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin:12px 0 5px}
+.modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:12px 0 4px}
 .modal label:first-child{margin-top:0}
 .modal input[type=text],.modal input[type=date],.modal input[type=time],
 .modal input[type=month],.modal select,.modal textarea{
-  width:100%;border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;
-  font-size:13.5px;font-family:inherit;background:#fff;color:var(--text);
+  width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;
+  font-size:var(--fs-emph);font-family:inherit;background:#fff;color:var(--text);
 }
 .modal input:focus,.modal select:focus,.modal textarea:focus{
   outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);
 }
 .modal textarea{resize:vertical;min-height:90px;line-height:1.55}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.check{display:flex !important;align-items:center;gap:7px;font-size:13px !important;color:var(--text) !important;cursor:pointer}
+.check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer}
 .check input{width:15px;height:15px;accent-color:var(--accent)}
 #timeRow.off{opacity:.45;pointer-events:none}
 
 /* ---------- category modal ---------- */
 .cat-row{
-  display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line);
-  border-radius:9px;margin-bottom:7px;
+  display:flex;align-items:center;gap:12px;padding:8px 12px;border:1px solid var(--line);
+  border-radius:var(--r-md);margin-bottom:8px;
 }
 .cat-dot{width:14px;height:14px;border-radius:50%;flex:none}
-.cat-name{font-weight:600;font-size:13.5px}
-.cat-desc{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cat-count{font-size:11.5px;color:var(--muted);margin-left:auto;flex:none}
-.cat-empty{padding:18px;text-align:center;color:var(--muted);font-size:13px}
+.cat-name{font-weight:600;font-size:var(--fs-emph)}
+.cat-desc{font-size:var(--fs-meta);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-count{font-size:var(--fs-meta);color:var(--muted);margin-left:auto;flex:none}
+.cat-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
 .cat-form{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}
 .palette{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;align-items:center}
 .swatch{
@@ -285,31 +350,47 @@ main{flex:1;display:flex;min-height:0}
 .tabs{display:flex;gap:6px;margin-bottom:13px}
 .tab{
   border:1px solid var(--line-2);background:#fff;border-radius:999px;
-  padding:6px 15px;font-size:13px;cursor:pointer;color:var(--muted);
+  padding:6px 15px;font-size:var(--fs-body);cursor:pointer;color:var(--muted);
 }
-.tab.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
-.s-summary{font-size:12.5px;color:var(--muted);margin:10px 1px 7px;min-height:17px}
-.s-results{display:flex;flex-direction:column;max-height:48vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
+.tab.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.s-summary{font-size:var(--fs-body);color:var(--muted);margin:10px 1px 7px;min-height:17px}
+.s-results{display:flex;flex-direction:column;max-height:48vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-md)}
 .s-results:empty{display:none}
 .s-date{
-  font-size:12px;font-weight:700;color:var(--accent-2);background:#f5f7fd;
-  padding:7px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;
+  font-size:var(--fs-meta);font-weight:700;color:var(--accent-2);background:#f5f7fd;
+  padding:8px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;
 }
 .s-row{
-  display:flex;gap:9px;align-items:flex-start;width:100%;text-align:left;border:none;
-  background:#fff;padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer;
+  display:flex;gap:8px;align-items:flex-start;width:100%;text-align:left;border:none;
+  background:#fff;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;
 }
 .s-row:last-child{border-bottom:none}
 .s-row:hover{background:#f6f8fc}
 .s-row .dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:4px}
-.s-title{font-size:13.5px;font-weight:600;word-break:break-all}
-.s-memo{font-size:12px;color:var(--muted);margin-top:2px;word-break:break-all}
-.s-meta{font-size:11.5px;color:var(--faint);margin-top:3px}
+.s-title{font-size:var(--fs-emph);font-weight:600;word-break:keep-all;overflow-wrap:anywhere}
+.s-memo{font-size:var(--fs-meta);color:var(--muted);margin-top:2px;word-break:keep-all;overflow-wrap:anywhere}
+.s-meta{font-size:var(--fs-meta);color:var(--muted);margin-top:3px}
 mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
+
+/* ---------- 기간·반복 보조 스타일 ---------- */
+.s-badge{font-size:var(--fs-micro);padding:1px 6px;border-radius:var(--r-sm);background:var(--accent-soft);color:var(--accent-2);margin-left:6px;white-space:nowrap}
+.card-span,.card-recur{font-size:var(--fs-meta);color:var(--muted);margin:2px 0}
+.recur-end .check{display:flex;align-items:center;gap:4px;margin:3px 0}
+.recur-end .check input[type=date],.recur-end .check input[type=number]{padding:3px 6px;font-size:var(--fs-meta)}
+
+/* ---------- 보고서 모달 ---------- */
+.rpt-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rpt-range input[type=date]{flex:1;min-width:130px}
+.rpt-opts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.rpt-summary{font-size:var(--fs-meta);color:var(--muted);margin-top:8px;min-height:16px}
+#rptOut{width:100%;margin-top:8px;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-meta);line-height:1.6;
+  min-height:220px;resize:vertical;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:10px;background:#fafbfd;color:var(--text)}
+#rptOut:focus{outline:2px solid var(--accent);outline-offset:-1px}
 
 /* ---------- import modal ---------- */
 .imp-box{
-  border:1px solid var(--line);border-radius:10px;padding:13px 15px;font-size:13px;
+  border:1px solid var(--line);border-radius:var(--r-md);padding:12px 16px;font-size:var(--fs-body);
   line-height:1.8;background:#f9fafc;
 }
 
@@ -317,19 +398,127 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 #toast{
   position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);
   background:#222a3d;color:#fff;padding:10px 19px;border-radius:999px;
-  font-size:13px;opacity:0;pointer-events:none;transition:.25s;z-index:99;max-width:80vw;
+  font-size:var(--fs-body);opacity:0;pointer-events:none;transition:.25s;z-index:99;max-width:80vw;
 }
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.warn{background:#9a5b00}
 
+/* ---------- 노트 드로어 (멀티노트: 깃로그·TODO·메일) ---------- */
+.btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.note-scrim{position:fixed;inset:0;background:rgba(18,23,42,.38);z-index:40}
+.note-scrim:not(.hidden){animation:ovIn .15s ease-out}
+.note-drawer{
+  position:fixed;top:0;right:0;bottom:0;width:min(420px,86%);
+  background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);
+  z-index:41;display:flex;flex-direction:column;
+}
+.note-drawer:not(.hidden){animation:ndIn .18s ease-out}
+@keyframes ndIn{from{transform:translateX(26px);opacity:.5}to{transform:translateX(0);opacity:1}}
+.nd-head{display:flex;align-items:flex-end;gap:6px;padding:8px 8px 0;border-bottom:1px solid var(--line);flex:none}
+.nd-tabs{display:flex;gap:2px;flex:1;min-width:0;flex-wrap:nowrap}
+.nd-tab{border:none;background:transparent;padding:9px 9px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;
+  font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.nd-tab:hover{background:var(--accent-soft)}
+.nd-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+.note-drawer .x{align-self:center;margin-bottom:4px}
+.nd-filter{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);flex:none;max-height:84px;overflow:auto}
+.nd-body{flex:1;overflow-y:auto;padding:12px 14px}
+.nd-empty{color:var(--muted);font-size:var(--fs-body);text-align:center;padding:34px 14px;line-height:1.7}
+.nd-day{font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin:14px 0 4px;position:sticky;top:-12px;background:var(--panel);padding:4px 0}
+.nd-body > .nd-day:first-child{margin-top:0}
+.nd-commit{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)}
+.nd-commit .t{font-size:var(--fs-micro);color:var(--muted);flex:none;min-width:34px;font-variant-numeric:tabular-nums}
+.nd-commit .s{flex:1;font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere}
+.nd-commit .cat{color:var(--muted);font-size:var(--fs-micro)}
+.nd-commit .h{font-size:var(--fs-micro);color:var(--muted);font-family:ui-monospace,'Consolas',monospace;flex:none}
+/* 빠른 추가 */
+.nd-add{margin-bottom:6px}
+.nd-add-r1{display:flex;gap:6px}
+.nd-add-r1 input{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;font-size:var(--fs-emph);font-family:inherit;background:#fff;color:var(--text)}
+.nd-add-r2{display:flex;align-items:center;gap:6px;margin-top:6px}
+.nd-add-r2 label{font-size:var(--fs-micro);color:var(--muted);flex:none}
+.nd-add-r2 input[type=date]{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:4px 7px;font-size:var(--fs-meta);font-family:inherit;background:#fff;color:var(--text)}
+.nd-add-hint{font-size:var(--fs-micro);color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 마감 축 섹션 */
+.nd-sec{display:flex;align-items:center;gap:6px;margin:13px 0 2px;cursor:pointer;user-select:none}
+.nd-sec-arrow{font-size:10px;color:var(--faint);width:10px;flex:none}
+.nd-sec-label{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.nd-sec.danger .nd-sec-label{color:var(--danger)}
+.nd-sec-count{font-size:var(--fs-micro);color:var(--accent);background:var(--accent-soft);border-radius:10px;padding:0 7px}
+.nd-sec.danger .nd-sec-count{background:var(--danger-soft);color:var(--danger)}
+/* 행 */
+.todo-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line)}
+.nd-sec-body .todo-row:first-child{border-top:none}
+.todo-check{flex:none;border:none;background:none;cursor:pointer;font-size:16px;line-height:1;color:var(--accent);padding:0}
+.todo-main{flex:1;min-width:0}
+.todo-text{font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere;cursor:text}
+.todo-star{color:#e0a32e;margin-right:2px}
+.todo-row.done .todo-text{text-decoration:line-through;color:var(--faint)}
+.todo-due{flex:none;font-size:var(--fs-micro);color:var(--muted);font-variant-numeric:tabular-nums}
+.todo-due.od{color:var(--danger);font-weight:700}
+.todo-dot{flex:none;width:8px;height:8px;border-radius:50%}
+.todo-del{flex:none;border:none;background:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:var(--r-sm)}
+.todo-del:hover{color:var(--danger);background:var(--danger-soft)}
+/* 인라인 편집 */
+.todo-edit{border-top:1px solid var(--line);padding:9px 0;display:flex;flex-direction:column;gap:7px}
+.todo-edit .te-text{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-emph);font-family:inherit;background:#fff;color:var(--text)}
+.te-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.te-row input[type=date],.te-row select{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:#fff;color:var(--text)}
+.te-star{font-size:var(--fs-meta);color:var(--muted);display:inline-flex;align-items:center;gap:3px}
+.te-actions{display:flex;align-items:center;gap:6px}
+.te-spacer{flex:1}
+.nd-empty-hint{display:block;margin-top:10px;font-size:var(--fs-meta);color:var(--muted);line-height:1.7}
+.nd-tools{display:flex;gap:6px;margin:8px 0 2px}
+.dp-dayctx{font-size:var(--fs-meta);font-weight:700;color:var(--muted);padding:8px 0 5px;border-bottom:1px solid var(--line);margin-bottom:5px}
+.nd-toggle{font-size:var(--fs-meta);border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:3px 11px;cursor:pointer;color:var(--muted)}
+.nd-toggle:hover{border-color:#bcc4d6}
+.nd-toggle.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.todo-star-btn{flex:none;border:none;background:none;cursor:pointer;font-size:14px;color:var(--faint);padding:0 3px;line-height:1}
+.todo-star-btn.on,.todo-star-btn:hover{color:#e0a32e}
+/* 작업 드로어 헤더의 보고서 버튼 */
+.note-drawer #ndReport{align-self:center;margin-bottom:4px;font-size:var(--fs-meta);padding:4px 9px;flex:none}
+
+/* ---------- 빠른 등록(quick-create) ---------- */
+.qa-modal{width:min(380px,100%);padding:14px 16px 12px}
+.qa-head{display:flex;align-items:center;margin-bottom:6px}
+.qa-tg{display:flex;gap:5px;flex:1}
+.qa-type{border:none;background:var(--bg);color:var(--muted);font-size:var(--fs-body);font-family:inherit;padding:6px 15px;border-radius:999px;cursor:pointer}
+.qa-type.on{background:#d7e3fb;color:var(--accent-2);font-weight:600}
+.qa-title{width:100%;border:none;border-bottom:2px solid var(--accent);font-size:var(--fs-title);padding:4px 0 7px;outline:none;font-family:inherit;color:var(--text);background:transparent}
+.qa-title::placeholder{color:var(--faint)}
+.qa-ctx{display:flex;gap:8px;margin-top:12px}
+.qa-ctx input[type=date],.qa-ctx select{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
+.qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
+.qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
+.qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
+.qa-detail input[type=time],.qa-detail select,.qa-detail textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
+.qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
+.qa-foot{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
+.qa-more{border:none;background:none;color:var(--accent);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit}
+/* 그리드 할 일 점(은은하게 — 일정 막대와 구분) */
+.cell-todo{width:9px;height:9px;border:1.5px solid var(--faint);border-radius:50%;flex:none;margin-left:auto}
+
 /* ---------- responsive ---------- */
 @media (max-width:760px){
-  body{overflow:auto}
-  main{flex-direction:column}
-  .splitter{display:none}                                  /* 세로 스택 시 분할바 숨김 */
-  .day-panel{width:100%;border-left:none;border-top:1px solid var(--line);max-height:none}
-  .grid{min-height:430px}
-  .cal{min-height:520px}
+  main{flex-direction:column;min-height:0}
+  .splitter{display:none}                                  /* 좁은 폭에선 분할바 숨김(드래그-리사이즈 부적합) */
+  .cal{flex:1 1 auto;min-height:0}                          /* 캘린더가 전체 폭/높이 = 베이스 */
+  .grid{min-height:0}
+  /* 우측 패널 → 하단 시트(방식 A): 평소 숨김, 날짜 클릭 시 올라옴 */
+  .day-panel{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;height:62%;
+    border-left:none;border-top:1px solid var(--line-2);border-radius:14px 14px 0 0;
+    box-shadow:0 -6px 22px rgba(20,28,55,.20);z-index:30;transform:translateY(100%);transition:transform .26s ease}
+  body.sheet-open .day-panel{transform:translateY(0)}
+  .dp-sheet-handle{display:flex;justify-content:center;align-items:center;padding:8px 0 2px;flex:none;border:none;background:none;cursor:pointer;width:100%}
+  .dp-sheet-handle .grab{width:38px;height:4px;border-radius:2px;background:var(--line-2)}
+}
+/* 위젯 실폭(≈380px): 상단을 'nav 한 줄 + 액션 한 줄'로 — 액션이 3줄로 흩어지던 난잡 해소 */
+@media (max-width:440px){
+  .topbar{gap:8px;padding:10px 12px}
+  .topbar .spacer{display:none}
+  .nav{flex:1 1 100%}
+  .actions{flex:1 1 100%;flex-wrap:nowrap;justify-content:flex-start;gap:6px}
+  .actions > .btn{flex:0 0 auto}
 }
 </style>
 </head>
@@ -338,7 +527,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 <header class="topbar">
   <div class="brand">
     <div class="logo">📅</div>
-    <div><h1>수행과제 캘린더</h1><span class="sub">오프라인 프로토타입 v1</span></div>
+    <div><h1>수행과제 캘린더</h1></div>
   </div>
   <div class="nav">
     <button class="btn icon" id="btnPrev" title="이전 달 (←)">◀</button>
@@ -349,15 +538,20 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   </div>
   <div class="spacer"></div>
   <div class="actions">
-    <button class="btn" id="btnSearch">🔍 검색</button>
-    <button class="btn" id="btnCats">🏷️ 과제 관리</button>
+    <button class="btn icon" id="btnSearch" title="검색 (제목·메모·과제)">🔍</button>
     <div class="menu-wrap">
-      <button class="btn" id="btnData">💾 데이터 ▾</button>
-      <div class="menu hidden" id="dataMenu">
+      <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말">⋯</button>
+      <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
+        <button id="btnCats">🏷️ 과제 관리</button>
+        <hr>
         <button id="btnExport">XML 내보내기</button>
         <button id="btnImport">XML 가져오기…</button>
-        <hr>
         <button id="btnClear" class="danger">전체 데이터 초기화</button>
+        <hr>
+        <div class="help-row">🖱️ 날짜 더블클릭 — 새 기록</div>
+        <div class="help-row">↔️ 기록 드래그 — 다른 날짜로 이동</div>
+        <div class="help-row">⌨️ ←/→ 월 이동 · Home 오늘 · Esc 닫기</div>
+        <div class="help-row">데이터는 자동 저장 · 백업은 XML 내보내기</div>
       </div>
     </div>
     <button class="btn primary" id="btnNew">＋ 새 기록</button>
@@ -372,15 +566,17 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
     <div class="grid" id="grid"></div>
   </section>
   <div class="splitter" id="splitter" title="드래그하여 좌/우 너비 조절"></div>
-  <aside class="day-panel" id="dayPanel"></aside>
+  <aside class="day-panel" id="dayPanel">
+    <button class="dp-sheet-handle" id="dpSheetClose" title="닫기" aria-label="패널 닫기"><span class="grab"></span></button>
+    <div class="dp-tabs" id="dpTabs" role="tablist">
+      <button class="dp-tab on" data-ptab="detail" role="tab">일정 상세</button>
+      <button class="dp-tab" data-ptab="todo" role="tab">할 일</button>
+      <button class="dp-tab" data-ptab="git" role="tab">작업일지</button>
+      <button class="dp-action" id="dpReport" title="이 기록으로 보고서 초안 만들기">📋 보고서</button>
+    </div>
+    <div class="dp-body" id="dpBody"></div>
+  </aside>
 </main>
-
-<footer class="hint">
-  <span>🖱️ 날짜 더블클릭: 새 기록</span>
-  <span>↔️ 기록 드래그: 다른 날짜로 이동</span>
-  <span>⌨️ ←/→ 월 이동 · Home 오늘 · Esc 닫기</span>
-  <span style="margin-left:auto">데이터는 이 브라우저에 자동 저장됩니다 — 백업은 [데이터 → XML 내보내기]</span>
-</footer>
 
 <!-- ===== 기록 작성/수정 모달 ===== -->
 <div class="overlay hidden" id="entryModal">
@@ -404,6 +600,28 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
         <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
       </div>
+      <div id="rangeRecurSect">
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="fIsRange"> 여러 날에 걸침(기간)</label>
+        <div class="row2 hidden" id="rangeRow" style="margin-top:8px">
+          <div><label for="fEndDate">종료일</label><input type="date" id="fEndDate"></div>
+          <div style="align-self:end"><span class="git-hint" id="rangeHint"></span></div>
+        </div>
+        <label for="fRecur" style="margin-top:12px">반복</label>
+        <select id="fRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
+        <div class="hidden" id="recurOpts" style="margin-top:8px">
+          <div class="row2">
+            <div><label for="fRecurInterval">반복 간격</label>
+              <div style="display:flex;align-items:center;gap:6px"><input type="number" id="fRecurInterval" min="1" max="52" value="1" style="flex:1"><span id="fRecurUnit" style="color:var(--muted);font-size:var(--fs-body);flex:none">주마다</span></div></div>
+            <div><label>반복 종료</label>
+              <div class="recur-end">
+                <label class="check"><input type="radio" name="recurEnd" value="never" checked> 계속</label>
+                <label class="check"><input type="radio" name="recurEnd" value="until"> 날짜까지 <input type="date" id="fRecurUntil"></label>
+                <label class="check"><input type="radio" name="recurEnd" value="count"> 횟수 <input type="number" id="fRecurCount" min="1" max="500" value="10" style="width:70px"></label>
+              </div></div>
+          </div>
+          <div class="git-hint" id="recurPreview"></div>
+        </div>
+      </div>
       <div class="git-row hidden" id="gitRow">
         <button class="btn sm" type="button" id="btnGitFetch">📥 이 과제의 Git 커밋 불러오기</button>
         <span class="git-hint" id="gitHint"></span>
@@ -420,20 +638,34 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   </div>
 </div>
 
+<!-- ===== 빠른 등록(quick-create) — 모든 생성의 기본 진입점 (Google식) ===== -->
+<div class="overlay hidden" id="quickAdd">
+  <div class="modal qa-modal">
+    <div class="qa-head">
+      <div class="qa-tg" role="tablist">
+        <button type="button" class="qa-type on" data-qatype="event">일정</button>
+        <button type="button" class="qa-type" data-qatype="todo">할 일</button>
+      </div>
+      <button class="x" data-close aria-label="닫기">×</button>
+    </div>
+    <input type="text" id="qaTitle" class="qa-title" maxlength="200" placeholder="무엇을 했나요 / 할 예정인가요?">
+    <div class="qa-ctx">
+      <input type="date" id="qaDate" title="날짜">
+      <select id="qaCat" title="과제"></select>
+    </div>
+    <div class="qa-detail hidden" id="qaDetail"></div>
+    <div class="qa-foot">
+      <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>
+      <button class="btn primary" id="qaSave">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 과제 관리 모달 ===== -->
 <div class="overlay hidden" id="categoryModal">
   <div class="modal">
     <div class="modal-head"><h2>과제 관리</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
-      <div class="git-settings">
-        <label for="cGitAuthor" style="margin-top:0">🔧 내 Git 작성자 (author 필터 — 내 커밋만 가져오기)</label>
-        <div class="git-detect-row">
-          <input type="text" id="cGitAuthor" maxlength="120" placeholder="예: hong@corp.com 또는 홍길동">
-          <button class="btn sm" type="button" id="btnGitDetect">자동 감지</button>
-        </div>
-        <div class="git-note">비워두면 <b>모든 사람</b>의 커밋이 들어옵니다. 보통 <b>회사 git 이메일</b>(git config user.email)을 넣으세요.
-          커밋 가져오기는 <b>데스크톱 위젯</b>에서만 동작합니다.</div>
-      </div>
       <div id="catList"></div>
       <div class="cat-form">
         <label for="cName" id="catFormTitle">새 과제 추가</label>
@@ -442,8 +674,24 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <div class="palette" id="cPalette"></div>
         <label for="cDesc">설명 (선택)</label>
         <input type="text" id="cDesc" maxlength="200" placeholder="이 과제에 대한 간단한 설명">
-        <label for="cGit">Git 저장소 로컬 경로 (선택)</label>
-        <input type="text" id="cGit" maxlength="400" placeholder="예: C:\work\과제A  (이 과제의 git 작업 폴더)">
+        <div class="git-card" id="gitCard">
+          <div class="git-card-head">
+            <span class="git-card-title">🔧 Git 연동 <span class="git-opt">(선택)</span></span>
+            <span class="git-badge off" id="gitBadge">미연결</span>
+          </div>
+          <label>저장소 폴더</label>
+          <div class="git-pick-row empty" id="gitPickRow">
+            <span class="git-path empty" id="gitPath" title="">연결된 저장소 없음</span>
+            <button class="btn primary sm" type="button" id="btnGitBrowse">📁 폴더 선택…</button>
+            <button class="btn sm hidden" type="button" id="btnGitClear">해제</button>
+          </div>
+          <label>내 작성자 <span class="git-scope-pill">공통 · 전체 과제 적용</span></label>
+          <div class="git-detect-row">
+            <input type="text" id="cGitAuthor" maxlength="120" placeholder="예: hong@corp.com 또는 홍길동">
+            <button class="btn sm" type="button" id="btnGitDetect">자동 감지</button>
+          </div>
+          <div class="git-note" id="gitStatus">폴더를 고르면 그 저장소의 git 이메일로 작성자가 자동 입력됩니다. 작성자는 모든 과제에 공통 적용됩니다. 비우면 모두의 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.</div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -476,13 +724,44 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   </div>
 </div>
 
+<!-- ===== 보고서 초안 모달 ===== -->
+<div class="overlay hidden" id="reportModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>보고서 초안</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="rpt-presets">
+        <button class="btn sm" data-rpt="today">오늘</button>
+        <button class="btn sm" data-rpt="thisweek">이번 주</button>
+        <button class="btn sm" data-rpt="lastweek">지난 주</button>
+        <button class="btn sm" data-rpt="thismonth">이번 달</button>
+        <button class="btn sm" data-rpt="lastmonth">지난 달</button>
+      </div>
+      <div class="rpt-range">
+        <input type="date" id="rptFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="rptTo">
+      </div>
+      <div class="rpt-opts">
+        <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> 작업일지(커밋 기록)만</label>
+        <label class="check" style="margin:0"><input type="checkbox" id="rptMd" checked> Markdown 형식</label>
+      </div>
+      <div class="rpt-summary" id="rptSummary"></div>
+      <textarea id="rptOut" spellcheck="false" placeholder="기간을 선택하면 보고서 초안이 생성됩니다. 생성 후 자유롭게 수정하세요."></textarea>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+      <button class="btn" id="btnRptSave">파일 저장</button>
+      <button class="btn primary" id="btnRptCopy">📋 복사</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 가져오기 확인 모달 ===== -->
 <div class="overlay hidden" id="importModal">
   <div class="modal">
     <div class="modal-head"><h2>XML 가져오기</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
       <div class="imp-box" id="importInfo"></div>
-      <p style="font-size:12.5px;color:var(--muted);margin-top:11px;line-height:1.7">
+      <p style="font-size:var(--fs-body);color:var(--muted);margin-top:11px;line-height:1.7">
         <b>병합</b>: 현재 데이터를 유지하고, 파일에만 있는 항목(ID 기준)을 추가합니다.<br>
         <b>교체</b>: 현재 데이터를 모두 지우고 파일 내용으로 대체합니다.
       </p>
@@ -490,8 +769,22 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
     <div class="modal-foot">
       <span class="spacer"></span>
       <button class="btn" data-close>취소</button>
-      <button class="btn" id="btnImpMerge">병합</button>
-      <button class="btn primary" id="btnImpReplace">교체</button>
+      <button class="btn primary" id="btnImpMerge">병합</button>
+      <button class="btn danger" id="btnImpReplace">교체</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 확인 모달 (OS confirm 대체 — 파괴 액션은 빨간 버튼) ===== -->
+<div class="overlay hidden" id="confirmModal">
+  <div class="modal" style="width:min(380px,100%)">
+    <div class="modal-head"><h2 id="cfTitle">확인</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body"><p id="cfMsg" style="font-size:var(--fs-emph);line-height:1.6;white-space:pre-wrap;margin:0"></p></div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>취소</button>
+      <button class="btn danger" id="cfAlt" style="display:none"></button>
+      <button class="btn danger-solid" id="cfOk">삭제</button>
     </div>
   </div>
 </div>
@@ -521,6 +814,72 @@ const nowIso = () => new Date().toISOString();
 const WEEKDAYS = ['일','월','화','수','목','금','토'];
 const fmtDateK = s => { const d = parseYmd(s);
   return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`; };
+const fmtShort = s => { const d = parseYmd(s); return `${d.getMonth()+1}/${d.getDate()}`; };
+
+/* ---------- 기간·반복 날짜 계산 (전부 로컬, TZ 없음) ---------- */
+const addDays = (s, n) => { const d = parseYmd(s); return ymd(new Date(d.getFullYear(), d.getMonth(), d.getDate()+n)); };
+const diffDays = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 86400000);
+function addMonths(s, n){ // 해당 일이 없는 달(예: 31→2월)은 null(건너뜀)
+  const d = parseYmd(s), day = d.getDate();
+  const t = new Date(d.getFullYear(), d.getMonth()+n, 1);
+  const last = new Date(t.getFullYear(), t.getMonth()+1, 0).getDate();
+  if(day > last) return null;
+  return ymd(new Date(t.getFullYear(), t.getMonth(), day));
+}
+const intersects = (s1,e1,s2,e2) => s1 <= e2 && s2 <= e1;   // 'YYYY-MM-DD' 사전순 비교 유효
+const maxStr = (a,b) => a > b ? a : b;
+const minStr = (a,b) => a < b ? a : b;
+function normRecur(r){
+  if(!r || (r.freq !== 'weekly' && r.freq !== 'monthly')) return null;
+  const iv = parseInt(r.interval, 10);
+  const cn = parseInt(r.count, 10);
+  return { freq:r.freq, interval:(iv>=1?iv:1),
+    until:(/^\d{4}-\d{2}-\d{2}$/.test(r.until||'') ? r.until : ''),
+    count:(cn>0?cn:0) };
+}
+const MAX_OCC = 500;
+// 한 entry를 [fromYmd,toYmd] 창 안의 구체 발생(occurrence)들로 전개. state에 저장하지 않는 경량 객체 반환.
+function expandOccurrences(e, fromYmd, toYmd){
+  const span = (e.endDate && e.endDate > e.date) ? diffDays(e.date, e.endDate) : 0;
+  const out = [];
+  const emit = (os) => {
+    const oe = span ? addDays(os, span) : os;
+    if(!intersects(os, oe, fromYmd, toYmd)) return;
+    if((e.recurExcept||[]).includes(os)) return;
+    out.push({ ...e, _occStart:os, _occEnd:oe, _seriesId:e.id });
+  };
+  if(!e.recur || !e.recur.freq){ emit(e.date); return out; }
+  const r = e.recur, iv = Math.max(1, r.interval||1);
+  if(r.freq === 'weekly'){
+    let k0 = Math.max(0, Math.floor((diffDays(e.date, fromYmd) - span) / (7*iv)) - 1);
+    for(let k=k0; out.length < MAX_OCC; k++){
+      if(r.count && k >= r.count) break;
+      const os = addDays(e.date, 7*iv*k);
+      if(r.until && os > r.until) break;
+      if(os > toYmd) break;
+      if(k >= 0) emit(os);
+    }
+  } else {
+    for(let k=0; out.length < MAX_OCC; k++){
+      if(r.count && k >= r.count) break;
+      const os = addMonths(e.date, iv*k);
+      if(os === null) continue;
+      if(r.until && os > r.until) break;
+      if(os > toYmd) break;
+      emit(os);
+    }
+  }
+  return out;
+}
+function recurLabel(e){
+  if(!e.recur) return '';
+  const r = e.recur, d = parseYmd(e.date);
+  const head = r.freq === 'weekly'
+    ? `${r.interval>1 ? r.interval+'주마다 ' : '매주 '}${WEEKDAYS[d.getDay()]}요일`
+    : `${r.interval>1 ? r.interval+'개월마다 ' : '매월 '}${d.getDate()}일`;
+  const end = r.until ? ` · ${fmtShort(r.until)}까지` : (r.count ? ` · 총 ${r.count}회` : ' · 계속');
+  return head + end;
+}
 function tint(hex, a){ // hex → 옅은 배경색
   const m = /^#?([0-9a-f]{6})$/i.exec(hex||''); if(!m) return 'rgba(138,147,166,.13)';
   const n = parseInt(m[1],16);
@@ -569,6 +928,14 @@ function defaultState(){
       {id:uid('e'), date:d2, title:'주간 보고서 제출', categoryId:c1, allDay:false,
        startTime:'17:00', endTime:'', memo:'', createdAt:nowIso(), updatedAt:nowIso()},
     ],
+    todos: [
+      {id:uid('t'), text:'API 명세 검토',        done:false, categoryId:c1, due:ymd(new Date(t.getFullYear(),t.getMonth(),t.getDate()-2)), prio:'high',   note:'', createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uid('t'), text:'주간 보고서 초안 작성', done:false, categoryId:c1, due:d0,  prio:'normal', note:'', createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uid('t'), text:'회의 자료 준비',        done:false, categoryId:c2, due:d0,  prio:'normal', note:'', createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uid('t'), text:'주간 보고서 제출 준비', done:false, categoryId:c1, due:d2,  prio:'normal', note:'', createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uid('t'), text:'리팩터링 항목 정리',    done:false, categoryId:c1, due:'',  prio:'normal', note:'', createdAt:nowIso(), updatedAt:nowIso()},
+      {id:uid('t'), text:'점검 체크리스트 정리',  done:true,  categoryId:c2, due:d0,  prio:'normal', completedAt:nowIso(), note:'', createdAt:nowIso(), updatedAt:nowIso()},
+    ],
   };
 }
 function load(){
@@ -580,13 +947,22 @@ function load(){
         // 손상/외부편집 데이터 방어: 필수 텍스트 필드를 문자열로 정규화 (검색의 toLowerCase 등 보호)
         s.entries.forEach(e => { e.title = String(e.title ?? ''); e.memo = String(e.memo ?? '');
           e.startTime = String(e.startTime ?? ''); e.endTime = String(e.endTime ?? ''); e.date = String(e.date ?? '');
-          e.source = e.source === 'git' ? 'git' : ''; });
+          e.source = e.source === 'git' ? 'git' : ''; e.commits = normCommits(e.commits); migrateGitMemo(e);
+          e.endDate = (typeof e.endDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(e.endDate) && e.endDate>e.date) ? e.endDate : '';
+          e.recur = normRecur(e.recur);
+          e.recurExcept = Array.isArray(e.recurExcept) ? e.recurExcept.filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)) : [];
+          if(e.source==='git'){ e.endDate=''; e.recur=null; e.recurExcept=[]; } });
         s.categories.forEach(c => { c.name = String(c.name ?? ''); c.desc = String(c.desc ?? ''); c.gitRepo = String(c.gitRepo ?? ''); });
         s.gitAuthor = String(s.gitAuthor ?? '');
+        s.todos = normTodos(s.todos);   // 멀티노트 — 구버전/외부편집 데이터엔 없을 수 있음(없으면 빈 배열)
         return s;
       }
     }
-  }catch(e){ console.warn('저장 데이터 로드 실패:', e); }
+  }catch(e){
+    console.warn('저장 데이터 로드 실패:', e);
+    // 손상 데이터를 기본값으로 덮어쓰기 전에 백업 보존
+    try{ const raw = localStorage.getItem(LS_KEY); if(raw) localStorage.setItem(LS_KEY + '.bak', raw); }catch(_){}
+  }
   return defaultState();
 }
 function save(){
@@ -600,33 +976,120 @@ function save(){
 }
 // 호스트(WPF)가 시작 시 저장된 XML을 주입한다. 내용이 비어있으면 현재 시드를 그대로 두고 호스트에 저장(파일 생성)
 window.__applyXml = function(text){
-  try{
-    if(text && text.trim()){
+  if(text && text.trim()){
+    try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||''};
-      filterCatId = null; filterSource = null;
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', todos:data.todos||[]};
+      filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
-      return;
+    }catch(e){
+      // 파싱 실패: 절대 기본값으로 덮어쓰지 않는다 — 호스트에 원본 백업을 요청하고 경고
+      console.warn('호스트 데이터 적용 실패', e);
+      try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'backupdata'})); }catch(_){}
+      toast('저장된 데이터 파일을 읽지 못했습니다 — 원본을 data.xml.bak 으로 백업했습니다', 'warn');
+      renderAll();
     }
-  }catch(e){ console.warn('호스트 데이터 적용 실패 — 기본 데이터 유지', e); }
+    return;   // 어느 경우든 여기서 save()로 덮어쓰지 않음
+  }
   save(); // 파일이 없거나 비어있음 → 현재 데이터로 파일 생성
+};
+// 호스트가 디스크 쓰기 실패를 알릴 때 — 무음 데이터 손실 방지
+window.__saveFailed = function(){
+  toast('⚠ 저장 실패 — 디스크에 기록하지 못했습니다. [데이터 → XML 내보내기]로 백업하세요', 'warn');
 };
 
 /* ---------- CRUD ---------- */
 const catById   = id => state.categories.find(c => c.id === id) || null;
 const entryById = id => state.entries.find(e => e.id === id) || null;
 
+// 노트 TODO 배열 정규화 — 손상/외부편집 데이터 방어(텍스트는 한 줄로, 빈 항목 제외)
+function normTodos(a){
+  const dok = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  return Array.isArray(a) ? a.map(t => {
+    const done = !!t.done;
+    return {
+      id: (typeof t.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(t.id)) ? t.id : uid('t'),
+      text: String(t.text ?? '').replace(/\s+/g, ' ').trim(),
+      done,
+      categoryId: (typeof t.categoryId === 'string' && t.categoryId) ? t.categoryId : null,
+      due: dok(t.due) ? t.due : '',                       // 기한/시작(없으면 '기한없음' 구획)
+      endDate: (dok(t.endDate) && dok(t.due) && t.endDate > t.due) ? t.endDate : '',  // 기간 종료일(여러 날 할 일)
+      prio: t.prio === 'high' ? 'high' : 'normal',        // 중요표시 2단계
+      completedAt: (done && t.completedAt) ? String(t.completedAt) : '',  // 완료 시각(보고서 '한 일' 기간 키)
+      note: String(t.note ?? ''),
+      createdAt: t.createdAt || nowIso(),
+      updatedAt: t.updatedAt || nowIso(),
+    };
+  }).filter(t => t.text) : [];
+}
+
+const COMMIT_PREVIEW = 5;   // 카드에 기본 표시할 커밋 행 수
+// 커밋 배열 정규화 — subject는 한 줄로(좁은 패널 1행 보장; 호스트가 멀티라인 줄 때 대비)
+function normCommits(a){
+  return Array.isArray(a) ? a.map(c => ({
+    hash: String(c.hash || ''),
+    short: String(c.short || ''),
+    time: /^([01]\d|2[0-3]):[0-5]\d$/.test(c.time || '') ? c.time : '',
+    subject: String(c.subject || '').replace(/\s+/g, ' ').trim()
+  })) : [];
+}
+// 구버전 데이터: 메모에 박힌 '[Git 커밋 …]' 텍스트 블록을 구조화 commits로 1회 변환하고 메모에서 분리(idempotent)
+function migrateGitMemo(e){
+  if(!e || e.source !== 'git') return;
+  if(Array.isArray(e.commits) && e.commits.length) return;
+  const lines = String(e.memo || '').split('\n');
+  const commits = []; const kept = []; let inBlock = false;
+  for(const raw of lines){
+    const t = raw.trim();
+    if(/^\[Git 커밋 \d+건 · .+\]$/.test(t)){ inBlock = true; continue; }
+    if(inBlock){
+      if(t === '') continue;
+      if(t.startsWith('•')){
+        const m = t.replace(/^•\s*/, '');
+        const tm = (m.match(/^([01]\d|2[0-3]):[0-5]\d/) || [''])[0];
+        const rest = tm ? m.slice(tm.length).trim() : m;
+        const hm = rest.match(/\s*\(([0-9a-fA-F]{6,40})\)\s*$/);
+        const short = hm ? hm[1] : '';
+        const subject = (hm ? rest.slice(0, hm.index) : rest).replace(/\s+/g, ' ').trim();
+        commits.push({hash:'', short, time:tm, subject: subject || '(메시지 없음)'});
+        continue;
+      }
+      inBlock = false;
+    }
+    kept.push(raw);
+  }
+  if(commits.length){ e.commits = commits; e.memo = kept.join('\n').trim(); }
+}
+// 카드용 커밋 1행 마크업 (제목 강조·한 줄 말줄임 / 해시·시각은 흐린 보조)
+function commitRowHtml(c, hidden){
+  return `<li class="commit-row${hidden?' hidden tail':''}" title="${esc(c.subject)}">` +
+    (c.time ? `<span class="commit-time">${esc(c.time)}</span>` : '') +
+    `<span class="commit-subj">${esc(c.subject)}</span>` +
+    (c.short ? `<code class="commit-hash">${esc(c.short)}</code>` : '') +
+  `</li>`;
+}
+
+// 기간/반복 필드 정규화 (git 엔트리는 항상 단일일 — 강제 제거)
+function rangeFields(d, source){
+  if(source === 'git') return {endDate:'', recur:null, recurExcept:[]};
+  const endDate = (typeof d.endDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d.endDate) && d.endDate > d.date) ? d.endDate : '';
+  return {endDate, recur:normRecur(d.recur),
+    recurExcept: Array.isArray(d.recurExcept) ? d.recurExcept.filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)) : []};
+}
 function addEntry(d){
+  const source = d.source==='git'?'git':'';
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
-    memo:d.memo||'', source:d.source==='git'?'git':'', createdAt:nowIso(), updatedAt:nowIso()};
+    memo:d.memo||'', source, commits:normCommits(d.commits), ...rangeFields(d, source),
+    createdAt:nowIso(), updatedAt:nowIso()};
   state.entries.push(e); save(); return e;
 }
 function updateEntry(id, d){
   const e = entryById(id); if(!e) return;
+  const source = d.source==='git'?'git':'';
   Object.assign(e, {date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
-    memo:d.memo||'', source:d.source==='git'?'git':'', updatedAt:nowIso()});
+    memo:d.memo||'', source, commits:normCommits(d.commits), ...rangeFields(d, source), updatedAt:nowIso()});
   save();
 }
 function deleteEntry(id){
@@ -641,9 +1104,13 @@ function passFilter(e){
   return (!filterCatId || e.categoryId === filterCatId) && (!filterSource || e.source === filterSource);
 }
 function entriesOn(date){
-  return state.entries
-    .filter(e => e.date === date && passFilter(e))
-    .sort(entrySort);
+  // 그날에 걸치는 기간 일정 + 그날 발생하는 반복 일정 + 단일일 일정 (occurrence 단위)
+  const out = [];
+  for(const e of state.entries){
+    if(!passFilter(e)) continue;
+    for(const occ of expandOccurrences(e, date, date)) out.push(occ);
+  }
+  return out.sort(entrySort);
 }
 function addCategory(name, color, desc, gitRepo){
   const c = {id:uid('c'), name, color, desc:desc||'', gitRepo:gitRepo||'', createdAt:nowIso()};
@@ -655,8 +1122,10 @@ function updateCategory(id, name, color, desc, gitRepo){
 }
 function deleteCategory(id){
   state.entries.forEach(e => { if(e.categoryId === id) e.categoryId = null; });
+  (state.todos || []).forEach(t => { if(t.categoryId === id) t.categoryId = null; });   // 노트 TODO도 '미분류'로
   state.categories = state.categories.filter(c => c.id !== id);
   if(filterCatId === id) filterCatId = null;
+  if(noteFilterCat === id) noteFilterCat = null;
   save();
 }
 
@@ -689,6 +1158,18 @@ function toXML(){
     el.setAttribute('date', e.date);
     if(e.categoryId) el.setAttribute('categoryId', e.categoryId);
     if(e.source === 'git') el.setAttribute('source', 'git');
+    if(e.source !== 'git'){   // 기간/반복은 단일일·git이 아닐 때만 직렬화(꺼지면 단일일과 동일하게 round-trip)
+      if(e.endDate && e.endDate > e.date) el.setAttribute('endDate', e.endDate);
+      if(e.recur && e.recur.freq){
+        const r = doc.createElement('recur');
+        r.setAttribute('freq', e.recur.freq);
+        if((e.recur.interval||1) > 1) r.setAttribute('interval', String(e.recur.interval));
+        if(e.recur.until) r.setAttribute('until', e.recur.until);
+        if(e.recur.count) r.setAttribute('count', String(e.recur.count));
+        for(const ex of (e.recurExcept||[])){ const x = doc.createElement('except'); x.setAttribute('date', ex); r.appendChild(x); }
+        el.appendChild(r);
+      }
+    }
     el.setAttribute('allDay', e.allDay ? 'true' : 'false');
     el.setAttribute('startTime', e.startTime || '');
     el.setAttribute('endTime', e.endTime || '');
@@ -696,9 +1177,40 @@ function toXML(){
     el.setAttribute('updatedAt', e.updatedAt || '');
     const t = doc.createElement('title'); t.textContent = e.title; el.appendChild(t);
     const m = doc.createElement('memo');  m.textContent = e.memo || ''; el.appendChild(m);
+    if(e.commits && e.commits.length){   // 커밋은 구조화 자식 요소로 (subject=텍스트 콘텐츠 → 검색·round-trip 안전)
+      const cs = doc.createElement('commits');
+      for(const c of e.commits){
+        const ce = doc.createElement('commit');
+        if(c.hash) ce.setAttribute('hash', c.hash);
+        if(c.short) ce.setAttribute('short', c.short);
+        if(c.time) ce.setAttribute('time', c.time);
+        ce.textContent = c.subject || '';
+        cs.appendChild(ce);
+      }
+      el.appendChild(cs);
+    }
     ents.appendChild(el);
   }
   root.appendChild(ents);
+
+  // 멀티노트 — TODO 컬렉션 (entries/categories와 형제, 캘린더 데이터 불변)
+  const tds = doc.createElement('todos');
+  for(const t of (state.todos || [])){
+    const el = doc.createElement('todo');
+    el.setAttribute('id', t.id);
+    el.setAttribute('done', t.done ? 'true' : 'false');
+    if(t.categoryId) el.setAttribute('categoryId', t.categoryId);
+    if(t.due) el.setAttribute('due', t.due);
+    if(t.endDate && t.due && t.endDate > t.due) el.setAttribute('endDate', t.endDate);
+    if(t.prio === 'high') el.setAttribute('prio', 'high');
+    if(t.done && t.completedAt) el.setAttribute('completedAt', t.completedAt);
+    el.setAttribute('createdAt', t.createdAt || '');
+    el.setAttribute('updatedAt', t.updatedAt || '');
+    const tx = doc.createElement('text'); tx.textContent = t.text || ''; el.appendChild(tx);
+    if(t.note){ const nt = doc.createElement('note'); nt.textContent = t.note; el.appendChild(nt); }
+    tds.appendChild(el);
+  }
+  root.appendChild(tds);
 
   return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
 }
@@ -731,28 +1243,78 @@ function fromXML(text){
   }));
   const entries = [...root.getElementsByTagName('entry')].map(e => {
     const allDay = e.getAttribute('allDay') === 'true';
+    const date = e.getAttribute('date') || '';
+    const source = e.getAttribute('source') === 'git' ? 'git' : '';
+    // 기간(endDate) + 반복(recur) + 예외(except) — git이 아닐 때만
+    let endDate = '', recur = null, recurExcept = [];
+    if(source !== 'git'){
+      const ed = e.getAttribute('endDate') || '';
+      if(isRealDate(ed) && ed > date) endDate = ed;
+      const rEl = e.getElementsByTagName('recur')[0];
+      if(rEl){
+        const f = rEl.getAttribute('freq');
+        if(f === 'weekly' || f === 'monthly'){
+          recur = normRecur({freq:f, interval:rEl.getAttribute('interval')||'1',
+            until:rEl.getAttribute('until')||'', count:rEl.getAttribute('count')||'0'});
+          recurExcept = [...rEl.getElementsByTagName('except')].map(x => x.getAttribute('date')||'').filter(isRealDate);
+        }
+      }
+    }
     return {
       id: safeId(e.getAttribute('id'), 'e'),
-      date: e.getAttribute('date') || '',
+      date,
       title: txt(e,'title') || '(제목 없음)',
       categoryId: e.getAttribute('categoryId') || null, // 미존재 참조는 표시 시 '미분류'로 안전 처리
       allDay,
       startTime: allDay ? '' : validTime(e.getAttribute('startTime')),
       endTime: allDay ? '' : validTime(e.getAttribute('endTime')),
       memo: txt(e,'memo'),
-      source: e.getAttribute('source') === 'git' ? 'git' : '',
+      source,
+      commits: normCommits([...e.getElementsByTagName('commit')].map(ce => ({
+        hash: ce.getAttribute('hash') || '', short: ce.getAttribute('short') || '',
+        time: ce.getAttribute('time') || '', subject: ce.textContent || ''
+      }))),
+      endDate, recur, recurExcept,
       createdAt: e.getAttribute('createdAt') || nowIso(),
       updatedAt: e.getAttribute('updatedAt') || nowIso(),
     };
   }).filter(e => isRealDate(e.date));
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || ''};
+  entries.forEach(migrateGitMemo);   // 구버전(메모에 커밋 박힌) 엔트리 1회 구조화
+
+  // 멀티노트 — TODO 컬렉션 (id 안전문자만, 텍스트 빈 항목 제외)
+  const todos = [...root.getElementsByTagName('todo')].map(t => {
+    const done = t.getAttribute('done') === 'true';
+    const due = t.getAttribute('due') || '';
+    const ted = t.getAttribute('endDate') || '';
+    const comp = t.getAttribute('completedAt') || '';
+    return {
+      id: safeId(t.getAttribute('id'), 't'),
+      text: (txt(t,'text') || '').replace(/\s+/g, ' ').trim(),
+      done,
+      categoryId: t.getAttribute('categoryId') || null,  // 미존재 참조는 표시 시 무시(과제명 비표시)
+      due: isRealDate(due) ? due : '',
+      endDate: (isRealDate(ted) && isRealDate(due) && ted > due) ? ted : '',
+      prio: t.getAttribute('prio') === 'high' ? 'high' : 'normal',
+      completedAt: (done && comp) ? comp : '',
+      note: txt(t,'note'),
+      createdAt: t.getAttribute('createdAt') || nowIso(),
+      updatedAt: t.getAttribute('updatedAt') || nowIso(),
+    };
+  }).filter(t => t.text);
+
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', todos};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
   const norm = s => ({
     g: s.gitAuthor||'',
     c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'',c.gitRepo||'']),
-    e: s.entries.map(e=>[e.id,e.date,e.title,e.categoryId||null,!!e.allDay,e.startTime||'',e.endTime||'',e.memo||'',e.source||'']),
+    e: s.entries.map(e=>[e.id,e.date,e.title,e.categoryId||null,!!e.allDay,e.startTime||'',e.endTime||'',e.memo||'',e.source||'',
+      e.endDate||'',
+      e.recur ? [e.recur.freq, e.recur.interval||1, e.recur.until||'', e.recur.count||0] : null,
+      (e.recurExcept||[]).slice().sort(),
+      (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||''])]),
+    t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'']),
   });
   const p = fromXML(toXML());
   const ok = JSON.stringify(norm(state)) === JSON.stringify(norm(p));
@@ -765,10 +1327,20 @@ let view = {y:_t.getFullYear(), m:_t.getMonth()};
 let selectedDate = todayYmd();
 let filterCatId = null;
 let filterSource = null;     // null | 'git' (작업일지만 보기)
+let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'todo'(할 일) | 'git'(작업일지)
+let noteFilterCat = null;    // 할 일/작업일지 전용 과제 필터 — 캘린더 전역 filterCatId와 독립
+let noteCollapsed = new Set(['done','nodate']);  // 접힌 섹션 키(완료·기한없음은 기본 접힘)
+let editingTodoId = null;    // 인라인 편집 중인 TODO id
+let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
+let noteImportantOnly = false; // 할 일 탭 '★ 중요만' 필터
 let __entryGitLoaded = false; // 기록 모달에서 Git 커밋을 불러왔는지 → 저장 시 source='git'
+let __entryCommits = [];      // 기록 모달이 보유한 구조화 커밋 (메모와 분리 저장)
+let __entryRecurExcept = [];  // 편집 중인 반복 일정의 예외(건너뛴) 날짜 보존용
 let editingId = null;        // 기록 모달: 수정 대상
 let editingCatId = null;     // 과제 모달: 수정 대상
 let selColor = PALETTE[0];   // 과제 모달: 선택 색상
+let catFormRepo = '';        // 과제 모달: 현재 폼의 Git 저장소 경로(다이얼로그로 설정 — 텍스트 입력 없음)
+let __pendingRepoEmail = ''; // 작성자 미스매치 reconcile 대기 이메일
 let searchMode = 'keyword';
 let pendingImport = null;
 let flashTargetId = null;
@@ -802,14 +1374,53 @@ function renderFilterbar(){
   bar.innerHTML = html;
 }
 
-function chipHtml(e){
+// 막대 세그먼트 정렬: 막대(여러 날)를 위로, 같은 시리즈끼리 묶어 레인 안정화, 나머지는 시간순
+function segSort(x, y){
+  const ax = (x.seg && x.seg !== 'single'), ay = (y.seg && y.seg !== 'single');
+  if(ax !== ay) return ax ? -1 : 1;
+  const sid = it => it.occ ? String(it.occ._seriesId) : (it._occStart || '');
+  if(ax && ay) return sid(x).localeCompare(sid(y));
+  return entrySort(x.occ || x.todoItem || x, y.occ || y.todoItem || y);
+}
+// 그리드 칩 — seg-item({occ,seg,clipLeft,clipRight}) 또는 단순 entry 모두 허용
+function chipHtml(item){
+  if(item.todoItem) return todoChipHtml(item);   // 할 일 칩(체크+제목)
+  const e   = item.occ ? item.occ : item;
+  const seg = item.seg || 'single';
   const c = catById(e.categoryId);
   const col = validColor(c && c.color);
-  const time = chipTime(e);
   const git = e.source === 'git';
-  return `<div class="chip${git?' chip-git':''}" draggable="true" data-id="${esc(e.id)}"
+  const showText = (seg === 'start' || seg === 'single' || item.weekStart || item.clipLeft);
+  const rangeCls = (seg !== 'single') ? ` chip-range chip-${seg}${(showText && seg !== 'start') ? ' chip-relabel' : ''}` : '';
+  const recurMark = (e.recur && showText) ? '🔁 ' : '';
+  const time = showText ? chipTime(e) : '';
+  const label = showText ? `${git?'🔧 ':''}${recurMark}${esc(e.title)}` : '';
+  const aL = item.clipLeft ? '◂' : '', aR = item.clipRight ? '▸' : '';
+  const occDate = item.occ ? item.occ._occStart : e.date;
+  const kind = e.recur ? 'recur' : ((e.endDate && e.endDate > e.date) ? 'range' : 'simple');
+  const span = (e.endDate && e.endDate > e.date) ? ` · ${e.date}~${e.endDate}` : '';
+  return `<div class="chip${git?' chip-git':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
+    data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
     style="border-left-color:${col};background:${tint(col)}"
-    title="${git?'🔧 작업일지 · ':''}${esc(e.title)}${c?' · '+esc(c.name):''}">${time?`<span class="chip-t">${esc(time)}</span>`:''}${git?'🔧 ':''}${esc(e.title)}</div>`;
+    title="${git?'🔧 작업일지 · ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${time?`<span class="chip-t">${esc(time)}</span>`:''}${label}${aR}</div>`;
+}
+// 할 일 칩(그리드) — 일정 막대와 구분: 초록 계열 + 체크 글리프, 제목
+function todoChipHtml(item){
+  const t = item.todoItem;
+  const seg = item.seg || 'single';
+  const c = catById(t.categoryId);
+  const showText = (seg === 'start' || seg === 'single' || item.weekStart || item.clipLeft);
+  const rangeCls = (seg !== 'single') ? ` chip-range chip-${seg}${(showText && seg !== 'start') ? ' chip-relabel' : ''}` : '';
+  const col = validColor(c && c.color);   // 링 테두리에만 과제색 → 카테고리 신호는 보존, 칩 본체는 중립
+  const star = (t.prio === 'high' && !t.done) ? '★ ' : '';
+  const ring = showText ? `<span class="todo-ring" style="border-color:${col}${t.done ? `;background:${col}` : ''}"></span>` : '';
+  const label = showText ? `<span class="txt">${star}${esc(t.text)}</span>` : '';
+  const aL = item.clipLeft ? '◂' : '', aR = item.clipRight ? '▸' : '';
+  const span = (t.endDate && t.endDate > t.due) ? ` · ${t.due}~${t.endDate}` : '';
+  return `<div class="chip chip-todo${t.done ? ' done' : ''}${rangeCls}" draggable="false"
+    data-todo="${esc(t.id)}" data-occ="${esc(t.due)}" data-kind="todo"
+    aria-label="할 일${t.done ? ' 완료' : ''}: ${esc(t.text)}"
+    title="할 일${t.done ? ' (완료)' : ''} · ${esc(t.text)}${c?' · '+esc(c.name):''}${span}">${aL}${ring}${label}${aR}</div>`;
 }
 
 function renderGrid(){
@@ -818,16 +1429,51 @@ function renderGrid(){
   const first = new Date(view.y, view.m, 1);
   const start = new Date(view.y, view.m, 1 - first.getDay());
   const tY = todayYmd();
+  // 실제 필요한 주 수만 렌더(5주 달에 6행 필러 낭비 제거 — 좁은 위젯의 세로 17% 회수)
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const totalCells = Math.ceil((first.getDay() + daysInMonth) / 7) * 7;
 
+  const startDs = ymd(start);
+  const endDs   = addDays(startDs, totalCells - 1);
   const byDate = {};
   for(const e of state.entries){
     if(!passFilter(e)) continue;
-    (byDate[e.date] = byDate[e.date] || []).push(e);
+    // 작업일지는 셀에 표시하지 않음(캘린더=일정, 작업일지=기록·보고서 재료) — '🔧 작업일지' 필터를 켰을 때만 셀에 보임
+    if(e.source === 'git' && filterSource !== 'git') continue;
+    for(const occ of expandOccurrences(e, startDs, endDs)){
+      const a = maxStr(occ._occStart, startDs), b = minStr(occ._occEnd, endDs);
+      for(let d = a; d <= b; d = addDays(d, 1)){
+        const single = (occ._occStart === occ._occEnd);
+        const seg = single ? 'single' : (d === occ._occStart ? 'start' : (d === occ._occEnd ? 'end' : 'mid'));
+        (byDate[d] = byDate[d] || []).push({ occ, seg,
+          weekStart: parseYmd(d).getDay() === 0,   // 주가 바뀌면 막대에 제목 재표기(무명 색줄 방지)
+          clipLeft:  (d === startDs && occ._occStart < startDs),
+          clipRight: (d === endDs   && occ._occEnd   > endDs) });
+      }
+    }
   }
-  for(const k in byDate) byDate[k].sort(entrySort);
+  // 할 일(기한 있는)을 그리드에 체크칩으로 — git 필터 중엔 숨김, 과제 필터는 따름. 여러 날(기간)은 막대.
+  if(filterSource !== 'git'){
+    for(const t of (state.todos || [])){
+      if(!t.due) continue;
+      if(filterCatId && t.categoryId !== filterCatId) continue;
+      const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
+      if(tEnd < startDs || t.due > endDs) continue;
+      const a = maxStr(t.due, startDs), b = minStr(tEnd, endDs);
+      for(let d = a; d <= b; d = addDays(d, 1)){
+        const single = (t.due === tEnd);
+        const seg = single ? 'single' : (d === t.due ? 'start' : (d === tEnd ? 'end' : 'mid'));
+        (byDate[d] = byDate[d] || []).push({ todoItem:t, _occStart:t.due, seg,
+          weekStart: parseYmd(d).getDay() === 0,
+          clipLeft:  (d === startDs && t.due < startDs),
+          clipRight: (d === endDs   && tEnd   > endDs) });
+      }
+    }
+  }
+  for(const k in byDate) byDate[k].sort(segSort);
 
   let html = '';
-  for(let i=0;i<42;i++){
+  for(let i=0;i<totalCells;i++){
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
     const ds = ymd(d);
     const inMonth = d.getMonth() === view.m;
@@ -841,7 +1487,7 @@ function renderGrid(){
     if(dow===0 || hol) numCls += ' sun'; else if(dow===6) numCls += ' sat';
     const list = byDate[ds] || [];
     const chips = list.slice(0,3).map(chipHtml).join('');
-    const more = list.length > 3 ? `<div class="more">+${list.length-3}개 더보기</div>` : '';
+    const more = list.length > 3 ? `<button class="more" title="이 날짜의 전체 기록을 옆 패널에 표시">+${list.length-3}개 더보기</button>` : '';
     html += `<div class="${cls}" data-date="${ds}">
       <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${hol?`<span class="hol">${esc(hol)}</span>`:''}</div>
       <div class="chips">${chips}${more}</div></div>`;
@@ -854,14 +1500,31 @@ function cardHtml(e){
   const col = validColor(c && c.color);
   const time = timeLabel(e);
   const git = e.source === 'git';
-  return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" style="--c:${col}">
+  const commits = (git && Array.isArray(e.commits)) ? e.commits : [];
+  let commitBlock = '';
+  if(commits.length){
+    const preview = commits.slice(0, COMMIT_PREVIEW).map(x => commitRowHtml(x, false)).join('');
+    const rest = commits.slice(COMMIT_PREVIEW).map(x => commitRowHtml(x, true)).join('');
+    const more = commits.length > COMMIT_PREVIEW
+      ? `<button class="link commit-more" data-act="more">+${commits.length - COMMIT_PREVIEW}건 더 보기</button>` : '';
+    commitBlock = `<div class="commit-head">🔧 커밋 ${commits.length}건</div><ul class="commit-list">${preview}${rest}</ul>${more}`;
+  }
+  const occS = e._occStart || e.date, occE = e._occEnd || (e.endDate && e.endDate>e.date ? e.endDate : e.date);
+  const isRange = occE > occS;
+  const dayOfN = (isRange && selectedDate>=occS && selectedDate<=occE)
+    ? ` · ${diffDays(occS,selectedDate)+1}일째 / ${diffDays(occS,occE)+1}일` : '';
+  const rangeLine = isRange ? `<div class="card-span">📅 ${fmtShort(occS)} ~ ${fmtShort(occE)}${dayOfN}</div>` : '';
+  const recurLine = e.recur ? `<div class="card-recur">🔁 ${esc(recurLabel(e))}</div>` : '';
+  return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
       <span class="card-time">${esc(time)}</span>
       ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 작업일지">🔧 작업일지</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
     </div>
     <div class="card-title">${esc(e.title)}</div>
-    ${e.memo?`<div class="card-memo${git?' git':''}">${esc(e.memo)}</div>`:''}
+    ${rangeLine}${recurLine}
+    ${e.memo?`<div class="card-memo">${esc(e.memo)}</div>`:''}
+    ${commitBlock}
     <div class="card-actions">
       <button class="link" data-act="edit">수정</button>
       <button class="link danger" data-act="del">삭제</button>
@@ -869,7 +1532,8 @@ function cardHtml(e){
   </div>`;
 }
 
-function renderDayPanel(){
+// '일정 상세' 탭 본문 — 선택 날짜의 일정 카드/추가 (문자열 반환)
+function dayDetailHtml(){
   const d = parseYmd(selectedDate);
   const dow = d.getDay();
   const hol = HOLIDAYS[selectedDate.slice(5)];
@@ -882,22 +1546,32 @@ function renderDayPanel(){
       <div class="dp-count">${list.length ? `${list.length}개의 기록${(filterCatId||filterSource)?' (필터 적용 중)':''}` : '기록 없음'}</div>
     </div>
     <div style="display:flex;gap:6px;flex:none">
-      ${(HOST && gitEnabledCats().length) ? `<button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">📥 커밋</button>` : ''}
       <button class="btn primary sm" id="btnAddHere">＋ 추가</button>
     </div>
   </div>`;
   html += list.length
     ? `<div class="dp-list">${list.map(cardHtml).join('')}</div>`
     : `<div class="dp-empty">이 날짜에 기록이 없습니다.<br>날짜를 <b>더블클릭</b>하거나 위 <b>＋ 추가</b> 버튼으로<br>새 기록을 작성하세요.</div>`;
-  $('#dayPanel').innerHTML = html;
-
-  if(flashTargetId){
-    const el = $('#dayPanel .card.flash');
-    if(el) el.scrollIntoView({block:'nearest'});
-    const fid = flashTargetId; flashTargetId = null;
-    setTimeout(() => { const e2 = $(`#dayPanel .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
+  return html;
+}
+// 우측 패널 렌더 — 탭바는 보존하고 본문(#dpBody)만 교체
+function renderPanel(){
+  document.querySelectorAll('#dpTabs .dp-tab').forEach(b => b.classList.toggle('on', b.dataset.ptab === noteTab));
+  const body = $('#dpBody');
+  if(!body) return;
+  if(noteTab === 'detail'){
+    body.innerHTML = dayDetailHtml();
+    if(flashTargetId){
+      const el = $('#dpBody .card.flash');
+      if(el) el.scrollIntoView({block:'nearest'});
+      const fid = flashTargetId; flashTargetId = null;
+      setTimeout(() => { const e2 = $(`#dpBody .card[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
+    }
+  } else {
+    body.innerHTML = noteFilterBarHtml() + `<div class="dp-pad">` + (noteTab === 'todo' ? renderTodoListTab() : renderGitTab()) + `</div>`;
   }
 }
+function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderAll/drop 등)
 
 /* ---------- 내비게이션 ---------- */
 function moveMonth(delta){
@@ -925,7 +1599,9 @@ function selectDate(ds){
     const cell = document.querySelector('#grid .cell[data-date="' + ds + '"]');
     if(cell) cell.classList.add('sel');
   }
-  renderDayPanel();
+  editingTodoId = null;
+  renderPanel();             // 현재 탭 유지 — 선택 날짜로 내용만 갱신(일정/할일/작업일지 모두 그 날 기준)
+  openSheetIfNarrow();       // 좁은 폭이면 하단 시트가 올라옴
 }
 function goto(ds, entryId){
   closeModal('#searchModal');
@@ -952,6 +1628,40 @@ function fillCatSelect(sel, emptyLabel){
 function toggleTimeRow(){
   $('#timeRow').classList.toggle('off', $('#fAllDay').checked);
 }
+function toggleRangeRow(){
+  const on = $('#fIsRange').checked;
+  $('#rangeRow').classList.toggle('hidden', !on);
+  if(on && !$('#fEndDate').value) $('#fEndDate').value = $('#fDate').value || '';
+  $('#rangeHint').textContent = (on && !$('#fAllDay').checked) ? '시간은 매일 동일하게 적용됩니다' : '';
+  updateRecurPreview();
+}
+function toggleRecurOpts(){
+  const v = $('#fRecur').value;
+  $('#recurOpts').classList.toggle('hidden', !v);
+  $('#fRecurUnit').textContent = v === 'monthly' ? '개월마다' : '주마다';
+  updateRecurPreview();
+}
+function updateRecurPreview(){
+  const prev = $('#recurPreview'); if(!prev) return;
+  const v = $('#fRecur').value, date = $('#fDate').value;
+  if(!v || !/^\d{4}-\d{2}-\d{2}$/.test(date)){ prev.textContent = ''; return; }
+  const iv = Math.max(1, parseInt($('#fRecurInterval').value, 10) || 1);
+  const mode = (document.querySelector('input[name=recurEnd]:checked') || {}).value || 'never';
+  const until = mode === 'until' ? $('#fRecurUntil').value : '';
+  const count = mode === 'count' ? Math.max(1, parseInt($('#fRecurCount').value, 10) || 1) : 0;
+  const tmp = {id:'_p', date, endDate:($('#fIsRange').checked ? $('#fEndDate').value : ''),
+    recur:normRecur({freq:v, interval:iv, until, count}), recurExcept:[]};
+  const n = expandOccurrences(tmp, date, addDays(date, 730)).length;
+  let msg = recurLabel(tmp) + ` · 앞으로 2년 내 ${n}회`;
+  if(v === 'monthly' && parseYmd(date).getDate() > 28) msg += ' · 해당 일 없는 달은 건너뜀';
+  if($('#fIsRange').checked){
+    const ed = $('#fEndDate').value;
+    if(/^\d{4}-\d{2}-\d{2}$/.test(ed) && ed > date && diffDays(date, ed) >= (v==='weekly' ? 7*iv : 30*iv))
+      msg += ' · ⚠ 기간이 반복 간격보다 길어 겹칠 수 있음';
+  }
+  if(editingId) msg += ' · (수정은 전체 반복에 적용)';
+  prev.textContent = msg;
+}
 function openEntryModal(mode, ref){
   fillCatSelect($('#fCat'));
   if(mode === 'edit'){
@@ -977,8 +1687,26 @@ function openEntryModal(mode, ref){
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
   }
+  // 편집 진입 시 그 기록의 커밋을 폼이 보유(저장 시 보존), 새 기록은 빈 배열 — 이전 편집 커밋 누수 방지
+  __entryCommits = editingId ? ((entryById(editingId) || {}).commits || []).map(c => ({...c})) : [];
   __entryGitLoaded = false;
   $('#gitHint').textContent = '';
+  // 기간·반복 폼 채우기
+  {
+    const re = editingId ? entryById(editingId) : null;
+    $('#fIsRange').checked = !!(re && re.endDate && re.endDate > re.date);
+    $('#fEndDate').value = (re && re.endDate) ? re.endDate : ($('#fDate').value || '');
+    $('#fRecur').value = (re && re.recur) ? re.recur.freq : '';
+    $('#fRecurInterval').value = (re && re.recur) ? re.recur.interval : 1;
+    const rc = re && re.recur;
+    const mode = rc ? (rc.until ? 'until' : (rc.count ? 'count' : 'never')) : 'never';
+    const radio = document.querySelector(`input[name=recurEnd][value="${mode}"]`); if(radio) radio.checked = true;
+    $('#fRecurUntil').value = (rc && rc.until) ? rc.until : '';
+    $('#fRecurCount').value = (rc && rc.count) ? rc.count : 10;
+    __entryRecurExcept = rc ? (re.recurExcept || []).slice() : [];
+    $('#rangeRecurSect').classList.toggle('hidden', !!(re && re.source === 'git'));
+    toggleRangeRow(); toggleRecurOpts();
+  }
   updateGitRow();
   toggleTimeRow();
   openModal('#entryModal');
@@ -995,16 +1723,46 @@ function saveEntryFromForm(){
   if(startTime && endTime && endTime < startTime){
     toast('종료 시간이 시작 시간보다 빠릅니다', 'warn'); $('#fEnd').focus(); return;
   }
+  // 기간(범위)
+  let endDate = '';
+  if($('#fIsRange').checked){
+    endDate = $('#fEndDate').value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) endDate = '';
+    else if(endDate < date){ toast('종료일이 시작일보다 빠릅니다', 'warn'); $('#fEndDate').focus(); return; }
+    else if(endDate === date) endDate = '';                               // 같으면 단일일로
+    if(endDate && diffDays(date, endDate) > 366){ toast('기간이 너무 깁니다(366일 초과)', 'warn'); return; }
+  }
+  // 반복
+  let recur = null;
+  const rf = $('#fRecur').value;
+  if(rf === 'weekly' || rf === 'monthly'){
+    const iv = Math.max(1, parseInt($('#fRecurInterval').value, 10) || 1);
+    const mode = (document.querySelector('input[name=recurEnd]:checked') || {}).value || 'never';
+    const until = mode === 'until' ? $('#fRecurUntil').value : '';
+    const count = mode === 'count' ? Math.max(1, parseInt($('#fRecurCount').value, 10) || 1) : 0;
+    recur = {freq:rf, interval:iv, until:(/^\d{4}-\d{2}-\d{2}$/.test(until) ? until : ''), count};
+  }
   const existing = editingId ? entryById(editingId) : null;
-  const source = __entryGitLoaded ? 'git' : (existing ? (existing.source || '') : '');
+  // recurExcept: 반복 유지 + freq/interval 동일할 때만 보존(아니면 예외가 무의미 → 비움)
+  let recurExcept = [];
+  if(recur && existing && existing.recur && existing.recur.freq === recur.freq && existing.recur.interval === recur.interval){
+    recurExcept = __entryRecurExcept || [];
+  }
+  // 커밋: 이번에 불러왔으면 그것, 아니면 기존 기록 것 유지. hash 기준 중복 제거(없으면 통과).
+  let commits = __entryGitLoaded ? __entryCommits : (existing ? (existing.commits || []) : []);
+  const seen = new Set();
+  commits = commits.filter(c => { if(!c.hash) return true; if(seen.has(c.hash)) return false; seen.add(c.hash); return true; });
+  const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
-                memo: $('#fMemo').value.trim(), source};
+                memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
   if(editingId){ updateEntry(editingId, data); toast('기록이 수정되었습니다'); }
   else{ addEntry(data); toast('기록이 추가되었습니다'); }
   closeModal('#entryModal');
-  // 필터가 켜진 상태에서 다른 과제로 저장하면 방금 저장한 기록이 가려지므로 필터 해제
-  if(filterCatId && data.categoryId !== filterCatId) filterCatId = null;
+  // 방금 저장한 기록을 가리는 필터는 해제(안 그러면 추가했는데 캘린더에 안 보임)
+  if(filterCatId && data.categoryId !== filterCatId) filterCatId = null;     // 다른 과제
+  if(filterSource === 'git' && data.source !== 'git') filterSource = null;   // '작업일지'만 필터 중 일반 기록 추가
   selectDate(date);
+  renderGrid();      // selectDate는 같은 달이면 그리드를 다시 안 그리므로(더블클릭 보호), 저장된 칩을 여기서 반영
   renderFilterbar();
 }
 
@@ -1038,14 +1796,16 @@ function renderCatModal(){
   $('#catFormTitle').textContent = editingCatId ? '과제 수정' : '새 과제 추가';
   $('#btnCatSave').textContent  = editingCatId ? '수정 저장' : '과제 추가';
   $('#btnCatCancelEdit').classList.toggle('hidden', !editingCatId);
+  renderGitCard();   // 폼의 Git 카드를 catFormRepo에 맞춰 항상 동기화(저장/취소 후 잔상 방지)
 }
 function resetCatForm(){
-  editingCatId = null; selColor = PALETTE[0];
-  $('#cName').value = ''; $('#cDesc').value = ''; $('#cGit').value = '';
+  editingCatId = null; selColor = PALETTE[0]; catFormRepo = ''; __pendingRepoEmail = '';
+  $('#cName').value = ''; $('#cDesc').value = '';
 }
 function openCatModal(){
-  resetCatForm(); renderCatModal();
+  resetCatForm();
   $('#cGitAuthor').value = getGitAuthor();
+  renderCatModal();   // renderGitCard() 포함
   openModal('#categoryModal');
 }
 function saveCatFromForm(){
@@ -1054,7 +1814,7 @@ function saveCatFromForm(){
   const dup = state.categories.find(c => c.name === name && c.id !== editingCatId);
   if(dup){ toast('같은 이름의 과제가 이미 있습니다', 'warn'); return; }
   const desc = $('#cDesc').value.trim();
-  const gitRepo = $('#cGit').value.trim();
+  const gitRepo = catFormRepo.trim();           // 다이얼로그로 고른 경로
   setGitAuthor($('#cGitAuthor').value.trim());  // 전역 작성자도 함께 저장
   if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo); toast('과제가 수정되었습니다'); }
   else{ addCategory(name, selColor, desc, gitRepo); toast('과제가 추가되었습니다'); }
@@ -1100,12 +1860,13 @@ function sRowHtml(e, q){
   const col = validColor(c && c.color);
   const time = e.allDay ? '종일' : (e.startTime ? e.startTime + (e.endTime?' – '+e.endTime:'') : (e.endTime ? '~'+e.endTime : ''));
   const snip = memoSnippet(e.memo, q);
+  const badges = `${e.recur?`<span class="s-badge">🔁 ${esc(recurLabel(e))}</span>`:''}${(e.endDate&&e.endDate>e.date)?`<span class="s-badge">📅 ${fmtShort(e.date)}~${fmtShort(e.endDate)}</span>`:''}`;
   return `<button class="s-row" data-goto="${esc(e.date)}" data-id="${esc(e.id)}">
     <span class="dot" style="background:${col}"></span>
     <div style="min-width:0">
       <div class="s-title">${hl(e.title, q)}</div>
       ${snip?`<div class="s-memo">${snip}</div>`:''}
-      <div class="s-meta">${c?hl(c.name,q):'미분류'}${time?' · '+esc(time):''}</div>
+      <div class="s-meta">${c?hl(c.name,q):'미분류'}${time?' · '+esc(time):''}${badges}</div>
     </div>
   </button>`;
 }
@@ -1129,6 +1890,7 @@ function runSearch(){
     const hits = state.entries.filter(e =>
       e.title.toLowerCase().includes(ql) ||
       (e.memo||'').toLowerCase().includes(ql) ||
+      (e.commits||[]).some(c => (c.subject||'').toLowerCase().includes(ql)) ||
       (catById(e.categoryId)?.name || '').toLowerCase().includes(ql));
     if(!hits.length){ sum.innerHTML = `‘<b>${esc(q)}</b>’ — 일치하는 기록이 없습니다.`; res.innerHTML=''; return; }
     const days = new Set(hits.map(e => e.date)).size;
@@ -1141,7 +1903,9 @@ function runSearch(){
     const list = state.entries.filter(e => e.categoryId === catId);
     if(!list.length){ sum.innerHTML = `<b>${esc(c?.name||'')}</b> — 기록이 없습니다.`; res.innerHTML=''; return; }
     const dates = list.map(e => e.date).sort();
-    sum.innerHTML = `<b>${esc(c?.name||'')}</b> — 총 <b>${list.length}건</b> · ${fmtDateK(dates[0])} ~ ${fmtDateK(dates[dates.length-1])} (시간순)`;
+    const upper = list.map(e => (e.recur && e.recur.until) ? e.recur.until : (e.endDate || e.date))
+      .reduce((a,b) => maxStr(a,b), dates[dates.length-1]);   // 기간/반복 종료까지 반영한 상한
+    sum.innerHTML = `<b>${esc(c?.name||'')}</b> — 총 <b>${list.length}건</b> · ${fmtDateK(dates[0])} ~ ${fmtDateK(upper)} (시간순)`;
     res.innerHTML = groupByDateHtml(list, '', true);
   }
 }
@@ -1178,13 +1942,14 @@ function applyImport(mode){
   if(!pendingImport) return;
   if(mode === 'replace'){
     // 파일 내부 중복 ID도 제거 (첫 항목만 유지) — 중복 ID는 수정/삭제 오동작을 유발
-    const cseen = new Set(), eseen = new Set();
+    const cseen = new Set(), eseen = new Set(), tseen = new Set();
     state = {
       gitAuthor: pendingImport.gitAuthor || '',
       categories: pendingImport.categories.filter(c => !cseen.has(c.id) && cseen.add(c.id)),
       entries: pendingImport.entries.filter(e => !eseen.has(e.id) && eseen.add(e.id)),
+      todos: (pendingImport.todos || []).filter(t => !tseen.has(t.id) && tseen.add(t.id)),
     };
-    filterCatId = null; filterSource = null;
+    filterCatId = null; filterSource = null; noteFilterCat = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
   }else{
     const catIds = new Set(state.categories.map(c => c.id));
@@ -1193,18 +1958,157 @@ function applyImport(mode){
     // push 직후 Set에 추가해 파일 내부 중복도 한 번만 들어가게 한다
     for(const c of pendingImport.categories) if(!catIds.has(c.id)){ state.categories.push(c); catIds.add(c.id); nc++; }
     for(const e of pendingImport.entries)    if(!entIds.has(e.id)){ state.entries.push(e); entIds.add(e.id); ne++; }
+    const todoIds = new Set((state.todos||[]).map(t => t.id));
+    for(const t of (pendingImport.todos || [])) if(!todoIds.has(t.id)){ state.todos.push(t); todoIds.add(t.id); }
     if(!state.gitAuthor && pendingImport.gitAuthor) state.gitAuthor = pendingImport.gitAuthor;  // 현재 비어있을 때만 채택
     toast(`병합 완료 — 과제 ${nc}개 · 기록 ${ne}개 추가됨 (중복 ${pendingImport.categories.length-nc+pendingImport.entries.length-ne}개 제외)`);
   }
   pendingImport = null;
   save(); closeModal('#importModal'); renderAll();
 }
-function clearAll(){
-  if(!confirm(`전체 데이터를 삭제할까요?\n과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n(삭제 전 XML 내보내기로 백업을 권장합니다)`)) return;
-  state = {gitAuthor:'', categories:[], entries:[]};
-  filterCatId = null; filterSource = null;
+async function clearAll(){
+  if(await confirmBox('전체 데이터 초기화',
+    `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
+    '모두 삭제') !== 'ok') return;
+  state = {gitAuthor:'', categories:[], entries:[], todos:[]};
+  filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터가 초기화되었습니다');
+}
+
+/* ---------- 보고서 초안 (기간 → 과제별 작업일지/기록 묶음) ---------- */
+function weekRange(base, offsetWeeks){ // 일요일 시작 주
+  const s = new Date(base.getFullYear(), base.getMonth(), base.getDate() - base.getDay() + (offsetWeeks||0)*7);
+  const e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+  return [ymd(s), ymd(e)];
+}
+function monthRange(base, offsetMonths){
+  const y = base.getFullYear(), m = base.getMonth() + (offsetMonths||0);
+  return [ymd(new Date(y, m, 1)), ymd(new Date(y, m+1, 0))];
+}
+function setReportRange(preset){
+  const t = new Date();
+  const r = preset==='today' ? [todayYmd(), todayYmd()]
+    : preset==='thisweek'  ? weekRange(t, 0)
+    : preset==='lastweek'  ? weekRange(t, -1)
+    : preset==='thismonth' ? monthRange(t, 0)
+    : preset==='lastmonth' ? monthRange(t, -1) : null;
+  if(!r) return;
+  $('#rptFrom').value = r[0]; $('#rptTo').value = r[1];
+  buildReport();
+}
+function memoBullets(memo){ // 메모 → 보고서 불릿 (커밋 목록의 '• '와 메타 헤더 정리)
+  return String(memo||'').split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^\[Git 커밋 .*\]$/.test(l))
+    .map(l => l.replace(/^•\s*/, ''));
+}
+function buildReport(){
+  const from = $('#rptFrom').value, to = $('#rptTo').value;
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
+    sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.value = ''; return;
+  }
+  const gitOnly = $('#rptGitOnly').checked;
+  const md = $('#rptMd').checked;
+  // 기간/반복 전개 — 각 발생(occurrence)이 한 줄. 창 안만(bounded).
+  const occs = [];
+  for(const e of state.entries){
+    if(gitOnly && e.source !== 'git') continue;
+    for(const occ of expandOccurrences(e, from, to)) occs.push(occ);
+  }
+  if(!occs.length){
+    sum.textContent = gitOnly ? '기간 내 작업일지가 없습니다 — [📥 커밋]으로 먼저 가져오세요.' : '기간 내 기록이 없습니다.';
+    out.value = ''; return;
+  }
+  // 과제별 → 날짜별 그룹. 기간이 from 이전에 시작하면 헤더 날짜는 from으로 클램프(요청 창 밖 헤더 방지)
+  const byCat = new Map();
+  for(const occ of occs){
+    const k = catById(occ.categoryId) ? occ.categoryId : '';
+    if(!byCat.has(k)) byCat.set(k, new Map());
+    const m = byCat.get(k);
+    const key = maxStr(occ._occStart, from);
+    if(!m.has(key)) m.set(key, []);
+    m.get(key).push(occ);
+  }
+  const order = state.categories.map(c => c.id).filter(id => byCat.has(id));
+  if(byCat.has('')) order.push('');
+  const gitN = occs.filter(o => o.source === 'git').length;
+  const lines = [];
+  lines.push((md ? '# ' : '■ ') + `업무 보고 (${from} ~ ${to})`);
+  lines.push('');
+  for(const cid of order){
+    const c = catById(cid);
+    lines.push(md ? `## ${c ? c.name : '미분류'}` : `[${c ? c.name : '미분류'}]`);
+    const dm = byCat.get(cid);
+    for(const ds of [...dm.keys()].sort()){
+      const d = parseYmd(ds);
+      const head = `${d.getMonth()+1}/${d.getDate()} (${WEEKDAYS[d.getDay()]})`;
+      lines.push(md ? `### ${head}` : `  ${head}`);
+      for(const e of dm.get(ds).sort(entrySort)){
+        const isRange = e._occEnd && e._occEnd > e._occStart;
+        const tag = (e.source === 'git' ? ' [작업일지]' : '') + (e.recur ? ' 🔁' : '')
+                  + (isRange ? ` (${fmtShort(e._occStart)}~${fmtShort(e._occEnd)})` : '');
+        const time = e.allDay ? '' : (e.startTime ? ` (${e.startTime}${e.endTime ? '–' + e.endTime : ''})` : '');
+        lines.push(md ? `- **${e.title}**${time}${tag}` : `  - ${e.title}${time}${tag}`);
+        for(const b of memoBullets(e.memo)) lines.push(md ? `  - ${b}` : `      · ${b}`);   // 사용자 메모
+        for(const cm of (e.commits||[]))                                                       // 커밋(구조화)
+          lines.push(md ? `  - ${cm.subject}${cm.short?` (${cm.short})`:''}`
+                        : `      · ${cm.time?cm.time+' ':''}${cm.subject}${cm.short?` (${cm.short})`:''}`);
+      }
+      lines.push('');
+    }
+  }
+  out.value = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
+  sum.textContent = `${from} ~ ${to} · 과제 ${order.length}개 · 기록 ${occs.length}건 (작업일지 ${gitN}건)` + (gitOnly ? ' · 작업일지만' : '');
+}
+function openReport(){
+  openModal('#reportModal');
+  if(!$('#rptFrom').value) setReportRange('thisweek'); else buildReport();
+}
+async function copyReport(){
+  const text = $('#rptOut').value;
+  if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
+  try{ await navigator.clipboard.writeText(text); toast('보고서가 클립보드에 복사되었습니다'); }
+  catch(_){ // WebView2/비보안 컨텍스트 폴백
+    try{ $('#rptOut').select(); document.execCommand('copy'); toast('보고서가 클립보드에 복사되었습니다'); }
+    catch(e){ toast('복사 실패 — 내용을 직접 선택해 복사하세요', 'warn'); }
+  }
+}
+function saveReportFile(){
+  const text = $('#rptOut').value;
+  if(!text){ toast('저장할 내용이 없습니다', 'warn'); return; }
+  const md = $('#rptMd').checked;
+  try{
+    const blob = new Blob([text], {type: md ? 'text/markdown' : 'text/plain'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `업무보고-${$('#rptFrom').value}~${$('#rptTo').value}.${md ? 'md' : 'txt'}`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }catch(err){ toast('저장 실패: ' + err.message, 'warn'); }
+}
+
+/* ---------- 인앱 확인 모달 (OS confirm 대체) ----------
+   반환: 'ok' | 'alt' | false. 취소·배경클릭·Esc(generic 닫기)는 MutationObserver로 false 처리. */
+function confirmBox(title, msg, okLabel, altLabel){
+  return new Promise(resolve => {
+    const ov = $('#confirmModal'), ok = $('#cfOk'), alt = $('#cfAlt');
+    $('#cfTitle').textContent = title || '확인';
+    $('#cfMsg').textContent = msg || '';
+    ok.textContent = okLabel || '확인';
+    alt.style.display = altLabel ? '' : 'none';
+    if(altLabel) alt.textContent = altLabel;
+    let result = false;
+    ok.onclick  = () => { result = 'ok';  ov.classList.add('hidden'); };
+    alt.onclick = () => { result = 'alt'; ov.classList.add('hidden'); };
+    const mo = new MutationObserver(() => {
+      if(ov.classList.contains('hidden')){ mo.disconnect(); ok.onclick = alt.onclick = null; resolve(result); }
+    });
+    mo.observe(ov, {attributes:true, attributeFilter:['class']});
+    openModal('#confirmModal');
+  });
 }
 
 /* ---------- 토스트 ---------- */
@@ -1217,15 +2121,325 @@ function toast(msg, kind){
   toastTimer = setTimeout(() => { t.className = ''; }, 2600);
 }
 
+/* ---------- 노트(멀티노트): 깃로그 · TODO · 메일 ---------- */
+const todoById = id => (state.todos || []).find(t => t.id === id) || null;
+function addTodo(text, opts){
+  opts = opts || {};
+  const ymdRe = /^\d{4}-\d{2}-\d{2}$/;
+  const due = ymdRe.test(opts.due || '') ? opts.due : '';
+  const endDate = (due && ymdRe.test(opts.endDate || '') && opts.endDate > due) ? opts.endDate : '';
+  const t = {id:uid('t'), text:String(text || '').replace(/\s+/g, ' ').trim(), done:false,
+    categoryId:opts.categoryId || null, due, endDate, prio:opts.prio === 'high' ? 'high' : 'normal',
+    completedAt:'', note:'', createdAt:nowIso(), updatedAt:nowIso()};
+  if(!t.text) return null;
+  state.todos.push(t); save(); return t;
+}
+function toggleTodo(id){ const t = todoById(id); if(!t) return;
+  t.done = !t.done; t.completedAt = t.done ? nowIso() : ''; t.updatedAt = nowIso(); save(); }
+function updateTodo(id, f){ const t = todoById(id); if(!t) return;
+  if('text' in f){ const v = String(f.text || '').replace(/\s+/g, ' ').trim(); if(v) t.text = v; }
+  if('due' in f) t.due = /^\d{4}-\d{2}-\d{2}$/.test(f.due || '') ? f.due : '';
+  if('endDate' in f) t.endDate = (/^\d{4}-\d{2}-\d{2}$/.test(f.endDate || '') && t.due && f.endDate > t.due) ? f.endDate : '';
+  if(t.due === '' || (t.endDate && t.endDate <= t.due)) t.endDate = '';   // 기한 없거나 종료<=시작이면 기간 해제
+  if('categoryId' in f) t.categoryId = f.categoryId || null;
+  if('prio' in f) t.prio = f.prio === 'high' ? 'high' : 'normal';
+  t.updatedAt = nowIso(); save();
+}
+function deleteTodo(id){ state.todos = (state.todos || []).filter(t => t.id !== id); save(); }
+
+// 깃로그 피드 — 기존 source=git 엔트리의 커밋을 날짜·시각 역순으로 재집계(읽기 전용, 데이터 추가 없음)
+function gitFeed(){
+  const rows = [];
+  for(const e of state.entries){
+    if(e.source !== 'git') continue;
+    if(noteFilterCat && e.categoryId !== noteFilterCat) continue;
+    const cat = catById(e.categoryId);
+    const cs = (Array.isArray(e.commits) && e.commits.length) ? e.commits
+             : [{hash:'', short:'', time:'', subject:e.title}];   // 커밋 구조가 없으면 제목 1줄로
+    for(const c of cs){
+      rows.push({date:e.date, time:c.time || '', subject:c.subject || e.title || '(메시지 없음)',
+        short:c.short || '', catName:cat ? cat.name : ''});
+    }
+  }
+  rows.sort((a,b) => b.date.localeCompare(a.date) || (b.time || '').localeCompare(a.time || ''));
+  return rows;
+}
+
+function setPanelTab(tab){ noteTab = tab; editingTodoId = null; renderPanel(); }
+// 좁은 폭(<=760)에서만 하단 시트를 올림(넓은 폭은 우측 패널이 상시 노출이라 무동작)
+function openSheetIfNarrow(){ if(window.innerWidth <= 760){ panelSheetOpen = true; document.body.classList.add('sheet-open'); } }
+function closeSheet(){ panelSheetOpen = false; document.body.classList.remove('sheet-open'); }
+// 할 일/작업일지 탭의 과제 필터 바(전역 filterCatId와 분리). 과제 없으면 빈 문자열
+function noteFilterBarHtml(){
+  if(!state.categories.length) return '';
+  let h = `<div class="nd-filter"><span class="lbl" style="font-size:var(--fs-meta);color:var(--muted)">과제:</span>`;
+  h += `<button class="fchip ${!noteFilterCat ? 'on' : ''}" data-ncat="">전체</button>`;
+  for(const c of state.categories){
+    h += `<button class="fchip ${noteFilterCat === c.id ? 'on' : ''}" data-ncat="${esc(c.id)}"><span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span></button>`;
+  }
+  return h + `</div>`;
+}
+
+function renderGitTab(){
+  // 선택한 날짜의 작업일지(커밋)만 — 캘린더 날짜를 따라간다. 기간 집계는 📋 보고서.
+  const rows = gitFeed().filter(r => r.date === selectedDate);
+  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">📥 이 날 커밋 가져오기</button></div>` : '';
+  h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · 작업일지</div>`;
+  if(!rows.length){
+    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 작업일지(커밋)가 없습니다.${HOST ? '<br>일정 상세 탭의 <b>📥 커밋</b>으로 불러오세요.' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
+    return h;
+  }
+  for(const r of rows){
+    h += `<div class="nd-commit">${r.time ? `<span class="t">${esc(r.time)}</span>` : '<span class="t">—</span>'}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${r.short ? `<code class="h">${esc(r.short)}</code>` : ''}</div>`;
+  }
+  return h;
+}
+
+// 마감 축 버킷 분류(노트 과제 필터 적용) — 평면 나열 대신 [지남/오늘/예정/기한없음/완료]
+function todoBuckets(){
+  const today = todayYmd();
+  const b = {overdue:[], today:[], upcoming:[], nodate:[], done:[]};
+  for(const t of (state.todos || [])){
+    if(noteFilterCat && t.categoryId !== noteFilterCat) continue;
+    if(t.done){ b.done.push(t); continue; }
+    if(!t.due) b.nodate.push(t);
+    else if(t.due < today) b.overdue.push(t);
+    else if(t.due === today) b.today.push(t);
+    else b.upcoming.push(t);
+  }
+  const s = (x,y) => ((y.prio==='high')-(x.prio==='high'))            // 중요 먼저
+    || (x.due||'9999-99-99').localeCompare(y.due||'9999-99-99')        // 마감 빠른 순
+    || String(x.createdAt).localeCompare(String(y.createdAt));
+  ['overdue','today','upcoming','nodate'].forEach(k => b[k].sort(s));
+  b.done.sort((x,y) => String(y.completedAt||y.updatedAt).localeCompare(String(x.completedAt||x.updatedAt)));
+  return b;
+}
+function dueLabel(due){
+  if(!due) return '';
+  const today = todayYmd();
+  if(due === today) return '오늘';
+  if(due === addDays(today, 1)) return '내일';
+  if(due === addDays(today, -1)) return '어제';
+  const d = parseYmd(due);
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+function todoRowHtml(t){
+  if(editingTodoId === t.id) return todoEditHtml(t);
+  const cat = catById(t.categoryId);
+  const overdue = !t.done && t.due && t.due < todayYmd();
+  const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(dueLabel(t.due))}</span>` : '';
+  return `<div class="todo-row${t.done ? ' done' : ''}" data-id="${esc(t.id)}">
+    <button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? '☑' : '☐'}</button>
+    <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span></div>
+    ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
+    <button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?'★':'☆'}</button>
+    <button class="todo-del" data-act="del" title="삭제" aria-label="삭제">✕</button>
+  </div>`;
+}
+function todoEditHtml(t){
+  const opts = state.categories.map(c => `<option value="${esc(c.id)}"${t.categoryId===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
+  return `<div class="todo-edit" data-id="${esc(t.id)}">
+    <input type="text" class="te-text" maxlength="200" value="${esc(t.text)}">
+    <div class="te-row">
+      <input type="date" class="te-due" value="${esc(t.due||'')}" title="기한/시작">
+      <span class="te-tilde">~</span>
+      <input type="date" class="te-end" value="${esc(t.endDate||'')}" title="종료일(여러 날, 선택)">
+    </div>
+    <div class="te-row">
+      <select class="te-cat"><option value="">과제 없음</option>${opts}</select>
+      <label class="te-star"><input type="checkbox" class="te-prio"${t.prio==='high'?' checked':''}> 중요</label>
+    </div>
+    <div class="te-actions">
+      <button class="btn primary sm" data-act="save">저장</button>
+      <button class="btn sm" data-act="canceledit">취소</button>
+      <span class="te-spacer"></span>
+      <button class="btn sm danger" data-act="del">삭제</button>
+    </div>
+  </div>`;
+}
+function todoSectionHtml(label, key, items, opts){
+  opts = opts || {};
+  if(!items.length) return '';
+  const collapsed = noteCollapsed.has(key);
+  const head = `<div class="nd-sec${opts.danger?' danger':''}" data-sec="${key}" role="button" aria-expanded="${!collapsed}">
+    <span class="nd-sec-arrow">${collapsed ? '▸' : '▾'}</span><span class="nd-sec-label">${esc(label)}</span><span class="nd-sec-count">${items.length}</span></div>`;
+  return collapsed ? head : head + `<div class="nd-sec-body">${items.map(todoRowHtml).join('')}</div>`;
+}
+function quickAddHtml(defaultDue){
+  return `<div class="nd-add">
+    <div class="nd-add-r1"><input type="text" id="todoInput" maxlength="200" placeholder="할 일을 한 줄로 적고 Enter"><button class="btn primary sm" id="todoAdd">추가</button></div>
+    <div class="nd-add-r2"><label for="todoDue">기한</label><input type="date" id="todoDue" value="${esc(defaultDue||'')}"><span class="nd-add-hint">기한=캘린더 연결 · 과제=보고서 연결</span></div>
+  </div>`;
+}
+function emptyTodoHtml(scope){
+  return `<div class="nd-empty">${noteFilterCat ? '이 과제에 ' : ''}${scope==='today' ? '오늘 처리할 일이' : '할 일이'} 없습니다.
+    <span class="nd-empty-hint">위 칸에 한 줄로 적어보세요. 기한을 넣으면 [오늘/예정] 구획과 캘린더에 자동 정리됩니다.</span></div>`;
+}
+// '오늘' 탭 = 지남 + 오늘 + (오늘 완료) — 지금 집중할 것
+function renderTodayTab(){
+  const b = todoBuckets();
+  const today = todayYmd();
+  const doneToday = b.done.filter(t => String(t.completedAt||'').slice(0,10) === today);
+  let h = quickAddHtml(today);
+  const body = todoSectionHtml('지남', 'overdue', b.overdue, {danger:true})
+             + todoSectionHtml('오늘', 'today', b.today)
+             + todoSectionHtml('오늘 완료', 'done', doneToday);
+  return h + (body || emptyTodoHtml('today'));
+}
+// '할 일' 탭 = 선택한 날짜의 할 일(이 날 + 기한없음 + 이 날 완료) · ★중요만 필터
+// 지남/예정 등 크로스-데이 개요는 캘린더 그리드의 할 일 칩이 담당한다.
+function renderTodoListTab(){
+  const ds = selectedDate;
+  const onlyHigh = arr => noteImportantOnly ? arr.filter(t => t.prio === 'high') : arr;
+  const inCat = t => !noteFilterCat || t.categoryId === noteFilterCat;
+  const covers = t => t.due && t.due <= ds && ((t.endDate && t.endDate > t.due) ? t.endDate : t.due) >= ds;  // 단일일·기간 모두 그 날 포함
+  const sortS = (x,y) => ((y.prio==='high')-(x.prio==='high')) || String(x.createdAt).localeCompare(String(y.createdAt));
+  const onDay  = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && covers(t))).sort(sortS);
+  const noDate = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && !t.due)).sort(sortS);
+  const doneDay = onlyHigh((state.todos||[]).filter(t => inCat(t) && t.done && String(t.completedAt||'').slice(0,10) === ds))
+                  .sort((x,y) => String(y.completedAt||'').localeCompare(String(x.completedAt||'')));
+  let h = `<div class="nd-tools"><button class="btn primary sm" id="btnTodoNew">＋ 할 일 추가</button><button class="nd-toggle${noteImportantOnly?' on':''}" data-act="impOnly" title="★ 중요로 표시한 항목만 보기">★ 중요만</button></div>`;
+  h += `<div class="dp-dayctx">${esc(fmtDateK(ds))} · 할 일</div>`;
+  let body = todoSectionHtml('이 날', 'onday', onDay)
+           + todoSectionHtml('기한 없음', 'nodate', noDate)
+           + todoSectionHtml('이 날 완료', 'done', doneDay);
+  if(!body){
+    body = `<div class="nd-empty">${noteImportantOnly ? '★ 중요로 표시한 할 일이 없습니다.' : '이 날 할 일이 없습니다.'}` +
+      `<span class="nd-empty-hint">${noteImportantOnly ? '각 항목의 ☆를 눌러 중요로 표시하세요.' : '＋ 할 일 추가로 이 날 할 일을 등록하세요. 기한 없는 할 일은 ‘기한 없음’ 섹션에서 볼 수 있습니다.'}</span></div>`;
+  }
+  return h + body;
+}
+
+/* ---------- 빠른 등록(quick-create) — 일정/할일 한 줄 캡처, 상세는 옵션 더보기 ---------- */
+let qaType = 'event';   // 'event' | 'todo'
+function openQuickAdd(date, type){
+  qaType = (type === 'todo') ? 'todo' : 'event';
+  fillCatSelect($('#qaCat'), '과제 없음');
+  $('#qaCat').value = (filterCatId || noteFilterCat || '');
+  $('#qaTitle').value = '';
+  $('#qaDate').value = (/^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate);
+  $('#qaDetail').innerHTML = ''; $('#qaDetail').classList.add('hidden');
+  qaSyncType();
+  openModal('#quickAdd');
+  setTimeout(() => $('#qaTitle').focus(), 30);
+}
+function qaSyncType(){
+  $$('#quickAdd .qa-type').forEach(b => b.classList.toggle('on', b.dataset.qatype === qaType));
+  $('#qaTitle').placeholder = (qaType === 'todo') ? '할 일을 한 줄로' : '무엇을 했나요 / 할 예정인가요?';
+  $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
+  if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
+}
+function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (종일·시간·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
+function qaRenderDetail(){
+  $('#qaDetail').innerHTML = (qaType === 'event')
+    ? `<label class="qa-chk"><input type="checkbox" id="qaAllDay" checked> 종일</label>
+       <div class="row2" id="qaTimeRow" style="display:none"><div><label class="qa-lb">시작</label><input type="time" id="qaStart"></div><div><label class="qa-lb">종료</label><input type="time" id="qaEnd"></div></div>
+       <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
+       <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
+       <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
+    : `<label class="qa-chk"><input type="checkbox" id="qaPrio"> ★ 중요</label>
+       <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
+       <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`;
+  if(qaType === 'event'){
+    const ad = $('#qaAllDay'), tr = $('#qaTimeRow');
+    const sync = () => { tr.style.display = ad.checked ? 'none' : 'flex'; };
+    ad.addEventListener('change', sync); sync();
+  }
+}
+function qaToggleDetail(){
+  const d = $('#qaDetail');
+  if(d.classList.contains('hidden')){ qaRenderDetail(); d.classList.remove('hidden'); $('#qaMore').textContent = '옵션 접기 ▴'; }
+  else { d.classList.add('hidden'); qaMoreLabel(); }
+}
+function qaSave(){
+  const title = $('#qaTitle').value.trim();
+  if(!title){ toast('제목을 입력하세요', 'warn'); $('#qaTitle').focus(); return; }
+  const date = $('#qaDate').value;
+  const cat = $('#qaCat').value || null;
+  const memoEl = $('#qaMemo'); const memo = memoEl ? memoEl.value.trim() : '';
+  if(qaType === 'event'){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 선택하세요', 'warn'); $('#qaDate').focus(); return; }
+    const adEl = $('#qaAllDay'); const allDay = adEl ? adEl.checked : true;
+    const st = (!allDay && $('#qaStart')) ? $('#qaStart').value : '';
+    const en = (!allDay && $('#qaEnd')) ? $('#qaEnd').value : '';
+    if(st && en && en < st){ toast('종료 시간이 시작보다 빠릅니다', 'warn'); return; }
+    const rf = $('#qaRecur') ? $('#qaRecur').value : '';
+    const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
+    const edEl = $('#qaEndDate'); const endDate = edEl ? edEl.value : '';
+    addEntry({date, title, categoryId:cat, allDay, startTime:st, endTime:en, memo, recur, endDate});
+    selectedDate = date; noteTab = 'detail';
+    closeModal('#quickAdd'); renderAll(); toast('일정을 추가했습니다');
+  } else {
+    const due = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+    const edEl = $('#qaEndDate'); const endDate = edEl ? edEl.value : '';
+    const prioEl = $('#qaPrio');
+    const t = addTodo(title, {categoryId:cat, due, endDate, prio:(prioEl && prioEl.checked) ? 'high' : 'normal'});
+    if(t && memo){ t.note = memo; save(); }
+    if(due) selectedDate = due; else noteCollapsed.delete('nodate');   // 추가한 할 일이 보이도록(기한 있으면 그 날로, 없으면 기한없음 펼침)
+    noteTab = 'todo';
+    closeModal('#quickAdd'); renderAll(); toast('할 일을 추가했습니다');
+  }
+}
+
 /* ---------- 이벤트 바인딩 ---------- */
 function bind(){
   /* 상단 내비 */
   $('#btnPrev').addEventListener('click', () => moveMonth(-1));
   $('#btnNext').addEventListener('click', () => moveMonth(1));
   $('#btnToday').addEventListener('click', goToday);
-  $('#btnNew').addEventListener('click', () => openEntryModal('new'));
-  $('#btnCats').addEventListener('click', openCatModal);
+  $('#btnNew').addEventListener('click', () => openQuickAdd(selectedDate));
+  /* 빠른 등록(quick-create) */
+  $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('.qa-type'); if(b){ qaType = b.dataset.qatype; qaSyncType(); } });
+  $('#qaMore').addEventListener('click', qaToggleDetail);
+  $('#qaSave').addEventListener('click', qaSave);
+  $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
+  $('#btnCats').addEventListener('click', () => { $('#moreMenu').classList.add('hidden'); openCatModal(); });
   $('#btnSearch').addEventListener('click', openSearch);
+
+  /* 우측 패널 탭 뷰어 (일정 상세 · 할 일 · 작업일지 + 보고서) */
+  $('#dpTabs').addEventListener('click', ev => {
+    if(ev.target.closest('#dpReport')){ openReport(); return; }   // 보고서 = 별도 산출물 화면(전 기간)
+    const t = ev.target.closest('.dp-tab'); if(t) setPanelTab(t.dataset.ptab);
+  });
+  $('#dpSheetClose').addEventListener('click', closeSheet);        // 좁은 폭 하단 시트 닫기 손잡이
+  $('#dpBody').addEventListener('click', ev => {
+    // 과제 필터 칩(할 일/작업일지) — 캘린더 전역 필터는 건드리지 않음
+    const chip = ev.target.closest('.nd-filter .fchip');
+    if(chip){ noteFilterCat = chip.dataset.ncat || null; renderPanel(); return; }
+    // ＋ 할 일 추가 → quick-create(할 일) 일원화
+    if(ev.target.closest('#btnTodoNew')){ openQuickAdd(selectedDate, 'todo'); return; }
+    // ★ 중요만 보기 토글
+    if(ev.target.closest('[data-act="impOnly"]')){ noteImportantOnly = !noteImportantOnly; renderPanel(); return; }
+    // TODO 인라인 편집 폼
+    const box = ev.target.closest('.todo-edit');
+    if(box){
+      const id = box.dataset.id, act = ev.target.dataset.act;
+      if(act === 'save'){
+        updateTodo(id, {text:box.querySelector('.te-text').value, due:box.querySelector('.te-due').value,
+          endDate:box.querySelector('.te-end') ? box.querySelector('.te-end').value : '',
+          categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal'});
+        editingTodoId = null; renderPanel();
+      } else if(act === 'canceledit'){ editingTodoId = null; renderPanel(); }
+      else if(act === 'del'){ deleteTodo(id); editingTodoId = null; renderPanel(); }
+      return;
+    }
+    // 섹션 헤더 접기/펼치기
+    const sec = ev.target.closest('.nd-sec');
+    if(sec){ const k = sec.dataset.sec; noteCollapsed.has(k) ? noteCollapsed.delete(k) : noteCollapsed.add(k); renderPanel(); return; }
+    // TODO 행 액션 (일정 상세 카드 액션은 아래 #dayPanel 핸들러가 처리)
+    const row = ev.target.closest('.todo-row'); if(!row) return;
+    const act = ev.target.dataset.act; if(!act) return;
+    if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); }
+    else if(act === 'del'){ deleteTodo(row.dataset.id); renderPanel(); }
+    else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); } }
+    else if(act === 'edit'){ editingTodoId = row.dataset.id; renderPanel(); const te = $('#dpBody .te-text'); if(te){ te.focus(); te.select(); } }
+  });
+  $('#dpBody').addEventListener('keydown', ev => {
+    if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
+    if(ev.target.classList && ev.target.classList.contains('te-text') && ev.key === 'Enter'){
+      const box = ev.target.closest('.todo-edit'); const btn = box && box.querySelector('[data-act="save"]'); if(btn) btn.click();
+    }
+  });
 
   /* 연·월 점프 */
   const jump = $('#jumpMonth');
@@ -1240,24 +2454,22 @@ function bind(){
     jump.classList.add('hidden');
   });
 
-  /* 데이터 메뉴 */
-  $('#btnData').addEventListener('click', ev => {
-    ev.stopPropagation();
-    $('#dataMenu').classList.toggle('hidden');
-  });
-  document.addEventListener('click', ev => {
-    if(!ev.target.closest('.menu-wrap')) $('#dataMenu').classList.add('hidden');
-  });
-  $('#btnExport').addEventListener('click', () => { $('#dataMenu').classList.add('hidden'); exportXML(); });
-  $('#btnImport').addEventListener('click', () => { $('#dataMenu').classList.add('hidden'); $('#importFile').click(); });
-  $('#btnClear').addEventListener('click', () => { $('#dataMenu').classList.add('hidden'); clearAll(); });
+  /* 더보기(⋯) 오버플로 메뉴 — 과제 관리·데이터·도움말 통합 */
+  const closeMore = () => $('#moreMenu').classList.add('hidden');
+  $('#btnMore').addEventListener('click', ev => { ev.stopPropagation(); $('#moreMenu').classList.toggle('hidden'); });
+  document.addEventListener('click', ev => { if(!ev.target.closest('.menu-wrap')) closeMore(); });
+  $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
+  $('#btnImport').addEventListener('click', () => { closeMore(); $('#importFile').click(); });
+  $('#btnClear').addEventListener('click', () => { closeMore(); clearAll(); });
   $('#importFile').addEventListener('change', ev => {
     const f = ev.target.files[0];
     if(f) onImportFile(f);
     ev.target.value = '';
   });
   $('#btnImpMerge').addEventListener('click', () => applyImport('merge'));
-  $('#btnImpReplace').addEventListener('click', () => applyImport('replace'));
+  $('#btnImpReplace').addEventListener('click', async () => {
+    if(await confirmBox('전체 교체', `현재 데이터(과제 ${state.categories.length}개 · 기록 ${state.entries.length}개)가 모두 삭제되고 파일 내용으로 대체됩니다.`, '교체') === 'ok') applyImport('replace');
+  });
 
   /* 과제 필터 칩 */
   $('#filterbar').addEventListener('click', ev => {
@@ -1272,19 +2484,26 @@ function bind(){
   const grid = $('#grid');
   grid.addEventListener('click', ev => {
     const chip = ev.target.closest('.chip');
-    if(chip){ openEntryModal('edit', chip.dataset.id); return; }
+    if(chip){
+      if(chip.dataset.todo){            // 할 일 칩 → 그 날짜 선택 + 할 일 탭 열기
+        selectDate(chip.dataset.occ || selectedDate);
+        noteTab = 'todo'; renderPanel(); openSheetIfNarrow();
+        return;
+      }
+      openEntryModal('edit', chip.dataset.id); return;
+    }
     const cell = ev.target.closest('.cell');
     if(cell) selectDate(cell.dataset.date);
   });
   grid.addEventListener('dblclick', ev => {
     if(ev.target.closest('.chip')) return;
     const cell = ev.target.closest('.cell');
-    if(cell) openEntryModal('new', cell.dataset.date);
+    if(cell) openQuickAdd(cell.dataset.date);
   });
   grid.addEventListener('dragstart', ev => {
     const chip = ev.target.closest('.chip');
-    if(!chip){ ev.preventDefault(); return; }
-    ev.dataTransfer.setData('text/plain', chip.dataset.id);
+    if(!chip || chip.dataset.kind === 'recur'){ ev.preventDefault(); return; }   // 반복은 드래그 금지(모달에서 수정)
+    ev.dataTransfer.setData('text/plain', JSON.stringify({id:chip.dataset.id, occ:chip.dataset.occ, kind:chip.dataset.kind||'simple'}));
     ev.dataTransfer.effectAllowed = 'move';
   });
   grid.addEventListener('dragover', ev => {
@@ -1304,42 +2523,75 @@ function bind(){
     ev.preventDefault();
     $$('.cell.drop').forEach(c => c.classList.remove('drop'));
     const cell = ev.target.closest('.cell');
-    const id = ev.dataTransfer.getData('text/plain');
-    const e = entryById(id);
-    if(!cell || !e || e.date === cell.dataset.date) return;
-    e.date = cell.dataset.date;
+    let p; try{ p = JSON.parse(ev.dataTransfer.getData('text/plain')); }
+    catch(_){ p = {id:ev.dataTransfer.getData('text/plain'), kind:'simple'}; }   // 옛 형식 호환
+    const e = entryById(p.id);
+    if(!cell || !e) return;
+    const target = cell.dataset.date;
+    if(p.kind === 'range'){                         // 기간 일정: 시작·종료를 같은 만큼 이동(길이 보존)
+      const delta = diffDays(p.occ || e.date, target);
+      if(delta === 0) return;
+      e.date = addDays(e.date, delta);
+      e.endDate = e.endDate ? addDays(e.endDate, delta) : '';
+    } else {
+      if(e.date === target) return;
+      e.date = target;
+    }
     e.updatedAt = nowIso();
     save();
-    selectDate(cell.dataset.date);
-    toast(`기록을 ${fmtDateK(cell.dataset.date)}로 이동했습니다`);
+    selectDate(target);
+    renderGrid();    // 같은 달 안에서 드롭해도 칩 위치가 갱신되도록
+    toast(p.kind === 'range' ? '기간 일정을 이동했습니다' : `기록을 ${fmtDateK(target)}로 이동했습니다`);
   });
 
   /* 날짜 패널 */
-  $('#dayPanel').addEventListener('click', ev => {
+  $('#dayPanel').addEventListener('click', async ev => {
     if(ev.target.id === 'btnGitHere'){ openGitFetch(selectedDate); return; }
-    if(ev.target.id === 'btnAddHere'){ openEntryModal('new', selectedDate); return; }
+    if(ev.target.id === 'btnAddHere'){ openQuickAdd(selectedDate); return; }
     const act = ev.target.dataset.act;
     if(!act) return;
     const card = ev.target.closest('.card');
     if(!card) return;
+    if(act === 'more'){   // 커밋 목록 펼치기(인플레이스)
+      card.querySelectorAll('.commit-row.tail').forEach(li => li.classList.remove('hidden'));
+      ev.target.remove();
+      return;
+    }
     if(act === 'edit') openEntryModal('edit', card.dataset.id);
     else if(act === 'del'){
       const e = entryById(card.dataset.id);
-      if(e && confirm(`'${e.title}' 기록을 삭제할까요?`)){
+      if(!e) return;
+      if(e.recur){   // 반복: 한 모달에서 '이 날짜만' / '전체 삭제' 선택
+        const occDate = card.dataset.occ || e.date;
+        const r = await confirmBox('반복 일정 삭제', `'${e.title}' (${recurLabel(e)})`,
+          `이 날짜(${fmtShort(occDate)})만 삭제`, '반복 전체 삭제');
+        if(r === 'ok'){
+          e.recurExcept = [...(e.recurExcept||[]), occDate]; e.updatedAt = nowIso(); save(); renderAll();
+          toast('이 날짜의 반복을 건너뜁니다');
+        } else if(r === 'alt'){
+          deleteEntry(e.id); renderAll(); toast('반복 일정이 삭제되었습니다');
+        }
+      } else if(await confirmBox('기록 삭제', `'${e.title}' 기록을 삭제할까요?`, '삭제') === 'ok'){
         deleteEntry(e.id); renderAll(); toast('기록이 삭제되었습니다');
       }
     }
   });
 
   /* 기록 모달 */
-  $('#fAllDay').addEventListener('change', toggleTimeRow);
+  $('#fAllDay').addEventListener('change', () => { toggleTimeRow(); toggleRangeRow(); });
   $('#fCat').addEventListener('change', updateGitRow);
   $('#btnGitFetch').addEventListener('click', fetchCommitsIntoModal);
+  /* 기간·반복 */
+  $('#fIsRange').addEventListener('change', toggleRangeRow);
+  $('#fRecur').addEventListener('change', toggleRecurOpts);
+  ['#fRecurInterval','#fRecurUntil','#fRecurCount','#fEndDate','#fDate'].forEach(s => $(s).addEventListener('change', updateRecurPreview));
+  document.querySelectorAll('input[name=recurEnd]').forEach(r => r.addEventListener('change', updateRecurPreview));
   $('#btnEntrySave').addEventListener('click', saveEntryFromForm);
-  $('#fTitle').addEventListener('keydown', ev => { if(ev.key === 'Enter') saveEntryFromForm(); });
-  $('#btnEntryDelete').addEventListener('click', () => {
+  $('#fTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') saveEntryFromForm(); });
+  $('#btnEntryDelete').addEventListener('click', async () => {
     const e = entryById(editingId);
-    if(e && confirm(`'${e.title}' 기록을 삭제할까요?`)){
+    if(e && await confirmBox(e.recur ? '반복 일정 삭제' : '기록 삭제',
+        `'${e.title}'${e.recur ? ' 반복 전체를' : ' 기록을'} 삭제할까요?`, '삭제') === 'ok'){
       deleteEntry(e.id); closeModal('#entryModal'); renderAll(); toast('기록이 삭제되었습니다');
     }
   });
@@ -1355,23 +2607,36 @@ function bind(){
     }
   });
   $('#btnCatSave').addEventListener('click', saveCatFromForm);
-  $('#cName').addEventListener('keydown', ev => { if(ev.key === 'Enter') saveCatFromForm(); });
+  $('#cName').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') saveCatFromForm(); });
   $('#cGitAuthor').addEventListener('change', () => setGitAuthor($('#cGitAuthor').value.trim()));
   $('#btnGitDetect').addEventListener('click', detectGitAuthor);
+  $('#btnGitBrowse').addEventListener('click', browseRepo);
+  $('#btnGitClear').addEventListener('click', clearRepo);
+  $('#gitStatus').addEventListener('click', ev => {
+    if(ev.target && ev.target.id === 'btnGitReconcile' && __pendingRepoEmail){
+      const em = __pendingRepoEmail;
+      $('#cGitAuthor').value = em; setGitAuthor(em); __pendingRepoEmail = '';
+      setGitStatus('✓ 공통 작성자를 <b>' + esc(em) + '</b> 로 변경했습니다.', false);
+    }
+  });
   $('#btnCatCancelEdit').addEventListener('click', () => { resetCatForm(); renderCatModal(); });
-  $('#catList').addEventListener('click', ev => {
+  $('#catList').addEventListener('click', async ev => {
     const act = ev.target.dataset.act;
     if(!act) return;
     const row = ev.target.closest('.cat-row');
     const c = catById(row?.dataset.id);
     if(!c) return;
     if(act === 'edit'){
-      editingCatId = c.id; selColor = c.color;
-      $('#cName').value = c.name; $('#cDesc').value = c.desc || ''; $('#cGit').value = c.gitRepo || '';
-      renderCatModal(); $('#cName').focus();
+      editingCatId = c.id; selColor = c.color; __pendingRepoEmail = '';
+      $('#cName').value = c.name; $('#cDesc').value = c.desc || '';
+      catFormRepo = c.gitRepo || '';
+      renderCatModal(); $('#cName').focus();   // renderGitCard() 포함
+      if(HOST && catFormRepo) validateExistingRepo(catFormRepo);
     }else if(act === 'del'){
       const n = state.entries.filter(e => e.categoryId === c.id).length;
-      if(confirm(`'${c.name}' 과제를 삭제할까요?\n이 과제에 속한 ${n}개 기록은 '미분류'로 변경됩니다. (기록 자체는 유지)`)){
+      if(await confirmBox('과제 삭제',
+          `'${c.name}' 과제를 삭제할까요?\n이 과제에 속한 ${n}개 기록은 '미분류'로 변경됩니다. (기록 자체는 유지)`,
+          '삭제') === 'ok'){
         deleteCategory(c.id);
         if(editingCatId === c.id) resetCatForm();
         renderCatModal(); renderAll(); toast('과제가 삭제되었습니다');
@@ -1393,6 +2658,17 @@ function bind(){
     if(row) goto(row.dataset.goto, row.dataset.id);
   });
 
+  /* 보고서 모달 (진입은 작업 드로어의 📋 보고서 버튼 #ndReport) */
+  $('#reportModal .rpt-presets').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-rpt]'); if(b) setReportRange(b.dataset.rpt);
+  });
+  $('#rptFrom').addEventListener('change', buildReport);
+  $('#rptTo').addEventListener('change', buildReport);
+  $('#rptGitOnly').addEventListener('change', buildReport);
+  $('#rptMd').addEventListener('change', buildReport);
+  $('#btnRptCopy').addEventListener('click', copyReport);
+  $('#btnRptSave').addEventListener('click', saveReportFile);
+
   /* 모달 공통: × / 취소 / 배경 클릭 */
   $$('.overlay').forEach(ov => {
     ov.addEventListener('click', ev => {
@@ -1403,10 +2679,15 @@ function bind(){
   /* 키보드 단축키 */
   document.addEventListener('keydown', ev => {
     if(ev.key === 'Escape'){
-      if(!closeTopModal()){
-        $('#dataMenu').classList.add('hidden');
-        $('#jumpMonth').classList.add('hidden');
+      if(closeTopModal()) return;                          // 인앱 모달(일정/카테고리/검색/보고서) 우선
+      let closedMenu = false;
+      for(const sel of ['#moreMenu','#jumpMonth']){
+        const el = $(sel);
+        if(el && !el.classList.contains('hidden')){ el.classList.add('hidden'); closedMenu = true; }
       }
+      if(closedMenu) return;
+      if(panelSheetOpen){ closeSheet(); ev.preventDefault(); return; }          // 좁은 폭 하단 시트 먼저
+      if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 넓게 보기 닫기
       return;
     }
     const modalOpen = $$('.overlay').some(o => !o.classList.contains('hidden'));
@@ -1431,6 +2712,11 @@ window.__test = {
   // Git 연동 검증용: 가져온 커밋을 폼에 채우는 흐름을 호스트 없이 시뮬레이션
   applyCommits(commits, catId, date){ const d = date || selectedDate; openEntryModal('new', d); $('#fCat').value = catId; applyCommitsToForm(commits, catById(catId), d); },
   gitAuthor: () => getGitAuthor(),
+  // Git 카드 상태 렌더 검증용(호스트 응답 시뮬레이션)
+  gitState(repo, st){ catFormRepo = repo; renderGitCard(); applyGitState(st);
+    return {badge:$('#gitBadge').textContent, card:$('#gitCard').className, author:$('#cGitAuthor').value, reconcile:!!$('#btnGitReconcile'), status:$('#gitStatus').textContent}; },
+  setAuthor(v){ setGitAuthor(v); $('#cGitAuthor').value = v; },
+  catRepo(){ return catFormRepo; },
 };
 
 /* ---------- 좌/우 너비 조절 분할바 ---------- */
@@ -1479,19 +2765,31 @@ function commitTime(c){
   try{ const d = new Date(c.date); if(isNaN(d)) return ''; return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
   catch(_){ return ''; }
 }
-// 가져온 커밋을 현재 기록 모달의 메모/제목에 채운다 (사용자가 다듬어 저장 → source='git')
+// 메모에서 기존 Git 커밋 블록([Git 커밋 …] 헤더 + '• ' 불릿들)을 제거 — 재가져오기 시 중복 누적 방지
+function stripGitBlocks(memo){
+  const lines = String(memo||'').split('\n');
+  const out = []; let skipping = false;
+  for(const l of lines){
+    const t = l.trim();
+    if(/^\[Git 커밋 \d+건 · .+\]$/.test(t)){ skipping = true; continue; }
+    if(skipping){ if(t === '' || t.startsWith('•')) continue; skipping = false; }
+    out.push(l);
+  }
+  return out.join('\n').trim();
+}
+// 가져온 커밋을 구조화 데이터(__entryCommits)로 보관 — 메모(사용자 글)는 건드리지 않는다.
+// 저장 시 카드에 커밋 행 목록으로 렌더되고, 같은 날 재가져오기는 통째 교체되어 중복이 없다.
 function applyCommitsToForm(commits, cat, date){
-  const lines = commits.map(c => {
-    const t = commitTime(c); const sh = c.short ? ` (${c.short})` : '';
-    return `• ${t ? t + '  ' : ''}${(c.subject || '(메시지 없음)')}${sh}`;
-  }).join('\n');
-  const header = `[Git 커밋 ${commits.length}건 · ${cat ? cat.name : '과제'} · ${date}]`;
-  const block = header + '\n' + lines;
-  const cur = $('#fMemo').value.trim();
-  $('#fMemo').value = cur ? (cur + '\n\n' + block) : block;
-  if(!$('#fTitle').value.trim()) $('#fTitle').value = `작업일지 — ${cat ? cat.name : ''}`.trim();
+  __entryCommits = normCommits(commits.map(c => ({
+    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)'
+  })));
   __entryGitLoaded = true;   // 저장 시 작업일지(source='git')로 표시
-  $('#gitHint').textContent = `✓ ${commits.length}건 불러옴 — 내용을 다듬어 저장하세요`;
+  if(!$('#fTitle').value.trim()){
+    $('#fTitle').value = __entryCommits.length === 1
+      ? __entryCommits[0].subject
+      : `${cat ? cat.name + ' · ' : ''}커밋 ${__entryCommits.length}건`;
+  }
+  $('#gitHint').textContent = `✓ ${commits.length}건 불러옴 — 제목/메모를 다듬어 저장하세요 (커밋 목록은 저장 후 카드에 표시)`;
 }
 async function fetchCommitsIntoModal(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
@@ -1499,6 +2797,9 @@ async function fetchCommitsIntoModal(){
   if(!cat || !cat.gitRepo){ toast('이 과제에 Git 저장소가 설정되어 있지 않습니다 — [과제 관리]에서 경로를 입력하세요', 'warn'); return; }
   const date = $('#fDate').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 먼저 선택하세요', 'warn'); $('#fDate').focus(); return; }
+  const fbtn = $('#btnGitFetch');
+  fbtn.disabled = true;                       // git 호출(최대 15초) 동안 중복 실행 방지
+  try{
   $('#gitHint').textContent = '⏳ 불러오는 중…';
   const res = await hostRequest('gitlog', {repo: cat.gitRepo, author: getGitAuthor(), since: date, until: date});
   if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'warn'); return; }
@@ -1508,19 +2809,21 @@ async function fetchCommitsIntoModal(){
     toast('해당 날짜에 가져올 커밋이 없습니다', 'warn'); return;
   }
   applyCommitsToForm(res.commits, cat, date);
+  } finally { fbtn.disabled = false; }
 }
-// 날짜 패널의 '📥 커밋' → 새 기록 모달을 열고 Git 과제를 선택해 자동으로 불러온다
+// 날짜 패널의 '📥 커밋' → 그날 그 과제의 작업일지가 이미 있으면 그 기록을 열어 갱신, 없으면 새로 만든다(중복 일지 방지)
 function openGitFetch(date){
   const cats = gitEnabledCats();
   if(!cats.length){ toast('Git 저장소가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
-  openEntryModal('new', date);
-  $('#fCat').value = cats[0].id;
+  const existing = state.entries.find(e => e.date === date && e.source === 'git' && e.categoryId === cats[0].id);
+  if(existing){ openEntryModal('edit', existing.id); }
+  else { openEntryModal('new', date); $('#fCat').value = cats[0].id; }
   updateGitRow();
   fetchCommitsIntoModal();
 }
 async function detectGitAuthor(){
   if(!HOST){ toast('자동 감지는 데스크톱 위젯에서만 가능합니다 — 직접 입력하세요', 'warn'); return; }
-  const repo = $('#cGit').value.trim() || (gitEnabledCats()[0] || {}).gitRepo || '';
+  const repo = catFormRepo || (gitEnabledCats()[0] || {}).gitRepo || '';
   const res = await hostRequest('gitauthor', {repo});
   if(res && res.ok && res.email){
     $('#cGitAuthor').value = res.email; setGitAuthor(res.email);
@@ -1528,6 +2831,102 @@ async function detectGitAuthor(){
   } else {
     toast((res && res.error) || '작성자를 감지하지 못했습니다 — 직접 입력하세요', 'warn');
   }
+}
+
+/* ----- Git 연동 카드: 폴더 다이얼로그 + 상태 배지 + 작성자 자동 도출 ----- */
+const DEFAULT_GIT_NOTE = '폴더를 고르면 그 저장소의 git 이메일로 작성자가 자동 입력됩니다. 작성자는 모든 과제에 공통 적용됩니다. 비우면 모두의 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.';
+
+function setGitBadge(stateCls, text){
+  const b = $('#gitBadge'); if(b){ b.className = 'git-badge ' + stateCls; b.textContent = text; }
+  const card = $('#gitCard'); if(card){ card.classList.remove('ok','warn'); if(stateCls==='ok'||stateCls==='warn') card.classList.add(stateCls); }
+}
+function setGitStatus(html, warn){
+  const s = $('#gitStatus'); if(!s) return;
+  s.innerHTML = html; s.classList.toggle('warn-text', !!warn);
+}
+function setDefaultGitStatus(){ setGitStatus(DEFAULT_GIT_NOTE, false); }
+
+// 저장소 행/버튼/배지를 catFormRepo + HOST 상태에 맞게 표시
+function renderGitCard(){
+  const card = $('#gitCard'); if(!card) return;
+  const pickRow = $('#gitPickRow'), pathEl = $('#gitPath');
+  const clearBtn = $('#btnGitClear'), browseBtn = $('#btnGitBrowse'), detectBtn = $('#btnGitDetect');
+  if(catFormRepo){
+    pickRow.classList.remove('empty');
+    pathEl.classList.remove('empty','missing');
+    pathEl.textContent = catFormRepo; pathEl.title = catFormRepo;
+    clearBtn.classList.remove('hidden');
+    browseBtn.textContent = '변경'; browseBtn.classList.remove('primary');
+  } else {
+    pickRow.classList.add('empty');
+    pathEl.classList.add('empty'); pathEl.classList.remove('missing');
+    pathEl.textContent = '연결된 저장소 없음'; pathEl.title = '';
+    clearBtn.classList.add('hidden');
+    browseBtn.textContent = '📁 폴더 선택…'; browseBtn.classList.add('primary');
+  }
+  if(!HOST){
+    browseBtn.disabled = true; detectBtn.disabled = true;
+    setGitBadge('off', '위젯에서만 가능');
+    setGitStatus('폴더 선택·작성자 감지·커밋 가져오기는 <b>데스크톱 위젯</b>에서만 가능합니다. (경로 해제는 가능)', false);
+    return;
+  }
+  browseBtn.disabled = false; detectBtn.disabled = false;
+  if(catFormRepo){ setGitBadge('off', '⏳ 확인 중…'); }
+  else { setGitBadge('off', '미연결'); setDefaultGitStatus(); }
+}
+
+// 호스트 검사 결과(pickfolder/gitcheck) 반영 — st:{exists?, isRepo, email, error?}
+function applyGitState(st){
+  if(!catFormRepo){ setGitBadge('off','미연결'); setDefaultGitStatus(); return; }
+  if(!st || st.error){ setGitBadge('warn','⚠ 확인 불가'); setGitStatus('확인 불가: ' + esc((st && st.error) || '호스트 응답 없음') + ' — git 설치 여부를 확인하거나 잠시 후 다시 시도하세요.', true); return; }
+  if(st.exists === false){
+    $('#gitPath').classList.add('missing');
+    setGitBadge('warn','⚠ 폴더 없음');
+    setGitStatus('저장된 폴더를 찾을 수 없습니다 — <b>[변경]</b>으로 다시 연결하거나 <b>[해제]</b>하세요.', true);
+    return;
+  }
+  if(!st.isRepo){
+    setGitBadge('warn','⚠ Git 저장소 아님');
+    setGitStatus('이 폴더에 <b>.git</b>이 없습니다. 저장소 <b>루트 폴더</b>인지 확인하세요. (경로는 저장되며, 커밋 가져오기 시 다시 안내합니다)', true);
+    return;
+  }
+  setGitBadge('ok','✓ 연결됨');
+  if(st.email){ applyRepoEmail(st.email); }
+  else { setGitStatus('✓ 연결됨. 이 저장소에 git 작성자(user.email)가 설정돼 있지 않습니다 — 작성자를 직접 입력하세요.', false); }
+}
+
+// 저장소에서 얻은 git 이메일을 전역 작성자에 비파괴 반영
+function applyRepoEmail(email){
+  const cur = getGitAuthor().trim();
+  if(!cur){ $('#cGitAuthor').value = email; setGitAuthor(email); __pendingRepoEmail=''; setGitStatus('✓ 연결됨 · 작성자 자동 설정: <b>' + esc(email) + '</b> (모든 과제 공통)', false); return; }
+  if(cur === email){ __pendingRepoEmail=''; setGitStatus('✓ 연결됨 · 내 커밋만 가져옵니다 (작성자 ' + esc(email) + ')', false); return; }
+  __pendingRepoEmail = email;   // 자동 덮어쓰기 금지 — 사용자 선택으로만 변경
+  setGitStatus('이 저장소 작성자는 <b>' + esc(email) + '</b> 입니다. 현재 공통 작성자(<b>' + esc(cur) + '</b>)와 달라요 — <button class="link" id="btnGitReconcile" type="button">공통값으로 바꾸기</button>', true);
+}
+
+async function browseRepo(){
+  if(!HOST) return;
+  const browseBtn = $('#btnGitBrowse'); browseBtn.disabled = true;
+  setGitBadge('off','⏳ 확인 중…');
+  const r = await hostRequest('pickfolder', {start: catFormRepo || ''}, 120000);
+  browseBtn.disabled = false;
+  if(!r || !r.ok || !r.path){   // 취소(error 빈 값) → 조용히 이전 상태 복원
+    renderGitCard();
+    if(catFormRepo) validateExistingRepo(catFormRepo); else setDefaultGitStatus();
+    return;
+  }
+  catFormRepo = r.path;
+  renderGitCard();
+  applyGitState(r);             // pickfolder 회신: {isRepo, email}
+}
+function clearRepo(){ catFormRepo = ''; __pendingRepoEmail=''; renderGitCard(); }
+
+async function validateExistingRepo(path){
+  if(!HOST || !path) return;
+  setGitBadge('off','⏳ 확인 중…');
+  const r = await hostRequest('gitcheck', {repo: path});
+  if(catFormRepo !== path) return;   // 그 사이 변경됨 → 무시
+  applyGitState(r);
 }
 
 /* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */
@@ -1583,6 +2982,8 @@ function buildHostBar(){
   bar.id = 'hostbar';
   bar.innerHTML = `<div class="hb-drag" id="hbDrag">⠿ 수행과제 캘린더</div>
     <div class="hb-btns">
+      <button data-host="focus" id="hbFocus" title="넓게 보기 — 크게 펼쳐서 작업">⤢</button>
+      <button data-host="hide" id="hbHide" title="트레이로 숨기기" style="display:none">🗕</button>
       <button data-host="pin" id="hbPin" title="바탕화면 부착/해제">📌</button>
       <button data-host="menu" title="설정">⚙</button>
       <button data-host="close" title="닫기">✕</button>
@@ -1617,6 +3018,19 @@ window.__setPinned = function(p){
     btn.title = __pinned ? '바탕화면에 부착됨(이동 잠금) — 클릭하면 해제' : '클릭하면 바탕화면에 부착'; }
   const drag = document.getElementById('hbDrag');
   if(drag) drag.title = __pinned ? '부착 중 — 이동하려면 📌 해제' : '드래그하여 이동';
+};
+// 넓게 보기 표시(⤢↔✕) — 호스트가 진입/해제 시 호출
+window.__big = false;
+window.__setFocus = function(f){
+  window.__big = !!f;
+  const b = document.getElementById('hbFocus');
+  if(b){ b.classList.toggle('pinon', !!f); b.textContent = f ? '✕' : '⤢';
+    b.title = f ? '넓게 보기 닫기 (Esc)' : '넓게 보기 — 크게 펼쳐서 작업'; }
+};
+// 트레이 사용 시에만 '숨기기' 버튼 노출 (트레이 꺼짐이면 ✕가 종료라 숨길 곳이 없음)
+window.__setTray = function(on){
+  const h = document.getElementById('hbHide');
+  if(h) h.style.display = on ? '' : 'none';
 };
 </script>
 </body>

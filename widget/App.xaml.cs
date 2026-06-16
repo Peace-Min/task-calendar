@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Windows;
 
@@ -16,7 +17,22 @@ namespace TaskCalendarWidget
                 Shutdown();
                 return;
             }
+            // 크래시/비정상 종료 시에도 트레이 아이콘 잔상(ghost) 방지
+            DispatcherUnhandledException += (_, __) => CleanupTray();
+            AppDomain.CurrentDomain.ProcessExit += (_, __) => CleanupTray();
             base.OnStartup(e);
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            CleanupTray();
+            base.OnExit(e);
+        }
+
+        private void CleanupTray()
+        {
+            try { (Current?.MainWindow as MainWindow)?.CleanupScrim(); } catch { }   // 넓게 보기 딤 배경 고스트 방지
+            try { (Current?.MainWindow as MainWindow)?.CleanupTray(); } catch { }
         }
     }
 }
