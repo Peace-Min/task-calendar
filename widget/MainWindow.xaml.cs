@@ -364,9 +364,17 @@ namespace TaskCalendarWidget
                         {
                             var dpi = VisualTreeHelper.GetDpi(this);
                             int minW = (int)(MinWidth * dpi.DpiScaleX), minH = (int)(MinHeight * dpi.DpiScaleY);
-                            int cx = Math.Max(minW, (_gestureRect.Right - _gestureRect.Left) + GetInt(doc, "dx"));
-                            int cy = Math.Max(minH, (_gestureRect.Bottom - _gestureRect.Top) + GetInt(doc, "dy"));
-                            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, cx, cy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                            int dx = GetInt(doc, "dx"), dy = GetInt(doc, "dy");
+                            string edge = GetStr(doc, "edge");
+                            if (string.IsNullOrEmpty(edge)) edge = "se";   // 구버전(그립=우하단) 호환
+                            int left = _gestureRect.Left, top = _gestureRect.Top, right = _gestureRect.Right, bottom = _gestureRect.Bottom;
+                            if (edge.Contains("e")) right = _gestureRect.Right + dx;   // 끄는 변만 이동(반대편 고정)
+                            if (edge.Contains("w")) left  = _gestureRect.Left + dx;
+                            if (edge.Contains("s")) bottom = _gestureRect.Bottom + dy;
+                            if (edge.Contains("n")) top   = _gestureRect.Top + dy;
+                            if (right - left < minW) { if (edge.Contains("w")) left = right - minW; else right = left + minW; }
+                            if (bottom - top < minH) { if (edge.Contains("n")) top = bottom - minH; else bottom = top + minH; }
+                            SetWindowPos(hwnd, IntPtr.Zero, left, top, right - left, bottom - top, SWP_NOZORDER | SWP_NOACTIVATE);
                         }
                         break;
                     case "resizeend":

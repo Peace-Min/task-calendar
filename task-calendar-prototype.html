@@ -38,9 +38,14 @@ body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) �
 #hostbar .hb-btns button{border:none;background:transparent;color:#fff;width:36px;height:32px;cursor:pointer;font-size:var(--fs-body);line-height:1}
 #hostbar .hb-btns button:hover{background:rgba(255,255,255,.2)}
 #hostbar .hb-btns button.pinon{background:rgba(255,255,255,.28)}
-#hostresize{position:fixed;right:0;bottom:0;width:22px;height:22px;cursor:nwse-resize;z-index:200;touch-action:none;
-  background:repeating-linear-gradient(135deg, transparent 0 3px, rgba(110,120,140,.55) 3px 4px);
-  border-bottom-right-radius:2px}
+/* 위젯 리사이즈 핸들 — 좌·우·하단 가장자리 + 하단 두 모서리(상단은 호스트바=타이틀바라 제외, 일반 창 규범) */
+.rsz{position:fixed;z-index:200;touch-action:none}
+.rsz-w{left:0;top:34px;bottom:14px;width:5px;cursor:ew-resize}      /* 좌(호스트바 아래부터) */
+.rsz-e{right:0;top:34px;bottom:14px;width:5px;cursor:ew-resize}     /* 우 */
+.rsz-s{left:14px;right:14px;bottom:0;height:5px;cursor:ns-resize}   /* 하단(모서리 사이) */
+.rsz-sw{left:0;bottom:0;width:14px;height:14px;cursor:nesw-resize}  /* 좌하 모서리 */
+.rsz-se{right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize; /* 우하 모서리(눈에 보이는 그립) */
+  background:repeating-linear-gradient(135deg, transparent 0 3px, rgba(110,120,140,.55) 3px 4px);border-bottom-right-radius:2px}
 /* 위젯 모드: body 스크롤바 제거(코너 그립 확보) + 좁은 폭에서도 날짜패널은 내부 스크롤 */
 body.host{overflow:hidden !important}
 body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제거로 한 행 회수 */
@@ -3116,8 +3121,8 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
 function hpost(o){ try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){} }
 let __gesture = null; // {type:'move'|'resize', sx, sy, dpr}
 let __pinned = true;  // 바탕화면 부착 상태 — 부착 중에는 이동(드래그) 잠금
-function __gBegin(type, e, el){
-  __gesture = { type, sx:e.screenX, sy:e.screenY, dpr: window.devicePixelRatio || 1 };
+function __gBegin(type, e, el, edge){
+  __gesture = { type, sx:e.screenX, sy:e.screenY, dpr: window.devicePixelRatio || 1, edge: edge || 'se' };
   try{ el.setPointerCapture(e.pointerId); }catch(_){}
   hpost({cmd: type==='move' ? 'dragbegin' : 'resizebegin'});
   e.preventDefault();
@@ -3126,7 +3131,7 @@ function __gMove(e){
   if(!__gesture) return;
   const dx = Math.round((e.screenX - __gesture.sx) * __gesture.dpr);
   const dy = Math.round((e.screenY - __gesture.sy) * __gesture.dpr);
-  hpost({cmd: __gesture.type==='move' ? 'dragmove' : 'resizemove', dx, dy});
+  hpost({cmd: __gesture.type==='move' ? 'dragmove' : 'resizemove', dx, dy, edge: __gesture.edge});
 }
 function __gEnd(e, el){
   if(!__gesture) return;
@@ -3158,14 +3163,16 @@ function buildHostBar(){
   bar.querySelector('.hb-btns').addEventListener('click', ev => {
     const b = ev.target.closest('button[data-host]'); if(b) hpost({cmd:b.dataset.host});
   });
-  // 리사이즈: 우하단 그립
-  const grip = document.createElement('div');
-  grip.id = 'hostresize'; grip.title = '드래그하여 크기 조절';
-  document.body.appendChild(grip);
-  grip.addEventListener('pointerdown', e => { if(e.button===0) __gBegin('resize', e, grip); });
-  grip.addEventListener('pointermove', __gMove);
-  grip.addEventListener('pointerup', e => __gEnd(e, grip));
-  grip.addEventListener('pointercancel', e => __gEnd(e, grip));
+  // 리사이즈: 좌·우·하단 가장자리 + 하단 두 모서리(상단은 호스트바라 제외)
+  [['w','rsz rsz-w'], ['e','rsz rsz-e'], ['s','rsz rsz-s'], ['sw','rsz rsz-sw'], ['se','rsz rsz-se']].forEach(([edge, cls]) => {
+    const h = document.createElement('div');
+    h.className = cls; h.title = '드래그하여 크기 조절';
+    document.body.appendChild(h);
+    h.addEventListener('pointerdown', e => { if(e.button===0) __gBegin('resize', e, h, edge); });
+    h.addEventListener('pointermove', __gMove);
+    h.addEventListener('pointerup', e => __gEnd(e, h));
+    h.addEventListener('pointercancel', e => __gEnd(e, h));
+  });
 }
 // 호스트가 현재 부착 상태를 알려주면 핀 버튼 표시 갱신
 window.__setPinned = function(p){
