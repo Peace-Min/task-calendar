@@ -11,7 +11,7 @@
   --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
   --text:#1d2433; --muted:#5b6373; /* AA 5.6:1 — 보조 텍스트 */
   --faint:#9aa2b3;        /* 1px 테두리·비활성 전용(본문 금지, 약 2.6:1) */
-  --faint-text:#727a8c;   /* 약화된 '본문' 텍스트용(마감일·완료·힌트, 약 4.6:1 AA) */
+  --faint-text:#6c7488;   /* 약화된 '본문' 텍스트용(완료·힌트) — #fff에서 4.68:1로 AA(일반 4.5:1) 충족 */
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --danger:#d6494e; --danger-soft:#fdeeee;
@@ -605,10 +605,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   .modal input[type=month],.modal select,.modal textarea,
   .color-input,.recur-pill,.s-row,.nd-add-r1 input,.nd-add-r2 input[type=date],
   .todo-edit .te-text,.te-row input[type=date],.te-row select,.nd-toggle,
-  .qa-ctx input[type=date],.qa-ctx select,
+  .qa-ctx input[type=date],.qa-ctx select,.jump,.s-date,
   .qa-detail input[type=time],.qa-detail select,.qa-detail textarea{ background:var(--panel) }
   /* 옅은 보조 fill */
-  .btn:hover,.menu button:hover,.cell:hover,.dp-action:hover,.git-row,.x:hover,.s-row:hover{ background:var(--fill) }
+  .btn:hover,.menu button:hover,.cell:hover,.dp-action:hover,.git-row,.x:hover,.s-row:hover,.imp-box{ background:var(--fill) }
   .cell.dim{ background:var(--dim-bg) }
   .cell.dim .num{ color:#8893a8 }
   .git-card{ background:#171d2b }
@@ -668,7 +668,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 
 <main>
   <section class="cal">
-    <div class="weekdays" id="weekdays" role="row"></div>
+    <div class="weekdays" id="weekdays" role="presentation"></div>
     <div class="grid" id="grid" role="grid" aria-label="월 달력 — 방향키로 날짜 이동, Enter로 선택"></div>
   </section>
   <div class="splitter" id="splitter" title="드래그하여 좌/우 너비 조절"></div>
@@ -1492,7 +1492,7 @@ function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 
 function renderWeekdays(){
   $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
-    `<div class="${i===0?'sun':i===6?'sat':''}" role="columnheader" aria-label="${w}요일">${w}</div>`).join('');
+    `<div class="${i===0?'sun':i===6?'sat':''}" aria-hidden="true">${w}</div>`).join('');
 }
 
 function renderFilterbar(){
