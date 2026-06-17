@@ -174,9 +174,8 @@ main{flex:1;display:flex;min-height:0}
 /* A. 시간 일정 = 선행 색점 + 굵은 시각 + 투명 본체(종일=채운 막대와 한눈에 구분) */
 .chip.chip-timed{background:transparent !important;border-left-color:transparent !important;display:flex;align-items:center;gap:4px;padding-left:3px}
 .chip.chip-timed .cdot{width:8px;height:8px;border-radius:50%;flex:none}
-.chip.chip-timed .chip-t{opacity:1;font-weight:600;color:var(--text);font-size:var(--fs-micro);margin-right:0;flex:none;display:none}  /* 좁은 셀에선 제목 우선 → 시간 숨김 */
+.chip.chip-timed .chip-t{opacity:1;font-weight:600;color:var(--text);font-size:var(--fs-micro);margin-right:0;flex:none}  /* 축약 시각 항상 표시(9시/14:30) — 좁은 셀에서도 시간 구분 */
 .chip.chip-timed .ctitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* flex 항목 제목 말줄임(하드 클립 '깨짐' 방지) */
-@container (min-width:120px){ .chip.chip-timed .chip-t{display:inline-block} }  /* 셀이 넓을 때만 시간 표기(점+시각+제목 다 들어감) */
 .more{font-size:var(--fs-micro);color:var(--muted);padding:1px 6px;flex:none;border:none;background:none;
   text-align:left;cursor:pointer;border-radius:var(--r-sm);width:100%}
 .more:hover{background:var(--hover-bg);color:var(--accent-2)}
@@ -418,11 +417,23 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 /* ---------- toast ---------- */
 #toast{
   position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);
-  background:#222a3d;color:#fff;padding:10px 19px;border-radius:999px;
+  background:#222a3d;color:#fff;padding:10px 17px;border-radius:999px;
   font-size:var(--fs-body);opacity:0;pointer-events:none;transition:.25s;z-index:99;max-width:80vw;
+  display:inline-flex;align-items:center;gap:8px;
 }
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-#toast.warn{background:#9a5b00}
+#toast.show .t-undo{pointer-events:auto}   /* 토스트 자체는 pointer-events:none, 버튼만 클릭 가능 */
+#toast .t-ico{font-weight:700;flex:none}
+#toast.success{background:#1f7a4d}          /* 성공 ✓ */
+#toast.warn{background:#9a5b00}             /* 확인/경고 ⚠ */
+#toast.error{background:#b3322f}            /* 실패 ✕ */
+#toast.info{background:#222a3d}             /* 중립 */
+#toast .t-undo{margin-left:4px;background:rgba(255,255,255,.2);border:none;color:#fff;font:inherit;font-weight:700;padding:3px 10px;border-radius:999px;cursor:pointer}
+#toast .t-undo:hover{background:rgba(255,255,255,.32)}
+/* 비동기 로딩 스피너(Git 호출 등) — reduced-motion에서 정지 */
+.spin{width:13px;height:13px;border:2px solid var(--line2);border-top-color:var(--accent);border-radius:50%;display:inline-block;vertical-align:-2px;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
 
 /* ---------- 노트 드로어 (멀티노트: 깃로그·TODO·메일) ---------- */
 .btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
@@ -946,6 +957,13 @@ function chipTime(e){ // 칩용 짧은 시간 표기 (없으면 빈 문자열)
   if(e.allDay) return '';
   return e.startTime || (e.endTime ? '~' + e.endTime : '');
 }
+// 그리드 시간 칩용 초축약 시각 — 정시는 'N시', 그 외 'H:MM' (좁은 셀에서도 시간이 보이도록)
+function chipTimeShort(e){
+  if(e.allDay) return '';
+  const m = /^(\d{1,2}):(\d{2})$/.exec(e.startTime || '');
+  if(m) return m[2] === '00' ? (+m[1]) + '시' : (+m[1]) + ':' + m[2];
+  return e.endTime ? '~' + e.endTime : '';
+}
 
 /* 양력 고정 공휴일 (음력 명절은 네이티브 단계에서) */
 const HOLIDAYS = {'01-01':'신정','03-01':'삼일절','05-05':'어린이날','06-06':'현충일',
@@ -1044,7 +1062,7 @@ window.__applyXml = function(text){
 };
 // 호스트가 디스크 쓰기 실패를 알릴 때 — 무음 데이터 손실 방지
 window.__saveFailed = function(){
-  toast('⚠ 저장 실패 — 디스크에 기록하지 못했습니다. [데이터 → XML 내보내기]로 백업하세요', 'warn');
+  toast('저장 실패 — 디스크에 기록하지 못했습니다. [데이터 → XML 내보내기]로 백업하세요', 'error');
 };
 
 /* ---------- CRUD ---------- */
@@ -1448,10 +1466,11 @@ function chipHtml(item){
   // A. 단일일 시간 일정 = 선행 색점 + 굵은 시각(종일 막대와 한눈에 구분). 기간/반복/작업일지는 기존 막대 유지.
   const timed = (!git && !!time && seg === 'single');
   const dot = timed ? `<span class="cdot" style="background:${col}"></span>` : '';
+  const tdisp = timed ? chipTimeShort(e) : time;   // 시간 칩은 축약 시각(9시), 그 외는 기존
   return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
     data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
     style="border-left-color:${col};background:${tint(col)}"
-    title="${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${time?`<span class="chip-t">${esc(time)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
+    title="${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${tdisp?`<span class="chip-t">${esc(tdisp)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
 }
 // 할 일 칩(그리드) — 일정 막대와 구분: 초록 계열 + 체크 글리프, 제목
 function todoChipHtml(item){
@@ -2009,7 +2028,7 @@ function exportXML(){
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
     toast(`XML 내보내기 완료 (과제 ${state.categories.length} · 기록 ${state.entries.length})`);
-  }catch(err){ toast('내보내기 실패: ' + err.message, 'warn'); }
+  }catch(err){ toast('내보내기 실패: ' + err.message, 'error'); }
 }
 function onImportFile(file){
   const reader = new FileReader();
@@ -2021,7 +2040,7 @@ function onImportFile(file){
         `파일 내용: 과제 <b>${pendingImport.categories.length}</b>개 · 기록 <b>${pendingImport.entries.length}</b>개<br>` +
         `현재 데이터: 과제 <b>${state.categories.length}</b>개 · 기록 <b>${state.entries.length}</b>개`;
       openModal('#importModal');
-    }catch(err){ toast('가져오기 실패: ' + err.message, 'warn'); }
+    }catch(err){ toast('가져오기 실패: ' + err.message, 'error'); }
   };
   reader.onerror = () => toast('파일을 읽을 수 없습니다', 'warn');
   reader.readAsText(file, 'UTF-8');
@@ -2058,10 +2077,11 @@ async function clearAll(){
   if(await confirmBox('전체 데이터 초기화',
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
+  const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
   state = {gitAuthor:'', categories:[], entries:[], todos:[]};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
-  toast('전체 데이터가 초기화되었습니다');
+  toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
 }
 
 /* ---------- 보고서 초안 (기간 → 과제별 작업일지/기록 묶음) ---------- */
@@ -2201,12 +2221,24 @@ function confirmBox(title, msg, okLabel, altLabel){
 
 /* ---------- 토스트 ---------- */
 let toastTimer = null;
-function toast(msg, kind){
+// kind: undefined/'success'(✓ 녹) | 'warn'(⚠ 앰버) | 'error'(✕ 적) | 'info'(중립). action: {label, fn} = 되돌리기 등.
+function toast(msg, kind, action){
   const t = $('#toast');
-  t.textContent = msg;
-  t.className = 'show' + (kind==='warn' ? ' warn' : '');
+  const k = kind === 'warn' ? 'warn' : kind === 'error' ? 'error' : kind === 'info' ? 'info' : 'success';
+  const glyph = k === 'warn' ? '⚠' : k === 'error' ? '✕' : k === 'info' ? '•' : '✓';
+  t.innerHTML = '';
+  const ico = document.createElement('span'); ico.className = 't-ico'; ico.textContent = glyph;
+  const m = document.createElement('span'); m.className = 't-msg'; m.textContent = msg;
+  t.appendChild(ico); t.appendChild(m);
+  if(action && action.label && typeof action.fn === 'function'){
+    const b = document.createElement('button'); b.className = 't-undo'; b.type = 'button'; b.textContent = action.label;
+    b.addEventListener('click', () => { try{ action.fn(); }catch(_){} t.className = ''; clearTimeout(toastTimer); });
+    t.appendChild(b);
+  }
+  t.className = 'show ' + k;
+  t.setAttribute('role', k === 'error' ? 'alert' : 'status');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = ''; }, 2600);
+  toastTimer = setTimeout(() => { t.className = ''; }, action ? 5000 : 2600);
 }
 
 /* ---------- 노트(멀티노트): 깃로그 · TODO · 메일 ---------- */
@@ -2508,7 +2540,7 @@ function bind(){
           categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal'});
         editingTodoId = null; renderPanel(); renderGrid();
       } else if(act === 'canceledit'){ editingTodoId = null; renderPanel(); }
-      else if(act === 'del'){ deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); }
+      else if(act === 'del'){ const rm = todoById(id); deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.todos.push(rm); save(); renderPanel(); renderGrid(); }}); }
       return;
     }
     // 섹션 헤더 접기/펼치기
@@ -2518,7 +2550,7 @@ function bind(){
     const row = ev.target.closest('.todo-row'); if(!row) return;
     const act = ev.target.dataset.act; if(!act) return;
     if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); renderGrid(); }
-    else if(act === 'del'){ deleteTodo(row.dataset.id); renderPanel(); renderGrid(); }
+    else if(act === 'del'){ const rm = todoById(row.dataset.id); deleteTodo(row.dataset.id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.todos.push(rm); save(); renderPanel(); renderGrid(); }}); }
     else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); renderGrid(); } }
     else if(act === 'edit'){ editingTodoId = row.dataset.id; renderPanel(); const te = $('#dpBody .te-text'); if(te){ te.focus(); te.select(); } }
   });
@@ -2658,10 +2690,12 @@ function bind(){
           e.recurExcept = [...(e.recurExcept||[]), occDate]; e.updatedAt = nowIso(); save(); renderAll();
           toast('이 날짜의 반복을 건너뜁니다');
         } else if(r === 'alt'){
-          deleteEntry(e.id); renderAll(); toast('반복 일정이 삭제되었습니다');
+          deleteEntry(e.id); renderAll();
+          toast('반복 일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.entries.push(e); save(); renderAll(); }});
         }
       } else if(await confirmBox('기록 삭제', `'${e.title}' 기록을 삭제할까요?`, '삭제') === 'ok'){
-        deleteEntry(e.id); renderAll(); toast('기록이 삭제되었습니다');
+        deleteEntry(e.id); renderAll();
+        toast('기록을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.entries.push(e); save(); renderAll(); }});
       }
     }
   });
@@ -2681,7 +2715,8 @@ function bind(){
     const e = entryById(editingId);
     if(e && await confirmBox(e.recur ? '반복 일정 삭제' : '기록 삭제',
         `'${e.title}'${e.recur ? ' 반복 전체를' : ' 기록을'} 삭제할까요?`, '삭제') === 'ok'){
-      deleteEntry(e.id); closeModal('#entryModal'); renderAll(); toast('기록이 삭제되었습니다');
+      deleteEntry(e.id); closeModal('#entryModal'); renderAll();
+      toast('기록을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.entries.push(e); save(); renderAll(); }});
     }
   });
 
@@ -2893,9 +2928,9 @@ async function fetchCommitsIntoModal(){
   const fbtn = $('#btnGitFetch');
   fbtn.disabled = true;                       // git 호출(최대 15초) 동안 중복 실행 방지
   try{
-  $('#gitHint').textContent = '⏳ 불러오는 중…';
+  $('#gitHint').innerHTML = '<span class="spin"></span> 불러오는 중…';
   const res = await hostRequest('gitlog', {repo: cat.gitRepo, author: getGitAuthor(), since: date, until: date});
-  if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'warn'); return; }
+  if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'error'); return; }
   if(!res.commits || !res.commits.length){
     const who = getGitAuthor() ? `작성자 '${getGitAuthor()}'의 ` : '';
     $('#gitHint').textContent = `해당 날짜에 ${who}커밋이 없습니다`;
@@ -2942,9 +2977,10 @@ async function runBulkGitFetch(){
   const btn = $('#btnBulkRun'); btn.disabled = true;
   const setS = html => { const s = $('#bgStatus'); if(s) s.innerHTML = html; };
   try{
-    setS('⏳ 불러오는 중…');
-    let totalCommits = 0, created = 0, updated = 0, catsHit = 0; const days = new Set(); const errors = [];
+    setS('<span class="spin"></span> 불러오는 중…');
+    let totalCommits = 0, created = 0, updated = 0, catsHit = 0, ci = 0; const days = new Set(); const errors = [];
     for(const cat of cats){
+      setS(`<span class="spin"></span> 불러오는 중… (과제 ${++ci}/${cats.length})`);
       let res;
       try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, author: getGitAuthor(), since: from, until: to}); }
       catch(_){ errors.push(esc(cat.name) + ': 예외'); continue; }
