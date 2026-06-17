@@ -202,8 +202,10 @@ main{flex:1;display:flex;min-height:0}
 }
 /* 우측 패널 기능 탭 (일정 상세 · 할 일 · 작업일지 + 보고서) */
 .dp-sheet-handle{display:none}
-.dp-tabs{display:flex;align-items:flex-end;gap:2px;padding:7px 8px 0;border-bottom:1px solid var(--line);flex:none;background:var(--panel)}
-.dp-tab{border:none;background:transparent;padding:8px 10px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.dp-tabs{display:flex;align-items:flex-end;gap:2px;padding:7px 8px 0;border-bottom:1px solid var(--line);flex:none;background:var(--panel);container-type:inline-size}
+.dp-tab{border:none;background:transparent;padding:8px 8px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+/* 좁은 패널(분할바 최소 240px)에서 보고서 액션이 잘리지 않도록 — 라벨 숨기고 📋 아이콘만(aria-label 유지) */
+@container (max-width:300px){ .dp-action-txt{display:none} .dp-action{padding:4px 8px} }
 .dp-tab:hover{background:var(--hover-bg)}
 .dp-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
 .dp-action{margin-left:auto;align-self:center;margin-bottom:4px;font-size:var(--fs-meta);color:var(--muted);border:1px solid var(--line-2);background:#fff;border-radius:var(--r-sm);padding:4px 9px;cursor:pointer;flex:none}
@@ -676,7 +678,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       <button class="dp-tab on" data-ptab="detail" role="tab">일정 상세</button>
       <button class="dp-tab" data-ptab="todo" role="tab">할 일</button>
       <button class="dp-tab" data-ptab="git" role="tab">작업일지</button>
-      <button class="dp-action" id="dpReport" title="이 기록으로 보고서 초안 만들기">📋 보고서</button>
+      <button class="dp-action" id="dpReport" title="이 기록으로 보고서 초안 만들기" aria-label="보고서 초안"><span aria-hidden="true">📋</span><span class="dp-action-txt"> 보고서</span></button>
     </div>
     <div class="dp-body" id="dpBody"></div>
   </aside>
@@ -2620,7 +2622,9 @@ function renderTodoListTab(){
   const sortS = (x,y) => ((y.prio==='high')-(x.prio==='high')) || String(x.createdAt).localeCompare(String(y.createdAt));
   const onDay  = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && covers(t))).sort(sortS);
   const noDate = onlyHigh((state.todos||[]).filter(t => inCat(t) && !t.done && !t.due)).sort(sortS);
-  const doneDay = onlyHigh((state.todos||[]).filter(t => inCat(t) && t.done && String(t.completedAt||'').slice(0,10) === ds))
+  // 그리드는 마감일(due) 기준으로 (취소선) 칩을 보이므로, 완료 섹션도 covers(마감일 포함) 기준으로 맞춤.
+  // (completedAt 기준이면 '다른 날 완료한 그 날 마감 할 일'이 그리드엔 뜨고 패널엔 안 뜨는 불일치가 생김)
+  const doneDay = onlyHigh((state.todos||[]).filter(t => inCat(t) && t.done && covers(t)))
                   .sort((x,y) => String(y.completedAt||'').localeCompare(String(x.completedAt||'')));
   let h = `<div class="nd-tools"><button class="btn primary sm" id="btnTodoNew">＋ 할 일 추가</button><button class="nd-toggle${noteImportantOnly?' on':''}" data-act="impOnly" title="★ 중요로 표시한 항목만 보기">★ 중요만</button></div>`;
   h += `<div class="dp-dayctx">${esc(fmtDateK(ds))} · 할 일</div>`;
