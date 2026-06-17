@@ -5,6 +5,21 @@
 
 ---
 
+## 🆕 2026-06-17 — UI/UX 평가 루프 반영 4배치 (전부 커밋·재빌드·배포 완료)
+
+전문 평가(ui-ux-eval-loop, 실제 UI 기준) P0/P1/P2를 4배치로 구현. 각 배치 preview_eval/스크린샷 검증 후 커밋, 마지막에 self-contained 단일 exe 재빌드 → 운영 위치 배포.
+
+- **배치1 빠른수정** `8d9ac51`: 완료 할 일 텍스트 `--faint`→`--faint-text`(2.6:1→4.6:1 AA), 마감일·커밋시각 11→12px, 토스트 능동태+`success`(✓), 상단 아이콘버튼 aria-label·로고 aria-hidden, spacing 토큰(`--sp-1..6`)·중복 `--radius` 제거.
+- **배치2 P0 접근성** `3ef9abc`: 월 그리드 키보드 내비(ARIA `role=grid`/`row`(.gridrow{display:contents}로 7열 레이아웃 보존)/`gridcell`, roving tabindex, 방향키·PgUp/Dn·Home·Enter/Space, 월경계 재렌더, `aria-selected`/`aria-label`). 모달 포커스 트랩/복원/배경 inert(MutationObserver로 전 열기·닫기 경로 일괄, Tab 순환, `role=dialog`/`aria-modal`/`aria-labelledby` JS 부여).
+- **배치3-1 P1** `5711005`: ≤440px 모달→하단 시트(flex-end·전폭·상단라운드·그립·slideUp). 다크 모드(`prefers-color-scheme`, 역할토큰 리맵+`color-scheme:dark`, 토큰 밖 하드코딩 surface만 가법 오버라이드 → 라이트 CSS 불변; 칩 틴트는 13% 알파라 자동 적응).
+- **배치3-2 P1** `b83f898`: 멀티데이 레인 배치 — 주별 greedy 구간채색으로 기간 막대에 고정 레인, 빈 레인은 `.chip-spacer`로 채워 겹치는 막대 staircase 해소(Google식 연속 밴드). fitChips는 spacer를 +N에서 제외.
+- **배치4 P2** `d91136b`: 로고 이모지→인라인 SVG(currentColor), 빈 상태 아이콘(`.dp-empty`/`.nd-empty` ::before 데이터URI SVG 마스크+`--faint`, 라이트/다크 적응).
+- **호스트**(`MainWindow.xaml.cs`): WebView2 `DefaultBackgroundColor`를 OS 테마(레지스트리 `AppsUseLightTheme`)로 분기(라이트 `#f3f4f7`/다크 `#0f1420`) → 다크 모드 초기 흰 플래시 방지.
+
+> 검증 한계: 다크모드 흰 플래시 완화는 실제 위젯(WebView2 `--disable-gpu`)에서만 최종 확인 가능 — 코드는 반영했고 빌드/배포 완료, 위젯 가동(PID 확인). 멀티데이 레인은 겹치는 범위 주입 테스트로 레인 연속성(top px 동일) 확인.
+
+---
+
 ## 📌 현재 상태 스냅샷 (2026-06-16)
 
 - **제품**: 폐쇄망(망분리) Windows 11용 **오프라인 데스크톱 캘린더 위젯**. WPF(.NET 9, `net9.0-windows`) + WebView2가 단일 임베드 HTML(`task-calendar-prototype.html`, 약 3000줄)을 창 100%로 호스팅.

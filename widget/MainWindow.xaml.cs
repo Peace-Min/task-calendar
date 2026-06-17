@@ -170,7 +170,18 @@ namespace TaskCalendarWidget
 
             try
             {
-                web.DefaultBackgroundColor = System.Drawing.Color.White;
+                // 초기 배경(콘텐츠 로드 전) — OS 테마에 맞춰 HTML --bg와 일치시켜 흰 플래시 방지(다크 모드 지원)
+                bool osDark = false;
+                try
+                {
+                    using var th = Registry.CurrentUser.OpenSubKey(
+                        @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                    if (th?.GetValue("AppsUseLightTheme") is int lite) osDark = (lite == 0);
+                }
+                catch { }
+                web.DefaultBackgroundColor = osDark
+                    ? System.Drawing.Color.FromArgb(0x0F, 0x14, 0x20)   // 다크: HTML --bg #0f1420
+                    : System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF7);  // 라이트: HTML --bg #f3f4f7
                 Directory.CreateDirectory(_webviewDir);
 
                 string ver = "";
