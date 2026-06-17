@@ -9,13 +9,16 @@
 :root{
   /* 디자인 토큰 — 색은 역할로, 크기는 스케일로만 사용 */
   --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
-  --text:#1d2433; --muted:#5b6373; /* AA 5.6:1 — 보조 텍스트 */ --faint:#9aa2b3; /* 테두리·비활성 전용(본문 금지) */
+  --text:#1d2433; --muted:#5b6373; /* AA 5.6:1 — 보조 텍스트 */
+  --faint:#9aa2b3;        /* 1px 테두리·비활성 전용(본문 금지, 약 2.6:1) */
+  --faint-text:#727a8c;   /* 약화된 '본문' 텍스트용(마감일·완료·힌트, 약 4.6:1 AA) */
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --danger:#d6494e; --danger-soft:#fdeeee;
   --sun:#c43a3f; --sat:#4b62a0;   /* 주말 라벨 — 작은 11~12px에서도 AA(약 4.6:1). 선택/액션 파랑과 분리 */
   --r-sm:6px; --r-md:10px; --r-lg:14px;
-  --radius:10px; --shadow:0 10px 32px rgba(20,28,55,.16);
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;  /* 8그리드 간격 스케일 */
+  --shadow:0 10px 32px rgba(20,28,55,.16);   /* --radius(=--r-md 중복) 제거 */
   --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-head:18px;
   --lh-tight:1.35; --lh-body:1.5;          /* 한글 받침 안전 줄높이 */
   --hover-bg:#f3f5fa;                        /* 중립 hover wash — accent는 액션·선택 전용(파랑 노이즈 방지) */
@@ -138,7 +141,7 @@ main{flex:1;display:flex;min-height:0}
 .weekdays .sun{color:var(--sun)} .weekdays .sat{color:var(--sat)}
 .grid{
   flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;
-  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--radius);
+  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);
   overflow:hidden;min-height:0;
 }
 .cell{
@@ -249,7 +252,7 @@ main{flex:1;display:flex;min-height:0}
 .commit-row{display:flex;gap:7px;align-items:baseline;min-width:0;padding:3px 0;border-top:1px solid var(--line)}
 .commit-row:first-child{border-top:none}
 .commit-row.hidden{display:none}
-.commit-time{flex:none;font-size:var(--fs-micro);color:var(--muted);font-variant-numeric:tabular-nums}
+.commit-time{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
 .commit-subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);color:var(--text)}
 .commit-hash{flex:none;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-micro);color:var(--muted)}
 .commit-more{margin-top:5px}
@@ -259,7 +262,7 @@ main{flex:1;display:flex;min-height:0}
 .chip-todo .todo-ring{width:9px;height:9px;box-sizing:border-box;border:1.5px solid var(--faint);border-radius:50%;flex:none}
 .chip-todo .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .chip-todo.done{opacity:.55}
-.chip-todo.done .txt{text-decoration:line-through;color:var(--faint)}
+.chip-todo.done .txt{text-decoration:line-through;color:var(--faint-text)}
 .chip-todo.chip-range.chip-mid,.chip-todo.chip-range.chip-end{border-style:dashed;border-left-width:1px !important}  /* 기간 할 일은 점선 밴드(일정 실선 색밴드와 구분) */
 .fbar-sep{width:1px;height:18px;background:var(--line-2);margin:0 3px;flex:none}
 .fchip-git.on{background:#eef1f6;border-color:#5b6b7d;color:#3c4658}
@@ -487,8 +490,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .todo-main{flex:1;min-width:0}
 .todo-text{font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere;cursor:text}
 .todo-star{color:#e0a32e;margin-right:2px}
-.todo-row.done .todo-text{text-decoration:line-through;color:var(--faint)}
-.todo-due{flex:none;font-size:var(--fs-micro);color:var(--muted);font-variant-numeric:tabular-nums}
+.todo-row.done .todo-text{text-decoration:line-through;color:var(--faint-text)}
+.todo-due{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
 .todo-due.od{color:var(--danger);font-weight:700}
 .todo-dot{flex:none;width:8px;height:8px;border-radius:50%}
 .todo-del{flex:none;border:none;background:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 5px;border-radius:var(--r-sm)}
@@ -564,21 +567,21 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 
 <header class="topbar">
   <div class="brand">
-    <div class="logo">📅</div>
+    <div class="logo" aria-hidden="true">📅</div>
     <div><h1>수행과제 캘린더</h1></div>
   </div>
   <div class="nav">
-    <button class="btn icon" id="btnPrev" title="이전 달 (←)">◀</button>
+    <button class="btn icon" id="btnPrev" title="이전 달 (←)" aria-label="이전 달">◀</button>
     <button class="btn" id="btnToday" title="오늘로 이동 (Home)">오늘</button>
-    <button class="btn icon" id="btnNext" title="다음 달 (→)">▶</button>
-    <button class="title-btn" id="btnTitle" title="연·월 바로 이동"></button>
-    <input type="month" id="jumpMonth" class="jump hidden">
+    <button class="btn icon" id="btnNext" title="다음 달 (→)" aria-label="다음 달">▶</button>
+    <button class="title-btn" id="btnTitle" title="연·월 바로 이동" aria-label="연·월 바로 이동"></button>
+    <input type="month" id="jumpMonth" class="jump hidden" aria-label="연·월 선택">
   </div>
   <div class="spacer"></div>
   <div class="actions">
-    <button class="btn icon" id="btnSearch" title="검색 (제목·메모·과제)">🔍</button>
+    <button class="btn icon" id="btnSearch" title="검색 (제목·메모·과제)" aria-label="검색">🔍</button>
     <div class="menu-wrap">
-      <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말">⋯</button>
+      <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
       <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
         <button id="btnCats">🏷️ 과제 관리</button>
         <hr>
@@ -1868,8 +1871,8 @@ function saveEntryFromForm(){
   const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
                 memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
-  if(editingId){ updateEntry(editingId, data); toast('기록이 수정되었습니다'); }
-  else{ addEntry(data); toast('기록이 추가되었습니다'); }
+  if(editingId){ updateEntry(editingId, data); toast('기록을 수정했습니다', 'success'); }
+  else{ addEntry(data); toast('기록을 추가했습니다', 'success'); }
   closeModal('#entryModal');
   // 방금 저장한 기록을 가리는 필터는 해제(안 그러면 추가했는데 캘린더에 안 보임)
   if(filterCatId && data.categoryId !== filterCatId) filterCatId = null;     // 다른 과제
@@ -1929,8 +1932,8 @@ function saveCatFromForm(){
   const desc = $('#cDesc').value.trim();
   const gitRepo = catFormRepo.trim();           // 다이얼로그로 고른 경로
   setGitAuthor($('#cGitAuthor').value.trim());  // 전역 작성자도 함께 저장
-  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo); toast('과제가 수정되었습니다'); }
-  else{ addCategory(name, selColor, desc, gitRepo); toast('과제가 추가되었습니다'); }
+  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo); toast('과제를 수정했습니다', 'success'); }
+  else{ addCategory(name, selColor, desc, gitRepo); toast('과제를 추가했습니다', 'success'); }
   resetCatForm(); renderCatModal(); renderAll();
 }
 
@@ -2183,9 +2186,9 @@ function openReport(){
 async function copyReport(){
   const text = $('#rptOut').value;
   if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
-  try{ await navigator.clipboard.writeText(text); toast('보고서가 클립보드에 복사되었습니다'); }
+  try{ await navigator.clipboard.writeText(text); toast('보고서를 클립보드에 복사했습니다', 'success'); }
   catch(_){ // WebView2/비보안 컨텍스트 폴백
-    try{ $('#rptOut').select(); document.execCommand('copy'); toast('보고서가 클립보드에 복사되었습니다'); }
+    try{ $('#rptOut').select(); document.execCommand('copy'); toast('보고서를 클립보드에 복사했습니다', 'success'); }
     catch(e){ toast('복사 실패 — 내용을 직접 선택해 복사하세요', 'warn'); }
   }
 }
@@ -2769,7 +2772,7 @@ function bind(){
           '삭제') === 'ok'){
         deleteCategory(c.id);
         if(editingCatId === c.id) resetCatForm();
-        renderCatModal(); renderAll(); toast('과제가 삭제되었습니다');
+        renderCatModal(); renderAll(); toast('과제를 삭제했습니다', 'success');
       }
     }
   });
