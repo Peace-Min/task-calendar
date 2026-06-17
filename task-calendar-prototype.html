@@ -156,7 +156,7 @@ main{flex:1;display:flex;min-height:0}
 .cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(75,98,160,.05)}
 .cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(196,58,63,.055)}
 .hol{font-size:var(--fs-micro);color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;flex:1}  /* flex:1 → 셀 남은 높이를 채워 fitChips가 가용 공간을 정확히 측정 */
+.chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;flex:1;container-type:inline-size}  /* flex:1 → 셀 남은 높이를 fitChips가 측정 / container → 칩 시간 표기 적응형 */
 .chip{
   font-size:var(--fs-meta);line-height:var(--lh-tight);padding:2px 5px 2px 6px;border-radius:var(--r-sm);
   border-left:3px solid #8a93a6;background:#eef0f4;color:var(--text);
@@ -165,9 +165,11 @@ main{flex:1;display:flex;min-height:0}
 .chip:hover{filter:brightness(.96)}
 .chip .chip-t{font-weight:600;font-size:var(--fs-micro);opacity:.75;margin-right:3px}
 /* A. 시간 일정 = 선행 색점 + 굵은 시각 + 투명 본체(종일=채운 막대와 한눈에 구분) */
-.chip.chip-timed{background:transparent !important;border-left-color:transparent !important;display:flex;align-items:center;gap:5px;padding-left:3px}
+.chip.chip-timed{background:transparent !important;border-left-color:transparent !important;display:flex;align-items:center;gap:4px;padding-left:3px}
 .chip.chip-timed .cdot{width:8px;height:8px;border-radius:50%;flex:none}
-.chip.chip-timed .chip-t{opacity:1;font-weight:700;color:var(--text);font-size:var(--fs-meta);margin-right:0}
+.chip.chip-timed .chip-t{opacity:1;font-weight:600;color:var(--text);font-size:var(--fs-micro);margin-right:0;flex:none;display:none}  /* 좁은 셀에선 제목 우선 → 시간 숨김 */
+.chip.chip-timed .ctitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* flex 항목 제목 말줄임(하드 클립 '깨짐' 방지) */
+@container (min-width:120px){ .chip.chip-timed .chip-t{display:inline-block} }  /* 셀이 넓을 때만 시간 표기(점+시각+제목 다 들어감) */
 .more{font-size:var(--fs-micro);color:var(--muted);padding:1px 6px;flex:none;border:none;background:none;
   text-align:left;cursor:pointer;border-radius:var(--r-sm);width:100%}
 .more:hover{background:var(--hover-bg);color:var(--accent-2)}
@@ -1442,7 +1444,7 @@ function chipHtml(item){
   return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
     data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
     style="border-left-color:${col};background:${tint(col)}"
-    title="${git?'🔧 작업일지 · ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${time?`<span class="chip-t">${esc(time)}</span>`:''}${label}${aR}</div>`;
+    title="${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${time?`<span class="chip-t">${esc(time)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
 }
 // 할 일 칩(그리드) — 일정 막대와 구분: 초록 계열 + 체크 글리프, 제목
 function todoChipHtml(item){

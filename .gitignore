@@ -19,3 +19,6 @@ desktop.ini
 
 # 참고: 실제 캘린더 데이터·위젯 설정은 %APPDATA%\TaskCalendar\ 에 저장되며
 #       저장소(소스)에는 포함되지 않습니다. 백업은 앱의 [데이터 → XML 내보내기]를 사용하세요.
+
+# 진단용 임시 위젯 캡처
+_widget_capture.png
