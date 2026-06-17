@@ -156,7 +156,7 @@ main{flex:1;display:flex;min-height:0}
 .cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(75,98,160,.05)}
 .cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(196,58,63,.055)}
 .hol{font-size:var(--fs-micro);color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0}
+.chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;flex:1}  /* flex:1 → 셀 남은 높이를 채워 fitChips가 가용 공간을 정확히 측정 */
 .chip{
   font-size:var(--fs-meta);line-height:var(--lh-tight);padding:2px 5px 2px 6px;border-radius:var(--r-sm);
   border-left:3px solid #8a93a6;background:#eef0f4;color:var(--text);
@@ -1378,11 +1378,8 @@ function renderFilterbar(){
     html += `<button class="fchip ${filterCatId===c.id?'on':''}" data-cat="${esc(c.id)}">
       <span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span> <span style="opacity:.6">${n}</span></button>`;
   }
-  const gitN = state.entries.filter(e => e.source === 'git').length;
-  if(gitN || filterSource){
-    html += `<span class="fbar-sep"></span>`;
-    html += `<button class="fchip fchip-git ${filterSource==='git'?'on':''}" data-src="git" title="Git에서 가져온 작업일지만 보기">🔧 작업일지 <span style="opacity:.6">${gitN}</span></button>`;
-  }
+  // 작업일지(source=git)는 우측 '작업일지' 탭(날짜별)으로 일원화 — 좌측 그리드 필터는 의미 없어 제거.
+  // (filterSource는 항상 null 유지 → renderGrid에서 git 기록은 그리드에 표시 안 함)
   bar.innerHTML = html;
 }
 
@@ -1535,13 +1532,16 @@ function fitChips(){
     for(const c of chips){ const h = c.offsetHeight + GAP; if(used + h + MOREH <= avail){ used += h; fit++; } else break; }
     const floor = Math.min(3, chips.length);          // 기존 '최대 3개' 이상은 항상 보장(좁은 셀 회귀 방지) — 넓을 때만 더 표시
     if(fit < floor) fit = floor;
+    if(fit > chips.length) fit = chips.length;
     const hidden = (chips.length - fit) + extra;
-    chips.forEach((c, i) => { if(i >= fit) c.style.display = 'none'; });
-    const btn = document.createElement('button');
-    btn.className = 'more';
-    btn.title = '이 날짜의 전체 기록을 옆 패널에 표시';
-    btn.textContent = `+${hidden}개 더보기`;
-    box.appendChild(btn);
+    chips.forEach((c, i) => { c.style.display = i >= fit ? 'none' : ''; });
+    if(hidden > 0){                                   // 숨긴 게 있을 때만 더보기(‘+0개’ 방지)
+      const btn = document.createElement('button');
+      btn.className = 'more';
+      btn.title = '이 날짜의 전체 기록을 옆 패널에 표시';
+      btn.textContent = `+${hidden}개 더보기`;
+      box.appendChild(btn);
+    }
   });
 }
 window.addEventListener('resize', () => { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(fitChips); });

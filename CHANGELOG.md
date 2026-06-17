@@ -67,6 +67,7 @@ Start-Process "$env:USERPROFILE\Desktop\수행과제캘린더\수행과제캘린
 ## 📜 변경 이력 (최신 순)
 
 ### 2026-06-17
+- **fix: 그리드 "+0개 더보기" / 작업일지 필터 제거** — (1) `fitChips`가 `.chips`(내용물로 줄어듦)의 높이를 재 1칩짜리도 '안 들어간다'고 오판→바닥값 3 적용→숨김 0인데 더보기 버튼이 붙던 문제: `.chips{flex:1}`로 셀 가용 높이를 채워 정확히 측정 + `hidden>0`일 때만 버튼 렌더. (2) 더보기 무반응은 위 +0 버그 증상 — 진짜 오버플로는 클릭 시 그날 선택→우측 패널 전체 표시(정상). (3) 좌측 필터바의 `🔧 작업일지` 칩 제거 — 작업일지는 우측 '작업일지' 탭(날짜별)으로 일원화돼 그리드 필터는 무의미(`filterSource` 항상 null → git 기록은 그리드에 안 뜸).
 - **fix: 트레이 모드 작업표시줄/Alt+Tab 버튼 브랜드 아이콘** — `Window.Icon` 미설정이라 트레이 모드(일반 앱 창)에서 작업표시줄 버튼이 빈 아이콘이던 문제. 브랜드 그리기를 `BuildBrandBitmap(size)`로 공용화하고 `ApplyWindowIcon()`(생성자 호출)으로 `Window.Icon` 설정(WPF가 small/big HICON 적용). 트레이 NotifyIcon도 동일 비트맵 사용. 검증: `WM_GETICON` small/big 둘 다 ≠0.
 - **fix: 우측 패널 할 일 변이가 그리드에 즉시 반영** — `#dpBody`의 할 일 액션(삭제·완료토글·별표·편집저장)이 `renderPanel()`만 호출하고 `renderGrid()`를 빠뜨려 캘린더 체크칩이 안 갱신되던 문제. 다섯 변이 경로에 `renderGrid()` 추가(커밋 `83f328b`).
 - **일정/할 일 그리드 가시성 개선** (UI/UX 평가 루프 wq04j4a32 기반, 케이스별 프로토타입 `가시성-개선-프로토타입.html`로 사용자 확인 후 구현). `task-calendar-prototype.html` 5케이스:
