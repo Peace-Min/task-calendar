@@ -767,6 +767,34 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   </div>
 </div>
 
+<!-- 작업일지 기간 일괄 불러오기 (즉시 자동 등록) -->
+<div class="overlay hidden" id="bulkGitModal">
+  <div class="modal">
+    <div class="modal-head"><h2>기간 일괄 불러오기</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="rpt-presets">
+        <button class="btn sm" data-bulk="thisweek">이번 주</button>
+        <button class="btn sm" data-bulk="lastweek">지난 주</button>
+        <button class="btn sm" data-bulk="thismonth">이번 달</button>
+        <button class="btn sm" data-bulk="lastmonth">지난 달</button>
+      </div>
+      <div class="rpt-range">
+        <input type="date" id="bgFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="bgTo">
+      </div>
+      <div style="margin-top:12px">
+        <label for="bgCat" style="font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px">과제 범위</label>
+        <select id="bgCat" style="width:100%"></select>
+      </div>
+      <div id="bgStatus" style="font-size:var(--fs-meta);color:var(--muted);margin-top:12px;line-height:1.55"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+      <button class="btn primary" id="btnBulkRun">📥 불러오기 &amp; 등록</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 가져오기 확인 모달 ===== -->
 <div class="overlay hidden" id="importModal">
   <div class="modal">
@@ -2234,10 +2262,10 @@ function noteFilterBarHtml(){
 function renderGitTab(){
   // 선택한 날짜의 작업일지(커밋)만 — 캘린더 날짜를 따라간다. 기간 집계는 📋 보고서.
   const rows = gitFeed().filter(r => r.date === selectedDate);
-  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">📥 이 날 커밋 가져오기</button></div>` : '';
+  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">📥 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 작업일지로 등록">📥 기간 일괄 불러오기</button></div>` : '';
   h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · 작업일지</div>`;
   if(!rows.length){
-    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 작업일지(커밋)가 없습니다.${HOST ? '<br>일정 상세 탭의 <b>📥 커밋</b>으로 불러오세요.' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
+    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 작업일지(커밋)가 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
     return h;
   }
   for(const r of rows){
@@ -2598,6 +2626,7 @@ function bind(){
   /* 날짜 패널 */
   $('#dayPanel').addEventListener('click', async ev => {
     if(ev.target.id === 'btnGitHere'){ openGitFetch(selectedDate); return; }
+    if(ev.target.id === 'btnGitBulk'){ openBulkGitFetch(); return; }
     if(ev.target.id === 'btnAddHere'){ openQuickAdd(selectedDate); return; }
     const act = ev.target.dataset.act;
     if(!act) return;
@@ -2719,6 +2748,10 @@ function bind(){
   $('#rptMd').addEventListener('change', buildReport);
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#btnRptSave').addEventListener('click', saveReportFile);
+  $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-bulk]'); if(b) setBulkRange(b.dataset.bulk);
+  });
+  $('#btnBulkRun').addEventListener('click', runBulkGitFetch);
 
   /* 모달 공통: × / 취소 / 배경 클릭 */
   $$('.overlay').forEach(ov => {
@@ -2872,6 +2905,78 @@ function openGitFetch(date){
   updateGitRow();
   fetchCommitsIntoModal();
 }
+// ----- 기간 일괄 불러오기 (범위 + 전체/특정 과제 → 날짜별 작업일지로 즉시 자동 등록) -----
+function openBulkGitFetch(){
+  if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  const cats = gitEnabledCats();
+  if(!cats.length){ toast('Git 저장소가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
+  const sel = $('#bgCat');
+  sel.innerHTML = `<option value="">전체 과제 (${cats.length}개)</option>` + cats.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  const r = weekRange(new Date(), 0);
+  $('#bgFrom').value = r[0]; $('#bgTo').value = r[1];
+  $('#bgStatus').innerHTML = '기간과 과제를 고르고 <b>불러오기 &amp; 등록</b>을 누르면, 그 기간의 내 커밋을 <b>날짜별 작업일지</b>로 한 번에 등록합니다. 같은 날·같은 과제 기록은 갱신(중복 없음).';
+  openModal('#bulkGitModal');
+}
+function setBulkRange(preset){
+  const t = new Date();
+  const r = preset==='thisweek'?weekRange(t,0):preset==='lastweek'?weekRange(t,-1):preset==='thismonth'?monthRange(t,0):preset==='lastmonth'?monthRange(t,-1):null;
+  if(!r) return; $('#bgFrom').value = r[0]; $('#bgTo').value = r[1];
+}
+async function runBulkGitFetch(){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  const from = $('#bgFrom').value, to = $('#bgTo').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)){ toast('기간을 올바르게 선택하세요', 'warn'); return; }
+  if(from > to){ toast('시작일이 종료일보다 늦습니다', 'warn'); return; }
+  const selId = $('#bgCat').value;
+  const cats = gitEnabledCats().filter(c => !selId || c.id === selId);
+  if(!cats.length){ toast('대상 과제가 없습니다', 'warn'); return; }
+  const btn = $('#btnBulkRun'); btn.disabled = true;
+  const setS = html => { const s = $('#bgStatus'); if(s) s.innerHTML = html; };
+  try{
+    setS('⏳ 불러오는 중…');
+    let totalCommits = 0, created = 0, updated = 0, catsHit = 0; const days = new Set(); const errors = [];
+    for(const cat of cats){
+      let res;
+      try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, author: getGitAuthor(), since: from, until: to}); }
+      catch(_){ errors.push(esc(cat.name) + ': 예외'); continue; }
+      if(!res || !res.ok){ errors.push(esc(cat.name) + ': ' + esc((res && res.error) || '오류')); continue; }
+      const commits = res.commits || [];
+      if(!commits.length) continue;
+      catsHit++;
+      const byDay = {};
+      for(const c of commits){
+        const day = String(c.date || '').slice(0, 10);
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+        (byDay[day] = byDay[day] || []).push(c);
+      }
+      for(const day in byDay){
+        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)' })));
+        if(!mapped.length) continue;
+        days.add(day); totalCommits += mapped.length;
+        const title = mapped.length === 1 ? mapped[0].subject : `${cat.name} · 커밋 ${mapped.length}건`;
+        const ex = state.entries.find(e => e.date === day && e.source === 'git' && e.categoryId === cat.id);
+        if(ex){ ex.commits = mapped; if(!String(ex.title || '').trim()) ex.title = title; ex.updatedAt = nowIso(); updated++; }
+        else {
+          state.entries.push({ id: uid('e'), date: day, categoryId: cat.id, source: 'git', allDay: true,
+            startTime: '', endTime: '', endDate: '', recur: null, recurExcept: [], title, memo: '', commits: mapped,
+            createdAt: nowIso(), updatedAt: nowIso() });
+          created++;
+        }
+      }
+    }
+    save(); renderAll();
+    const errLine = errors.length ? `<br>⚠ ${errors.join(' / ')}` : '';
+    if(totalCommits === 0){
+      const who = getGitAuthor() ? `작성자 '${esc(getGitAuthor())}'의 ` : '';
+      setS(`이 기간에 ${who}커밋이 없습니다.` + errLine);
+      toast('이 기간에 가져올 커밋이 없습니다', 'warn');
+      return;
+    }
+    setS(`✓ 과제 ${catsHit}개 · ${days.size}일 · 커밋 ${totalCommits}건 등록 (신규 ${created} · 갱신 ${updated})` + errLine);
+    toast(`작업일지 ${totalCommits}건 등록 (${days.size}일 · 신규 ${created} · 갱신 ${updated})`);
+  } finally { btn.disabled = false; }
+}
+
 async function detectGitAuthor(){
   if(!HOST){ toast('자동 감지는 데스크톱 위젯에서만 가능합니다 — 직접 입력하세요', 'warn'); return; }
   const repo = catFormRepo || (gitEnabledCats()[0] || {}).gitRepo || '';
