@@ -63,6 +63,7 @@ namespace TaskCalendarWidget
 
             LoadSettings();
             ApplyWindowBounds();
+            ApplyWindowIcon();   // 작업표시줄/Alt+Tab 버튼 브랜드 아이콘(트레이 모드 노출 시 빈 아이콘 방지)
         }
 
         // ============ 설정 ============
@@ -817,24 +818,30 @@ namespace TaskCalendarWidget
             catch (Exception ex) { Log("트레이 생성 오류: " + ex.Message); }
         }
 
-        // 외부 .ico 의존 없이 코드로 브랜드 아이콘을 그린다(단일파일 publish 안전, 오프라인).
+        // 외부 .ico 의존 없이 코드로 브랜드 아이콘 비트맵을 그린다(단일파일 publish 안전, 오프라인). 32 기준 좌표를 크기에 비례 스케일.
+        private static System.Drawing.Bitmap BuildBrandBitmap(int s)
+        {
+            var bmp = new System.Drawing.Bitmap(s, s);
+            using var g = System.Drawing.Graphics.FromImage(bmp);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            float u = s / 32f;   // 32px 기준 스케일
+            using var bg = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(62, 91, 224)); // var(--accent)
+            g.FillRectangle(bg, 0, 0, s, s);                       // 전체 채움(투명 픽셀 0 → HBITMAP 변환 시 검은 테두리 방지)
+            using var white = new System.Drawing.SolidBrush(System.Drawing.Color.White);
+            g.FillRectangle(white, 6 * u, 9 * u, 20 * u, 16 * u);  // 달력 본체
+            using var top = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(46, 68, 173));
+            g.FillRectangle(top, 6 * u, 9 * u, 20 * u, 5 * u);     // 상단 띠
+            using var dot = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(62, 91, 224));
+            g.FillRectangle(dot, 9 * u, 17 * u, 4 * u, 4 * u); g.FillRectangle(dot, 15 * u, 17 * u, 4 * u, 4 * u); g.FillRectangle(dot, 21 * u, 17 * u, 3 * u, 4 * u);
+            return bmp;
+        }
+
+        // 트레이 아이콘(NotifyIcon용 System.Drawing.Icon)
         private static System.Drawing.Icon BuildTrayIcon()
         {
             try
             {
-                using var bmp = new System.Drawing.Bitmap(32, 32);
-                using (var g = System.Drawing.Graphics.FromImage(bmp))
-                {
-                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                    using var bg = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(62, 91, 224)); // var(--accent)
-                    g.FillRectangle(bg, 1, 1, 30, 30);
-                    using var white = new System.Drawing.SolidBrush(System.Drawing.Color.White);
-                    g.FillRectangle(white, 6, 9, 20, 16);          // 달력 본체
-                    using var top = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(46, 68, 173));
-                    g.FillRectangle(top, 6, 9, 20, 5);             // 상단 띠
-                    using var dot = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(62, 91, 224));
-                    g.FillRectangle(dot, 9, 17, 4, 4); g.FillRectangle(dot, 15, 17, 4, 4); g.FillRectangle(dot, 21, 17, 3, 4);
-                }
+                using var bmp = BuildBrandBitmap(32);
                 IntPtr h = bmp.GetHicon();
                 try { using var tmp = System.Drawing.Icon.FromHandle(h); return (System.Drawing.Icon)tmp.Clone(); }
                 finally { DestroyIcon(h); }   // GDI 핸들 누수 방지
@@ -844,6 +851,26 @@ namespace TaskCalendarWidget
                 try { var ico = System.Drawing.Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? ""); if (ico != null) return ico; } catch { }
                 return System.Drawing.SystemIcons.Application;
             }
+        }
+
+        // 창 아이콘(WPF Window.Icon) — 작업표시줄/Alt+Tab 버튼에 브랜드 아이콘 노출(트레이 모드에서 빈 아이콘 방지)
+        private void ApplyWindowIcon()
+        {
+            try
+            {
+                using var bmp = BuildBrandBitmap(64);   // 크게 그려 작업표시줄/Alt+Tab에서 선명
+                IntPtr hbmp = bmp.GetHbitmap();
+                try
+                {
+                    var src = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                        hbmp, IntPtr.Zero, System.Windows.Int32Rect.Empty,
+                        System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                    src.Freeze();
+                    Icon = src;
+                }
+                finally { DeleteObject(hbmp); }   // GDI 핸들 누수 방지
+            }
+            catch (Exception ex) { Log("창 아이콘 설정 오류: " + ex.Message); }
         }
 
         private void ShowFromTray()
@@ -1035,6 +1062,7 @@ namespace TaskCalendarWidget
         private const uint SWP_NOSIZE = 0x0001, SWP_NOMOVE = 0x0002, SWP_NOZORDER = 0x0004, SWP_NOACTIVATE = 0x0010, SWP_FRAMECHANGED = 0x0020, SWP_SHOWWINDOW = 0x0040;
 
         [DllImport("user32.dll", SetLastError = true)] private static extern bool DestroyIcon(IntPtr hIcon);
+        [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT { public int Left, Top, Right, Bottom; }

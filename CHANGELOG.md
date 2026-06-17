@@ -67,6 +67,7 @@ Start-Process "$env:USERPROFILE\Desktop\수행과제캘린더\수행과제캘린
 ## 📜 변경 이력 (최신 순)
 
 ### 2026-06-17
+- **fix: 트레이 모드 작업표시줄/Alt+Tab 버튼 브랜드 아이콘** — `Window.Icon` 미설정이라 트레이 모드(일반 앱 창)에서 작업표시줄 버튼이 빈 아이콘이던 문제. 브랜드 그리기를 `BuildBrandBitmap(size)`로 공용화하고 `ApplyWindowIcon()`(생성자 호출)으로 `Window.Icon` 설정(WPF가 small/big HICON 적용). 트레이 NotifyIcon도 동일 비트맵 사용. 검증: `WM_GETICON` small/big 둘 다 ≠0.
 - **fix: 우측 패널 할 일 변이가 그리드에 즉시 반영** — `#dpBody`의 할 일 액션(삭제·완료토글·별표·편집저장)이 `renderPanel()`만 호출하고 `renderGrid()`를 빠뜨려 캘린더 체크칩이 안 갱신되던 문제. 다섯 변이 경로에 `renderGrid()` 추가(커밋 `83f328b`).
 - **일정/할 일 그리드 가시성 개선** (UI/UX 평가 루프 wq04j4a32 기반, 케이스별 프로토타입 `가시성-개선-프로토타입.html`로 사용자 확인 후 구현). `task-calendar-prototype.html` 5케이스:
   - **A. 시간 vs 종일 구분** — 단일일 시간 일정 = 선행 색점(`.cdot`)+굵은 시각+투명 본체(`.chip-timed`), 종일 = 채운 색막대. (기간/반복/작업일지는 기존 막대 유지)
