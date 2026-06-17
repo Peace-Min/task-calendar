@@ -184,6 +184,8 @@ main{flex:1;display:flex;min-height:0}
 .chip-range.chip-mid{border-radius:0;margin:0 -1px;border-left-width:0;color:transparent}
 .chip-range.chip-end{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:-1px;border-left-width:0;color:transparent}
 .chip-range.chip-relabel{color:var(--text)}   /* 주 시작 칸엔 제목 재표기 */
+/* P0① 기간 막대: 모든 세그먼트 동일 고정 높이(빈 mid/end가 4px로 붕괴하던 것 → 연속 밴드). 비겹침 기간은 segSort가 같은 행에 정렬 → 셀 간 연속. */
+.chip-range{height:19px;line-height:15px}
 /* 좁은 위젯에서도 기간 막대는 균일 높이 유지(5px 붕괴 제거 — '깨진 선'처럼 보이던 문제) */
 
 /* ---------- day panel ---------- */
