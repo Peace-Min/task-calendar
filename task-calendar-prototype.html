@@ -2469,9 +2469,9 @@ function bind(){
         updateTodo(id, {text:box.querySelector('.te-text').value, due:box.querySelector('.te-due').value,
           endDate:box.querySelector('.te-end') ? box.querySelector('.te-end').value : '',
           categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal'});
-        editingTodoId = null; renderPanel();
+        editingTodoId = null; renderPanel(); renderGrid();
       } else if(act === 'canceledit'){ editingTodoId = null; renderPanel(); }
-      else if(act === 'del'){ deleteTodo(id); editingTodoId = null; renderPanel(); }
+      else if(act === 'del'){ deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); }
       return;
     }
     // 섹션 헤더 접기/펼치기
@@ -2480,9 +2480,9 @@ function bind(){
     // TODO 행 액션 (일정 상세 카드 액션은 아래 #dayPanel 핸들러가 처리)
     const row = ev.target.closest('.todo-row'); if(!row) return;
     const act = ev.target.dataset.act; if(!act) return;
-    if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); }
-    else if(act === 'del'){ deleteTodo(row.dataset.id); renderPanel(); }
-    else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); } }
+    if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); renderGrid(); }
+    else if(act === 'del'){ deleteTodo(row.dataset.id); renderPanel(); renderGrid(); }
+    else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); renderGrid(); } }
     else if(act === 'edit'){ editingTodoId = row.dataset.id; renderPanel(); const te = $('#dpBody .te-text'); if(te){ te.focus(); te.select(); } }
   });
   $('#dpBody').addEventListener('keydown', ev => {
