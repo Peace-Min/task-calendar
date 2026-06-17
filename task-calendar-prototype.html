@@ -192,6 +192,7 @@ main{flex:1;display:flex;min-height:0}
 .chip-range.chip-relabel{color:var(--text)}   /* 주 시작 칸엔 제목 재표기 */
 /* P0① 기간 막대: 모든 세그먼트 동일 고정 높이(빈 mid/end가 4px로 붕괴하던 것 → 연속 밴드). 비겹침 기간은 segSort가 같은 행에 정렬 → 셀 간 연속. */
 .chip-range{height:19px;line-height:15px}
+.chip-spacer{height:19px;flex:none;pointer-events:none}   /* 멀티데이 레인 빈 칸 — 기간 막대를 셀 간 같은 행에 고정 */
 /* 좁은 위젯에서도 기간 막대는 균일 높이 유지(5px 붕괴 제거 — '깨진 선'처럼 보이던 문제) */
 
 /* ---------- day panel ---------- */
@@ -1568,16 +1569,19 @@ function renderGrid(){
   const startDs = ymd(start);
   const endDs   = addDays(startDs, totalCells - 1);
   const byDate = {};
+  const ranges = [];   // 멀티데이 막대 {key,start,end} — 레인 배치용(겹치는 기간을 셀 간 같은 행에 고정)
   for(const e of state.entries){
     if(!passFilter(e)) continue;
     // 작업일지는 셀에 표시하지 않음(캘린더=일정, 작업일지=기록·보고서 재료) — '🔧 작업일지' 필터를 켰을 때만 셀에 보임
     if(e.source === 'git' && filterSource !== 'git') continue;
     for(const occ of expandOccurrences(e, startDs, endDs)){
       const a = maxStr(occ._occStart, startDs), b = minStr(occ._occEnd, endDs);
+      const single = (occ._occStart === occ._occEnd);
+      const key = 'e:' + e.id + '|' + occ._occStart;
+      if(!single) ranges.push({ key, start:a, end:b });
       for(let d = a; d <= b; d = addDays(d, 1)){
-        const single = (occ._occStart === occ._occEnd);
         const seg = single ? 'single' : (d === occ._occStart ? 'start' : (d === occ._occEnd ? 'end' : 'mid'));
-        (byDate[d] = byDate[d] || []).push({ occ, seg,
+        (byDate[d] = byDate[d] || []).push({ occ, seg, _key:key,
           weekStart: parseYmd(d).getDay() === 0,   // 주가 바뀌면 막대에 제목 재표기(무명 색줄 방지)
           clipLeft:  (d === startDs && occ._occStart < startDs),
           clipRight: (d === endDs   && occ._occEnd   > endDs) });
@@ -1592,10 +1596,12 @@ function renderGrid(){
       const tEnd = (t.endDate && t.endDate > t.due) ? t.endDate : t.due;
       if(tEnd < startDs || t.due > endDs) continue;
       const a = maxStr(t.due, startDs), b = minStr(tEnd, endDs);
+      const single = (t.due === tEnd);
+      const key = 't:' + t.id;
+      if(!single) ranges.push({ key, start:a, end:b });
       for(let d = a; d <= b; d = addDays(d, 1)){
-        const single = (t.due === tEnd);
         const seg = single ? 'single' : (d === t.due ? 'start' : (d === tEnd ? 'end' : 'mid'));
-        (byDate[d] = byDate[d] || []).push({ todoItem:t, _occStart:t.due, seg,
+        (byDate[d] = byDate[d] || []).push({ todoItem:t, _occStart:t.due, seg, _key:key,
           weekStart: parseYmd(d).getDay() === 0,
           clipLeft:  (d === startDs && t.due < startDs),
           clipRight: (d === endDs   && tEnd   > endDs) });
@@ -1603,6 +1609,23 @@ function renderGrid(){
     }
   }
   for(const k in byDate) byDate[k].sort(segSort);
+
+  // 멀티데이 레인 배치 — 주(week)별 greedy 구간 채색으로 각 기간 막대에 고정 레인을 부여.
+  // 같은 레인은 겹치지 않는 기간끼리만 재사용 → 겹치는 막대는 서로 다른 행, 한 막대는 주 내내 같은 행(연속). (Google Calendar식)
+  const laneMap = {};
+  const weeks = totalCells / 7;
+  for(let w = 0; w < weeks; w++){
+    const wS = addDays(startDs, w*7), wE = addDays(startDs, w*7 + 6);
+    const inWk = ranges.filter(r => !(r.end < wS || r.start > wE))
+      .map(r => ({ key:r.key, s: maxStr(r.start, wS), e: minStr(r.end, wE) }))
+      .sort((x,y) => x.s < y.s ? -1 : x.s > y.s ? 1 : (x.key < y.key ? -1 : 1));
+    const laneEnds = [];   // laneEnds[l] = 그 레인이 점유 중인 마지막 날짜
+    for(const r of inWk){
+      let l = 0; while(l < laneEnds.length && laneEnds[l] >= r.s) l++;
+      laneEnds[l] = r.e;
+      laneMap[r.key + '@' + w] = l;
+    }
+  }
 
   // 키보드 포커스(roving tabindex) 대상 셀 — focusDs 우선, 범위 밖이면 오늘/첫 셀로 보정(항상 정확히 1개 보장)
   let tabDs = focusDs || selectedDate;
@@ -1628,8 +1651,21 @@ function renderGrid(){
     const list = byDate[ds] || [];
     // C. 칩을 (성능상 최대 12개까지) 렌더 → fitChips가 셀 높이에 맞춰 들어갈 만큼만 표시하고 나머지는 +N으로 접음
     const RENDER_CAP = 12;
-    const chips = list.slice(0, RENDER_CAP).map(chipHtml).join('');
-    const extra = Math.max(0, list.length - RENDER_CAP);
+    const wk = Math.floor(i / 7);
+    // 레인 배치: 기간 막대는 배정 레인 위치에 고정(빈 레인은 spacer), 단일 칩은 그 아래로
+    const rangeItems = [], singleItems = [];
+    for(const it of list){ (it.seg && it.seg !== 'single' ? rangeItems : singleItems).push(it); }
+    let positioned = [];
+    if(rangeItems.length){
+      const laneOf = it => (laneMap[it._key + '@' + wk] || 0);
+      const maxLane = Math.max(...rangeItems.map(laneOf));
+      const slots = new Array(maxLane + 1).fill(null);
+      for(const it of rangeItems) slots[laneOf(it)] = it;   // 주별 레인 보장 → 한 셀 안 레인 충돌 없음
+      positioned = slots.map(it => it ? chipHtml(it) : '<div class="chip-spacer"></div>');
+    }
+    const singleChips = singleItems.slice(0, Math.max(0, RENDER_CAP - positioned.length)).map(chipHtml);
+    const chips = positioned.concat(singleChips).join('');
+    const extra = Math.max(0, singleItems.length - singleChips.length);   // 미렌더 단일 칩 수(+N에 반영)
     const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일`
       + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
       + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음');
@@ -1664,7 +1700,7 @@ function fitChips(){
     const floor = Math.min(3, chips.length);          // 기존 '최대 3개' 이상은 항상 보장(좁은 셀 회귀 방지) — 넓을 때만 더 표시
     if(fit < floor) fit = floor;
     if(fit > chips.length) fit = chips.length;
-    const hidden = (chips.length - fit) + extra;
+    const hidden = chips.slice(fit).filter(c => !c.classList.contains('chip-spacer')).length + extra;  // spacer는 '기록' 아님 → +N 제외
     chips.forEach((c, i) => { c.style.display = i >= fit ? 'none' : ''; });
     if(hidden > 0){                                   // 숨긴 게 있을 때만 더보기(‘+0개’ 방지)
       const btn = document.createElement('button');
