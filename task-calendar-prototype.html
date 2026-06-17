@@ -153,6 +153,9 @@ main{flex:1;display:flex;min-height:0}
 .cell.dim .num{color:#7a8294}
 .cell.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
 .cell.drop{background:var(--accent-soft);outline:2px dashed var(--accent);outline-offset:-2px}
+.gridrow{display:contents}                                    /* ARIA role=row 래퍼 — 박스 트리에서 제거돼 7열 그리드 레이아웃 보존 */
+.cell:focus{outline:none}
+.cell:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;z-index:3;box-shadow:inset 0 0 0 1px var(--panel)}  /* 키보드 포커스 링(접근성) */
 .cell-top{display:flex;align-items:center;gap:5px;flex:none}
 .num{
   font-size:var(--fs-body);font-weight:600;width:22px;height:22px;border-radius:50%;
@@ -603,8 +606,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 
 <main>
   <section class="cal">
-    <div class="weekdays" id="weekdays"></div>
-    <div class="grid" id="grid"></div>
+    <div class="weekdays" id="weekdays" role="row"></div>
+    <div class="grid" id="grid" role="grid" aria-label="월 달력 — 방향키로 날짜 이동, Enter로 선택"></div>
   </section>
   <div class="splitter" id="splitter" title="드래그하여 좌/우 너비 조절"></div>
   <aside class="day-panel" id="dayPanel">
@@ -1401,6 +1404,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
 const _t = new Date();
 let view = {y:_t.getFullYear(), m:_t.getMonth()};
 let selectedDate = todayYmd();
+let focusDs = null;          // 그리드 키보드 포커스(roving tabindex) 대상 날짜 — 선택과 별개로 이동
 let filterCatId = null;
 let filterSource = null;     // null | 'git' (작업일지만 보기)
 let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'todo'(할 일) | 'git'(작업일지)
@@ -1426,7 +1430,7 @@ function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 
 function renderWeekdays(){
   $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
-    `<div class="${i===0?'sun':i===6?'sat':''}">${w}</div>`).join('');
+    `<div class="${i===0?'sun':i===6?'sat':''}" role="columnheader" aria-label="${w}요일">${w}</div>`).join('');
 }
 
 function renderFilterbar(){
@@ -1549,8 +1553,15 @@ function renderGrid(){
   }
   for(const k in byDate) byDate[k].sort(segSort);
 
+  // 키보드 포커스(roving tabindex) 대상 셀 — focusDs 우선, 범위 밖이면 오늘/첫 셀로 보정(항상 정확히 1개 보장)
+  let tabDs = focusDs || selectedDate;
+  if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
+  focusDs = tabDs;
+  const DOW_K = ['일','월','화','수','목','금','토'];
+
   let html = '';
   for(let i=0;i<totalCells;i++){
+    if(i % 7 === 0) html += '<div class="gridrow" role="row">';
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
     const ds = ymd(d);
     const inMonth = d.getMonth() === view.m;
@@ -1568,9 +1579,13 @@ function renderGrid(){
     const RENDER_CAP = 12;
     const chips = list.slice(0, RENDER_CAP).map(chipHtml).join('');
     const extra = Math.max(0, list.length - RENDER_CAP);
-    html += `<div class="${cls}" data-date="${ds}">
+    const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일`
+      + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
+      + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음');
+    html += `<div class="${cls}" data-date="${ds}" role="gridcell" tabindex="${ds===tabDs?0:-1}" aria-selected="${ds===selectedDate}" aria-label="${esc(aria)}">
       <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${hol?`<span class="hol">${esc(hol)}</span>`:''}</div>
       <div class="chips" data-extra="${extra}">${chips}</div></div>`;
+    if(i % 7 === 6) html += '</div>';
   }
   $('#grid').innerHTML = html;
   fitChips();
@@ -1703,6 +1718,7 @@ function goToday(){
 }
 function selectDate(ds){
   selectedDate = ds;
+  focusDs = ds;              // 선택 시 키보드 포커스(roving)도 함께 이동
   const d = parseYmd(ds);
   if(d.getFullYear() !== view.y || d.getMonth() !== view.m){
     view = {y:d.getFullYear(), m:d.getMonth()};
@@ -1711,13 +1727,30 @@ function selectDate(ds){
     // 같은 달이면 그리드를 다시 그리지 않고 선택 표시(.sel)만 갱신한다.
     // (단일 클릭이 매번 그리드를 재생성하면, 더블클릭의 첫 클릭에서 셀이 교체돼
     //  더블클릭이 안 잡히고 '새 기록' 창이 안 열린다 — 그 버그 방지)
-    $$('#grid .cell.sel').forEach(c => c.classList.remove('sel'));
+    $$('#grid .cell.sel').forEach(c => { c.classList.remove('sel'); c.setAttribute('aria-selected','false'); });
+    $$('#grid .cell[tabindex="0"]').forEach(c => c.setAttribute('tabindex','-1'));
     const cell = document.querySelector('#grid .cell[data-date="' + ds + '"]');
-    if(cell) cell.classList.add('sel');
+    if(cell){ cell.classList.add('sel'); cell.setAttribute('aria-selected','true'); cell.setAttribute('tabindex','0'); }
   }
   editingTodoId = null;
   renderPanel();             // 현재 탭 유지 — 선택 날짜로 내용만 갱신(일정/할일/작업일지 모두 그 날 기준)
   openSheetIfNarrow();       // 좁은 폭이면 하단 시트가 올라옴
+}
+// 그리드 키보드 내비: 선택은 바꾸지 않고 포커스(roving tabindex)만 이동. 렌더 범위 밖이면 해당 월로 전환.
+function focusGridDate(ds){
+  focusDs = ds;
+  const grid = document.getElementById('grid');
+  let cell = grid.querySelector('.cell[data-date="' + ds + '"]');
+  if(!cell){
+    const d = parseYmd(ds);
+    view = {y:d.getFullYear(), m:d.getMonth()};
+    renderGrid();   // renderGrid가 focusDs 셀에 tabindex=0 부여
+    cell = grid.querySelector('.cell[data-date="' + ds + '"]');
+  } else {
+    grid.querySelectorAll('.cell[tabindex="0"]').forEach(c => c.setAttribute('tabindex','-1'));
+    cell.setAttribute('tabindex','0');
+  }
+  if(cell) cell.focus();
 }
 function goto(ds, entryId){
   closeModal('#searchModal');
@@ -1734,6 +1767,73 @@ function closeTopModal(){
   const open = $$('.overlay').filter(o => !o.classList.contains('hidden'));
   if(open.length){ open[open.length-1].classList.add('hidden'); return true; }
   return false;
+}
+
+/* ---------- 모달 접근성: 포커스 트랩 · 복원 · 배경 inert ----------
+   모든 오버레이는 openModal로 열리고 닫기는 여러 경로(closeModal/closeTopModal/백드롭/확인모달)로
+   흩어져 있어, .hidden 토글을 MutationObserver로 감지해 한 곳에서 처리한다. */
+const _modalStack = [];   // [{ov, opener}]  — 중첩(예: 편집 중 삭제 확인) 지원
+function _focusables(el){
+  return [...el.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')]
+    .filter(n => !n.classList.contains('hidden') && n.offsetParent !== null);
+}
+function _updateInert(){
+  const anyOpen = _modalStack.length > 0;
+  [...document.body.children].forEach(el => {
+    if(el.classList && el.classList.contains('overlay')) return;   // 오버레이 자신은 제외(숨겨진 건 display:none)
+    if(el.id === 'toast') return;                                   // 토스트는 계속 알림 가능해야 함
+    if(anyOpen){ el.setAttribute('inert',''); el.setAttribute('aria-hidden','true'); }
+    else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
+  });
+}
+function _onModalOpened(ov){
+  _modalStack.push({ ov, opener: document.activeElement });
+  _updateInert();
+  // 첫 가시 입력 우선, 없으면 첫 포커스 가능 요소
+  const firstInput = ov.querySelector('input:not([type=hidden]):not([disabled]):not(.hidden), textarea:not([disabled]), select:not([disabled])');
+  const f = _focusables(ov);
+  const tgt = firstInput || f[0] || ov;
+  try{ tgt.focus({preventScroll:true}); }catch(_){ try{ tgt.focus(); }catch(__){} }
+}
+function _onModalClosed(ov){
+  const idx = _modalStack.findIndex(s => s.ov === ov);
+  let opener = null;
+  if(idx >= 0){ opener = _modalStack[idx].opener; _modalStack.splice(idx, 1); }
+  _updateInert();
+  // 닫힌 모달을 연 요소로 포커스 복원(아직 보이면) — 없으면 상위 모달로
+  if(opener && document.body.contains(opener) && opener.offsetParent !== null){ try{ opener.focus(); return; }catch(_){} }
+  const top = _modalStack[_modalStack.length - 1];
+  if(top){ const f = _focusables(top.ov); (f[0] || top.ov).focus?.(); }
+}
+function setupModalA11y(){
+  $$('.overlay').forEach(ov => {
+    // dialog 시맨틱(마크업 수정 없이 부여) — 제목이 있으면 aria-labelledby로 연결
+    const m = ov.querySelector('.modal') || ov;
+    m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
+    const h = m.querySelector('h2,h3,.m-title,.modal-title,header h2,header h3');
+    if(h){ if(!h.id) h.id = ov.id + '-title'; m.setAttribute('aria-labelledby', h.id); }
+    else {  // 제목 헤딩이 없는 모달(예: quickAdd)은 id 기반 레이블 폴백
+      const FALLBACK = { quickAdd:'빠른 등록', confirmModal:'확인', importModal:'XML 가져오기' };
+      m.setAttribute('aria-label', FALLBACK[ov.id] || '대화상자');
+    }
+    new MutationObserver(() => {
+      const open = !ov.classList.contains('hidden');
+      const tracked = _modalStack.some(s => s.ov === ov);
+      if(open && !tracked) _onModalOpened(ov);
+      else if(!open && tracked) _onModalClosed(ov);
+    }).observe(ov, { attributes: true, attributeFilter: ['class'] });
+  });
+  // Tab 트랩: 가장 위 모달 안에서만 순환
+  document.addEventListener('keydown', ev => {
+    if(ev.key !== 'Tab' || !_modalStack.length) return;
+    const ov = _modalStack[_modalStack.length - 1].ov;
+    const f = _focusables(ov);
+    if(!f.length){ ev.preventDefault(); return; }
+    const first = f[0], last = f[f.length - 1];
+    if(!ov.contains(document.activeElement)){ ev.preventDefault(); first.focus(); return; }
+    if(ev.shiftKey && document.activeElement === first){ ev.preventDefault(); last.focus(); }
+    else if(!ev.shiftKey && document.activeElement === last){ ev.preventDefault(); first.focus(); }
+  }, true);
 }
 
 /* ---------- 기록 모달 ---------- */
@@ -2629,6 +2729,26 @@ function bind(){
     const cell = ev.target.closest('.cell');
     if(cell) openQuickAdd(cell.dataset.date);
   });
+  // 키보드 내비(ARIA grid): 셀 자체에 포커스가 있을 때만 — 방향키(일/주)·PgUp/Dn(월)·Home(오늘)·Enter/Space(선택)
+  grid.addEventListener('keydown', ev => {
+    const cell = ev.target;
+    if(!cell.classList || !cell.classList.contains('cell')) return;   // '+N 더보기' 버튼 등 셀 내부 요소는 제외
+    if(ev.isComposing || ev.keyCode === 229) return;
+    const ds = cell.dataset.date; let target = null;
+    switch(ev.key){
+      case 'ArrowLeft':  target = addDays(ds, -1); break;
+      case 'ArrowRight': target = addDays(ds, 1);  break;
+      case 'ArrowUp':    target = addDays(ds, -7); break;
+      case 'ArrowDown':  target = addDays(ds, 7);  break;
+      case 'Home':       target = todayYmd();      break;
+      case 'PageUp':   { const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth(), 0).getDate();   target = ymd(new Date(d.getFullYear(), d.getMonth()-1, Math.min(d.getDate(), dim))); break; }
+      case 'PageDown': { const d = parseYmd(ds); const dim = new Date(d.getFullYear(), d.getMonth()+2, 0).getDate(); target = ymd(new Date(d.getFullYear(), d.getMonth()+1, Math.min(d.getDate(), dim))); break; }
+      case 'Enter': case ' ': ev.preventDefault(); ev.stopPropagation(); selectDate(ds); return;
+      default: return;
+    }
+    ev.preventDefault(); ev.stopPropagation();   // 전역 월 이동 핸들러(←/→/Home)와 중복 방지
+    focusGridDate(target);
+  });
   grid.addEventListener('dragstart', ev => {
     const chip = ev.target.closest('.chip');
     if(!chip || chip.dataset.kind === 'recur'){ ev.preventDefault(); return; }   // 반복은 드래그 금지(모달에서 수정)
@@ -3159,6 +3279,7 @@ window.__hostReply = function(reqId, res){
 /* ---------- 시작 ---------- */
 renderWeekdays();
 bind();
+setupModalA11y();
 setupSplitter();
 renderAll();
 if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫기) 구성 + 준비 신호
