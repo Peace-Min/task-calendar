@@ -548,11 +548,15 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 }
 /* 위젯 실폭(≈380px): 상단을 'nav 한 줄 + 액션 한 줄'로 — 액션이 3줄로 흩어지던 난잡 해소 */
 @media (max-width:440px){
-  .topbar{gap:8px;padding:10px 12px}
+  /* P0② 세로 공간 회수 — 크롬을 압축해 그리드 셀을 키운다(밀도 반전 해소) */
+  .topbar{gap:6px 8px;padding:8px 12px}
   .topbar .spacer{display:none}
-  .nav{flex:1 1 100%}
+  .nav{flex:1 1 100%;gap:4px}
+  .title-btn{min-width:0;font-size:18px;padding:4px 6px}
   .actions{flex:1 1 100%;flex-wrap:nowrap;justify-content:flex-start;gap:6px}
-  .actions > .btn{flex:0 0 auto}
+  .actions > .btn{flex:0 0 auto;padding:5px 9px}
+  /* 필터바: 2줄 wrap → 1줄 가로 스크롤(약 66→32px) */
+  .filterbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;padding:6px 12px}
 }
 </style>
 </head>
