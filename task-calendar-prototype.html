@@ -13,16 +13,19 @@
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --danger:#d6494e; --danger-soft:#fdeeee;
-  --sun:#d6494e; --sat:#5871ad;   /* 토요일은 채도 낮춘 청회색(선택/액션 파랑과 분리) */
+  --sun:#c43a3f; --sat:#4b62a0;   /* 주말 라벨 — 작은 11~12px에서도 AA(약 4.6:1). 선택/액션 파랑과 분리 */
   --r-sm:6px; --r-md:10px; --r-lg:14px;
   --radius:10px; --shadow:0 10px 32px rgba(20,28,55,.16);
   --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-head:18px;
+  --lh-tight:1.35; --lh-body:1.5;          /* 한글 받침 안전 줄높이 */
+  --hover-bg:#f3f5fa;                        /* 중립 hover wash — accent는 액션·선택 전용(파랑 노이즈 방지) */
 }
 html,body{height:100%}
 body{
   font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;
   background:var(--bg); color:var(--text); font-size:var(--fs-emph);
   display:flex; flex-direction:column; overflow:hidden;
+  font-variant-numeric:tabular-nums;   /* 날짜·시각 숫자 열 정렬(D) */
 }
 button{font-family:inherit}
 .hidden{display:none !important}
@@ -65,7 +68,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
   border:none;background:transparent;font-size:20px;font-weight:700;color:var(--text);line-height:1.15;
   padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;min-width:120px;letter-spacing:-.01em;
 }
-.title-btn:hover{background:var(--accent-soft)}
+.title-btn:hover{background:var(--hover-bg)}
 .jump{
   position:absolute;left:50%;top:calc(100% + 4px);transform:translateX(-50%);
   border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-family:inherit;
@@ -146,19 +149,28 @@ main{flex:1;display:flex;min-height:0}
   display:flex;align-items:center;justify-content:center;
 }
 .num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
-.cell.today .num{background:var(--accent);color:#fff !important;font-weight:700}
+/* D. 오늘 = 옅은 배경 + 얇은 링(꽉 찬 파랑 채움 폐기 → 선택과 충돌·파랑 노이즈 완화) */
+.cell.today:not(.sel):not(:hover){background:var(--accent-soft)}
+.cell.today .num{color:var(--accent-2) !important;font-weight:700;box-shadow:inset 0 0 0 1.5px var(--accent)}
+/* D. 주말 컬럼 옅은 틴트 — 토/일이 '블록'으로 읽힘(선택·오늘·타월·hover 제외) */
+.cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(75,98,160,.05)}
+.cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(196,58,63,.055)}
 .hol{font-size:var(--fs-micro);color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0}
 .chip{
-  font-size:var(--fs-meta);line-height:1.25;padding:2px 5px 2px 6px;border-radius:var(--r-sm);
+  font-size:var(--fs-meta);line-height:var(--lh-tight);padding:2px 5px 2px 6px;border-radius:var(--r-sm);
   border-left:3px solid #8a93a6;background:#eef0f4;color:var(--text);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;flex:none;
 }
 .chip:hover{filter:brightness(.96)}
 .chip .chip-t{font-weight:600;font-size:var(--fs-micro);opacity:.75;margin-right:3px}
+/* A. 시간 일정 = 선행 색점 + 굵은 시각 + 투명 본체(종일=채운 막대와 한눈에 구분) */
+.chip.chip-timed{background:transparent !important;border-left-color:transparent !important;display:flex;align-items:center;gap:5px;padding-left:3px}
+.chip.chip-timed .cdot{width:8px;height:8px;border-radius:50%;flex:none}
+.chip.chip-timed .chip-t{opacity:1;font-weight:700;color:var(--text);font-size:var(--fs-meta);margin-right:0}
 .more{font-size:var(--fs-micro);color:var(--muted);padding:1px 6px;flex:none;border:none;background:none;
   text-align:left;cursor:pointer;border-radius:var(--r-sm);width:100%}
-.more:hover{background:var(--accent-soft);color:var(--accent-2)}
+.more:hover{background:var(--hover-bg);color:var(--accent-2)}
 /* 기간 막대(연속 칩) — gap:1px 그리드에서 인접 셀이 이어져 보이도록 */
 .chip-range.chip-start{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:-1px}
 .chip-range.chip-mid{border-radius:0;margin:0 -1px;border-left-width:0;color:transparent}
@@ -175,7 +187,7 @@ main{flex:1;display:flex;min-height:0}
 .dp-sheet-handle{display:none}
 .dp-tabs{display:flex;align-items:flex-end;gap:2px;padding:7px 8px 0;border-bottom:1px solid var(--line);flex:none;background:var(--panel)}
 .dp-tab{border:none;background:transparent;padding:8px 10px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
-.dp-tab:hover{background:var(--accent-soft)}
+.dp-tab:hover{background:var(--hover-bg)}
 .dp-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
 .dp-action{margin-left:auto;align-self:center;margin-bottom:4px;font-size:var(--fs-meta);color:var(--muted);border:1px solid var(--line-2);background:#fff;border-radius:var(--r-sm);padding:4px 9px;cursor:pointer;flex:none}
 .dp-action:hover{border-color:#bcc4d6;background:#f7f8fb}
@@ -418,7 +430,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .nd-tabs{display:flex;gap:2px;flex:1;min-width:0;flex-wrap:nowrap}
 .nd-tab{border:none;background:transparent;padding:9px 9px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;
   font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
-.nd-tab:hover{background:var(--accent-soft)}
+.nd-tab:hover{background:var(--hover-bg)}
 .nd-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
 .note-drawer .x{align-self:center;margin-bottom:4px}
 .nd-filter{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);flex:none;max-height:84px;overflow:auto}
@@ -1399,10 +1411,13 @@ function chipHtml(item){
   const occDate = item.occ ? item.occ._occStart : e.date;
   const kind = e.recur ? 'recur' : ((e.endDate && e.endDate > e.date) ? 'range' : 'simple');
   const span = (e.endDate && e.endDate > e.date) ? ` · ${e.date}~${e.endDate}` : '';
-  return `<div class="chip${git?' chip-git':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
+  // A. 단일일 시간 일정 = 선행 색점 + 굵은 시각(종일 막대와 한눈에 구분). 기간/반복/작업일지는 기존 막대 유지.
+  const timed = (!git && !!time && seg === 'single');
+  const dot = timed ? `<span class="cdot" style="background:${col}"></span>` : '';
+  return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
     data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
     style="border-left-color:${col};background:${tint(col)}"
-    title="${git?'🔧 작업일지 · ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${time?`<span class="chip-t">${esc(time)}</span>`:''}${label}${aR}</div>`;
+    title="${git?'🔧 작업일지 · ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${time?`<span class="chip-t">${esc(time)}</span>`:''}${label}${aR}</div>`;
 }
 // 할 일 칩(그리드) — 일정 막대와 구분: 초록 계열 + 체크 글리프, 제목
 function todoChipHtml(item){
@@ -1483,17 +1498,53 @@ function renderGrid(){
     if(!inMonth) cls += ' dim';
     if(ds === tY) cls += ' today';
     if(ds === selectedDate) cls += ' sel';
+    if(dow===0) cls += ' wknd-sun'; else if(dow===6) cls += ' wknd-sat';   // D. 주말 컬럼 틴트
     let numCls = 'num';
     if(dow===0 || hol) numCls += ' sun'; else if(dow===6) numCls += ' sat';
     const list = byDate[ds] || [];
-    const chips = list.slice(0,3).map(chipHtml).join('');
-    const more = list.length > 3 ? `<button class="more" title="이 날짜의 전체 기록을 옆 패널에 표시">+${list.length-3}개 더보기</button>` : '';
+    // C. 칩을 (성능상 최대 12개까지) 렌더 → fitChips가 셀 높이에 맞춰 들어갈 만큼만 표시하고 나머지는 +N으로 접음
+    const RENDER_CAP = 12;
+    const chips = list.slice(0, RENDER_CAP).map(chipHtml).join('');
+    const extra = Math.max(0, list.length - RENDER_CAP);
     html += `<div class="${cls}" data-date="${ds}">
       <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${hol?`<span class="hol">${esc(hol)}</span>`:''}</div>
-      <div class="chips">${chips}${more}</div></div>`;
+      <div class="chips" data-extra="${extra}">${chips}</div></div>`;
   }
   $('#grid').innerHTML = html;
+  fitChips();
 }
+
+// C. 셀 높이에 맞춰 칩을 들어갈 만큼만 보이고 나머지는 '+N개 더보기'로 접는다(고정 3개 대신 동적).
+let _fitRaf = 0;
+function fitChips(){
+  const grid = document.getElementById('grid'); if(!grid) return;
+  grid.querySelectorAll('.cell').forEach(cell => {
+    const box = cell.querySelector('.chips'); if(!box) return;
+    const oldMore = box.querySelector('.more'); if(oldMore) oldMore.remove();
+    const chips = [...box.children];
+    chips.forEach(c => { c.style.display = ''; });
+    if(!chips.length) return;
+    const extra = Number(box.dataset.extra || 0);
+    const avail = box.clientHeight;
+    if(!avail) return;   // 레이아웃 전(높이 0)이면 전부 표시 — resize 때 재계산
+    const GAP = 2, MOREH = 17;
+    let used = 0, fit = 0;
+    for(const c of chips){ const h = c.offsetHeight + GAP; if(used + h <= avail){ used += h; fit++; } else break; }
+    if(fit >= chips.length && extra === 0) return;   // 전부 들어감 → 더보기 불필요
+    used = 0; fit = 0;                                // 더보기 행 자리 확보 후 재계산
+    for(const c of chips){ const h = c.offsetHeight + GAP; if(used + h + MOREH <= avail){ used += h; fit++; } else break; }
+    const floor = Math.min(3, chips.length);          // 기존 '최대 3개' 이상은 항상 보장(좁은 셀 회귀 방지) — 넓을 때만 더 표시
+    if(fit < floor) fit = floor;
+    const hidden = (chips.length - fit) + extra;
+    chips.forEach((c, i) => { if(i >= fit) c.style.display = 'none'; });
+    const btn = document.createElement('button');
+    btn.className = 'more';
+    btn.title = '이 날짜의 전체 기록을 옆 패널에 표시';
+    btn.textContent = `+${hidden}개 더보기`;
+    box.appendChild(btn);
+  });
+}
+window.addEventListener('resize', () => { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(fitChips); });
 
 function cardHtml(e){
   const c = catById(e.categoryId);

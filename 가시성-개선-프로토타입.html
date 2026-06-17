@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>일정·할 일 가시성 개선 — 케이스별 Before/After 프로토타입</title>
+<style>
+:root{
+  --bg:#eceef3;--panel:#fff;--ink:#1d2433;--muted:#5b6373;--muted2:#6b7280;--faint:#9aa2b3;
+  --line:#eef0f4;--line2:#d6dbe6;--accent:#3e5be0;--accent2:#2e44ad;
+  --blue:#3e5be0;--green:#2e9e6b;--amber:#c47f17;
+  --sun:#d6494e;--sunAA:#c43a3f;--sat:#5871ad;--satAA:#4b62a0;
+  --hover:#f3f5fa;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:'Segoe UI','Malgun Gothic',system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:24px 18px 60px;font-variant-numeric:tabular-nums}
+.wrap{max-width:1000px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+.lede{font-size:13.5px;color:var(--muted);line-height:1.65;margin:0 0 4px;max-width:760px}
+.note{font-size:12.5px;color:#5b6373;background:#eef2f8;border:1px solid #d8e0ee;border-radius:8px;padding:9px 12px;margin:12px 0 26px;line-height:1.6;max-width:780px}
+.case{background:var(--panel);border:1px solid var(--line2);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+.case h2{font-size:16px;margin:0 0 2px;display:flex;align-items:center;gap:8px}
+.tag{font-size:11px;font-weight:700;border-radius:5px;padding:1px 7px}
+.tag.p1{background:#e7ecfb;color:#2e44ad}.tag.p2{background:#eef0f4;color:#5b6373}.tag.out{background:#fbf0e1;color:#8a5a12}
+.why{font-size:12.5px;color:var(--muted);margin:4px 0 14px;line-height:1.55}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:620px){.ba{grid-template-columns:1fr}}
+.col h3{font-size:12px;font-weight:700;margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em}
+.col.before h3{color:var(--sun)}.col.after h3{color:var(--green)}
+.gridwrap{background:#dfe3ea;border-radius:8px;padding:10px;display:flex;gap:6px;flex-wrap:wrap}
+/* === 위젯 셀/칩 재현 === */
+.cell{background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 5px;width:150px;min-height:96px;display:flex;flex-direction:column;gap:3px;overflow:hidden}
+.cell.narrow{width:52px;min-height:74px;padding:3px 3px}
+.cell.tall{min-height:156px}
+.num{font-size:12px;font-weight:600;color:var(--ink);margin-bottom:1px}
+.cell.narrow .num{font-size:11px}
+.chip{font-size:12px;line-height:1.25;padding:2px 5px 2px 6px;border-radius:6px;border-left:3px solid var(--faint);background:var(--line);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+.chip .t{font-weight:600;font-size:11px;opacity:.75;margin-right:3px}
+.chip-todo{background:transparent !important;border:1px solid var(--faint);border-left:1px solid var(--faint);display:flex;align-items:center;gap:4px;padding-left:4px}
+.chip-todo .ring{width:9px;height:9px;border:1.5px solid var(--green);border-radius:50%;flex:none}
+.more{font-size:11px;color:var(--muted);padding:1px 4px}
+/* tint helpers */
+.b-blue{border-left-color:var(--blue);background:rgba(62,91,224,.13)}
+.b-green{border-left-color:var(--green);background:rgba(46,158,107,.13)}
+.b-amber{border-left-color:var(--amber);background:rgba(196,127,23,.13)}
+/* === AFTER 변형 === */
+/* A. 시간일정 = 점+굵은시각+투명본체 */
+.chip.timed{background:transparent;border-left-color:transparent;display:flex;align-items:center;gap:5px;padding-left:3px}
+.chip.timed .dot{width:8px;height:8px;border-radius:50%;flex:none}
+.chip.timed .t{opacity:1;font-weight:700;font-size:12px;color:var(--ink);margin:0}
+.dot.blue{background:var(--blue)}.dot.green{background:var(--green)}.dot.amber{background:var(--amber)}
+/* B. 좁은 셀 가독성 */
+.chip.lh{line-height:1.35;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.dotrow{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.minidot{width:7px;height:7px;border-radius:50%;flex:none}
+.minidot.ring{background:transparent;border:1.5px solid var(--green);box-sizing:border-box}
+.cnt{font-size:10px;color:var(--muted);font-weight:600}
+/* C. 동적 캡 — 그냥 더 채움 */
+/* D. 주말/오늘 */
+.cell.today-before .num{background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}
+.cell.today-after{background:rgba(62,91,224,.06)}
+.cell.today-after .num{color:var(--accent2);font-weight:700;box-shadow:inset 0 0 0 1.5px var(--accent);border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center}
+.cell.sat-after{background:rgba(88,113,173,.06)}
+.cell.sun-after{background:rgba(214,73,78,.06)}
+.num.sun{color:var(--sun)}.num.sat{color:var(--sat)}
+.num.sunAA{color:var(--sunAA)}.num.satAA{color:var(--satAA)}
+/* E. accent 노이즈 */
+.toolbar{display:flex;gap:5px;align-items:center;background:#222a3d;border-radius:7px;padding:5px 7px}
+.tb{font-size:11px;padding:4px 8px;border-radius:5px;background:#3b4763;color:#cdd6f7}
+.tb.blue{background:var(--accent);color:#fff}
+.pill{font-size:11px;border-radius:14px;padding:2px 9px;border:1px solid var(--line2);color:var(--muted)}
+.pill.blue{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pill.bluesoft{background:rgba(62,91,224,.12);color:var(--accent2);border-color:transparent}
+.foot{margin-top:26px;font-size:12px;color:var(--faint);border-top:1px solid var(--line2);padding-top:12px}
+.legend{font-size:12px;color:var(--muted);margin:2px 0 16px}
+.legend b{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>일정·할 일 가시성 개선 — 케이스별 Before / After</h1>
+  <p class="lede">평가 루프가 짚은 가시성 격차를 케이스별로 <b>현재(Before)</b> 와 <b>개선안(After)</b> 으로 직접 비교합니다. 실제 위젯 칩 스타일을 재현했습니다. 보시고 <b>어느 케이스를 적용할지</b> 골라 주세요.</p>
+  <div class="note">🟦 보고서(파랑) · 🟩 점검(초록) · 🟧 교육(주황) 과제 예시. 일정=막대형, 할 일=외곽선+원형 링(지난번 적용). 아래 각 그림은 정적 재현이며, 채택하면 위젯에 그대로 구현합니다.</div>
+
+  <!-- CASE A -->
+  <div class="case">
+    <h2>A. 시간 일정 vs 종일 일정 구분 <span class="tag p1">P1</span></h2>
+    <p class="why">지금은 10:00 회의(시간)와 종일 점검이 <b>똑같은 색막대</b>로 보입니다(시각은 작은 회색 접두사뿐). 개선안: <b>시간 일정 = 선행 색점 + 굵은 시각</b>, <b>종일 = 채운 막대</b> → 월 그리드에서 "점=시간 / 막대=종일"이 한눈에. (Google·Notion Calendar)</p>
+    <div class="ba">
+      <div class="col before"><h3>Before</h3><div class="gridwrap">
+        <div class="cell">
+          <div class="num">18</div>
+          <div class="chip b-blue"><span class="t">10:00</span>주간 회의</div>
+          <div class="chip b-green">서버 점검(종일)</div>
+          <div class="chip b-amber"><span class="t">15:00</span>교육 세션</div>
+        </div>
+      </div></div>
+      <div class="col after"><h3>After</h3><div class="gridwrap">
+        <div class="cell">
+          <div class="num">18</div>
+          <div class="chip timed"><span class="dot blue"></span><span class="t">10:00</span>주간 회의</div>
+          <div class="chip b-green">서버 점검(종일)</div>
+          <div class="chip timed"><span class="dot amber"></span><span class="t">15:00</span>교육 세션</div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- CASE B -->
+  <div class="case">
+    <h2>B. 좁은 셀(380px) 가독성 <span class="tag p2">P2</span></h2>
+    <p class="why">위젯 실폭에서 셀은 ~52px라 한글 칩이 <b>3~4음절에서 잘립니다</b>(line-height 1.25로 받침도 빡빡). 개선안: 줄높이 1.35 + 2줄 허용, 또는 항목이 많으면 <b>색점 + 개수 요약</b>(탭하면 펼침). (Naver/Kakao 모바일)</p>
+    <div class="ba">
+      <div class="col before"><h3>Before</h3><div class="gridwrap">
+        <div class="cell narrow"><div class="num">18</div>
+          <div class="chip b-blue">주간 보고서 제…</div>
+          <div class="chip b-green">서버 점…</div>
+        </div>
+        <div class="cell narrow"><div class="num">19</div>
+          <div class="chip b-blue">API 명…</div>
+          <div class="chip b-green">코드 리…</div>
+          <div class="more">+2</div>
+        </div>
+      </div></div>
+      <div class="col after"><h3>After</h3><div class="gridwrap">
+        <div class="cell narrow"><div class="num">18</div>
+          <div class="chip b-blue lh">주간 보고서 제출</div>
+          <div class="chip b-green lh">서버 점검</div>
+        </div>
+        <div class="cell narrow"><div class="num">19</div>
+          <div class="dotrow"><span class="minidot" style="background:var(--blue)"></span><span class="minidot" style="background:var(--green)"></span><span class="minidot" style="background:var(--amber)"></span><span class="minidot ring"></span><span class="cnt">+1</span></div>
+          <div class="chip b-blue lh" style="margin-top:3px">API 명세 검토</div>
+        </div>
+      </div></div>
+    </div>
+    <p class="why" style="margin-top:10px">※ 좌(After 18일)=줄높이·2줄로 더 읽힘 / 우(After 19일)=항목 많을 때 점요약 후 1순위만 텍스트.</p>
+  </div>
+
+  <!-- CASE C -->
+  <div class="case">
+    <h2>C. 칩 개수 상한 동적화 <span class="tag p2">P2</span></h2>
+    <p class="why">지금은 셀이 커도 <b>항상 3개만</b> 보이고 "+N 더보기"로 가립니다(넓게 보기에서 세로 공간 낭비·불필요한 패널 진입). 개선안: <b>셀 높이에 맞춰 들어가는 만큼 채우고</b> 넘칠 때만 정확한 "+N". (Google)</p>
+    <div class="ba">
+      <div class="col before"><h3>Before (넓은 셀)</h3><div class="gridwrap">
+        <div class="cell tall"><div class="num">20</div>
+          <div class="chip b-blue"><span class="t">09:00</span>스탠드업</div>
+          <div class="chip b-green">서버 점검</div>
+          <div class="chip-todo"><span class="ring"></span>보고서 초안</div>
+          <div class="more">+2개 더보기</div>
+        </div>
+      </div></div>
+      <div class="col after"><h3>After (넓은 셀)</h3><div class="gridwrap">
+        <div class="cell tall"><div class="num">20</div>
+          <div class="chip timed"><span class="dot blue"></span><span class="t">09:00</span>스탠드업</div>
+          <div class="chip b-green">서버 점검</div>
+          <div class="chip-todo"><span class="ring"></span>보고서 초안</div>
+          <div class="chip timed"><span class="dot amber"></span><span class="t">15:00</span>교육</div>
+          <div class="chip-todo"><span class="ring"></span>메일 회신</div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- CASE D -->
+  <div class="case">
+    <h2>D. 주말 컬럼 · 오늘/선택 · 숫자 정렬 <span class="tag p2">P2</span></h2>
+    <p class="why">주말이 <b>숫자색으로만</b> 구분돼 블록으로 안 읽히고, 오늘=꽉 찬 파란 원이라 선택과 충돌하며, 비례 숫자라 열이 미세하게 어긋납니다. 개선안: <b>주말 컬럼 옅은 틴트</b> + <b>오늘=옅은 배경+얇은 링</b>(채움 아님) + <b>tabular 숫자</b> + 주말색 AA로 약간 진하게.</p>
+    <div class="ba">
+      <div class="col before"><h3>Before</h3><div class="gridwrap">
+        <div class="cell" style="width:90px;min-height:64px"><div class="num sat">17 토</div></div>
+        <div class="cell today-before" style="width:90px;min-height:64px"><div class="num">18</div></div>
+        <div class="cell" style="width:90px;min-height:64px"><div class="num sun">19 일</div></div>
+      </div></div>
+      <div class="col after"><h3>After</h3><div class="gridwrap">
+        <div class="cell sat-after" style="width:90px;min-height:64px"><div class="num satAA">17 토</div></div>
+        <div class="cell today-after" style="width:90px;min-height:64px"><div class="num">18</div></div>
+        <div class="cell sun-after" style="width:90px;min-height:64px"><div class="num sunAA">19 일</div></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- CASE E -->
+  <div class="case">
+    <h2>E. 파랑(accent) 의미 단일화 <span class="tag out">가시성에 도움 · 범위 밖</span></h2>
+    <p class="why">지금 파랑 하나가 <b>primary 버튼·오늘·선택·활성탭·활성칩·hover</b>를 다 겸해 380px가 파랑 노이즈가 됩니다 → 정작 일정/할일 신호가 묻힘. 개선안: <b>파랑 = primary 액션 + 현재 선택만</b>, 오늘·hover·활성탭은 중립 회색. (Linear)</p>
+    <div class="ba">
+      <div class="col before"><h3>Before</h3>
+        <div class="toolbar"><span class="tb blue">＋ 새 기록</span><span class="tb blue">🔍</span><span class="tb blue">작업</span></div>
+        <div style="margin-top:8px;display:flex;gap:6px"><span class="pill blue">일정</span><span class="pill blue">할 일</span><span class="pill blue">작업일지</span></div>
+        <p class="cnt" style="margin-top:6px;color:var(--sun)">→ 파랑이 6곳에서 동시에 빛남</p>
+      </div>
+      <div class="col after"><h3>After</h3>
+        <div class="toolbar"><span class="tb blue">＋ 새 기록</span><span class="tb">🔍</span><span class="tb">작업</span></div>
+        <div style="margin-top:8px;display:flex;gap:6px"><span class="pill blue">일정</span><span class="pill">할 일</span><span class="pill">작업일지</span></div>
+        <p class="cnt" style="margin-top:6px;color:var(--green)">→ 파랑은 primary·활성탭 1개씩만</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">정적 재현 프로토타입 · 평가 루프 wq04j4a32 기반. 채택할 케이스(A~E)를 알려주시면 토큰부터 정리해 위젯에 구현하고 재평가합니다. 안정 베이스(렌더러·우측탭·보고서·드래그)는 보존.</div>
+</div>
+</body>
+</html>
