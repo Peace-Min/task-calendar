@@ -67,6 +67,7 @@ Start-Process "$env:USERPROFILE\Desktop\수행과제캘린더\수행과제캘린
 ## 📜 변경 이력 (최신 순)
 
 ### 2026-06-17
+- **tooling: 위젯 UI 실측 캡처 해결** — PrintWindow(PW_RENDERFULLCONTENT)가 WebView2(Chromium GPU/DirectComposition 표면)를 못 읽어 '검은 화면'이던 문제를, **헤드리스 Edge로 `task-calendar-prototype.html`을 실제 렌더해 `--screenshot`** 으로 우회. 재사용 스크립트 [tools/capture-widget.ps1](tools/capture-widget.ps1)(`-W -H -Out [-Demo]`). **핵심 함정: PowerShell 5.1 `Get-Content` 기본 디코딩이 CP949라 UTF-8 한글이 깨져 렌더 블랭크 → 반드시 `-Encoding UTF8` 읽기 + UTF8(no BOM) 쓰기.** `--virtual-time-budget`은 블랭크 유발하므로 미사용. 이제 코드가 아니라 실제 렌더로 UI/UX 평가/검증 가능(380px 위젯폭·1100px 넓게보기 둘 다 확인).
 - **UI/UX 전문 리뷰 + 개선 1차** — 전체 리뷰([UIUX-리뷰-2026-06-17.md](UIUX-리뷰-2026-06-17.md), 워크플로 wpqf6dcyk; 점수 Calendar UX 4 최저) + 케이스별 Before/After 프로토타입([개선안-프로토타입.html](개선안-프로토타입.html)). 사용자 선택분 중 **저위험 3건(③⑥⑪) 구현**:
   - **③ 시간 일정 칩 시각 표시** — 컨테이너 쿼리 숨김(좁은 셀서 미발화) 폐기 → `chipTimeShort`(정시 'N시'/그 외 H:MM) 축약 시각을 **좁은 셀에서도 항상** 표시(9시/4시 구분 복원).
   - **⑥ 시맨틱 토스트 + 되돌리기** — `toast(msg,kind,action)`: success(✓녹)/warn(⚠앰버)/error(✕적)/info + role(status/alert) + Undo 액션. IO 실패(저장/내보내기/가져오기/커밋) → error. 파괴 동작(기록·할 일 삭제, 전체 초기화)에 **[실행 취소]**(제거 객체/스냅샷 클로저 보관 후 복원).
