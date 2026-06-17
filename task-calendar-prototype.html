@@ -311,6 +311,7 @@ main{flex:1;display:flex;min-height:0}
 .btn.danger-solid:hover{background:#b93a3f;border-color:#b93a3f}
 @keyframes ovIn{from{opacity:0}to{opacity:1}}
 @keyframes mdIn{from{transform:scale(.97);opacity:.8}to{transform:scale(1);opacity:1}}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .overlay:not(.hidden){animation:ovIn .15s ease-out}
 .overlay:not(.hidden) .modal{animation:mdIn .15s ease-out}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
@@ -563,6 +564,56 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   .actions > .btn{flex:0 0 auto;padding:5px 9px}
   /* 필터바: 2줄 wrap → 1줄 가로 스크롤(약 66→32px) */
   .filterbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;padding:6px 12px}
+  /* P1: 좁은 폭에서 모달 → 하단 시트(엄지 도달성 + 상용 모바일 규범, Things/TickTick식) */
+  .overlay{align-items:flex-end;padding:0}
+  .modal,.modal.wide,.qa-modal{width:100%;max-width:100%;max-height:88vh;border-radius:14px 14px 0 0}
+  .qa-modal{padding-bottom:16px}
+  .modal::before{content:"";display:block;width:38px;height:4px;border-radius:2px;background:var(--line-2);margin:8px auto 2px;flex:none}  /* 시트 그립 어포던스 */
+  .overlay:not(.hidden) .modal{animation:sheetUp .24s cubic-bezier(.2,.8,.2,1)}
+}
+
+/* ---------- P1 다크 모드 (prefers-color-scheme) ----------
+   역할 토큰을 리맵하고, 토큰 밖 하드코딩 surface만 가법적으로 덮는다(라이트 모드 CSS는 불변).
+   칩 틴트는 tint()가 13% 알파 오버레이라 어두운 배경에 자동 적응 → JS 변경 불필요. */
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme:dark;
+    --bg:#0f1420; --panel:#1a2031; --line:#2a3245; --line-2:#3a4357;
+    --text:#e6e9f2; --muted:#a8b0c3; --faint:#5c6578; --faint-text:#9aa3b7;
+    --titlebar:#0c1019;
+    --accent:#6182ff; --accent-2:#9db0ff; --accent-soft:#1d2742;
+    --danger:#ff6b70; --danger-soft:#3a1f23;
+    --sun:#ff7d82; --sat:#90a4e8;
+    --hover-bg:#222b3e;
+    --shadow:0 12px 34px rgba(0,0,0,.55);
+    --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27;  /* 다크 전용 보조 */
+  }
+  /* #fff 표면 → 패널 */
+  .btn,.menu,.fchip,.dp-action,.card,.git-path,.git-scope-pill,.modal,
+  .modal input[type=text],.modal input[type=date],.modal input[type=time],
+  .modal input[type=month],.modal select,.modal textarea,
+  .color-input,.recur-pill,.s-row,.nd-add-r1 input,.nd-add-r2 input[type=date],
+  .todo-edit .te-text,.te-row input[type=date],.te-row select,.nd-toggle,
+  .qa-ctx input[type=date],.qa-ctx select,
+  .qa-detail input[type=time],.qa-detail select,.qa-detail textarea{ background:var(--panel) }
+  /* 옅은 보조 fill */
+  .btn:hover,.menu button:hover,.cell:hover,.dp-action:hover,.git-row,.x:hover,.s-row:hover{ background:var(--fill) }
+  .cell.dim{ background:var(--dim-bg) }
+  .cell.dim .num{ color:#8893a8 }
+  .git-card{ background:#171d2b }
+  .rpt-out,#rptOut{ background:#171d2b }
+  /* 테두리 hover */
+  .btn:hover,.fchip:hover,.dp-action:hover,.nd-toggle:hover{ border-color:var(--border-hover) }
+  /* 칩/배지 등 색표면 */
+  .chip{ background:var(--fill) }
+  .badge-git,.fchip-git.on{ background:#222b3e;color:var(--muted);border-color:var(--line-2) }
+  .git-badge.off{ background:#222b3e;color:var(--muted) }
+  .git-badge.ok{ background:#15321f;color:#6fd49a }
+  .git-badge.warn{ background:#352b12;color:#e3b766 }
+  .qa-type.on{ background:var(--accent-soft);color:var(--accent-2) }
+  mark{ background:#ffe27a;color:#1d2433 }
+  /* 네이티브 위젯/스크롤바가 어두운 폼이 되도록 */
+  input,select,textarea{ color-scheme:dark }
 }
 </style>
 </head>
