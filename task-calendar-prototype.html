@@ -104,6 +104,8 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .todo-check .ic,.todo-star-btn .ic{width:17px;height:17px;vertical-align:-3px}
 .todo-del .ic{width:14px;height:14px;vertical-align:-2px}
 .nd-toggle .ic{width:13px;height:13px;vertical-align:-2px}
+.commit-head .ic,.card-span .ic,.card-recur .ic{width:13px;height:13px;vertical-align:-2px}   /* 일정 상세 카드 의미 마커 — 칩·패널과 동일 단색 SVG */
+.s-badge .ic{width:11px;height:11px;vertical-align:-1px}   /* 검색 결과 배지 */
 .btn.sm{padding:4px 10px;font-size:var(--fs-body)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
@@ -1798,14 +1800,14 @@ function cardHtml(e){
     const rest = commits.slice(COMMIT_PREVIEW).map(x => commitRowHtml(x, true)).join('');
     const more = commits.length > COMMIT_PREVIEW
       ? `<button class="link commit-more" data-act="more">+${commits.length - COMMIT_PREVIEW}건 더 보기</button>` : '';
-    commitBlock = `<div class="commit-head">🔧 커밋 ${commits.length}건</div><ul class="commit-list">${preview}${rest}</ul>${more}`;
+    commitBlock = `<div class="commit-head">${ICON.wrench} 커밋 ${commits.length}건</div><ul class="commit-list">${preview}${rest}</ul>${more}`;
   }
   const occS = e._occStart || e.date, occE = e._occEnd || (e.endDate && e.endDate>e.date ? e.endDate : e.date);
   const isRange = occE > occS;
   const dayOfN = (isRange && selectedDate>=occS && selectedDate<=occE)
     ? ` · ${diffDays(occS,selectedDate)+1}일째 / ${diffDays(occS,occE)+1}일` : '';
-  const rangeLine = isRange ? `<div class="card-span">📅 ${fmtShort(occS)} ~ ${fmtShort(occE)}${dayOfN}</div>` : '';
-  const recurLine = e.recur ? `<div class="card-recur">🔁 ${esc(recurLabel(e))}</div>` : '';
+  const rangeLine = isRange ? `<div class="card-span">${ICON.calendar} ${fmtShort(occS)} ~ ${fmtShort(occE)}${dayOfN}</div>` : '';
+  const recurLine = e.recur ? `<div class="card-recur">${ICON.repeat} ${esc(recurLabel(e))}</div>` : '';
   return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
       <span class="card-time">${esc(time)}</span>
@@ -2243,7 +2245,7 @@ function sRowHtml(e, q){
   const col = validColor(c && c.color);
   const time = e.allDay ? '종일' : (e.startTime ? e.startTime + (e.endTime?' – '+e.endTime:'') : (e.endTime ? '~'+e.endTime : ''));
   const snip = memoSnippet(e.memo, q);
-  const badges = `${e.recur?`<span class="s-badge">🔁 ${esc(recurLabel(e))}</span>`:''}${(e.endDate&&e.endDate>e.date)?`<span class="s-badge">📅 ${fmtShort(e.date)}~${fmtShort(e.endDate)}</span>`:''}`;
+  const badges = `${e.recur?`<span class="s-badge">${ICON.repeat} ${esc(recurLabel(e))}</span>`:''}${(e.endDate&&e.endDate>e.date)?`<span class="s-badge">${ICON.calendar} ${fmtShort(e.date)}~${fmtShort(e.endDate)}</span>`:''}`;
   return `<button class="s-row" data-goto="${esc(e.date)}" data-id="${esc(e.id)}">
     <span class="dot" style="background:${col}"></span>
     <div style="min-width:0">
@@ -2850,6 +2852,7 @@ const ICON = {
   starFill: svgIc('<path fill="currentColor" stroke="none" d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/>'),
   box:      svgIc('<rect x="4" y="4" width="16" height="16" rx="3.5"/>'),
   boxCheck: svgIc('<rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M8 12l2.8 2.8L16.2 9"/>'),
+  calendar: svgIc('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>'),
 };
 const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info:ICON.dot };
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
