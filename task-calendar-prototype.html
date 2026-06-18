@@ -448,9 +448,23 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-range input[type=date]{flex:1;min-width:130px}
 .rpt-opts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .rpt-summary{font-size:var(--fs-meta);color:var(--muted);margin-top:8px;min-height:16px}
-#rptOut{width:100%;margin-top:8px;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-meta);line-height:1.6;
-  min-height:220px;resize:vertical;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:10px;background:#fafbfd;color:var(--text)}
-#rptOut:focus{outline:2px solid var(--accent);outline-offset:-1px}
+#rptOut.rpt-mirror{width:100%;margin-top:8px;display:flex;flex-direction:column;gap:7px;background:transparent;border:none;padding:0}
+.rpt-mirror .rcard{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 11px;background:var(--panel)}
+.rpt-mirror .rcard-empty{opacity:.6}
+.rpt-mirror .rcard-head{display:flex;align-items:center;gap:7px}
+.rpt-mirror .rc-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.rpt-mirror .rcard-nm{font-size:var(--fs-body);font-weight:600;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rpt-mirror .rcard-empty .rcard-nm{font-weight:400}
+.rpt-mirror .rcard-h-ro{margin-left:auto;font-size:var(--fs-body);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.rpt-mirror .rcard-empty .rcard-h-ro{color:var(--muted);font-weight:400}
+.rpt-mirror .rcard-hwrap{margin-left:auto;display:inline-flex;align-items:center;gap:3px}
+.rpt-mirror .rcard-h-in{width:54px;text-align:right;border:1px solid var(--line-2);border-radius:6px;padding:3px 6px;font-size:var(--fs-body);font-weight:600;font-family:inherit;background:var(--panel);color:var(--text);font-variant-numeric:tabular-nums}
+.rpt-mirror .rcard-h-in:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.rpt-mirror .rcard-hu{font-size:var(--fs-meta);color:var(--muted)}
+.rpt-mirror .rcard-tasks{font-size:var(--fs-meta);color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
+.rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
+.rpt-mirror .rcard-note.edit{color:var(--accent)}
+.git-hint .lnk{border:none;background:none;color:var(--accent);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
 
 /* ---------- import modal ---------- */
 .imp-box{
@@ -918,16 +932,14 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       </div>
       <div class="rpt-opts">
         <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> 작업일지(커밋 기록)만</label>
-        <label class="check" style="margin:0"><input type="checkbox" id="rptHours" checked> 공수 자동합산</label>
-        <span class="git-hint" style="margin-left:auto">과제별 [제목] : 시간 — 공수 합산, 직접 수정 가능(재생성 시 덮어씀)</span>
+        <span class="git-hint" style="margin-left:auto">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·작업일지에서 변경</span>
       </div>
       <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
-      <textarea id="rptOut" spellcheck="false" placeholder="기간을 선택하면 보고서 초안이 생성됩니다. 생성 후 자유롭게 수정하세요."></textarea>
+      <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
-      <button class="btn" id="btnRptSave">파일 저장</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
     </div>
   </div>
@@ -2420,22 +2432,15 @@ function memoBullets(memo){ // 메모 → 보고서 불릿 (커밋 목록의 '�
     .filter(l => l && !/^\[Git 커밋 .*\]$/.test(l))
     .map(l => l.replace(/^•\s*/, ''));
 }
-function buildReport(){
-  const from = $('#rptFrom').value, to = $('#rptTo').value;
-  const out = $('#rptOut'), sum = $('#rptSummary');
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
-    sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.value = ''; return;
-  }
-  const gitOnly = $('#rptGitOnly').checked;
-  const autoSum = $('#rptHours') ? $('#rptHours').checked : false;   // 공수 자동합산(기본 ON)
-  // 기간/반복 전개 후, 과제(카테고리)별 업무 목록(제목)을 모은다. 같은 제목은 1회만(여러 날 반복 방지).
-  const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 직접 만든 경우 미분류를 그쪽으로 병합
-  const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');  // 출력·제목·공수 단일 버킷키
-  const items = new Map();   // catKey -> 제목 배열(순서 보존)
-  const seen  = new Map();   // catKey -> Set(제목)  중복 제거
-  const sumMin = new Map();  // catKey -> 공수 분 합계
-  const uncat = [];          // 미분류(동명 '기타' 없을 때)
-  let uninput = 0;           // 공수 미입력 항목 수
+// 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). buildReport(렌더)·buildReportText(복사) 공유.
+function fmtH(min){ const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); }
+// 보고서 데이터 수집(렌더·직렬화 공유 단일 소스) — 과제별 제목/공수합/항목. 출력·제목·공수 단일 버킷키(catKey).
+function collectReportData(from, to, gitOnly){
+  const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 만든 경우 미분류를 그쪽으로 병합
+  const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
+  const items = new Map(), seen = new Map(), sumMin = new Map(), bucket = new Map();
+  const uncat = [], uncatEntries = [];
+  let uninput = 0;
   for(const e of state.entries){
     if(gitOnly && e.source !== 'git') continue;
     let hit = false;
@@ -2444,57 +2449,87 @@ function buildReport(){
     const k = catKey(e);
     // 공수 누적 — 제목 중복제거 '앞'에서(동명 항목 공수 유실 차단). 항목당 1회만(반복/멀티데이 곱셈 안 함).
     if(e.hours != null) sumMin.set(k, (sumMin.get(k) || 0) + e.hours); else uninput++;
+    if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     const title = String(e.title || '').trim(); if(!title) continue;
     if(!seen.has(k)) seen.set(k, new Set());
     if(seen.get(k).has(title)) continue; seen.get(k).add(title);
     if(k === '__uncat__') uncat.push(title);
     else { if(!items.has(k)) items.set(k, []); items.get(k).push(title); }
   }
-  if(!state.categories.length && !uncat.length){
-    sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.value = ''; return;
+  // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(동명 과제 없을 때만)
+  const rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
+    minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], entries:bucket.get(c.id)||[] }));
+  if(bucket.has('__uncat__')) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
+    minutes:sumMin.get('__uncat__')||0, titles:uncat, entries:bucket.get('__uncat__')||[] });
+  let grand = 0; for(const v of sumMin.values()) grand += v;
+  return { rows, grandMin:grand, uninput };
+}
+function buildReport(){
+  const from = $('#rptFrom').value, to = $('#rptTo').value;
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
+    sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
-  // 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). 자동합산 OFF면 ': 0' 골격(현행과 동일).
-  const fmtH = min => { const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); };
-  const hoursFor = k => autoSum ? fmtH(sumMin.get(k) || 0) : '0';
-  const block = (name, k, titles) => `[${name}] : ${hoursFor(k)}` + titles.map(t => `\n- ${t}`).join('');
-  const blocks = state.categories.map(c => block(c.name, c.id, items.get(c.id) || []));
-  if(uncat.length) blocks.push(block('기타', '__uncat__', uncat));
-  out.value = blocks.join('\n\n') + '\n';
-  const totalItems = [...items.values()].reduce((n, a) => n + a.length, 0) + uncat.length;
-  const catN = state.categories.length + (uncat.length ? 1 : 0);
-  let line = `${from} ~ ${to} · 과제 ${catN}개 · 업무 ${totalItems}건`;
-  if(autoSum){
-    let grand = 0; for(const v of sumMin.values()) grand += v;
-    line += ` · 총 ${fmtH(grand)}h` + (uninput ? ` · 미입력 ${uninput}건` : '');
-  } else line += ' · 시간(:뒤 숫자)은 직접 입력';
+  const gitOnly = $('#rptGitOnly').checked;
+  const { rows, grandMin, uninput } = collectReportData(from, to, gitOnly);
+  if(!rows.length){
+    sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
+  }
+  const singleDay = (from === to);   // 하루 보고서에서만 시간 인라인 수정(여러 날은 읽기전용 — 합을 한 날에 분배 불가)
+  let html = '';
+  for(const r of rows){
+    const hasEntry = r.entries.length > 0;
+    // 단일일 + 발생 항목 있으면 그 (날짜×과제) 첫 항목(createdAt 최소)에 저장 — 작업일지 칩과 동일
+    const head = (singleDay && hasEntry)
+      ? r.entries.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0] : null;
+    html += `<div class="rcard${hasEntry ? '' : ' rcard-empty'}">`;
+    html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
+    html += `<span class="rcard-nm">${esc(r.name)}</span>`;
+    if(head){
+      const v = head.hours != null ? (head.hours / 60) : '';
+      html += `<span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.25" inputmode="decimal" value="${v}" placeholder="0" data-hid="${esc(head.id)}" aria-label="${esc(r.name)} 시간(시간)"><span class="rcard-hu">h</span></span>`;
+    } else {
+      html += `<span class="rcard-h-ro">${r.minutes ? fmtH(r.minutes) : '0'}</span><span class="rcard-hu">h</span>`;
+    }
+    html += `</div>`;
+    if(r.titles.length) html += `<div class="rcard-tasks">${r.titles.map(t => `· ${esc(t)}`).join('<br>')}</div>`;
+    if(head) html += `<span class="rcard-note edit">오늘치 — 여기서 바로 수정</span>`;
+    else if(hasEntry && !singleDay) html += `<span class="rcard-note">여러 날 합산 · 날짜별로 수정</span>`;
+    html += `</div>`;
+  }
+  out.innerHTML = html;
+  const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
+  let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건 · 총 ${fmtH(grandMin)}h`;
+  if(uninput) line += ` · 미입력 ${uninput}건`;
   if(gitOnly) line += ' · 작업일지만';
+  if(singleDay) line += ' · 하루(수정 가능)';
   sum.textContent = line;
 }
 function openReport(){
   openModal('#reportModal');
   if(!$('#rptFrom').value) setReportRange('thisweek'); else buildReport();
 }
+// 복사용 텍스트 — 화면 DOM이 아니라 데이터에서 재계산(드리프트 방지). 과제명은 현재 이름 재조회(개명 자동 반영).
+function buildReportText(){
+  const from = $('#rptFrom').value, to = $('#rptTo').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
+  const { rows } = collectReportData(from, to, $('#rptGitOnly').checked);
+  if(!rows.length) return '';
+  const blocks = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}` + r.titles.map(t => `\n- ${t}`).join(''));
+  return blocks.join('\n\n') + '\n';
+}
 async function copyReport(){
-  const text = $('#rptOut').value;
+  const text = buildReportText();
   if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
   try{ await navigator.clipboard.writeText(text); toast('보고서를 클립보드에 복사했습니다', 'success'); }
-  catch(_){ // WebView2/비보안 컨텍스트 폴백
-    try{ $('#rptOut').select(); document.execCommand('copy'); toast('보고서를 클립보드에 복사했습니다', 'success'); }
-    catch(e){ toast('복사 실패 — 내용을 직접 선택해 복사하세요', 'warn'); }
+  catch(_){ // WebView2/비보안 컨텍스트 폴백 — 미러는 div라 .select() 불가 → 숨김 textarea 주입
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'absolute'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      toast('보고서를 클립보드에 복사했습니다', 'success');
+    }catch(e){ toast('복사 실패 — 다시 시도해 주세요', 'warn'); }
   }
-}
-function saveReportFile(){
-  const text = $('#rptOut').value;
-  if(!text){ toast('저장할 내용이 없습니다', 'warn'); return; }
-  try{
-    const blob = new Blob([text], {type: 'text/plain'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `업무보고-${$('#rptFrom').value}~${$('#rptTo').value}.txt`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 3000);
-  }catch(err){ toast('저장 실패: ' + err.message, 'warn'); }
 }
 
 /* ---------- 인앱 확인 모달 (OS confirm 대체) ----------
@@ -3255,9 +3290,15 @@ function bind(){
   $('#rptFrom').addEventListener('change', buildReport);
   $('#rptTo').addEventListener('change', buildReport);
   $('#rptGitOnly').addEventListener('change', buildReport);
-  $('#rptHours').addEventListener('change', buildReport);
   $('#btnRptCopy').addEventListener('click', copyReport);
-  $('#btnRptSave').addEventListener('click', saveReportFile);
+  $('#rptCatLink').addEventListener('click', openCatModal);   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
+  // 하루 보고서의 과제별 시간 인라인 수정(blur/Enter=change) → 그 항목 hours 저장 후 재렌더(총합 갱신)
+  $('#rptOut').addEventListener('change', ev => {
+    const inp = ev.target.closest('.rcard-h-in'); if(!inp) return;
+    const e = entryById(inp.dataset.hid); if(!e) return;
+    e.hours = numMin(inp.value); e.updatedAt = nowIso(); save();
+    buildReport();
+  });
   $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
     const b = ev.target.closest('[data-bulk]'); if(b) setBulkRange(b.dataset.bulk);
   });
