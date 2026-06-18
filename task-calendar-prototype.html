@@ -442,21 +442,24 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 }
 
 /* ---------- toast ---------- */
-#toast{
-  position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(16px);
-  background:#222a3d;color:#fff;padding:10px 17px;border-radius:999px;
-  font-size:var(--fs-body);opacity:0;pointer-events:none;transition:.25s;z-index:99;max-width:80vw;
-  display:inline-flex;align-items:center;gap:8px;
+/* 토스트 스택 — 카드별 독립 타이머·Undo, 최대 3개 세로 누적(newest=하단 가장 잘 보임) */
+#toastStack{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99;
+  display:flex;flex-direction:column;gap:8px;align-items:center;max-width:80vw;pointer-events:none;
 }
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-#toast.show .t-undo{pointer-events:auto}   /* 토스트 자체는 pointer-events:none, 버튼만 클릭 가능 */
-#toast .t-ico{font-weight:700;flex:none}
-#toast.success{background:#1f7a4d}          /* 성공 ✓ */
-#toast.warn{background:#9a5b00}             /* 확인/경고 ⚠ */
-#toast.error{background:#b3322f}            /* 실패 ✕ */
-#toast.info{background:#222a3d}             /* 중립 */
-#toast .t-undo{margin-left:4px;background:rgba(255,255,255,.2);border:none;color:#fff;font:inherit;font-weight:700;padding:3px 10px;border-radius:999px;cursor:pointer}
-#toast .t-undo:hover{background:rgba(255,255,255,.32)}
+.toast{
+  background:#222a3d;color:#fff;padding:10px 17px;border-radius:999px;
+  font-size:var(--fs-body);opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s;
+  pointer-events:none;display:inline-flex;align-items:center;gap:8px;max-width:100%;
+}
+.toast.show{opacity:1;transform:translateY(0)}
+.t-ico{font-weight:700;flex:none}
+.toast.success{background:#1f7a4d}          /* 성공 ✓ */
+.toast.warn{background:#9a5b00}             /* 확인/경고 ⚠ */
+.toast.error{background:#b3322f}            /* 실패 ✕ */
+.toast.info{background:#222a3d}             /* 중립 */
+.t-undo{margin-left:4px;background:rgba(255,255,255,.2);border:none;color:#fff;font:inherit;font-weight:700;padding:3px 10px;border-radius:999px;cursor:pointer;pointer-events:auto}
+.t-undo:hover{background:rgba(255,255,255,.32)}
 /* 비동기 로딩 스피너(Git 호출 등) — reduced-motion에서 정지 */
 .spin{width:13px;height:13px;border:2px solid var(--line-2);border-top-color:var(--accent);border-radius:50%;display:inline-block;vertical-align:-2px;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -942,7 +945,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   </div>
 </div>
 
-<div id="toast"></div>
+<div id="toastStack" aria-live="polite" aria-atomic="false"></div>
 <input type="file" id="importFile" accept=".xml,application/xml,text/xml" hidden>
 
 <script>
@@ -1904,7 +1907,7 @@ function _updateInert(){
   const anyOpen = _modalStack.length > 0;
   [...document.body.children].forEach(el => {
     if(el.classList && el.classList.contains('overlay')) return;   // 오버레이 자신은 제외(숨겨진 건 display:none)
-    if(el.id === 'toast') return;                                   // 토스트는 계속 알림 가능해야 함
+    if(el.id === 'toastStack') return;                              // 토스트는 계속 알림 가능해야 함
     if(anyOpen){ el.setAttribute('inert',''); el.setAttribute('aria-hidden','true'); }
     else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
   });
@@ -2451,26 +2454,31 @@ function confirmBox(title, msg, okLabel, altLabel){
   });
 }
 
-/* ---------- 토스트 ---------- */
-let toastTimer = null;
+/* ---------- 토스트 (카드 스택) ---------- */
 // kind: undefined/'success'(✓ 녹) | 'warn'(⚠ 앰버) | 'error'(✕ 적) | 'info'(중립). action: {label, fn} = 되돌리기 등.
+// 카드마다 독립 타이머·Undo로 연속 동작 시 직전 Undo가 사라지지 않음(최대 3개 누적). 컨테이너가 live region.
 function toast(msg, kind, action){
-  const t = $('#toast');
+  const stack = $('#toastStack'); if(!stack) return;
   const k = kind === 'warn' ? 'warn' : kind === 'error' ? 'error' : kind === 'info' ? 'info' : 'success';
   const glyph = k === 'warn' ? '⚠' : k === 'error' ? '✕' : k === 'info' ? '•' : '✓';
-  t.innerHTML = '';
+  const el = document.createElement('div'); el.className = 'toast ' + k;
+  if(k === 'error') el.setAttribute('role', 'alert');   // 오류는 assertive로(나머지는 컨테이너 polite)
   const ico = document.createElement('span'); ico.className = 't-ico'; ico.textContent = glyph;
   const m = document.createElement('span'); m.className = 't-msg'; m.textContent = msg;
-  t.appendChild(ico); t.appendChild(m);
+  el.appendChild(ico); el.appendChild(m);
+  let timer;
+  const dismiss = () => { el.classList.remove('show'); clearTimeout(timer); setTimeout(() => el.remove(), 260); };
   if(action && action.label && typeof action.fn === 'function'){
     const b = document.createElement('button'); b.className = 't-undo'; b.type = 'button'; b.textContent = action.label;
-    b.addEventListener('click', () => { try{ action.fn(); }catch(_){} t.className = ''; clearTimeout(toastTimer); });
-    t.appendChild(b);
+    b.addEventListener('click', () => { try{ action.fn(); }catch(_){} dismiss(); toast('되돌렸습니다', 'info'); });   // Undo 후 확인 피드백
+    el.appendChild(b);
   }
-  t.className = 'show ' + k;
-  t.setAttribute('role', k === 'error' ? 'alert' : 'status');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.className = ''; }, action ? 5000 : 2600);
+  stack.appendChild(el);
+  while(stack.children.length > 3){   // 최대 3개 — Undo 있는 카드는 가급적 보존(사용자가 누르려던 되돌리기 보호)
+    const v = [...stack.children]; (v.find(c => !c.querySelector('.t-undo')) || v[0]).remove();
+  }
+  requestAnimationFrame(() => el.classList.add('show'));
+  timer = setTimeout(dismiss, action ? 5000 : 2600);
 }
 
 /* ---------- 노트(멀티노트): 깃로그 · TODO · 메일 ---------- */
