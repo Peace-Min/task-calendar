@@ -5,6 +5,20 @@
 
 ---
 
+## 🆕 2026-06-18 — 잔여 작업 A~G 완주 (프로토타입 승인 후 페이즈 9~12)
+
+최종 게이트(8.6) 이후 사용자에게 [잔여작업-프로토타입.html](잔여작업-프로토타입.html)(A~G before/after) 제시 → 사용자 결정 "A~G 전부 진행, B(셀 위계)는 A안 현행 유지". 페이즈별 구현→실제 UI 전문 피드백→보완으로 완주, 매 페이즈 회귀 보완:
+
+- **Phase9 (A) 인-칩·패널 아이콘 SVG화**: ICON 맵에 repeat/star/starFill/box/boxCheck. 칩 git🔧·반복🔁→선행 SVG(클립 해소), 패널 할 일 체크박스 ☑☐·★☆·삭제✕·'중요만' 토글·작업일지 배지·과제 cat-git/desc·더보기 help-row 🖱️↔️⌨️→전부 단색 SVG. 별표 의미색 골드(#e0a32e) 통일. *(Visual 9, P1 별표3색·help-row→보완)*
+- **Phase10 (C+D) 폼 폴리시**: entryModal 종일 시 #timeRow 흐림→숨김(quick-add 통일). 제목 placeholder 유형별 단문('일정 제목'/'할 일'), quick-add 반복 선택 시 '격주·횟수는 자세히 편집' 힌트, qaPrio ★→골드 별 SVG. *(IA/Form 9, 보완 불필요)*
+- **Phase11 (E+F) 토스트·탭**: 토스트 퇴장 dismiss() 페이드 통일(_leaving 플래그, 비-Undo 우선 제거), error→#toastStackErr(assertive)/나머지→#toastStack(polite) 분리(role 중첩 이중낭독 해소). #dpReport를 .dp-tabbar로 감싸 tablist 밖 형제로(SR 'tab N of M' 오집계 해소). *(Polish 9, 보완 불필요)*
+- **Phase12 (G) 부팅 스켈레톤**: #bootSkeleton 오버레이(7열×5 펄스, 실 그리드 모사), HOST 부팅 시 표시→__applyXml 실데이터 렌더 후 제거. 폴백 __xmlApplied 가드+4s, reduced-motion 정적 placeholder, 다크 가시성(--border-hover). *(Polish 8, P1 폴백타이밍·reduced-motion→보완)*
+- **B(셀 위계)**: 사용자 선택대로 현행 backfill(밀도 우선) 유지 — 코드 변경 없음.
+
+> 페이즈 9~12 전문가 피드백이 잡은 회귀(P1) 모두 같은 턴 보완·재검증. 8개 페이즈(1~7+게이트보완8) + A~G(9~12) 전부 commit·exe 재빌드(171MB)·배포·재실행 완료. 의미 마커 전 표면 SVG화로 직전 게이트의 P1(아이콘 일관성) 해소.
+
+---
+
 ## 🆕 2026-06-18 — 상용화 로드맵 7페이즈 자율 완주 (페이즈별 전문가 피드백·보완)
 
 직전 재평가(6.2→7.4)가 제시한 잔여 P1/P2 로드맵을 7페이즈로 나눠 **페이즈마다 구현 → 실제 UI(헤드리스 Edge 캡처) UI/UX 전문 에이전트 피드백 → 보완 → 다음**으로 완주. 각 페이즈 preview_eval 검증 후 커밋. 마지막에 exe 재빌드(self-contained 단일, 171MB)→운영 위치 배포·재실행(PID 확인).
