@@ -1,0 +1,12 @@
+# ── GitHub Linguist 언어 통계 보정 ───────────────────────────────
+# 이 저장소의 제품 본체는 WPF(.NET / C#) 데스크톱 호스트이며,
+# UI는 그 안에 임베드되는 '단일 HTML 파일' 1개로 구현된다.
+# 그 단일 HTML(약 4천 줄, CSS·JS·SVG 전부 인라인)이 바이트를 독식해
+# 저장소가 'HTML' 프로젝트로 오분류되므로 언어 통계에서 제외한다.
+# (파일은 그대로 추적·표시되고 구문 하이라이트도 유지 — 통계 집계에서만 빠짐.)
+
+# 앱 본체 단일 HTML: 언어 통계 제외
+task-calendar-prototype.html linguist-detectable=false
+
+# docs/ 는 조사 보고서·프로토타입 산출물(제품 코드 아님) → 문서로 분류해 통계 제외
+docs/** linguist-documentation
