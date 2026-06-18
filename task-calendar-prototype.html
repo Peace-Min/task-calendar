@@ -98,6 +98,12 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .btn.icon{padding:8px 10px}
 .ic{width:16px;height:16px;flex:none;vertical-align:-3px;pointer-events:none}   /* 단색 인라인 아이콘(currentColor) — 이모지 대체. pointer-events:none → 위임 핸들러(ev.target.id)가 SVG가 아닌 버튼을 받음(클릭 회귀 방지) */
 .btn.icon .ic{width:17px;height:17px}
+.chip .ic{width:13px;height:13px;vertical-align:-2px;margin-right:1px}   /* 칩 내 git·반복 마커(작게) */
+.chip-todo .ic{width:11px;height:11px;margin-right:1px;color:#e0a32e}     /* 그리드 할 일 칩 별표 — 패널 행 별표와 동일 골드(의미색 통일) */
+.badge-git .ic,.cat-git .ic,.cat-desc .ic{width:12px;height:12px;vertical-align:-2px}
+.todo-check .ic,.todo-star-btn .ic{width:17px;height:17px;vertical-align:-3px}
+.todo-del .ic{width:14px;height:14px;vertical-align:-2px}
+.nd-toggle .ic{width:13px;height:13px;vertical-align:-2px}
 .btn.sm{padding:4px 10px;font-size:var(--fs-body)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
@@ -315,6 +321,7 @@ main{flex:1;display:flex;min-height:0}
 
 /* ---------- 도움말 팝오버 (footer 밴드 대체) ---------- */
 .help-row{padding:6px 12px;font-size:var(--fs-body);color:var(--muted);line-height:1.6}
+.help-row .ic{width:14px;height:14px;vertical-align:-3px;margin-right:6px}
 
 /* ---------- 상태 · 포커스 · 모션 ---------- */
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -670,9 +677,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <button id="btnImport">XML 가져오기…</button>
         <button id="btnClear" class="danger">전체 데이터 초기화</button>
         <hr>
-        <div class="help-row">🖱️ 날짜 더블클릭 — 새 기록</div>
-        <div class="help-row">↔️ 기록 드래그 — 다른 날짜로 이동</div>
-        <div class="help-row">⌨️ ←/→ 월 이동 · Home 오늘 · Esc 닫기</div>
+        <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>날짜 더블클릭 — 새 기록</div>
+        <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M8 9l-3 3 3 3M16 9l3 3-3 3"/></svg>기록 드래그 — 다른 날짜로 이동</div>
+        <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/></svg>←/→ 월 이동 · Home 오늘 · Esc 닫기</div>
         <div class="help-row">데이터는 자동 저장 · 백업은 XML 내보내기</div>
       </div>
     </div>
@@ -1556,9 +1563,9 @@ function chipHtml(item){
   const git = e.source === 'git';
   const showText = (seg === 'start' || seg === 'single' || item.weekStart || item.clipLeft);
   const rangeCls = (seg !== 'single') ? ` chip-range chip-${seg}${(showText && seg !== 'start') ? ' chip-relabel' : ''}` : '';
-  const recurMark = (e.recur && showText) ? '🔁 ' : '';
+  const recurMark = (e.recur && showText) ? ICON.repeat : '';
   const time = showText ? chipTime(e) : '';
-  const label = showText ? `${git?'🔧 ':''}${recurMark}${esc(e.title)}` : '';
+  const label = showText ? `${git ? ICON.wrench : ''}${recurMark}${esc(e.title)}` : '';
   const aL = item.clipLeft ? '◂' : '', aR = item.clipRight ? '▸' : '';
   const occDate = item.occ ? item.occ._occStart : e.date;
   const kind = e.recur ? 'recur' : ((e.endDate && e.endDate > e.date) ? 'range' : 'simple');
@@ -1580,7 +1587,7 @@ function todoChipHtml(item){
   const showText = (seg === 'start' || seg === 'single' || item.weekStart || item.clipLeft);
   const rangeCls = (seg !== 'single') ? ` chip-range chip-${seg}${(showText && seg !== 'start') ? ' chip-relabel' : ''}` : '';
   const col = validColor(c && c.color);   // 링 테두리에만 과제색 → 카테고리 신호는 보존, 칩 본체는 중립
-  const star = (t.prio === 'high' && !t.done) ? '★ ' : '';
+  const star = (t.prio === 'high' && !t.done) ? ICON.starFill : '';
   const ring = showText ? `<span class="todo-ring" style="border-color:${col}${t.done ? `;background:${col}` : ''}"></span>` : '';
   const label = showText ? `<span class="txt">${star}${esc(t.text)}</span>` : '';
   const aL = item.clipLeft ? '◂' : '', aR = item.clipRight ? '▸' : '';
@@ -1775,7 +1782,7 @@ function cardHtml(e){
   return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
       <span class="card-time">${esc(time)}</span>
-      ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 작업일지">🔧 작업일지</span>`:''}
+      ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 작업일지">${ICON.wrench} 작업일지</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
     </div>
     <div class="card-title">${esc(e.title)}</div>
@@ -2131,9 +2138,9 @@ function renderCatModal(){
       return `<div class="cat-row" data-id="${esc(c.id)}">
         <span class="cat-dot" style="background:${validColor(c.color)}"></span>
         <div style="min-width:0">
-          <div class="cat-name">${esc(c.name)}${c.gitRepo?`<span class="cat-git" title="Git 연결: ${esc(c.gitRepo)}">🔧</span>`:''}</div>
+          <div class="cat-name">${esc(c.name)}${c.gitRepo?`<span class="cat-git" title="Git 연결: ${esc(c.gitRepo)}">${ICON.wrench}</span>`:''}</div>
           ${c.desc?`<div class="cat-desc">${esc(c.desc)}</div>`:''}
-          ${c.gitRepo?`<div class="cat-desc" title="${esc(c.gitRepo)}">🔧 ${esc(c.gitRepo)}</div>`:''}
+          ${c.gitRepo?`<div class="cat-desc" title="${esc(c.gitRepo)}">${ICON.wrench} ${esc(c.gitRepo)}</div>`:''}
         </div>
         <span class="cat-count">${n}건</span>
         <button class="link" data-act="edit">수정</button>
@@ -2596,11 +2603,11 @@ function todoRowHtml(t){
   const overdue = !t.done && t.due && t.due < todayYmd();
   const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(dueLabel(t.due))}</span>` : '';
   return `<div class="todo-row${t.done ? ' done' : ''}" data-id="${esc(t.id)}">
-    <button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? '☑' : '☐'}</button>
+    <button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>
     <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span></div>
     ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
-    <button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?'★':'☆'}</button>
-    <button class="todo-del" data-act="del" title="삭제" aria-label="삭제">✕</button>
+    <button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?ICON.starFill:ICON.star}</button>
+    <button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>
   </div>`;
 }
 function todoEditHtml(t){
@@ -2667,14 +2674,14 @@ function renderTodoListTab(){
   // (completedAt 기준이면 '다른 날 완료한 그 날 마감 할 일'이 그리드엔 뜨고 패널엔 안 뜨는 불일치가 생김)
   const doneDay = onlyHigh((state.todos||[]).filter(t => inCat(t) && t.done && covers(t)))
                   .sort((x,y) => String(y.completedAt||'').localeCompare(String(x.completedAt||'')));
-  let h = `<div class="nd-tools"><button class="btn primary sm" id="btnTodoNew">${ICON.plus} 할 일 추가</button><button class="nd-toggle${noteImportantOnly?' on':''}" data-act="impOnly" title="★ 중요로 표시한 항목만 보기">★ 중요만</button></div>`;
+  let h = `<div class="nd-tools"><button class="btn primary sm" id="btnTodoNew">${ICON.plus} 할 일 추가</button><button class="nd-toggle${noteImportantOnly?' on':''}" data-act="impOnly" title="중요로 표시한 항목만 보기">${ICON.starFill} 중요만</button></div>`;
   h += `<div class="dp-dayctx">${esc(fmtDateK(ds))} · 할 일</div>`;
   let body = todoSectionHtml('이 날', 'onday', onDay)
            + todoSectionHtml('기한 없음', 'nodate', noDate)
            + todoSectionHtml('이 날 완료', 'done', doneDay);
   if(!body){
     body = `<div class="nd-empty">${noteImportantOnly ? '★ 중요로 표시한 할 일이 없습니다.' : '이 날 할 일이 없습니다.'}` +
-      `<span class="nd-empty-hint">${noteImportantOnly ? '각 항목의 ☆를 눌러 중요로 표시하세요.' : '＋ 할 일 추가로 이 날 할 일을 등록하세요. 기한 없는 할 일은 ‘기한 없음’ 섹션에서 볼 수 있습니다.'}</span></div>`;
+      `<span class="nd-empty-hint">${noteImportantOnly ? '각 항목의 별표 버튼을 눌러 중요로 표시하세요.' : '＋ 할 일 추가로 이 날 할 일을 등록하세요. 기한 없는 할 일은 ‘기한 없음’ 섹션에서 볼 수 있습니다.'}</span></div>`;
   }
   return h + body;
 }
@@ -2804,6 +2811,11 @@ const ICON = {
   alert:    svgIc('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.5"/>'),
   xmark:    svgIc('<path d="M6 6l12 12M18 6L6 18"/>', 2.4),
   dot:      svgIc('<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>'),
+  repeat:   svgIc('<path d="M17 2l3 3-3 3M20 5H9a4 4 0 0 0-4 4M7 22l-3-3 3-3M4 19h11a4 4 0 0 0 4-4"/>'),
+  star:     svgIc('<path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/>'),
+  starFill: svgIc('<path fill="currentColor" stroke="none" d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/>'),
+  box:      svgIc('<rect x="4" y="4" width="16" height="16" rx="3.5"/>'),
+  boxCheck: svgIc('<rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M8 12l2.8 2.8L16.2 9"/>'),
 };
 const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info:ICON.dot };
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
