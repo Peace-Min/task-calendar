@@ -7,7 +7,7 @@
 
 ## 🆕 2026-06-18 — 잔여 작업 A~G 완주 (프로토타입 승인 후 페이즈 9~12)
 
-최종 게이트(8.6) 이후 사용자에게 [잔여작업-프로토타입.html](잔여작업-프로토타입.html)(A~G before/after) 제시 → 사용자 결정 "A~G 전부 진행, B(셀 위계)는 A안 현행 유지". 페이즈별 구현→실제 UI 전문 피드백→보완으로 완주, 매 페이즈 회귀 보완:
+최종 게이트(8.6) 이후 사용자에게 [잔여작업-프로토타입.html](docs/prototypes/잔여작업-프로토타입.html)(A~G before/after) 제시 → 사용자 결정 "A~G 전부 진행, B(셀 위계)는 A안 현행 유지". 페이즈별 구현→실제 UI 전문 피드백→보완으로 완주, 매 페이즈 회귀 보완:
 
 - **Phase9 (A) 인-칩·패널 아이콘 SVG화**: ICON 맵에 repeat/star/starFill/box/boxCheck. 칩 git🔧·반복🔁→선행 SVG(클립 해소), 패널 할 일 체크박스 ☑☐·★☆·삭제✕·'중요만' 토글·작업일지 배지·과제 cat-git/desc·더보기 help-row 🖱️↔️⌨️→전부 단색 SVG. 별표 의미색 골드(#e0a32e) 통일. *(Visual 9, P1 별표3색·help-row→보완)*
 - **Phase10 (C+D) 폼 폴리시**: entryModal 종일 시 #timeRow 흐림→숨김(quick-add 통일). 제목 placeholder 유형별 단문('일정 제목'/'할 일'), quick-add 반복 선택 시 '격주·횟수는 자세히 편집' 힌트, qaPrio ★→골드 별 SVG. *(IA/Form 9, 보완 불필요)*
@@ -119,7 +119,7 @@ Start-Process "$env:USERPROFILE\Desktop\수행과제캘린더\수행과제캘린
 - **feat(P0②): 380px 밀도 개선(크롬 압축)** — 필터바 2줄 wrap→**1줄 가로스크롤**(66→40px) + topbar 패딩·버튼·제목 압축(≤440 미디어쿼리). **실측(프리뷰, 헤드리스 아님)**: 크롬 41%→34%, 셀 49→55px, 칩 영역 14→20px, 가로 오버플로 없음. 참고: 코드리뷰의 '셀 40px'·헤드리스 캡처의 '토 열 잘림'은 실측(docW=vw=380)으로 **과장/캡처 아티팩트** 확인. nav+actions 1줄 merge는 '오늘' 버튼 희생이 필요해 비채택(2줄 유지).
 - **feat(P0①): 멀티데이 기간 막대 연속 표시** — 기간 칩의 빈 mid/end 세그먼트가 콘텐츠 높이로 ~4px 붕괴해 '끊긴 회색 선'으로 보이던 것 → `.chip-range{height:19px;line-height:15px}` 고정 높이로 모든 세그먼트 균일화 → **연속 밴드**. 비겹침 기간은 `segSort`(기간 우선·seriesId)로 셀마다 같은 행에 정렬돼 셀 간 이어짐. **실측 캡처(헤드리스 Edge)로 확인**: 출장 9~13(초록)·감사 16~19(파랑) 끊김 없이 연속, 단일/시간 일정은 그 아래 행. (겹치는 부분 span의 lane 패킹은 드문 케이스라 미적용 — 필요 시 후속.)
 - **tooling: 위젯 UI 실측 캡처 해결** — PrintWindow(PW_RENDERFULLCONTENT)가 WebView2(Chromium GPU/DirectComposition 표면)를 못 읽어 '검은 화면'이던 문제를, **헤드리스 Edge로 `task-calendar-prototype.html`을 실제 렌더해 `--screenshot`** 으로 우회. 재사용 스크립트 [tools/capture-widget.ps1](tools/capture-widget.ps1)(`-W -H -Out [-Demo]`). **핵심 함정: PowerShell 5.1 `Get-Content` 기본 디코딩이 CP949라 UTF-8 한글이 깨져 렌더 블랭크 → 반드시 `-Encoding UTF8` 읽기 + UTF8(no BOM) 쓰기.** `--virtual-time-budget`은 블랭크 유발하므로 미사용. 이제 코드가 아니라 실제 렌더로 UI/UX 평가/검증 가능(380px 위젯폭·1100px 넓게보기 둘 다 확인).
-- **UI/UX 전문 리뷰 + 개선 1차** — 전체 리뷰([UIUX-리뷰-2026-06-17.md](UIUX-리뷰-2026-06-17.md), 워크플로 wpqf6dcyk; 점수 Calendar UX 4 최저) + 케이스별 Before/After 프로토타입([개선안-프로토타입.html](개선안-프로토타입.html)). 사용자 선택분 중 **저위험 3건(③⑥⑪) 구현**:
+- **UI/UX 전문 리뷰 + 개선 1차** — 전체 리뷰([UIUX-리뷰-2026-06-17.md](docs/research/UIUX-리뷰-2026-06-17.md), 워크플로 wpqf6dcyk; 점수 Calendar UX 4 최저) + 케이스별 Before/After 프로토타입([개선안-프로토타입.html](docs/prototypes/개선안-프로토타입.html)). 사용자 선택분 중 **저위험 3건(③⑥⑪) 구현**:
   - **③ 시간 일정 칩 시각 표시** — 컨테이너 쿼리 숨김(좁은 셀서 미발화) 폐기 → `chipTimeShort`(정시 'N시'/그 외 H:MM) 축약 시각을 **좁은 셀에서도 항상** 표시(9시/4시 구분 복원).
   - **⑥ 시맨틱 토스트 + 되돌리기** — `toast(msg,kind,action)`: success(✓녹)/warn(⚠앰버)/error(✕적)/info + role(status/alert) + Undo 액션. IO 실패(저장/내보내기/가져오기/커밋) → error. 파괴 동작(기록·할 일 삭제, 전체 초기화)에 **[실행 취소]**(제거 객체/스냅샷 클로저 보관 후 복원).
   - **⑪ Git 호출 로딩 스피너** — ⏳ 정지 이모지 → CSS `.spin`(reduced-motion 정지), 일괄은 '과제 k/N' 진행률.
