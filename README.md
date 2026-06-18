@@ -9,6 +9,9 @@
 [![WebView2](https://img.shields.io/badge/UI-WebView2%20%2B%20HTML-1E9BF0)](#)
 [![Offline](https://img.shields.io/badge/Network-100%25%20Offline-2e9e6b)](#)
 [![Data](https://img.shields.io/badge/Data-XML%20(open%20format)-e08a00)](#)
+[![License](https://img.shields.io/badge/License-MIT-555)](LICENSE)
+
+<img src="assets/screenshot.png" alt="수행과제 캘린더 — 월 그리드, 멀티데이 막대, 우측 일정/할 일/작업일지 패널" width="860">
 
 </div>
 
@@ -22,9 +25,12 @@
 - 🖥️ **두 가지 창 모드** — 바탕화면 최하위 위젯(기본) ↔ 일반 앱 창(작업표시줄·Alt+Tab 노출, 트레이). ⚙에서 전환.
 - 🧾 **보고서 자동화** — 과제별 git 커밋 → 작업일지 → 기간별 Markdown 보고서 초안.
 - 🗂️ **개방형 데이터** — `taskCalendar` XML v1. 내보내기/가져오기로 백업·이전.
+- ♿ **접근성(WCAG AA)** — 월 그리드 키보드 내비(방향키·PageUp/Down·Enter), 모달 포커스 트랩·복원, ARIA 탭/그리드, 가시 포커스 링.
+- 🌗 **다크 모드** — OS 테마(`prefers-color-scheme`) 자동 전환. 단색 인라인 SVG 아이콘이 currentColor로 라이트/다크 모두 적응.
 
 > 단일 HTML(`task-calendar-prototype.html`)을 **그대로 본체로 임베드**해 WPF + WebView2 위젯으로 패키징합니다. 브라우저에서 HTML만 열어도 동일하게 동작합니다(데이터는 localStorage).
 
+> 📖 **사용 방법**: 기능별 상세 사용법·키보드 단축키·문제 해결은 **[USAGE.md (사용 설명서)](USAGE.md)** 참고.
 > 📄 **이어서 작업하려면**: 현재 상태·빌드·배포·남은 일은 **[CHANGELOG.md](CHANGELOG.md)** (인계 문서)에 모여 있습니다.
 
 ## ✨ 주요 기능
@@ -39,6 +45,9 @@
 - 🔍 **검색 / 과제별 모아보기** — 날짜별 그룹 + 하이라이트, 과제 필터 칩
 - 🧲 **드래그 이동**, ↔️ **좌/우 너비 조절**, 🔳 **넓게 보기(포커스 모드)**
 - 🖥️ **창 모드/트레이** — 바탕화면 위젯 ↔ 일반 앱 창(작업표시줄·Alt+Tab), 닫기→트레이 숨김
+- ♿ **접근성** — 키보드 전용 조작(그리드 방향키 내비·탭 roving·모달 포커스 트랩/복원), WCAG AA 대비, aria-live 알림, ≥40px 터치 타깃(좁은 폭)
+- 🌗 **다크 모드 · 단색 아이콘 시스템** — OS 테마 자동 전환, 전 표면 currentColor SVG 아이콘(단일 ICON 맵)
+- 🔔 **피드백** — 동작별 토스트(성공·경고·오류)+**되돌리기**, 부팅 로딩 스켈레톤, 빈 상태 일러스트
 - 💾 **XML 내보내기/가져오기**, 자동 시작(첫 실행 1회 질문)
 
 ## 🚀 시작하기
@@ -50,7 +59,7 @@
 # 프레임워크 종속(대상 PC에 .NET 9 런타임 필요, 빠름)
 dotnet publish widget\TaskCalendarWidget.csproj -c Release -o dist\app
 
-# 자체포함 단일 exe(런타임 불필요, ~163MB) — 인터넷+런타임팩 캐시 있는 빌드 PC에서
+# 자체포함 단일 exe(런타임 불필요, ~171MB) — 인터넷+런타임팩 캐시 있는 빌드 PC에서
 dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist\portable
 ```
@@ -111,12 +120,28 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 ## 🗺️ 로드맵
 
 - [x] 기간 + 반복 일정 · [x] Git 커밋 → 작업일지 + 보고서 · [x] 할 일(TODO) · [x] 트레이/창 모드 · [x] 자체포함 단일 exe
+- [x] **접근성(WCAG AA)** — 키보드 그리드 내비·모달 포커스 트랩·ARIA 탭/그리드·요약 aria-live
+- [x] **다크 모드**(prefers-color-scheme) · **단색 SVG 아이콘 시스템** · 토스트+되돌리기 · 부팅 스켈레톤
+- [x] 멀티데이 연속 막대(주별 레인) · 좁은 폭 바텀시트 모달
 - [ ] 주간 / 일간 타임라인 뷰
 - [ ] 데스크톱 알림
 - [ ] 음력 명절(설·추석) 표시
 - [ ] 회차별 반복 편집 · 미완료 할 일 롤오버
 - [ ] 자동시작 경로 이슈 해소 (`ISSUES.md` #1)
 
+## ⌨️ 접근성 · 키보드
+
+마우스 없이 전체 조작 가능. 자세한 표는 [USAGE.md](USAGE.md#키보드-단축키).
+
+| 영역 | 키 |
+|---|---|
+| 월 그리드 | `←/→` 일 이동 · `↑/↓` 주 이동 · `PageUp/Down` 월 이동 · `Home` 오늘 · `Enter/Space` 선택 |
+| 전역 | `←/→`·`PageUp/Down` 월 이동 · `Home` 오늘 · `Esc` 모달/시트/넓게보기 닫기 |
+| 우측 탭 | `←/→/Home/End` 탭 이동(roving) |
+| 모달 | `Tab/Shift+Tab` 순환(포커스 트랩) · `Esc` 닫기 · 닫으면 호출 요소로 포커스 복원 |
+
+- WCAG AA 대비(본문 ≥4.5:1), 가시 포커스 링, ARIA(grid·tab·dialog·status live region), `prefers-reduced-motion` 존중.
+
 ## 📄 라이선스
 
-MIT License 권장 (루트에 `LICENSE` 추가 권장).
+[MIT License](LICENSE) — 자유롭게 사용·수정·재배포 가능. 저작권자 표기만 유지.
