@@ -511,6 +511,16 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .nd-commit .s{flex:1;font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere}
 .nd-commit .cat{color:var(--muted);font-size:var(--fs-micro)}
 .nd-commit .h{font-size:var(--fs-micro);color:var(--muted);font-family:ui-monospace,'Consolas',monospace;flex:none}
+/* 작업일지 과제별 공수칩 */
+.dp-hours{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
+.dp-hours .dph-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:700}
+.dp-hours .dph-miss{font-size:var(--fs-micro);color:var(--muted)}
+.hchip{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line-2);border-radius:6px;padding:1px 6px;background:var(--panel)}
+.hchip .hc-nm{font-size:var(--fs-micro);color:var(--text)}
+.hchip .hc-in{width:42px;border:none;background:transparent;font-size:var(--fs-meta);text-align:right;padding:2px 0;color:var(--text);font-family:inherit;font-variant-numeric:tabular-nums}
+.hchip .hc-in:focus{outline:none}
+.hchip .hc-in::placeholder{color:var(--faint)}
+.hchip .hc-u{font-size:var(--fs-micro);color:var(--muted)}
 /* 빠른 추가 */
 .nd-add{margin-bottom:6px}
 .nd-add-r1{display:flex;gap:6px}
@@ -752,6 +762,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
           <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
           <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
         </div>
+        <div class="row2" style="margin-top:8px">
+          <div><label for="fHours">공수 (시간)</label><input type="number" id="fHours" min="0" max="24" step="0.25" inputmode="decimal" placeholder="예: 2.5"></div>
+          <div style="align-self:end"><span class="git-hint">실제 들인 시간 — 보고서에서 과제별 합산</span></div>
+        </div>
       </section>
       <section class="fsect" id="recurSect">
         <div class="fsect-cap">반복 · 기간</div>
@@ -904,7 +918,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       </div>
       <div class="rpt-opts">
         <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> 작업일지(커밋 기록)만</label>
-        <span class="git-hint" style="margin-left:auto">과제별 [제목] : 시간 — 시간은 직접 입력</span>
+        <label class="check" style="margin:0"><input type="checkbox" id="rptHours" checked> 공수 자동합산</label>
+        <span class="git-hint" style="margin-left:auto">과제별 [제목] : 시간 — 공수 합산, 직접 수정 가능(재생성 시 덮어씀)</span>
       </div>
       <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <textarea id="rptOut" spellcheck="false" placeholder="기간을 선택하면 보고서 초안이 생성됩니다. 생성 후 자유롭게 수정하세요."></textarea>
@@ -1145,6 +1160,7 @@ function load(){
         // 손상/외부편집 데이터 방어: 필수 텍스트 필드를 문자열로 정규화 (검색의 toLowerCase 등 보호)
         s.entries.forEach(e => { e.title = String(e.title ?? ''); e.memo = String(e.memo ?? '');
           e.startTime = String(e.startTime ?? ''); e.endTime = String(e.endTime ?? ''); e.date = String(e.date ?? '');
+          e.hours = validMin(e.hours);   // 저장된 분 정수 검증(곱 안 함). 구버전/외부편집 방어
           e.source = e.source === 'git' ? 'git' : ''; e.commits = normCommits(e.commits); migrateGitMemo(e);
           e.endDate = (typeof e.endDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(e.endDate) && e.endDate>e.date) ? e.endDate : '';
           e.recur = normRecur(e.recur);
@@ -1278,11 +1294,21 @@ function rangeFields(d, source){
   return {endDate, recur:normRecur(d.recur),
     recurExcept: Array.isArray(d.recurExcept) ? d.recurExcept.filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)) : []};
 }
+// 공수(시간) 정규화 — 입력은 '시간 소수'(2.5=2시간30분), 저장은 '분 정수'. 빈칸/오류→null(미입력),
+// 0~24h(0~1440분) 클램프, 명시적 0은 0으로 보존(미입력과 구분). 폼 입력 경계에서만 사용.
+function numMin(v){
+  if(v === '' || v === null || v === undefined) return null;
+  const n = parseFloat(v);
+  if(!isFinite(n) || n < 0) return null;
+  return Math.min(1440, Math.round(n * 60));
+}
+// 이미 저장된 '분 정수' 값 검증 — load/XML 읽기 경계용(곱 안 함). 정수 0~1440만 통과, 그 외 null.
+function validMin(v){ const m = parseInt(v, 10); return Number.isInteger(m) && m >= 0 && m <= 1440 ? m : null; }
 function addEntry(d){
   const source = d.source==='git'?'git':'';
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
-    memo:d.memo||'', source, commits:normCommits(d.commits), ...rangeFields(d, source),
+    memo:d.memo||'', source, commits:normCommits(d.commits), hours:numMin(d.hours), ...rangeFields(d, source),
     createdAt:nowIso(), updatedAt:nowIso()};
   state.entries.push(e); save(); return e;
 }
@@ -1291,7 +1317,7 @@ function updateEntry(id, d){
   const source = d.source==='git'?'git':'';
   Object.assign(e, {date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
-    memo:d.memo||'', source, commits:normCommits(d.commits), ...rangeFields(d, source), updatedAt:nowIso()});
+    memo:d.memo||'', source, commits:normCommits(d.commits), hours:numMin(d.hours), ...rangeFields(d, source), updatedAt:nowIso()});
   save();
 }
 function deleteEntry(id){
@@ -1375,6 +1401,7 @@ function toXML(){
     el.setAttribute('allDay', e.allDay ? 'true' : 'false');
     el.setAttribute('startTime', e.startTime || '');
     el.setAttribute('endTime', e.endTime || '');
+    if(e.hours != null) el.setAttribute('hours', String(e.hours));   // 공수(분 정수). 미입력이면 속성 미기록(기존 파일과 byte 동일)
     el.setAttribute('createdAt', e.createdAt || '');
     el.setAttribute('updatedAt', e.updatedAt || '');
     const t = doc.createElement('title'); t.textContent = e.title; el.appendChild(t);
@@ -1470,6 +1497,7 @@ function fromXML(text){
       allDay,
       startTime: allDay ? '' : validTime(e.getAttribute('startTime')),
       endTime: allDay ? '' : validTime(e.getAttribute('endTime')),
+      hours: validMin(e.getAttribute('hours')),   // 공수(분 정수|null). 속성 없으면 null → 구버전 XML 무손실
       memo: txt(e,'memo'),
       source,
       commits: normCommits([...e.getElementsByTagName('commit')].map(ce => ({
@@ -1515,7 +1543,8 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       e.endDate||'',
       e.recur ? [e.recur.freq, e.recur.interval||1, e.recur.until||'', e.recur.count||0] : null,
       (e.recurExcept||[]).slice().sort(),
-      (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||''])]),
+      (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||'']),
+      e.hours??null]),
     t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'']),
   });
   const p = fromXML(toXML());
@@ -2059,6 +2088,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = e.allDay;
     $('#fStart').value = e.startTime || '';
     $('#fEnd').value = e.endTime || '';
+    $('#fHours').value = e.hours != null ? (e.hours / 60) : '';
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
   }else{
@@ -2069,6 +2099,7 @@ function openEntryModal(mode, ref){
     $('#fDate').value = ref || selectedDate;
     $('#fAllDay').checked = false;
     $('#fStart').value = ''; $('#fEnd').value = '';
+    $('#fHours').value = '';
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
   }
@@ -2139,7 +2170,7 @@ function saveEntryFromForm(){
   commits = commits.filter(c => { if(!c.hash) return true; if(seen.has(c.hash)) return false; seen.add(c.hash); return true; });
   const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
-                memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
+                hours: $('#fHours').value, memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
   if(editingId){ updateEntry(editingId, data); toast('기록을 수정했습니다', 'success'); }
   else{ addEntry(data); toast('기록을 추가했습니다', 'success'); }
   closeModal('#entryModal');
@@ -2396,18 +2427,24 @@ function buildReport(){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.value = ''; return;
   }
   const gitOnly = $('#rptGitOnly').checked;
+  const autoSum = $('#rptHours') ? $('#rptHours').checked : false;   // 공수 자동합산(기본 ON)
   // 기간/반복 전개 후, 과제(카테고리)별 업무 목록(제목)을 모은다. 같은 제목은 1회만(여러 날 반복 방지).
   const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 직접 만든 경우 미분류를 그쪽으로 병합
-  const items = new Map();   // catId -> 제목 배열(순서 보존)
-  const seen  = new Map();   // catId -> Set(제목)  중복 제거
+  const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');  // 출력·제목·공수 단일 버킷키
+  const items = new Map();   // catKey -> 제목 배열(순서 보존)
+  const seen  = new Map();   // catKey -> Set(제목)  중복 제거
+  const sumMin = new Map();  // catKey -> 공수 분 합계
   const uncat = [];          // 미분류(동명 '기타' 없을 때)
+  let uninput = 0;           // 공수 미입력 항목 수
   for(const e of state.entries){
     if(gitOnly && e.source !== 'git') continue;
     let hit = false;
     for(const _ of expandOccurrences(e, from, to)){ hit = true; break; }   // 기간 내 발생 1회라도?
     if(!hit) continue;
+    const k = catKey(e);
+    // 공수 누적 — 제목 중복제거 '앞'에서(동명 항목 공수 유실 차단). 항목당 1회만(반복/멀티데이 곱셈 안 함).
+    if(e.hours != null) sumMin.set(k, (sumMin.get(k) || 0) + e.hours); else uninput++;
     const title = String(e.title || '').trim(); if(!title) continue;
-    const k = catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
     if(!seen.has(k)) seen.set(k, new Set());
     if(seen.get(k).has(title)) continue; seen.get(k).add(title);
     if(k === '__uncat__') uncat.push(title);
@@ -2416,14 +2453,22 @@ function buildReport(){
   if(!state.categories.length && !uncat.length){
     sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.value = ''; return;
   }
-  // 출력: 모든 과제를 [과제명] : 0 (시간은 사용자가 직접 입력)으로, 업무는 줄바꿈 후 '- '. 0건 과제도 표시.
-  const block = (name, titles) => `[${name}] : 0` + titles.map(t => `\n- ${t}`).join('');
-  const blocks = state.categories.map(c => block(c.name, items.get(c.id) || []));
-  if(uncat.length) blocks.push(block('기타', uncat));
+  // 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). 자동합산 OFF면 ': 0' 골격(현행과 동일).
+  const fmtH = min => { const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); };
+  const hoursFor = k => autoSum ? fmtH(sumMin.get(k) || 0) : '0';
+  const block = (name, k, titles) => `[${name}] : ${hoursFor(k)}` + titles.map(t => `\n- ${t}`).join('');
+  const blocks = state.categories.map(c => block(c.name, c.id, items.get(c.id) || []));
+  if(uncat.length) blocks.push(block('기타', '__uncat__', uncat));
   out.value = blocks.join('\n\n') + '\n';
   const totalItems = [...items.values()].reduce((n, a) => n + a.length, 0) + uncat.length;
   const catN = state.categories.length + (uncat.length ? 1 : 0);
-  sum.textContent = `${from} ~ ${to} · 과제 ${catN}개 · 업무 ${totalItems}건 · 시간(:뒤 숫자)은 직접 입력` + (gitOnly ? ' · 작업일지만' : '');
+  let line = `${from} ~ ${to} · 과제 ${catN}개 · 업무 ${totalItems}건`;
+  if(autoSum){
+    let grand = 0; for(const v of sumMin.values()) grand += v;
+    line += ` · 총 ${fmtH(grand)}h` + (uninput ? ` · 미입력 ${uninput}건` : '');
+  } else line += ' · 시간(:뒤 숫자)은 직접 입력';
+  if(gitOnly) line += ' · 작업일지만';
+  sum.textContent = line;
 }
 function openReport(){
   openModal('#reportModal');
@@ -2566,6 +2611,22 @@ function renderGitTab(){
   const rows = gitFeed().filter(r => r.date === selectedDate);
   let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">${ICON.download} 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 작업일지로 등록">${ICON.download} 기간 일괄 불러오기</button></div>` : '';
   h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · 작업일지</div>`;
+  // 과제별 공수칩 — 선택 날짜의 git 작업일지를 과제(categoryId)별로 묶어 시간 입력. 커밋 행 구조는 불변.
+  const dayGit = state.entries.filter(e => e.source === 'git' && e.date === selectedDate && (!noteFilterCat || e.categoryId === noteFilterCat));
+  if(dayGit.length){
+    const grp = new Map();   // catId('' = 미분류) -> entries
+    for(const e of dayGit){ const k = e.categoryId || ''; if(!grp.has(k)) grp.set(k, []); grp.get(k).push(e); }
+    let chips = '', miss = 0;
+    for(const [cid, es] of grp){
+      es.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      const head = es[0];   // 그 (날짜×과제)의 첫 항목에 저장(합산은 과제 버킷이라 무관)
+      const cat = catById(cid); const nm = cat ? cat.name : '미분류';
+      if(head.hours == null) miss++;
+      const val = head.hours != null ? (head.hours / 60) : '';
+      chips += `<span class="hchip"><span class="hc-nm">${esc(nm)}</span><input type="number" class="hc-in" min="0" max="24" step="0.25" inputmode="decimal" placeholder="시간?" value="${val}" data-hid="${esc(head.id)}" aria-label="${esc(nm)} 과제 공수(시간)"><span class="hc-u">h</span></span>`;
+    }
+    h += `<div class="dp-hours"><span class="dph-lb">공수</span>${chips}${miss ? `<span class="dph-miss">${miss}개 미입력</span>` : ''}</div>`;
+  }
   if(!rows.length){
     h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 작업일지(커밋)가 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
     return h;
@@ -2729,6 +2790,7 @@ function openQuickAdd(date, type, entryId){
     const s = $('#qaStart'), en = $('#qaEnd'); if(s) s.value = e.startTime || ''; if(en) en.value = e.endTime || '';
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
+    const hh = $('#qaHours'); if(hh) hh.value = e.hours != null ? (e.hours / 60) : '';
     const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
     $('#qaAllDay').dispatchEvent(new Event('change'));   // 시간 행 표시 동기화
   }
@@ -2741,7 +2803,7 @@ function qaSyncType(){
   $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
   if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
 }
-function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (종일·시간·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
+function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (종일·시간·반복·공수·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
     ? `<label class="qa-chk"><input type="checkbox" id="qaAllDay" checked> 종일</label>
@@ -2749,6 +2811,7 @@ function qaRenderDetail(){
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
+       <label class="qa-lb">공수 (시간, 선택)</label><input type="number" id="qaHours" min="0" max="24" step="0.25" inputmode="decimal" placeholder="예: 2.5">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
     : `<label class="qa-chk"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -2775,9 +2838,9 @@ function qaEventFormData(){
   const en = (!allDay && $('#qaEnd')) ? $('#qaEnd').value : '';
   const rf = $('#qaRecur') ? $('#qaRecur').value : '';
   const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
-  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo');
+  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const hhEl = $('#qaHours');
   return {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
-    allDay, startTime:st, endTime:en, memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
+    allDay, startTime:st, endTime:en, hours:hhEl ? hhEl.value : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
 }
 function qaSave(){
   const title = $('#qaTitle').value.trim();
@@ -3095,6 +3158,14 @@ function bind(){
     }
   });
 
+  /* 작업일지 과제별 공수칩 입력 (blur/Enter=change). 재렌더 안 함 → 포커스/스크롤 보존, 미입력 카운트는 다음 렌더에 반영 */
+  $('#dayPanel').addEventListener('change', ev => {
+    const inp = ev.target.closest('.hc-in'); if(!inp) return;
+    const e = entryById(inp.dataset.hid); if(!e) return;
+    e.hours = numMin(inp.value); e.updatedAt = nowIso(); save();
+    inp.value = e.hours != null ? (e.hours / 60) : '';   // 클램프·정규화 결과를 칸에 반영(예 30→24, 음수/문자→빈칸)
+  });
+
   /* 기록 모달 */
   $('#fAllDay').addEventListener('change', () => { toggleTimeRow(); toggleRangeRow(); });
   $('#fCat').addEventListener('change', updateGitRow);
@@ -3184,6 +3255,7 @@ function bind(){
   $('#rptFrom').addEventListener('change', buildReport);
   $('#rptTo').addEventListener('change', buildReport);
   $('#rptGitOnly').addEventListener('change', buildReport);
+  $('#rptHours').addEventListener('change', buildReport);
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#btnRptSave').addEventListener('click', saveReportFile);
   $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
