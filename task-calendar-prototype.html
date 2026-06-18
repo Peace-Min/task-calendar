@@ -545,8 +545,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
 .qa-detail input[type=time],.qa-detail select,.qa-detail textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
 .qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
-.qa-foot{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
-.qa-more{border:none;background:none;color:var(--accent);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit}
+.qa-foot{display:flex;align-items:center;gap:10px;margin-top:14px}
+.qa-more{border:none;background:none;color:var(--accent);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit;margin-right:auto}
+.qa-advanced{border:none;background:none;color:var(--muted);font-size:var(--fs-meta);cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
+.qa-advanced:hover{color:var(--text)}
+.qa-edit-title{flex:1;font-size:var(--fs-title);font-weight:700;color:var(--text)}
 /* 그리드 할 일 점(은은하게 — 일정 막대와 구분) */
 .cell-todo{width:9px;height:9px;border:1.5px solid var(--faint);border-radius:50%;flex:none;margin-left:auto}
 
@@ -752,6 +755,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <button type="button" class="qa-type on" data-qatype="event">일정</button>
         <button type="button" class="qa-type" data-qatype="todo">할 일</button>
       </div>
+      <span class="qa-edit-title hidden" id="qaEditTitle">일정 수정</span>
       <button class="x" data-close aria-label="닫기">×</button>
     </div>
     <input type="text" id="qaTitle" class="qa-title" maxlength="200" placeholder="무엇을 했나요 / 할 예정인가요?">
@@ -762,6 +766,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
     <div class="qa-detail hidden" id="qaDetail"></div>
     <div class="qa-foot">
       <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>
+      <button type="button" class="qa-advanced hidden" id="qaAdvanced">자세히 편집</button>
       <button class="btn primary" id="qaSave">저장</button>
     </div>
   </div>
@@ -2640,14 +2645,43 @@ function renderTodoListTab(){
 
 /* ---------- 빠른 등록(quick-create) — 일정/할일 한 줄 캡처, 상세는 옵션 더보기 ---------- */
 let qaType = 'event';   // 'event' | 'todo'
-function openQuickAdd(date, type){
-  qaType = (type === 'todo') ? 'todo' : 'event';
+let qaEditId = null;    // 편집 중인 일정 id(생성=null) — 생성/수정 단일 편집기 통일
+// 일정 편집 라우팅: 단순 일정은 quick-add(생성과 동일 편집기), git 작업일지·반복 일정은 전체 entryModal로
+function editEntry(id){
+  const e = entryById(id);
+  if(e && e.source !== 'git' && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);
+  else openEntryModal('edit', id);
+}
+function openQuickAdd(date, type, entryId){
+  qaEditId = entryId || null;
+  const e = qaEditId ? entryById(qaEditId) : null;
+  qaType = e ? 'event' : ((type === 'todo') ? 'todo' : 'event');   // 편집은 일정만(할일은 패널 인라인 편집)
   fillCatSelect($('#qaCat'), '과제 없음');
-  $('#qaCat').value = (filterCatId || noteFilterCat || '');
-  $('#qaTitle').value = '';
-  $('#qaDate').value = (/^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate);
+  // 편집 모드: 일정/할일 토글 숨기고 '일정 수정' 타이틀 + '자세히 편집' 노출
+  $('#quickAdd .qa-tg').classList.toggle('hidden', !!e);
+  $('#qaEditTitle').classList.toggle('hidden', !e);
+  $('#qaAdvanced').classList.toggle('hidden', !e);
+  $('#qaSave').textContent = e ? '저장' : '추가';
   $('#qaDetail').innerHTML = ''; $('#qaDetail').classList.add('hidden');
-  qaSyncType();
+  if(e){
+    $('#qaTitle').value = e.title;
+    $('#qaDate').value = e.date;
+    $('#qaCat').value = e.categoryId || '';
+  } else {
+    $('#qaCat').value = (filterCatId || noteFilterCat || '');
+    $('#qaTitle').value = '';
+    $('#qaDate').value = (/^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate);
+  }
+  qaSyncType();   // 상세는 아직 숨김 → qaMoreLabel만(프리필 덮어쓰기 방지)
+  if(e){          // 편집: 상세를 펼치고 기존 값 프리필
+    qaRenderDetail(); $('#qaDetail').classList.remove('hidden'); $('#qaMore').textContent = '옵션 접기 ▴';
+    $('#qaAllDay').checked = !!e.allDay;
+    const s = $('#qaStart'), en = $('#qaEnd'); if(s) s.value = e.startTime || ''; if(en) en.value = e.endTime || '';
+    const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
+    const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
+    const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
+    $('#qaAllDay').dispatchEvent(new Event('change'));   // 시간 행 표시 동기화
+  }
   openModal('#quickAdd');
   setTimeout(() => $('#qaTitle').focus(), 30);
 }
@@ -2679,6 +2713,17 @@ function qaToggleDetail(){
   if(d.classList.contains('hidden')){ qaRenderDetail(); d.classList.remove('hidden'); $('#qaMore').textContent = '옵션 접기 ▴'; }
   else { d.classList.add('hidden'); qaMoreLabel(); }
 }
+// 현재 quick-add(일정) 폼값 → entry data (검증·토스트 없음 — qaSave/에스컬레이션 공유, 값 이월용)
+function qaEventFormData(){
+  const adEl = $('#qaAllDay'); const allDay = adEl ? adEl.checked : true;
+  const st = (!allDay && $('#qaStart')) ? $('#qaStart').value : '';
+  const en = (!allDay && $('#qaEnd')) ? $('#qaEnd').value : '';
+  const rf = $('#qaRecur') ? $('#qaRecur').value : '';
+  const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
+  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo');
+  return {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
+    allDay, startTime:st, endTime:en, memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
+}
 function qaSave(){
   const title = $('#qaTitle').value.trim();
   if(!title){ toast('제목을 입력하세요', 'warn'); $('#qaTitle').focus(); return; }
@@ -2687,16 +2732,12 @@ function qaSave(){
   const memoEl = $('#qaMemo'); const memo = memoEl ? memoEl.value.trim() : '';
   if(qaType === 'event'){
     if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 선택하세요', 'warn'); $('#qaDate').focus(); return; }
-    const adEl = $('#qaAllDay'); const allDay = adEl ? adEl.checked : true;
-    const st = (!allDay && $('#qaStart')) ? $('#qaStart').value : '';
-    const en = (!allDay && $('#qaEnd')) ? $('#qaEnd').value : '';
-    if(st && en && en < st){ toast('종료 시간이 시작보다 빠릅니다', 'warn'); return; }
-    const rf = $('#qaRecur') ? $('#qaRecur').value : '';
-    const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
-    const edEl = $('#qaEndDate'); const endDate = edEl ? edEl.value : '';
-    addEntry({date, title, categoryId:cat, allDay, startTime:st, endTime:en, memo, recur, endDate});
+    const data = qaEventFormData();
+    if(data.startTime && data.endTime && data.endTime < data.startTime){ toast('종료 시간이 시작보다 빠릅니다', 'warn'); return; }
+    if(qaEditId){ updateEntry(qaEditId, data); }   // 단순 일정 수정(git·복잡반복은 '자세히 편집'→entryModal)
+    else { addEntry(data); }
     selectedDate = date; noteTab = 'detail';
-    closeModal('#quickAdd'); renderAll(); toast('일정을 추가했습니다');
+    closeModal('#quickAdd'); renderAll(); toast(qaEditId ? '일정을 수정했습니다' : '일정을 추가했습니다', 'success');
   } else {
     const due = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
     const edEl = $('#qaEndDate'); const endDate = edEl ? edEl.value : '';
@@ -2705,7 +2746,7 @@ function qaSave(){
     if(t && memo){ t.note = memo; save(); }
     if(due) selectedDate = due; else noteCollapsed.delete('nodate');   // 추가한 할 일이 보이도록(기한 있으면 그 날로, 없으면 기한없음 펼침)
     noteTab = 'todo';
-    closeModal('#quickAdd'); renderAll(); toast('할 일을 추가했습니다');
+    closeModal('#quickAdd'); renderAll(); toast('할 일을 추가했습니다', 'success');
   }
 }
 
@@ -2719,6 +2760,12 @@ function bind(){
   /* 빠른 등록(quick-create) */
   $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('.qa-type'); if(b){ qaType = b.dataset.qatype; qaSyncType(); } });
   $('#qaMore').addEventListener('click', qaToggleDetail);
+  $('#qaAdvanced').addEventListener('click', () => {   // 단순 편집기 → 전체 편집기. 현재 폼 변경분을 먼저 반영(값 이월)
+    const id = qaEditId; if(!id) return;
+    const d = qaEventFormData();
+    if(d.title && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) updateEntry(id, d);
+    closeModal('#quickAdd'); openEntryModal('edit', id);
+  });
   $('#qaSave').addEventListener('click', qaSave);
   $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
   $('#btnCats').addEventListener('click', () => { $('#moreMenu').classList.add('hidden'); openCatModal(); });
@@ -2818,7 +2865,7 @@ function bind(){
         noteTab = 'todo'; renderPanel(); openSheetIfNarrow();
         return;
       }
-      openEntryModal('edit', chip.dataset.id); return;
+      editEntry(chip.dataset.id); return;
     }
     const cell = ev.target.closest('.cell');
     if(cell) selectDate(cell.dataset.date);
@@ -2906,7 +2953,7 @@ function bind(){
       ev.target.remove();
       return;
     }
-    if(act === 'edit') openEntryModal('edit', card.dataset.id);
+    if(act === 'edit') editEntry(card.dataset.id);
     else if(act === 'del'){
       const e = entryById(card.dataset.id);
       if(!e) return;
