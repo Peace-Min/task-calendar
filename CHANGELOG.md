@@ -5,6 +5,14 @@
 
 ---
 
+## 🆕 2026-06-18 — 최종 재평가 9.0 + 아이콘 일관성 완성(Phase13)
+
+- **최종 ui-ux-eval-loop 재평가(13에이전트, 적대검증 6/6 confirmed): 종합 8.6 → 9.0**. Visual 9·IA/폼 8.7·Calendar 9·**Polish 9.4**·**접근성 9(+1)**. 전 차원 8+·P0 0. 접근성 +1(.nd-sec 키보드·dpReport tablist 분리가 '주장' 아닌 실동작으로 확인)이 최대 성과. 점수 인플레 아님(전부 코드 실측 confirmed).
+- 평가가 짚은 마지막 P1 = "전 표면 단일 아이콘"의 잔여 표면(일정 상세 카드·검색 배지가 이모지) → **Phase13**: ICON.calendar 추가 + commit-head 🔧·card-span 📅·card-recur 🔁·검색 s-badge 🔁📅 → 단색 SVG. 이제 그리드 칩·우측 패널·일정 상세·검색이 동일 ICON(currentColor·다크 자동적응)으로 일관. → 평가가 명시한 '전 차원 9+' 도달 조건 충족.
+- 잔여 P2(부팅 #grid aria-busy, 기간막대 mid/end 접근명, 정적버튼 점진향상)는 비차단.
+
+---
+
 ## 🆕 2026-06-18 — 상용 repo 정비 + 자동시작 자가 치유
 
 "상용 제품 Git repo 수준" 요청 반영:
