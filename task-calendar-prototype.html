@@ -807,7 +807,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <input type="text" id="cDesc" maxlength="200" placeholder="이 과제에 대한 간단한 설명">
         <div class="git-card" id="gitCard">
           <div class="git-card-head">
-            <span class="git-card-title">🔧 Git 연동 <span class="git-opt">(선택)</span></span>
+            <span class="git-card-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 4.5a4 4 0 0 0-5 5.2l-6 6 2.3 2.3 6-6a4 4 0 0 0 5.2-5l-2.6 2.6-2.1-.5-.5-2.1z"/></svg> Git 연동 <span class="git-opt">(선택)</span></span>
             <span class="git-badge off" id="gitBadge">미연결</span>
           </div>
           <label>저장소 폴더</label>
@@ -2470,7 +2470,7 @@ function toast(msg, kind, action){
   const glyph = k === 'warn' ? '⚠' : k === 'error' ? '✕' : k === 'info' ? '•' : '✓';
   const el = document.createElement('div'); el.className = 'toast ' + k;
   if(k === 'error') el.setAttribute('role', 'alert');   // 오류는 assertive로(나머지는 컨테이너 polite)
-  const ico = document.createElement('span'); ico.className = 't-ico'; ico.textContent = glyph;
+  const ico = document.createElement('span'); ico.className = 't-ico'; ico.innerHTML = TOAST_ICON[k] || glyph;   // 단색 SVG 글리프(currentColor=흰색)로 톤 통일
   const m = document.createElement('span'); m.className = 't-msg'; m.textContent = msg;
   el.appendChild(ico); el.appendChild(m);
   let timer;
@@ -2628,7 +2628,7 @@ function todoSectionHtml(label, key, items, opts){
   opts = opts || {};
   if(!items.length) return '';
   const collapsed = noteCollapsed.has(key);
-  const head = `<div class="nd-sec${opts.danger?' danger':''}" data-sec="${key}" role="button" aria-expanded="${!collapsed}">
+  const head = `<div class="nd-sec${opts.danger?' danger':''}" data-sec="${key}" role="button" tabindex="0" aria-expanded="${!collapsed}">
     <span class="nd-sec-arrow">${collapsed ? '▸' : '▾'}</span><span class="nd-sec-label">${esc(label)}</span><span class="nd-sec-count">${items.length}</span></div>`;
   return collapsed ? head : head + `<div class="nd-sec-body">${items.map(todoRowHtml).join('')}</div>`;
 }
@@ -2798,12 +2798,20 @@ const ICON = {
   tag:      svgIc('<path d="M3 11.5V4h7.5L21 14.5 14.5 21z"/><circle cx="7.6" cy="7.6" r="1.3" fill="currentColor" stroke="none"/>'),
   folder:   svgIc('<path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h3.8l1.7 1.8H19a1.5 1.5 0 0 1 1.5 1.5v8.2A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17z"/>'),
   copy:     svgIc('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h9"/>'),
+  more:     svgIc('<circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none"/>'),
+  wrench:   svgIc('<path d="M15.5 4.5a4 4 0 0 0-5 5.2l-6 6 2.3 2.3 6-6a4 4 0 0 0 5.2-5l-2.6 2.6-2.1-.5-.5-2.1z"/>'),
+  check:    svgIc('<path d="M5 12.5l4.5 4.5L19 6"/>', 2.4),
+  alert:    svgIc('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.5v.5"/>'),
+  xmark:    svgIc('<path d="M6 6l12 12M18 6L6 18"/>', 2.4),
+  dot:      svgIc('<circle cx="12" cy="12" r="4" fill="currentColor" stroke="none"/>'),
 };
+const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info:ICON.dot };
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
   const set = (id, html) => { const el = $('#'+id); if(el) el.innerHTML = html; };
   set('btnPrev', ICON.prev);
   set('btnNext', ICON.next);
   set('btnSearch', ICON.search);
+  set('btnMore', ICON.more);
   set('btnNew', ICON.plus + ' 새 기록');
   set('btnCats', ICON.tag + ' 과제 관리');
   set('btnGitFetch', ICON.download + ' 이 과제의 Git 커밋 불러오기');
@@ -2827,7 +2835,8 @@ function bind(){
   $('#qaAdvanced').addEventListener('click', () => {   // 단순 편집기 → 전체 편집기. 현재 폼 변경분을 먼저 반영(값 이월)
     const id = qaEditId; if(!id) return;
     const d = qaEventFormData();
-    if(d.title && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) updateEntry(id, d);
+    if(!d.title){ toast('제목을 입력하세요', 'warn'); $('#qaTitle').focus(); return; }   // 무음 유실 방지 — 공란이면 진행 막음
+    if(/^\d{4}-\d{2}-\d{2}$/.test(d.date)) updateEntry(id, d);
     closeModal('#quickAdd'); openEntryModal('edit', id);
   });
   $('#qaSave').addEventListener('click', qaSave);
@@ -2890,6 +2899,13 @@ function bind(){
   });
   $('#dpBody').addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
+    const sec = ev.target.closest && ev.target.closest('.nd-sec');   // 섹션 헤더 키보드 조작(WCAG 2.1.1)
+    if(sec && (ev.key === 'Enter' || ev.key === ' ')){
+      ev.preventDefault();
+      const k = sec.dataset.sec; noteCollapsed.has(k) ? noteCollapsed.delete(k) : noteCollapsed.add(k); renderPanel();
+      const again = document.querySelector('#dpBody .nd-sec[data-sec="' + k + '"]'); if(again) again.focus();   // 재렌더 후 포커스 복귀
+      return;
+    }
     if(ev.target.classList && ev.target.classList.contains('te-text') && ev.key === 'Enter'){
       const box = ev.target.closest('.todo-edit'); const btn = box && box.querySelector('[data-act="save"]'); if(btn) btn.click();
     }
