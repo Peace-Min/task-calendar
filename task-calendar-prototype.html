@@ -904,7 +904,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       </div>
       <div class="rpt-opts">
         <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> 작업일지(커밋 기록)만</label>
-        <label class="check" style="margin:0"><input type="checkbox" id="rptMd" checked> Markdown 형식</label>
+        <span class="git-hint" style="margin-left:auto">과제별 [제목] : 시간 — 시간은 직접 입력</span>
       </div>
       <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <textarea id="rptOut" spellcheck="false" placeholder="기간을 선택하면 보고서 초안이 생성됩니다. 생성 후 자유롭게 수정하세요."></textarea>
@@ -2396,57 +2396,34 @@ function buildReport(){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.value = ''; return;
   }
   const gitOnly = $('#rptGitOnly').checked;
-  const md = $('#rptMd').checked;
-  // 기간/반복 전개 — 각 발생(occurrence)이 한 줄. 창 안만(bounded).
-  const occs = [];
+  // 기간/반복 전개 후, 과제(카테고리)별 업무 목록(제목)을 모은다. 같은 제목은 1회만(여러 날 반복 방지).
+  const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 직접 만든 경우 미분류를 그쪽으로 병합
+  const items = new Map();   // catId -> 제목 배열(순서 보존)
+  const seen  = new Map();   // catId -> Set(제목)  중복 제거
+  const uncat = [];          // 미분류(동명 '기타' 없을 때)
   for(const e of state.entries){
     if(gitOnly && e.source !== 'git') continue;
-    for(const occ of expandOccurrences(e, from, to)) occs.push(occ);
+    let hit = false;
+    for(const _ of expandOccurrences(e, from, to)){ hit = true; break; }   // 기간 내 발생 1회라도?
+    if(!hit) continue;
+    const title = String(e.title || '').trim(); if(!title) continue;
+    const k = catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
+    if(!seen.has(k)) seen.set(k, new Set());
+    if(seen.get(k).has(title)) continue; seen.get(k).add(title);
+    if(k === '__uncat__') uncat.push(title);
+    else { if(!items.has(k)) items.set(k, []); items.get(k).push(title); }
   }
-  if(!occs.length){
-    sum.textContent = gitOnly ? '기간 내 작업일지가 없습니다 — [📥 커밋]으로 먼저 가져오세요.' : '기간 내 기록이 없습니다.';
-    out.value = ''; return;
+  if(!state.categories.length && !uncat.length){
+    sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.value = ''; return;
   }
-  // 과제별 → 날짜별 그룹. 기간이 from 이전에 시작하면 헤더 날짜는 from으로 클램프(요청 창 밖 헤더 방지)
-  const byCat = new Map();
-  for(const occ of occs){
-    const k = catById(occ.categoryId) ? occ.categoryId : '';
-    if(!byCat.has(k)) byCat.set(k, new Map());
-    const m = byCat.get(k);
-    const key = maxStr(occ._occStart, from);
-    if(!m.has(key)) m.set(key, []);
-    m.get(key).push(occ);
-  }
-  const order = state.categories.map(c => c.id).filter(id => byCat.has(id));
-  if(byCat.has('')) order.push('');
-  const gitN = occs.filter(o => o.source === 'git').length;
-  const lines = [];
-  lines.push((md ? '# ' : '■ ') + `업무 보고 (${from} ~ ${to})`);
-  lines.push('');
-  for(const cid of order){
-    const c = catById(cid);
-    lines.push(md ? `## ${c ? c.name : '미분류'}` : `[${c ? c.name : '미분류'}]`);
-    const dm = byCat.get(cid);
-    for(const ds of [...dm.keys()].sort()){
-      const d = parseYmd(ds);
-      const head = `${d.getMonth()+1}/${d.getDate()} (${WEEKDAYS[d.getDay()]})`;
-      lines.push(md ? `### ${head}` : `  ${head}`);
-      for(const e of dm.get(ds).sort(entrySort)){
-        const isRange = e._occEnd && e._occEnd > e._occStart;
-        const tag = (e.source === 'git' ? ' [작업일지]' : '') + (e.recur ? ' 🔁' : '')
-                  + (isRange ? ` (${fmtShort(e._occStart)}~${fmtShort(e._occEnd)})` : '');
-        const time = e.allDay ? '' : (e.startTime ? ` (${e.startTime}${e.endTime ? '–' + e.endTime : ''})` : '');
-        lines.push(md ? `- **${e.title}**${time}${tag}` : `  - ${e.title}${time}${tag}`);
-        for(const b of memoBullets(e.memo)) lines.push(md ? `  - ${b}` : `      · ${b}`);   // 사용자 메모
-        for(const cm of (e.commits||[]))                                                       // 커밋(구조화)
-          lines.push(md ? `  - ${cm.subject}${cm.short?` (${cm.short})`:''}`
-                        : `      · ${cm.time?cm.time+' ':''}${cm.subject}${cm.short?` (${cm.short})`:''}`);
-      }
-      lines.push('');
-    }
-  }
-  out.value = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
-  sum.textContent = `${from} ~ ${to} · 과제 ${order.length}개 · 기록 ${occs.length}건 (작업일지 ${gitN}건)` + (gitOnly ? ' · 작업일지만' : '');
+  // 출력: 모든 과제를 [과제명] : 0 (시간은 사용자가 직접 입력)으로, 업무는 줄바꿈 후 '- '. 0건 과제도 표시.
+  const block = (name, titles) => `[${name}] : 0` + titles.map(t => `\n- ${t}`).join('');
+  const blocks = state.categories.map(c => block(c.name, items.get(c.id) || []));
+  if(uncat.length) blocks.push(block('기타', uncat));
+  out.value = blocks.join('\n\n') + '\n';
+  const totalItems = [...items.values()].reduce((n, a) => n + a.length, 0) + uncat.length;
+  const catN = state.categories.length + (uncat.length ? 1 : 0);
+  sum.textContent = `${from} ~ ${to} · 과제 ${catN}개 · 업무 ${totalItems}건 · 시간(:뒤 숫자)은 직접 입력` + (gitOnly ? ' · 작업일지만' : '');
 }
 function openReport(){
   openModal('#reportModal');
@@ -2464,13 +2441,12 @@ async function copyReport(){
 function saveReportFile(){
   const text = $('#rptOut').value;
   if(!text){ toast('저장할 내용이 없습니다', 'warn'); return; }
-  const md = $('#rptMd').checked;
   try{
-    const blob = new Blob([text], {type: md ? 'text/markdown' : 'text/plain'});
+    const blob = new Blob([text], {type: 'text/plain'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `업무보고-${$('#rptFrom').value}~${$('#rptTo').value}.${md ? 'md' : 'txt'}`;
+    a.download = `업무보고-${$('#rptFrom').value}~${$('#rptTo').value}.txt`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }catch(err){ toast('저장 실패: ' + err.message, 'warn'); }
@@ -3208,7 +3184,6 @@ function bind(){
   $('#rptFrom').addEventListener('change', buildReport);
   $('#rptTo').addEventListener('change', buildReport);
   $('#rptGitOnly').addEventListener('change', buildReport);
-  $('#rptMd').addEventListener('change', buildReport);
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#btnRptSave').addEventListener('click', saveReportFile);
   $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
