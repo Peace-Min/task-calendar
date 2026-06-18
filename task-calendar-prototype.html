@@ -12,6 +12,7 @@
   --text:#1d2433; --muted:#5b6373; /* AA 5.6:1 — 보조 텍스트 */
   --faint:#9aa2b3;        /* 1px 테두리·비활성 전용(본문 금지, 약 2.6:1) */
   --faint-text:#6c7488;   /* 약화된 '본문' 텍스트용(완료·힌트) — #fff에서 4.68:1로 AA(일반 4.5:1) 충족 */
+  --chip-outline:#818a9e; /* hollow 할 일 칩 경계 — #fff에서 3.38:1로 비텍스트 3:1 충족(모양 신호 강화) */
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --danger:#d6494e; --danger-soft:#fdeeee;
@@ -274,8 +275,8 @@ main{flex:1;display:flex;min-height:0}
 .commit-more{margin-top:5px}
 .chip-git{border-left-style:dashed !important}
 /* 할 일 칩 = HOLLOW(투명 본체+얇은 외곽선+선행 원형 링) — 일정의 SOLID(채운 색막대)와 색이 같아도 모양/채움으로 구분(Google·Apple·Notion·TickTick 공통 패턴, 색맹 안전) */
-.chip-todo{background:transparent !important;color:var(--text) !important;border:1px solid var(--faint);border-left:1px solid var(--faint) !important;display:flex;align-items:center;gap:3px;padding:2px 5px 2px 4px}
-.chip-todo .todo-ring{width:9px;height:9px;box-sizing:border-box;border:1.5px solid var(--faint);border-radius:50%;flex:none}
+.chip-todo{background:transparent !important;color:var(--text) !important;border:1px solid var(--chip-outline);border-left:1px solid var(--chip-outline) !important;display:flex;align-items:center;gap:3px;padding:2px 5px 2px 4px}
+.chip-todo .todo-ring{width:9px;height:9px;box-sizing:border-box;border:1.5px solid var(--chip-outline);border-radius:50%;flex:none}
 .chip-todo .txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .chip-todo.done{opacity:.55}
 .chip-todo.done .txt{text-decoration:line-through;color:var(--faint-text)}
@@ -610,7 +611,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
     --sun:#ff7d82; --sat:#90a4e8;
     --hover-bg:#222b3e;
     --shadow:0 12px 34px rgba(0,0,0,.55);
-    --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27;  /* 다크 전용 보조 */
+    --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27; --chip-outline:#6b7588;  /* 다크 전용 보조 */
   }
   /* #fff 표면 → 패널 */
   .btn,.menu,.fchip,.dp-action,.card,.git-path,.git-scope-pill,.modal,
@@ -1566,7 +1567,7 @@ function chipHtml(item){
   const tdisp = timed ? chipTimeShort(e) : time;   // 시간 칩은 축약 시각(9시), 그 외는 기존
   return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
     data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
-    style="border-left-color:${col};background:${tint(col)}"
+    style="border-left-color:${col};background:${tint(col, seg !== 'single' ? 0.2 : undefined)}"
     title="${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${tdisp?`<span class="chip-t">${esc(tdisp)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
 }
 // 할 일 칩(그리드) — 일정 막대와 구분: 초록 계열 + 체크 글리프, 제목
@@ -1684,20 +1685,24 @@ function renderGrid(){
     // C. 칩을 (성능상 최대 12개까지) 렌더 → fitChips가 셀 높이에 맞춰 들어갈 만큼만 표시하고 나머지는 +N으로 접음
     const RENDER_CAP = 12;
     const wk = Math.floor(i / 7);
-    // 레인 배치: 기간 막대는 배정 레인 위치에 고정(빈 레인은 spacer), 단일 칩은 그 아래로
+    // 레인 배치: 기간 막대는 배정 레인 위치에 고정. 그 날 비어있는 레인(spacer 예정)은 단일 칩으로 backfill해
+    // 세로 낭비를 줄인다(그 날 해당 레인엔 막대가 없으므로 막대 연속성과 무관). 남은 단일은 아래로.
     const rangeItems = [], singleItems = [];
     for(const it of list){ (it.seg && it.seg !== 'single' ? rangeItems : singleItems).push(it); }
-    let positioned = [];
+    let slots = [];
     if(rangeItems.length){
       const laneOf = it => (laneMap[it._key + '@' + wk] || 0);
       const maxLane = Math.max(...rangeItems.map(laneOf));
-      const slots = new Array(maxLane + 1).fill(null);
+      slots = new Array(maxLane + 1).fill(null);
       for(const it of rangeItems) slots[laneOf(it)] = it;   // 주별 레인 보장 → 한 셀 안 레인 충돌 없음
-      positioned = slots.map(it => it ? chipHtml(it) : '<div class="chip-spacer"></div>');
     }
-    const singleChips = singleItems.slice(0, Math.max(0, RENDER_CAP - positioned.length)).map(chipHtml);
-    const chips = positioned.concat(singleChips).join('');
-    const extra = Math.max(0, singleItems.length - singleChips.length);   // 미렌더 단일 칩 수(+N에 반영)
+    let si = 0;
+    for(let l = 0; l < slots.length && si < singleItems.length; l++){ if(slots[l] === null) slots[l] = singleItems[si++]; }
+    const ordered = slots.concat(singleItems.slice(si));   // 레인영역(backfill 포함) + 남은 단일
+    const shown = ordered.slice(0, RENDER_CAP);
+    const chips = shown.map(it => it === null ? '<div class="chip-spacer"></div>' : chipHtml(it)).join('');
+    const realShown = shown.filter(it => it !== null).length;
+    const extra = Math.max(0, (rangeItems.length + singleItems.length) - realShown);   // 미렌더 실 기록 수(+N)
     const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일`
       + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
       + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음');
