@@ -1,0 +1,172 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>수행과제 캘린더 — 잔여 작업 before/after 프로토타입</title>
+<style>
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --chip-outline:#818a9e; --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
+  --danger:#d6494e; --r-sm:6px; --r-md:10px;
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px;
+}
+*{box-sizing:border-box}
+body{font-family:'Segoe UI','Malgun Gothic',sans-serif;background:var(--bg);color:var(--text);margin:0;padding:24px;font-size:14px;line-height:1.5}
+h1{font-size:20px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 22px}
+.item{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 18px;margin-bottom:16px}
+.item h2{font-size:15px;margin:0 0 2px}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+.p1{background:#fdeeee;color:#b3322f} .p2{background:#eef1fd;color:var(--accent-2)} .judge{background:#fbf2dd;color:#8a6400}
+.why{color:var(--muted);font-size:12.5px;margin:4px 0 12px}
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.col{border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.col .h{font-size:11px;font-weight:700;padding:5px 10px;border-bottom:1px solid var(--line)}
+.col.b .h{background:#faf0f0;color:#9a4040} .col.a .h{background:#eef7f1;color:#1f7a4d}
+.col .body{padding:14px;background:#fafbfd;min-height:64px;display:flex;flex-direction:column;justify-content:center;gap:7px}
+/* ---- 칩(앱 실제 스타일 발췌) ---- */
+.cellbox{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px;width:150px}
+.cellbox .num{font-size:13px;font-weight:600;margin-bottom:4px}
+.chips{display:flex;flex-direction:column;gap:2px}
+.chip{font-size:12px;line-height:1.35;padding:2px 5px;border-radius:6px;border-left:3px solid #3e5be0;background:rgba(62,91,224,.13);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
+.chip.bar{height:19px;line-height:15px;background:rgba(46,158,107,.2);border-left-color:#2e9e6b}
+.chip.bar2{background:rgba(186,117,23,.2);border-left-color:#ba7517}
+.chip.git{border-left-style:dashed;background:rgba(91,107,125,.13);border-left-color:#5b6b7d}
+.chip-todo{background:transparent;border:1px solid var(--chip-outline);border-left:1px solid var(--chip-outline);display:flex;align-items:center;gap:3px}
+.ring{width:9px;height:9px;border:1.5px solid #2e9e6b;border-radius:50%;flex:none}
+.ic{width:13px;height:13px;flex:none;vertical-align:-2px}
+.spacer{height:19px}
+/* ---- 토스트 ---- */
+.toast{background:#1f7a4d;color:#fff;padding:8px 14px;border-radius:999px;font-size:13px;display:inline-flex;align-items:center;gap:7px;width:max-content}
+.toast .ic{stroke:#fff}
+@keyframes up{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes dn{from{transform:translateY(0);opacity:1}to{transform:translateY(10px);opacity:0}}
+.demoUp{animation:up 2s ease-in-out infinite}
+.demoDn{animation:dn 2s ease-in-out infinite}
+/* ---- 모달 시간행 ---- */
+.lbl{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:3px}
+.inp{border:1px solid var(--line-2);border-radius:6px;padding:6px 9px;font-size:13px;background:#fff;width:100%}
+.row2{display:flex;gap:8px}.row2>div{flex:1}
+.dim{opacity:.45}
+.hint{font-size:11px;color:var(--accent);margin-top:5px;cursor:pointer}
+/* ---- 탭/보고서 ---- */
+.tabs{display:flex;gap:2px;align-items:flex-end;border-bottom:1px solid var(--line);padding:4px 4px 0}
+.tab{padding:6px 9px;font-size:12px;color:var(--muted);border-bottom:2px solid transparent}
+.tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
+.act{margin-left:auto;font-size:11px;border:1px solid var(--line-2);border-radius:6px;padding:3px 8px;color:var(--muted);background:#fff}
+.tlist{border:1px dashed var(--accent);border-radius:4px;padding:2px;font-size:10px;color:var(--accent);text-align:center}
+/* ---- 스켈레톤 ---- */
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+.sk{background:#e9ecf3;border-radius:4px;animation:pulse 1.2s ease-in-out infinite}
+.skrow{display:flex;gap:4px;margin-bottom:4px}
+.todorow{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0}
+.star{color:#e0a32e} .strike{text-decoration:line-through;color:var(--faint-text)}
+.note{font-size:12px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+</style></head><body>
+<h1>수행과제 캘린더 — 잔여 작업 before/after</h1>
+<p class="sub">최종 평가(7.4→8.6, 상용선 도달) 이후 "상용 완성"까지 남은 항목. 좌=현행(Before), 우=제안(After). [판단]은 트레이드오프라 방향 선택 필요.</p>
+
+<div class="item">
+  <h2>A. 인-칩·패널 의미 마커 → 단색 SVG<span class="tag p1">P1</span></h2>
+  <p class="why">크롬 버튼·토스트는 SVG화됐으나 칩/패널의 🔧(작업일지)·🔁(반복)·★(중요)·☑(완료)가 컬러 이모지/글꼴 글리프로 남아 톤 불일치 + 폭/정렬 OS편차 + 칩에서 🔧가 말줄임에 먼저 잘림.</p>
+  <div class="ba">
+    <div class="col b"><div class="h">BEFORE</div><div class="body">
+      <div class="chips" style="width:130px">
+        <div class="chip git">🔧 배포 스크립트 수정</div>
+        <div class="chip">🔁 주간 회의</div>
+      </div>
+      <div class="todorow">☑ <span class="strike">초안 작성</span></div>
+      <div class="todorow">☐ <span class="star">★</span> 검토 요청</div>
+    </div></div>
+    <div class="col a"><div class="h">AFTER</div><div class="body">
+      <div class="chips" style="width:130px">
+        <div class="chip git"><svg class="ic" style="stroke:#5b6b7d" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 4.5a4 4 0 0 0-5 5.2l-6 6 2.3 2.3 6-6a4 4 0 0 0 5.2-5l-2.6 2.6-2.1-.5-.5-2.1z"/></svg>배포 스크립트 수정</div>
+        <div class="chip"><svg class="ic" style="stroke:#3e5be0" viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l3 3-3 3M20 5H9a4 4 0 0 0-4 4M7 22l-3-3 3-3M4 19h11a4 4 0 0 0 4-4"/></svg>주간 회의</div>
+      </div>
+      <div class="todorow"><svg class="ic" style="stroke:#1f7a4d" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6"/></svg> <span class="strike">초안 작성</span></div>
+      <div class="todorow"><svg class="ic" style="stroke:#e0a32e;fill:#e0a32e" viewBox="0 0 24 24" stroke-width="1.5"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg> 검토 요청</div>
+    </div></div>
+  </div>
+  <p class="note">공수 中. ICON 맵에 repeat·wrench·check·star 추가 후 chipHtml/todoChipHtml/패널 빌더가 ICON.* 참조. 다크모드 currentColor 자동 적응 보너스.</p>
+</div>
+
+<div class="item">
+  <h2>B. 셀 위계 — backfill 혼합 vs 막대 상단 밴드 분리<span class="tag judge">판단</span></h2>
+  <p class="why">현행(Phase6)은 빈 레인에 단일 칩을 끼워(backfill) 세로를 아낌 → 한 셀에서 막대↔단일칩이 섞임. 평가는 "막대를 상단에 모으고 단일칩은 아래로 분리"를 권고. <b>밀도 vs 위계 트레이드오프</b> — 어느 쪽?</p>
+  <div class="ba">
+    <div class="col b"><div class="h">A안 — 현행 backfill (밀도 우선)</div><div class="body">
+      <div class="cellbox"><div class="num">13</div><div class="chips">
+        <div class="chip" style="background:rgba(62,91,224,.13)">회의록 정리</div>
+        <div class="chip bar">출장 워크숍</div>
+      </div></div>
+    </div></div>
+    <div class="col a"><div class="h">B안 — 막대 상단 밴드 (위계 우선)</div><div class="body">
+      <div class="cellbox"><div class="num">13</div><div class="chips">
+        <div class="chip bar">출장 워크숍</div>
+        <div class="chip" style="background:rgba(62,91,224,.13)">회의록 정리</div>
+      </div></div>
+    </div></div>
+  </div>
+  <p class="note">A안=Google/Fantastical식(빈 행 채움), Phase6 평가가 "정석"이라 함. B안=막대를 항상 위, 단일은 아래(스캔 일관). 둘 다 막대 연속성은 유지. 기본은 A안 유지 권장(밀도), 원하시면 B안으로.</p>
+</div>
+
+<div class="item">
+  <h2>C. entryModal 종일 체크 시 시간행<span class="tag p2">P2</span></h2>
+  <p class="why">현행은 종일 켜면 시간 입력을 흐리게(opacity .45)만 남겨 "편집 가능?" 오해. quick-add는 아예 숨김 → 두 편집기 불일치.</p>
+  <div class="ba">
+    <div class="col b"><div class="h">BEFORE (흐림)</div><div class="body">
+      <div class="row2 dim"><div><div class="lbl">시작 시간</div><div class="inp">09:00</div></div><div><div class="lbl">종료 시간</div><div class="inp">10:00</div></div></div>
+    </div></div>
+    <div class="col a"><div class="h">AFTER (숨김 — quick-add와 통일)</div><div class="body">
+      <div style="font-size:12px;color:var(--muted);font-style:italic">종일 일정 — 시간 행 숨김</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="item">
+  <h2>D. quick-add 반복 안내 + placeholder 분기<span class="tag p2">P2</span></h2>
+  <p class="why">quick-add 반복은 매주/매월만(간격·횟수 없음) → '격주/10회'는 자세히 편집행. 분기 안내 부재. 제목 placeholder도 생성/수정·일정/할일 동일·장황.</p>
+  <div class="ba">
+    <div class="col b"><div class="h">BEFORE</div><div class="body">
+      <div class="lbl">반복</div><div class="inp">매주 ▾</div>
+      <div style="margin-top:8px"><div class="inp" style="color:var(--faint)">무엇을 했나요 / 할 예정인가요?</div></div>
+    </div></div>
+    <div class="col a"><div class="h">AFTER</div><div class="body">
+      <div class="lbl">반복</div><div class="inp">매주 ▾</div>
+      <div class="hint">간격·종료(격주·10회 등)는 ‘자세히 편집’에서 ↗</div>
+      <div style="margin-top:8px"><div class="inp" style="color:var(--faint)">일정 제목</div></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="item">
+  <h2>E. 토스트 퇴장 모션 + error live region 분리<span class="tag p2">P2</span></h2>
+  <p class="why">현행은 4번째 누적 시 가장 오래된 카드를 페이드 없이 즉시 제거 → 점프. error 카드가 polite 컨테이너 안 role=alert로 중첩돼 일부 SR 이중낭독 여지.</p>
+  <div class="ba">
+    <div class="col b"><div class="h">BEFORE (즉시 제거 — 점프)</div><div class="body"><div class="toast demoDn"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6"/></svg>기록을 추가했습니다</div></div></div>
+    <div class="col a"><div class="h">AFTER (페이드아웃)</div><div class="body"><div class="toast demoUp"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 6"/></svg>기록을 추가했습니다</div></div></div>
+  </div>
+  <p class="note">dismiss() 경로(.show 제거→260ms 후 remove, leaving 플래그로 카운트 제외)로 퇴출도 페이드. error는 컨테이너 밖 비-live 형제에 append + 그 카드만 role=alert.</p>
+</div>
+
+<div class="item">
+  <h2>F. #dpReport 탭 영역 밖 분리<span class="tag p2">P2</span></h2>
+  <p class="why">보고서 버튼이 role=tablist 안에 탭과 형제로 들어가 SR이 'tab N of M' 오집계 여지(엄밀 APG 이탈).</p>
+  <div class="ba">
+    <div class="col b"><div class="h">BEFORE (tablist 안)</div><div class="body"><div class="tabs"><span class="tab on">일정</span><span class="tab">할 일</span><span class="tab">작업일지</span><span class="act">보고서</span></div><div style="font-size:11px;color:var(--danger);margin-top:6px">tablist 자식=탭3+버튼1 → SR 'tab 4 of 4?' 혼동</div></div></div>
+    <div class="col a"><div class="h">AFTER (형제로 분리)</div><div class="body"><div style="display:flex;align-items:flex-end"><div class="tabs" style="border:none;flex:1"><span class="tab on">일정</span><span class="tab">할 일</span><span class="tab">작업일지</span></div><span class="act">보고서</span></div><div style="font-size:11px;color:#1f7a4d;margin-top:6px">tablist=탭3만 / 보고서는 형제 버튼</div></div></div>
+  </div>
+</div>
+
+<div class="item">
+  <h2>G. 부팅 로딩 스켈레톤<span class="tag p2">P2</span></h2>
+  <p class="why">호스트(WPF) 부팅 시 저장 XML 주입 첫 렌더 구간에 로딩 어포던스 없음 → 데이터 많거나 지연 시 빈 그리드→급채움 깜빡임.</p>
+  <div class="ba">
+    <div class="col b"><div class="h">BEFORE (빈 그리드 → 급채움)</div><div class="body"><div class="cellbox" style="width:100%"><div class="skrow" style="opacity:.25"><div style="flex:1">　</div></div><div style="font-size:11px;color:var(--faint)">(빈 화면 후 갑자기 채워짐)</div></div></div></div>
+    <div class="col a"><div class="h">AFTER (펄스 스켈레톤)</div><div class="body"><div class="cellbox" style="width:100%">
+      <div class="skrow"><div class="sk" style="width:40px;height:10px"></div></div>
+      <div class="skrow"><div class="sk" style="flex:1;height:14px"></div></div>
+      <div class="skrow"><div class="sk" style="width:70%;height:14px"></div></div>
+    </div></div></div>
+  </div>
+</div>
+
+</body></html>
