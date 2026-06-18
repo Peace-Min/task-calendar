@@ -379,7 +379,7 @@ main{flex:1;display:flex;min-height:0}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer}
 .check input{width:15px;height:15px;accent-color:var(--accent)}
-#timeRow.off{opacity:.45;pointer-events:none}
+#timeRow.off{display:none}   /* 종일 시 시간행 완전 숨김 — quick-add와 동일 패턴(흐림→'편집 가능?' 오해 제거) */
 
 /* ---------- category modal ---------- */
 .cat-row{
@@ -563,6 +563,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
 .qa-detail input[type=time],.qa-detail select,.qa-detail textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
 .qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
+.qa-chk .ic{width:14px;height:14px}
+.qa-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;line-height:1.5}
 .qa-foot{display:flex;align-items:center;gap:10px;margin-top:14px}
 .qa-more{border:none;background:none;color:var(--accent);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit;margin-right:auto}
 .qa-advanced{border:none;background:none;color:var(--muted);font-size:var(--fs-meta);cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
@@ -714,7 +716,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
     <div class="modal-body">
       <section class="fsect">
         <label for="fTitle">제목 *</label>
-        <input type="text" id="fTitle" maxlength="200" placeholder="무엇을 했나요 / 할 예정인가요?">
+        <input type="text" id="fTitle" maxlength="200" placeholder="일정 제목">
         <div class="row2" style="margin-top:8px">
           <div><label for="fCat">과제 카테고리</label><select id="fCat"></select></div>
           <div><label for="fDate">날짜</label><input type="date" id="fDate"></div>
@@ -785,7 +787,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       <span class="qa-edit-title hidden" id="qaEditTitle">일정 수정</span>
       <button class="x" data-close aria-label="닫기">×</button>
     </div>
-    <input type="text" id="qaTitle" class="qa-title" maxlength="200" placeholder="무엇을 했나요 / 할 예정인가요?">
+    <input type="text" id="qaTitle" class="qa-title" maxlength="200" placeholder="일정 제목">
     <div class="qa-ctx">
       <input type="date" id="qaDate" title="날짜">
       <select id="qaCat" title="과제"></select>
@@ -2730,7 +2732,7 @@ function openQuickAdd(date, type, entryId){
 }
 function qaSyncType(){
   $$('#quickAdd .qa-type').forEach(b => { const on = b.dataset.qatype === qaType; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  $('#qaTitle').placeholder = (qaType === 'todo') ? '할 일을 한 줄로' : '무엇을 했나요 / 할 예정인가요?';
+  $('#qaTitle').placeholder = (qaType === 'todo') ? '할 일' : '일정 제목';
   $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
   if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
 }
@@ -2740,15 +2742,20 @@ function qaRenderDetail(){
     ? `<label class="qa-chk"><input type="checkbox" id="qaAllDay" checked> 종일</label>
        <div class="row2" id="qaTimeRow" style="display:none"><div><label class="qa-lb">시작</label><input type="time" id="qaStart"></div><div><label class="qa-lb">종료</label><input type="time" id="qaEnd"></div></div>
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
+       <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
-    : `<label class="qa-chk"><input type="checkbox" id="qaPrio"> ★ 중요</label>
+    : `<label class="qa-chk"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`;
   if(qaType === 'event'){
     const ad = $('#qaAllDay'), tr = $('#qaTimeRow');
     const sync = () => { tr.style.display = ad.checked ? 'none' : 'flex'; };
     ad.addEventListener('change', sync); sync();
+    const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
+    const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
+      if(on) rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
+    rc.addEventListener('change', rsync); rsync();
   }
 }
 function qaToggleDetail(){
