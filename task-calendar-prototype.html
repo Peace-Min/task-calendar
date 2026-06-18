@@ -682,13 +682,13 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   <div class="splitter" id="splitter" title="드래그하여 좌/우 너비 조절"></div>
   <aside class="day-panel" id="dayPanel">
     <button class="dp-sheet-handle" id="dpSheetClose" title="닫기" aria-label="패널 닫기"><span class="grab"></span></button>
-    <div class="dp-tabs" id="dpTabs" role="tablist">
-      <button class="dp-tab on" data-ptab="detail" role="tab">일정 상세</button>
-      <button class="dp-tab" data-ptab="todo" role="tab">할 일</button>
-      <button class="dp-tab" data-ptab="git" role="tab">작업일지</button>
+    <div class="dp-tabs" id="dpTabs" role="tablist" aria-label="날짜 패널 보기">
+      <button class="dp-tab on" data-ptab="detail" role="tab" id="dptab-detail" aria-controls="dpBody" aria-selected="true" tabindex="0">일정 상세</button>
+      <button class="dp-tab" data-ptab="todo" role="tab" id="dptab-todo" aria-controls="dpBody" aria-selected="false" tabindex="-1">할 일</button>
+      <button class="dp-tab" data-ptab="git" role="tab" id="dptab-git" aria-controls="dpBody" aria-selected="false" tabindex="-1">작업일지</button>
       <button class="dp-action" id="dpReport" title="이 기록으로 보고서 초안 만들기" aria-label="보고서 초안"><span aria-hidden="true">📋</span><span class="dp-action-txt"> 보고서</span></button>
     </div>
-    <div class="dp-body" id="dpBody"></div>
+    <div class="dp-body" id="dpBody" role="tabpanel" tabindex="0" aria-labelledby="dptab-detail"></div>
   </aside>
 </main>
 
@@ -763,9 +763,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 <div class="overlay hidden" id="quickAdd">
   <div class="modal qa-modal">
     <div class="qa-head">
-      <div class="qa-tg" role="tablist">
-        <button type="button" class="qa-type on" data-qatype="event">일정</button>
-        <button type="button" class="qa-type" data-qatype="todo">할 일</button>
+      <div class="qa-tg" role="group" aria-label="유형 선택">
+        <button type="button" class="qa-type on" data-qatype="event" aria-pressed="true">일정</button>
+        <button type="button" class="qa-type" data-qatype="todo" aria-pressed="false">할 일</button>
       </div>
       <span class="qa-edit-title hidden" id="qaEditTitle">일정 수정</span>
       <button class="x" data-close aria-label="닫기">×</button>
@@ -1801,9 +1801,16 @@ function dayDetailHtml(){
 }
 // 우측 패널 렌더 — 탭바는 보존하고 본문(#dpBody)만 교체
 function renderPanel(){
-  document.querySelectorAll('#dpTabs .dp-tab').forEach(b => b.classList.toggle('on', b.dataset.ptab === noteTab));
+  document.querySelectorAll('#dpTabs .dp-tab').forEach(b => {
+    const on = b.dataset.ptab === noteTab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');   // ARIA 탭 계약: 선택 상태·roving tabindex
+    b.tabIndex = on ? 0 : -1;
+  });
   const body = $('#dpBody');
   if(!body) return;
+  body.setAttribute('aria-labelledby', 'dptab-' + noteTab);   // tabpanel ↔ 활성 탭 연결
+
   if(noteTab === 'detail'){
     body.innerHTML = dayDetailHtml();
     if(flashTargetId){
@@ -2698,7 +2705,7 @@ function openQuickAdd(date, type, entryId){
   setTimeout(() => $('#qaTitle').focus(), 30);
 }
 function qaSyncType(){
-  $$('#quickAdd .qa-type').forEach(b => b.classList.toggle('on', b.dataset.qatype === qaType));
+  $$('#quickAdd .qa-type').forEach(b => { const on = b.dataset.qatype === qaType; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   $('#qaTitle').placeholder = (qaType === 'todo') ? '할 일을 한 줄로' : '무엇을 했나요 / 할 예정인가요?';
   $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
   if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
@@ -2787,6 +2794,21 @@ function bind(){
   $('#dpTabs').addEventListener('click', ev => {
     if(ev.target.closest('#dpReport')){ openReport(); return; }   // 보고서 = 별도 산출물 화면(전 기간)
     const t = ev.target.closest('.dp-tab'); if(t) setPanelTab(t.dataset.ptab);
+  });
+  // ARIA 탭 roving: 탭에 포커스가 있을 때 ←/→/Home/End로 이동+자동 활성화
+  $('#dpTabs').addEventListener('keydown', ev => {
+    const tabs = [...document.querySelectorAll('#dpTabs .dp-tab')];
+    const i = tabs.indexOf(document.activeElement);
+    if(i < 0) return;
+    let j = -1;
+    if(ev.key === 'ArrowRight') j = (i + 1) % tabs.length;
+    else if(ev.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+    else if(ev.key === 'Home') j = 0;
+    else if(ev.key === 'End') j = tabs.length - 1;
+    else return;
+    ev.preventDefault();
+    setPanelTab(tabs[j].dataset.ptab);
+    const el = $('#dptab-' + tabs[j].dataset.ptab); if(el) el.focus();
   });
   $('#dpSheetClose').addEventListener('click', closeSheet);        // 좁은 폭 하단 시트 닫기 손잡이
   $('#dpBody').addEventListener('click', ev => {

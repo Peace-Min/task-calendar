@@ -24,12 +24,13 @@ open(tmp, 'w', encoding='utf-8').write(tpl)
 edge = r'C:\Program Files\Microsoft\Edge\Application\msedge.exe'
 if not os.path.exists(edge):
     edge = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
-udd = os.path.join(os.environ['TEMP'], 'tc_edge_state')
 import shutil
-shutil.rmtree(udd, ignore_errors=True)   # 이전 프로필 락 제거(연속 캡처 실패 방지)
+udd = os.path.join(os.environ['TEMP'], 'tc_edge_' + str(os.getpid()))   # PID별 고유 프로필 — 연속 캡처 락 원천 차단
+shutil.rmtree(udd, ignore_errors=True)
 fwd = tmp.replace(chr(92), '/')
 url = 'file:///' + fwd
 subprocess.run([edge, '--headless', '--disable-gpu', '--no-sandbox', '--hide-scrollbars',
                 '--force-device-scale-factor=1', '--user-data-dir=' + udd,
                 '--window-size=' + W + ',' + H, '--screenshot=' + out, url], timeout=90)
+shutil.rmtree(udd, ignore_errors=True)   # 임시 프로필 정리
 print('OUT', out, (os.path.getsize(out) if os.path.exists(out) else 'MISSING'))
