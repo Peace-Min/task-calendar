@@ -25,6 +25,8 @@ edge = r'C:\Program Files\Microsoft\Edge\Application\msedge.exe'
 if not os.path.exists(edge):
     edge = r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 udd = os.path.join(os.environ['TEMP'], 'tc_edge_state')
+import shutil
+shutil.rmtree(udd, ignore_errors=True)   # 이전 프로필 락 제거(연속 캡처 실패 방지)
 fwd = tmp.replace(chr(92), '/')
 url = 'file:///' + fwd
 subprocess.run([edge, '--headless', '--disable-gpu', '--no-sandbox', '--hide-scrollbars',

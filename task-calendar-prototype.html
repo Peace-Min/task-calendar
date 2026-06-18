@@ -352,6 +352,11 @@ main{flex:1;display:flex;min-height:0}
 .modal-foot .spacer{flex:1}
 .modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:12px 0 4px}
 .modal label:first-child{margin-top:0}
+/* entryModal 섹션 그룹핑 — 9필드 평면 폼을 기본·시간·반복/기간·연동·메모로 구획 */
+.fsect{margin-top:var(--sp-5)}
+.fsect:first-child{margin-top:0}
+.modal .fsect-cap{display:block;font-size:var(--fs-body);font-weight:700;color:var(--text);letter-spacing:.01em;margin:0 0 var(--sp-2);padding-bottom:5px;border-bottom:1px solid var(--line)}
+.modal .fsect .check:first-of-type{margin-top:0}   /* 캡션 바로 아래 체크박스는 윗마진 제거 */
 .modal input[type=text],.modal input[type=date],.modal input[type=time],
 .modal input[type=month],.modal select,.modal textarea{
   width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;
@@ -692,51 +697,58 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   <div class="modal">
     <div class="modal-head"><h2 id="entryModalTitle">새 기록</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
-      <label for="fTitle">제목 *</label>
-      <input type="text" id="fTitle" maxlength="200" placeholder="무엇을 했나요 / 할 예정인가요?">
-      <div class="row2">
-        <div>
-          <label for="fCat">과제 카테고리</label>
-          <select id="fCat"></select>
+      <section class="fsect">
+        <label for="fTitle">제목 *</label>
+        <input type="text" id="fTitle" maxlength="200" placeholder="무엇을 했나요 / 할 예정인가요?">
+        <div class="row2" style="margin-top:8px">
+          <div><label for="fCat">과제 카테고리</label><select id="fCat"></select></div>
+          <div><label for="fDate">날짜</label><input type="date" id="fDate"></div>
         </div>
-        <div>
-          <label for="fDate">날짜</label>
-          <input type="date" id="fDate">
+      </section>
+      <section class="fsect">
+        <div class="fsect-cap">시간</div>
+        <label class="check"><input type="checkbox" id="fAllDay"> 종일</label>
+        <div class="row2" id="timeRow" style="margin-top:8px">
+          <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
+          <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
         </div>
-      </div>
-      <label class="check" style="margin-top:14px"><input type="checkbox" id="fAllDay"> 종일</label>
-      <div class="row2" id="timeRow" style="margin-top:8px">
-        <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
-        <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
-      </div>
-      <div id="rangeRecurSect">
-        <label class="check" style="margin-top:12px"><input type="checkbox" id="fIsRange"> 여러 날에 걸침(기간)</label>
-        <div class="row2 hidden" id="rangeRow" style="margin-top:8px">
-          <div><label for="fEndDate">종료일</label><input type="date" id="fEndDate"></div>
-          <div style="align-self:end"><span class="git-hint" id="rangeHint"></span></div>
-        </div>
-        <label for="fRecur" style="margin-top:12px">반복</label>
-        <select id="fRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
-        <div class="hidden" id="recurOpts" style="margin-top:8px">
-          <div class="row2">
-            <div><label for="fRecurInterval">반복 간격</label>
-              <div style="display:flex;align-items:center;gap:6px"><input type="number" id="fRecurInterval" min="1" max="52" value="1" style="flex:1"><span id="fRecurUnit" style="color:var(--muted);font-size:var(--fs-body);flex:none">주마다</span></div></div>
-            <div><label>반복 종료</label>
-              <div class="recur-end">
-                <label class="check"><input type="radio" name="recurEnd" value="never" checked> 계속</label>
-                <label class="check"><input type="radio" name="recurEnd" value="until"> 날짜까지 <input type="date" id="fRecurUntil"></label>
-                <label class="check"><input type="radio" name="recurEnd" value="count"> 횟수 <input type="number" id="fRecurCount" min="1" max="500" value="10" style="width:70px"></label>
-              </div></div>
+      </section>
+      <section class="fsect" id="recurSect">
+        <div class="fsect-cap">반복 · 기간</div>
+        <div id="rangeRecurSect">
+          <label class="check"><input type="checkbox" id="fIsRange"> 여러 날에 걸침(기간)</label>
+          <div class="row2 hidden" id="rangeRow" style="margin-top:8px">
+            <div><label for="fEndDate">종료일</label><input type="date" id="fEndDate"></div>
+            <div style="align-self:end"><span class="git-hint" id="rangeHint"></span></div>
           </div>
-          <div class="git-hint" id="recurPreview"></div>
+          <label for="fRecur" style="margin-top:12px">반복</label>
+          <select id="fRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
+          <div class="hidden" id="recurOpts" style="margin-top:8px">
+            <div class="row2">
+              <div><label for="fRecurInterval">반복 간격</label>
+                <div style="display:flex;align-items:center;gap:6px"><input type="number" id="fRecurInterval" min="1" max="52" value="1" style="flex:1"><span id="fRecurUnit" style="color:var(--muted);font-size:var(--fs-body);flex:none">주마다</span></div></div>
+              <div><label>반복 종료</label>
+                <div class="recur-end">
+                  <label class="check"><input type="radio" name="recurEnd" value="never" checked> 계속</label>
+                  <label class="check"><input type="radio" name="recurEnd" value="until"> 날짜까지 <input type="date" id="fRecurUntil"></label>
+                  <label class="check"><input type="radio" name="recurEnd" value="count"> 횟수 <input type="number" id="fRecurCount" min="1" max="500" value="10" style="width:70px"></label>
+                </div></div>
+            </div>
+            <div class="git-hint" id="recurPreview"></div>
+          </div>
         </div>
-      </div>
-      <div class="git-row hidden" id="gitRow">
-        <button class="btn sm" type="button" id="btnGitFetch">📥 이 과제의 Git 커밋 불러오기</button>
-        <span class="git-hint" id="gitHint"></span>
-      </div>
-      <label for="fMemo">메모</label>
-      <textarea id="fMemo" placeholder="상세 내용, 진행 상황, 참고 사항…"></textarea>
+      </section>
+      <section class="fsect hidden" id="gitSect">
+        <div class="fsect-cap">연동</div>
+        <div class="git-row" id="gitRow">
+          <button class="btn sm" type="button" id="btnGitFetch">📥 이 과제의 Git 커밋 불러오기</button>
+          <span class="git-hint" id="gitHint"></span>
+        </div>
+      </section>
+      <section class="fsect">
+        <label for="fMemo" class="fsect-cap">메모</label>
+        <textarea id="fMemo" placeholder="상세 내용, 진행 상황, 참고 사항…"></textarea>
+      </section>
     </div>
     <div class="modal-foot">
       <button class="btn danger hidden" id="btnEntryDelete">삭제</button>
@@ -2022,7 +2034,7 @@ function openEntryModal(mode, ref){
     $('#fRecurUntil').value = (rc && rc.until) ? rc.until : '';
     $('#fRecurCount').value = (rc && rc.count) ? rc.count : 10;
     __entryRecurExcept = rc ? (re.recurExcept || []).slice() : [];
-    $('#rangeRecurSect').classList.toggle('hidden', !!(re && re.source === 'git'));
+    $('#recurSect').classList.toggle('hidden', !!(re && re.source === 'git'));   // git 출처는 반복·기간 섹션(캡션 포함) 통째 숨김 — 고아 캡션 방지
     toggleRangeRow(); toggleRecurOpts();
   }
   updateGitRow();
@@ -3158,10 +3170,10 @@ function setGitAuthor(v){ if(!state) return; if(state.gitAuthor === (v||'')) ret
 
 // 기록 모달의 'Git 커밋 불러오기' 줄: 위젯 모드 + 선택 과제에 저장소가 있을 때만 노출
 function updateGitRow(){
-  const row = $('#gitRow'); if(!row) return;
+  const sect = $('#gitSect'); if(!sect) return;   // '연동' 섹션 전체(캡션 포함)를 토글 — git 과제일 때만 노출
   const cat = catById($('#fCat').value);
   const show = HOST && cat && !!cat.gitRepo;
-  row.classList.toggle('hidden', !show);
+  sect.classList.toggle('hidden', !show);
 }
 
 function commitTime(c){
