@@ -583,10 +583,12 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   /* P0② 세로 공간 회수 — 크롬을 압축해 그리드 셀을 키운다(밀도 반전 해소) */
   .topbar{gap:6px 8px;padding:8px 12px}
   .topbar .spacer{display:none}
-  .nav{flex:1 1 100%;gap:4px}
+  .nav{flex:1 1 100%;gap:8px}
   .title-btn{min-width:0;font-size:18px;padding:4px 6px}
-  .actions{flex:1 1 100%;flex-wrap:nowrap;justify-content:flex-start;gap:6px}
+  .actions{flex:1 1 100%;flex-wrap:nowrap;justify-content:flex-start;gap:8px}
   .actions > .btn{flex:0 0 auto;padding:5px 9px}
+  /* 터치 위젯: 아이콘 버튼 히트영역 40px + 간격 8px(인접 오탭 방지). 아이콘 시각 크기는 .ic가 유지 */
+  .btn.icon{min-width:40px;min-height:40px;justify-content:center}
   /* 필터바: 2줄 wrap → 1줄 가로 스크롤(약 66→32px) */
   .filterbar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;max-height:none;padding:6px 12px}
   /* P1: 좁은 폭에서 모달 → 하단 시트(엄지 도달성 + 상용 모바일 규범, Things/TickTick식) */
@@ -847,7 +849,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       <div id="sCategoryPane" class="hidden">
         <select id="sCatSelect"></select>
       </div>
-      <div class="s-summary" id="sSummary"></div>
+      <div class="s-summary" id="sSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <div class="s-results" id="sResults"></div>
     </div>
   </div>
@@ -872,7 +874,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> 작업일지(커밋 기록)만</label>
         <label class="check" style="margin:0"><input type="checkbox" id="rptMd" checked> Markdown 형식</label>
       </div>
-      <div class="rpt-summary" id="rptSummary"></div>
+      <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <textarea id="rptOut" spellcheck="false" placeholder="기간을 선택하면 보고서 초안이 생성됩니다. 생성 후 자유롭게 수정하세요."></textarea>
     </div>
     <div class="modal-foot">
@@ -3173,8 +3175,8 @@ function bind(){
     const modalOpen = $$('.overlay').some(o => !o.classList.contains('hidden'));
     if(modalOpen) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
-    if(ev.key === 'ArrowLeft') moveMonth(-1);
-    else if(ev.key === 'ArrowRight') moveMonth(1);
+    if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') moveMonth(-1);     // PageUp/Down도 월 이동(예측 가능한 단축키)
+    else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') moveMonth(1);
     else if(ev.key === 'Home') goToday();
   });
 }
