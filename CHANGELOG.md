@@ -5,6 +5,24 @@
 
 ---
 
+## 🆕 2026-06-18 — 상용화 로드맵 7페이즈 자율 완주 (페이즈별 전문가 피드백·보완)
+
+직전 재평가(6.2→7.4)가 제시한 잔여 P1/P2 로드맵을 7페이즈로 나눠 **페이즈마다 구현 → 실제 UI(헤드리스 Edge 캡처) UI/UX 전문 에이전트 피드백 → 보완 → 다음**으로 완주. 각 페이즈 preview_eval 검증 후 커밋. 마지막에 exe 재빌드(self-contained 단일, 171MB)→운영 위치 배포·재실행(PID 확인).
+
+- **Phase1 생성/수정 폼 통일** `+ commit`: editEntry(id) 라우팅 — 단순 일정→openQuickAdd(edit, 프리필+updateEntry), git·반복→entryModal. '자세히 편집'은 폼값 이월 후 entryModal(손실 방지). 저장 라벨 생성='추가'/편집='저장'. *(전문가: IA/폼 8/10, P1 1건[에스컬레이션 값 미이월]→보완)*
+- **Phase2 entryModal 섹션화**: 9필드 평면 폼→기본·시간·반복/기간·연동·메모 5섹션(.fsect/.fsect-cap, --sp-5). git 출처 편집 시 반복·기간 섹션(#recurSect) 통째 숨김(고아 캡션 방지). *(IA/폼 8/10, P1[고아 캡션]+P2[캡션 위계]→보완)*
+- **Phase3 탭 ARIA 계약**: #dpTabs 완전한 WAI-ARIA 탭(aria-selected/controls·role=tabpanel·labelledby·←/→/Home/End roving 자동활성), .qa-tg는 role=group+aria-pressed 강등. *(접근성 9/10, 보완 불필요)*
+- **Phase4 이모지→단색 SVG**: 단일 소스 ICON 맵(svgIc currentColor·.ic 16px), 크롬 버튼 전부 치환(applyIcons). .ic{pointer-events:none}로 위임 클릭 회귀 방지. 의미 마커(🔧·★·🔁) 유지. *(Visual 9/10, P0[SVG 삽입 클릭 회귀]→pointer-events:none로 해소)*
+- **Phase5 토스트 카드 스택**: #toastStack 정적 live region(polite), 카드별 독립 타이머·Undo, 최대 3(비-Undo 우선 제거로 Undo 보존), Undo→'되돌렸습니다' 확인, error=alert. *(Polish 8/State 9, 보완 불필요)*
+- **Phase6 칩 폴리시**: 단일칩 빈 레인 backfill(세로 낭비↓·막대 연속성 유지), 멀티데이 막대 tint 0.13→0.2, --chip-outline #818a9e(3.38:1) hollow 경계. *(Calendar UI 9/10, 보완 불필요)*
+- **Phase7 a11y/반응형**: 검색·보고서 요약 aria-live(role=status·polite·atomic), 전역 PageUp/Down 월이동, ≤440 .btn.icon 히트영역 40px+간격 8px(아이콘 시각 17px 유지). *(접근성 9/10, 보완 불필요)*
+- **Phase8 최종 게이트 보완**: 재평가가 짚은 P1 — ① 아이콘 일관성(ICON 맵에 more/wrench/check/alert/xmark/dot 추가, btnMore·토스트 글리프·git 카드 타이틀 SVG화; 인-칩 의미 마커는 점선 테두리로 구분돼 의미 보존 판단으로 유지) ② .nd-sec 섹션 헤더 키보드 동작(tabindex+Enter/Space 토글, WCAG 2.1.1) ③ '자세히 편집' 무음 유실 방지(제목 공란 차단).
+- **도구**: tools/capture-state.py(임의 JS 주입 헤드리스 실측 캡처, PID별 고유 프로필).
+
+> **최종 게이트 재평가(ui-ux-eval-loop, 13 에이전트, 적대검증 7/7 confirmed): 종합 7.4 → 8.6**. 5차원 모두 8+ (Visual 9·IA/폼 8·Calendar UI 9·Polish 9·접근성 8), **P0 0 — 상용선(전 차원 8+ & P0 0) 도달**. "상용 완성"까지 남은 P1(전 표면 아이콘 완전 SVG화·셀 막대↔단일칩 위계 분리 등)은 Phase8에서 핵심분 보완, 잔여는 사용자 검토 항목. 페이즈별 전문가 피드백이 잡은 회귀(Phase1~4의 P0/P1)는 모두 같은 턴에 보완·재검증.
+
+---
+
 ## 🆕 2026-06-17 — UI/UX 평가 루프 반영 4배치 (전부 커밋·재빌드·배포 완료)
 
 전문 평가(ui-ux-eval-loop, 실제 UI 기준) P0/P1/P2를 4배치로 구현. 각 배치 preview_eval/스크린샷 검증 후 커밋, 마지막에 self-contained 단일 exe 재빌드 → 운영 위치 배포.
