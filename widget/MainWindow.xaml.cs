@@ -941,6 +941,21 @@ namespace TaskCalendarWidget
         // App.OnExit / 크래시 훅 / 창 종료에서 호출 — 1회만 실제 정리
         public void CleanupTray() => DisposeTray();
 
+        // 두 번째 인스턴스가 신호했을 때 — 이미 떠 있는(특히 바탕화면 모드라 안 보이는) 위젯을 앞으로 끌어올린다.
+        public void SummonToFront()
+        {
+            try
+            {
+                if (!IsVisible) Show();
+                if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+                bool prev = Topmost;
+                Topmost = true;
+                Activate();
+                Topmost = prev;   // 원래 z-order 정책 복원(위젯 모드면 이후 동기화가 최하위 처리)
+            }
+            catch { }
+        }
+
         private void ExitApp()
         {
             CleanupScrim();
