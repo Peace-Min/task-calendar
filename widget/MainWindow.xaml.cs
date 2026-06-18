@@ -62,6 +62,7 @@ namespace TaskCalendarWidget
             _logFile = Path.Combine(_dataDir, "widget.log");
 
             LoadSettings();
+            ReconcileAutoStart();   // 옛 빌드 경로로 등록된 자동시작을 현재 실행 exe로 자가 치유(ISSUES #1)
             ApplyWindowBounds();
             ApplyWindowIcon();   // 작업표시줄/Alt+Tab 버튼 브랜드 아이콘(트레이 모드 노출 시 빈 아이콘 방지)
         }
@@ -1069,6 +1070,23 @@ namespace TaskCalendarWidget
                 else k.DeleteValue(RunValueName, false);
             }
             catch (Exception ex) { Debug.WriteLine("자동 시작 설정 오류: " + ex); }
+        }
+
+        // 자동시작이 켜져 있으면(Run 값 존재) 그 경로가 현재 실행 중인 exe와 다를 때 현재 경로로 갱신한다.
+        // 옛 빌드(예: widget\bin\Release\...) 경로가 stale로 남아 로그인 시 옛 exe가 단일인스턴스를
+        // 선점해 새 배포본이 조용히 종료되던 문제(ISSUES #1)를 매 실행 시 자가 치유.
+        private static void ReconcileAutoStart()
+        {
+            try
+            {
+                using var k = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
+                var cur = k?.GetValue(RunValueName) as string;
+                if (string.IsNullOrEmpty(cur)) return;   // 자동시작 꺼짐 → 새로 만들지 않음(사용자 선택 존중)
+                var want = "\"" + ExePath + "\"";
+                if (!string.Equals(cur.Trim(), want, StringComparison.OrdinalIgnoreCase))
+                    k.SetValue(RunValueName, want);
+            }
+            catch (Exception ex) { Debug.WriteLine("자동시작 경로 정리 오류: " + ex); }
         }
 
         // ============ Win32 ============
