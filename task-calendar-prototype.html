@@ -275,6 +275,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .link.danger{color:var(--danger)}
 @keyframes flashAnim{0%{box-shadow:0 0 0 3px rgba(62,91,224,.6)}100%{box-shadow:0 0 0 3px rgba(62,91,224,0)}}
 .card.flash{animation:flashAnim 1.2s ease-out 2}
+.todo-row.flash{animation:flashAnim 1.2s ease-out 2;border-radius:var(--r-sm)}
 
 /* ---------- Git 작업일지 (커밋 연동) ---------- */
 .badge-git{background:#eef1f6;color:#5b6b7d;border:1px solid var(--line-2)}
@@ -1683,6 +1684,7 @@ let __pendingRepoEmail = ''; // 작성자 미스매치 reconcile 대기 이메�
 let searchMode = 'keyword';
 let pendingImport = null;
 let flashTargetId = null;
+let flashTodoId = null;   // 할 일 칩 클릭 reveal 시 그 행 강조(일정 flashTargetId 대칭)
 
 /* ---------- 렌더링 ---------- */
 function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
@@ -1757,7 +1759,7 @@ function todoChipHtml(item){
   const label = showText ? `<span class="txt">${star}${esc(t.text)}</span>` : '';
   const aL = item.clipLeft ? '◂' : '', aR = item.clipRight ? '▸' : '';
   const span = (t.endDate && t.endDate > t.due) ? ` · ${t.due}~${t.endDate}` : '';
-  return `<div class="chip chip-todo${t.done ? ' done' : ''}${rangeCls}" draggable="false"
+  return `<div class="chip chip-todo${t.done ? ' done' : ''}${rangeCls}" draggable="true"
     data-todo="${esc(t.id)}" data-occ="${esc(t.due)}" data-kind="todo"
     aria-label="할 일${t.done ? ' 완료' : ''}: ${esc(t.text)}"
     title="할 일${t.done ? ' (완료)' : ''} · ${esc(t.text)}${c?' · '+esc(c.name):''}${span}">${aL}${ring}${label}${aR}</div>`;
@@ -2005,6 +2007,12 @@ function renderPanel(){
     }
   } else {
     body.innerHTML = noteFilterBarHtml() + `<div class="dp-pad">` + (noteTab === 'todo' ? renderTodoListTab() : renderGitTab()) + `</div>`;
+    if(noteTab === 'todo' && flashTodoId){   // 칩 클릭 reveal — 해당 할 일 행 강조·스크롤(일정 카드 flash 대칭)
+      const el = $('#dpBody .todo-row.flash');
+      if(el) el.scrollIntoView({block:'nearest'});
+      const fid = flashTodoId; flashTodoId = null;
+      setTimeout(() => { const e2 = $(`#dpBody .todo-row[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
+    }
   }
 }
 function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderAll/drop 등)
@@ -2810,7 +2818,7 @@ function todoRowHtml(t){
   const cat = catById(t.categoryId);
   const overdue = !t.done && t.due && t.due < todayYmd();
   const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(dueLabel(t.due))}</span>` : '';
-  return `<div class="todo-row${t.done ? ' done' : ''}" data-id="${esc(t.id)}">
+  return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}">
     <button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>
     <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span></div>
     ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
@@ -3260,12 +3268,21 @@ function bind(){
   grid.addEventListener('click', ev => {
     const chip = ev.target.closest('.chip');
     if(chip){
-      if(chip.dataset.todo){            // 할 일 칩 → 그 날짜 선택 + 할 일 탭 열기
+      // 통일 규칙: 칩 클릭 = 드러내기(reveal). 편집은 드러난 항목에서 한 번 더(일정=카드 [수정] / 할 일=행 텍스트).
+      if(chip.dataset.todo){            // 할 일 칩 → 그 날짜 + 할 일 탭 + 행 강조(접힌 섹션 자동 펼침)
         selectDate(chip.dataset.occ || selectedDate);
-        noteTab = 'todo'; renderPanel(); openSheetIfNarrow();
+        noteTab = 'todo';
+        flashTodoId = chip.dataset.todo;
+        noteCollapsed.delete('nodate');
+        const td = todoById(chip.dataset.todo); if(td && td.done) noteCollapsed.delete('done');
+        renderPanel(); openSheetIfNarrow();
         return;
       }
-      editEntry(chip.dataset.id); return;
+      selectDate(chip.dataset.occ || selectedDate);   // 일정 칩 → 그 날짜 + 일정 상세 탭 + 카드 강조
+      noteTab = 'detail';
+      flashTargetId = chip.dataset.id;
+      renderPanel(); openSheetIfNarrow();
+      return;
     }
     const cell = ev.target.closest('.cell');
     if(cell) selectDate(cell.dataset.date);
@@ -3298,7 +3315,8 @@ function bind(){
   grid.addEventListener('dragstart', ev => {
     const chip = ev.target.closest('.chip');
     if(!chip || chip.dataset.kind === 'recur'){ ev.preventDefault(); return; }   // 반복은 드래그 금지(모달에서 수정)
-    ev.dataTransfer.setData('text/plain', JSON.stringify({id:chip.dataset.id, occ:chip.dataset.occ, kind:chip.dataset.kind||'simple'}));
+    const dragId = chip.dataset.kind === 'todo' ? chip.dataset.todo : chip.dataset.id;   // 할 일 칩은 data-todo
+    ev.dataTransfer.setData('text/plain', JSON.stringify({id:dragId, occ:chip.dataset.occ, kind:chip.dataset.kind||'simple'}));
     ev.dataTransfer.effectAllowed = 'move';
   });
   grid.addEventListener('dragover', ev => {
@@ -3320,9 +3338,20 @@ function bind(){
     const cell = ev.target.closest('.cell');
     let p; try{ p = JSON.parse(ev.dataTransfer.getData('text/plain')); }
     catch(_){ p = {id:ev.dataTransfer.getData('text/plain'), kind:'simple'}; }   // 옛 형식 호환
-    const e = entryById(p.id);
-    if(!cell || !e) return;
+    if(!cell) return;
     const target = cell.dataset.date;
+    if(p.kind === 'todo'){                          // 할 일 드래그 = 기한(due) 변경(기간 할 일은 종료일도 같은 만큼 이동)
+      const t = todoById(p.id); if(!t || !t.due) return;
+      const delta = diffDays(t.due, target);
+      if(delta === 0) return;
+      if(t.endDate && t.endDate > t.due) t.endDate = addDays(t.endDate, delta);
+      t.due = target; t.updatedAt = nowIso(); save();
+      selectDate(target); renderGrid();
+      toast(`할 일을 ${fmtDateK(target)}로 옮겼습니다`);
+      return;
+    }
+    const e = entryById(p.id);
+    if(!e) return;
     if(p.kind === 'range'){                         // 기간 일정: 시작·종료를 같은 만큼 이동(길이 보존)
       const delta = diffDays(p.occ || e.date, target);
       if(delta === 0) return;
