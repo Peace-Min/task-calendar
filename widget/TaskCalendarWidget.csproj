@@ -16,7 +16,7 @@
     <Version>1.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 폐쇄망: 런타임 다운로드 없이 설치된 .NET 9 Desktop 런타임 사용 (프레임워크 종속) -->
     <SelfContained>false</SelfContained>
