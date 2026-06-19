@@ -465,6 +465,17 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent)}
 .git-hint .lnk{border:none;background:none;color:var(--accent);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+/* 도움말 모달 */
+.help-body .help-sec{margin-bottom:16px}
+.help-body h3{font-size:var(--fs-emph);font-weight:700;color:var(--text);margin:0 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.help-body ul{margin:0;padding-left:18px}
+.help-body li{font-size:var(--fs-body);color:var(--text);line-height:1.7;margin:3px 0;word-break:keep-all;overflow-wrap:anywhere}
+.help-body .help-keys{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.help-body kbd{font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-meta);background:var(--bg);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;margin:0 1px}
+/* Git 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
+.nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
+.nd-commit .nd-ci .ic{width:15px;height:15px}
+.dp-dayctx .dp-ctx-n{font-weight:600;color:var(--accent);margin-left:2px}
 
 /* ---------- import modal ---------- */
 .imp-box{
@@ -705,6 +716,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   <div class="spacer"></div>
   <div class="actions">
     <button class="btn icon" id="btnSearch" title="검색 (제목·메모·과제)" aria-label="검색">🔍</button>
+    <button class="btn icon" id="btnCatsTop" title="과제 관리 — 과제 추가·수정·삭제·색상" aria-label="과제 관리">🏷️</button>
+    <button class="btn icon" id="btnHelp" title="도움말 — 사용법" aria-label="도움말">?</button>
     <div class="menu-wrap">
       <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
       <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
@@ -931,8 +944,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
         <input type="date" id="rptFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="rptTo">
       </div>
       <div class="rpt-opts">
-        <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> 작업일지(커밋 기록)만</label>
-        <span class="git-hint" style="margin-left:auto">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·작업일지에서 변경</span>
+        <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> Git 커밋 내역만</label>
+        <span class="git-hint" style="margin-left:auto">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
       </div>
       <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
@@ -941,6 +954,64 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 도움말 모달 (상시 ? 패널) ===== -->
+<div class="overlay hidden" id="helpModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>도움말 · 사용법</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body help-body">
+      <section class="help-sec">
+        <h3>빠른 시작</h3>
+        <ul>
+          <li><b>＋ 새 기록</b> 또는 달력 날짜 <b>더블클릭</b>으로 일정·할 일 추가</li>
+          <li>기록을 다른 날짜로 <b>드래그</b>해 이동</li>
+          <li>왼쪽은 달력, 오른쪽 패널은 선택한 날짜의 <b>일정 상세 · 할 일 · Git 커밋 내역</b></li>
+        </ul>
+      </section>
+      <section class="help-sec">
+        <h3>일정 · 할 일 · 기간/반복</h3>
+        <ul>
+          <li><b>일정</b>은 시간/종일, <b>할 일</b>은 체크·중요(★)·기한</li>
+          <li>‘옵션 더보기’에서 <b>종일·시간·반복·공수·메모</b> 설정</li>
+          <li>여러 날에 걸친 <b>기간</b> 일정과 <b>매주·매월 반복</b> 지원</li>
+        </ul>
+      </section>
+      <section class="help-sec">
+        <h3>Git 커밋 내역</h3>
+        <ul>
+          <li><b>과제 관리</b>에서 과제에 <b>Git 저장소 경로</b>를 지정하면, 그 날 내 커밋을 가져옵니다</li>
+          <li><b>이 날 커밋</b>(단건) · <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록)</li>
+          <li>가져온 <b>커밋 제목</b>이 보고서의 업무 목록이 됩니다</li>
+        </ul>
+      </section>
+      <section class="help-sec">
+        <h3>보고서</h3>
+        <ul>
+          <li>오른쪽 패널 <b>보고서</b> → 기간(오늘/이번 주/…) 선택 → <b>과제별 [제목] : 시간</b> 자동 정리</li>
+          <li><b>하루</b> 보고서에서만 시간 직접 수정. 여러 날은 읽기전용 — 시간은 <b>Git 커밋 내역 탭의 공수 칸</b>·일정 편집에서 날짜별 입력</li>
+          <li><b>복사</b>로 클립보드에 담아 사내 보고 양식에 붙여넣기</li>
+        </ul>
+      </section>
+      <section class="help-sec">
+        <h3>과제 관리 · 창 · 데이터</h3>
+        <ul>
+          <li><b>🏷️ 과제 관리</b>(헤더): 과제 추가·이름·색상·Git 경로 설정</li>
+          <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, ‘넓게 보기’ 지원</li>
+          <li>데이터는 <b>자동 저장</b>. 백업·이전은 ⋯ 메뉴의 <b>XML 내보내기/가져오기</b></li>
+        </ul>
+      </section>
+      <section class="help-sec">
+        <h3>단축키</h3>
+        <ul class="help-keys">
+          <li><kbd>←</kbd><kbd>→</kbd> 월 이동</li>
+          <li><kbd>Home</kbd> 오늘</li>
+          <li><kbd>Esc</kbd> 닫기</li>
+          <li>날짜 <kbd>더블클릭</kbd> 새 기록</li>
+        </ul>
+      </section>
     </div>
   </div>
 </div>
@@ -1127,7 +1198,9 @@ function chipTimeShort(e){
 const HOLIDAYS = {'01-01':'신정','03-01':'삼일절','05-05':'어린이날','06-06':'현충일',
                   '08-15':'광복절','10-03':'개천절','10-09':'한글날','12-25':'성탄절'};
 const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
-                 '#0f9bb5','#c43f8e','#5b6b7d','#7a9a01','#b05c2a'];
+                 '#0f9bb5','#c43f8e','#5b6b7d','#7a9a01','#b05c2a',
+                 '#0ea5e9','#0d9488','#65a30d','#ca8a04','#e0457b',
+                 '#6d28d9','#475569','#0891b2'];
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
@@ -1852,7 +1925,7 @@ function cardHtml(e){
   return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
       <span class="card-time">${esc(time)}</span>
-      ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 작업일지">${ICON.wrench} 작업일지</span>`:''}
+      ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 기록">${ICON.git} Git 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
     </div>
     <div class="card-title">${esc(e.title)}</div>
@@ -2651,8 +2724,8 @@ function noteFilterBarHtml(){
 function renderGitTab(){
   // 선택한 날짜의 작업일지(커밋)만 — 캘린더 날짜를 따라간다. 기간 집계는 📋 보고서.
   const rows = gitFeed().filter(r => r.date === selectedDate);
-  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 작업일지로 가져오기">${ICON.download} 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 작업일지로 등록">${ICON.download} 기간 일괄 불러오기</button></div>` : '';
-  h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · 작업일지</div>`;
+  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 가져오기">${ICON.download} 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 등록">${ICON.download} 기간 일괄 불러오기</button></div>` : '';
+  h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · Git 커밋 내역${rows.length ? ` <span class="dp-ctx-n">${rows.length}건</span>` : ''}</div>`;
   // 과제별 공수칩 — 선택 날짜의 git 작업일지를 과제(categoryId)별로 묶어 시간 입력. 커밋 행 구조는 불변.
   const dayGit = state.entries.filter(e => e.source === 'git' && e.date === selectedDate && (!noteFilterCat || e.categoryId === noteFilterCat));
   if(dayGit.length){
@@ -2670,11 +2743,11 @@ function renderGitTab(){
     h += `<div class="dp-hours"><span class="dph-lb">공수</span>${chips}${miss ? `<span class="dph-miss">${miss}개 미입력</span>` : ''}</div>`;
   }
   if(!rows.length){
-    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 작업일지(커밋)가 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
+    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 Git 커밋 내역이 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
     return h;
   }
   for(const r of rows){
-    h += `<div class="nd-commit">${r.time ? `<span class="t">${esc(r.time)}</span>` : '<span class="t">—</span>'}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${r.short ? `<code class="h">${esc(r.short)}</code>` : ''}</div>`;
+    h += `<div class="nd-commit"><span class="nd-ci" title="Git 커밋">${ICON.git}</span>${r.time ? `<span class="t">${esc(r.time)}</span>` : ''}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${r.short ? `<code class="h">${esc(r.short)}</code>` : ''}</div>`;
   }
   return h;
 }
@@ -2934,6 +3007,8 @@ const ICON = {
   box:      svgIc('<rect x="4" y="4" width="16" height="16" rx="3.5"/>'),
   boxCheck: svgIc('<rect x="4" y="4" width="16" height="16" rx="3.5"/><path d="M8 12l2.8 2.8L16.2 9"/>'),
   calendar: svgIc('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>'),
+  git:      svgIc('<circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6"/>'),   // git-commit 글리프
+  help:     svgIc('<circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 0 1 5.3 1c0 1.8-2.5 2.2-2.5 3.8"/><path d="M12 17.5v.5"/>'),
 };
 const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info:ICON.dot };
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
@@ -2941,9 +3016,12 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnPrev', ICON.prev);
   set('btnNext', ICON.next);
   set('btnSearch', ICON.search);
+  set('btnCatsTop', ICON.tag);                 // 헤더 직접 노출(⋯ 안에 묻히지 않게)
+  set('btnHelp', ICON.help);                   // 상시 도움말
   set('btnMore', ICON.more);
   set('btnNew', ICON.plus + ' 새 기록');
   set('btnCats', ICON.tag + ' 과제 관리');
+  set('dptab-git', ICON.git + ' Git 커밋 내역');   // '작업일지' → 명시적 'Git 커밋 내역' + git 아이콘
   set('btnGitFetch', ICON.download + ' 이 과제의 Git 커밋 불러오기');
   set('btnGitBrowse', ICON.folder + ' 폴더 선택…');
   set('btnRptCopy', ICON.copy + ' 복사');
@@ -2972,6 +3050,8 @@ function bind(){
   $('#qaSave').addEventListener('click', qaSave);
   $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
   $('#btnCats').addEventListener('click', () => { $('#moreMenu').classList.add('hidden'); openCatModal(); });
+  $('#btnCatsTop').addEventListener('click', openCatModal);   // 헤더 직접 노출
+  $('#btnHelp').addEventListener('click', () => openModal('#helpModal'));
   $('#btnSearch').addEventListener('click', openSearch);
 
   /* 우측 패널 탭 뷰어 (일정 상세 · 할 일 · 작업일지 + 보고서) */
