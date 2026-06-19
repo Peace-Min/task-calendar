@@ -526,7 +526,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .nd-tab:hover{background:var(--hover-bg)}
 .nd-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
 .note-drawer .x{align-self:center;margin-bottom:4px}
-.nd-filter{display:flex;align-items:center;align-content:flex-start;gap:6px;flex-wrap:wrap;padding:8px 12px 14px;border-bottom:1px solid var(--line);flex:none;min-height:42px;overflow:auto;resize:vertical}
+.nd-filter{display:flex;align-items:center;align-content:flex-start;gap:6px;flex-wrap:wrap;padding:8px 12px;flex:none;overflow:auto}  /* 과제 수에 따라 자동 확장(max-height 캡) + 넘치면 스크롤 */
+.nd-filter-rs{height:12px;flex:none;cursor:ns-resize;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line);touch-action:none;user-select:none}  /* 중앙 가로 드래그 핸들(스플리터식) */
+.nd-filter-rs::after{content:"";width:32px;height:3px;border-radius:2px;background:var(--line-2)}
+.nd-filter-rs:hover::after,.nd-filter-rs.drag::after{background:var(--accent)}
 .nd-body{flex:1;overflow-y:auto;padding:12px 14px}
 .nd-empty{color:var(--muted);font-size:var(--fs-body);text-align:center;padding:34px 14px;line-height:1.7}
 .nd-day{font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin:14px 0 4px;position:sticky;top:-12px;background:var(--panel);padding:4px 0}
@@ -2002,7 +2005,6 @@ function renderPanel(){
     }
   } else {
     body.innerHTML = noteFilterBarHtml() + `<div class="dp-pad">` + (noteTab === 'todo' ? renderTodoListTab() : renderGitTab()) + `</div>`;
-    watchFilterBar();   // 과제 필터 영역 사용자 높이 조절(리사이즈) 감지·영속
   }
 }
 function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderAll/drop 등)
@@ -2731,28 +2733,17 @@ function setPanelTab(tab){ noteTab = tab; editingTodoId = null; renderPanel(); }
 function openSheetIfNarrow(){ if(window.innerWidth <= 760){ panelSheetOpen = true; document.body.classList.add('sheet-open'); } }
 function closeSheet(){ panelSheetOpen = false; document.body.classList.remove('sheet-open'); }
 // 할 일/작업일지 탭의 과제 필터 바(전역 filterCatId와 분리). 과제 없으면 빈 문자열
-/* 과제 필터 영역 — 사용자가 세로 높이 조절(resize) 가능 + 영속 */
-let filterBarH = 84;
-try{ const _fh = parseInt(localStorage.getItem('tc_filterH'), 10); if(_fh >= 42 && _fh <= 600) filterBarH = _fh; }catch(_){}
-let _filterRO = null;
-function watchFilterBar(){
-  const el = document.querySelector('.nd-filter');
-  if(!el || typeof ResizeObserver === 'undefined') return;
-  if(_filterRO) _filterRO.disconnect();
-  _filterRO = new ResizeObserver(() => {
-    const hh = Math.round(el.getBoundingClientRect().height);
-    if(hh >= 42 && Math.abs(hh - filterBarH) > 1){ filterBarH = hh; try{ localStorage.setItem('tc_filterH', String(hh)); }catch(_){} }
-  });
-  _filterRO.observe(el);
-}
+/* 과제 필터 영역 — 과제 수에 따라 자동 확장(max-height 캡), 중앙 핸들 드래그로 캡 조절 + 영속 */
+let filterBarMax = 220;
+try{ const _fm = parseInt(localStorage.getItem('tc_filterMax'), 10); if(_fm >= 42 && _fm <= 800) filterBarMax = _fm; }catch(_){}
 function noteFilterBarHtml(){
   if(!state.categories.length) return '';
-  let h = `<div class="nd-filter" style="height:${filterBarH}px" title="아래 가장자리를 드래그해 높이 조절"><span class="lbl" style="font-size:var(--fs-meta);color:var(--muted)">과제:</span>`;
+  let h = `<div class="nd-filter" style="max-height:${filterBarMax}px"><span class="lbl" style="font-size:var(--fs-meta);color:var(--muted)">과제:</span>`;
   h += `<button class="fchip ${!noteFilterCat ? 'on' : ''}" data-ncat="">전체</button>`;
   for(const c of state.categories){
     h += `<button class="fchip ${noteFilterCat === c.id ? 'on' : ''}" data-ncat="${esc(c.id)}"><span class="dot" style="background:${validColor(c.color)}"></span><span class="fc-name">${esc(c.name)}</span></button>`;
   }
-  return h + `</div>`;
+  return h + `</div><div class="nd-filter-rs" title="드래그하여 과제 영역 높이 조절" role="separator" aria-orientation="horizontal" aria-label="과제 영역 높이 조절"></div>`;
 }
 
 function renderGitTab(){
@@ -3218,12 +3209,30 @@ function bind(){
   $('#btnTheme').addEventListener('click', ev => { ev.stopPropagation(); $('#moreMenu').classList.add('hidden'); $('#themeMenu').classList.toggle('hidden'); });
   $('#themeMenu').addEventListener('click', ev => { const b = ev.target.closest('[data-theme]'); if(!b) return; applyTheme(b.dataset.theme); $('#themeMenu').classList.add('hidden'); });
   document.addEventListener('click', ev => { if(!ev.target.closest('.menu-wrap')) closeMore(); });
-  // 과제 필터 영역 높이 조절(resize 그래버 드래그 종료=mouseup) 영속 — 재렌더 시 filterBarH로 복원
-  document.addEventListener('mouseup', () => {
-    const el = document.querySelector('.nd-filter'); if(!el) return;
-    const hh = Math.round(el.getBoundingClientRect().height);
-    if(hh >= 42 && Math.abs(hh - filterBarH) > 1){ filterBarH = hh; try{ localStorage.setItem('tc_filterH', String(hh)); }catch(_){} }
+  // 과제 필터 영역 중앙 핸들 드래그 → max-height(자동확장 캡) 조절 + 영속(재렌더 시 filterBarMax로 복원)
+  let _fbDrag = null;
+  $('#dayPanel').addEventListener('pointerdown', ev => {
+    const handle = ev.target.closest('.nd-filter-rs'); if(!handle) return;
+    const f = handle.previousElementSibling; if(!f || !f.classList.contains('nd-filter')) return;
+    ev.preventDefault();
+    _fbDrag = { startY: ev.clientY, startH: f.getBoundingClientRect().height, f, handle };
+    handle.classList.add('drag');
+    try{ handle.setPointerCapture(ev.pointerId); }catch(_){}
   });
+  $('#dayPanel').addEventListener('pointermove', ev => {
+    if(!_fbDrag) return;
+    let nh = Math.round(_fbDrag.startH + (ev.clientY - _fbDrag.startY));
+    nh = Math.max(42, Math.min(nh, 800));
+    _fbDrag.f.style.maxHeight = nh + 'px';
+  });
+  const fbEnd = () => {
+    if(!_fbDrag) return;
+    const nh = parseInt(_fbDrag.f.style.maxHeight, 10);
+    if(nh >= 42){ filterBarMax = nh; try{ localStorage.setItem('tc_filterMax', String(nh)); }catch(_){} }
+    _fbDrag.handle.classList.remove('drag'); _fbDrag = null;
+  };
+  $('#dayPanel').addEventListener('pointerup', fbEnd);
+  $('#dayPanel').addEventListener('pointercancel', fbEnd);
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
   $('#btnImport').addEventListener('click', () => { closeMore(); $('#importFile').click(); });
   $('#btnClear').addEventListener('click', () => { closeMore(); clearAll(); });
