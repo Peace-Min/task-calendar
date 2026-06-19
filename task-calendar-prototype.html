@@ -265,6 +265,11 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .card-time{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .badge{font-size:var(--fs-micro);font-weight:600;padding:2px 8px;border-radius:999px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-title{font-size:var(--fs-emph);font-weight:600;word-break:keep-all;overflow-wrap:anywhere}
+/* 시간·장소 강조행 — 회의 등 '몇 시·어디'가 한눈에 */
+.card-when{display:flex;flex-wrap:wrap;gap:4px 14px;margin:5px 0 1px;font-size:var(--fs-emph);font-weight:600;color:var(--text)}
+.card-when .cw-time,.card-when .cw-loc{display:inline-flex;align-items:center;gap:4px;min-width:0}
+.card-when .cw-loc{word-break:keep-all;overflow-wrap:anywhere}
+.card-when .ic{width:15px;height:15px;color:var(--accent);flex:none}
 .card-memo{
   font-size:var(--fs-body);color:var(--muted);margin-top:4px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;line-height:1.5;
   max-height:72px;overflow:hidden;
@@ -806,12 +811,13 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
       </section>
       <section class="fsect">
-        <div class="fsect-cap">시간</div>
+        <div class="fsect-cap">시간 · 장소</div>
         <label class="check"><input type="checkbox" id="fAllDay"> 종일</label>
         <div class="row2" id="timeRow" style="margin-top:8px">
           <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
           <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
         </div>
+        <div style="margin-top:8px"><label for="fLoc">장소</label><input type="text" id="fLoc" maxlength="200" placeholder="예: 회의실 A / 온라인"></div>
       </section>
       <section class="fsect" id="recurSect">
         <div class="fsect-cap">반복 · 기간</div>
@@ -1265,6 +1271,7 @@ function load(){
         s.entries.forEach(e => { e.title = String(e.title ?? ''); e.memo = String(e.memo ?? '');
           e.startTime = String(e.startTime ?? ''); e.endTime = String(e.endTime ?? ''); e.date = String(e.date ?? '');
           e.hours = validMin(e.hours);   // 저장된 분 정수 검증(곱 안 함). 구버전/외부편집 방어
+          e.location = String(e.location ?? '').slice(0,200);
           e.source = e.source === 'git' ? 'git' : ''; e.commits = normCommits(e.commits); migrateGitMemo(e);
           e.endDate = (typeof e.endDate==='string' && /^\d{4}-\d{2}-\d{2}$/.test(e.endDate) && e.endDate>e.date) ? e.endDate : '';
           e.recur = normRecur(e.recur);
@@ -1412,6 +1419,7 @@ function addEntry(d){
   const source = d.source==='git'?'git':'';
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
+    location:String(d.location||'').trim().slice(0,200),
     memo:d.memo||'', source, commits:normCommits(d.commits), hours:numMin(d.hours), ...rangeFields(d, source),
     createdAt:nowIso(), updatedAt:nowIso()};
   state.entries.push(e); save(); return e;
@@ -1421,6 +1429,7 @@ function updateEntry(id, d){
   const source = d.source==='git'?'git':'';
   Object.assign(e, {date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
+    location:String(d.location||'').trim().slice(0,200),
     memo:d.memo||'', source, commits:normCommits(d.commits), ...rangeFields(d, source), updatedAt:nowIso()});
   if('hours' in d) e.hours = numMin(d.hours);   // 공수는 폼이 아닌 작업일지 칩에서 입력 — 폼 저장 시 미제공이면 기존값 보존
   save();
@@ -1507,6 +1516,7 @@ function toXML(){
     el.setAttribute('startTime', e.startTime || '');
     el.setAttribute('endTime', e.endTime || '');
     if(e.hours != null) el.setAttribute('hours', String(e.hours));   // 공수(분 정수). 미입력이면 속성 미기록(기존 파일과 byte 동일)
+    if(e.location) el.setAttribute('location', e.location);          // 장소(없으면 속성 미기록 — 하위호환)
     el.setAttribute('createdAt', e.createdAt || '');
     el.setAttribute('updatedAt', e.updatedAt || '');
     const t = doc.createElement('title'); t.textContent = e.title; el.appendChild(t);
@@ -1603,6 +1613,7 @@ function fromXML(text){
       startTime: allDay ? '' : validTime(e.getAttribute('startTime')),
       endTime: allDay ? '' : validTime(e.getAttribute('endTime')),
       hours: validMin(e.getAttribute('hours')),   // 공수(분 정수|null). 속성 없으면 null → 구버전 XML 무손실
+      location: (e.getAttribute('location') || '').slice(0,200),   // 장소(없으면 빈문자 → 구버전 XML 무손실)
       memo: txt(e,'memo'),
       source,
       commits: normCommits([...e.getElementsByTagName('commit')].map(ce => ({
@@ -1649,7 +1660,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       e.recur ? [e.recur.freq, e.recur.interval||1, e.recur.until||'', e.recur.count||0] : null,
       (e.recurExcept||[]).slice().sort(),
       (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||'']),
-      e.hours??null]),
+      e.hours??null, e.location||'']),
     t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'']),
   });
   const p = fromXML(toXML());
@@ -1943,13 +1954,16 @@ function cardHtml(e){
     ? ` · ${diffDays(occS,selectedDate)+1}일째 / ${diffDays(occS,occE)+1}일` : '';
   const rangeLine = isRange ? `<div class="card-span">${ICON.calendar} ${fmtShort(occS)} ~ ${fmtShort(occE)}${dayOfN}</div>` : '';
   const recurLine = e.recur ? `<div class="card-recur">${ICON.repeat} ${esc(recurLabel(e))}</div>` : '';
+  const loc = (e.location || '').trim();
+  // 시간·장소 강조행 — 회의 등 '몇 시·어디'가 핵심인 일정을 일정 상세에서 눈에 띄게
+  const whenRow = (time || loc) ? `<div class="card-when">${time?`<span class="cw-time">${ICON.clock} ${esc(time)}</span>`:''}${loc?`<span class="cw-loc">${ICON.pin} ${esc(loc)}</span>`:''}</div>` : '';
   return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
-      <span class="card-time">${esc(time)}</span>
       ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 기록">${ICON.git} Git 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
     </div>
     <div class="card-title">${esc(e.title)}</div>
+    ${whenRow}
     ${rangeLine}${recurLine}
     ${e.memo?`<div class="card-memo">${esc(e.memo)}</div>`:''}
     ${commitBlock}
@@ -2200,6 +2214,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = e.allDay;
     $('#fStart').value = e.startTime || '';
     $('#fEnd').value = e.endTime || '';
+    $('#fLoc').value = e.location || '';
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
   }else{
@@ -2210,6 +2225,7 @@ function openEntryModal(mode, ref){
     $('#fDate').value = ref || selectedDate;
     $('#fAllDay').checked = false;
     $('#fStart').value = ''; $('#fEnd').value = '';
+    $('#fLoc').value = '';
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
   }
@@ -2280,7 +2296,7 @@ function saveEntryFromForm(){
   commits = commits.filter(c => { if(!c.hash) return true; if(seen.has(c.hash)) return false; seen.add(c.hash); return true; });
   const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
-                memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
+                location: $('#fLoc').value, memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
   if(editingId){ updateEntry(editingId, data); toast('기록을 수정했습니다', 'success'); }
   else{ addEntry(data); toast('기록을 추가했습니다', 'success'); }
   closeModal('#entryModal');
@@ -2933,6 +2949,7 @@ function openQuickAdd(date, type, entryId){
     const s = $('#qaStart'), en = $('#qaEnd'); if(s) s.value = e.startTime || ''; if(en) en.value = e.endTime || '';
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
+    const lc = $('#qaLoc'); if(lc) lc.value = e.location || '';
     const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
     $('#qaAllDay').dispatchEvent(new Event('change'));   // 시간 행 표시 동기화
   }
@@ -2945,11 +2962,12 @@ function qaSyncType(){
   $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
   if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
 }
-function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (종일·시간·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
+function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (종일·시간·장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
     ? `<label class="qa-chk"><input type="checkbox" id="qaAllDay" checked> 종일</label>
        <div class="row2" id="qaTimeRow" style="display:none"><div><label class="qa-lb">시작</label><input type="time" id="qaStart"></div><div><label class="qa-lb">종료</label><input type="time" id="qaEnd"></div></div>
+       <label class="qa-lb">장소</label><input type="text" id="qaLoc" maxlength="200" placeholder="예: 회의실 A / 온라인">
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -2979,9 +2997,9 @@ function qaEventFormData(){
   const en = (!allDay && $('#qaEnd')) ? $('#qaEnd').value : '';
   const rf = $('#qaRecur') ? $('#qaRecur').value : '';
   const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
-  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo');
+  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc');
   return {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
-    allDay, startTime:st, endTime:en, memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
+    allDay, startTime:st, endTime:en, location:lcEl ? lcEl.value : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
 }
 function qaSave(){
   const title = $('#qaTitle').value.trim();
@@ -3037,6 +3055,8 @@ const ICON = {
   help:     svgIc('<circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 0 1 5.3 1c0 1.8-2.5 2.2-2.5 3.8"/><path d="M12 17.5v.5"/>'),
   palette:  svgIc('<path d="M12 3a9 9 0 1 0 0 18c1.3 0 2-.9 2-2 0-1.2-1-1.6-1-2.6a1.9 1.9 0 0 1 1.9-1.9H17a4 4 0 0 0 4-4C21 6.6 16.97 3 12 3z"/><circle cx="7.5" cy="11" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="16" cy="11.5" r="1.1" fill="currentColor" stroke="none"/>'),
   keyboard: svgIc('<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/>'),
+  clock:    svgIc('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.2 2"/>'),
+  pin:      svgIc('<path d="M12 21s6.5-5.4 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.4"/>'),
 };
 const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info:ICON.dot };
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
