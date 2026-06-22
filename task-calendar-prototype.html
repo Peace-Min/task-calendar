@@ -406,6 +406,17 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cat-desc{font-size:var(--fs-meta);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cat-count{font-size:var(--fs-meta);color:var(--muted);margin-left:auto;flex:none}
 .cat-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
+/* 회의실 관리 */
+.room-list{display:flex;flex-direction:column;gap:7px}
+.room-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-md)}
+.room-row .room-ic{width:15px;height:15px;color:var(--accent);flex:none}
+.room-row .room-nm{font-weight:600;font-size:var(--fs-emph);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.room-row .link.danger{margin-left:auto;flex:none}
+.room-empty{padding:16px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
+.room-form{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}
+.room-form>label{display:block;font-size:var(--fs-meta);color:var(--muted);margin-bottom:5px}
+.room-add-row{display:flex;gap:8px}
+.room-add-row input{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:8px 10px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
 .cat-form{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}
 .palette{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;align-items:center}
 .swatch{
@@ -452,7 +463,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rpt-range input[type=date]{flex:1;min-width:130px}
-.rpt-opts{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.rpt-opts{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}
+.rpt-srcs{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.rpt-guard{padding:26px 18px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.6;border:1px dashed var(--line-2);border-radius:var(--r-md)}
 .rpt-summary{font-size:var(--fs-meta);color:var(--muted);margin-top:8px;min-height:16px}
 #rptOut.rpt-mirror{width:100%;margin-top:8px;display:flex;flex-direction:column;gap:7px;background:transparent;border:none;padding:0}
 .rpt-mirror .rcard{border:1px solid var(--line);border-radius:var(--r-md);padding:8px 11px;background:var(--panel)}
@@ -612,6 +626,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-title::placeholder{color:var(--faint)}
 .qa-ctx{display:flex;gap:8px;margin-top:12px}
 .qa-ctx input[type=date],.qa-ctx select{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
+/* datalist(회의실 빠른선택) 연결 입력은 드롭다운 화살표를 상시 노출(WebView2/Chromium) */
+input[list]::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer}
+input[list]:hover::-webkit-calendar-picker-indicator,input[list]:focus::-webkit-calendar-picker-indicator{opacity:.9}
 /* 시간 영역(첫 화면, 옵션 더보기 밖) — 시·분 분리 드롭다운 */
 .qa-when{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-when .qa-chk{margin-bottom:9px}
@@ -761,6 +778,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="menu-wrap">
       <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
       <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
+        <button id="btnRooms">회의실 관리</button>
+        <hr>
         <button id="btnExport">XML 내보내기</button>
         <button id="btnImport">XML 가져오기…</button>
         <button id="btnClear" class="danger">전체 데이터 초기화</button>
@@ -829,7 +848,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="fEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="fEndM" aria-label="종료 분"></select></span></span>
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
-        <div style="margin-top:8px"><label for="fLoc">장소</label><input type="text" id="fLoc" maxlength="200" placeholder="예: 회의실 A / 온라인"></div>
+        <div style="margin-top:8px"><label for="fLoc">장소</label><input type="text" id="fLoc" list="roomList" maxlength="200" placeholder="예: 회의실 A / 온라인 (▾ 등록 회의실)"></div>
       </section>
       <section class="fsect" id="recurSect">
         <div class="fsect-cap">반복 · 기간</div>
@@ -953,6 +972,31 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- 장소 빠른선택용 회의실 목록(JS가 채움) -->
+<datalist id="roomList"></datalist>
+
+<!-- ===== 회의실 관리 모달 ===== -->
+<div class="overlay hidden" id="roomModal">
+  <div class="modal">
+    <div class="modal-head"><h2>회의실 관리</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div id="roomMgrList" class="room-list"></div>
+      <div class="room-form">
+        <label for="roomName">회의실 추가</label>
+        <div class="room-add-row">
+          <input type="text" id="roomName" maxlength="40" placeholder="예: 301호 / 대회의실 / 온라인">
+          <button class="btn primary sm" type="button" id="btnRoomAdd">＋ 추가</button>
+        </div>
+        <div class="git-note">여기 등록한 회의실은 일정 추가·편집의 <b>장소</b> 칸에서 드롭다운(▾)으로 바로 고를 수 있습니다. 장소는 직접 입력도 가능합니다.</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 검색 모달 ===== -->
 <div class="overlay hidden" id="searchModal">
   <div class="modal wide">
@@ -990,8 +1034,13 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <input type="date" id="rptFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="rptTo">
       </div>
       <div class="rpt-opts">
-        <label class="check" style="margin:0"><input type="checkbox" id="rptGitOnly"> Git 커밋 내역만</label>
-        <span class="git-hint" style="margin-left:auto">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
+        <div class="rpt-srcs">
+          <span class="rpt-opt-lb">포함 항목</span>
+          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcEvent" checked> 일정</label>
+          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcTodo" checked> 할 일</label>
+          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> Git 커밋 내역</label>
+        </div>
+        <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
       </div>
       <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
@@ -1251,6 +1300,18 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
+const DEFAULT_ROOMS = ['101호', '201호', '202호'];   // 자주 쓰는 회의실 기본값(설정에서 추가/삭제) — load()보다 먼저 선언(TDZ 방지)
+// 회의실 목록 정규화 — 손상/외부편집 방어(문자열·트림·빈값 제외·중복 제거·길이/개수 제한)
+function normRooms(a){
+  if(!Array.isArray(a)) return null;   // null = '명시되지 않음'(호출부에서 기본값 폴백 판단)
+  const seen = new Set(), out = [];
+  for(const r of a){
+    const s = String(r ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    if(!s || seen.has(s)) continue; seen.add(s); out.push(s);
+    if(out.length >= 50) break;
+  }
+  return out;
+}
 let state = load();
 
 function defaultState(){
@@ -1280,6 +1341,7 @@ function defaultState(){
       {id:uid('t'), text:'리팩터링 항목 정리',    done:false, categoryId:c1, due:'',  prio:'normal', note:'', createdAt:nowIso(), updatedAt:nowIso()},
       {id:uid('t'), text:'점검 체크리스트 정리',  done:true,  categoryId:c2, due:d0,  prio:'normal', completedAt:nowIso(), note:'', createdAt:nowIso(), updatedAt:nowIso()},
     ],
+    rooms: DEFAULT_ROOMS.slice(),
   };
 }
 function load(){
@@ -1301,6 +1363,7 @@ function load(){
         s.categories.forEach(c => { c.name = String(c.name ?? ''); c.desc = String(c.desc ?? ''); c.gitRepo = String(c.gitRepo ?? ''); });
         s.gitAuthor = String(s.gitAuthor ?? '');
         s.todos = normTodos(s.todos);   // 멀티노트 — 구버전/외부편집 데이터엔 없을 수 있음(없으면 빈 배열)
+        s.rooms = normRooms(s.rooms) || DEFAULT_ROOMS.slice();   // 회의실 — 구버전엔 없음 → 기본값 폴백
         return s;
       }
     }
@@ -1327,7 +1390,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', todos:data.todos||[]};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
     }catch(e){
@@ -1577,6 +1640,13 @@ function toXML(){
   }
   root.appendChild(tds);
 
+  // 회의실 — 장소 빠른선택용 목록(categories/entries/todos와 형제). 빈 목록도 명시 직렬화(사용자가 전부 삭제한 상태 보존)
+  const rms = doc.createElement('rooms');
+  for(const name of (state.rooms || [])){
+    const el = doc.createElement('room'); el.textContent = name; rms.appendChild(el);
+  }
+  root.appendChild(rms);
+
   return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
 }
 
@@ -1669,7 +1739,13 @@ function fromXML(text){
     };
   }).filter(t => t.text);
 
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', todos};
+  // 회의실 — <rooms> 요소가 없으면(구버전 XML) 기본값, 있으면 그 내용(빈 목록도 존중)
+  const roomsEl = root.getElementsByTagName('rooms')[0];
+  const rooms = roomsEl
+    ? (normRooms([...roomsEl.getElementsByTagName('room')].map(r => r.textContent)) || [])
+    : DEFAULT_ROOMS.slice();
+
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', todos, rooms};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -1683,6 +1759,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||'']),
       e.hours??null, e.location||'']),
     t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'']),
+    r: normRooms(s.rooms) || [],
   });
   const p = fromXML(toXML());
   const ok = JSON.stringify(norm(state)) === JSON.stringify(norm(p));
@@ -1716,7 +1793,7 @@ let flashTargetId = null;
 let flashTodoId = null;   // 할 일 칩 클릭 reveal 시 그 행 강조(일정 flashTargetId 대칭)
 
 /* ---------- 렌더링 ---------- */
-function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
+function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); renderRoomDatalist(); }
 
 function renderWeekdays(){
   $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
@@ -2368,6 +2445,38 @@ function resetCatForm(){
   editingCatId = null; selColor = PALETTE[0]; catFormRepo = ''; __pendingRepoEmail = '';
   $('#cName').value = ''; $('#cDesc').value = '';
 }
+/* ---------- 회의실(장소 빠른선택) ---------- */
+function renderRoomDatalist(){
+  const dl = $('#roomList'); if(!dl) return;
+  dl.innerHTML = (state.rooms || []).map(r => `<option value="${esc(r)}"></option>`).join('');
+}
+function renderRoomMgr(){
+  const list = $('#roomMgrList'); if(!list) return;
+  const rooms = state.rooms || [];
+  if(!rooms.length){ list.innerHTML = `<div class="room-empty">등록된 회의실이 없습니다.<br>아래에서 자주 쓰는 회의실을 추가해 보세요.</div>`; return; }
+  list.innerHTML = rooms.map(r => `<div class="room-row" data-room="${esc(r)}">
+    <svg class="room-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
+    <span class="room-nm">${esc(r)}</span>
+    <button class="link danger" data-act="del" aria-label="${esc(r)} 삭제">삭제</button>
+  </div>`).join('');
+}
+function addRoom(name){
+  const s = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if(!s){ toast('회의실 이름을 입력하세요', 'warn'); $('#roomName').focus(); return; }
+  if(!Array.isArray(state.rooms)) state.rooms = [];
+  if(state.rooms.includes(s)){ toast('이미 등록된 회의실입니다', 'warn'); $('#roomName').select(); return; }
+  if(state.rooms.length >= 50){ toast('회의실은 최대 50개까지 등록할 수 있습니다', 'warn'); return; }
+  state.rooms.push(s); save(); renderRoomMgr(); renderRoomDatalist();
+  $('#roomName').value = ''; $('#roomName').focus();
+  toast(`회의실 ‘${s}’ 추가됨`, 'success');
+}
+function deleteRoom(name){
+  if(!Array.isArray(state.rooms)) return;
+  const i = state.rooms.indexOf(name); if(i < 0) return;
+  state.rooms.splice(i, 1); save(); renderRoomMgr(); renderRoomDatalist();
+  toast(`회의실 ‘${name}’ 삭제됨`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); renderRoomDatalist(); } }});
+}
+function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal('#roomModal'); setTimeout(() => $('#roomName').focus(), 30); }
 function openCatModal(){
   resetCatForm();
   $('#cGitAuthor').value = getGitAuthor();
@@ -2514,6 +2623,7 @@ function applyImport(mode){
       categories: pendingImport.categories.filter(c => !cseen.has(c.id) && cseen.add(c.id)),
       entries: pendingImport.entries.filter(e => !eseen.has(e.id) && eseen.add(e.id)),
       todos: (pendingImport.todos || []).filter(t => !tseen.has(t.id) && tseen.add(t.id)),
+      rooms: normRooms(pendingImport.rooms) || DEFAULT_ROOMS.slice(),
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
@@ -2526,6 +2636,7 @@ function applyImport(mode){
     for(const e of pendingImport.entries)    if(!entIds.has(e.id)){ state.entries.push(e); entIds.add(e.id); ne++; }
     const todoIds = new Set((state.todos||[]).map(t => t.id));
     for(const t of (pendingImport.todos || [])) if(!todoIds.has(t.id)){ state.todos.push(t); todoIds.add(t.id); }
+    { if(!Array.isArray(state.rooms)) state.rooms = DEFAULT_ROOMS.slice(); const have = new Set(state.rooms); for(const r of (normRooms(pendingImport.rooms) || [])) if(!have.has(r)){ state.rooms.push(r); have.add(r); } }  // 회의실 합집합
     if(!state.gitAuthor && pendingImport.gitAuthor) state.gitAuthor = pendingImport.gitAuthor;  // 현재 비어있을 때만 채택
     toast(`병합 완료 — 과제 ${nc}개 · 기록 ${ne}개 추가됨 (중복 ${pendingImport.categories.length-nc+pendingImport.entries.length-ne}개 제외)`);
   }
@@ -2537,7 +2648,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', categories:[], entries:[], todos:[]};
+  state = {gitAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice()};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -2573,7 +2684,9 @@ function memoBullets(memo){ // 메모 → 보고서 불릿 (커밋 목록의 '�
 // 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). buildReport(렌더)·buildReportText(복사) 공유.
 function fmtH(min){ const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); }
 // 보고서 데이터 수집(렌더·직렬화 공유 단일 소스) — 과제별 제목/공수합/항목. 출력·제목·공수 단일 버킷키(catKey).
-function collectReportData(from, to, gitOnly){
+// sources = {event,todo,git} — 보고서에 포함할 소스 선택. 미지정 시 전체 포함(방어).
+function collectReportData(from, to, sources){
+  const src = sources || {event:true, todo:true, git:true};
   const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 만든 경우 미분류를 그쪽으로 병합
   const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
   const items = new Map(), seen = new Map(), sumMin = new Map(), bucket = new Map();
@@ -2587,8 +2700,10 @@ function collectReportData(from, to, gitOnly){
     if(k === '__uncat__') uncat.push(t);
     else { if(!items.has(k)) items.set(k, []); items.get(k).push(t); }
   };
+  // 일정·Git 커밋 — entries를 source로 분기(일정=비-git, Git=git)
   for(const e of state.entries){
-    if(gitOnly && e.source !== 'git') continue;
+    const isGit = e.source === 'git';
+    if(isGit ? !src.git : !src.event) continue;
     let hit = false;
     for(const _ of expandOccurrences(e, from, to)){ hit = true; break; }   // 기간 내 발생 1회라도?
     if(!hit) continue;
@@ -2597,17 +2712,31 @@ function collectReportData(from, to, gitOnly){
     if(e.hours != null) sumMin.set(k, (sumMin.get(k) || 0) + e.hours); else uninput++;
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     // git 작업일지는 커밋 제목 전부를 업무로(요약 'N건'이 아니라 실제 커밋들 — git 로그 가져오는 핵심), 그 외는 엔트리 제목
-    if(e.source === 'git' && Array.isArray(e.commits) && e.commits.length){
+    if(isGit && Array.isArray(e.commits) && e.commits.length){
       for(const c of e.commits) pushTitle(k, c.subject);
     } else pushTitle(k, e.title);
   }
-  // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(동명 과제 없을 때만)
+  // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
+  if(src.todo){
+    for(const t of (state.todos || [])){
+      const s = t.due; if(!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) continue;
+      const e2 = (t.endDate && t.endDate > s) ? t.endDate : s;
+      if(s > to || e2 < from) continue;
+      pushTitle(catKey(t), t.text);
+    }
+  }
+  // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
   const rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
     minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], entries:bucket.get(c.id)||[] }));
-  if(bucket.has('__uncat__')) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
+  if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
     minutes:sumMin.get('__uncat__')||0, titles:uncat, entries:bucket.get('__uncat__')||[] });
   let grand = 0; for(const v of sumMin.values()) grand += v;
   return { rows, grandMin:grand, uninput };
+}
+// 보고서 폼 → 소스 선택 객체(순수 읽기, 부수효과 없음). 체크박스 없으면 전체 포함. 영속은 buildReport에서만.
+function rptSources(){
+  const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit');
+  return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true };
 }
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
@@ -2615,8 +2744,14 @@ function buildReport(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
-  const gitOnly = $('#rptGitOnly').checked;
-  const { rows, grandMin, uninput } = collectReportData(from, to, gitOnly);
+  const src = rptSources();
+  try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
+  if(!src.event && !src.todo && !src.git){
+    sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·Git).';
+    out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정·할 일·Git 커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
+    return;
+  }
+  const { rows, grandMin, uninput } = collectReportData(from, to, src);
   if(!rows.length){
     sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
   }
@@ -2646,11 +2781,15 @@ function buildReport(){
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
   let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건 · 총 ${fmtH(grandMin)}h`;
   if(uninput) line += ` · 미입력 ${uninput}건`;
-  if(gitOnly) line += ' · 작업일지만';
+  const picked = [src.event && '일정', src.todo && '할 일', src.git && 'Git 커밋'].filter(Boolean);
+  if(picked.length < 3) line += ` · 포함: ${picked.join('·')}`;
   if(singleDay) line += ' · 하루(수정 가능)';
   sum.textContent = line;
 }
 function openReport(){
+  // 직전 소스 선택 복원(기본 전체 ON)
+  try{ const s = JSON.parse(localStorage.getItem('tc_rptSources') || 'null');
+    if(s){ $('#rptSrcEvent').checked = s.event !== false; $('#rptSrcTodo').checked = s.todo !== false; $('#rptSrcGit').checked = s.git !== false; } }catch(_){}
   openModal('#reportModal');
   if(!$('#rptFrom').value) setReportRange('thisweek'); else buildReport();
 }
@@ -2658,7 +2797,7 @@ function openReport(){
 function buildReportText(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
-  const { rows } = collectReportData(from, to, $('#rptGitOnly').checked);
+  const { rows } = collectReportData(from, to, rptSources());
   if(!rows.length) return '';
   const blocks = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}` + r.titles.map(t => `\n- ${t}`).join(''));
   return blocks.join('\n\n') + '\n';
@@ -3041,7 +3180,7 @@ function qaSyncType(){
 function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<label class="qa-lb">장소</label><input type="text" id="qaLoc" maxlength="200" placeholder="예: 회의실 A / 온라인">
+    ? `<label class="qa-lb">장소</label><input type="text" id="qaLoc" list="roomList" maxlength="200" placeholder="예: 회의실 A / 온라인 (▾ 등록 회의실)">
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -3332,9 +3471,13 @@ function bind(){
   };
   $('#dayPanel').addEventListener('pointerup', fbEnd);
   $('#dayPanel').addEventListener('pointercancel', fbEnd);
+  $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
   $('#btnImport').addEventListener('click', () => { closeMore(); $('#importFile').click(); });
   $('#btnClear').addEventListener('click', () => { closeMore(); clearAll(); });
+  $('#btnRoomAdd').addEventListener('click', () => addRoom($('#roomName').value));
+  $('#roomName').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); addRoom($('#roomName').value); } });
+  $('#roomMgrList').addEventListener('click', ev => { const b = ev.target.closest('button[data-act="del"]'); if(!b) return; const row = b.closest('.room-row'); if(row) deleteRoom(row.dataset.room); });
   $('#importFile').addEventListener('change', ev => {
     const f = ev.target.files[0];
     if(f) onImportFile(f);
@@ -3593,7 +3736,7 @@ function bind(){
   });
   $('#rptFrom').addEventListener('change', buildReport);
   $('#rptTo').addEventListener('change', buildReport);
-  $('#rptGitOnly').addEventListener('change', buildReport);
+  ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(s => $(s).addEventListener('change', buildReport));
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#rptCatLink').addEventListener('click', openCatModal);   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
   // 하루 보고서의 과제별 시간 인라인 수정(blur/Enter=change) → 그 항목 hours 저장 후 재렌더(총합 갱신)
