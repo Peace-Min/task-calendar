@@ -3724,6 +3724,7 @@ function maybeShowPatch(){
   let seen = ''; try{ seen = localStorage.getItem('tc_seenVersion') || ''; }catch(_){}
   if(seen === APP_VERSION) return;
   if($$('.overlay').some(o => !o.classList.contains('hidden'))) return;   // 다른 창이 열려 있으면 다음 기회에
+  try{ localStorage.setItem('tc_seenVersion', APP_VERSION); }catch(_){}   // 표시 '즉시' 봤음 기록 → 닫지 않아도 재실행마다 반복 표시 안 함(버전당 1회)
   openPatch();
 }
 
