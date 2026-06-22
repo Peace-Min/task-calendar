@@ -44,9 +44,9 @@ body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) �
 #hostbar .hb-btns button.pinon{background:rgba(255,255,255,.28)}
 /* 위젯 리사이즈 핸들 — 좌·우·하단 가장자리 + 하단 두 모서리(상단은 호스트바=타이틀바라 제외, 일반 창 규범) */
 .rsz{position:fixed;z-index:200;touch-action:none}
-.rsz-w{left:0;top:14px;bottom:14px;width:5px;cursor:ew-resize}      /* 좌(모서리 사이) */
-.rsz-e{right:0;top:14px;bottom:14px;width:5px;cursor:ew-resize}     /* 우 */
-.rsz-s{left:14px;right:14px;bottom:0;height:5px;cursor:ns-resize}   /* 하단(모서리 사이) */
+.rsz-w{left:0;top:14px;bottom:14px;width:8px;cursor:ew-resize}      /* 좌(모서리 사이) — 8px 그랩(투명, 시각 변화 0) */
+.rsz-e{right:0;top:14px;bottom:14px;width:8px;cursor:ew-resize}     /* 우 */
+.rsz-s{left:14px;right:14px;bottom:0;height:8px;cursor:ns-resize}   /* 하단(모서리 사이) */
 .rsz-nw{left:0;top:0;width:14px;height:14px;cursor:nwse-resize}     /* 좌상 모서리 */
 .rsz-ne{right:0;top:0;width:14px;height:14px;cursor:nesw-resize}    /* 우상 모서리(✕ 중앙 클릭은 유지) */
 .rsz-sw{left:0;bottom:0;width:14px;height:14px;cursor:nesw-resize}  /* 좌하 모서리 */
@@ -76,7 +76,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .brand .sub{font-size:var(--fs-micro);color:var(--muted)}
 .nav{display:flex;align-items:center;gap:6px;position:relative}
 .title-btn{
-  border:none;background:transparent;font-size:20px;font-weight:700;color:var(--text);line-height:1.15;
+  border:none;background:transparent;font-size:22px;font-weight:700;color:var(--text);line-height:1.15;
   padding:5px 10px;border-radius:var(--r-sm);cursor:pointer;min-width:120px;letter-spacing:-.01em;
 }
 .title-btn:hover{background:var(--hover-bg)}
@@ -173,7 +173,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cell:hover{background:#f8f9fc}
 .cell.dim{background:#fafbfd}
 .cell.dim .num{color:#7a8294}
-.cell.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.cell.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}   /* 선택은 1px로 조용히 — 강한 2px는 키보드 focus-visible 전용(@180) */
 .cell.drop{background:var(--accent-soft);outline:2px dashed var(--accent);outline-offset:-2px}
 .gridrow{display:contents}                                    /* ARIA role=row 래퍼 — 박스 트리에서 제거돼 7열 그리드 레이아웃 보존 */
 .cell:focus{outline:none}
@@ -238,7 +238,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* 좌측 캘린더 / 우측 기록 사이 너비 조절 분할바 */
 .splitter{flex:none;width:7px;cursor:col-resize;background:var(--line);position:relative;touch-action:none;transition:background .12s}
 .splitter:hover,.splitter.dragging{background:var(--accent)}
-.splitter::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:28px;border-radius:2px;background:var(--faint)}
+.splitter::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:28px;border-radius:2px;background:var(--chip-outline)}   /* 비텍스트 3:1 충족(구조 그립) */
 .splitter:hover::after,.splitter.dragging::after{background:#fff}
 .dp-head{
   display:flex;align-items:flex-start;justify-content:space-between;gap:8px;
@@ -1579,11 +1579,11 @@ function chipTime(e){ // 칩용 짧은 시간 표기 (없으면 빈 문자열)
   if(e.allDay) return '';
   return e.startTime || (e.endTime ? '~' + e.endTime : '');
 }
-// 그리드 시간 칩용 초축약 시각 — 정시는 'N시', 그 외 'H:MM' (좁은 셀에서도 시간이 보이도록)
+// 그리드 시간 칩용 시각 — 상세 패널과 동일 'HH:mm'(예 09:00·14:30)로 통일
 function chipTimeShort(e){
   if(e.allDay) return '';
   const m = /^(\d{1,2}):(\d{2})$/.exec(e.startTime || '');
-  if(m) return m[2] === '00' ? (+m[1]) + '시' : (+m[1]) + ':' + m[2];
+  if(m) return ('0' + (+m[1])).slice(-2) + ':' + m[2];   // 상세 패널과 동일 'HH:mm' 표기(시간 언어 통일)
   return e.endTime ? '~' + e.endTime : '';
 }
 
@@ -2835,16 +2835,16 @@ window.__netcusCreds = function(id, hasPw){
   const e = $('#ncId'); if(e) e.value = id || '';
   const st = $('#ncPwState'); if(st) st.textContent = hasPw ? '· 저장됨' : '· 미저장';
 };
-window.__netcusCredsCheck = function(m){ const e = $('#ncSaveMsg'); if(e){ e.textContent = '⏳ ' + m; e.style.color = 'var(--accent)'; } };
+window.__netcusCredsCheck = function(m){ const e = $('#ncSaveMsg'); if(e){ e.innerHTML = ICON.spinner + ' ' + esc(m); e.style.color = 'var(--accent)'; } };
 window.__netcusCredsResult = function(ok, m){
-  const e = $('#ncSaveMsg'); if(e){ e.textContent = (ok ? '✅ ' : '⚠️ ') + m; e.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
+  const e = $('#ncSaveMsg'); if(e){ e.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(m); e.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
   if(ok){ const st = $('#ncPwState'); if(st) st.textContent = '· 저장됨'; }
 };
 window.__netcusProgress = function(msg){
-  const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ ' + msg; s.className = 'rpt-send-status busy'; }
+  const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' ' + esc(msg); s.className = 'rpt-send-status busy'; }
 };
 window.__netcusResult = function(ok, msg){
-  const s = $('#rptSendStatus'); if(s){ s.textContent = (ok ? '✅ ' : '⚠️ ') + msg; s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
+  const s = $('#rptSendStatus'); if(s){ s.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'warn');
 };
@@ -3135,15 +3135,15 @@ function updateRptSendVis(){
   if(!b) return;
   b.style.display = '';
   if(reportMode === 'weekly'){
-    b.disabled = false; b.dataset.mode = 'weekly'; b.textContent = '📤 주간보고 작성';
+    b.disabled = false; b.dataset.mode = 'weekly'; b.innerHTML = ICON.send + ' 주간보고 작성';
     b.title = '이 주(이번 주) 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
     if(h) h.style.display = 'none';
   } else if(reportMode === 'custom'){
-    b.disabled = true; b.dataset.mode = 'custom'; b.textContent = '📤 회사 전송';
+    b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
     b.title = '커스텀 기간은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
     if(h){ h.style.display = ''; h.textContent = '커스텀 기간은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
   } else { // daily
-    b.disabled = false; b.dataset.mode = 'daily'; b.textContent = '📤 일간보고 전송';
+    b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '오늘 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
     if(h) h.style.display = 'none';
   }
@@ -3690,6 +3690,9 @@ const ICON = {
   plus:     svgIc('<path d="M12 5v14M5 12h14"/>', 2.3),
   doc:      svgIc('<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>'),
   download: svgIc('<path d="M12 3v11M7.5 9.5l4.5 4.5 4.5-4.5"/><path d="M5 20h14"/>'),
+  send:     svgIc('<path d="M12 20V7M6.5 12.5L12 7l5.5 5.5"/><path d="M5 4h14"/>'),   // 회사 보고 전송(업로드)
+  spinner:  svgIc('<path d="M12 3a9 9 0 1 0 9 9" opacity=".9"/>'),                     // 진행
+
   tag:      svgIc('<path d="M3 11.5V4h7.5L21 14.5 14.5 21z"/><circle cx="7.6" cy="7.6" r="1.3" fill="currentColor" stroke="none"/>'),
   folder:   svgIc('<path d="M3.5 7a1.5 1.5 0 0 1 1.5-1.5h3.8l1.7 1.8H19a1.5 1.5 0 0 1 1.5 1.5v8.2A1.5 1.5 0 0 1 19 18.5H5A1.5 1.5 0 0 1 3.5 17z"/>'),
   copy:     svgIc('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h9"/>'),
@@ -3950,7 +3953,7 @@ function bind(){
     if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
     hpost({ cmd: 'netcusSaveCreds', id, pw });
     $('#ncPw').value = '';
-    const m = $('#ncSaveMsg'); if(m){ m.textContent = '⏳ 저장 후 로그인 확인…'; m.style.color = 'var(--accent)'; }
+    const m = $('#ncSaveMsg'); if(m){ m.innerHTML = ICON.spinner + ' 저장 후 로그인 확인…'; m.style.color = 'var(--accent)'; }
   });
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
@@ -3964,7 +3967,7 @@ function bind(){
       const at = getAttendance(from), p = from.split('-').map(Number);
       const dry = ncMode() !== 'real';
       const b = $('#btnRptSend'); if(b) b.disabled = true;
-      const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ 전송 시작…'; s.className = 'rpt-send-status busy'; }
+      const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 전송 시작…'; s.className = 'rpt-send-status busy'; }
       hpost({ cmd: 'netcusSubmit', y: p[0], m: p[1], d: p[2], status: at.status, overtime: at.overtime, content, dryRun: dry });
     } else {
       // 주간보고 — 채우고 열어두기(직접 제출). 기간/제목/과제투입시간/진행사항 자동 채움.
@@ -3972,7 +3975,7 @@ function bind(){
       const wf = buildWeeklyFields(from, to, rptSources());
       if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
       const b = $('#btnRptSend'); if(b) b.disabled = true;
-      const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+      const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
       hpost({ cmd: 'netcusWeekSubmit', sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork });
     }
   });
