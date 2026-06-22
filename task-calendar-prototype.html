@@ -466,7 +466,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 
 /* ---------- 보고서 모달 ---------- */
 .rpt-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-.rpt-preset-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center}
+.rpt-presets .btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.rpt-range input:disabled{opacity:.55;cursor:not-allowed}
 .rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rpt-range input[type=date]{flex:1;min-width:130px}
 .rpt-opts{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}
@@ -1106,10 +1107,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal wide">
     <div class="modal-head"><h2>보고서 초안</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
-      <div class="rpt-presets">
-        <button class="btn sm" data-rpt="today">오늘 (일간)</button>
-        <button class="btn sm" data-rpt="thisweek">이번 주 (주간)</button>
-        <span class="rpt-preset-hint">그 외 기간은 아래에서 직접 지정 ↓</span>
+      <div class="rpt-presets" role="tablist" aria-label="보고 유형">
+        <button class="btn sm" data-rmode="daily" role="tab">일간 (오늘)</button>
+        <button class="btn sm" data-rmode="weekly" role="tab">주간 (이번 주)</button>
+        <button class="btn sm" data-rmode="custom" role="tab">커스텀 기간</button>
       </div>
       <div class="rpt-range">
         <input type="date" id="rptFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="rptTo">
@@ -3109,23 +3110,43 @@ function rptSources(){
   const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit');
   return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true };
 }
-// 하루(from===to) → 일간보고 자동 전송 / 기간(from<to) → 주간보고 작성(채우고 열기). 버튼 라벨·동작을 전환.
-function updateRptSendVis(){
-  const from = $('#rptFrom').value, to = $('#rptTo').value;
-  const valid = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to;
-  const single = valid && from === to;
-  const b = $('#btnRptSend'), h = $('#rptSendHint');
-  if(b){
-    if(!valid){ b.style.display = 'none'; }
-    else {
-      b.style.display = '';
-      b.dataset.mode = single ? 'daily' : 'weekly';
-      b.textContent = single ? '📤 일간보고 전송' : '📤 주간보고 작성';
-      b.title = single ? '이 날짜 보고서를 회사 일간보고(netcus)에 작성·전송합니다'
-                       : '이 기간을 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
-    }
+// 보고 유형 탭: daily(오늘·고정) / weekly(이번 주·고정) / custom(직접 기간·전송 비활성).
+let reportMode = 'daily';
+function setReportMode(mode){
+  reportMode = mode;
+  $$('#reportModal [data-rmode]').forEach(b => b.classList.toggle('active', b.dataset.rmode === mode));
+  const from = $('#rptFrom'), to = $('#rptTo');
+  if(mode === 'daily'){
+    const t = todayYmd(); from.value = t; to.value = t;
+    from.disabled = to.disabled = true;
+  } else if(mode === 'weekly'){
+    const r = weekRange(new Date(), 0); from.value = r[0]; to.value = r[1];
+    from.disabled = to.disabled = true;
+  } else { // custom — 범위 직접 지정 가능, 전송은 비활성
+    from.disabled = to.disabled = false;
+    if(!from.value) from.value = todayYmd();
+    if(!to.value) to.value = from.value;
   }
-  if(h) h.style.display = 'none';
+  buildReport();
+}
+// 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
+function updateRptSendVis(){
+  const b = $('#btnRptSend'), h = $('#rptSendHint');
+  if(!b) return;
+  b.style.display = '';
+  if(reportMode === 'weekly'){
+    b.disabled = false; b.dataset.mode = 'weekly'; b.textContent = '📤 주간보고 작성';
+    b.title = '이 주(이번 주) 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
+    if(h) h.style.display = 'none';
+  } else if(reportMode === 'custom'){
+    b.disabled = true; b.dataset.mode = 'custom'; b.textContent = '📤 회사 전송';
+    b.title = '커스텀 기간은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
+    if(h){ h.style.display = ''; h.textContent = '커스텀 기간은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
+  } else { // daily
+    b.disabled = false; b.dataset.mode = 'daily'; b.textContent = '📤 일간보고 전송';
+    b.title = '오늘 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
+    if(h) h.style.display = 'none';
+  }
 }
 // 주간보고용 필드 — content(과제투입시간: [과제명]:시간), endwork(진행사항: 과제별 업무 불릿), subject(제목 추정)
 function buildWeeklyFields(from, to, sources){
@@ -3211,7 +3232,7 @@ function openReport(){
   try{ const s = JSON.parse(localStorage.getItem('tc_rptSources') || 'null');
     if(s){ $('#rptSrcEvent').checked = s.event !== false; $('#rptSrcTodo').checked = s.todo !== false; $('#rptSrcGit').checked = s.git !== false; } }catch(_){}
   openModal('#reportModal');
-  if(!$('#rptFrom').value) setReportRange('thisweek'); else buildReport();
+  setReportMode('daily');   // 기본: 일간(오늘). 주간/커스텀은 탭으로 전환
 }
 // 복사용 텍스트 — 화면 DOM이 아니라 데이터에서 재계산(드리프트 방지). 과제명은 현재 이름 재조회(개명 자동 반영).
 function buildReportText(){
@@ -3935,6 +3956,7 @@ function bind(){
     const from = $('#rptFrom').value, to = $('#rptTo').value;
     if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
     const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
+    if(mode === 'custom'){ toast('커스텀 기간은 회사 전송 대상이 아닙니다 — 복사만 가능합니다', 'warn'); return; }
     if(mode === 'daily'){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('일간보고는 하루 보고서(예: 오늘)에서만 전송할 수 있습니다', 'warn'); return; }
       const content = buildReportText();   // 단일일 → 그 날 [과제명]:시간
@@ -4216,7 +4238,7 @@ function bind(){
 
   /* 보고서 모달 (진입은 작업 드로어의 📋 보고서 버튼 #ndReport) */
   $('#reportModal .rpt-presets').addEventListener('click', ev => {
-    const b = ev.target.closest('[data-rpt]'); if(b) setReportRange(b.dataset.rpt);
+    const b = ev.target.closest('[data-rmode]'); if(b) setReportMode(b.dataset.rmode);
   });
   $('#rptFrom').addEventListener('change', buildReport);
   $('#rptTo').addEventListener('change', buildReport);
