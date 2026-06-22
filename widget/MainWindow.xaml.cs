@@ -223,8 +223,22 @@ namespace TaskCalendarWidget
                     }
                 };
                 string html = LoadHtml();
-                Log($"NavigateToString 호출 (HTML {html.Length}자)");
-                web.CoreWebView2.NavigateToString(html);
+                // 가상 호스트(실제 origin)에서 로드 — NavigateToString은 opaque origin이라 localStorage가
+                // 영속되지 않음(설정·테마·근태·패치노트 '봤음' 등 손실). 파일로 써서 https 가상 호스트로 서빙.
+                try
+                {
+                    string appDir = Path.Combine(_webviewDir, "app");
+                    Directory.CreateDirectory(appDir);
+                    File.WriteAllText(Path.Combine(appDir, "index.html"), html, new UTF8Encoding(false));
+                    web.CoreWebView2.SetVirtualHostNameToFolderMapping("tcapp.local", appDir, CoreWebView2HostResourceAccessKind.Allow);
+                    Log($"가상 호스트 로드(localStorage 영속) — HTML {html.Length}자");
+                    web.CoreWebView2.Navigate("https://tcapp.local/index.html");
+                }
+                catch (Exception nx)
+                {
+                    Log("가상 호스트 실패 → NavigateToString 폴백: " + nx.Message);
+                    web.CoreWebView2.NavigateToString(html);
+                }
             }
             catch (Exception ex)
             {

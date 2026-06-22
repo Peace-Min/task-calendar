@@ -2833,6 +2833,11 @@ window.__netcusCreds = function(id, hasPw){
   const e = $('#ncId'); if(e) e.value = id || '';
   const st = $('#ncPwState'); if(st) st.textContent = hasPw ? '· 저장됨' : '· 미저장';
 };
+window.__netcusCredsCheck = function(m){ const e = $('#ncSaveMsg'); if(e){ e.textContent = '⏳ ' + m; e.style.color = 'var(--accent)'; } };
+window.__netcusCredsResult = function(ok, m){
+  const e = $('#ncSaveMsg'); if(e){ e.textContent = (ok ? '✅ ' : '⚠️ ') + m; e.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
+  if(ok){ const st = $('#ncPwState'); if(st) st.textContent = '· 저장됨'; }
+};
 window.__netcusProgress = function(msg){
   const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ ' + msg; s.className = 'rpt-send-status busy'; }
 };
@@ -3888,7 +3893,8 @@ function bind(){
     if(!id){ toast('ID를 입력하세요', 'warn'); $('#ncId').focus(); return; }
     if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
     hpost({ cmd: 'netcusSaveCreds', id, pw });
-    $('#ncPw').value = ''; $('#ncSaveMsg').textContent = '저장됨';
+    $('#ncPw').value = '';
+    const m = $('#ncSaveMsg'); if(m){ m.textContent = '⏳ 저장 후 로그인 확인…'; m.style.color = 'var(--accent)'; }
   });
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;

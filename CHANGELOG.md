@@ -5,6 +5,15 @@
 
 ---
 
+## 🆕 2026-06-22 — fix(중요): 설정·테마·근태·패치노트가 저장 안 되던 근본 원인 해결 (localStorage 영속)
+
+증상: 월 보기 밀도·전송 모드를 바꿔도 저장 안 됨, 패치노트가 재실행마다 표시.
+- **원인**: 앱이 `NavigateToString`으로 로드돼 페이지 origin이 **opaque(불투명)** → 그 origin의 **localStorage는 디스크에 영속되지 않고 재실행마다 초기화**됨. (일정 데이터는 XML이라 무사. 영향: tc_theme/tc_calDensity/tc_netcusMode/tc_attendance/tc_seenVersion/tc_filterMax/tc_rptSources)
+- **해결**: 임베드 HTML을 파일로 써서 **가상 호스트(`https://tcapp.local`)로 서빙**(`SetVirtualHostNameToFolderMapping`) → 실제 origin이라 localStorage 정상 영속. 실패 시 NavigateToString 폴백.
+- **자격증명 검증 추가**: 자격증명 '저장' 시 단순 저장이 아니라, **보조 브라우저로 실제 로그인 시도** → 성공=✅OK / 실패=⚠️Fail을 저장 버튼 옆에 표시(`__netcusCredsCheck/Result`).
+
+---
+
 ## 🆕 2026-06-22 — netcus 자동 전송 2차: 폼 탐지·채우기·실제 POST 보정
 
 1차 실테스트(사용자 PC): 로그인→그 날짜→근태/내용 채움까지 정상 확인. 다만 `document.form.status`(폼이 `<table>` 안 → Chromium 미연결)로 probe 실패하던 것 수정 + 실제 제출 구현.

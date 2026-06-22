@@ -45,9 +45,42 @@ namespace TaskCalendarWidget
                 File.WriteAllText(CredFile, JsonSerializer.Serialize(new { id, pw = enc }), Encoding.UTF8);
                 Log("netcus 자격증명 저장");
                 NetcusSendCredsState();
+                // 저장 후 실제 로그인 검증(보이는 창) — 성공/실패 표시
+                var (eid, epw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(eid) || string.IsNullOrEmpty(epw)) JsCredsResult(false, "ID와 비밀번호를 모두 입력하세요.");
+                else _ = NetcusValidateCreds(eid, epw);
             }
-            catch (Exception ex) { Log("netcus 자격증명 저장 실패: " + ex.Message); }
+            catch (Exception ex) { Log("netcus 자격증명 저장 실패: " + ex.Message); JsCredsResult(false, "저장 오류: " + ex.Message); }
         }
+
+        // 저장된 자격증명으로 실제 로그인해 성공/실패 검증(보조 WebView2, 가시 창)
+        private async Task NetcusValidateCreds(string id, string pw)
+        {
+            try
+            {
+                JsCredsCheck("로그인 확인 중…");
+                await EnsureW2();
+                var cw = _w2!.CoreWebView2;
+                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                var nav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+                await nav;
+                // 로그인 후에도 비밀번호 입력칸이 보이면(=로그인 페이지 잔류) 실패
+                string still = "true";
+                for (int i = 0; i < 8; i++)
+                {
+                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (still == "false") break;
+                    await Task.Delay(300);
+                }
+                bool ok = (still == "false");
+                JsCredsResult(ok, ok ? "로그인 확인됨 — 자격증명 OK" : "로그인 실패 — ID/비밀번호를 확인하세요");
+            }
+            catch (Exception ex) { Log("netcus 자격증명 검증 예외: " + ex); JsCredsResult(false, "검증 오류: " + ex.Message); }
+        }
+
+        private void JsCredsCheck(string m) { JsCall("window.__netcusCredsCheck && window.__netcusCredsCheck(" + JsonSerializer.Serialize(m) + ")"); }
+        private void JsCredsResult(bool ok, string m) { Log("netcus creds validate: " + ok + " / " + m); JsCall("window.__netcusCredsResult && window.__netcusCredsResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(m) + ")"); }
 
         private (string id, string pw) NetcusLoadCreds()
         {
