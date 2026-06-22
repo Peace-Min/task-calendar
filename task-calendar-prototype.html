@@ -496,6 +496,18 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .help-body li{font-size:var(--fs-body);color:var(--text);line-height:1.7;margin:3px 0;word-break:keep-all;overflow-wrap:anywhere}
 .help-body .help-keys{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:8px}
 .help-body kbd{font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-meta);background:var(--bg);border:1px solid var(--line-2);border-radius:4px;padding:1px 6px;margin:0 1px}
+/* 자세한 사용설명서(A–Z) 모달 */
+.guide-body{max-height:70vh}
+.guide-toc{position:sticky;top:-16px;z-index:2;display:flex;flex-wrap:wrap;gap:6px;margin:-4px -2px 6px;padding:6px 2px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.guide-toc button{border:1px solid var(--line-2);background:transparent;color:var(--muted);border-radius:999px;padding:4px 11px;font-size:var(--fs-meta);font-family:inherit;cursor:pointer;white-space:nowrap}
+.guide-toc button:hover{border-color:var(--accent);color:var(--accent)}
+.guide-sec{padding:14px 0;border-bottom:1px solid var(--line);scroll-margin-top:56px}
+.guide-sec:last-child{border-bottom:none}
+.guide-sec h3{font-size:var(--fs-emph);font-weight:700;color:var(--text);margin:0 0 8px}
+.guide-sec .g-note{font-size:var(--fs-micro);font-weight:500;color:var(--muted)}
+.guide-sec ol,.guide-sec ul{margin:0;padding-left:20px}
+.guide-sec li{font-size:var(--fs-body);color:var(--text);line-height:1.75;margin:4px 0;word-break:keep-all;overflow-wrap:anywhere}
+.guide-sec .g-tip{margin:8px 0 0;padding:8px 11px;background:var(--accent-soft);border-radius:var(--r-sm);font-size:var(--fs-meta);color:var(--text);line-height:1.6}
 /* Git 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
 .nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
 .nd-commit .nd-ci .ic{width:15px;height:15px}
@@ -1074,7 +1086,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <h3>일정 · 할 일 · 기간/반복</h3>
         <ul>
           <li><b>일정</b>은 시간/종일, <b>할 일</b>은 체크·중요(★)·기한</li>
-          <li>‘옵션 더보기’에서 <b>종일·시간·반복·공수·메모</b> 설정</li>
+          <li><b>시작·종료 시간</b>과 <b>종일</b>은 첫 화면에서 바로, <b>장소·반복·메모</b>는 ‘옵션 더보기’</li>
           <li>여러 날에 걸친 <b>기간</b> 일정과 <b>매주·매월 반복</b> 지원</li>
         </ul>
       </section>
@@ -1111,6 +1123,182 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <li>날짜 <kbd>더블클릭</kbd> 새 기록</li>
         </ul>
       </section>
+    </div>
+    <div class="modal-foot">
+      <span class="git-hint" style="margin-right:auto">기능별 단계별 안내가 필요하면 →</span>
+      <button class="btn" data-close>닫기</button>
+      <button class="btn primary" id="btnGuide">📖 자세한 사용설명서</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 자세한 사용설명서(A–Z) 모달 ===== -->
+<div class="overlay hidden" id="guideModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>사용설명서 · A–Z</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body guide-body">
+      <nav class="guide-toc" id="guideToc" aria-label="목차">
+        <button type="button" data-goto="g-start">화면 구성</button>
+        <button type="button" data-goto="g-add">일정 추가</button>
+        <button type="button" data-goto="g-time">시간 입력</button>
+        <button type="button" data-goto="g-room">장소·회의실</button>
+        <button type="button" data-goto="g-edit">편집·이동·삭제</button>
+        <button type="button" data-goto="g-todo">할 일</button>
+        <button type="button" data-goto="g-cat">과제 관리</button>
+        <button type="button" data-goto="g-git">Git 커밋 내역</button>
+        <button type="button" data-goto="g-report">보고서</button>
+        <button type="button" data-goto="g-hours">시간(공수)</button>
+        <button type="button" data-goto="g-theme">테마</button>
+        <button type="button" data-goto="g-window">창 모드</button>
+        <button type="button" data-goto="g-data">데이터·백업</button>
+        <button type="button" data-goto="g-keys">단축키</button>
+      </nav>
+
+      <section class="guide-sec" id="g-start">
+        <h3>1. 화면 구성</h3>
+        <ul>
+          <li><b>왼쪽 — 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
+          <li><b>오른쪽 패널 — 탭 3개</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>, <b>Git 커밋 내역</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
+          <li><b>과제 필터 줄</b>(달력 위): <b>전체</b> 또는 특정 과제만 눌러 그 과제 기록만 볼 수 있습니다.</li>
+          <li><b>헤더 버튼</b>: 🔍 검색 · 🏷️ 과제 관리 · 🎨 테마 · ? 도움말 · ⋯ 더보기(회의실 관리·데이터) · <b>＋ 새 기록</b> · 📄 보고서.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-add">
+        <h3>2. 일정 추가</h3>
+        <ol>
+          <li><b>＋ 새 기록</b>을 누르거나 달력의 <b>빈 날짜를 더블클릭</b>합니다.</li>
+          <li>위쪽 <b>일정 / 할 일</b> 토글에서 <b>일정</b>을 선택합니다.</li>
+          <li><b>제목</b>을 적고, <b>날짜</b>와 <b>과제(카테고리)</b>를 고릅니다.</li>
+          <li>바로 아래 <b>종일 / 시작·종료 시간</b>을 정합니다(아래 ‘시간 입력’ 참고).</li>
+          <li>회의실·반복·메모가 필요하면 <b>옵션 더보기</b>를 눌러 펼칩니다.</li>
+          <li><b>저장(추가)</b>을 누르면 달력과 오른쪽 패널에 바로 반영됩니다.</li>
+        </ol>
+        <p class="g-tip">팁: 더 많은 항목(반복 간격·횟수 등)이 필요하면 <b>자세히 편집</b>으로 전체 편집기를 엽니다.</p>
+      </section>
+
+      <section class="guide-sec" id="g-time">
+        <h3>3. 시간 입력</h3>
+        <ul>
+          <li><b>종일</b> 체크 시 시간 칸이 사라지고 하루 종일 일정이 됩니다. 회의처럼 시각이 있는 일정은 종일을 <b>꺼 둡니다</b>(기본 꺼짐).</li>
+          <li>시간은 <b>시(00–23) · 분(5분 단위)</b> 드롭다운에서 고릅니다. 분은 한 번에 선택할 수 있어 빠릅니다.</li>
+          <li><b>시작</b>을 정하면 <b>종료</b>가 자동으로 1시간 뒤로 채워집니다. 종료를 직접 바꾸면 그 값이 유지됩니다.</li>
+          <li>종료가 시작보다 빠르면 자동으로 1시간 뒤로 보정하고, 자정을 넘기면 <b>23:59</b>로 맞춥니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-room">
+        <h3>4. 장소 · 회의실 관리</h3>
+        <ul>
+          <li>일정의 <b>장소</b>는 등록된 회의실 목록에서 <b>선택</b>합니다(드롭다운).</li>
+          <li>회의실을 추가·삭제하려면 두 곳 중 하나에서 <b>회의실 관리</b>를 엽니다: ① ⋯ 더보기 → 회의실 관리, ② 일정 추가·편집 폼의 <b>장소 옆 ‘회의실 관리’</b> 링크(작성 중에 바로 추가 가능).</li>
+          <li>관리 창에서 <b>회의실 추가</b> 칸에 이름을 적고 <b>＋ 추가</b>, 각 항목의 <b>삭제</b>로 제거합니다(삭제는 실행취소 가능).</li>
+          <li>기본 제공: <b>101호 · 201호 · 202호</b>. 추가한 회의실은 모든 일정의 장소 드롭다운에 나타납니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-edit">
+        <h3>5. 편집 · 이동 · 삭제</h3>
+        <ul>
+          <li>달력의 <b>칩을 클릭</b>하면 오른쪽 패널에서 해당 항목이 강조되어 펼쳐집니다(미리보기).</li>
+          <li><b>편집</b>: 일정 상세의 <b>수정</b> 버튼(또는 할 일 텍스트)을 누르면 편집 폼이 열립니다.</li>
+          <li><b>이동</b>: 칩을 <b>다른 날짜로 드래그</b>합니다. 기간 일정/할 일은 기간 전체가 함께 이동합니다.</li>
+          <li><b>삭제</b>: 일정 상세의 <b>삭제</b>(또는 편집 폼의 삭제). 삭제 후 <b>실행취소</b> 토스트가 잠시 표시됩니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-todo">
+        <h3>6. 할 일</h3>
+        <ul>
+          <li>＋ 새 기록 → <b>할 일</b> 토글로 추가합니다. 기한(날짜)은 선택이며, 비우면 ‘기한 없음’으로 분류됩니다.</li>
+          <li>오른쪽 <b>할 일</b> 탭에서 <b>체크</b>로 완료 처리, <b>★</b>로 중요 표시합니다.</li>
+          <li>여러 날에 걸친 <b>기간 할 일</b>도 가능하며, 칩을 드래그하면 기한이 이동합니다.</li>
+          <li>지난 기한의 미완료 할 일은 ‘지남’으로 강조됩니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-cat">
+        <h3>7. 과제 관리</h3>
+        <ul>
+          <li>헤더 <b>🏷️ 과제 관리</b>에서 과제를 <b>추가·이름 변경·색상·설명</b> 설정합니다.</li>
+          <li>모든 일정·할 일·커밋은 과제로 분류되고, 색상으로 한눈에 구분됩니다.</li>
+          <li>보고서의 과제명은 <b>과제 관리에서만</b> 바뀝니다(보고서에서는 잠금).</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-git">
+        <h3>8. Git 커밋 내역 <span class="g-note">(데스크톱 위젯 전용)</span></h3>
+        <ul>
+          <li><b>과제 관리</b>에서 과제에 <b>Git 저장소 폴더</b>를 지정하고, 공통 <b>내 작성자</b>(이메일/이름)를 입력합니다.</li>
+          <li>오른쪽 <b>Git 커밋 내역</b> 탭에서 <b>이 날 커밋</b>(단건) 또는 <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록).</li>
+          <li>가져온 <b>커밋 제목</b>이 그날의 업무로 등록되어 보고서의 업무 목록이 됩니다.</li>
+          <li>커밋 가져오기는 실제 git이 동작하는 <b>데스크톱 위젯</b>에서만 됩니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-report">
+        <h3>9. 보고서</h3>
+        <ol>
+          <li>헤더의 <b>📄 보고서</b>를 엽니다.</li>
+          <li>기간을 <b>오늘 / 이번 주 / 지난 주 / 이번 달 / 지난 달</b> 또는 날짜 범위로 정합니다.</li>
+          <li><b>포함 항목</b>에서 <b>일정 · 할 일 · Git 커밋 내역</b> 중 넣을 것만 체크합니다(체크한 것만 들어갑니다).</li>
+          <li>과제별로 <b>[제목] : 시간</b> 형태로 자동 정리됩니다. 업무 목록은 <b>- 항목</b>으로 나열됩니다.</li>
+          <li><b>하루</b> 보고서에서는 과제별 시간을 칸에서 직접 수정할 수 있습니다(여러 날은 읽기전용).</li>
+          <li><b>복사</b>로 클립보드에 담아 사내 보고 양식에 붙여넣습니다.</li>
+        </ol>
+      </section>
+
+      <section class="guide-sec" id="g-hours">
+        <h3>10. 시간(공수) 기록</h3>
+        <ul>
+          <li>시간(공수)은 <b>하루 × 과제</b> 단위로 기록합니다. <b>Git 커밋 내역</b> 탭의 과제별 <b>시간 칸</b>이나, 하루 보고서의 시간 칸에 입력합니다.</li>
+          <li>입력한 시간은 보고서 기간에 맞춰 과제별로 <b>합산</b>됩니다.</li>
+          <li>시간 단위는 ‘시간(h)’이며 0.25(=15분) 단위로 적을 수 있습니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-theme">
+        <h3>11. 테마</h3>
+        <ul>
+          <li>헤더 <b>🎨</b>에서 <b>시스템 · 라이트 · 다크 · 포레스트 · 세피아 · 고대비</b> 6종을 고릅니다.</li>
+          <li><b>시스템</b>은 Windows의 밝게/어둡게 설정을 자동으로 따릅니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-window">
+        <h3>12. 창 모드 · 크기</h3>
+        <ul>
+          <li><b>트레이 켬</b> = 일반 앱 창(작업표시줄·Alt+Tab에 나타남). <b>끔</b> = 바탕화면 위젯(다른 창 뒤 바탕화면에 상주).</li>
+          <li>창 <b>가장자리를 드래그</b>해 크기를 조절하고, 좌우 사이 <b>구분선</b>으로 달력/패널 너비를 바꿉니다.</li>
+          <li><b>넓게 보기</b>로 큰 화면에서 집중해 작업할 수 있습니다.</li>
+          <li>오른쪽 위 패널은 <b>위아래로 높이 조절</b>이 가능합니다.</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-data">
+        <h3>13. 데이터 · 백업</h3>
+        <ul>
+          <li>모든 변경은 <b>자동 저장</b>됩니다(별도 저장 버튼 없음).</li>
+          <li>⋯ 더보기 → <b>XML 내보내기</b>로 백업 파일을 만들고, <b>XML 가져오기</b>로 복원합니다.</li>
+          <li>가져오기는 <b>병합</b>(현재 데이터 유지 + 파일에만 있는 항목 추가) 또는 <b>교체</b>(전부 파일 내용으로 대체)를 고릅니다.</li>
+          <li><b>전체 데이터 초기화</b>는 모든 기록을 지웁니다(초기화 전 내보내기로 백업 권장).</li>
+        </ul>
+      </section>
+
+      <section class="guide-sec" id="g-keys">
+        <h3>14. 단축키</h3>
+        <ul class="help-keys">
+          <li><kbd>←</kbd><kbd>→</kbd> 월 이동</li>
+          <li><kbd>Home</kbd> 오늘로</li>
+          <li><kbd>Esc</kbd> 창 닫기</li>
+          <li>날짜 <kbd>더블클릭</kbd> 새 기록</li>
+          <li>달력에서 <kbd>방향키</kbd> 날짜 이동 · <kbd>Enter</kbd> 선택</li>
+        </ul>
+      </section>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>닫기</button>
     </div>
   </div>
 </div>
@@ -3347,6 +3535,10 @@ function openHelp(){
     + `</div>`;
   openModal('#helpModal');
 }
+function openGuide(){
+  const body = $('#guideModal .guide-body'); if(body) body.scrollTop = 0;   // 항상 맨 위에서 시작
+  openModal('#guideModal');
+}
 
 /* ---------- 이벤트 바인딩 ---------- */
 function bind(){
@@ -3377,6 +3569,12 @@ function bind(){
   $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
   $('#btnCatsTop').addEventListener('click', openCatModal);   // 헤더 직접 노출(⋯ 메뉴에서 제거됨)
   $('#btnHelp').addEventListener('click', openHelp);
+  $('#btnGuide').addEventListener('click', openGuide);   // 간단 도움말 → 자세한 사용설명서(중첩)
+  $('#guideToc').addEventListener('click', ev => {        // 목차 → 해당 섹션으로 스크롤
+    const b = ev.target.closest('button[data-goto]'); if(!b) return;
+    const t = document.getElementById(b.dataset.goto);
+    if(t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   $('#btnSearch').addEventListener('click', openSearch);
 
   /* 우측 패널 탭 뷰어 (일정 상세 · 할 일 · 작업일지 + 보고서) */
