@@ -200,6 +200,7 @@ namespace TaskCalendarWidget
                     AdditionalBrowserArguments = "--disable-gpu --disable-gpu-compositing --disable-features=msWebView2EnableDraggableRegions"
                 };
                 var env = await CoreWebView2Environment.CreateAsync(null, _webviewDir, opts);
+                _cwvEnv = env;   // 회사 보고 전송용 보조 WebView2가 같은 환경(쿠키·세션) 재사용
                 await web.EnsureCoreWebView2Async(env);
                 Log("CoreWebView2 준비: " + web.CoreWebView2.Environment.BrowserVersionString);
 
@@ -354,6 +355,26 @@ namespace TaskCalendarWidget
                         }
                         catch (Exception bx) { Log("백업 실패: " + bx.Message); }
                         break;
+
+                    // ----- 회사 일간보고(netcus) 자동 전송 -----
+                    case "netcusSaveCreds":
+                        NetcusSaveCreds(GetStr(doc, "id"), GetStr(doc, "pw"));
+                        break;
+                    case "netcusCredsGet":
+                        NetcusSendCredsState();
+                        break;
+                    case "netcusSubmit":
+                    {
+                        var req = new NetcusReq
+                        {
+                            Y = GetInt(doc, "y"), M = GetInt(doc, "m"), D = GetInt(doc, "d"),
+                            Status = GetStr(doc, "status"), Overtime = GetInt(doc, "overtime"),
+                            Content = GetStr(doc, "content"),
+                            DryRun = !(doc.RootElement.TryGetProperty("dryRun", out var drEl) && drEl.ValueKind == JsonValueKind.False),
+                        };
+                        _ = NetcusSubmit(req);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
+                        break;
+                    }
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
                     case "dragbegin":

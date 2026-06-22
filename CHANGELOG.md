@@ -5,6 +5,17 @@
 
 ---
 
+## 🆕 2026-06-22 — 회사 일간보고(netcus) 자동 전송 (WebView2) — 1차
+
+분석 끝난 계약대로 자동 작성 구현. **첫 버전: 미제출 테스트 기본 + 보조창 보이게**(사용자 결정). 실 검증은 사용자 PC·실제 netcus에서만 가능(개발측 테스트 불가).
+- **호스트(C#) `widget/Netcus.cs`**(partial MainWindow): 보조 WebView2(메인과 같은 `_cwvEnv`=쿠키/세션 공유, **가시 창**)로 `login.htm`→`document.form.{id,pass}`+`goLogin()` → 로그인 대기 → `pjm_work_view.jsp?y&m&d&id` → `status/overtime/content` 채움 → (실제 제출) `Bmodify()` POST / (미제출) 채움까지만. NavigationCompleted TCS로 단계 대기, `ScriptDialogOpening`으로 검증 alert 캡처, 로그인/폼 probe로 실패 감지.
+- **자격증명 DPAPI 암호화**(crypt32 P/Invoke, NuGet 무추가 — 폐쇄망 오프라인 빌드 안전). `netcus.cred`(id 평문 + pw DPAPI). 빈 비번 저장=기존 유지.
+- **메시지 케이스**(MainWindow): `netcusSaveCreds`/`netcusCredsGet`/`netcusSubmit`. 진행·결과는 `__netcusProgress`/`__netcusResult`로 앱에 보고.
+- **앱(HTML/JS)**: 설정 모달에 '회사 일간보고(netcus)' 섹션(ID·비번 저장·전송 모드 라디오, 기본 미제출). 보고서 푸터 '📤 회사로 전송'(일간=단일일만, content=buildReportText, 근태/초과=tc_attendance). HOST 전용(브라우저선 가드 토스트). `Claude는 비밀번호를 입력하지 않음` — 사용자가 설정에 입력→DPAPI 저장.
+- 검증: C# 컴파일 0오류. 앱 레이어 preview_eval(설정 필드·기본 미제출·콜백·모드 저장·다중일 가드·콘솔에러0). exe 빌드(163.5MB)·배포. **자동화 실동작은 사용자 PC 검증 필요.**
+
+---
+
 ## 🆕 2026-06-22 — 월 보기 밀도(고정/촘촘히/펼침) + 설정 모달
 
 피드백: 회사 캘린더는 셀이 내용만큼 늘어 잘림이 없는데 앱은 +N으로 잘림. 벤치마크(Google·Apple·Outlook=고정+잘림 표준 / 회사식 자동확장=레거시) 후, 표준 유지 + 옵트인으로 결정 → 설정 옵션으로 제공.

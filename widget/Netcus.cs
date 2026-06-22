@@ -1,0 +1,210 @@
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Threading.Tasks;
+using System.Windows;
+using Microsoft.Web.WebView2.Core;
+using WV = Microsoft.Web.WebView2.Wpf;
+
+namespace TaskCalendarWidget
+{
+    // 회사 일간보고(netcus pjm) 자동 전송. 보조 WebView2(메인과 같은 환경=쿠키/세션 공유)로
+    // login.htm→goLogin() 로그인 → pjm_work_view.jsp?y&m&d&id 이동 → status/overtime/content 채움 →
+    // (실제 제출) Bmodify()로 서버 POST. 자격증명은 DPAPI로 로컬 암호화 저장.
+    public partial class MainWindow
+    {
+        private CoreWebView2Environment? _cwvEnv;     // MainWindow.xaml.cs init에서 할당
+        private WV.WebView2? _w2;                      // 보조 WebView2(가시 창)
+        private Window? _w2win;
+
+        private string CredFile => Path.Combine(_dataDir, "netcus.cred");
+
+        private sealed class NetcusReq
+        {
+            public int Y, M, D, Overtime;
+            public string Status = "", Content = "";
+            public bool DryRun = true;
+        }
+
+        // ----- 자격증명 (DPAPI, CurrentUser) -----
+        private void NetcusSaveCreds(string id, string pw)
+        {
+            try
+            {
+                // 비밀번호 칸을 비워서 저장하면 기존 비밀번호 유지(실수로 지워지는 것 방지)
+                string enc;
+                if (pw.Length > 0) enc = Convert.ToBase64String(Dpapi.Protect(Encoding.UTF8.GetBytes(pw)));
+                else
+                {
+                    enc = "";
+                    try { if (File.Exists(CredFile)) { using var d = JsonDocument.Parse(File.ReadAllText(CredFile, Encoding.UTF8)); if (d.RootElement.TryGetProperty("pw", out var p)) enc = p.GetString() ?? ""; } } catch { }
+                }
+                File.WriteAllText(CredFile, JsonSerializer.Serialize(new { id, pw = enc }), Encoding.UTF8);
+                Log("netcus 자격증명 저장");
+                NetcusSendCredsState();
+            }
+            catch (Exception ex) { Log("netcus 자격증명 저장 실패: " + ex.Message); }
+        }
+
+        private (string id, string pw) NetcusLoadCreds()
+        {
+            try
+            {
+                if (!File.Exists(CredFile)) return ("", "");
+                using var d = JsonDocument.Parse(File.ReadAllText(CredFile, Encoding.UTF8));
+                string id = d.RootElement.TryGetProperty("id", out var i) ? (i.GetString() ?? "") : "";
+                string encPw = d.RootElement.TryGetProperty("pw", out var p) ? (p.GetString() ?? "") : "";
+                string pw = encPw.Length > 0 ? Encoding.UTF8.GetString(Dpapi.Unprotect(Convert.FromBase64String(encPw))) : "";
+                return (id, pw);
+            }
+            catch (Exception ex) { Log("netcus 자격증명 로드 실패: " + ex.Message); return ("", ""); }
+        }
+
+        private void NetcusSendCredsState()
+        {
+            var (id, pw) = NetcusLoadCreds();
+            JsCall("window.__netcusCreds && window.__netcusCreds(" + JsonSerializer.Serialize(id) + "," + (string.IsNullOrEmpty(pw) ? "false" : "true") + ")");
+        }
+
+        // ----- 진행/결과 보고(메인 웹뷰로) -----
+        private void NetcusProgress(string msg) { Log("netcus: " + msg); JsCall("window.__netcusProgress && window.__netcusProgress(" + JsonSerializer.Serialize(msg) + ")"); }
+        private void NetcusResult(bool ok, string msg) { Log("netcus result: " + ok + " / " + msg); JsCall("window.__netcusResult && window.__netcusResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
+        private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
+
+        private async Task EnsureW2()
+        {
+            if (_w2 != null && _w2.CoreWebView2 != null) { try { _w2win?.Show(); _w2win?.Activate(); } catch { } return; }
+            _w2win = new Window { Title = "회사 일간보고 전송 (확인용)", Width = 920, Height = 720, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+            _w2 = new WV.WebView2();
+            _w2win.Content = _w2;
+            _w2win.Closed += (_, __) => { try { _w2?.Dispose(); } catch { } _w2 = null; _w2win = null; };
+            _w2win.Show();
+            await _w2.EnsureCoreWebView2Async(_cwvEnv);
+        }
+
+        private static string J(string s) => JsonSerializer.Serialize(s);
+
+        private Task<bool> NavTo(CoreWebView2 cw, string url)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            void H(object? s, CoreWebView2NavigationCompletedEventArgs ev) { cw.NavigationCompleted -= H; tcs.TrySetResult(ev.IsSuccess); }
+            cw.NavigationCompleted += H;
+            _ = Task.Delay(20000).ContinueWith(_ => { try { cw.NavigationCompleted -= H; } catch { } tcs.TrySetResult(false); });
+            cw.Navigate(url);
+            return tcs.Task;
+        }
+
+        // 다음 NavigationCompleted 1회 대기(폼 submit로 인한 이동). 핸들러는 호출 전에 부착할 것.
+        private Task<bool> NavOnce(CoreWebView2 cw, int timeoutMs)
+        {
+            var tcs = new TaskCompletionSource<bool>();
+            void H(object? s, CoreWebView2NavigationCompletedEventArgs ev) { cw.NavigationCompleted -= H; tcs.TrySetResult(true); }
+            cw.NavigationCompleted += H;
+            _ = Task.Delay(timeoutMs).ContinueWith(_ => { try { cw.NavigationCompleted -= H; } catch { } tcs.TrySetResult(false); });
+            return tcs.Task;
+        }
+
+        private async Task NetcusSubmit(NetcusReq req)
+        {
+            string lastAlert = "";
+            CoreWebView2? cw = null;
+            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { lastAlert = ev.Message ?? ""; Log("netcus alert: " + lastAlert); try { ev.Accept(); } catch { } }
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다 — 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
+
+                NetcusProgress("창 준비 중…");
+                await EnsureW2();
+                cw = _w2!.CoreWebView2;
+                cw.ScriptDialogOpening += OnDialog;
+
+                NetcusProgress("로그인 중…");
+                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                var loginNav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+                await loginNav;
+
+                NetcusProgress("일간보고 페이지 여는 중…");
+                string url = $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}";
+                await NavTo(cw, url);
+
+                var probe = await cw.ExecuteScriptAsync("(function(){return !!(document.form && document.form.status && document.form.content);})()");
+                if (probe != "true") { NetcusResult(false, "로그인 실패 또는 페이지 접근 불가 — ID/비밀번호·네트워크를 확인하세요."); return; }
+
+                NetcusProgress("내용 작성 중…");
+                string fill = $"(function(){{try{{document.form.status.value={J(req.Status)};document.form.overtime.selectedIndex={req.Overtime};document.form.content.value={J(req.Content)};return 1;}}catch(e){{return 0;}}}})()";
+                var filled = await cw.ExecuteScriptAsync(fill);
+                if (filled != "1") { NetcusResult(false, "입력 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
+
+                if (req.DryRun)
+                {
+                    try { _w2win?.Activate(); } catch { }
+                    NetcusResult(true, "미제출(테스트): 내용을 채웠습니다. 열린 창에서 확인 후 직접 ‘수정’으로 제출하세요.");
+                    return;
+                }
+
+                NetcusProgress("제출 중…");
+                lastAlert = "";
+                var submitNav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync("(function(){try{Bmodify();}catch(e){}})()");
+                bool navOk = await submitNav;
+                if (!navOk)
+                {
+                    NetcusResult(false, string.IsNullOrEmpty(lastAlert) ? "제출 응답이 없습니다(시간 초과) — 열린 창에서 직접 확인하세요." : ("제출 거부됨: " + lastAlert));
+                    return;
+                }
+                NetcusResult(true, "회사 일간보고 전송 완료 — netcus 사이트에서 확인하세요.");
+            }
+            catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
+            finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
+        }
+    }
+
+    // Windows DPAPI(CurrentUser) — 추가 NuGet 없이 crypt32 P/Invoke (폐쇄망 오프라인 빌드 안전)
+    internal static class Dpapi
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        private struct DATA_BLOB { public int cbData; public IntPtr pbData; }
+
+        [DllImport("crypt32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool CryptProtectData(ref DATA_BLOB pDataIn, string? szDataDescr, IntPtr pOptionalEntropy, IntPtr pvReserved, IntPtr pPromptStruct, int dwFlags, ref DATA_BLOB pDataOut);
+
+        [DllImport("crypt32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool CryptUnprotectData(ref DATA_BLOB pDataIn, IntPtr ppszDataDescr, IntPtr pOptionalEntropy, IntPtr pvReserved, IntPtr pPromptStruct, int dwFlags, ref DATA_BLOB pDataOut);
+
+        [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr hMem);
+
+        private const int CRYPTPROTECT_UI_FORBIDDEN = 0x1;
+
+        public static byte[] Protect(byte[] data) => Run(data, true);
+        public static byte[] Unprotect(byte[] data) => Run(data, false);
+
+        private static byte[] Run(byte[] data, bool protect)
+        {
+            var inBlob = new DATA_BLOB();
+            var outBlob = new DATA_BLOB();
+            try
+            {
+                inBlob.cbData = data.Length;
+                inBlob.pbData = Marshal.AllocHGlobal(data.Length);
+                Marshal.Copy(data, 0, inBlob.pbData, data.Length);
+                bool ok = protect
+                    ? CryptProtectData(ref inBlob, "tc", IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, CRYPTPROTECT_UI_FORBIDDEN, ref outBlob)
+                    : CryptUnprotectData(ref inBlob, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, CRYPTPROTECT_UI_FORBIDDEN, ref outBlob);
+                if (!ok) throw new Win32Exception(Marshal.GetLastWin32Error());
+                var outBytes = new byte[outBlob.cbData];
+                Marshal.Copy(outBlob.pbData, outBytes, 0, outBlob.cbData);
+                return outBytes;
+            }
+            finally
+            {
+                if (inBlob.pbData != IntPtr.Zero) Marshal.FreeHGlobal(inBlob.pbData);
+                if (outBlob.pbData != IntPtr.Zero) LocalFree(outBlob.pbData);
+            }
+        }
+    }
+}

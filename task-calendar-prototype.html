@@ -685,6 +685,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .set-opt input{margin-top:3px;flex:none}
 .set-opt b{font-weight:600}
 .set-od{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
+.set-sec-top{border-top:1px solid var(--line);margin-top:14px;padding-top:14px}
+.set-in{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
+.rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4}
+.rpt-send-status.busy{color:var(--accent)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger)}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
@@ -993,6 +997,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label class="set-opt"><input type="radio" name="calDensity" value="dense"><span><b>촘촘히</b><br><span class="set-od">칸을 키워 더 많이 표시. 길어지면 세로 스크롤.</span></span></label>
         <label class="set-opt"><input type="radio" name="calDensity" value="expand"><span><b>펼침 (스크롤)</b><br><span class="set-od">칸이 내용만큼 늘어나 전부 표시(잘림 없음). 회사 캘린더식 — 월 전체 한눈에는 사라짐.</span></span></label>
       </div>
+      <div class="set-sec set-sec-top">
+        <div class="set-lb">회사 일간보고 (netcus)</div>
+        <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성합니다. 자격증명은 이 PC에 <b>암호화(DPAPI)</b> 저장되며, 데스크톱 위젯에서만 동작합니다.</div>
+        <label class="qa-lb" for="ncId">ID</label><input type="text" id="ncId" class="set-in" autocomplete="off" placeholder="예: phmin">
+        <label class="qa-lb" for="ncPw">비밀번호 <span id="ncPwState" class="git-opt"></span></label><input type="password" id="ncPw" class="set-in" autocomplete="new-password" placeholder="변경 시에만 입력(빈칸=기존 유지)">
+        <div style="margin:9px 0 4px"><button type="button" class="btn sm" id="ncSave">자격증명 저장</button> <span id="ncSaveMsg" class="git-opt"></span></div>
+        <label class="qa-lb">전송 모드</label>
+        <label class="set-opt" style="margin-bottom:6px"><input type="radio" name="ncMode" value="dry"><span><b>미제출 테스트</b><br><span class="set-od">자동 로그인·작성까지만 → 열린 창에서 확인 후 직접 제출. (권장)</span></span></label>
+        <label class="set-opt"><input type="radio" name="ncMode" value="real"><span><b>실제 제출</b><br><span class="set-od">작성 후 서버에 바로 저장(POST). 검증 끝난 뒤 사용 권장.</span></span></label>
+      </div>
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
@@ -1113,8 +1127,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
     </div>
     <div class="modal-foot">
-      <span class="spacer"></span>
+      <span class="rpt-send-status" id="rptSendStatus"></span>
       <button class="btn" data-close>닫기</button>
+      <button class="btn" id="btnRptSend" title="이 날짜 보고서를 회사 일간보고(netcus)에 작성">📤 회사로 전송</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
     </div>
   </div>
@@ -2804,8 +2819,28 @@ function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal(
 function openSettings(){
   const cur = calDensity();
   $$('#settingsModal input[name="calDensity"]').forEach(r => { r.checked = (r.value === cur); });
+  // 회사 일간보고(netcus) 설정 초기화
+  $$('#settingsModal input[name="ncMode"]').forEach(r => { r.checked = (r.value === ncMode()); });
+  const pw = $('#ncPw'); if(pw) pw.value = '';
+  const sm = $('#ncSaveMsg'); if(sm) sm.textContent = '';
+  const st = $('#ncPwState'); if(st) st.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
+  if(HOST) hpost({ cmd: 'netcusCredsGet' });   // 호스트가 __netcusCreds(id, hasPw)로 응답
   openModal('#settingsModal');
 }
+// 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
+function ncMode(){ try{ return localStorage.getItem('tc_netcusMode') === 'real' ? 'real' : 'dry'; }catch(_){ return 'dry'; } }
+window.__netcusCreds = function(id, hasPw){
+  const e = $('#ncId'); if(e) e.value = id || '';
+  const st = $('#ncPwState'); if(st) st.textContent = hasPw ? '· 저장됨' : '· 미저장';
+};
+window.__netcusProgress = function(msg){
+  const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ ' + msg; s.className = 'rpt-send-status busy'; }
+};
+window.__netcusResult = function(ok, msg){
+  const s = $('#rptSendStatus'); if(s){ s.textContent = (ok ? '✅ ' : '⚠️ ') + msg; s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
+  const b = $('#btnRptSend'); if(b) b.disabled = false;
+  toast(msg, ok ? 'success' : 'warn');
+};
 function openCatModal(){
   resetCatForm();
   $('#cGitAuthor').value = getGitAuthor();
@@ -3846,6 +3881,26 @@ function bind(){
   $('#dayPanel').addEventListener('pointercancel', fbEnd);
   $('#btnSettings').addEventListener('click', () => { closeMore(); openSettings(); });
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
+  $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
+  $('#ncSave').addEventListener('click', () => {
+    const id = $('#ncId').value.trim(), pw = $('#ncPw').value;
+    if(!id){ toast('ID를 입력하세요', 'warn'); $('#ncId').focus(); return; }
+    if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
+    hpost({ cmd: 'netcusSaveCreds', id, pw });
+    $('#ncPw').value = ''; $('#ncSaveMsg').textContent = '저장됨';
+  });
+  $('#btnRptSend').addEventListener('click', () => {
+    const from = $('#rptFrom').value, to = $('#rptTo').value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('하루(일간) 보고서에서만 회사로 전송할 수 있습니다', 'warn'); return; }
+    if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+    const content = buildReportText();   // 단일일 → 그 날 [과제명]:시간
+    if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
+    const at = getAttendance(from), p = from.split('-').map(Number);
+    const dry = ncMode() !== 'real';
+    const b = $('#btnRptSend'); if(b) b.disabled = true;
+    const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ 전송 시작…'; s.className = 'rpt-send-status busy'; }
+    hpost({ cmd: 'netcusSubmit', y: p[0], m: p[1], d: p[2], status: at.status, overtime: at.overtime, content, dryRun: dry });
+  });
   $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
   $('#btnImport').addEventListener('click', () => { closeMore(); $('#importFile').click(); });
