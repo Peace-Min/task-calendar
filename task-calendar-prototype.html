@@ -465,7 +465,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .recur-end .check input[type=date],.recur-end .check input[type=number]{padding:3px 6px;font-size:var(--fs-meta)}
 
 /* ---------- 보고서 모달 ---------- */
-.rpt-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.rpt-presets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.rpt-preset-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center}
 .rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rpt-range input[type=date]{flex:1;min-width:130px}
 .rpt-opts{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}
@@ -1106,11 +1107,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-head"><h2>보고서 초안</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
       <div class="rpt-presets">
-        <button class="btn sm" data-rpt="today">오늘</button>
-        <button class="btn sm" data-rpt="thisweek">이번 주</button>
-        <button class="btn sm" data-rpt="lastweek">지난 주</button>
-        <button class="btn sm" data-rpt="thismonth">이번 달</button>
-        <button class="btn sm" data-rpt="lastmonth">지난 달</button>
+        <button class="btn sm" data-rpt="today">오늘 (일간)</button>
+        <button class="btn sm" data-rpt="thisweek">이번 주 (주간)</button>
+        <span class="rpt-preset-hint">그 외 기간은 아래에서 직접 지정 ↓</span>
       </div>
       <div class="rpt-range">
         <input type="date" id="rptFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="rptTo">
