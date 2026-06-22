@@ -3026,9 +3026,10 @@ async function clearAll(){
 }
 
 /* ---------- 보고서 초안 (기간 → 과제별 작업일지/기록 묶음) ---------- */
-function weekRange(base, offsetWeeks){ // 일요일 시작 주
-  const s = new Date(base.getFullYear(), base.getMonth(), base.getDate() - base.getDay() + (offsetWeeks||0)*7);
-  const e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);
+function weekRange(base, offsetWeeks){ // 월요일 시작 주(ISO) — 회사 주간보고가 월요일 기준
+  const back = (base.getDay() + 6) % 7;   // 월=0,화=1,…,일=6 → 이번 주 월요일까지 되돌릴 일수
+  const s = new Date(base.getFullYear(), base.getMonth(), base.getDate() - back + (offsetWeeks||0)*7);
+  const e = new Date(s.getFullYear(), s.getMonth(), s.getDate() + 6);   // 월~일(7일)
   return [ymd(s), ymd(e)];
 }
 function monthRange(base, offsetMonths){
