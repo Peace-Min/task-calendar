@@ -5,6 +5,18 @@
 
 ---
 
+## 🆕 2026-06-22 — netcus 3차: 한글 인코딩 해결(euc-kr) + 검증 후 창 닫기 + 일간 전용 전송
+
+실테스트(실제 제출): 서버 저장은 됐으나 **한글이 깨짐**(`[표적???]`). 영문/숫자는 정상.
+- **원인**: netcus는 euc-kr 페이지인데 `fetch+FormData`는 본문이 **UTF-8 고정**(TextEncoder UTF-8 전용) → 서버가 euc-kr로 디코딩 → mojibake. (워크플로 연구로 확인)
+- **해결(Option A)**: Chromium은 **네이티브 폼 제출** 시 `accept-charset`/문서 charset을 따름(euc-kr는 ASCII 호환 → euc-kr 인코딩). 그래서 fetch 대신 페이지 안에서 **동적 `<form enctype=multipart/form-data accept-charset=euc-kr>`** 를 만들어 dbstatus/status/overtime/content를 자식으로 싣고 `form.submit()` → 브라우저가 euc-kr 바이트로 전송. C#/CodePages/수작업 멀티파트 불필요.
+- **거짓 성공 차단**: 제출 후 그 날짜 페이지를 다시 열어 **content를 되읽어 검증**(-1=로그인페이지→실패, >0=저장 성공). 죽은 `__tcPost` 폴링 제거.
+- **자격증명 검증 후 창 닫기**: 성공/실패 무관 확인용 창 자동 닫기(결과는 설정창에 ✅/⚠️).
+- **일간 전용 전송**: 보고서 범위가 하루(from===to)가 아니면 '📤 회사로 전송' 버튼을 숨기고 힌트 표시(`updateRptSendVis`, buildReport 진입점에서 매번). 핸들러의 from!==to 가드는 이중안전망으로 유지.
+- 검증: preview에서 버튼 가시성 통과. **실제 euc-kr 저장은 사용자 '실제 제출' 모드로 최종 확인 필요.**
+
+---
+
 ## 🆕 2026-06-22 — fix(중요): 설정·테마·근태·패치노트가 저장 안 되던 근본 원인 해결 (localStorage 영속)
 
 증상: 월 보기 밀도·전송 모드를 바꿔도 저장 안 됨, 패치노트가 재실행마다 표시.

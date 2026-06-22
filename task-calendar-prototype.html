@@ -689,6 +689,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .set-in{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
 .rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4}
 .rpt-send-status.busy{color:var(--accent)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger)}
+.rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
@@ -1128,6 +1129,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
     <div class="modal-foot">
       <span class="rpt-send-status" id="rptSendStatus"></span>
+      <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 회사 전송은 ‘오늘’ 등 하루(일간)에서만</span>
       <button class="btn" data-close>닫기</button>
       <button class="btn" id="btnRptSend" title="이 날짜 보고서를 회사 일간보고(netcus)에 작성">📤 회사로 전송</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
@@ -3107,8 +3109,16 @@ function rptSources(){
   const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit');
   return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true };
 }
+// 회사 전송은 '하루(일간)' 보고서에서만 — 범위가 단일일이 아니면 버튼 숨기고 힌트 표시.
+function updateRptSendVis(){
+  const from = $('#rptFrom').value, to = $('#rptTo').value;
+  const single = /^\d{4}-\d{2}-\d{2}$/.test(from) && from === to;
+  const b = $('#btnRptSend'); if(b) b.style.display = single ? '' : 'none';
+  const h = $('#rptSendHint'); if(h) h.style.display = single ? 'none' : '';
+}
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
+  updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;

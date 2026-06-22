@@ -77,6 +77,12 @@ namespace TaskCalendarWidget
                 JsCredsResult(ok, ok ? "로그인 확인됨 — 자격증명 OK" : "로그인 실패 — ID/비밀번호를 확인하세요");
             }
             catch (Exception ex) { Log("netcus 자격증명 검증 예외: " + ex); JsCredsResult(false, "검증 오류: " + ex.Message); }
+            finally
+            {
+                // 검증은 결과만 설정창에 표시하면 되므로 성공/실패 무관 확인용 창은 닫는다.
+                try { await Task.Delay(700); } catch { }
+                try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+            }
         }
 
         private void JsCredsCheck(string m) { JsCall("window.__netcusCredsCheck && window.__netcusCredsCheck(" + JsonSerializer.Serialize(m) + ")"); }
@@ -192,32 +198,42 @@ namespace TaskCalendarWidget
                     return;
                 }
 
-                // 실제 제출 — IE식 in-table 폼이라 document.form/Bmodify()가 Chromium에서 동작 안 할 수 있어,
-                // 페이지 안에서 폼 action(go=write)으로 직접 multipart POST(세션 쿠키 포함). 폼 연결 여부와 무관.
+                // 실제 제출 — netcus는 euc-kr 페이지. JS fetch+FormData는 본문이 UTF-8 고정이라 한글이 깨진다.
+                // 네이티브 폼 submit은 브라우저가 accept-charset='euc-kr'로 필드값을 인코딩(레거시 폼이 원래 쓰던 경로) → 한글 보존.
+                // 페이지 안에서 동적 <form>(action=go=write, multipart, accept-charset=euc-kr)을 만들어 값 싣고 submit → 창이 결과로 이동.
                 NetcusProgress("제출 중…");
-                await cw.ExecuteScriptAsync("window.__tcPost=null;");
-                string fire = "(function(){try{"
-                    + "var ct=document.getElementsByName('content')[0],db=document.getElementsByName('dbstatus')[0];"
-                    + "var fd=new FormData();fd.append('dbstatus',(db&&db.value)?db.value:'0');"
-                    + $"fd.append('status',{J(req.Status)});fd.append('overtime',{J(req.Overtime.ToString())});"
-                    + "fd.append('content',ct?ct.value:'');"
-                    + $"var u='pjm_work_view.jsp?go=write&table=report_tbl&y={req.Y}&m={req.M}&d={req.D}&id='+encodeURIComponent({J(id)});"
-                    + "fetch(u,{method:'POST',body:fd,credentials:'include'}).then(function(r){window.__tcPost=(r.ok?'OK ':'HTTP ')+r.status;}).catch(function(e){window.__tcPost='ERR '+((e&&e.message)||e);});"
-                    + "}catch(e){window.__tcPost='ERR '+((e&&e.message)||e);}})()";
-                await cw.ExecuteScriptAsync(fire);
-                string res = "null";
-                for (int i = 0; i < 33; i++) { await Task.Delay(300); res = await cw.ExecuteScriptAsync("window.__tcPost"); if (!string.IsNullOrEmpty(res) && res != "null" && res != "\"\"") break; }
-                Log("netcus POST result: " + res);
-                if (res != null && res.Contains("OK"))
+                var submitNav = NavOnce(cw, 20000);
+                string post = "(function(){try{"
+                    + "var db=document.getElementsByName('dbstatus')[0];"
+                    + "var f=document.createElement('form');f.method='post';f.enctype='multipart/form-data';f.acceptCharset='euc-kr';"
+                    + $"f.action='pjm_work_view.jsp?go=write&table=report_tbl&y={req.Y}&m={req.M}&d={req.D}&id='+encodeURIComponent({J(id)});"
+                    + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
+                    + "H('dbstatus',(db&&db.value)?db.value:'0');"
+                    + $"H('status',{J(req.Status)});H('overtime',{J(req.Overtime.ToString())});"
+                    + $"var ta=document.createElement('textarea');ta.name='content';ta.value={J(req.Content)};f.appendChild(ta);"
+                    + "document.body.appendChild(f);f.submit();return 'SUBMITTED';"
+                    + "}catch(e){return 'ERR '+((e&&e.message)||e);}})()";
+                var pres = await cw.ExecuteScriptAsync(post);
+                Log("netcus submit fire: " + pres);
+                if (pres == null || !pres.Contains("SUBMITTED")) { NetcusResult(false, "제출 폼 생성 실패: " + (pres ?? "null")); return; }
+                bool navOk = await submitNav;   // go=write 결과 페이지로 이동 대기
+                Log("netcus submit nav: " + navOk);
+
+                // 저장 검증(거짓 성공 차단) — 그 날짜 입력 페이지를 다시 열어 content가 실제 저장됐는지 되읽기.
+                // 반환: -1=로그인페이지(세션만료/실패), -2=폼없음, >0=저장된 content 길이.
+                NetcusProgress("저장 확인 중…");
+                await NavTo(cw, url);
+                int vlen = -9;
+                for (int i = 0; i < 14; i++)
                 {
-                    NetcusProgress("저장 확인 중…");
-                    await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}");
-                    NetcusResult(true, "회사 일간보고 전송 완료 — 열린 창과 netcus 사이트에서 확인하세요.");
+                    var v = await cw.ExecuteScriptAsync("(function(){try{if(document.querySelector('input[type=password]'))return -1;var c=document.getElementsByName('content')[0];if(!c)return -2;return (c.value||'').trim().length;}catch(e){return -3;}})()");
+                    if (int.TryParse((v ?? "").Trim('"'), out vlen) && (vlen > 0 || vlen == -1)) break;
+                    await Task.Delay(300);
                 }
-                else
-                {
-                    NetcusResult(false, "제출 실패: " + (res ?? "응답 없음") + " — 열린 창에서 직접 ‘수정’으로 제출해 보세요.");
-                }
+                Log("netcus verify content length: " + vlen);
+                if (vlen == -1) NetcusResult(false, "세션 만료/로그인 필요 — 자격증명을 확인하세요.");
+                else if (vlen > 0) NetcusResult(true, "회사 일간보고 전송 완료(한글 정상 저장) — 열린 창과 netcus 사이트에서 확인하세요.");
+                else NetcusResult(false, "저장 확인 실패(내용이 비어 있음) — 열린 창에서 직접 확인하세요.");
             }
             catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
             finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
