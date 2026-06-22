@@ -5,6 +5,18 @@
 
 ---
 
+## 🆕 2026-06-22 — 일간 보고서에 근태·초과시간 콤보 (회사 일간보고 연동 1단계)
+
+회사 일간보고(netcus pjm) 자동 작성을 위한 기반. 회사 입력 폼 분석 결과 일간보고 = `근태(status) + 초과시간(overtime) + 내용(content: [과제명]:시간 + - 주/; 세부 불릿)`.
+- **일간 보고서(단일일)에 근태·초과시간 콤보** 추가 — 사이트 select와 동일 코드값(근태 11종: 정근1·야근2·특근3·외근4·출장5·휴가6·반차12·조퇴7·지각9·지각+야근10·병가11 / 초과시간 0~11). 다중일(주간) 보고서엔 미표시(날짜별 근태라).
+- per-day 저장은 **localStorage `tc_attendance`**(날짜→{status,overtime})에 별도 — 캘린더 데이터/XML과 분리(회사 전송 보조 메타·해당 PC 한정). 기본 정근(1)·없음(0).
+- ATTEND_STATUS 상수 + getAttendance/setAttendance. 향후 netcus 자동작성 시 status/overtime로 그대로 전송.
+- 검증(preview_eval): 단일일 콤보 표시·기본값·변경 저장·재렌더 보존·주간 미표시·콘솔에러0.
+
+> netcus 연동 계약(분석 완료): 로그인 `document.form.{id,pass}` + `goLogin()`; 일간 입력 `pjm_work_view.jsp?y&m&d&id`의 `document.form.{status,overtime,content}` 설정 후 `Bmodify()`(→ go=write POST). 과제명: 표적기(ADD)·LAMD 다기능콘솔·LSAM-II RMSS·지상용CIWS-II·기타·휴가.
+
+---
+
 ## 🆕 2026-06-22 — 버전 체계 3단계 확정(v0.1·v0.2·v0.3) + 현재 0.3으로 승급
 
 사용자 확인: 현재가 **세 번째 배포**. 배포 시점 3개로 태그·패치노트·앱 버전 정렬.

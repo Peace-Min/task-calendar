@@ -464,6 +464,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rpt-range input[type=date]{flex:1;min-width:130px}
 .rpt-opts{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}
+/* 일간 보고서 근태·초과시간(회사 일간보고 전송용) */
+.rpt-attend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 11px;margin-bottom:10px;background:var(--accent-soft);border-radius:var(--r-sm)}
+.rpt-attend .ra-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.rpt-attend .ra-sel{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
+.rpt-attend .ra-hint{font-size:var(--fs-micro);color:var(--muted);margin-left:auto}
 .rpt-srcs{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .rpt-guard{padding:26px 18px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.6;border:1px dashed var(--line-2);border-radius:var(--r-md)}
@@ -1552,6 +1557,30 @@ function normRooms(a){
     if(out.length >= 50) break;
   }
   return out;
+}
+// 근태/초과시간 — 회사 일간보고(netcus) 전송용. 코드값은 사이트 select와 동일(그대로 전송).
+const ATTEND_STATUS = [
+  {v:'1',label:'정근'},{v:'2',label:'야근'},{v:'3',label:'특근'},{v:'4',label:'외근'},
+  {v:'5',label:'출장'},{v:'6',label:'휴가'},{v:'12',label:'반차'},{v:'7',label:'조퇴'},
+  {v:'9',label:'지각'},{v:'10',label:'지각+야근'},{v:'11',label:'병가'},
+];
+const ATTEND_STATUS_SET = new Set(ATTEND_STATUS.map(s => s.v));
+// per-day 근태는 회사 보고 전송 보조 메타라 localStorage에 별도 저장(캘린더 데이터/XML과 무관). 기본 정근(1).
+function loadAttendanceMap(){ try{ return JSON.parse(localStorage.getItem('tc_attendance') || '{}') || {}; }catch(_){ return {}; } }
+function getAttendance(date){
+  const a = loadAttendanceMap()[date];
+  return {
+    status: (a && ATTEND_STATUS_SET.has(String(a.status))) ? String(a.status) : '1',
+    overtime: (a && a.overtime >= 0 && a.overtime <= 11) ? (a.overtime | 0) : 0,
+  };
+}
+function setAttendance(date, status, overtime){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
+  const m = loadAttendanceMap();
+  const st = ATTEND_STATUS_SET.has(String(status)) ? String(status) : '1';
+  let ot = parseInt(overtime, 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
+  m[date] = { status: st, overtime: ot };
+  try{ localStorage.setItem('tc_attendance', JSON.stringify(m)); }catch(_){}
 }
 let state = load();
 
@@ -3010,6 +3039,16 @@ function buildReport(){
   }
   const singleDay = (from === to);   // 하루 보고서에서만 시간 인라인 수정(여러 날은 읽기전용 — 합을 한 날에 분배 불가)
   let html = '';
+  if(singleDay){   // 일간: 근태·초과시간 콤보(회사 일간보고 전송용). 값=사이트 코드.
+    const at = getAttendance(from);
+    const stOpts = ATTEND_STATUS.map(s => `<option value="${s.v}"${s.v === at.status ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
+    const otOpts = Array.from({length:12}, (_, i) => `<option value="${i}"${i === at.overtime ? ' selected' : ''}>${i === 0 ? '없음' : '+' + i + '시간'}</option>`).join('');
+    html += `<div class="rpt-attend">
+      <span class="ra-lb">근태</span><select id="raStatus" class="ra-sel" aria-label="근태">${stOpts}</select>
+      <span class="ra-lb">초과시간</span><select id="raOT" class="ra-sel" aria-label="초과시간">${otOpts}</select>
+      <span class="ra-hint">회사 일간보고 전송용</span>
+    </div>`;
+  }
   for(const r of rows){
     const hasEntry = r.entries.length > 0;
     // 단일일 + 발생 항목 있으면 그 (날짜×과제) 첫 항목(createdAt 최소)에 저장 — 작업일지 칩과 동일
@@ -3031,6 +3070,12 @@ function buildReport(){
     html += `</div>`;
   }
   out.innerHTML = html;
+  if(singleDay){   // 근태/초과시간 변경 → per-day 저장
+    const sv = () => setAttendance(from, $('#raStatus').value, $('#raOT').value);
+    const a = $('#raStatus'), b = $('#raOT');
+    if(a) a.addEventListener('change', sv);
+    if(b) b.addEventListener('change', sv);
+  }
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
   let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건 · 총 ${fmtH(grandMin)}h`;
   if(uninput) line += ` · 미입력 ${uninput}건`;
