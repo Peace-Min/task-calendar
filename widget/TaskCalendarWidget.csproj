@@ -13,9 +13,9 @@
     <ImplicitUsings>disable</ImplicitUsings>
     <AssemblyName>TaskCalendarWidget</AssemblyName>
     <RootNamespace>TaskCalendarWidget</RootNamespace>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 폐쇄망: 런타임 다운로드 없이 설치된 .NET 9 Desktop 런타임 사용 (프레임워크 종속) -->

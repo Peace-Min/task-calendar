@@ -508,6 +508,15 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .guide-sec ol,.guide-sec ul{margin:0;padding-left:20px}
 .guide-sec li{font-size:var(--fs-body);color:var(--text);line-height:1.75;margin:4px 0;word-break:keep-all;overflow-wrap:anywhere}
 .guide-sec .g-tip{margin:8px 0 0;padding:8px 11px;background:var(--accent-soft);border-radius:var(--r-sm);font-size:var(--fs-meta);color:var(--text);line-height:1.6}
+/* 변경사항(패치노트) 모달 */
+.patch-body{max-height:64vh}
+.patch-ver{display:flex;align-items:baseline;gap:8px;margin:16px 0 7px}
+.patch-ver:first-child{margin-top:0}
+.pv-tag{font-weight:800;font-size:var(--fs-emph);color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 10px}
+.pv-tag.old{color:var(--muted);background:var(--bg)}
+.pv-date{font-size:var(--fs-meta);color:var(--muted)}
+.patch-list{margin:0;padding-left:20px}
+.patch-list li{font-size:var(--fs-body);color:var(--text);line-height:1.72;margin:6px 0;word-break:keep-all;overflow-wrap:anywhere}
 /* Git 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
 .nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
 .nd-commit .nd-ci .ic{width:15px;height:15px}
@@ -1125,7 +1134,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
     </div>
     <div class="modal-foot">
-      <span class="git-hint" style="margin-right:auto">기능별 단계별 안내가 필요하면 →</span>
+      <button type="button" class="lnk" id="btnPatch" style="margin-right:auto">🆕 변경사항 · v<span id="appVerLabel">0.2</span></button>
       <button class="btn" data-close>닫기</button>
       <button class="btn primary" id="btnGuide">📖 자세한 사용설명서</button>
     </div>
@@ -1299,6 +1308,33 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-foot">
       <span class="spacer"></span>
       <button class="btn primary" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 변경사항(패치노트) 모달 ===== -->
+<div class="overlay hidden" id="patchModal">
+  <div class="modal">
+    <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body patch-body">
+      <div class="patch-ver"><span class="pv-tag">v0.2</span><span class="pv-date">2026-06-22</span></div>
+      <ul class="patch-list">
+        <li><b>⏰ 시간 입력 개선</b> — 시·분 드롭다운으로 빠르게 선택. 시작을 정하면 <b>종료가 자동으로 1시간 뒤</b>로. 시간·종일이 일정 추가 <b>첫 화면</b>에 바로 보입니다.</li>
+        <li><b>📍 회의실(장소) 관리</b> — 자주 쓰는 회의실을 등록해 두고 일정의 <b>장소를 드롭다운에서 선택</b>. 일정 작성 중에도 ‘회의실 관리’ 바로가기로 추가할 수 있습니다. (기본 제공: 101호·201호·202호)</li>
+        <li><b>📄 보고서 항목 선택</b> — 보고서에 넣을 항목(<b>일정·할 일·Git 커밋 내역</b>)을 골라서 생성. <b>할 일</b>도 보고서에 포함됩니다.</li>
+        <li><b>🎨 테마 6종</b> — 시스템·라이트·다크·포레스트·세피아·고대비.</li>
+        <li><b>📖 도움말 강화</b> — 간단 도움말 + <b>A–Z 자세한 사용설명서</b>.</li>
+        <li><b>🖱 사용성</b> — 달력 칩 클릭 시 미리보기로 통일, 일정 상세에서 <b>시간·장소 강조</b>, 과제 필터 높이 조절, 과제 관리 헤더 버튼, ‘작업일지’ → <b>‘Git 커밋 내역’</b>으로 이름 정리, 앱 아이콘.</li>
+        <li><b>🛠 안정성</b> — 새 버전이 실행되지 않던 문제 수정, 입력 폼 단순화(항목별 공수 입력 제거 — <b>기존 데이터는 보존</b>).</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.1</span><span class="pv-date">최초 배포</span></div>
+      <ul class="patch-list">
+        <li>첫 배포 버전 — 달력·일정·할 일·과제 관리·Git 커밋 내역·보고서 기본 기능.</li>
+      </ul>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>확인</button>
     </div>
   </div>
 </div>
@@ -1491,6 +1527,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
+const APP_VERSION = '0.2';   // 사용자 배포 버전(패치노트·버전 표시). 0.1=최초 배포(Linguist 커밋)
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 const DEFAULT_ROOMS = ['101호', '201호', '202호'];   // 자주 쓰는 회의실 기본값(설정에서 추가/삭제) — load()보다 먼저 선언(TDZ 방지)
 // 회의실 목록 정규화 — 손상/외부편집 방어(문자열·트림·빈값 제외·중복 제거·길이/개수 제한)
@@ -3539,6 +3576,17 @@ function openGuide(){
   const body = $('#guideModal .guide-body'); if(body) body.scrollTop = 0;   // 항상 맨 위에서 시작
   openModal('#guideModal');
 }
+function openPatch(){
+  const body = $('#patchModal .patch-body'); if(body) body.scrollTop = 0;
+  openModal('#patchModal');
+}
+// 새 버전 첫 실행 시 1회 자동 안내(다른 모달이 떠 있으면 방해하지 않음). '확인'/닫을 때 본 것으로 기록.
+function maybeShowPatch(){
+  let seen = ''; try{ seen = localStorage.getItem('tc_seenVersion') || ''; }catch(_){}
+  if(seen === APP_VERSION) return;
+  if($$('.overlay').some(o => !o.classList.contains('hidden'))) return;   // 다른 창이 열려 있으면 다음 기회에
+  openPatch();
+}
 
 /* ---------- 이벤트 바인딩 ---------- */
 function bind(){
@@ -3570,6 +3618,11 @@ function bind(){
   $('#btnCatsTop').addEventListener('click', openCatModal);   // 헤더 직접 노출(⋯ 메뉴에서 제거됨)
   $('#btnHelp').addEventListener('click', openHelp);
   $('#btnGuide').addEventListener('click', openGuide);   // 간단 도움말 → 자세한 사용설명서(중첩)
+  const _avl = $('#appVerLabel'); if(_avl) _avl.textContent = APP_VERSION;
+  $('#btnPatch').addEventListener('click', openPatch);
+  new MutationObserver(() => {   // 패치노트를 닫으면 이 버전을 '본 것'으로 기록 → 다음부터 자동표시 안 함
+    if($('#patchModal').classList.contains('hidden')){ try{ localStorage.setItem('tc_seenVersion', APP_VERSION); }catch(_){} }
+  }).observe($('#patchModal'), { attributes: true, attributeFilter: ['class'] });
   $('#guideToc').addEventListener('click', ev => {        // 목차 → 해당 섹션으로 스크롤
     const b = ev.target.closest('button[data-goto]'); if(!b) return;
     const t = document.getElementById(b.dataset.goto);
@@ -4334,6 +4387,7 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}
 }
+setTimeout(maybeShowPatch, 1500);   // 새 버전 첫 실행 시 변경사항 1회 자동 안내
 function hpost(o){ try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){} }
 let __gesture = null; // {type:'move'|'resize', sx, sy, dpr}
 let __pinned = true;  // 바탕화면 부착 상태 — 부착 중에는 이동(드래그) 잠금

@@ -151,7 +151,8 @@ namespace TaskCalendarWidget
         {
             bool firstRun = _settings.FirstRun;
             try { Directory.CreateDirectory(_dataDir); File.WriteAllText(_logFile, ""); } catch { }
-            Log($"=== 시작 v1.0.0 === pinned={_settings.Pinned} firstRun={firstRun} tray={_settings.TrayEnabled}");
+            var _ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;   // csproj AssemblyVersion에서 자동(현재 0.2.0)
+            Log($"=== 시작 v{(_ver != null ? _ver.ToString(3) : "0.2.0")} === pinned={_settings.Pinned} firstRun={firstRun} tray={_settings.TrayEnabled}");
             if (_settings.TrayEnabled) EnsureTray();   // 설정돼 있으면 트레이 아이콘 생성
 
             if (firstRun)
