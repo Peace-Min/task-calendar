@@ -288,13 +288,27 @@ namespace TaskCalendarWidget
                 await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
                 await loginNav;
 
-                NetcusProgress("주간보고 작성 페이지 여는 중…");
-                await NavTo(cw, "https://www.netcus.com/pjm/pjm_write.jsp");
+                NetcusProgress("주간보고 목록 여는 중…");
+                await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
+                if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+
+                // 작성 폼은 직접 GET하면 서버가 '게시판이 옳지 않습니다' 거부 → 목록의 form(table_code=report_tbl)을
+                // pjm_write.jsp로 POST해야 함. 폼 연결 의존을 피해 동적 POST 폼으로 table_code/id를 실어 이동.
+                NetcusProgress("작성 폼 여는 중…");
+                var wnav = NavOnce(cw, 15000);
+                string goWrite = "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_write.jsp';"
+                    + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
+                    + "H('table_code','report_tbl');H('word_code','');H('n_code','');H('s_code','');H('c_code','');"
+                    + "H('id'," + J(id) + ");document.body.appendChild(f);f.submit();return 'ok';}catch(e){return 'err';}})()";
+                await cw.ExecuteScriptAsync(goWrite);
+                await wnav;
+                if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
 
                 NetcusProgress("페이지 확인 중…");
                 string probe = "false";
                 for (int i = 0; i < 16; i++)
                 {
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
                     probe = await cw.ExecuteScriptAsync("(function(){return !!(document.getElementsByName('subject')[0] && document.getElementsByName('content')[0]);})()");
                     if (probe == "true") break;
                     await Task.Delay(300);
@@ -329,7 +343,12 @@ namespace TaskCalendarWidget
                 try { _w2win?.Activate(); } catch { }
                 NetcusResult(true, "주간보고 작성 폼을 채웠습니다 — 차주계획 등 보완 후 열린 창에서 직접 ‘제출’하세요.");
             }
-            catch (Exception ex) { Log("netcus(week) 예외: " + ex); NetcusResult(false, "주간보고 작성 오류: " + ex.Message); }
+            catch (Exception ex)
+            {
+                Log("netcus(week) 예외: " + ex);
+                bool disposed = (ex.Message ?? "").Contains("disposed");
+                NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다 — 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
+            }
             finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
         }
     }
