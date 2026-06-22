@@ -626,9 +626,6 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-title::placeholder{color:var(--faint)}
 .qa-ctx{display:flex;gap:8px;margin-top:12px}
 .qa-ctx input[type=date],.qa-ctx select{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
-/* datalist(회의실 빠른선택) 연결 입력은 드롭다운 화살표를 상시 노출(WebView2/Chromium) */
-input[list]::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer}
-input[list]:hover::-webkit-calendar-picker-indicator,input[list]:focus::-webkit-calendar-picker-indicator{opacity:.9}
 /* 시간 영역(첫 화면, 옵션 더보기 밖) — 시·분 분리 드롭다운 */
 .qa-when{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-when .qa-chk{margin-bottom:9px}
@@ -848,7 +845,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="fEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="fEndM" aria-label="종료 분"></select></span></span>
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
-        <div style="margin-top:8px"><label for="fLoc">장소</label><input type="text" id="fLoc" list="roomList" maxlength="200" placeholder="예: 회의실 A / 온라인 (▾ 등록 회의실)"></div>
+        <div style="margin-top:8px"><label for="fLoc">장소 <span class="git-opt">(회의실 관리에서 등록)</span></label><select id="fLoc"></select></div>
       </section>
       <section class="fsect" id="recurSect">
         <div class="fsect-cap">반복 · 기간</div>
@@ -972,9 +969,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- 장소 빠른선택용 회의실 목록(JS가 채움) -->
-<datalist id="roomList"></datalist>
-
 <!-- ===== 회의실 관리 모달 ===== -->
 <div class="overlay hidden" id="roomModal">
   <div class="modal">
@@ -987,7 +981,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <input type="text" id="roomName" maxlength="40" placeholder="예: 301호 / 대회의실 / 온라인">
           <button class="btn primary sm" type="button" id="btnRoomAdd">＋ 추가</button>
         </div>
-        <div class="git-note">여기 등록한 회의실은 일정 추가·편집의 <b>장소</b> 칸에서 드롭다운(▾)으로 바로 고를 수 있습니다. 장소는 직접 입력도 가능합니다.</div>
+        <div class="git-note">여기 등록한 회의실이 일정 추가·편집의 <b>장소</b> 드롭다운에 나타납니다. 일정에서는 <b>목록에서 선택</b>만 하며, 새 장소가 필요하면 여기서 먼저 추가하세요.</div>
       </div>
     </div>
     <div class="modal-foot">
@@ -1793,7 +1787,7 @@ let flashTargetId = null;
 let flashTodoId = null;   // 할 일 칩 클릭 reveal 시 그 행 강조(일정 flashTargetId 대칭)
 
 /* ---------- 렌더링 ---------- */
-function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); renderRoomDatalist(); }
+function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 
 function renderWeekdays(){
   $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
@@ -2314,7 +2308,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = e.allDay;
     writeTimeSel($('#fStartH'), $('#fStartM'), e.startTime); writeTimeSel($('#fEndH'), $('#fEndM'), e.endTime);
     fEndDirty = !!e.endTime;
-    $('#fLoc').value = e.location || '';
+    fillRoomSelect($('#fLoc'), e.location || '');
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
   }else{
@@ -2326,7 +2320,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = false;
     writeTimeSel($('#fStartH'), $('#fStartM'), ''); writeTimeSel($('#fEndH'), $('#fEndM'), '');
     fEndDirty = false;
-    $('#fLoc').value = '';
+    fillRoomSelect($('#fLoc'), '');
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
   }
@@ -2445,10 +2439,17 @@ function resetCatForm(){
   editingCatId = null; selColor = PALETTE[0]; catFormRepo = ''; __pendingRepoEmail = '';
   $('#cName').value = ''; $('#cDesc').value = '';
 }
-/* ---------- 회의실(장소 빠른선택) ---------- */
-function renderRoomDatalist(){
-  const dl = $('#roomList'); if(!dl) return;
-  dl.innerHTML = (state.rooms || []).map(r => `<option value="${esc(r)}"></option>`).join('');
+/* ---------- 회의실(장소 선택) ---------- */
+// 장소 select 채우기 — 빈 옵션 + 등록 회의실 + (현재값이 미등록이면 보존용 옵션). cur로 선택.
+function fillRoomSelect(sel, current){
+  if(!sel) return;
+  const cur = String(current || '');
+  const rooms = state.rooms || [];
+  let html = '<option value="">— 장소 없음 —</option>';
+  for(const rm of rooms) html += `<option value="${esc(rm)}">${esc(rm)}</option>`;
+  if(cur && !rooms.includes(cur)) html += `<option value="${esc(cur)}">${esc(cur)} (미등록)</option>`;   // 기존/삭제된 장소 무손실
+  sel.innerHTML = html;
+  sel.value = cur;
 }
 function renderRoomMgr(){
   const list = $('#roomMgrList'); if(!list) return;
@@ -2466,15 +2467,15 @@ function addRoom(name){
   if(!Array.isArray(state.rooms)) state.rooms = [];
   if(state.rooms.includes(s)){ toast('이미 등록된 회의실입니다', 'warn'); $('#roomName').select(); return; }
   if(state.rooms.length >= 50){ toast('회의실은 최대 50개까지 등록할 수 있습니다', 'warn'); return; }
-  state.rooms.push(s); save(); renderRoomMgr(); renderRoomDatalist();
+  state.rooms.push(s); save(); renderRoomMgr();
   $('#roomName').value = ''; $('#roomName').focus();
   toast(`회의실 ‘${s}’ 추가됨`, 'success');
 }
 function deleteRoom(name){
   if(!Array.isArray(state.rooms)) return;
   const i = state.rooms.indexOf(name); if(i < 0) return;
-  state.rooms.splice(i, 1); save(); renderRoomMgr(); renderRoomDatalist();
-  toast(`회의실 ‘${name}’ 삭제됨`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); renderRoomDatalist(); } }});
+  state.rooms.splice(i, 1); save(); renderRoomMgr();
+  toast(`회의실 ‘${name}’ 삭제됨`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); } }});
 }
 function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal('#roomModal'); setTimeout(() => $('#roomName').focus(), 30); }
 function openCatModal(){
@@ -3162,7 +3163,7 @@ function openQuickAdd(date, type, entryId){
     qaEndDirty = !!e.endTime;
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
-    const lc = $('#qaLoc'); if(lc) lc.value = e.location || '';
+    fillRoomSelect($('#qaLoc'), e.location || '');
     const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
     qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시
   }
@@ -3180,7 +3181,7 @@ function qaSyncType(){
 function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<label class="qa-lb">장소</label><input type="text" id="qaLoc" list="roomList" maxlength="200" placeholder="예: 회의실 A / 온라인 (▾ 등록 회의실)">
+    ? `<label class="qa-lb">장소 <span class="git-opt">(회의실 관리에서 등록)</span></label><select id="qaLoc"></select>
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -3189,6 +3190,7 @@ function qaRenderDetail(){
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`;
   if(qaType === 'event'){
+    fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
     const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
     const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
       if(on) rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
