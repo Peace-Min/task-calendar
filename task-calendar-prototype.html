@@ -484,7 +484,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-tasks{font-size:var(--fs-meta);color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent)}
-.git-hint .lnk{border:none;background:none;color:var(--accent);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+.lnk{border:none;background:none;color:var(--accent);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+/* 라벨행 우측 바로가기 링크(예: 회의실 관리) — 칩 아닌 깔끔한 액센트 텍스트 */
+.lbl-row .lnk{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:600;text-decoration:none;white-space:nowrap}
+.lbl-row .lnk:hover{text-decoration:underline}
+.lbl-row .lnk .ic{width:13px;height:13px}
 /* 도움말 모달 */
 .help-body .help-sec{margin-bottom:16px}
 .help-body h3{font-size:var(--fs-emph);font-weight:700;color:var(--text);margin:0 0 6px;padding-bottom:4px;border-bottom:1px solid var(--line)}
@@ -849,7 +853,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
         <div style="margin-top:8px">
-          <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label><button type="button" class="lnk" id="fRoomMgr">＋ 회의실 관리</button></div>
+          <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label><button type="button" class="lnk" id="fRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div>
           <select id="fLoc"></select>
         </div>
       </section>
@@ -3192,7 +3196,7 @@ function qaSyncType(){
 function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr">＋ 회의실 관리</button></div><select id="qaLoc"></select>
+    ? `<div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div><select id="qaLoc"></select>
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
