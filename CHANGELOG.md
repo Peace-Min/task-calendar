@@ -5,6 +5,16 @@
 
 ---
 
+## 🆕 2026-06-22 — netcus 자동 전송 2차: 폼 탐지·채우기·실제 POST 보정
+
+1차 실테스트(사용자 PC): 로그인→그 날짜→근태/내용 채움까지 정상 확인. 다만 `document.form.status`(폼이 `<table>` 안 → Chromium 미연결)로 probe 실패하던 것 수정 + 실제 제출 구현.
+- **폼 탐지/채우기**: `document.form.*` → **`getElementsByName`**(폼 연결 무관) + 로드 타이밍 재시도(최대 ~5s). form-assoc 진단 로그.
+- **실제 제출(POST)**: IE식 in-table 폼이라 Bmodify()/form.submit()이 빈 폼을 보낼 수 있어, 페이지 안에서 폼 action(`go=write&table=report_tbl&y&m&d&id`)으로 **직접 multipart fetch POST**(dbstatus·status·overtime·content, 세션 쿠키 포함). 결과 폴링 후 그 날짜 페이지 재로드로 저장 확인. (미제출 모드는 채움까지만.)
+- **근태·초과시간 행**: 좁은 폭에서 줄바꿈되던 것 → `nowrap`로 한 줄 고정(라벨/select flex:none, 힌트 ellipsis).
+- 검증: C# 컴파일·앱 레이어 OK. **실제 POST 동작은 사용자 '실제 제출' 모드로 검증 필요.**
+
+---
+
 ## 🆕 2026-06-22 — fix: 변경사항(패치노트)이 재실행마다 반복 표시되던 문제
 
 원인: '봤음'(`tc_seenVersion`)을 **모달 닫을 때만** 기록 → 닫지 않고 앱이 재실행(특히 자기교체 배포 반복)되면 매번 다시 표시.

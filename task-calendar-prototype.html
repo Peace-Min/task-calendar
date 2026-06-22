@@ -470,10 +470,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-range input[type=date]{flex:1;min-width:130px}
 .rpt-opts{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}
 /* 일간 보고서 근태·초과시간(회사 일간보고 전송용) */
-.rpt-attend{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 11px;margin-bottom:10px;background:var(--accent-soft);border-radius:var(--r-sm)}
-.rpt-attend .ra-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
-.rpt-attend .ra-sel{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
-.rpt-attend .ra-hint{font-size:var(--fs-micro);color:var(--muted);margin-left:auto}
+.rpt-attend{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;padding:8px 11px;margin-bottom:10px;background:var(--accent-soft);border-radius:var(--r-sm)}
+.rpt-attend .ra-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);flex:none}
+.rpt-attend .ra-sel{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text);flex:none}
+.rpt-attend .ra-hint{font-size:var(--fs-micro);color:var(--muted);margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rpt-srcs{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 .rpt-guard{padding:26px 18px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.6;border:1px dashed var(--line-2);border-radius:var(--r-md)}

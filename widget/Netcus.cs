@@ -132,11 +132,23 @@ namespace TaskCalendarWidget
                 string url = $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}";
                 await NavTo(cw, url);
 
-                var probe = await cw.ExecuteScriptAsync("(function(){return !!(document.form && document.form.status && document.form.content);})()");
-                if (probe != "true") { NetcusResult(false, "로그인 실패 또는 페이지 접근 불가 — ID/비밀번호·네트워크를 확인하세요."); return; }
+                // 폼 탐지 — <form>이 <table> 안에 있는 옛 마크업이라 document.form.* 접근이 안 될 수 있어 getElementsByName 사용. 로드 타이밍 대비 재시도.
+                NetcusProgress("페이지 확인 중…");
+                string probe = "false";
+                for (int i = 0; i < 16; i++)
+                {
+                    probe = await cw.ExecuteScriptAsync("(function(){return !!(document.getElementsByName('status')[0] && document.getElementsByName('content')[0]);})()");
+                    if (probe == "true") break;
+                    await Task.Delay(300);
+                }
+                if (probe != "true") { NetcusResult(false, "입력 폼을 찾지 못했습니다 — 로그인 또는 페이지 접근을 확인하세요."); return; }
+                // 진단: 페이지 자체 함수(Bmodify)가 쓰는 document.form 연결이 Chromium에서 유효한지 로그
+                try { Log("netcus form-assoc(document.form.status): " + await cw.ExecuteScriptAsync("(function(){try{return !!(document.form&&document.form.status);}catch(e){return false;}})()")); } catch { }
 
                 NetcusProgress("내용 작성 중…");
-                string fill = $"(function(){{try{{document.form.status.value={J(req.Status)};document.form.overtime.selectedIndex={req.Overtime};document.form.content.value={J(req.Content)};return 1;}}catch(e){{return 0;}}}})()";
+                string fill = "(function(){try{var st=document.getElementsByName('status')[0],ot=document.getElementsByName('overtime')[0],ct=document.getElementsByName('content')[0];"
+                    + $"if(st){{st.value={J(req.Status)};}}if(ot){{ot.selectedIndex={req.Overtime};}}if(ct){{ct.value={J(req.Content)};}}"
+                    + "return (st&&ct)?1:0;}catch(e){return 0;}})()";
                 var filled = await cw.ExecuteScriptAsync(fill);
                 if (filled != "1") { NetcusResult(false, "입력 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
 
@@ -147,17 +159,32 @@ namespace TaskCalendarWidget
                     return;
                 }
 
+                // 실제 제출 — IE식 in-table 폼이라 document.form/Bmodify()가 Chromium에서 동작 안 할 수 있어,
+                // 페이지 안에서 폼 action(go=write)으로 직접 multipart POST(세션 쿠키 포함). 폼 연결 여부와 무관.
                 NetcusProgress("제출 중…");
-                lastAlert = "";
-                var submitNav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync("(function(){try{Bmodify();}catch(e){}})()");
-                bool navOk = await submitNav;
-                if (!navOk)
+                await cw.ExecuteScriptAsync("window.__tcPost=null;");
+                string fire = "(function(){try{"
+                    + "var ct=document.getElementsByName('content')[0],db=document.getElementsByName('dbstatus')[0];"
+                    + "var fd=new FormData();fd.append('dbstatus',(db&&db.value)?db.value:'0');"
+                    + $"fd.append('status',{J(req.Status)});fd.append('overtime',{J(req.Overtime.ToString())});"
+                    + "fd.append('content',ct?ct.value:'');"
+                    + $"var u='pjm_work_view.jsp?go=write&table=report_tbl&y={req.Y}&m={req.M}&d={req.D}&id='+encodeURIComponent({J(id)});"
+                    + "fetch(u,{method:'POST',body:fd,credentials:'include'}).then(function(r){window.__tcPost=(r.ok?'OK ':'HTTP ')+r.status;}).catch(function(e){window.__tcPost='ERR '+((e&&e.message)||e);});"
+                    + "}catch(e){window.__tcPost='ERR '+((e&&e.message)||e);}})()";
+                await cw.ExecuteScriptAsync(fire);
+                string res = "null";
+                for (int i = 0; i < 33; i++) { await Task.Delay(300); res = await cw.ExecuteScriptAsync("window.__tcPost"); if (!string.IsNullOrEmpty(res) && res != "null" && res != "\"\"") break; }
+                Log("netcus POST result: " + res);
+                if (res != null && res.Contains("OK"))
                 {
-                    NetcusResult(false, string.IsNullOrEmpty(lastAlert) ? "제출 응답이 없습니다(시간 초과) — 열린 창에서 직접 확인하세요." : ("제출 거부됨: " + lastAlert));
-                    return;
+                    NetcusProgress("저장 확인 중…");
+                    await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}");
+                    NetcusResult(true, "회사 일간보고 전송 완료 — 열린 창과 netcus 사이트에서 확인하세요.");
                 }
-                NetcusResult(true, "회사 일간보고 전송 완료 — netcus 사이트에서 확인하세요.");
+                else
+                {
+                    NetcusResult(false, "제출 실패: " + (res ?? "응답 없음") + " — 열린 창에서 직접 ‘수정’으로 제출해 보세요.");
+                }
             }
             catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
             finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
