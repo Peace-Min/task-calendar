@@ -29,6 +29,11 @@ namespace TaskCalendarWidget
             public bool DryRun = true;
         }
 
+        private sealed class NetcusWeekReq
+        {
+            public string Sdate = "", Edate = "", Subject = "", Content = "", Endwork = "";
+        }
+
         // ----- 자격증명 (DPAPI, CurrentUser) -----
         private void NetcusSaveCreds(string id, string pw)
         {
@@ -257,6 +262,74 @@ namespace TaskCalendarWidget
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음) — 열린 창에서 직접 확인하세요.");
             }
             catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
+            finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
+        }
+
+        // 주간보고 — '채우고 열어두기'(자동 제출 안 함). pjm_write.jsp 폼에 기간/제목/과제투입시간/진행사항을 채운 뒤
+        // 창을 띄워 둔다. 차주계획·회의내용 등 보완 후 사용자가 직접 '제출'(Bwrite) — euc-kr은 네이티브 폼이 처리.
+        private async Task NetcusWeekFill(NetcusWeekReq req)
+        {
+            string lastAlert = "";
+            CoreWebView2? cw = null;
+            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { lastAlert = ev.Message ?? ""; Log("netcus(week) alert: " + lastAlert); try { ev.Accept(); } catch { } }
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다 — 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
+
+                NetcusProgress("창 준비 중…");
+                await EnsureW2();
+                cw = _w2!.CoreWebView2;
+                cw.ScriptDialogOpening += OnDialog;
+
+                NetcusProgress("로그인 중…");
+                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                var loginNav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+                await loginNav;
+
+                NetcusProgress("주간보고 작성 페이지 여는 중…");
+                await NavTo(cw, "https://www.netcus.com/pjm/pjm_write.jsp");
+
+                NetcusProgress("페이지 확인 중…");
+                string probe = "false";
+                for (int i = 0; i < 16; i++)
+                {
+                    probe = await cw.ExecuteScriptAsync("(function(){return !!(document.getElementsByName('subject')[0] && document.getElementsByName('content')[0]);})()");
+                    if (probe == "true") break;
+                    await Task.Delay(300);
+                }
+                if (probe != "true") { NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다 — 로그인 또는 페이지 접근을 확인하세요."); return; }
+
+                NetcusProgress("내용 작성 중…");
+                // sdate/edate는 readonly지만 JS .value 할당은 가능. content(과제투입시간)/endwork(진행사항)는 textarea.
+                string fill = "(function(){try{function set(n,v){var e=document.getElementsByName(n)[0];if(e){e.value=v;}}"
+                    + $"set('sdate',{J(req.Sdate)});set('edate',{J(req.Edate)});set('subject',{J(req.Subject)});"
+                    + $"set('content',{J(req.Content)});set('endwork',{J(req.Endwork)});"
+                    + "return !!document.getElementsByName('content')[0];}catch(e){return false;}})()";
+                var filled = await cw.ExecuteScriptAsync(fill);
+                if (filled != "true") { NetcusResult(false, "주간보고 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
+
+                // 안전장치 — 이 폼도 <table> 안 빈 폼이라 페이지의 Bwrite(document.form.submit)가 빈 폼을 보낼 수 있다.
+                // Bwrite를 euc-kr 동적 폼 버전으로 오버라이드(원본과 동일 검증·confirm 유지) → 사용자가 보완 후 직접 제출해도 안전.
+                string ov = "(function(){try{window.Bwrite=function(iscompletion){"
+                    + "var sd=document.getElementsByName('sdate')[0],sj=document.getElementsByName('subject')[0];"
+                    + "if(sd&&!sd.value){alert('기간을 선택하세요.');return;}"
+                    + "if(sj&&!sj.value){alert('제목을 입력하세요.');return;}"
+                    + "if(iscompletion==='y'&&!confirm('제출하시겠습니까?'))return;"
+                    + "var f=document.createElement('form');f.method='post';f.enctype='multipart/form-data';f.acceptCharset='euc-kr';"
+                    + $"f.action='pjm_write.jsp?go=write&table=report_tbl&id='+encodeURIComponent({J(id)});"
+                    + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
+                    + "H('iscompletion',iscompletion);"
+                    + "['ndate','sdate','edate','subject','endwork','content','notendwork','planwork','problem','resultwork'].forEach(function(n){var e=document.getElementsByName(n)[0];if(e)H(n,e.value);});"
+                    + "var hc=document.getElementsByName('html')[0];if(hc&&hc.checked)H('html',hc.value);"
+                    + "document.body.appendChild(f);f.submit();};return 'ok';}catch(e){return 'err';}})()";
+                try { Log("netcus(week) Bwrite override: " + await cw.ExecuteScriptAsync(ov)); } catch { }
+
+                try { _w2win?.Activate(); } catch { }
+                NetcusResult(true, "주간보고 작성 폼을 채웠습니다 — 차주계획 등 보완 후 열린 창에서 직접 ‘제출’하세요.");
+            }
+            catch (Exception ex) { Log("netcus(week) 예외: " + ex); NetcusResult(false, "주간보고 작성 오류: " + ex.Message); }
             finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
         }
     }

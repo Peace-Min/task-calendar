@@ -389,6 +389,17 @@ namespace TaskCalendarWidget
                         _ = NetcusSubmit(req);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
                         break;
                     }
+                    case "netcusWeekSubmit":
+                    {
+                        var wreq = new NetcusWeekReq
+                        {
+                            Sdate = GetStr(doc, "sdate"), Edate = GetStr(doc, "edate"),
+                            Subject = GetStr(doc, "subject"), Content = GetStr(doc, "content"),
+                            Endwork = GetStr(doc, "endwork"),
+                        };
+                        _ = NetcusWeekFill(wreq);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
+                        break;
+                    }
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
                     case "dragbegin":

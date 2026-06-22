@@ -3109,12 +3109,37 @@ function rptSources(){
   const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit');
   return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true };
 }
-// 회사 전송은 '하루(일간)' 보고서에서만 — 범위가 단일일이 아니면 버튼 숨기고 힌트 표시.
+// 하루(from===to) → 일간보고 자동 전송 / 기간(from<to) → 주간보고 작성(채우고 열기). 버튼 라벨·동작을 전환.
 function updateRptSendVis(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
-  const single = /^\d{4}-\d{2}-\d{2}$/.test(from) && from === to;
-  const b = $('#btnRptSend'); if(b) b.style.display = single ? '' : 'none';
-  const h = $('#rptSendHint'); if(h) h.style.display = single ? 'none' : '';
+  const valid = /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) && from <= to;
+  const single = valid && from === to;
+  const b = $('#btnRptSend'), h = $('#rptSendHint');
+  if(b){
+    if(!valid){ b.style.display = 'none'; }
+    else {
+      b.style.display = '';
+      b.dataset.mode = single ? 'daily' : 'weekly';
+      b.textContent = single ? '📤 일간보고 전송' : '📤 주간보고 작성';
+      b.title = single ? '이 날짜 보고서를 회사 일간보고(netcus)에 작성·전송합니다'
+                       : '이 기간을 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
+    }
+  }
+  if(h) h.style.display = 'none';
+}
+// 주간보고용 필드 — content(과제투입시간: [과제명]:시간), endwork(진행사항: 과제별 업무 불릿), subject(제목 추정)
+function buildWeeklyFields(from, to, sources){
+  const { rows } = collectReportData(from, to, sources || rptSources());
+  if(!rows.length) return null;
+  const content = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}`).join('\n');
+  const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map(t => `- ${t}`).join('\n') : '-')).join('\n\n');
+  return { content, endwork, subject: weekSubjectGuess(from) };
+}
+function weekSubjectGuess(from){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from); if(!m) return '';
+  const mon = Number(m[2]), day = Number(m[3]);
+  const ord = ['', '첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][Math.ceil(day / 7)] || (Math.ceil(day / 7) + '째');
+  return `${mon}월 ${ord}주`;
 }
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
@@ -3908,15 +3933,26 @@ function bind(){
   });
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('일간보고는 하루 보고서(예: 오늘)에서만 전송할 수 있습니다', 'warn'); return; }
     if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
-    const content = buildReportText();   // 단일일 → 그 날 [과제명]:시간
-    if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
-    const at = getAttendance(from), p = from.split('-').map(Number);
-    const dry = ncMode() !== 'real';
-    const b = $('#btnRptSend'); if(b) b.disabled = true;
-    const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ 전송 시작…'; s.className = 'rpt-send-status busy'; }
-    hpost({ cmd: 'netcusSubmit', y: p[0], m: p[1], d: p[2], status: at.status, overtime: at.overtime, content, dryRun: dry });
+    const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
+    if(mode === 'daily'){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('일간보고는 하루 보고서(예: 오늘)에서만 전송할 수 있습니다', 'warn'); return; }
+      const content = buildReportText();   // 단일일 → 그 날 [과제명]:시간
+      if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
+      const at = getAttendance(from), p = from.split('-').map(Number);
+      const dry = ncMode() !== 'real';
+      const b = $('#btnRptSend'); if(b) b.disabled = true;
+      const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ 전송 시작…'; s.className = 'rpt-send-status busy'; }
+      hpost({ cmd: 'netcusSubmit', y: p[0], m: p[1], d: p[2], status: at.status, overtime: at.overtime, content, dryRun: dry });
+    } else {
+      // 주간보고 — 채우고 열어두기(직접 제출). 기간/제목/과제투입시간/진행사항 자동 채움.
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){ toast('기간을 선택하세요 (시작 ≤ 종료)', 'warn'); return; }
+      const wf = buildWeeklyFields(from, to, rptSources());
+      if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
+      const b = $('#btnRptSend'); if(b) b.disabled = true;
+      const s = $('#rptSendStatus'); if(s){ s.textContent = '⏳ 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+      hpost({ cmd: 'netcusWeekSubmit', sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork });
+    }
   });
   $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });

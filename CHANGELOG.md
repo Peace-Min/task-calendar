@@ -5,6 +5,18 @@
 
 ---
 
+## 🆕 2026-06-22 — netcus 4차: 주간보고 작성(pjm_write.jsp) — 채우고 열기 + 보고서 모달 폭 버그 수정
+
+**주간보고**(일간과 완전 별개 폼: 기간/제목/진행사항/과제투입시간/차주계획…)를 추가. 사용자 결정: ①기간·제목·과제투입시간·진행사항 자동 채움 ②채우고 열어두기→직접 제출.
+- 보고서 '회사로 전송' 버튼이 **범위에 따라 전환**: 하루=`📤 일간보고 전송`(자동 POST), 기간=`📤 주간보고 작성`(채우고 열기). `updateRptSendVis`가 buildReport 진입점에서 갱신.
+- `buildWeeklyFields(from,to)`: content(과제투입시간 `[과제명]:시간`)·endwork(진행사항: 과제별 업무 불릿)·subject(제목 추정 "N월 M째주") 생성.
+- C# `NetcusWeekFill`: 로그인→`pjm_write.jsp`→sdate/edate/subject/content/endwork 채움(getElementsByName; sdate/edate readonly여도 .value OK)→**창 열어둠(제출 안 함)**. 차주계획·회의내용 등 보완 후 사용자가 직접 제출.
+- 안전장치: 이 폼도 in-table 빈 폼이라 페이지 `Bwrite`(document.form.submit)가 빈 폼 보낼 위험 → **Bwrite를 euc-kr 동적 폼 버전으로 오버라이드**(원본과 동일 sdate/subject 검증·confirm 유지)해 사용자 제출도 한글 안전.
+- **보고서 모달 폭 버그 수정**: `.modal select{width:100%}`가 근태/초과 select에 상속돼 nowrap과 겹쳐 모달이 가로로 터지던 것 → `.ra-sel{width:auto}`로 내용 폭 고정.
+- 검증: preview에서 버튼 전환·필드 빌더·subject 추정 통과. **실제 작성·제출은 사용자 PC에서 확인 필요.**
+
+---
+
 ## 🆕 2026-06-22 — netcus 3차: 한글 인코딩 해결(euc-kr) + 검증 후 창 닫기 + 일간 전용 전송
 
 실테스트(실제 제출): 서버 저장은 됐으나 **한글이 깨짐**(`[표적???]`). 영문/숫자는 정상.
