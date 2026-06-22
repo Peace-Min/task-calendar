@@ -1129,9 +1129,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
     <div class="modal-foot">
       <span class="rpt-send-status" id="rptSendStatus"></span>
-      <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 회사 전송은 ‘오늘’ 등 하루(일간)에서만</span>
+      <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)</span>
       <button class="btn" data-close>닫기</button>
-      <button class="btn" id="btnRptSend" title="이 날짜 보고서를 회사 일간보고(netcus)에 작성">📤 회사로 전송</button>
+      <button class="btn" id="btnRptSend" title="이 날짜 보고서를 회사 일간보고(netcus)에 작성·전송합니다">📤 일간보고 전송</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
     </div>
   </div>
@@ -3908,7 +3908,7 @@ function bind(){
   });
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('하루(일간) 보고서에서만 회사로 전송할 수 있습니다', 'warn'); return; }
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('일간보고는 하루 보고서(예: 오늘)에서만 전송할 수 있습니다', 'warn'); return; }
     if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
     const content = buildReportText();   // 단일일 → 그 날 [과제명]:시간
     if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
