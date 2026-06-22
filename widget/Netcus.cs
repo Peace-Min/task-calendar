@@ -126,6 +126,18 @@ namespace TaskCalendarWidget
 
         private static string J(string s) => JsonSerializer.Serialize(s);
 
+        // 본문에서 첫 한글 토막(연속 한글 2~4자)을 뽑아 저장 후 되읽기 대조용 needle로 사용. 한글 없으면 "".
+        private static string NetcusHangulNeedle(string s)
+        {
+            var sb = new StringBuilder();
+            foreach (char ch in s ?? "")
+            {
+                if (ch >= 0xAC00 && ch <= 0xD7A3) { sb.Append(ch); if (sb.Length >= 4) break; }
+                else { if (sb.Length >= 2) break; sb.Clear(); }
+            }
+            return sb.Length >= 2 ? sb.ToString() : "";
+        }
+
         private Task<bool> NavTo(CoreWebView2 cw, string url)
         {
             var tcs = new TaskCompletionSource<bool>();
@@ -219,20 +231,29 @@ namespace TaskCalendarWidget
                 bool navOk = await submitNav;   // go=write 결과 페이지로 이동 대기
                 Log("netcus submit nav: " + navOk);
 
-                // 저장 검증(거짓 성공 차단) — 그 날짜 입력 페이지를 다시 열어 content가 실제 저장됐는지 되읽기.
-                // 반환: -1=로그인페이지(세션만료/실패), -2=폼없음, >0=저장된 content 길이.
+                // 저장 검증(거짓 성공 + 한글 깨짐 동시 차단) — 그 날짜 페이지를 다시 열어 content를 되읽어,
+                // 우리가 보낸 한글 토큰이 그대로 있는지 대조(mojibake면 불일치).
+                // 반환: -1=로그인페이지, -2=폼없음, 0=빈내용, 1=정상(한글 일치 또는 한글없음+내용존재), 2=저장됐으나 한글 불일치
                 NetcusProgress("저장 확인 중…");
                 await NavTo(cw, url);
-                int vlen = -9;
+                string needle = NetcusHangulNeedle(req.Content);
+                string check = "(function(){try{"
+                    + "if(document.querySelector('input[type=password]'))return -1;"
+                    + "var c=document.getElementsByName('content')[0];if(!c)return -2;"
+                    + "var v=(c.value||'').trim();if(!v.length)return 0;"
+                    + $"var n={J(needle)};return (!n)?1:(v.indexOf(n)>=0?1:2);"
+                    + "}catch(e){return -3;}})()";
+                int vr = -9;
                 for (int i = 0; i < 14; i++)
                 {
-                    var v = await cw.ExecuteScriptAsync("(function(){try{if(document.querySelector('input[type=password]'))return -1;var c=document.getElementsByName('content')[0];if(!c)return -2;return (c.value||'').trim().length;}catch(e){return -3;}})()");
-                    if (int.TryParse((v ?? "").Trim('"'), out vlen) && (vlen > 0 || vlen == -1)) break;
+                    var v = await cw.ExecuteScriptAsync(check);
+                    if (int.TryParse((v ?? "").Trim('"'), out vr) && (vr == 1 || vr == 2 || vr == -1)) break;
                     await Task.Delay(300);
                 }
-                Log("netcus verify content length: " + vlen);
-                if (vlen == -1) NetcusResult(false, "세션 만료/로그인 필요 — 자격증명을 확인하세요.");
-                else if (vlen > 0) NetcusResult(true, "회사 일간보고 전송 완료(한글 정상 저장) — 열린 창과 netcus 사이트에서 확인하세요.");
+                Log("netcus verify: " + vr + " (needle=" + needle + ")");
+                if (vr == -1) NetcusResult(false, "세션 만료/로그인 필요 — 자격증명을 확인하세요.");
+                else if (vr == 1) NetcusResult(true, "회사 일간보고 전송 완료 — 한글까지 정상 저장 확인. netcus 사이트에서도 확인하세요.");
+                else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치) — netcus에서 확인하세요.");
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음) — 열린 창에서 직접 확인하세요.");
             }
             catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
