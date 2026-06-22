@@ -636,6 +636,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .timepick{display:inline-flex;align-items:center;gap:3px}
 .timepick select{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 8px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text);font-variant-numeric:tabular-nums}
 .timepick .t-sep{color:var(--muted);font-weight:700}
+/* 라벨 + 바로가기 링크 한 줄(예: 장소 / 회의실 관리) */
+.lbl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lbl-row>label{margin:0}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
@@ -845,7 +848,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="fEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="fEndM" aria-label="종료 분"></select></span></span>
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
-        <div style="margin-top:8px"><label for="fLoc">장소 <span class="git-opt">(회의실 관리에서 등록)</span></label><select id="fLoc"></select></div>
+        <div style="margin-top:8px">
+          <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label><button type="button" class="lnk" id="fRoomMgr">＋ 회의실 관리</button></div>
+          <select id="fLoc"></select>
+        </div>
       </section>
       <section class="fsect" id="recurSect">
         <div class="fsect-cap">반복 · 기간</div>
@@ -2451,6 +2457,11 @@ function fillRoomSelect(sel, current){
   sel.innerHTML = html;
   sel.value = cur;
 }
+// 폼(편집/빠른추가)이 열려 있는 동안 회의실을 바꾸면 그 폼의 장소 select를 즉시 갱신(현재 선택 보존)
+function refreshOpenRoomSelects(){
+  const fl = $('#fLoc'); if(fl && !$('#entryModal').classList.contains('hidden')) fillRoomSelect(fl, fl.value);
+  const ql = $('#qaLoc'); if(ql && !$('#quickAdd').classList.contains('hidden')) fillRoomSelect(ql, ql.value);
+}
 function renderRoomMgr(){
   const list = $('#roomMgrList'); if(!list) return;
   const rooms = state.rooms || [];
@@ -2467,15 +2478,15 @@ function addRoom(name){
   if(!Array.isArray(state.rooms)) state.rooms = [];
   if(state.rooms.includes(s)){ toast('이미 등록된 회의실입니다', 'warn'); $('#roomName').select(); return; }
   if(state.rooms.length >= 50){ toast('회의실은 최대 50개까지 등록할 수 있습니다', 'warn'); return; }
-  state.rooms.push(s); save(); renderRoomMgr();
+  state.rooms.push(s); save(); renderRoomMgr(); refreshOpenRoomSelects();
   $('#roomName').value = ''; $('#roomName').focus();
   toast(`회의실 ‘${s}’ 추가됨`, 'success');
 }
 function deleteRoom(name){
   if(!Array.isArray(state.rooms)) return;
   const i = state.rooms.indexOf(name); if(i < 0) return;
-  state.rooms.splice(i, 1); save(); renderRoomMgr();
-  toast(`회의실 ‘${name}’ 삭제됨`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); } }});
+  state.rooms.splice(i, 1); save(); renderRoomMgr(); refreshOpenRoomSelects();
+  toast(`회의실 ‘${name}’ 삭제됨`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); refreshOpenRoomSelects(); } }});
 }
 function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal('#roomModal'); setTimeout(() => $('#roomName').focus(), 30); }
 function openCatModal(){
@@ -3181,7 +3192,7 @@ function qaSyncType(){
 function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<label class="qa-lb">장소 <span class="git-opt">(회의실 관리에서 등록)</span></label><select id="qaLoc"></select>
+    ? `<div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr">＋ 회의실 관리</button></div><select id="qaLoc"></select>
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -3191,6 +3202,7 @@ function qaRenderDetail(){
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`;
   if(qaType === 'event'){
     fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
+    const rm = $('#qaRoomMgr'); if(rm) rm.addEventListener('click', openRoomModal);   // 빠른추가 → 회의실 관리(중첩 모달)
     const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
     const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
       if(on) rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
@@ -3480,6 +3492,7 @@ function bind(){
   $('#btnRoomAdd').addEventListener('click', () => addRoom($('#roomName').value));
   $('#roomName').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); addRoom($('#roomName').value); } });
   $('#roomMgrList').addEventListener('click', ev => { const b = ev.target.closest('button[data-act="del"]'); if(!b) return; const row = b.closest('.room-row'); if(row) deleteRoom(row.dataset.room); });
+  $('#fRoomMgr').addEventListener('click', openRoomModal);   // 편집 모달 → 회의실 관리(중첩 모달)
   $('#importFile').addEventListener('change', ev => {
     const f = ev.target.files[0];
     if(f) onImportFile(f);
