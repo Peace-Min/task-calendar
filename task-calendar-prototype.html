@@ -515,8 +515,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .pv-tag{font-weight:800;font-size:var(--fs-emph);color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 10px}
 .pv-tag.old{color:var(--muted);background:var(--bg)}
 .pv-date{font-size:var(--fs-meta);color:var(--muted)}
+.patch-intro{margin:2px 0 8px;font-size:var(--fs-meta);color:var(--muted)}
 .patch-list{margin:0;padding-left:20px}
 .patch-list li{font-size:var(--fs-body);color:var(--text);line-height:1.72;margin:6px 0;word-break:keep-all;overflow-wrap:anywhere}
+.pv-note{color:var(--muted);font-size:var(--fs-meta)}
 /* Git 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
 .nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
 .nd-commit .nd-ci .ic{width:15px;height:15px}
@@ -1318,18 +1320,22 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
       <div class="patch-ver"><span class="pv-tag">v0.2</span><span class="pv-date">2026-06-22</span></div>
+      <p class="patch-intro">최초 배포(v0.1) 이후 추가·개선된 내용입니다.</p>
       <ul class="patch-list">
-        <li><b>⏰ 시간 입력 개선</b> — 시·분 드롭다운으로 빠르게 선택. 시작을 정하면 <b>종료가 자동으로 1시간 뒤</b>로. 시간·종일이 일정 추가 <b>첫 화면</b>에 바로 보입니다.</li>
-        <li><b>📍 회의실(장소) 관리</b> — 자주 쓰는 회의실을 등록해 두고 일정의 <b>장소를 드롭다운에서 선택</b>. 일정 작성 중에도 ‘회의실 관리’ 바로가기로 추가할 수 있습니다. (기본 제공: 101호·201호·202호)</li>
-        <li><b>📄 보고서 항목 선택</b> — 보고서에 넣을 항목(<b>일정·할 일·Git 커밋 내역</b>)을 골라서 생성. <b>할 일</b>도 보고서에 포함됩니다.</li>
-        <li><b>🎨 테마 6종</b> — 시스템·라이트·다크·포레스트·세피아·고대비.</li>
-        <li><b>📖 도움말 강화</b> — 간단 도움말 + <b>A–Z 자세한 사용설명서</b>.</li>
-        <li><b>🖱 사용성</b> — 달력 칩 클릭 시 미리보기로 통일, 일정 상세에서 <b>시간·장소 강조</b>, 과제 필터 높이 조절, 과제 관리 헤더 버튼, ‘작업일지’ → <b>‘Git 커밋 내역’</b>으로 이름 정리, 앱 아이콘.</li>
-        <li><b>🛠 안정성</b> — 새 버전이 실행되지 않던 문제 수정, 입력 폼 단순화(항목별 공수 입력 제거 — <b>기존 데이터는 보존</b>).</li>
+        <li><b>📄 보고서 (신규)</b> — 기간을 고르면 <b>과제별 [제목] : 시간</b>으로 자동 정리. 포함 항목(<b>일정·할 일·Git 커밋 내역</b>)을 선택하고, 하루 보고서는 시간 직접 수정, <b>복사</b>해서 사내 양식에 붙여넣기.</li>
+        <li><b>🔗 Git 커밋 내역 연동 (신규)</b> — 과제에 저장소를 연결하면 그날 내 커밋을 자동 수집. <b>기간 일괄 불러오기</b>로 범위 내 커밋을 날짜별로 등록(데스크톱 위젯 전용).</li>
+        <li><b>📍 회의실(장소) 관리 (신규)</b> — 자주 쓰는 회의실을 등록해 일정 장소를 <b>드롭다운에서 선택</b>. 작성 중에도 ‘회의실 관리’ 바로가기로 추가(기본: 101·201·202호).</li>
+        <li><b>⏰ 시간 입력 개선</b> — 시·분 드롭다운, 시작 선택 시 <b>종료 자동 +1시간</b>, 시간·종일이 첫 화면에 바로.</li>
+        <li><b>🎨 테마 6종 + 다크 모드 (신규)</b> — 시스템·라이트·다크·포레스트·세피아·고대비.</li>
+        <li><b>🗓 달력·위젯</b> — 여러 날 <b>기간 막대</b>, 8방향 크기 조절, <b>넓게 보기</b>, 좁은 폭(위젯) 밀도 개선, 칩 가시성, 과제 필터 영역.</li>
+        <li><b>✅ 할 일 개선</b> — 중요(★)·완료·기한/기간, 달력 체크 칩, 드래그로 기한 이동.</li>
+        <li><b>📝 입력 폼 통일</b> — 빠른 추가 한 줄 + ‘자세히 편집’, 반복·기간·메모.</li>
+        <li><b>📖 도움말 (신규)</b> — 간단 도움말 + <b>A–Z 자세한 사용설명서</b> + 이 변경사항 안내.</li>
+        <li><b>🛠 데이터·안정성</b> — XML 백업/가져오기(병합·교체), 부팅 로딩, 키보드·접근성, 단일 인스턴스 <b>자기교체</b>(새 버전 실행 시 자동 인계).</li>
       </ul>
-      <div class="patch-ver"><span class="pv-tag old">v0.1</span><span class="pv-date">최초 배포</span></div>
+      <div class="patch-ver"><span class="pv-tag old">v0.1</span><span class="pv-date">2026-06-11 · 최초 배포</span></div>
       <ul class="patch-list">
-        <li>첫 배포 버전 — 달력·일정·할 일·과제 관리·Git 커밋 내역·보고서 기본 기능.</li>
+        <li>첫 배포 버전 — 월 달력, 일정·할 일, 과제 관리, 바탕화면 위젯. <span class="pv-note">(보고서·Git 연동·테마는 v0.2에서 추가)</span></li>
       </ul>
     </div>
     <div class="modal-foot">
