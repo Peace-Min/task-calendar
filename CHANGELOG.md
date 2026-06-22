@@ -5,6 +5,18 @@
 
 ---
 
+## 🆕 2026-06-22 — 월 보기 밀도(고정/촘촘히/펼침) + 설정 모달
+
+피드백: 회사 캘린더는 셀이 내용만큼 늘어 잘림이 없는데 앱은 +N으로 잘림. 벤치마크(Google·Apple·Outlook=고정+잘림 표준 / 회사식 자동확장=레거시) 후, 표준 유지 + 옵트인으로 결정 → 설정 옵션으로 제공.
+- **⚙ 설정 모달**(⋯ 더보기 → 설정) 신설. 첫 항목 **월 보기 밀도** 라디오 3종. localStorage `tc_calDensity`, 기본 `fixed`.
+  - **고정(+N)**: 현행 — grid-auto-rows:1fr, fitChips 캡 + +N, 6주 한 화면(스크롤 없음). Google/Apple/Outlook 표준.
+  - **촘촘히**: grid-auto-rows 176px(셀↑) + 세로 스크롤, fitChips가 더 많이 표시.
+  - **펼침**: grid-auto-rows auto(내용만큼) + 스크롤, fitChips 생략·셀/칩 overflow visible → 잘림 없이 전부(회사식). RENDER_CAP 60.
+- renderGrid가 calDensity()로 `#grid`에 dense/expand 클래스 토글 + 펼침이면 fitChips 생략. setCalDensity→renderGrid.
+- 검증(preview_eval): 같은 8건 날에서 고정 3/촘촘 5/펼침 8 표시, 클래스/overflow/grid-auto-rows, 설정 모달 라디오 현재값 반영·변경 적용, 콘솔에러0.
+
+---
+
 ## 🆕 2026-06-22 — 일간 보고서에 근태·초과시간 콤보 (회사 일간보고 연동 1단계)
 
 회사 일간보고(netcus pjm) 자동 작성을 위한 기반. 회사 입력 폼 분석 결과 일간보고 = `근태(status) + 초과시간(overtime) + 내용(content: [과제명]:시간 + - 주/; 세부 불릿)`.

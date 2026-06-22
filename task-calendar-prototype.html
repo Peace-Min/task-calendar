@@ -161,6 +161,11 @@ main{flex:1;display:flex;min-height:0;position:relative}
   gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);
   overflow:hidden;min-height:0;
 }
+/* 월 보기 밀도(설정) — 촘촘히=셀 높이↑+세로 스크롤 / 펼침=내용만큼 늘고 스크롤(잘림 없음) */
+.grid.dense{grid-auto-rows:176px;overflow-y:auto;overflow-x:hidden}
+.grid.expand{grid-auto-rows:minmax(74px,auto);overflow-y:auto;overflow-x:hidden}
+.grid.expand .cell{overflow:visible}
+.grid.expand .chips{overflow:visible;flex:none}
 .cell{
   background:var(--panel);padding:5px 6px;display:flex;flex-direction:column;gap:3px;
   cursor:pointer;min-height:0;overflow:hidden;position:relative;transition:background .12s;
@@ -671,6 +676,15 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 /* 라벨 + 바로가기 링크 한 줄(예: 장소 / 회의실 관리) */
 .lbl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lbl-row>label{margin:0}
+/* 설정 모달 */
+.set-sec{margin-bottom:6px}
+.set-lb{font-size:var(--fs-emph);font-weight:700;color:var(--text);margin-bottom:3px}
+.set-hint{font-size:var(--fs-meta);color:var(--muted);margin-bottom:10px;line-height:1.5}
+.set-opt{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:7px;cursor:pointer;font-size:var(--fs-body);color:var(--text)}
+.set-opt:hover{border-color:var(--line-2)}
+.set-opt input{margin-top:3px;flex:none}
+.set-opt b{font-weight:600}
+.set-od{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
@@ -810,6 +824,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="menu-wrap">
       <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
       <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
+        <button id="btnSettings">설정</button>
         <button id="btnRooms">회의실 관리</button>
         <hr>
         <button id="btnExport">XML 내보내기</button>
@@ -966,6 +981,26 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 </div>
 
 <!-- ===== 과제 관리 모달 ===== -->
+<!-- ===== 설정 모달 ===== -->
+<div class="overlay hidden" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head"><h2>설정</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="set-sec">
+        <div class="set-lb">월 보기 밀도</div>
+        <div class="set-hint">달력 칸이 넘칠 때 표시 방식. 넓게 보기에서 가장 잘 보입니다.</div>
+        <label class="set-opt"><input type="radio" name="calDensity" value="fixed"><span><b>고정 (+N 더보기)</b><br><span class="set-od">한 달 전체가 한 화면. 바쁜 날은 +N으로 접고 클릭 시 펼침. (기본·표준)</span></span></label>
+        <label class="set-opt"><input type="radio" name="calDensity" value="dense"><span><b>촘촘히</b><br><span class="set-od">칸을 키워 더 많이 표시. 길어지면 세로 스크롤.</span></span></label>
+        <label class="set-opt"><input type="radio" name="calDensity" value="expand"><span><b>펼침 (스크롤)</b><br><span class="set-od">칸이 내용만큼 늘어나 전부 표시(잘림 없음). 회사 캘린더식 — 월 전체 한눈에는 사라짐.</span></span></label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="categoryModal">
   <div class="modal">
     <div class="modal-head"><h2>과제 관리</h2><button class="x" data-close>×</button></div>
@@ -1176,7 +1211,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <li><b>왼쪽 — 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
           <li><b>오른쪽 패널 — 탭 3개</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>, <b>Git 커밋 내역</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
           <li><b>과제 필터 줄</b>(달력 위): <b>전체</b> 또는 특정 과제만 눌러 그 과제 기록만 볼 수 있습니다.</li>
-          <li><b>헤더 버튼</b>: 🔍 검색 · 🏷️ 과제 관리 · 🎨 테마 · ? 도움말 · ⋯ 더보기(회의실 관리·데이터) · <b>＋ 새 기록</b> · 📄 보고서.</li>
+          <li><b>헤더 버튼</b>: 🔍 검색 · 🏷️ 과제 관리 · 🎨 테마 · ? 도움말 · ⋯ 더보기(<b>설정</b>·회의실 관리·데이터) · <b>＋ 새 기록</b> · 📄 보고서.</li>
+          <li><b>⋯ 더보기 → 설정</b>: <b>월 보기 밀도</b>(고정 / 촘촘히 / 펼침·스크롤)를 고를 수 있습니다 — 칸이 넘칠 때 잘림 대신 펼쳐 보고 싶으면 ‘펼침’.</li>
         </ul>
       </section>
 
@@ -2141,7 +2177,11 @@ function todoChipHtml(item){
     title="할 일${t.done ? ' (완료)' : ''} · ${esc(t.text)}${c?' · '+esc(c.name):''}${span}">${aL}${ring}${label}${aR}</div>`;
 }
 
+// 월 보기 밀도(설정): 'fixed'(고정·현행) | 'dense'(촘촘히) | 'expand'(펼침·스크롤). 기본 고정.
+function calDensity(){ try{ const v = localStorage.getItem('tc_calDensity'); return (v === 'dense' || v === 'expand') ? v : 'fixed'; }catch(_){ return 'fixed'; } }
+function setCalDensity(v){ try{ localStorage.setItem('tc_calDensity', (v === 'dense' || v === 'expand') ? v : 'fixed'); }catch(_){} renderGrid(); }
 function renderGrid(){
+  const dens = calDensity();
   $('#btnTitle').textContent = `${view.y}년 ${view.m+1}월`;
   document.title = `수행과제 캘린더 — ${view.y}년 ${view.m+1}월`;
   const first = new Date(view.y, view.m, 1);
@@ -2235,7 +2275,7 @@ function renderGrid(){
     if(dow===0 || hol) numCls += ' sun'; else if(dow===6) numCls += ' sat';
     const list = byDate[ds] || [];
     // C. 칩을 (성능상 최대 12개까지) 렌더 → fitChips가 셀 높이에 맞춰 들어갈 만큼만 표시하고 나머지는 +N으로 접음
-    const RENDER_CAP = 12;
+    const RENDER_CAP = dens === 'expand' ? 60 : 12;
     const wk = Math.floor(i / 7);
     // 레인 배치: 기간 막대는 배정 레인 위치에 고정. 그 날 비어있는 레인(spacer 예정)은 단일 칩으로 backfill해
     // 세로 낭비를 줄인다(그 날 해당 레인엔 막대가 없으므로 막대 연속성과 무관). 남은 단일은 아래로.
@@ -2263,8 +2303,10 @@ function renderGrid(){
       <div class="chips" data-extra="${extra}">${chips}</div></div>`;
     if(i % 7 === 6) html += '</div>';
   }
-  $('#grid').innerHTML = html;
-  fitChips();
+  const g = $('#grid'); g.innerHTML = html;
+  g.classList.toggle('dense', dens === 'dense');
+  g.classList.toggle('expand', dens === 'expand');
+  if(dens !== 'expand') fitChips();   // 펼침은 전부 표시(캡 없음) → fitChips 생략
 }
 
 // C. 셀 높이에 맞춰 칩을 들어갈 만큼만 보이고 나머지는 '+N개 더보기'로 접는다(고정 3개 대신 동적).
@@ -2759,6 +2801,11 @@ function deleteRoom(name){
   toast(`회의실 ‘${name}’ 삭제됨`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); refreshOpenRoomSelects(); } }});
 }
 function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal('#roomModal'); setTimeout(() => $('#roomName').focus(), 30); }
+function openSettings(){
+  const cur = calDensity();
+  $$('#settingsModal input[name="calDensity"]').forEach(r => { r.checked = (r.value === cur); });
+  openModal('#settingsModal');
+}
 function openCatModal(){
   resetCatForm();
   $('#cGitAuthor').value = getGitAuthor();
@@ -3797,6 +3844,8 @@ function bind(){
   };
   $('#dayPanel').addEventListener('pointerup', fbEnd);
   $('#dayPanel').addEventListener('pointercancel', fbEnd);
+  $('#btnSettings').addEventListener('click', () => { closeMore(); openSettings(); });
+  $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
   $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
   $('#btnImport').addEventListener('click', () => { closeMore(); $('#importFile').click(); });
