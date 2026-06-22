@@ -612,6 +612,16 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-title::placeholder{color:var(--faint)}
 .qa-ctx{display:flex;gap:8px;margin-top:12px}
 .qa-ctx input[type=date],.qa-ctx select{flex:1;min-width:0;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
+/* 시간 영역(첫 화면, 옵션 더보기 밖) — 시·분 분리 드롭다운 */
+.qa-when{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
+.qa-when .qa-chk{margin-bottom:9px}
+.qa-trow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px}
+.qa-tcell{display:flex;align-items:center;gap:7px}
+.qa-tlbl{font-size:var(--fs-meta);color:var(--muted);min-width:28px}
+.qa-tarrow{color:var(--faint)}
+.timepick{display:inline-flex;align-items:center;gap:3px}
+.timepick select{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 8px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text);font-variant-numeric:tabular-nums}
+.timepick .t-sep{color:var(--muted);font-weight:700}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
@@ -813,10 +823,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <section class="fsect">
         <div class="fsect-cap">시간 · 장소</div>
         <label class="check"><input type="checkbox" id="fAllDay"> 종일</label>
-        <div class="row2" id="timeRow" style="margin-top:8px">
-          <div><label for="fStart">시작 시간</label><input type="time" id="fStart"></div>
-          <div><label for="fEnd">종료 시간</label><input type="time" id="fEnd"></div>
+        <div class="qa-trow" id="timeRow" style="margin-top:8px">
+          <span class="qa-tcell"><span class="qa-tlbl">시작</span><span class="timepick"><select id="fStartH" aria-label="시작 시"></select><span class="t-sep">:</span><select id="fStartM" aria-label="시작 분"></select></span></span>
+          <span class="qa-tarrow">→</span>
+          <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="fEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="fEndM" aria-label="종료 분"></select></span></span>
         </div>
+        <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
         <div style="margin-top:8px"><label for="fLoc">장소</label><input type="text" id="fLoc" maxlength="200" placeholder="예: 회의실 A / 온라인"></div>
       </section>
       <section class="fsect" id="recurSect">
@@ -880,6 +892,15 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="qa-ctx">
       <input type="date" id="qaDate" title="날짜">
       <select id="qaCat" title="과제"></select>
+    </div>
+    <div class="qa-when" id="qaWhen">
+      <label class="qa-chk"><input type="checkbox" id="qaAllDay"> 종일</label>
+      <div class="qa-trow" id="qaTimeRow">
+        <span class="qa-tcell"><span class="qa-tlbl">시작</span><span class="timepick"><select id="qaStartH" aria-label="시작 시"></select><span class="t-sep">:</span><select id="qaStartM" aria-label="시작 분"></select></span></span>
+        <span class="qa-tarrow">→</span>
+        <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="qaEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="qaEndM" aria-label="종료 분"></select></span></span>
+      </div>
+      <div class="qa-hint" id="qaTimeHint" aria-live="polite"></div>
     </div>
     <div class="qa-detail hidden" id="qaDetail"></div>
     <div class="qa-foot">
@@ -2204,6 +2225,8 @@ function updateRecurPreview(){
 }
 function openEntryModal(mode, ref){
   fillCatSelect($('#fCat'));
+  fillTimeSelects($('#fStartH'), $('#fStartM')); fillTimeSelects($('#fEndH'), $('#fEndM'));
+  $('#fTimeHint').textContent = '';
   if(mode === 'edit'){
     const e = entryById(ref); if(!e) return;
     editingId = e.id;
@@ -2212,8 +2235,8 @@ function openEntryModal(mode, ref){
     $('#fCat').value = e.categoryId || '';
     $('#fDate').value = e.date;
     $('#fAllDay').checked = e.allDay;
-    $('#fStart').value = e.startTime || '';
-    $('#fEnd').value = e.endTime || '';
+    writeTimeSel($('#fStartH'), $('#fStartM'), e.startTime); writeTimeSel($('#fEndH'), $('#fEndM'), e.endTime);
+    fEndDirty = !!e.endTime;
     $('#fLoc').value = e.location || '';
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
@@ -2224,7 +2247,8 @@ function openEntryModal(mode, ref){
     $('#fCat').value = filterCatId || '';
     $('#fDate').value = ref || selectedDate;
     $('#fAllDay').checked = false;
-    $('#fStart').value = ''; $('#fEnd').value = '';
+    writeTimeSel($('#fStartH'), $('#fStartM'), ''); writeTimeSel($('#fEndH'), $('#fEndM'), '');
+    fEndDirty = false;
     $('#fLoc').value = '';
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
@@ -2260,10 +2284,10 @@ function saveEntryFromForm(){
   const date = $('#fDate').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 선택하세요', 'warn'); $('#fDate').focus(); return; }
   const allDay = $('#fAllDay').checked;
-  const startTime = allDay ? '' : $('#fStart').value;
-  const endTime   = allDay ? '' : $('#fEnd').value;
+  const startTime = allDay ? '' : readTimeSel($('#fStartH'), $('#fStartM'));
+  const endTime   = allDay ? '' : readTimeSel($('#fEndH'), $('#fEndM'));
   if(startTime && endTime && endTime < startTime){
-    toast('종료 시간이 시작 시간보다 빠릅니다', 'warn'); $('#fEnd').focus(); return;
+    toast('종료 시간이 시작 시간보다 빠릅니다', 'warn'); $('#fEndH').focus(); return;
   }
   // 기간(범위)
   let endDate = '';
@@ -2922,11 +2946,56 @@ function editEntry(id){
   if(e && e.source !== 'git' && !(e.recur && e.recur.freq)) openQuickAdd(null, 'event', id);
   else openEntryModal('edit', id);
 }
+/* ---------- 시·분 분리 시각 select (네이티브 time 대체 — 분 고르기 쉽게) ---------- */
+function fillTimeSelects(hSel, mSel){
+  if(!hSel || !mSel) return;
+  if(!hSel.options.length){ let o = '<option value="">--</option>'; for(let h=0;h<24;h++){ const v=String(h).padStart(2,'0'); o += `<option value="${v}">${v}</option>`; } hSel.innerHTML = o; }
+  if(!mSel.options.length){ let o = '<option value="">--</option>'; for(let m=0;m<60;m+=5){ const v=String(m).padStart(2,'0'); o += `<option value="${v}">${v}</option>`; } mSel.innerHTML = o; }
+}
+function readTimeSel(hSel, mSel){ if(!hSel || !mSel) return ''; const h=hSel.value, m=mSel.value; return (h && m) ? `${h}:${m}` : ''; }
+function writeTimeSel(hSel, mSel, hhmm){
+  if(!hSel || !mSel) return;
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm||'')){ hSel.value=''; mSel.value=''; return; }
+  const [h,m] = hhmm.split(':');
+  if(![...mSel.options].some(o => o.value === m)){ const o=document.createElement('option'); o.value=m; o.textContent=m; mSel.appendChild(o); }   // 비-5분(구버전) 값 보존
+  hSel.value = h; mSel.value = m;
+}
+function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+60; if(t>=1440) t=1439; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
+let qaEndDirty = false, _qaAutoEndWriting = false;
+const qaTimeEls = () => ({ sh:$('#qaStartH'), sm:$('#qaStartM'), eh:$('#qaEndH'), em:$('#qaEndM') });
+function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : 'flex'; }
+function qaAutoEnd(){   // 시작 변경 시 종료 자동 +1h (사용자가 종료 건드리면 보존)
+  if(qaEndDirty) return;
+  const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
+  _qaAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _qaAutoEndWriting=false;
+  const hint=$('#qaTimeHint'); if(hint) hint.textContent='종료 자동 1시간 뒤 (직접 바꿀 수 있어요)';
+}
+function qaEndChanged(){   // 사용자가 종료를 직접 바꿈 → dirty + 종료<시작 자동보정
+  if(_qaAutoEndWriting) return;
+  qaEndDirty=true; const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm), en=readTimeSel(t.eh,t.em);
+  if(s && en && en < s){ _qaAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _qaAutoEndWriting=false; const hint=$('#qaTimeHint'); if(hint) hint.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
+}
+// entryModal(자세히 편집) 시각 — quick-add와 동일 동작(공유 헬퍼)
+let fEndDirty = false, _fAutoEndWriting = false;
+const fTimeEls = () => ({ sh:$('#fStartH'), sm:$('#fStartM'), eh:$('#fEndH'), em:$('#fEndM') });
+function fAutoEnd(){
+  if(fEndDirty) return;
+  const t=fTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
+  _fAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _fAutoEndWriting=false;
+  const h=$('#fTimeHint'); if(h) h.textContent='종료 자동 1시간 뒤 (직접 바꿀 수 있어요)';
+}
+function fEndChanged(){
+  if(_fAutoEndWriting) return;
+  fEndDirty=true; const t=fTimeEls(); const s=readTimeSel(t.sh,t.sm), en=readTimeSel(t.eh,t.em);
+  if(s && en && en < s){ _fAutoEndWriting=true; writeTimeSel(t.eh,t.em, plusOneHM(s)); _fAutoEndWriting=false; const h=$('#fTimeHint'); if(h) h.textContent='종료가 시작보다 빨라 1시간 뒤로 맞췄어요'; }
+}
 function openQuickAdd(date, type, entryId){
   qaEditId = entryId || null;
   const e = qaEditId ? entryById(qaEditId) : null;
   qaType = e ? 'event' : ((type === 'todo') ? 'todo' : 'event');   // 편집은 일정만(할일은 패널 인라인 편집)
   fillCatSelect($('#qaCat'), '과제 없음');
+  fillTimeSelects($('#qaStartH'), $('#qaStartM')); fillTimeSelects($('#qaEndH'), $('#qaEndM'));
+  const _qaHint = $('#qaTimeHint'); if(_qaHint) _qaHint.textContent = '';
   // 편집 모드: 일정/할일 토글 숨기고 '일정 수정' 타이틀 + '자세히 편집' 노출
   $('#quickAdd .qa-tg').classList.toggle('hidden', !!e);
   $('#qaEditTitle').classList.toggle('hidden', !e);
@@ -2941,17 +3010,22 @@ function openQuickAdd(date, type, entryId){
     $('#qaCat').value = (filterCatId || noteFilterCat || '');
     $('#qaTitle').value = '';
     $('#qaDate').value = (/^\d{4}-\d{2}-\d{2}$/.test(date) ? date : selectedDate);
+    $('#qaAllDay').checked = false;   // 신규 일정: 종일 기본 OFF(시간 입력 첫 화면 노출)
+    { const t = qaTimeEls(); writeTimeSel(t.sh, t.sm, ''); writeTimeSel(t.eh, t.em, ''); }
+    qaEndDirty = false;
   }
+  qaSyncTimeRow();
   qaSyncType();   // 상세는 아직 숨김 → qaMoreLabel만(프리필 덮어쓰기 방지)
   if(e){          // 편집: 상세를 펼치고 기존 값 프리필
     qaRenderDetail(); $('#qaDetail').classList.remove('hidden'); $('#qaMore').textContent = '옵션 접기 ▴';
     $('#qaAllDay').checked = !!e.allDay;
-    const s = $('#qaStart'), en = $('#qaEnd'); if(s) s.value = e.startTime || ''; if(en) en.value = e.endTime || '';
+    { const t = qaTimeEls(); writeTimeSel(t.sh, t.sm, e.startTime); writeTimeSel(t.eh, t.em, e.endTime); }
+    qaEndDirty = !!e.endTime;
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
     const lc = $('#qaLoc'); if(lc) lc.value = e.location || '';
     const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
-    $('#qaAllDay').dispatchEvent(new Event('change'));   // 시간 행 표시 동기화
+    qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시
   }
   openModal('#quickAdd');
   setTimeout(() => $('#qaTitle').focus(), 30);
@@ -2960,14 +3034,14 @@ function qaSyncType(){
   $$('#quickAdd .qa-type').forEach(b => { const on = b.dataset.qatype === qaType; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   $('#qaTitle').placeholder = (qaType === 'todo') ? '할 일' : '일정 제목';
   $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
+  const w = $('#qaWhen'); if(w) w.classList.toggle('hidden', qaType !== 'event');   // 시간 영역은 일정에만
+  if(qaType === 'event') qaSyncTimeRow();
   if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
 }
-function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (종일·시간·장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
+function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<label class="qa-chk"><input type="checkbox" id="qaAllDay" checked> 종일</label>
-       <div class="row2" id="qaTimeRow" style="display:none"><div><label class="qa-lb">시작</label><input type="time" id="qaStart"></div><div><label class="qa-lb">종료</label><input type="time" id="qaEnd"></div></div>
-       <label class="qa-lb">장소</label><input type="text" id="qaLoc" maxlength="200" placeholder="예: 회의실 A / 온라인">
+    ? `<label class="qa-lb">장소</label><input type="text" id="qaLoc" maxlength="200" placeholder="예: 회의실 A / 온라인">
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -2976,9 +3050,6 @@ function qaRenderDetail(){
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`;
   if(qaType === 'event'){
-    const ad = $('#qaAllDay'), tr = $('#qaTimeRow');
-    const sync = () => { tr.style.display = ad.checked ? 'none' : 'flex'; };
-    ad.addEventListener('change', sync); sync();
     const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
     const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
       if(on) rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
@@ -2992,9 +3063,10 @@ function qaToggleDetail(){
 }
 // 현재 quick-add(일정) 폼값 → entry data (검증·토스트 없음 — qaSave/에스컬레이션 공유, 값 이월용)
 function qaEventFormData(){
-  const adEl = $('#qaAllDay'); const allDay = adEl ? adEl.checked : true;
-  const st = (!allDay && $('#qaStart')) ? $('#qaStart').value : '';
-  const en = (!allDay && $('#qaEnd')) ? $('#qaEnd').value : '';
+  const adEl = $('#qaAllDay'); const allDay = adEl ? adEl.checked : false;
+  const t = qaTimeEls();
+  const st = allDay ? '' : readTimeSel(t.sh, t.sm);
+  const en = allDay ? '' : readTimeSel(t.eh, t.em);
   const rf = $('#qaRecur') ? $('#qaRecur').value : '';
   const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
   const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc');
@@ -3131,6 +3203,12 @@ function bind(){
   /* 빠른 등록(quick-create) */
   $('#quickAdd .qa-tg').addEventListener('click', ev => { const b = ev.target.closest('.qa-type'); if(b){ qaType = b.dataset.qatype; qaSyncType(); } });
   $('#qaMore').addEventListener('click', qaToggleDetail);
+  // 시각 영역(정적): 종일 토글·시작→종료 자동+1h·종료 보정 1회 배선
+  $('#qaAllDay').addEventListener('change', qaSyncTimeRow);
+  $('#qaStartH').addEventListener('change', qaAutoEnd);
+  $('#qaStartM').addEventListener('change', qaAutoEnd);
+  $('#qaEndH').addEventListener('change', qaEndChanged);
+  $('#qaEndM').addEventListener('change', qaEndChanged);
   $('#qaAdvanced').addEventListener('click', () => {   // 단순 편집기 → 전체 편집기. 현재 폼 변경분을 먼저 반영(값 이월)
     const id = qaEditId; if(!id) return;
     const d = qaEventFormData();
@@ -3427,6 +3505,8 @@ function bind(){
 
   /* 기록 모달 */
   $('#fAllDay').addEventListener('change', () => { toggleTimeRow(); toggleRangeRow(); });
+  $('#fStartH').addEventListener('change', fAutoEnd); $('#fStartM').addEventListener('change', fAutoEnd);
+  $('#fEndH').addEventListener('change', fEndChanged); $('#fEndM').addEventListener('change', fEndChanged);
   $('#fCat').addEventListener('change', updateGitRow);
   $('#btnGitFetch').addEventListener('click', fetchCommitsIntoModal);
   /* 기간·반복 */
