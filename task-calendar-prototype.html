@@ -1001,6 +1001,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label class="set-opt"><input type="radio" name="calDensity" value="expand"><span><b>펼침 (스크롤)</b><br><span class="set-od">칸이 내용만큼 늘어나 전부 표시(잘림 없음). 회사 캘린더식 — 월 전체 한눈에는 사라짐.</span></span></label>
       </div>
       <div class="set-sec set-sec-top">
+        <div class="set-lb">일정 시작 알림</div>
+        <div class="set-hint">시작시각이 있는 일정을 <b>1시간 전</b>부터 알립니다. ‘확인’ 전까지 <b>30·10·5분 전</b>으로 다시 알리며(무응답 시), 무음 환경을 위해 화면 알림 + 작업표시줄 깜빡임으로 표시합니다.</div>
+        <label class="check" style="margin:2px 0"><input type="checkbox" id="remEnabled"> <b>시작 알림 켜기</b></label>
+      </div>
+      <div class="set-sec set-sec-top">
         <div class="set-lb">회사 일간보고 (netcus)</div>
         <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성합니다. 자격증명은 이 PC에 <b>암호화(DPAPI)</b> 저장되며, 데스크톱 위젯에서만 동작합니다.</div>
         <label class="qa-lb" for="ncId">ID</label><input type="text" id="ncId" class="set-in" autocomplete="off" placeholder="예: phmin">
@@ -1701,6 +1706,7 @@ function save(){
   if(HOST){ // 위젯 모드: 호스트(WPF)가 XML 파일로 영속화
     try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'save', xml: toXML()})); }
     catch(e){ console.warn('호스트 저장 실패', e); }
+    pushReminders();   // 시간·삭제·추가 변경을 알림 스케줄에 반영
     return;
   }
   try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
@@ -1716,6 +1722,7 @@ window.__applyXml = function(text){
       state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
+      pushReminders();   // 초기 로드 후 알림 스케줄 동기화
     }catch(e){
       // 파싱 실패: 절대 기본값으로 덮어쓰지 않는다 — 호스트에 원본 백업을 요청하고 경고
       console.warn('호스트 데이터 적용 실패', e);
@@ -3748,6 +3755,7 @@ function applyTheme(theme){
   root.classList.toggle('dark', effectiveDark(theme));
   try{ localStorage.setItem('tc_theme', theme); }catch(_){}
   $$('#themeMenu [data-theme]').forEach(b => b.classList.toggle('on', b.dataset.theme === theme));
+  pushReminders();   // 알림 카드도 테마 따라가므로 호스트에 재통지
 }
 function initTheme(){
   let t = 'system';
@@ -3947,6 +3955,7 @@ function bind(){
   $('#btnSettings').addEventListener('click', () => { closeMore(); openSettings(); });
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
   $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
+  { const re = $('#remEnabled'); if(re) re.addEventListener('change', () => hpost({ cmd:'reminderToggle', on: re.checked })); }
   $('#ncSave').addEventListener('click', () => {
     const id = $('#ncId').value.trim(), pw = $('#ncPw').value;
     if(!id){ toast('ID를 입력하세요', 'warn'); $('#ncId').focus(); return; }
@@ -4628,6 +4637,33 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
 }
 setTimeout(maybeShowPatch, 1500);   // 새 버전 첫 실행 시 변경사항 1회 자동 안내
 function hpost(o){ try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){} }
+
+/* ===== 시작 알림(리마인더) — 호스트(WPF)가 타이머/창 담당. JS는 48h 발생 + 테마만 푸시 ===== */
+function reminderTheme(){   // 호스트 카드 팔레트용 해석된 테마(system→라이트/다크)
+  let t = 'system'; try{ t = localStorage.getItem('tc_theme') || 'system'; }catch(_){}
+  if(t === 'system') return effectiveDark('system') ? 'dark' : 'light';
+  return ['light','dark','forest','sepia','contrast'].includes(t) ? t : 'light';
+}
+function buildReminderOccs(){   // startTime 있는 일정만, 향후 48h 발생(반복 포함)
+  if(!HOST) return [];
+  const today = todayYmd(), to = addDays(today, 2);
+  const out = [];
+  for(const e of state.entries){
+    if(e.allDay) continue;
+    if(!/^\d{1,2}:\d{2}$/.test(e.startTime || '')) continue;   // 명시적 시작시각만
+    const st = ('0' + e.startTime).slice(-5);                  // HH:mm 0패딩(호스트 파싱 안전)
+    const c = catById(e.categoryId), col = validColor(c && c.color);
+    for(const occ of expandOccurrences(e, today, to)){
+      out.push({ key: e.id + '|' + occ._occStart + '|' + st, seriesId: e.id, occStart: occ._occStart,
+        startTime: st, endTime: (e.endTime || ''), loc: (e.location || ''), title: e.title || '', color: col });
+    }
+  }
+  return out;
+}
+function pushReminders(){ if(!HOST) return; try{ hpost({ cmd:'reminderSync', occ: buildReminderOccs(), theme: reminderTheme() }); }catch(_){} }
+window.__setReminders = function(on){   // 호스트가 현재 on/off 통지 → 설정 토글 반영
+  const t = document.querySelector('#remEnabled'); if(t) t.checked = !!on;
+};
 let __gesture = null; // {type:'move'|'resize', sx, sy, dpr}
 let __pinned = true;  // 바탕화면 부착 상태 — 부착 중에는 이동(드래그) 잠금
 function __gBegin(type, e, el, edge){

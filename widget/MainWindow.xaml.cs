@@ -356,6 +356,7 @@ namespace TaskCalendarWidget
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
+                        ReminderInit();   // 시작 알림 타이머·상태 1회 초기화 + __setReminders 통지
                         break;
                     case "save":
                         if (doc.RootElement.TryGetProperty("xml", out var xmlEl))
@@ -389,6 +390,14 @@ namespace TaskCalendarWidget
                         _ = NetcusSubmit(req);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
                         break;
                     }
+                    // ----- 시작 알림(리마인더) -----
+                    case "reminderSync":
+                        RemSync(doc);
+                        break;
+                    case "reminderToggle":
+                        SetRemindersEnabled(doc.RootElement.TryGetProperty("on", out var ronEl) && ronEl.ValueKind == JsonValueKind.True);
+                        break;
+
                     case "netcusWeekSubmit":
                     {
                         var wreq = new NetcusWeekReq
@@ -855,6 +864,7 @@ namespace TaskCalendarWidget
             SaveSettings();
             CleanupScrim();  // 넓게 보기 중 종료 시 딤 배경 고스트 방지
             CleanupTray();   // 창이 실제로 닫히면 트레이 정리(잔상 방지)
+            CleanupReminders();   // 열린 알림 창·타이머 정리
         }
 
         // ============ 트레이 아이콘 (옵션) ============
