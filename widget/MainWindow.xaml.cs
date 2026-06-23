@@ -453,8 +453,9 @@ namespace TaskCalendarWidget
                     case "gitlog":
                     {
                         string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"),
-                               author = GetStr(doc, "author"), since = GetStr(doc, "since"), until = GetStr(doc, "until");
-                        _ = RunGitLogAsync(reqId, repo, author, since, until);
+                               author = GetStr(doc, "author"), since = GetStr(doc, "since"), until = GetStr(doc, "until"),
+                               vcs = GetStr(doc, "vcs");
+                        _ = RunGitLogAsync(reqId, repo, author, since, until, vcs);
                         break;
                     }
                     case "gitauthor":
@@ -520,10 +521,14 @@ namespace TaskCalendarWidget
         // 과제별 로컬 저장소에서 git log/config를 실행해 '내 커밋'을 읽어 웹(HTML)으로 회신한다.
         // git CLI를 사용하므로 이 PC에 git이 설치돼 있어야 한다(보고서 작성용 개발 PC라면 보통 설치됨).
 
-        private async Task RunGitLogAsync(string reqId, string repo, string author, string since, string until)
+        private async Task RunGitLogAsync(string reqId, string repo, string author, string since, string until, string vcs = "")
         {
             object payload;
-            try { payload = await Task.Run(() => DetectVcs(repo) == "svn" ? (GitResult)SvnLog(repo, author, since, until) : GitLog(repo, author, since, until)); }
+            try
+            {
+                string useVcs = string.IsNullOrWhiteSpace(vcs) ? DetectVcs(repo) : vcs;   // 사용자 선택 우선, 없으면 자동판별
+                payload = await Task.Run(() => useVcs == "svn" ? (GitResult)SvnLog(repo, author, since, until) : GitLog(repo, author, since, until));
+            }
             catch (Exception ex) { payload = new GitResult { ok = false, error = "예외: " + ex.Message }; }
             GitReply(reqId, payload);
         }

@@ -5,6 +5,16 @@
 
 ---
 
+## 🆕 2026-06-23 — SVN 연동 2차: 과제 관리에 git/svn 선택 UI + 실저장소 읽기 검증
+
+- **과제 편집 폼**: "버전관리 종류" **Git/SVN 라디오** 추가 → 종류 선택 후 폴더 지정. svn 선택 시 라벨 전환(저장소→작업복사본, 자동감지 숨김). 폴더 선택 시 `.git/.svn` 자동 감지로 종류 자동 반영(pickfolder `vcs` 회신).
+- **데이터모델**: category에 `vcs`('git'|'svn', 기본 git·미기재 하위호환) — toXML/fromXML/정규화/compact·roundtrip 반영. `addCategory`/`updateCategory` 시그니처 확장.
+- **작성자 단일화**: git `--author`·svn author 모두 **부분일치**라, 전역 작성자에 사용자명(예 `phmin`) 하나면 git 이메일·svn 계정 둘 다 매칭. 과제별 작성자 불필요(힌트 보완).
+- **gitlog 메시지에 `vcs` 전달** → 호스트 `RunGitLogAsync(…, vcs)`가 사용자 선택 우선(없으면 DetectVcs).
+- **검증**: 로컬 SlikSVN로 svn 저장소 생성→`--encoding UTF-8` 한글 커밋 2건→**호스트와 동일 명령**(`svn log <wc> --xml -r {…} --non-interactive` + UTF8 읽기)으로 **r2/r1·작성자·한글 정상 추출 PASS**. (앞선 깨짐은 테스트 커밋 인코딩 artifact였고 올바른 UTF-8 커밋은 완벽.) 앱 in-app 클릭 검증은 사용자 진행.
+
+---
+
 ## 🆕 2026-06-23 — 신규: SVN 커밋 연동 (TortoiseSVN/SlikSVN `svn.exe`) — git과 동일 작업일지
 
 과제별 버전관리가 git 또는 svn인 환경 지원. 경로의 `.git`/`.svn` 마커로 **자동 판별**해 호스트가 알맞은 CLI를 돌리고, 결과를 git과 **동일한 GitResult/GitCommit 형태**로 회신 → 작업일지·보고서·기간 일괄이 구분 없이 동작.
