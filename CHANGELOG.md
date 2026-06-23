@@ -5,6 +5,18 @@
 
 ---
 
+## 🆕 2026-06-23 — 신규: SVN 커밋 연동 (TortoiseSVN/SlikSVN `svn.exe`) — git과 동일 작업일지
+
+과제별 버전관리가 git 또는 svn인 환경 지원. 경로의 `.git`/`.svn` 마커로 **자동 판별**해 호스트가 알맞은 CLI를 돌리고, 결과를 git과 **동일한 GitResult/GitCommit 형태**로 회신 → 작업일지·보고서·기간 일괄이 구분 없이 동작.
+- **`widget/Svn.cs`(partial)**: `DetectVcs`(.svn→svn, else IsGitRepo→git) · `SvnExe`(PATH `svn`, 없으면 TortoiseSVN/SlikSVN bin 자동탐색) · `SvnLog`(=`svn log <wc> --xml -r {until+1}:{since} --limit 1000 --non-interactive`).
+- **파싱**: `<logentry revision author date msg>` → 작성자 substring(대소문자무시) 필터(svn엔 --author 없음) · msg 첫 줄=제목 · revision→`rN` · **UTC date→로컬 ISO** 변환 후 [since,until] 로컬 날짜 재필터.
+- **한글**: `StandardOutputEncoding=UTF8`(svn --xml은 항상 UTF-8 — git 연동과 동일 메커니즘).
+- **MainWindow 분기**: gitlog→svn이면 SvnLog · gitauthor→svn은 "사용자명 직접 입력" 안내(자동감지 불가) · gitcheck/pickfolder→`vcs` 필드 추가, .svn도 저장소로 인정.
+- **차이**: svn log는 **내부 SVN 서버 접속** 필요(git처럼 완전 로컬 아님, 캐시 자격 사용) · 작성자는 본인 SVN 사용자명을 과제에 입력해야 '내 커밋' 필터됨.
+- **검증**: 로컬 svn(SlikSVN)으로 svn log --xml 추출·작성자필터·UTC→로컬·revision 매핑 통과. **실저장소 한글·서버접속은 사용자 TortoiseSVN 환경에서 최종 확인.** (UI에 svn 사용자명 입력란은 후속)
+
+---
+
 ## 🆕 2026-06-23 — 신규: 일정 시작 알림(리마인더) — 에스컬레이션 + 테마별 카드 (검토→설계→구현)
 
 시작시각 있는 일정에 **1시간 전→(무응답)30→10→5분 전** 알림. **확인** 누르면 그 발생 영구 종료, 무응답/닫기는 다음 단계 자동 재알림. 워크플로 검토(메커니즘 조사+설계+적대 검증) 후 구현.

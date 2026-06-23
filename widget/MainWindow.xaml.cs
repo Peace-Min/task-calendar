@@ -523,7 +523,7 @@ namespace TaskCalendarWidget
         private async Task RunGitLogAsync(string reqId, string repo, string author, string since, string until)
         {
             object payload;
-            try { payload = await Task.Run(() => GitLog(repo, author, since, until)); }
+            try { payload = await Task.Run(() => DetectVcs(repo) == "svn" ? (GitResult)SvnLog(repo, author, since, until) : GitLog(repo, author, since, until)); }
             catch (Exception ex) { payload = new GitResult { ok = false, error = "예외: " + ex.Message }; }
             GitReply(reqId, payload);
         }
@@ -533,8 +533,13 @@ namespace TaskCalendarWidget
             object payload;
             try
             {
-                var (ok, email, name, err) = await Task.Run(() => GitAuthor(repo));
-                payload = new { ok, email, name, error = err };
+                if (DetectVcs(repo) == "svn")
+                    payload = new { ok = false, email = "", name = "", error = "SVN은 작성자 자동 감지가 안 됩니다 — 본인 SVN 사용자명을 직접 입력하세요." };
+                else
+                {
+                    var (ok, email, name, err) = await Task.Run(() => GitAuthor(repo));
+                    payload = new { ok, email, name, error = err };
+                }
             }
             catch (Exception ex) { payload = new { ok = false, email = "", name = "", error = ex.Message }; }
             GitReply(reqId, payload);
@@ -621,9 +626,10 @@ namespace TaskCalendarWidget
                 if (!string.IsNullOrWhiteSpace(start) && Directory.Exists(start)) dlg.InitialDirectory = start;
                 bool ok = dlg.ShowDialog(this) == true;
                 string path = ok ? dlg.FolderName : "";
-                bool isRepo = ok && IsGitRepo(path);
-                string email = isRepo ? RunGitConfig(path, "user.email") : "";
-                GitReply(reqId, new { ok, path, isRepo, email, error = "" });
+                string vcs = ok ? DetectVcs(path) : "";
+                bool isRepo = vcs == "git" || vcs == "svn";
+                string email = vcs == "git" ? RunGitConfig(path, "user.email") : "";
+                GitReply(reqId, new { ok, path, isRepo, vcs, email, error = "" });
             }
             catch (Exception ex)
             {
@@ -640,9 +646,10 @@ namespace TaskCalendarWidget
                 payload = await Task.Run(() =>
                 {
                     bool exists = !string.IsNullOrWhiteSpace(repo) && Directory.Exists(repo);
-                    bool isRepo = exists && IsGitRepo(repo);
-                    string email = isRepo ? RunGitConfig(repo, "user.email") : "";
-                    return (object)new { ok = true, exists, isRepo, email, error = "" };
+                    string vcs = exists ? DetectVcs(repo) : "";
+                    bool isRepo = vcs == "git" || vcs == "svn";
+                    string email = vcs == "git" ? RunGitConfig(repo, "user.email") : "";
+                    return (object)new { ok = true, exists, isRepo, vcs, email, error = "" };
                 });
             }
             catch (Exception ex) { payload = new { ok = false, exists = false, isRepo = false, email = "", error = ex.Message }; }
