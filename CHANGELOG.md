@@ -12,6 +12,7 @@
 - **작성자 단일화**: git `--author`·svn author 모두 **부분일치**라, 전역 작성자에 사용자명(예 `phmin`) 하나면 git 이메일·svn 계정 둘 다 매칭. 과제별 작성자 불필요(힌트 보완).
 - **gitlog 메시지에 `vcs` 전달** → 호스트 `RunGitLogAsync(…, vcs)`가 사용자 선택 우선(없으면 DetectVcs).
 - **검증**: 로컬 SlikSVN로 svn 저장소 생성→`--encoding UTF-8` 한글 커밋 2건→**호스트와 동일 명령**(`svn log <wc> --xml -r {…} --non-interactive` + UTF8 읽기)으로 **r2/r1·작성자·한글 정상 추출 PASS**. (앞선 깨짐은 테스트 커밋 인코딩 artifact였고 올바른 UTF-8 커밋은 완벽.) 앱 in-app 클릭 검증은 사용자 진행.
+- **UI 폴리시(사용자 지적 반영)**: ① git/svn 라디오 **버튼 높이 불일치 수정** — `.modal label{display:block}`·`.git-card label{margin-top}`에 덮여 체크 시 높이가 41/29로 들쭉이던 것을 `.vcs-row .vcs-opt`(특이도↑)+고정 `height:32px`+`box-sizing`으로 동일화. ② **명칭 중립화**: 우측 탭·보고서 소스·도움말의 "Git 커밋 내역"→**"커밋 내역"**, 카드 배지 "Git 커밋"→"커밋"(Git·SVN 공통). 구버전 메모 파서 정규식(`[Git 커밋 …]`)은 하위호환 위해 유지.
 
 ---
 

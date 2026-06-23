@@ -331,9 +331,12 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .git-badge.off{background:#eef1f6;color:#7c8498;border:1px dashed var(--line-2)}
 .git-badge.ok{background:#e7f4ec;color:#2e7d52}
 .git-badge.warn{background:#fbf2dd;color:#8a6400}
-.vcs-row{display:flex;gap:8px;margin:4px 0 2px}
-.vcs-opt{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-body);padding:5px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);cursor:pointer;background:var(--panel)}
-.vcs-opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.vcs-row{display:flex;gap:8px;margin:6px 0 2px}
+/* 특이도 .vcs-row .vcs-opt(0,2,0)로 .modal label/.git-card label을 이기고, 고정 높이로 체크 여부와 무관하게 동일 크기 */
+.vcs-row .vcs-opt{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 16px;margin:0;box-sizing:border-box;line-height:1;font-size:var(--fs-body);font-weight:500;color:var(--text);border:1px solid var(--line-2);border-radius:var(--r-sm);cursor:pointer;background:var(--panel);transition:border-color .12s,background .12s}
+.vcs-row .vcs-opt:hover{border-color:var(--muted)}
+.vcs-row .vcs-opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);font-weight:600}
+.vcs-row .vcs-opt input{margin:0;accent-color:var(--accent)}
 .git-pick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .git-pick-row.empty #gitPath{display:none}
 .git-pick-row.empty #btnGitBrowse{flex:1 1 100%;width:100%}
@@ -534,7 +537,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .patch-list{margin:0;padding-left:20px}
 .patch-list li{font-size:var(--fs-body);color:var(--text);line-height:1.72;margin:6px 0;word-break:keep-all;overflow-wrap:anywhere}
 .pv-note{color:var(--muted);font-size:var(--fs-meta)}
-/* Git 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
+/* 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
 .nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
 .nd-commit .nd-ci .ic{width:15px;height:15px}
 .dp-dayctx .dp-ctx-n{font-weight:600;color:var(--accent);margin-left:2px}
@@ -938,7 +941,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <section class="fsect hidden" id="gitSect">
         <div class="fsect-cap">연동</div>
         <div class="git-row" id="gitRow">
-          <button class="btn sm" type="button" id="btnGitFetch">📥 이 과제의 Git 커밋 불러오기</button>
+          <button class="btn sm" type="button" id="btnGitFetch">📥 이 과제의 커밋 불러오기</button>
           <span class="git-hint" id="gitHint"></span>
         </div>
       </section>
@@ -1133,7 +1136,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span class="rpt-opt-lb">포함 항목</span>
           <label class="check" style="margin:0"><input type="checkbox" id="rptSrcEvent" checked> 일정</label>
           <label class="check" style="margin:0"><input type="checkbox" id="rptSrcTodo" checked> 할 일</label>
-          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> Git 커밋 내역</label>
+          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> 커밋 내역</label>
         </div>
         <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
       </div>
@@ -1160,7 +1163,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <ul>
           <li><b>＋ 새 기록</b> 또는 달력 날짜 <b>더블클릭</b>으로 일정·할 일 추가</li>
           <li>기록을 다른 날짜로 <b>드래그</b>해 이동</li>
-          <li>왼쪽은 달력, 오른쪽 패널은 선택한 날짜의 <b>일정 상세 · 할 일 · Git 커밋 내역</b></li>
+          <li>왼쪽은 달력, 오른쪽 패널은 선택한 날짜의 <b>일정 상세 · 할 일 · 커밋 내역</b></li>
         </ul>
       </section>
       <section class="help-sec">
@@ -1172,7 +1175,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </ul>
       </section>
       <section class="help-sec">
-        <h3>Git 커밋 내역</h3>
+        <h3>커밋 내역</h3>
         <ul>
           <li><b>과제 관리</b>에서 과제에 <b>Git 저장소 경로</b>를 지정하면, 그 날 내 커밋을 가져옵니다</li>
           <li><b>이 날 커밋</b>(단건) · <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록)</li>
@@ -1183,7 +1186,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <h3>보고서</h3>
         <ul>
           <li>오른쪽 패널 <b>보고서</b> → 기간(오늘/이번 주/…) 선택 → <b>과제별 [제목] : 시간</b> 자동 정리</li>
-          <li><b>하루</b> 보고서에서만 시간 직접 수정. 여러 날은 읽기전용 — 시간은 <b>Git 커밋 내역 탭의 공수 칸</b>·일정 편집에서 날짜별 입력</li>
+          <li><b>하루</b> 보고서에서만 시간 직접 수정. 여러 날은 읽기전용 — 시간은 <b>커밋 내역 탭의 공수 칸</b>·일정 편집에서 날짜별 입력</li>
           <li><b>복사</b>로 클립보드에 담아 사내 보고 양식에 붙여넣기</li>
         </ul>
       </section>
@@ -1226,7 +1229,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <button type="button" data-goto="g-edit">편집·이동·삭제</button>
         <button type="button" data-goto="g-todo">할 일</button>
         <button type="button" data-goto="g-cat">과제 관리</button>
-        <button type="button" data-goto="g-git">Git 커밋 내역</button>
+        <button type="button" data-goto="g-git">커밋 내역</button>
         <button type="button" data-goto="g-report">보고서</button>
         <button type="button" data-goto="g-hours">시간(공수)</button>
         <button type="button" data-goto="g-theme">테마</button>
@@ -1239,7 +1242,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <h3>1. 화면 구성</h3>
         <ul>
           <li><b>왼쪽 — 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
-          <li><b>오른쪽 패널 — 탭 3개</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>, <b>Git 커밋 내역</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
+          <li><b>오른쪽 패널 — 탭 3개</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>, <b>커밋 내역</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
           <li><b>과제 필터 줄</b>(달력 위): <b>전체</b> 또는 특정 과제만 눌러 그 과제 기록만 볼 수 있습니다.</li>
           <li><b>헤더 버튼</b>: 🔍 검색 · 🏷️ 과제 관리 · 🎨 테마 · ? 도움말 · ⋯ 더보기(<b>설정</b>·회의실 관리·데이터) · <b>＋ 새 기록</b> · 📄 보고서.</li>
           <li><b>⋯ 더보기 → 설정</b>: <b>월 보기 밀도</b>(고정 / 촘촘히 / 펼침·스크롤)를 고를 수 있습니다 — 칸이 넘칠 때 잘림 대신 펼쳐 보고 싶으면 ‘펼침’.</li>
@@ -1309,12 +1312,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
 
       <section class="guide-sec" id="g-git">
-        <h3>8. Git 커밋 내역 <span class="g-note">(데스크톱 위젯 전용)</span></h3>
+        <h3>8. 커밋 내역 <span class="g-note">(데스크톱 위젯 전용)</span></h3>
         <ul>
-          <li><b>과제 관리</b>에서 과제에 <b>Git 저장소 폴더</b>를 지정하고, 공통 <b>내 작성자</b>(이메일/이름)를 입력합니다.</li>
-          <li>오른쪽 <b>Git 커밋 내역</b> 탭에서 <b>이 날 커밋</b>(단건) 또는 <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록).</li>
+          <li><b>과제 관리</b>에서 과제마다 <b>버전관리 종류(Git/SVN)</b>를 고르고 <b>저장소(작업복사본) 폴더</b>를 지정한 뒤, 공통 <b>내 작성자</b>(Git 이메일·SVN 계정)를 입력합니다.</li>
+          <li>오른쪽 <b>커밋 내역</b> 탭에서 <b>이 날 커밋</b>(단건) 또는 <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록).</li>
           <li>가져온 <b>커밋 제목</b>이 그날의 업무로 등록되어 보고서의 업무 목록이 됩니다.</li>
-          <li>커밋 가져오기는 실제 git이 동작하는 <b>데스크톱 위젯</b>에서만 됩니다.</li>
+          <li>커밋 가져오기는 실제 git/svn이 동작하는 <b>데스크톱 위젯</b>에서만 됩니다. (SVN은 TortoiseSVN/SlikSVN의 svn.exe 필요)</li>
         </ul>
       </section>
 
@@ -1323,7 +1326,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <ol>
           <li>헤더의 <b>📄 보고서</b>를 엽니다.</li>
           <li>기간을 <b>오늘 / 이번 주 / 지난 주 / 이번 달 / 지난 달</b> 또는 날짜 범위로 정합니다.</li>
-          <li><b>포함 항목</b>에서 <b>일정 · 할 일 · Git 커밋 내역</b> 중 넣을 것만 체크합니다(체크한 것만 들어갑니다).</li>
+          <li><b>포함 항목</b>에서 <b>일정 · 할 일 · 커밋 내역</b> 중 넣을 것만 체크합니다(체크한 것만 들어갑니다).</li>
           <li>과제별로 <b>[제목] : 시간</b> 형태로 자동 정리됩니다. 업무 목록은 <b>- 항목</b>으로 나열됩니다.</li>
           <li><b>하루</b> 보고서에서는 과제별 시간을 칸에서 직접 수정할 수 있습니다(여러 날은 읽기전용).</li>
           <li><b>복사</b>로 클립보드에 담아 사내 보고 양식에 붙여넣습니다.</li>
@@ -1333,7 +1336,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <section class="guide-sec" id="g-hours">
         <h3>10. 시간(공수) 기록</h3>
         <ul>
-          <li>시간(공수)은 <b>하루 × 과제</b> 단위로 기록합니다. <b>Git 커밋 내역</b> 탭의 과제별 <b>시간 칸</b>이나, 하루 보고서의 시간 칸에 입력합니다.</li>
+          <li>시간(공수)은 <b>하루 × 과제</b> 단위로 기록합니다. <b>커밋 내역</b> 탭의 과제별 <b>시간 칸</b>이나, 하루 보고서의 시간 칸에 입력합니다.</li>
           <li>입력한 시간은 보고서 기간에 맞춰 과제별로 <b>합산</b>됩니다.</li>
           <li>시간 단위는 ‘시간(h)’이며 0.25(=15분) 단위로 적을 수 있습니다.</li>
         </ul>
@@ -1396,15 +1399,15 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <li><b>🎨 테마 6종 (신규)</b> — 시스템·라이트·다크·포레스트·세피아·고대비를 헤더에서 선택.</li>
         <li><b>⏰ 시간 입력 개선</b> — 시·분 드롭다운으로 빠르게, 시작 선택 시 <b>종료 자동 +1시간</b>, 시간·종일이 일정 추가 <b>첫 화면</b>에 바로.</li>
         <li><b>📍 회의실(장소) 관리 (신규)</b> — 자주 쓰는 회의실을 등록해 장소를 <b>드롭다운에서 선택</b>. 작성 중에도 ‘회의실 관리’ 바로가기로 추가(기본: 101·201·202호).</li>
-        <li><b>📄 보고서 항목 선택</b> — 보고서에 넣을 항목(<b>일정·할 일·Git 커밋 내역</b>)을 골라 생성. <b>할 일</b>도 보고서에 포함.</li>
+        <li><b>📄 보고서 항목 선택</b> — 보고서에 넣을 항목(<b>일정·할 일·커밋 내역</b>)을 골라 생성. <b>할 일</b>도 보고서에 포함.</li>
         <li><b>📖 도움말 강화 (신규)</b> — 간단 도움말 + <b>A–Z 자세한 사용설명서</b> + 변경사항(이 화면).</li>
-        <li><b>🖱 사용성</b> — 달력 칩 클릭 시 미리보기로 통일, 일정 상세 <b>시간·장소 강조</b>, 과제 필터 높이 조절, 과제 관리 헤더 버튼, ‘작업일지’ → <b>‘Git 커밋 내역’</b> 개명, 입력 폼 단순화, 앱 아이콘.</li>
+        <li><b>🖱 사용성</b> — 달력 칩 클릭 시 미리보기로 통일, 일정 상세 <b>시간·장소 강조</b>, 과제 필터 높이 조절, 과제 관리 헤더 버튼, ‘작업일지’ → <b>‘커밋 내역’</b> 개명, 입력 폼 단순화, 앱 아이콘.</li>
         <li><b>🛠 안정성</b> — 새 버전 실행 시 기존 인스턴스를 자동 인계하는 <b>자기교체</b>(배포 후 수동 종료 불필요), 실행 안 되던 문제 수정.</li>
       </ul>
       <div class="patch-ver"><span class="pv-tag old">v0.2</span><span class="pv-date">2026-06-18</span></div>
       <ul class="patch-list">
         <li><b>📄 보고서 (신규)</b> — 기간별 <b>과제별 [제목] : 시간</b> 자동 정리, 시간 합산, 복사.</li>
-        <li><b>🔗 Git 커밋 내역 연동 (신규)</b> — 과제에 저장소 연결 → 그날 커밋 자동 수집, 기간 일괄 불러오기.</li>
+        <li><b>🔗 커밋 내역 연동 (신규)</b> — 과제에 저장소 연결 → 그날 커밋 자동 수집, 기간 일괄 불러오기.</li>
         <li><b>🗓 달력·위젯 대폭 개선</b> — 여러 날 <b>기간 막대</b>, 8방향 크기 조절, <b>넓게 보기</b>, 좁은 폭 밀도, 칩 가시성.</li>
         <li><b>✅ 할 일</b> — 중요(★)·완료·기한/기간, 가시성 개선.</li>
         <li><b>📝 입력 폼 통일</b> — 빠른 추가 + ‘자세히 편집’.</li>
@@ -2417,7 +2420,7 @@ function cardHtml(e){
   const whenRow = (time || loc) ? `<div class="card-when">${time?`<span class="cw-time">${ICON.clock} ${esc(time)}</span>`:''}${loc?`<span class="cw-loc">${ICON.pin} ${esc(loc)}</span>`:''}</div>` : '';
   return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
-      ${git?`<span class="badge badge-git" title="Git 커밋에서 가져온 기록">${ICON.git} Git 커밋</span>`:''}
+      ${git?`<span class="badge badge-git" title="커밋에서 가져온 기록(Git·SVN)">${ICON.git} 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
     </div>
     <div class="card-title">${esc(e.title)}</div>
@@ -2437,7 +2440,7 @@ function dayDetailHtml(){
   const d = parseYmd(selectedDate);
   const dow = d.getDay();
   const hol = HOLIDAYS[selectedDate.slice(5)];
-  const list = entriesOn(selectedDate).filter(e => e.source !== 'git');   // 커밋은 'Git 커밋 내역' 탭 전용 — 일정 상세에서 제외
+  const list = entriesOn(selectedDate).filter(e => e.source !== 'git');   // 커밋은 '커밋 내역' 탭 전용 — 일정 상세에서 제외
   const dowCls = (dow===0||hol) ? 'sun' : (dow===6 ? 'sat' : '');
   let html = `<div class="dp-head">
     <div>
@@ -3204,8 +3207,8 @@ function buildReport(){
   const src = rptSources();
   try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
   if(!src.event && !src.todo && !src.git){
-    sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·Git).';
-    out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정·할 일·Git 커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
+    sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·커밋).';
+    out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정·할 일·커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
     return;
   }
   const { rows, grandMin, uninput } = collectReportData(from, to, src);
@@ -3254,7 +3257,7 @@ function buildReport(){
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
   let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건 · 총 ${fmtH(grandMin)}h`;
   if(uninput) line += ` · 미입력 ${uninput}건`;
-  const picked = [src.event && '일정', src.todo && '할 일', src.git && 'Git 커밋'].filter(Boolean);
+  const picked = [src.event && '일정', src.todo && '할 일', src.git && '커밋'].filter(Boolean);
   if(picked.length < 3) line += ` · 포함: ${picked.join('·')}`;
   if(singleDay) line += ' · 하루(수정 가능)';
   sum.textContent = line;
@@ -3404,8 +3407,8 @@ function noteFilterBarHtml(){
 function renderGitTab(){
   // 선택한 날짜의 작업일지(커밋)만 — 캘린더 날짜를 따라간다. 기간 집계는 📋 보고서.
   const rows = gitFeed().filter(r => r.date === selectedDate);
-  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 Git 커밋을 가져오기">${ICON.download} 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 등록">${ICON.download} 기간 일괄 불러오기</button></div>` : '';
-  h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · Git 커밋 내역${rows.length ? ` <span class="dp-ctx-n">${rows.length}건</span>` : ''}</div>`;
+  let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 커밋을 가져오기(Git·SVN)">${ICON.download} 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 등록">${ICON.download} 기간 일괄 불러오기</button></div>` : '';
+  h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · 커밋 내역${rows.length ? ` <span class="dp-ctx-n">${rows.length}건</span>` : ''}</div>`;
   // 과제별 공수칩 — 선택 날짜의 git 작업일지를 과제(categoryId)별로 묶어 시간 입력. 커밋 행 구조는 불변.
   const dayGit = state.entries.filter(e => e.source === 'git' && e.date === selectedDate && (!noteFilterCat || e.categoryId === noteFilterCat));
   if(dayGit.length){
@@ -3423,11 +3426,11 @@ function renderGitTab(){
     h += `<div class="dp-hours"><span class="dph-lb">공수</span>${chips}${miss ? `<span class="dph-miss">${miss}개 미입력</span>` : ''}</div>`;
   }
   if(!rows.length){
-    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 Git 커밋 내역이 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
+    h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 커밋 내역이 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
     return h;
   }
   for(const r of rows){
-    h += `<div class="nd-commit"><span class="nd-ci" title="Git 커밋">${ICON.git}</span>${r.time ? `<span class="t">${esc(r.time)}</span>` : ''}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${r.short ? `<code class="h">${esc(r.short)}</code>` : ''}</div>`;
+    h += `<div class="nd-commit"><span class="nd-ci" title="커밋">${ICON.git}</span>${r.time ? `<span class="t">${esc(r.time)}</span>` : ''}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${r.short ? `<code class="h">${esc(r.short)}</code>` : ''}</div>`;
   }
   return h;
 }
@@ -3758,8 +3761,8 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnHelp', ICON.help);                   // 상시 도움말
   set('btnMore', ICON.more);
   set('btnNew', ICON.plus + ' 새 기록');
-  set('dptab-git', ICON.git + ' Git 커밋 내역');   // '작업일지' → 명시적 'Git 커밋 내역' + git 아이콘
-  set('btnGitFetch', ICON.download + ' 이 과제의 Git 커밋 불러오기');
+  set('dptab-git', ICON.git + ' 커밋 내역');   // '작업일지' → 명시적 '커밋 내역' + git 아이콘
+  set('btnGitFetch', ICON.download + ' 이 과제의 커밋 불러오기');
   set('btnGitBrowse', ICON.folder + ' 폴더 선택…');
   set('btnRptCopy', ICON.copy + ' 복사');
   set('btnBulkRun', ICON.download + ' 불러오기 & 등록');
@@ -3799,9 +3802,9 @@ function openHelp(){
   if(body) body.innerHTML = `<div class="help-grid">`
     + card(ICON.plus, '빠른 시작', '＋ 새 기록 또는 날짜 더블클릭으로 추가. 기록을 드래그해 다른 날짜로 이동.')
     + card(ICON.calendar, '일정 · 할 일', '일정은 시간/종일·반복·기간. 할 일은 체크·중요(★)·기한. ‘옵션 더보기’에서 세부 설정.')
-    + card(ICON.git, 'Git 커밋 내역', '과제에 Git 저장소 경로를 지정하면(과제 관리), 그 날 내 커밋을 자동 수집합니다.')
+    + card(ICON.git, '커밋 내역', '과제에 Git 저장소 경로를 지정하면(과제 관리), 그 날 내 커밋을 자동 수집합니다.')
     + card(ICON.doc, '보고서', '기간을 고르면 과제별 [제목] : 시간으로 자동 정리. 하루 보고서에서 시간 수정, 복사해 붙여넣기.')
-    + card(ICON.tag, '과제 관리', '헤더의 🏷️ 버튼에서 과제 추가·이름·색상·Git 경로를 설정합니다.')
+    + card(ICON.tag, '과제 관리', '헤더의 🏷️ 버튼에서 과제 추가·이름·색상·버전관리(Git/SVN) 경로를 설정합니다.')
     + card(ICON.palette, '테마', '헤더의 🎨 버튼에서 라이트·다크·포레스트·세피아·고대비 등 전체 테마를 고릅니다.')
     + card(ICON.keyboard, '단축키', '← → 월 이동 · Home 오늘 · Esc 닫기 · 날짜 더블클릭 새 기록.')
     + card(ICON.download, '데이터 · 백업', '데이터는 자동 저장. 백업·이전은 ⋯ 메뉴의 XML 내보내기/가져오기.')
@@ -4380,7 +4383,7 @@ function gitEnabledCats(){ return state.categories.filter(c => c.gitRepo); }
 function getGitAuthor(){ return (state && state.gitAuthor) || ''; }
 function setGitAuthor(v){ if(!state) return; if(state.gitAuthor === (v||'')) return; state.gitAuthor = v || ''; save(); }
 
-// 기록 모달의 'Git 커밋 불러오기' 줄: 위젯 모드 + 선택 과제에 저장소가 있을 때만 노출
+// 기록 모달의 '커밋 불러오기' 줄: 위젯 모드 + 선택 과제에 저장소가 있을 때만 노출
 function updateGitRow(){
   const sect = $('#gitSect'); if(!sect) return;   // '연동' 섹션 전체(캡션 포함)를 토글 — git 과제일 때만 노출
   const cat = catById($('#fCat').value);
@@ -4441,7 +4444,7 @@ async function fetchCommitsIntoModal(){
 // 날짜 패널의 '📥 커밋' → 그날 그 과제의 작업일지가 이미 있으면 그 기록을 열어 갱신, 없으면 새로 만든다(중복 일지 방지)
 function openGitFetch(date){
   const cats = gitEnabledCats();
-  if(!cats.length){ toast('Git 저장소가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
+  if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
   const existing = state.entries.find(e => e.date === date && e.source === 'git' && e.categoryId === cats[0].id);
   if(existing){ openEntryModal('edit', existing.id); }
   else { openEntryModal('new', date); $('#fCat').value = cats[0].id; }
@@ -4452,7 +4455,7 @@ function openGitFetch(date){
 function openBulkGitFetch(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats();
-  if(!cats.length){ toast('Git 저장소가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
+  if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
   const sel = $('#bgCat');
   sel.innerHTML = `<option value="">전체 과제 (${cats.length}개)</option>` + cats.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   const r = weekRange(new Date(), 0);
