@@ -537,6 +537,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .patch-list{margin:0;padding-left:20px}
 .patch-list li{font-size:var(--fs-body);color:var(--text);line-height:1.72;margin:6px 0;word-break:keep-all;overflow-wrap:anywhere}
 .pv-note{color:var(--muted);font-size:var(--fs-meta)}
+/* 강조 항목(핵심 기능) — 좌측 액센트 바 + accent-soft 박스로 눈에 띄게 */
+.patch-list li.key{list-style:none;margin:8px 0 8px -20px;padding:9px 12px 9px 13px;background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:8px;line-height:1.62}
+.pv-key{display:inline-block;font-size:var(--fs-meta);font-weight:800;color:#fff;background:var(--accent);border-radius:5px;padding:0 7px;margin-right:7px;vertical-align:1px;letter-spacing:.5px}
 /* 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
 .nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
 .nd-commit .nd-ci .ic{width:15px;height:15px}
@@ -1396,9 +1399,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="patch-ver"><span class="pv-tag">v0.4</span><span class="pv-date">2026-06-23 · 현재</span></div>
       <p class="patch-intro">직전 배포(v0.3) 이후 추가·개선된 내용입니다.</p>
       <ul class="patch-list">
-        <li><b>🏢 회사 일간/주간 보고 자동 작성 (신규)</b> — 그날 업무를 사내 보고 양식으로 채워 <b>일간 전송</b>·<b>주간 작성 후 열기</b>. 한글(euc-kr) 인코딩 처리.</li>
+        <li class="key"><span class="pv-key">핵심</span><b>🏢 회사 일간/주간 보고 자동 작성 (신규)</b> — 캘린더의 그날 업무를 <b>사내 보고 양식</b>으로 자동 정리해, <b>일간은 바로 전송</b>·<b>주간은 작성 후 열어 검토</b>. 한글(euc-kr) 인코딩까지 처리해 깨짐 없음.</li>
+        <li class="key"><span class="pv-key">핵심</span><b>🔀 SVN 연동 (신규)</b> — 과제마다 <b>Git/SVN을 선택</b>하고 저장소(작업복사본) 폴더를 지정하면, svn 커밋도 git과 똑같이 ‘커밋 내역’으로 수집돼 보고서로 이어집니다. <b>.git/.svn 자동 감지</b>.</li>
         <li><b>⏰ 일정 시작 알림 (신규)</b> — 시작시간 있는 일정에 1시간 전부터 단계 알림(무응답 시 30·10·5분). 폐쇄망 무음 대응: 화면 카드 + 작업표시줄 깜빡임, 테마별 디자인.</li>
-        <li><b>🔀 SVN 연동 (신규)</b> — 과제별 <b>Git/SVN 선택</b> + 저장소(작업복사본) 폴더 지정. svn 커밋도 ‘커밋 내역’으로 동일 수집, <b>.git/.svn 자동 감지</b>.</li>
         <li><b>💾 데이터 영속 강화</b> — 가상 호스트 매핑으로 설정·데이터 저장 안정화.</li>
         <li><b>🛠 버전관리 분기 정비</b> — git/svn 판정을 단일 기준으로 통합, 작성자 자동감지·경로 검증 정확도 개선.</li>
       </ul>
