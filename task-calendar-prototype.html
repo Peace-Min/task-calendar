@@ -4433,7 +4433,7 @@ async function fetchCommitsIntoModal(){
   fbtn.disabled = true;                       // git 호출(최대 15초) 동안 중복 실행 방지
   try{
   $('#gitHint').innerHTML = '<span class="spin"></span> 불러오는 중…';
-  const res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: getGitAuthor(), since: date, until: date});
+  const res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: getGitAuthor(), since: date, until: date}, cat.vcs==='svn'?25000:undefined);   // svn은 서버 왕복(호스트 20s) → 프론트 타임아웃을 더 길게
   if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'error'); return; }
   if(!res.commits || !res.commits.length){
     const who = getGitAuthor() ? `작성자 '${getGitAuthor()}'의 ` : '';
@@ -4490,7 +4490,7 @@ async function runBulkGitFetch(){
     for(const cat of cats){
       setS(`<span class="spin"></span> 불러오는 중… (과제 ${++ci}/${cats.length})`);
       let res;
-      try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: getGitAuthor(), since: from, until: to}); }
+      try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: getGitAuthor(), since: from, until: to}, cat.vcs==='svn'?25000:undefined); }
       catch(_){ errors.push(esc(cat.name) + ': 예외'); continue; }
       if(!res || !res.ok){ errors.push(esc(cat.name) + ': ' + esc((res && res.error) || '오류')); continue; }
       const commits = res.commits || [];
