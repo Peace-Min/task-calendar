@@ -2135,6 +2135,11 @@ function setCatVcs(v){
   const lbl = $('#gitCardLabel'); if(lbl) lbl.textContent = isSvn ? 'SVN 연동' : 'Git 연동';
   const rl = $('#gitRepoLabel'); if(rl) rl.textContent = isSvn ? '작업복사본 폴더' : '저장소 폴더';
   const db = $('#btnGitDetect'); if(db) db.style.display = isSvn ? 'none' : '';   // 자동감지는 git만
+  // 종류가 바뀌면 현재 경로를 그 종류로 재검증(배지·경고 갱신) — git/svn이 상태를 공유하지 않게
+  if(typeof renderGitCard === 'function'){
+    if(catFormRepo){ renderGitCard(); if(HOST) validateExistingRepo(catFormRepo); }
+    else setDefaultGitStatus();
+  }
 }
 let searchMode = 'keyword';
 let pendingImport = null;
@@ -4539,7 +4544,10 @@ function setGitStatus(html, warn){
   const s = $('#gitStatus'); if(!s) return;
   s.innerHTML = html; s.classList.toggle('warn-text', !!warn);
 }
-function setDefaultGitStatus(){ setGitStatus(DEFAULT_GIT_NOTE, false); }
+function setDefaultGitStatus(){
+  if(catFormVcs === 'svn') setGitStatus('SVN <b>작업복사본 폴더</b>를 지정하세요. 작성자에 본인 SVN 사용자명(예: phmin)을 넣으면 내 커밋만, 비우면 모두의 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.', false);
+  else setGitStatus(DEFAULT_GIT_NOTE, false);
+}
 
 // 저장소 행/버튼/배지를 catFormRepo + HOST 상태에 맞게 표시
 function renderGitCard(){
@@ -4572,20 +4580,23 @@ function renderGitCard(){
 
 // 호스트 검사 결과(pickfolder/gitcheck) 반영 — st:{exists?, isRepo, email, error?}
 function applyGitState(st){
+  const isSvn = catFormVcs === 'svn';
   if(!catFormRepo){ setGitBadge('off','미연결'); setDefaultGitStatus(); return; }
-  if(!st || st.error){ setGitBadge('warn','⚠ 확인 불가'); setGitStatus('확인 불가: ' + esc((st && st.error) || '호스트 응답 없음') + ' — git 설치 여부를 확인하거나 잠시 후 다시 시도하세요.', true); return; }
+  if(!st || st.error){ setGitBadge('warn','⚠ 확인 불가'); setGitStatus('확인 불가: ' + esc((st && st.error) || '호스트 응답 없음') + ' — ' + (isSvn?'svn(TortoiseSVN/SlikSVN) 설치 여부':'git 설치 여부') + '를 확인하거나 잠시 후 다시 시도하세요.', true); return; }
   if(st.exists === false){
     $('#gitPath').classList.add('missing');
     setGitBadge('warn','⚠ 폴더 없음');
     setGitStatus('저장된 폴더를 찾을 수 없습니다 — <b>[변경]</b>으로 다시 연결하거나 <b>[해제]</b>하세요.', true);
     return;
   }
-  if(!st.isRepo){
-    setGitBadge('warn','⚠ Git 저장소 아님');
-    setGitStatus('이 폴더에 <b>.git</b>이 없습니다. 저장소 <b>루트 폴더</b>인지 확인하세요. (경로는 저장되며, 커밋 가져오기 시 다시 안내합니다)', true);
+  // 선택한 종류(catFormVcs)와 실제 폴더(st.vcs=.git/.svn 감지) 일치 여부로 판정
+  if(st.vcs !== catFormVcs){
+    setGitBadge('warn', isSvn ? '⚠ SVN 작업복사본 아님' : '⚠ Git 저장소 아님');
+    setGitStatus('이 폴더에 <b>' + (isSvn?'.svn':'.git') + '</b>이 없습니다. ' + (isSvn?'SVN <b>작업복사본</b>':'저장소 <b>루트</b>') + ' 폴더인지 확인하세요.' + (st.vcs?(' (감지된 종류: '+esc(st.vcs.toUpperCase())+' — 위에서 종류를 맞춰 보세요)'):'') + ' (경로는 저장되며, 커밋 가져오기 시 다시 안내)', true);
     return;
   }
   setGitBadge('ok','✓ 연결됨');
+  if(isSvn){ setGitStatus('✓ SVN 작업복사본 연결됨. 작성자에 <b>본인 SVN 사용자명</b>(예: phmin)을 입력하세요 — 비우면 모두의 커밋이 들어옵니다.', false); return; }
   if(st.email){ applyRepoEmail(st.email); }
   else { setGitStatus('✓ 연결됨. 이 저장소에 git 작성자(user.email)가 설정돼 있지 않습니다 — 작성자를 직접 입력하세요.', false); }
 }
