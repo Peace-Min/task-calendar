@@ -5,6 +5,22 @@
 
 ---
 
+## 🆕 2026-06-23 — SVN 연동 3차: git/svn 분기 계약 전수 감사·통합(단일 진실소스)
+
+사용자 지적("자동감지 SVN 에러는 분기 하드코딩의 반증") → 다차원 코드감사(워크플로 10에이전트·적대검증, 확정 34건) 후 **P0 2·P1 5** 보완.
+
+- **단일 진실소스 `ResolveVcs(repo,vcs)`**(Svn.cs): gitlog만 명시 vcs를 쓰고 gitauthor/gitcheck는 호스트 DetectVcs로 재판단하던 비대칭을 제거 — `명시 vcs 우선, 비면 DetectVcs 폴백`으로 gitlog/gitauthor/gitcheck **통일**. pickfolder만 '감지 주체'(사용자 미선택 진입점, 주석으로 명시).
+- **[P0] '이 날 커밋'(openGitFetch) 잘못된 과제 폴백**: `detectGitAuthor`와 동일한 `gitEnabledCats()[0]` 패턴 잔존 → 임의(첫 gitRepo, svn일 수도) 과제를 무선택 자동 채택. **noteFilterCat 우선 · 연결과제 1개일 때만 자동 · 아니면 선택 요구**로 수정.
+- **[P0] gitcheck 명시 선택 무시**: vcs 미전달로 호스트가 `.svn` 우선 DetectVcs → git 선택+`.git/.svn` 혼재 폴더를 'Git 저장소 아님' 오탐. gitcheck에 `vcs` 전달 + 호스트가 **'선택 종류로 유효한가(isRepo)'** 를 계산하고 **`detected`(실제 종류)** 를 함께 회신 → applyGitState가 `st.isRepo`로 판정·`st.detected`로 불일치 힌트(감지된 종류: X).
+- **[P1] gitauthor 명시 무시**: `vcs:'git'` 전달 + 호스트 RunGitAuthorAsync(…,vcs)가 ResolveVcs로 통일.
+- **[P1] 작성자 필터 의미차**: git `--author`(대소문자 구분) vs svn(무시 substring) → git에 `--regexp-ignore-case` 추가로 매칭 폭 일치.
+- **[P1] detectGitAuthor 전역 작성자 파괴**: git 이메일을 무조건 덮어써 SVN 사용자명 소실 위험 → `applyRepoEmail`(비파괴 reconcile)로 변경.
+- **회신 스키마 통일**: pickfolder/gitcheck/예외경로에 `exists/vcs/detected` 키 일관 → applyGitState가 두 출처를 동일 불변식으로 처리.
+- **네이밍(P2)**: `gitEnabledCats`/`gitRepo`/`source='git'`/메시지명 등 git-centric 식별자는 XML 키·호스트 프로토콜·저장데이터와 결박돼 **리네임 금지** → 'git/svn 공용' 주석으로 동결 명시. PickFolder 다이얼로그 Title 'Git/SVN'으로 중립화.
+- **검증**: applyGitState 5케이스 모의 PASS(git/svn × 유효/불일치/폴더없음), C# 0에러, JS OK.
+
+---
+
 ## 🆕 2026-06-23 — SVN 연동 2차: 과제 관리에 git/svn 선택 UI + 실저장소 읽기 검증
 
 - **과제 편집 폼**: "버전관리 종류" **Git/SVN 라디오** 추가 → 종류 선택 후 폴더 지정. svn 선택 시 라벨 전환(저장소→작업복사본, 자동감지 숨김). 폴더 선택 시 `.git/.svn` 자동 감지로 종류 자동 반영(pickfolder `vcs` 회신).

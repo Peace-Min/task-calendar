@@ -25,6 +25,12 @@ namespace TaskCalendarWidget
             catch { return ""; }
         }
 
+        // 분기 단일 소스: 프론트가 명시한 vcs(사용자 라디오 선택)를 최우선, 비어 있을 때만 폴더 마커로 자동판별.
+        // (예외: pickfolder는 사용자가 아직 종류를 못 정한 진입점이라 호출부에서 DetectVcs로 감지해 프론트에 제안)
+        // gitlog/gitauthor/gitcheck는 모두 이 헬퍼로 통일해, '명시 선택'과 '호스트 재탐지'가 상충하지 않게 한다.
+        private static string ResolveVcs(string repo, string vcs)
+            => string.IsNullOrWhiteSpace(vcs) ? DetectVcs(repo) : vcs;
+
         // svn.exe 위치: PATH("svn")에 없으면 TortoiseSVN(명령행 도구)·SlikSVN 기본 설치 경로 탐색.
         private static string SvnExe()
         {

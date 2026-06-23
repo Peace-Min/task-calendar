@@ -460,8 +460,8 @@ namespace TaskCalendarWidget
                     }
                     case "gitauthor":
                     {
-                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo");
-                        _ = RunGitAuthorAsync(reqId, repo);
+                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"), vcs = GetStr(doc, "vcs");
+                        _ = RunGitAuthorAsync(reqId, repo, vcs);
                         break;
                     }
                     case "pickfolder":   // 네이티브 폴더 선택 다이얼로그(텍스트 입력 대체)
@@ -470,10 +470,10 @@ namespace TaskCalendarWidget
                         PickFolder(reqId, start);   // UI 스레드에서 모달 다이얼로그
                         break;
                     }
-                    case "gitcheck":     // 저장된 경로 검증(존재/저장소여부/작성자)
+                    case "gitcheck":     // 저장된 경로 검증(존재/선택종류로 유효한지/작성자)
                     {
-                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo");
-                        _ = RunGitCheckAsync(reqId, repo);
+                        string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"), vcs = GetStr(doc, "vcs");
+                        _ = RunGitCheckAsync(reqId, repo, vcs);
                         break;
                     }
 
@@ -526,19 +526,20 @@ namespace TaskCalendarWidget
             object payload;
             try
             {
-                string useVcs = string.IsNullOrWhiteSpace(vcs) ? DetectVcs(repo) : vcs;   // 사용자 선택 우선, 없으면 자동판별
+                string useVcs = ResolveVcs(repo, vcs);   // 분기 단일 소스(명시 선택 우선, 없으면 DetectVcs)
                 payload = await Task.Run(() => useVcs == "svn" ? (GitResult)SvnLog(repo, author, since, until) : GitLog(repo, author, since, until));
             }
             catch (Exception ex) { payload = new GitResult { ok = false, error = "예외: " + ex.Message }; }
             GitReply(reqId, payload);
         }
 
-        private async Task RunGitAuthorAsync(string reqId, string repo)
+        private async Task RunGitAuthorAsync(string reqId, string repo, string vcs = "")
         {
             object payload;
             try
             {
-                if (DetectVcs(repo) == "svn")
+                // 분기 단일 소스 — gitlog와 동일하게 명시 vcs 우선(없으면 DetectVcs). svn은 작성자 자동감지 불가.
+                if (ResolveVcs(repo, vcs) == "svn")
                     payload = new { ok = false, email = "", name = "", error = "SVN은 작성자 자동 감지가 안 됩니다 — 본인 SVN 사용자명을 직접 입력하세요." };
                 else
                 {
@@ -572,7 +573,9 @@ namespace TaskCalendarWidget
                 psi.ArgumentList.Add("--no-merges");
                 if (!string.IsNullOrWhiteSpace(since)) psi.ArgumentList.Add("--since=" + since + " 00:00:00");
                 if (!string.IsNullOrWhiteSpace(until)) psi.ArgumentList.Add("--until=" + until + " 23:59:59");
-                if (!string.IsNullOrWhiteSpace(author)) psi.ArgumentList.Add("--author=" + author);
+                // 작성자 필터: svn(Svn.cs)이 대소문자무시 substring이므로 git도 -i로 맞춘다(동일 전역 작성자 문자열이 양쪽에서 같은 폭으로 매칭).
+                // (git --author는 정규식이라 '.' 등 메타문자는 더 넓게 잡힐 수 있으나, 실사용 작성자는 단순 이름/이메일이라 무해)
+                if (!string.IsNullOrWhiteSpace(author)) { psi.ArgumentList.Add("--regexp-ignore-case"); psi.ArgumentList.Add("--author=" + author); }
                 // 필드 구분자 (단위구분), 커밋은 줄바꿈으로 구분. %aI=작성일(ISO), %s=제목(한 줄)
                 psi.ArgumentList.Add("--pretty=format:%H%h%aI%an%ae%s");
                 psi.Environment["GIT_PAGER"] = "cat";
@@ -627,23 +630,26 @@ namespace TaskCalendarWidget
         {
             try
             {
-                var dlg = new OpenFolderDialog { Title = "이 과제의 Git 작업 폴더 선택", Multiselect = false };
+                var dlg = new OpenFolderDialog { Title = "이 과제의 Git/SVN 작업 폴더 선택", Multiselect = false };
                 if (!string.IsNullOrWhiteSpace(start) && Directory.Exists(start)) dlg.InitialDirectory = start;
                 bool ok = dlg.ShowDialog(this) == true;
                 string path = ok ? dlg.FolderName : "";
+                // pickfolder는 사용자가 아직 종류를 안 정한 진입점 → DetectVcs로 감지해 프론트가 라디오에 반영(setCatVcs).
                 string vcs = ok ? DetectVcs(path) : "";
                 bool isRepo = vcs == "git" || vcs == "svn";
+                bool exists = ok && Directory.Exists(path);
                 string email = vcs == "git" ? RunGitConfig(path, "user.email") : "";
-                GitReply(reqId, new { ok, path, isRepo, vcs, email, error = "" });
+                // gitcheck와 동일 스키마(exists/isRepo/vcs/detected/email)로 회신 — applyGitState가 두 출처를 같은 불변식으로 처리.
+                GitReply(reqId, new { ok, path, exists, isRepo, vcs, detected = vcs, email, error = "" });
             }
             catch (Exception ex)
             {
-                GitReply(reqId, new { ok = false, path = "", isRepo = false, email = "", error = ex.Message });
+                GitReply(reqId, new { ok = false, path = "", exists = false, isRepo = false, vcs = "", detected = "", email = "", error = ex.Message });
             }
         }
 
         // 저장된 경로 점검: 존재 여부 / git 저장소 여부 / (저장소면) 작성자 이메일
-        private async Task RunGitCheckAsync(string reqId, string repo)
+        private async Task RunGitCheckAsync(string reqId, string repo, string vcs = "")
         {
             object payload;
             try
@@ -651,13 +657,19 @@ namespace TaskCalendarWidget
                 payload = await Task.Run(() =>
                 {
                     bool exists = !string.IsNullOrWhiteSpace(repo) && Directory.Exists(repo);
-                    string vcs = exists ? DetectVcs(repo) : "";
-                    bool isRepo = vcs == "git" || vcs == "svn";
-                    string email = vcs == "git" ? RunGitConfig(repo, "user.email") : "";
-                    return (object)new { ok = true, exists, isRepo, vcs, email, error = "" };
+                    string detected = exists ? DetectVcs(repo) : "";            // 폴더의 실제 마커(.git/.svn)
+                    string useVcs = string.IsNullOrWhiteSpace(vcs) ? detected : vcs;   // 사용자 선택 우선
+                    // 핵심: '선택한 종류로 유효한가'를 본다 — git 선택이면 .svn이 끼어 있어도 git 저장소면 OK,
+                    // svn 선택이면 .svn 작업복사본이면 OK. (.git+.svn 혼재 폴더에서 선택을 존중해 오탐 방지)
+                    bool isRepo = exists && (useVcs == "svn" ? Directory.Exists(Path.Combine(repo, ".svn"))
+                                  : useVcs == "git" ? IsGitRepo(repo)
+                                  : (detected == "git" || detected == "svn"));
+                    string email = (useVcs == "git" && isRepo) ? RunGitConfig(repo, "user.email") : "";
+                    // detected를 함께 회신 → 프론트가 '선택종류와 실제 불일치' 힌트(감지된 종류: X)를 띄울 수 있음
+                    return (object)new { ok = true, exists, isRepo, vcs = useVcs, detected, email, error = "" };
                 });
             }
-            catch (Exception ex) { payload = new { ok = false, exists = false, isRepo = false, email = "", error = ex.Message }; }
+            catch (Exception ex) { payload = new { ok = false, exists = false, isRepo = false, vcs = "", detected = "", email = "", error = ex.Message }; }
             GitReply(reqId, payload);
         }
 

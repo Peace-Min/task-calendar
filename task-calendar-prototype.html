@@ -4379,6 +4379,8 @@ function setupSplitter(){
 }
 
 /* ---------- Git 커밋 연동 (작업일지) ---------- */
+// ⚠ 이름은 git이지만 vcs 무관 — gitRepo가 채워진 모든 과제(SVN 포함)를 반환. 종류 분기는 호출부에서 c.vcs로.
+//   (gitRepo/getGitAuthor/source='git'/메시지명 'gitlog'·'gitauthor'·'gitcheck'는 XML 키·호스트 프로토콜·저장데이터와 묶여 리네임 금지 — git/svn 공용 식별자로 동결)
 function gitEnabledCats(){ return state.categories.filter(c => c.gitRepo); }
 function getGitAuthor(){ return (state && state.gitAuthor) || ''; }
 function setGitAuthor(v){ if(!state) return; if(state.gitAuthor === (v||'')) return; state.gitAuthor = v || ''; save(); }
@@ -4445,9 +4447,13 @@ async function fetchCommitsIntoModal(){
 function openGitFetch(date){
   const cats = gitEnabledCats();
   if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
-  const existing = state.entries.find(e => e.date === date && e.source === 'git' && e.categoryId === cats[0].id);
+  // 명시 컨텍스트 우선: 날짜패널 과제필터(noteFilterCat) → 연결과제 1개뿐이면 그것 → 아니면 임의 [0] 금지하고 선택 요구
+  let cat = noteFilterCat ? cats.find(c => c.id === noteFilterCat) : null;
+  if(!cat && cats.length === 1) cat = cats[0];
+  if(!cat){ toast('연결된 과제가 여러 개예요 — 위 과제 필터에서 과제를 고르거나 [기간 일괄 불러오기]를 쓰세요', 'warn'); return; }
+  const existing = state.entries.find(e => e.date === date && e.source === 'git' && e.categoryId === cat.id);
   if(existing){ openEntryModal('edit', existing.id); }
-  else { openEntryModal('new', date); $('#fCat').value = cats[0].id; }
+  else { openEntryModal('new', date); $('#fCat').value = cat.id; }
   updateGitRow();
   fetchCommitsIntoModal();
 }
@@ -4530,9 +4536,10 @@ async function detectGitAuthor(){
   let repo = (catFormVcs !== 'svn' && catFormRepo) ? catFormRepo : '';
   if(!repo){ const g = gitEnabledCats().find(c => (c.vcs || 'git') !== 'svn'); repo = g ? g.gitRepo : ''; }
   if(!repo){ toast('Git 저장소를 먼저 선택하세요 — SVN은 자동 감지가 없으니 사용자명을 직접 입력하세요', 'warn'); return; }
-  const res = await hostRequest('gitauthor', {repo});
+  const res = await hostRequest('gitauthor', {repo, vcs: 'git'});   // 이 함수는 정의상 git 전용 → 명시 'git'
   if(res && res.ok && res.email){
-    $('#cGitAuthor').value = res.email; setGitAuthor(res.email);
+    // 비파괴 반영 — 기존 전역 작성자(예: SVN 사용자명)와 다르면 덮어쓰지 않고 reconcile 안내(applyRepoEmail)
+    applyRepoEmail(res.email);
     toast('내 Git 작성자 감지: ' + res.email + (res.name ? ` (${res.name})` : ''));
   } else {
     toast((res && res.error) || '작성자를 감지하지 못했습니다 — 직접 입력하세요', 'warn');
@@ -4595,10 +4602,12 @@ function applyGitState(st){
     setGitStatus('저장된 폴더를 찾을 수 없습니다 — <b>[변경]</b>으로 다시 연결하거나 <b>[해제]</b>하세요.', true);
     return;
   }
-  // 선택한 종류(catFormVcs)와 실제 폴더(st.vcs=.git/.svn 감지) 일치 여부로 판정
-  if(st.vcs !== catFormVcs){
+  // 호스트가 '선택한 종류(catFormVcs)로 유효한 저장소인지'를 st.isRepo로 계산해 줌(.git+.svn 혼재 시 선택 존중).
+  // 불일치 시 st.detected(실제 감지 종류)로 힌트를 띄운다.
+  if(!st.isRepo){
     setGitBadge('warn', isSvn ? '⚠ SVN 작업복사본 아님' : '⚠ Git 저장소 아님');
-    setGitStatus('이 폴더에 <b>' + (isSvn?'.svn':'.git') + '</b>이 없습니다. ' + (isSvn?'SVN <b>작업복사본</b>':'저장소 <b>루트</b>') + ' 폴더인지 확인하세요.' + (st.vcs?(' (감지된 종류: '+esc(st.vcs.toUpperCase())+' — 위에서 종류를 맞춰 보세요)'):'') + ' (경로는 저장되며, 커밋 가져오기 시 다시 안내)', true);
+    const det = (st.detected && st.detected !== catFormVcs) ? (' (감지된 종류: ' + esc(String(st.detected).toUpperCase()) + ' — 위에서 종류를 맞춰 보세요)') : '';
+    setGitStatus('이 폴더에 <b>' + (isSvn?'.svn':'.git') + '</b>이 없습니다. ' + (isSvn?'SVN <b>작업복사본</b>':'저장소 <b>루트</b>') + ' 폴더인지 확인하세요.' + det + ' (경로는 저장되며, 커밋 가져오기 시 다시 안내)', true);
     return;
   }
   setGitBadge('ok','✓ 연결됨');
@@ -4637,7 +4646,7 @@ function clearRepo(){ catFormRepo = ''; __pendingRepoEmail=''; renderGitCard(); 
 async function validateExistingRepo(path){
   if(!HOST || !path) return;
   setGitBadge('off','⏳ 확인 중…');
-  const r = await hostRequest('gitcheck', {repo: path});
+  const r = await hostRequest('gitcheck', {repo: path, vcs: catFormVcs});   // 명시 선택 전달 → 호스트가 그 종류로 유효성 검사
   if(catFormRepo !== path) return;   // 그 사이 변경됨 → 무시
   applyGitState(r);
 }
