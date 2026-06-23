@@ -4526,7 +4526,10 @@ async function runBulkGitFetch(){
 
 async function detectGitAuthor(){
   if(!HOST){ toast('자동 감지는 데스크톱 위젯에서만 가능합니다 — 직접 입력하세요', 'warn'); return; }
-  const repo = catFormRepo || (gitEnabledCats()[0] || {}).gitRepo || '';
+  // 자동 감지는 git 전용(svn은 author 자동감지 불가) — 폼이 git이면 그 저장소, 미연결이면 git 과제(svn 제외) 중 첫 저장소로 폴백
+  let repo = (catFormVcs !== 'svn' && catFormRepo) ? catFormRepo : '';
+  if(!repo){ const g = gitEnabledCats().find(c => (c.vcs || 'git') !== 'svn'); repo = g ? g.gitRepo : ''; }
+  if(!repo){ toast('Git 저장소를 먼저 선택하세요 — SVN은 자동 감지가 없으니 사용자명을 직접 입력하세요', 'warn'); return; }
   const res = await hostRequest('gitauthor', {repo});
   if(res && res.ok && res.email){
     $('#cGitAuthor').value = res.email; setGitAuthor(res.email);
