@@ -80,6 +80,22 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 - (대안) 런타임 팩 없는 폐쇄망에서 굳이 하려면 win-x64 런타임 팩/WindowsDesktop 런타임을 NuGet 캐시에 미리 채워야 함.
 - 첫 실행 시 `%TEMP%\.net`으로 네이티브 추출 → 초기 시작이 프레임워크 종속본보다 느릴 수 있음.
 
+### Inno Setup 설치 파일 만들기
+자체포함 단일 exe를 만든 뒤 Inno Setup 6으로 사용자별 설치 파일을 생성합니다.
+
+```powershell
+dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-contained true `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:PublishReadyToRun=false -o dist\portable
+
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\task-calendar.iss
+```
+
+- 결과: `dist\installer\TaskCalendarWidget-Setup-v0.5.0.exe`
+- 설치 경로: `%LOCALAPPDATA%\Programs\TaskCalendar`
+- 설치 후 실행 파일명: `수행과제캘린더.exe`
+- .NET 런타임은 exe에 포함되므로 대상 PC에 별도 .NET 설치가 필요 없습니다. Windows 11 기본 WebView2 환경 기준입니다.
+
 ---
 
 ## 5. 버전관리 / 릴리스 (Git)
