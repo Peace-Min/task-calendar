@@ -94,7 +94,10 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 - 결과: `dist\installer\TaskCalendarWidget-Setup-v0.5.0.exe`
 - 설치 경로: `%LOCALAPPDATA%\Programs\TaskCalendar`
 - 설치 후 실행 파일명: `수행과제캘린더.exe`
-- .NET 런타임은 exe에 포함되므로 대상 PC에 별도 .NET 설치가 필요 없습니다. Windows 11 기본 WebView2 환경 기준입니다.
+- .NET 런타임은 exe에 포함되므로 대상 PC에 별도 .NET 설치가 필요 없습니다.
+- 인스톨러는 Microsoft WebView2 Evergreen Standalone Installer x64(`redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe`)를 포함할 수 있고, 대상 PC에 WebView2 Runtime이 없으면 설치 중 자동으로 `/silent /install`을 실행합니다.
+- Standalone 설치 파일은 약 190MB라 GitHub에 커밋하지 않습니다. 빌드 PC에서 `redist\README.md`의 명령으로 내려받은 뒤 Inno Setup을 컴파일합니다.
+- 이 방식으로 만든 최종 인스톨러는 .NET 런타임과 WebView2 Runtime 설치 파일을 모두 포함하므로, 대상 PC가 인터넷이 없어도 설치 가능합니다.
 
 ---
 
