@@ -1768,6 +1768,7 @@ function defaultState(){
   const c1 = uid('c'), c2 = uid('c');
   return {
     gitAuthor: '',
+    seenVersion: '',
     categories: [
       {id:c1, name:'보고서 작성', color:'#3e5be0', desc:'주간/월간 보고서 작업', gitRepo:'', createdAt:nowIso()},
       {id:c2, name:'시스템 점검', color:'#2e9e6b', desc:'정기 시스템·서버 점검', gitRepo:'', createdAt:nowIso()},
@@ -1810,6 +1811,7 @@ function load(){
           if(e.source==='git'){ e.endDate=''; e.recur=null; e.recurExcept=[]; } });
         s.categories.forEach(c => { c.name = String(c.name ?? ''); c.desc = String(c.desc ?? ''); c.gitRepo = String(c.gitRepo ?? ''); c.vcs = (c.vcs === 'svn') ? 'svn' : 'git'; });
         s.gitAuthor = String(s.gitAuthor ?? '');
+        s.seenVersion = String(s.seenVersion ?? '');
         s.todos = normTodos(s.todos);   // 멀티노트 — 구버전/외부편집 데이터엔 없을 수 있음(없으면 빈 배열)
         s.rooms = normRooms(s.rooms) || DEFAULT_ROOMS.slice();   // 회의실 — 구버전엔 없음 → 기본값 폴백
         return s;
@@ -1839,7 +1841,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', seenVersion:data.seenVersion||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -2013,6 +2015,7 @@ function toXML(){
   root.setAttribute('generator', 'TaskCalendar-Prototype');
   root.setAttribute('exportedAt', nowIso());
   if(state.gitAuthor) root.setAttribute('gitAuthor', state.gitAuthor);
+  if(state.seenVersion) root.setAttribute('seenVersion', state.seenVersion);   // 패치노트 '본 버전' — data.xml에 영속(재부팅 안전)
 
   const cats = doc.createElement('categories');
   for(const c of state.categories){
@@ -2197,7 +2200,7 @@ function fromXML(text){
     ? (normRooms([...roomsEl.getElementsByTagName('room')].map(r => r.textContent)) || [])
     : DEFAULT_ROOMS.slice();
 
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', todos, rooms};
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', seenVersion: root.getAttribute('seenVersion') || '', todos, rooms};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -3164,7 +3167,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice()};
+  state = {gitAuthor:'', seenVersion:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice()};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -4053,12 +4056,22 @@ function openPatch(){
   const body = $('#patchModal .patch-body'); if(body) body.scrollTop = 0;
   openModal('#patchModal');
 }
+// '본 버전' 영속 — 위젯은 data.xml(호스트 동기 파일 기록, 재부팅 안전), 브라우저는 localStorage.
+// (localStorage는 WebView2가 종료 전 flush 못 하면 유실돼 재부팅마다 패치노트가 다시 뜨던 버그의 원인)
+function getSeenVersion(){
+  if(HOST) return (state && state.seenVersion) || '';
+  try{ return localStorage.getItem('tc_seenVersion') || ''; }catch(_){ return ''; }
+}
+function setSeenVersion(v){
+  if(HOST){ if(state && state.seenVersion !== v){ state.seenVersion = v; save(); } return; }   // save()=호스트가 data.xml 즉시 기록
+  try{ localStorage.setItem('tc_seenVersion', v); }catch(_){}
+}
 // 새 버전 첫 실행 시 1회 자동 안내(다른 모달이 떠 있으면 방해하지 않음). '확인'/닫을 때 본 것으로 기록.
 function maybeShowPatch(){
-  let seen = ''; try{ seen = localStorage.getItem('tc_seenVersion') || ''; }catch(_){}
-  if(seen === APP_VERSION) return;
+  if(HOST && !__xmlApplied){ setTimeout(maybeShowPatch, 800); return; }   // data.xml 로드 후에만 — seed로 덮어쓰는 save 경합 방지
+  if(getSeenVersion() === APP_VERSION) return;
   if($$('.overlay').some(o => !o.classList.contains('hidden'))) return;   // 다른 창이 열려 있으면 다음 기회에
-  try{ localStorage.setItem('tc_seenVersion', APP_VERSION); }catch(_){}   // 표시 '즉시' 봤음 기록 → 닫지 않아도 재실행마다 반복 표시 안 함(버전당 1회)
+  setSeenVersion(APP_VERSION);   // 표시 '즉시' 봤음 기록(버전당 1회)
   openPatch();
 }
 
@@ -4105,8 +4118,9 @@ function bind(){
   }, true);
   const _avl = $('#appVerLabel'); if(_avl) _avl.textContent = APP_VERSION;
   $('#btnPatch').addEventListener('click', openPatch);
+  { const avl = $('#appVerLabel'); if(avl) avl.textContent = APP_VERSION; }   // 버튼 라벨 버전 동기화(하드코딩 방지)
   new MutationObserver(() => {   // 패치노트를 닫으면 이 버전을 '본 것'으로 기록 → 다음부터 자동표시 안 함
-    if($('#patchModal').classList.contains('hidden')){ try{ localStorage.setItem('tc_seenVersion', APP_VERSION); }catch(_){} }
+    if($('#patchModal').classList.contains('hidden')){ setSeenVersion(APP_VERSION); }
   }).observe($('#patchModal'), { attributes: true, attributeFilter: ['class'] });
   $('#guideToc').addEventListener('click', ev => {        // 목차 → 해당 섹션으로 스크롤
     const b = ev.target.closest('button[data-goto]'); if(!b) return;
