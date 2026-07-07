@@ -139,6 +139,8 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 
 UI·로직은 **의존성 0의 단일 HTML**(`task-calendar-prototype.html`)에 들어 있고, WPF 호스트가 이를 **WebView2로 창 100% 호스팅**합니다. HTML↔호스트는 **postMessage 브리지**로만 통신하며, 영속화·git·창 관리·회사 보고 전송·알림은 호스트가 담당합니다.
 
+> 🧱 **계층 구조·로직 배치 원칙·위젯↔브라우저 능력 차이·확장(어댑터) 설계**는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)에 정리돼 있습니다 — `.NET → WPF → WebView2 → (HTML+CSS+JS)` 계층, "도메인=JS / 능력=C# / 공유=서버" 배치 규칙, HOST 능력 매트릭스.
+
 ```mermaid
 flowchart TB
   user(["사용자"])
