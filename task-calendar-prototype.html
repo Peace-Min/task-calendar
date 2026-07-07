@@ -1741,11 +1741,11 @@ const WidgetPlatform = {
   },
 };
 const BrowserPlatform = {
-  caps: { reportAuto: false },  // 브라우저: 호스트 없음 → netcus 자동 전송 불가(방식 재논의 중 · 북마클릿 폐기)
+  caps: { reportAuto: false },  // 브라우저: 호스트 없음 → netcus 자동 전송 불가(SOP). 자동 작성은 same-origin 배포 시점에.
   report: {
-    // TODO(브라우저 보고 방식 미정): 현재는 위젯 전용 안내만. 방식 확정 시 이 어댑터만 교체.
-    submitDaily(){ toast('회사 보고 전송은 데스크톱 위젯에서만 동작합니다', 'warn'); },
-    submitWeekly(){ toast('회사 보고 전송은 데스크톱 위젯에서만 동작합니다', 'warn'); },
+    // 지금은 netcus 창만 열고 직접 입력/위젯 이관을 안내. 자동 작성 방식 확정 시 이 어댑터만 교체.
+    submitDaily(){ netcusManualGuide(); },
+    submitWeekly(){ netcusManualGuide(); },
   },
 };
 const Platform = HOST ? WidgetPlatform : BrowserPlatform;  // 환경 판별은 이 한 줄뿐
@@ -3036,6 +3036,17 @@ window.__netcusResult = function(ok, msg){
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'warn');
 };
+// 브라우저: 회사 보고 자동 작성은 SOP로 불가. netcus 창만 열고, 직접 입력 또는 위젯 이관을 안내한다.
+// (자동 작성은 netcus same-origin 배포 시점에 다시 — DECISIONS.md 결정5)
+function netcusManualGuide(){
+  try{ window.open('https://www.netcus.com/pjm/login.htm', '_blank', 'noopener'); }catch(_){}
+  const s = $('#rptSendStatus');
+  if(s){
+    s.innerHTML = ICON.alert + ' 브라우저에서는 회사 보고 <b>자동 작성이 안 됩니다</b>(보안 제약). 열린 <b>netcus</b> 창에 직접 입력하세요 — <b>📋 복사</b>로 내용을 복사해 붙여넣고 근태·초과는 직접 선택. 자동 작성이 필요하면 <b>⋯ → XML 내보내기</b>로 위젯에 데이터를 옮겨 작성하세요.';
+    s.className = 'rpt-send-status';
+  }
+  toast('netcus 창을 열었습니다 — 직접 입력하거나 위젯으로 옮겨 작성하세요', 'warn');
+}
 function openCatModal(){
   resetCatForm();
   $('#cGitAuthor').value = authorForVcs(catFormVcs);   // 현재 폼 종류(기본 git)의 작성자
