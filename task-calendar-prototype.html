@@ -763,6 +763,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4}
 .rpt-send-status.busy{color:var(--accent)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger)}
 .rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px}
+.bm-install{margin-top:6px;font-size:var(--fs-meta);color:var(--muted)}
+.bm-install summary{cursor:pointer}
+.bm-install #tcBookmarklet{color:var(--accent);text-decoration:none;font-weight:600;white-space:nowrap}
+.bm-note{display:block;margin-top:4px;color:var(--muted);font-size:var(--fs-meta)}
+.bm-manual{display:block;width:100%;margin-top:6px;min-height:52px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text);resize:vertical}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
 .qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
@@ -1727,6 +1732,27 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 const LS_KEY = 'taskCalendar.v1';
 const APP_VERSION = '0.5';   // 사용자 배포 버전(패치노트·버전 표시). 0.1=첫 배포(06-12) · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
+/* ---------- Platform 어댑터 (능력 포트) ----------
+   환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
+   caps(능력 유무)만 묻고 report.*(실행)를 위임한다. 환경 판별은 아래 한 줄뿐.
+   새 환경(예: 서버)은 어댑터 추가로 흡수 — 기능 코드 무수정(OCP).
+   ※ 이번엔 report 포트만. save·vcs 등 기존 if(HOST)는 점진 이전(docs/DECISIONS.md). */
+const WidgetPlatform = {
+  caps: { reportAuto: true },   // 위젯: .NET 호스트가 netcus 자동 전송 수행
+  report: {
+    // 위젯 경로는 기존 hpost 인자 구성과 바이트 단위로 동일해야 함(회귀 금지)
+    submitDaily(p){ hpost({ cmd: 'netcusSubmit', y: p.date.y, m: p.date.m, d: p.date.d, status: p.fields.status, overtime: p.fields.overtime, content: p.fields.content, dryRun: p.dryRun }); },
+    submitWeekly(p){ hpost({ cmd: 'netcusWeekSubmit', sdate: p.fields.sdate, edate: p.fields.edate, subject: p.fields.subject, content: p.fields.content, endwork: p.fields.endwork }); },
+  },
+};
+const BrowserPlatform = {
+  caps: { reportAuto: false },  // 브라우저: 호스트 없음 → 반자동(복사+새탭+안내)
+  report: {
+    submitDaily(p){ netcusAssist(p); },
+    submitWeekly(p){ netcusAssist(p); },
+  },
+};
+const Platform = HOST ? WidgetPlatform : BrowserPlatform;  // 환경 판별은 이 한 줄뿐
 const DEFAULT_ROOMS = ['101호', '201호', '202호'];   // 자주 쓰는 회의실 기본값(설정에서 추가/삭제) — load()보다 먼저 선언(TDZ 방지)
 // 회의실 목록 정규화 — 손상/외부편집 방어(문자열·트림·빈값 제외·중복 제거·길이/개수 제한)
 function normRooms(a){
@@ -3014,6 +3040,44 @@ window.__netcusResult = function(ok, msg){
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'warn');
 };
+/* 브라우저 반자동 흐름 — 호스트가 없어 자동 전송 불가.
+   ① 표준 페이로드를 클립보드에 복사 → ② netcus 새 탭 열기(캘린더 탭 보존) →
+   ③ #rptSendStatus에 안내 렌더(설치 도움말 접이식 포함) → ④ toast 짧게 알림.
+   북마클릿(다음 브리프에서 실제 URL 주입)이 netcus 페이지에서 이 JSON을 읽어 폼을 채운다. */
+async function netcusAssist(payload){
+  const json = JSON.stringify(payload);
+  // 클립보드 복사 — 보안 컨텍스트(https) 우선, 실패/미지원(file:// 등)이면 execCommand 폴백
+  let copied = false;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(json); copied = true; }
+  }catch(_){ /* 폴백으로 진행 */ }
+  if(!copied){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = json; ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.left = '-9999px';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      copied = document.execCommand('copy');
+      ta.remove();
+    }catch(_){ copied = false; }
+  }
+  // netcus 새 탭 — 캘린더 탭은 그대로 유지
+  try{ window.open('https://www.netcus.com/pjm/login.htm', '_blank'); }catch(_){}
+  // 안내 렌더
+  const weekly = payload && payload.kind === 'weekly';
+  const step2 = weekly ? '주간보고 작성' : '일간보고 해당 날짜';
+  const install = '<details class="bm-install"><summary>🔖 처음 한 번 — 채우기 도구 설치</summary> 아래 링크를 <b>북마크바로 드래그</b>하세요(클릭 아님). <a id="tcBookmarklet" href="#" title="북마크바로 드래그">🔖 netcus 보고 채우기</a> <span class="bm-note">사내 브라우저가 북마클릿을 막으면 복사한 내용을 직접 붙여넣으세요.</span></details>';
+  const s = $('#rptSendStatus');
+  if(s){
+    if(copied){
+      s.innerHTML = ICON.check + ' 채우기 데이터 복사됨 · netcus 탭에서 ① 로그인 ② ' + step2 + ' 페이지로 이동 ③ 북마크바의 ‘netcus 보고 채우기’ 클릭 → 붙여넣기 ④ 검토 후 페이지에서 직접 제출' + install;
+      s.className = 'rpt-send-status ok';
+    }else{
+      s.innerHTML = ICON.alert + ' 자동 복사 실패 — 아래 내용을 직접 복사하세요(클릭 시 전체선택). netcus 탭에서 ① 로그인 ② ' + step2 + ' 페이지로 이동 ③ 북마크바의 ‘netcus 보고 채우기’ 클릭 → 붙여넣기 ④ 검토 후 페이지에서 직접 제출<textarea class="bm-manual" readonly onclick="this.select()">' + esc(json) + '</textarea>' + install;
+      s.className = 'rpt-send-status err';
+    }
+  }
+  toast(copied ? '채우기 데이터 복사 · netcus 탭을 열었습니다' : '자동 복사 실패 — 안내의 내용을 직접 복사하세요', copied ? 'success' : 'warn');
+}
 function openCatModal(){
   resetCatForm();
   $('#cGitAuthor').value = authorForVcs(catFormVcs);   // 현재 폼 종류(기본 git)의 작성자
@@ -3309,7 +3373,7 @@ function updateRptSendVis(){
   } else if(reportMode === 'custom'){
     b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
     b.title = '커스텀 기간은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
-    if(h){ h.style.display = ''; h.textContent = '커스텀 기간은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
+    if(h){ h.style.display = ''; h.textContent = '커스텀 기간은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)' + (!Platform.caps.reportAuto ? ' (브라우저: 복사+새탭 반자동)' : ''); }
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '오늘 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
@@ -4287,7 +4351,6 @@ function bind(){
   });
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
-    if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
     const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
     if(mode === 'custom'){ toast('커스텀 기간은 회사 전송 대상이 아닙니다 — 복사만 가능합니다', 'warn'); return; }
     if(mode === 'daily'){
@@ -4296,17 +4359,26 @@ function bind(){
       if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
       const at = getAttendance(from), p = from.split('-').map(Number);
       const dry = ncMode() !== 'real';
-      const b = $('#btnRptSend'); if(b) b.disabled = true;
-      const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 전송 시작…'; s.className = 'rpt-send-status busy'; }
-      hpost({ cmd: 'netcusSubmit', y: p[0], m: p[1], d: p[2], status: at.status, overtime: at.overtime, content, dryRun: dry });
+      // 표준 페이로드(포트 계약 — 북마클릿과 공유)
+      const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, dryRun: dry };
+      // 버튼 disable+스피너는 위젯 모드에서만(호스트 회신 __netcusResult가 다시 활성화) — 브라우저는 회신이 없어 영구 잠김 방지
+      if(Platform.caps.reportAuto){
+        const b = $('#btnRptSend'); if(b) b.disabled = true;
+        const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 전송 시작…'; s.className = 'rpt-send-status busy'; }
+      }
+      Platform.report.submitDaily(payload);
     } else {
       // 주간보고 — 채우고 열어두기(직접 제출). 기간/제목/과제투입시간/진행사항 자동 채움.
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){ toast('기간을 선택하세요 (시작 ≤ 종료)', 'warn'); return; }
       const wf = buildWeeklyFields(from, to, rptSources());
       if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
-      const b = $('#btnRptSend'); if(b) b.disabled = true;
-      const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
-      hpost({ cmd: 'netcusWeekSubmit', sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork });
+      // 표준 페이로드(포트 계약 — 북마클릿과 공유)
+      const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork } };
+      if(Platform.caps.reportAuto){
+        const b = $('#btnRptSend'); if(b) b.disabled = true;
+        const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+      }
+      Platform.report.submitWeekly(payload);
     }
   });
   $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
