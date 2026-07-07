@@ -1,0 +1,53 @@
+<!-- netcus 주간보고 폼 모의(pjm_write.jsp) — 필드명은 실제 netcus와 동일.
+     일간과 완전 별개 폼. 레거시 euc-kr 구조 흉내(폼이 <table> 안). 인코딩 테스트 무관 → UTF-8 저장. -->
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>주간보고(모의)</title></head>
+<body>
+<form name="form" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="ndate">
+  <table>
+    <tr>
+      <td>기간</td>
+      <td>
+        <input type="text" name="sdate" readonly>
+        ~
+        <input type="text" name="edate" readonly>
+      </td>
+    </tr>
+    <tr>
+      <td>제목</td>
+      <td><input type="text" name="subject"></td>
+    </tr>
+    <tr>
+      <td>과제투입시간</td>
+      <td><textarea name="content"></textarea></td>
+    </tr>
+    <tr>
+      <td>진행사항</td>
+      <td><textarea name="endwork"></textarea></td>
+    </tr>
+    <tr>
+      <td>미처리사항</td>
+      <td><textarea name="notendwork"></textarea></td>
+    </tr>
+    <tr>
+      <td>차주계획</td>
+      <td><textarea name="planwork"></textarea></td>
+    </tr>
+    <tr>
+      <td>문제점/건의</td>
+      <td><textarea name="problem"></textarea></td>
+    </tr>
+    <tr>
+      <td>회의내용</td>
+      <td><textarea name="resultwork"></textarea></td>
+    </tr>
+    <tr>
+      <td>HTML 여부</td>
+      <td><input type="checkbox" name="html" value="1"></td>
+    </tr>
+  </table>
+</form>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!-- netcus 일간보고 폼 모의(pjm_work_view.jsp) — 필드명은 실제 netcus와 동일.
+     레거시 euc-kr 페이지 구조 흉내(폼이 <table> 안, 필드는 그 안). 인코딩은 테스트 무관 → UTF-8 저장.
+     주의: 실제 status 코드는 1·2·3·4·5·6·12·7·9·10·11(근태) 이지만
+     이 fixture는 테스트 스캐폴드 브리프 명세(value "1"~"10")를 따른다. -->
+<!DOCTYPE html>
+<html lang="ko">
+<head><meta charset="UTF-8"><title>일간보고(모의)</title></head>
+<body>
+<form name="form" method="post" enctype="multipart/form-data">
+  <input type="hidden" name="dbstatus" value="0">
+  <table>
+    <tr>
+      <td>근태</td>
+      <td>
+        <select name="status">
+          <option value="1">정근</option>
+          <option value="2">야근</option>
+          <option value="3">특근</option>
+          <option value="4">외근</option>
+          <option value="5">출장</option>
+          <option value="6">휴가</option>
+          <option value="7">반차</option>
+          <option value="8">조퇴</option>
+          <option value="9">지각</option>
+          <option value="10">병가</option>
+        </select>
+      </td>
+    </tr>
+    <tr>
+      <td>초과시간</td>
+      <td>
+        <select name="overtime">
+          <option value="0">0시간</option>
+          <option value="1">1시간</option>
+          <option value="2">2시간</option>
+          <option value="3">3시간</option>
+          <option value="4">4시간</option>
+          <option value="5">5시간</option>
+          <option value="6">6시간</option>
+          <option value="7">7시간</option>
+          <option value="8">8시간</option>
+          <option value="9">9시간</option>
+          <option value="10">10시간</option>
+          <option value="11">11시간</option>
+        </select>
+      </td>
+    </tr>
+    <tr>
+      <td>내용</td>
+      <td><textarea name="content"></textarea></td>
+    </tr>
+    <tr>
+      <td colspan="2"><input type="button" value="수정"></td>
+    </tr>
+  </table>
+</form>
+</body>
+</html>
