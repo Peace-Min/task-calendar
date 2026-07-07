@@ -697,6 +697,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .todo-check{flex:none;border:none;background:none;cursor:pointer;font-size:16px;line-height:1;color:var(--accent);padding:0}
 .todo-main{flex:1;min-width:0}
 .todo-text{font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere;cursor:text}
+.todo-memo{font-size:var(--fs-meta);color:var(--muted);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text}
+.todo-row.done .todo-memo{color:var(--faint-text)}
 .todo-star{color:#e0a32e;margin-right:2px}
 .todo-row.done .todo-text{text-decoration:line-through;color:var(--faint-text)}
 .todo-due{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
@@ -707,6 +709,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 /* 인라인 편집 */
 .todo-edit{border-top:1px solid var(--line);padding:9px 0;display:flex;flex-direction:column;gap:7px}
 .todo-edit .te-text{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-emph);font-family:inherit;background:#fff;color:var(--text)}
+.todo-edit .te-note{width:100%;box-sizing:border-box;margin-top:6px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;line-height:1.55;background:#fff;color:var(--text);resize:vertical}
 .te-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .te-row input[type=date],.te-row select{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:#fff;color:var(--text)}
 .te-star{font-size:var(--fs-meta);color:var(--muted);display:inline-flex;align-items:center;gap:3px}
@@ -841,7 +844,7 @@ html.dark .btn,html.dark .menu,html.dark .fchip,html.dark .dp-action,html.dark .
 html.dark .modal input[type=text],html.dark .modal input[type=date],html.dark .modal input[type=time],
 html.dark .modal input[type=month],html.dark .modal select,html.dark .modal textarea,
 html.dark .color-input,html.dark .recur-pill,html.dark .s-row,html.dark .nd-add-r1 input,html.dark .nd-add-r2 input[type=date],
-html.dark .todo-edit .te-text,html.dark .te-row input[type=date],html.dark .te-row select,html.dark .nd-toggle,
+html.dark .todo-edit .te-text,html.dark .todo-edit .te-note,html.dark .te-row input[type=date],html.dark .te-row select,html.dark .nd-toggle,
 html.dark .qa-ctx input[type=date],html.dark .qa-ctx select,html.dark .jump,html.dark .s-date,
 html.dark .qa-detail input[type=time],html.dark .qa-detail select,html.dark .qa-detail textarea{ background:var(--panel) }
 html.dark .btn:hover,html.dark .menu button:hover,html.dark .cell:hover,html.dark .dp-action:hover,html.dark .git-row,html.dark .x:hover,html.dark .s-row:hover,html.dark .imp-box{ background:var(--fill) }
@@ -3477,6 +3480,7 @@ function updateTodo(id, f){ const t = todoById(id); if(!t) return;
   if(t.due === '' || (t.endDate && t.endDate <= t.due)) t.endDate = '';   // 기한 없거나 종료<=시작이면 기간 해제
   if('categoryId' in f) t.categoryId = f.categoryId || null;
   if('prio' in f) t.prio = f.prio === 'high' ? 'high' : 'normal';
+  if('note' in f) t.note = String(f.note ?? '');   // 설명(여러 줄 · 줄바꿈 보존)
   t.updatedAt = nowIso(); save();
 }
 function deleteTodo(id){ state.todos = (state.todos || []).filter(t => t.id !== id); save(); }
@@ -3583,7 +3587,7 @@ function todoRowHtml(t){
   const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(dueLabel(t.due))}</span>` : '';
   return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}">
     <button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>
-    <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span></div>
+    <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span>${t.note ? `<div class="todo-memo" data-act="edit" title="클릭하여 수정">${esc(t.note)}</div>` : ''}</div>
     ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
     <button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?ICON.starFill:ICON.star}</button>
     <button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>
@@ -3593,6 +3597,7 @@ function todoEditHtml(t){
   const opts = state.categories.map(c => `<option value="${esc(c.id)}"${t.categoryId===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
   return `<div class="todo-edit" data-id="${esc(t.id)}">
     <input type="text" class="te-text" maxlength="200" value="${esc(t.text)}">
+    <textarea class="te-note" rows="3" placeholder="설명 (여러 줄 · 선택)">${esc(t.note||'')}</textarea>
     <div class="te-row">
       <input type="date" class="te-due" value="${esc(t.due||'')}" title="기한/시작">
       <span class="te-tilde">~</span>
@@ -3760,11 +3765,23 @@ function openQuickAdd(date, type, entryId){
 }
 function qaSyncType(){
   $$('#quickAdd .qa-type').forEach(b => { const on = b.dataset.qatype === qaType; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  $('#qaTitle').placeholder = (qaType === 'todo') ? '할 일' : '일정 제목';
-  $('#qaDate').title = (qaType === 'todo') ? '기한(비우면 기한없음)' : '날짜';
+  const isTodo = qaType === 'todo';
+  $('#qaTitle').placeholder = isTodo ? '할 일 (짧게)' : '일정 제목';
+  $('#qaDate').title = isTodo ? '기한(비우면 기한없음)' : '날짜';
   const w = $('#qaWhen'); if(w) w.classList.toggle('hidden', qaType !== 'event');   // 시간 영역은 일정에만
-  if(qaType === 'event') qaSyncTimeRow();
-  if(!$('#qaDetail').classList.contains('hidden')) qaRenderDetail(); else qaMoreLabel();
+  const more = $('#qaMore'), det = $('#qaDetail');
+  if(isTodo){
+    // 할 일: 설명(서술형)+중요를 기본 노출 — '옵션 더보기' 불필요
+    qaRenderDetail();
+    if(det) det.classList.remove('hidden');
+    if(more) more.classList.add('hidden');
+  } else {
+    // 일정: 옵션은 접힌 상태로 시작(편집 모드는 openQuickAdd가 이후 다시 펼침)
+    if(more) more.classList.remove('hidden');
+    qaSyncTimeRow();
+    if(det) det.classList.add('hidden');
+    qaMoreLabel();
+  }
 }
 function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
@@ -3774,9 +3791,8 @@ function qaRenderDetail(){
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
-    : `<label class="qa-chk"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>
-       <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
-       <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`;
+    : `<label class="qa-lb">설명</label><textarea id="qaMemo" rows="3" placeholder="서술형으로 자유롭게 (선택)"></textarea>
+       <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
   if(qaType === 'event'){
     fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
     const rm = $('#qaRoomMgr'); if(rm) rm.addEventListener('click', openRoomModal);   // 빠른추가 → 회의실 관리(중첩 모달)
@@ -4165,7 +4181,8 @@ function bind(){
       if(act === 'save'){
         updateTodo(id, {text:box.querySelector('.te-text').value, due:box.querySelector('.te-due').value,
           endDate:box.querySelector('.te-end') ? box.querySelector('.te-end').value : '',
-          categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal'});
+          categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal',
+          note:box.querySelector('.te-note') ? box.querySelector('.te-note').value : ''});
         editingTodoId = null; renderPanel(); renderGrid();
       } else if(act === 'canceledit'){ editingTodoId = null; renderPanel(); }
       else if(act === 'del'){ const rm = todoById(id); deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.todos.push(rm); save(); renderPanel(); renderGrid(); }}); }
