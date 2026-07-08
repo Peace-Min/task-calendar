@@ -219,7 +219,7 @@ flowchart TB
 
 ## 🧾 릴리스 내역
 
-버전별 핵심 변경 요약입니다. **전체 상세 이력**은 [CHANGELOG.md](CHANGELOG.md)(인계 문서), **사용자용 변경사항**은 앱 내 `? 도움말 → 변경사항` 모달에서 봅니다. (새 버전으로 올릴 때 이 표 + `widget/TaskCalendarWidget.csproj`의 `<Version>` + `task-calendar-prototype.html`의 `APP_VERSION`·패치노트 모달을 함께 갱신합니다.)
+버전별 핵심 변경 요약입니다. **사용자용 변경사항**은 [RELEASE_NOTES.md](RELEASE_NOTES.md) 또는 앱 내 `? 도움말 → 🆕 변경사항`(눌렀을 때만 — 시작 시 자동 표시 없음), **전체 상세 이력**은 [CHANGELOG.md](CHANGELOG.md)(인계 문서)에서 봅니다. (새 버전으로 올릴 때 이 표 + `widget/TaskCalendarWidget.csproj`의 `<Version>` + `task-calendar-prototype.html`의 `APP_VERSION`·패치노트 모달 + `RELEASE_NOTES.md`를 함께 갱신합니다.)
 
 | 버전 | 날짜 | 핵심 변경 |
 |---|---|---|

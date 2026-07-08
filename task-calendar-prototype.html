@@ -585,7 +585,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .shotViewer-head{height:44px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid var(--line);font-size:var(--fs-body);font-weight:700;color:var(--text)}
 .shotViewer-head .spacer{flex:1}
 .shotViewer-head button{border:none;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:4px 8px}
-/* 변경사항(패치노트) 모달 */
+/* 변경사항(패치노트) 모달 — 온디맨드(도움말 링크로만 열림) */
 .patch-body{max-height:64vh}
 .patch-ver{display:flex;align-items:baseline;gap:8px;margin:16px 0 7px}
 .patch-ver:first-child{margin-top:0}
@@ -1286,7 +1286,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
     </div>
     <div class="modal-foot">
-      <button type="button" class="lnk" id="btnPatch" style="margin-right:auto">🆕 변경사항 · v<span id="appVerLabel">0.3</span></button>
+      <button type="button" class="lnk" id="btnPatch" style="margin-right:auto">🆕 변경사항 · v<span id="appVerLabel">0.5</span></button>
       <button class="btn" data-close>닫기</button>
       <button class="btn primary" id="btnGuide">📖 자세한 사용설명서</button>
     </div>
@@ -1483,7 +1483,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- ===== 변경사항(패치노트) 모달 ===== -->
+<!-- ===== 변경사항(패치노트) 모달 — 온디맨드: 도움말 푸터 '🆕 변경사항'으로만 열림(시작 시 자동 표시 없음) ===== -->
 <div class="overlay hidden" id="patchModal">
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
@@ -1532,7 +1532,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
-      <button class="btn primary" data-close>확인</button>
+      <button class="btn primary" data-close>닫기</button>
     </div>
   </div>
 </div>
@@ -1725,7 +1725,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.5';   // 사용자 배포 버전(패치노트·버전 표시). 0.1=첫 배포(06-12) · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI
+const APP_VERSION = '0.5';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
@@ -1794,7 +1794,6 @@ function defaultState(){
   return {
     gitAuthor: '',    // Git 과제 전용 작성자(이메일·자동감지) — VCS별 분리
     svnAuthor: '',    // SVN 과제 전용 작성자(계정명·직접입력)
-    seenVersion: '',
     categories: [
       {id:c1, name:'보고서 작성', color:'#3e5be0', desc:'주간/월간 보고서 작업', gitRepo:'', createdAt:nowIso()},
       {id:c2, name:'시스템 점검', color:'#2e9e6b', desc:'정기 시스템·서버 점검', gitRepo:'', createdAt:nowIso()},
@@ -1839,7 +1838,6 @@ function load(){
         s.gitAuthor = String(s.gitAuthor ?? '');
         // svnAuthor 1회 마이그레이션 — 구버전(필드 부재)엔 전역 작성자 하나를 git/svn이 공유했으므로 기존 값을 복사(동작 보존)
         s.svnAuthor = (s.svnAuthor === undefined || s.svnAuthor === null) ? s.gitAuthor : String(s.svnAuthor);
-        s.seenVersion = String(s.seenVersion ?? '');
         s.todos = normTodos(s.todos);   // 멀티노트 — 구버전/외부편집 데이터엔 없을 수 있음(없으면 빈 배열)
         s.rooms = normRooms(s.rooms) || DEFAULT_ROOMS.slice();   // 회의실 — 구버전엔 없음 → 기본값 폴백
         return s;
@@ -1869,7 +1867,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', seenVersion:data.seenVersion||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -2045,7 +2043,6 @@ function toXML(){
   if(state.gitAuthor) root.setAttribute('gitAuthor', state.gitAuthor);
   // svnAuthor는 빈 값도 항상 기록 — '사용자가 비움(전체 커밋)'과 '구버전 부재(마이그레이션 필요)'를 구분
   root.setAttribute('svnAuthor', state.svnAuthor || '');
-  if(state.seenVersion) root.setAttribute('seenVersion', state.seenVersion);   // 패치노트 '본 버전' — data.xml에 영속(재부팅 안전)
 
   const cats = doc.createElement('categories');
   for(const c of state.categories){
@@ -2232,7 +2229,7 @@ function fromXML(text){
 
   // svnAuthor: 속성 부재(구버전 XML) = 전역 작성자 공유 시절 → gitAuthor를 복사(1회 마이그레이션·동작 보존)
   const _svnA = root.hasAttribute('svnAuthor') ? (root.getAttribute('svnAuthor') || '') : (root.getAttribute('gitAuthor') || '');
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, seenVersion: root.getAttribute('seenVersion') || '', todos, rooms};
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -3220,7 +3217,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', seenVersion:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice()};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice()};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -4121,27 +4118,11 @@ function closeShotViewer(ev){
   if(out) out.removeAttribute('src');
   if(ov){ ov.classList.add('hidden'); ov.setAttribute('aria-hidden', 'true'); }
 }
+// 변경사항(패치노트) — 온디맨드 전용: 도움말 푸터의 '🆕 변경사항' 링크를 눌렀을 때만 연다.
+// (시작 시 자동 표시 + seenVersion 추적은 의도적으로 제거 — 단순함 우선. 이력 원본은 RELEASE_NOTES.md)
 function openPatch(){
   const body = $('#patchModal .patch-body'); if(body) body.scrollTop = 0;
   openModal('#patchModal');
-}
-// '본 버전' 영속 — 위젯은 data.xml(호스트 동기 파일 기록, 재부팅 안전), 브라우저는 localStorage.
-// (localStorage는 WebView2가 종료 전 flush 못 하면 유실돼 재부팅마다 패치노트가 다시 뜨던 버그의 원인)
-function getSeenVersion(){
-  if(HOST) return (state && state.seenVersion) || '';
-  try{ return localStorage.getItem('tc_seenVersion') || ''; }catch(_){ return ''; }
-}
-function setSeenVersion(v){
-  if(HOST){ if(state && state.seenVersion !== v){ state.seenVersion = v; save(); } return; }   // save()=호스트가 data.xml 즉시 기록
-  try{ localStorage.setItem('tc_seenVersion', v); }catch(_){}
-}
-// 새 버전 첫 실행 시 1회 자동 안내(다른 모달이 떠 있으면 방해하지 않음). '확인'/닫을 때 본 것으로 기록.
-function maybeShowPatch(){
-  if(HOST && !__xmlApplied){ setTimeout(maybeShowPatch, 800); return; }   // data.xml 로드 후에만 — seed로 덮어쓰는 save 경합 방지
-  if(getSeenVersion() === APP_VERSION) return;
-  if($$('.overlay').some(o => !o.classList.contains('hidden'))) return;   // 다른 창이 열려 있으면 다음 기회에
-  setSeenVersion(APP_VERSION);   // 표시 '즉시' 봤음 기록(버전당 1회)
-  openPatch();
 }
 
 /* ---------- 이벤트 바인딩 ---------- */
@@ -4185,12 +4166,8 @@ function bind(){
     ev.stopImmediatePropagation();
     closeShotViewer();
   }, true);
-  const _avl = $('#appVerLabel'); if(_avl) _avl.textContent = APP_VERSION;
-  $('#btnPatch').addEventListener('click', openPatch);
+  $('#btnPatch').addEventListener('click', openPatch);   // 변경사항은 눌렀을 때만(자동 표시 없음)
   { const avl = $('#appVerLabel'); if(avl) avl.textContent = APP_VERSION; }   // 버튼 라벨 버전 동기화(하드코딩 방지)
-  new MutationObserver(() => {   // 패치노트를 닫으면 이 버전을 '본 것'으로 기록 → 다음부터 자동표시 안 함
-    if($('#patchModal').classList.contains('hidden')){ setSeenVersion(APP_VERSION); }
-  }).observe($('#patchModal'), { attributes: true, attributeFilter: ['class'] });
   $('#guideToc').addEventListener('click', ev => {        // 목차 → 해당 섹션으로 스크롤
     const b = ev.target.closest('button[data-goto]'); if(!b) return;
     const t = document.getElementById(b.dataset.goto);
@@ -5071,7 +5048,6 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}
 }
-setTimeout(maybeShowPatch, 1500);   // 새 버전 첫 실행 시 변경사항 1회 자동 안내
 function hpost(o){ try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){} }
 
 /* ===== 시작 알림(리마인더) — 호스트(WPF)가 타이머/창 담당. JS는 48h 발생 + 테마만 푸시 ===== */
