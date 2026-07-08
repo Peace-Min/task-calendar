@@ -502,6 +502,17 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-h-in:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .rpt-mirror .rcard-hu{font-size:var(--fs-meta);color:var(--muted)}
 .rpt-mirror .rcard-tasks{font-size:var(--fs-meta);color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
+/* 일간 보고서 커밋 라인 편집(✎) — 조밀 라인 위에 확장형 편집기(Part B와 동일 톤) */
+.rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
+.rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
+.rpt-mirror .rtask .rtask-edit-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
+.rpt-mirror .rtask .rtask-edit-btn .ic{width:13px;height:13px}
+.rpt-mirror .rcard:hover .rtask-edit-btn,.rpt-mirror .rtask:focus-within .rtask-edit-btn{opacity:.7}
+.rpt-mirror .rtask .rtask-edit-btn:hover{opacity:1;color:var(--accent);background:var(--hover-bg)}
+.rpt-mirror .rtask.editing{display:block}
+.rpt-mirror .rtask.editing .nd-cedit-wrap{margin-top:2px}
+.rpt-mirror .rtask-edit{width:100%;box-sizing:border-box;min-height:52px;resize:vertical;font:inherit;font-size:var(--fs-body);line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
+.rpt-mirror .rtask-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent)}
 .lnk{border:none;background:none;color:var(--accent);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
@@ -672,9 +683,15 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .nd-commit:hover .nd-cbtn,.nd-commit:focus-within .nd-cbtn{opacity:.72}
 .nd-commit .nd-cbtn:hover{opacity:1;background:var(--hover-bg)}
 .nd-commit .nd-cdel-btn:hover{color:var(--danger)}
-.nd-commit.editing{align-items:center}
-.nd-commit .nd-cedit{flex:1;min-width:0;font:inherit;font-size:var(--fs-body);padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:var(--panel);color:var(--text)}
+.nd-commit.editing{align-items:stretch}
+.nd-cedit-wrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.nd-commit .nd-cedit{width:100%;box-sizing:border-box;min-height:52px;resize:vertical;font:inherit;font-size:var(--fs-body);line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
 .nd-commit .nd-cedit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
+.nd-cedit-acts{display:flex;justify-content:flex-end;gap:6px}
+.nd-cbtn2{font:inherit;font-size:var(--fs-meta);padding:4px 12px;border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--panel);color:var(--text);cursor:pointer;transition:background .12s,border-color .12s,color .12s}
+.nd-cbtn2:hover{background:var(--hover-bg)}
+.nd-cedit-save{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.nd-cedit-save:hover{background:var(--accent);border-color:var(--accent);color:#fff}
 /* 작업일지 과제별 공수칩 */
 .dp-hours{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 0 8px;border-bottom:1px solid var(--line);margin-bottom:6px}
 .dp-hours .dph-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:700}
@@ -2289,7 +2306,7 @@ let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'to
 let noteFilterCat = null;    // 할 일/작업일지 전용 과제 필터 — 캘린더 전역 filterCatId와 독립
 let noteCollapsed = new Set(['done','nodate']);  // 접힌 섹션 키(완료·기한없음은 기본 접힘)
 let editingTodoId = null;    // 인라인 편집 중인 TODO id
-let editingCommitKey = null; // 인라인 편집 중인 커밋 행 키(eidhashcidx) — 작업일지 탭
+let editingCommitKey = null; let editingReportKey = null; // 인라인 편집 중인 커밋 행 키(eidhashcidx) — 작업일지 탭
 let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
 let noteImportantOnly = false; // 할 일 탭 '★ 중요만' 필터
 let __entryGitLoaded = false; // 기록 모달에서 Git 커밋을 불러왔는지 → 저장 시 source='git'
@@ -3290,15 +3307,30 @@ function collectReportData(from, to, sources){
   const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 만든 경우 미분류를 그쪽으로 병합
   const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
   const items = new Map(), seen = new Map(), sumMin = new Map(), bucket = new Map();
-  const uncat = [];
+  const meta = new Map(), pos = new Map();   // meta: k -> [{text,editable,entryId,hash,cidx}] (titles와 1:1 정렬), pos: k -> Map(title -> index)
+  const uncat = [], uncatMeta = [];
   let uninput = 0;
   // 업무 제목 추가(과제 버킷별 동일 제목 1회). git은 커밋 제목 '전부'를 펼치고, 그 외는 엔트리 제목.
-  const pushTitle = (k, t) => {
+  // gitMeta({entryId,hash,cidx})가 있으면 그 제목은 '단일 git 커밋' 출처 → 편집 가능. 같은 제목이 다시 오면(중복/타출처)
+  // 단일 출처가 아니게 되므로 편집 불가로 강등. 비-git(일정/할일) 제목은 항상 편집 불가. titles(문자열) 출력·dedup은 불변.
+  const pushTitle = (k, t, gitMeta) => {
     t = String(t || '').trim(); if(!t) return;
     if(!seen.has(k)) seen.set(k, new Set());
-    if(seen.get(k).has(t)) return; seen.get(k).add(t);
-    if(k === '__uncat__') uncat.push(t);
-    else { if(!items.has(k)) items.set(k, []); items.get(k).push(t); }
+    const uncatK = (k === '__uncat__');
+    const marr = uncatK ? uncatMeta : (meta.has(k) ? meta.get(k) : meta.set(k, []).get(k));
+    if(seen.get(k).has(t)){   // 중복 재등장 → 단일 출처 아님 → 편집 불가로 강등(문자열은 이미 있으니 추가 안 함)
+      const pm = pos.get(k); const idx = pm ? pm.get(t) : undefined;
+      if(idx != null && marr[idx]) marr[idx] = { text:t, editable:false, entryId:null, hash:null, cidx:-1 };
+      return;
+    }
+    seen.get(k).add(t);
+    const arr = uncatK ? uncat : (items.has(k) ? items.get(k) : items.set(k, []).get(k));
+    arr.push(t);
+    if(!pos.has(k)) pos.set(k, new Map());
+    pos.get(k).set(t, arr.length - 1);   // arr와 marr는 항상 lockstep push → 인덱스 정렬 보장
+    marr.push(gitMeta
+      ? { text:t, editable:true, entryId:gitMeta.entryId, hash:gitMeta.hash, cidx:gitMeta.cidx }
+      : { text:t, editable:false, entryId:null, hash:null, cidx:-1 });
   };
   // 일정·Git 커밋 — entries를 source로 분기(일정=비-git, Git=git)
   for(const e of state.entries){
@@ -3313,8 +3345,8 @@ function collectReportData(from, to, sources){
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     // git 작업일지는 커밋 제목 전부를 업무로(요약 'N건'이 아니라 실제 커밋들 — git 로그 가져오는 핵심), 그 외는 엔트리 제목
     if(isGit && Array.isArray(e.commits) && e.commits.length){
-      for(const c of e.commits) pushTitle(k, c.subject);
-    } else pushTitle(k, e.title);
+      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { entryId:e.id, hash:c.hash || '', cidx:ci }); }
+    } else pushTitle(k, e.title);   // 비-git 엔트리 제목 → gitMeta 없음(편집 불가)
   }
   // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
   if(src.todo){
@@ -3327,9 +3359,9 @@ function collectReportData(from, to, sources){
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
   const rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
-    minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], entries:bucket.get(c.id)||[] }));
+    minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));
   if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
-    minutes:sumMin.get('__uncat__')||0, titles:uncat, entries:bucket.get('__uncat__')||[] });
+    minutes:sumMin.get('__uncat__')||0, titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
   let grand = 0; for(const v of sumMin.values()) grand += v;
   return { rows, grandMin:grand, uninput };
 }
@@ -3342,6 +3374,7 @@ function rptSources(){
 let reportMode = 'daily';
 function setReportMode(mode){
   reportMode = mode;
+  editingReportKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지)
   $$('#reportModal [data-rmode]').forEach(b => b.classList.toggle('active', b.dataset.rmode === mode));
   const from = $('#rptFrom'), to = $('#rptTo');
   if(mode === 'daily'){
@@ -3415,9 +3448,9 @@ function buildReport(){
   if(!rows.length){
     sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
   }
-  const singleDay = (from === to);   // 하루 보고서에서만 시간 인라인 수정(여러 날은 읽기전용 — 합을 한 날에 분배 불가)
+  const daily = (reportMode === 'daily');   // 결정6: 데이터 편집(근태·공수·커밋 제목)은 일간에서만 — 주간/커스텀(단일일 포함)은 읽기전용 투영
   let html = '';
-  if(singleDay){   // 일간: 근태·초과시간 콤보(회사 일간보고 전송용). 값=사이트 코드.
+  if(daily){   // 일간: 근태·초과시간 콤보(회사 일간보고 전송용). 값=사이트 코드.
     const at = getAttendance(from);
     const stOpts = ATTEND_STATUS.map(s => `<option value="${s.v}"${s.v === at.status ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
     const otOpts = Array.from({length:12}, (_, i) => `<option value="${i}"${i === at.overtime ? ' selected' : ''}>${i === 0 ? '없음' : '+' + i + '시간'}</option>`).join('');
@@ -3430,7 +3463,7 @@ function buildReport(){
   for(const r of rows){
     const hasEntry = r.entries.length > 0;
     // 단일일 + 발생 항목 있으면 그 (날짜×과제) 첫 항목(createdAt 최소)에 저장 — 작업일지 칩과 동일
-    const head = (singleDay && hasEntry)
+    const head = (daily && hasEntry)
       ? r.entries.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0] : null;
     html += `<div class="rcard${hasEntry ? '' : ' rcard-empty'}">`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
@@ -3442,13 +3475,30 @@ function buildReport(){
       html += `<span class="rcard-h-ro">${r.minutes ? fmtH(r.minutes) : '0'}</span><span class="rcard-hu">h</span>`;
     }
     html += `</div>`;
-    if(r.titles.length) html += `<div class="rcard-tasks">${r.titles.map(t => `· ${esc(t)}`).join('<br>')}</div>`;
+    if(r.titles.length){
+      if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
+        html += `<div class="rcard-tasks">` + r.titles.map((t, i) => {
+          const m = (r.titleMeta && r.titleMeta[i]) || null;
+          if(m && m.editable){
+            const key = String(m.entryId) + '|' + String(m.hash || '') + '|' + m.cidx;
+            const dr = `data-reid="${esc(m.entryId)}" data-rhash="${esc(m.hash || '')}" data-rcidx="${m.cidx}"`;
+            if(editingReportKey === key){
+              return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="커밋 메시지 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
+            }
+            return `<div class="rtask" ${dr}><span class="rtask-t">· ${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="커밋 메시지 수정" aria-label="커밋 메시지 수정">${ICON.wrench}</button></div>`;
+          }
+          return `<div class="rtask rtask-ro"><span class="rtask-t">· ${esc(t)}</span></div>`;
+        }).join('') + `</div>`;
+      } else {   // 주간/커스텀: 읽기전용 — 현재 모습 그대로(· text, ✎ 없음)
+        html += `<div class="rcard-tasks">${r.titles.map(t => `· ${esc(t)}`).join('<br>')}</div>`;
+      }
+    }
     if(head) html += `<span class="rcard-note edit">오늘치 — 여기서 바로 수정</span>`;
-    else if(hasEntry && !singleDay) html += `<span class="rcard-note">여러 날 합산 · 날짜별로 수정</span>`;
+    else if(hasEntry && !daily) html += `<span class="rcard-note">여러 날 합산 · 날짜별로 수정</span>`;
     html += `</div>`;
   }
   out.innerHTML = html;
-  if(singleDay){   // 근태/초과시간 변경 → per-day 저장
+  if(daily){   // 근태/초과시간 변경 → per-day 저장
     const sv = () => setAttendance(from, $('#raStatus').value, $('#raOT').value);
     const a = $('#raStatus'), b = $('#raOT');
     if(a) a.addEventListener('change', sv);
@@ -3459,7 +3509,7 @@ function buildReport(){
   if(uninput) line += ` · 미입력 ${uninput}건`;
   const picked = [src.event && '일정', src.todo && '할 일', src.git && '커밋'].filter(Boolean);
   if(picked.length < 3) line += ` · 포함: ${picked.join('·')}`;
-  if(singleDay) line += ' · 하루(수정 가능)';
+  if(daily) line += ' · 하루(수정 가능)';
   sum.textContent = line;
 }
 function openReport(){
@@ -3639,8 +3689,9 @@ function renderGitTab(){
     const time = r.time ? `<span class="t">${esc(r.time)}</span>` : '';
     const hash = r.short ? `<code class="h">${esc(r.short)}</code>` : '';
     if(editable && editingCommitKey === commitKeyOf(r)){
-      // 인라인 편집: subject를 input으로 대체(Enter/blur 커밋, Esc 취소)
-      h += `<div class="nd-commit editing" ${da}><span class="nd-ci" title="커밋">${ICON.git}</span>${time}<input class="nd-cedit" type="text" maxlength="500" value="${esc(r.subject)}" aria-label="커밋 메시지 수정">${hash}</div>`;
+      // 넉넉한 편집기: 단행 input 대신 전체폭 textarea + 취소/저장(조밀 리스트를 시각적으로 깨지 않는 확장형).
+      // textarea는 class 'nd-cedit' 유지 → 기존 keydown(Enter=blur/Esc=cancel)·focusout(commitCommitEdit) 배선 그대로 사용.
+      h += `<div class="nd-commit editing" ${da}><div class="nd-cedit-wrap"><textarea class="nd-cedit" maxlength="500" rows="2" aria-label="커밋 메시지 수정">${esc(r.subject)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 nd-cedit-cancel" data-cact="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save" data-cact="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
     } else {
       const ctrls = editable
         ? `<button class="nd-cbtn nd-cedit-btn" data-cact="edit" title="메시지 수정" aria-label="커밋 메시지 수정">${ICON.wrench}</button><button class="nd-cbtn nd-cdel-btn" data-cact="del" title="이 커밋 삭제" aria-label="이 커밋 삭제">${ICON.xmark}</button>`
@@ -3658,7 +3709,26 @@ function findCommitInEntry(entry, chash, cidx){
   if(chash){ return entry.commits.find(c => c.hash === chash) || null; }
   return (cidx >= 0 && cidx < entry.commits.length) ? entry.commits[cidx] : null;
 }
-// 커밋 삭제 — hash(있으면) 아니면 인덱스로 제거. 마지막 커밋이면 git 기록 자체를 제거.
+// ── 커밋 데이터 단일 변경 경로(결정6) ──────────────────────────────────
+// 커밋 subject/삭제 쓰기는 어느 표면(작업일지 탭·보고서)에서 호출하든 오직
+// setCommitSubject / deleteCommitRow 두 API만 통과한다. 데이터 수정은 여기서 1회만 일어나고
+// notifyDataChanged()가 열려 있는 모든 뷰(패널·그리드·보고서 초안)를 한 번에 재반영한다.
+// 데이터 변경 후 열린 뷰 재반영 — 단일 리렌더 트리거. 보고서 모달이 떠 있으면 초안도 갱신.
+function notifyDataChanged(){
+  renderPanel(); renderGrid();
+  const rm = $('#reportModal');
+  if(rm && !rm.classList.contains('hidden')) buildReport();   // 열려 있을 때만(커밋내역↔보고서 교차 반영)
+}
+// 커밋 subject 변경 — 유일한 subject 쓰기 경로. 정규화·무변경/빈값 차단. 실제 변경 시 true.
+function setCommitSubject(entryId, hash, cidx, text){
+  const e = entryById(entryId); if(!e) return false;
+  const c = findCommitInEntry(e, hash, cidx); if(!c) return false;
+  const v = String(text || '').replace(/\s+/g, ' ').trim();
+  if(!v || v === c.subject) return false;   // 빈 값/무변경은 기록하지 않음
+  c.subject = v; e.updatedAt = nowIso();
+  save(); notifyDataChanged(); return true;
+}
+// 커밋 삭제 — hash(있으면) 아니면 인덱스로 제거. 마지막 커밋이면 git 기록 자체를 제거. 유일한 삭제 경로.
 function deleteCommitRow(eid, chash, cidx){
   const entry = entryById(eid);
   if(!entry || !Array.isArray(entry.commits)) return;
@@ -3667,21 +3737,28 @@ function deleteCommitRow(eid, chash, cidx){
   else if(cidx >= 0 && cidx < entry.commits.length){ entry.commits.splice(cidx, 1); }
   if(entry.commits.length === before) return;   // 매칭 실패 시 무동작
   editingCommitKey = null;
-  if(entry.commits.length === 0){ deleteEntry(entry.id); }   // 커밋 0개인 git 기록은 의미 없음 → 기록 제거
+  if(entry.commits.length === 0){ deleteEntry(entry.id); }   // 커밋 0개인 git 기록은 의미 없음 → 기록 제거(내부 save)
   else save();
-  renderPanel(); renderGrid();
+  notifyDataChanged();
   toast('커밋을 삭제했습니다', 'success');
 }
-// 커밋 subject 인라인 편집 커밋(빈 값이면 기존 유지) — 데이터 레이어 1회 수정으로 일/주간 보고서 자동 반영
+// 커밋 subject 인라인 편집 커밋(빈 값이면 기존 유지) — (entryId,hash,cidx)를 행에서 해석해 setCommitSubject로만 위임.
 function commitCommitEdit(inp){
   const rowEl = inp.closest('.nd-commit'); if(!rowEl){ editingCommitKey = null; return; }
   if(inp.dataset.cancel){ editingCommitKey = null; renderPanel(); return; }   // Esc 취소
-  const entry = entryById(rowEl.dataset.eid);
-  const c = findCommitInEntry(entry, rowEl.dataset.chash, parseInt(rowEl.dataset.cidx, 10));
-  const v = String(inp.value || '').replace(/\s+/g, ' ').trim();
   editingCommitKey = null;
-  if(c && v && v !== c.subject){ c.subject = v; save(); renderPanel(); renderGrid(); }   // 카드·보고서 동시 반영
-  else renderPanel();
+  // setCommitSubject가 저장+notifyDataChanged(패널·그리드·보고서 재반영)를 수행 → 이중 렌더 금지.
+  const ok = setCommitSubject(rowEl.dataset.eid, rowEl.dataset.chash, parseInt(rowEl.dataset.cidx, 10), inp.value);
+  if(!ok) renderPanel();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
+}
+// 일간 보고서 커밋 라인 인라인 편집 커밋 — (entryId,hash,cidx)를 .rtask 행에서 해석해 setCommitSubject로만 위임.
+// 성공 시 setCommitSubject→notifyDataChanged가 buildReport(보고서)+renderPanel(커밋내역)+renderGrid를 교차 반영한다.
+function commitReportEdit(ta){
+  const rowEl = ta.closest('.rtask'); if(!rowEl){ editingReportKey = null; return; }
+  if(ta.dataset.cancel){ editingReportKey = null; buildReport(); return; }   // Esc/취소
+  editingReportKey = null;
+  const ok = setCommitSubject(rowEl.dataset.reid, rowEl.dataset.rhash, parseInt(rowEl.dataset.rcidx, 10), ta.value);
+  if(!ok) buildReport();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
 }
 
 // 마감 축 버킷 분류(노트 과제 필터 적용) — 평면 나열 대신 [지남/오늘/예정/기한없음/완료]
@@ -4287,10 +4364,11 @@ function bind(){
       if(cbtn.dataset.cact === 'edit'){
         editingCommitKey = eid + '|' + (chash || '') + '|' + cidx;   // commitKeyOf와 동일 규칙
         renderPanel();
-        const inp = $('#dpBody .nd-cedit'); if(inp){ inp.focus(); inp.select(); }
+        const inp = $('#dpBody .nd-cedit'); if(inp){ inp.focus(); const n = inp.value.length; try{ inp.setSelectionRange(n, n); }catch(_){} }   // 넉넉한 편집기 → 캐럿 끝
       } else if(cbtn.dataset.cact === 'del'){
         deleteCommitRow(eid, chash, cidx);
       }
+      // 'save'/'cancel'은 focusout(commitCommitEdit)/mousedown 경로에서 처리 → 여기선 무동작(이중 커밋 방지)
       return;
     }
     // 과제 필터 칩(할 일/작업일지) — 캘린더 전역 필터는 건드리지 않음
@@ -4343,9 +4421,15 @@ function bind(){
       else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
     }
   });
-  // 커밋 편집 input에서 포커스가 빠지면(Enter blur/다른 곳 클릭/Esc) 커밋 처리 — focusout은 버블링됨
+  // 커밋 편집 textarea에서 포커스가 빠지면(Enter blur/다른 곳 클릭/Esc) 커밋 처리 — focusout은 버블링됨
   $('#dpBody').addEventListener('focusout', ev => {
     if(ev.target.classList && ev.target.classList.contains('nd-cedit')) commitCommitEdit(ev.target);
+  });
+  // 취소 버튼: mousedown이 textarea blur(focusout)보다 먼저 발화 → 취소 의도를 먼저 심는다(저장 아닌 취소로 종결).
+  $('#dpBody').addEventListener('mousedown', ev => {
+    const c = ev.target.closest && ev.target.closest('.nd-cedit-cancel'); if(!c) return;
+    const row = c.closest('.nd-commit'); const ta = row && row.querySelector('.nd-cedit');
+    if(ta) ta.dataset.cancel = '1';
   });
 
   /* 연·월 점프 */
@@ -4714,6 +4798,32 @@ function bind(){
     const e = entryById(inp.dataset.hid); if(!e) return;
     e.hours = numMin(inp.value); e.updatedAt = nowIso(); save();
     buildReport();
+  });
+  // 일간 보고서 커밋 라인 편집(✎) — 데이터 변경은 setCommitSubject 단일 경로. 커밋내역 탭과 동일 배선(Enter=blur/Esc=취소/focusout=커밋).
+  $('#rptOut').addEventListener('click', ev => {
+    const b = ev.target.closest('.rtask [data-ract]'); if(!b) return;
+    const rowEl = b.closest('.rtask');
+    if(b.dataset.ract === 'edit'){
+      editingReportKey = String(rowEl.dataset.reid) + '|' + String(rowEl.dataset.rhash || '') + '|' + rowEl.dataset.rcidx;
+      buildReport();
+      const ta = $('#rptOut .rtask-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
+    }
+    // 'save'/'cancel'은 focusout(commitReportEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
+  });
+  $('#rptOut').addEventListener('mousedown', ev => {   // 취소 버튼: focusout 전에 취소 의도 심기(저장 아닌 취소로 종결)
+    const c = ev.target.closest && ev.target.closest('.rtask-cancel'); if(!c) return;
+    const row = c.closest('.rtask'); const ta = row && row.querySelector('.rtask-edit');
+    if(ta) ta.dataset.cancel = '1';
+  });
+  $('#rptOut').addEventListener('keydown', ev => {
+    if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
+    if(ev.target.classList && ev.target.classList.contains('rtask-edit')){
+      if(ev.key === 'Enter'){ ev.preventDefault(); ev.target.blur(); }   // subject는 단행 → Enter=커밋(줄바꿈 삽입 금지)
+      else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
+    }
+  });
+  $('#rptOut').addEventListener('focusout', ev => {
+    if(ev.target.classList && ev.target.classList.contains('rtask-edit')) commitReportEdit(ev.target);
   });
   $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
     const b = ev.target.closest('[data-bulk]'); if(b) setBulkRange(b.dataset.bulk);

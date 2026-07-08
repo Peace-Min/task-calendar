@@ -299,6 +299,132 @@ if (!JSDOM) {
       assert.strictEqual(r.grandMin, 0);
     });
 
+    // ── PART A: setCommitSubject / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
+    // 커밋 subject 쓰기·삭제는 이 두 API만 통과한다. 호출 시 notifyDataChanged가 패널/그리드를
+    // 재렌더하므로 부팅된 jsdom 컨텍스트에서 실행(렌더 안전성도 함께 검증). state는 seed로 격리.
+    const mutState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [{ id: 'c-1', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      entries: [
+        { id: 'g1', date: '2026-07-08', title: '작업일지', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', source: 'git',
+          commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '첫 커밋' }, { hash: 'h2', short: 'h2', time: '10:00', subject: '둘째 커밋' }],
+          hours: 120, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        // hash 없는(레거시) 커밋 — cidx로만 해석. 커밋 1개(삭제 시 엔트리 제거 확인용).
+        { id: 'g2', date: '2026-07-08', title: '무해시', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', source: 'git',
+          commits: [{ hash: '', short: '', time: '', subject: '해시없음' }],
+          hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+      ],
+      todos: [], rooms: [],
+    });
+    const commitSubjectOf = (eid, i) => evJSON(`entryById(${JSON.stringify(eid)}).commits[${i}].subject`);
+
+    test('setCommitSubject: hash로 해석 → subject 변경·true, 공백 접기·updatedAt 갱신', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"  고친   메시지  ")'), true);
+      assert.strictEqual(commitSubjectOf('g1', 0), '고친 메시지');       // \s+ 접기 + 트림
+      assert.notStrictEqual(evJSON('entryById("g1").updatedAt'), CA);    // updatedAt 갱신됨
+      assert.strictEqual(commitSubjectOf('g1', 1), '둘째 커밋');          // 다른 커밋은 불변
+    });
+    test('setCommitSubject: cidx로 해석(hash 없는 레거시 커밋)', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitSubject("g2","",0,"해시없음 수정")'), true);
+      assert.strictEqual(commitSubjectOf('g2', 0), '해시없음 수정');
+    });
+    test('setCommitSubject: 동일 텍스트 → false(무변경)', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"첫 커밋")'), false);
+      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');
+    });
+    test('setCommitSubject: 빈 값/공백만 → false(빈값 저장 안 함)', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"   ")'), false);
+      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"")'), false);
+      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');   // 원본 유지
+    });
+    test('setCommitSubject: 없는 엔트리/커밋 → false', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitSubject("nope","h1",0,"x")'), false);
+      assert.strictEqual(ev('setCommitSubject("g1","zzz",5,"x")'), false);
+    });
+
+    test('deleteCommitRow: 커밋 제거(남은 커밋 유지)', () => {
+      seed(mutState());
+      ev('deleteCommitRow("g1","h1",0)');
+      assert.deepStrictEqual(evJSON('entryById("g1").commits.map(function(c){return c.hash;})'), ['h2']);
+    });
+    test('deleteCommitRow: 마지막 커밋 삭제 → 엔트리 자체 제거(entryById null)', () => {
+      seed(mutState());
+      ev('deleteCommitRow("g2","",0)');   // 커밋 1개 → 삭제 시 git 기록(엔트리) 제거
+      assert.strictEqual(ev('entryById("g2")'), null);
+      assert.strictEqual(evJSON('state.entries.some(function(e){return e.id==="g2";})'), false);
+    });
+
+    // ── PART C: collectReportData titleMeta(라인별 편집 가능 여부) ─────────────
+    // titles(문자열 배열·dedup)는 불변, titleMeta가 1:1로 병렬 추가. editable=true는 '단일 git 커밋' 출처만.
+    const metaState = {
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+        { id: 'cm', name: '혼합과제', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+      ],
+      entries: [
+        // (a) 단일 유니크 git 커밋 → 편집 가능
+        { id: 'gu', date: '2026-07-08', title: '무시제목', categoryId: 'cg', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', source: 'git',
+          commits: [{ hash: 'hu', short: 'hu', time: '09:00', subject: '유니크 커밋' }],
+          hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        // (b) 동일 subject 커밋 2건(같은 과제) → 병합 → 편집 불가
+        { id: 'gd', date: '2026-07-08', title: '무시', categoryId: 'cm', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', source: 'git',
+          commits: [{ hash: 'd1', short: 'd1', time: '09:00', subject: '중복 커밋' }, { hash: 'd2', short: 'd2', time: '10:00', subject: '중복 커밋' }],
+          hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        // (c) 비-git 일정 제목(cm) → 편집 불가
+        { id: 'ev1', date: '2026-07-08', title: '일정제목', categoryId: 'cm', allDay: true, startTime: '', endTime: '',
+          location: '', memo: '', source: '', commits: [], hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+      ],
+      todos: [
+        { id: 'td1', text: '할일제목', done: false, categoryId: 'cm', due: '2026-07-08', endDate: '', prio: 'normal', completedAt: '', note: '', createdAt: CA, updatedAt: CA },
+      ],
+      rooms: [],
+    };
+    const rowByName = (r, name) => r.rows.find(x => x.name === name);
+
+    test('titleMeta: 단일 git 커밋 → editable true + entryId/hash/cidx, titles 불변', () => {
+      seed(metaState);
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const cg = rowByName(r, '깃과제');
+      assert.deepStrictEqual(cg.titles, ['유니크 커밋']);              // 문자열 배열 shape 불변(엔트리 제목 아님)
+      assert.strictEqual(cg.titleMeta.length, cg.titles.length);       // 1:1 정렬
+      assert.strictEqual(cg.titleMeta[0].editable, true);
+      assert.strictEqual(cg.titleMeta[0].entryId, 'gu');
+      assert.strictEqual(cg.titleMeta[0].hash, 'hu');
+      assert.strictEqual(cg.titleMeta[0].cidx, 0);
+      assert.strictEqual(cg.titleMeta[0].text, '유니크 커밋');
+    });
+    test('titleMeta: 동일 subject 2건 → 병합(dedup) → editable false, entryId null', () => {
+      seed(metaState);
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const cm = rowByName(r, '혼합과제');
+      assert.strictEqual(cm.titles.filter(t => t === '중복 커밋').length, 1);   // dedup 1회(문자열 불변)
+      const dup = cm.titleMeta.find(m => m.text === '중복 커밋');
+      assert.strictEqual(dup.editable, false);   // 2개 출처 → 단일 아님 → 편집 불가
+      assert.strictEqual(dup.entryId, null);
+      assert.strictEqual(dup.hash, null);
+    });
+    test('titleMeta: 일정 제목·할일 제목 → editable false, titles/titleMeta 1:1 유지', () => {
+      seed(metaState);
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      const cm = rowByName(r, '혼합과제');
+      assert.strictEqual(cm.titleMeta.find(m => m.text === '일정제목').editable, false);   // 비-git 일정
+      assert.strictEqual(cm.titleMeta.find(m => m.text === '할일제목').editable, false);   // 할 일
+      // titles(문자열) shape 불변: [중복 커밋(dedup), 일정제목, 할일제목]
+      assert.strictEqual(cm.titles.length, 3);
+      assert.ok(cm.titles.every(t => typeof t === 'string'));
+      assert.strictEqual(cm.titleMeta.length, cm.titles.length);
+    });
+
     // ── expandOccurrences (보고서 입력 정확성) ───────────────────────────
     test('expandOccurrences: 단일일 — 범위 안 1건, 범위 밖 0건', () => {
       const E = { id: 'x', date: '2026-07-08', endDate: '', recur: null, recurExcept: [] };
