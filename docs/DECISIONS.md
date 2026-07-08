@@ -112,5 +112,5 @@ _기록일: 2026-07-07 · 상태: 확정(달리 명시 없으면)_
 ---
 
 ## 관련 문서
-- 계층 구조·로직 배치: [ARCHITECTURE.md](ARCHITECTURE.md)
+- 계층 구조·로직 배치: [ARCHITECTURE.md](ARCHITECTURE.md) · 현재 수준↔최종 그림·승격 단계: [ROADMAP.md](ROADMAP.md)
 - 사용자 개요: [README.md](../README.md) · 데이터 스키마: [SPEC.md](../SPEC.md) · 변경 이력: [CHANGELOG.md](../CHANGELOG.md)

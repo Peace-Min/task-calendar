@@ -163,7 +163,7 @@ Platform.report.submitDaily(payload);        // 위젯=postMessage / 브라우�
 ---
 
 ## 관련 문서
-- **범위·YAGNI·확장 로드맵 결정 기록**: [DECISIONS.md](DECISIONS.md)
+- **범위·YAGNI 결정 기록**: [DECISIONS.md](DECISIONS.md) · **현재 수준↔최종 그림·승격 단계**: [ROADMAP.md](ROADMAP.md)
 - 사용자용 개요·기능: [README.md](../README.md)
 - 데이터 스키마·직렬화 규칙: [SPEC.md](../SPEC.md)
 - 변경 이력(인계): [CHANGELOG.md](../CHANGELOG.md)
