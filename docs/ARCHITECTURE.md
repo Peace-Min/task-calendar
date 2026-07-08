@@ -97,7 +97,7 @@ const HOST = !!(window.chrome && window.chrome.webview);  // 위젯=true, 브라
 | XML 내보내기/불러오기 | ✅ | ✅ | 브라우저 표준 |
 | 데이터 자동 저장 | data.xml(파일) | localStorage | 갈림 |
 | **git/svn 커밋 수집** | ✅ | ❌ (프로세스·로컬FS 불가) | OS 능력 |
-| **회사 보고 자동 전송** | ✅ 원클릭 | ⚠ 반자동(복사+새탭+북마클릿) | OS 능력 |
+| **회사 보고 자동 전송** | ✅ 원클릭 | ❌ 안내만(netcus 창+가이드 — 자동 작성은 same-origin 배포 시, [DECISIONS 결정5](DECISIONS.md)) | OS 능력 |
 | **일정 시작 알림** | ✅ Topmost 창 | ❌ | OS 능력 |
 | 바탕화면 위젯·트레이·자동시작 | ✅ | ❌ | OS 능력 |
 
@@ -132,8 +132,8 @@ flowchart TB
 
 - 능력 제공자가 꼭 .NET일 필요는 없다 — **포트 계약(요청/응답 형태)만 지키면** 로컬 agent든 서버든 무엇이든 된다.
 - 확장 = **어댑터 1개 작성/교체**, 도메인 코드는 무변경.
-  - 서버 릴레이가 생기면 → 브라우저 어댑터의 `report`만 자동화로 승격
-  - 팀 공유 DB가 오면 → `masterData` 포트 추가(조직·과제는 서버, 개인은 로컬 유지 — 하이브리드)
+  - netcus **same-origin 배포**가 되면 → 브라우저 어댑터의 `report`만 same-origin 채움·제출로 승격([DECISIONS 결정5](DECISIONS.md) — 서버 릴레이는 자격증명 보관 리스크로 **기각**, 보고는 우리 서버를 경유하지 않음)
+  - 팀 공유 DB가 오면 → `masterData` 포트 추가(조직·과제는 서버, 개인은 로컬 유지 — 하이브리드). ※ 외부 작성이 공식화(ROADMAP T2)되면 **개인 데이터도 서버 DB 단일 소스로 승격**(data.xml은 오프라인 캐시로 — [ROADMAP 3단계](ROADMAP.md)·결정4 갱신 노트)
 
 ### 왜 `if(HOST)` 산탄을 걷어내야 하나 (유지보수 관점)
 
