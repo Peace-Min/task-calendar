@@ -54,6 +54,7 @@ if (-not (Test-Path $exe)) { Fail "위젯 exe 없음: $exe  (먼저 publish 필�
 # 3) ISCC 자동 탐색
 if (-not $Iscc) {
   $cands = @(
+    "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",     # winget 기본(per-user 설치)
     "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
     "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
     "${env:ProgramFiles(x86)}\Inno Setup 5\ISCC.exe"
