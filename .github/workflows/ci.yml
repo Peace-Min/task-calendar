@@ -1,0 +1,29 @@
+name: CI
+
+# ── 언제 돌릴지(트리거) ──
+on:
+  push:
+    branches: [main]     # main에 직접 푸시할 때(마스터 푸시 포함)
+  pull_request:          # PR을 열거나 갱신할 때
+
+# 최소 권한(읽기 전용) — 보안 기본값. 이 워크플로는 코드를 읽어 테스트만 함.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 테스트 하니스
+    runs-on: ubuntu-latest      # GitHub 호스팅 러너(=에이전트)
+    timeout-minutes: 5
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 이 저장소 하니스는 의존성 0(Node 내장만) → npm install 불필요
+      - name: 테스트 실행
+        run: node tests/run-tests.mjs
