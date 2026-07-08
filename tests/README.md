@@ -1,7 +1,7 @@
 # tests/ — 수행과제 캘린더 테스트 하네스
 
-의존성 0(폐쇄망 원칙). Node.js 내장 모듈만 사용 — `npm install` 금지.
-지금까지 손으로 하던 검증을 재사용 가능한 자동 테스트로 옮긴 것.
+2층 구조 — **Layer 1(순수 함수)** 은 의존성 0(Node 내장만, `npm install` 없이 실행), **Layer 2(app-context: XML 왕복·보고서 생성)** 는 jsdom이 실제 앱을 부팅해 검증하는 **test-only devDependency**. jsdom 미설치 시 Layer 2는 graceful-skip(러너는 여전히 green). **배포 산출물(폐쇄망 반입 exe/HTML)은 그대로 의존성 0** — jsdom은 오직 테스트에서만.
+지금까지 손으로 하던 검증을 재사용 가능한 자동 테스트로 옮긴 것. Layer 2를 돌리려면 `cd tests && npm ci`(CI가 자동 수행).
 
 ## 실행
 

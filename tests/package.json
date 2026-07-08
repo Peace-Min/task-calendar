@@ -1,0 +1,13 @@
+{
+  "name": "task-calendar-tests",
+  "private": true,
+  "version": "0.0.0",
+  "description": "수행과제 캘린더 테스트 전용 의존성. Layer 1(순수 함수)은 의존성 0으로 동작하고, jsdom은 Layer 2(app-context) 전용 devDependency다. jsdom 미설치 시 Layer 2는 graceful-skip(러너는 여전히 green). CI는 이 디렉터리에서 npm ci로 jsdom을 설치한다.",
+  "type": "module",
+  "scripts": {
+    "test": "node run-tests.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
