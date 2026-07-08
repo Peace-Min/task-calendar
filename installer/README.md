@@ -27,7 +27,10 @@ powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 - `-SkipPublish` — 위젯 exe를 이미 빌드(`dist\portable\`)했으면 publish 건너뛰기(빠름).
 - `-Iscc "<경로>\ISCC.exe"` — ISCC 자동탐색이 실패할 때 경로 직접 지정.
 
-스크립트가 하는 일: `csproj`의 `<Version>`을 읽어 → 위젯 self-contained publish → `ISCC /DAppVer=<버전> TaskCalendar.iss` 컴파일.
+스크립트가 하는 일: `csproj`의 `<Version>`을 읽어 → 위젯 self-contained publish → `ISCC /DMyAppVersion=<버전> task-calendar.iss` 컴파일.
+
+> ⚠️ **순서 주의 — Inno는 "포장"만 한다.** `.iss`는 이미 빌드된 `dist\portable\TaskCalendarWidget.exe`를 담을 뿐 exe를 **만들지 않는다.** 그래서 **Inno Setup GUI로 `.iss`를 직접 컴파일하려면 먼저 `build-portable.cmd`(또는 `dotnet publish … -o dist\portable`)로 exe를 구워야** 한다 — 안 그러면 ISCC가 "소스 파일 없음"(위치 에러)을 낸다.
+> 순서 = **① `build-portable.cmd`(exe 굽기) → ② Inno로 `.iss` 컴파일(포장).** `build-installer.ps1`은 이 두 단계를 순서대로 자동 수행하므로 이 함정이 없다.
 
 ## 버전 올리기
 버전 단일 소스는 **`widget\TaskCalendarWidget.csproj`의 `<Version>`**. 여기만 올리면 인스톨러 파일명·표시 버전이 따라온다. (앱 화면 버전은 `task-calendar-prototype.html`의 `APP_VERSION` + 패치노트 모달을 함께 갱신 — `docs`/README의 릴리스 규칙 참고.)

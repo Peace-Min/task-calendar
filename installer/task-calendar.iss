@@ -25,6 +25,9 @@
 #define HasWebView2 FileExists(AddBackslash(SourcePath) + WebView2SetupSource)
 
 [Setup]
+; 소스 경로 기준을 .iss 위치로 고정 — 어디서 ISCC를 호출하든 ..\dist\portable 가
+; 항상 repo\dist\portable 로 해석되게 함(호출 CWD에 따른 'installer\dist\portable' 오해석 방지).
+SourceDir={#SourcePath}
 ; AppId는 업그레이드 동일성의 키 — 절대 바꾸지 말 것.
 AppId={{B732E361-639B-4B5F-8A55-22E5E7C2C11D}
 AppName={#MyAppName}
