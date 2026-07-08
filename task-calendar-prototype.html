@@ -3333,6 +3333,9 @@ function setReportMode(mode){
 // 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
 function updateRptSendVis(){
   const b = $('#btnRptSend'), h = $('#rptSendHint');
+  // 보고 유형/구성이 바뀌면 직전 전송 안내(브라우저 netcus 안내 등)를 지운다 — 탭 전환 시 stale·모순 문구 방지.
+  // (위젯 전송 흐름은 이 경로를 타지 않아 __netcusResult 결과 메시지는 보존됨)
+  const st = $('#rptSendStatus'); if(st){ st.innerHTML = ''; st.className = 'rpt-send-status'; }
   if(!b) return;
   b.style.display = '';
   if(reportMode === 'weekly'){
