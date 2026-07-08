@@ -3501,7 +3501,10 @@ function buildWeeklyFields(from, to, sources){
   const { rows } = collectReportData(from, to, sources || rptSources());
   if(!rows.length) return null;
   const content = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}`).join('\n');
-  const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map(t => `- ${t}`).join('\n') : '-')).join('\n\n');
+  const _mkSpec = reportMarkerSpec();   // 전송 콘텐츠도 복사와 동일 서식(머리기호·들여쓰기) 적용 — WYSIWYG
+  const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
+  const _pad = ' '.repeat(_indent * 2);
+  const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); return _pad + (_mk ? (_mk + ' ') : '') + t; }).join('\n') : '-')).join('\n\n');
   return { content, endwork, subject: weekSubjectGuess(from) };
 }
 function weekSubjectGuess(from){

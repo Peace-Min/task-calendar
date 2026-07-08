@@ -522,6 +522,16 @@ if (!JSDOM) {
       assert.ok(lines.includes('▶ 델타'));
     });
 
+    // F2c — buildWeeklyFields.endwork(netcus 자동전송 콘텐츠)도 복사와 동일 서식(머리기호+들여쓰기)
+    test('buildWeeklyFields.endwork: 전송 콘텐츠도 마커+들여쓰기(2단) 반영, 카드별 번호 리셋', () => {
+      seed(fmtState('가.', '', 2));
+      setRptRange('2026-07-01', '2026-07-31');
+      const ew = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).endwork');
+      assert.ok(ew.includes('    가. '), '4칸 들여쓰기 + 가. 마커');
+      assert.ok((ew.match(/\n    가\. /g) || []).length >= 2, '카드마다 가.로 번호 리셋');
+      assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
+    });
+
     // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실
     test('prefs roundtrip: reportMarker/custom/indent 보존', () => {
       seed(fmtState('가.', '▶', 5));
