@@ -473,5 +473,133 @@ if (!JSDOM) {
       const E = { id: 'x', date: '2026-07-15', endDate: '', recur: { freq: 'monthly', interval: 1, until: '', count: 3 }, recurExcept: [] };
       assert.deepStrictEqual(occStarts(E, '2026-07-01', '2026-09-30'), ['2026-07-15', '2026-08-15', '2026-09-15']);
     });
+
+    // ── 보고서 서식(머리기호/들여쓰기) — prefs 영속 + buildReportText/buildReport WYSIWYG(결정6: 데이터 불변) ──
+    const fmtState = (marker, custom, indent) => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'ca', name: '에이', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+        { id: 'cb', name: '비이', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+      ],
+      entries: [
+        { id: 'a1', date: '2026-07-02', title: '알파', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'a2', date: '2026-07-03', title: '브라보', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'a3', date: '2026-07-04', title: '찰리', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'b1', date: '2026-07-05', title: '델타', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'b2', date: '2026-07-06', title: '에코', categoryId: 'cb', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+      ],
+      todos: [], rooms: [],
+      reportMarker: marker, reportMarkerCustom: custom, reportIndent: indent,
+    });
+    const setRptRange = (f, t) => ev(`$('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)}; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;`);
+
+    // F2 — 라인 텍스트 빌더(카드×마커×들여쓰기): (indent*2 스페이스)+prefix+제목, 번호 카드별 리셋
+    test('buildReportText: 숫자 마커+들여쓰기2 — (indent*2)스페이스+prefix+제목, 카드별 번호 리셋', () => {
+      seed(fmtState('1.', '', 2));
+      setRptRange('2026-07-01', '2026-07-31');
+      const lines = ev('buildReportText()').split('\n');
+      assert.ok(lines.includes('[에이] : 3'));       // 60*3=180분 → 3h
+      assert.ok(lines.includes('    1. 알파'));       // 2*2=4 스페이스
+      assert.ok(lines.includes('    2. 브라보'));
+      assert.ok(lines.includes('    3. 찰리'));
+      assert.ok(lines.includes('[비이] : 2'));
+      assert.ok(lines.includes('    1. 델타'));       // 카드 B — 번호 리셋
+      assert.ok(lines.includes('    2. 에코'));
+    });
+    test('buildReportText: 무번호(none) — 마커/접미 없이 들여쓰기만(공백도 마커 없음)', () => {
+      seed(fmtState('none', '', 3));
+      setRptRange('2026-07-01', '2026-07-31');
+      const lines = ev('buildReportText()').split('\n');
+      assert.ok(lines.includes('      알파'));         // 3*2=6 스페이스, 마커 없음
+      assert.ok(lines.includes('      델타'));
+      assert.ok(!lines.some(l => /^\s*[-•·]/.test(l) && l.includes('알파')));
+    });
+    test('buildReportText: custom 마커 우선 — 그 문자, 들여쓰기0이면 스페이스 없음', () => {
+      seed(fmtState('1.', '▶', 0));   // custom이 preset보다 우선
+      setRptRange('2026-07-01', '2026-07-31');
+      const lines = ev('buildReportText()').split('\n');
+      assert.ok(lines.includes('▶ 알파'));
+      assert.ok(lines.includes('▶ 델타'));
+    });
+
+    // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실
+    test('prefs roundtrip: reportMarker/custom/indent 보존', () => {
+      seed(fmtState('가.', '▶', 5));
+      const p = evJSON('fromXML(toXML())');
+      assert.strictEqual(p.reportMarker, '가.');
+      assert.strictEqual(p.reportMarkerCustom, '▶');
+      assert.strictEqual(p.reportIndent, 5);
+    });
+    test('prefs roundtrip: custom 비면 속성 미기록·기본 복원(indent 경계 0)', () => {
+      seed(fmtState('A.', '', 0));
+      const xml = ev('toXML()');
+      assert.ok(/reportMarker="A\."/.test(xml), 'reportMarker 기록');
+      assert.ok(/reportIndent="0"/.test(xml), 'reportIndent=0도 기록');
+      assert.ok(!/reportMarkerCustom/.test(xml), 'custom 비면 속성 없음');
+      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
+      assert.strictEqual(p.reportMarker, 'A.');
+      assert.strictEqual(p.reportMarkerCustom, '');
+      assert.strictEqual(p.reportIndent, 0);
+    });
+    test('prefs 부재 XML → 기본값(-,"",2) + entries/todos/commits/rooms 무손실(가산적)', () => {
+      seed(roundtripState);   // 4 엔트리(커밋 2건 포함)+2 todos+rooms
+      let xml = ev('toXML()');
+      xml = xml.replace(/<prefs\b[^>]*\/>/, '');
+      assert.ok(!/<prefs/.test(xml), 'prefs 요소 제거됨');
+      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
+      assert.strictEqual(p.reportMarker, '-');
+      assert.strictEqual(p.reportMarkerCustom, '');
+      assert.strictEqual(p.reportIndent, 2);
+      // 데이터 무손실
+      assert.strictEqual(p.entries.length, 4);
+      const byId = Object.fromEntries(p.entries.map(e => [e.id, e]));
+      assert.strictEqual(byId['e-2'].commits.length, 2);
+      assert.deepStrictEqual(byId['e-2'].commits.map(c => c.subject), ['첫 커밋', '둘째 커밋']);
+      assert.strictEqual(p.todos.length, 2);
+      assert.deepStrictEqual(p.rooms, ['101호', '201호', '303호']);
+    });
+    test('prefs 범위/길이 방어: reportIndent clamp 0..6, 9자 custom 무시', () => {
+      seed(fmtState('1.', '', 2));
+      let xml = ev('toXML()');
+      xml = xml.replace(/reportIndent="\d+"/, 'reportIndent="99"').replace('<prefs', '<prefs reportMarkerCustom="123456789"');
+      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
+      assert.strictEqual(p.reportIndent, 6, 'clamp 상한 6');
+      assert.strictEqual(p.reportMarkerCustom, '', 'len>8 custom은 무시→기본 빈값');
+    });
+
+    // F4 — 회귀: buildReport 일간 출력에 편집 앵커 유지 + rtask-t는 마커 없는 원문만
+    const gitDailyState = (marker, indent) => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      entries: [{ id: 'gu', date: '2026-07-08', title: '무시제목', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'hu', short: 'hu', time: '09:00', subject: '유니크 커밋' }], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+      todos: [], rooms: [],
+      reportMarker: marker, reportMarkerCustom: '', reportIndent: indent,
+    });
+    const renderDaily = (marker, indent) => {
+      seed(gitDailyState(marker, indent));
+      ev("reportMode='daily'; editingReportKey=null;");
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
+      ev('buildReport()');
+      return ev("$('#rptOut').innerHTML");
+    };
+    test('regression: 일간 buildReport — rtask-edit-btn + data-reid/rhash/rcidx 유지, rtask-t=마커없는 원문', () => {
+      const html = renderDaily('1.', 3);
+      assert.ok(/rtask-edit-btn/.test(html), '편집 버튼(✎) 유지');
+      assert.ok(/data-reid="gu"/.test(html), 'data-reid 유지');
+      assert.ok(/data-rhash="hu"/.test(html), 'data-rhash 유지');
+      assert.ok(/data-rcidx="0"/.test(html), 'data-rcidx 유지');
+      const m = /<span class="rtask-t">([^<]*)<\/span>/.exec(html);
+      assert.ok(m, 'rtask-t span 존재');
+      assert.strictEqual(m[1], '유니크 커밋', 'rtask-t는 마커 없는 원문만(setCommitSubject·편집 textarea 안전)');
+      assert.ok(/<span class="rtask-mk">1\. <\/span>/.test(html), '마커는 rtask-mk 별도 span');
+      assert.ok(/padding-left:55px/.test(html), '들여쓰기 13+3*14=55px');
+    });
+    test('regression: 무번호(none) — rtask-mk 생략, rtask-t 원문 유지, indent0=base 13px', () => {
+      const html = renderDaily('none', 0);
+      assert.ok(!/rtask-mk/.test(html), '무번호는 마커 span 없음');
+      assert.ok(/<span class="rtask-t">유니크 커밋<\/span>/.test(html), 'rtask-t 원문 유지');
+      assert.ok(/rtask-edit-btn/.test(html), '편집 버튼 유지');
+      assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
+    });
   }
 }

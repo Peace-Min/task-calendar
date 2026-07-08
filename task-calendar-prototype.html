@@ -486,6 +486,16 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-attend .ra-hint{font-size:var(--fs-micro);color:var(--muted);margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rpt-srcs{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+/* 보고서 서식바 — 머리기호(index marker) + 들여쓰기(indent). 표시+복사 전용, 전역 1값(state에 영속). */
+.rpt-fmt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 11px;margin-top:10px;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-sm)}
+.rpt-fmt .rpt-fmt-sel{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
+.rpt-fmt .rpt-fmt-custom{width:56px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
+.rpt-fmt .rpt-fmt-custom:focus,.rpt-fmt .rpt-fmt-sel:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.rpt-fmt .rpt-fmt-ilb{margin-left:6px}
+.rpt-fmt .rpt-fmt-stepper{display:inline-flex;align-items:center;gap:4px}
+.rpt-fmt .rpt-fmt-step{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);color:var(--text);cursor:pointer;font-size:14px;line-height:1}
+.rpt-fmt .rpt-fmt-step:hover{border-color:var(--accent);color:var(--accent)}
+.rpt-fmt .rpt-fmt-ind{min-width:28px;text-align:center;font-size:var(--fs-meta);color:var(--text);font-variant-numeric:tabular-nums}
 .rpt-guard{padding:26px 18px;text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.6;border:1px dashed var(--line-2);border-radius:var(--r-md)}
 .rpt-summary{font-size:var(--fs-meta);color:var(--muted);margin-top:8px;min-height:16px}
 #rptOut.rpt-mirror{width:100%;margin-top:8px;display:flex;flex-direction:column;gap:7px;background:transparent;border:none;padding:0}
@@ -504,6 +514,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-tasks{font-size:var(--fs-meta);color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
 /* 일간 보고서 커밋 라인 편집(✎) — 조밀 라인 위에 확장형 편집기(Part B와 동일 톤) */
 .rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
+.rpt-mirror .rtask .rtask-mk{flex:none;color:var(--muted);white-space:pre;font-variant-numeric:tabular-nums}
 .rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask .rtask-edit-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
 .rpt-mirror .rtask .rtask-edit-btn .ic{width:13px;height:13px}
@@ -1243,6 +1254,47 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
       </div>
+      <div class="rpt-fmt">
+        <span class="rpt-opt-lb">머리기호</span>
+        <select id="rptMarker" class="rpt-fmt-sel" aria-label="머리기호">
+          <optgroup label="불릿">
+            <option value="-">- 하이픈</option>
+            <option value="•">• 점</option>
+            <option value="·">· 가운뎃점</option>
+            <option value="*">* 별표</option>
+            <option value="▪">▪ 네모</option>
+            <option value="◦">◦ 빈 점</option>
+            <option value="–">– 대시</option>
+          </optgroup>
+          <optgroup label="숫자">
+            <option value="1.">1. 2. 3.</option>
+            <option value="1)">1) 2) 3)</option>
+            <option value="(1)">(1) (2) (3)</option>
+          </optgroup>
+          <optgroup label="가나다">
+            <option value="가.">가. 나. 다.</option>
+            <option value="가)">가) 나) 다)</option>
+            <option value="(가)">(가) (나) (다)</option>
+          </optgroup>
+          <optgroup label="자모">
+            <option value="ㄱ.">ㄱ. ㄴ. ㄷ.</option>
+            <option value="ㄱ)">ㄱ) ㄴ) ㄷ)</option>
+          </optgroup>
+          <optgroup label="영문·기타">
+            <option value="A.">A. B. C.</option>
+            <option value="a.">a. b. c.</option>
+            <option value="①">① ② ③</option>
+            <option value="none">무번호</option>
+          </optgroup>
+        </select>
+        <input type="text" id="rptMarkerCustom" class="rpt-fmt-custom" maxlength="8" placeholder="직접" aria-label="머리기호 직접 입력">
+        <span class="rpt-opt-lb rpt-fmt-ilb">들여쓰기</span>
+        <span class="rpt-fmt-stepper">
+          <button type="button" id="rptIndMinus" class="rpt-fmt-step" aria-label="들여쓰기 줄이기">−</button>
+          <span id="rptIndVal" class="rpt-fmt-ind">2단</span>
+          <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
+        </span>
+      </div>
       <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
       <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
     </div>
@@ -1851,6 +1903,7 @@ function defaultState(){
       {id:uid('t'), text:'점검 체크리스트 정리',  done:true,  categoryId:c2, due:d0,  prio:'normal', completedAt:nowIso(), note:'', createdAt:nowIso(), updatedAt:nowIso()},
     ],
     rooms: DEFAULT_ROOMS.slice(),
+    reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,   // 보고서 표시 설정(머리기호/들여쓰기) — 표시+복사 전용
   };
 }
 function load(){
@@ -1875,6 +1928,10 @@ function load(){
         s.svnAuthor = (s.svnAuthor === undefined || s.svnAuthor === null) ? s.gitAuthor : String(s.svnAuthor);
         s.todos = normTodos(s.todos);   // 멀티노트 — 구버전/외부편집 데이터엔 없을 수 있음(없으면 빈 배열)
         s.rooms = normRooms(s.rooms) || DEFAULT_ROOMS.slice();   // 회의실 — 구버전엔 없음 → 기본값 폴백
+        // 보고서 표시 설정 — 구버전/외부편집 방어(가산적·무손실). 마커/들여쓰기는 표시+복사 전용.
+        s.reportMarker = (typeof s.reportMarker === 'string' && s.reportMarker) ? s.reportMarker : '-';
+        s.reportMarkerCustom = (typeof s.reportMarkerCustom === 'string') ? s.reportMarkerCustom.slice(0,8) : '';
+        s.reportIndent = Number.isInteger(s.reportIndent) ? Math.max(0, Math.min(6, s.reportIndent)) : 2;
         return s;
       }
     }
@@ -1902,7 +1959,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice()};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2)};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -2172,6 +2229,13 @@ function toXML(){
   }
   root.appendChild(rms);
 
+  // 표시 설정(prefs) — 보고서 머리기호/들여쓰기(표시+복사 전용, 캘린더/커밋 데이터 불변). 신규 형제 요소라 구버전과 무충돌.
+  const prefs = doc.createElement('prefs');
+  prefs.setAttribute('reportMarker', state.reportMarker || '-');
+  prefs.setAttribute('reportIndent', String(state.reportIndent != null ? state.reportIndent : 2));
+  if(state.reportMarkerCustom) prefs.setAttribute('reportMarkerCustom', state.reportMarkerCustom);   // 비어있지 않을 때만 기록
+  root.appendChild(prefs);
+
   return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
 }
 
@@ -2273,7 +2337,20 @@ function fromXML(text){
 
   // svnAuthor: 속성 부재(구버전 XML) = 전역 작성자 공유 시절 → gitAuthor를 복사(1회 마이그레이션·동작 보존)
   const _svnA = root.hasAttribute('svnAuthor') ? (root.getAttribute('svnAuthor') || '') : (root.getAttribute('gitAuthor') || '');
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms};
+
+  // 표시 설정(prefs) — <prefs> 부재 시 기본값(가산적·무손실, hours/location과 동일한 하위호환 패턴).
+  const prefsEl = root.getElementsByTagName('prefs')[0];
+  const PRESET_MARKERS = new Set(['-','•','·','*','▪','◦','–','1.','1)','(1)','가.','가)','(가)','ㄱ.','ㄱ)','A.','a.','①','none']);
+  let reportMarker = '-', reportMarkerCustom = '', reportIndent = 2;
+  if(prefsEl){
+    const rm = prefsEl.getAttribute('reportMarker') || '';
+    reportMarker = (rm && (PRESET_MARKERS.has(rm) || rm.length <= 8)) ? rm : '-';   // 프리셋 키이거나 임의 문자열 len<=8, 아니면 '-'
+    const rmc = prefsEl.getAttribute('reportMarkerCustom') || '';
+    reportMarkerCustom = rmc.length <= 8 ? rmc : '';
+    const ri = parseInt(prefsEl.getAttribute('reportIndent'), 10);
+    reportIndent = Number.isFinite(ri) ? Math.max(0, Math.min(6, ri)) : 2;   // clamp 0..6
+  }
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -3239,6 +3316,9 @@ function applyImport(mode){
       entries: pendingImport.entries.filter(e => !eseen.has(e.id) && eseen.add(e.id)),
       todos: (pendingImport.todos || []).filter(t => !tseen.has(t.id) && tseen.add(t.id)),
       rooms: normRooms(pendingImport.rooms) || DEFAULT_ROOMS.slice(),
+      reportMarker: pendingImport.reportMarker || '-',
+      reportMarkerCustom: pendingImport.reportMarkerCustom || '',
+      reportIndent: (pendingImport.reportIndent != null ? pendingImport.reportIndent : 2),
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
@@ -3264,7 +3344,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice()};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -3430,6 +3510,50 @@ function weekSubjectGuess(from){
   const ord = ['', '첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][Math.ceil(day / 7)] || (Math.ceil(day / 7) + '째');
   return `${mon}월 ${ord}주`;
 }
+// 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
+// reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.
+function reportMarkerSpec(){
+  const KO_GA = '가나다라마바사아자차카타파하';
+  const KO_JA = 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ';
+  const CIRCLE = '①②③④⑤⑥⑦⑧⑨⑩';
+  const custom = (state && state.reportMarkerCustom) ? String(state.reportMarkerCustom) : '';
+  if(custom) return { kind:'custom', ch:custom };
+  const key = (state && state.reportMarker) || '-';
+  const T = {
+    '-':{kind:'const',ch:'-'}, '•':{kind:'const',ch:'•'}, '·':{kind:'const',ch:'·'},
+    '*':{kind:'const',ch:'*'}, '▪':{kind:'const',ch:'▪'}, '◦':{kind:'const',ch:'◦'}, '–':{kind:'const',ch:'–'},
+    '1.':{kind:'num',style:'dot'}, '1)':{kind:'num',style:'paren'}, '(1)':{kind:'num',style:'both'},
+    '가.':{kind:'seq',seq:KO_GA,style:'dot'}, '가)':{kind:'seq',seq:KO_GA,style:'paren'}, '(가)':{kind:'seq',seq:KO_GA,style:'both'},
+    'ㄱ.':{kind:'seq',seq:KO_JA,style:'dot'}, 'ㄱ)':{kind:'seq',seq:KO_JA,style:'paren'},
+    'A.':{kind:'alpha',base:65}, 'a.':{kind:'alpha',base:97},
+    '①':{kind:'seq',seq:CIRCLE,style:'bare'},
+    'none':{kind:'none'},
+  };
+  return T[key] || {kind:'const',ch:'-'};
+}
+// reportMarkerAt(spec, i): i(0-base, 카드마다 리셋)에 대한 마커 문자열(뒤 공백 없이). 순수(전역 무의존) → Layer1 테스트 대상.
+function reportMarkerAt(spec, i){
+  if(!spec) return '';
+  switch(spec.kind){
+    case 'none': return '';
+    case 'const': return spec.ch;
+    case 'custom': return spec.ch;
+    case 'num': {
+      const n = i + 1;
+      return spec.style === 'paren' ? (n + ')') : spec.style === 'both' ? ('(' + n + ')') : (n + '.');
+    }
+    case 'seq': {
+      const ch = (spec.seq && i >= 0 && i < spec.seq.length) ? spec.seq[i] : '?';   // 범위 초과 → '?' 폴백(크래시 금지)
+      if(ch === '?') return '?';
+      if(spec.style === 'paren') return ch + ')';
+      if(spec.style === 'both') return '(' + ch + ')';
+      if(spec.style === 'bare') return ch;   // 원문자(접미 없음)
+      return ch + '.';
+    }
+    case 'alpha': return (i >= 0 && i <= 25) ? (String.fromCharCode(spec.base + i) + '.') : '?';   // A..Z / a..z 범위 초과 → '?' 폴백(seq와 동일)
+    default: return '';
+  }
+}
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
@@ -3449,6 +3573,14 @@ function buildReport(){
     sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
   }
   const daily = (reportMode === 'daily');   // 결정6: 데이터 편집(근태·공수·커밋 제목)은 일간에서만 — 주간/커스텀(단일일 포함)은 읽기전용 투영
+  // 표시 설정(머리기호/들여쓰기) — 표시+복사 전용. 데이터 불변. 서식바 컨트롤도 저장값으로 세팅(재오픈 시 반영).
+  const _mkSpec = reportMarkerSpec();
+  const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
+  const _padL = 13 + _indent * 14;   // 기존 base 13px 유지
+  { const _sel = $('#rptMarker'), _cin = $('#rptMarkerCustom'), _iv = $('#rptIndVal');
+    if(_sel) _sel.value = state.reportMarker || '-';
+    if(_cin) _cin.value = state.reportMarkerCustom || '';
+    if(_iv) _iv.textContent = _indent + '단'; }
   let html = '';
   if(daily){   // 일간: 근태·초과시간 콤보(회사 일간보고 전송용). 값=사이트 코드.
     const at = getAttendance(from);
@@ -3477,7 +3609,9 @@ function buildReport(){
     html += `</div>`;
     if(r.titles.length){
       if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
-        html += `<div class="rcard-tasks">` + r.titles.map((t, i) => {
+        html += `<div class="rcard-tasks" style="padding-left:${_padL}px">` + r.titles.map((t, i) => {
+          // 머리기호는 .rtask-t 밖 별도 span으로(원문 esc(t)만 rtask-t에 — 편집 textarea/setCommitSubject가 원문 사용)
+          const _mk = reportMarkerAt(_mkSpec, i); const _mkS = _mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : '';
           const m = (r.titleMeta && r.titleMeta[i]) || null;
           if(m && m.editable){
             const key = String(m.entryId) + '|' + String(m.hash || '') + '|' + m.cidx;
@@ -3485,12 +3619,12 @@ function buildReport(){
             if(editingReportKey === key){
               return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="커밋 메시지 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
             }
-            return `<div class="rtask" ${dr}><span class="rtask-t">· ${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="커밋 메시지 수정" aria-label="커밋 메시지 수정">${ICON.wrench}</button></div>`;
+            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="커밋 메시지 수정" aria-label="커밋 메시지 수정">${ICON.wrench}</button></div>`;
           }
-          return `<div class="rtask rtask-ro"><span class="rtask-t">· ${esc(t)}</span></div>`;
+          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-t">${esc(t)}</span></div>`;
         }).join('') + `</div>`;
-      } else {   // 주간/커스텀: 읽기전용 — 현재 모습 그대로(· text, ✎ 없음)
-        html += `<div class="rcard-tasks">${r.titles.map(t => `· ${esc(t)}`).join('<br>')}</div>`;
+      } else {   // 주간/커스텀: 읽기전용 — 라인별 마커 접두(편집 없음)
+        html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); return (_mk ? esc(_mk) + ' ' : '') + esc(t); }).join('<br>')}</div>`;
       }
     }
     if(head) html += `<span class="rcard-note edit">오늘치 — 여기서 바로 수정</span>`;
@@ -3525,7 +3659,14 @@ function buildReportText(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
   const { rows } = collectReportData(from, to, rptSources());
   if(!rows.length) return '';
-  const blocks = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}` + r.titles.map(t => `\n- ${t}`).join(''));
+  // 화면 미리보기와 동일(WYSIWYG) — 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 스페이스. 카드마다 번호 리셋.
+  const _mkSpec = reportMarkerSpec();
+  const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
+  const _pad = ' '.repeat(_indent * 2);
+  const blocks = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}` + r.titles.map((t, i) => {
+    const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
+    return '\n' + _pad + _prefix + t;
+  }).join(''));
   return blocks.join('\n\n') + '\n';
 }
 async function copyReport(){
@@ -4792,6 +4933,12 @@ function bind(){
   ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(s => $(s).addEventListener('change', buildReport));
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#rptCatLink').addEventListener('click', openCatModal);   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
+  // 서식바(머리기호+들여쓰기) — 전역 표시 설정(state) 갱신 → save() → buildReport() 재빌드(미리보기 즉시 갱신). 1회만 배선.
+  $('#rptMarker').addEventListener('change', () => { state.reportMarker = $('#rptMarker').value; save(); buildReport(); });
+  $('#rptMarkerCustom').addEventListener('input', () => { state.reportMarkerCustom = String($('#rptMarkerCustom').value || '').slice(0,8); save(); buildReport(); });
+  const _setRptInd = d => { const cur = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2)); state.reportIndent = Math.max(0, Math.min(6, cur + d)); save(); buildReport(); };
+  $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
+  $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
   // 하루 보고서의 과제별 시간 인라인 수정(blur/Enter=change) → 그 항목 hours 저장 후 재렌더(총합 갱신)
   $('#rptOut').addEventListener('change', ev => {
     const inp = ev.target.closest('.rcard-h-in'); if(!inp) return;
