@@ -3,10 +3,10 @@
 폐쇄망에서 clone한 뒤 **인스톨러(설치 exe)** 를 만드는 도구. 매번 스크립트를 새로 짜지 않도록 저장소에 고정해 둔다.
 
 ## 만들어지는 것
-`dist\installer\수행과제캘린더-설치-v<버전>.exe` — 실행하면:
+`dist\installer\TaskCalendarWidget-Setup-v<버전>.exe` — 실행하면:
 - **위젯 exe**(자체포함) 설치 + 시작 메뉴/바탕화면 바로가기
 - **브라우저용 단일 HTML**(`수행과제캘린더-브라우저.html`) 설치 + 바로가기(더블클릭 → 기본 브라우저)
-- 변경내역(오프라인 참고)
+- **WebView2 런타임 자동설치** — `redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe`가 **있을 때만** 포함(없으면 자동 생략, Win11은 내장이라 대개 불필요)
 - 제거 프로그램 등록. **사용자 데이터(`%APPDATA%\TaskCalendar`)는 설치/제거가 건드리지 않음.**
 
 > 브라우저 HTML은 **위젯과 데이터가 분리**된 독립 사본이다(위젯=`data.xml`, 브라우저=localStorage). 둘 사이 이동은 앱의 **XML 내보내기/불러오기**로. (서버 페이즈에서 단일 소스로 합쳐질 예정 — `docs/ROADMAP.md`)
@@ -33,8 +33,9 @@ powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 버전 단일 소스는 **`widget\TaskCalendarWidget.csproj`의 `<Version>`**. 여기만 올리면 인스톨러 파일명·표시 버전이 따라온다. (앱 화면 버전은 `task-calendar-prototype.html`의 `APP_VERSION` + 패치노트 모달을 함께 갱신 — `docs`/README의 릴리스 규칙 참고.)
 
 ## 파일
-- `TaskCalendar.iss` — Inno Setup 스크립트(설치 구성). `AppId` GUID는 **업그레이드 동일성 키라 절대 변경 금지**.
+- `task-calendar.iss` — Inno Setup 스크립트(설치 구성 · **이 하나만 정본**). `AppId` GUID는 **업그레이드 동일성 키라 절대 변경 금지**. WebView2 번들은 `redist\` 파일 존재 시 `#if`로 자동 포함/생략.
 - `build-installer.ps1` — 빌드 오케스트레이션 CLI.
 - `build-installer.cmd` — 더블클릭용 래퍼(실행 정책 우회).
 
-> 완전 한국어 마법사를 원하면 Inno 번역 페이지에서 `Korean.isl`을 받아 이 폴더에 두고 `.iss`의 `[Languages]` 줄을 주석대로 교체. 기본은 영문 마법사(항상 컴파일되도록) + 앱 고유 문구는 한국어.
+> 마법사 언어 = `Korean.isl`(Inno의 `Languages\` 폴더에 있어야 함). 없어서 컴파일이 막히면 `.iss`의 `[Languages]`를 `compiler:Default.isl`(영문)로 바꾸면 됨.
+> `.iss`/`.ps1`은 한글 오독 방지를 위해 **UTF-8 BOM**으로 저장돼 있음(편집 시 인코딩 유지).

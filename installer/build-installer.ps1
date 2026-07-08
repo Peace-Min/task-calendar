@@ -4,8 +4,8 @@
   ------------------------------------------------------------------
   csproj의 <Version>을 단일 소스로 삼아:
     1) (기본) 위젯을 self-contained 단일 exe로 publish
-    2) ISCC(Inno Setup 컴파일러)로 TaskCalendar.iss 컴파일
-  → dist\installer\수행과제캘린더-설치-v<버전>.exe 생성
+    2) ISCC(Inno Setup 컴파일러)로 task-calendar.iss 컴파일(/DMyAppVersion 주입)
+  → dist\installer\TaskCalendarWidget-Setup-v<버전>.exe 생성
 
   사용 예:
     powershell -ExecutionPolicy Bypass -File build-installer.ps1
@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 $here   = Split-Path -Parent $MyInvocation.MyCommand.Path      # installer\
 $root   = Split-Path -Parent $here                            # 저장소 루트(task-calendar\)
 $csproj = Join-Path $root 'widget\TaskCalendarWidget.csproj'
-$iss    = Join-Path $here 'TaskCalendar.iss'
+$iss    = Join-Path $here 'task-calendar.iss'
 
 function Fail($m){ Write-Host "✗ $m" -ForegroundColor Red; exit 1 }
 if (-not (Test-Path $csproj)) { Fail "csproj 없음: $csproj" }
@@ -66,12 +66,12 @@ if (-not $Iscc -or -not (Test-Path $Iscc)) {
 }
 Write-Host "● ISCC: $Iscc" -ForegroundColor Cyan
 
-# 4) 컴파일 (버전 주입)
-& $Iscc "/DAppVer=$ver" $iss
+# 4) 컴파일 (버전 주입 — .iss의 #define MyAppVersion 덮어씀)
+& $Iscc "/DMyAppVersion=$ver" $iss
 if ($LASTEXITCODE -ne 0) { Fail "ISCC 컴파일 실패 (exit $LASTEXITCODE)" }
 
-# 5) 결과
-$out = Join-Path $root ("dist\installer\수행과제캘린더-설치-v{0}.exe" -f $ver)
+# 5) 결과 (파일명은 .iss의 OutputBaseFilename과 일치)
+$out = Join-Path $root ("dist\installer\TaskCalendarWidget-Setup-v{0}.exe" -f $ver)
 if (Test-Path $out) {
   Write-Host ("`n✓ 완료 → {0}  ({1:N1} MB)" -f $out, ((Get-Item $out).Length/1MB)) -ForegroundColor Green
 } else {

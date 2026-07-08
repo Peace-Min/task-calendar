@@ -9,8 +9,9 @@
 
 - **v0.6**(로컬 테스트 배포): 할 일 서술형·Git/SVN 작성자 분리·패치노트 온디맨드·브라우저 보고 안내·구조 정비. 버전 5곳 동기(APP_VERSION·csproj 0.6.0·패치노트 모달·RELEASE_NOTES·README). 자체포함 exe(0.6.0.0) 재빌드 → 바탕화면 배포·실행(PID 확인).
 - **인스톨러 CLI**(`installer/`): 폐쇄망에서 clone 후 재사용하도록 Inno Setup 스크립트를 고정.
-  - `TaskCalendar.iss` — 위젯 exe + **브라우저용 단일 HTML** + 바로가기/제거 등록. `AppId` GUID 고정(업그레이드 동일성). 사용자 데이터(`%APPDATA%`) 보존. 사용자 영역 설치 기본(무admin), Default.isl(영문 마법사)+앱 문구 한국어.
-  - `build-installer.ps1`(+`.cmd`) — csproj `<Version>` 읽어 → self-contained publish → `ISCC /DAppVer` 컴파일. ISCC 자동 탐색.
+  - `task-calendar.iss`(**단일 정본**) — 위젯 exe + **브라우저용 단일 HTML** + (redist에 있으면)**WebView2 런타임 자동설치** + 바로가기/제거 등록. `AppId` GUID 고정(업그레이드 동일성). 사용자 데이터(`%APPDATA%`) 보존. 사용자 영역 설치(무admin), Korean.isl.
+  - **(정정)** 처음에 기존 `task-calendar.iss`(Peace-Min·WebView2 포함)를 못 보고 대소문자만 다른 `TaskCalendar.iss`를 중복 생성 → 혼선 + `redist\WebView2` 부재로 컴파일 **위치 오류** 유발. **하나로 병합**(HTML·버전주입 이식, WebView2 조건부 `#if HasWebView2`로 부재 시 자동 생략) + 중복 삭제.
+  - `build-installer.ps1`(+`.cmd`) — csproj `<Version>` 읽어 → self-contained publish → `ISCC /DMyAppVersion` 컴파일. ISCC 자동 탐색. `.iss`/`.ps1`은 한글 오독 방지 UTF-8 BOM.
   - **HTML 전달 방식 결정**: "위젯 버튼으로 브라우저 열기"가 아니라 **설치 경로에 .html 떨구기**(+바로가기). 근거: 브라우저 HTML은 위젯 없이/대신 쓰는 독립 사본이라 버튼은 자기모순 + 데이터 비동기(어차피 별개) + 코드 0. 데이터 다리는 XML 내보내기/불러오기.
   - `DEPLOY.md`에 인스톨러 배포 절차 추가.
 
