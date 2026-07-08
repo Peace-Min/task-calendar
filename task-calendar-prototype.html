@@ -1286,7 +1286,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
     </div>
     <div class="modal-foot">
-      <button type="button" class="lnk" id="btnPatch" style="margin-right:auto">🆕 변경사항 · v<span id="appVerLabel">0.5</span></button>
+      <button type="button" class="lnk" id="btnPatch" style="margin-right:auto">🆕 변경사항 · v<span id="appVerLabel">0.6</span></button>
       <button class="btn" data-close>닫기</button>
       <button class="btn primary" id="btnGuide">📖 자세한 사용설명서</button>
     </div>
@@ -1488,7 +1488,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.5</span><span class="pv-date">2026-07-02 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.6</span><span class="pv-date">2026-07-08 · 현재</span></div>
+      <p class="patch-intro">직전 배포(v0.5) 이후 추가·개선된 내용입니다.</p>
+      <ul class="patch-list">
+        <li class="key"><span class="pv-key">핵심</span><b>✍️ 할 일 서술형 지원</b> — 할 일 추가가 <b>전용 심플 폼</b>으로 바뀌고 <b>설명(서술) 칸</b>이 처음부터 열립니다. 제목은 간단히, 내용은 설명에 자세히 — 목록에서 설명 미리보기, 상세에서 편집.</li>
+        <li class="key"><span class="pv-key">핵심</span><b>🔀 Git/SVN 계정 분리</b> — Git 작성자(이메일)와 SVN 계정(사용자명)을 <b>따로 저장</b>합니다. SVN 계정을 넣어도 Git 과제의 커밋 필터에 영향을 주지 않습니다(서로 오염되던 문제 수정).</li>
+        <li><b>🆕 변경사항 자동 팝업 제거</b> — 새 버전 첫 실행 시 이 창이 자동으로 뜨지 않습니다. 보고 싶을 때 <b>도움말 → 변경사항</b>에서 여세요.</li>
+        <li><b>🌐 브라우저(HTML 단독 실행) 보고 안내</b> — 위젯이 아닌 브라우저에서 전송을 누르면 <b>netcus 창을 열고</b> 복사 붙여넣기 또는 위젯 이관 방법을 안내합니다(브라우저는 보안 제약으로 자동 작성 불가).</li>
+        <li><b>🛠 구조 정비</b> — 위젯/브라우저 동작 분리(어댑터)·테스트 안전망·설계 문서(구조/결정/로드맵) 정비. 겉은 그대로, 속을 확장 가능하게.</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.5</span><span class="pv-date">2026-07-02</span></div>
       <p class="patch-intro">직전 배포(v0.4) 이후 추가·개선된 내용입니다.</p>
       <ul class="patch-list">
         <li class="key"><span class="pv-key">핵심</span><b>📖 스크린샷 기반 사용설명서</b> — 실제 앱 화면을 조작한 순서대로 과제 추가, 과제 관리, 일정/할 일 등록, Git/SVN 커밋 가져오기, 보고서 흐름을 단계별 캡처로 안내합니다.</li>
@@ -1725,7 +1734,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.5';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI
+const APP_VERSION = '0.6';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
