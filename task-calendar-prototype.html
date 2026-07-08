@@ -1201,12 +1201,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-head"><h2>보고서 초안</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
       <div class="rpt-presets" role="tablist" aria-label="보고 유형">
-        <button class="btn sm" data-rmode="daily" role="tab">일간 (오늘)</button>
+        <button class="btn sm" data-rmode="daily" role="tab">일간</button>
         <button class="btn sm" data-rmode="weekly" role="tab">주간 (이번 주)</button>
         <button class="btn sm" data-rmode="custom" role="tab">커스텀 기간</button>
       </div>
       <div class="rpt-range">
-        <input type="date" id="rptFrom"> <span style="color:var(--muted)">~</span> <input type="date" id="rptTo">
+        <input type="date" id="rptFrom"> <span id="rptDateSep" style="color:var(--muted)">~</span> <input type="date" id="rptTo">
       </div>
       <div class="rpt-opts">
         <div class="rpt-srcs">
@@ -3048,7 +3048,9 @@ function netcusManualGuide(){
   try{ window.open('https://www.netcus.com/pjm/login.htm', '_blank', 'noopener'); }catch(_){}
   const s = $('#rptSendStatus');
   if(s){
-    s.innerHTML = ICON.alert + ' 브라우저에서는 회사 보고 <b>자동 작성이 안 됩니다</b>(보안 제약). 열린 <b>netcus</b> 창에 직접 입력하세요 — <b>📋 복사</b>로 내용을 복사해 붙여넣고 근태·초과는 직접 선택. 자동 작성이 필요하면 <b>⋯ → XML 내보내기</b>로 위젯에 데이터를 옮겨 작성하세요.';
+    s.innerHTML = ICON.alert + ' <b>브라우저에서는 회사 보고 자동 작성이 안 됩니다</b> (보안 제약).'
+      + '<br>① 열린 <b>netcus</b> 창에 직접 입력 — <b>📋 복사</b>로 내용 붙여넣기, 근태·초과는 직접 선택'
+      + '<br>② 자동 작성이 필요하면 <b>⋯ → XML 내보내기</b>로 위젯에 데이터를 옮겨 작성';
     s.className = 'rpt-send-status';
   }
   toast('netcus 창을 열었습니다 — 직접 입력하거나 위젯으로 옮겨 작성하세요', 'warn');
@@ -3324,15 +3326,19 @@ function setReportMode(mode){
   $$('#reportModal [data-rmode]').forEach(b => b.classList.toggle('active', b.dataset.rmode === mode));
   const from = $('#rptFrom'), to = $('#rptTo');
   if(mode === 'daily'){
+    // 단일일 UI — 과거 선택 가능(미래 불가), 두 번째 날짜·구분자는 숨김
     const t = todayYmd(); from.value = t; to.value = t;
-    from.disabled = to.disabled = true;
+    from.disabled = false; to.disabled = true; from.max = t; from.removeAttribute('min');
+    const sep = $('#rptDateSep'); if(sep) sep.style.display = 'none'; to.style.display = 'none';
   } else if(mode === 'weekly'){
     const r = weekRange(new Date(), 0); from.value = r[0]; to.value = r[1];
     from.disabled = to.disabled = true;
+    from.removeAttribute('max'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   } else { // custom — 범위 직접 지정 가능, 전송은 비활성
     from.disabled = to.disabled = false;
     if(!from.value) from.value = todayYmd();
     if(!to.value) to.value = from.value;
+    from.removeAttribute('max'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   }
   buildReport();
 }
@@ -3354,7 +3360,7 @@ function updateRptSendVis(){
     if(h){ h.style.display = ''; h.textContent = '커스텀 기간은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
-    b.title = '오늘 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
+    b.title = '선택한 날짜의 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
     if(h) h.style.display = 'none';
   }
 }
@@ -4607,7 +4613,7 @@ function bind(){
   $('#reportModal .rpt-presets').addEventListener('click', ev => {
     const b = ev.target.closest('[data-rmode]'); if(b) setReportMode(b.dataset.rmode);
   });
-  $('#rptFrom').addEventListener('change', buildReport);
+  $('#rptFrom').addEventListener('change', () => { if(reportMode === 'daily'){ $('#rptTo').value = $('#rptFrom').value; } buildReport(); });
   $('#rptTo').addEventListener('change', buildReport);
   ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(s => $(s).addEventListener('change', buildReport));
   $('#btnRptCopy').addEventListener('click', copyReport);
