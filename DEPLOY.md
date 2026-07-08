@@ -20,6 +20,25 @@
 
 ---
 
+## 인스톨러 배포 (Inno Setup) — 권장 배포 방식
+
+exe만 떼서 복사하는 대신 **설치 프로그램**으로 배포한다(시작 메뉴·바로가기·제거 등록·브라우저 HTML 동시 설치).
+
+```powershell
+# .NET 9 SDK + Inno Setup 6 설치된 빌드 PC에서:
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+# 또는 installer\build-installer.cmd 더블클릭
+```
+→ `dist\installer\수행과제캘린더-설치-v<버전>.exe` 생성. 이 파일 하나만 반입해 대상 PC에서 실행하면 설치된다.
+
+- 설치물: **위젯 exe**(자체포함) + **브라우저용 단일 HTML**(`수행과제캘린더-브라우저.html`, 더블클릭 시 기본 브라우저) + 변경내역 + 바로가기.
+- **브라우저 HTML은 위젯과 데이터가 분리**된 독립 사본(위젯=`data.xml` / 브라우저=localStorage). 이동은 앱의 **XML 내보내기/불러오기**로. (서버 페이즈에서 단일 소스로 합류 — `docs/ROADMAP.md`)
+- 사용자 데이터(`%APPDATA%\TaskCalendar`)는 설치·제거가 **보존**한다.
+- 상세·사전요구·옵션: [installer/README.md](installer/README.md). Inno Setup 6 필요(폐쇄망은 설치 파일 반입).
+- 버전 단일 소스 = `widget\TaskCalendarWidget.csproj`의 `<Version>`(스크립트가 읽어 인스톨러에 주입).
+
+---
+
 ## 0. 구성 요약
 - 소스: `task-calendar/` (프로토타입 HTML `task-calendar-prototype.html`, 명세 `SPEC.md`, 위젯 `widget/`)
 - 위젯은 검증된 HTML을 **exe 안에 임베드**(빌드 시 포함)하므로 HTML을 따로 배포할 필요 없음.
