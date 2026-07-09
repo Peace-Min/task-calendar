@@ -665,5 +665,57 @@ if (!JSDOM) {
       assert.ok(!ev("$('#rptOpt').classList.contains('open')"), '재클릭 → 닫힘');
       assert.strictEqual(ev("$('#rptOptBtn').getAttribute('aria-expanded')"), 'false');
     });
+
+    // ── netcus 주간 병합 미리보기(Phase2) — 렌더 브랜치(HOST=false=브라우저 경로) ─────
+    test('report UI(netcus): 파서·전송·렌더 함수 전역 도달', () => {
+      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusInto', 'renderNetcusPreview']){
+        assert.strictEqual(ev('typeof ' + fn), 'function', fn + ' 전역이어야 함');
+      }
+    });
+
+    test('report UI(netcus): 브라우저(HOST=false) net 출처 → "위젯에서만" 안내(#rptOut), fetch 없음', () => {
+      seed(reportState);
+      ev("state.reportSource='net'; reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';");
+      ev("renderNetcusInto('2026-07-06','2026-07-12')");   // HOST=false → 동기 가드 경로(hostRequest 안 탐)
+      const out = ev("$('#rptOut').innerHTML");
+      assert.ok(/위젯/.test(out), '위젯 전용 안내 문구');
+      assert.ok(/rpt-guard/.test(out), 'guard 카드로 렌더');
+      assert.strictEqual(ev("$('#rptSummary').textContent"), 'netcus 병합은 위젯에서만 됩니다');
+      ev("state.reportSource='cal'; reportMode='daily';");   // 상태 원복
+    });
+
+    test('report UI(netcus): net 세그 버튼 클릭 배선 — reportSource=net 전환 + 가드 렌더(비활성 해제 확인)', () => {
+      seed(reportState);
+      // 세그 버튼이 더 이상 disabled가 아니어야 함(Part C: 활성화)
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').disabled"), false, 'netcus 세그 활성화됨');
+      ev("state.reportSource='cal'; reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true;");
+      ev("$('#rptSrcSeg [data-rsrc=\"net\"]').click()");   // 실제 클릭(bind 배선) → state 전환 + buildReport
+      assert.strictEqual(ev("state.reportSource"), 'net', '클릭 → reportSource=net');
+      assert.strictEqual(ev("$('#rptSourceRow').getAttribute('data-src')"), 'net', '설명 강조 data-src 연동');
+      assert.ok(/위젯|rpt-guard/.test(ev("$('#rptOut').innerHTML")), 'net(브라우저) → 가드 미리보기 렌더');
+      ev("$('#rptSrcSeg [data-rsrc=\"cal\"]').click(); reportMode='daily';");   // 원복
+    });
+
+    test('report UI(netcus): renderNetcusPreview — 미등록 뱃지 + 미분류 // 사유(표시 전용) + 배너/상태라인', () => {
+      seed(reportState);
+      // 선행(no-header) → 미분류 / [미등록과제](카테고리 없음) → matched:false / 회의:2 → ambiguous
+      ev("renderNetcusPreview(parseNetcusWeek([{date:'2026-07-06',content:'선행 메모\\n[미등록과제] : 2\\n탐색 작업',ok:true},{date:'2026-07-07',content:'회의 : 2',ok:true}], state.categories, {}), '09:30')");
+      const out = ev("$('#rptOut').innerHTML");
+      assert.ok(/rnc-badge/.test(out), '미등록 뱃지 렌더');
+      assert.ok(/rnc-why/.test(out), '미분류 // 사유 span 렌더');
+      assert.ok(/읽기전용/.test(out), '읽기전용 배너');
+      assert.ok(/id="rncRefresh"/.test(out), '🔄 새로고침 버튼');
+      assert.ok(/조회 09:30/.test(out), '조회 시각 표시');
+      const sum = ev("$('#rptSummary').textContent");
+      assert.ok(/미등록 1/.test(sum), '상태라인 미등록 카운트');
+      assert.ok(/미분류 2건/.test(sum), '상태라인 미분류 카운트');
+    });
+
+    test('report UI(netcus): // 사유 주석은 화면 전용 — buildNetcusSendText엔 없음', () => {
+      const sendText = ev("buildNetcusSendText(parseNetcusWeek([{date:'2026-07-06',content:'선행 메모\\n[보고서 작성]\\n초안',ok:true},{date:'2026-07-07',content:'회의 : 2',ok:true}], state.categories, {}))");
+      assert.ok(!sendText.includes('//'), '전송 텍스트에 // 없음');
+      assert.ok(sendText.includes('[미분류]'), '[미분류] 블록은 포함');
+      assert.ok(sendText.includes('[보고서 작성]'), '과제 블록 포함');
+    });
   }
 }

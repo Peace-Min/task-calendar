@@ -409,6 +409,12 @@ namespace TaskCalendarWidget
                         _ = NetcusWeekFill(wreq);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
                         break;
                     }
+                    case "netcusWeekMerge":   // 주간보고 병합(Phase2) — 기간 일간보고 content를 '읽기만' 해서 reqId로 회신
+                    {
+                        string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");
+                        _ = NetcusWeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
+                        break;
+                    }
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
                     case "dragbegin":

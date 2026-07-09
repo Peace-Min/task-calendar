@@ -525,6 +525,19 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rtask-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent-2)}
+/* netcus 일간보고 병합 미리보기(읽기전용) — 보고서 모달 전용 */
+.rpt-mirror .rnc-loading{display:flex;align-items:center;gap:8px;padding:22px 14px;color:var(--muted);font-size:var(--fs-meta)}
+.rpt-mirror .rnc-loading .ic{width:15px;height:15px;flex:none;animation:spin .8s linear infinite}
+.rpt-mirror .rnc-banner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-micro);color:var(--muted);background:var(--accent-soft);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 9px}
+.rpt-mirror .rnc-banner-t{flex:1;min-width:0}
+.rpt-mirror .rnc-at{opacity:.8}
+.rpt-mirror .rnc-refresh{flex:none;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);color:var(--accent-2);font-family:inherit;font-size:var(--fs-micro);padding:3px 8px;cursor:pointer}
+.rpt-mirror .rnc-refresh:hover{border-color:var(--accent);color:var(--accent)}
+.rpt-mirror .rnc-badge{margin-left:6px;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;white-space:nowrap;flex:none}
+.rpt-mirror .rnc-uncat{border-style:dashed}
+.rpt-mirror .rnc-uline{margin:1px 0}
+.rpt-mirror .rnc-why{color:var(--muted);opacity:.7;font-size:var(--fs-micro)}
+.rpt-mirror .rnc-guard .rnc-guard-act{margin-top:10px}
 /* 보고서 모달 재구성 — 레일(핵심 컨트롤) + 미리보기(HERO). 좁은 폭은 스택, 넓은 폭은 2단(아래 @media 900). */
 #reportModal .rpt-body{display:block}
 /* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) + 세그 아래 상시 설명 */
@@ -1298,12 +1311,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               <span class="rpt-opt-lb">내용 출처</span>
               <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
                 <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
-                <button type="button" class="rpt-seg-b" data-rsrc="net" disabled aria-disabled="true">netcus 일간보고</button>
+                <button type="button" class="rpt-seg-b" data-rsrc="net" aria-pressed="false">netcus 일간보고</button>
               </div>
             </div>
             <div class="rpt-src-desc">
               <div class="rsd rsd-cal"><b>캘린더 기록</b> — 이 앱에 정리한 일정·할 일·커밋으로 주간보고를 만듭니다.</div>
-              <div class="rsd rsd-net"><b>netcus 일간보고</b> — netcus에 올린 그 주 일간보고를 합쳐 만듭니다. <span class="rsd-soon">다음 업데이트</span></div>
+              <div class="rsd rsd-net"><b>netcus 일간보고</b> — netcus에 올린 그 주 일간보고를 합쳐 만듭니다.</div>
             </div>
           </div>
           <div class="rpt-opt" id="rptOpt">
@@ -2896,7 +2909,7 @@ function openModal(sel){ $(sel).classList.remove('hidden'); }
 function closeModal(sel){ $(sel).classList.add('hidden'); }
 function closeTopModal(){
   const open = $$('.overlay').filter(o => !o.classList.contains('hidden'));
-  if(open.length){ open[open.length-1].classList.add('hidden'); return true; }
+  if(open.length){ const t = open[open.length-1]; t.classList.add('hidden'); if(t.id === 'reportModal') clearNetcusMerge(); return true; }
   return false;
 }
 /* ---------- 폼 dirty-check (우발적 닫기 방지: 배경 클릭 · ESC) ---------- */
@@ -3603,6 +3616,130 @@ function weekSubjectGuess(from){
   const ord = ['', '첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][wk] || (wk + '째');
   return `${mon}월 ${ord}주`;
 }
+// ── netcus 주간 병합 파서(Phase2) — 순수 함수(전역·DOM 무의존 → Layer1 테스트 대상) ──
+// days=[{date:'YYYY-MM-DD', content:string, ok:bool}], categories=[{id,name}], opts={sumTime:false}
+// 각 날 일간보고 content를 줄 단위로 훑어 회사양식 [과제명] 머리표 기준으로 과제 블록에 재그룹한다.
+// 반환은 렌더(renderNetcusPreview)·전송(buildNetcusSendText)이 공유하는 순수 데이터. // 사유 주석은 표시 전용.
+function parseNetcusWeek(days, categories, opts){
+  opts = opts || {};
+  const sumTime = !!opts.sumTime;
+  const cats = Array.isArray(categories) ? categories : [];
+  const rows = Array.isArray(days) ? days : [];
+  // 이름 정규화 — NFC + 공백 전부 제거 (카테고리 매칭 키). '시스템점검'↔'시스템 점검' 표기 흔들림 병합.
+  const norm = s => String(s == null ? '' : s).normalize('NFC').replace(/\s+/g, '');
+  // 정규 [과제] 머리표 — [과제] / [과제]:n / [과제] : 4시간 등 관대 매칭(group1=과제명, group2=선택 숫자)
+  const reBracket = /^\s*\[\s*(.+?)\s*\]\s*[:：]?\s*(\d+(?:\.\d+)?)?\s*(?:시간|h|H)?\s*$/;
+  // 대괄호 없는 '이름 : n' 꼴 — 알려진 과제명일 때만 머리표로 인정, 아니면 '형식 모호' 후보
+  const reBare = /^\s*(.+?)\s*[:：]\s*(\d+(?:\.\d+)?)\s*(?:시간|h|H)?\s*$/;
+
+  const catByNorm = {};
+  for(const c of cats){
+    if(!c) continue;
+    const nn = norm(c.name);
+    if(nn && !Object.prototype.hasOwnProperty.call(catByNorm, nn)) catByNorm[nn] = { id: c.id != null ? c.id : null, name: c.name };
+  }
+
+  const tasks = [];            // 순서 = first-seen
+  const taskByNorm = {};       // normalized name → task obj (같은 과제 주간 병합)
+  const unclassified = [];     // [{date, text, reason}]
+  const emptyDays = [];
+  const reasons = { 'no-header': 0, 'ambiguous': 0 };
+  let daysRead = 0;
+
+  const getTask = (rawName, matched, catId) => {
+    const key = norm(rawName);
+    if(Object.prototype.hasOwnProperty.call(taskByNorm, key)) return taskByNorm[key];
+    const t = { name: rawName, catId: (catId != null ? catId : null), matched: !!matched, lines: [], hoursByDate: {}, hoursSum: null };
+    tasks.push(t); taskByNorm[key] = t;
+    return t;
+  };
+  const addHours = (t, date, numStr) => {
+    if(numStr == null || !date) return;
+    const v = parseFloat(numStr);
+    if(!isNaN(v)) t.hoursByDate[date] = (t.hoursByDate[date] || 0) + v;
+  };
+
+  for(const row0 of rows){
+    const row = row0 || {};
+    const date = row.date || '';
+    if(row.ok) daysRead++;
+    const content = (row.content == null) ? '' : String(row.content);
+    if(!content.trim()){ if(date) emptyDays.push(date); continue; }   // 빈 날 — 미분류 아님, 통계만
+
+    const lines = content.split(/\r\n|\r|\n/);
+    let cur = null;   // 현재 과제 블록
+    for(const rawLine of lines){
+      if(!rawLine.trim()) continue;   // 빈 줄 무시(블록 컨텍스트 유지)
+      const text = rawLine.trim();
+
+      const mB = reBracket.exec(rawLine);
+      const mBnm = mB ? mB[1].trim() : '';
+      if(mB && mBnm){   // 빈 이름 '[ ]'·'[]'은 머리표로 인정 안 함 → 아래 내용/미분류 경로(팬텀 빈 과제·전송본 '[]' 방지)
+        const nm = mBnm;
+        const hit = Object.prototype.hasOwnProperty.call(catByNorm, norm(nm)) ? catByNorm[norm(nm)] : null;
+        cur = getTask(nm, !!hit, hit ? hit.id : null);   // 미등록 과제도 자기 블록(matched:false), 미분류 아님
+        addHours(cur, date, mB[2]);
+        continue;
+      }
+
+      const mR = reBare.exec(rawLine);
+      if(mR){
+        const bnm = mR[1].trim();
+        const bhit = Object.prototype.hasOwnProperty.call(catByNorm, norm(bnm)) ? catByNorm[norm(bnm)] : null;
+        if(bhit){   // 대괄호 없어도 알려진 과제명 → 머리표 인정
+          cur = getTask(bnm, true, bhit.id);
+          addHours(cur, date, mR[2]);
+          continue;
+        }
+        if(!cur){   // 소유 과제 없음 + 머리표 모양이나 미상 → 형식 모호
+          unclassified.push({ date, text, reason: 'ambiguous' }); reasons['ambiguous']++; continue;
+        }
+        // 블록 안이면 일반 내용 라인으로 귀속(아래 공통 경로)
+      }
+
+      if(!cur){   // 머리표 이전 내용 → 머리표 없음
+        unclassified.push({ date, text, reason: 'no-header' }); reasons['no-header']++; continue;
+      }
+      cur.lines.push({ date, text });
+    }
+  }
+
+  if(sumTime){
+    for(const t of tasks){
+      let sum = 0;
+      for(const k in t.hoursByDate){ if(Object.prototype.hasOwnProperty.call(t.hoursByDate, k)) sum += t.hoursByDate[k]; }
+      t.hoursSum = sum;
+    }
+  }
+
+  let unregistered = 0;
+  for(const t of tasks){ if(!t.matched) unregistered++; }
+
+  return {
+    tasks, unclassified,
+    stats: { daysTotal: rows.length, daysRead, emptyDays, reasons, unregistered }
+  };
+}
+// netcus 주간 전송 텍스트(진행사항/endwork) — 순수·결정론. // 사유 주석·통계 없음(표시 전용과 분리) → Layer1 테스트 대상.
+function buildNetcusSendText(parsed){
+  parsed = parsed || {};
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const unclassified = Array.isArray(parsed.unclassified) ? parsed.unclassified : [];
+  const md = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d == null ? '' : d)); return m ? ((+m[2]) + '/' + (+m[3])) : String(d == null ? '' : d); };
+  const blocks = [];
+  for(const t of tasks){
+    const head = '[' + String(t && t.name != null ? t.name : '') + ']';
+    const lines = Array.isArray(t && t.lines) ? t.lines : [];
+    const body = lines.map(ln => '(' + md(ln && ln.date) + ') ' + String(ln && ln.text != null ? ln.text : ''));
+    blocks.push(body.length ? (head + '\n' + body.join('\n')) : head);
+  }
+  if(unclassified.length){
+    const ub = ['[미분류]'];
+    for(const u of unclassified){ ub.push(String(u && u.text != null ? u.text : '')); }   // verbatim — 주석/사유 없이 원문만
+    blocks.push(ub.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
 // reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.
 function reportMarkerSpec(){
@@ -3655,6 +3792,11 @@ function buildReport(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
+  // netcus 출처(주간/커스텀)면 캘린더 전용 옵션(포함항목·서식)은 무의미 → ⚙옵션 숨김. 그 외엔 노출.
+  const _netMode = (state.reportSource === 'net' && reportMode !== 'daily');
+  { const _opt = $('#rptOpt'); if(_opt) _opt.style.display = _netMode ? 'none' : ''; }
+  // 내용 출처 = netcus 일간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
+  if(_netMode){ renderNetcusInto(from, to); return; }
   const src = rptSources();
   try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
   { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
@@ -3735,7 +3877,111 @@ function buildReport(){
   if(daily) line += ' · 하루(수정 가능)';
   sum.textContent = line;
 }
+// ===== netcus 일간보고 → 주간보고 병합(Phase2) — 위젯(HOST) 전용, 읽기전용 미리보기 =====
+// 캐시 슬롯 1개(그 주 하나만 보유 — 누적 안 함). key = from|to.
+let netcusMerge = { key: '', parsed: null, at: '' };
+let netcusFetching = false;   // 병합 요청 in-flight 가드 — 호스트 단일 _w2 동시 사용 레이스 방지
+function ncMergeKey(from, to){ return from + '|' + to; }
+function clearNetcusMerge(){ netcusMerge = { key: '', parsed: null, at: '' }; }
+function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+// #rptOut에 netcus 병합 미리보기를 렌더(필요 시 호스트에서 그 기간 일간보고를 읽어옴).
+async function renderNetcusInto(from, to){
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(!out) return;
+  const attHost = $('#rptAttendHost'); if(attHost) attHost.innerHTML = '';   // 근태 host는 netcus 미리보기에서 비움
+  // 브라우저(비 HOST): netcus 병합은 위젯 전용 — 안내만
+  if(!HOST){
+    if(sum) sum.textContent = 'netcus 병합은 위젯에서만 됩니다';
+    out.innerHTML = '<div class="rpt-guard">netcus 일간보고 병합은 <b>데스크톱 위젯</b>에서만 동작합니다.<br>브라우저에서는 <b>캘린더 기록</b> 출처로 작성하세요.</div>';
+    return;
+  }
+  const key = ncMergeKey(from, to);
+  if(netcusMerge.key === key && netcusMerge.parsed){ renderNetcusPreview(netcusMerge.parsed, netcusMerge.at); return; }   // 캐시 사용(재요청 없음)
+  if(netcusFetching) return;   // 이미 병합 요청 진행 중 → 중복 호출 차단(호스트 단일 _w2 레이스 방지). 완료 후 최신 선택으로 재시도.
+  if(sum) sum.textContent = '';
+  out.innerHTML = '<div class="rnc-loading">' + ICON.spinner + ' <span>netcus에서 그 주 일간보고 읽는 중…</span></div>';
+  netcusFetching = true;
+  let res;
+  try{ res = await hostRequest('netcusWeekMerge', { from, to }, 60000); }
+  finally{ netcusFetching = false; }
+  // 대기 중 기간/출처가 바뀌었으면 이 결과 폐기 — 현재도 netcus면 최신 기간으로 재요청(직렬화)
+  const curFrom = $('#rptFrom').value, curTo = $('#rptTo').value;
+  if(curFrom !== from || curTo !== to || state.reportSource !== 'net'){
+    if(state.reportSource === 'net' && reportMode !== 'daily' && /^\d{4}-\d{2}-\d{2}$/.test(curFrom) && /^\d{4}-\d{2}-\d{2}$/.test(curTo) && curFrom <= curTo) renderNetcusInto(curFrom, curTo);
+    return;
+  }
+  if(!res || res.ok !== true){ renderNetcusError((res && res.error) || 'read', from, to); return; }
+  const parsed = parseNetcusWeek(res.days || [], state.categories, { sumTime: false });
+  const at = ncNow();
+  netcusMerge = { key, parsed, at };   // 슬롯 갱신 — 직전 주 캐시는 교체(누적 안 함)
+  renderNetcusPreview(parsed, at);
+}
+function renderNetcusError(err, from, to){
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(sum) sum.textContent = '';
+  if(!out) return;
+  const toSettings = () => { openSettings(); setTimeout(() => { const el = $('#ncId'); if(el){ try{ el.focus(); }catch(_){} } }, 80); };
+  if(err === 'no-creds'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
+      + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정에서 저장 →</button></div></div>';
+    const b = $('#rncToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'login'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정 열기 →</button></div></div>';
+    const b = $('#rncToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'range'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 기간이 너무 깁니다 — netcus 병합은 최대 31일까지 지원합니다.</div>';
+  } else {   // read / 타임아웃 / 응답 없음
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 읽기에 실패했습니다.'
+      + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncRetry">🔄 다시 시도</button></div></div>';
+    const b = $('#rncRetry'); if(b) b.addEventListener('click', () => { clearNetcusMerge(); renderNetcusInto(from, to); });
+  }
+}
+// 읽기전용 미리보기 렌더 — parsed(파서 결과) + at(조회 시각 HH:MM)을 #rptOut/#rptSummary에 그린다.
+function renderNetcusPreview(parsed, at){
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(!out) return;
+  const md = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); return m ? ((+m[2]) + '/' + (+m[3])) : String(d || ''); };
+  let html = '<div class="rnc-banner"><span class="rnc-banner-t">📖 읽기전용 · netcus 일간보고를 그대로 가져옴'
+    + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
+    + '<button type="button" class="rnc-refresh" id="rncRefresh" title="다시 읽기">🔄 새로고침</button></div>';
+  for(const t of parsed.tasks){
+    html += '<div class="rcard rnc-card">';
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
+    if(t.lines.length) html += '<div class="rcard-tasks">' + t.lines.map(ln => '(' + esc(md(ln.date)) + ') ' + esc(ln.text)).join('<br>') + '</div>';
+    html += '</div>';
+  }
+  if(parsed.unclassified.length){
+    html += '<div class="rcard rnc-card rnc-uncat"><div class="rcard-head"><span class="rcard-nm">[미분류]</span></div><div class="rcard-tasks">'
+      + parsed.unclassified.map(u => {
+          const why = (u.reason === 'ambiguous') ? '형식 모호' : '머리표 없음';
+          return '<div class="rnc-uline">' + esc(u.text) + ' <span class="rnc-why">// ' + esc(why) + ' · ' + esc(md(u.date)) + '</span></div>';
+        }).join('')
+      + '</div></div>';
+  }
+  if(!parsed.tasks.length && !parsed.unclassified.length){
+    html += '<div class="rpt-guard">그 기간 netcus 일간보고에서 가져올 내용이 없습니다.</div>';
+  }
+  out.innerHTML = html;
+  const rb = $('#rncRefresh'); if(rb) rb.addEventListener('click', () => { const f = $('#rptFrom').value, tt = $('#rptTo').value; clearNetcusMerge(); renderNetcusInto(f, tt); });
+  // 상태 라인 — 과제/미분류(사유별)/미등록/읽은 날/빈 날
+  const st = parsed.stats, parts = ['과제 ' + parsed.tasks.length + '개'];
+  if(parsed.unclassified.length){
+    const rz = [];
+    if(st.reasons['no-header']) rz.push('머리표 없음 ' + st.reasons['no-header']);
+    if(st.reasons['ambiguous']) rz.push('모호 ' + st.reasons['ambiguous']);
+    parts.push('미분류 ' + parsed.unclassified.length + '건' + (rz.length ? '(' + rz.join('·') + ')' : ''));
+  }
+  if(st.unregistered) parts.push('미등록 ' + st.unregistered);
+  parts.push(st.daysRead + '일 읽음');
+  if(st.emptyDays.length){
+    const WD = ['일','월','화','수','목','금','토'];
+    parts.push('빈 날: ' + st.emptyDays.map(d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? WD[new Date(+m[1], +m[2]-1, +m[3]).getDay()] : d; }).join('·'));
+  }
+  if(sum) sum.textContent = parts.join(' · ');
+}
 function openReport(){
+  clearNetcusMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션 한 주만 보유)
   // 직전 소스 선택 복원(기본 전체 ON)
   try{ const s = JSON.parse(localStorage.getItem('tc_rptSources') || 'null');
     if(s){ $('#rptSrcEvent').checked = s.event !== false; $('#rptSrcTodo').checked = s.todo !== false; $('#rptSrcGit').checked = s.git !== false; } }catch(_){}
@@ -3751,6 +3997,10 @@ function openReport(){
 }
 // 복사용 텍스트 — 화면 DOM이 아니라 데이터에서 재계산(드리프트 방지). 과제명은 현재 이름 재조회(개명 자동 반영).
 function buildReportText(){
+  // netcus 출처(주간/커스텀) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
+  if(state.reportSource === 'net' && reportMode !== 'daily'){
+    return (netcusMerge && netcusMerge.parsed) ? buildNetcusSendText(netcusMerge.parsed) : '';
+  }
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
   const { rows } = collectReportData(from, to, rptSources());
@@ -4748,6 +4998,20 @@ function bind(){
     } else {
       // 주간보고 — 채우고 열어두기(직접 제출). 기간/제목/과제투입시간/진행사항 자동 채움.
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){ toast('기간을 선택하세요 (시작 ≤ 종료)', 'warn'); return; }
+      // 내용 출처 = netcus 일간보고 → endwork는 병합 파서 결과의 '깨끗한' 텍스트(// 사유·통계 없음). 과제투입시간은 기본 비움.
+      if(state.reportSource === 'net'){
+        const parsed = (netcusMerge.key === ncMergeKey(from, to)) ? netcusMerge.parsed : null;
+        if(!parsed){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
+        const endwork = buildNetcusSendText(parsed);
+        if(!endwork.trim()){ toast('보낼 내용이 없습니다', 'warn'); return; }
+        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: '', endwork } };
+        if(Platform.caps.reportAuto){
+          const b = $('#btnRptSend'); if(b) b.disabled = true;
+          const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+        }
+        Platform.report.submitWeekly(payload);
+        return;
+      }
       const wf = buildWeeklyFields(from, to, rptSources());
       if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
@@ -5020,11 +5284,12 @@ function bind(){
     const b = ev.target.closest('[data-rmode]'); if(b) setReportMode(b.dataset.rmode);
   });
   $('#rptFrom').addEventListener('change', () => {
+    clearNetcusMerge();   // 기간 변경 → netcus 병합 캐시 무효화(그 주만 보유)
     if(reportMode === 'daily'){ $('#rptTo').value = $('#rptFrom').value; }
     else if(reportMode === 'weekly'){ const v = $('#rptFrom').value; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if(m){ const r = weekRange(new Date(+m[1], +m[2]-1, +m[3]), 0); $('#rptFrom').value = r[0]; $('#rptTo').value = r[1]; } }   // 주간: 고른 날짜를 그 주(월~일)로 스냅
     buildReport();
   });
-  $('#rptTo').addEventListener('change', buildReport);
+  $('#rptTo').addEventListener('change', () => { clearNetcusMerge(); buildReport(); });
   ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(s => $(s).addEventListener('change', buildReport));
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#rptCatLink').addEventListener('click', openCatModal);   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
@@ -5038,13 +5303,17 @@ function bind(){
   { const _optBtn = $('#rptOptBtn'), _opt = $('#rptOpt');
     if(_optBtn && _opt) _optBtn.addEventListener('click', () => {
       const open = _opt.classList.toggle('open'); _optBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }); }
-  // 내용 출처 세그먼트 — 현재 '캘린더 기록'(cal)만 선택 가능, netcus(net)는 비활성. state.reportSource는 인메모리(phase2에서 영속).
+  // 내용 출처 세그먼트 — 캘린더 기록(cal) / netcus 일간보고(net). state.reportSource는 인메모리(XML 미영속).
   { const _seg = $('#rptSrcSeg');
     if(_seg) _seg.addEventListener('click', ev => {
       const b = ev.target.closest('[data-rsrc]'); if(!b || b.disabled) return;
-      state.reportSource = b.dataset.rsrc;   // 현재 'cal'만 (net은 disabled 가드로 차단)
+      if(state.reportSource === b.dataset.rsrc) return;   // 변화 없으면 무시
+      state.reportSource = b.dataset.rsrc;
+      if(state.reportSource === 'cal') clearNetcusMerge();   // cal로 전환 시 netcus 캐시 비움(한 주만 보유)
       const _sr = $('#rptSourceRow'); if(_sr) _sr.setAttribute('data-src', b.dataset.rsrc);   // 설명 강조 연동
-      _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); }); }); }
+      _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      buildReport();   // 출처 전환 → 미리보기 재빌드(net=병합 미리보기 / cal=캘린더 카드)
+    }); }
   // 일간 보고서 커밋 라인 편집(✎) — 데이터 변경은 setCommitSubject 단일 경로. 커밋내역 탭과 동일 배선(Enter=blur/Esc=취소/focusout=커밋).
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest('.rtask [data-ract]'); if(!b) return;
@@ -5080,9 +5349,10 @@ function bind(){
   $$('.overlay').forEach(ov => {
     ov.addEventListener('click', ev => {
       if(ev.target === ov){                                   // 배경 클릭 = 우발적 → dirty면 확인
-        confirmDiscardIfDirty(ov).then(ok => { if(ok) ov.classList.add('hidden'); });
+        confirmDiscardIfDirty(ov).then(ok => { if(ok){ ov.classList.add('hidden'); if(ov.id === 'reportModal') clearNetcusMerge(); } });
       } else if(ev.target.closest('[data-close]')){           // × / 취소 = 명시적 → 바로 닫음
         ov.classList.add('hidden');
+        if(ov.id === 'reportModal') clearNetcusMerge();
       }
     });
   });

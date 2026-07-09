@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -350,6 +351,111 @@ namespace TaskCalendarWidget
                 NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다 — 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
             }
             finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
+        }
+
+        // 주간보고 병합(Phase2) — from~to 기간의 일간보고 content를 '읽기만' 해서 웹으로 회신(제출/수정 없음).
+        // 로그인 → 각 날짜 pjm_work_view.jsp에서 content textarea 값을 읽음 → days 배열로 __hostReply 회신 → 창 닫음.
+        // 파싱·과제별 그룹핑·미분류 판정은 전부 웹(JS parseNetcusWeek)이 담당한다. 읽기 창은 최소화하고 끝나면 닫는다.
+        // 회신 계약: { ok:bool, error:string, days:[{ date:"YYYY-MM-DD", content:string, ok:bool }] }
+        //   error: ""(정상)/"no-creds"/"login"/"read". content 비었거나 요소 없으면 content:""(파서가 '일간 없음' 판정).
+        private async Task NetcusWeekMerge(string reqId, string from, string to)
+        {
+            var days = new List<object>();
+            CoreWebView2? cw = null;
+            // 레거시 pjm alert()/confirm() 자동 수락 — 없으면 최소화된 창에서 다이얼로그가 읽기를 무한 대기시킴(제출/검증과 동일 방어)
+            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(merge) alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw))
+                {
+                    GitReply(reqId, new { ok = false, error = "no-creds", days = Array.Empty<object>() });
+                    return;
+                }
+
+                // 기간 파싱(YYYY-MM-DD). 실패/역순은 방어 처리.
+                if (!DateTime.TryParse(from, out var dFrom) || !DateTime.TryParse(to, out var dTo))
+                {
+                    GitReply(reqId, new { ok = false, error = "read", days = Array.Empty<object>() });
+                    return;
+                }
+                if (dTo < dFrom) { var tmp = dFrom; dFrom = dTo; dTo = tmp; }
+                if ((dTo - dFrom).TotalDays > 31)   // 과도한 범위 방어 — 커스텀 폭주/DateTime.MaxValue 증가 예외 차단
+                {
+                    GitReply(reqId, new { ok = false, error = "range", days = Array.Empty<object>() });
+                    return;
+                }
+
+                Log($"netcus 주간병합 읽기: {from} ~ {to}");
+                await EnsureW2();
+                cw = _w2!.CoreWebView2;
+                cw.ScriptDialogOpening += OnDialog;
+                // 읽기는 방해 최소화 — 확인창을 최소화(선택). 성공/실패 무관 finally에서 닫는다.
+                try { Dispatcher.Invoke(() => { try { if (_w2win != null) _w2win.WindowState = WindowState.Minimized; } catch { } }); } catch { }
+
+                // 로그인(NetcusSubmit와 동일 패턴)
+                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                var loginNav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+                await loginNav;
+
+                // 로그인 실패 판정 — 비밀번호 입력칸 잔류(NetcusValidateCreds 프로브와 동일)
+                string still = "true";
+                for (int i = 0; i < 8; i++)
+                {
+                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (still == "false") break;
+                    await Task.Delay(300);
+                }
+                if (still != "false")
+                {
+                    GitReply(reqId, new { ok = false, error = "login", days = Array.Empty<object>() });
+                    return;
+                }
+
+                // from..to 각 날짜 content 읽기 — 단일 _w2 재사용(하루 1창 금지)
+                for (var d = dFrom; d <= dTo; d = d.AddDays(1))
+                {
+                    int Y = d.Year, M = d.Month, D = d.Day;
+                    string date = $"{Y:D4}-{M:D2}-{D:D2}";
+                    string content = ""; bool okDay = false;
+                    try
+                    {
+                        string url = $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={Y}&m={M}&d={D}&id={Uri.EscapeDataString(id)}";
+                        await NavTo(cw, url);
+                        // content textarea 로드 대기(요소 존재하면 값이 빈 문자열이라도 탈출). ExecuteScriptAsync는 JSON 문자열 반환.
+                        string raw = "null";
+                        for (int i = 0; i < 12; i++)
+                        {
+                            raw = await cw.ExecuteScriptAsync("(function(){var c=document.getElementsByName('content')[0];return c?c.value:null;})()");
+                            if (raw != null && raw != "null") break;
+                            await Task.Delay(250);
+                        }
+                        if (raw != null && raw != "null")
+                        {
+                            try { content = JsonSerializer.Deserialize<string>(raw) ?? ""; } catch { content = ""; }
+                            okDay = true;   // 요소 존재 = 그 날 페이지 접근 성공(내용은 비었을 수 있음)
+                        }
+                        else { content = ""; okDay = false; }   // 요소 없음(세션/접근 문제) → 파서는 빈 날로 취급
+                    }
+                    catch (Exception exd) { Log("netcus 주간병합 일자 읽기 실패(" + date + "): " + exd.Message); content = ""; okDay = false; }
+                    days.Add(new { date, content, ok = okDay });
+                }
+
+                Log($"netcus 주간병합 완료: {days.Count}일");
+                GitReply(reqId, new { ok = true, error = "", days });
+            }
+            catch (Exception ex)
+            {
+                Log("netcus 주간병합 예외: " + ex);
+                GitReply(reqId, new { ok = false, error = "read", days = Array.Empty<object>() });
+            }
+            finally
+            {
+                try { if (cw != null) cw.ScriptDialogOpening -= OnDialog; } catch { }
+                // 읽기 전용 — 성공/실패 무관 확인창은 닫는다(제출 확인창과 달리 열어두지 않음).
+                try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+            }
         }
     }
 
