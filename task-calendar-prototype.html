@@ -3944,7 +3944,8 @@ function renderNetcusError(err, from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(sum) sum.textContent = '';
   if(!out) return;
-  const toSettings = () => { openSettings(); setTimeout(() => { const el = $('#ncId'); if(el){ try{ el.focus(); }catch(_){} } }, 80); };
+  // 보고서 모달을 먼저 닫고 설정을 연다 — 두 오버레이가 같은 z-index라 보고서(DOM 뒤)가 설정을 덮어 포커스가 안 가던 문제. 자격 없으면 가져온 내용도 없어 손실 없음.
+  const toSettings = () => { closeModal('#reportModal'); openSettings(); setTimeout(() => { const el = $('#ncId'); if(el){ try{ el.focus(); }catch(_){} } }, 80); };
   if(err === 'no-creds'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정에서 저장 →</button></div></div>';
