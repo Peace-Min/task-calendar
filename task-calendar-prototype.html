@@ -527,8 +527,16 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-note.edit{color:var(--accent-2)}
 /* 보고서 모달 재구성 — 레일(핵심 컨트롤) + 미리보기(HERO). 좁은 폭은 스택, 넓은 폭은 2단(아래 @media 900). */
 #reportModal .rpt-body{display:block}
-/* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) */
-.rpt-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+/* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) + 세그 아래 상시 설명 */
+.rpt-source{display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:10px}
+.rpt-src-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rpt-src-desc{font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
+.rpt-src-desc .rsd{padding:1px 0}
+.rpt-src-desc .rsd b{font-weight:600;color:var(--muted)}
+/* 활성 출처 = 진한 제목, 비활성 = 흐리게(어느 쪽으로 만들지 한눈에) */
+.rpt-source[data-src="cal"] .rsd-cal b,.rpt-source[data-src="net"] .rsd-net b{color:var(--text)}
+.rpt-source[data-src="cal"] .rsd-net,.rpt-source[data-src="net"] .rsd-cal{opacity:.55}
+.rsd-soon{display:inline-block;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:1px;white-space:nowrap}
 .rpt-seg{display:inline-flex;gap:3px}
 .rpt-seg-b{border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 10px;background:var(--panel);color:var(--text);cursor:pointer}
 .rpt-seg-b.active{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -1285,11 +1293,17 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <div class="rpt-range">
             <input type="date" id="rptFrom"> <span id="rptDateSep" style="color:var(--muted)">~</span> <input type="date" id="rptTo">
           </div>
-          <div class="rpt-source" id="rptSourceRow" style="display:none">
-            <span class="rpt-opt-lb">내용 출처</span>
-            <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
-              <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
-              <button type="button" class="rpt-seg-b" data-rsrc="net" disabled aria-disabled="true" title="다음 업데이트에서 지원 — netcus에 올린 그 주 일간보고를 병합해 주간보고 초안을 만듭니다">netcus 일간보고</button>
+          <div class="rpt-source" id="rptSourceRow" style="display:none" data-src="cal">
+            <div class="rpt-src-top">
+              <span class="rpt-opt-lb">내용 출처</span>
+              <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
+                <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
+                <button type="button" class="rpt-seg-b" data-rsrc="net" disabled aria-disabled="true">netcus 일간보고</button>
+              </div>
+            </div>
+            <div class="rpt-src-desc">
+              <div class="rsd rsd-cal"><b>캘린더 기록</b> — 이 앱에 정리한 일정·할 일·커밋으로 주간보고를 만듭니다.</div>
+              <div class="rsd rsd-net"><b>netcus 일간보고</b> — netcus에 올린 그 주 일간보고를 합쳐 만듭니다. <span class="rsd-soon">다음 업데이트</span></div>
             </div>
           </div>
           <div class="rpt-opt" id="rptOpt">
@@ -3731,6 +3745,7 @@ function openReport(){
   const _opt = $('#rptOpt'); if(_opt) _opt.classList.remove('open');
   const _ob = $('#rptOptBtn'); if(_ob) _ob.setAttribute('aria-expanded', 'false');
   const _src = (state.reportSource === 'net') ? 'net' : 'cal';
+  const _sr = $('#rptSourceRow'); if(_sr) _sr.setAttribute('data-src', _src);   // 설명 강조 연동
   const _seg = $('#rptSrcSeg'); if(_seg) _seg.querySelectorAll('[data-rsrc]').forEach(x => {
     const on = x.dataset.rsrc === _src && !x.disabled; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
 }
@@ -5028,6 +5043,7 @@ function bind(){
     if(_seg) _seg.addEventListener('click', ev => {
       const b = ev.target.closest('[data-rsrc]'); if(!b || b.disabled) return;
       state.reportSource = b.dataset.rsrc;   // 현재 'cal'만 (net은 disabled 가드로 차단)
+      const _sr = $('#rptSourceRow'); if(_sr) _sr.setAttribute('data-src', b.dataset.rsrc);   // 설명 강조 연동
       _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); }); }); }
   // 일간 보고서 커밋 라인 편집(✎) — 데이터 변경은 setCommitSubject 단일 경로. 커밋내역 탭과 동일 배선(Enter=blur/Esc=취소/focusout=커밋).
   $('#rptOut').addEventListener('click', ev => {
