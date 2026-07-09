@@ -39,6 +39,10 @@ namespace TaskCalendarWidget
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "TaskCalendarWidget";
 
+        // 부트스트랩 배포 전 관리자가 여기에 공유폴더 URL을 박아두면 최초 실행부터 업데이트가 켜진다.
+        // 빈 값이면 기능 휴면 — 이후 설정 모달의 '업데이트 소스 URL'로 언제든 설정/변경(재빌드 불필요).
+        private const string DefaultUpdateSourceUrl = "";
+
         public MainWindow()
         {
             InitializeComponent();
@@ -79,6 +83,8 @@ namespace TaskCalendarWidget
                 }
             }
             catch (Exception ex) { Debug.WriteLine("설정 로드 오류: " + ex); }
+            // 업데이트 소스가 비어 있으면 컴파일타임 기본값으로 시드(부트스트랩 빌드용). 여전히 비면 기능 휴면.
+            if (string.IsNullOrEmpty(_settings.UpdateSourceUrl)) _settings.UpdateSourceUrl = DefaultUpdateSourceUrl;
         }
 
         // 현재 창의 실제 물리 좌표(GetWindowRect)를 DIP로 환산해 저장 → 고정/플로팅 모두 정확
@@ -261,6 +267,8 @@ namespace TaskCalendarWidget
                 }
             };
             t.Start();
+
+            UpdateInit();   // 자동 업데이트: 시작 후 지연 1회 + 주기(6h) 백그라운드 확인(전부 무음). 시작 차단 없음.
         }
 
         private static string LoadHtml()
@@ -396,6 +404,22 @@ namespace TaskCalendarWidget
                         break;
                     case "reminderToggle":
                         SetRemindersEnabled(doc.RootElement.TryGetProperty("on", out var ronEl) && ronEl.ValueKind == JsonValueKind.True);
+                        break;
+
+                    // ----- 자동 업데이트(FTP/파일 기반) -----
+                    case "updateCheck":     // 설정에서 '지금 확인'(userInitiated — 최신/실패도 조용히 __updateResult로 알림)
+                        _ = CheckForUpdateAsync(userInitiated: true);
+                        break;
+                    case "updateApply":     // 배너 '지금 업데이트' — 내려받기·검증·설치·재시작
+                        _ = ApplyUpdateAsync();
+                        break;
+                    case "updateSetSource": // 설정에서 소스 URL 저장
+                        _settings.UpdateSourceUrl = GetStr(doc, "url").Trim();
+                        SaveSettings();
+                        Log("업데이트 소스 URL 저장: " + (_settings.UpdateSourceUrl.Length == 0 ? "(비움 — 휴면)" : _settings.UpdateSourceUrl));
+                        break;
+                    case "updateSourceGet": // 설정 열 때 현재 값 반영
+                        JsCall("window.__updateSource && window.__updateSource(" + JsonSerializer.Serialize(_settings.UpdateSourceUrl ?? "") + ")");
                         break;
 
                     case "netcusWeekSubmit":
@@ -1257,5 +1281,7 @@ namespace TaskCalendarWidget
         public bool Pinned { get; set; } = true;
         public bool TrayEnabled { get; set; } = false;   // 기본 OFF(위젯 우선)
         public bool TrayHintShown { get; set; } = false;  // '트레이로 숨김' 안내는 1회만
+        // 자동 업데이트 소스 폴더 URL(ftp:// · http(s):// · UNC/로컬 경로). 빈 값 = 업데이트 기능 휴면.
+        public string UpdateSourceUrl { get; set; } = "";
     }
 }

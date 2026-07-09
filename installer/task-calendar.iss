@@ -11,7 +11,7 @@
 ; 버전 단일 소스 = widget\TaskCalendarWidget.csproj <Version>.
 ; build-installer.ps1이 /DMyAppVersion으로 덮어쓴다. 수동 컴파일 시 아래 기본값 사용.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.7.1"
+  #define MyAppVersion "0.8.0"
 #endif
 #define MyAppName "수행과제 캘린더"
 #define MyAppPublisher "Peace-Min"
@@ -81,6 +81,9 @@ Name: "{userdesktop}\{#MyAppName} (브라우저)"; Filename: "{app}\{#MyAppHtmlN
 Filename: "{tmp}\{#WebView2SetupName}"; Parameters: "/silent /install"; StatusMsg: "Microsoft Edge WebView2 Runtime 확인/설치 중..."; Flags: waituntilterminated; Check: NeedsWebView2
 #endif
 Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} 실행"; Flags: nowait postinstall skipifsilent
+; 무인 자동 업데이트(위젯이 /SILENT /UPDATED=1 로 실행)일 때만 새 앱을 재시작.
+; (위 대화형 라인은 skipifsilent라 무인 설치에선 실행되지 않으므로 별도 라인이 필요하다.)
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: IsAutoUpdate
 
 ; 사용자 데이터(%APPDATA%\TaskCalendar)는 의도적으로 보존 — [UninstallDelete] 없음.
 
@@ -88,6 +91,12 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{#MyAppName} 실행"; Flags: no
 function IsNonZeroVersion(Value: string): Boolean;
 begin
   Result := (Value <> '') and (Value <> '0.0.0.0');
+end;
+
+// 위젯의 자동 업데이트가 넘긴 /UPDATED=1 파라미터 감지 — 무인 설치 후 새 앱 재시작 여부.
+function IsAutoUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:UPDATED|0}') = '1';
 end;
 
 function NeedsWebView2: Boolean;

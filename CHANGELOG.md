@@ -5,6 +5,20 @@
 
 ---
 
+## 🆕 2026-07-09 — v0.8.0: 자동 업데이트(사내 공유 배포) 신설
+
+관리자가 공유 위치(FTP/HTTP/UNC) 한 곳에 새 인스톨러 + `latest.json`을 올리면, 각 위젯이 주기적으로 확인해 상단 배너로 알리고 사용자가 [업데이트]를 누르면 받아 설치·재시작. "매번 개별 배포" 제거(**부트스트랩 1회 수동 배포 후 자동**). 상세 흐름은 [update/README.md](update/README.md).
+- **호스트 `widget/Update.cs`**(C#): `latest.json` 확인(ftp/http/UNC·6s)·semver 비교·인스톨러 다운로드·**sha256 필수 검증**·`Setup.exe /SILENT /UPDATED=1` 실행·`ExitApp`(자기교체 재시작)·시작(~9s)+6h 타이머·**모든 실패 무음**(background). File/UNC I/O는 `Task.Run`+타임아웃으로 UI 프리즈 방지, 다운그레이드 가드.
+- **config**: `WidgetSettings.UpdateSourceUrl` + 설정 모달 "자동 업데이트" 필드(소스 URL·지금 확인). 비우면 기능 휴면.
+- **배너 UI**: 상단 "새 버전 [변경내역][업데이트]"(위젯 전용). 변경내역=이 앱 버전별 변경사항 모달.
+- **`.iss`**: `/UPDATED=1` 무인 설치 후 재실행 `[Run]`(Check:IsAutoUpdate) + `CloseApplications=yes`.
+- **발행 도구** `installer/publish-update.ps1`: `latest.json`(version·file·sha256) 생성 + 공유 위치 복사(`-CopyTo`).
+- **적대 검증(2렌즈, 9건 반영)**: File/UNC UI-스레드 프리즈·FTP 타임아웃 고착(_updBusy)·다운그레이드·sha256 선택→**필수**·지금확인 스피너·진행배너 복구.
+- **⚠ 잔여(보안·설계상)**: 무서명 실행 + open-FTP = 공급망 위험. 필수 sha256은 무결성(변조·손상 감지)이지 **인증성**은 아님(소스에 쓰기 가능한 자가 exe+해시 동시 위조 가능). **근본 통제 = ① FTP 쓰기 관리자 전용 ② 코드서명.** 사용자 수용(소규모 내부망) 하 진행. 실 FTP/설치 왕복은 사용자 실위젯 검증.
+- 버전 5곳 0.7.1→0.8.0, 인스톨러 재생성.
+
+---
+
 ## 🆕 2026-07-09 — v0.7.1 패치: netcus 버그 수정 (공유 후 hotfix)
 
 v0.7을 배포·공유한 뒤 발견된 버그 수정 패치(**새 기능 없음** — 배포본 구분 위해 패치 틱). 버전 5곳 0.7.0→0.7.1, 인스톨러 재생성, tests 99.

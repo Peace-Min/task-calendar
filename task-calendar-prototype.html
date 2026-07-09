@@ -56,6 +56,23 @@ body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) �
 /* 위젯 모드: body 스크롤바 제거(코너 그립 확보) + 좁은 폭에서도 날짜패널은 내부 스크롤 */
 body.host{overflow:hidden !important}
 body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제거로 한 행 회수 */
+
+/* ---------- 자동 업데이트 배너 (위젯 전용 · 상단 얇은 띠) ---------- */
+#updateBanner{flex:none;display:flex;align-items:center;gap:10px;padding:7px 12px;
+  background:var(--accent-soft);color:var(--text);border-bottom:1px solid var(--line);
+  box-shadow:inset 0 2px 0 var(--accent);font-size:var(--fs-meta)}
+#updateBanner .upd-ico{font-size:14px;line-height:1;flex:none}
+#updateBanner .upd-msg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#updateBanner .upd-msg b{font-weight:700}
+#updateBanner .upd-notes{color:var(--muted);font-weight:400}
+#updateBanner .upd-actions{display:flex;gap:6px;flex:none}
+#updateBanner .upd-prog{flex:1;min-width:0;display:flex;align-items:center;gap:6px;color:var(--accent-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upd-btn{border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:6px;
+  padding:3px 11px;font-size:var(--fs-meta);font-family:inherit;cursor:pointer;line-height:1.4}
+.upd-btn:hover{background:var(--accent-soft)}
+.upd-btn:disabled{opacity:.6;cursor:default}
+.upd-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.upd-btn.primary:hover{background:var(--accent-2)}
 @media (max-width:760px){
   body.host main{flex-direction:column;min-height:0}
   body.host .cal{flex:1 1 auto;min-height:0}
@@ -978,6 +995,17 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 </head>
 <body>
 
+<!-- 자동 업데이트 배너(위젯 전용 · 기본 숨김 · host가 __updateAvailable로만 노출) -->
+<div id="updateBanner" class="hidden" role="region" aria-label="업데이트 알림">
+  <span class="upd-ico" aria-hidden="true">🆕</span>
+  <span class="upd-msg" id="updMsg"></span>
+  <span class="upd-actions" id="updActions">
+    <button class="upd-btn" id="updNotes" type="button" title="이 앱의 버전별 변경사항 보기">변경내역</button>
+    <button class="upd-btn primary" id="updNow" type="button">업데이트</button>
+  </span>
+  <span class="upd-prog hidden" id="updProg"></span>
+</div>
+
 <header class="topbar">
   <div class="brand">
     <div class="logo" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><circle cx="8.5" cy="13.5" r="1.1" fill="currentColor" stroke="none"/><circle cx="13" cy="13.5" r="1.1" fill="currentColor" stroke="none"/></svg></div>
@@ -1193,6 +1221,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label class="qa-lb">전송 모드</label>
         <label class="set-opt" style="margin-bottom:6px"><input type="radio" name="ncMode" value="dry"><span><b>미제출 테스트</b><br><span class="set-od">자동 로그인·작성까지만 → 열린 창에서 확인 후 직접 제출. (권장)</span></span></label>
         <label class="set-opt"><input type="radio" name="ncMode" value="real"><span><b>실제 제출</b><br><span class="set-od">작성 후 서버에 바로 저장(POST). 검증 끝난 뒤 사용 권장.</span></span></label>
+      </div>
+      <div class="set-sec set-sec-top">
+        <div class="set-lb">자동 업데이트 <span id="updSrcState" class="git-opt"></span></div>
+        <div class="set-hint">관리자가 공유폴더 한 곳(<b>latest.json</b> + 설치기)을 갱신하면 각 위젯이 조용히 확인해 새 버전이 있으면 상단 배너로 알립니다. 데스크톱 위젯에서만 동작합니다.</div>
+        <label class="qa-lb" for="updSrc">업데이트 소스 URL</label>
+        <input type="text" id="updSrc" class="set-in" autocomplete="off" spellcheck="false" placeholder="예: ftp://<서버IP>/TaskCalendar/">
+        <div style="margin:9px 0 4px">
+          <button type="button" class="btn sm" id="updSrcSave">저장</button>
+          <button type="button" class="btn sm" id="updSrcCheck">지금 확인</button>
+          <span id="updSrcMsg" class="git-opt"></span>
+        </div>
+        <div class="set-hint" style="margin-top:2px">예: <b>ftp://&lt;서버IP&gt;/TaskCalendar/</b> · http(s):// · 공유폴더(UNC/로컬) 경로도 가능 · <b>비우면 업데이트 확인 안 함</b>.</div>
       </div>
     </div>
     <div class="modal-foot">
@@ -1652,7 +1692,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.7.1</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.8.0</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <p class="patch-intro">직전(v0.7.1) 이후 추가된 내용입니다.</p>
+      <ul class="patch-list">
+        <li class="key"><span class="pv-key">핵심</span><b>🔄 자동 업데이트 (신규)</b> — 새 버전이 사내 공유 위치에 올라오면 위젯 상단에 <b>“새 버전이 있습니다 · 변경내역 · 업데이트”</b> 배너가 뜹니다. 관리자가 한 곳만 갱신하면 각자 알아서 받을 수 있어, 매번 개별 배포하지 않아도 됩니다. (설정 → 자동 업데이트에서 소스 주소 지정.)</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.7.1</span><span class="pv-date">2026-07-09</span></div>
       <p class="patch-intro">v0.7 버그 수정판입니다(새 기능 없음).</p>
       <ul class="patch-list">
         <li><b>🛠 회사 보고 들여쓰기 유지</b> — netcus 보고서에서 들여쓰기가 사라지던 문제를 수정했습니다(전송 시 유지되도록).</li>
@@ -1914,7 +1959,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.7.1';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스)
+const APP_VERSION = '0.8.0';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너)
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
@@ -3249,6 +3294,10 @@ function openSettings(){
   const sm = $('#ncSaveMsg'); if(sm) sm.textContent = '';
   const st = $('#ncPwState'); if(st) st.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
   if(HOST) hpost({ cmd: 'netcusCredsGet' });   // 호스트가 __netcusCreds(id, hasPw)로 응답
+  // 자동 업데이트 소스 URL — 호스트가 현재 값(__updateSource)으로 채움
+  const um = $('#updSrcMsg'); if(um) um.textContent = '';
+  const us = $('#updSrcState'); if(us) us.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
+  if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
   openModal('#settingsModal');
 }
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
@@ -3270,6 +3319,56 @@ window.__netcusResult = function(ok, msg){
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'warn');
 };
+
+/* ===== 자동 업데이트 — 호스트(WPF)가 확인/다운로드/설치 담당. JS는 배너 + 설정 필드만 ===== */
+// 배너를 알림(액션) 모드로 되돌림 — 진행 표시를 숨기고 버튼 복구
+function __updShowActions(){
+  const a = $('#updActions'), p = $('#updProg');
+  if(a) a.classList.remove('hidden');
+  if(p){ p.classList.add('hidden'); p.textContent = ''; }
+  const n = $('#updNow'); if(n) n.disabled = false;
+}
+// 배너를 진행 모드로 — 액션 숨기고 진행 문구 표시
+function __updShowProgress(msg){
+  const a = $('#updActions'), p = $('#updProg');
+  if(a) a.classList.add('hidden');
+  if(p){ p.classList.remove('hidden'); p.innerHTML = ICON.spinner + ' ' + esc(msg); }
+}
+// host: 새 버전 알림 — infoJson = JSON.stringify({version, notes})
+window.__updateAvailable = function(infoJson){
+  if(!HOST) return;   // 위젯 전용 — 브라우저에서는 호스트가 호출하지 않음
+  let info; try{ info = JSON.parse(infoJson); }catch(_){ return; }
+  const v = info && info.version ? String(info.version) : '';
+  if(!v) return;
+  const b = document.getElementById('updateBanner'); if(!b) return;
+  b.dataset.version = v;
+  const notes = info && info.notes ? String(info.notes) : '';
+  const msg = $('#updMsg');
+  if(msg) msg.innerHTML = '새 버전 <b>' + esc(v) + '</b>이(가) 있습니다'
+    + (notes ? ' <span class="upd-notes" title="' + esc(notes) + '">— ' + esc(notes) + '</span>' : '');
+  __updShowActions();
+  b.classList.remove('hidden');
+};
+// host: 진행 문구(내려받는 중/검증 중/재시작…)
+window.__updateProgress = function(msg){
+  const b = document.getElementById('updateBanner');
+  if(b && !b.classList.contains('hidden')) __updShowProgress(msg || '');   // 배너가 떠 있을 때만 진행 표시
+};
+// host: 결과(ok/msg). 배너가 진행 중이면 문구 갱신, 항상 토스트로도 알림.
+window.__updateResult = function(ok, msg){
+  const b = document.getElementById('updateBanner');
+  if(b && !b.classList.contains('hidden')){
+    const p = $('#updProg');
+    if(p && !p.classList.contains('hidden')){ p.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg || ''); }
+    if(!ok) __updShowActions();   // 실패면 다시 시도할 수 있게 버튼 복구
+  }
+  // 설정 '지금 확인' 결과도 여기로 옴 — 상태줄 + 토스트
+  const sm = $('#updSrcMsg');
+  if(sm){ sm.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg || ''); sm.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
+  toast(msg || '', ok ? 'success' : 'warn');
+};
+// host: 현재 저장된 소스 URL을 설정 필드에 반영
+window.__updateSource = function(url){ const u = $('#updSrc'); if(u) u.value = url || ''; };
 // 브라우저: 회사 보고 자동 작성은 SOP로 불가. netcus 창만 열고, 직접 입력 또는 위젯 이관을 안내한다.
 // (자동 작성은 netcus same-origin 배포 시점에 다시 — DECISIONS.md 결정5)
 function netcusManualGuide(){
@@ -5022,6 +5121,23 @@ function bind(){
     $('#ncPw').value = '';
     const m = $('#ncSaveMsg'); if(m){ m.innerHTML = ICON.spinner + ' 저장 후 로그인 확인…'; m.style.color = 'var(--accent)'; }
   });
+  // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
+  { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {
+      if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
+      const url = ($('#updSrc').value || '').trim();
+      hpost({ cmd: 'updateSetSource', url });
+      const m = $('#updSrcMsg'); if(m){ m.innerHTML = ICON.check + ' 저장됨' + (url ? '' : ' (비움 — 확인 안 함)'); m.style.color = 'var(--accent-2)'; }
+    }); }
+  { const b = $('#updSrcCheck'); if(b) b.addEventListener('click', () => {
+      if(!HOST){ toast('데스크톱 위젯에서만 확인됩니다', 'warn'); return; }
+      const m = $('#updSrcMsg'); if(m){ m.innerHTML = ICON.spinner + ' 확인 중…'; m.style.color = 'var(--accent)'; }
+      hpost({ cmd: 'updateCheck' });   // 결과는 __updateResult(최신/실패) 또는 __updateAvailable(배너)
+    }); }
+  { const n = $('#updNow'); if(n) n.addEventListener('click', () => {
+      __updShowProgress('업데이트 준비 중…');
+      hpost({ cmd: 'updateApply' });   // 내려받기·검증·설치 후 자동 재시작(호스트)
+    }); }
+  { const h = $('#updNotes'); if(h) h.addEventListener('click', () => openPatch()); }   // 변경내역 = 이 앱이 관리하는 버전별 변경사항(patch 모달)
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
     const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
