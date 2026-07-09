@@ -3613,7 +3613,7 @@ function buildWeeklyFields(from, to, sources){
   const content = rows.map(r => `[${r.name}]`).join('\n');
   const _mkSpec = reportMarkerSpec();   // 전송 콘텐츠도 복사와 동일 서식(머리기호·들여쓰기) 적용 — WYSIWYG
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
-  const _pad = ' '.repeat(_indent * 2);
+  const _pad = '&nbsp;'.repeat(_indent * 2);   // netcus 전송(euc-kr HTML) — 줄 앞 연속 공백이 렌더 시 collapse되는 것 방지
   const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); return _pad + (_mk ? (_mk + ' ') : '') + t; }).join('\n') : '-')).join('\n\n');
   return { content, endwork, subject: weekSubjectGuess(from) };
 }
@@ -4032,7 +4032,9 @@ function openReport(){
     const on = x.dataset.rsrc === _src && !x.disabled; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
 }
 // 복사용 텍스트 — 화면 DOM이 아니라 데이터에서 재계산(드리프트 방지). 과제명은 현재 이름 재조회(개명 자동 반영).
-function buildReportText(){
+function buildReportText(indentUnit){
+  // indentUnit: 들여쓰기 문자 — 복사(기본 U+00A0 비분리공백: HTML·평문 붙여넣기 양쪽 안전) / netcus 전송은 '&nbsp;'(euc-kr HTML 렌더에서 collapse 방지). HTML esc 대상 아님.
+  indentUnit = indentUnit || ' ';
   // netcus 출처(주간/커스텀) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
   if(state.reportSource === 'net' && reportMode !== 'daily'){
     return (netcusMerge && netcusMerge.parsed) ? buildNetcusSendText(netcusMerge.parsed) : '';
@@ -4044,7 +4046,7 @@ function buildReportText(){
   // 화면 미리보기와 동일(WYSIWYG) — 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 스페이스. 카드마다 번호 리셋.
   const _mkSpec = reportMarkerSpec();
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
-  const _pad = ' '.repeat(_indent * 2);
+  const _pad = indentUnit.repeat(_indent * 2);   // 복사=U+00A0 / netcus=&nbsp; (호출부가 지정)
   const blocks = rows.map(r => `[${r.name}]` + r.titles.map((t, i) => {
     const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
     return '\n' + _pad + _prefix + t;
@@ -5019,7 +5021,7 @@ function bind(){
     if(mode === 'custom'){ toast('커스텀 기간은 회사 전송 대상이 아닙니다 — 복사만 가능합니다', 'warn'); return; }
     if(mode === 'daily'){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('일간보고는 하루 보고서(예: 오늘)에서만 전송할 수 있습니다', 'warn'); return; }
-      const content = buildReportText();   // 단일일 → 그 날 [과제명]:시간
+      const content = buildReportText('&nbsp;');   // 단일일 netcus 전송 — 들여쓰기 &nbsp;(euc-kr HTML collapse 방지)
       if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
       const at = getAttendance(from), p = from.split('-').map(Number);
       const dry = ncMode() !== 'real';

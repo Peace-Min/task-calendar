@@ -500,24 +500,26 @@ if (!JSDOM) {
     const setRptRange = (f, t) => ev(`$('#rptFrom').value=${JSON.stringify(f)}; $('#rptTo').value=${JSON.stringify(t)}; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;`);
 
     // F2 — 라인 텍스트 빌더(카드×마커×들여쓰기): (indent*2 스페이스)+prefix+제목, 번호 카드별 리셋
-    test('buildReportText: 숫자 마커+들여쓰기2 — (indent*2)스페이스+prefix+제목, 카드별 번호 리셋', () => {
+    test('buildReportText(복사): 숫자 마커+들여쓰기2 — (indent*2)U+00A0+prefix+제목, 카드별 번호 리셋', () => {
       seed(fmtState('1.', '', 2));
       setRptRange('2026-07-01', '2026-07-31');
+      const P = ' '.repeat(4);   // 복사 들여쓰기 = 비분리공백(2단*2) — netcus·평문 붙여넣기 양쪽 안전
       const lines = ev('buildReportText()').split('\n');
       assert.ok(lines.includes('[에이]'));            // 공수 제거 — 과제명만
-      assert.ok(lines.includes('    1. 알파'));       // 2*2=4 스페이스
-      assert.ok(lines.includes('    2. 브라보'));
-      assert.ok(lines.includes('    3. 찰리'));
+      assert.ok(lines.includes(P + '1. 알파'));
+      assert.ok(lines.includes(P + '2. 브라보'));
+      assert.ok(lines.includes(P + '3. 찰리'));
       assert.ok(lines.includes('[비이]'));
-      assert.ok(lines.includes('    1. 델타'));       // 카드 B — 번호 리셋
-      assert.ok(lines.includes('    2. 에코'));
+      assert.ok(lines.includes(P + '1. 델타'));       // 카드 B — 번호 리셋
+      assert.ok(lines.includes(P + '2. 에코'));
     });
     test('buildReportText: 무번호(none) — 마커/접미 없이 들여쓰기만(공백도 마커 없음)', () => {
       seed(fmtState('none', '', 3));
       setRptRange('2026-07-01', '2026-07-31');
+      const P6 = ' '.repeat(6);   // 3단*2 (비분리공백)
       const lines = ev('buildReportText()').split('\n');
-      assert.ok(lines.includes('      알파'));         // 3*2=6 스페이스, 마커 없음
-      assert.ok(lines.includes('      델타'));
+      assert.ok(lines.includes(P6 + '알파'));
+      assert.ok(lines.includes(P6 + '델타'));
       assert.ok(!lines.some(l => /^\s*[-•·]/.test(l) && l.includes('알파')));
     });
     test('buildReportText: custom 마커 우선 — 그 문자, 들여쓰기0이면 스페이스 없음', () => {
@@ -532,9 +534,11 @@ if (!JSDOM) {
     test('buildWeeklyFields.endwork: 전송 콘텐츠도 마커+들여쓰기(2단) 반영, 카드별 번호 리셋', () => {
       seed(fmtState('가.', '', 2));
       setRptRange('2026-07-01', '2026-07-31');
+      const NB = '&nbsp;'.repeat(4);   // netcus 전송 들여쓰기 = &nbsp; 4개(2단*2, euc-kr HTML collapse 방지)
       const ew = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).endwork');
-      assert.ok(ew.includes('    가. '), '4칸 들여쓰기 + 가. 마커');
-      assert.ok((ew.match(/\n    가\. /g) || []).length >= 2, '카드마다 가.로 번호 리셋');
+      assert.ok(ew.includes(NB + '가. '), '4×&nbsp; 들여쓰기 + 가. 마커');
+      assert.ok((ew.split('\n' + NB + '가. ').length - 1) >= 2, '카드마다 가.로 번호 리셋');
+      assert.ok(!ew.includes('    가. '), '평문 4칸 공백 아님(&nbsp;여야)');
       assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
     });
 
