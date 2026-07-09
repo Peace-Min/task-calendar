@@ -3813,12 +3813,12 @@ function buildReport(){
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
   const attHost = $('#rptAttendHost'); if(attHost) attHost.innerHTML = '';   // 근태 host는 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
+  // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
+  const _netMode = (state.reportSource === 'net' && reportMode !== 'daily');
+  { const _opt = $('#rptOpt'); if(_opt) _opt.style.display = _netMode ? 'none' : ''; }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
-  // netcus 출처(주간/커스텀)면 캘린더 전용 옵션(포함항목·서식)은 무의미 → ⚙옵션 숨김. 그 외엔 노출.
-  const _netMode = (state.reportSource === 'net' && reportMode !== 'daily');
-  { const _opt = $('#rptOpt'); if(_opt) _opt.style.display = _netMode ? 'none' : ''; }
   // 내용 출처 = netcus 일간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
   if(_netMode){ renderNetcusInto(from, to); return; }
   const src = rptSources();
@@ -3926,7 +3926,7 @@ async function renderNetcusInto(from, to){
   out.innerHTML = '<div class="rnc-loading">' + ICON.spinner + ' <span>netcus에서 그 주 일간보고 읽는 중…</span></div>';
   netcusFetching = true;
   let res;
-  try{ res = await hostRequest('netcusWeekMerge', { from, to }, 60000); }
+  try{ res = await hostRequest('netcusWeekMerge', { from, to }, 120000); }   // 최대 31일 느린 왕복 대비(호스트 busy-가드가 중복 방지)
   finally{ netcusFetching = false; }
   // 대기 중 기간/출처가 바뀌었으면 이 결과 폐기 — 현재도 netcus면 최신 기간으로 재요청(직렬화)
   const curFrom = $('#rptFrom').value, curTo = $('#rptTo').value;
@@ -3953,6 +3953,10 @@ function renderNetcusError(err, from, to){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정 열기 →</button></div></div>';
     const b = $('#rncToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'busy'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 이미 netcus에서 불러오는 중입니다 — 잠시 후 다시 시도하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncRetry">🔄 다시 시도</button></div></div>';
+    const b = $('#rncRetry'); if(b) b.addEventListener('click', () => { renderNetcusInto(from, to); });   // 캐시 비우지 않음(진행 중일 수 있음)
   } else if(err === 'range'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 기간이 너무 깁니다 — netcus 병합은 최대 31일까지 지원합니다.</div>';
   } else {   // read / 타임아웃 / 응답 없음
@@ -3976,7 +3980,7 @@ function renderNetcusPreview(parsed, at){
     const hLabel = hk.length ? (' : ' + hsum) : '';   // 과제별 주간 시간(기록 있으면 표시)
     html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']' + hLabel) + '</span>' + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
     if(t.lines.length){   // 날짜 프리픽스 없이 + 동일 내용 중복 제거(주간 종합 뷰)
-      const seen = {}, body = [];
+      const seen = Object.create(null), body = [];   // create(null): 'constructor' 등 프로토타입 이름 라인 오탈락 방지(전송/복사와 WYSIWYG 일치)
       for(const ln of t.lines){ const tx = ln.text || ''; if(tx && !seen[tx]){ seen[tx] = 1; body.push(esc(tx)); } }
       if(body.length) html += '<div class="rcard-tasks">' + body.join('<br>') + '</div>';
     }

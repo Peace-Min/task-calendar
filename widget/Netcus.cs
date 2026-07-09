@@ -20,6 +20,7 @@ namespace TaskCalendarWidget
         private CoreWebView2Environment? _cwvEnv;     // MainWindow.xaml.cs init에서 할당
         private WV.WebView2? _w2;                      // 보조 WebView2(가시 창)
         private Window? _w2win;
+        private bool _ncMergeBusy;              // netcus 주간병합 중복 실행 가드(단일 _w2 레이스 방지 — JS 타임아웃 후 재시도 대비)
 
         private string CredFile => Path.Combine(_dataDir, "netcus.cred");
 
@@ -360,6 +361,8 @@ namespace TaskCalendarWidget
         //   error: ""(정상)/"no-creds"/"login"/"read". content 비었거나 요소 없으면 content:""(파서가 '일간 없음' 판정).
         private async Task NetcusWeekMerge(string reqId, string from, string to)
         {
+            if (_ncMergeBusy) { GitReply(reqId, new { ok = false, error = "busy", days = Array.Empty<object>() }); return; }   // 이미 진행 중 → 즉시 반환(_w2 안 건드림)
+            _ncMergeBusy = true;
             var days = new List<object>();
             CoreWebView2? cw = null;
             // 레거시 pjm alert()/confirm() 자동 수락 — 없으면 최소화된 창에서 다이얼로그가 읽기를 무한 대기시킴(제출/검증과 동일 방어)
@@ -452,6 +455,7 @@ namespace TaskCalendarWidget
             }
             finally
             {
+                _ncMergeBusy = false;
                 try { if (cw != null) cw.ScriptDialogOpening -= OnDialog; } catch { }
                 // 읽기 전용 — 성공/실패 무관 확인창은 닫는다(제출 확인창과 달리 열어두지 않음).
                 try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
