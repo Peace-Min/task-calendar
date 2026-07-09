@@ -617,5 +617,53 @@ if (!JSDOM) {
       assert.ok(/rtask-edit-btn/.test(html), '편집 버튼 유지');
       assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
     });
+
+    // ── 보고서 모달 재구성(레일+미리보기 / 근태 host / ⚙옵션 / 내용 출처) ─────────
+    // 데이터 로직 불변, 구조/노출만 변경. 근태는 미리보기(#rptOut) 밖 #rptAttendHost(일간만).
+    test('report UI: 내용 출처 행 — 일간 숨김 / 주간·커스텀 표시', () => {
+      seed(reportState);
+      ev("setReportMode('daily')");
+      assert.strictEqual(ev("$('#rptSourceRow').style.display"), 'none', '일간=숨김');
+      ev("setReportMode('weekly')");
+      assert.strictEqual(ev("$('#rptSourceRow').style.display"), 'flex', '주간=표시');
+      ev("setReportMode('custom')");
+      assert.strictEqual(ev("$('#rptSourceRow').style.display"), 'flex', '커스텀=표시');
+      ev("setReportMode('daily')");   // 상태 원복(테스트 간 간섭 방지)
+    });
+
+    test('report UI: 일간 buildReport — 근태(.rpt-attend)는 #rptAttendHost, #rptOut엔 없음', () => {
+      seed(reportState);
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      assert.ok(/rpt-attend/.test(ev("$('#rptAttendHost').innerHTML")), '근태 바가 host에 렌더');
+      assert.ok(/id="raStatus"/.test(ev("$('#rptAttendHost').innerHTML")), 'raStatus/raOT 존재');
+      assert.ok(!/rpt-attend/.test(ev("$('#rptOut').innerHTML")), '#rptOut엔 근태 없음(미리보기=순수 카드)');
+    });
+
+    test('report UI: 주간/커스텀 buildReport — #rptAttendHost 비움', () => {
+      seed(reportState);
+      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; buildReport();");
+      assert.strictEqual(ev("$('#rptAttendHost').innerHTML"), '', '주간=근태 없음');
+      ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; $('#rptFrom').disabled=false; $('#rptTo').disabled=false; buildReport();");
+      assert.strictEqual(ev("$('#rptAttendHost').innerHTML"), '', '커스텀=근태 없음');
+      ev("reportMode='daily'");
+    });
+
+    test('report UI: #rptOptSum — 포함 항목 체크 수 반영(하나 해제 → 2/3)', () => {
+      seed(reportState);
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      assert.ok(/포함 3\/3/.test(ev("$('#rptOptSum').textContent")), '3개 체크 → 3/3');
+      ev("$('#rptSrcGit').checked=false; buildReport();");
+      assert.ok(/포함 2\/3/.test(ev("$('#rptOptSum').textContent")), '하나 해제 → 2/3');
+    });
+
+    test('report UI: ⚙옵션 토글 — #rptOpt .open 토글 + aria-expanded 플립(bind 배선)', () => {
+      ev("$('#rptOpt').classList.remove('open'); $('#rptOptBtn').setAttribute('aria-expanded','false');");
+      ev("$('#rptOptBtn').click()");
+      assert.ok(ev("$('#rptOpt').classList.contains('open')"), '클릭 → open');
+      assert.strictEqual(ev("$('#rptOptBtn').getAttribute('aria-expanded')"), 'true');
+      ev("$('#rptOptBtn').click()");
+      assert.ok(!ev("$('#rptOpt').classList.contains('open')"), '재클릭 → 닫힘');
+      assert.strictEqual(ev("$('#rptOptBtn').getAttribute('aria-expanded')"), 'false');
+    });
   }
 }

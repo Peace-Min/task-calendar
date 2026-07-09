@@ -478,7 +478,6 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-range input:disabled{opacity:.55;cursor:not-allowed}
 .rpt-range{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rpt-range input[type=date]{flex:1;min-width:130px}
-.rpt-opts{display:flex;flex-direction:column;gap:6px;align-items:flex-start;margin-top:10px}
 /* 일간 보고서 근태·초과시간(회사 일간보고 전송용) */
 .rpt-attend{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;padding:8px 11px;margin-bottom:10px;background:var(--accent-soft);border-radius:var(--r-sm)}
 .rpt-attend .ra-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);flex:none}
@@ -526,6 +525,45 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rtask-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent-2)}
+/* 보고서 모달 재구성 — 레일(핵심 컨트롤) + 미리보기(HERO). 좁은 폭은 스택, 넓은 폭은 2단(아래 @media 900). */
+#reportModal .rpt-body{display:block}
+/* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) */
+.rpt-source{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.rpt-seg{display:inline-flex;gap:3px}
+.rpt-seg-b{border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 10px;background:var(--panel);color:var(--text);cursor:pointer}
+.rpt-seg-b.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.rpt-seg-b:disabled{opacity:.5;cursor:not-allowed}
+.rpt-seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* ⚙ 옵션 — 좁은 폭 접이(포함 항목·서식). 넓은 폭은 항상 펼침(@media 900). */
+.rpt-opt{margin-top:10px}
+.rpt-optbtn{display:inline-flex;align-items:center;gap:6px;width:100%;justify-content:flex-start;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 11px;font:inherit;font-size:var(--fs-meta);color:var(--text);cursor:pointer}
+.rpt-optbtn:hover{border-color:var(--accent)}
+.rpt-optbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rpt-optbtn-sum{color:var(--muted);font-size:var(--fs-micro);margin-left:auto}
+.rpt-optbtn::after{content:"⌄";color:var(--muted);flex:none;transition:transform .15s}
+.rpt-opt.open .rpt-optbtn::after{transform:rotate(180deg)}
+.rpt-optpanel{display:none;margin-top:8px}
+.rpt-opt.open .rpt-optpanel{display:block}
+#reportModal .rpt-optpanel .rpt-srcs{margin-top:0}
+#reportModal .rpt-optpanel .rpt-fmt{margin-top:0}
+.rpt-fmt-wrap{margin-top:10px}
+.rpt-fmt-wrap > .rpt-opt-lb{display:block;margin-bottom:5px}
+#reportModal .rpt-optpanel .git-hint{display:block;margin-top:8px;font-size:var(--fs-micro);color:var(--muted)}
+/* 근태·초과(회사 일간보고 전송 계약) — 미리보기 밖·푸터 위 상주(일간만). 비면 숨김. */
+.rpt-attend-host{padding:0 20px 4px;flex:none}
+.rpt-attend-host:empty{display:none}
+.rpt-attend-host .rpt-attend{margin-bottom:0}
+/* 넓은 폭 — 2단(좌 레일·우 미리보기). #reportModal 한정(다른 wide 모달 불변). 440 시트보다 좁아 겹침 없음. */
+@media (min-width:900px){
+  #reportModal .modal.wide{width:min(1040px,96vw)}
+  #reportModal .modal-body{overflow:hidden;padding-bottom:0}
+  #reportModal .rpt-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;height:min(66vh,600px)}
+  #reportModal .rpt-rail{overflow:auto;padding-right:18px;border-right:1px solid var(--line)}
+  #reportModal .rpt-preview{overflow:auto;padding-left:18px;display:flex;flex-direction:column}
+  #reportModal #rptSummary{position:sticky;top:0;z-index:1;background:#fff;padding-bottom:6px;margin-top:0}
+  #reportModal .rpt-optbtn{display:none}          /* 넓은 폭: 토글 숨김 + 패널 강제 노출 */
+  #reportModal .rpt-optpanel{display:block!important}
+}
 .lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
 /* 라벨행 우측 바로가기 링크(예: 회의실 관리) — 칩 아닌 깔끔한 액센트 텍스트 */
 .lbl-row .lnk{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:600;text-decoration:none;white-space:nowrap}
@@ -889,6 +927,7 @@ html.dark .cell.dim .num{ color:#8893a8 }
 html.dark .sk-line,html.dark .sk-cell{ background:var(--border-hover) }
 html.dark .git-card{ background:#171d2b }
 html.dark .rpt-out{ background:#171d2b }
+html.dark #reportModal #rptSummary{ background:var(--panel) }   /* 2단 sticky 요약 — 다크 모달 배경(--panel)과 일치, 카드 비침 방지 */
 html.dark .btn:hover,html.dark .fchip:hover,html.dark .dp-action:hover,html.dark .nd-toggle:hover{ border-color:var(--border-hover) }
 html.dark .chip{ background:var(--fill) }
 html.dark .badge-git,html.dark .fchip-git.on{ background:#222b3e;color:var(--muted);border-color:var(--line-2) }
@@ -1236,67 +1275,88 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal wide">
     <div class="modal-head"><h2>보고서 초안</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
-      <div class="rpt-presets" role="tablist" aria-label="보고 유형">
-        <button class="btn sm" data-rmode="daily" role="tab">일간</button>
-        <button class="btn sm" data-rmode="weekly" role="tab">주간</button>
-        <button class="btn sm" data-rmode="custom" role="tab">커스텀 기간</button>
-      </div>
-      <div class="rpt-range">
-        <input type="date" id="rptFrom"> <span id="rptDateSep" style="color:var(--muted)">~</span> <input type="date" id="rptTo">
-      </div>
-      <div class="rpt-opts">
-        <div class="rpt-srcs">
-          <span class="rpt-opt-lb">포함 항목</span>
-          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcEvent" checked> 일정</label>
-          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcTodo" checked> 할 일</label>
-          <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> 커밋 내역</label>
+      <div class="rpt-body">
+        <div class="rpt-rail">
+          <div class="rpt-presets" role="tablist" aria-label="보고 유형">
+            <button class="btn sm" data-rmode="daily" role="tab">일간</button>
+            <button class="btn sm" data-rmode="weekly" role="tab">주간</button>
+            <button class="btn sm" data-rmode="custom" role="tab">커스텀 기간</button>
+          </div>
+          <div class="rpt-range">
+            <input type="date" id="rptFrom"> <span id="rptDateSep" style="color:var(--muted)">~</span> <input type="date" id="rptTo">
+          </div>
+          <div class="rpt-source" id="rptSourceRow" style="display:none">
+            <span class="rpt-opt-lb">내용 출처</span>
+            <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
+              <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
+              <button type="button" class="rpt-seg-b" data-rsrc="net" disabled aria-disabled="true" title="다음 업데이트에서 지원 — netcus에 올린 그 주 일간보고를 병합해 주간보고 초안을 만듭니다">netcus 일간보고</button>
+            </div>
+          </div>
+          <div class="rpt-opt" id="rptOpt">
+            <button type="button" class="rpt-optbtn" id="rptOptBtn" aria-expanded="false" aria-controls="rptOptPanel">
+              <span class="rpt-optbtn-ic">⚙</span> 옵션 <span class="rpt-optbtn-sum" id="rptOptSum"></span>
+            </button>
+            <div class="rpt-optpanel" id="rptOptPanel">
+              <div class="rpt-srcs">
+                <span class="rpt-opt-lb">포함 항목</span>
+                <label class="check" style="margin:0"><input type="checkbox" id="rptSrcEvent" checked> 일정</label>
+                <label class="check" style="margin:0"><input type="checkbox" id="rptSrcTodo" checked> 할 일</label>
+                <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> 커밋 내역</label>
+              </div>
+              <div class="rpt-fmt-wrap"><span class="rpt-opt-lb">서식</span>
+                <div class="rpt-fmt">
+                  <span class="rpt-opt-lb">머리기호</span>
+                  <select id="rptMarker" class="rpt-fmt-sel" aria-label="머리기호">
+                    <optgroup label="불릿">
+                      <option value="-">- 하이픈</option>
+                      <option value="•">• 점</option>
+                      <option value="·">· 가운뎃점</option>
+                      <option value="*">* 별표</option>
+                      <option value="▪">▪ 네모</option>
+                      <option value="◦">◦ 빈 점</option>
+                      <option value="–">– 대시</option>
+                    </optgroup>
+                    <optgroup label="숫자">
+                      <option value="1.">1. 2. 3.</option>
+                      <option value="1)">1) 2) 3)</option>
+                      <option value="(1)">(1) (2) (3)</option>
+                    </optgroup>
+                    <optgroup label="가나다">
+                      <option value="가.">가. 나. 다.</option>
+                      <option value="가)">가) 나) 다)</option>
+                      <option value="(가)">(가) (나) (다)</option>
+                    </optgroup>
+                    <optgroup label="자모">
+                      <option value="ㄱ.">ㄱ. ㄴ. ㄷ.</option>
+                      <option value="ㄱ)">ㄱ) ㄴ) ㄷ)</option>
+                    </optgroup>
+                    <optgroup label="영문·기타">
+                      <option value="A.">A. B. C.</option>
+                      <option value="a.">a. b. c.</option>
+                      <option value="①">① ② ③</option>
+                      <option value="none">무번호</option>
+                    </optgroup>
+                  </select>
+                  <input type="text" id="rptMarkerCustom" class="rpt-fmt-custom" maxlength="8" placeholder="직접" aria-label="머리기호 직접 입력">
+                  <span class="rpt-opt-lb rpt-fmt-ilb">들여쓰기</span>
+                  <span class="rpt-fmt-stepper">
+                    <button type="button" id="rptIndMinus" class="rpt-fmt-step" aria-label="들여쓰기 줄이기">−</button>
+                    <span id="rptIndVal" class="rpt-fmt-ind">2단</span>
+                    <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
+                  </span>
+                </div>
+              </div>
+              <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
+            </div>
+          </div>
         </div>
-        <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
+        <div class="rpt-preview">
+          <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
+          <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
+        </div>
       </div>
-      <div class="rpt-fmt">
-        <span class="rpt-opt-lb">머리기호</span>
-        <select id="rptMarker" class="rpt-fmt-sel" aria-label="머리기호">
-          <optgroup label="불릿">
-            <option value="-">- 하이픈</option>
-            <option value="•">• 점</option>
-            <option value="·">· 가운뎃점</option>
-            <option value="*">* 별표</option>
-            <option value="▪">▪ 네모</option>
-            <option value="◦">◦ 빈 점</option>
-            <option value="–">– 대시</option>
-          </optgroup>
-          <optgroup label="숫자">
-            <option value="1.">1. 2. 3.</option>
-            <option value="1)">1) 2) 3)</option>
-            <option value="(1)">(1) (2) (3)</option>
-          </optgroup>
-          <optgroup label="가나다">
-            <option value="가.">가. 나. 다.</option>
-            <option value="가)">가) 나) 다)</option>
-            <option value="(가)">(가) (나) (다)</option>
-          </optgroup>
-          <optgroup label="자모">
-            <option value="ㄱ.">ㄱ. ㄴ. ㄷ.</option>
-            <option value="ㄱ)">ㄱ) ㄴ) ㄷ)</option>
-          </optgroup>
-          <optgroup label="영문·기타">
-            <option value="A.">A. B. C.</option>
-            <option value="a.">a. b. c.</option>
-            <option value="①">① ② ③</option>
-            <option value="none">무번호</option>
-          </optgroup>
-        </select>
-        <input type="text" id="rptMarkerCustom" class="rpt-fmt-custom" maxlength="8" placeholder="직접" aria-label="머리기호 직접 입력">
-        <span class="rpt-opt-lb rpt-fmt-ilb">들여쓰기</span>
-        <span class="rpt-fmt-stepper">
-          <button type="button" id="rptIndMinus" class="rpt-fmt-step" aria-label="들여쓰기 줄이기">−</button>
-          <span id="rptIndVal" class="rpt-fmt-ind">2단</span>
-          <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
-        </span>
-      </div>
-      <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
-      <div id="rptOut" class="rpt-mirror" role="group" aria-label="보고서 초안 미리보기"></div>
     </div>
+    <div class="rpt-attend-host" id="rptAttendHost"></div>
     <div class="modal-foot">
       <span class="rpt-send-status" id="rptSendStatus"></span>
       <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)</span>
@@ -1903,6 +1963,7 @@ function defaultState(){
     ],
     rooms: DEFAULT_ROOMS.slice(),
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,   // 보고서 표시 설정(머리기호/들여쓰기) — 표시+복사 전용
+    reportSource: 'cal',   // 보고서 내용 출처(cal=캘린더 기록). 인메모리 전용(XML 미영속, phase2 예정)
   };
 }
 function load(){
@@ -1931,6 +1992,7 @@ function load(){
         s.reportMarker = (typeof s.reportMarker === 'string' && s.reportMarker) ? s.reportMarker : '-';
         s.reportMarkerCustom = (typeof s.reportMarkerCustom === 'string') ? s.reportMarkerCustom.slice(0,8) : '';
         s.reportIndent = Number.isInteger(s.reportIndent) ? Math.max(0, Math.min(6, s.reportIndent)) : 2;
+        s.reportSource = (s.reportSource === 'net') ? 'net' : 'cal';   // 내용 출처 — 항상 존재 보장(기본 cal). 인메모리성 값.
         return s;
       }
     }
@@ -1958,7 +2020,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2)};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportSource:'cal'};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -3329,6 +3391,7 @@ function applyImport(mode){
       reportMarker: pendingImport.reportMarker || '-',
       reportMarkerCustom: pendingImport.reportMarkerCustom || '',
       reportIndent: (pendingImport.reportIndent != null ? pendingImport.reportIndent : 2),
+      reportSource: 'cal',
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
@@ -3354,7 +3417,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportSource:'cal'};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -3465,7 +3528,7 @@ let reportMode = 'daily';
 function setReportMode(mode){
   reportMode = mode;
   editingReportKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지)
-  $$('#reportModal [data-rmode]').forEach(b => b.classList.toggle('active', b.dataset.rmode === mode));
+  $$('#reportModal [data-rmode]').forEach(b => { const on = b.dataset.rmode === mode; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });   // role=tab 선택상태 announce
   const from = $('#rptFrom'), to = $('#rptTo');
   if(mode === 'daily'){
     // 단일일 UI — 과거 선택 가능(미래 불가), 두 번째 날짜·구분자는 숨김
@@ -3482,6 +3545,7 @@ function setReportMode(mode){
     if(!to.value) to.value = from.value;
     from.removeAttribute('max'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   }
+  const sr = $('#rptSourceRow'); if(sr) sr.style.display = (mode === 'daily') ? 'none' : 'flex';   // 내용 출처 = 주간·커스텀만
   buildReport();
 }
 // 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
@@ -3573,11 +3637,16 @@ function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
+  const attHost = $('#rptAttendHost'); if(attHost) attHost.innerHTML = '';   // 근태 host는 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
   const src = rptSources();
   try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
+  { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
+    if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
+      const mk = state.reportMarkerCustom ? '직접' : (state.reportMarker === 'none' ? '무번호' : (state.reportMarker || '-'));
+      os.textContent = `· 포함 ${pc}/3 · 머리기호 ${mk}`; } }
   if(!src.event && !src.todo && !src.git){
     sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·커밋).';
     out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정·할 일·커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
@@ -3596,17 +3665,21 @@ function buildReport(){
     if(_sel) _sel.value = state.reportMarker || '-';
     if(_cin) _cin.value = state.reportMarkerCustom || '';
     if(_iv) _iv.textContent = _indent + '단'; }
-  let html = '';
-  if(daily){   // 일간: 근태·초과시간 콤보(회사 일간보고 전송용). 값=사이트 코드.
+  if(attHost && daily){   // 근태·초과시간(회사 일간보고 전송 계약) — 미리보기(#rptOut) 밖·푸터 위 host에 상주. 값=사이트 코드.
     const at = getAttendance(from);
     const stOpts = ATTEND_STATUS.map(s => `<option value="${s.v}"${s.v === at.status ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
     const otOpts = Array.from({length:12}, (_, i) => `<option value="${i}"${i === at.overtime ? ' selected' : ''}>${i === 0 ? '없음' : '+' + i + '시간'}</option>`).join('');
-    html += `<div class="rpt-attend">
+    attHost.innerHTML = `<div class="rpt-attend">
       <span class="ra-lb">근태</span><select id="raStatus" class="ra-sel" aria-label="근태">${stOpts}</select>
       <span class="ra-lb">초과시간</span><select id="raOT" class="ra-sel" aria-label="초과시간">${otOpts}</select>
       <span class="ra-hint">회사 일간보고 전송용</span>
     </div>`;
+    const sv = () => setAttendance(from, $('#raStatus').value, $('#raOT').value);   // per-day 저장(동작 동일)
+    const a = attHost.querySelector('#raStatus'), b = attHost.querySelector('#raOT');
+    if(a) a.addEventListener('change', sv);
+    if(b) b.addEventListener('change', sv);
   }
+  let html = '';
   for(const r of rows){
     const hasEntry = r.entries.length > 0;
     // 단일일 + 발생 항목 있으면 그 (날짜×과제) 첫 항목(createdAt 최소)에 저장 — 작업일지 칩과 동일
@@ -3641,12 +3714,6 @@ function buildReport(){
     html += `</div>`;
   }
   out.innerHTML = html;
-  if(daily){   // 근태/초과시간 변경 → per-day 저장
-    const sv = () => setAttendance(from, $('#raStatus').value, $('#raOT').value);
-    const a = $('#raStatus'), b = $('#raOT');
-    if(a) a.addEventListener('change', sv);
-    if(b) b.addEventListener('change', sv);
-  }
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
   let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건`;
   const picked = [src.event && '일정', src.todo && '할 일', src.git && '커밋'].filter(Boolean);
@@ -3660,6 +3727,12 @@ function openReport(){
     if(s){ $('#rptSrcEvent').checked = s.event !== false; $('#rptSrcTodo').checked = s.todo !== false; $('#rptSrcGit').checked = s.git !== false; } }catch(_){}
   openModal('#reportModal');
   setReportMode('daily');   // 기본: 일간(오늘). 주간/커스텀은 탭으로 전환
+  // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
+  const _opt = $('#rptOpt'); if(_opt) _opt.classList.remove('open');
+  const _ob = $('#rptOptBtn'); if(_ob) _ob.setAttribute('aria-expanded', 'false');
+  const _src = (state.reportSource === 'net') ? 'net' : 'cal';
+  const _seg = $('#rptSrcSeg'); if(_seg) _seg.querySelectorAll('[data-rsrc]').forEach(x => {
+    const on = x.dataset.rsrc === _src && !x.disabled; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
 }
 // 복사용 텍스트 — 화면 DOM이 아니라 데이터에서 재계산(드리프트 방지). 과제명은 현재 이름 재조회(개명 자동 반영).
 function buildReportText(){
@@ -4946,6 +5019,16 @@ function bind(){
   const _setRptInd = d => { const cur = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2)); state.reportIndent = Math.max(0, Math.min(6, cur + d)); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
+  // ⚙옵션 접기/펼치기 — 좁은 폭 컴팩트(넓은 폭은 CSS가 토글 숨김·패널 강제 노출 → .open 무관)
+  { const _optBtn = $('#rptOptBtn'), _opt = $('#rptOpt');
+    if(_optBtn && _opt) _optBtn.addEventListener('click', () => {
+      const open = _opt.classList.toggle('open'); _optBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); }); }
+  // 내용 출처 세그먼트 — 현재 '캘린더 기록'(cal)만 선택 가능, netcus(net)는 비활성. state.reportSource는 인메모리(phase2에서 영속).
+  { const _seg = $('#rptSrcSeg');
+    if(_seg) _seg.addEventListener('click', ev => {
+      const b = ev.target.closest('[data-rsrc]'); if(!b || b.disabled) return;
+      state.reportSource = b.dataset.rsrc;   // 현재 'cal'만 (net은 disabled 가드로 차단)
+      _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); }); }); }
   // 일간 보고서 커밋 라인 편집(✎) — 데이터 변경은 setCommitSubject 단일 경로. 커밋내역 탭과 동일 배선(Enter=blur/Esc=취소/focusout=커밋).
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest('.rtask [data-ract]'); if(!b) return;
