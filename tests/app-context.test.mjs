@@ -413,12 +413,18 @@ if (!JSDOM) {
       assert.strictEqual(dup.entryId, null);
       assert.strictEqual(dup.hash, null);
     });
-    test('titleMeta: 일정 제목·할일 제목 → editable false, titles/titleMeta 1:1 유지', () => {
+    test('titleMeta: 일정 제목·할일 제목 → editable true(출처 라우팅), titles/titleMeta 1:1 유지', () => {
       seed(metaState);
       const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
       const cm = rowByName(r, '혼합과제');
-      assert.strictEqual(cm.titleMeta.find(m => m.text === '일정제목').editable, false);   // 비-git 일정
-      assert.strictEqual(cm.titleMeta.find(m => m.text === '할일제목').editable, false);   // 할 일
+      const em = cm.titleMeta.find(m => m.text === '일정제목');
+      assert.strictEqual(em.editable, true);          // 비-git 일정 → 일간 라인편집(setEntryTitle)
+      assert.strictEqual(em.kind, 'event');
+      assert.strictEqual(em.entryId, 'ev1');
+      const tm = cm.titleMeta.find(m => m.text === '할일제목');
+      assert.strictEqual(tm.editable, true);          // 할 일 → 일간 라인편집(setTodoText)
+      assert.strictEqual(tm.kind, 'todo');
+      assert.strictEqual(tm.todoId, 'td1');
       // titles(문자열) shape 불변: [중복 커밋(dedup), 일정제목, 할일제목]
       assert.strictEqual(cm.titles.length, 3);
       assert.ok(cm.titles.every(t => typeof t === 'string'));
@@ -498,11 +504,11 @@ if (!JSDOM) {
       seed(fmtState('1.', '', 2));
       setRptRange('2026-07-01', '2026-07-31');
       const lines = ev('buildReportText()').split('\n');
-      assert.ok(lines.includes('[에이] : 3'));       // 60*3=180분 → 3h
+      assert.ok(lines.includes('[에이]'));            // 공수 제거 — 과제명만
       assert.ok(lines.includes('    1. 알파'));       // 2*2=4 스페이스
       assert.ok(lines.includes('    2. 브라보'));
       assert.ok(lines.includes('    3. 찰리'));
-      assert.ok(lines.includes('[비이] : 2'));
+      assert.ok(lines.includes('[비이]'));
       assert.ok(lines.includes('    1. 델타'));       // 카드 B — 번호 리셋
       assert.ok(lines.includes('    2. 에코'));
     });

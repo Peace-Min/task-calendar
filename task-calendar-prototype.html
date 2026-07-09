@@ -3403,14 +3403,14 @@ function collectReportData(from, to, sources){
   // 업무 제목 추가(과제 버킷별 동일 제목 1회). git은 커밋 제목 '전부'를 펼치고, 그 외는 엔트리 제목.
   // gitMeta({entryId,hash,cidx})가 있으면 그 제목은 '단일 git 커밋' 출처 → 편집 가능. 같은 제목이 다시 오면(중복/타출처)
   // 단일 출처가 아니게 되므로 편집 불가로 강등. 비-git(일정/할일) 제목은 항상 편집 불가. titles(문자열) 출력·dedup은 불변.
-  const pushTitle = (k, t, gitMeta) => {
+  const pushTitle = (k, t, srcMeta) => {
     t = String(t || '').trim(); if(!t) return;
     if(!seen.has(k)) seen.set(k, new Set());
     const uncatK = (k === '__uncat__');
     const marr = uncatK ? uncatMeta : (meta.has(k) ? meta.get(k) : meta.set(k, []).get(k));
     if(seen.get(k).has(t)){   // 중복 재등장 → 단일 출처 아님 → 편집 불가로 강등(문자열은 이미 있으니 추가 안 함)
       const pm = pos.get(k); const idx = pm ? pm.get(t) : undefined;
-      if(idx != null && marr[idx]) marr[idx] = { text:t, editable:false, entryId:null, hash:null, cidx:-1 };
+      if(idx != null && marr[idx]) marr[idx] = { text:t, editable:false, kind:null, entryId:null, hash:null, cidx:-1, todoId:null };
       return;
     }
     seen.get(k).add(t);
@@ -3418,9 +3418,9 @@ function collectReportData(from, to, sources){
     arr.push(t);
     if(!pos.has(k)) pos.set(k, new Map());
     pos.get(k).set(t, arr.length - 1);   // arr와 marr는 항상 lockstep push → 인덱스 정렬 보장
-    marr.push(gitMeta
-      ? { text:t, editable:true, entryId:gitMeta.entryId, hash:gitMeta.hash, cidx:gitMeta.cidx }
-      : { text:t, editable:false, entryId:null, hash:null, cidx:-1 });
+    marr.push(srcMeta
+      ? { text:t, editable:true, ...srcMeta }
+      : { text:t, editable:false, kind:null, entryId:null, hash:null, cidx:-1, todoId:null });
   };
   // 일정·Git 커밋 — entries를 source로 분기(일정=비-git, Git=git)
   for(const e of state.entries){
@@ -3435,8 +3435,8 @@ function collectReportData(from, to, sources){
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     // git 작업일지는 커밋 제목 전부를 업무로(요약 'N건'이 아니라 실제 커밋들 — git 로그 가져오는 핵심), 그 외는 엔트리 제목
     if(isGit && Array.isArray(e.commits) && e.commits.length){
-      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { entryId:e.id, hash:c.hash || '', cidx:ci }); }
-    } else pushTitle(k, e.title);   // 비-git 엔트리 제목 → gitMeta 없음(편집 불가)
+      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { kind:'git', entryId:e.id, hash:c.hash || '', cidx:ci }); }
+    } else pushTitle(k, e.title, { kind:'event', entryId:e.id });   // 비-git 엔트리 제목 → 편집 가능(일정 라우팅)
   }
   // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
   if(src.todo){
@@ -3444,7 +3444,7 @@ function collectReportData(from, to, sources){
       const s = t.due; if(!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) continue;
       const e2 = (t.endDate && t.endDate > s) ? t.endDate : s;
       if(s > to || e2 < from) continue;
-      pushTitle(catKey(t), t.text);
+      pushTitle(catKey(t), t.text, { kind:'todo', todoId:t.id });
     }
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
@@ -3510,7 +3510,7 @@ function updateRptSendVis(){
 function buildWeeklyFields(from, to, sources){
   const { rows } = collectReportData(from, to, sources || rptSources());
   if(!rows.length) return null;
-  const content = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}`).join('\n');
+  const content = rows.map(r => `[${r.name}]`).join('\n');
   const _mkSpec = reportMarkerSpec();   // 전송 콘텐츠도 복사와 동일 서식(머리기호·들여쓰기) 적용 — WYSIWYG
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
   const _pad = ' '.repeat(_indent * 2);
@@ -3520,7 +3520,9 @@ function buildWeeklyFields(from, to, sources){
 function weekSubjectGuess(from){
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from); if(!m) return '';
   const mon = Number(m[2]), day = Number(m[3]);
-  const ord = ['', '첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][Math.ceil(day / 7)] || (Math.ceil(day / 7) + '째');
+  const firstDow = (new Date(m[1]*1, m[2]*1 - 1, 1).getDay() + 6) % 7;   // 그 달 1일의 요일(월=0)
+  const wk = Math.ceil((day + firstDow) / 7);                            // 1일이 낀 주 = 1주차
+  const ord = ['', '첫째', '둘째', '셋째', '넷째', '다섯째', '여섯째'][wk] || (wk + '째');
   return `${mon}월 ${ord}주`;
 }
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
@@ -3613,12 +3615,6 @@ function buildReport(){
     html += `<div class="rcard${hasEntry ? '' : ' rcard-empty'}">`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
-    if(head){
-      const v = head.hours != null ? (head.hours / 60) : '';
-      html += `<span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.25" inputmode="decimal" value="${v}" placeholder="0" data-hid="${esc(head.id)}" aria-label="${esc(r.name)} 시간(시간)"><span class="rcard-hu">h</span></span>`;
-    } else {
-      html += `<span class="rcard-h-ro">${r.minutes ? fmtH(r.minutes) : '0'}</span><span class="rcard-hu">h</span>`;
-    }
     html += `</div>`;
     if(r.titles.length){
       if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
@@ -3627,12 +3623,12 @@ function buildReport(){
           const _mk = reportMarkerAt(_mkSpec, i); const _mkS = _mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : '';
           const m = (r.titleMeta && r.titleMeta[i]) || null;
           if(m && m.editable){
-            const key = String(m.entryId) + '|' + String(m.hash || '') + '|' + m.cidx;
-            const dr = `data-reid="${esc(m.entryId)}" data-rhash="${esc(m.hash || '')}" data-rcidx="${m.cidx}"`;
+            const key = String(m.kind) + '|' + String(m.entryId || m.todoId || '') + '|' + String(m.hash || '') + '|' + String(m.cidx == null ? '' : m.cidx);
+            const dr = `data-rkind="${esc(m.kind)}" data-reid="${esc(m.entryId || m.todoId || '')}" data-rhash="${esc(m.hash || '')}" data-rcidx="${m.cidx==null?'':m.cidx}"`;
             if(editingReportKey === key){
-              return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="커밋 메시지 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
+              return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="항목 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
             }
-            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="커밋 메시지 수정" aria-label="커밋 메시지 수정">${ICON.wrench}</button></div>`;
+            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button></div>`;
           }
           return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-t">${esc(t)}</span></div>`;
         }).join('') + `</div>`;
@@ -3652,8 +3648,7 @@ function buildReport(){
     if(b) b.addEventListener('change', sv);
   }
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
-  let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건 · 총 ${fmtH(grandMin)}h`;
-  if(uninput) line += ` · 미입력 ${uninput}건`;
+  let line = `${from} ~ ${to} · 과제 ${rows.length}개 · 업무 ${totalItems}건`;
   const picked = [src.event && '일정', src.todo && '할 일', src.git && '커밋'].filter(Boolean);
   if(picked.length < 3) line += ` · 포함: ${picked.join('·')}`;
   if(daily) line += ' · 하루(수정 가능)';
@@ -3676,7 +3671,7 @@ function buildReportText(){
   const _mkSpec = reportMarkerSpec();
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
   const _pad = ' '.repeat(_indent * 2);
-  const blocks = rows.map(r => `[${r.name}] : ${r.minutes ? fmtH(r.minutes) : '0'}` + r.titles.map((t, i) => {
+  const blocks = rows.map(r => `[${r.name}]` + r.titles.map((t, i) => {
     const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
     return '\n' + _pad + _prefix + t;
   }).join(''));
@@ -3817,22 +3812,6 @@ function renderGitTab(){
   const rows = gitFeed().filter(r => r.date === selectedDate);
   let h = (HOST && gitEnabledCats().length) ? `<div class="nd-tools"><button class="btn sm" id="btnGitHere" title="이 날짜의 내 커밋을 가져오기(Git·SVN)">${ICON.download} 이 날 커밋</button><button class="btn sm" id="btnGitBulk" title="기간을 정해 모든(또는 특정) 과제의 커밋을 한 번에 등록">${ICON.download} 기간 일괄 불러오기</button></div>` : '';
   h += `<div class="dp-dayctx">${esc(fmtDateK(selectedDate))} · 커밋 내역${rows.length ? ` <span class="dp-ctx-n">${rows.length}건</span>` : ''}</div>`;
-  // 과제별 공수칩 — 선택 날짜의 git 작업일지를 과제(categoryId)별로 묶어 시간 입력. 커밋 행 구조는 불변.
-  const dayGit = state.entries.filter(e => e.source === 'git' && e.date === selectedDate && (!noteFilterCat || e.categoryId === noteFilterCat));
-  if(dayGit.length){
-    const grp = new Map();   // catId('' = 미분류) -> entries
-    for(const e of dayGit){ const k = e.categoryId || ''; if(!grp.has(k)) grp.set(k, []); grp.get(k).push(e); }
-    let chips = '', miss = 0;
-    for(const [cid, es] of grp){
-      es.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-      const head = es[0];   // 그 (날짜×과제)의 첫 항목에 저장(합산은 과제 버킷이라 무관)
-      const cat = catById(cid); const nm = cat ? cat.name : '미분류';
-      if(head.hours == null) miss++;
-      const val = head.hours != null ? (head.hours / 60) : '';
-      chips += `<span class="hchip"><span class="hc-nm">${esc(nm)}</span><input type="number" class="hc-in" min="0" max="24" step="0.25" inputmode="decimal" placeholder="시간?" value="${val}" data-hid="${esc(head.id)}" aria-label="${esc(nm)} 과제 공수(시간)"><span class="hc-u">h</span></span>`;
-    }
-    h += `<div class="dp-hours"><span class="dph-lb">공수</span>${chips}${miss ? `<span class="dph-miss">${miss}개 미입력</span>` : ''}</div>`;
-  }
   if(!rows.length){
     h += `<div class="nd-empty">${noteFilterCat ? '이 과제의 ' : ''}이 날 커밋 내역이 없습니다.${HOST ? '<br>위 <b>📥</b> 버튼으로 불러오세요(단건/기간 일괄).' : ''}<span class="nd-empty-hint">전체 기간 집계는 우측 상단 <b>📋 보고서</b>를 쓰세요.</span></div>`;
     return h;
@@ -3882,6 +3861,20 @@ function setCommitSubject(entryId, hash, cidx, text){
   c.subject = v; e.updatedAt = nowIso();
   save(); notifyDataChanged(); return true;
 }
+// 일정 제목 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
+function setEntryTitle(entryId, text){
+  const e = entryById(entryId); if(!e) return false;
+  const v = String(text || '').replace(/\s+/g, ' ').trim();
+  if(!v || v === e.title) return false;
+  e.title = v; e.updatedAt = nowIso(); save(); notifyDataChanged(); return true;
+}
+// 할 일 텍스트 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
+function setTodoText(todoId, text){
+  const t = (state.todos || []).find(x => x.id === todoId); if(!t) return false;
+  const v = String(text || '').replace(/\s+/g, ' ').trim();
+  if(!v || v === t.text) return false;
+  t.text = v; t.updatedAt = nowIso(); save(); notifyDataChanged(); return true;
+}
 // 커밋 삭제 — hash(있으면) 아니면 인덱스로 제거. 마지막 커밋이면 git 기록 자체를 제거. 유일한 삭제 경로.
 function deleteCommitRow(eid, chash, cidx){
   const entry = entryById(eid);
@@ -3911,7 +3904,11 @@ function commitReportEdit(ta){
   const rowEl = ta.closest('.rtask'); if(!rowEl){ editingReportKey = null; return; }
   if(ta.dataset.cancel){ editingReportKey = null; buildReport(); return; }   // Esc/취소
   editingReportKey = null;
-  const ok = setCommitSubject(rowEl.dataset.reid, rowEl.dataset.rhash, parseInt(rowEl.dataset.rcidx, 10), ta.value);
+  const el = rowEl, kind = el.dataset.rkind, id = el.dataset.reid;
+  let ok = false;
+  if(kind === 'git') ok = setCommitSubject(id, el.dataset.rhash, parseInt(el.dataset.rcidx, 10), ta.value);
+  else if(kind === 'event') ok = setEntryTitle(id, ta.value);
+  else if(kind === 'todo') ok = setTodoText(id, ta.value);
   if(!ok) buildReport();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
 }
 
@@ -4842,14 +4839,6 @@ function bind(){
     }
   });
 
-  /* 작업일지 과제별 공수칩 입력 (blur/Enter=change). 재렌더 안 함 → 포커스/스크롤 보존, 미입력 카운트는 다음 렌더에 반영 */
-  $('#dayPanel').addEventListener('change', ev => {
-    const inp = ev.target.closest('.hc-in'); if(!inp) return;
-    const e = entryById(inp.dataset.hid); if(!e) return;
-    e.hours = numMin(inp.value); e.updatedAt = nowIso(); save();
-    inp.value = e.hours != null ? (e.hours / 60) : '';   // 클램프·정규화 결과를 칸에 반영(예 30→24, 음수/문자→빈칸)
-  });
-
   /* 기록 모달 */
   $('#fAllDay').addEventListener('change', () => { toggleTimeRow(); toggleRangeRow(); });
   $('#fStartH').addEventListener('change', fAutoEnd); $('#fStartM').addEventListener('change', fAutoEnd);
@@ -4953,19 +4942,12 @@ function bind(){
   const _setRptInd = d => { const cur = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2)); state.reportIndent = Math.max(0, Math.min(6, cur + d)); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
-  // 하루 보고서의 과제별 시간 인라인 수정(blur/Enter=change) → 그 항목 hours 저장 후 재렌더(총합 갱신)
-  $('#rptOut').addEventListener('change', ev => {
-    const inp = ev.target.closest('.rcard-h-in'); if(!inp) return;
-    const e = entryById(inp.dataset.hid); if(!e) return;
-    e.hours = numMin(inp.value); e.updatedAt = nowIso(); save();
-    buildReport();
-  });
   // 일간 보고서 커밋 라인 편집(✎) — 데이터 변경은 setCommitSubject 단일 경로. 커밋내역 탭과 동일 배선(Enter=blur/Esc=취소/focusout=커밋).
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest('.rtask [data-ract]'); if(!b) return;
     const rowEl = b.closest('.rtask');
     if(b.dataset.ract === 'edit'){
-      editingReportKey = String(rowEl.dataset.reid) + '|' + String(rowEl.dataset.rhash || '') + '|' + rowEl.dataset.rcidx;
+      editingReportKey = String(rowEl.dataset.rkind) + '|' + String(rowEl.dataset.reid || '') + '|' + String(rowEl.dataset.rhash || '') + '|' + rowEl.dataset.rcidx;
       buildReport();
       const ta = $('#rptOut .rtask-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
     }
