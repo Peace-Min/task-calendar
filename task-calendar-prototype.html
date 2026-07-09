@@ -3725,12 +3725,14 @@ function buildNetcusSendText(parsed){
   parsed = parsed || {};
   const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
   const unclassified = Array.isArray(parsed.unclassified) ? parsed.unclassified : [];
-  const md = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d == null ? '' : d)); return m ? ((+m[2]) + '/' + (+m[3])) : String(d == null ? '' : d); };
   const blocks = [];
   for(const t of tasks){
-    const head = '[' + String(t && t.name != null ? t.name : '') + ']';
+    const hb = (t && t.hoursByDate) || {}; const hk = Object.keys(hb);
+    let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;   // 주간 합계(부동소수 잡음 제거)
+    const head = '[' + String(t && t.name != null ? t.name : '') + ']' + (hk.length ? ' : ' + hsum : '');   // 시간 기록 있으면 '[과제] : n'
     const lines = Array.isArray(t && t.lines) ? t.lines : [];
-    const body = lines.map(ln => '(' + md(ln && ln.date) + ') ' + String(ln && ln.text != null ? ln.text : ''));
+    const seen = {}, body = [];   // 날짜 프리픽스 없이 + 동일 내용 라인 중복 제거(주간 종합)
+    for(const ln of lines){ const tx = String(ln && ln.text != null ? ln.text : ''); if(tx && !Object.prototype.hasOwnProperty.call(seen, tx)){ seen[tx] = 1; body.push(tx); } }
     blocks.push(body.length ? (head + '\n' + body.join('\n')) : head);
   }
   if(unclassified.length){
@@ -3739,6 +3741,19 @@ function buildNetcusSendText(parsed){
     blocks.push(ub.join('\n'));
   }
   return blocks.join('\n\n');
+}
+// netcus 주간 과제투입시간(content 필드) — 과제별 주간 합계 '[과제] : n'. 시간 기록 있는 과제만('[과제] : 0' 명시 포함). 순수.
+function buildNetcusHoursText(parsed){
+  parsed = parsed || {};
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const lines = [];
+  for(const t of tasks){
+    const hb = (t && t.hoursByDate) || {}; const hk = Object.keys(hb);
+    if(!hk.length) continue;   // 시간 기록 없는 과제 제외
+    let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;
+    lines.push('[' + String(t && t.name != null ? t.name : '') + '] : ' + hsum);
+  }
+  return lines.join('\n');
 }
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
 // reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.
@@ -3911,7 +3926,7 @@ async function renderNetcusInto(from, to){
     return;
   }
   if(!res || res.ok !== true){ renderNetcusError((res && res.error) || 'read', from, to); return; }
-  const parsed = parseNetcusWeek(res.days || [], state.categories, { sumTime: false });
+  const parsed = parseNetcusWeek(res.days || [], state.categories, { sumTime: true });
   const at = ncNow();
   netcusMerge = { key, parsed, at };   // 슬롯 갱신 — 직전 주 캐시는 교체(누적 안 함)
   renderNetcusPreview(parsed, at);
@@ -3947,8 +3962,15 @@ function renderNetcusPreview(parsed, at){
     + '<button type="button" class="rnc-refresh" id="rncRefresh" title="다시 읽기">🔄 새로고침</button></div>';
   for(const t of parsed.tasks){
     html += '<div class="rcard rnc-card">';
-    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
-    if(t.lines.length) html += '<div class="rcard-tasks">' + t.lines.map(ln => '(' + esc(md(ln.date)) + ') ' + esc(ln.text)).join('<br>') + '</div>';
+    const hb = t.hoursByDate || {}; const hk = Object.keys(hb);
+    let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;
+    const hLabel = hk.length ? (' : ' + hsum) : '';   // 과제별 주간 시간(기록 있으면 표시)
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']' + hLabel) + '</span>' + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
+    if(t.lines.length){   // 날짜 프리픽스 없이 + 동일 내용 중복 제거(주간 종합 뷰)
+      const seen = {}, body = [];
+      for(const ln of t.lines){ const tx = ln.text || ''; if(tx && !seen[tx]){ seen[tx] = 1; body.push(esc(tx)); } }
+      if(body.length) html += '<div class="rcard-tasks">' + body.join('<br>') + '</div>';
+    }
     html += '</div>';
   }
   if(parsed.unclassified.length){
@@ -5004,7 +5026,7 @@ function bind(){
         if(!parsed){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
         const endwork = buildNetcusSendText(parsed);
         if(!endwork.trim()){ toast('보낼 내용이 없습니다', 'warn'); return; }
-        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: '', endwork } };
+        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: buildNetcusHoursText(parsed), endwork } };
         if(Platform.caps.reportAuto){
           const b = $('#btnRptSend'); if(b) b.disabled = true;
           const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }

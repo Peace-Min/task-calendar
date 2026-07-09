@@ -5,6 +5,7 @@ import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
 const src = loadAppSource();
 const parseNetcusWeek = eval('(' + extractFunction(src, 'parseNetcusWeek') + ')');
 const buildNetcusSendText = eval('(' + extractFunction(src, 'buildNetcusSendText') + ')');
+const buildNetcusHoursText = eval('(' + extractFunction(src, 'buildNetcusHoursText') + ')');
 
 const CATS = [{ id: 'c1', name: '보고서 작성' }, { id: 'c2', name: '시스템 점검' }];
 const day = (date, content, ok = true) => ({ date, content, ok });
@@ -158,14 +159,17 @@ test('parseNetcusWeek: 비배열/누락 입력 방어 → 빈 결과', () => {
 });
 
 // ── buildNetcusSendText ──────────────────────────────────────────────────
-test('buildNetcusSendText: 과제 블록 [과제명]+(M/D) 라인, 미분류는 [미분류] 아래 verbatim', () => {
+test('buildNetcusSendText: [과제명] 블록 + 날짜 프리픽스 없음 + 동일 라인 중복 제거, 미분류 verbatim', () => {
   const parsed = parseNetcusWeek([
-    day('2026-07-06', '[보고서 작성]\n초안 작성'),
-    day('2026-07-07', '회의 : 2'),
+    day('2026-07-06', '[보고서 작성]\n초안 작성\n초안 작성'),   // 같은 날 중복
+    day('2026-07-07', '[보고서 작성]\n초안 작성\n검토'),         // 다른 날 동일 라인 → 접힘
+    day('2026-07-08', '회의 : 2'),
   ], CATS, {});
   const out = buildNetcusSendText(parsed);
   assert.ok(out.includes('[보고서 작성]'), '과제 머리 포함');
-  assert.ok(out.includes('(7/6) 초안 작성'), 'M/D 라인 포함');
+  assert.ok(!/\(\d+\/\d+\)/.test(out), '날짜 프리픽스 (M/D) 없어야 함');
+  assert.strictEqual((out.match(/초안 작성/g) || []).length, 1, '동일 라인 1회로 접힘');
+  assert.ok(out.includes('검토'), '고유 라인 유지');
   assert.ok(out.includes('[미분류]'), '미분류 블록 포함');
   assert.ok(out.includes('회의 : 2'), '미분류 원문(verbatim) 포함');
 });
@@ -182,6 +186,23 @@ test('buildNetcusSendText: // 사유 주석·통계 라인 절대 없음(전송 
   assert.ok(!out.includes('형식 모호'), '사유(형식 모호) 없어야 함');
   assert.ok(!out.includes('일 읽음'), '통계 라인 없어야 함');
   assert.ok(!out.includes('미등록'), '미등록 뱃지 텍스트 없어야 함');
+});
+
+test('[과제] : n 시간 → 주간 합계 헤더 + buildNetcusHoursText(과제투입시간)', () => {
+  const parsed = parseNetcusWeek([
+    day('2026-07-06', '[보고서 작성] : 6.5\n초안'),
+    day('2026-07-07', '[보고서 작성] : 1.5\n검토'),   // 합계 8
+    day('2026-07-08', '[시스템 점검] : 0'),           // 0 명시(시간 기록 있음)
+  ], CATS, { sumTime: true });
+  const send = buildNetcusSendText(parsed);
+  assert.ok(send.includes('[보고서 작성] : 8'), '주간 합계 헤더(6.5+1.5)');
+  assert.ok(send.includes('[시스템 점검] : 0'), '0 명시 유지');
+  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0', '과제투입시간 = 과제별 합계');
+});
+test('buildNetcusHoursText: 시간 기록 없는 과제는 제외', () => {
+  const parsed = parseNetcusWeek([day('2026-07-06', '[보고서 작성]\n작업')], CATS, { sumTime: true });   // 시간 없음
+  assert.strictEqual(buildNetcusHoursText(parsed), '', '시간 없으면 빈 문자열');
+  assert.ok(!/:/.test(buildNetcusSendText(parsed)), '헤더에 : n 없음');
 });
 
 test('buildNetcusSendText: 결정론(같은 입력 → 같은 출력) + 빈 parsed 방어', () => {
