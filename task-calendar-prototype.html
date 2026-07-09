@@ -1238,7 +1238,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-body">
       <div class="rpt-presets" role="tablist" aria-label="보고 유형">
         <button class="btn sm" data-rmode="daily" role="tab">일간</button>
-        <button class="btn sm" data-rmode="weekly" role="tab">주간 (이번 주)</button>
+        <button class="btn sm" data-rmode="weekly" role="tab">주간</button>
         <button class="btn sm" data-rmode="custom" role="tab">커스텀 기간</button>
       </div>
       <div class="rpt-range">
@@ -3474,8 +3474,8 @@ function setReportMode(mode){
     const sep = $('#rptDateSep'); if(sep) sep.style.display = 'none'; to.style.display = 'none';
   } else if(mode === 'weekly'){
     const r = weekRange(new Date(), 0); from.value = r[0]; to.value = r[1];
-    from.disabled = to.disabled = true;
-    from.removeAttribute('max'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
+    from.disabled = false; to.disabled = true;   // from 편집 → 고른 날짜의 그 주(월~일)로 스냅(과거주 가능). to는 계산값
+    from.max = todayYmd(); from.removeAttribute('min'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   } else { // custom — 범위 직접 지정 가능, 전송은 비활성
     from.disabled = to.disabled = false;
     if(!from.value) from.value = todayYmd();
@@ -3494,7 +3494,7 @@ function updateRptSendVis(){
   b.style.display = '';
   if(reportMode === 'weekly'){
     b.disabled = false; b.dataset.mode = 'weekly'; b.innerHTML = ICON.send + ' 주간보고 작성';
-    b.title = '이 주(이번 주) 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
+    b.title = '선택한 주의 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
     if(h) h.style.display = 'none';
   } else if(reportMode === 'custom'){
     b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
@@ -4931,7 +4931,11 @@ function bind(){
   $('#reportModal .rpt-presets').addEventListener('click', ev => {
     const b = ev.target.closest('[data-rmode]'); if(b) setReportMode(b.dataset.rmode);
   });
-  $('#rptFrom').addEventListener('change', () => { if(reportMode === 'daily'){ $('#rptTo').value = $('#rptFrom').value; } buildReport(); });
+  $('#rptFrom').addEventListener('change', () => {
+    if(reportMode === 'daily'){ $('#rptTo').value = $('#rptFrom').value; }
+    else if(reportMode === 'weekly'){ const v = $('#rptFrom').value; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if(m){ const r = weekRange(new Date(+m[1], +m[2]-1, +m[3]), 0); $('#rptFrom').value = r[0]; $('#rptTo').value = r[1]; } }   // 주간: 고른 날짜를 그 주(월~일)로 스냅
+    buildReport();
+  });
   $('#rptTo').addEventListener('change', buildReport);
   ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(s => $(s).addEventListener('change', buildReport));
   $('#btnRptCopy').addEventListener('click', copyReport);
