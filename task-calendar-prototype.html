@@ -1652,7 +1652,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.6</span><span class="pv-date">2026-07-08 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.7</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <p class="patch-intro">직전 배포(v0.6) 이후 추가·개선된 내용입니다.</p>
+      <ul class="patch-list">
+        <li class="key"><span class="pv-key">핵심</span><b>🔗 netcus 일간보고로 주간보고 만들기 (신규)</b> — 주간보고에서 <b>내용 출처</b>를 ‘netcus 일간보고’로 고르면, 그 주 netcus에 올린 일간보고를 읽어 <b>과제별로 묶고 시간까지 합산</b>해 주간 초안을 만듭니다. 읽기전용(내용 수정은 netcus 일간에서), 형식을 벗어난 항목은 <b>[미분류]</b>에 사유와 함께 모아 보여줍니다.</li>
+        <li class="key"><span class="pv-key">핵심</span><b>📋 보고서 창 재설계</b> — 넓게 보기에서 <b>왼쪽 옵션·오른쪽 미리보기</b> 2단, 좁을 땐 옵션을 <b>⚙ 옵션</b>으로 접어 미리보기가 항상 크게 보입니다. 머리기호·포함 항목은 옵션 안으로, 근태·초과는 전송 버튼 근처로 정리.</li>
+        <li><b>✏️ 보고서에서 바로 편집 확대</b> — 커밋뿐 아니라 <b>할 일·일정 항목</b>도 보고서 미리보기에서 바로 고칠 수 있습니다(일간 기준, 주간은 읽기전용).</li>
+        <li><b>🗓 주간보고 과거 주 선택 + ‘몇 주차’ 계산 수정</b> — 지난 주도 고를 수 있고, 주차 판정이 그 달 1일 기준으로 정확해졌습니다.</li>
+        <li><b>🎨 마감 다듬기</b> — 전 테마 글자 대비(AA), 창을 실수로 닫아도 입력 내용 보호, 탭 터치 영역·선택 표시 정리. 의미 없던 커밋 공수(시간) 입력은 제거했습니다.</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.6</span><span class="pv-date">2026-07-08</span></div>
       <p class="patch-intro">직전 배포(v0.5) 이후 추가·개선된 내용입니다.</p>
       <ul class="patch-list">
         <li class="key"><span class="pv-key">핵심</span><b>✍️ 할 일 서술형 지원</b> — 할 일 추가가 <b>전용 심플 폼</b>으로 바뀌고 <b>설명(서술) 칸</b>이 처음부터 열립니다. 제목은 간단히, 내용은 설명에 자세히 — 목록에서 설명 미리보기, 상세에서 편집.</li>
@@ -1898,7 +1907,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.6';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리
+const APP_VERSION = '0.7';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
