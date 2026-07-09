@@ -23,6 +23,7 @@
   --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-head:18px;
   --lh-tight:1.35; --lh-body:1.5;          /* 한글 받침 안전 줄높이 */
   --hover-bg:#f3f5fa;                        /* 중립 hover wash — accent는 액션·선택 전용(파랑 노이즈 방지) */
+  --dim-bg:#fafbfd;                          /* 은은한 정적 wash — 다른달 셀·git 줄 등(hover 아님) */
 }
 html,body{height:100%}
 body{
@@ -94,7 +95,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
   padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-emph);
   transition:background .15s,border-color .15s;white-space:nowrap;
 }
-.btn:hover{border-color:#bcc4d6;background:#f7f8fb}
+.btn:hover{border-color:#bcc4d6;background:var(--hover-bg)}
 .btn.icon{padding:8px 10px}
 .btn.icon.has-label{padding:8px 12px}
 .btn-label{display:inline}
@@ -172,10 +173,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
   background:var(--panel);padding:5px 6px;display:flex;flex-direction:column;gap:3px;
   cursor:pointer;min-height:0;overflow:hidden;position:relative;transition:background .12s;
 }
-.cell:hover{background:#f8f9fc}
-.cell.dim{background:#fafbfd}
+.cell:hover{background:var(--hover-bg)}
+.cell.dim{background:var(--dim-bg)}
 .cell.dim .num{color:#7a8294}
-.cell.sel{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}   /* 선택은 1px로 조용히 — 강한 2px는 키보드 focus-visible 전용(@180) */
+.cell.sel{box-shadow:inset 0 0 0 2px var(--line-2)}   /* 선택 = 중립 회색 프레임(오늘의 솔리드 파랑 배지와 채널 분리) */
 .cell.drop{background:var(--accent-soft);outline:2px dashed var(--accent);outline-offset:-2px}
 .gridrow{display:contents}                                    /* ARIA role=row 래퍼 — 박스 트리에서 제거돼 7열 그리드 레이아웃 보존 */
 .cell:focus{outline:none}
@@ -186,9 +187,8 @@ main{flex:1;display:flex;min-height:0;position:relative}
   display:flex;align-items:center;justify-content:center;
 }
 .num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
-/* D. 오늘 = 옅은 배경 + 얇은 링(꽉 찬 파랑 채움 폐기 → 선택과 충돌·파랑 노이즈 완화) */
-.cell.today:not(.sel):not(:hover){background:var(--accent-soft)}
-.cell.today .num{color:var(--accent-2) !important;font-weight:700;box-shadow:inset 0 0 0 1.5px var(--accent)}
+/* D. 오늘 = 숫자에 솔리드 accent 배지, 선택 = 중립 회색 프레임 → 채널 분리로 파랑-온-파랑 충돌 해소 */
+.cell.today .num{background:var(--accent);color:#fff;font-weight:700}
 /* D. 주말 컬럼 옅은 틴트 — 토/일이 '블록'으로 읽힘(선택·오늘·타월·hover 제외) */
 .cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(75,98,160,.05)}
 .cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(196,58,63,.055)}
@@ -234,7 +234,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .dp-tab:hover{background:var(--hover-bg)}
 .dp-tab.on{color:var(--accent);font-weight:600;border-bottom-color:var(--accent)}
 .dp-action{margin-left:auto;align-self:center;margin-bottom:4px;font-size:var(--fs-meta);color:var(--muted);border:1px solid var(--line-2);background:#fff;border-radius:var(--r-sm);padding:4px 9px;cursor:pointer;flex:none}
-.dp-action:hover{border-color:#bcc4d6;background:#f7f8fb}
+.dp-action:hover{border-color:#bcc4d6;background:var(--hover-bg)}
 .dp-body{flex:1;min-height:0;overflow-y:auto}
 .dp-pad{padding:10px 12px}
 /* 좌측 캘린더 / 우측 기록 사이 너비 조절 분할바 */
@@ -314,7 +314,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cat-git{font-size:var(--fs-meta);margin-left:4px;flex:none;cursor:help}
 /* 기록 모달의 Git 불러오기 줄 */
 .git-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;
-  padding:10px 12px;border:1px dashed var(--line-2);border-radius:var(--r-md);background:#f7f8fb}
+  padding:10px 12px;border:1px dashed var(--line-2);border-radius:var(--r-md);background:var(--dim-bg)}
 .git-row .git-hint{font-size:var(--fs-meta);color:var(--muted)}
 /* 과제 모달의 Git 연동 카드 (저장소 + 작성자 한 묶음) */
 .git-detect-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -384,7 +384,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
   border:none;background:transparent;font-size:20px;line-height:1;color:var(--muted);
   cursor:pointer;padding:2px 7px;border-radius:var(--r-sm);
 }
-.x:hover{background:#f1f3f8;color:var(--text)}
+.x:hover{background:var(--hover-bg);color:var(--text)}
 .modal-body{padding:16px 20px;overflow-y:auto}
 .modal-foot{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
 .modal-foot .spacer{flex:1}
@@ -459,7 +459,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
   background:#fff;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;
 }
 .s-row:last-child{border-bottom:none}
-.s-row:hover{background:#f6f8fc}
+.s-row:hover{background:var(--hover-bg)}
 .s-row .dot{width:9px;height:9px;border-radius:50%;flex:none;margin-top:4px}
 .s-title{font-size:var(--fs-emph);font-weight:600;word-break:keep-all;overflow-wrap:anywhere}
 .s-memo{font-size:var(--fs-meta);color:var(--muted);margin-top:2px;word-break:keep-all;overflow-wrap:anywhere}
@@ -563,11 +563,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .shot-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .shot-body{position:absolute;left:0;right:0;top:36px;bottom:0;display:grid;grid-template-columns:1fr 142px;gap:8px;padding:9px}
 .shot-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.shot-cell{position:relative;min-height:34px;border:1px solid #e2e7f0;border-radius:6px;background:#fff;padding:3px;font-size:9px;color:#687187}
+.shot-cell{position:relative;min-height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:3px;font-size:9px;color:var(--muted)}
 .shot-cell.sel{outline:2px solid var(--accent);background:#f2f6ff}
-.shot-chip{height:10px;margin-top:3px;border-radius:3px;background:#dbeafe}
+.shot-chip{height:10px;margin-top:3px;border-radius:3px;background:var(--accent-soft)}
 .shot-chip.todo{background:#e7f7ec}
-.shot-panel{border:1px solid #e2e7f0;border-radius:8px;background:#fff;padding:8px;display:flex;flex-direction:column;gap:6px}
+.shot-panel{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px;display:flex;flex-direction:column;gap:6px}
 .shot-panel h4{margin:0;font-size:11px;color:var(--text)}
 .shot-line{height:8px;border-radius:99px;background:#e8edf5}
 .shot-line.short{width:62%}
@@ -581,8 +581,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .shot-menu{position:absolute;right:10px;top:34px;width:120px;border:1px solid #d7deea;border-radius:8px;background:#fff;padding:6px;box-shadow:0 10px 28px rgba(20,28,55,.16);z-index:3}
 .shot-menu div{height:22px;display:flex;align-items:center;padding:0 7px;border-radius:5px;font-size:10px;color:var(--text)}
 .shot-menu div.on,.shot-menu div:hover{background:#eef3ff}
-.shot-call{position:absolute;z-index:5;display:flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;background:#1d4ed8;color:#fff;font-size:10px;font-weight:700;box-shadow:0 7px 18px rgba(29,78,216,.24)}
-.shot-call::before{content:attr(data-n);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#fff;color:#1d4ed8;font-size:10px}
+.shot-call{position:absolute;z-index:5;display:flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;box-shadow:0 7px 18px rgba(29,78,216,.24)}
+.shot-call::before{content:attr(data-n);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#fff;color:var(--accent);font-size:10px}
 .guide-copy{display:flex;flex-direction:column;gap:8px}
 .guide-copy h3{margin:0;font-size:var(--fs-title);color:var(--text)}
 .guide-copy p{margin:0;color:var(--muted);font-size:var(--fs-body);line-height:1.6}
@@ -885,7 +885,6 @@ html.dark .todo-edit .te-text,html.dark .todo-edit .te-note,html.dark .te-row in
 html.dark .qa-ctx input[type=date],html.dark .qa-ctx select,html.dark .jump,html.dark .s-date,
 html.dark .qa-detail input[type=time],html.dark .qa-detail select,html.dark .qa-detail textarea{ background:var(--panel) }
 html.dark .btn:hover,html.dark .menu button:hover,html.dark .cell:hover,html.dark .dp-action:hover,html.dark .git-row,html.dark .x:hover,html.dark .s-row:hover,html.dark .imp-box{ background:var(--fill) }
-html.dark .cell.dim{ background:var(--dim-bg) }
 html.dark .cell.dim .num{ color:#8893a8 }
 html.dark .sk-line,html.dark .sk-cell{ background:var(--border-hover) }
 html.dark .git-card{ background:#171d2b }
@@ -1798,7 +1797,7 @@ function chipTime(e){ // 칩용 짧은 시간 표기 (없으면 빈 문자열)
 function chipTimeShort(e){
   if(e.allDay) return '';
   const m = /^(\d{1,2}):(\d{2})$/.exec(e.startTime || '');
-  if(m) return ('0' + (+m[1])).slice(-2) + ':' + m[2];   // 상세 패널과 동일 'HH:mm' 표기(시간 언어 통일)
+  if(m) return (+m[1]) + ':' + m[2];   // 칩은 좁은 셀 우선 — 선행 0 제거(9:00)
   return e.endTime ? '~' + e.endTime : '';
 }
 
