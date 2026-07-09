@@ -188,16 +188,20 @@ test('buildNetcusSendText: // 사유 주석·통계 라인 절대 없음(전송 
   assert.ok(!out.includes('미등록'), '미등록 뱃지 텍스트 없어야 함');
 });
 
-test('[과제] : n 시간 → 주간 합계 헤더 + buildNetcusHoursText(과제투입시간)', () => {
+// Item3 — 진행사항(endwork) 헤더엔 시간 안 붙음(과제명만) / 시간은 과제투입시간(content)으로만 감(위치만 이동, 사라지지 않음).
+test('Item3: 진행사항 헤더=과제명만(: n 없음) · 과제투입시간엔 주간 합계 유지', () => {
   const parsed = parseNetcusWeek([
     day('2026-07-06', '[보고서 작성] : 6.5\n초안'),
     day('2026-07-07', '[보고서 작성] : 1.5\n검토'),   // 합계 8
     day('2026-07-08', '[시스템 점검] : 0'),           // 0 명시(시간 기록 있음)
   ], CATS, { sumTime: true });
   const send = buildNetcusSendText(parsed);
-  assert.ok(send.includes('[보고서 작성] : 8'), '주간 합계 헤더(6.5+1.5)');
-  assert.ok(send.includes('[시스템 점검] : 0'), '0 명시 유지');
-  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0', '과제투입시간 = 과제별 합계');
+  assert.ok(send.includes('[보고서 작성]'), '진행사항 헤더에 과제명');
+  assert.ok(!send.includes('[보고서 작성] : 8'), '진행사항 헤더에 시간(: 8) 안 붙음(Item3)');
+  assert.ok(!/\]\s*:\s*\d/.test(send), '어떤 과제 헤더에도 "] : 숫자" 없음');
+  assert.ok(send.includes('초안') && send.includes('검토'), '설명(본문) 라인은 유지');
+  // 시간은 사라지지 않고 위치만 content(과제투입시간)로 이동
+  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0', '과제투입시간(content) = 과제별 합계(유지)');
 });
 test('buildNetcusHoursText: 시간 기록 없는 과제는 제외', () => {
   const parsed = parseNetcusWeek([day('2026-07-06', '[보고서 작성]\n작업')], CATS, { sumTime: true });   // 시간 없음

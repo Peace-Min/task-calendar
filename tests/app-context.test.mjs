@@ -622,8 +622,68 @@ if (!JSDOM) {
       assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
     });
 
-    // ── 보고서 모달 재구성(레일+미리보기 / 근태 host / ⚙옵션 / 내용 출처) ─────────
-    // 데이터 로직 불변, 구조/노출만 변경. 근태는 미리보기(#rptOut) 밖 #rptAttendHost(일간만).
+    // ── Item1 — 일간 과제별 시간 입력(tc_taskHours) → buildReportText 헤더 "[과제] : n" ──
+    test('Item1(일간): setTaskHours → buildReportText "[과제] : 6.5" / 미입력이면 과제명만', () => {
+      seed(reportState);
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
+      // 미입력 — 헤더에 시간 없음
+      ev("setTaskHours('2026-07-09','c-1',0); setTaskHours('2026-07-09','c-2',0);");
+      let lines = ev('buildReportText()').split('\n');
+      assert.ok(lines.includes('[보고서 작성]'), '미입력 → 과제명만');
+      assert.ok(!lines.some(l => /^\[보고서 작성\]\s*:/.test(l)), '미입력이면 " : " 안 붙음');
+      // 6.5 입력 → 헤더에 반영(소수 유지)
+      ev("setTaskHours('2026-07-09','c-1',6.5);");
+      lines = ev('buildReportText()').split('\n');
+      assert.ok(lines.includes('[보고서 작성] : 6.5'), '입력 시 "[과제] : 6.5"');
+      assert.ok(lines.includes('[시스템 점검]'), '시간 없는 과제는 과제명만');
+      assert.ok(!lines.some(l => /^\[시스템 점검\]\s*:/.test(l)), '시간 없는 과제 " : " 없음');
+      // getTaskHours 왕복 + 클램프/정리(6.50→6.5, 음수→null, 과대→24)
+      assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 6.5, 'getTaskHours 반환값');
+      ev("setTaskHours('2026-07-09','c-1',-3);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), null, '음수 → 미입력(null)');
+      ev("setTaskHours('2026-07-09','c-1',30);"); assert.strictEqual(ev("getTaskHours('2026-07-09','c-1')"), 24, '24 초과 → 24 클램프');
+      // 주간/커스텀은 시간 안 붙음(일간 전용) — 같은 시간 저장돼 있어도 헤더엔 없음
+      ev("setTaskHours('2026-07-09','c-1',6.5); reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';");
+      assert.ok(!/\]\s*:\s*\d/.test(ev('buildReportText()')), '주간 복사 텍스트 헤더에 시간 없음');
+      // 정리(테스트 간 localStorage 격리)
+      ev("setTaskHours('2026-07-09','c-1',0); reportMode='daily';");
+    });
+    test('Item1: 일간 buildReport rcard 헤더에 시간 입력칸(.rcard-h-in) 렌더 / 주간엔 없음', () => {
+      seed(reportState);
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      assert.ok(/class="rcard-h-in"/.test(ev("$('#rptOut').innerHTML")), '일간 rcard 헤더에 시간 입력칸');
+      assert.ok(/data-hcat="c-1"/.test(ev("$('#rptOut').innerHTML")), 'catId 앵커(data-hcat)');
+      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptTo').disabled=true; buildReport();");
+      assert.ok(!/rcard-h-in/.test(ev("$('#rptOut').innerHTML")), '주간엔 시간 입력칸 없음(읽기전용)');
+      ev("reportMode='daily'");
+    });
+
+    // ── Item2 — 일간 git 커밋 라인 삭제 버튼(일정/할일 라인엔 없음) ──
+    test('Item2(일간): 삭제(🗑)는 git 커밋 라인만 — 일정/할일 라인엔 없음', () => {
+      seed(reportState);
+      // git 커밋 라인(2026-07-08, g1) → 삭제 버튼 노출
+      ev("reportMode='daily'; editingReportKey=null; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      const gitHtml = ev("$('#rptOut').innerHTML");
+      assert.ok(/rtask-del-btn/.test(gitHtml), 'git 커밋 라인에 삭제 버튼');
+      assert.ok(/data-ract="del"/.test(gitHtml), '삭제 액션 앵커(data-ract=del)');
+      // 일정 라인(2026-07-09, v1) → 편집만, 삭제 없음
+      ev("$('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; buildReport();");
+      const evHtml = ev("$('#rptOut').innerHTML");
+      assert.ok(/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼은 있음');
+      assert.ok(!/rtask-del-btn/.test(evHtml), '일정 라인엔 삭제 버튼 없음(캘린더에서 삭제)');
+      ev("reportMode='daily'");
+    });
+    test('Item2: deleteCommitRow — 커밋 제거 후 commits 반영(마지막이면 엔트리 제거)', () => {
+      seed(reportState);   // g1: 커밋 2건(h1,h2)
+      ev("deleteCommitRow('g1','h1',0)");   // h1 제거 → 1건 남음
+      let e = evJSON("entryById('g1')");
+      assert.ok(e && Array.isArray(e.commits) && e.commits.length === 1, '커밋 1건 남음');
+      assert.strictEqual(e.commits[0].hash, 'h2', '남은 커밋은 h2');
+      ev("deleteCommitRow('g1','h2',0)");   // 마지막 제거 → 엔트리 자체 제거
+      assert.strictEqual(evJSON("entryById('g1')||null"), null, '커밋 0개 git 엔트리는 제거');
+    });
+
+    // ── 보고서 모달 재구성(레일+미리보기 / 근태 레일 슬롯 / ⚙옵션 / 내용 출처) ─────────
+    // 데이터 로직 불변, 구조/노출만 변경. 근태는 미리보기(#rptOut) 밖 좌측 레일 #rptAttendRail(일간만).
     test('report UI: 내용 출처 행 — 일간 숨김 / 주간·커스텀 표시', () => {
       seed(reportState);
       ev("setReportMode('daily')");
@@ -635,20 +695,20 @@ if (!JSDOM) {
       ev("setReportMode('daily')");   // 상태 원복(테스트 간 간섭 방지)
     });
 
-    test('report UI: 일간 buildReport — 근태(.rpt-attend)는 #rptAttendHost, #rptOut엔 없음', () => {
+    test('report UI: 일간 buildReport — 근태(.rpt-attend)는 좌측 레일 #rptAttendRail, #rptOut엔 없음', () => {
       seed(reportState);
       ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
-      assert.ok(/rpt-attend/.test(ev("$('#rptAttendHost').innerHTML")), '근태 바가 host에 렌더');
-      assert.ok(/id="raStatus"/.test(ev("$('#rptAttendHost').innerHTML")), 'raStatus/raOT 존재');
+      assert.ok(/rpt-attend/.test(ev("$('#rptAttendRail').innerHTML")), '근태 바가 레일 슬롯에 렌더');
+      assert.ok(/id="raStatus"/.test(ev("$('#rptAttendRail').innerHTML")), 'raStatus/raOT 존재');
       assert.ok(!/rpt-attend/.test(ev("$('#rptOut').innerHTML")), '#rptOut엔 근태 없음(미리보기=순수 카드)');
     });
 
-    test('report UI: 주간/커스텀 buildReport — #rptAttendHost 비움', () => {
+    test('report UI: 주간/커스텀 buildReport — #rptAttendRail 비움', () => {
       seed(reportState);
       ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; buildReport();");
-      assert.strictEqual(ev("$('#rptAttendHost').innerHTML"), '', '주간=근태 없음');
+      assert.strictEqual(ev("$('#rptAttendRail').innerHTML"), '', '주간=근태 없음');
       ev("reportMode='custom'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; $('#rptFrom').disabled=false; $('#rptTo').disabled=false; buildReport();");
-      assert.strictEqual(ev("$('#rptAttendHost').innerHTML"), '', '커스텀=근태 없음');
+      assert.strictEqual(ev("$('#rptAttendRail').innerHTML"), '', '커스텀=근태 없음');
       ev("reportMode='daily'");
     });
 

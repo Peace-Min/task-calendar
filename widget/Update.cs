@@ -19,7 +19,7 @@ namespace TaskCalendarWidget
     // 모든 실패(접근불가/파일없음/파싱오류/해시불일치)는 무음: Log만 남기고 UI·예외·시작지연 없음. URL 비면 완전 휴면.
     public partial class MainWindow
     {
-        private System.Windows.Threading.DispatcherTimer? _updTimer;   // 6시간 주기 확인
+        private System.Windows.Threading.DispatcherTimer? _updTimer;   // 30분 주기 확인(서버 오프 시 배너 자동 종료 반응성)
         private volatile bool _updBusy;                                // 적용(다운로드·설치) 중복 방지
 
         // 시작 시 1회 호출(Window_Loaded 끝). 시작을 막지 않도록 지연 1회 + 주기 타이머만 건다.
@@ -31,8 +31,8 @@ namespace TaskCalendarWidget
                 var first = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(9) };
                 first.Tick += (_, _) => { first.Stop(); _ = CheckForUpdateAsync(false); };
                 first.Start();
-                // 이후 6시간마다 무음 확인(장시간 켜두는 위젯 대응)
-                _updTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromHours(6) };
+                // 이후 30분마다 무음 확인 — 새 버전 발견뿐 아니라 '서버 오프 → 열린 배너 자동 종료'도 이 주기로 반영(폐쇄망 로컬 소스라 부담 없음)
+                _updTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
                 _updTimer.Tick += (_, _) => { _ = CheckForUpdateAsync(false); };
                 _updTimer.Start();
             }
@@ -40,7 +40,8 @@ namespace TaskCalendarWidget
         }
 
         // ---------- 확인 ----------
-        // userInitiated=false(백그라운드): 새 버전이면 배너만, 그 외 완전 무음.
+        // userInitiated=false(백그라운드): 더 높은 버전이면 __updateAvailable(배너), 그 외(최신/접근실패/파싱실패)면 __updateNone
+        //   → 이미 떠 있는 배너를 조용히 닫는다(서버가 꺼진 뒤 배너가 남아 있지 않도록). 팝업/토스트 없음.
         // userInitiated=true(설정 '지금 확인'): '최신입니다'/'확인 실패'를 __updateResult로 조용히 알림.
         private async Task CheckForUpdateAsync(bool userInitiated = false)
         {
@@ -58,6 +59,7 @@ namespace TaskCalendarWidget
                 if (m == null || own == null)
                 {
                     if (userInitiated) UpdateResult(false, "업데이트 확인 실패 — 버전 정보를 읽지 못했습니다");
+                    else UpdateNone();   // 백그라운드: 파싱 실패(매니페스트 이상) → 열린 배너 닫기
                     return;
                 }
                 if (IsNewer(m, own))
@@ -74,12 +76,14 @@ namespace TaskCalendarWidget
                 {
                     Log($"업데이트 없음: 최신 {mver} ≤ 내 {own.ToString(3)}");
                     if (userInitiated) UpdateResult(true, "이미 최신 버전입니다 (v" + own.ToString(3) + ")");
+                    else UpdateNone();   // 백그라운드: 더 높지 않음(최신) → 열린 배너 닫기
                 }
             }
             catch (Exception ex)
             {
                 Log("업데이트 확인 실패(무음): " + ex.Message);
                 if (userInitiated) UpdateResult(false, "업데이트 확인 실패 — 소스에 접근할 수 없습니다");
+                else UpdateNone();   // 백그라운드: 소스 접근/매니페스트 실패(서버 오프) → 열린 배너 닫기
             }
         }
 
@@ -176,6 +180,8 @@ namespace TaskCalendarWidget
         // ---------- 호스트→HTML 통지 ----------
         private void UpdateProgress(string msg) { Log("update: " + msg); JsCall("window.__updateProgress && window.__updateProgress(" + JsonSerializer.Serialize(msg) + ")"); }
         private void UpdateResult(bool ok, string msg) { Log("update result: " + ok + " / " + msg); JsCall("window.__updateResult && window.__updateResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
+        // 백그라운드 확인이 '새 버전 없음/접근 실패'로 끝났을 때 — 열려 있는 배너를 조용히 닫도록 HTML에 통지(진행 중이면 HTML 쪽에서 무시).
+        private void UpdateNone() { JsCall("window.__updateNone && window.__updateNone()"); }
 
         // ---------- 네트워크/파일 헬퍼(스킴별 분기: ftp:// · http(s):// · UNC/로컬) ----------
         private enum SrcKind { Ftp, Http, File }

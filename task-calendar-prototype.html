@@ -532,10 +532,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
 .rpt-mirror .rtask .rtask-mk{flex:none;color:var(--muted);white-space:pre;font-variant-numeric:tabular-nums}
 .rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
-.rpt-mirror .rtask .rtask-edit-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
-.rpt-mirror .rtask .rtask-edit-btn .ic{width:13px;height:13px}
-.rpt-mirror .rcard:hover .rtask-edit-btn,.rpt-mirror .rtask:focus-within .rtask-edit-btn{opacity:.7}
+.rpt-mirror .rtask .rtask-edit-btn,.rpt-mirror .rtask .rtask-del-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
+.rpt-mirror .rtask .rtask-edit-btn .ic,.rpt-mirror .rtask .rtask-del-btn .ic{width:13px;height:13px}
+.rpt-mirror .rcard:hover .rtask-edit-btn,.rpt-mirror .rtask:focus-within .rtask-edit-btn,.rpt-mirror .rcard:hover .rtask-del-btn,.rpt-mirror .rtask:focus-within .rtask-del-btn{opacity:.7}
 .rpt-mirror .rtask .rtask-edit-btn:hover{opacity:1;color:var(--accent);background:var(--hover-bg)}
+.rpt-mirror .rtask .rtask-del-btn:hover{opacity:1;color:var(--danger);background:var(--hover-bg)}
 .rpt-mirror .rtask.editing{display:block}
 .rpt-mirror .rtask.editing .nd-cedit-wrap{margin-top:2px}
 .rpt-mirror .rtask-edit{width:100%;box-sizing:border-box;min-height:52px;resize:vertical;font:inherit;font-size:var(--fs-body);line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
@@ -551,6 +552,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rnc-refresh{flex:none;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--panel);color:var(--accent-2);font-family:inherit;font-size:var(--fs-micro);padding:3px 8px;cursor:pointer}
 .rpt-mirror .rnc-refresh:hover{border-color:var(--accent);color:var(--accent)}
 .rpt-mirror .rnc-badge{margin-left:6px;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;white-space:nowrap;flex:none}
+.rpt-mirror .rnc-hhint{margin-left:6px;font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;flex:none}
 .rpt-mirror .rnc-uncat{border-style:dashed}
 .rpt-mirror .rnc-uline{margin:1px 0}
 .rpt-mirror .rnc-why{color:var(--muted);opacity:.7;font-size:var(--fs-micro)}
@@ -587,10 +589,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-fmt-wrap{margin-top:10px}
 .rpt-fmt-wrap > .rpt-opt-lb{display:block;margin-bottom:5px}
 #reportModal .rpt-optpanel .git-hint{display:block;margin-top:8px;font-size:var(--fs-micro);color:var(--muted)}
-/* 근태·초과(회사 일간보고 전송 계약) — 미리보기 밖·푸터 위 상주(일간만). 비면 숨김. */
-.rpt-attend-host{padding:0 20px 4px;flex:none}
-.rpt-attend-host:empty{display:none}
-.rpt-attend-host .rpt-attend{margin-bottom:0}
+/* 근태·초과(회사 일간보고 전송 계약) — 좌측 옵션 레일 안(기간 아래·일간만). 비면 숨김. 좁은 레일에선 줄바꿈. */
+.rpt-attend-rail{margin-top:10px}
+.rpt-attend-rail:empty{display:none}
+.rpt-attend-rail .rpt-attend{flex-wrap:wrap;margin-bottom:0}
+.rpt-attend-rail .rpt-attend .ra-hint{flex-basis:100%;margin-left:0}
 /* 넓은 폭 — 2단(좌 레일·우 미리보기). #reportModal 한정(다른 wide 모달 불변). 440 시트보다 좁아 겹침 없음. */
 @media (min-width:900px){
   #reportModal .modal.wide{width:min(1040px,96vw)}
@@ -1346,6 +1349,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <div class="rpt-range">
             <input type="date" id="rptFrom"> <span id="rptDateSep" style="color:var(--muted)">~</span> <input type="date" id="rptTo">
           </div>
+          <!-- 근태·초과(회사 전송용) — 일간 모드에서만 buildReport가 레일 안에 렌더(주간/커스텀은 비움) -->
+          <div class="rpt-attend-rail" id="rptAttendRail"></div>
           <div class="rpt-source" id="rptSourceRow" style="display:none" data-src="cal">
             <div class="rpt-src-top">
               <span class="rpt-opt-lb">내용 출처</span>
@@ -1423,7 +1428,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
       </div>
     </div>
-    <div class="rpt-attend-host" id="rptAttendHost"></div>
     <div class="modal-foot">
       <span class="rpt-send-status" id="rptSendStatus"></span>
       <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)</span>
@@ -1692,7 +1696,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.8.0</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.8.1</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <p class="patch-intro">v0.8.0(자동 업데이트) 이후 보완입니다.</p>
+      <ul class="patch-list">
+        <li><b>⏱ 일간보고 과제별 시간 입력</b> — 일간 보고서에서 과제마다 <b>투입 시간</b>을 적으면 회사 일간보고에 <b>[과제] : n</b> 형식으로 반영됩니다.</li>
+        <li><b>🗑 일간보고 커밋 삭제</b> — 보고서 미리보기에서 커밋 내역을 <b>편집뿐 아니라 삭제</b>할 수 있습니다(일간 기준).</li>
+        <li><b>🧾 주간보고 시간 표기 정리</b> — 진행사항의 과제명 옆에 붙던 시간을 떼고, 시간은 <b>과제투입시간</b> 칸으로만 보냅니다(회사 주간폼에 맞게 분리).</li>
+        <li><b>🧭 근태·초과 위치 개선</b> — 근태·초과시간 입력을 <b>왼쪽 옵션 영역(날짜 아래)</b>으로 옮겨 더 자연스럽게 정리했습니다.</li>
+        <li><b>🔔 업데이트 배너 자동 정리</b> — 배포 서버가 꺼지면 떠 있던 업데이트 배너가 <b>스스로 닫힙니다</b>(받을 수 없는 배너가 남지 않도록).</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.8.0</span><span class="pv-date">2026-07-09</span></div>
       <p class="patch-intro">직전(v0.7.1) 이후 추가된 내용입니다.</p>
       <ul class="patch-list">
         <li class="key"><span class="pv-key">핵심</span><b>🔄 자동 업데이트 (신규)</b> — 새 버전이 사내 공유 위치에 올라오면 위젯 상단에 <b>“새 버전이 있습니다 · 변경내역 · 업데이트”</b> 배너가 뜹니다. 관리자가 한 곳만 갱신하면 각자 알아서 받을 수 있어, 매번 개별 배포하지 않아도 됩니다. (설정 → 자동 업데이트에서 소스 주소 지정.)</li>
@@ -1959,7 +1972,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.8.0';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너)
+const APP_VERSION = '0.8.1';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너) · 0.8.1=일간 과제시간·커밋삭제·주간 시간표기·근태위치·배너 자동종료
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
@@ -2018,6 +2031,23 @@ function setAttendance(date, status, overtime){
   let ot = parseInt(overtime, 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
   m[date] = { status: st, overtime: ot };
   try{ localStorage.setItem('tc_attendance', JSON.stringify(m)); }catch(_){}
+}
+// per-(날짜×과제) 시간 — 회사 일간보고 '[과제] : n' 계약. 근태와 동일하게 localStorage 별도(캘린더 데이터/XML과 무관). 소수 허용.
+// 맵 형태 = { "YYYY-MM-DD": { catId: hours } }. 0/미입력은 키 자체를 두지 않음(헤더에 ' : ' 안 붙이는 신호).
+function loadTaskHoursMap(){ try{ return JSON.parse(localStorage.getItem('tc_taskHours') || '{}') || {}; }catch(_){ return {}; } }
+function getTaskHours(date, catId){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !catId) return null;
+  const d = loadTaskHoursMap()[date]; const v = d ? d[catId] : undefined;
+  return (typeof v === 'number' && isFinite(v) && v > 0) ? v : null;   // 0/음수/NaN/미입력 → null
+}
+function setTaskHours(date, catId, h){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !catId) return;
+  const m = loadTaskHoursMap();
+  let v = parseFloat(h); if(!(v > 0) || !isFinite(v)) v = 0; else v = Math.round(Math.min(v, 24) * 100) / 100;   // 하루 상한 24h·소수 둘째자리 정리
+  const day = m[date] || (m[date] = {});
+  if(v > 0) day[catId] = v; else delete day[catId];      // 0/빈칸 = 미입력 → 키 제거
+  if(Object.keys(day).length === 0) delete m[date];      // 빈 날 정리
+  try{ localStorage.setItem('tc_taskHours', JSON.stringify(m)); }catch(_){}
 }
 let state = load();
 
@@ -3367,6 +3397,12 @@ window.__updateResult = function(ok, msg){
   if(sm){ sm.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg || ''); sm.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
   toast(msg || '', ok ? 'success' : 'warn');
 };
+// host(백그라운드 확인): '새 버전 없음/소스 접근 실패(서버 오프)' — 이미 떠 있는 배너를 조용히 닫는다(꺼진 소스에서 배너가 남아있지 않도록).
+window.__updateNone = function(){
+  const b = document.getElementById('updateBanner'); if(!b || b.classList.contains('hidden')) return;   // 안 떠 있으면 무동작
+  const p = $('#updProg'); if(p && !p.classList.contains('hidden')) return;   // 진행 중(내려받기/설치)이면 건드리지 않음
+  b.classList.add('hidden');   // 조용히 숨김만(팝업/토스트 없음)
+};
 // host: 현재 저장된 소스 URL을 설정 필드에 반영
 window.__updateSource = function(url){ const u = $('#updSrc'); if(u) u.value = url || ''; };
 // 브라우저: 회사 보고 자동 작성은 SOP로 불가. netcus 창만 열고, 직접 입력 또는 위젯 이관을 안내한다.
@@ -3842,9 +3878,8 @@ function buildNetcusSendText(parsed){
   const unclassified = Array.isArray(parsed.unclassified) ? parsed.unclassified : [];
   const blocks = [];
   for(const t of tasks){
-    const hb = (t && t.hoursByDate) || {}; const hk = Object.keys(hb);
-    let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;   // 주간 합계(부동소수 잡음 제거)
-    const head = '[' + String(t && t.name != null ? t.name : '') + ']' + (hk.length ? ' : ' + hsum : '');   // 시간 기록 있으면 '[과제] : n'
+    // 진행사항(endwork) 헤더는 과제명만 — 시간(과제투입시간)은 buildNetcusHoursText가 별도 content 필드로 보냄(netcus 폼 분리). 헤더엔 ' : n' 안 붙임.
+    const head = '[' + String(t && t.name != null ? t.name : '') + ']';
     const lines = Array.isArray(t && t.lines) ? t.lines : [];
     const seen = {}, body = [];   // 날짜 프리픽스 없이 + 동일 내용 라인 중복 제거(주간 종합)
     for(const ln of lines){ const tx = String(ln && ln.text != null ? ln.text : ''); if(tx && !Object.prototype.hasOwnProperty.call(seen, tx)){ seen[tx] = 1; body.push(tx); } }
@@ -3918,7 +3953,7 @@ function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
-  const attHost = $('#rptAttendHost'); if(attHost) attHost.innerHTML = '';   // 근태 host는 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
+  const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
   const _netMode = (state.reportSource === 'net' && reportMode !== 'daily');
   { const _opt = $('#rptOpt'); if(_opt) _opt.style.display = _netMode ? 'none' : ''; }
@@ -3951,7 +3986,7 @@ function buildReport(){
     if(_sel) _sel.value = state.reportMarker || '-';
     if(_cin) _cin.value = state.reportMarkerCustom || '';
     if(_iv) _iv.textContent = _indent + '단'; }
-  if(attHost && daily){   // 근태·초과시간(회사 일간보고 전송 계약) — 미리보기(#rptOut) 밖·푸터 위 host에 상주. 값=사이트 코드.
+  if(attHost && daily){   // 근태·초과시간(회사 일간보고 전송 계약) — 좌측 옵션 레일(기간 아래) 슬롯에 상주. 값=사이트 코드.
     const at = getAttendance(from);
     const stOpts = ATTEND_STATUS.map(s => `<option value="${s.v}"${s.v === at.status ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
     const otOpts = Array.from({length:12}, (_, i) => `<option value="${i}"${i === at.overtime ? ' selected' : ''}>${i === 0 ? '없음' : '+' + i + '시간'}</option>`).join('');
@@ -3974,6 +4009,9 @@ function buildReport(){
     html += `<div class="rcard${hasEntry ? '' : ' rcard-empty'}">`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
+    // 일간만 — 과제별 시간 입력('[과제] : n' 계약). 값은 setTaskHours로 (date×catId) 저장. 주간/커스텀은 없음(읽기전용).
+    if(daily){ const _th = getTaskHours(from, r.key);
+      html += `<span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.5" inputmode="decimal" value="${_th != null ? _th : ''}" data-hcat="${esc(r.key)}" aria-label="${esc(r.name)} 시간(회사 일간보고용)" placeholder="0"><span class="rcard-hu">h</span></span>`; }
     html += `</div>`;
     if(r.titles.length){
       if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
@@ -3987,7 +4025,9 @@ function buildReport(){
             if(editingReportKey === key){
               return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="항목 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
             }
-            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button></div>`;
+            // git(커밋) 라인만 삭제(🗑) 노출 — 일정/할일은 캘린더에서 지움. commits[]에서 rhash/rcidx로 제거(deleteCommitRow).
+            const _del = (m.kind === 'git') ? `<button type="button" class="rtask-del-btn" data-ract="del" title="이 커밋 삭제" aria-label="이 커밋 삭제">${ICON.trash || ICON.xmark}</button>` : '';
+            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>`;
           }
           return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-t">${esc(t)}</span></div>`;
         }).join('') + `</div>`;
@@ -4018,7 +4058,7 @@ function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.g
 async function renderNetcusInto(from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
-  const attHost = $('#rptAttendHost'); if(attHost) attHost.innerHTML = '';   // 근태 host는 netcus 미리보기에서 비움
+  const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 netcus 미리보기에서 비움
   // 브라우저(비 HOST): netcus 병합은 위젯 전용 — 안내만
   if(!HOST){
     if(sum) sum.textContent = 'netcus 병합은 위젯에서만 됩니다';
@@ -4084,8 +4124,9 @@ function renderNetcusPreview(parsed, at){
     html += '<div class="rcard rnc-card">';
     const hb = t.hoursByDate || {}; const hk = Object.keys(hb);
     let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;
-    const hLabel = hk.length ? (' : ' + hsum) : '';   // 과제별 주간 시간(기록 있으면 표시)
-    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']' + hLabel) + '</span>' + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
+    // 헤더는 과제명만(진행사항 필드 계약). 시간은 과제투입시간(content)로 감 → 작은 힌트로만 표기(헤더 대괄호엔 안 붙임).
+    const hHint = hk.length ? '<span class="rnc-hhint">과제투입시간 ' + esc(String(hsum)) + 'h</span>' : '';
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
     if(t.lines.length){   // 날짜 프리픽스 없이 + 동일 내용 중복 제거(주간 종합 뷰)
       const seen = Object.create(null), body = [];   // create(null): 'constructor' 등 프로토타입 이름 라인 오탈락 방지(전송/복사와 WYSIWYG 일치)
       for(const ln of t.lines){ const tx = ln.text || ''; if(tx && !seen[tx]){ seen[tx] = 1; body.push(esc(tx)); } }
@@ -4153,10 +4194,15 @@ function buildReportText(indentUnit){
   const _mkSpec = reportMarkerSpec();
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
   const _pad = indentUnit.repeat(_indent * 2);   // 복사=U+00A0 / netcus=&nbsp; (호출부가 지정)
-  const blocks = rows.map(r => `[${r.name}]` + r.titles.map((t, i) => {
-    const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
-    return '\n' + _pad + _prefix + t;
-  }).join(''));
+  const _daily = (reportMode === 'daily');   // 일간만 '[과제] : n'(회사 일간보고 계약). from==to==그날.
+  const blocks = rows.map(r => {
+    let _head = `[${r.name}]`;
+    if(_daily){ const _h = getTaskHours(from, r.key); if(_h != null && _h > 0) _head += ` : ${_h}`; }   // 시간 있으면 헤더에, 없으면 과제명만
+    return _head + r.titles.map((t, i) => {
+      const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
+      return '\n' + _pad + _prefix + t;
+    }).join('');
+  });
   return blocks.join('\n\n') + '\n';
 }
 async function copyReport(){
@@ -5475,7 +5521,14 @@ function bind(){
       _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
       buildReport();   // 출처 전환 → 미리보기 재빌드(net=병합 미리보기 / cal=캘린더 카드)
     }); }
-  // 일간 보고서 커밋 라인 편집(✎) — 데이터 변경은 setCommitSubject 단일 경로. 커밋내역 탭과 동일 배선(Enter=blur/Esc=취소/focusout=커밋).
+  // 과제별 시간 입력(일간) — (날짜×과제) 시간 저장(setTaskHours). 재빌드 없이 값만 정규화 반영(포커스 유지). 복사/전송 텍스트는 getTaskHours로 재계산.
+  $('#rptOut').addEventListener('change', ev => {
+    const inp = ev.target.closest && ev.target.closest('.rcard-h-in'); if(!inp) return;
+    const from = $('#rptFrom').value; const cat = inp.dataset.hcat;
+    setTaskHours(from, cat, inp.value);
+    const v = getTaskHours(from, cat); inp.value = (v != null ? v : '');   // 6.50→6.5·음수/과대 클램프 표시 정리
+  });
+  // 일간 보고서 커밋 라인 편집(✎)/삭제(🗑) — 편집=setCommitSubject / 삭제=deleteCommitRow(둘 다 단일 경로). 커밋내역 탭과 동일 배선.
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest('.rtask [data-ract]'); if(!b) return;
     const rowEl = b.closest('.rtask');
@@ -5483,6 +5536,12 @@ function bind(){
       editingReportKey = String(rowEl.dataset.rkind) + '|' + String(rowEl.dataset.reid || '') + '|' + String(rowEl.dataset.rhash || '') + '|' + rowEl.dataset.rcidx;
       buildReport();
       const ta = $('#rptOut .rtask-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
+    } else if(b.dataset.ract === 'del'){   // git 커밋 라인만(렌더에서 git kind에만 버튼 노출). 확인 후 commits[]에서 제거.
+      if(rowEl.dataset.rkind !== 'git') return;
+      const eid = rowEl.dataset.reid, rhash = rowEl.dataset.rhash, rcidx = parseInt(rowEl.dataset.rcidx, 10);
+      confirmBox('커밋 삭제', '이 커밋 내역을 삭제할까요?', '삭제').then(r => {
+        if(r === 'ok') deleteCommitRow(eid, rhash, rcidx);   // save + notifyDataChanged(보고서·패널·그리드 재반영) + toast 내장
+      });
     }
     // 'save'/'cancel'은 focusout(commitReportEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
   });
