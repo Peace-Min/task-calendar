@@ -1652,7 +1652,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.7</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.7.1</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <p class="patch-intro">v0.7 버그 수정판입니다(새 기능 없음).</p>
+      <ul class="patch-list">
+        <li><b>🛠 회사 보고 들여쓰기 유지</b> — netcus 보고서에서 들여쓰기가 사라지던 문제를 수정했습니다(전송 시 유지되도록).</li>
+        <li><b>🛠 주간보고 가져오기 안정화</b> — 최소화한 다른 창이 튀어나오거나, 빠르게 조작할 때 읽기가 꼬이던 문제를 수정했습니다.</li>
+        <li><b>🛠 설정 바로가기</b> — netcus 로그인 정보가 없을 때 ‘설정에서 저장’이 보고서 뒤에 열리던 것을 앞으로 오도록 수정했습니다.</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.7</span><span class="pv-date">2026-07-09</span></div>
       <p class="patch-intro">직전 배포(v0.6) 이후 추가·개선된 내용입니다.</p>
       <ul class="patch-list">
         <li class="key"><span class="pv-key">핵심</span><b>🔗 netcus 일간보고로 주간보고 만들기 (신규)</b> — 주간보고에서 <b>내용 출처</b>를 ‘netcus 일간보고’로 고르면, 그 주 netcus에 올린 일간보고를 읽어 <b>과제별로 묶고 시간까지 합산</b>해 주간 초안을 만듭니다. 읽기전용(내용 수정은 netcus 일간에서), 형식을 벗어난 항목은 <b>[미분류]</b>에 사유와 함께 모아 보여줍니다.</li>
@@ -1907,7 +1914,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.7';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합
+const APP_VERSION = '0.7.1';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스)
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
