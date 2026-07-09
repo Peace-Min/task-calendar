@@ -120,10 +120,13 @@ namespace TaskCalendarWidget
         private void NetcusResult(bool ok, string msg) { Log("netcus result: " + ok + " / " + msg); JsCall("window.__netcusResult && window.__netcusResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
         private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
 
-        private async Task EnsureW2()
+        private async Task EnsureW2(bool background = false)
         {
-            if (_w2 != null && _w2.CoreWebView2 != null) { try { _w2win?.Show(); _w2win?.Activate(); } catch { } return; }
+            // background=true(주간병합 읽기): 포그라운드를 뺏지 않고 최소화 상태로만 띄운다.
+            // (읽기 창을 Show+Activate하면 닫힐 때 최소화돼 있던 다른 창(탐색기 등)이 복원돼 바닥 위젯을 덮는 문제)
+            if (_w2 != null && _w2.CoreWebView2 != null) { if (!background) { try { _w2win?.Show(); _w2win?.Activate(); } catch { } } return; }
             _w2win = new Window { Title = "회사 일간보고 전송 (확인용)", Width = 920, Height = 720, WindowStartupLocation = WindowStartupLocation.CenterScreen };
+            if (background) { _w2win.ShowActivated = false; _w2win.WindowState = WindowState.Minimized; }   // 활성화·포그라운드 없이 최소화 생성
             _w2 = new WV.WebView2();
             _w2win.Content = _w2;
             _w2win.Closed += (_, __) => { try { _w2?.Dispose(); } catch { } _w2 = null; _w2win = null; };
@@ -390,11 +393,9 @@ namespace TaskCalendarWidget
                 }
 
                 Log($"netcus 주간병합 읽기: {from} ~ {to}");
-                await EnsureW2();
+                await EnsureW2(background: true);   // 읽기 전용 — 포커스/포그라운드 안 뺏음(최소화 비활성 창)
                 cw = _w2!.CoreWebView2;
                 cw.ScriptDialogOpening += OnDialog;
-                // 읽기는 방해 최소화 — 확인창을 최소화(선택). 성공/실패 무관 finally에서 닫는다.
-                try { Dispatcher.Invoke(() => { try { if (_w2win != null) _w2win.WindowState = WindowState.Minimized; } catch { } }); } catch { }
 
                 // 로그인(NetcusSubmit와 동일 패턴)
                 await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
