@@ -282,7 +282,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
   max-height:72px;overflow:hidden;
 }
 .card-actions{display:flex;gap:12px;margin-top:8px}
-.link{border:none;background:none;color:var(--accent-2);font-size:var(--fs-meta);cursor:pointer;padding:0}
+.link{border:none;background:none;color:var(--accent-2);font-size:var(--fs-meta);cursor:pointer;display:inline-flex;align-items:center;min-height:24px;padding:3px 6px;margin:-3px -6px;vertical-align:middle}
 .link:hover{text-decoration:underline}
 .link.danger{color:var(--danger-text)}
 @keyframes flashAnim{0%{box-shadow:0 0 0 3px rgba(62,91,224,.6)}100%{box-shadow:0 0 0 3px rgba(62,91,224,0)}}
@@ -2823,6 +2823,16 @@ function closeTopModal(){
   if(open.length){ open[open.length-1].classList.add('hidden'); return true; }
   return false;
 }
+/* ---------- 폼 dirty-check (우발적 닫기 방지: 배경 클릭 · ESC) ---------- */
+// entryModal·quickAdd만 가드. 열 때 폼 스냅샷을 __openSnap에 저장하고, 닫기 직전 비교해 변경분이 있으면 확인.
+function formSnapshot(ov){ return [...ov.querySelectorAll('input,select,textarea')].map(function(el){ return (el.type==='checkbox'||el.type==='radio') ? (el.checked?'1':'0') : (el.value||''); }).join(''); }
+function isGuardedModal(ov){ return !!ov && (ov.id==='entryModal' || ov.id==='quickAdd'); }
+function confirmDiscardIfDirty(ov){
+  if(!isGuardedModal(ov)) return Promise.resolve(true);
+  if(formSnapshot(ov) === (ov.__openSnap||'')) return Promise.resolve(true);
+  // confirmBox 반환: 'ok'(닫기)·'alt'(계속 편집)·false(확인모달 자체 닫힘) → 'ok'만 truthy로 매핑(안전 기본=계속 편집)
+  return confirmBox('저장하지 않고 닫기', '저장하지 않고 닫을까요? 변경한 내용이 사라집니다.', '닫기', '계속 편집').then(function(r){ return r === 'ok'; });
+}
 
 /* ---------- 모달 접근성: 포커스 트랩 · 복원 · 배경 inert ----------
    모든 오버레이는 openModal로 열리고 닫기는 여러 경로(closeModal/closeTopModal/백드롭/확인모달)로
@@ -2987,6 +2997,7 @@ function openEntryModal(mode, ref){
   updateGitRow();
   toggleTimeRow();
   openModal('#entryModal');
+  var _em=$('#entryModal'); _em.__openSnap = formSnapshot(_em);   // dirty-check 기준(폼 채운 뒤)
   setTimeout(() => $('#fTitle').focus(), 30);
 }
 function saveEntryFromForm(){
@@ -4113,6 +4124,7 @@ function openQuickAdd(date, type, entryId){
     qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시
   }
   openModal('#quickAdd');
+  var _qa=$('#quickAdd'); _qa.__openSnap = formSnapshot(_qa);   // dirty-check 기준(폼 채운 뒤)
   setTimeout(() => $('#qaTitle').focus(), 30);
 }
 function qaSyncType(){
@@ -4982,13 +4994,23 @@ function bind(){
   /* 모달 공통: × / 취소 / 배경 클릭 */
   $$('.overlay').forEach(ov => {
     ov.addEventListener('click', ev => {
-      if(ev.target === ov || ev.target.closest('[data-close]')) ov.classList.add('hidden');
+      if(ev.target === ov){                                   // 배경 클릭 = 우발적 → dirty면 확인
+        confirmDiscardIfDirty(ov).then(ok => { if(ok) ov.classList.add('hidden'); });
+      } else if(ev.target.closest('[data-close]')){           // × / 취소 = 명시적 → 바로 닫음
+        ov.classList.add('hidden');
+      }
     });
   });
 
   /* 키보드 단축키 */
   document.addEventListener('keydown', ev => {
     if(ev.key === 'Escape'){
+      const _top = $$('.overlay').filter(o => !o.classList.contains('hidden')).pop();
+      if(_top && isGuardedModal(_top)){                    // 일정/빠른추가 = 우발적 닫기 방지
+        ev.preventDefault();
+        confirmDiscardIfDirty(_top).then(ok => { if(ok) _top.classList.add('hidden'); });
+        return;
+      }
       if(closeTopModal()) return;                          // 인앱 모달(일정/카테고리/검색/보고서) 우선
       let closedMenu = false;
       for(const sel of ['#moreMenu','#jumpMonth']){
