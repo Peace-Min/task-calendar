@@ -1206,8 +1206,9 @@ namespace TaskCalendarWidget
             try
             {
                 using var k = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
-                var cur = k?.GetValue(RunValueName) as string;
-                if (string.IsNullOrEmpty(cur)) return;   // 자동시작 꺼짐 → 새로 만들지 않음(사용자 선택 존중)
+                if (k == null) return;                    // Run 키를 못 열면 정리할 것 없음(이후 k는 non-null → CS8602 해소)
+                var cur = k.GetValue(RunValueName) as string;
+                if (string.IsNullOrEmpty(cur)) return;    // 자동시작 꺼짐 → 새로 만들지 않음(사용자 선택 존중)
                 var want = "\"" + ExePath + "\"";
                 if (!string.Equals(cur.Trim(), want, StringComparison.OrdinalIgnoreCase))
                     k.SetValue(RunValueName, want);
