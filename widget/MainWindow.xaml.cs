@@ -41,7 +41,7 @@ namespace TaskCalendarWidget
 
         // 부트스트랩 배포 전 관리자가 여기에 공유폴더 URL을 박아두면 최초 실행부터 업데이트가 켜진다.
         // 빈 값이면 기능 휴면 — 이후 설정 모달의 '업데이트 소스 URL'로 언제든 설정/변경(재빌드 불필요).
-        private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/";   // 사내 FTP 기본 소스(신규 설치 시 설정 비어 있으면 이 값으로 시드=zero-touch). 비우면 휴면.
+        private const string DefaultUpdateSourceUrl = "";   // 저장소엔 IP를 박지 않음(비움). 배포자는 exe 옆 update-source.txt 또는 설정 UI로 소스 지정.
 
         public MainWindow()
         {
