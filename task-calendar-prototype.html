@@ -1699,7 +1699,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.8.1</span><span class="pv-date">2026-07-09 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.9.0</span><span class="pv-date">2026-07-10 · 현재</span></div>
+      <p class="patch-intro">사내 공유 배포 <b>정식 릴리스</b> — 그동안 준비한 자동 업데이트와 일간/주간 보고 개선을 하나로 묶었습니다.</p>
+      <ul class="patch-list">
+        <li class="key"><span class="pv-key">핵심</span><b>🔄 자동 업데이트</b> — 관리자가 공유폴더 한 곳만 갱신하면 각 위젯이 상단 배너로 알리고, 누르면 알아서 받아 설치·재시작합니다.</li>
+        <li><b>📋 일간·주간 보고 대폭 개선</b> — 과제별 시간 입력, 보고서에서 <b>일정·할 일·커밋 편집/삭제</b>, netcus 일간→주간 자동 병합, 근태·초과 정리.</li>
+        <li><b>🔄 업데이트 확인 바로가기</b> — <b>⋯ 더보기 → 업데이트 확인</b>으로 주기를 기다리지 않고 즉시 최신 여부를 조회합니다.</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.8.1</span><span class="pv-date">2026-07-09</span></div>
       <p class="patch-intro">v0.8.0(자동 업데이트) 이후 보완입니다.</p>
       <ul class="patch-list">
         <li><b>⏱ 일간보고 과제별 시간 입력</b> — 일간 보고서에서 과제마다 <b>투입 시간</b>을 적으면 회사 일간보고에 <b>[과제] : n</b> 형식으로 반영됩니다.</li>
@@ -1976,7 +1983,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.8.1';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너) · 0.8.1=일간 과제시간·커밋삭제·주간 시간표기·근태위치·배너 자동종료
+const APP_VERSION = '0.9.0';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너) · 0.8.1=일간 과제시간·커밋삭제·주간 시간표기·근태위치·배너 자동종료·업데이트확인 · 0.9.0=사내 배포 정식 릴리스(0.8.x 통합·FTP 기본값 비움)
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채

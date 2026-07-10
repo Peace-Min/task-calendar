@@ -94,5 +94,5 @@ Write-Host "  이 두 파일을 공유폴더(각 위젯의 'UpdateSourceUrl' 위
 Write-Host "    1) latest.json" -ForegroundColor Gray
 Write-Host "    2) $fileName" -ForegroundColor Gray
 Write-Host "  예) ftp://<서버IP>/TaskCalendar/  ·  \\<서버>\TaskCalendar\  ·  http(s)://.../TaskCalendar/" -ForegroundColor DarkGray
-Write-Host "  각 위젯이 시작+6시간마다 조용히 확인 → 새 버전이면 상단 배너로 안내합니다." -ForegroundColor DarkGray
+Write-Host "  각 위젯이 시작+30분마다 조용히 확인 → 새 버전이면 상단 배너로 안내합니다." -ForegroundColor DarkGray
 Write-Host "──────────────────────────────────────────────" -ForegroundColor DarkGray
