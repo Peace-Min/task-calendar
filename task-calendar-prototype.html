@@ -1044,6 +1044,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
       <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
         <button id="btnSettings">설정</button>
+        <button id="btnUpdateCheck">업데이트 확인</button>
         <button id="btnRooms">회의실 관리</button>
         <hr>
         <button id="btnExport">XML 내보내기</button>
@@ -1706,6 +1707,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <li><b>🧾 주간보고 시간 표기 정리</b> — 진행사항의 과제명 옆에 붙던 시간을 떼고, 시간은 <b>과제투입시간</b> 칸으로만 보냅니다(회사 주간폼에 맞게 분리).</li>
         <li><b>🧭 근태·초과 위치 개선</b> — 근태·초과시간 입력을 <b>왼쪽 옵션 영역(날짜 아래)</b>으로 옮겨 더 자연스럽게 정리했습니다.</li>
         <li><b>🔔 업데이트 배너 자동 정리</b> — 배포 서버가 꺼지면 떠 있던 업데이트 배너가 <b>스스로 닫힙니다</b>(받을 수 없는 배너가 남지 않도록).</li>
+        <li><b>🔄 업데이트 확인 바로가기</b> — <b>⋯ 더보기 → 업데이트 확인</b>으로 갱신 주기를 기다리지 않고 즉시 최신 버전을 조회할 수 있습니다(설정 안까지 안 들어가도 됨).</li>
       </ul>
       <div class="patch-ver"><span class="pv-tag old">v0.8.0</span><span class="pv-date">2026-07-09</span></div>
       <p class="patch-intro">직전(v0.7.1) 이후 추가된 내용입니다.</p>
@@ -5159,6 +5161,14 @@ function bind(){
   $('#dayPanel').addEventListener('pointerup', fbEnd);
   $('#dayPanel').addEventListener('pointercancel', fbEnd);
   $('#btnSettings').addEventListener('click', () => { closeMore(); openSettings(); });
+  // 업데이트 확인 — 설정 깊이 들어가지 않고 즉시 최신 버전 조회(주기 대기 없이). 설정의 '지금 확인'과 동일 경로.
+  $('#btnUpdateCheck').addEventListener('click', () => {
+    closeMore();
+    if(!HOST){ toast('업데이트 확인은 데스크톱 위젯에서만 됩니다', 'warn'); return; }
+    toast('업데이트 확인 중…', 'info');
+    hpost({ cmd: 'updateCheck' });   // 결과 = __updateResult(최신/실패 토스트) · 새 버전이면 __updateAvailable(상단 배너)
+  });
+  if(!HOST){ const _uc = $('#btnUpdateCheck'); if(_uc) _uc.style.display = 'none'; }   // 업데이트=위젯 전용 → 브라우저 메뉴에선 숨김
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
   $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
   { const re = $('#remEnabled'); if(re) re.addEventListener('change', () => hpost({ cmd:'reminderToggle', on: re.checked })); }
