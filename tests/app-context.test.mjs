@@ -657,19 +657,22 @@ if (!JSDOM) {
       ev("reportMode='daily'");
     });
 
-    // ── Item2 — 일간 git 커밋 라인 삭제 버튼(일정/할일 라인엔 없음) ──
-    test('Item2(일간): 삭제(🗑)는 git 커밋 라인만 — 일정/할일 라인엔 없음', () => {
+    // ── Item2/재작업 — 일간 편집가능 라인(커밋·일정·할일) 모두에 삭제(✕) 노출(원본 삭제) ──
+    // (최초엔 git만이었으나, "일간 정리→주간 병합 클린" 목적상 일정·할일도 원본삭제로 확장)
+    test('Item2(일간): 삭제(✕)는 편집가능 라인(커밋·일정·할일) 모두 노출', () => {
       seed(reportState);
-      // git 커밋 라인(2026-07-08, g1) → 삭제 버튼 노출
+      // git 커밋 라인(2026-07-08, g1) → 삭제 버튼 + git 라벨
       ev("reportMode='daily'; editingReportKey=null; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
       const gitHtml = ev("$('#rptOut').innerHTML");
       assert.ok(/rtask-del-btn/.test(gitHtml), 'git 커밋 라인에 삭제 버튼');
       assert.ok(/data-ract="del"/.test(gitHtml), '삭제 액션 앵커(data-ract=del)');
-      // 일정 라인(2026-07-09, v1) → 편집만, 삭제 없음
+      assert.ok(/이 커밋 삭제/.test(gitHtml), 'git 삭제 라벨');
+      // 일정 라인(2026-07-09, v1) → 편집 + 삭제(원본 제거로 확장)
       ev("$('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; buildReport();");
       const evHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼은 있음');
-      assert.ok(!/rtask-del-btn/.test(evHtml), '일정 라인엔 삭제 버튼 없음(캘린더에서 삭제)');
+      assert.ok(/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼');
+      assert.ok(/rtask-del-btn/.test(evHtml), '일정 라인에도 삭제 버튼(원본 삭제)');
+      assert.ok(/이 일정 삭제/.test(evHtml), '일정 삭제 라벨(aria/title)');
       ev("reportMode='daily'");
     });
     test('Item2: deleteCommitRow — 커밋 제거 후 commits 반영(마지막이면 엔트리 제거)', () => {

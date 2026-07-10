@@ -268,7 +268,7 @@ namespace TaskCalendarWidget
             };
             t.Start();
 
-            UpdateInit();   // 자동 업데이트: 시작 후 지연 1회 + 주기(6h) 백그라운드 확인(전부 무음). 시작 차단 없음.
+            UpdateInit();   // 자동 업데이트: 시작 후 지연 1회 + 주기(30분) 백그라운드 확인(전부 무음). 시작 차단 없음.
         }
 
         private static string LoadHtml()

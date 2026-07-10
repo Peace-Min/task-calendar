@@ -592,8 +592,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 /* 근태·초과(회사 일간보고 전송 계약) — 좌측 옵션 레일 안(기간 아래·일간만). 비면 숨김. 좁은 레일에선 줄바꿈. */
 .rpt-attend-rail{margin-top:10px}
 .rpt-attend-rail:empty{display:none}
-.rpt-attend-rail .rpt-attend{flex-wrap:wrap;margin-bottom:0}
-.rpt-attend-rail .rpt-attend .ra-hint{flex-basis:100%;margin-left:0}
+/* 좁은 레일: 근태·초과를 2열 그리드(라벨│컨트롤)로 — 라벨과 셀렉트가 분리돼 잘리던 문제 해소 */
+.rpt-attend-rail .rpt-attend{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:7px 8px;margin-bottom:0}
+.rpt-attend-rail .rpt-attend .ra-sel{width:100%}
+.rpt-attend-rail .rpt-attend .ra-hint{grid-column:1 / -1;margin-left:0}
 /* 넓은 폭 — 2단(좌 레일·우 미리보기). #reportModal 한정(다른 wide 모달 불변). 440 시트보다 좁아 겹침 없음. */
 @media (min-width:900px){
   #reportModal .modal.wide{width:min(1040px,96vw)}
@@ -1700,7 +1702,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <p class="patch-intro">v0.8.0(자동 업데이트) 이후 보완입니다.</p>
       <ul class="patch-list">
         <li><b>⏱ 일간보고 과제별 시간 입력</b> — 일간 보고서에서 과제마다 <b>투입 시간</b>을 적으면 회사 일간보고에 <b>[과제] : n</b> 형식으로 반영됩니다.</li>
-        <li><b>🗑 일간보고 커밋 삭제</b> — 보고서 미리보기에서 커밋 내역을 <b>편집뿐 아니라 삭제</b>할 수 있습니다(일간 기준).</li>
+        <li><b>🗑 일간보고 항목 삭제</b> — 보고서 미리보기에서 <b>일정·할 일·커밋</b>을 편집뿐 아니라 삭제할 수 있습니다(원본까지 제거, 반복 일정은 ‘이 날짜만/전체’ 선택·실행취소 지원, 일간 기준).</li>
         <li><b>🧾 주간보고 시간 표기 정리</b> — 진행사항의 과제명 옆에 붙던 시간을 떼고, 시간은 <b>과제투입시간</b> 칸으로만 보냅니다(회사 주간폼에 맞게 분리).</li>
         <li><b>🧭 근태·초과 위치 개선</b> — 근태·초과시간 입력을 <b>왼쪽 옵션 영역(날짜 아래)</b>으로 옮겨 더 자연스럽게 정리했습니다.</li>
         <li><b>🔔 업데이트 배너 자동 정리</b> — 배포 서버가 꺼지면 떠 있던 업데이트 배너가 <b>스스로 닫힙니다</b>(받을 수 없는 배너가 남지 않도록).</li>
@@ -4025,8 +4027,9 @@ function buildReport(){
             if(editingReportKey === key){
               return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="항목 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
             }
-            // git(커밋) 라인만 삭제(🗑) 노출 — 일정/할일은 캘린더에서 지움. commits[]에서 rhash/rcidx로 제거(deleteCommitRow).
-            const _del = (m.kind === 'git') ? `<button type="button" class="rtask-del-btn" data-ract="del" title="이 커밋 삭제" aria-label="이 커밋 삭제">${ICON.trash || ICON.xmark}</button>` : '';
+            // 편집 가능한 라인(커밋·일정·할일)에 삭제(✕) 노출 — 원본까지 제거(일간만; 주간/커스텀은 rtask-ro라 미노출). rkind별 라우팅.
+            const _delLbl = m.kind === 'git' ? '이 커밋 삭제' : m.kind === 'event' ? '이 일정 삭제' : m.kind === 'todo' ? '이 할 일 삭제' : '';
+            const _del = _delLbl ? `<button type="button" class="rtask-del-btn" data-ract="del" title="${_delLbl}" aria-label="${_delLbl}">${ICON.trash || ICON.xmark}</button>` : '';
             return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>`;
           }
           return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-t">${esc(t)}</span></div>`;
@@ -5536,12 +5539,32 @@ function bind(){
       editingReportKey = String(rowEl.dataset.rkind) + '|' + String(rowEl.dataset.reid || '') + '|' + String(rowEl.dataset.rhash || '') + '|' + rowEl.dataset.rcidx;
       buildReport();
       const ta = $('#rptOut .rtask-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
-    } else if(b.dataset.ract === 'del'){   // git 커밋 라인만(렌더에서 git kind에만 버튼 노출). 확인 후 commits[]에서 제거.
-      if(rowEl.dataset.rkind !== 'git') return;
-      const eid = rowEl.dataset.reid, rhash = rowEl.dataset.rhash, rcidx = parseInt(rowEl.dataset.rcidx, 10);
-      confirmBox('커밋 삭제', '이 커밋 내역을 삭제할까요?', '삭제').then(r => {
-        if(r === 'ok') deleteCommitRow(eid, rhash, rcidx);   // save + notifyDataChanged(보고서·패널·그리드 재반영) + toast 내장
-      });
+    } else if(b.dataset.ract === 'del'){   // 원본 삭제 — git=커밋내역 / event=일정 / todo=할 일. 일간만(편집가능 라인에만 버튼).
+      const kind = rowEl.dataset.rkind, rid = rowEl.dataset.reid;
+      if(kind === 'git'){
+        const rhash = rowEl.dataset.rhash, rcidx = parseInt(rowEl.dataset.rcidx, 10);
+        confirmBox('커밋 삭제', '이 커밋 내역을 삭제할까요?', '삭제').then(r => {
+          if(r === 'ok') deleteCommitRow(rid, rhash, rcidx);   // save + notifyDataChanged + toast 내장
+        });
+      } else if(kind === 'event'){
+        const e = entryById(rid); if(!e) return;
+        const from = $('#rptFrom').value;
+        if(e.recur){   // 반복: 캘린더 삭제와 동일 — '이 날짜만'(recurExcept) / '전체 삭제'
+          confirmBox('반복 일정 삭제', `'${e.title}' (${recurLabel(e)})`, `이 날짜(${fmtShort(from)})만 삭제`, '반복 전체 삭제').then(r => {
+            if(r === 'ok'){ e.recurExcept = [...(e.recurExcept || []), from]; e.updatedAt = nowIso(); save(); notifyDataChanged(); toast('이 날짜의 반복을 건너뜁니다'); }
+            else if(r === 'alt'){ deleteEntry(e.id); notifyDataChanged(); toast('반복 일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.entries.push(e); save(); notifyDataChanged(); }}); }
+          });
+        } else {
+          confirmBox('일정 삭제', `'${e.title}' 일정을 삭제할까요? (캘린더에서도 제거)`, '삭제').then(r => {
+            if(r === 'ok'){ deleteEntry(e.id); notifyDataChanged(); toast('일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.entries.push(e); save(); notifyDataChanged(); }}); }
+          });
+        }
+      } else if(kind === 'todo'){
+        const t = (state.todos || []).find(x => x.id === rid); if(!t) return;
+        confirmBox('할 일 삭제', `'${t.text}' 할 일을 삭제할까요? (할 일 목록에서도 제거)`, '삭제').then(r => {
+          if(r === 'ok'){ deleteTodo(t.id); notifyDataChanged(); toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.todos.push(t); save(); notifyDataChanged(); }}); }
+        });
+      }
     }
     // 'save'/'cancel'은 focusout(commitReportEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
   });
