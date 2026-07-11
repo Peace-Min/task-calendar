@@ -215,3 +215,13 @@ test('buildNetcusSendText: 결정론(같은 입력 → 같은 출력) + 빈 pars
   assert.strictEqual(buildNetcusSendText(null), '');
   assert.strictEqual(buildNetcusSendText({}), '');
 });
+
+test('주간 병합: 기타 과제는 최초 등장 순서와 무관하게 항상 마지막', () => {
+  const cats = [{ id: 'etc', name: '기타' }, { id: 'main', name: '주요 과제' }];
+  const parsed = parseNetcusWeek([
+    day('2026-07-06', '[기타] : 1\n기타 작업\n[주요 과제] : 2\n핵심 작업'),
+  ], cats, { sumTime: true });
+  assert.deepStrictEqual(parsed.tasks.map(t => t.name), ['주요 과제', '기타']);
+  assert.ok(buildNetcusSendText(parsed).indexOf('[주요 과제]') < buildNetcusSendText(parsed).indexOf('[기타]'));
+  assert.strictEqual(buildNetcusHoursText(parsed), '[주요 과제] : 2\n[기타] : 1');
+});

@@ -3700,8 +3700,10 @@ function collectReportData(from, to, sources){
     }
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
-  const rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
+  let rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
     minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));
+  // '기타'는 등록 순서와 관계없이 일반 과제 뒤에 둔다. 미분류가 실제 '기타' 과제로 병합돼도 같은 규칙을 유지한다.
+  rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));
   if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
     minutes:sumMin.get('__uncat__')||0, titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
   let grand = 0; for(const v of sumMin.values()) grand += v;
@@ -3873,6 +3875,9 @@ function parseNetcusWeek(days, categories, opts){
       t.hoursSum = sum;
     }
   }
+
+  // 실제/미등록 여부와 무관하게 '기타' 과제는 항상 일반 과제 뒤에 표시·전송한다.
+  tasks.sort((a, b) => (norm(a && a.name) === '기타' ? 1 : 0) - (norm(b && b.name) === '기타' ? 1 : 0));
 
   let unregistered = 0;
   for(const t of tasks){ if(!t.matched) unregistered++; }

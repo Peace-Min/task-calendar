@@ -299,6 +299,15 @@ if (!JSDOM) {
       assert.strictEqual(r.grandMin, 0);
     });
 
+    test('collectReportData: 기타 과제는 등록 순서와 무관하게 항상 마지막', () => {
+      const withEtcFirst = JSON.parse(JSON.stringify(reportState));
+      withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', vcs: 'git', createdAt: CA });
+      seed(withEtcFirst);
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      assert.strictEqual(r.rows[r.rows.length - 1].name, '기타');
+      assert.deepStrictEqual(r.rows.slice(0, -1).map(row => row.name), ['보고서 작성', '시스템 점검']);
+    });
+
     // ── PART A: setCommitSubject / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
     // 커밋 subject 쓰기·삭제는 이 두 API만 통과한다. 호출 시 notifyDataChanged가 패널/그리드를
     // 재렌더하므로 부팅된 jsdom 컨텍스트에서 실행(렌더 안전성도 함께 검증). state는 seed로 격리.
