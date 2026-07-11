@@ -6,6 +6,7 @@ const src = loadAppSource();
 const parseNetcusWeek = eval('(' + extractFunction(src, 'parseNetcusWeek') + ')');
 const buildNetcusSendText = eval('(' + extractFunction(src, 'buildNetcusSendText') + ')');
 const buildNetcusHoursText = eval('(' + extractFunction(src, 'buildNetcusHoursText') + ')');
+const buildNetcusPlanText = eval('(' + extractFunction(src, 'buildNetcusPlanText') + ')');
 
 const CATS = [{ id: 'c1', name: '보고서 작성' }, { id: 'c2', name: '시스템 점검' }];
 const day = (date, content, ok = true) => ({ date, content, ok });
@@ -224,4 +225,14 @@ test('주간 병합: 기타 과제는 최초 등장 순서와 무관하게 항�
   assert.deepStrictEqual(parsed.tasks.map(t => t.name), ['주요 과제', '기타']);
   assert.ok(buildNetcusSendText(parsed).indexOf('[주요 과제]') < buildNetcusSendText(parsed).indexOf('[기타]'));
   assert.strictEqual(buildNetcusHoursText(parsed), '[주요 과제] : 2\n[기타] : 1\n-----\n합계 : 3');
+  assert.strictEqual(buildNetcusPlanText(parsed), '[주요 과제]\n[기타]', '차주계획에도 기타가 마지막');
+});
+
+test('buildNetcusPlanText: 차주계획은 과제 머리표만 자동 생성하고 미분류는 제외', () => {
+  const parsed = parseNetcusWeek([
+    day('2026-07-06', '머리표 없는 내용\n[보고서 작성]\n진행 내용'),
+  ], CATS, {});
+  assert.strictEqual(buildNetcusPlanText(parsed), '[보고서 작성]');
+  assert.ok(!buildNetcusPlanText(parsed).includes('미분류'));
+  assert.strictEqual(buildNetcusPlanText(null), '');
 });

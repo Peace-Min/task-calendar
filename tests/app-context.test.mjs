@@ -557,6 +557,8 @@ if (!JSDOM) {
       ev("setTaskHours('2026-07-06','c-1',2.5); setTaskHours('2026-07-07','c-1',1.5); setTaskHours('2026-07-08','c-2',3);");
       const content = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).content');
       assert.strictEqual(content, '[보고서 작성] : 4\n[시스템 점검] : 3\n-----\n합계 : 7');
+      const planwork = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).planwork');
+      assert.strictEqual(planwork, '[보고서 작성]\n[시스템 점검]', '차주계획에 과제 머리표 자동 생성');
       ev("setTaskHours('2026-07-06','c-1',0); setTaskHours('2026-07-07','c-1',0); setTaskHours('2026-07-08','c-2',0);");
     });
 
