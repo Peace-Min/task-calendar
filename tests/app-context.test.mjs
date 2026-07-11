@@ -299,6 +299,15 @@ if (!JSDOM) {
       assert.strictEqual(r.grandMin, 0);
     });
 
+    test('collectReportData: 기타 과제는 등록 순서와 무관하게 항상 마지막', () => {
+      const withEtcFirst = JSON.parse(JSON.stringify(reportState));
+      withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', vcs: 'git', createdAt: CA });
+      seed(withEtcFirst);
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      assert.strictEqual(r.rows[r.rows.length - 1].name, '기타');
+      assert.deepStrictEqual(r.rows.slice(0, -1).map(row => row.name), ['보고서 작성', '시스템 점검']);
+    });
+
     // ── PART A: setCommitSubject / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
     // 커밋 subject 쓰기·삭제는 이 두 API만 통과한다. 호출 시 notifyDataChanged가 패널/그리드를
     // 재렌더하므로 부팅된 jsdom 컨텍스트에서 실행(렌더 안전성도 함께 검증). state는 seed로 격리.
@@ -540,6 +549,15 @@ if (!JSDOM) {
       assert.ok((ew.split('\n' + NB + '가. ').length - 1) >= 2, '카드마다 가.로 번호 리셋');
       assert.ok(!ew.includes('    가. '), '평문 4칸 공백 아님(&nbsp;여야)');
       assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
+    });
+
+    test('buildWeeklyFields.content: 일간 과제시간을 주간 합산하고 구분선 아래 전체 합계 표시', () => {
+      seed(reportState);
+      setRptRange('2026-07-06', '2026-07-12');
+      ev("setTaskHours('2026-07-06','c-1',2.5); setTaskHours('2026-07-07','c-1',1.5); setTaskHours('2026-07-08','c-2',3);");
+      const content = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).content');
+      assert.strictEqual(content, '[보고서 작성] : 4\n[시스템 점검] : 3\n-----\n합계 : 7');
+      ev("setTaskHours('2026-07-06','c-1',0); setTaskHours('2026-07-07','c-1',0); setTaskHours('2026-07-08','c-2',0);");
     });
 
     // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실

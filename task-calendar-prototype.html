@@ -3700,8 +3700,10 @@ function collectReportData(from, to, sources){
     }
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
-  const rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
+  let rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
     minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));
+  // '기타'는 등록 순서와 관계없이 일반 과제 뒤에 둔다. 미분류가 실제 '기타' 과제로 병합돼도 같은 규칙을 유지한다.
+  rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));
   if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
     minutes:sumMin.get('__uncat__')||0, titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
   let grand = 0; for(const v of sumMin.values()) grand += v;
@@ -3763,7 +3765,19 @@ function updateRptSendVis(){
 function buildWeeklyFields(from, to, sources){
   const { rows } = collectReportData(from, to, sources || rptSources());
   if(!rows.length) return null;
-  const content = rows.map(r => `[${r.name}]`).join('\n');
+  let grandHours = 0;
+  const contentRows = rows.map(r => {
+    let hours = 0, hasHours = false;
+    for(let date = from; date <= to; date = addDays(date, 1)){
+      const value = getTaskHours(date, r.key);
+      if(value != null){ hours += value; hasHours = true; }
+    }
+    hours = Math.round(hours * 100) / 100;
+    if(hasHours) grandHours += hours;
+    return `[${r.name}]` + (hasHours ? ` : ${hours}` : '');
+  });
+  grandHours = Math.round(grandHours * 100) / 100;
+  const content = contentRows.concat(['-----', `합계 : ${grandHours}`]).join('\n');
   const _mkSpec = reportMarkerSpec();   // 전송 콘텐츠도 복사와 동일 서식(머리기호·들여쓰기) 적용 — WYSIWYG
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
   const _pad = '&nbsp;'.repeat(_indent * 2);   // netcus 전송(euc-kr HTML) — 줄 앞 연속 공백이 렌더 시 collapse되는 것 방지
@@ -3874,6 +3888,9 @@ function parseNetcusWeek(days, categories, opts){
     }
   }
 
+  // 실제/미등록 여부와 무관하게 '기타' 과제는 항상 일반 과제 뒤에 표시·전송한다.
+  tasks.sort((a, b) => (norm(a && a.name) === '기타' ? 1 : 0) - (norm(b && b.name) === '기타' ? 1 : 0));
+
   let unregistered = 0;
   for(const t of tasks){ if(!t.matched) unregistered++; }
 
@@ -3903,18 +3920,21 @@ function buildNetcusSendText(parsed){
   }
   return blocks.join('\n\n');
 }
-// netcus 주간 과제투입시간(content 필드) — 과제별 주간 합계 '[과제] : n'. 시간 기록 있는 과제만('[과제] : 0' 명시 포함). 순수.
+// netcus 주간 과제투입시간(content 필드) — 과제별 주간 합계 + 구분선 아래 전체 합계. 시간 기록 있는 과제만('[과제] : 0' 명시 포함). 순수.
 function buildNetcusHoursText(parsed){
   parsed = parsed || {};
   const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
-  const lines = [];
+  const lines = []; let grand = 0;
   for(const t of tasks){
     const hb = (t && t.hoursByDate) || {}; const hk = Object.keys(hb);
     if(!hk.length) continue;   // 시간 기록 없는 과제 제외
     let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;
+    grand += hsum;
     lines.push('[' + String(t && t.name != null ? t.name : '') + '] : ' + hsum);
   }
-  return lines.join('\n');
+  if(!lines.length) return '';
+  grand = Math.round(grand * 100) / 100;
+  return lines.concat(['-----', '합계 : ' + grand]).join('\n');
 }
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
 // reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.

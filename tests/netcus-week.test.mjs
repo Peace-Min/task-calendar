@@ -201,7 +201,7 @@ test('Item3: 진행사항 헤더=과제명만(: n 없음) · 과제투입시간�
   assert.ok(!/\]\s*:\s*\d/.test(send), '어떤 과제 헤더에도 "] : 숫자" 없음');
   assert.ok(send.includes('초안') && send.includes('검토'), '설명(본문) 라인은 유지');
   // 시간은 사라지지 않고 위치만 content(과제투입시간)로 이동
-  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0', '과제투입시간(content) = 과제별 합계(유지)');
+  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0\n-----\n합계 : 8', '과제투입시간(content) = 과제별 합계 + 전체 합계');
 });
 test('buildNetcusHoursText: 시간 기록 없는 과제는 제외', () => {
   const parsed = parseNetcusWeek([day('2026-07-06', '[보고서 작성]\n작업')], CATS, { sumTime: true });   // 시간 없음
@@ -214,4 +214,14 @@ test('buildNetcusSendText: 결정론(같은 입력 → 같은 출력) + 빈 pars
   assert.strictEqual(buildNetcusSendText(parsed), buildNetcusSendText(parsed));
   assert.strictEqual(buildNetcusSendText(null), '');
   assert.strictEqual(buildNetcusSendText({}), '');
+});
+
+test('주간 병합: 기타 과제는 최초 등장 순서와 무관하게 항상 마지막', () => {
+  const cats = [{ id: 'etc', name: '기타' }, { id: 'main', name: '주요 과제' }];
+  const parsed = parseNetcusWeek([
+    day('2026-07-06', '[기타] : 1\n기타 작업\n[주요 과제] : 2\n핵심 작업'),
+  ], cats, { sumTime: true });
+  assert.deepStrictEqual(parsed.tasks.map(t => t.name), ['주요 과제', '기타']);
+  assert.ok(buildNetcusSendText(parsed).indexOf('[주요 과제]') < buildNetcusSendText(parsed).indexOf('[기타]'));
+  assert.strictEqual(buildNetcusHoursText(parsed), '[주요 과제] : 2\n[기타] : 1\n-----\n합계 : 3');
 });
