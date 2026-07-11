@@ -494,7 +494,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 #reportModal .rpt-presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:9px}
 #reportModal .rpt-presets .btn{min-height:32px;padding:6px 8px;white-space:normal;line-height:1.25}
 .rpt-presets .btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
-.rpt-mode-note{display:grid;gap:3px;margin:0 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:#f8fafc}
+.rpt-mode-note{display:grid;gap:2px;margin:0 0 10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:#f8fafc}
 .rpt-mode-note div{font-size:var(--fs-micro);line-height:1.45;color:var(--muted);word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mode-note b{font-size:var(--fs-meta);color:var(--text)}
 .rpt-range input:disabled{opacity:.55;cursor:not-allowed}
@@ -574,9 +574,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-src-desc .rsd b{font-weight:600;color:var(--muted)}
 /* 활성 출처 = 진한 제목, 비활성 = 흐리게(어느 쪽으로 만들지 한눈에) */
 .rpt-source[data-src="cal"] .rsd-cal b,.rpt-source[data-src="net"] .rsd-net b,.rpt-source[data-src="week"] .rsd-week b{color:var(--text)}
-.rpt-source[data-src="cal"] .rsd:not(.rsd-cal),.rpt-source[data-src="net"] .rsd:not(.rsd-net),.rpt-source[data-src="week"] .rsd:not(.rsd-week){opacity:.55}
-.rpt-source:not([data-src="week"]) .rsd-week{display:none}
-.rpt-source[data-src="week"] .rsd-cal,.rpt-source[data-src="week"] .rsd-net{display:none}
+.rpt-source[data-src="cal"] .rsd:not(.rsd-cal),.rpt-source[data-src="net"] .rsd:not(.rsd-net),.rpt-source[data-src="week"] .rsd:not(.rsd-week){display:none}
 .rsd-soon{display:inline-block;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:1px;white-space:nowrap}
 .rpt-seg{display:inline-flex;gap:3px}
 .rpt-seg-b{border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 10px;background:var(--panel);color:var(--text);cursor:pointer}
@@ -605,16 +603,17 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-attend-rail .rpt-attend{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:7px 8px;margin-bottom:0}
 .rpt-attend-rail .rpt-attend .ra-sel{width:100%}
 .rpt-attend-rail .rpt-attend .ra-hint{grid-column:1 / -1;margin-left:0}
-/* 넓은 폭 — 2단(좌 레일·우 미리보기). #reportModal 한정(다른 wide 모달 불변). 440 시트보다 좁아 겹침 없음. */
+/* 넓은 폭 — 2단(좌 레일·우 미리보기). #reportModal 한정(다른 wide 모달 불변). */
 @media (min-width:900px){
-  #reportModal .modal.wide{width:min(1040px,96vw)}
+  #reportModal .modal.wide{width:min(1080px,96vw)}
   #reportModal .modal-body{overflow:hidden;padding-bottom:0}
-  #reportModal .rpt-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;height:min(66vh,600px)}
-  #reportModal .rpt-rail{overflow:auto;padding-right:18px;border-right:1px solid var(--line)}
-  #reportModal .rpt-preview{overflow:auto;padding-left:18px;display:flex;flex-direction:column}
+  #reportModal .rpt-body{display:grid;grid-template-columns:330px minmax(0,1fr);gap:0;height:min(68vh,620px)}
+  #reportModal .rpt-rail{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding-right:20px;border-right:1px solid var(--line)}
+  #reportModal .rpt-rail::-webkit-scrollbar{width:8px}
+  #reportModal .rpt-rail::-webkit-scrollbar-thumb{background:transparent;border-radius:999px}
+  #reportModal .rpt-rail:hover::-webkit-scrollbar-thumb{background:#c9d1df}
+  #reportModal .rpt-preview{overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding-left:18px;display:flex;flex-direction:column}
   #reportModal #rptSummary{position:sticky;top:0;z-index:1;background:#fff;padding-bottom:6px;margin-top:0}
-  #reportModal .rpt-optbtn{display:none}          /* 넓은 폭: 토글 숨김 + 패널 강제 노출 */
-  #reportModal .rpt-optpanel{display:block!important}
 }
 .lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
 /* 라벨행 우측 바로가기 링크(예: 회의실 관리) — 칩 아닌 깔끔한 액센트 텍스트 */
@@ -1383,8 +1382,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               </div>
             </div>
             <div class="rpt-src-desc">
-              <div class="rsd rsd-cal"><b>캘린더 기록</b> — 이 앱에 정리한 일정·할 일·커밋으로 주간보고를 만듭니다.</div>
-              <div class="rsd rsd-net"><b>netcus 일간보고</b> — netcus에 올린 그 주 일간보고를 합쳐 만듭니다.</div>
+              <div class="rsd rsd-cal"><b>캘린더 기록</b> — 이 앱에 정리한 일정·할 일·커밋을 사용합니다.</div>
+              <div class="rsd rsd-net"><b>netcus 일간보고</b> — netcus에 올린 일간보고를 합쳐 사용합니다.</div>
               <div class="rsd rsd-week"><b>netcus 주간보고</b> — 이미 정리한 주간보고를 월간·연간 초안의 원본으로 씁니다.</div>
             </div>
           </div>
@@ -3737,9 +3736,9 @@ function rptSources(){
 let reportMode = 'daily';
 const REPORT_MODE_META = {
   daily: { purpose: '하루 업무를 회사 일간보고로 전송합니다.', origin: '캘린더 기록을 기준으로 작성합니다.', source: 'cal' },
-  weekly: { purpose: '선택한 주를 정리해 회사 주간보고 작성 폼에 채웁니다.', origin: '캘린더 기록 또는 netcus 일간보고를 선택합니다.', source: 'choice' },
-  rangeDaily: { purpose: '여러 날짜의 일간 기록을 모아 기간 보고서 초안을 만듭니다.', origin: '캘린더 기록 또는 netcus 일간보고를 선택합니다.', source: 'choice' },
-  rangeWeekly: { purpose: '월간·연간 보고서용으로 확정된 주간보고를 모읍니다.', origin: 'netcus 주간보고를 읽어옵니다. 현재는 읽기 프로토타입 준비 중입니다.', source: 'week' }
+  weekly: { purpose: '선택한 주를 주간보고 작성 폼에 채웁니다.', origin: '캘린더 기록 또는 netcus 일간보고 선택', source: 'choice' },
+  rangeDaily: { purpose: '여러 날짜의 일간 기록을 모아 기간 보고서 초안을 만듭니다.', origin: '캘린더 기록 또는 netcus 일간보고 선택', source: 'choice' },
+  rangeWeekly: { purpose: '월간·연간 보고서용으로 확정된 주간보고를 모읍니다.', origin: 'netcus 주간보고 읽기 연결 예정', source: 'week' }
 };
 function normalizeReportMode(mode){ return mode === 'custom' ? 'rangeDaily' : (REPORT_MODE_META[mode] ? mode : 'daily'); }
 function isRangeReportMode(mode){ mode = normalizeReportMode(mode); return mode === 'rangeDaily' || mode === 'rangeWeekly'; }
@@ -3819,9 +3818,9 @@ function updateRptSendVis(){
     b.title = '선택한 주의 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
     if(h) h.style.display = 'none';
   } else if(isRangeReportMode(reportMode)){
-    b.disabled = true; b.dataset.mode = reportMode; b.innerHTML = ICON.send + ' 회사 전송';
+    b.disabled = true; b.dataset.mode = reportMode; b.style.display = 'none'; b.innerHTML = ICON.send + ' 회사 전송';
     b.title = '기간 취합은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
-    if(h){ h.style.display = ''; h.textContent = '기간 취합은 전송 불가 — 작성 탭에서 전송하세요 (복사는 가능)'; }
+    if(h){ h.style.display = ''; h.textContent = '기간 취합은 복사 전용입니다'; }
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '선택한 날짜의 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
