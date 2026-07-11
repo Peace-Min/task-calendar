@@ -201,7 +201,7 @@ test('Item3: 진행사항 헤더=과제명만(: n 없음) · 과제투입시간�
   assert.ok(!/\]\s*:\s*\d/.test(send), '어떤 과제 헤더에도 "] : 숫자" 없음');
   assert.ok(send.includes('초안') && send.includes('검토'), '설명(본문) 라인은 유지');
   // 시간은 사라지지 않고 위치만 content(과제투입시간)로 이동
-  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0', '과제투입시간(content) = 과제별 합계(유지)');
+  assert.strictEqual(buildNetcusHoursText(parsed), '[보고서 작성] : 8\n[시스템 점검] : 0\n-----\n합계 : 8', '과제투입시간(content) = 과제별 합계 + 전체 합계');
 });
 test('buildNetcusHoursText: 시간 기록 없는 과제는 제외', () => {
   const parsed = parseNetcusWeek([day('2026-07-06', '[보고서 작성]\n작업')], CATS, { sumTime: true });   // 시간 없음
