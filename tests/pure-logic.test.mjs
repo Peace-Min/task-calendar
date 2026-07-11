@@ -5,6 +5,28 @@ import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
 
 const src = loadAppSource();
 
+// ── defaultState(): 신규 설치 시 실제 사용자 데이터로 오해하지 않는 명시적 샘플 ─────
+const defaultState = new Function(
+  "const ymd = d => d.toISOString().slice(0, 10);\n" +
+  "let seq = 0; const uid = prefix => prefix + '-' + (++seq);\n" +
+  "const nowIso = () => '2026-07-01T00:00:00.000Z';\n" +
+  "const DEFAULT_ROOMS = [];\n" +
+  extractFunction(src, 'defaultState') + '\nreturn defaultState;'
+)();
+
+test('defaultState: 신규 설치 과제·일정·할 일은 모두 샘플임을 제목에서 명시', () => {
+  const initial = defaultState();
+  assert.ok(initial.categories.every(category => category.name.includes('[샘플]')));
+  assert.ok(initial.entries.every(entry => entry.title.includes('[샘플 일정]')));
+  assert.ok(initial.todos.every(todo => todo.text.includes('[샘플 할 일]')));
+});
+
+test('defaultState: 샘플 과제 설명과 일정 메모에 수정·삭제 가능한 예시임을 명시', () => {
+  const initial = defaultState();
+  assert.ok(initial.categories.every(category => /예시/.test(category.desc) && /수정하거나 삭제/.test(category.desc)));
+  assert.ok(initial.entries.every(entry => /예시/.test(entry.memo) && /수정하거나 삭제/.test(entry.memo)));
+});
+
 // ── fmtH(min): 분 → 시간 표시(정수면 정수, 아니면 소수 둘째자리 반올림) ──────────────
 const fmtH = eval('(' + extractFunction(src, 'fmtH') + ')');
 
