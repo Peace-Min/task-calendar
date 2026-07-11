@@ -540,6 +540,8 @@ if (!JSDOM) {
       assert.ok((ew.split('\n' + NB + '가. ').length - 1) >= 2, '카드마다 가.로 번호 리셋');
       assert.ok(!ew.includes('    가. '), '평문 4칸 공백 아님(&nbsp;여야)');
       assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
+      const planwork = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).planwork');
+      assert.strictEqual(planwork, '[에이]\n[비이]', '차주계획에 과제 머리표 자동 생성');
     });
 
     // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실

@@ -33,7 +33,7 @@ namespace TaskCalendarWidget
 
         private sealed class NetcusWeekReq
         {
-            public string Sdate = "", Edate = "", Subject = "", Content = "", Endwork = "";
+            public string Sdate = "", Edate = "", Subject = "", Content = "", Endwork = "", Planwork = "";
         }
 
         // ----- 자격증명 (DPAPI, CurrentUser) -----
@@ -270,8 +270,8 @@ namespace TaskCalendarWidget
             finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
         }
 
-        // 주간보고 — '채우고 열어두기'(자동 제출 안 함). pjm_write.jsp 폼에 기간/제목/과제투입시간/진행사항을 채운 뒤
-        // 창을 띄워 둔다. 차주계획·회의내용 등 보완 후 사용자가 직접 '제출'(Bwrite) — euc-kr은 네이티브 폼이 처리.
+        // 주간보고 — '채우고 열어두기'(자동 제출 안 함). pjm_write.jsp 폼에 기간/제목/과제투입시간/진행사항/차주계획 과제목록을 채운 뒤
+        // 창을 띄워 둔다. 차주계획 내용·회의내용 등을 보완 후 사용자가 직접 '제출'(Bwrite) — euc-kr은 네이티브 폼이 처리.
         private async Task NetcusWeekFill(NetcusWeekReq req)
         {
             string lastAlert = "";
@@ -321,10 +321,10 @@ namespace TaskCalendarWidget
                 if (probe != "true") { NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다 — 로그인 또는 페이지 접근을 확인하세요."); return; }
 
                 NetcusProgress("내용 작성 중…");
-                // sdate/edate는 readonly지만 JS .value 할당은 가능. content(과제투입시간)/endwork(진행사항)는 textarea.
+                // sdate/edate는 readonly지만 JS .value 할당은 가능. content(과제투입시간)/endwork(진행사항)/planwork(차주계획)는 textarea.
                 string fill = "(function(){try{function set(n,v){var e=document.getElementsByName(n)[0];if(e){e.value=v;}}"
                     + $"set('sdate',{J(req.Sdate)});set('edate',{J(req.Edate)});set('subject',{J(req.Subject)});"
-                    + $"set('content',{J(req.Content)});set('endwork',{J(req.Endwork)});"
+                    + $"set('content',{J(req.Content)});set('endwork',{J(req.Endwork)});set('planwork',{J(req.Planwork)});"
                     + "return !!document.getElementsByName('content')[0];}catch(e){return false;}})()";
                 var filled = await cw.ExecuteScriptAsync(fill);
                 if (filled != "true") { NetcusResult(false, "주간보고 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
@@ -346,7 +346,7 @@ namespace TaskCalendarWidget
                 try { Log("netcus(week) Bwrite override: " + await cw.ExecuteScriptAsync(ov)); } catch { }
 
                 try { _w2win?.Activate(); } catch { }
-                NetcusResult(true, "주간보고 작성 폼을 채웠습니다 — 차주계획 등 보완 후 열린 창에서 직접 ‘제출’하세요.");
+                NetcusResult(true, "주간보고 작성 폼을 채웠습니다 — 차주계획 내용 등을 보완 후 열린 창에서 직접 ‘제출’하세요.");
             }
             catch (Exception ex)
             {

@@ -428,7 +428,7 @@ namespace TaskCalendarWidget
                         {
                             Sdate = GetStr(doc, "sdate"), Edate = GetStr(doc, "edate"),
                             Subject = GetStr(doc, "subject"), Content = GetStr(doc, "content"),
-                            Endwork = GetStr(doc, "endwork"),
+                            Endwork = GetStr(doc, "endwork"), Planwork = GetStr(doc, "planwork"),
                         };
                         _ = NetcusWeekFill(wreq);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
                         break;
