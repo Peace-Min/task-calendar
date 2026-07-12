@@ -44,6 +44,24 @@ namespace TaskCalendarWidget
             public bool Ok = true;
         }
 
+        private sealed class NetcusWeeklyListEntry
+        {
+            public int ViewNo { get; set; }
+            public string Subject { get; set; } = "";
+            public string WrittenDate { get; set; } = "";
+        }
+
+        private sealed class NetcusWeeklyListPage
+        {
+            public int Page { get; set; } = 1;
+            public int TotalPages { get; set; } = 1;
+            public int AnchorCount { get; set; }
+            public int GoViewCount { get; set; }
+            public int BodyLength { get; set; }
+            public string Url { get; set; } = "";
+            public List<NetcusWeeklyListEntry> Entries { get; set; } = new();
+        }
+
         // ----- 자격증명 (DPAPI, CurrentUser) -----
         private void NetcusSaveCreds(string id, string pw)
         {
@@ -134,12 +152,26 @@ namespace TaskCalendarWidget
             // (읽기 창을 Show+Activate하면 닫힐 때 최소화돼 있던 다른 창(탐색기 등)이 복원돼 바닥 위젯을 덮는 문제)
             if (_w2 != null && _w2.CoreWebView2 != null) { if (!background) { try { _w2win?.Show(); _w2win?.Activate(); } catch { } } return; }
             _w2win = new Window { Title = "회사 일간보고 전송 (확인용)", Width = 920, Height = 720, WindowStartupLocation = WindowStartupLocation.CenterScreen };
-            if (background) { _w2win.ShowActivated = false; _w2win.WindowState = WindowState.Minimized; }   // 활성화·포그라운드 없이 최소화 생성
+            if (background)
+            {
+                // 최소화/완전한 화면 밖 상태에서는 WebView2 탐색이 중단될 수 있다. 모서리에 1px만 남겨 렌더링을 유지한다.
+                _w2win.ShowActivated = false;
+                _w2win.ShowInTaskbar = false;
+                _w2win.WindowStyle = WindowStyle.ToolWindow;
+                _w2win.WindowStartupLocation = WindowStartupLocation.Manual;
+                _w2win.Width = 320;
+                _w2win.Height = 240;
+                _w2win.Left = -319;
+                _w2win.Top = -239;
+            }
             _w2 = new WV.WebView2();
             _w2win.Content = _w2;
             _w2win.Closed += (_, __) => { try { _w2?.Dispose(); } catch { } _w2 = null; _w2win = null; };
+            Log("netcus 보조 WebView 창 생성: " + (background ? "background" : "foreground"));
             _w2win.Show();
+            Log("netcus 보조 WebView 초기화 시작");
             await _w2.EnsureCoreWebView2Async(_cwvEnv);
+            Log("netcus 보조 WebView 초기화 완료");
         }
 
         private static string J(string s) => JsonSerializer.Serialize(s);
@@ -533,10 +565,13 @@ namespace TaskCalendarWidget
                 cw = _w2!.CoreWebView2;
                 cw.ScriptDialogOpening += OnDialog;
 
+                Log("netcus 주간보고 로그인 페이지 이동 시작");
                 await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                Log("netcus 주간보고 로그인 페이지 이동 완료");
                 var loginNav = NavOnce(cw, 15000);
                 await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
                 await loginNav;
+                Log("netcus 주간보고 로그인 제출 완료");
 
                 string still = "true";
                 for (int i = 0; i < 8; i++)
@@ -547,88 +582,126 @@ namespace TaskCalendarWidget
                 }
                 if (still != "false")
                 {
+                    Log("netcus 주간보고 로그인 실패: 비밀번호 입력 필드 잔류");
                     GitReply(reqId, new { ok = false, error = "login", weeks = Array.Empty<object>() });
                     return;
                 }
+                Log("netcus 주간보고 로그인 확인 완료");
 
                 string listUrl = "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id);
-                string candidateScript = @"(function(){
-function val(f,n){var e=f && f.querySelector('[name=""'+n+'""]');return e?String(e.value||''):'';}
-function txt(e){return String((e&&((e.innerText||e.textContent||e.value||e.title)||''))||'').replace(/\s+/g,' ').trim();}
-function make(){
-  var out=[], re=/report_tbl|pjm_(write|view)|주간|보고|20\d{2}[-./]\d{1,2}[-./]\d{1,2}/i;
-  document.querySelectorAll('a[href]').forEach(function(a,i){
-    var h=a.href||'', t=txt(a), oc=a.getAttribute('onclick')||'';
-    if(re.test(h+' '+t+' '+oc)) out.push({kind:'a',idx:i,text:t,href:h});
-  });
-  Array.prototype.forEach.call(document.forms||[],function(f,i){
-    var t=txt(f), pack=[val(f,'table_code'),val(f,'word_code'),val(f,'n_code'),val(f,'s_code'),val(f,'c_code'),t].join(' ');
-    if((val(f,'table_code')==='report_tbl' && (val(f,'word_code')||val(f,'n_code')||val(f,'s_code')||val(f,'c_code'))) || re.test(pack)) out.push({kind:'form',idx:i,text:t});
-  });
-  return out.slice(0,60);
-}
-window.__tcWeeklyCandidates=make;
-return JSON.stringify(make());
+                string listScript = @"(function(){
+function text(e){return String((e&&e.innerText)||'').trim();}
+var page=1,totalPages=1,body=text(document.body),pm=body.match(/\((\d+)\s*\/\s*(\d+)\)\s*페이지/);
+if(pm){page=parseInt(pm[1],10)||1;totalPages=parseInt(pm[2],10)||1;}
+var entries=[];
+var anchors=document.querySelectorAll('a[href]'),goViewCount=0;
+anchors.forEach(function(a){
+  var href=a.getAttribute('href')||'';
+  if(!/go_view/i.test(href))return;
+  goViewCount++;
+  var m=href.match(/\d+/);if(!m)return;
+  var row=a.closest('tr'),cells=row?row.querySelectorAll('td'):[],written=cells.length?text(cells[cells.length-1]):'';
+  entries.push({viewNo:parseInt(m[0],10),subject:text(a),writtenDate:written});
+});
+return JSON.stringify({page:page,totalPages:totalPages,anchorCount:anchors.length,goViewCount:goViewCount,bodyLength:body.length,url:location.href,entries:entries});
 })()";
-                string openScript(int idx) => @"(function(i){
-function val(f,n){var e=f && f.querySelector('[name=""'+n+'""]');return e?String(e.value||''):'';}
-function txt(e){return String((e&&((e.innerText||e.textContent||e.value||e.title)||''))||'').replace(/\s+/g,' ').trim();}
-function make(){
-  var out=[], re=/report_tbl|pjm_(write|view)|주간|보고|20\d{2}[-./]\d{1,2}[-./]\d{1,2}/i;
-  document.querySelectorAll('a[href]').forEach(function(a,j){var h=a.href||'', t=txt(a), oc=a.getAttribute('onclick')||''; if(re.test(h+' '+t+' '+oc)) out.push({kind:'a',idx:j,href:h});});
-  Array.prototype.forEach.call(document.forms||[],function(f,j){var t=txt(f), pack=[val(f,'table_code'),val(f,'word_code'),val(f,'n_code'),val(f,'s_code'),val(f,'c_code'),t].join(' '); if((val(f,'table_code')==='report_tbl' && (val(f,'word_code')||val(f,'n_code')||val(f,'s_code')||val(f,'c_code'))) || re.test(pack)) out.push({kind:'form',idx:j});});
-  return out.slice(0,60);
-}
-try{var c=make()[i]; if(!c)return 'none'; if(c.kind==='a'){location.href=c.href;return 'nav';} var f=document.forms[c.idx]; if(f){f.submit();return 'nav';} return 'none';}catch(e){return 'err '+((e&&e.message)||e);}
-})(" + idx.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
+                string pageScript(int page) => "(function(){try{if(typeof go_list!=='function')return 'missing';go_list('" +
+                    page.ToString(System.Globalization.CultureInfo.InvariantCulture) + "');return 'nav';}catch(e){return 'error';}})()";
+                string viewScript(int viewNo) => "(function(){try{if(typeof go_view!=='function')return 'missing';go_view('" +
+                    viewNo.ToString(System.Globalization.CultureInfo.InvariantCulture) + "');return 'nav';}catch(e){return 'error';}})()";
                 string detailScript = @"(function(){
-function first(sel){return document.querySelector(sel);}
-function v(n){var e=document.getElementsByName(n)[0] || document.getElementById(n); if(!e)return ''; return String(e.value!=null?e.value:(e.innerText||e.textContent||'')).trim();}
-function allDates(s){var out=[], re=/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/g, m; while((m=re.exec(s||''))&&out.length<4){out.push(m[1]+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[3]).slice(-2));} return out;}
-var body=String((document.body&&document.body.innerText)||'');
-var ds=allDates(body);
-var subject=v('subject') || ((first('h1,h2,h3,.subject,.title')||{}).innerText||'') || document.title || '';
+function text(e){return String((e&&e.innerText)||'').trim();}
+function key(s){return String(s||'').replace(/\s+/g,'').replace(/[:：]/g,'').trim();}
+var values={};
+document.querySelectorAll('tr').forEach(function(row){
+  var cells=row.children;if(!cells||cells.length<2)return;
+  var k=key(text(cells[0]));
+  if(/^(기간|제목|진행사항|과제투입시간|미처리사항|차주계획|문제점및건의사항|회의내용)$/.test(k))values[k]=text(cells[1]);
+});
+var period=values['기간']||'',dm=period.match(/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})\s*~\s*(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
+function date(y,m,d){return y+'-'+('0'+m).slice(-2)+'-'+('0'+d).slice(-2);}
 return JSON.stringify({
-  sdate:v('sdate')||ds[0]||'', edate:v('edate')||ds[1]||ds[0]||'', subject:subject.trim(),
-  content:v('content'), endwork:v('endwork'), notendwork:v('notendwork'),
-  planwork:v('planwork'), problem:v('problem'), resultwork:v('resultwork'), ok:true
+  sdate:dm?date(dm[1],dm[2],dm[3]):'',edate:dm?date(dm[4],dm[5],dm[6]):'',subject:values['제목']||'',
+  content:values['과제투입시간']||'',endwork:values['진행사항']||'',notendwork:values['미처리사항']||'',
+  planwork:values['차주계획']||'',problem:values['문제점및건의사항']||'',resultwork:values['회의내용']||'',ok:true
 });
 })()";
 
                 await NavTo(cw, listUrl);
-                string candidatesJson = ScriptText(await cw.ExecuteScriptAsync(candidateScript));
-                int candidateCount = 0;
-                try { using var d = JsonDocument.Parse(candidatesJson); candidateCount = d.RootElement.ValueKind == JsonValueKind.Array ? d.RootElement.GetArrayLength() : 0; }
-                catch { candidateCount = 0; }
-                if (candidateCount == 0)
+                await Task.Delay(500);
+                int totalPages = 1;
+                bool structureFound = false;
+                for (int page = 1; page <= totalPages; page++)
                 {
-                    GitReply(reqId, new { ok = false, error = "unsupported", weeks = Array.Empty<object>() });
-                    return;
-                }
+                    if (page > 1)
+                    {
+                        var nav = NavOnce(cw, 15000);
+                        string paged = ScriptText(await cw.ExecuteScriptAsync(pageScript(page)));
+                        if (paged != "nav") break;
+                        await nav;
+                    }
 
-                for (int i = 0; i < candidateCount; i++)
-                {
+                    NetcusWeeklyListPage? listPage = null;
                     try
                     {
-                        await NavTo(cw, listUrl);
-                        var nav = NavOnce(cw, 10000);
-                        string opened = ScriptText(await cw.ExecuteScriptAsync(openScript(i)));
-                        if (opened != "nav") continue;
-                        await nav;
-                        await Task.Delay(250);
+                        string rawList = ScriptText(await cw.ExecuteScriptAsync(listScript));
+                        listPage = JsonSerializer.Deserialize<NetcusWeeklyListPage>(rawList, new JsonSerializerOptions { PropertyNameCaseInsensitive = true, IncludeFields = true });
+                    }
+                    catch (Exception exList) { Log("netcus 주간보고 목록 파싱 실패(" + page + "): " + exList.Message); }
+                    if (listPage == null || listPage.Entries.Count == 0)
+                    {
+                        if (listPage != null) Log($"netcus 주간보고 목록 진단: url={listPage.Url}, body={listPage.BodyLength}, anchors={listPage.AnchorCount}, goView={listPage.GoViewCount}");
+                        break;
+                    }
+                    structureFound = true;
+                    totalPages = Math.Max(1, Math.Min(listPage.TotalPages, 100));
+                    Log($"netcus 주간보고 목록 {page}/{totalPages}페이지: {listPage.Entries.Count}건");
+
+                    bool pageOlderThanRange = true;
+                    foreach (var entry in listPage.Entries)
+                    {
+                        var written = ParseDate(entry.WrittenDate);
+                        if (written == null || written.Value >= dFrom.AddDays(-14)) pageOlderThanRange = false;
+                        if (written != null && (written.Value < dFrom.AddDays(-14) || written.Value > dTo.AddDays(14))) continue;
+                        try
+                        {
+                            var nav = NavOnce(cw, 15000);
+                            string opened = ScriptText(await cw.ExecuteScriptAsync(viewScript(entry.ViewNo)));
+                            if (opened != "nav") continue;
+                            await nav;
+                            await Task.Delay(100);
                         string rawDetail = ScriptText(await cw.ExecuteScriptAsync(detailScript));
                         if (string.IsNullOrWhiteSpace(rawDetail)) continue;
-                        var row = JsonSerializer.Deserialize<NetcusWeeklyReadRow>(rawDetail, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                            var row = JsonSerializer.Deserialize<NetcusWeeklyReadRow>(rawDetail, new JsonSerializerOptions { PropertyNameCaseInsensitive = true, IncludeFields = true });
                         if (row == null || !HasBody(row) || !Overlaps(row.Sdate, row.Edate, dFrom, dTo)) continue;
                         string key = (row.Sdate + "|" + row.Edate + "|" + row.Subject + "|" + row.Endwork).Trim();
                         if (!seen.Add(key)) continue;
                         weeks.Add(row);
+                        }
+                        catch (Exception exRow) { Log("netcus 주간보고 상세 읽기 실패(" + entry.ViewNo + "): " + exRow.Message); }
+                        finally
+                        {
+                            await NavTo(cw, listUrl);
+                            if (page > 1)
+                            {
+                                var backToPage = NavOnce(cw, 15000);
+                                if (ScriptText(await cw.ExecuteScriptAsync(pageScript(page))) == "nav") await backToPage;
+                            }
+                        }
                     }
-                    catch (Exception exRow) { Log("netcus 주간보고 후보 읽기 실패(" + i + "): " + exRow.Message); }
+                    if (pageOlderThanRange) break;
+                }
+
+                if (!structureFound)
+                {
+                    Log("netcus 주간보고 목록 구조를 찾지 못함");
+                    GitReply(reqId, new { ok = false, error = "unsupported", weeks = Array.Empty<object>() });
+                    return;
                 }
 
                 if (weeks.Count == 0)
                 {
+                    Log("netcus 주간보고 요청 기간 결과 없음");
                     GitReply(reqId, new { ok = false, error = "not-found", weeks = Array.Empty<object>() });
                     return;
                 }
