@@ -218,9 +218,18 @@ namespace TaskCalendarWidget
                 s.IsZoomControlEnabled = false;
 
                 web.CoreWebView2.WebMessageReceived += OnWebMessage;
+                string? bootstrapHtml = null;
+                bool virtualHostFallbackTried = false;
                 web.CoreWebView2.NavigationCompleted += (_, ev) =>
                 {
                     Log($"NavigationCompleted: success={ev.IsSuccess} status={ev.WebErrorStatus}");
+                    if (!ev.IsSuccess && !virtualHostFallbackTried && bootstrapHtml != null)
+                    {
+                        virtualHostFallbackTried = true;
+                        Log("가상 호스트 네비게이션 실패 → NavigateToString 폴백");
+                        web.CoreWebView2.NavigateToString(bootstrapHtml);
+                        return;
+                    }
                     if (!_desktopApplied)
                     {
                         _desktopApplied = true;
@@ -229,6 +238,7 @@ namespace TaskCalendarWidget
                     }
                 };
                 string html = LoadHtml();
+                bootstrapHtml = html;
                 // 가상 호스트(실제 origin)에서 로드 — NavigateToString은 opaque origin이라 localStorage가
                 // 영속되지 않음(설정·테마·근태·패치노트 '봤음' 등 손실). 파일로 써서 https 가상 호스트로 서빙.
                 try
