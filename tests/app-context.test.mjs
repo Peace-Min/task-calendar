@@ -758,7 +758,7 @@ if (!JSDOM) {
 
     // ── netcus 주간 병합 미리보기(Phase2) — 렌더 브랜치(HOST=false=브라우저 경로) ─────
     test('report UI(netcus): 파서·전송·렌더 함수 전역 도달', () => {
-      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusInto', 'renderNetcusPreview']){
+      for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusInto', 'renderNetcusPreview', 'parseNetcusWeeklyReports', 'buildNetcusWeeklyRangeText', 'renderNetcusWeeklyInto', 'renderNetcusWeeklyPreview']){
         assert.strictEqual(ev('typeof ' + fn), 'function', fn + ' 전역이어야 함');
       }
     });
@@ -806,6 +806,29 @@ if (!JSDOM) {
       assert.ok(!sendText.includes('//'), '전송 텍스트에 // 없음');
       assert.ok(sendText.includes('[미분류]'), '[미분류] 블록은 포함');
       assert.ok(sendText.includes('[보고서 작성]'), '과제 블록 포함');
+    });
+
+    test('report UI(netcus weekly range): 브라우저(HOST=false) → 위젯 전용 안내', () => {
+      seed(reportState);
+      ev("reportMode='rangeWeekly'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");
+      assert.ok(/위젯/.test(ev("$('#rptOut').textContent")), '위젯 전용 안내');
+      assert.ok(/주간보고 읽기/.test(ev("$('#rptSummary').textContent")), '상태 라인에 주간보고 읽기 안내');
+      ev("reportMode='daily';");
+    });
+
+    test('report UI(netcus weekly range): 미리보기 카드 + 복사 텍스트는 캐시된 주간보고 기반', () => {
+      seed(reportState);
+      ev("reportMode='rangeWeekly'; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      ev("const p=parseNetcusWeeklyReports([{sdate:'2026-07-06',edate:'2026-07-12',subject:'7월 2주차',content:'[보고서 작성] : 8',endwork:'초안 작성',planwork:'월간보고 준비',ok:true}]); netcusWeeklyMerge={key:'2026-07-01|2026-07-31',parsed:p,at:'10:20'}; renderNetcusWeeklyPreview(p,'10:20');");
+      const out = ev("$('#rptOut').innerHTML");
+      assert.ok(/읽기전용/.test(out), '읽기전용 배너');
+      assert.ok(/7월 2주차/.test(out), '제목 표시');
+      assert.ok(/차주계획/.test(out), '차주계획 섹션 표시');
+      const text = ev("buildReportText()");
+      assert.ok(text.includes('[2026-07-06 ~ 2026-07-12] 7월 2주차'), '복사 텍스트 주차 제목');
+      assert.ok(text.includes('진행사항\n초안 작성'), '복사 텍스트 진행사항');
+      assert.ok(text.includes('차주계획\n월간보고 준비'), '복사 텍스트 차주계획');
+      ev("reportMode='daily'; clearNetcusWeeklyMerge();");
     });
   }
 }

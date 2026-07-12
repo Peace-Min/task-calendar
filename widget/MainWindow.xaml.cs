@@ -439,6 +439,12 @@ namespace TaskCalendarWidget
                         _ = NetcusWeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
                         break;
                     }
+                    case "netcusWeeklyRangeRead":   // 기간·주간 취합 — 작성된 netcus 주간보고를 읽기만 해서 reqId로 회신
+                    {
+                        string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");
+                        _ = NetcusWeeklyRangeRead(reqId, from, to);
+                        break;
+                    }
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
                     case "dragbegin":

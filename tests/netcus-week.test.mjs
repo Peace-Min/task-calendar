@@ -6,6 +6,9 @@ const src = loadAppSource();
 const parseNetcusWeek = eval('(' + extractFunction(src, 'parseNetcusWeek') + ')');
 const buildNetcusSendText = eval('(' + extractFunction(src, 'buildNetcusSendText') + ')');
 const buildNetcusHoursText = eval('(' + extractFunction(src, 'buildNetcusHoursText') + ')');
+const pad = n => String(n).padStart(2, '0');
+const parseNetcusWeeklyReports = eval('(' + extractFunction(src, 'parseNetcusWeeklyReports') + ')');
+const buildNetcusWeeklyRangeText = eval('(' + extractFunction(src, 'buildNetcusWeeklyRangeText') + ')');
 
 const CATS = [{ id: 'c1', name: '보고서 작성' }, { id: 'c2', name: '시스템 점검' }];
 const day = (date, content, ok = true) => ({ date, content, ok });
@@ -214,4 +217,30 @@ test('buildNetcusSendText: 결정론(같은 입력 → 같은 출력) + 빈 pars
   assert.strictEqual(buildNetcusSendText(parsed), buildNetcusSendText(parsed));
   assert.strictEqual(buildNetcusSendText(null), '');
   assert.strictEqual(buildNetcusSendText({}), '');
+});
+
+// ── 기간·주간 취합: 작성 완료된 주간보고 원문 수집 ────────────────────────
+test('parseNetcusWeeklyReports: 주간보고 필드 정규화 + 빈 보고 제외 + 날짜 정렬', () => {
+  const parsed = parseNetcusWeeklyReports([
+    { sdate:'2026.07.13', edate:'2026/07/19', subject:'7월 3주차', content:'[보고서] : 8', endwork:'주간 정리', planwork:'차주 계획', ok:true },
+    { sdate:'2026-07-06', edate:'2026-07-12', subject:'7월 2주차', endwork:'이전 주 작업', ok:true },
+    { sdate:'2026-07-20', edate:'2026-07-26', subject:'빈 주', ok:true },
+  ]);
+  assert.strictEqual(parsed.reports.length, 2, '본문 없는 주간보고는 제외');
+  assert.deepStrictEqual(parsed.reports.map(r => r.sdate), ['2026-07-06', '2026-07-13'], '시작일 기준 정렬');
+  assert.strictEqual(parsed.reports[1].edate, '2026-07-19', '구분자 다른 날짜도 YYYY-MM-DD로 정규화');
+  assert.strictEqual(parsed.stats.weeksRead, 3);
+  assert.strictEqual(parsed.stats.emptyWeeks.length, 1);
+});
+
+test('buildNetcusWeeklyRangeText: 주차별 제목과 주간보고 주요 필드만 복사용 텍스트로 구성', () => {
+  const parsed = parseNetcusWeeklyReports([
+    { sdate:'2026-07-06', edate:'2026-07-12', subject:'7월 2주차', content:'[보고서] : 8', endwork:'초안 작성', planwork:'월간 보고 준비', problem:'없음', ok:true },
+  ]);
+  const out = buildNetcusWeeklyRangeText(parsed);
+  assert.ok(out.includes('[2026-07-06 ~ 2026-07-12] 7월 2주차'), '주차 제목 포함');
+  assert.ok(out.includes('과제투입시간\n[보고서] : 8'), '과제투입시간 포함');
+  assert.ok(out.includes('진행사항\n초안 작성'), '진행사항 포함');
+  assert.ok(out.includes('차주계획\n월간 보고 준비'), '차주계획 포함');
+  assert.ok(!out.includes('undefined'), '빈 필드 문자열 누출 없음');
 });
