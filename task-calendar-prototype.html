@@ -3734,6 +3734,8 @@ function rptSources(){
 }
 // 보고 유형 탭: daily / weekly / rangeDaily / rangeWeekly. 기존 custom 호출은 rangeDaily로 흡수.
 let reportMode = 'daily';
+const REPORT_RANGE_MAX_DAYS = 366;          // 캘린더 기록 기반 기간 취합: 연간 보고서용 1년(윤년 포함)
+const NETCUS_DAILY_RANGE_MAX_DAYS = 31;     // netcus 일간보고 기반 취합: 일자별 페이지 순차 조회라 1개월까지만
 const REPORT_MODE_META = {
   daily: { purpose: '하루 업무를 회사 일간보고로 전송합니다.', origin: '캘린더 기록을 기준으로 작성합니다.', source: 'cal' },
   weekly: { purpose: '선택한 주를 주간보고 작성 폼에 채웁니다.', origin: '캘린더 기록 또는 netcus 일간보고 선택', source: 'choice' },
@@ -3743,6 +3745,10 @@ const REPORT_MODE_META = {
 function normalizeReportMode(mode){ return mode === 'custom' ? 'rangeDaily' : (REPORT_MODE_META[mode] ? mode : 'daily'); }
 function isRangeReportMode(mode){ mode = normalizeReportMode(mode); return mode === 'rangeDaily' || mode === 'rangeWeekly'; }
 function isNetcusDailyReportMode(){ return state.reportSource === 'net' && (reportMode === 'weekly' || reportMode === 'rangeDaily'); }
+function reportRangeDays(from, to){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return 0;
+  return diffDays(from, to) + 1;
+}
 function reportPresetRange(kind){
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
@@ -3778,6 +3784,16 @@ function syncReportSourceUi(){
       x.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
   }
+  syncReportRangePresetUi();
+}
+function syncReportRangePresetUi(){
+  const host = $('#rptRangePresets'); if(!host) return;
+  const netDaily = reportMode === 'rangeDaily' && state.reportSource === 'net';
+  host.querySelectorAll('[data-rperiod]').forEach(b => {
+    const yearPreset = b.dataset.rperiod === 'thisYear' || b.dataset.rperiod === 'lastYear';
+    b.disabled = !!(netDaily && yearPreset);
+    b.title = (netDaily && yearPreset) ? 'netcus 일간보고는 최대 31일까지만 불러올 수 있습니다' : '';
+  });
 }
 function setReportMode(mode){
   mode = normalizeReportMode(mode);
@@ -4042,15 +4058,26 @@ function buildReport(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
+  const rangeDays = reportRangeDays(from, to);
+  if(isRangeReportMode(reportMode) && rangeDays > REPORT_RANGE_MAX_DAYS){
+    sum.textContent = `기간이 너무 깁니다 · 최대 ${REPORT_RANGE_MAX_DAYS}일`;
+    out.innerHTML = `<div class="rpt-guard">기간 취합은 최대 <b>${REPORT_RANGE_MAX_DAYS}일</b>까지 지원합니다.<br>월간·연간 보고서 범위로 나눠 선택하세요.</div>`;
+    return;
+  }
   if(reportMode === 'rangeWeekly'){
     const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';
     const opt = $('#rptOpt'); if(opt) opt.style.display = 'none';
-    sum.textContent = `${from} ~ ${to} · netcus 주간보고 읽기 준비 중`;
-    out.innerHTML = '<div class="rpt-guard">기간·주간 취합은 월간·연간 보고서용 프로토타입입니다.<br>원본은 <b>netcus 주간보고</b>이며, 실제 주간보고 읽기 경로 연결 후 사용할 수 있습니다.</div>';
+    sum.textContent = `${from} ~ ${to} · netcus 주간보고 읽기 연결 예정`;
+    out.innerHTML = '<div class="rpt-guard">기간·주간 취합은 월간·연간 보고서용입니다.<br>작성된 <b>netcus 주간보고</b> 읽기 경로를 확인한 뒤 연결합니다.</div>';
     updateRptSendVis();
     return;
   }
   // 내용 출처 = netcus 일간보고 (주간 작성/기간·일간 취합) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
+  if(_netMode && rangeDays > NETCUS_DAILY_RANGE_MAX_DAYS){
+    sum.textContent = `netcus 일간보고는 최대 ${NETCUS_DAILY_RANGE_MAX_DAYS}일`;
+    out.innerHTML = `<div class="rpt-guard">netcus 일간보고는 날짜별 페이지를 읽어 병합합니다.<br>현재는 최대 <b>${NETCUS_DAILY_RANGE_MAX_DAYS}일</b>까지만 불러올 수 있습니다.</div>`;
+    return;
+  }
   if(_netMode){ renderNetcusInto(from, to); return; }
   const src = rptSources();
   try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
@@ -4150,6 +4177,11 @@ async function renderNetcusInto(from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 netcus 미리보기에서 비움
+  if(reportRangeDays(from, to) > NETCUS_DAILY_RANGE_MAX_DAYS){
+    if(sum) sum.textContent = `netcus 일간보고는 최대 ${NETCUS_DAILY_RANGE_MAX_DAYS}일`;
+    out.innerHTML = `<div class="rpt-guard">netcus 일간보고는 날짜별 페이지를 읽어 병합합니다.<br>현재는 최대 <b>${NETCUS_DAILY_RANGE_MAX_DAYS}일</b>까지만 불러올 수 있습니다.</div>`;
+    return;
+  }
   // 브라우저(비 HOST): netcus 병합은 위젯 전용 — 안내만
   if(!HOST){
     if(sum) sum.textContent = 'netcus 병합은 위젯에서만 됩니다';
@@ -4271,13 +4303,16 @@ function buildReportText(indentUnit){
   reportMode = normalizeReportMode(reportMode);
   // indentUnit: 들여쓰기 문자 — 복사(기본 U+00A0 비분리공백: HTML·평문 붙여넣기 양쪽 안전) / netcus 전송은 '&nbsp;'(euc-kr HTML 렌더에서 collapse 방지). HTML esc 대상 아님.
   indentUnit = indentUnit || ' ';
-  // netcus 일간 출처(주간 작성/기간·일간 취합) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
+  const from = $('#rptFrom').value, to = $('#rptTo').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
+  const rangeDays = reportRangeDays(from, to);
+  if(isRangeReportMode(reportMode) && rangeDays > REPORT_RANGE_MAX_DAYS) return '';
   if(reportMode === 'rangeWeekly') return '';
+  // netcus 일간 출처(주간 작성/기간·일간 취합) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
+  if(isNetcusDailyReportMode() && rangeDays > NETCUS_DAILY_RANGE_MAX_DAYS) return '';
   if(isNetcusDailyReportMode()){
     return (netcusMerge && netcusMerge.parsed) ? buildNetcusSendText(netcusMerge.parsed) : '';
   }
-  const from = $('#rptFrom').value, to = $('#rptTo').value;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
   const { rows } = collectReportData(from, to, rptSources());
   if(!rows.length) return '';
   // 화면 미리보기와 동일(WYSIWYG) — 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 스페이스. 카드마다 번호 리셋.

@@ -386,7 +386,7 @@ namespace TaskCalendarWidget
                     return;
                 }
                 if (dTo < dFrom) { var tmp = dFrom; dFrom = dTo; dTo = tmp; }
-                if ((dTo - dFrom).TotalDays > 31)   // 과도한 범위 방어 — 커스텀 폭주/DateTime.MaxValue 증가 예외 차단
+                if ((dTo - dFrom).TotalDays > 30)   // inclusive 31일까지만 허용 — 커스텀 폭주/DateTime.MaxValue 증가 예외 차단
                 {
                     GitReply(reqId, new { ok = false, error = "range", days = Array.Empty<object>() });
                     return;

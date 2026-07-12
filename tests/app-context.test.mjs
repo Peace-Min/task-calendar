@@ -733,6 +733,29 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#rptOptBtn').getAttribute('aria-expanded')"), 'false');
     });
 
+    test('report UI: 기간·일간 취합 — 캘린더는 1년 허용, netcus 일간은 31일 초과 가드', () => {
+      seed(reportState);
+      ev("state.reportSource='cal'; reportMode='rangeDaily'; $('#rptFrom').value='2026-01-01'; $('#rptTo').value='2026-12-31'; $('#rptFrom').disabled=false; $('#rptTo').disabled=false; buildReport();");
+      assert.ok(!/최대 31일/.test(ev("$('#rptOut').textContent")), '캘린더 연간 범위는 netcus 31일 가드가 아님');
+      assert.ok(/과제/.test(ev("$('#rptSummary').textContent")), '캘린더 연간 범위는 로컬 데이터로 빌드');
+
+      ev("state.reportSource='net'; reportMode='rangeDaily'; $('#rptFrom').value='2026-01-01'; $('#rptTo').value='2026-12-31'; buildReport();");
+      assert.ok(/최대 31일/.test(ev("$('#rptOut').textContent")), 'netcus 일간 연간 범위는 차단');
+      assert.ok(/최대 31일/.test(ev("$('#rptSummary').textContent")), '상태 라인도 31일 제한 안내');
+      ev("state.reportSource='cal'; reportMode='daily';");
+    });
+
+    test('report UI: 기간·일간 netcus 출처에서는 올해/지난해 프리셋 비활성화', () => {
+      seed(reportState);
+      ev("state.reportSource='net'; setReportMode('rangeDaily');");
+      assert.strictEqual(ev("$('[data-rperiod=\"thisYear\"]').disabled"), true, '올해 비활성');
+      assert.strictEqual(ev("$('[data-rperiod=\"lastYear\"]').disabled"), true, '지난해 비활성');
+      assert.strictEqual(ev("$('[data-rperiod=\"thisMonth\"]').disabled"), false, '월간 프리셋은 유지');
+      ev("state.reportSource='cal'; buildReport();");
+      assert.strictEqual(ev("$('[data-rperiod=\"thisYear\"]').disabled"), false, '캘린더 출처는 연간 프리셋 허용');
+      ev("reportMode='daily';");
+    });
+
     // ── netcus 주간 병합 미리보기(Phase2) — 렌더 브랜치(HOST=false=브라우저 경로) ─────
     test('report UI(netcus): 파서·전송·렌더 함수 전역 도달', () => {
       for(const fn of ['parseNetcusWeek', 'buildNetcusSendText', 'renderNetcusInto', 'renderNetcusPreview']){
