@@ -549,6 +549,8 @@ if (!JSDOM) {
       assert.ok((ew.split('\n' + NB + '가. ').length - 1) >= 2, '카드마다 가.로 번호 리셋');
       assert.ok(!ew.includes('    가. '), '평문 4칸 공백 아님(&nbsp;여야)');
       assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
+      const planwork = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).planwork');
+      assert.strictEqual(planwork, '[에이]\n[비이]', '차주계획에 과제 머리표 자동 생성');
     });
 
     test('buildWeeklyFields.content: 일간 과제시간을 주간 합산하고 구분선 아래 전체 합계 표시', () => {

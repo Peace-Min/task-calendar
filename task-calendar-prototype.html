@@ -1995,7 +1995,7 @@ const WidgetPlatform = {
   report: {
     // 위젯 경로는 기존 hpost 인자 구성과 바이트 단위로 동일해야 함(회귀 금지)
     submitDaily(p){ hpost({ cmd: 'netcusSubmit', y: p.date.y, m: p.date.m, d: p.date.d, status: p.fields.status, overtime: p.fields.overtime, content: p.fields.content, dryRun: p.dryRun }); },
-    submitWeekly(p){ hpost({ cmd: 'netcusWeekSubmit', sdate: p.fields.sdate, edate: p.fields.edate, subject: p.fields.subject, content: p.fields.content, endwork: p.fields.endwork }); },
+    submitWeekly(p){ hpost({ cmd: 'netcusWeekSubmit', sdate: p.fields.sdate, edate: p.fields.edate, subject: p.fields.subject, content: p.fields.content, endwork: p.fields.endwork, planwork: p.fields.planwork }); },
   },
 };
 const BrowserPlatform = {
@@ -3782,7 +3782,8 @@ function buildWeeklyFields(from, to, sources){
   const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
   const _pad = '&nbsp;'.repeat(_indent * 2);   // netcus 전송(euc-kr HTML) — 줄 앞 연속 공백이 렌더 시 collapse되는 것 방지
   const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); return _pad + (_mk ? (_mk + ' ') : '') + t; }).join('\n') : '-')).join('\n\n');
-  return { content, endwork, subject: weekSubjectGuess(from) };
+  const planwork = rows.map(r => `[${r.name}]`).join('\n');
+  return { content, endwork, planwork, subject: weekSubjectGuess(from) };
 }
 function weekSubjectGuess(from){
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(from); if(!m) return '';
@@ -3935,6 +3936,12 @@ function buildNetcusHoursText(parsed){
   if(!lines.length) return '';
   grand = Math.round(grand * 100) / 100;
   return lines.concat(['-----', '합계 : ' + grand]).join('\n');
+}
+// netcus 일간 병합 경로의 차주계획(planwork) — 과제 머리표만 제공하고 사용자가 열린 폼에서 계획 내용을 보완한다.
+function buildNetcusPlanText(parsed){
+  parsed = parsed || {};
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  return tasks.map(t => '[' + String(t && t.name != null ? t.name : '') + ']').join('\n');
 }
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
 // reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.
@@ -5251,7 +5258,7 @@ function bind(){
         if(!parsed){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
         const endwork = buildNetcusSendText(parsed);
         if(!endwork.trim()){ toast('보낼 내용이 없습니다', 'warn'); return; }
-        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: buildNetcusHoursText(parsed), endwork } };
+        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: buildNetcusHoursText(parsed), endwork, planwork: buildNetcusPlanText(parsed) } };
         if(Platform.caps.reportAuto){
           const b = $('#btnRptSend'); if(b) b.disabled = true;
           const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
@@ -5262,7 +5269,7 @@ function bind(){
       const wf = buildWeeklyFields(from, to, rptSources());
       if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
-      const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork } };
+      const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork, planwork: wf.planwork } };
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;
         const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
