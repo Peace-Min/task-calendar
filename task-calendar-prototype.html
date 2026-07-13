@@ -568,7 +568,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 #reportModal .rpt-body{display:block}
 /* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) + 세그 아래 상시 설명 */
 .rpt-source{display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:10px}
-.rpt-src-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rpt-src-top{display:flex;flex-direction:column;align-items:stretch;gap:6px}   /* 라벨 위 · 세그 아래 전체폭(3버튼 한 줄) */
 .rpt-src-desc{font-size:var(--fs-micro);color:var(--muted);line-height:1.5}
 .rpt-src-desc .rsd{padding:1px 0}
 .rpt-src-desc .rsd b{font-weight:600;color:var(--muted)}
@@ -576,8 +576,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-source[data-src="cal"] .rsd-cal b,.rpt-source[data-src="net"] .rsd-net b,.rpt-source[data-src="week"] .rsd-week b{color:var(--text)}
 .rpt-source[data-src="cal"] .rsd-net,.rpt-source[data-src="cal"] .rsd-week,.rpt-source[data-src="net"] .rsd-cal,.rpt-source[data-src="net"] .rsd-week,.rpt-source[data-src="week"] .rsd-cal,.rpt-source[data-src="week"] .rsd-net{opacity:.55}
 .rsd-soon{display:inline-block;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:1px;white-space:nowrap}
-.rpt-seg{display:inline-flex;gap:3px;flex-wrap:wrap}
-.rpt-seg-b{border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 10px;background:var(--panel);color:var(--text);cursor:pointer}
+.rpt-seg{display:flex;gap:4px}   /* 전체폭 3등분 — 각 버튼 flex:1로 한 줄 균등 */
+.rpt-seg-b{flex:1 1 0;min-width:0;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 6px;background:var(--panel);color:var(--text);cursor:pointer}
 .rpt-seg-b.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .rpt-seg-b:disabled{opacity:.5;cursor:not-allowed}
 .rpt-seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -1371,8 +1371,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               <span class="rpt-opt-lb">내용 출처</span>
               <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
                 <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
-                <button type="button" class="rpt-seg-b" data-rsrc="net" aria-pressed="false">netcus 일간보고</button>
-                <button type="button" class="rpt-seg-b rpt-seg-week" data-rsrc="week" aria-pressed="false" title="선택 기간의 netcus 주간보고들을 읽어 과제별 진행사항을 병합합니다(월간·연간용, 위젯 전용)">netcus 주간보고</button>
+                <button type="button" class="rpt-seg-b" data-rsrc="net" aria-pressed="false" title="netcus 일간보고">netcus 일간</button>
+                <button type="button" class="rpt-seg-b rpt-seg-week" data-rsrc="week" aria-pressed="false" title="netcus 주간보고 — 선택 기간의 주간보고들을 읽어 과제별 진행사항을 병합(월간·연간용, 위젯 전용)">netcus 주간</button>
               </div>
             </div>
             <div class="rpt-src-desc">
