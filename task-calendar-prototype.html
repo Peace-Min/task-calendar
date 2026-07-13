@@ -569,7 +569,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-source[data-src="cal"] .rsd-cal b,.rpt-source[data-src="net"] .rsd-net b{color:var(--text)}
 .rpt-source[data-src="cal"] .rsd-net,.rpt-source[data-src="net"] .rsd-cal{opacity:.55}
 .rsd-soon{display:inline-block;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:1px;white-space:nowrap}
-.rpt-seg{display:inline-flex;gap:3px}
+.rpt-seg{display:inline-flex;gap:3px;flex-wrap:wrap}
 .rpt-seg-b{border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 10px;background:var(--panel);color:var(--text);cursor:pointer}
 .rpt-seg-b.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .rpt-seg-b:disabled{opacity:.5;cursor:not-allowed}
@@ -1345,9 +1345,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="rpt-body">
         <div class="rpt-rail">
           <div class="rpt-presets" role="tablist" aria-label="보고 유형">
-            <button class="btn sm" data-rmode="daily" role="tab">일간</button>
-            <button class="btn sm" data-rmode="weekly" role="tab">주간</button>
-            <button class="btn sm" data-rmode="custom" role="tab">커스텀 기간</button>
+            <button class="btn sm" data-rmode="daily" role="tab">일간 작성</button>
+            <button class="btn sm" data-rmode="weekly" role="tab">주간 작성</button>
+            <button class="btn sm" data-rmode="custom" role="tab">기간 취합</button>
           </div>
           <div class="rpt-range">
             <input type="date" id="rptFrom"> <span id="rptDateSep" style="color:var(--muted)">~</span> <input type="date" id="rptTo">
@@ -1360,6 +1360,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
                 <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
                 <button type="button" class="rpt-seg-b" data-rsrc="net" aria-pressed="false">netcus 일간보고</button>
+                <button type="button" class="rpt-seg-b rpt-seg-week" data-rsrc="week" aria-pressed="false" disabled title="netcus 주간보고 취합(월간·연간용)은 준비 중입니다 — 위젯 전용, 다음 업데이트 예정">netcus 주간보고<span class="rsd-soon">준비 중</span></button>
               </div>
             </div>
             <div class="rpt-src-desc">
@@ -3737,6 +3738,7 @@ function setReportMode(mode){
     from.removeAttribute('max'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   }
   const sr = $('#rptSourceRow'); if(sr) sr.style.display = (mode === 'daily') ? 'none' : 'flex';   // 내용 출처 = 주간·커스텀만
+  { const _wk = $('#rptSrcSeg [data-rsrc="week"]'); if(_wk) _wk.style.display = (mode === 'custom') ? '' : 'none'; }   // netcus 주간보고(월간·연간용)는 기간 취합에서만
   buildReport();
 }
 // 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
@@ -3753,8 +3755,8 @@ function updateRptSendVis(){
     if(h) h.style.display = 'none';
   } else if(reportMode === 'custom'){
     b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
-    b.title = '커스텀 기간은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
-    if(h){ h.style.display = ''; h.textContent = '커스텀 기간은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
+    b.title = '기간 취합은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
+    if(h){ h.style.display = ''; h.textContent = '기간 취합은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '선택한 날짜의 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
@@ -4910,7 +4912,7 @@ function guideShot(kind, step){
     + call(1, '저장소 연결', 'left:96px;top:10px') + call(2, '불러오기', 'left:152px;top:86px') + call(3, '보고서 반영', 'right:42px;bottom:54px'));
   if(kind === 'report') return base('보고서',
     `<span class="shot-btn">검색</span><span class="shot-btn primary">보고서</span>`,
-    `<div class="shot-modal"><h4>보고서 초안</h4><div class="shot-row"><span class="shot-tab on">일간</span><span class="shot-tab">주간</span><span class="shot-tab">커스텀</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">전송</span><span class="shot-btn primary">복사</span></div></div>`
+    `<div class="shot-modal"><h4>보고서 초안</h4><div class="shot-row"><span class="shot-tab on">일간</span><span class="shot-tab">주간</span><span class="shot-tab">기간</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">전송</span><span class="shot-btn primary">복사</span></div></div>`
     + call(1, '보고서', 'right:34px;top:10px') + call(2, '기간 선택', 'left:126px;top:84px') + call(3, '복사/전송', 'right:70px;bottom:46px'));
   if(kind === 'search') return base('검색',
     `<span class="shot-btn primary">검색</span><span class="shot-btn">과제 관리</span>`,
@@ -4965,7 +4967,7 @@ function renderVisualGuide(){
     ],'실제 커밋 조회는 데스크톱 위젯에서 Git/SVN 실행 파일과 저장소 경로가 정상일 때 동작합니다.'],
     ['report','보고서 작성','등록된 일정, 할 일, 커밋 내역을 기간별 보고서 초안으로 정리합니다.',[
       ['report_1','보고서 버튼을 눌러 보고서 초안 창을 엽니다.'],
-      ['report_2','일간, 주간, 커스텀 기간 중 필요한 범위를 선택합니다.'],
+      ['report_2','일간 작성, 주간 작성, 기간 취합 중 필요한 유형을 선택합니다.'],
       ['report_3','포함 항목을 확인하고 복사 또는 사내 일간보고 전송을 사용합니다.']
     ],'하루 보고서에서는 과제별 시간을 직접 보정할 수 있습니다.']
   ];
@@ -5234,7 +5236,7 @@ function bind(){
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
     const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
-    if(mode === 'custom'){ toast('커스텀 기간은 회사 전송 대상이 아닙니다 — 복사만 가능합니다', 'warn'); return; }
+    if(mode === 'custom'){ toast('기간 취합은 회사 전송 대상이 아닙니다 — 복사만 가능합니다', 'warn'); return; }
     if(mode === 'daily'){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || from !== to){ toast('일간보고는 하루 보고서(예: 오늘)에서만 전송할 수 있습니다', 'warn'); return; }
       const content = buildReportText('&nbsp;');   // 단일일 netcus 전송 — 들여쓰기 &nbsp;(euc-kr HTML collapse 방지)
