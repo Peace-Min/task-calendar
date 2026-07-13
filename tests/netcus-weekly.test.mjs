@@ -192,3 +192,39 @@ test('buildNetcusWeeklyText: 결정론 + 빈 parsed 방어', () => {
   assert.strictEqual(buildNetcusWeeklyText({}), '');
   assert.strictEqual(buildNetcusWeeklyText({ tasks: [] }), '');
 });
+
+// ── 평면 모드(flat=true) — 주차 헤더 없이 과제 아래 전 주 원문 나열 ─────────
+test('buildNetcusWeeklyText(flat): 주차 소제목 제거·원문 무들여쓰기·주 사이 빈 줄', () => {
+  const p = parseNetcusWeekly([WEEK_A, WEEK_B], CATS);
+  const out = buildNetcusWeeklyText(p, true);
+  assert.ok(out.includes('[알파] — 투입 18h'), '과제 헤더+투입시간은 유지');
+  assert.ok(!out.includes('· 7월'), '주차 소제목(· 제목) 없음');
+  assert.ok(!out.includes('(2026-07-06 ~ 2026-07-11)'), '기간 소제목 없음');
+  // 원문 라인은 2칸 접두 없이 그대로(주차별의 "\n  1. 구현"과 대비)
+  assert.ok(out.includes('\n1. 구현\n    - 알파 작업 하나'), '무들여쓰기 원문 보존');
+  assert.ok(!out.includes('\n  1. 구현'), '2칸 접두는 평면에서 없음');
+  // 알파는 두 주 → 주 사이 빈 줄 하나
+  assert.ok(out.includes('- 알파 작업 둘\n\n1. 구현\n    - 알파 추가 작업'), '주 블록 사이 빈 줄 구분');
+});
+
+test('buildNetcusWeeklyText(flat) vs 주차별: 같은 parsed에서 형식만 다름(결정론)', () => {
+  const p = parseNetcusWeekly([WEEK_A, WEEK_B], CATS);
+  const week = buildNetcusWeeklyText(p, false), flat = buildNetcusWeeklyText(p, true);
+  assert.notStrictEqual(week, flat, '두 형식은 다르다');
+  assert.strictEqual(buildNetcusWeeklyText(p, true), buildNetcusWeeklyText(p, true), '평면도 결정론');
+  assert.ok(week.includes('· 7월 둘째주'), '주차별엔 소제목');
+});
+
+// ── 메타(제목/기간) 공백 정리 — netcus 원문 &nbsp; 선두공백 제거 ───────────
+test('parseNetcusWeekly: title/period 선두·중복 공백 정리(본문 들여쓰기는 보존)', () => {
+  const p = parseNetcusWeekly([{
+    title: '  주  제목 ', period: '  2026-07-06 ~ 2026-07-11 ',
+    endwork: '[알파]\n1. 구현\n    - 들여쓴 작업', content: '[알파] : 1',
+  }], CATS);
+  const b = p.tasks[0].blocks[0];
+  assert.strictEqual(b.title, '주 제목', '제목 선두공백 제거+중복 접기');
+  assert.strictEqual(b.period, '2026-07-06 ~ 2026-07-11', '기간 선두공백 제거');
+  assert.deepStrictEqual(b.lines, ['1. 구현', '    - 들여쓴 작업'], '본문 들여쓰기는 보존');
+  const out = buildNetcusWeeklyText(p);
+  assert.ok(out.includes('· 주 제목 (2026-07-06 ~ 2026-07-11)'), '소제목에 여분 공백 없음');
+});

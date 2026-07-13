@@ -560,6 +560,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 /* netcus 주간보고 병합 — 과제 카드 안 주차별 소제목 + 진행사항 라인 */
 .rpt-mirror .rncw-wk{margin:7px 0 2px;font-size:var(--fs-micro);font-weight:600;color:var(--accent-2)}
 .rpt-mirror .rncw-lines{padding-left:13px;white-space:pre-wrap}
+.rpt-mirror .rncw-modeseg{display:inline-flex;gap:2px}
+.rpt-mirror .rncw-mode{border:1px solid var(--line-2);background:var(--panel);color:var(--muted);font:inherit;font-size:var(--fs-micro);padding:2px 8px;border-radius:var(--r-sm);cursor:pointer}
+.rpt-mirror .rncw-mode.on{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent);font-weight:600}
+.rpt-mirror .rncw-mode:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 /* 보고서 모달 재구성 — 레일(핵심 컨트롤) + 미리보기(HERO). 좁은 폭은 스택, 넓은 폭은 2단(아래 @media 900). */
 #reportModal .rpt-body{display:block}
 /* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) + 세그 아래 상시 설명 */
@@ -3994,9 +3998,9 @@ function parseNetcusWeekly(weeks, categories){
     const w = w0 || {};
     const endwork = (w.endwork == null) ? '' : String(w.endwork);
     const content = (w.content == null) ? '' : String(w.content);
-    const title = (w.title == null) ? '' : String(w.title);
-    const period = (w.period == null) ? '' : String(w.period);
-    const regdate = (w.regdate == null) ? '' : String(w.regdate);
+    const title = ((w.title == null) ? '' : String(w.title)).replace(/\s+/g, ' ').trim();     // 메타(제목/기간)만 공백 정리 — 본문(endwork) 들여쓰기는 보존
+    const period = ((w.period == null) ? '' : String(w.period)).replace(/\s+/g, ' ').trim();
+    const regdate = ((w.regdate == null) ? '' : String(w.regdate)).replace(/\s+/g, ' ').trim();
     if(!endwork.trim() && !content.trim()) continue;   // 완전 빈 주 스킵(주 카운트 안 함)
     weekCount++;
 
@@ -4042,7 +4046,7 @@ function parseNetcusWeekly(weeks, categories){
   return { tasks: kept, order, hoursByTask, weekCount };
 }
 // netcus 주간보고 병합 복사/미리보기 텍스트 — 순수·결정론(WYSIWYG). 과제별로 묶고 그 아래 주차별 소제목 + 진행사항.
-function buildNetcusWeeklyText(parsed){
+function buildNetcusWeeklyText(parsed, flat){
   parsed = parsed || {};
   const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
   const out = [];
@@ -4051,11 +4055,17 @@ function buildNetcusWeeklyText(parsed){
     const h = (t && typeof t.hours === 'number') ? t.hours : 0;
     if(h > 0) head += ' — 투입 ' + h + 'h';
     const parts = [head];
-    for(const b of (t.blocks || [])){
-      const bt = String((b && b.title) || ''), bp = String((b && b.period) || ''), br = String((b && b.regdate) || '');
-      let sub = '· ' + (bt && bp ? (bt + ' (' + bp + ')') : (bt || bp || br));
-      parts.push(sub);
-      for(const ln of (b.lines || [])) parts.push('  ' + ln);
+    const blocks = (t.blocks || []);
+    for(let i = 0; i < blocks.length; i++){
+      const b = blocks[i] || {};
+      if(!flat){   // 주차별 — 주차 소제목(· 제목 (기간)) + 원문 라인(2칸 들여쓰기)
+        const bt = String(b.title || ''), bp = String(b.period || ''), br = String(b.regdate || '');
+        parts.push('· ' + (bt && bp ? (bt + ' (' + bp + ')') : (bt || bp || br)));
+        for(const ln of (b.lines || [])) parts.push('  ' + ln);
+      } else {     // 평면 — 주차 헤더 없이 과제 아래 전 주 원문 그대로 나열(주 사이 빈 줄만)
+        if(i > 0) parts.push('');
+        for(const ln of (b.lines || [])) parts.push(ln);
+      }
     }
     out.push(parts.join('\n'));
   }
@@ -4213,6 +4223,8 @@ function ncMergeKey(from, to){ return from + '|' + to; }
 function clearNetcusMerge(){ netcusMerge = { key: '', parsed: null, at: '' }; }
 // 주간보고 범위 병합(Phase2) — 별도 캐시 슬롯(net 일간병합과 독립). key=from|to, 기간 바뀌면 무효화.
 let netcusWeeklyMerge = { key: '', parsed: null, at: '' };
+// 주간보고 병합 표시 형식 — false=주차별(주차 헤더+원문), true=평면(과제 아래 전 주 원문 나열). localStorage 영속.
+let weeklyFlat = (function(){ try{ return localStorage.getItem('tc_weeklyFlat') === '1'; }catch(_){ return false; } })();
 let netcusWeeklyFetching = false;
 function clearNetcusWeeklyMerge(){ netcusWeeklyMerge = { key: '', parsed: null, at: '' }; }
 function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
@@ -4387,16 +4399,29 @@ function renderNetcusWeeklyPreview(parsed, at){
   if(!out) return;
   let html = '<div class="rnc-banner"><span class="rnc-banner-t">📖 읽기전용 · netcus 주간보고를 과제별로 병합'
     + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
+    + '<span class="rncw-modeseg" role="group" aria-label="표시 형식">'
+    + '<button type="button" class="rncw-mode' + (weeklyFlat ? '' : ' on') + '" data-wmode="week" aria-pressed="' + (weeklyFlat ? 'false' : 'true') + '" title="주차별 소제목 + 진행사항">주차별</button>'
+    + '<button type="button" class="rncw-mode' + (weeklyFlat ? ' on' : '') + '" data-wmode="flat" aria-pressed="' + (weeklyFlat ? 'true' : 'false') + '" title="주차 헤더 없이 전 주 원문 나열">평면</button>'
+    + '</span>'
     + '<button type="button" class="rnc-refresh" id="rncwRefresh" title="다시 읽기">🔄 새로고침</button></div>';
   for(const t of parsed.tasks){
     html += '<div class="rcard rnc-card">';
     const hHint = (t.hours > 0) ? '<span class="rnc-hhint">투입 ' + esc(String(t.hours)) + 'h</span>' : '';
     html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
-    for(const b of (t.blocks || [])){
-      const label = (b.title && b.period) ? (b.title + ' (' + b.period + ')') : (b.title || b.period || b.regdate || '');
-      html += '<div class="rncw-wk">· ' + esc(label) + '</div>';
-      if(b.lines && b.lines.length){
-        html += '<div class="rcard-tasks rncw-lines">' + b.lines.map(l => esc(l)).join('<br>') + '</div>';
+    const blocks = (t.blocks || []);
+    if(!weeklyFlat){   // 주차별 — 주차 소제목 + 진행사항
+      for(const b of blocks){
+        const label = (b.title && b.period) ? (b.title + ' (' + b.period + ')') : (b.title || b.period || b.regdate || '');
+        html += '<div class="rncw-wk">· ' + esc(label) + '</div>';
+        if(b.lines && b.lines.length){
+          html += '<div class="rcard-tasks rncw-lines">' + b.lines.map(l => esc(l)).join('<br>') + '</div>';
+        }
+      }
+    } else {           // 평면 — 주차 헤더 없이 전 주 원문(주 사이 빈 줄)
+      const allLines = [];
+      for(let i = 0; i < blocks.length; i++){ if(i > 0) allLines.push(''); for(const l of (blocks[i].lines || [])) allLines.push(l); }
+      if(allLines.length){
+        html += '<div class="rcard-tasks rncw-lines">' + allLines.map(l => esc(l)).join('<br>') + '</div>';
       }
     }
     html += '</div>';
@@ -4406,6 +4431,12 @@ function renderNetcusWeeklyPreview(parsed, at){
   }
   out.innerHTML = html;
   const rb = $('#rncwRefresh'); if(rb) rb.addEventListener('click', () => { const f = $('#rptFrom').value, tt = $('#rptTo').value; clearNetcusWeeklyMerge(); renderNetcusWeeklyInto(f, tt); });
+  out.querySelectorAll('[data-wmode]').forEach(b => b.addEventListener('click', () => {   // 주차별↔평면 — 미리보기 재렌더(복사도 이 형식 따름)
+    const flat = b.dataset.wmode === 'flat';
+    if(flat === weeklyFlat) return;
+    weeklyFlat = flat; try{ localStorage.setItem('tc_weeklyFlat', flat ? '1' : '0'); }catch(_){}
+    renderNetcusWeeklyPreview(parsed, at);
+  }));
   if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개 · ' + (parsed.weekCount || 0) + '주 병합';
 }
 function openReport(){
@@ -4429,7 +4460,7 @@ function buildReportText(indentUnit){
   indentUnit = indentUnit || ' ';
   // netcus 출처(주간/커스텀) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
   if(state.reportSource === 'week' && reportMode !== 'daily'){
-    return (netcusWeeklyMerge && netcusWeeklyMerge.parsed) ? buildNetcusWeeklyText(netcusWeeklyMerge.parsed) : '';
+    return (netcusWeeklyMerge && netcusWeeklyMerge.parsed) ? buildNetcusWeeklyText(netcusWeeklyMerge.parsed, weeklyFlat) : '';
   }
   if(state.reportSource === 'net' && reportMode !== 'daily'){
     return (netcusMerge && netcusMerge.parsed) ? buildNetcusSendText(netcusMerge.parsed) : '';
