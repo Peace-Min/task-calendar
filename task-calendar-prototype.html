@@ -557,6 +557,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rnc-uline{margin:1px 0}
 .rpt-mirror .rnc-why{color:var(--muted);opacity:.7;font-size:var(--fs-micro)}
 .rpt-mirror .rnc-guard .rnc-guard-act{margin-top:10px}
+/* netcus 주간보고 병합 — 과제 카드 안 주차별 소제목 + 진행사항 라인 */
+.rpt-mirror .rncw-wk{margin:7px 0 2px;font-size:var(--fs-micro);font-weight:600;color:var(--accent-2)}
+.rpt-mirror .rncw-lines{padding-left:13px;white-space:pre-wrap}
 /* 보고서 모달 재구성 — 레일(핵심 컨트롤) + 미리보기(HERO). 좁은 폭은 스택, 넓은 폭은 2단(아래 @media 900). */
 #reportModal .rpt-body{display:block}
 /* 내용 출처 세그먼트(주간·커스텀만 표시 — JS 토글) + 세그 아래 상시 설명 */
@@ -566,8 +569,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-src-desc .rsd{padding:1px 0}
 .rpt-src-desc .rsd b{font-weight:600;color:var(--muted)}
 /* 활성 출처 = 진한 제목, 비활성 = 흐리게(어느 쪽으로 만들지 한눈에) */
-.rpt-source[data-src="cal"] .rsd-cal b,.rpt-source[data-src="net"] .rsd-net b{color:var(--text)}
-.rpt-source[data-src="cal"] .rsd-net,.rpt-source[data-src="net"] .rsd-cal{opacity:.55}
+.rpt-source[data-src="cal"] .rsd-cal b,.rpt-source[data-src="net"] .rsd-net b,.rpt-source[data-src="week"] .rsd-week b{color:var(--text)}
+.rpt-source[data-src="cal"] .rsd-net,.rpt-source[data-src="cal"] .rsd-week,.rpt-source[data-src="net"] .rsd-cal,.rpt-source[data-src="net"] .rsd-week,.rpt-source[data-src="week"] .rsd-cal,.rpt-source[data-src="week"] .rsd-net{opacity:.55}
 .rsd-soon{display:inline-block;font-size:9px;font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:1px;white-space:nowrap}
 .rpt-seg{display:inline-flex;gap:3px;flex-wrap:wrap}
 .rpt-seg-b{border:1px solid var(--line-2);border-radius:var(--r-sm);font-size:var(--fs-meta);font-family:inherit;padding:5px 10px;background:var(--panel);color:var(--text);cursor:pointer}
@@ -1365,12 +1368,13 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               <div class="rpt-seg" id="rptSrcSeg" role="group" aria-label="내용 출처">
                 <button type="button" class="rpt-seg-b active" data-rsrc="cal" aria-pressed="true">캘린더 기록</button>
                 <button type="button" class="rpt-seg-b" data-rsrc="net" aria-pressed="false">netcus 일간보고</button>
-                <button type="button" class="rpt-seg-b rpt-seg-week" data-rsrc="week" aria-pressed="false" disabled title="netcus 주간보고 취합(월간·연간용)은 준비 중입니다 — 위젯 전용, 다음 업데이트 예정">netcus 주간보고<span class="rsd-soon">준비 중</span></button>
+                <button type="button" class="rpt-seg-b rpt-seg-week" data-rsrc="week" aria-pressed="false" title="선택 기간의 netcus 주간보고들을 읽어 과제별 진행사항을 병합합니다(월간·연간용, 위젯 전용)">netcus 주간보고</button>
               </div>
             </div>
             <div class="rpt-src-desc">
               <div class="rsd rsd-cal"><b>캘린더 기록</b> — 이 앱에 정리한 일정·할 일·커밋으로 주간보고를 만듭니다.</div>
               <div class="rsd rsd-net"><b>netcus 일간보고</b> — netcus에 올린 그 주 일간보고를 합쳐 만듭니다.</div>
+              <div class="rsd rsd-week"><b>netcus 주간보고</b> — 선택 기간의 주간보고들을 읽어 과제별 진행사항을 병합합니다(월간·연간용).</div>
             </div>
           </div>
           <div class="rpt-opt" id="rptOpt">
@@ -3956,6 +3960,107 @@ function buildNetcusPlanText(parsed){
   const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
   return tasks.map(t => '[' + String(t && t.name != null ? t.name : '') + ']').join('\n');
 }
+// ── netcus 주간보고 범위 병합 파서(Phase2) — 순수 함수(전역·DOM 무의존 → Layer1 테스트 대상) ──
+// weeks=[{regdate,title,period,endwork,content,plan}], categories=[{id,name}](선택).
+// 각 주간보고의 endwork(진행사항)를 회사양식 [과제] 머리표로 블록화(들여쓰기된 [..]는 본문)하여
+// 같은 과제명으로 주간 병합한다. content(과제투입시간 [과제]:숫자)를 과제별 총합으로 누적('합계' 제외).
+// 반환: 미리보기(renderNetcusWeeklyPreview)·복사(buildNetcusWeeklyText)가 공유하는 순수 데이터.
+function parseNetcusWeekly(weeks, categories){
+  const cats = Array.isArray(categories) ? categories : [];
+  const rows = Array.isArray(weeks) ? weeks : [];
+  // 이름 정규화 — NFC + 공백 전부 제거(카테고리/과제 매칭 키). 표기 흔들림 병합(parseNetcusWeek와 동일 규칙).
+  const norm = s => String(s == null ? '' : s).normalize('NFC').replace(/\s+/g, '');
+  const reHead = /^\[\s*(.+?)\s*\]$/;                                   // 진행사항 과제 헤더 — 줄 전체가 대괄호
+  const reHours = /^\s*\[\s*(.+?)\s*\]\s*[:：]\s*(\d+(?:\.\d+)?)/;        // 과제투입시간 — [과제] : 숫자
+
+  const catByNorm = {};
+  for(const c of cats){ if(!c) continue; const nn = norm(c.name); if(nn && !Object.prototype.hasOwnProperty.call(catByNorm, nn)) catByNorm[nn] = { id: c.id != null ? c.id : null, name: c.name }; }
+
+  const tasks = [];            // first-seen 순서
+  const byNorm = {};           // norm → task
+  const hoursByNorm = {};      // norm → { name, sum }
+  let weekCount = 0;
+
+  const getTask = (rawName) => {
+    const key = norm(rawName);
+    if(Object.prototype.hasOwnProperty.call(byNorm, key)) return byNorm[key];
+    const hit = Object.prototype.hasOwnProperty.call(catByNorm, key) ? catByNorm[key] : null;
+    const t = { name: rawName, norm: key, catId: hit ? hit.id : null, matched: !!hit, hours: 0, blocks: [] };
+    tasks.push(t); byNorm[key] = t;
+    return t;
+  };
+
+  for(const w0 of rows){
+    const w = w0 || {};
+    const endwork = (w.endwork == null) ? '' : String(w.endwork);
+    const content = (w.content == null) ? '' : String(w.content);
+    const title = (w.title == null) ? '' : String(w.title);
+    const period = (w.period == null) ? '' : String(w.period);
+    const regdate = (w.regdate == null) ? '' : String(w.regdate);
+    if(!endwork.trim() && !content.trim()) continue;   // 완전 빈 주 스킵(주 카운트 안 함)
+    weekCount++;
+
+    // 과제투입시간 → 과제별 주간 시간 누적(과제별 총합). '합계'·구분선은 대괄호 없어 자연 제외.
+    for(const rawLine of content.split(/\r\n|\r|\n/)){
+      const mh = reHours.exec(rawLine);
+      if(!mh) continue;
+      const nm = mh[1].trim(); if(!nm || norm(nm) === '합계') continue;
+      const v = parseFloat(mh[2]); if(isNaN(v)) continue;
+      const k = norm(nm);
+      if(!Object.prototype.hasOwnProperty.call(hoursByNorm, k)) hoursByNorm[k] = { name: nm, sum: 0 };
+      hoursByNorm[k].sum += v;
+    }
+
+    // 진행사항 → 과제 블록화(그 주의 (제목/기간 + 라인들))
+    const lines = endwork.split(/\r\n|\r|\n/);
+    let cur = null, curLines = null;
+    const flush = () => {
+      if(cur && curLines){
+        const body = curLines.filter(l => { const s = l.trim(); return s !== '' && s !== '-'; });   // 빈줄·'-'만 제거
+        if(body.length) cur.blocks.push({ title, period, regdate, lines: body });   // 그 주 비면 블록 안 만듦(스킵)
+      }
+      curLines = null;
+    };
+    for(const rawLine of lines){
+      const trimmed = rawLine.trim();
+      if(trimmed === ''){ if(curLines) curLines.push(''); continue; }
+      const lead = rawLine.length - rawLine.replace(/^\s+/, '').length;   // 선두 공백(브라우저 &nbsp;=U+00A0도 \s에 포함)
+      const mh = reHead.exec(trimmed);
+      const isHead = !!mh && (lead === 0 || !cur);   // 컬럼0 [과제]=헤더 / 첫 헤더는 관대(들여쓰기 [..] 오인 방지)
+      if(isHead){ flush(); cur = getTask(mh[1].trim()); curLines = []; continue; }
+      if(!cur) continue;   // 헤더 이전 내용(주간엔 드묾) — 무시
+      curLines.push(rawLine.replace(/\s+$/, ''));   // 원문(들여쓰기 보존), 우측 공백만 제거
+    }
+    flush();
+  }
+
+  for(const t of tasks){ const h = hoursByNorm[t.norm]; t.hours = h ? Math.round(h.sum * 100) / 100 : 0; }   // 과제별 시간 총합 부착
+  const kept = tasks.filter(t => t.blocks.length > 0);   // 전 주가 빈('-') 과제는 생략
+  const order = kept.map(t => t.name);
+  const hoursByTask = {};
+  for(const t of kept) hoursByTask[t.name] = t.hours;
+  return { tasks: kept, order, hoursByTask, weekCount };
+}
+// netcus 주간보고 병합 복사/미리보기 텍스트 — 순수·결정론(WYSIWYG). 과제별로 묶고 그 아래 주차별 소제목 + 진행사항.
+function buildNetcusWeeklyText(parsed){
+  parsed = parsed || {};
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [];
+  const out = [];
+  for(const t of tasks){
+    let head = '[' + String(t && t.name != null ? t.name : '') + ']';
+    const h = (t && typeof t.hours === 'number') ? t.hours : 0;
+    if(h > 0) head += ' — 투입 ' + h + 'h';
+    const parts = [head];
+    for(const b of (t.blocks || [])){
+      const bt = String((b && b.title) || ''), bp = String((b && b.period) || ''), br = String((b && b.regdate) || '');
+      let sub = '· ' + (bt && bp ? (bt + ' (' + bp + ')') : (bt || bp || br));
+      parts.push(sub);
+      for(const ln of (b.lines || [])) parts.push('  ' + ln);
+    }
+    out.push(parts.join('\n'));
+  }
+  return out.join('\n\n');
+}
 // 보고서 머리기호(index marker) — 표시+복사 전용. 순수 헬퍼(테스트 대상).
 // reportMarkerSpec(): state에서 유효 스펙 해석(custom 우선, 아니면 프리셋 테이블). state 의존.
 function reportMarkerSpec(){
@@ -4006,13 +4111,14 @@ function buildReport(){
   const out = $('#rptOut'), sum = $('#rptSummary');
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
-  const _netMode = (state.reportSource === 'net' && reportMode !== 'daily');
+  const _isNet = (state.reportSource === 'net'), _isWeek = (state.reportSource === 'week');
+  const _netMode = ((_isNet || _isWeek) && reportMode !== 'daily');   // net(일간병합)·week(주간병합) 둘 다 캘린더 렌더 대신 netcus 미리보기
   { const _opt = $('#rptOpt'); if(_opt) _opt.style.display = _netMode ? 'none' : ''; }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){
     sum.textContent = '기간을 선택하세요 (시작 ≤ 종료)'; out.innerHTML = ''; return;
   }
-  // 내용 출처 = netcus 일간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
-  if(_netMode){ renderNetcusInto(from, to); return; }
+  // 내용 출처 = netcus 일간보고/주간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
+  if(_netMode){ if(_isWeek) renderNetcusWeeklyInto(from, to); else renderNetcusInto(from, to); return; }
   const src = rptSources();
   try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
   { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
@@ -4105,6 +4211,10 @@ let netcusMerge = { key: '', parsed: null, at: '' };
 let netcusFetching = false;   // 병합 요청 in-flight 가드 — 호스트 단일 _w2 동시 사용 레이스 방지
 function ncMergeKey(from, to){ return from + '|' + to; }
 function clearNetcusMerge(){ netcusMerge = { key: '', parsed: null, at: '' }; }
+// 주간보고 범위 병합(Phase2) — 별도 캐시 슬롯(net 일간병합과 독립). key=from|to, 기간 바뀌면 무효화.
+let netcusWeeklyMerge = { key: '', parsed: null, at: '' };
+let netcusWeeklyFetching = false;
+function clearNetcusWeeklyMerge(){ netcusWeeklyMerge = { key: '', parsed: null, at: '' }; }
 function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 // #rptOut에 netcus 병합 미리보기를 렌더(필요 시 호스트에서 그 기간 일간보고를 읽어옴).
 async function renderNetcusInto(from, to){
@@ -4215,8 +4325,91 @@ function renderNetcusPreview(parsed, at){
   }
   if(sum) sum.textContent = parts.join(' · ');
 }
+// ===== netcus 주간보고 범위 → 과제별 병합(Phase2) — 위젯(HOST) 전용, 읽기전용 미리보기 =====
+async function renderNetcusWeeklyInto(from, to){
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(!out) return;
+  const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯은 netcus 미리보기에서 비움
+  if(!HOST){
+    if(sum) sum.textContent = 'netcus 주간보고 병합은 위젯에서만 됩니다';
+    out.innerHTML = '<div class="rpt-guard">netcus 주간보고 병합은 <b>데스크톱 위젯</b>에서만 동작합니다.<br>브라우저에서는 <b>캘린더 기록</b> 출처로 작성하세요.</div>';
+    return;
+  }
+  const key = ncMergeKey(from, to);
+  if(netcusWeeklyMerge.key === key && netcusWeeklyMerge.parsed){ renderNetcusWeeklyPreview(netcusWeeklyMerge.parsed, netcusWeeklyMerge.at); return; }   // 캐시 사용
+  if(netcusWeeklyFetching) return;   // 진행 중 → 중복 차단(단일 _w2 레이스 방지)
+  if(sum) sum.textContent = '';
+  out.innerHTML = '<div class="rnc-loading">' + ICON.spinner + ' <span>netcus에서 그 기간 주간보고 읽는 중… (여러 건 조회 — 시간이 걸립니다)</span></div>';
+  netcusWeeklyFetching = true;
+  let res;
+  try{ res = await hostRequest('netcusWeeklyRangeRead', { from, to }, 180000); }   // 조회 다건 — 넉넉한 타임아웃
+  finally{ netcusWeeklyFetching = false; }
+  // 대기 중 기간/출처가 바뀌었으면 이 결과 폐기 — 현재도 week면 최신 기간으로 재요청(직렬화)
+  const curFrom = $('#rptFrom').value, curTo = $('#rptTo').value;
+  if(curFrom !== from || curTo !== to || state.reportSource !== 'week'){
+    if(state.reportSource === 'week' && reportMode !== 'daily' && /^\d{4}-\d{2}-\d{2}$/.test(curFrom) && /^\d{4}-\d{2}-\d{2}$/.test(curTo) && curFrom <= curTo) renderNetcusWeeklyInto(curFrom, curTo);
+    return;
+  }
+  if(!res || res.ok !== true){ renderNetcusWeeklyError((res && res.error) || 'read', from, to); return; }
+  const parsed = parseNetcusWeekly(res.weeks || [], state.categories);
+  const at = ncNow();
+  netcusWeeklyMerge = { key, parsed, at };   // 슬롯 갱신(직전 기간 캐시 교체)
+  renderNetcusWeeklyPreview(parsed, at);
+}
+function renderNetcusWeeklyError(err, from, to){
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(sum) sum.textContent = '';
+  if(!out) return;
+  const toSettings = () => { closeModal('#reportModal'); openSettings(); setTimeout(() => { const el = $('#ncId'); if(el){ try{ el.focus(); }catch(_){} } }, 80); };
+  if(err === 'no-creds'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
+      + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncwToSettings">설정에서 저장 →</button></div></div>';
+    const b = $('#rncwToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'login'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncwToSettings">설정 열기 →</button></div></div>';
+    const b = $('#rncwToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'busy'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 이미 netcus에서 불러오는 중입니다 — 잠시 후 다시 시도하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncwRetry">🔄 다시 시도</button></div></div>';
+    const b = $('#rncwRetry'); if(b) b.addEventListener('click', () => { renderNetcusWeeklyInto(from, to); });
+  } else if(err === 'range'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 기간이 너무 깁니다 — 주간보고 병합은 최대 약 400일까지 지원합니다.</div>';
+  } else {
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 읽기에 실패했습니다.'
+      + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncwRetry">🔄 다시 시도</button></div></div>';
+    const b = $('#rncwRetry'); if(b) b.addEventListener('click', () => { clearNetcusWeeklyMerge(); renderNetcusWeeklyInto(from, to); });
+  }
+}
+// 읽기전용 미리보기 — 과제별로 묶고 그 아래 주차별 소제목(· 제목 (기간)) + 진행사항 라인.
+function renderNetcusWeeklyPreview(parsed, at){
+  const out = $('#rptOut'), sum = $('#rptSummary');
+  if(!out) return;
+  let html = '<div class="rnc-banner"><span class="rnc-banner-t">📖 읽기전용 · netcus 주간보고를 과제별로 병합'
+    + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
+    + '<button type="button" class="rnc-refresh" id="rncwRefresh" title="다시 읽기">🔄 새로고침</button></div>';
+  for(const t of parsed.tasks){
+    html += '<div class="rcard rnc-card">';
+    const hHint = (t.hours > 0) ? '<span class="rnc-hhint">투입 ' + esc(String(t.hours)) + 'h</span>' : '';
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
+    for(const b of (t.blocks || [])){
+      const label = (b.title && b.period) ? (b.title + ' (' + b.period + ')') : (b.title || b.period || b.regdate || '');
+      html += '<div class="rncw-wk">· ' + esc(label) + '</div>';
+      if(b.lines && b.lines.length){
+        html += '<div class="rcard-tasks rncw-lines">' + b.lines.map(l => esc(l)).join('<br>') + '</div>';
+      }
+    }
+    html += '</div>';
+  }
+  if(!parsed.tasks.length){
+    html += '<div class="rpt-guard">그 기간 netcus 주간보고에서 과제별로 가져올 내용이 없습니다.</div>';
+  }
+  out.innerHTML = html;
+  const rb = $('#rncwRefresh'); if(rb) rb.addEventListener('click', () => { const f = $('#rptFrom').value, tt = $('#rptTo').value; clearNetcusWeeklyMerge(); renderNetcusWeeklyInto(f, tt); });
+  if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개 · ' + (parsed.weekCount || 0) + '주 병합';
+}
 function openReport(){
-  clearNetcusMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션 한 주만 보유)
+  clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
   // 직전 소스 선택 복원(기본 전체 ON)
   try{ const s = JSON.parse(localStorage.getItem('tc_rptSources') || 'null');
     if(s){ $('#rptSrcEvent').checked = s.event !== false; $('#rptSrcTodo').checked = s.todo !== false; $('#rptSrcGit').checked = s.git !== false; } }catch(_){}
@@ -4225,7 +4418,7 @@ function openReport(){
   // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
   const _opt = $('#rptOpt'); if(_opt) _opt.classList.remove('open');
   const _ob = $('#rptOptBtn'); if(_ob) _ob.setAttribute('aria-expanded', 'false');
-  const _src = (state.reportSource === 'net') ? 'net' : 'cal';
+  const _src = (state.reportSource === 'net' || state.reportSource === 'week') ? state.reportSource : 'cal';   // week도 방어적으로 반영
   const _sr = $('#rptSourceRow'); if(_sr) _sr.setAttribute('data-src', _src);   // 설명 강조 연동
   const _seg = $('#rptSrcSeg'); if(_seg) _seg.querySelectorAll('[data-rsrc]').forEach(x => {
     const on = x.dataset.rsrc === _src && !x.disabled; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
@@ -4235,6 +4428,9 @@ function buildReportText(indentUnit){
   // indentUnit: 들여쓰기 문자 — 복사(기본 U+00A0 비분리공백: HTML·평문 붙여넣기 양쪽 안전) / netcus 전송은 '&nbsp;'(euc-kr HTML 렌더에서 collapse 방지). HTML esc 대상 아님.
   indentUnit = indentUnit || ' ';
   // netcus 출처(주간/커스텀) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
+  if(state.reportSource === 'week' && reportMode !== 'daily'){
+    return (netcusWeeklyMerge && netcusWeeklyMerge.parsed) ? buildNetcusWeeklyText(netcusWeeklyMerge.parsed) : '';
+  }
   if(state.reportSource === 'net' && reportMode !== 'daily'){
     return (netcusMerge && netcusMerge.parsed) ? buildNetcusSendText(netcusMerge.parsed) : '';
   }
@@ -5577,7 +5773,7 @@ function bind(){
       const b = ev.target.closest('[data-rsrc]'); if(!b || b.disabled) return;
       if(state.reportSource === b.dataset.rsrc) return;   // 변화 없으면 무시
       state.reportSource = b.dataset.rsrc;
-      if(state.reportSource === 'cal') clearNetcusMerge();   // cal로 전환 시 netcus 캐시 비움(한 주만 보유)
+      if(state.reportSource === 'cal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }   // cal로 전환 시 netcus 캐시 비움
       const _sr = $('#rptSourceRow'); if(_sr) _sr.setAttribute('data-src', b.dataset.rsrc);   // 설명 강조 연동
       _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
       buildReport();   // 출처 전환 → 미리보기 재빌드(net=병합 미리보기 / cal=캘린더 카드)

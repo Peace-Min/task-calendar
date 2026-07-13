@@ -465,6 +465,227 @@ namespace TaskCalendarWidget
             }
         }
 
+        // 주간보고 범위 읽기(Phase2) — from~to에 걸치는 netcus '주간보고'들을 읽기만 해서 웹으로 회신(제출/수정 없음).
+        // 흐름: 로그인 → 게시판 목록(pjm.jsp) 페이지 순회 → 각 행 {viewNo,regDate,title} 추출 →
+        //   작성일 사전필터(from-7 ~ to+7) → 후보 조회(pjm_view.jsp) 열어 라벨셀 innerText 추출 → 기간 겹침 확정 → weeks 누적.
+        // 파싱·과제별 병합은 전부 웹(JS parseNetcusWeekly)이 담당. 읽기 창은 최소화하고 끝나면 닫는다.
+        // 회신 계약: { ok:bool, error:string, weeks:[{ regdate, title, period, endwork, content, plan }] }
+        //   error: ""(정상)/"busy"/"no-creds"/"login"/"read"/"range".
+        // 크롤 재현: go_list(loc)=pjm.jsp?list=go&start=loc / go_view(loc)=pjm_view.jsp?start=1&view_no=loc (캡처 그대로).
+        //   레거시 <table> 내부 빈 <form>(필드가 형제 노드) 이슈 회피 위해 document.form 대신 동적 POST 폼으로 hidden 필드
+        //   (word_code/n_code/s_code/c_code/table_code=report_tbl/id)를 실어 재현한다(기존 NetcusWeekFill와 동일 패턴).
+        private async Task NetcusWeeklyRangeRead(string reqId, string from, string to)
+        {
+            if (_ncMergeBusy) { GitReply(reqId, new { ok = false, error = "busy", weeks = Array.Empty<object>() }); return; }   // 단일 _w2 레이스 방지(주간병합과 공유 가드)
+            _ncMergeBusy = true;
+            var weeks = new List<object>();
+            CoreWebView2? cw = null;
+            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(weekly) alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { GitReply(reqId, new { ok = false, error = "no-creds", weeks = Array.Empty<object>() }); return; }
+
+                if (!NcDate(from, out var dFrom) || !NcDate(to, out var dTo)) { GitReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() }); return; }
+                if (dTo < dFrom) { var tmp = dFrom; dFrom = dTo; dTo = tmp; }
+                if ((dTo - dFrom).TotalDays > 400) { GitReply(reqId, new { ok = false, error = "range", weeks = Array.Empty<object>() }); return; }   // 일간(31일)과 달리 넓게, 그러나 폭주 방지
+                DateTime winLo = dFrom.AddDays(-7), winHi = dTo.AddDays(7);   // 작성일 사전필터 창(주간보고 등록일은 기간 끝 근처)
+
+                Log($"netcus 주간범위 읽기: {from} ~ {to}");
+                await EnsureW2(background: true);   // 읽기 전용 — 포커스 안 뺏음(최소화 비활성 창)
+                cw = _w2!.CoreWebView2;
+                cw.ScriptDialogOpening += OnDialog;
+
+                // 로그인(NetcusWeekMerge와 동일 패턴)
+                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                var loginNav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+                await loginNav;
+                string still = "true";
+                for (int i = 0; i < 8; i++)
+                {
+                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (still == "false") break;
+                    await Task.Delay(300);
+                }
+                if (still != "false") { GitReply(reqId, new { ok = false, error = "login", weeks = Array.Empty<object>() }); return; }
+
+                // 목록 1페이지 이동(GET). 이후 페이지는 go_list 폼 재현.
+                await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
+
+                const int MAXPAGES = 40, MAXREAD = 60;
+                var seenViews = new HashSet<string>();
+                int opened = 0; bool capped = false;
+
+                for (int p = 1; p <= MAXPAGES && !capped; p++)
+                {
+                    if (p > 1)
+                    {
+                        var lnav = NavOnce(cw, 15000);
+                        await cw.ExecuteScriptAsync(GoListJs(p, id));   // go_list(p) 재현
+                        await lnav;
+                    }
+                    // 목록 행 추출(테이블 로드 대기 재시도)
+                    string rowsRaw = "null";
+                    for (int i = 0; i < 16; i++)
+                    {
+                        rowsRaw = await cw.ExecuteScriptAsync(RowExtractJs);
+                        if (rowsRaw != null && rowsRaw != "null" && rowsRaw != "\"[]\"") break;
+                        await Task.Delay(250);
+                    }
+                    var rows = NcParseRows(rowsRaw);
+                    if (rows.Count == 0) break;   // 더 없는 페이지
+
+                    bool anyNew = false, allOlder = true;
+                    var candidates = new List<(string viewNo, string regStr)>();
+                    foreach (var r in rows)
+                    {
+                        if (string.IsNullOrEmpty(r.viewNo)) continue;
+                        if (!seenViews.Contains(r.viewNo)) anyNew = true;
+                        bool regOk = NcDate(r.regDate, out var dReg);
+                        if (regOk && dReg >= winLo) allOlder = false;
+                        if (!regOk || (dReg >= winLo && dReg <= winHi)) candidates.Add((r.viewNo, r.regDate));   // 창 안(또는 날짜 불명=관대) → 후보
+                    }
+                    if (!anyNew) break;   // go_list가 마지막 페이지로 클램프(반복) → 진전 없음 → 중단
+
+                    foreach (var c in candidates)
+                    {
+                        if (seenViews.Contains(c.viewNo)) continue;
+                        seenViews.Add(c.viewNo);
+                        if (opened >= MAXREAD) { capped = true; Log("netcus 주간범위: 읽기 상한(60) 도달 — 중단"); break; }
+
+                        var vnav = NavOnce(cw, 15000);
+                        await cw.ExecuteScriptAsync(GoViewJs(c.viewNo, id));   // go_view(viewNo) 재현
+                        await vnav;
+                        opened++;
+
+                        string cellRaw = "null";
+                        for (int i = 0; i < 16; i++)
+                        {
+                            cellRaw = await cw.ExecuteScriptAsync(CellExtractJs);
+                            if (cellRaw != null && cellRaw != "null" && cellRaw.Length > 4) break;
+                            await Task.Delay(250);
+                        }
+                        var cell = NcParseCell(cellRaw);
+                        if (cell == null) continue;
+
+                        bool include;
+                        if (NcPeriod(cell.period, out var ps, out var pe)) include = (ps <= dTo && pe >= dFrom);   // 기간 겹침 확정
+                        else include = true;   // 기간 파싱 실패 → 작성일 사전필터 통과분은 관대 포함
+                        if (!include) continue;
+
+                        string regdate = !string.IsNullOrWhiteSpace(cell.regdate) ? cell.regdate : c.regStr;
+                        weeks.Add(new { regdate, title = cell.title ?? "", period = cell.period ?? "", endwork = cell.endwork ?? "", content = cell.content ?? "", plan = cell.plan ?? "" });
+                    }
+
+                    if (allOlder) break;   // 페이지 전체가 from-7 이전 → 최신순이므로 이후 페이지 불필요
+                }
+
+                Log($"netcus 주간범위 완료: {weeks.Count}건 (열람 {opened})");
+                GitReply(reqId, new { ok = true, error = "", weeks });
+            }
+            catch (Exception ex)
+            {
+                Log("netcus 주간범위 예외: " + ex);
+                GitReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() });
+            }
+            finally
+            {
+                _ncMergeBusy = false;
+                try { if (cw != null) cw.ScriptDialogOpening -= OnDialog; } catch { }
+                try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 읽기 전용 — 확인창 닫음
+            }
+        }
+
+        // ----- 주간범위 읽기 보조(날짜 파싱·JS 재현·응답 파싱) -----
+        private sealed class NcRow { public string viewNo = "", regDate = "", title = ""; }
+        private sealed class NcCell { public string period = "", title = "", regdate = "", endwork = "", content = "", plan = ""; }
+
+        // "YYYY-MM-DD"/"YYYY/MM/DD"/"YYYY.MM.DD"(+선택 시각) → DateTime. 실패 시 false.
+        private static bool NcDate(string s, out DateTime d)
+        {
+            d = default;
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            var t = s.Trim().Replace('/', '-').Replace('.', '-');
+            int sp = t.IndexOf(' '); if (sp > 0) t = t.Substring(0, sp);
+            return DateTime.TryParseExact(t, new[] { "yyyy-M-d", "yyyy-MM-dd", "yyyy-M-dd", "yyyy-MM-d" },
+                System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d);
+        }
+
+        // 기간 "YYYY-MM-DD ~ YYYY-MM-DD" → 시작/끝. '~'(또는 '∼') 기준으로만 분리(날짜의 '-'와 혼동 방지).
+        private static bool NcPeriod(string s, out DateTime a, out DateTime b)
+        {
+            a = default; b = default;
+            if (string.IsNullOrWhiteSpace(s)) return false;
+            int i = s.IndexOf('~'); if (i < 0) i = s.IndexOf('∼');
+            if (i < 0) return false;
+            return NcDate(s.Substring(0, i), out a) && NcDate(s.Substring(i + 1), out b);
+        }
+
+        private static string NcDigits(string s)
+        {
+            var sb = new StringBuilder();
+            foreach (var c in s ?? "") if (c >= '0' && c <= '9') sb.Append(c);
+            return sb.Length > 0 ? sb.ToString() : "0";
+        }
+
+        // go_list(p) 재현 — pjm.jsp?list=go&start=p 로 동적 POST(hidden: table_code=report_tbl/id + 빈 코드들).
+        private string GoListJs(int p, string id) =>
+            "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm.jsp?list=go&start=" + p + "';"
+          + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
+          + "H('word_code','');H('n_code','');H('s_code','');H('c_code','');H('table_code','report_tbl');H('id'," + J(id) + ");"
+          + "document.body.appendChild(f);f.submit();return 'ok';}catch(e){return 'err';}})()";
+
+        // go_view(viewNo) 재현 — pjm_view.jsp?start=1&view_no=viewNo 로 동적 POST(동일 hidden 필드).
+        private string GoViewJs(string viewNo, string id) =>
+            "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_view.jsp?start=1&view_no=" + NcDigits(viewNo) + "';"
+          + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
+          + "H('word_code','');H('n_code','');H('s_code','');H('c_code','');H('table_code','report_tbl');H('id'," + J(id) + ");"
+          + "document.body.appendChild(f);f.submit();return 'ok';}catch(e){return 'err';}})()";
+
+        // 목록 페이지 행 추출 — a[href*=go_view]마다 {viewNo, regDate(YYYY-MM-DD), title}. JSON 배열 문자열 반환.
+        private const string RowExtractJs = @"(function(){var out=[];var as=document.getElementsByTagName('a');for(var i=0;i<as.length;i++){var a=as[i];var h=a.getAttribute('href')||'';if(h.indexOf('go_view')<0)continue;var m=/go_view\(\s*['""]?(\d+)['""]?\s*\)/.exec(h);if(!m)continue;var title=((a.innerText||a.textContent||'')+'').replace(/\s+/g,' ').trim();var reg='';var tr=a.closest?a.closest('tr'):null;if(tr){var tds=tr.getElementsByTagName('td');for(var j=0;j<tds.length;j++){var tx=((tds[j].innerText||'')+'').trim();var dm=/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/.exec(tx);if(dm){var mm=dm[2].length<2?'0'+dm[2]:dm[2];var dd=dm[3].length<2?'0'+dm[3]:dm[3];reg=dm[1]+'-'+mm+'-'+dd;break;}}}out.push({viewNo:m[1],regDate:reg,title:title});}return JSON.stringify(out);})()";
+
+        // 조회 페이지 라벨셀 추출 — 라벨 div/td 텍스트 정규화 정확일치 → 다음 셀 innerText. JSON 객체 문자열 반환.
+        private const string CellExtractJs = @"(function(){function C(lb){var tds=document.getElementsByTagName('td');for(var i=0;i<tds.length;i++){var d=tds[i].querySelector&&tds[i].querySelector('div');var tx=((d?d.innerText:tds[i].innerText)||'').replace(/\s+/g,' ').trim();if(tx===lb){var n=tds[i].nextElementSibling;if(n)return n.innerText;}}return '';}return JSON.stringify({period:C('기간'),title:C('제목'),regdate:C('작성일'),endwork:C('진행사항'),content:C('과제투입시간'),plan:C('차주계획')});})()";
+
+        // ExecuteScriptAsync는 JSON 문자열을 다시 JSON 인코딩 → 이중 디코드.
+        private List<NcRow> NcParseRows(string? raw)
+        {
+            var list = new List<NcRow>();
+            try
+            {
+                if (string.IsNullOrEmpty(raw) || raw == "null") return list;
+                string inner = JsonSerializer.Deserialize<string>(raw) ?? "[]";
+                using var d = JsonDocument.Parse(inner);
+                foreach (var el in d.RootElement.EnumerateArray())
+                {
+                    list.Add(new NcRow
+                    {
+                        viewNo = el.TryGetProperty("viewNo", out var v) ? (v.GetString() ?? "") : "",
+                        regDate = el.TryGetProperty("regDate", out var g) ? (g.GetString() ?? "") : "",
+                        title = el.TryGetProperty("title", out var t) ? (t.GetString() ?? "") : "",
+                    });
+                }
+            }
+            catch (Exception ex) { Log("netcus 주간범위 행파싱 실패: " + ex.Message); }
+            return list;
+        }
+
+        private NcCell? NcParseCell(string? raw)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(raw) || raw == "null") return null;
+                string inner = JsonSerializer.Deserialize<string>(raw) ?? "{}";
+                using var d = JsonDocument.Parse(inner);
+                var r = d.RootElement;
+                string G(string k) => r.TryGetProperty(k, out var v) ? (v.GetString() ?? "") : "";
+                return new NcCell { period = G("period"), title = G("title"), regdate = G("regdate"), endwork = G("endwork"), content = G("content"), plan = G("plan") };
+            }
+            catch (Exception ex) { Log("netcus 주간범위 셀파싱 실패: " + ex.Message); return null; }
+        }
+
         // 주간보고 '구조 캡처' 도구(Phase2 준비) — netcus를 가시 창으로 열고 자동 로그인 → 게시판 홈까지만 이동.
         // 사용자가 주간보고 목록/조회로 직접 이동 후 상단에 주입된 '이 페이지 HTML 저장' 버튼을 누르면
         // 그 페이지 HTML을 로컬(%APPDATA%\TaskCalendar\netcus-probe)에 저장. 읽기 전용 — 제출/수정/삭제 없음.
