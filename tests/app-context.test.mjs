@@ -551,6 +551,15 @@ if (!JSDOM) {
       assert.ok(!/^- /m.test(ew), '옛 하드코딩 "- " 불릿 없음');
     });
 
+    test('buildWeeklyFields.content: 일간 과제시간을 주간 합산하고 구분선 아래 전체 합계 표시', () => {
+      seed(reportState);
+      setRptRange('2026-07-06', '2026-07-12');
+      ev("setTaskHours('2026-07-06','c-1',2.5); setTaskHours('2026-07-07','c-1',1.5); setTaskHours('2026-07-08','c-2',3);");
+      const content = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).content');
+      assert.strictEqual(content, '[보고서 작성] : 4\n[시스템 점검] : 3\n-----\n합계 : 7');
+      ev("setTaskHours('2026-07-06','c-1',0); setTaskHours('2026-07-07','c-1',0); setTaskHours('2026-07-08','c-2',0);");
+    });
+
     // F3 — XML 왕복: prefs 보존 + <prefs> 부재 시 기본값 + 데이터 무손실
     test('prefs roundtrip: reportMarker/custom/indent 보존', () => {
       seed(fmtState('가.', '▶', 5));
