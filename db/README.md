@@ -26,6 +26,7 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 | `SETUP.md` | 환경·연결·적용/재적용·설계 요약·검증 결과 |
 | `DESIGN_NOTES.md` | 설계 워크플로 산출물: 캘린더 매핑·ETL 절차·엣지케이스·open question + **3렌즈 적대검증 & 최종본 반영표** |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
+| `sample/Dummy_Data.xlsx` | **원본 더미 엑셀** — 2시트(`View_Projects`: No·발주처·사업명·계약명·통상명칭·계약시작·계약종료·상태 / `View_Customer`: No·발주처). **실 ETL 픽스처**. 사내 AI로 변환한 더미(롤 지명), 실 국방데이터 아님 |
 
 ## 🔜 다음 작업 (우선순위)
 1. **실데이터 ETL** — 현재 시드는 더미(롤 지명). 실제 사업부 엑셀(2시트) → `source_key=발주처+US+사업명` 기준 **멱등 UPSERT** 스크립트 작성(Python 권장). 절차·엣지케이스는 `DESIGN_NOTES.md`에 상세. ⚠️ **실데이터가 더미에 없던 컬럼/케이스면 스키마 재검**(지금 확정은 샘플 구조 기준).
