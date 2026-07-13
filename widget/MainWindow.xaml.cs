@@ -439,6 +439,9 @@ namespace TaskCalendarWidget
                         _ = NetcusWeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
                         break;
                     }
+                    case "netcusProbe":   // 주간보고 구조 캡처 창 열기(읽기 전용) — 가시 로그인 후 사용자가 HTML 저장
+                        _ = NetcusProbeStart();
+                        break;
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
                     case "dragbegin":

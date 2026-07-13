@@ -21,6 +21,8 @@ namespace TaskCalendarWidget
         private WV.WebView2? _w2;                      // 보조 WebView2(가시 창)
         private Window? _w2win;
         private bool _ncMergeBusy;              // netcus 주간병합 중복 실행 가드(단일 _w2 레이스 방지 — JS 타임아웃 후 재시도 대비)
+        private bool _ncProbeBusy;              // netcus 구조 캡처 창 중복 실행 가드(단일 _w2 레이스 방지)
+        private bool _ncProbeFolderOpened;      // 최초 캡처 저장 시 저장 폴더 1회만 자동 열기
 
         private string CredFile => Path.Combine(_dataDir, "netcus.cred");
 
@@ -461,6 +463,143 @@ namespace TaskCalendarWidget
                 // 읽기 전용 — 성공/실패 무관 확인창은 닫는다(제출 확인창과 달리 열어두지 않음).
                 try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
             }
+        }
+
+        // 주간보고 '구조 캡처' 도구(Phase2 준비) — netcus를 가시 창으로 열고 자동 로그인 → 게시판 홈까지만 이동.
+        // 사용자가 주간보고 목록/조회로 직접 이동 후 상단에 주입된 '이 페이지 HTML 저장' 버튼을 누르면
+        // 그 페이지 HTML을 로컬(%APPDATA%\TaskCalendar\netcus-probe)에 저장. 읽기 전용 — 제출/수정/삭제 없음.
+        // 창은 코드로 닫지 않고 사용자가 닫는다(Closed에서 가드·핸들러 해제).
+        private async Task NetcusProbeStart()
+        {
+            if (_ncProbeBusy) { JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("이미 캡처 창이 열려 있습니다.") + ")"); return; }
+            _ncProbeBusy = true;
+            // 레거시 pjm alert()/confirm() 자동 수락 — 창이 살아있는 동안 유지(제출/병합과 동일 방어)
+            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { try { ev.Accept(); } catch { } }
+            try
+            {
+                var (id, pw) = NetcusLoadCreds();
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw))
+                {
+                    _ncProbeBusy = false;
+                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 자격증명이 없습니다 — 설정에서 저장하세요.") + ")");
+                    return;
+                }
+
+                await EnsureW2();   // 가시 창(920x720)
+                try { if (_w2win != null) { _w2win.Title = "netcus 주간보고 구조 캡처 (읽기 전용)"; _w2win.Closed += (_, __) => { _ncProbeBusy = false; }; } } catch { }
+                var cw = _w2!.CoreWebView2;
+                cw.ScriptDialogOpening += OnDialog;
+
+                // 로그인(NetcusSubmit와 동일 패턴)
+                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+                var loginNav = NavOnce(cw, 15000);
+                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+                await loginNav;
+
+                // 로그인 성공 판정 — 비밀번호 입력칸 잔류 여부(NetcusValidateCreds 프로브와 동일)
+                string still = "true";
+                for (int i = 0; i < 8; i++)
+                {
+                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (still == "false") break;
+                    await Task.Delay(300);
+                }
+                if (still != "false")
+                {
+                    _ncProbeBusy = false;
+                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.") + ")");
+                    try { cw.ScriptDialogOpening -= OnDialog; } catch { }
+                    return;
+                }
+
+                // 게시판 홈까지만 이동 — 주간보고 목록/조회는 사용자가 직접 이동(URL 추측 자동이동 금지)
+                await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
+
+                // 프로브 세션 핸들러 배선 — 창은 계속 열어둠(finally에서 떼지 않음). Closed에서 누수 방지.
+                cw.WebMessageReceived += OnProbeMsg;
+                cw.NavigationCompleted += OnProbeNav;
+                _w2win!.Closed += (_, __) => { try { cw.WebMessageReceived -= OnProbeMsg; } catch { } try { cw.NavigationCompleted -= OnProbeNav; } catch { } };
+
+                // 캡처 바 즉시 주입(이후 탐색마다 OnProbeNav가 재주입)
+                await InjectProbeBar(cw);
+
+                JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("netcus 캡처 창을 열었습니다 — 주간보고 목록/조회로 이동 후 상단 '이 페이지 HTML 저장'을 누르세요.") + ")");
+                // 성공 경로: _ncProbeBusy·OnDialog는 창이 살아있는 동안 유지(창 Closed에서 리셋).
+            }
+            catch (Exception ex)
+            {
+                _ncProbeBusy = false;
+                JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("캡처 창 오류: " + ex.Message) + ")");
+            }
+        }
+
+        // 캡처 바 주입(idempotent) — 이미 있으면 return. body 미존재 대비 documentElement에 append.
+        private async Task InjectProbeBar(CoreWebView2 cw)
+        {
+            string js = @"(function(){
+ if(document.getElementById('__tcProbeBar'))return;
+ var b=document.createElement('div');b.id='__tcProbeBar';
+ b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#1d2433;color:#fff;font:13px ""Malgun Gothic"",sans-serif;padding:8px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.35)';
+ var t=document.createElement('span');t.textContent='📸 주간보고 목록/조회 페이지에서 → ';
+ var btn=document.createElement('button');btn.textContent='이 페이지 HTML 저장';
+ btn.style.cssText='background:#3e5be0;color:#fff;border:0;border-radius:6px;padding:6px 12px;font:inherit;cursor:pointer';
+ btn.onclick=function(){try{window.chrome.webview.postMessage(JSON.stringify({t:'probeCapture'}));}catch(e){}};
+ var st=document.createElement('span');st.id='__tcProbeStatus';st.style.cssText='margin-left:auto;opacity:.9';
+ b.appendChild(t);b.appendChild(btn);b.appendChild(st);
+ (document.body||document.documentElement).appendChild(b);
+ if(document.body)document.body.style.paddingTop='46px';
+})();";
+            try { await cw.ExecuteScriptAsync(js); } catch { }
+        }
+
+        // 탐색 완료마다 캡처 바 재주입(페이지 이동 후에도 버튼 유지)
+        private async void OnProbeNav(object? s, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            try { if (_w2?.CoreWebView2 != null) await InjectProbeBar(_w2.CoreWebView2); } catch { }
+        }
+
+        // 캡처 버튼 클릭 수신 → 현재 페이지 outerHTML을 로컬 파일로 저장(읽기 전용)
+        private async void OnProbeMsg(object? s, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                string raw;
+                try { raw = e.TryGetWebMessageAsString(); } catch { raw = e.WebMessageAsJson; }
+                if (string.IsNullOrEmpty(raw) || !raw.Contains("probeCapture")) return;
+                var cw = _w2?.CoreWebView2;
+                if (cw == null) return;
+                // ExecuteScriptAsync는 JSON 문자열을 다시 JSON 인코딩해 반환 → 이중 디코드 필요
+                string j = await cw.ExecuteScriptAsync("JSON.stringify({html:document.documentElement.outerHTML,url:location.href,title:document.title})");
+                if (string.IsNullOrEmpty(j) || j == "null") return;
+                var inner = JsonSerializer.Deserialize<string>(j);
+                using var docp = JsonDocument.Parse(inner ?? "{}");
+                var root = docp.RootElement;
+                string html = root.GetProperty("html").GetString() ?? "";
+                string url = root.GetProperty("url").GetString() ?? "";
+                string title = root.GetProperty("title").GetString() ?? "";
+
+                var dir = Path.Combine(_dataDir, "netcus-probe");
+                Directory.CreateDirectory(dir);
+                string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                string fname = "capture-" + ts + ".html";
+                string path = Path.Combine(dir, fname);
+                string header = "<!-- TaskCalendar netcus probe | URL: " + url + " | TITLE: " + title + " | AT: " + ts + " -->\n";
+                File.WriteAllText(path, header + html, new System.Text.UTF8Encoding(false));
+
+                // 페이지 상태 갱신(주입 바에 파일명 표시)
+                try { await cw.ExecuteScriptAsync("(function(){var s=document.getElementById('__tcProbeStatus');if(s)s.textContent=" + J("저장됨: " + fname) + ";})()"); } catch { }
+
+                // 최초 저장 시 저장 폴더 1회만 자동 열기
+                if (!_ncProbeFolderOpened)
+                {
+                    _ncProbeFolderOpened = true;
+                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = "explorer.exe", Arguments = "\"" + dir + "\"", UseShellExecute = true }); } catch { }
+                }
+
+                JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("저장됨: " + path) + ")");
+                Log("netcus probe 저장: " + path);
+            }
+            catch (Exception ex) { Log("netcus probe 캡처 오류: " + ex.Message); }
         }
     }
 
