@@ -223,5 +223,6 @@ test('주간 병합: 기타 과제는 최초 등장 순서와 무관하게 항�
   ], cats, { sumTime: true });
   assert.deepStrictEqual(parsed.tasks.map(t => t.name), ['주요 과제', '기타']);
   assert.ok(buildNetcusSendText(parsed).indexOf('[주요 과제]') < buildNetcusSendText(parsed).indexOf('[기타]'));
-  assert.strictEqual(buildNetcusHoursText(parsed), '[주요 과제] : 2\n[기타] : 1');
+  // PR#3(전체 합계)과 PR#4(기타 마지막) 결합 기대값 — 합계줄 포함
+  assert.strictEqual(buildNetcusHoursText(parsed), '[주요 과제] : 2\n[기타] : 1\n-----\n합계 : 3');
 });
