@@ -46,7 +46,7 @@ namespace TaskCalendarWidget
 
         // svn log --xml 로 커밋을 읽어 GitResult로 반환. author는 substring(대소문자 무시) 필터(svn엔 --author 없음).
         // 날짜는 svn이 UTC로 주므로 로컬로 변환하고, 요청 [since,until]을 로컬 날짜로 정밀 재필터.
-        private GitResult SvnLog(string repo, string author, string since, string until)
+        private GitResult SvnLog(string repo, string author, string since, string until, bool wantBody = false)
         {
             var r = new GitResult();
             if (string.IsNullOrWhiteSpace(repo)) { r.ok = false; r.error = "SVN 경로가 비어 있습니다."; return r; }
@@ -120,6 +120,7 @@ namespace TaskCalendarWidget
                         author = a,
                         email = "",
                         subject = SvnFirstLine(msg),
+                        body = wantBody ? SvnBody(msg) : "",   // 제목(첫 줄) 제외 본문 — git %b와 동일 의미(옵션 ON일 때만)
                     });
                 }
                 r.ok = true;
@@ -143,6 +144,17 @@ namespace TaskCalendarWidget
                 if (t.Length > 0) return t;
             }
             return msg.Trim();
+        }
+
+        // 제목(첫 비어있지 않은 줄) 이후의 본문. 제목만 있는 메시지는 "". git %b(제목 제외 본문)와 같은 의미.
+        private static string SvnBody(string msg)
+        {
+            if (string.IsNullOrEmpty(msg)) return "";
+            var lines = msg.Replace("\r\n", "\n").Split('\n');
+            int i = 0;
+            while (i < lines.Length && lines[i].Trim().Length == 0) i++;   // 선행 빈 줄 스킵(제목 줄 찾기)
+            if (i + 1 >= lines.Length) return "";                          // 제목 한 줄뿐 → 본문 없음
+            return string.Join("\n", lines, i + 1, lines.Length - i - 1).Trim();
         }
 
         private static string SvnAddDay(string ymd)

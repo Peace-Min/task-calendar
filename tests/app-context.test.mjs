@@ -539,6 +539,50 @@ if (!JSDOM) {
       assert.ok(lines.includes('▶ 델타'));
     });
 
+    // 항목1 — 커밋 전체 본문(gitCommitBody) 통합: OFF=본문 미포함(기존과 동일), ON=제목 아래 더 깊은 들여쓰기 라인들
+    const bodyState = (on) => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [{ id: 'cg', name: '깃', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      entries: [
+        { id: 'g1', date: '2026-07-09', title: '', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git',
+          commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 상세1\n본문 상세2' }],
+          hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+      todos: [], rooms: [],
+      reportMarker: 'none', reportMarkerCustom: '', reportIndent: 2, gitCommitBody: on,
+    });
+    const bodyRange = "reportMode='daily'; $('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;";
+    const P4 = ' '.repeat(4), P6 = ' '.repeat(6);   // 제목=indent2*2, 본문=한 단계 더(+2)
+
+    test('항목1(buildReportText): ON — 제목 아래 본문 라인들이 더 깊게 들여쓰기됨', () => {
+      seed(bodyState(true));
+      ev(bodyRange);
+      const lines = ev('buildReportText()').split('\n');
+      assert.ok(lines.includes(P4 + '기능 추가'), '제목 라인');
+      assert.ok(lines.includes(P6 + '본문 상세1'), '본문 1행(더 깊은 들여쓰기)');
+      assert.ok(lines.includes(P6 + '본문 상세2'), '본문 2행');
+    });
+    test('항목1(buildReportText): OFF(기본) — 본문 완전 미포함(기존과 동일)', () => {
+      seed(bodyState(false));
+      ev(bodyRange);
+      const text = ev('buildReportText()');
+      assert.ok(text.split('\n').includes(P4 + '기능 추가'), '제목은 그대로');
+      assert.ok(!text.includes('본문 상세1'), 'OFF면 본문 미포함');
+      assert.ok(!text.includes('본문 상세2'));
+    });
+    test('항목1(buildReport): ON→.rtask-body 렌더 / OFF→미렌더', () => {
+      seed(bodyState(true));
+      ev(bodyRange + ' buildReport();');
+      const htmlOn = ev("$('#rptOut').innerHTML");
+      assert.ok(htmlOn.includes('rtask-body'), 'ON: 본문 div 존재');
+      assert.ok(htmlOn.includes('본문 상세1'), 'ON: 본문 텍스트 존재');
+      seed(bodyState(false));
+      ev(bodyRange + ' buildReport();');
+      const htmlOff = ev("$('#rptOut').innerHTML");
+      assert.ok(!htmlOff.includes('rtask-body'), 'OFF: 본문 div 없음');
+      assert.ok(!htmlOff.includes('본문 상세1'), 'OFF: 본문 텍스트 없음');
+      ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
+    });
+
     // F2c — buildWeeklyFields.endwork(netcus 자동전송 콘텐츠)도 복사와 동일 서식(머리기호+들여쓰기)
     test('buildWeeklyFields.endwork: 전송 콘텐츠도 마커+들여쓰기(2단) 반영, 카드별 번호 리셋', () => {
       seed(fmtState('가.', '', 2));

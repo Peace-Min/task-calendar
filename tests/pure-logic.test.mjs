@@ -110,6 +110,18 @@ test('normCommits: 잘못된 time → "", 누락 필드 → ""', () => {
   assert.strictEqual(out[2].time, '');
 });
 
+test('normCommits: body 보존(줄바꿈 유지, subject처럼 접지 않음) · 부재→""', () => {
+  const out = normCommits([
+    { subject: '제목', body: '본문 첫 줄\n둘째  줄' },   // body는 \s+ 접기 안 함(줄바꿈·다중공백 보존)
+    { subject: '제목만' },                                 // body 부재 → ''
+    { subject: 'n', body: 123 },                           // 숫자 → 문자열 강제
+  ]);
+  assert.strictEqual(out[0].body, '본문 첫 줄\n둘째  줄');   // 원문 그대로(줄바꿈·공백 보존)
+  assert.strictEqual(out[0].subject, '제목');
+  assert.strictEqual(out[1].body, '');                       // 하위호환: 기본 ''
+  assert.strictEqual(out[2].body, '123');                    // String() 강제
+});
+
 // ── weekRange / monthRange: 소스가 실제로 쓰는 주/월 경계(ymd·pad 헬퍼 주입) ──────────
 // weekRange/monthRange는 ymd(→pad)에 의존 → 두 헬퍼를 소스와 동일 정의로 주입해 함수 본문만 실측.
 // (주 시작 규약은 '추정 금지' 원칙에 따라 소스에서 확인: back=(getDay()+6)%7 → 월요일 시작 ISO 주)

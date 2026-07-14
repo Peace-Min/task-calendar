@@ -109,8 +109,13 @@ namespace TaskCalendarWidget
             catch (Exception ex) { Debug.WriteLine("설정 저장 오류: " + ex); }
         }
 
+        // 위젯 창 불투명도 범위 클램프: 0.3~1.0. NaN/0(미설정·손상)이면 1.0(불투명).
+        private static double ClampOpacity(double v)
+            => (double.IsNaN(v) || v <= 0) ? 1.0 : Math.Min(1.0, Math.Max(0.3, v));
+
         private void ApplyWindowBounds()
         {
+            this.Opacity = ClampOpacity(_settings.Opacity);
             if (_settings.Width >= MinWidth) Width = _settings.Width;
             if (_settings.Height >= MinHeight) Height = _settings.Height;
 
@@ -343,6 +348,9 @@ namespace TaskCalendarWidget
         private static string GetStr(JsonDocument d, string key) =>
             d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
 
+        private static bool GetBool(JsonDocument d, string key) =>
+            d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
+
         private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string raw;
@@ -494,7 +502,8 @@ namespace TaskCalendarWidget
                         string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"),
                                author = GetStr(doc, "author"), since = GetStr(doc, "since"), until = GetStr(doc, "until"),
                                vcs = GetStr(doc, "vcs");
-                        _ = RunGitLogAsync(reqId, repo, author, since, until, vcs);
+                        bool wantBody = GetBool(doc, "body");   // 전역 옵션(제목+본문) — false면 기존 포맷/파싱 그대로
+                        _ = RunGitLogAsync(reqId, repo, author, since, until, vcs, wantBody);
                         break;
                     }
                     case "gitauthor":
@@ -513,6 +522,16 @@ namespace TaskCalendarWidget
                     {
                         string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"), vcs = GetStr(doc, "vcs");
                         _ = RunGitCheckAsync(reqId, repo, vcs);
+                        break;
+                    }
+
+                    // ----- 위젯 창 불투명도(설정 슬라이더) -----
+                    case "setOpacity":
+                    {
+                        double v = GetInt(doc, "pct") / 100.0;   // pct=30~100 정수
+                        this.Opacity = ClampOpacity(v);
+                        _settings.Opacity = this.Opacity;
+                        SaveSettings();
                         break;
                     }
 
@@ -560,13 +579,13 @@ namespace TaskCalendarWidget
         // 과제별 로컬 저장소에서 git log/config를 실행해 '내 커밋'을 읽어 웹(HTML)으로 회신한다.
         // git CLI를 사용하므로 이 PC에 git이 설치돼 있어야 한다(보고서 작성용 개발 PC라면 보통 설치됨).
 
-        private async Task RunGitLogAsync(string reqId, string repo, string author, string since, string until, string vcs = "")
+        private async Task RunGitLogAsync(string reqId, string repo, string author, string since, string until, string vcs = "", bool wantBody = false)
         {
             object payload;
             try
             {
                 string useVcs = ResolveVcs(repo, vcs);   // 분기 단일 소스(명시 선택 우선, 없으면 DetectVcs)
-                payload = await Task.Run(() => useVcs == "svn" ? (GitResult)SvnLog(repo, author, since, until) : GitLog(repo, author, since, until));
+                payload = await Task.Run(() => useVcs == "svn" ? (GitResult)SvnLog(repo, author, since, until, wantBody) : GitLog(repo, author, since, until, wantBody));
             }
             catch (Exception ex) { payload = new GitResult { ok = false, error = "예외: " + ex.Message }; }
             GitReply(reqId, payload);
@@ -590,7 +609,7 @@ namespace TaskCalendarWidget
             GitReply(reqId, payload);
         }
 
-        private GitResult GitLog(string repo, string author, string since, string until)
+        private GitResult GitLog(string repo, string author, string since, string until, bool wantBody = false)
         {
             var r = new GitResult();
             if (string.IsNullOrWhiteSpace(repo)) { r.ok = false; r.error = "Git 저장소 경로가 비어 있습니다."; return r; }
@@ -616,7 +635,10 @@ namespace TaskCalendarWidget
                 // (git --author는 정규식이라 '.' 등 메타문자는 더 넓게 잡힐 수 있으나, 실사용 작성자는 단순 이름/이메일이라 무해)
                 if (!string.IsNullOrWhiteSpace(author)) { psi.ArgumentList.Add("--regexp-ignore-case"); psi.ArgumentList.Add("--author=" + author); }
                 // 필드 구분자 (단위구분), 커밋은 줄바꿈으로 구분. %aI=작성일(ISO), %s=제목(한 줄)
-                psi.ArgumentList.Add("--pretty=format:%H%h%aI%an%ae%s");
+                if (wantBody)
+                    psi.ArgumentList.Add("--pretty=format:%H%x1f%h%x1f%aI%x1f%an%x1f%ae%x1f%s%x1f%b%x00");   // %b=제목 제외 본문, %x00=커밋 구분(NUL)
+                else
+                    psi.ArgumentList.Add("--pretty=format:%H%h%aI%an%ae%s");
                 psi.Environment["GIT_PAGER"] = "cat";
                 psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
 
@@ -629,6 +651,22 @@ namespace TaskCalendarWidget
                 {
                     r.ok = false;
                     r.error = string.IsNullOrWhiteSpace(errp) ? ("git 종료코드 " + p.ExitCode) : errp.Trim();
+                    return r;
+                }
+
+                if (wantBody)
+                {
+                    // 커밋 = NUL(\0) 구분(본문에 줄바꿈 있음), 필드 = US(0x1F) 구분. idx 0~5=기존 필드, idx 6~=본문(US로 재결합).
+                    foreach (var rawChunk in outp.Split('\0'))
+                    {
+                        var chunk = rawChunk.TrimStart('\n', '\r');   // 커밋 사이 git이 넣는 줄바꿈 제거
+                        if (chunk.Length == 0) continue;
+                        var f = chunk.Split('');
+                        if (f.Length < 6) continue;
+                        string body = f.Length > 6 ? string.Join("", f, 6, f.Length - 6).Trim() : "";
+                        r.commits.Add(new GitCommit { hash = f[0], shortHash = f[1], date = f[2], author = f[3], email = f[4], subject = f[5], body = body });
+                    }
+                    r.ok = true;
                     return r;
                 }
 
@@ -789,6 +827,7 @@ namespace TaskCalendarWidget
             public string author { get; set; } = "";
             public string email { get; set; } = "";
             public string subject { get; set; } = "";
+            public string body { get; set; } = "";   // 전체 커밋 본문(제목 제외) — wantBody일 때만 채움, 아니면 ""
         }
 
         private void TogglePin()
@@ -1293,5 +1332,7 @@ namespace TaskCalendarWidget
         public bool TrayHintShown { get; set; } = false;  // '트레이로 숨김' 안내는 1회만
         // 자동 업데이트 소스 폴더 URL(ftp:// · http(s):// · UNC/로컬 경로). 빈 값 = 업데이트 기능 휴면.
         public string UpdateSourceUrl { get; set; } = "";
+        // 위젯 창 불투명도(0.3~1.0). 1.0=불투명. 설정 슬라이더로 조절.
+        public double Opacity { get; set; } = 1.0;
     }
 }

@@ -314,12 +314,13 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* 작업일지 카드: 사용자 메모(일반) + 구조화 커밋 목록(행 단위) */
 .commit-head{font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin-top:8px;margin-bottom:2px}
 .commit-list{list-style:none;margin:0;padding:0}
-.commit-row{display:flex;gap:7px;align-items:baseline;min-width:0;padding:3px 0;border-top:1px solid var(--line)}
+.commit-row{display:flex;flex-wrap:wrap;gap:7px;align-items:baseline;min-width:0;padding:3px 0;border-top:1px solid var(--line)}
 .commit-row:first-child{border-top:none}
 .commit-row.hidden{display:none}
 .commit-time{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
 .commit-subj{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);color:var(--text)}
 .commit-hash{flex:none;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-micro);color:var(--muted)}
+.commit-body{flex-basis:100%;width:100%;font-size:var(--fs-micro);color:var(--muted);white-space:pre-wrap;word-break:break-word;margin:2px 0 0;padding-left:2px}
 .commit-more{margin-top:5px}
 .chip-git{border-left-style:dashed !important}
 /* 할 일 칩 = HOLLOW(투명 본체+얇은 외곽선+선행 원형 링) — 일정의 SOLID(채운 색막대)와 색이 같아도 모양/채움으로 구분(Google·Apple·Notion·TickTick 공통 패턴, 색맹 안전) */
@@ -535,6 +536,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
 .rpt-mirror .rtask .rtask-mk{flex:none;color:var(--muted);white-space:pre;font-variant-numeric:tabular-nums}
 .rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
+.rpt-mirror .rcard-tasks .rtask-body{white-space:pre-wrap;font-size:var(--fs-micro);color:var(--muted);line-height:1.5;margin:0 0 3px;padding-left:14px;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask .rtask-edit-btn,.rpt-mirror .rtask .rtask-del-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
 .rpt-mirror .rtask .rtask-edit-btn .ic,.rpt-mirror .rtask .rtask-del-btn .ic{width:13px;height:13px}
 .rpt-mirror .rcard:hover .rtask-edit-btn,.rpt-mirror .rtask:focus-within .rtask-edit-btn,.rpt-mirror .rcard:hover .rtask-del-btn,.rpt-mirror .rtask:focus-within .rtask-del-btn{opacity:.7}
@@ -1229,6 +1231,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label class="check" style="margin:2px 0"><input type="checkbox" id="remEnabled"> <b>시작 알림 켜기</b></label>
       </div>
       <div class="set-sec set-sec-top">
+        <div class="set-lb">커밋 가져오기 (Git/SVN)</div>
+        <div class="set-hint">작업일지로 커밋을 가져올 때 <b>제목(첫 줄)</b>만 가져올지, <b>전체 본문</b>까지 가져올지 선택합니다. 끄면 제목 첫 줄만(기본).</div>
+        <label class="check" style="margin:2px 0"><input type="checkbox" id="gitBodyChk"> 커밋 가져올 때 전체 본문 포함</label>
+      </div>
+      <div class="set-sec set-sec-top">
         <div class="set-lb">회사 일간보고 (netcus)</div>
         <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성합니다. 자격증명은 이 PC에 <b>암호화(DPAPI)</b> 저장되며, 데스크톱 위젯에서만 동작합니다.</div>
         <label class="qa-lb" for="ncId">ID</label><input type="text" id="ncId" class="set-in" autocomplete="off" placeholder="예: phmin">
@@ -1254,6 +1261,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span id="updSrcMsg" class="git-opt"></span>
         </div>
         <div class="set-hint" style="margin-top:2px">예: <b>ftp://&lt;서버IP&gt;/TaskCalendar/</b> · http(s):// · 공유폴더(UNC/로컬) 경로도 가능 · <b>비우면 업데이트 확인 안 함</b>.</div>
+      </div>
+      <div id="opacityRow" class="set-sec set-sec-top" style="display:none">
+        <div class="set-lb">위젯 투명도</div>
+        <div class="set-hint">위젯 창을 반투명하게. 데스크톱 위젯에서만 적용.</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+          <input type="range" id="opacityRange" min="30" max="100" step="5" value="100" style="flex:1">
+          <span id="opacityVal" class="git-opt" style="min-width:42px;text-align:right">100%</span>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -2127,6 +2142,7 @@ function defaultState(){
     ],
     rooms: DEFAULT_ROOMS.slice(),
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,   // 보고서 표시 설정(머리기호/들여쓰기) — 표시+복사 전용
+    gitCommitBody: false,   // 커밋 가져올 때 전체 본문(제목 제외) 포함 — 전역 옵션(기본 OFF=제목만)
     reportSource: 'cal',   // 보고서 내용 출처(cal=캘린더 기록). 인메모리 전용(XML 미영속, phase2 예정)
   };
 }
@@ -2156,6 +2172,7 @@ function load(){
         s.reportMarker = (typeof s.reportMarker === 'string' && s.reportMarker) ? s.reportMarker : '-';
         s.reportMarkerCustom = (typeof s.reportMarkerCustom === 'string') ? s.reportMarkerCustom.slice(0,8) : '';
         s.reportIndent = Number.isInteger(s.reportIndent) ? Math.max(0, Math.min(6, s.reportIndent)) : 2;
+        s.gitCommitBody = (s.gitCommitBody === true);   // 부재/구버전 = false(하위호환)
         s.reportSource = (s.reportSource === 'net') ? 'net' : 'cal';   // 내용 출처 — 항상 존재 보장(기본 cal). 인메모리성 값.
         return s;
       }
@@ -2184,7 +2201,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportSource:'cal'};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), gitCommitBody:!!data.gitCommitBody, reportSource:'cal'};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -2238,7 +2255,8 @@ function normCommits(a){
     hash: String(c.hash || ''),
     short: String(c.short || ''),
     time: /^([01]\d|2[0-3]):[0-5]\d$/.test(c.time || '') ? c.time : '',
-    subject: String(c.subject || '').replace(/\s+/g, ' ').trim()
+    subject: String(c.subject || '').replace(/\s+/g, ' ').trim(),
+    body: String(c.body || '')   // 제목 제외 본문(옵션 ON일 때만 채워짐). 줄바꿈 보존(subject처럼 통과)
   })) : [];
 }
 // 재-불러오기 시 사용자 편집 보존 — fetched(git 현재 진실)를 반환하되, hash가 prev와 일치하는 커밋은
@@ -2283,6 +2301,7 @@ function commitRowHtml(c, hidden){
     (c.time ? `<span class="commit-time">${esc(c.time)}</span>` : '') +
     `<span class="commit-subj">${esc(c.subject)}</span>` +
     (c.short ? `<code class="commit-hash">${esc(c.short)}</code>` : '') +
+    (c.body ? `<div class="commit-body">${esc(c.body)}</div>` : '') +   // 전체 본문 옵션 ON일 때만(제목 아래 pre-wrap)
   `</li>`;
 }
 
@@ -2458,6 +2477,7 @@ function toXML(){
   const prefs = doc.createElement('prefs');
   prefs.setAttribute('reportMarker', state.reportMarker || '-');
   prefs.setAttribute('reportIndent', String(state.reportIndent != null ? state.reportIndent : 2));
+  if(state.gitCommitBody) prefs.setAttribute('gitCommitBody', '1');   // ON일 때만 기록(기본 OFF는 무속성 → 구버전과 무충돌)
   if(state.reportMarkerCustom) prefs.setAttribute('reportMarkerCustom', state.reportMarkerCustom);   // 비어있지 않을 때만 기록
   root.appendChild(prefs);
 
@@ -2566,7 +2586,7 @@ function fromXML(text){
   // 표시 설정(prefs) — <prefs> 부재 시 기본값(가산적·무손실, hours/location과 동일한 하위호환 패턴).
   const prefsEl = root.getElementsByTagName('prefs')[0];
   const PRESET_MARKERS = new Set(['-','•','·','*','▪','◦','–','1.','1)','(1)','가.','가)','(가)','ㄱ.','ㄱ)','A.','a.','①','none']);
-  let reportMarker = '-', reportMarkerCustom = '', reportIndent = 2;
+  let reportMarker = '-', reportMarkerCustom = '', reportIndent = 2, gitCommitBody = false;
   if(prefsEl){
     const rm = prefsEl.getAttribute('reportMarker') || '';
     reportMarker = (rm && (PRESET_MARKERS.has(rm) || rm.length <= 8)) ? rm : '-';   // 프리셋 키이거나 임의 문자열 len<=8, 아니면 '-'
@@ -2574,8 +2594,9 @@ function fromXML(text){
     reportMarkerCustom = rmc.length <= 8 ? rmc : '';
     const ri = parseInt(prefsEl.getAttribute('reportIndent'), 10);
     reportIndent = Number.isFinite(ri) ? Math.max(0, Math.min(6, ri)) : 2;   // clamp 0..6
+    gitCommitBody = prefsEl.getAttribute('gitCommitBody') === '1';   // 무속성(구버전/기본) = false
   }
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent};
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -3364,6 +3385,7 @@ function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal(
 function openSettings(){
   const cur = calDensity();
   $$('#settingsModal input[name="calDensity"]').forEach(r => { r.checked = (r.value === cur); });
+  { const gb = $('#gitBodyChk'); if(gb) gb.checked = !!(state && state.gitCommitBody); }   // 커밋 전체 본문 포함 토글 반영
   // 회사 일간보고(netcus) 설정 초기화
   $$('#settingsModal input[name="ncMode"]').forEach(r => { r.checked = (r.value === ncMode()); });
   const pw = $('#ncPw'); if(pw) pw.value = '';
@@ -3376,6 +3398,15 @@ function openSettings(){
   const um = $('#updSrcMsg'); if(um) um.textContent = '';
   const us = $('#updSrcState'); if(us) us.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
   if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
+  // 위젯 투명도(HOST 전용) — 슬라이더 UI 상태는 localStorage(tc_opacity)로 유지, 실제 적용은 호스트가 _settings로
+  { const r = document.getElementById('opacityRow'); if(r) r.style.display = HOST ? '' : 'none'; }
+  if(HOST){
+    let op = parseInt(localStorage.getItem('tc_opacity'), 10);
+    if(!Number.isFinite(op) || op < 30 || op > 100) op = 100;
+    const rng = $('#opacityRange'), val = $('#opacityVal');
+    if(rng) rng.value = String(op);
+    if(val) val.textContent = op + '%';
+  }
   openModal('#settingsModal');
 }
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
@@ -3622,6 +3653,7 @@ function applyImport(mode){
       reportMarker: pendingImport.reportMarker || '-',
       reportMarkerCustom: pendingImport.reportMarkerCustom || '',
       reportIndent: (pendingImport.reportIndent != null ? pendingImport.reportIndent : 2),
+      gitCommitBody: !!pendingImport.gitCommitBody,
       reportSource: 'cal',
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
@@ -3648,7 +3680,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportSource:'cal'};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, gitCommitBody:false, reportSource:'cal'};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -3729,7 +3761,7 @@ function collectReportData(from, to, sources){
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     // git 작업일지는 커밋 제목 전부를 업무로(요약 'N건'이 아니라 실제 커밋들 — git 로그 가져오는 핵심), 그 외는 엔트리 제목
     if(isGit && Array.isArray(e.commits) && e.commits.length){
-      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { kind:'git', entryId:e.id, hash:c.hash || '', cidx:ci }); }
+      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { kind:'git', entryId:e.id, hash:c.hash || '', cidx:ci, body: (state.gitCommitBody && c.body) ? String(c.body) : '' }); }
     } else pushTitle(k, e.title, { kind:'event', entryId:e.id });   // 비-git 엔트리 제목 → 편집 가능(일정 라우팅)
   }
   // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
@@ -4192,10 +4224,11 @@ function buildReport(){
   let html = '';
   for(const r of rows){
     const hasEntry = r.entries.length > 0;
+    const hasContent = r.titles.length > 0;   // 할일/커밋만 있어도 내용 있음(흐림 판정은 내용 유무로)
     // 단일일 + 발생 항목 있으면 그 (날짜×과제) 첫 항목(createdAt 최소)에 저장 — 작업일지 칩과 동일
     const head = (daily && hasEntry)
       ? r.entries.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0] : null;
-    html += `<div class="rcard${hasEntry ? '' : ' rcard-empty'}">`;
+    html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}">`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
     // 일간만 — 과제별 시간 입력('[과제] : n' 계약). 값은 setTaskHours로 (date×catId) 저장. 주간/커스텀은 없음(읽기전용).
@@ -4217,12 +4250,12 @@ function buildReport(){
             // 편집 가능한 라인(커밋·일정·할일)에 삭제(✕) 노출 — 원본까지 제거(일간만; 주간/커스텀은 rtask-ro라 미노출). rkind별 라우팅.
             const _delLbl = m.kind === 'git' ? '이 커밋 삭제' : m.kind === 'event' ? '이 일정 삭제' : m.kind === 'todo' ? '이 할 일 삭제' : '';
             const _del = _delLbl ? `<button type="button" class="rtask-del-btn" data-ract="del" title="${_delLbl}" aria-label="${_delLbl}">${ICON.trash || ICON.xmark}</button>` : '';
-            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>`;
+            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-t">${esc(t)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>` + (m.body ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
           }
-          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-t">${esc(t)}</span></div>`;
+          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-t">${esc(t)}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
         }).join('') + `</div>`;
       } else {   // 주간/커스텀: 읽기전용 — 라인별 마커 접두(편집 없음)
-        html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); return (_mk ? esc(_mk) + ' ' : '') + esc(t); }).join('<br>')}</div>`;
+        html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); const m = (r.titleMeta && r.titleMeta[i]) || null; return (_mk ? esc(_mk) + ' ' : '') + esc(t) + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''); }).join('<br>')}</div>`;
       }
     }
     if(head) html += `<span class="rcard-note edit">오늘치 — 여기서 바로 수정</span>`;
@@ -4501,7 +4534,13 @@ function buildReportText(indentUnit){
     if(_daily){ const _h = getTaskHours(from, r.key); if(_h != null && _h > 0) _head += ` : ${_h}`; }   // 시간 있으면 헤더에, 없으면 과제명만
     return _head + r.titles.map((t, i) => {
       const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
-      return '\n' + _pad + _prefix + t;
+      const m = (r.titleMeta && r.titleMeta[i]) || null;
+      let line = '\n' + _pad + _prefix + t;
+      if(m && m.body){   // 전체 본문 옵션 ON일 때만 — 제목보다 한 단계 더 들여쓴 라인들로(OFF면 이 블록 미실행 → 기존과 동일)
+        const _bpad = _pad + indentUnit.repeat(2);
+        line += m.body.split('\n').map(bl => '\n' + _bpad + bl).join('');
+      }
+      return line;
     }).join('');
   });
   return blocks.join('\n\n') + '\n';
@@ -5468,6 +5507,7 @@ function bind(){
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
   $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
   { const re = $('#remEnabled'); if(re) re.addEventListener('change', () => hpost({ cmd:'reminderToggle', on: re.checked })); }
+  { const gb = $('#gitBodyChk'); if(gb) gb.addEventListener('change', () => { if(state){ state.gitCommitBody = gb.checked; save(); } }); }   // 커밋 전체 본문 옵션 — 영속(save가 HOST/브라우저 분기)
   $('#ncSave').addEventListener('click', () => {
     const id = $('#ncId').value.trim(), pw = $('#ncPw').value;
     if(!id){ toast('ID를 입력하세요', 'warn'); $('#ncId').focus(); return; }
@@ -5500,6 +5540,13 @@ function bind(){
       const vEl = $('#updNotesVer'); if(vEl) vEl.textContent = ver;
       const nEl = $('#updNotesBody'); if(nEl) nEl.textContent = notes || '(변경내역 정보 없음)';
       openModal('#updNotesModal');
+    }); }
+  // ── 위젯 투명도 슬라이더(HOST 전용) ── UI 상태는 localStorage에 미러, 실제 창 적용은 호스트가 setOpacity로
+  { const rng = $('#opacityRange'); if(rng) rng.addEventListener('input', () => {
+      const v = Number(rng.value);
+      const val = $('#opacityVal'); if(val) val.textContent = v + '%';
+      try{ localStorage.setItem('tc_opacity', String(v)); }catch(e){}
+      hpost({ cmd: 'setOpacity', pct: v });
     }); }
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
@@ -6069,7 +6116,7 @@ function stripGitBlocks(memo){
 // 저장 시 카드에 커밋 행 목록으로 렌더되고, 같은 날 재가져오기는 통째 교체되어 중복이 없다.
 function applyCommitsToForm(commits, cat, date){
   __entryCommits = normCommits(commits.map(c => ({
-    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)'
+    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: c.body || ''
   })));
   __entryGitLoaded = true;   // 저장 시 작업일지(source='git')로 표시
   if(!$('#fTitle').value.trim()){
@@ -6089,7 +6136,7 @@ async function fetchCommitsIntoModal(){
   fbtn.disabled = true;                       // git 호출(최대 15초) 동안 중복 실행 방지
   try{
   $('#gitHint').innerHTML = '<span class="spin"></span> 불러오는 중…';
-  const res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: authorForVcs(cat.vcs||'git'), since: date, until: date}, cat.vcs==='svn'?25000:undefined);   // svn은 서버 왕복(호스트 20s) → 프론트 타임아웃을 더 길게. 작성자는 과제 vcs 전용값
+  const res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: authorForVcs(cat.vcs||'git'), since: date, until: date, body: !!state.gitCommitBody}, cat.vcs==='svn'?25000:undefined);   // svn은 서버 왕복(호스트 20s) → 프론트 타임아웃을 더 길게. 작성자는 과제 vcs 전용값. body=전역 옵션
   if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'error'); return; }
   if(!res.commits || !res.commits.length){
     const _a = authorForVcs(cat.vcs||'git');
@@ -6147,7 +6194,7 @@ async function runBulkGitFetch(){
     for(const cat of cats){
       setS(`<span class="spin"></span> 불러오는 중… (과제 ${++ci}/${cats.length})`);
       let res;
-      try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: authorForVcs(cat.vcs||'git'), since: from, until: to}, cat.vcs==='svn'?25000:undefined); }
+      try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: authorForVcs(cat.vcs||'git'), since: from, until: to, body: !!state.gitCommitBody}, cat.vcs==='svn'?25000:undefined); }
       catch(_){ errors.push(esc(cat.name) + ': 예외'); continue; }
       if(!res || !res.ok){ errors.push(esc(cat.name) + ': ' + esc((res && res.error) || '오류')); continue; }
       const commits = res.commits || [];
@@ -6160,7 +6207,7 @@ async function runBulkGitFetch(){
         (byDay[day] = byDay[day] || []).push(c);
       }
       for(const day in byDay){
-        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)' })));
+        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: c.body || '' })));
         if(!mapped.length) continue;
         days.add(day); totalCommits += mapped.length;
         const title = mapped.length === 1 ? mapped[0].subject : `${cat.name} · 커밋 ${mapped.length}건`;
