@@ -557,6 +557,11 @@ if (!JSDOM) {
       const P = ' '.repeat(4);
       assert.ok(weeklyLines.some(l => l.startsWith(P + '1. ')), 'weekly uses its own indent+number marker');
       assert.ok(!weeklyLines.some(l => l.startsWith('- ')), 'weekly does not leak daily hyphen');
+
+      ev("setReportMode('custom'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      const customLines = ev('buildReportText()').split('\n');
+      assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
+      assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
     });
 
     // F2c — buildWeeklyFields.endwork(netcus 자동전송 콘텐츠)도 복사와 동일 서식(머리기호+들여쓰기)

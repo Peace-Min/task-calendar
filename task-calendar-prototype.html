@@ -2112,7 +2112,7 @@ function syncLegacyReportFormatFields(s, pref){
   s.reportIndent = pref.indent;
 }
 function reportFormatKeyForMode(mode){
-  return (mode === 'weekly' || mode === 'rangeWeekly') ? 'weekly' : 'daily';
+  return mode === 'daily' ? 'daily' : 'weekly';
 }
 function currentReportFormatPref(){
   state.reportFormatPrefs = normalizeReportFormatPrefs(state);
