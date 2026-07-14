@@ -533,7 +533,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rtask .rtask-mk{flex:none;color:var(--muted);white-space:pre;font-variant-numeric:tabular-nums}
 .rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask .rtask-main{flex:1;min-width:0}
-.rpt-mirror .rtask .rtask-desc{margin-top:2px;color:var(--muted);font-size:var(--fs-small);line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
+.rpt-mirror .rtask .rtask-desc,.rpt-mirror .rtask-roline .rtask-desc{margin-top:2px;color:var(--muted);font-size:var(--fs-small);line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask-roline .rtask-desc{margin-left:18px}
 .rpt-mirror .rtask .rtask-edit-btn,.rpt-mirror .rtask .rtask-del-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
 .rpt-mirror .rtask .rtask-edit-btn .ic,.rpt-mirror .rtask .rtask-del-btn .ic{width:13px;height:13px}
@@ -2117,7 +2117,7 @@ function syncLegacyReportFormatFields(s, pref){
   s.reportIndent = pref.indent;
 }
 function reportFormatKeyForMode(mode){
-  return (mode === 'weekly' || mode === 'rangeWeekly') ? 'weekly' : 'daily';
+  return mode === 'daily' ? 'daily' : 'weekly';
 }
 function currentReportFormatPref(){
   state.reportFormatPrefs = normalizeReportFormatPrefs(state);
@@ -3808,8 +3808,11 @@ function collectReportData(from, to, sources){
     if(isGit ? !src.git : !src.event) continue;
     let hit = false;
     for(const _ of expandOccurrences(e, from, to)){ hit = true; break; }   // 기간 내 발생 1회라도?
+
     if(!hit) continue;
     const k = catKey(e);
+    const entryDetails = isGit ? [] : memoBullets(e.memo);
+    if(!isGit && skipEmpty && entryDetails.length === 0) continue;
     // 공수 누적 — 제목 중복제거 '앞'에서(동명 항목 공수 유실 차단). 항목당 1회만(반복/멀티데이 곱셈 안 함).
     if(e.hours != null) sumMin.set(k, (sumMin.get(k) || 0) + e.hours); else uninput++;
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
@@ -3817,9 +3820,7 @@ function collectReportData(from, to, sources){
     if(isGit && Array.isArray(e.commits) && e.commits.length){
       for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { kind:'git', entryId:e.id, hash:c.hash || '', cidx:ci }); }
     } else {
-      const details = memoBullets(e.memo);
-      if(skipEmpty && details.length === 0) continue;
-      pushTitle(k, e.title, { kind:'event', entryId:e.id }, includeDetails ? details : []);
+      pushTitle(k, e.title, { kind:'event', entryId:e.id }, includeDetails ? entryDetails : []);
     }   // 비-git 엔트리 제목 → 편집 가능(일정 라우팅)
   }
   // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.

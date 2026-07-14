@@ -319,6 +319,8 @@ if (!JSDOM) {
       assert.ok(row.titles.includes('Git subject'), '커밋 제목은 자체가 내용이므로 유지');
       assert.ok(!row.titles.includes('Event without memo'));
       assert.ok(!row.titles.includes('Todo without note'));
+      assert.strictEqual(row.minutes, 90, '내용 없는 일정은 공수 집계에서도 제외');
+      assert.deepStrictEqual(row.entries.map(e => e.id).sort(), ['e-desc', 'g-desc'], '내용 없는 일정은 편집/표시용 엔트리 버킷에서도 제외');
     });
 
     test('collectReportData: 기간 필터 — 좁은 범위는 전부 제외(빈 결과, grandMin 0)', () => {
@@ -589,6 +591,11 @@ if (!JSDOM) {
       const P = ' '.repeat(4);
       assert.ok(weeklyLines.some(l => l.startsWith(P + '1. ')), 'weekly uses its own indent+number marker');
       assert.ok(!weeklyLines.some(l => l.startsWith('- ')), 'weekly does not leak daily hyphen');
+
+      ev("setReportMode('custom'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      const customLines = ev('buildReportText()').split('\n');
+      assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
+      assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
     });
 
     test('buildReportText/buildWeeklyFields: 설명 포함 시 제목 아래 설명 라인 출력', () => {
