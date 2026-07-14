@@ -2289,8 +2289,6 @@ function normTodos(a){
 
 const COMMIT_PREVIEW = 5;   // 카드에 기본 표시할 커밋 행 수
 // 커밋 배열 정규화 — subject는 한 줄로(좁은 패널 1행 보장; 호스트가 멀티라인 줄 때 대비)
-// git 커밋 본문 평탄화 — 작성자가 넣은 하드 줄바꿈(72자 관례 랩)을 공백으로 합쳐 한 흐름으로. git import 시점에만 적용(사용자가 편집으로 넣은 줄바꿈은 보존됨).
-function flattenBody(b){ return String(b || '').replace(/\r\n|\r|\n/g, ' ').replace(/[ \t]+/g, ' ').trim(); }
 function normCommits(a){
   return Array.isArray(a) ? a.map(c => ({
     hash: String(c.hash || ''),
@@ -6244,7 +6242,7 @@ function stripGitBlocks(memo){
 // 저장 시 카드에 커밋 행 목록으로 렌더되고, 같은 날 재가져오기는 통째 교체되어 중복이 없다.
 function applyCommitsToForm(commits, cat, date){
   __entryCommits = normCommits(commits.map(c => ({
-    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: flattenBody(c.body)
+    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: c.body || ''
   })));
   __entryGitLoaded = true;   // 저장 시 작업일지(source='git')로 표시
   if(!$('#fTitle').value.trim()){
@@ -6356,7 +6354,7 @@ async function runGitImport(from, to, selId, statusSel, btnSel, replace){
         (byDay[day] = byDay[day] || []).push(c);
       }
       for(const day in byDay){
-        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: flattenBody(c.body) })));
+        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: c.body || '' })));
         if(!mapped.length) continue;
         days.add(day); totalCommits += mapped.length;
         const title = mapped.length === 1 ? mapped[0].subject : `${cat.name} · 커밋 ${mapped.length}건`;
