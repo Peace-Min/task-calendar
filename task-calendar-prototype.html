@@ -25,12 +25,17 @@
   --hover-bg:#f3f5fa;                        /* 중립 hover wash — accent는 액션·선택 전용(파랑 노이즈 방지) */
   --dim-bg:#fafbfd;                          /* 은은한 정적 wash — 다른달 셀·git 줄 등(hover 아님) */
 }
+/* 진짜 투명도(데스크톱 위젯): 창·WebView2가 투명이라 html 배경도 투명 → 바탕화면이 비친다.
+   background-image를 none이 아닌 값(투명 그라디언트)으로 둬 'body→canvas 배경 전파'를 차단한다.
+   (전파되면 body의 --bg가 canvas에 불투명하게 칠해져 body opacity의 영향을 안 받게 됨 → 반투명 실패) */
+html{background-color:transparent;background-image:linear-gradient(transparent,transparent)}
 html,body{height:100%}
 body{
   font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;
   background:var(--bg); color:var(--text); font-size:var(--fs-emph);
   display:flex; flex-direction:column; overflow:hidden;
   font-variant-numeric:tabular-nums;   /* 날짜·시각 숫자 열 정렬(D) */
+  opacity:var(--wo, 1);   /* 위젯 전체(콘텐츠+모달) 균일 반투명. --wo 미설정=1(불투명, 기존과 동일). HOST에서만 <1 적용 */
 }
 button{font-family:inherit}
 .hidden{display:none !important}
@@ -549,8 +554,15 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent-2)}
 /* netcus 일간보고 병합 미리보기(읽기전용) — 보고서 모달 전용 */
-.rpt-mirror .rnc-loading{display:flex;align-items:center;gap:8px;padding:22px 14px;color:var(--muted);font-size:var(--fs-meta)}
+.rpt-mirror .rnc-loading{display:flex;align-items:center;gap:8px;padding:22px 14px;color:var(--muted);font-size:var(--fs-meta);flex-wrap:wrap}
 .rpt-mirror .rnc-loading .ic{width:15px;height:15px;flex:none;animation:spin .8s linear infinite}
+/* 읽기 진행바(#rncProg) — __netcusStatus가 채움/텍스트 갱신. total>0=결정형(%), total=-1=무한형(indet) */
+.rpt-mirror .rnc-progbar{flex-basis:100%;height:6px;border-radius:99px;background:var(--accent-soft);overflow:hidden;margin-top:8px}
+.rpt-mirror .rnc-progfill{height:100%;background:var(--accent);border-radius:99px;transition:width .25s ease;width:4%}
+.rpt-mirror .rnc-progfill.indet{width:35%!important;animation:ncIndet 1.1s ease-in-out infinite}
+@keyframes ncIndet{0%{margin-left:-35%}100%{margin-left:100%}}
+/* 읽기 실패 날 danger 배너(무음 손실 가시화) */
+.rpt-mirror .rnc-fail{font-size:var(--fs-micro);color:var(--danger-text);background:var(--danger-soft);border:1px solid var(--danger);border-radius:var(--r-sm);padding:5px 9px;margin-top:6px;display:flex;align-items:center;gap:6px}
 .rpt-mirror .rnc-banner{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-micro);color:var(--muted);background:var(--accent-soft);border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 9px}
 .rpt-mirror .rnc-banner-t{flex:1;min-width:0}
 .rpt-mirror .rnc-at{opacity:.8}
@@ -776,10 +788,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .nd-empty{color:var(--muted);font-size:var(--fs-body);text-align:center;padding:34px 14px;line-height:1.7}
 .nd-day{font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin:14px 0 4px;position:sticky;top:-12px;background:var(--panel);padding:4px 0}
 .nd-body > .nd-day:first-child{margin-top:0}
-.nd-commit{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)}
+.nd-commit{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line)}
 .nd-commit .t{font-size:var(--fs-micro);color:var(--muted);flex:none;min-width:34px;font-variant-numeric:tabular-nums}
-.nd-commit .s{flex:1;font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere}
+.nd-commit .s{flex:1 1 100%;font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere}  /* 제목 전폭 줄(메타·해시·버튼은 윗줄) — 본문과 함께 전체 커밋 내용이 읽히게 */
 .nd-commit .cat{color:var(--muted);font-size:var(--fs-micro)}
+.nd-commit-body{flex-basis:100%;width:100%;font-size:var(--fs-meta);color:var(--text);white-space:pre-wrap;word-break:break-word;line-height:1.55;margin:3px 0 1px;padding-left:23px}  /* 커밋 전체 본문 — 제목 아래 전체 내용 그대로(줄바꿈 유지) */
 .nd-commit .h{font-size:var(--fs-micro);color:var(--muted);font-family:ui-monospace,'Consolas',monospace;flex:none}
 /* 작업일지 커밋 행 수정/삭제 컨트롤 — 은은하게, 행 hover/포커스 시 또렷 */
 .nd-commit .nd-cbtn{flex:none;align-self:center;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;margin:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.42;transition:opacity .12s,color .12s,background .12s}
@@ -846,7 +859,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .te-actions{display:flex;align-items:center;gap:6px}
 .te-spacer{flex:1}
 .nd-empty-hint{display:block;margin-top:10px;font-size:var(--fs-meta);color:var(--muted);line-height:1.7}
-.nd-tools{display:flex;gap:6px;margin:8px 0 2px}
+.nd-tools{display:flex;gap:6px;margin:8px 0 2px;align-items:center}
+.nd-bodychk{font-size:var(--fs-meta);color:var(--muted);display:inline-flex;align-items:center;gap:5px;margin-left:auto;cursor:pointer;white-space:nowrap}
+.nd-bodychk input{cursor:pointer}
 .dp-dayctx{font-size:var(--fs-meta);font-weight:700;color:var(--muted);padding:8px 0 5px;border-bottom:1px solid var(--line);margin-bottom:5px}
 .nd-toggle{font-size:var(--fs-meta);border:1px solid var(--line-2);background:#fff;border-radius:999px;padding:3px 11px;cursor:pointer;color:var(--muted)}
 .nd-toggle:hover{border-color:#bcc4d6}
@@ -1232,7 +1247,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </div>
       <div class="set-sec set-sec-top">
         <div class="set-lb">커밋 가져오기 (Git/SVN)</div>
-        <div class="set-hint">작업일지로 커밋을 가져올 때 <b>제목(첫 줄)</b>만 가져올지, <b>전체 본문</b>까지 가져올지 선택합니다. 끄면 제목 첫 줄만(기본).</div>
+        <div class="set-hint">작업일지로 커밋을 가져올 때 <b>제목(첫 줄)</b>만 가져올지, <b>전체 본문</b>까지 가져올지 선택합니다. 끄면 제목 첫 줄만(기본). <span style="color:var(--muted)">작업일지·일괄 불러오기 화면에서도 바꿀 수 있습니다.</span></div>
         <label class="check" style="margin:2px 0"><input type="checkbox" id="gitBodyChk"> 커밋 가져올 때 전체 본문 포함</label>
       </div>
       <div class="set-sec set-sec-top">
@@ -1863,12 +1878,36 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label for="bgCat" style="font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px">과제 범위</label>
         <select id="bgCat" style="width:100%"></select>
       </div>
+      <label class="check" style="margin-top:12px;font-size:var(--fs-meta)"><input type="checkbox" id="bgBodyChk"> 커밋 <b>전체 본문</b> 포함 <span style="color:var(--muted)">(기본: 제목 첫 줄만)</span></label>
+      <label class="check" style="margin-top:8px;font-size:var(--fs-meta);color:var(--danger-text)"><input type="checkbox" id="bgReplace"> 기존 커밋 기록 <b>초기화 후</b> 불러오기 <span style="color:var(--muted)">(덮어쓰기 · 내 편집도 삭제)</span></label>
       <div id="bgStatus" style="font-size:var(--fs-meta);color:var(--muted);margin-top:12px;line-height:1.55"></div>
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
       <button class="btn primary" id="btnBulkRun">📥 불러오기 &amp; 등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- 작업일지 이 날 커밋 불러오기 (컴팩트 단일날짜 — 과제 범위만 고르고 바로 등록, 편집 모달 없음) -->
+<div class="overlay hidden" id="dayGitModal">
+  <div class="modal">
+    <div class="modal-head"><h2>이 날 커밋 불러오기</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div style="font-size:var(--fs-meta);color:var(--muted)">날짜 <b id="dgDate"></b></div>
+      <div style="margin-top:12px">
+        <label for="dgCat" style="font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px">과제 범위</label>
+        <select id="dgCat" style="width:100%"></select>
+      </div>
+      <label class="check" style="margin-top:12px;font-size:var(--fs-meta)"><input type="checkbox" id="dgBodyChk"> 커밋 <b>전체 본문</b> 포함 <span style="color:var(--muted)">(기본: 제목 첫 줄만)</span></label>
+      <label class="check" style="margin-top:8px;font-size:var(--fs-meta);color:var(--danger-text)"><input type="checkbox" id="dgReplace"> 기존 커밋 기록 <b>초기화 후</b> 불러오기 <span style="color:var(--muted)">(덮어쓰기 · 내 편집도 삭제)</span></label>
+      <div id="dgStatus" style="font-size:var(--fs-meta);color:var(--muted);margin-top:12px;line-height:1.55"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+      <button class="btn primary" id="btnDayGitRun">📥 불러오기 &amp; 등록</button>
     </div>
   </div>
 </div>
@@ -2250,6 +2289,8 @@ function normTodos(a){
 
 const COMMIT_PREVIEW = 5;   // 카드에 기본 표시할 커밋 행 수
 // 커밋 배열 정규화 — subject는 한 줄로(좁은 패널 1행 보장; 호스트가 멀티라인 줄 때 대비)
+// git 커밋 본문 평탄화 — 작성자가 넣은 하드 줄바꿈(72자 관례 랩)을 공백으로 합쳐 한 흐름으로. git import 시점에만 적용(사용자가 편집으로 넣은 줄바꿈은 보존됨).
+function flattenBody(b){ return String(b || '').replace(/\r\n|\r|\n/g, ' ').replace(/[ \t]+/g, ' ').trim(); }
 function normCommits(a){
   return Array.isArray(a) ? a.map(c => ({
     hash: String(c.hash || ''),
@@ -2264,9 +2305,9 @@ function normCommits(a){
 // 순수 함수(앱 전역 미참조) — tests/commit-merge.test.mjs에서 단독 추출·검증.
 function mergeCommitsPreserveEdits(prev, fetched){
   const pm = new Map();
-  for(const c of (Array.isArray(prev) ? prev : [])) if(c && c.hash) pm.set(c.hash, c.subject);
+  for(const c of (Array.isArray(prev) ? prev : [])) if(c && c.hash) pm.set(c.hash, { subject: c.subject, body: c.body || '' });
   return (Array.isArray(fetched) ? fetched : []).map(c =>
-    (c && c.hash && pm.has(c.hash)) ? {...c, subject: pm.get(c.hash)} : c);
+    (c && c.hash && pm.has(c.hash)) ? {...c, subject: pm.get(c.hash).subject, body: pm.get(c.hash).body} : c);
 }
 // 구버전 데이터: 메모에 박힌 '[Git 커밋 …]' 텍스트 블록을 구조화 commits로 1회 변환하고 메모에서 분리(idempotent)
 function migrateGitMemo(e){
@@ -3003,6 +3044,7 @@ function renderPanel(){
       setTimeout(() => { const e2 = $(`#dpBody .todo-row[data-id="${CSS.escape(fid)}"]`); if(e2) e2.classList.remove('flash'); }, 2600);
     }
   }
+  syncGitBodyChecks();   // 작업일지 탭 재생성 시 인라인 '전체 본문' 토글을 현재 state로 반영
 }
 function renderDayPanel(){ renderPanel(); }   // 기존 호출부 호환(renderAll/drop 등)
 
@@ -3385,7 +3427,7 @@ function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal(
 function openSettings(){
   const cur = calDensity();
   $$('#settingsModal input[name="calDensity"]').forEach(r => { r.checked = (r.value === cur); });
-  { const gb = $('#gitBodyChk'); if(gb) gb.checked = !!(state && state.gitCommitBody); }   // 커밋 전체 본문 포함 토글 반영
+  syncGitBodyChecks();   // 커밋 전체 본문 포함 토글 3곳(설정·일괄·작업일지) 동기화
   // 회사 일간보고(netcus) 설정 초기화
   $$('#settingsModal input[name="ncMode"]').forEach(r => { r.checked = (r.value === ncMode()); });
   const pw = $('#ncPw'); if(pw) pw.value = '';
@@ -3398,7 +3440,7 @@ function openSettings(){
   const um = $('#updSrcMsg'); if(um) um.textContent = '';
   const us = $('#updSrcState'); if(us) us.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
   if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
-  // 위젯 투명도(HOST 전용) — 슬라이더 UI 상태는 localStorage(tc_opacity)로 유지, 실제 적용은 호스트가 _settings로
+  // 위젯 투명도(HOST 전용) — 슬라이더 UI 상태는 localStorage(tc_opacity)로 유지, 실제 적용은 CSS 변수 --wo(body opacity)
   { const r = document.getElementById('opacityRow'); if(r) r.style.display = HOST ? '' : 'none'; }
   if(HOST){
     let op = parseInt(localStorage.getItem('tc_opacity'), 10);
@@ -3424,6 +3466,7 @@ window.__netcusProgress = function(msg){
   const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' ' + esc(msg); s.className = 'rpt-send-status busy'; }
 };
 window.__netcusResult = function(ok, msg){
+  clearTimeout(Netcus.watchdog);   // 결과 도착 → 전송 워치독 해제(영구잠김 방지)
   const s = $('#rptSendStatus'); if(s){ s.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'warn');
@@ -3432,6 +3475,32 @@ window.__netcusProbeResult = function(ok, msg){
   const m = $('#ncProbeMsg'); if(m){ m.textContent = msg || ''; m.style.color = ok ? '' : 'var(--danger-text)'; }
   try{ toast(msg || '', ok ? 'ok' : 'warn'); }catch(e){}
 };
+// netcus op 진입/종료 잠금 — 진행 중 모든 트리거(세그·기간·저장·캡처·전송)를 물리적 비활성 → 재트리거 원천 차단.
+window.__netcusBusy = function(on){ setNetcusLocked(!!on); if(!on) clearTimeout(Netcus.watchdog); };
+function setNetcusLocked(on){
+  const seg = $('#rptSrcSeg'); if(seg) seg.querySelectorAll('[data-rsrc]').forEach(x => { x.disabled = on; });
+  ['#rptFrom','#rptTo','#ncSave','#ncProbe'].forEach(s => { const e = $(s); if(e) e.disabled = on; });
+  const bs = $('#btnRptSend'); if(bs && on) bs.disabled = true;   // 잠금 시 전송 비활성(해제는 __netcusResult/워치독/미리보기 재렌더가)
+  document.body.classList.toggle('nc-busy', on);
+}
+// 읽기 진행바 갱신(merge/weekly만) — submit/weekfill/validate/probe는 기존 텍스트 핸들러가 담당하므로 무시(중복 방지).
+window.__netcusStatus = function(s){
+  s = s || {};
+  if(s.op === 'merge' || s.op === 'weekly'){
+    const prog = document.getElementById('rncProg'); if(!prog) return;
+    const txt = prog.querySelector('.rnc-progtext'), fill = prog.querySelector('.rnc-progfill');
+    if(s.phase === 'login'){ if(txt) txt.textContent = 'netcus 로그인 중…'; if(fill){ fill.classList.remove('indet'); fill.style.width = '8%'; } }
+    else if(s.phase === 'reading'){
+      if(s.total > 0){ const pct = Math.max(8, Math.round(s.done / s.total * 100)); if(txt) txt.textContent = 'netcus 일간보고 읽는 중… ' + s.done + '/' + s.total + '일'; if(fill){ fill.classList.remove('indet'); fill.style.width = pct + '%'; } }
+      else { if(txt) txt.textContent = 'netcus 주간보고 읽는 중… ' + s.done + '건'; if(fill) fill.classList.add('indet'); }
+    }
+  }
+};
+// 전송 워치독 — fire-and-forget 전송이 결과(__netcusResult) 없이 끝나면(호스트 크래시 등) 100초 뒤 버튼 복구 + 안내(영구잠김 방지).
+function armRptSendWatchdog(){
+  clearTimeout(Netcus.watchdog);
+  Netcus.watchdog = setTimeout(function(){ const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ st.innerHTML = ICON.alert + ' 전송 결과를 받지 못했습니다 — 다시 시도하세요'; st.className = 'rpt-send-status err'; } }, 100000);
+}
 
 /* ===== 자동 업데이트 — 호스트(WPF)가 확인/다운로드/설치 담당. JS는 배너 + 설정 필드만 ===== */
 // 배너를 알림(액션) 모드로 되돌림 — 진행 표시를 숨기고 버튼 복구
@@ -3895,6 +3964,7 @@ function parseNetcusWeek(days, categories, opts){
   const taskByNorm = {};       // normalized name → task obj (같은 과제 주간 병합)
   const unclassified = [];     // [{date, text, reason}]
   const emptyDays = [];
+  const readFailedDays = [];    // ok:false + 빈 content = 세션 만료/접근 실패로 못 읽은 날(빈 날과 구분 — 무음 손실 가시화)
   const reasons = { 'no-header': 0, 'ambiguous': 0 };
   let daysRead = 0;
 
@@ -3916,7 +3986,7 @@ function parseNetcusWeek(days, categories, opts){
     const date = row.date || '';
     if(row.ok) daysRead++;
     const content = (row.content == null) ? '' : String(row.content);
-    if(!content.trim()){ if(date) emptyDays.push(date); continue; }   // 빈 날 — 미분류 아님, 통계만
+    if(!content.trim()){ if(date){ if(row.ok === false) readFailedDays.push(date); else emptyDays.push(date); } continue; }   // 빈 content — ok:false는 읽기 실패(세션), 그 외는 진짜 빈 날
 
     const lines = content.split(/\r\n|\r|\n/);
     let cur = null;   // 현재 과제 블록
@@ -3972,7 +4042,7 @@ function parseNetcusWeek(days, categories, opts){
 
   return {
     tasks, unclassified,
-    stats: { daysTotal: rows.length, daysRead, emptyDays, reasons, unregistered }
+    stats: { daysTotal: rows.length, daysRead, emptyDays, readFailedDays, reasons, unregistered }
   };
 }
 // netcus 주간 전송 텍스트(진행사항/endwork) — 순수·결정론. // 사유 주석·통계 없음(표시 전용과 분리) → Layer1 테스트 대상.
@@ -4270,16 +4340,18 @@ function buildReport(){
 // ===== netcus 일간보고 → 주간보고 병합(Phase2) — 위젯(HOST) 전용, 읽기전용 미리보기 =====
 // 캐시 슬롯 1개(그 주 하나만 보유 — 누적 안 함). key = from|to.
 let netcusMerge = { key: '', parsed: null, at: '' };
-let netcusFetching = false;   // 병합 요청 in-flight 가드 — 호스트 단일 _w2 동시 사용 레이스 방지
+// netcus 상호작용 모듈 상태 — 읽기 in-flight·세대토큰(구식결과 폐기)·코얼레싱(최신요청만)·전송 워치독. 흩어진 fetching 플래그 대체.
+const Netcus = { reading: false, weeklyReading: false, renderSeq: 0, wantMerge: null, wantWeekly: null, watchdog: 0 };
 function ncMergeKey(from, to){ return from + '|' + to; }
 function clearNetcusMerge(){ netcusMerge = { key: '', parsed: null, at: '' }; }
 // 주간보고 범위 병합(Phase2) — 별도 캐시 슬롯(net 일간병합과 독립). key=from|to, 기간 바뀌면 무효화.
 let netcusWeeklyMerge = { key: '', parsed: null, at: '' };
 // 주간보고 병합 표시 형식 — false=주차별(주차 헤더+원문), true=평면(과제 아래 전 주 원문 나열). localStorage 영속.
 let weeklyFlat = (function(){ try{ return localStorage.getItem('tc_weeklyFlat') === '1'; }catch(_){ return false; } })();
-let netcusWeeklyFetching = false;
 function clearNetcusWeeklyMerge(){ netcusWeeklyMerge = { key: '', parsed: null, at: '' }; }
 function ncNow(){ const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+// 읽기 진행바 골격 — #rncProg(진행 텍스트 + 채움바). __netcusStatus(login/reading)가 실시간 갱신.
+function ncLoadingHtml(label){ return '<div class="rnc-loading" id="rncProg">' + ICON.spinner + ' <span class="rnc-progtext">' + esc(label) + '</span><div class="rnc-progbar"><div class="rnc-progfill" style="width:4%"></div></div></div>'; }
 // #rptOut에 netcus 병합 미리보기를 렌더(필요 시 호스트에서 그 기간 일간보고를 읽어옴).
 async function renderNetcusInto(from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
@@ -4293,19 +4365,27 @@ async function renderNetcusInto(from, to){
   }
   const key = ncMergeKey(from, to);
   if(netcusMerge.key === key && netcusMerge.parsed){ renderNetcusPreview(netcusMerge.parsed, netcusMerge.at); return; }   // 캐시 사용(재요청 없음)
-  if(netcusFetching) return;   // 이미 병합 요청 진행 중 → 중복 호출 차단(호스트 단일 _w2 레이스 방지). 완료 후 최신 선택으로 재시도.
+  // 항상 진행 UI 표시(재진입 중에도 빈 화면 금지)
   if(sum) sum.textContent = '';
-  out.innerHTML = '<div class="rnc-loading">' + ICON.spinner + ' <span>netcus에서 그 주 일간보고 읽는 중…</span></div>';
-  netcusFetching = true;
+  out.innerHTML = ncLoadingHtml('netcus 일간보고 읽는 중…');
+  // 진행 중이면 최신 요청만 기록(코얼레싱) — drop해서 빈 화면 되는 일 없음
+  if(Netcus.reading){ Netcus.wantMerge = { from, to }; return; }
+  const myGen = ++Netcus.renderSeq;
+  Netcus.reading = true;
   let res;
   try{ res = await hostRequest('netcusWeekMerge', { from, to }, 120000); }   // 최대 31일 느린 왕복 대비(호스트 busy-가드가 중복 방지)
-  finally{ netcusFetching = false; }
-  // 대기 중 기간/출처가 바뀌었으면 이 결과 폐기 — 현재도 netcus면 최신 기간으로 재요청(직렬화)
+  finally{ Netcus.reading = false; }
+  // 대기 중 최신 요청이 바뀌었으면 그걸 처리(직렬화) — 같은 기간이면 이 결과를 그대로 씀
+  if(Netcus.wantMerge){ const w = Netcus.wantMerge; Netcus.wantMerge = null; if(w.from !== from || w.to !== to){ renderNetcusInto(w.from, w.to); return; } }
+  // 세대 검사 — 내가 최신이 아니면 폐기(구식 결과가 최신 화면 덮어쓰기 금지)
+  if(myGen !== Netcus.renderSeq) return;
+  // 출처/기간이 바뀌었으면 폐기 — 현재도 net이면 최신 기간으로 재요청(직렬화)
   const curFrom = $('#rptFrom').value, curTo = $('#rptTo').value;
   if(curFrom !== from || curTo !== to || state.reportSource !== 'net'){
     if(state.reportSource === 'net' && reportMode !== 'daily' && /^\d{4}-\d{2}-\d{2}$/.test(curFrom) && /^\d{4}-\d{2}-\d{2}$/.test(curTo) && curFrom <= curTo) renderNetcusInto(curFrom, curTo);
     return;
   }
+  const out2 = $('#rptOut'); if(!out2) return;   // await 후 DOM 재조회
   if(!res || res.ok !== true){ renderNetcusError((res && res.error) || 'read', from, to); return; }
   const parsed = parseNetcusWeek(res.days || [], state.categories, { sumTime: true });
   const at = ncNow();
@@ -4322,6 +4402,10 @@ function renderNetcusError(err, from, to){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정에서 저장 →</button></div></div>';
     const b = $('#rncToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'unverified'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 자격증명이 확인되지 않았습니다 — 설정에서 자격증명을 저장·확인하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정에서 확인 →</button></div></div>';
+    const b = $('#rncToSettings'); if(b) b.addEventListener('click', toSettings);
   } else if(err === 'login'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정 열기 →</button></div></div>';
@@ -4332,6 +4416,10 @@ function renderNetcusError(err, from, to){
     const b = $('#rncRetry'); if(b) b.addEventListener('click', () => { renderNetcusInto(from, to); });   // 캐시 비우지 않음(진행 중일 수 있음)
   } else if(err === 'range'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 기간이 너무 깁니다 — netcus 병합은 최대 31일까지 지원합니다.</div>';
+  } else if(err === 'session'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 세션이 만료되어 중단됐습니다 — 다시 시도하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncRetry">🔄 다시 시도</button></div></div>';
+    const b = $('#rncRetry'); if(b) b.addEventListener('click', () => { clearNetcusMerge(); renderNetcusInto(from, to); });
   } else {   // read / 타임아웃 / 응답 없음
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 읽기에 실패했습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncRetry">🔄 다시 시도</button></div></div>';
@@ -4346,6 +4434,11 @@ function renderNetcusPreview(parsed, at){
   let html = '<div class="rnc-banner"><span class="rnc-banner-t">📖 읽기전용 · netcus 일간보고를 그대로 가져옴'
     + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
     + '<button type="button" class="rnc-refresh" id="rncRefresh" title="다시 읽기">🔄 새로고침</button></div>';
+  // 읽기 실패 날 가시화(무음 손실 방지) — ok:false로 못 읽은 날은 '빈 날'과 별개의 danger 배너로.
+  const _rf = (parsed.stats && parsed.stats.readFailedDays) || [];
+  if(_rf.length){
+    html += '<div class="rnc-fail">' + ICON.alert + ' 읽기 실패 ' + _rf.length + '일(재시도 권장): ' + esc(_rf.map(md).join('·')) + '</div>';
+  }
   for(const t of parsed.tasks){
     html += '<div class="rcard rnc-card">';
     const hb = t.hoursByDate || {}; const hk = Object.keys(hb);
@@ -4387,7 +4480,9 @@ function renderNetcusPreview(parsed, at){
     const WD = ['일','월','화','수','목','금','토'];
     parts.push('빈 날: ' + st.emptyDays.map(d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? WD[new Date(+m[1], +m[2]-1, +m[3]).getDay()] : d; }).join('·'));
   }
+  if(st.readFailedDays && st.readFailedDays.length) parts.push('읽기 실패 ' + st.readFailedDays.length + '일');
   if(sum) sum.textContent = parts.join(' · ');
+  updateRptSendVis();   // 읽기 잠금(__netcusBusy)으로 비활성됐던 전송 버튼을 현재 모드 기준으로 복원
 }
 // ===== netcus 주간보고 범위 → 과제별 병합(Phase2) — 위젯(HOST) 전용, 읽기전용 미리보기 =====
 async function renderNetcusWeeklyInto(from, to){
@@ -4401,19 +4496,27 @@ async function renderNetcusWeeklyInto(from, to){
   }
   const key = ncMergeKey(from, to);
   if(netcusWeeklyMerge.key === key && netcusWeeklyMerge.parsed){ renderNetcusWeeklyPreview(netcusWeeklyMerge.parsed, netcusWeeklyMerge.at); return; }   // 캐시 사용
-  if(netcusWeeklyFetching) return;   // 진행 중 → 중복 차단(단일 _w2 레이스 방지)
+  // 항상 진행 UI 표시(재진입 중에도 빈 화면 금지)
   if(sum) sum.textContent = '';
-  out.innerHTML = '<div class="rnc-loading">' + ICON.spinner + ' <span>netcus에서 그 기간 주간보고 읽는 중… (여러 건 조회 — 시간이 걸립니다)</span></div>';
-  netcusWeeklyFetching = true;
+  out.innerHTML = ncLoadingHtml('netcus 주간보고 읽는 중… (여러 건 조회 — 시간이 걸립니다)');
+  // 진행 중이면 최신 요청만 기록(코얼레싱)
+  if(Netcus.weeklyReading){ Netcus.wantWeekly = { from, to }; return; }
+  const myGen = ++Netcus.renderSeq;
+  Netcus.weeklyReading = true;
   let res;
   try{ res = await hostRequest('netcusWeeklyRangeRead', { from, to }, 180000); }   // 조회 다건 — 넉넉한 타임아웃
-  finally{ netcusWeeklyFetching = false; }
-  // 대기 중 기간/출처가 바뀌었으면 이 결과 폐기 — 현재도 week면 최신 기간으로 재요청(직렬화)
+  finally{ Netcus.weeklyReading = false; }
+  // 대기 중 최신 요청이 바뀌었으면 그걸 처리(직렬화)
+  if(Netcus.wantWeekly){ const w = Netcus.wantWeekly; Netcus.wantWeekly = null; if(w.from !== from || w.to !== to){ renderNetcusWeeklyInto(w.from, w.to); return; } }
+  // 세대 검사 — 내가 최신이 아니면 폐기(구식 결과가 최신 화면 덮어쓰기 금지)
+  if(myGen !== Netcus.renderSeq) return;
+  // 출처/기간이 바뀌었으면 폐기 — 현재도 week면 최신 기간으로 재요청(직렬화)
   const curFrom = $('#rptFrom').value, curTo = $('#rptTo').value;
   if(curFrom !== from || curTo !== to || state.reportSource !== 'week'){
     if(state.reportSource === 'week' && reportMode !== 'daily' && /^\d{4}-\d{2}-\d{2}$/.test(curFrom) && /^\d{4}-\d{2}-\d{2}$/.test(curTo) && curFrom <= curTo) renderNetcusWeeklyInto(curFrom, curTo);
     return;
   }
+  const out2 = $('#rptOut'); if(!out2) return;   // await 후 DOM 재조회
   if(!res || res.ok !== true){ renderNetcusWeeklyError((res && res.error) || 'read', from, to); return; }
   const parsed = parseNetcusWeekly(res.weeks || [], state.categories);
   const at = ncNow();
@@ -4429,6 +4532,10 @@ function renderNetcusWeeklyError(err, from, to){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncwToSettings">설정에서 저장 →</button></div></div>';
     const b = $('#rncwToSettings'); if(b) b.addEventListener('click', toSettings);
+  } else if(err === 'unverified'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 자격증명이 확인되지 않았습니다 — 설정에서 자격증명을 저장·확인하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncwToSettings">설정에서 확인 →</button></div></div>';
+    const b = $('#rncwToSettings'); if(b) b.addEventListener('click', toSettings);
   } else if(err === 'login'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncwToSettings">설정 열기 →</button></div></div>';
@@ -4439,6 +4546,10 @@ function renderNetcusWeeklyError(err, from, to){
     const b = $('#rncwRetry'); if(b) b.addEventListener('click', () => { renderNetcusWeeklyInto(from, to); });
   } else if(err === 'range'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 기간이 너무 깁니다 — 주간보고 병합은 최대 약 400일까지 지원합니다.</div>';
+  } else if(err === 'session'){
+    out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 세션이 만료되어 중단됐습니다 — 다시 시도하세요.'
+      + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncwRetry">🔄 다시 시도</button></div></div>';
+    const b = $('#rncwRetry'); if(b) b.addEventListener('click', () => { clearNetcusWeeklyMerge(); renderNetcusWeeklyInto(from, to); });
   } else {
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' 읽기에 실패했습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="btn sm" id="rncwRetry">🔄 다시 시도</button></div></div>';
@@ -4490,6 +4601,7 @@ function renderNetcusWeeklyPreview(parsed, at){
     renderNetcusWeeklyPreview(parsed, at);
   }));
   if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개 · ' + (parsed.weekCount || 0) + '주 병합';
+  updateRptSendVis();   // 읽기 잠금(__netcusBusy)으로 비활성됐던 전송 버튼을 현재 모드 기준으로 복원
 }
 function openReport(){
   clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
@@ -4646,7 +4758,7 @@ function gitFeed(){
     for(let i = 0; i < cs.length; i++){
       const c = cs[i];
       rows.push({date:e.date, time:c.time || '', subject:c.subject || e.title || '(메시지 없음)',
-        short:c.short || '', catName:cat ? cat.name : '',
+        short:c.short || '', catName:cat ? cat.name : '', body: (hasCommits && c.body) ? String(c.body) : '',   // 전체 본문(옵션 ON으로 저장됐을 때) — 커밋 내역 탭에서 제목 아래 표시
         entryId:e.id, hash:c.hash || '', cidx: hasCommits ? i : -1});   // -1 = 구조화 커밋 없음(제목 1줄) → 편집/삭제 비대상
     }
   }
@@ -4689,12 +4801,12 @@ function renderGitTab(){
     if(editable && editingCommitKey === commitKeyOf(r)){
       // 넉넉한 편집기: 단행 input 대신 전체폭 textarea + 취소/저장(조밀 리스트를 시각적으로 깨지 않는 확장형).
       // textarea는 class 'nd-cedit' 유지 → 기존 keydown(Enter=blur/Esc=cancel)·focusout(commitCommitEdit) 배선 그대로 사용.
-      h += `<div class="nd-commit editing" ${da}><div class="nd-cedit-wrap"><textarea class="nd-cedit" maxlength="500" rows="2" aria-label="커밋 메시지 수정">${esc(r.subject)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 nd-cedit-cancel" data-cact="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save" data-cact="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
+      h += `<div class="nd-commit editing" ${da}><div class="nd-cedit-wrap"><textarea class="nd-cedit" maxlength="2000" rows="5" aria-label="커밋 메시지 수정(제목+본문)">${esc(r.subject + (r.body ? '\n' + r.body : ''))}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 nd-cedit-cancel" data-cact="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save" data-cact="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
     } else {
       const ctrls = editable
         ? `<button class="nd-cbtn nd-cedit-btn" data-cact="edit" title="메시지 수정" aria-label="커밋 메시지 수정">${ICON.wrench}</button><button class="nd-cbtn nd-cdel-btn" data-cact="del" title="이 커밋 삭제" aria-label="이 커밋 삭제">${ICON.xmark}</button>`
         : '';
-      h += `<div class="nd-commit" ${da}><span class="nd-ci" title="커밋">${ICON.git}</span>${time}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${hash}${ctrls}</div>`;
+      h += `<div class="nd-commit" ${da}><span class="nd-ci" title="커밋">${ICON.git}</span>${time}${hash}${ctrls}<span class="s">${esc(r.subject)}${r.catName ? ` <span class="cat">· ${esc(r.catName)}</span>` : ''}</span>${r.body ? `<div class="nd-commit-body">${esc(r.body)}</div>` : ''}</div>`;
     }
   }
   return h;
@@ -4726,6 +4838,19 @@ function setCommitSubject(entryId, hash, cidx, text){
   c.subject = v; e.updatedAt = nowIso();
   save(); notifyDataChanged(); return true;
 }
+// 커밋 전체 메시지(제목+본문) 변경 — 커밋 내역 탭 편집 전용 단일 변이 경로(결정6). 첫 비어있지 않은 줄=제목(정규화), 나머지=본문(원문 줄바꿈 보존·끝 공백만 정리).
+function setCommitMessage(entryId, hash, cidx, fullText){
+  const e = entryById(entryId); if(!e) return false;
+  const c = findCommitInEntry(e, hash, cidx); if(!c) return false;
+  const lines = String(fullText || '').split(/\r\n|\r|\n/);
+  let si = 0; while(si < lines.length && !lines[si].trim()) si++;      // 첫 비어있지 않은 줄 = 제목
+  const subject = (lines[si] || '').replace(/\s+/g, ' ').trim();
+  const body = lines.slice(si + 1).join('\n').replace(/\s+$/, '');      // 나머지 = 본문(끝 공백만 정리, 내부 줄바꿈 보존)
+  if(!subject) return false;                                            // 빈 제목 저장 금지(무의미 커밋 방지)
+  if(subject === c.subject && body === (c.body || '')) return false;    // 무변경
+  c.subject = subject; c.body = body; e.updatedAt = nowIso();
+  save(); notifyDataChanged(); return true;
+}
 // 일정 제목 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
 function setEntryTitle(entryId, text){
   const e = entryById(entryId); if(!e) return false;
@@ -4754,13 +4879,13 @@ function deleteCommitRow(eid, chash, cidx){
   notifyDataChanged();
   toast('커밋을 삭제했습니다', 'success');
 }
-// 커밋 subject 인라인 편집 커밋(빈 값이면 기존 유지) — (entryId,hash,cidx)를 행에서 해석해 setCommitSubject로만 위임.
+// 커밋 전체 메시지(제목+본문) 인라인 편집 커밋(빈 제목이면 기존 유지) — (entryId,hash,cidx)를 행에서 해석해 setCommitMessage로만 위임.
 function commitCommitEdit(inp){
   const rowEl = inp.closest('.nd-commit'); if(!rowEl){ editingCommitKey = null; return; }
   if(inp.dataset.cancel){ editingCommitKey = null; renderPanel(); return; }   // Esc 취소
   editingCommitKey = null;
-  // setCommitSubject가 저장+notifyDataChanged(패널·그리드·보고서 재반영)를 수행 → 이중 렌더 금지.
-  const ok = setCommitSubject(rowEl.dataset.eid, rowEl.dataset.chash, parseInt(rowEl.dataset.cidx, 10), inp.value);
+  // setCommitMessage가 첫 줄=제목·나머지=본문으로 재분리 후 저장+notifyDataChanged(패널·그리드·보고서 재반영) → 이중 렌더 금지.
+  const ok = setCommitMessage(rowEl.dataset.eid, rowEl.dataset.chash, parseInt(rowEl.dataset.cidx, 10), inp.value);
   if(!ok) renderPanel();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
 }
 // 일간 보고서 커밋 라인 인라인 편집 커밋 — (entryId,hash,cidx)를 .rtask 행에서 해석해 setCommitSubject로만 위임.
@@ -5227,7 +5352,7 @@ function guideShot(kind, step){
     `<div class="shot-menu"><div>설정</div><div>회의실 관리</div><div class="on">XML 내보내기</div><div>XML 가져오기</div><div>전체 데이터 초기화</div></div>`
     + call(1, '더보기', 'right:18px;top:10px') + call(2, '내보내기', 'right:34px;top:96px') + call(3, '가져오기', 'right:30px;top:122px'));
   if(kind === 'window') return base('창 모드 · 크기',
-    `<span class="shot-btn">📌</span><span class="shot-btn">⚙</span><span class="shot-btn">×</span>`,
+    `<span class="shot-btn">📌</span><span class="shot-btn">☰</span><span class="shot-btn">×</span>`,
     call(1, '호스트바', 'left:22px;top:10px') + call(2, '분할선', 'right:40px;top:110px') + call(3, '가장자리 드래그', 'right:10px;bottom:12px'));
   return base('문의',
     `<span class="shot-btn primary">문의</span><span class="shot-btn">?</span>`,
@@ -5432,9 +5557,9 @@ function bind(){
     if(ev.target.classList && ev.target.classList.contains('te-text') && ev.key === 'Enter'){
       const box = ev.target.closest('.todo-edit'); const btn = box && box.querySelector('[data-act="save"]'); if(btn) btn.click();
     }
-    // 커밋 메시지 인라인 편집: Enter=커밋(blur 경유), Esc=취소
+    // 커밋 메시지 편집(제목+본문 멀티라인): Enter=줄바꿈(기본), Ctrl/Cmd+Enter=저장, Esc=취소. 저장은 저장버튼·클릭아웃(focusout)으로도.
     if(ev.target.classList && ev.target.classList.contains('nd-cedit')){
-      if(ev.key === 'Enter'){ ev.preventDefault(); ev.target.blur(); }
+      if(ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)){ ev.preventDefault(); ev.target.blur(); }
       else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
     }
   });
@@ -5504,7 +5629,9 @@ function bind(){
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
   $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
   { const re = $('#remEnabled'); if(re) re.addEventListener('change', () => hpost({ cmd:'reminderToggle', on: re.checked })); }
-  { const gb = $('#gitBodyChk'); if(gb) gb.addEventListener('change', () => { if(state){ state.gitCommitBody = gb.checked; save(); } }); }   // 커밋 전체 본문 옵션 — 영속(save가 HOST/브라우저 분기)
+  { const gb = $('#gitBodyChk'); if(gb) gb.addEventListener('change', () => setGitCommitBody(gb.checked)); }   // 커밋 전체 본문 옵션(설정 미러) — 공유 setter로 라우팅(영속+3곳 동기화)
+  { const bb = $('#bgBodyChk'); if(bb) bb.addEventListener('change', () => setGitCommitBody(bb.checked)); }   // 일괄 불러오기 모달 토글 — 동일 단일 소스
+  { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
   $('#ncSave').addEventListener('click', () => {
     const id = $('#ncId').value.trim(), pw = $('#ncPw').value;
     if(!id){ toast('ID를 입력하세요', 'warn'); $('#ncId').focus(); return; }
@@ -5538,12 +5665,12 @@ function bind(){
       const nEl = $('#updNotesBody'); if(nEl) nEl.textContent = notes || '(변경내역 정보 없음)';
       openModal('#updNotesModal');
     }); }
-  // ── 위젯 투명도 슬라이더(HOST 전용) ── UI 상태는 localStorage에 미러, 실제 창 적용은 호스트가 setOpacity로
+  // ── 위젯 투명도 슬라이더(HOST 전용) ── CSS 변수 --wo로 앱 루트(body)에 opacity 적용 + localStorage 미러
   { const rng = $('#opacityRange'); if(rng) rng.addEventListener('input', () => {
       const v = Number(rng.value);
       const val = $('#opacityVal'); if(val) val.textContent = v + '%';
       try{ localStorage.setItem('tc_opacity', String(v)); }catch(e){}
-      hpost({ cmd: 'setOpacity', pct: v });
+      document.documentElement.style.setProperty('--wo', String(v/100));   // 즉시 반영(창·WebView2 투명 → 반투명)
     }); }
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
@@ -5561,6 +5688,7 @@ function bind(){
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;
         const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 전송 시작…'; s.className = 'rpt-send-status busy'; }
+        armRptSendWatchdog();
       }
       Platform.report.submitDaily(payload);
     } else {
@@ -5576,6 +5704,7 @@ function bind(){
         if(Platform.caps.reportAuto){
           const b = $('#btnRptSend'); if(b) b.disabled = true;
           const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+          armRptSendWatchdog();
         }
         Platform.report.submitWeekly(payload);
         return;
@@ -5587,6 +5716,7 @@ function bind(){
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;
         const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+        armRptSendWatchdog();
       }
       Platform.report.submitWeekly(payload);
     }
@@ -5725,7 +5855,7 @@ function bind(){
 
   /* 날짜 패널 */
   $('#dayPanel').addEventListener('click', async ev => {
-    if(ev.target.id === 'btnGitHere'){ openGitFetch(selectedDate); return; }
+    if(ev.target.id === 'btnGitHere'){ openDayGitFetch(selectedDate); return; }
     if(ev.target.id === 'btnGitBulk'){ openBulkGitFetch(); return; }
     if(ev.target.id === 'btnAddHere'){ openQuickAdd(selectedDate); return; }
     const act = ev.target.dataset.act;
@@ -5945,6 +6075,7 @@ function bind(){
     const b = ev.target.closest('[data-bulk]'); if(b) setBulkRange(b.dataset.bulk);
   });
   $('#btnBulkRun').addEventListener('click', runBulkGitFetch);
+  { const dgr = $('#btnDayGitRun'); if(dgr) dgr.addEventListener('click', runDayGitFetch); }   // 이 날 커밋 컴팩트 모달 실행
 
   /* 모달 공통: × / 취소 / 배경 클릭 */
   $$('.overlay').forEach(ov => {
@@ -6113,7 +6244,7 @@ function stripGitBlocks(memo){
 // 저장 시 카드에 커밋 행 목록으로 렌더되고, 같은 날 재가져오기는 통째 교체되어 중복이 없다.
 function applyCommitsToForm(commits, cat, date){
   __entryCommits = normCommits(commits.map(c => ({
-    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: c.body || ''
+    hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: flattenBody(c.body)
   })));
   __entryGitLoaded = true;   // 저장 시 작업일지(source='git')로 표시
   if(!$('#fTitle').value.trim()){
@@ -6144,21 +6275,30 @@ async function fetchCommitsIntoModal(){
   applyCommitsToForm(res.commits, cat, date);
   } finally { fbtn.disabled = false; }
 }
-// 날짜 패널의 '📥 커밋' → 그날 그 과제의 작업일지가 이미 있으면 그 기록을 열어 갱신, 없으면 새로 만든다(중복 일지 방지)
-function openGitFetch(date){
+// 날짜 패널의 '이 날 커밋' → 컴팩트 단일날짜 모달(과제 범위 선택 + 불러오기 1버튼). 편집 모달 안 뜸 — 일괄 코어를 from==to로 재사용해 바로 등록.
+let dayGitDate = '';
+function openDayGitFetch(date){
+  if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats();
   if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
-  // 명시 컨텍스트 우선: 날짜패널 과제필터(noteFilterCat) → 연결과제 1개뿐이면 그것 → 아니면 임의 [0] 금지하고 선택 요구
-  let cat = noteFilterCat ? cats.find(c => c.id === noteFilterCat) : null;
-  if(!cat && cats.length === 1) cat = cats[0];
-  if(!cat){ toast('연결된 과제가 여러 개예요 — 위 과제 필터에서 과제를 고르거나 [기간 일괄 불러오기]를 쓰세요', 'warn'); return; }
-  const existing = state.entries.find(e => e.date === date && e.source === 'git' && e.categoryId === cat.id);
-  if(existing){ openEntryModal('edit', existing.id); }
-  else { openEntryModal('new', date); $('#fCat').value = cat.id; }
-  updateGitRow();
-  fetchCommitsIntoModal();
+  dayGitDate = date;
+  const dd = $('#dgDate'); if(dd) dd.textContent = date;
+  const sel = $('#dgCat');
+  sel.innerHTML = `<option value="">전체 과제 (${cats.length}개)</option>` + cats.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  if(noteFilterCat && cats.some(c => c.id === noteFilterCat)) sel.value = noteFilterCat;   // 과제 필터 중이면 그 과제 선택
+  const st = $('#dgStatus'); if(st) st.innerHTML = '';
+  { const rp = $('#dgReplace'); if(rp) rp.checked = false; }   // 파괴적 1회성 옵션 — 열 때마다 항상 OFF(영속 안 함)
+  syncGitBodyChecks();   // '전체 본문' 토글에 현재 state 반영
+  openModal('#dayGitModal');
+}
+async function runDayGitFetch(){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dayGitDate)) return;
+  await runGitImport(dayGitDate, dayGitDate, $('#dgCat').value, '#dgStatus', '#btnDayGitRun', $('#dgReplace') ? $('#dgReplace').checked : false);   // 단일 날짜 = from==to
 }
 // ----- 기간 일괄 불러오기 (범위 + 전체/특정 과제 → 날짜별 작업일지로 즉시 자동 등록) -----
+// 커밋 전체 본문 포함 — 단일 소스 state.gitCommitBody. 어느 UI에서 바꿔도 여기로 라우팅 → save + 3곳 동기화.
+function setGitCommitBody(on){ if(state){ state.gitCommitBody = !!on; save(); } syncGitBodyChecks(); }
+function syncGitBodyChecks(){ ['#gitBodyChk','#bgBodyChk','#dgBodyChk'].forEach(function(s){ var e = $(s); if(e) e.checked = !!(state && state.gitCommitBody); }); }
 function openBulkGitFetch(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats();
@@ -6168,6 +6308,8 @@ function openBulkGitFetch(){
   const r = weekRange(new Date(), 0);
   $('#bgFrom').value = r[0]; $('#bgTo').value = r[1];
   $('#bgStatus').innerHTML = '기간과 과제를 고르고 <b>불러오기 &amp; 등록</b>을 누르면, 그 기간의 내 커밋을 <b>날짜별 작업일지</b>로 한 번에 등록합니다. 같은 날·같은 과제 기록은 갱신(중복 없음).';
+  { const rp = $('#bgReplace'); if(rp) rp.checked = false; }   // 파괴적 1회성 옵션 — 열 때마다 항상 OFF(영속 안 함)
+  syncGitBodyChecks();   // 모달 열 때 '전체 본문' 토글에 현재 state 반영
   openModal('#bulkGitModal');
 }
 function setBulkRange(preset){
@@ -6180,11 +6322,16 @@ async function runBulkGitFetch(){
   const from = $('#bgFrom').value, to = $('#bgTo').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)){ toast('기간을 올바르게 선택하세요', 'warn'); return; }
   if(from > to){ toast('시작일이 종료일보다 늦습니다', 'warn'); return; }
-  const selId = $('#bgCat').value;
+  await runGitImport(from, to, $('#bgCat').value, '#bgStatus', '#btnBulkRun', $('#bgReplace') ? $('#bgReplace').checked : false);   // 얇은 래퍼 — 실제 fetch+등록은 공유 코어
+}
+// 커밋 fetch+등록 코어(기간/단일날짜 공유) — 대상 cats 순회 → gitlog → byDay 그룹 → entries 생성/갱신(편집보존) → save/renderAll → status/toast.
+// 단일 날짜는 from==to로 호출(days.size=1 → 문구 "1일" 자연 처리). body: !!state.gitCommitBody 그대로 적용.
+async function runGitImport(from, to, selId, statusSel, btnSel, replace){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats().filter(c => !selId || c.id === selId);
   if(!cats.length){ toast('대상 과제가 없습니다', 'warn'); return; }
-  const btn = $('#btnBulkRun'); btn.disabled = true;
-  const setS = html => { const s = $('#bgStatus'); if(s) s.innerHTML = html; };
+  const btn = $(btnSel); if(btn) btn.disabled = true;
+  const setS = html => { const s = $(statusSel); if(s) s.innerHTML = html; };
   try{
     setS('<span class="spin"></span> 불러오는 중…');
     let totalCommits = 0, created = 0, updated = 0, catsHit = 0, ci = 0; const days = new Set(); const errors = [];
@@ -6195,6 +6342,11 @@ async function runBulkGitFetch(){
       catch(_){ errors.push(esc(cat.name) + ': 예외'); continue; }
       if(!res || !res.ok){ errors.push(esc(cat.name) + ': ' + esc((res && res.error) || '오류')); continue; }
       const commits = res.commits || [];
+      if(replace){
+        // 초기화 후 로드 — fetch 성공(res.ok) 후에만, 이 과제의 [from,to] 범위 git 기록을 전부 제거(편집·과거커밋 포함). 이후 전량 새로 생성(병합/편집보존 배제).
+        // 스코프: source==='git' + 이 과제(cat.id) + from≤date≤to 만. 일정·할일·다른 과제·범위 밖은 안 건드림. 커밋 0건이어도 초기화는 유지(fetch 성공했으므로).
+        state.entries = state.entries.filter(e => !(e.source === 'git' && e.categoryId === cat.id && e.date >= from && e.date <= to));
+      }
       if(!commits.length) continue;
       catsHit++;
       const byDay = {};
@@ -6204,7 +6356,7 @@ async function runBulkGitFetch(){
         (byDay[day] = byDay[day] || []).push(c);
       }
       for(const day in byDay){
-        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: c.body || '' })));
+        const mapped = normCommits(byDay[day].map(c => ({ hash: c.hash || '', short: c.short || '', time: commitTime(c), subject: c.subject || '(메시지 없음)', body: flattenBody(c.body) })));
         if(!mapped.length) continue;
         days.add(day); totalCommits += mapped.length;
         const title = mapped.length === 1 ? mapped[0].subject : `${cat.name} · 커밋 ${mapped.length}건`;
@@ -6229,9 +6381,10 @@ async function runBulkGitFetch(){
       toast('이 기간에 가져올 커밋이 없습니다', 'warn');
       return;
     }
-    setS(`✓ 과제 ${catsHit}개 · ${days.size}일 · 커밋 ${totalCommits}건 등록 (신규 ${created} · 갱신 ${updated})` + errLine);
-    toast(`작업일지 ${totalCommits}건 등록 (${days.size}일 · 신규 ${created} · 갱신 ${updated})`);
-  } finally { btn.disabled = false; }
+    const _bodyMode = (state && state.gitCommitBody) ? '본문 포함' : '제목만';   // 본문 옵션 상태 명시 — '제목만'이면 전체 본문 체크가 꺼져 있었던 것
+    setS(`✓ 과제 ${catsHit}개 · ${days.size}일 · 커밋 ${totalCommits}건 등록 · <b>${_bodyMode}</b> (신규 ${created} · 갱신 ${updated})` + errLine);
+    toast(`작업일지 ${totalCommits}건 등록 · ${_bodyMode} (${days.size}일 · 신규 ${created} · 갱신 ${updated})`);
+  } finally { if(btn) btn.disabled = false; }
 }
 
 async function detectGitAuthor(){
@@ -6386,6 +6539,10 @@ setupGuideResize();
 renderAll();
 if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫기) 구성 + 준비 신호
   buildHostBar();
+  // 저장된 위젯 투명도(tc_opacity, 30~100·기본 100)를 로드 시 --wo로 적용(창·WebView2 투명 → 반투명 렌더)
+  { let op = parseInt(localStorage.getItem('tc_opacity'), 10);
+    if(!Number.isFinite(op) || op < 30 || op > 100) op = 100;
+    document.documentElement.style.setProperty('--wo', String(op/100)); }
   showBootSkeleton();                       // 호스트가 저장 XML을 주입(__applyXml)할 때까지 펄스 — 시드 깜빡임 가림
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}
@@ -6447,7 +6604,7 @@ function buildHostBar(){
       <button data-host="focus" id="hbFocus" title="넓게 보기 — 크게 펼쳐서 작업">⤢</button>
       <button data-host="hide" id="hbHide" title="트레이로 숨기기" style="display:none">🗕</button>
       <button data-host="pin" id="hbPin" title="바탕화면 부착/해제">📌</button>
-      <button data-host="menu" title="설정">⚙</button>
+      <button data-host="menu" title="위젯 메뉴">☰</button>
       <button data-host="close" title="닫기">✕</button>
     </div>`;
   document.body.insertBefore(bar, document.body.firstChild);

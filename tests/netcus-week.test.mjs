@@ -82,6 +82,20 @@ test('parseNetcusWeek: 빈 content 날 → stats.emptyDays 기록(미분류 아�
   assert.strictEqual(p.stats.daysRead, 3);   // ok:true 모두 읽음(빈 날 포함)
 });
 
+// ── ok:false 빈 날 → readFailedDays(세션/접근 실패 가시화) ────────────────
+test('parseNetcusWeek: ok:false 빈 날 → readFailedDays로 분리(emptyDays 아님), daysRead 미포함', () => {
+  const days = [
+    day('2026-07-06', '[보고서 작성]\n초안'),   // 정상(읽음)
+    day('2026-07-07', '', true),                 // 진짜 빈 날(읽었으나 내용 없음)
+    day('2026-07-08', '', false),                // 읽기 실패(요소 없음/세션) — 무음 손실 가시화 대상
+  ];
+  const p = parseNetcusWeek(days, CATS, {});
+  assert.deepStrictEqual(p.stats.emptyDays, ['2026-07-07'], '읽은 빈 날만 emptyDays');
+  assert.deepStrictEqual(p.stats.readFailedDays, ['2026-07-08'], '못 읽은 날은 readFailedDays');
+  assert.strictEqual(p.stats.daysRead, 2, 'ok:true 2일만 읽음(실패 날 제외)');
+  assert.strictEqual(p.unclassified.length, 0);
+});
+
 // ── 다중일 병합 + 정규화(공백 차이) ──────────────────────────────────────
 test('parseNetcusWeek: 여러 날 동일 과제(정규화 공백 무시)로 병합, lines 누적', () => {
   const days = [

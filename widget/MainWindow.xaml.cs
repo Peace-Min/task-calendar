@@ -19,13 +19,16 @@ using Microsoft.Win32;
 
 namespace TaskCalendarWidget
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, INetcusHost
     {
         private readonly string _dataDir;
         private readonly string _dataFile;
         private readonly string _settingsFile;
         private readonly string _webviewDir;
         private readonly string _logFile;
+
+        private CoreWebView2Environment? _cwvEnv;      // Window_Loaded에서 할당 — 보조 WebView2(netcus)가 같은 환경(쿠키·세션) 재사용
+        private readonly NetcusService _netcus;        // 회사 일간보고(netcus) 전용 서비스(행위보존 추출 Phase1)
 
         private WidgetSettings _settings = new();
         private RECT _gestureRect;   // 이동/리사이즈 시작 시점의 창 물리 좌표
@@ -69,6 +72,7 @@ namespace TaskCalendarWidget
             ReconcileAutoStart();   // 옛 빌드 경로로 등록된 자동시작을 현재 실행 exe로 자가 치유(ISSUES #1)
             ApplyWindowBounds();
             ApplyWindowIcon();   // 작업표시줄/Alt+Tab 버튼 브랜드 아이콘(트레이 모드 노출 시 빈 아이콘 방지)
+            _netcus = new NetcusService(this);   // Env/DataDir은 라이브 getter로 읽으므로 이른 생성 안전
         }
 
         // ============ 설정 ============
@@ -109,13 +113,8 @@ namespace TaskCalendarWidget
             catch (Exception ex) { Debug.WriteLine("설정 저장 오류: " + ex); }
         }
 
-        // 위젯 창 불투명도 범위 클램프: 0.3~1.0. NaN/0(미설정·손상)이면 1.0(불투명).
-        private static double ClampOpacity(double v)
-            => (double.IsNaN(v) || v <= 0) ? 1.0 : Math.Min(1.0, Math.Max(0.3, v));
-
         private void ApplyWindowBounds()
         {
-            this.Opacity = ClampOpacity(_settings.Opacity);
             if (_settings.Width >= MinWidth) Width = _settings.Width;
             if (_settings.Height >= MinHeight) Height = _settings.Height;
 
@@ -183,18 +182,10 @@ namespace TaskCalendarWidget
 
             try
             {
-                // 초기 배경(콘텐츠 로드 전) — OS 테마에 맞춰 HTML --bg와 일치시켜 흰 플래시 방지(다크 모드 지원)
-                bool osDark = false;
-                try
-                {
-                    using var th = Registry.CurrentUser.OpenSubKey(
-                        @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                    if (th?.GetValue("AppsUseLightTheme") is int lite) osDark = (lite == 0);
-                }
-                catch { }
-                web.DefaultBackgroundColor = osDark
-                    ? System.Drawing.Color.FromArgb(0x0F, 0x14, 0x20)   // 다크: HTML --bg #0f1420
-                    : System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF7);  // 라이트: HTML --bg #f3f4f7
+                // 진짜 투명도: 창(AllowsTransparency)·WebView2를 투명하게 만들어 HTML 앱 배경(body --bg)이
+                // 바탕화면 위로 비치게 한다. (기존엔 OS 테마색으로 초기 불투명 배경을 깔아 흰 플래시를 막았으나,
+                // 투명 창에서는 투명이어야 desktop이 보인다. HTML 초기 배경이 불투명이라 로드 후 플래시는 무시 가능.)
+                web.DefaultBackgroundColor = System.Drawing.Color.Transparent;
                 Directory.CreateDirectory(_webviewDir);
 
                 string ver = "";
@@ -389,21 +380,16 @@ namespace TaskCalendarWidget
 
                     // ----- 회사 일간보고(netcus) 자동 전송 -----
                     case "netcusSaveCreds":
-                        NetcusSaveCreds(GetStr(doc, "id"), GetStr(doc, "pw"));
+                        _netcus.SaveCreds(GetStr(doc, "id"), GetStr(doc, "pw"));
                         break;
                     case "netcusCredsGet":
-                        NetcusSendCredsState();
+                        _netcus.SendCredsState();
                         break;
                     case "netcusSubmit":
                     {
-                        var req = new NetcusReq
-                        {
-                            Y = GetInt(doc, "y"), M = GetInt(doc, "m"), D = GetInt(doc, "d"),
-                            Status = GetStr(doc, "status"), Overtime = GetInt(doc, "overtime"),
-                            Content = GetStr(doc, "content"),
-                            DryRun = !(doc.RootElement.TryGetProperty("dryRun", out var drEl) && drEl.ValueKind == JsonValueKind.False),
-                        };
-                        _ = NetcusSubmit(req);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
+                        bool dryRun = !(doc.RootElement.TryGetProperty("dryRun", out var drEl) && drEl.ValueKind == JsonValueKind.False);
+                        _ = _netcus.SubmitDaily(GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"),
+                            GetStr(doc, "status"), GetInt(doc, "overtime"), GetStr(doc, "content"), dryRun);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
                         break;
                     }
                     // ----- 시작 알림(리마인더) -----
@@ -431,30 +417,23 @@ namespace TaskCalendarWidget
                         break;
 
                     case "netcusWeekSubmit":
-                    {
-                        var wreq = new NetcusWeekReq
-                        {
-                            Sdate = GetStr(doc, "sdate"), Edate = GetStr(doc, "edate"),
-                            Subject = GetStr(doc, "subject"), Content = GetStr(doc, "content"),
-                            Endwork = GetStr(doc, "endwork"), Planwork = GetStr(doc, "planwork"),
-                        };
-                        _ = NetcusWeekFill(wreq);   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
+                        _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
+                            GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"));   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
                         break;
-                    }
                     case "netcusWeekMerge":   // 주간보고 병합(Phase2) — 기간 일간보고 content를 '읽기만' 해서 reqId로 회신
                     {
                         string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");
-                        _ = NetcusWeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
+                        _ = _netcus.WeekMerge(reqId, from, to);   // async — days 배열을 __hostReply(reqId, ...)로 회신
                         break;
                     }
                     case "netcusWeeklyRangeRead":   // 주간보고 범위 읽기(Phase2) — 기간에 걸치는 netcus 주간보고들을 '읽기만' 해서 reqId로 회신
                     {
                         string reqId = GetStr(doc, "reqId"), from = GetStr(doc, "from"), to = GetStr(doc, "to");
-                        _ = NetcusWeeklyRangeRead(reqId, from, to);   // async — weeks 배열을 __hostReply(reqId, ...)로 회신
+                        _ = _netcus.WeeklyRangeRead(reqId, from, to);   // async — weeks 배열을 __hostReply(reqId, ...)로 회신
                         break;
                     }
                     case "netcusProbe":   // 주간보고 구조 캡처 창 열기(읽기 전용) — 가시 로그인 후 사용자가 HTML 저장
-                        _ = NetcusProbeStart();
+                        _ = _netcus.Probe();
                         break;
 
                     // ----- 이동 (부착 상태에서는 잠금) -----
@@ -522,16 +501,6 @@ namespace TaskCalendarWidget
                     {
                         string reqId = GetStr(doc, "reqId"), repo = GetStr(doc, "repo"), vcs = GetStr(doc, "vcs");
                         _ = RunGitCheckAsync(reqId, repo, vcs);
-                        break;
-                    }
-
-                    // ----- 위젯 창 불투명도(설정 슬라이더) -----
-                    case "setOpacity":
-                    {
-                        double v = GetInt(doc, "pct") / 100.0;   // pct=30~100 정수
-                        this.Opacity = ClampOpacity(v);
-                        _settings.Opacity = this.Opacity;
-                        SaveSettings();
                         break;
                     }
 
@@ -812,6 +781,17 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex) { Log("GitReply 오류: " + ex.Message); }
         }
+
+        // 메인 웹뷰로 임의 JS 실행(UI 스레드 마샬 + try/catch). netcus·리마인더·업데이트 통지 공유.
+        private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
+
+        // ----- INetcusHost (NetcusService 호스트 어댑터) -----
+        // Dispatcher는 Window(DispatcherObject)의 상속 프로퍼티가 인터페이스를 만족한다.
+        CoreWebView2Environment? INetcusHost.Env => _cwvEnv;
+        string INetcusHost.DataDir => _dataDir;
+        void INetcusHost.Eval(string js) => JsCall(js);
+        void INetcusHost.Reply(string reqId, object payload) => GitReply(reqId, payload);
+        void INetcusHost.Log(string msg) => Log(msg);
 
         private class GitResult
         {
@@ -1332,7 +1312,5 @@ namespace TaskCalendarWidget
         public bool TrayHintShown { get; set; } = false;  // '트레이로 숨김' 안내는 1회만
         // 자동 업데이트 소스 폴더 URL(ftp:// · http(s):// · UNC/로컬 경로). 빈 값 = 업데이트 기능 휴면.
         public string UpdateSourceUrl { get; set; } = "";
-        // 위젯 창 불투명도(0.3~1.0). 1.0=불투명. 설정 슬라이더로 조절.
-        public double Opacity { get; set; } = 1.0;
     }
 }

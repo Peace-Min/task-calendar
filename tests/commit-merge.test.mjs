@@ -87,3 +87,30 @@ test('보강: prev subject가 빈 문자열이면 그 빈 문자열이 반영(�
   const out = mergeCommitsPreserveEdits(prev, fetched);
   assert.strictEqual(out[0].subject, '');            // pm.has(hash) true → prev값('') 사용
 });
+
+// (g) hash 일치 시 subject뿐 아니라 body(사용자 편집본)도 보존 — fetched body를 이김
+test('(g) hash 일치 → prev의 편집된 body도 보존(줄바꿈 유지)', () => {
+  const prev = [C('aaa111', '편집 제목', { body: '편집 본문\n둘째 줄' })];
+  const fetched = [C('aaa111', 'git 제목', { body: 'git 본문' })];
+  const out = mergeCommitsPreserveEdits(prev, fetched);
+  assert.strictEqual(out[0].subject, '편집 제목');
+  assert.strictEqual(out[0].body, '편집 본문\n둘째 줄');   // prev body 우선
+  assert.strictEqual(out[0].short, fetched[0].short);       // 나머지 필드는 fetched
+});
+
+// (h) prev에 body 부재면 ''로 보존(편집본이 진실 — 스펙상 prev가 subject·body 둘 다 이김)
+test('(h) prev에 body 없음 → body:"" 로 세팅(fetched body 채택 안 함)', () => {
+  const prev = [C('aaa111', '편집 제목')];                       // body 없음
+  const fetched = [C('aaa111', 'git 제목', { body: 'git 본문' })];
+  const out = mergeCommitsPreserveEdits(prev, fetched);
+  assert.strictEqual(out[0].subject, '편집 제목');
+  assert.strictEqual(out[0].body, '');                          // prev.body||'' → '' (초기화 후 로드로 fresh 취득)
+});
+
+// (i) hash 없는 fetched는 그대로 통과 — body도 fetched 것 유지(참조 동일)
+test('(i) hash 없는 fetched → body 포함 원본 그대로 통과', () => {
+  const noHash = C('', '해시 없음', { body: 'fetched 본문' });
+  const out = mergeCommitsPreserveEdits([C('aaa111', 'x', { body: 'y' })], [noHash]);
+  assert.strictEqual(out[0], noHash);                           // 매칭 안 됨 → 원본 객체
+  assert.strictEqual(out[0].body, 'fetched 본문');
+});

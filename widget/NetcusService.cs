@@ -9,22 +9,56 @@ using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
 using WV = Microsoft.Web.WebView2.Wpf;
+using static TaskCalendarWidget.NetcusText;
 
 namespace TaskCalendarWidget
 {
+    // NetcusService가 호스트(MainWindow)에 요구하는 최소 의존 — 메인 웹뷰 실행/회신, 로그, 보조 WebView2 환경, 데이터 폴더, 디스패처.
+    internal interface INetcusHost
+    {
+        System.Windows.Threading.Dispatcher Dispatcher { get; }
+        CoreWebView2Environment? Env { get; }         // 초기화 후 할당되므로 라이브 getter(프로퍼티)
+        string DataDir { get; }
+        void Eval(string js);                          // 메인 웹뷰 ExecuteScriptAsync(dispatcher 마샬 + try/catch)
+        void Reply(string reqId, object payload);      // window.__hostReply(reqId, payload)
+        void Log(string msg);
+    }
+
     // 회사 일간보고(netcus pjm) 자동 전송. 보조 WebView2(메인과 같은 환경=쿠키/세션 공유)로
     // login.htm→goLogin() 로그인 → pjm_work_view.jsp?y&m&d&id 이동 → status/overtime/content 채움 →
     // (실제 제출) Bmodify()로 서버 POST. 자격증명은 DPAPI로 로컬 암호화 저장.
-    public partial class MainWindow
+    // Phase1(행위보존 추출): MainWindow.partial(Netcus.cs)에서 전용 서비스로 이관. 로직·타임아웃·문자열·흐름 동일.
+    internal sealed class NetcusService
     {
-        private CoreWebView2Environment? _cwvEnv;     // MainWindow.xaml.cs init에서 할당
+        private readonly INetcusHost _host;
         private WV.WebView2? _w2;                      // 보조 WebView2(가시 창)
         private Window? _w2win;
-        private bool _ncMergeBusy;              // netcus 주간병합 중복 실행 가드(단일 _w2 레이스 방지 — JS 타임아웃 후 재시도 대비)
-        private bool _ncProbeBusy;              // netcus 구조 캡처 창 중복 실행 가드(단일 _w2 레이스 방지)
+        private bool _ncBusy;                   // netcus 단일 실행 가드("한 번에 하나" — 단일 _w2 레이스 방지). 6개 op 공유.
+        private bool _probeOpen;                // 캡처 창이 열려 있는지(열려 있는 동안 _ncBusy 계속 보유)
         private bool _ncProbeFolderOpened;      // 최초 캡처 저장 시 저장 폴더 1회만 자동 열기
 
-        private string CredFile => Path.Combine(_dataDir, "netcus.cred");
+        public NetcusService(INetcusHost host) { _host = host; }
+
+        // ----- 호스트 어댑터(기존 멤버 시그니처 유지 → 이관한 본문 무변경) -----
+        private void JsCall(string js) => _host.Eval(js);
+        private void GitReply(string reqId, object payload) => _host.Reply(reqId, payload);
+        private void Log(string msg) => _host.Log(msg);
+        private System.Windows.Threading.Dispatcher Dispatcher => _host.Dispatcher;
+
+        private string CredFile => Path.Combine(_host.DataDir, "netcus.cred");
+
+        // ----- 공개 API(원시값 입력 — MainWindow는 Req 타입을 몰라도 됨) -----
+        public Task SubmitDaily(int y, int m, int d, string status, int overtime, string content, bool dryRun)
+            => NetcusSubmit(new NetcusReq { Y = y, M = m, D = d, Status = status, Overtime = overtime, Content = content, DryRun = dryRun });
+
+        public Task WeekFill(string sdate, string edate, string subject, string content, string endwork, string planwork)
+            => NetcusWeekFill(new NetcusWeekReq { Sdate = sdate, Edate = edate, Subject = subject, Content = content, Endwork = endwork, Planwork = planwork });
+
+        public Task WeekMerge(string reqId, string from, string to) => NetcusWeekMerge(reqId, from, to);
+        public Task WeeklyRangeRead(string reqId, string from, string to) => NetcusWeeklyRangeRead(reqId, from, to);
+        public Task Probe() => NetcusProbeStart();
+        public void SaveCreds(string id, string pw) => NetcusSaveCreds(id, pw);
+        public void SendCredsState() => NetcusSendCredsState();
 
         private sealed class NetcusReq
         {
@@ -51,7 +85,7 @@ namespace TaskCalendarWidget
                     enc = "";
                     try { if (File.Exists(CredFile)) { using var d = JsonDocument.Parse(File.ReadAllText(CredFile, Encoding.UTF8)); if (d.RootElement.TryGetProperty("pw", out var p)) enc = p.GetString() ?? ""; } } catch { }
                 }
-                File.WriteAllText(CredFile, JsonSerializer.Serialize(new { id, pw = enc }), Encoding.UTF8);
+                File.WriteAllText(CredFile, JsonSerializer.Serialize(new { id, pw = enc, valid = (bool?)null }), Encoding.UTF8);   // 새 저장=미검증(null) — 직후 NetcusValidateCreds가 채움
                 Log("netcus 자격증명 저장");
                 NetcusSendCredsState();
                 // 저장 후 실제 로그인 검증(보이는 창) — 성공/실패 표시
@@ -62,35 +96,59 @@ namespace TaskCalendarWidget
             catch (Exception ex) { Log("netcus 자격증명 저장 실패: " + ex.Message); JsCredsResult(false, "저장 오류: " + ex.Message); }
         }
 
+        // 로그인 + '양성' 인증 확정(5개 netcus 흐름 공유). login.htm→goLogin 후, 보호 페이지(오늘자 work_view)로
+        // 이동해 인증 전용 요소(content textarea) 존재를 확인한다. 실패면 netcus가 로그인 폼으로 되돌리므로
+        // 비밀번호칸이 '안정적으로' 존재 → 즉시 실패로 판정.
+        // ※ 기존 login.htm '비번칸 소멸' 폴링은 실패 리다이렉트 찰나의 공백에 오탐 → 틀린 자격이 성공으로 통과해
+        //    읽기 무한대기·저장검증 OK오탐·실패한 창 방치를 유발하던 버그. 이 헬퍼가 그 판정을 목적지 기반 양성확인으로 대체.
+        private async Task<bool> NetcusLoginVerify(CoreWebView2 cw, string id, string pw)
+        {
+            await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+            var nav = NavOnce(cw, 15000);
+            await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+            await nav;
+            // 보호 페이지(오늘자 work_view)로 이동 후 안정 상태에서 판정.
+            var t = DateTime.Now;
+            await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={t.Year}&m={t.Month}&d={t.Day}&id={Uri.EscapeDataString(id)}");
+            for (int i = 0; i < 16; i++)   // ~4s(제출 사후검증과 동일 규모). 타임아웃=불확실→안전하게 실패
+            {
+                var st = (await cw.ExecuteScriptAsync(
+                    "(function(){try{"
+                    + "if(document.getElementsByName('content')[0])return 1;"          // 인증됨: work_view content textarea
+                    + "if(document.querySelector('input[type=password]'))return -1;"   // 로그인 폼 리다이렉트 = 실패
+                    + "return 0;}catch(e){return 0;}})()")).Trim();
+                if (st == "1") return true;
+                if (st == "-1") return false;
+                await Task.Delay(250);
+            }
+            return false;   // 불확실한 인증으로 읽기/쓰기 진행 금지
+        }
+
         // 저장된 자격증명으로 실제 로그인해 성공/실패 검증(보조 WebView2, 가시 창)
         private async Task NetcusValidateCreds(string id, string pw)
         {
+            if (_ncBusy) { JsCredsResult(false, "다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+            _ncBusy = true; NetcusBusy(true);
+            Action? detach = null;
             try
             {
                 JsCredsCheck("로그인 확인 중…");
                 await EnsureW2();
                 var cw = _w2!.CoreWebView2;
-                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-                var nav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
-                await nav;
-                // 로그인 후에도 비밀번호 입력칸이 보이면(=로그인 페이지 잔류) 실패
-                string still = "true";
-                for (int i = 0; i < 8; i++)
-                {
-                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                    if (still == "false") break;
-                    await Task.Delay(300);
-                }
-                bool ok = (still == "false");
+                detach = AttachDialogAutoAccept(cw, "validate");   // alert 시 가시창 모달 블로킹 방지(기존 누락 수정)
+                NetcusStatus("validate", "login");
+                bool ok = await NetcusLoginVerify(cw, id, pw);
+                SetCredsValid(ok);   // 명시적 검증 결과만 영속(op 로그인 성패로는 갱신 안 함) → 이후 op의 전제 게이트
                 JsCredsResult(ok, ok ? "로그인 확인됨 — 자격증명 OK" : "로그인 실패 — ID/비밀번호를 확인하세요");
             }
             catch (Exception ex) { Log("netcus 자격증명 검증 예외: " + ex); JsCredsResult(false, "검증 오류: " + ex.Message); }
             finally
             {
+                detach?.Invoke();
                 // 검증은 결과만 설정창에 표시하면 되므로 성공/실패 무관 확인용 창은 닫는다.
                 try { await Task.Delay(700); } catch { }
                 try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                _ncBusy = false; NetcusBusy(false);
             }
         }
 
@@ -111,6 +169,40 @@ namespace TaskCalendarWidget
             catch (Exception ex) { Log("netcus 자격증명 로드 실패: " + ex.Message); return ("", ""); }
         }
 
+        // 마지막 '명시적 검증'(NetcusValidateCreds) 결과. true=확인됨, false=로그인 실패 확정, null=미검증(기존 파일 하위호환 포함).
+        private bool? NetcusCredsValid()
+        {
+            try
+            {
+                if (!File.Exists(CredFile)) return null;
+                using var d = JsonDocument.Parse(File.ReadAllText(CredFile, Encoding.UTF8));
+                if (d.RootElement.TryGetProperty("valid", out var v))
+                {
+                    if (v.ValueKind == JsonValueKind.True) return true;
+                    if (v.ValueKind == JsonValueKind.False) return false;
+                }
+                return null;
+            }
+            catch { return null; }
+        }
+
+        // cred 파일의 valid만 갱신(id·pw enc 보존). 명시적 검증에서만 호출 — 파일 없으면 no-op.
+        private void SetCredsValid(bool ok)
+        {
+            try
+            {
+                if (!File.Exists(CredFile)) return;
+                string id, enc;
+                using (var d = JsonDocument.Parse(File.ReadAllText(CredFile, Encoding.UTF8)))
+                {
+                    id = d.RootElement.TryGetProperty("id", out var i) ? (i.GetString() ?? "") : "";
+                    enc = d.RootElement.TryGetProperty("pw", out var p) ? (p.GetString() ?? "") : "";
+                }
+                File.WriteAllText(CredFile, JsonSerializer.Serialize(new { id, pw = enc, valid = (bool?)ok }), Encoding.UTF8);
+            }
+            catch (Exception ex) { Log("netcus 자격증명 valid 갱신 실패: " + ex.Message); }
+        }
+
         private void NetcusSendCredsState()
         {
             var (id, pw) = NetcusLoadCreds();
@@ -120,7 +212,22 @@ namespace TaskCalendarWidget
         // ----- 진행/결과 보고(메인 웹뷰로) -----
         private void NetcusProgress(string msg) { Log("netcus: " + msg); JsCall("window.__netcusProgress && window.__netcusProgress(" + JsonSerializer.Serialize(msg) + ")"); }
         private void NetcusResult(bool ok, string msg) { Log("netcus result: " + ok + " / " + msg); JsCall("window.__netcusResult && window.__netcusResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
-        private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
+
+        // ----- 진행 프로토콜(진행바용 — JS 렌더는 다음 Phase). 텍스트 NetcusProgress와 병행(제거 안 함). -----
+        private void NetcusBusy(bool on) { JsCall("window.__netcusBusy && window.__netcusBusy(" + (on ? "true" : "false") + ")"); }
+        private void NetcusStatus(string op, string phase, int done = -1, int total = -1)
+        {
+            var payload = JsonSerializer.Serialize(new { op, phase, done, total });
+            JsCall("window.__netcusStatus && window.__netcusStatus(" + payload + ")");
+        }
+
+        // 레거시 pjm alert()/confirm() 자동 수락 부착(공유) — 각 op가 자기 tag로 부착하고 detach()를 finally(또는 창 Closed)에서 호출.
+        private Action AttachDialogAutoAccept(CoreWebView2 cw, string tag)
+        {
+            void H(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(" + tag + ") alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
+            cw.ScriptDialogOpening += H;
+            return () => { try { cw.ScriptDialogOpening -= H; } catch { } };
+        }
 
         private async Task EnsureW2(bool background = false)
         {
@@ -133,21 +240,7 @@ namespace TaskCalendarWidget
             _w2win.Content = _w2;
             _w2win.Closed += (_, __) => { try { _w2?.Dispose(); } catch { } _w2 = null; _w2win = null; };
             _w2win.Show();
-            await _w2.EnsureCoreWebView2Async(_cwvEnv);
-        }
-
-        private static string J(string s) => JsonSerializer.Serialize(s);
-
-        // 본문에서 첫 한글 토막(연속 한글 2~4자)을 뽑아 저장 후 되읽기 대조용 needle로 사용. 한글 없으면 "".
-        private static string NetcusHangulNeedle(string s)
-        {
-            var sb = new StringBuilder();
-            foreach (char ch in s ?? "")
-            {
-                if (ch >= 0xAC00 && ch <= 0xD7A3) { sb.Append(ch); if (sb.Length >= 4) break; }
-                else { if (sb.Length >= 2) break; sb.Clear(); }
-            }
-            return sb.Length >= 2 ? sb.ToString() : "";
+            await _w2.EnsureCoreWebView2Async(_host.Env);
         }
 
         private Task<bool> NavTo(CoreWebView2 cw, string url)
@@ -172,34 +265,24 @@ namespace TaskCalendarWidget
 
         private async Task NetcusSubmit(NetcusReq req)
         {
-            string lastAlert = "";
+            if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+            _ncBusy = true; NetcusBusy(true);
             CoreWebView2? cw = null;
-            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { lastAlert = ev.Message ?? ""; Log("netcus alert: " + lastAlert); try { ev.Accept(); } catch { } }
+            Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다 — 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
+                if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다 — 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 NetcusProgress("창 준비 중…");
                 await EnsureW2();
                 cw = _w2!.CoreWebView2;
-                cw.ScriptDialogOpening += OnDialog;
+                detach = AttachDialogAutoAccept(cw, "submit");
 
                 NetcusProgress("로그인 중…");
-                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-                var loginNav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
-                await loginNav;
-
-                // 로그인 성공 판정 — 비밀번호 입력칸 잔류 시 로그인 실패(읽기 흐름과 동일 프리체크)
-                string _loginStill = "true";
-                for (int _i = 0; _i < 8; _i++)
-                {
-                    _loginStill = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                    if (_loginStill == "false") break;
-                    await Task.Delay(300);
-                }
-                if (_loginStill != "false")
+                NetcusStatus("submit", "login");
+                if (!await NetcusLoginVerify(cw, id, pw))
                 {
                     try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 실패한 창 남기지 않음
                     NetcusResult(false, "netcus 로그인 실패 — 설정에서 ID/비밀번호를 확인하세요.");
@@ -207,6 +290,7 @@ namespace TaskCalendarWidget
                 }
 
                 NetcusProgress("일간보고 페이지 여는 중…");
+                NetcusStatus("submit", "opening");
                 string url = $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}";
                 await NavTo(cw, url);
 
@@ -224,6 +308,7 @@ namespace TaskCalendarWidget
                 try { Log("netcus form-assoc(document.form.status): " + await cw.ExecuteScriptAsync("(function(){try{return !!(document.form&&document.form.status);}catch(e){return false;}})()")); } catch { }
 
                 NetcusProgress("내용 작성 중…");
+                NetcusStatus("submit", "filling");
                 string fill = "(function(){try{var st=document.getElementsByName('status')[0],ot=document.getElementsByName('overtime')[0],ct=document.getElementsByName('content')[0];"
                     + $"if(st){{st.value={J(req.Status)};}}if(ot){{ot.selectedIndex={req.Overtime};}}if(ct){{ct.value={J(req.Content)};}}"
                     + "return (st&&ct)?1:0;}catch(e){return 0;}})()";
@@ -241,6 +326,7 @@ namespace TaskCalendarWidget
                 // 네이티브 폼 submit은 브라우저가 accept-charset='euc-kr'로 필드값을 인코딩(레거시 폼이 원래 쓰던 경로) → 한글 보존.
                 // 페이지 안에서 동적 <form>(action=go=write, multipart, accept-charset=euc-kr)을 만들어 값 싣고 submit → 창이 결과로 이동.
                 NetcusProgress("제출 중…");
+                NetcusStatus("submit", "submitting");
                 var submitNav = NavOnce(cw, 20000);
                 string post = "(function(){try{"
                     + "var db=document.getElementsByName('dbstatus')[0];"
@@ -262,6 +348,7 @@ namespace TaskCalendarWidget
                 // 우리가 보낸 한글 토큰이 그대로 있는지 대조(mojibake면 불일치).
                 // 반환: -1=로그인페이지, -2=폼없음, 0=빈내용, 1=정상(한글 일치 또는 한글없음+내용존재), 2=저장됐으나 한글 불일치
                 NetcusProgress("저장 확인 중…");
+                NetcusStatus("submit", "verifying");
                 await NavTo(cw, url);
                 string needle = NetcusHangulNeedle(req.Content);
                 string check = "(function(){try{"
@@ -284,41 +371,31 @@ namespace TaskCalendarWidget
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음) — 열린 창에서 직접 확인하세요.");
             }
             catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
-            finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
+            finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
 
         // 주간보고 — '채우고 열어두기'(자동 제출 안 함). pjm_write.jsp 폼에 기간/제목/과제투입시간/진행사항/차주계획 과제목록을 채운 뒤
         // 창을 띄워 둔다. 차주계획 내용·회의내용 등을 보완 후 사용자가 직접 '제출'(Bwrite) — euc-kr은 네이티브 폼이 처리.
         private async Task NetcusWeekFill(NetcusWeekReq req)
         {
-            string lastAlert = "";
+            if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+            _ncBusy = true; NetcusBusy(true);
             CoreWebView2? cw = null;
-            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { lastAlert = ev.Message ?? ""; Log("netcus(week) alert: " + lastAlert); try { ev.Accept(); } catch { } }
+            Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다 — 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
+                if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다 — 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 NetcusProgress("창 준비 중…");
                 await EnsureW2();
                 cw = _w2!.CoreWebView2;
-                cw.ScriptDialogOpening += OnDialog;
+                detach = AttachDialogAutoAccept(cw, "week");
 
                 NetcusProgress("로그인 중…");
-                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-                var loginNav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
-                await loginNav;
-
-                // 로그인 성공 판정 — 비밀번호 입력칸 잔류 시 로그인 실패(읽기 흐름과 동일 프리체크)
-                string _loginStill = "true";
-                for (int _i = 0; _i < 8; _i++)
-                {
-                    _loginStill = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                    if (_loginStill == "false") break;
-                    await Task.Delay(300);
-                }
-                if (_loginStill != "false")
+                NetcusStatus("weekfill", "login");
+                if (!await NetcusLoginVerify(cw, id, pw))
                 {
                     try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 실패한 창 남기지 않음
                     NetcusResult(false, "netcus 로그인 실패 — 설정에서 ID/비밀번호를 확인하세요.");
@@ -326,12 +403,14 @@ namespace TaskCalendarWidget
                 }
 
                 NetcusProgress("주간보고 목록 여는 중…");
+                NetcusStatus("weekfill", "listing");
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
                 if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
 
                 // 작성 폼은 직접 GET하면 서버가 '게시판이 옳지 않습니다' 거부 → 목록의 form(table_code=report_tbl)을
                 // pjm_write.jsp로 POST해야 함. 폼 연결 의존을 피해 동적 POST 폼으로 table_code/id를 실어 이동.
                 NetcusProgress("작성 폼 여는 중…");
+                NetcusStatus("weekfill", "opening");
                 var wnav = NavOnce(cw, 15000);
                 string goWrite = "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_write.jsp';"
                     + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
@@ -353,6 +432,7 @@ namespace TaskCalendarWidget
                 if (probe != "true") { NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다 — 로그인 또는 페이지 접근을 확인하세요."); return; }
 
                 NetcusProgress("내용 작성 중…");
+                NetcusStatus("weekfill", "filling");
                 // sdate/edate는 readonly지만 JS .value 할당은 가능. content(과제투입시간)/endwork(진행사항)/planwork(차주계획)는 textarea.
                 string fill = "(function(){try{function set(n,v){var e=document.getElementsByName(n)[0];if(e){e.value=v;}}"
                     + $"set('sdate',{J(req.Sdate)});set('edate',{J(req.Edate)});set('subject',{J(req.Subject)});"
@@ -386,7 +466,7 @@ namespace TaskCalendarWidget
                 bool disposed = (ex.Message ?? "").Contains("disposed");
                 NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다 — 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
             }
-            finally { if (cw != null) { try { cw.ScriptDialogOpening -= OnDialog; } catch { } } }
+            finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
 
         // 주간보고 병합(Phase2) — from~to 기간의 일간보고 content를 '읽기만' 해서 웹으로 회신(제출/수정 없음).
@@ -396,12 +476,11 @@ namespace TaskCalendarWidget
         //   error: ""(정상)/"no-creds"/"login"/"read". content 비었거나 요소 없으면 content:""(파서가 '일간 없음' 판정).
         private async Task NetcusWeekMerge(string reqId, string from, string to)
         {
-            if (_ncMergeBusy) { GitReply(reqId, new { ok = false, error = "busy", days = Array.Empty<object>() }); return; }   // 이미 진행 중 → 즉시 반환(_w2 안 건드림)
-            _ncMergeBusy = true;
+            if (_ncBusy) { GitReply(reqId, new { ok = false, error = "busy", days = Array.Empty<object>() }); return; }   // 이미 진행 중 → 즉시 반환(_w2 안 건드림)
+            _ncBusy = true; NetcusBusy(true);
             var days = new List<object>();
             CoreWebView2? cw = null;
-            // 레거시 pjm alert()/confirm() 자동 수락 — 없으면 최소화된 창에서 다이얼로그가 읽기를 무한 대기시킴(제출/검증과 동일 방어)
-            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(merge) alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
+            Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
@@ -410,6 +489,7 @@ namespace TaskCalendarWidget
                     GitReply(reqId, new { ok = false, error = "no-creds", days = Array.Empty<object>() });
                     return;
                 }
+                if (NetcusCredsValid() == false) { GitReply(reqId, new { ok = false, error = "unverified", days = Array.Empty<object>() }); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 // 기간 파싱(YYYY-MM-DD). 실패/역순은 방어 처리.
                 if (!DateTime.TryParse(from, out var dFrom) || !DateTime.TryParse(to, out var dTo))
@@ -427,33 +507,25 @@ namespace TaskCalendarWidget
                 Log($"netcus 주간병합 읽기: {from} ~ {to}");
                 await EnsureW2(background: true);   // 읽기 전용 — 포커스/포그라운드 안 뺏음(최소화 비활성 창)
                 cw = _w2!.CoreWebView2;
-                cw.ScriptDialogOpening += OnDialog;
+                detach = AttachDialogAutoAccept(cw, "merge");   // 레거시 pjm alert()/confirm() 자동 수락(최소화 창 무한대기 방어)
 
-                // 로그인(NetcusSubmit와 동일 패턴)
-                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-                var loginNav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
-                await loginNav;
-
-                // 로그인 실패 판정 — 비밀번호 입력칸 잔류(NetcusValidateCreds 프로브와 동일)
-                string still = "true";
-                for (int i = 0; i < 8; i++)
-                {
-                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                    if (still == "false") break;
-                    await Task.Delay(300);
-                }
-                if (still != "false")
+                // 로그인 + 양성 인증 확정(공유 헬퍼 — 목적지 work_view에서 인증 요소 존재로 판정)
+                NetcusStatus("merge", "login");
+                if (!await NetcusLoginVerify(cw, id, pw))
                 {
                     GitReply(reqId, new { ok = false, error = "login", days = Array.Empty<object>() });
                     return;
                 }
 
                 // from..to 각 날짜 content 읽기 — 단일 _w2 재사용(하루 1창 금지)
+                int mergeTotal = (dTo - dFrom).Days + 1, mergeDone = 0;
+                bool sessionLost = false;   // 크롤 도중 login 리다이렉트(세션 만료) 감지 → 빈 날과 구분
                 for (var d = dFrom; d <= dTo; d = d.AddDays(1))
                 {
                     int Y = d.Year, M = d.Month, D = d.Day;
                     string date = $"{Y:D4}-{M:D2}-{D:D2}";
+                    mergeDone++;
+                    NetcusStatus("merge", "reading", mergeDone, mergeTotal);
                     string content = ""; bool okDay = false;
                     try
                     {
@@ -472,12 +544,19 @@ namespace TaskCalendarWidget
                             try { content = JsonSerializer.Deserialize<string>(raw) ?? ""; } catch { content = ""; }
                             okDay = true;   // 요소 존재 = 그 날 페이지 접근 성공(내용은 비었을 수 있음)
                         }
-                        else { content = ""; okDay = false; }   // 요소 없음(세션/접근 문제) → 파서는 빈 날로 취급
+                        else
+                        {
+                            // 요소 없음 — login 리다이렉트(세션 만료)인지 진짜 접근불가인지 구분
+                            var pwp = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                            if (pwp == "true") { sessionLost = true; break; }   // login 폼 = 세션 만료 → 즉시 중단(빈 날로 위장 금지)
+                            content = ""; okDay = false;                          // 비번칸도 없음 = 진짜 접근불가(파서가 빈 날 취급)
+                        }
                     }
                     catch (Exception exd) { Log("netcus 주간병합 일자 읽기 실패(" + date + "): " + exd.Message); content = ""; okDay = false; }
                     days.Add(new { date, content, ok = okDay });
                 }
 
+                if (sessionLost) { GitReply(reqId, new { ok = false, error = "session", days = Array.Empty<object>() }); return; }   // 세션 만료 → 부분데이터 폐기, 명시 중단(무음 손실 방지)
                 Log($"netcus 주간병합 완료: {days.Count}일");
                 GitReply(reqId, new { ok = true, error = "", days });
             }
@@ -488,10 +567,10 @@ namespace TaskCalendarWidget
             }
             finally
             {
-                _ncMergeBusy = false;
-                try { if (cw != null) cw.ScriptDialogOpening -= OnDialog; } catch { }
+                detach?.Invoke();
                 // 읽기 전용 — 성공/실패 무관 확인창은 닫는다(제출 확인창과 달리 열어두지 않음).
                 try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                _ncBusy = false; NetcusBusy(false);
             }
         }
 
@@ -506,15 +585,16 @@ namespace TaskCalendarWidget
         //   (word_code/n_code/s_code/c_code/table_code=report_tbl/id)를 실어 재현한다(기존 NetcusWeekFill와 동일 패턴).
         private async Task NetcusWeeklyRangeRead(string reqId, string from, string to)
         {
-            if (_ncMergeBusy) { GitReply(reqId, new { ok = false, error = "busy", weeks = Array.Empty<object>() }); return; }   // 단일 _w2 레이스 방지(주간병합과 공유 가드)
-            _ncMergeBusy = true;
+            if (_ncBusy) { GitReply(reqId, new { ok = false, error = "busy", weeks = Array.Empty<object>() }); return; }   // 단일 _w2 레이스 방지(모든 op 공유 가드)
+            _ncBusy = true; NetcusBusy(true);
             var weeks = new List<object>();
             CoreWebView2? cw = null;
-            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(weekly) alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
+            Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { GitReply(reqId, new { ok = false, error = "no-creds", weeks = Array.Empty<object>() }); return; }
+                if (NetcusCredsValid() == false) { GitReply(reqId, new { ok = false, error = "unverified", weeks = Array.Empty<object>() }); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 if (!NcDate(from, out var dFrom) || !NcDate(to, out var dTo)) { GitReply(reqId, new { ok = false, error = "read", weeks = Array.Empty<object>() }); return; }
                 if (dTo < dFrom) { var tmp = dFrom; dFrom = dTo; dTo = tmp; }
@@ -524,21 +604,11 @@ namespace TaskCalendarWidget
                 Log($"netcus 주간범위 읽기: {from} ~ {to}");
                 await EnsureW2(background: true);   // 읽기 전용 — 포커스 안 뺏음(최소화 비활성 창)
                 cw = _w2!.CoreWebView2;
-                cw.ScriptDialogOpening += OnDialog;
+                detach = AttachDialogAutoAccept(cw, "weekly");   // 레거시 pjm alert()/confirm() 자동 수락(최소화 창 무한대기 방어)
 
-                // 로그인(NetcusWeekMerge와 동일 패턴)
-                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-                var loginNav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
-                await loginNav;
-                string still = "true";
-                for (int i = 0; i < 8; i++)
-                {
-                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                    if (still == "false") break;
-                    await Task.Delay(300);
-                }
-                if (still != "false") { GitReply(reqId, new { ok = false, error = "login", weeks = Array.Empty<object>() }); return; }
+                // 로그인 + 양성 인증 확정(공유 헬퍼)
+                NetcusStatus("weekly", "login");
+                if (!await NetcusLoginVerify(cw, id, pw)) { GitReply(reqId, new { ok = false, error = "login", weeks = Array.Empty<object>() }); return; }
 
                 // 목록 1페이지 이동(GET). 이후 페이지는 go_list 폼 재현.
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
@@ -564,7 +634,13 @@ namespace TaskCalendarWidget
                         await Task.Delay(250);
                     }
                     var rows = NcParseRows(rowsRaw);
-                    if (rows.Count == 0) break;   // 더 없는 페이지
+                    if (rows.Count == 0)
+                    {
+                        // 행 0 — login 리다이렉트(세션 만료)인지 진짜 더 없는 페이지인지 구분
+                        var pwp = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                        if (pwp == "true") { GitReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }   // login 폼 = 세션 만료 → 부분데이터 폐기, 명시 중단
+                        break;   // 비번칸 없음 = 진짜 더 없는 페이지
+                    }
 
                     bool anyNew = false, allOlder = true;
                     var candidates = new List<(string viewNo, string regStr)>();
@@ -588,6 +664,7 @@ namespace TaskCalendarWidget
                         await cw.ExecuteScriptAsync(GoViewJs(c.viewNo, id));   // go_view(viewNo) 재현
                         await vnav;
                         opened++;
+                        NetcusStatus("weekly", "reading", opened, -1);   // 총 미상 → total=-1
 
                         string cellRaw = "null";
                         for (int i = 0; i < 16; i++)
@@ -621,63 +698,11 @@ namespace TaskCalendarWidget
             }
             finally
             {
-                _ncMergeBusy = false;
-                try { if (cw != null) cw.ScriptDialogOpening -= OnDialog; } catch { }
+                detach?.Invoke();
                 try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 읽기 전용 — 확인창 닫음
+                _ncBusy = false; NetcusBusy(false);
             }
         }
-
-        // ----- 주간범위 읽기 보조(날짜 파싱·JS 재현·응답 파싱) -----
-        private sealed class NcRow { public string viewNo = "", regDate = "", title = ""; }
-        private sealed class NcCell { public string period = "", title = "", regdate = "", endwork = "", content = "", plan = ""; }
-
-        // "YYYY-MM-DD"/"YYYY/MM/DD"/"YYYY.MM.DD"(+선택 시각) → DateTime. 실패 시 false.
-        private static bool NcDate(string s, out DateTime d)
-        {
-            d = default;
-            if (string.IsNullOrWhiteSpace(s)) return false;
-            var t = s.Trim().Replace('/', '-').Replace('.', '-');
-            int sp = t.IndexOf(' '); if (sp > 0) t = t.Substring(0, sp);
-            return DateTime.TryParseExact(t, new[] { "yyyy-M-d", "yyyy-MM-dd", "yyyy-M-dd", "yyyy-MM-d" },
-                System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out d);
-        }
-
-        // 기간 "YYYY-MM-DD ~ YYYY-MM-DD" → 시작/끝. '~'(또는 '∼') 기준으로만 분리(날짜의 '-'와 혼동 방지).
-        private static bool NcPeriod(string s, out DateTime a, out DateTime b)
-        {
-            a = default; b = default;
-            if (string.IsNullOrWhiteSpace(s)) return false;
-            int i = s.IndexOf('~'); if (i < 0) i = s.IndexOf('∼');
-            if (i < 0) return false;
-            return NcDate(s.Substring(0, i), out a) && NcDate(s.Substring(i + 1), out b);
-        }
-
-        private static string NcDigits(string s)
-        {
-            var sb = new StringBuilder();
-            foreach (var c in s ?? "") if (c >= '0' && c <= '9') sb.Append(c);
-            return sb.Length > 0 ? sb.ToString() : "0";
-        }
-
-        // go_list(p) 재현 — pjm.jsp?list=go&start=p 로 동적 POST(hidden: table_code=report_tbl/id + 빈 코드들).
-        private string GoListJs(int p, string id) =>
-            "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm.jsp?list=go&start=" + p + "';"
-          + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
-          + "H('word_code','');H('n_code','');H('s_code','');H('c_code','');H('table_code','report_tbl');H('id'," + J(id) + ");"
-          + "document.body.appendChild(f);f.submit();return 'ok';}catch(e){return 'err';}})()";
-
-        // go_view(viewNo) 재현 — pjm_view.jsp?start=1&view_no=viewNo 로 동적 POST(동일 hidden 필드).
-        private string GoViewJs(string viewNo, string id) =>
-            "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_view.jsp?start=1&view_no=" + NcDigits(viewNo) + "';"
-          + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
-          + "H('word_code','');H('n_code','');H('s_code','');H('c_code','');H('table_code','report_tbl');H('id'," + J(id) + ");"
-          + "document.body.appendChild(f);f.submit();return 'ok';}catch(e){return 'err';}})()";
-
-        // 목록 페이지 행 추출 — a[href*=go_view]마다 {viewNo, regDate(YYYY-MM-DD), title}. JSON 배열 문자열 반환.
-        private const string RowExtractJs = @"(function(){var out=[];var as=document.getElementsByTagName('a');for(var i=0;i<as.length;i++){var a=as[i];var h=a.getAttribute('href')||'';if(h.indexOf('go_view')<0)continue;var m=/go_view\(\s*['""]?(\d+)['""]?\s*\)/.exec(h);if(!m)continue;var title=((a.innerText||a.textContent||'')+'').replace(/\s+/g,' ').trim();var reg='';var tr=a.closest?a.closest('tr'):null;if(tr){var tds=tr.getElementsByTagName('td');for(var j=0;j<tds.length;j++){var tx=((tds[j].innerText||'')+'').trim();var dm=/(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/.exec(tx);if(dm){var mm=dm[2].length<2?'0'+dm[2]:dm[2];var dd=dm[3].length<2?'0'+dm[3]:dm[3];reg=dm[1]+'-'+mm+'-'+dd;break;}}}out.push({viewNo:m[1],regDate:reg,title:title});}return JSON.stringify(out);})()";
-
-        // 조회 페이지 라벨셀 추출 — 라벨 div/td 텍스트 정규화 정확일치 → 다음 셀 innerText. JSON 객체 문자열 반환.
-        private const string CellExtractJs = @"(function(){function C(lb){var tds=document.getElementsByTagName('td');for(var i=0;i<tds.length;i++){var d=tds[i].querySelector&&tds[i].querySelector('div');var tx=((d?d.innerText:tds[i].innerText)||'').replace(/\s+/g,' ').trim();if(tx===lb){var n=tds[i].nextElementSibling;if(n)return n.innerText;}}return '';}return JSON.stringify({period:C('기간'),title:C('제목'),regdate:C('작성일'),endwork:C('진행사항'),content:C('과제투입시간'),plan:C('차주계획')});})()";
 
         // ExecuteScriptAsync는 JSON 문자열을 다시 JSON 인코딩 → 이중 디코드.
         private List<NcRow> NcParseRows(string? raw)
@@ -722,64 +747,73 @@ namespace TaskCalendarWidget
         // 창은 코드로 닫지 않고 사용자가 닫는다(Closed에서 가드·핸들러 해제).
         private async Task NetcusProbeStart()
         {
-            if (_ncProbeBusy) { JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("이미 캡처 창이 열려 있습니다.") + ")"); return; }
-            _ncProbeBusy = true;
-            // 레거시 pjm alert()/confirm() 자동 수락 — 창이 살아있는 동안 유지(제출/병합과 동일 방어)
-            void OnDialog(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { try { ev.Accept(); } catch { } }
+            if (_ncBusy)
+            {
+                // 이미 캡처 창이 열려 있으면 기존 안내, 그 외 다른 op 진행 중이면 busy 거절.
+                if (_probeOpen) JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("이미 캡처 창이 열려 있습니다.") + ")");
+                else JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요.") + ")");
+                return;
+            }
+            _ncBusy = true; NetcusBusy(true);
+            Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw))
                 {
-                    _ncProbeBusy = false;
+                    _ncBusy = false; NetcusBusy(false);
                     JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 자격증명이 없습니다 — 설정에서 저장하세요.") + ")");
+                    return;
+                }
+                if (NetcusCredsValid() == false)   // 검증 실패 확정 → 로그인 시도 없이 차단(no-creds와 동일 인라인 해제)
+                {
+                    _ncBusy = false; NetcusBusy(false);
+                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("저장된 자격증명이 로그인 실패 상태입니다 — 설정에서 확인하세요.") + ")");
                     return;
                 }
 
                 await EnsureW2();   // 가시 창(920x720)
-                try { if (_w2win != null) { _w2win.Title = "netcus 주간보고 구조 캡처 (읽기 전용)"; _w2win.Closed += (_, __) => { _ncProbeBusy = false; }; } } catch { }
+                try { if (_w2win != null) { _w2win.Title = "netcus 주간보고 구조 캡처 (읽기 전용)"; } } catch { }
                 var cw = _w2!.CoreWebView2;
-                cw.ScriptDialogOpening += OnDialog;
+                detach = AttachDialogAutoAccept(cw, "probe");   // 창이 살아있는 동안 유지(창 Closed에서 해제)
 
-                // 로그인(NetcusSubmit와 동일 패턴)
-                await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-                var loginNav = NavOnce(cw, 15000);
-                await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
-                await loginNav;
-
-                // 로그인 성공 판정 — 비밀번호 입력칸 잔류 여부(NetcusValidateCreds 프로브와 동일)
-                string still = "true";
-                for (int i = 0; i < 8; i++)
+                // 로그인 — 공유 헬퍼로 통일(목적지 인증요소 존재 기반 양성확인; goLogin 폼주입/비번칸 폴링 제거)
+                if (!await NetcusLoginVerify(cw, id, pw))
                 {
-                    still = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                    if (still == "false") break;
-                    await Task.Delay(300);
-                }
-                if (still != "false")
-                {
-                    _ncProbeBusy = false;
+                    _ncBusy = false; NetcusBusy(false);
+                    detach?.Invoke();
                     JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.") + ")");
-                    try { cw.ScriptDialogOpening -= OnDialog; } catch { }
                     return;
                 }
+
+                NetcusStatus("probe", "opening");
 
                 // 게시판 홈까지만 이동 — 주간보고 목록/조회는 사용자가 직접 이동(URL 추측 자동이동 금지)
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
 
-                // 프로브 세션 핸들러 배선 — 창은 계속 열어둠(finally에서 떼지 않음). Closed에서 누수 방지.
+                // 프로브 세션 핸들러 배선 — 창은 계속 열어둠. 창 Closed에서 핸들러 해제 + dialog detach + busy 해제(누수 방지).
                 cw.WebMessageReceived += OnProbeMsg;
                 cw.NavigationCompleted += OnProbeNav;
-                _w2win!.Closed += (_, __) => { try { cw.WebMessageReceived -= OnProbeMsg; } catch { } try { cw.NavigationCompleted -= OnProbeNav; } catch { } };
+                var detachOnClose = detach;
+                _w2win!.Closed += (_, __) =>
+                {
+                    try { cw.WebMessageReceived -= OnProbeMsg; } catch { }
+                    try { cw.NavigationCompleted -= OnProbeNav; } catch { }
+                    detachOnClose?.Invoke();
+                    _ncBusy = false; _probeOpen = false; NetcusBusy(false);
+                };
+                _probeOpen = true;   // 창 열림 확정 — 이후 재요청은 '이미 열림' 안내, 다른 op는 busy 차단
 
                 // 캡처 바 즉시 주입(이후 탐색마다 OnProbeNav가 재주입)
                 await InjectProbeBar(cw);
 
                 JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("netcus 캡처 창을 열었습니다 — 주간보고 목록/조회로 이동 후 상단 '이 페이지 HTML 저장'을 누르세요.") + ")");
-                // 성공 경로: _ncProbeBusy·OnDialog는 창이 살아있는 동안 유지(창 Closed에서 리셋).
+                // 성공 경로: _ncBusy·_probeOpen·detach는 창이 살아있는 동안 유지(창 Closed에서 리셋).
             }
             catch (Exception ex)
             {
-                _ncProbeBusy = false;
+                _ncBusy = false; _probeOpen = false; NetcusBusy(false);
+                detach?.Invoke();
                 JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("캡처 창 오류: " + ex.Message) + ")");
             }
         }
@@ -829,7 +863,7 @@ namespace TaskCalendarWidget
                 string url = root.GetProperty("url").GetString() ?? "";
                 string title = root.GetProperty("title").GetString() ?? "";
 
-                var dir = Path.Combine(_dataDir, "netcus-probe");
+                var dir = Path.Combine(_host.DataDir, "netcus-probe");
                 Directory.CreateDirectory(dir);
                 string ts = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 string fname = "capture-" + ts + ".html";

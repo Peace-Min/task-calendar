@@ -358,6 +358,51 @@ if (!JSDOM) {
       assert.strictEqual(ev('setCommitSubject("g1","zzz",5,"x")'), false);
     });
 
+    // ── setCommitMessage (커밋 내역 탭 전체메시지 편집 — 첫 줄=제목·나머지=본문 재분리) ──
+    const commitBodyOf = (eid, i) => evJSON(`(entryById(${JSON.stringify(eid)}).commits[${i}].body||"")`);
+    test('setCommitMessage: 제목+본문 → 첫 줄=제목(정규화)·나머지=본문(내부 줄바꿈 보존)', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"고친  제목\\n본문 첫째\\n- 본문 둘째")'), true);
+      assert.strictEqual(commitSubjectOf('g1', 0), '고친 제목');            // 제목만 \s+ 접기+트림
+      assert.strictEqual(commitBodyOf('g1', 0), '본문 첫째\n- 본문 둘째');   // 본문 줄바꿈 보존
+      assert.notStrictEqual(evJSON('entryById("g1").updatedAt'), CA);       // updatedAt 갱신
+      assert.strictEqual(commitSubjectOf('g1', 1), '둘째 커밋');            // 다른 커밋 불변
+    });
+    test('setCommitMessage: 선두 빈 줄 무시 → 첫 비어있지 않은 줄이 제목', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"\\n\\n  진짜 제목\\n본문")'), true);
+      assert.strictEqual(commitSubjectOf('g1', 0), '진짜 제목');
+      assert.strictEqual(commitBodyOf('g1', 0), '본문');
+    });
+    test('setCommitMessage: 제목만(본문 없음) → body 빈 문자열', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"제목만 있음")'), true);
+      assert.strictEqual(commitSubjectOf('g1', 0), '제목만 있음');
+      assert.strictEqual(commitBodyOf('g1', 0), '');
+    });
+    test('setCommitMessage: 전부 공백/빈 입력 → false(제목 없음, 원본 유지)', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"   \\n  \\n ")'), false);   // 모든 줄 공백 → 제목 없음
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"")'), false);
+      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');
+    });
+    test('setCommitMessage: 제목 줄이 공백이고 아래 본문 있으면 → 첫 비어있지 않은 줄(본문 첫 줄)이 제목으로 승격', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"   \\n본문만")'), true);   // git 관례: 첫 비어있지 않은 줄=제목
+      assert.strictEqual(commitSubjectOf('g1', 0), '본문만');
+      assert.strictEqual(commitBodyOf('g1', 0), '');
+    });
+    test('setCommitMessage: 무변경(제목 동일·본문 동일) → false', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"첫 커밋")'), false);   // 기존 subject='첫 커밋', body 없음(='')
+      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');
+    });
+    test('setCommitMessage: 없는 엔트리/커밋 → false', () => {
+      seed(mutState());
+      assert.strictEqual(ev('setCommitMessage("nope","h1",0,"x")'), false);
+      assert.strictEqual(ev('setCommitMessage("g1","zzz",5,"x")'), false);
+    });
+
     test('deleteCommitRow: 커밋 제거(남은 커밋 유지)', () => {
       seed(mutState());
       ev('deleteCommitRow("g1","h1",0)');
@@ -368,6 +413,26 @@ if (!JSDOM) {
       ev('deleteCommitRow("g2","",0)');   // 커밋 1개 → 삭제 시 git 기록(엔트리) 제거
       assert.strictEqual(ev('entryById("g2")'), null);
       assert.strictEqual(evJSON('state.entries.some(function(e){return e.id==="g2";})'), false);
+    });
+
+    // 회귀: 커밋 전체 본문(body)이 gitFeed 행·renderGitTab(커밋 내역 탭)에 실려 표시돼야 함.
+    // (버그: 피드/렌더가 body를 누락 → 옵션 ON 저장분도 커밋 내역 탭엔 제목만 보여 '안 불러온 듯' 오인. 보고서엔 정상이었음.)
+    test('regression(커밋내역 본문): git body가 gitFeed 행·renderGitTab에 렌더됨', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [{ id: 'c-b', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+        entries: [
+          { id: 'gb', date: '2026-07-08', title: '작업일지', categoryId: 'c-b', allDay: true, startTime: '', endTime: '',
+            location: '', memo: '', source: 'git',
+            commits: [{ hash: 'hb', short: 'hb', time: '14:38', subject: '제목 한 줄', body: '본문 첫째 줄\n- 둘째 줄' }],
+            hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        ],
+        todos: [], rooms: [],
+      });
+      ev('selectedDate = "2026-07-08"'); ev('noteFilterCat = null');
+      assert.strictEqual(evJSON('gitFeed().find(function(r){return r.hash==="hb";}).body'), '본문 첫째 줄\n- 둘째 줄');   // 피드에 body 실림
+      assert.strictEqual(ev('renderGitTab().indexOf("nd-commit-body") >= 0'), true);   // 본문 컨테이너 렌더
+      assert.strictEqual(ev('renderGitTab().indexOf("둘째 줄") >= 0'), true);           // 본문 텍스트 렌더
     });
 
     // ── PART C: collectReportData titleMeta(라인별 편집 가능 여부) ─────────────
