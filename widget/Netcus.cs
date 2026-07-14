@@ -191,6 +191,21 @@ namespace TaskCalendarWidget
                 await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
                 await loginNav;
 
+                // 로그인 성공 판정 — 비밀번호 입력칸 잔류 시 로그인 실패(읽기 흐름과 동일 프리체크)
+                string _loginStill = "true";
+                for (int _i = 0; _i < 8; _i++)
+                {
+                    _loginStill = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (_loginStill == "false") break;
+                    await Task.Delay(300);
+                }
+                if (_loginStill != "false")
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 실패한 창 남기지 않음
+                    NetcusResult(false, "netcus 로그인 실패 — 설정에서 ID/비밀번호를 확인하세요.");
+                    return;
+                }
+
                 NetcusProgress("일간보고 페이지 여는 중…");
                 string url = $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}";
                 await NavTo(cw, url);
@@ -294,6 +309,21 @@ namespace TaskCalendarWidget
                 var loginNav = NavOnce(cw, 15000);
                 await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
                 await loginNav;
+
+                // 로그인 성공 판정 — 비밀번호 입력칸 잔류 시 로그인 실패(읽기 흐름과 동일 프리체크)
+                string _loginStill = "true";
+                for (int _i = 0; _i < 8; _i++)
+                {
+                    _loginStill = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (_loginStill == "false") break;
+                    await Task.Delay(300);
+                }
+                if (_loginStill != "false")
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 실패한 창 남기지 않음
+                    NetcusResult(false, "netcus 로그인 실패 — 설정에서 ID/비밀번호를 확인하세요.");
+                    return;
+                }
 
                 NetcusProgress("주간보고 목록 여는 중…");
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));

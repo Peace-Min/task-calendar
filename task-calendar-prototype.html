@@ -73,6 +73,9 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .upd-btn:disabled{opacity:.6;cursor:default}
 .upd-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .upd-btn.primary:hover{background:var(--accent-2)}
+/* 배너 '변경내역' 경량 모달 — 신규 버전 notes만 */
+.upd-nv{font-size:var(--fs-title);font-weight:700;color:var(--accent-2);margin-bottom:8px}
+.upd-nbody{font-size:var(--fs-body);line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word}
 @media (max-width:760px){
   body.host main{flex-direction:column;min-height:0}
   body.host .cal{flex:1 1 auto;min-height:0}
@@ -1815,6 +1818,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- 업데이트 배너 '변경내역' — 이번(신규) 버전 notes만 표시(전체 이력 모달 #patchModal과 분리) -->
+<div class="overlay hidden" id="updNotesModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-head"><h2>새 버전 변경내역</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <div class="upd-nv">v<span id="updNotesVer"></span></div>
+      <div class="upd-nbody" id="updNotesBody"></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button class="btn primary" data-close>닫기</button></div>
+  </div>
+</div>
+
 <!-- 작업일지 기간 일괄 불러오기 (즉시 자동 등록) -->
 <div class="overlay hidden" id="bulkGitModal">
   <div class="modal">
@@ -3410,6 +3425,7 @@ window.__updateAvailable = function(infoJson){
   const b = document.getElementById('updateBanner'); if(!b) return;
   b.dataset.version = v;
   const notes = info && info.notes ? String(info.notes) : '';
+  b.dataset.notes = notes;   // 배너 '변경내역'이 이 신규 버전 notes만 표시(전체 이력 모달과 분리)
   const msg = $('#updMsg');
   if(msg) msg.innerHTML = '새 버전 <b>' + esc(v) + '</b>이(가) 있습니다'
     + (notes ? ' <span class="upd-notes" title="' + esc(notes) + '">— ' + esc(notes) + '</span>' : '');
@@ -5477,7 +5493,14 @@ function bind(){
       __updShowProgress('업데이트 준비 중…');
       hpost({ cmd: 'updateApply' });   // 내려받기·검증·설치 후 자동 재시작(호스트)
     }); }
-  { const h = $('#updNotes'); if(h) h.addEventListener('click', () => openPatch()); }   // 변경내역 = 이 앱이 관리하는 버전별 변경사항(patch 모달)
+  { const h = $('#updNotes'); if(h) h.addEventListener('click', () => {   // 배너 변경내역 = 이번(신규) 버전 notes만(전체 이력 아님)
+      const b = document.getElementById('updateBanner');
+      const ver = (b && b.dataset.version) ? b.dataset.version : '';
+      const notes = (b && b.dataset.notes) ? b.dataset.notes : '';
+      const vEl = $('#updNotesVer'); if(vEl) vEl.textContent = ver;
+      const nEl = $('#updNotesBody'); if(nEl) nEl.textContent = notes || '(변경내역 정보 없음)';
+      openModal('#updNotesModal');
+    }); }
   $('#btnRptSend').addEventListener('click', () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
     const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
