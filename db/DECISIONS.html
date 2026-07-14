@@ -79,7 +79,7 @@
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">소프트삭제 + 감사</span></div><div class="desc"><code>is_active=0</code>(복구가능), <code>created_at</code>/<code>updated_at</code> 자동.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">FK <code>ON UPDATE CASCADE</code></span></div><div class="desc">발주처 개명 자동 전파. 삭제는 RESTRICT.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">과제명 중복 미처리</span></div><div class="desc">현재도 안 막음(회귀 아님).</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정 D1</span><span class="ttl">안정 <code>uid</code> 추가 (외부 참조키)</span></div><div class="desc"><code>project</code>에 UUID(assign-once) 추가. 일정은 <code>db:&lt;uid&gt;</code>로 참조 → rename·덤프복원·이관에도 불변. 내부 PK(autoinc <code>id</code>)는 유지. <b>전시명을 키로 쓰지 않음.</b> ✅ schema.sql 반영 완료(로컬 13행 UUID)</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정 D1</span><span class="ttl">안정 <code>uid</code> 추가 (외부 참조키)</span></div><div class="desc"><code>project</code>에 UUID(assign-once) 추가. 일정은 <code>db-&lt;uid&gt;</code>로 참조 → rename·덤프복원·이관에도 불변. 내부 PK(autoinc <code>id</code>)는 유지. <b>전시명을 키로 쓰지 않음.</b> ✅ schema.sql 반영 완료(로컬 13행 UUID)</div></div>
 
   <h2>배포 · 운영</h2>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">MySQL 유지 · 사용자는 앱만</span></div><div class="desc">SQLite 기각(편집자 여럿·중앙권한). 사용자 PC에 MySQL 설치 불필요.</div></div>
@@ -91,9 +91,9 @@
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">지금 코드레벨 스텁 → 배포 직전 <code>app_user</code></span></div><div class="desc">인증을 "역할 반환" 인터페이스 한 지점으로 격리. 지금 <code>admin/1234</code> 스텁(개발용, 배포엔 안 나감) → P6.5에서 <code>app_user</code>(편집 권한자만) + 최소권한 DB 계정으로 교체.</div></div>
 
   <h2>과제 입력 · 공존 · 보고서 정책</h2>
-  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">타입 있는 참조 (충돌 방지 핵심)</span></div><div class="desc">일정의 과제 = <code>공식(db:uid)</code> / <code>개인(local)</code> / <code>freetext</code> 타입 유니언. 타입이 참조에 박혀 절대 안 섞임.</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">타입 있는 참조 (충돌 방지 핵심)</span></div><div class="desc">일정의 과제 = <code>공식(db-uid)</code> / <code>개인(local)</code> / <code>freetext</code> 타입 유니언. 타입이 참조에 박혀 절대 안 섞임.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">입력 제약 없음</span></div><div class="desc">DB 과제 선택 또는 자유입력 — 뭐든 허용. 통제는 보고서에서.</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정 ①</span><span class="ttl">보고서 판정 = 참조 기준</span></div><div class="desc"><code>db:uid</code> 참조가 있으면 공식(집계), 그 외 전부 비공식. <b>이름 매칭(자동/상시) 금지</b> — 오타·동명 fuzzy 회피.</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정 ①</span><span class="ttl">보고서 판정 = 참조 기준</span></div><div class="desc"><code>db-uid</code> 참조가 있으면 공식(집계), 그 외 전부 비공식. <b>이름 매칭(자동/상시) 금지</b> — 오타·동명 fuzzy 회피.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정 ②</span><span class="ttl">비공식 = 기타로 묶음</span></div><div class="desc">보고서에서 비공식은 <code>기타</code> 버킷(총량·투명성 유지). 완전 제거는 옵션.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">기존 데이터 무변경 · "필드 없음 = 비공식"</span></div><div class="desc">옛 일정 손 안 댐. 타입 표시 없으면 비공식(사용자/레거시)으로 기본 해석. <b>일괄 마이그레이션 없음.</b> 새 필드 vs 인코딩은 P3 스카우트에서 확정.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정 D3</span><span class="ttl">DB 과제 하드삭제 금지 · 해석 항상 성공</span></div><div class="desc">소프트삭제만(일정 참조가 DB 밖이라 FK 보호 불가). 캐시가 삭제분 보관 + 일정에 <code>{이름,색}</code> 스냅샷 폴백 → 빈칸·크래시 없음.</div></div>

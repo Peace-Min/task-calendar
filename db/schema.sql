@@ -34,7 +34,7 @@ CREATE TABLE customer (
 -- ---------- 과제(핵심 엔티티) ----------
 CREATE TABLE project (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT,  -- 내부 PK(대리키)
-  uid           CHAR(36)     NOT NULL DEFAULT (UUID()), -- 외부 안정 참조키(assign-once). 일정은 db:<uid>로 참조. rename/재빌드/이관에도 불변
+  uid           CHAR(36)     NOT NULL DEFAULT (UUID()), -- 외부 안정 참조키(assign-once). 일정은 db-<uid>로 참조. rename/재빌드/이관에도 불변
   section       ENUM('일반계약','선진행','사업부관리') NOT NULL,   -- 구분(드롭다운)
   customer      VARCHAR(100) NOT NULL,                 -- 발주처 (FK -> customer.name)
   project_name  VARCHAR(200) NOT NULL,                 -- 사업명

@@ -139,7 +139,7 @@
       <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
       <tbody>
         <tr><td><code>id</code></td><td>INT UNSIGNED</td><td><span class="tag pk">PK</span> AUTO_INCREMENT</td><td>내부 PK(대리키)</td></tr>
-        <tr><td><code>uid</code></td><td>CHAR(36)</td><td><span class="tag uq">UQ</span> DEFAULT UUID()</td><td>외부 안정 참조키(assign-once) — 일정은 <code>db:&lt;uid&gt;</code>로 참조. rename·재빌드·이관에도 불변</td></tr>
+        <tr><td><code>uid</code></td><td>CHAR(36)</td><td><span class="tag uq">UQ</span> DEFAULT UUID()</td><td>외부 안정 참조키(assign-once) — 일정은 <code>db-&lt;uid&gt;</code>로 참조. rename·재빌드·이관에도 불변</td></tr>
         <tr><td><code>section</code></td><td>ENUM</td><td><span class="tag nn">NN</span><span class="tag en">ENUM</span></td><td>구분: 일반계약 · 선진행 · 사업부관리</td></tr>
         <tr><td><code>customer</code></td><td>VARCHAR(100)</td><td><span class="tag nn">NN</span><span class="tag fk">FK</span><span class="tag uq">UQ</span></td><td>발주처 → <code>customer.name</code> (ON UPDATE CASCADE)</td></tr>
         <tr><td><code>project_name</code></td><td>VARCHAR(200)</td><td><span class="tag nn">NN</span><span class="tag uq">UQ</span></td><td>사업명</td></tr>
