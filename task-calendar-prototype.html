@@ -4224,10 +4224,7 @@ function buildReport(){
   let html = '';
   for(const r of rows){
     const hasEntry = r.entries.length > 0;
-    const hasContent = r.titles.length > 0;   // 할일/커밋만 있어도 내용 있음(흐림 판정은 내용 유무로)
-    // 단일일 + 발생 항목 있으면 그 (날짜×과제) 첫 항목(createdAt 최소)에 저장 — 작업일지 칩과 동일
-    const head = (daily && hasEntry)
-      ? r.entries.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))[0] : null;
+    const hasContent = r.titles.length > 0;   // 할일/커밋만 있어도 내용 있음 — 흐림·편집힌트 판정은 '내용 유무'로(일정 유무 아님)
     html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}">`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
@@ -4258,7 +4255,7 @@ function buildReport(){
         html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); const m = (r.titleMeta && r.titleMeta[i]) || null; return (_mk ? esc(_mk) + ' ' : '') + esc(t) + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''); }).join('<br>')}</div>`;
       }
     }
-    if(head) html += `<span class="rcard-note edit">오늘치 — 여기서 바로 수정</span>`;
+    if(daily && hasContent) html += `<span class="rcard-note edit">오늘치 — 여기서 바로 수정</span>`;   // 할일/커밋만 있어도 편집 가능 → 힌트 노출
     else if(hasEntry && !daily) html += `<span class="rcard-note">여러 날 합산 · 날짜별로 수정</span>`;
     html += `</div>`;
   }

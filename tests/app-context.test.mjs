@@ -686,6 +686,26 @@ if (!JSDOM) {
       assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
     });
 
+    // 항목3 회귀 — 할일만 있는 카드(일정 0)는 흐림(rcard-empty) 아님 + 편집힌트 노출.
+    //   버그: 흐림 판정을 entries(일정)로 해서 할일-only가 '빈 카드'로 오판·흐려짐 → hasContent(titles)로 수정.
+    test('regression(항목3): 할일-only 카드 — rcard-empty 미부여 + 편집힌트 노출(일정 없어도)', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+        entries: [],   // 일정 0 (할일만)
+        todos: [{ id: 'td', text: '할일 항목', done: false, categoryId: 'ct', due: '2026-07-08', endDate: '', prio: 'normal', note: '', createdAt: CA, updatedAt: CA }],
+        rooms: [], reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+      });
+      ev("reportMode='daily'; editingReportKey=null;");
+      ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
+      ev('buildReport()');
+      const html = ev("$('#rptOut').innerHTML");
+      assert.ok(html.includes('할일 항목'), '할일 항목이 카드에 렌더됨');
+      // 할일과제 카드가 rcard-empty(흐림)가 아니어야 (일정이 없어도 내용은 있음)
+      assert.ok(!/class="rcard rcard-empty"/.test(html) && !/class="rcard [^"]*rcard-empty/.test(html), '할일-only 카드에 rcard-empty 미부여');
+      assert.ok(/오늘치 — 여기서 바로 수정/.test(html), '할일-only 카드에도 편집 힌트 노출');
+    });
+
     // ── Item1 — 일간 과제별 시간 입력(tc_taskHours) → buildReportText 헤더 "[과제] : n" ──
     test('Item1(일간): setTaskHours → buildReportText "[과제] : 6.5" / 미입력이면 과제명만', () => {
       seed(reportState);
