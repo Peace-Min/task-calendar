@@ -1,61 +1,40 @@
-# 설계 노트 — 과제관리 DB (근거·ETL·엣지케이스·적대검증)
+# 설계 노트 — 과제관리 DB (모델 B: DB 원본 · 필드별 근거 · 추출/이관 전략)
 
-> 출처: DB 설계 워크플로 산출물(초기 설계 + 3렌즈 적대검증)을 세션 소실 전 추출. **초기 설계의 명명은 최종 `schema.sql`과 다르다**(적대검증 major 지적을 반영해 개정됨). 아래 §0 명명 매핑·§1 반영표로 대조할 것.
+> 이 DB는 **원본(source of truth)이다.** Admin이 캘린더 앱으로 과제를 등록/수정(CRUD by id)하고, Excel은 DB에서 **추출하는 리포트**일 뿐이다(양방향 동기화 없음). 기존 사업부 Excel은 **최초 1회만** 이관하고 이후엔 DB가 마스터다.
+> 이전의 "Excel 장표 컴팩트 미러" 서사(Excel 원본 → DB 미러 → 멱등 UPSERT 재임포트, `source_no`/`customer.no` 보존)와 2축(유형×단계)·결정론 uid·룩업 테이블·캘린더 전용 뷰·CHECK 설계는 **이 모델 B로 대체(superseded)됨.** 아래는 현재 확정 설계 기준으로만 서술한다.
 
-## §0 명명 매핑 (초기 설계 → 최종 schema.sql)
-| 초기 설계 | 최종본 | 비고 |
-|---|---|---|
-| `project_id`(auto) | `id`(내부) + **`uid`**(SHA2 앵커) | 캘린더 categoryId = uid |
-| `'srv:'+project_id`(콜론) | `uid='prj_'+SHA2(...)`, REGEXP CHECK | **콜론 폐기**(import 검증기 통과) |
-| (없음) | **`source_key` UNIQUE** = 발주처+US(0x1F)+사업명 | 멱등 upsert 키 |
-| `v_selectable_project` | `v_calendar_category` | 피커(is_active=1) |
-| (없음) | **`v_project_label`** | 과거 categoryId 라벨해석(필터 없음) |
-| `task_status`/`status_id` | `project_status`/`status_code`(code PK) | |
-| `is_selectable`/`is_preliminary`(위치) | `is_active`+`is_terminal` / **`lifecycle_stage` ENUM**(값기반+CHECK) | |
-| `common_name NOT NULL` | `common_name NULL` | 폴백 COALESCE |
+## §1 모델 B(DB 원본) 채택 이유
+- **원본을 DB 하나로 못박아 "앱↔Excel 양방향 동기화 지옥"을 원천 차단한다.** 두 원본(Excel과 DB)이 공존하면 어느 쪽이 최신인지·충돌을 누가 이기는지·재임포트 멱등성 같은 문제가 끝없이 생긴다.
+- **Excel은 DB에서 추출하는 리포트**로 역할을 뒤집었다. 사업부가 보던 장표 모양은 유지하되, 그 데이터의 주인은 DB다. Excel을 고쳐도 DB로 되돌아오지 않는다(단방향).
+- 편집 주체는 **캘린더 앱의 Admin**. id 기준 CRUD로 과제를 등록·수정·(소프트)삭제한다. DB가 목록·제약·이력을 강제한다.
 
-## §1 적대검증 major → 최종본 반영 현황
-초기 설계에 3렌즈(MySQL 프로덕션 / 캘린더 연동 / 정규화)가 낸 **major 4건이 모두 최종 schema.sql에서 해소**됨:
-| 적대검증 MAJOR | 최종본 반영 |
-|---|---|
-| project에 멱등 upsert용 자연키 없음 → 재적재 중복 | **`source_key VARCHAR(255) UNIQUE`** + `uid` UNIQUE + `ON DUPLICATE KEY UPDATE`(uid/source_key는 assign-once) ✅ |
-| `'srv:'+id` 콜론이 캘린더 import 검증기(`^[A-Za-z0-9_-]{1,80}$`)와 충돌 → 왕복 시 브리지 끊김 | **uid=`prj_`+SHA2, `chk_project_uid` REGEXP** 동일 규칙 이중방어(콜론 원천차단) ✅ |
-| 선택뷰만으로 종료/삭제 과제 라벨 해석 불가 | **`v_project_label`**(필터 없이 전량, is_active 무관 앵커 영구해석) 추가 ✅ |
-| `common_name NOT NULL`이 초기단계(선진행) 적재 파손 | **`common_name NULL`** + 뷰 `COALESCE(common_name, project_name)` 폴백 ✅ |
+## §2 필드별 설계 결정 (왜 이렇게)
+- **`project.id` = 앱 편집 식별자(대리키)** — `INT UNSIGNED AUTO_INCREMENT PK`. 앱이 CRUD 대상 행을 id로 지목한다. DB가 원본이므로 id는 이제 rebuild로 리셋되는 임시값이 아니라 **행의 안정적 식별자**다(운영 중 DROP 재구축을 하지 않음).
+- **`section`/`status` = ENUM** — Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**한다. 값 목록을 **별도 룩업 테이블 없이 컬럼에 고정**했다(13행 규모엔 이게 최소·최적).
+  - `section ENUM('일반계약','선진행','사업부관리') NOT NULL`
+  - `status ENUM('진행중','종료','1차 납품완료','미정') NULL` (선진행 = 계약 前 → NULL)
+  - 트레이드오프: 값 추가 시 `ALTER TABLE ... MODIFY`가 필요. 드물어서 OK. 상태별 색/정렬/잦은 추가가 필요해지면 룩업 테이블로 승급하는 게 업그레이드 경로(§5).
+- **`is_active` = 소프트 삭제** — `TINYINT(1) DEFAULT 1`. 앱의 "삭제"는 `is_active=0`(숨김, **복구 가능·이력 보존**). 영구 삭제는 권한자가 DB에서 직접 `DELETE`로 청소. 조회는 보통 `WHERE is_active=1`. customer/project 양쪽에 둔다.
+- **`created_at`/`updated_at` = 감사** — `DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)`, `updated_at`은 `ON UPDATE CURRENT_TIMESTAMP(3)`로 **수정된 행만 자동 갱신**. 누가·언제 바꿨는지의 "언제"를 DB가 자동 기록(누가는 추후 `updated_by` 추가 여지, §5).
+- **`UNIQUE(customer, project_name)`** — 같은 발주처 내 동일 사업명 금지라는 **업무 규칙**을 DB가 강제. (예전엔 "재임포트 멱등 UPSERT 키"였지만, 지금은 재임포트가 없으므로 순수 업무 무결성 제약이다.)
+- **FK `project.customer → customer.name` `ON UPDATE CASCADE`** — 발주처 개명 시 `project.customer`로 **자동 전파**. 삭제는 기본 `RESTRICT`(발주처를 지운다고 딸린 과제가 날아가지 않음 — 먼저 과제를 정리해야 함).
+- **`customer.name` = 자연키 PK** — 발주처명 자체가 키(FK 타겟). 발주처는 소량·고유하므로 대리키 없이 자연키로 충분.
 
-minor/nit(뷰 ORDER BY 의존, is_active 죽은 플래그, CHECK 8.0.16 의존, 콜레이션 등)은 13건 규모에서 비차단. 서버 이관 시 **8.0.16+ 전제**만 명문화(§4).
+## §3 Excel 추출(리포트) 방향
+DB → Excel 추출 시:
+- **No 컬럼 = 추출 시점에 `ROW_NUMBER()`로 생성**한다. 저장하지 않는다(그래서 `source_no`·`customer.no`를 제거). 원본 No는 Excel 행 순번 아티팩트일 뿐, DB가 원본이면 무의미하다.
+- **섹션 헤더/그룹핑 = `section` 값으로 렌더링**한다. "일반계약/선진행/사업부관리" 블록 헤더와 그룹은 추출기가 section을 보고 그린다.
+- 즉 **Excel의 시각적 구조(순번·섹션 헤더·정렬)는 저장된 데이터가 아니라 추출기의 표현 관심사**다. DB는 순수 데이터만 갖고, 표현은 추출 단계에서 입힌다.
 
-## §2 캘린더 매핑 (어댑터 계약)
-- 캘린더 로컬 category 모델 `{id, name, color, desc, gitRepo, vcs, createdAt}`. 이벤트/할일은 `categoryId`로 참조.
-- **id ← `uid`**(결정론 앵커) · **name ← 통상명칭(COALESCE 사업명)** · color ← calendar_color(폴백 유형색).
-- `gitRepo/vcs/color`는 **로컬 전용**(DB 미보유) — 어댑터가 uid별 로컬 보존. 서버 스키마 불변 유지.
-- **2계약**: 피커 = `v_calendar_category`(활성만) / 과거 categoryId 라벨복원 = `v_project_label`(전량). 위젯은 뷰만 읽어 스키마 변화에서 격리.
-- 로컬→서버 무중단: 동일 DDL, 어댑터는 커넥션만 스왑. 서버 authoritative + 로컬 미러(uid 결정론이라 id 충돌 없음).
+## §4 초기 이관 / 재구축 전략
+- **초기 이관(1회성)**: 기존 사업부 Excel(2시트) → `customer` 먼저(발주처 = FK 타겟) → `project`. 이후 Excel은 버리고 DB가 마스터. 이건 **한 번만** 하는 마이그레이션이지 반복 재임포트가 아니다.
+- **로컬 개발/검증 시드**: `schema.sql` 하단의 더미 13건(롤 지명)은 **로컬 개발·검증용 픽스처**다. 실 국방데이터 아님. **서버 초기 배포 시엔 이 더미 시드 대신 실제 Excel 1회 이관으로 대체**한다.
+- **클린 재구축(로컬)**: `schema.sql` 앞부분이 옛 객체(캘린더 결합/미러 잔재 뷰·룩업 테이블·현재 테이블)를 `DROP`하므로, 통째 실행하면 깨끗한 재구축이다(재구축 자체는 멱등 — 몇 번 돌려도 같은 결과). 단, **운영 DB에는 데이터가 원본이므로 DROP 재구축을 돌리지 않는다** — 로컬 리셋 전용.
+- 이관 시 이관 스크립트가 처리할 정리(발주처 표기 정규화, '미정'/공백 날짜→NULL, 선진행 상태 공백→NULL, 섹션 헤더행→section 값 승격)는 **1회성 이관기의 관심사**이지 DB의 상시 규칙이 아니다.
 
-## §3 실데이터 ETL 절차 (엑셀 2시트 → schema)
-1. **발주처**: View_Customer 8건 → `customer` upsert(`ON DUPLICATE KEY UPDATE`, uq_customer_name). No 컬럼 무시.
-2. **상태**: `project_status` 시드 이미 존재. 확장 상태 발견 시 행 INSERT(예: DELIVERED_2)만으로 무중단.
-3. **과제**: View_Projects 위→아래 순회
-   - `source_key = 발주처 + CHAR(31) + 사업명`, `uid = 'prj_'+LEFT(SHA2(source_key,256),16)` — **ETL(파이썬)과 SQL이 같은 바이트열 해시 → 동일 uid 수렴**.
-   - 발주처명으로 customer_id 조회. 상태문자열→status_code 매핑('종료/진행중/1차 납품완료/미정').
-   - 계약시작/종료: '미정'/공백 → NULL, 아니면 `STR_TO_DATE(v,'%Y-%m-%d')`.
-   - **선진행 판정은 위치가 아니라 값으로**(계약시작/종료='미정' AND 상태 공백) → `lifecycle_stage='pre_contract'`, type/날짜/status NULL. 구분행('선진행 사업'만 있는 경계행)은 스킵.
-   - `INSERT ... ON DUPLICATE KEY UPDATE`(source_key/uid 제외) = 멱등.
-4. **검증**: COUNT(project)=실건수(구분행 제외), 발주처 FK 전건 매칭, contract_end>=start, uid=SHA2 재계산 일치.
-
-## §4 엣지케이스 (ETL 규칙)
-- **미정 날짜**: 정상문자열 DATE 파싱, '미정'/공백 → NULL(캘린더 '기간 미정' 렌더).
-- **구분행**('선진행 사업'만, No/발주처 공백): 데이터 아님 → 스킵. 선진행 여부는 각 행 값으로 결정론 판정(위치 의존 금지).
-- **선진행 과제(No 9,10)**: 발주처 있음+날짜 '미정'+상태 공백 → pre_contract, 날짜/상태/유형 NULL.
-- **상태 공백 vs '미정'**: 최종본은 **선진행=lifecycle_stage로 구분**(status='미정'(TBD)와 혼동 안 함). '미정'(TBD)은 계약체결+상태미정.
-- **상태 확장**('2차 납품완료'): `project_status` INSERT만, 스키마 변경 불필요.
-- **종료 과제**: 하드삭제 금지. is_terminal 상태는 `v_calendar_category`에서 `WHERE is_terminal=0`로 숨김 선택. 과거 참조는 `v_project_label`로 항상 해석.
-- **발주처 미정 과제**가 미래 생기면: NULL 허용보다 '미정' 발주처 마스터 1행 두기 권장(조인 단순).
-- **통상명칭 없음**: common_name NULL 허용 → 뷰 COALESCE(common_name, project_name) 폴백. 빈문자열 적재 금지.
-
-## §5 남은 열린 결정 (대부분 최종본 해소, 잔여만)
-- ✅ 자연키 → `source_key`(발주처+사업명) 확정 · ✅ 채번 → 결정론 uid(로컬/서버 수렴) 확정 · ✅ 선진행 표현 → lifecycle_stage 확정 · ✅ 위젯전용 속성(color/git) → 로컬소유 확정 · ✅ 사업:계약 → 현재 1:1 인라인(향후 1:N이면 계약 분리 테이블).
-- ⬜ **종료 과제 피커 노출 정책**(조회 시점 `is_terminal` 필터 여부) — 미확정.
-- ⬜ **납품 단계 이력화**: 현재 status 스칼라. 1차+2차 병존/이력 필요해지면 `delivery_phase` 자식테이블로 승격(지금은 불필요).
-- ⬜ **DB 목적 범위**: 좁게(과제 소스) vs 넓게(종합 과제관리). 넓게면 계약/담당자/공수/이력 엔티티 추가 설계 필요.
-- ⬜ **실데이터 재검**: 확정은 더미(2시트·13행) 기준. 실제 엑셀에 없던 컬럼/케이스면 스키마 조정.
+## §5 향후 (열린 결정 / 업그레이드 경로)
+- ⬜ **ENUM 값 추가**: 새 section/status가 생기면 `ALTER TABLE ... MODIFY ... ENUM(...)`. 드물면 이대로. **상태별 색상·커스텀 정렬·잦은 값 추가**가 필요해지면 `project_status`/`project_type` **룩업 테이블로 승급**(FK로 참조)하는 게 정식 경로.
+- ⬜ **`updated_by` 감사 확장**: 지금은 "언제"만 기록. 누가 바꿨는지가 필요하면 `updated_by`(앱 사용자) 컬럼 추가. 앱 인증과 함께 설계.
+- ⬜ **DDL/시드 파일 분리**: 현재 `schema.sql`이 DDL+더미 시드를 겸한다. 서버 배포 시 실 이관이 시드를 대체하므로, 향후 **DDL(`schema.sql`)과 시드/이관(`seed.sql`/이관 스크립트)을 분리** 권장.
+- ⬜ **캘린더 앱 연동**: Admin CRUD UI(등록/수정/소프트삭제 by id) + 위젯이 DB를 읽는 어댑터. 앱이 이 DB를 원본으로 직접 CRUD하는 계약을 앱 트랙에서 확정.
+- ⬜ **사업:계약 카디널리티**: 현재 1:1 인라인(`contract_name` 컬럼). 1사업 다계약이 실제로 있으면 계약 분리 테이블로 승급.

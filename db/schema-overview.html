@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>과제관리 DB (taskmgr) — 스키마 개요</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --card:#ffffff; --ink:#1c2024; --muted:#5b6470;
+    --line:#e2e5ea; --accent:#2f6feb; --accent-soft:#e7f0ff;
+    --pk:#8a5cf6; --fk:#0f9d76; --uq:#c2410c; --nn:#64748b; --en:#0e7490;
+    --gen:#2f6feb; --pre:#c2410c; --div:#0f9d76;
+    --code-bg:#f0f2f5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1216; --card:#181c22; --ink:#e7eaef; --muted:#9aa4b2;
+      --line:#2a2f37; --accent:#5b8dff; --accent-soft:#1a2740;
+      --pk:#b18bff; --fk:#37c99a; --uq:#f59e6b; --nn:#8b95a5; --en:#3bb6cf;
+      --gen:#5b8dff; --pre:#f59e6b; --div:#37c99a;
+      --code-bg:#11151a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1216; --card:#181c22; --ink:#e7eaef; --muted:#9aa4b2;
+    --line:#2a2f37; --accent:#5b8dff; --accent-soft:#1a2740;
+    --pk:#b18bff; --fk:#37c99a; --uq:#f59e6b; --nn:#8b95a5; --en:#3bb6cf;
+    --gen:#5b8dff; --pre:#f59e6b; --div:#37c99a; --code-bg:#11151a;
+  }
+  :root[data-theme="light"]{
+    --bg:#f5f6f8; --card:#ffffff; --ink:#1c2024; --muted:#5b6470;
+    --line:#e2e5ea; --accent:#2f6feb; --accent-soft:#e7f0ff;
+    --pk:#8a5cf6; --fk:#0f9d76; --uq:#c2410c; --nn:#64748b; --en:#0e7490;
+    --gen:#2f6feb; --pre:#c2410c; --div:#0f9d76; --code-bg:#f0f2f5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 64px}
+  header h1{font-size:1.6rem;margin:0 0 6px}
+  header p{margin:0;color:var(--muted)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 4px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);
+    color:var(--accent);border-radius:999px;padding:5px 12px;font-size:.82rem;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin:20px 0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card h2{font-size:1.12rem;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .card h2 .n{color:var(--accent);font-variant-numeric:tabular-nums}
+  .card h3{font-size:.95rem;margin:18px 0 8px;color:var(--muted)}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:4px 0}
+  .tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0}
+  table{border-collapse:collapse;width:100%;font-size:.86rem;min-width:520px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:.78rem;text-transform:none;
+    white-space:nowrap;border-bottom:2px solid var(--line)}
+  code{background:var(--code-bg);padding:1px 6px;border-radius:5px;
+    font-family:"SF Mono",Consolas,"Courier New",monospace;font-size:.82em}
+  .tag{display:inline-block;font-size:.68rem;font-weight:700;padding:1px 7px;
+    border-radius:5px;margin-left:5px;letter-spacing:.02em;vertical-align:middle;color:#fff}
+  .tag.pk{background:var(--pk)} .tag.fk{background:var(--fk)}
+  .tag.uq{background:var(--uq)} .tag.nn{background:var(--nn)}
+  .tag.en{background:var(--en)}
+  .badge{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:6px;color:#fff}
+  .badge.gen{background:var(--gen)} .badge.pre{background:var(--pre)} .badge.div{background:var(--div)}
+  .flow{display:flex;flex-wrap:wrap;gap:14px;align-items:stretch}
+  .flow .box{flex:1 1 200px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+  .flow .box .lbl{font-size:.78rem;color:var(--muted)}
+  .flow .box .arrow{font-size:1.1rem;color:var(--accent);text-align:center;margin:2px 0}
+  .flow .box strong{font-size:1rem}
+  .note{background:var(--accent-soft);border-radius:8px;padding:10px 14px;font-size:.85rem;margin:10px 0}
+  .dash{color:var(--muted)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:.74rem;color:var(--muted);margin-top:10px}
+  .legend span{white-space:nowrap}
+  footer{color:var(--muted);font-size:.78rem;text-align:center;margin-top:28px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>과제관리 DB <code>taskmgr</code> — 스키마 개요</h1>
+    <p>DB가 원본(source of truth) · Admin이 캘린더 앱으로 CRUD · Excel은 추출 리포트</p>
+    <div class="chips">
+      <span class="chip">MySQL84 Running</span>
+      <span class="chip">MySQL 8.4.9</span>
+      <span class="chip">테이블 2 · 뷰 0</span>
+      <span class="chip">발주처 8 · 과제 13</span>
+      <span class="chip">utf8mb4 / 0900_ai_ci</span>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>설계 모델 — DB가 원본</h2>
+    <div class="flow">
+      <div class="box">
+        <div class="lbl">편집 주체</div><strong>캘린더 앱 (Admin)</strong>
+        <div class="arrow">↓ CRUD by id</div>
+        <div class="lbl">원본</div><strong><code>taskmgr</code> DB</strong>
+        <div class="lbl">과제를 등록·수정·소프트삭제. DB가 마스터.</div>
+      </div>
+      <div class="box">
+        <div class="lbl">원본</div><strong><code>taskmgr</code> DB</strong>
+        <div class="arrow">↓ 단방향 추출</div>
+        <div class="lbl">리포트</div><strong>Excel 장표</strong>
+        <div class="lbl">DB에서 뽑는 리포트. 양방향 동기화 없음.</div>
+      </div>
+    </div>
+    <ul>
+      <li><strong>DB가 원본(authoritative)</strong> — Admin이 앱에서 과제를 관리하고, 목록·제약·이력은 DB가 강제한다.</li>
+      <li><strong>Excel은 추출 리포트</strong> — 기존 사업부 Excel은 <strong>최초 1회만</strong> 이관하고, 이후엔 DB가 마스터. Excel을 고쳐도 DB로 돌아오지 않는다.</li>
+      <li><strong>드롭다운 강제</strong> — <code>section</code>/<code>status</code>는 ENUM으로 값 목록을 고정(오타 변종 차단).</li>
+      <li><strong>소프트삭제 + 감사</strong> — 삭제는 <code>is_active=0</code>(복구가능), <code>created_at</code>/<code>updated_at</code>로 변경 시각 자동 기록.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2><code>customer</code> — 발주처 마스터</h2>
+    <p style="color:var(--muted);margin:0 0 8px;font-size:.85rem"><code>name</code>=자연키 PK(FK 타겟). Admin 관리 · 소프트삭제 · 감사.</p>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>VARCHAR(100)</td><td><span class="tag pk">PK</span></td><td>발주처 = 자연키(FK 타겟)</td></tr>
+        <tr><td><code>is_active</code></td><td>TINYINT(1)</td><td><span class="tag nn">NN</span> DEFAULT 1</td><td>소프트삭제(0=숨김)</td></tr>
+        <tr><td><code>created_at</code></td><td>DATETIME(3)</td><td><span class="tag nn">NN</span></td><td>생성 시각(자동)</td></tr>
+        <tr><td><code>updated_at</code></td><td>DATETIME(3)</td><td><span class="tag nn">NN</span></td><td>수정 시각(ON UPDATE 자동 갱신)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="note">※ 이전의 <code>no</code> 컬럼(Excel 순번 흔적)은 <strong>제거됨</strong> — No는 Excel 추출 시점에 <code>ROW_NUMBER</code>로 생성.</div>
+  </section>
+
+  <section class="card">
+    <h2><code>project</code> — 과제 마스터</h2>
+    <p style="color:var(--muted);margin:0 0 8px;font-size:.85rem">DB 원본. <code>id</code>=앱 편집 식별자. <code>section</code>/<code>status</code>=ENUM. 소프트삭제 · 감사.</p>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>INT UNSIGNED</td><td><span class="tag pk">PK</span> AUTO_INCREMENT</td><td>내부 PK(대리키)</td></tr>
+        <tr><td><code>uid</code></td><td>CHAR(36)</td><td><span class="tag uq">UQ</span> DEFAULT UUID()</td><td>외부 안정 참조키(assign-once) — 일정은 <code>db:&lt;uid&gt;</code>로 참조. rename·재빌드·이관에도 불변</td></tr>
+        <tr><td><code>section</code></td><td>ENUM</td><td><span class="tag nn">NN</span><span class="tag en">ENUM</span></td><td>구분: 일반계약 · 선진행 · 사업부관리</td></tr>
+        <tr><td><code>customer</code></td><td>VARCHAR(100)</td><td><span class="tag nn">NN</span><span class="tag fk">FK</span><span class="tag uq">UQ</span></td><td>발주처 → <code>customer.name</code> (ON UPDATE CASCADE)</td></tr>
+        <tr><td><code>project_name</code></td><td>VARCHAR(200)</td><td><span class="tag nn">NN</span><span class="tag uq">UQ</span></td><td>사업명</td></tr>
+        <tr><td><code>contract_name</code></td><td>VARCHAR(200)</td><td><span class="tag nn">NULL</span></td><td>계약명</td></tr>
+        <tr><td><code>common_name</code></td><td>VARCHAR(200)</td><td><span class="tag nn">NULL</span></td><td>통상명칭</td></tr>
+        <tr><td><code>start_date</code></td><td>DATE</td><td><span class="tag nn">NULL</span></td><td>계약시작일(선진행/미정=NULL)</td></tr>
+        <tr><td><code>end_date</code></td><td>DATE</td><td><span class="tag nn">NULL</span></td><td>계약종료일(선진행/미정=NULL)</td></tr>
+        <tr><td><code>status</code></td><td>ENUM</td><td><span class="tag nn">NULL</span><span class="tag en">ENUM</span></td><td>진행중 · 종료 · 1차 납품완료 · 미정 (선진행=NULL)</td></tr>
+        <tr><td><code>is_active</code></td><td>TINYINT(1)</td><td><span class="tag nn">NN</span> DEFAULT 1</td><td>소프트삭제(0=숨김)</td></tr>
+        <tr><td><code>created_at</code></td><td>DATETIME(3)</td><td><span class="tag nn">NN</span></td><td>생성 시각(자동)</td></tr>
+        <tr><td><code>updated_at</code></td><td>DATETIME(3)</td><td><span class="tag nn">NN</span></td><td>수정 시각(ON UPDATE 자동 갱신)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="note"><strong>UNIQUE</strong> <code>(customer, project_name)</code> = 같은 발주처 내 동일 사업명 금지(업무규칙) · 인덱스 <code>ix_project_customer</code>, <code>ix_project_section</code>, <code>ix_project_active</code> · <strong>FK</strong> <code>fk_project_customer</code> (ON UPDATE CASCADE, DELETE RESTRICT).</div>
+    <div class="note">※ 이전의 <code>source_no</code> 컬럼(Excel 순번 흔적)은 <strong>제거됨</strong> — 원본 No는 무의미, Excel 추출 시 <code>ROW_NUMBER</code>로 생성.</div>
+    <div class="legend">
+      <span><span class="tag pk">PK</span> 기본키</span>
+      <span><span class="tag fk">FK</span> 외래키</span>
+      <span><span class="tag uq">UQ</span> 유니크</span>
+      <span><span class="tag en">ENUM</span> 값 고정</span>
+      <span><span class="tag nn">NN</span> NOT NULL</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>설계 근거</h2>
+    <ul>
+      <li><strong>모델 B(DB 원본)</strong> — 원본을 DB 하나로 못박아 "앱↔Excel 양방향 동기화 지옥"을 원천 차단. Excel은 DB에서 뽑는 리포트.</li>
+      <li><strong><code>source_no</code>·<code>customer.no</code> 제거</strong> — 원본 No는 Excel 행 순번 아티팩트. DB가 원본이면 무의미 → Excel 추출 시 <code>ROW_NUMBER</code>로 생성.</li>
+      <li><strong><code>section</code>/<code>status</code> = ENUM</strong> — Admin이 드롭다운에서 고르게 해 "진행중"/"진행 중"/"진행중 " 오타 변종 차단. 별도 룩업 테이블 없이 컬럼에 값 고정(값 추가 시 <code>ALTER</code> — 드물어서 OK).</li>
+      <li><strong><code>is_active</code> 소프트삭제</strong> — 앱 "삭제"=<code>is_active=0</code>(숨김·복구가능·이력보존). 영구삭제는 DB에서 직접 <code>DELETE</code>. 조회는 보통 <code>WHERE is_active=1</code>.</li>
+      <li><strong>감사 컬럼</strong> — <code>created_at</code>/<code>updated_at</code>로 언제 바뀌었는지 자동 기록(<code>updated_at</code>은 ON UPDATE 자동).</li>
+      <li><strong>FK ON UPDATE CASCADE</strong> — 발주처 개명 시 <code>project.customer</code> 자동 전파. 삭제는 RESTRICT(발주처 지운다고 과제 안 날아감).</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>시드 데이터 <span class="n">13건</span></h2>
+    <p style="color:var(--muted);margin:0 0 8px;font-size:.85rem">로컬 개발·검증용 더미(롤 지명) 픽스처 — 실 국방데이터 아님. 서버 초기 배포 시엔 실제 Excel 1회 이관으로 대체. 선진행은 계약 전이라 기간/상태 <span class="dash">—</span>.</p>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>구분</th><th>발주처</th><th>통상명칭</th><th>기간</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge gen">일반계약</span></td><td>데마시아</td><td>자르반의 검</td><td>2023-01-10 ~ 2024-06-30</td><td>종료</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>노크사스</td><td>노크사스의 분노</td><td>2023-03-15 ~ 2025-02-28</td><td>진행중</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>요르드</td><td>바르드의 노래</td><td>2022-07-01 ~ 2023-12-31</td><td>종료</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>필리오니아</td><td>아리의 키스</td><td>2024-01-05 ~ 2026-08-20</td><td>진행중</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>아이오니아</td><td>아이오니아 방패</td><td>2023-06-01 ~ 2025-05-31</td><td>1차 납품완료</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>빌지조트</td><td>트런드의 톱</td><td>2022-11-10 ~ 2023-11-09</td><td>종료</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>셔마야</td><td>네코의 꼬리</td><td>2024-04-01 ~ 2026-03-31</td><td>진행중</td></tr>
+        <tr><td><span class="badge gen">일반계약</span></td><td>불타오르는 대지</td><td>비스트의 불</td><td>2025-01-15 ~ 2027-12-31</td><td>미정</td></tr>
+        <tr><td><span class="badge pre">선진행</span></td><td>데마시아</td><td>가렌의 방패</td><td class="dash">—</td><td class="dash">—</td></tr>
+        <tr><td><span class="badge pre">선진행</span></td><td>요르드</td><td>뺀비의 폭죽</td><td class="dash">—</td><td class="dash">—</td></tr>
+        <tr><td><span class="badge div">사업부관리</span></td><td>데마시아</td><td>리안돈 성벽</td><td>2023-05-01 ~ 2024-04-30</td><td>종료</td></tr>
+        <tr><td><span class="badge div">사업부관리</span></td><td>데마시아</td><td>카르마의 빛</td><td>2024-02-01 ~ 2026-01-31</td><td>진행중</td></tr>
+        <tr><td><span class="badge div">사업부관리</span></td><td>데마시아</td><td>타리온의 검</td><td>2023-09-01 ~ 2024-08-31</td><td>종료</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="note">섹션 분포: <strong>일반계약 8 · 선진행 2 · 사업부관리 3</strong> · 전체 13 · 활성(<code>is_active=1</code>) 13.</div>
+  </section>
+
+  <footer>taskmgr — DB 원본(source of truth) · Excel은 추출 리포트 · 로컬 MySQL 8.4.9 · 이전 "Excel 미러"·<code>source_no</code>·2축/uid/캘린더뷰 설계는 이 모델 B로 대체됨</footer>
+</div>
+<script>
+  // 뷰어 테마 토글이 root에 data-theme를 찍으면 그것이 우선. 없으면 OS 설정을 따른다.
+</script>
+</body>
+</html>
