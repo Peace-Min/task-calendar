@@ -233,6 +233,20 @@ if (!JSDOM) {
       assert.ok(/중간 점검 메모/.test(html), '기존 날짜별 설명 프리필');
     });
 
+    test('todo UI: 기간 할 일 날짜별 설명 저장/비우기는 실제 편집 폼 클릭으로 반영', () => {
+      seed(roundtripState);
+      ev("selectedDate='2026-07-10'; document.querySelector('#dpBody').innerHTML=todoEditHtml(todoById('t-2'));");
+      ev("document.querySelector('.todo-edit .te-daynote').value='클릭 저장 메모'; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
+      let t = evJSON("todoById('t-2')");
+      assert.strictEqual(t.dayNotes['2026-07-10'], '클릭 저장 메모');
+      assert.strictEqual(ev("editingTodoId"), null);
+
+      ev("selectedDate='2026-07-10'; document.querySelector('#dpBody').innerHTML=todoEditHtml(todoById('t-2'));");
+      ev("document.querySelector('.todo-edit .te-daynote').value=''; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
+      t = evJSON("todoById('t-2')");
+      assert.ok(!Object.prototype.hasOwnProperty.call(t.dayNotes || {}, '2026-07-10'), '빈 날짜별 설명은 저장하지 않고 제거');
+    });
+
     // ── collectReportData (보고서 정확성 — 최고 가치) ─────────────────────
     const reportState = {
       gitAuthor: '', svnAuthor: '',
