@@ -2082,6 +2082,54 @@ function setTaskHours(date, catId, h){
 }
 let state = load();
 
+function defaultReportFormatPref(){
+  return { marker: '-', markerCustom: '', indent: 2 };
+}
+function normalizeReportFormatPref(raw, fallback){
+  const fb = fallback || defaultReportFormatPref();
+  const marker = (raw && typeof raw.marker === 'string' && raw.marker) ? raw.marker : (fb.marker || '-');
+  const markerCustom = (raw && typeof raw.markerCustom === 'string') ? raw.markerCustom.slice(0,8) : (fb.markerCustom || '');
+  const rawIndent = raw && Number.isInteger(raw.indent) ? raw.indent : fb.indent;
+  const indent = Number.isInteger(rawIndent) ? Math.max(0, Math.min(6, rawIndent)) : 2;
+  return { marker, markerCustom, indent };
+}
+function normalizeReportFormatPrefs(s){
+  const legacy = normalizeReportFormatPref({
+    marker: s && s.reportMarker,
+    markerCustom: s && s.reportMarkerCustom,
+    indent: s && s.reportIndent
+  });
+  const src = (s && s.reportFormatPrefs) || {};
+  return {
+    daily: normalizeReportFormatPref(src.daily, legacy),
+    weekly: normalizeReportFormatPref(src.weekly, legacy)
+  };
+}
+function syncLegacyReportFormatFields(s, pref){
+  pref = normalizeReportFormatPref(pref);
+  s.reportMarker = pref.marker;
+  s.reportMarkerCustom = pref.markerCustom;
+  s.reportIndent = pref.indent;
+}
+function reportFormatKeyForMode(mode){
+  return (mode === 'weekly' || mode === 'rangeWeekly') ? 'weekly' : 'daily';
+}
+function currentReportFormatPref(){
+  state.reportFormatPrefs = normalizeReportFormatPrefs(state);
+  const key = reportFormatKeyForMode(reportMode);
+  const pref = state.reportFormatPrefs[key] || state.reportFormatPrefs.daily || defaultReportFormatPref();
+  syncLegacyReportFormatFields(state, pref);
+  return pref;
+}
+function updateCurrentReportFormatPref(patch){
+  state.reportFormatPrefs = normalizeReportFormatPrefs(state);
+  const key = reportFormatKeyForMode(reportMode);
+  const next = normalizeReportFormatPref(Object.assign({}, state.reportFormatPrefs[key], patch || {}));
+  state.reportFormatPrefs[key] = next;
+  syncLegacyReportFormatFields(state, next);
+  return next;
+}
+
 function defaultState(){
   const t = new Date(); const d0 = ymd(t);
   const d2 = ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate()+2));
@@ -2112,6 +2160,7 @@ function defaultState(){
     ],
     rooms: DEFAULT_ROOMS.slice(),
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,   // 보고서 표시 설정(머리기호/들여쓰기) — 표시+복사 전용
+    reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
     reportSource: 'cal',   // 보고서 내용 출처(cal=캘린더 기록). 인메모리 전용(XML 미영속, phase2 예정)
   };
 }
@@ -2141,6 +2190,8 @@ function load(){
         s.reportMarker = (typeof s.reportMarker === 'string' && s.reportMarker) ? s.reportMarker : '-';
         s.reportMarkerCustom = (typeof s.reportMarkerCustom === 'string') ? s.reportMarkerCustom.slice(0,8) : '';
         s.reportIndent = Number.isInteger(s.reportIndent) ? Math.max(0, Math.min(6, s.reportIndent)) : 2;
+        s.reportFormatPrefs = normalizeReportFormatPrefs(s);
+        syncLegacyReportFormatFields(s, s.reportFormatPrefs.daily);
         s.reportSource = (s.reportSource === 'net') ? 'net' : 'cal';   // 내용 출처 — 항상 존재 보장(기본 cal). 인메모리성 값.
         return s;
       }
@@ -2169,7 +2220,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportSource:'cal'};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), reportSource:'cal'};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -2444,6 +2495,14 @@ function toXML(){
   prefs.setAttribute('reportMarker', state.reportMarker || '-');
   prefs.setAttribute('reportIndent', String(state.reportIndent != null ? state.reportIndent : 2));
   if(state.reportMarkerCustom) prefs.setAttribute('reportMarkerCustom', state.reportMarkerCustom);   // 비어있지 않을 때만 기록
+  const fmtPrefs = normalizeReportFormatPrefs(state);
+  const putFmt = (key, p) => {
+    prefs.setAttribute('reportMarker_' + key, p.marker || '-');
+    prefs.setAttribute('reportIndent_' + key, String(p.indent != null ? p.indent : 2));
+    if(p.markerCustom) prefs.setAttribute('reportMarkerCustom_' + key, p.markerCustom);
+  };
+  putFmt('daily', fmtPrefs.daily);
+  putFmt('weekly', fmtPrefs.weekly);
   root.appendChild(prefs);
 
   return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
@@ -2560,7 +2619,23 @@ function fromXML(text){
     const ri = parseInt(prefsEl.getAttribute('reportIndent'), 10);
     reportIndent = Number.isFinite(ri) ? Math.max(0, Math.min(6, ri)) : 2;   // clamp 0..6
   }
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent};
+  const readReportFormatPref = key => {
+    if(!prefsEl) return null;
+    const rm = prefsEl.getAttribute('reportMarker_' + key);
+    const rmc = prefsEl.getAttribute('reportMarkerCustom_' + key);
+    const ri = parseInt(prefsEl.getAttribute('reportIndent_' + key), 10);
+    if(rm == null && rmc == null && !Number.isFinite(ri)) return null;
+    return {
+      marker: (rm && (PRESET_MARKERS.has(rm) || rm.length <= 8)) ? rm : reportMarker,
+      markerCustom: (rmc || '').slice(0,8),
+      indent: Number.isFinite(ri) ? Math.max(0, Math.min(6, ri)) : reportIndent
+    };
+  };
+  const reportFormatPrefs = normalizeReportFormatPrefs({
+    reportMarker, reportMarkerCustom, reportIndent,
+    reportFormatPrefs: { daily: readReportFormatPref('daily'), weekly: readReportFormatPref('weekly') }
+  });
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, reportFormatPrefs};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -3606,6 +3681,7 @@ function applyImport(mode){
       reportMarker: pendingImport.reportMarker || '-',
       reportMarkerCustom: pendingImport.reportMarkerCustom || '',
       reportIndent: (pendingImport.reportIndent != null ? pendingImport.reportIndent : 2),
+      reportFormatPrefs: normalizeReportFormatPrefs(pendingImport),
       reportSource: 'cal',
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
@@ -3632,7 +3708,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportSource:'cal'};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, reportSource:'cal'};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -3806,7 +3882,8 @@ function buildWeeklyFields(from, to, sources){
   grandHours = Math.round(grandHours * 100) / 100;
   const content = contentRows.concat(['-----', `합계 : ${grandHours}`]).join('\n');
   const _mkSpec = reportMarkerSpec();   // 전송 콘텐츠도 복사와 동일 서식(머리기호·들여쓰기) 적용 — WYSIWYG
-  const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
+  const _fmt = currentReportFormatPref();
+  const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _pad = '&nbsp;'.repeat(_indent * 2);   // netcus 전송(euc-kr HTML) — 줄 앞 연속 공백이 렌더 시 collapse되는 것 방지
   const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map((t, i) => { const _mk = reportMarkerAt(_mkSpec, i); return _pad + (_mk ? (_mk + ' ') : '') + t; }).join('\n') : '-')).join('\n\n');
   const planwork = rows.map(r => `[${r.name}]`).join('\n');
@@ -4083,9 +4160,10 @@ function reportMarkerSpec(){
   const KO_GA = '가나다라마바사아자차카타파하';
   const KO_JA = 'ㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎ';
   const CIRCLE = '①②③④⑤⑥⑦⑧⑨⑩';
-  const custom = (state && state.reportMarkerCustom) ? String(state.reportMarkerCustom) : '';
+  const fmt = currentReportFormatPref();
+  const custom = (fmt && fmt.markerCustom) ? String(fmt.markerCustom) : '';
   if(custom) return { kind:'custom', ch:custom };
-  const key = (state && state.reportMarker) || '-';
+  const key = (fmt && fmt.marker) || '-';
   const T = {
     '-':{kind:'const',ch:'-'}, '•':{kind:'const',ch:'•'}, '·':{kind:'const',ch:'·'},
     '*':{kind:'const',ch:'*'}, '▪':{kind:'const',ch:'▪'}, '◦':{kind:'const',ch:'◦'}, '–':{kind:'const',ch:'–'},
@@ -4139,7 +4217,8 @@ function buildReport(){
   try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
   { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
     if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
-      const mk = state.reportMarkerCustom ? '직접' : (state.reportMarker === 'none' ? '무번호' : (state.reportMarker || '-'));
+      const fmt = currentReportFormatPref();
+      const mk = fmt.markerCustom ? '직접' : (fmt.marker === 'none' ? '무번호' : (fmt.marker || '-'));
       os.textContent = `· 포함 ${pc}/3 · 머리기호 ${mk}`; } }
   if(!src.event && !src.todo && !src.git){
     sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·커밋).';
@@ -4153,11 +4232,12 @@ function buildReport(){
   const daily = (reportMode === 'daily');   // 결정6: 데이터 편집(근태·공수·커밋 제목)은 일간에서만 — 주간/커스텀(단일일 포함)은 읽기전용 투영
   // 표시 설정(머리기호/들여쓰기) — 표시+복사 전용. 데이터 불변. 서식바 컨트롤도 저장값으로 세팅(재오픈 시 반영).
   const _mkSpec = reportMarkerSpec();
-  const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
+  const _fmt = currentReportFormatPref();
+  const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _padL = 13 + _indent * 14;   // 기존 base 13px 유지
   { const _sel = $('#rptMarker'), _cin = $('#rptMarkerCustom'), _iv = $('#rptIndVal');
-    if(_sel) _sel.value = state.reportMarker || '-';
-    if(_cin) _cin.value = state.reportMarkerCustom || '';
+    if(_sel) _sel.value = _fmt.marker || '-';
+    if(_cin) _cin.value = _fmt.markerCustom || '';
     if(_iv) _iv.textContent = _indent + '단'; }
   if(attHost && daily){   // 근태·초과시간(회사 일간보고 전송 계약) — 좌측 옵션 레일(기간 아래) 슬롯에 상주. 값=사이트 코드.
     const at = getAttendance(from);
@@ -4477,7 +4557,8 @@ function buildReportText(indentUnit){
   if(!rows.length) return '';
   // 화면 미리보기와 동일(WYSIWYG) — 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 스페이스. 카드마다 번호 리셋.
   const _mkSpec = reportMarkerSpec();
-  const _indent = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2));
+  const _fmt = currentReportFormatPref();
+  const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _pad = indentUnit.repeat(_indent * 2);   // 복사=U+00A0 / netcus=&nbsp; (호출부가 지정)
   const _daily = (reportMode === 'daily');   // 일간만 '[과제] : n'(회사 일간보고 계약). from==to==그날.
   const blocks = rows.map(r => {
@@ -5794,10 +5875,10 @@ function bind(){
   ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(s => $(s).addEventListener('change', buildReport));
   $('#btnRptCopy').addEventListener('click', copyReport);
   $('#rptCatLink').addEventListener('click', openCatModal);   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
-  // 서식바(머리기호+들여쓰기) — 전역 표시 설정(state) 갱신 → save() → buildReport() 재빌드(미리보기 즉시 갱신). 1회만 배선.
-  $('#rptMarker').addEventListener('change', () => { state.reportMarker = $('#rptMarker').value; save(); buildReport(); });
-  $('#rptMarkerCustom').addEventListener('input', () => { state.reportMarkerCustom = String($('#rptMarkerCustom').value || '').slice(0,8); save(); buildReport(); });
-  const _setRptInd = d => { const cur = Math.max(0, Math.min(6, state.reportIndent != null ? state.reportIndent : 2)); state.reportIndent = Math.max(0, Math.min(6, cur + d)); save(); buildReport(); };
+  // 서식바(머리기호+들여쓰기) — 일간/주간 계열별 표시 설정 갱신 → save() → buildReport() 재빌드. 1회만 배선.
+  $('#rptMarker').addEventListener('change', () => { updateCurrentReportFormatPref({ marker: $('#rptMarker').value }); save(); buildReport(); });
+  $('#rptMarkerCustom').addEventListener('input', () => { updateCurrentReportFormatPref({ markerCustom: String($('#rptMarkerCustom').value || '').slice(0,8) }); save(); buildReport(); });
+  const _setRptInd = d => { const cur = currentReportFormatPref().indent; updateCurrentReportFormatPref({ indent: Math.max(0, Math.min(6, cur + d)) }); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
   // ⚙옵션 접기/펼치기 — 좁은 폭 컴팩트(넓은 폭은 CSS가 토글 숨김·패널 강제 노출 → .open 무관)
