@@ -2470,14 +2470,15 @@ function toXML(){
     el.setAttribute('updatedAt', e.updatedAt || '');
     const t = doc.createElement('title'); t.textContent = e.title; el.appendChild(t);
     const m = doc.createElement('memo');  m.textContent = e.memo || ''; el.appendChild(m);
-    if(e.commits && e.commits.length){   // 커밋은 구조화 자식 요소로 (subject=텍스트 콘텐츠 → 검색·round-trip 안전)
+    if(e.commits && e.commits.length){   // 커밋은 구조화 자식 요소로. 제목=속성(단일줄), 본문=텍스트콘텐츠(줄바꿈 보존 — 속성은 XML이 개행을 공백으로 정규화하므로 불가)
       const cs = doc.createElement('commits');
       for(const c of e.commits){
         const ce = doc.createElement('commit');
         if(c.hash) ce.setAttribute('hash', c.hash);
         if(c.short) ce.setAttribute('short', c.short);
         if(c.time) ce.setAttribute('time', c.time);
-        ce.textContent = c.subject || '';
+        ce.setAttribute('subject', c.subject || '');
+        ce.textContent = c.body || '';   // 본문(줄바꿈 보존). 없으면 빈 콘텐츠
         cs.appendChild(ce);
       }
       el.appendChild(cs);
@@ -2581,10 +2582,13 @@ function fromXML(text){
       location: (e.getAttribute('location') || '').slice(0,200),   // 장소(없으면 빈문자 → 구버전 XML 무손실)
       memo: txt(e,'memo'),
       source,
-      commits: normCommits([...e.getElementsByTagName('commit')].map(ce => ({
-        hash: ce.getAttribute('hash') || '', short: ce.getAttribute('short') || '',
-        time: ce.getAttribute('time') || '', subject: ce.textContent || ''
-      }))),
+      commits: normCommits([...e.getElementsByTagName('commit')].map(ce => {
+        // 신 포맷: subject=속성, body=텍스트콘텐츠 / 구 포맷(subject 속성 없음): subject=텍스트콘텐츠, body 없음(하위호환)
+        const sAttr = ce.getAttribute('subject'); const txt = ce.textContent || '';
+        return { hash: ce.getAttribute('hash') || '', short: ce.getAttribute('short') || '',
+          time: ce.getAttribute('time') || '',
+          subject: (sAttr !== null) ? sAttr : txt, body: (sAttr !== null) ? txt : '' };
+      })),
       endDate, recur, recurExcept,
       createdAt: e.getAttribute('createdAt') || nowIso(),
       updatedAt: e.getAttribute('updatedAt') || nowIso(),

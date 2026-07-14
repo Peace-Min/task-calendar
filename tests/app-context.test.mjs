@@ -76,8 +76,8 @@ if (!JSDOM) {
         { id: 'e-2', date: '2026-07-08', title: '작업일지', categoryId: 'c-2', allDay: false,
           startTime: '', endTime: '', location: '', memo: '',
           source: 'git', commits: [
-            { hash: 'aaaaaaa111', short: 'aaaaaa1', time: '09:15', subject: '첫 커밋' },
-            { hash: 'bbbbbbb222', short: 'bbbbbb2', time: '14:30', subject: '둘째 커밋' },
+            { hash: 'aaaaaaa111', short: 'aaaaaa1', time: '09:15', subject: '첫 커밋', body: '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)' },   // body 포함 → XML round-trip이 본문·줄바꿈 영속을 요구(재시작 후 소실 회귀 방지)
+            { hash: 'bbbbbbb222', short: 'bbbbbb2', time: '14:30', subject: '둘째 커밋' },   // body 없음(빈 문자열로 round-trip)
           ], hours: 120, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         // 반복(weekly, count) + 예외
         { id: 'e-3', date: '2026-07-06', title: '주간 회의', categoryId: 'c-1', allDay: true,
@@ -133,6 +133,8 @@ if (!JSDOM) {
       assert.deepStrictEqual(byId['e-2'].commits.map(c => c.subject), ['첫 커밋', '둘째 커밋']);
       assert.strictEqual(byId['e-2'].commits[0].time, '09:15');
       assert.strictEqual(byId['e-2'].commits[1].short, 'bbbbbb2');
+      assert.strictEqual(byId['e-2'].commits[0].body, '본문 첫 줄\n- 둘째 줄(줄바꿈 보존)');   // 본문 XML 왕복(줄바꿈 보존) — 재시작 후 본문 소실 회귀 방지
+      assert.strictEqual(byId['e-2'].commits[1].body, '');   // body 없는 커밋 → 빈 문자열로 왕복(하위호환)
       // e-3: 반복 + 예외
       assert.strictEqual(byId['e-3'].recur.freq, 'weekly');
       assert.strictEqual(byId['e-3'].recur.count, 5);
