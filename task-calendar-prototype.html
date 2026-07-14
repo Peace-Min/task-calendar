@@ -823,7 +823,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .todo-main{flex:1;min-width:0}
 .todo-text{font-size:var(--fs-body);word-break:keep-all;overflow-wrap:anywhere;cursor:text}
 .todo-memo{font-size:var(--fs-meta);color:var(--muted);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text}
+.todo-daymemo{font-size:var(--fs-meta);color:var(--accent-2);line-height:1.5;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text}
 .todo-row.done .todo-memo{color:var(--faint-text)}
+.todo-row.done .todo-daymemo{color:var(--faint-text)}
 .todo-star{color:#e0a32e;margin-right:2px}
 .todo-row.done .todo-text{text-decoration:line-through;color:var(--faint-text)}
 .todo-due{flex:none;font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
@@ -835,6 +837,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .todo-edit{border-top:1px solid var(--line);padding:9px 0;display:flex;flex-direction:column;gap:7px}
 .todo-edit .te-text{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-emph);font-family:inherit;background:#fff;color:var(--text)}
 .todo-edit .te-note{width:100%;box-sizing:border-box;margin-top:6px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;line-height:1.55;background:#fff;color:var(--text);resize:vertical}
+.todo-edit .te-daynote{width:100%;box-sizing:border-box;border:1px solid var(--accent-2);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;line-height:1.55;background:#f3fbf7;color:var(--text);resize:vertical}
+.te-daynote-lb{font-size:var(--fs-micro);color:var(--accent-2);font-weight:700;margin-top:2px}
 .te-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .te-row input[type=date],.te-row select{border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:#fff;color:var(--text)}
 .te-star{font-size:var(--fs-meta);color:var(--muted);display:inline-flex;align-items:center;gap:3px}
@@ -969,7 +973,7 @@ html.dark .btn,html.dark .menu,html.dark .fchip,html.dark .dp-action,html.dark .
 html.dark .modal input[type=text],html.dark .modal input[type=date],html.dark .modal input[type=time],
 html.dark .modal input[type=month],html.dark .modal select,html.dark .modal textarea,
 html.dark .color-input,html.dark .recur-pill,html.dark .s-row,html.dark .nd-add-r1 input,html.dark .nd-add-r2 input[type=date],
-html.dark .todo-edit .te-text,html.dark .todo-edit .te-note,html.dark .te-row input[type=date],html.dark .te-row select,html.dark .nd-toggle,
+html.dark .todo-edit .te-text,html.dark .todo-edit .te-note,html.dark .todo-edit .te-daynote,html.dark .te-row input[type=date],html.dark .te-row select,html.dark .nd-toggle,
 html.dark .qa-ctx input[type=date],html.dark .qa-ctx select,html.dark .jump,html.dark .s-date,
 html.dark .qa-detail input[type=time],html.dark .qa-detail select,html.dark .qa-detail textarea{ background:var(--panel) }
 html.dark .btn:hover,html.dark .menu button:hover,html.dark .cell:hover,html.dark .dp-action:hover,html.dark .git-row,html.dark .x:hover,html.dark .s-row:hover,html.dark .imp-box{ background:var(--fill) }
@@ -2198,18 +2202,32 @@ const entryById = id => state.entries.find(e => e.id === id) || null;
 // 노트 TODO 배열 정규화 — 손상/외부편집 데이터 방어(텍스트는 한 줄로, 빈 항목 제외)
 function normTodos(a){
   const dok = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  const normDayNotes = (raw, due, endDate) => {
+    const out = {};
+    if(!raw || typeof raw !== 'object' || !due) return out;
+    const last = (endDate && endDate > due) ? endDate : due;
+    for(const [date, text] of Object.entries(raw)){
+      if(!dok(date) || date < due || date > last) continue;
+      const v = String(text ?? '').trim();
+      if(v) out[date] = v;
+    }
+    return out;
+  };
   return Array.isArray(a) ? a.map(t => {
     const done = !!t.done;
+    const due = dok(t.due) ? t.due : '';
+    const endDate = (dok(t.endDate) && due && t.endDate > due) ? t.endDate : '';
     return {
       id: (typeof t.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(t.id)) ? t.id : uid('t'),
       text: String(t.text ?? '').replace(/\s+/g, ' ').trim(),
       done,
       categoryId: (typeof t.categoryId === 'string' && t.categoryId) ? t.categoryId : null,
-      due: dok(t.due) ? t.due : '',                       // 기한/시작(없으면 '기한없음' 구획)
-      endDate: (dok(t.endDate) && dok(t.due) && t.endDate > t.due) ? t.endDate : '',  // 기간 종료일(여러 날 할 일)
+      due,                                                // 기한/시작(없으면 '기한없음' 구획)
+      endDate,                                            // 기간 종료일(여러 날 할 일)
       prio: t.prio === 'high' ? 'high' : 'normal',        // 중요표시 2단계
       completedAt: (done && t.completedAt) ? String(t.completedAt) : '',  // 완료 시각(보고서 '한 일' 기간 키)
       note: String(t.note ?? ''),
+      dayNotes: normDayNotes(t.dayNotes, due, endDate),
       createdAt: t.createdAt || nowIso(),
       updatedAt: t.updatedAt || nowIso(),
     };
@@ -2428,6 +2446,17 @@ function toXML(){
     el.setAttribute('updatedAt', t.updatedAt || '');
     const tx = doc.createElement('text'); tx.textContent = t.text || ''; el.appendChild(tx);
     if(t.note){ const nt = doc.createElement('note'); nt.textContent = t.note; el.appendChild(nt); }
+    if(t.dayNotes && typeof t.dayNotes === 'object'){
+      const dns = doc.createElement('dayNotes');
+      for(const [date, text] of Object.entries(t.dayNotes).sort()){
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !String(text || '').trim()) continue;
+        const dn = doc.createElement('dayNote');
+        dn.setAttribute('date', date);
+        dn.textContent = String(text);
+        dns.appendChild(dn);
+      }
+      if(dns.childNodes.length) el.appendChild(dns);
+    }
     tds.appendChild(el);
   }
   root.appendChild(tds);
@@ -2524,16 +2553,26 @@ function fromXML(text){
     const due = t.getAttribute('due') || '';
     const ted = t.getAttribute('endDate') || '';
     const comp = t.getAttribute('completedAt') || '';
+    const dueOk = isRealDate(due) ? due : '';
+    const endOk = (isRealDate(ted) && dueOk && ted > dueOk) ? ted : '';
+    const last = endOk || dueOk;
+    const dayNotes = {};
+    [...t.getElementsByTagName('dayNote')].forEach(n => {
+      const d = n.getAttribute('date') || '';
+      const v = String(n.textContent || '').trim();
+      if(dueOk && last && isRealDate(d) && d >= dueOk && d <= last && v) dayNotes[d] = v;
+    });
     return {
       id: safeId(t.getAttribute('id'), 't'),
       text: (txt(t,'text') || '').replace(/\s+/g, ' ').trim(),
       done,
       categoryId: t.getAttribute('categoryId') || null,  // 미존재 참조는 표시 시 무시(과제명 비표시)
-      due: isRealDate(due) ? due : '',
-      endDate: (isRealDate(ted) && isRealDate(due) && ted > due) ? ted : '',
+      due: dueOk,
+      endDate: endOk,
       prio: t.getAttribute('prio') === 'high' ? 'high' : 'normal',
       completedAt: (done && comp) ? comp : '',
       note: txt(t,'note'),
+      dayNotes,
       createdAt: t.getAttribute('createdAt') || nowIso(),
       updatedAt: t.getAttribute('updatedAt') || nowIso(),
     };
@@ -2574,7 +2613,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       (e.recurExcept||[]).slice().sort(),
       (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||'']),
       e.hours??null, e.location||'']),
-    t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'']),
+    t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'', Object.entries(t.dayNotes||{}).sort()]),
     r: normRooms(s.rooms) || [],
   });
   const p = fromXML(toXML());
@@ -4556,6 +4595,22 @@ function toast(msg, kind, action){
 
 /* ---------- 노트(멀티노트): 깃로그 · TODO · 메일 ---------- */
 const todoById = id => (state.todos || []).find(t => t.id === id) || null;
+function todoEndDate(t){ return (t && t.endDate && t.endDate > t.due) ? t.endDate : (t ? t.due : ''); }
+function todoCoversDate(t, date){ return !!(t && t.due && date && t.due <= date && todoEndDate(t) >= date); }
+function todoNoteDate(t){
+  if(todoCoversDate(t, selectedDate)) return selectedDate;
+  return (t && t.due) ? t.due : '';
+}
+function normalizeTodoDayNotes(raw, due, endDate){
+  const out = {};
+  if(!raw || typeof raw !== 'object' || !due) return out;
+  const last = (endDate && endDate > due) ? endDate : due;
+  for(const [date, text] of Object.entries(raw)){
+    const v = String(text ?? '').trim();
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date) && date >= due && date <= last && v) out[date] = v;
+  }
+  return out;
+}
 function addTodo(text, opts){
   opts = opts || {};
   const ymdRe = /^\d{4}-\d{2}-\d{2}$/;
@@ -4563,7 +4618,7 @@ function addTodo(text, opts){
   const endDate = (due && ymdRe.test(opts.endDate || '') && opts.endDate > due) ? opts.endDate : '';
   const t = {id:uid('t'), text:String(text || '').replace(/\s+/g, ' ').trim(), done:false,
     categoryId:opts.categoryId || null, due, endDate, prio:opts.prio === 'high' ? 'high' : 'normal',
-    completedAt:'', note:'', createdAt:nowIso(), updatedAt:nowIso()};
+    completedAt:'', note:String(opts.note || ''), dayNotes:normalizeTodoDayNotes(opts.dayNotes, due, endDate), createdAt:nowIso(), updatedAt:nowIso()};
   if(!t.text) return null;
   state.todos.push(t); save(); return t;
 }
@@ -4574,6 +4629,7 @@ function updateTodo(id, f){ const t = todoById(id); if(!t) return;
   if('due' in f) t.due = /^\d{4}-\d{2}-\d{2}$/.test(f.due || '') ? f.due : '';
   if('endDate' in f) t.endDate = (/^\d{4}-\d{2}-\d{2}$/.test(f.endDate || '') && t.due && f.endDate > t.due) ? f.endDate : '';
   if(t.due === '' || (t.endDate && t.endDate <= t.due)) t.endDate = '';   // 기한 없거나 종료<=시작이면 기간 해제
+  t.dayNotes = normalizeTodoDayNotes(Object.assign({}, t.dayNotes || {}, f.dayNotes || {}), t.due, t.endDate);
   if('categoryId' in f) t.categoryId = f.categoryId || null;
   if('prio' in f) t.prio = f.prio === 'high' ? 'high' : 'normal';
   if('note' in f) t.note = String(f.note ?? '');   // 설명(여러 줄 · 줄바꿈 보존)
@@ -4753,14 +4809,21 @@ function dueLabel(due){
   const d = parseYmd(due);
   return `${d.getMonth()+1}/${d.getDate()}`;
 }
+function todoPeriodLabel(t){
+  if(!t || !t.due) return '';
+  const s = dueLabel(t.due);
+  return (t.endDate && t.endDate > t.due) ? `${s}~${dueLabel(t.endDate)}` : s;
+}
 function todoRowHtml(t){
   if(editingTodoId === t.id) return todoEditHtml(t);
   const cat = catById(t.categoryId);
   const overdue = !t.done && t.due && t.due < todayYmd();
-  const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(dueLabel(t.due))}</span>` : '';
+  const due = t.due ? `<span class="todo-due${overdue?' od':''}">${esc(todoPeriodLabel(t))}</span>` : '';
+  const noteDate = todoNoteDate(t);
+  const dayNote = noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
   return `<div class="todo-row${t.done ? ' done' : ''}${flashTodoId===t.id?' flash':''}" data-id="${esc(t.id)}">
     <button class="todo-check" data-act="toggle" aria-label="${t.done ? '완료 해제' : '완료 표시'}">${t.done ? ICON.boxCheck : ICON.box}</button>
-    <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span>${t.note ? `<div class="todo-memo" data-act="edit" title="클릭하여 수정">${esc(t.note)}</div>` : ''}</div>
+    <div class="todo-main"><span class="todo-text" data-act="edit" title="클릭하여 수정">${esc(t.text)}</span>${dayNote ? `<div class="todo-daymemo" data-act="edit" title="${esc(fmtShort(noteDate))} 설명">${esc(dayNote)}</div>` : ''}${t.note ? `<div class="todo-memo" data-act="edit" title="클릭하여 수정">${esc(t.note)}</div>` : ''}</div>
     ${due}${cat ? `<span class="todo-dot" style="background:${validColor(cat.color)}" title="${esc(cat.name)}"></span>` : ''}
     <button class="todo-star-btn${t.prio==='high'?' on':''}" data-act="star" title="중요 표시" aria-label="중요 토글">${t.prio==='high'?ICON.starFill:ICON.star}</button>
     <button class="todo-del" data-act="del" title="삭제" aria-label="삭제">${ICON.xmark}</button>
@@ -4768,9 +4831,13 @@ function todoRowHtml(t){
 }
 function todoEditHtml(t){
   const opts = state.categories.map(c => `<option value="${esc(c.id)}"${t.categoryId===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
+  const noteDate = todoNoteDate(t);
+  const dayNote = noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
+  const dayNoteEditor = noteDate ? `<label class="te-daynote-lb">${esc(fmtShort(noteDate))} 설명</label><textarea class="te-daynote" rows="3" data-date="${esc(noteDate)}" placeholder="이 날짜에만 보이는 설명 (선택)">${esc(dayNote)}</textarea>` : '';
   return `<div class="todo-edit" data-id="${esc(t.id)}">
     <input type="text" class="te-text" maxlength="200" value="${esc(t.text)}">
-    <textarea class="te-note" rows="3" placeholder="설명 (여러 줄 · 선택)">${esc(t.note||'')}</textarea>
+    <textarea class="te-note" rows="3" placeholder="전체 설명 (여러 줄 · 선택)">${esc(t.note||'')}</textarea>
+    ${dayNoteEditor}
     <div class="te-row">
       <input type="date" class="te-due" value="${esc(t.due||'')}" title="기한/시작">
       <span class="te-tilde">~</span>
@@ -4966,6 +5033,7 @@ function qaRenderDetail(){
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
     : `<label class="qa-lb">설명</label><textarea id="qaMemo" rows="3" placeholder="서술형으로 자유롭게 (선택)"></textarea>
+       <label class="qa-lb">기간 종료일 (선택 — 여러 날 할 일)</label><input type="date" id="qaEndDate">
        <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
   if(qaType === 'event'){
     fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
@@ -5010,9 +5078,11 @@ function qaSave(){
   } else {
     const due = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
     const edEl = $('#qaEndDate'); const endDate = edEl ? edEl.value : '';
+    if(endDate && !due){ toast('기간 종료일을 쓰려면 시작 기한을 먼저 선택하세요', 'warn'); $('#qaDate').focus(); return; }
+    if(endDate && !/^\d{4}-\d{2}-\d{2}$/.test(endDate)){ toast('종료일을 확인하세요', 'warn'); edEl.focus(); return; }
+    if(endDate && endDate < due){ toast('종료일이 시작일보다 빠릅니다', 'warn'); edEl.focus(); return; }
     const prioEl = $('#qaPrio');
-    const t = addTodo(title, {categoryId:cat, due, endDate, prio:(prioEl && prioEl.checked) ? 'high' : 'normal'});
-    if(t && memo){ t.note = memo; save(); }
+    addTodo(title, {categoryId:cat, due, endDate, prio:(prioEl && prioEl.checked) ? 'high' : 'normal', note:memo});
     if(due) selectedDate = due; else noteCollapsed.delete('nodate');   // 추가한 할 일이 보이도록(기한 있으면 그 날로, 없으면 기한없음 펼침)
     noteTab = 'todo';
     closeModal('#quickAdd'); renderAll(); toast('할 일을 추가했습니다', 'success');
@@ -5348,10 +5418,13 @@ function bind(){
     if(box){
       const id = box.dataset.id, act = ev.target.dataset.act;
       if(act === 'save'){
+        const dn = box.querySelector('.te-daynote');
+        const dayNotes = {};
+        if(dn && dn.dataset.date) dayNotes[dn.dataset.date] = dn.value;
         updateTodo(id, {text:box.querySelector('.te-text').value, due:box.querySelector('.te-due').value,
           endDate:box.querySelector('.te-end') ? box.querySelector('.te-end').value : '',
           categoryId:box.querySelector('.te-cat').value || null, prio:box.querySelector('.te-prio').checked ? 'high' : 'normal',
-          note:box.querySelector('.te-note') ? box.querySelector('.te-note').value : ''});
+          note:box.querySelector('.te-note') ? box.querySelector('.te-note').value : '', dayNotes});
         editingTodoId = null; renderPanel(); renderGrid();
       } else if(act === 'canceledit'){ editingTodoId = null; renderPanel(); }
       else if(act === 'del'){ const rm = todoById(id); deleteTodo(id); editingTodoId = null; renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.todos.push(rm); save(); renderPanel(); renderGrid(); }}); }
