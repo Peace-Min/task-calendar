@@ -321,6 +321,14 @@ if (!JSDOM) {
       assert.ok(!on.includes('빈과제'), 'skipEmpty ON이면 내용 없는 과제 행 제외');
     });
 
+    test('reportSubIndent: 설명 들여쓰기가 마커 표시폭만큼(한글=2칸) — 제목 텍스트 아래 정렬', () => {
+      assert.strictEqual(evJSON("reportSubIndent('가. ', ' ')"), '    ', '가(2)+.(1)+공백(1)=4칸');
+      assert.strictEqual(evJSON("reportSubIndent('가) ', ' ')"), '    ', '가)+공백=4칸');
+      assert.strictEqual(evJSON("reportSubIndent('1. ', ' ')"), '   ', '1+.+공백=3칸');
+      assert.strictEqual(evJSON("reportSubIndent('10) ', ' ')"), '    ', '1+0+)+공백=4칸');
+      assert.strictEqual(evJSON("reportSubIndent('', ' ')"), '  ', '마커 없으면 최소 2칸(중첩)');
+    });
+
     test('주간 보고 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
       seed(dnState());
       setWeekly('2026-07-13', '2026-07-19');

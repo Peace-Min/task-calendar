@@ -3943,6 +3943,12 @@ function reportTextDetails(meta, pad){
   const lines = reportMetaDetails(meta);
   return lines.length ? lines.map(d => '\n' + pad + d).join('') : '';
 }
+// 설명·본문 하위 라인 들여쓰기 — 제목 텍스트(마커 뒤) 아래 정렬되도록 마커 프리픽스의 '표시폭'(한글·자모·원문자·전각=2칸, 그 외 1칸)만큼 unit 반복. 마커 없으면 최소 2칸(중첩 표시).
+function reportSubIndent(prefix, unit){
+  let w = 0;
+  for(const ch of String(prefix || '')) w += /[가-힣㄰-㆏①-⓿　-〿！-｠一-鿿]/.test(ch) ? 2 : 1;
+  return unit.repeat(Math.max(w, 2));
+}
 // 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). buildReport(렌더)·buildReportText(복사) 공유.
 function fmtH(min){ const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); }
 // 보고서 데이터 수집(렌더·직렬화 공유 단일 소스) — 과제별 제목/공수합/항목. 출력·제목·공수 단일 버킷키(catKey).
@@ -4116,9 +4122,9 @@ function buildWeeklyFields(from, to, sources){
   const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _pad = '&nbsp;'.repeat(_indent * 2);   // netcus 전송(euc-kr HTML) — 줄 앞 연속 공백이 렌더 시 collapse되는 것 방지
   const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map((t, i) => {
-    const _mk = reportMarkerAt(_mkSpec, i);
+    const _mk = reportMarkerAt(_mkSpec, i); const _pfx = _mk ? (_mk + ' ') : '';
     const m = (r.titleMeta && r.titleMeta[i]) || null;
-    return _pad + (_mk ? (_mk + ' ') : '') + t + reportTextDetails(m, _pad + '&nbsp;&nbsp;');
+    return _pad + _pfx + t + reportTextDetails(m, _pad + reportSubIndent(_pfx, '&nbsp;'));
   }).join('\n') : '-')).join('\n\n');
   const planwork = rows.map(r => `[${r.name}]`).join('\n');
   return { content, endwork, planwork, subject: weekSubjectGuess(from) };
@@ -4853,9 +4859,10 @@ function buildReportText(indentUnit){
     return _head + r.titles.map((t, i) => {
       const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
       const m = (r.titleMeta && r.titleMeta[i]) || null;
-      let line = '\n' + _pad + _prefix + t + reportTextDetails(m, _pad + indentUnit.repeat(2));   // 일정 메모/할일 노트(설명 포함) — 제목 아래 한 단계 들여쓴 라인들
-      if(m && m.body){   // 커밋 전체 본문 옵션 ON일 때만 — 제목보다 한 단계 더 들여쓴 라인들로(OFF면 이 블록 미실행 → 기존과 동일)
-        const _bpad = _pad + indentUnit.repeat(2);
+      const _sub = _pad + reportSubIndent(_prefix, indentUnit);   // 설명·본문은 마커 폭만큼 들여쓰기 → 제목 텍스트 아래 정렬(마커보다 왼쪽으로 튀어나오지 않게)
+      let line = '\n' + _pad + _prefix + t + reportTextDetails(m, _sub);   // 일정 메모/할일 노트(설명 포함)
+      if(m && m.body){   // 커밋 전체 본문 옵션 ON일 때만(OFF면 이 블록 미실행 → 기존과 동일)
+        const _bpad = _sub;
         line += m.body.split('\n').map(bl => '\n' + _bpad + bl).join('');
       }
       return line;
