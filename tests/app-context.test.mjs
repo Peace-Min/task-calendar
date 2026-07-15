@@ -363,6 +363,7 @@ if (!JSDOM) {
       assert.ok(html.includes('월 7/13') && html.includes('금 7/17'), '요일 M/D 접두');
       assert.ok(/rtask-roline/.test(html), '제목은 읽기전용(.rtask-roline)');
       assert.ok(!/rtask-edit-btn/.test(html), '주간 제목엔 편집 버튼 없음(제목 읽기전용 유지)');
+      assert.ok(evJSON("!!$('#rptOut').querySelector('.rtask-roline .rtask-main .rdn')"), 'dayNote 라인이 .rtask-main 안 → 제목 텍스트 아래 정렬(마커 폭 무관)');
     });
 
     test('주간 날짜별 라인 저장: 클릭→편집→저장이 updateTodo(dayNotes) 왕복 반영', () => {

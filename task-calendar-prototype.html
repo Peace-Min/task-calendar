@@ -543,7 +543,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask .rtask-main{flex:1;min-width:0}
 .rpt-mirror .rtask .rtask-desc,.rpt-mirror .rtask-roline .rtask-desc{margin-top:2px;color:var(--muted);font-size:var(--fs-small);line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
-.rpt-mirror .rtask-roline .rtask-desc{margin-left:18px}
+.rpt-mirror .rtask-roline{display:flex;align-items:flex-start;gap:4px}   /* 주간 읽기전용 줄도 마커(.rtask-mk)+본문(.rtask-main) 구조 → 설명·dayNote가 제목 아래 정렬 */
 .rpt-mirror .rcard-tasks .rtask-body{white-space:pre-wrap;font-size:var(--fs-micro);color:var(--muted);line-height:1.5;margin:0 0 3px;padding-left:14px;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask .rtask-edit-btn,.rpt-mirror .rtask .rtask-del-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
 .rpt-mirror .rtask .rtask-edit-btn .ic,.rpt-mirror .rtask .rtask-del-btn .ic{width:13px;height:13px}
@@ -556,6 +556,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rtask-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 /* 보고서 — 기간 할일 날짜별 dayNote 라인(주간/일간 편집 개방). 제목 아래 한 단계 들여쓴 편집 가능 라인. */
 .rpt-mirror .rcard-tasks .rdn{display:flex;align-items:flex-start;gap:4px;margin:1px 0 1px 18px;color:var(--muted);font-size:var(--fs-small);line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
+.rpt-mirror .rtask-main .rdn{margin-left:0}   /* .rtask-main 안(일간·주간 공통) → 제목 텍스트 아래 정렬(고정 18px 오프셋 제거, 마커 폭 무관) */
 .rpt-mirror .rdn .rdn-main{flex:1;min-width:0}
 .rpt-mirror .rdn .rdn-date{color:var(--faint);font-size:var(--fs-micro);font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rpt-mirror .rdn .rdn-edit-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.35;transition:opacity .12s,color .12s,background .12s}
@@ -4540,15 +4541,15 @@ function buildReport(){
             // 편집 가능한 라인(커밋·일정·할일)에 삭제(✕) 노출 — 원본까지 제거(일간만; 주간/커스텀은 rtask-ro라 미노출). rkind별 라우팅.
             const _delLbl = m.kind === 'git' ? '이 커밋 삭제' : m.kind === 'event' ? '이 일정 삭제' : m.kind === 'todo' ? '이 할 일 삭제' : '';
             const _del = _delLbl ? `<button type="button" class="rtask-del-btn" data-ract="del" title="${_delLbl}" aria-label="${_delLbl}">${ICON.trash || ICON.xmark}</button>` : '';
-            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>` + (m.body ? `<div class="rtask-body">${esc(m.body)}</div>` : '') + reportDayLinesHtml(m, true, spanMulti);
+            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}${reportDayLinesHtml(m, true, spanMulti)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>` + (m.body ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
           }
-          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '') + reportDayLinesHtml(m, true, spanMulti);
+          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}${reportDayLinesHtml(m, true, spanMulti)}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
         }).join('') + `</div>`;
       } else {   // 주간/커스텀: 제목은 읽기전용 — 단, 기간 할일 날짜별 dayNote 라인만 예외적으로 편집 개방(제목은 계속 읽기전용)
         html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => {
           const _mk = reportMarkerAt(_mkSpec, i);
           const m = (r.titleMeta && r.titleMeta[i]) || null;
-          return `<div class="rtask-roline">${(_mk ? esc(_mk) + ' ' : '') + esc(t)}${reportDetailsHtml(m)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</div>` + reportDayLinesHtml(m, true, spanMulti);
+          return `<div class="rtask-roline">${_mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : ''}<span class="rtask-main">${esc(t)}${reportDetailsHtml(m)}${reportDayLinesHtml(m, true, spanMulti)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</span></div>`;
         }).join('')}</div>`;
       }
     }
