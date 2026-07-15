@@ -330,6 +330,40 @@ if (!JSDOM) {
       assert.ok(rowOf(r, '보고서 작성').titles.includes('요구사항 정리'));
     });
 
+    test('collectReportData: 설명 포함과 내용 없는 항목 제외 옵션', () => {
+      const st = {
+        gitAuthor: '', svnAuthor: '',
+        categories: [{ id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+        entries: [
+          { id: 'e-desc', date: '2026-07-09', title: 'Event with memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: 'memo one\n• memo two', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'e-empty', date: '2026-07-09', title: 'Event without memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'g-desc', date: '2026-07-09', title: 'Git entry', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'g1', short: 'g1', time: '10:00', subject: 'Git subject' }], hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        ],
+        todos: [
+          { id: 'td-desc', text: 'Todo with note', done: false, categoryId: 'cx', due: '2026-07-09', endDate: '', prio: 'normal', completedAt: '', note: 'todo detail', createdAt: CA, updatedAt: CA },
+          { id: 'td-empty', text: 'Todo without note', done: false, categoryId: 'cx', due: '2026-07-09', endDate: '', prio: 'normal', completedAt: '', note: '', createdAt: CA, updatedAt: CA },
+        ],
+        rooms: [],
+      };
+      seed(st);
+      let r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      let row = rowOf(r, 'Alpha');
+      assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Event with memo')].details, ['memo one', 'memo two']);
+      assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Todo with note')].details, ['todo detail']);
+      assert.ok(row.titles.includes('Event without memo'));
+      assert.ok(row.titles.includes('Todo without note'));
+
+      r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: true });
+      row = rowOf(r, 'Alpha');
+      assert.ok(row.titles.includes('Event with memo'));
+      assert.ok(row.titles.includes('Todo with note'));
+      assert.ok(row.titles.includes('Git subject'), '커밋 제목은 자체가 내용이므로 유지');
+      assert.ok(!row.titles.includes('Event without memo'));
+      assert.ok(!row.titles.includes('Todo without note'));
+      assert.strictEqual(row.minutes, 90, '내용 없는 일정은 공수 집계에서도 제외');
+      assert.deepStrictEqual(row.entries.map(e => e.id).sort(), ['e-desc', 'g-desc'], '내용 없는 일정은 편집/표시용 엔트리 버킷에서도 제외');
+    });
+
     test('collectReportData: 기간 필터 — 좁은 범위는 전부 제외(빈 결과, grandMin 0)', () => {
       seed(reportState);
       const r = collect('2026-07-01', '2026-07-05', { event: true, todo: true, git: true });
@@ -668,6 +702,26 @@ if (!JSDOM) {
       const customLines = ev('buildReportText()').split('\n');
       assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
       assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
+    });
+
+    test('buildReportText/buildWeeklyFields: 설명 포함 시 제목 아래 설명 라인 출력', () => {
+      const st = fmtState('-', '', 1);
+      st.entries = [
+        { id: 'd1', date: '2026-07-02', title: 'Alpha item', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: 'detail one\n• detail two', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+      ];
+      seed(st);
+      setRptRange('2026-07-01', '2026-07-31');
+      ev("$('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false;");
+
+      let lines = ev('buildReportText()').split('\n').map(l => l.trim());
+      assert.ok(lines.includes('- Alpha item'));
+      assert.ok(lines.includes('detail one'));
+      assert.ok(lines.includes('detail two'));
+
+      const ewLines = ev('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value).endwork').split('\n').map(l => l.replace(/&nbsp;/g, '').trim());
+      assert.ok(ewLines.includes('- Alpha item'));
+      assert.ok(ewLines.includes('detail one'));
+      assert.ok(ewLines.includes('detail two'));
     });
 
     // 항목1 — 커밋 전체 본문(gitCommitBody) 통합: OFF=본문 미포함(기존과 동일), ON=제목 아래 더 깊은 들여쓰기 라인들
