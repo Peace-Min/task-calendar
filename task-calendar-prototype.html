@@ -4037,6 +4037,8 @@ function collectReportData(from, to, sources){
   rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));
   if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
     minutes:sumMin.get('__uncat__')||0, titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
+  // '내용 없는 항목 제외': 항목뿐 아니라 내용(제목) 0개인 과제 행도 프리뷰·복사에서 제거 → 반영 가시화(빈 과제명 미표시)
+  if(skipEmpty) rows = rows.filter(r => Array.isArray(r.titles) && r.titles.length > 0);
   let grand = 0; for(const v of sumMin.values()) grand += v;
   return { rows, grandMin:grand, uninput };
 }

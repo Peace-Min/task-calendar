@@ -299,6 +299,27 @@ if (!JSDOM) {
       assert.ok(row.titles.includes('빈 기간할일'), 'skipEmpty OFF면 제목만이라도 유지');
     });
 
+    test('skipEmpty ON: 내용 없는 과제 행도 제외(빈 과제명 미표시)', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [
+          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+        ],
+        entries: [],
+        todos: [
+          { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '설명있음', dayNotes: {}, createdAt: CA, updatedAt: CA },
+        ],
+        rooms: [],
+      });
+      const names = (skip) => collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: skip }).rows.map(r => r.name);
+      const off = names(false);
+      assert.ok(off.includes('내용과제') && off.includes('빈과제'), 'skipEmpty OFF면 빈 과제 행도 표시(기존 동작 보존)');
+      const on = names(true);
+      assert.ok(on.includes('내용과제'), '내용 있는 과제는 유지');
+      assert.ok(!on.includes('빈과제'), 'skipEmpty ON이면 내용 없는 과제 행 제외');
+    });
+
     test('주간 보고 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
       seed(dnState());
       setWeekly('2026-07-13', '2026-07-19');
