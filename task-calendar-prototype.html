@@ -5586,8 +5586,13 @@ function bind(){
   const closeMore = () => { $('#moreMenu').classList.add('hidden'); $('#themeMenu').classList.add('hidden'); };
   $('#btnMore').addEventListener('click', ev => { ev.stopPropagation(); $('#themeMenu').classList.add('hidden'); $('#moreMenu').classList.toggle('hidden'); });
   $('#btnTheme').addEventListener('click', ev => { ev.stopPropagation(); $('#moreMenu').classList.add('hidden'); $('#themeMenu').classList.toggle('hidden'); });
-  $('#themeMenu').addEventListener('click', ev => { const b = ev.target.closest('[data-theme]'); if(!b) return; applyTheme(b.dataset.theme); $('#themeMenu').classList.add('hidden'); });
-  document.addEventListener('click', ev => { if(!ev.target.closest('.menu-wrap')) closeMore(); });
+  // 테마 버튼만 선택으로 처리 — [data-theme]는 <html> 루트에도 붙으므로(applyTheme), 슬라이더/라벨 클릭이 조상 html에 매칭돼 오닫힘하지 않게 button으로 한정
+  $('#themeMenu').addEventListener('click', ev => { const b = ev.target.closest('button[data-theme]'); if(!b || !$('#themeMenu').contains(b)) return; applyTheme(b.dataset.theme); $('#themeMenu').classList.add('hidden'); });
+  // 메뉴 바깥 클릭 시 닫기 — 단, 상호작용이 메뉴 안(예: 투명도 슬라이더 드래그)에서 시작됐으면 닫지 않음.
+  // (range 슬라이더를 드래그하다 포인터가 좁은 팝오버 밖에서 놓이면 click 타깃이 바깥이 되어 오닫힘 → 드래그 시작 지점으로 판정)
+  let _menuPointerInside = false;
+  document.addEventListener('pointerdown', ev => { _menuPointerInside = !!(ev.target && ev.target.closest && ev.target.closest('.menu-wrap')); }, true);
+  document.addEventListener('click', ev => { if(_menuPointerInside){ _menuPointerInside = false; return; } if(!ev.target.closest('.menu-wrap')) closeMore(); });
   // 과제 필터 영역 중앙 핸들 드래그 → max-height(자동확장 캡) 조절 + 영속(재렌더 시 filterBarMax로 복원)
   let _fbDrag = null;
   $('#dayPanel').addEventListener('pointerdown', ev => {
