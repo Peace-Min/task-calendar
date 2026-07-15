@@ -644,6 +644,31 @@ if (!JSDOM) {
       assert.ok(lines.includes('▶ 알파'));
       assert.ok(lines.includes('▶ 델타'));
     });
+    test('reportFormatPrefs: 일간/주간 서식은 서로 독립 적용', () => {
+      const st = fmtState('-', '', 0);
+      st.reportFormatPrefs = {
+        daily: { marker: '-', markerCustom: '', indent: 0 },
+        weekly: { marker: '1.', markerCustom: '', indent: 2 },
+      };
+      seed(st);
+      setRptRange('2026-07-01', '2026-07-31');
+
+      ev("reportMode='daily'");
+      const dailyLines = ev('buildReportText()').split('\n');
+      assert.ok(dailyLines.some(l => l.startsWith('- ')), 'daily uses hyphen with indent 0');
+      assert.ok(!dailyLines.some(l => l.startsWith('1. ')), 'daily does not leak weekly numbering');
+
+      ev("reportMode='weekly'");
+      const weeklyLines = ev('buildReportText()').split('\n');
+      const P = ' '.repeat(4);
+      assert.ok(weeklyLines.some(l => l.startsWith(P + '1. ')), 'weekly uses its own indent+number marker');
+      assert.ok(!weeklyLines.some(l => l.startsWith('- ')), 'weekly does not leak daily hyphen');
+
+      ev("setReportMode('custom'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      const customLines = ev('buildReportText()').split('\n');
+      assert.ok(customLines.some(l => l.startsWith(P + '1. ')), 'custom range uses weekly formatting, not daily');
+      assert.ok(!customLines.some(l => l.startsWith('- ')), 'custom range does not overwrite daily formatting');
+    });
 
     // 항목1 — 커밋 전체 본문(gitCommitBody) 통합: OFF=본문 미포함(기존과 동일), ON=제목 아래 더 깊은 들여쓰기 라인들
     const bodyState = (on) => ({
@@ -719,6 +744,21 @@ if (!JSDOM) {
       assert.strictEqual(p.reportMarker, '가.');
       assert.strictEqual(p.reportMarkerCustom, '▶');
       assert.strictEqual(p.reportIndent, 5);
+    });
+    test('prefs roundtrip: 일간/주간 reportFormatPrefs 보존', () => {
+      const st = fmtState('-', '', 1);
+      st.reportFormatPrefs = {
+        daily: { marker: '-', markerCustom: '', indent: 1 },
+        weekly: { marker: 'A.', markerCustom: '▶', indent: 4 },
+      };
+      seed(st);
+      const xml = ev('toXML()');
+      assert.ok(/reportMarker_daily="-"/.test(xml), 'daily marker 기록');
+      assert.ok(/reportIndent_weekly="4"/.test(xml), 'weekly indent 기록');
+      assert.ok(/reportMarkerCustom_weekly="▶"/.test(xml), 'weekly custom 기록');
+      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
+      assert.deepStrictEqual(p.reportFormatPrefs.daily, { marker: '-', markerCustom: '', indent: 1 });
+      assert.deepStrictEqual(p.reportFormatPrefs.weekly, { marker: 'A.', markerCustom: '▶', indent: 4 });
     });
     test('prefs roundtrip: custom 비면 속성 미기록·기본 복원(indent 경계 0)', () => {
       seed(fmtState('A.', '', 0));
