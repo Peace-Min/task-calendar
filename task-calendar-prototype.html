@@ -4052,6 +4052,23 @@ function rptSources(){
   const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit'), ds = $('#rptWithDesc'), se = $('#rptSkipEmpty');
   return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true, desc: ds ? ds.checked : true, skipEmpty: se ? se.checked : false };
 }
+// 포함 항목(일정/할일/커밋/설명포함/내용없는항목제외)을 일간/주간 모드별로 캐싱(#7 reportFormatPrefs와 동일 패턴, custom=weekly 재사용). 저장은 localStorage tc_rptSources={daily,weekly}.
+function normRptSrc(o){ o = o || {}; return { event: o.event !== false, todo: o.todo !== false, git: o.git !== false, desc: o.desc !== false, skipEmpty: !!o.skipEmpty }; }
+function loadRptSourcePrefs(){
+  let raw = null; try{ raw = JSON.parse(localStorage.getItem('tc_rptSources') || 'null'); }catch(_){}
+  if(raw && (raw.daily || raw.weekly)) return { daily: normRptSrc(raw.daily), weekly: normRptSrc(raw.weekly) };   // 신 포맷(모드별)
+  if(raw && ('event' in raw || 'skipEmpty' in raw || 'desc' in raw)){ const m = normRptSrc(raw); return { daily: m, weekly: { ...m } }; }   // 구 포맷(단일) → 양쪽 이관(하위호환)
+  return { daily: normRptSrc(null), weekly: normRptSrc(null) };   // 기본(전체 ON, skipEmpty OFF)
+}
+function applyRptSourcePrefs(){   // 현재 보고 유형(reportMode)의 저장값을 체크박스에 반영
+  const s = loadRptSourcePrefs()[reportFormatKeyForMode(reportMode)];
+  const set = (id, v) => { const e = $(id); if(e) e.checked = v; };
+  set('#rptSrcEvent', s.event); set('#rptSrcTodo', s.todo); set('#rptSrcGit', s.git); set('#rptWithDesc', s.desc); set('#rptSkipEmpty', s.skipEmpty);
+}
+function saveRptSourcePrefs(){   // 현재 체크박스를 현재 모드 키에 저장(다른 모드값은 보존)
+  const prefs = loadRptSourcePrefs(); prefs[reportFormatKeyForMode(reportMode)] = rptSources();
+  try{ localStorage.setItem('tc_rptSources', JSON.stringify(prefs)); }catch(_){}
+}
 // 보고 유형 탭: daily(오늘·고정) / weekly(이번 주·고정) / custom(직접 기간·전송 비활성).
 let reportMode = 'daily';
 function setReportMode(mode){
@@ -4076,6 +4093,7 @@ function setReportMode(mode){
   }
   const sr = $('#rptSourceRow'); if(sr) sr.style.display = (mode === 'daily') ? 'none' : 'flex';   // 내용 출처 = 주간·커스텀만
   { const _wk = $('#rptSrcSeg [data-rsrc="week"]'); if(_wk) _wk.style.display = (mode === 'custom') ? '' : 'none'; }   // netcus 주간보고(월간·연간용)는 기간 취합에서만
+  applyRptSourcePrefs();   // 이 보고 유형(일간/주간)에 저장된 포함 항목 선택 복원 후 렌더
   buildReport();
 }
 // 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
@@ -4455,7 +4473,7 @@ function buildReport(){
   // 내용 출처 = netcus 일간보고/주간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
   if(_netMode){ if(_isWeek) renderNetcusWeeklyInto(from, to); else renderNetcusInto(from, to); return; }
   const src = rptSources();
-  try{ localStorage.setItem('tc_rptSources', JSON.stringify(src)); }catch(_){}   // 선택 영속(미리보기 갱신 시점에만)
+  saveRptSourcePrefs();   // 포함 항목 선택을 현재 보고 유형(일간/주간)별로 영속(미리보기 갱신 시점에만)
   { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
     if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
       const fmt = currentReportFormatPref();
@@ -4814,16 +4832,8 @@ function renderNetcusWeeklyPreview(parsed, at){
 }
 function openReport(){
   clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
-  // 직전 소스 선택 복원(기본 전체 ON)
-  try{ const s = JSON.parse(localStorage.getItem('tc_rptSources') || 'null');
-    if(s){
-      $('#rptSrcEvent').checked = s.event !== false; $('#rptSrcTodo').checked = s.todo !== false; $('#rptSrcGit').checked = s.git !== false;
-      const ds = $('#rptWithDesc'), se = $('#rptSkipEmpty');
-      if(ds) ds.checked = s.desc !== false;
-      if(se) se.checked = !!s.skipEmpty;
-    } }catch(_){}
   openModal('#reportModal');
-  setReportMode('daily');   // 기본: 일간(오늘). 주간/커스텀은 탭으로 전환
+  setReportMode('daily');   // 기본: 일간(오늘). 포함 항목 선택은 setReportMode→applyRptSourcePrefs가 모드별로 복원. 주간/커스텀은 탭으로 전환
   // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
   const _opt = $('#rptOpt'); if(_opt) _opt.classList.remove('open');
   const _ob = $('#rptOptBtn'); if(_ob) _ob.setAttribute('aria-expanded', 'false');

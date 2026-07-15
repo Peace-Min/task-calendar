@@ -329,6 +329,29 @@ if (!JSDOM) {
       assert.strictEqual(evJSON("reportSubIndent('', ' ')"), '  ', '마커 없으면 최소 2칸(중첩)');
     });
 
+    test('포함 항목: 일간/주간 모드별 캐싱 + 구 포맷(단일) 하위호환', () => {
+      // 구 포맷(단일 객체) → 일간·주간 양쪽 이관
+      ev("localStorage.setItem('tc_rptSources', JSON.stringify({event:false, todo:true, git:true, desc:true, skipEmpty:true}));");
+      let p = evJSON("loadRptSourcePrefs()");
+      assert.strictEqual(p.daily.event, false); assert.strictEqual(p.weekly.event, false);
+      assert.strictEqual(p.daily.skipEmpty, true); assert.strictEqual(p.weekly.skipEmpty, true);
+      // 모드별 저장 — 일간=커밋 OFF, 주간=커밋 ON (서로 독립)
+      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=false; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; saveRptSourcePrefs();");
+      ev("reportMode='weekly'; $('#rptSrcGit').checked=true; $('#rptSrcEvent').checked=false; saveRptSourcePrefs();");
+      p = evJSON("loadRptSourcePrefs()");
+      assert.strictEqual(p.daily.git, false, '일간 커밋 OFF 저장');
+      assert.strictEqual(p.weekly.git, true, '주간 커밋 ON 저장');
+      assert.strictEqual(p.daily.event, true); assert.strictEqual(p.weekly.event, false);
+      // applyRptSourcePrefs가 현재 모드값을 체크박스에 복원
+      ev("reportMode='daily'; applyRptSourcePrefs();");
+      assert.strictEqual(evJSON("$('#rptSrcGit').checked"), false, '일간 복원 → 커밋 OFF');
+      ev("reportMode='weekly'; applyRptSourcePrefs();");
+      assert.strictEqual(evJSON("$('#rptSrcGit').checked"), true, '주간 복원 → 커밋 ON');
+      ev("reportMode='custom'; applyRptSourcePrefs();");
+      assert.strictEqual(evJSON("$('#rptSrcGit').checked"), true, 'custom=weekly 키 재사용');
+      ev("localStorage.removeItem('tc_rptSources'); reportMode='daily';");
+    });
+
     test('주간 보고 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
       seed(dnState());
       setWeekly('2026-07-13', '2026-07-19');
