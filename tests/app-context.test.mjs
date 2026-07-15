@@ -271,13 +271,14 @@ if (!JSDOM) {
     const rowCp = r => r.rows.find(x => x.name === '기획');
     const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null; editingReportKey=null;");
 
-    test('기간 할일 dayNotes → 주간 보고 details: 요일 M/D 접두 병합(날짜순)', () => {
+    test('기간 할일 dayNotes → 주간 보고: details=본문만(복사·전송), dayDetails=날짜 보존(미리보기)', () => {
       seed(dnState());
       const r = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
       const row = rowCp(r);
       const mp = row.titleMeta[row.titles.indexOf('보고서 준비')];
-      assert.deepStrictEqual(mp.details, ['월 7/13 초안 작성', '수 7/15 검토', '금 7/17 마무리']);
-      assert.deepStrictEqual(mp.dayDetails.map(d => d.date), ['2026-07-13', '2026-07-15', '2026-07-17']);
+      assert.deepStrictEqual(mp.details, ['초안 작성', '검토', '마무리'], 'details(복사·전송 텍스트)는 날짜 접두 없이 본문만');
+      assert.deepStrictEqual(mp.dayDetails.map(d => d.date), ['2026-07-13', '2026-07-15', '2026-07-17'], 'dayDetails는 날짜 보존(미리보기 흐린 접두용)');
+      assert.deepStrictEqual(mp.dayDetails.map(d => d.text), ['초안 작성', '검토', '마무리']);
       const ms = row.titleMeta[row.titles.indexOf('단일 검토')];
       assert.deepStrictEqual(ms.details, ['단일 설명'], '단일 할일은 전역 note가 detail');
       assert.strictEqual(ms.dayDetails, null, '단일 할일은 dayDetails 없음');

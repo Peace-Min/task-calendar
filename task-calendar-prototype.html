@@ -4008,7 +4008,6 @@ function collectReportData(from, to, sources){
   // 설명 소스(이중 모델): 단일 할일=전역 note / 기간 할일=[from,to]∩[due,end] 각 날짜 dayNote(기간 보고=요일 접두, 일간=원문).
   // skipEmpty·설명포함(#rptWithDesc)은 이 details 기준 → dayNotes 0개 기간할일은 skipEmpty에서 자동 제외.
   if(src.todo){
-    const spanMulti = (from !== to);
     for(const t of (state.todos || [])){
       const s = t.due; if(!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) continue;
       const isPeriod = !!(t.endDate && t.endDate > s);
@@ -4022,7 +4021,7 @@ function collectReportData(from, to, sources){
           const txt = String((t.dayNotes && t.dayNotes[d]) || '').trim();
           if(txt) dayDetails.push({ date: d, text: txt });
         }
-        details = dayDetails.map(dd => spanMulti ? (reportDayPrefix(dd.date) + ' ' + dd.text) : dd.text);
+        details = dayDetails.map(dd => dd.text);   // 복사·전송(plain text) 보고서는 본문만 — 날짜는 미리보기(.rdn-date)에만 흐린 참고표시
       } else {
         details = reportDetailLines(t.note);
       }
