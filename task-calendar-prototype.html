@@ -359,15 +359,14 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .git-badge.off{background:#eef1f6;color:#7c8498;border:1px dashed var(--line-2)}
 .git-badge.ok{background:#e7f4ec;color:#2e7d52}
 .git-badge.warn{background:#fbf2dd;color:#8a6400}
-.vcs-row{display:flex;gap:8px;margin:6px 0 2px}
-/* 특이도 .vcs-row .vcs-opt(0,2,0)로 .modal label/.git-card label을 이기고, 고정 높이로 체크 여부와 무관하게 동일 크기 */
-.vcs-row .vcs-opt{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 16px;margin:0;box-sizing:border-box;line-height:1;font-size:var(--fs-body);font-weight:500;color:var(--text);border:1px solid var(--line-2);border-radius:var(--r-sm);cursor:pointer;background:var(--panel);transition:border-color .12s,background .12s}
-.vcs-row .vcs-opt:hover{border-color:var(--muted)}
-.vcs-row .vcs-opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);font-weight:600}
-.vcs-row .vcs-opt input{margin:0;accent-color:var(--accent)}
+/* 과제 모달: Git·SVN 독립 섹션(대칭 배치). 두 번째(SVN) 섹션만 상단 구분선. */
+.vcs-sect{margin-top:10px}
+.vcs-sect + .vcs-sect{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.vcs-sect-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.vcs-sect-title{font-size:var(--fs-body);font-weight:700;color:var(--text)}
 .git-pick-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px}
-.git-pick-row.empty #gitPath{display:none}
-.git-pick-row.empty #btnGitBrowse{flex:1 1 100%;width:100%}
+.git-pick-row.empty .git-path{display:none}
+.git-pick-row.empty .git-browse{flex:1 1 100%;width:100%}
 .git-path{flex:1;min-width:0;font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff;border:1px solid var(--line-2);border-radius:6px;padding:6px 8px;color:var(--text)}
 .git-path.empty{color:var(--muted);font-family:inherit}
 .git-path.missing{color:var(--danger-text);text-decoration:line-through}
@@ -1330,25 +1329,39 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="git-card" id="gitCard">
           <div class="git-card-head">
             <span class="git-card-title"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.5 4.5a4 4 0 0 0-5 5.2l-6 6 2.3 2.3 6-6a4 4 0 0 0 5.2-5l-2.6 2.6-2.1-.5-.5-2.1z"/></svg> <span id="gitCardLabel">버전관리 연동</span> <span class="git-opt">(선택)</span></span>
-            <span class="git-badge off" id="gitBadge">미연결</span>
           </div>
-          <label>버전관리 종류</label>
-          <div class="vcs-row" id="vcsRow" role="radiogroup" aria-label="버전관리 종류">
-            <label class="vcs-opt"><input type="radio" name="catVcs" value="git" checked> Git</label>
-            <label class="vcs-opt"><input type="radio" name="catVcs" value="svn"> SVN</label>
+          <div class="git-note">과제마다 <b>Git과 SVN을 각각 독립으로</b> 연결할 수 있습니다(둘 다 지정하면 양쪽 커밋을 합쳐서 가져옵니다). 작성자는 종류별로 따로 저장되며, 비우면 그 종류의 모든 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.</div>
+
+          <div class="vcs-sect">
+            <div class="vcs-sect-head"><span class="vcs-sect-title">Git</span><span class="git-badge off" id="gitBadge">미연결</span></div>
+            <label id="gitRepoLabel">저장소 폴더 (루트)</label>
+            <div class="git-pick-row empty" id="gitPickRow">
+              <span class="git-path empty" id="gitPath" title="">연결된 저장소 없음</span>
+              <button class="btn primary sm git-browse" type="button" id="btnGitBrowse">📁 폴더 선택…</button>
+              <button class="btn sm hidden" type="button" id="btnGitClear">해제</button>
+            </div>
+            <label>Git 작성자 <span class="git-scope-pill">공통 · Git 과제 적용</span></label>
+            <div class="git-detect-row">
+              <input type="text" id="cGitAuthor" maxlength="120" placeholder="예: hong@corp.com (Git 이메일 — 자동 감지 가능)">
+              <button class="btn sm" type="button" id="btnGitDetect">자동 감지</button>
+            </div>
+            <div class="git-note" id="gitStatus">Git 저장소 <b>루트 폴더</b>를 지정하세요. 폴더를 고르면 git 이메일로 작성자가 자동 입력됩니다 — 비우면 모두의 커밋이 들어옵니다.</div>
           </div>
-          <label id="gitRepoLabel">저장소 폴더</label>
-          <div class="git-pick-row empty" id="gitPickRow">
-            <span class="git-path empty" id="gitPath" title="">연결된 저장소 없음</span>
-            <button class="btn primary sm" type="button" id="btnGitBrowse">📁 폴더 선택…</button>
-            <button class="btn sm hidden" type="button" id="btnGitClear">해제</button>
+
+          <div class="vcs-sect">
+            <div class="vcs-sect-head"><span class="vcs-sect-title">SVN</span><span class="git-badge off" id="svnBadge">미연결</span></div>
+            <label id="svnRepoLabel">작업복사본 폴더</label>
+            <div class="git-pick-row empty" id="svnPickRow">
+              <span class="git-path empty" id="svnPath" title="">연결된 작업복사본 없음</span>
+              <button class="btn primary sm git-browse" type="button" id="btnSvnBrowse">📁 폴더 선택…</button>
+              <button class="btn sm hidden" type="button" id="btnSvnClear">해제</button>
+            </div>
+            <label>SVN 작성자 <span class="git-scope-pill">공통 · SVN 과제 적용</span></label>
+            <div class="git-detect-row">
+              <input type="text" id="cSvnAuthor" maxlength="120" placeholder="예: phmin (SVN 계정명 — 직접 입력)">
+            </div>
+            <div class="git-note" id="svnStatus">SVN <b>작업복사본 폴더</b>를 지정하세요. 작성자에 본인 SVN 사용자명(예: phmin)을 넣으면 내 커밋만, 비우면 모두의 커밋이 들어옵니다.</div>
           </div>
-          <label>내 작성자 <span class="git-scope-pill" id="gitScopePill">공통 · Git 과제 적용</span></label>
-          <div class="git-detect-row">
-            <input type="text" id="cGitAuthor" maxlength="120" placeholder="예: hong@corp.com (Git 이메일 — 자동 감지 가능)">
-            <button class="btn sm" type="button" id="btnGitDetect">자동 감지</button>
-          </div>
-          <div class="git-note" id="gitStatus">버전관리 종류를 고르고 폴더를 지정하세요. 작성자는 <b>Git/SVN 각각 따로 저장</b>됩니다(Git=이메일·자동 감지, SVN=계정명·직접 입력) — 비우면 그 종류의 모든 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.</div>
         </div>
       </div>
     </div>
@@ -2240,8 +2253,8 @@ function defaultState(){
     gitAuthor: '',    // Git 과제 전용 작성자(이메일·자동감지) — VCS별 분리
     svnAuthor: '',    // SVN 과제 전용 작성자(계정명·직접입력)
     categories: [
-      {id:c1, name:'[샘플] 프로젝트 A', color:'#3e5be0', desc:'초기 설치 예시 과제입니다. 자유롭게 수정하거나 삭제하세요.', gitRepo:'', createdAt:nowIso()},
-      {id:c2, name:'[샘플] 운영 업무', color:'#2e9e6b', desc:'초기 설치 예시 과제입니다. 자유롭게 수정하거나 삭제하세요.', gitRepo:'', createdAt:nowIso()},
+      {id:c1, name:'[샘플] 프로젝트 A', color:'#3e5be0', desc:'초기 설치 예시 과제입니다. 자유롭게 수정하거나 삭제하세요.', gitRepo:'', svnRepo:'', createdAt:nowIso()},
+      {id:c2, name:'[샘플] 운영 업무', color:'#2e9e6b', desc:'초기 설치 예시 과제입니다. 자유롭게 수정하거나 삭제하세요.', gitRepo:'', svnRepo:'', createdAt:nowIso()},
     ],
     entries: [
       {id:uid('e'), date:d0, title:'[샘플 일정] 프로젝트 회의', categoryId:c1, allDay:false,
@@ -2283,7 +2296,13 @@ function load(){
           e.recur = normRecur(e.recur);
           e.recurExcept = Array.isArray(e.recurExcept) ? e.recurExcept.filter(s=>/^\d{4}-\d{2}-\d{2}$/.test(s)) : [];
           if(e.source==='git'){ e.endDate=''; e.recur=null; e.recurExcept=[]; } });
-        s.categories.forEach(c => { c.name = String(c.name ?? ''); c.desc = String(c.desc ?? ''); c.gitRepo = String(c.gitRepo ?? ''); c.vcs = (c.vcs === 'svn') ? 'svn' : 'git'; });
+        s.categories.forEach(c => {
+          c.name = String(c.name ?? ''); c.desc = String(c.desc ?? '');
+          c.gitRepo = String(c.gitRepo ?? ''); c.svnRepo = String(c.svnRepo ?? '');
+          // 마이그레이션(무손실): 구버전은 과제당 단일 경로를 vcs로 구분했다 — vcs==='svn'이면 그 gitRepo는 실제 SVN 작업복사본 경로였으므로 svnRepo로 이관하고 gitRepo 비움. vcs==='git'/부재는 gitRepo 그대로.
+          if(c.vcs === 'svn' && c.gitRepo && !c.svnRepo){ c.svnRepo = c.gitRepo; c.gitRepo = ''; }
+          delete c.vcs;   // vcs 필드 폐기(과제가 git·svn을 독립 보유)
+        });
         s.gitAuthor = String(s.gitAuthor ?? '');
         // svnAuthor 1회 마이그레이션 — 구버전(필드 부재)엔 전역 작성자 하나를 git/svn이 공유했으므로 기존 값을 복사(동작 보존)
         s.svnAuthor = (s.svnAuthor === undefined || s.svnAuthor === null) ? s.gitAuthor : String(s.svnAuthor);
@@ -2498,13 +2517,13 @@ function entriesOn(date){
   }
   return out.sort(entrySort);
 }
-function addCategory(name, color, desc, gitRepo, vcs){
-  const c = {id:uid('c'), name, color, desc:desc||'', gitRepo:gitRepo||'', vcs:(vcs==='svn'?'svn':'git'), createdAt:nowIso()};
+function addCategory(name, color, desc, gitRepo, svnRepo){
+  const c = {id:uid('c'), name, color, desc:desc||'', gitRepo:gitRepo||'', svnRepo:svnRepo||'', createdAt:nowIso()};
   state.categories.push(c); save(); return c;
 }
-function updateCategory(id, name, color, desc, gitRepo, vcs){
+function updateCategory(id, name, color, desc, gitRepo, svnRepo){
   const c = catById(id); if(!c) return;
-  Object.assign(c, {name, color, desc:desc||'', gitRepo:gitRepo||'', vcs:(vcs==='svn'?'svn':'git')}); save();
+  Object.assign(c, {name, color, desc:desc||'', gitRepo:gitRepo||'', svnRepo:svnRepo||''}); save();
 }
 function deleteCategory(id){
   state.entries.forEach(e => { if(e.categoryId === id) e.categoryId = null; });
@@ -2532,7 +2551,7 @@ function toXML(){
     el.setAttribute('id', c.id);
     el.setAttribute('color', c.color);
     if(c.gitRepo) el.setAttribute('gitRepo', c.gitRepo);
-    if(c.vcs === 'svn') el.setAttribute('vcs', 'svn');   // git=기본(미기재로 하위호환)
+    if(c.svnRepo) el.setAttribute('svnRepo', c.svnRepo);   // SVN 작업복사본(git과 독립 — 과제가 둘 다 보유 가능)
     el.setAttribute('createdAt', c.createdAt || '');
     const n = doc.createElement('name'); n.textContent = c.name; el.appendChild(n);
     const ds = doc.createElement('description'); ds.textContent = c.desc || ''; el.appendChild(ds);
@@ -2659,15 +2678,20 @@ function fromXML(text){
     return dt.getFullYear()===y && dt.getMonth()===m-1 && dt.getDate()===d; // 2026-02-31 등 차단
   };
 
-  const categories = [...root.getElementsByTagName('category')].map(c => ({
-    id: safeId(c.getAttribute('id'), 'c'),
-    name: txt(c,'name') || '(이름 없음)',
-    color: /^#[0-9a-fA-F]{6}$/.test(c.getAttribute('color')||'') ? c.getAttribute('color') : '#5b6b7d',
-    desc: txt(c,'description'),
-    gitRepo: c.getAttribute('gitRepo') || '',
-    vcs: (c.getAttribute('vcs') === 'svn') ? 'svn' : 'git',
-    createdAt: c.getAttribute('createdAt') || nowIso(),
-  }));
+  const categories = [...root.getElementsByTagName('category')].map(c => {
+    let gitRepo = c.getAttribute('gitRepo') || '';
+    let svnRepo = c.getAttribute('svnRepo') || '';
+    // 하위호환 마이그레이션: 구버전 XML은 vcs="svn"으로 종류를 구분했다 — 그때의 gitRepo는 실제 SVN 작업복사본 경로였으므로 svnRepo로 이관하고 gitRepo 비움. vcs 부재/git은 gitRepo 그대로.
+    if(c.getAttribute('vcs') === 'svn' && gitRepo && !svnRepo){ svnRepo = gitRepo; gitRepo = ''; }
+    return {
+      id: safeId(c.getAttribute('id'), 'c'),
+      name: txt(c,'name') || '(이름 없음)',
+      color: /^#[0-9a-fA-F]{6}$/.test(c.getAttribute('color')||'') ? c.getAttribute('color') : '#5b6b7d',
+      desc: txt(c,'description'),
+      gitRepo, svnRepo,
+      createdAt: c.getAttribute('createdAt') || nowIso(),
+    };
+  });
   const entries = [...root.getElementsByTagName('entry')].map(e => {
     const allDay = e.getAttribute('allDay') === 'true';
     const date = e.getAttribute('date') || '';
@@ -2789,7 +2813,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
   const norm = s => ({
     g: s.gitAuthor||'',
     sv: s.svnAuthor||'',
-    c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'',c.gitRepo||'',c.vcs||'git']),
+    c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'',c.gitRepo||'',c.svnRepo||'']),
     e: s.entries.map(e=>[e.id,e.date,e.title,e.categoryId||null,!!e.allDay,e.startTime||'',e.endTime||'',e.memo||'',e.source||'',
       e.endDate||'',
       e.recur ? [e.recur.freq, e.recur.interval||1, e.recur.until||'', e.recur.count||0] : null,
@@ -2824,29 +2848,17 @@ let __entryRecurExcept = [];  // 편집 중인 반복 일정의 예외(건너뛴
 let editingId = null;        // 기록 모달: 수정 대상
 let editingCatId = null;     // 과제 모달: 수정 대상
 let selColor = PALETTE[0];   // 과제 모달: 선택 색상
-let catFormRepo = '';        // 과제 모달: 현재 폼의 저장소/작업복사본 경로(다이얼로그로 설정)
-let catFormVcs = 'git';      // 과제 모달: 버전관리 종류(git|svn)
-let __pendingRepoEmail = ''; // 작성자 미스매치 reconcile 대기 이메일
-function setCatVcs(v){
-  catFormVcs = (v === 'svn') ? 'svn' : 'git';
-  $$('#vcsRow input[name="catVcs"]').forEach(r => { r.checked = (r.value === catFormVcs); });
-  const isSvn = catFormVcs === 'svn';
-  const lbl = $('#gitCardLabel'); if(lbl) lbl.textContent = isSvn ? 'SVN 연동' : 'Git 연동';
-  const rl = $('#gitRepoLabel'); if(rl) rl.textContent = isSvn ? '작업복사본 폴더' : '저장소 폴더';
-  const db = $('#btnGitDetect'); if(db) db.style.display = isSvn ? 'none' : '';   // 자동감지는 git만
-  // 작성자는 VCS별 독립값 — 선택한 종류의 작성자를 입력칸에 로드(git 이메일 ↔ svn 계정명은 서로 다른 값)
-  const au = $('#cGitAuthor');
-  if(au){
-    au.value = authorForVcs(catFormVcs);
-    au.placeholder = isSvn ? '예: phmin (SVN 계정명 — 직접 입력)' : '예: hong@corp.com (Git 이메일 — 자동 감지 가능)';
-  }
-  const pill = $('#gitScopePill'); if(pill) pill.textContent = isSvn ? '공통 · SVN 과제 적용' : '공통 · Git 과제 적용';
-  // 종류가 바뀌면 현재 경로를 그 종류로 재검증(배지·경고 갱신) — git/svn이 상태를 공유하지 않게
-  if(typeof renderGitCard === 'function'){
-    if(catFormRepo){ renderGitCard(); if(HOST) validateExistingRepo(catFormRepo); }
-    else setDefaultGitStatus();
-  }
-}
+// 과제 모달: Git·SVN 경로를 독립 보유(둘 다 지정 가능). 폼 상태는 종류별 별도 변수.
+let catFormRepo = '';        // 과제 모달: Git 저장소 루트 경로(다이얼로그로 설정)
+let catFormSvnRepo = '';     // 과제 모달: SVN 작업복사본 경로(다이얼로그로 설정)
+let __pendingRepoEmail = ''; // 작성자 미스매치 reconcile 대기 이메일(Git 전용)
+// kind('git'|'svn')별 폼 경로 접근자 + 섹션 엘리먼트 맵(render/browse/validate가 공유)
+function catRepoFor(kind){ return kind === 'svn' ? catFormSvnRepo : catFormRepo; }
+function setCatRepoFor(kind, v){ if(kind === 'svn') catFormSvnRepo = v || ''; else catFormRepo = v || ''; }
+const VCS_EL = {
+  git: { pickRow:'#gitPickRow', path:'#gitPath', browse:'#btnGitBrowse', clear:'#btnGitClear', badge:'#gitBadge', status:'#gitStatus' },
+  svn: { pickRow:'#svnPickRow', path:'#svnPath', browse:'#btnSvnBrowse', clear:'#btnSvnClear', badge:'#svnBadge', status:'#svnStatus' },
+};
 let searchMode = 'keyword';
 let pendingImport = null;
 let flashTargetId = null;
@@ -3504,9 +3516,10 @@ function renderCatModal(){
       return `<div class="cat-row" data-id="${esc(c.id)}">
         <span class="cat-dot" style="background:${validColor(c.color)}"></span>
         <div style="min-width:0">
-          <div class="cat-name">${esc(c.name)}${c.gitRepo?`<span class="cat-git" title="Git 연결: ${esc(c.gitRepo)}">${ICON.wrench}</span>`:''}</div>
+          <div class="cat-name">${esc(c.name)}${(c.gitRepo||c.svnRepo)?`<span class="cat-git" title="${esc([c.gitRepo?('Git: '+c.gitRepo):'', c.svnRepo?('SVN: '+c.svnRepo):''].filter(Boolean).join('\n'))}">${ICON.wrench}</span>`:''}</div>
           ${c.desc?`<div class="cat-desc">${esc(c.desc)}</div>`:''}
-          ${c.gitRepo?`<div class="cat-desc" title="${esc(c.gitRepo)}">${ICON.wrench} ${esc(c.gitRepo)}</div>`:''}
+          ${c.gitRepo?`<div class="cat-desc" title="${esc(c.gitRepo)}">${ICON.wrench} Git · ${esc(c.gitRepo)}</div>`:''}
+          ${c.svnRepo?`<div class="cat-desc" title="${esc(c.svnRepo)}">${ICON.wrench} SVN · ${esc(c.svnRepo)}</div>`:''}
         </div>
         <span class="cat-count">${n}건</span>
         <button class="link" data-act="edit">수정</button>
@@ -3521,9 +3534,11 @@ function renderCatModal(){
   renderGitCard();   // 폼의 Git 카드를 catFormRepo에 맞춰 항상 동기화(저장/취소 후 잔상 방지)
 }
 function resetCatForm(){
-  editingCatId = null; selColor = PALETTE[0]; catFormRepo = ''; __pendingRepoEmail = '';
+  editingCatId = null; selColor = PALETTE[0]; catFormRepo = ''; catFormSvnRepo = ''; __pendingRepoEmail = '';
   $('#cName').value = ''; $('#cDesc').value = '';
-  setCatVcs('git');
+  const ga = $('#cGitAuthor'); if(ga) ga.value = getGitAuthor();   // 작성자는 종류별 전역값에서 복원(공통값)
+  const sa = $('#cSvnAuthor'); if(sa) sa.value = getSvnAuthor();
+  // 두 섹션(Git·SVN) 표시는 뒤이어 호출되는 renderCatModal()→renderGitCard()가 갱신
 }
 /* ---------- 회의실(장소 선택) ---------- */
 // 장소 select 채우기 — 빈 옵션 + 등록 회의실 + (현재값이 미등록이면 보존용 옵션). cur로 선택.
@@ -3708,8 +3723,7 @@ function netcusManualGuide(){
   toast('netcus 창을 열었습니다 — 직접 입력하거나 위젯으로 옮겨 작성하세요', 'warn');
 }
 function openCatModal(){
-  resetCatForm();
-  $('#cGitAuthor').value = authorForVcs(catFormVcs);   // 현재 폼 종류(기본 git)의 작성자
+  resetCatForm();   // 작성자 입력칸(Git·SVN)도 전역값으로 복원
   renderCatModal();   // renderGitCard() 포함
   openModal('#categoryModal');
 }
@@ -3719,10 +3733,12 @@ function saveCatFromForm(){
   const dup = state.categories.find(c => c.name === name && c.id !== editingCatId);
   if(dup){ toast('같은 이름의 과제가 이미 있습니다', 'warn'); return; }
   const desc = $('#cDesc').value.trim();
-  const gitRepo = catFormRepo.trim();           // 다이얼로그로 고른 경로
-  setAuthorForVcs(catFormVcs, $('#cGitAuthor').value.trim());  // 현재 폼 종류의 전역 작성자도 함께 저장(VCS별 독립)
-  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo, catFormVcs); toast('과제를 수정했습니다', 'success'); }
-  else{ addCategory(name, selColor, desc, gitRepo, catFormVcs); toast('과제를 추가했습니다', 'success'); }
+  const gitRepo = catFormRepo.trim();           // Git 저장소 경로(다이얼로그로 고름)
+  const svnRepo = catFormSvnRepo.trim();         // SVN 작업복사본 경로(독립)
+  setGitAuthor($('#cGitAuthor').value.trim());   // 종류별 전역 작성자도 함께 저장(Git·SVN 독립)
+  setSvnAuthor($('#cSvnAuthor').value.trim());
+  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo, svnRepo); toast('과제를 수정했습니다', 'success'); }
+  else{ addCategory(name, selColor, desc, gitRepo, svnRepo); toast('과제를 추가했습니다', 'success'); }
   resetCatForm(); renderCatModal(); renderAll();
 }
 
@@ -6239,18 +6255,20 @@ function bind(){
   });
   $('#btnCatSave').addEventListener('click', saveCatFromForm);
   $('#cName').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') saveCatFromForm(); });
-  // 작성자 입력은 현재 선택된 VCS의 전역값에 저장(blur 시 change가 라디오 전환보다 먼저 발화 → 이전 종류에 올바르게 커밋됨)
-  $('#cGitAuthor').addEventListener('change', () => setAuthorForVcs(catFormVcs, $('#cGitAuthor').value.trim()));
+  // 작성자 입력은 종류별 전역값에 독립 저장(Git=이메일, SVN=계정명)
+  $('#cGitAuthor').addEventListener('change', () => setGitAuthor($('#cGitAuthor').value.trim()));
+  $('#cSvnAuthor').addEventListener('change', () => setSvnAuthor($('#cSvnAuthor').value.trim()));
   $('#btnGitDetect').addEventListener('click', detectGitAuthor);
-  $('#btnGitBrowse').addEventListener('click', browseRepo);
-  $('#btnGitClear').addEventListener('click', clearRepo);
-  $$('#vcsRow input[name="catVcs"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCatVcs(r.value); }));
+  $('#btnGitBrowse').addEventListener('click', () => browseRepoFor('git'));
+  $('#btnGitClear').addEventListener('click', () => clearRepoFor('git'));
+  $('#btnSvnBrowse').addEventListener('click', () => browseRepoFor('svn'));
+  $('#btnSvnClear').addEventListener('click', () => clearRepoFor('svn'));
   $('#gitStatus').addEventListener('click', ev => {
     if(ev.target && ev.target.id === 'btnGitReconcile' && __pendingRepoEmail){
       const em = __pendingRepoEmail;
-      if(catFormVcs === 'git') $('#cGitAuthor').value = em;   // 입력칸은 git 모드일 때만(이메일은 git 전용값)
+      $('#cGitAuthor').value = em;   // Git 작성자 입력칸(이메일 — git 전용값)
       setGitAuthor(em); __pendingRepoEmail = '';
-      setGitStatus('✓ 공통 작성자를 <b>' + esc(em) + '</b> 로 변경했습니다.', false);
+      setVcsStatus('git', '✓ 공통 작성자를 <b>' + esc(em) + '</b> 로 변경했습니다.', false);
     }
   });
   $('#btnCatCancelEdit').addEventListener('click', () => { resetCatForm(); renderCatModal(); });
@@ -6263,10 +6281,10 @@ function bind(){
     if(act === 'edit'){
       editingCatId = c.id; selColor = c.color; __pendingRepoEmail = '';
       $('#cName').value = c.name; $('#cDesc').value = c.desc || '';
-      catFormRepo = c.gitRepo || '';
-      setCatVcs(c.vcs || 'git');
+      catFormRepo = c.gitRepo || ''; catFormSvnRepo = c.svnRepo || '';   // Git·SVN 경로 둘 다 복원
+      $('#cGitAuthor').value = getGitAuthor(); $('#cSvnAuthor').value = getSvnAuthor();
       renderCatModal(); $('#cName').focus();   // renderGitCard() 포함
-      if(HOST && catFormRepo) validateExistingRepo(catFormRepo);
+      if(HOST){ if(catFormRepo) validateExistingRepoFor('git', catFormRepo); if(catFormSvnRepo) validateExistingRepoFor('svn', catFormSvnRepo); }
     }else if(act === 'del'){
       const n = state.entries.filter(e => e.categoryId === c.id).length;
       if(await confirmBox('과제 삭제',
@@ -6468,12 +6486,12 @@ window.__test = {
   applyCommits(commits, catId, date){ const d = date || selectedDate; openEntryModal('new', d); $('#fCat').value = catId; applyCommitsToForm(commits, catById(catId), d); },
   gitAuthor: () => getGitAuthor(),
   svnAuthor: () => getSvnAuthor(),
-  // Git 카드 상태 렌더 검증용(호스트 응답 시뮬레이션)
-  gitState(repo, st){ catFormRepo = repo; renderGitCard(); applyGitState(st);
-    return {badge:$('#gitBadge').textContent, card:$('#gitCard').className, author:$('#cGitAuthor').value, reconcile:!!$('#btnGitReconcile'), status:$('#gitStatus').textContent}; },
-  setAuthor(v){ setGitAuthor(v); if(catFormVcs === 'git') $('#cGitAuthor').value = v; },
-  setAuthorSvn(v){ setSvnAuthor(v); if(catFormVcs === 'svn') $('#cGitAuthor').value = v; },
-  catRepo(){ return catFormRepo; },
+  // Git·SVN 카드 상태 렌더 검증용(호스트 응답 시뮬레이션). kind 생략 시 git.
+  gitState(repo, st, kind){ const k = kind === 'svn' ? 'svn' : 'git'; setCatRepoFor(k, repo); renderGitCard(); applyVcsState(k, st);
+    return {badge:$(VCS_EL[k].badge).textContent, author:(k === 'svn' ? $('#cSvnAuthor') : $('#cGitAuthor')).value, reconcile:!!$('#btnGitReconcile'), status:$(VCS_EL[k].status).textContent}; },
+  setAuthor(v){ setGitAuthor(v); const g = $('#cGitAuthor'); if(g) g.value = v; },
+  setAuthorSvn(v){ setSvnAuthor(v); const s = $('#cSvnAuthor'); if(s) s.value = v; },
+  catRepo(kind){ return catRepoFor(kind === 'svn' ? 'svn' : 'git'); },
 };
 
 /* ---------- 좌/우 너비 조절 분할바 ---------- */
@@ -6540,23 +6558,53 @@ function setupGuideResize(){
   });
 }
 
-/* ---------- Git 커밋 연동 (작업일지) ---------- */
-// ⚠ 이름은 git이지만 vcs 무관 — gitRepo가 채워진 모든 과제(SVN 포함)를 반환. 종류 분기는 호출부에서 c.vcs로.
+/* ---------- Git·SVN 커밋 연동 (작업일지) ---------- */
+// ⚠ 이름은 git이지만 vcs 무관 — gitRepo 또는 svnRepo가 채워진 모든 과제를 반환(가져오기 대상).
 //   (gitRepo/getGitAuthor/source='git'/메시지명 'gitlog'·'gitauthor'·'gitcheck'는 XML 키·호스트 프로토콜·저장데이터와 묶여 리네임 금지 — git/svn 공용 식별자로 동결)
-function gitEnabledCats(){ return state.categories.filter(c => c.gitRepo); }
+function gitEnabledCats(){ return state.categories.filter(c => c.gitRepo || c.svnRepo); }
 function getGitAuthor(){ return (state && state.gitAuthor) || ''; }
 function setGitAuthor(v){ if(!state) return; if(state.gitAuthor === (v||'')) return; state.gitAuthor = v || ''; save(); }
 function getSvnAuthor(){ return (state && state.svnAuthor) || ''; }
 function setSvnAuthor(v){ if(!state) return; if(state.svnAuthor === (v||'')) return; state.svnAuthor = v || ''; save(); }
-// 과제 vcs에 맞는 작성자 — git 이메일과 svn 계정명은 서로 다른 값이라 VCS별로 독립 저장·독립 사용
+// 종류에 맞는 작성자 — git 이메일과 svn 계정명은 서로 다른 값이라 종류별로 독립 저장·독립 사용
 function authorForVcs(vcs){ return vcs === 'svn' ? getSvnAuthor() : getGitAuthor(); }
 function setAuthorForVcs(vcs, v){ if(vcs === 'svn') setSvnAuthor(v); else setGitAuthor(v); }
 
-// 기록 모달의 '커밋 불러오기' 줄: 위젯 모드 + 선택 과제에 저장소가 있을 때만 노출
+// git·svn 커밋 병합(순수 함수) — hash 기준 dedup(hash 없는 레거시는 각자 유지) + 커밋 시각(date) 오름차순 정렬.
+// git sha와 svn 리비전은 충돌하지 않으므로 hash 하나로 안전하게 dedup된다. tests에서 단독 검증.
+function mergeGitSvnCommits(gitList, svnList){
+  const out = []; const seen = new Set();
+  for(const c of [...(Array.isArray(gitList) ? gitList : []), ...(Array.isArray(svnList) ? svnList : [])]){
+    if(!c) continue;
+    const h = c.hash || '';
+    if(h){ if(seen.has(h)) continue; seen.add(h); }
+    out.push(c);
+  }
+  out.sort((x, y) => String((x && x.date) || '').localeCompare(String((y && y.date) || '')));
+  return out;
+}
+// 한 과제의 커밋을 Git·SVN 양쪽에서 가져와 병합. 각 종류는 그 종류 전용 저장소·작성자·타임아웃을 쓴다.
+// 반환 {ok, commits(병합·정렬), errors[]}. 한쪽이 실패해도 다른 쪽 결과는 살린다(부분 성공). 호스트 미연결(HOST=false)이면 hostRequest가 즉시 실패를 돌려줌.
+async function fetchCommitsForCat(cat, from, to){
+  let gitC = [], svnC = []; const errors = []; let anyOk = false;
+  if(cat && cat.gitRepo){
+    const r = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: 'git', author: authorForVcs('git'), since: from, until: to, body: !!state.gitCommitBody});
+    if(r && r.ok){ anyOk = true; gitC = r.commits || []; }
+    else errors.push('Git: ' + ((r && r.error) || '오류'));
+  }
+  if(cat && cat.svnRepo){
+    const r = await hostRequest('gitlog', {repo: cat.svnRepo, vcs: 'svn', author: authorForVcs('svn'), since: from, until: to, body: !!state.gitCommitBody}, 25000);   // svn은 서버 왕복 → 타임아웃 더 길게
+    if(r && r.ok){ anyOk = true; svnC = r.commits || []; }
+    else errors.push('SVN: ' + ((r && r.error) || '오류'));
+  }
+  return { ok: anyOk, commits: mergeGitSvnCommits(gitC, svnC), errors };
+}
+
+// 기록 모달의 '커밋 불러오기' 줄: 위젯 모드 + 선택 과제에 저장소(Git 또는 SVN)가 있을 때만 노출
 function updateGitRow(){
-  const sect = $('#gitSect'); if(!sect) return;   // '연동' 섹션 전체(캡션 포함)를 토글 — git 과제일 때만 노출
+  const sect = $('#gitSect'); if(!sect) return;   // '연동' 섹션 전체(캡션 포함)를 토글 — 연동된 과제일 때만 노출
   const cat = catById($('#fCat').value);
-  const show = HOST && cat && !!cat.gitRepo;
+  const show = HOST && cat && !!(cat.gitRepo || cat.svnRepo);
   sect.classList.toggle('hidden', !show);
 }
 
@@ -6593,22 +6641,21 @@ function applyCommitsToForm(commits, cat, date){
 async function fetchCommitsIntoModal(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cat = catById($('#fCat').value);
-  if(!cat || !cat.gitRepo){ toast('이 과제에 Git 저장소가 설정되어 있지 않습니다 — [과제 관리]에서 경로를 입력하세요', 'warn'); return; }
+  if(!cat || (!cat.gitRepo && !cat.svnRepo)){ toast('이 과제에 Git·SVN 저장소가 설정되어 있지 않습니다 — [과제 관리]에서 경로를 입력하세요', 'warn'); return; }
   const date = $('#fDate').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 먼저 선택하세요', 'warn'); $('#fDate').focus(); return; }
   const fbtn = $('#btnGitFetch');
-  fbtn.disabled = true;                       // git 호출(최대 15초) 동안 중복 실행 방지
+  fbtn.disabled = true;                       // git/svn 호출 동안 중복 실행 방지
   try{
   $('#gitHint').innerHTML = '<span class="spin"></span> 불러오는 중…';
-  const res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: authorForVcs(cat.vcs||'git'), since: date, until: date, body: !!state.gitCommitBody}, cat.vcs==='svn'?25000:undefined);   // svn은 서버 왕복(호스트 20s) → 프론트 타임아웃을 더 길게. 작성자는 과제 vcs 전용값. body=전역 옵션
-  if(!res || !res.ok){ const msg = (res && res.error) || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'error'); return; }
-  if(!res.commits || !res.commits.length){
-    const _a = authorForVcs(cat.vcs||'git');
-    const who = _a ? `작성자 '${_a}'의 ` : '';
-    $('#gitHint').textContent = `해당 날짜에 ${who}커밋이 없습니다`;
+  const res = await fetchCommitsForCat(cat, date, date);   // Git·SVN 양쪽 병합
+  if(!res.ok && !res.commits.length){ const msg = res.errors.join(' / ') || '알 수 없는 오류'; $('#gitHint').textContent = '✗ ' + msg; toast('커밋 불러오기 실패: ' + msg, 'error'); return; }
+  if(!res.commits.length){
+    $('#gitHint').textContent = '해당 날짜에 커밋이 없습니다' + (res.errors.length ? ` · ⚠ ${res.errors.join(' / ')}` : '');
     toast('해당 날짜에 가져올 커밋이 없습니다', 'warn'); return;
   }
   applyCommitsToForm(res.commits, cat, date);
+  if(res.errors.length) $('#gitHint').textContent += ` (⚠ ${res.errors.join(' / ')})`;   // 한쪽 실패해도 다른 쪽은 반영, 실패는 알림
   } finally { fbtn.disabled = false; }
 }
 // 날짜 패널의 '이 날 커밋' → 컴팩트 단일날짜 모달(과제 범위 선택 + 불러오기 1버튼). 편집 모달 안 뜸 — 일괄 코어를 from==to로 재사용해 바로 등록.
@@ -6674,12 +6721,13 @@ async function runGitImport(from, to, selId, statusSel, btnSel, replace){
     for(const cat of cats){
       setS(`<span class="spin"></span> 불러오는 중… (과제 ${++ci}/${cats.length})`);
       let res;
-      try{ res = await hostRequest('gitlog', {repo: cat.gitRepo, vcs: cat.vcs||'git', author: authorForVcs(cat.vcs||'git'), since: from, until: to, body: !!state.gitCommitBody}, cat.vcs==='svn'?25000:undefined); }
+      try{ res = await fetchCommitsForCat(cat, from, to); }   // Git·SVN 양쪽 병합
       catch(_){ errors.push(esc(cat.name) + ': 예외'); continue; }
-      if(!res || !res.ok){ errors.push(esc(cat.name) + ': ' + esc((res && res.error) || '오류')); continue; }
-      const commits = res.commits || [];
-      if(replace){
-        // 초기화 후 로드 — fetch 성공(res.ok) 후에만, 이 과제의 [from,to] 범위 git 기록을 전부 제거(편집·과거커밋 포함). 이후 전량 새로 생성(병합/편집보존 배제).
+      if(res.errors.length){ for(const er of res.errors) errors.push(esc(cat.name) + ': ' + esc(er)); }   // 부분 실패도 알림
+      if(!res.ok && !res.commits.length){ continue; }   // 설정된 모든 종류가 실패 — 이미 errors 기록
+      const commits = res.commits;
+      if(replace && res.ok && !res.errors.length){
+        // 초기화 후 로드 — 이 과제의 설정된 종류가 모두 성공했을 때만(부분 실패 시 데이터 유실 방지), [from,to] 범위 git 기록을 전부 제거(편집·과거커밋 포함). 이후 전량 새로 생성.
         // 스코프: source==='git' + 이 과제(cat.id) + from≤date≤to 만. 일정·할일·다른 과제·범위 밖은 안 건드림. 커밋 0건이어도 초기화는 유지(fetch 성공했으므로).
         state.entries = state.entries.filter(e => !(e.source === 'git' && e.categoryId === cat.id && e.date >= from && e.date <= to));
       }
@@ -6709,11 +6757,8 @@ async function runGitImport(from, to, selId, statusSel, btnSel, replace){
     save(); renderAll();
     const errLine = errors.length ? `<br>⚠ ${errors.join(' / ')}` : '';
     if(totalCommits === 0){
-      // 일괄은 과제들이 git/svn 혼재 가능 — 대상 과제의 vcs가 하나뿐일 때만 그 작성자를 표기
-      const _vcss = [...new Set(cats.map(c => c.vcs || 'git'))];
-      const _a = _vcss.length === 1 ? authorForVcs(_vcss[0]) : '';
-      const who = _a ? `작성자 '${esc(_a)}'의 ` : '';
-      setS(`이 기간에 ${who}커밋이 없습니다.` + errLine);
+      // 과제가 Git·SVN을 독립 보유 가능(작성자도 종류별로 다름) → 특정 작성자 표기는 생략
+      setS(`이 기간에 커밋이 없습니다.` + errLine);
       toast('이 기간에 가져올 커밋이 없습니다', 'warn');
       return;
     }
@@ -6725,9 +6770,9 @@ async function runGitImport(from, to, selId, statusSel, btnSel, replace){
 
 async function detectGitAuthor(){
   if(!HOST){ toast('자동 감지는 데스크톱 위젯에서만 가능합니다 — 직접 입력하세요', 'warn'); return; }
-  // 자동 감지는 git 전용(svn은 author 자동감지 불가) — 폼이 git이면 그 저장소, 미연결이면 git 과제(svn 제외) 중 첫 저장소로 폴백
-  let repo = (catFormVcs !== 'svn' && catFormRepo) ? catFormRepo : '';
-  if(!repo){ const g = gitEnabledCats().find(c => (c.vcs || 'git') !== 'svn'); repo = g ? g.gitRepo : ''; }
+  // 자동 감지는 git 전용(svn은 author 자동감지 불가) — 폼의 Git 저장소 필드, 미연결이면 gitRepo를 가진 첫 과제로 폴백
+  let repo = catFormRepo || '';
+  if(!repo){ const g = gitEnabledCats().find(c => c.gitRepo); repo = g ? g.gitRepo : ''; }
   if(!repo){ toast('Git 저장소를 먼저 선택하세요 — SVN은 자동 감지가 없으니 사용자명을 직접 입력하세요', 'warn'); return; }
   const res = await hostRequest('gitauthor', {repo, vcs: 'git'});   // 이 함수는 정의상 git 전용 → 명시 'git'
   if(res && res.ok && res.email){
@@ -6739,110 +6784,109 @@ async function detectGitAuthor(){
   }
 }
 
-/* ----- Git 연동 카드: 폴더 다이얼로그 + 상태 배지 + 작성자 자동 도출 ----- */
-const DEFAULT_GIT_NOTE = '폴더를 고르면 그 저장소의 git 이메일로 작성자가 자동 입력됩니다. 작성자는 모든 과제에 공통 적용됩니다. 비우면 모두의 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.';
+/* ----- Git·SVN 연동 카드: 종류별 독립 섹션(폴더 다이얼로그 + 상태 배지 + Git 작성자 자동 도출) -----
+   각 함수는 kind('git'|'svn')로 파라미터화 — 두 섹션이 상태를 공유하지 않게 완전 독립 처리. */
+const DEFAULT_GIT_NOTE = 'Git 저장소 <b>루트 폴더</b>를 지정하세요. 폴더를 고르면 git 이메일로 작성자가 자동 입력됩니다 — 비우면 모두의 커밋이 들어옵니다.';
+const DEFAULT_SVN_NOTE = 'SVN <b>작업복사본 폴더</b>를 지정하세요. 작성자에 본인 SVN 사용자명(예: phmin)을 넣으면 내 커밋만, 비우면 모두의 커밋이 들어옵니다.';
 
-function setGitBadge(stateCls, text){
-  const b = $('#gitBadge'); if(b){ b.className = 'git-badge ' + stateCls; b.textContent = text; }
-  const card = $('#gitCard'); if(card){ card.classList.remove('ok','warn'); if(stateCls==='ok'||stateCls==='warn') card.classList.add(stateCls); }
+function setVcsBadge(kind, stateCls, text){
+  const b = $(VCS_EL[kind].badge); if(b){ b.className = 'git-badge ' + stateCls; b.textContent = text; }
 }
-function setGitStatus(html, warn){
-  const s = $('#gitStatus'); if(!s) return;
+function setVcsStatus(kind, html, warn){
+  const s = $(VCS_EL[kind].status); if(!s) return;
   s.innerHTML = html; s.classList.toggle('warn-text', !!warn);
 }
-function setDefaultGitStatus(){
-  if(catFormVcs === 'svn') setGitStatus('SVN <b>작업복사본 폴더</b>를 지정하세요. 작성자에 본인 SVN 사용자명(예: phmin)을 넣으면 내 커밋만, 비우면 모두의 커밋이 들어옵니다. 커밋 가져오기는 데스크톱 위젯에서만 동작합니다.', false);
-  else setGitStatus(DEFAULT_GIT_NOTE, false);
-}
+function setDefaultVcsStatus(kind){ setVcsStatus(kind, kind === 'svn' ? DEFAULT_SVN_NOTE : DEFAULT_GIT_NOTE, false); }
 
-// 저장소 행/버튼/배지를 catFormRepo + HOST 상태에 맞게 표시
-function renderGitCard(){
-  const card = $('#gitCard'); if(!card) return;
-  const pickRow = $('#gitPickRow'), pathEl = $('#gitPath');
-  const clearBtn = $('#btnGitClear'), browseBtn = $('#btnGitBrowse'), detectBtn = $('#btnGitDetect');
-  if(catFormRepo){
+// 한 종류(git|svn) 섹션의 저장소 행/버튼/배지를 폼 경로 + HOST 상태에 맞게 표시
+function renderVcsSection(kind){
+  const M = VCS_EL[kind]; const repo = catRepoFor(kind);
+  const pickRow = $(M.pickRow); if(!pickRow) return;
+  const pathEl = $(M.path), clearBtn = $(M.clear), browseBtn = $(M.browse);
+  const detectBtn = kind === 'git' ? $('#btnGitDetect') : null;
+  if(repo){
     pickRow.classList.remove('empty');
     pathEl.classList.remove('empty','missing');
-    pathEl.textContent = catFormRepo; pathEl.title = catFormRepo;
+    pathEl.textContent = repo; pathEl.title = repo;
     clearBtn.classList.remove('hidden');
     browseBtn.textContent = '변경'; browseBtn.classList.remove('primary');
   } else {
     pickRow.classList.add('empty');
     pathEl.classList.add('empty'); pathEl.classList.remove('missing');
-    pathEl.textContent = '연결된 저장소 없음'; pathEl.title = '';
+    pathEl.textContent = kind === 'svn' ? '연결된 작업복사본 없음' : '연결된 저장소 없음'; pathEl.title = '';
     clearBtn.classList.add('hidden');
     browseBtn.innerHTML = ICON.folder + ' 폴더 선택…'; browseBtn.classList.add('primary');
   }
   if(!HOST){
-    browseBtn.disabled = true; detectBtn.disabled = true;
-    setGitBadge('off', '위젯에서만 가능');
-    setGitStatus('폴더 선택·작성자 감지·커밋 가져오기는 <b>데스크톱 위젯</b>에서만 가능합니다. (경로 해제는 가능)', false);
+    browseBtn.disabled = true; if(detectBtn) detectBtn.disabled = true;
+    setVcsBadge(kind, 'off', '위젯에서만 가능');
+    setVcsStatus(kind, '폴더 선택·' + (kind === 'git' ? '작성자 감지·' : '') + '커밋 가져오기는 <b>데스크톱 위젯</b>에서만 가능합니다. (경로 해제는 가능)', false);
     return;
   }
-  browseBtn.disabled = false; detectBtn.disabled = false;
-  if(catFormRepo){ setGitBadge('off', '⏳ 확인 중…'); }
-  else { setGitBadge('off', '미연결'); setDefaultGitStatus(); }
+  browseBtn.disabled = false; if(detectBtn) detectBtn.disabled = false;
+  if(repo){ setVcsBadge(kind, 'off', '⏳ 확인 중…'); }
+  else { setVcsBadge(kind, 'off', '미연결'); setDefaultVcsStatus(kind); }
 }
+// 두 섹션(Git·SVN)을 함께 렌더 — 이름은 동결(호출부 다수 참조)
+function renderGitCard(){ renderVcsSection('git'); renderVcsSection('svn'); }
 
-// 호스트 검사 결과(pickfolder/gitcheck) 반영 — st:{exists?, isRepo, email, error?}
-function applyGitState(st){
-  const isSvn = catFormVcs === 'svn';
-  if(!catFormRepo){ setGitBadge('off','미연결'); setDefaultGitStatus(); return; }
-  if(!st || st.error){ setGitBadge('warn','⚠ 확인 불가'); setGitStatus('확인 불가: ' + esc((st && st.error) || '호스트 응답 없음') + ' — ' + (isSvn?'svn(TortoiseSVN/SlikSVN) 설치 여부':'git 설치 여부') + '를 확인하거나 잠시 후 다시 시도하세요.', true); return; }
+// 호스트 검사 결과(pickfolder/gitcheck) 반영 — st:{exists?, isRepo, email, detected?, error?}
+function applyVcsState(kind, st){
+  const isSvn = kind === 'svn';
+  if(!catRepoFor(kind)){ setVcsBadge(kind,'off','미연결'); setDefaultVcsStatus(kind); return; }
+  if(!st || st.error){ setVcsBadge(kind,'warn','⚠ 확인 불가'); setVcsStatus(kind, '확인 불가: ' + esc((st && st.error) || '호스트 응답 없음') + ' — ' + (isSvn?'svn(TortoiseSVN/SlikSVN) 설치 여부':'git 설치 여부') + '를 확인하거나 잠시 후 다시 시도하세요.', true); return; }
   if(st.exists === false){
-    $('#gitPath').classList.add('missing');
-    setGitBadge('warn','⚠ 폴더 없음');
-    setGitStatus('저장된 폴더를 찾을 수 없습니다 — <b>[변경]</b>으로 다시 연결하거나 <b>[해제]</b>하세요.', true);
+    $(VCS_EL[kind].path).classList.add('missing');
+    setVcsBadge(kind,'warn','⚠ 폴더 없음');
+    setVcsStatus(kind, '저장된 폴더를 찾을 수 없습니다 — <b>[변경]</b>으로 다시 연결하거나 <b>[해제]</b>하세요.', true);
     return;
   }
-  // 호스트가 '선택한 종류(catFormVcs)로 유효한 저장소인지'를 st.isRepo로 계산해 줌(.git+.svn 혼재 시 선택 존중).
-  // 불일치 시 st.detected(실제 감지 종류)로 힌트를 띄운다.
+  // 호스트가 '이 종류(kind)로 유효한 저장소인지'를 st.isRepo로 계산(.git+.svn 혼재 시 요청 종류 존중). 불일치 시 st.detected로 힌트.
   if(!st.isRepo){
-    setGitBadge('warn', isSvn ? '⚠ SVN 작업복사본 아님' : '⚠ Git 저장소 아님');
-    const det = (st.detected && st.detected !== catFormVcs) ? (' (감지된 종류: ' + esc(String(st.detected).toUpperCase()) + ' — 위에서 종류를 맞춰 보세요)') : '';
-    setGitStatus('이 폴더에 <b>' + (isSvn?'.svn':'.git') + '</b>이 없습니다. ' + (isSvn?'SVN <b>작업복사본</b>':'저장소 <b>루트</b>') + ' 폴더인지 확인하세요.' + det + ' (경로는 저장되며, 커밋 가져오기 시 다시 안내)', true);
+    setVcsBadge(kind,'warn', isSvn ? '⚠ SVN 작업복사본 아님' : '⚠ Git 저장소 아님');
+    const det = (st.detected && st.detected !== kind) ? (' (감지된 종류: ' + esc(String(st.detected).toUpperCase()) + ' — 다른 칸에 넣어 보세요)') : '';
+    setVcsStatus(kind, '이 폴더에 <b>' + (isSvn?'.svn':'.git') + '</b>이 없습니다. ' + (isSvn?'SVN <b>작업복사본</b>':'저장소 <b>루트</b>') + ' 폴더인지 확인하세요.' + det + ' (경로는 저장되며, 커밋 가져오기 시 다시 안내)', true);
     return;
   }
-  setGitBadge('ok','✓ 연결됨');
-  if(isSvn){ setGitStatus('✓ SVN 작업복사본 연결됨. 작성자에 <b>본인 SVN 사용자명</b>(예: phmin)을 입력하세요 — 비우면 모두의 커밋이 들어옵니다.', false); return; }
+  setVcsBadge(kind,'ok','✓ 연결됨');
+  if(isSvn){ setVcsStatus('svn', '✓ SVN 작업복사본 연결됨. 작성자에 <b>본인 SVN 사용자명</b>(예: phmin)을 입력하세요 — 비우면 모두의 커밋이 들어옵니다.', false); return; }
   if(st.email){ applyRepoEmail(st.email); }
-  else { setGitStatus('✓ 연결됨. 이 저장소에 git 작성자(user.email)가 설정돼 있지 않습니다 — 작성자를 직접 입력하세요.', false); }
+  else { setVcsStatus('git', '✓ 연결됨. 이 저장소에 git 작성자(user.email)가 설정돼 있지 않습니다 — 작성자를 직접 입력하세요.', false); }
 }
 
-// 저장소에서 얻은 git 이메일을 전역 작성자에 비파괴 반영
+// 저장소에서 얻은 git 이메일을 Git 전역 작성자에 비파괴 반영(SVN 작성자는 안 건드림 — 종류별 독립)
 function applyRepoEmail(email){
-  // git 전용 — Git 작성자(이메일)만 갱신, SVN 작성자(계정명)는 건드리지 않음(VCS별 독립)
   const cur = getGitAuthor().trim();
-  if(!cur){ if(catFormVcs === 'git') $('#cGitAuthor').value = email; setGitAuthor(email); __pendingRepoEmail=''; setGitStatus('✓ 연결됨 · Git 작성자 자동 설정: <b>' + esc(email) + '</b> (Git 과제 공통)', false); return; }
-  if(cur === email){ __pendingRepoEmail=''; setGitStatus('✓ 연결됨 · 내 커밋만 가져옵니다 (작성자 ' + esc(email) + ')', false); return; }
+  if(!cur){ $('#cGitAuthor').value = email; setGitAuthor(email); __pendingRepoEmail=''; setVcsStatus('git', '✓ 연결됨 · Git 작성자 자동 설정: <b>' + esc(email) + '</b> (Git 과제 공통)', false); return; }
+  if(cur === email){ __pendingRepoEmail=''; setVcsStatus('git', '✓ 연결됨 · 내 커밋만 가져옵니다 (작성자 ' + esc(email) + ')', false); return; }
   __pendingRepoEmail = email;   // 자동 덮어쓰기 금지 — 사용자 선택으로만 변경
-  setGitStatus('이 저장소 작성자는 <b>' + esc(email) + '</b> 입니다. 현재 Git 작성자(<b>' + esc(cur) + '</b>)와 달라요 — <button class="link" id="btnGitReconcile" type="button">공통값으로 바꾸기</button>', true);
+  setVcsStatus('git', '이 저장소 작성자는 <b>' + esc(email) + '</b> 입니다. 현재 Git 작성자(<b>' + esc(cur) + '</b>)와 달라요 — <button class="link" id="btnGitReconcile" type="button">공통값으로 바꾸기</button>', true);
 }
 
-async function browseRepo(){
+async function browseRepoFor(kind){
   if(!HOST) return;
-  const browseBtn = $('#btnGitBrowse'); browseBtn.disabled = true;
-  setGitBadge('off','⏳ 확인 중…');
-  const r = await hostRequest('pickfolder', {start: catFormRepo || ''}, 120000);
+  const browseBtn = $(VCS_EL[kind].browse); browseBtn.disabled = true;
+  setVcsBadge(kind,'off','⏳ 확인 중…');
+  const r = await hostRequest('pickfolder', {start: catRepoFor(kind) || '', vcs: kind}, 120000);
   browseBtn.disabled = false;
   if(!r || !r.ok || !r.path){   // 취소(error 빈 값) → 조용히 이전 상태 복원
-    renderGitCard();
-    if(catFormRepo) validateExistingRepo(catFormRepo); else setDefaultGitStatus();
+    renderVcsSection(kind);
+    if(catRepoFor(kind)) validateExistingRepoFor(kind, catRepoFor(kind)); else setDefaultVcsStatus(kind);
     return;
   }
-  catFormRepo = r.path;
-  if(r.vcs) setCatVcs(r.vcs);   // 폴더 선택 시 .git/.svn 자동 감지로 종류 반영
-  renderGitCard();
-  applyGitState(r);             // pickfolder 회신: {isRepo, email}
+  setCatRepoFor(kind, r.path);
+  if(r.vcs && r.vcs !== kind){ toast('선택한 폴더는 ' + esc(String(r.vcs).toUpperCase()) + ' 저장소로 보입니다 — ' + (kind === 'git' ? 'Git' : 'SVN') + ' 칸에 넣었습니다. 확인하세요.', 'warn'); }
+  renderVcsSection(kind);
+  applyVcsState(kind, r);             // pickfolder 회신: {isRepo, email, vcs}
 }
-function clearRepo(){ catFormRepo = ''; __pendingRepoEmail=''; renderGitCard(); }
+function clearRepoFor(kind){ setCatRepoFor(kind, ''); if(kind === 'git') __pendingRepoEmail=''; renderVcsSection(kind); }
 
-async function validateExistingRepo(path){
+async function validateExistingRepoFor(kind, path){
   if(!HOST || !path) return;
-  setGitBadge('off','⏳ 확인 중…');
-  const r = await hostRequest('gitcheck', {repo: path, vcs: catFormVcs});   // 명시 선택 전달 → 호스트가 그 종류로 유효성 검사
-  if(catFormRepo !== path) return;   // 그 사이 변경됨 → 무시
-  applyGitState(r);
+  setVcsBadge(kind,'off','⏳ 확인 중…');
+  const r = await hostRequest('gitcheck', {repo: path, vcs: kind});   // 명시 종류 전달 → 호스트가 그 종류로 유효성 검사
+  if(catRepoFor(kind) !== path) return;   // 그 사이 변경됨 → 무시
+  applyVcsState(kind, r);
 }
 
 /* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */

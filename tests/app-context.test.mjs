@@ -40,6 +40,8 @@ if (!JSDOM) {
     // ── 헬퍼: 컨텍스트 안에서 JS 실행 ──────────────────────────────────
     const ev = (code) => w.eval(code);
     const evJSON = (code) => JSON.parse(w.eval('JSON.stringify(' + code + ')'));
+    // 컨텍스트 안 Promise를 Node 레벨에서 await — jsdom realm 프로미스를 JSON 문자열로 환원해 realm 경계 안전.
+    const evAsyncJSON = async (code) => JSON.parse(await w.eval('Promise.resolve(' + code + ').then(function(v){return JSON.stringify(v);})'));
     // state를 통째로 갈아끼워 테스트 간 격리(순수 데이터라 JSON 왕복 안전)
     const seed = (stateObj) => { w.eval('state = ' + JSON.stringify(stateObj) + ';'); };
     // 엔트리 하나를 [from,to] 창으로 전개해 발생 시작일 배열 반환
@@ -64,8 +66,8 @@ if (!JSDOM) {
       gitAuthor: 'hong@corp.com',
       svnAuthor: 'phmin',
       categories: [
-        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '주간/월간 보고', gitRepo: '/repo/a', vcs: 'git', createdAt: CA },
-        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: 'C:/wc/b', vcs: 'svn', createdAt: CA },
+        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '주간/월간 보고', gitRepo: '/repo/a', svnRepo: '', createdAt: CA },
+        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '/git/b', svnRepo: 'C:/wc/b', createdAt: CA },   // Git·SVN 둘 다 보유(독립) — 왕복 보존 검증
       ],
       entries: [
         // 일반 일정(공수+장소+메모+시간)
@@ -110,9 +112,11 @@ if (!JSDOM) {
       // 과제
       assert.strictEqual(p.categories.length, 2);
       assert.deepStrictEqual(p.categories.map(c => c.name), ['보고서 작성', '시스템 점검']);
-      assert.strictEqual(p.categories[0].vcs, 'git');
-      assert.strictEqual(p.categories[1].vcs, 'svn');      // svn 보존
-      assert.strictEqual(p.categories[0].gitRepo, '/repo/a');
+      assert.strictEqual(p.categories[0].gitRepo, '/repo/a');   // git 전용 과제
+      assert.strictEqual(p.categories[0].svnRepo, '');
+      assert.strictEqual(p.categories[1].gitRepo, '/git/b');     // git·svn 둘 다 독립 보존
+      assert.strictEqual(p.categories[1].svnRepo, 'C:/wc/b');
+      assert.ok(!('vcs' in p.categories[0]) && !('vcs' in p.categories[1]), 'vcs 필드 폐기(결과에 없음)');
       // authors
       assert.strictEqual(p.gitAuthor, 'hong@corp.com');
       assert.strictEqual(p.svnAuthor, 'phmin');
@@ -190,9 +194,11 @@ if (!JSDOM) {
         '</taskCalendar>';
       let p;
       assert.doesNotThrow(() => { p = evJSON('fromXML(' + JSON.stringify(oldXml) + ')'); });
-      // 과제: vcs 미기재 → 'git' 기본, 이름 보존, foo 무시
+      // 과제: gitRepo/svnRepo/vcs 미기재 → 둘 다 '' + vcs 필드 없음, 이름 보존, foo 무시
       assert.strictEqual(p.categories.length, 1);
-      assert.strictEqual(p.categories[0].vcs, 'git');
+      assert.strictEqual(p.categories[0].gitRepo, '');
+      assert.strictEqual(p.categories[0].svnRepo, '');
+      assert.ok(!('vcs' in p.categories[0]), 'vcs 필드 폐기');
       assert.strictEqual(p.categories[0].name, '구버전 과제');
       assert.ok(!('foo' in p.categories[0]));
       // 엔트리: hours 없음 → null, location 없음 → '', 기간/반복 없음
@@ -209,6 +215,140 @@ if (!JSDOM) {
       // svnAuthor 속성 부재 → gitAuthor 복사(1회 마이그레이션)
       assert.strictEqual(p.gitAuthor, 'old@corp.com');
       assert.strictEqual(p.svnAuthor, 'old@corp.com');
+    });
+
+    // ── Git·SVN 독립 보유(신규): 과제가 두 VCS를 각각 따로 가짐 + 구버전 vcs 마이그레이션 ──────────
+    test('git/svn 독립: 한 과제가 gitRepo·svnRepo 둘 다 보유 → XML 왕복에 둘 다 보존', () => {
+      seed({
+        gitAuthor: 'me@corp.com', svnAuthor: 'mysvn',
+        categories: [{ id: 'cboth', name: '둘다과제', color: '#3e5be0', desc: '', gitRepo: 'C:/git/repo', svnRepo: 'C:/svn/wc', createdAt: CA }],
+        entries: [], todos: [], rooms: [],
+      });
+      const p = evJSON('fromXML(toXML())');
+      assert.strictEqual(p.categories[0].gitRepo, 'C:/git/repo', 'gitRepo 보존');
+      assert.strictEqual(p.categories[0].svnRepo, 'C:/svn/wc', 'svnRepo 보존(덮이지 않음)');
+      assert.ok(!('vcs' in p.categories[0]), 'vcs 필드 없음');
+    });
+
+    test('git/svn 마이그레이션: 구버전 vcs="svn"+gitRepo → svnRepo로 이관·gitRepo 비움·vcs 제거(하위호환)', () => {
+      const oldSvnXml =
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<taskCalendar version="1" generator="old" gitAuthor="">' +
+        '<categories>' +
+        '<category id="c-svn" color="#2e9e6b" vcs="svn" gitRepo="C:/wc/old" createdAt="2026-01-01T00:00:00.000Z">' +
+        '<name>구 SVN 과제</name><description></description></category>' +
+        '<category id="c-git" color="#3e5be0" vcs="git" gitRepo="C:/git/old" createdAt="2026-01-01T00:00:00.000Z">' +
+        '<name>구 Git 과제</name><description></description></category>' +
+        '</categories><entries></entries></taskCalendar>';
+      const p = evJSON('fromXML(' + JSON.stringify(oldSvnXml) + ')');
+      const svn = p.categories.find(c => c.id === 'c-svn'), git = p.categories.find(c => c.id === 'c-git');
+      // 구 vcs='svn': 그 gitRepo는 실제 SVN 경로였음 → svnRepo로 이관, gitRepo 비움
+      assert.strictEqual(svn.svnRepo, 'C:/wc/old', '구 svn 경로가 svnRepo로 이관');
+      assert.strictEqual(svn.gitRepo, '', '구 svn 과제의 gitRepo는 비워짐');
+      assert.ok(!('vcs' in svn), 'vcs 제거');
+      // 구 vcs='git'/부재: gitRepo 그대로, svnRepo ''
+      assert.strictEqual(git.gitRepo, 'C:/git/old', '구 git 경로는 gitRepo 유지');
+      assert.strictEqual(git.svnRepo, '', '구 git 과제의 svnRepo는 빈 값');
+      assert.ok(!('vcs' in git));
+    });
+
+    test('gitEnabledCats: gitRepo만·svnRepo만·둘 다인 과제 포함, 아무것도 없으면 제외', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [
+          { id: 'cg', name: '깃만', color: '#3e5be0', desc: '', gitRepo: 'C:/g', svnRepo: '', createdAt: CA },
+          { id: 'cs', name: 'svn만', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: 'C:/s', createdAt: CA },
+          { id: 'cb', name: '둘다', color: '#c43a3f', desc: '', gitRepo: 'C:/g2', svnRepo: 'C:/s2', createdAt: CA },
+          { id: 'cn', name: '없음', color: '#4b62a0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        ],
+        entries: [], todos: [], rooms: [],
+      });
+      const ids = evJSON('gitEnabledCats().map(function(c){return c.id;})');
+      assert.deepStrictEqual(ids.sort(), ['cb', 'cg', 'cs'], 'svn만 있는 과제도 포함, 미연결은 제외');
+    });
+
+    // ── mergeGitSvnCommits (순수 함수): hash dedup + 시각(date) 오름차순 병합 ──────────
+    test('mergeGitSvnCommits: git+svn 병합 — hash dedup + date 정렬, 레거시(hash 없음)는 각자 유지', () => {
+      const gitC = [
+        { hash: 'g2', short: 'g2', date: '2026-07-08T14:00:00', subject: 'git 오후' },
+        { hash: 'g1', short: 'g1', date: '2026-07-08T09:00:00', subject: 'git 오전' },
+        { hash: 'dup', short: 'dup', date: '2026-07-08T11:00:00', subject: 'git 중복본' },
+      ];
+      const svnC = [
+        { hash: 's1', short: 's1', date: '2026-07-08T10:00:00', subject: 'svn r1' },
+        { hash: 'dup', short: 'dup', date: '2026-07-08T11:00:00', subject: 'svn 중복본(제거대상)' },
+        { hash: '', short: '', date: '2026-07-08T08:00:00', subject: '레거시(해시없음)' },
+      ];
+      const merged = evJSON('mergeGitSvnCommits(' + JSON.stringify(gitC) + ',' + JSON.stringify(svnC) + ')');
+      // dup은 첫 등장(git)만 유지 → 총 5건
+      assert.strictEqual(merged.length, 5, 'hash dedup: dup 1건만');
+      assert.strictEqual(merged.filter(c => c.hash === 'dup').length, 1);
+      assert.strictEqual(merged.find(c => c.hash === 'dup').subject, 'git 중복본', '먼저 나온 git 쪽 유지');
+      // date 오름차순 정렬
+      assert.deepStrictEqual(merged.map(c => c.subject),
+        ['레거시(해시없음)', 'git 오전', 'svn r1', 'git 중복본', 'git 오후']);
+    });
+    test('mergeGitSvnCommits: 한쪽이 빈 배열/비배열이어도 안전', () => {
+      assert.deepStrictEqual(evJSON('mergeGitSvnCommits([], [])'), []);
+      assert.strictEqual(evJSON('mergeGitSvnCommits([{hash:"a",date:"1",subject:"x"}], null).length'), 1);
+      assert.strictEqual(evJSON('mergeGitSvnCommits(undefined, [{hash:"b",date:"1",subject:"y"}]).length'), 1);
+    });
+
+    // ── fetchCommitsForCat: 전역 hostRequest를 목킹해 git+svn 병합·부분실패 검증 ──────────
+    // (fetchCommitsForCat은 함수 선언·전역 hostRequest 참조 → 전역 재할당으로 목킹 가능. 각 테스트는 원본 복원.)
+    test('fetchCommitsForCat: gitRepo·svnRepo 둘 다 → 양쪽 호출·병합·정렬, ok=true', async () => {
+      seed({ gitAuthor: 'g@x', svnAuthor: 'sv', categories: [], entries: [], todos: [], rooms: [] });
+      ev('globalThis.__origHR = hostRequest;');
+      try {
+        ev(`
+          globalThis.__calls = [];
+          hostRequest = function(cmd, params){
+            globalThis.__calls.push({cmd:cmd, repo:params.repo, vcs:params.vcs, author:params.author});
+            if(params.vcs === 'git') return Promise.resolve({ok:true, commits:[{hash:'g1', short:'g1', date:'2026-07-08T13:00:00', subject:'git 커밋'}]});
+            return Promise.resolve({ok:true, commits:[{hash:'s1', short:'s1', date:'2026-07-08T09:00:00', subject:'svn 커밋'}]});
+          };
+        `);
+        const res = await evAsyncJSON('fetchCommitsForCat({gitRepo:"C:/g", svnRepo:"C:/s"}, "2026-07-08", "2026-07-08")');
+        assert.strictEqual(res.ok, true);
+        assert.strictEqual(res.errors.length, 0);
+        assert.deepStrictEqual(res.commits.map(c => c.subject), ['svn 커밋', 'git 커밋'], 'date 정렬(svn 09시 먼저)');
+        const calls = evJSON('globalThis.__calls');
+        assert.strictEqual(calls.length, 2, 'git·svn 각 1회 호출');
+        const g = calls.find(c => c.vcs === 'git'), s = calls.find(c => c.vcs === 'svn');
+        assert.strictEqual(g.repo, 'C:/g'); assert.strictEqual(g.author, 'g@x', 'git은 git 작성자');
+        assert.strictEqual(s.repo, 'C:/s'); assert.strictEqual(s.author, 'sv', 'svn은 svn 작성자');
+      } finally { ev('hostRequest = globalThis.__origHR;'); }
+    });
+    test('fetchCommitsForCat: 한쪽(svn) 실패해도 다른 쪽(git) 커밋은 살림 + errors 기록', async () => {
+      seed({ gitAuthor: 'g@x', svnAuthor: 'sv', categories: [], entries: [], todos: [], rooms: [] });
+      ev('globalThis.__origHR = hostRequest;');
+      try {
+        ev(`
+          hostRequest = function(cmd, params){
+            if(params.vcs === 'git') return Promise.resolve({ok:true, commits:[{hash:'g1', date:'2026-07-08T10:00:00', subject:'git ok'}]});
+            return Promise.resolve({ok:false, error:'svn 서버 없음'});
+          };
+        `);
+        const res = await evAsyncJSON('fetchCommitsForCat({gitRepo:"C:/g", svnRepo:"C:/s"}, "2026-07-08", "2026-07-08")');
+        assert.strictEqual(res.ok, true, '한쪽 성공이면 ok=true');
+        assert.deepStrictEqual(res.commits.map(c => c.subject), ['git ok']);
+        assert.strictEqual(res.errors.length, 1);
+        assert.ok(/SVN:.*svn 서버 없음/.test(res.errors[0]), 'svn 실패가 errors에 기록');
+      } finally { ev('hostRequest = globalThis.__origHR;'); }
+    });
+    test('fetchCommitsForCat: gitRepo만 있으면 svn 호출 안 함(불필요 왕복 없음)', async () => {
+      seed({ gitAuthor: 'g@x', svnAuthor: 'sv', categories: [], entries: [], todos: [], rooms: [] });
+      ev('globalThis.__origHR = hostRequest;');
+      try {
+        ev(`
+          globalThis.__n = 0;
+          hostRequest = function(cmd, params){ globalThis.__n++; return Promise.resolve({ok:true, commits:[]}); };
+        `);
+        const res = await evAsyncJSON('fetchCommitsForCat({gitRepo:"C:/g", svnRepo:""}, "2026-07-08", "2026-07-08")');
+        assert.strictEqual(evJSON('globalThis.__n'), 1, 'gitRepo만 → 1회만 호출');
+        assert.strictEqual(res.ok, true);
+        assert.deepStrictEqual(res.commits, []);
+      } finally { ev('hostRequest = globalThis.__origHR;'); }
     });
 
     test('todo dayNotes: 기간 안 날짜별 설명만 저장 + 기간→단일 전환 시 시작일 dayNote를 note로 복귀(무손실)', () => {
@@ -255,7 +395,7 @@ if (!JSDOM) {
     // 주(2026): 월07-13 화07-14 수07-15 목07-16 금07-17 토07-18 일07-19 (weekRange 규약과 일치)
     const dnState = () => ({
       gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cp', name: '기획', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      categories: [{ id: 'cp', name: '기획', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
       entries: [],
       todos: [
         // 기간 할일: 월~금, dayNotes는 월/수/금만(화·목 비어 있음)
@@ -304,8 +444,8 @@ if (!JSDOM) {
       seed({
         gitAuthor: '', svnAuthor: '',
         categories: [
-          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
-          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
         ],
         entries: [],
         todos: [
@@ -428,8 +568,8 @@ if (!JSDOM) {
     const reportState = {
       gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
-        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+        { id: 'c-1', name: '보고서 작성', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-2', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
       ],
       entries: [
         // git 엔트리(커밋 2건, 공수 120) — c-2
@@ -508,7 +648,7 @@ if (!JSDOM) {
     test('collectReportData: 설명 포함과 내용 없는 항목 제외 옵션', () => {
       const st = {
         gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+        categories: [{ id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
         entries: [
           { id: 'e-desc', date: '2026-07-09', title: 'Event with memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: 'memo one\n• memo two', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
           { id: 'e-empty', date: '2026-07-09', title: 'Event without memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
@@ -551,7 +691,7 @@ if (!JSDOM) {
 
     test('collectReportData: 기타 과제는 등록 순서와 무관하게 항상 마지막', () => {
       const withEtcFirst = JSON.parse(JSON.stringify(reportState));
-      withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', vcs: 'git', createdAt: CA });
+      withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
       seed(withEtcFirst);
       const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
       assert.strictEqual(r.rows[r.rows.length - 1].name, '기타');
@@ -563,7 +703,7 @@ if (!JSDOM) {
     // 재렌더하므로 부팅된 jsdom 컨텍스트에서 실행(렌더 안전성도 함께 검증). state는 seed로 격리.
     const mutState = () => ({
       gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'c-1', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      categories: [{ id: 'c-1', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
       entries: [
         { id: 'g1', date: '2026-07-08', title: '작업일지', categoryId: 'c-1', allDay: true, startTime: '', endTime: '',
           location: '', memo: '', source: 'git',
@@ -670,7 +810,7 @@ if (!JSDOM) {
     test('regression(커밋내역 본문): git body가 gitFeed 행·renderGitTab에 렌더됨', () => {
       seed({
         gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'c-b', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+        categories: [{ id: 'c-b', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
         entries: [
           { id: 'gb', date: '2026-07-08', title: '작업일지', categoryId: 'c-b', allDay: true, startTime: '', endTime: '',
             location: '', memo: '', source: 'git',
@@ -690,8 +830,8 @@ if (!JSDOM) {
     const metaState = {
       gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
-        { id: 'cm', name: '혼합과제', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+        { id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'cm', name: '혼합과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
       ],
       entries: [
         // (a) 단일 유니크 git 커밋 → 편집 가능
@@ -808,8 +948,8 @@ if (!JSDOM) {
     const fmtState = (marker, custom, indent) => ({
       gitAuthor: '', svnAuthor: '',
       categories: [
-        { id: 'ca', name: '에이', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
-        { id: 'cb', name: '비이', color: '#2e9e6b', desc: '', gitRepo: '', vcs: 'git', createdAt: CA },
+        { id: 'ca', name: '에이', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'cb', name: '비이', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
       ],
       entries: [
         { id: 'a1', date: '2026-07-02', title: '알파', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
@@ -902,7 +1042,7 @@ if (!JSDOM) {
     // 항목1 — 커밋 전체 본문(gitCommitBody) 통합: OFF=본문 미포함(기존과 동일), ON=제목 아래 더 깊은 들여쓰기 라인들
     const bodyState = (on) => ({
       gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cg', name: '깃', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      categories: [{ id: 'cg', name: '깃', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
       entries: [
         { id: 'g1', date: '2026-07-09', title: '', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git',
           commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 상세1\n본문 상세2' }],
@@ -1029,7 +1169,7 @@ if (!JSDOM) {
     // F4 — 회귀: buildReport 일간 출력에 편집 앵커 유지 + rtask-t는 마커 없는 원문만
     const gitDailyState = (marker, indent) => ({
       gitAuthor: '', svnAuthor: '',
-      categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
       entries: [{ id: 'gu', date: '2026-07-08', title: '무시제목', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'hu', short: 'hu', time: '09:00', subject: '유니크 커밋' }], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
       todos: [], rooms: [],
       reportMarker: marker, reportMarkerCustom: '', reportIndent: indent,
@@ -1066,7 +1206,7 @@ if (!JSDOM) {
     test('regression(항목3): 할일-only 카드 — rcard-empty 미부여 + 편집힌트 노출(일정 없어도)', () => {
       seed({
         gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+        categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
         entries: [],   // 일정 0 (할일만)
         todos: [{ id: 'td', text: '할일 항목', done: false, categoryId: 'ct', due: '2026-07-08', endDate: '', prio: 'normal', note: '', createdAt: CA, updatedAt: CA }],
         rooms: [], reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
