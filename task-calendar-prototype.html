@@ -1016,6 +1016,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 #themeMenu button{display:flex;align-items:center}
 #themeMenu button.on{font-weight:700}
 #themeMenu button.on::after{content:"✓";margin-left:auto;color:var(--accent);font-weight:700}
+/* 테마 메뉴 하단 위젯 투명도(HOST 전용) — 테마와 같은 "모양" 범주로 묶음 */
+#themeMenu .thm-opacity{border-top:1px solid var(--line);margin-top:6px;padding:9px 4px 3px}
+#themeMenu .thm-op-lb{display:flex;justify-content:space-between;align-items:center;font-size:var(--fs-meta);color:var(--muted);padding:0 3px;margin-bottom:6px}
+#themeMenu .thm-op-lb b{font-weight:600;color:var(--text)}
+#themeMenu #opacityVal{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+#themeMenu #opacityRange{width:100%;display:block;cursor:pointer;accent-color:var(--accent)}
 /* 도움말 카드 그리드 */
 .help-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
 .help-card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:11px 13px}
@@ -1056,14 +1062,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <button class="btn icon has-label" id="btnCatsTop" title="과제 관리 — 과제 추가·수정·삭제·색상" aria-label="과제 관리">🏷️</button>
     <button class="btn icon has-label" id="btnFeedback" title="버그 리포트 · 개선사항 문의 — phmin@netcus.com 또는 랜메신저 민평화" aria-label="버그 리포트 및 개선사항 문의">🐞</button>
     <div class="menu-wrap">
-      <button class="btn icon" id="btnTheme" title="테마 선택" aria-label="테마 선택" aria-haspopup="true">🎨</button>
-      <div class="menu hidden" id="themeMenu" style="min-width:172px;cursor:default">
+      <button class="btn icon" id="btnTheme" title="모양 — 테마 · 위젯 투명도" aria-label="모양 설정 (테마 및 위젯 투명도)" aria-haspopup="true">🎨</button>
+      <div class="menu hidden" id="themeMenu" style="min-width:184px;cursor:default">
         <button data-theme="system"><span class="thm-sw" style="background:linear-gradient(135deg,#f3f4f7 50%,#1a2031 50%)"></span>시스템</button>
         <button data-theme="light"><span class="thm-sw" style="background:#f3f4f7"></span>라이트</button>
         <button data-theme="dark"><span class="thm-sw" style="background:#1a2031"></span>다크</button>
         <button data-theme="forest"><span class="thm-sw" style="background:#2e9e6b"></span>포레스트</button>
         <button data-theme="sepia"><span class="thm-sw" style="background:#b4602a"></span>세피아</button>
         <button data-theme="contrast"><span class="thm-sw" style="background:#000"></span>고대비</button>
+        <div id="opacityBlock" class="thm-opacity" style="display:none">
+          <div class="thm-op-lb"><b>투명도</b><span id="opacityVal">100%</span></div>
+          <input type="range" id="opacityRange" min="30" max="100" step="5" value="100" aria-label="위젯 투명도">
+        </div>
       </div>
     </div>
     <button class="btn icon" id="btnHelp" title="도움말 — 사용법" aria-label="도움말">?</button>
@@ -1276,14 +1286,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span id="updSrcMsg" class="git-opt"></span>
         </div>
         <div class="set-hint" style="margin-top:2px">예: <b>ftp://&lt;서버IP&gt;/TaskCalendar/</b> · http(s):// · 공유폴더(UNC/로컬) 경로도 가능 · <b>비우면 업데이트 확인 안 함</b>.</div>
-      </div>
-      <div id="opacityRow" class="set-sec set-sec-top" style="display:none">
-        <div class="set-lb">위젯 투명도</div>
-        <div class="set-hint">위젯 창을 반투명하게. 데스크톱 위젯에서만 적용.</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
-          <input type="range" id="opacityRange" min="30" max="100" step="5" value="100" style="flex:1">
-          <span id="opacityVal" class="git-opt" style="min-width:42px;text-align:right">100%</span>
-        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -3442,15 +3444,6 @@ function openSettings(){
   const um = $('#updSrcMsg'); if(um) um.textContent = '';
   const us = $('#updSrcState'); if(us) us.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
   if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
-  // 위젯 투명도(HOST 전용) — 슬라이더 UI 상태는 localStorage(tc_opacity)로 유지, 실제 적용은 CSS 변수 --wo(body opacity)
-  { const r = document.getElementById('opacityRow'); if(r) r.style.display = HOST ? '' : 'none'; }
-  if(HOST){
-    let op = parseInt(localStorage.getItem('tc_opacity'), 10);
-    if(!Number.isFinite(op) || op < 30 || op > 100) op = 100;
-    const rng = $('#opacityRange'), val = $('#opacityVal');
-    if(rng) rng.value = String(op);
-    if(val) val.textContent = op + '%';
-  }
   openModal('#settingsModal');
 }
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
@@ -5242,7 +5235,7 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnSearch', label(ICON.search, '검색'));
   set('btnCatsTop', label(ICON.tag, '과제 관리'));       // 헤더 직접 노출(⋯ 안에 묻히지 않게)
   set('btnFeedback', label(ICON.bug, '문의'));           // 버그 리포트·개선사항 문의
-  set('btnTheme', ICON.palette);               // 전체 테마 선택
+  set('btnTheme', ICON.palette);               // 모양: 전체 테마 선택 + 위젯 투명도(HOST)
   set('btnHelp', ICON.help);                   // 상시 도움말
   set('btnMore', ICON.more);
   set('btnNew', ICON.plus + ' 새 기록');
@@ -6541,10 +6534,13 @@ setupGuideResize();
 renderAll();
 if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫기) 구성 + 준비 신호
   buildHostBar();
-  // 저장된 위젯 투명도(tc_opacity, 30~100·기본 100)를 로드 시 --wo로 적용(창·WebView2 투명 → 반투명 렌더)
+  // 저장된 위젯 투명도(tc_opacity, 30~100·기본 100)를 로드 시 --wo로 적용(창·WebView2 투명 → 반투명 렌더) + 테마 메뉴 투명도 컨트롤 노출·동기화(위젯 전용)
   { let op = parseInt(localStorage.getItem('tc_opacity'), 10);
     if(!Number.isFinite(op) || op < 30 || op > 100) op = 100;
-    document.documentElement.style.setProperty('--wo', String(op/100)); }
+    document.documentElement.style.setProperty('--wo', String(op/100));
+    const blk = $('#opacityBlock'); if(blk) blk.style.display = '';   // 테마 메뉴 하단 투명도 슬라이더 노출(HOST 전용)
+    const rng = $('#opacityRange'); if(rng) rng.value = String(op);
+    const val = $('#opacityVal'); if(val) val.textContent = op + '%'; }
   showBootSkeleton();                       // 호스트가 저장 XML을 주입(__applyXml)할 때까지 펄스 — 시드 깜빡임 가림
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}
