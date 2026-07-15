@@ -1,4 +1,4 @@
-#requires -Version 5
+﻿#requires -Version 5
 <#
   수행과제 캘린더 — 자동 업데이트 매니페스트 발행 CLI
   ------------------------------------------------------------------
@@ -37,6 +37,25 @@ $ver = @($x.Project.PropertyGroup.Version | Where-Object { $_ })[0]
 if ($ver) { $ver = ([string]$ver).Trim() }
 if (-not $ver) { Fail "csproj에서 <Version>을 못 읽음" }
 Write-Host "* 버전: $ver" -ForegroundColor Cyan
+
+# 1.5) Notes 미지정 시 RELEASE_NOTES.md의 현재 버전 요약(인트로 문단)에서 자동 추출
+#      → 단일 소스라 원클릭(배포-빌드.cmd, 인자 없음)도 배너 안내가 채워진다. -Notes를 주면 그 값이 우선.
+if (-not $Notes) {
+  $rn = Join-Path $root 'RELEASE_NOTES.md'
+  if (Test-Path $rn) {
+    $inSec = $false
+    foreach ($ln in (Get-Content $rn -Encoding UTF8)) {
+      if ($ln -match ("^##\s+v" + [regex]::Escape($ver) + "\b")) { $inSec = $true; continue }   # ## v<버전> 섹션 진입
+      if ($inSec) {
+        if ($ln -match '^\s*(##\s|---\s*$)') { break }                # 다음 버전/구분선 → 종료
+        $t = $ln.Trim()
+        if ($t -and $t[0] -ne '-') { $Notes = $t; break }             # 첫 비-불릿 문단 = 요약 인트로
+      }
+    }
+  }
+  if ($Notes) { Write-Host "* Notes(자동 · RELEASE_NOTES v$ver): $Notes" -ForegroundColor DarkCyan }
+  else { Write-Host "! RELEASE_NOTES.md에서 v$ver 요약을 못 찾음 → notes 빈 값(원하면 -Notes로 지정)" -ForegroundColor Yellow }
+}
 
 # 2) (선택) 설치기 빌드
 if ($Build) {

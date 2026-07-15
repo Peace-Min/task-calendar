@@ -9,7 +9,7 @@ REM  결과물 2개(Setup exe + latest.json)를 공유폴더(FTP)에 함께 올�
 REM
 REM  [필요] .NET 9 SDK + Inno Setup 6 (ISCC). 버전은 widget\TaskCalendarWidget.csproj <Version> 단일 소스.
 REM  [옵션] 공유폴더로 자동 복사:  배포-빌드.cmd -CopyTo "\\서버\TaskCalendar"
-REM         배너 안내문 지정:      배포-빌드.cmd -Notes "이번 버전 요약"
+REM         배너 안내문:           기본은 RELEASE_NOTES.md의 현재 버전 요약을 자동 사용. 덮어쓰기: 배포-빌드.cmd -Notes "요약"
 REM ============================================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0publish-update.ps1" -Build %*
 echo.
