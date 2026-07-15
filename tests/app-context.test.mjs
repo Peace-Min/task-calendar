@@ -91,7 +91,7 @@ if (!JSDOM) {
       ],
       todos: [
         { id: 't-1', text: 'API 명세 검토', done: false, categoryId: 'c-1', due: '2026-07-08', endDate: '', prio: 'high', completedAt: '', note: '세부 노트', createdAt: CA, updatedAt: CA },
-        { id: 't-2', text: '점검 완료', done: true, categoryId: 'c-2', due: '2026-07-09', endDate: '2026-07-11', prio: 'normal', completedAt: '2026-07-11T09:00:00.000Z', note: '', createdAt: CA, updatedAt: CA },
+        { id: 't-2', text: '점검 완료', done: true, categoryId: 'c-2', due: '2026-07-09', endDate: '2026-07-11', prio: 'normal', completedAt: '2026-07-11T09:00:00.000Z', note: '', dayNotes: { '2026-07-10': '중간 점검 메모', '2026-07-11': '완료 확인' }, createdAt: CA, updatedAt: CA },
       ],
       rooms: ['101호', '201호', '303호'],
     };
@@ -150,6 +150,7 @@ if (!JSDOM) {
       assert.strictEqual(t2.done, true);
       assert.strictEqual(t2.endDate, '2026-07-11');
       assert.strictEqual(t2.completedAt, '2026-07-11T09:00:00.000Z');
+      assert.deepStrictEqual(t2.dayNotes, { '2026-07-10': '중간 점검 메모', '2026-07-11': '완료 확인' });
       const t1 = p.todos.find(t => t.id === 't-1');
       assert.strictEqual(t1.prio, 'high');
       assert.strictEqual(t1.note, '세부 노트');
@@ -208,6 +209,44 @@ if (!JSDOM) {
       // svnAuthor 속성 부재 → gitAuthor 복사(1회 마이그레이션)
       assert.strictEqual(p.gitAuthor, 'old@corp.com');
       assert.strictEqual(p.svnAuthor, 'old@corp.com');
+    });
+
+    test('todo dayNotes: 기간 안 날짜별 설명만 저장하고 기간 변경 시 밖의 설명은 정리', () => {
+      seed(roundtripState);
+      ev("updateTodo('t-2', { dayNotes: { '2026-07-09':'시작', '2026-07-10':'진행', '2026-07-12':'범위 밖' } })");
+      let t = evJSON("todoById('t-2')");
+      assert.deepStrictEqual(t.dayNotes, { '2026-07-09':'시작', '2026-07-10':'진행', '2026-07-11':'완료 확인' });
+      ev("updateTodo('t-2', { endDate: '2026-07-09' })");
+      t = evJSON("todoById('t-2')");
+      assert.strictEqual(t.endDate, '');
+      assert.deepStrictEqual(t.dayNotes, { '2026-07-09':'시작' });
+    });
+
+    test('todo UI: 기간 할 일은 선택 날짜별 설명을 목록과 편집 폼에 표시', () => {
+      seed(roundtripState);
+      ev("selectedDate='2026-07-10'; editingTodoId=null;");
+      let html = ev("todoRowHtml(todoById('t-2'))");
+      assert.ok(/todo-daymemo/.test(html), '날짜별 설명 행 표시');
+      assert.ok(/중간 점검 메모/.test(html), '선택 날짜 설명 표시');
+      ev("editingTodoId='t-2';");
+      html = ev("todoRowHtml(todoById('t-2'))");
+      assert.ok(/class=\"te-daynote\"/.test(html), '선택 날짜 설명 편집기 표시');
+      assert.ok(/data-date=\"2026-07-10\"/.test(html), '선택 날짜로 저장 앵커');
+      assert.ok(/중간 점검 메모/.test(html), '기존 날짜별 설명 프리필');
+    });
+
+    test('todo UI: 기간 할 일 날짜별 설명 저장/비우기는 실제 편집 폼 클릭으로 반영', () => {
+      seed(roundtripState);
+      ev("selectedDate='2026-07-10'; document.querySelector('#dpBody').innerHTML=todoEditHtml(todoById('t-2'));");
+      ev("document.querySelector('.todo-edit .te-daynote').value='클릭 저장 메모'; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
+      let t = evJSON("todoById('t-2')");
+      assert.strictEqual(t.dayNotes['2026-07-10'], '클릭 저장 메모');
+      assert.strictEqual(ev("editingTodoId"), null);
+
+      ev("selectedDate='2026-07-10'; document.querySelector('#dpBody').innerHTML=todoEditHtml(todoById('t-2'));");
+      ev("document.querySelector('.todo-edit .te-daynote').value=''; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
+      t = evJSON("todoById('t-2')");
+      assert.ok(!Object.prototype.hasOwnProperty.call(t.dayNotes || {}, '2026-07-10'), '빈 날짜별 설명은 저장하지 않고 제거');
     });
 
     // ── collectReportData (보고서 정확성 — 최고 가치) ─────────────────────
