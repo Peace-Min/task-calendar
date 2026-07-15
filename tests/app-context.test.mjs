@@ -211,15 +211,17 @@ if (!JSDOM) {
       assert.strictEqual(p.svnAuthor, 'old@corp.com');
     });
 
-    test('todo dayNotes: 기간 안 날짜별 설명만 저장하고 기간 변경 시 밖의 설명은 정리', () => {
+    test('todo dayNotes: 기간 안 날짜별 설명만 저장 + 기간→단일 전환 시 시작일 dayNote를 note로 복귀(무손실)', () => {
       seed(roundtripState);
       ev("updateTodo('t-2', { dayNotes: { '2026-07-09':'시작', '2026-07-10':'진행', '2026-07-12':'범위 밖' } })");
       let t = evJSON("todoById('t-2')");
       assert.deepStrictEqual(t.dayNotes, { '2026-07-09':'시작', '2026-07-10':'진행', '2026-07-11':'완료 확인' });
+      // 기간→단일(endDate=due): 시작일 dayNote를 전역 note로 복귀, dayNotes는 비움(단일=note만). 무손실.
       ev("updateTodo('t-2', { endDate: '2026-07-09' })");
       t = evJSON("todoById('t-2')");
       assert.strictEqual(t.endDate, '');
-      assert.deepStrictEqual(t.dayNotes, { '2026-07-09':'시작' });
+      assert.strictEqual(t.note, '시작', '기간→단일: 시작일 dayNote가 note로 복귀');
+      assert.deepStrictEqual(t.dayNotes, {}, '단일 할일은 dayNotes 미보유');
     });
 
     test('todo UI: 기간 할 일은 선택 날짜별 설명을 목록과 편집 폼에 표시', () => {
@@ -247,6 +249,125 @@ if (!JSDOM) {
       ev("document.querySelector('.todo-edit .te-daynote').value=''; document.querySelector('.todo-edit [data-act=\"save\"]').click();");
       t = evJSON("todoById('t-2')");
       assert.ok(!Object.prototype.hasOwnProperty.call(t.dayNotes || {}, '2026-07-10'), '빈 날짜별 설명은 저장하지 않고 제거');
+    });
+
+    // ── 기간 할일 dayNotes → 보고서 병합/편집 + 이중 설명 모델 전환 이관 (신규) ────────────
+    // 주(2026): 월07-13 화07-14 수07-15 목07-16 금07-17 토07-18 일07-19 (weekRange 규약과 일치)
+    const dnState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [{ id: 'cp', name: '기획', color: '#3e5be0', desc: '', gitRepo: '', vcs: 'git', createdAt: CA }],
+      entries: [],
+      todos: [
+        // 기간 할일: 월~금, dayNotes는 월/수/금만(화·목 비어 있음)
+        { id: 'tp', text: '보고서 준비', done: false, categoryId: 'cp', due: '2026-07-13', endDate: '2026-07-17', prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-07-13': '초안 작성', '2026-07-15': '검토', '2026-07-17': '마무리' }, createdAt: CA, updatedAt: CA },
+        // 기간 할일이지만 범위 내 dayNote 0개 — skipEmpty 대상
+        { id: 'te', text: '빈 기간할일', done: false, categoryId: 'cp', due: '2026-07-13', endDate: '2026-07-17', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
+        // 단일 할일: 전역 note 사용(날짜 무관)
+        { id: 'ts', text: '단일 검토', done: false, categoryId: 'cp', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '단일 설명', dayNotes: {}, createdAt: CA, updatedAt: CA },
+      ],
+      rooms: [],
+    });
+    const collectDN = (from, to, src) => evJSON('collectReportData(' + JSON.stringify(from) + ',' + JSON.stringify(to) + ',' + JSON.stringify(src) + ')');
+    const rowCp = r => r.rows.find(x => x.name === '기획');
+    const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null; editingReportKey=null;");
+
+    test('기간 할일 dayNotes → 주간 보고 details: 요일 M/D 접두 병합(날짜순)', () => {
+      seed(dnState());
+      const r = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      const row = rowCp(r);
+      const mp = row.titleMeta[row.titles.indexOf('보고서 준비')];
+      assert.deepStrictEqual(mp.details, ['월 7/13 초안 작성', '수 7/15 검토', '금 7/17 마무리']);
+      assert.deepStrictEqual(mp.dayDetails.map(d => d.date), ['2026-07-13', '2026-07-15', '2026-07-17']);
+      const ms = row.titleMeta[row.titles.indexOf('단일 검토')];
+      assert.deepStrictEqual(ms.details, ['단일 설명'], '단일 할일은 전역 note가 detail');
+      assert.strictEqual(ms.dayDetails, null, '단일 할일은 dayDetails 없음');
+    });
+
+    test('일간 보고: 그날 dayNote만(요일 접두 없음)', () => {
+      seed(dnState());
+      const r = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      const mp = rowCp(r).titleMeta[rowCp(r).titles.indexOf('보고서 준비')];
+      assert.deepStrictEqual(mp.details, ['검토'], '일간(from==to)은 그날 dayNote 원문만(접두 없음)');
+    });
+
+    test('skipEmpty ON: dayNote 없는 기간할일 제외 / 있으면 유지', () => {
+      seed(dnState());
+      let row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true }));
+      assert.ok(row.titles.includes('보고서 준비'), 'dayNote 있는 기간할일 유지');
+      assert.ok(!row.titles.includes('빈 기간할일'), 'dayNote 0개 기간할일 제외');
+      row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: false }));
+      assert.ok(row.titles.includes('빈 기간할일'), 'skipEmpty OFF면 제목만이라도 유지');
+    });
+
+    test('주간 보고 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
+      seed(dnState());
+      setWeekly('2026-07-13', '2026-07-19');
+      ev('buildReport()');
+      const html = ev("$('#rptOut').innerHTML");
+      assert.ok(html.includes('data-dnid="tp"') && html.includes('data-dndate="2026-07-13"'), '날짜별 편집 앵커(todoId/date)');
+      assert.ok(/data-dnact="edit"/.test(html), 'dayNote 라인 편집 버튼');
+      assert.ok(html.includes('초안 작성') && html.includes('마무리'), '날짜별 dayNote 텍스트 렌더');
+      assert.ok(html.includes('월 7/13') && html.includes('금 7/17'), '요일 M/D 접두');
+      assert.ok(/rtask-roline/.test(html), '제목은 읽기전용(.rtask-roline)');
+      assert.ok(!/rtask-edit-btn/.test(html), '주간 제목엔 편집 버튼 없음(제목 읽기전용 유지)');
+    });
+
+    test('주간 날짜별 라인 저장: 클릭→편집→저장이 updateTodo(dayNotes) 왕복 반영', () => {
+      seed(dnState());
+      setWeekly('2026-07-13', '2026-07-19');
+      ev('buildReport()');
+      ev("document.querySelector('#rptOut .rdn[data-dndate=\"2026-07-13\"] [data-dnact=\"edit\"]').click();");
+      assert.strictEqual(ev('editingDayNoteKey'), 'tp|2026-07-13', '클릭 시 편집 키 설정');
+      ev("var _ta=document.querySelector('#rptOut .rdn-edit'); _ta.value='초안 완료'; commitDayNoteEdit(_ta);");
+      const t = evJSON("todoById('tp')");
+      assert.strictEqual(t.dayNotes['2026-07-13'], '초안 완료', '원본 dayNotes 반영(단일 소스)');
+      assert.strictEqual(ev('editingDayNoteKey'), null, '저장 후 편집 상태 해제');
+    });
+
+    test('주간 날짜별 라인 비우기: 빈 값 저장 시 그 날짜 dayNote 제거', () => {
+      seed(dnState());
+      setWeekly('2026-07-13', '2026-07-19');
+      ev('buildReport()');
+      ev("document.querySelector('#rptOut .rdn[data-dndate=\"2026-07-15\"] [data-dnact=\"edit\"]').click();");
+      ev("var _ta=document.querySelector('#rptOut .rdn-edit'); _ta.value='   '; commitDayNoteEdit(_ta);");
+      const t = evJSON("todoById('tp')");
+      assert.ok(!Object.prototype.hasOwnProperty.call(t.dayNotes, '2026-07-15'), '빈 값 → 그 날짜 dayNote 제거');
+      assert.deepStrictEqual(Object.keys(t.dayNotes).sort(), ['2026-07-13', '2026-07-17']);
+    });
+
+    test('전환 이관: 단일→기간 — 전역 note가 시작일 dayNote로 이관되고 note 비움(무손실)', () => {
+      seed(dnState());
+      ev("updateTodo('ts', { endDate: '2026-07-17' })");   // ts: 단일(note='단일 설명', due=07-15) → 기간
+      const t = evJSON("todoById('ts')");
+      assert.strictEqual(t.endDate, '2026-07-17');
+      assert.strictEqual(t.note, '', '기간 전환 후 전역 note 비움');
+      assert.strictEqual(t.dayNotes['2026-07-15'], '단일 설명', 'note가 시작일 dayNote로 이관');
+    });
+
+    test('전환 이관: 기간→단일 — 시작일 dayNote가 note로 복귀(무손실)', () => {
+      seed(dnState());
+      ev("updateTodo('tp', { endDate: '' })");   // tp: 기간 → 단일
+      const t = evJSON("todoById('tp')");
+      assert.strictEqual(t.endDate, '');
+      assert.strictEqual(t.note, '초안 작성', '시작일 dayNote가 note로 복귀');
+      assert.deepStrictEqual(t.dayNotes, {}, '단일 할일은 dayNotes 미보유');
+    });
+
+    test('단일 할일 note 보존: due 변경해도 전역 note 유지(날짜 무관)', () => {
+      seed(dnState());
+      ev("updateTodo('ts', { due: '2026-07-20' })");   // 단일 유지(endDate 없음)
+      const t = evJSON("todoById('ts')");
+      assert.strictEqual(t.due, '2026-07-20');
+      assert.strictEqual(t.note, '단일 설명', 'due 변경에도 단일 note 보존');
+      assert.deepStrictEqual(t.dayNotes, {});
+    });
+
+    test('addTodo(기간+설명): 전역 설명이 시작일 dayNote로 이관되어 생성(무손실)', () => {
+      seed(dnState());
+      const id = ev("addTodo('신규 기간', { categoryId:'cp', due:'2026-07-20', endDate:'2026-07-22', note:'시작 설명' }).id");
+      const t = evJSON("todoById(" + JSON.stringify(id) + ")");
+      assert.strictEqual(t.note, '', '기간 생성 시 전역 note 비움');
+      assert.strictEqual(t.dayNotes['2026-07-20'], '시작 설명', '시작일 dayNote로 이관');
     });
 
     // ── collectReportData (보고서 정확성 — 최고 가치) ─────────────────────

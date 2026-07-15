@@ -554,6 +554,18 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rtask.editing .nd-cedit-wrap{margin-top:2px}
 .rpt-mirror .rtask-edit{width:100%;box-sizing:border-box;min-height:52px;resize:vertical;font:inherit;font-size:var(--fs-body);line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
 .rpt-mirror .rtask-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
+/* 보고서 — 기간 할일 날짜별 dayNote 라인(주간/일간 편집 개방). 제목 아래 한 단계 들여쓴 편집 가능 라인. */
+.rpt-mirror .rcard-tasks .rdn{display:flex;align-items:flex-start;gap:4px;margin:1px 0 1px 18px;color:var(--muted);font-size:var(--fs-small);line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
+.rpt-mirror .rdn .rdn-main{flex:1;min-width:0}
+.rpt-mirror .rdn .rdn-date{color:var(--accent-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rpt-mirror .rdn .rdn-edit-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.35;transition:opacity .12s,color .12s,background .12s}
+.rpt-mirror .rdn .rdn-edit-btn .ic{width:12px;height:12px}
+.rpt-mirror .rcard:hover .rdn-edit-btn,.rpt-mirror .rdn:focus-within .rdn-edit-btn{opacity:.7}
+.rpt-mirror .rdn .rdn-edit-btn:hover{opacity:1;color:var(--accent);background:var(--hover-bg)}
+.rpt-mirror .rdn.editing{display:block}
+.rpt-mirror .rdn.editing .nd-cedit-wrap{margin-top:2px}
+.rpt-mirror .rdn-edit{width:100%;box-sizing:border-box;min-height:48px;resize:vertical;font:inherit;font-size:var(--fs-body);line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
+.rpt-mirror .rdn-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 .rpt-mirror .rcard-note{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;display:inline-block}
 .rpt-mirror .rcard-note.edit{color:var(--accent-2)}
 /* netcus 일간보고 병합 미리보기(읽기전용) — 보고서 모달 전용 */
@@ -2793,7 +2805,7 @@ let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'to
 let noteFilterCat = null;    // 할 일/작업일지 전용 과제 필터 — 캘린더 전역 filterCatId와 독립
 let noteCollapsed = new Set(['done','nodate']);  // 접힌 섹션 키(완료·기한없음은 기본 접힘)
 let editingTodoId = null;    // 인라인 편집 중인 TODO id
-let editingCommitKey = null; let editingReportKey = null; // 인라인 편집 중인 커밋 행 키(eidhashcidx) — 작업일지 탭
+let editingCommitKey = null; let editingReportKey = null; let editingDayNoteKey = null;// 인라인 편집 중인 커밋 행 키(eidhashcidx) — 작업일지 탭
 let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
 let noteImportantOnly = false; // 할 일 탭 '★ 중요만' 필터
 let __entryGitLoaded = false; // 기록 모달에서 Git 커밋을 불러왔는지 → 저장 시 source='git'
@@ -3905,8 +3917,27 @@ function reportMetaDetails(meta){
   return Array.isArray(meta && meta.details) ? meta.details.filter(Boolean) : [];
 }
 function reportDetailsHtml(meta){
+  if(meta && meta.kind === 'todo' && Array.isArray(meta.dayDetails)) return '';   // 기간 할일 설명은 날짜별 라인(.rdn)이 담당 — 이중 렌더 방지
   const lines = reportMetaDetails(meta);
   return lines.length ? `<div class="rtask-desc">${lines.map(esc).join('<br>')}</div>` : '';
+}
+// 기간 할일 dayNote 병합 접두 — "월 7/13"(요일 + M/D). 기간 보고에서 날짜별 dayNote를 날짜순 라인으로.
+function reportDayPrefix(dateYmd){ const d = parseYmd(dateYmd); return `${WEEKDAYS[d.getDay()]} ${d.getMonth()+1}/${d.getDate()}`; }
+// 보고서 — 기간 할일 날짜별 dayNote 라인 HTML(주간/일간 공통). editable=true면 클릭 편집 개방(주간 제목은 여전히 읽기전용).
+// showPrefix=true(기간 보고)면 "요일 M/D" 접두, false(일간·from==to)면 원문만. editingDayNoteKey===todoId|date면 textarea.
+function reportDayLinesHtml(m, editable, showPrefix){
+  if(!(m && m.kind === 'todo' && Array.isArray(m.dayDetails) && m.dayDetails.length)) return '';
+  return m.dayDetails.map(dd => {
+    const key = m.todoId + '|' + dd.date;
+    if(editable && editingDayNoteKey === key){
+      return `<div class="rdn editing" data-dnid="${esc(m.todoId)}" data-dndate="${esc(dd.date)}"><div class="nd-cedit-wrap"><textarea class="rdn-edit" maxlength="500" rows="2" aria-label="${esc(reportDayPrefix(dd.date))} 설명 수정">${esc(dd.text)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rdn-cancel" data-dnact="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rdn-save" data-dnact="save" aria-label="설명 저장">저장</button></div></div></div>`;
+    }
+    const pfx = showPrefix ? `<span class="rdn-date">${esc(reportDayPrefix(dd.date))}</span> ` : '';
+    if(editable){
+      return `<div class="rdn" data-dnid="${esc(m.todoId)}" data-dndate="${esc(dd.date)}"><span class="rdn-main">${pfx}${esc(dd.text)}</span><button type="button" class="rdn-edit-btn" data-dnact="edit" title="설명 수정" aria-label="${esc(reportDayPrefix(dd.date))} 설명 수정">${ICON.wrench}</button></div>`;
+    }
+    return `<div class="rdn ro">${pfx}${esc(dd.text)}</div>`;
+  }).join('');
 }
 function reportTextDetails(meta, pad){
   const lines = reportMetaDetails(meta);
@@ -3974,14 +4005,29 @@ function collectReportData(from, to, sources){
     }   // 비-git 엔트리 제목 → 편집 가능(일정 라우팅)
   }
   // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
+  // 설명 소스(이중 모델): 단일 할일=전역 note / 기간 할일=[from,to]∩[due,end] 각 날짜 dayNote(기간 보고=요일 접두, 일간=원문).
+  // skipEmpty·설명포함(#rptWithDesc)은 이 details 기준 → dayNotes 0개 기간할일은 skipEmpty에서 자동 제외.
   if(src.todo){
+    const spanMulti = (from !== to);
     for(const t of (state.todos || [])){
       const s = t.due; if(!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) continue;
-      const e2 = (t.endDate && t.endDate > s) ? t.endDate : s;
+      const isPeriod = !!(t.endDate && t.endDate > s);
+      const e2 = isPeriod ? t.endDate : s;
       if(s > to || e2 < from) continue;
-      const details = reportDetailLines(t.note);
+      let details, dayDetails = null;
+      if(isPeriod){   // 기간 할일: 범위∩기한 안의 날짜별 dayNote를 날짜순으로
+        const lo = s < from ? from : s, hi = e2 > to ? to : e2;
+        dayDetails = [];
+        for(let d = lo; d <= hi; d = addDays(d, 1)){
+          const txt = String((t.dayNotes && t.dayNotes[d]) || '').trim();
+          if(txt) dayDetails.push({ date: d, text: txt });
+        }
+        details = dayDetails.map(dd => spanMulti ? (reportDayPrefix(dd.date) + ' ' + dd.text) : dd.text);
+      } else {
+        details = reportDetailLines(t.note);
+      }
       if(skipEmpty && details.length === 0) continue;
-      pushTitle(catKey(t), t.text, { kind:'todo', todoId:t.id }, includeDetails ? details : []);
+      pushTitle(catKey(t), t.text, { kind:'todo', todoId:t.id, dayDetails: (includeDetails && isPeriod) ? dayDetails : null }, includeDetails ? details : []);
     }
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
@@ -4003,7 +4049,7 @@ function rptSources(){
 let reportMode = 'daily';
 function setReportMode(mode){
   reportMode = mode;
-  editingReportKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지)
+  editingReportKey = null; editingDayNoteKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지)
   $$('#reportModal [data-rmode]').forEach(b => { const on = b.dataset.rmode === mode; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });   // role=tab 선택상태 announce
   const from = $('#rptFrom'), to = $('#rptTo');
   if(mode === 'daily'){
@@ -4441,6 +4487,7 @@ function buildReport(){
     if(a) a.addEventListener('change', sv);
     if(b) b.addEventListener('change', sv);
   }
+  const spanMulti = (from !== to);   // 기간 보고(여러 날) 여부 — 기간 할일 dayNote 라인에 "요일 M/D" 접두 표시 결정(일간=원문)
   let html = '';
   for(const r of rows){
     const hasEntry = r.entries.length > 0;
@@ -4468,15 +4515,15 @@ function buildReport(){
             // 편집 가능한 라인(커밋·일정·할일)에 삭제(✕) 노출 — 원본까지 제거(일간만; 주간/커스텀은 rtask-ro라 미노출). rkind별 라우팅.
             const _delLbl = m.kind === 'git' ? '이 커밋 삭제' : m.kind === 'event' ? '이 일정 삭제' : m.kind === 'todo' ? '이 할 일 삭제' : '';
             const _del = _delLbl ? `<button type="button" class="rtask-del-btn" data-ract="del" title="${_delLbl}" aria-label="${_delLbl}">${ICON.trash || ICON.xmark}</button>` : '';
-            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>` + (m.body ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
+            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>` + (m.body ? `<div class="rtask-body">${esc(m.body)}</div>` : '') + reportDayLinesHtml(m, true, spanMulti);
           }
-          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
+          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '') + reportDayLinesHtml(m, true, spanMulti);
         }).join('') + `</div>`;
-      } else {   // 주간/커스텀: 읽기전용 — 라인별 마커 접두(편집 없음)
+      } else {   // 주간/커스텀: 제목은 읽기전용 — 단, 기간 할일 날짜별 dayNote 라인만 예외적으로 편집 개방(제목은 계속 읽기전용)
         html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => {
           const _mk = reportMarkerAt(_mkSpec, i);
           const m = (r.titleMeta && r.titleMeta[i]) || null;
-          return `<div class="rtask-roline">${(_mk ? esc(_mk) + ' ' : '') + esc(t)}${reportDetailsHtml(m)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</div>`;
+          return `<div class="rtask-roline">${(_mk ? esc(_mk) + ' ' : '') + esc(t)}${reportDetailsHtml(m)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</div>` + reportDayLinesHtml(m, true, spanMulti);
         }).join('')}</div>`;
       }
     }
@@ -4902,9 +4949,15 @@ function addTodo(text, opts){
   const ymdRe = /^\d{4}-\d{2}-\d{2}$/;
   const due = ymdRe.test(opts.due || '') ? opts.due : '';
   const endDate = (due && ymdRe.test(opts.endDate || '') && opts.endDate > due) ? opts.endDate : '';
+  const isPeriod = !!(endDate && endDate > due);
+  // 이중 설명 모델(정합): 기간 할일=dayNotes만 / 단일 할일=note만. 생성 시 전역 설명을 알맞은 저장소로 배치(무손실).
+  let note = String(opts.note || '');
+  let dnotes = Object.assign({}, opts.dayNotes || {});
+  if(isPeriod){ if(note.trim() && !String(dnotes[due] || '').trim()) dnotes[due] = note; note = ''; }
+  else { dnotes = {}; }
   const t = {id:uid('t'), text:String(text || '').replace(/\s+/g, ' ').trim(), done:false,
     categoryId:opts.categoryId || null, due, endDate, prio:opts.prio === 'high' ? 'high' : 'normal',
-    completedAt:'', note:String(opts.note || ''), dayNotes:normalizeTodoDayNotes(opts.dayNotes, due, endDate), createdAt:nowIso(), updatedAt:nowIso()};
+    completedAt:'', note, dayNotes:normalizeTodoDayNotes(dnotes, due, endDate), createdAt:nowIso(), updatedAt:nowIso()};
   if(!t.text) return null;
   state.todos.push(t); save(); return t;
 }
@@ -4915,10 +4968,22 @@ function updateTodo(id, f){ const t = todoById(id); if(!t) return;
   if('due' in f) t.due = /^\d{4}-\d{2}-\d{2}$/.test(f.due || '') ? f.due : '';
   if('endDate' in f) t.endDate = (/^\d{4}-\d{2}-\d{2}$/.test(f.endDate || '') && t.due && f.endDate > t.due) ? f.endDate : '';
   if(t.due === '' || (t.endDate && t.endDate <= t.due)) t.endDate = '';   // 기한 없거나 종료<=시작이면 기간 해제
-  t.dayNotes = normalizeTodoDayNotes(Object.assign({}, t.dayNotes || {}, f.dayNotes || {}), t.due, t.endDate);
+  const isPeriod = !!(t.endDate && t.endDate > t.due);
+  if('note' in f) t.note = String(f.note ?? '');   // 설명(여러 줄 · 줄바꿈 보존)
+  let dn = Object.assign({}, t.dayNotes || {}, f.dayNotes || {});
+  // 이중 설명 모델 이관(무손실): 기간 할일=dayNotes만 / 단일 할일=note만.
+  if(isPeriod){
+    const nv = String(t.note || '').trim();   // 단일→기간(또는 레거시 기간+note): 전역 note를 시작일 dayNote로 이관
+    if(nv && !String(dn[t.due] || '').trim()) dn[t.due] = t.note;
+    t.note = '';
+  } else {
+    const rv = String(dn[t.due] || '').trim();   // 기간→단일(또는 단일의 잔여 dayNote): 시작일 dayNote를 note로 복귀
+    if(rv && !String(t.note || '').trim()) t.note = dn[t.due];
+    dn = {};   // 단일 할일은 dayNotes 미보유(정합)
+  }
+  t.dayNotes = normalizeTodoDayNotes(dn, t.due, t.endDate);
   if('categoryId' in f) t.categoryId = f.categoryId || null;
   if('prio' in f) t.prio = f.prio === 'high' ? 'high' : 'normal';
-  if('note' in f) t.note = String(f.note ?? '');   // 설명(여러 줄 · 줄바꿈 보존)
   t.updatedAt = nowIso(); save();
 }
 function deleteTodo(id){ state.todos = (state.todos || []).filter(t => t.id !== id); save(); }
@@ -5079,6 +5144,19 @@ function commitReportEdit(ta){
   else if(kind === 'todo') ok = setTodoText(id, ta.value);
   if(!ok) buildReport();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
 }
+// 보고서 날짜별 dayNote 라인 인라인 편집 커밋 — (todoId,date)를 .rdn 행에서 해석해 updateTodo({dayNotes:{date:val}})로만 위임.
+// 원본 dayNotes 변경 → notifyDataChanged가 패널·그리드·보고서를 한 번에 교차 반영(단일 소스, 이중 렌더 금지).
+function commitDayNoteEdit(ta){
+  const row = ta.closest('.rdn'); if(!row){ editingDayNoteKey = null; return; }
+  if(ta.dataset.cancel){ editingDayNoteKey = null; buildReport(); return; }   // Esc/취소
+  editingDayNoteKey = null;
+  const id = row.dataset.dnid, date = row.dataset.dndate;
+  const t = (state.todos || []).find(x => x.id === id);
+  const cur = (t && t.dayNotes) ? String(t.dayNotes[date] || '') : '';
+  if(!t || String(ta.value).trim() === cur.trim()){ buildReport(); return; }   // 무변경 → 편집기만 걷어냄(1회 렌더)
+  updateTodo(id, { dayNotes: { [date]: ta.value } });   // 저장(빈 값이면 normalizeTodoDayNotes가 그 날짜 제거)
+  notifyDataChanged();   // 열린 뷰 일괄 재반영(패널·그리드·보고서)
+}
 
 // 마감 축 버킷 분류(노트 과제 필터 적용) — 평면 나열 대신 [지남/오늘/예정/기한없음/완료]
 function todoBuckets(){
@@ -5130,12 +5208,15 @@ function todoRowHtml(t){
 }
 function todoEditHtml(t){
   const opts = state.categories.map(c => `<option value="${esc(c.id)}"${t.categoryId===c.id?' selected':''}>${esc(c.name)}</option>`).join('');
+  // 이중 설명 모델: 기간 할일=선택 날짜 dayNote 1칸만(전역 설명 숨김) / 단일 할일=전역 설명만(입력방식 B — 전체 날짜 나열 금지).
+  const isPeriod = !!(t.endDate && t.endDate > t.due);
   const noteDate = todoNoteDate(t);
   const dayNote = noteDate && t.dayNotes ? String(t.dayNotes[noteDate] || '') : '';
-  const dayNoteEditor = noteDate ? `<label class="te-daynote-lb">${esc(fmtShort(noteDate))} 설명</label><textarea class="te-daynote" rows="3" data-date="${esc(noteDate)}" placeholder="이 날짜에만 보이는 설명 (선택)">${esc(dayNote)}</textarea>` : '';
+  const dayNoteEditor = (isPeriod && noteDate) ? `<label class="te-daynote-lb">${esc(fmtShort(noteDate))} 설명</label><textarea class="te-daynote" rows="3" data-date="${esc(noteDate)}" placeholder="이 날짜에만 보이는 설명 (선택)">${esc(dayNote)}</textarea>` : '';
+  const noteEditor = isPeriod ? '' : `<textarea class="te-note" rows="3" placeholder="설명 (여러 줄 · 선택)">${esc(t.note||'')}</textarea>`;
   return `<div class="todo-edit" data-id="${esc(t.id)}">
     <input type="text" class="te-text" maxlength="200" value="${esc(t.text)}">
-    <textarea class="te-note" rows="3" placeholder="전체 설명 (여러 줄 · 선택)">${esc(t.note||'')}</textarea>
+    ${noteEditor}
     ${dayNoteEditor}
     <div class="te-row">
       <input type="date" class="te-due" value="${esc(t.due||'')}" title="기한/시작">
@@ -5331,8 +5412,9 @@ function qaRenderDetail(){
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
        <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
-    : `<label class="qa-lb">설명</label><textarea id="qaMemo" rows="3" placeholder="서술형으로 자유롭게 (선택)"></textarea>
+    : `<div id="qaTodoNoteWrap"><label class="qa-lb">설명</label><textarea id="qaMemo" rows="3" placeholder="서술형으로 자유롭게 (선택)"></textarea></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날 할 일)</label><input type="date" id="qaEndDate">
+       <div class="qa-hint" id="qaTodoPeriodHint" style="display:none">여러 날 할 일은 날짜별 설명으로 적습니다 — 추가 후 각 날짜에서 설명을 남기세요.</div>
        <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
   if(qaType === 'event'){
     fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
@@ -5341,6 +5423,12 @@ function qaRenderDetail(){
     const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
       if(on) rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
     rc.addEventListener('change', rsync); rsync();
+  } else {
+    // 할 일: 기간(종료일) 지정 시 설명은 날짜별 dayNote로 관리 → 전역 설명칸 숨김(입력방식 B). 값은 유지되어 저장 시 시작일 dayNote로 이관.
+    const ed = $('#qaEndDate'), wrap = $('#qaTodoNoteWrap'), hint = $('#qaTodoPeriodHint');
+    const syncNote = () => { const period = !!(ed && ed.value); if(wrap) wrap.style.display = period ? 'none' : ''; if(hint) hint.style.display = period ? '' : 'none'; };
+    if(ed){ ed.addEventListener('input', syncNote); ed.addEventListener('change', syncNote); }
+    syncNote();
   }
 }
 function qaToggleDetail(){
@@ -6256,9 +6344,25 @@ function bind(){
     }
     // 'save'/'cancel'은 focusout(commitReportEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
   });
+  // 날짜별 dayNote 라인 편집(✎) — 주간(제목 읽기전용이어도 이 라인만 편집 개방)·일간 공통. 저장은 commitDayNoteEdit→updateTodo 단일 경로.
+  $('#rptOut').addEventListener('click', ev => {
+    const b = ev.target.closest && ev.target.closest('.rdn [data-dnact]'); if(!b) return;
+    if(b.dataset.dnact === 'edit'){
+      const row = b.closest('.rdn');
+      editingDayNoteKey = String(row.dataset.dnid) + '|' + String(row.dataset.dndate);
+      buildReport();
+      const ta = $('#rptOut .rdn-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
+    }
+    // 'save'/'cancel'은 focusout(commitDayNoteEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
+  });
   $('#rptOut').addEventListener('mousedown', ev => {   // 취소 버튼: focusout 전에 취소 의도 심기(저장 아닌 취소로 종결)
     const c = ev.target.closest && ev.target.closest('.rtask-cancel'); if(!c) return;
     const row = c.closest('.rtask'); const ta = row && row.querySelector('.rtask-edit');
+    if(ta) ta.dataset.cancel = '1';
+  });
+  $('#rptOut').addEventListener('mousedown', ev => {   // dayNote 라인 취소 버튼
+    const c = ev.target.closest && ev.target.closest('.rdn-cancel'); if(!c) return;
+    const row = c.closest('.rdn'); const ta = row && row.querySelector('.rdn-edit');
     if(ta) ta.dataset.cancel = '1';
   });
   $('#rptOut').addEventListener('keydown', ev => {
@@ -6266,10 +6370,14 @@ function bind(){
     if(ev.target.classList && ev.target.classList.contains('rtask-edit')){
       if(ev.key === 'Enter'){ ev.preventDefault(); ev.target.blur(); }   // subject는 단행 → Enter=커밋(줄바꿈 삽입 금지)
       else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
+    } else if(ev.target.classList && ev.target.classList.contains('rdn-edit')){
+      if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ev.target.blur(); }   // Enter=저장, Shift+Enter=줄바꿈
+      else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
     }
   });
   $('#rptOut').addEventListener('focusout', ev => {
     if(ev.target.classList && ev.target.classList.contains('rtask-edit')) commitReportEdit(ev.target);
+    else if(ev.target.classList && ev.target.classList.contains('rdn-edit')) commitDayNoteEdit(ev.target);
   });
   $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
     const b = ev.target.closest('[data-bulk]'); if(b) setBulkRange(b.dataset.bulk);
