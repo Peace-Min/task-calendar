@@ -32,7 +32,7 @@ TaskCalendarWidget-Setup-v0.8.1.exe
 ## 발행 절차 (새 버전 낼 때)
 ```
 # 1) 인스톨러 빌드 (버전은 csproj <Version> 단일소스)
-installer\build-installer.cmd
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 # 2) latest.json 생성(+ 공유 위치로 복사)
 powershell -File installer\publish-update.ps1 -CopyTo "\\server\share\TaskCalendar"   # 또는 -CopyTo 없이 생성만 후 수동 업로드
 ```

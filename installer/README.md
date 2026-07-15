@@ -21,8 +21,6 @@
 # 저장소 어디서든:
 powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 ```
-또는 `installer\build-installer.cmd` **더블클릭**.
-
 옵션:
 - `-SkipPublish` — 위젯 exe를 이미 빌드(`dist\portable\`)했으면 publish 건너뛰기(빠름).
 - `-Iscc "<경로>\ISCC.exe"` — ISCC 자동탐색이 실패할 때 경로 직접 지정.
@@ -37,8 +35,7 @@ powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 
 ## 파일
 - `task-calendar.iss` — Inno Setup 스크립트(설치 구성 · **이 하나만 정본**). `AppId` GUID는 **업그레이드 동일성 키라 절대 변경 금지**. WebView2 번들은 `redist\` 파일 존재 시 `#if`로 자동 포함/생략.
-- `build-installer.ps1` — 빌드 오케스트레이션 CLI.
-- `build-installer.cmd` — 더블클릭용 래퍼(실행 정책 우회).
+- `build-installer.ps1` — 빌드 오케스트레이션 CLI(설치기만 · `powershell -ExecutionPolicy Bypass -File`로 실행). 원클릭 전체 배포는 `배포-빌드.cmd` 사용.
 
 > 마법사 언어 = `Korean.isl`(Inno의 `Languages\` 폴더에 있어야 함). 없어서 컴파일이 막히면 `.iss`의 `[Languages]`를 `compiler:Default.isl`(영문)로 바꾸면 됨.
 > `.iss`/`.ps1`은 한글 오독 방지를 위해 **UTF-8 BOM**으로 저장돼 있음(편집 시 인코딩 유지).

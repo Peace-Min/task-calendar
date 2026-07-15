@@ -208,7 +208,7 @@
 - ✅ 견고: 공백 없는 초장문 제목(4000자)·메모(8000자) → 페이지/패널 가로넘침 0(줄바꿈·클립), 하루 80건+ → 셀은 3+"+N", 날짜패널 세로 스크롤, 편집 모달(제목 4000·메모 8000자) → 모달 540px 고정·뷰포트 내·입력칸 내부 스크롤.
 - ❌→✅ **발견·수정**: 카테고리 다수(43개) 시 **필터바가 276px로 폭증해 달력이 88px로 찌부러짐**. → `.filterbar{max-height:66px;overflow-y:auto;align-content:flex-start}` (2줄+스크롤)로 달력 영역 보호(그리드 88→298 복원). 긴 카테고리명은 `.fc-name`·`.badge` 말줄임(…)으로 처리. 재측정/스크린샷 확인 완료.
 
-**배포/버전관리**: GitHub `Peace-Min/task-calendar`(공개). WebView2 NuGet 패키지 동봉(`widget/nuget-packages/`)으로 오프라인 빌드 가능, `.sln`+`build.cmd` 제공. SDK는 별도 공개 저장소 `Peace-Min/dotnet9-sdk-offline`에 9.0.315 win-x64 설치파일을 90MB×3 분할(+reassemble.cmd) — clone→재결합→설치 검증 완료.
+**배포/버전관리**: GitHub `Peace-Min/task-calendar`(공개). WebView2 NuGet 패키지 동봉(`widget/nuget-packages/`)으로 오프라인 빌드 가능, `.sln`+`build-portable.cmd`(자체포함 단일 exe) 제공. SDK는 별도 공개 저장소 `Peace-Min/dotnet9-sdk-offline`에 9.0.315 win-x64 설치파일을 90MB×3 분할(+reassemble.cmd) — clone→재결합→설치 검증 완료.
 
 ---
 

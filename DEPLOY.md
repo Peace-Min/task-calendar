@@ -36,7 +36,7 @@ task-calendar\                       ← 저장소 루트
 ├─ installer\
 │   ├─ 배포-빌드.cmd                  ← ★ 원클릭 배포 빌드(더블클릭)
 │   ├─ publish-update.ps1            ← 발행 CLI(-Build/-Notes/-CopyTo)
-│   ├─ build-installer.cmd / .ps1    ← publish + ISCC 컴파일
+│   ├─ build-installer.ps1          ← publish + ISCC 컴파일(설치기만)
 │   └─ task-calendar.iss             ← Inno Setup 스크립트
 └─ dist\installer\                   ← 빌드 결과물이 여기에 생성됨
 ```
@@ -53,7 +53,7 @@ dotnet --version        # 9.x 가 나와야 함
 ```
 
 - ISCC 자동 탐색 실패 시: `installer\build-installer.ps1 -Iscc "D:\경로\ISCC.exe"` 로 직접 지정 가능.
-  - **주의**: `-Iscc` 옵션은 `build-installer.ps1`(및 `build-installer.cmd`)에만 있다. `배포-빌드.cmd`/`publish-update.ps1`에는 `-Iscc`가 없고, `-Build` 시 `build-installer.ps1`을 경로 인자 없이 호출하므로 **`배포-빌드.cmd -Iscc …`로는 전달되지 않는다.** 자동 탐색이 실패하면 §7-3의 우회 절차(먼저 `build-installer.ps1 -Iscc`로 설치기 빌드 → 이어서 `publish-update.ps1`을 `-Build` 없이 실행)를 따른다.
+  - **주의**: `-Iscc` 옵션은 `build-installer.ps1`에만 있다. `배포-빌드.cmd`/`publish-update.ps1`에는 `-Iscc`가 없고, `-Build` 시 `build-installer.ps1`을 경로 인자 없이 호출하므로 **`배포-빌드.cmd -Iscc …`로는 전달되지 않는다.** 자동 탐색이 실패하면 §7-3의 우회 절차(먼저 `build-installer.ps1 -Iscc`로 설치기 빌드 → 이어서 `publish-update.ps1`을 `-Build` 없이 실행)를 따른다.
 
 ### 2-3. 폐쇄망 오프라인 빌드 준비 (중요)
 
@@ -65,7 +65,7 @@ dotnet --version        # 9.x 가 나와야 함
 - ⚠️ **win-x64 런타임 팩(자체포함용)** — `배포-빌드.cmd`는 `--self-contained true`로 단일 exe를 만든다. 이 런타임 팩은 **한 번은 인터넷(또는 캐시)에서 받아야** 한다.
   - **이미 이 기능으로 배포해온 빌드 PC(현재 dev PC)엔 캐시돼 있어 오프라인 빌드가 된다.** 하지만 런타임 팩이 없는 **완전 새 폐쇄망 PC의 첫 빌드는 실패**할 수 있다.
   - 대안: ① 런타임 팩이 캐시된 PC(현재 dev PC)에서 빌드, 또는 ② `%USERPROFILE%\.nuget\packages\`의 `microsoft.netcore.app.host.win-x64`·`microsoft.netcore.app.runtime.win-x64` 캐시 폴더를 새 PC로 반입.
-  - 로컬 실행/테스트만 필요하면 루트 `build.cmd`(프레임워크 종속 exe → `dist\app\`)로 자체포함 없이 빌드 가능 — 단 이건 **배포용 인스톨러가 아니다.**
+  - 로컬 실행/테스트만 필요하면 `dotnet publish widget\TaskCalendarWidget.csproj -c Release -o dist\app`(프레임워크 종속 exe, .NET 설치 PC 전용)로 자체포함 없이 빌드 가능 — 단 이건 **배포용 인스톨러가 아니다.**
 
 ---
 
@@ -288,7 +288,7 @@ private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/
 | 빌드 + 발행(CLI) | `powershell -ExecutionPolicy Bypass -File installer\publish-update.ps1 -Build` |
 | 배너 안내문 | `-Notes "요약"` |
 | 공유폴더 자동 복사(UNC/로컬) | `-CopyTo "\\서버\TaskCalendar"` |
-| 설치기만 빌드 | `installer\build-installer.cmd` (내부: publish + ISCC) |
+| 설치기만 빌드 | `powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1` (내부: publish + ISCC) |
 | ISCC 경로 지정 | `build-installer.ps1 -Iscc "<ISCC.exe 경로>"` (배포-빌드.cmd에는 없음) |
 | 버전 단일 소스 | `widget\TaskCalendarWidget.csproj` `<Version>` |
 | 소스 URL 상수 | `widget\MainWindow.xaml.cs:44` `DefaultUpdateSourceUrl` |

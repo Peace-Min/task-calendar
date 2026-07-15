@@ -12,7 +12,7 @@
     powershell -ExecutionPolicy Bypass -File build-installer.ps1 -SkipPublish
     powershell -ExecutionPolicy Bypass -File build-installer.ps1 -Iscc "D:\Inno\ISCC.exe"
 
-  (더블클릭은 build-installer.cmd 사용 — 실행 정책 우회)
+  (원클릭 전체 배포는 배포-빌드.cmd, 설치기만은 위 powershell 명령으로 실행)
 #>
 [CmdletBinding()]
 param(
