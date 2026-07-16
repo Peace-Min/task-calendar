@@ -1383,5 +1383,80 @@ if (!JSDOM) {
       assert.ok(sendText.includes('[미분류]'), '[미분류] 블록은 포함');
       assert.ok(sendText.includes('[보고서 작성]'), '과제 블록 포함');
     });
+
+    // ── buildCalendarExportMd (연구노트 데이터 내보내기 — 순수 직렬화) ─────────────
+    // 선택 과제 1개의 캘린더 기록을 날짜별 md로. cat은 catById로 조회해 넘긴다. ev는 원시 문자열을 그대로 반환.
+    const buildMd = (catId, from, to) =>
+      ev('buildCalendarExportMd(catById(' + JSON.stringify(catId) + '),' + JSON.stringify(from) + ',' + JSON.stringify(to) + ')');
+    const catOnly = (name, extra) => ({ id: (extra && extra.id) || 'c-1', name, color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA, ...(extra || {}) });
+
+    test('buildCalendarExportMd: 단일 일정+메모 → 헤더·날짜·### 일정·제목(공수)·메모 불릿', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [catOnly('연구과제')],
+        entries: [{ id: 'e1', date: '2026-07-08', title: '실험 설계', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '가설 수립\n장비 점검', source: '', commits: [], hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+        todos: [], rooms: [],
+      });
+      const md = buildMd('c-1', '2026-07-08', '2026-07-08');
+      assert.ok(md.includes('# 연구노트 데이터 — 연구과제'), '문서 제목');
+      assert.ok(md.includes('## 2026-07-08 (수)'), '날짜 헤더 + 한글 요일');
+      assert.ok(md.includes('### 일정'), '일정 섹션');
+      assert.ok(md.includes('- 실험 설계 · 1시간 30분'), '제목 + 공수(90분→1시간 30분)');
+      const lines = md.split('\n');
+      assert.ok(lines.includes('  - 가설 수립') && lines.includes('  - 장비 점검'), '메모 불릿 2칸 들여쓰기');
+    });
+
+    test('buildCalendarExportMd: 기간 할일 dayNotes — 해당일은 — 설명, dayNote 없는 in-range일은 상세 없음', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [catOnly('연구과제')],
+        entries: [],
+        todos: [{ id: 'tp', text: '논문 초안', done: false, categoryId: 'c-1', due: '2026-07-13', endDate: '2026-07-15', prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-07-14': '서론 작성' }, createdAt: CA, updatedAt: CA }],
+        rooms: [],
+      });
+      const lines = buildMd('c-1', '2026-07-13', '2026-07-15').split('\n');
+      assert.ok(lines.includes('- [ ] 논문 초안 — 서론 작성'), '07-14: dayNote → — 설명');
+      assert.ok(lines.includes('- [ ] 논문 초안'), '07-13/07-15: dayNote 없음 → 제목만(— 없음)');
+    });
+
+    test('buildCalendarExportMd: git 작업일지 → ### 작업일지(커밋)에 - subject (short)', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [catOnly('연구과제')],
+        entries: [{ id: 'g1', date: '2026-07-09', title: '작업일지', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'abc123def', short: 'r1195', time: '09:00', subject: '데이터 파이프라인 추가' }], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+        todos: [], rooms: [],
+      });
+      const md = buildMd('c-1', '2026-07-09', '2026-07-09');
+      assert.ok(md.includes('### 작업일지(커밋)'), '커밋 섹션');
+      assert.ok(md.includes('- 데이터 파이프라인 추가 (r1195)'), 'subject (short)');
+    });
+
+    test('buildCalendarExportMd: 과제 격리 — 다른 과제 항목은 포함되지 않음', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [catOnly('내과제', { id: 'c-1' }), catOnly('남의과제', { id: 'c-2', color: '#2e9e6b' })],
+        entries: [
+          { id: 'e1', date: '2026-07-08', title: '내 일정', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'e2', date: '2026-07-08', title: '남의 일정', categoryId: 'c-2', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        ],
+        todos: [], rooms: [],
+      });
+      const md = buildMd('c-1', '2026-07-08', '2026-07-08');
+      assert.ok(md.includes('내 일정'), '선택 과제 일정 포함');
+      assert.ok(!md.includes('남의 일정'), '다른 과제 일정 미포함');
+    });
+
+    test('buildCalendarExportMd: 항목 없는 날짜는 헤더(## ) 미출력 + cat 없으면 빈 문자열', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [catOnly('연구과제')],
+        entries: [{ id: 'e1', date: '2026-07-10', title: '중간 일정', categoryId: 'c-1', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+        todos: [], rooms: [],
+      });
+      const md = buildMd('c-1', '2026-07-08', '2026-07-12');
+      assert.ok(md.includes('## 2026-07-10'), '항목 있는 날짜만 헤더');
+      assert.ok(!md.includes('## 2026-07-08') && !md.includes('## 2026-07-09'), '빈 날짜 헤더 미출력');
+      assert.strictEqual(ev('buildCalendarExportMd(null, "2026-07-01", "2026-07-02")'), '', 'cat 없으면 빈 문자열');
+    });
   }
 }

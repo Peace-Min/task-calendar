@@ -503,6 +503,15 @@ namespace TaskCalendarWidget
                         _ = RunGitCheckAsync(reqId, repo, vcs);
                         break;
                     }
+                    case "exportResearch":   // 연구노트 데이터 내보내기(임시) — 캘린더 md + 내 커밋 patch(git/svn)를 사용자가 고른 폴더로
+                    {
+                        string reqId = GetStr(doc, "reqId"), project = GetStr(doc, "project"), calendarMd = GetStr(doc, "calendarMd"),
+                               gitRepo = GetStr(doc, "gitRepo"), gitAuthor = GetStr(doc, "gitAuthor"),
+                               svnRepo = GetStr(doc, "svnRepo"), svnAuthor = GetStr(doc, "svnAuthor"),
+                               from = GetStr(doc, "from"), to = GetStr(doc, "to");
+                        RunResearchExport(reqId, project, calendarMd, gitRepo, gitAuthor, svnRepo, svnAuthor, from, to);
+                        break;
+                    }
 
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
@@ -717,6 +726,172 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex) { payload = new { ok = false, exists = false, isRepo = false, vcs = "", detected = "", email = "", error = ex.Message }; }
             GitReply(reqId, payload);
+        }
+
+        // ============ 연구노트 데이터 내보내기(임시) ============
+        // 선택 과제 1개 + 기간의 캘린더 기록(md)과 '내 커밋' patch(git log -p / svn diff)를 사용자가 고른 폴더로 내보낸다.
+        // 폴더 선택(모달)은 UI 스레드에서 먼저 → 이후 파일/git/svn 작업은 백그라운드 스레드(UI 비블로킹). LLM에 넣어 연구노트 작성용.
+        private void RunResearchExport(string reqId, string project, string calendarMd,
+            string gitRepo, string gitAuthor, string svnRepo, string svnAuthor, string from, string to)
+        {
+            // 1) 저장 폴더 선택 — UI 스레드(OnWebMessage에서 호출). 취소면 조용히 회신(오류 아님).
+            string basePath;
+            try
+            {
+                var dlg = new OpenFolderDialog { Title = "연구노트 데이터를 저장할 폴더 선택", Multiselect = false };
+                if (dlg.ShowDialog(this) != true) { GitReply(reqId, new { ok = false, cancelled = true }); return; }
+                basePath = dlg.FolderName;
+            }
+            catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); return; }
+
+            // 2) 파일/git/svn 작업은 백그라운드 스레드에서(외부 프로세스·IO → UI 비블로킹)
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    string safe = SanitizeName(project);
+                    string outDir = Path.Combine(basePath, $"연구노트_{safe}_{from}_{to}");
+                    Directory.CreateDirectory(Path.Combine(outDir, "calendar"));
+                    // 캘린더 md는 항상 기록(BOM 없는 UTF-8)
+                    File.WriteAllText(Path.Combine(outDir, "calendar", "캘린더.md"), calendarMd ?? "", new UTF8Encoding(false));
+
+                    // --- GIT: 유효한 git 저장소일 때만 '내 커밋' 전체 patch(git log -p) ---
+                    object gitResult;
+                    bool gitOk = !string.IsNullOrWhiteSpace(gitRepo) && Directory.Exists(gitRepo) && IsGitRepo(gitRepo);
+                    if (!gitOk) gitResult = new { done = false, skipped = true, error = "" };   // 미연결/무효 → 건너뜀
+                    else
+                    {
+                        var (ok, text, err) = GitPatch(gitRepo, gitAuthor, from, to);
+                        if (ok)
+                        {
+                            Directory.CreateDirectory(Path.Combine(outDir, "git"));
+                            File.WriteAllText(Path.Combine(outDir, "git", "patch.txt"), text ?? "", new UTF8Encoding(false));
+                            gitResult = new { done = true, skipped = false, error = "" };
+                        }
+                        else gitResult = new { done = false, skipped = false, error = err };
+                    }
+
+                    // --- SVN: 유효한 작업복사본(.svn)일 때만 '내 리비전' log+diff ---
+                    object svnResult;
+                    bool svnOk = !string.IsNullOrWhiteSpace(svnRepo) && Directory.Exists(Path.Combine(svnRepo, ".svn"));
+                    if (!svnOk) svnResult = new { done = false, skipped = true, error = "" };   // 미연결/무효 → 건너뜀
+                    else
+                    {
+                        try
+                        {
+                            var log = SvnLog(svnRepo, svnAuthor, from, to, true);   // 작성자·기간 필터된 '내 리비전'
+                            if (!log.ok) svnResult = new { done = false, skipped = false, error = log.error ?? "svn 로그 실패" };
+                            else
+                            {
+                                var sb = new StringBuilder();
+                                foreach (var c in log.commits)   // 리비전마다 헤더 + svn diff -c <rev>
+                                {
+                                    sb.Append("===== r").Append(c.hash).Append(" · ").Append(c.author).Append(" · ").Append(c.date).Append(" =====\n");
+                                    sb.Append(c.subject).Append('\n');
+                                    if (!string.IsNullOrWhiteSpace(c.body)) sb.Append(c.body).Append('\n');
+                                    sb.Append('\n');
+                                    sb.Append(SvnDiff(svnRepo, c.hash));
+                                    sb.Append("\n\n");
+                                }
+                                Directory.CreateDirectory(Path.Combine(outDir, "svn"));
+                                // 커밋 0건이어도 파일은 만든다(거의 빈 파일 — 그래도 done=true, 사용자에게 '내 리비전 없음'이 명확)
+                                File.WriteAllText(Path.Combine(outDir, "svn", "patch.txt"), sb.ToString(), new UTF8Encoding(false));
+                                svnResult = new { done = true, skipped = false, error = "" };
+                            }
+                        }
+                        catch (Exception sx) { svnResult = new { done = false, skipped = false, error = sx.Message }; }
+                    }
+
+                    // 편의: 결과 폴더 열기(실패해도 무시 — 필수 아님)
+                    try { Process.Start(new ProcessStartInfo { FileName = outDir, UseShellExecute = true }); } catch { }
+
+                    GitReply(reqId, new { ok = true, outPath = outDir, calendar = true, git = gitResult, svn = svnResult });
+                }
+                catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); }
+            });
+        }
+
+        // git log -p (patch 포함) — '내 커밋'만(작성자·기간 필터). GitLog와 동일한 ProcessStartInfo 패턴.
+        private (bool ok, string text, string err) GitPatch(string repo, string author, string from, string to)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("git")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8,
+                };
+                psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(repo);
+                psi.ArgumentList.Add("log");
+                psi.ArgumentList.Add("-p");
+                psi.ArgumentList.Add("--no-merges");
+                psi.ArgumentList.Add("--no-color");
+                if (!string.IsNullOrWhiteSpace(from)) psi.ArgumentList.Add("--since=" + from + " 00:00:00");
+                if (!string.IsNullOrWhiteSpace(to)) psi.ArgumentList.Add("--until=" + to + " 23:59:59");
+                if (!string.IsNullOrWhiteSpace(author)) { psi.ArgumentList.Add("--regexp-ignore-case"); psi.ArgumentList.Add("--author=" + author); }
+                psi.Environment["GIT_PAGER"] = "cat";
+                psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+
+                using var p = Process.Start(psi);
+                if (p == null) return (false, "", "git 프로세스를 시작할 수 없습니다.");
+                string outp = p.StandardOutput.ReadToEnd();
+                string errp = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(60000)) { try { p.Kill(true); } catch { } return (false, "", "git 실행 시간 초과"); }
+                if (p.ExitCode != 0) return (false, "", string.IsNullOrWhiteSpace(errp) ? ("git 종료코드 " + p.ExitCode) : errp.Trim());
+                return (true, outp, "");
+            }
+            catch (System.ComponentModel.Win32Exception) { return (false, "", "git 명령을 찾을 수 없습니다. 이 PC에 git이 설치되어 있는지 확인하세요."); }
+            catch (Exception ex) { return (false, "", ex.Message); }
+        }
+
+        // svn diff -c <rev> — 단일 리비전 변경분. SvnLog와 동일한 ProcessStartInfo/인코딩(UTF-8).
+        // 실패해도 오류 주석 문자열로 반환 → 한 리비전 실패가 전체 patch를 끊지 않게.
+        private static string SvnDiff(string repo, string rev)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo(SvnExe())
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8,
+                };
+                psi.ArgumentList.Add("diff");
+                psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(rev);
+                psi.ArgumentList.Add(repo);
+                psi.ArgumentList.Add("--non-interactive");
+
+                using var p = Process.Start(psi);
+                if (p == null) return "(svn diff 프로세스를 시작할 수 없습니다)";
+                string outp = p.StandardOutput.ReadToEnd();
+                string errp = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(60000)) { try { p.Kill(true); } catch { } return "(svn diff 시간 초과: r" + rev + ")"; }
+                if (p.ExitCode != 0) return "(svn diff 실패 r" + rev + ": " + (string.IsNullOrWhiteSpace(errp) ? ("종료코드 " + p.ExitCode) : errp.Trim()) + ")";
+                return outp;
+            }
+            catch (Exception ex) { return "(svn diff 예외 r" + rev + ": " + ex.Message + ")"; }
+        }
+
+        // 파일/폴더명 안전화 — Windows 금지문자(\ / : * ? " < > |)와 제어문자를 '_'로. 트림 후 비면 "과제".
+        private static string SanitizeName(string s)
+        {
+            if (string.IsNullOrWhiteSpace(s)) return "과제";
+            var sb = new StringBuilder(s.Length);
+            foreach (char ch in s)
+            {
+                if (ch == '\\' || ch == '/' || ch == ':' || ch == '*' || ch == '?' || ch == '"' || ch == '<' || ch == '>' || ch == '|' || char.IsControl(ch))
+                    sb.Append('_');
+                else sb.Append(ch);
+            }
+            string r = sb.ToString().Trim();
+            return r.Length == 0 ? "과제" : r;
         }
 
         // 폴더가 git 작업트리인지 판정. .git 존재로 빠르게, 아니면 rev-parse로 확인.
