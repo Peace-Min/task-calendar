@@ -989,6 +989,30 @@ if (!JSDOM) {
       assert.deepStrictEqual(p.reportFormatPrefs.daily, { marker: '-', markerCustom: '', indent: 1 });
       assert.deepStrictEqual(p.reportFormatPrefs.weekly, { marker: 'A.', markerCustom: '▶', indent: 4 });
     });
+    test('prefs roundtrip: 기간취합 reportTypographyPrefs 보존', () => {
+      const st = fmtState('-', '', 1);
+      st.reportTypographyPrefs = { custom: { family: 'batang', size: 16 } };
+      seed(st);
+      const xml = ev('toXML()');
+      assert.ok(/reportFontFamily_custom="batang"/.test(xml), 'custom font family 기록');
+      assert.ok(/reportFontSize_custom="16"/.test(xml), 'custom font size 기록');
+      const p = evJSON('fromXML(' + JSON.stringify(xml) + ')');
+      assert.deepStrictEqual(p.reportTypographyPrefs.custom, { family: 'batang', size: 16 });
+    });
+    test('기간취합 글꼴 설정: 미리보기 스타일과 HTML 복사에 반영', () => {
+      seed(fmtState('-', '', 1));
+      setRptRange('2026-07-01', '2026-07-31');
+      ev("setReportMode('custom'); updateCurrentReportTypographyPref({ family:'malgun', size:14 }); buildReport();");
+      assert.strictEqual(ev("$('#reportModal').classList.contains('rpt-mode-custom')"), true);
+      assert.strictEqual(ev("$('#rptOut').classList.contains('rpt-custom-font')"), true);
+      assert.ok(ev("$('#rptOut').style.getPropertyValue('--rpt-font-family')").includes('Malgun Gothic'));
+      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--rpt-font-size')"), '14pt');
+      const html = ev("buildReportHtml('Alpha\\nBeta')");
+      assert.ok(html.includes('font-family:\"Malgun Gothic\"'));
+      assert.ok(html.includes('font-size:14pt'));
+      assert.ok(html.includes('Alpha<br>Beta'));
+      ev("setReportMode('daily')");
+    });
     test('prefs roundtrip: custom 비면 속성 미기록·기본 복원(indent 경계 0)', () => {
       seed(fmtState('A.', '', 0));
       const xml = ev('toXML()');
