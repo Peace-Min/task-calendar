@@ -29,6 +29,7 @@ namespace TaskCalendarWidget
 
         private CoreWebView2Environment? _cwvEnv;      // Window_Loaded에서 할당 — 보조 WebView2(netcus)가 같은 환경(쿠키·세션) 재사용
         private readonly NetcusService _netcus;        // 회사 일간보고(netcus) 전용 서비스(행위보존 추출 Phase1)
+        private readonly ProjectDb _projectDb;         // 과제 DB 연동(READ 경로) — 로컬 MySQL(taskmgr)의 공식 과제를 읽어 웹으로 넘김
 
         private WidgetSettings _settings = new();
         private RECT _gestureRect;   // 이동/리사이즈 시작 시점의 창 물리 좌표
@@ -73,6 +74,7 @@ namespace TaskCalendarWidget
             ApplyWindowBounds();
             ApplyWindowIcon();   // 작업표시줄/Alt+Tab 버튼 브랜드 아이콘(트레이 모드 노출 시 빈 아이콘 방지)
             _netcus = new NetcusService(this);   // Env/DataDir은 라이브 getter로 읽으므로 이른 생성 안전
+            _projectDb = new ProjectDb(_dataDir, Log);   // 과제 DB(READ) — 같은 데이터 폴더에 db-config.json 저장
         }
 
         // ============ 설정 ============
@@ -441,6 +443,31 @@ namespace TaskCalendarWidget
                     case "updateSourceGet": // 설정 열 때 현재 값 반영
                         JsCall("window.__updateSource && window.__updateSource(" + JsonSerializer.Serialize(_settings.UpdateSourceUrl ?? "") + ")");
                         break;
+
+                    // ----- 과제 DB 연동(READ 경로) -----
+                    case "loadProjects":    // 공식 과제 읽어 웹으로(__applyProjects). 실패 시 ""를 넘겨 웹이 캐시 폴백.
+                        _ = LoadProjectsToWebAsync();
+                        break;
+                    case "testDbConnection":  // 설정에서 '연결 테스트' — 결과를 __dbTestResult(ok, msg)로
+                        _ = TestDbConnectionAsync();
+                        break;
+                    case "saveDbConfig":    // 설정 저장(비번 빈칸=기존 유지) → 저장 직후 새로고침
+                        _projectDb.SaveConfig(GetStr(doc, "host"), GetInt(doc, "port"), GetStr(doc, "database"), GetStr(doc, "user"), GetStr(doc, "password"));
+                        _ = LoadProjectsToWebAsync();
+                        break;
+
+                    // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
+                    case "saveAdminCred":   // 관리자 자격 등록/변경(초기 1회)
+                        _projectDb.SaveAdminCred(GetStr(doc, "id"), GetStr(doc, "pw"));
+                        JsCall("window.__adminSaved && window.__adminSaved()");
+                        break;
+                    case "adminLogin":      // config값과 대조 → 역할('admin'|null)을 __adminResult로 반환
+                    {
+                        var (role, amsg) = _projectDb.VerifyAdmin(GetStr(doc, "id"), GetStr(doc, "pw"));
+                        string roleJs = role == null ? "null" : JsonSerializer.Serialize(role);
+                        JsCall("window.__adminResult && window.__adminResult(" + roleJs + "," + JsonSerializer.Serialize(amsg) + ")");
+                        break;
+                    }
 
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
@@ -1090,6 +1117,21 @@ namespace TaskCalendarWidget
 
         // 메인 웹뷰로 임의 JS 실행(UI 스레드 마샬 + try/catch). netcus·리마인더·업데이트 통지 공유.
         private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
+
+        // ============ 과제 DB 연동(READ 경로) ============
+        // 공식 과제(project, is_active=1)를 읽어 웹으로 넘긴다. 오프라인/실패면 ""를 넘겨 웹이 로컬 캐시로 폴백(오프라인 우선).
+        private async Task LoadProjectsToWebAsync()
+        {
+            string? json = await _projectDb.LoadProjectsJsonAsync();
+            // null(연결/조회 실패) → "" 전달 → 웹 __applyProjects가 캐시 사용
+            JsCall("window.__applyProjects && window.__applyProjects(" + JsonSerializer.Serialize(json ?? "") + ")");
+        }
+
+        private async Task TestDbConnectionAsync()
+        {
+            var (ok, msg) = await _projectDb.TestConnectionAsync();
+            JsCall("window.__dbTestResult && window.__dbTestResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")");
+        }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----
         // Dispatcher는 Window(DispatcherObject)의 상속 프로퍼티가 인터페이스를 만족한다.

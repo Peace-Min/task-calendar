@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>과제 DB 연동 — UI/UX 프로토타입 v2</title>
+<style>
+  /* ============================================================
+     실제 위젯(task-calendar-prototype.html)의 디자인 토큰을 그대로 미러링.
+     새 토큰을 발명하지 않는다. 색=역할, 크기=스케일.
+     ============================================================ */
+  :root{
+    /* 색 (light) */
+    --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
+    --text:#1d2433; --muted:#5b6373;            /* AA 5.6:1 — 보조 본문 */
+    --faint-text:#6c7488;                        /* AA 4.68:1 — 약화 본문(힌트) */
+    --faint:#9aa2b3;                             /* 테두리·비활성·장식 전용(본문 금지) */
+    --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
+    --danger:#d6494e; --danger-soft:#fdeeee; --danger-text:#c0343a;
+    --shadow:0 10px 32px rgba(20,28,55,.16);
+    --hover-bg:#f3f5fa; --dim-bg:#fafbfd;
+    /* 반경 */
+    --r-sm:6px; --r-md:10px; --r-lg:14px;
+    /* 간격 (8그리드) */
+    --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+    /* 타입 (6단) */
+    --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-head:18px;
+    --lh-tight:1.35; --lh-body:1.5;
+    /* 상태(status) 전용 의미색 — 섹션 팔레트와 절대 공유하지 않음 */
+    --st-on:#12813f;   --st-on-soft:#e6f6ec;     /* 진행중 = green */
+    --st-off:#5b6373;  --st-off-soft:#eef0f4;    /* 종료 = neutral gray */
+    --st-amber:#b5791b;--st-amber-soft:#fdf1dd;  /* 미정·선진행 = amber */
+    --st-deliv:#2e44ad;--st-deliv-soft:#eef1fd;  /* 1차 납품완료 = accent-2 계열 */
+    /* 연결(온/오프) */
+    --net-on:#12813f; --net-on-soft:#e6f6ec;
+    --net-off:#b5791b;--net-off-soft:#fdf1dd;
+    /* 페이지 셸 배경(주석 목업 전용, 위젯 아님) */
+    --page:#e9ebf1;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#171a20; --panel:#1d222b; --line:#2a303b; --line-2:#333b49;
+    --text:#e7eaf0; --muted:#9aa2b3;
+    --faint-text:#98a2b3; --faint:#6b7482;
+    --accent:#5b8dff; --accent-2:#7ba4ff; --accent-soft:#1a2740;
+    --danger:#e0686c; --danger-soft:#3a2122; --danger-text:#f0999c;
+    --shadow:0 10px 32px rgba(0,0,0,.45);
+    --hover-bg:#232936; --dim-bg:#1a1f27;
+    --st-on:#4ecb81;   --st-on-soft:#123020;
+    --st-off:#9aa2b3;  --st-off-soft:#242a34;
+    --st-amber:#e0b64d;--st-amber-soft:#2e2410;
+    --st-deliv:#8fb0ff;--st-deliv-soft:#1a2740;
+    --net-on:#4ecb81; --net-on-soft:#123020;
+    --net-off:#e0b64d;--net-off-soft:#2e2410;
+    --page:#0f1115;
+  }}
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--page); color:var(--text); line-height:var(--lh-body);
+    font-family:'Pretendard','Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; font-variant-numeric:tabular-nums;
+  }
+  .num,.meta,.cnt,time,.count{font-variant-numeric:tabular-nums}
+  .wrap{max-width:1120px;margin:0 auto;padding:var(--sp-6) var(--sp-4) 72px}
+  h1{font-size:1.6rem;margin-bottom:var(--sp-1);letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:var(--fs-emph);margin-bottom:var(--sp-2);max-width:70ch}
+  .sub code,.note code,.ann code,.uxrule code{
+    background:var(--panel);border:1px solid var(--line);padding:1px 5px;border-radius:var(--r-sm);
+    font-size:.85em;font-family:ui-monospace,'Consolas','D2Coding',monospace}
+  .legend{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin:var(--sp-3) 0 var(--sp-1);font-size:var(--fs-meta)}
+  .lg{display:inline-flex;align-items:center;gap:5px;background:var(--panel);border:1px solid var(--line);
+    border-radius:999px;padding:3px 10px;color:var(--muted)}
+  .lg .dot{width:8px;height:8px;border-radius:50%}
+  h2{font-size:1.12rem;margin:var(--sp-6) 0 var(--sp-1);letter-spacing:-.01em}
+  h2 .n{color:var(--accent);font-variant-numeric:tabular-nums;margin-right:6px;font-weight:700}
+  .note{color:var(--muted);font-size:var(--fs-body);margin-bottom:var(--sp-3);max-width:72ch}
+
+  /* 페이지 셸은 넓게(좌: 목업 / 우: 주석). 목업 모달은 340px 고정으로 좁은 폭 적합성 증명 */
+  .stage{display:grid;grid-template-columns:360px 1fr;gap:var(--sp-4);align-items:start}
+  @media (max-width:780px){.stage{grid-template-columns:1fr}}
+  .mockcol{display:flex;flex-direction:column;gap:var(--sp-2)}
+  .mockcap{font-size:var(--fs-micro);color:var(--faint-text);font-weight:600;letter-spacing:.02em}
+
+  /* ---- 모달 목업 (실제 위젯 폭: Width=380 / MinWidth=300 → 340px로 렌더) ---- */
+  .modal{width:340px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+    overflow:hidden;box-shadow:var(--shadow)}
+  .modal.narrow{width:320px}   /* 최소폭 근접 스트레스 목업 */
+  .modal.wide{width:600px;max-width:100%}   /* 공식 과제(DB) 전용 넓은 화면 — 창 확장/별도 창 */
+
+  /* ---- §1b 공식 과제 표(컬럼)형 + master-detail ---- */
+  .md-split{display:grid;grid-template-columns:1fr 232px;gap:0}
+  @media (max-width:540px){.md-split{grid-template-columns:1fr}}
+  .md-list{min-width:0;border-right:1px solid var(--line)}
+  .md-split .md-list:only-child{border-right:none}
+  .dbtable{width:100%;border-collapse:collapse;font-size:var(--fs-body);table-layout:fixed}
+  .dbtable thead th{position:sticky;top:0;z-index:3;background:var(--panel);text-align:left;
+    font-size:var(--fs-micro);font-weight:700;color:var(--faint-text);letter-spacing:.02em;
+    padding:7px 8px;border-bottom:1px solid var(--line-2);white-space:nowrap}
+  .dbtable th.c-act,.dbtable td.c-act{text-align:right;width:64px}
+  .dbtable th.c-name{width:auto}
+  .dbtable th.c-ord{width:76px} .dbtable th.c-sec{width:70px}
+  .dbtable th.c-st{width:96px} .dbtable th.c-term{width:132px}
+  /* sticky 그룹 헤더 행(구분/발주처로 접기) */
+  .dbtable tr.grprow th{position:sticky;top:27px;z-index:2;background:var(--dim-bg);
+    font-size:var(--fs-meta);font-weight:700;color:var(--text);padding:6px 8px;
+    border-bottom:1px solid var(--line);cursor:pointer}
+  .dbtable tr.grprow .tri{font-size:10px;color:var(--muted);margin-right:5px;display:inline-block;width:10px}
+  .dbtable tr.grprow[aria-expanded=false] .tri{transform:rotate(-90deg)}
+  .dbtable tr.grprow .cnt{font-weight:600;color:var(--muted);font-size:var(--fs-micro);margin-left:4px}
+  .dbtable tbody tr.drow{cursor:pointer;border-bottom:1px solid var(--line)}
+  .dbtable tbody tr.drow:hover{background:var(--hover-bg)}
+  .dbtable tbody tr.drow.sel{background:var(--accent-soft)}
+  .dbtable tbody tr.drow:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .dbtable td{padding:8px;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .dbtable td.c-name{font-weight:600}
+  .dbtable td .cell-name{display:flex;align-items:center;gap:7px;min-width:0}
+  .dbtable td .cell-name .rname{overflow:hidden;text-overflow:ellipsis}
+  .dbtable td.c-ord,.dbtable td.c-sec,.dbtable td.c-term{color:var(--muted)}
+  .dbtable td.c-term{font-variant-numeric:tabular-nums}
+  .dbtable td.c-act .iconbtn{width:24px;height:24px;font-size:12px}
+  .dbtable tr.grprow[aria-expanded=false] ~ tr.drow{display:none}   /* 데모용 단순 접기 표기 */
+  /* 우측 상세 패널 */
+  .md-detail{padding:var(--sp-3);min-width:0}
+  .md-detail .dh{display:flex;align-items:center;gap:7px;margin-bottom:var(--sp-2)}
+  .md-detail .dh .pname{font-size:var(--fs-emph);font-weight:700;flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .md-detail dl{display:grid;grid-template-columns:auto 1fr;gap:5px 10px;font-size:var(--fs-meta)}
+  .md-detail dt{color:var(--muted);white-space:nowrap}
+  .md-detail dd{color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
+  .md-detail .dact{margin-top:var(--sp-3);display:flex;gap:6px;flex-wrap:wrap}
+  .md-detail .dsync{margin-top:var(--sp-3);font-size:var(--fs-micro);color:var(--faint-text)}
+  .mhead{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--line)}
+  .mhead h3{font-size:var(--fs-title);font-weight:700;display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+  .xbtn{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+    border:1px solid transparent;background:transparent;color:var(--muted);border-radius:var(--r-sm);
+    cursor:pointer;font-size:16px;line-height:1}
+  .xbtn:hover{background:var(--hover-bg);color:var(--text)}
+  .xbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .mbody{padding:var(--sp-4)}
+  .mfoot{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-4);border-top:1px solid var(--line)}
+
+  /* ---- 버튼 (실제 앱과 일치) ---- */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;
+    font-size:var(--fs-emph);font-weight:500;padding:8px 12px;border-radius:var(--r-sm);
+    border:1px solid var(--line-2);background:var(--panel);color:var(--text);cursor:pointer;
+    transition:background .15s,border-color .15s;white-space:nowrap}
+  .btn:hover{border-color:var(--faint);background:var(--hover-bg)}
+  .btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .btn.sm{padding:4px 10px;font-size:var(--fs-body)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+  .btn.danger{color:var(--danger-text);border-color:var(--danger)}
+  .btn.danger:hover{background:var(--danger-soft)}
+  .btn.ghost{background:transparent;border-color:transparent}
+  .btn.ghost:hover{background:var(--hover-bg)}
+  .btn:disabled,.btn[aria-disabled=true]{opacity:.5;cursor:not-allowed;background:var(--dim-bg)}
+  .btn:disabled:hover{border-color:var(--line-2);background:var(--dim-bg)}
+
+  /* ---- 폼 요소 ---- */
+  label.lb{display:block;font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin-top:var(--sp-3)}
+  label.lb:first-child{margin-top:0}
+  .in{width:100%;font:inherit;font-size:var(--fs-body);padding:8px 10px;border-radius:var(--r-sm);
+    border:1px solid var(--line-2);background:var(--panel);color:var(--text);margin-top:5px}
+  .in::placeholder{color:var(--faint)}
+  .in:focus-visible{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+  select.in{appearance:auto;cursor:pointer}
+  .in:disabled,.in[aria-disabled=true]{background:var(--dim-bg);color:var(--faint-text);cursor:not-allowed;
+    border-style:dashed}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+  .grid3{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}   /* 좁은 폭: 3열도 2열로 wrap */
+  @media (max-width:360px){.grid2,.grid3{grid-template-columns:1fr}}
+
+  /* ---- 검색 입력 ---- */
+  .search{position:relative;margin-bottom:var(--sp-2)}
+  .search .in{margin-top:0;padding-left:32px}
+  .search .sicon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--faint);
+    font-size:14px;pointer-events:none}
+
+  /* ---- 필터바 ---- */
+  .filterbar{display:flex;flex-wrap:wrap;gap:5px;align-items:center;padding:var(--sp-2) 0;
+    border-bottom:1px solid var(--line);margin-bottom:var(--sp-2)}
+  .fchip{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:500;
+    padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);
+    color:var(--muted);cursor:pointer}
+  .fchip:hover{border-color:var(--faint);background:var(--hover-bg)}
+  .fchip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .fchip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+  .fchip .caret{font-size:9px;opacity:.7}
+  .fcount{font-size:var(--fs-micro);color:var(--muted);font-weight:600;margin-left:2px}
+  .freset{margin-left:auto;font-size:var(--fs-meta);color:var(--accent-2);background:none;border:none;
+    cursor:pointer;padding:3px 6px;border-radius:var(--r-sm);font-weight:600}
+  .freset:hover{background:var(--accent-soft)}
+  .freset:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .admin-tog{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-meta);color:var(--muted);cursor:pointer}
+
+  /* ---- 리스트 컨테이너: 고정 max-height + 스크롤 (가상화 없음) ---- */
+  .listbox{max-height:50vh;overflow-y:auto;margin:0 calc(-1*var(--sp-2));padding:0 var(--sp-2)}
+  .listbox.short{max-height:280px}
+  /* sticky 그룹 헤더 */
+  .grp{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;
+    padding:6px 4px;background:var(--panel);
+    font-size:var(--fs-body);font-weight:700;color:var(--text);cursor:pointer;
+    border-bottom:1px solid var(--line)}
+  .grp:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+  .grp .tri{font-size:10px;color:var(--muted);width:12px;flex:none;transition:transform .12s}
+  .grp[aria-expanded=false] .tri{transform:rotate(-90deg)}
+  .grp .cnt{font-size:var(--fs-meta);font-weight:600;color:var(--muted)}
+  .grp .net{margin-left:auto}
+  .grp[aria-expanded=false] + .grpitems{display:none}
+
+  /* ---- 리스트 행 (최소) ---- */
+  .row{display:flex;align-items:flex-start;gap:8px;padding:8px 8px;border-radius:var(--r-sm);cursor:pointer;
+    border:1px solid transparent}
+  .row:hover{background:var(--hover-bg)}
+  .row:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+  .sw{width:11px;height:11px;border-radius:3px;flex:none;margin-top:3px}
+  .row .rmain{flex:1;min-width:0}
+  .row .rname{font-size:var(--fs-body);font-weight:600;line-height:1.35;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .rmeta{font-size:var(--fs-meta);color:var(--muted);line-height:1.35;
+    display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px}
+  .row .rmeta .dotsep{color:var(--faint)}
+  .row .ract{flex:none;display:flex;align-items:center;gap:2px;margin-top:1px}
+  .iconbtn{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+    border:1px solid transparent;background:transparent;color:var(--muted);border-radius:var(--r-sm);
+    cursor:pointer;font-size:13px;line-height:1}
+  .iconbtn:hover{background:var(--panel);border-color:var(--line-2);color:var(--text)}
+  .iconbtn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .lock{font-size:var(--fs-micro);color:var(--faint-text);display:inline-flex;align-items:center;gap:3px}
+
+  /* origin pill (모든 행에 상시 표기) */
+  .opill{font-size:var(--fs-micro);font-weight:700;padding:1px 6px;border-radius:var(--r-sm);flex:none;line-height:1.5}
+  .opill.official{background:var(--accent-soft);color:var(--accent-2)}
+  .opill.personal{background:var(--dim-bg);color:var(--muted);border:1px solid var(--line-2)}
+
+  /* status dot+text (독립 의미색) */
+  .status{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:600;white-space:nowrap}
+  .status .sd{width:7px;height:7px;border-radius:50%;flex:none}
+  .status.on{color:var(--st-on)} .status.on .sd{background:var(--st-on)}
+  .status.off{color:var(--st-off)} .status.off .sd{background:var(--st-off)}
+  .status.amber{color:var(--st-amber)} .status.amber .sd{background:var(--st-amber)}
+  .status.deliv{color:var(--st-deliv)} .status.deliv .sd{background:var(--st-deliv)}
+  .status.undef{color:var(--muted);font-weight:500}   /* NULL status = muted "미정" 텍스트, "—" 아님 */
+
+  /* 연결 배지 */
+  .netbadge{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-micro);font-weight:600;
+    padding:2px 8px;border-radius:999px}
+  .netbadge.on{background:var(--net-on-soft);color:var(--net-on)}
+  .netbadge.off{background:var(--net-off-soft);color:var(--net-off)}
+
+  /* 오프라인 배너 */
+  .offbanner{display:flex;align-items:center;gap:6px;font-size:var(--fs-meta);font-weight:600;
+    color:var(--net-off);background:var(--net-off-soft);border:1px solid var(--net-off);
+    border-radius:var(--r-sm);padding:6px 10px;margin-bottom:var(--sp-2)}
+
+  /* hint 줄 */
+  .hint{font-size:var(--fs-meta);color:var(--faint-text);margin-top:var(--sp-2);line-height:1.45}
+  .hint.tap{cursor:pointer}
+
+  /* ---- 주석 블록 ---- */
+  .ann{background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r-md);
+    padding:var(--sp-3) var(--sp-4);font-size:var(--fs-body)}
+  .ann b{color:var(--accent-2)}
+  .ann ul{margin:6px 0 0;padding-left:18px}
+  .ann li{margin:4px 0;line-height:1.45}
+  .tag{display:inline-block;font-size:var(--fs-micro);font-weight:700;padding:0 6px;border-radius:var(--r-sm);
+    vertical-align:1px;margin-right:2px}
+  .tag.p0{background:var(--danger-soft);color:var(--danger-text);border:1px solid var(--danger)}
+  .tag.p1{background:var(--st-amber-soft);color:var(--st-amber);border:1px solid var(--st-amber)}
+  .pill{display:inline-block;font-size:var(--fs-micro);font-weight:600;padding:1px 7px;border-radius:var(--r-sm);
+    background:var(--panel);border:1px solid var(--line-2);color:var(--muted)}
+
+  /* ---- 콤보박스 (§3·§4 실제 동작) ---- */
+  .combo{position:relative}
+  .combo-input{width:100%;font:inherit;font-size:var(--fs-body);padding:8px 30px 8px 30px;
+    border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--panel);color:var(--text)}
+  .combo-input::placeholder{color:var(--faint)}
+  .combo-input:focus-visible{outline:2px solid var(--accent);outline-offset:0;border-color:var(--accent)}
+  .combo .sicon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--faint);
+    font-size:13px;pointer-events:none}
+  .combo .caretbtn{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:24px;height:24px;
+    display:inline-flex;align-items:center;justify-content:center;border:none;background:transparent;
+    color:var(--muted);cursor:pointer;font-size:10px;border-radius:var(--r-sm)}
+  .combo .caretbtn:hover{background:var(--hover-bg)}
+  .popover{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;background:var(--panel);
+    border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);
+    max-height:230px;overflow-y:auto;padding:4px}
+  .popover[hidden]{display:none}
+  .listbl{list-style:none}
+  .optgrp{padding:6px 8px 3px;font-size:var(--fs-micro);font-weight:700;color:var(--faint-text);
+    letter-spacing:.03em;position:sticky;top:0;background:var(--panel)}
+  .opt{display:flex;align-items:flex-start;gap:7px;padding:7px 8px;border-radius:var(--r-sm);cursor:pointer}
+  .opt:hover{background:var(--hover-bg)}
+  .opt.active{background:var(--accent-soft);outline:2px solid var(--accent);outline-offset:-2px}
+  .opt[aria-selected=true]{font-weight:600}
+  .opt .osw{width:10px;height:10px;border-radius:3px;flex:none;margin-top:3px}
+  .opt .otxt{flex:1;min-width:0}
+  .opt .oname{font-size:var(--fs-body);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .opt .ometa{font-size:var(--fs-micro);color:var(--muted);line-height:1.3;margin-top:1px}
+  .opt .oinfo{flex:none;color:var(--faint);font-size:12px;padding:0 3px;cursor:pointer;border-radius:4px;border:1px solid transparent;background:transparent}
+  .opt .oinfo:hover{background:var(--panel);border-color:var(--line-2);color:var(--muted)}
+  .opt-empty{padding:12px 10px;text-align:center}
+  .opt-empty .em-t{font-size:var(--fs-body);color:var(--muted)}
+  .opt-empty .em-add{margin-top:8px;font-size:var(--fs-body);font-weight:600;color:var(--accent-2);
+    background:var(--accent-soft);border:1px solid var(--accent);border-radius:var(--r-sm);
+    padding:6px 10px;cursor:pointer}
+  .opt-empty .em-add:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  /* ---- peek(읽기 전용) ---- */
+  .peek{width:300px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);
+    box-shadow:var(--shadow);overflow:hidden}
+  .peek .ph{display:flex;align-items:center;gap:7px;padding:var(--sp-3) var(--sp-3) var(--sp-2)}
+  .peek .ph .pname{font-size:var(--fs-emph);font-weight:700;flex:1;min-width:0}
+  .peek dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;padding:0 var(--sp-3) var(--sp-3);
+    font-size:var(--fs-body)}
+  .peek dt{color:var(--muted);white-space:nowrap}
+  .peek dd{color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
+  .peek .pfoot{border-top:1px solid var(--line);padding:8px var(--sp-3);font-size:var(--fs-micro);
+    color:var(--faint-text);display:flex;align-items:center;gap:5px}
+  .peek .pcached{background:var(--net-off-soft);color:var(--net-off);border-top:1px solid var(--net-off)}
+
+  /* ---- 스켈레톤 ---- */
+  .skrow{display:flex;align-items:center;gap:8px;padding:9px 8px}
+  .skbar{height:10px;border-radius:5px;background:linear-gradient(90deg,var(--line) 25%,var(--dim-bg) 50%,var(--line) 75%);
+    background-size:200% 100%;animation:sk 1.2s ease-in-out infinite}
+  @keyframes sk{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+  /* ---- 빈 상태 ---- */
+  .empty{text-align:center;padding:22px 14px;color:var(--muted)}
+  .empty .eicon{font-size:26px;opacity:.5;display:block;margin-bottom:6px}
+  .empty .et{font-size:var(--fs-emph);font-weight:600;color:var(--text)}
+  .empty .ed{font-size:var(--fs-meta);color:var(--muted);margin-top:3px;line-height:1.45}
+
+  /* ---- toast ---- */
+  .toast{display:flex;align-items:center;gap:8px;font-size:var(--fs-body);font-weight:500;
+    padding:9px 12px;border-radius:var(--r-md);box-shadow:var(--shadow);width:300px}
+  .toast.ok{background:var(--st-on-soft);color:var(--st-on);border:1px solid var(--st-on)}
+  .toast.err{background:var(--danger-soft);color:var(--danger-text);border:1px solid var(--danger)}
+  .toast .tmsg{flex:1}
+  .toast .btn{padding:3px 10px;font-size:var(--fs-meta)}
+
+  /* offline blocked card */
+  .blockcard{border:1px dashed var(--net-off);background:var(--net-off-soft);border-radius:var(--r-md);
+    padding:16px 14px;text-align:center}
+  .blockcard .bt{font-size:var(--fs-emph);font-weight:700;color:var(--net-off)}
+  .blockcard .bd{font-size:var(--fs-meta);color:var(--faint-text);margin-top:5px;line-height:1.45}
+
+  /* 설정 섹션 */
+  .set-lb{font-weight:700;font-size:var(--fs-emph);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .set-hint{color:var(--muted);font-size:var(--fs-meta);margin:4px 0 8px;line-height:1.45}
+  .configline{font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-body)}
+
+  /* states 갤러리 */
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--sp-3)}
+  .gcard{border:1px solid var(--line);border-radius:var(--r-md);padding:var(--sp-3);background:var(--panel)}
+  .glabel{font-size:var(--fs-micro);font-weight:700;color:var(--faint-text);letter-spacing:.02em;
+    margin-bottom:var(--sp-2);text-transform:uppercase}
+  .gbox{background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:var(--sp-2)}
+
+  .uxrule{margin-top:var(--sp-3)}
+  .uxrule b{color:var(--accent-2)}
+  footer{color:var(--faint-text);font-size:var(--fs-meta);text-align:center;margin-top:48px;
+    border-top:1px solid var(--line);padding-top:16px}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>과제 DB 연동 — UI/UX 프로토타입 <span style="color:var(--accent)">v2</span></h1>
+  <p class="sub">위젯창 <b>Width=380 / MinWidth=300</b> 기준. 각 모달 목업은 <b>340px</b>로 렌더해 좁은 폭 적합성을 증명합니다.
+     실 위젯(<code>task-calendar-prototype.html</code>)의 디자인 토큰을 그대로 사용. 모델 B · 입력관대/출력엄격 ·
+     참조 <code>db-&lt;uid&gt;</code>/<code>c-&lt;uuid&gt;</code>. 라이트 기본 + 다크(<code>prefers-color-scheme</code>) 자동.</p>
+  <div class="legend">
+    <span class="lg"><span class="dot" style="background:var(--accent)"></span>공식 과제 (DB)</span>
+    <span class="lg"><span class="dot" style="background:var(--muted)"></span>개인 과제 (로컬)</span>
+    <span class="lg"><span class="dot" style="background:var(--st-on)"></span>진행중</span>
+    <span class="lg"><span class="dot" style="background:var(--st-off)"></span>종료</span>
+    <span class="lg"><span class="dot" style="background:var(--st-amber)"></span>미정·선진행</span>
+    <span class="lg"><span class="dot" style="background:var(--net-off)"></span>오프라인(캐시)</span>
+  </div>
+
+  <!-- ============ 1a. 개인 과제 관리 (경량 모달) ============ -->
+  <h2><span class="n">1a</span>개인 과제 관리 — 경량 모달 (기존 카테고리 관리 그대로)</h2>
+  <p class="note">헤더 <b>🏷️ 과제 관리</b> = 이 화면. <b>개인 과제(로컬 <code>c-&lt;uuid&gt;</code>)만</b> — 이름·색·설명 + ＋추가 + 각 행 수정/삭제. 항목이 적어 검색·필터 불필요, 340px 유지. 공식 과제는 여기서 관리하지 않고 <b>"📁 공식 과제(DB) 보기 →"</b>로 §1b 이동.</p>
+  <div class="stage">
+    <div class="mockcol">
+      <span class="mockcap">모달 · 340px</span>
+      <div class="modal">
+        <div class="mhead"><h3>🏷️ 과제 관리</h3>
+          <button class="xbtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="mbody">
+          <!-- 공식 과제(DB) 진입점 -->
+          <button class="btn sm" style="width:100%;justify-content:space-between" onclick="void 0">
+            <span>📁 공식 과제(DB) 보기</span>
+            <span style="color:var(--muted)">11건 · 연결됨 →</span>
+          </button>
+
+          <label class="lb">내 개인 과제 <span class="cnt" style="color:var(--muted);font-weight:600">· 로컬 2</span></label>
+          <div class="listbox short" style="margin-top:5px">
+            <div class="grpitems">
+              <div class="row" tabindex="0" role="button">
+                <span class="sw" style="background:#e06666"></span>
+                <span class="rmain">
+                  <span class="rname">MCP서버개발</span>
+                  <span class="rmeta">개인 기록</span>
+                </span>
+                <span class="ract">
+                  <span class="opill personal">개인</span>
+                  <button class="iconbtn" aria-label="수정">✎</button>
+                  <button class="iconbtn" aria-label="삭제">🗑</button>
+                </span>
+              </div>
+              <div class="row" tabindex="0" role="button">
+                <span class="sw" style="background:#5bbf7a"></span>
+                <span class="rmain">
+                  <span class="rname">주간 보고서</span>
+                  <span class="rmeta">개인 기록</span>
+                </span>
+                <span class="ract">
+                  <span class="opill personal">개인</span>
+                  <button class="iconbtn" aria-label="수정">✎</button>
+                  <button class="iconbtn" aria-label="삭제">🗑</button>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ＋ 개인 과제 추가 (이름 + 색) -->
+          <label class="lb">＋ 새 개인 과제 추가</label>
+          <div style="display:flex;gap:6px;margin-top:5px;align-items:center">
+            <span class="sw" style="width:18px;height:18px;background:#3e7bd0;outline:2px solid var(--text);outline-offset:1px;flex:none" title="색 선택"></span>
+            <input class="in" style="margin-top:0" placeholder="과제 이름 (예: 사내 교육)" aria-label="새 개인 과제 이름">
+            <button class="btn primary sm" style="flex:none">＋추가</button>
+          </div>
+          <input class="in" placeholder="설명 (선택)" aria-label="설명">
+        </div>
+        <div class="mfoot">
+          <button class="btn ghost sm">🔗 재연결</button>
+          <span style="flex:1"></span>
+          <button class="btn sm">닫기</button>
+        </div>
+      </div>
+    </div>
+    <div class="ann">
+      <b>UX 규칙</b>
+      <ul>
+        <li><span class="tag p0">P0</span><b>개인/공식 완전 분리</b>. 이 경량 모달은 <b>개인 과제만</b> 다룸(기존 위젯 카테고리 관리 성격 유지). 좁은 340px에 80+ 공식 목록을 욱여넣지 않음.</li>
+        <li><span class="tag p1">P1</span>추가 = <b>이름·색·설명</b> + 실제 <b>＋추가 버튼</b>. 각 행 수정/삭제 자유(로컬 <code>c-&lt;uuid&gt;</code>).</li>
+        <li>진입점 2개 명확화: 헤더 🏷️ = 개인 과제(여기), 상단 <b>📁 공식 과제(DB) 보기 →</b> = §1b 넓은 화면. 하단 🔗 재연결 = §4.</li>
+        <li>항목이 적어 검색·필터 없음(있어도 단순). primary는 ＋추가, "닫기"는 ghost.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 1b. 공식 과제(DB) — 넓은 전용 화면 ============ -->
+  <h2><span class="n">1b</span>공식 과제(DB) — 넓은 전용 화면 (표형 + master-detail)</h2>
+  <p class="note"><b>이 화면은 창을 넓혀(드래그) 또는 별도 창으로 크게</b> 여는 전용 화면 — 80+ 공식 과제에 진짜 공간을 준다. 아래 목업은 <b>~600px</b>로 렌더. 넓은 폭을 표(컬럼)형 + 우측 상세(master-detail)로 활용.</p>
+  <div class="stage" style="grid-template-columns:1fr 300px">
+    <div class="mockcol">
+      <span class="mockcap">전용 화면 · ~600px (창 확장/별도 창)</span>
+      <div class="modal wide">
+        <div class="mhead"><h3>📁 공식 과제 (DB)</h3>
+          <span class="netbadge on">● 연결됨 · 79건 캐시</span>
+          <button class="xbtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="mbody">
+          <!-- 검색 + 필터바 -->
+          <div class="search">
+            <span class="sicon">🔍</span>
+            <input class="in" placeholder="사업명·통상명칭·발주처 검색" aria-label="공식 과제 검색" autofocus>
+          </div>
+          <div class="filterbar">
+            <button class="fchip on">진행중만</button>
+            <button class="fchip">발주처 <span class="caret">▾</span></button>
+            <button class="fchip">구분 <span class="caret">▾</span></button>
+            <button class="fchip">상태 <span class="caret">▾</span></button>
+            <label class="admin-tog"><input type="checkbox"> 숨김 포함<span class="pill" style="margin-left:2px">Admin</span></label>
+            <span class="fcount">필터 1</span>
+            <button class="freset">초기화</button>
+          </div>
+
+          <!-- master-detail: 좌측 표 | 우측 상세 -->
+          <div class="md-split">
+            <div class="md-list">
+              <div class="listbox" style="max-height:300px">
+                <table class="dbtable">
+                  <thead>
+                    <tr>
+                      <th class="c-name">통상명칭</th>
+                      <th class="c-ord">발주처</th>
+                      <th class="c-st">상태</th>
+                      <th class="c-term">계약기간</th>
+                      <th class="c-act">작업</th>
+                    </tr>
+                  </thead>
+                  <!-- 그룹: 일반계약 (구분으로 접기) -->
+                  <tbody>
+                    <tr class="grprow" tabindex="0" role="button" aria-expanded="true" onclick="toggleGrpRow(this)">
+                      <th colspan="5"><span class="tri">▾</span>일반계약<span class="cnt">· 2</span></th>
+                    </tr>
+                    <tr class="drow sel" tabindex="0" role="button"
+                        onclick="selectDrow(this,'자르반의 검','데마시아','일반계약','on','진행중','2023-01-10 ~ 2024-06-30','#3e7bd0','방금 전')">
+                      <td class="c-name"><span class="cell-name"><span class="sw" style="background:#3e7bd0"></span><span class="rname">자르반의 검</span></span></td>
+                      <td class="c-ord">데마시아</td>
+                      <td class="c-st"><span class="status on"><span class="sd"></span>진행중</span></td>
+                      <td class="c-term">2023-01-10~2024-06-30</td>
+                      <td class="c-act"><button class="iconbtn" aria-label="편집(Admin)" onclick="event.stopPropagation()">✎</button></td>
+                    </tr>
+                    <tr class="drow" tabindex="0" role="button"
+                        onclick="selectDrow(this,'녹서스의 분노','녹서스','일반계약','deliv','1차 납품완료','2024-03-01 ~ 미정','#d08a3e','2일 전')">
+                      <td class="c-name"><span class="cell-name"><span class="sw" style="background:#d08a3e"></span><span class="rname">녹서스의 분노</span></span></td>
+                      <td class="c-ord">녹서스</td>
+                      <td class="c-st"><span class="status deliv"><span class="sd"></span>1차 납품완료</span></td>
+                      <td class="c-term">2024-03-01~미정</td>
+                      <td class="c-act"><button class="iconbtn" aria-label="편집(Admin)" onclick="event.stopPropagation()">✎</button></td>
+                    </tr>
+                  </tbody>
+                  <!-- 그룹: 선진행 -->
+                  <tbody>
+                    <tr class="grprow" tabindex="0" role="button" aria-expanded="true" onclick="toggleGrpRow(this)">
+                      <th colspan="5"><span class="tri">▾</span>선진행<span class="cnt">· 1</span></th>
+                    </tr>
+                    <tr class="drow" tabindex="0" role="button"
+                        onclick="selectDrow(this,'가렌의 방패','데마시아','선진행','amber','미정','— (계약 전, NULL)','#8b6fd0','방금 전')">
+                      <td class="c-name"><span class="cell-name"><span class="sw" style="background:#8b6fd0"></span><span class="rname">가렌의 방패</span></span></td>
+                      <td class="c-ord">데마시아</td>
+                      <td class="c-st"><span class="status amber"><span class="sd"></span>미정</span></td>
+                      <td class="c-term">—</td>
+                      <td class="c-act"><button class="iconbtn" aria-label="편집(Admin)" onclick="event.stopPropagation()">✎</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- 페이지네이션 + 숨김 개수 -->
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 2px 0">
+                <button class="hint tap" style="background:none;border:none;text-align:left">
+                  <b style="color:var(--accent-2)">76개 숨김</b> · 종료 과제 전체 보기 →</button>
+                <span style="flex:1"></span>
+                <button class="btn sm">더 보기 (76)</button>
+              </div>
+            </div>
+
+            <!-- 우측 상세 패널 (읽기전용, 누구나) -->
+            <div class="md-detail" id="mdDetail">
+              <div class="dh">
+                <span class="sw" id="mdSw" style="width:12px;height:12px;background:#3e7bd0"></span>
+                <span class="pname" id="mdName">자르반의 검</span>
+                <span class="opill official">공식</span>
+              </div>
+              <dl>
+                <dt>발주처</dt><dd id="mdOrd">데마시아</dd>
+                <dt>구분</dt><dd id="mdSec">일반계약</dd>
+                <dt>상태</dt><dd id="mdSt"><span class="status on"><span class="sd"></span>진행중</span></dd>
+                <dt>계약기간</dt><dd id="mdTerm">2023-01-10 ~ 2024-06-30</dd>
+                <dt>마지막 동기화</dt><dd id="mdSync">방금 전</dd>
+              </dl>
+              <div class="dact">
+                <button class="btn primary sm">✎ 편집</button>
+                <button class="btn danger sm">🗑 숨김</button>
+              </div>
+              <div class="dsync">읽기 전용 열람은 누구나 · 편집/숨김은 <b>Admin+온라인</b>만(§2). 오프라인이면 편집 비활성.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ann">
+      <b>UX 규칙</b>
+      <ul>
+        <li><span class="tag p0">P0</span><b>넓게.</b> MinWidth=300이지만 상한 없음 → 창 확장/별도 창으로 크게. 이 화면만 ~600px로 <b>80+에 공간</b>을 준다.</li>
+        <li><span class="tag p0">P0</span>넓은 폭 활용 = <b>표(컬럼)형</b>: 통상명칭│발주처│상태│계약기간│작업. 좁은 2줄 카드 대신 한 행에 편안하게.</li>
+        <li><span class="tag p0">P0</span><b>master-detail</b>: 좌 리스트 | 우 상세. 행 클릭 → 우측 갱신(계약기간·마지막 동기화 등, 누구나 읽기).</li>
+        <li><span class="tag p1">P1</span>검색(autofocus)+필터바(진행중만 기본 ON·발주처·구분·상태·활성수·초기화·Admin 숨김포함). "N개 숨김·전체 보기".</li>
+        <li><span class="tag p1">P1</span>sticky thead + <b>구분으로 그룹 접기</b>(▸/▾), 고정 스크롤(<b>가상화 없음</b>), "더 보기" 페이지네이션.</li>
+        <li>상태=독립 의미색 점+텍스트, 숫자·날짜 <code>tabular-nums</code>, 메타=<code>--muted</code>(<code>--faint</code> 금지). Admin+온라인만 편집·소프트삭제·복구, 일반=🔒 읽기.</li>
+        <li>오프라인: 상단 캐시 배너(§6-a) + 편집 비활성 + peek는 "cached·최신 아닐 수 있음"(§6-g).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 2. 공식 과제 편집 (Admin, online) ============ -->
+  <h2><span class="n">2</span>공식 과제 편집 — Admin·온라인 (+ 오프라인 차단 변형)</h2>
+  <p class="note">공식 과제 편집 진입. section/status = ENUM 드롭다운. 선진행 선택 시 계약일·상태 비활성(NULL). 오프라인이면 폼 대신 차단 카드.</p>
+  <div class="stage" style="grid-template-columns:360px 360px 1fr">
+    <div class="mockcol">
+      <span class="mockcap">온라인 · Admin · 340px</span>
+      <div class="modal">
+        <div class="mhead"><h3>공식 과제 수정</h3>
+          <span class="netbadge on">● 온라인</span>
+          <button class="xbtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="mbody">
+          <label class="lb">사업명</label>
+          <input class="in" value="자르반 2세 정복 작전">
+          <label class="lb">통상명칭 (표시 이름)</label>
+          <input class="in" value="자르반의 검">
+          <div class="grid2">
+            <div><label class="lb">발주처</label>
+              <select class="in"><option>데마시아</option><option>녹서스</option><option>아이오니아</option></select></div>
+            <div><label class="lb">구분 (section)</label>
+              <select class="in" id="secSel" onchange="onSecChange(this)">
+                <option>일반계약</option><option>선진행</option><option>사업부관리</option></select></div>
+          </div>
+          <div class="grid3">
+            <div><label class="lb">상태 (status)</label>
+              <select class="in" id="stSel">
+                <option>진행중</option><option>종료</option><option>1차 납품완료</option><option>미정</option></select></div>
+            <div><label class="lb">계약시작</label><input class="in" id="d1" type="date" value="2023-01-10"></div>
+            <div><label class="lb">계약종료</label><input class="in" id="d2" type="date" value="2024-06-30"></div>
+          </div>
+          <label class="lb">색상 (과제 고유색)</label>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <span class="sw" style="width:22px;height:22px;background:#3e7bd0;outline:2px solid var(--text);outline-offset:1px"></span>
+            <span class="sw" style="width:22px;height:22px;background:#8b6fd0"></span>
+            <span class="sw" style="width:22px;height:22px;background:#d08a3e"></span>
+            <span class="sw" style="width:22px;height:22px;background:#5bbf7a"></span>
+          </div>
+        </div>
+        <div class="mfoot">
+          <button class="btn danger sm">🗑 숨김</button>
+          <span style="flex:1"></span>
+          <button class="btn sm">취소</button>
+          <button class="btn primary sm">DB에 저장</button>
+        </div>
+      </div>
+      <span class="mockcap" style="margin-top:6px">↓ 구분=선진행 선택 시 (계약일·상태 비활성·회색)</span>
+      <div class="modal narrow">
+        <div class="mhead"><h3>공식 과제 수정 · 선진행</h3><button class="xbtn" aria-label="닫기">✕</button></div>
+        <div class="mbody">
+          <label class="lb">구분 (section)</label>
+          <select class="in"><option selected>선진행</option></select>
+          <div class="grid3">
+            <div><label class="lb">상태</label>
+              <select class="in" disabled aria-disabled="true"><option>미정</option></select></div>
+            <div><label class="lb">계약시작</label><input class="in" type="date" disabled aria-disabled="true"></div>
+            <div><label class="lb">계약종료</label><input class="in" type="date" disabled aria-disabled="true"></div>
+          </div>
+          <p class="hint">선진행은 계약 전 단계 → 상태·계약일은 <b>NULL</b>(비활성). 상태는 <span class="status undef">미정</span>으로 표시됩니다.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockcol">
+      <span class="mockcap">오프라인 · 편집 차단 변형 · 340px</span>
+      <div class="modal">
+        <div class="mhead"><h3>공식 과제 수정</h3>
+          <span class="netbadge off">● 오프라인</span>
+          <button class="xbtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="mbody">
+          <div class="offbanner">⚠ 오프라인 · 캐시 11건 · 편집 불가</div>
+          <div class="blockcard">
+            <div class="bt">🔌 편집하려면 서버 연결 필요</div>
+            <div class="bd">공식 과제 마스터는 <b>온라인일 때만</b> 수정할 수 있습니다.<br>지금은 조회(peek)만 가능합니다.</div>
+            <button class="btn sm" style="margin-top:12px">🔄 재연결 시도</button>
+          </div>
+          <p class="hint">폼 자체를 렌더하지 않음 — 입력했다가 저장 실패로 잃는 일을 원천 차단.</p>
+        </div>
+        <div class="mfoot"><span style="flex:1"></span><button class="btn sm">닫기</button></div>
+      </div>
+    </div>
+
+    <div class="ann">
+      <b>UX 규칙</b>
+      <ul>
+        <li><span class="tag p0">P0</span>진입 조건: <b>Admin + 온라인</b>. 오프라인이면 폼 대신 <b>차단 카드</b>(입력 필드 없음).</li>
+        <li><span class="tag p0">P0</span>section/status = <b>ENUM 드롭다운</b>(오타 원천차단, 자유입력 금지).</li>
+        <li><span class="tag p0">P0</span>구분=<b>선진행</b> → 계약시작·종료·상태 <b>비활성(NULL)</b>·회색. 상태는 muted "미정".</li>
+        <li><span class="tag p1">P1</span>삭제 = <b>소프트삭제(숨김, is_active=0)</b> — 복구 가능. 하드삭제는 DB에서만.</li>
+        <li><span class="tag p1">P1</span>모달 footer의 accent primary는 <b>실제 주 액션(DB에 저장)</b>. "취소"는 ghost.</li>
+        <li>저장 실패(연결 끊김) → 롤백 + 재시도 toast(§6).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 3. 일정 피커 (동작 콤보박스) ============ -->
+  <h2><span class="n">3</span>일정 피커 — 검색 콤보박스 (실제 동작 · 기본 전체)</h2>
+  <p class="note">native <code>select</code> 대신 검색 콤보박스. <b>기본=전체 과제</b>(방금 종료된 과제도 기록 가능). 타이핑→필터, ↑↓→이동, Enter→선택, Esc→팝오버 닫기(닫혀있으면 모달).</p>
+  <div class="stage">
+    <div class="mockcol">
+      <span class="mockcap">모달 · 340px · 아래 입력에 직접 타이핑해 보세요</span>
+      <div class="modal" id="pickerModal">
+        <div class="mhead"><h3>＋ 새 기록</h3><button class="xbtn" aria-label="닫기" onclick="alert('(목업) Esc가 팝오버 닫힌 뒤 모달을 닫습니다)')">✕</button></div>
+        <div class="mbody">
+          <label class="lb">제목</label>
+          <input class="in" value="빛의 검 강화 3차 미팅">
+          <label class="lb" id="lbl-cat">과제 (카테고리)</label>
+          <div class="combo" id="combo1">
+            <span class="sicon">🔍</span>
+            <input class="combo-input" id="ci1" role="combobox" aria-expanded="false"
+                   aria-controls="lb1" aria-autocomplete="list" aria-labelledby="lbl-cat"
+                   placeholder="과제 검색 (사업명·통상명칭·발주처)" autocomplete="off">
+            <button class="caretbtn" tabindex="-1" aria-label="목록 열기" data-caret>▾</button>
+            <div class="popover" id="pop1" hidden>
+              <ul class="listbl" id="lb1" role="listbox" aria-label="과제 목록"></ul>
+            </div>
+          </div>
+          <p class="hint">필요한 공식 과제가 없나요? 검색 후 <span class="pill">＋ 개인 과제로 추가</span> 또는 Admin에게 DB 등록 요청.</p>
+        </div>
+        <div class="mfoot"><span style="flex:1"></span><button class="btn sm">취소</button><button class="btn primary sm">저장</button></div>
+      </div>
+    </div>
+    <div class="ann">
+      <b>UX 규칙 / 콤보박스 스펙</b>
+      <ul>
+        <li><span class="tag p0">P0</span><b>기본=전체 과제</b>. 피커에서는 종료도 절대 기본 숨김하지 않음(방금 끝난 과제 기록 위해).</li>
+        <li><span class="tag p0">P0</span>ARIA: <code>input[role=combobox][aria-expanded][aria-controls]</code> + <code>aria-activedescendant</code>, <code>ul[role=listbox]</code>, <code>li[role=option][aria-selected]</code>.</li>
+        <li><span class="tag p0">P0</span>클릭/포커스/타이핑 → 팝오버. 필터는 사업명·통상명칭·발주처 <b>매칭(공백무시·대소문자무시)</b>.</li>
+        <li><span class="tag p0">P0</span>↑↓ 활성 이동(wrap), Enter 선택→채움·닫기, <b>Esc: 팝오버 먼저 닫고 → 이미 닫혔으면 모달</b>, Tab 팝오버 닫기.</li>
+        <li><span class="tag p1">P1</span>결과 없음 → "검색 결과 없음" + <b>＋ 개인 과제로 추가</b>. focus-visible 2px accent 링.</li>
+        <li>공식은 발주처·구분 힌트로 동명 구별. 저장 참조: 공식=<code>db-&lt;uid&gt;</code>, 개인=<code>c-&lt;uuid&gt;</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 4. 재연결 도우미 ============ -->
+  <h2><span class="n">4</span>재연결 도우미 — 행마다 공유 콤보박스 (순수 수동)</h2>
+  <p class="note">기존 개인 과제를 공식(DB)으로 사용자가 직접 매핑. <b>자동 이름매칭 없음</b>. 각 행은 §3의 콤보박스를 재사용(220px native select 아님), 매칭 없으면 개인 유지 기본.</p>
+  <div class="stage">
+    <div class="mockcol">
+      <span class="mockcap">모달 · 340px · 각 행 콤보박스 동작</span>
+      <div class="modal">
+        <div class="mhead"><h3>🔗 기존 과제 재연결</h3><button class="xbtn" aria-label="닫기">✕</button></div>
+        <div class="mbody">
+          <p class="note" style="margin-bottom:var(--sp-3)">아래 개인 과제를 공식으로 연결하면 그 일정들이 보고서에서 <b>공식</b>으로 집계됩니다. 오타가 있어도 직접 고르면 됩니다.</p>
+
+          <div style="border:1px solid var(--line);border-radius:var(--r-sm);padding:9px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+              <span class="sw" style="background:#e06666;width:11px;height:11px"></span>
+              <span class="rname" style="flex:1">자르반검</span>
+              <span class="rmeta"><span class="num">일정 8건</span></span>
+              <span class="opill personal">개인</span>
+            </div>
+            <div class="combo" data-rc>
+              <span class="sicon">🔍</span>
+              <input class="combo-input" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                     aria-label="자르반검 연결 대상" placeholder="연결할 공식 과제 검색…" autocomplete="off">
+              <button class="caretbtn" tabindex="-1" aria-label="목록 열기" data-caret>▾</button>
+              <div class="popover" hidden><ul class="listbl" role="listbox" aria-label="공식 과제 목록"></ul></div>
+            </div>
+          </div>
+
+          <div style="border:1px solid var(--line);border-radius:var(--r-sm);padding:9px;margin-bottom:8px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+              <span class="sw" style="background:#5bbf7a;width:11px;height:11px"></span>
+              <span class="rname" style="flex:1">주간 보고서</span>
+              <span class="rmeta"><span class="num">일정 12건</span></span>
+              <span class="opill personal">개인</span>
+            </div>
+            <div class="combo" data-rc>
+              <span class="sicon">🔍</span>
+              <input class="combo-input" role="combobox" aria-expanded="false" aria-autocomplete="list"
+                     aria-label="주간 보고서 연결 대상" value="" placeholder="개인으로 유지 (매칭 없음)" autocomplete="off">
+              <button class="caretbtn" tabindex="-1" aria-label="목록 열기" data-caret>▾</button>
+              <div class="popover" hidden><ul class="listbl" role="listbox" aria-label="공식 과제 목록"></ul></div>
+            </div>
+            <p class="hint" style="margin-top:5px">기본 <b>개인으로 유지</b> — 직접 고를 때만 연결.</p>
+          </div>
+        </div>
+        <div class="mfoot"><span style="flex:1"></span><button class="btn sm">닫기</button><button class="btn primary sm">선택 항목 재연결</button></div>
+      </div>
+    </div>
+    <div class="ann">
+      <b>UX 규칙</b>
+      <ul>
+        <li><span class="tag p0">P0</span>각 행이 <b>220px native select가 아닌 §3 공유 콤보박스</b>를 재사용 → 좁은 폭에서 안 넘침·검색 가능.</li>
+        <li><span class="tag p0">P0</span><b>자동 이름매칭 금지</b> — 100% 사람이 선택. 매칭 없으면 <b>개인 유지 기본</b>.</li>
+        <li>진입: 과제 관리 하단 버튼 + 업데이트 후 1회 비강제 넛지("재연결 가능 N건").</li>
+        <li>연결 확정 시 그 과제 일정들이 <code>db-&lt;uid&gt;</code>로 일괄 재태그(수동 확정).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 5. 설정 → DB 연결 ============ -->
+  <h2><span class="n">5</span>설정 → 과제 DB 연결 — 토큰화·상태 배지·연결 테스트</h2>
+  <p class="note">설정 모달의 새 섹션. 주소=설정값 1줄(FTP 소스 URL과 동형). localhost(개발) → 폐쇄망 서버 IP로만 교체.</p>
+  <div class="stage">
+    <div class="mockcol">
+      <span class="mockcap">설정 모달 · 340px</span>
+      <div class="modal">
+        <div class="mhead"><h3>⚙ 설정</h3><button class="xbtn" aria-label="닫기">✕</button></div>
+        <div class="mbody">
+          <div class="set-lb">과제 DB 연결 <span class="netbadge on">● 연결됨 · 11건 캐시</span></div>
+          <div class="set-hint">공식 과제 목록을 이 DB에서 읽어옵니다. 조회는 오프라인(캐시)도, 편집은 연결됐을 때만. 데스크톱 위젯에서만 동작.</div>
+          <label class="lb">서버 주소 <span class="pill">설정값 1줄</span></label>
+          <input class="in configline" value="192.168.16.3:3306 / taskmgr" placeholder="예: 192.168.0.50:3306 / taskmgr">
+          <div class="grid2">
+            <div><label class="lb">계정</label><input class="in" value="tc_app"></div>
+            <div><label class="lb">비밀번호</label><input class="in" type="password" value="••••••"></div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn primary sm">저장</button>
+            <button class="btn sm">연결 테스트</button>
+            <button class="btn sm">지금 새로고침</button>
+          </div>
+          <p class="hint" style="color:var(--st-on)">✓ 마지막 동기화 방금 전</p>
+          <div class="set-hint" style="margin-top:8px">지금은 <code>localhost</code>(개발). 폐쇄망 배포 시 <b>서버 IP로만 교체</b> — 비밀번호는 이 PC에 <b>DPAPI 암호화</b> 저장(netcus 자격증명과 동일 방식).</div>
+        </div>
+        <div class="mfoot"><span style="flex:1"></span><button class="btn sm">닫기</button></div>
+      </div>
+    </div>
+    <div class="ann">
+      <b>UX 규칙</b>
+      <ul>
+        <li><span class="tag p1">P1</span>주소=설정값 1줄(자동업데이트 소스 URL과 동형). localhost→서버 IP 교체만으로 폐쇄망 배포.</li>
+        <li><span class="tag p1">P1</span><b>연결 테스트</b> 버튼으로 배포 전 확인. 상태 배지가 온/오프·캐시 건수 표시(전 화면 일관).</li>
+        <li>비밀번호 = <b>DPAPI 암호화</b> 저장. footer primary는 없음(설정은 즉시 저장 버튼) — "닫기"만.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 6. 상태 갤러리 ============ -->
+  <h2><span class="n">6</span>상태(States) 갤러리 — 피드백·빈 상태·로딩·토스트</h2>
+  <p class="note">주석만이 아니라 <b>실제 렌더</b>. 오프라인/차단/로딩/빈상태 3종/토스트 성공·실패를 각각 라벨과 함께.</p>
+  <div class="gallery">
+    <div class="gcard">
+      <div class="glabel">(a) 오프라인 배너</div>
+      <div class="gbox"><div class="offbanner" style="margin:0">⚠ 오프라인 · 캐시 11건 · 편집 불가</div></div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(b) Admin 편집 · 오프라인 차단</div>
+      <div class="gbox">
+        <div class="blockcard" style="padding:12px 10px">
+          <div class="bt">🔌 편집하려면 서버 연결 필요</div>
+          <div class="bd">폼을 열지 않고 조회만 허용.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(c) 선진행 선택 → 계약일·상태 비활성(NULL)</div>
+      <div class="gbox">
+        <div class="grid3">
+          <div><label class="lb" style="margin-top:0">상태</label>
+            <select class="in" disabled aria-disabled="true"><option>미정</option></select></div>
+          <div><label class="lb" style="margin-top:0">계약시작</label><input class="in" type="date" disabled aria-disabled="true"></div>
+          <div><label class="lb" style="margin-top:0">계약종료</label><input class="in" type="date" disabled aria-disabled="true"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(d-1) 빈 상태 · 오프라인·캐시 없음</div>
+      <div class="gbox"><div class="empty">
+        <span class="eicon">📴</span>
+        <div class="et">오프라인 · 캐시된 과제 없음</div>
+        <div class="ed">서버에 한 번도 연결된 적이 없어 표시할 공식 과제가 없습니다. 연결 후 자동으로 채워집니다.</div>
+      </div></div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(d-2) 빈 상태 · DB 비어있음(첫 실행)</div>
+      <div class="gbox"><div class="empty">
+        <span class="eicon">🗂️</span>
+        <div class="et">아직 등록된 공식 과제가 없습니다</div>
+        <div class="ed">Admin이 첫 과제를 DB에 등록하면 여기에 나타납니다. 지금은 개인 과제로 기록할 수 있어요.</div>
+      </div></div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(d-3) 빈 상태 · 검색 결과 없음</div>
+      <div class="gbox"><div class="empty">
+        <span class="eicon">🔍</span>
+        <div class="et">"자르반검"에 대한 결과 없음</div>
+        <div class="ed">철자를 확인하거나 필터를 초기화해 보세요.</div>
+        <button class="btn primary sm" style="margin-top:10px">＋ 개인 과제로 추가</button>
+      </div></div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(e) 로딩 스켈레톤 행</div>
+      <div class="gbox">
+        <div class="skrow"><span class="skbar" style="width:11px;height:11px;border-radius:3px"></span>
+          <span style="flex:1"><span class="skbar" style="width:55%;display:block"></span>
+          <span class="skbar" style="width:78%;display:block;margin-top:6px;height:8px"></span></span></div>
+        <div class="skrow"><span class="skbar" style="width:11px;height:11px;border-radius:3px"></span>
+          <span style="flex:1"><span class="skbar" style="width:42%;display:block"></span>
+          <span class="skbar" style="width:66%;display:block;margin-top:6px;height:8px"></span></span></div>
+      </div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(f-1) 저장 성공 토스트</div>
+      <div class="gbox" style="background:transparent;border:none;padding:0">
+        <div class="toast ok"><span>✓</span><span class="tmsg">DB에 저장했습니다</span></div>
+      </div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(f-2) 저장 실패(연결 끊김) · 재시도</div>
+      <div class="gbox" style="background:transparent;border:none;padding:0">
+        <div class="toast err"><span>⚠</span><span class="tmsg">연결이 끊겨 저장 실패 — 변경은 롤백됨</span>
+          <button class="btn sm">재시도</button></div>
+      </div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(g) peek · 오프라인으로 열람(cached 주석)</div>
+      <div class="gbox" style="padding:0;background:transparent;border:none">
+        <div class="peek" style="width:100%">
+          <div class="ph"><span class="sw" style="background:#d08a3e;width:12px;height:12px"></span>
+            <span class="pname">녹서스의 분노</span><span class="opill official">공식</span></div>
+          <dl>
+            <dt>발주처</dt><dd>녹서스</dd>
+            <dt>구분</dt><dd>일반계약</dd>
+            <dt>상태</dt><dd><span class="status deliv"><span class="sd"></span>1차 납품완료</span></dd>
+            <dt>계약기간</dt><dd>2024-03-01~미정</dd>
+          </dl>
+          <div class="pfoot pcached">⚠ cached · 최신 아닐 수 있음 (마지막 동기화 2일 전)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gcard">
+      <div class="glabel">(h) 소프트삭제 과제 · 복구(Admin)</div>
+      <div class="gbox">
+        <div class="row" style="cursor:default;opacity:.85">
+          <span class="sw" style="background:#8b6fd0"></span>
+          <span class="rmain">
+            <span class="rname" style="text-decoration:line-through;color:var(--faint-text)">리안돈 성벽</span>
+            <span class="rmeta">데마시아 · 사업부관리 · <span class="status off"><span class="sd"></span>종료</span></span>
+          </span>
+          <span class="ract"><span class="pill" style="color:var(--danger-text);border-color:var(--danger)">숨김</span>
+            <button class="btn sm">복구</button></span>
+        </div>
+        <p class="hint" style="margin-top:6px">숨김 포함 토글(Admin) 켤 때만 노출 · is_active=0</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="ann uxrule" style="margin-top:var(--sp-4)">
+    <b>상태 규칙 요약</b>
+    <ul>
+      <li><span class="tag p0">P0</span>상태색은 <b>독립 의미색</b>: 진행중=green / 종료=neutral gray / 미정·선진행=amber / 1차 납품완료=accent. 섹션 팔레트와 공유 금지. NULL status = muted "미정"(— pill 아님).</li>
+      <li><span class="tag p0">P0</span>read-important 메타(발주처·구분·상태·계약기간·건수)는 <b>--muted / --faint-text(둘 다 AA)</b>. <b>--faint는 테두리·비활성·장식만</b>. 숫자·날짜·건수 전부 <code>tabular-nums</code>.</li>
+      <li><span class="tag p1">P1</span>빈 상태 3종은 <b>카피가 각각 다름</b>(오프라인·캐시없음 / DB비어있음·첫실행 / 검색결과없음).</li>
+      <li>모든 인터랙티브 요소: <code>cursor:pointer</code> · hover · <code>:focus-visible</code> 링 · disabled. ✕는 <code>&lt;button aria-label="닫기"&gt;</code>.</li>
+    </ul>
+  </div>
+
+  <footer>UI/UX 지정 목업 v2 · 실 위젯 토큰 재사용(--sp/--r/--fs/--accent…) · 좁은폭(340px) 적합 · 라이트+다크 · 확정 후 P3 구현(dev-delegate)</footer>
+</div>
+
+<script>
+/* ---------- 그룹 접이 ---------- */
+function toggleGrp(el){
+  const open = el.getAttribute('aria-expanded') === 'true';
+  el.setAttribute('aria-expanded', String(!open));
+  el.querySelector('.tri').textContent = open ? '▸' : '▾';
+}
+
+/* ---------- §1b 표 그룹 접기 (구분으로) ---------- */
+function toggleGrpRow(el){
+  const open = el.getAttribute('aria-expanded') === 'true';
+  el.setAttribute('aria-expanded', String(!open));
+  const tri = el.querySelector('.tri');
+  if(tri) tri.textContent = open ? '▸' : '▾';
+}
+
+/* ---------- §1b master-detail 행 선택 → 우측 상세 갱신 ---------- */
+const ST_LABEL = {on:'진행중', off:'종료', amber:'미정', deliv:'1차 납품완료', undef:'미정'};
+function selectDrow(tr, name, ord, sec, stCls, stTxt, term, color, sync){
+  document.querySelectorAll('.dbtable tr.drow.sel').forEach(r=>r.classList.remove('sel'));
+  tr.classList.add('sel');
+  const set = (id,v)=>{ const n=document.getElementById(id); if(n) n.textContent=v; };
+  set('mdName', name); set('mdOrd', ord); set('mdSec', sec); set('mdTerm', term); set('mdSync', sync);
+  const sw = document.getElementById('mdSw'); if(sw) sw.style.background = color;
+  const st = document.getElementById('mdSt');
+  if(st) st.innerHTML = '<span class="status '+stCls+'"><span class="sd"></span>'+stTxt+'</span>';
+}
+
+/* ---------- peek (목업: alert 대신 시각 표시 생략, 이미 렌더된 peek 존재) ---------- */
+function showPeek(el, id){ /* 목업 — 우측에 상시 렌더된 peek로 규칙 설명 대체 */ }
+
+/* ---------- 선진행 → 계약일·상태 비활성 ---------- */
+function onSecChange(sel){
+  const pre = sel.value === '선진행';
+  ['stSel','d1','d2'].forEach(id=>{
+    const n = document.getElementById(id);
+    if(!n) return;
+    n.disabled = pre;
+    n.setAttribute('aria-disabled', String(pre));
+  });
+}
+
+/* ============================================================
+   콤보박스 — 검색·키보드·ARIA (§3, §4 공유)
+   ============================================================ */
+const OPTIONS = [
+  {grp:'공식 과제 (DB)', name:'자르반의 검',   biz:'자르반 2세 정복 작전', ord:'데마시아', sec:'일반계약', color:'#3e7bd0', official:true},
+  {grp:'공식 과제 (DB)', name:'가렌의 방패',   biz:'데마시아 국경 방어',   ord:'데마시아', sec:'선진행',   color:'#8b6fd0', official:true},
+  {grp:'공식 과제 (DB)', name:'녹서스의 분노', biz:'녹서스 확장 작전',     ord:'녹서스',   sec:'일반계약', color:'#d08a3e', official:true},
+  {grp:'공식 과제 (DB)', name:'리안돈 성벽',   biz:'리안돈 재건',          ord:'데마시아', sec:'사업부관리', color:'#8b6fd0', official:true},
+  {grp:'개인 과제',      name:'MCP서버개발',   biz:'',                     ord:'',         sec:'',         color:'#e06666', official:false},
+  {grp:'개인 과제',      name:'주간 보고서',   biz:'',                     ord:'',         sec:'',         color:'#5bbf7a', official:false},
+];
+const norm = s => (s||'').toLowerCase().replace(/\s+/g,'');
+
+function initCombo(root, opts){
+  const input = root.querySelector('.combo-input');
+  const pop   = root.querySelector('.popover');
+  const list  = root.querySelector('.listbl');
+  const caret = root.querySelector('[data-caret]');
+  const officialOnly = root.hasAttribute('data-rc');   // 재연결(§4)은 공식만
+  const pool = officialOnly ? opts.filter(o=>o.official) : opts;
+  let active = -1;      // 활성 옵션 인덱스(필터된 배열 기준)
+  let filtered = [];
+  const listId = list.id || (list.id = 'lb-' + Math.random().toString(36).slice(2,7));
+  input.setAttribute('aria-controls', listId);   // 모든 콤보에 aria-controls 보장(§3·§4 공통)
+
+  function open(){ pop.hidden = false; input.setAttribute('aria-expanded','true'); }
+  function close(){ pop.hidden = true; input.setAttribute('aria-expanded','false');
+    input.removeAttribute('aria-activedescendant'); active = -1; }
+  function isOpen(){ return !pop.hidden; }
+
+  function render(){
+    const q = norm(input.value);
+    filtered = pool.filter(o => !q ||
+      norm(o.name).includes(q) || norm(o.biz).includes(q) || norm(o.ord).includes(q));
+    list.innerHTML = '';
+    if(filtered.length === 0){
+      const li = document.createElement('li');
+      li.className = 'opt-empty';
+      li.setAttribute('role','presentation');
+      li.innerHTML = '<div class="em-t">검색 결과 없음</div>' +
+        '<button class="em-add" type="button">＋ 개인 과제로 추가</button>';
+      li.querySelector('.em-add').addEventListener('click', ()=>{
+        input.value = input.value.trim() || '새 개인 과제';
+        close(); input.focus();
+      });
+      list.appendChild(li);
+      return;
+    }
+    let lastGrp = null, idx = 0;
+    filtered.forEach((o)=>{
+      if(o.grp !== lastGrp){
+        const h = document.createElement('li');
+        h.className = 'optgrp'; h.setAttribute('role','presentation');
+        h.textContent = o.grp; list.appendChild(h); lastGrp = o.grp;
+      }
+      const li = document.createElement('li');
+      const myIdx = idx++;
+      li.className = 'opt' + (myIdx===active?' active':'');
+      li.id = listId + '-o' + myIdx;
+      li.setAttribute('role','option');
+      li.setAttribute('aria-selected', String(myIdx===active));
+      const meta = o.official ? (o.ord + ' · ' + o.sec) : '개인 기록';
+      li.innerHTML =
+        '<span class="osw" style="background:'+o.color+'"></span>' +
+        '<span class="otxt"><span class="oname">'+o.name+'</span>' +
+        '<span class="ometa">'+meta+'</span></span>' +
+        (o.official ? '<button class="oinfo" type="button" tabindex="-1" aria-label="상세 보기">ⓘ</button>' : '');
+      li.addEventListener('mousedown', e=>{ e.preventDefault(); select(myIdx); });
+      list.appendChild(li);
+    });
+  }
+
+  function setActive(i){
+    const items = [...list.querySelectorAll('.opt')];
+    if(items.length === 0) return;
+    if(i < 0) i = items.length - 1;
+    if(i >= items.length) i = 0;
+    active = i;
+    items.forEach((el,k)=>{
+      const on = k===active;
+      el.classList.toggle('active', on);
+      el.setAttribute('aria-selected', String(on));
+    });
+    const cur = items[active];
+    input.setAttribute('aria-activedescendant', cur.id);
+    cur.scrollIntoView({block:'nearest'});
+  }
+
+  function select(i){
+    if(i<0 || i>=filtered.length) return;
+    input.value = filtered[i].name +
+      (filtered[i].official ? '  ('+filtered[i].ord+' · '+filtered[i].sec+')' : '');
+    close();
+  }
+
+  input.addEventListener('focus', ()=>{ open(); render(); });
+  input.addEventListener('click', ()=>{ if(!isOpen()){ open(); render(); } });
+  input.addEventListener('input', ()=>{ if(!isOpen()) open(); render(); active=-1;
+    input.removeAttribute('aria-activedescendant'); });
+  caret && caret.addEventListener('click', (e)=>{ e.preventDefault();
+    if(isOpen()) close(); else { open(); render(); input.focus(); } });
+
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'ArrowDown'){ e.preventDefault(); if(!isOpen()){open();render();} setActive(active+1); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); if(!isOpen()){open();render();} setActive(active-1); }
+    else if(e.key === 'Enter'){ if(isOpen() && active>=0){ e.preventDefault(); select(active); } }
+    else if(e.key === 'Escape'){
+      if(isOpen()){ e.preventDefault(); e.stopPropagation(); close(); }
+      else { /* 팝오버 닫혀있으면 모달 닫기 단계로 — 목업 안내 */
+        const modal = root.closest('.modal');
+        if(modal){ e.preventDefault(); modal.animate(
+          [{opacity:1},{opacity:.4},{opacity:1}], {duration:280}); }
+      }
+    }
+    else if(e.key === 'Tab'){ if(isOpen()) close(); }
+  });
+
+  document.addEventListener('click', (e)=>{ if(!root.contains(e.target)) close(); });
+  render();
+}
+
+document.querySelectorAll('.combo').forEach(c => initCombo(c, OPTIONS));
+</script>
+</body>
+</html>

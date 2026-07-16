@@ -27,6 +27,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3179.45" />
+    <!-- 순수 관리형 MySQL 드라이버(네이티브 의존 없음) — 폐쇄망/오프라인 OK, DLL이 빌드 산출물에 동봉됨 -->
+    <PackageReference Include="MySqlConnector" Version="2.3.7" />
   </ItemGroup>
 
   <ItemGroup>
