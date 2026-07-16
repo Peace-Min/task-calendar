@@ -1458,5 +1458,97 @@ if (!JSDOM) {
       assert.ok(!md.includes('## 2026-07-08') && !md.includes('## 2026-07-09'), '빈 날짜 헤더 미출력');
       assert.strictEqual(ev('buildCalendarExportMd(null, "2026-07-01", "2026-07-02")'), '', 'cat 없으면 빈 문자열');
     });
+
+    // ── 일정별 알림 리드타임(remindMinsFor / normRemind — 순수 함수) ────────────────
+    // 계약: entry.remind = null(미설정 → 기본 사다리 60·30·10·5) / n>0(n분 전 1회) / 0(알림 없음)
+    const remindMins = (e) => evJSON('remindMinsFor(' + JSON.stringify(e) + ')');
+    const normRem = (expr) => evJSON('normRemind(' + expr + ')');
+
+    test('remindMinsFor: 미설정(기본) — {} / {remind:null} → 기존 사다리 [60,30,10,5] 그대로(하위호환)', () => {
+      assert.deepStrictEqual(evJSON('REMIND_DEFAULT'), [60, 30, 10, 5], '기본 사다리 상수');
+      assert.deepStrictEqual(remindMins({}), [60, 30, 10, 5], '설정 안 한 일정 = 기존 동작 그대로');
+      assert.deepStrictEqual(remindMins({ remind: null }), [60, 30, 10, 5]);
+    });
+
+    test('remindMinsFor: n분 전 1회 / 0=알림 없음 / 엔트리 없으면 null', () => {
+      assert.deepStrictEqual(remindMins({ remind: 30 }), [30], '30 → 30분 전 1회만(사다리 아님)');
+      assert.deepStrictEqual(remindMins({ remind: 5 }), [5]);
+      assert.deepStrictEqual(remindMins({ remind: 1440 }), [1440]);
+      assert.strictEqual(remindMins({ remind: 0 }), null, '0 → 알림 없음');
+      assert.strictEqual(evJSON('remindMinsFor(null)'), null, 'e 없으면 null');
+    });
+
+    test('remindMinsFor: 손상값(음수/문자열)은 기본 사다리로 폴백(무음 유실 방지)', () => {
+      assert.deepStrictEqual(remindMins({ remind: -5 }), [60, 30, 10, 5], '음수 → 기본');
+      assert.deepStrictEqual(remindMins({ remind: 'x' }), [60, 30, 10, 5], 'NaN → 기본');
+    });
+
+    test('remindMinsFor: 반환은 복사본 — 결과를 변형해도 다음 호출·REMIND_DEFAULT 불변', () => {
+      ev('var _rm = remindMinsFor({}); _rm.push(999); _rm[0] = -1;');
+      assert.deepStrictEqual(evJSON('remindMinsFor({})'), [60, 30, 10, 5], '두 번째 호출도 원본 사다리');
+      assert.deepStrictEqual(evJSON('REMIND_DEFAULT'), [60, 30, 10, 5], '상수 자체가 오염되지 않음');
+    });
+
+    test('normRemind: 빈값→null(기본) / 0→0(없음) / 양수→분 정수 / 손상→null / 상한 클램프', () => {
+      assert.strictEqual(normRem('null'), null);
+      assert.strictEqual(normRem('undefined'), null);
+      assert.strictEqual(normRem("''"), null);
+      assert.strictEqual(normRem('0'), 0, '0은 0으로 보존 — 알림 없음(미설정과 구분)');
+      assert.strictEqual(normRem("'0'"), 0, "문자열 '0'도 알림 없음");
+      assert.strictEqual(normRem('30'), 30);
+      assert.strictEqual(normRem("'30'"), 30);
+      assert.strictEqual(normRem('30.7'), 30, '소수는 내림');
+      assert.strictEqual(normRem('-1'), null, '음수 → 기본');
+      assert.strictEqual(normRem("'abc'"), null, '문자 → 기본');
+      assert.strictEqual(normRem('99999'), 10080, '상한 7일(10080분)로 클램프');
+    });
+
+    test('remind 저장: addEntry는 정규화 저장, updateEntry는 미제공 시 기존값 보존(hours와 동일 규약)', () => {
+      seed({ gitAuthor: '', svnAuthor: '', categories: [], entries: [], todos: [], rooms: [] });
+      const id = ev("addEntry({date:'2026-07-08', title:'회의', allDay:false, startTime:'14:00', remind:30}).id");
+      assert.strictEqual(evJSON('entryById(' + JSON.stringify(id) + ').remind'), 30);
+      ev('updateEntry(' + JSON.stringify(id) + ", {date:'2026-07-08', title:'회의(수정)', allDay:false, startTime:'14:00'})");
+      assert.strictEqual(evJSON('entryById(' + JSON.stringify(id) + ').remind'), 30, 'remind 미제공 → 기존값 보존');
+      ev('updateEntry(' + JSON.stringify(id) + ", {date:'2026-07-08', title:'회의', allDay:false, startTime:'14:00', remind:0})");
+      assert.strictEqual(evJSON('entryById(' + JSON.stringify(id) + ').remind'), 0, '명시적 0 → 알림 없음으로 갱신');
+      const id2 = ev("addEntry({date:'2026-07-08', title:'미설정', allDay:false, startTime:'15:00'}).id");
+      assert.strictEqual(evJSON('entryById(' + JSON.stringify(id2) + ').remind'), null, '미지정 생성 → null(기본)');
+    });
+
+    test('remind XML: 기본(null)은 속성 미기록(기존 파일과 byte 동일), 0/분은 왕복 보존', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [],
+        entries: [
+          { id: 'r-def', date: '2026-07-08', title: '기본', categoryId: null, allDay: false, startTime: '10:00', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, remind: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'r-off', date: '2026-07-08', title: '없음', categoryId: null, allDay: false, startTime: '11:00', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, remind: 0, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'r-30', date: '2026-07-08', title: '30분', categoryId: null, allDay: false, startTime: '12:00', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, remind: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        ],
+        todos: [], rooms: [],
+      });
+      const xml = ev('toXML()');
+      assert.ok(!/id="r-def"[^>]*remind=/.test(xml), '기본(null) 엔트리엔 remind 속성 미기록');
+      assert.ok(/id="r-off"[^>]*remind="0"/.test(xml), '0은 remind="0"으로 기록');
+      assert.ok(/id="r-30"[^>]*remind="30"/.test(xml), '30은 remind="30"으로 기록');
+      const p = evJSON('fromXML(toXML())');
+      const byId = Object.fromEntries(p.entries.map(e => [e.id, e]));
+      assert.strictEqual(byId['r-def'].remind, null, '속성 없음 → null(기본)');
+      assert.strictEqual(byId['r-off'].remind, 0, '0 왕복');
+      assert.strictEqual(byId['r-30'].remind, 30, '30 왕복');
+      assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 remind 포함 무손실');
+    });
+
+    test('remind 하위호환: 구버전 XML(remind 속성 부재) → null(기본 사다리) / 손상값도 null', () => {
+      const mk = (attr) =>
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<taskCalendar version="1" generator="old" gitAuthor="" svnAuthor="">' +
+        '<categories></categories><entries>' +
+        '<entry id="e-o" date="2026-07-08" allDay="false" startTime="09:00" endTime="" ' + attr +
+        ' createdAt="' + CA + '" updatedAt="' + CA + '"><title>구버전</title><memo></memo></entry>' +
+        '</entries></taskCalendar>';
+      assert.strictEqual(evJSON('fromXML(' + JSON.stringify(mk('')) + ').entries[0].remind'), null, '속성 부재 → null');
+      assert.strictEqual(evJSON('fromXML(' + JSON.stringify(mk('remind="abc"')) + ').entries[0].remind'), null, '손상값 → null(기본)');
+      assert.strictEqual(evJSON('fromXML(' + JSON.stringify(mk('remind="-5"')) + ').entries[0].remind'), null, '음수 → null(기본)');
+    });
   }
 }

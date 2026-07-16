@@ -35,7 +35,8 @@ namespace TaskCalendarWidget
         {
             public string Key = "", Title = "", OccStart = "", StartTime = "", EndTime = "", Loc = "", Color = "";
             public DateTime Start;
-            public int StageIndex;          // 다음에 띄울 단계 인덱스(0=60분 … 4=소진)
+            public int[] Fire = REM_FIRE;   // 이 일정의 알림 사다리(분, 내림차순). 기본=REM_FIRE → mins 없는 페이로드는 기존 동작 그대로
+            public int StageIndex;          // 다음에 띄울 단계 인덱스(0=첫 단계 … Fire.Length=소진)
             public bool Acked, Expired;
             public ReminderWindow? Win;
         }
@@ -79,6 +80,7 @@ namespace TaskCalendarWidget
                                 CultureInfo.InvariantCulture, DateTimeStyles.None, out r.Start))
                         { Log("reminder 시각 파싱 실패: '" + r.OccStart + " " + r.StartTime + "'"); continue; }
                         if (string.IsNullOrEmpty(r.Title)) r.Title = "(제목 없음)";
+                        r.Fire = ParseFire(RGet(o, "mins"));   // 일정별 알림 설정(없으면 기본 사다리)
                         r.Acked = _remAcks.ContainsKey(r.Key);
                         incoming.Add(r);
                     }
@@ -87,7 +89,12 @@ namespace TaskCalendarWidget
                 foreach (var inn in incoming)
                 {
                     var prev = _remSched.FirstOrDefault(p => p.Key == inn.Key);
-                    if (prev != null) { inn.StageIndex = prev.StageIndex; inn.Win = prev.Win; inn.Expired = prev.Expired; }
+                    if (prev != null)
+                    {
+                        inn.Win = prev.Win; inn.Expired = prev.Expired;
+                        // 사다리가 그대로일 때만 단계 유지 — 알림 설정이 바뀌었으면 0부터 재평가(중복/누락 방지)
+                        inn.StageIndex = prev.Fire.SequenceEqual(inn.Fire) ? prev.StageIndex : 0;
+                    }
                 }
                 // 사라진(삭제/시간변경) occurrence의 열린 창 닫기
                 foreach (var p in _remSched)
@@ -101,6 +108,18 @@ namespace TaskCalendarWidget
         }
 
         private static string RGet(JsonElement o, string k) => o.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+
+        // "30" | "60,30,10,5" → int[] (내림차순·중복제거·양수만). 비거나 잘못되면 기본 사다리.
+        private static int[] ParseFire(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return REM_FIRE;
+            var list = new List<int>();
+            foreach (var part in raw.Split(','))
+                if (int.TryParse(part.Trim(), out var v) && v > 0 && !list.Contains(v)) list.Add(v);
+            if (list.Count == 0) return REM_FIRE;
+            list.Sort((a, b) => b.CompareTo(a));   // 내림차순(60,30,10,5) — RemTick의 target 스캔 규약과 동일
+            return list.ToArray();
+        }
 
         private void RemTick()
         {
@@ -118,13 +137,13 @@ namespace TaskCalendarWidget
                 }
                 // m이 이미 지난 임계 중 '가장 임박한(가장 작은)' 단계 = 인덱스가 가장 큰 것. 부팅 중간 진입도 자동 처리.
                 int target = -1;
-                for (int i = 0; i < REM_FIRE.Length; i++) if (m <= REM_FIRE[i]) target = i;
-                if (target < 0) continue;              // 아직 60분 밖
+                for (int i = 0; i < o.Fire.Length; i++) if (m <= o.Fire[i]) target = i;
+                if (target < 0) continue;              // 아직 첫 알림 시점 밖
                 if (target >= o.StageIndex)            // 새 단계 도달(에스컬레이션 포함)
                 {
                     o.StageIndex = target + 1;
                     int disp = Math.Max(1, (int)Math.Ceiling(m));   // 표시=실제 남은 분, 색=단계
-                    ShowOrUpdate(o, REM_FIRE[target], disp);
+                    ShowOrUpdate(o, o.Fire[target], disp);
                 }
             }
         }

@@ -1172,6 +1172,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
         <div style="margin-top:8px">
+          <label for="fRemind">알림</label>
+          <select id="fRemind" title="시작 시각이 있는 일정에만 적용됩니다"></select>
+        </div>
+        <div style="margin-top:8px">
           <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label><button type="button" class="lnk" id="fRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div>
           <select id="fLoc"></select>
         </div>
@@ -2501,12 +2505,21 @@ function numMin(v){
 }
 // 이미 저장된 '분 정수' 값 검증 — load/XML 읽기 경계용(곱 안 함). 정수 0~1440만 통과, 그 외 null.
 function validMin(v){ const m = parseInt(v, 10); return Number.isInteger(m) && m >= 0 && m <= 1440 ? m : null; }
+const REMIND_DEFAULT = [60, 30, 10, 5];   // 기본 알림 사다리(설정 안 한 일정 = 기존 동작 그대로). 해석은 remindMinsFor 참조
+const REMIND_MAX = 10080;                 // 리드타임 상한 7일(분)
+// 알림 설정 정규화 — null(기본) / 0(없음) / 양의 정수(분). 그 외 입력은 null(기본)로. 폼·XML 입력 경계에서만 사용(numMin과 같은 역할).
+function normRemind(v){
+  if(v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  if(!Number.isFinite(n) || n < 0) return null;
+  return Math.min(REMIND_MAX, Math.floor(n));   // 0은 0으로 보존(=알림 없음, 기본과 구분)
+}
 function addEntry(d){
   const source = d.source==='git'?'git':'';
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:d.categoryId||null,
     allDay:!!d.allDay, startTime:d.startTime||'', endTime:d.endTime||'',
     location:String(d.location||'').trim().slice(0,200),
-    memo:d.memo||'', source, commits:normCommits(d.commits), hours:numMin(d.hours), ...rangeFields(d, source),
+    memo:d.memo||'', source, commits:normCommits(d.commits), hours:numMin(d.hours), remind:normRemind(d.remind), ...rangeFields(d, source),
     createdAt:nowIso(), updatedAt:nowIso()};
   state.entries.push(e); save(); return e;
 }
@@ -2518,6 +2531,7 @@ function updateEntry(id, d){
     location:String(d.location||'').trim().slice(0,200),
     memo:d.memo||'', source, commits:normCommits(d.commits), ...rangeFields(d, source), updatedAt:nowIso()});
   if('hours' in d) e.hours = numMin(d.hours);   // 공수는 폼이 아닌 작업일지 칩에서 입력 — 폼 저장 시 미제공이면 기존값 보존
+  if('remind' in d) e.remind = normRemind(d.remind);   // 폼이 제공할 때만 갱신(미제공이면 기존값 보존)
   save();
 }
 function deleteEntry(id){
@@ -2606,6 +2620,7 @@ function toXML(){
     el.setAttribute('endTime', e.endTime || '');
     if(e.hours != null) el.setAttribute('hours', String(e.hours));   // 공수(분 정수). 미입력이면 속성 미기록(기존 파일과 byte 동일)
     if(e.location) el.setAttribute('location', e.location);          // 장소(없으면 속성 미기록 — 하위호환)
+    if(e.remind != null) el.setAttribute('remind', String(e.remind)); // 알림(분 전, 0=없음). 기본(null)이면 속성 미기록 — 기존 파일과 byte 동일
     el.setAttribute('createdAt', e.createdAt || '');
     el.setAttribute('updatedAt', e.updatedAt || '');
     const t = doc.createElement('title'); t.textContent = e.title; el.appendChild(t);
@@ -2744,6 +2759,7 @@ function fromXML(text){
       endTime: allDay ? '' : validTime(e.getAttribute('endTime')),
       hours: validMin(e.getAttribute('hours')),   // 공수(분 정수|null). 속성 없으면 null → 구버전 XML 무손실
       location: (e.getAttribute('location') || '').slice(0,200),   // 장소(없으면 빈문자 → 구버전 XML 무손실)
+      remind: normRemind(e.getAttribute('remind')),   // 알림(분 전|0=없음|null=기본 사다리). 속성 없으면 null → 구버전 XML 무손실
       memo: txt(e,'memo'),
       source,
       commits: normCommits([...e.getElementsByTagName('commit')].map(ce => {
@@ -2842,7 +2858,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       e.recur ? [e.recur.freq, e.recur.interval||1, e.recur.until||'', e.recur.count||0] : null,
       (e.recurExcept||[]).slice().sort(),
       (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||'']),
-      e.hours??null, e.location||'']),
+      e.hours??null, e.location||'', e.remind??null]),
     t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'', Object.entries(t.dayNotes||{}).sort()]),
     r: normRooms(s.rooms) || [],
   });
@@ -3377,7 +3393,10 @@ function fillCatSelect(sel, emptyLabel){
     state.categories.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
 }
 function toggleTimeRow(){
-  $('#timeRow').classList.toggle('off', $('#fAllDay').checked);
+  const allDay = $('#fAllDay').checked;
+  $('#timeRow').classList.toggle('off', allDay);
+  // 알림도 시간 행과 같은 조건으로 함께 토글 — 종일이거나 시작 시각 미지정이면 비활성(기본)
+  syncRemindCtl($('#fRemind'), !allDay && !!readTimeSel($('#fStartH'), $('#fStartM')));
 }
 function toggleRangeRow(){
   const on = $('#fIsRange').checked;
@@ -3427,6 +3446,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = e.allDay;
     writeTimeSel($('#fStartH'), $('#fStartM'), e.startTime); writeTimeSel($('#fEndH'), $('#fEndM'), e.endTime);
     fEndDirty = !!e.endTime;
+    fillRemindSelect($('#fRemind'), e.remind);
     fillRoomSelect($('#fLoc'), e.location || '');
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
@@ -3439,6 +3459,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = false;
     writeTimeSel($('#fStartH'), $('#fStartM'), ''); writeTimeSel($('#fEndH'), $('#fEndM'), '');
     fEndDirty = false;
+    fillRemindSelect($('#fRemind'), null);   // 새 기록 = 기본 사다리
     fillRoomSelect($('#fLoc'), '');
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
@@ -3511,7 +3532,8 @@ function saveEntryFromForm(){
   commits = commits.filter(c => { if(!c.hash) return true; if(seen.has(c.hash)) return false; seen.add(c.hash); return true; });
   const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
-                location: $('#fLoc').value, memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept};
+                location: $('#fLoc').value, memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept,
+                remind: ($('#fRemind').value === '' ? null : Number($('#fRemind').value))};
   if(editingId){ updateEntry(editingId, data); toast('기록을 수정했습니다', 'success'); }
   else{ addEntry(data); toast('기록을 추가했습니다', 'success'); }
   closeModal('#entryModal');
@@ -3574,6 +3596,25 @@ function fillRoomSelect(sel, current){
   if(cur && !rooms.includes(cur)) html += `<option value="${esc(cur)}">${esc(cur)} (미등록)</option>`;   // 기존/삭제된 장소 무손실
   sel.innerHTML = html;
   sel.value = cur;
+}
+/* ---------- 알림(리드타임) 선택 — entryModal·quick-add 공용(옵션 단일 소스) ---------- */
+// ''=기본 사다리 / '0'=알림 없음 / 'n'=n분 전 1회. 값 규약은 normRemind·remindMinsFor와 동일.
+const REMIND_OPTS = [['', '기본 (60·30·10·5분 전)'], ['0', '알림 없음'], ['5', '5분 전'], ['10', '10분 전'],
+  ['15', '15분 전'], ['30', '30분 전'], ['60', '1시간 전'], ['120', '2시간 전'], ['1440', '1일 전']];
+// 알림 select 채우기 — cur(entry.remind: null|0|분)로 선택. 미등록 값(예: 자세히 편집 전 다른 리드타임)은 보존용 옵션 추가.
+function fillRemindSelect(sel, current){
+  if(!sel) return;
+  const cur = (current == null) ? '' : String(current);
+  let html = REMIND_OPTS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
+  if(cur && !REMIND_OPTS.some(([v]) => v === cur)) html += `<option value="${esc(cur)}">${esc(cur)}분 전</option>`;   // 프리셋 밖 값 무손실
+  sel.innerHTML = html;
+  sel.value = cur;
+}
+// 알림은 '시각 있는 일정'에만 의미 — 종일·할 일·시각 미지정이면 비활성 + 기본 표시(저장 시 null=기본).
+function syncRemindCtl(sel, on){
+  if(!sel) return;
+  sel.disabled = !on;
+  if(!on) sel.value = '';
 }
 // 폼(편집/빠른추가)이 열려 있는 동안 회의실을 바꾸면 그 폼의 장소 select를 즉시 갱신(현재 선택 보존)
 function refreshOpenRoomSelects(){
@@ -5507,7 +5548,10 @@ function writeTimeSel(hSel, mSel, hhmm){
 function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+60; if(t>=1440) t=1439; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
 let qaEndDirty = false, _qaAutoEndWriting = false;
 const qaTimeEls = () => ({ sh:$('#qaStartH'), sm:$('#qaStartM'), eh:$('#qaEndH'), em:$('#qaEndM') });
-function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : 'flex'; }
+function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : 'flex';
+  // 알림도 같은 조건으로 토글 — 일정(할 일 아님) + 종일 아님 + 시작 시각 지정일 때만 활성. 상세 미전개면 #qaRemind 없음(무시).
+  const t = qaTimeEls();
+  syncRemindCtl($('#qaRemind'), qaType === 'event' && !(ad && ad.checked) && !!readTimeSel(t.sh, t.sm)); }
 function qaAutoEnd(){   // 시작 변경 시 종료 자동 +1h (사용자가 종료 건드리면 보존)
   if(qaEndDirty) return;
   const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
@@ -5567,6 +5611,7 @@ function openQuickAdd(date, type, entryId){
     qaEndDirty = !!e.endTime;
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
+    fillRemindSelect($('#qaRemind'), e.remind);
     fillRoomSelect($('#qaLoc'), e.location || '');
     const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
     qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시
@@ -5595,10 +5640,11 @@ function qaSyncType(){
     qaMoreLabel();
   }
 }
-function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
+function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (알림·장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div><select id="qaLoc"></select>
+    ? `<label class="qa-lb" for="qaRemind">알림</label><select id="qaRemind" title="시작 시각이 있는 일정에만 적용됩니다"></select>
+       <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div><select id="qaLoc"></select>
        <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
@@ -5608,6 +5654,8 @@ function qaRenderDetail(){
        <div class="qa-hint" id="qaTodoPeriodHint" style="display:none">여러 날 할 일은 날짜별 설명으로 적습니다 — 추가 후 각 날짜에서 설명을 남기세요.</div>
        <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
   if(qaType === 'event'){
+    fillRemindSelect($('#qaRemind'), null);   // 알림 select 채우기(기본). 편집 프리필은 openQuickAdd가 이후 덮어씀
+    qaSyncTimeRow();                          // 종일·시작시각 상태에 맞춰 알림 활성/비활성 즉시 반영
     fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
     const rm = $('#qaRoomMgr'); if(rm) rm.addEventListener('click', openRoomModal);   // 빠른추가 → 회의실 관리(중첩 모달)
     const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
@@ -5635,9 +5683,12 @@ function qaEventFormData(){
   const en = allDay ? '' : readTimeSel(t.eh, t.em);
   const rf = $('#qaRecur') ? $('#qaRecur').value : '';
   const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
-  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc');
-  return {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
+  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc'); const rmEl = $('#qaRemind');
+  const d = {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
     allDay, startTime:st, endTime:en, location:lcEl ? lcEl.value : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
+  // 알림: 상세(옵션 더보기) 미전개면 컨트롤이 없음 → 키 자체를 생략해 updateEntry가 기존값을 보존하게 함(무음 초기화 방지)
+  if(rmEl) d.remind = (rmEl.value === '' ? null : Number(rmEl.value));
+  return d;
 }
 function qaSave(){
   const title = $('#qaTitle').value.trim();
@@ -5911,8 +5962,9 @@ function bind(){
   $('#qaMore').addEventListener('click', qaToggleDetail);
   // 시각 영역(정적): 종일 토글·시작→종료 자동+1h·종료 보정 1회 배선
   $('#qaAllDay').addEventListener('change', qaSyncTimeRow);
-  $('#qaStartH').addEventListener('change', qaAutoEnd);
-  $('#qaStartM').addEventListener('change', qaAutoEnd);
+  // 시작 시각이 생기고/사라지면 알림 활성 조건도 바뀜 → 자동+1h와 함께 재동기화
+  $('#qaStartH').addEventListener('change', () => { qaAutoEnd(); qaSyncTimeRow(); });
+  $('#qaStartM').addEventListener('change', () => { qaAutoEnd(); qaSyncTimeRow(); });
   $('#qaEndH').addEventListener('change', qaEndChanged);
   $('#qaEndM').addEventListener('change', qaEndChanged);
   $('#qaAdvanced').addEventListener('click', () => {   // 단순 편집기 → 전체 편집기. 현재 폼 변경분을 먼저 반영(값 이월)
@@ -6372,7 +6424,9 @@ function bind(){
 
   /* 기록 모달 */
   $('#fAllDay').addEventListener('change', () => { toggleTimeRow(); toggleRangeRow(); });
-  $('#fStartH').addEventListener('change', fAutoEnd); $('#fStartM').addEventListener('change', fAutoEnd);
+  // 시작 시각이 생기고/사라지면 알림 활성 조건도 바뀜 → toggleTimeRow로 재동기화
+  $('#fStartH').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
+  $('#fStartM').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
   $('#fEndH').addEventListener('change', fEndChanged); $('#fEndM').addEventListener('change', fEndChanged);
   $('#fCat').addEventListener('change', updateGitRow);
   $('#btnGitFetch').addEventListener('click', fetchCommitsIntoModal);
@@ -7088,6 +7142,17 @@ function reminderTheme(){   // 호스트 카드 팔레트용 해석된 테마(sy
   if(t === 'system') return effectiveDark('system') ? 'dark' : 'light';
   return ['light','dark','forest','sepia','contrast'].includes(t) ? t : 'light';
 }
+// 일정의 알림 리드타임(분) 목록 해석. null=기본 사다리 / n>0=n분 전 1회 / 0=알림 없음(null 반환).
+// 반환: number[] (알림 시점들, 내림차순) 또는 null(알림 없음).
+function remindMinsFor(e){
+  if(!e) return null;
+  const r = e.remind;
+  if(r === 0) return null;                         // 명시적 '알림 없음'
+  if(r == null) return REMIND_DEFAULT.slice();     // 미설정 = 기본 사다리(복사본 — 호출자 변형이 원본을 오염시키지 않게)
+  const n = Number(r);
+  if(!Number.isFinite(n) || n <= 0) return REMIND_DEFAULT.slice();   // 손상값은 기본으로 폴백(무음 유실 방지)
+  return [Math.floor(n)];
+}
 function buildReminderOccs(){   // startTime 있는 일정만, 향후 48h 발생(반복 포함)
   if(!HOST) return [];
   const today = todayYmd(), to = addDays(today, 2);
@@ -7095,11 +7160,14 @@ function buildReminderOccs(){   // startTime 있는 일정만, 향후 48h 발생
   for(const e of state.entries){
     if(e.allDay) continue;
     if(!/^\d{1,2}:\d{2}$/.test(e.startTime || '')) continue;   // 명시적 시작시각만
+    const mins = remindMinsFor(e);
+    if(!mins || !mins.length) continue;   // 0=알림 없음 → 아예 보내지 않음
     const st = ('0' + e.startTime).slice(-5);                  // HH:mm 0패딩(호스트 파싱 안전)
     const c = catById(e.categoryId), col = validColor(c && c.color);
     for(const occ of expandOccurrences(e, today, to)){
       out.push({ key: e.id + '|' + occ._occStart + '|' + st, seriesId: e.id, occStart: occ._occStart,
-        startTime: st, endTime: (e.endTime || ''), loc: (e.location || ''), title: e.title || '', color: col });
+        startTime: st, endTime: (e.endTime || ''), loc: (e.location || ''), title: e.title || '', color: col,
+        mins: mins.join(',') });   // 이 일정의 알림 사다리(쉼표 문자열 — 호스트 RGet은 문자열만 읽음)
     }
   }
   return out;
