@@ -5003,14 +5003,8 @@ async function runResearchExport(){
     }, 120000);
   } finally { if(btn) btn.disabled = false; }
   if(res && res.ok){
-    // git/svn 결과 한 줄 요약(완료/건너뜀/오류) — done/skipped/error 필드 해석
-    const part = (label, r) => {
-      if(!r) return label + ' —';
-      if(r.error) return label + ' 오류: ' + r.error;
-      if(r.skipped) return label + ' 건너뜀';
-      if(r.done) return label + ' ✓';
-      return label + ' —';
-    };
+    // git/svn 결과 한 줄 요약 — 호스트가 준 status/msg(경로없음·작성자미설정·N건 뽑음·0건 등)를 그대로 표시
+    const part = (label, r) => label + ': ' + ((r && r.msg) ? r.msg : '—');
     const summary = '캘린더 ✓ · ' + part('Git', res.git) + ' · ' + part('SVN', res.svn);
     toast('연구노트 데이터를 내보냈습니다', 'success');
     if(hint) hint.textContent = summary + (res.outPath ? '\n' + res.outPath : '');

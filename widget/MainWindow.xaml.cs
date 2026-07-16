@@ -755,32 +755,38 @@ namespace TaskCalendarWidget
                     // 캘린더 md는 항상 기록(BOM 없는 UTF-8)
                     File.WriteAllText(Path.Combine(outDir, "calendar", "캘린더.md"), calendarMd ?? "", new UTF8Encoding(false));
 
-                    // --- GIT: 유효한 git 저장소일 때만 '내 커밋' 전체 patch(git log -p) ---
-                    object gitResult;
-                    bool gitOk = !string.IsNullOrWhiteSpace(gitRepo) && Directory.Exists(gitRepo) && IsGitRepo(gitRepo);
-                    if (!gitOk) gitResult = new { done = false, skipped = true, error = "" };   // 미연결/무효 → 건너뜀
+                    // --- GIT: 경로·작성자 모두 설정 && 유효할 때만 '내 커밋' patch(git log -p). 아니면 사유를 상태로 남긴다. ---
+                    string gitStatus, gitMsg; int gitCount = 0;
+                    if (string.IsNullOrWhiteSpace(gitRepo)) { gitStatus = "nopath"; gitMsg = "경로가 없어 뽑을 수 없음"; }
+                    else if (!Directory.Exists(gitRepo) || !IsGitRepo(gitRepo)) { gitStatus = "norepo"; gitMsg = "유효한 git 저장소가 아님"; }
+                    else if (string.IsNullOrWhiteSpace(gitAuthor)) { gitStatus = "noauthor"; gitMsg = "작성자 미설정으로 뽑지 않음"; }
                     else
                     {
-                        var (ok, text, err) = GitPatch(gitRepo, gitAuthor, from, to);
-                        if (ok)
+                        var (gok, gtext, gerr) = GitPatch(gitRepo, gitAuthor, from, to);
+                        if (!gok) { gitStatus = "error"; gitMsg = "오류: " + gerr; }
+                        else if (string.IsNullOrWhiteSpace(gtext)) { gitStatus = "empty"; gitMsg = "해당 작성자의 커밋 없음"; }   // 0건 → patch 파일 안 만듦
+                        else
                         {
+                            gitCount = CountLinePrefix(gtext, "commit ");   // git log -p: 각 커밋이 'commit <hash>'로 시작
                             Directory.CreateDirectory(Path.Combine(outDir, "git"));
-                            File.WriteAllText(Path.Combine(outDir, "git", "patch.txt"), text ?? "", new UTF8Encoding(false));
-                            gitResult = new { done = true, skipped = false, error = "" };
+                            File.WriteAllText(Path.Combine(outDir, "git", "patch.txt"), gtext, new UTF8Encoding(false));
+                            gitStatus = "ok"; gitMsg = gitCount + "건 뽑음 → git/patch.txt";
                         }
-                        else gitResult = new { done = false, skipped = false, error = err };
                     }
+                    object gitResult = new { status = gitStatus, msg = gitMsg, count = gitCount };
 
-                    // --- SVN: 유효한 작업복사본(.svn)일 때만 '내 리비전' log+diff ---
-                    object svnResult;
-                    bool svnOk = !string.IsNullOrWhiteSpace(svnRepo) && Directory.Exists(Path.Combine(svnRepo, ".svn"));
-                    if (!svnOk) svnResult = new { done = false, skipped = true, error = "" };   // 미연결/무효 → 건너뜀
+                    // --- SVN: 경로·작성자 모두 설정 && 유효할 때만 '내 리비전' log+diff. 아니면 사유를 상태로 남긴다. ---
+                    string svnStatus, svnMsg; int svnCount = 0;
+                    if (string.IsNullOrWhiteSpace(svnRepo)) { svnStatus = "nopath"; svnMsg = "경로가 없어 뽑을 수 없음"; }
+                    else if (!Directory.Exists(Path.Combine(svnRepo, ".svn"))) { svnStatus = "norepo"; svnMsg = "유효한 svn 작업복사본이 아님"; }
+                    else if (string.IsNullOrWhiteSpace(svnAuthor)) { svnStatus = "noauthor"; svnMsg = "작성자 미설정으로 뽑지 않음"; }
                     else
                     {
                         try
                         {
                             var log = SvnLog(svnRepo, svnAuthor, from, to, true);   // 작성자·기간 필터된 '내 리비전'
-                            if (!log.ok) svnResult = new { done = false, skipped = false, error = log.error ?? "svn 로그 실패" };
+                            if (!log.ok) { svnStatus = "error"; svnMsg = "오류: " + (log.error ?? "svn 로그 실패"); }
+                            else if (log.commits.Count == 0) { svnStatus = "empty"; svnMsg = "해당 작성자의 리비전 없음"; }   // 0건 → patch 파일 안 만듦
                             else
                             {
                                 var sb = new StringBuilder();
@@ -793,14 +799,30 @@ namespace TaskCalendarWidget
                                     sb.Append(SvnDiff(svnRepo, c.hash));
                                     sb.Append("\n\n");
                                 }
+                                svnCount = log.commits.Count;
                                 Directory.CreateDirectory(Path.Combine(outDir, "svn"));
-                                // 커밋 0건이어도 파일은 만든다(거의 빈 파일 — 그래도 done=true, 사용자에게 '내 리비전 없음'이 명확)
                                 File.WriteAllText(Path.Combine(outDir, "svn", "patch.txt"), sb.ToString(), new UTF8Encoding(false));
-                                svnResult = new { done = true, skipped = false, error = "" };
+                                svnStatus = "ok"; svnMsg = svnCount + "건 뽑음 → svn/patch.txt";
                             }
                         }
-                        catch (Exception sx) { svnResult = new { done = false, skipped = false, error = sx.Message }; }
+                        catch (Exception sx) { svnStatus = "error"; svnMsg = "오류: " + sx.Message; }
                     }
+                    object svnResult = new { status = svnStatus, msg = svnMsg, count = svnCount };
+
+                    // 내보내기 요약(log 수준) — 폴더에 남겨 왜 이렇게 나왔는지 자명하게(경로/작성자/건수)
+                    var summary = new StringBuilder();
+                    summary.Append("연구노트 데이터 내보내기 요약\n");
+                    summary.Append("================================\n");
+                    summary.Append("과제: ").Append(project).Append('\n');
+                    summary.Append("기간: ").Append(from).Append(" ~ ").Append(to).Append('\n');
+                    summary.Append("생성: ").Append(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")).Append('\n');
+                    summary.Append("작성자(Git): ").Append(string.IsNullOrWhiteSpace(gitAuthor) ? "(미설정)" : gitAuthor).Append('\n');
+                    summary.Append("작성자(SVN): ").Append(string.IsNullOrWhiteSpace(svnAuthor) ? "(미설정)" : svnAuthor).Append('\n');
+                    summary.Append('\n');
+                    summary.Append("[캘린더] calendar/캘린더.md 생성\n");
+                    summary.Append("[Git]  ").Append(gitMsg).Append('\n');
+                    summary.Append("[SVN]  ").Append(svnMsg).Append('\n');
+                    File.WriteAllText(Path.Combine(outDir, "내보내기_요약.txt"), summary.ToString(), new UTF8Encoding(false));
 
                     // 편의: 결과 폴더 열기(실패해도 무시 — 필수 아님)
                     try { Process.Start(new ProcessStartInfo { FileName = outDir, UseShellExecute = true }); } catch { }
@@ -809,6 +831,16 @@ namespace TaskCalendarWidget
                 }
                 catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); }
             });
+        }
+
+        // 텍스트에서 특정 접두로 시작하는 줄 수 — git log -p의 'commit <hash>' 커밋 헤더 개수 세기용.
+        private static int CountLinePrefix(string text, string prefix)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            int n = 0;
+            foreach (var line in text.Split('\n'))
+                if (line.StartsWith(prefix, StringComparison.Ordinal)) n++;
+            return n;
         }
 
         // git log -p (patch 포함) — '내 커밋'만(작성자·기간 필터). GitLog와 동일한 ProcessStartInfo 패턴.
