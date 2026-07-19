@@ -197,10 +197,18 @@ namespace TaskCalendarWidget
                         "수행과제 캘린더", MessageBoxButton.OK, MessageBoxImage.Warning);
 
                 // VM/원격데스크톱/그래픽 드라이버 환경의 '흰 화면' 방지 — GPU 가속/합성 끄기
-                var opts = new CoreWebView2EnvironmentOptions
+                string browserArgs = "--disable-gpu --disable-gpu-compositing --disable-features=msWebView2EnableDraggableRegions";
+                // 테스트 전용(옵트인) — 환경변수 TC_DEBUG_PORT가 있을 때만 WebView2 원격 디버깅 포트를 연다.
+                // 미설정이면 인자 자체가 붙지 않아 배포 동작·보안에 영향 없음. 자동화 검증(CDP로 실위젯 JS 실행)에서 사용.
                 {
-                    AdditionalBrowserArguments = "--disable-gpu --disable-gpu-compositing --disable-features=msWebView2EnableDraggableRegions"
-                };
+                    var dbgPort = Environment.GetEnvironmentVariable("TC_DEBUG_PORT");
+                    if (!string.IsNullOrWhiteSpace(dbgPort) && int.TryParse(dbgPort, out var dp) && dp > 0 && dp < 65536)
+                    {
+                        browserArgs += " --remote-debugging-port=" + dp;
+                        Log("원격 디버깅 포트 활성(TC_DEBUG_PORT=" + dp + ") — 테스트 전용");
+                    }
+                }
+                var opts = new CoreWebView2EnvironmentOptions { AdditionalBrowserArguments = browserArgs };
                 var env = await CoreWebView2Environment.CreateAsync(null, _webviewDir, opts);
                 _cwvEnv = env;   // 회사 보고 전송용 보조 WebView2가 같은 환경(쿠키·세션) 재사용
                 await web.EnsureCoreWebView2Async(env);
@@ -229,7 +237,9 @@ namespace TaskCalendarWidget
                 // 영속되지 않음(설정·테마·근태·패치노트 '봤음' 등 손실). 파일로 써서 https 가상 호스트로 서빙.
                 try
                 {
-                    string appDir = Path.Combine(_webviewDir, "app");
+                    // 서빙 폴더는 WebView2 프로필(_webviewDir) '밖'이어야 한다 — 프로필 내부를 가상호스트로 매핑하면
+                    // 런타임이 접근을 거부해(ERR_ACCESS_DENIED) 페이지가 아예 안 뜬다(런타임 150.x에서 확인).
+                    string appDir = Path.Combine(_dataDir, "app");
                     Directory.CreateDirectory(appDir);
                     File.WriteAllText(Path.Combine(appDir, "index.html"), html, new UTF8Encoding(false));
                     web.CoreWebView2.SetVirtualHostNameToFolderMapping("tcapp.local", appDir, CoreWebView2HostResourceAccessKind.Allow);
