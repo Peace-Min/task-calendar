@@ -1140,6 +1140,107 @@ if (!JSDOM) {
       assert.strictEqual(p.reportMarkerCustom, '');
       assert.strictEqual(p.reportIndent, 0);
     });
+    // ── 기간 취합(custom) 전용 보고서 폰트 — 정규화 / <prefs> 왕복 / 복사용 HTML 트윈 ──────────
+    test('normalizeReportFont: 화이트리스트 폰트·10~16pt만 통과, 그 외는 기본(""/0)', () => {
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Gulim',size:12})"), { family: 'Gulim', size: 12 });
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Comic Sans MS',size:12})"), { family: '', size: 12 }, '미등록 폰트 → ""(크기는 유효하면 유지)');
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:9})"), { family: 'Batang', size: 0 }, '하한 미만 → 0');
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:17})"), { family: 'Batang', size: 0 }, '상한 초과 → 0');
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:'abc'})"), { family: 'Batang', size: 0 }, '숫자 아님 → 0');
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:12.5})"), { family: 'Batang', size: 0 }, '정수 아님 → 0');
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'Batang',size:'12'})"), { family: 'Batang', size: 12 }, '숫자 문자열은 허용(셀렉트 value)');
+      assert.deepStrictEqual(evJSON('normalizeReportFont(null)'), { family: '', size: 0 });
+      assert.deepStrictEqual(evJSON('normalizeReportFont(undefined)'), { family: '', size: 0 });
+      assert.deepStrictEqual(evJSON('normalizeReportFont({})'), { family: '', size: 0 });
+      // 경계값 10/16은 통과해야 한다
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'',size:10})"), { family: '', size: 10 });
+      assert.deepStrictEqual(evJSON("normalizeReportFont({family:'',size:16})"), { family: '', size: 16 });
+    });
+
+    test('reportFont roundtrip: <prefs fontFamily/fontSize> 보존 + 기본이면 속성 미기록(기존 파일 byte 동일)', () => {
+      // 기본값 — 속성이 하나도 붙지 않아야 구버전 파일과 byte 동일
+      seed(fmtState('-', '', 2));
+      let xml = ev('toXML()');
+      assert.ok(!/fontFamily/.test(xml), '기본 폰트면 fontFamily 속성 없음');
+      assert.ok(!/fontSize/.test(xml), '기본 크기면 fontSize 속성 없음');
+      assert.deepStrictEqual(evJSON('fromXML(' + JSON.stringify(xml) + ').reportFont'), { family: '', size: 0 }, '속성 부재 → 기본');
+
+      // 값 설정 — 왕복 동일 + 앱 자체 검증기도 통과
+      const st = fmtState('-', '', 2);
+      st.reportFont = { family: 'Batang', size: 14 };
+      seed(st);
+      xml = ev('toXML()');
+      assert.ok(/fontFamily="Batang"/.test(xml), 'fontFamily 기록');
+      assert.ok(/fontSize="14"/.test(xml), 'fontSize 기록');
+      assert.deepStrictEqual(evJSON('fromXML(' + JSON.stringify(xml) + ').reportFont'), { family: 'Batang', size: 14 });
+      assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 폰트 포함 무손실');
+
+      // 손상/외부편집 값은 파싱에서 기본으로 떨어진다(저장 경로와 동일 검증)
+      const bad = xml.replace('fontFamily="Batang"', 'fontFamily="Comic Sans MS"').replace('fontSize="14"', 'fontSize="99"');
+      assert.deepStrictEqual(evJSON('fromXML(' + JSON.stringify(bad) + ').reportFont'), { family: '', size: 0 }, '미등록 폰트·범위 밖 크기 → 기본');
+    });
+
+    test('buildReportHtml: 평문과 내용 동일(줄 수 보존·HTML 이스케이프) + 폰트 있을 때만 서식', () => {
+      const st = fmtState('-', '', 2);
+      st.entries = st.entries.concat([{
+        id: 'x1', date: '2026-07-07', title: '<b>중요</b> & "인용"', categoryId: 'ca', allDay: true,
+        startTime: '', endTime: '', location: '', memo: '', source: '', commits: [],
+        hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
+      }]);
+      seed(st);
+      setRptRange('2026-07-01', '2026-07-31');
+      const text = ev('buildReportText()');
+      assert.ok(text.includes('<b>중요</b> & "인용"'), '평문에는 원문 그대로');
+
+      // 폰트 없음 — 서식 속성 없이 white-space만
+      const plainHtml = ev('buildReportHtml(buildReportText(), {family:"",size:0})');
+      assert.strictEqual((plainHtml.match(/<br>/g) || []).length, text.split('\n').length - 1,
+        '<br> 수 = 평문 줄바꿈 수(라인 추가·손실 없음)');
+      assert.ok(!/font-family/.test(plainHtml), '폰트 미설정이면 font-family 없음');
+      assert.ok(!/font-size/.test(plainHtml), '폰트 미설정이면 font-size 없음');
+      assert.ok(/white-space:pre-wrap/.test(plainHtml), '선행 공백 보존용 pre-wrap은 항상');
+      // HTML 특수문자 이스케이프 — 본문에 살아있는 태그가 없어야 한다(<div>/<br>은 래퍼)
+      assert.ok(plainHtml.includes('&lt;b&gt;중요&lt;/b&gt;'), '< > 이스케이프');
+      assert.ok(plainHtml.includes('&amp;'), '& 이스케이프');
+      assert.ok(!/<b>/.test(plainHtml), '원문 태그가 실제 태그로 새지 않음');
+      // 언이스케이프 후 평문과 완전 일치(내용 드리프트 0)
+      const unesc = plainHtml
+        .replace(/^<div style="[^"]*">/, '').replace(/<\/div>$/, '')
+        .split('<br>').join('\n')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        .replace(/&amp;/g, '&');
+      assert.strictEqual(unesc, text, '언이스케이프하면 평문과 바이트 동일');
+
+      // 폰트 설정 — 서식만 추가되고 라인 수는 그대로
+      const styledHtml = ev('buildReportHtml(buildReportText(), {family:"Gulim",size:12})');
+      assert.ok(/font-family/.test(styledHtml), '폰트 설정 시 font-family 부여');
+      assert.ok(styledHtml.includes('Gulim'), '선택한 폰트명 포함');
+      assert.ok(/Malgun Gothic/.test(styledHtml), '안전 폴백 스택 동반');
+      assert.ok(/font-size:12pt/.test(styledHtml), 'pt 단위 크기');
+      assert.strictEqual((styledHtml.match(/<br>/g) || []).length, text.split('\n').length - 1,
+        '서식을 입혀도 라인 수 불변');
+    });
+
+    test('reportFont: 폰트 행·미리보기 서식은 기간 취합에서만 (일간/주간은 기존 그대로)', () => {
+      const st = fmtState('-', '', 2);
+      st.reportFont = { family: 'Gulim', size: 13 };
+      seed(st);
+      ev("setReportMode('custom'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");
+      assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', 'custom에서 폰트 행 노출');
+      assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), 'custom 미리보기에 폰트 적용');
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt');
+
+      ev("setReportMode('daily'); buildReport();");
+      assert.strictEqual(ev("$('#rptFontRow').style.display"), 'none', '일간에선 폰트 행 숨김');
+      assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '일간 미리보기는 스타일 없음(기존과 동일)');
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
+
+      ev("setReportMode('weekly'); buildReport();");
+      assert.strictEqual(ev("$('#rptFontRow').style.display"), 'none', '주간에서도 폰트 행 숨김');
+      assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '주간 미리보기도 스타일 없음');
+      ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
+    });
+
     test('prefs 부재 XML → 기본값(-,"",2) + entries/todos/commits/rooms 무손실(가산적)', () => {
       seed(roundtripState);   // 4 엔트리(커밋 2건 포함)+2 todos+rooms
       let xml = ev('toXML()');

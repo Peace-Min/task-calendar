@@ -627,6 +627,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 #reportModal .rpt-optpanel .rpt-fmt{margin-top:0}
 .rpt-fmt-wrap{margin-top:10px}
 .rpt-fmt-wrap > .rpt-opt-lb{display:block;margin-bottom:5px}
+/* 폰트 행 — 기간 취합(custom)에서만 노출(JS가 display 토글). 서식 행과 같은 카드 룩을 재사용. */
+#reportModal .rpt-optpanel .rpt-fontrow{margin-top:8px}
 #reportModal .rpt-optpanel .git-hint{display:block;margin-top:8px;font-size:var(--fs-micro);color:var(--muted)}
 /* 근태·초과(회사 일간보고 전송 계약) — 좌측 옵션 레일 안(기간 아래·일간만). 비면 숨김. 좁은 레일에선 줄바꿈. */
 .rpt-attend-rail{margin-top:10px}
@@ -1508,8 +1510,15 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                     <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
                   </span>
                 </div>
+                <div class="rpt-fmt rpt-fontrow" id="rptFontRow" style="display:none">
+                  <span class="rpt-opt-lb">폰트</span>
+                  <select id="rptFontFamily" class="rpt-fmt-sel" aria-label="폰트 종류"></select>
+                  <span class="rpt-opt-lb rpt-fmt-ilb">크기</span>
+                  <select id="rptFontSize" class="rpt-fmt-sel" aria-label="폰트 크기"></select>
+                </div>
               </div>
               <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
+              <span class="git-hint" id="rptFontHint" style="display:none">폰트는 기간 취합 복사에만 적용됩니다 (붙여넣는 문서 서식에 맞추세요)</span>
             </div>
           </div>
         </div>
@@ -2286,6 +2295,38 @@ function migrateLocalStores(){
   if(n > 0) toast('이전 버전의 과제별 시간·근태 ' + n + '건을 옮겼습니다', 'success');   // 옮긴 게 없으면 조용히
   return n;
 }
+/* ---------- 보고서 폰트(기간 취합 전용) — 표시+복사 서식만, 내용 불변 ----------
+   월간/연간 취합본을 외부 문서(Word·한글·메일)에 붙여넣을 때 사내 양식에 맞추기 위한 값.
+   reportFormatPrefs(머리기호/들여쓰기)와 분리한 이유: 서식 pref는 custom이 'weekly' 키를 공유해
+   기간 취합에서 바꾸면 주간까지 따라 바뀐다. 폰트는 최상위 단일값으로 기간 취합에만 적용한다.
+   load()가 부팅 시 호출하므로 const는 반드시 `let state = load()` 앞에 선언해야 한다(TDZ). */
+const REPORT_FONTS = [
+  { v: '',              label: '기본' },
+  { v: 'Malgun Gothic', label: '맑은 고딕' },
+  { v: 'Gulim',         label: '굴림' },
+  { v: 'Dotum',         label: '돋움' },
+  { v: 'Batang',        label: '바탕' },
+  { v: 'NanumGothic',   label: '나눔고딕' },
+];
+const REPORT_FONT_SIZES = [0, 10, 11, 12, 13, 14, 15, 16];   // 0 = 기본(현재 스타일 그대로)
+const REPORT_FONT_FAMILY_SET = new Set(REPORT_FONTS.map(f => f.v).filter(Boolean));
+function defaultReportFont(){ return { family: '', size: 0 }; }
+// 화이트리스트 밖 폰트/범위 밖 크기는 조용히 기본값 — 외부편집·구버전·손상 데이터 방어(다른 정규화기와 동일 규약).
+function normalizeReportFont(raw){
+  const family = (raw && typeof raw.family === 'string' && REPORT_FONT_FAMILY_SET.has(raw.family)) ? raw.family : '';
+  const n = raw ? Number(raw.size) : 0;
+  const size = (Number.isInteger(n) && n >= 10 && n <= 16) ? n : 0;
+  return { family, size };
+}
+// 미리보기·복사 공용 CSS 값 — 대상 PC에 폰트가 없어도 한글이 깨지지 않도록 안전 폴백 스택을 항상 덧붙인다.
+function reportFontCss(font){
+  const f = normalizeReportFont(font);
+  return {
+    family: f.family ? `"${f.family}", 'Malgun Gothic', sans-serif` : '',
+    size: f.size ? (f.size + 'pt') : ''
+  };
+}
+
 let state = load();
 
 function defaultReportFormatPref(){
@@ -2372,6 +2413,7 @@ function defaultState(){
     taskHours: {},   // (날짜×과제) 시간 — XML <taskHours>로 영속
     attendance: {},  // 날짜별 근태 — XML <attendance>로 영속
     lsMigrated: false,   // 구 localStorage 저장소 1회 이관 완료 마커(신규 설치는 옮길 게 없음)
+    reportFont: { family: '', size: 0 },   // 기간 취합 보고서 폰트(''/0=기본) — 표시+복사 전용, XML <prefs>에 영속
   };
 }
 function load(){
@@ -2414,6 +2456,7 @@ function load(){
         s.taskHours = (s.taskHours && typeof s.taskHours === 'object') ? s.taskHours : {};
         s.attendance = (s.attendance && typeof s.attendance === 'object') ? s.attendance : {};
         s.lsMigrated = (s.lsMigrated === true);
+        s.reportFont = normalizeReportFont(s.reportFont);   // 구버전/외부편집 방어 — 부재·이상값은 기본(''/0)
         return s;
       }
     }
@@ -2441,7 +2484,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, lsMigrated:!!data.lsMigrated};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, lsMigrated:!!data.lsMigrated, reportFont:normalizeReportFont(data.reportFont)};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -2775,6 +2818,10 @@ function toXML(){
   };
   putFmt('daily', fmtPrefs.daily);
   putFmt('weekly', fmtPrefs.weekly);
+  // 기간 취합 보고서 폰트 — 기본(''/0)이면 속성 자체를 안 쓴다(기존 파일과 byte 동일).
+  { const rf = normalizeReportFont(state.reportFont);
+    if(rf.family) prefs.setAttribute('fontFamily', rf.family);
+    if(rf.size) prefs.setAttribute('fontSize', String(rf.size)); }
   root.appendChild(prefs);
 
   // 과제별 시간 — 구 localStorage(tc_taskHours)에서 승격된 컬렉션. 비어 있으면 요소 자체를 안 만든다(기존 파일과 byte 동일).
@@ -2956,6 +3003,10 @@ function fromXML(text){
     reportMarker, reportMarkerCustom, reportIndent,
     reportFormatPrefs: { daily: readReportFormatPref('daily'), weekly: readReportFormatPref('weekly') }
   });
+  // 기간 취합 폰트 — 속성 부재(구버전 XML·기본값) → {'',0}. 화이트리스트·범위 검증은 저장 경로와 동일.
+  const reportFont = normalizeReportFont(prefsEl
+    ? { family: prefsEl.getAttribute('fontFamily') || '', size: parseInt(prefsEl.getAttribute('fontSize'), 10) }
+    : null);
   // 과제별 시간 <taskHours><day date><t cat h/></day></taskHours> — 요소 부재(구버전 XML) → 빈 맵. 접근자와 동일 검증.
   const taskHours = {};
   const thEl = root.getElementsByTagName('taskHours')[0];
@@ -2989,7 +3040,7 @@ function fromXML(text){
   }
   const lsMigrated = root.getAttribute('lsMigrated') === '1';   // 속성 부재(구버전 XML) → false(이관 필요)
 
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody, reportFormatPrefs, taskHours, attendance, lsMigrated};
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody, reportFormatPrefs, taskHours, attendance, lsMigrated, reportFont};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -3010,6 +3061,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       Object.entries(day||{}).sort().filter(([,v]) => typeof v === 'number' && isFinite(v) && v > 0).map(([c,v]) => [d,c,v])),
     at: Object.entries(s.attendance||{}).sort().map(([d,a]) => [d, String((a&&a.status)||'1'), ((a&&a.overtime)|0)]),
     lm: !!s.lsMigrated,
+    rf: normalizeReportFont(s.reportFont),   // 기간 취합 폰트도 왕복 자동 검증 대상
   });
   const p = fromXML(toXML());
   const ok = JSON.stringify(norm(state)) === JSON.stringify(norm(p));
@@ -4093,6 +4145,7 @@ function applyImport(mode){
       taskHours: pendingImport.taskHours || {},     // 교체 = 가져온 파일이 통째로 원본
       attendance: pendingImport.attendance || {},
       lsMigrated: !!pendingImport.lsMigrated || !!state.lsMigrated,   // 이관 마커는 한 번 서면 유지(좀비 방지)
+      reportFont: normalizeReportFont(pendingImport.reportFont),      // 교체 = 가져온 파일이 통째로 원본
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
@@ -4111,6 +4164,9 @@ function applyImport(mode){
     // 과제별 시간·근태 — 현재 값이 이기고 없는 것만 채택(이관과 동일 규칙, mergeLegacyStores 공유)
     mergeLegacyStores(loadTaskHoursMap(), loadAttendanceMap(), pendingImport.taskHours, pendingImport.attendance);
     state.lsMigrated = !!state.lsMigrated || !!pendingImport.lsMigrated;   // 마커는 한쪽이라도 서 있으면 유지
+    // 보고서 폰트 — 현재 값이 이기고, 현재가 기본(''/0)일 때만 가져온 값을 채택(시간·근태 병합과 동일 규칙)
+    { const _cur = normalizeReportFont(state.reportFont);
+      state.reportFont = (_cur.family || _cur.size) ? _cur : normalizeReportFont(pendingImport.reportFont); }
     toast(`병합 완료 — 과제 ${nc}개 · 기록 ${ne}개 추가됨 (중복 ${pendingImport.categories.length-nc+pendingImport.entries.length-ne}개 제외)`);
   }
   pendingImport = null;
@@ -4122,7 +4178,7 @@ async function clearAll(){
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
   // lsMigrated:true 로 두는 건 의도적 — 초기화 후 구 localStorage에서 시간·근태가 되살아나는(좀비) 것을 막는다.
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, lsMigrated:true};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, lsMigrated:true, reportFont:defaultReportFont()};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -4776,10 +4832,22 @@ function reportMarkerAt(spec, i){
     default: return '';
   }
 }
+// 폰트 행(기간 취합 전용) — 표시 여부·셀렉트 동기화·미리보기 반영을 한곳에서. 일간/주간은 행을 숨기고 스타일도 걷어낸다.
+function syncReportFontUI(){
+  const on = (reportMode === 'custom');
+  const f = on ? normalizeReportFont(state.reportFont) : defaultReportFont();
+  const row = $('#rptFontRow'); if(row) row.style.display = on ? '' : 'none';
+  const hint = $('#rptFontHint'); if(hint) hint.style.display = on ? '' : 'none';
+  const fam = $('#rptFontFamily'); if(fam) fam.value = f.family;
+  const sz = $('#rptFontSize'); if(sz) sz.value = String(f.size);
+  const out = $('#rptOut');
+  if(out){ const css = reportFontCss(f); out.style.fontFamily = css.family; out.style.fontSize = css.size; }   // 빈 문자열 = 인라인 스타일 해제(기본 복귀)
+}
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
+  syncReportFontUI();   // 조기 반환 경로들보다 앞 — 어떤 상태에서도 폰트 행·미리보기 서식이 모드와 일치하게
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
   const _isNet = (state.reportSource === 'net'), _isWeek = (state.reportSource === 'week');
@@ -5250,9 +5318,33 @@ function buildReportText(indentUnit){
   });
   return blocks.join('\n\n') + '\n';
 }
+// 복사용 HTML — 평문(buildReportText)과 내용이 완전히 동일하고 폰트/줄바꿈만 입힌다(내용 드리프트 방지).
+// DOM에서 재수집하지 않고 평문을 그대로 감싸는 것이 핵심. 기간 취합에서 폰트가 설정된 경우에만 서식이 붙는다.
+// 들여쓰기 단위가 U+00A0(비분리공백)이라 pre-wrap + esc 만으로 선행 공백이 보존된다.
+function buildReportHtml(text, font){
+  const css = reportFontCss(font);
+  const style = 'white-space:pre-wrap'
+    + (css.family ? ';font-family:' + css.family : '')
+    + (css.size ? ';font-size:' + css.size : '');
+  return '<div style="' + esc(style) + '">' + String(text == null ? '' : text).split('\n').map(esc).join('<br>') + '</div>';
+}
 async function copyReport(){
   const text = buildReportText();
   if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
+  // 기간 취합 전용 폰트 — text/plain은 항상 buildReportText 원문 그대로(평문 붙여넣기·netcus 전송 계약 불변),
+  // HTML 트윈에만 서식을 입힌다. 일간/주간은 폰트가 없으므로 사실상 기존과 동일.
+  const font = (reportMode === 'custom') ? normalizeReportFont(state.reportFont) : defaultReportFont();
+  const styled = !!(font.family || font.size);
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([buildReportHtml(text, font)], {type:'text/html'}),
+        'text/plain': new Blob([text], {type:'text/plain'}),
+      })]);
+      toast('보고서를 클립보드에 복사했습니다' + (styled ? ' (폰트 적용)' : ''), 'success');
+      return;
+    }
+  }catch(_){ /* HTML 복사 미지원·권한 차단 → 아래 평문 경로로 폴백(내용은 동일) */ }
   try{ await navigator.clipboard.writeText(text); toast('보고서를 클립보드에 복사했습니다', 'success'); }
   catch(_){ // WebView2/비보안 컨텍스트 폴백 — 미러는 div라 .select() 불가 → 숨김 textarea 주입
     try{
@@ -6690,6 +6782,16 @@ function bind(){
   const _setRptInd = d => { const cur = currentReportFormatPref().indent; updateCurrentReportFormatPref({ indent: Math.max(0, Math.min(6, cur + d)) }); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
+  // 폰트 행(기간 취합 전용) — 옵션 1회 채우기 + 변경 시 state.reportFont 갱신 → save() → buildReport() 재빌드.
+  { const _ff = $('#rptFontFamily'), _fs = $('#rptFontSize');
+    if(_ff) _ff.innerHTML = REPORT_FONTS.map(f => `<option value="${esc(f.v)}">${esc(f.label)}</option>`).join('');
+    if(_fs) _fs.innerHTML = REPORT_FONT_SIZES.map(n => `<option value="${n}">${n ? n + 'pt' : '기본'}</option>`).join('');
+    if(_ff) _ff.addEventListener('change', () => {
+      state.reportFont = normalizeReportFont({ family: _ff.value, size: normalizeReportFont(state.reportFont).size });
+      save(); buildReport(); });
+    if(_fs) _fs.addEventListener('change', () => {
+      state.reportFont = normalizeReportFont({ family: normalizeReportFont(state.reportFont).family, size: parseInt(_fs.value, 10) });
+      save(); buildReport(); }); }
   // ⚙옵션 접기/펼치기 — 좁은 폭 컴팩트(넓은 폭은 CSS가 토글 숨김·패널 강제 노출 → .open 무관)
   { const _optBtn = $('#rptOptBtn'), _opt = $('#rptOpt');
     if(_optBtn && _opt) _optBtn.addEventListener('click', () => {
