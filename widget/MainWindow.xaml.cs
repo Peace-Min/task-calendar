@@ -822,6 +822,9 @@ namespace TaskCalendarWidget
                                     sb.Append(c.subject).Append('\n');
                                     if (!string.IsNullOrWhiteSpace(c.body)) sb.Append(c.body).Append('\n');
                                     sb.Append('\n');
+                                    // 변경 파일 요약(--summarize) 먼저 — git --stat과 대칭. LLM 리포트의 '수정 N·신규 N' 카드용
+                                    sb.Append(SvnDiff(svnRepo, c.hash, true));
+                                    sb.Append('\n');
                                     sb.Append(SvnDiff(svnRepo, c.hash));
                                     sb.Append("\n\n");
                                 }
@@ -886,6 +889,7 @@ namespace TaskCalendarWidget
                 psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(repo);
                 psi.ArgumentList.Add("log");
                 psi.ArgumentList.Add("-p");
+                psi.ArgumentList.Add("--stat");   // 커밋별 변경 파일 요약 — 리포트 '수정 N·신규 N' 카드용(LLM이 diff를 세지 않게)
                 psi.ArgumentList.Add("--no-merges");
                 psi.ArgumentList.Add("--no-color");
                 if (!string.IsNullOrWhiteSpace(from)) psi.ArgumentList.Add("--since=" + from + " 00:00:00");
@@ -908,7 +912,7 @@ namespace TaskCalendarWidget
 
         // svn diff -c <rev> — 단일 리비전 변경분. SvnLog와 동일한 ProcessStartInfo/인코딩(UTF-8).
         // 실패해도 오류 주석 문자열로 반환 → 한 리비전 실패가 전체 patch를 끊지 않게.
-        private static string SvnDiff(string repo, string rev)
+        private static string SvnDiff(string repo, string rev, bool summarize = false)
         {
             try
             {
@@ -922,6 +926,7 @@ namespace TaskCalendarWidget
                     StandardErrorEncoding = Encoding.UTF8,
                 };
                 psi.ArgumentList.Add("diff");
+                if (summarize) psi.ArgumentList.Add("--summarize");   // 변경 파일 요약(A/M/D 목록) — git --stat 대응
                 psi.ArgumentList.Add("-c"); psi.ArgumentList.Add(rev);
                 psi.ArgumentList.Add(repo);
                 psi.ArgumentList.Add("--non-interactive");
