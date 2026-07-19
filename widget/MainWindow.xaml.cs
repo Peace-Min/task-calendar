@@ -788,15 +788,26 @@ namespace TaskCalendarWidget
                     else if (string.IsNullOrWhiteSpace(gitAuthor)) { gitStatus = "noauthor"; gitMsg = "작성자 미설정으로 뽑지 않음"; }
                     else
                     {
-                        var (gok, gtext, gerr) = GitPatch(gitRepo, gitAuthor, from, to);
+                        // 커밋별 '개별 .patch 파일'로 저장 — 병합 단일 txt는 폐쇄망(약한) LLM에서 커밋 경계 혼선(hunk 오귀속)과
+                        // 컨텍스트 잘림(잘린 diff를 이어서 지어냄)을 유발한다. 파일=경계, 파일명(순번-단축해시)=캘린더 md와의 조인 키.
+                        var (gok, glist, gerr) = GitListCommits(gitRepo, gitAuthor, from, to);
                         if (!gok) { gitStatus = "error"; gitMsg = "오류: " + gerr; }
-                        else if (string.IsNullOrWhiteSpace(gtext)) { gitStatus = "empty"; gitMsg = "해당 작성자의 커밋 없음"; }   // 0건 → patch 파일 안 만듦
+                        else if (glist.Count == 0) { gitStatus = "empty"; gitMsg = "해당 작성자의 커밋 없음"; }   // 0건 → 폴더 안 만듦
                         else
                         {
-                            gitCount = CountLinePrefix(gtext, "commit ");   // git log -p: 각 커밋이 'commit <hash>'로 시작
-                            Directory.CreateDirectory(Path.Combine(outDir, "git"));
-                            File.WriteAllText(Path.Combine(outDir, "git", "patch.txt"), gtext, new UTF8Encoding(false));
-                            gitStatus = "ok"; gitMsg = gitCount + "건 뽑음 → git/patch.txt";
+                            string gitDir = Path.Combine(outDir, "git");
+                            Directory.CreateDirectory(gitDir);
+                            int gOrd = 0; string gFirstErr = "";
+                            foreach (var (ghash, gshort) in glist)   // 오래된 것부터(연구노트 서사 순) 0001, 0002…
+                            {
+                                gOrd++;
+                                var (ok1, text1, err1) = GitPatchOne(gitRepo, ghash);
+                                if (!ok1) { if (gFirstErr.Length == 0) gFirstErr = gshort + ": " + err1; continue; }
+                                File.WriteAllText(Path.Combine(gitDir, gOrd.ToString("0000") + "-" + gshort + ".patch"), text1, new UTF8Encoding(false));
+                                gitCount++;
+                            }
+                            if (gitCount == 0) { gitStatus = "error"; gitMsg = "오류: " + (gFirstErr.Length > 0 ? gFirstErr : "patch 생성 실패"); }
+                            else { gitStatus = "ok"; gitMsg = gitCount + "건 → git/ 커밋별 .patch" + (gFirstErr.Length > 0 ? " (일부 실패: " + gFirstErr + ")" : ""); }
                         }
                     }
                     object gitResult = new { status = gitStatus, msg = gitMsg, count = gitCount };
@@ -815,23 +826,26 @@ namespace TaskCalendarWidget
                             else if (log.commits.Count == 0) { svnStatus = "empty"; svnMsg = "해당 작성자의 리비전 없음"; }   // 0건 → patch 파일 안 만듦
                             else
                             {
-                                var sb = new StringBuilder();
-                                foreach (var c in log.commits)   // 리비전마다 헤더 + svn diff -c <rev>
+                                // 리비전별 '개별 .patch 파일' — git과 동일한 이유(경계=파일, 파일명=조인 키). 내용: 로그 헤더 + 요약(A/M/D) + diff.
+                                string svnDir = Path.Combine(outDir, "svn");
+                                Directory.CreateDirectory(svnDir);
+                                int sOrd = 0;
+                                for (int k = log.commits.Count - 1; k >= 0; k--)   // SvnLog는 최신 먼저 → 오래된 것부터 번호 매김
                                 {
-                                    sb.Append("===== r").Append(c.hash).Append(" · ").Append(c.author).Append(" · ").Append(c.date).Append(" =====\n");
-                                    sb.Append(c.subject).Append('\n');
-                                    if (!string.IsNullOrWhiteSpace(c.body)) sb.Append(c.body).Append('\n');
-                                    sb.Append('\n');
-                                    // 변경 파일 요약(--summarize) 먼저 — git --stat과 대칭. LLM 리포트의 '수정 N·신규 N' 카드용
-                                    sb.Append(SvnDiff(svnRepo, c.hash, true));
-                                    sb.Append('\n');
-                                    sb.Append(SvnDiff(svnRepo, c.hash));
-                                    sb.Append("\n\n");
+                                    var c = log.commits[k];
+                                    sOrd++;
+                                    var one = new StringBuilder();
+                                    one.Append("===== r").Append(c.hash).Append(" · ").Append(c.author).Append(" · ").Append(c.date).Append(" =====\n");
+                                    one.Append(c.subject).Append('\n');
+                                    if (!string.IsNullOrWhiteSpace(c.body)) one.Append(c.body).Append('\n');
+                                    one.Append('\n');
+                                    one.Append(SvnDiff(svnRepo, c.hash, true));   // 변경 파일 요약(A/M/D) — git --stat 대응
+                                    one.Append('\n');
+                                    one.Append(SvnDiff(svnRepo, c.hash));
+                                    File.WriteAllText(Path.Combine(svnDir, sOrd.ToString("0000") + "-r" + c.hash + ".patch"), one.ToString(), new UTF8Encoding(false));
                                 }
                                 svnCount = log.commits.Count;
-                                Directory.CreateDirectory(Path.Combine(outDir, "svn"));
-                                File.WriteAllText(Path.Combine(outDir, "svn", "patch.txt"), sb.ToString(), new UTF8Encoding(false));
-                                svnStatus = "ok"; svnMsg = svnCount + "건 뽑음 → svn/patch.txt";
+                                svnStatus = "ok"; svnMsg = svnCount + "건 → svn/ 리비전별 .patch";
                             }
                         }
                         catch (Exception sx) { svnStatus = "error"; svnMsg = "오류: " + sx.Message; }
@@ -862,18 +876,54 @@ namespace TaskCalendarWidget
             });
         }
 
-        // 텍스트에서 특정 접두로 시작하는 줄 수 — git log -p의 'commit <hash>' 커밋 헤더 개수 세기용.
-        private static int CountLinePrefix(string text, string prefix)
+        // '내 커밋' 해시 목록(오래된 것부터) — 커밋별 patch 파일 생성용. GitLog와 동일한 필터(작성자 -i·기간).
+        private (bool ok, System.Collections.Generic.List<(string hash, string shortH)> commits, string err) GitListCommits(string repo, string author, string from, string to)
         {
-            if (string.IsNullOrEmpty(text)) return 0;
-            int n = 0;
-            foreach (var line in text.Split('\n'))
-                if (line.StartsWith(prefix, StringComparison.Ordinal)) n++;
-            return n;
+            var list = new System.Collections.Generic.List<(string, string)>();
+            try
+            {
+                var psi = new ProcessStartInfo("git")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8,
+                };
+                psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(repo);
+                psi.ArgumentList.Add("log");
+                psi.ArgumentList.Add("--no-merges");
+                psi.ArgumentList.Add("--reverse");   // 오래된 것부터 — 파일 순번이 연구노트 서사 순이 되게
+                psi.ArgumentList.Add("--format=%H%x1f%h");
+                if (!string.IsNullOrWhiteSpace(from)) psi.ArgumentList.Add("--since=" + from + " 00:00:00");
+                if (!string.IsNullOrWhiteSpace(to)) psi.ArgumentList.Add("--until=" + to + " 23:59:59");
+                if (!string.IsNullOrWhiteSpace(author)) { psi.ArgumentList.Add("--regexp-ignore-case"); psi.ArgumentList.Add("--author=" + author); }
+                psi.Environment["GIT_PAGER"] = "cat";
+                psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+
+                using var p = Process.Start(psi);
+                if (p == null) return (false, list, "git 프로세스를 시작할 수 없습니다.");
+                string outp = p.StandardOutput.ReadToEnd();
+                string errp = p.StandardError.ReadToEnd();
+                if (!p.WaitForExit(60000)) { try { p.Kill(true); } catch { } return (false, list, "git 실행 시간 초과"); }
+                if (p.ExitCode != 0) return (false, list, string.IsNullOrWhiteSpace(errp) ? ("git 종료코드 " + p.ExitCode) : errp.Trim());
+                foreach (var raw in outp.Split('\n'))
+                {
+                    var line = raw.TrimEnd('\r');
+                    if (line.Length == 0) continue;
+                    var f = line.Split('');
+                    if (f.Length < 2) continue;
+                    list.Add((f[0], f[1]));
+                }
+                return (true, list, "");
+            }
+            catch (System.ComponentModel.Win32Exception) { return (false, list, "git 명령을 찾을 수 없습니다. 이 PC에 git이 설치되어 있는지 확인하세요."); }
+            catch (Exception ex) { return (false, list, ex.Message); }
         }
 
-        // git log -p (patch 포함) — '내 커밋'만(작성자·기간 필터). GitLog와 동일한 ProcessStartInfo 패턴.
-        private (bool ok, string text, string err) GitPatch(string repo, string author, string from, string to)
+        // 단일 커밋 patch(git log -1 -p --stat) — 커밋별 .patch 파일 저장용. 메타+요약+diff가 한 파일에.
+        private (bool ok, string text, string err) GitPatchOne(string repo, string hash)
         {
             try
             {
@@ -888,13 +938,11 @@ namespace TaskCalendarWidget
                 };
                 psi.ArgumentList.Add("-C"); psi.ArgumentList.Add(repo);
                 psi.ArgumentList.Add("log");
+                psi.ArgumentList.Add("-1");
                 psi.ArgumentList.Add("-p");
-                psi.ArgumentList.Add("--stat");   // 커밋별 변경 파일 요약 — 리포트 '수정 N·신규 N' 카드용(LLM이 diff를 세지 않게)
-                psi.ArgumentList.Add("--no-merges");
+                psi.ArgumentList.Add("--stat");   // 변경 파일 요약 — 리포트 '수정 N·신규 N' 카드용(LLM이 diff를 세지 않게)
                 psi.ArgumentList.Add("--no-color");
-                if (!string.IsNullOrWhiteSpace(from)) psi.ArgumentList.Add("--since=" + from + " 00:00:00");
-                if (!string.IsNullOrWhiteSpace(to)) psi.ArgumentList.Add("--until=" + to + " 23:59:59");
-                if (!string.IsNullOrWhiteSpace(author)) { psi.ArgumentList.Add("--regexp-ignore-case"); psi.ArgumentList.Add("--author=" + author); }
+                psi.ArgumentList.Add(hash);
                 psi.Environment["GIT_PAGER"] = "cat";
                 psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
 
