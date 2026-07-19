@@ -1550,5 +1550,159 @@ if (!JSDOM) {
       assert.strictEqual(evJSON('fromXML(' + JSON.stringify(mk('remind="abc"')) + ').entries[0].remind'), null, '손상값 → null(기본)');
       assert.strictEqual(evJSON('fromXML(' + JSON.stringify(mk('remind="-5"')) + ').entries[0].remind'), null, '음수 → null(기본)');
     });
+
+    // ── 과제별 시간(taskHours)·근태(attendance) XML 승격 ─────────────────────
+    // 배경: 두 저장소는 localStorage(WebView2 LevelDB)에만 있었고, 비정상 종료로 WAL이 손상돼
+    //       최신 기록이 통째로 유실된 사고가 있었다. 원자 저장(data.xml)으로 승격해 같은 내구성을 얻는다.
+    const THS = (extra) => Object.assign({
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'ca', name: '과제가', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'cb', name: '과제나', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      ],
+      entries: [], todos: [], rooms: [],
+      taskHours: {}, attendance: {}, lsMigrated: true,
+    }, extra || {});
+    // 구 저장소 셋업 + 세션 가드 해제(같은 realm에서 여러 번 이관을 시뮬레이션하기 위함)
+    const setLegacy = (th, at) => ev(
+      (th === null ? "localStorage.removeItem('tc_taskHours');" : "localStorage.setItem('tc_taskHours'," + JSON.stringify(JSON.stringify(th)) + ");") +
+      (at === null ? "localStorage.removeItem('tc_attendance');" : "localStorage.setItem('tc_attendance'," + JSON.stringify(JSON.stringify(at)) + ");") +
+      '__lsMigrateDone = false;');
+    const clearLegacy = () => ev("localStorage.removeItem('tc_taskHours'); localStorage.removeItem('tc_attendance'); __lsMigrateDone = true;");
+
+    test('taskHours/attendance: XML 왕복 — 값·마커 무손실(localStorage 아닌 data.xml에 영속)', () => {
+      seed(THS({
+        taskHours: { '2026-07-13': { ca: 6.5, cb: 1.25 }, '2026-07-14': { cb: 8 } },
+        attendance: { '2026-07-13': { status: '2', overtime: 3 }, '2026-07-14': { status: '1', overtime: 0 } },
+        lsMigrated: true,
+      }));
+      const xml = ev('toXML()');
+      assert.ok(/<taskHours>/.test(xml), '<taskHours> 컬렉션 기록');
+      assert.ok(/<t cat="ca" h="6.5"\/>/.test(xml), 'h는 정규화된 숫자 문자열로 기록');
+      assert.ok(/<attendance>/.test(xml), '<attendance> 컬렉션 기록');
+      assert.ok(/lsMigrated="1"/.test(xml), '이관 마커는 루트 속성');
+      const p = evJSON('fromXML(toXML())');
+      assert.deepStrictEqual(p.taskHours, { '2026-07-13': { ca: 6.5, cb: 1.25 }, '2026-07-14': { cb: 8 } });
+      assert.deepStrictEqual(p.attendance, { '2026-07-13': { status: '2', overtime: 3 }, '2026-07-14': { status: '1', overtime: 0 } });
+      assert.strictEqual(p.lsMigrated, true, '마커 왕복');
+      assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 시간·근태 포함 무손실');
+    });
+
+    test('taskHours/attendance: 비어 있으면 요소 자체 미기록(기존 파일 byte 동일) + 마커만은 남음', () => {
+      seed(THS({ lsMigrated: false }));
+      let xml = ev('toXML()');
+      assert.ok(!/<taskHours/.test(xml), '빈 taskHours는 요소 미생성');
+      assert.ok(!/<attendance/.test(xml), '빈 attendance는 요소 미생성');
+      assert.ok(!/lsMigrated=/.test(xml), '마커 false면 속성 미기록');
+      // 데이터가 비어도 마커는 살아남아야 한다 — 그래야 재이관(좀비 부활)이 없다
+      seed(THS({ lsMigrated: true }));
+      xml = ev('toXML()');
+      assert.ok(!/<taskHours/.test(xml) && !/<attendance/.test(xml));
+      assert.ok(/lsMigrated="1"/.test(xml));
+      assert.strictEqual(evJSON('fromXML(toXML()).lsMigrated'), true, '빈 컬렉션이어도 마커 왕복');
+      // 구버전 XML(요소·속성 부재) → 빈 맵 + 미이관
+      const oldXml = '<?xml version="1.0" encoding="UTF-8"?>\n<taskCalendar version="1" gitAuthor="" svnAuthor=""><categories></categories><entries></entries></taskCalendar>';
+      const p = evJSON('fromXML(' + JSON.stringify(oldXml) + ')');
+      assert.deepStrictEqual(p.taskHours, {}, '요소 부재 → {}');
+      assert.deepStrictEqual(p.attendance, {}, '요소 부재 → {}');
+      assert.strictEqual(p.lsMigrated, false, '속성 부재 → false(이관 필요)');
+    });
+
+    test('getTaskHours 미입력=null 계약: 부재·저장된 0 모두 null, 빈칸/0 저장은 키 제거', () => {
+      seed(THS());
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '없는 (날짜×과제) → null(0 아님)');
+      assert.strictEqual(evJSON("getTaskHours('bad-date','ca')"), null, '잘못된 날짜 → null');
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','')"), null, '과제 없음 → null');
+      // 저장된 0(손상/외부편집)도 null
+      seed(THS({ taskHours: { '2026-07-13': { ca: 0 } } }));
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '저장된 0 → null(미입력)');
+      // 빈칸 저장 = 키 제거 + 빈 날 정리
+      seed(THS({ taskHours: { '2026-07-13': { ca: 6.5 } } }));
+      ev("setTaskHours('2026-07-13','ca','')");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null);
+      assert.deepStrictEqual(evJSON('state.taskHours'), {}, '마지막 과제 제거 시 그 날짜도 삭제');
+      // 0 저장 = 그 과제만 제거(다른 과제는 유지)
+      seed(THS({ taskHours: { '2026-07-13': { ca: 6.5, cb: 2 } } }));
+      ev("setTaskHours('2026-07-13','ca',0)");
+      assert.deepStrictEqual(evJSON('state.taskHours'), { '2026-07-13': { cb: 2 } }, '0 → 그 키만 제거');
+    });
+
+    test('setTaskHours 정규화: 24h 상한 클램프 + 소수 둘째자리 반올림', () => {
+      seed(THS());
+      ev("setTaskHours('2026-07-13','ca','30')");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 24, '24h 상한');
+      ev("setTaskHours('2026-07-13','cb','6.567')");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 6.57, '소수 둘째자리 반올림');
+      ev("setTaskHours('2026-07-14','ca','abc')");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-14','ca')"), null, '숫자 아님 → 미입력');
+      ev("setTaskHours('2026-07-14','ca',-3)");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-14','ca')"), null, '음수 → 미입력');
+    });
+
+    test('setAttendance: 검증 규약 유지(status 화이트리스트·overtime 0..11) + 기본 정근', () => {
+      seed(THS());
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '1', overtime: 0 }, '미설정 기본 = 정근/0');
+      ev("setAttendance('2026-07-13','2','3')");
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '2', overtime: 3 });
+      ev("setAttendance('2026-07-14','99','50')");
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-14')"), { status: '1', overtime: 0 }, '미지 코드·범위 초과 → 기본값');
+      ev("setAttendance('bad','2','1')");
+      assert.ok(!('bad' in evJSON('state.attendance')), '잘못된 날짜는 저장 안 함');
+    });
+
+    test('이관: 구 localStorage 값이 state로 이동하고 마커가 선다(반환=이동 건수)', () => {
+      seed(THS({ lsMigrated: false }));
+      setLegacy({ '2026-07-13': { ca: 6.5 }, '2026-07-14': { cb: 3 } }, { '2026-07-13': { status: '2', overtime: 2 } });
+      const n = ev('migrateLocalStores()');
+      assert.strictEqual(n, 3, '시간 2건 + 근태 1건');
+      assert.deepStrictEqual(evJSON('state.taskHours'), { '2026-07-13': { ca: 6.5 }, '2026-07-14': { cb: 3 } });
+      assert.deepStrictEqual(evJSON('state.attendance'), { '2026-07-13': { status: '2', overtime: 2 } });
+      assert.strictEqual(ev('state.lsMigrated'), true, '이관 완료 마커');
+      assert.ok(ev("localStorage.getItem('tc_taskHours')") !== null, '구 키는 수동 복구용으로 남겨둔다(삭제 금지)');
+      clearLegacy();
+    });
+
+    test('이관: 기존 XML 값은 절대 덮지 않는다(없는 것만 채움)', () => {
+      seed(THS({ taskHours: { '2026-07-13': { ca: 8 } }, attendance: { '2026-07-13': { status: '6', overtime: 0 } }, lsMigrated: false }));
+      setLegacy({ '2026-07-13': { ca: 6.5, cb: 1 } }, { '2026-07-13': { status: '2', overtime: 5 } });
+      const n = ev('migrateLocalStores()');
+      assert.strictEqual(n, 1, '이미 있는 (날짜×과제)/근태일은 건너뛰고 신규만 이동');
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 8, '기존 XML 값 보존(덮이지 않음)');
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 1, '없던 값만 채움');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '6', overtime: 0 }, '기존 근태 보존');
+      clearLegacy();
+    });
+
+    test('좀비 방지(핵심): 이관 후 삭제한 값은 재이관에도 되살아나지 않는다', () => {
+      seed(THS({ lsMigrated: false }));
+      setLegacy({ '2026-07-13': { ca: 6.5 } }, null);
+      assert.strictEqual(ev('migrateLocalStores()'), 1);
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 6.5);
+      // 사용자가 값을 지운다 — localStorage에는 6.5가 그대로 남아 있는 상태
+      ev("setTaskHours('2026-07-13','ca',0)");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '삭제 반영');
+      // 같은 세션 재호출 + 새 세션(가드 해제) 재호출 모두 마커에서 단락되어야 한다
+      assert.strictEqual(ev('migrateLocalStores()'), 0, '세션 가드로 즉시 종료');
+      ev('__lsMigrateDone = false;');
+      assert.strictEqual(ev('migrateLocalStores()'), 0, '마커(state.lsMigrated)로 영구 종료');
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '지운 값이 좀비로 부활하면 안 됨');
+      clearLegacy();
+    });
+
+    test('이관: 옮길 게 없어도 마커는 남긴다(다음 실행에서 재훑기 없음)', () => {
+      seed(THS({ lsMigrated: false }));
+      setLegacy(null, null);
+      assert.strictEqual(ev('migrateLocalStores()'), 0, '이동 0건');
+      assert.strictEqual(ev('state.lsMigrated'), true, '데이터가 없어도 마커는 기록');
+      clearLegacy();
+    });
+
+    test('과제 삭제: 그 과제의 (날짜×과제) 시간도 동반 정리, 다른 과제 시간은 보존', () => {
+      seed(THS({ taskHours: { '2026-07-13': { ca: 6.5, cb: 2 }, '2026-07-14': { ca: 3 } } }));
+      ev("deleteCategory('ca')");
+      assert.deepStrictEqual(evJSON('state.taskHours'), { '2026-07-13': { cb: 2 } },
+        'ca 시간 제거 + ca만 있던 07-14는 날짜째 삭제, cb 시간은 보존');
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 2);
+    });
   }
 }

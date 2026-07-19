@@ -2188,8 +2188,10 @@ const ATTEND_STATUS = [
   {v:'9',label:'지각'},{v:'10',label:'지각+야근'},{v:'11',label:'병가'},
 ];
 const ATTEND_STATUS_SET = new Set(ATTEND_STATUS.map(s => s.v));
-// per-day 근태는 회사 보고 전송 보조 메타라 localStorage에 별도 저장(캘린더 데이터/XML과 무관). 기본 정근(1).
-function loadAttendanceMap(){ try{ return JSON.parse(localStorage.getItem('tc_attendance') || '{}') || {}; }catch(_){ return {}; } }
+// per-day 근태 — 회사 보고 전송 보조 메타. state.attendance에 두고 data.xml로 영속(호스트가 tmp→File.Move 원자 저장).
+// (구버전은 localStorage 별도 저장이었으나 WebView2 LevelDB 손상으로 최신 기록이 유실된 사고가 있어 XML로 승격했다.)
+// 기본 정근(1). 검증 규약(status는 ATTEND_STATUS_SET, overtime 0..11)은 그대로 유지.
+function loadAttendanceMap(){ if(!state.attendance || typeof state.attendance !== 'object') state.attendance = {}; return state.attendance; }
 function getAttendance(date){
   const a = loadAttendanceMap()[date];
   return {
@@ -2203,11 +2205,12 @@ function setAttendance(date, status, overtime){
   const st = ATTEND_STATUS_SET.has(String(status)) ? String(status) : '1';
   let ot = parseInt(overtime, 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
   m[date] = { status: st, overtime: ot };
-  try{ localStorage.setItem('tc_attendance', JSON.stringify(m)); }catch(_){}
+  save();   // 캘린더 데이터와 함께 XML 저장(원자 쓰기) — 별도 저장소 없음
 }
-// per-(날짜×과제) 시간 — 회사 일간보고 '[과제] : n' 계약. 근태와 동일하게 localStorage 별도(캘린더 데이터/XML과 무관). 소수 허용.
+// per-(날짜×과제) 시간 — 회사 일간보고 '[과제] : n' 계약. 근태와 동일하게 state에 두고 data.xml로 영속. 소수 허용.
 // 맵 형태 = { "YYYY-MM-DD": { catId: hours } }. 0/미입력은 키 자체를 두지 않음(헤더에 ' : ' 안 붙이는 신호).
-function loadTaskHoursMap(){ try{ return JSON.parse(localStorage.getItem('tc_taskHours') || '{}') || {}; }catch(_){ return {}; } }
+// ※ 미입력=null 계약 유지 — getTaskHours는 값이 없거나 0이면 null을 돌려주고(0이 아님), 보고서는 빈 입력·' : n' 생략으로 렌더한다.
+function loadTaskHoursMap(){ if(!state.taskHours || typeof state.taskHours !== 'object') state.taskHours = {}; return state.taskHours; }
 function getTaskHours(date, catId){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !catId) return null;
   const d = loadTaskHoursMap()[date]; const v = d ? d[catId] : undefined;
@@ -2220,7 +2223,68 @@ function setTaskHours(date, catId, h){
   const day = m[date] || (m[date] = {});
   if(v > 0) day[catId] = v; else delete day[catId];      // 0/빈칸 = 미입력 → 키 제거
   if(Object.keys(day).length === 0) delete m[date];      // 빈 날 정리
-  try{ localStorage.setItem('tc_taskHours', JSON.stringify(m)); }catch(_){}
+  save();   // 캘린더 데이터와 함께 XML 저장(원자 쓰기) — 별도 저장소 없음
+}
+// 구 localStorage 저장소의 (날짜×과제) 시간·근태를 state에 '없는 것만' 채워 넣는 공용 병합기.
+// 규칙: 현재 값이 이미 있으면 절대 덮지 않는다(XML이 원본). 이관·가져오기(병합)가 같은 규칙을 쓰도록 공유한다.
+// 반환: {n, th:[[date,cat,v]…], at:[[date,{status,overtime}]…]} — 실제로 옮겨진 항목(이관 검증용).
+function mergeLegacyStores(dstTH, dstAT, srcTH, srcAT){
+  const th = [], at = [];
+  for(const [date, day] of Object.entries(srcTH || {})){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !day || typeof day !== 'object') continue;
+    for(const [cat, raw] of Object.entries(day)){
+      if(!cat) continue;
+      let v = parseFloat(raw); if(!(v > 0) || !isFinite(v)) continue;
+      v = Math.round(Math.min(v, 24) * 100) / 100;
+      if(!(v > 0)) continue;                        // 반올림 후 0이 된 값(예: 0.001)은 '미입력'이라 옮기지 않음
+      const cur = dstTH[date];
+      if(cur && cur[cat] !== undefined) continue;   // 이미 있는 값은 보존(가져온 쪽이 지지 않음)
+      (dstTH[date] || (dstTH[date] = {}))[cat] = v;
+      th.push([date, cat, v]);
+    }
+  }
+  for(const [date, a] of Object.entries(srcAT || {})){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !a || typeof a !== 'object') continue;
+    if(dstAT[date] !== undefined) continue;         // 이미 있는 날은 보존
+    const st = ATTEND_STATUS_SET.has(String(a.status)) ? String(a.status) : '1';
+    let ot = parseInt(a.overtime, 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
+    dstAT[date] = { status: st, overtime: ot };
+    at.push([date, { status: st, overtime: ot }]);
+  }
+  return { n: th.length + at.length, th, at };
+}
+// localStorage(구버전 저장소) → state/XML 1회 이관. 마커(state.lsMigrated)로 종결 — 재실행 금지.
+// 재실행하면 사용자가 지운 값이 localStorage에서 되살아나므로(좀비) 절대 주기 실행하지 않는다.
+// TODO(제거예정): 모든 PC가 이관 완료되면 이 함수와 호출부를 삭제한다.
+let __lsMigrateDone = false;   // 세션당 1회 가드(HOST/브라우저 양쪽 호출부에서 중복 실행 방지)
+function migrateLocalStores(){
+  if(__lsMigrateDone) return 0;
+  if(state.lsMigrated){ __lsMigrateDone = true; return 0; }   // 이미 끝난 이관 — 영구 스킵
+  const rd = k => { try{ return JSON.parse(localStorage.getItem(k) || '{}') || {}; }catch(_){ return {}; } };
+  const oldTH = rd('tc_taskHours'), oldAT = rd('tc_attendance');
+  if(!Object.keys(oldTH).length && !Object.keys(oldAT).length){
+    // 옮길 게 없어도 마커는 남긴다 — 그래야 다음 실행에서 다시 훑지 않는다.
+    state.lsMigrated = true; __lsMigrateDone = true; save(); return 0;
+  }
+  // 데이터가 실제로 있는 경우에만 원본 백업 요청(호스트가 data.xml → data.xml.bak 복사)
+  if(HOST){ try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'backupdata'})); }catch(_){} }
+  const moved = mergeLegacyStores(loadTaskHoursMap(), loadAttendanceMap(), oldTH, oldAT);
+  const n = moved.n;
+  // 검증 — 방금 옮긴 값을 접근자로 다시 읽어 일치 확인. 하나라도 어긋나면 마커·삭제 없이 다음 실행에 재시도.
+  let bad = false;
+  for(const [date, cat, v] of moved.th) if(getTaskHours(date, cat) !== v){ bad = true; break; }
+  if(!bad) for(const [date, a] of moved.at){
+    const got = getAttendance(date);
+    if(got.status !== a.status || got.overtime !== a.overtime){ bad = true; break; }
+  }
+  if(bad){
+    console.warn('이전 데이터 이관 검증 실패 — 마커를 남기지 않고 다음 실행에 재시도합니다');
+    toast('이전 데이터 이관을 완료하지 못했습니다 — 다음 실행에서 다시 시도합니다', 'warn');
+    return -1;
+  }
+  state.lsMigrated = true; __lsMigrateDone = true; save();
+  if(n > 0) toast('이전 버전의 과제별 시간·근태 ' + n + '건을 옮겼습니다', 'success');   // 옮긴 게 없으면 조용히
+  return n;
 }
 let state = load();
 
@@ -2305,6 +2369,9 @@ function defaultState(){
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
     gitCommitBody: false,   // 커밋 가져올 때 전체 본문(제목 제외) 포함 — 전역 옵션(기본 OFF=제목만)
     reportSource: 'cal',   // 보고서 내용 출처(cal=캘린더 기록). 인메모리 전용(XML 미영속, phase2 예정)
+    taskHours: {},   // (날짜×과제) 시간 — XML <taskHours>로 영속
+    attendance: {},  // 날짜별 근태 — XML <attendance>로 영속
+    lsMigrated: false,   // 구 localStorage 저장소 1회 이관 완료 마커(신규 설치는 옮길 게 없음)
   };
 }
 function load(){
@@ -2343,6 +2410,10 @@ function load(){
         syncLegacyReportFormatFields(s, s.reportFormatPrefs.daily);
         s.gitCommitBody = (s.gitCommitBody === true);   // 부재/구버전 = false(하위호환)
         s.reportSource = (s.reportSource === 'net') ? 'net' : 'cal';   // 내용 출처 — 항상 존재 보장(기본 cal). 인메모리성 값.
+        // 과제별 시간·근태 — 구버전 저장분엔 없음(별도 localStorage였음) → 빈 맵 + 미이관 마커로 시작
+        s.taskHours = (s.taskHours && typeof s.taskHours === 'object') ? s.taskHours : {};
+        s.attendance = (s.attendance && typeof s.attendance === 'object') ? s.attendance : {};
+        s.lsMigrated = (s.lsMigrated === true);
         return s;
       }
     }
@@ -2370,10 +2441,11 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal'};
+      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, lsMigrated:!!data.lsMigrated};
       filterCatId = null; filterSource = null; noteFilterCat = null;
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
+      migrateLocalStores();   // 구 localStorage 저장소 1회 이관(마커로 종결) — state 확정·렌더 후에 실행
     }catch(e){
       // 파싱 실패: 절대 기본값으로 덮어쓰지 않는다 — 호스트에 원본 백업을 요청하고 경고
       console.warn('호스트 데이터 적용 실패', e);
@@ -2385,6 +2457,7 @@ window.__applyXml = function(text){
     return;   // 어느 경우든 여기서 save()로 덮어쓰지 않음
   }
   save(); // 파일이 없거나 비어있음 → 현재 데이터로 파일 생성
+  migrateLocalStores();   // 빈 파일(신규/최초 실행)에서도 구 저장소 이관은 시도 — 마커로 1회 종결
   hideBootSkeleton();
 };
 // 호스트가 디스크 쓰기 실패를 알릴 때 — 무음 데이터 손실 방지
@@ -2566,6 +2639,13 @@ function deleteCategory(id){
   state.entries.forEach(e => { if(e.categoryId === id) e.categoryId = null; });
   (state.todos || []).forEach(t => { if(t.categoryId === id) t.categoryId = null; });   // 노트 TODO도 '미분류'로
   state.categories = state.categories.filter(c => c.id !== id);
+  // 과제별 시간도 동반 정리 — 사라진 과제의 (날짜×과제) 시간이 XML에 유령으로 남지 않게. 근태는 날짜 단위라 그대로 둔다.
+  { const th = loadTaskHoursMap();
+    for(const [date, day] of Object.entries(th)){
+      if(!day || day[id] === undefined) continue;
+      delete day[id];
+      if(Object.keys(day).length === 0) delete th[date];   // 빈 날 정리
+    } }
   if(filterCatId === id) filterCatId = null;
   if(noteFilterCat === id) noteFilterCat = null;
   save();
@@ -2581,6 +2661,8 @@ function toXML(){
   if(state.gitAuthor) root.setAttribute('gitAuthor', state.gitAuthor);
   // svnAuthor는 빈 값도 항상 기록 — '사용자가 비움(전체 커밋)'과 '구버전 부재(마이그레이션 필요)'를 구분
   root.setAttribute('svnAuthor', state.svnAuthor || '');
+  // 구 localStorage 이관 완료 마커 — 데이터가 비어도 마커만은 남아야 재이관(좀비 부활)을 막는다. true일 때만 기록.
+  if(state.lsMigrated) root.setAttribute('lsMigrated', '1');
 
   const cats = doc.createElement('categories');
   for(const c of state.categories){
@@ -2694,6 +2776,35 @@ function toXML(){
   putFmt('daily', fmtPrefs.daily);
   putFmt('weekly', fmtPrefs.weekly);
   root.appendChild(prefs);
+
+  // 과제별 시간 — 구 localStorage(tc_taskHours)에서 승격된 컬렉션. 비어 있으면 요소 자체를 안 만든다(기존 파일과 byte 동일).
+  {
+    const th = doc.createElement('taskHours');
+    for(const [date, day] of Object.entries(state.taskHours || {}).sort()){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !day || typeof day !== 'object') continue;
+      const dEl = doc.createElement('day'); dEl.setAttribute('date', date);
+      for(const [cat, v] of Object.entries(day).sort()){
+        if(!cat || !(typeof v === 'number' && isFinite(v) && v > 0)) continue;   // 0/미입력은 애초에 키가 없음
+        const t = doc.createElement('t'); t.setAttribute('cat', cat); t.setAttribute('h', String(v)); dEl.appendChild(t);
+      }
+      if(dEl.childNodes.length) th.appendChild(dEl);   // 빈 날은 기록하지 않음
+    }
+    if(th.childNodes.length) root.appendChild(th);
+  }
+
+  // 근태 — 구 localStorage(tc_attendance)에서 승격된 컬렉션. 위와 동일하게 비면 미기록.
+  {
+    const at = doc.createElement('attendance');
+    for(const [date, a] of Object.entries(state.attendance || {}).sort()){
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !a || typeof a !== 'object') continue;
+      const dEl = doc.createElement('day');
+      dEl.setAttribute('date', date);
+      dEl.setAttribute('status', ATTEND_STATUS_SET.has(String(a.status)) ? String(a.status) : '1');
+      dEl.setAttribute('overtime', String((a.overtime >= 0 && a.overtime <= 11) ? (a.overtime | 0) : 0));
+      at.appendChild(dEl);
+    }
+    if(at.childNodes.length) root.appendChild(at);
+  }
 
   return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(root);
 }
@@ -2845,7 +2956,40 @@ function fromXML(text){
     reportMarker, reportMarkerCustom, reportIndent,
     reportFormatPrefs: { daily: readReportFormatPref('daily'), weekly: readReportFormatPref('weekly') }
   });
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody, reportFormatPrefs};
+  // 과제별 시간 <taskHours><day date><t cat h/></day></taskHours> — 요소 부재(구버전 XML) → 빈 맵. 접근자와 동일 검증.
+  const taskHours = {};
+  const thEl = root.getElementsByTagName('taskHours')[0];
+  if(thEl){
+    for(const dEl of [...thEl.getElementsByTagName('day')]){
+      const date = dEl.getAttribute('date') || '';
+      if(!isRealDate(date)) continue;
+      for(const t of [...dEl.getElementsByTagName('t')]){
+        const cat = t.getAttribute('cat') || '';
+        if(!cat) continue;
+        let v = parseFloat(t.getAttribute('h'));
+        if(!(v > 0) || !isFinite(v)) continue;                    // 0/음수/손상 → 미입력(키 없음)
+        v = Math.round(Math.min(v, 24) * 100) / 100;
+        if(!(v > 0)) continue;
+        (taskHours[date] || (taskHours[date] = {}))[cat] = v;
+      }
+      if(taskHours[date] && !Object.keys(taskHours[date]).length) delete taskHours[date];   // 빈 날 정리
+    }
+  }
+  // 근태 <attendance><day date status overtime/></attendance> — 요소 부재 → 빈 맵. status/overtime은 접근자와 동일 검증.
+  const attendance = {};
+  const atEl = root.getElementsByTagName('attendance')[0];
+  if(atEl){
+    for(const dEl of [...atEl.getElementsByTagName('day')]){
+      const date = dEl.getAttribute('date') || '';
+      if(!isRealDate(date)) continue;
+      const st = dEl.getAttribute('status');
+      let ot = parseInt(dEl.getAttribute('overtime'), 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
+      attendance[date] = { status: ATTEND_STATUS_SET.has(String(st)) ? String(st) : '1', overtime: ot };
+    }
+  }
+  const lsMigrated = root.getAttribute('lsMigrated') === '1';   // 속성 부재(구버전 XML) → false(이관 필요)
+
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody, reportFormatPrefs, taskHours, attendance, lsMigrated};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -2861,6 +3005,11 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       e.hours??null, e.location||'', e.remind??null]),
     t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'', Object.entries(t.dayNotes||{}).sort()]),
     r: normRooms(s.rooms) || [],
+    // 과제별 시간·근태 — (날짜,과제) 평탄화 후 정렬해 결정론 비교. 0/미입력은 애초에 키가 없으므로 유효값만 담긴다.
+    th: Object.entries(s.taskHours||{}).sort().flatMap(([d,day]) =>
+      Object.entries(day||{}).sort().filter(([,v]) => typeof v === 'number' && isFinite(v) && v > 0).map(([c,v]) => [d,c,v])),
+    at: Object.entries(s.attendance||{}).sort().map(([d,a]) => [d, String((a&&a.status)||'1'), ((a&&a.overtime)|0)]),
+    lm: !!s.lsMigrated,
   });
   const p = fromXML(toXML());
   const ok = JSON.stringify(norm(state)) === JSON.stringify(norm(p));
@@ -3941,6 +4090,9 @@ function applyImport(mode){
       reportFormatPrefs: normalizeReportFormatPrefs(pendingImport),
       gitCommitBody: !!pendingImport.gitCommitBody,
       reportSource: 'cal',
+      taskHours: pendingImport.taskHours || {},     // 교체 = 가져온 파일이 통째로 원본
+      attendance: pendingImport.attendance || {},
+      lsMigrated: !!pendingImport.lsMigrated || !!state.lsMigrated,   // 이관 마커는 한 번 서면 유지(좀비 방지)
     };
     filterCatId = null; filterSource = null; noteFilterCat = null;
     toast(`교체 완료 — 과제 ${state.categories.length}개 · 기록 ${state.entries.length}개`);
@@ -3956,6 +4108,9 @@ function applyImport(mode){
     { if(!Array.isArray(state.rooms)) state.rooms = DEFAULT_ROOMS.slice(); const have = new Set(state.rooms); for(const r of (normRooms(pendingImport.rooms) || [])) if(!have.has(r)){ state.rooms.push(r); have.add(r); } }  // 회의실 합집합
     if(!state.gitAuthor && pendingImport.gitAuthor) state.gitAuthor = pendingImport.gitAuthor;  // 현재 비어있을 때만 채택
     if(!state.svnAuthor && pendingImport.svnAuthor) state.svnAuthor = pendingImport.svnAuthor;
+    // 과제별 시간·근태 — 현재 값이 이기고 없는 것만 채택(이관과 동일 규칙, mergeLegacyStores 공유)
+    mergeLegacyStores(loadTaskHoursMap(), loadAttendanceMap(), pendingImport.taskHours, pendingImport.attendance);
+    state.lsMigrated = !!state.lsMigrated || !!pendingImport.lsMigrated;   // 마커는 한쪽이라도 서 있으면 유지
     toast(`병합 완료 — 과제 ${nc}개 · 기록 ${ne}개 추가됨 (중복 ${pendingImport.categories.length-nc+pendingImport.entries.length-ne}개 제외)`);
   }
   pendingImport = null;
@@ -3966,7 +4121,8 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal'};
+  // lsMigrated:true 로 두는 건 의도적 — 초기화 후 구 localStorage에서 시간·근태가 되살아나는(좀비) 것을 막는다.
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, lsMigrated:true};
   filterCatId = null; filterSource = null; noteFilterCat = null;
   save(); renderAll();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
@@ -7133,6 +7289,9 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
   showBootSkeleton();                       // 호스트가 저장 XML을 주입(__applyXml)할 때까지 펄스 — 시드 깜빡임 가림
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}
+}else{
+  // 브라우저 모드: 호스트 주입(__applyXml)이 없으므로 부팅 직후 여기서 1회 이관(마커로 종결). toast 사용 가능 시점.
+  migrateLocalStores();
 }
 function hpost(o){ try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){} }
 
