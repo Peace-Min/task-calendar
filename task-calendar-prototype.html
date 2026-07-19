@@ -3596,8 +3596,10 @@ function fillCatSelect(sel, emptyLabel){
 function toggleTimeRow(){
   const allDay = $('#fAllDay').checked;
   $('#timeRow').classList.toggle('off', allDay);
-  // 알림도 시간 행과 같은 조건으로 함께 토글 — 종일이거나 시작 시각 미지정이면 비활성(기본)
-  syncRemindCtl($('#fRemind'), !allDay && !!readTimeSel($('#fStartH'), $('#fStartM')));
+  // 알림은 '종일'일 때만 비활성. 시작 시각 미입력을 조건으로 걸지 않는다 —
+  // 폼 순서상 알림이 시각보다 위라, 시각을 먼저 넣어야만 열리면 고장으로 보인다.
+  // 시각 없는 일정은 buildReminderOccs가 어차피 걸러내므로 미리 골라둬도 무해하다(시각 입력 시 적용).
+  syncRemindCtl($('#fRemind'), !allDay);
 }
 function toggleRangeRow(){
   const on = $('#fIsRange').checked;
@@ -4415,7 +4417,10 @@ function buildCalendarExportMd(cat, from, to){
     }
     if(commits.length){
       out.push('### 작업일지(커밋)');
-      for(const c of commits) out.push('- ' + c.subject + ' (' + (c.short || c.hash) + ')');
+      // 식별자(short/hash)는 patch.txt의 커밋과 짝짓는 열쇠 — 있을 때만 괄호로 붙인다.
+      // (수기 등록분은 식별자가 없어 '()' 빈 괄호가 나가면 LLM이 매칭 키로 오인한다)
+      for(const c of commits){ const id = String(c.short || c.hash || '').trim();
+        out.push('- ' + c.subject + (id ? ' (' + id + ')' : '')); }
       out.push('');
     }
   }
@@ -5797,9 +5802,10 @@ function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+
 let qaEndDirty = false, _qaAutoEndWriting = false;
 const qaTimeEls = () => ({ sh:$('#qaStartH'), sm:$('#qaStartM'), eh:$('#qaEndH'), em:$('#qaEndM') });
 function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : 'flex';
-  // 알림도 같은 조건으로 토글 — 일정(할 일 아님) + 종일 아님 + 시작 시각 지정일 때만 활성. 상세 미전개면 #qaRemind 없음(무시).
-  const t = qaTimeEls();
-  syncRemindCtl($('#qaRemind'), qaType === 'event' && !(ad && ad.checked) && !!readTimeSel(t.sh, t.sm)); }
+  // 알림은 일정(할 일 아님) + 종일 아님이면 활성. 시작 시각 미입력은 조건으로 걸지 않는다
+  // (폼 순서상 알림이 시각보다 위 — 시각을 먼저 넣어야만 열리면 고장으로 보인다).
+  // 상세 미전개면 #qaRemind 자체가 없음(무시).
+  syncRemindCtl($('#qaRemind'), qaType === 'event' && !(ad && ad.checked)); }
 function qaAutoEnd(){   // 시작 변경 시 종료 자동 +1h (사용자가 종료 건드리면 보존)
   if(qaEndDirty) return;
   const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
