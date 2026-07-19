@@ -12,6 +12,32 @@
         Closing="Window_Closing"
         Deactivated="Window_Deactivated">
   <!-- 창 전체를 WebView2가 100% 채운다. (WPF가 그리는 영역을 두면 바탕화면 부착 시 그 부분이 검게 렌더됨)
-       타이틀바/이동/설정/닫기 컨트롤은 HTML 안(hostbar)에서 처리하고 메시지로 호스트에 전달. -->
-  <wv2:WebView2 x:Name="web"/>
+       타이틀바/이동/설정/닫기 컨트롤은 HTML 안(hostbar)에서 처리하고 메시지로 호스트에 전달.
+       loadingPanel은 같은 Grid 셀을 덮는 형제 오버레이라 web의 100% 크기는 그대로 유지된다.
+       콜드 스타트(WebView2 브라우저 프로세스 준비 ~4초) 동안만 보이고, 페이지가 뜨면 즉시
+       Collapsed로 시각 트리에서 내린다(남겨두면 바탕화면 부착 시 검게 렌더될 수 있음). -->
+  <Grid>
+    <wv2:WebView2 x:Name="web"/>
+    <Border x:Name="loadingPanel" Visibility="Collapsed" IsHitTestVisible="False"
+            Background="#FFFFFFFF" CornerRadius="12">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <!-- 아이콘: 이모지 대신 벡터(폰트 환경 무관) — 둥근 사각 + 상단 고리 2개 + 가로 구분선 -->
+        <Border Width="46" Height="46" Background="#E6F1FB" CornerRadius="12"
+                HorizontalAlignment="Center" Margin="0,0,0,14">
+          <Path Width="22" Height="22" Stretch="None"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Stroke="#185FA5" StrokeThickness="1.6" Fill="Transparent"
+                StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                Data="M 4.5,5 H 17.5 A 1.5,1.5 0 0 1 19,6.5 V 17.5 A 1.5,1.5 0 0 1 17.5,19 H 4.5 A 1.5,1.5 0 0 1 3,17.5 V 6.5 A 1.5,1.5 0 0 1 4.5,5 Z M 7.5,2.5 V 7 M 14.5,2.5 V 7 M 3,9.5 H 19"/>
+        </Border>
+        <TextBlock Text="수행과제 캘린더" FontFamily="Malgun Gothic" FontSize="14" Foreground="#1D2433"
+                   HorizontalAlignment="Center" Margin="0,0,0,14"/>
+        <TextBlock x:Name="loadingStatus" Text="준비 중…" FontFamily="Malgun Gothic" FontSize="12" Foreground="#5B6373"
+                   HorizontalAlignment="Center" Margin="0,0,0,14"/>
+        <ProgressBar x:Name="loadingBar" IsIndeterminate="True" Width="150" Height="3"
+                     Foreground="#378ADD" Background="#F1EFE8" BorderThickness="0"
+                     HorizontalAlignment="Center"/>
+      </StackPanel>
+    </Border>
+  </Grid>
 </Window>

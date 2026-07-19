@@ -165,6 +165,11 @@ namespace TaskCalendarWidget
             Log($"=== 시작 v{(_ver != null ? _ver.ToString(3) : "0.2.0")} === pinned={_settings.Pinned} firstRun={firstRun} tray={_settings.TrayEnabled}");
             if (_settings.TrayEnabled) EnsureTray();   // 설정돼 있으면 트레이 아이콘 생성
 
+            // 콜드 스타트(WebView2 브라우저 프로세스 준비 ~4초) 동안 빈 창 대신 로딩 표시.
+            // 트레이 ON(일반 창 모드)에서만 — 바탕화면 위젯 모드는 조용히 시작해야 하고,
+            // WPF 렌더 영역이 남으면 부착 시 검게 렌더되는 이슈가 있어 그 모드에선 아예 띄우지 않는다.
+            ShowLoading("준비 중…");
+
             if (firstRun)
             {
                 // 최초 실행 시 1회만 묻는다(묻지 않고 자동 등록하지 않음). 이후 ⚙에서 변경.
@@ -213,6 +218,7 @@ namespace TaskCalendarWidget
                 _cwvEnv = env;   // 회사 보고 전송용 보조 WebView2가 같은 환경(쿠키·세션) 재사용
                 await web.EnsureCoreWebView2Async(env);
                 Log("CoreWebView2 준비: " + web.CoreWebView2.Environment.BrowserVersionString);
+                ShowLoading("화면 준비 중…");   // 병목(브라우저 프로세스 준비) 통과 — 남은 건 내비게이션뿐
 
                 var s = web.CoreWebView2.Settings;
                 s.AreDevToolsEnabled = false;
@@ -224,6 +230,7 @@ namespace TaskCalendarWidget
                 web.CoreWebView2.WebMessageReceived += OnWebMessage;
                 web.CoreWebView2.NavigationCompleted += (_, ev) =>
                 {
+                    HideLoading();   // 반드시 ApplyDesktopMode보다 먼저 — WPF 렌더 영역이 남은 채 부착되면 검게 렌더됨
                     Log($"NavigationCompleted: success={ev.IsSuccess} status={ev.WebErrorStatus}");
                     if (!_desktopApplied)
                     {
@@ -249,12 +256,15 @@ namespace TaskCalendarWidget
                 catch (Exception nx)
                 {
                     Log("가상 호스트 실패 → NavigateToString 폴백: " + nx.Message);
+                    // 여기서 내리지 않는다 — 폴백 내비게이션 동안 로딩 표시를 유지(빈 화면 방지).
+                    // 완료 시 NavigationCompleted가, 그마저 안 오면 4초 폴백 타이머가 내려준다.
                     web.CoreWebView2.NavigateToString(html);
                 }
             }
             catch (Exception ex)
             {
                 Log("초기화 예외: " + ex);
+                HideLoading();   // 실패해도 로딩 표시가 화면에 영원히 남지 않게
                 MessageBox.Show("WebView2 초기화 실패:\n\n" + ex.Message + "\n\n로그: " + _logFile,
                     "수행과제 캘린더", MessageBoxButton.OK, MessageBoxImage.Error);
             }
@@ -268,6 +278,7 @@ namespace TaskCalendarWidget
                 {
                     _desktopApplied = true;
                     Log("타이머 폴백으로 부착 적용");
+                    HideLoading();   // 부착 전에 먼저 내린다(검게 렌더 방지)
                     ApplyDesktopMode();
                     if (firstRun) MoveToCursorMonitor();
                 }
@@ -1132,6 +1143,35 @@ namespace TaskCalendarWidget
                 }
             }
             else ApplyDesktopMode();   // 위젯 모드: 다시 최하위로
+        }
+
+        // ============ 콜드 스타트 로딩 표시 ============
+        // 트레이 ON(일반 창 모드)에서만 표시. 위젯 모드는 조용히 시작해야 하고, WPF 렌더 영역이
+        // 남은 채 바탕화면에 부착되면 그 영역이 검게 렌더되는 이슈가 있어 아예 띄우지 않는다.
+        private void ShowLoading(string status)
+        {
+            try
+            {
+                if (!_settings.TrayEnabled) return;   // 위젯 모드에선 어떤 호출 경로에서도 뜨지 않게
+                if (loadingPanel == null) return;
+                if (loadingStatus != null) loadingStatus.Text = status;
+                loadingPanel.Visibility = Visibility.Visible;
+            }
+            catch { }
+        }
+
+        // 로딩 표시 제거 — 반드시 시각 트리에서 내린다(Collapsed). 남겨두면 바탕화면 부착 시 검게 렌더될 수 있다.
+        private void HideLoading()
+        {
+            try
+            {
+                if (loadingPanel == null) return;
+                if (loadingPanel.Visibility == Visibility.Collapsed) return;
+                if (loadingBar != null) loadingBar.IsIndeterminate = false;   // 애니메이션 타이머 정지
+                loadingPanel.Visibility = Visibility.Collapsed;
+                Log("로딩 표시 제거");
+            }
+            catch { }
         }
 
         // 바탕화면 배치: 창을 Progman 자식으로 reparent하면 일부 환경(VM/RDP/그래픽 제한)에서
