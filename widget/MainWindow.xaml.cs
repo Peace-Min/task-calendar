@@ -244,14 +244,19 @@ namespace TaskCalendarWidget
                 // 영속되지 않음(설정·테마·근태·패치노트 '봤음' 등 손실). 파일로 써서 https 가상 호스트로 서빙.
                 try
                 {
-                    // 서빙 폴더는 WebView2 프로필(_webviewDir) '밖'이어야 한다 — 프로필 내부를 가상호스트로 매핑하면
-                    // 런타임이 접근을 거부해(ERR_ACCESS_DENIED) 페이지가 아예 안 뜬다(런타임 150.x에서 확인).
-                    string appDir = Path.Combine(_dataDir, "app");
+                    // ⚠️ 실측으로 밝혀진 함정: 서빙 중인 index.html을 매 실행 덮어쓰는데, 이전 인스턴스(또는 잔류
+                    // msedgewebview2)가 그 파일을 아직 잡고 있으면 쓰기가 막히고 그 폴더 전체가 ERR_ACCESS_DENIED가
+                    // 되어 페이지가 통째로 안 뜬다. "재시작하면 되기도/안 되기도" 하던 증상의 원인.
+                    // → 실행마다 '새 폴더'에 쓰고 그쪽을 매핑한다(잠긴 파일과 절대 경합하지 않음). 옛 폴더는 뒤에서 정리.
+                    string appRoot = Path.Combine(_dataDir, "app");
+                    Directory.CreateDirectory(appRoot);
+                    string appDir = Path.Combine(appRoot, "v" + DateTime.Now.ToString("yyyyMMddHHmmssfff"));
                     Directory.CreateDirectory(appDir);
                     File.WriteAllText(Path.Combine(appDir, "index.html"), html, new UTF8Encoding(false));
                     web.CoreWebView2.SetVirtualHostNameToFolderMapping("tcapp.local", appDir, CoreWebView2HostResourceAccessKind.Allow);
-                    Log($"가상 호스트 로드(localStorage 영속) — HTML {html.Length}자");
+                    Log($"가상 호스트 로드(localStorage 영속) — HTML {html.Length}자 · dir={Path.GetFileName(appDir)}");
                     web.CoreWebView2.Navigate("https://tcapp.local/index.html");
+                    PruneOldAppDirs(appRoot, appDir);   // 이전 회차 폴더 정리(잠겨 있으면 조용히 건너뜀)
                 }
                 catch (Exception nx)
                 {
@@ -1148,6 +1153,35 @@ namespace TaskCalendarWidget
         // ============ 콜드 스타트 로딩 표시 ============
         // 트레이 ON(일반 창 모드)에서만 표시. 위젯 모드는 조용히 시작해야 하고, WPF 렌더 영역이
         // 남은 채 바탕화면에 부착되면 그 영역이 검게 렌더되는 이슈가 있어 아예 띄우지 않는다.
+        // 이전 회차 서빙 폴더 정리 — 현재 회차만 남긴다. 아직 잠긴 폴더는 실패해도 조용히 건너뛴다
+        // (다음 실행에서 정리되므로 누적되지 않는다). 구버전이 쓰던 프로필 내부 폴더도 함께 치운다.
+        private void PruneOldAppDirs(string appRoot, string keepDir)
+        {
+            try
+            {
+                foreach (var d in Directory.GetDirectories(appRoot))
+                {
+                    if (string.Equals(d, keepDir, StringComparison.OrdinalIgnoreCase)) continue;
+                    try { Directory.Delete(d, true); } catch { }
+                }
+                // 옛 배치(프로필 내부)에서 넘어온 잔여물
+                try
+                {
+                    string legacy = Path.Combine(_webviewDir, "app");
+                    if (Directory.Exists(legacy)) Directory.Delete(legacy, true);
+                }
+                catch { }
+                // 옛 배치(app 바로 아래 index.html)도 정리
+                try
+                {
+                    string legacyFile = Path.Combine(appRoot, "index.html");
+                    if (File.Exists(legacyFile)) File.Delete(legacyFile);
+                }
+                catch { }
+            }
+            catch { }
+        }
+
         private void ShowLoading(string status)
         {
             try
