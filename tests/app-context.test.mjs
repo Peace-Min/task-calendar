@@ -1692,7 +1692,7 @@ if (!JSDOM) {
       uiSeed();
       ev("openEntryModal('new', '2026-07-08')");
       assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지 active');
-      assert.strictEqual(ev("$('#fRemCust').style.display"), 'none', '직접영역 숨김');
+      assert.strictEqual(ev("$('#fRemCust').classList.contains('rem-ghost')"), true, '직접영역 고스트(공간 예약·비표시)');
       assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', 'def 힌트');
       assert.strictEqual(evJSON("remReadValue('f')"), null, '읽으면 null(=기본)');
     });
@@ -1705,7 +1705,7 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"cust\"]').classList.contains('active')"), true, '직접 active');
       assert.strictEqual(ev("$('#fRemUnit [data-remunit=\"60\"]').classList.contains('active')"), true, '시간 단위 active');
       assert.strictEqual(ev("$('#fRemNum').value"), '2', '숫자 2');
-      assert.strictEqual(ev("$('#fRemCust').style.display"), 'inline-flex', '직접영역 표시');
+      assert.strictEqual(ev("$('#fRemCust').classList.contains('rem-ghost')"), false, '직접영역 표시(고스트 해제)');
       assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 2시간 전 1회 알림', 'cust 힌트');
       assert.strictEqual(evJSON("remReadValue('f')"), 120, '읽으면 120 왕복');
     });
