@@ -539,6 +539,12 @@ namespace TaskCalendarWidget
                         break;
                     }
 
+                    case "openFolder":   // 내보내기 결과 폴더 다시 열기(자동 열기는 1회뿐 — 창을 닫았으면 되돌아갈 길이 없다)
+                    {
+                        OpenFolderSafe(GetStr(doc, "path"));
+                        break;
+                    }
+
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
                     case "focus": ToggleFocusMode(); break;
@@ -874,6 +880,20 @@ namespace TaskCalendarWidget
                 }
                 catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); }
             });
+        }
+
+        // 폴더 열기 — 웹에서 온 문자열이므로 '실재하는 디렉터리'만 통과시킨다. UseShellExecute에 임의 문자열을
+        // 그대로 넘기면 exe·URL 실행으로 새는 경로가 되므로, explorer.exe에 인자로만 건넨다.
+        private static void OpenFolderSafe(string path)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(path)) return;
+                var full = Path.GetFullPath(path);
+                if (!Directory.Exists(full)) return;
+                Process.Start(new ProcessStartInfo("explorer.exe", "\"" + full + "\"") { UseShellExecute = true });
+            }
+            catch { }
         }
 
         // '내 커밋' 해시 목록(오래된 것부터) — 커밋별 patch 파일 생성용. GitLog와 동일한 필터(작성자 -i·기간).
