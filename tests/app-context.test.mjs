@@ -27,6 +27,31 @@ test('디자인 토큰: 참조된 --fs-/--sp-/--r-/--lh- 스케일 토큰은 전
     ':root에 없는 스케일 토큰이 참조됨(토큰 [줄번호]) — 정의를 추가하거나 기존 토큰으로 교체할 것');
 });
 
+// ── 색 리터럴 래칫(--fs/--sp/--r/--lh 가드가 구조적으로 못 잡는 종류) ─────
+// 위 가드는 '참조된 토큰이 정의됐는지'만 본다. 애초에 토큰을 안 쓰고 #fff를 박아버린 선언은
+// var()가 없으니 아무 신호도 남기지 않는다 — 실제로 사용설명서/스크린샷 뷰어 블록이 통째로
+// 토큰화에서 빠졌는데도 테스트는 green이었다(다크에서 .shotViewer-card 1.21:1로 사실상 안 보임).
+// 그래서 '토큰 정의처(:root / :root[data-theme] / html.dark) 밖의 hex 색 선언 수'에 상한을 건다.
+// 상한 = 현재 값 → 새 하드코딩은 즉시 실패, 정리하면 상한을 내려 되돌아오지 못하게 못박는 일방향 래칫.
+// (html.dark .foo{} 같은 '테마 스코프 개별 오버라이드'는 정의처가 아니라 사용처이므로 셈에 포함한다.)
+const HEX_DECL_CEILING = 57;
+test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}개 이하여야 한다(래칫 — 늘리지 말고 줄일 것)`, () => {
+  const src = loadAppSource();
+  const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);
+  assert.ok(s >= 0 && e > s, '<style> 블록을 찾지 못함');
+  let css = src.slice(s + 7, e).replace(/\/\*[\s\S]*?\*\//g, '');           // 주석 안 hex는 색이 아님
+  css = css.replace(/(?::root(?:\[data-theme=[^\]]*\])?|html\.dark)\s*\{[^}]*\}/g, '');   // 토큰 정의처 제외
+  // 선언 단위로 센다(한 선언에 hex가 여러 개여도 1). 앞이 '{' 또는 ';'인 것만 → 선택자 속 ':hover' 오검출 방지.
+  const hits = [...css.matchAll(/(?:^|[;{])\s*([-a-z]+)\s*:\s*([^;{}]*#[0-9a-fA-F]{3,8}[^;{}]*)/g)]
+    .map(m => `${m[1]}: ${m[2].trim()}`);
+  assert.ok(hits.length <= HEX_DECL_CEILING,
+    `토큰 블록 밖 hex 색 선언이 ${hits.length}개(상한 ${HEX_DECL_CEILING}) — 새 색은 var(--토큰)으로 쓸 것.\n` +
+    hits.slice(HEX_DECL_CEILING).join('\n'));
+  // 상한이 실제보다 헐거우면 래칫이 풀린다 → 줄인 만큼 상수를 내리도록 강제.
+  assert.ok(hits.length >= HEX_DECL_CEILING,
+    `hex 색 선언이 ${hits.length}개로 상한(${HEX_DECL_CEILING})보다 적다 — HEX_DECL_CEILING을 ${hits.length}로 내려 래칫을 조일 것`);
+});
+
 // ── jsdom 로드(없으면 생략) ─────────────────────────────────────────────
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }

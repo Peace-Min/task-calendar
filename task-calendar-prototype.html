@@ -224,7 +224,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cell:hover{background:var(--hover-bg)}
 .cell.dim{background:var(--dim-bg)}
 .cell.dim .num{color:#7a8294}
-.cell.sel{box-shadow:inset 0 0 0 2px var(--line-2)}   /* 선택 = 중립 회색 프레임(오늘의 솔리드 파랑 배지와 채널 분리) */
+/* 선택 = 중립 프레임(오늘의 솔리드 파랑 배지와 채널 분리). 경계색은 --line-2가 아니라 --ctl-border다:
+   --line-2는 셀 배경 대비 1.39~1.64:1이라 5개 중 4개 테마에서 비텍스트 3:1 미달이고, 위젯 투명도를 낮추면 사실상 사라진다.
+   이 앱에서 '선택'은 우측 패널·보고서·빠른등록이 모두 물고 있는 최상위 상태라 가장 약한 색을 쓸 자리가 아니다. */
+.cell.sel{box-shadow:inset 0 0 0 2px var(--ctl-border)}
 .cell.drop{background:var(--accent-soft);outline:2px dashed var(--accent);outline-offset:-2px}
 .gridrow{display:contents}                                    /* ARIA role=row 래퍼 — 박스 트리에서 제거돼 7열 그리드 레이아웃 보존 */
 .cell:focus{outline:none}
@@ -729,40 +732,45 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .guide-hero span{font-size:var(--fs-body);color:var(--muted);line-height:1.55}
 .guide-section{display:flex;flex-direction:column;gap:12px;padding:0 0 20px;border-bottom:1px solid var(--line)}
 .guide-section:last-child{border-bottom:none}
-.guide-shot{position:relative;min-height:250px;border:1px solid var(--line);border-radius:var(--r-md);background:#f8fafc;overflow:hidden;box-shadow:0 1px 2px rgba(20,28,55,.06)}
-.shot-top{height:36px;display:flex;align-items:center;gap:6px;padding:0 10px;background:#fff;border-bottom:1px solid var(--line)}
+/* 사용설명서의 '가짜 스크린샷'은 앱 UI를 HTML로 그린 목업이다. 목적이 "지금 앱이 이렇게 생겼다"이므로
+   테마를 따라 같이 뒤집히는 게 정답 — 하드코딩 흰 배경으로 두면 다크에서 목업만 홀로 흰 판이 되고
+   본문(var(--text))이 그 위에 얹혀 읽히지 않는다(실측 1.21:1). 전부 토큰으로 돌린다. */
+.guide-shot{position:relative;min-height:250px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg);overflow:hidden;box-shadow:0 1px 2px rgba(20,28,55,.06)}
+.shot-top{height:36px;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 .shot-title{font-size:11px;font-weight:700;color:var(--text);margin-right:auto}
-.shot-btn{height:22px;display:inline-flex;align-items:center;gap:4px;padding:0 7px;border:1px solid #d5dbe8;border-radius:6px;background:#fff;font-size:10px;color:#283348}
-.shot-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.shot-btn{height:22px;display:inline-flex;align-items:center;gap:4px;padding:0 7px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel);font-size:10px;color:var(--text)}
+/* accent '채움 + 흰 글자'는 앱 본체와 같은 규약을 쓴다 — 포레스트/다크의 --accent는 흰 글자에서 AA 미달이라 --accent-fill로 */
+.shot-btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
 .shot-body{position:absolute;left:0;right:0;top:36px;bottom:0;display:grid;grid-template-columns:1fr 142px;gap:8px;padding:9px}
 .shot-calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
-.shot-cell{position:relative;min-height:34px;border:1px solid var(--line);border-radius:6px;background:#fff;padding:3px;font-size:9px;color:var(--muted)}
-.shot-cell.sel{outline:2px solid var(--accent);background:#f2f6ff}
+.shot-cell{position:relative;min-height:34px;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:3px;font-size:9px;color:var(--muted)}
+.shot-cell.sel{outline:2px solid var(--accent);background:var(--accent-soft)}
 .shot-chip{height:10px;margin-top:3px;border-radius:3px;background:var(--accent-soft)}
-.shot-chip.todo{background:#e7f7ec}
-.shot-panel{border:1px solid var(--line);border-radius:8px;background:#fff;padding:8px;display:flex;flex-direction:column;gap:6px}
+/* 할 일 칩은 앱에서 '속 빈 윤곽선'이 신호다(초록 채움이 아님) → 목업도 같은 채널로. 높이 10px 고정이라 border 대신 inset ring */
+.shot-chip.todo{background:transparent;box-shadow:inset 0 0 0 1px var(--chip-outline)}
+.shot-panel{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:8px;display:flex;flex-direction:column;gap:6px}
 .shot-panel h4{margin:0;font-size:11px;color:var(--text)}
-.shot-line{height:8px;border-radius:99px;background:#e8edf5}
+.shot-line{height:8px;border-radius:99px;background:var(--line)}
 .shot-line.short{width:62%}
 .shot-line.mid{width:78%}
-.shot-modal{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:min(76%,360px);border:1px solid #d7deea;border-radius:10px;background:#fff;box-shadow:0 18px 40px rgba(20,28,55,.2);padding:11px;z-index:2}
+.shot-modal{position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:min(76%,360px);border:1px solid var(--line-2);border-radius:10px;background:var(--panel);box-shadow:0 18px 40px rgba(20,28,55,.2);padding:11px;z-index:2}
 .shot-modal h4{margin:0 0 9px;font-size:12px;color:var(--text)}
-.shot-field{height:24px;border:1px solid #d9e0ec;border-radius:6px;background:#fff;margin:6px 0}
+.shot-field{height:24px;border:1px solid var(--line-2);border-radius:6px;background:var(--panel);margin:6px 0}
 .shot-row{display:flex;gap:6px;align-items:center}
-.shot-tab{height:23px;padding:0 10px;border-radius:999px;background:#eef2f8;font-size:10px;display:inline-flex;align-items:center}
-.shot-tab.on{background:var(--accent);color:#fff}
-.shot-menu{position:absolute;right:10px;top:34px;width:120px;border:1px solid #d7deea;border-radius:8px;background:#fff;padding:6px;box-shadow:0 10px 28px rgba(20,28,55,.16);z-index:3}
+.shot-tab{height:23px;padding:0 10px;border-radius:999px;background:var(--bg);font-size:10px;display:inline-flex;align-items:center}
+.shot-tab.on{background:var(--accent-fill);color:var(--on-accent)}
+.shot-menu{position:absolute;right:10px;top:34px;width:120px;border:1px solid var(--line-2);border-radius:8px;background:var(--panel);padding:6px;box-shadow:0 10px 28px rgba(20,28,55,.16);z-index:3}
 .shot-menu div{height:22px;display:flex;align-items:center;padding:0 7px;border-radius:5px;font-size:10px;color:var(--text)}
-.shot-menu div.on,.shot-menu div:hover{background:#eef3ff}
-.shot-call{position:absolute;z-index:5;display:flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;background:var(--accent);color:#fff;font-size:10px;font-weight:700;box-shadow:0 7px 18px rgba(29,78,216,.24)}
-.shot-call::before{content:attr(data-n);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#fff;color:var(--accent);font-size:10px}
+.shot-menu div.on,.shot-menu div:hover{background:var(--accent-soft)}
+.shot-call{position:absolute;z-index:5;display:flex;align-items:center;gap:5px;padding:4px 7px;border-radius:999px;background:var(--accent-fill);color:var(--on-accent);font-size:10px;font-weight:700;box-shadow:0 7px 18px rgba(29,78,216,.24)}
+.shot-call::before{content:attr(data-n);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--on-accent);color:var(--accent-fill);font-size:10px}
 .guide-copy{display:flex;flex-direction:column;gap:8px}
 .guide-copy h3{margin:0;font-size:var(--fs-title);color:var(--text)}
 .guide-copy p{margin:0;color:var(--muted);font-size:var(--fs-body);line-height:1.6}
 .guide-step-list{display:flex;flex-direction:column;gap:10px}
-.guide-step-card{display:grid;grid-template-columns:minmax(360px,1fr) minmax(190px,.48fr);border:1px solid var(--line);border-radius:var(--r-md);background:#fff;overflow:hidden}
+.guide-step-card{display:grid;grid-template-columns:minmax(360px,1fr) minmax(190px,.48fr);border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);overflow:hidden}
 .guide-step-card .guide-shot{border:none;border-right:1px solid var(--line);border-radius:0;box-shadow:none;min-height:228px}
-.guide-step-img{display:block;width:100%;height:260px;object-fit:contain;object-position:top left;border-right:1px solid var(--line);background:#fff;cursor:zoom-in}
+.guide-step-img{display:block;width:100%;height:260px;object-fit:contain;object-position:top left;border-right:1px solid var(--line);background:var(--panel);cursor:zoom-in}
 .guide-step-text{padding:14px 15px;display:flex;flex-direction:column;justify-content:center}
 .guide-step-k{display:block;font-size:var(--fs-micro);font-weight:700;color:var(--accent-2);margin-bottom:4px}
 .guide-step-text p{margin:0;font-size:var(--fs-body);line-height:1.55;color:var(--text);word-break:keep-all;overflow-wrap:anywhere}
@@ -775,8 +783,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .guide-resize::before{content:"";position:absolute;right:4px;bottom:4px;width:12px;height:12px;border-right:2px solid var(--line-2);border-bottom:2px solid var(--line-2)}
 .shotViewer{position:fixed;inset:0;z-index:100;background:rgba(15,20,32,.78);display:flex;align-items:center;justify-content:center;padding:24px}
 .shotViewer.hidden{display:none}
-.shotViewer-card{position:relative;max-width:min(1280px,96vw);max-height:92vh;background:#fff;border-radius:var(--r-md);box-shadow:0 22px 70px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column}
-.shotViewer-card img{display:block;max-width:min(1280px,96vw);max-height:calc(92vh - 48px);object-fit:contain;background:#fff}
+.shotViewer-card{position:relative;max-width:min(1280px,96vw);max-height:92vh;background:var(--panel);border-radius:var(--r-md);box-shadow:0 22px 70px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column}
+.shotViewer-card img{display:block;max-width:min(1280px,96vw);max-height:calc(92vh - 48px);object-fit:contain;background:var(--panel)}
 .shotViewer-head{height:44px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid var(--line);font-size:var(--fs-body);font-weight:700;color:var(--text)}
 .shotViewer-head .spacer{flex:1}
 .shotViewer-head button{border:none;background:transparent;font-size:22px;line-height:1;cursor:pointer;color:var(--muted);padding:4px 8px}
@@ -793,7 +801,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .pv-note{color:var(--muted);font-size:var(--fs-meta)}
 /* 강조 항목(핵심 기능) — 좌측 액센트 바 + accent-soft 박스로 눈에 띄게 */
 .patch-list li.key{list-style:none;margin:8px 0 8px -20px;padding:9px 12px 9px 13px;background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:8px;line-height:1.62}
-.pv-key{display:inline-block;font-size:var(--fs-meta);font-weight:800;color:#fff;background:var(--accent);border-radius:5px;padding:0 7px;margin-right:7px;vertical-align:1px;letter-spacing:.5px}
+.pv-key{display:inline-block;font-size:var(--fs-meta);font-weight:800;color:var(--on-accent);background:var(--accent-fill);border-radius:5px;padding:0 7px;margin-right:7px;vertical-align:1px;letter-spacing:.5px}
 /* 커밋 내역 행 — 시인성: 선행 git 아이콘 + 제목 강조 + 메타(시각·과제·해시) 약화 */
 .nd-commit .nd-ci{flex:none;color:var(--accent);display:inline-flex;align-items:center;width:15px}
 .nd-commit .nd-ci .ic{width:15px;height:15px}
@@ -1027,7 +1035,10 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
    ellipsis는 트랙 자체가 max-content보다 좁은 극단에서만 도는 최후 안전장치로 남긴다. */
 .seg-b{flex:1 1 auto;min-width:max-content;border:none;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-meta);font-weight:400;line-height:1.3;padding:5px 11px;border-radius:calc(var(--r-md) - 3px);cursor:pointer;white-space:nowrap;text-align:center;overflow:hidden;text-overflow:ellipsis}
 .seg-b:hover{background:var(--hover-bg)}
-.seg-b.active{background:var(--panel);font-weight:600;box-shadow:0 1px 2px var(--seg-sh)}
+/* 활성 알약은 트랙(--bg) 대비 1.10~1.13:1에 불과해 '채움'만으로는 선택 상태가 전달되지 않는다.
+   굵기는 WCAG 1.4.11이 인정하는 상태 채널이 아니므로, 전 테마에 --ctl-border 링(패널 대비 3.08:1↑)을 둘러
+   상태를 색이 아닌 경계로 고정한다. box-shadow는 레이아웃 밖이라 --rem-ctl-h 높이 불변 계약과 무관. */
+.seg-b.active{background:var(--panel);font-weight:600;box-shadow:0 0 0 1px var(--ctl-border), 0 1px 2px var(--seg-sh)}
 .seg-b:disabled{opacity:.5;cursor:not-allowed}
 .seg-b:disabled:hover{background:transparent}
 .seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
@@ -1036,8 +1047,6 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .seg.seg-auto .seg-b{flex:0 0 max-content}
 .seg.seg-lg .seg-b{font-size:var(--fs-body);padding:6px 15px}
 .seg.seg-micro .seg-b{font-size:var(--fs-micro);padding:2px 8px}
-/* 고대비 테마는 --bg와 --panel이 둘 다 흰색이라 '떠오름'이 전달되지 않는다 → 활성만 accent 링으로 명시 */
-:root[data-theme="contrast"] .seg-b.active{box-shadow:0 0 0 2px var(--accent)}
 
 /* 미리알림(리드타임) 행 — entryModal·quick-add 공용(모드 .seg + 직접 숫자·단위). 종일/할일 시 .rem-off */
 .rem-block{margin-top:var(--sp-2)}
@@ -2048,7 +2057,19 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <div class="modal">
     <div class="modal-head"><h2>변경사항 · 새 소식</h2><button class="x" data-close>×</button></div>
     <div class="modal-body patch-body">
-      <div class="patch-ver"><span class="pv-tag">v0.11.0</span><span class="pv-date">2026-07-15 · 현재</span></div>
+      <div class="patch-ver"><span class="pv-tag">v0.12.0</span><span class="pv-date">2026-07-20 · 현재</span></div>
+      <p class="patch-intro">한국 <b>공휴일 표시</b>를 추가하고, 화면 전반을 <b>상용 수준으로 다듬었습니다</b>. 기능은 그대로이고 보이는 것과 손에 닿는 것이 달라집니다.</p>
+      <ul class="patch-list">
+        <li class="key"><span class="pv-key">핵심</span><b>공휴일 표시 (신규)</b> — <b>설날·추석 연휴</b>와 <b>대체공휴일</b>, 부처님오신날까지 달력에 빨갛게 나옵니다. (2026~2030년)</li>
+        <li><b>미리알림이 거짓말하지 않습니다</b> — 설정에서 알림을 꺼 둔 채 일정에 알림을 걸면 <b>“울리지 않는다”고 경고</b>하고 그 자리에서 켤 수 있습니다. ‘999일 전’처럼 저장되지 않는 값도 <b>실제 저장될 값으로</b> 안내합니다.</li>
+        <li><b>보고서를 한 번에</b> — 상단바에 <b>보고서 버튼</b>이 생겼습니다. 진행 표시가 실제로 돌아가서 회사 보고 전송이 멈춘 것처럼 보이지 않습니다.</li>
+        <li><b>연구노트 내보내기 정리</b> — <b>이번 달·지난 달·분기</b> 기간 프리셋, 실행 전 <b>기록 몇 건인지</b> 미리 표시, 끝나면 <b>폴더 열기</b>.</li>
+        <li><b>입력 화면 정돈</b> — 빠른 추가에서 메모를 길게 써도 <b>‘추가’ 버튼이 사라지지 않고</b>, 메모칸은 쓴 만큼만 커집니다. 미리알림 줄은 <b>‘직접’을 눌러도 화면이 밀리지 않습니다</b>.</li>
+        <li><b>좁은 위젯에서 더 잘 보입니다</b> — 셀이 좁으면 시각 대신 <b>일정 제목</b>을 보여주고, ‘+N’ 표시가 잘리지 않습니다. 상단 버튼도 <b>⋯ 메뉴로 정리</b>됩니다.</li>
+        <li><b>설정에서 비밀번호가 사라지지 않습니다</b> — 저장하지 않고 닫으면 <b>확인을 먼저 묻습니다</b>. 어떤 항목이 자동 저장인지도 표시됩니다.</li>
+        <li><b>보기 편의</b> — 다크·포레스트 테마 <b>글자 대비 개선</b>, 반투명 사용 시 <b>대화상자는 또렷하게</b>, 창 나누는 선을 <b>키보드 화살표</b>로도 조절.</li>
+      </ul>
+      <div class="patch-ver"><span class="pv-tag old">v0.11.0</span><span class="pv-date">2026-07-15</span></div>
       <p class="patch-intro">기간 할일의 <b>날짜별 세부내용</b>을 주간보고에 자동 병합하고, <b>위젯 투명도</b>와 보고서 편의를 대폭 개선했습니다.</p>
       <ul class="patch-list">
         <li class="key"><span class="pv-key">핵심</span><b>🗓 기간 할일 날짜별 세부내용 (신규)</b> — 월~금 기간 할일에 <b>날짜마다 다른 세부내용</b>을 적으면 <b>주간보고에 날짜별로 병합</b>되어 나옵니다. 보고서에서 <b>그 자리에서 바로</b> 채우고 고칠 수 있습니다.</li>
@@ -2431,7 +2452,7 @@ const PALETTE = ['#3e5be0','#2e9e6b','#d6494e','#e08a00','#8a4fd0',
 
 /* ---------- 데이터 저장소 ---------- */
 const LS_KEY = 'taskCalendar.v1';
-const APP_VERSION = '0.11.0';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너) · 0.8.1=일간 과제시간·커밋삭제·주간 시간표기·근태위치·배너 자동종료·업데이트확인 · 0.9.0=사내 배포 정식 릴리스(0.8.x 통합·FTP 기본값 비움) · 0.10.0=보고 3탭 정리(일간 작성/주간 작성/기간 취합)·netcus 주간보고 범위 병합(과제별 진행사항·주차별/평면·내용출처 한 줄) · 0.11.0=위젯 투명도(모양 메뉴)·기간 할일 날짜별 세부내용+주간보고 자동 병합·보고서에서 바로 편집·보고서 서식/포함항목 일간·주간 모드별 저장·항목 설명 포함/빈 항목 제외·netcus 연동 안정화·커밋 불러오기 개선
+const APP_VERSION = '0.12.0';   // 버전 표시·변경사항 모달(온디맨드 — 시작 시 자동 표시 없음, 이력 원본은 RELEASE_NOTES.md). 0.1=06-12 · 0.2=06-18 · 0.3=06-22 · 0.4=보고연동·알림·SVN · 0.5=사용설명서·문의 UI · 0.6=할일 서술형·Git/SVN 작성자 분리 · 0.7=보고서 모달 재설계·netcus 일간→주간 병합 · 0.7.1=버그수정(netcus 들여쓰기·병합 안정화·창/모달 포커스) · 0.8.0=자동 업데이트(공유폴더 배너) · 0.8.1=일간 과제시간·커밋삭제·주간 시간표기·근태위치·배너 자동종료·업데이트확인 · 0.9.0=사내 배포 정식 릴리스(0.8.x 통합·FTP 기본값 비움) · 0.10.0=보고 3탭 정리(일간 작성/주간 작성/기간 취합)·netcus 주간보고 범위 병합(과제별 진행사항·주차별/평면·내용출처 한 줄) · 0.11.0=위젯 투명도(모양 메뉴)·기간 할일 날짜별 세부내용+주간보고 자동 병합·보고서에서 바로 편집·보고서 서식/포함항목 일간·주간 모드별 저장·항목 설명 포함/빈 항목 제외·netcus 연동 안정화·커밋 불러오기 개선 · 0.12.0=한국 공휴일(설날·추석·대체공휴일)·UI/UX 전면 정합(디자인 토큰 강제·선택 컨트롤 2체계 통일·다크/포레스트 AA·반투명 시 모달 제외)·미리알림 계약 일관화(전역 꺼짐 경고·저장값 안내)·quick-add 스크롤/메모 auto-grow·좁은 셀 칩 제목·헤더 보고서 버튼·내보내기 모달 완성·설정 저장 유실 방지·키보드 리사이즈
 const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(WebView2) 호스트 여부
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
@@ -3647,8 +3668,12 @@ function fitChips(){
     const MOREH = btn.offsetHeight;
     used = 0; fit = 0;                                // 더보기 행 자리 확보 후 재계산
     for(const c of chips){ const h = c.offsetHeight + GAP; if(used + h + MOREH <= avail){ used += h; fit++; } else break; }
-    const floor = Math.min(3, chips.length);          // 기존 '최대 3개' 이상은 항상 보장(좁은 셀 회귀 방지) — 넓을 때만 더 표시
-    if(fit < floor) fit = floor;
+    // 예전엔 여기서 '최소 3개'를 무조건 보장했다(좁은 셀 회귀 방지). 그 보장은 걷어냈다.
+    // 바로 위 루프가 이미 "'+N' 행까지 얹어서 들어가는 최대 개수"를 구한다 → 3개가 실제로 들어가면 fit은 이미 3 이상이다.
+    // 즉 그 보장이 발동할 수 있는 경우는 '3개가 안 들어갈 때'뿐이고, 발동하면 .chips{overflow:hidden}이
+    // '+N개 더보기'를 잘라낸다 — 칩 한 줄을 더 얻는 대신 "더 있다"는 유일한 어포던스를 잃는 손해다.
+    // (조건부로 바꿔봐도 '들어갈 때만 올린다' = '이미 fit에 반영돼 있다'라 발동 자체가 불가능한 죽은 코드가 된다.)
+    // 원래 의도인 '너무 적게 보이지 않게'는 루프가 이미 최대치를 뽑아내는 것으로 달성된다.
     if(fit > chips.length) fit = chips.length;
     const hidden = chips.slice(fit).filter(c => !c.classList.contains('chip-spacer')).length + extra;  // spacer는 '기록' 아님 → +N 제외
     chips.forEach((c, i) => { c.style.display = i >= fit ? 'none' : ''; });
