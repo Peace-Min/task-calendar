@@ -3,6 +3,30 @@
 // jsdom 미설치 시(폐쇄망 로컬 등) graceful-skip — 러너는 Layer 1만으로도 green. CI는 jsdom을 설치해 여기까지 돈다.
 import { test, assert, loadAppSource } from './harness.mjs';
 
+// ── 토큰 드리프트 가드(jsdom 불필요 — 소스 텍스트 스캔) ─────────────────
+// var(--fs-*/--sp-*/--r-*/--lh-*)로 참조되는 스케일 토큰이 :root에 실제로 정의돼 있는지 검사한다.
+// 미정의 토큰은 var()가 빈 값으로 풀려 선언 자체가 무효화 → 폰트/여백이 조용히 상속된다(실버그).
+// 실제로 --fs-small이 정의 없이 보고서 미리보기에 쓰여 설명·dayNote 위계가 죽어 있었다.
+test('디자인 토큰: 참조된 --fs-/--sp-/--r-/--lh- 스케일 토큰은 전부 :root에 정의돼 있어야 한다', () => {
+  const src = loadAppSource();
+  // :root{...} 블록(테마 오버라이드 :root[data-theme=...] 제외 — 스케일은 베이스에서만 정의)
+  const rootStart = src.indexOf(':root{');
+  assert.ok(rootStart >= 0, ':root{ 블록을 찾지 못함');
+  const rootBlock = src.slice(rootStart, src.indexOf('}', rootStart));
+
+  const defined = new Set();
+  for (const m of rootBlock.matchAll(/(--(?:fs|sp|r|lh)-[a-z0-9-]+)\s*:/g)) defined.add(m[1]);
+
+  const missing = new Map();   // token -> 처음 등장한 줄 번호
+  for (const m of src.matchAll(/var\(\s*(--(?:fs|sp|r|lh)-[a-z0-9-]+)/g)) {
+    const tok = m[1];
+    if (defined.has(tok) || missing.has(tok)) continue;
+    missing.set(tok, src.slice(0, m.index).split('\n').length);
+  }
+  assert.deepStrictEqual([...missing.entries()], [],
+    ':root에 없는 스케일 토큰이 참조됨(토큰 [줄번호]) — 정의를 추가하거나 기존 토큰으로 교체할 것');
+});
+
 // ── jsdom 로드(없으면 생략) ─────────────────────────────────────────────
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
