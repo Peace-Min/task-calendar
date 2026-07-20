@@ -1712,11 +1712,14 @@ if (!JSDOM) {
     // ── 미리알림 행 UI(entryModal·quick-add 공용 세그) — jsdom 폼 상호작용 ──────────────
     const uiSeed = () => seed({ gitAuthor: '', svnAuthor: '', categories: [{ id: 'c-1', name: '과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }], entries: [], todos: [], rooms: [] });
 
+    // 단위(분|시간|일)는 세그 3버튼 → <select>로 강등됐다(모드 3버튼과 나란히 서서 '모드'와 '파라미터'가
+    // 구분되지 않던 문제 + 380px 빠른등록 모달에서 행이 줄바꿈되던 문제). 계약: #{pfx}RemUnit.value = 분 배율 문자열.
+    // 고스트(공간 예약)는 행이 한 줄에 들어가면서 불필요해져 .hidden으로 대체.
     test('미리알림 UI(entryModal): 새 기록 기본 = 놓침 방지(def), 직접영역 숨김', () => {
       uiSeed();
       ev("openEntryModal('new', '2026-07-08')");
       assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지 active');
-      assert.strictEqual(ev("$('#fRemCust').classList.contains('rem-ghost')"), true, '직접영역 고스트(공간 예약·비표시)');
+      assert.strictEqual(ev("$('#fRemCust').classList.contains('hidden')"), true, '직접영역 숨김');
       assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', 'def 힌트');
       assert.strictEqual(evJSON("remReadValue('f')"), null, '읽으면 null(=기본)');
     });
@@ -1727,11 +1730,84 @@ if (!JSDOM) {
       const id = ev('state.entries[0].id');
       ev("openEntryModal('edit', " + JSON.stringify(id) + ')');
       assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"cust\"]').classList.contains('active')"), true, '직접 active');
-      assert.strictEqual(ev("$('#fRemUnit [data-remunit=\"60\"]').classList.contains('active')"), true, '시간 단위 active');
+      assert.strictEqual(ev("$('#fRemUnit').tagName"), 'SELECT', '단위는 select로 강등');
+      assert.strictEqual(ev("$('#fRemUnit').value"), '60', '시간 단위 선택');
       assert.strictEqual(ev("$('#fRemNum').value"), '2', '숫자 2');
-      assert.strictEqual(ev("$('#fRemCust').classList.contains('rem-ghost')"), false, '직접영역 표시(고스트 해제)');
+      assert.strictEqual(ev("$('#fRemCust').classList.contains('hidden')"), false, '직접영역 표시');
       assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 2시간 전 1회 알림', 'cust 힌트');
       assert.strictEqual(evJSON("remReadValue('f')"), 120, '읽으면 120 왕복');
+    });
+
+    test('미리알림 단위 select: 변경 시 상태·상한(max)·힌트가 함께 갱신', () => {
+      uiSeed();
+      ev("openEntryModal('new', '2026-07-08')");
+      ev("_remState.f.mode='cust'; fRemResync();");
+      assert.strictEqual(ev("$('#fRemNum').max"), '10080', '분 단위 상한 = REMIND_MAX');
+      ev("$('#fRemUnit').value='1440'; $('#fRemUnit').dispatchEvent(new window.Event('change'));");
+      assert.strictEqual(evJSON('_remState.f.unit'), 1440, 'change → 상태 반영');
+      assert.strictEqual(ev("$('#fRemNum').max"), '7', '일 단위 상한 = 7일');
+    });
+
+    // 무언의 클램프 방지 — 힌트는 반드시 normRemind 통과 후의 '저장될 값'을 말해야 한다.
+    test('미리알림 힌트: 상한 초과 입력은 클램프된 실제 저장값으로 표시(999일 → 7일)', () => {
+      uiSeed();
+      ev("openEntryModal('new', '2026-07-08')");
+      ev("_remState.f.mode='cust'; _remState.f.unit=1440; $('#fRemNum').value='999'; fRemResync();");
+      assert.strictEqual(evJSON("remReadValue('f')"), 10080, '저장값은 7일로 클램프');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 7일 전 1회 알림', '힌트도 클램프된 값');
+    });
+
+    // 무음 실패 방지 — 전역 '시작 알림'이 꺼진 걸 아는 상태에서는 폼이 지키지 못할 약속을 하지 않는다.
+    test('미리알림 경고: 전역 알림 꺼짐(_remGlobalOn=false)이면 힌트에 경고 + 켜기 액션', () => {
+      uiSeed();
+      ev('_remGlobalOn = false');
+      ev("openEntryModal('new', '2026-07-08')");
+      assert.ok(/시작 알림이 꺼져 있어/.test(ev("$('#fRemHint').textContent")), '경고 문구 노출');
+      assert.strictEqual(ev("!!$('#fRemHint [data-remenable]')"), true, '켜기 액션 제공');
+      ev("$('#fRemHint [data-remenable]').click()");
+      assert.strictEqual(ev("$('#remEnabled').checked"), true, '클릭 시 전역 토글 켜짐');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', '경고 사라짐');
+      ev('_remGlobalOn = null');
+    });
+
+    // 힌트가 '왜 꺼졌는지' 설명하는 자리인데 블록 전체 opacity에 삼켜지면 안 된다(부모 opacity는 자식에 곱해짐).
+    test('미리알림 흐림(.rem-off): 힌트는 흐림 대상 밖 — 조상 opacity 곱이 1', () => {
+      uiSeed();
+      ev("openEntryModal('new', '2026-07-08')");
+      ev("$('#fAllDay').checked = true; toggleTimeRow();");
+      assert.strictEqual(ev("$('#fRemBlock').classList.contains('rem-off')"), true, 'rem-off 적용');
+      const eff = ev(
+        "(function(){var o=1,el=$('#fRemHint');while(el&&el.nodeType===1){" +
+        "var v=window.getComputedStyle(el).opacity;if(v!==''&&v!=null)o*=parseFloat(v)||(parseFloat(v)===0?0:1);" +
+        "el=el.parentElement;}return o;})()");
+      assert.strictEqual(eff, 1, '힌트의 합성 불투명도 = 1(가독)');
+      assert.strictEqual(ev("window.getComputedStyle($('#fRemBlock .rem-row')).opacity"), '0.45', '흐림은 컨트롤(.rem-row)로 이동 — 사라진 게 아님');
+    });
+
+    // jsdom에는 레이아웃 엔진이 없다(offsetHeight === 0) → 실제 행 높이는 여기서 잴 수 없다.
+    // 대신 높이 불변을 '보장하는 구조'만 검증한다: 세 컨트롤이 같은 변수 하나에 묶여 있을 것.
+    // 실제 픽셀 검증은 브라우저에서 수행했다(1180 / 400 / 380px, 두 폼 모두 none=def=cust).
+    // 배경: 공용 .modal select가 단위 select만 39px로 키워, '직접'을 고르면 행이 31.6→39px로 커지며
+    //       아래 내용이 밀렸다("직접 클릭시 동적으로 화면 바뀌는게 부자연스럽다").
+    test('미리알림 행: 세 컨트롤이 한 높이 변수에 묶임 — 모드 전환에 행 높이 불변', () => {
+      uiSeed();
+      ev("openEntryModal('new', '2026-07-08'); _remState.f.mode='cust'; fRemResync();");
+      const cs = (s, p) => ev("window.getComputedStyle($('" + s + "'))." + p);
+      for (const s of ['#fRemSeg', '#fRemNum', '#fRemUnit']) {
+        assert.strictEqual(cs(s, 'height'), 'var(--rem-ctl-h)', s + ' 높이는 공용 변수');
+        assert.strictEqual(cs(s, 'boxSizing'), 'border-box', s + ' border-box(테두리 포함 높이)');
+      }
+      assert.strictEqual(ev("$('#fRemSeg').offsetHeight"), 0, 'jsdom은 레이아웃 미구현 — 픽셀 측정은 브라우저 담당');
+    });
+
+    // 라벨이 잘리면 '할 ...'처럼 깨져 보인다. flex basis 0은 내용폭을 무시하고 균등분배하므로 금지.
+    test('.seg-b: 내용폭 미만으로 줄지 않음(라벨 잘림 방지)', () => {
+      uiSeed();
+      ev("openQuickAdd('2026-07-08', 'event')");
+      for (const s of ['.qa-tg .seg-b', '#qaRemSeg .seg-b']) {
+        assert.strictEqual(ev("window.getComputedStyle($('" + s + "')).minWidth"), 'max-content', s + ' min-width:max-content');
+        assert.notStrictEqual(ev("window.getComputedStyle($('" + s + "')).flexBasis"), '0px', s + ' flex-basis:0 금지');
+      }
     });
 
     test('미리알림 UI(entryModal): 종일 → 행 흐림+비활성+종일 힌트', () => {
