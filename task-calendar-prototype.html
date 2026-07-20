@@ -941,6 +941,19 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-advanced{border:none;background:none;color:var(--muted);font-size:var(--fs-meta);cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
 .qa-advanced:hover{color:var(--text)}
 .qa-edit-title{flex:1;font-size:var(--fs-title);font-weight:700;color:var(--text)}
+/* 미리알림(리드타임) 행 — entryModal·quick-add 공용(모드 세그 + 직접 단위). 종일/할일 시 .rem-off로 흐림+비활성 */
+.rem-block{margin-top:9px}
+.rem-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+.rem-seg{display:inline-flex;gap:4px}
+.rem-seg-b{border:1px solid var(--line-2);background:var(--panel);color:var(--text);font-family:inherit;font-size:var(--fs-meta);line-height:1.3;padding:5px 11px;border-radius:var(--r-sm);cursor:pointer;white-space:nowrap}
+.rem-seg-b.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.rem-seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rem-cust{display:inline-flex;align-items:center;gap:6px}
+.rem-cust .rem-unit .rem-seg-b{padding:5px 9px}
+.rem-num{width:52px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 6px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text);text-align:right}
+.rem-jeon{font-size:var(--fs-meta);color:var(--muted)}
+.rem-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;line-height:1.5}
+.rem-off{opacity:.45;pointer-events:none}
 /* 그리드 할 일 점(은은하게 — 일정 막대와 구분) */
 .cell-todo{width:9px;height:9px;border:1.5px solid var(--faint);border-radius:50%;flex:none;margin-left:auto}
 
@@ -1026,6 +1039,8 @@ html.dark .git-badge.off{ background:#222b3e;color:var(--muted) }
 html.dark .git-badge.ok{ background:#15321f;color:#6fd49a }
 html.dark .git-badge.warn{ background:#352b12;color:#e3b766 }
 html.dark .qa-type.on{ background:var(--accent-soft);color:var(--accent-2) }
+html.dark .rem-num,html.dark .rem-seg-b{ background:var(--panel) }
+html.dark .rem-seg-b.active{ background:var(--accent);color:#fff }
 html.dark mark{ background:#ffe27a;color:#1d2433 }
 html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 /* 색 테마 — 라이트 기반 토큰 리맵 */
@@ -1173,9 +1188,25 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="fEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="fEndM" aria-label="종료 분"></select></span></span>
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
-        <div style="margin-top:8px">
-          <label for="fRemind">알림</label>
-          <select id="fRemind" title="시작 시각이 있는 일정에만 적용됩니다"></select>
+        <div class="rem-block" id="fRemBlock">
+          <label>미리알림</label>
+          <div class="rem-row">
+            <div class="rem-seg" id="fRemSeg" role="group" aria-label="미리알림 방식">
+              <button type="button" class="rem-seg-b" data-remmode="none">없음</button>
+              <button type="button" class="rem-seg-b" data-remmode="def">놓침 방지</button>
+              <button type="button" class="rem-seg-b" data-remmode="cust">직접</button>
+            </div>
+            <span class="rem-cust" id="fRemCust">
+              <input type="number" class="rem-num" id="fRemNum" min="1" value="30" aria-label="미리알림 시간">
+              <span class="rem-seg rem-unit" id="fRemUnit" role="group" aria-label="미리알림 단위">
+                <button type="button" class="rem-seg-b" data-remunit="1">분</button>
+                <button type="button" class="rem-seg-b" data-remunit="60">시간</button>
+                <button type="button" class="rem-seg-b" data-remunit="1440">일</button>
+              </span>
+              <span class="rem-jeon">전</span>
+            </span>
+          </div>
+          <div class="rem-hint" id="fRemHint" aria-live="polite"></div>
         </div>
         <div style="margin-top:8px">
           <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label><button type="button" class="lnk" id="fRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div>
@@ -1252,6 +1283,26 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select id="qaEndH" aria-label="종료 시"></select><span class="t-sep">:</span><select id="qaEndM" aria-label="종료 분"></select></span></span>
       </div>
       <div class="qa-hint" id="qaTimeHint" aria-live="polite"></div>
+      <div class="rem-block" id="qaRemBlock">
+        <label class="qa-lb" style="margin:8px 0 3px">미리알림</label>
+        <div class="rem-row">
+          <div class="rem-seg" id="qaRemSeg" role="group" aria-label="미리알림 방식">
+            <button type="button" class="rem-seg-b" data-remmode="none">없음</button>
+            <button type="button" class="rem-seg-b" data-remmode="def">놓침 방지</button>
+            <button type="button" class="rem-seg-b" data-remmode="cust">직접</button>
+          </div>
+          <span class="rem-cust" id="qaRemCust">
+            <input type="number" class="rem-num" id="qaRemNum" min="1" value="30" aria-label="미리알림 시간">
+            <span class="rem-seg rem-unit" id="qaRemUnit" role="group" aria-label="미리알림 단위">
+              <button type="button" class="rem-seg-b" data-remunit="1">분</button>
+              <button type="button" class="rem-seg-b" data-remunit="60">시간</button>
+              <button type="button" class="rem-seg-b" data-remunit="1440">일</button>
+            </span>
+            <span class="rem-jeon">전</span>
+          </span>
+        </div>
+        <div class="rem-hint" id="qaRemHint" aria-live="polite"></div>
+      </div>
     </div>
     <div class="qa-detail hidden" id="qaDetail"></div>
     <div class="qa-foot">
@@ -2630,6 +2681,25 @@ function normRemind(v){
   if(!Number.isFinite(n) || n < 0) return null;
   return Math.min(REMIND_MAX, Math.floor(n));   // 0은 0으로 보존(=알림 없음, 기본과 구분)
 }
+// 저장값(remind) → 미리알림 UI 상태. null=놓침 방지(def) / 0=없음(none) / n=직접(cust; 1440배수=일·60배수=시간·그 외 분).
+// mode!=='cust'면 num=30·unit=1 기본. remind→UI 역환산의 단일 소스(두 폼 공용).
+function remindToUi(r){
+  if(r == null) return { mode:'def', num:30, unit:1 };
+  const n = Number(r);
+  if(!Number.isFinite(n) || n <= 0) return { mode:'none', num:30, unit:1 };
+  if(n % 1440 === 0) return { mode:'cust', num:n / 1440, unit:1440 };
+  if(n % 60 === 0)   return { mode:'cust', num:n / 60,   unit:60 };
+  return { mode:'cust', num:n, unit:1 };
+}
+// 미리알림 UI 상태 → 저장값. def→null / none→0 / cust→normRemind(num×unit).
+// num은 최소 1로 클램프(0/음수/NaN→1) 후 곱하고, normRemind가 상한(10080)·내림 처리.
+function uiToRemind(mode, num, unit){
+  if(mode === 'def') return null;
+  if(mode === 'none') return 0;
+  const u = (unit === 60 || unit === 1440) ? unit : 1;
+  const n = Math.max(1, Math.floor(Number(num) || 0));
+  return normRemind(n * u);
+}
 function addEntry(d){
   const source = d.source==='git'?'git':'';
   const e = {id:uid('e'), date:d.date, title:d.title, categoryId:d.categoryId||null,
@@ -3511,7 +3581,12 @@ function closeTopModal(){
 }
 /* ---------- 폼 dirty-check (우발적 닫기 방지: 배경 클릭 · ESC) ---------- */
 // entryModal·quickAdd만 가드. 열 때 폼 스냅샷을 __openSnap에 저장하고, 닫기 직전 비교해 변경분이 있으면 확인.
-function formSnapshot(ov){ return [...ov.querySelectorAll('input,select,textarea')].map(function(el){ return (el.type==='checkbox'||el.type==='radio') ? (el.checked?'1':'0') : (el.value||''); }).join(''); }
+function formSnapshot(ov){
+  const base = [...ov.querySelectorAll('input,select,textarea')].map(function(el){ return (el.type==='checkbox'||el.type==='radio') ? (el.checked?'1':'0') : (el.value||''); }).join('');
+  // 미리알림 세그(모드·단위)는 <button> — input 캡처 밖이라 별도로 활성값을 접어 넣어야 변경이 dirty로 잡힌다(무음 유실 방지).
+  const rem = [...ov.querySelectorAll('.rem-seg-b.active')].map(function(b){ return b.dataset.remmode || ('u'+b.dataset.remunit); }).join('|');
+  return base + '' + rem;
+}
 function isGuardedModal(ov){ return !!ov && (ov.id==='entryModal' || ov.id==='quickAdd'); }
 function confirmDiscardIfDirty(ov){
   if(!isGuardedModal(ov)) return Promise.resolve(true);
@@ -3596,10 +3671,10 @@ function fillCatSelect(sel, emptyLabel){
 function toggleTimeRow(){
   const allDay = $('#fAllDay').checked;
   $('#timeRow').classList.toggle('off', allDay);
-  // 알림은 '종일'일 때만 비활성. 시작 시각 미입력을 조건으로 걸지 않는다 —
-  // 폼 순서상 알림이 시각보다 위라, 시각을 먼저 넣어야만 열리면 고장으로 보인다.
+  // 미리알림은 '종일'일 때만 비활성. 시작 시각 미입력을 조건으로 걸지 않는다 —
+  // 폼 순서상 미리알림이 시각보다 위라, 시각을 먼저 넣어야만 열리면 고장으로 보인다.
   // 시각 없는 일정은 buildReminderOccs가 어차피 걸러내므로 미리 골라둬도 무해하다(시각 입력 시 적용).
-  syncRemindCtl($('#fRemind'), !allDay);
+  fRemResync();
 }
 function toggleRangeRow(){
   const on = $('#fIsRange').checked;
@@ -3649,7 +3724,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = e.allDay;
     writeTimeSel($('#fStartH'), $('#fStartM'), e.startTime); writeTimeSel($('#fEndH'), $('#fEndM'), e.endTime);
     fEndDirty = !!e.endTime;
-    fillRemindSelect($('#fRemind'), e.remind);
+    remSetUi('f', e.remind);
     fillRoomSelect($('#fLoc'), e.location || '');
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
@@ -3662,7 +3737,7 @@ function openEntryModal(mode, ref){
     $('#fAllDay').checked = false;
     writeTimeSel($('#fStartH'), $('#fStartM'), ''); writeTimeSel($('#fEndH'), $('#fEndM'), '');
     fEndDirty = false;
-    fillRemindSelect($('#fRemind'), null);   // 새 기록 = 기본 사다리
+    remSetUi('f', null);   // 새 기록 = 놓침 방지(기본 사다리)
     fillRoomSelect($('#fLoc'), '');
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
@@ -3736,7 +3811,7 @@ function saveEntryFromForm(){
   const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
                 location: $('#fLoc').value, memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept,
-                remind: ($('#fRemind').value === '' ? null : Number($('#fRemind').value))};
+                remind: remReadValue('f')};
   if(editingId){ updateEntry(editingId, data); toast('기록을 수정했습니다', 'success'); }
   else{ addEntry(data); toast('기록을 추가했습니다', 'success'); }
   closeModal('#entryModal');
@@ -3800,25 +3875,45 @@ function fillRoomSelect(sel, current){
   sel.innerHTML = html;
   sel.value = cur;
 }
-/* ---------- 알림(리드타임) 선택 — entryModal·quick-add 공용(옵션 단일 소스) ---------- */
-// ''=기본 사다리 / '0'=알림 없음 / 'n'=n분 전 1회. 값 규약은 normRemind·remindMinsFor와 동일.
-const REMIND_OPTS = [['', '기본 (60·30·10·5분 전)'], ['0', '알림 없음'], ['5', '5분 전'], ['10', '10분 전'],
-  ['15', '15분 전'], ['30', '30분 전'], ['60', '1시간 전'], ['120', '2시간 전'], ['1440', '1일 전']];
-// 알림 select 채우기 — cur(entry.remind: null|0|분)로 선택. 미등록 값(예: 자세히 편집 전 다른 리드타임)은 보존용 옵션 추가.
-function fillRemindSelect(sel, current){
-  if(!sel) return;
-  const cur = (current == null) ? '' : String(current);
-  let html = REMIND_OPTS.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('');
-  if(cur && !REMIND_OPTS.some(([v]) => v === cur)) html += `<option value="${esc(cur)}">${esc(cur)}분 전</option>`;   // 프리셋 밖 값 무손실
-  sel.innerHTML = html;
-  sel.value = cur;
+/* ---------- 미리알림(리드타임) 행 컨트롤 — entryModal(pfx 'f')·quick-add(pfx 'qa') 공용 ---------- */
+// 폼별 상태(모드·단위) 단일 소스. 숫자값은 입력창(#{pfx}RemNum)에 보관 → 폼 재열림에도 각 폼 상태 독립.
+const _remState = { f:{ mode:'def', unit:1 }, qa:{ mode:'def', unit:1 } };
+// 저장값(entry.remind) → 행 UI 프리필(모드·숫자·단위 세팅). 표시/힌트/활성은 이어지는 remRowSync가 반영.
+function remSetUi(pfx, r){
+  const u = remindToUi(r);
+  _remState[pfx] = { mode:u.mode, unit:u.unit };
+  const num = $('#'+pfx+'RemNum'); if(num) num.value = u.num;
 }
-// 알림은 '시각 있는 일정'에만 의미 — 종일·할 일·시각 미지정이면 비활성 + 기본 표시(저장 시 null=기본).
-function syncRemindCtl(sel, on){
-  if(!sel) return;
-  sel.disabled = !on;
-  if(!on) sel.value = '';
+// 행 UI → 저장값(uiToRemind 경유). 데이터 규약(null/0/분)은 동결 — 곱·클램프는 uiToRemind·normRemind가 담당.
+function remReadValue(pfx){
+  const st = _remState[pfx];
+  const num = $('#'+pfx+'RemNum');
+  return uiToRemind(st.mode, num ? num.value : 30, st.unit);
 }
+// 힌트 문구 — 종일 비활성 안내 우선, 그 외 모드별 안내(직접은 현재 숫자·단위 반영).
+function remHint(pfx, enabled, dimReason){
+  if(!enabled && dimReason === 'allday') return '종일 일정에는 미리알림이 적용되지 않습니다';
+  const st = _remState[pfx];
+  if(st.mode === 'none') return '미리알림이 울리지 않습니다';
+  if(st.mode === 'def')  return '확인할 때까지 60·30·10·5분 전 재알림';
+  const num = $('#'+pfx+'RemNum'); const n = Math.max(1, Math.floor(Number(num && num.value) || 0));
+  const u = st.unit === 1440 ? '일' : (st.unit === 60 ? '시간' : '분');
+  return `시작 ${n}${u} 전 1회 알림`;
+}
+// 행 동기화 — 세그 active·직접영역 표시·활성/흐림·힌트를 상태에 맞춰 반영. enabled=false면 .rem-off + 컨트롤 disabled.
+function remRowSync(pfx, enabled, dimReason){
+  const block = $('#'+pfx+'RemBlock'); if(!block) return;
+  const st = _remState[pfx];
+  $$('#'+pfx+'RemSeg .rem-seg-b').forEach(b => { const on = b.dataset.remmode === st.mode; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  $$('#'+pfx+'RemUnit .rem-seg-b').forEach(b => { const on = Number(b.dataset.remunit) === st.unit; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  const cust = $('#'+pfx+'RemCust'); if(cust) cust.style.display = (st.mode === 'cust') ? 'inline-flex' : 'none';
+  block.classList.toggle('rem-off', !enabled);
+  block.querySelectorAll('button, input').forEach(el => { el.disabled = !enabled; });
+  const hint = $('#'+pfx+'RemHint'); if(hint) hint.textContent = remHint(pfx, enabled, dimReason);
+}
+// 폼별 재동기화(활성조건 계산 포함) — 세그/단위/숫자 변경·종일 토글에서 호출.
+function fRemResync(){ remRowSync('f', !$('#fAllDay').checked, 'allday'); }
+function qaRemResync(){ const ad = $('#qaAllDay'); remRowSync('qa', qaType === 'event' && !(ad && ad.checked), 'allday'); }
 // 폼(편집/빠른추가)이 열려 있는 동안 회의실을 바꾸면 그 폼의 장소 select를 즉시 갱신(현재 선택 보존)
 function refreshOpenRoomSelects(){
   const fl = $('#fLoc'); if(fl && !$('#entryModal').classList.contains('hidden')) fillRoomSelect(fl, fl.value);
@@ -5802,10 +5897,10 @@ function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+
 let qaEndDirty = false, _qaAutoEndWriting = false;
 const qaTimeEls = () => ({ sh:$('#qaStartH'), sm:$('#qaStartM'), eh:$('#qaEndH'), em:$('#qaEndM') });
 function qaSyncTimeRow(){ const ad=$('#qaAllDay'); const row=$('#qaTimeRow'); if(row) row.style.display = (ad && ad.checked) ? 'none' : 'flex';
-  // 알림은 일정(할 일 아님) + 종일 아님이면 활성. 시작 시각 미입력은 조건으로 걸지 않는다
-  // (폼 순서상 알림이 시각보다 위 — 시각을 먼저 넣어야만 열리면 고장으로 보인다).
-  // 상세 미전개면 #qaRemind 자체가 없음(무시).
-  syncRemindCtl($('#qaRemind'), qaType === 'event' && !(ad && ad.checked)); }
+  // 미리알림은 일정(할 일 아님) + 종일 아님이면 활성. 시작 시각 미입력은 조건으로 걸지 않는다
+  // (폼 순서상 미리알림이 시각보다 위 — 시각을 먼저 넣어야만 열리면 고장으로 보인다).
+  // 미리알림 행은 상시 표시(#qaWhen 안 → 할 일 모드에선 통째 숨김). qaRemResync가 활성/흐림 반영.
+  qaRemResync(); }
 function qaAutoEnd(){   // 시작 변경 시 종료 자동 +1h (사용자가 종료 건드리면 보존)
   if(qaEndDirty) return;
   const t=qaTimeEls(); const s=readTimeSel(t.sh,t.sm); if(!s) return;
@@ -5856,6 +5951,7 @@ function openQuickAdd(date, type, entryId){
     { const t = qaTimeEls(); writeTimeSel(t.sh, t.sm, ''); writeTimeSel(t.eh, t.em, ''); }
     qaEndDirty = false;
   }
+  remSetUi('qa', e ? e.remind : null);   // 미리알림 행은 상시 표시 → 편집=저장값 역환산, 신규=놓침 방지(기본). 이후 qaSyncTimeRow가 렌더.
   qaSyncTimeRow();
   qaSyncType();   // 상세는 아직 숨김 → qaMoreLabel만(프리필 덮어쓰기 방지)
   if(e){          // 편집: 상세를 펼치고 기존 값 프리필
@@ -5865,10 +5961,9 @@ function openQuickAdd(date, type, entryId){
     qaEndDirty = !!e.endTime;
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
-    fillRemindSelect($('#qaRemind'), e.remind);
     fillRoomSelect($('#qaLoc'), e.location || '');
-    const mm = $('#qaMemo'); if(mm) mm.value = e.memo || '';
-    qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시
+    const mm = $('#qaMemo'); if(mm){ mm.value = e.memo || ''; autoGrowArea(mm); }   // 메모(rows=1 자동확장) — 프리필 후 높이 맞춤
+    qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시(미리알림 행도 함께 재동기화)
   }
   openModal('#quickAdd');
   var _qa=$('#quickAdd'); _qa.__openSnap = formSnapshot(_qa);   // dirty-check 기준(폼 채운 뒤)
@@ -5894,24 +5989,27 @@ function qaSyncType(){
     qaMoreLabel();
   }
 }
-function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '옵션 더보기 (알림·장소·반복·메모) ▾' : '옵션 더보기 (중요·메모) ▾'; }
+function qaMoreLabel(){ $('#qaMore').textContent = (qaType === 'event') ? '장소·반복·기간·메모 ▾' : '옵션 더보기 (중요·메모) ▾'; }
+// textarea 자동 높이(rows=1 시작 → 내용만큼 확장). scrollHeight 기준으로 재계산.
+function autoGrowArea(ta){ if(!ta) return; ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
-    ? `<label class="qa-lb" for="qaRemind">알림</label><select id="qaRemind" title="시작 시각이 있는 일정에만 적용됩니다"></select>
-       <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div><select id="qaLoc"></select>
-       <label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
+    ? `<div class="row2">
+         <div><div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0">장소</label><button type="button" class="lnk" id="qaRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div><select id="qaLoc"></select></div>
+         <div><label class="qa-lb">반복</label><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select></div>
+       </div>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날에 걸침)</label><input type="date" id="qaEndDate">
-       <label class="qa-lb">메모</label><textarea id="qaMemo" rows="2"></textarea>`
+       <label class="qa-lb">메모</label><textarea id="qaMemo" rows="1"></textarea>`
     : `<div id="qaTodoNoteWrap"><label class="qa-lb">설명</label><textarea id="qaMemo" rows="3" placeholder="서술형으로 자유롭게 (선택)"></textarea></div>
        <label class="qa-lb">기간 종료일 (선택 — 여러 날 할 일)</label><input type="date" id="qaEndDate">
        <div class="qa-hint" id="qaTodoPeriodHint" style="display:none">여러 날 할 일은 날짜별 설명으로 적습니다 — 추가 후 각 날짜에서 설명을 남기세요.</div>
        <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:#e0a32e"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
   if(qaType === 'event'){
-    fillRemindSelect($('#qaRemind'), null);   // 알림 select 채우기(기본). 편집 프리필은 openQuickAdd가 이후 덮어씀
-    qaSyncTimeRow();                          // 종일·시작시각 상태에 맞춰 알림 활성/비활성 즉시 반영
+    // 미리알림은 상세(옵션 더보기) 밖 상시 표시 행으로 이전 — 여기선 렌더하지 않음(openQuickAdd·qaSyncTimeRow가 관리).
     fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
     const rm = $('#qaRoomMgr'); if(rm) rm.addEventListener('click', openRoomModal);   // 빠른추가 → 회의실 관리(중첩 모달)
+    const mm = $('#qaMemo'); if(mm) mm.addEventListener('input', () => autoGrowArea(mm));   // 메모 rows=1 자동확장
     const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
     const rsync = () => { const on = !!rc.value; rh.classList.toggle('hidden', !on);
       if(on) rh.textContent = `격주·횟수 등 세부 반복은 ${qaEditId ? '' : '저장 후 '}‘자세히 편집’에서 설정`; };
@@ -5937,11 +6035,11 @@ function qaEventFormData(){
   const en = allDay ? '' : readTimeSel(t.eh, t.em);
   const rf = $('#qaRecur') ? $('#qaRecur').value : '';
   const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
-  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc'); const rmEl = $('#qaRemind');
+  const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc');
   const d = {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
     allDay, startTime:st, endTime:en, location:lcEl ? lcEl.value : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
-  // 알림: 상세(옵션 더보기) 미전개면 컨트롤이 없음 → 키 자체를 생략해 updateEntry가 기존값을 보존하게 함(무음 초기화 방지)
-  if(rmEl) d.remind = (rmEl.value === '' ? null : Number(rmEl.value));
+  // 미리알림 행은 상시 표시 → 일정 폼값엔 항상 포함(remReadValue가 모드·숫자·단위를 저장값으로 환산). 할 일은 이 함수를 타지 않음.
+  d.remind = remReadValue('qa');
   return d;
 }
 function qaSave(){
@@ -6221,6 +6319,10 @@ function bind(){
   $('#qaStartM').addEventListener('change', () => { qaAutoEnd(); qaSyncTimeRow(); });
   $('#qaEndH').addEventListener('change', qaEndChanged);
   $('#qaEndM').addEventListener('change', qaEndChanged);
+  // 미리알림 행(상시 표시) — 모드 세그·단위 세그·숫자 → 상태 갱신 후 qaRemResync
+  $('#qaRemSeg').addEventListener('click', ev => { const b = ev.target.closest('[data-remmode]'); if(!b || b.disabled) return; _remState.qa.mode = b.dataset.remmode; qaRemResync(); });
+  $('#qaRemUnit').addEventListener('click', ev => { const b = ev.target.closest('[data-remunit]'); if(!b || b.disabled) return; _remState.qa.unit = Number(b.dataset.remunit); qaRemResync(); });
+  $('#qaRemNum').addEventListener('input', qaRemResync);
   $('#qaAdvanced').addEventListener('click', () => {   // 단순 편집기 → 전체 편집기. 현재 폼 변경분을 먼저 반영(값 이월)
     const id = qaEditId; if(!id) return;
     const d = qaEventFormData();
@@ -6682,6 +6784,10 @@ function bind(){
   $('#fStartH').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
   $('#fStartM').addEventListener('change', () => { fAutoEnd(); toggleTimeRow(); });
   $('#fEndH').addEventListener('change', fEndChanged); $('#fEndM').addEventListener('change', fEndChanged);
+  // 미리알림 행(모드 세그·단위 세그·숫자) — 상태 갱신 후 재동기화(fRemResync가 활성/힌트/표시 반영)
+  $('#fRemSeg').addEventListener('click', ev => { const b = ev.target.closest('[data-remmode]'); if(!b || b.disabled) return; _remState.f.mode = b.dataset.remmode; fRemResync(); });
+  $('#fRemUnit').addEventListener('click', ev => { const b = ev.target.closest('[data-remunit]'); if(!b || b.disabled) return; _remState.f.unit = Number(b.dataset.remunit); fRemResync(); });
+  $('#fRemNum').addEventListener('input', fRemResync);
   $('#fCat').addEventListener('change', updateGitRow);
   $('#btnGitFetch').addEventListener('click', fetchCommitsIntoModal);
   /* 기간·반복 */

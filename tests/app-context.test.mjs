@@ -1652,6 +1652,94 @@ if (!JSDOM) {
       assert.strictEqual(evJSON('fromXML(' + JSON.stringify(mk('remind="-5"')) + ').entries[0].remind'), null, '음수 → null(기본)');
     });
 
+    // ── 미리알림 UI 매핑(remindToUi / uiToRemind — 순수 함수, 새 세그 UI의 단일 소스) ──────
+    // 저장값 규약(null/0/분)은 동결. UI는 없음(none)·놓침 방지(def)·직접(cust, 분×단위)로 표현.
+    const toUi = (r) => evJSON('remindToUi(' + JSON.stringify(r) + ')');
+    const toRem = (mode, num, unit) => evJSON('uiToRemind(' + JSON.stringify(mode) + ',' + JSON.stringify(num) + ',' + JSON.stringify(unit) + ')');
+
+    test('remindToUi: null→놓침방지(def) / 0→없음(none) / n→직접(cust, 단위 역환산)', () => {
+      assert.deepStrictEqual(toUi(null), { mode: 'def', num: 30, unit: 1 }, 'null → 놓침 방지');
+      assert.deepStrictEqual(toUi(0), { mode: 'none', num: 30, unit: 1 }, '0 → 없음');
+      assert.deepStrictEqual(toUi(30), { mode: 'cust', num: 30, unit: 1 }, '30 → 분');
+      assert.deepStrictEqual(toUi(90), { mode: 'cust', num: 90, unit: 1 }, '90은 60배수 아님 → 분');
+      assert.deepStrictEqual(toUi(60), { mode: 'cust', num: 1, unit: 60 }, '60 → 1시간');
+      assert.deepStrictEqual(toUi(120), { mode: 'cust', num: 2, unit: 60 }, '120 → 2시간');
+      assert.deepStrictEqual(toUi(1440), { mode: 'cust', num: 1, unit: 1440 }, '1440 → 1일');
+      assert.deepStrictEqual(toUi(2880), { mode: 'cust', num: 2, unit: 1440 }, '2880 → 2일');
+    });
+
+    test('uiToRemind: def→null / none→0 / cust→normRemind(num×unit), num 최소 1 클램프·상한 캡', () => {
+      assert.strictEqual(toRem('def', 30, 1), null, 'def → null');
+      assert.strictEqual(toRem('none', 30, 1), 0, 'none → 0');
+      assert.strictEqual(toRem('cust', 2, 60), 120, '2시간 → 120');
+      assert.strictEqual(toRem('cust', 0, 60), 60, '0 → 최소 1 → 60');
+      assert.strictEqual(toRem('cust', -1, 60), 60, '음수 → 최소 1 → 60');
+      assert.strictEqual(evJSON('uiToRemind("cust", NaN, 60)'), 60, 'NaN → 최소 1 → 60');
+      assert.strictEqual(toRem('cust', 99999, 1), 10080, '상한 7일(10080분) 캡');
+    });
+
+    test('미리알림 왕복: uiToRemind(...remindToUi(r)) === r (계약값 전 범위)', () => {
+      for (const r of [null, 0, 5, 30, 60, 90, 120, 1440, 10080]) {
+        const u = toUi(r);
+        assert.strictEqual(toRem(u.mode, u.num, u.unit), r, 'r=' + r + ' 왕복 불변');
+      }
+    });
+
+    // ── 미리알림 행 UI(entryModal·quick-add 공용 세그) — jsdom 폼 상호작용 ──────────────
+    const uiSeed = () => seed({ gitAuthor: '', svnAuthor: '', categories: [{ id: 'c-1', name: '과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }], entries: [], todos: [], rooms: [] });
+
+    test('미리알림 UI(entryModal): 새 기록 기본 = 놓침 방지(def), 직접영역 숨김', () => {
+      uiSeed();
+      ev("openEntryModal('new', '2026-07-08')");
+      assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지 active');
+      assert.strictEqual(ev("$('#fRemCust').style.display"), 'none', '직접영역 숨김');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', 'def 힌트');
+      assert.strictEqual(evJSON("remReadValue('f')"), null, '읽으면 null(=기본)');
+    });
+
+    test('미리알림 UI(entryModal): 편집 {remind:120} → 직접·2·시간 프리필 + 왕복', () => {
+      uiSeed();
+      ev("addEntry({date:'2026-07-08', title:'회의', allDay:false, startTime:'14:00', remind:120})");
+      const id = ev('state.entries[0].id');
+      ev("openEntryModal('edit', " + JSON.stringify(id) + ')');
+      assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"cust\"]').classList.contains('active')"), true, '직접 active');
+      assert.strictEqual(ev("$('#fRemUnit [data-remunit=\"60\"]').classList.contains('active')"), true, '시간 단위 active');
+      assert.strictEqual(ev("$('#fRemNum').value"), '2', '숫자 2');
+      assert.strictEqual(ev("$('#fRemCust').style.display"), 'inline-flex', '직접영역 표시');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 2시간 전 1회 알림', 'cust 힌트');
+      assert.strictEqual(evJSON("remReadValue('f')"), 120, '읽으면 120 왕복');
+    });
+
+    test('미리알림 UI(entryModal): 종일 → 행 흐림+비활성+종일 힌트', () => {
+      uiSeed();
+      ev("openEntryModal('new', '2026-07-08')");
+      ev("$('#fAllDay').checked = true; toggleTimeRow();");
+      assert.strictEqual(ev("$('#fRemBlock').classList.contains('rem-off')"), true, 'rem-off(흐림)');
+      assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').disabled"), true, '컨트롤 비활성');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '종일 일정에는 미리알림이 적용되지 않습니다', '종일 힌트');
+    });
+
+    test('미리알림 UI(quick-add): 행은 #qaWhen 내부(일정 표시·할 일 숨김), 신규 기본=놓침 방지', () => {
+      uiSeed();
+      ev("openQuickAdd('2026-07-08', 'event')");
+      assert.strictEqual(ev("$('#qaWhen').contains($('#qaRemBlock'))"), true, '미리알림 행이 #qaWhen 안(할 일 시 통째 숨김)');
+      assert.strictEqual(ev("$('#qaWhen').classList.contains('hidden')"), false, '일정 모드 표시');
+      assert.strictEqual(ev("$('#qaRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지');
+      ev("qaType='todo'; qaSyncType();");
+      assert.strictEqual(ev("$('#qaWhen').classList.contains('hidden')"), true, '할 일 모드: 행 숨김');
+    });
+
+    test('미리알림 UI(quick-add): qaEventFormData가 모드별 remind 방출(놓침방지=null/없음=0/직접=분)', () => {
+      uiSeed();
+      ev("openQuickAdd('2026-07-08', 'event')");
+      ev("$('#qaTitle').value='회의'; $('#qaAllDay').checked=false;");
+      assert.strictEqual(evJSON('qaEventFormData().remind'), null, '놓침 방지(기본) → null');
+      ev("_remState.qa.mode='none'; qaRemResync();");
+      assert.strictEqual(evJSON('qaEventFormData().remind'), 0, '없음 → 0');
+      ev("_remState.qa.mode='cust'; _remState.qa.unit=60; $('#qaRemNum').value='3'; qaRemResync();");
+      assert.strictEqual(evJSON('qaEventFormData().remind'), 180, '직접 3시간 → 180');
+    });
+
     // ── 과제별 시간(taskHours)·근태(attendance) XML 승격 ─────────────────────
     // 배경: 두 저장소는 localStorage(WebView2 LevelDB)에만 있었고, 비정상 종료로 WAL이 손상돼
     //       최신 기록이 통째로 유실된 사고가 있었다. 원자 저장(data.xml)으로 승격해 같은 내구성을 얻는다.
