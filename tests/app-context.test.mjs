@@ -1270,24 +1270,64 @@ if (!JSDOM) {
         '서식을 입혀도 라인 수 불변');
     });
 
-    test('reportFont: 폰트 행·미리보기 서식은 기간 취합에서만 (일간/주간은 기존 그대로)', () => {
+    test('reportFont: 폰트 행·미리보기 서식은 일간/주간/기간 취합 전부에 적용된다', () => {
       const st = fmtState('-', '', 2);
       st.reportFont = { family: 'Gulim', size: 13 };
       seed(st);
-      ev("setReportMode('custom'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");
-      assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', 'custom에서 폰트 행 노출');
-      assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), 'custom 미리보기에 폰트 적용');
-      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt');
-
-      ev("setReportMode('daily'); buildReport();");
-      assert.strictEqual(ev("$('#rptFontRow').style.display"), 'none', '일간에선 폰트 행 숨김');
-      assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '일간 미리보기는 스타일 없음(기존과 동일)');
+      for(const mode of ['custom', 'daily', 'weekly']){
+        ev(`setReportMode(${JSON.stringify(mode)}); $('#rptFrom').value='2026-07-01'; $('#rptTo').value=${mode === 'daily' ? "'2026-07-01'" : "'2026-07-31'"}; buildReport();`);
+        assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${mode}에서 폰트 행 노출`);
+        assert.notStrictEqual(ev("$('#rptFontHint').style.display"), 'none', `${mode}에서 폰트 안내 노출`);
+        assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${mode} 미리보기에 폰트 적용`);
+        assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt', `${mode} 미리보기 크기 적용`);
+        // ⚙옵션 접힘 요약(380px에서 유일한 발견 지점)에도 전 모드 노출
+        assert.ok(/폰트 Gulim 13pt/.test(ev("$('#rptOptSum').textContent")), `${mode} 옵션 요약에 폰트 표기`);
+        // 셀렉트도 저장값과 동기(재오픈·모드 전환 후에도)
+        assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${mode} 폰트 셀렉트 동기`);
+        assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${mode} 크기 셀렉트 동기`);
+      }
+      // 기본값이면 인라인 스타일을 걷어낸다(모드 무관) — '기본' 표기도 확인
+      ev("state.reportFont={family:'',size:0}; buildReport();");
+      assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '기본 폰트면 인라인 스타일 해제');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
-
-      ev("setReportMode('weekly'); buildReport();");
-      assert.strictEqual(ev("$('#rptFontRow').style.display"), 'none', '주간에서도 폰트 행 숨김');
-      assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '주간 미리보기도 스타일 없음');
+      assert.ok(/폰트 기본/.test(ev("$('#rptOptSum').textContent")), '기본이면 요약에 "폰트 기본"');
       ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
+    });
+
+    // 폰트는 표시+복사 전용이라는 계약 — 전송 페이로드(회사 폼)와 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
+    test('reportFont 불변식: buildReportText/buildWeeklyFields(전송 콘텐츠)는 폰트와 무관하게 바이트 동일', () => {
+      const st = fmtState('-', '', 2);
+      st.entries = st.entries.concat([{
+        id: 'x2', date: '2026-07-07', title: '폰트 무관 확인', categoryId: 'ca', allDay: true,
+        startTime: '', endTime: '', location: '', memo: '메모', source: '', commits: [],
+        hours: 90, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA,
+      }]);
+      seed(st);
+      setRptRange('2026-07-01', '2026-07-31');
+      // setReportMode가 기간을 그 모드 기본값으로 되돌리므로 from/to는 매번 다시 지정한다
+      ev("setReportMode('daily'); $('#rptFrom').value='2026-07-07'; $('#rptTo').value='2026-07-07';");
+      const plainDaily = ev('buildReportText()');
+      const sendDaily = ev("buildReportText('&nbsp;')");                       // netcus 일간 전송 content
+      ev("setReportMode('weekly'); $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31';");
+      const plainWeekly = ev('buildReportText()');
+      const sendWeekly = ev('JSON.stringify(buildWeeklyFields($("#rptFrom").value, $("#rptTo").value, rptSources()))');
+
+      // 공허한 비교(양쪽 다 빈 문자열) 방지 — 기준값이 실제 내용을 담고 있어야 한다
+      assert.ok(plainDaily.includes('폰트 무관 확인') && plainWeekly.includes('폰트 무관 확인'), '기준 텍스트가 비어 있지 않음');
+      assert.ok(/endwork/.test(sendWeekly) && sendWeekly.includes('폰트 무관 확인'), '기준 주간 전송 필드가 비어 있지 않음');
+
+      ev("state.reportFont={family:'Batang',size:16}; $('#rptFrom').value='2026-07-01'; $('#rptTo').value='2026-07-31'; buildReport();");   // 폰트 설정 후 동일 경로 재계산
+      assert.strictEqual(ev('buildReportText()'), plainWeekly, '주간 평문 복사 바이트 동일');
+      assert.strictEqual(ev('JSON.stringify(buildWeeklyFields($("#rptFrom").value, $("#rptTo").value, rptSources()))'), sendWeekly,
+        '주간 전송 필드(subject/content/endwork/planwork) 바이트 동일');
+      ev("setReportMode('daily'); $('#rptFrom').value='2026-07-07'; $('#rptTo').value='2026-07-07'; buildReport();");
+      assert.strictEqual(ev('buildReportText()'), plainDaily, '일간 평문 복사 바이트 동일');
+      assert.strictEqual(ev("buildReportText('&nbsp;')"), sendDaily, '일간 전송 content 바이트 동일');
+      // HTML 트윈에만 서식이 붙는다 — 같은 평문에서 파생됐음을 함께 확인
+      const html = ev("buildReportHtml(buildReportText(), normalizeReportFont(state.reportFont))");
+      assert.ok(/font-family/.test(html) && /font-size:16pt/.test(html), '일간 HTML 트윈에는 폰트 적용');
+      assert.strictEqual((html.match(/<br>/g) || []).length, plainDaily.split('\n').length - 1, '라인 수 불변');
+      ev("state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
     });
 
     test('prefs 부재 XML → 기본값(-,"",2) + entries/todos/commits/rooms 무손실(가산적)', () => {

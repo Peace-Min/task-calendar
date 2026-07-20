@@ -1743,7 +1743,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                     <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
                   </span>
                 </div>
-                <div class="rpt-fmt-row rpt-fontrow" id="rptFontRow" style="display:none">
+                <div class="rpt-fmt-row rpt-fontrow" id="rptFontRow">
                   <span class="rpt-opt-lb">폰트</span>
                   <select id="rptFontFamily" class="rpt-fmt-sel" aria-label="폰트 종류"></select>
                   <span class="rpt-opt-lb">크기</span>
@@ -1752,7 +1752,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                 </div>
               </div>
               <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
-              <span class="git-hint" id="rptFontHint" style="display:none">폰트는 기간 취합 복사에만 적용됩니다 (붙여넣는 문서 서식에 맞추세요)</span>
+              <span class="git-hint" id="rptFontHint">폰트는 미리보기·복사에만 적용됩니다 (회사 전송 내용은 그대로)</span>
             </div>
           </div>
         </div>
@@ -2725,7 +2725,7 @@ function defaultState(){
     taskHours: {},   // (날짜×과제) 시간 — XML <taskHours>로 영속
     attendance: {},  // 날짜별 근태 — XML <attendance>로 영속
     lsMigrated: false,   // 구 localStorage 저장소 1회 이관 완료 마커(신규 설치는 옮길 게 없음)
-    reportFont: { family: '', size: 0 },   // 기간 취합 보고서 폰트(''/0=기본) — 표시+복사 전용, XML <prefs>에 영속
+    reportFont: { family: '', size: 0 },   // 보고서 폰트(''/0=기본) — 모드 무관 단일 전역, 표시+복사 전용, XML <prefs>에 영속
   };
 }
 function load(){
@@ -3392,7 +3392,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       Object.entries(day||{}).sort().filter(([,v]) => typeof v === 'number' && isFinite(v) && v > 0).map(([c,v]) => [d,c,v])),
     at: Object.entries(s.attendance||{}).sort().map(([d,a]) => [d, String((a&&a.status)||'1'), ((a&&a.overtime)|0)]),
     lm: !!s.lsMigrated,
-    rf: normalizeReportFont(s.reportFont),   // 기간 취합 폰트도 왕복 자동 검증 대상
+    rf: normalizeReportFont(s.reportFont),   // 보고서 폰트도 왕복 자동 검증 대상
   });
   const p = fromXML(toXML());
   const ok = JSON.stringify(norm(state)) === JSON.stringify(norm(p));
@@ -5316,12 +5316,11 @@ function reportMarkerAt(spec, i){
     default: return '';
   }
 }
-// 폰트 행(기간 취합 전용) — 표시 여부·셀렉트 동기화·미리보기 반영을 한곳에서. 일간/주간은 행을 숨기고 스타일도 걷어낸다.
+// 폰트 행 — 셀렉트 동기화·미리보기 반영을 한곳에서. 일간/주간/기간 취합 모두 같은 값을 쓴다:
+// state.reportFont는 모드별이 아니라 단일 전역 설정('내 보고서 글꼴')이라 XML <prefs> 스키마가 그대로다.
+// 표시+복사 전용 — buildReportText()/전송 페이로드는 이 함수와 무관하다(회사 폼 바이트 불변).
 function syncReportFontUI(){
-  const on = (reportMode === 'custom');
-  const f = on ? normalizeReportFont(state.reportFont) : defaultReportFont();
-  const row = $('#rptFontRow'); if(row) row.style.display = on ? '' : 'none';
-  const hint = $('#rptFontHint'); if(hint) hint.style.display = on ? '' : 'none';
+  const f = normalizeReportFont(state.reportFont);
   const fam = $('#rptFontFamily'); if(fam) fam.value = f.family;
   const sz = $('#rptFontSize'); if(sz) sz.value = String(f.size);
   const out = $('#rptOut');
@@ -5331,7 +5330,7 @@ function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
-  syncReportFontUI();   // 조기 반환 경로들보다 앞 — 어떤 상태에서도 폰트 행·미리보기 서식이 모드와 일치하게
+  syncReportFontUI();   // 조기 반환 경로들보다 앞 — netcus 미리보기·가드 화면에서도 미리보기 서식이 설정과 일치하게
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
   const _isNet = (state.reportSource === 'net'), _isWeek = (state.reportSource === 'week');
@@ -5348,13 +5347,10 @@ function buildReport(){
     if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
       const fmt = currentReportFormatPref();
       const mk = fmt.markerCustom ? '직접' : (fmt.marker === 'none' ? '무번호' : (fmt.marker || '-'));
-      // 380px에서는 옵션이 접힌 채로 열리므로 이 요약이 유일한 발견 지점이다 — 커스텀(기간 취합)에서만
-      // 존재하는 폰트 설정이 요약에 없으면, 그 폭에서는 설정이 켜져 있다는 사실 자체를 알 길이 없다.
-      let fx = '';
-      if(reportMode === 'custom'){
-        const rf = normalizeReportFont(state.reportFont);   // 빈 family / size 0 = '기본'(인라인 스타일 미적용)
-        fx = (rf.family || rf.size) ? ` · 폰트 ${rf.family || '기본'}${rf.size ? ' ' + rf.size + 'pt' : ''}` : ' · 폰트 기본';
-      }
+      // 380px에서는 옵션이 접힌 채로 열리므로 이 요약이 유일한 발견 지점이다 — 폰트 설정이 요약에 없으면
+      // 그 폭에서는 설정이 켜져 있다는 사실 자체를 알 길이 없다. 폰트는 전 모드 공통이라 요약도 전 모드에.
+      const rf = normalizeReportFont(state.reportFont);   // 빈 family / size 0 = '기본'(인라인 스타일 미적용)
+      const fx = (rf.family || rf.size) ? ` · 폰트 ${rf.family || '기본'}${rf.size ? ' ' + rf.size + 'pt' : ''}` : ' · 폰트 기본';
       os.textContent = `· 포함 ${pc}/3 · 설명 ${src.desc ? '포함' : '제외'}${src.skipEmpty ? ' · 빈항목 제외' : ''} · 머리기호 ${mk}${fx}`; } }
   if(!src.event && !src.todo && !src.git){
     sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·커밋).';
@@ -5918,9 +5914,9 @@ function buildReportHtml(text, font){
 async function copyReport(){
   const text = buildReportText();
   if(!text){ toast('복사할 내용이 없습니다', 'warn'); return; }
-  // 기간 취합 전용 폰트 — text/plain은 항상 buildReportText 원문 그대로(평문 붙여넣기·netcus 전송 계약 불변),
-  // HTML 트윈에만 서식을 입힌다. 일간/주간은 폰트가 없으므로 사실상 기존과 동일.
-  const font = (reportMode === 'custom') ? normalizeReportFont(state.reportFont) : defaultReportFont();
+  // text/plain은 항상 buildReportText 원문 그대로(평문 붙여넣기·netcus 전송 계약 불변),
+  // HTML 트윈에만 서식을 입힌다. 폰트는 모드 무관 전역이라 일간/주간 복사도 동일하게 적용.
+  const font = normalizeReportFont(state.reportFont);
   const styled = !!(font.family || font.size);
   try{
     if(navigator.clipboard && window.ClipboardItem){
@@ -7469,7 +7465,7 @@ function bind(){
   const _setRptInd = d => { const cur = currentReportFormatPref().indent; updateCurrentReportFormatPref({ indent: Math.max(0, Math.min(6, cur + d)) }); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
-  // 폰트 행(기간 취합 전용) — 옵션 1회 채우기 + 변경 시 state.reportFont 갱신 → save() → buildReport() 재빌드.
+  // 폰트 행(전 모드 공통 전역 설정) — 옵션 1회 채우기 + 변경 시 state.reportFont 갱신 → save() → buildReport() 재빌드.
   { const _ff = $('#rptFontFamily'), _fs = $('#rptFontSize');
     if(_ff) _ff.innerHTML = REPORT_FONTS.map(f => `<option value="${esc(f.v)}">${esc(f.label)}</option>`).join('');
     if(_fs) _fs.innerHTML = REPORT_FONT_SIZES.map(n => `<option value="${n}">${n ? n + 'pt' : '기본'}</option>`).join('');
