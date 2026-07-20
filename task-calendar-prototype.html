@@ -239,11 +239,28 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* A. 시간 일정 = 선행 색점 + 굵은 시각 + 투명 본체(종일=채운 막대와 한눈에 구분) */
 .chip.chip-timed{background:transparent !important;border-left-color:transparent !important;display:flex;align-items:center;gap:4px;padding-left:3px}
 .chip.chip-timed .cdot{width:8px;height:8px;border-radius:50%;flex:none}
-.chip.chip-timed .chip-t{opacity:1;font-weight:600;color:var(--text);font-size:var(--fs-micro);margin-right:0;flex:none}  /* 축약 시각 항상 표시(9시/14:30) — 좁은 셀에서도 시간 구분 */
+/* [규칙 변경] '축약 시각 항상 표시' → '제목이 굶을 때는 시각을 접는다'.
+   되돌린 이유: 실측상 380px 위젯의 셀(.chips = 37.7px)에서 색점+시각만으로 고정폭을 다 먹어
+   .ctitle이 0px가 됐다. 시각이 안 보이는 것보다 제목이 아예 안 보이는 쪽이 확실히 더 나쁘다
+   (구글 캘린더 모바일 월간뷰도 같은 선택). 시각은 칩 title 툴팁·우측 패널에 그대로 남는다.
+   임계값 112px 유도(worst case): 칩 크롬 11(border-left 3 + padding 3+5)
+     + 색점 8 + gap 4 + 시각 28('23:45' 27.31) + gap 4 = 고정 55
+     + 제목 최소 57(한글 4자 48 + 말줄임 8.79) = 112.
+   '좁으면 무조건'이 아니라 '둘 다 들어가면 둘 다' — 112px 이상이면 시각을 되살린다.
+   기본값을 '숨김'으로 둔 건 @container 미지원 폴백이 안전한 쪽(제목 보임)이 되게 하기 위함. */
+.chip.chip-timed .chip-t{opacity:1;font-weight:600;color:var(--text);font-size:var(--fs-micro);margin-right:0;flex:none;display:none}
+@container (min-width:112px){ .chip.chip-timed .chip-t{display:block} }
 .chip.chip-timed .ctitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}  /* flex 항목 제목 말줄임(하드 클립 '깨짐' 방지) */
+/* nowrap 필수: 380px 위젯의 37.7px 셀에서 '+8개 더보기'가 3줄(47px)로 접혀
+   .chips의 overflow:hidden에 잘리고, fitChips의 한 줄 가정도 깨진다. */
 .more{font-size:var(--fs-micro);color:var(--muted);padding:1px 6px;flex:none;border:none;background:none;
-  text-align:left;cursor:pointer;border-radius:var(--r-sm);width:100%}
+  text-align:left;cursor:pointer;border-radius:var(--r-sm);width:100%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .more:hover{background:var(--hover-bg);color:var(--accent-2)}
+/* 좁은 셀에선 '+N'만 — '+99개 더보기'(66.4) + 좌우 패딩 12 = 78.4px가 전체 라벨의 하한.
+   숨겨도 aria-label이 전체 문구를 유지하므로 스크린리더는 손실 없음. */
+.more-x{display:none}
+@container (min-width:79px){ .more-x{display:inline} }
 /* 기간 막대(연속 칩) — gap:1px 그리드에서 인접 셀이 이어져 보이도록 */
 .chip-range.chip-start{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:-1px}
 .chip-range.chip-mid{border-radius:0;margin:0 -1px;border-left-width:0;color:transparent}
@@ -899,7 +916,12 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 
 /* ---------- 빠른 등록(quick-create) ---------- */
 .qa-modal{width:min(380px,100%);padding:14px 16px 12px}
-.qa-head{display:flex;align-items:center;margin-bottom:6px}
+/* 스크롤 바디 — .modal-body와 같은 계약(머리·발은 flex:none, 가운데만 줄어들며 스크롤).
+   없으면 옵션 펼침+반복 힌트+긴 메모가 max-height(92vh·시트 88vh)를 넘길 때
+   자식들이 flex 압축되고 '저장' 버튼이 화면 밖으로 밀려 누를 수 없게 된다.
+   좌우 패딩은 .qa-modal이 계속 소유 — 스크롤바가 필드 사이가 아니라 모달 안쪽 가장자리에 붙게. */
+.qa-body{flex:1 1 auto;min-height:0;overflow-y:auto}
+.qa-head{display:flex;align-items:center;margin-bottom:6px;flex:none}
 .qa-tg{flex:0 1 auto;margin-right:auto}
 /* 일정/할 일 = 저장되는 값(type) → 공용 .seg(seg-lg). 전용 규칙 없음 */
 .qa-title{width:100%;border:none;border-bottom:2px solid var(--accent);font-size:var(--fs-title);padding:4px 0 7px;outline:none;font-family:inherit;color:var(--text);background:transparent}
@@ -940,7 +962,12 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
 .qa-chk .ic{width:14px;height:14px}
 .qa-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;line-height:1.5}
-.qa-foot{display:flex;align-items:center;gap:10px;margin-top:var(--sp-4)}
+.qa-foot{display:flex;align-items:center;gap:10px;margin-top:var(--sp-4);flex:none}
+/* 빠른등록 메모는 rows=1 + autoGrowArea(scrollHeight) 자동확장이 높이를 지배한다.
+   공용 .modal textarea의 min-height:90px가 그 바닥을 이겨서 '접힌 상태 압축'이 실제론 동작한 적이 없었다.
+   → 한 줄 높이(=폰트 14px·line-height 1.55 ≈ 22 + 패딩 12)만 바닥으로 남긴다.
+   rows=3인 할 일 '설명'과 entryModal 메모는 90px를 계속 원하므로 [rows="1"]로만 한정. */
+.qa-detail textarea[rows="1"]{min-height:34px}
 .qa-more{border:none;background:none;color:var(--accent-2);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit;margin-right:auto}
 .qa-advanced{border:none;background:none;color:var(--muted);font-size:var(--fs-meta);cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
 .qa-advanced:hover{color:var(--text)}
@@ -1316,6 +1343,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <span class="qa-edit-title hidden" id="qaEditTitle">일정 수정</span>
       <button class="x" data-close aria-label="닫기">×</button>
     </div>
+    <div class="qa-body">
     <input type="text" id="qaTitle" class="qa-title" maxlength="200" placeholder="일정 제목">
     <div class="qa-ctx">
       <input type="date" id="qaDate" title="날짜">
@@ -1347,6 +1375,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </div>
     </div>
     <div class="qa-detail hidden" id="qaDetail"></div>
+    </div>
     <div class="qa-foot">
       <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>
       <button type="button" class="qa-advanced hidden" id="qaAdvanced">자세히 편집</button>
@@ -3441,10 +3470,19 @@ function fitChips(){
     const extra = Number(box.dataset.extra || 0);
     const avail = box.clientHeight;
     if(!avail) return;   // 레이아웃 전(높이 0)이면 전부 표시 — resize 때 재계산
-    const GAP = 2, MOREH = 17;
+    const GAP = 2;
     let used = 0, fit = 0;
     for(const c of chips){ const h = c.offsetHeight + GAP; if(used + h <= avail){ used += h; fit++; } else break; }
     if(fit >= chips.length && extra === 0) return;   // 전부 들어감 → 더보기 불필요
+    // '+N' 행 높이는 실측한다. 하드코딩(17px)은 타입 스케일·밀도·폰트가 바뀌는 순간
+    // 조용히 어긋나 칩이 한 줄 더 들어가거나 잘린다. 버튼을 먼저 붙여 재고, 라벨은 아래에서 확정.
+    // 자릿수와 무관하게 한 줄(.more{white-space:nowrap})이므로 높이는 +N 값에 의존하지 않는다.
+    const btn = document.createElement('button');
+    btn.className = 'more';
+    btn.title = '이 날짜의 전체 기록을 옆 패널에 표시';
+    btn.textContent = '+0';
+    box.appendChild(btn);
+    const MOREH = btn.offsetHeight;
     used = 0; fit = 0;                                // 더보기 행 자리 확보 후 재계산
     for(const c of chips){ const h = c.offsetHeight + GAP; if(used + h + MOREH <= avail){ used += h; fit++; } else break; }
     const floor = Math.min(3, chips.length);          // 기존 '최대 3개' 이상은 항상 보장(좁은 셀 회귀 방지) — 넓을 때만 더 표시
@@ -3453,11 +3491,13 @@ function fitChips(){
     const hidden = chips.slice(fit).filter(c => !c.classList.contains('chip-spacer')).length + extra;  // spacer는 '기록' 아님 → +N 제외
     chips.forEach((c, i) => { c.style.display = i >= fit ? 'none' : ''; });
     if(hidden > 0){                                   // 숨긴 게 있을 때만 더보기(‘+0개’ 방지)
-      const btn = document.createElement('button');
-      btn.className = 'more';
-      btn.title = '이 날짜의 전체 기록을 옆 패널에 표시';
-      btn.textContent = `+${hidden}개 더보기`;
-      box.appendChild(btn);
+      // '개 더보기'는 좁은 셀에서 CSS(@container)가 접는다 → 보조기술용 전체 문구는 aria-label로 보존.
+      btn.textContent = `+${hidden}`;
+      const sfx = document.createElement('span'); sfx.className = 'more-x'; sfx.textContent = '개 더보기';
+      btn.appendChild(sfx);
+      btn.setAttribute('aria-label', `+${hidden}개 더보기`);
+    } else {
+      btn.remove();                                   // 실측용으로 붙였던 프로브 회수
     }
   });
 }
