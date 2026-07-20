@@ -429,7 +429,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
   outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);
 }
 .modal textarea{resize:vertical;min-height:90px;line-height:1.55}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}   /* minmax(0,…) — 내용 폭이 칼럼을 밀어 셀렉트가 잘리는 것 방지 */
 .check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer}
 .check input{width:15px;height:15px;accent-color:var(--accent)}
 #timeRow.off{display:none}   /* 종일 시 시간행 완전 숨김 — quick-add와 동일 패턴(흐림→'편집 가능?' 오해 제거) */
@@ -930,7 +930,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-send-status.busy{color:var(--accent-2)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger-text)}
 .rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px}
 .qa-detail{margin-top:11px;border-top:1px solid var(--line);padding-top:10px}
-.qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1}
+.qa-detail .row2{display:flex;gap:8px;margin-top:4px}.qa-detail .row2>div{flex:1;min-width:0}.qa-detail .row2 select{width:100%}   /* min-width:0 — '회의실 관리' 링크 등 내용 폭이 옆 칼럼(반복)을 밀어 잘리는 것 방지 */
 .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);margin:8px 0 3px}
 .qa-detail input[type=time],.qa-detail select,.qa-detail textarea{width:100%;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:6px 8px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text)}
 .qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
@@ -949,6 +949,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rem-seg-b.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
 .rem-seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .rem-cust{display:inline-flex;align-items:center;gap:6px}
+.rem-cust.rem-ghost{visibility:hidden}   /* 직접 미선택 시에도 공간 예약 — 모드 전환에 레이아웃 안 밀림(포커스·a11y 트리에서도 제외) */
 .rem-cust .rem-unit .rem-seg-b{padding:5px 9px}
 .rem-num{width:52px;border:1px solid var(--line-2);border-radius:var(--r-sm);padding:5px 6px;font-size:var(--fs-body);font-family:inherit;background:#fff;color:var(--text);text-align:right}
 .rem-jeon{font-size:var(--fs-meta);color:var(--muted)}
@@ -3906,7 +3907,8 @@ function remRowSync(pfx, enabled, dimReason){
   const st = _remState[pfx];
   $$('#'+pfx+'RemSeg .rem-seg-b').forEach(b => { const on = b.dataset.remmode === st.mode; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   $$('#'+pfx+'RemUnit .rem-seg-b').forEach(b => { const on = Number(b.dataset.remunit) === st.unit; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  const cust = $('#'+pfx+'RemCust'); if(cust) cust.style.display = (st.mode === 'cust') ? 'inline-flex' : 'none';
+  // 직접 입력줄은 display가 아니라 visibility로 토글 — 공간을 미리 예약해 모드 전환 시 레이아웃이 밀리지 않게(고스트).
+  const cust = $('#'+pfx+'RemCust'); if(cust){ cust.style.display = ''; cust.classList.toggle('rem-ghost', st.mode !== 'cust'); }
   block.classList.toggle('rem-off', !enabled);
   block.querySelectorAll('button, input').forEach(el => { el.disabled = !enabled; });
   const hint = $('#'+pfx+'RemHint'); if(hint) hint.textContent = remHint(pfx, enabled, dimReason);
