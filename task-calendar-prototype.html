@@ -1552,29 +1552,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <div class="set-hint" style="margin-top:2px">예: <b>ftp://&lt;서버IP&gt;/TaskCalendar/</b> · http(s):// · 공유폴더(UNC/로컬) 경로도 가능 · <b>비우면 업데이트 확인 안 함</b>.</div>
       </div>
-      <div class="set-sec set-sec-top" id="dbSection">
-        <div class="set-lb">과제 DB 연결 <span id="dbState" class="git-opt"></span></div>
-        <div class="set-hint">사내 <b>과제 DB</b>(MySQL)에서 <b>공식 과제</b> 목록을 읽어 기록의 과제 선택기에 표시합니다(읽기 전용). 접속 정보는 이 PC의 설정 파일에 <b>평문 저장</b>되며(폐쇄망 내부용), 데스크톱 위젯에서만 동작합니다.</div>
-        <label class="qa-lb" for="dbHost">호스트 : 포트</label>
-        <div style="display:flex;gap:6px">
-          <input type="text" id="dbHost" class="set-in" autocomplete="off" spellcheck="false" placeholder="localhost" style="flex:2">
-          <input type="text" id="dbPort" class="set-in" autocomplete="off" spellcheck="false" placeholder="3306" style="flex:1">
-        </div>
-        <label class="qa-lb" for="dbName">데이터베이스</label><input type="text" id="dbName" class="set-in" autocomplete="off" spellcheck="false" placeholder="taskmgr">
-        <label class="qa-lb" for="dbUser">사용자</label><input type="text" id="dbUser" class="set-in" autocomplete="off" spellcheck="false" placeholder="root">
-        <label class="qa-lb" for="dbPw">비밀번호</label><input type="password" id="dbPw" class="set-in" autocomplete="new-password" placeholder="변경 시에만 입력(빈칸=기존 유지)">
-        <div class="set-hint" style="margin-top:4px">입력란을 <b>비우면 저장된 기존 값</b>을 유지합니다(호스트/DB/사용자/비밀번호 각각).</div>
-        <div style="margin:9px 0 4px">
-          <button type="button" class="btn sm" id="dbSave">저장</button>
-          <button type="button" class="btn sm" id="dbTest">연결 테스트</button>
-          <button type="button" class="btn sm" id="dbReload">지금 새로고침</button>
-          <span id="dbMsg" class="git-opt"></span>
-        </div>
-        <div class="set-hint" id="dbCacheLine" style="margin-top:2px"></div>
-      </div>
       <div class="set-sec set-sec-top" id="adminSection">
         <div class="set-lb">관리자 <span id="admState" class="git-opt"></span></div>
-        <div class="set-hint"><b>공식 과제 편집</b>은 관리자 모드에서만 가능합니다(편집 UI는 다음 단계). 관리자 자격은 이 PC의 설정 파일에 <b>평문 저장</b>되며, 데스크톱 위젯에서만 동작합니다.</div>
+        <div class="set-hint"><b>공식 과제 편집</b>은 관리자 모드에서만 가능합니다(편집 UI는 다음 단계). 과제 DB 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다.</div>
+        <div class="set-hint" id="dbCacheLine" style="margin-bottom:6px"></div>
+        <div style="margin:0 0 10px"><button type="button" class="btn sm" id="dbReload">지금 새로고침</button> <span id="dbMsg" class="git-opt"></span></div>
         <label class="qa-lb">관리자 자격 등록 <span class="git-opt">· 초기 1회</span></label>
         <input type="text" id="admRegId" class="set-in" autocomplete="off" spellcheck="false" placeholder="관리자 ID">
         <input type="password" id="admRegPw" class="set-in" autocomplete="new-password" placeholder="관리자 비밀번호(빈칸=기존 유지)">
@@ -2929,6 +2911,15 @@ function refreshDbUi(){
     if(em && !em.classList.contains('hidden') && sel){ const v = sel.value; fillCatSelect(sel); sel.value = v; }
   }catch(_){}
   try{ updateDbStatusLine(); }catch(_){}
+  // '지금 새로고침' 진행 표시가 남아 있으면 결과로 치환(성공=연결됨·N건 / 실패=오프라인·캐시 유지)
+  try{
+    const m = document.getElementById('dbMsg');
+    if(m && m.textContent){
+      m.innerHTML = dbOnline ? (ICON.check + ' 연결됨 · ' + dbCategories.length + '건')
+                             : (ICON.alert + ' 오프라인 — 캐시 ' + dbCategories.length + '건 사용');
+      m.style.color = dbOnline ? 'var(--accent-2)' : 'var(--danger)';
+    }
+  }catch(_){}
 }
 
 /* ---------- 역할(권한) 인터페이스 — 공식 과제 편집 게이트 ---------- */
@@ -4490,35 +4481,30 @@ function openSettings(){
   if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
   // 열 때는 중립으로 되돌린다 — 직전 세션의 '저장 안 됨'이 남아 있으면 거짓 경고가 된다.
   setSaveBadge('ncBadge', '', '저장 필요'); setSaveBadge('updBadge', '', '저장 필요');
-  // 과제 DB 연결 — 입력은 비워 두고(빈칸=기존/기본 유지) placeholder로 안내, 상태줄 갱신. 위젯 전용.
-  ['dbHost','dbPort','dbName','dbUser','dbPw'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  { const m = $('#dbMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
-  { const sec = document.getElementById('dbSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
-  updateDbStatusLine();
-  // 관리자 — 입력 비우고(빈칸=기존 유지) 상태 갱신. 위젯 전용.
+  // 관리자(과제 DB 상태 포함) — 입력 비우고(빈칸=기존 유지) 상태 갱신. 위젯 전용.
   ['admRegId','admRegPw','admLoginPw'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  { const m = $('#dbMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const m = document.getElementById('admMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const m = document.getElementById('admRegMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const sec = document.getElementById('adminSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
+  updateDbStatusLine();
   updateAdminUi();
   openModal('#settingsModal');
 }
-// 과제 DB 상태줄(연결됨·N건 / 오프라인 캐시 / 미연결)과 마지막 동기화 시각 표시
+// 과제 DB 상태 한 줄(관리자 섹션) — 연결됨·N건 / 오프라인 캐시 N건 · 마지막 동기화 시각.
+// 연결정보는 배포 구성(호스트 상수)이라 입력 UI 없음 — 상태 표시와 '지금 새로고침'만 제공한다.
 function updateDbStatusLine(){
-  const st = document.getElementById('dbState'), line = document.getElementById('dbCacheLine');
+  const line = document.getElementById('dbCacheLine');
+  if(!line) return;
   const n = dbCategories.length;
   let when = ''; try{ const t = localStorage.getItem('tc_dbSyncedAt'); if(t) when = new Date(t).toLocaleString('ko-KR'); }catch(_){}
-  if(st){
-    if(!HOST) st.textContent = '· 데스크톱 위젯 전용';
-    else if(dbOnline) st.textContent = '· 연결됨 · ' + n + '건';
-    else if(n > 0) st.textContent = '· 오프라인(캐시 ' + n + '건)';
-    else st.textContent = '· 미연결';
-  }
-  if(line) line.innerHTML = n ? ('마지막 동기화: <b>' + esc(when || '-') + '</b> · 캐시 ' + n + '건') : '아직 불러온 공식 과제가 없습니다.';
+  let st;
+  if(!HOST) st = '데스크톱 위젯 전용';
+  else if(dbOnline) st = '<b>연결됨 · ' + n + '건</b>';
+  else if(n > 0) st = '<b>오프라인 · 캐시 ' + n + '건</b>';
+  else st = '<b>미연결</b> — 아직 불러온 공식 과제가 없습니다';
+  line.innerHTML = '공식 과제 DB: ' + st + (n ? ' · 마지막 동기화 ' + esc(when || '-') : '');
 }
-window.__dbTestResult = function(ok, msg){
-  const m = $('#dbMsg'); if(m){ m.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg || ''); m.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
-};
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
 function ncMode(){ try{ return localStorage.getItem('tc_netcusMode') === 'real' ? 'real' : 'dry'; }catch(_){ return 'dry'; } }
 window.__netcusCreds = function(id, hasPw){
@@ -7304,20 +7290,7 @@ function bind(){
       const m = $('#updSrcMsg'); if(m){ m.innerHTML = ICON.spinner + ' 확인 중…'; m.style.color = 'var(--accent)'; }
       hpost({ cmd: 'updateCheck' });   // 결과는 __updateResult(최신/실패) 또는 __updateAvailable(배너)
     }); }
-  // ── 과제 DB 연결(READ) — 저장/연결 테스트/새로고침 ──
-  { const b = $('#dbSave'); if(b) b.addEventListener('click', () => {
-      if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
-      const host = ($('#dbHost').value || '').trim(), port = parseInt($('#dbPort').value, 10) || 0,
-            database = ($('#dbName').value || '').trim(), user = ($('#dbUser').value || '').trim(), password = $('#dbPw').value;
-      hpost({ cmd: 'saveDbConfig', host, port, database, user, password });   // 빈칸=기존 유지(호스트가 처리) → 저장 직후 새로고침
-      $('#dbPw').value = '';
-      const m = $('#dbMsg'); if(m){ m.innerHTML = ICON.check + ' 저장됨 · 새로고침 중…'; m.style.color = 'var(--accent-2)'; }
-    }); }
-  { const b = $('#dbTest'); if(b) b.addEventListener('click', () => {
-      if(!HOST){ toast('데스크톱 위젯에서만 확인됩니다', 'warn'); return; }
-      const m = $('#dbMsg'); if(m){ m.innerHTML = ICON.spinner + ' 연결 확인 중…'; m.style.color = 'var(--accent)'; }
-      hpost({ cmd: 'testDbConnection' });   // 결과는 __dbTestResult(ok, msg)
-    }); }
+  // ── 과제 DB(READ) — 새로고침만(연결정보는 배포 구성, 설정 UI 없음) ──
   { const b = $('#dbReload'); if(b) b.addEventListener('click', () => {
       if(!HOST){ toast('데스크톱 위젯 전용입니다', 'warn'); return; }
       const m = $('#dbMsg'); if(m){ m.innerHTML = ICON.spinner + ' 새로고침 중…'; m.style.color = 'var(--accent)'; }

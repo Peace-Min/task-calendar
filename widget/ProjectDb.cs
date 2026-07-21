@@ -10,20 +10,26 @@ using MySqlConnector;
 
 namespace TaskCalendarWidget
 {
-    // 과제 DB 연동(READ 경로만) — 로컬 MySQL(taskmgr)의 공식 과제(project)를 '읽기만' 해서 웹으로 넘긴다.
-    // 공식 과제 쓰기/CRUD·관리자 편집 화면은 이 슬라이스 범위 밖(이후 단계). 오프라인이면 조용히 실패하고 웹은 로컬 캐시로 폴백한다.
-    // 설정(host/port/database/user/password + adminId/adminPw)은 db-config.json에 '평문'으로 저장한다.
-    //   ※ 암호화 없음(사용자 결정) — 자동 업데이트 소스 URL 저장과 동일한 단순 평문 방식. 보안 강화는 P6.5(app_user 전환)에서.
+    // 과제 DB 연동(READ 경로만) — 사내 MySQL(taskmgr)의 공식 과제(project)를 '읽기만' 해서 웹으로 넘긴다.
+    // 공식 과제 쓰기/CRUD·관리자 편집 화면은 이후 단계. 오프라인이면 조용히 실패하고 웹은 로컬 캐시로 폴백한다.
+    // DB 연결정보는 '배포 구성'(아래 상수) — 배포자가 배포 전 코드에서 설정하고 빌드한다(일반 사용자에겐 비노출).
+    // 관리자 자격만 db-config.json(평문)에 저장(변경 시) — 없으면 베이크 디폴트 사용. 보안 강화는 P6.5(app_user 전환)에서.
     internal sealed class ProjectDb
     {
+        // ================================================================================
+        // ★ 배포 구성 — 배포 전 여기서 DB 연결정보를 설정하고 빌드한다 (서버 이관 시 이 값만 변경)
+        // ================================================================================
+        private const string DefHost     = "localhost";    // DB 서버 주소 (폐쇄망 서버 IP로 교체)
+        private const int    DefPort     = 3306;           // MySQL 포트
+        private const string DefDb       = "taskmgr";      // 데이터베이스명
+        private const string DefUser     = "root";         // DB 계정
+        private const string DefPassword = "taskmgr123";   // DB 비밀번호 (로컬 개발 디폴트 — 배포 전 실서버 값으로 교체)
+        private const string DefAdminId  = "admin";        // 관리자 초기 ID (설정창에서 변경 가능)
+        private const string DefAdminPw  = "1234";         // 관리자 초기 비밀번호 (설정창에서 변경 가능)
+        // ================================================================================
+
         private readonly string _dataDir;
         private readonly Action<string> _log;
-
-        // 비-비밀 연결 기본값(폐쇄망 내부·localhost). 비밀번호는 기본값(baked) 없음 — 오직 config에서만 읽는다.
-        private const string DefHost = "localhost";
-        private const int    DefPort = 3306;
-        private const string DefDb   = "taskmgr";
-        private const string DefUser = "root";
 
         public ProjectDb(string dataDir, Action<string> log)
         {
@@ -33,107 +39,73 @@ namespace TaskCalendarWidget
 
         private string ConfigFile => Path.Combine(_dataDir, "db-config.json");
 
-        private sealed class DbConfig
+        // config(db-config.json)에는 관리자 자격만 남긴다(변경분). 연결정보는 항상 베이크 상수 —
+        // 옛 파일에 host/port 등 연결 필드가 남아 있어도 그냥 무시한다(에러·마이그레이션 불필요).
+        private sealed class AdminCred
         {
-            public string Host = DefHost;
-            public int Port = DefPort;
-            public string Database = DefDb;
-            public string User = DefUser;
-            public string Password = "";    // 평문 — 미설정이면 빈 문자열(연결 실패 → 웹은 캐시 폴백)
-            public string AdminId = "";     // 관리자 자격(평문) — 공식 과제 편집 게이트. 미설정이면 빈 문자열.
+            public string AdminId = "";   // 빈 문자열 = 미변경 → 베이크 디폴트(DefAdminId/DefAdminPw) 사용
             public string AdminPw = "";
         }
 
-        // ----- 설정 로드/저장 (평문 json) -----
-        private DbConfig LoadConfig()
+        private AdminCred LoadAdmin()
         {
-            var c = new DbConfig();
+            var a = new AdminCred();
             try
             {
-                if (!File.Exists(ConfigFile)) return c;   // 파일 없음 → 비-비밀 기본값(비번/관리자는 빈 문자열)
+                if (!File.Exists(ConfigFile)) return a;
                 using var d = JsonDocument.Parse(File.ReadAllText(ConfigFile, Encoding.UTF8));
                 var r = d.RootElement;
-                if (r.TryGetProperty("host", out var h) && h.ValueKind == JsonValueKind.String) c.Host = h.GetString() ?? DefHost;
-                if (r.TryGetProperty("port", out var p) && p.TryGetInt32(out var pi) && pi > 0) c.Port = pi;
-                if (r.TryGetProperty("database", out var db) && db.ValueKind == JsonValueKind.String) c.Database = db.GetString() ?? DefDb;
-                if (r.TryGetProperty("user", out var u) && u.ValueKind == JsonValueKind.String) c.User = u.GetString() ?? DefUser;
-                if (r.TryGetProperty("password", out var pw) && pw.ValueKind == JsonValueKind.String) c.Password = pw.GetString() ?? "";
-                if (r.TryGetProperty("adminId", out var ai) && ai.ValueKind == JsonValueKind.String) c.AdminId = ai.GetString() ?? "";
-                if (r.TryGetProperty("adminPw", out var ap) && ap.ValueKind == JsonValueKind.String) c.AdminPw = ap.GetString() ?? "";
+                if (r.TryGetProperty("adminId", out var ai) && ai.ValueKind == JsonValueKind.String) a.AdminId = ai.GetString() ?? "";
+                if (r.TryGetProperty("adminPw", out var ap) && ap.ValueKind == JsonValueKind.String) a.AdminPw = ap.GetString() ?? "";
             }
-            catch (Exception ex) { _log("DB 설정 로드 실패: " + ex.Message); }
-            return c;
+            catch (Exception ex) { _log("관리자 설정 로드 실패: " + ex.Message); }
+            return a;
         }
 
-        private void WriteConfig(DbConfig c)
-        {
-            Directory.CreateDirectory(_dataDir);
-            File.WriteAllText(ConfigFile,
-                JsonSerializer.Serialize(new
-                {
-                    host = c.Host, port = c.Port, database = c.Database, user = c.User, password = c.Password,
-                    adminId = c.AdminId, adminPw = c.AdminPw
-                }, new JsonSerializerOptions { WriteIndented = true }),
-                new UTF8Encoding(false));
-        }
-
-        // DB 접속 설정 저장(평문). 빈 값은 기존 유지(실수로 지워지는 것 방지 — netcus SaveCreds와 동일 철학).
-        public void SaveConfig(string? host, int port, string? database, string? user, string? password)
-        {
-            try
-            {
-                var c = LoadConfig();
-                if (!string.IsNullOrWhiteSpace(host)) c.Host = host!.Trim();
-                if (port > 0) c.Port = port;
-                if (!string.IsNullOrWhiteSpace(database)) c.Database = database!.Trim();
-                if (!string.IsNullOrWhiteSpace(user)) c.User = user!.Trim();
-                if (!string.IsNullOrEmpty(password)) c.Password = password;   // 빈칸 = 기존 유지
-                WriteConfig(c);
-                _log("DB 설정 저장: " + c.Host + ":" + c.Port + "/" + c.Database + " (user=" + c.User + ")");
-            }
-            catch (Exception ex) { _log("DB 설정 저장 실패: " + ex.Message); }
-        }
-
-        // 관리자 자격 등록/변경(평문). 초기 1회 설정용. 빈 값 = 기존 유지.
+        // 관리자 자격 등록/변경(평문 json — adminId/adminPw만 기록). 빈 값 = 기존 유지.
         public void SaveAdminCred(string? id, string? pw)
         {
             try
             {
-                var c = LoadConfig();
-                if (!string.IsNullOrWhiteSpace(id)) c.AdminId = id!.Trim();
-                if (!string.IsNullOrEmpty(pw)) c.AdminPw = pw;   // 빈칸 = 기존 유지
-                WriteConfig(c);
-                _log("관리자 자격 저장: id=" + c.AdminId + " (pw " + (c.AdminPw.Length > 0 ? "설정됨" : "미설정") + ")");
+                var a = LoadAdmin();
+                if (!string.IsNullOrWhiteSpace(id)) a.AdminId = id!.Trim();
+                if (!string.IsNullOrEmpty(pw)) a.AdminPw = pw;   // 빈칸 = 기존 유지
+                Directory.CreateDirectory(_dataDir);
+                File.WriteAllText(ConfigFile,
+                    JsonSerializer.Serialize(new { adminId = a.AdminId, adminPw = a.AdminPw },
+                        new JsonSerializerOptions { WriteIndented = true }),
+                    new UTF8Encoding(false));
+                _log("관리자 자격 저장: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ")");
             }
             catch (Exception ex) { _log("관리자 자격 저장 실패: " + ex.Message); }
         }
 
-        // 관리자 로그인 검증. config값과 대조해 role('admin') 또는 null을 반환(+안내 메시지).
+        // 관리자 로그인 검증 — config값(없으면 베이크 디폴트)과 대조해 role('admin') 또는 null 반환(+안내 메시지).
         // ※ 검증은 '이 한 지점'에서만 — P6.5에서 여기만 app_user 인증으로 교체한다. JS엔 비번을 절대 노출하지 않는다.
         // id가 비어 있으면 pw만 대조(단일 관리자 편의). id가 있으면 id+pw 모두 일치해야 함.
         public (string? role, string msg) VerifyAdmin(string? id, string? pw)
         {
             try
             {
-                var c = LoadConfig();
-                if (string.IsNullOrEmpty(c.AdminPw))
-                    return (null, "관리자 자격이 아직 설정되지 않았습니다 — 먼저 관리자 자격을 등록하세요.");
-                bool idOk = string.IsNullOrEmpty(id) || string.Equals(id, c.AdminId, StringComparison.Ordinal);
-                bool ok = idOk && !string.IsNullOrEmpty(pw) && string.Equals(pw, c.AdminPw, StringComparison.Ordinal);
+                var a = LoadAdmin();
+                string effId = a.AdminId.Length > 0 ? a.AdminId : DefAdminId;   // 미변경 → 베이크 디폴트 폴백
+                string effPw = a.AdminPw.Length > 0 ? a.AdminPw : DefAdminPw;
+                bool idOk = string.IsNullOrEmpty(id) || string.Equals(id, effId, StringComparison.Ordinal);
+                bool ok = idOk && !string.IsNullOrEmpty(pw) && string.Equals(pw, effPw, StringComparison.Ordinal);
                 return ok ? ("admin", "관리자 모드로 전환되었습니다.") : (null, "관리자 자격이 일치하지 않습니다.");
             }
             catch (Exception ex) { _log("관리자 검증 실패: " + ex.Message); return (null, "관리자 검증 오류: " + Short(ex)); }
         }
 
-        // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 캐시로 폴백.
-        private static string BuildConnString(DbConfig c) =>
+        // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 캐시로 폴백. 연결정보는 항상 베이크 상수.
+        private static string BuildConnString() =>
             new MySqlConnectionStringBuilder
             {
-                Server = c.Host,
-                Port = (uint)(c.Port > 0 ? c.Port : DefPort),
-                Database = c.Database,
-                UserID = c.User,
-                Password = c.Password,
+                Server = DefHost,
+                Port = (uint)DefPort,
+                Database = DefDb,
+                UserID = DefUser,
+                Password = DefPassword,
                 ConnectionTimeout = 4,        // 접속 대기(초) — 오프라인 빠른 실패
                 DefaultCommandTimeout = 8,
                 Pooling = false,               // 위젯 단발성 조회 — 풀 미유지(정지된 서버로 소켓 재사용 방지)
@@ -142,12 +114,10 @@ namespace TaskCalendarWidget
         // 공식 과제(is_active=1)를 읽어 JSON 배열 문자열로 반환. 연결/조회 실패 시 null(호출측이 캐시 폴백).
         public async Task<string?> LoadProjectsJsonAsync()
         {
-            var c = LoadConfig();
-            if (string.IsNullOrEmpty(c.Password)) { _log("DB 비밀번호 미설정 — 로드 생략(캐시 폴백)"); return null; }   // 미설정이면 시도조차 안 함
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString(c));
+                await using var conn = new MySqlConnection(BuildConnString());
                 await conn.OpenAsync(cts.Token);
 
                 const string sql =
@@ -180,25 +150,6 @@ namespace TaskCalendarWidget
             catch (Exception ex) { _log("DB 과제 로드 실패(캐시 폴백): " + Short(ex)); return null; }
         }
 
-        // 연결 테스트 — 짧은 한국어 메시지 반환("연결됨 · N건" / "연결 실패: <이유>").
-        public async Task<(bool ok, string msg)> TestConnectionAsync()
-        {
-            var c = LoadConfig();
-            if (string.IsNullOrEmpty(c.Password)) return (false, "연결 실패: 비밀번호가 설정되지 않았습니다");
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString(c));
-                await conn.OpenAsync(cts.Token);
-                await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project WHERE is_active=1", conn);
-                var n = await cmd.ExecuteScalarAsync(cts.Token);
-                long cnt = (n == null || n is DBNull) ? 0 : Convert.ToInt64(n);
-                _log("DB 연결 테스트 성공: " + cnt + "건");
-                return (true, "연결됨 · " + cnt + "건");
-            }
-            catch (Exception ex) { _log("DB 연결 테스트 실패: " + Short(ex)); return (false, "연결 실패: " + Short(ex)); }
-        }
-
         private static string Str(DbDataReader rd, string col)
         {
             int i = rd.GetOrdinal(col);
@@ -212,7 +163,7 @@ namespace TaskCalendarWidget
             try { return Convert.ToInt32(rd.GetValue(i)); } catch { return null; }
         }
 
-        // 예외 메시지를 한 줄로 축약(과도한 스택/내부 예외 방지 — UI 표시용)
+        // 예외 메시지를 한 줄로 축약(과도한 스택/내부 예외 방지 — 로그·UI 표시용)
         private static string Short(Exception ex)
         {
             string m = ex.Message ?? ex.GetType().Name;

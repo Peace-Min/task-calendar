@@ -444,15 +444,8 @@ namespace TaskCalendarWidget
                         JsCall("window.__updateSource && window.__updateSource(" + JsonSerializer.Serialize(_settings.UpdateSourceUrl ?? "") + ")");
                         break;
 
-                    // ----- 과제 DB 연동(READ 경로) -----
+                    // ----- 과제 DB 연동(READ 경로) — 연결정보는 배포 구성(ProjectDb 상수), 설정 UI 없음 -----
                     case "loadProjects":    // 공식 과제 읽어 웹으로(__applyProjects). 실패 시 ""를 넘겨 웹이 캐시 폴백.
-                        _ = LoadProjectsToWebAsync();
-                        break;
-                    case "testDbConnection":  // 설정에서 '연결 테스트' — 결과를 __dbTestResult(ok, msg)로
-                        _ = TestDbConnectionAsync();
-                        break;
-                    case "saveDbConfig":    // 설정 저장(비번 빈칸=기존 유지) → 저장 직후 새로고침
-                        _projectDb.SaveConfig(GetStr(doc, "host"), GetInt(doc, "port"), GetStr(doc, "database"), GetStr(doc, "user"), GetStr(doc, "password"));
                         _ = LoadProjectsToWebAsync();
                         break;
 
@@ -1125,12 +1118,6 @@ namespace TaskCalendarWidget
             string? json = await _projectDb.LoadProjectsJsonAsync();
             // null(연결/조회 실패) → "" 전달 → 웹 __applyProjects가 캐시 사용
             JsCall("window.__applyProjects && window.__applyProjects(" + JsonSerializer.Serialize(json ?? "") + ")");
-        }
-
-        private async Task TestDbConnectionAsync()
-        {
-            var (ok, msg) = await _projectDb.TestConnectionAsync();
-            JsCall("window.__dbTestResult && window.__dbTestResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")");
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

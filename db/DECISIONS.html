@@ -84,7 +84,7 @@
   <h2>배포 · 운영</h2>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">MySQL 유지 · 사용자는 앱만</span></div><div class="desc">SQLite 기각(편집자 여럿·중앙권한). 사용자 PC에 MySQL 설치 불필요.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">중앙 DB 위치 단계</span></div><div class="desc"><code>localhost</code> → 폐쇄망 PC(고정 IP) → 전용 박스/회사 서버. 접속 주소만 교체.</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">접속 주소 = 설정값 · 조회 = 캐시(오프라인 OK)</span></div><div class="desc">FTP 경로처럼 config 1줄. 조회는 서버 꺼져도 지속.</div></div>
+  <div class="item rev"><div class="row"><span class="badge rev">수정됨 07-21</span><span class="ttl">접속 정보 = 배포 구성(베이크) · 조회 = 캐시(오프라인 OK)</span></div><div class="desc">"설정값"→정정: 연결정보는 배포 전 호스트 코드 디폴트(<code>ProjectDb.cs</code> ★배포 구성 블록)로 설정하고 빌드·배포. 사용자 연결설정 UI 없음 — 설정창엔 <b>관리자 인증만</b>(로그인·상태줄·새로고침). 조회는 캐시로 오프라인 지속.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">편집 = 두 종류로 분리</span></div><div class="desc"><b>일정 편집</b>=로컬 쓰기(오프라인도 가능). <b>과제 마스터 CRUD</b>=DB 쓰기(온라인만).</div></div>
 
   <h2>권한 / 인증</h2>
