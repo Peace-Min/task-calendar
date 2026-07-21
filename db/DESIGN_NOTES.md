@@ -1,15 +1,16 @@
 # 설계 노트 — 과제관리 DB (모델 B: DB 원본 · 필드별 근거 · 추출/이관 전략)
 
-> 이 DB는 **원본(source of truth)이다.** Admin이 캘린더 앱으로 과제를 등록/수정(CRUD by id)하고, Excel은 DB에서 **추출하는 리포트**일 뿐이다(양방향 동기화 없음). 기존 사업부 Excel은 **최초 1회만** 이관하고 이후엔 DB가 마스터다.
+> 이 DB는 **원본(source of truth)이다.** Admin이 캘린더 앱으로 과제를 등록/수정(CRUD — 대상 행은 `uid` 기준)하고, Excel은 DB에서 **추출하는 리포트**일 뿐이다(양방향 동기화 없음). 기존 사업부 Excel은 **최초 1회만** 이관하고 이후엔 DB가 마스터다.
 > 이전의 "Excel 장표 컴팩트 미러" 서사(Excel 원본 → DB 미러 → 멱등 UPSERT 재임포트, `source_no`/`customer.no` 보존)와 2축(유형×단계)·결정론 uid·룩업 테이블·캘린더 전용 뷰·CHECK 설계는 **이 모델 B로 대체(superseded)됨.** 아래는 현재 확정 설계 기준으로만 서술한다.
 
 ## §1 모델 B(DB 원본) 채택 이유
 - **원본을 DB 하나로 못박아 "앱↔Excel 양방향 동기화 지옥"을 원천 차단한다.** 두 원본(Excel과 DB)이 공존하면 어느 쪽이 최신인지·충돌을 누가 이기는지·재임포트 멱등성 같은 문제가 끝없이 생긴다.
 - **Excel은 DB에서 추출하는 리포트**로 역할을 뒤집었다. 사업부가 보던 장표 모양은 유지하되, 그 데이터의 주인은 DB다. Excel을 고쳐도 DB로 되돌아오지 않는다(단방향).
-- 편집 주체는 **캘린더 앱의 Admin**. id 기준 CRUD로 과제를 등록·수정·(소프트)삭제한다. DB가 목록·제약·이력을 강제한다.
+- 편집 주체는 **캘린더 앱의 Admin**. `uid` 기준 CRUD로 과제를 등록·수정·(소프트)삭제한다(외부 참조 안정성 §2). DB가 목록·제약·이력을 강제한다.
 
 ## §2 필드별 설계 결정 (왜 이렇게)
-- **`project.id` = 앱 편집 식별자(대리키)** — `INT UNSIGNED AUTO_INCREMENT PK`. 앱이 CRUD 대상 행을 id로 지목한다. DB가 원본이므로 id는 이제 rebuild로 리셋되는 임시값이 아니라 **행의 안정적 식별자**다(운영 중 DROP 재구축을 하지 않음).
+- **`project.id` = 내부 대리키** — `INT UNSIGNED AUTO_INCREMENT PK`. 내부 조인·PK용. DB가 원본이므로 운영 중 DROP 재구축을 하지 않아 id도 안정적이지만, **외부(위젯) 참조에는 id를 쓰지 않는다** — 아래 uid 사용.
+- **`project.uid` = 외부 안정 참조키(D1)** — `CHAR(36) NOT NULL DEFAULT (UUID())`, `UNIQUE`(assign-once). 위젯 일정이 `db-<uid>`로 참조하고, 앱의 마스터 CRUD도 대상 행을 **uid로 지목**한다(UPSERT/소프트삭제 `WHERE uid=@uid`). 일정이 DB 밖에 있어 rebuild·rename·재채번에 참조가 엉키는 사고를 막는다. ✅ schema.sql 반영 완료(로컬 13행 UUID). (→ `ARCHITECTURE.md` §4.7.3, ADR #13)
 - **`section`/`status` = ENUM** — Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**한다. 값 목록을 **별도 룩업 테이블 없이 컬럼에 고정**했다(13행 규모엔 이게 최소·최적).
   - `section ENUM('일반계약','선진행','사업부관리') NOT NULL`
   - `status ENUM('진행중','종료','1차 납품완료','미정') NULL` (선진행 = 계약 前 → NULL)
@@ -36,5 +37,5 @@ DB → Excel 추출 시:
 - ⬜ **ENUM 값 추가**: 새 section/status가 생기면 `ALTER TABLE ... MODIFY ... ENUM(...)`. 드물면 이대로. **상태별 색상·커스텀 정렬·잦은 값 추가**가 필요해지면 `project_status`/`project_type` **룩업 테이블로 승급**(FK로 참조)하는 게 정식 경로.
 - ⬜ **`updated_by` 감사 확장**: 지금은 "언제"만 기록. 누가 바꿨는지가 필요하면 `updated_by`(앱 사용자) 컬럼 추가. 앱 인증과 함께 설계.
 - ⬜ **DDL/시드 파일 분리**: 현재 `schema.sql`이 DDL+더미 시드를 겸한다. 서버 배포 시 실 이관이 시드를 대체하므로, 향후 **DDL(`schema.sql`)과 시드/이관(`seed.sql`/이관 스크립트)을 분리** 권장.
-- ⬜ **캘린더 앱 연동**: Admin CRUD UI(등록/수정/소프트삭제 by id) + 위젯이 DB를 읽는 어댑터. 앱이 이 DB를 원본으로 직접 CRUD하는 계약을 앱 트랙에서 확정.
+- ✅ **캘린더 앱 연동(P3 완료)**: Admin CRUD UI(등록/수정/소프트삭제 — 대상 행 `uid` 기준) + 위젯이 DB를 읽는 어댑터·단일 카테고리 스토어. 상세 `ARCHITECTURE.md` §4.7.
 - ⬜ **사업:계약 카디널리티**: 현재 1:1 인라인(`contract_name` 컬럼). 1사업 다계약이 실제로 있으면 계약 분리 테이블로 승급.

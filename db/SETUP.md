@@ -20,9 +20,9 @@
 - 완전 초기화(로컬): `DROP DATABASE taskmgr; CREATE DATABASE taskmgr CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;` 후 재적용.
 
 ## 설계 모델 (DB 원본)
-- **DB가 원본** — 앱 Admin이 id 기준 CRUD로 과제를 관리. Excel은 DB에서 추출하는 단방향 리포트.
+- **DB가 원본** — 앱 Admin이 `uid` 기준 CRUD로 과제를 관리. Excel은 DB에서 추출하는 단방향 리포트.
 - **`customer`** = 발주처 마스터. `name VARCHAR(100)` = **자연키 PK**(FK 타겟). `is_active` 소프트삭제 + 감사(`created_at`/`updated_at`). ※ Excel 흔적 `no` 컬럼 제거됨.
-- **`project`** = 과제 마스터. `id`(앱 편집 식별자, AUTO_INCREMENT PK) + `section`/`status`(**ENUM** 드롭다운 소스) + `customer`(FK) + `project_name`/`contract_name`/`common_name` + `start_date`/`end_date` + `is_active` + 감사. ※ Excel 흔적 `source_no` 제거됨.
+- **`project`** = 과제 마스터. `id`(내부 대리키, AUTO_INCREMENT PK) + **`uid`(외부 안정 참조키, `CHAR(36)` UUID assign-once, `UNIQUE` — 위젯 일정이 `db-<uid>`로 참조; rename·덤프복원·재이관에도 불변)** + `section`/`status`(**ENUM** 드롭다운 소스) + `customer`(FK) + `project_name`/`contract_name`/`common_name` + `start_date`/`end_date` + `is_active` + 감사. ※ Excel 흔적 `source_no` 제거됨. ✅ uid schema.sql 반영 완료.
 - **`section`/`status` = ENUM**: 드롭다운으로 오타·공백 변종 차단(DB가 목록 강제). 값 추가는 `ALTER`(드묾).
 - **`is_active` 소프트삭제**: 앱 "삭제" = `is_active=0`(숨김·복구가능·이력보존). 영구삭제는 DB에서 직접 `DELETE`. 조회는 보통 `WHERE is_active=1`.
 - **감사 컬럼**: `created_at`/`updated_at`(DATETIME(3)), `updated_at`은 `ON UPDATE` 자동 갱신.
@@ -42,4 +42,4 @@
 ## 남은 작업 (상세는 README.md · DESIGN_NOTES.md)
 - **실 Excel 1회 이관**: 실제 사업부 엑셀(2시트) → `customer` 먼저 → `project`. 이관 스크립트의 1회성 정리(발주처 표기 정규화, '미정'/공백→NULL, 선진행 상태 공백→NULL, 섹션 헤더행→`section` 승격)는 `DESIGN_NOTES.md` §4. ⚠️ 실데이터가 더미에 없던 컬럼/케이스면 스키마 재검(현 확정은 샘플 구조 기준).
 - **서버 이관**: 동일 `schema.sql`(DDL)을 사내 MySQL(**8.0.16+**)에 적용 후, 더미 대신 실 Excel 1회 이관. ⚠️ **서버 배포 전 MySQL 8.0+ 콜레이션(`utf8mb4_0900_ai_ci`) 지원 확인** — 8.0 미만 서버면 콜레이션이 없어 DDL이 실패한다.
-- **캘린더 앱 Admin CRUD 연동**: 앱이 이 DB를 원본으로 등록/수정/소프트삭제(by id).
+- ✅ **캘린더 앱 Admin CRUD 연동(P3 완료)**: 앱이 이 DB를 원본으로 등록/수정/소프트삭제(대상 행 `uid` 기준). 상세 `ARCHITECTURE.md` §4.7.

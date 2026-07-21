@@ -61,7 +61,7 @@
 <body>
 <div class="wrap">
   <h1>과제관리 — 결정 최종본 <span style="font-size:.9rem;color:var(--ok)">✅ 확정</span></h1>
-  <p class="sub">설계·배포·정책 전 항목 확정. 상세 규약은 ARCHITECTURE.md / ROADMAP.md. · 2026-07-14</p>
+  <p class="sub">설계·배포·정책 전 항목 확정. 상세 규약은 ARCHITECTURE.md / ROADMAP.md. · 2026-07-21 (P3 구현 반영)</p>
   <div class="legend">
     <span class="lchip ok">✅ 확정</span>
     <span class="lchip rev">✏️ 수정됨(초기안에서 변경)</span>
@@ -83,33 +83,36 @@
 
   <h2>배포 · 운영</h2>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">MySQL 유지 · 사용자는 앱만</span></div><div class="desc">SQLite 기각(편집자 여럿·중앙권한). 사용자 PC에 MySQL 설치 불필요.</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">중앙 DB 위치 단계</span></div><div class="desc"><code>localhost</code> → 폐쇄망 PC(고정 IP) → 전용 박스/회사 서버. 접속 주소만 교체.</div></div>
-  <div class="item rev"><div class="row"><span class="badge rev">수정됨 07-21</span><span class="ttl">접속 정보 = 배포 구성(베이크) · 조회 = 캐시(오프라인 OK)</span></div><div class="desc">"설정값"→정정: 연결정보는 배포 전 호스트 코드 디폴트(<code>ProjectDb.cs</code> ★배포 구성 블록)로 설정하고 빌드·배포. 사용자 연결설정 UI 없음 — 설정창엔 <b>관리자 인증만</b>(로그인·상태줄·새로고침). 조회는 캐시로 오프라인 지속.</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">중앙 DB 위치 단계</span></div><div class="desc"><code>localhost</code> → 폐쇄망 PC(고정 IP) → 전용 박스/회사 서버. 배포 구성 상수만 교체·재빌드.</div></div>
+  <div class="item rev"><div class="row"><span class="badge rev">수정됨 07-21</span><span class="ttl">접속 정보 = 배포 구성(베이크) · 조회 = 캐시(오프라인 OK)</span></div><div class="desc">"설정값"→정정: 연결정보는 배포 전 호스트 코드 디폴트(<code>ProjectDb.cs</code> ★배포 구성 블록)로 설정하고 빌드·배포. 사용자 연결설정 UI 없음 — 설정창엔 <b>관리자 상태·해제·DB 상태줄·새로고침만</b>(상시 로그인칸 없음 — 인증은 JIT 프롬프트). 조회는 캐시로 오프라인 지속.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">편집 = 두 종류로 분리</span></div><div class="desc"><b>일정 편집</b>=로컬 쓰기(오프라인도 가능). <b>과제 마스터 CRUD</b>=DB 쓰기(온라인만).</div></div>
 
   <h2>권한 / 인증</h2>
-  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">지금 코드레벨 스텁 → 배포 직전 <code>app_user</code></span></div><div class="desc">인증을 "역할 반환" 인터페이스 한 지점으로 격리. 지금 <code>admin/1234</code> 스텁(개발용, 배포엔 안 나감) → P6.5에서 <code>app_user</code>(편집 권한자만) + 최소권한 DB 계정으로 교체.</div></div>
+  <div class="item rev"><div class="row"><span class="badge rev">수정됨 07-21</span><span class="ttl">지금 코드 베이크 스텁 → 배포 직전 <code>app_user</code></span></div><div class="desc">인증을 "역할 반환" 한 지점(<code>ProjectDb.VerifyAdmin</code>)으로 격리. 자격은 <b>코드 베이크 디폴트(<code>admin</code>/<code>1234</code>)</b> — "배포엔 안 나감"은 오해였고 <b>배포 빌드에 포함된다</b>(개발/임시용). 설정에서 변경 시 <code>db-config.json</code>에 관리자 자격만 평문 저장. P6.5에서 <code>app_user</code>(편집 권한자만) + netcus 인증 위임 + 최소권한 DB 계정으로 교체.</div></div>
+  <div class="item rev"><div class="row"><span class="badge rev">수정됨 07-21</span><span class="ttl">관리자 인증 = JIT 프롬프트(UAC 패턴)</span></div><div class="desc">"설정창에서 미리 로그인"→정정: 설정창엔 <b>상태 배지·해제·DB 상태줄·새로고침만</b>. 편집/추가/삭제를 누른 그 순간에만 비번을 묻고(<code>requireAdmin</code>) 통과 시 액션을 이어 실행. 비번은 JS에 남기지 않고 호스트로만 전달.</div></div>
 
   <h2>과제 입력 · 공존 · 보고서 정책</h2>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">타입 있는 참조 (충돌 방지 핵심)</span></div><div class="desc">일정의 과제 = <code>공식(db-uid)</code> / <code>개인(local)</code> / <code>freetext</code> 타입 유니언. 타입이 참조에 박혀 절대 안 섞임.</div></div>
+  <div class="item rev"><div class="row"><span class="badge rev">수정됨 07-21</span><span class="ttl">단일 카테고리 스토어 (P3.5) + 출처 격리</span></div><div class="desc">개인 과제와 구독한 공식 과제(<code>source:'db'</code>)를 <b>한 목록(<code>state.categories</code>)</b>에 담고 XML에 영속(오프라인 캐시 겸함). <code>dbCatalog</code>는 카탈로그·재연결 전용. <b>이중 목록(<code>state.categories</code> vs <code>dbCatalog</code>)은 기각</b> — 소비 지점마다 병합이 필요해 필터바에 DB 과제가 안 뜨는 실버그를 냈다. 출처 인지는 5구역(카테고리 모듈·관리UI·카탈로그·재연결·XML)에서만, 전시·보고서는 균일 소비, 접두검사는 <code>isOfficialId</code> 한 곳.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">입력 제약 없음</span></div><div class="desc">DB 과제 선택 또는 자유입력 — 뭐든 허용. 통제는 보고서에서.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정 ①</span><span class="ttl">보고서 판정 = 참조 기준</span></div><div class="desc"><code>db-uid</code> 참조가 있으면 공식(집계), 그 외 전부 비공식. <b>이름 매칭(자동/상시) 금지</b> — 오타·동명 fuzzy 회피.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정 ②</span><span class="ttl">비공식 = 기타로 묶음</span></div><div class="desc">보고서에서 비공식은 <code>기타</code> 버킷(총량·투명성 유지). 완전 제거는 옵션.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">기존 데이터 무변경 · "필드 없음 = 비공식"</span></div><div class="desc">옛 일정 손 안 댐. 타입 표시 없으면 비공식(사용자/레거시)으로 기본 해석. <b>일괄 마이그레이션 없음.</b> 새 필드 vs 인코딩은 P3 스카우트에서 확정.</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정 D3</span><span class="ttl">DB 과제 하드삭제 금지 · 해석 항상 성공</span></div><div class="desc">소프트삭제만(일정 참조가 DB 밖이라 FK 보호 불가). 캐시가 삭제분 보관 + 일정에 <code>{이름,색}</code> 스냅샷 폴백 → 빈칸·크래시 없음.</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정 D3</span><span class="ttl">DB 과제 하드삭제 금지 · 해석 항상 성공</span></div><div class="desc">소프트삭제만(일정 참조가 DB 밖이라 FK 보호 불가). <b>구현</b>: 단일 목록에 편입된 과제가 <b>마지막 이름·색을 유지</b>하고 카탈로그에서 사라지면 <code>dbGone</code> 마크(피커엔 숨김, 라벨은 해석), 어디에도 없으면 <code>(공식 과제)</code> 플레이스홀더 → 빈칸·크래시 없음. <b>일정 단위 <code>{이름,색}</code> 스냅폴백은 미구현(향후 옵션)</b>.</div></div>
   <div class="item rev"><div class="row"><span class="badge rev">수정됨</span><span class="ttl">로컬(개인) tier 동결 해제</span></div><div class="desc">"로컬 동결"→ 개인 라벨(freetext) 요구로 변경. 개인 tier는 계속 생성 가능.</div></div>
   <div class="item rev"><div class="row"><span class="badge rev">수정됨</span><span class="ttl">피커 = 공식(DB) + 개인 둘 다</span></div><div class="desc">"피커 DB 전용"→ 변경. "새 건 DB만"은 <b>공식 과제 한정</b>이었음.</div></div>
 
   <h2>재연결 도우미 (v1)</h2>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">순수 수동 (자동매치 없음)</span></div><div class="desc">미연결 로컬 과제를 사용자가 <b>DB 목록에서 직접 선택</b> 또는 개인 유지. 이름 자동매칭 없음(오타·변종도 수동으로 해결). 자동 pre-fill은 나중 옵션.</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">배치 = 설정/도구 상시 버튼 · 개별 = 일정 편집</span></div><div class="desc">업데이트 후 1회 비강제 넛지 + 이후 뱃지(강제·주기 팝업 없음). 카테고리 단위 매핑(아래 일정 일괄 재연결).</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">배치 = 설정 상시 버튼 · 개별 = 일정 편집 <span style="color:var(--ok)">(구현)</span></span></div><div class="desc">설정의 "🔗 기존 과제 재연결" 상시 버튼으로 <b>카테고리 단위 일괄 매핑</b>(개인 과제→공식, 일정·할일 <code>categoryId</code> 로컬 교체·오프라인 가능), 개별은 일정 편집에서 재선택. <b>업데이트 후 1회 넛지 + 이후 뱃지는 미구현(향후)</b> — 상시 버튼만 제공.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">위젯 표시 보존 / 보고서 승격은 재연결로</span></div><div class="desc">기존 정리는 위젯에서 100% 그대로. 보고서에서 공식 인정받으려면 재연결. 삭제·재입력 불필요.</div></div>
 
   <h2>로드맵</h2>
   <div class="road">
     <span class="p done">P0 스키마·문서(완료)</span><span class="arr">→</span>
-    <span class="p next">P3 앱↔DB 연동(다음)</span><span class="arr">→</span>
-    <span class="p">P4 Excel추출·재연결도우미</span><span class="arr">·</span>
+    <span class="p done">P1 인증스텁(완료)</span><span class="arr">→</span>
+    <span class="p done">P3 앱↔DB 연동·재연결·단일스토어(완료)</span><span class="arr">→</span>
+    <span class="p next">P4 Excel추출·보고서정책(다음)</span><span class="arr">·</span>
     <span class="p">P2/P5 실데이터</span><span class="arr">→</span>
     <span class="p">P6.5 권한확정</span><span class="arr">→</span>
     <span class="p">P6 폐쇄망서버</span><span class="arr">→</span>
@@ -117,7 +120,7 @@
     <span class="p">P8 전용서버</span>
   </div>
 
-  <footer>확정 최종본 · 2026-07-14 · <code>uid</code> 로컬 반영 완료 → 다음: P3 위젯 스카우트(feat/db-integration 브랜치 권장)</footer>
+  <footer>확정 최종본 · 2026-07-21 · P3 앱↔DB 연동 구현 완료(단일 스토어·JIT 인증·재연결) → 다음: P4 Excel 추출기·보고서 정책</footer>
 </div>
 </body>
 </html>

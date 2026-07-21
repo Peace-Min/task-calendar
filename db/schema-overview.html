@@ -95,7 +95,7 @@
     <div class="flow">
       <div class="box">
         <div class="lbl">편집 주체</div><strong>캘린더 앱 (Admin)</strong>
-        <div class="arrow">↓ CRUD by id</div>
+        <div class="arrow">↓ CRUD by uid</div>
         <div class="lbl">원본</div><strong><code>taskmgr</code> DB</strong>
         <div class="lbl">과제를 등록·수정·소프트삭제. DB가 마스터.</div>
       </div>
@@ -203,7 +203,7 @@
     <div class="note">섹션 분포: <strong>일반계약 8 · 선진행 2 · 사업부관리 3</strong> · 전체 13 · 활성(<code>is_active=1</code>) 13.</div>
   </section>
 
-  <footer>taskmgr — DB 원본(source of truth) · Excel은 추출 리포트 · 로컬 MySQL 8.4.9 · 이전 "Excel 미러"·<code>source_no</code>·2축/uid/캘린더뷰 설계는 이 모델 B로 대체됨</footer>
+  <footer>taskmgr — DB 원본(source of truth) · Excel은 추출 리포트 · 로컬 MySQL 8.4.9 · 이전 "Excel 미러"·<code>source_no</code>·2축/<b>결정론 uid 앵커</b>/캘린더뷰 설계는 이 모델 B로 대체됨(현 <code>uid</code>는 그와 다른 외부 안정 참조키)</footer>
 </div>
 <script>
   // 뷰어 테마 토글이 root에 data-theme를 찍으면 그것이 우선. 없으면 OS 설정을 따른다.
