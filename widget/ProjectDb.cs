@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -10,8 +11,9 @@ using MySqlConnector;
 
 namespace TaskCalendarWidget
 {
-    // 과제 DB 연동(READ 경로만) — 사내 MySQL(taskmgr)의 공식 과제(project)를 '읽기만' 해서 웹으로 넘긴다.
-    // 공식 과제 쓰기/CRUD·관리자 편집 화면은 이후 단계. 오프라인이면 조용히 실패하고 웹은 로컬 캐시로 폴백한다.
+    // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
+    // 관리자 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 조용히 실패해
+    // 웹이 로컬 캐시로 폴백하고, 쓰기는 '온라인에서만 가능'을 명시적으로 알린다(무음 유실 금지).
     // DB 연결정보는 '배포 구성'(아래 상수) — 배포자가 배포 전 코드에서 설정하고 빌드한다(일반 사용자에겐 비노출).
     // 관리자 자격만 db-config.json(평문)에 저장(변경 시) — 없으면 베이크 디폴트 사용. 보안 강화는 P6.5(app_user 전환)에서.
     internal sealed class ProjectDb
@@ -148,6 +150,180 @@ namespace TaskCalendarWidget
                 return JsonSerializer.Serialize(rows);
             }
             catch (Exception ex) { _log("DB 과제 로드 실패(캐시 폴백): " + Short(ex)); return null; }
+        }
+
+        // 발주처 마스터(customer, is_active=1)를 이름 배열 JSON으로. 편집 폼의 발주처 드롭다운 소스.
+        // 실패(오프라인 포함) 시 null → 웹은 기존 목록(dbCategories의 distinct)만으로 폴백한다.
+        public async Task<string?> LoadCustomersJsonAsync()
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand("SELECT name FROM customer WHERE is_active=1 ORDER BY name", conn);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                var names = new List<string>();
+                while (await rd.ReadAsync(cts.Token))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length > 0) names.Add(n);
+                }
+                _log("DB 발주처 로드: " + names.Count + "건");
+                return JsonSerializer.Serialize(names);
+            }
+            catch (Exception ex) { _log("DB 발주처 로드 실패: " + Short(ex)); return null; }
+        }
+
+        // ================================================================================
+        // 쓰기 경로(P3.2) — 관리자 공식 과제 CRUD
+        // 규약: ① 모든 값은 MySqlParameter 바인딩(문자열 연결 절대 금지) ② 예외는 전부 잡아
+        //       (false, 한국어 메시지)로 환원하고 절대 throw하지 않는다 ③ 실패 사유는 사용자가
+        //       '무엇을 고치면 되는지' 알 수 있는 문장으로만 노출한다(SQL/스택 노출 금지).
+        // ================================================================================
+        private static readonly string[] Sections = { "일반계약", "선진행", "사업부관리" };            // schema.sql section ENUM
+        private static readonly string[] Statuses = { "진행중", "종료", "1차 납품완료", "미정" };      // schema.sql status ENUM(NULL 허용)
+
+        // 빈 문자열/공백 → DBNull(스키마의 NULL 허용 컬럼). 그 외는 트림한 값.
+        private static object TextOrNull(string? s) =>
+            string.IsNullOrWhiteSpace(s) ? DBNull.Value : (object)s!.Trim();
+
+        // 'YYYY-MM-DD'만 날짜로 인정. 빈값/형식 불일치 → DBNull(선진행·미정 계약은 날짜가 없다).
+        private static object DateOrNull(string? s)
+        {
+            string t = (s ?? "").Trim();
+            if (t.Length == 0) return DBNull.Value;
+            return DateTime.TryParseExact(t, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+                ? (object)d.Date : DBNull.Value;
+        }
+
+        // MySQL 에러번호 → 사용자 문장. 스키마 제약(UNIQUE/FK/ENUM)이 그대로 사용자에게 닿는 지점이다.
+        private static string MySqlMsg(MySqlException ex)
+        {
+            switch (ex.Number)
+            {
+                case 1062: return "같은 발주처에 동일 사업명이 이미 있습니다.";                 // uq_project(customer, project_name)
+                case 1451:
+                case 1452: return "등록되지 않은 발주처입니다.";                                 // fk_project_customer
+                case 1265:
+                case 1406: return "구분/상태 값이 올바르지 않습니다.";                           // ENUM 밖 값 / 길이 초과
+                case 1048: return "필수 항목이 비어 있습니다.";                                  // NOT NULL
+                default:   return "저장하지 못했습니다: " + Short(ex);
+            }
+        }
+
+        private const string OfflineMsg = "서버에 연결할 수 없습니다 — 편집은 온라인에서만 가능합니다.";
+
+        // 공식 과제 추가/수정. uid가 비어 있으면 INSERT(uid는 DB DEFAULT (UUID())가 생성), 있으면 그 행 UPDATE.
+        public async Task<(bool ok, string msg)> UpsertProjectAsync(string? uid, string section, string customer,
+            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? status)
+        {
+            // ── 앱단 선검증 — ENUM/필수값 위반은 DB까지 보내지 않고 바로 사용자 문장으로 돌려준다.
+            string u = (uid ?? "").Trim();
+            string sec = (section ?? "").Trim(), cust = (customer ?? "").Trim(), pname = (projectName ?? "").Trim();
+            string st = (status ?? "").Trim(), sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
+            if (pname.Length == 0) return (false, "사업명을 입력하세요.");
+            if (cust.Length == 0) return (false, "발주처를 선택하세요.");
+            if (Array.IndexOf(Sections, sec) < 0) return (false, "구분 값이 올바르지 않습니다.");
+            if (st.Length > 0 && Array.IndexOf(Statuses, st) < 0) return (false, "상태 값이 올바르지 않습니다.");
+            // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
+            if (sec == "선진행") { sd = ""; ed = ""; st = ""; }
+            if (sd.Length > 0 && ed.Length > 0 && string.CompareOrdinal(sd, ed) > 0)
+                return (false, "계약종료일이 계약시작일보다 빠릅니다.");
+
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg); }
+
+                if (u.Length == 0)
+                {
+                    const string ins = "INSERT INTO project (section, customer, project_name, contract_name, common_name, " +
+                                       "start_date, end_date, status) VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@st)";
+                    await using (var cmd = new MySqlCommand(ins, conn))
+                    {
+                        BindProject(cmd, sec, cust, pname, contractName, commonName, sd, ed, st);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
+                    string newUid = "";
+                    await using (var q = new MySqlCommand("SELECT uid FROM project WHERE id=LAST_INSERT_ID()", conn))
+                        newUid = (await q.ExecuteScalarAsync(cts.Token))?.ToString() ?? "";
+                    _log("공식 과제 추가: " + pname + " (uid=" + (newUid.Length > 0 ? newUid : "?") + ")");
+                    return (true, "공식 과제를 추가했습니다.");
+                }
+                else
+                {
+                    const string upd = "UPDATE project SET section=@sec, customer=@cust, project_name=@pn, contract_name=@cn, " +
+                                       "common_name=@mn, start_date=@sd, end_date=@ed, status=@st WHERE uid=@uid";
+                    int n;
+                    await using (var cmd = new MySqlCommand(upd, conn))
+                    {
+                        BindProject(cmd, sec, cust, pname, contractName, commonName, sd, ed, st);
+                        cmd.Parameters.AddWithValue("@uid", u);
+                        n = await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    // 영향 행 0 = '값이 하나도 안 바뀜'과 '대상이 사라짐'이 겹친다 → 존재 확인으로 구분(유령 성공 방지).
+                    if (n == 0)
+                    {
+                        await using var q = new MySqlCommand("SELECT COUNT(*) FROM project WHERE uid=@uid", conn);
+                        q.Parameters.AddWithValue("@uid", u);
+                        long cnt = Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                    }
+                    _log("공식 과제 수정: " + pname + " (uid=" + u + ")");
+                    return (true, "공식 과제를 저장했습니다.");
+                }
+            }
+            catch (MySqlException mex) { _log("공식 과제 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlMsg(mex)); }
+            catch (Exception ex) { _log("공식 과제 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
+        }
+
+        // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나 한쪽만 NULL 규칙을 어기는 일이 없게 한 곳에서.
+        private static void BindProject(MySqlCommand cmd, string sec, string cust, string pname,
+            string? contractName, string? commonName, string sd, string ed, string st)
+        {
+            cmd.Parameters.AddWithValue("@sec", sec);
+            cmd.Parameters.AddWithValue("@cust", cust);
+            cmd.Parameters.AddWithValue("@pn", pname);
+            cmd.Parameters.AddWithValue("@cn", TextOrNull(contractName));
+            cmd.Parameters.AddWithValue("@mn", TextOrNull(commonName));
+            cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
+            cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
+            cmd.Parameters.AddWithValue("@st", TextOrNull(st));
+        }
+
+        // 소프트삭제/복구 — is_active=0이면 LoadProjectsJsonAsync가 아예 안 가져온다(목록에서 사라짐).
+        // 복구(true) UI는 이번 범위 밖이지만 API는 대칭으로 열어 둔다(DB 직접 조작 없이 되돌릴 수 있게).
+        public async Task<(bool ok, string msg)> SetProjectActiveAsync(string uid, bool active)
+        {
+            string u = (uid ?? "").Trim();
+            if (u.Length == 0) return (false, "대상 과제가 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(과제 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand("UPDATE project SET is_active=@a WHERE uid=@uid", conn);
+                cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
+                cmd.Parameters.AddWithValue("@uid", u);
+                int n = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (n == 0)
+                {
+                    await using var q = new MySqlCommand("SELECT COUNT(*) FROM project WHERE uid=@uid", conn);
+                    q.Parameters.AddWithValue("@uid", u);
+                    long cnt = Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                    if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                }
+                _log("공식 과제 " + (active ? "복구" : "숨김") + ": uid=" + u);
+                return (true, active ? "공식 과제를 목록에 다시 표시합니다." : "공식 과제를 목록에서 숨겼습니다.");
+            }
+            catch (MySqlException mex) { _log("공식 과제 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlMsg(mex)); }
+            catch (Exception ex) { _log("공식 과제 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
         private static string Str(DbDataReader rd, string col)

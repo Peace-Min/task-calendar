@@ -444,9 +444,22 @@ namespace TaskCalendarWidget
                         JsCall("window.__updateSource && window.__updateSource(" + JsonSerializer.Serialize(_settings.UpdateSourceUrl ?? "") + ")");
                         break;
 
-                    // ----- 과제 DB 연동(READ 경로) — 연결정보는 배포 구성(ProjectDb 상수), 설정 UI 없음 -----
+                    // ----- 과제 DB 연동 — 연결정보는 배포 구성(ProjectDb 상수), 설정 UI 없음 -----
                     case "loadProjects":    // 공식 과제 읽어 웹으로(__applyProjects). 실패 시 ""를 넘겨 웹이 캐시 폴백.
                         _ = LoadProjectsToWebAsync();
+                        break;
+                    case "loadCustomers":   // 편집 폼의 발주처 드롭다운 소스(customer 마스터) → __applyCustomers
+                        _ = LoadCustomersToWebAsync();
+                        break;
+
+                    // ----- 공식 과제 쓰기(P3.2) — 관리자 편집. 결과는 __projectSaved(ok,msg) + 성공 시 자동 재조회 -----
+                    case "saveProject":     // uid 없으면 신규 INSERT, 있으면 그 uid UPDATE
+                        _ = SaveProjectAsync(GetStr(doc, "uid"), GetStr(doc, "section"), GetStr(doc, "customer"),
+                            GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
+                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "status"));
+                        break;
+                    case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
+                        _ = SetProjectActiveAsync(GetStr(doc, "uid"), GetBool(doc, "active"));
                         break;
 
                     // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
@@ -1111,13 +1124,42 @@ namespace TaskCalendarWidget
         // 메인 웹뷰로 임의 JS 실행(UI 스레드 마샬 + try/catch). netcus·리마인더·업데이트 통지 공유.
         private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
 
-        // ============ 과제 DB 연동(READ 경로) ============
+        // ============ 과제 DB 연동 ============
         // 공식 과제(project, is_active=1)를 읽어 웹으로 넘긴다. 오프라인/실패면 ""를 넘겨 웹이 로컬 캐시로 폴백(오프라인 우선).
         private async Task LoadProjectsToWebAsync()
         {
             string? json = await _projectDb.LoadProjectsJsonAsync();
             // null(연결/조회 실패) → "" 전달 → 웹 __applyProjects가 캐시 사용
             JsCall("window.__applyProjects && window.__applyProjects(" + JsonSerializer.Serialize(json ?? "") + ")");
+        }
+
+        // 발주처 마스터 → 편집 폼 드롭다운. 실패면 ""(웹이 기존 목록의 distinct 발주처로 폴백).
+        private async Task LoadCustomersToWebAsync()
+        {
+            string? json = await _projectDb.LoadCustomersJsonAsync();
+            JsCall("window.__applyCustomers && window.__applyCustomers(" + JsonSerializer.Serialize(json ?? "") + ")");
+        }
+
+        // 쓰기 결과 통지(성공/실패 + 한국어 사유). 웹은 성공이면 모달을 닫고, 실패면 모달을 유지해 사용자가 고치게 한다.
+        private void ProjectSaved(bool ok, string msg) =>
+            JsCall("window.__projectSaved && window.__projectSaved(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg ?? "") + ")");
+
+        // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
+        private async Task SaveProjectAsync(string uid, string section, string customer, string projectName,
+            string contractName, string commonName, string startDate, string endDate, string status)
+        {
+            var (ok, msg) = await _projectDb.UpsertProjectAsync(uid, section, customer, projectName,
+                contractName, commonName, startDate, endDate, status);
+            ProjectSaved(ok, msg);
+            if (ok) await LoadProjectsToWebAsync();
+        }
+
+        // 공식 과제 숨김(소프트삭제)/복구 — 성공 시 재조회하면 is_active=0인 행은 목록에서 사라진다.
+        private async Task SetProjectActiveAsync(string uid, bool active)
+        {
+            var (ok, msg) = await _projectDb.SetProjectActiveAsync(uid, active);
+            ProjectSaved(ok, msg);
+            if (ok) await LoadProjectsToWebAsync();
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----
