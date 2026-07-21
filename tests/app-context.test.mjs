@@ -52,6 +52,36 @@ test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}�
     `hex 색 선언이 ${hits.length}개로 상한(${HEX_DECL_CEILING})보다 적다 — HEX_DECL_CEILING을 ${hits.length}로 내려 래칫을 조일 것`);
 });
 
+// ── 보고서 미리보기 글자 크기 배율(--m-scale) 가드 ───────────────────────
+// 미러 안의 글자는 전부 자기 --fs-* 토큰을 직접 잡는다. 그래서 #rptOut의 font-size를 키워도
+// 상속이 이겨지지 않아 '크기' 설정이 아무것도 안 하는 것처럼 보였다(실버그). 새로 추가되는 선언이
+// 배율을 빠뜨리면 그 요소만 다시 고정 크기로 얼어붙으므로 선언 단위로 못박는다.
+test('보고서 미리보기: .rpt-mirror 안의 font-size는 전부 --m-scale 배율을 곱해야 한다', () => {
+  const src = loadAppSource();
+  const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);
+  const css = src.slice(s + 7, e).replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/(^|\})([^{}]*\.rpt-mirror[^{}]*)\{([^}]*)\}/g)];
+  assert.ok(rules.length > 0, '.rpt-mirror 규칙을 찾지 못함');
+  const bad = rules
+    .filter(m => /font-size\s*:/.test(m[3]) && !/font-size\s*:\s*calc\(\s*var\(--m-scale\)/.test(m[3]))
+    .map(m => m[2].trim());
+  assert.deepStrictEqual(bad, [],
+    '미러 안에 고정 font-size가 있음 — calc(var(--m-scale) * var(--fs-*))로 쓸 것(크기 설정이 이 요소만 건너뛴다)');
+  // 배율 기본값이 없으면 설정 전 첫 렌더에서 calc()가 통째로 무효 → 글자가 사라진다.
+  assert.ok(/#rptOut\.rpt-mirror\{--m-scale:1;/.test(css), '#rptOut.rpt-mirror에 --m-scale 기본값 1이 없음');
+});
+
+// JS가 배율을 계산할 때 쓰는 기준 픽셀은 CSS 토큰(--fs-emph)과 같아야 한다.
+// calc()는 길이로 나눠 무단위 배율을 만들 수 없어 이 분모만 JS에 복제돼 있다 → 드리프트를 여기서 잡는다.
+test('보고서 미리보기: REPORT_MIRROR_BASE_PX는 --fs-emph 픽셀값과 일치해야 한다', () => {
+  const src = loadAppSource();
+  const js = src.match(/const REPORT_MIRROR_BASE_PX\s*=\s*(\d+)/);
+  assert.ok(js, 'REPORT_MIRROR_BASE_PX 선언을 찾지 못함');
+  const tok = src.match(/--fs-emph\s*:\s*(\d+)px/);
+  assert.ok(tok, '--fs-emph 토큰을 찾지 못함');
+  assert.strictEqual(js[1], tok[1], 'JS 기준 픽셀과 --fs-emph가 어긋남 — 배율이 통째로 틀어진다');
+});
+
 // ── jsdom 로드(없으면 생략) ─────────────────────────────────────────────
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
@@ -1206,6 +1236,40 @@ if (!JSDOM) {
       assert.deepStrictEqual(evJSON("normalizeReportFont({family:'',size:16})"), { family: '', size: 16 });
     });
 
+    // 셀렉트에 실제로 뜨는 값이 전부 끝까지 살아 있어야 한다 — 하나라도 정규화에서 기본으로 떨어지면
+    // 사용자가 고른 크기가 조용히 무시된다(고를 수 있는데 안 먹는 옵션 = 고장난 컨트롤).
+    test('reportFont: REPORT_FONT_SIZES의 모든 옵션이 정규화를 통과하고 미러 배율로 단조 증가한다', () => {
+      const sizes = evJSON('REPORT_FONT_SIZES');
+      assert.deepStrictEqual(sizes, [0, 10, 11, 12, 13, 14, 15, 16], '제공 목록이 바뀌면 이 테스트도 같이 갱신할 것');
+      // 0(기본)은 pt가 아니라 14px이라 10pt(13.33px)와 11pt(14.67px) 사이에 낀다 → 단조 검사는 pt 옵션만.
+      let prev = 0;
+      for (const n of sizes) {
+        const norm = evJSON(`normalizeReportFont({family:'',size:${n}})`);
+        assert.strictEqual(norm.size, n, `${n}pt가 정규화에서 기본으로 떨어짐 — 셀렉트에 있는데 안 먹는 옵션`);
+        if (n === 0) continue;
+        const scale = Number(evJSON(`reportFontCss({family:'',size:${n}})`).scale);
+        assert.ok(scale > prev, `${n}pt 배율(${scale})이 이전 옵션(${prev}) 이하 — 크기 순서가 깨짐`);
+        prev = scale;
+      }
+      // 기본(0)은 배율을 아예 안 싣는다 = CSS 기본값 1 = 기존 픽셀 그대로.
+      assert.strictEqual(evJSON("reportFontCss({family:'',size:0})").scale, '');
+      // 경계: 10pt는 기본보다 작고, 16pt는 크다(1pt=4/3px, 기준 14px).
+      assert.ok(Number(evJSON("reportFontCss({family:'',size:10})").scale) < 1);
+      assert.ok(Number(evJSON("reportFontCss({family:'',size:16})").scale) > 1);
+    });
+
+    // 배율이 DOM까지 실제로 도달하는지 — syncReportFontUI가 #rptOut에 인라인으로 심고, 기본이면 지운다.
+    test('reportFont: syncReportFontUI가 #rptOut에 --m-scale을 심고 기본에서는 제거한다', () => {
+      ev("state.reportFont = {family:'', size:16}; syncReportFontUI();");
+      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(),
+        evJSON("reportFontCss({family:'',size:16})").scale);
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt');
+      ev("state.reportFont = {family:'', size:0}; syncReportFontUI();");
+      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '',
+        '기본으로 돌아오면 인라인 배율은 지워져야 한다(CSS 기본값 1로 복귀)');
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
+    });
+
     test('reportFont roundtrip: <prefs fontFamily/fontSize> 보존 + 기본이면 속성 미기록(기존 파일 byte 동일)', () => {
       // 기본값 — 속성이 하나도 붙지 않아야 구버전 파일과 byte 동일
       seed(fmtState('-', '', 2));
@@ -1280,8 +1344,8 @@ if (!JSDOM) {
         assert.notStrictEqual(ev("$('#rptFontHint').style.display"), 'none', `${mode}에서 폰트 안내 노출`);
         assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${mode} 미리보기에 폰트 적용`);
         assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt', `${mode} 미리보기 크기 적용`);
-        // ⚙옵션 접힘 요약(380px에서 유일한 발견 지점)에도 전 모드 노출
-        assert.ok(/폰트 Gulim 13pt/.test(ev("$('#rptOptSum').textContent")), `${mode} 옵션 요약에 폰트 표기`);
+        // 글꼴은 ⚙옵션이 아니라 레일에 상시 노출 → 접힘 요약에 나오면 '옵션 안 설정'으로 오인된다
+        assert.ok(!/폰트|글꼴/.test(ev("$('#rptOptSum').textContent")), `${mode} 옵션 요약에는 글꼴이 없다`);
         // 셀렉트도 저장값과 동기(재오픈·모드 전환 후에도)
         assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${mode} 폰트 셀렉트 동기`);
         assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${mode} 크기 셀렉트 동기`);
@@ -1290,8 +1354,33 @@ if (!JSDOM) {
       ev("state.reportFont={family:'',size:0}; buildReport();");
       assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '기본 폰트면 인라인 스타일 해제');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
-      assert.ok(/폰트 기본/.test(ev("$('#rptOptSum').textContent")), '기본이면 요약에 "폰트 기본"');
       ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
+    });
+
+    // 회귀 방지: 글꼴 행이 ⚙옵션(#rptOpt) 안으로 되돌아가면 netcus 출처에서 통째로 사라진다(옵션 패널이 숨겨지므로).
+    // 보고 유형 3 × 내용 출처 3 = 9조합 전부에서 레일에 남아 있어야 한다.
+    test('reportFont: 글꼴 행은 ⚙옵션 밖 레일에 있어 3모드 × 3출처 9조합 모두에서 노출된다', () => {
+      const st = fmtState('-', '', 2);
+      st.reportFont = { family: 'Gulim', size: 13 };
+      seed(st);
+      assert.strictEqual(ev("!!$('#rptOpt').contains($('#rptFontRow'))"), false, '글꼴 행은 ⚙옵션 패널 밖');
+      assert.strictEqual(ev("$('#rptFontRow').parentElement.className"), 'rpt-rail', '레일 직속 자식');
+      for(const mode of ['daily', 'weekly', 'custom']){
+        for(const src of ['cal', 'net', 'week']){
+          ev(`setReportMode(${JSON.stringify(mode)}); state.reportSource=${JSON.stringify(src)};`
+            + `$('#rptFrom').value='2026-07-01'; $('#rptTo').value=${mode === 'daily' ? "'2026-07-01'" : "'2026-07-31'"}; buildReport();`);
+          const tag = `${mode}/${src}`;
+          assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${tag}: 글꼴 행 노출`);
+          assert.notStrictEqual(ev("$('#rptFontHint').style.display"), 'none', `${tag}: 안내 문구 노출`);
+          assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${tag}: 폰트 셀렉트 동기`);
+          assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${tag}: 크기 셀렉트 동기`);
+          assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${tag}: 미리보기에 폰트 적용`);
+          // netcus 출처(주간/커스텀)에서는 ⚙옵션이 숨는다 — 그래도 글꼴은 남아야 한다는 것이 이 테스트의 요지
+          const optHidden = (ev("$('#rptOpt').style.display") === 'none');
+          assert.strictEqual(optHidden, (src !== 'cal' && mode !== 'daily'), `${tag}: ⚙옵션 표시 규칙 유지`);
+        }
+      }
+      ev("state.reportSource='cal'; state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
     });
 
     // 폰트는 표시+복사 전용이라는 계약 — 전송 페이로드(회사 폼)와 평문 복사는 폰트에 1바이트도 반응하면 안 된다.
