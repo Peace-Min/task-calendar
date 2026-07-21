@@ -65,7 +65,8 @@ namespace TaskCalendarWidget
         }
 
         // 관리자 자격 등록/변경(평문 json — adminId/adminPw만 기록). 빈 값 = 기존 유지.
-        public void SaveAdminCred(string? id, string? pw)
+        // 반환: (ok, msg) — 디스크 쓰기 실패를 삼키지 않고 웹에 알려 거짓 성공 표시를 막는다(__saveFailed와 같은 취지).
+        public (bool ok, string msg) SaveAdminCred(string? id, string? pw)
         {
             try
             {
@@ -78,8 +79,9 @@ namespace TaskCalendarWidget
                         new JsonSerializerOptions { WriteIndented = true }),
                     new UTF8Encoding(false));
                 _log("관리자 자격 저장: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ")");
+                return (true, "관리자 자격이 등록되었습니다.");
             }
-            catch (Exception ex) { _log("관리자 자격 저장 실패: " + ex.Message); }
+            catch (Exception ex) { _log("관리자 자격 저장 실패: " + ex.Message); return (false, "관리자 자격을 저장하지 못했습니다: " + Short(ex)); }
         }
 
         // 관리자 로그인 검증 — config값(없으면 베이크 디폴트)과 대조해 role('admin') 또는 null 반환(+안내 메시지).
@@ -188,7 +190,14 @@ namespace TaskCalendarWidget
         private static object TextOrNull(string? s) =>
             string.IsNullOrWhiteSpace(s) ? DBNull.Value : (object)s!.Trim();
 
-        // 'YYYY-MM-DD'만 날짜로 인정. 빈값/형식 불일치 → DBNull(선진행·미정 계약은 날짜가 없다).
+        // 'YYYY-MM-DD'만 날짜로 인정. 빈값 → DBNull(선진행·미정 계약은 날짜가 없다).
+        // ★ 형식 불일치는 여기서 조용히 NULL로 만들지 않는다 — 호출부(UpsertProjectAsync)가 IsDateOrEmpty로 선검증해 실패를 되돌린다.
+        //   (선검증을 통과한 값만 도달하므로 여기 도달 시엔 반드시 빈값 아니면 유효 날짜다. 방어적으로 파싱 실패는 DBNull.)
+        private static bool IsDateOrEmpty(string? s)
+        {
+            string t = (s ?? "").Trim();
+            return t.Length == 0 || DateTime.TryParseExact(t, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out _);
+        }
         private static object DateOrNull(string? s)
         {
             string t = (s ?? "").Trim();
@@ -228,6 +237,9 @@ namespace TaskCalendarWidget
             if (st.Length > 0 && Array.IndexOf(Statuses, st) < 0) return (false, "상태 값이 올바르지 않습니다.");
             // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
             if (sec == "선진행") { sd = ""; ed = ""; st = ""; }
+            // 날짜 형식 선검증 — 잘못된 형식을 조용히 NULL로 저장하지 않고 사용자에게 되돌린다(무음 데이터 유실 방지).
+            if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).");
+            if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).");
             if (sd.Length > 0 && ed.Length > 0 && string.CompareOrdinal(sd, ed) > 0)
                 return (false, "계약종료일이 계약시작일보다 빠릅니다.");
 
@@ -277,8 +289,32 @@ namespace TaskCalendarWidget
                     return (true, "공식 과제를 저장했습니다.");
                 }
             }
-            catch (MySqlException mex) { _log("공식 과제 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlMsg(mex)); }
+            catch (MySqlException mex)
+            {
+                _log("공식 과제 저장 실패(" + mex.Number + "): " + Short(mex));
+                // 1062(UNIQUE 충돌)인데 같은 (customer, project_name)의 숨김(is_active=0) 행이 점유 중이면 원인을 구분해 안내(복구 필요).
+                if (mex.Number == 1062 && await SoftDeletedDuplicateExistsAsync(cust, pname))
+                    return (false, "같은 발주처에 숨김 처리된 동일 사업명이 있습니다(복구 필요).");
+                return (false, MySqlMsg(mex));
+            }
             catch (Exception ex) { _log("공식 과제 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
+        }
+
+        // UNIQUE(customer, project_name) 충돌이 '숨김(is_active=0) 행' 때문인지 확인 — 별도 연결(풀 미사용)로 짧게 조회. 실패 시 false(기본 메시지).
+        private async Task<bool> SoftDeletedDuplicateExistsAsync(string customer, string projectName)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand(
+                    "SELECT COUNT(*) FROM project WHERE customer=@c AND project_name=@p AND is_active=0", conn);
+                cmd.Parameters.AddWithValue("@c", customer);
+                cmd.Parameters.AddWithValue("@p", projectName);
+                return Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L) > 0;
+            }
+            catch (Exception ex) { _log("숨김 중복 확인 실패: " + Short(ex)); return false; }
         }
 
         // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나 한쪽만 NULL 규칙을 어기는 일이 없게 한 곳에서.

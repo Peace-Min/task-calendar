@@ -463,10 +463,12 @@ namespace TaskCalendarWidget
                         break;
 
                     // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
-                    case "saveAdminCred":   // 관리자 자격 등록/변경(초기 1회)
-                        _projectDb.SaveAdminCred(GetStr(doc, "id"), GetStr(doc, "pw"));
-                        JsCall("window.__adminSaved && window.__adminSaved()");
+                    case "saveAdminCred":   // 관리자 자격 등록/변경(초기 1회) — 결과(ok,msg)를 전달해 거짓 성공 표시 방지
+                    {
+                        var (credOk, credMsg) = _projectDb.SaveAdminCred(GetStr(doc, "id"), GetStr(doc, "pw"));
+                        JsCall("window.__adminSaved && window.__adminSaved(" + (credOk ? "true" : "false") + "," + JsonSerializer.Serialize(credMsg) + ")");
                         break;
+                    }
                     case "adminLogin":      // config값과 대조 → 역할('admin'|null)을 __adminResult로 반환
                     {
                         var (role, amsg) = _projectDb.VerifyAdmin(GetStr(doc, "id"), GetStr(doc, "pw"));

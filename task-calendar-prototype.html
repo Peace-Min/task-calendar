@@ -3206,9 +3206,17 @@ window.__applyProjects = function(jsonStr){
 // 카탈로그/구독 변경 후 화면 반영 — 데이터가 이미 적용된 뒤면 재렌더(공식 과제 색/이름 반영) + 열린 선택기·설정·과제관리 상태 갱신
 function refreshDbUi(){
   try{ if(__xmlApplied) renderAll(); }catch(_){}
+  // 열려 있는 일정/빠른등록 폼의 과제 선택 보존 — 재조회로 목록이 바뀌어도 현재 선택이 무음으로 '미분류'가 되지 않게
+  // (선택값이 새 목록에 없으면 ensureCatOption으로 보존 옵션을 주입 — P3.1의 취지를 단일 스토어에 맞춰 유지).
   try{
-    const em = document.getElementById('entryModal'), sel = document.getElementById('fCat');
-    if(em && !em.classList.contains('hidden') && sel){ const v = sel.value; fillCatSelect(sel); sel.value = v; }
+    const preserve = (modalId, selId) => {
+      const md = document.getElementById(modalId), sel = document.getElementById(selId);
+      if(!md || md.classList.contains('hidden') || !sel) return;
+      const v = sel.value; fillCatSelect(sel);
+      if(v) ensureCatOption(sel, v); else sel.value = '';
+    };
+    preserve('entryModal', 'fCat');
+    preserve('quickAdd', 'qaCat');
   }catch(_){}
   // 과제 관리 모달이 열려 있으면 단일 목록도 다시 그린다(편입/동기화 반영)
   try{ const cm = document.getElementById('categoryModal'); if(cm && !cm.classList.contains('hidden')) renderCatModal(); }catch(_){}
@@ -3262,9 +3270,15 @@ window.__adminResult = function(role, msg){
     const pw = document.getElementById('admPromptPw'); if(pw){ pw.value = ''; try{ pw.focus(); }catch(_){} }   // 실패 = 재입력
   }
 };
-window.__adminSaved = function(){
+// 호스트 자격 저장 결과 — 실패(디스크 쓰기 등)면 사유를 표시한다(거짓 성공 금지). 인자 없는 구호출은 성공으로 간주(하위호환).
+window.__adminSaved = function(ok, msg){
+  const success = (arguments.length === 0) || ok === true;
   const m = document.getElementById('admRegMsg');
-  if(m){ m.innerHTML = ICON.check + ' 관리자 자격이 등록되었습니다'; m.style.color = 'var(--accent-2)'; }
+  if(m){
+    m.innerHTML = (success ? ICON.check : ICON.alert) + ' ' + esc(success ? (msg || '관리자 자격이 등록되었습니다') : (msg || '관리자 자격을 저장하지 못했습니다'));
+    m.style.color = success ? 'var(--accent-2)' : 'var(--danger)';
+  }
+  if(!success) toast(msg || '관리자 자격을 저장하지 못했습니다', 'error');
 };
 // 관리자 상태 표시 갱신(상태 배지 + '해제' 버튼 노출). 로그인 입력은 설정에 없다 — 편집 시점 프롬프트가 대신한다.
 function updateAdminUi(){
@@ -5372,8 +5386,8 @@ const offUidOf = id => String(id || '').replace(/^db-/, '');   // 'db-<uid>' →
 let dbCustomers = [];      // 발주처 마스터(customer.name) — 호스트 loadCustomers 결과
 let offEdUid = null;       // 편집 대상 uid. ''/null = 신규 추가
 let offEdBusy = false;     // 저장 왕복 중(중복 제출·닫기 방지)
-let offEdWatchdog = null;  // 호스트 무응답 시 폼을 영구 잠금하지 않기 위한 안전장치
 let __offEdSubmit = null;  // 직전 제출 스냅샷 {isNew, customer, projectName} — 신규 등록 성공 시 자동 편입 매칭용
+// (무응답 워치독은 projBeginRequest/__projWatchdog로 일원화 — 저장·숨김 공용)
 
 // 호스트가 읽어 온 발주처 목록 주입. 실패("")면 기존 목록에서 뽑은 발주처만으로 폴백한다.
 window.__applyCustomers = function(jsonStr){
@@ -5429,13 +5443,32 @@ function offEdMsgSet(html, tone){
   m.innerHTML = html || '';
   m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'busy' ? 'var(--accent)' : '';
 }
+// 편집 모달의 저장 진행 잠금 — 저장 버튼 비활성 + overlay dataset.busy='1'(closeOverlay의 busy 가드가 ESC/배경/취소 닫기를 막는다).
 function offEdSetBusy(on){
   offEdBusy = !!on;
   const b = document.getElementById('offEdSave'); if(b) b.disabled = !!on;
-  clearTimeout(offEdWatchdog);
-  // 호스트가 조용히 죽어도 폼이 영구히 잠기지 않게 — 12초 뒤 되살린다(사용자가 다시 시도 가능).
-  if(on) offEdWatchdog = setTimeout(() => { offEdSetBusy(false); offEdMsgSet(ICON.alert + ' 응답이 없습니다 — 다시 시도해 주세요.', 'err'); }, 12000);
+  const ed = document.getElementById('officialEditModal');
+  if(ed){ if(on) ed.dataset.busy = '1'; else delete ed.dataset.busy; }
 }
+/* ---------- 저장/숨김 요청 상관관계(세대) + 무응답 워치독 ----------
+   호스트가 reqId를 되돌려주지 않으므로, 요청마다 세대를 올리고 '대기 중인 세대'가 살아 있을 때만 응답을 처리한다.
+   타임아웃(워치독)·중복 요청이면 세대를 무효화(0)해, 뒤늦게 도착한 이월 응답이 모달을 닫거나 성공을 표시하지 못하게 한다. */
+let __projGen = 0;       // 현재 응답을 기다리는 요청 세대(0 = 대기 없음 → 늦은/이월 응답 무시)
+let __projReqSeq = 0;    // 요청 세대 카운터(증가만)
+let __projWatchdog = null;
+function projBeginRequest(){
+  __projGen = ++__projReqSeq;
+  clearTimeout(__projWatchdog);
+  __projWatchdog = setTimeout(() => {
+    __projGen = 0;                 // 세대 무효화 — 이후 도착하는 응답은 무시된다
+    offEdSetBusy(false);
+    const ed = document.getElementById('officialEditModal');
+    if(ed && !ed.classList.contains('hidden')) offEdMsgSet(ICON.alert + ' 응답이 없습니다 — 다시 시도해 주세요.', 'err');
+    else toast('저장 응답이 없습니다 — 다시 시도해 주세요.', 'warn');
+  }, 12000);
+  return __projGen;
+}
+function projSettle(){ __projGen = 0; clearTimeout(__projWatchdog); }
 // 편집/추가/숨김 공통 게이트: 위젯 → 온라인 → 관리자 순. 실패 이유마다 다음 행동이 다르므로 문구를 나눈다.
 function offEditGuard(fn, desc){
   if(!HOST){ toast('공식 과제 편집은 데스크톱 위젯 전용입니다', 'warn'); return; }
@@ -5487,11 +5520,15 @@ function offEdSaveNow(){
   if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
   __offEdSubmit = { isNew: !payload.uid, customer: payload.customer, projectName: payload.projectName };   // 신규 등록 성공 시 자동 편입 매칭용
   offEdSetBusy(true);
+  projBeginRequest();   // 세대 시작 + 워치독(더블클릭은 offEdBusy 가드가, 늦은 응답은 세대 가드가 차단)
   offEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
   hpost(payload);   // 결과는 __projectSaved(ok, msg) — 성공 시 호스트가 loadProjects까지 이어서 수행
 }
-// 호스트 쓰기 결과. 성공=모달 닫고 토스트(목록은 호스트 재조회가 갱신), 실패=모달 유지 + 사유 표시(사용자가 고쳐 재시도).
+// 호스트 쓰기 결과(저장/숨김 공용). 성공=모달 닫고 토스트(목록은 호스트 재조회가 갱신), 실패=모달 유지 + 사유 표시.
+// ★ 세대 가드: 대기 중인 요청이 없으면(타임아웃 후 등) 늦은/이월 응답이므로 조용히 무시(모달 닫힘·거짓 성공 방지).
 window.__projectSaved = function(ok, msg){
+  if(__projGen === 0){ return; }   // 늦은/이월 응답 — 무시
+  projSettle();
   const ed = document.getElementById('officialEditModal');
   const edOpen = !!ed && !ed.classList.contains('hidden');
   offEdSetBusy(false);
@@ -5515,6 +5552,8 @@ function offHideProject(id){
     .then(r => {
       if(r !== 'ok') return;
       if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+      if(__projGen){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 진행 중 재요청 차단(더블클릭·이월)
+      projBeginRequest();   // 저장과 동일 세대·워치독 — 늦은 응답은 __projectSaved 세대 가드가 무시
       hpost({ cmd: 'setProjectActive', uid: offUidOf(c.id), active: false });   // 결과는 __projectSaved
     });
 }
@@ -5579,17 +5618,23 @@ function runRelink(){
     '연결', '취소', { ok: 'safe' })
     .then(r => {
       if(r !== 'ok') return;
-      const map = new Map(sel.map(m => [m.from, m.to]));
-      // 대상 공식 과제를 먼저 '편입'한다 — 이게 사용자 버그(재연결 후 필터바에 DB 과제 안 뜸)의 직접 수정.
-      for(const to of new Set(map.values())){ const src = dbCatalogById(to); if(src) subscribeDbCat(src); }
+      // 실행 시점 재검증 — 대상 db-uid가 카탈로그(또는 이미 편입)에 실재하는 매핑만 채택. 유령 uid로 일괄 태그하는 사고 방지.
+      const valid = new Map(); let skipped = 0;
+      for(const m of sel){
+        const src = dbCatalogById(m.to);
+        if(src){ subscribeDbCat(src); valid.set(m.from, m.to); }         // 카탈로그 실재 → 편입(버그 직접 수정) + 채택
+        else if(catIsSubscribed(m.to)){ valid.set(m.from, m.to); }       // 카탈로그엔 없지만 이미 편입(dbGone 등) → 대상 유효
+        else skipped++;                                                   // 유령 uid → 건너뜀
+      }
+      if(!valid.size){ toast('연결할 대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요', 'error'); return; }
       let n = 0;
-      for(const e of (state.entries || [])){ const to = e && map.get(e.categoryId); if(to){ e.categoryId = to; n++; } }
-      for(const t of (state.todos || [])){ const to = t && map.get(t.categoryId); if(to){ t.categoryId = to; n++; } }
+      for(const e of (state.entries || [])){ const to = e && valid.get(e.categoryId); if(to){ e.categoryId = to; n++; } }
+      for(const t of (state.todos || [])){ const to = t && valid.get(t.categoryId); if(to){ t.categoryId = to; n++; } }
       save();          // 로컬 XML 1회 저장(개인 과제 자체는 남겨 둔다 — 되돌릴 여지·다른 참조 보호)
       renderAll();
       try{ renderCatModal(); }catch(_){}
       closeModal('#relinkModal');
-      toast(`${sel.length}개 과제 · 일정 ${n}건을 공식 과제로 연결했습니다.`, 'success');
+      toast(`${valid.size}개 과제 · 일정 ${n}건을 공식 과제로 연결했습니다.` + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), skipped ? 'warn' : 'success');
     });
 }
 
