@@ -41,12 +41,13 @@ namespace TaskCalendarWidget
 
         private string ConfigFile => Path.Combine(_dataDir, "db-config.json");
 
-        // config(db-config.json)에는 관리자 자격만 남긴다(변경분). 연결정보는 항상 베이크 상수 —
+        // config(db-config.json)에는 관리자 자격 + 잠금해제 상태만 남긴다(변경분). 연결정보는 항상 베이크 상수 —
         // 옛 파일에 host/port 등 연결 필드가 남아 있어도 그냥 무시한다(에러·마이그레이션 불필요).
         private sealed class AdminCred
         {
             public string AdminId = "";   // 빈 문자열 = 미변경 → 베이크 디폴트(DefAdminId/DefAdminPw) 사용
             public string AdminPw = "";
+            public bool AdminUnlocked = false;   // 이 PC에서 인증 완료 여부(영속) — netcus 자격 패턴과 같은 '한 번 인증하면 유지'
         }
 
         private AdminCred LoadAdmin()
@@ -59,12 +60,47 @@ namespace TaskCalendarWidget
                 var r = d.RootElement;
                 if (r.TryGetProperty("adminId", out var ai) && ai.ValueKind == JsonValueKind.String) a.AdminId = ai.GetString() ?? "";
                 if (r.TryGetProperty("adminPw", out var ap) && ap.ValueKind == JsonValueKind.String) a.AdminPw = ap.GetString() ?? "";
+                // 옛 파일엔 이 필드가 없다 → 기본 false(=미인증). 하위호환.
+                if (r.TryGetProperty("adminUnlocked", out var au) && (au.ValueKind == JsonValueKind.True || au.ValueKind == JsonValueKind.False)) a.AdminUnlocked = au.GetBoolean();
             }
             catch (Exception ex) { _log("관리자 설정 로드 실패: " + ex.Message); }
             return a;
         }
 
-        // 관리자 자격 등록/변경(평문 json — adminId/adminPw만 기록). 빈 값 = 기존 유지.
+        // config 기록 — 자격·잠금해제를 한 곳에서 직렬화(세 경로가 각자 쓰다 필드를 흘리는 것 방지).
+        private bool WriteAdmin(AdminCred a)
+        {
+            try
+            {
+                Directory.CreateDirectory(_dataDir);
+                File.WriteAllText(ConfigFile,
+                    JsonSerializer.Serialize(new { adminId = a.AdminId, adminPw = a.AdminPw, adminUnlocked = a.AdminUnlocked },
+                        new JsonSerializerOptions { WriteIndented = true }),
+                    new UTF8Encoding(false));
+                return true;
+            }
+            catch (Exception ex) { _log("관리자 설정 저장 실패: " + ex.Message); return false; }
+        }
+
+        // 이 PC에서 관리자 인증이 이미 끝났는지(부팅 시 웹 복원용).
+        public bool IsAdminUnlocked()
+        {
+            try { return LoadAdmin().AdminUnlocked; }
+            catch (Exception ex) { _log("관리자 잠금상태 조회 실패: " + ex.Message); return false; }
+        }
+
+        // 잠금해제 상태만 변경(해제 버튼 = false). 자격은 건드리지 않는다.
+        public bool SetAdminUnlocked(bool unlocked)
+        {
+            var a = LoadAdmin();
+            a.AdminUnlocked = unlocked;
+            bool ok = WriteAdmin(a);
+            if (ok) _log("관리자 잠금해제 상태: " + (unlocked ? "활성(유지)" : "해제"));
+            return ok;
+        }
+
+        // 관리자 자격 등록/변경(평문 json). 빈 값 = 기존 유지.
+        // ★ 자격을 바꾸면 잠금해제를 반드시 내린다 — 비번을 바꿨는데 옛 잠금해제가 남으면 안 된다(재인증 요구).
         // 반환: (ok, msg) — 디스크 쓰기 실패를 삼키지 않고 웹에 알려 거짓 성공 표시를 막는다(__saveFailed와 같은 취지).
         public (bool ok, string msg) SaveAdminCred(string? id, string? pw)
         {
@@ -73,13 +109,10 @@ namespace TaskCalendarWidget
                 var a = LoadAdmin();
                 if (!string.IsNullOrWhiteSpace(id)) a.AdminId = id!.Trim();
                 if (!string.IsNullOrEmpty(pw)) a.AdminPw = pw;   // 빈칸 = 기존 유지
-                Directory.CreateDirectory(_dataDir);
-                File.WriteAllText(ConfigFile,
-                    JsonSerializer.Serialize(new { adminId = a.AdminId, adminPw = a.AdminPw },
-                        new JsonSerializerOptions { WriteIndented = true }),
-                    new UTF8Encoding(false));
-                _log("관리자 자격 저장: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ")");
-                return (true, "관리자 자격이 등록되었습니다.");
+                a.AdminUnlocked = false;                          // 자격 변경 = 재인증 요구
+                if (!WriteAdmin(a)) return (false, "관리자 자격을 저장하지 못했습니다(디스크 쓰기 실패).");
+                _log("관리자 자격 저장: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ") · 잠금해제 초기화");
+                return (true, "관리자 자격이 등록되었습니다. 편집할 때 새 비밀번호로 1회 인증하세요.");
             }
             catch (Exception ex) { _log("관리자 자격 저장 실패: " + ex.Message); return (false, "관리자 자격을 저장하지 못했습니다: " + Short(ex)); }
         }
@@ -87,6 +120,7 @@ namespace TaskCalendarWidget
         // 관리자 로그인 검증 — config값(없으면 베이크 디폴트)과 대조해 role('admin') 또는 null 반환(+안내 메시지).
         // ※ 검증은 '이 한 지점'에서만 — P6.5에서 여기만 app_user 인증으로 교체한다. JS엔 비번을 절대 노출하지 않는다.
         // id가 비어 있으면 pw만 대조(단일 관리자 편의). id가 있으면 id+pw 모두 일치해야 함.
+        // 성공하면 잠금해제를 영속화한다(이 PC에선 재시작해도 유지 — 사용자 결정).
         public (string? role, string msg) VerifyAdmin(string? id, string? pw)
         {
             try
@@ -96,7 +130,12 @@ namespace TaskCalendarWidget
                 string effPw = a.AdminPw.Length > 0 ? a.AdminPw : DefAdminPw;
                 bool idOk = string.IsNullOrEmpty(id) || string.Equals(id, effId, StringComparison.Ordinal);
                 bool ok = idOk && !string.IsNullOrEmpty(pw) && string.Equals(pw, effPw, StringComparison.Ordinal);
-                return ok ? ("admin", "관리자 모드로 전환되었습니다.") : (null, "관리자 자격이 일치하지 않습니다.");
+                if (!ok) return (null, "관리자 자격이 일치하지 않습니다.");
+                // 잠금해제 영속화 — 쓰기 실패해도 이번 세션 인증 자체는 유효하므로 role은 내주고 안내만 덧붙인다.
+                a.AdminUnlocked = true;
+                bool saved = WriteAdmin(a);
+                return ("admin", saved ? "관리자 모드로 전환되었습니다. 이 PC에서는 계속 유지됩니다."
+                                       : "관리자 모드로 전환되었습니다(이번 실행만 — 상태 저장 실패).");
             }
             catch (Exception ex) { _log("관리자 검증 실패: " + ex.Message); return (null, "관리자 검증 오류: " + Short(ex)); }
         }

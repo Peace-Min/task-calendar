@@ -391,6 +391,7 @@ namespace TaskCalendarWidget
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
+                        SendAdminState();   // 관리자 잠금해제(영속) 복원 — 이미 인증된 PC면 편집 시 프롬프트 없음
                         ReminderInit();   // 시작 알림 타이머·상태 1회 초기화 + __setReminders 통지
                         break;
                     case "save":
@@ -467,8 +468,17 @@ namespace TaskCalendarWidget
                     {
                         var (credOk, credMsg) = _projectDb.SaveAdminCred(GetStr(doc, "id"), GetStr(doc, "pw"));
                         JsCall("window.__adminSaved && window.__adminSaved(" + (credOk ? "true" : "false") + "," + JsonSerializer.Serialize(credMsg) + ")");
+                        // 자격을 바꾸면 잠금해제가 내려가므로(재인증 요구) 웹 세션 상태도 즉시 동기화
+                        if (credOk) SendAdminState();
                         break;
                     }
+                    case "adminStateGet":   // 부팅 시 복원 — 이 PC에서 이미 인증됐는지 웹에 통지
+                        SendAdminState();
+                        break;
+                    case "adminLogout":     // 설정창 '해제' — 영속 잠금해제를 내린다(다음 편집 때 다시 인증)
+                        _projectDb.SetAdminUnlocked(false);
+                        SendAdminState();
+                        break;
                     case "adminLogin":      // config값과 대조 → 역할('admin'|null)을 __adminResult로 반환
                     {
                         var (role, amsg) = _projectDb.VerifyAdmin(GetStr(doc, "id"), GetStr(doc, "pw"));
@@ -1134,6 +1144,10 @@ namespace TaskCalendarWidget
             // null(연결/조회 실패) → "" 전달 → 웹 __applyProjects가 캐시 사용
             JsCall("window.__applyProjects && window.__applyProjects(" + JsonSerializer.Serialize(json ?? "") + ")");
         }
+
+        // 관리자 잠금해제 상태(영속)를 웹으로 — 부팅 복원·해제·자격변경 시 호출. JS는 이 값으로 __adminSession을 맞춘다.
+        private void SendAdminState() =>
+            JsCall("window.__adminState && window.__adminState(" + (_projectDb.IsAdminUnlocked() ? "true" : "false") + ")");
 
         // 발주처 마스터 → 편집 폼 드롭다운. 실패면 ""(웹이 기존 목록의 distinct 발주처로 폴백).
         private async Task LoadCustomersToWebAsync()

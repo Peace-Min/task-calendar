@@ -1721,12 +1721,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </div>
       <div class="set-sec set-sec-top" id="adminSection">
         <div class="set-lb">관리자 <span id="admState" class="git-opt"></span></div>
-        <!-- 인증은 '편집을 누른 순간'에만 묻는다(UAC 패턴) — 여기서 미리 로그인해 둘 필요가 없다. -->
-        <div class="set-hint"><b>공식 과제 편집</b>은 편집을 시작할 때 관리자 비밀번호를 물어봅니다(미리 로그인할 필요 없음). 과제 DB 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다.</div>
+        <!-- 인증은 '편집을 누른 순간'에만 묻는다(UAC 패턴) — 여기서 미리 로그인해 둘 필요가 없다. 한 번 인증하면 이 PC에서 유지된다. -->
+        <div class="set-hint"><b>공식 과제 편집</b>은 편집을 시작할 때 관리자 비밀번호를 물어봅니다(미리 로그인할 필요 없음). <b>한 번 인증하면 이 PC에서 계속 유지</b>되며, 아래 <b>해제</b>로 끌 수 있습니다. 과제 DB 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다.</div>
         <div class="set-hint" id="dbCacheLine" style="margin-bottom:6px"></div>
         <div style="margin:0 0 10px"><button type="button" class="btn sm" id="dbReload">지금 새로고침</button> <span id="dbMsg" class="git-opt"></span></div>
         <div class="adm-row"><button type="button" class="btn sm hidden" id="admLogout">관리자 모드 해제</button> <span id="admMsg" class="git-opt"></span></div>
-        <label class="qa-lb">관리자 자격 등록 <span class="git-opt">· 초기 1회</span></label>
+        <label class="qa-lb">관리자 자격 등록 <span class="git-opt">· 초기 1회 · 비밀번호를 정하는 곳입니다(잠금 해제는 편집할 때 1회)</span></label>
         <input type="text" id="admRegId" class="set-in" autocomplete="off" spellcheck="false" placeholder="관리자 ID">
         <input type="password" id="admRegPw" class="set-in" autocomplete="new-password" placeholder="관리자 비밀번호(빈칸=기존 유지)">
         <div style="margin:9px 0 4px"><button type="button" class="btn sm" id="admRegSave">등록</button> <span id="admRegMsg" class="git-opt"></span></div>
@@ -1855,7 +1855,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <label for="admPromptPw">관리자 비밀번호</label>
       <input type="password" id="admPromptPw" autocomplete="off" placeholder="비밀번호">
       <div class="adm-p-msg" id="admPromptMsg" role="status" aria-live="polite"></div>
-      <div class="git-note">한 번 인증하면 앱을 닫을 때까지 유지됩니다. 설정 → 관리자에서 <b>관리자 모드 해제</b>로 즉시 끌 수 있습니다.</div>
+      <div class="git-note"><b>한 번 인증하면 이 PC에서 계속 유지됩니다</b>(앱을 다시 켜도 유지). 설정 → 관리자에서 <b>관리자 모드 해제</b>로 즉시 끌 수 있습니다.</div>
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
@@ -3247,8 +3247,16 @@ function refreshDbUi(){
 /* ---------- 역할(권한) 인터페이스 — 공식 과제 편집 게이트 ---------- */
 // 세션 관리자 언락 여부만으로 역할을 반환한다. 이 한 함수가 이후 P6.5에서 app_user 권한으로 교체되는 지점.
 // 비번 검증은 호스트(ProjectDb.VerifyAdmin)에서만 — JS엔 자격이 노출되지 않는다.
-let __adminSession = false;   // 이번 세션 관리자 모드 언락 여부(비영속 — 재시작 시 해제)
+// 잠금해제는 호스트(db-config.json의 adminUnlocked)에 영속된다 — 한 번 인증하면 이 PC에서 재시작해도 유지(netcus 자격 패턴).
+// 이 변수는 그 영속값의 런타임 사본: 부팅 시 __adminState로 복원되고, 해제/자격변경 시 호스트가 다시 통지한다.
+let __adminSession = false;
 function getRole(){ return __adminSession ? 'admin' : 'viewer'; }
+// 호스트가 알려주는 영속 잠금해제 상태(부팅 복원 · 해제 · 자격 변경 후 동기화)
+window.__adminState = function(unlocked){
+  __adminSession = !!unlocked;
+  try{ updateAdminUi(); }catch(_){}
+  try{ renderOfficialDetail(); }catch(_){}   // 열려 있으면 편집/숨김 버튼 표기 갱신
+};
 // 호스트 로그인 검증 결과 — role==='admin'이면 세션 언락, 아니면 해제.
 // 인증 요청이 프롬프트(just-in-time)에서 왔으면 결과를 그 안에서 처리하고, 성공 시 보관해 둔 액션을 이어서 실행한다.
 window.__adminResult = function(role, msg){
@@ -3281,9 +3289,11 @@ window.__adminSaved = function(ok, msg){
   if(!success) toast(msg || '관리자 자격을 저장하지 못했습니다', 'error');
 };
 // 관리자 상태 표시 갱신(상태 배지 + '해제' 버튼 노출). 로그인 입력은 설정에 없다 — 편집 시점 프롬프트가 대신한다.
+// 배지는 '지금 무엇이 가능한지'를 말한다: 인증됨=계속 유지 / 미인증=편집할 때 비밀번호를 묻는다.
 function updateAdminUi(){
   const st = document.getElementById('admState');
-  if(st) st.textContent = !HOST ? '· 데스크톱 위젯 전용' : (getRole() === 'admin' ? '· 관리자 모드' : '· 뷰어');
+  if(st) st.textContent = !HOST ? '· 데스크톱 위젯 전용'
+    : (getRole() === 'admin' ? '· 관리자 모드 · 활성' : '· 뷰어 · 편집 시 비밀번호 필요');
   const lo = document.getElementById('admLogout'); if(lo) lo.classList.toggle('hidden', getRole() !== 'admin');
 }
 
@@ -4986,6 +4996,7 @@ function openSettings(){
   { const m = document.getElementById('admMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const m = document.getElementById('admRegMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const sec = document.getElementById('adminSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
+  if(HOST) hpost({ cmd: 'adminStateGet' });   // 영속 잠금해제 상태를 호스트에서 다시 읽어 배지 정확도 유지(__adminState)
   updateDbStatusLine();
   updateAdminUi();
   openModal('#settingsModal');
@@ -8298,9 +8309,10 @@ function bind(){
     }); }
   // 로그인 입력은 설정에 두지 않는다(편집 시점 프롬프트가 대신) — 해제만 남긴다.
   { const b = $('#admLogout'); if(b) b.addEventListener('click', () => {
-      __adminSession = false; updateAdminUi();
+      hpost({ cmd: 'adminLogout' });   // 호스트가 영속 잠금해제를 내리고 __adminState(false)로 회신
+      __adminSession = false; updateAdminUi();   // 낙관적 반영(호스트 회신이 곧 덮어씀)
       try{ renderOfficialDetail(); }catch(_){}
-      const m = $('#admMsg'); if(m){ m.innerHTML = ICON.check + ' 관리자 모드를 해제했습니다'; m.style.color = 'var(--muted)'; }
+      const m = $('#admMsg'); if(m){ m.innerHTML = ICON.check + ' 관리자 모드를 해제했습니다 — 다음 편집 때 다시 인증합니다'; m.style.color = 'var(--muted)'; }
     }); }
   // ── 관리자 인증 프롬프트(just-in-time) — Enter=확인 / Esc=취소(모달 공통 경로) ──
   { const b = $('#admPromptOk'); if(b) b.addEventListener('click', submitAdminPrompt); }
