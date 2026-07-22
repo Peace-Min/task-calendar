@@ -1828,6 +1828,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span class="spacer"></span>
           <span class="off-fcount" id="offFilterCount"></span>
           <button type="button" class="btn sm" id="offReset">초기화</button>
+          <!-- 읽기 산출물이라 인증 없음(뷰어도 뽑는다). 위젯에서만 보이고, 결과 0건이면 비활성. -->
+          <button type="button" class="btn sm" id="offExport" style="display:none">⬇ Excel 추출</button>
           <!-- 추가는 관리자·온라인에서만 실제로 열린다(누르면 그 자리에서 인증) -->
           <button type="button" class="btn sm primary" id="offNew">＋ 새 공식 과제</button>
         </div>
@@ -5187,7 +5189,8 @@ function offSectionOf(c){ return offTrim(c.section) || '구분 없음'; }
 function offFilters(){
   const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
   const chk = document.getElementById('offActiveOnly');
-  return { q:offNorm(val('offSearch')), customer:val('offCustomer'), section:val('offSection'),
+  // qRaw = 사용자가 친 그대로(추출 정보줄에 남길 원문). q = 비교용 정규화(공백·대소문자 무시).
+  return { q:offNorm(val('offSearch')), qRaw:offTrim(val('offSearch')), customer:val('offCustomer'), section:val('offSection'),
            status:val('offStatus'), activeOnly:!chk || chk.checked };
 }
 // '활성 필터'는 기본값에서 벗어난 것만 센다 — 진행중만(기본 ON)은 켜져 있는 게 정상이라 세지 않는다.
@@ -5256,6 +5259,7 @@ function renderOfficialList(){
   const nf = offActiveFilterCount(f);
   const fc = document.getElementById('offFilterCount'); if(fc) fc.textContent = nf ? `필터 ${nf}개 적용 중` : '';
   const rb = document.getElementById('offReset'); if(rb) rb.disabled = (nf === 0);
+  offSyncExportBtn(list.length);   // 추출 버튼은 '지금 뽑히는 건수'를 그대로 반영(0건이면 비활성 — 빈 파일 방지)
   // 빈 상태 3종 — 원인이 다르면 다음 행동도 다르다(필터 해제 / 연결 / 등록 안내)
   box.setAttribute('role', list.length ? 'table' : 'group');   // 행이 없는 role=table은 빈 표로 읽힌다
   if(!list.length){
@@ -5388,6 +5392,117 @@ function openOfficialModal(){
 function offResetFiltersSilently(){
   ['offSearch', 'offCustomer', 'offSection', 'offStatus'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
   const chk = document.getElementById('offActiveOnly'); if(chk) chk.checked = true;
+}
+
+/* ---------- 사업부 Excel(.xlsx) 추출 (P4) — 카탈로그 책임 구역 ----------
+   책임 분리: 여기(웹)는 '무엇을' 뽑을지만 정한다(지금 화면에 보이는 필터 결과 + 그 사실을 적은 정보줄).
+   '어떻게'(xlsx 바이트·컬럼 순서/제목/너비·날짜 서식)는 호스트(XlsxWriter + ProjectExportCols)가 전담한다.
+   호스트가 DB를 다시 읽지 않는 이유 — 화면과 파일이 어긋나면 사용자가 본 적 없는 장표가 나온다.
+   읽기 산출물이므로 관리자 인증(offEditGuard)을 걸지 않는다: 뷰어도 뽑을 수 있다. */
+let __offExportDir  = '';      // 마지막 저장 폴더(호스트가 준 값만 — 사용자가 친 문자열은 절대 넘기지 않는다)
+let __offExportBusy = false;   // 왕복 중(중복 클릭·렌더에 의한 라벨 원복 방지)
+
+// 카탈로그 행 1개 → 호스트가 이해하는 레코드(값은 전부 문자열).
+// 빈 값/누락은 빈 문자열로 잠근다 — "null"·"undefined"가 셀에 새어 나가지 않게.
+// (연번 No는 여기서 만들지 않는다 — 이 배열의 순서가 곧 연번이라 호스트가 index+1로 채운다.)
+function offExportRow(c){
+  const o = c || {};
+  return {
+    section:      offTrim(o.section),
+    customer:     offTrim(o.customer),
+    projectName:  offTrim(o.projectName),
+    commonName:   offTrim(o.commonName),
+    contractName: offTrim(o.contractName),
+    startDate:    offDate(o.startDate),     // 'YYYY-MM-DD'만 통과(호스트가 진짜 날짜 셀로 기록)
+    endDate:      offDate(o.endDate),
+    status:       offTrim(o.status),        // 호스트가 이 값을 상태색 힌트로도 쓴다
+    // '사용여부' 열은 없앴다 — 호스트 질의가 is_active=1만 읽어(ProjectDb.LoadProjectsJsonAsync) 숨김 행은
+    // 애초에 오지 않고, 결과적으로 전 행이 "사용"인 상수 열이 장표에 나갔다(장표에서 상수 열은 노이즈).
+    // 잃어버린 정보(=숨김은 포함 안 됨)는 부제에 상시 표기한다. 숨김 포함 추출이 생기면 그때 열을 되살린다.
+  };
+}
+// 화면과 같은 순서(구분 그룹 → 이름순)로 평탄화. 접힌 그룹도 당연히 포함한다(접기는 보기일 뿐).
+function offExportRows(list){
+  const out = [];
+  for(const [, rows] of offGroups(list || [])) for(const c of rows) out.push(offExportRow(c));
+  return out;
+}
+// 필터 요약 — 파일만 봐도 '일부만 뽑혔다'를 알 수 있어야 한다.
+// offActiveFilterCount('기본값에서 벗어난 필터 수')와 셈이 다른 점 주의: 여기선 기본값이어도 행을 걸러내면 적는다
+// (activeOnly는 기본 ON이지만 실제로 행을 걸러내므로 반드시 남긴다).
+//
+// ★ 표기는 '종료 제외'다 — 화면 체크박스 라벨('진행중만')을 그대로 쓰면 파일이 거짓말을 한다.
+//   offMatches의 실제 조건은 status !== '종료'라서 미정·1차 납품완료가 함께 뽑힌다. 화면은 사용자가 눈으로 보지만
+//   장표는 파일로 남아 남에게 전달된다 — 받는 사람이 '진행중 과제 목록'으로 오해하면 안 된다.
+//   (화면 라벨은 UX 문제라 건드리지 않는다. 파일 표기만 정확히 한다.)
+function offExportFilterSummary(f){
+  const g = f || {}, parts = [];
+  if(g.section)  parts.push('구분=' + g.section);
+  if(g.customer) parts.push('발주처=' + g.customer);
+  if(g.status)   parts.push('상태=' + (g.status === OFF_NO_STATUS ? '없음' : g.status));
+  if(g.activeOnly) parts.push('종료 제외');
+  const q = offTrim(g.qRaw) || offTrim(g.q);
+  if(q) parts.push('검색="' + q + '"');
+  return parts.length ? ('필터: ' + parts.join(', ')) : '필터 없음';
+}
+// 카탈로그(=추출 모집단)에 애초에 없는 것 — 필터가 아니라 데이터 소스의 성질이라 필터 목록과 분리해 상시 표기한다.
+// (호스트 질의가 is_active=1만 읽는다. '사용여부' 열을 없앤 대신 이 사실을 여기서 잃지 않는다.)
+const OFF_EXPORT_SCOPE_NOTE = '숨김 과제 제외';
+// xlsx 2행(부제)에 들어갈 한 줄. 제목("사업부 과제 목록")은 1행이고 호스트 상수라 여기 없다.
+// 건수는 '전체 N건 중 M건'으로 항상 함께 적는다 — 파일만 봐도 일부만 뽑혔는지 알 수 있어야 한다.
+function offExportSubtitle(f, total, shown, dateStr){
+  const n = Number(total) || 0, m = Number(shown) || 0;
+  return `${offTrim(dateStr)} 추출 · 전체 ${n}건 중 ${m}건 · ${offExportFilterSummary(f)} · ${OFF_EXPORT_SCOPE_NOTE}`;
+}
+// 추출 버튼 상태 — 위젯에서만 노출 / 0건이면 비활성(빈 파일 방지) / 진행 중이면 렌더가 라벨을 되돌리지 않게.
+function offSyncExportBtn(n){
+  const b = document.getElementById('offExport'); if(!b) return;
+  b.style.display = HOST ? '' : 'none';
+  if(__offExportBusy) return;
+  const cnt = Number(n) || 0;
+  b.disabled = !(cnt > 0);
+  b.textContent = '⬇ Excel 추출';
+  b.title = cnt > 0 ? `현재 목록 ${cnt}건을 Excel 파일로 저장` : '추출할 과제가 없습니다';
+}
+async function runOfficialXlsxExport(){
+  if(!HOST){ toast('Excel 추출은 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  if(__offExportBusy) return;
+  // renderOfficialList와 '같은 식'으로 재계산 — 화면에 보이는 것이 곧 파일의 내용이다.
+  const f = offFilters();
+  const list = dbCatalog.filter(c => offMatches(c, f));
+  if(!list.length){ toast('추출할 과제가 없습니다', 'warn'); return; }
+  const today = ymd(new Date());
+  const payload = {
+    rows: offExportRows(list),
+    subtitle: offExportSubtitle(f, dbCatalog.length, list.length, today),
+    fileName: '사업부_과제목록_' + today.replace(/-/g, ''),
+  };
+  const b = document.getElementById('offExport'), msg = document.getElementById('offMsg');
+  __offExportBusy = true;
+  if(b){ b.disabled = true; b.textContent = '추출 중…'; }
+  if(msg){ msg.innerHTML = ICON.spinner + ' 추출 중…'; msg.title = ''; msg.style.color = 'var(--accent)'; }
+  let res;
+  // 타임아웃이 넉넉한 이유: 왕복 시간의 대부분이 '사용자가 저장 위치를 고르는 시간'이다(모달 대기).
+  try{ res = await hostRequest('exportProjectsXlsx', payload, 300000); }
+  finally{ __offExportBusy = false; offSyncExportBtn(list.length); }
+  if(res && res.ok){
+    __offExportDir = res.dir || '';
+    const path = String(res.path || ''), file = path.split(/[\\/]/).pop() || path;
+    toast(`Excel로 ${res.count != null ? res.count : list.length}건을 추출했습니다`, 'success');
+    if(msg){
+      // .off-msg는 nowrap+ellipsis라 뒤가 잘린다 → '폴더 열기'를 먼저, 잘려도 되는 파일명을 뒤에.
+      msg.innerHTML = ICON.check + ' 저장 완료 '
+        + (__offExportDir ? '<button type="button" class="lnk" id="offOpenDir">폴더 열기</button> · ' : '· ')
+        + esc(file);
+      msg.title = path;   // 전체 경로는 툴팁으로(11px 한 줄에 밀어 넣지 않는다)
+      msg.style.color = 'var(--accent-2)';
+    }
+  }else if(res && res.cancelled){
+    if(msg){ msg.textContent = ''; msg.title = ''; msg.style.color = ''; }   // 저장 위치 선택 취소 → 조용히 원복(오류 아님)
+  }else{
+    if(msg){ msg.textContent = ''; msg.title = ''; msg.style.color = ''; }
+    toast((res && res.error) || 'Excel 추출 실패', 'error');
+  }
 }
 
 /* ---------- 공식 과제 편집(P3.2) — DB 쓰기 ----------
@@ -8690,6 +8805,14 @@ function bind(){
       if(!HOST){ toast('데스크톱 위젯 전용입니다', 'warn'); return; }
       const m = $('#offMsg'); if(m){ m.innerHTML = ICON.spinner + ' 새로고침 중…'; m.style.color = 'var(--accent)'; }
       hpost({ cmd: 'loadProjects' });   // 완료 시 __applyProjects → refreshDbUi가 목록·상태를 다시 그린다
+    }); }
+
+  /* Excel 추출(P4) — 읽기 산출물이라 인증 게이트 없음. 결과 경로는 호스트가 준 값만 openFolder로 되돌린다. */
+  { const b = $('#offExport'); if(b) b.addEventListener('click', runOfficialXlsxExport); }
+  { const m = $('#offMsg'); if(m) m.addEventListener('click', ev => {
+      if(!ev.target.closest || !ev.target.closest('#offOpenDir')) return;
+      if(!HOST || !__offExportDir){ toast('폴더 열기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+      hpost({ cmd: 'openFolder', path: __offExportDir });
     }); }
 
   /* 공식 과제 편집(P3.2) — 추가/편집/숨김은 전부 offEditGuard(위젯·온라인·관리자)를 거친다 */

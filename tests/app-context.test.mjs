@@ -2147,5 +2147,44 @@ if (!JSDOM) {
         'ca 시간 제거 + ca만 있던 07-14는 날짜째 삭제, cb 시간은 보존');
       assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 2);
     });
+
+    // ── Excel 추출 버튼(P4) — 실제 렌더 경로에서의 상태 배선 ───────────
+    // 순수 함수 단위는 xlsx-export.test.mjs에서 본다. 여기서는 'renderOfficialList가 실제로 버튼을 갱신하는지'
+    // (배선 누락 = 0건인데 눌러서 빈 파일이 나오는 실버그)를 진짜 DOM에서 확인한다.
+    const seedCatalog = (rows) => {
+      ev('dbCatalog = ' + JSON.stringify(rows) + ';');
+      ev("var __c = document.getElementById('offActiveOnly'); if(__c) __c.checked = false;");
+      ev("['offSearch','offCustomer','offSection','offStatus'].forEach(function(id){var e=document.getElementById(id); if(e) e.value='';});");
+      ev('offFillSelects(); renderOfficialList();');
+    };
+
+    test('Excel 추출 버튼: 목록이 비면 비활성, 행이 있으면 활성(renderOfficialList 배선)', () => {
+      seedCatalog([]);
+      assert.strictEqual(ev("document.getElementById('offExport').disabled"), true, '0건인데 활성이면 빈 파일이 나온다');
+      seedCatalog([
+        { id: 'db-1', name: '레이더', color: '#3e5be0', source: 'db', customer: '방위사업청', section: '일반계약',
+          status: '진행중', startDate: '2026-01-01', endDate: '2026-12-31',
+          projectName: '레이더 성능개량', contractName: '', commonName: '레이더' },
+      ]);
+      assert.strictEqual(ev("document.getElementById('offExport').disabled"), false);
+    });
+
+    test('Excel 추출 버튼: 브라우저 모드(HOST=false)에서는 숨겨져 있다', () => {
+      // 이 컨텍스트는 HOST=false로 부팅됐다 — 렌더가 곧 브라우저 모드 검증이다.
+      seedCatalog([{ id: 'db-1', name: 'x', color: '#3e5be0', source: 'db', section: '일반계약' }]);
+      assert.strictEqual(ev("document.getElementById('offExport').style.display"), 'none');
+    });
+
+    test('Excel 추출: 필터가 걸리면 부제에 전체/추출 건수와 필터가 함께 남는다', () => {
+      seedCatalog([
+        { id: 'db-1', name: 'a', color: '#3e5be0', source: 'db', section: '일반계약', customer: 'A청', status: '진행중', projectName: 'a' },
+        { id: 'db-2', name: 'b', color: '#c2770a', source: 'db', section: '선진행', customer: 'B사', status: '종료', projectName: 'b' },
+      ]);
+      ev("document.getElementById('offSection').value = '일반계약'; renderOfficialList();");
+      const sub = ev("(function(){var f=offFilters(); var l=dbCatalog.filter(function(c){return offMatches(c,f);});" +
+                     "return offExportSubtitle(f, dbCatalog.length, l.length, '2026-07-22');})()");
+      assert.strictEqual(sub, '2026-07-22 추출 · 전체 2건 중 1건 · 필터: 구분=일반계약 · 숨김 과제 제외');
+      ev("document.getElementById('offSection').value = ''; renderOfficialList();");
+    });
   }
 }

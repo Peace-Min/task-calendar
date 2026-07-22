@@ -584,6 +584,15 @@ namespace TaskCalendarWidget
                         break;
                     }
 
+                    case "exportProjectsXlsx":   // 사업부 과제목록 → Excel(.xlsx) 장표. 데이터는 웹(화면에 보이는 필터 결과)이 주고 호스트는 서식만 만든다.
+                    {
+                        string reqId = GetStr(doc, "reqId"), subtitle = GetStr(doc, "subtitle"), fileName = GetStr(doc, "fileName");
+                        // doc는 이 메서드가 끝나면 dispose된다 → 백그라운드로 넘기기 전에 여기서 값으로 확정한다.
+                        var xrows = ReadProjectExportRows(doc);
+                        RunProjectsXlsxExport(reqId, subtitle, fileName, xrows);
+                        break;
+                    }
+
                     case "openFolder":   // 내보내기 결과 폴더 다시 열기(자동 열기는 1회뿐 — 창을 닫았으면 되돌아갈 길이 없다)
                     {
                         OpenFolderSafe(GetStr(doc, "path"));
@@ -925,6 +934,134 @@ namespace TaskCalendarWidget
                 }
                 catch (Exception ex) { GitReply(reqId, new { ok = false, error = ex.Message }); }
             });
+        }
+
+        // ============ 사업부 과제목록 → Excel(.xlsx) 추출 (P4) ============
+        // 책임 분리: 웹 = '무엇을'(카탈로그 화면에 지금 보이는 필터 결과·정보줄) / 호스트 = '어떻게'(xlsx 바이트).
+        // 호스트가 DB를 다시 읽지 않는 이유 — 화면과 파일이 어긋나면 "내가 본 것"이 아닌 장표가 나온다.
+        // 읽기 산출물이라 관리자 인증은 걸지 않는다(뷰어도 뽑을 수 있다).
+        //
+        // ★ 장표 컬럼 정의의 단일 소스(템플릿 v2 — 자체 서식 확정, 2026-07-22 사용자 승인).
+        //   Field = 웹이 보내는 행 객체의 키(웹은 값만 만들고 순서·제목·너비·정렬은 모른다).
+        //   Field가 빈 문자열인 열 = 연번(No) — 호스트가 배열 순서로 채운다(화면 정렬 순서가 곧 연번).
+        //   '사용여부' 열은 두지 않는다 — LoadProjectsJsonAsync가 is_active=1만 읽어 숨김 행이 애초에 오지 않으므로
+        //   전 행이 "사용"인 상수 열이 된다(장표에서 상수 열은 노이즈). 그 사실은 부제의 '숨김 과제 제외'가 담는다.
+        private static readonly (string Header, string Field, double Width, XlsxWriter.Align Align, bool IsDate, bool Wrap)[] ProjectExportCols =
+        {
+            ("No",       "",             6,  XlsxWriter.Align.Center, false, false),
+            ("구분",     "section",      12, XlsxWriter.Align.Center, false, false),
+            ("발주처",   "customer",     18, XlsxWriter.Align.Left,   false, false),
+            ("사업명",   "projectName",  40, XlsxWriter.Align.Left,   false, true),
+            ("통상명칭", "commonName",   20, XlsxWriter.Align.Left,   false, false),
+            ("계약명",   "contractName", 34, XlsxWriter.Align.Left,   false, true),   // 길고 덜 보는 열은 뒤로
+            ("시작일",   "startDate",    12, XlsxWriter.Align.Center, true,  false),
+            ("종료일",   "endDate",      12, XlsxWriter.Align.Center, true,  false),
+            ("상태",     "status",       14, XlsxWriter.Align.Center, false, false),
+        };
+
+        private const string ProjectExportTitle = "사업부 과제 목록";
+        private const string ProjectExportSheet = "과제목록";
+        private static readonly int ProjectExportStatusCol =
+            Array.FindIndex(ProjectExportCols, c => c.Field == "status");   // 상태색 힌트를 붙일 열
+
+        // 상태 → 강조색(도메인 지식). XlsxWriter는 '진행중이 초록'인 걸 모른다 — 힌트 키만 받는다.
+        // 이 표에 없는 값(미정·빈값)은 힌트가 매칭되지 않아 기본(줄무늬) 스타일로 떨어진다.
+        private static readonly Dictionary<string, XlsxWriter.Accent> ProjectStatusAccents = new Dictionary<string, XlsxWriter.Accent>
+        {
+            ["진행중"]       = new XlsxWriter.Accent("FFE8F3EC", "FF1E7A45"),
+            ["1차 납품완료"] = new XlsxWriter.Accent("FFE9F0FA", "FF1F5FA8"),
+            ["종료"]         = new XlsxWriter.Accent("FFF0F1F3", "FF6B7280"),
+        };
+
+        private static XlsxWriter.Col[] ProjectExportColDefs() =>
+            ProjectExportCols.Select(c => new XlsxWriter.Col(c.Header, c.Width, c.Align, c.IsDate, c.Wrap)).ToArray();
+
+        // 웹이 보낸 rows(객체 배열)를 컬럼 순서의 문자열 배열로 확정. 없는 키/비문자열 값은 빈 문자열
+        // (웹이 이미 정규화해 보내지만, 여기서도 "null" 문자열이 새지 않게 한 번 더 잠근다).
+        private static List<XlsxWriter.Row> ReadProjectExportRows(JsonDocument doc)
+        {
+            var list = new List<XlsxWriter.Row>();
+            if (!doc.RootElement.TryGetProperty("rows", out var arr) || arr.ValueKind != JsonValueKind.Array) return list;
+            int no = 0;
+            foreach (var r in arr.EnumerateArray())
+            {
+                if (r.ValueKind != JsonValueKind.Object) continue;
+                no++;
+                var cells = new string[ProjectExportCols.Length];
+                for (int i = 0; i < ProjectExportCols.Length; i++)
+                {
+                    string field = ProjectExportCols[i].Field;
+                    // WPF 파일이라 using System.Globalization을 들이지 않는다(Calendar 등 이름 충돌 여지) — 한 곳뿐이므로 전체 한정.
+                    if (field.Length == 0) { cells[i] = no.ToString(System.Globalization.CultureInfo.InvariantCulture); continue; }   // No = 연번
+                    cells[i] = r.TryGetProperty(field, out var v) && v.ValueKind == JsonValueKind.String
+                        ? (v.GetString() ?? "") : "";
+                }
+                var row = new XlsxWriter.Row(cells);
+                // 상태 문자열을 그대로 스타일 힌트로 — 색 규칙(ProjectStatusAccents)은 이 파일에만 있다.
+                if (ProjectExportStatusCol >= 0) row.WithHint(ProjectExportStatusCol, cells[ProjectExportStatusCol]);
+                list.Add(row);
+            }
+            return list;
+        }
+
+        // 저장 위치 선택(UI 스레드 모달) → 실제 쓰기는 백그라운드. 취소는 오류가 아니라 조용한 회신.
+        private void RunProjectsXlsxExport(string reqId, string subtitle, string fileName, List<XlsxWriter.Row> rows)
+        {
+            string target;
+            try
+            {
+                string suggest = SanitizeName(string.IsNullOrWhiteSpace(fileName)
+                    ? "사업부_과제목록_" + DateTime.Now.ToString("yyyyMMdd") : fileName);
+                if (!suggest.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)) suggest += ".xlsx";
+                var dlg = new SaveFileDialog
+                {
+                    Title = "사업부 과제목록을 저장할 위치 선택",
+                    Filter = "Excel 통합 문서 (*.xlsx)|*.xlsx",
+                    DefaultExt = "xlsx",
+                    AddExtension = true,
+                    OverwritePrompt = true,
+                    FileName = suggest,
+                };
+                if (dlg.ShowDialog(this) != true) { ReplyOnUi(reqId, new { ok = false, cancelled = true }); return; }
+                target = dlg.FileName;
+            }
+            catch (Exception ex) { ReplyOnUi(reqId, new { ok = false, error = ex.Message }); return; }
+
+            var cols = ProjectExportColDefs();
+            var xdoc = new XlsxWriter.Doc
+            {
+                SheetName = ProjectExportSheet,
+                Title = ProjectExportTitle,
+                Subtitle = subtitle ?? "",
+            };
+            foreach (var kv in ProjectStatusAccents) xdoc.Accents[kv.Key] = kv.Value;
+            int count = rows.Count;
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    XlsxWriter.Write(target, xdoc, cols, rows);
+                    ReplyOnUi(reqId, new { ok = true, path = target, dir = Path.GetDirectoryName(target) ?? "", count });
+                }
+                catch (IOException)
+                {
+                    // 가장 흔한 실패 — Excel에서 같은 파일을 열어둔 채 덮어쓰기. 원인을 그대로 말해 준다.
+                    ReplyOnUi(reqId, new { ok = false, error = "파일이 열려 있어 저장할 수 없습니다. Excel에서 닫고 다시 시도하세요." });
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    ReplyOnUi(reqId, new { ok = false, error = "이 위치에 저장할 권한이 없습니다. 다른 폴더를 선택하세요." });
+                }
+                catch (Exception ex) { ReplyOnUi(reqId, new { ok = false, error = ex.Message }); }
+            });
+        }
+
+        // GitReply(=window.__hostReply)를 UI 스레드에서 호출하도록 마샬. CoreWebView2는 스레드 친화성이 있어
+        // 백그라운드에서 그대로 부르면 회신이 통째로 유실될 수 있다(JsCall과 같은 이유로 Dispatcher를 거친다).
+        private void ReplyOnUi(string reqId, object payload)
+        {
+            try { Dispatcher.Invoke(() => GitReply(reqId, payload)); }
+            catch (Exception ex) { Log("ReplyOnUi 오류: " + ex.Message); }
         }
 
         // 폴더 열기 — 웹에서 온 문자열이므로 '실재하는 디렉터리'만 통과시킨다. UseShellExecute에 임의 문자열을
