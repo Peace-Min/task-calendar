@@ -216,6 +216,31 @@ namespace TaskCalendarWidget
             catch (Exception ex) { _log("DB 발주처 로드 실패: " + Short(ex)); return null; }
         }
 
+        // 발주처 전체(숨김 포함) — 관리 화면 전용. [{name, active}] JSON. 활성 먼저, 그 안에서 이름순.
+        // (편집 폼·추출 드롭다운은 활성만 필요해 LoadCustomersJsonAsync를 쓰고, 이 메서드는 관리 UI에서만 쓴다.)
+        public async Task<string?> LoadCustomersFullJsonAsync()
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand("SELECT name, is_active FROM customer ORDER BY is_active DESC, name", conn);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                var rows = new List<Dictionary<string, object?>>();
+                while (await rd.ReadAsync(cts.Token))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length == 0) continue;
+                    var a = IntOrNull(rd, "is_active");
+                    rows.Add(new Dictionary<string, object?> { ["name"] = n, ["active"] = (a ?? 1) != 0 });
+                }
+                _log("DB 발주처(전체) 로드: " + rows.Count + "건");
+                return JsonSerializer.Serialize(rows);
+            }
+            catch (Exception ex) { _log("DB 발주처(전체) 로드 실패: " + Short(ex)); return null; }
+        }
+
         // ================================================================================
         // 쓰기 경로(P3.2) — 관리자 공식 과제 CRUD
         // 규약: ① 모든 값은 MySqlParameter 바인딩(문자열 연결 절대 금지) ② 예외는 전부 잡아
@@ -399,6 +424,133 @@ namespace TaskCalendarWidget
             }
             catch (MySqlException mex) { _log("공식 과제 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlMsg(mex)); }
             catch (Exception ex) { _log("공식 과제 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+        }
+
+        // ================================================================================
+        // 발주처(customer) 마스터 관리 — 이름만 관리한다(더미 View_Customer가 No+이름뿐, customer 테이블도
+        //   name+is_active+감사뿐이라 스키마 변경 없음). name이 자연키 PK이자 project.customer의 FK 타겟이며
+        //   FK가 ON UPDATE CASCADE라 개명은 과제로 자동 전파된다(schema.sql 확인). 하드삭제는 앱에서 안 한다
+        //   (사용자 방침: 실삭제는 DB에서 직접) — 앱은 소프트삭제(is_active)만. 규약은 UpsertProjectAsync와 동일.
+        // ================================================================================
+
+        // 발주처 존재/활성 상태 — null=없음, true=활성, false=숨김. (별도 짧은 조회 — 1062 안내를 나누는 용도)
+        private async Task<bool?> CustomerActiveStateAsync(string name)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand("SELECT is_active FROM customer WHERE name=@n", conn);
+                cmd.Parameters.AddWithValue("@n", name);
+                var o = await cmd.ExecuteScalarAsync(cts.Token);
+                if (o == null || o == DBNull.Value) return null;
+                return Convert.ToInt32(o) != 0;
+            }
+            catch (Exception ex) { _log("발주처 상태 조회 실패: " + Short(ex)); return null; }
+        }
+
+        // 발주처 추가. name은 자연키 PK라 중복(1062)이면 이미 존재 — 활성/숨김을 구분해 안내(숨김이면 복구 필요).
+        public async Task<(bool ok, string msg)> AddCustomerAsync(string? name)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, "발주처명을 입력하세요.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(발주처 추가): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand("INSERT INTO customer (name) VALUES (@n)", conn);
+                cmd.Parameters.AddWithValue("@n", n);
+                await cmd.ExecuteNonQueryAsync(cts.Token);
+                _log("발주처 추가: " + n);
+                return (true, "발주처를 추가했습니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062)
+            {
+                bool? active = await CustomerActiveStateAsync(n);
+                if (active == false) return (false, "숨김 처리된 동일 발주처가 있습니다(복구 필요).");
+                return (false, "이미 등록된 발주처입니다.");
+            }
+            catch (MySqlException mex) { _log("발주처 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, "추가하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log("발주처 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 발주처 개명. FK가 ON UPDATE CASCADE라 project.customer는 자동 반영된다(따로 갱신 불필요).
+        // oldName==newName은 no-op 성공, 대상 없음(0행)은 실패, newName 충돌(1062)은 안내.
+        public async Task<(bool ok, string msg)> RenameCustomerAsync(string? oldName, string? newName)
+        {
+            string o = (oldName ?? "").Trim(), nw = (newName ?? "").Trim();
+            if (o.Length == 0) return (false, "변경할 발주처를 지정하세요.");
+            if (nw.Length == 0) return (false, "새 발주처명을 입력하세요.");
+            if (string.Equals(o, nw, StringComparison.Ordinal)) return (true, "변경 사항이 없습니다.");   // no-op
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(발주처 개명): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand("UPDATE customer SET name=@new WHERE name=@old", conn);
+                cmd.Parameters.AddWithValue("@new", nw);
+                cmd.Parameters.AddWithValue("@old", o);
+                int n = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (n == 0) return (false, "발주처를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                _log("발주처 개명: " + o + " → " + nw + " (project.customer는 FK CASCADE로 자동 전파)");
+                return (true, "발주처 이름을 변경했습니다. 이 발주처의 과제 표기도 함께 바뀝니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062)
+            {
+                return (false, "그 이름의 발주처가 이미 있습니다.");
+            }
+            catch (MySqlException mex) { _log("발주처 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log("발주처 개명 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 발주처 소프트삭제(숨김)/복구. 하드삭제는 하지 않는다(FK RESTRICT라 참조 중이면 DELETE도 막힌다).
+        public async Task<(bool ok, string msg)> SetCustomerActiveAsync(string? name, bool active)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, "대상 발주처가 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(발주처 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand("UPDATE customer SET is_active=@a WHERE name=@n", conn);
+                cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
+                cmd.Parameters.AddWithValue("@n", n);
+                int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (cnt == 0) return (false, "발주처를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                _log("발주처 " + (active ? "복구" : "숨김") + ": " + n);
+                return (true, active ? "발주처를 다시 표시합니다." : "발주처를 숨겼습니다.");
+            }
+            catch (MySqlException mex) { _log("발주처 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log("발주처 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 이 발주처를 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다). 오프라인/실패면 ok=false.
+        public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCustomerAsync(string? name)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, 0, "대상 발주처가 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(발주처 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project WHERE customer=@c AND is_active=1", conn);
+                cmd.Parameters.AddWithValue("@c", n);
+                int count = (int)Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                return (true, count, "");
+            }
+            catch (Exception ex) { _log("발주처 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
         }
 
         private static string Str(DbDataReader rd, string col)

@@ -463,6 +463,23 @@ namespace TaskCalendarWidget
                         _ = SetProjectActiveAsync(GetStr(doc, "uid"), GetBool(doc, "active"));
                         break;
 
+                    // ----- 발주처(customer) 마스터 관리 — 이름만. 회신은 ReplyOnUi(reqId)로 {ok,msg,count?} -----
+                    case "addCustomer":
+                        _ = RunAddCustomerAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
+                        break;
+                    case "renameCustomer":
+                        _ = RunRenameCustomerAsync(GetStr(doc, "reqId"), GetStr(doc, "oldName"), GetStr(doc, "newName"));
+                        break;
+                    case "setCustomerActive":
+                        _ = RunSetCustomerActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "name"), GetBool(doc, "active"));
+                        break;
+                    case "customerRefCount":   // 이 발주처를 쓰는 활성 과제 수(숨김 확인 UX용)
+                        _ = RunCustomerRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
+                        break;
+                    case "loadCustomersFull":  // 관리 화면 전용 — 숨김 포함 전체 [{name,active}]
+                        _ = RunLoadCustomersFullAsync(GetStr(doc, "reqId"));
+                        break;
+
                     // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
                     case "saveAdminCred":   // 관리자 자격 등록/변경(초기 1회) — 결과(ok,msg)를 전달해 거짓 성공 표시 방지
                     {
@@ -584,12 +601,13 @@ namespace TaskCalendarWidget
                         break;
                     }
 
-                    case "exportProjectsXlsx":   // 사업부 과제목록 → Excel(.xlsx) 장표. 데이터는 웹(화면에 보이는 필터 결과)이 주고 호스트는 서식만 만든다.
+                    case "exportProjectsXlsx":   // 사업부 과제목록(+발주처) → Excel(.xlsx) 2시트. 데이터는 웹(화면 필터 결과 + 활성 발주처)이 주고 호스트는 서식만 만든다.
                     {
                         string reqId = GetStr(doc, "reqId"), subtitle = GetStr(doc, "subtitle"), fileName = GetStr(doc, "fileName");
-                        // doc는 이 메서드가 끝나면 dispose된다 → 백그라운드로 넘기기 전에 여기서 값으로 확정한다.
+                        // doc는 이 메서드가 끝나면 dispose된다 → 백그라운드로 넘기기 전에 여기서 값(행)으로 확정한다.
                         var xrows = ReadProjectExportRows(doc);
-                        RunProjectsXlsxExport(reqId, subtitle, fileName, xrows);
+                        var custRows = ReadCustomerExportRows(doc);
+                        RunProjectsXlsxExport(reqId, subtitle, fileName, xrows, custRows);
                         break;
                     }
 
@@ -976,6 +994,32 @@ namespace TaskCalendarWidget
         private static XlsxWriter.Col[] ProjectExportColDefs() =>
             ProjectExportCols.Select(c => new XlsxWriter.Col(c.Header, c.Width, c.Align, c.IsDate, c.Wrap)).ToArray();
 
+        // 시트2 '발주처' — 이름만 관리하므로 2열(No·발주처). 더미 View_Customer(No+이름)와 같은 모양.
+        private const string CustomerExportTitle = "발주처 목록";
+        private const string CustomerExportSheet = "발주처";
+        private static XlsxWriter.Col[] CustomerExportColDefs() => new[]
+        {
+            new XlsxWriter.Col("No", 6, XlsxWriter.Align.Center),
+            new XlsxWriter.Col("발주처", 30, XlsxWriter.Align.Left),
+        };
+
+        // 웹이 보낸 활성 발주처 이름 배열(customers) → 이름·번호 행. 번호는 호스트가 배열 순서로 매긴다(웹이 이름순 정렬해 보냄).
+        private static List<XlsxWriter.Row> ReadCustomerExportRows(JsonDocument doc)
+        {
+            var list = new List<XlsxWriter.Row>();
+            if (!doc.RootElement.TryGetProperty("customers", out var arr) || arr.ValueKind != JsonValueKind.Array) return list;
+            int no = 0;
+            foreach (var v in arr.EnumerateArray())
+            {
+                if (v.ValueKind != JsonValueKind.String) continue;
+                string name = (v.GetString() ?? "").Trim();
+                if (name.Length == 0) continue;
+                no++;
+                list.Add(new XlsxWriter.Row(no.ToString(System.Globalization.CultureInfo.InvariantCulture), name));
+            }
+            return list;
+        }
+
         // 웹이 보낸 rows(객체 배열)를 컬럼 순서의 문자열 배열로 확정. 없는 키/비문자열 값은 빈 문자열
         // (웹이 이미 정규화해 보내지만, 여기서도 "null" 문자열이 새지 않게 한 번 더 잠근다).
         private static List<XlsxWriter.Row> ReadProjectExportRows(JsonDocument doc)
@@ -1005,7 +1049,9 @@ namespace TaskCalendarWidget
         }
 
         // 저장 위치 선택(UI 스레드 모달) → 실제 쓰기는 백그라운드. 취소는 오류가 아니라 조용한 회신.
-        private void RunProjectsXlsxExport(string reqId, string subtitle, string fileName, List<XlsxWriter.Row> rows)
+        // 2시트: ① 과제목록(부제=웹이 준 필터 요약) ② 발주처(마스터 전체 — 과제 필터와 무관하므로 부제에 '전체'로 명시).
+        private void RunProjectsXlsxExport(string reqId, string subtitle, string fileName,
+            List<XlsxWriter.Row> rows, List<XlsxWriter.Row> customerRows)
         {
             string target;
             try
@@ -1027,20 +1073,34 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex) { ReplyOnUi(reqId, new { ok = false, error = ex.Message }); return; }
 
-            var cols = ProjectExportColDefs();
-            var xdoc = new XlsxWriter.Doc
-            {
-                SheetName = ProjectExportSheet,
-                Title = ProjectExportTitle,
-                Subtitle = subtitle ?? "",
-            };
+            var xdoc = new XlsxWriter.Doc();
             foreach (var kv in ProjectStatusAccents) xdoc.Accents[kv.Key] = kv.Value;
+
+            var sheets = new List<XlsxWriter.Sheet>
+            {
+                // 시트1 과제목록 — 여러 쪽으로 넘어갈 수 있어 헤더행 반복 인쇄 ON.
+                new XlsxWriter.Sheet
+                {
+                    TabName = ProjectExportSheet, Title = ProjectExportTitle, Subtitle = subtitle ?? "",
+                    Cols = ProjectExportColDefs(), Rows = rows, RepeatHeaderRow = true,
+                },
+            };
+            // 시트2 발주처 — 발주처가 하나라도 있으면 추가(빈 시트로 혼동 방지). 작아서 1페이지 → 헤더 반복 불필요.
+            if (customerRows != null && customerRows.Count > 0)
+            {
+                string custSubtitle = DateTime.Now.ToString("yyyy-MM-dd") + " 추출 · 전체 발주처 " + customerRows.Count + "개";
+                sheets.Add(new XlsxWriter.Sheet
+                {
+                    TabName = CustomerExportSheet, Title = CustomerExportTitle, Subtitle = custSubtitle,
+                    Cols = CustomerExportColDefs(), Rows = customerRows, RepeatHeaderRow = false,
+                });
+            }
             int count = rows.Count;
             _ = Task.Run(() =>
             {
                 try
                 {
-                    XlsxWriter.Write(target, xdoc, cols, rows);
+                    XlsxWriter.Write(target, xdoc, sheets);
                     ReplyOnUi(reqId, new { ok = true, path = target, dir = Path.GetDirectoryName(target) ?? "", count });
                 }
                 catch (IOException)
@@ -1313,6 +1373,37 @@ namespace TaskCalendarWidget
             var (ok, msg) = await _projectDb.SetProjectActiveAsync(uid, active);
             ProjectSaved(ok, msg);
             if (ok) await LoadProjectsToWebAsync();
+        }
+
+        // ----- 발주처(customer) 관리 — 회신은 ReplyOnUi(=UI 스레드 마샬)로만. 재조회(loadProjects/loadCustomers)는
+        //       웹이 성공 응답을 받고 스스로 트리거한다(웹=무엇을, 호스트=어떻게). -----
+        private async Task RunAddCustomerAsync(string reqId, string name)
+        {
+            var (ok, msg) = await _projectDb.AddCustomerAsync(name);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunRenameCustomerAsync(string reqId, string oldName, string newName)
+        {
+            var (ok, msg) = await _projectDb.RenameCustomerAsync(oldName, newName);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunSetCustomerActiveAsync(string reqId, string name, bool active)
+        {
+            var (ok, msg) = await _projectDb.SetCustomerActiveAsync(name, active);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunCustomerRefCountAsync(string reqId, string name)
+        {
+            var (ok, count, msg) = await _projectDb.CountActiveProjectsByCustomerAsync(name);
+            ReplyOnUi(reqId, new { ok, count, msg });
+        }
+        // list = JSON 배열 문자열(웹이 JSON.parse). __applyProjects와 같은 '문자열로 전달' 규약(이중 인코딩 회피).
+        private async Task RunLoadCustomersFullAsync(string reqId)
+        {
+            string? json = await _projectDb.LoadCustomersFullJsonAsync();
+            ReplyOnUi(reqId, json == null
+                ? (object)new { ok = false, list = "", msg = "발주처 목록을 불러오지 못했습니다." }
+                : new { ok = true, list = json, msg = "" });
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

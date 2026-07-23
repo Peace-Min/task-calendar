@@ -74,12 +74,22 @@ namespace TaskCalendarWidget
             public Accent(string fillArgb, string fontArgb) { FillArgb = fillArgb; FontArgb = fontArgb; }
         }
 
-        /// 문서 수준 설정. 팔레트·행 높이는 기본값이 v2 사양이며 호출측이 바꿀 수 있다.
-        public sealed class Doc
+        /// 한 시트의 내용 — 탭 이름 · 제목(1행) · 부제(2행) · 컬럼 · 행. 제목/부제는 시트마다 다르므로 여기 둔다.
+        /// RepeatHeaderRow = 인쇄 시 헤더행(4행) 반복(_xlnm.Print_Titles). 여러 쪽으로 넘어가는 큰 시트만 true.
+        public sealed class Sheet
         {
-            public string SheetName { get; set; } = "Sheet1";
+            public string TabName { get; set; } = "Sheet1";
             public string Title { get; set; } = "";
             public string Subtitle { get; set; } = "";
+            public IReadOnlyList<Col> Cols { get; set; } = Array.Empty<Col>();
+            public IReadOnlyList<Row> Rows { get; set; } = Array.Empty<Row>();
+            public bool RepeatHeaderRow { get; set; } = true;
+        }
+
+        /// 문서(워크북) 수준 공유 설정 — 전 시트가 공유한다(팔레트·글꼴·행 높이·자동높이·인쇄옵션·강조색).
+        /// 제목/부제/컬럼/행은 시트별이라 Sheet로 옮겼다. 스타일(styles.xml)도 전 시트 1개를 공유한다.
+        public sealed class Doc
+        {
             /// 셀 힌트 → 강조색. 힌트가 여기 없으면 기본(줄무늬) 스타일로 떨어진다.
             public Dictionary<string, Accent> Accents { get; } = new Dictionary<string, Accent>(StringComparer.Ordinal);
 
@@ -127,25 +137,35 @@ namespace TaskCalendarWidget
         private static readonly DateTime SerialEpoch = new DateTime(1899, 12, 30);
 
         /// <summary>
-        /// 시트 1개짜리 xlsx를 만든다(레이아웃은 위 상수 참조).
+        /// 시트 1개짜리 편의 오버로드 — 단일 시트 호출부의 가독성용. 내부적으로 다중 시트 경로로 위임한다.
+        /// </summary>
+        public static void Write(string path, Doc doc, string tabName, string title, string subtitle,
+            IReadOnlyList<Col> cols, IReadOnlyList<Row> rows) =>
+            Write(path, doc, new[] { new Sheet { TabName = tabName, Title = title, Subtitle = subtitle, Cols = cols, Rows = rows } });
+
+        /// <summary>
+        /// 여러 시트짜리 xlsx를 만든다. 스타일(styles.xml)은 전 시트가 공유한다.
         /// 임시 파일에 먼저 쓰고 성공했을 때만 목적지로 옮긴다(실패 시 깨진 파일이 남지 않게).
         /// 대상 파일이 잠겨 있으면 IOException이 그대로 올라온다(호출측이 한국어 안내로 번역).
         /// </summary>
-        public static void Write(string path, Doc doc, IReadOnlyList<Col> cols, IReadOnlyList<Row> rows)
+        public static void Write(string path, Doc doc, IReadOnlyList<Sheet> sheets)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("저장 경로가 비어 있습니다", nameof(path));
             if (doc == null) throw new ArgumentNullException(nameof(doc));
-            if (cols == null || cols.Count == 0) throw new ArgumentException("컬럼 정의가 비어 있습니다", nameof(cols));
-            rows ??= Array.Empty<Row>();
+            if (sheets == null || sheets.Count == 0) throw new ArgumentException("시트가 하나도 없습니다", nameof(sheets));
+            foreach (var s in sheets)
+                if (s == null || s.Cols == null || s.Cols.Count == 0) throw new ArgumentException("시트에 컬럼 정의가 없습니다", nameof(sheets));
 
             string dir = Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".";
             Directory.CreateDirectory(dir);
             // 임시 파일은 목적지와 같은 폴더에(=같은 볼륨) → File.Move가 원자적 교체에 가깝게 동작
             string tmp = Path.Combine(dir, "." + Path.GetFileName(path) + "." + Guid.NewGuid().ToString("N") + ".tmp");
 
-            // 스타일은 시트를 만들면서 채워지므로(조합 폭발 방지 캐시) 시트 XML을 먼저 만든다.
+            // 스타일은 시트를 만들면서 채워지므로(조합 폭발 방지 캐시) 전 시트를 '같은 StyleBook'으로 먼저 조립한다.
             var styles = new StyleBook(doc);
-            string sheet = SheetXml(doc, cols, rows, styles);
+            var sheetXmls = new string[sheets.Count];
+            for (int i = 0; i < sheets.Count; i++)
+                sheetXmls[i] = SheetXml(doc, sheets[i], styles);
 
             try
             {
@@ -153,12 +173,13 @@ namespace TaskCalendarWidget
                 using (var zip = new ZipArchive(fs, ZipArchiveMode.Create, leaveOpen: false))
                 {
                     // [Content_Types].xml은 반드시 첫 엔트리
-                    AddEntry(zip, "[Content_Types].xml", ContentTypesXml());
+                    AddEntry(zip, "[Content_Types].xml", ContentTypesXml(sheets.Count));
                     AddEntry(zip, "_rels/.rels", RootRelsXml());
-                    AddEntry(zip, "xl/workbook.xml", WorkbookXml(doc));
-                    AddEntry(zip, "xl/_rels/workbook.xml.rels", WorkbookRelsXml());
+                    AddEntry(zip, "xl/workbook.xml", WorkbookXml(sheets));
+                    AddEntry(zip, "xl/_rels/workbook.xml.rels", WorkbookRelsXml(sheets.Count));
                     AddEntry(zip, "xl/styles.xml", styles.ToXml());
-                    AddEntry(zip, "xl/worksheets/sheet1.xml", sheet);
+                    for (int i = 0; i < sheets.Count; i++)
+                        AddEntry(zip, "xl/worksheets/sheet" + (i + 1) + ".xml", sheetXmls[i]);
                 }
                 File.Move(tmp, path, true);   // 여기서 실패(파일 잠김 등)해도 목적지는 이전 상태 그대로
             }
@@ -282,15 +303,22 @@ namespace TaskCalendarWidget
 
         private const string Decl = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
 
-        private static string ContentTypesXml() =>
-            Decl +
-            "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
-            "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
-            "<Default Extension=\"xml\" ContentType=\"application/xml\"/>" +
-            "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
-            "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" +
-            "<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>" +
-            "</Types>";
+        // 워크시트 파트마다 Override 하나. (Default xml은 rels·기본 xml용, worksheet는 전용 콘텐츠타입 필요)
+        private static string ContentTypesXml(int sheetCount)
+        {
+            var sb = new StringBuilder(512);
+            sb.Append(Decl);
+            sb.Append("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
+            sb.Append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
+            sb.Append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>");
+            sb.Append("<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>");
+            for (int i = 1; i <= sheetCount; i++)
+                sb.Append("<Override PartName=\"/xl/worksheets/sheet").Append(i)
+                  .Append(".xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>");
+            sb.Append("<Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/>");
+            sb.Append("</Types>");
+            return sb.ToString();
+        }
 
         private static string RootRelsXml() =>
             Decl +
@@ -298,30 +326,55 @@ namespace TaskCalendarWidget
             "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
             "</Relationships>";
 
-        // definedNames는 sheets '뒤'에 와야 한다(CT_Workbook 순서). Print_Titles = 헤더행 반복 인쇄.
-        private static string WorkbookXml(Doc doc)
+        // rId 배치: 워크시트 = rId1..rIdN(workbook.xml의 <sheet r:id>와 정확히 일치), styles = rId(N+1).
+        // definedNames는 sheets '뒤'에 와야 한다(CT_Workbook 순서). Print_Titles = 헤더행 반복 인쇄(RepeatHeaderRow 시트만).
+        // localSheetId = <sheets>에서의 0-based 인덱스(시트 지역 이름).
+        private static string WorkbookXml(IReadOnlyList<Sheet> sheets)
         {
-            string sheetName = SafeSheetName(doc.SheetName);
-            string quoted = "'" + sheetName.Replace("'", "''") + "'";   // 공백·특수문자 대비해 항상 인용
-            return Decl +
-                "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" " +
-                "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">" +
-                "<sheets><sheet name=\"" + Esc(sheetName) + "\" sheetId=\"1\" r:id=\"rId1\"/></sheets>" +
-                "<definedNames><definedName name=\"_xlnm.Print_Titles\" localSheetId=\"0\">" +
-                Esc(quoted) + "!$" + HeaderRow + ":$" + HeaderRow +
-                "</definedName></definedNames>" +
-                "</workbook>";
+            var sb = new StringBuilder(512);
+            sb.Append(Decl);
+            sb.Append("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ");
+            sb.Append("xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
+            sb.Append("<sheets>");
+            for (int i = 0; i < sheets.Count; i++)
+                sb.Append("<sheet name=\"").Append(Esc(SafeSheetName(sheets[i].TabName)))
+                  .Append("\" sheetId=\"").Append(i + 1).Append("\" r:id=\"rId").Append(i + 1).Append("\"/>");
+            sb.Append("</sheets>");
+
+            var titles = new StringBuilder(128);
+            for (int i = 0; i < sheets.Count; i++)
+            {
+                if (!sheets[i].RepeatHeaderRow) continue;
+                string quoted = "'" + SafeSheetName(sheets[i].TabName).Replace("'", "''") + "'";   // 공백·특수문자 대비해 항상 인용
+                titles.Append("<definedName name=\"_xlnm.Print_Titles\" localSheetId=\"").Append(i).Append("\">")
+                      .Append(Esc(quoted)).Append("!$").Append(HeaderRow).Append(":$").Append(HeaderRow)
+                      .Append("</definedName>");
+            }
+            if (titles.Length > 0) sb.Append("<definedNames>").Append(titles).Append("</definedNames>");
+            sb.Append("</workbook>");
+            return sb.ToString();
         }
 
-        private static string WorkbookRelsXml() =>
-            Decl +
-            "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
-            "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
-            "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>" +
-            "</Relationships>";
-
-        private static string SheetXml(Doc doc, IReadOnlyList<Col> cols, IReadOnlyList<Row> rows, StyleBook st)
+        private static string WorkbookRelsXml(int sheetCount)
         {
+            var sb = new StringBuilder(512);
+            sb.Append(Decl);
+            sb.Append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+            for (int i = 1; i <= sheetCount; i++)
+                sb.Append("<Relationship Id=\"rId").Append(i)
+                  .Append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet")
+                  .Append(i).Append(".xml\"/>");
+            // styles는 워크시트 rId와 겹치지 않게 마지막 번호로.
+            sb.Append("<Relationship Id=\"rId").Append(sheetCount + 1)
+              .Append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/>");
+            sb.Append("</Relationships>");
+            return sb.ToString();
+        }
+
+        private static string SheetXml(Doc doc, Sheet sheet, StyleBook st)
+        {
+            IReadOnlyList<Col> cols = sheet.Cols;
+            IReadOnlyList<Row> rows = sheet.Rows ?? Array.Empty<Row>();
             int lastCol = cols.Count;
             string lastColRef = ColName(lastCol);
             int lastRow = HeaderRow + rows.Count;   // 데이터가 0건이면 헤더행이 마지막
@@ -376,12 +429,12 @@ namespace TaskCalendarWidget
 
             // 1행 제목 — 병합해도 앵커 셀은 반드시 기록한다(없으면 값이 사라진다)
             OpenRow(sb, TitleRow, doc.TitleRowHeight);
-            AppendTextCell(sb, "A" + TitleRow, doc.Title ?? "", sTitle);
+            AppendTextCell(sb, "A" + TitleRow, sheet.Title ?? "", sTitle);
             sb.Append("</row>");
 
             // 2행 부제 — '언제 / 전체 몇 건 중 몇 건 / 어떤 필터 / 숨김 제외'가 파일에 남는 자리
             OpenRow(sb, SubtitleRow, doc.SubtitleRowHeight);
-            AppendTextCell(sb, "A" + SubtitleRow, doc.Subtitle ?? "", sSub);
+            AppendTextCell(sb, "A" + SubtitleRow, sheet.Subtitle ?? "", sSub);
             sb.Append("</row>");
 
             // 3행 여백(셀 없음)

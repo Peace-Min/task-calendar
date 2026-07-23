@@ -556,6 +556,24 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-filters .check{flex:none;margin:0;white-space:nowrap}
 .off-toolrow{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2)}
 .off-toolrow .spacer{flex:1}
+/* 발주처 관리 — 편집폼 인라인 추가(select + ＋) */
+.off-cust-row{display:flex;gap:var(--sp-2);align-items:stretch}
+.off-cust-row select{flex:1;min-width:0}
+.off-cust-row #offEdCustAdd{flex:none;padding-left:10px;padding-right:10px;font-weight:700}
+/* 발주처 관리 모달 */
+.cust-add{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.cust-add input{flex:1;min-width:0}
+.cust-add .btn{flex:none}
+.cust-showhidden{margin:var(--sp-1) 0}
+.cust-msg{font-size:var(--fs-meta);min-height:1.2em;margin:var(--sp-1) 0}
+.cust-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:auto;max-height:44vh;min-height:100px}
+.cust-row{display:flex;align-items:center;gap:var(--sp-2);padding:6px 10px;border-bottom:1px solid var(--line)}
+.cust-row:last-child{border-bottom:none}
+.cust-row.hidden-cust{opacity:.55}
+.cust-row .cust-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cust-row .cust-nm .cust-badge{margin-left:6px;font-size:var(--fs-micro);color:var(--faint-text);border:1px solid var(--line);border-radius:var(--r-sm);padding:0 4px}
+.cust-row .cust-edit input{width:100%}
+.cust-empty{padding:var(--sp-3);text-align:center;color:var(--muted);font-size:var(--fs-body)}
 .off-count{font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
 .off-fcount{font-size:var(--fs-micro);color:var(--faint-text)}
 .off-split{display:flex;flex-direction:column;gap:var(--sp-3)}
@@ -1830,6 +1848,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button type="button" class="btn sm" id="offReset">초기화</button>
           <!-- 읽기 산출물이라 인증 없음(뷰어도 뽑는다). 위젯에서만 보이고, 결과 0건이면 비활성. -->
           <button type="button" class="btn sm" id="offExport" style="display:none">⬇ Excel 추출</button>
+          <!-- 발주처 마스터 관리(추가/이름변경/숨김) — 위젯에서만 노출, 조작은 관리자 인증 게이트 -->
+          <button type="button" class="btn sm" id="offCustMgr" style="display:none">＋ 발주처 관리</button>
           <!-- 추가는 관리자·온라인에서만 실제로 열린다(누르면 그 자리에서 인증) -->
           <button type="button" class="btn sm primary" id="offNew">＋ 새 공식 과제</button>
         </div>
@@ -1879,7 +1899,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <label for="offEdContract">계약명</label>
       <input type="text" id="offEdContract" maxlength="200" autocomplete="off" placeholder="예: 전쟁 여신 무기 개발 용역">
       <label for="offEdCustomer">발주처 <span class="off-ed-req" aria-hidden="true">*</span></label>
-      <select id="offEdCustomer"></select>
+      <!-- select + 인라인 추가(＋): 편집 중 새 발주처가 필요하면 여기서 바로 등록(이미 관리자 컨텍스트) -->
+      <div class="off-cust-row">
+        <select id="offEdCustomer"></select>
+        <button type="button" class="btn sm" id="offEdCustAdd" title="새 발주처 등록">＋</button>
+      </div>
       <div class="row2">
         <div>
           <label for="offEdSection">구분 <span class="off-ed-req" aria-hidden="true">*</span></label>
@@ -1901,6 +1925,27 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <span class="spacer"></span>
       <button class="btn" data-close>취소</button>
       <button class="btn primary" id="offEdSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 발주처 마스터 관리 — 이름만 관리(추가/이름변경/숨김). 조작은 관리자 인증 게이트. ===== -->
+<div class="overlay hidden" id="customerModal">
+  <div class="modal">
+    <div class="modal-head"><h2>발주처 관리</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="cust-add">
+        <input type="text" id="custNewName" maxlength="100" autocomplete="off" spellcheck="false" placeholder="새 발주처명">
+        <button type="button" class="btn primary" id="custAddBtn">＋ 추가</button>
+      </div>
+      <label class="check cust-showhidden"><input type="checkbox" id="custShowHidden"> 숨긴 발주처도 표시</label>
+      <div class="cust-msg" id="custMsg" role="status" aria-live="polite"></div>
+      <div class="cust-list" id="custList" role="list" aria-label="발주처 목록"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="git-note">발주처는 <b>이름만</b> 관리합니다. 이름을 바꾸면 그 발주처의 과제 표기도 함께 바뀝니다. 숨긴 발주처는 새 과제의 발주처 선택에서 빠지지만, 기존 과제 표기는 유지됩니다.</div>
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
     </div>
   </div>
 </div>
@@ -5386,6 +5431,8 @@ function openOfficialModal(){
   offResetFiltersSilently();
   const m = document.getElementById('offMsg'); if(m){ m.textContent = ''; m.style.color = ''; }
   renderOfficial();
+  // 발주처 마스터를 미리 싣는다(Excel 시트2·발주처 관리가 최신 목록을 쓰도록). 결과는 __applyCustomers.
+  if(HOST) hpost({ cmd: 'loadCustomers' });
   openModal('#officialModal');
 }
 // 렌더 없이 컨트롤 값만 기본으로 — openOfficialModal이 곧바로 renderOfficial을 부르므로 이중 렌더 방지.
@@ -5458,11 +5505,20 @@ function offExportSubtitle(f, total, shown, dateStr){
 function offSyncExportBtn(n){
   const b = document.getElementById('offExport'); if(!b) return;
   b.style.display = HOST ? '' : 'none';
+  // 발주처 관리 버튼도 위젯에서만 노출(조작 자체는 관리자 인증 게이트를 누를 때 통과) — 렌더마다 함께 동기화.
+  const cm = document.getElementById('offCustMgr'); if(cm) cm.style.display = HOST ? '' : 'none';
   if(__offExportBusy) return;
   const cnt = Number(n) || 0;
   b.disabled = !(cnt > 0);
   b.textContent = '⬇ Excel 추출';
   b.title = cnt > 0 ? `현재 목록 ${cnt}건을 Excel 파일로 저장` : '추출할 과제가 없습니다';
+}
+// 시트2(발주처) 데이터 — 활성 발주처 마스터를 이름순으로. 마스터가 아직 안 실렸으면(loadCustomers 전) 카탈로그에
+// 실제로 쓰인 발주처로 폴백해 빈 시트를 피한다. 번호(No)는 호스트가 이 순서 그대로 매긴다(웹=무엇을, 호스트=어떻게).
+function offCustomerExportList(){
+  let names = (dbCustomers || []).map(offTrim).filter(Boolean);
+  if(!names.length) names = dbCatalog.map(c => offTrim(c.customer)).filter(Boolean);
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'ko'));
 }
 async function runOfficialXlsxExport(){
   if(!HOST){ toast('Excel 추출은 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
@@ -5474,6 +5530,7 @@ async function runOfficialXlsxExport(){
   const today = ymd(new Date());
   const payload = {
     rows: offExportRows(list),
+    customers: offCustomerExportList(),   // 시트2(발주처 마스터) — 과제 필터와 무관한 전체 활성 발주처
     subtitle: offExportSubtitle(f, dbCatalog.length, list.length, today),
     fileName: '사업부_과제목록_' + today.replace(/-/g, ''),
   };
@@ -5682,6 +5739,164 @@ function offHideProject(id){
       projBeginRequest();   // 저장과 동일 세대·워치독 — 늦은 응답은 __projectSaved 세대 가드가 무시
       hpost({ cmd: 'setProjectActive', uid: offUidOf(c.id), active: false });   // 결과는 __projectSaved
     });
+}
+
+/* ---------- 발주처(customer) 마스터 관리 — 이름만(추가/이름변경/숨김). 카탈로그 책임 구역 ----------
+   ★ 조작은 전부 offEditGuard(위젯·온라인·관리자)를 통과한다(추출과 달리 '쓰기'라 인증 필요).
+   호스트 왕복은 hostRequest(reqId 상관). 성공 시:
+     · 발주처 드롭다운(dbCustomers)을 loadCustomers로 갱신
+     · 이름변경은 과제 표기(project.customer)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출
+     · 관리 목록(custList)은 loadCustomersFull로 다시 읽어 그린다
+   name이 자연키라 uid 없이 이름으로 참조한다. */
+let custShowHidden = false;   // 관리 목록에 숨김 발주처도 표시
+let custList = [];            // [{name, active}] — 관리 모달이 마지막으로 읽은 전체 목록
+let custBusy = false;         // 관리 왕복 중(중복 조작 방지)
+
+function custMsgSet(html, tone){
+  const m = document.getElementById('custMsg'); if(!m) return;
+  m.innerHTML = html || '';
+  m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
+}
+function openCustomerModal(){
+  if(!HOST){ toast('발주처 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
+  const inp = document.getElementById('custNewName'); if(inp) inp.value = '';
+  const sh = document.getElementById('custShowHidden'); if(sh) sh.checked = false;
+  custShowHidden = false;
+  custMsgSet('');
+  openModal('#customerModal');
+  reloadCustomerList();
+  setTimeout(() => { const e = document.getElementById('custNewName'); if(e){ try{ e.focus(); }catch(_){} } }, 30);
+}
+async function reloadCustomerList(){
+  const box = document.getElementById('custList'); if(!box) return;
+  box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
+  const res = await hostRequest('loadCustomersFull', {}, 20000);
+  if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">발주처 목록을 불러오지 못했습니다.</div>`; return; }
+  let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
+  custList = Array.isArray(arr)
+    ? arr.map(x => ({ name: String((x && x.name) || '').trim(), active: !(x && x.active === false) })).filter(x => x.name)
+    : [];
+  renderCustomerList();
+}
+function renderCustomerList(){
+  const box = document.getElementById('custList'); if(!box) return;
+  const rows = custList.filter(c => custShowHidden || c.active);
+  if(!rows.length){
+    box.innerHTML = `<div class="cust-empty">${custShowHidden ? '등록된 발주처가 없습니다.' : '활성 발주처가 없습니다.'}</div>`;
+    return;
+  }
+  box.innerHTML = rows.map(c => {
+    const nm = esc(c.name);
+    const badge = c.active ? '' : `<span class="cust-badge">숨김</span>`;
+    const act = c.active
+      ? `<button type="button" class="btn sm" data-custedit="${nm}">이름변경</button>`
+        + `<button type="button" class="btn sm danger" data-custhide="${nm}">숨김</button>`
+      : `<button type="button" class="btn sm" data-custshow="${nm}">복구</button>`;
+    return `<div class="cust-row${c.active ? '' : ' hidden-cust'}" role="listitem" data-name="${nm}">`
+      + `<span class="cust-nm">${nm}${badge}</span>${act}</div>`;
+  }).join('');
+}
+// 관리 조작 공통 왕복 — 성공 시 드롭다운·목록 갱신(이름변경은 과제 표기까지 → loadProjects).
+async function custSend(cmd, params, okToast, onOk){
+  if(custBusy) return;
+  custBusy = true; custMsgSet(ICON.spinner + ' 처리 중…', 'busy');
+  let res;
+  try{ res = await hostRequest(cmd, params, 20000); }
+  finally{ custBusy = false; }
+  if(res && res.ok){
+    custMsgSet('');
+    if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
+    toast(res.msg || okToast, 'success');
+    hpost({ cmd: 'loadCustomers' });                                  // 편집 폼 드롭다운 최신화(dbCustomers)
+    if(cmd === 'renameCustomer') hpost({ cmd: 'loadProjects' });      // 과제의 발주처 표기 갱신(FK CASCADE 반영)
+    reloadCustomerList();
+  }else{
+    custMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '처리하지 못했습니다.'), 'err');
+    toast((res && res.msg) || '처리하지 못했습니다', 'error');
+  }
+}
+function custDoAdd(){
+  const inp = document.getElementById('custNewName');
+  const name = inp ? String(inp.value || '').trim() : '';
+  if(!name){ custMsgSet(ICON.alert + ' 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  offEditGuard(() => custSend('addCustomer', { name }, '발주처를 추가했습니다', () => { if(inp) inp.value = ''; if(inp) inp.focus(); }),
+    '발주처를 추가하려면 관리자 비밀번호가 필요합니다.');
+}
+function custDoHide(name){
+  offEditGuard(async () => {
+    let n = 0;
+    const rc = await hostRequest('customerRefCount', { name }, 15000);   // 막지는 않고 경고만(참조 과제 수)
+    if(rc && rc.ok) n = Number(rc.count) || 0;
+    if(n > 0){
+      const r = await confirmBox('발주처 숨김',
+        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요?`, '숨김', '취소');
+      if(r !== 'ok') return;
+    }
+    custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다');
+  }, '발주처를 숨기려면 관리자 비밀번호가 필요합니다.');
+}
+function custDoShow(name){
+  offEditGuard(() => custSend('setCustomerActive', { name, active: true }, '발주처를 복구했습니다'),
+    '발주처를 복구하려면 관리자 비밀번호가 필요합니다.');
+}
+// 인라인 이름변경 — 해당 행을 입력+저장/취소로 바꾼다(관리자 인증 통과 후).
+function custBeginRename(name){
+  offEditGuard(() => {
+    const box = document.getElementById('custList'); if(!box) return;
+    const row = [...box.querySelectorAll('.cust-row')].find(r => r.dataset.name === name);
+    if(!row) return;
+    row.innerHTML = `<span class="cust-edit"><input type="text" maxlength="100" autocomplete="off" value="${esc(name)}"></span>`
+      + `<button type="button" class="btn sm primary" data-custsave="${esc(name)}">저장</button>`
+      + `<button type="button" class="btn sm" data-custcancel="1">취소</button>`;
+    const inp = row.querySelector('input');
+    if(inp){ inp.focus(); try{ inp.select(); }catch(_){}
+      inp.addEventListener('keydown', ev => {
+        if(ev.key === 'Enter'){ ev.preventDefault(); custCommitRename(name, row); }
+        else if(ev.key === 'Escape'){ ev.preventDefault(); renderCustomerList(); }
+      });
+    }
+  }, '발주처 이름을 변경하려면 관리자 비밀번호가 필요합니다.');
+}
+function custCommitRename(oldName, row){
+  const inp = row.querySelector('input');
+  const newName = inp ? String(inp.value || '').trim() : '';
+  if(!newName){ custMsgSet(ICON.alert + ' 새 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(newName === oldName){ renderCustomerList(); return; }   // 변경 없음 → 원복
+  custSend('renameCustomer', { oldName, newName }, '발주처 이름을 변경했습니다');   // 이미 인증된 컨텍스트
+}
+// 편집 폼 인라인 발주처 추가 — off-cust-row를 입력+등록/취소로 잠깐 바꾼다. 편집 폼은 이미 관리자 컨텍스트다.
+function offEdInlineAddCustomer(){
+  const row = document.querySelector('#officialEditModal .off-cust-row'); if(!row) return;
+  const sel = document.getElementById('offEdCustomer');
+  const prev = sel ? sel.value : '';
+  const restore = selectName => {
+    row.innerHTML = `<select id="offEdCustomer"></select><button type="button" class="btn sm" id="offEdCustAdd" title="새 발주처 등록">＋</button>`;
+    offEdFillCustomers(selectName != null ? selectName : prev);   // 새 값이 있으면 그걸 자동 선택
+  };
+  row.innerHTML = `<input type="text" id="offEdCustNew" maxlength="100" autocomplete="off" placeholder="새 발주처명" style="flex:1;min-width:0">`
+    + `<button type="button" class="btn sm primary" id="offEdCustNewOk">등록</button>`
+    + `<button type="button" class="btn sm" id="offEdCustNewCancel">취소</button>`;
+  const inp = document.getElementById('offEdCustNew'); if(inp) inp.focus();
+  const doAdd = async () => {
+    const name = inp ? String(inp.value || '').trim() : '';
+    if(!name){ offEdMsgSet(ICON.alert + ' 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+    const ok = document.getElementById('offEdCustNewOk'); if(ok) ok.disabled = true;
+    const res = await hostRequest('addCustomer', { name }, 20000);
+    if(res && res.ok){
+      dbCustomers = [...new Set([...dbCustomers, name])];   // 왕복 없이도 즉시 선택 가능하게 로컬 반영
+      hpost({ cmd: 'loadCustomers' });                      // 마스터 최신화(백그라운드)
+      restore(name); offEdMsgSet(''); toast(res.msg || '발주처를 추가했습니다', 'success');
+    }else{
+      if(ok) ok.disabled = false;
+      offEdMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '추가하지 못했습니다.'), 'err'); if(inp) inp.focus();
+    }
+  };
+  const okb = document.getElementById('offEdCustNewOk'); if(okb) okb.addEventListener('click', doAdd);
+  const cb = document.getElementById('offEdCustNewCancel'); if(cb) cb.addEventListener('click', () => { restore(); offEdMsgSet(''); });
+  if(inp) inp.addEventListener('keydown', ev => {
+    if(ev.key === 'Enter'){ ev.preventDefault(); doAdd(); }
+    else if(ev.key === 'Escape'){ ev.preventDefault(); restore(); offEdMsgSet(''); }
+  });
 }
 
 /* ---------- 기존 과제 재연결(P3.4) — 개인 과제 → 공식 과제 ----------
@@ -8831,6 +9046,26 @@ function bind(){
     }); }
   { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdApplySectionRule); }
   { const b = $('#offEdSave'); if(b) b.addEventListener('click', offEdSaveNow); }
+  // 편집 폼의 인라인 발주처 추가(＋) — 위임: 인라인 복원으로 버튼이 재생성돼도 계속 동작
+  { const ed = $('#officialEditModal'); if(ed) ed.addEventListener('click', ev => {
+      if(ev.target.closest && ev.target.closest('#offEdCustAdd')) offEdInlineAddCustomer();
+    }); }
+
+  /* 발주처(customer) 마스터 관리 — 관리 조작은 전부 offEditGuard(위젯·온라인·관리자)를 거친다 */
+  { const b = $('#offCustMgr'); if(b) b.addEventListener('click', () => {
+      offEditGuard(openCustomerModal, '발주처를 관리하려면 관리자 비밀번호가 필요합니다.');
+    }); }
+  { const b = $('#custAddBtn'); if(b) b.addEventListener('click', custDoAdd); }
+  { const inp = $('#custNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); custDoAdd(); } }); }
+  { const sh = $('#custShowHidden'); if(sh) sh.addEventListener('change', () => { custShowHidden = sh.checked; renderCustomerList(); }); }
+  { const box = $('#custList'); if(box) box.addEventListener('click', ev => {
+      const t = ev.target;
+      const eb = t.closest('[data-custedit]'); if(eb){ custBeginRename(eb.dataset.custedit); return; }
+      const hb = t.closest('[data-custhide]'); if(hb){ custDoHide(hb.dataset.custhide); return; }
+      const sb = t.closest('[data-custshow]'); if(sb){ custDoShow(sb.dataset.custshow); return; }
+      const vb = t.closest('[data-custsave]'); if(vb){ const row = vb.closest('.cust-row'); if(row) custCommitRename(vb.dataset.custsave, row); return; }
+      const cb = t.closest('[data-custcancel]'); if(cb){ renderCustomerList(); return; }
+    }); }
 
   /* 기존 과제 재연결(P3.4) — 로컬 전용(DB 쓰기 없음)이라 오프라인에서도 연다 */
   { const b = $('#btnRelinkOpen'); if(b) b.addEventListener('click', openRelinkModal); }

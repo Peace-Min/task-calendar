@@ -15,13 +15,15 @@ function constLine(name) {
   return m[0];
 }
 
-// 추출 모듈을 단독 스코프로 되살린다. HOST/document/__offExportBusy는 주입.
+// 추출 모듈을 단독 스코프로 되살린다. HOST/document/__offExportBusy/dbCatalog/dbCustomers는 주입.
 function makeExportCtx(env) {
   const e = env || {};
   const body =
     'const HOST = __env.HOST;\n' +
     'const document = __env.document;\n' +
     'let __offExportBusy = !!__env.busy;\n' +
+    'let dbCatalog = __env.dbCatalog || [];\n' +
+    'let dbCustomers = __env.dbCustomers || [];\n' +
     constLine('offTrim') + '\n' +
     constLine('offNorm') + '\n' +
     constLine('OFF_SECTIONS') + '\n' +
@@ -35,8 +37,9 @@ function makeExportCtx(env) {
     extractFunction(src, 'offExportFilterSummary') + '\n' +
     extractFunction(src, 'offExportSubtitle') + '\n' +
     extractFunction(src, 'offSyncExportBtn') + '\n' +
+    extractFunction(src, 'offCustomerExportList') + '\n' +
     'return { offExportRow, offExportRows, offExportFilterSummary, offExportSubtitle, offSyncExportBtn, ' +
-    'OFF_NO_STATUS, OFF_EXPORT_SCOPE_NOTE };';
+    'offCustomerExportList, OFF_NO_STATUS, OFF_EXPORT_SCOPE_NOTE };';
   return new Function('__env', body)(e);
 }
 
@@ -345,12 +348,15 @@ test('XlsxWriter(v2): 인쇄 설정 — 가로·너비 1페이지 맞춤·fitToP
   assert.ok(/OddFooter \{ get; set; \} = "&C&P \/ &N"/.test(cs), '기본 바닥글이 페이지 번호가 아니다');
 });
 
-test('XlsxWriter(v2): 헤더행 반복 인쇄(_xlnm.Print_Titles)가 workbook에 정의돼 있다', () => {
+test('XlsxWriter(v2): 헤더행 반복 인쇄(_xlnm.Print_Titles) — RepeatHeaderRow 시트만, localSheetId=0-based 인덱스', () => {
   const cs = xlsxWriterSource();
   assert.ok(/_xlnm\.Print_Titles/.test(cs), 'Print_Titles definedName이 없다');
-  assert.ok(/localSheetId=\\"0\\"/.test(cs), 'Print_Titles에 localSheetId가 없다(시트 지역 이름이어야 한다)');
+  // localSheetId는 <sheets> 0-based 인덱스(루프 변수 i)에서 나와야 한다 — 시트 지역 이름.
+  assert.ok(/localSheetId=\\""\)\.Append\(i\)/.test(cs), 'localSheetId가 시트 인덱스(i)에서 나오지 않는다');
+  // RepeatHeaderRow가 false인 시트는 건너뛴다(작은 발주처 시트엔 불필요).
+  assert.ok(/if \(!sheets\[i\]\.RepeatHeaderRow\) continue;/.test(cs), 'RepeatHeaderRow 게이팅이 없다');
   // 반복 행 번호는 레이아웃 상수(HeaderRow)에서 나와야 한다 — 숫자를 박으면 레이아웃 변경 시 어긋난다.
-  assert.ok(/\$" \+ HeaderRow \+ ":\$" \+ HeaderRow/.test(cs), '반복 인쇄 행이 HeaderRow 상수에서 나오지 않는다');
+  assert.ok(/Append\(HeaderRow\)\.Append\(":\$"\)\.Append\(HeaderRow\)/.test(cs), '반복 인쇄 행이 HeaderRow 상수에서 나오지 않는다');
   // definedNames는 sheets 뒤(CT_Workbook 순서)
   assert.ok(cs.indexOf('<sheets>') < cs.indexOf('<definedNames>'), 'definedNames가 sheets보다 앞에 있다');
 });
@@ -566,19 +572,212 @@ test('XlsxWriter(v2): 행 높이 계산이 데이터행에 실제로 연결돼 �
   assert.ok(/OpenRow\(sb, HeaderRow, doc\.HeaderRowHeight\)/.test(cs), '헤더행이 고정 높이가 아니다');
 });
 
-test('XlsxWriter: 문자열 셀은 sharedStrings 없이 inlineStr로 쓴다(파트 개수 = 6)', () => {
+test('XlsxWriter: 문자열 셀은 sharedStrings 없이 inlineStr로 쓴다 + 고정 파트 5 + 시트 N개 루프', () => {
   const cs = xlsxWriterSource();
   assert.ok(cs.includes('t=\\"inlineStr\\"'), 'inlineStr 셀 기록이 없음');
   assert.ok(!cs.includes('sharedStrings.xml'), 'sharedStrings 파트가 늘었다 — Content_Types/rels도 함께 손봐야 한다');
-  const entries = [...cs.matchAll(/AddEntry\(zip, "([^"]+)"/g)].map(m => m[1]);
+  // 다중 시트: 고정 5개(Content_Types·.rels·workbook·workbook.rels·styles) + 워크시트는 루프로 sheet{i}.xml.
+  // 동적(워크시트) 엔트리는 확장자 없이 잘리므로 완결된 파트명(.xml/.rels)만 추린다.
+  const entries = [...cs.matchAll(/AddEntry\(zip, "([^"]+)"/g)].map(m => m[1]).filter(e => /\.(xml|rels)$/.test(e));
   assert.deepStrictEqual(entries, [
     '[Content_Types].xml', '_rels/.rels', 'xl/workbook.xml',
-    'xl/_rels/workbook.xml.rels', 'xl/styles.xml', 'xl/worksheets/sheet1.xml',
+    'xl/_rels/workbook.xml.rels', 'xl/styles.xml',
   ]);
+  assert.ok(/AddEntry\(zip, "xl\/worksheets\/sheet" \+ \(i \+ 1\) \+ "\.xml"/.test(cs),
+    '워크시트 파트를 시트 수만큼 루프로 쓰지 않는다');
+});
+
+// ── 다중 시트(2시트) 구조 불변식 ────────────────────────────────────────
+// [Content_Types] Override·workbook <sheets>·workbook.rels(styles+worksheet 충돌 없음)가 시트 수에 맞게 일반화됐는지.
+test('XlsxWriter(다중): Content_Types는 워크시트 파트마다 Override(루프)', () => {
+  const cs = xlsxWriterSource();
+  assert.ok(/for \(int i = 1; i <= sheetCount; i\+\+\)/.test(cs), 'Content_Types가 시트 수 루프로 Override를 쓰지 않는다');
+  assert.ok(/\/xl\/worksheets\/sheet"\)\.Append\(i\)/.test(cs), '워크시트 Override PartName이 i에서 나오지 않는다');
+});
+
+test('XlsxWriter(다중): workbook <sheets> — sheetId 1..N, r:id rId1..rIdN(0-based 인덱스와 정합)', () => {
+  const cs = xlsxWriterSource();
+  // <sheet name sheetId=(i+1) r:id=rId(i+1)>
+  assert.ok(/sheetId=\\""\)\.Append\(i \+ 1\)\.Append\("\\" r:id=\\"rId"\)\.Append\(i \+ 1\)/.test(cs),
+    'sheetId/rId가 시트 인덱스와 정합하지 않는다');
+});
+
+test('XlsxWriter(다중): workbook.rels — 워크시트 rId1..rIdN + styles=rId(N+1)로 충돌 없이 배치', () => {
+  const cs = xlsxWriterSource();
+  // 워크시트 관계: rId(i) for i=1..N
+  assert.ok(/for \(int i = 1; i <= sheetCount; i\+\+\)[\s\S]{0,220}Id=\\"rId"\)\.Append\(i\)[\s\S]{0,220}relationships\/worksheet/.test(cs),
+    '워크시트 관계 rId가 1..N 루프가 아니다');
+  // styles는 마지막 번호(N+1) — 워크시트 rId와 겹치지 않게.
+  assert.ok(/Id=\\"rId"\)\.Append\(sheetCount \+ 1\)[\s\S]{0,220}relationships\/styles/.test(cs),
+    'styles 관계가 rId(N+1)이 아니다(워크시트 rId와 충돌 위험)');
+});
+
+test('XlsxWriter(다중): Sheet마다 제목/부제를 쓴다(Doc이 아니라 sheet에서)', () => {
+  const cs = xlsxWriterSource();
+  assert.ok(/AppendTextCell\(sb, "A" \+ TitleRow, sheet\.Title/.test(cs), '제목이 sheet.Title에서 나오지 않는다');
+  assert.ok(/AppendTextCell\(sb, "A" \+ SubtitleRow, sheet\.Subtitle/.test(cs), '부제가 sheet.Subtitle에서 나오지 않는다');
+  // 시트별 필드는 Sheet로 옮겼다 — Doc의 옛 SheetName은 사라지고 Sheet엔 TabName이 있어야 한다.
+  assert.ok(!/public string SheetName/.test(cs), 'Doc에 옛 SheetName이 남아 있다(Sheet.TabName으로 옮겨야 한다)');
+  assert.ok(/public sealed class Sheet/.test(cs) && /public string TabName/.test(cs), 'Sheet 클래스/TabName이 없다');
 });
 
 test('XlsxWriter: 임시 파일에 쓰고 성공 시에만 목적지로 이동(깨진 파일 잔존 금지)', () => {
   const cs = xlsxWriterSource();
   assert.ok(/File\.Move\(tmp, path, true\)/.test(cs), '임시 파일 → 목적지 이동이 없음');
   assert.ok(/finally[\s\S]{0,200}File\.Delete\(tmp\)/.test(cs), '실패 시 임시 파일 정리(finally)가 없음');
+});
+
+// ── 시트2(발주처) 데이터 매핑 — 웹이 무엇을(활성 마스터·이름순), 호스트가 어떻게(번호) ──────────
+test('발주처 시트: 활성 발주처를 이름순으로 뽑는다(마스터 우선)', () => {
+  const ctx = makeExportCtx({
+    HOST: true, document: { getElementById: () => null },
+    dbCustomers: ['LIG넥스원', '방위사업청', '국방과학연구소'],
+    dbCatalog: [{ customer: '한화시스템' }],   // 마스터가 있으면 카탈로그는 무시
+  });
+  assert.deepStrictEqual(ctx.offCustomerExportList(), ['국방과학연구소', '방위사업청', 'LIG넥스원']);
+});
+
+test('발주처 시트: 마스터가 비면 카탈로그에서 실제 쓰인 발주처로 폴백(빈 시트 방지)', () => {
+  const ctx = makeExportCtx({
+    HOST: true, document: { getElementById: () => null },
+    dbCustomers: [],
+    dbCatalog: [{ customer: '나사' }, { customer: '가사' }, { customer: '나사' }, { customer: '' }],
+  });
+  assert.deepStrictEqual(ctx.offCustomerExportList(), ['가사', '나사']);   // 중복 제거 + 이름순
+});
+
+test('발주처 시트: 중복·공백은 정리하고 이름순 정렬', () => {
+  const ctx = makeExportCtx({
+    HOST: true, document: { getElementById: () => null },
+    dbCustomers: [' 방위사업청 ', '방위사업청', '', '  ', 'LIG넥스원'],
+  });
+  assert.deepStrictEqual(ctx.offCustomerExportList(), ['방위사업청', 'LIG넥스원']);
+});
+
+// 시트2 호스트 컬럼 계약(드리프트 가드) — 2열(No·발주처), 웹은 customers 문자열 배열을 보낸다.
+test('발주처 시트 계약: 호스트 컬럼은 No·발주처 2열, 웹은 customers 배열을 payload로 보낸다', () => {
+  const cs = hostSource();
+  const start = cs.indexOf('CustomerExportColDefs()');
+  assert.ok(start >= 0, 'CustomerExportColDefs를 찾지 못함');
+  const block = cs.slice(start, cs.indexOf('};', start) > 0 ? cs.indexOf('};', start) : start + 400);
+  const headers = [...block.matchAll(/new XlsxWriter\.Col\("([^"]*)"/g)].map(m => m[1]);
+  assert.deepStrictEqual(headers, ['No', '발주처']);
+  // 웹 payload에 customers가 실려야 호스트가 시트2를 만든다.
+  assert.ok(/customers: offCustomerExportList\(\)/.test(src), '추출 payload에 customers가 없다(시트2가 비게 된다)');
+  // 호스트는 customers 배열을 읽어 연번을 매긴다(웹이 번호를 만들지 않는다).
+  assert.ok(/ReadCustomerExportRows/.test(cs), '호스트에 발주처 행 리더가 없다');
+  assert.ok(/TryGetProperty\("customers", out var arr\)/.test(cs), '호스트가 customers 키를 읽지 않는다');
+});
+
+test('발주처 시트: 발주처가 0개면 시트2를 추가하지 않는다(빈 시트 방지)', () => {
+  const cs = hostSource();
+  assert.ok(/if \(customerRows != null && customerRows\.Count > 0\)/.test(cs),
+    '발주처 0개일 때 시트2를 건너뛰는 가드가 없다');
+});
+
+test('발주처 시트: 시트2는 헤더 반복 인쇄 OFF(작아서 1페이지), 시트1은 ON', () => {
+  const cs = hostSource();
+  // 시트1(과제목록) RepeatHeaderRow=true
+  assert.ok(/ProjectExportSheet[\s\S]{0,160}RepeatHeaderRow = true/.test(cs), '시트1 헤더 반복이 ON이 아니다');
+  // 시트2(발주처) RepeatHeaderRow=false
+  assert.ok(/CustomerExportSheet[\s\S]{0,160}RepeatHeaderRow = false/.test(cs), '시트2 헤더 반복이 OFF가 아니다');
+});
+
+// ── 발주처 CRUD 계약(ProjectDb ↔ 브리지 ↔ 웹) ────────────────────────────
+function projectDbSource() {
+  return readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+}
+
+test('발주처 CRUD: ProjectDb에 add/rename/setActive/refCount 4종 + 전체조회가 있다', () => {
+  const db = projectDbSource();
+  for (const m of ['AddCustomerAsync', 'RenameCustomerAsync', 'SetCustomerActiveAsync',
+                   'CountActiveProjectsByCustomerAsync', 'LoadCustomersFullJsonAsync']) {
+    assert.ok(new RegExp('public async Task[^\\n]*' + m).test(db), `${m}가 없다`);
+  }
+});
+
+test('발주처 CRUD: add — 빈 이름 거부 · 1062는 활성/숨김 구분 안내', () => {
+  const db = projectDbSource();
+  const b = db.slice(db.indexOf('AddCustomerAsync'), db.indexOf('RenameCustomerAsync'));
+  assert.ok(/발주처명을 입력하세요/.test(b), '빈 이름 거부 문구가 없다');
+  assert.ok(/mex\.Number == 1062/.test(b), '중복(1062) 처리가 없다');
+  assert.ok(/숨김 처리된 동일 발주처가 있습니다\(복구 필요\)/.test(b), '숨김 중복 안내가 없다');
+  assert.ok(/이미 등록된 발주처입니다/.test(b), '활성 중복 안내가 없다');
+  assert.ok(/INSERT INTO customer \(name\) VALUES \(@n\)/.test(b), '파라미터 바인딩 INSERT가 아니다');
+});
+
+test('발주처 CRUD: rename — 빈값 거부·no-op 성공·1062 안내·0행 실패, FK CASCADE 의존', () => {
+  const db = projectDbSource();
+  const b = db.slice(db.indexOf('RenameCustomerAsync'), db.indexOf('SetCustomerActiveAsync'));
+  assert.ok(/새 발주처명을 입력하세요/.test(b), '빈 newName 거부가 없다');
+  assert.ok(/string\.Equals\(o, nw, StringComparison\.Ordinal\)\) return \(true/.test(b), 'oldName==newName no-op 성공이 없다');
+  assert.ok(/그 이름의 발주처가 이미 있습니다/.test(b), '1062 안내가 없다');
+  assert.ok(/발주처를 찾을 수 없습니다/.test(b), '0행(대상 없음) 처리가 없다');
+  assert.ok(/UPDATE customer SET name=@new WHERE name=@old/.test(b), '개명 UPDATE가 파라미터 바인딩이 아니다');
+});
+
+test('발주처 CRUD: setActive는 UPDATE is_active(하드삭제 없음)', () => {
+  const db = projectDbSource();
+  const b = db.slice(db.indexOf('SetCustomerActiveAsync'), db.indexOf('CountActiveProjectsByCustomerAsync'));
+  assert.ok(/UPDATE customer SET is_active=@a WHERE name=@n/.test(b), 'is_active 소프트삭제 UPDATE가 없다');
+  assert.ok(!/DELETE FROM customer/.test(db), '앱이 발주처를 하드삭제하면 안 된다(방침 위반)');
+});
+
+test('발주처 CRUD: refCount는 활성 과제만 센다', () => {
+  const db = projectDbSource();
+  // CountActive… 선언부터 그 다음 멤버(private static string Str)까지로 자른다
+  //   (LoadCustomersFullJsonAsync는 이 메서드보다 위에 있어 경계로 못 쓴다.)
+  const b = db.slice(db.indexOf('CountActiveProjectsByCustomerAsync'), db.indexOf('private static string Str'));
+  assert.ok(/SELECT COUNT\(\*\) FROM project WHERE customer=@c AND is_active=1/.test(b), '활성 과제 카운트 쿼리가 다르다');
+});
+
+// 브리지 계약 — 4개 cmd + 회신은 ReplyOnUi(UI 스레드 마샬)로만.
+test('발주처 브리지: addCustomer/renameCustomer/setCustomerActive/customerRefCount cmd + ReplyOnUi 회신', () => {
+  const cs = hostSource();
+  for (const c of ['addCustomer', 'renameCustomer', 'setCustomerActive', 'customerRefCount', 'loadCustomersFull']) {
+    assert.ok(new RegExp('case "' + c + '":').test(cs), `case "${c}"가 없다`);
+  }
+  // 회신은 전부 ReplyOnUi(백그라운드에서 WebView2 직접 접근 금지) — Run*Async가 ReplyOnUi를 쓴다.
+  for (const m of ['RunAddCustomerAsync', 'RunRenameCustomerAsync', 'RunSetCustomerActiveAsync',
+                   'RunCustomerRefCountAsync', 'RunLoadCustomersFullAsync']) {
+    const b = cs.slice(cs.indexOf('private async Task ' + m), cs.indexOf('private async Task ' + m) + 400);
+    assert.ok(/ReplyOnUi\(reqId,/.test(b), `${m}가 ReplyOnUi로 회신하지 않는다`);
+    assert.ok(!/GitReply\(reqId/.test(b), `${m}가 GitReply를 직접 부른다(UI 스레드 마샬 우회)`);
+  }
+});
+
+// 웹 관리 UI — 조작은 offEditGuard, 이름변경 성공 시 loadProjects·loadCustomers 재호출, 인라인 추가 후 자동 선택.
+test('발주처 관리 UI: 조작은 offEditGuard 게이트를 통과한다(쓰기라 인증 필요)', () => {
+  for (const fn of ['custDoAdd', 'custDoHide', 'custDoShow', 'custBeginRename']) {
+    const b = extractFunction(src, fn);
+    assert.ok(/offEditGuard\(/.test(b), `${fn}가 offEditGuard를 거치지 않는다`);
+  }
+});
+
+test('발주처 관리 UI: 성공 시 loadCustomers 재호출, 이름변경만 loadProjects까지', () => {
+  const b = extractFunction(src, 'custSend');
+  assert.ok(/hpost\(\{ cmd: 'loadCustomers' \}\)/.test(b), '성공 후 발주처 드롭다운 갱신(loadCustomers)이 없다');
+  assert.ok(/cmd === 'renameCustomer'[\s\S]{0,80}loadProjects/.test(b), '이름변경 후 과제 표기 갱신(loadProjects)이 없다');
+  assert.ok(/reloadCustomerList\(\)/.test(b), '관리 목록 재조회가 없다');
+});
+
+test('발주처 관리 UI: 숨김은 참조 카운트로 경고 후 진행(막지 않음)', () => {
+  const b = extractFunction(src, 'custDoHide');
+  assert.ok(/customerRefCount/.test(b), '참조 카운트 조회가 없다');
+  assert.ok(/과제 \$\{n\}건이 있습니다/.test(b), '참조 경고 문구가 없다');
+  assert.ok(/setCustomerActive/.test(b) && /active: false/.test(b), '숨김 처리 전송이 없다');
+});
+
+test('발주처 관리 UI: 편집폼 인라인 추가는 성공 시 드롭다운 갱신 후 그 값 자동 선택', () => {
+  const b = extractFunction(src, 'offEdInlineAddCustomer');
+  assert.ok(/hostRequest\('addCustomer'/.test(b), 'addCustomer 왕복이 없다');
+  assert.ok(/dbCustomers = \[\.\.\.new Set\(\[\.\.\.dbCustomers, name\]\)\]/.test(b), '새 발주처를 로컬 마스터에 즉시 반영하지 않는다');
+  assert.ok(/restore\(name\)/.test(b), '성공 시 새 값으로 드롭다운 복원(자동 선택)이 없다');
+  assert.ok(/offEdFillCustomers\(selectName/.test(b), '복원이 offEdFillCustomers로 선택값을 세팅하지 않는다');
+});
+
+test('발주처 관리 UI: 관리 버튼은 위젯에서만 노출(offSyncExportBtn이 함께 동기화)', () => {
+  const b = extractFunction(src, 'offSyncExportBtn');
+  assert.ok(/getElementById\('offCustMgr'\)/.test(b), '발주처 관리 버튼 표시 동기화가 없다');
+  assert.ok(/cm\.style\.display = HOST \? '' : 'none'/.test(b), '관리 버튼이 위젯에서만 노출되지 않는다');
 });
