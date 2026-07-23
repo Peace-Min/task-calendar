@@ -21,13 +21,15 @@ namespace TaskCalendarWidget
         // ================================================================================
         // ★ 배포 구성 — 배포 전 여기서 DB 연결정보를 설정하고 빌드한다 (서버 이관 시 이 값만 변경)
         // ================================================================================
-        private const string DefHost     = "localhost";    // DB 서버 주소 (폐쇄망 서버 IP로 교체)
-        private const int    DefPort     = 3306;           // MySQL 포트
-        private const string DefDb       = "taskmgr";      // 데이터베이스명
-        private const string DefUser     = "root";         // DB 계정
-        private const string DefPassword = "taskmgr123";   // DB 비밀번호 (로컬 개발 디폴트 — 배포 전 실서버 값으로 교체)
-        private const string DefAdminId  = "admin";        // 관리자 초기 ID (설정창에서 변경 가능)
-        private const string DefAdminPw  = "1234";         // 관리자 초기 비밀번호 (설정창에서 변경 가능)
+        private const string DefHost     = "localhost";       // DB 서버 주소 (폐쇄망 서버 IP로 교체)
+        private const int    DefPort     = 3306;              // MySQL 포트
+        private const string DefDb       = "taskmgr";         // 데이터베이스명
+        // ★ 앱 계정 = 최소권한(두 테이블 SELECT/INSERT/UPDATE만). db/deploy/create-app-user.sql 로 생성.
+        //   접속정보는 전 사용자에게 배포되므로 root 금지 — 노출돼도 피해가 '앱이 허용하는 것'까지로 제한된다.
+        private const string DefUser     = "taskmgr_app";     // DB 계정 (최소권한)
+        private const string DefPassword = "taskmgr_app_dev"; // DB 비밀번호 (로컬 개발 디폴트 — 배포 전 실서버 값으로 교체)
+        private const string DefAdminId  = "admin";           // 관리자 초기 ID (설정창에서 변경 가능)
+        private const string DefAdminPw  = "1234";            // ★ 관리자 초기 비밀번호 — 실사용자 배포 전 반드시 교체(1234 금지)
         // ================================================================================
 
         private readonly string _dataDir;
