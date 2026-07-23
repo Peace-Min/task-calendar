@@ -43,9 +43,8 @@ namespace TaskCalendarWidget
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "TaskCalendarWidget";
 
-        // 부트스트랩 배포 전 관리자가 여기에 공유폴더 URL을 박아두면 최초 실행부터 업데이트가 켜진다.
+        // 업데이트 소스 초기 디폴트는 배포 구성(DeployConfig.UpdateSourceUrl) 한 곳에서 온다.
         // 빈 값이면 기능 휴면 — 이후 설정 모달의 '업데이트 소스 URL'로 언제든 설정/변경(재빌드 불필요).
-        private const string DefaultUpdateSourceUrl = "";   // 저장소엔 IP를 박지 않음(비움). 배포자는 exe 옆 update-source.txt 또는 설정 UI로 소스 지정.
 
         public MainWindow()
         {
@@ -89,8 +88,8 @@ namespace TaskCalendarWidget
                 }
             }
             catch (Exception ex) { Debug.WriteLine("설정 로드 오류: " + ex); }
-            // 업데이트 소스가 비어 있으면 컴파일타임 기본값으로 시드(부트스트랩 빌드용). 여전히 비면 기능 휴면.
-            if (string.IsNullOrEmpty(_settings.UpdateSourceUrl)) _settings.UpdateSourceUrl = DefaultUpdateSourceUrl;
+            // 업데이트 소스가 비어 있으면 배포 구성 기본값으로 시드(부트스트랩 빌드용). 여전히 비면 기능 휴면.
+            if (string.IsNullOrEmpty(_settings.UpdateSourceUrl)) _settings.UpdateSourceUrl = DeployConfig.UpdateSourceUrl;
         }
 
         // 현재 창의 실제 물리 좌표(GetWindowRect)를 DIP로 환산해 저장 → 고정/플로팅 모두 정확

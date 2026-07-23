@@ -14,24 +14,10 @@ namespace TaskCalendarWidget
     // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
     // 관리자 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 조용히 실패해
     // 웹이 로컬 캐시로 폴백하고, 쓰기는 '온라인에서만 가능'을 명시적으로 알린다(무음 유실 금지).
-    // DB 연결정보는 '배포 구성'(아래 상수) — 배포자가 배포 전 코드에서 설정하고 빌드한다(일반 사용자에겐 비노출).
-    // 관리자 자격만 db-config.json(평문)에 저장(변경 시) — 없으면 베이크 디폴트 사용. 보안 강화는 P6.5(app_user 전환)에서.
+    // DB 연결정보·관리자 초기 자격은 배포 구성(DeployConfig.cs 한 곳)에서 온다 — 배포 전 그 파일만 고쳐 빌드.
+    // 관리자 자격만 db-config.json(평문)에 저장(변경 시) — 없으면 DeployConfig 디폴트 사용. 보안 강화는 P6.5(app_user 전환)에서.
     internal sealed class ProjectDb
     {
-        // ================================================================================
-        // ★ 배포 구성 — 배포 전 여기서 DB 연결정보를 설정하고 빌드한다 (서버 이관 시 이 값만 변경)
-        // ================================================================================
-        private const string DefHost     = "localhost";       // DB 서버 주소 (폐쇄망 서버 IP로 교체)
-        private const int    DefPort     = 3306;              // MySQL 포트
-        private const string DefDb       = "taskmgr";         // 데이터베이스명
-        // ★ 앱 계정 = 최소권한(두 테이블 SELECT/INSERT/UPDATE만). db/deploy/create-app-user.sql 로 생성.
-        //   접속정보는 전 사용자에게 배포되므로 root 금지 — 노출돼도 피해가 '앱이 허용하는 것'까지로 제한된다.
-        private const string DefUser     = "taskmgr_app";     // DB 계정 (최소권한)
-        private const string DefPassword = "taskmgr_app_dev"; // DB 비밀번호 (로컬 개발 디폴트 — 배포 전 실서버 값으로 교체)
-        private const string DefAdminId  = "admin";           // 관리자 초기 ID (설정창에서 변경 가능)
-        private const string DefAdminPw  = "1234";            // ★ 관리자 초기 비밀번호 — 실사용자 배포 전 반드시 교체(1234 금지)
-        // ================================================================================
-
         private readonly string _dataDir;
         private readonly Action<string> _log;
 
@@ -47,7 +33,7 @@ namespace TaskCalendarWidget
         // 옛 파일에 host/port 등 연결 필드가 남아 있어도 그냥 무시한다(에러·마이그레이션 불필요).
         private sealed class AdminCred
         {
-            public string AdminId = "";   // 빈 문자열 = 미변경 → 베이크 디폴트(DefAdminId/DefAdminPw) 사용
+            public string AdminId = "";   // 빈 문자열 = 미변경 → 배포 구성 디폴트(DeployConfig.AdminId/AdminPw) 사용
             public string AdminPw = "";
             public bool AdminUnlocked = false;   // 이 PC에서 인증 완료 여부(영속) — netcus 자격 패턴과 같은 '한 번 인증하면 유지'
         }
@@ -128,8 +114,8 @@ namespace TaskCalendarWidget
             try
             {
                 var a = LoadAdmin();
-                string effId = a.AdminId.Length > 0 ? a.AdminId : DefAdminId;   // 미변경 → 베이크 디폴트 폴백
-                string effPw = a.AdminPw.Length > 0 ? a.AdminPw : DefAdminPw;
+                string effId = a.AdminId.Length > 0 ? a.AdminId : DeployConfig.AdminId;   // 미변경 → 배포 구성 디폴트 폴백
+                string effPw = a.AdminPw.Length > 0 ? a.AdminPw : DeployConfig.AdminPw;
                 bool idOk = string.IsNullOrEmpty(id) || string.Equals(id, effId, StringComparison.Ordinal);
                 bool ok = idOk && !string.IsNullOrEmpty(pw) && string.Equals(pw, effPw, StringComparison.Ordinal);
                 if (!ok) return (null, "관리자 자격이 일치하지 않습니다.");
@@ -142,15 +128,15 @@ namespace TaskCalendarWidget
             catch (Exception ex) { _log("관리자 검증 실패: " + ex.Message); return (null, "관리자 검증 오류: " + Short(ex)); }
         }
 
-        // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 캐시로 폴백. 연결정보는 항상 베이크 상수.
+        // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 캐시로 폴백. 연결정보는 항상 배포 구성 상수(DeployConfig).
         private static string BuildConnString() =>
             new MySqlConnectionStringBuilder
             {
-                Server = DefHost,
-                Port = (uint)DefPort,
-                Database = DefDb,
-                UserID = DefUser,
-                Password = DefPassword,
+                Server = DeployConfig.DbHost,
+                Port = (uint)DeployConfig.DbPort,
+                Database = DeployConfig.DbName,
+                UserID = DeployConfig.DbUser,
+                Password = DeployConfig.DbPassword,
                 ConnectionTimeout = 4,        // 접속 대기(초) — 오프라인 빠른 실패
                 DefaultCommandTimeout = 8,
                 Pooling = false,               // 위젯 단발성 조회 — 풀 미유지(정지된 서버로 소켓 재사용 방지)
