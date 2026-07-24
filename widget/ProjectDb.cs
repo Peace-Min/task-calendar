@@ -87,20 +87,36 @@ namespace TaskCalendarWidget
             return ok;
         }
 
-        // 관리자 자격 등록/변경(평문 json). 빈 값 = 기존 유지.
-        // ★ 자격을 바꾸면 잠금해제를 반드시 내린다 — 비번을 바꿨는데 옛 잠금해제가 남으면 안 된다(재인증 요구).
+        // 관리자 자격 변경(평문 json). 빈 값 = 기존 유지.
+        //
+        // ★★ 보안 게이트 — 반드시 '이미 인증된 상태'에서만 허용한다 (2026-07-24 인증 우회 수정).
+        //   실사용 테스트에서 발견된 취약점: 미인증(viewer) 상태에서도 이 함수가 그대로 실행돼
+        //   ① 공격자가 관리자 비밀번호를 자기 것으로 갈아치우고 관리자가 되고
+        //   ② 원래 관리자는 옛 비번으로 못 들어온다(계정 탈취 + DoS).
+        //   클라이언트 게이트(UI)만으로는 브리지 메시지를 직접 던지면 우회되므로 호스트에서 막는 이 검사가 진짜 방어선이다.
+        //
+        //   부트스트랩: 최초에는 배포 구성 디폴트(DeployConfig.AdminPw)로 '먼저 인증'하면 되므로 잠기지 않는다.
+        //   복구(비번 분실): db-config.json을 삭제하면 배포 구성 디폴트로 되돌아간다(db/deploy/README.md 참조).
+        //
         // 반환: (ok, msg) — 디스크 쓰기 실패를 삼키지 않고 웹에 알려 거짓 성공 표시를 막는다(__saveFailed와 같은 취지).
         public (bool ok, string msg) SaveAdminCred(string? id, string? pw)
         {
             try
             {
                 var a = LoadAdmin();
+                // ★ 인증 전에는 자격을 바꿀 수 없다. (LoadAdmin 결과를 그대로 써서 파일 상태를 단일 소스로 판단)
+                if (!a.AdminUnlocked)
+                {
+                    _log("관리자 자격 변경 거부 — 미인증 상태(인증 우회 시도 차단)");
+                    return (false, "관리자 인증 후에 변경할 수 있습니다.");
+                }
                 if (!string.IsNullOrWhiteSpace(id)) a.AdminId = id!.Trim();
                 if (!string.IsNullOrEmpty(pw)) a.AdminPw = pw;   // 빈칸 = 기존 유지
-                a.AdminUnlocked = false;                          // 자격 변경 = 재인증 요구
+                // ★ 잠금해제는 유지한다 — 이미 인증한 사람이 스스로 바꾼 것이라 재인증을 요구할 이유가 없다(불필요한 마찰).
+                a.AdminUnlocked = true;
                 if (!WriteAdmin(a)) return (false, "관리자 자격을 저장하지 못했습니다(디스크 쓰기 실패).");
-                _log("관리자 자격 저장: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ") · 잠금해제 초기화");
-                return (true, "관리자 자격이 등록되었습니다. 편집할 때 새 비밀번호로 1회 인증하세요.");
+                _log("관리자 자격 변경: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ") · 관리자 모드 유지");
+                return (true, "관리자 비밀번호를 변경했습니다. 다음 인증부터 새 비밀번호를 사용하세요.");
             }
             catch (Exception ex) { _log("관리자 자격 저장 실패: " + ex.Message); return (false, "관리자 자격을 저장하지 못했습니다: " + Short(ex)); }
         }

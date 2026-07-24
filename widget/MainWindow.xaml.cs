@@ -480,11 +480,13 @@ namespace TaskCalendarWidget
                         break;
 
                     // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
-                    case "saveAdminCred":   // 관리자 자격 등록/변경(초기 1회) — 결과(ok,msg)를 전달해 거짓 성공 표시 방지
+                    case "saveAdminCred":   // 관리자 비밀번호 변경 — 결과(ok,msg)를 전달해 거짓 성공 표시 방지
                     {
+                        // ★ 인증 여부는 ProjectDb.SaveAdminCred가 호스트에서 검사한다(미인증이면 거부).
+                        //   UI 게이트만 믿지 않는 이유: 브리지 메시지는 웹에서 직접 던질 수 있어 클라이언트 검사는 우회된다.
                         var (credOk, credMsg) = _projectDb.SaveAdminCred(GetStr(doc, "id"), GetStr(doc, "pw"));
                         JsCall("window.__adminSaved && window.__adminSaved(" + (credOk ? "true" : "false") + "," + JsonSerializer.Serialize(credMsg) + ")");
-                        // 자격을 바꾸면 잠금해제가 내려가므로(재인증 요구) 웹 세션 상태도 즉시 동기화
+                        // 성공해도 잠금해제는 유지된다(같은 사람이 바꾼 것) — 배지가 어긋나지 않게 상태만 다시 통지
                         if (credOk) SendAdminState();
                         break;
                     }

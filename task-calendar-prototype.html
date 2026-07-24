@@ -636,16 +636,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-row.subbed{box-shadow:inset 3px 0 0 var(--accent)}
 .off-subtick{margin-left:6px;font-size:var(--fs-micro);font-weight:700;color:var(--ok)}
 .off-msg{font-size:var(--fs-meta);color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 관리자 인증 프롬프트 · 공식 과제 편집(P3.2) — 상태 메시지는 min-height로 자리를 미리 잡아 폼이 튀지 않게 */
+/* 관리자 섹션 · 공식 과제 편집(P3.2) — 상태 메시지는 min-height로 자리를 미리 잡아 폼이 튀지 않게 */
+/* (관리자 인증 프롬프트 전용 스타일은 2026-07-24 프롬프트 제거와 함께 삭제 — 인증은 설정의 .set-in 입력으로 한다) */
 .adm-row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin:0 0 10px}
-.adm-p-desc{font-size:var(--fs-body);color:var(--muted);line-height:var(--lh-body);margin-bottom:var(--sp-3)}
-/* .modal 입력 공통 규칙은 type=password를 포함하지 않는다(설정은 .set-in으로 따로 입힘) — 이 프롬프트만 같은 외형으로 */
-#adminPromptModal input[type=password]{
-  width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:8px 10px;
-  font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text);
-}
-#adminPromptModal input[type=password]:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
-.adm-p-msg,.off-ed-msg{
+.off-ed-msg{
   margin-top:var(--sp-2);min-height:17px;font-size:var(--fs-meta);color:var(--muted);
   word-break:keep-all;overflow-wrap:anywhere;
 }
@@ -1739,15 +1733,24 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </div>
       <div class="set-sec set-sec-top" id="adminSection">
         <div class="set-lb">관리자 <span id="admState" class="git-opt"></span></div>
-        <!-- 인증은 '편집을 누른 순간'에만 묻는다(UAC 패턴) — 여기서 미리 로그인해 둘 필요가 없다. 한 번 인증하면 이 PC에서 유지된다. -->
-        <div class="set-hint"><b>공식 과제 편집</b>은 편집을 시작할 때 관리자 비밀번호를 물어봅니다(미리 로그인할 필요 없음). <b>한 번 인증하면 이 PC에서 계속 유지</b>되며, 아래 <b>해제</b>로 끌 수 있습니다. 과제 DB 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다.</div>
+        <!-- 인증은 여기(설정)에서 한다 — netcus 자격증명과 같은 구조. 한 번 인증하면 이 PC에서 유지된다. -->
+        <div class="set-hint"><b>공식 과제 편집</b>에는 관리자 인증이 필요합니다. 아래에서 인증하면 <b>이 PC에서 계속 유지</b>되며 <b>해제</b>로 끌 수 있습니다. 과제 DB 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다.</div>
         <div class="set-hint" id="dbCacheLine" style="margin-bottom:6px"></div>
         <div style="margin:0 0 10px"><button type="button" class="btn sm" id="dbReload">지금 새로고침</button> <span id="dbMsg" class="git-opt"></span></div>
-        <div class="adm-row"><button type="button" class="btn sm hidden" id="admLogout">관리자 모드 해제</button> <span id="admMsg" class="git-opt"></span></div>
-        <label class="qa-lb">관리자 자격 등록 <span class="git-opt">· 초기 1회 · 비밀번호를 정하는 곳입니다(잠금 해제는 편집할 때 1회)</span></label>
-        <input type="text" id="admRegId" class="set-in" autocomplete="off" spellcheck="false" placeholder="관리자 ID">
-        <input type="password" id="admRegPw" class="set-in" autocomplete="new-password" placeholder="관리자 비밀번호(빈칸=기존 유지)">
-        <div style="margin:9px 0 4px"><button type="button" class="btn sm" id="admRegSave">등록</button> <span id="admRegMsg" class="git-opt"></span></div>
+        <!-- (미인증) 잠금 해제 — 비밀번호는 호스트로만 넘어가고 JS에 남지 않는다 -->
+        <div id="admAuthBlock">
+          <label class="qa-lb" for="admAuthPw">관리자 비밀번호</label>
+          <input type="password" id="admAuthPw" class="set-in" autocomplete="current-password" placeholder="관리자 비밀번호">
+          <div style="margin:9px 0 4px"><button type="button" class="btn sm primary" id="admAuthOk">인증</button> <span id="admMsg" class="git-opt"></span></div>
+        </div>
+        <!-- (인증됨) 해제 + 비밀번호 변경 — 변경은 인증된 상태에서만 노출·동작한다(호스트도 미인증이면 거부) -->
+        <div class="adm-row hidden" id="admUnlockedBlock"><button type="button" class="btn sm" id="admLogout">관리자 모드 해제</button> <span id="admMsg2" class="git-opt"></span></div>
+        <div class="hidden" id="admChangeBlock">
+          <label class="qa-lb">관리자 비밀번호 변경 <span class="git-opt">· 인증된 상태에서만 가능합니다</span></label>
+          <input type="text" id="admRegId" class="set-in" autocomplete="off" spellcheck="false" placeholder="관리자 ID(빈칸=기존 유지)">
+          <input type="password" id="admRegPw" class="set-in" autocomplete="new-password" placeholder="새 관리자 비밀번호(빈칸=기존 유지)">
+          <div style="margin:9px 0 4px"><button type="button" class="btn sm" id="admRegSave">변경</button> <span id="admRegMsg" class="git-opt"></span></div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -1868,24 +1871,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- ===== 관리자 인증 프롬프트(just-in-time) — 편집을 누른 그 순간에만 묻는다(UAC 패턴) ===== -->
-<div class="overlay hidden" id="adminPromptModal">
-  <div class="modal">
-    <div class="modal-head"><h2>관리자 인증</h2><button class="x" data-close aria-label="닫기">×</button></div>
-    <div class="modal-body">
-      <div class="adm-p-desc" id="admPromptDesc">공식 과제를 편집하려면 관리자 비밀번호가 필요합니다.</div>
-      <label for="admPromptPw">관리자 비밀번호</label>
-      <input type="password" id="admPromptPw" autocomplete="off" placeholder="비밀번호">
-      <div class="adm-p-msg" id="admPromptMsg" role="status" aria-live="polite"></div>
-      <div class="git-note"><b>한 번 인증하면 이 PC에서 계속 유지됩니다</b>(앱을 다시 켜도 유지). 설정 → 관리자에서 <b>관리자 모드 해제</b>로 즉시 끌 수 있습니다.</div>
-    </div>
-    <div class="modal-foot">
-      <span class="spacer"></span>
-      <button class="btn" data-close>취소</button>
-      <button class="btn primary" id="admPromptOk">확인</button>
-    </div>
-  </div>
-</div>
+<!-- (관리자 인증 프롬프트 제거 — 2026-07-24. 인증은 설정 → 관리자에서만 한다. netcus 자격증명과 같은 구조.) -->
 
 <!-- ===== 공식 과제 편집(P3.2) — DB 쓰기. 관리자 + 온라인에서만 열린다 ===== -->
 <div class="overlay hidden" id="officialEditModal">
@@ -3296,25 +3282,18 @@ window.__adminState = function(unlocked){
   try{ updateAdminUi(); }catch(_){}
   try{ renderOfficialDetail(); }catch(_){}   // 열려 있으면 편집/숨김 버튼 표기 갱신
 };
-// 호스트 로그인 검증 결과 — role==='admin'이면 세션 언락, 아니면 해제.
-// 인증 요청이 프롬프트(just-in-time)에서 왔으면 결과를 그 안에서 처리하고, 성공 시 보관해 둔 액션을 이어서 실행한다.
+// 호스트 로그인 검증 결과 — role==='admin'이면 세션 언락, 아니면 해제. 인증 요청은 설정의 '인증' 버튼에서만 온다.
 window.__adminResult = function(role, msg){
   __adminSession = (role === 'admin');
   try{ updateAdminUi(); }catch(_){}
   const m = document.getElementById('admMsg');
   if(m){ m.innerHTML = (__adminSession ? ICON.check : ICON.alert) + ' ' + esc(msg || ''); m.style.color = __adminSession ? 'var(--accent-2)' : 'var(--danger)'; }
-  const pm = document.getElementById('adminPromptModal');
-  const promptOpen = !!pm && !pm.classList.contains('hidden');
+  const pw = document.getElementById('admAuthPw');
   if(__adminSession){
-    const fn = __adminPendingFn; __adminPendingFn = null;
-    if(promptOpen) closeModal('#adminPromptModal');
+    if(pw) pw.value = '';                      // 성공 → 입력칸 비움(비번을 화면에 남기지 않는다)
     try{ renderOfficialDetail(); }catch(_){}   // 편집/숨김 버튼의 권한 표기 즉시 반영
-    // 프롬프트가 닫히는 동안(MD_OUT) 기다렸다가 원래 액션 실행 — 포커스가 서로를 빼앗지 않게
-    if(typeof fn === 'function') setTimeout(() => { try{ fn(); }catch(_){} }, promptOpen ? MD_OUT + 20 : 0);
-  }else if(promptOpen){
-    const pmsg = document.getElementById('admPromptMsg');
-    if(pmsg){ pmsg.innerHTML = ICON.alert + ' ' + esc(msg || '관리자 자격이 일치하지 않습니다.'); pmsg.style.color = 'var(--danger)'; }
-    const pw = document.getElementById('admPromptPw'); if(pw){ pw.value = ''; try{ pw.focus(); }catch(_){} }   // 실패 = 재입력
+  }else if(pw){
+    pw.value = ''; try{ pw.focus(); }catch(_){}   // 실패 = 재입력
   }
 };
 // 호스트 자격 저장 결과 — 실패(디스크 쓰기 등)면 사유를 표시한다(거짓 성공 금지). 인자 없는 구호출은 성공으로 간주(하위호환).
@@ -3327,41 +3306,43 @@ window.__adminSaved = function(ok, msg){
   }
   if(!success) toast(msg || '관리자 자격을 저장하지 못했습니다', 'error');
 };
-// 관리자 상태 표시 갱신(상태 배지 + '해제' 버튼 노출). 로그인 입력은 설정에 없다 — 편집 시점 프롬프트가 대신한다.
-// 배지는 '지금 무엇이 가능한지'를 말한다: 인증됨=계속 유지 / 미인증=편집할 때 비밀번호를 묻는다.
+// 관리자 상태 표시 갱신 — 배지 + 미인증/인증됨 블록 전환.
+// ★ 비밀번호 '변경'은 인증된 상태에서만 노출한다(2026-07-24) — 미인증 변경이 계정 탈취 경로였다.
+//   (노출 제어는 UX일 뿐이고 실제 차단은 호스트 ProjectDb.SaveAdminCred가 한다.)
 function updateAdminUi(){
+  const admin = getRole() === 'admin';
   const st = document.getElementById('admState');
   if(st) st.textContent = !HOST ? '· 데스크톱 위젯 전용'
-    : (getRole() === 'admin' ? '· 관리자 모드 · 활성' : '· 뷰어 · 편집 시 비밀번호 필요');
-  const lo = document.getElementById('admLogout'); if(lo) lo.classList.toggle('hidden', getRole() !== 'admin');
+    : (admin ? '· 관리자 모드 · 활성' : '· 뷰어 · 인증 필요');
+  const show = (id, on) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !on); };
+  show('admAuthBlock', HOST && !admin);       // 미인증 → 비밀번호 + 인증 버튼
+  show('admUnlockedBlock', HOST && admin);    // 인증됨 → 해제
+  show('admChangeBlock', HOST && admin);      // 인증됨 → 비밀번호 변경
 }
-
-/* ---------- just-in-time 관리자 인증(UAC 패턴) ----------
-   '미리 로그인해 두는' 모드 대신, 편집/추가/삭제를 누른 그 순간에만 비밀번호를 묻는다.
-   통과하면 보관해 둔 액션을 그대로 이어서 실행하므로 사용자는 하려던 일을 다시 시작하지 않아도 된다.
-   한 번 인증되면 세션 동안 유지(__adminSession) — 앱을 다시 켜면 해제. */
-let __adminPendingFn = null;   // 인증 통과 후 이어서 실행할 액션(콜백 보존)
-function requireAdmin(fn, desc){
-  if(typeof fn !== 'function') return;
-  if(getRole() === 'admin'){ fn(); return; }
-  if(!HOST){ toast('관리자 인증은 데스크톱 위젯에서만 가능합니다', 'warn'); return; }
-  __adminPendingFn = fn;
-  const d = document.getElementById('admPromptDesc');
-  if(d) d.textContent = desc || '공식 과제를 편집하려면 관리자 비밀번호가 필요합니다.';
-  const pw = document.getElementById('admPromptPw'); if(pw) pw.value = '';
-  const m = document.getElementById('admPromptMsg'); if(m){ m.textContent = ''; m.style.color = ''; }
-  openModal('#adminPromptModal');
-  setTimeout(() => { const e = document.getElementById('admPromptPw'); if(e){ try{ e.focus(); }catch(_){} } }, 30);
-}
-// 프롬프트 제출 — 비번은 호스트(ProjectDb.VerifyAdmin)로만 넘어가고 JS에는 남기지 않는다.
-function submitAdminPrompt(){
-  const el = document.getElementById('admPromptPw');
+// 설정의 '인증' 제출 — 비번은 호스트(ProjectDb.VerifyAdmin)로만 넘어가고 JS에는 남기지 않는다.
+// (즉석 프롬프트(UAC 패턴)는 2026-07-24에 제거했다 — netcus와 동일하게 '설정에서 인증'으로 통일.)
+function submitAdminAuth(){
+  const el = document.getElementById('admAuthPw');
   const pw = el ? el.value : '';
-  const m = document.getElementById('admPromptMsg');
+  const m = document.getElementById('admMsg');
+  if(!HOST){ toast('관리자 인증은 데스크톱 위젯에서만 가능합니다', 'warn'); return; }
   if(!pw){ if(m){ m.innerHTML = ICON.alert + ' 비밀번호를 입력하세요'; m.style.color = 'var(--danger)'; } if(el) el.focus(); return; }
   if(m){ m.innerHTML = ICON.spinner + ' 확인 중…'; m.style.color = 'var(--accent)'; }
   hpost({ cmd: 'adminLogin', id: '', pw });   // 결과는 __adminResult(role, msg)
-  if(el) el.value = '';
+}
+// 편집 계열에서 '인증이 필요하다'를 알리는 단일 지점 — netcus 가드와 같은 형태(안내 + 설정 열기).
+// 여기서 비밀번호를 묻지 않는다: 관리자 인증은 PC당 사실상 1회라 즉석 프롬프트의 이점이 없고,
+// 오히려 '편집 흐름 안의 비번 입력창'이 계정 탈취 UI와 구분이 안 돼 위험하다.
+// (토스트 액션 버튼은 쓰지 않는다 — toast의 액션은 Undo 전용이라 클릭 후 '되돌렸습니다'를 띄운다.)
+function adminAuthNeeded(){
+  confirmBox('관리자 인증 필요',
+    '공식 과제를 편집하려면 관리자 인증이 필요합니다.\n설정 → 관리자에서 비밀번호로 인증한 뒤 다시 시도해 주세요.',
+    '설정 열기 →', '취소', { ok: 'primary' })
+    .then(r => {
+      if(r !== 'ok') return;
+      try{ openSettings(); }catch(_){}
+      setTimeout(() => { const e = document.getElementById('admAuthPw'); if(e){ try{ e.focus(); }catch(_){} } }, 80);
+    });
 }
 
 /* ---------- CRUD ---------- */
@@ -5638,10 +5619,14 @@ function projBeginRequest(){
 }
 function projSettle(){ __projGen = 0; clearTimeout(__projWatchdog); }
 // 편집/추가/숨김 공통 게이트: 위젯 → 온라인 → 관리자 순. 실패 이유마다 다음 행동이 다르므로 문구를 나눈다.
+// ★ 미인증이면 여기서 비밀번호를 묻지 않고 설정으로 보낸다(2026-07-24, netcus 가드와 동일한 패턴).
+//   인증 후에는 사용자가 그 버튼을 다시 누르면 된다('하려던 액션 이어실행'은 없앴다 — netcus와 같은 흐름).
+//   desc 인자는 옛 프롬프트 문구용이었으나 더는 쓰지 않는다(호출부 시그니처는 그대로 둬 변경 범위를 좁힘).
 function offEditGuard(fn, desc){
   if(!HOST){ toast('공식 과제 편집은 데스크톱 위젯 전용입니다', 'warn'); return; }
   if(!dbOnline){ toast('편집하려면 서버 연결이 필요합니다', 'warn'); return; }
-  requireAdmin(fn, desc);
+  if(getRole() !== 'admin'){ adminAuthNeeded(); return; }
+  if(typeof fn === 'function') fn();
 }
 function offEditOpen(id){
   const c = id ? dbCatalogById(id) : null;
@@ -8617,28 +8602,26 @@ function bind(){
       const m = $('#dbMsg'); if(m){ m.innerHTML = ICON.spinner + ' 새로고침 중…'; m.style.color = 'var(--accent)'; }
       hpost({ cmd: 'loadProjects' });   // 완료 시 __applyProjects → refreshDbUi가 상태줄 갱신
     }); }
-  // ── 관리자(공식 과제 편집 게이트) — 등록/로그인/해제 ──
+  // ── 관리자 — 인증(잠금 해제) / 해제 / 비밀번호 변경 ──
+  // 인증은 여기서만 한다(netcus 자격증명과 같은 구조). 편집 화면엔 비번 입력창이 없다.
+  { const b = $('#admAuthOk'); if(b) b.addEventListener('click', submitAdminAuth); }
+  { const e = $('#admAuthPw'); if(e) e.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); submitAdminAuth(); } }); }
+  // 비밀번호 변경 — 인증된 상태에서만 동작(호스트도 미인증이면 거부한다). UI는 이중 확인일 뿐 방어선이 아니다.
   { const b = $('#admRegSave'); if(b) b.addEventListener('click', () => {
       if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
+      if(getRole() !== 'admin'){ adminAuthNeeded(); return; }
       const id = ($('#admRegId').value || '').trim(), pw = $('#admRegPw').value;
-      hpost({ cmd: 'saveAdminCred', id, pw });   // 빈칸=기존 유지(호스트가 처리) → __adminSaved
+      if(!pw){ const m = $('#admRegMsg'); if(m){ m.innerHTML = ICON.alert + ' 새 비밀번호를 입력하세요'; m.style.color = 'var(--danger)'; } $('#admRegPw').focus(); return; }
+      hpost({ cmd: 'saveAdminCred', id, pw });   // 빈칸 id=기존 유지(호스트가 처리) → __adminSaved
       $('#admRegPw').value = '';
-      const m = $('#admRegMsg'); if(m){ m.innerHTML = ICON.spinner + ' 저장 중…'; m.style.color = 'var(--accent)'; }
+      const m = $('#admRegMsg'); if(m){ m.innerHTML = ICON.spinner + ' 변경 중…'; m.style.color = 'var(--accent)'; }
     }); }
-  // 로그인 입력은 설정에 두지 않는다(편집 시점 프롬프트가 대신) — 해제만 남긴다.
   { const b = $('#admLogout'); if(b) b.addEventListener('click', () => {
       hpost({ cmd: 'adminLogout' });   // 호스트가 영속 잠금해제를 내리고 __adminState(false)로 회신
       __adminSession = false; updateAdminUi();   // 낙관적 반영(호스트 회신이 곧 덮어씀)
       try{ renderOfficialDetail(); }catch(_){}
-      const m = $('#admMsg'); if(m){ m.innerHTML = ICON.check + ' 관리자 모드를 해제했습니다 — 다음 편집 때 다시 인증합니다'; m.style.color = 'var(--muted)'; }
+      const m = $('#admMsg2'); if(m){ m.innerHTML = ICON.check + ' 관리자 모드를 해제했습니다 — 편집하려면 다시 인증하세요'; m.style.color = 'var(--muted)'; }
     }); }
-  // ── 관리자 인증 프롬프트(just-in-time) — Enter=확인 / Esc=취소(모달 공통 경로) ──
-  { const b = $('#admPromptOk'); if(b) b.addEventListener('click', submitAdminPrompt); }
-  { const e = $('#admPromptPw'); if(e) e.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); submitAdminPrompt(); } }); }
-  // 취소·배경클릭·Esc 어느 경로로 닫혀도 보류 중인 액션은 버린다(닫은 뒤 엉뚱한 시점에 실행되는 것 방지)
-  { const pm = $('#adminPromptModal'); if(pm) new MutationObserver(() => {
-      if(pm.classList.contains('hidden')) __adminPendingFn = null;
-    }).observe(pm, { attributes:true, attributeFilter:['class'] }); }
   { const n = $('#updNow'); if(n) n.addEventListener('click', () => {
       __updShowProgress('업데이트 준비 중…');
       hpost({ cmd: 'updateApply' });   // 내려받기·검증·설치 후 자동 재시작(호스트)
