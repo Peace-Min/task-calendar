@@ -274,12 +274,13 @@ namespace TaskCalendarWidget
                 ? (object)d.Date : DBNull.Value;
         }
 
-        // MySQL 에러번호 → 사용자 문장. 스키마 제약(UNIQUE/FK/ENUM)이 그대로 사용자에게 닿는 지점이다.
+        // MySQL 에러번호 → 사용자 문장. 스키마 제약(FK/ENUM/NOT NULL)이 그대로 사용자에게 닿는 지점이다.
+        // ★ (customer, project_name) 유니크는 제거됐다(ADR-21) — 이제 project INSERT의 1062는 uq_project_uid(uid, UUID라
+        //   사실상 발생 안 함)만 의미하므로 별도 문구를 두지 않고 일반 메시지로 떨어진다. 실수 중복은 소프트 경고가 잡는다.
         private static string MySqlMsg(MySqlException ex)
         {
             switch (ex.Number)
             {
-                case 1062: return "같은 발주처에 동일 사업명이 이미 있습니다.";                 // uq_project(customer, project_name)
                 case 1451:
                 case 1452: return "등록되지 않은 발주처입니다.";                                 // fk_project_customer
                 case 1265:
@@ -289,42 +290,65 @@ namespace TaskCalendarWidget
             }
         }
 
+        // 이름 정규화(소프트 경고 비교용) — TRIM + 연속공백 1칸 축소 + 소문자화(ai_ci의 대소문자 무시 흉내).
+        // ★ 하드 유니크(ai_ci·NO PAD)는 끝공백 변형을 '다른 값'으로 통과시켜 진짜 실수를 못 잡는다 — 그래서 C#에서 정규화 비교한다.
+        private static string NormalizeName(string? s) =>
+            System.Text.RegularExpressions.Regex.Replace((s ?? "").Trim(), @"\s+", " ").ToLowerInvariant();
+
         private const string OfflineMsg = "서버에 연결할 수 없습니다 — 편집은 온라인에서만 가능합니다.";
 
         // 공식 과제 추가/수정. uid가 비어 있으면 INSERT(uid는 DB DEFAULT (UUID())가 생성), 있으면 그 행 UPDATE.
-        public async Task<(bool ok, string msg)> UpsertProjectAsync(string? uid, string section, string customer,
-            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? status)
+        // 반환 3-튜플: (ok, msg, needConfirm). needConfirm=true는 '실패'가 아니라 '소프트 경고 확인 요청'이다
+        //   — 비슷한 과제가 이미 있으니 그래도 추가할지 사용자에게 물으라는 신호. confirmSimilar=true로 재호출하면 검사 없이 저장한다.
+        // 이름 필드(사업명·계약명·통상명칭·발주처)는 저장 전 TRIM. 빈 계약명/통상명칭은 ''로 저장(NULL 금지 — 비교 함정 방지).
+        public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(string? uid, string section, string customer,
+            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? status,
+            bool confirmSimilar = false)
         {
             // ── 앱단 선검증 — ENUM/필수값 위반은 DB까지 보내지 않고 바로 사용자 문장으로 돌려준다.
             string u = (uid ?? "").Trim();
             string sec = (section ?? "").Trim(), cust = (customer ?? "").Trim(), pname = (projectName ?? "").Trim();
+            string cn = (contractName ?? "").Trim(), mn = (commonName ?? "").Trim();   // 빈값은 ''(NULL 아님)
             string st = (status ?? "").Trim(), sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
-            if (pname.Length == 0) return (false, "사업명을 입력하세요.");
-            if (cust.Length == 0) return (false, "발주처를 선택하세요.");
-            if (Array.IndexOf(Sections, sec) < 0) return (false, "구분 값이 올바르지 않습니다.");
-            if (st.Length > 0 && Array.IndexOf(Statuses, st) < 0) return (false, "상태 값이 올바르지 않습니다.");
+            if (pname.Length == 0) return (false, "사업명을 입력하세요.", false);
+            if (cust.Length == 0) return (false, "발주처를 선택하세요.", false);
+            if (Array.IndexOf(Sections, sec) < 0) return (false, "구분 값이 올바르지 않습니다.", false);
+            if (st.Length > 0 && Array.IndexOf(Statuses, st) < 0) return (false, "상태 값이 올바르지 않습니다.", false);
             // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
             if (sec == "선진행") { sd = ""; ed = ""; st = ""; }
             // 날짜 형식 선검증 — 잘못된 형식을 조용히 NULL로 저장하지 않고 사용자에게 되돌린다(무음 데이터 유실 방지).
-            if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).");
-            if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).");
+            if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
+            if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (sd.Length > 0 && ed.Length > 0 && string.CompareOrdinal(sd, ed) > 0)
-                return (false, "계약종료일이 계약시작일보다 빠릅니다.");
+                return (false, "계약종료일이 계약시작일보다 빠릅니다.", false);
 
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 await using var conn = new MySqlConnection(BuildConnString());
                 try { await conn.OpenAsync(cts.Token); }
-                catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg, false); }
 
                 if (u.Length == 0)
                 {
+                    // ── 소프트 경고(신규 INSERT 한정) — 같은 발주처의 활성 과제 중 (사업명, 계약명)이 정규화 기준으로
+                    //    같은 게 있으면 저장하지 말고 확인을 요청한다. confirmSimilar=true면 건너뛴다(사용자가 이미 '추가' 선택).
+                    if (!confirmSimilar)
+                    {
+                        var sim = await FindSimilarActiveAsync(conn, cts.Token, cust, pname, cn);
+                        if (sim.HasValue)
+                        {
+                            string cnShown = sim.Value.cn.Length > 0 ? sim.Value.cn : "(계약명 없음)";
+                            return (false,
+                                "비슷한 과제가 있습니다: " + cust + " / " + sim.Value.pn + " / " + cnShown + ". 그래도 추가하시겠습니까?",
+                                true);
+                        }
+                    }
                     const string ins = "INSERT INTO project (section, customer, project_name, contract_name, common_name, " +
                                        "start_date, end_date, status) VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@st)";
                     await using (var cmd = new MySqlCommand(ins, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, contractName, commonName, sd, ed, st);
+                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
@@ -332,7 +356,7 @@ namespace TaskCalendarWidget
                     await using (var q = new MySqlCommand("SELECT uid FROM project WHERE id=LAST_INSERT_ID()", conn))
                         newUid = (await q.ExecuteScalarAsync(cts.Token))?.ToString() ?? "";
                     _log("공식 과제 추가: " + pname + " (uid=" + (newUid.Length > 0 ? newUid : "?") + ")");
-                    return (true, "공식 과제를 추가했습니다.");
+                    return (true, "공식 과제를 추가했습니다.", false);
                 }
                 else
                 {
@@ -341,7 +365,7 @@ namespace TaskCalendarWidget
                     int n;
                     await using (var cmd = new MySqlCommand(upd, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, contractName, commonName, sd, ed, st);
+                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st);
                         cmd.Parameters.AddWithValue("@uid", u);
                         n = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -351,49 +375,47 @@ namespace TaskCalendarWidget
                         await using var q = new MySqlCommand("SELECT COUNT(*) FROM project WHERE uid=@uid", conn);
                         q.Parameters.AddWithValue("@uid", u);
                         long cnt = Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L);
-                        if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                        if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요.", false);
                     }
                     _log("공식 과제 수정: " + pname + " (uid=" + u + ")");
-                    return (true, "공식 과제를 저장했습니다.");
+                    return (true, "공식 과제를 저장했습니다.", false);
                 }
             }
             catch (MySqlException mex)
             {
                 _log("공식 과제 저장 실패(" + mex.Number + "): " + Short(mex));
-                // 1062(UNIQUE 충돌)인데 같은 (customer, project_name)의 숨김(is_active=0) 행이 점유 중이면 원인을 구분해 안내(복구 필요).
-                if (mex.Number == 1062 && await SoftDeletedDuplicateExistsAsync(cust, pname))
-                    return (false, "같은 발주처에 숨김 처리된 동일 사업명이 있습니다(복구 필요).");
-                return (false, MySqlMsg(mex));
+                return (false, MySqlMsg(mex), false);
             }
-            catch (Exception ex) { _log("공식 과제 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
+            catch (Exception ex) { _log("공식 과제 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex), false); }
         }
 
-        // UNIQUE(customer, project_name) 충돌이 '숨김(is_active=0) 행' 때문인지 확인 — 별도 연결(풀 미사용)로 짧게 조회. 실패 시 false(기본 메시지).
-        private async Task<bool> SoftDeletedDuplicateExistsAsync(string customer, string projectName)
+        // 소프트 경고 후보 조회 — 같은 발주처의 활성 과제 중 (사업명, 계약명)이 '정규화 기준'으로 같은 첫 행의 표시값을 돌려준다(없으면 null).
+        // 정규화 비교는 SQL 문자열함수가 아니라 C#에서 한다(발주처당 과제 수가 적어 안전하고, ai_ci·NO PAD의 함정을 피한다).
+        private static async Task<(string pn, string cn)?> FindSimilarActiveAsync(
+            MySqlConnection conn, System.Threading.CancellationToken ct, string customer, string projectName, string contractName)
         {
-            try
+            string nPn = NormalizeName(projectName), nCn = NormalizeName(contractName);
+            await using var cmd = new MySqlCommand(
+                "SELECT project_name, contract_name FROM project WHERE customer=@c AND is_active=1", conn);
+            cmd.Parameters.AddWithValue("@c", customer);
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct))
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
-                await using var cmd = new MySqlCommand(
-                    "SELECT COUNT(*) FROM project WHERE customer=@c AND project_name=@p AND is_active=0", conn);
-                cmd.Parameters.AddWithValue("@c", customer);
-                cmd.Parameters.AddWithValue("@p", projectName);
-                return Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L) > 0;
+                string ep = Str(rd, "project_name"), ec = Str(rd, "contract_name");
+                if (NormalizeName(ep) == nPn && NormalizeName(ec) == nCn) return (ep, ec);
             }
-            catch (Exception ex) { _log("숨김 중복 확인 실패: " + Short(ex)); return false; }
+            return null;
         }
 
-        // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나 한쪽만 NULL 규칙을 어기는 일이 없게 한 곳에서.
+        // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나지 않게 한 곳에서. cn/mn은 이미 TRIM된 문자열('' 허용, NULL 금지).
         private static void BindProject(MySqlCommand cmd, string sec, string cust, string pname,
-            string? contractName, string? commonName, string sd, string ed, string st)
+            string cn, string mn, string sd, string ed, string st)
         {
             cmd.Parameters.AddWithValue("@sec", sec);
             cmd.Parameters.AddWithValue("@cust", cust);
             cmd.Parameters.AddWithValue("@pn", pname);
-            cmd.Parameters.AddWithValue("@cn", TextOrNull(contractName));
-            cmd.Parameters.AddWithValue("@mn", TextOrNull(commonName));
+            cmd.Parameters.AddWithValue("@cn", cn);   // '' 그대로(NULL 아님)
+            cmd.Parameters.AddWithValue("@mn", mn);   // '' 그대로(NULL 아님)
             cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
             cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
             cmd.Parameters.AddWithValue("@st", TextOrNull(st));

@@ -32,8 +32,8 @@ CREATE TABLE project (
   section       ENUM('일반계약','선진행','사업부관리') NOT NULL,   -- 구분(드롭다운)
   customer      VARCHAR(100) NOT NULL,                 -- 발주처 (FK -> customer.name)
   project_name  VARCHAR(200) NOT NULL,                 -- 사업명
-  contract_name VARCHAR(200) NULL,                     -- 계약명
-  common_name   VARCHAR(200) NULL,                     -- 통상명칭
+  contract_name VARCHAR(200) NOT NULL DEFAULT '',      -- 계약명(빈값=''; NULL 금지)
+  common_name   VARCHAR(200) NOT NULL DEFAULT '',      -- 통상명칭(빈값=''; NULL 금지)
   start_date    DATE         NULL,                     -- 계약시작일(선진행/미정=NULL)
   end_date      DATE         NULL,                     -- 계약종료일(선진행/미정=NULL)
   status        ENUM('진행중','종료','1차 납품완료','미정') NULL DEFAULT NULL,  -- 상태(선진행=NULL)
@@ -41,8 +41,8 @@ CREATE TABLE project (
   created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_project_uid (uid),                     -- 외부 참조 무결성(assign-once)
-  UNIQUE KEY uq_project (customer, project_name),      -- 같은 발주처 내 동일 사업명 금지(업무규칙)
+  UNIQUE KEY uq_project_uid (uid),                     -- 외부 참조 무결성(assign-once) — 과제 정체성은 uid
+  -- 이름 기반 하드 유니크 없음(실데이터 정당 중복 다수) — 실수 중복은 앱 소프트 경고로. 근거: db/TABLE-DESIGN.md §4(ADR-21).
   KEY ix_project_customer (customer),
   KEY ix_project_section  (section),
   KEY ix_project_active   (is_active),

@@ -1904,7 +1904,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div><label for="offEdStart">계약시작</label><input type="date" id="offEdStart"></div>
         <div><label for="offEdEnd">계약종료</label><input type="date" id="offEdEnd"></div>
       </div>
-      <div class="git-note" id="offEdHint">발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 같은 사업명은 등록할 수 없습니다.</div>
+      <div class="git-note" id="offEdHint">발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.</div>
       <div class="off-ed-msg" id="offEdMsg" role="status" aria-live="polite"></div>
     </div>
     <div class="modal-foot">
@@ -5585,7 +5585,7 @@ function offEdApplySectionRule(){
   const h = document.getElementById('offEdHint');
   if(h) h.innerHTML = pre
     ? `<b>선진행</b>은 계약 전 단계라 계약기간·상태를 비워 둡니다(자동 잠금). 계약이 확정되면 구분을 <b>일반계약</b>으로 바꾸고 날짜를 입력하세요.`
-    : `발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 같은 사업명은 등록할 수 없습니다.`;
+    : `발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.`;
 }
 function offEdMsgSet(html, tone){
   const m = document.getElementById('offEdMsg'); if(!m) return;
@@ -5671,20 +5671,38 @@ function offEdSaveNow(){
     offEdMsgSet(ICON.alert + ' 계약종료일이 계약시작일보다 빠릅니다.', 'err'); focus('offEdEnd'); return;
   }
   if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
+  offEdSend(payload);
+}
+// 저장 전송(신규/재전송 공용) — 소프트 경고 확인 후에는 같은 payload에 confirm:true를 붙여 이 함수로 다시 보낸다.
+let __offEdPending = null;   // 마지막 전송 payload(소프트경고 '추가' 시 재전송용)
+function offEdSend(payload){
+  __offEdPending = payload;
   __offEdSubmit = { isNew: !payload.uid, customer: payload.customer, projectName: payload.projectName };   // 신규 등록 성공 시 자동 편입 매칭용
   offEdSetBusy(true);
   projBeginRequest();   // 세대 시작 + 워치독(더블클릭은 offEdBusy 가드가, 늦은 응답은 세대 가드가 차단)
   offEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
-  hpost(payload);   // 결과는 __projectSaved(ok, msg) — 성공 시 호스트가 loadProjects까지 이어서 수행
+  hpost(payload);   // 결과는 __projectSaved(ok, msg, needConfirm) — 성공 시 호스트가 loadProjects까지 이어서 수행
 }
 // 호스트 쓰기 결과(저장/숨김 공용). 성공=모달 닫고 토스트(목록은 호스트 재조회가 갱신), 실패=모달 유지 + 사유 표시.
+// needConfirm=true는 실패가 아니라 '비슷한 과제 확인 요청' → confirmBox 후 '추가'면 confirm:true로 재전송.
 // ★ 세대 가드: 대기 중인 요청이 없으면(타임아웃 후 등) 늦은/이월 응답이므로 조용히 무시(모달 닫힘·거짓 성공 방지).
-window.__projectSaved = function(ok, msg){
+window.__projectSaved = function(ok, msg, needConfirm){
   if(__projGen === 0){ return; }   // 늦은/이월 응답 — 무시
   projSettle();
   const ed = document.getElementById('officialEditModal');
   const edOpen = !!ed && !ed.classList.contains('hidden');
   offEdSetBusy(false);
+  // 소프트 경고 — 저장하지 않고 '그래도 추가?'를 묻는다. '추가'면 같은 값에 confirm:true를 붙여 재전송.
+  if(!ok && needConfirm){
+    const pending = __offEdPending;
+    if(edOpen) offEdMsgSet('');   // 경고는 오류가 아니므로 폼의 오류 표시는 지운다
+    confirmBox('비슷한 과제', msg || '비슷한 과제가 있습니다. 그래도 추가하시겠습니까?', '추가', '취소')
+      .then(r => {
+        if(r === 'ok' && pending){ offEdSend(Object.assign({}, pending, { confirm: true })); }
+        // '취소'면 아무것도 저장하지 않고 모달은 그대로(사용자가 이름을 고치거나 닫으면 된다)
+      });
+    return;
+  }
   if(ok){
     // 신규 등록이면 재조회 결과에서 자동 편입(만든 사람은 쓸 것) — __applyProjects가 customer+projectName로 매칭
     if(__offEdSubmit && __offEdSubmit.isNew) __pendingAutoSub = { customer: __offEdSubmit.customer, projectName: __offEdSubmit.projectName };

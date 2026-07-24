@@ -38,8 +38,8 @@ CREATE TABLE project (
   section       ENUM('일반계약','선진행','사업부관리') NOT NULL,   -- 구분(드롭다운)
   customer      VARCHAR(100) NOT NULL,                 -- 발주처 (FK -> customer.name)
   project_name  VARCHAR(200) NOT NULL,                 -- 사업명
-  contract_name VARCHAR(200) NULL,                     -- 계약명
-  common_name   VARCHAR(200) NULL,                     -- 통상명칭
+  contract_name VARCHAR(200) NOT NULL DEFAULT '',      -- 계약명(빈값=''; NULL 금지 — 비교 함정 방지)
+  common_name   VARCHAR(200) NOT NULL DEFAULT '',      -- 통상명칭(빈값=''; NULL 금지)
   start_date    DATE         NULL,                     -- 계약시작일(선진행/미정=NULL)
   end_date      DATE         NULL,                     -- 계약종료일(선진행/미정=NULL)
   status        ENUM('진행중','종료','1차 납품완료','미정') NULL DEFAULT NULL,  -- 상태(선진행=NULL)
@@ -47,15 +47,16 @@ CREATE TABLE project (
   created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (id),
-  UNIQUE KEY uq_project_uid (uid),                     -- 외부 참조 무결성(assign-once)
-  UNIQUE KEY uq_project (customer, project_name),      -- 같은 발주처 내 동일 사업명 금지(업무규칙)
-  KEY ix_project_customer (customer),
+  UNIQUE KEY uq_project_uid (uid),                     -- 외부 참조 무결성(assign-once) — 과제 정체성은 uid
+  -- 이름 기반 하드 유니크는 두지 않는다 — 실데이터에 정당한 중복 다수(구성품별 계약·연도별 갱신).
+  -- 실수 중복은 앱 소프트 경고(정규화 비교)로 거른다. 근거: db/TABLE-DESIGN.md §4 (ADR-21).
+  KEY ix_project_customer (customer),                  -- 발주처 조회 + 소프트경고 후보 조회
   KEY ix_project_section  (section),
   KEY ix_project_active   (is_active),
   CONSTRAINT fk_project_customer FOREIGN KEY (customer) REFERENCES customer(name)
     ON UPDATE CASCADE                                  -- 발주처 개명 자동 전파(삭제는 RESTRICT)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='과제 마스터. DB 원본. section/status=ENUM, is_active=소프트삭제.';
+  COMMENT='과제 마스터. DB 원본. 정체성=uid. 이름 유니크 없음(소프트경고). section/status=ENUM, is_active=소프트삭제.';
 
 -- =====================================================================
 --  초기 이관 시드(로컬 개발·검증용 더미 13건).

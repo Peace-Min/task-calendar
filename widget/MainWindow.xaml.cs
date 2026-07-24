@@ -453,10 +453,10 @@ namespace TaskCalendarWidget
                         break;
 
                     // ----- 공식 과제 쓰기(P3.2) — 관리자 편집. 결과는 __projectSaved(ok,msg) + 성공 시 자동 재조회 -----
-                    case "saveProject":     // uid 없으면 신규 INSERT, 있으면 그 uid UPDATE
+                    case "saveProject":     // uid 없으면 신규 INSERT, 있으면 그 uid UPDATE. confirm=true면 소프트 경고 검사 건너뜀.
                         _ = SaveProjectAsync(GetStr(doc, "uid"), GetStr(doc, "section"), GetStr(doc, "customer"),
                             GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
-                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "status"));
+                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "status"), GetBool(doc, "confirm"));
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
                         _ = SetProjectActiveAsync(GetStr(doc, "uid"), GetBool(doc, "active"));
@@ -1354,17 +1354,20 @@ namespace TaskCalendarWidget
             JsCall("window.__applyCustomers && window.__applyCustomers(" + JsonSerializer.Serialize(json ?? "") + ")");
         }
 
-        // 쓰기 결과 통지(성공/실패 + 한국어 사유). 웹은 성공이면 모달을 닫고, 실패면 모달을 유지해 사용자가 고치게 한다.
-        private void ProjectSaved(bool ok, string msg) =>
-            JsCall("window.__projectSaved && window.__projectSaved(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg ?? "") + ")");
+        // 쓰기 결과 통지(성공/실패 + 한국어 사유 + 소프트경고 여부). 웹 __projectSaved(ok, msg, needConfirm):
+        //   needConfirm=true는 실패가 아니라 '비슷한 과제 확인 요청' — 웹이 confirmBox 후 confirm:true로 재전송한다.
+        //   기존 2인자 호출부(setProjectActive)와의 정합: needConfirm 기본 false.
+        private void ProjectSaved(bool ok, string msg, bool needConfirm = false) =>
+            JsCall("window.__projectSaved && window.__projectSaved(" + (ok ? "true" : "false") + ","
+                + JsonSerializer.Serialize(msg ?? "") + "," + (needConfirm ? "true" : "false") + ")");
 
         // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
         private async Task SaveProjectAsync(string uid, string section, string customer, string projectName,
-            string contractName, string commonName, string startDate, string endDate, string status)
+            string contractName, string commonName, string startDate, string endDate, string status, bool confirm)
         {
-            var (ok, msg) = await _projectDb.UpsertProjectAsync(uid, section, customer, projectName,
-                contractName, commonName, startDate, endDate, status);
-            ProjectSaved(ok, msg);
+            var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, section, customer, projectName,
+                contractName, commonName, startDate, endDate, status, confirmSimilar: confirm);
+            ProjectSaved(ok, msg, needConfirm);
             if (ok) await LoadProjectsToWebAsync();
         }
 
@@ -1372,7 +1375,7 @@ namespace TaskCalendarWidget
         private async Task SetProjectActiveAsync(string uid, bool active)
         {
             var (ok, msg) = await _projectDb.SetProjectActiveAsync(uid, active);
-            ProjectSaved(ok, msg);
+            ProjectSaved(ok, msg);   // needConfirm 기본 false — 숨김/복구엔 소프트경고 없음
             if (ok) await LoadProjectsToWebAsync();
         }
 
