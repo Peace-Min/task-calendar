@@ -227,6 +227,11 @@
             <td><span class="chip keep">유지</span></td>
             <td class="desc-td">발주처 자연키. 이건 이름 중복이 있어선 안 되므로 하드 유니크 유지.</td>
           </tr>
+          <tr>
+            <td>구분/상태 = <span class="col">section</span> · <span class="col">status</span></td>
+            <td><span class="chip new">코드테이블 + FK</span></td>
+            <td class="desc-td">ENUM 폐기 — 런타임 추가/개명(FK CASCADE)/순서/숨김이 필요. 발주처와 대칭 룩업으로 두고 무결성은 FK가 승계(오타 거부).</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -235,7 +240,7 @@
   <!-- ================= 2. 테이블 ================= -->
   <section>
     <h2><span class="idx">02</span> 테이블 구조</h2>
-    <p class="sub">복잡한 데이터가 아니므로 의도적으로 2개 테이블로 컴팩트하게 유지한다. <span class="mono">customer</span>(발주처) 1 : N <span class="mono">project</span>(과제).</p>
+    <p class="sub">과제 본체는 <span class="mono">project</span> 하나. 나머지 셋(<span class="mono">customer</span>·<span class="mono">section_code</span>·<span class="mono">status_code</span>)은 <span class="mono">project</span>의 <b>FK 타겟인 룩업 테이블</b>이다 — 앱에서 관리하고 무결성은 FK가 지킨다.</p>
 
     <div class="er">
       <div class="ent">
@@ -247,17 +252,18 @@
       </div>
       <div class="rel">
         <span class="line">1 ──────&lt; N</span>
-        <span class="card-note">FK: project.customer → customer.name<br>ON UPDATE CASCADE / DELETE RESTRICT</span>
+        <span class="card-note">FK 3종 → project<br>customer · section_code · status_code<br>ON UPDATE CASCADE / DELETE RESTRICT</span>
       </div>
       <div class="ent">
         <div class="h"><span>project</span><small>과제</small></div>
         <ul>
           <li><span class="key">PK</span> id · <span class="key">UQ</span> uid</li>
-          <li><span class="key">FK</span> customer</li>
-          <li>section · status (ENUM)</li>
+          <li><span class="key">FK</span> customer · section · status</li>
+          <li>note(비고) · is_active · 감사</li>
         </ul>
       </div>
     </div>
+    <p class="sub" style="margin-top:14px"><span class="mono">section_code</span> · <span class="mono">status_code</span>는 발주처와 같은 형태의 코드 룩업이다: <span class="mono">name</span>(PK) · <span class="mono">sort_order</span>(드롭다운 순서) · <span class="mono">is_active</span> · 감사. 추가 = INSERT / 개명 = name UPDATE(→FK CASCADE) / 재배치 = sort_order / 숨김 = is_active. <b>ENUM에서 전환</b>(ADR-22) — 이제 런타임에 값 관리가 가능하다.</p>
 
     <h3>project — 과제 마스터 (핵심)</h3>
     <div class="tbl-wrap">
@@ -266,20 +272,21 @@
         <tbody>
           <tr><td><span class="col">id</span></td><td><span class="ty">INT UNSIGNED</span></td><td><span class="chip pk">PK · AUTO</span></td><td class="desc-td">내부 대리키. 외부에 노출/참조하지 않음</td></tr>
           <tr><td><span class="col">uid</span></td><td><span class="ty">CHAR(36)</span></td><td><span class="chip uq">UNIQUE</span></td><td class="desc-td"><b>외부 안정 식별자</b>. 일정이 <span class="mono">db-&lt;uid&gt;</span>로 참조. 채번·이관에도 불변</td></tr>
-          <tr><td><span class="col">section</span></td><td><span class="ty">ENUM</span></td><td>NOT NULL</td><td class="desc-td">구분 — <span class="mono">일반계약 · 선진행 · 사업부관리</span></td></tr>
+          <tr><td><span class="col">section</span></td><td><span class="ty">VARCHAR(50)</span></td><td><span class="chip fk">FK</span></td><td class="desc-td">구분 → <span class="mono">section_code.name</span> (CASCADE / RESTRICT). 표준: <span class="mono">일반계약 · 선진행 · 사업부관리</span></td></tr>
           <tr><td><span class="col">customer</span></td><td><span class="ty">VARCHAR(100)</span></td><td><span class="chip fk">FK</span></td><td class="desc-td">발주처 → <span class="mono">customer.name</span> (ON UPDATE CASCADE)</td></tr>
           <tr><td><span class="col">project_name</span></td><td><span class="ty">VARCHAR(200)</span></td><td>NOT NULL</td><td class="desc-td">사업명</td></tr>
           <tr><td><span class="col">contract_name</span></td><td><span class="ty">VARCHAR(200)</span></td><td>NOT NULL <span class="mono">''</span></td><td class="desc-td">계약명 (빈 값은 <span class="mono">''</span> — NULL 금지)</td></tr>
           <tr><td><span class="col">common_name</span></td><td><span class="ty">VARCHAR(200)</span></td><td>NOT NULL <span class="mono">''</span></td><td class="desc-td">통상명칭</td></tr>
           <tr><td><span class="col">start_date</span></td><td><span class="ty">DATE</span></td><td>NULL</td><td class="desc-td">계약시작일 (선진행/미정 = NULL)</td></tr>
           <tr><td><span class="col">end_date</span></td><td><span class="ty">DATE</span></td><td>NULL</td><td class="desc-td">계약종료일</td></tr>
-          <tr><td><span class="col">status</span></td><td><span class="ty">ENUM</span></td><td>NULL</td><td class="desc-td"><span class="mono">진행중 · 종료 · 1차 납품완료 · 미정</span> (선진행 = NULL)</td></tr>
+          <tr><td><span class="col">status</span></td><td><span class="ty">VARCHAR(50)</span></td><td><span class="chip fk">FK</span> · NULL</td><td class="desc-td">상태 → <span class="mono">status_code.name</span> (NULL이면 스킵). 표준: <span class="mono">진행중 · 종료 · 1차 납품완료 · 미정</span></td></tr>
+          <tr><td><span class="col">note</span></td><td><span class="ty">VARCHAR(500)</span></td><td>NOT NULL <span class="mono">''</span></td><td class="desc-td"><b>비고</b> — 관리 화면 전용 내부메모. <b>캘린더·보고서엔 미노출</b></td></tr>
           <tr><td><span class="col">is_active</span></td><td><span class="ty">TINYINT(1)</span></td><td>NOT NULL · 1</td><td class="desc-td">소프트 삭제(0 = 숨김)</td></tr>
           <tr><td><span class="col">created_at</span> / <span class="col">updated_at</span></td><td><span class="ty">DATETIME(3)</span></td><td>자동</td><td class="desc-td">감사 (생성 · 수정 자동 기록)</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="note">contract_name/common_name의 <span class="mono">NOT NULL DEFAULT ''</span>와 (customer, project_name) 유니크 제거는 2026-07-24 확정된 목표 설계다. project 테이블이 비어 있는 지금 반영하면 이관 비용이 없다.</p>
+    <p class="note">구분/상태는 ENUM에서 <b>코드 룩업 + FK</b>로 전환(ADR-22) — 런타임 추가/개명(CASCADE)/순서/숨김 가능. <span class="mono">note</span>(비고)는 관리 전용 내부메모다. 기존 데이터 DB는 <span class="mono">migrate.cmd</span>로 무손실 이관한다.</p>
 
     <h3>customer — 발주처 마스터</h3>
     <div class="tbl-wrap">
@@ -288,6 +295,19 @@
         <tbody>
           <tr><td><span class="col">name</span></td><td><span class="ty">VARCHAR(100)</span></td><td><span class="chip pk">PK</span></td><td class="desc-td">발주처명 = 자연키 · FK 타겟. 이름만 관리(담당자·연락처 없음)</td></tr>
           <tr><td><span class="col">is_active</span></td><td><span class="ty">TINYINT(1)</span></td><td>NOT NULL · 1</td><td class="desc-td">소프트 삭제</td></tr>
+          <tr><td><span class="col">created_at</span> / <span class="col">updated_at</span></td><td><span class="ty">DATETIME(3)</span></td><td>자동</td><td class="desc-td">감사</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>section_code · status_code — 구분·상태 코드 (발주처와 대칭)</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:150px">컬럼</th><th style="width:150px">타입</th><th style="width:130px">키/제약</th><th>설명</th></tr></thead>
+        <tbody>
+          <tr><td><span class="col">name</span></td><td><span class="ty">VARCHAR(50)</span></td><td><span class="chip pk">PK</span></td><td class="desc-td">코드값 = 자연키 · <span class="mono">project.section/status</span>의 FK 타겟</td></tr>
+          <tr><td><span class="col">sort_order</span></td><td><span class="ty">INT</span></td><td>NOT NULL · 0</td><td class="desc-td">드롭다운 정렬(앱 ▲▼로 재부여)</td></tr>
+          <tr><td><span class="col">is_active</span></td><td><span class="ty">TINYINT(1)</span></td><td>NOT NULL · 1</td><td class="desc-td">소프트 삭제(숨김 → 새 과제 선택에서 빠짐)</td></tr>
           <tr><td><span class="col">created_at</span> / <span class="col">updated_at</span></td><td><span class="ty">DATETIME(3)</span></td><td>자동</td><td class="desc-td">감사</td></tr>
         </tbody>
       </table>

@@ -556,10 +556,20 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-filters .check{flex:none;margin:0;white-space:nowrap}
 .off-toolrow{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2)}
 .off-toolrow .spacer{flex:1}
-/* 발주처 관리 — 편집폼 인라인 추가(select + ＋) */
-.off-cust-row{display:flex;gap:var(--sp-2);align-items:stretch}
-.off-cust-row select{flex:1;min-width:0}
-.off-cust-row #offEdCustAdd{flex:none;padding-left:10px;padding-right:10px;font-weight:700}
+/* 편집폼 — 라벨 옆 '관리 열기' 링크(발주처/구분·상태 추가는 관리 모달에서만) */
+.off-ed-lbrow{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
+.off-ed-mgr{flex:none;font-size:var(--fs-meta)}
+#officialEditModal textarea{
+  width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:8px 10px;
+  font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text);resize:vertical;min-height:44px;
+}
+#officialEditModal textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+/* 구분·상태 관리 모달 — 발주처 관리(.cust-*) 구조 재사용 + 순서(▲▼) 컨트롤 */
+.code-tabs{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.code-tab{flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);color:var(--muted);font-weight:700;cursor:pointer}
+.code-tab.on{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
+.cust-row .code-ord{display:inline-flex;gap:2px;flex:none}
+.cust-row .code-ord .btn{padding:2px 7px;line-height:1.1}
 /* 발주처 관리 모달 */
 .cust-add{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
 .cust-add input{flex:1;min-width:0}
@@ -663,13 +673,21 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .rl-sw{width:10px;height:10px;border-radius:50%;flex:none}
 .rl-n{font-size:var(--fs-meta);color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
 .rl-n.rl-mut{color:var(--faint-text)}
-.rl-list .rl-sel{font-size:var(--fs-meta);padding:5px 8px}
+/* '연결할 공식 과제' 셀 — 검색 팝업으로 고른 뒤 배지+해제, 미선택은 선택 버튼 */
+.rl-cell{min-width:0;display:flex;align-items:center;gap:var(--sp-2)}
+.rl-pickbtn{min-width:0;max-width:100%}
+.rl-picked{display:flex;align-items:baseline;gap:6px;min-width:0;flex-wrap:wrap}
+.rl-picked-nm{font-weight:700;color:var(--accent-2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl-picked-meta{font-size:var(--fs-meta);color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl-clear{flex:none;font-size:var(--fs-meta)}
 .rl-empty{padding:var(--sp-4);text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:var(--lh-body)}
 .rl-sum{font-size:var(--fs-meta);color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 선택 팝업 목록 행 — 카탈로그(.off-row)를 재사용하되 사업/계약 라벨 열을 더 노출(동명 식별) */
+.rlp-lbl{color:var(--faint-text)}
 @media (max-width:560px){
   .rl-hrow{display:none}
   .rl-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}
-  .rl-list .rl-sel{grid-column:1 / -1}
+  .rl-cell{grid-column:1 / -1}
 }
 /* 넓은 폭 — 5열 표 + 우측 상세(master-detail). #reportModal의 2단 규약과 같은 900px 분기. */
 @media (min-width:900px){
@@ -1884,15 +1902,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <input type="text" id="offEdCommon" maxlength="200" autocomplete="off" placeholder="일정·목록에 표시할 짧은 이름 (비우면 사업명 사용)">
       <label for="offEdContract">계약명</label>
       <input type="text" id="offEdContract" maxlength="200" autocomplete="off" placeholder="예: 전쟁 여신 무기 개발 용역">
-      <label for="offEdCustomer">발주처 <span class="off-ed-req" aria-hidden="true">*</span></label>
-      <!-- select + 인라인 추가(＋): 편집 중 새 발주처가 필요하면 여기서 바로 등록(이미 관리자 컨텍스트) -->
-      <div class="off-cust-row">
-        <select id="offEdCustomer"></select>
-        <button type="button" class="btn sm" id="offEdCustAdd" title="새 발주처 등록">＋</button>
+      <div class="off-ed-lbrow">
+        <label for="offEdCustomer">발주처 <span class="off-ed-req" aria-hidden="true">*</span></label>
+        <!-- 새 발주처는 '발주처 관리'에서만 추가(인라인 추가 제거) -->
+        <button type="button" class="lnk off-ed-mgr" id="offEdCustMgr">발주처 관리…</button>
       </div>
+      <select id="offEdCustomer"></select>
       <div class="row2">
         <div>
-          <label for="offEdSection">구분 <span class="off-ed-req" aria-hidden="true">*</span></label>
+          <div class="off-ed-lbrow">
+            <label for="offEdSection">구분 <span class="off-ed-req" aria-hidden="true">*</span></label>
+            <button type="button" class="lnk off-ed-mgr" id="offEdCodeMgr">구분·상태 관리…</button>
+          </div>
           <select id="offEdSection"></select>
         </div>
         <div>
@@ -1904,6 +1925,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div><label for="offEdStart">계약시작</label><input type="date" id="offEdStart"></div>
         <div><label for="offEdEnd">계약종료</label><input type="date" id="offEdEnd"></div>
       </div>
+      <label for="offEdNote">비고 <span class="git-opt">· 관리 화면 전용 내부메모(캘린더·보고서에는 안 보임)</span></label>
+      <textarea id="offEdNote" rows="2" maxlength="500" autocomplete="off" placeholder="내부 참고용 메모 (선택)"></textarea>
       <div class="git-note" id="offEdHint">발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.</div>
       <div class="off-ed-msg" id="offEdMsg" role="status" aria-live="polite"></div>
     </div>
@@ -1936,6 +1959,31 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- ===== 구분·상태 관리 — 코드테이블(section_code/status_code). 추가/개명/숨김/순서변경. 관리자 인증 게이트. ===== -->
+<div class="overlay hidden" id="codeModal">
+  <div class="modal">
+    <div class="modal-head"><h2>구분·상태 관리</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="code-tabs" role="tablist">
+        <button type="button" class="code-tab on" id="codeTabSection" role="tab" data-kind="section">구분</button>
+        <button type="button" class="code-tab" id="codeTabStatus" role="tab" data-kind="status">상태</button>
+      </div>
+      <div class="cust-add">
+        <input type="text" id="codeNewName" maxlength="50" autocomplete="off" spellcheck="false" placeholder="새 값">
+        <button type="button" class="btn primary" id="codeAddBtn">＋ 추가</button>
+      </div>
+      <label class="check cust-showhidden"><input type="checkbox" id="codeShowHidden"> 숨긴 값도 표시</label>
+      <div class="cust-msg" id="codeMsg" role="status" aria-live="polite"></div>
+      <div class="cust-list" id="codeList" role="list" aria-label="코드 목록"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="git-note">구분/상태는 <b>코드값</b>입니다. 이름을 바꾸면 그 값으로 저장된 과제 표기도 함께 바뀝니다(FK 전파). 숨긴 값은 새 과제 선택에서 빠지지만, 기존 과제 표기는 유지됩니다. ▲▼로 드롭다운 순서를 바꿉니다.</div>
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 기존 과제 재연결(P3.4) — 개인 과제로 태그된 일정·할일을 공식 과제로 일괄 이동(로컬 전용) ===== -->
 <div class="overlay hidden" id="relinkModal">
   <div class="modal wide">
@@ -1949,6 +1997,39 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
       <button class="btn primary" id="rlRun" disabled>선택 항목 재연결</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 재연결 대상 선택 팝업 — 카탈로그(#officialModal) 검색·필터 로직 재사용, 동명 식별용으로 사업명·계약명 노출 ===== -->
+<div class="overlay hidden" id="relinkPickModal">
+  <div class="modal wide">
+    <div class="modal-head">
+      <div class="off-title"><h2>공식 과제 선택</h2><span class="off-badge" id="rlpForName"></span></div>
+      <button class="x" data-close aria-label="닫기">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="off-tools">
+        <input type="text" id="rlpSearch" autocomplete="off" spellcheck="false" aria-label="공식 과제 검색" placeholder="통상명칭·사업명·계약명·발주처 검색">
+        <div class="off-filters">
+          <select id="rlpCustomer" aria-label="발주처 필터"></select>
+          <select id="rlpSection" aria-label="구분 필터"></select>
+          <select id="rlpStatus" aria-label="상태 필터"></select>
+          <label class="check"><input type="checkbox" id="rlpActiveOnly" checked> 진행중만</label>
+        </div>
+        <div class="off-toolrow">
+          <span class="off-count" id="rlpCount" role="status" aria-live="polite" aria-atomic="true"></span>
+          <span class="spacer"></span>
+          <span class="off-fcount" id="rlpFilterCount"></span>
+          <button type="button" class="btn sm" id="rlpReset">초기화</button>
+        </div>
+      </div>
+      <div class="off-list" id="rlpList" role="table" aria-label="공식 과제 선택 목록"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="off-msg" id="rlpMsg"></span>
+      <span class="spacer"></span>
+      <button class="btn" data-close>취소</button>
     </div>
   </div>
 </div>
@@ -3191,7 +3272,8 @@ function mapDbRows(arr){
       customer:String(r.customer || ''), section:String(r.section || ''), status:String(r.status || ''),
       startDate:String(r.start_date || ''), endDate:String(r.end_date || ''),
       projectName:String(r.project_name || ''), contractName:String(r.contract_name || ''),
-      commonName:String(r.common_name || '') };   // 편집 폼이 '통상명칭 비어 있음'과 '사업명과 같음'을 구분해야 해서 원본도 보존
+      commonName:String(r.common_name || ''),   // 편집 폼이 '통상명칭 비어 있음'과 '사업명과 같음'을 구분해야 해서 원본도 보존
+      note:String(r.note || '') };   // 비고(관리 화면 전용 내부메모) — 편집 폼에서만 노출. 편입분엔 안 넘어감(라벨 최소 메타 원칙)
   }).filter(Boolean);
 }
 // 호스트가 DB에서 읽은 공식 과제를 주입. 절대 throw하지 않음.
@@ -5164,8 +5246,10 @@ function saveCatFromForm(){
    개인 과제(state.categories)와 완전히 분리된 조회 화면이다. 여기서는 DB에 아무것도 쓰지 않으며,
    dbCatalog는 온라인 조회 결과만 담는다(로컬 캐시 없음) — 연결이 끊기면 비어 있고, 화면은 그 사실을 명시한다.
    편집(P3.2)이 붙을 자리는 관리자에게만 비활성 버튼으로 예고한다(뷰어에겐 표시 안 함). */
-const OFF_SECTIONS = ['일반계약', '선진행', '사업부관리'];          // schema.sql의 section ENUM
-const OFF_STATUSES = ['진행중', '종료', '1차 납품완료', '미정'];    // schema.sql의 status ENUM(NULL 허용)
+// 구분/상태는 DB 코드테이블에서 로드한다(더 이상 하드코딩 ENUM 아님) — 부팅·카탈로그 열 때 loadCodes로 채워진다.
+// 오프라인이면 빈 배열 → 드롭다운 비활성/빈 목록으로 우아하게 폴백(편집은 offEditGuard가 온라인을 요구하므로 실질 영향 적음).
+let offSections = [];   // 활성 구분 코드값(sort_order 순) — __applyCodes가 채움
+let offStatuses = [];   // 활성 상태 코드값(sort_order 순)
 const OFF_NO_STATUS = '__none__';   // 상태가 비어 있는 행을 고르는 필터 센티널(ENUM 값과 충돌하지 않게)
 let offSelId = null;                // 선택된 공식 과제 id(db-<uid>) — 상세 패널 대상
 const offCollapsed = new Set();     // 접힌 그룹(구분명). 모달을 닫아도 세션 동안 유지
@@ -5214,14 +5298,15 @@ function offMatches(c, f){
 function offGroups(list){
   const map = new Map();
   for(const c of list){ const k = offSectionOf(c); if(!map.has(k)) map.set(k, []); map.get(k).push(c); }
-  const rank = k => { const i = OFF_SECTIONS.indexOf(k); return i < 0 ? OFF_SECTIONS.length : i; };
+  const rank = k => { const i = offSections.indexOf(k); return i < 0 ? offSections.length : i; };
   const out = [...map.entries()].sort((a, b) => (rank(a[0]) - rank(b[0])) || a[0].localeCompare(b[0], 'ko'));
   out.forEach(([, rows]) => rows.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko')));
   return out;
 }
 // 필터 셀렉트 채우기 — 발주처는 데이터에서 distinct, 구분·상태는 ENUM 고정(+데이터에만 있는 값 보강).
 // 현재 선택값은 옵션이 남아 있으면 보존, 사라졌으면 '전체'로 되돌린다(유령 필터 방지).
-function offFillSelects(){
+// ★ 카탈로그와 재연결 선택 팝업이 같은 로직을 쓰도록 셀렉트 id 3개를 인자로 받는다(재사용, 동작 동일).
+function fillCatalogFilterSelects(custId, secId, stId){
   const fill = (id, values, allLabel) => {
     const sel = document.getElementById(id); if(!sel) return;
     const cur = sel.value;
@@ -5230,13 +5315,14 @@ function offFillSelects(){
     sel.value = values.some(o => o.v === cur) ? cur : '';
   };
   const uniq = key => [...new Set(dbCatalog.map(c => offTrim(c[key])).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
-  fill('offCustomer', uniq('customer').map(v => ({ v, t:v })), '발주처 전체');
-  const secs = [...OFF_SECTIONS, ...uniq('section').filter(s => !OFF_SECTIONS.includes(s))];
-  fill('offSection', secs.map(v => ({ v, t:v })), '구분 전체');
-  const sts = [...OFF_STATUSES, ...uniq('status').filter(s => !OFF_STATUSES.includes(s))].map(v => ({ v, t:v }));
+  fill(custId, uniq('customer').map(v => ({ v, t:v })), '발주처 전체');
+  const secs = [...offSections, ...uniq('section').filter(s => !offSections.includes(s))];
+  fill(secId, secs.map(v => ({ v, t:v })), '구분 전체');
+  const sts = [...offStatuses, ...uniq('status').filter(s => !offStatuses.includes(s))].map(v => ({ v, t:v }));
   if(dbCatalog.some(c => !offTrim(c.status))) sts.push({ v:OFF_NO_STATUS, t:'상태 없음' });
-  fill('offStatus', sts, '상태 전체');
+  fill(stId, sts, '상태 전체');
 }
+function offFillSelects(){ fillCatalogFilterSelects('offCustomer', 'offSection', 'offStatus'); }
 function offRowHtml(c){
   const k = offStatusKind(c.status), on = (offSelId === c.id);
   const cust = offTrim(c.customer), sec = offTrim(c.section), st = offTrim(c.status), per = offPeriod(c);
@@ -5390,8 +5476,8 @@ function openOfficialModal(){
   offResetFiltersSilently();
   const m = document.getElementById('offMsg'); if(m){ m.textContent = ''; m.style.color = ''; }
   renderOfficial();
-  // 발주처 마스터를 미리 싣는다(Excel 시트2·발주처 관리가 최신 목록을 쓰도록). 결과는 __applyCustomers.
-  if(HOST) hpost({ cmd: 'loadCustomers' });
+  // 발주처 마스터·구분/상태 코드목록을 미리 싣는다(필터·드롭다운·관리가 최신을 쓰도록). 결과는 __applyCustomers/__applyCodes.
+  if(HOST){ hpost({ cmd: 'loadCustomers' }); hpost({ cmd: 'loadCodes' }); }
   openModal('#officialModal');
 }
 // 렌더 없이 컨트롤 값만 기본으로 — openOfficialModal이 곧바로 renderOfficial을 부르므로 이중 렌더 방지.
@@ -5553,6 +5639,30 @@ window.__applyCustomers = function(jsonStr){
     if(sel && ed && !ed.classList.contains('hidden')) offEdFillCustomers(sel.value);   // 열려 있는 폼만 갱신(선택값 보존)
   }catch(_){}
 };
+// 호스트가 읽어 온 구분/상태 코드목록(활성) 주입. 인자 2개 = sections/statuses 각각의 JSON 배열 문자열('' 또는 파싱실패면 유지).
+window.__applyCodes = function(sectionsJson, statusesJson){
+  const parse = (s, cur) => {
+    try{ const t = (s == null) ? '' : String(s);
+      if(t && t.trim()){ const arr = JSON.parse(t); if(Array.isArray(arr)) return arr.map(v => String(v || '').trim()).filter(Boolean); }
+    }catch(_){}
+    return cur;   // 실패/빈값이면 기존값 유지(연결 끊김에 우아하게)
+  };
+  offSections = parse(sectionsJson, offSections);
+  offStatuses = parse(statusesJson, offStatuses);
+  // 열려 있는 화면 갱신 — 카탈로그 필터 셀렉트·목록, 편집 폼 드롭다운, 재연결 팝업 필터.
+  try{
+    const om = document.getElementById('officialModal');
+    if(om && !om.classList.contains('hidden')){ offFillSelects(); renderOfficialList(); }
+  }catch(_){}
+  try{
+    const ed = document.getElementById('officialEditModal');
+    if(ed && !ed.classList.contains('hidden')){
+      const s = document.getElementById('offEdSection'), st = document.getElementById('offEdStatus');
+      offEdFillEnums(s ? s.value : '', st ? st.value : '');   // 현재 선택 보존하며 다시 채움
+    }
+  }catch(_){}
+  try{ const rp = document.getElementById('relinkPickModal'); if(rp && !rp.classList.contains('hidden')){ rlpFillSelects(); renderRlpList(); } }catch(_){}
+};
 // 발주처 = 마스터 + 현재 목록에 실제로 쓰인 값 + 편집 중인 값의 합집합(FK가 살아 있는 값이 사라지지 않게)
 function offEdFillCustomers(cur){
   const sel = document.getElementById('offEdCustomer'); if(!sel) return;
@@ -5561,16 +5671,23 @@ function offEdFillCustomers(cur){
   sel.innerHTML = `<option value="">발주처 선택</option>` + all.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
   sel.value = all.includes(offTrim(cur)) ? offTrim(cur) : '';
 }
+// 편집 폼의 구분/상태 드롭다운 — DB 코드목록(offSections/offStatuses)으로 채운다.
+// 편집 중인 값이 목록에 없으면(나중에 숨겨진 코드 등) 옵션을 보강해 값이 유실되지 않게 한다.
 function offEdFillEnums(section, status){
+  const curSec = offTrim(section), curSt = offTrim(status);
   const sec = document.getElementById('offEdSection');
   if(sec){
-    sec.innerHTML = OFF_SECTIONS.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
-    sec.value = OFF_SECTIONS.includes(offTrim(section)) ? offTrim(section) : OFF_SECTIONS[0];
+    const secs = [...offSections];
+    if(curSec && !secs.includes(curSec)) secs.push(curSec);   // 편집 중 값 보존
+    sec.innerHTML = secs.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    sec.value = secs.includes(curSec) ? curSec : (secs[0] || '');
   }
   const st = document.getElementById('offEdStatus');
   if(st){
-    st.innerHTML = `<option value="">상태 없음</option>` + OFF_STATUSES.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
-    st.value = OFF_STATUSES.includes(offTrim(status)) ? offTrim(status) : '';
+    const sts = [...offStatuses];
+    if(curSt && !sts.includes(curSt)) sts.push(curSt);
+    st.innerHTML = `<option value="">상태 없음</option>` + sts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
+    st.value = sts.includes(curSt) ? curSt : '';
   }
 }
 // 선진행 = 계약 전 단계 → 계약시작·종료·상태는 스키마상 NULL. 값을 비우고 잠근다(다른 구분이면 다시 연다).
@@ -5639,6 +5756,7 @@ function offEditOpen(id){
   set('offEdContract', c ? c.contractName : '');
   set('offEdStart', c ? offDate(c.startDate) : '');
   set('offEdEnd', c ? offDate(c.endDate) : '');
+  set('offEdNote', c ? c.note : '');   // 비고(관리 전용 내부메모)
   offEdFillEnums(c ? c.section : '', c ? c.status : '');
   offEdFillCustomers(c ? c.customer : '');
   offEdApplySectionRule();
@@ -5661,12 +5779,13 @@ function offEdSaveNow(){
     startDate: val('offEdStart'),
     endDate: val('offEdEnd'),
     status: val('offEdStatus'),
+    note: (document.getElementById('offEdNote') ? String(document.getElementById('offEdNote').value || '').trim() : ''),
   };
   // 클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
   const focus = id => { const e = document.getElementById(id); if(e){ try{ e.focus(); }catch(_){} } };
   if(!payload.projectName){ offEdMsgSet(ICON.alert + ' 사업명을 입력하세요.', 'err'); focus('offEdName'); return; }
   if(!payload.customer){ offEdMsgSet(ICON.alert + ' 발주처를 선택하세요.', 'err'); focus('offEdCustomer'); return; }
-  if(!OFF_SECTIONS.includes(payload.section)){ offEdMsgSet(ICON.alert + ' 구분을 선택하세요.', 'err'); focus('offEdSection'); return; }
+  if(!payload.section){ offEdMsgSet(ICON.alert + ' 구분을 선택하세요.', 'err'); focus('offEdSection'); return; }
   if(payload.startDate && payload.endDate && payload.startDate > payload.endDate){
     offEdMsgSet(ICON.alert + ' 계약종료일이 계약시작일보다 빠릅니다.', 'err'); focus('offEdEnd'); return;
   }
@@ -5852,39 +5971,158 @@ function custCommitRename(oldName, row){
   if(newName === oldName){ renderCustomerList(); return; }   // 변경 없음 → 원복
   custSend('renameCustomer', { oldName, newName }, '발주처 이름을 변경했습니다');   // 이미 인증된 컨텍스트
 }
-// 편집 폼 인라인 발주처 추가 — off-cust-row를 입력+등록/취소로 잠깐 바꾼다. 편집 폼은 이미 관리자 컨텍스트다.
-function offEdInlineAddCustomer(){
-  const row = document.querySelector('#officialEditModal .off-cust-row'); if(!row) return;
-  const sel = document.getElementById('offEdCustomer');
-  const prev = sel ? sel.value : '';
-  const restore = selectName => {
-    row.innerHTML = `<select id="offEdCustomer"></select><button type="button" class="btn sm" id="offEdCustAdd" title="새 발주처 등록">＋</button>`;
-    offEdFillCustomers(selectName != null ? selectName : prev);   // 새 값이 있으면 그걸 자동 선택
-  };
-  row.innerHTML = `<input type="text" id="offEdCustNew" maxlength="100" autocomplete="off" placeholder="새 발주처명" style="flex:1;min-width:0">`
-    + `<button type="button" class="btn sm primary" id="offEdCustNewOk">등록</button>`
-    + `<button type="button" class="btn sm" id="offEdCustNewCancel">취소</button>`;
-  const inp = document.getElementById('offEdCustNew'); if(inp) inp.focus();
-  const doAdd = async () => {
-    const name = inp ? String(inp.value || '').trim() : '';
-    if(!name){ offEdMsgSet(ICON.alert + ' 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
-    const ok = document.getElementById('offEdCustNewOk'); if(ok) ok.disabled = true;
-    const res = await hostRequest('addCustomer', { name }, 20000);
-    if(res && res.ok){
-      dbCustomers = [...new Set([...dbCustomers, name])];   // 왕복 없이도 즉시 선택 가능하게 로컬 반영
-      hpost({ cmd: 'loadCustomers' });                      // 마스터 최신화(백그라운드)
-      restore(name); offEdMsgSet(''); toast(res.msg || '발주처를 추가했습니다', 'success');
-    }else{
-      if(ok) ok.disabled = false;
-      offEdMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '추가하지 못했습니다.'), 'err'); if(inp) inp.focus();
+/* ---------- 구분·상태 코드값 관리 — 발주처 관리(custSend/renderCustomerList)를 그대로 복제 ----------
+   kind('section'|'status') 하나로 두 리스트를 한 모달에서 관리. 조작은 offEditGuard(위젯·온라인·관리자).
+   호스트 왕복 = hostRequest. 성공 시 드롭다운(offSections/offStatuses)을 loadCodes로 갱신,
+   개명은 과제 표기(section/status)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출. name이 자연키라 uid 없음. */
+let codeKind = 'section';    // 현재 탭
+let codeShowHidden = false;
+let codeList = [];           // [{name, active, sort}] — 현재 탭의 마지막 로드 목록
+let codeBusy = false;
+
+function codeMsgSet(html, tone){
+  const m = document.getElementById('codeMsg'); if(!m) return;
+  m.innerHTML = html || '';
+  m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
+}
+function codeKindLabel(){ return codeKind === 'status' ? '상태' : '구분'; }
+function openCodeModal(kind){
+  if(!HOST){ toast('구분·상태 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
+  codeKind = (kind === 'status') ? 'status' : 'section';
+  codeShowHidden = false;
+  const sh = document.getElementById('codeShowHidden'); if(sh) sh.checked = false;
+  const inp = document.getElementById('codeNewName'); if(inp){ inp.value = ''; inp.placeholder = '새 ' + codeKindLabel() + '값'; }
+  codeMsgSet('');
+  codeSyncTabs();
+  openModal('#codeModal');
+  reloadCodeList();
+  setTimeout(() => { const e = document.getElementById('codeNewName'); if(e){ try{ e.focus(); }catch(_){} } }, 30);
+}
+function codeSyncTabs(){
+  const ts = document.getElementById('codeTabSection'), tt = document.getElementById('codeTabStatus');
+  if(ts) ts.classList.toggle('on', codeKind === 'section');
+  if(tt) tt.classList.toggle('on', codeKind === 'status');
+  const inp = document.getElementById('codeNewName'); if(inp) inp.placeholder = '새 ' + codeKindLabel() + '값';
+}
+function switchCodeKind(kind){
+  codeKind = (kind === 'status') ? 'status' : 'section';
+  codeMsgSet(''); codeSyncTabs(); reloadCodeList();
+}
+async function reloadCodeList(){
+  const box = document.getElementById('codeList'); if(!box) return;
+  box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
+  const res = await hostRequest('getCodesFull', { kind: codeKind }, 20000);
+  if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">목록을 불러오지 못했습니다.</div>`; return; }
+  let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
+  codeList = Array.isArray(arr)
+    ? arr.map(x => ({ name: String((x && x.name) || '').trim(), active: !(x && x.active === false), sort: Number(x && x.sort) || 0 })).filter(x => x.name)
+    : [];
+  renderCodeList();
+}
+function renderCodeList(){
+  const box = document.getElementById('codeList'); if(!box) return;
+  const rows = codeList.filter(c => codeShowHidden || c.active);
+  if(!rows.length){
+    box.innerHTML = `<div class="cust-empty">${codeShowHidden ? '등록된 값이 없습니다.' : '활성 값이 없습니다.'}</div>`;
+    return;
+  }
+  // 활성 값끼리의 순서만 ▲▼ 노출(숨김은 순서 대상 아님). 첫/끝은 해당 방향 비활성.
+  const active = rows.filter(c => c.active);
+  box.innerHTML = rows.map(c => {
+    const nm = esc(c.name);
+    const badge = c.active ? '' : `<span class="cust-badge">숨김</span>`;
+    let ord = '';
+    if(c.active){
+      const i = active.findIndex(a => a.name === c.name);
+      ord = `<span class="code-ord">`
+        + `<button type="button" class="btn sm" data-codeup="${nm}"${i <= 0 ? ' disabled' : ''} title="위로">▲</button>`
+        + `<button type="button" class="btn sm" data-codedown="${nm}"${i >= active.length - 1 ? ' disabled' : ''} title="아래로">▼</button></span>`;
     }
-  };
-  const okb = document.getElementById('offEdCustNewOk'); if(okb) okb.addEventListener('click', doAdd);
-  const cb = document.getElementById('offEdCustNewCancel'); if(cb) cb.addEventListener('click', () => { restore(); offEdMsgSet(''); });
-  if(inp) inp.addEventListener('keydown', ev => {
-    if(ev.key === 'Enter'){ ev.preventDefault(); doAdd(); }
-    else if(ev.key === 'Escape'){ ev.preventDefault(); restore(); offEdMsgSet(''); }
-  });
+    const act = c.active
+      ? `<button type="button" class="btn sm" data-codeedit="${nm}">이름변경</button>`
+        + `<button type="button" class="btn sm danger" data-codehide="${nm}">숨김</button>`
+      : `<button type="button" class="btn sm" data-codeshow="${nm}">복구</button>`;
+    return `<div class="cust-row${c.active ? '' : ' hidden-cust'}" role="listitem" data-name="${nm}">`
+      + `<span class="cust-nm">${nm}${badge}</span>${ord}${act}</div>`;
+  }).join('');
+}
+// 공통 왕복 — 성공 시 드롭다운(loadCodes)·목록 갱신. 개명은 과제 표기까지(loadProjects).
+async function codeSend(cmd, params, okToast, onOk){
+  if(codeBusy) return;
+  codeBusy = true; codeMsgSet(ICON.spinner + ' 처리 중…', 'busy');
+  let res;
+  try{ res = await hostRequest(cmd, Object.assign({ kind: codeKind }, params), 20000); }
+  finally{ codeBusy = false; }
+  if(res && res.ok){
+    codeMsgSet('');
+    if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
+    toast(res.msg || okToast, 'success');
+    hpost({ cmd: 'loadCodes' });                            // 편집 폼·필터 드롭다운 최신화
+    if(cmd === 'codeRename') hpost({ cmd: 'loadProjects' }); // 과제의 구분/상태 표기 갱신(FK CASCADE 반영)
+    reloadCodeList();
+  }else{
+    codeMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '처리하지 못했습니다.'), 'err');
+    toast((res && res.msg) || '처리하지 못했습니다', 'error');
+  }
+}
+function codeDoAdd(){
+  const inp = document.getElementById('codeNewName');
+  const name = inp ? String(inp.value || '').trim() : '';
+  if(!name){ codeMsgSet(ICON.alert + ' ' + codeKindLabel() + '값을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  offEditGuard(() => codeSend('codeAdd', { name }, codeKindLabel() + '을(를) 추가했습니다', () => { if(inp){ inp.value = ''; inp.focus(); } }),
+    codeKindLabel() + '을(를) 추가하려면 관리자 인증이 필요합니다.');
+}
+function codeDoHide(name){
+  offEditGuard(async () => {
+    let n = 0;
+    const rc = await hostRequest('codeRefCount', { kind: codeKind, name }, 15000);
+    if(rc && rc.ok) n = Number(rc.count) || 0;
+    if(n > 0){
+      const r = await confirmBox(codeKindLabel() + ' 숨김',
+        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요?`, '숨김', '취소');
+      if(r !== 'ok') return;
+    }
+    codeSend('codeSetActive', { name, active: false }, codeKindLabel() + '을(를) 숨겼습니다');
+  }, codeKindLabel() + '을(를) 숨기려면 관리자 인증이 필요합니다.');
+}
+function codeDoShow(name){
+  offEditGuard(() => codeSend('codeSetActive', { name, active: true }, codeKindLabel() + '을(를) 복구했습니다'),
+    codeKindLabel() + '을(를) 복구하려면 관리자 인증이 필요합니다.');
+}
+function codeBeginRename(name){
+  offEditGuard(() => {
+    const box = document.getElementById('codeList'); if(!box) return;
+    const row = [...box.querySelectorAll('.cust-row')].find(r => r.dataset.name === name);
+    if(!row) return;
+    row.innerHTML = `<span class="cust-edit"><input type="text" maxlength="50" autocomplete="off" value="${esc(name)}"></span>`
+      + `<button type="button" class="btn sm primary" data-codesave="${esc(name)}">저장</button>`
+      + `<button type="button" class="btn sm" data-codecancel="1">취소</button>`;
+    const inp = row.querySelector('input');
+    if(inp){ inp.focus(); try{ inp.select(); }catch(_){}
+      inp.addEventListener('keydown', ev => {
+        if(ev.key === 'Enter'){ ev.preventDefault(); codeCommitRename(name, row); }
+        else if(ev.key === 'Escape'){ ev.preventDefault(); renderCodeList(); }
+      });
+    }
+  }, codeKindLabel() + ' 이름을 변경하려면 관리자 인증이 필요합니다.');
+}
+function codeCommitRename(oldName, row){
+  const inp = row.querySelector('input');
+  const newName = inp ? String(inp.value || '').trim() : '';
+  if(!newName){ codeMsgSet(ICON.alert + ' 새 ' + codeKindLabel() + '값을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(newName === oldName){ renderCodeList(); return; }
+  codeSend('codeRename', { oldName, newName }, codeKindLabel() + '을(를) 변경했습니다');
+}
+// ▲▼ 순서 이동 — 현재 활성 순서에서 한 칸 스왑 후 전체 이름배열을 codeReorder로 전송.
+function codeMove(name, dir){
+  offEditGuard(() => {
+    const active = codeList.filter(c => c.active).map(c => c.name);
+    const i = active.indexOf(name); if(i < 0) return;
+    const j = i + (dir === 'up' ? -1 : 1);
+    if(j < 0 || j >= active.length) return;
+    const tmp = active[i]; active[i] = active[j]; active[j] = tmp;
+    codeSend('codeReorder', { names: active }, codeKindLabel() + ' 순서를 변경했습니다');
+  }, codeKindLabel() + ' 순서를 변경하려면 관리자 인증이 필요합니다.');
 }
 
 /* ---------- 기존 과제 재연결(P3.4) — 개인 과제 → 공식 과제 ----------
@@ -5896,10 +6134,15 @@ function rlUsageCount(catId){
   for(const t of (state.todos || [])) if(t && t.categoryId === catId) n++;
   return n;
 }
+// 재연결 선택 상태 — 개인 catId → 고른 공식 과제 db-<uid>. 콤보 대신 검색 팝업으로 채운다.
+// ★ 카탈로그(offSelId/offCollapsed)와 완전히 분리된 상태다(서로 간섭 금지).
+let rlPick = new Map();          // from(개인 catId) → to(db-<uid>)
+let rlpFor = null;               // 선택 팝업이 지금 매핑 중인 개인 catId
+const rlpCollapsed = new Set();  // 선택 팝업 전용 그룹 접기(카탈로그와 별개)
+
 function rlSelections(){
-  return [...document.querySelectorAll('#rlList .rl-sel')]
-    .filter(s => s.value)
-    .map(s => ({ from: s.dataset.cat, to: s.value }));
+  // Map을 그대로 {from,to}로 — 값이 있는 항목만(방어).
+  return [...rlPick].filter(([from, to]) => from && to).map(([from, to]) => ({ from, to }));
 }
 function rlUpdateSummary(){
   const sel = rlSelections();
@@ -5907,6 +6150,10 @@ function rlUpdateSummary(){
   const s = document.getElementById('rlSummary');
   if(s) s.textContent = sel.length ? `${sel.length}개 과제 선택 · 일정·할일 ${items}건 변경 예정` : '연결할 공식 과제를 고르세요';
   const b = document.getElementById('rlRun'); if(b) b.disabled = (sel.length === 0);
+}
+// 선택된 공식 과제의 배지 텍스트: 통상명칭(전시명) · 발주처 · 계약명 — 식별 가능하게(콤보가 못 보여주던 것).
+function rlPickedMeta(tgt){
+  return [offTrim(tgt.customer), offTrim(tgt.contractName)].filter(Boolean).join(' · ');
 }
 function renderRelink(){
   const box = document.getElementById('rlList'); if(!box) return;
@@ -5916,19 +6163,27 @@ function renderRelink(){
     box.innerHTML = `<div class="rl-empty">재연결할 개인 과제가 없습니다.<br>옮길 것이 없습니다.</div>`;
     rlUpdateSummary(); return;
   }
-  const opts = dbCatalog.map(c => {
-    const meta = [offTrim(c.customer), offTrim(c.section)].filter(Boolean).join(' · ');
-    return `<option value="${esc(c.id)}">${esc(c.name + (meta ? ' — ' + meta : ''))}</option>`;
-  }).join('');
   const none = !dbCatalog.length;
   let html = `<div class="rl-hrow"><span class="rl-h">개인 과제</span><span class="rl-h">사용 중</span><span class="rl-h">연결할 공식 과제</span></div>`;
   for(const c of cats){
     const n = rlUsageCount(c.id);
-    html += `<div class="rl-row">`
+    const to = rlPick.get(c.id);
+    const tgt = to ? (dbCatalogById(to) || catById(to)) : null;   // 온라인 카탈로그 우선, 이미 편입된 것 폴백
+    let cell;
+    if(tgt){
+      const meta = rlPickedMeta(tgt);
+      cell = `<span class="rl-picked" title="${esc(tgt.name + (meta ? ' · ' + meta : ''))}">`
+        + `<span class="rl-picked-nm">${esc(tgt.name)}</span>`
+        + (meta ? `<span class="rl-picked-meta">${esc(meta)}</span>` : '')
+        + `<button type="button" class="lnk rl-clear" data-rlclear="${esc(c.id)}">해제</button></span>`;
+    }else{
+      // 미선택 = '개인으로 유지'(기본). 서버 미연결이면 대상 목록이 없어 버튼 비활성.
+      cell = `<button type="button" class="btn sm rl-pickbtn" data-rlpick="${esc(c.id)}" aria-label="${esc(c.name)} — 공식 과제 선택"${none ? ' disabled' : ''}>공식 과제 선택…</button>`;
+    }
+    html += `<div class="rl-row" data-cat="${esc(c.id)}">`
       + `<span class="rl-nm"><i class="rl-sw" aria-hidden="true" style="background:${validColor(c.color)}"></i><span>${esc(c.name)}</span></span>`
       + `<span class="rl-n${n ? '' : ' rl-mut'}">${n ? n + '건' : '사용 0건'}</span>`
-      + `<select class="rl-sel" data-cat="${esc(c.id)}" aria-label="${esc(c.name)} — 연결할 공식 과제"${none ? ' disabled' : ''}>`
-      +   `<option value="">개인으로 유지</option>${opts}</select>`
+      + `<span class="rl-cell">${cell}</span>`
       + `</div>`;
   }
   // 목록이 빈 이유를 나눠서 말한다 — 연결이 끊긴 것(캐시가 없어 흔한 경우)과 DB에 아무것도 없는 것은 다른 사실이다.
@@ -5938,9 +6193,103 @@ function renderRelink(){
   box.innerHTML = html;
   rlUpdateSummary();
 }
+function rlClearPick(catId){
+  rlPick.delete(catId);   // '개인으로 유지'로 복귀
+  renderRelink();
+}
 function openRelinkModal(){
+  rlPick.clear();         // 열 때마다 깨끗한 선택 상태(콤보가 기본값으로 리셋되던 것과 동일)
+  rlpFor = null;
   renderRelink();
   openModal('#relinkModal');
+}
+
+/* ---------- 재연결 대상 선택 팝업 — 카탈로그(#officialModal)의 검색·필터·그룹 로직 재사용 ----------
+   재사용: offMatches / offGroups / offActiveFilterCount / offStatusKind / fillCatalogFilterSelects(순수·공유).
+   분리: 자체 DOM(rlp*)과 자체 상태(rlpFor, rlpCollapsed) — 카탈로그의 offSelId/offCollapsed를 건드리지 않는다.
+   행 렌더만 카탈로그와 다르다: 동명 과제 식별을 위해 사업명·계약명을 추가로 노출한다. */
+function rlpFilters(){
+  const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+  const chk = document.getElementById('rlpActiveOnly');
+  return { q:offNorm(val('rlpSearch')), qRaw:offTrim(val('rlpSearch')), customer:val('rlpCustomer'),
+           section:val('rlpSection'), status:val('rlpStatus'), activeOnly:!chk || chk.checked };
+}
+function rlpFillSelects(){ fillCatalogFilterSelects('rlpCustomer', 'rlpSection', 'rlpStatus'); }
+// 팝업 행 — .off-row 골격 재사용(스타일 공유) + meta에 발주처·사업명·계약명·상태(동명 식별용). data-rlpid=대상 db-id.
+function rlpRowHtml(c){
+  const k = offStatusKind(c.status);
+  const cust = offTrim(c.customer), pn = offTrim(c.projectName), cn = offTrim(c.contractName), st = offTrim(c.status);
+  const picked = (rlPick.get(rlpFor) === c.id);
+  return `<div class="off-row${picked ? ' on' : ''}" role="row" tabindex="-1" data-rlpid="${esc(c.id)}">`
+    + `<span class="off-sw" aria-hidden="true" style="background:${validColor(c.color)}"></span>`
+    + `<span class="off-nm" role="cell">${esc(c.name)}${picked ? `<span class="off-subtick" title="현재 선택됨">✓</span>` : ''}</span>`
+    + `<span class="off-meta" role="none">`
+    +   `<span class="off-cust${cust ? '' : ' off-mut'}" role="cell">${esc(cust || '발주처 —')}</span>`
+    +   `<span class="${pn ? '' : 'off-mut'}" role="cell"><span class="rlp-lbl">사업</span> ${esc(pn || '—')}</span>`
+    +   `<span class="${cn ? '' : 'off-mut'}" role="cell"><span class="rlp-lbl">계약</span> ${esc(cn || '—')}</span>`
+    +   `<span class="off-st ${k}" role="cell"><i class="off-dot ${k}" aria-hidden="true"></i>${esc(st || '—')}</span>`
+    + `</span></div>`;
+}
+function renderRlpList(){
+  const box = document.getElementById('rlpList'); if(!box) return;
+  const f = rlpFilters();
+  const all = dbCatalog, list = all.filter(c => offMatches(c, f));
+  const cnt = document.getElementById('rlpCount'); if(cnt) cnt.textContent = all.length ? `${list.length} / ${all.length}건` : '0건';
+  const nf = offActiveFilterCount(f);
+  const fc = document.getElementById('rlpFilterCount'); if(fc) fc.textContent = nf ? `필터 ${nf}개 적용 중` : '';
+  const rb = document.getElementById('rlpReset'); if(rb) rb.disabled = (nf === 0);
+  box.setAttribute('role', list.length ? 'table' : 'group');
+  if(!list.length){
+    box.innerHTML = !dbOnline
+      ? `<div class="off-empty"><b>서버 연결이 필요합니다.</b><br>공식 과제 목록을 불러오지 못했습니다 — 설정 → 관리자에서 새로고침 후 다시 시도하세요.</div>`
+      : (all.length
+          ? `<div class="off-empty">조건에 맞는 과제가 없습니다.<br><button type="button" class="lnk" id="rlpResetIn">필터 초기화</button></div>`
+          : `<div class="off-empty">등록된 공식 과제가 없습니다.</div>`);
+    return;
+  }
+  let html = '';
+  for(const [sec, rows] of offGroups(list)){
+    const col = rlpCollapsed.has(sec);
+    html += `<div class="off-grp" role="row" tabindex="-1" aria-expanded="${col ? 'false' : 'true'}" data-sec="${esc(sec)}">`
+      + `<span class="off-grp-c" role="cell"><span class="off-caret" aria-hidden="true">${col ? '▸' : '▾'}</span>`
+      + `${esc(sec)}<span class="off-grp-n">${rows.length}건</span></span></div>`;
+    if(!col) html += rows.map(rlpRowHtml).join('');
+  }
+  box.innerHTML = html;
+}
+function rlpResetFilters(){
+  ['rlpSearch', 'rlpCustomer', 'rlpSection', 'rlpStatus'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
+  const chk = document.getElementById('rlpActiveOnly'); if(chk) chk.checked = true;
+  renderRlpList();
+}
+function rlpToggleGroup(sec){
+  if(rlpCollapsed.has(sec)) rlpCollapsed.delete(sec); else rlpCollapsed.add(sec);
+  renderRlpList();
+}
+// 개인 과제 1건에 대해 대상 선택 팝업을 연다. 오프라인이면 대상 목록이 없으므로 안내만.
+function openRelinkPick(catId){
+  const c = (state.categories || []).find(x => x.id === catId && !isOfficialCat(x));
+  if(!c){ toast('대상 과제를 찾을 수 없습니다', 'error'); return; }
+  if(!dbCatalog.length){
+    toast(!dbOnline ? '서버에 연결되어야 공식 과제를 고를 수 있습니다 — 설정에서 새로고침하세요' : '등록된 공식 과제가 없습니다', 'warn');
+    return;
+  }
+  rlpFor = catId;
+  const badge = document.getElementById('rlpForName'); if(badge) badge.textContent = c.name + ' →';
+  rlpResetFilters();   // 필터 초기화 후 목록 렌더(카탈로그와 독립)
+  rlpFillSelects();
+  renderRlpList();
+  openModal('#relinkPickModal');
+  setTimeout(() => { const e = document.getElementById('rlpSearch'); if(e){ try{ e.focus(); }catch(_){} } }, 30);
+}
+// 팝업에서 공식 과제 1건 선택 → 그 개인 과제 행에 매핑하고 닫는다.
+function rlpChoose(dbId){
+  const src = dbCatalogById(dbId);
+  if(!src){ toast('대상 과제를 찾을 수 없습니다 — 새로고침 후 다시 시도하세요', 'error'); return; }
+  if(rlpFor) rlPick.set(rlpFor, dbId);
+  closeModal('#relinkPickModal');
+  rlpFor = null;
+  renderRelink();
 }
 function runRelink(){
   const sel = rlSelections(); if(!sel.length) return;
@@ -9035,10 +9384,9 @@ function bind(){
     }); }
   { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdApplySectionRule); }
   { const b = $('#offEdSave'); if(b) b.addEventListener('click', offEdSaveNow); }
-  // 편집 폼의 인라인 발주처 추가(＋) — 위임: 인라인 복원으로 버튼이 재생성돼도 계속 동작
-  { const ed = $('#officialEditModal'); if(ed) ed.addEventListener('click', ev => {
-      if(ev.target.closest && ev.target.closest('#offEdCustAdd')) offEdInlineAddCustomer();
-    }); }
+  // 편집 폼의 '발주처 관리…' / '구분·상태 관리…' — 추가는 각 관리 모달에서만(인라인 추가 제거). 편집 폼은 이미 관리자 컨텍스트.
+  { const b = $('#offEdCustMgr'); if(b) b.addEventListener('click', openCustomerModal); }
+  { const b = $('#offEdCodeMgr'); if(b) b.addEventListener('click', () => openCodeModal('section')); }
 
   /* 발주처(customer) 마스터 관리 — 관리 조작은 전부 offEditGuard(위젯·온라인·관리자)를 거친다 */
   { const b = $('#offCustMgr'); if(b) b.addEventListener('click', () => {
@@ -9056,12 +9404,61 @@ function bind(){
       const cb = t.closest('[data-custcancel]'); if(cb){ renderCustomerList(); return; }
     }); }
 
+  /* 구분·상태 코드값 관리 — 발주처 관리와 같은 패턴(offEditGuard 게이트) */
+  { const t = $('#codeTabSection'); if(t) t.addEventListener('click', () => switchCodeKind('section')); }
+  { const t = $('#codeTabStatus'); if(t) t.addEventListener('click', () => switchCodeKind('status')); }
+  { const b = $('#codeAddBtn'); if(b) b.addEventListener('click', codeDoAdd); }
+  { const inp = $('#codeNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); codeDoAdd(); } }); }
+  { const sh = $('#codeShowHidden'); if(sh) sh.addEventListener('change', () => { codeShowHidden = sh.checked; renderCodeList(); }); }
+  { const box = $('#codeList'); if(box) box.addEventListener('click', ev => {
+      const t = ev.target;
+      const up = t.closest('[data-codeup]'); if(up){ codeMove(up.dataset.codeup, 'up'); return; }
+      const dn = t.closest('[data-codedown]'); if(dn){ codeMove(dn.dataset.codedown, 'down'); return; }
+      const eb = t.closest('[data-codeedit]'); if(eb){ codeBeginRename(eb.dataset.codeedit); return; }
+      const hb = t.closest('[data-codehide]'); if(hb){ codeDoHide(hb.dataset.codehide); return; }
+      const sb = t.closest('[data-codeshow]'); if(sb){ codeDoShow(sb.dataset.codeshow); return; }
+      const vb = t.closest('[data-codesave]'); if(vb){ const row = vb.closest('.cust-row'); if(row) codeCommitRename(vb.dataset.codesave, row); return; }
+      const cb = t.closest('[data-codecancel]'); if(cb){ renderCodeList(); return; }
+    }); }
+
   /* 기존 과제 재연결(P3.4) — 로컬 전용(DB 쓰기 없음)이라 오프라인에서도 연다 */
   { const b = $('#btnRelinkOpen'); if(b) b.addEventListener('click', openRelinkModal); }
-  { const box = $('#rlList'); if(box) box.addEventListener('change', ev => {
-      if(ev.target && ev.target.classList && ev.target.classList.contains('rl-sel')) rlUpdateSummary();
+  // 재연결 목록: [공식 과제 선택…] → 팝업 / [해제] → 개인으로 유지
+  { const box = $('#rlList'); if(box) box.addEventListener('click', ev => {
+      const pk = ev.target.closest('[data-rlpick]'); if(pk){ openRelinkPick(pk.dataset.rlpick); return; }
+      const cl = ev.target.closest('[data-rlclear]'); if(cl){ rlClearPick(cl.dataset.rlclear); return; }
     }); }
   { const b = $('#rlRun'); if(b) b.addEventListener('click', runRelink); }
+
+  /* 재연결 대상 선택 팝업 — 카탈로그와 같은 검색/필터 상호작용(자체 DOM·상태) */
+  { const s = $('#rlpSearch'); if(s){
+      s.addEventListener('input', renderRlpList);
+      s.addEventListener('keydown', ev => { if(ev.key === 'ArrowDown'){ ev.preventDefault(); const f = document.querySelector('#rlpList .off-grp,#rlpList .off-row'); if(f){ f.tabIndex = 0; f.focus(); } } });
+  } }
+  ['#rlpCustomer', '#rlpSection', '#rlpStatus'].forEach(sel => { const e = $(sel); if(e) e.addEventListener('change', renderRlpList); });
+  { const c = $('#rlpActiveOnly'); if(c) c.addEventListener('change', renderRlpList); }
+  { const r = $('#rlpReset'); if(r) r.addEventListener('click', rlpResetFilters); }
+  { const box = $('#rlpList'); if(box){
+      box.addEventListener('click', ev => {
+        if(ev.target.closest('#rlpResetIn')){ rlpResetFilters(); return; }
+        const g = ev.target.closest('.off-grp'); if(g){ rlpToggleGroup(g.dataset.sec || ''); return; }
+        const row = ev.target.closest('.off-row'); if(row) rlpChoose(row.dataset.rlpid);
+      });
+      box.addEventListener('keydown', ev => {
+        const el = ev.target.closest ? ev.target.closest('.off-grp,.off-row') : null; if(!el) return;
+        const items = [...box.querySelectorAll('.off-grp,.off-row')], i = items.indexOf(el);
+        const focus = j => { const t = items[Math.max(0, Math.min(items.length - 1, j))]; if(t){ t.tabIndex = 0; t.focus(); } };
+        if(ev.key === 'ArrowDown'){ ev.preventDefault(); focus(i + 1); }
+        else if(ev.key === 'ArrowUp'){ ev.preventDefault(); if(i <= 0){ const s = $('#rlpSearch'); if(s) s.focus(); } else focus(i - 1); }
+        else if(ev.key === 'Home'){ ev.preventDefault(); focus(0); }
+        else if(ev.key === 'End'){ ev.preventDefault(); focus(items.length - 1); }
+        else if(ev.key === 'Enter' || ev.key === ' '){
+          ev.preventDefault();
+          if(el.classList.contains('off-grp')) rlpToggleGroup(el.dataset.sec || '');
+          else rlpChoose(el.dataset.rlpid);
+        }
+      });
+  } }
 
   /* 검색 모달 */
   $('#tabKeyword').addEventListener('click', () => setSearchMode('keyword'));
@@ -9755,6 +10152,7 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
   // 코드는 더 이상 읽지 않지만, 지우지 않으면 기존 사용자 PC에 과제 목록 사본이 영구히 남는다.
   try{ localStorage.removeItem('tc_dbProjects'); localStorage.removeItem('tc_dbSyncedAt'); }catch(_){}
   hpost({ cmd:'loadProjects' });            // 호스트가 DB에서 최신 공식 과제를 읽어 __applyProjects로 회신(실패 시 목록은 빈 채로)
+  hpost({ cmd:'loadCodes' });               // 구분/상태 코드목록 → __applyCodes(드롭다운·그룹 정렬 소스)
 }else{
   // 브라우저 모드: 호스트 주입(__applyXml)이 없으므로 부팅 직후 여기서 1회 이관(마커로 종결). toast 사용 가능 시점.
   migrateLocalStores();

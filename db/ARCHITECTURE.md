@@ -25,7 +25,7 @@
 | 2. Excel 컴팩트 미러 | Excel 원본 → DB 미러, 멱등 UPSERT 재임포트, `source_no` 보존 | "DB가 원본"이 아니라 방향이 반대 |
 | **3. 모델 B (현재 확정)** | **DB가 원본**, Admin 앱 CRUD, Excel은 추출 리포트 | — |
 
-모델 B로 바뀌며 **Excel 흔적 필드(`source_no`·`customer.no`) 제거**, **앱 편집용 필드(`is_active` 소프트삭제·`created_at`/`updated_at` 감사) 추가**, section/status는 **ENUM**(드롭다운·오타 차단).
+모델 B로 바뀌며 **Excel 흔적 필드(`source_no`·`customer.no`) 제거**, **앱 편집용 필드(`is_active` 소프트삭제·`created_at`/`updated_at` 감사) 추가**, section/status는 **룩업 코드테이블(section_code/status_code) + FK**(드롭다운·오타 차단·런타임 관리; 2026-07-24 ENUM에서 전환).
 
 ---
 
@@ -33,7 +33,8 @@
 
 2 테이블 (상세는 `schema.sql`):
 - **`customer`** — 발주처 마스터. `name` PK(자연키) + `is_active` + 감사.
-- **`project`** — 과제 마스터. `id` PK(내부 대리키·autoinc) + **`uid`(외부 안정 참조키, UUID assign-once — 일정이 `db-<uid>`로 참조)** + `section`/`status` ENUM + `customer` FK(ON UPDATE CASCADE) + 사업명 + 계약명·통상명칭(`NOT NULL DEFAULT ''`) + 시작/종료일 + `is_active` + 감사. 유니크는 **`UNIQUE(uid)` 하나뿐** — 이름 기반 하드 유니크(`(customer, project_name)`)는 **제거**했다(ADR-21: 실데이터에 정당한 중복 다수, 실수 중복은 앱 소프트 경고로). 상세: [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4.
+- **`project`** — 과제 마스터. `id` PK(내부 대리키·autoinc) + **`uid`(외부 안정 참조키, UUID assign-once — 일정이 `db-<uid>`로 참조)** + `section`/`status`(코드테이블 FK) + `customer` FK(ON UPDATE CASCADE) + 사업명 + 계약명·통상명칭(`NOT NULL DEFAULT ''`) + 시작/종료일 + `note`(비고·관리 전용) + `is_active` + 감사. 유니크는 **`UNIQUE(uid)` 하나뿐** — 이름 기반 하드 유니크는 **제거**(ADR-21). `section`/`status`는 **ENUM이 아니라 코드테이블 + FK**(ADR-22). 상세: [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5·§4.
+- **`section_code` / `status_code`** — 구분·상태 코드(발주처와 대칭 룩업). `name` PK + `sort_order` + `is_active` + 감사. 앱에서 추가/개명(FK CASCADE)/순서/숨김. `project.section`/`.status`의 FK 타겟(ADR-22).
 
 편집 권한 통제를 위해 **`app_user` 테이블이 추가될 예정**(§5, 앱 연동 단계에서).
 
@@ -235,7 +236,7 @@ Excel은 이 흐름과 별개로 **DB에서 단방향 추출**되는 리포트(N
 | 5 | 접속 정보 = 배포 구성(베이크) *(2026-07-21 정정, §4.6)* | 폐쇄망·고정 IP·공용 서버라 접속정보는 사용자 취향이 아니라 배포 환경 속성 → 배포자가 `ProjectDb.cs` 상수 설정·빌드(재빌드+자동업데이트로 전파) | ~~설정값 외부화~~(초기안, superseded) / 하드코딩 무갱신 |
 | 6 | 임시 서버 = 폐쇄망 PC(고정 IP) | 이미 고정 IP·폐쇄망 내 해결 | 내 외부망 PC / 즉시 회사 서버 |
 | 7 | 권한 = app_user 역할(앱 레벨) | 소규모 충분·단순 | DB GRANT / 중간 API(과함) |
-| 8 | section/status = ENUM | 드롭다운·오타 차단·별도 테이블 불필요 | 자유텍스트 / 룩업테이블 |
+| 8 | ~~section/status = ENUM~~ → **코드테이블 + FK** *(2026-07-24 ADR-22로 개정)* | (구)드롭다운·오타 차단·별도 테이블 불필요 → 런타임 추가/개명/순서/숨김 요구로 코드테이블 채택 | 자유텍스트 |
 | 9 | 기존 로컬 과제 공존(이관X) | 폐쇄망·분산이라 강제이관 지저분, 기존 데이터 보존 / 신규·편집만 DB | 전량 DB 이관·매핑 |
 | 10 | ~~과제명 중복 미처리~~ *(2026-07-24 ADR-21로 대체)* | 현재도 안 막음(회귀 아님), 과도한 로직 회피 → 실데이터 검수 후 '소프트 경고'로 구체화 | 중복 방지 로직 추가 |
 | 11 | 입력 관대 / 출력 엄격 | 입력 제약은 끝이 없음 → 통제를 보고서 한 곳에 | 입력 시점 강제 |
@@ -248,6 +249,7 @@ Excel은 이 흐름과 별개로 **DB에서 단방향 추출**되는 리포트(N
 | 18 | **로컬 DB 카탈로그 캐시 제거** *(2026-07-24, §4.5)* | main 최신 설계문서(`docs/2026-07-22-calendar-server-auth-direction.md`) §7·장애정책이 'DB 정보를 로컬에 캐싱해 오프라인에서도 기능 지원'을 **배제**. 실질 위험도 확인됨 — 캐시가 있으면 서버가 꺼져 있어도 **Excel 장표가 뽑히는데** 부제엔 '오늘 추출'로 찍히고 데이터는 몇 주 전 것일 수 있다(오정보 유통). 캘린더 본체(일정·할일)는 로컬 XML이라 캐시가 없어도 핵심 기능은 무영향. **편입분(`state.categories`의 `source:'db'`)은 캐시가 아니라 카테고리 목록**이므로 유지하되 보관 메타를 `name`·`color`로 최소화(개인 과제와 동일 모델, §4.7.4) | 캐시 유지(+TTL/staleness 배지) · 편입분에 상세 메타 보관 |
 | 19 | **관리자 인증 = 설정 화면 인증 + 호스트 방어** *(2026-07-24, §4.6)* | **보안 결함 수정**: 미인증(viewer)에서도 `saveAdminCred`가 실행돼 공격자가 관리자 비번을 갈아치우고 관리자가 되며 원래 관리자는 잠기는 **계정 탈취 + DoS**가 실사용 테스트에서 발견·실증됨. 원인 ① 웹 '등록' 버튼에 인증 게이트 없음 ② 호스트 `SaveAdminCred`가 현재 인증 상태 미확인. **진짜 방어선은 ②** — 브리지 메시지는 웹에서 직접 던질 수 있어 UI 게이트는 우회된다. 동시에 UX 결함(설정에 인증칸이 없어 '자격 등록'을 로그인으로 오해)도 해소: 인증을 **설정에서만** 하도록 netcus 자격증명 패턴으로 통일하고 JIT 프롬프트(ADR #16)를 폐기. 변경 성공 후 잠금해제는 **유지**(같은 사람이 바꾼 것). 복구는 `db-config.json` 삭제 → 베이크 디폴트 | UI 게이트만 추가(우회 가능) · 현재 비번 재입력 요구(인증 영속과 중복) · JIT 프롬프트 유지 |
 | 21 | **`(customer, project_name)` 유니크 제거 + 소프트 경고** *(2026-07-24, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4)* | 실데이터 144건 검수: `(발주처, 사업명)` 중복 22조합/68건(**구성품별 계약** — 정상), `(발주처, 사업명, 계약명)`까지 같은 중복 1조합/2건(**연도별 갱신** — 날짜만 다름, 매년 반복), 끝공백 등 보이지 않는 차이 존재. 이름 하드 유니크는 이 도메인에 틀린 규칙이고, ai_ci·NO PAD라 끝공백 변형은 오히려 통과시켜 진짜 실수를 못 잡는다. → 유니크는 `uid` 하나만, 실수 중복은 **앱 소프트 경고**(저장 시 TRIM + 정규화 비교로 `(발주처, 사업명, 계약명)` 유사 시 '그래도 추가?' 확인). `contract_name`/`common_name`은 `NOT NULL DEFAULT ''`(비교 함정 방지). 기존 DB는 `deploy/migrate-2026-07-24-uniqueness.sql`로 이관 | 이름 유니크 유지(연도갱신마다 이름에 연도 수동 부착) · 계약명 포함 유니크(갱신 반복이라 동일 문제) |
+| 22 | **구분/상태 ENUM → 룩업 코드테이블(section_code/status_code) + FK · note 컬럼** *(2026-07-24, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5)* | ENUM은 값 추가/개명/순서변경/숨김에 `ALTER TABLE`이 필요해 런타임 관리가 불가능. 발주처(customer)와 **대칭인 코드테이블 + FK(ON UPDATE CASCADE / ON DELETE RESTRICT)**로 바꾸면 앱에서 추가=INSERT·개명=name UPDATE(→CASCADE로 project 전파)·재배치=sort_order·숨김=is_active로 관리하고, **무결성은 FK가 승계**(내부망 LLM의 직접 SQL 대량 INSERT에서도 오타 값 거부). status는 nullable(선진행=NULL이면 FK 스킵). 겸사겸사 `note`(관리 전용 비고·전시 미노출) 추가. 기존 DB는 `deploy/migrate.ps1` 단계2로 무손실 이관(ENUM→VARCHAR·안전망 흡수·FK 추가 멱등) | ENUM 유지(ALTER 필요) · 자유텍스트(무결성 없음) · 별도 API 검증 |
 
 > ADR #20은 결번(TABLE-DESIGN.md가 이 결정을 #21로 먼저 확정·커밋해 번호를 맞춤).
 

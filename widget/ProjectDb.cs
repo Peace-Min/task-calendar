@@ -170,7 +170,7 @@ namespace TaskCalendarWidget
                 const string sql =
                     "SELECT uid, section, customer, project_name, contract_name, common_name, " +
                     "DATE_FORMAT(start_date,'%Y-%m-%d') start_date, DATE_FORMAT(end_date,'%Y-%m-%d') end_date, " +
-                    "status, is_active FROM project WHERE is_active=1 ORDER BY common_name";
+                    "status, note, is_active FROM project WHERE is_active=1 ORDER BY common_name";
                 await using var cmd = new MySqlCommand(sql, conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
 
@@ -188,6 +188,7 @@ namespace TaskCalendarWidget
                         ["start_date"]    = Str(rd, "start_date"),
                         ["end_date"]      = Str(rd, "end_date"),
                         ["status"]        = Str(rd, "status"),
+                        ["note"]          = Str(rd, "note"),
                         ["is_active"]     = IntOrNull(rd, "is_active"),
                     });
                 }
@@ -246,13 +247,86 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
+        // 구분/상태 코드테이블 — section_code / status_code (발주처 마스터와 대칭 · ENUM 대체)
+        //   kind 문자열('section'|'status')로 테이블·컬럼을 단일 소스에서 해석한다(중복 분기 방지).
+        //   드롭다운 = 활성만 sort_order 순, 관리 화면 = 숨김 포함 전체.
+        // ================================================================================
+        private static bool ResolveCodeKind(string? kind, out string table, out string projCol)
+        {
+            switch ((kind ?? "").Trim())
+            {
+                case "section": table = "section_code"; projCol = "section"; return true;
+                case "status":  table = "status_code";  projCol = "status";  return true;
+                default:        table = "";             projCol = "";        return false;
+            }
+        }
+
+        // 활성 코드값 이름 배열 JSON — 편집 폼·필터 드롭다운 소스. 실패면 null(웹이 폴백/비활성).
+        public async Task<string?> LoadSectionCodesJsonAsync() => await LoadActiveCodeNamesJsonAsync("section_code");
+        public async Task<string?> LoadStatusCodesJsonAsync()  => await LoadActiveCodeNamesJsonAsync("status_code");
+        private async Task<string?> LoadActiveCodeNamesJsonAsync(string table)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand($"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name", conn);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                var names = new List<string>();
+                while (await rd.ReadAsync(cts.Token)) { string n = Str(rd, "name"); if (n.Length > 0) names.Add(n); }
+                _log("DB 코드 로드(" + table + "): " + names.Count + "건");
+                return JsonSerializer.Serialize(names);
+            }
+            catch (Exception ex) { _log("DB 코드 로드 실패(" + table + "): " + Short(ex)); return null; }
+        }
+
+        // 코드값 전체(숨김 포함) — 관리 화면 전용. [{name, active, sort}] JSON. 활성 먼저, 그 안에서 sort_order·name.
+        public async Task<string?> LoadCodesFullJsonAsync(string? kind)
+        {
+            if (!ResolveCodeKind(kind, out string table, out _)) return null;
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand($"SELECT name, sort_order, is_active FROM {table} ORDER BY is_active DESC, sort_order, name", conn);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                var rows = new List<Dictionary<string, object?>>();
+                while (await rd.ReadAsync(cts.Token))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length == 0) continue;
+                    rows.Add(new Dictionary<string, object?>
+                    {
+                        ["name"] = n,
+                        ["active"] = (IntOrNull(rd, "is_active") ?? 1) != 0,
+                        ["sort"] = IntOrNull(rd, "sort_order") ?? 0,
+                    });
+                }
+                return JsonSerializer.Serialize(rows);
+            }
+            catch (Exception ex) { _log("DB 코드(전체) 로드 실패(" + table + "): " + Short(ex)); return null; }
+        }
+
+        // 같은 연결로 코드 이름 집합 로드(UpsertProjectAsync 선검증용 — 좋은 에러문구). activeOnly=false면 숨김 포함.
+        private static async Task<HashSet<string>> LoadCodeNameSetAsync(MySqlConnection conn, System.Threading.CancellationToken ct, string table, bool activeOnly)
+        {
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            string sql = activeOnly ? $"SELECT name FROM {table} WHERE is_active=1" : $"SELECT name FROM {table}";
+            await using var cmd = new MySqlCommand(sql, conn);
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            while (await rd.ReadAsync(ct)) { string n = Str(rd, "name"); if (n.Length > 0) set.Add(n); }
+            return set;
+        }
+
+        // ================================================================================
         // 쓰기 경로(P3.2) — 관리자 공식 과제 CRUD
         // 규약: ① 모든 값은 MySqlParameter 바인딩(문자열 연결 절대 금지) ② 예외는 전부 잡아
         //       (false, 한국어 메시지)로 환원하고 절대 throw하지 않는다 ③ 실패 사유는 사용자가
         //       '무엇을 고치면 되는지' 알 수 있는 문장으로만 노출한다(SQL/스택 노출 금지).
+        // ※ 구분/상태는 하드코딩 배열이 아니라 코드테이블에서 로드해 선검증한다(최종 보증은 FK).
         // ================================================================================
-        private static readonly string[] Sections = { "일반계약", "선진행", "사업부관리" };            // schema.sql section ENUM
-        private static readonly string[] Statuses = { "진행중", "종료", "1차 납품완료", "미정" };      // schema.sql status ENUM(NULL 허용)
 
         // 빈 문자열/공백 → DBNull(스키마의 NULL 허용 컬럼). 그 외는 트림한 값.
         private static object TextOrNull(string? s) =>
@@ -274,18 +348,23 @@ namespace TaskCalendarWidget
                 ? (object)d.Date : DBNull.Value;
         }
 
-        // MySQL 에러번호 → 사용자 문장. 스키마 제약(FK/ENUM/NOT NULL)이 그대로 사용자에게 닿는 지점이다.
-        // ★ (customer, project_name) 유니크는 제거됐다(ADR-21) — 이제 project INSERT의 1062는 uq_project_uid(uid, UUID라
-        //   사실상 발생 안 함)만 의미하므로 별도 문구를 두지 않고 일반 메시지로 떨어진다. 실수 중복은 소프트 경고가 잡는다.
+        // MySQL 에러번호 → 사용자 문장. 스키마 제약(FK/길이/NOT NULL)이 그대로 사용자에게 닿는 지점이다.
+        // ★ (customer, project_name) 유니크는 제거됐다(ADR-21) — project 1062는 uq_project_uid(UUID라 사실상 없음)만 의미.
+        //   FK(1451/1452)는 3개(발주처·구분·상태) 중 어느 것인지 예외 메시지의 제약명으로 구분해 안내한다.
         private static string MySqlMsg(MySqlException ex)
         {
             switch (ex.Number)
             {
                 case 1451:
-                case 1452: return "등록되지 않은 발주처입니다.";                                 // fk_project_customer
-                case 1265:
-                case 1406: return "구분/상태 값이 올바르지 않습니다.";                           // ENUM 밖 값 / 길이 초과
-                case 1048: return "필수 항목이 비어 있습니다.";                                  // NOT NULL
+                case 1452:
+                {
+                    string m = ex.Message ?? "";
+                    if (m.Contains("fk_project_section")) return "등록되지 않은 구분입니다 — 구분·상태 관리에서 먼저 추가하세요.";
+                    if (m.Contains("fk_project_status"))  return "등록되지 않은 상태입니다 — 구분·상태 관리에서 먼저 추가하세요.";
+                    return "등록되지 않은 발주처입니다.";                                          // fk_project_customer
+                }
+                case 1406: return "값이 너무 깁니다 — 길이를 줄여 주세요.";                        // 길이 초과
+                case 1048: return "필수 항목이 비어 있습니다.";                                    // NOT NULL
                 default:   return "저장하지 못했습니다: " + Short(ex);
             }
         }
@@ -303,18 +382,19 @@ namespace TaskCalendarWidget
         // 이름 필드(사업명·계약명·통상명칭·발주처)는 저장 전 TRIM. 빈 계약명/통상명칭은 ''로 저장(NULL 금지 — 비교 함정 방지).
         public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(string? uid, string section, string customer,
             string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? status,
-            bool confirmSimilar = false)
+            string? note = null, bool confirmSimilar = false)
         {
-            // ── 앱단 선검증 — ENUM/필수값 위반은 DB까지 보내지 않고 바로 사용자 문장으로 돌려준다.
+            // ── 앱단 선검증(형식·필수) — DB까지 보내지 않고 바로 사용자 문장으로. 구분/상태 존재 검증은 연결 후(코드테이블 로드).
             string u = (uid ?? "").Trim();
             string sec = (section ?? "").Trim(), cust = (customer ?? "").Trim(), pname = (projectName ?? "").Trim();
             string cn = (contractName ?? "").Trim(), mn = (commonName ?? "").Trim();   // 빈값은 ''(NULL 아님)
+            string nt = (note ?? "").Trim();                                            // 비고(빈값 '')
             string st = (status ?? "").Trim(), sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
             if (pname.Length == 0) return (false, "사업명을 입력하세요.", false);
             if (cust.Length == 0) return (false, "발주처를 선택하세요.", false);
-            if (Array.IndexOf(Sections, sec) < 0) return (false, "구분 값이 올바르지 않습니다.", false);
-            if (st.Length > 0 && Array.IndexOf(Statuses, st) < 0) return (false, "상태 값이 올바르지 않습니다.", false);
+            if (sec.Length == 0) return (false, "구분을 선택하세요.", false);
             // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
+            //   ※ '선진행'은 코드테이블 개명 가능하나, 이 특수규칙은 표준 시드값 기준(개명하면 규칙도 함께 손봐야 함).
             if (sec == "선진행") { sd = ""; ed = ""; st = ""; }
             // 날짜 형식 선검증 — 잘못된 형식을 조용히 NULL로 저장하지 않고 사용자에게 되돌린다(무음 데이터 유실 방지).
             if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
@@ -328,6 +408,16 @@ namespace TaskCalendarWidget
                 await using var conn = new MySqlConnection(BuildConnString());
                 try { await conn.OpenAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg, false); }
+
+                // 구분/상태 존재 검증(코드테이블 로드) — 좋은 에러문구용. 최종 보증은 FK. 숨김 포함 전체로 검사해
+                // 이미 저장된 값(나중에 숨긴 코드)이 편집 저장에서 막히지 않게 한다.
+                var secSet = await LoadCodeNameSetAsync(conn, cts.Token, "section_code", activeOnly: false);
+                if (!secSet.Contains(sec)) return (false, "등록되지 않은 구분입니다 — 구분·상태 관리에서 먼저 추가하세요.", false);
+                if (st.Length > 0)
+                {
+                    var stSet = await LoadCodeNameSetAsync(conn, cts.Token, "status_code", activeOnly: false);
+                    if (!stSet.Contains(st)) return (false, "등록되지 않은 상태입니다 — 구분·상태 관리에서 먼저 추가하세요.", false);
+                }
 
                 if (u.Length == 0)
                 {
@@ -345,10 +435,10 @@ namespace TaskCalendarWidget
                         }
                     }
                     const string ins = "INSERT INTO project (section, customer, project_name, contract_name, common_name, " +
-                                       "start_date, end_date, status) VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@st)";
+                                       "start_date, end_date, status, note) VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@st,@note)";
                     await using (var cmd = new MySqlCommand(ins, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st);
+                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st, nt);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
@@ -361,11 +451,11 @@ namespace TaskCalendarWidget
                 else
                 {
                     const string upd = "UPDATE project SET section=@sec, customer=@cust, project_name=@pn, contract_name=@cn, " +
-                                       "common_name=@mn, start_date=@sd, end_date=@ed, status=@st WHERE uid=@uid";
+                                       "common_name=@mn, start_date=@sd, end_date=@ed, status=@st, note=@note WHERE uid=@uid";
                     int n;
                     await using (var cmd = new MySqlCommand(upd, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st);
+                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st, nt);
                         cmd.Parameters.AddWithValue("@uid", u);
                         n = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -407,9 +497,9 @@ namespace TaskCalendarWidget
             return null;
         }
 
-        // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나지 않게 한 곳에서. cn/mn은 이미 TRIM된 문자열('' 허용, NULL 금지).
+        // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나지 않게 한 곳에서. cn/mn/nt는 이미 TRIM된 문자열('' 허용, NULL 금지).
         private static void BindProject(MySqlCommand cmd, string sec, string cust, string pname,
-            string cn, string mn, string sd, string ed, string st)
+            string cn, string mn, string sd, string ed, string st, string nt)
         {
             cmd.Parameters.AddWithValue("@sec", sec);
             cmd.Parameters.AddWithValue("@cust", cust);
@@ -419,6 +509,7 @@ namespace TaskCalendarWidget
             cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
             cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
             cmd.Parameters.AddWithValue("@st", TextOrNull(st));
+            cmd.Parameters.AddWithValue("@note", nt);  // 비고 '' 그대로(NULL 아님)
         }
 
         // 소프트삭제/복구 — is_active=0이면 LoadProjectsJsonAsync가 아예 안 가져온다(목록에서 사라짐).
@@ -577,6 +668,179 @@ namespace TaskCalendarWidget
                 return (true, count, "");
             }
             catch (Exception ex) { _log("발주처 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
+        }
+
+        // ================================================================================
+        // 구분/상태 코드값 관리 — 발주처 CRUD를 그대로 복제(kind로 테이블·컬럼 해석).
+        //   추가=INSERT / 개명=UPDATE name(→FK CASCADE로 project 전파) / 숨김=is_active / 재배치=sort_order.
+        //   하드삭제는 앱에서 안 한다(FK RESTRICT). 규약은 UpsertProjectAsync와 동일.
+        // ================================================================================
+
+        // 코드값 존재/활성 상태 — null=없음, true=활성, false=숨김(1062 안내 분기용).
+        private async Task<bool?> CodeActiveStateAsync(string table, string name)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = new MySqlConnection(BuildConnString());
+                await conn.OpenAsync(cts.Token);
+                await using var cmd = new MySqlCommand($"SELECT is_active FROM {table} WHERE name=@n", conn);
+                cmd.Parameters.AddWithValue("@n", name);
+                var o = await cmd.ExecuteScalarAsync(cts.Token);
+                if (o == null || o == DBNull.Value) return null;
+                return Convert.ToInt32(o) != 0;
+            }
+            catch (Exception ex) { _log("코드 상태 조회 실패(" + table + "): " + Short(ex)); return null; }
+        }
+
+        private static string KindLabel(string kind) => kind == "status" ? "상태" : "구분";
+
+        // 코드값 추가 — 다음 sort_order = MAX+10(끝에 붙임). name PK 중복(1062)이면 활성/숨김 구분 안내.
+        public async Task<(bool ok, string msg)> AddCodeAsync(string? kind, string? name)
+        {
+            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
+            string lbl = KindLabel(kind!.Trim());
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, lbl + "명을 입력하세요.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(" + table + " 추가): " + Short(cex)); return (false, OfflineMsg); }
+
+                // 다음 sort_order = MAX+10(끝에 붙임). INSERT와 같은 테이블 SELECT를 한 문장에 섞지 않게 두 단계로.
+                int nextSort;
+                await using (var q = new MySqlCommand($"SELECT COALESCE(MAX(sort_order),0)+10 FROM {table}", conn))
+                    nextSort = (int)Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 10L);
+                await using var cmd = new MySqlCommand($"INSERT INTO {table} (name, sort_order) VALUES (@n, @s)", conn);
+                cmd.Parameters.AddWithValue("@n", n);
+                cmd.Parameters.AddWithValue("@s", nextSort);
+                await cmd.ExecuteNonQueryAsync(cts.Token);
+                _log(lbl + " 추가: " + n);
+                return (true, lbl + "을(를) 추가했습니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062)
+            {
+                bool? active = await CodeActiveStateAsync(table, n);
+                if (active == false) return (false, "숨김 처리된 동일 " + lbl + "이(가) 있습니다(복구 필요).");
+                return (false, "이미 등록된 " + lbl + "입니다.");
+            }
+            catch (MySqlException mex) { _log(lbl + " 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, "추가하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log(lbl + " 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 코드값 개명 — FK ON UPDATE CASCADE라 project.section/status가 자동 반영된다. no-op/0행/1062 처리.
+        public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, string? oldName, string? newName)
+        {
+            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
+            string lbl = KindLabel(kind!.Trim());
+            string o = (oldName ?? "").Trim(), nw = (newName ?? "").Trim();
+            if (o.Length == 0) return (false, "변경할 " + lbl + "을(를) 지정하세요.");
+            if (nw.Length == 0) return (false, "새 " + lbl + "명을 입력하세요.");
+            if (string.Equals(o, nw, StringComparison.Ordinal)) return (true, "변경 사항이 없습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(" + table + " 개명): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand($"UPDATE {table} SET name=@new WHERE name=@old", conn);
+                cmd.Parameters.AddWithValue("@new", nw);
+                cmd.Parameters.AddWithValue("@old", o);
+                int n = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (n == 0) return (false, lbl + "을(를) 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                _log(lbl + " 개명: " + o + " → " + nw + " (project는 FK CASCADE로 자동 전파)");
+                return (true, lbl + "을(를) 변경했습니다. 이 " + lbl + "의 과제 표기도 함께 바뀝니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, "그 이름의 " + lbl + "이(가) 이미 있습니다."); }
+            catch (MySqlException mex) { _log(lbl + " 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log(lbl + " 개명 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 코드값 소프트삭제(숨김)/복구. 하드삭제 안 함(FK RESTRICT).
+        public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, string? name, bool active)
+        {
+            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
+            string lbl = KindLabel(kind!.Trim());
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, "대상 " + lbl + "이(가) 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(" + table + " 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand($"UPDATE {table} SET is_active=@a WHERE name=@n", conn);
+                cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
+                cmd.Parameters.AddWithValue("@n", n);
+                int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (cnt == 0) return (false, lbl + "을(를) 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                _log(lbl + " " + (active ? "복구" : "숨김") + ": " + n);
+                return (true, active ? lbl + "을(를) 다시 표시합니다." : lbl + "을(를) 숨겼습니다.");
+            }
+            catch (MySqlException mex) { _log(lbl + " 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log(lbl + " 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 코드값 순서 재배치 — 받은 이름 순서대로 sort_order = (index+1)*10 재부여(트랜잭션). 존재하는 이름만 갱신.
+        public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<string>? orderedNames)
+        {
+            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
+            string lbl = KindLabel(kind!.Trim());
+            if (orderedNames == null || orderedNames.Count == 0) return (false, "정렬할 " + lbl + " 목록이 비어 있습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(" + table + " 순서변경): " + Short(cex)); return (false, OfflineMsg); }
+
+                await using var tx = await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    int order = 0;
+                    foreach (var raw in orderedNames)
+                    {
+                        string nm = (raw ?? "").Trim();
+                        if (nm.Length == 0) continue;
+                        order += 10;
+                        await using var cmd = new MySqlCommand($"UPDATE {table} SET sort_order=@s WHERE name=@n", conn, (MySqlTransaction)tx);
+                        cmd.Parameters.AddWithValue("@s", order);
+                        cmd.Parameters.AddWithValue("@n", nm);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log(lbl + " 순서변경: " + orderedNames.Count + "건");
+                    return (true, lbl + " 순서를 변경했습니다.");
+                }
+                catch { await tx.RollbackAsync(cts.Token); throw; }
+            }
+            catch (MySqlException mex) { _log(lbl + " 순서변경 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log(lbl + " 순서변경 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 이 코드값을 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다).
+        public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCodeAsync(string? kind, string? name)
+        {
+            if (!ResolveCodeKind(kind, out _, out string projCol)) return (false, 0, "대상 종류가 올바르지 않습니다.");
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, 0, "대상이 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                await using var conn = new MySqlConnection(BuildConnString());
+                try { await conn.OpenAsync(cts.Token); }
+                catch (Exception cex) { _log("DB 연결 실패(코드 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
+
+                await using var cmd = new MySqlCommand($"SELECT COUNT(*) FROM project WHERE {projCol}=@n AND is_active=1", conn);
+                cmd.Parameters.AddWithValue("@n", n);
+                int count = (int)Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                return (true, count, "");
+            }
+            catch (Exception ex) { _log("코드 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
         }
 
         private static string Str(DbDataReader rd, string col)

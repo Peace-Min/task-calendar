@@ -3,17 +3,18 @@
 > **대상 독자**: 이 DB를 이어받아 유지·확장할 사람 (PM·후임 개발자)
 > **범위**: `taskmgr` 데이터베이스의 테이블 구조, 식별·유니크 규칙, 그 결정 근거와 유지보수 지침
 > **관련**: 배포/운영은 [`ARCHITECTURE.md`](ARCHITECTURE.md), 진행 계획은 [`ROADMAP.md`](ROADMAP.md), DDL은 [`schema.sql`](schema.sql)
-> **최종 갱신**: 2026-07-24 (실데이터 144건 검수 반영 — 유니크 규칙 재정의)
+> **최종 갱신**: 2026-07-24 (유니크 규칙 재정의 + 구분/상태 코드테이블 전환·note 컬럼 — ADR-21·22)
 
 ---
 
 ## 1. 한 장 요약
 
 - **DB가 원본(source of truth)** — Admin이 캘린더 앱으로 과제를 관리하고, Excel은 DB에서 뽑는 리포트다.
-- **테이블은 2개뿐**: `customer`(발주처) + `project`(과제). 복잡한 데이터가 아니므로 의도적으로 컴팩트하게 유지한다.
+- **테이블은 4개**: `customer`(발주처) + `section_code`/`status_code`(구분·상태 코드) + `project`(과제). 셋 다 `project`의 FK 타겟인 룩업이고, 과제 본체는 하나뿐이다.
+- **구분/상태는 ENUM이 아니라 룩업 코드테이블**(2026-07-24) — 발주처와 대칭. 런타임에 추가/개명(FK CASCADE)/순서변경/숨김이 가능하고, FK가 무결성을 승계한다(오타 값 거부).
 - **과제의 정체성은 이름이 아니라 `uid`(UUID)다.** 같은 이름의 과제가 여럿 존재할 수 있다(구성품별 계약·연도별 갱신) — 실데이터가 이를 증명했다.
 - **이름 기반 하드 유니크 제약은 두지 않는다.** 대신 앱에서 "비슷한 과제가 있습니다" **소프트 경고**로 실수 중복을 거른다.
-- 삭제는 소프트(`is_active=0`), 발주처 개명은 FK CASCADE로 과제에 자동 전파.
+- 삭제는 소프트(`is_active=0`), 발주처·구분·상태 개명은 FK CASCADE로 과제에 자동 전파.
 
 ---
 
@@ -32,28 +33,54 @@
 
 ---
 
+## 2.5 테이블: `section_code` / `status_code` (구분·상태 코드 — 발주처와 대칭)
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `name` | VARCHAR(50) | **PK** | 코드값 = 자연키. `project.section`/`project.status`의 FK 타겟 |
+| `sort_order` | INT | NOT NULL, 기본 0 | 드롭다운 정렬(작을수록 먼저). 앱 ▲▼로 재부여 |
+| `is_active` | TINYINT(1) | NOT NULL, 기본 1 | 소프트 삭제(0=숨김 → 새 과제 선택에서 빠짐) |
+| `created_at`/`updated_at` | DATETIME(3) | NOT NULL, 자동 | 감사 |
+
+- **왜 코드테이블인가**: ENUM은 값 추가/개명/순서변경에 `ALTER TABLE`이 필요하고 런타임 관리가 불가능하다. 코드테이블 + FK면
+  발주처와 똑같이 앱에서 관리(추가=INSERT / 개명=`name` UPDATE→CASCADE / 재배치=`sort_order` / 숨김=`is_active`)하면서
+  무결성은 FK가 승계한다(내부망 LLM의 직접 SQL 대량 INSERT에서도 오타 값을 DB가 거부).
+- **표준 시드**: section=일반계약(10)/선진행(20)/사업부관리(30), status=진행중(10)/종료(20)/1차 납품완료(30)/미정(40).
+- **개명 전파**: 코드값 이름을 바꾸면 FK `ON UPDATE CASCADE`로 그 값을 쓰던 `project` 전 행이 자동 갱신된다.
+- **삭제**: 소프트만. 참조 중인 코드값은 `ON DELETE RESTRICT`로 하드삭제가 막힌다.
+- **`status`는 nullable** — `NULL`(선진행)이면 FK 검사를 스킵한다(정상).
+
+---
+
 ## 3. 테이블: `project` (과제 마스터 — 핵심)
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |---|---|---|---|
 | `id` | INT UNSIGNED | **PK**, AUTO_INCREMENT | 내부 대리키. 외부에 노출/참조하지 않음 |
 | `uid` | CHAR(36) | **UNIQUE**, 기본 `UUID()` | **외부 안정 식별자.** 일정이 `db-<uid>`로 참조. rename·덤프복원·서버이관에도 불변 |
-| `section` | ENUM | NOT NULL | 구분: `일반계약` / `선진행` / `사업부관리` |
+| `section` | VARCHAR(50) | NOT NULL, **FK→section_code.name** | 구분. ON UPDATE CASCADE / DELETE RESTRICT |
 | `customer` | VARCHAR(100) | NOT NULL, **FK→customer.name** | 발주처. ON UPDATE CASCADE |
 | `project_name` | VARCHAR(200) | NOT NULL | 사업명 |
 | `contract_name` | VARCHAR(200) | NOT NULL, 기본 `''` ¹ | 계약명 |
 | `common_name` | VARCHAR(200) | NOT NULL, 기본 `''` ¹ | 통상명칭 |
 | `start_date` | DATE | NULL | 계약시작일(선진행/미정=NULL) |
 | `end_date` | DATE | NULL | 계약종료일(선진행/미정=NULL) |
-| `status` | ENUM | NULL | 상태: `진행중` / `종료` / `1차 납품완료` / `미정` (선진행=NULL) |
+| `status` | VARCHAR(50) | NULL, **FK→status_code.name** | 상태(선진행=NULL이면 FK 스킵). CASCADE / RESTRICT |
+| `note` | VARCHAR(500) | NOT NULL, 기본 `''` | **비고** — 관리 화면 전용 내부메모. **캘린더·보고서엔 미노출** |
 | `is_active` | TINYINT(1) | NOT NULL, 기본 1 | 소프트 삭제(0=숨김) |
 | `created_at` / `updated_at` | DATETIME(3) | NOT NULL, 자동 | 감사 |
 
-**인덱스**
+**인덱스·FK**
 - `PRIMARY KEY (id)`
 - `UNIQUE KEY (uid)` — 외부 참조 무결성(assign-once)
 - `KEY (customer)` · `KEY (section)` · `KEY (is_active)` — 조회 보조
+- `FK fk_project_customer` → customer.name (CASCADE)
+- `FK fk_project_section` → section_code.name (CASCADE / DELETE RESTRICT)
+- `FK fk_project_status` → status_code.name (CASCADE / DELETE RESTRICT; NULL이면 스킵)
 - ~~`UNIQUE KEY (customer, project_name)`~~ — **제거**(§4 참조)
+
+> **note**: 관리 화면(편집 폼)에서만 읽고 쓰는 내부 메모다. 편입분(앱 XML `state.categories`)에도, 캘린더·보고서 전시에도
+> 절대 노출하지 않는다(라벨 최소 메타 = `name`/`color`만, ADR-18과 같은 원칙).
 
 > ¹ **적용 상태**: `contract_name`/`common_name`의 `NOT NULL DEFAULT ''`와 `uq_project` 제거는 **2026-07-24 확정된 목표 설계**다. project 테이블이 비어 있는 지금 반영하면 무비용(이관 불필요). 코드 반영 전이면 현재 `schema.sql`은 이전 정의일 수 있다 — **이 문서가 기준**이며 반영은 별도 작업으로 추적한다.
 
@@ -111,8 +138,8 @@
 
 | 항목 | 규칙 |
 |---|---|
-| `section` | ENUM 3값만. 그 외 입력은 DB가 거부(ERROR 1265) |
-| `status` | ENUM 4값 또는 NULL |
+| `section` | 코드테이블(section_code) 존재값만. 없는 값은 FK 거부(ERROR 1452). 표준 3값 + 앱에서 추가 가능 |
+| `status` | 코드테이블(status_code) 존재값 또는 NULL(선진행). 표준 4값 + 앱에서 추가 가능 |
 | **선진행(계약 전)** | `start_date`·`end_date`·`status` = NULL |
 | 날짜 | `'YYYY-MM-DD'` 또는 NULL |
 | 이름 필드 쓰기 | **앞뒤 공백 TRIM**(위생) |
@@ -137,8 +164,8 @@ project(uid)   ────< (캘린더 일정의 categoryId = "db-<uid>")   ※
 ## 7. 유지보수 지침
 
 ### 7.1 과제 추가
-- **앱(권장)**: 발주처 관리로 발주처 먼저 → 새 공식 과제. ENUM·FK·소프트경고를 앱이 대신 지켜준다.
-- **대량(내부망 LLM)**: `deploy/load-template.sql` 규칙대로 INSERT 생성. 순서 = 발주처 → 과제. `id`/`uid`/감사컬럼은 넣지 않는다(자동).
+- **앱(권장)**: 발주처·구분·상태 관리로 코드값 먼저 → 새 공식 과제. FK·소프트경고를 앱이 대신 지켜준다.
+- **대량(내부망 LLM)**: `deploy/load-template.sql` 규칙대로 INSERT 생성. 순서 = 코드값(section/status) + 발주처 → 과제. `id`/`uid`/감사컬럼은 넣지 않는다(자동).
 
 ### 7.2 발주처 이름 변경
 - 앱 발주처 관리에서 변경 → FK CASCADE로 과제 반영. 수동 UPDATE 불필요.
@@ -177,5 +204,6 @@ project(uid)   ────< (캘린더 일정의 categoryId = "db-<uid>")   ※
 | — | 모델 B: DB가 원본, Excel은 추출 | 캘린더 결합·Excel 미러 서사 폐기 |
 | 13 | 안정 `uid`(UUID) 도입, 일정은 `db-<uid>` 참조 | 채번·이관 불변 |
 | **21** | **`(customer, project_name)` 유니크 제거 + 소프트 경고로 대체** *(2026-07-24)* | 실데이터: 구성품별 계약 68건·연도갱신·공백변형 — 이름 유니크가 도메인과 충돌 |
+| **22** | **구분/상태 ENUM → 룩업 코드테이블(section_code/status_code) + FK · note 컬럼** *(2026-07-24)* | ENUM은 런타임 추가/개명/순서/숨김 불가. 발주처와 대칭 코드테이블 + FK CASCADE면 앱에서 관리하고 무결성은 FK가 승계(LLM 직접 INSERT의 오타도 거부) |
 
 *(ADR 전체 목록은 [`ARCHITECTURE.md`](ARCHITECTURE.md) §5)*

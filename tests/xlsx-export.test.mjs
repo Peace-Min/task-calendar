@@ -26,9 +26,11 @@ function makeExportCtx(env) {
     'let dbCustomers = __env.dbCustomers || [];\n' +
     // 캐시 제거(2026-07-24) 후 버튼/툴팁이 '연결 안 됨'을 구분하므로 온라인 여부도 주입한다(기본 true).
     'let dbOnline = (__env.dbOnline !== false);\n' +
+    // 구분/상태는 이제 DB 코드테이블 로드값(offSections/offStatuses) — 테스트엔 표준 시드값을 주입.
+    'let offSections = __env.offSections || ["일반계약","선진행","사업부관리"];\n' +
+    'let offStatuses = __env.offStatuses || ["진행중","종료","1차 납품완료","미정"];\n' +
     constLine('offTrim') + '\n' +
     constLine('offNorm') + '\n' +
-    constLine('OFF_SECTIONS') + '\n' +
     constLine('OFF_NO_STATUS') + '\n' +
     constLine('OFF_EXPORT_SCOPE_NOTE') + '\n' +
     extractFunction(src, 'offDate') + '\n' +
@@ -770,12 +772,14 @@ test('발주처 관리 UI: 숨김은 참조 카운트로 경고 후 진행(막�
   assert.ok(/setCustomerActive/.test(b) && /active: false/.test(b), '숨김 처리 전송이 없다');
 });
 
-test('발주처 관리 UI: 편집폼 인라인 추가는 성공 시 드롭다운 갱신 후 그 값 자동 선택', () => {
-  const b = extractFunction(src, 'offEdInlineAddCustomer');
-  assert.ok(/hostRequest\('addCustomer'/.test(b), 'addCustomer 왕복이 없다');
-  assert.ok(/dbCustomers = \[\.\.\.new Set\(\[\.\.\.dbCustomers, name\]\)\]/.test(b), '새 발주처를 로컬 마스터에 즉시 반영하지 않는다');
-  assert.ok(/restore\(name\)/.test(b), '성공 시 새 값으로 드롭다운 복원(자동 선택)이 없다');
-  assert.ok(/offEdFillCustomers\(selectName/.test(b), '복원이 offEdFillCustomers로 선택값을 세팅하지 않는다');
+test('발주처 관리 UI: 편집폼 인라인 추가(＋)는 제거되고 관리 모달 경로로 대체됐다', () => {
+  // 인라인 추가 함수·버튼·바인딩이 완전히 사라졌는지(계정 탈취 UI와 유사한 인라인 편집 표면 축소)
+  assert.ok(!/offEdInlineAddCustomer/.test(src), '인라인 추가 함수가 남아 있다');
+  assert.ok(!/id="offEdCustAdd"/.test(src), '편집폼 인라인 ＋ 버튼이 남아 있다');
+  // 대신 '발주처 관리…' 링크가 customerModal을 연다
+  assert.ok(/id="offEdCustMgr"/.test(src), "편집폼에 '발주처 관리' 링크가 없다");
+  assert.ok(/\$\('#offEdCustMgr'\); if\(b\) b\.addEventListener\('click', openCustomerModal\)/.test(src),
+    "'발주처 관리' 링크가 openCustomerModal을 열지 않는다");
 });
 
 test('발주처 관리 UI: 관리 버튼은 위젯에서만 노출(offSyncExportBtn이 함께 동기화)', () => {

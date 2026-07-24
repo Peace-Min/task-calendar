@@ -10,7 +10,8 @@ MySQL 서버에 **과제 DB 구조(테이블) + 앱 계정**을 만드는 도구
 | `schema-structure.sql` | 구조 전용 DDL(customer/project). 시드 없음 |
 | `create-app-user.sql` | 앱 계정 수동 생성용(참고). init-db가 자동으로도 함 |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙 |
-| `migrate-2026-07-24-uniqueness.sql` | **기존 데이터가 있는 DB용 1회 마이그레이션**: 이름 유니크 제거 + 계약명/통상명칭 `NOT NULL DEFAULT ''`(ADR-21). 최초 구축은 schema로 하고, 이미 데이터가 든 DB에만 적용. 멱등 아님 |
+| `migrate.cmd` / `migrate.ps1` | **기존 데이터 DB 마이그레이션(재실행 안전·무손실)**: 단계1 이름 유니크 제거+`NOT NULL DEFAULT ''`(ADR-21), 단계2 구분/상태 ENUM→코드테이블+FK·note 추가(ADR-22). 더블클릭 → root 비번만. 각 단계 멱등(반영됐으면 스킵) |
+| `migrate-2026-07-24-uniqueness.sql` | (단계1 단독 SQL — 참고용. 실사용은 위 migrate.cmd 권장) |
 
 ## 지금 — 구조 만들기
 
@@ -28,7 +29,7 @@ init-db.cmd -DbHost 192.168.0.50 -Port 3306
 ```
 mysql -u root -p taskmgr < 내부망LLM이_만든_INSERT.sql
 ```
-규칙(발주처 먼저·ENUM 값·선진행 NULL·UNIQUE 등)은 `load-template.sql` 상단 참고.
+규칙(코드값+발주처 먼저·section/status는 코드테이블 존재값·선진행 NULL 등)은 `load-template.sql` 상단 참고.
 
 ## 나중 — 서버 이관
 

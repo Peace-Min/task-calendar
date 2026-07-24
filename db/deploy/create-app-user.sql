@@ -18,8 +18,10 @@
 CREATE USER IF NOT EXISTS 'taskmgr_app'@'%'
   IDENTIFIED BY 'CHANGE_ME_ON_DEPLOY';   -- ★ 배포 시 강한 비밀번호로 교체
 
-GRANT SELECT, INSERT, UPDATE ON taskmgr.project  TO 'taskmgr_app'@'%';
-GRANT SELECT, INSERT, UPDATE ON taskmgr.customer TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE ON taskmgr.project      TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE ON taskmgr.customer     TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE ON taskmgr.section_code TO 'taskmgr_app'@'%';   -- 구분 코드값(위젯 관리)
+GRANT SELECT, INSERT, UPDATE ON taskmgr.status_code  TO 'taskmgr_app'@'%';   -- 상태 코드값(위젯 관리)
 
 FLUSH PRIVILEGES;
 

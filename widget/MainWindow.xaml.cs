@@ -369,6 +369,16 @@ namespace TaskCalendarWidget
         private static bool GetBool(JsonDocument d, string key) =>
             d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.True;
 
+        // 문자열 배열 필드 → List<string>(비문자열 원소는 건너뜀). 코드 순서변경(codeReorder)의 names 수집용.
+        private static List<string> GetStrArray(JsonDocument d, string key)
+        {
+            var list = new List<string>();
+            if (d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Array)
+                foreach (var e in v.EnumerateArray())
+                    if (e.ValueKind == JsonValueKind.String) list.Add(e.GetString() ?? "");
+            return list;
+        }
+
         private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string raw;
@@ -456,7 +466,8 @@ namespace TaskCalendarWidget
                     case "saveProject":     // uid 없으면 신규 INSERT, 있으면 그 uid UPDATE. confirm=true면 소프트 경고 검사 건너뜀.
                         _ = SaveProjectAsync(GetStr(doc, "uid"), GetStr(doc, "section"), GetStr(doc, "customer"),
                             GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
-                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "status"), GetBool(doc, "confirm"));
+                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "status"),
+                            GetStr(doc, "note"), GetBool(doc, "confirm"));
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
                         _ = SetProjectActiveAsync(GetStr(doc, "uid"), GetBool(doc, "active"));
@@ -477,6 +488,29 @@ namespace TaskCalendarWidget
                         break;
                     case "loadCustomersFull":  // 관리 화면 전용 — 숨김 포함 전체 [{name,active}]
                         _ = RunLoadCustomersFullAsync(GetStr(doc, "reqId"));
+                        break;
+
+                    // ----- 구분/상태 코드테이블 관리 — kind('section'|'status')로 분기. 발주처 브리지 패턴 복제. -----
+                    case "loadCodes":          // 드롭다운 소스(활성 코드값) → __applyCodes({sections, statuses})
+                        _ = LoadCodesToWebAsync();
+                        break;
+                    case "getCodesFull":       // 관리 화면 전용 — 숨김 포함 전체 [{name,active,sort}]
+                        _ = RunLoadCodesFullAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"));
+                        break;
+                    case "codeAdd":
+                        _ = RunAddCodeAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"));
+                        break;
+                    case "codeRename":
+                        _ = RunRenameCodeAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "oldName"), GetStr(doc, "newName"));
+                        break;
+                    case "codeSetActive":
+                        _ = RunSetCodeActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"), GetBool(doc, "active"));
+                        break;
+                    case "codeReorder":
+                        _ = RunReorderCodesAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStrArray(doc, "names"));
+                        break;
+                    case "codeRefCount":       // 이 코드값을 쓰는 활성 과제 수(숨김 확인 UX용)
+                        _ = RunCodeRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"));
                         break;
 
                     // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
@@ -1363,10 +1397,10 @@ namespace TaskCalendarWidget
 
         // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
         private async Task SaveProjectAsync(string uid, string section, string customer, string projectName,
-            string contractName, string commonName, string startDate, string endDate, string status, bool confirm)
+            string contractName, string commonName, string startDate, string endDate, string status, string note, bool confirm)
         {
             var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, section, customer, projectName,
-                contractName, commonName, startDate, endDate, status, confirmSimilar: confirm);
+                contractName, commonName, startDate, endDate, status, note: note, confirmSimilar: confirm);
             ProjectSaved(ok, msg, needConfirm);
             if (ok) await LoadProjectsToWebAsync();
         }
@@ -1408,6 +1442,48 @@ namespace TaskCalendarWidget
             ReplyOnUi(reqId, json == null
                 ? (object)new { ok = false, list = "", msg = "발주처 목록을 불러오지 못했습니다." }
                 : new { ok = true, list = json, msg = "" });
+        }
+
+        // ----- 구분/상태 코드테이블 관리 — 발주처와 대칭. 회신은 ReplyOnUi. 재조회(loadCodes/loadProjects)는 웹이 트리거. -----
+        // 드롭다운 소스(활성 코드값) — sections/statuses 두 배열을 한 번에 __applyCodes로. 실패는 각각 ""(웹이 폴백).
+        private async Task LoadCodesToWebAsync()
+        {
+            string? sec = await _projectDb.LoadSectionCodesJsonAsync();
+            string? st = await _projectDb.LoadStatusCodesJsonAsync();
+            JsCall("window.__applyCodes && window.__applyCodes("
+                + JsonSerializer.Serialize(sec ?? "") + "," + JsonSerializer.Serialize(st ?? "") + ")");
+        }
+        private async Task RunLoadCodesFullAsync(string reqId, string kind)
+        {
+            string? json = await _projectDb.LoadCodesFullJsonAsync(kind);
+            ReplyOnUi(reqId, json == null
+                ? (object)new { ok = false, list = "", msg = "목록을 불러오지 못했습니다." }
+                : new { ok = true, list = json, msg = "" });
+        }
+        private async Task RunAddCodeAsync(string reqId, string kind, string name)
+        {
+            var (ok, msg) = await _projectDb.AddCodeAsync(kind, name);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunRenameCodeAsync(string reqId, string kind, string oldName, string newName)
+        {
+            var (ok, msg) = await _projectDb.RenameCodeAsync(kind, oldName, newName);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunSetCodeActiveAsync(string reqId, string kind, string name, bool active)
+        {
+            var (ok, msg) = await _projectDb.SetCodeActiveAsync(kind, name, active);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunReorderCodesAsync(string reqId, string kind, List<string> names)
+        {
+            var (ok, msg) = await _projectDb.ReorderCodesAsync(kind, names);
+            ReplyOnUi(reqId, new { ok, msg });
+        }
+        private async Task RunCodeRefCountAsync(string reqId, string kind, string name)
+        {
+            var (ok, count, msg) = await _projectDb.CountActiveProjectsByCodeAsync(kind, name);
+            ReplyOnUi(reqId, new { ok, count, msg });
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

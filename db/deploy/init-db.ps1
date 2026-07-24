@@ -94,7 +94,7 @@ try {
   $appPwEsc = $AppPassword -replace "'","''"
   RootSql "CREATE USER IF NOT EXISTS '$AppUser'@'%' IDENTIFIED BY '$appPwEsc'; ALTER USER '$AppUser'@'%' IDENTIFIED BY '$appPwEsc';"
   if($LASTEXITCODE -ne 0){ Die "앱 계정 생성 실패." }
-  RootSql "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.project TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.customer TO '$AppUser'@'%'; FLUSH PRIVILEGES;"
+  RootSql "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.project TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.customer TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.section_code TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.status_code TO '$AppUser'@'%'; FLUSH PRIVILEGES;"
   if($LASTEXITCODE -ne 0){ Die "권한 부여 실패." }
   Ok "앱 계정 준비(최소권한: SELECT/INSERT/UPDATE)"
 

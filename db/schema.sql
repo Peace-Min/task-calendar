@@ -6,9 +6,10 @@
 --    등록/수정하고, Excel은 DB에서 '추출'하는 리포트(양방향 동기화 없음).
 --    - 기존 사업부 Excel은 최초 1회만 이 DB로 이관하고, 이후엔 DB가 마스터.
 --    - Excel 흔적 필드(원본 No)는 제거 — No는 추출 시점에 생성하면 됨.
---    - section/status는 ENUM(드롭다운 소스, 오타 변종 차단).
+--    - section/status는 룩업 코드테이블(section_code/status_code) + FK(발주처와 대칭).
+--      ENUM이 아니라 코드테이블이라 런타임 추가/개명(CASCADE)/순서변경/숨김이 가능하고, FK가 무결성을 승계한다.
 --    - 삭제는 소프트(is_active=0). 영구 삭제는 DB에서 직접 DELETE.
---    - created_at/updated_at 감사. 발주처 개명은 FK ON UPDATE CASCADE로 전파.
+--    - created_at/updated_at 감사. 발주처·구분·상태 개명은 FK ON UPDATE CASCADE로 project에 자동 전파.
 -- =====================================================================
 SET NAMES utf8mb4;
 
@@ -16,10 +17,12 @@ SET NAMES utf8mb4;
 DROP VIEW  IF EXISTS v_calendar_category;
 DROP VIEW  IF EXISTS v_project_label;
 DROP VIEW  IF EXISTS v_project_full;
-DROP TABLE IF EXISTS project;          -- customer를 FK로 참조하므로 먼저 삭제
+DROP TABLE IF EXISTS project;          -- customer/section_code/status_code를 FK로 참조하므로 먼저 삭제
 DROP TABLE IF EXISTS project_status;
 DROP TABLE IF EXISTS project_type;
 DROP TABLE IF EXISTS customer;
+DROP TABLE IF EXISTS section_code;
+DROP TABLE IF EXISTS status_code;
 
 -- ---------- 발주처 마스터 ----------
 CREATE TABLE customer (
@@ -31,18 +34,41 @@ CREATE TABLE customer (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='발주처 마스터. name=자연키. Admin 관리.';
 
+-- ---------- 구분(section) 코드테이블 — 발주처와 대칭. ENUM 대체(런타임 추가/개명/순서/숨김) ----------
+CREATE TABLE section_code (
+  name        VARCHAR(50)  NOT NULL,             -- 코드값 = 자연키(project.section FK 타겟)
+  sort_order  INT          NOT NULL DEFAULT 0,   -- 드롭다운 정렬(작을수록 먼저)
+  is_active   TINYINT(1)   NOT NULL DEFAULT 1,   -- 소프트 삭제(0=숨김)
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='구분 코드. name=자연키. 개명=FK CASCADE로 project 전파. Admin 관리.';
+
+-- ---------- 상태(status) 코드테이블 — section_code와 동일 형태 ----------
+CREATE TABLE status_code (
+  name        VARCHAR(50)  NOT NULL,             -- 코드값 = 자연키(project.status FK 타겟, nullable)
+  sort_order  INT          NOT NULL DEFAULT 0,
+  is_active   TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='상태 코드. name=자연키. 개명=FK CASCADE로 project 전파. Admin 관리.';
+
 -- ---------- 과제(핵심 엔티티) ----------
 CREATE TABLE project (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT,  -- 내부 PK(대리키)
   uid           CHAR(36)     NOT NULL DEFAULT (UUID()), -- 외부 안정 참조키(assign-once). 일정은 db-<uid>로 참조. rename/재빌드/이관에도 불변
-  section       ENUM('일반계약','선진행','사업부관리') NOT NULL,   -- 구분(드롭다운)
+  section       VARCHAR(50)  NOT NULL,                 -- 구분 (FK -> section_code.name)
   customer      VARCHAR(100) NOT NULL,                 -- 발주처 (FK -> customer.name)
   project_name  VARCHAR(200) NOT NULL,                 -- 사업명
   contract_name VARCHAR(200) NOT NULL DEFAULT '',      -- 계약명(빈값=''; NULL 금지 — 비교 함정 방지)
   common_name   VARCHAR(200) NOT NULL DEFAULT '',      -- 통상명칭(빈값=''; NULL 금지)
   start_date    DATE         NULL,                     -- 계약시작일(선진행/미정=NULL)
   end_date      DATE         NULL,                     -- 계약종료일(선진행/미정=NULL)
-  status        ENUM('진행중','종료','1차 납품완료','미정') NULL DEFAULT NULL,  -- 상태(선진행=NULL)
+  status        VARCHAR(50)  NULL DEFAULT NULL,        -- 상태 (FK -> status_code.name; 선진행=NULL이면 FK 검사 스킵)
+  note          VARCHAR(500) NOT NULL DEFAULT '',      -- 비고(관리 화면 전용 내부메모; 캘린더·보고서 미노출). 빈값=''
   is_active     TINYINT(1)   NOT NULL DEFAULT 1,       -- 소프트 삭제(0=숨김)
   created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -54,15 +80,25 @@ CREATE TABLE project (
   KEY ix_project_section  (section),
   KEY ix_project_active   (is_active),
   CONSTRAINT fk_project_customer FOREIGN KEY (customer) REFERENCES customer(name)
-    ON UPDATE CASCADE                                  -- 발주처 개명 자동 전파(삭제는 RESTRICT)
+    ON UPDATE CASCADE,                                 -- 발주처 개명 자동 전파(삭제는 RESTRICT)
+  CONSTRAINT fk_project_section FOREIGN KEY (section) REFERENCES section_code(name)
+    ON UPDATE CASCADE ON DELETE RESTRICT,              -- 구분 개명 자동 전파(참조 중이면 삭제 차단)
+  CONSTRAINT fk_project_status FOREIGN KEY (status) REFERENCES status_code(name)
+    ON UPDATE CASCADE ON DELETE RESTRICT               -- 상태 개명 자동 전파(NULL이면 검사 스킵)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='과제 마스터. DB 원본. 정체성=uid. 이름 유니크 없음(소프트경고). section/status=ENUM, is_active=소프트삭제.';
+  COMMENT='과제 마스터. DB 원본. 정체성=uid. 이름 유니크 없음(소프트경고). section/status=코드테이블+FK, is_active=소프트삭제.';
 
 -- =====================================================================
 --  초기 이관 시드(로컬 개발·검증용 더미 13건).
 --  ※ 서버 초기 배포 시엔 이 시드 대신 실제 사업부 Excel 1회 이관으로 대체.
 --  ※ 더미(롤 지명) 픽스처 — 실 국방데이터 아님. 선진행은 날짜/상태 NULL.
 -- =====================================================================
+-- 코드테이블 시드 — project INSERT보다 먼저(FK 타겟이 존재해야 함).
+INSERT INTO section_code (name, sort_order) VALUES
+  ('일반계약', 10), ('선진행', 20), ('사업부관리', 30);
+INSERT INTO status_code (name, sort_order) VALUES
+  ('진행중', 10), ('종료', 20), ('1차 납품완료', 30), ('미정', 40);
+
 INSERT INTO customer (name) VALUES
   ('데마시아'),('노크사스'),('요르드'),('필리오니아'),
   ('아이오니아'),('빌지조트'),('셔마야'),('불타오르는 대지');
@@ -91,6 +127,8 @@ VALUES
 --   SELECT COUNT(*) FROM project;                              -- 13
 --   SELECT section, COUNT(*) FROM project GROUP BY section;     -- 일반계약8·선진행2·사업부관리3
 --   SELECT * FROM project WHERE section='선진행';               -- 날짜/상태 NULL
---   INSERT INTO project(section,customer,project_name,status)   -- ENUM 강제: '보류'는 거부됨
---     VALUES('일반계약','데마시아','X','보류');                 -- ERROR 1265 Data truncated
+--   INSERT INTO project(section,customer,project_name,status)   -- FK 강제: 코드테이블에 없는 '보류'는 거부됨
+--     VALUES('일반계약','데마시아','X','보류');                 -- ERROR 1452 (fk_project_status)
 --   조회는 보통 WHERE is_active=1 (소프트삭제 숨김).
+--   새 구분/상태는 먼저 코드테이블에 넣어야 project가 참조 가능:
+--     INSERT INTO status_code(name,sort_order) VALUES('보류',50);  -- 그 뒤엔 project에서 '보류' 사용 가능

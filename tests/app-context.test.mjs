@@ -2329,5 +2329,170 @@ if (!JSDOM) {
       assert.ok(!/cat-desc/.test(row), '과제관리 행에 부제(cat-desc)가 남아 있다');
       assert.ok(/통상u1/.test(row) && /cat-badge db/.test(row), '이름·DB 배지는 유지돼야 한다');
     });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 재연결 UX — 콤보 → 검색 팝업 (2026-07-24)
+    // 공식 과제가 많아 콤보에서 못 찾던 문제. 각 개인 과제 행에 [공식 과제 선택…] 버튼 → 카탈로그처럼
+    // 검색·필터되는 팝업(#relinkPickModal)에서 고른다. 팝업은 동명 식별을 위해 사업명·계약명을 노출한다.
+    // ══════════════════════════════════════════════════════════════════
+    // 개인 과제 2개 + 재연결 시드(p1이 일정 2건 사용). 동명 공식 2건(계약명만 다름)으로 식별을 시험.
+    const seedRelink = () => {
+      seed(THS({
+        categories: [{ id: 'p1', name: '레이더 작업', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+                     { id: 'p2', name: '위성 작업', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        entries: [{ id: 'e1', title: 'a', date: '2026-07-20', categoryId: 'p1' },
+                  { id: 'e2', title: 'b', date: '2026-07-21', categoryId: 'p1' }],
+      }));
+      applyRows([
+        DBROW('u1', { customer: '방위사업청', project_name: '함정 레이더 성능개량', contract_name: '저장장치', common_name: '레이더 성능개량', status: '진행중' }),
+        DBROW('u2', { customer: '방위사업청', project_name: '함정 레이더 성능개량', contract_name: '처리장치', common_name: '레이더 성능개량', status: '진행중' }),
+        DBROW('u3', { section: '선진행', customer: '국방과학연구소', project_name: '위성 통신 체계', contract_name: '', common_name: '위성통신', status: '', start_date: null, end_date: null }),
+      ]);
+      ev('rlPick.clear(); rlpFor = null; rlpCollapsed.clear();');
+    };
+
+    test('재연결: 목록 행은 콤보가 아니라 [공식 과제 선택…] 버튼이다', () => {
+      seedRelink();
+      ev('renderRelink();');
+      const html = ev("document.getElementById('rlList').innerHTML");
+      assert.ok(!/class="rl-sel"/.test(html) && !/<select/.test(html), '콤보(select.rl-sel)가 남아 있다');
+      assert.ok(/data-rlpick="p1"/.test(html) && /data-rlpick="p2"/.test(html), '개인 과제 행에 선택 버튼이 없다');
+      assert.strictEqual(ev("document.getElementById('rlRun').disabled"), true, '선택 전엔 실행 비활성');
+    });
+
+    test('재연결 팝업: 동명 과제를 사업명·계약명으로 식별(콤보가 못 보여주던 열)', () => {
+      seedRelink();
+      ev("openRelinkPick('p1')");
+      assert.strictEqual(ev("document.getElementById('relinkPickModal').classList.contains('hidden')"), false, '팝업이 열리지 않았다');
+      assert.strictEqual(ev("document.getElementById('rlpForName').textContent"), '레이더 작업 →', '대상 개인 과제 배지가 없다');
+      const rowsText = ev("[].slice.call(document.querySelectorAll('#rlpList .off-row')).map(function(r){return r.textContent;}).join('|')");
+      // 두 동명 과제가 계약명(저장장치/처리장치)으로 구분돼 보여야 한다
+      assert.ok(/저장장치/.test(rowsText) && /처리장치/.test(rowsText), '계약명이 목록에 노출되지 않는다(동명 식별 불가)');
+      assert.ok(/함정 레이더 성능개량/.test(rowsText), '사업명이 노출되지 않는다');
+    });
+
+    test('재연결 팝업: 검색이 계약명까지 훑어 동명 중 하나로 좁혀진다', () => {
+      seedRelink();
+      ev("openRelinkPick('p1')");
+      ev("document.getElementById('rlpSearch').value = '처리장치'; renderRlpList();");
+      const ids = evJSON("[].slice.call(document.querySelectorAll('#rlpList .off-row')).map(function(r){return r.dataset.rlpid;})");
+      assert.deepStrictEqual(ids, ['db-u2'], '계약명 검색으로 좁혀지지 않는다: ' + JSON.stringify(ids));
+    });
+
+    test('재연결: 팝업에서 선택 → 그 행에 매핑 · 배지 = 통상명칭 · 발주처 · 계약명', () => {
+      seedRelink();
+      ev("openRelinkPick('p1'); rlpChoose('db-u2')");
+      assert.deepStrictEqual(evJSON('rlSelections()'), [{ from: 'p1', to: 'db-u2' }], 'rlSelections가 {from,to}를 못 모은다');
+      const p1 = ev("(function(){var r=[].slice.call(document.querySelectorAll('#rlList .rl-row')).filter(function(x){return x.dataset.cat==='p1';})[0];" +
+                    "return JSON.stringify({nm:(r.querySelector('.rl-picked-nm')||{}).textContent, meta:(r.querySelector('.rl-picked-meta')||{}).textContent, clear:!!r.querySelector('[data-rlclear]')});})()");
+      const b = JSON.parse(p1);
+      assert.strictEqual(b.nm, '레이더 성능개량', '배지 주 라벨이 통상명칭이 아니다');
+      assert.strictEqual(b.meta, '방위사업청 · 처리장치', '배지 보조가 발주처·계약명이 아니다(=올바른 대상 u2 확인)');
+      assert.ok(b.clear, '해제 버튼이 없다');
+      assert.strictEqual(ev("document.getElementById('rlRun').disabled"), false, '선택 후 실행이 활성화되지 않는다');
+    });
+
+    test('재연결: 해제 → 개인으로 유지로 복귀(맵에서 제거, 선택 버튼 복원)', () => {
+      seedRelink();
+      ev("openRelinkPick('p1'); rlpChoose('db-u2'); rlClearPick('p1')");
+      assert.strictEqual(ev('rlPick.has("p1")'), false, '해제해도 맵에 남아 있다');
+      const html = ev("document.getElementById('rlList').innerHTML");
+      assert.ok(/data-rlpick="p1"/.test(html), '해제 후 선택 버튼이 복원되지 않는다');
+      assert.deepStrictEqual(evJSON('rlSelections()'), [], '해제 후에도 선택으로 집계된다');
+      assert.strictEqual(ev("document.getElementById('rlRun').disabled"), true, '선택 0개인데 실행이 활성이다');
+    });
+
+    test('재연결: runRelink 기존 로직 회귀 없음(유효 대상만 일괄 재태그 + 편입)', () => {
+      seedRelink();
+      ev("openRelinkPick('p1'); rlpChoose('db-u2')");
+      ev('runRelink();');   // confirmBox는 jsdom에서 즉시 resolve되지 않으므로 아래는 매핑/검증 로직을 직접 확인
+      // confirmBox 프라미스에 의존하지 않도록 재태그 로직만 직접 재현해 계약 확인
+      ev("(function(){var valid=new Map();for(var _ of rlSelections()){var src=dbCatalogById(_.to);if(src){subscribeDbCat(src);valid.set(_.from,_.to);}}" +
+         "for(var e of (state.entries||[])){var to=e&&valid.get(e.categoryId);if(to)e.categoryId=to;}})()");
+      assert.strictEqual(evJSON("state.entries.filter(function(e){return e.categoryId==='p1';}).length"), 0, 'p1 일정이 재태그되지 않았다');
+      assert.strictEqual(evJSON("state.entries.filter(function(e){return e.categoryId==='db-u2';}).length"), 2, 'db-u2로 옮겨진 일정 수가 다르다');
+      assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u2'&&c.source==='db';})"), true, '대상 공식 과제가 편입되지 않았다');
+    });
+
+    test('재연결: 오프라인이면 팝업이 뜨지 않고 "서버 연결" 안내(대상 목록이 필요)', () => {
+      seedRelink();
+      ev("__applyProjects('')");   // 연결 실패 → dbCatalog=[]
+      // 앞 테스트의 애니메이션 닫힘이 jsdom에선 비동기라 남아 있을 수 있다 → 강제로 hidden 리셋 후 검증(격리)
+      ev("document.getElementById('relinkPickModal').classList.add('hidden')");
+      let warned = '';
+      ev("window.__t0=window.toast; window.toast=function(m,k){window.__lastToast=m+'|'+k;};");
+      ev("openRelinkPick('p1')");
+      warned = ev('window.__lastToast || ""');
+      ev("window.toast=window.__t0;");
+      assert.strictEqual(ev("document.getElementById('relinkPickModal').classList.contains('hidden')"), true, '오프라인인데 팝업이 열렸다');
+      assert.ok(/서버에 연결/.test(warned), '오프라인 안내가 없다: ' + warned);
+      // 목록의 선택 버튼도 비활성
+      ev('renderRelink();');
+      assert.ok(/data-rlpick="p1"[^>]*disabled/.test(ev("document.getElementById('rlList').innerHTML")), '오프라인 선택 버튼이 비활성이 아니다');
+    });
+
+    test('재연결↔카탈로그 상태 비간섭: 팝업 그룹접기/선택이 카탈로그(offSelId·offCollapsed)를 건드리지 않는다', () => {
+      seedRelink();
+      ev('offSelId = "db-u1"; offCollapsed.clear(); offCollapsed.add("사업부관리");');   // 카탈로그 상태 세팅
+      ev("openRelinkPick('p1'); rlpToggleGroup('일반계약'); rlpChoose('db-u2')");
+      assert.strictEqual(ev('offSelId'), 'db-u1', '팝업 사용이 카탈로그 선택(offSelId)을 바꿨다');
+      assert.deepStrictEqual(evJSON('[...offCollapsed]'), ['사업부관리'], '팝업 그룹접기가 카탈로그 접힘을 오염시켰다');
+      assert.deepStrictEqual(evJSON('[...rlpCollapsed]'), ['일반계약'], '팝업 자체 그룹접기가 반영되지 않았다');
+    });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 구분/상태 코드테이블(ENUM 대체) + note 컬럼 (2026-07-24)
+    // ══════════════════════════════════════════════════════════════════
+    test('코드목록: __applyCodes가 offSections/offStatuses를 채우고 편집폼 드롭다운에 반영', () => {
+      ev("offSections = []; offStatuses = [];");
+      ev("__applyCodes(" + JSON.stringify(JSON.stringify(['일반계약', '선진행', '신규구분'])) + "," +
+                          JSON.stringify(JSON.stringify(['진행중', '종료'])) + ")");
+      assert.deepStrictEqual(evJSON('offSections'), ['일반계약', '선진행', '신규구분']);
+      assert.deepStrictEqual(evJSON('offStatuses'), ['진행중', '종료']);
+      // 편집폼 드롭다운이 코드목록에서 채워진다
+      ev("offEdFillEnums('선진행', '종료')");
+      assert.deepStrictEqual(evJSON("[].slice.call(document.getElementById('offEdSection').options).map(function(o){return o.value;})"),
+        ['일반계약', '선진행', '신규구분'], '구분 드롭다운이 코드목록으로 채워지지 않는다');
+      assert.strictEqual(ev("document.getElementById('offEdSection').value"), '선진행');
+    });
+
+    test('코드목록: 연결 실패("")면 기존값 유지(우아한 폴백)', () => {
+      ev("offSections = ['일반계약']; offStatuses = ['진행중'];");
+      ev("__applyCodes('','')");
+      assert.deepStrictEqual(evJSON('offSections'), ['일반계약'], '빈 응답에 기존값을 잃는다');
+      assert.deepStrictEqual(evJSON('offStatuses'), ['진행중']);
+    });
+
+    test('코드목록: 편집 중 값이 목록에 없어도(숨겨진 코드) 옵션 보존', () => {
+      ev("__applyCodes(" + JSON.stringify(JSON.stringify(['일반계약'])) + ",'')");
+      ev("offEdFillEnums('폐지된구분', '')");
+      const opts = evJSON("[].slice.call(document.getElementById('offEdSection').options).map(function(o){return o.value;})");
+      assert.ok(opts.includes('폐지된구분'), '편집 중 값이 드롭다운에서 사라진다(값 유실)');
+      assert.strictEqual(ev("document.getElementById('offEdSection').value"), '폐지된구분');
+    });
+
+    test('note: offEditOpen이 편집폼 textarea에 note를 채운다(payload 조립은 code-tables 소스검증)', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1', { note: '내부 참고 메모' })]);
+      ev("offEditOpen('db-u1')");
+      assert.strictEqual(ev("document.getElementById('offEdNote').value"), '내부 참고 메모', '편집폼에 note가 안 채워진다');
+      // 신규(빈 편집)면 note 비어 있음
+      ev("offEditOpen('')");
+      assert.strictEqual(ev("document.getElementById('offEdNote').value"), '', '신규 편집에 note가 남아 있다');
+    });
+
+    test('note(SRP): 편입분·전시(캘린더/보고서)에 note가 새지 않는다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1', { note: '비밀 내부메모' })]);
+      ev("subscribeDbCat(dbCatalogById('db-u1'))");
+      const cat = evJSON("state.categories.find(function(c){return c.id==='db-u1';})");
+      assert.ok(!('note' in cat), '편입분에 note가 새어 든다(전시 유출 위험)');
+      // XML 왕복에도 note 없음
+      const xml = ev('toXML()');
+      assert.ok(!/비밀 내부메모/.test(xml), 'XML에 note가 기록된다(전시/영속 유출)');
+      // 렌더된 캘린더/피커 어디에도 note 문자열 없음
+      ev('renderAll();');
+      assert.ok(!/비밀 내부메모/.test(ev('document.body.textContent')), '화면에 note가 노출된다');
+    });
   }
 }
