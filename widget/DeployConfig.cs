@@ -20,11 +20,11 @@ namespace TaskCalendarWidget
         // 앱 계정 = 최소권한(project·customer 두 테이블 SELECT/INSERT/UPDATE만). db/deploy/create-app-user.sql 로 생성.
         // 접속정보는 전 사용자에게 배포되므로 root 금지 — 노출돼도 피해가 '앱이 허용하는 것'까지로 제한된다.
         public const string DbUser     = "taskmgr_app";     // DB 계정 (최소권한)
-        public const string DbPassword = "taskmgr_app_dev"; // DB 비밀번호 — 배포 전 서버의 강한 값으로 교체
+        public const string DbPassword = "taskmgr1234";     // DB 비밀번호 — init-db 실행 시 정한 값과 반드시 일치
 
         // ── 관리자 초기 자격 (설정창에서 변경 가능, 변경분은 db-config.json) ────────
         public const string AdminId    = "admin";           // 관리자 초기 ID
-        public const string AdminPw    = "1234";            // ★ 관리자 초기 비밀번호 — 실사용자 배포 전 반드시 교체(1234 금지)
+        public const string AdminPw    = "admin1234";       // 관리자 초기 비밀번호 (폐쇄망 테스트값 — 인원 확대/서버 이관 시 교체)
 
         // ── 자동 업데이트 소스 (공유폴더/FTP 경로; 설정 UI로도 지정 가능) ───────────
         public const string UpdateSourceUrl = "";           // 저장소엔 비워둠 — 배포 시 공유폴더 경로(latest.json+Setup exe 위치)
