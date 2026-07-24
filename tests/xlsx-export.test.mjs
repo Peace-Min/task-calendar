@@ -24,6 +24,8 @@ function makeExportCtx(env) {
     'let __offExportBusy = !!__env.busy;\n' +
     'let dbCatalog = __env.dbCatalog || [];\n' +
     'let dbCustomers = __env.dbCustomers || [];\n' +
+    // 캐시 제거(2026-07-24) 후 버튼/툴팁이 '연결 안 됨'을 구분하므로 온라인 여부도 주입한다(기본 true).
+    'let dbOnline = (__env.dbOnline !== false);\n' +
     constLine('offTrim') + '\n' +
     constLine('offNorm') + '\n' +
     constLine('OFF_SECTIONS') + '\n' +

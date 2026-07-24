@@ -3167,7 +3167,7 @@ window.__applyXml = function(text){
       const data = fromXML(text);
       state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, lsMigrated:!!data.lsMigrated, reportFont:normalizeReportFont(data.reportFont)};
       filterCatId = null; filterSource = null; noteFilterCat = null;
-      // 마이그레이션: db-* 태그가 있는데 목록에 없으면(구버전 이중 목록 데이터) 카탈로그/캐시에서 자동 편입 → 단일 목록 복구(사용자 필터바 실버그의 근본 수정)
+      // 마이그레이션: db-* 태그가 있는데 목록에 없으면(구버전 이중 목록 데이터) 카탈로그에서 자동 편입 → 단일 목록 복구(사용자 필터바 실버그의 근본 수정)
       if(migrateDbSubscriptions()) save();
       renderAll();
       pushReminders();   // 초기 로드 후 알림 스케줄 동기화
@@ -3191,8 +3191,8 @@ window.__saveFailed = function(){
   toast('저장 실패 — 디스크에 기록하지 못했습니다. [데이터 → XML 내보내기]로 백업하세요', 'error');
 };
 
-/* ---------- 과제 DB(공식 과제) READ 경로 — 오프라인 우선 캐시 ---------- */
-let dbOnline = false;   // 마지막 __applyProjects가 DB 실데이터였는지(true=온라인) / 캐시 폴백(false)
+/* ---------- 과제 DB(공식 과제) READ 경로 — 온라인 전용(로컬 캐시 없음) ---------- */
+let dbOnline = false;   // 마지막 __applyProjects가 DB 실데이터였는지(true=온라인). false면 dbCatalog는 비어 있다.
 // DB 행 배열 → dbCatalog 형태. common_name 우선, 없으면 project_name. 색은 부문(section)으로.
 function mapDbRows(arr){
   if(!Array.isArray(arr)) return [];
@@ -3208,30 +3208,22 @@ function mapDbRows(arr){
       commonName:String(r.common_name || '') };   // 편집 폼이 '통상명칭 비어 있음'과 '사업명과 같음'을 구분해야 해서 원본도 보존
   }).filter(Boolean);
 }
-// 로컬 캐시(localStorage)에서 공식 과제 카탈로그 복원 — 오프라인 첫 페인트/폴백용
-function loadDbCache(){
-  try{
-    const raw = localStorage.getItem('tc_dbProjects');
-    if(!raw) return false;
-    const arr = JSON.parse(raw);
-    dbCatalog = mapDbRows(arr);
-    return dbCatalog.length > 0;
-  }catch(_){ return false; }
-}
-// 호스트가 DB에서 읽은 공식 과제를 주입. 비어있으면("") 캐시로 폴백. 절대 throw하지 않음.
+// 호스트가 DB에서 읽은 공식 과제를 주입. 절대 throw하지 않음.
 // 이후 단일 목록(state.categories)의 DB 과제를 카탈로그 기준으로 동기화하고, 고아 db-* 태그를 자동 편입한다.
+//
+// ★ 로컬 캐시 없음(2026-07-24) — 서버 설계문서 §7·장애정책이 'DB 정보를 로컬에 캐싱해 오프라인 지원'을 배제한다.
+//   실패("")면 폴백하지 않고 카탈로그를 비운다. stale 카탈로그로 Excel 장표가 뽑히면 '오늘 추출'이라 찍힌 채
+//   몇 주 전 데이터가 남에게 전달된다(오정보 유통). 캘린더 본체는 로컬 XML이라 캐시가 없어도 핵심 기능은 무영향.
 window.__applyProjects = function(jsonStr){
   try{
     const s = (jsonStr == null) ? '' : String(jsonStr);
-    if(s && s.trim()){
-      let arr = null; try{ arr = JSON.parse(s); }catch(_){ arr = null; }
-      if(Array.isArray(arr)){
-        dbCatalog = mapDbRows(arr);
-        try{ localStorage.setItem('tc_dbProjects', JSON.stringify(arr)); localStorage.setItem('tc_dbSyncedAt', new Date().toISOString()); }catch(_){}
-        dbOnline = true;
-      }
+    let arr = null;
+    if(s && s.trim()){ try{ arr = JSON.parse(s); }catch(_){ arr = null; } }
+    if(Array.isArray(arr)){
+      dbCatalog = mapDbRows(arr);
+      dbOnline = true;
     }else{
-      loadDbCache();   // 연결/조회 실패 → 캐시 사용(오프라인 우선)
+      dbCatalog = [];    // 연결/조회 실패 → 못 읽으면 못 읽는다(캐시 폴백 없음)
       dbOnline = false;
     }
   }catch(_){}
@@ -3268,12 +3260,12 @@ function refreshDbUi(){
   // 과제 관리 모달이 열려 있으면 단일 목록도 다시 그린다(편입/동기화 반영)
   try{ const cm = document.getElementById('categoryModal'); if(cm && !cm.classList.contains('hidden')) renderCatModal(); }catch(_){}
   try{ updateDbStatusLine(); }catch(_){}
-  // '지금 새로고침' 진행 표시가 남아 있으면 결과로 치환(성공=연결됨·N건 / 실패=오프라인·캐시 유지)
+  // '지금 새로고침' 진행 표시가 남아 있으면 결과로 치환(성공=연결됨·N건 / 실패=연결 안 됨 — 캐시가 없어 목록도 비어 있다)
   try{
     const m = document.getElementById('dbMsg');
     if(m && m.textContent){
       m.innerHTML = dbOnline ? (ICON.check + ' 연결됨 · ' + dbCatalog.length + '건')
-                             : (ICON.alert + ' 오프라인 — 캐시 ' + dbCatalog.length + '건 사용');
+                             : (ICON.alert + ' 서버에 연결되지 않아 목록을 불러오지 못했습니다');
       m.style.color = dbOnline ? 'var(--accent-2)' : 'var(--danger)';
     }
   }catch(_){}
@@ -3285,7 +3277,7 @@ function refreshDbUi(){
     const m = document.getElementById('offMsg');
     if(m && m.textContent){
       m.innerHTML = dbOnline ? (ICON.check + ' 연결됨 · ' + dbCatalog.length + '건')
-                             : (ICON.alert + ' 오프라인 — 캐시 ' + dbCatalog.length + '건 사용');
+                             : (ICON.alert + ' 서버에 연결되지 않아 목록을 불러오지 못했습니다');
       m.style.color = dbOnline ? 'var(--accent-2)' : 'var(--danger)';
     }
   }catch(_){}
@@ -3401,15 +3393,12 @@ const catRemovable  = c => isOfficialCat(c) && catUsageCount(c.id) === 0;       
 const isPickableCat = c => !(isOfficialCat(c) && c.dbGone);                        // 피커/필터 신규 선택 대상 — 삭제된 DB 과제(dbGone)만 숨김(태그된 라벨은 catById로 해석돼 유지)
 const catIsSubscribed = id => state.categories.some(c => c.id === id);
 // 카탈로그 항목(또는 부분 객체)을 단일 목록에 편입. 이미 있으면 메타만 최신화하고 그대로 반환(멱등).
+// ★ 편입분이 갖는 메타는 name·color뿐이다(2026-07-24) — 편입분은 '캐시'가 아니라 '카테고리 목록'이고,
+//   라벨을 그리는 데 필요한 최소값만 있으면 된다. 상세 메타(발주처·구분·상태·기간·사업명…)는 온라인 dbCatalog만 갖는다.
 function subscribeDbCat(src){
   if(!src || !src.id) return null;
   const color = (/^#[0-9a-fA-F]{6}$/.test(src.color || '')) ? src.color : sectionColor(src.section);
-  const meta = {
-    name: src.name || '(공식 과제)', color,
-    customer: src.customer || '', section: src.section || '', status: src.status || '',
-    startDate: src.startDate || '', endDate: src.endDate || '',
-    projectName: src.projectName || '', contractName: src.contractName || '', commonName: src.commonName || '',
-  };
+  const meta = { name: src.name || '(공식 과제)', color };
   const cur = state.categories.find(c => c.id === src.id);
   if(cur){ Object.assign(cur, meta, { source:'db', dbGone: !!src.dbGone }); return cur; }
   const c = Object.assign({ id: src.id, source:'db', dbGone: !!src.dbGone,
@@ -3425,17 +3414,19 @@ function unsubscribeDbCat(id){
   if(noteFilterCat === id) noteFilterCat = null;
   return true;
 }
-// __applyProjects 후: 편입된 DB 과제의 name/color/메타를 카탈로그 기준으로 최신화. 카탈로그(활성)에 없으면 dbGone 마크(목록에서 제거하진 않음 — 라벨·필터 보존).
+// __applyProjects 후: 편입된 DB 과제의 name/color를 카탈로그 기준으로 최신화. 카탈로그(활성)에 없으면 dbGone 마크(목록에서 제거하진 않음 — 라벨·필터 보존).
+// ★ 오프라인이면 아무것도 판단하지 않는다(2026-07-24) — 캐시를 없앤 뒤로 연결 실패 시 dbCatalog가 비므로,
+//   그대로 두면 편입분 전체가 'DB에서 삭제됨(dbGone)'으로 오표시되어 피커에서 사라진다. '못 읽음'과 '삭제됨'은 다른 사실이다.
 function syncSubscribedDbMeta(){
+  if(!dbOnline) return false;   // 카탈로그를 못 읽은 상태 → 삭제 여부를 알 수 없으므로 기존 값 유지
   let changed = false;
-  const key = c => JSON.stringify([c.name,c.color,c.customer,c.section,c.status,c.startDate,c.endDate,c.projectName,c.contractName,c.commonName,!!c.dbGone]);
+  const key = c => JSON.stringify([c.name, c.color, !!c.dbGone]);
   for(const c of state.categories){
     if(!isOfficialCat(c)) continue;
     const src = dbCatalogById(c.id);
     const before = key(c);
     if(src){
-      c.name = src.name; c.color = src.color; c.customer = src.customer; c.section = src.section; c.status = src.status;
-      c.startDate = src.startDate; c.endDate = src.endDate; c.projectName = src.projectName; c.contractName = src.contractName; c.commonName = src.commonName;
+      c.name = src.name; c.color = src.color;
       c.dbGone = false;
     }else{
       c.dbGone = true;   // 카탈로그 활성 목록에 없음 = DB에서 숨김/삭제됨
@@ -3444,7 +3435,7 @@ function syncSubscribedDbMeta(){
   }
   return changed;
 }
-// 마이그레이션/자동 편입: entries·todos에 db-* categoryId가 있는데 목록에 없으면 카탈로그(또는 캐시)에서 찾아 편입. 없으면 dbGone 플레이스홀더(라벨 안깨짐).
+// 마이그레이션/자동 편입: entries·todos에 db-* categoryId가 있는데 목록에 없으면 카탈로그에서 찾아 편입. 없으면 dbGone 플레이스홀더(라벨 안깨짐).
 function migrateDbSubscriptions(){
   let changed = false;
   const refs = new Set();
@@ -3682,18 +3673,13 @@ function toXML(){
     if(c.gitRepo) el.setAttribute('gitRepo', c.gitRepo);
     if(c.svnRepo) el.setAttribute('svnRepo', c.svnRepo);   // SVN 작업복사본(git과 독립 — 과제가 둘 다 보유 가능)
     el.setAttribute('createdAt', c.createdAt || '');
-    // 공식 과제(DB 유래) — 출처·메타를 함께 영속(오프라인 캐시 = XML로 일원화). 개인 과제엔 아무 속성도 추가 안 함(하위호환·byte 동일).
+    // 공식 과제(DB 유래) — 출처와 '라벨을 그리는 데 필요한 최소값'만 영속한다(name·color는 위 공통 경로가 이미 기록).
+    // ★ 상세 메타(발주처·구분·상태·기간·사업명·계약명·통상명칭)는 기록하지 않는다(2026-07-24) — 그건 DB 캐시이고,
+    //   서버 설계문서 §7·장애정책이 로컬 DB 캐싱을 배제한다. 옛 파일에 남아 있어도 읽지 않으므로 무해하다.
+    // 개인 과제엔 아무 속성도 추가 안 함(하위호환·byte 동일).
     if(isOfficialCat(c)){
       el.setAttribute('source', 'db');
       if(c.dbGone) el.setAttribute('dbGone', '1');
-      if(c.customer) el.setAttribute('customer', c.customer);
-      if(c.section) el.setAttribute('section', c.section);
-      if(c.status) el.setAttribute('status', c.status);
-      if(c.startDate) el.setAttribute('startDate', c.startDate);
-      if(c.endDate) el.setAttribute('endDate', c.endDate);
-      if(c.projectName) el.setAttribute('projectName', c.projectName);
-      if(c.contractName) el.setAttribute('contractName', c.contractName);
-      if(c.commonName) el.setAttribute('commonName', c.commonName);
     }
     const n = doc.createElement('name'); n.textContent = c.name; el.appendChild(n);
     const ds = doc.createElement('description'); ds.textContent = c.desc || ''; el.appendChild(ds);
@@ -3867,18 +3853,12 @@ function fromXML(text){
       gitRepo, svnRepo,
       createdAt: c.getAttribute('createdAt') || nowIso(),
     };
-    // 공식 과제(DB 유래) — source·메타 왕복. 하위호환: 옛 XML엔 source 속성이 없으므로 개인 과제로 로드(추가 키 없음).
+    // 공식 과제(DB 유래) — source·dbGone만 왕복(name·color는 위 공통 경로). 하위호환: 옛 XML엔 source 속성이 없으므로 개인 과제로 로드(추가 키 없음).
+    // ★ 옛 파일에 남아 있는 상세 메타 속성(customer/section/status/기간/사업명…)은 '읽지 않는다' — 그러면 그만이다(에러 없음).
+    //   다음 저장 때 자연히 사라진다(마이그레이션 코드 불필요).
     if(c.getAttribute('source') === 'db'){
       out.source = 'db';
       out.dbGone = c.getAttribute('dbGone') === '1';
-      out.customer = c.getAttribute('customer') || '';
-      out.section = c.getAttribute('section') || '';
-      out.status = c.getAttribute('status') || '';
-      out.startDate = c.getAttribute('startDate') || '';
-      out.endDate = c.getAttribute('endDate') || '';
-      out.projectName = c.getAttribute('projectName') || '';
-      out.contractName = c.getAttribute('contractName') || '';
-      out.commonName = c.getAttribute('commonName') || '';
     }
     return out;
   });
@@ -4661,11 +4641,8 @@ function fillCatSelect(sel, emptyLabel){
   const personalOpts = personal.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   // 공식 과제가 편입돼 있으면 그룹으로 분리 표시. 없으면 기존과 동일한 평면 목록(동작 보존).
   if(official.length){
-    const officialOpts = official.map(c => {
-      const meta = [c.customer, c.section].filter(Boolean).join(' · ');
-      const label = c.name + (meta ? ` — ${meta}` : '');
-      return `<option value="${esc(c.id)}">${esc(label)}</option>`;
-    }).join('');
+    // 부제(발주처·구분) 없음 — 편입분은 name·color만 갖는다(상세 메타는 온라인 카탈로그 화면에서 본다).
+    const officialOpts = official.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
     sel.innerHTML = empty +
       `<optgroup label="공식 과제">${officialOpts}</optgroup>` +
       `<optgroup label="개인 과제">${personalOpts}</optgroup>`;
@@ -4673,7 +4650,7 @@ function fillCatSelect(sel, emptyLabel){
     sel.innerHTML = empty + personalOpts;
   }
 }
-// 선택기에 특정 id 옵션이 없으면(예: 오프라인·미캐시된 db-* 과제) 값 유실 방지용 옵션을 주입한다.
+// 선택기에 특정 id 옵션이 없으면(예: 카탈로그를 못 읽은 상태의 db-* 과제) 값 유실 방지용 옵션을 주입한다.
 // 기록 수정 시 선택값이 사라져 저장 때 categoryId가 null로 떨어지는 것을 막는다.
 function ensureCatOption(sel, id){
   if(!sel || !id) return;
@@ -4851,7 +4828,7 @@ function renderPalette(){
 // 단일 목록 렌더 — 개인/공식(DB)을 한 목록에 출처 배지와 함께. 개인=수정/삭제, 공식=제거(사용 0건일 때만)·수정불가(원본은 카탈로그 Admin).
 function catRowHtml(c){
   if(isOfficialCat(c)){
-    const meta = [c.customer, c.section].filter(Boolean).join(' · ');
+    // 부제(발주처·구분) 없음 — 편입분은 name·color만 갖는다(상세는 공식 과제 화면에서 온라인으로 본다).
     const use = catUsageCount(c.id);   // DB 행은 제거 게이트와 숫자가 일치해야 하므로 일정+할일 합계
     const removable = catRemovable(c);
     const rmTip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정·할일 ${use}건에서 사용 중 — 정리/재연결 후 제거할 수 있습니다`;
@@ -4859,7 +4836,6 @@ function catRowHtml(c){
       <span class="cat-dot" style="background:${validColor(c.color)}"></span>
       <div style="min-width:0">
         <div class="cat-name">${esc(c.name)} <span class="cat-badge db">DB</span>${c.dbGone?`<span class="cat-badge gone" title="DB에서 삭제/숨김됨 — 라벨 유지용으로만 남아 있습니다">삭제됨(DB)</span>`:''}</div>
-        ${meta?`<div class="cat-desc">${esc(meta)}</div>`:''}
       </div>
       <span class="cat-count">${use}건</span>
       <button class="link danger" data-act="unsub"${removable?'':' disabled'} title="${esc(rmTip)}">제거</button>
@@ -5048,19 +5024,18 @@ function openSettings(){
   updateAdminUi();
   openModal('#settingsModal');
 }
-// 과제 DB 상태 한 줄(관리자 섹션) — 연결됨·N건 / 오프라인 캐시 N건 · 마지막 동기화 시각.
+// 과제 DB 상태 한 줄(관리자 섹션) — 연결됨·N건 / 연결 안 됨.
 // 연결정보는 배포 구성(호스트 상수)이라 입력 UI 없음 — 상태 표시와 '지금 새로고침'만 제공한다.
+// ★ 로컬 캐시가 없으므로 '오프라인 캐시 N건'·'마지막 동기화 시각'은 존재하지 않는다(끊기면 목록도 비어 있다).
 function updateDbStatusLine(){
   const line = document.getElementById('dbCacheLine');
   if(!line) return;
   const n = dbCatalog.length;
-  let when = ''; try{ const t = localStorage.getItem('tc_dbSyncedAt'); if(t) when = new Date(t).toLocaleString('ko-KR'); }catch(_){}
   let st;
   if(!HOST) st = '데스크톱 위젯 전용';
   else if(dbOnline) st = '<b>연결됨 · ' + n + '건</b>';
-  else if(n > 0) st = '<b>오프라인 · 캐시 ' + n + '건</b>';
-  else st = '<b>미연결</b> — 아직 불러온 공식 과제가 없습니다';
-  line.innerHTML = '공식 과제 DB: ' + st + (n ? ' · 마지막 동기화 ' + esc(when || '-') : '');
+  else st = '<b>연결 안 됨</b> — 서버에 연결되어야 공식 과제를 볼 수 있습니다';
+  line.innerHTML = '공식 과제 DB: ' + st;
 }
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
 function ncMode(){ try{ return localStorage.getItem('tc_netcusMode') === 'real' ? 'real' : 'dry'; }catch(_){ return 'dry'; } }
@@ -5206,7 +5181,7 @@ function saveCatFromForm(){
 
 /* ---------- 공식 과제(DB) 전용 화면 — 읽기 전용(P3.3) ----------
    개인 과제(state.categories)와 완전히 분리된 조회 화면이다. 여기서는 DB에 아무것도 쓰지 않으며,
-   오프라인이어도 dbCatalog(로컬 캐시 복원분)만으로 그대로 동작한다.
+   dbCatalog는 온라인 조회 결과만 담는다(로컬 캐시 없음) — 연결이 끊기면 비어 있고, 화면은 그 사실을 명시한다.
    편집(P3.2)이 붙을 자리는 관리자에게만 비활성 버튼으로 예고한다(뷰어에겐 표시 안 함). */
 const OFF_SECTIONS = ['일반계약', '선진행', '사업부관리'];          // schema.sql의 section ENUM
 const OFF_STATUSES = ['진행중', '종료', '1차 납품완료', '미정'];    // schema.sql의 status ENUM(NULL 허용)
@@ -5305,13 +5280,16 @@ function renderOfficialList(){
   const fc = document.getElementById('offFilterCount'); if(fc) fc.textContent = nf ? `필터 ${nf}개 적용 중` : '';
   const rb = document.getElementById('offReset'); if(rb) rb.disabled = (nf === 0);
   offSyncExportBtn(list.length);   // 추출 버튼은 '지금 뽑히는 건수'를 그대로 반영(0건이면 비활성 — 빈 파일 방지)
-  // 빈 상태 3종 — 원인이 다르면 다음 행동도 다르다(필터 해제 / 연결 / 등록 안내)
+  // 빈 상태 3종 — 원인이 다르면 다음 행동도 다르다(필터 해제 / 연결 / 등록 안내).
+  // ★ '못 읽었다'와 '등록된 게 없다'는 절대 섞지 않는다 — 캐시가 없어 연결이 끊기면 목록은 항상 비는데,
+  //   그때 "등록된 과제가 없습니다"라고 하면 사용자가 DB가 빈 줄로 오해한다.
   box.setAttribute('role', list.length ? 'table' : 'group');   // 행이 없는 role=table은 빈 표로 읽힌다
   if(!list.length){
-    box.innerHTML = all.length
-      ? `<div class="off-empty">조건에 맞는 과제가 없습니다.<br><button type="button" class="lnk" id="offResetIn">필터 초기화</button></div>`
-      : (dbOnline ? `<div class="off-empty">등록된 공식 과제가 없습니다.</div>`
-                  : `<div class="off-empty">오프라인 · 캐시된 과제가 없습니다.<br>연결된 뒤 아래 <b>지금 새로고침</b>을 눌러 주세요.</div>`);
+    box.innerHTML = !dbOnline
+      ? `<div class="off-empty">서버에 연결되지 않아 과제 목록을 불러올 수 없습니다.<br>연결된 뒤 아래 <b>지금 새로고침</b>을 눌러 주세요.</div>`
+      : (all.length
+          ? `<div class="off-empty">조건에 맞는 과제가 없습니다.<br><button type="button" class="lnk" id="offResetIn">필터 초기화</button></div>`
+          : `<div class="off-empty">등록된 공식 과제가 없습니다.</div>`);
     return;
   }
   let html = `<div class="off-hrow" role="row"><span aria-hidden="true"></span>`
@@ -5382,13 +5360,13 @@ function updateOfficialBadge(){
   const n = dbCatalog.length;
   b.textContent = !HOST ? '데스크톱 위젯 전용'
     : dbOnline ? `연결됨 · ${n}건`
-    : (n ? `오프라인 · 캐시 ${n}건` : '미연결');
+    : '연결 안 됨';   // 캐시가 없으므로 '오프라인 N건'이라는 상태는 존재하지 않는다(끊기면 0건)
   b.classList.toggle('stale', !(HOST && dbOnline));
 }
-// 과제 관리 모달의 진입 카드 우측 요약(N건 · 연결됨/오프라인) — 열 때마다·DB 갱신마다 다시 쓴다.
+// 과제 관리 모달의 진입 카드 우측 요약(N건 · 연결됨/연결 안 됨) — 열 때마다·DB 갱신마다 다시 쓴다.
 function updateOfficialEntry(){
   const m = document.getElementById('offEntryMeta'); if(!m) return;
-  m.textContent = `${dbCatalog.length}건 · ${!HOST ? '위젯 전용' : (dbOnline ? '연결됨' : '오프라인')} →`;
+  m.textContent = `${dbCatalog.length}건 · ${!HOST ? '위젯 전용' : (dbOnline ? '연결됨' : '연결 안 됨')} →`;
 }
 function renderOfficial(){ offFillSelects(); renderOfficialList(); renderOfficialDetail(); updateOfficialBadge(); }
 // 목록 키보드 이동 대상 — 그룹 헤더와 데이터 행을 한 줄기로 본다(로빙 tabindex).
@@ -5511,7 +5489,11 @@ function offSyncExportBtn(n){
   const cnt = Number(n) || 0;
   b.disabled = !(cnt > 0);
   b.textContent = '⬇ Excel 추출';
-  b.title = cnt > 0 ? `현재 목록 ${cnt}건을 Excel 파일로 저장` : '추출할 과제가 없습니다';
+  // 0건인 이유를 구분해 말한다 — 캐시가 없으므로 '연결 끊김'이 0건의 가장 흔한 원인이다.
+  // (stale 장표 유통을 막으려고 캐시를 없앤 만큼, 왜 못 뽑는지는 분명히 보여야 한다.)
+  b.title = cnt > 0 ? `현재 목록 ${cnt}건을 Excel 파일로 저장`
+    : (!dbOnline ? '서버에 연결되지 않아 추출할 수 없습니다 — 설정 → 관리자에서 새로고침하세요'
+                 : '추출할 과제가 없습니다');
 }
 // 시트2(발주처) 데이터 — 활성 발주처 마스터를 이름순으로. 마스터가 아직 안 실렸으면(loadCustomers 전) 카탈로그에
 // 실제로 쓰인 발주처로 폴백해 빈 시트를 피한다. 번호(No)는 호스트가 이 순서 그대로 매긴다(웹=무엇을, 호스트=어떻게).
@@ -5526,6 +5508,9 @@ async function runOfficialXlsxExport(){
   // renderOfficialList와 '같은 식'으로 재계산 — 화면에 보이는 것이 곧 파일의 내용이다.
   const f = offFilters();
   const list = dbCatalog.filter(c => offMatches(c, f));
+  // 오프라인이면 '뽑을 게 없다'가 아니라 '못 읽었다'가 사실이다 — 캐시가 없으니 stale 장표가 나갈 일은 없지만,
+  // 이유를 정확히 말해야 사용자가 새로고침이라는 다음 행동을 안다.
+  if(!dbOnline){ toast('서버에 연결되지 않아 추출할 수 없습니다 — 설정 → 관리자에서 새로고침하세요', 'warn'); return; }
   if(!list.length){ toast('추출할 과제가 없습니다', 'warn'); return; }
   const today = ymd(new Date());
   const payload = {
@@ -5943,7 +5928,10 @@ function renderRelink(){
       +   `<option value="">개인으로 유지</option>${opts}</select>`
       + `</div>`;
   }
-  if(none) html += `<div class="rl-empty">공식 과제 목록이 비어 있습니다 — 설정 → 관리자에서 <b>지금 새로고침</b> 후 다시 열어 주세요.</div>`;
+  // 목록이 빈 이유를 나눠서 말한다 — 연결이 끊긴 것(캐시가 없어 흔한 경우)과 DB에 아무것도 없는 것은 다른 사실이다.
+  if(none) html += !dbOnline
+    ? `<div class="rl-empty"><b>서버 연결이 필요합니다.</b><br>공식 과제 목록을 불러오지 못해 연결할 대상이 없습니다 — 설정 → 관리자에서 <b>지금 새로고침</b> 후 다시 열어 주세요.</div>`
+    : `<div class="rl-empty">등록된 공식 과제가 없습니다 — 공식 과제를 먼저 등록해 주세요.</div>`;
   box.innerHTML = html;
   rlUpdateSummary();
 }
@@ -9760,9 +9748,12 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
     const val = $('#opacityVal'); if(val) val.textContent = op + '%'; }
   showBootSkeleton();                       // 호스트가 저장 XML을 주입(__applyXml)할 때까지 펄스 — 시드 깜빡임 가림
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
-  try{ loadDbCache(); }catch(_){}           // 오프라인 우선 — 캐시된 공식 과제 먼저 로드(첫 페인트/오프라인 사용성)
+  // (로컬 카탈로그 캐시 없음 — 부팅 선페인트도 없다. 서버에서 읽기 전까지 공식 과제 목록은 비어 있는 게 정직한 상태.)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}
-  hpost({ cmd:'loadProjects' });            // 호스트가 DB에서 최신 공식 과제를 읽어 __applyProjects로 회신(실패 시 캐시 유지)
+  // 레거시 정리 — 옛 버전이 남긴 로컬 DB 카탈로그 캐시를 지운다(ADR-18: DB 정보를 로컬에 캐싱하지 않는다).
+  // 코드는 더 이상 읽지 않지만, 지우지 않으면 기존 사용자 PC에 과제 목록 사본이 영구히 남는다.
+  try{ localStorage.removeItem('tc_dbProjects'); localStorage.removeItem('tc_dbSyncedAt'); }catch(_){}
+  hpost({ cmd:'loadProjects' });            // 호스트가 DB에서 최신 공식 과제를 읽어 __applyProjects로 회신(실패 시 목록은 빈 채로)
 }else{
   // 브라우저 모드: 호스트 주입(__applyXml)이 없으므로 부팅 직후 여기서 1회 이관(마커로 종결). toast 사용 가능 시점.
   migrateLocalStores();

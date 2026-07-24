@@ -12,8 +12,8 @@ using MySqlConnector;
 namespace TaskCalendarWidget
 {
     // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
-    // 관리자 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 조용히 실패해
-    // 웹이 로컬 캐시로 폴백하고, 쓰기는 '온라인에서만 가능'을 명시적으로 알린다(무음 유실 금지).
+    // 관리자 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 null을 돌려 웹이 목록을 비우고
+    // (로컬 캐시 없음 — ADR-18), 쓰기는 '온라인에서만 가능'을 명시적으로 알린다(무음 유실 금지).
     // DB 연결정보·관리자 초기 자격은 배포 구성(DeployConfig.cs 한 곳)에서 온다 — 배포 전 그 파일만 고쳐 빌드.
     // 관리자 자격만 db-config.json(평문)에 저장(변경 시) — 없으면 DeployConfig 디폴트 사용. 보안 강화는 P6.5(app_user 전환)에서.
     internal sealed class ProjectDb
@@ -128,7 +128,7 @@ namespace TaskCalendarWidget
             catch (Exception ex) { _log("관리자 검증 실패: " + ex.Message); return (null, "관리자 검증 오류: " + Short(ex)); }
         }
 
-        // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 캐시로 폴백. 연결정보는 항상 배포 구성 상수(DeployConfig).
+        // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 화면이 곧바로 '연결 안 됨'으로 간다. 연결정보는 항상 배포 구성 상수(DeployConfig).
         private static string BuildConnString() =>
             new MySqlConnectionStringBuilder
             {
@@ -142,7 +142,7 @@ namespace TaskCalendarWidget
                 Pooling = false,               // 위젯 단발성 조회 — 풀 미유지(정지된 서버로 소켓 재사용 방지)
             }.ConnectionString;
 
-        // 공식 과제(is_active=1)를 읽어 JSON 배열 문자열로 반환. 연결/조회 실패 시 null(호출측이 캐시 폴백).
+        // 공식 과제(is_active=1)를 읽어 JSON 배열 문자열로 반환. 연결/조회 실패 시 null(호출측이 웹에 ""를 넘겨 목록을 비운다).
         public async Task<string?> LoadProjectsJsonAsync()
         {
             try
@@ -178,11 +178,11 @@ namespace TaskCalendarWidget
                 _log("DB 과제 로드: " + rows.Count + "건");
                 return JsonSerializer.Serialize(rows);
             }
-            catch (Exception ex) { _log("DB 과제 로드 실패(캐시 폴백): " + Short(ex)); return null; }
+            catch (Exception ex) { _log("DB 과제 로드 실패(목록 비움): " + Short(ex)); return null; }
         }
 
         // 발주처 마스터(customer, is_active=1)를 이름 배열 JSON으로. 편집 폼의 발주처 드롭다운 소스.
-        // 실패(오프라인 포함) 시 null → 웹은 기존 목록(dbCategories의 distinct)만으로 폴백한다.
+        // 실패(오프라인 포함) 시 null → 웹은 카탈로그에 실제로 쓰인 발주처만으로 폴백한다(마스터 캐시 없음).
         public async Task<string?> LoadCustomersJsonAsync()
         {
             try

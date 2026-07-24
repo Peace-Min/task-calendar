@@ -2186,5 +2186,148 @@ if (!JSDOM) {
       assert.strictEqual(sub, '2026-07-22 추출 · 전체 2건 중 1건 · 필터: 구분=일반계약 · 숨김 과제 제외');
       ev("document.getElementById('offSection').value = ''; renderOfficialList();");
     });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 로컬 DB 카탈로그 캐시 제거 (2026-07-24)
+    // 근거: 서버 설계문서 §7·장애정책이 'DB 정보를 로컬에 캐싱해 오프라인 지원'을 배제.
+    // 실질 위험: 캐시가 있으면 서버가 꺼져 있어도 Excel 장표가 뽑히는데, 부제엔 '오늘 추출'로 찍히고
+    //           데이터는 몇 주 전 것일 수 있다(오정보가 남에게 전달됨).
+    // ══════════════════════════════════════════════════════════════════
+    const DBROW = (uid, extra) => Object.assign({
+      uid, section: '일반계약', customer: 'A청', project_name: 'P' + uid, contract_name: 'C' + uid,
+      common_name: '통상' + uid, start_date: '2026-01-01', end_date: '2026-12-31', status: '진행중', is_active: 1,
+    }, extra || {});
+    const applyRows = (rows) => ev('__applyProjects(' + JSON.stringify(JSON.stringify(rows)) + ')');
+
+    test('캐시 제거: loadDbCache 함수가 존재하지 않는다', () => {
+      assert.strictEqual(ev('typeof loadDbCache'), 'undefined', '캐시 복원 함수가 남아 있다');
+    });
+
+    test('캐시 제거: 조회 성공해도 localStorage에 카탈로그·동기화시각을 쓰지 않는다', () => {
+      ev("try{ localStorage.removeItem('tc_dbProjects'); localStorage.removeItem('tc_dbSyncedAt'); }catch(_){}");
+      applyRows([DBROW('u1')]);
+      assert.strictEqual(ev('dbCatalog.length'), 1);
+      assert.strictEqual(ev('dbOnline'), true);
+      assert.strictEqual(ev("localStorage.getItem('tc_dbProjects')"), null, '카탈로그를 로컬에 캐싱하면 안 된다');
+      assert.strictEqual(ev("localStorage.getItem('tc_dbSyncedAt')"), null, '동기화 시각도 남기지 않는다');
+    });
+
+    test('캐시 제거(핵심): 조회 실패("")면 폴백 없이 목록을 비운다 — stale 장표 유통 차단', () => {
+      applyRows([DBROW('u1'), DBROW('u2')]);
+      assert.strictEqual(ev('dbCatalog.length'), 2);
+      ev("__applyProjects('')");
+      assert.strictEqual(ev('dbCatalog.length'), 0, '실패 시 이전 목록/캐시로 폴백하면 안 된다');
+      assert.strictEqual(ev('dbOnline'), false);
+    });
+
+    test('캐시 제거: 오프라인이어도 편입분을 "삭제됨(dbGone)"으로 오표시하지 않는다', () => {
+      // 카탈로그를 못 읽은 것과 DB에서 삭제된 것은 다른 사실이다. 못 읽었다고 피커에서 사라지면 안 된다.
+      seed(THS({ categories: [{ id: 'db-u1', name: '통상u1', color: '#3e5be0', source: 'db', dbGone: false,
+                                desc: '', gitRepo: '', svnRepo: '', createdAt: CA }] }));
+      ev("__applyProjects('')");
+      assert.strictEqual(evJSON("state.categories.find(function(c){return c.id==='db-u1';}).dbGone"), false,
+        '오프라인인데 삭제됨으로 표시하면 피커에서 사라진다');
+      // 반대로 온라인인데 카탈로그에 없으면 그때는 진짜 삭제 → dbGone=true
+      applyRows([DBROW('other')]);
+      assert.strictEqual(evJSON("state.categories.find(function(c){return c.id==='db-u1';}).dbGone"), true,
+        '온라인 카탈로그에 없으면 삭제됨으로 표시해야 한다');
+    });
+
+    // ── 편입분(XML source="db") 메타 최소화 ────────────────────────────
+    const DROPPED = ['customer', 'section', 'status', 'startDate', 'endDate', 'projectName', 'contractName', 'commonName'];
+
+    test('편입분 메타: 편입 객체엔 상세 메타 8개가 없다(name·color만)', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1'))");
+      const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
+      for (const k of DROPPED) assert.ok(!(k in c), `편입분에 ${k}가 남아 있다(DB 캐시 재유입)`);
+      assert.strictEqual(c.name, '통상u1');
+      assert.strictEqual(c.color, '#3e5be0');
+      assert.strictEqual(c.source, 'db');
+    });
+
+    test('편입분 메타: XML 왕복에서 source/name/color/dbGone만 보존된다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1')); state.categories[state.categories.length-1].dbGone = true;");
+      const xml = ev('toXML()');
+      for (const k of DROPPED) assert.ok(!new RegExp(k + '=').test(xml), `XML에 ${k} 속성이 기록됐다`);
+      const p = evJSON('fromXML(toXML())');
+      const c = p.categories.find(x => x.id === 'db-u1');
+      assert.strictEqual(c.source, 'db');
+      assert.strictEqual(c.name, '통상u1');
+      assert.strictEqual(c.color, '#3e5be0');
+      assert.strictEqual(c.dbGone, true);
+      for (const k of DROPPED) assert.ok(!(k in c), `파싱 결과에 ${k}가 복원됐다`);
+    });
+
+    test('편입분 메타 하위호환: 8개 속성이 든 옛 XML도 에러 없이 파싱되고 name/color/source 복원', () => {
+      const oldXml = '<?xml version="1.0" encoding="UTF-8"?><taskCalendar version="1"><categories>' +
+        '<category id="db-old" color="#c2770a" createdAt="2026-01-01T00:00:00.000Z" source="db" dbGone="1"' +
+        ' customer="방위사업청" section="일반계약" status="진행중" startDate="2026-01-01" endDate="2026-12-31"' +
+        ' projectName="옛 사업명" contractName="옛 계약명" commonName="옛 통상명칭">' +
+        '<name>옛 이름</name><description></description></category>' +
+        '</categories><entries></entries><todos></todos></taskCalendar>';
+      let p;
+      assert.doesNotThrow(() => { p = evJSON('fromXML(' + JSON.stringify(oldXml) + ')'); }, '옛 속성이 있으면 파싱이 깨진다');
+      const c = p.categories.find(x => x.id === 'db-old');
+      assert.strictEqual(c.source, 'db');
+      assert.strictEqual(c.name, '옛 이름');
+      assert.strictEqual(c.color, '#c2770a');
+      assert.strictEqual(c.dbGone, true);
+      // 읽지 않으므로 객체에 실리지 않는다 → 다음 저장 때 자연 소멸(마이그레이션 코드 불필요)
+      for (const k of DROPPED) assert.ok(!(k in c), `옛 속성 ${k}가 다시 실렸다`);
+    });
+
+    test('편입분 메타: 개인 과제 XML은 그대로(공식 전용 속성이 하나도 안 붙는다)', () => {
+      seed(THS());   // 개인 과제 2개(ca, cb)만
+      const xml = ev('toXML()');
+      for (const attr of ['source=', 'dbGone=', ...DROPPED.map(k => k + '=')])
+        assert.ok(!xml.includes(attr), `개인 과제 XML에 ${attr}가 붙었다(회귀)`);
+      const p = evJSON('fromXML(toXML())');
+      const ca = p.categories.find(x => x.id === 'ca');
+      assert.ok(!('source' in ca) && !('dbGone' in ca), '개인 과제에 출처 키가 생겼다');
+    });
+
+    // ── 오프라인 UX — '못 읽음'과 '없음'을 섞지 않는다 ──────────────────
+    test('오프라인 빈 상태: 카탈로그 문구가 "등록된 과제 없음"과 구분된다', () => {
+      ev("__applyProjects('')");                       // 연결 실패 → 목록 비고 dbOnline=false
+      ev('offFillSelects(); renderOfficialList();');
+      const off = ev("document.getElementById('offList').textContent");
+      assert.ok(/서버에 연결되지 않아/.test(off), '오프라인 원인이 드러나지 않는다: ' + off);
+      assert.ok(!/등록된 공식 과제가 없습니다/.test(off), '"등록된 게 없다"와 섞이면 DB가 빈 줄로 오해한다');
+
+      applyRows([]);                                   // 연결은 됐는데 DB가 진짜 빈 경우
+      ev('offFillSelects(); renderOfficialList();');
+      const empty = ev("document.getElementById('offList').textContent");
+      assert.ok(/등록된 공식 과제가 없습니다/.test(empty), '온라인·0건 문구가 아니다: ' + empty);
+      assert.ok(!/서버에 연결되지 않아/.test(empty), '온라인인데 연결 오류로 안내하면 안 된다');
+    });
+
+    test('오프라인: 재연결 도우미가 "서버 연결이 필요합니다"를 명시한다', () => {
+      seed(THS());                 // 개인 과제 있음 → 목록은 그려지고 오른쪽 select만 빈다
+      ev("__applyProjects('')");
+      ev('renderRelink();');
+      const t = ev("document.getElementById('rlList').textContent");
+      assert.ok(/서버 연결이 필요합니다/.test(t), '재연결 도우미가 오프라인 사유를 알리지 않는다: ' + t);
+    });
+
+    // ── 피커/과제관리 행 — 부제(발주처·구분) 제거 ──────────────────────
+    test('편입분 표시: 피커 옵션과 과제관리 행에 부제가 없다(이름만)', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1')); renderAll();");
+      // 피커(과제 선택 select) — 옵션 라벨이 이름 그대로여야 한다
+      const opt = ev("(function(){var s=document.createElement('select'); fillCatSelect(s);" +
+                     "var o=[].slice.call(s.querySelectorAll('option')).filter(function(x){return x.value==='db-u1';})[0];" +
+                     "return o ? o.textContent : '';})()");
+      assert.strictEqual(opt, '통상u1', '피커 옵션에 부제가 붙어 있다: ' + opt);
+      assert.ok(!/—/.test(opt), '부제 구분자(—)가 남아 있다');
+      // 과제 관리 행
+      const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
+      assert.ok(!/cat-desc/.test(row), '과제관리 행에 부제(cat-desc)가 남아 있다');
+      assert.ok(/통상u1/.test(row) && /cat-badge db/.test(row), '이름·DB 배지는 유지돼야 한다');
+    });
   }
 }

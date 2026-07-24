@@ -445,7 +445,7 @@ namespace TaskCalendarWidget
                         break;
 
                     // ----- 과제 DB 연동 — 연결정보는 배포 구성(ProjectDb 상수), 설정 UI 없음 -----
-                    case "loadProjects":    // 공식 과제 읽어 웹으로(__applyProjects). 실패 시 ""를 넘겨 웹이 캐시 폴백.
+                    case "loadProjects":    // 공식 과제 읽어 웹으로(__applyProjects). 실패 시 ""를 넘기면 웹은 목록을 비운다(로컬 캐시 없음 — ADR-18).
                         _ = LoadProjectsToWebAsync();
                         break;
                     case "loadCustomers":   // 편집 폼의 발주처 드롭다운 소스(customer 마스터) → __applyCustomers
@@ -1333,11 +1333,11 @@ namespace TaskCalendarWidget
         private void JsCall(string js) { try { Dispatcher.Invoke(() => { try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch { } }); } catch { } }
 
         // ============ 과제 DB 연동 ============
-        // 공식 과제(project, is_active=1)를 읽어 웹으로 넘긴다. 오프라인/실패면 ""를 넘겨 웹이 로컬 캐시로 폴백(오프라인 우선).
+        // 공식 과제(project, is_active=1)를 읽어 웹으로 넘긴다. 오프라인/실패면 ""를 넘기고, 웹은 폴백 없이 목록을 비운다(ADR-18).
         private async Task LoadProjectsToWebAsync()
         {
             string? json = await _projectDb.LoadProjectsJsonAsync();
-            // null(연결/조회 실패) → "" 전달 → 웹 __applyProjects가 캐시 사용
+            // null(연결/조회 실패) → "" 전달 → 웹 __applyProjects가 dbCatalog를 비우고 오프라인 안내를 띄운다
             JsCall("window.__applyProjects && window.__applyProjects(" + JsonSerializer.Serialize(json ?? "") + ")");
         }
 
