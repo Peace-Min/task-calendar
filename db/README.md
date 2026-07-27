@@ -41,7 +41,8 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 | `ROADMAP.md` | **작업 로드맵** — P0~P8 단계·의존성·게이트·규모·선행조건(실Excel/폐쇄망)·권장 진행순서 |
 | `SETUP.md` | 환경·연결·적용/재적용(클린 rebuild vs 서버 실이관)·설계 모델·검증 결과 |
 | `DESIGN_NOTES.md` | 모델 B 근거·필드별 설계결정·Excel 추출 방향·초기이관/재구축 전략·향후 |
-| `schema-overview.html` | 오프라인·라이트/다크 단일 HTML 스키마 개요(테이블/컬럼/시드 요약) |
+| `schema-overview.html` | ⚠️ **낡음(2026-07-21, ENUM 시절)** — 현행 구조는 [`docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) |
+| [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스** — 4개 표·컬럼·제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
 | `sample/Dummy_Data.xlsx` | **원본 더미 엑셀** — 초기 1회 이관 픽스처. 사내 AI로 변환한 더미(롤 지명), 실 국방데이터 아님 |
 

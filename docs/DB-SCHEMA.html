@@ -1,0 +1,319 @@
+<meta charset="utf-8">
+<title>과제 DB 테이블 구조 — taskmgr</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* 폐쇄망이라 웹폰트를 쓰지 않는다(로드 실패 시 조용히 다른 폰트로 떨어짐).
+   개성은 서체가 아니라 스케일·굵기·자간·숫자 정렬로 낸다. */
+:root{
+  --paper:#fcfcfd; --panel:#ffffff; --ink:#16181d; --ink-2:#3a404b;
+  --muted:#5c6370;            /* 청색을 살짝 섞은 회색 — 순회색은 '고르지 않은' 느낌이 난다 */
+  --faint:#6c7482;            /* 가장 조용한 글자도 AA(4.5:1)는 넘긴다 — 위계는 색이 아니라 크기·굵기로 낸다 */
+  --rule:#e2e5ea; --rule-2:#cdd3dc;
+  --accent:#0f6b62;           /* 산화동 계열 — 키·제약 표시용 단일 악센트 */
+  --accent-soft:#e6f2f0;
+  --accent-ink:#0a544d;
+  --on-accent:#ffffff;        /* 악센트로 채운 칩 위의 글자 — 다크에선 악센트가 밝아지므로 뒤집는다 */
+  --warn:#8a5a12; --warn-soft:#fbf1de;
+  --mono:"Cascadia Mono","D2Coding",Consolas,"Courier New",monospace;
+  --sans:-apple-system,"Segoe UI Variable Text","Segoe UI","Malgun Gothic","맑은 고딕",sans-serif;
+  --disp:-apple-system,"Segoe UI Variable Display","Segoe UI","Malgun Gothic","맑은 고딕",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#14161a; --panel:#1a1d23; --ink:#e8eaee; --ink-2:#c2c7d0;
+    --muted:#98a0ad; --faint:#8d95a3; --rule:#2a2f38; --rule-2:#3a4150;
+    --accent:#5cbdb0; --accent-soft:#12332f; --accent-ink:#8fd7cc; --on-accent:#0d1114;
+    --warn:#d9ad63; --warn-soft:#33280f;
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font:15px/1.65 var(--sans); -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:960px; margin:0 auto; padding:56px 24px 96px}
+
+/* ── 헤더 ── */
+.eyebrow{
+  font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted); margin:0 0 14px;
+}
+h1{
+  font-family:var(--disp); font-size:clamp(28px,4.2vw,40px); line-height:1.15;
+  font-weight:750; letter-spacing:-.02em; margin:0 0 14px; text-wrap:balance;
+}
+.lede{font-size:17px; color:var(--ink-2); margin:0 0 26px; max-width:62ch}
+.facts{display:flex; flex-wrap:wrap; gap:8px 10px; margin:0 0 8px; padding:0; list-style:none}
+.facts li{
+  font-size:12.5px; color:var(--muted); border:1px solid var(--rule-2);
+  border-radius:2px; padding:5px 10px; background:var(--panel);
+}
+.facts b{color:var(--ink); font-weight:650; font-family:var(--mono); font-size:12px}
+hr.rule{border:0; border-top:1px solid var(--rule); margin:34px 0}
+
+/* ── 섹션 ── */
+section{margin:0 0 46px; scroll-margin-top:20px}
+h2{
+  font-family:var(--disp); font-size:21px; font-weight:700; letter-spacing:-.01em;
+  margin:0 0 6px; padding-bottom:8px; border-bottom:2px solid var(--ink);
+  display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+}
+h2 .tname{font-family:var(--mono); font-size:19px; font-weight:600}
+h2 .ko{font-size:14px; font-weight:500; color:var(--muted); letter-spacing:0}
+h3{font-family:var(--disp); font-size:15px; font-weight:700; margin:26px 0 8px; letter-spacing:-.005em}
+p{margin:0 0 12px; max-width:70ch}
+.sub{color:var(--muted); font-size:13.5px}
+
+/* ── 컬럼 매트릭스 ── */
+.tw{overflow-x:auto; margin:14px 0 4px; border:1px solid var(--rule); border-radius:3px; background:var(--panel)}
+table{border-collapse:collapse; width:100%; font-size:13.5px; min-width:640px}
+th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+thead th{
+  font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--muted); background:var(--paper); border-bottom:1px solid var(--rule-2); white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0}
+td.col{font-family:var(--mono); font-weight:600; white-space:nowrap; color:var(--ink)}
+td.type{font-family:var(--mono); font-size:12.5px; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums}
+td.note{color:var(--ink-2)}
+tr.pk td.col{color:var(--accent-ink)}
+tr.audit td{color:var(--faint)}
+tr.audit td.col{color:var(--faint); font-weight:500}
+
+/* 제약 칩 — PK/FK만 색으로. 나머지는 조용히(무지개 방지) */
+.k{display:inline-block; font-family:var(--mono); font-size:10.5px; font-weight:700;
+   letter-spacing:.04em; padding:1.5px 5px; border-radius:2px; margin-right:4px; white-space:nowrap}
+.k.pk{background:var(--accent); color:var(--on-accent)}
+.k.fk{background:var(--accent-soft); color:var(--accent-ink); border:1px solid var(--accent)}
+.k.uq{border:1px solid var(--rule-2); color:var(--ink-2)}
+.k.ix{border:1px dashed var(--rule-2); color:var(--muted)}
+.k.nn{color:var(--faint); border:1px solid var(--rule)}
+.star{color:var(--accent); font-weight:700}
+
+/* ── 관계도 ── */
+.erd{margin:18px 0 6px; padding:20px 16px; border:1px solid var(--rule); border-radius:3px;
+     background:var(--panel); overflow-x:auto}
+.erd svg{display:block; margin:0 auto; max-width:100%; height:auto}
+.erd text{font-family:var(--mono); fill:var(--ink)}
+.erd .t-ko{font-family:var(--sans); fill:var(--muted); font-size:10px}
+.erd .box{fill:var(--paper); stroke:var(--rule-2)}
+.erd .box-main{fill:var(--accent-soft); stroke:var(--accent)}
+.erd .line{stroke:var(--rule-2); fill:none}
+.erd .lbl{font-family:var(--sans); fill:var(--muted); font-size:9.5px}
+
+/* ── 규칙 카드 ── */
+.rules{display:grid; gap:0; margin:14px 0; border:1px solid var(--rule); border-radius:3px; background:var(--panel)}
+.rule-row{display:grid; grid-template-columns:minmax(0,180px) minmax(0,1fr); gap:0; border-bottom:1px solid var(--rule)}
+.rule-row:last-child{border-bottom:0}
+.rule-row dt{padding:11px 14px; font-weight:650; font-size:13.5px; border-right:1px solid var(--rule); background:var(--paper)}
+.rule-row dd{margin:0; padding:11px 14px; font-size:13.5px; color:var(--ink-2)}
+@media (max-width:620px){
+  .rule-row{grid-template-columns:1fr}
+  .rule-row dt{border-right:0; border-bottom:1px solid var(--rule)}
+}
+
+/* ── 강조 박스 ── */
+.callout{border:1px solid var(--rule-2); border-radius:3px; background:var(--panel); padding:14px 16px; margin:16px 0}
+.callout.warn{border-color:var(--warn); background:var(--warn-soft)}
+.callout h4{margin:0 0 6px; font-size:13.5px; font-weight:700; font-family:var(--disp)}
+.callout p{margin:0; font-size:13.5px; color:var(--ink-2)}
+.callout p + p{margin-top:8px}
+
+code{font-family:var(--mono); font-size:.92em; background:var(--panel); border:1px solid var(--rule);
+     border-radius:2px; padding:1px 4px}
+.callout code{background:transparent; border-color:var(--rule-2)}
+a{color:var(--accent-ink); text-decoration-thickness:1px; text-underline-offset:2px}
+
+footer{margin-top:48px; padding-top:18px; border-top:1px solid var(--rule); color:var(--faint); font-size:12.5px}
+footer p{margin:0 0 4px; max-width:none}
+
+@media print{
+  body{background:#fff}
+  .wrap{padding:0}
+  section{break-inside:avoid}
+  .tw{overflow:visible}
+}
+</style>
+
+<div class="wrap">
+
+<p class="eyebrow">수행과제 캘린더 · 데이터베이스 레퍼런스</p>
+<h1>과제 DB 테이블 구조</h1>
+<p class="lede">지금 운영되는 <code>taskmgr</code> 데이터베이스가 실제로 어떻게 생겼는지, 그리고 무엇을 DB가 강제하고 무엇을 앱이 지키는지 정리한 문서입니다.</p>
+<ul class="facts">
+  <li>데이터베이스 <b>taskmgr</b></li>
+  <li>엔진 <b>MySQL 8.4 / InnoDB</b></li>
+  <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
+  <li>테이블 <b>4</b></li>
+  <li>기준 <b>2026-07-27</b></li>
+</ul>
+
+<hr class="rule">
+
+<section id="overview">
+<h2>한눈에</h2>
+<p>과제 한 건이 중심이고, 나머지 셋은 <b>과제가 참조하는 목록</b>입니다. 발주처·구분·상태는 각각 별도 테이블로 두어 <b>앱에서 추가·이름변경·순서변경·숨김</b>을 할 수 있게 했습니다.</p>
+
+<div class="erd">
+<svg viewBox="0 0 700 300" role="img" aria-label="project가 customer, section_code, status_code를 외래키로 참조하는 관계도">
+  <!-- 참조 대상 3 -->
+  <rect class="box" x="16" y="18" width="184" height="52" rx="2"/>
+  <text x="28" y="42" font-size="13" font-weight="600">customer</text>
+  <text class="t-ko" x="28" y="58">발주처 마스터</text>
+
+  <rect class="box" x="16" y="124" width="184" height="52" rx="2"/>
+  <text x="28" y="148" font-size="13" font-weight="600">section_code</text>
+  <text class="t-ko" x="28" y="164">구분 코드</text>
+
+  <rect class="box" x="16" y="230" width="184" height="52" rx="2"/>
+  <text x="28" y="254" font-size="13" font-weight="600">status_code</text>
+  <text class="t-ko" x="28" y="270">상태 코드 · NULL 허용</text>
+
+  <!-- 중심 -->
+  <rect class="box-main" x="430" y="106" width="254" height="88" rx="2"/>
+  <text x="448" y="136" font-size="15" font-weight="700">project</text>
+  <text class="t-ko" x="448" y="154">과제 마스터 — DB 원본</text>
+  <text class="t-ko" x="448" y="172">정체성 = uid (assign-once)</text>
+
+  <!-- 연결선 -->
+  <path class="line" d="M200 44 H316 V140 H430"/>
+  <path class="line" d="M200 150 H430"/>
+  <path class="line" d="M200 256 H316 V160 H430"/>
+  <circle cx="430" cy="140" r="3" fill="currentColor" opacity=".35"/>
+  <circle cx="430" cy="150" r="3" fill="currentColor" opacity=".35"/>
+  <circle cx="430" cy="160" r="3" fill="currentColor" opacity=".35"/>
+
+  <text class="lbl" x="238" y="38">customer</text>
+  <text class="lbl" x="238" y="144">section</text>
+  <text class="lbl" x="238" y="250">status</text>
+  <text class="lbl" x="332" y="216">이름을 바꾸면 과제 표기까지 자동 전파 (ON UPDATE CASCADE)</text>
+  <text class="lbl" x="332" y="232">참조 중인 값은 삭제 차단 (ON DELETE RESTRICT)</text>
+</svg>
+</div>
+<p class="sub">세 참조 모두 <b>이름(자연키)</b>을 가리킵니다. 그래서 목록에서 이름을 고치면 그 값을 쓰던 과제들의 표기도 <b>한 번에</b> 바뀝니다.</p>
+</section>
+
+<section id="project">
+<h2><span class="tname">project</span> <span class="ko">과제 마스터 — 이 시스템의 핵심</span></h2>
+<p>사업부가 관리하는 과제 한 건이 한 행입니다. 캘린더 앱은 이 표를 읽어 <b>공식 과제 목록</b>을 보여주고, 관리자만 편집합니다.</p>
+
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">id</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span><span class="k">AUTO_INC</span></td><td class="note">내부 일련번호. 외부에서 참조하지 않습니다.</td></tr>
+<tr class="pk"><td class="col">uid</td><td class="type">CHAR(36)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span></td><td class="note"><b>과제의 정체성.</b> 등록 때 한 번 부여되고 절대 바뀌지 않습니다. 캘린더의 일정은 이름이 아니라 이 값으로 과제를 가리킵니다 — 그래서 <b>이름을 바꿔도 연결이 끊기지 않습니다.</b></td></tr>
+<tr><td class="col">section</td><td class="type">VARCHAR(50)</td><td><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">구분. <code>section_code</code>에 있는 값만 들어갑니다.</td></tr>
+<tr><td class="col">customer</td><td class="type">VARCHAR(100)</td><td><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">발주처. <code>customer</code>에 있는 값만 들어갑니다.</td></tr>
+<tr><td class="col">project_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note">사업명.</td></tr>
+<tr><td class="col">contract_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note">계약명. 없으면 빈 문자열이며 <b>NULL을 쓰지 않습니다</b>(비교할 때 함정이 됩니다).</td></tr>
+<tr><td class="col">common_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note"><span class="star">★</span> <b>통상명칭 — 화면과 보고서에 실제로 찍히는 이름.</b> 비어 있으면 사업명이 대신 쓰입니다. 보고서 집계가 사업부 관리 명칭과 맞아야 하므로 이 칸을 채워두는 것이 중요합니다.</td></tr>
+<tr><td class="col">start_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span></td><td class="note">계약 시작일. 계약 전(선진행)이면 비웁니다.</td></tr>
+<tr><td class="col">end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span></td><td class="note">계약 종료일.</td></tr>
+<tr><td class="col">status</td><td class="type">VARCHAR(50)</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span></td><td class="note">상태. 비어 있으면(선진행 등) 외래키 검사를 건너뜁니다.</td></tr>
+<tr><td class="col">note</td><td class="type">VARCHAR(500)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note">비고 — <b>관리 화면에서만</b> 보이는 내부 메모. 캘린더·보고서에는 나오지 않습니다.</td></tr>
+<tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">1=사용, 0=숨김. <b>앱에서 지우면 이 값만 0이 되고 행은 남습니다</b>(되돌릴 수 있음).</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(자동).</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">마지막 수정 시각(자동 갱신).</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout">
+<h4>이름이 같은 과제가 여러 건 있을 수 있습니다 — 정상입니다</h4>
+<p>실제 데이터를 검수해 보니 <b>같은 발주처·같은 사업명</b>이 정당하게 반복됐습니다. 구성품별로 계약이 갈리거나(저장장치·처리장치), 같은 사업이 연도마다 갱신되기 때문입니다. 그래서 이름에는 중복 금지 제약을 두지 <b>않습니다</b>.</p>
+<p>대신 실수로 같은 걸 또 등록하려 하면 앱이 <b>비슷한 과제가 있다고 경고</b>합니다(막지는 않습니다). 결정 근거는 <a href="../db/TABLE-DESIGN.md">TABLE-DESIGN.md</a> §4.</p>
+</div>
+</section>
+
+<section id="customer">
+<h2><span class="tname">customer</span> <span class="ko">발주처 마스터</span></h2>
+<p>과제가 참조하는 발주처 목록입니다. 앱의 <b>발주처 관리</b> 화면에서 추가·이름변경·숨김을 합니다.</p>
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">name</td><td class="type">VARCHAR(100)</td><td><span class="k pk">PK</span></td><td class="note">발주처 이름 자체가 키입니다. 여기서 이름을 고치면 <b>그 발주처를 쓰던 과제 표기도 함께</b> 바뀝니다.</td></tr>
+<tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span></td><td class="note">1=사용, 0=숨김. 숨겨도 <b>기존 과제의 발주처 표기는 그대로</b>이고, 새로 고를 때만 목록에서 빠집니다.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(자동).</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">마지막 수정 시각(자동 갱신).</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="codes">
+<h2><span class="tname">section_code</span> · <span class="tname">status_code</span> <span class="ko">구분 · 상태 코드</span></h2>
+<p>두 표는 <b>구조가 완전히 같습니다.</b> 구분(일반계약·선진행·사업부관리)과 상태(진행중·종료·1차 납품완료·미정)를 담고, 앱의 <b>구분·상태 관리</b> 화면에서 다룹니다.</p>
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">name</td><td class="type">VARCHAR(50)</td><td><span class="k pk">PK</span></td><td class="note">코드값 자체가 키입니다. 이름을 고치면 그 값을 쓰던 과제 표기도 함께 바뀝니다.</td></tr>
+<tr><td class="col">sort_order</td><td class="type">INT</td><td><span class="k nn">NOT NULL</span></td><td class="note">드롭다운에 보이는 순서(작을수록 먼저). 앱의 ▲▼로 바꿉니다.</td></tr>
+<tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span></td><td class="note">1=사용, 0=숨김. 숨겨도 기존 과제 표기는 유지됩니다.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(자동).</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">마지막 수정 시각(자동 갱신).</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub">예전에는 이 값들을 컬럼 정의(<code>ENUM</code>) 안에 박아 두어 바꾸려면 스키마를 고치고 앱을 다시 배포해야 했습니다. 지금은 표의 <b>행</b>이라 발주처와 똑같이 앱에서 다룹니다.</p>
+</section>
+
+<section id="rules">
+<h2>DB가 강제하는 것 · 앱이 지키는 것</h2>
+<p>둘을 구분해 두면 문제가 생겼을 때 <b>어디를 봐야 하는지</b>가 분명해집니다.</p>
+
+<h3>DB가 강제 — 앱을 우회해 SQL로 넣어도 막힙니다</h3>
+<dl class="rules">
+  <div class="rule-row"><dt>없는 값 금지</dt><dd>목록에 없는 발주처·구분·상태로는 과제를 저장할 수 없습니다(외래키).</dd></div>
+  <div class="rule-row"><dt>이름 변경 전파</dt><dd>발주처·구분·상태의 이름을 바꾸면 그 값을 쓰던 과제가 <b>전부 자동으로</b> 따라갑니다.</dd></div>
+  <div class="rule-row"><dt>사용 중 삭제 차단</dt><dd>과제가 쓰고 있는 구분·상태는 지워지지 않습니다.</dd></div>
+  <div class="rule-row"><dt>uid 유일</dt><dd>과제의 정체성이 겹치지 않습니다.</dd></div>
+  <div class="rule-row"><dt>빈 값 표기 통일</dt><dd>계약명·통상명칭·비고는 비어 있으면 빈 문자열입니다(NULL 아님).</dd></div>
+</dl>
+
+<h3>앱이 지킴 — 규칙이지 물리적 차단은 아닙니다</h3>
+<dl class="rules">
+  <div class="rule-row"><dt>중복 경고</dt><dd>비슷한 과제를 또 등록하려 하면 경고합니다. 진짜 중복일 수 있으므로 막지는 않습니다.</dd></div>
+  <div class="rule-row"><dt>선진행 규칙</dt><dd>구분이 <b>선진행</b>이면 날짜·상태를 비웁니다(계약 전이므로).</dd></div>
+  <div class="rule-row"><dt>편집 권한</dt><dd>관리자 인증을 통과해야 과제·발주처·코드값을 고칠 수 있습니다.</dd></div>
+  <div class="rule-row"><dt>삭제는 숨김으로</dt><dd>화면에서 지우면 <code>is_active=0</code>이 될 뿐 행은 남습니다. 영구 삭제는 DB에서 직접 해야 합니다.</dd></div>
+</dl>
+</section>
+
+<section id="confusing">
+<h2>헷갈리기 쉬운 두 가지</h2>
+
+<div class="callout warn">
+<h4>‘비고’와 ‘설명’은 다른 것입니다</h4>
+<p><b>비고</b>(<code>project.note</code>)는 <b>DB에 저장</b>되어 관리자가 관리 화면에서 보는 값이고, 모두가 같은 내용을 봅니다.</p>
+<p><b>설명</b>은 각 사용자의 <b>PC에만</b> 저장됩니다(캘린더 데이터 파일). Git·SVN 저장소 경로도 마찬가지입니다 — 경로는 PC마다 다르므로 DB가 가질 수 없습니다.</p>
+</div>
+
+<div class="callout">
+<h4>DB가 주는 것은 ‘이름’뿐입니다</h4>
+<p>캘린더에서 공식 과제를 쓸 때, DB가 정하는 것은 <b>과제명(통상명칭)</b>과 발주처·구분·상태·기간 같은 <b>과제 자체의 정보</b>입니다.</p>
+<p>반면 <b>설명·Git·SVN 경로</b>는 사용자가 자기 PC에서 정의하는 값이라, 기존 과제를 공식 과제로 재연결해도 <b>쓰던 내용이 그대로 따라옵니다</b>. 바뀌는 건 이름뿐입니다.</p>
+</div>
+</section>
+
+<section id="ops">
+<h2>바꾸려면 어디를 여는가</h2>
+<dl class="rules">
+  <div class="rule-row"><dt>과제 추가·수정</dt><dd>앱 → 과제 관리 → 공식 과제(DB) → <b>새 공식 과제</b> 또는 행 선택 후 <b>편집</b></dd></div>
+  <div class="rule-row"><dt>발주처</dt><dd>앱 → 공식 과제 화면 → <b>발주처 관리</b></dd></div>
+  <div class="rule-row"><dt>구분 · 상태</dt><dd>앱 → 공식 과제 편집 → <b>구분·상태 관리</b></dd></div>
+  <div class="rule-row"><dt>대량 입력</dt><dd>SQL로 직접 넣습니다. 순서가 중요합니다 — <b>발주처·코드값을 먼저</b> 넣어야 과제가 들어갑니다(<code>db/deploy/load-template.sql</code>).</dd></div>
+  <div class="rule-row"><dt>표 구조 변경</dt><dd><code>db/deploy/migrate.cmd</code> — 데이터를 보존하며 최신 구조로 맞춥니다. 여러 번 실행해도 안전합니다.</dd></div>
+  <div class="rule-row"><dt>처음 구축</dt><dd><code>db/deploy/init-db.cmd</code> — <b>표를 새로 만듭니다.</b> 데이터가 있는 DB에는 절대 쓰지 마세요.</dd></div>
+</dl>
+<p class="sub">앱이 쓰는 DB 계정은 네 표에 대한 <b>읽기·추가·수정</b> 권한만 갖습니다. 삭제나 구조 변경은 할 수 없습니다.</p>
+</section>
+
+<footer>
+<p>이 문서는 <b>지금 구조가 어떻게 생겼는지</b>를 봅니다. <b>왜 그렇게 정했는지</b>(식별 규칙을 정한 근거)는 <a href="../db/table-design-report.html">table-design-report.html</a>, 설계 결정 이력은 <a href="../db/ARCHITECTURE.md">ARCHITECTURE.md</a>에 있습니다.</p>
+<p>원본 정의: <code>db/schema.sql</code> · 배포용(시드 제외): <code>db/deploy/schema-structure.sql</code></p>
+</footer>
+
+</div>
