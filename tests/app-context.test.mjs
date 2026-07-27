@@ -2732,5 +2732,31 @@ if (!JSDOM) {
       assert.ok(act && /margin-left:auto/.test(act[1]), '.off-d-act가 우측으로 밀리지 않는다(의미 구분 소실)');
       assert.ok(act && !/margin-top/.test(act[1]), '.off-d-act에 margin-top이 남아 다시 줄을 만든다');
     });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 문의(버그 리포트) 모달 (2026-07-27) — 실제 클릭 동작.
+    // 마크업·계약(경로 무전달 등) 구조 검증은 tests/feedback-modal.test.mjs가 담당하고,
+    // 여기서는 '버튼을 누르면 정말 모달이 열리는가'만 부팅된 컨텍스트에서 확인한다.
+    // ══════════════════════════════════════════════════════════════════
+    test('문의: 🐞 버튼 클릭 → #feedbackModal이 실제로 열린다(토스트로 끝나지 않는다)', () => {
+      ev("document.getElementById('feedbackModal').classList.add('hidden');");
+      assert.strictEqual(ev("document.getElementById('feedbackModal').classList.contains('hidden')"), true, '사전 상태(닫힘) 준비 실패');
+      ev("document.getElementById('btnFeedback').click();");
+      assert.strictEqual(ev("document.getElementById('feedbackModal').classList.contains('hidden')"), false,
+        '문의 버튼을 눌러도 모달이 열리지 않는다');
+    });
+
+    test('문의(HOST=false): 로그 폴더 열기 버튼 비활성 + %APPDATA% 경로 안내 노출', () => {
+      ev('openFeedback();');
+      assert.strictEqual(ev("!!HOST"), false, '이 컨텍스트는 브라우저(HOST=false)여야 한다');
+      assert.strictEqual(ev("document.getElementById('btnFbLog').disabled"), true,
+        '브라우저에서 버튼이 눌리는 채로 남아 있다 — 할 수 없는 일을 시키면 안 된다');
+      assert.notStrictEqual(ev("document.getElementById('fbLogPath').style.display"), 'none',
+        '브라우저인데 경로 안내가 숨겨져 있다(대체 수단이 사라진다)');
+      const txt = String(ev("document.getElementById('fbLogPath').textContent"));
+      assert.ok(txt.includes('%APPDATA%\\TaskCalendar'), '안내에 로그 폴더 경로가 없다: ' + txt);
+      // 뒷정리 — 다음 파일의 테스트가 열린 모달을 물려받지 않게
+      ev("document.getElementById('feedbackModal').classList.add('hidden');");
+    });
   }
 }

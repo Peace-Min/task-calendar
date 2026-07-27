@@ -680,6 +680,12 @@ namespace TaskCalendarWidget
                         break;
                     }
 
+                    case "openLogFolder":   // 문의 모달의 '로그 폴더 열기' — ★ 웹이 경로를 보내지 않는다(doc에서 아무것도 읽지 않음)
+                    {
+                        OpenLogFolder();    // 호스트 자신의 _dataDir/_logFile만 연다 → 웹발 문자열이 explorer 인자로 샐 표면이 0
+                        break;
+                    }
+
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
                     case "focus": ToggleFocusMode(); break;
@@ -1199,6 +1205,29 @@ namespace TaskCalendarWidget
                 Process.Start(new ProcessStartInfo("explorer.exe", "\"" + full + "\"") { UseShellExecute = true });
             }
             catch { }
+        }
+
+        // 로그 폴더 열기(문의 모달) — OpenFolderSafe와 달리 **경로 인자를 받지 않는다**.
+        // 웹은 { cmd:"openLogFolder" }만 보내고, 여는 대상은 이 클래스가 아는 _dataDir/_logFile뿐이다.
+        // → 웹이 문자열을 못 넘기므로 explorer 인자 주입 표면이 아예 없다(openFolder는 '호스트가 준 경로만'
+        //   되돌리는 규약이라 한 단계 더 방어가 필요했지만, 로그는 그럴 이유조차 없다).
+        // 목적이 '이 파일을 첨부해 달라'이므로 파일이 있으면 /select 로 **선택된 채** 연다 — 폴더만 열면 또 찾아야 한다.
+        private void OpenLogFolder()
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(_dataDir)) return;
+                string dir = Path.GetFullPath(_dataDir);
+                Directory.CreateDirectory(dir);   // 첫 실행 등으로 폴더가 없으면 만들고 연다(아무 반응 없는 실패 방지)
+                string file = string.IsNullOrWhiteSpace(_logFile) ? "" : Path.GetFullPath(_logFile);
+                if (file.Length > 0 && File.Exists(file))
+                {
+                    Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + file + "\"") { UseShellExecute = true });
+                    return;
+                }
+                OpenFolderSafe(dir);   // 로그가 아직 없으면 폴더만 — 빈값·GetFullPath·존재확인 방어는 그쪽을 재사용
+            }
+            catch (Exception ex) { Log("로그 폴더 열기 실패: " + ex.Message); }
         }
 
         // '내 커밋' 해시 목록(오래된 것부터) — 커밋별 patch 파일 생성용. GitLog와 동일한 필터(작성자 -i·기간).

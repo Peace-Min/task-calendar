@@ -74,6 +74,8 @@ const SCREENS = [
   { id: 'reportModal',             enter: '__vt.closeAll(); openReport()' },
   { id: 'patchModal',              enter: '__vt.closeAll(); openPatch()' },
   { id: 'helpModal',               enter: '__vt.closeAll(); openHelp()' },
+  // 문의(버그 리포트) — 로그 폴더 열기 버튼 + 반출 경고가 좁은 폭에서 잘리지 않아야 한다(320px 시트)
+  { id: 'feedbackModal',           enter: '__vt.closeAll(); openFeedback()' },
 ];
 
 /** 데이터 상태 — DB는 절대 건드리지 않고 __applyProjects로 **화면에만** 주입 */
