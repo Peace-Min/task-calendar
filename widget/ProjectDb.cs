@@ -773,8 +773,16 @@ namespace TaskCalendarWidget
                 try { await conn.OpenAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
 
-                await using var cmd = new MySqlCommand($"UPDATE {table} SET is_active=@a WHERE name=@n", conn);
-                cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
+                // 복구(active=true)는 sort_order를 '맨 뒤(MAX+10)'로 새로 부여한다.
+                // 왜: 숨김은 sort_order를 그대로 두는데, 그 사이 순서 재배치가 '활성 값만' 10·20·30…으로
+                //     재부여하므로, 옛 순번을 그대로 들고 복구되면 활성끼리 sort_order가 겹친다(순서가 이름
+                //     콜레이션 tiebreak에 좌우돼 드롭다운이 불안정해짐 — 루프테스트 I5로 실측된 결함).
+                //     맨 뒤로 보내면 항상 고유하고, 사용자가 ▲▼로 원하는 자리에 옮기면 된다.
+                //     (MySQL은 UPDATE 대상 테이블을 직접 서브쿼리로 못 읽어 파생테이블로 감싼다.)
+                string sql = active
+                    ? $"UPDATE {table} SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM {table}) x) WHERE name=@n"
+                    : $"UPDATE {table} SET is_active=0 WHERE name=@n";
+                await using var cmd = new MySqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@n", n);
                 int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
                 if (cnt == 0) return (false, lbl + "을(를) 찾을 수 없습니다 — 목록을 새로고침해 주세요.");

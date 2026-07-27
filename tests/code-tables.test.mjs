@@ -108,6 +108,15 @@ test('호스트: rename은 CASCADE 의존(수동 UPDATE project 없음) · reord
   const ro = projectDb.slice(projectDb.indexOf('ReorderCodesAsync'), projectDb.indexOf('CountActiveProjectsByCodeAsync'));
   assert.ok(/BeginTransactionAsync/.test(ro) && /sort_order=@s/.test(ro), 'reorder가 트랜잭션 sort_order 재부여가 아니다');
 });
+test('호스트: 복구(setActive true)는 sort_order를 MAX+10으로 재부여 — 활성 순번 충돌 방지', () => {
+  // 왜: 숨김은 sort_order를 그대로 두는데 reorder는 '활성 값만' 10·20·30…으로 재부여한다.
+  // 옛 순번을 들고 복구되면 활성끼리 sort_order가 겹쳐 드롭다운 순서가 이름 tiebreak에 좌우된다.
+  // (루프 UI 정합성 테스트 I5로 실측된 결함 — tests/loop-ui-integrity.mjs)
+  const sa = projectDb.slice(projectDb.indexOf('SetCodeActiveAsync'), projectDb.indexOf('ReorderCodesAsync'));
+  assert.ok(/is_active=1, *sort_order=\(SELECT/.test(sa), '복구가 sort_order를 재부여하지 않는다(순번 충돌 재발)');
+  assert.ok(/COALESCE\(MAX\(sort_order\),0\)\+10/.test(sa), '복구 순번이 MAX+10(맨 뒤)이 아니다');
+  assert.ok(/UPDATE \{table\} SET is_active=0 WHERE name=@n/.test(sa), '숨김은 sort_order를 건드리지 않아야 한다');
+});
 test('호스트: add는 1062로 활성/숨김 구분 · refCount는 활성 과제만', () => {
   const ad = projectDb.slice(projectDb.indexOf('AddCodeAsync'), projectDb.indexOf('RenameCodeAsync'));
   assert.ok(/mex\.Number == 1062/.test(ad) && /숨김 처리된 동일/.test(ad) && /이미 등록된/.test(ad), '1062 활성/숨김 분기가 없다');
