@@ -2414,34 +2414,39 @@ if (!JSDOM) {
       assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u2'&&c.source==='db';})"), true, '대상 공식 과제가 편입되지 않았다');
     });
 
-    test('재연결: 설명·Git·SVN이 함께 옮겨진다(비어 있는 칸만 — 기존 값은 덮지 않음)', () => {
-      // 왜: DB는 과제명만 주고 설명·저장소 경로는 '내 PC 값'이다. 재연결이 안 옮기면 사용자에겐 사라진 걸로 보인다.
-      // 반대로 덮어쓰면 사용자가 직접 적어둔 값(먼저 편입해 채웠거나, 여럿을 한 공식 과제로 합치는 중 앞엣것)이 날아간다.
+    test('재연결: 개인 과제의 설명·Git·SVN이 그대로 따라간다(DB는 이름만 준다)', () => {
+      // 왜: DB가 소유하는 건 과제명뿐이고, 설명·저장소 경로는 어느 쪽에 있든 사용자가 직접 정의한 값이다.
+      // 그래서 재연결 = '이 개인 과제가 이제부터 공식 이름을 쓴다' → 나머지 정의는 개인 과제 것이 따라간다(덮어씀).
+      // 단 한 실행에서 개인 과제 여럿이 같은 공식 과제로 갈 때 밀리는 값은 '다른 개인 과제의 정의'라 먼저 온 것을 지킨다.
       const src = loadAppSource();
       const i = src.indexOf('function runRelink(');
       assert.ok(i > 0, 'runRelink를 찾지 못했다');
       const body = src.slice(i, src.indexOf('function tablistRoving', i));
       assert.ok(/\['desc', *'gitRepo', *'svnRepo'\]/.test(body), '이관 대상 필드 3종이 없다');
-      assert.ok(/if\(String\(to\[k\] \|\| ''\)\.trim\(\)\)\{[^}]*continue/.test(body), '대상에 값이 있을 때 건너뛰지 않는다(덮어쓰기 위험)');
-      assert.ok(/to\[k\] = from\[k\]/.test(body), '빈 칸을 채우는 대입이 없다');
-      assert.ok(/설명·저장소 정보/.test(body) && /이미 값이 있어/.test(body), '이관/보존 결과를 사용자에게 알리지 않는다');
-      // 계약 재현 — 빈 칸은 채워지고, 값이 있는 칸은 유지된다
-      const run = (fromCat, toCat) => {
-        const to = { ...toCat };
-        for (const k of ['desc', 'gitRepo', 'svnRepo']) {
-          const v = String(fromCat[k] || '').trim();
-          if (!v) continue;
-          if (String(to[k] || '').trim()) continue;
-          to[k] = fromCat[k];
+      assert.ok(/to\[k\] = from\[k\]/.test(body), '개인 과제 값을 대입하는 코드가 없다');
+      assert.ok(!/if\(String\(to\[k\] \|\| ''\)\.trim\(\)\)/.test(body),
+        '대상에 값이 있으면 건너뛴다 — DB가 주지도 않는 값을 권위처럼 취급하는 옛 정책이다');
+      assert.ok(/filledNow/.test(body), '한 실행 내 중복 대상 보호(먼저 온 값 유지)가 없다');
+      assert.ok(/설명·저장소 정보/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
+      // 계약 재현 — 대상에 값이 있어도 개인 과제 값이 이긴다 / 같은 대상 두 번째는 먼저 온 것 유지
+      const run = (froms, toCat) => {
+        const to = { ...toCat }; const done = new Set();
+        for (const from of froms) {
+          for (const k of ['desc', 'gitRepo', 'svnRepo']) {
+            const v = String(from[k] || '').trim();
+            if (!v) continue;
+            if (done.has(k)) continue;
+            to[k] = from[k]; done.add(k);
+          }
         }
         return to;
       };
-      const filled = run({ desc: '개인설명', gitRepo: 'C:/g', svnRepo: '' }, { desc: '', gitRepo: '', svnRepo: '' });
-      assert.strictEqual(filled.desc, '개인설명', '빈 설명이 안 채워졌다');
-      assert.strictEqual(filled.gitRepo, 'C:/g', '빈 Git 경로가 안 채워졌다');
-      const guarded = run({ desc: '개인설명', gitRepo: 'C:/new' }, { desc: '이미있음', gitRepo: 'C:/old', svnRepo: '' });
-      assert.strictEqual(guarded.desc, '이미있음', '기존 설명을 덮어썼다');
-      assert.strictEqual(guarded.gitRepo, 'C:/old', '기존 Git 경로를 덮어썼다');
+      const over = run([{ desc: '개인설명', gitRepo: 'C:/new' }], { desc: '대상에있던값', gitRepo: 'C:/old', svnRepo: '' });
+      assert.strictEqual(over.desc, '개인설명', '개인 과제 설명이 대상 값을 덮지 못했다');
+      assert.strictEqual(over.gitRepo, 'C:/new', '개인 과제 Git 경로가 대상 값을 덮지 못했다');
+      const merged = run([{ desc: '첫째', gitRepo: 'C:/first' }, { desc: '둘째', gitRepo: 'C:/second' }], { desc: '', gitRepo: '', svnRepo: '' });
+      assert.strictEqual(merged.desc, '첫째', '합칠 때 뒤엣것이 앞엣것을 덮었다');
+      assert.strictEqual(merged.gitRepo, 'C:/first', '합칠 때 뒤엣 Git 경로가 앞엣것을 덮었다');
     });
 
     test('재연결: 오프라인이면 팝업이 뜨지 않고 "서버 연결" 안내(대상 목록이 필요)', () => {

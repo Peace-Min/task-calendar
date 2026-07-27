@@ -6497,9 +6497,12 @@ function runRelink(){
         else skipped++;                                                   // 유령 uid → 건너뜀
       }
       if(!valid.size){ toast('연결할 대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요', 'error'); return; }
-      // 로컬 정보(설명·Git·SVN) 이관 — 이건 DB가 주지 않는 '내 PC 값'이라 재연결이 옮겨주지 않으면 사라진 것처럼 보인다.
-      // 덮어쓰지 않는다: 대상에 값이 있으면 그건 사용자가 직접 적어둔 것이다(공식 과제를 먼저 편입해 채웠거나,
-      // 개인 과제 여럿을 같은 공식 과제로 합치는 중 앞엣것이 이미 채운 경우). 비어 있는 칸만 채우고 나머지는 알린다.
+      // 로컬 정보(설명·Git·SVN) 이관 — DB가 주는 건 '이름'뿐이다. 이 세 칸은 어느 쪽에 있든 전부
+      // 사용자가 직접 정의한 값이지 DB 데이터가 아니다. 그래서 재연결의 의미는
+      // '이 개인 과제가 이제부터 공식 이름(통상명칭)을 쓴다'이고, 나머지 정의는 그대로 따라간다 → 덮어쓴다.
+      // 단 한 번의 실행에서 개인 과제 여럿이 같은 공식 과제로 갈 때는 '먼저 온 것'이 이긴다 —
+      // 그때 밀리는 값은 DB 값이 아니라 '다른 개인 과제의 정의'라, 조용히 지우면 안 되므로 알린다.
+      const filledNow = new Map();   // toId → Set(이번 실행에서 이미 채운 필드)
       let moved = 0, kept = 0;
       for(const [fromId, toId] of valid){
         const from = (state.categories || []).find(c => c.id === fromId);
@@ -6509,8 +6512,9 @@ function runRelink(){
         for(const k of ['desc', 'gitRepo', 'svnRepo']){
           const v = String(from[k] || '').trim();
           if(!v) continue;
-          if(String(to[k] || '').trim()){ kept++; continue; }   // 대상에 이미 있음 → 유지(비파괴)
-          to[k] = from[k]; any = true;
+          let done = filledNow.get(toId); if(!done){ done = new Set(); filledNow.set(toId, done); }
+          if(done.has(k)){ kept++; continue; }        // 다른 개인 과제가 이번에 이미 채운 칸 → 먼저 온 것 유지
+          to[k] = from[k]; done.add(k); any = true;   // 그 외는 개인 과제 정의로 덮어쓴다
         }
         if(any) moved++;
       }
@@ -6523,7 +6527,7 @@ function runRelink(){
       closeModal('#relinkModal');
       toast(`${valid.size}개 과제 · 일정 ${n}건을 공식 과제로 연결했습니다.`
         + (moved ? ` 설명·저장소 정보 ${moved}개 과제분을 함께 옮겼습니다.` : '')
-        + (kept ? ` (이미 값이 있어 ${kept}개 항목은 그대로 뒀습니다)` : '')
+        + (kept ? ` (같은 공식 과제로 합쳐지며 ${kept}개 항목은 먼저 옮긴 값을 유지했습니다)` : '')
         + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), (skipped || kept) ? 'warn' : 'success');
     });
 }
