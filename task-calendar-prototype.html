@@ -5931,10 +5931,15 @@ function custDoAdd(){
 }
 function custDoHide(name){
   offEditGuard(async () => {
-    let n = 0;
-    const rc = await hostRequest('customerRefCount', { name }, 15000);   // 막지는 않고 경고만(참조 과제 수)
-    if(rc && rc.ok) n = Number(rc.count) || 0;
-    if(n > 0){
+    // 막지는 않고 경고만(참조 과제 수). 조회 실패는 '모름'으로 정직하게 알린다 — 0건으로 위장하지 않는다.
+    const rc = await hostRequest('customerRefCount', { name }, 15000);
+    const known = !!(rc && rc.ok);
+    const n = known ? (Number(rc.count) || 0) : 0;
+    if(!known){
+      const r = await confirmBox('발주처 숨김',
+        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요?`, '숨김', '취소');
+      if(r !== 'ok') return;
+    } else if(n > 0){
       const r = await confirmBox('발주처 숨김',
         `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요?`, '숨김', '취소');
       if(r !== 'ok') return;
@@ -6074,10 +6079,15 @@ function codeDoAdd(){
 }
 function codeDoHide(name){
   offEditGuard(async () => {
-    let n = 0;
+    // 참조 수 조회가 실패하면 '모름'이다 — 0건인 것처럼 조용히 넘어가지 않는다(잘못된 확신을 주므로).
     const rc = await hostRequest('codeRefCount', { kind: codeKind, name }, 15000);
-    if(rc && rc.ok) n = Number(rc.count) || 0;
-    if(n > 0){
+    const known = !!(rc && rc.ok);
+    const n = known ? (Number(rc.count) || 0) : 0;
+    if(!known){
+      const r = await confirmBox(codeKindLabel() + ' 숨김',
+        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요?`, '숨김', '취소');
+      if(r !== 'ok') return;
+    } else if(n > 0){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
         `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요?`, '숨김', '취소');
       if(r !== 'ok') return;

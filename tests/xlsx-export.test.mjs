@@ -772,6 +772,18 @@ test('발주처 관리 UI: 숨김은 참조 카운트로 경고 후 진행(막�
   assert.ok(/setCustomerActive/.test(b) && /active: false/.test(b), '숨김 처리 전송이 없다');
 });
 
+test('숨김: 참조 수 조회 실패는 "모름"으로 알린다 — 0건으로 위장하지 않는다', () => {
+  // 왜: rc.ok가 false여도 n=0으로 떨어지면 "참조 N건" 경고가 통째로 생략돼,
+  // 사용자는 '참조 0건'이라는 잘못된 확신 상태로 숨김을 실행하게 된다(정직 통지 원칙 위반).
+  for (const fn of ['custDoHide', 'codeDoHide']) {
+    const b = extractFunction(src, fn);
+    assert.ok(/const known = !!\(rc && rc\.ok\)/.test(b), `${fn}: 조회 성공 여부를 구분하지 않는다`);
+    assert.ok(/if\(!known\)/.test(b), `${fn}: '모름' 분기가 없다`);
+    assert.ok(/확인하지 못했습니다/.test(b), `${fn}: '모름' 안내 문구가 없다`);
+    assert.ok(/else if\(n > 0\)/.test(b), `${fn}: 알려진 참조 건수 경고가 else if로 분리되지 않았다`);
+  }
+});
+
 test('발주처 관리 UI: 편집폼 인라인 추가(＋)는 제거되고 관리 모달 경로로 대체됐다', () => {
   // 인라인 추가 함수·버튼·바인딩이 완전히 사라졌는지(계정 탈취 UI와 유사한 인라인 편집 표면 축소)
   assert.ok(!/offEdInlineAddCustomer/.test(src), '인라인 추가 함수가 남아 있다');
