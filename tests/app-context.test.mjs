@@ -2414,6 +2414,36 @@ if (!JSDOM) {
       assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u2'&&c.source==='db';})"), true, '대상 공식 과제가 편입되지 않았다');
     });
 
+    test('재연결: 설명·Git·SVN이 함께 옮겨진다(비어 있는 칸만 — 기존 값은 덮지 않음)', () => {
+      // 왜: DB는 과제명만 주고 설명·저장소 경로는 '내 PC 값'이다. 재연결이 안 옮기면 사용자에겐 사라진 걸로 보인다.
+      // 반대로 덮어쓰면 사용자가 직접 적어둔 값(먼저 편입해 채웠거나, 여럿을 한 공식 과제로 합치는 중 앞엣것)이 날아간다.
+      const src = loadAppSource();
+      const i = src.indexOf('function runRelink(');
+      assert.ok(i > 0, 'runRelink를 찾지 못했다');
+      const body = src.slice(i, src.indexOf('function tablistRoving', i));
+      assert.ok(/\['desc', *'gitRepo', *'svnRepo'\]/.test(body), '이관 대상 필드 3종이 없다');
+      assert.ok(/if\(String\(to\[k\] \|\| ''\)\.trim\(\)\)\{[^}]*continue/.test(body), '대상에 값이 있을 때 건너뛰지 않는다(덮어쓰기 위험)');
+      assert.ok(/to\[k\] = from\[k\]/.test(body), '빈 칸을 채우는 대입이 없다');
+      assert.ok(/설명·저장소 정보/.test(body) && /이미 값이 있어/.test(body), '이관/보존 결과를 사용자에게 알리지 않는다');
+      // 계약 재현 — 빈 칸은 채워지고, 값이 있는 칸은 유지된다
+      const run = (fromCat, toCat) => {
+        const to = { ...toCat };
+        for (const k of ['desc', 'gitRepo', 'svnRepo']) {
+          const v = String(fromCat[k] || '').trim();
+          if (!v) continue;
+          if (String(to[k] || '').trim()) continue;
+          to[k] = fromCat[k];
+        }
+        return to;
+      };
+      const filled = run({ desc: '개인설명', gitRepo: 'C:/g', svnRepo: '' }, { desc: '', gitRepo: '', svnRepo: '' });
+      assert.strictEqual(filled.desc, '개인설명', '빈 설명이 안 채워졌다');
+      assert.strictEqual(filled.gitRepo, 'C:/g', '빈 Git 경로가 안 채워졌다');
+      const guarded = run({ desc: '개인설명', gitRepo: 'C:/new' }, { desc: '이미있음', gitRepo: 'C:/old', svnRepo: '' });
+      assert.strictEqual(guarded.desc, '이미있음', '기존 설명을 덮어썼다');
+      assert.strictEqual(guarded.gitRepo, 'C:/old', '기존 Git 경로를 덮어썼다');
+    });
+
     test('재연결: 오프라인이면 팝업이 뜨지 않고 "서버 연결" 안내(대상 목록이 필요)', () => {
       seedRelink();
       ev("__applyProjects('')");   // 연결 실패 → dbCatalog=[]

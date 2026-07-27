@@ -6497,6 +6497,23 @@ function runRelink(){
         else skipped++;                                                   // 유령 uid → 건너뜀
       }
       if(!valid.size){ toast('연결할 대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요', 'error'); return; }
+      // 로컬 정보(설명·Git·SVN) 이관 — 이건 DB가 주지 않는 '내 PC 값'이라 재연결이 옮겨주지 않으면 사라진 것처럼 보인다.
+      // 덮어쓰지 않는다: 대상에 값이 있으면 그건 사용자가 직접 적어둔 것이다(공식 과제를 먼저 편입해 채웠거나,
+      // 개인 과제 여럿을 같은 공식 과제로 합치는 중 앞엣것이 이미 채운 경우). 비어 있는 칸만 채우고 나머지는 알린다.
+      let moved = 0, kept = 0;
+      for(const [fromId, toId] of valid){
+        const from = (state.categories || []).find(c => c.id === fromId);
+        const to = (state.categories || []).find(c => c.id === toId);
+        if(!from || !to) continue;
+        let any = false;
+        for(const k of ['desc', 'gitRepo', 'svnRepo']){
+          const v = String(from[k] || '').trim();
+          if(!v) continue;
+          if(String(to[k] || '').trim()){ kept++; continue; }   // 대상에 이미 있음 → 유지(비파괴)
+          to[k] = from[k]; any = true;
+        }
+        if(any) moved++;
+      }
       let n = 0;
       for(const e of (state.entries || [])){ const to = e && valid.get(e.categoryId); if(to){ e.categoryId = to; n++; } }
       for(const t of (state.todos || [])){ const to = t && valid.get(t.categoryId); if(to){ t.categoryId = to; n++; } }
@@ -6504,7 +6521,10 @@ function runRelink(){
       renderAll();
       try{ renderCatModal(); }catch(_){}
       closeModal('#relinkModal');
-      toast(`${valid.size}개 과제 · 일정 ${n}건을 공식 과제로 연결했습니다.` + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), skipped ? 'warn' : 'success');
+      toast(`${valid.size}개 과제 · 일정 ${n}건을 공식 과제로 연결했습니다.`
+        + (moved ? ` 설명·저장소 정보 ${moved}개 과제분을 함께 옮겼습니다.` : '')
+        + (kept ? ` (이미 값이 있어 ${kept}개 항목은 그대로 뒀습니다)` : '')
+        + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), (skipped || kept) ? 'warn' : 'success');
     });
 }
 
