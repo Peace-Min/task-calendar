@@ -34,7 +34,7 @@ test('디자인 토큰: 참조된 --fs-/--sp-/--r-/--lh- 스케일 토큰은 전
 // 그래서 '토큰 정의처(:root / :root[data-theme] / html.dark) 밖의 hex 색 선언 수'에 상한을 건다.
 // 상한 = 현재 값 → 새 하드코딩은 즉시 실패, 정리하면 상한을 내려 되돌아오지 못하게 못박는 일방향 래칫.
 // (html.dark .foo{} 같은 '테마 스코프 개별 오버라이드'는 정의처가 아니라 사용처이므로 셈에 포함한다.)
-const HEX_DECL_CEILING = 56;
+const HEX_DECL_CEILING = 51;   // 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체하며 래칫을 조임
 test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}개 이하여야 한다(래칫 — 늘리지 말고 줄일 것)`, () => {
   const src = loadAppSource();
   const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);

@@ -20,7 +20,12 @@
   --accent-fill:var(--accent);    /* 흰 글자를 얹는 accent '채움' 전용 — 테마의 --accent가 흰 글자에서 AA 미달이면 여기만 어둡게 리맵 */
   --on-accent:#fff;               /* --accent-fill 위 글자색 */
   --danger:#d6494e; --danger-soft:#fdeeee; --danger-text:#c0343a; /* 파괴 텍스트 AA — #fff 5.5:1 (채움·테두리는 --danger 유지) */
-  --sun:#c43a3f; --sat:#4b62a0;   /* 주말 라벨 — 작은 11~12px에서도 AA(약 4.6:1). 선택/액션 파랑과 분리 */
+  --sun:#c43a3f; --sat:#4b62a0;   /* 주말 라벨 — 선택/액션 파랑과 분리. 대비는 '흰 패널'이 아니라 실제로 깔리는 --wknd-*-bg 위에서 본다(아래) */
+  /* 주말 셀 배경 = --sun/--sat 9% + --panel 을 미리 합성한 '불투명' 값.
+     반투명 rgba로 두면 .grid 의 background(=--line) 위에 얹혀 패널이 아니라 '격자선 색'이 틴트된다
+     (측정: light 220,224,234 / contrast 68,70,73 — 고대비 테마에선 주말 칸이 거의 검게 깔렸다).
+     불투명 토큰으로 고정해 5개 테마 모두 .num.sun/.num.sat 이 AA(4.5:1) 이상: light/forest/contrast 4.58·5.23 · sepia 4.91·4.87 · dark 5.74·5.72 */
+  --wknd-sun-bg:#faedee; --wknd-sat-bg:#eff1f6;
   --ok:#1f7a4d; --warn-text:#8a6400;   /* 상태 의미색(진행중=초록 / 주의=앰버) — 둘 다 흰 배경에서 텍스트 AA(5.3:1·5.4:1). 점·텍스트 공용 */
   --r-sm:6px; --r-md:10px; --r-lg:14px;
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;  /* 8그리드 간격 스케일 */
@@ -224,7 +229,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 }
 .cell:hover{background:var(--hover-bg)}
 .cell.dim{background:var(--dim-bg)}
-.cell.dim .num{color:#7a8294}
+.cell.dim .num{color:var(--faint-text)}   /* 약화된 본문 토큰 — --dim-bg(#fafbfd) 위 4.52:1(AA). 하드코딩 #7a8294는 3.72:1이었다 */
 /* 선택 = 중립 프레임(오늘의 솔리드 파랑 배지와 채널 분리). 경계색은 --line-2가 아니라 --ctl-border다:
    --line-2는 셀 배경 대비 1.39~1.64:1이라 5개 중 4개 테마에서 비텍스트 3:1 미달이고, 위젯 투명도를 낮추면 사실상 사라진다.
    이 앱에서 '선택'은 우측 패널·보고서·빠른등록이 모두 물고 있는 최상위 상태라 가장 약한 색을 쓸 자리가 아니다. */
@@ -241,9 +246,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
 /* D. 오늘 = 숫자에 솔리드 accent 배지, 선택 = 중립 회색 프레임 → 채널 분리로 파랑-온-파랑 충돌 해소 */
 .cell.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
-/* D. 주말 컬럼 옅은 틴트 — 토/일이 '블록'으로 읽힘(선택·오늘·타월·hover 제외) */
-.cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(75,98,160,.05)}
-.cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:rgba(196,58,63,.055)}
+/* D. 주말 컬럼 옅은 틴트 — 토/일이 '블록'으로 읽힘(선택·오늘·타월·hover 제외).
+   ★ 반투명 금지: .cell 배경을 rgba로 덮으면 뒤가 --panel이 아니라 .grid의 --line이라 테마마다 엉뚱한 색이 나온다. */
+.cell.wknd-sat:not(.sel):not(.today):not(.dim):not(:hover){background:var(--wknd-sat-bg)}
+.cell.wknd-sun:not(.sel):not(.today):not(.dim):not(:hover){background:var(--wknd-sun-bg)}
 .hol{font-size:var(--fs-micro);color:var(--sun);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0;flex:1;container-type:inline-size}  /* flex:1 → 셀 남은 높이를 fitChips가 측정 / container → 칩 시간 표기 적응형 */
 .chip{
@@ -410,7 +416,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .git-card-title{font-size:var(--fs-body);font-weight:700;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .git-opt{font-weight:500;color:var(--muted)}
 .git-badge{flex:none;font-size:var(--fs-micro);font-weight:600;border-radius:999px;padding:2px 9px;white-space:nowrap}
-.git-badge.off{background:#eef1f6;color:#7c8498;border:1px dashed var(--line-2)}
+.git-badge.off{background:var(--hover-bg);color:var(--muted);border:1px dashed var(--line-2)}   /* 중립 wash + 보조 텍스트 토큰 — 5테마 4.80~13.16:1(AA). 하드코딩 #eef1f6/#7c8498는 3.31:1이었다 */
 .git-badge.ok{background:#e7f4ec;color:#2e7d52}
 .git-badge.warn{background:#fbf2dd;color:#8a6400}
 /* 과제 모달: Git·SVN 독립 섹션(대칭 배치). 두 번째(SVN) 섹션만 상단 구분선. */
@@ -472,8 +478,19 @@ main{flex:1;display:flex;min-height:0;position:relative}
 }
 .x:hover{background:var(--hover-bg);color:var(--text)}
 .modal-body{padding:16px 20px;overflow-y:auto}
-.modal-foot{display:flex;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
+/* flex-wrap:wrap — 이 푸터는 버튼 4개짜리(과제 모달)까지 공유한다. nowrap이면 320~400px에서 주 버튼(저장)이
+   모달 밖으로 잘려 누를 수 없었다(측정: 320px 19px · 편집모드 400px 32px 이탈). 줄 간격은 gap:8px가 겸한다. */
+.modal-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
 .modal-foot .spacer{flex:1}
+/* 푸터 안의 '텍스트' 항목(설명문·상태문)은 줄바꿈 판정에서 빠져야 한다 — flex 기준크기가 max-content라
+   wrap을 켜는 순간 혼자 한 줄을 차지해 버튼 줄을 통째로 밀어낸다. 기준 0 + min-width:0 이면 줄바꿈 계산에서
+   0으로 잡히고 남는 폭만 흡수한다(뒤따르는 .spacer는 늘 필요가 없어져 flex:none — 렌더 결과는 종전과 동일). */
+.modal-foot > .git-note,.modal-foot > .off-msg,.modal-foot > .rl-sum,
+.modal-foot > .rpt-send-status,.modal-foot > .rpt-send-hint{flex:1 1 0;min-width:0}
+.modal-foot > .git-note ~ .spacer,.modal-foot > .off-msg ~ .spacer,
+.modal-foot > .rl-sum ~ .spacer,.modal-foot > .rpt-send-status ~ .spacer{flex:none}
+/* 내용이 빈 상태문은 flex 항목으로 남아 gap 8px만 먹는다 — 320px에서 그 8px 때문에 버튼 한 개가 접혔다 */
+.modal-foot > .off-msg:empty,.modal-foot > .rl-sum:empty,.modal-foot > .rpt-send-status:empty{display:none}
 .modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:12px 0 4px}
 .modal label:first-child{margin-top:0}
 /* entryModal 섹션 그룹핑 — 9필드 평면 폼을 기본·시간·반복/기간·연동·메모로 구획 */
@@ -1416,6 +1433,14 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   /* 체크 아이콘의 '보이는 크기'는 그대로 두고 패딩으로만 히트영역 확보 → 음수 마진으로 행 레이아웃은 불변 */
   .todo-check{padding:8px;margin:-8px}   /* 16+8·2=32 히트, 사방 -8로 마진박스는 다시 16 → 행 배치·간격 불변 */
   .rpt-fmt .rpt-fmt-step{width:32px;height:32px}
+  /* 위 하한에서 빠져 있던 나머지 — 체크박스 라벨(17px)·순서 ▲▼(20.3px)·공수 입력(23px)도 같은 32px로.
+     체크박스는 입력 크기(15px)를 그대로 두고 라벨 행만 키운다 — 아이콘 크기가 커지면 폼 밀도가 흔들린다. */
+  .check{min-height:32px}
+  .cust-row .code-ord .btn{min-height:32px}
+  .rpt-mirror .rcard-h-in{min-height:32px}
+  /* 시트 폭에선 좌우 20px 거터가 3버튼 푸터(닫기+전송+복사=282px)를 280px 안에 못 담아 1.8px 차이로 접혔다.
+     푸터만 16px 거터로 줄여 한 줄을 지킨다(버튼 크기·간격 8px 접촉 규칙은 건드리지 않는다). */
+  .modal-foot{padding-left:16px;padding-right:16px}
 }
 /* 헤더 액션 줄은 680px 아래에서 라벨까지 얹으면 확실히 두 줄이 된다(측정: 640px에서 라벨=2줄·아이콘=1줄).
    보고서는 앱의 1차 목적이라 버튼 자체는 남기고 라벨만 접는다(aria-label·title로 이름은 유지). */
@@ -1451,24 +1476,25 @@ html.dark{
   --shadow:0 12px 34px rgba(0,0,0,.55);
   --seg-sh:rgba(0,0,0,.55);   /* 다크는 패널이 트랙보다 '밝아' 떠오르므로 그림자를 더 진하게 */
   --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27; --chip-outline:#6b7588;
+  --wknd-sun-bg:#2f2838; --wknd-sat-bg:#252c41;   /* = --sun/--sat 9% + --panel(#1a2031) — .num.sun 5.74:1 · .num.sat 5.72:1 */
 }
 /* 남은 건 라이트 전용 '틴트' surface 둘뿐 — 나머지는 베이스가 var(--panel)이라 리맵만으로 따라온다(열거 목록 삭제) */
 html.dark .todo-edit .te-daynote,html.dark .s-date{ background:var(--panel) }
 html.dark .btn:hover,html.dark .menu button:hover,html.dark .cell:hover,html.dark .git-row,html.dark .x:hover,html.dark .s-row:hover,html.dark .imp-box{ background:var(--fill) }
-html.dark .cell.dim .num{ color:#8893a8 }
 html.dark .sk-line,html.dark .sk-cell{ background:var(--border-hover) }
 html.dark .git-card{ background:#171d2b }
 html.dark .btn:hover,html.dark .fchip:hover,html.dark .nd-toggle:hover{ border-color:var(--border-hover) }
 html.dark .chip{ background:var(--fill) }
 html.dark .badge-git,html.dark .fchip-git.on{ background:#222b3e;color:var(--muted);border-color:var(--line-2) }
-html.dark .git-badge.off{ background:#222b3e;color:var(--muted) }
 html.dark .git-badge.ok{ background:#15321f;color:#6fd49a }
 html.dark .git-badge.warn{ background:#352b12;color:#e3b766 }
 html.dark mark{ background:#ffe27a;color:#1d2433 }
 html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 /* 색 테마 — 라이트 기반 토큰 리맵 */
 :root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
-:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#7a6a52; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1 */
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#7a6a52; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+   --sun 재맵: 크림색 패널·배경에서 #c43a3f는 요일머리 4.37:1·주말 숫자 4.27:1로 AA 미달 → 같은 색상각을 유지한 채 한 단계만 어둡게(5.04:1·4.91:1). --sat(#4b62a0)는 4.87~4.95:1로 충족해 그대로 둔다.
+   --wknd-*-bg: 세피아 패널(#fbf6ec) 기준으로 미리 합성한 값 */
 :root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --ctl-border:#111; --star:#8a5a00; /* 고대비 — 골드도 흰 배경 5.93:1까지 낮춰 별표가 텍스트급 대비 */ }
 /* 테마 선택 메뉴 */
 .thm-sw{display:inline-block;width:13px;height:13px;border-radius:4px;border:1px solid var(--line-2);flex:none;margin-right:7px}
