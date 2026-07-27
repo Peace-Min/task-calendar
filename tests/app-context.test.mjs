@@ -2494,5 +2494,208 @@ if (!JSDOM) {
       ev('renderAll();');
       assert.ok(!/비밀 내부메모/.test(ev('document.body.textContent')), '화면에 note가 노출된다');
     });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 공식(DB) 과제의 소유권 분리 — 이름·색=DB / 설명·Git·SVN=로컬 (2026-07-27)
+    // 배경: DB에서 과제를 가져오는 이유는 '보고서에 찍히는 과제명 = 사업부 관리 과제명'이어야
+    //       기존 시스템의 데이터 수집이 되기 때문이다. DB가 소유하는 건 이름이지 나머지가 아닌데,
+    //       설명·Git/SVN까지 통째로 잠겨 있어 DB 과제로는 버전관리 연동을 아예 못 썼다
+    //       (Git/SVN 경로는 각 PC의 작업복사본 경로라 DB가 알 수도 없는 값이다).
+    // ══════════════════════════════════════════════════════════════════
+    // 편입 + 로컬 필드가 채워진 상태를 만든다(개인 행과 같은 desc/gitRepo/svnRepo).
+    const seedOfficialLocal = () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1'));");
+      ev("(function(){var c=state.categories.find(function(x){return x.id==='db-u1';});" +
+         "c.desc='레이더 담당분'; c.gitRepo='C:\\\\work\\\\radar'; c.svnRepo='C:\\\\work\\\\radar-wc';})()");
+    };
+
+    test('소유권 분리: 공식 과제 행이 설명·Git·SVN을 표시하고 [수정] 버튼을 준다', () => {
+      seedOfficialLocal();
+      const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
+      assert.ok(row.includes('data-act="edit"'), '공식 행에 [수정] 진입점이 없다 — 로컬 필드를 고칠 방법이 사라진다');
+      assert.ok(row.includes('data-act="unsub"'), '제거(구독 해제) 버튼이 사라졌다');
+      assert.ok(row.includes('cat-badge db'), 'DB 배지가 사라졌다(출처 표시)');
+      assert.ok(row.includes('레이더 담당분'), '설명이 표시되지 않는다');
+      assert.ok(row.includes('C:\\work\\radar'), 'Git 경로가 표시되지 않는다');
+      assert.ok(row.includes('C:\\work\\radar-wc'), 'SVN 경로가 표시되지 않는다');
+      assert.ok(row.includes('cat-git'), '렌치 아이콘(버전관리 연동 표시)이 없다 — 개인 행과 규약이 어긋난다');
+    });
+
+    test('소유권 분리: 공식 행 [수정]으로 편집에 진입하면 이름·색이 잠기고 안내가 뜬다', () => {
+      seedOfficialLocal();
+      ev('openCatModal();');
+      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
+      assert.strictEqual(ev('editingCatId'), 'db-u1', '공식 행 [수정]이 편집 모드로 들어가지 않는다');
+      assert.strictEqual(ev("document.getElementById('cName').readOnly"), true, '과제명 입력이 열려 있다(DB 소유 필드)');
+      assert.strictEqual(ev("document.getElementById('cColor').disabled"), true, '색상 직접선택이 열려 있다(DB 소유 필드)');
+      assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), false, '잠금 사유 안내가 안 보인다');
+      const note = ev("document.getElementById('cLockNote').textContent");
+      assert.ok(/회사 DB/.test(note) && /보고서/.test(note), '왜 잠겼는지(보고서 집계) 설명이 없다: ' + note);
+      assert.ok(/설명/.test(note) && /Git/.test(note), '무엇은 열려 있는지 안내가 없다: ' + note);
+      // 설명·Git·SVN 입력은 정상(잠금 대상 아님)
+      assert.strictEqual(ev("document.getElementById('cDesc').readOnly"), false, '설명까지 잠겼다(연동 불가 회귀)');
+      assert.strictEqual(ev("document.getElementById('cDesc').value"), '레이더 담당분', '설명이 폼에 프리필되지 않는다');
+      // 폼 제목·버튼 문구가 '새 과제 추가'와 섞이지 않는다
+      assert.ok(/공식 과제/.test(ev("document.getElementById('catFormTitle').textContent")), '폼 제목이 공식 편집 모드를 알리지 않는다');
+      assert.strictEqual(ev("document.getElementById('btnCatSave').textContent"), '수정 저장');
+      // 편집 취소 → 잠금이 원복(잔상 없음)
+      ev("document.getElementById('btnCatCancelEdit').click();");
+      assert.strictEqual(ev('editingCatId'), null);
+      assert.strictEqual(ev("document.getElementById('cName').readOnly"), false, '편집 이탈 후에도 이름칸이 잠겨 있다(새 과제 추가 불가)');
+      assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), true, '안내가 남아 새 과제 추가를 오해시킨다');
+    });
+
+    test('소유권 분리(계약): 공식 과제 저장은 name/color를 건드리지 않고 desc/git/svn만 반영한다', () => {
+      seedOfficialLocal();
+      ev('openCatModal();');
+      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
+      // 폼을 일부러 오염시킨다 — 잠금이 UI 장식이 아니라 '저장 경로 계약'인지 본다(DOM은 언제든 조작 가능).
+      ev("document.getElementById('cName').readOnly=false; document.getElementById('cName').value='조작된 이름';");
+      ev("selColor='#ff0000';");
+      ev("document.getElementById('cDesc').value='내 PC 메모'; catFormRepo='D:\\\\repo\\\\g'; catFormSvnRepo='D:\\\\repo\\\\s';");
+      ev('saveCatFromForm();');
+      const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
+      assert.strictEqual(c.name, '통상u1', '공식 과제의 이름이 로컬 편집으로 바뀌었다 — 보고서 집계(사업부 과제명 일치)가 깨진다');
+      assert.strictEqual(c.color, '#3e5be0', '공식 과제의 색이 로컬 편집으로 바뀌었다(구분별 색 규약 이탈)');
+      assert.strictEqual(c.desc, '내 PC 메모', '설명이 저장되지 않는다');
+      assert.strictEqual(c.gitRepo, 'D:\\repo\\g', 'Git 경로가 저장되지 않는다(연동 불가)');
+      assert.strictEqual(c.svnRepo, 'D:\\repo\\s', 'SVN 경로가 저장되지 않는다');
+      assert.strictEqual(c.source, 'db', '출처가 유실됐다');
+      // XML 영속(공통 경로)에도 로컬 필드가 실린다 — 재부팅해도 연동이 유지된다
+      const p = evJSON('fromXML(toXML())');
+      const back = p.categories.find(x => x.id === 'db-u1');
+      assert.strictEqual(back.desc, '내 PC 메모');
+      assert.strictEqual(back.gitRepo, 'D:\\repo\\g');
+      assert.strictEqual(back.svnRepo, 'D:\\repo\\s');
+      assert.strictEqual(back.name, '통상u1');
+    });
+
+    test('소유권 분리: DB 재조회(syncSubscribedDbMeta)가 로컬 필드를 덮어쓰지 않는다', () => {
+      seedOfficialLocal();
+      applyRows([DBROW('u1', { common_name: '이름바뀜' })]);   // 재조회 = name/color만 최신화
+      const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
+      assert.strictEqual(c.name, '이름바뀜', 'DB 이름 변경이 반영되지 않는다(DB 소유 필드)');
+      assert.strictEqual(c.desc, '레이더 담당분', '재조회가 로컬 설명을 날렸다');
+      assert.strictEqual(c.gitRepo, 'C:\\work\\radar', '재조회가 로컬 Git 경로를 날렸다');
+      assert.strictEqual(c.svnRepo, 'C:\\work\\radar-wc', '재조회가 로컬 SVN 경로를 날렸다');
+    });
+
+    test('소유권 분리: 공식 과제 삭제(del)는 여전히 차단된다(제거=unsub만)', async () => {
+      seedOfficialLocal();
+      ev('openCatModal();');
+      const row = ev("catRowHtml(state.categories.find(function(c){return c.id==='db-u1';}))");
+      assert.ok(!row.includes('data-act="del"'), '공식 행에 삭제 버튼이 생겼다');
+      // 가드 자체 검증 — del 버튼을 주입해 눌러도 확인창조차 뜨지 않아야 한다(핸들러가 먼저 되돌아온다)
+      ev("window.__askN=0; window.__cb0=window.confirmBox; window.confirmBox=function(){window.__askN++; return Promise.resolve('ok');};");
+      ev("(function(){var r=document.querySelector('#catList .cat-row[data-id=\"db-u1\"]');" +
+         "var b=document.createElement('button'); b.dataset.act='del'; r.appendChild(b); b.click();})()");
+      await new Promise(r => setTimeout(r, 0));
+      ev('window.confirmBox=window.__cb0;');
+      assert.strictEqual(ev('window.__askN'), 0, '공식 과제에서 삭제 확인창이 떴다(가드가 뚫렸다)');
+      assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u1';})"), true, '공식 과제가 삭제됐다');
+      // 개인 과제는 그대로 삭제 가능해야 한다(가드가 과하게 넓어지지 않았는지)
+      assert.strictEqual(ev("typeof deleteCategory"), 'function');
+    });
+
+    test('소유권 분리: 편집 중이던 공식 과제를 제거하면 폼이 유령으로 남지 않는다', () => {
+      seedOfficialLocal();
+      ev('openCatModal();');
+      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
+      assert.strictEqual(ev('editingCatId'), 'db-u1');
+      ev("unsubscribeDbCat('db-u1'); renderCatModal();");   // 카탈로그/행 어느 경로로 제거하든 같은 렌더를 탄다
+      assert.strictEqual(ev('editingCatId'), null, '사라진 과제를 계속 편집 중이라고 믿는다(저장이 조용히 무시된다)');
+      assert.strictEqual(ev("document.getElementById('catFormTitle').textContent"), '새 과제 추가', '폼 제목이 편집 모드로 남았다');
+      assert.strictEqual(ev("document.getElementById('cName').readOnly"), false, '이름칸이 잠긴 채 남아 새 과제를 못 만든다');
+    });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 재연결 픽커 행 가시성 (2026-07-27) — 평문 '·' 나열 → 구조화 + 구분·계약기간 추가
+    // 여기서 고른 하나로 일정·할일 수십 건의 소속이 바뀌므로, 카탈로그 상세와 같은 축을 다 봐야 고를 수 있다.
+    // ══════════════════════════════════════════════════════════════════
+    test('픽커 행: 구분·계약기간이 추가되고 레이블 붙은 필드로 구조화된다', () => {
+      seedRelink();
+      ev("openRelinkPick('p1')");
+      const t = ev("(function(){var r=document.querySelector('#rlpList .off-row[data-rlpid=\"db-u1\"]'); return r?r.textContent:'';})()");
+      assert.ok(/일반계약/.test(t), '구분(section)이 행에 없다');
+      assert.ok(/2026-01-01 ~ 2026-12-31/.test(t), '계약기간(offPeriod)이 행에 없다');
+      for (const lb of ['발주처', '사업', '계약', '기간'])
+        assert.ok(t.includes(lb), `레이블 '${lb}'가 없다 — 값만 흘리면 무슨 값인지 모른다: ` + t);
+      assert.ok(/방위사업청/.test(t) && /함정 레이더 성능개량/.test(t) && /저장장치/.test(t), '발주처·사업명·계약명이 유실됐다');
+      assert.ok(/진행중/.test(t), '상태가 유실됐다');
+      // 구조 — 1행(주라벨+구분 배지+상태 칩) / 2행(레이블 필드)
+      const has = s => ev("!!document.querySelector('#rlpList .off-row[data-rlpid=\"db-u1\"] " + s + "')");
+      for (const s of ['.rlp-head', '.rlp-nm', '.rlp-sec', '.rlp-st', '.rlp-meta']) assert.strictEqual(has(s), true, s + ' 가 없다');
+      // 상태 색 규약(offStatusKind) + 색점은 그대로
+      assert.strictEqual(ev("document.querySelector('#rlpList .off-row[data-rlpid=\"db-u1\"] .rlp-st').className"), 'rlp-st run',
+        '상태 종류 클래스(run/warn/end/none) 규약이 깨졌다');
+      assert.strictEqual(has('.off-dot.run'), true, '상태 색점(.off-dot)이 사라졌다');
+      // 값이 빈 행도 무너지지 않는다(선진행 u3 — 계약명·상태·날짜 없음)
+      const t3 = ev("(function(){var r=document.querySelector('#rlpList .off-row[data-rlpid=\"db-u3\"]'); return r?r.textContent:'';})()");
+      assert.ok(/기간/.test(t3), '빈 값 행에서 필드가 통째로 사라졌다');
+    });
+
+    test('픽커 행: 각 필드가 개별 말줄임 + title로 전체 값을 준다', () => {
+      seedRelink();
+      ev("openRelinkPick('p1')");
+      const labels = evJSON("[].slice.call(document.querySelectorAll('#rlpList .off-row[data-rlpid=\"db-u1\"] .rlp-f'))" +
+                            ".map(function(e){return e.querySelector('.rlp-lbl').textContent;})");
+      assert.deepStrictEqual(labels, ['발주처', '사업', '계약', '기간'], '필드 구성이 다르다: ' + JSON.stringify(labels));
+      const titles = evJSON("[].slice.call(document.querySelectorAll('#rlpList .off-row[data-rlpid=\"db-u1\"] .rlp-f'))" +
+                            ".map(function(e){return e.getAttribute('title')||'';})");
+      assert.ok(titles.every(t => t.includes(':')), '잘린 값을 확인할 title이 없다: ' + JSON.stringify(titles));
+      assert.ok(titles.some(t => t.includes('저장장치')), 'title에 전체 값이 담기지 않는다');
+      // CSS 계약 — 필드/값 칸에 min-width:0 + overflow:hidden + text-overflow:ellipsis
+      // (min-width:0이 없으면 flex/grid 아이템이 내용폭 아래로 못 줄어 긴 값이 레이아웃을 민다)
+      const src = loadAppSource();
+      for (const sel of ['rlp-f', 'rlp-v']) {
+        const m = new RegExp('\\.' + sel + '\\{([^}]*)\\}').exec(src);
+        assert.ok(m, `.${sel} 규칙을 찾지 못함`);
+        for (const decl of ['min-width:0', 'overflow:hidden', 'text-overflow:ellipsis'])
+          assert.ok(m[1].includes(decl), `.${sel}에 ${decl}가 없다 — 개별 말줄임이 안 된다`);
+      }
+    });
+
+    test('픽커 행: 카탈로그 목록과 스타일이 서로 새지 않는다(.rlp-* ↔ .off-meta 분리)', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev('offFillSelects(); renderOfficialList();');
+      assert.strictEqual(ev("document.querySelectorAll('#offList [class*=\"rlp-\"]').length"), 0,
+        '카탈로그 목록 행에 픽커 전용 클래스가 새어 들었다');
+      assert.strictEqual(ev("document.querySelectorAll('#offList .off-meta').length > 0"), true, '카탈로그 행 골격(.off-meta)이 바뀌었다');
+      seedRelink();
+      ev("openRelinkPick('p1')");
+      assert.strictEqual(ev("document.querySelectorAll('#rlpList .off-meta').length"), 0,
+        '픽커 행이 아직 카탈로그의 평문 나열(.off-meta)을 쓴다');
+      assert.strictEqual(ev("document.querySelectorAll('#rlpList .off-row').length > 0"), true, '.off-row 골격(선택·hover·포커스)은 유지돼야 한다');
+    });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 카탈로그 상세 액션 한 줄 (2026-07-27) — .off-d-sub / .off-d-act 두 div → 한 컨테이너
+    // ══════════════════════════════════════════════════════════════════
+    test('카탈로그 상세: 편입·관리 액션이 한 줄(.off-d-bar)에 모이고 좌/우로 의미가 갈린다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("offSelId='db-u1'; renderOfficialDetail();");
+      assert.strictEqual(ev("document.querySelectorAll('#offDetail .off-d-bar').length"), 1, '액션 컨테이너가 1개(한 줄)가 아니다');
+      for (const s of ['[data-offadd]', '.off-d-act [data-offedit]', '.off-d-act [data-offhide]'])
+        assert.strictEqual(ev("!!document.querySelector('#offDetail .off-d-bar " + s + "')"), true, s + ' 가 한 줄 컨테이너 밖에 있다');
+      // 편입 상태 문구(추가됨)가 붙어도 한 줄 유지
+      ev("subscribeDbCat(dbCatalogById('db-u1')); renderOfficialDetail();");
+      assert.strictEqual(ev("document.querySelectorAll('#offDetail .off-d-bar').length"), 1, '편입 후 액션이 다시 두 덩이로 갈라졌다');
+      assert.strictEqual(ev("!!document.querySelector('#offDetail .off-d-bar .off-sub-state')"), true, '편입 상태 문구가 한 줄 밖으로 나갔다');
+      assert.strictEqual(ev("!!document.querySelector('#offDetail .off-d-bar [data-offremove]')"), true, '제거 버튼이 한 줄 밖으로 나갔다');
+      // 포커스 순서 = 편입(주 동작) → 편집 → 숨김
+      const order = evJSON("[].slice.call(document.querySelectorAll('#offDetail .off-d-bar button')).map(function(b){return b.textContent.trim();})");
+      // 라벨이 짧아야 위젯 실폭(≈380px)에서 한 줄이 유지된다 — '캘린더에서 제거'는 앞의 상태 문구와 중복이라 '제거'로 줄였다.
+      assert.deepStrictEqual(order, ['제거', '편집', '숨김'], '액션 순서(포커스 순서)가 편입→관리가 아니다: ' + JSON.stringify(order));
+      // 좌/우 분리는 스페이서로 — 좁으면 flex-wrap으로 자연히 접힌다
+      const src = loadAppSource();
+      const bar = /\.off-d-bar\{([^}]*)\}/.exec(src), act = /\.off-d-act\{([^}]*)\}/.exec(src);
+      assert.ok(bar && /flex-wrap:wrap/.test(bar[1]), '.off-d-bar에 flex-wrap이 없다(좁은 폭에서 잘린다)');
+      assert.ok(act && /margin-left:auto/.test(act[1]), '.off-d-act가 우측으로 밀리지 않는다(의미 구분 소실)');
+      assert.ok(act && !/margin-top/.test(act[1]), '.off-d-act에 margin-top이 남아 다시 줄을 만든다');
+    });
   }
 }

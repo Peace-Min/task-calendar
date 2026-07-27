@@ -510,6 +510,16 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cat-badge{display:inline-block;vertical-align:middle;margin-left:6px;font-size:var(--fs-micro);font-weight:700;line-height:1.5;padding:0 6px;border-radius:var(--r-sm);white-space:nowrap}
 .cat-badge.db{background:var(--accent-soft);color:var(--accent-2)}
 .cat-badge.gone{background:var(--danger-soft);color:var(--danger-text)}
+/* 공식(DB) 과제 로컬 편집 — 과제명·색상은 DB 소유(보고서 집계가 원본 이름에 의존)라 잠그고,
+   설명·Git·SVN은 각 PC의 작업복사본 경로라 DB가 알 수 없는 값 → 연다. 잠긴 이유가 화면에 보이도록 안내를 붙인다. */
+.cat-lock-note{
+  display:flex;align-items:flex-start;gap:6px;margin:var(--sp-1) 0 var(--sp-2);padding:7px 9px;
+  border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--dim-bg);
+  font-size:var(--fs-meta);color:var(--muted);line-height:var(--lh-body);word-break:keep-all;overflow-wrap:anywhere;
+}
+.cat-lock-note .ic{width:14px;height:14px;flex:none;margin-top:2px;color:var(--muted)}
+.cat-form.lock-db #cName{background:var(--dim-bg);color:var(--muted);cursor:not-allowed}
+.cat-form.lock-db .palette{opacity:.55;pointer-events:none}
 /* 회의실 관리 */
 .room-list{display:flex;flex-direction:column;gap:7px}
 .room-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-md)}
@@ -637,10 +647,15 @@ main{flex:1;display:flex;min-height:0;position:relative}
   margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--line);
   font-family:ui-monospace,'Consolas','D2Coding',monospace;font-size:var(--fs-micro);color:var(--faint-text);
 }
-.off-d-act{margin-top:var(--sp-3);display:flex;gap:var(--sp-2);flex-wrap:wrap}
-/* 카탈로그 편입 상태·버튼 */
-.off-d-sub{margin-top:var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
-.off-sub-state{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-meta);font-weight:600;color:var(--ok)}
+/* 상세 액션 한 줄 — 좌측=편입(주 동작), 우측=관리(편집·숨김). 예전엔 두 div(.off-d-sub/.off-d-act)라
+   버튼이 항상 두 줄을 먹었다. 한 줄로 합치되 의미는 스페이서(margin-left:auto)+옅은 구분선으로 나눈다. */
+.off-d-bar{margin-top:var(--sp-3);display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+.off-d-sub{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
+.off-d-act{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin-left:auto;padding-left:var(--sp-2);border-left:1px solid var(--line)}
+/* 편입 상태 문구 — 상세 컬럼은 300px 고정이라 여유가 거의 없다. 줄어들 수 있게 해서
+   폰트·테마가 달라져도 '1px 모자라 액션 바 전체가 다음 줄로 밀리는' 일이 없게 한다. */
+.off-sub-state{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-meta);font-weight:600;color:var(--ok);
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .off-sub-state .ic{width:14px;height:14px}
 /* 목록 행 편입 표시 — 좌측 강조(레이아웃 불변) + 이름 옆 체크 */
 .off-row.subbed{box-shadow:inset 3px 0 0 var(--accent)}
@@ -682,8 +697,52 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .rl-clear{flex:none;font-size:var(--fs-meta)}
 .rl-empty{padding:var(--sp-4);text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:var(--lh-body)}
 .rl-sum{font-size:var(--fs-meta);color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 선택 팝업 목록 행 — 카탈로그(.off-row)를 재사용하되 사업/계약 라벨 열을 더 노출(동명 식별) */
-.rlp-lbl{color:var(--faint-text)}
+/* ---------- 재연결 대상 선택 팝업(#relinkPickModal) 행 ----------
+   .off-row의 '골격'(2행 그리드·hover·선택·포커스링)만 공유하고, 내용은 전용 클래스(.rlp-*)로 완전히 분리한다.
+   카탈로그(#officialModal)의 .off-meta는 flex + '·' 구분자로 평문을 흘리는 배치라, 여기서 필요한
+   '레이블-값 정렬'과 성격이 다르다 — 같은 클래스를 공유하면 한쪽을 고칠 때 다른 쪽이 새는 게 확정이다.
+   이 팝업의 목적은 '동명 과제 식별'이므로 카탈로그 상세와 같은 6개 축(통상명칭·구분·상태·발주처·사업·계약·기간)을 다 보여준다. */
+.rlp-row{row-gap:4px}
+/* 1행 = 주라벨(통상명칭) + 구분 배지 + 상태 칩. 좁으면 배지·칩이 아래로 접힌다. */
+.rlp-head{grid-column:2;grid-row:1;display:flex;align-items:center;flex-wrap:wrap;gap:4px 7px;min-width:0}
+.rlp-nm{
+  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-body);font-weight:700;color:var(--text);
+}
+.off-row.on .rlp-nm{color:var(--accent-2)}
+.rlp-sec{
+  flex:none;max-width:10em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-micro);font-weight:700;line-height:1.7;padding:0 7px;border-radius:var(--r-sm);
+  background:var(--dim-bg);border:1px solid var(--line-2);color:var(--muted);
+}
+.rlp-sec.rlp-mut{color:var(--faint-text);border-style:dashed}
+/* 상태 칩 — 색 규약은 카탈로그와 동일(offStatusKind → run/warn/none)하고 색점도 .off-dot을 그대로 쓴다. */
+.rlp-st{flex:none;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.rlp-st.run{color:var(--ok)}
+.rlp-st.warn{color:var(--warn-text)}
+.rlp-st.none{color:var(--faint-text)}
+/* 2행 = 레이블 붙은 필드(발주처|사업 / 계약|기간). 열이 고정이라 값의 시작선이 행마다 정렬된다.
+   ★ 4열 한 줄로 펴지 않는 이유: 이 팝업의 최대 폭은 .modal.wide=min(720px,100%)이고, 위젯 실폭은 ≈380px다.
+     4열이면 어느 폭에서도 값 칸이 5~6글자로 좁아져 '동명 과제 식별'이라는 목적 자체가 무너진다.
+     열을 적게 두고 칸을 넓게 주는 쪽이 낫다. 오른쪽 열이 더 넓은 건 사업명과 계약기간(고정폭 21~23자)이 거기 놓이기 때문.
+   각 칸은 자기 트랙 안에서만 말줄임되므로(min-width:0) 긴 계약명이 옆 필드를 밀어내지 못한다. */
+.rlp-meta{
+  grid-column:2;grid-row:2;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
+  gap:2px var(--sp-3);min-width:0;font-size:var(--fs-meta);
+}
+/* 위젯 최소 폭보다 더 좁아지면 2열이 다 잘린다 → 1열 목록으로 접는다(잘림보다 스크롤이 낫다). */
+@media (max-width:359px){ .rlp-meta{grid-template-columns:minmax(0,1fr)} }
+.rlp-f{
+  display:flex;align-items:baseline;gap:5px;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* 레이블은 약하게·고정폭(값의 시작선이 행마다 어긋나지 않게), 값은 또렷하게 — 대비 차이로 스캔된다. */
+.rlp-lbl{flex:none;min-width:3.1em;color:var(--faint-text);font-size:var(--fs-micro);font-weight:600}
+.rlp-v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.rlp-v.rlp-mut{color:var(--faint-text)}
+/* 계약기간만 한 단계 작게 — 'YYYY-MM-DD ~ YYYY-MM-DD'는 23자 고정이라 12px로는 위젯 실폭(≈380px)에서 반드시 잘린다.
+   숫자 필드라 11px tabular에서도 또렷하고, 여기만 줄이면 잘림 없이 전부 읽힌다(다른 값은 12px 유지). */
+.rlp-per .rlp-v{font-variant-numeric:tabular-nums;font-size:var(--fs-micro)}
 @media (max-width:560px){
   .rl-hrow{display:none}
   .rl-row{grid-template-columns:minmax(0,1fr) auto;row-gap:6px}
@@ -1792,6 +1851,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="cat-form">
         <label for="cName" id="catFormTitle">새 과제 추가</label>
         <input type="text" id="cName" maxlength="60" placeholder="과제 이름 (예: 주간 보고서)">
+        <!-- 공식(DB) 과제 편집 중에만 노출 — 무엇이 왜 잠겼는지, 무엇은 열려 있는지 한 곳에서 말한다. -->
+        <div class="cat-lock-note hidden" id="cLockNote"></div>
         <label>색상</label>
         <div class="palette" id="cPalette"></div>
         <label for="cDesc">설명 (선택)</label>
@@ -3479,6 +3540,17 @@ function subscribeDbCat(src){
     desc:'', gitRepo:'', svnRepo:'', createdAt: nowIso() }, meta);
   state.categories.push(c); return c;
 }
+// 편입분의 '로컬 소유' 필드만 갱신 — 소유권 분리의 쓰기 쪽 단일 출입구(2026-07-27).
+// ★ name·color는 DB 소유다: 보고서에 찍히는 과제명이 사업부 관리 과제명과 글자 하나까지 같아야
+//   기존 시스템의 데이터 수집이 된다. 그래서 여기서는 절대 건드리지 않는다(syncSubscribedDbMeta가 DB 기준으로 덮어쓴다).
+// ★ desc·gitRepo·svnRepo는 로컬 소유다: Git/SVN 경로는 각 PC의 작업복사본 경로라 DB가 알 수도 없는 값이고,
+//   이걸 잠그면 DB 과제로는 버전관리 연동을 아예 못 쓴다. XML 영속은 공통 경로라 이미 저장된다.
+function updateOfficialLocalFields(id, desc, gitRepo, svnRepo){
+  const c = state.categories.find(x => x.id === id);
+  if(!isOfficialCat(c)) return false;
+  c.desc = desc || ''; c.gitRepo = gitRepo || ''; c.svnRepo = svnRepo || '';
+  save(); return true;
+}
 // 구독 해제 — 사용 0건인 DB 과제만(엔트리는 건드리지 않는다). 개인 과제·사용 중 DB 과제는 대상 아님.
 function unsubscribeDbCat(id){
   const c = state.categories.find(x => x.id === id);
@@ -4894,24 +4966,32 @@ function saveEntryFromForm(){
 }
 
 /* ---------- 과제 모달 ---------- */
+// 편집 중인 과제가 공식(DB)인가 — 이름·색 잠금 판정의 단일 소스(폼 렌더·저장·팔레트 입력이 같은 답을 본다).
+const catFormLocked = () => !!editingCatId && isOfficialCat(catById(editingCatId));
 function renderPalette(){
+  const lock = catFormLocked();   // 색상은 DB(구분별) 소유 → 공식 과제 편집 중엔 직접 선택도 잠근다
   $('#cPalette').innerHTML = PALETTE.map(c =>
     `<span class="swatch ${selColor===c?'on':''}" data-color="${c}" style="background:${c}" title="${c}"></span>`
-  ).join('') + `<input type="color" id="cColor" value="${selColor}" title="직접 선택">`;
+  ).join('') + `<input type="color" id="cColor" value="${selColor}"${lock?' disabled':''} title="${lock?'색상은 회사 DB(구분)에서 정해집니다':'직접 선택'}">`;
 }
 // 단일 목록 렌더 — 개인/공식(DB)을 한 목록에 출처 배지와 함께. 개인=수정/삭제, 공식=제거(사용 0건일 때만)·수정불가(원본은 카탈로그 Admin).
 function catRowHtml(c){
   if(isOfficialCat(c)){
-    // 부제(발주처·구분) 없음 — 편입분은 name·color만 갖는다(상세는 공식 과제 화면에서 온라인으로 본다).
+    // DB 상세(발주처·구분·기간…)는 여기 없다 — 편입분이 DB에서 받는 건 name·color뿐(상세는 공식 과제 화면에서 온라인으로).
+    // 대신 '로컬 소유' 필드(설명·Git·SVN)는 개인 행과 똑같이 보여준다: 안 보이면 편집 가능한 줄도 모른다.
     const use = catUsageCount(c.id);   // DB 행은 제거 게이트와 숫자가 일치해야 하므로 일정+할일 합계
     const removable = catRemovable(c);
     const rmTip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정·할일 ${use}건에서 사용 중 — 정리/재연결 후 제거할 수 있습니다`;
     return `<div class="cat-row" data-id="${esc(c.id)}">
       <span class="cat-dot" style="background:${validColor(c.color)}"></span>
       <div style="min-width:0">
-        <div class="cat-name">${esc(c.name)} <span class="cat-badge db">DB</span>${c.dbGone?`<span class="cat-badge gone" title="DB에서 삭제/숨김됨 — 라벨 유지용으로만 남아 있습니다">삭제됨(DB)</span>`:''}</div>
+        <div class="cat-name">${esc(c.name)} <span class="cat-badge db">DB</span>${c.dbGone?`<span class="cat-badge gone" title="DB에서 삭제/숨김됨 — 라벨 유지용으로만 남아 있습니다">삭제됨(DB)</span>`:''}${(c.gitRepo||c.svnRepo)?`<span class="cat-git" title="${esc([c.gitRepo?('Git: '+c.gitRepo):'', c.svnRepo?('SVN: '+c.svnRepo):''].filter(Boolean).join('\n'))}">${ICON.wrench}</span>`:''}</div>
+        ${c.desc?`<div class="cat-desc">${esc(c.desc)}</div>`:''}
+        ${c.gitRepo?`<div class="cat-desc" title="${esc(c.gitRepo)}">${ICON.wrench} Git · ${esc(c.gitRepo)}</div>`:''}
+        ${c.svnRepo?`<div class="cat-desc" title="${esc(c.svnRepo)}">${ICON.wrench} SVN · ${esc(c.svnRepo)}</div>`:''}
       </div>
       <span class="cat-count">${use}건</span>
+      <button class="link" data-act="edit" title="설명·Git·SVN을 수정합니다 (과제명·색상은 DB 소유라 잠깁니다)">수정</button>
       <button class="link danger" data-act="unsub"${removable?'':' disabled'} title="${esc(rmTip)}">제거</button>
     </div>`;
   }
@@ -4930,6 +5010,9 @@ function catRowHtml(c){
   </div>`;
 }
 function renderCatModal(){
+  // 편집 중이던 과제가 목록에서 사라졌으면(제거·재연결·DB 재조회) 편집 모드에서 빠져나온다.
+  // 안 그러면 '공식 과제 — 내 PC 정보 수정' 제목만 남은 유령 폼이 되고, 저장은 조용히 아무 일도 안 한다.
+  if(editingCatId && !state.categories.some(c => c.id === editingCatId)) resetCatForm();
   const list = $('#catList');
   if(!state.categories.length){
     list.innerHTML = `<div class="cat-empty">아직 등록된 과제가 없습니다.<br>아래에서 개인 과제를 추가하거나, 위 <b>공식 과제(DB) 찾아보기</b>에서 편입하세요.</div>`;
@@ -4939,10 +5022,32 @@ function renderCatModal(){
     list.innerHTML = ordered.map(catRowHtml).join('');
   }
   renderPalette();
-  $('#catFormTitle').textContent = editingCatId ? '과제 수정' : '새 과제 추가';
+  // 공식(DB) 과제 편집 = '내 PC 정보만' 수정 모드. 제목·버튼 문구가 '새 과제 추가'와 섞이지 않게 여기서 한 번에 정한다.
+  const lock = catFormLocked();
+  $('#catFormTitle').textContent = editingCatId ? (lock ? '공식 과제 — 내 PC 정보 수정' : '과제 수정') : '새 과제 추가';
   $('#btnCatSave').textContent  = editingCatId ? '수정 저장' : '과제 추가';
   $('#btnCatCancelEdit').classList.toggle('hidden', !editingCatId);
+  applyCatFormLock(lock);
   renderGitCard();   // 폼의 Git 카드를 catFormRepo에 맞춰 항상 동기화(저장/취소 후 잔상 방지)
+}
+// 소유권 분리를 폼에 반영 — 과제명·색상은 잠그고(readonly/disabled + 이유 안내), 설명·Git·SVN은 그대로 연다.
+// 잠금은 렌더 시점마다 다시 칠한다(편집 이탈·취소·저장 후 잔상 방지).
+function applyCatFormLock(lock){
+  const form = document.querySelector('.cat-form'); if(form) form.classList.toggle('lock-db', !!lock);
+  const nm = $('#cName');
+  if(nm){
+    nm.readOnly = !!lock;
+    nm.setAttribute('aria-readonly', lock ? 'true' : 'false');
+    nm.title = lock ? '과제명은 회사 DB에서 관리됩니다' : '';
+  }
+  const note = $('#cLockNote');
+  if(note){
+    note.classList.toggle('hidden', !lock);
+    note.innerHTML = lock
+      ? ICON.lock + '<span><b>과제명·색상은 회사 DB에서 관리됩니다</b> — 보고서 집계를 위해 원본과 동일하게 유지됩니다. '
+        + '아래 <b>설명·Git·SVN 경로</b>는 이 PC에만 저장되는 값이라 자유롭게 수정할 수 있습니다.</span>'
+      : '';
+  }
 }
 function resetCatForm(){
   editingCatId = null; selColor = PALETTE[0]; catFormRepo = ''; catFormSvnRepo = ''; __pendingRepoEmail = '';
@@ -5239,16 +5344,22 @@ function openCatModal(){
   openModal('#categoryModal');
 }
 function saveCatFromForm(){
+  // 공식(DB) 과제 편집이면 이름·색 입력을 아예 '읽지 않는다' — 폼이 잠겨 있어도 저장 경로가 값을 집어가면
+  // 잠금이 UI 장식으로 전락한다(DOM은 언제든 조작될 수 있다). 소유권 분리는 저장 계약에서 지킨다.
+  const official = catFormLocked();
   const name = $('#cName').value.trim();
-  if(!name){ toast('과제 이름을 입력하세요', 'warn'); $('#cName').focus(); return; }
-  const dup = state.categories.find(c => c.name === name && c.id !== editingCatId);
-  if(dup){ toast('같은 이름의 과제가 이미 있습니다', 'warn'); return; }
+  if(!official){
+    if(!name){ toast('과제 이름을 입력하세요', 'warn'); $('#cName').focus(); return; }
+    const dup = state.categories.find(c => c.name === name && c.id !== editingCatId);
+    if(dup){ toast('같은 이름의 과제가 이미 있습니다', 'warn'); return; }
+  }
   const desc = $('#cDesc').value.trim();
   const gitRepo = catFormRepo.trim();           // Git 저장소 경로(다이얼로그로 고름)
   const svnRepo = catFormSvnRepo.trim();         // SVN 작업복사본 경로(독립)
   setGitAuthor($('#cGitAuthor').value.trim());   // 종류별 전역 작성자도 함께 저장(Git·SVN 독립)
   setSvnAuthor($('#cSvnAuthor').value.trim());
-  if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo, svnRepo); toast('과제를 수정했습니다', 'success'); }
+  if(official){ updateOfficialLocalFields(editingCatId, desc, gitRepo, svnRepo); toast('설명·Git·SVN을 수정했습니다 (과제명은 DB 원본 유지)', 'success'); }
+  else if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo, svnRepo); toast('과제를 수정했습니다', 'success'); }
   else{ addCategory(name, selColor, desc, gitRepo, svnRepo); toast('과제를 추가했습니다', 'success'); }
   resetCatForm(); renderCatModal(); renderAll();
 }
@@ -5400,13 +5511,16 @@ function renderOfficialDetail(){
     +   `<dt>계약기간</dt><dd>${per ? `<span class="off-per">${esc(per)}</span>` : `<span class="off-mut">미정</span>`}</dd>`
     + `</dl>`
     + `<div class="off-d-ref">참조 id · ${esc(c.id)}</div>`
+    // 액션 한 줄 — 왼쪽 편입(주 동작) / 오른쪽 관리(편집·숨김). 포커스 순서도 이 DOM 순서 그대로다.
+    + `<div class="off-d-bar">`
     // 편입(구독) — 캘린더에 추가/제거. 편입된 것만 단일 목록·필터·피커·보고서에 나타난다.
-    + offSubHtml(c)
+    +   offSubHtml(c)
     // 편집/숨김은 역할과 무관하게 늘 보인다 — 뷰어가 누르면 그 자리에서 관리자 인증을 묻고(UAC),
     // 통과하면 하려던 동작이 그대로 이어진다. '숨겨서 없는 것처럼' 보이면 권한을 어디서 얻는지 알 수 없다.
-    + `<div class="off-d-act">`
-    +   `<button type="button" class="btn sm" data-offedit="${esc(c.id)}">편집</button>`
-    +   `<button type="button" class="btn sm danger" data-offhide="${esc(c.id)}">숨김</button>`
+    +   `<div class="off-d-act">`
+    +     `<button type="button" class="btn sm" data-offedit="${esc(c.id)}">편집</button>`
+    +     `<button type="button" class="btn sm danger" data-offhide="${esc(c.id)}">숨김</button>`
+    +   `</div>`
     + `</div>`;
 }
 // 카탈로그 상세의 편입 상태·버튼 — 미편입=추가 / 편입됨=✓ + 제거(사용 중이면 제거 비활성+안내)
@@ -5415,9 +5529,12 @@ function offSubHtml(c){
   if(!subbed) return `<div class="off-d-sub"><button type="button" class="btn sm primary" data-offadd="${esc(c.id)}">＋ 캘린더에 추가</button></div>`;
   const n = catUsageCount(c.id), removable = (n === 0);
   const tip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정·할일 ${n}건에서 사용 중 — 일정 정리/재연결 후 제거`;
+  // 버튼은 '제거' 한 단어 — 바로 앞 상태 문구가 이미 '캘린더에'라는 맥락을 주고 있고(중복),
+  // 라벨이 길면 한 줄 액션바(.off-d-bar)가 위젯 실폭에서 두 줄로 접힌다. 전체 뜻은 title로 남긴다.
+  // 과제 관리 목록의 공식 행도 같은 동작을 '제거'로 부르므로 어휘도 일치한다.
   return `<div class="off-d-sub added">`
-    + `<span class="off-sub-state">${ICON.check} 캘린더에 추가됨</span>`
-    + `<button type="button" class="btn sm" data-offremove="${esc(c.id)}"${removable ? '' : ' disabled'} title="${esc(tip)}">캘린더에서 제거</button>`
+    + `<span class="off-sub-state" title="이 과제는 캘린더 목록에 추가되어 있습니다">${ICON.check} 추가됨</span>`
+    + `<button type="button" class="btn sm" data-offremove="${esc(c.id)}"${removable ? '' : ' disabled'} title="${esc(tip)}">제거</button>`
     + `</div>`;
 }
 // 카탈로그 → 단일 목록 편입/해제(로컬 데이터만 — 인증·DB쓰기 없음). 편입되면 필터·피커·보고서에 자동 등장.
@@ -6236,19 +6353,30 @@ function rlpFilters(){
            section:val('rlpSection'), status:val('rlpStatus'), activeOnly:!chk || chk.checked };
 }
 function rlpFillSelects(){ fillCatalogFilterSelects('rlpCustomer', 'rlpSection', 'rlpStatus'); }
-// 팝업 행 — .off-row 골격 재사용(스타일 공유) + meta에 발주처·사업명·계약명·상태(동명 식별용). data-rlpid=대상 db-id.
+// 팝업 행 — .off-row 골격(그리드·hover·선택·포커스)만 재사용하고 내용은 .rlp-* 전용 마크업.
+// 1행 = 통상명칭 + 구분 배지 + 상태 칩 / 2행 = 레이블 붙은 발주처·사업·계약·기간. data-rlpid=대상 db-id.
+// 카탈로그 상세와 같은 축을 다 보여주는 이유: 여기서 고른 하나로 일정·할일 수십 건의 소속이 바뀐다(되돌리기 비싸다).
 function rlpRowHtml(c){
   const k = offStatusKind(c.status);
-  const cust = offTrim(c.customer), pn = offTrim(c.projectName), cn = offTrim(c.contractName), st = offTrim(c.status);
+  const cust = offTrim(c.customer), pn = offTrim(c.projectName), cn = offTrim(c.contractName),
+        st = offTrim(c.status), sec = offTrim(c.section), per = offPeriod(c);
   const picked = (rlPick.get(rlpFor) === c.id);
-  return `<div class="off-row${picked ? ' on' : ''}" role="row" tabindex="-1" data-rlpid="${esc(c.id)}">`
+  // 필드 1칸 — 값이 길면 이 칸 안에서만 잘리고(CSS min-width:0), 전체 값은 title로 확인한다.
+  const fld = (lb, v, cls) => `<span class="rlp-f${cls ? ' ' + cls : ''}" role="cell" title="${esc(lb + ': ' + (v || '미정'))}">`
+    + `<span class="rlp-lbl">${esc(lb)}</span>`
+    + `<span class="rlp-v${v ? '' : ' rlp-mut'}">${esc(v || '—')}</span></span>`;
+  return `<div class="off-row rlp-row${picked ? ' on' : ''}" role="row" tabindex="-1" data-rlpid="${esc(c.id)}">`
     + `<span class="off-sw" aria-hidden="true" style="background:${validColor(c.color)}"></span>`
-    + `<span class="off-nm" role="cell">${esc(c.name)}${picked ? `<span class="off-subtick" title="현재 선택됨">✓</span>` : ''}</span>`
-    + `<span class="off-meta" role="none">`
-    +   `<span class="off-cust${cust ? '' : ' off-mut'}" role="cell">${esc(cust || '발주처 —')}</span>`
-    +   `<span class="${pn ? '' : 'off-mut'}" role="cell"><span class="rlp-lbl">사업</span> ${esc(pn || '—')}</span>`
-    +   `<span class="${cn ? '' : 'off-mut'}" role="cell"><span class="rlp-lbl">계약</span> ${esc(cn || '—')}</span>`
-    +   `<span class="off-st ${k}" role="cell"><i class="off-dot ${k}" aria-hidden="true"></i>${esc(st || '—')}</span>`
+    + `<span class="rlp-head" role="none">`
+    +   `<span class="rlp-nm" role="cell" title="${esc(c.name)}">${esc(c.name)}${picked ? `<span class="off-subtick" title="현재 선택됨">✓</span>` : ''}</span>`
+    +   `<span class="rlp-sec${sec ? '' : ' rlp-mut'}" role="cell" title="구분: ${esc(sec || '없음')}">${esc(sec || '구분 없음')}</span>`
+    +   `<span class="rlp-st ${k}" role="cell" title="상태: ${esc(st || '미정')}"><i class="off-dot ${k}" aria-hidden="true"></i>${esc(st || '미정')}</span>`
+    + `</span>`
+    + `<span class="rlp-meta" role="none">`
+    +   fld('발주처', cust)
+    +   fld('사업', pn)
+    +   fld('계약', cn)
+    +   fld('기간', per, 'rlp-per')
     + `</span></div>`;
 }
 function renderRlpList(){
@@ -8474,6 +8602,7 @@ const ICON = {
   keyboard: svgIc('<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/>'),
   clock:    svgIc('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.2 2"/>'),
   pin:      svgIc('<path d="M12 21s6.5-5.4 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.4"/>'),
+  lock:     svgIc('<rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/>'),
   // 아래 6종은 E1에서 추가 — 남아 있던 이모지 크롬(📖 🆕 🎌 🔄 ⚙ 📂)의 대체. 이모지는 테마·OS마다
   // 색/굵기가 제각각이라 currentColor 글리프와 나란히 놓이면 한 화면에 두 아이콘 문법이 생긴다.
   book:     svgIc('<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2.5 2.5 0 0 1 2 1 2.5 2.5 0 0 1 2-1h4.5A1.5 1.5 0 0 1 20 5.5v12a1.5 1.5 0 0 1-1.5 1.5H14a2.5 2.5 0 0 0-2 1 2.5 2.5 0 0 0-2-1H5.5A1.5 1.5 0 0 1 4 17.5z"/><path d="M12 6.5v12"/>'),
@@ -9277,10 +9406,12 @@ function bind(){
 
   /* 과제 모달 */
   $('#cPalette').addEventListener('click', ev => {
+    if(catFormLocked()) return;   // 색상은 DB(구분) 소유 — CSS pointer-events만 믿지 않는다
     const sw = ev.target.closest('.swatch');
     if(sw){ selColor = sw.dataset.color; renderPalette(); }
   });
   $('#cPalette').addEventListener('input', ev => {
+    if(catFormLocked()) return;
     if(ev.target.id === 'cColor'){ selColor = ev.target.value;
       $$('#cPalette .swatch').forEach(s => s.classList.toggle('on', s.dataset.color === selColor));
     }
@@ -9319,13 +9450,17 @@ function bind(){
       }
       return;
     }
-    if(isOfficialCat(c)) return;   // 공식 과제는 수정/삭제 대상 아님(원본은 카탈로그 Admin 편집)
+    // 삭제(del)만 계속 차단 — 공식 과제는 '제거(unsub)'만 가능하고 DB 원본은 카탈로그 Admin이 다룬다.
+    // 수정(edit)은 허용: 편집 폼이 이름·색을 잠그고 설명·Git·SVN만 연다(소유권 분리).
+    if(act === 'del' && isOfficialCat(c)) return;
     if(act === 'edit'){
       editingCatId = c.id; selColor = c.color; __pendingRepoEmail = '';
       $('#cName').value = c.name; $('#cDesc').value = c.desc || '';
       catFormRepo = c.gitRepo || ''; catFormSvnRepo = c.svnRepo || '';   // Git·SVN 경로 둘 다 복원
       $('#cGitAuthor').value = getGitAuthor(); $('#cSvnAuthor').value = getSvnAuthor();
-      renderCatModal(); $('#cName').focus();   // renderGitCard() 포함
+      renderCatModal();   // renderGitCard()·잠금(applyCatFormLock) 포함
+      // 공식 과제는 이름칸이 잠기므로 첫 '편집 가능한' 칸(설명)으로 커서를 보낸다.
+      { const first = isOfficialCat(c) ? $('#cDesc') : $('#cName'); if(first) first.focus(); }
       if(HOST){ if(catFormRepo) validateExistingRepoFor('git', catFormRepo); if(catFormSvnRepo) validateExistingRepoFor('svn', catFormSvnRepo); }
     }else if(act === 'del'){
       const n = state.entries.filter(e => e.categoryId === c.id).length;
