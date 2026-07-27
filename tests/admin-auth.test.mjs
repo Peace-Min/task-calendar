@@ -151,3 +151,15 @@ test('라벨: "관리자 자격 등록"이 아니라 "관리자 비밀번호 변
   assert.ok(!/관리자 자격 등록/.test(src), '옛 라벨이 남아 로그인으로 오해할 수 있다(사용자가 실제로 오해한 지점)');
   assert.ok(/관리자 비밀번호 변경/.test(src), '변경 라벨이 없다');
 });
+test('로그: 시작 시 비우지 않고 회전한다(크기 1MB·2세대·백업 30일 상한)', () => {
+  // 왜: 시작 시 truncate하면 "재시작해봤는데 또 그래요" 뒤에 오는 제보에 증거가 없다.
+  // 반대로 무한정 쌓으면 연결 실패 재시도 폭주에서 파일이 커진다 → 용량·기간 양쪽 상한.
+  assert.ok(!/File\.WriteAllText\(_logFile, ""\)/.test(mainWindow), '시작 시 로그를 비운다(재시작하면 증거 소실)');
+  assert.ok(/private void RotateLog\(\)/.test(mainWindow), 'RotateLog가 없다');
+  const b = mainWindow.slice(mainWindow.indexOf('private void RotateLog()'), mainWindow.indexOf('private void Log(string msg)'));
+  assert.ok(/MaxBytes = 1024 \* 1024/.test(b), '용량 상한(1MB)이 없다');
+  assert.ok(/KeepDays = 30/.test(b), '백업 보관 상한(30일)이 없다');
+  assert.ok(/File\.Move\(_logFile, bak\)/.test(b), '1MB 초과 시 .1로 회전하지 않는다');
+  assert.ok(/TotalDays > KeepDays[\s\S]{0,120}File\.Delete\(bak\)/.test(b), '30일 지난 백업을 지우지 않는다');
+  assert.ok(/RotateLog\(\);/.test(mainWindow), '시작 경로에서 RotateLog를 호출하지 않는다');
+});

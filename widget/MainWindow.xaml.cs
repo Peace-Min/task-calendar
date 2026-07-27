@@ -161,7 +161,7 @@ namespace TaskCalendarWidget
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
             bool firstRun = _settings.FirstRun;
-            try { Directory.CreateDirectory(_dataDir); File.WriteAllText(_logFile, ""); } catch { }
+            RotateLog();   // 시작 시 비우지 않는다 — 재시작 후 제보하면 증거가 사라지므로(크기·기간 상한으로 회전)
             var _ver = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;   // csproj AssemblyVersion에서 자동(현재 0.2.0)
             Log($"=== 시작 v{(_ver != null ? _ver.ToString(3) : "0.2.0")} === pinned={_settings.Pinned} firstRun={firstRun} tray={_settings.TrayEnabled}");
             if (_settings.TrayEnabled) EnsureTray();   // 설정돼 있으면 트레이 아이콘 생성
@@ -303,6 +303,34 @@ namespace TaskCalendarWidget
             using var stream = asm.GetManifestResourceStream(name)!;
             using var reader = new StreamReader(stream, Encoding.UTF8);
             return reader.ReadToEnd();
+        }
+
+        // 로그 회전 — 시작 시 truncate하면 "이상해서 재시작해봤어요" 뒤에 제보가 오는 순간 증거가 이미 없다.
+        // 그렇다고 무한정 쌓으면 연결 실패 재시도 같은 폭주에서 파일이 커진다. 그래서 양쪽에 상한을 건다:
+        //   · 용량 — 1MB 넘으면 widget.log.1로 밀고 새로 시작(2세대 = 최대 2MB 고정)
+        //   · 기간 — 백업(.1)이 30일 지나면 삭제. 로그엔 과제명·발주처명이 평문으로 남으므로 오래 두지 않는다.
+        // 통상 사용은 하루 수 KB라 1MB를 채우는 데 수개월 걸린다(실측 기준).
+        private void RotateLog()
+        {
+            const long MaxBytes = 1024 * 1024;   // 1MB
+            const int KeepDays = 30;
+            try
+            {
+                Directory.CreateDirectory(_dataDir);
+                string bak = _logFile + ".1";
+                var cur = new FileInfo(_logFile);
+                if (cur.Exists && cur.Length > MaxBytes)
+                {
+                    try { if (File.Exists(bak)) File.Delete(bak); } catch { }
+                    try { File.Move(_logFile, bak); } catch { }
+                }
+                var old = new FileInfo(bak);
+                if (old.Exists && (DateTime.Now - old.LastWriteTime).TotalDays > KeepDays)
+                {
+                    try { File.Delete(bak); } catch { }
+                }
+            }
+            catch { }
         }
 
         private void Log(string msg)
