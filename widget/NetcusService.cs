@@ -201,6 +201,9 @@ namespace TaskCalendarWidget
         //    읽기 무한대기·저장검증 OK오탐·실패한 창 방치를 유발하던 버그. 이 헬퍼가 그 판정을 목적지 기반 양성확인으로 대체.
         // navTimeoutMs: goLogin() 후 '페이지 이동 1회'를 기다리는 상한. 이 대기 결과는 판정에 쓰지 않으므로(아래 폴링이 판정)
         //   실패가 잦은 경로(사용자 로그인)만 짧게 줄일 수 있다. 기존 호출부는 기본값 15000 유지 = 동작 무변경.
+        // ※ 제출이 아예 안 된 경우(goLogin이 submit에 닿지 못함)에는 그 상한마저 기다리지 않는다 —
+        //   주입 스크립트가 제출 여부를 돌려주므로 '기다릴 이동이 없다'는 걸 대기 전에 안다(실측 4.5초 → 즉시).
+        //   제출된 경우("1")의 흐름은 종전과 완전히 동일하다 = 성공 경로 무변경. 공유 호출부 6곳도 이득만 받는다.
         private async Task<bool> NetcusLoginVerify(CoreWebView2 cw, string id, string pw, int navTimeoutMs = 15000)
         {
             // 단계별 소요를 남긴다 — 실사용에서 '실패가 느리다'는 보고가 반복돼, 어느 구간이 먹는지
@@ -209,15 +212,48 @@ namespace TaskCalendarWidget
             long tA, tB, tC;
             await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
             tA = sw.ElapsedMilliseconds;
+            // ★ 리스너는 '제출 전에' 붙인다 — 제출 후에 붙이면 그 사이 끝난 이동을 놓쳐 성공 경로가 상한까지 늘어진다.
             var nav = NavOnce(cw, navTimeoutMs);
-            await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
+            // 주입 스크립트가 '제출까지 갔는지'를 돌려준다(1=제출 · 0=미제출 · "ERR:…"=예외).
+            //   근거(실측): 실패는 4.5s로 상한과 정확히 일치했고 성공은 0.6s였다. 즉 실패 때는 '이동이 아예 없어'
+            //   기다릴 이벤트가 없다 — goLogin()은 Encrypt()가 true가 아니면 document.form.submit()에 닿지 않는다.
+            //   '이동 실패'라는 이벤트는 존재하지 않으므로(안 일어난 일에는 이벤트가 없다) 제출 여부를 페이지가 직접 알려준다.
+            // ※ document.form.submit은 이 폼(name="submit"인 input 존재)에서도 네이티브 메서드다 —
+            //   goLogin()이 그걸 호출해 실제 로그인이 성공해 왔다는 사실이 그 증거다. 감쌌다가 finally에서 원복한다.
+            // ※ 예외를 삼키지 않는다(기존 빈 catch는 원인을 통째로 지웠다). 단, 비밀번호는 반환값·로그 어디에도 싣지 않는다.
+            string res = (await cw.ExecuteScriptAsync(
+                "(function(){try{"
+                + $"document.form.id.value={J(id)};document.form.pass.value={J(pw)};"
+                + "var submitted=false;var orig=document.form.submit;"
+                + "document.form.submit=function(){submitted=true;return orig.apply(this,arguments);};"
+                + "try{goLogin();}finally{try{document.form.submit=orig;}catch(_){}}"
+                + "return submitted?1:0;"
+                + "}catch(e){return 'ERR:'+((e&&e.message)?e.message:String(e));}})()")).Trim();
+            // ExecuteScriptAsync는 JSON을 돌려준다(아래 판정 폴링이 1/-1/0을 그렇게 받는다). 문자열은 따옴표까지 포함된다.
+            string errMsg = "";
+            if (res.Length > 1 && res[0] == '"') { try { errMsg = JsonSerializer.Deserialize<string>(res) ?? ""; } catch { errMsg = ""; } }
+            bool scriptErr = errMsg.StartsWith("ERR:", StringComparison.Ordinal);
+            string mark = res == "1" ? "1" : scriptErr ? "ERR" : res == "0" ? "0" : "?";   // ?=알 수 없는 반환값 → 보수적으로 기존 경로
+            long tS = sw.ElapsedMilliseconds;
+            if (res == "0" || scriptErr)
+            {
+                // ★ nav를 기다리지 않는다. 제출이 없었으니 이동도 없고, 기다리면 상한을 통째로 버린다(실측 4.5초).
+                //   NavOnce는 상한이 지나면 스스로 핸들러를 떼므로 방치해도 누수가 없다(결과만 버려진다).
+                _ = nav;
+                Log($"  로그인 구간: login.htm {tA}ms · 제출 {tS - tA}ms · 제출={mark} — 이동 대기 생략");
+                Log(scriptErr
+                    ? "  로그인 스크립트 예외: " + errMsg.Substring(4) + " — 즉시 실패 처리"
+                    : "  로그인 제출 안 됨(goLogin 이 submit 까지 가지 않음) — 즉시 실패 처리");
+                return false;
+            }
+            // 여기부터는 기존 경로 그대로 — 제출됨("1")과 알 수 없는 반환값("?") 둘 다 대기 후 도달 폴링으로 판정한다.
             await nav;
             tB = sw.ElapsedMilliseconds;
             // 보호 페이지(오늘자 work_view)로 이동 후 안정 상태에서 판정.
             var t = DateTime.Now;
             await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={t.Year}&m={t.Month}&d={t.Day}&id={Uri.EscapeDataString(id)}");
             tC = sw.ElapsedMilliseconds;
-            Log($"  로그인 구간: login.htm {tA}ms · 제출대기 {tB - tA}ms(상한 {navTimeoutMs}) · work_view {tC - tB}ms");
+            Log($"  로그인 구간: login.htm {tA}ms · 제출대기 {tB - tA}ms(상한 {navTimeoutMs}) · work_view {tC - tB}ms · 제출={mark}");
             for (int i = 0; i < 16; i++)   // ~4s(제출 사후검증과 동일 규모). 타임아웃=불확실→안전하게 실패
             {
                 var st = (await cw.ExecuteScriptAsync(

@@ -578,3 +578,164 @@ test('D3/F4: 카드 컴팩트 — 안내문 1줄 · DPAPI 설명 없음 · 간�
     assert.ok(new RegExp('\\' + v + ':').test(src.slice(0, src.indexOf('.lg-gate{'))), `게이트가 신규 토큰을 만들었다: ${v}`);
   }
 });
+
+// ══ ⑭ 로그인 실패가 상한을 통째로 버리던 결함 (2026-07-30 실측) ═══════
+// 실사용 로그: 실패 4.5s · 4.5s · 4.6s = navTimeoutMs(4000)와 정확히 일치, 성공 0.6s.
+// 원인: 실패 때는 goLogin()이 document.form.submit()에 닿지 못해 '이동이 아예 없다'.
+//   그런데 코드는 NavOnce(=다음 이동 1회)를 await 했다 — 안 일어난 일에는 이벤트가 없으므로
+//   상한이 지나야 풀린다. 게다가 주입 스크립트의 빈 catch가 예외까지 삼켜 흔적이 0이었다.
+// 해법: 주입 스크립트가 '제출까지 갔는지'를 직접 돌려주고(1/0/'ERR:…'), 0·ERR이면 기다리지 않는다.
+// 배제된 후보(실측): 네트워크(왕복 47ms) · WebView2 생성(성공 전체가 0.6s) · alert(로그 0건).
+
+// NetcusLoginVerify 본문(주석 제거, 문자열은 보존 — 로그 문구·주입 스크립트를 봐야 한다).
+const loginHelperSig =
+  'private async Task<bool> NetcusLoginVerify(CoreWebView2 cw, string id, string pw, int navTimeoutMs = 15000)';
+const helper = () => bare(netcus, loginHelperSig);
+
+// C# 블록 슬라이스 — fromIdx 이후 첫 '{'부터 짝이 맞는 '}'까지. 문자열 리터럴 안의 중괄호는 세지 않는다
+// ($"…{tA}ms…" 보간이나 주입 스크립트의 function(){…}이 깊이를 흔들면 분기 경계가 통째로 어긋난다).
+function csBlock(s, fromIdx) {
+  const open = s.indexOf('{', fromIdx);
+  assert.ok(open >= 0, '블록의 여는 중괄호를 찾지 못함');
+  let depth = 0;
+  for (let k = open; k < s.length; k++) {
+    const c = s[k];
+    if (c === '"' || c === "'") {
+      let j = k + 1;
+      while (j < s.length) { if (s[j] === '\\') { j += 2; continue; } if (s[j] === c) break; j++; }
+      k = j; continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return { start: open, end: k, body: s.slice(open, k + 1) }; }
+  }
+  assert.fail('블록의 닫는 중괄호를 찾지 못함');
+}
+
+// 로그인 주입 스크립트(브라우저에 실제로 들어가는 문자열) — 조각난 리터럴을 이어 붙인다.
+function injectedLoginScript(h) {
+  const s = h.indexOf('await cw.ExecuteScriptAsync(');
+  assert.ok(s >= 0, '로그인 주입 스크립트 호출을 찾지 못함');
+  const e = h.indexOf('.Trim();', s);
+  assert.ok(e > s, '로그인 주입 스크립트 호출의 끝(.Trim())을 찾지 못함');
+  const js = [...h.slice(s, e).matchAll(/"((?:\\.|[^"\\])*)"/g)].map(m => m[1]).join('');
+  assert.ok(/goLogin\(\)/.test(js), '첫 ExecuteScriptAsync가 로그인 주입이 아니다(goLogin이 없다)');
+  return js;
+}
+
+test('E1: 주입 스크립트가 제출 여부를 돌려준다 — submitted?1:0 · 예외는 ERR:(빈 catch 아님)', () => {
+  const js = injectedLoginScript(helper());
+  assert.ok(/var submitted=false;/.test(js), '제출 여부 플래그가 없다 — 다시 "이동을 기다린다"로 돌아간다');
+  assert.ok(/return submitted\?1:0;/.test(js), '제출 여부를 반환하지 않는다 — 호스트가 판단할 근거가 사라진다');
+  assert.ok(/catch\(e\)\{return 'ERR:'\+\(\(e&&e\.message\)\?e\.message:String\(e\)\);\}/.test(js),
+    'catch가 ERR:<메시지>를 돌려주지 않는다 — 예외를 삼키면 실패 원인이 로그에 0건으로 남는다(이번 결함의 본체)');
+  assert.ok(!/catch\(e\)\{\}/.test(js), '빈 catch가 남아 있다 — 예외가 통째로 사라진다');
+  // 호스트도 그 문자열을 실제로 해석해야 한다(JSON 문자열이라 따옴표가 붙는다).
+  const h = helper();
+  assert.ok(/JsonSerializer\.Deserialize<string>\(res\)/.test(h), '반환된 JSON 문자열을 풀지 않는다 — "ERR:…"가 영영 매칭되지 않는다');
+  assert.ok(/errMsg\.StartsWith\("ERR:", StringComparison\.Ordinal\)/.test(h), 'ERR: 판정이 없다');
+});
+
+test('E2: document.form.submit을 저장→교체→원복한다(원복 없으면 남은 페이지가 오염된다)', () => {
+  const js = injectedLoginScript(helper());
+  assert.ok(/var orig=document\.form\.submit;/.test(js), '네이티브 submit을 저장하지 않는다');
+  assert.ok(/document\.form\.submit=function\(\)\{submitted=true;return orig\.apply\(this,arguments\);\};/.test(js),
+    '감싼 submit이 원본을 그대로 위임하지 않는다 — 성공 경로의 실제 제출이 달라진다');
+  assert.ok(/finally\{try\{document\.form\.submit=orig;\}catch\(_\)\{\}\}/.test(js),
+    '원복이 finally에 없다 — 제출이 안 된 경우 그 페이지가 남으므로 감싼 함수가 그대로 살아 있게 된다');
+  const [iSave, iSwap, iCall, iBack] = ['var orig=document.form.submit;', 'document.form.submit=function()',
+                                        'goLogin();', 'document.form.submit=orig;'].map(t => js.indexOf(t));
+  assert.ok(iSave >= 0 && iSwap > iSave && iCall > iSwap && iBack > iCall,
+    `저장→교체→goLogin→원복 순서가 어긋났다: ${JSON.stringify([iSave, iSwap, iCall, iBack])}`);
+});
+
+test('E3: "0"/"ERR:"는 nav를 기다리지 않고 즉시 실패한다(상한을 통째로 버리던 4.5초)', () => {
+  const h = helper();
+  const iIf = h.indexOf('if (res == "0" || scriptErr)');
+  assert.ok(iIf >= 0, '제출 실패 즉시반환 분기가 없다 — 실패가 다시 상한(4.0s)을 꽉 기다린다');
+  const blk = csBlock(h, iIf);
+  assert.ok(/return false;/.test(blk.body), '즉시반환 분기가 false를 돌려주지 않는다');
+  assert.ok(!/await nav/.test(blk.body), '즉시반환 분기 안에서 nav를 기다린다 — 이번 수정의 핵심이 사라졌다');
+  const navs = [...h.matchAll(/await nav\b/g)].map(m => m.index);
+  assert.strictEqual(navs.length, 1, `await nav가 ${navs.length}곳이다(성공 경로 1곳이어야 한다)`);
+  assert.ok(navs[0] > blk.end, 'await nav가 즉시반환 분기보다 앞에 있다 — 분기해봐야 이미 상한을 다 기다린 뒤다');
+  // 버려지는 리스너는 명시적으로 표시한다(NavOnce가 상한에 스스로 떼므로 누수는 없다).
+  assert.ok(/_ = nav;/.test(blk.body), '버리는 nav를 명시하지 않는다(_ = nav;)');
+  // 리스너는 여전히 '제출 전'에 붙는다 — 제출 후에 붙이면 이미 끝난 이동을 놓쳐 성공이 상한까지 늘어진다.
+  const iNavOnce = h.indexOf('NavOnce(cw, navTimeoutMs)');
+  const iScript  = h.indexOf('await cw.ExecuteScriptAsync(');
+  assert.ok(iNavOnce >= 0 && iNavOnce < iScript,
+    '이동 리스너를 제출보다 뒤에 붙인다 — 성공 이동을 놓치면 성공 경로가 느려진다');
+});
+
+test('E4: "1"(제출됨) 경로는 기존과 동일 — await nav → work_view → 판정 폴링', () => {
+  const h = helper();
+  const iNav  = h.indexOf('await nav;');
+  const iView = h.indexOf('pjm_work_view.jsp');
+  const iPoll = h.indexOf('for (int i = 0; i < 16; i++)');
+  assert.ok(iNav >= 0 && iView > iNav && iPoll > iView,
+    `성공 경로의 순서가 바뀌었다(대기→work_view→폴링): ${JSON.stringify([iNav, iView, iPoll])}`);
+  // 성공/실패 판정 자체는 여전히 도달 폴링만 한다 — 제출 여부를 성공 근거로 승격하면 안 된다.
+  assert.ok(!/return true;/.test(csBlock(h, h.indexOf('if (res == "0" || scriptErr)')).body),
+    '즉시반환 분기가 true를 돌려준다 — 제출됐다는 사실이 로그인 성공으로 둔갑한다');
+  const trues = [...h.matchAll(/return true;/g)].map(m => m.index);
+  assert.strictEqual(trues.length, 1, `return true가 ${trues.length}곳이다(폴링의 content 확인 1곳이어야 한다)`);
+  assert.ok(trues[0] > iPoll, 'true를 돌려주는 자리가 판정 폴링 밖이다');
+});
+
+test('E5: 알 수 없는 반환값은 보수적으로 기존 경로(대기 후 판정)를 탄다', () => {
+  const h = helper();
+  // 조건이 "1이 아니면 전부 실패"로 넓어지면 예상 못 한 반환값 하나에 로그인이 통째로 깨진다.
+  for (const bad of ['if (res != "1")', 'if (!submitted)', 'if (res == "1")']) {
+    assert.ok(!h.includes(bad), `즉시반환 조건이 넓어졌다(${bad}) — 모르는 값은 기다렸다 판정해야 한다`);
+  }
+  assert.ok(/if \(res == "0" \|\| scriptErr\)/.test(h), '즉시반환은 0과 ERR: 두 경우에만 걸려야 한다');
+  assert.ok(/"\?"/.test(h), '알 수 없는 반환값을 구분하는 표식(?)이 없다 — 로그에서 "모르는 값"을 볼 수 없다');
+});
+
+test('E6: 비밀번호는 반환값·로그 어디에도 실리지 않는다', () => {
+  const h = helper();
+  const js = injectedLoginScript(h);
+  assert.ok(/document\.form\.pass\.value=/.test(js), '비밀번호를 폼에 넣지 않는다(로그인 자체가 안 된다)');
+  assert.ok(!/return[^;]*pass/.test(js), '반환값에 비밀번호 칸이 실린다');
+  assert.ok(!/'ERR:'\+[^;]*pass/.test(js), '예외 메시지에 비밀번호 칸을 붙인다');
+  // C#에서 pw가 등장해도 되는 줄은 시그니처와 폼 채우기 한 줄뿐이다.
+  const ALLOWED = [/string pw, int navTimeoutMs = 15000\)/, /document\.form\.pass\.value=\{J\(pw\)\}/];
+  for (const line of h.split('\n')) {
+    if (!/\bpw\b/.test(line)) continue;
+    assert.ok(ALLOWED.some(re => re.test(line)), `헬퍼의 허용되지 않은 자리에 비밀번호가 흐른다 → ${line.trim()}`);
+  }
+  for (const m of h.matchAll(/Log\((?:[^()]|\([^()]*\))*\)/g)) {
+    assert.ok(!/\bpw\b/.test(m[0]), `로그 호출에 비밀번호가 실린다 → ${m[0].trim()}`);
+  }
+});
+
+test('E7: 판정 폴링·판정 기준·NavTo/NavOnce·공유 호출부 6곳은 무변경', () => {
+  const h = helper();
+  assert.ok(/for \(int i = 0; i < 16; i\+\+\)/.test(h) && /Task\.Delay\(250\)/.test(h), '판정 폴링(16회×250ms)이 바뀌었다');
+  assert.ok(/getElementsByName\('content'\)\[0\]/.test(h) && /querySelector\('input\[type=password\]'\)/.test(h),
+    '판정 기준(content textarea / input[type=password])이 바뀌었다');
+  assert.ok(/if \(st == "1"\) return true;/.test(h) && /if \(st == "-1"\) return false;/.test(h), '폴링 판정 분기가 바뀌었다');
+  const navTo = bare(netcus, 'private Task<bool> NavTo(CoreWebView2 cw, string url)');
+  assert.ok(/Task\.Delay\(20000\)/.test(navTo) && /tcs\.TrySetResult\(ev\.IsSuccess\)/.test(navTo), 'NavTo 본문이 바뀌었다');
+  const navOnce = bare(netcus, 'private Task<bool> NavOnce(CoreWebView2 cw, int timeoutMs)');
+  assert.ok(/Task\.Delay\(timeoutMs\)/.test(navOnce) && /cw\.NavigationCompleted -= H/.test(navOnce),
+    'NavOnce가 상한에 스스로 핸들러를 떼지 않는다 — 즉시반환 경로에서 버린 리스너가 누수된다');
+  // 6개 공유 호출부(자격검증·일간제출·주간채움·주간병합·범위읽기·구조캡처)는 인자 없이 그대로.
+  const calls = [...codeOnly(netcus).matchAll(/NetcusLoginVerify\(cw, id, pw([^)]*)\)/g)].map(m => m[1].trim());
+  assert.strictEqual(calls.length, 7, `NetcusLoginVerify 호출이 ${calls.length}곳이다(로그인 1 + 공유 6 = 7)`);
+  assert.deepStrictEqual(calls.filter(a => a !== ''), [', 4000'], '타임아웃을 넘기는 호출부가 로그인 하나가 아니다');
+});
+
+test('E8: 로그만으로 원인이 확정된다 — 구간 계측 유지 + 제출 판정 첨부', () => {
+  const h = helper();
+  assert.ok(/로그인 구간: login\.htm \{tA\}ms/.test(h), '구간 계측 로그가 사라졌다');
+  assert.strictEqual((h.match(/제출=\{mark\}/g) || []).length, 2,
+    '제출 판정(제출=…)이 두 경로(즉시실패·기존경로) 모두에 붙어 있지 않다');
+  assert.ok(h.includes('로그인 제출 안 됨(goLogin 이 submit 까지 가지 않음) — 즉시 실패 처리'), '미제출 로그 문구가 계약과 다르다');
+  assert.ok(h.includes('로그인 스크립트 예외: '), '스크립트 예외 로그 문구가 없다');
+  assert.ok(h.includes(' — 즉시 실패 처리'), '즉시 실패 처리 표기가 없다');
+  assert.ok(/errMsg\.Substring\(4\)/.test(h), '예외 메시지를 그대로(ERR: 접두어만 떼고) 남기지 않는다');
+  // 직전 커밋의 WebView2 준비 계측도 유지된다.
+  const b = bare(netcus, 'public async Task<bool> LoginVerify(string id, string pw)');
+  assert.ok(/WebView2 준비/.test(b) && /재사용/.test(b) && /신규 생성/.test(b), 'WebView2 준비 계측이 사라졌다');
+});
