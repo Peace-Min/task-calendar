@@ -368,9 +368,24 @@ namespace TaskCalendarWidget
         // 레거시 pjm alert()/confirm() 자동 수락 부착(공유) — 각 op가 자기 tag로 부착하고 detach()를 finally(또는 창 Closed)에서 호출.
         private Action AttachDialogAutoAccept(CoreWebView2 cw, string tag)
         {
+            // ★ WebView2는 AreDefaultScriptDialogsEnabled=false 일 때만 ScriptDialogOpening 을 raise 한다.
+            //   이 한 줄이 없어서 아래 핸들러가 7개 op 전부에서 한 번도 불리지 않았다(로그에 alert 0건).
+            //   그 결과 netcus 의 alert() 가 최소화·화면 밖 창에 뜬 채 아무도 못 눌러 파서가 멈추고
+            //   NavigationCompleted 가 오지 않아 각 op 가 타임아웃을 꽉 썼다(로그인 실패 실측 4.5초).
+            // ★ detach 는 설정을 원복하고 핸들러를 뗀다. 단 이 원복은 '앞으로 로드될 문서'에만 먹는다 —
+            //   AreDefaultScriptDialogsEnabled 는 문서 로드 시점에 스냅샷되기 때문이다(WebView2 실기 측정).
+            //   그래서 호출부 계약은 "사용자에게 넘길 문서를 로드하기 전에 detach 를 끝낸다"이다.
+            //   이미 로드된 문서에서 늦게 detach 하면 무음 취소가 아니라 '응답 주체 없는 영구 정지'가 된다
+            //   (핸들러는 없고 기본 다이얼로그도 꺼진 상태) — 주간 채움의 confirm('제출하시겠습니까?')이 죽는다.
+            bool prev = cw.Settings.AreDefaultScriptDialogsEnabled;
+            try { cw.Settings.AreDefaultScriptDialogsEnabled = false; } catch { }
             void H(object? s, CoreWebView2ScriptDialogOpeningEventArgs ev) { Log("netcus(" + tag + ") alert: " + (ev.Message ?? "")); try { ev.Accept(); } catch { } }
             cw.ScriptDialogOpening += H;
-            return () => { try { cw.ScriptDialogOpening -= H; } catch { } };
+            return () =>
+            {
+                try { cw.ScriptDialogOpening -= H; } catch { }
+                try { cw.Settings.AreDefaultScriptDialogsEnabled = prev; } catch { }
+            };
         }
 
         private async Task EnsureW2(bool background = false)
@@ -447,6 +462,12 @@ namespace TaskCalendarWidget
                 NetcusProgress("일간보고 페이지 여는 중…");
                 NetcusStatus("submit", "opening");
                 string url = $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={req.Y}&m={req.M}&d={req.D}&id={Uri.EscapeDataString(id)}";
+                // ★ 미제출(테스트)이면 여기서 로드되는 문서를 그대로 사용자에게 넘긴다(아래 DryRun 분기가 창을 남긴다)
+                //   → 넘길 문서를 로드하기 전에 자동수락을 끈다. AreDefaultScriptDialogsEnabled 는 문서 로드 시점에
+                //   스냅샷되므로 로드 뒤 원복은 이미 늦고, 핸들러를 붙였다 떼면 '응답 주체 없는 정지'가 된다(실측).
+                //   실제 제출(DryRun=false)은 바로 아래 go=write 자동 제출 구간에서 netcus 의 실패 alert() 를
+                //   받아내야 하므로 여기서 끄지 않는다 — 그쪽은 제출이 끝난 뒤 되읽기 직전에 끈다.
+                if (req.DryRun) { detach?.Invoke(); detach = null; }
                 await NavTo(cw, url);
 
                 // 폼 탐지 — <form>이 <table> 안에 있는 옛 마크업이라 document.form.* 접근이 안 될 수 있어 getElementsByName 사용. 로드 타이밍 대비 재시도.
@@ -504,6 +525,9 @@ namespace TaskCalendarWidget
                 // 반환: -1=로그인페이지, -2=폼없음, 0=빈내용, 1=정상(한글 일치 또는 한글없음+내용존재), 2=저장됐으나 한글 불일치
                 NetcusProgress("저장 확인 중…");
                 NetcusStatus("submit", "verifying");
+                // ★ 자동 제출(go=write)이 끝났다 — 여기서 로드되는 되읽기 문서는 창째로 사용자에게 남긴다.
+                //   설정은 문서 로드 시점 스냅샷이므로 로드 '전에' 원복해야 사용자의 확인창(수정 confirm 등)이 산다.
+                detach?.Invoke(); detach = null;
                 await NavTo(cw, url);
                 string needle = NetcusHangulNeedle(req.Content);
                 string check = "(function(){try{"
@@ -566,6 +590,10 @@ namespace TaskCalendarWidget
                 // pjm_write.jsp로 POST해야 함. 폼 연결 의존을 피해 동적 POST 폼으로 table_code/id를 실어 이동.
                 NetcusProgress("작성 폼 여는 중…");
                 NetcusStatus("weekfill", "opening");
+                // ★ 여기서부터 로드되는 문서(pjm_write.jsp)는 사용자에게 넘긴다 — 그 전에 자동수락을 반드시 끈다.
+                //   AreDefaultScriptDialogsEnabled 는 문서 로드 시점에 스냅샷되므로, 로드 뒤 원복은 이미 늦다(실측).
+                //   또 핸들러를 붙였다 떼면 무음 취소가 아니라 '응답 주체 없는 정지'가 된다 — 제출 confirm 이 죽는다.
+                detach?.Invoke(); detach = null;
                 var wnav = NavOnce(cw, 15000);
                 string goWrite = "(function(){try{var f=document.createElement('form');f.method='post';f.action='pjm_write.jsp';"
                     + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
@@ -930,7 +958,7 @@ namespace TaskCalendarWidget
                 await EnsureW2();   // 가시 창(920x720)
                 try { if (_w2win != null) { _w2win.Title = "netcus 주간보고 구조 캡처 (읽기 전용)"; } } catch { }
                 var cw = _w2!.CoreWebView2;
-                detach = AttachDialogAutoAccept(cw, "probe");   // 창이 살아있는 동안 유지(창 Closed에서 해제)
+                detach = AttachDialogAutoAccept(cw, "probe");   // 로그인 구간에만 유지 — 사용자에게 창을 넘기기 직전에 해제
 
                 // 로그인 — 공유 헬퍼로 통일(목적지 인증요소 존재 기반 양성확인; goLogin 폼주입/비번칸 폴링 제거)
                 if (!await NetcusLoginVerify(cw, id, pw))
@@ -943,18 +971,23 @@ namespace TaskCalendarWidget
 
                 NetcusStatus("probe", "opening");
 
+                // ★ 여기서부터 로드되는 문서는 전부 사용자에게 넘긴다(캡처 창은 열어둔 채 사용자가 직접 탐색한다).
+                //   그 전에 자동수락을 반드시 끈다 — AreDefaultScriptDialogsEnabled 는 문서 로드 시점에 스냅샷되므로
+                //   로드 뒤 원복(창 Closed 등)은 이미 늦다(실측). 붙인 채 두면 목록의 삭제 버튼
+                //   confirm('정말로 삭제하시겠습니까?') 가 무음 수락되어 주간보고가 확인창 없이 삭제된다.
+                detach?.Invoke(); detach = null;
+
                 // 게시판 홈까지만 이동 — 주간보고 목록/조회는 사용자가 직접 이동(URL 추측 자동이동 금지)
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
 
-                // 프로브 세션 핸들러 배선 — 창은 계속 열어둠. 창 Closed에서 핸들러 해제 + dialog detach + busy 해제(누수 방지).
+                // 프로브 세션 핸들러 배선 — 창은 계속 열어둠. 창 Closed에서 핸들러 해제 + busy 해제(누수 방지).
+                // (dialog detach 는 위 인계 직전에 이미 끝났다 — 여기서 다시 부르지 않는다)
                 cw.WebMessageReceived += OnProbeMsg;
                 cw.NavigationCompleted += OnProbeNav;
-                var detachOnClose = detach;
                 _w2win!.Closed += (_, __) =>
                 {
                     try { cw.WebMessageReceived -= OnProbeMsg; } catch { }
                     try { cw.NavigationCompleted -= OnProbeNav; } catch { }
-                    detachOnClose?.Invoke();
                     _ncBusy = false; _probeOpen = false; NetcusBusy(false);
                 };
                 _probeOpen = true;   // 창 열림 확정 — 이후 재요청은 '이미 열림' 안내, 다른 op는 busy 차단
@@ -963,7 +996,7 @@ namespace TaskCalendarWidget
                 await InjectProbeBar(cw);
 
                 JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("netcus 캡처 창을 열었습니다 — 주간보고 목록/조회로 이동 후 상단 '이 페이지 HTML 저장'을 누르세요.") + ")");
-                // 성공 경로: _ncBusy·_probeOpen·detach는 창이 살아있는 동안 유지(창 Closed에서 리셋).
+                // 성공 경로: _ncBusy·_probeOpen은 창이 살아있는 동안 유지(창 Closed에서 리셋). detach는 인계 직전에 이미 끝났다.
             }
             catch (Exception ex)
             {
