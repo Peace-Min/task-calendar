@@ -1887,12 +1887,25 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
            ★ 여기 있던 「관리자」 인증 UI(비밀번호·인증·해제·비밀번호 변경)는 통째로 삭제됐다
              (USER-LOGIN §2.4의 소멸 경로 · §3.3). 공용 비밀번호로 편집을 여는 모델이 폐지되고,
              편집 권한은 로그인 신원으로 '작업 요청 시점'에 호스트가 판정한다.
-             남긴 것은 인증과 무관한 DB 상태줄·새로고침 둘뿐이다. -->
+             남긴 것은 인증과 무관한 DB 상태줄·새로고침 둘뿐이다.
+           ★ 「접속 대상」 박스는 자동 업데이트 섹션의 .set-form 형태를 그대로 빌려 쓴다. 다만 값이
+             DeployConfig 베이크 상수라 사용자가 바꿀 수 없다 → 입력칸도 [저장]도 없는 표시 전용이다.
+             (DbHost가 localhost인 채 배포되면 다른 PC에서 로그인 게이트조차 못 넘는다 — 눈으로 확인할 자리.)
+           ★ 비밀번호는 호스트가 보내지 않는다(payload에 없음). 여기에 표시할 것도 없다. -->
       <div class="set-sec set-sec-top" id="dbSection">
         <div class="set-lb">과제 DB</div>
         <div class="set-hint">공식 과제는 사내 서버에서 옵니다. 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다. <b>편집 권한은 로그인한 계정</b>에 따라 정해집니다.</div>
         <div class="set-hint" id="dbCacheLine" style="margin-bottom:6px"></div>
-        <div style="margin:0 0 10px"><button type="button" class="btn sm" id="dbReload">지금 새로고침</button> <span id="dbMsg" class="git-opt"></span></div>
+        <!-- 표시 전용 박스 — 값은 호스트(__dbInfo)가 textContent로만 채운다 -->
+        <div class="set-form" id="dbInfoForm">
+          <label class="qa-lb">접속 대상</label>
+          <div class="set-hint" id="dbConn" style="margin:0">—</div>
+          <div class="set-form-foot">
+            <button type="button" class="btn sm" id="dbReload">지금 새로고침</button>
+            <span id="dbMsg" class="git-opt"></span>
+          </div>
+        </div>
+        <div class="set-hint" style="margin-top:2px">예: <b>192.168.0.10:3306 · taskmgr · taskmgr_app</b> · <b>localhost</b> 는 이 PC 전용입니다 — 다른 PC에 배포하려면 서버 IP로 빌드해야 합니다.</div>
       </div>
     </div>
     <div class="modal-foot">
@@ -5393,6 +5406,8 @@ function openSettings(){
   // 과제 DB — 직전 세션의 메시지를 지우고 상태줄만 다시 계산한다(인증 UI는 없다).
   { const m = $('#dbMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const sec = document.getElementById('dbSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
+  // 접속 대상 — 호스트가 배포 구성(DeployConfig)을 __dbInfo로 밀어준다. 자동 업데이트 소스와 같은 자리·같은 방식.
+  if(HOST) hpost({ cmd: 'dbInfoGet' }); else { const c = $('#dbConn'); if(c) c.textContent = '데스크톱 위젯 전용'; }
   updateDbStatusLine();
   openModal('#settingsModal');
 }
@@ -5508,6 +5523,24 @@ window.__updateNone = function(){
 };
 // host: 현재 저장된 소스 URL을 설정 필드에 반영
 window.__updateSource = function(url){ const u = $('#updSrc'); if(u) u.value = url || ''; };
+// host: 현재 DB 접속 대상(DeployConfig 베이크 상수)을 설정창 「과제 DB」에 표시.
+// ★ 표시 전용 — 값은 바꿀 수 없다(입력칸·저장 버튼 없음). 비밀번호는 payload에 아예 오지 않는다.
+// ★ 값은 textContent로만 넣는다 — 호스트에서 온 문자열이 마크업으로 해석되면 안 된다(innerHTML 금지).
+window.__dbInfo = function(info){
+  const c = document.getElementById('dbConn'); if(!c) return;
+  const i = info || {};
+  const host = String(i.host == null ? '' : i.host).trim();
+  const port = String(i.port == null ? '' : i.port).trim();
+  const db   = String(i.db   == null ? '' : i.db).trim();
+  const user = String(i.user == null ? '' : i.user).trim();
+  if(!host){ c.textContent = '—'; return; }
+  // 예: 192.168.0.10:3306 · taskmgr · taskmgr_app   (localhost면 '이 PC 전용' 꼬리표 — 배포 사고 조기 발견)
+  let s = host + (port ? ':' + port : '');
+  if(db) s += ' · ' + db;
+  if(user) s += ' · ' + user;
+  if(/^(localhost|127\.0\.0\.1|::1)$/i.test(host)) s += ' · 이 PC 전용';
+  c.textContent = s;
+};
 // 브라우저: 회사 보고 자동 작성은 SOP로 불가. netcus 창만 열고, 직접 입력 또는 위젯 이관을 안내한다.
 // (자동 작성은 netcus same-origin 배포 시점에 다시 — DECISIONS.md 결정5)
 function netcusManualGuide(){
