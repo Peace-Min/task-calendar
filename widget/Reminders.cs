@@ -19,13 +19,13 @@ namespace TaskCalendarWidget
 {
     // 일정 시작 전 OS 알림(에스컬레이션 60→30→10→5분, '확인' 시 종료). 폐쇄망·무음 대응으로
     // Windows 토스트가 아닌 별도 Topmost WPF 창 + 작업표시줄 깜빡임(FlashWindowEx)을 쓴다.
-    // 트레이 ON/OFF 무관(본체와 분리된 창). 상태는 reminders.json에 영속.
+    // 트레이 ON/OFF 무관(본체와 분리된 창). 확인 이력(acks)은 reminders.json에 영속.
+    // 전역 on/off 스위치는 없다 — 알림 여부는 일정별 미리알림 설정(entry.remind)만이 정한다.
     public partial class MainWindow
     {
         private static readonly int[] REM_FIRE = { 60, 30, 10, 5 };
         private DispatcherTimer? _remTimer;
         private readonly List<RemOcc> _remSched = new();
-        private bool _remEnabled = true;
         private bool _remInited;
         private string _remTheme = "light";
         private readonly Dictionary<string, string> _remAcks = new();   // key → ackedAt(iso)
@@ -48,12 +48,11 @@ namespace TaskCalendarWidget
             RemLoad();
             _remTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(20) };
             _remTimer.Tick += (_, _) => RemTick();
-            if (_remEnabled) _remTimer.Start();
+            _remTimer.Start();   // 전역 on/off는 없다 — 알림 여부는 일정별 설정(entry.remind → mins)만이 정한다
             // 절전 복귀·시계 변경 시 즉시 재평가(놓친 단계 보정)
             try { SystemEvents.PowerModeChanged += (_, ev) => { if (ev.Mode == PowerModes.Resume) Dispatcher.Invoke(RemTick); }; } catch { }
             try { SystemEvents.TimeChanged += (_, _) => Dispatcher.Invoke(RemTick); } catch { }
-            JsCall("window.__setReminders && window.__setReminders(" + (_remEnabled ? "true" : "false") + ")");
-            Log("reminders init: enabled=" + _remEnabled + " acks=" + _remAcks.Count);
+            Log("reminders init: acks=" + _remAcks.Count);
         }
 
         // JS reminderSync 수신 — 향후 48h occurrence 목록 + 현재 테마(단일 진실: recur 전개는 JS expandOccurrences)
@@ -123,7 +122,6 @@ namespace TaskCalendarWidget
 
         private void RemTick()
         {
-            if (!_remEnabled) return;
             var now = DateTime.Now;
             foreach (var o in _remSched)
             {
@@ -174,31 +172,22 @@ namespace TaskCalendarWidget
             RemSave();
         }
 
-        private void SetRemindersEnabled(bool on)
-        {
-            _remEnabled = on;
-            if (on) { _remTimer?.Start(); RemTick(); }
-            else { _remTimer?.Stop(); foreach (var o in _remSched) { if (o.Win != null) { try { o.Win.CloseHard(); } catch { } o.Win = null; } } }
-            RemSave();
-            JsCall("window.__setReminders && window.__setReminders(" + (on ? "true" : "false") + ")");
-            Log("reminders enabled=" + on);
-        }
-
         public void CleanupReminders()
         {
             try { _remTimer?.Stop(); } catch { }
             foreach (var o in _remSched) { try { o.Win?.CloseHard(); } catch { } }
         }
 
-        // ----- 영속(reminders.json) : enabled + acks. read-modify-write, 손상 방어, GC. -----
+        // ----- 영속(reminders.json) : acks(확인 이력)만. read-modify-write, 손상 방어, GC. -----
+        // ★ 구버전 파일의 enabled 플래그는 읽지 않는다 — 전역 스위치를 없앤 뒤에도 그 값을 존중하면
+        //    예전에 알림을 꺼둔 사용자가 켤 방법 없이 영영 못 받는다. 무시 = 자동 구제.
         private void RemLoad()
         {
             try
             {
-                if (!File.Exists(RemFile)) { _remEnabled = true; return; }
+                if (!File.Exists(RemFile)) return;
                 using var d = JsonDocument.Parse(File.ReadAllText(RemFile, Encoding.UTF8));
                 var root = d.RootElement;
-                if (root.TryGetProperty("enabled", out var en) && (en.ValueKind == JsonValueKind.True || en.ValueKind == JsonValueKind.False)) _remEnabled = en.GetBoolean();
                 if (root.TryGetProperty("acks", out var a) && a.ValueKind == JsonValueKind.Object)
                     foreach (var p in a.EnumerateObject())
                         _remAcks[p.Name] = p.Value.ValueKind == JsonValueKind.String ? (p.Value.GetString() ?? "") : DateTime.Now.ToString("o");
@@ -207,7 +196,6 @@ namespace TaskCalendarWidget
             {
                 Log("reminders 로드 실패(기본값 사용): " + ex.Message);
                 try { if (File.Exists(RemFile)) File.Copy(RemFile, RemFile + ".bak", true); } catch { }
-                _remEnabled = true;
             }
         }
 
@@ -224,7 +212,7 @@ namespace TaskCalendarWidget
                     if (parts.Length >= 2 && DateTime.TryParseExact(parts[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var od) && od < cutoff)
                         _remAcks.Remove(k);
                 }
-                var obj = new Dictionary<string, object> { ["version"] = 1, ["enabled"] = _remEnabled, ["acks"] = _remAcks };
+                var obj = new Dictionary<string, object> { ["version"] = 1, ["acks"] = _remAcks };   // acks는 반드시 보존 — 빠지면 확인한 알림이 다시 뜬다
                 string tmp = RemFile + ".tmp";
                 File.WriteAllText(tmp, JsonSerializer.Serialize(obj), new UTF8Encoding(false));
                 File.Move(tmp, RemFile, true);

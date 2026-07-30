@@ -106,7 +106,7 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 | 커밋 가져오기 | **커밋 내역 탭**의 `이 날 커밋` / `기간 일괄` (과제에 git/svn 경로 연결, 위젯 전용) |
 | 보고서 | 우측 **📋 보고서** → **일간 작성 / 주간 작성 / 기간 취합** 탭 → 복사/저장 |
 | 회사 보고 전송 | 보고서 모달에서 **일간(오늘)→📤 일간보고 전송** / **주간(이번 주)→📤 주간보고 작성** (설정에 자격증명 저장 필요) |
-| 시작 알림 on/off | ⚙ → **일정 시작 알림** |
+| 시작 알림 켜기/끄기 | 일정마다 폼의 **미리알림** 행(없음 / 놓침 방지 / 직접) — 전역 스위치는 없습니다 |
 | 회의실 · 월 밀도 · 테마 | ⚙(설정) / 🎨(테마) / ⋯ → 회의실 관리 |
 | 창 모드 전환 | ⚙ → **트레이 아이콘 사용**(켜면 작업표시줄·Alt+Tab / 끄면 바탕화면 위젯) |
 | 백업/이전 | ⋯ → **XML 내보내기 / 가져오기** |
@@ -131,7 +131,7 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 - **에스컬레이션**: **1시간 전 → (무응답) 30 → 10 → 5분 전.** **확인**을 누르면 그 일정 알림 종료, 닫기/무응답이면 다음 단계에 다시 알림.
 - **무음·폐쇄망 대응**: Windows 토스트가 아니라 **앱 자체 Topmost 알림 창 + 작업표시줄 깜빡임(FlashWindowEx)**. 소리가 꺼져 있어도, Focus Assist/DND·트레이 OFF(위젯) 상태여도 보입니다.
 - **테마별 카드**: 카드 본체는 현재 테마를 따르고, 긴급도는 **헤더 색(60 파랑·30 호박·10 주황·5 빨강)** 으로 표시.
-- **on/off**: ⚙ → 일정 시작 알림. 확인 이력은 `reminders.json`에 저장돼 재시작해도 다시 울리지 않습니다.
+- **on/off**: **일정마다** 폼의 **미리알림** 행에서 정합니다(없음 / 놓침 방지 / 직접 n분·시간·일 전 1회). 전역 스위치는 없습니다 — 있으면 일정별 설정을 조용히 무효로 만들기 때문입니다. 확인 이력은 `reminders.json`에 저장돼 재시작해도 다시 울리지 않습니다.
 
 ## 🎨 테마
 
@@ -154,7 +154,7 @@ flowchart TB
     rem["Reminders.cs: 시작 알림<br/>DispatcherTimer·Topmost 알림창·FlashWindowEx"]
   end
   user --> app
-  app <-->|"postMessage 브리지<br/>HTML→호스트 : save · gitlog · ready · netcus* · reminderSync<br/>호스트→HTML : __applyXml · __netcus* · __setReminders"| hostfn
+  app <-->|"postMessage 브리지<br/>HTML→호스트 : save · gitlog · ready · netcus* · reminderSync<br/>호스트→HTML : __applyXml · __netcus* · __hostReply"| hostfn
   hostfn --> xml[("data.xml<br/>taskCalendar XML v1")]
   hostfn --> cfg[("widget.settings.json · reminders.json")]
   netcus --> cred[("netcus.cred<br/>DPAPI 암호화")]
@@ -181,7 +181,7 @@ flowchart TB
 |---|---|
 | `data.xml` | `taskCalendar` XML v1 — 과제·일정·할 일·회의실. 전체 스키마는 [SPEC.md](SPEC.md) |
 | `widget.settings.json` | 창 위치·크기·모드 |
-| `reminders.json` | 시작 알림 on/off + 확인 이력(ack) |
+| `reminders.json` | 시작 알림 확인 이력(ack) |
 | `netcus.cred` | 회사 보고 자격증명(DPAPI 암호화) |
 
 ```xml

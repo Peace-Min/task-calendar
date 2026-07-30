@@ -428,7 +428,7 @@ namespace TaskCalendarWidget
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
-                        ReminderInit();   // 시작 알림 타이머·상태 1회 초기화 + __setReminders 통지
+                        ReminderInit();   // 시작 알림 타이머·확인 이력 1회 초기화(타이머는 항상 가동 — 전역 on/off 없음)
                         break;
                     case "save":
                         if (doc.RootElement.TryGetProperty("xml", out var xmlEl))
@@ -460,9 +460,6 @@ namespace TaskCalendarWidget
                     // ----- 시작 알림(리마인더) -----
                     case "reminderSync":
                         RemSync(doc);
-                        break;
-                    case "reminderToggle":
-                        SetRemindersEnabled(doc.RootElement.TryGetProperty("on", out var ronEl) && ronEl.ValueKind == JsonValueKind.True);
                         break;
 
                     // ----- 자동 업데이트(FTP/파일 기반) -----

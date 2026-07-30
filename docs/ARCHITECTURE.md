@@ -109,8 +109,8 @@ const HOST = !!(window.chrome && window.chrome.webview);  // 위젯=true, 브라
 
 JS는 C# 함수를 직접 호출하지 않는다. **문자열 메시지**만 주고받는다. 이 메시지 목록이 곧 "능력 포트"의 실질 정의다.
 
-- **JS → 호스트** (`window.chrome.webview.postMessage`): `save` · `gitlog` · `gitauthor` · `gitcheck` · `pickfolder` · `netcusSubmit` · `netcusWeekSubmit` · `netcusCreds*` · `reminderSync` · `reminderToggle` · `menu`/`pin`/`focus`/`hide`/`close`
-- **호스트 → JS** (`ExecuteScriptAsync`): `__applyXml`(data.xml 주입) · `__hostReply`(요청 응답) · `__setReminders` · `__netcus*` · `__setPinned` · `__saveFailed`
+- **JS → 호스트** (`window.chrome.webview.postMessage`): `save` · `gitlog` · `gitauthor` · `gitcheck` · `pickfolder` · `netcusSubmit` · `netcusWeekSubmit` · `netcusCreds*` · `reminderSync` · `menu`/`pin`/`focus`/`hide`/`close`
+- **호스트 → JS** (`ExecuteScriptAsync`): `__applyXml`(data.xml 주입) · `__hostReply`(요청 응답) · `__netcus*` · `__setPinned` · `__saveFailed`
 
 이 계약은 **어떤 실행체가 뒤에 있든 동일하게 지킬 수 있다** — 그래서 확장의 접점이 된다(§5).
 

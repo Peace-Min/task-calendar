@@ -1911,17 +1911,15 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#fRemHint').textContent"), '시작 7일 전 1회 알림', '힌트도 클램프된 값');
     });
 
-    // 무음 실패 방지 — 전역 '시작 알림'이 꺼진 걸 아는 상태에서는 폼이 지키지 못할 약속을 하지 않는다.
-    test('미리알림 경고: 전역 알림 꺼짐(_remGlobalOn=false)이면 힌트에 경고 + 켜기 액션', () => {
+    // 전역 '시작 알림' 스위치가 폐지되면서(2026-07-30) 무음 실패의 원인 자체가 사라졌다 —
+    // 힌트는 이 행의 설정만 말하면 되고, 경고·'알림 켜기' 액션을 덧댈 일이 없다.
+    // (부재 회귀는 global-toggles-removal.test.mjs가 지킨다.)
+    test('미리알림 힌트: 어떤 모드에서도 전역 경고를 덧대지 않는다', () => {
       uiSeed();
-      ev('_remGlobalOn = false');
       ev("openEntryModal('new', '2026-07-08')");
-      assert.ok(/시작 알림이 꺼져 있어/.test(ev("$('#fRemHint').textContent")), '경고 문구 노출');
-      assert.strictEqual(ev("!!$('#fRemHint [data-remenable]')"), true, '켜기 액션 제공');
-      ev("$('#fRemHint [data-remenable]').click()");
-      assert.strictEqual(ev("$('#remEnabled').checked"), true, '클릭 시 전역 토글 켜짐');
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', '경고 사라짐');
-      ev('_remGlobalOn = null');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', 'def 힌트 그대로');
+      assert.strictEqual(ev("!!$('#fRemHint [data-remenable]')"), false, '켜기 액션 없음');
+      assert.strictEqual(ev("$('#fRemHint').querySelectorAll('*').length"), 0, '힌트는 순수 텍스트(경고 마크업 없음)');
     });
 
     // 힌트가 '왜 꺼졌는지' 설명하는 자리인데 블록 전체 opacity에 삼켜지면 안 된다(부모 opacity는 자식에 곱해짐).

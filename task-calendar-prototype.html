@@ -1402,7 +1402,6 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rem-jeon{font-size:var(--fs-meta);color:var(--muted)}
 .rem-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;line-height:1.5}
 .rem-hint .lnk{font-size:var(--fs-micro)}
-.rem-warn{color:var(--danger-text);font-weight:600}
 /* 흐림은 '컨트롤'에만 — 블록 전체에 opacity를 걸면 합성 레이어가 자식에 곱해져서
    "왜 꺼졌는지" 설명하는 힌트까지 같이 흐려진다(자식이 opacity:1로 되돌릴 수 없음). */
 .rem-off .rem-row{opacity:.45;pointer-events:none}
@@ -1838,17 +1837,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label class="set-opt"><input type="radio" name="calDensity" value="dense"><span><b>촘촘히</b><br><span class="set-od">칸을 키워 더 많이 표시. 길어지면 세로 스크롤.</span></span></label>
         <label class="set-opt"><input type="radio" name="calDensity" value="expand"><span><b>펼침 (스크롤)</b><br><span class="set-od">칸이 내용만큼 늘어나 전부 표시(잘림 없음). 회사 캘린더식 — 월 전체 한눈에는 사라짐.</span></span></label>
       </div>
-      <div class="set-sec set-sec-top">
-        <div class="set-lb">일정 시작 알림 <span class="set-badge auto">자동 저장</span></div>
-        <!-- 사다리 문구는 폼(remHint)의 REMIND_LADDER_TXT와 같은 표현으로 통일 — 같은 동작을 두 화면이 다르게 설명하던 문제 -->
-        <div class="set-hint">시작시각이 있는 일정을 <b>확인할 때까지 60·30·10·5분 전</b>으로 재알림합니다. 무음 환경을 위해 화면 알림 + 작업표시줄 깜빡임으로 표시합니다.<br>여기 값은 <b>기본값</b>입니다 — 일정마다 <b>미리알림</b> 행에서 ‘없음’이나 ‘직접(n분·시간·일 전 1회)’으로 바꿀 수 있습니다.</div>
-        <label class="check" style="margin:2px 0"><input type="checkbox" id="remEnabled"> <b>시작 알림 켜기</b></label>
-      </div>
-      <div class="set-sec set-sec-top">
-        <div class="set-lb">커밋 가져오기 (Git/SVN) <span class="set-badge auto">자동 저장</span></div>
-        <div class="set-hint">작업일지로 커밋을 가져올 때 <b>제목(첫 줄)</b>만 가져올지, <b>전체 본문</b>까지 가져올지 선택합니다. 끄면 제목 첫 줄만(기본). <span style="color:var(--muted)">작업일지·일괄 불러오기 화면에서도 바꿀 수 있습니다.</span></div>
-        <label class="check" style="margin:2px 0"><input type="checkbox" id="gitBodyChk"> 커밋 가져올 때 전체 본문 포함</label>
-      </div>
+      <!-- 「일정 시작 알림」 전역 스위치는 없앴다 — 알림 여부는 일정마다 폼의 <b>미리알림</b> 행이 정한다.
+           전역 스위치가 있으면 폼에서 '놓침 방지'를 골라도 조용히 무효가 되어(무음 실패) 경고·복구 UI를 덧대야 했다.
+           「커밋 가져오기」 전역 미러도 마찬가지로 제거 — 실제로 쓰는 자리(일괄 불러오기·이 날 커밋)에만 토글을 둔다.
+           단일 소스 state.gitCommitBody와 setGitCommitBody는 그대로다. -->
       <div class="set-sec set-sec-top">
         <div class="set-lb">회사 일간보고 (netcus)</div>
         <!-- ★ 자격증명 입력란은 없다 — 자격의 단일 출처는 시작 게이트의 로그인이다(USER-LOGIN §2.4).
@@ -5306,9 +5298,6 @@ function remReadValue(pfx){
   const num = $('#'+pfx+'RemNum');
   return uiToRemind(st.mode, num ? num.value : 30, st.unit);
 }
-// 전역 '시작 알림' 스위치의 알려진 상태 — 호스트만 진실을 안다(브라우저 프로토타입엔 알림 자체가 없음).
-// null=모름(경고 안 함) / false=꺼짐 → 폼이 지키지 못할 약속을 하지 않도록 경고를 띄운다.
-let _remGlobalOn = null;
 // 놓침 방지 사다리 설명 — 설정 화면과 폼이 같은 문장을 쓰도록 단일 출처(카피 불일치 방지).
 const REMIND_LADDER_TXT = '확인할 때까지 60·30·10·5분 전 재알림';
 // 힌트 문구 — 종일 비활성 안내 우선, 그 외 모드별 안내.
@@ -5336,23 +5325,10 @@ function remRowSync(pfx, enabled, dimReason){
   const cust = $('#'+pfx+'RemCust'); if(cust){ cust.style.display = ''; cust.classList.toggle('hidden', st.mode !== 'cust'); }
   block.classList.toggle('rem-off', !enabled);
   block.querySelectorAll('.rem-row button, .rem-row input, .rem-row select').forEach(el => { el.disabled = !enabled; });
+  // 전역 스위치가 없으므로 이 행의 설정이 곧 결과다 — 경고를 덧댈 일이 없다(무음 실패의 원인을 없앴다).
   const hint = $('#'+pfx+'RemHint');
-  if(hint){
-    hint.textContent = remHint(pfx, enabled, dimReason);
-    // 전역 알림이 꺼져 있으면 이 행의 설정은 지켜지지 않는다 — 침묵하지 말고 켤 방법까지 같이 준다.
-    if(enabled && st.mode !== 'none' && _remGlobalOn === false){
-      hint.insertAdjacentHTML('beforeend',
-        ' <b class="rem-warn">⚠ 시작 알림이 꺼져 있어 울리지 않습니다.</b> <button type="button" class="lnk" data-remenable>알림 켜기</button>');
-    }
-  }
+  if(hint) hint.textContent = remHint(pfx, enabled, dimReason);
 }
-// 힌트 안의 '알림 켜기' — 설정의 전역 토글을 그 자리에서 켠다(설정 모달까지 왕복시키지 않음).
-document.addEventListener('click', ev => {
-  if(!ev.target.closest || !ev.target.closest('[data-remenable]')) return;
-  const re = $('#remEnabled'); if(!re) return;
-  re.checked = true; re.dispatchEvent(new Event('change'));
-  fRemResync(); qaRemResync();
-});
 // 폼별 재동기화(활성조건 계산 포함) — 세그/단위/숫자 변경·종일 토글에서 호출.
 function fRemResync(){ remRowSync('f', !$('#fAllDay').checked, 'allday'); }
 function qaRemResync(){ const ad = $('#qaAllDay'); remRowSync('qa', qaType === 'event' && !(ad && ad.checked), 'allday'); }
@@ -9371,9 +9347,6 @@ function bind(){
   if(!HOST){ const _uc = $('#btnUpdateCheck'); if(_uc) _uc.style.display = 'none'; }   // 업데이트=위젯 전용 → 브라우저 메뉴에선 숨김
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
   $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
-  // 전역 토글은 호스트 통지 + 폼 경고의 진실원. 폼(미리알림 행)이 이 값을 몰라서 '울리지 않을 알림'을 약속하던 무음 실패를 막는다.
-  { const re = $('#remEnabled'); if(re) re.addEventListener('change', () => { hpost({ cmd:'reminderToggle', on: re.checked }); _remGlobalOn = re.checked; try{ fRemResync(); qaRemResync(); }catch(_){} }); }
-  { const gb = $('#gitBodyChk'); if(gb) gb.addEventListener('change', () => setGitCommitBody(gb.checked)); }   // 커밋 전체 본문 옵션(설정 미러) — 공유 setter로 라우팅(영속+3곳 동기화)
   { const bb = $('#bgBodyChk'); if(bb) bb.addEventListener('change', () => setGitCommitBody(bb.checked)); }   // 일괄 불러오기 모달 토글 — 동일 단일 소스
   { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
   // ── 로그인 게이트 · 계정 ── (진입점은 게이트 하나 — 설정창에는 로그인 입력칸이 없다)
@@ -10323,9 +10296,9 @@ async function runDayGitFetch(){
   await runGitImport(dayGitDate, dayGitDate, $('#dgCat').value, '#dgStatus', '#btnDayGitRun', $('#dgReplace') ? $('#dgReplace').checked : false);   // 단일 날짜 = from==to
 }
 // ----- 기간 일괄 불러오기 (범위 + 전체/특정 과제 → 날짜별 작업일지로 즉시 자동 등록) -----
-// 커밋 전체 본문 포함 — 단일 소스 state.gitCommitBody. 어느 UI에서 바꿔도 여기로 라우팅 → save + 3곳 동기화.
+// 커밋 전체 본문 포함 — 단일 소스 state.gitCommitBody. 어느 UI에서 바꿔도 여기로 라우팅 → save + 2곳 동기화.
 function setGitCommitBody(on){ if(state){ state.gitCommitBody = !!on; save(); } syncGitBodyChecks(); }
-function syncGitBodyChecks(){ ['#gitBodyChk','#bgBodyChk','#dgBodyChk'].forEach(function(s){ var e = $(s); if(e) e.checked = !!(state && state.gitCommitBody); }); }
+function syncGitBodyChecks(){ ['#bgBodyChk','#dgBodyChk'].forEach(function(s){ var e = $(s); if(e) e.checked = !!(state && state.gitCommitBody); }); }
 function openBulkGitFetch(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats();
@@ -10627,11 +10600,6 @@ function buildReminderOccs(){   // startTime 있는 일정만, 향후 48h 발생
   return out;
 }
 function pushReminders(){ if(!HOST) return; try{ hpost({ cmd:'reminderSync', occ: buildReminderOccs(), theme: reminderTheme() }); }catch(_){} }
-window.__setReminders = function(on){   // 호스트가 현재 on/off 통지 → 설정 토글 + 폼 경고 반영
-  const t = document.querySelector('#remEnabled'); if(t) t.checked = !!on;
-  _remGlobalOn = !!on;
-  try{ fRemResync(); qaRemResync(); }catch(_){}   // 폼이 열려 있으면 경고 즉시 갱신
-};
 let __gesture = null; // {type:'move'|'resize', sx, sy, dpr}
 let __pinned = true;  // 바탕화면 부착 상태 — 부착 중에는 이동(드래그) 잠금
 function __gBegin(type, e, el, edge){
