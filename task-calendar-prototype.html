@@ -527,8 +527,8 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cat-badge{display:inline-block;vertical-align:middle;margin-left:6px;font-size:var(--fs-micro);font-weight:700;line-height:1.5;padding:0 6px;border-radius:var(--r-sm);white-space:nowrap}
 .cat-badge.db{background:var(--accent-soft);color:var(--accent-2)}
 .cat-badge.gone{background:var(--danger-soft);color:var(--danger-text)}
-/* 공식(DB) 과제 로컬 편집 — 과제명·색상은 DB 소유(보고서 집계가 원본 이름에 의존)라 잠그고,
-   설명·Git·SVN은 각 PC의 작업복사본 경로라 DB가 알 수 없는 값 → 연다. 잠긴 이유가 화면에 보이도록 안내를 붙인다. */
+/* 공식(DB) 과제 로컬 편집 — 과제명만 DB 소유(보고서 집계가 원본 이름에 의존)라 잠그고,
+   색상·설명·Git·SVN은 DB에 없거나 PC마다 다른 값 → 연다. 잠긴 이유가 화면에 보이도록 안내를 붙인다. */
 .cat-lock-note{
   display:flex;align-items:flex-start;gap:6px;margin:var(--sp-1) 0 var(--sp-2);padding:7px 9px;
   border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--dim-bg);
@@ -536,7 +536,6 @@ main{flex:1;display:flex;min-height:0;position:relative}
 }
 .cat-lock-note .ic{width:14px;height:14px;flex:none;margin-top:2px;color:var(--muted)}
 .cat-form.lock-db #cName{background:var(--dim-bg);color:var(--muted);cursor:not-allowed}
-.cat-form.lock-db .palette{opacity:.55;pointer-events:none}
 /* 회의실 관리 */
 .room-list{display:flex;flex-direction:column;gap:7px}
 .room-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-md)}
@@ -3661,23 +3660,27 @@ const catIsSubscribed = id => state.categories.some(c => c.id === id);
 //   라벨을 그리는 데 필요한 최소값만 있으면 된다. 상세 메타(발주처·구분·상태·기간·사업명…)는 온라인 dbCatalog만 갖는다.
 function subscribeDbCat(src){
   if(!src || !src.id) return null;
-  const color = (/^#[0-9a-fA-F]{6}$/.test(src.color || '')) ? src.color : sectionColor(src.section);
-  const meta = { name: src.name || '(공식 과제)', color };
   const cur = state.categories.find(c => c.id === src.id);
-  if(cur){ Object.assign(cur, meta, { source:'db', dbGone: !!src.dbGone }); return cur; }
-  const c = Object.assign({ id: src.id, source:'db', dbGone: !!src.dbGone,
-    desc:'', gitRepo:'', svnRepo:'', createdAt: nowIso() }, meta);
+  // ★ 재편입(멱등 경로)에서 color는 절대 덮지 않는다(2026-07-30) — 색은 로컬 소유다.
+  //   DB에 색 컬럼 자체가 없고(전 테이블), sectionColor()는 '앱의 초기 표시 관례'일 뿐이다.
+  //   사용자가 고른 색이 편입 재실행으로 날아가면 안 된다. DB 기준으로 맞출 것은 name·dbGone뿐.
+  if(cur){ Object.assign(cur, { name: src.name || '(공식 과제)', source:'db', dbGone: !!src.dbGone }); return cur; }
+  const color = (/^#[0-9a-fA-F]{6}$/.test(src.color || '')) ? src.color : sectionColor(src.section);   // 신규 편입의 '초기값'
+  const c = { id: src.id, source:'db', dbGone: !!src.dbGone, name: src.name || '(공식 과제)', color,
+    desc:'', gitRepo:'', svnRepo:'', createdAt: nowIso() };
   state.categories.push(c); return c;
 }
-// 편입분의 '로컬 소유' 필드만 갱신 — 소유권 분리의 쓰기 쪽 단일 출입구(2026-07-27).
-// ★ name·color는 DB 소유다: 보고서에 찍히는 과제명이 사업부 관리 과제명과 글자 하나까지 같아야
+// 편입분의 '로컬 소유' 필드만 갱신 — 소유권 분리의 쓰기 쪽 단일 출입구(2026-07-27, color 편입 2026-07-30).
+// ★ name만 DB 소유다: 보고서에 찍히는 과제명이 사업부 관리 과제명과 글자 하나까지 같아야
 //   기존 시스템의 데이터 수집이 된다. 그래서 여기서는 절대 건드리지 않는다(syncSubscribedDbMeta가 DB 기준으로 덮어쓴다).
-// ★ desc·gitRepo·svnRepo는 로컬 소유다: Git/SVN 경로는 각 PC의 작업복사본 경로라 DB가 알 수도 없는 값이고,
-//   이걸 잠그면 DB 과제로는 버전관리 연동을 아예 못 쓴다. XML 영속은 공통 경로라 이미 저장된다.
-function updateOfficialLocalFields(id, desc, gitRepo, svnRepo){
+// ★ desc·gitRepo·svnRepo·color는 로컬 소유다: Git/SVN 경로는 각 PC의 작업복사본 경로라 DB가 알 수도 없는 값이고,
+//   이걸 잠그면 DB 과제로는 버전관리 연동을 아예 못 쓴다. 색도 DB에 컬럼이 없고 보고서에 나가지도 않는
+//   '내 캘린더의 표시 취향'이다. XML 영속은 공통 경로라 이미 저장된다.
+function updateOfficialLocalFields(id, desc, gitRepo, svnRepo, color){
   const c = state.categories.find(x => x.id === id);
   if(!isOfficialCat(c)) return false;
   c.desc = desc || ''; c.gitRepo = gitRepo || ''; c.svnRepo = svnRepo || '';
+  if(/^#[0-9a-fA-F]{6}$/.test(String(color || ''))) c.color = color;   // 형식이 아니면 기존 색 유지(깨진 값 저장 방지)
   save(); return true;
 }
 // 구독 해제 — 사용 0건인 DB 과제만(엔트리는 건드리지 않는다). 개인 과제·사용 중 DB 과제는 대상 아님.
@@ -3689,19 +3692,20 @@ function unsubscribeDbCat(id){
   if(noteFilterCat === id) noteFilterCat = null;
   return true;
 }
-// __applyProjects 후: 편입된 DB 과제의 name/color를 카탈로그 기준으로 최신화. 카탈로그(활성)에 없으면 dbGone 마크(목록에서 제거하진 않음 — 라벨·필터 보존).
+// __applyProjects 후: 편입된 DB 과제의 name을 카탈로그 기준으로 최신화. 카탈로그(활성)에 없으면 dbGone 마크(목록에서 제거하진 않음 — 라벨·필터 보존).
+// ★ color는 동기화 대상이 아니다(2026-07-30) — 로컬 소유로 바뀌었다. 여기서 되돌리면 사용자가 고른 색이 DB 재조회마다 날아간다.
 // ★ 오프라인이면 아무것도 판단하지 않는다(2026-07-24) — 캐시를 없앤 뒤로 연결 실패 시 dbCatalog가 비므로,
 //   그대로 두면 편입분 전체가 'DB에서 삭제됨(dbGone)'으로 오표시되어 피커에서 사라진다. '못 읽음'과 '삭제됨'은 다른 사실이다.
 function syncSubscribedDbMeta(){
   if(!dbOnline) return false;   // 카탈로그를 못 읽은 상태 → 삭제 여부를 알 수 없으므로 기존 값 유지
   let changed = false;
-  const key = c => JSON.stringify([c.name, c.color, !!c.dbGone]);
+  const key = c => JSON.stringify([c.name, !!c.dbGone]);
   for(const c of state.categories){
     if(!isOfficialCat(c)) continue;
     const src = dbCatalogById(c.id);
     const before = key(c);
     if(src){
-      c.name = src.name; c.color = src.color;
+      c.name = src.name;   // color는 건드리지 않는다 — 로컬 소유
       c.dbGone = false;
     }else{
       c.dbGone = true;   // 카탈로그 활성 목록에 없음 = DB에서 숨김/삭제됨
@@ -5095,19 +5099,19 @@ function saveEntryFromForm(){
 }
 
 /* ---------- 과제 모달 ---------- */
-// 편집 중인 과제가 공식(DB)인가 — 이름·색 잠금 판정의 단일 소스(폼 렌더·저장·팔레트 입력이 같은 답을 본다).
+// 편집 중인 과제가 공식(DB)인가 — 과제명 잠금 판정의 단일 소스(폼 렌더·저장이 같은 답을 본다).
 const catFormLocked = () => !!editingCatId && isOfficialCat(catById(editingCatId));
+// 색상은 공식 과제여도 잠그지 않는다(2026-07-30) — DB엔 색 컬럼이 없고, 색은 보고서에 나가지 않는 로컬 표시값이다.
 function renderPalette(){
-  const lock = catFormLocked();   // 색상은 DB(구분별) 소유 → 공식 과제 편집 중엔 직접 선택도 잠근다
   $('#cPalette').innerHTML = PALETTE.map(c =>
     `<span class="swatch ${selColor===c?'on':''}" data-color="${c}" style="background:${c}" title="${c}"></span>`
-  ).join('') + `<input type="color" id="cColor" value="${selColor}"${lock?' disabled':''} title="${lock?'색상은 회사 DB(구분)에서 정해집니다':'직접 선택'}">`;
+  ).join('') + `<input type="color" id="cColor" value="${selColor}" title="직접 선택">`;
 }
 // 단일 목록 렌더 — 개인/공식(DB)을 한 목록에 출처 배지와 함께. 개인=수정/삭제, 공식=제거(사용 0건일 때만)·수정불가(원본은 카탈로그 Admin).
 function catRowHtml(c){
   if(isOfficialCat(c)){
-    // DB 상세(발주처·구분·기간…)는 여기 없다 — 편입분이 DB에서 받는 건 name·color뿐(상세는 공식 과제 화면에서 온라인으로).
-    // 대신 '로컬 소유' 필드(설명·Git·SVN)는 개인 행과 똑같이 보여준다: 안 보이면 편집 가능한 줄도 모른다.
+    // DB 상세(발주처·구분·기간…)는 여기 없다 — 편입분이 DB에서 받는 건 name뿐(상세는 공식 과제 화면에서 온라인으로).
+    // 대신 '로컬 소유' 필드(색상·설명·Git·SVN)는 개인 행과 똑같이 보여준다: 안 보이면 편집 가능한 줄도 모른다.
     const use = catUsageCount(c.id);   // DB 행은 제거 게이트와 숫자가 일치해야 하므로 일정+할일 합계
     const removable = catRemovable(c);
     const rmTip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정·할일 ${use}건에서 사용 중 — 정리/재연결 후 제거할 수 있습니다`;
@@ -5120,7 +5124,7 @@ function catRowHtml(c){
         ${c.svnRepo?`<div class="cat-desc" title="${esc(c.svnRepo)}">${ICON.wrench} SVN · ${esc(c.svnRepo)}</div>`:''}
       </div>
       <span class="cat-count">${use}건</span>
-      <button class="link" data-act="edit" title="설명·Git·SVN을 수정합니다 (과제명·색상은 DB 소유라 잠깁니다)">수정</button>
+      <button class="link" data-act="edit" title="색상·설명·Git·SVN을 수정합니다 (과제명만 DB 원본으로 잠깁니다)">수정</button>
       <button class="link danger" data-act="unsub"${removable?'':' disabled'} title="${esc(rmTip)}">제거</button>
     </div>`;
   }
@@ -5159,7 +5163,7 @@ function renderCatModal(){
   applyCatFormLock(lock);
   renderGitCard();   // 폼의 Git 카드를 catFormRepo에 맞춰 항상 동기화(저장/취소 후 잔상 방지)
 }
-// 소유권 분리를 폼에 반영 — 과제명·색상은 잠그고(readonly/disabled + 이유 안내), 설명·Git·SVN은 그대로 연다.
+// 소유권 분리를 폼에 반영 — 과제명만 잠그고(readonly + 이유 안내), 색상·설명·Git·SVN은 그대로 연다.
 // 잠금은 렌더 시점마다 다시 칠한다(편집 이탈·취소·저장 후 잔상 방지).
 function applyCatFormLock(lock){
   const form = document.querySelector('.cat-form'); if(form) form.classList.toggle('lock-db', !!lock);
@@ -5173,8 +5177,8 @@ function applyCatFormLock(lock){
   if(note){
     note.classList.toggle('hidden', !lock);
     note.innerHTML = lock
-      ? ICON.lock + '<span><b>과제명·색상은 회사 DB에서 관리됩니다</b> — 보고서 집계를 위해 원본과 동일하게 유지됩니다. '
-        + '아래 <b>설명·Git·SVN 경로</b>는 이 PC에만 저장되는 값이라 자유롭게 수정할 수 있습니다.</span>'
+      ? ICON.lock + '<span><b>과제명은 회사 DB에서 관리됩니다</b> — 보고서 집계를 위해 원본과 동일하게 유지됩니다. '
+        + '<b>색상</b>과 아래 <b>설명·Git·SVN 경로</b>는 이 PC에만 저장되는 값이라 자유롭게 수정할 수 있습니다.</span>'
       : '';
   }
 }
@@ -5473,8 +5477,9 @@ function openCatModal(){
   openModal('#categoryModal');
 }
 function saveCatFromForm(){
-  // 공식(DB) 과제 편집이면 이름·색 입력을 아예 '읽지 않는다' — 폼이 잠겨 있어도 저장 경로가 값을 집어가면
+  // 공식(DB) 과제 편집이면 이름 입력을 아예 '읽지 않는다' — 폼이 잠겨 있어도 저장 경로가 값을 집어가면
   // 잠금이 UI 장식으로 전락한다(DOM은 언제든 조작될 수 있다). 소유권 분리는 저장 계약에서 지킨다.
+  // (색상은 2026-07-30부터 로컬 소유 → 공식 과제도 selColor를 그대로 반영한다.)
   const official = catFormLocked();
   const name = $('#cName').value.trim();
   if(!official){
@@ -5487,7 +5492,7 @@ function saveCatFromForm(){
   const svnRepo = catFormSvnRepo.trim();         // SVN 작업복사본 경로(독립)
   setGitAuthor($('#cGitAuthor').value.trim());   // 종류별 전역 작성자도 함께 저장(Git·SVN 독립)
   setSvnAuthor($('#cSvnAuthor').value.trim());
-  if(official){ updateOfficialLocalFields(editingCatId, desc, gitRepo, svnRepo); toast('설명·Git·SVN을 수정했습니다 (과제명은 DB 원본 유지)', 'success'); }
+  if(official){ updateOfficialLocalFields(editingCatId, desc, gitRepo, svnRepo, selColor); toast('색상·설명·Git·SVN을 수정했습니다 (과제명은 DB 원본 유지)', 'success'); }
   else if(editingCatId){ updateCategory(editingCatId, name, selColor, desc, gitRepo, svnRepo); toast('과제를 수정했습니다', 'success'); }
   else{ addCategory(name, selColor, desc, gitRepo, svnRepo); toast('과제를 추가했습니다', 'success'); }
   resetCatForm(); renderCatModal(); renderAll();
@@ -6586,11 +6591,13 @@ function runRelink(){
         else skipped++;                                                   // 유령 uid → 건너뜀
       }
       if(!valid.size){ toast('연결할 대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요', 'error'); return; }
-      // 로컬 정보(설명·Git·SVN) 이관 — DB가 주는 건 '이름'뿐이다. 이 세 칸은 어느 쪽에 있든 전부
-      // 사용자가 직접 정의한 값이지 DB 데이터가 아니다. 그래서 재연결의 의미는
+      // 로컬 정보(설명·Git·SVN·색상) 이관 — DB가 주는 건 '이름'뿐이다. 이 네 칸은 어느 쪽에 있든 전부
+      // 사용자가 직접 정의한 값이지 DB 데이터가 아니다(색은 DB에 컬럼조차 없다). 그래서 재연결의 의미는
       // '이 개인 과제가 이제부터 공식 이름(통상명칭)을 쓴다'이고, 나머지 정의는 그대로 따라간다 → 덮어쓴다.
       // 단 한 번의 실행에서 개인 과제 여럿이 같은 공식 과제로 갈 때는 '먼저 온 것'이 이긴다 —
       // 그때 밀리는 값은 DB 값이 아니라 '다른 개인 과제의 정의'라, 조용히 지우면 안 되므로 알린다.
+      // ★ desc·git·svn과 달리 color는 절대 비지 않으므로 '항상' 이관 대상이다(= 합칠 땐 항상 충돌 →
+      //   먼저 온 색이 이긴다). 그동안 보던 색을 그대로 유지하는 게 위 정책에 맞다. 깨진 헥사는 전파하지 않는다.
       const filledNow = new Map();   // toId → Set(이번 실행에서 이미 채운 필드)
       let moved = 0, kept = 0;
       for(const [fromId, toId] of valid){
@@ -6598,9 +6605,10 @@ function runRelink(){
         const to = (state.categories || []).find(c => c.id === toId);
         if(!from || !to) continue;
         let any = false;
-        for(const k of ['desc', 'gitRepo', 'svnRepo']){
+        for(const k of ['desc', 'gitRepo', 'svnRepo', 'color']){
           const v = String(from[k] || '').trim();
           if(!v) continue;
+          if(k === 'color' && !/^#[0-9a-fA-F]{6}$/.test(v)) continue;   // 깨진 색값 전파 방지
           let done = filledNow.get(toId); if(!done){ done = new Set(); filledNow.set(toId, done); }
           if(done.has(k)){ kept++; continue; }        // 다른 개인 과제가 이번에 이미 채운 칸 → 먼저 온 것 유지
           to[k] = from[k]; done.add(k); any = true;   // 그 외는 개인 과제 정의로 덮어쓴다
@@ -6615,7 +6623,7 @@ function runRelink(){
       try{ renderCatModal(); }catch(_){}
       closeModal('#relinkModal');
       toast(`${valid.size}개 과제 · 일정 ${n}건을 공식 과제로 연결했습니다.`
-        + (moved ? ` 설명·저장소 정보 ${moved}개 과제분을 함께 옮겼습니다.` : '')
+        + (moved ? ` 설명·저장소·색상 ${moved}개 과제분을 함께 옮겼습니다.` : '')
         + (kept ? ` (같은 공식 과제로 합쳐지며 ${kept}개 항목은 먼저 옮긴 값을 유지했습니다)` : '')
         + (skipped ? ` (대상 없음 ${skipped}개 건너뜀)` : ''), (skipped || kept) ? 'warn' : 'success');
     });
@@ -9607,13 +9615,12 @@ function bind(){
   });
 
   /* 과제 모달 */
+  // 색상은 공식(DB) 과제여도 연다 — 로컬 소유(2026-07-30). 잠금 판정(catFormLocked)은 과제명 전용이다.
   $('#cPalette').addEventListener('click', ev => {
-    if(catFormLocked()) return;   // 색상은 DB(구분) 소유 — CSS pointer-events만 믿지 않는다
     const sw = ev.target.closest('.swatch');
     if(sw){ selColor = sw.dataset.color; renderPalette(); }
   });
   $('#cPalette').addEventListener('input', ev => {
-    if(catFormLocked()) return;
     if(ev.target.id === 'cColor'){ selColor = ev.target.value;
       $$('#cPalette .swatch').forEach(s => s.classList.toggle('on', s.dataset.color === selColor));
     }
@@ -9653,7 +9660,7 @@ function bind(){
       return;
     }
     // 삭제(del)만 계속 차단 — 공식 과제는 '제거(unsub)'만 가능하고 DB 원본은 카탈로그 Admin이 다룬다.
-    // 수정(edit)은 허용: 편집 폼이 이름·색을 잠그고 설명·Git·SVN만 연다(소유권 분리).
+    // 수정(edit)은 허용: 편집 폼이 과제명만 잠그고 색상·설명·Git·SVN은 연다(소유권 분리).
     if(act === 'del' && isOfficialCat(c)) return;
     if(act === 'edit'){
       editingCatId = c.id; selColor = c.color; __pendingRepoEmail = '';

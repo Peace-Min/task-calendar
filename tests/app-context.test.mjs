@@ -1,7 +1,7 @@
 // Layer 2 — 실제 앱을 jsdom에 부팅해 전역 함수(toXML/fromXML/collectReportData/expandOccurrences)를
 // 그대로 호출·검증한다. 이 함수들은 페이지 전역 스코프의 bare global이라 window.eval로 직접 도달 가능.
 // jsdom 미설치 시(폐쇄망 로컬 등) graceful-skip — 러너는 Layer 1만으로도 green. CI는 jsdom을 설치해 여기까지 돈다.
-import { test, assert, loadAppSource } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
 
 // ── 토큰 드리프트 가드(jsdom 불필요 — 소스 텍스트 스캔) ─────────────────
 // var(--fs-*/--sp-*/--r-*/--lh-*)로 참조되는 스케일 토큰이 :root에 실제로 정의돼 있는지 검사한다.
@@ -2414,39 +2414,82 @@ if (!JSDOM) {
       assert.strictEqual(ev("state.categories.some(function(c){return c.id==='db-u2'&&c.source==='db';})"), true, '대상 공식 과제가 편입되지 않았다');
     });
 
-    test('재연결: 개인 과제의 설명·Git·SVN이 그대로 따라간다(DB는 이름만 준다)', () => {
-      // 왜: DB가 소유하는 건 과제명뿐이고, 설명·저장소 경로는 어느 쪽에 있든 사용자가 직접 정의한 값이다.
+    test('재연결: 개인 과제의 설명·Git·SVN·색상이 그대로 따라간다(DB는 이름만 준다)', () => {
+      // 왜: DB가 소유하는 건 과제명뿐이고, 설명·저장소 경로·색상은 어느 쪽에 있든 사용자가 직접 정의한 값이다.
       // 그래서 재연결 = '이 개인 과제가 이제부터 공식 이름을 쓴다' → 나머지 정의는 개인 과제 것이 따라간다(덮어씀).
       // 단 한 실행에서 개인 과제 여럿이 같은 공식 과제로 갈 때 밀리는 값은 '다른 개인 과제의 정의'라 먼저 온 것을 지킨다.
       const src = loadAppSource();
       const i = src.indexOf('function runRelink(');
       assert.ok(i > 0, 'runRelink를 찾지 못했다');
       const body = src.slice(i, src.indexOf('function tablistRoving', i));
-      assert.ok(/\['desc', *'gitRepo', *'svnRepo'\]/.test(body), '이관 대상 필드 3종이 없다');
+      assert.ok(/\['desc', *'gitRepo', *'svnRepo', *'color'\]/.test(body), '이관 대상 필드 4종(색상 포함)이 없다');
       assert.ok(/to\[k\] = from\[k\]/.test(body), '개인 과제 값을 대입하는 코드가 없다');
       assert.ok(!/if\(String\(to\[k\] \|\| ''\)\.trim\(\)\)/.test(body),
         '대상에 값이 있으면 건너뛴다 — DB가 주지도 않는 값을 권위처럼 취급하는 옛 정책이다');
       assert.ok(/filledNow/.test(body), '한 실행 내 중복 대상 보호(먼저 온 값 유지)가 없다');
-      assert.ok(/설명·저장소 정보/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
+      assert.ok(/k === 'color' && !\/\^#\[0-9a-fA-F\]\{6\}\$\/\.test\(v\)/.test(body), '깨진 헥사 색을 걸러내지 않는다');
+      assert.ok(/설명·저장소·색상/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
       // 계약 재현 — 대상에 값이 있어도 개인 과제 값이 이긴다 / 같은 대상 두 번째는 먼저 온 것 유지
       const run = (froms, toCat) => {
         const to = { ...toCat }; const done = new Set();
         for (const from of froms) {
-          for (const k of ['desc', 'gitRepo', 'svnRepo']) {
+          for (const k of ['desc', 'gitRepo', 'svnRepo', 'color']) {
             const v = String(from[k] || '').trim();
             if (!v) continue;
+            if (k === 'color' && !/^#[0-9a-fA-F]{6}$/.test(v)) continue;
             if (done.has(k)) continue;
             to[k] = from[k]; done.add(k);
           }
         }
         return to;
       };
-      const over = run([{ desc: '개인설명', gitRepo: 'C:/new' }], { desc: '대상에있던값', gitRepo: 'C:/old', svnRepo: '' });
+      const over = run([{ desc: '개인설명', gitRepo: 'C:/new', color: '#112233' }], { desc: '대상에있던값', gitRepo: 'C:/old', svnRepo: '', color: '#3e5be0' });
       assert.strictEqual(over.desc, '개인설명', '개인 과제 설명이 대상 값을 덮지 못했다');
       assert.strictEqual(over.gitRepo, 'C:/new', '개인 과제 Git 경로가 대상 값을 덮지 못했다');
-      const merged = run([{ desc: '첫째', gitRepo: 'C:/first' }, { desc: '둘째', gitRepo: 'C:/second' }], { desc: '', gitRepo: '', svnRepo: '' });
+      assert.strictEqual(over.color, '#112233', '개인 과제 색이 대상 색을 덮지 못했다');
+      const merged = run([{ desc: '첫째', gitRepo: 'C:/first', color: '#111111' }, { desc: '둘째', gitRepo: 'C:/second', color: '#222222' }], { desc: '', gitRepo: '', svnRepo: '', color: '#3e5be0' });
       assert.strictEqual(merged.desc, '첫째', '합칠 때 뒤엣것이 앞엣것을 덮었다');
       assert.strictEqual(merged.gitRepo, 'C:/first', '합칠 때 뒤엣 Git 경로가 앞엣것을 덮었다');
+      assert.strictEqual(merged.color, '#111111', '합칠 때 뒤엣 색이 앞엣것을 덮었다');
+      // 깨진 색은 전파되지 않는다(대상 색 유지)
+      const bad = run([{ color: 'red' }], { desc: '', gitRepo: '', svnRepo: '', color: '#3e5be0' });
+      assert.strictEqual(bad.color, '#3e5be0', '깨진 색값이 공식 과제로 전파됐다');
+    });
+
+    // 재연결 실행 경로(confirmBox 스텁) — 색 이관을 '소스 재현'이 아니라 실제 state 변화로 확인한다.
+    const runRelinkNow = async () => {
+      ev("window.__toasts=[]; window.__t0=window.toast; window.toast=function(m,k){window.__toasts.push(String(m));};");
+      ev("window.__cb0=window.confirmBox; window.confirmBox=function(){return Promise.resolve('ok');};");
+      ev('runRelink();');
+      await new Promise(r => setTimeout(r, 0));
+      const toasts = evJSON('window.__toasts');
+      ev('window.confirmBox=window.__cb0; window.toast=window.__t0;');
+      return toasts.join(' ');
+    };
+
+    test('재연결(실행): 개인 과제의 색이 공식 과제로 이관되고 토스트가 색상을 알린다', async () => {
+      seedRelink();
+      ev("(function(){var p=state.categories.find(function(c){return c.id==='p1';}); p.color='#112233'; p.desc='내 설명';})()");
+      ev("openRelinkPick('p1'); rlpChoose('db-u2');");
+      const msg = await runRelinkNow();
+      const to = evJSON("state.categories.find(function(c){return c.id==='db-u2';})");
+      assert.strictEqual(to.color, '#112233', '개인 과제의 색이 공식 과제로 따라오지 않았다 — 그동안 보던 색이 사라진다');
+      assert.strictEqual(to.desc, '내 설명', '설명 이관이 회귀했다');
+      assert.strictEqual(to.name, '레이더 성능개량', '이관이 공식 과제명을 덮었다(보고서 집계가 깨진다)');
+      assert.ok(/색상/.test(msg), '토스트가 실제 이관 대상(색상)과 어긋난다: ' + msg);
+      assert.ok(/설명·저장소·색상/.test(msg), '이관 문구가 갱신되지 않았다: ' + msg);
+    });
+
+    test('재연결(실행): 여럿을 한 공식 과제로 합치면 먼저 온 색이 이기고 kept가 오른다', async () => {
+      seedRelink();
+      ev("(function(){var a=state.categories.find(function(c){return c.id==='p1';}); a.color='#111111';" +
+         "var b=state.categories.find(function(c){return c.id==='p2';}); b.color='#222222';})()");
+      ev("openRelinkPick('p1'); rlpChoose('db-u2'); openRelinkPick('p2'); rlpChoose('db-u2');");
+      assert.strictEqual(evJSON('rlSelections()').length, 2, '두 개인 과제가 같은 공식 과제로 매핑되지 않았다');
+      const msg = await runRelinkNow();
+      const to = evJSON("state.categories.find(function(c){return c.id==='db-u2';})");
+      assert.strictEqual(to.color, '#111111', '나중에 온 색이 먼저 온 색을 덮었다(먼저 온 것이 이긴다 규칙 위반)');
+      assert.ok(/먼저 옮긴 값을 유지/.test(msg), '밀린 값(색)을 조용히 버렸다 — 사용자에게 알려야 한다: ' + msg);
     });
 
     test('재연결: 오프라인이면 팝업이 뜨지 않고 "서버 연결" 안내(대상 목록이 필요)', () => {
@@ -2531,11 +2574,13 @@ if (!JSDOM) {
     });
 
     // ══════════════════════════════════════════════════════════════════
-    // 공식(DB) 과제의 소유권 분리 — 이름·색=DB / 설명·Git·SVN=로컬 (2026-07-27)
+    // 공식(DB) 과제의 소유권 분리 — 이름=DB / 색상·설명·Git·SVN=로컬 (2026-07-27, 색상 편입 2026-07-30)
     // 배경: DB에서 과제를 가져오는 이유는 '보고서에 찍히는 과제명 = 사업부 관리 과제명'이어야
     //       기존 시스템의 데이터 수집이 되기 때문이다. DB가 소유하는 건 이름이지 나머지가 아닌데,
     //       설명·Git/SVN까지 통째로 잠겨 있어 DB 과제로는 버전관리 연동을 아예 못 썼다
     //       (Git/SVN 경로는 각 PC의 작업복사본 경로라 DB가 알 수도 없는 값이다).
+    //       색상도 같은 이유로 풀렸다(2026-07-30): taskmgr DB 어느 테이블에도 색 컬럼이 없고,
+    //       색은 sectionColor()가 뽑는 '앱의 초기 표시 관례'일 뿐이며 보고서에 나가지도 않는다.
     // ══════════════════════════════════════════════════════════════════
     // 편입 + 로컬 필드가 채워진 상태를 만든다(개인 행과 같은 desc/gitRepo/svnRepo).
     const seedOfficialLocal = () => {
@@ -2558,17 +2603,20 @@ if (!JSDOM) {
       assert.ok(row.includes('cat-git'), '렌치 아이콘(버전관리 연동 표시)이 없다 — 개인 행과 규약이 어긋난다');
     });
 
-    test('소유권 분리: 공식 행 [수정]으로 편집에 진입하면 이름·색이 잠기고 안내가 뜬다', () => {
+    test('소유권 분리: 공식 행 [수정]으로 편집에 진입하면 과제명만 잠기고 안내가 뜬다', () => {
       seedOfficialLocal();
       ev('openCatModal();');
       ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
       assert.strictEqual(ev('editingCatId'), 'db-u1', '공식 행 [수정]이 편집 모드로 들어가지 않는다');
       assert.strictEqual(ev("document.getElementById('cName').readOnly"), true, '과제명 입력이 열려 있다(DB 소유 필드)');
-      assert.strictEqual(ev("document.getElementById('cColor').disabled"), true, '색상 직접선택이 열려 있다(DB 소유 필드)');
+      // 색상은 로컬 소유(2026-07-30) — DB에 색 컬럼이 없으므로 잠그면 거짓 안내가 된다.
+      assert.strictEqual(ev("document.getElementById('cColor').disabled"), false, '색상 직접선택이 잠겨 있다 — 색은 로컬 소유다');
+      assert.strictEqual(ev("document.getElementById('cColor').title"), '직접 선택', '색상 입력에 거짓 안내(회사 DB가 정한다)가 남아 있다');
       assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), false, '잠금 사유 안내가 안 보인다');
       const note = ev("document.getElementById('cLockNote').textContent");
       assert.ok(/회사 DB/.test(note) && /보고서/.test(note), '왜 잠겼는지(보고서 집계) 설명이 없다: ' + note);
       assert.ok(/설명/.test(note) && /Git/.test(note), '무엇은 열려 있는지 안내가 없다: ' + note);
+      assert.ok(/색상/.test(note) && !/과제명·색상/.test(note), '안내가 색상까지 DB 소유라고 말한다(사실 아님): ' + note);
       // 설명·Git·SVN 입력은 정상(잠금 대상 아님)
       assert.strictEqual(ev("document.getElementById('cDesc').readOnly"), false, '설명까지 잠겼다(연동 불가 회귀)');
       assert.strictEqual(ev("document.getElementById('cDesc').value"), '레이더 담당분', '설명이 폼에 프리필되지 않는다');
@@ -2582,7 +2630,7 @@ if (!JSDOM) {
       assert.strictEqual(ev("document.getElementById('cLockNote').classList.contains('hidden')"), true, '안내가 남아 새 과제 추가를 오해시킨다');
     });
 
-    test('소유권 분리(계약): 공식 과제 저장은 name/color를 건드리지 않고 desc/git/svn만 반영한다', () => {
+    test('소유권 분리(계약): 공식 과제 저장은 name만 지키고 color/desc/git/svn을 반영한다', () => {
       seedOfficialLocal();
       ev('openCatModal();');
       ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
@@ -2593,7 +2641,7 @@ if (!JSDOM) {
       ev('saveCatFromForm();');
       const c = evJSON("state.categories.find(function(x){return x.id==='db-u1';})");
       assert.strictEqual(c.name, '통상u1', '공식 과제의 이름이 로컬 편집으로 바뀌었다 — 보고서 집계(사업부 과제명 일치)가 깨진다');
-      assert.strictEqual(c.color, '#3e5be0', '공식 과제의 색이 로컬 편집으로 바뀌었다(구분별 색 규약 이탈)');
+      assert.strictEqual(c.color, '#ff0000', '공식 과제의 색이 저장되지 않는다 — 색은 로컬 소유다');
       assert.strictEqual(c.desc, '내 PC 메모', '설명이 저장되지 않는다');
       assert.strictEqual(c.gitRepo, 'D:\\repo\\g', 'Git 경로가 저장되지 않는다(연동 불가)');
       assert.strictEqual(c.svnRepo, 'D:\\repo\\s', 'SVN 경로가 저장되지 않는다');
@@ -2615,6 +2663,87 @@ if (!JSDOM) {
       assert.strictEqual(c.desc, '레이더 담당분', '재조회가 로컬 설명을 날렸다');
       assert.strictEqual(c.gitRepo, 'C:\\work\\radar', '재조회가 로컬 Git 경로를 날렸다');
       assert.strictEqual(c.svnRepo, 'C:\\work\\radar-wc', '재조회가 로컬 SVN 경로를 날렸다');
+    });
+
+    // ── 색상 = 로컬 소유 (2026-07-30) ──────────────────────────────────
+    // taskmgr DB 어느 테이블에도 색 컬럼이 없다. 색은 sectionColor(section)이 뽑는 '앱의 초기 표시 관례'일 뿐이고,
+    // 보고서에 나가지도 않는다. 그러니 편입 이후의 색은 사용자 것이다 — 어떤 DB 경로도 되돌리면 안 된다.
+    test('색 소유권: 신규 편입은 구분(section) 팔레트 색을 초기값으로 받는다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1', { section: '일반계약' }), DBROW('u2', { section: '선진행' }), DBROW('u3', { section: '없는구분' })]);
+      ev("subscribeDbCat(dbCatalogById('db-u1')); subscribeDbCat(dbCatalogById('db-u2')); subscribeDbCat(dbCatalogById('db-u3'));");
+      const col = id => ev("state.categories.find(function(c){return c.id==='" + id + "';}).color");
+      assert.strictEqual(col('db-u1'), ev("sectionColor('일반계약')"), '일반계약 초기색이 팔레트와 다르다');
+      assert.strictEqual(col('db-u2'), ev("sectionColor('선진행')"), '선진행 초기색이 팔레트와 다르다');
+      assert.strictEqual(col('db-u3'), '#5b6b7d', '미등록 구분의 폴백 색이 바뀌었다');
+    });
+
+    test('색 소유권(핵심): 이미 편입된 과제를 다시 편입해도 사용자가 고른 색이 유지된다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1'));");
+      ev("updateOfficialLocalFields('db-u1', '', '', '', '#ff00aa');");
+      // 같은 과제를 다시 편입(카탈로그 화면 재구독·마이그레이션·재연결 모두 이 경로를 탄다)
+      applyRows([DBROW('u1', { common_name: '이름바뀜' })]);
+      const ret = evJSON("subscribeDbCat(dbCatalogById('db-u1'))");
+      assert.strictEqual(ret.color, '#ff00aa', '재편입이 사용자가 고른 색을 DB 관례색으로 되돌렸다');
+      assert.strictEqual(ret.name, '이름바뀜', '재편입이 DB 과제명을 최신화하지 않는다(보고서 집계가 깨진다)');
+      assert.strictEqual(ret.source, 'db', '출처가 유실됐다');
+      assert.strictEqual(evJSON("state.categories.filter(function(c){return c.id==='db-u1';}).length"), 1, '재편입이 중복 항목을 만들었다');
+    });
+
+    test('색 소유권: syncSubscribedDbMeta는 name·dbGone만 DB 기준으로 맞추고 color는 건드리지 않는다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1'), DBROW('u2')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1')); subscribeDbCat(dbCatalogById('db-u2'));");
+      ev("updateOfficialLocalFields('db-u1', '', '', '', '#0abc12'); updateOfficialLocalFields('db-u2', '', '', '', '#abcdef');");
+      // u1은 이름이 바뀌고, u2는 카탈로그에서 사라졌다(삭제/숨김)
+      applyRows([DBROW('u1', { common_name: '새이름' })]);
+      const c1 = evJSON("state.categories.find(function(c){return c.id==='db-u1';})");
+      const c2 = evJSON("state.categories.find(function(c){return c.id==='db-u2';})");
+      assert.strictEqual(c1.name, '새이름', 'DB 이름 변경이 반영되지 않는다');
+      assert.strictEqual(c1.color, '#0abc12', 'DB 재조회가 사용자 색을 되돌렸다');
+      assert.strictEqual(c1.dbGone, false, '활성 과제가 dbGone으로 잘못 표시됐다');
+      assert.strictEqual(c2.dbGone, true, '카탈로그에서 사라진 과제가 dbGone으로 표시되지 않는다');
+      assert.strictEqual(c2.color, '#abcdef', 'dbGone 처리 중에 색이 덮였다');
+      // 소스 계약 — 비교 키·대입 어디에도 color가 없다
+      const body = extractFunction(loadAppSource(), 'syncSubscribedDbMeta')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');   // 주석 속 'color'는 코드가 아니다
+      assert.ok(!/color/.test(body), 'syncSubscribedDbMeta 코드에 color가 남아 있다 — 사용자 색이 재조회마다 날아간다');
+    });
+
+    test('색 소유권: updateOfficialLocalFields는 유효 헥사만 반영하고 잘못된 형식은 기존 색을 지킨다', () => {
+      seed(THS({ categories: [] }));
+      applyRows([DBROW('u1')]);
+      ev("subscribeDbCat(dbCatalogById('db-u1'));");
+      const col = () => ev("state.categories.find(function(c){return c.id==='db-u1';}).color");
+      const base = col();
+      for (const bad of ['', 'red', '#fff', '#12345', '#1234567', 'ff00aa', '#gg0011', 'null'])
+        assert.strictEqual(ev("updateOfficialLocalFields('db-u1','','','', " + JSON.stringify(bad === 'null' ? null : bad) + ") && 1"), 1);
+      assert.strictEqual(col(), base, '잘못된 색 형식이 저장됐다(깨진 값 영속)');
+      assert.strictEqual(ev("updateOfficialLocalFields('db-u1','','','','#AbC123')"), true);
+      assert.strictEqual(col(), '#AbC123', '유효 헥사(대문자 포함)가 반영되지 않는다');
+      // 개인 과제엔 이 출입구가 열리지 않는다(공식 전용 계약 유지)
+      ev("addCategory('개인', '#123456', '', '', '');");
+      const pid = ev("state.categories.filter(function(c){return c.source!=='db';}).slice(-1)[0].id");
+      assert.strictEqual(ev("updateOfficialLocalFields(" + JSON.stringify(pid) + ",'','','','#ffffff')"), false, '개인 과제에 공식 전용 출입구가 열렸다');
+    });
+
+    test('색 소유권: 공식 과제 편집에서 팔레트/색 입력이 실제로 반영된다(UI 잠금 해제 회귀 방지)', () => {
+      seedOfficialLocal();
+      ev('openCatModal();');
+      ev("document.querySelector('#catList .cat-row[data-id=\"db-u1\"] [data-act=\"edit\"]').click();");
+      // 팔레트 스와치 클릭 — 잠금 가드(catFormLocked)가 남아 있으면 selColor가 안 바뀐다
+      const sw = ev("(function(){var s=document.querySelector('#cPalette .swatch:not(.on)'); s.click(); return s.dataset.color;})()");
+      assert.strictEqual(ev('selColor'), sw, '공식 과제 편집 중 팔레트 클릭이 무시된다');
+      // 직접 선택(color input) — disabled도 아니고 input 핸들러도 살아 있어야 한다
+      ev("(function(){var i=document.getElementById('cColor'); i.value='#0f0f0f'; i.dispatchEvent(new window.Event('input',{bubbles:true}));})()");
+      assert.strictEqual(ev('selColor'), '#0f0f0f', '색 직접선택 입력이 무시된다');
+      ev('saveCatFromForm();');
+      assert.strictEqual(ev("state.categories.find(function(c){return c.id==='db-u1';}).color"), '#0f0f0f', '고른 색이 저장되지 않는다');
+      // 저장된 색은 XML 왕복에도 남는다(재부팅 후에도 유지)
+      const back = evJSON('fromXML(toXML())').categories.find(x => x.id === 'db-u1');
+      assert.strictEqual(back.color, '#0f0f0f', '사용자 색이 XML에 영속되지 않는다');
     });
 
     test('소유권 분리: 공식 과제 삭제(del)는 여전히 차단된다(제거=unsub만)', async () => {
