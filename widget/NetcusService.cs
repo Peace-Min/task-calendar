@@ -60,6 +60,99 @@ namespace TaskCalendarWidget
         public void SaveCreds(string id, string pw) => NetcusSaveCreds(id, pw);
         public void SendCredsState() => NetcusSendCredsState();
 
+        // netcus 단일 실행 가드의 읽기 전용 노출. 로그인 핸들러가 인증을 시도하기 '전에' 이걸 보고
+        // "다른 회사 시스템 작업이 진행 중"으로 회신한다 — 진행 중을 'ID/비밀번호 오류'로 오표시하던 결함 방지.
+        public bool IsBusy => _ncBusy;
+
+        // ================================================================================
+        // 사용자 로그인(위젯 진입) — netcus를 '신원 확인'에만 쓴다. 보고 전송과 같은 인증 판정을 공유한다.
+        //   ★ 이 경로는 로그인 게이트에서 사용자가 직접 [로그인]을 눌렀을 때만 돈다.
+        //     부팅(세션 복원)에서는 절대 호출되지 않는다 — 부팅 경로에 netcus 접속은 하나도 없어야 한다.
+        // ================================================================================
+
+        // ID/비밀번호로 netcus 로그인 성공 여부만 반환. 저장·부수효과 없음(저장은 SaveCredsForLogin이 따로 한다).
+        // ★ 창은 반드시 background(최소화·비활성) — 포그라운드로 띄우면 로그인할 때마다 화면 중앙에
+        //   netcus 창이 떴다 사라진다(1차 구현이 폐기된 원인). 주간범위 읽기와 같은 방식이다.
+        // ※ 비밀번호는 로그·회신 어디에도 남기지 않는다.
+        public async Task<bool> LoginVerify(string id, string pw)
+        {
+            if (_ncBusy) { Log("사용자 로그인: 다른 netcus 작업이 진행 중 — 거부"); return false; }
+            _ncBusy = true; NetcusBusy(true);
+            Action? detach = null;
+            try
+            {
+                Log("사용자 로그인 확인 시작: " + id);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                await EnsureW2(background: true);   // 최소화·비활성 창 — 포커스를 뺏지 않는다
+                var cw = _w2!.CoreWebView2;
+                detach = AttachDialogAutoAccept(cw, "userlogin");   // 레거시 pjm alert() 자동 수락(최소화 창 무한대기 방어)
+                NetcusStatus("userlogin", "login");
+                // ★ navTimeoutMs=4000: 실패 시 netcus는 페이지 이동을 하지 않아 기본 15초를 꽉 기다렸다(실측 15.7초).
+                //   그 대기 결과는 애초에 판정에 쓰이지 않는다(판정은 이어지는 work_view 도달 폴링이 한다) → 줄여도 정확도 무변경.
+                bool ok = await NetcusLoginVerify(cw, id, pw, 4000);   // 보호 페이지 도달로 판정(공유 헬퍼)
+                sw.Stop();
+                // 소요시간을 남긴다 — 로그인 지연 회귀를 로그만으로 관측할 수 있게.
+                Log("사용자 로그인 확인 결과: " + (ok ? "성공" : "실패") + " (" + id + ") "
+                    + (sw.ElapsedMilliseconds / 1000.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + "초");
+                return ok;
+            }
+            catch (Exception ex) { Log("사용자 로그인 확인 예외: " + ex); return false; }
+            finally
+            {
+                detach?.Invoke();
+                try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 확인용 창은 남기지 않는다
+                _ncBusy = false; NetcusBusy(false);
+            }
+        }
+
+        // 로그인 성공 직후 자격증명 저장 — 보고서(netcus 전송)가 이 자격을 그대로 쓴다.
+        // ★ NetcusSaveCreds를 쓰지 않는다: 그쪽은 저장 직후 NetcusValidateCreds로 재검증(=또 창을 띄워 재로그인)을 건다.
+        //   여기 도달했다는 것 자체가 방금 LoginVerify로 검증에 성공했다는 뜻이라 재검증이 중복이고, 창까지 뜬다.
+        // ★ valid=true로 쓴다 — 이게 없으면(null) 보고 전송이 자격을 '미검증'으로 보고 사용자에게 다시 묻는다.
+        // ★ 되읽어 확인된 경우에만 성공을 반환한다 — "저장했다"는 로그는 되읽기 없이는 거짓말일 수 있다(실관측 2회).
+        //   호출측(로그인 핸들러)은 실패 시 세션까지 함께 지워 반쪽 상태를 남기지 않는다.
+        public (bool ok, string msg) SaveCredsForLogin(string id, string pw)
+        {
+            const string Fail = "로그인 정보를 이 PC에 저장하지 못했습니다 — 다시 시도하세요.";
+            try
+            {
+                Directory.CreateDirectory(_host.DataDir);
+                string enc = pw.Length > 0 ? Convert.ToBase64String(Dpapi.Protect(Encoding.UTF8.GetBytes(pw))) : "";
+                File.WriteAllText(CredFile, JsonSerializer.Serialize(new { id, pw = enc, valid = (bool?)true }), Encoding.UTF8);
+
+                // 되읽기 확인 — id가 그대로고 비밀번호가 복호화되는지, valid까지 실제로 기록됐는지 본다.
+                var (bid, bpw) = NetcusLoadCreds();
+                if (!string.Equals(bid, id, StringComparison.Ordinal) || (pw.Length > 0 && bpw.Length == 0))
+                {
+                    Log("netcus 자격증명 저장 확인 실패(되읽기 불일치): " + CredFile);
+                    return (false, Fail);
+                }
+                if (NetcusCredsValid() != true)
+                {
+                    Log("netcus 자격증명 저장 확인 실패(valid 미기록): " + CredFile);
+                    return (false, Fail);
+                }
+                Log("netcus 자격증명 저장(로그인 연동, 검증됨): " + id);
+                NetcusSendCredsState();
+                return (true, "");
+            }
+            // ※ ex.Message만 남긴다 — 예외 문자열에 비밀번호가 실려 로그로 새지 않게.
+            catch (Exception ex) { Log("netcus 자격증명 저장 실패(로그인 연동): " + ex.Message + " / " + CredFile); return (false, Fail); }
+        }
+
+        // 로그아웃 — netcus 자격증명 파일 삭제 + 설정 화면 상태 갱신.
+        // (지우지 않으면 로그아웃이 이름만 지우고 보고 전송은 계속 그 사람 자격으로 돈다.)
+        public void ClearCredsForLogout()
+        {
+            try
+            {
+                if (File.Exists(CredFile)) File.Delete(CredFile);
+                Log("netcus 자격증명 삭제(로그아웃)");
+            }
+            catch (Exception ex) { Log("netcus 자격증명 삭제 실패: " + ex.Message + " / " + CredFile); }
+            NetcusSendCredsState();
+        }
+
         private sealed class NetcusReq
         {
             public int Y, M, D, Overtime;
@@ -101,10 +194,12 @@ namespace TaskCalendarWidget
         // 비밀번호칸이 '안정적으로' 존재 → 즉시 실패로 판정.
         // ※ 기존 login.htm '비번칸 소멸' 폴링은 실패 리다이렉트 찰나의 공백에 오탐 → 틀린 자격이 성공으로 통과해
         //    읽기 무한대기·저장검증 OK오탐·실패한 창 방치를 유발하던 버그. 이 헬퍼가 그 판정을 목적지 기반 양성확인으로 대체.
-        private async Task<bool> NetcusLoginVerify(CoreWebView2 cw, string id, string pw)
+        // navTimeoutMs: goLogin() 후 '페이지 이동 1회'를 기다리는 상한. 이 대기 결과는 판정에 쓰지 않으므로(아래 폴링이 판정)
+        //   실패가 잦은 경로(사용자 로그인)만 짧게 줄일 수 있다. 기존 호출부는 기본값 15000 유지 = 동작 무변경.
+        private async Task<bool> NetcusLoginVerify(CoreWebView2 cw, string id, string pw, int navTimeoutMs = 15000)
         {
             await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
-            var nav = NavOnce(cw, 15000);
+            var nav = NavOnce(cw, navTimeoutMs);
             await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
             await nav;
             // 보호 페이지(오늘자 work_view)로 이동 후 안정 상태에서 판정.
@@ -235,7 +330,18 @@ namespace TaskCalendarWidget
             // (읽기 창을 Show+Activate하면 닫힐 때 최소화돼 있던 다른 창(탐색기 등)이 복원돼 바닥 위젯을 덮는 문제)
             if (_w2 != null && _w2.CoreWebView2 != null) { if (!background) { try { _w2win?.Show(); _w2win?.Activate(); } catch { } } return; }
             _w2win = new Window { Title = "회사 일간보고 전송 (확인용)", Width = 920, Height = 720, WindowStartupLocation = WindowStartupLocation.CenterScreen };
-            if (background) { _w2win.ShowActivated = false; _w2win.WindowState = WindowState.Minimized; }   // 활성화·포그라운드 없이 최소화 생성
+            if (background)
+            {
+                // 활성화·포그라운드 없이 최소화 생성. 여기에 더해 '보이지 않게' 만드는 두 가지:
+                //   ShowInTaskbar=false → 작업표시줄 버튼이 생기지 않는다(최소화 창 조각이 화면에 렌더되던 원인).
+                //   화면 밖 좌표      → 어떤 이유로 복원되더라도 사용자 화면에 나타나지 않는다.
+                // (Manual 이어야 Left/Top이 먹는다 — CenterScreen이면 무시된다)
+                _w2win.ShowActivated = false;
+                _w2win.WindowState = WindowState.Minimized;
+                _w2win.ShowInTaskbar = false;
+                _w2win.WindowStartupLocation = WindowStartupLocation.Manual;
+                _w2win.Left = -32000; _w2win.Top = -32000;
+            }
             _w2 = new WV.WebView2();
             _w2win.Content = _w2;
             _w2win.Closed += (_, __) => { try { _w2?.Dispose(); } catch { } _w2 = null; _w2win = null; };

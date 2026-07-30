@@ -567,6 +567,17 @@ namespace TaskCalendarWidget
                         break;
                     }
 
+                    // ----- 사용자 로그인(세션 유지) — 계약 3개, 실패 code 없음(USER-LOGIN §2.2) -----
+                    case "userSessionGet":   // ★ 부팅 경로다. 세션 파일만 읽는다 — netcus 접속 코드가 한 줄도 없어야 한다.
+                        RunUserSessionGet(GetStr(doc, "reqId"));
+                        break;
+                    case "userLogin":        // 게이트에서 [로그인]을 눌렀을 때만 — 여기서만 netcus로 나간다
+                        _ = RunUserLoginAsync(GetStr(doc, "reqId"), GetStr(doc, "id"), GetStr(doc, "pw"));
+                        break;
+                    case "userLogout":       // 세션 + netcus 자격 동시 삭제(둘 중 하나만 지우면 반쪽 상태가 남는다)
+                        RunUserLogout(GetStr(doc, "reqId"));
+                        break;
+
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
                             GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"));   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
@@ -1541,6 +1552,109 @@ namespace TaskCalendarWidget
         {
             var (ok, count, msg) = await _projectDb.CountActiveProjectsByCodeAsync(kind, name);
             ReplyOnUi(reqId, new { ok, count, msg });
+        }
+
+        // ============ 사용자 로그인(세션 유지) — USER-LOGIN §2.2 ============
+        // 인증(정말 본인인가) = 회사 사이트(netcus) · 인가(이름·소속·권한) = 우리 DB(app_user).
+        // 계약은 3개뿐이고 실패 code는 만들지 않는다 — 웹은 msg를 그대로 보여줄 뿐 분기하지 않는다.
+
+        // 세션 → 웹 회신 payload. 비밀번호는 애초에 저장하지 않으므로 샐 것이 없다.
+        private static object UserPayload(UserSession s) => new
+        {
+            loginId = s.LoginId, name = s.Name, title = s.Title,
+            orgUnit = s.OrgUnit, viewScope = s.ViewScope, editRole = s.EditRole,
+        };
+
+        // app_user 행 JSON → 필드 튜플. 행 없음("{}")이면 전부 빈 문자열로 나온다.
+        private static (string name, string title, string orgUnit, string viewScope, string editRole, int? isActive) ParseAppUser(string json)
+        {
+            try
+            {
+                using var d = JsonDocument.Parse(json);
+                var r = d.RootElement;
+                string S(string k) => r.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+                int? act = r.TryGetProperty("is_active", out var a) && a.ValueKind == JsonValueKind.Number ? a.GetInt32() : (int?)null;
+                return (S("name"), S("title"), S("org_unit"), S("view_scope"), S("edit_role"), act);
+            }
+            catch { return ("", "", "", "", "", null); }
+        }
+
+        // 부팅 세션 복원 — ★ 로컬 세션 파일(DPAPI)만 읽는다. netcus도 DB도 건드리지 않는다.
+        // ★ 회신 뒤 app_user 백그라운드 재조회를 '하지 않는다'(USER-LOGIN §2.5): 그 30줄이 로그아웃과 경합해
+        //   방금 삭제한 세션을 되살린 적이 있다. 이름·소속 변경은 다음 로그인에 반영되면 충분하다.
+        //   재조회가 없으므로 세대 토큰·경합 방어도 필요 없다.
+        private void RunUserSessionGet(string reqId)
+        {
+            UserSession? s = null;
+            try { s = UserSession.Load(_dataDir, verifyVersion: true, Log); }
+            catch (Exception ex) { Log("사용자 세션 복원 예외(로그인 화면으로): " + ex.Message); }
+            if (s == null) { GitReply(reqId, new { ok = false }); return; }
+            Log("사용자 세션 복원: " + s.LoginId + " — netcus 접속 없음");
+            GitReply(reqId, new { ok = true, user = UserPayload(s) });
+        }
+
+        // 로그인 — 인증(netcus) → 인가(app_user) → 저장 2개. ★ 비밀번호는 로그·회신·예외 메시지 어디에도 넣지 않는다.
+        // 저장은 둘 다 성공해야 ok:true다. 하나라도 실패하면 둘 다 정리한다 — 반쪽 상태가 남으면
+        // (세션만) 보고 전송이 깨지고 (자격만) 유령 상태가 된다.
+        private async Task RunUserLoginAsync(string reqId, string id, string pw)
+        {
+            void Fail(string m) => ReplyOnUi(reqId, new { ok = false, msg = m });   // 실패 회신은 msg 하나뿐(code 없음)
+            try
+            {
+                id = (id ?? "").Trim();
+                pw = pw ?? "";
+                if (id.Length == 0 || pw.Length == 0) { Fail("ID와 비밀번호를 입력하세요."); return; }
+                // ★ 인증 시도 '전에' 진행 중 여부를 본다. 그냥 부르면 LoginVerify가 false를 돌려
+                //   '다른 작업 중'이 'ID/비밀번호 오류'로 표시된다(이전 구현의 실제 결함).
+                if (_netcus.IsBusy) { Fail("다른 회사 시스템 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+
+                // ① 인증 — netcus 보호 페이지 도달로 판정(최소화·비활성 창).
+                //    자격 불일치와 사내망 미연결을 구분할 신호가 없으므로 단정하지 않는다.
+                if (!await _netcus.LoginVerify(id, pw)) { Fail("로그인하지 못했습니다 — ID/비밀번호 또는 사내망 연결을 확인하세요."); return; }
+
+                // ② 인가 — app_user 조회. null=연결 실패 / "{}"=미등록 / is_active=0 → 비활성.
+                string? json = await _projectDb.LoadAppUserJsonAsync(id);
+                if (json == null) { Fail("DB에 연결하지 못했습니다."); return; }
+                var u = ParseAppUser(json);
+                if (json.Trim() == "{}" || (u.name.Length == 0 && u.orgUnit.Length == 0 && u.editRole.Length == 0))
+                { Fail("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요."); return; }
+                if (u.isActive == 0) { Fail("비활성 처리된 계정입니다."); return; }
+
+                // ③ 저장 2개 — 세션(신원) + netcus 자격(보고 전송이 valid:true를 보고 다시 묻지 않는다).
+                //    둘 다 '되읽어 확인'된 경우에만 성공이고, 하나라도 실패하면 양쪽을 지운다(반쪽 상태 금지).
+                const string SaveFail = "로그인 정보를 이 PC에 저장하지 못했습니다 — 다시 시도하세요.";
+                var fresh = new UserSession { LoginId = id, Name = u.name, Title = u.title,
+                                              OrgUnit = u.orgUnit, ViewScope = u.viewScope, EditRole = u.editRole };
+                var (sok, _) = UserSession.Save(_dataDir, id, u.name, u.title, u.orgUnit, u.viewScope, u.editRole,
+                                                UserSession.CurrentAppVersion(), Log);
+                if (!sok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }
+                var (cok, _) = _netcus.SaveCredsForLogin(id, pw);
+                if (!cok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }
+
+                Log("사용자 로그인 완료: " + id + " (" + u.name + " · " + u.orgUnit + ")");
+                ReplyOnUi(reqId, new { ok = true, user = UserPayload(fresh) });
+            }
+            catch (Exception ex)
+            {
+                // 어떤 예외에도 회신은 나가야 한다 — 회신이 없으면 게이트의 로그인 버튼이 영원히 '로그인 중…'에 갇힌다.
+                // ex 전체(스택)는 로그로만, 회신 문구는 고정 — 예외 메시지에 입력값이 섞여 나가지 않게.
+                Log("사용자 로그인 예외: " + ex);
+                Fail("로그인 처리 중 오류가 발생했습니다.");
+            }
+        }
+
+        // 로그아웃 — 세션과 netcus 자격을 함께 지운다. 둘 중 하나만 지우면 다음 시작에 되돌아오거나
+        // 이름만 지워진 채 보고 전송이 계속 그 사람 자격으로 돈다.
+        private void RunUserLogout(string reqId)
+        {
+            try
+            {
+                UserSession.Clear(_dataDir, Log);
+                _netcus.ClearCredsForLogout();
+                Log("사용자 로그아웃 — 세션·자격증명 삭제");
+            }
+            catch (Exception ex) { Log("사용자 로그아웃 예외: " + ex.Message); }
+            GitReply(reqId, new { ok = true });
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

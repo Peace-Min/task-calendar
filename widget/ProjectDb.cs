@@ -158,14 +158,40 @@ namespace TaskCalendarWidget
                 Pooling = false,               // 위젯 단발성 조회 — 풀 미유지(정지된 서버로 소켓 재사용 방지)
             }.ConnectionString;
 
+        // ================================================================================
+        // DB 접근 관문 — 연결 획득을 두 헬퍼로 좁힌다 (USER-LOGIN §3)
+        //   메서드 18개가 각자 new MySqlConnection을 열면, 쓰기 권한 검사를 '호출부마다 한 줄'로 넣는 설계는
+        //   fail-open이 된다(새 API에서 빠뜨리면 조용히 뚫린다). SQL 모양은 제각각이어도 '연결을 여는 한 줄'은
+        //   전부 같으므로, 그 한 줄을 초크포인트로 만들고 테스트 불변식(§3.2)으로 기계가 강제한다.
+        //   ★ 지금 두 헬퍼는 동작이 완전히 같다 — 관문 '자리'만 확보한 것이다.
+        //     실제 권한 검사(edit_role·is_active)는 2단계에서 OpenWriteAsync 안에 한 쿼리로 들어간다(§3.3).
+        // ================================================================================
+
+        // 읽기용 연결. 실패(오프라인·인증오류)는 그대로 던진다 — 호출측이 자기 문맥의 메시지로 처리한다.
+        private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
+        {
+            var conn = new MySqlConnection(BuildConnString());
+            try { await conn.OpenAsync(ct); }
+            catch { await conn.DisposeAsync(); throw; }   // 못 연 연결을 새지 않게 정리하고 원인은 그대로 전파
+            return conn;
+        }
+
+        // 쓰기용 연결 — 지금은 읽기와 동일. 2단계에서 여기에만 권한 쿼리를 넣으면 쓰기 11곳이 한 번에 막힌다.
+        private static async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
+        {
+            var conn = new MySqlConnection(BuildConnString());
+            try { await conn.OpenAsync(ct); }
+            catch { await conn.DisposeAsync(); throw; }
+            return conn;
+        }
+
         // 공식 과제(is_active=1)를 읽어 JSON 배열 문자열로 반환. 연결/조회 실패 시 null(호출측이 웹에 ""를 넘겨 목록을 비운다).
         public async Task<string?> LoadProjectsJsonAsync()
         {
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
 
                 const string sql =
                     "SELECT uid, section, customer, project_name, contract_name, common_name, " +
@@ -205,8 +231,7 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
                 await using var cmd = new MySqlCommand("SELECT name FROM customer WHERE is_active=1 ORDER BY name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                 var names = new List<string>();
@@ -228,8 +253,7 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
                 await using var cmd = new MySqlCommand("SELECT name, is_active FROM customer ORDER BY is_active DESC, name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                 var rows = new List<Dictionary<string, object?>>();
@@ -244,6 +268,52 @@ namespace TaskCalendarWidget
                 return JsonSerializer.Serialize(rows);
             }
             catch (Exception ex) { _log("DB 발주처(전체) 로드 실패: " + Short(ex)); return null; }
+        }
+
+        // ================================================================================
+        // 사용자(app_user) 조회 — 로그인 인가(누구인가 → 이름·소속·권한).
+        //   인증(정말 본인인가)은 회사 사이트(netcus)가 하고, 여기는 인가 정보만 읽는다.
+        //   그래서 app_user에는 비밀번호 컬럼이 없다(USER-LOGIN §1).
+        // ================================================================================
+
+        // login_id로 app_user 1행을 JSON으로. 값은 반드시 파라미터 바인딩(문자열 연결 금지).
+        // 반환 3분기 — 호출측(로그인 핸들러)이 사유별로 다른 안내를 하려면 셋을 구분해야 한다:
+        //   행 있음 → 그 행의 JSON 객체 / 행 없음 → "{}"(미등록 사용자) / 연결·질의 실패 → null(오프라인·DB 오류)
+        public async Task<string?> LoadAppUserJsonAsync(string? loginId)
+        {
+            string id = (loginId ?? "").Trim();
+            if (id.Length == 0) return "{}";   // 빈 ID는 조회할 것도 없다(행 없음과 동일 취급)
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = await OpenReadAsync(cts.Token);
+
+                const string sql =
+                    "SELECT login_id, name, title, org_unit, view_scope, edit_role, is_active " +
+                    "FROM app_user WHERE login_id=@id";
+                await using var cmd = new MySqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@id", id);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+
+                if (!await rd.ReadAsync(cts.Token))
+                {
+                    _log("DB 사용자 조회: 미등록(" + id + ")");
+                    return "{}";
+                }
+                var row = new Dictionary<string, object?>
+                {
+                    ["login_id"]   = Str(rd, "login_id"),
+                    ["name"]       = Str(rd, "name"),
+                    ["title"]      = Str(rd, "title"),
+                    ["org_unit"]   = Str(rd, "org_unit"),
+                    ["view_scope"] = Str(rd, "view_scope"),
+                    ["edit_role"]  = Str(rd, "edit_role"),
+                    ["is_active"]  = IntOrNull(rd, "is_active"),
+                };
+                _log("DB 사용자 조회: " + id + " (" + Str(rd, "name") + ")");
+                return JsonSerializer.Serialize(row);
+            }
+            catch (Exception ex) { _log("DB 사용자 조회 실패(" + id + "): " + Short(ex)); return null; }
         }
 
         // ================================================================================
@@ -269,8 +339,7 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
                 await using var cmd = new MySqlCommand($"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                 var names = new List<string>();
@@ -288,8 +357,7 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
                 await using var cmd = new MySqlCommand($"SELECT name, sort_order, is_active FROM {table} ORDER BY is_active DESC, sort_order, name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                 var rows = new List<Dictionary<string, object?>>();
@@ -405,9 +473,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg, false); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 // 구분/상태 존재 검증(코드테이블 로드) — 좋은 에러문구용. 최종 보증은 FK. 숨김 포함 전체로 검사해
                 // 이미 저장된 값(나중에 숨긴 코드)이 편집 저장에서 막히지 않게 한다.
@@ -521,9 +590,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(과제 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("UPDATE project SET is_active=@a WHERE uid=@uid", conn);
                 cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
@@ -556,8 +626,7 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
                 await using var cmd = new MySqlCommand("SELECT is_active FROM customer WHERE name=@n", conn);
                 cmd.Parameters.AddWithValue("@n", name);
                 var o = await cmd.ExecuteScalarAsync(cts.Token);
@@ -575,9 +644,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 추가): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("INSERT INTO customer (name) VALUES (@n)", conn);
                 cmd.Parameters.AddWithValue("@n", n);
@@ -606,9 +676,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 개명): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("UPDATE customer SET name=@new WHERE name=@old", conn);
                 cmd.Parameters.AddWithValue("@new", nw);
@@ -634,9 +705,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("UPDATE customer SET is_active=@a WHERE name=@n", conn);
                 cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
@@ -658,9 +730,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project WHERE customer=@c AND is_active=1", conn);
                 cmd.Parameters.AddWithValue("@c", n);
@@ -682,8 +755,7 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(cts.Token);
+                await using var conn = await OpenReadAsync(cts.Token);
                 await using var cmd = new MySqlCommand($"SELECT is_active FROM {table} WHERE name=@n", conn);
                 cmd.Parameters.AddWithValue("@n", name);
                 var o = await cmd.ExecuteScalarAsync(cts.Token);
@@ -705,9 +777,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 추가): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 // 다음 sort_order = MAX+10(끝에 붙임). INSERT와 같은 테이블 SELECT를 한 문장에 섞지 않게 두 단계로.
                 int nextSort;
@@ -742,9 +815,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 개명): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand($"UPDATE {table} SET name=@new WHERE name=@old", conn);
                 cmd.Parameters.AddWithValue("@new", nw);
@@ -769,9 +843,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 // 복구(active=true)는 sort_order를 '맨 뒤(MAX+10)'로 새로 부여한다.
                 // 왜: 숨김은 sort_order를 그대로 두는데, 그 사이 순서 재배치가 '활성 값만' 10·20·30…으로
@@ -802,9 +877,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 순서변경): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var tx = await conn.BeginTransactionAsync(cts.Token);
                 try
@@ -839,9 +915,10 @@ namespace TaskCalendarWidget
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-                await using var conn = new MySqlConnection(BuildConnString());
-                try { await conn.OpenAsync(cts.Token); }
+                MySqlConnection conn;
+                try { conn = await OpenWriteAsync(cts.Token); }
                 catch (Exception cex) { _log("DB 연결 실패(코드 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
+                await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand($"SELECT COUNT(*) FROM project WHERE {projCol}=@n AND is_active=1", conn);
                 cmd.Parameters.AddWithValue("@n", n);

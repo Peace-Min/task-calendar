@@ -1121,6 +1121,29 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .ic-spin{animation:spin .8s linear infinite;transform-origin:50% 50%}
 @media(prefers-reduced-motion:reduce){.spin,.ic-spin{animation:none}}
 
+/* ---------- 로그인 게이트(#loginGate) ----------
+   ★ 공통 .overlay 클래스를 쓰지 않는다. .overlay는 배경 클릭·ESC·[data-close]·모달스택으로 닫히는 대상이라
+     그걸 쓰면 로그인 차단이 그대로 뚫린다(닫으면 캘린더가 그냥 열린다). 그래서 전용 클래스 + 불투명 배경.
+   z-index는 모달(50)·토스트(99)·이미지뷰(100)·리사이즈핸들(200)보다 위여야 게이트가 진짜로 덮는다. */
+/* ★ 게이트는 '스크롤 컨테이너'다. align-items:center 단독이면 카드가 창보다 클 때 위쪽이 잘리고
+     스크롤로도 도달할 수 없다(body{overflow:hidden} + 리사이즈 그립도 게이트 아래라 창 확대조차 막힌다
+     = Alt+F4 말고 탈출구가 없어진다). flex-start + 카드 margin:auto = "들어가면 중앙, 넘치면 상단부터 스크롤". */
+.lg-gate{position:fixed;inset:0;z-index:300;background:var(--bg);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:var(--sp-4)}
+.lg-card{width:min(360px,100%);margin:auto;display:flex;flex-direction:column;gap:2px}
+.lg-title{font-size:var(--fs-head);font-weight:800;color:var(--text);letter-spacing:-.2px}
+.lg-status{font-size:var(--fs-body);color:var(--text);margin:0 0 var(--sp-2)}   /* meta/muted가 아니다 — 이건 '지시문'이고 sepia에서 4.38:1로 AA 미달이었다 */
+.lg-form{display:flex;flex-direction:column;gap:2px}
+.lg-card .qa-lb{margin:var(--sp-1) 0 3px}
+.lg-foot{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-2)}
+/* 실패 문구는 foot '밖'에 자리를 미리 예약한다 — foot 안에 두면 flex-wrap으로 감기며 foot이 37→84px로
+   늘어 카드가 47px 점프했다. 확정 문구 7종 중 4종이 2줄이라 min-height는 2줄(36px)이어야 점프가 0이 된다. */
+.lg-msg{min-height:36px;margin-top:var(--sp-1);font-size:var(--fs-meta);line-height:var(--lh-body);color:var(--danger-text)}
+/* 진행 중(aria-busy) 버튼: disabled의 회색 면(--line-2 + opacity .5)은 게이트 배경 대비 1.12:1이라
+   버튼이 사라진 것처럼 보였다. 잠금은 유지하되(재진입 가드) 채움색은 그대로 둔다. */
+.lg-foot .btn.primary[aria-busy="true"]{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);opacity:1}
+.lg-note{font-size:var(--fs-meta);color:var(--muted);line-height:var(--lh-body);margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--line)}
+.lg-quit-row{margin-top:var(--sp-2);display:flex;justify-content:flex-end}
+
 /* ---------- 날짜 패널 내부(.nd-*) — 과제 필터·할일·커밋 목록 ----------
    (구 .note-drawer/.note-scrim/.nd-tabs/.nd-tab/#ndReport 규칙 제거 — 드로어는 우측 패널(.day-panel)로
     대체됐고 해당 마크업이 더는 생성되지 않는다. 남은 .nd-* 는 패널 본문이 실제로 쓰는 것들.) */
@@ -1828,14 +1851,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <label class="check" style="margin:2px 0"><input type="checkbox" id="gitBodyChk"> 커밋 가져올 때 전체 본문 포함</label>
       </div>
       <div class="set-sec set-sec-top">
-        <div class="set-lb">회사 일간보고 (netcus) <span class="set-badge" id="ncBadge">저장 필요</span></div>
-        <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성합니다. 자격증명은 이 PC에 <b>암호화(DPAPI)</b> 저장되며, 데스크톱 위젯에서만 동작합니다.</div>
-        <!-- 명시 저장 폼 — 이 카드 안의 값은 [자격증명 저장]을 눌러야 저장된다(닫기로는 유실) -->
-        <div class="set-form" id="ncForm">
-          <label class="qa-lb" for="ncId">ID</label><input type="text" id="ncId" class="set-in" autocomplete="off" placeholder="예: phmin">
-          <label class="qa-lb" for="ncPw">비밀번호 <span id="ncPwState" class="git-opt"></span></label><input type="password" id="ncPw" class="set-in" autocomplete="new-password" placeholder="변경 시에만 입력(빈칸=기존 유지)">
-          <div class="set-form-foot"><button type="button" class="btn sm primary" id="ncSave">자격증명 저장</button> <span id="ncSaveMsg" class="git-opt"></span></div>
-        </div>
+        <div class="set-lb">회사 일간보고 (netcus)</div>
+        <!-- ★ 자격증명 입력란은 없다 — 자격의 단일 출처는 시작 게이트의 로그인이다(USER-LOGIN §2.4).
+             상태 표시조차 두지 않는다: 「계정」 섹션이 곧 그 상태이고, 두 섹션이 같은 사실을 말하면 어긋날 여지만 생긴다. -->
+        <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성합니다. 전송에는 <b>로그인한 계정</b>을 그대로 사용합니다(따로 묻지 않습니다). 데스크톱 위젯에서만 동작합니다.</div>
         <label class="qa-lb">전송 모드 <span class="set-badge auto">자동 저장</span></label>
         <label class="set-opt" style="margin-bottom:6px"><input type="radio" name="ncMode" value="dry"><span><b>미제출 테스트</b><br><span class="set-od">자동 로그인·작성까지만 → 열린 창에서 확인 후 직접 제출. (권장)</span></span></label>
         <label class="set-opt"><input type="radio" name="ncMode" value="real"><span><b>실제 제출</b><br><span class="set-od">작성 후 서버에 바로 저장(POST). 검증 끝난 뒤 사용 권장.</span></span></label>
@@ -1859,6 +1878,19 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           </div>
         </div>
         <div class="set-hint" style="margin-top:2px">예: <b>ftp://&lt;서버IP&gt;/TaskCalendar/</b> · http(s):// · 공유폴더(UNC/로컬) 경로도 가능 · <b>비우면 업데이트 확인 안 함</b>.</div>
+      </div>
+      <!-- 계정 — 로그인한 사람이 누구인지 + 로그아웃. 그게 전부다.
+           ★ 로그인 입력칸을 넣지 않는다: 진입점은 시작 게이트 하나뿐이다(둘이면 상태 동기화 코드가 늘고 곧 버려진다).
+           ★ 권한(view_scope/edit_role)은 표시하지 않는다(추후 '열람' 기능에서).
+           값은 전부 textContent로만 넣는다 — DB 문자열이 마크업으로 해석되면 안 된다. -->
+      <div class="set-sec set-sec-top" id="accountSection">
+        <div class="set-lb">계정 <span id="acctState" class="git-opt"></span></div>
+        <div class="set-hint" id="acctHint">회사 시스템(netcus) 계정으로 로그인합니다. 데스크톱 위젯에서만 동작합니다.</div>
+        <div class="hidden" id="acctInfoBlock">
+          <div style="margin:2px 0 2px"><b id="acctName">—</b> <span id="acctTitle" class="git-opt"></span></div>
+          <div class="set-hint" id="acctOrg" style="margin-bottom:8px"></div>
+          <div><button type="button" class="btn sm" id="acctLogout">로그아웃</button> <span id="acctMsg" class="git-opt"></span></div>
+        </div>
       </div>
       <div class="set-sec set-sec-top" id="adminSection">
         <div class="set-lb">관리자 <span id="admState" class="git-opt"></span></div>
@@ -2933,6 +2965,29 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 </div>
 
 <div id="toastWrap"><div id="toastStackErr" aria-live="assertive" aria-atomic="false"></div><div id="toastStack" aria-live="polite" aria-atomic="false"></div></div>
+
+<!-- 로그인 게이트 — 저장된 세션이 있으면 이 화면은 뜨지 않고 곧장 캘린더로 간다.
+     ★ 닫는 길을 의도적으로 두지 않는다: × 버튼도, [data-close]도, 배경 클릭도, ESC도 없다.
+       (.overlay 클래스를 쓰면 그 셋이 전부 공짜로 붙어 차단이 뚫린다 — 그래서 전용 .lg-gate 클래스다.)
+     ★ 대신 '위젯 종료'는 반드시 있어야 한다: 게이트가 호스트바를 덮어 ✕가 가려지므로,
+       이 버튼이 없으면 로그인 못 하는 사용자가 위젯을 끌 수단을 잃는다(Alt+F4 말고는). -->
+<div class="lg-gate hidden" id="loginGate">
+  <div class="lg-card">
+    <div class="lg-title">수행과제 캘린더</div>
+    <div class="lg-status" id="lgStatus">회사 시스템 계정으로 로그인하세요.</div>
+    <form class="lg-form hidden" id="lgForm" autocomplete="off" onsubmit="return false">
+      <label class="qa-lb" for="lgId">회사 ID</label>
+      <input type="text" id="lgId" class="set-in" autocomplete="username" spellcheck="false" placeholder="예: hjlee">
+      <label class="qa-lb" for="lgPw">비밀번호</label>
+      <input type="password" id="lgPw" class="set-in" autocomplete="current-password">
+      <div class="lg-foot"><button type="button" class="btn primary" id="lgBtn">로그인</button></div>
+      <!-- 실패 문구는 foot 밖 · 자리 예약(.lg-msg min-height) — 나타날 때 카드가 튀지 않는다. 색은 CSS 소유(JS가 style.color를 쓰지 않는다). -->
+      <div class="lg-msg" id="lgMsg" role="alert" aria-live="assertive"></div>
+    </form>
+    <div class="lg-note">이 PC에 저장되어 다음부터는 자동으로 로그인됩니다.</div>
+    <div class="lg-quit-row"><button type="button" class="btn sm" id="lgQuit">위젯 종료</button></div>
+  </div>
+</div>
 <input type="file" id="importFile" accept=".xml,application/xml,text/xml" hidden>
 
 <script>
@@ -3633,6 +3688,107 @@ function adminAuthNeeded(){
       try{ openSettings(); }catch(_){}
       setTimeout(() => { const e = document.getElementById('admAuthPw'); if(e){ try{ e.focus(); }catch(_){} } }, 80);
     });
+}
+
+/* ---------- 사용자 로그인(세션 유지) — USER-LOGIN §2.3 ----------
+   인증(정말 본인인가)=회사 시스템(netcus) · 인가(이름·소속·권한)=우리 DB(app_user). 둘 다 호스트가 하고
+   여기 JS는 화면 전환만 한다. 호스트 계약은 셋뿐: userSessionGet / userLogin / userLogout.
+   ★ 실제로 뚫렸던 것들이라 그대로 지킨다:
+     ① 게이트는 부팅에서 '동기적으로' 뜬다. 비동기 회신 뒤에 달면 캘린더와 실데이터가 먼저 보인다(2차 실패).
+     ② .overlay 클래스를 쓰지 않는다 — 배경클릭·ESC·모달스택 닫기 대상이라 차단이 뚫린다.
+     ③ 포커스 격리(inert)가 없으면 Shift+Tab 몇 번으로 덮개 뒤 버튼이 눌려 로그인 없이 저장까지 됐다.
+     ④ 브라우저 단독(!HOST)은 게이트를 절대 띄우지 않는다 — netcus에 CORS 헤더가 없어 로그인이
+        원천 불가라(§2.6 실측), 차단하면 영구히 잠긴다.
+     ⑤ 비밀번호는 JS 변수·localStorage 어디에도 남기지 않는다. 칸에서 바로 호스트로 보내고 비운다. */
+let currentUser = null;   // {loginId,name,title,orgUnit,viewScope,editRole} | null(미로그인)
+let __gateOn = false;     // 게이트 표시 중 — 전역 단축키가 이 값을 보고 조기 return 한다
+let __loginBusy = false;  // 재진입 가드. 버튼 disabled와 '둘 다' 둔다(Enter 경로는 disabled로 안 막힌다)
+
+// 배경 격리 — 게이트/토스트만 남기고 body 직계 전부에 inert+aria-hidden.
+// 해제할 때는 직접 걷어낸 뒤 _updateInert()로 모달 A11y 상태를 다시 계산한다
+// (_updateInert는 .overlay를 건너뛰므로, 우리가 씌운 inert를 그쪽이 벗겨주지 못한다).
+function _gateInert(on){
+  [...document.body.children].forEach(el => {
+    if(el.id === 'loginGate' || el.id === 'toastWrap') return;
+    if(on){ el.setAttribute('inert',''); el.setAttribute('aria-hidden','true'); }
+    else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
+  });
+  if(!on){ try{ _updateInert(); }catch(_){} }
+}
+// 게이트 표시 — showForm=false면 상태줄만('로그인 확인 중…'). 닫는 경로는 만들지 않는다(× · ESC · 배경클릭 전부 없음).
+function showLoginGate(showForm, statusText){
+  __gateOn = true;
+  const g = document.getElementById('loginGate'); if(g) g.classList.remove('hidden');
+  const f = document.getElementById('lgForm'); if(f) f.classList.toggle('hidden', !showForm);
+  const s = document.getElementById('lgStatus'); if(s && statusText != null) s.textContent = statusText;
+  _gateInert(true);
+  if(showForm){ const el = document.getElementById('lgId'); if(el){ try{ el.focus(); }catch(_){} } }
+}
+function hideLoginGate(){
+  __gateOn = false;
+  const g = document.getElementById('loginGate'); if(g) g.classList.add('hidden');
+  const pw = document.getElementById('lgPw'); if(pw) pw.value = '';   // 비번을 DOM에 남기지 않는다
+  const m = document.getElementById('lgMsg'); if(m) m.textContent = '';   // 색은 CSS(.lg-msg)가 소유한다 — 인라인 style을 쓰지 않는다
+  _gateInert(false);
+}
+function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateAccountUi(); }catch(_){} }
+// 설정 「계정」 표기 — 이름+직급 · 소속 · 로그아웃, 그게 전부다.
+// ★ 값은 전부 textContent — DB에서 온 이름·소속이 마크업으로 해석되면 안 된다.
+function updateAccountUi(){
+  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
+  set('acctState', !HOST ? '· 데스크톱 위젯 전용' : (currentUser ? '· 로그인됨' : '· 로그인 필요'));
+  const blk = document.getElementById('acctInfoBlock');
+  if(blk) blk.classList.toggle('hidden', !(HOST && currentUser));
+  if(HOST && currentUser){
+    set('acctName', currentUser.name || currentUser.loginId || '—');
+    set('acctTitle', currentUser.title ? '· ' + currentUser.title : '');
+    set('acctOrg', currentUser.orgUnit || '');
+  } else set('acctMsg', '');
+}
+// 부팅 — ★ 첫 줄이 !HOST 차단(브라우저 단독은 게이트 미표시 + 호스트 요청 0회).
+//   요청은 userSessionGet 하나뿐이고 그건 세션 파일만 읽는다 — 이 경로에 netcus는 없다.
+//   app_user 재조회도 하지 않는다(§2.5): 그 갱신이 로그아웃과 경합해 삭제된 세션을 되살린 적이 있다.
+async function bootUserSession(){
+  if(!HOST) return;
+  showLoginGate(false, '로그인 확인 중…');   // ★ 회신을 기다리지 않고 지금 덮는다(첫 프레임부터)
+  let r = null;
+  try{ r = await hostRequest('userSessionGet', {}, 10000); }catch(_){ r = null; }
+  if(r && r.ok && r.user){ applyUser(r.user); hideLoginGate(); return; }   // 복원 성공에만 내린다
+  applyUser(null);
+  showLoginGate(true, '회사 시스템 계정으로 로그인하세요.');
+}
+// 로그인 제출 — netcus 확인 + app_user 조회 + 저장 2개가 이어져 느릴 수 있어 타임아웃을 넉넉히 준다.
+async function submitLogin(){
+  if(!HOST || __loginBusy) return;
+  const idEl = document.getElementById('lgId'), pwEl = document.getElementById('lgPw');
+  const btn = document.getElementById('lgBtn'), msg = document.getElementById('lgMsg');
+  const say = t => { if(msg) msg.textContent = t; };   // 색은 .lg-msg가 갖는다(인라인 지정 금지)
+  const id = idEl ? String(idEl.value || '').trim() : '', pw = pwEl ? String(pwEl.value || '') : '';
+  say('');
+  if(!id || !pw){ say('ID와 비밀번호를 입력하세요.'); const t = !id ? idEl : pwEl; if(t){ try{ t.focus(); }catch(_){} } return; }
+  __loginBusy = true;
+  // 진행 중: 잠그되(재진입 가드) 시각적으로 죽이지 않는다 — disabled 회색 면은 게이트 배경 대비 1.12:1이라
+  // 버튼이 사라진 것처럼 보였다. aria-busy가 채움색을 되살리고(.lg-foot .btn.primary[aria-busy]) 스크린리더에도 알린다.
+  if(btn){ btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = '확인 중…'; }
+  let r = null;
+  try{ r = await hostRequest('userLogin', {id, pw}, 90000); }catch(_){ r = null; }
+  __loginBusy = false;
+  if(btn){ btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = '로그인'; }
+  if(r && r.ok && r.user){ applyUser(r.user); hideLoginGate(); return; }
+  // 실패 — 게이트는 그대로 두고 호스트가 준 사유(msg)를 그대로 보여준다(실패 code는 없다: 분기할 곳이 없다).
+  say((r && r.msg) || '로그인하지 못했습니다 — 잠시 후 다시 시도하세요.');
+  if(pwEl){ pwEl.value = ''; try{ pwEl.focus(); }catch(_){} }   // 비번은 화면에도 남기지 않는다
+}
+// 로그아웃 — 호스트가 세션·자격을 함께 지운다. 설정 모달을 먼저 닫는다
+// (게이트가 그 위를 덮으면 사용자는 뒤에 열린 모달을 인지하지 못한다).
+async function submitLogout(){
+  if(!HOST) return;
+  const m = document.getElementById('acctMsg'); if(m) m.textContent = '로그아웃 중…';
+  try{ await hostRequest('userLogout', {}, 10000); }catch(_){}
+  applyUser(null);
+  try{ closeOverlay(document.getElementById('settingsModal')); }catch(_){}
+  if(m) m.textContent = '';
+  showLoginGate(true, '로그아웃되었습니다. 다시 로그인하세요.');
 }
 
 /* ---------- CRUD ---------- */
@@ -4834,7 +4990,7 @@ function confirmDiscardIfDirty(ov){
   // 설정은 formSnapshot을 쓰지 않는다 — 스냅샷은 모든 input의 value를 이어 붙이므로 비밀번호가
   // 문자열로 흘러나온다. 대신 '저장 안 됨' 배지(값이 아니라 편집 여부)만 보고 판단한다.
   if(ov.id === 'settingsModal'){
-    const dirty = ['ncBadge','updBadge'].some(id => { const b = document.getElementById(id); return b && b.classList.contains('dirty'); });
+    const dirty = ['updBadge'].some(id => { const b = document.getElementById(id); return b && b.classList.contains('dirty'); });
     if(!dirty) return Promise.resolve(true);
     return confirmBox('저장하지 않고 닫기', '저장하지 않은 입력이 있습니다. 저장 버튼을 누르지 않으면 사라집니다.', '닫기', '계속 편집')
       .then(function(r){ return r === 'ok'; });
@@ -4858,6 +5014,7 @@ function _updateInert(){
     if(el.classList && el.classList.contains('overlay')) return;   // 오버레이 자신은 제외(숨겨진 건 display:none)
     if(el.id === 'shotViewer') return;                             // 사용설명서 이미지 확대 뷰는 모달 위 최상단 오버레이
     if(el.id === 'toastWrap') return;                               // 토스트는 계속 알림 가능해야 함
+    if(el.id === 'loginGate') return;                               // 로그인 게이트는 모든 모달 위 — inert가 붙으면 입력 자체가 막힌다
     if(anyOpen){ el.setAttribute('inert',''); el.setAttribute('aria-hidden','true'); }
     else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
   });
@@ -5319,20 +5476,19 @@ function openSettings(){
   const cur = calDensity();
   $$('#settingsModal input[name="calDensity"]').forEach(r => { r.checked = (r.value === cur); });
   syncGitBodyChecks();   // 커밋 전체 본문 포함 토글 3곳(설정·일괄·작업일지) 동기화
-  // 회사 일간보고(netcus) 설정 초기화
+  // 회사 일간보고(netcus) 설정 초기화 — 자격증명 UI는 없다(로그인이 단일 출처)
   $$('#settingsModal input[name="ncMode"]').forEach(r => { r.checked = (r.value === ncMode()); });
-  const pw = $('#ncPw'); if(pw) pw.value = '';
-  const sm = $('#ncSaveMsg'); if(sm) sm.textContent = '';
-  const st = $('#ncPwState'); if(st) st.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
   { const _pr = document.getElementById('ncProbeRow'); if(_pr) _pr.style.display = HOST ? '' : 'none'; }   // 구조 캡처는 위젯 전용
   { const _pm = $('#ncProbeMsg'); if(_pm){ _pm.textContent = ''; _pm.style.color = ''; } }
-  if(HOST) hpost({ cmd: 'netcusCredsGet' });   // 호스트가 __netcusCreds(id, hasPw)로 응답
+  // 계정 — 표시만 갱신한다(로그인 요청 없음. 게이트가 이미 신원을 확정해 뒀다)
+  { const m = document.getElementById('acctMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
+  updateAccountUi();
   // 자동 업데이트 소스 URL — 호스트가 현재 값(__updateSource)으로 채움
   const um = $('#updSrcMsg'); if(um) um.textContent = '';
   const us = $('#updSrcState'); if(us) us.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
   if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
   // 열 때는 중립으로 되돌린다 — 직전 세션의 '저장 안 됨'이 남아 있으면 거짓 경고가 된다.
-  setSaveBadge('ncBadge', '', '저장 필요'); setSaveBadge('updBadge', '', '저장 필요');
+  setSaveBadge('updBadge', '', '저장 필요');
   // 관리자(과제 DB 상태 포함) — 입력 비우고(빈칸=기존 유지) 상태 갱신. 위젯 전용.
   ['admRegId','admRegPw'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
   { const m = $('#dbMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
@@ -5359,16 +5515,7 @@ function updateDbStatusLine(){
 }
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
 function ncMode(){ try{ return localStorage.getItem('tc_netcusMode') === 'real' ? 'real' : 'dry'; }catch(_){ return 'dry'; } }
-window.__netcusCreds = function(id, hasPw){
-  const e = $('#ncId'); if(e) e.value = id || '';
-  const st = $('#ncPwState'); if(st) st.textContent = hasPw ? '· 저장됨' : '· 미저장';
-};
-window.__netcusCredsCheck = function(m){ const e = $('#ncSaveMsg'); if(e){ e.innerHTML = ICON.spinner + ' ' + esc(m); e.style.color = 'var(--accent)'; } };
-window.__netcusCredsResult = function(ok, m){
-  const e = $('#ncSaveMsg'); if(e){ e.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(m); e.style.color = ok ? 'var(--accent-2)' : 'var(--danger)'; }
-  if(ok){ const st = $('#ncPwState'); if(st) st.textContent = '· 저장됨'; }
-  setSaveBadge('ncBadge', ok ? 'saved' : 'dirty', ok ? '저장됨' : '저장 안 됨');
-};
+// (netcus 자격증명 표시·저장 콜백은 제거됐다 — 자격의 출처가 로그인 하나가 되면서 설정창에 표시할 상태가 없다.)
 window.__netcusProgress = function(msg){
   const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' ' + esc(msg); s.className = 'rpt-send-status busy'; }
 };
@@ -5386,7 +5533,7 @@ window.__netcusProbeResult = function(ok, msg){
 window.__netcusBusy = function(on){ setNetcusLocked(!!on); if(!on) clearTimeout(Netcus.watchdog); };
 function setNetcusLocked(on){
   const seg = $('#rptSrcSeg'); if(seg) seg.querySelectorAll('[data-rsrc]').forEach(x => { x.disabled = on; });
-  ['#rptFrom','#rptTo','#ncSave','#ncProbe'].forEach(s => { const e = $(s); if(e) e.disabled = on; });
+  ['#rptFrom','#rptTo','#ncProbe'].forEach(s => { const e = $(s); if(e) e.disabled = on; });
   const bs = $('#btnRptSend'); if(bs && on) bs.disabled = true;   // 잠금 시 전송 비활성(해제는 __netcusResult/워치독/미리보기 재렌더가)
   document.body.classList.toggle('nc-busy', on);
 }
@@ -7669,7 +7816,8 @@ function renderNetcusError(err, from, to){
   if(sum) sum.textContent = '';
   if(!out) return;
   // 보고서 모달을 먼저 닫고 설정을 연다 — 두 오버레이가 같은 z-index라 보고서(DOM 뒤)가 설정을 덮어 포커스가 안 가던 문제. 자격 없으면 가져온 내용도 없어 손실 없음.
-  const toSettings = () => { closeModal('#reportModal'); openSettings(); setTimeout(() => { const el = $('#ncId'); if(el){ try{ el.focus(); }catch(_){} } }, 80); };
+  // 설정의 「계정」에서 현재 로그인 상태를 확인하도록 유도한다(자격 입력칸은 없다 — 로그인이 단일 출처).
+  const toSettings = () => { closeModal('#reportModal'); openSettings(); };
   if(err === 'no-creds'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncToSettings">설정에서 저장 →</button></div></div>';
@@ -7799,7 +7947,8 @@ function renderNetcusWeeklyError(err, from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(sum) sum.textContent = '';
   if(!out) return;
-  const toSettings = () => { closeModal('#reportModal'); openSettings(); setTimeout(() => { const el = $('#ncId'); if(el){ try{ el.focus(); }catch(_){} } }, 80); };
+  // 설정의 「계정」에서 현재 로그인 상태를 확인하도록 유도한다(자격 입력칸은 없다 — 로그인이 단일 출처).
+  const toSettings = () => { closeModal('#reportModal'); openSettings(); };
   if(err === 'no-creds'){
     out.innerHTML = '<div class="rpt-guard rnc-guard">' + ICON.alert + ' netcus 로그인 정보가 없습니다.'
       + '<div class="rnc-guard-act"><button type="button" class="lnk" id="rncwToSettings">설정에서 저장 →</button></div></div>';
@@ -9306,14 +9455,14 @@ function bind(){
   { const gb = $('#gitBodyChk'); if(gb) gb.addEventListener('change', () => setGitCommitBody(gb.checked)); }   // 커밋 전체 본문 옵션(설정 미러) — 공유 setter로 라우팅(영속+3곳 동기화)
   { const bb = $('#bgBodyChk'); if(bb) bb.addEventListener('change', () => setGitCommitBody(bb.checked)); }   // 일괄 불러오기 모달 토글 — 동일 단일 소스
   { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
-  $('#ncSave').addEventListener('click', () => {
-    const id = $('#ncId').value.trim(), pw = $('#ncPw').value;
-    if(!id){ toast('ID를 입력하세요', 'warn'); $('#ncId').focus(); return; }
-    if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
-    hpost({ cmd: 'netcusSaveCreds', id, pw });
-    $('#ncPw').value = '';
-    const m = $('#ncSaveMsg'); if(m){ m.innerHTML = ICON.spinner + ' 저장 후 로그인 확인…'; m.style.color = 'var(--accent)'; }
-  });
+  // ── 로그인 게이트 · 계정 ── (진입점은 게이트 하나 — 설정창에는 로그인 입력칸이 없다)
+  { const b = $('#lgBtn'); if(b) b.addEventListener('click', submitLogin); }
+  // Enter 제출 — 이 경로는 버튼 disabled로 막히지 않으므로 submitLogin의 __loginBusy 플래그가 진짜 가드다.
+  ['#lgId','#lgPw'].forEach(s => { const e = $(s); if(e) e.addEventListener('keydown', ev => {
+    if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); submitLogin(); } }); });
+  // 게이트가 호스트바를 덮으므로 탈출구는 이 버튼뿐 — 호스트바의 data-host 위임은 바 안쪽만 듣는다(직접 배선).
+  { const q = $('#lgQuit'); if(q) q.addEventListener('click', () => hpost({ cmd: 'close' })); }
+  { const b = $('#acctLogout'); if(b) b.addEventListener('click', submitLogout); }
   { const _pb = $('#ncProbe'); if(_pb) _pb.addEventListener('click', () => { hpost({ cmd: 'netcusProbe' }); const m = $('#ncProbeMsg'); if(m){ m.textContent = '창 여는 중…'; m.style.color = ''; } }); }
   // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
   { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {
@@ -9323,8 +9472,7 @@ function bind(){
       const m = $('#updSrcMsg'); if(m){ m.innerHTML = ICON.check + ' 저장됨' + (url ? '' : ' (비움 — 확인 안 함)'); m.style.color = 'var(--accent-2)'; }
       setSaveBadge('updBadge', 'saved', '저장됨');
     }); }
-  // 편집 감지 → '저장 안 됨' 배지. input 발생 사실만 쓰고 value는 읽지 않는다(자격증명 취급 금지).
-  ['#ncId', '#ncPw'].forEach(s => { const e = $(s); if(e) e.addEventListener('input', () => markSettingsDirty('ncBadge')); });
+  // 편집 감지 → '저장 안 됨' 배지. input 발생 사실만 쓰고 value는 읽지 않는다.
   { const e = $('#updSrc'); if(e) e.addEventListener('input', () => markSettingsDirty('updBadge')); }
   { const b = $('#updSrcCheck'); if(b) b.addEventListener('click', () => {
       if(!HOST){ toast('데스크톱 위젯에서만 확인됩니다', 'warn'); return; }
@@ -9996,6 +10144,9 @@ function bind(){
 
   /* 키보드 단축키 */
   document.addEventListener('keydown', ev => {
+    // ★ 게이트 표시 중에는 전역 단축키가 하나도 돌지 않는다 — ESC/방향키가 뒤의 모달·월 이동을 건드리면
+    //   '로그인 전에는 아무것도 못 한다'가 깨진다(배경은 inert지만 document 레벨 핸들러는 inert와 무관하다).
+    if(__gateOn) return;
     if(ev.key === 'Escape'){
       const _top = openOverlays().pop();
       if(_top && isGuardedModal(_top)){                    // 일정/빠른추가 = 우발적 닫기 방지
@@ -10510,6 +10661,9 @@ setupGuideResize();
 renderAll();
 if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫기) 구성 + 준비 신호
   buildHostBar();
+  // ★ 로그인 게이트를 '지금' 올린다 — 이 함수는 첫 줄에서 동기적으로 화면을 덮고 그 다음에 세션을 물어본다.
+  //   회신을 기다렸다가 덮으면 그 사이 캘린더와 실데이터가 먼저 보인다("팝업부터" 위반 — 2차 실패 원인).
+  bootUserSession();
   // 저장된 위젯 투명도(tc_opacity, 30~100·기본 100)를 로드 시 --wo로 적용(창·WebView2 투명 → 반투명 렌더) + 테마 메뉴 투명도 컨트롤 노출·동기화(위젯 전용)
   { let op = parseInt(localStorage.getItem('tc_opacity'), 10);
     if(!Number.isFinite(op) || op < 30 || op > 100) op = 100;
