@@ -480,13 +480,13 @@ namespace TaskCalendarWidget
 
                     // ----- 과제 DB 연동 — 연결정보는 배포 구성(ProjectDb 상수), 설정 UI 없음 -----
                     case "dbInfoGet":       // 설정 열 때 현재 접속 대상 반영 — 배포 시 서버 주소를 제대로 넣었는지 눈으로 확인
-                        // ★ DbPassword는 절대 넣지 않는다(웹으로도, 로그로도). 표시 목적에 필요 없고, 넘기는 순간 DOM에 남는다.
+                        // ★ 주소와 포트만 보낸다 — 자동 업데이트가 '소스 URL' 하나만 보여주는 것과 같다.
+                        //   DbName·DbUser는 배포 담당자가 확인할 대상이 아니고(빌드에 고정), 화면에 노출할 이유가 없다.
+                        //   DbPassword는 말할 것도 없다 — 넘기는 순간 DOM에 남는다.
                         JsCall("window.__dbInfo && window.__dbInfo(" + JsonSerializer.Serialize(new
                         {
                             host = DeployConfig.DbHost,
-                            port = DeployConfig.DbPort,
-                            db   = DeployConfig.DbName,
-                            user = DeployConfig.DbUser
+                            port = DeployConfig.DbPort
                         }) + ")");
                         break;
                     case "loadProjects":    // 공식 과제 읽어 웹으로(__applyProjects). 실패 시 ""를 넘기면 웹은 목록을 비운다(로컬 캐시 없음 — ADR-18).

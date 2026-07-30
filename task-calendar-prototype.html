@@ -1898,14 +1898,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="set-hint" id="dbCacheLine" style="margin-bottom:6px"></div>
         <!-- 표시 전용 박스 — 값은 호스트(__dbInfo)가 textContent로만 채운다 -->
         <div class="set-form" id="dbInfoForm">
-          <label class="qa-lb">접속 대상</label>
-          <div class="set-hint" id="dbConn" style="margin:0">—</div>
+          <label class="qa-lb">서버 주소</label>
+          <div class="set-hint" id="dbHost" style="margin:0">—</div>
+          <label class="qa-lb" style="margin-top:8px">포트</label>
+          <div class="set-hint" id="dbPort" style="margin:0">—</div>
           <div class="set-form-foot">
             <button type="button" class="btn sm" id="dbReload">지금 새로고침</button>
             <span id="dbMsg" class="git-opt"></span>
           </div>
         </div>
-        <div class="set-hint" style="margin-top:2px">예: <b>192.168.0.10:3306 · taskmgr · taskmgr_app</b> · <b>localhost</b> 는 이 PC 전용입니다 — 다른 PC에 배포하려면 서버 IP로 빌드해야 합니다.</div>
+        <div class="set-hint" style="margin-top:2px">예: <b>192.168.0.10</b> · <b>3306</b> · <b>localhost</b> 는 이 PC 전용입니다 — 다른 PC에 배포하려면 서버 IP로 빌드해야 합니다.</div>
       </div>
     </div>
     <div class="modal-foot">
@@ -5407,7 +5409,7 @@ function openSettings(){
   { const m = $('#dbMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
   { const sec = document.getElementById('dbSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
   // 접속 대상 — 호스트가 배포 구성(DeployConfig)을 __dbInfo로 밀어준다. 자동 업데이트 소스와 같은 자리·같은 방식.
-  if(HOST) hpost({ cmd: 'dbInfoGet' }); else { const c = $('#dbConn'); if(c) c.textContent = '데스크톱 위젯 전용'; }
+  if(HOST) hpost({ cmd: 'dbInfoGet' }); else { const h = $('#dbHost'), p = $('#dbPort'); if(h) h.textContent = '데스크톱 위젯 전용'; if(p) p.textContent = '—'; }
   updateDbStatusLine();
   openModal('#settingsModal');
 }
@@ -5527,19 +5529,15 @@ window.__updateSource = function(url){ const u = $('#updSrc'); if(u) u.value = u
 // ★ 표시 전용 — 값은 바꿀 수 없다(입력칸·저장 버튼 없음). 비밀번호는 payload에 아예 오지 않는다.
 // ★ 값은 textContent로만 넣는다 — 호스트에서 온 문자열이 마크업으로 해석되면 안 된다(innerHTML 금지).
 window.__dbInfo = function(info){
-  const c = document.getElementById('dbConn'); if(!c) return;
+  const h = document.getElementById('dbHost'), p = document.getElementById('dbPort');
   const i = info || {};
   const host = String(i.host == null ? '' : i.host).trim();
   const port = String(i.port == null ? '' : i.port).trim();
-  const db   = String(i.db   == null ? '' : i.db).trim();
-  const user = String(i.user == null ? '' : i.user).trim();
-  if(!host){ c.textContent = '—'; return; }
-  // 예: 192.168.0.10:3306 · taskmgr · taskmgr_app   (localhost면 '이 PC 전용' 꼬리표 — 배포 사고 조기 발견)
-  let s = host + (port ? ':' + port : '');
-  if(db) s += ' · ' + db;
-  if(user) s += ' · ' + user;
-  if(/^(localhost|127\.0\.0\.1|::1)$/i.test(host)) s += ' · 이 PC 전용';
-  c.textContent = s;
+  // ★ 주소와 포트만 보여준다 — 배포 담당자가 확인할 대상은 '어느 서버에 붙는가' 하나다.
+  //   DB명·계정은 빌드에 고정돼 확인 대상이 아니고, 비밀번호는 넘어오지도 않는다.
+  //   자동 업데이트가 '소스 URL' 하나만 보여주는 것과 같은 기준.
+  if(h) h.textContent = host ? (host + (/^(localhost|127\.0\.0\.1|::1)$/i.test(host) ? ' · 이 PC 전용' : '')) : '—';
+  if(p) p.textContent = port || '—';
 };
 // 브라우저: 회사 보고 자동 작성은 SOP로 불가. netcus 창만 열고, 직접 입력 또는 위젯 이관을 안내한다.
 // (자동 작성은 netcus same-origin 배포 시점에 다시 — DECISIONS.md 결정5)

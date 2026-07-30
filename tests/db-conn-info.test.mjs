@@ -96,13 +96,16 @@ const checks = {
       'case "dbInfoGet" payload 에 password/pw 이름의 필드가 있다 — 표시에 필요 없는 값이다');
   },
 
-  // ② 표시에 필요한 4개(host·port·db·user)가 전부 들어간다
-  payloadHasFourFields(source) {
+  // ② payload 는 host·port 둘뿐. 자동 업데이트가 '소스 URL' 하나만 보여주는 것과 같은 기준이다 —
+  //    DB명·계정은 빌드에 고정돼 배포 담당자의 확인 대상이 아니고, 화면에 노출할 이유가 없다.
+  payloadHasHostPortOnly(source) {
     const b = csCase(source, 'dbInfoGet');
-    for (const [field, konst] of [['host', 'DbHost'], ['port', 'DbPort'], ['db', 'DbName'], ['user', 'DbUser']]) {
+    for (const [field, konst] of [['host', 'DbHost'], ['port', 'DbPort']]) {
       assert.ok(new RegExp('\\b' + field + '\\s*=\\s*DeployConfig\\.' + konst + '\\b').test(b),
         `payload 에 ${field} = DeployConfig.${konst} 가 없다 — 화면에서 그 조각이 빈다`);
     }
+    assert.ok(!/DeployConfig\.DbName|DeployConfig\.DbUser/.test(b),
+      'payload 에 DbName/DbUser 가 있다 — 확인 대상이 아닌 값을 화면에 노출한다');
   },
 
   // ③ 웹: 설정을 열 때 요청한다(자동 업데이트 소스와 같은 자리·같은 방식)
@@ -127,14 +130,16 @@ const checks = {
   readOnlyBox(source) {
     const sec = dbSectionMarkup(source);
     assert.ok(/<div class="set-form" id="dbInfoForm">/.test(sec), '#dbInfoForm(.set-form 박스)이 없다');
-    assert.ok(/id="dbConn"/.test(sec), '#dbConn 표시줄이 없다');
+    assert.ok(/id="dbHost"/.test(sec), '#dbHost(서버 주소) 표시줄이 없다');
+    assert.ok(/id="dbPort"/.test(sec), '#dbPort(포트) 표시줄이 없다');
+    assert.ok(!/id="dbConn"/.test(sec), '옛 통합 표시줄 #dbConn 이 남아 있다 — 주소와 포트는 분리 전시한다');
     assert.ok(!/<input\b/.test(sec), '#dbSection 에 <input> 이 생겼다 — 접속 대상은 사용자가 바꿀 수 없는 값이다');
     assert.ok(!/id="dbInfoSave"|>저장</.test(sec), '#dbSection 에 [저장] 버튼이 생겼다 — 저장할 대상이 없다');
     // 새 CSS 클래스 신설 금지 — 자동 업데이트 섹션이 쓰는 기존 클래스만 재사용한다.
     for (const cls of ['set-form', 'set-form-foot', 'qa-lb', 'set-hint', 'git-opt']) {
       assert.ok(sec.includes(cls), `기존 클래스 ${cls} 를 재사용하지 않는다`);
     }
-    assert.ok(!/dbConn-|db-conn|dbInfo-/.test(source.slice(source.indexOf('<style>'), source.indexOf('</style>'))),
+    assert.ok(!/dbHost-|dbPort-|db-conn|dbInfo-/.test(source.slice(source.indexOf('<style>'), source.indexOf('</style>'))),
       '접속 대상 전용 CSS 클래스가 신설됐다 — 자동 업데이트 섹션의 기존 리소스를 재사용할 것');
   },
 
@@ -171,7 +176,7 @@ const checks = {
 
 test('DB접속정보 ①: 호스트에 case "dbInfoGet" 이 있고 __dbInfo 로 밀어준다', () => checks.hostCaseExists(main));
 test('DB접속정보 ①-보안: payload 에 DbPassword 가 없다 (비밀번호는 웹으로 내려가지 않는다)', () => checks.noPasswordInPayload(main));
-test('DB접속정보 ②: payload 에 host·port·db·user 4개가 들어간다', () => checks.payloadHasFourFields(main));
+test('DB접속정보 ②: payload 는 host·port 둘뿐 — DB명·계정은 노출하지 않는다', () => checks.payloadHasHostPortOnly(main));
 test('DB접속정보 ③: 설정 오픈 시 dbInfoGet 을 보낸다(updateSourceGet 과 같은 자리)', () => checks.webRequestsOnOpen(src));
 test('DB접속정보 ④: #dbConn 은 textContent 로만 채운다(HTML 주입 API 부재)', () => checks.textContentOnly(src));
 test('DB접속정보 ⑤: 표시 전용 박스 — 입력칸·[저장] 없음, 기존 CSS 재사용', () => checks.readOnlyBox(src));
@@ -198,7 +203,7 @@ function mutate(base, from, to) {
 }
 
 test('변이①: payload 에 비밀번호를 끼워 넣으면 noPasswordInPayload 가 실패한다', () => {
-  const bad = mutate(main, 'user = DeployConfig.DbUser', 'user = DeployConfig.DbUser,\n                            password = DeployConfig.DbPassword');
+  const bad = mutate(main, 'port = DeployConfig.DbPort', 'port = DeployConfig.DbPort, password = DeployConfig.DbPassword');
   assert.throws(() => checks.noPasswordInPayload(bad), /DbPassword/);
 });
 
@@ -208,7 +213,7 @@ test('변이②: 설정 오픈에서 dbInfoGet 요청을 지우면 webRequestsOn
 });
 
 test('변이③: __dbInfo 가 innerHTML 로 쓰면 textContentOnly 가 실패한다', () => {
-  const bad = mutate(src, 'c.textContent = s;', 'c.innerHTML = s;');
+  const bad = mutate(src, "if(p) p.textContent = port || '—';", "if(p) p.innerHTML = port || '—';");
   assert.throws(() => checks.textContentOnly(bad), /HTML 주입 API/);
 });
 
@@ -217,20 +222,26 @@ test('변이④: #dbCacheLine 을 지우면 cacheLineIntact 가 실패한다', (
   assert.throws(() => checks.cacheLineIntact(bad), /#dbCacheLine/);
 });
 
-test('변이⑤: payload 에서 host 를 빼면 payloadHasFourFields 가 실패한다', () => {
+test('변이⑤: payload 에서 host 를 빼면 payloadHasHostPortOnly 가 실패한다', () => {
   const bad = mutate(main, 'host = DeployConfig.DbHost,', '');
-  assert.throws(() => checks.payloadHasFourFields(bad), /host = DeployConfig\.DbHost/);
+  assert.throws(() => checks.payloadHasHostPortOnly(bad), /host = DeployConfig\.DbHost/);
 });
 
 test('변이⑥: 표시 전용 박스에 입력칸이 생기면 readOnlyBox 가 실패한다', () => {
-  const bad = mutate(src, '<div class="set-hint" id="dbConn" style="margin:0">—</div>',
-    '<input type="text" id="dbConn" class="set-in">');
+  const bad = mutate(src, '<div class="set-hint" id="dbHost" style="margin:0">—</div>',
+    '<input type="text" id="dbHost" class="set-in">');
   assert.throws(() => checks.readOnlyBox(bad), /<input> 이 생겼다/);
 });
 
 test('변이⑦: #dbReload 를 박스에서 들어내면 reloadIntact 가 실패한다', () => {
   const bad = mutate(src, '<button type="button" class="btn sm" id="dbReload">지금 새로고침</button>', '');
   assert.throws(() => checks.reloadIntact(bad), /#dbReload 버튼이 사라지거나/);
+});
+
+test('변이⑨: payload 에 DbName/DbUser 를 되살리면 payloadHasHostPortOnly 가 실패한다', () => {
+  // 사용자 지적: 자동 업데이트가 소스 URL 하나만 보여주듯, 여기도 '어느 서버에 붙는가' 하나면 된다.
+  const bad = mutate(main, 'port = DeployConfig.DbPort', 'port = DeployConfig.DbPort, db = DeployConfig.DbName');
+  assert.throws(() => checks.payloadHasHostPortOnly(bad), /확인 대상이 아닌 값/);
 });
 
 test('변이⑧: 호스트 case 를 지우면 hostCaseExists 가 실패한다', () => {
@@ -268,42 +279,54 @@ if (!JSDOM) {
   if (bootErr) {
     test('DB접속정보(jsdom): 부팅 실패(조사 필요)', () => { throw bootErr; });
   } else {
-    const conn = () => w.document.getElementById('dbConn');
+    // 주소와 포트는 각자 줄에 전시한다(사용자 결정) — 한 줄로 합치면 어느 쪽이 틀렸는지 눈에 덜 띈다.
+    const dbHost = () => w.document.getElementById('dbHost');
+    const dbPort = () => w.document.getElementById('dbPort');
 
     test('DB접속정보(jsdom) ⑤: HOST=false 에서 설정을 열어도 오류 없이 대체 표기된다', () => {
       assert.strictEqual(w.eval('HOST'), false, '전제: 브라우저 단독 부팅');
       w.eval('openSettings()');   // 던지면 여기서 실패한다(브라우저 단독 회귀 방지)
-      assert.strictEqual(conn().textContent, '데스크톱 위젯 전용',
-        'HOST=false 인데 접속 대상이 대체 표기로 바뀌지 않았다');
+      assert.strictEqual(dbHost().textContent, '데스크톱 위젯 전용',
+        'HOST=false 인데 서버 주소가 대체 표기로 바뀌지 않았다');
+      assert.strictEqual(dbPort().textContent, '—', 'HOST=false 인데 포트가 비워지지 않았다');
       // 섹션 자체는 위젯 전용이라 감춰지는 기존 관례도 그대로여야 한다.
       assert.strictEqual(w.document.getElementById('dbSection').style.display, 'none',
         '#dbSection 이 브라우저에서 감춰지지 않는다(기존 관례)');
     });
 
-    test('DB접속정보(jsdom) ②: __dbInfo 가 host:port · db · user 한 줄로 표시한다', () => {
+    test('DB접속정보(jsdom) ②: 주소와 포트가 각각 따로 전시된다 (DB명·계정은 안 보인다)', () => {
+      w.eval("window.__dbInfo({host:'192.168.0.10',port:3306})");
+      assert.strictEqual(dbHost().textContent, '192.168.0.10');
+      assert.strictEqual(dbPort().textContent, '3306');
+      // 호스트가 db/user 를 보내더라도 화면에는 나오지 않아야 한다(계약 이탈 방어).
       w.eval("window.__dbInfo({host:'192.168.0.10',port:3306,db:'taskmgr',user:'taskmgr_app'})");
-      assert.strictEqual(conn().textContent, '192.168.0.10:3306 · taskmgr · taskmgr_app');
+      const shown = dbHost().textContent + ' ' + dbPort().textContent;
+      assert.ok(!/taskmgr/.test(shown), 'DB명·계정이 화면에 노출됐다 — 확인 대상이 아닌 값이다');
     });
 
-    test('DB접속정보(jsdom): localhost 면 이 PC 전용임을 값 옆에서 알린다(배포 사고 조기 발견)', () => {
-      w.eval("window.__dbInfo({host:'localhost',port:3306,db:'taskmgr',user:'taskmgr_app'})");
-      assert.ok(/이 PC 전용/.test(conn().textContent), 'localhost 인데 경고 꼬리표가 없다');
-      w.eval("window.__dbInfo({host:'192.168.0.10',port:3306,db:'taskmgr',user:'taskmgr_app'})");
-      assert.ok(!/이 PC 전용/.test(conn().textContent), '서버 IP 인데 경고 꼬리표가 붙었다');
+    test('DB접속정보(jsdom): localhost 면 이 PC 전용임을 주소 옆에서 알린다(배포 사고 조기 발견)', () => {
+      w.eval("window.__dbInfo({host:'localhost',port:3306})");
+      assert.ok(/이 PC 전용/.test(dbHost().textContent), 'localhost 인데 경고 꼬리표가 없다');
+      assert.ok(!/이 PC 전용/.test(dbPort().textContent), '꼬리표가 포트 줄에 붙었다 — 주소 줄에만 붙어야 한다');
+      w.eval("window.__dbInfo({host:'192.168.0.10',port:3306})");
+      assert.ok(!/이 PC 전용/.test(dbHost().textContent), '서버 IP 인데 경고 꼬리표가 붙었다');
     });
 
     test('DB접속정보(jsdom) ④: 마크업 문자열이 와도 요소로 해석되지 않는다(textContent)', () => {
-      w.eval("window.__dbInfo({host:'<img src=x onerror=alert(1)>',port:3306,db:'<b>d</b>',user:'u'})");
-      assert.strictEqual(conn().children.length, 0, '#dbConn 안에 요소가 생성됐다 — HTML 로 해석됐다');
-      assert.ok(conn().textContent.includes('<img src=x onerror=alert(1)>'), '원문이 그대로 보이지 않는다');
-      assert.strictEqual(conn().querySelector('img'), null, 'img 요소가 실제로 만들어졌다');
+      w.eval("window.__dbInfo({host:'<img src=x onerror=alert(1)>',port:'<b>1</b>'})");
+      assert.strictEqual(dbHost().children.length, 0, '#dbHost 안에 요소가 생성됐다 — HTML 로 해석됐다');
+      assert.strictEqual(dbPort().children.length, 0, '#dbPort 안에 요소가 생성됐다');
+      assert.ok(dbHost().textContent.includes('<img src=x onerror=alert(1)>'), '원문이 그대로 보이지 않는다');
+      assert.strictEqual(dbHost().querySelector('img'), null, 'img 요소가 실제로 만들어졌다');
     });
 
     test('DB접속정보(jsdom): 값이 비면 —(빈 표시)로 남는다', () => {
       w.eval('window.__dbInfo({})');
-      assert.strictEqual(conn().textContent, '—');
+      assert.strictEqual(dbHost().textContent, '—');
+      assert.strictEqual(dbPort().textContent, '—');
       w.eval('window.__dbInfo(null)');
-      assert.strictEqual(conn().textContent, '—', 'null 페이로드에서 던지거나 값이 오염됐다');
+      assert.strictEqual(dbHost().textContent, '—', 'null 페이로드에서 던지거나 주소가 오염됐다');
+      assert.strictEqual(dbPort().textContent, '—', 'null 페이로드에서 던지거나 포트가 오염됐다');
     });
   }
 }
