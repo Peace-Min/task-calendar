@@ -242,7 +242,97 @@ private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)  // 관
 이러면 "새 API 를 추가할 때 LLM 이 관문을 기억할까?"라는 질문 자체가 사라진다 —
 빠뜨리면 `node tests/run-tests.mjs` 가 빨간불로 잡는다.
 
-### 3.3 2단계 활성화 계획 (지금 구현하지 않음)
+### 3.3 2단계 — 확정 설계 (2026-07-30)
+
+#### 세션은 4개 필드만 (컴팩트화)
+
+```json
+{ "loginId": "phmin", "name": "민평화", "title": "연구원", "orgUnit": "SW 3팀" }
+```
+
+| 남김 | 이유 |
+|---|---|
+| `loginId` | **본질.** 신원이자, 쓰기 관문이 권한을 조회하는 키 |
+| `name`·`title`·`orgUnit` | 설정창 「계정」 표시. **오프라인에서도 이름이 보여야** 하므로 캐시 값어치가 있다 |
+
+| 제거 | 이유 |
+|---|---|
+| `viewScope`·`editRole` | **권한은 작업 시점에 DB 관문이 판정한다.** 캐시는 쓰이지도 않으면서 "이게 권한이다"는 오해를 부른다(실제로 그 오해가 한 번 일어났다) |
+| `appVersion` | 아래 참조 |
+| `savedAt` | 아무도 안 읽는다 |
+
+#### 버전 기반 일괄 로그아웃은 **폐기한다**
+
+당초 요구였지만 재검토 결과 **해결하는 문제가 없다.**
+
+| 막으려던 것 | 실제로는 |
+|---|---|
+| 세션 포맷이 바뀌어 잘못 읽힘 | `Load` 가 복호화·JSON 실패 시 이미 조용히 null → 로그인 화면 |
+| 권한 모델 변경으로 캐시값 의미가 달라짐 | **권한을 캐시하지 않으면** 의미가 변할 게 없다 |
+| 보안 사고 시 강제 리셋 | DB `is_active=0` 이나 netcus 계정 정지가 정공법 |
+
+비용은 확실하다 — **릴리스마다 89명 재로그인.** 같은 날 `0.14.0→0.14.1→0.14.2` 를 올린 이력이 있고,
+자동 업데이트가 있어 "배너 눌러 업데이트했더니 로그인하라"가 된다.
+
+**포맷이 정말 깨질 때는 파일명을 바꾼다**(`user.session` → `user2.session`). 옛 파일은 안 읽히니
+자동으로 로그아웃되고 **버전 비교 코드가 0줄**이다. JSON 이라 필드 추가·삭제는 대개 하위호환된다.
+
+> 이 변경 자체는 일괄 로그아웃을 유발하지 않는다 — `Load` 가 필드를 이름으로 읽으므로
+> 기존 세션에 남은 `viewScope`·`appVersion` 은 그냥 무시된다.
+
+#### 권한 판정 — 쓰기 관문 한 곳
+
+**DB 작업 권한은 로그인 시점이 아니라 작업 요청 시점에 결정된다.**
+
+```csharp
+// ★ static 을 뗀다 — 세션(_dataDir)을 읽어야 한다.
+private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
+{
+    var s = UserSession.Load(_dataDir, _log);
+    if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
+    var conn = new MySqlConnection(BuildConnString());
+    await conn.OpenAsync(ct);
+    // 같은 연결로 지금 이 순간의 권한을 읽는다 — 세션 캐시를 믿지 않는다.
+    //   SELECT edit_role, is_active FROM app_user WHERE login_id = @id
+    //   is_active=0 → "비활성 처리된 계정입니다."      (퇴사·계정 회수가 즉시 반영 — 같은 쿼리라 공짜)
+    //   edit_role ∉ (editor, admin) → "편집 권한이 없습니다."
+}
+```
+
+- 읽기(`OpenReadAsync`)는 막지 않는다 — 회수의 목적은 편집 차단이지 조회 차단이 아니다.
+- 쓰기 11곳은 이미 이 관문을 통과하므로 **호출부를 고치지 않아도 전부 적용된다.**
+
+> ### ⚠ 함정 — 권한 거부가 "오프라인"으로 표시된다
+> 쓰기 메서드들이 관문의 **모든 예외를 `OfflineMsg` 로 변환**한다:
+> ```csharp
+> try { conn = await OpenWriteAsync(cts.Token); }
+> catch (Exception cex) { _log(…); return (false, OfflineMsg); }
+> ```
+> 그대로 두면 **"편집 권한이 없습니다"가 "서버 연결이 필요합니다"로 보인다.**
+> 전용 예외 타입을 만들고 **쓰기 11곳에 catch 를 한 줄씩** 앞에 넣어 구분할 것:
+> ```csharp
+> catch (NotAuthorizedException nex) { return (false, nex.Message); }
+> catch (Exception cex) { … return (false, OfflineMsg); }
+> ```
+
+#### 화면 — `getRole()` 폐기, `offEditGuard` 는 힌트로 강등
+
+권한을 캐시하지 않으므로 **JS 는 권한을 모른다.** 시도하고 호스트가 거절하면 사유를 보여준다.
+
+```js
+function offEditGuard(fn, desc){
+  if(!HOST){ toast('공식 과제 편집은 데스크톱 위젯 전용입니다', 'warn'); return; }
+  if(!dbOnline){ toast('편집하려면 서버 연결이 필요합니다', 'warn'); return; }
+  if(typeof fn === 'function') fn();   // 권한 판정은 호스트가 한다
+}
+```
+
+- `getRole()`·`__adminSession`·`__adminState/Result/Saved`·`adminAuthNeeded()` **삭제**
+- 호스트 `case "adminLogin"/"adminLogout"/"adminStateGet"/"saveAdminCred"` **삭제**
+- `ProjectDb.VerifyAdmin`·`SaveAdminCred`·`IsAdminUnlocked` **삭제**, `db-config.json` 의 관리자 항목도
+- 설정창 `#adminSection` **통째로 삭제**(§2.4 의 소멸 경로대로)
+
+#### 이전 계획 (참고)
 
 `edit_role` 을 편집 게이트에 적용하는 2단계에서 `OpenWriteAsync` 안에 한 쿼리를 넣는다:
 
