@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Globalization;
-using System.IO;
-using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,11 +9,21 @@ using MySqlConnector;
 
 namespace TaskCalendarWidget
 {
+    // 쓰기 권한 거부 — '오프라인'과 반드시 구분해야 하는 실패다(USER-LOGIN §3.3).
+    //   쓰기 메서드들은 연결 실패를 전부 OfflineMsg("서버에 연결할 수 없습니다…")로 환원한다.
+    //   전용 타입이 없으면 "편집 권한이 없습니다"가 "서버 연결이 필요합니다"로 표시돼 사용자가 원인을 오해한다.
+    //   그래서 쓰기 11곳 모두 이 예외를 Exception보다 '앞에서' 잡아 Message를 그대로 사용자에게 돌려준다.
+    internal sealed class NotAuthorizedException : Exception
+    {
+        public NotAuthorizedException(string message) : base(message) { }
+    }
+
     // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
-    // 관리자 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 null을 돌려 웹이 목록을 비우고
+    // 공식 과제 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 null을 돌려 웹이 목록을 비우고
     // (로컬 캐시 없음 — ADR-18), 쓰기는 '온라인에서만 가능'을 명시적으로 알린다(무음 유실 금지).
-    // DB 연결정보·관리자 초기 자격은 배포 구성(DeployConfig.cs 한 곳)에서 온다 — 배포 전 그 파일만 고쳐 빌드.
-    // 관리자 자격만 db-config.json(평문)에 저장(변경 시) — 없으면 DeployConfig 디폴트 사용. 보안 강화는 P6.5(app_user 전환)에서.
+    // DB 연결정보는 배포 구성(DeployConfig.cs 한 곳)에서 온다 — 배포 전 그 파일만 고쳐 빌드.
+    // ★ 편집 권한은 공용 관리자 비밀번호가 아니라 '로그인 신원 + app_user.edit_role'로 판정한다(USER-LOGIN §3.3).
+    //   판정 지점은 OpenWriteAsync 한 곳뿐이다.
     internal sealed class ProjectDb
     {
         private readonly string _dataDir;
@@ -27,122 +35,12 @@ namespace TaskCalendarWidget
             _log = log ?? (_ => { });
         }
 
-        private string ConfigFile => Path.Combine(_dataDir, "db-config.json");
-
-        // config(db-config.json)에는 관리자 자격 + 잠금해제 상태만 남긴다(변경분). 연결정보는 항상 베이크 상수 —
-        // 옛 파일에 host/port 등 연결 필드가 남아 있어도 그냥 무시한다(에러·마이그레이션 불필요).
-        private sealed class AdminCred
-        {
-            public string AdminId = "";   // 빈 문자열 = 미변경 → 배포 구성 디폴트(DeployConfig.AdminId/AdminPw) 사용
-            public string AdminPw = "";
-            public bool AdminUnlocked = false;   // 이 PC에서 인증 완료 여부(영속) — netcus 자격 패턴과 같은 '한 번 인증하면 유지'
-        }
-
-        private AdminCred LoadAdmin()
-        {
-            var a = new AdminCred();
-            try
-            {
-                if (!File.Exists(ConfigFile)) return a;
-                using var d = JsonDocument.Parse(File.ReadAllText(ConfigFile, Encoding.UTF8));
-                var r = d.RootElement;
-                if (r.TryGetProperty("adminId", out var ai) && ai.ValueKind == JsonValueKind.String) a.AdminId = ai.GetString() ?? "";
-                if (r.TryGetProperty("adminPw", out var ap) && ap.ValueKind == JsonValueKind.String) a.AdminPw = ap.GetString() ?? "";
-                // 옛 파일엔 이 필드가 없다 → 기본 false(=미인증). 하위호환.
-                if (r.TryGetProperty("adminUnlocked", out var au) && (au.ValueKind == JsonValueKind.True || au.ValueKind == JsonValueKind.False)) a.AdminUnlocked = au.GetBoolean();
-            }
-            catch (Exception ex) { _log("관리자 설정 로드 실패: " + ex.Message); }
-            return a;
-        }
-
-        // config 기록 — 자격·잠금해제를 한 곳에서 직렬화(세 경로가 각자 쓰다 필드를 흘리는 것 방지).
-        private bool WriteAdmin(AdminCred a)
-        {
-            try
-            {
-                Directory.CreateDirectory(_dataDir);
-                File.WriteAllText(ConfigFile,
-                    JsonSerializer.Serialize(new { adminId = a.AdminId, adminPw = a.AdminPw, adminUnlocked = a.AdminUnlocked },
-                        new JsonSerializerOptions { WriteIndented = true }),
-                    new UTF8Encoding(false));
-                return true;
-            }
-            catch (Exception ex) { _log("관리자 설정 저장 실패: " + ex.Message); return false; }
-        }
-
-        // 이 PC에서 관리자 인증이 이미 끝났는지(부팅 시 웹 복원용).
-        public bool IsAdminUnlocked()
-        {
-            try { return LoadAdmin().AdminUnlocked; }
-            catch (Exception ex) { _log("관리자 잠금상태 조회 실패: " + ex.Message); return false; }
-        }
-
-        // 잠금해제 상태만 변경(해제 버튼 = false). 자격은 건드리지 않는다.
-        public bool SetAdminUnlocked(bool unlocked)
-        {
-            var a = LoadAdmin();
-            a.AdminUnlocked = unlocked;
-            bool ok = WriteAdmin(a);
-            if (ok) _log("관리자 잠금해제 상태: " + (unlocked ? "활성(유지)" : "해제"));
-            return ok;
-        }
-
-        // 관리자 자격 변경(평문 json). 빈 값 = 기존 유지.
-        //
-        // ★★ 보안 게이트 — 반드시 '이미 인증된 상태'에서만 허용한다 (2026-07-24 인증 우회 수정).
-        //   실사용 테스트에서 발견된 취약점: 미인증(viewer) 상태에서도 이 함수가 그대로 실행돼
-        //   ① 공격자가 관리자 비밀번호를 자기 것으로 갈아치우고 관리자가 되고
-        //   ② 원래 관리자는 옛 비번으로 못 들어온다(계정 탈취 + DoS).
-        //   클라이언트 게이트(UI)만으로는 브리지 메시지를 직접 던지면 우회되므로 호스트에서 막는 이 검사가 진짜 방어선이다.
-        //
-        //   부트스트랩: 최초에는 배포 구성 디폴트(DeployConfig.AdminPw)로 '먼저 인증'하면 되므로 잠기지 않는다.
-        //   복구(비번 분실): db-config.json을 삭제하면 배포 구성 디폴트로 되돌아간다(db/deploy/README.md 참조).
-        //
-        // 반환: (ok, msg) — 디스크 쓰기 실패를 삼키지 않고 웹에 알려 거짓 성공 표시를 막는다(__saveFailed와 같은 취지).
-        public (bool ok, string msg) SaveAdminCred(string? id, string? pw)
-        {
-            try
-            {
-                var a = LoadAdmin();
-                // ★ 인증 전에는 자격을 바꿀 수 없다. (LoadAdmin 결과를 그대로 써서 파일 상태를 단일 소스로 판단)
-                if (!a.AdminUnlocked)
-                {
-                    _log("관리자 자격 변경 거부 — 미인증 상태(인증 우회 시도 차단)");
-                    return (false, "관리자 인증 후에 변경할 수 있습니다.");
-                }
-                if (!string.IsNullOrWhiteSpace(id)) a.AdminId = id!.Trim();
-                if (!string.IsNullOrEmpty(pw)) a.AdminPw = pw;   // 빈칸 = 기존 유지
-                // ★ 잠금해제는 유지한다 — 이미 인증한 사람이 스스로 바꾼 것이라 재인증을 요구할 이유가 없다(불필요한 마찰).
-                a.AdminUnlocked = true;
-                if (!WriteAdmin(a)) return (false, "관리자 자격을 저장하지 못했습니다(디스크 쓰기 실패).");
-                _log("관리자 자격 변경: id=" + (a.AdminId.Length > 0 ? a.AdminId : "(디폴트)") + " (pw " + (a.AdminPw.Length > 0 ? "설정됨" : "디폴트") + ") · 관리자 모드 유지");
-                return (true, "관리자 비밀번호를 변경했습니다. 다음 인증부터 새 비밀번호를 사용하세요.");
-            }
-            catch (Exception ex) { _log("관리자 자격 저장 실패: " + ex.Message); return (false, "관리자 자격을 저장하지 못했습니다: " + Short(ex)); }
-        }
-
-        // 관리자 로그인 검증 — config값(없으면 베이크 디폴트)과 대조해 role('admin') 또는 null 반환(+안내 메시지).
-        // ※ 검증은 '이 한 지점'에서만 — P6.5에서 여기만 app_user 인증으로 교체한다. JS엔 비번을 절대 노출하지 않는다.
-        // id가 비어 있으면 pw만 대조(단일 관리자 편의). id가 있으면 id+pw 모두 일치해야 함.
-        // 성공하면 잠금해제를 영속화한다(이 PC에선 재시작해도 유지 — 사용자 결정).
-        public (string? role, string msg) VerifyAdmin(string? id, string? pw)
-        {
-            try
-            {
-                var a = LoadAdmin();
-                string effId = a.AdminId.Length > 0 ? a.AdminId : DeployConfig.AdminId;   // 미변경 → 배포 구성 디폴트 폴백
-                string effPw = a.AdminPw.Length > 0 ? a.AdminPw : DeployConfig.AdminPw;
-                bool idOk = string.IsNullOrEmpty(id) || string.Equals(id, effId, StringComparison.Ordinal);
-                bool ok = idOk && !string.IsNullOrEmpty(pw) && string.Equals(pw, effPw, StringComparison.Ordinal);
-                if (!ok) return (null, "관리자 자격이 일치하지 않습니다.");
-                // 잠금해제 영속화 — 쓰기 실패해도 이번 세션 인증 자체는 유효하므로 role은 내주고 안내만 덧붙인다.
-                a.AdminUnlocked = true;
-                bool saved = WriteAdmin(a);
-                return ("admin", saved ? "관리자 모드로 전환되었습니다. 이 PC에서는 계속 유지됩니다."
-                                       : "관리자 모드로 전환되었습니다(이번 실행만 — 상태 저장 실패).");
-            }
-            catch (Exception ex) { _log("관리자 검증 실패: " + ex.Message); return (null, "관리자 검증 오류: " + Short(ex)); }
-        }
+        // ★ db-config.json은 더 이상 읽지도 쓰지도 않는다(USER-LOGIN §3.3, 2026-07-30).
+        //   그 파일이 담고 있던 것은 관리자 자격(adminId/adminPw)과 잠금해제 상태(adminUnlocked)뿐이었고
+        //   셋 다 폐지됐다 — 편집 권한은 공용 비밀번호가 아니라 로그인 신원으로 판정한다.
+        //   DB 연결정보는 예나 지금이나 배포 구성(DeployConfig) 베이크 상수라 그 파일에 없었다.
+        //   사용자 PC에 남은 옛 파일은 아무도 읽지 않으므로 그냥 방치한다
+        //   (지우는 코드를 새로 지으면 ‘언젠가 다른 걸 지운다’는 위험만 남고 얻는 게 없다).
 
         // 짧은 연결 타임아웃(~4s) — 오프라인이면 빠르게 실패해 화면이 곧바로 '연결 안 됨'으로 간다. 연결정보는 항상 배포 구성 상수(DeployConfig).
         private static string BuildConnString() =>
@@ -163,11 +61,14 @@ namespace TaskCalendarWidget
         //   메서드 18개가 각자 new MySqlConnection을 열면, 쓰기 권한 검사를 '호출부마다 한 줄'로 넣는 설계는
         //   fail-open이 된다(새 API에서 빠뜨리면 조용히 뚫린다). SQL 모양은 제각각이어도 '연결을 여는 한 줄'은
         //   전부 같으므로, 그 한 줄을 초크포인트로 만들고 테스트 불변식(§3.2)으로 기계가 강제한다.
-        //   ★ 지금 두 헬퍼는 동작이 완전히 같다 — 관문 '자리'만 확보한 것이다.
-        //     실제 권한 검사(edit_role·is_active)는 2단계에서 OpenWriteAsync 안에 한 쿼리로 들어간다(§3.3).
+        //   ★ 2단계(2026-07-30)부터 OpenWriteAsync 안에 실제 권한 판정이 들어 있다 —
+        //     쓰기 11곳은 이미 이 관문을 통과하므로 호출부를 고치지 않아도 전부 적용된다.
         // ================================================================================
 
         // 읽기용 연결. 실패(오프라인·인증오류)는 그대로 던진다 — 호출측이 자기 문맥의 메시지로 처리한다.
+        // ★ 읽기에는 권한 검사를 두지 않는다(USER-LOGIN §3.3) — 회수의 목적은 편집 차단이지 조회 차단이 아니다.
+        //   로그인 인가 조회(LoadAppUserJsonAsync)도 이 경로를 쓴다. 여기에 권한 검사를 넣으면
+        //   "권한을 알려면 먼저 권한이 있어야 한다"는 순환이 생겨 아무도 로그인하지 못한다.
         private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
         {
             var conn = new MySqlConnection(BuildConnString());
@@ -176,12 +77,51 @@ namespace TaskCalendarWidget
             return conn;
         }
 
-        // 쓰기용 연결 — 지금은 읽기와 동일. 2단계에서 여기에만 권한 쿼리를 넣으면 쓰기 11곳이 한 번에 막힌다.
-        private static async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
+        // 쓰기용 연결 = 권한 관문. ★ static이 아니다 — 세션(_dataDir)을 읽어야 하기 때문이다.
+        //
+        // DB 작업 권한은 '로그인 시점'이 아니라 '작업 요청 시점'에 결정된다(USER-LOGIN §3.3).
+        //   ① 세션이 없으면 신원이 없다 → 연결도 열지 않는다.
+        //   ② 연결을 연 뒤, 방금 연 그 연결로 지금 이 순간의 권한을 읽는다 — 세션 캐시를 믿지 않는다.
+        //      그래서 퇴사·계정 회수(is_active=0)와 권한 강등이 다음 쓰기부터 즉시 반영된다.
+        //      주기 검사·타이머·백그라운드 폴링이 전혀 필요 없는 이유다(같은 쿼리에서 공짜로 따라온다).
+        //   ③ 거부하면 연결을 반드시 정리한다 — 예외로 빠져나가며 열린 연결을 흘리면 소켓이 샌다.
+        private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
         {
+            var s = UserSession.Load(_dataDir, _log);
+            if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
+
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
-            catch { await conn.DisposeAsync(); throw; }
+            catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
+            try
+            {
+                bool found = false;
+                string role = "";
+                int active = 0;
+                // 값은 반드시 파라미터 바인딩(문자열 연결 금지) — loginId는 사용자 입력에서 왔다.
+                await using (var cmd = new MySqlCommand("SELECT edit_role, is_active FROM app_user WHERE login_id=@id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", s.LoginId);
+                    await using var rd = await cmd.ExecuteReaderAsync(ct);
+                    if (await rd.ReadAsync(ct))
+                    {
+                        found = true;
+                        role = Str(rd, "edit_role");
+                        active = IntOrNull(rd, "is_active") ?? 0;
+                    }
+                }
+                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");
+                if (active == 0) throw new NotAuthorizedException("비활성 처리된 계정입니다.");
+                if (!string.Equals(role, "editor", StringComparison.Ordinal) && !string.Equals(role, "admin", StringComparison.Ordinal))
+                    throw new NotAuthorizedException("편집 권한이 없습니다.");
+            }
+            catch (NotAuthorizedException nex)
+            {
+                _log("쓰기 권한 거부(" + s.LoginId + "): " + nex.Message);
+                await conn.DisposeAsync();
+                throw;
+            }
+            catch { await conn.DisposeAsync(); throw; }   // 권한 조회 자체의 실패(질의 오류 등)도 연결을 흘리지 않는다
             return conn;
         }
 
@@ -475,6 +415,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(과제 저장): " + nex.Message); return (false, nex.Message, false); }
                 catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg, false); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -592,6 +533,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(과제 숨김/복구): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(과제 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -646,6 +588,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(발주처 추가): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 추가): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -678,6 +621,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(발주처 개명): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -707,6 +651,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(발주처 숨김/복구): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -732,6 +677,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(발주처 참조수): " + nex.Message); return (false, 0, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(발주처 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -779,6 +725,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 추가): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 추가): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -817,6 +764,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 개명): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -845,6 +793,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 숨김/복구): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -879,6 +828,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 순서변경): " + nex.Message); return (false, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(" + table + " 순서변경): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
@@ -917,6 +867,7 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(코드 참조수): " + nex.Message); return (false, 0, nex.Message); }
                 catch (Exception cex) { _log("DB 연결 실패(코드 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 

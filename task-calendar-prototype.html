@@ -677,9 +677,8 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-row.subbed{box-shadow:inset 3px 0 0 var(--accent)}
 .off-subtick{margin-left:6px;font-size:var(--fs-micro);font-weight:700;color:var(--ok)}
 .off-msg{font-size:var(--fs-meta);color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 관리자 섹션 · 공식 과제 편집(P3.2) — 상태 메시지는 min-height로 자리를 미리 잡아 폼이 튀지 않게 */
-/* (관리자 인증 프롬프트 전용 스타일은 2026-07-24 프롬프트 제거와 함께 삭제 — 인증은 설정의 .set-in 입력으로 한다) */
-.adm-row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;margin:0 0 10px}
+/* 공식 과제 편집(P3.2) — 상태 메시지는 min-height로 자리를 미리 잡아 폼이 튀지 않게 */
+/* (설정창 인증 전용 행 스타일은 2026-07-30 관리자 자격 폐지와 함께 삭제 — 쓰던 블록이 사라졌다) */
 .off-ed-msg{
   margin-top:var(--sp-2);min-height:17px;font-size:var(--fs-meta);color:var(--muted);
   word-break:keep-all;overflow-wrap:anywhere;
@@ -1892,26 +1891,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <div><button type="button" class="btn sm" id="acctLogout">로그아웃</button> <span id="acctMsg" class="git-opt"></span></div>
         </div>
       </div>
-      <div class="set-sec set-sec-top" id="adminSection">
-        <div class="set-lb">관리자 <span id="admState" class="git-opt"></span></div>
-        <!-- 인증은 여기(설정)에서 한다 — netcus 자격증명과 같은 구조. 한 번 인증하면 이 PC에서 유지된다. -->
-        <div class="set-hint"><b>공식 과제 편집</b>에는 관리자 인증이 필요합니다. 아래에서 인증하면 <b>이 PC에서 계속 유지</b>되며 <b>해제</b>로 끌 수 있습니다. 과제 DB 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다.</div>
+      <!-- 과제 DB — 상태 표시와 새로고침만. 연결정보는 배포 시 구성되므로 입력 UI가 없다.
+           ★ 여기 있던 「관리자」 인증 UI(비밀번호·인증·해제·비밀번호 변경)는 통째로 삭제됐다
+             (USER-LOGIN §2.4의 소멸 경로 · §3.3). 공용 비밀번호로 편집을 여는 모델이 폐지되고,
+             편집 권한은 로그인 신원으로 '작업 요청 시점'에 호스트가 판정한다.
+             남긴 것은 인증과 무관한 DB 상태줄·새로고침 둘뿐이다. -->
+      <div class="set-sec set-sec-top" id="dbSection">
+        <div class="set-lb">과제 DB</div>
+        <div class="set-hint">공식 과제는 사내 서버에서 옵니다. 연결은 배포 시 구성되어 있으며, 데스크톱 위젯에서만 동작합니다. <b>편집 권한은 로그인한 계정</b>에 따라 정해집니다.</div>
         <div class="set-hint" id="dbCacheLine" style="margin-bottom:6px"></div>
         <div style="margin:0 0 10px"><button type="button" class="btn sm" id="dbReload">지금 새로고침</button> <span id="dbMsg" class="git-opt"></span></div>
-        <!-- (미인증) 잠금 해제 — 비밀번호는 호스트로만 넘어가고 JS에 남지 않는다 -->
-        <div id="admAuthBlock">
-          <label class="qa-lb" for="admAuthPw">관리자 비밀번호</label>
-          <input type="password" id="admAuthPw" class="set-in" autocomplete="current-password" placeholder="관리자 비밀번호">
-          <div style="margin:9px 0 4px"><button type="button" class="btn sm primary" id="admAuthOk">인증</button> <span id="admMsg" class="git-opt"></span></div>
-        </div>
-        <!-- (인증됨) 해제 + 비밀번호 변경 — 변경은 인증된 상태에서만 노출·동작한다(호스트도 미인증이면 거부) -->
-        <div class="adm-row hidden" id="admUnlockedBlock"><button type="button" class="btn sm" id="admLogout">관리자 모드 해제</button> <span id="admMsg2" class="git-opt"></span></div>
-        <div class="hidden" id="admChangeBlock">
-          <label class="qa-lb">관리자 비밀번호 변경 <span class="git-opt">· 인증된 상태에서만 가능합니다</span></label>
-          <input type="text" id="admRegId" class="set-in" autocomplete="off" spellcheck="false" placeholder="관리자 ID(빈칸=기존 유지)">
-          <input type="password" id="admRegPw" class="set-in" autocomplete="new-password" placeholder="새 관리자 비밀번호(빈칸=기존 유지)">
-          <div style="margin:9px 0 4px"><button type="button" class="btn sm" id="admRegSave">변경</button> <span id="admRegMsg" class="git-opt"></span></div>
-        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -2014,9 +2003,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button type="button" class="btn sm" id="offReset">초기화</button>
           <!-- 읽기 산출물이라 인증 없음(뷰어도 뽑는다). 위젯에서만 보이고, 결과 0건이면 비활성. -->
           <button type="button" class="btn sm" id="offExport" style="display:none">⬇ Excel 추출</button>
-          <!-- 발주처 마스터 관리(추가/이름변경/숨김) — 위젯에서만 노출, 조작은 관리자 인증 게이트 -->
+          <!-- 발주처 마스터 관리(추가/이름변경/숨김) — 위젯에서만 노출, 쓰기 권한은 호스트가 판정 -->
           <button type="button" class="btn sm" id="offCustMgr" style="display:none">＋ 발주처 관리</button>
-          <!-- 추가는 관리자·온라인에서만 실제로 열린다(누르면 그 자리에서 인증) -->
+          <!-- 추가는 온라인에서만 열리고, 권한 없는 계정은 호스트가 거절한다 -->
           <button type="button" class="btn sm primary" id="offNew">＋ 새 공식 과제</button>
         </div>
       </div>
@@ -2034,9 +2023,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- (관리자 인증 프롬프트 제거 — 2026-07-24. 인증은 설정 → 관리자에서만 한다. netcus 자격증명과 같은 구조.) -->
+<!-- (관리자 인증 UI는 2026-07-30 전부 제거됐다 — 편집 권한은 로그인 신원으로 호스트가 판정한다.) -->
 
-<!-- ===== 공식 과제 편집(P3.2) — DB 쓰기. 관리자 + 온라인에서만 열린다 ===== -->
+<!-- ===== 공식 과제 편집(P3.2) — DB 쓰기. 온라인에서 열리고, 저장 권한은 호스트가 판정한다 ===== -->
 <div class="overlay hidden" id="officialEditModal">
   <div class="modal">
     <div class="modal-head"><h2 id="offEdTitle">공식 과제 편집</h2><button class="x" data-close aria-label="닫기">×</button></div>
@@ -2083,7 +2072,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- ===== 발주처 마스터 관리 — 이름만 관리(추가/이름변경/숨김). 조작은 관리자 인증 게이트. ===== -->
+<!-- ===== 발주처 마스터 관리 — 이름만 관리(추가/이름변경/숨김). 쓰기 권한은 호스트가 판정. ===== -->
 <div class="overlay hidden" id="customerModal">
   <div class="modal">
     <div class="modal-head"><h2>발주처 관리</h2><button class="x" data-close aria-label="닫기">×</button></div>
@@ -2104,7 +2093,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- ===== 구분·상태 관리 — 코드테이블(section_code/status_code). 추가/개명/숨김/순서변경. 관리자 인증 게이트. ===== -->
+<!-- ===== 구분·상태 관리 — 코드테이블(section_code/status_code). 추가/개명/숨김/순서변경. 쓰기 권한은 호스트가 판정. ===== -->
 <div class="overlay hidden" id="codeModal">
   <div class="modal">
     <div class="modal-head"><h2>구분·상태 관리</h2><button class="x" data-close aria-label="닫기">×</button></div>
@@ -3614,81 +3603,17 @@ function refreshDbUi(){
   }catch(_){}
 }
 
-/* ---------- 역할(권한) 인터페이스 — 공식 과제 편집 게이트 ---------- */
-// 세션 관리자 언락 여부만으로 역할을 반환한다. 이 한 함수가 이후 P6.5에서 app_user 권한으로 교체되는 지점.
-// 비번 검증은 호스트(ProjectDb.VerifyAdmin)에서만 — JS엔 자격이 노출되지 않는다.
-// 잠금해제는 호스트(db-config.json의 adminUnlocked)에 영속된다 — 한 번 인증하면 이 PC에서 재시작해도 유지(netcus 자격 패턴).
-// 이 변수는 그 영속값의 런타임 사본: 부팅 시 __adminState로 복원되고, 해제/자격변경 시 호스트가 다시 통지한다.
-let __adminSession = false;
-function getRole(){ return __adminSession ? 'admin' : 'viewer'; }
-// 호스트가 알려주는 영속 잠금해제 상태(부팅 복원 · 해제 · 자격 변경 후 동기화)
-window.__adminState = function(unlocked){
-  __adminSession = !!unlocked;
-  try{ updateAdminUi(); }catch(_){}
-  try{ renderOfficialDetail(); }catch(_){}   // 열려 있으면 편집/숨김 버튼 표기 갱신
-};
-// 호스트 로그인 검증 결과 — role==='admin'이면 세션 언락, 아니면 해제. 인증 요청은 설정의 '인증' 버튼에서만 온다.
-window.__adminResult = function(role, msg){
-  __adminSession = (role === 'admin');
-  try{ updateAdminUi(); }catch(_){}
-  const m = document.getElementById('admMsg');
-  if(m){ m.innerHTML = (__adminSession ? ICON.check : ICON.alert) + ' ' + esc(msg || ''); m.style.color = __adminSession ? 'var(--accent-2)' : 'var(--danger)'; }
-  const pw = document.getElementById('admAuthPw');
-  if(__adminSession){
-    if(pw) pw.value = '';                      // 성공 → 입력칸 비움(비번을 화면에 남기지 않는다)
-    try{ renderOfficialDetail(); }catch(_){}   // 편집/숨김 버튼의 권한 표기 즉시 반영
-  }else if(pw){
-    pw.value = ''; try{ pw.focus(); }catch(_){}   // 실패 = 재입력
-  }
-};
-// 호스트 자격 저장 결과 — 실패(디스크 쓰기 등)면 사유를 표시한다(거짓 성공 금지). 인자 없는 구호출은 성공으로 간주(하위호환).
-window.__adminSaved = function(ok, msg){
-  const success = (arguments.length === 0) || ok === true;
-  const m = document.getElementById('admRegMsg');
-  if(m){
-    m.innerHTML = (success ? ICON.check : ICON.alert) + ' ' + esc(success ? (msg || '관리자 자격이 등록되었습니다') : (msg || '관리자 자격을 저장하지 못했습니다'));
-    m.style.color = success ? 'var(--accent-2)' : 'var(--danger)';
-  }
-  if(!success) toast(msg || '관리자 자격을 저장하지 못했습니다', 'error');
-};
-// 관리자 상태 표시 갱신 — 배지 + 미인증/인증됨 블록 전환.
-// ★ 비밀번호 '변경'은 인증된 상태에서만 노출한다(2026-07-24) — 미인증 변경이 계정 탈취 경로였다.
-//   (노출 제어는 UX일 뿐이고 실제 차단은 호스트 ProjectDb.SaveAdminCred가 한다.)
-function updateAdminUi(){
-  const admin = getRole() === 'admin';
-  const st = document.getElementById('admState');
-  if(st) st.textContent = !HOST ? '· 데스크톱 위젯 전용'
-    : (admin ? '· 관리자 모드 · 활성' : '· 뷰어 · 인증 필요');
-  const show = (id, on) => { const e = document.getElementById(id); if(e) e.classList.toggle('hidden', !on); };
-  show('admAuthBlock', HOST && !admin);       // 미인증 → 비밀번호 + 인증 버튼
-  show('admUnlockedBlock', HOST && admin);    // 인증됨 → 해제
-  show('admChangeBlock', HOST && admin);      // 인증됨 → 비밀번호 변경
-}
-// 설정의 '인증' 제출 — 비번은 호스트(ProjectDb.VerifyAdmin)로만 넘어가고 JS에는 남기지 않는다.
-// (즉석 프롬프트(UAC 패턴)는 2026-07-24에 제거했다 — netcus와 동일하게 '설정에서 인증'으로 통일.)
-function submitAdminAuth(){
-  const el = document.getElementById('admAuthPw');
-  const pw = el ? el.value : '';
-  const m = document.getElementById('admMsg');
-  if(!HOST){ toast('관리자 인증은 데스크톱 위젯에서만 가능합니다', 'warn'); return; }
-  if(!pw){ if(m){ m.innerHTML = ICON.alert + ' 비밀번호를 입력하세요'; m.style.color = 'var(--danger)'; } if(el) el.focus(); return; }
-  if(m){ m.innerHTML = ICON.spinner + ' 확인 중…'; m.style.color = 'var(--accent)'; }
-  hpost({ cmd: 'adminLogin', id: '', pw });   // 결과는 __adminResult(role, msg)
-}
-// 편집 계열에서 '인증이 필요하다'를 알리는 단일 지점 — netcus 가드와 같은 형태(안내 + 설정 열기).
-// 여기서 비밀번호를 묻지 않는다: 관리자 인증은 PC당 사실상 1회라 즉석 프롬프트의 이점이 없고,
-// 오히려 '편집 흐름 안의 비번 입력창'이 계정 탈취 UI와 구분이 안 돼 위험하다.
-// (토스트 액션 버튼은 쓰지 않는다 — toast의 액션은 Undo 전용이라 클릭 후 '되돌렸습니다'를 띄운다.)
-function adminAuthNeeded(){
-  confirmBox('관리자 인증 필요',
-    '공식 과제를 편집하려면 관리자 인증이 필요합니다.\n설정 → 관리자에서 비밀번호로 인증한 뒤 다시 시도해 주세요.',
-    '설정 열기 →', '취소', { ok: 'primary' })
-    .then(r => {
-      if(r !== 'ok') return;
-      try{ openSettings(); }catch(_){}
-      setTimeout(() => { const e = document.getElementById('admAuthPw'); if(e){ try{ e.focus(); }catch(_){} } }, 80);
-    });
-}
+/* ---------- 역할(권한) 인터페이스 — 폐지됨 (USER-LOGIN §3.3, 2026-07-30) ----------
+   공용 비밀번호 하나로 편집을 열던 모델을 통째로 없앴다. 여기 있던 역할 조회 함수,
+   그 역할을 담아 두던 전역 플래그, 호스트가 상태·검증결과·저장결과를 통지하던 콜백 3종,
+   설정창 인증 UI 갱신·제출 함수, 그리고 '인증이 필요하다' 안내 함수를 전부 삭제했다.
+   (삭제한 이름들은 docs/USER-LOGIN.md §3.3에 남겨 두었다 — 여기 적으면 '사라졌는지'를
+    기계로 검사할 수 없다.)
+
+   ★ 이제 JS는 권한을 모른다 — 그리고 알 필요가 없다.
+     권한은 '작업 요청 시점'에 호스트의 DB 쓰기 관문이 app_user.edit_role·is_active로 판정하고,
+     거부 사유(로그인 필요 / 미등록 / 비활성 / 편집 권한 없음)를 그대로 msg로 돌려준다.
+     클라이언트가 캐시한 역할로 미리 막으면 그 캐시가 낡는 순간부터 반드시 틀린다. */
 
 /* ---------- 사용자 로그인(세션 유지) — USER-LOGIN §2.3 ----------
    인증(정말 본인인가)=회사 시스템(netcus) · 인가(이름·소속·권한)=우리 DB(app_user). 둘 다 호스트가 하고
@@ -3700,7 +3625,7 @@ function adminAuthNeeded(){
      ④ 브라우저 단독(!HOST)은 게이트를 절대 띄우지 않는다 — netcus에 CORS 헤더가 없어 로그인이
         원천 불가라(§2.6 실측), 차단하면 영구히 잠긴다.
      ⑤ 비밀번호는 JS 변수·localStorage 어디에도 남기지 않는다. 칸에서 바로 호스트로 보내고 비운다. */
-let currentUser = null;   // {loginId,name,title,orgUnit,viewScope,editRole} | null(미로그인)
+let currentUser = null;   // {loginId,name,title,orgUnit} | null(미로그인) — 권한은 담지 않는다(호스트가 판정)
 let __gateOn = false;     // 게이트 표시 중 — 전역 단축키가 이 값을 보고 조기 return 한다
 let __loginBusy = false;  // 재진입 가드. 버튼 disabled와 '둘 다' 둔다(Enter 경로는 disabled로 안 막힌다)
 
@@ -5489,18 +5414,13 @@ function openSettings(){
   if(HOST) hpost({ cmd: 'updateSourceGet' }); else { const u = $('#updSrc'); if(u) u.value = ''; }
   // 열 때는 중립으로 되돌린다 — 직전 세션의 '저장 안 됨'이 남아 있으면 거짓 경고가 된다.
   setSaveBadge('updBadge', '', '저장 필요');
-  // 관리자(과제 DB 상태 포함) — 입력 비우고(빈칸=기존 유지) 상태 갱신. 위젯 전용.
-  ['admRegId','admRegPw'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  // 과제 DB — 직전 세션의 메시지를 지우고 상태줄만 다시 계산한다(인증 UI는 없다).
   { const m = $('#dbMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
-  { const m = document.getElementById('admMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
-  { const m = document.getElementById('admRegMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
-  { const sec = document.getElementById('adminSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
-  if(HOST) hpost({ cmd: 'adminStateGet' });   // 영속 잠금해제 상태를 호스트에서 다시 읽어 배지 정확도 유지(__adminState)
+  { const sec = document.getElementById('dbSection'); if(sec) sec.style.display = HOST ? '' : 'none'; }
   updateDbStatusLine();
-  updateAdminUi();
   openModal('#settingsModal');
 }
-// 과제 DB 상태 한 줄(관리자 섹션) — 연결됨·N건 / 연결 안 됨.
+// 과제 DB 상태 한 줄(설정 → 과제 DB 섹션) — 연결됨·N건 / 연결 안 됨.
 // 연결정보는 배포 구성(호스트 상수)이라 입력 UI 없음 — 상태 표시와 '지금 새로고침'만 제공한다.
 // ★ 로컬 캐시가 없으므로 '오프라인 캐시 N건'·'마지막 동기화 시각'은 존재하지 않는다(끊기면 목록도 비어 있다).
 function updateDbStatusLine(){
@@ -5656,7 +5576,7 @@ function saveCatFromForm(){
 /* ---------- 공식 과제(DB) 전용 화면 — 읽기 전용(P3.3) ----------
    개인 과제(state.categories)와 완전히 분리된 조회 화면이다. 여기서는 DB에 아무것도 쓰지 않으며,
    dbCatalog는 온라인 조회 결과만 담는다(로컬 캐시 없음) — 연결이 끊기면 비어 있고, 화면은 그 사실을 명시한다.
-   편집(P3.2)이 붙을 자리는 관리자에게만 비활성 버튼으로 예고한다(뷰어에겐 표시 안 함). */
+   편집(P3.2) 버튼은 권한과 무관하게 늘 보인다 — 권한 판정은 호스트가 요청 시점에 한다. */
 // 구분/상태는 DB 코드테이블에서 로드한다(더 이상 하드코딩 ENUM 아님) — 부팅·카탈로그 열 때 loadCodes로 채워진다.
 // 오프라인이면 빈 배열 → 드롭다운 비활성/빈 목록으로 우아하게 폴백(편집은 offEditGuard가 온라인을 요구하므로 실질 영향 적음).
 let offSections = [];   // 활성 구분 코드값(sort_order 순) — __applyCodes가 채움
@@ -5804,8 +5724,9 @@ function renderOfficialDetail(){
     + `<div class="off-d-bar">`
     // 편입(구독) — 캘린더에 추가/제거. 편입된 것만 단일 목록·필터·피커·보고서에 나타난다.
     +   offSubHtml(c)
-    // 편집/숨김은 역할과 무관하게 늘 보인다 — 뷰어가 누르면 그 자리에서 관리자 인증을 묻고(UAC),
-    // 통과하면 하려던 동작이 그대로 이어진다. '숨겨서 없는 것처럼' 보이면 권한을 어디서 얻는지 알 수 없다.
+    // 편집/숨김은 늘 보인다 — 화면은 권한을 모르기 때문이다(USER-LOGIN §3.3).
+    // 눌러서 호스트가 거절하면 사유(편집 권한 없음/비활성 계정/로그인 필요)가 그대로 표시된다.
+    // '숨겨서 없는 것처럼' 보이면 권한을 어디서 얻는지 알 수 없고, 미리 숨기려면 낡은 캐시를 믿어야 한다.
     +   `<div class="off-d-act">`
     +     `<button type="button" class="btn sm" data-offedit="${esc(c.id)}">편집</button>`
     +     `<button type="button" class="btn sm danger" data-offhide="${esc(c.id)}">숨김</button>`
@@ -5907,7 +5828,7 @@ function offResetFiltersSilently(){
    책임 분리: 여기(웹)는 '무엇을' 뽑을지만 정한다(지금 화면에 보이는 필터 결과 + 그 사실을 적은 정보줄).
    '어떻게'(xlsx 바이트·컬럼 순서/제목/너비·날짜 서식)는 호스트(XlsxWriter + ProjectExportCols)가 전담한다.
    호스트가 DB를 다시 읽지 않는 이유 — 화면과 파일이 어긋나면 사용자가 본 적 없는 장표가 나온다.
-   읽기 산출물이므로 관리자 인증(offEditGuard)을 걸지 않는다: 뷰어도 뽑을 수 있다. */
+   읽기 산출물이므로 쓰기 게이트(offEditGuard)를 걸지 않는다: 누구나 뽑을 수 있다. */
 let __offExportDir  = '';      // 마지막 저장 폴더(호스트가 준 값만 — 사용자가 친 문자열은 절대 넘기지 않는다)
 let __offExportBusy = false;   // 왕복 중(중복 클릭·렌더에 의한 라벨 원복 방지)
 
@@ -5967,7 +5888,7 @@ function offExportSubtitle(f, total, shown, dateStr){
 function offSyncExportBtn(n){
   const b = document.getElementById('offExport'); if(!b) return;
   b.style.display = HOST ? '' : 'none';
-  // 발주처 관리 버튼도 위젯에서만 노출(조작 자체는 관리자 인증 게이트를 누를 때 통과) — 렌더마다 함께 동기화.
+  // 발주처 관리 버튼도 위젯에서만 노출(실제 쓰기 권한은 호스트가 요청 시점에 판정) — 렌더마다 함께 동기화.
   const cm = document.getElementById('offCustMgr'); if(cm) cm.style.display = HOST ? '' : 'none';
   if(__offExportBusy) return;
   const cnt = Number(n) || 0;
@@ -5976,7 +5897,7 @@ function offSyncExportBtn(n){
   // 0건인 이유를 구분해 말한다 — 캐시가 없으므로 '연결 끊김'이 0건의 가장 흔한 원인이다.
   // (stale 장표 유통을 막으려고 캐시를 없앤 만큼, 왜 못 뽑는지는 분명히 보여야 한다.)
   b.title = cnt > 0 ? `현재 목록 ${cnt}건을 Excel 파일로 저장`
-    : (!dbOnline ? '서버에 연결되지 않아 추출할 수 없습니다 — 설정 → 관리자에서 새로고침하세요'
+    : (!dbOnline ? '서버에 연결되지 않아 추출할 수 없습니다 — 설정 → 과제 DB에서 새로고침하세요'
                  : '추출할 과제가 없습니다');
 }
 // 시트2(발주처) 데이터 — 활성 발주처 마스터를 이름순으로. 마스터가 아직 안 실렸으면(loadCustomers 전) 카탈로그에
@@ -5994,7 +5915,7 @@ async function runOfficialXlsxExport(){
   const list = dbCatalog.filter(c => offMatches(c, f));
   // 오프라인이면 '뽑을 게 없다'가 아니라 '못 읽었다'가 사실이다 — 캐시가 없으니 stale 장표가 나갈 일은 없지만,
   // 이유를 정확히 말해야 사용자가 새로고침이라는 다음 행동을 안다.
-  if(!dbOnline){ toast('서버에 연결되지 않아 추출할 수 없습니다 — 설정 → 관리자에서 새로고침하세요', 'warn'); return; }
+  if(!dbOnline){ toast('서버에 연결되지 않아 추출할 수 없습니다 — 설정 → 과제 DB에서 새로고침하세요', 'warn'); return; }
   if(!list.length){ toast('추출할 과제가 없습니다', 'warn'); return; }
   const today = ymd(new Date());
   const payload = {
@@ -6032,7 +5953,7 @@ async function runOfficialXlsxExport(){
 }
 
 /* ---------- 공식 과제 편집(P3.2) — DB 쓰기 ----------
-   진입 조건이 셋(위젯 · 온라인 · 관리자)이고 실패 이유가 서로 다르므로 게이트를 한 곳(offEditGuard)에 모은다.
+   진입 조건이 둘(위젯 · 온라인)이고 실패 이유가 서로 다르므로 게이트를 한 곳(offEditGuard)에 모은다.
    저장은 호스트(saveProject) 왕복 → __projectSaved. 성공하면 호스트가 곧바로 재조회하므로 목록은 저절로 맞춰진다. */
 const offUidOf = id => String(id || '').replace(/^db-/, '');   // 'db-<uid>' → '<uid>'(DB 파라미터용)
 let dbCustomers = [];      // 발주처 마스터(customer.name) — 호스트 loadCustomers 결과
@@ -6152,15 +6073,17 @@ function projBeginRequest(){
   return __projGen;
 }
 function projSettle(){ __projGen = 0; clearTimeout(__projWatchdog); }
-// 편집/추가/숨김 공통 게이트: 위젯 → 온라인 → 관리자 순. 실패 이유마다 다음 행동이 다르므로 문구를 나눈다.
-// ★ 미인증이면 여기서 비밀번호를 묻지 않고 설정으로 보낸다(2026-07-24, netcus 가드와 동일한 패턴).
-//   인증 후에는 사용자가 그 버튼을 다시 누르면 된다('하려던 액션 이어실행'은 없앴다 — netcus와 같은 흐름).
+// 편집/추가/숨김 공통 게이트 — '힌트'로 강등됐다(USER-LOGIN §3.3, 2026-07-30).
+// ★ JS는 권한을 모른다. 권한을 캐시하지 않기로 했으므로(세션 4필드) 알 방법도 없고, 알아야 할 이유도 없다.
+//   여기서 막는 것은 '어차피 도달할 수 없는 두 가지'뿐이다: 브라우저 단독(호스트 없음) · 서버 미연결.
+//   편집 권한 판정은 호스트가 한다 — 쓰기 요청이 DB 관문(ProjectDb.OpenWriteAsync)에 닿으면
+//   그 순간의 app_user.edit_role·is_active로 판정되고, 거부되면 사유가 그대로 화면에 돌아온다.
+//   (클라이언트에서 미리 막으면 '지금 이 순간의 권한'을 알 수 없어 반드시 틀린다 — 캐시는 늘 낡는다.)
 //   desc 인자는 옛 프롬프트 문구용이었으나 더는 쓰지 않는다(호출부 시그니처는 그대로 둬 변경 범위를 좁힘).
-function offEditGuard(fn, desc){
+function offEditGuard(fn){
   if(!HOST){ toast('공식 과제 편집은 데스크톱 위젯 전용입니다', 'warn'); return; }
   if(!dbOnline){ toast('편집하려면 서버 연결이 필요합니다', 'warn'); return; }
-  if(getRole() !== 'admin'){ adminAuthNeeded(); return; }
-  if(typeof fn === 'function') fn();
+  if(typeof fn === 'function') fn();   // 권한 판정은 호스트가 한다
 }
 function offEditOpen(id){
   const c = id ? dbCatalogById(id) : null;
@@ -6266,7 +6189,7 @@ function offHideProject(id){
 }
 
 /* ---------- 발주처(customer) 마스터 관리 — 이름만(추가/이름변경/숨김). 카탈로그 책임 구역 ----------
-   ★ 조작은 전부 offEditGuard(위젯·온라인·관리자)를 통과한다(추출과 달리 '쓰기'라 인증 필요).
+   ★ 조작은 전부 offEditGuard(위젯·온라인)를 통과하고, 편집 권한은 호스트가 요청 시점에 판정한다.
    호스트 왕복은 hostRequest(reqId 상관). 성공 시:
      · 발주처 드롭다운(dbCustomers)을 loadCustomers로 갱신
      · 이름변경은 과제 표기(project.customer)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출
@@ -6343,8 +6266,7 @@ function custDoAdd(){
   const inp = document.getElementById('custNewName');
   const name = inp ? String(inp.value || '').trim() : '';
   if(!name){ custMsgSet(ICON.alert + ' 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
-  offEditGuard(() => custSend('addCustomer', { name }, '발주처를 추가했습니다', () => { if(inp) inp.value = ''; if(inp) inp.focus(); }),
-    '발주처를 추가하려면 관리자 비밀번호가 필요합니다.');
+  offEditGuard(() => custSend('addCustomer', { name }, '발주처를 추가했습니다', () => { if(inp) inp.value = ''; if(inp) inp.focus(); }));
 }
 function custDoHide(name){
   offEditGuard(async () => {
@@ -6362,13 +6284,12 @@ function custDoHide(name){
       if(r !== 'ok') return;
     }
     custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다');
-  }, '발주처를 숨기려면 관리자 비밀번호가 필요합니다.');
+  });
 }
 function custDoShow(name){
-  offEditGuard(() => custSend('setCustomerActive', { name, active: true }, '발주처를 복구했습니다'),
-    '발주처를 복구하려면 관리자 비밀번호가 필요합니다.');
+  offEditGuard(() => custSend('setCustomerActive', { name, active: true }, '발주처를 복구했습니다'));
 }
-// 인라인 이름변경 — 해당 행을 입력+저장/취소로 바꾼다(관리자 인증 통과 후).
+// 인라인 이름변경 — 해당 행을 입력+저장/취소로 바꾼다(게이트 통과 후).
 function custBeginRename(name){
   offEditGuard(() => {
     const box = document.getElementById('custList'); if(!box) return;
@@ -6384,7 +6305,7 @@ function custBeginRename(name){
         else if(ev.key === 'Escape'){ ev.preventDefault(); renderCustomerList(); }
       });
     }
-  }, '발주처 이름을 변경하려면 관리자 비밀번호가 필요합니다.');
+  });
 }
 function custCommitRename(oldName, row){
   const inp = row.querySelector('input');
@@ -6394,7 +6315,7 @@ function custCommitRename(oldName, row){
   custSend('renameCustomer', { oldName, newName }, '발주처 이름을 변경했습니다');   // 이미 인증된 컨텍스트
 }
 /* ---------- 구분·상태 코드값 관리 — 발주처 관리(custSend/renderCustomerList)를 그대로 복제 ----------
-   kind('section'|'status') 하나로 두 리스트를 한 모달에서 관리. 조작은 offEditGuard(위젯·온라인·관리자).
+   kind('section'|'status') 하나로 두 리스트를 한 모달에서 관리. 조작은 offEditGuard(위젯·온라인).
    호스트 왕복 = hostRequest. 성공 시 드롭다운(offSections/offStatuses)을 loadCodes로 갱신,
    개명은 과제 표기(section/status)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출. name이 자연키라 uid 없음. */
 let codeKind = 'section';    // 현재 탭
@@ -6615,7 +6536,7 @@ function renderRelink(){
   }
   // 목록이 빈 이유를 나눠서 말한다 — 연결이 끊긴 것(캐시가 없어 흔한 경우)과 DB에 아무것도 없는 것은 다른 사실이다.
   if(none) html += !dbOnline
-    ? `<div class="rl-empty"><b>서버 연결이 필요합니다.</b><br>공식 과제 목록을 불러오지 못해 연결할 대상이 없습니다 — 설정 → 관리자에서 <b>지금 새로고침</b> 후 다시 열어 주세요.</div>`
+    ? `<div class="rl-empty"><b>서버 연결이 필요합니다.</b><br>공식 과제 목록을 불러오지 못해 연결할 대상이 없습니다 — 설정 → 과제 DB에서 <b>지금 새로고침</b> 후 다시 열어 주세요.</div>`
     : `<div class="rl-empty">등록된 공식 과제가 없습니다 — 공식 과제를 먼저 등록해 주세요.</div>`;
   box.innerHTML = html;
   rlUpdateSummary();
@@ -6679,7 +6600,7 @@ function renderRlpList(){
   box.setAttribute('role', list.length ? 'table' : 'group');
   if(!list.length){
     box.innerHTML = !dbOnline
-      ? `<div class="off-empty"><b>서버 연결이 필요합니다.</b><br>공식 과제 목록을 불러오지 못했습니다 — 설정 → 관리자에서 새로고침 후 다시 시도하세요.</div>`
+      ? `<div class="off-empty"><b>서버 연결이 필요합니다.</b><br>공식 과제 목록을 불러오지 못했습니다 — 설정 → 과제 DB에서 새로고침 후 다시 시도하세요.</div>`
       : (all.length
           ? `<div class="off-empty">조건에 맞는 과제가 없습니다.<br><button type="button" class="lnk" id="rlpResetIn">필터 초기화</button></div>`
           : `<div class="off-empty">등록된 공식 과제가 없습니다.</div>`);
@@ -9485,26 +9406,9 @@ function bind(){
       const m = $('#dbMsg'); if(m){ m.innerHTML = ICON.spinner + ' 새로고침 중…'; m.style.color = 'var(--accent)'; }
       hpost({ cmd: 'loadProjects' });   // 완료 시 __applyProjects → refreshDbUi가 상태줄 갱신
     }); }
-  // ── 관리자 — 인증(잠금 해제) / 해제 / 비밀번호 변경 ──
-  // 인증은 여기서만 한다(netcus 자격증명과 같은 구조). 편집 화면엔 비번 입력창이 없다.
-  { const b = $('#admAuthOk'); if(b) b.addEventListener('click', submitAdminAuth); }
-  { const e = $('#admAuthPw'); if(e) e.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); submitAdminAuth(); } }); }
-  // 비밀번호 변경 — 인증된 상태에서만 동작(호스트도 미인증이면 거부한다). UI는 이중 확인일 뿐 방어선이 아니다.
-  { const b = $('#admRegSave'); if(b) b.addEventListener('click', () => {
-      if(!HOST){ toast('데스크톱 위젯에서만 저장됩니다', 'warn'); return; }
-      if(getRole() !== 'admin'){ adminAuthNeeded(); return; }
-      const id = ($('#admRegId').value || '').trim(), pw = $('#admRegPw').value;
-      if(!pw){ const m = $('#admRegMsg'); if(m){ m.innerHTML = ICON.alert + ' 새 비밀번호를 입력하세요'; m.style.color = 'var(--danger)'; } $('#admRegPw').focus(); return; }
-      hpost({ cmd: 'saveAdminCred', id, pw });   // 빈칸 id=기존 유지(호스트가 처리) → __adminSaved
-      $('#admRegPw').value = '';
-      const m = $('#admRegMsg'); if(m){ m.innerHTML = ICON.spinner + ' 변경 중…'; m.style.color = 'var(--accent)'; }
-    }); }
-  { const b = $('#admLogout'); if(b) b.addEventListener('click', () => {
-      hpost({ cmd: 'adminLogout' });   // 호스트가 영속 잠금해제를 내리고 __adminState(false)로 회신
-      __adminSession = false; updateAdminUi();   // 낙관적 반영(호스트 회신이 곧 덮어씀)
-      try{ renderOfficialDetail(); }catch(_){}
-      const m = $('#admMsg2'); if(m){ m.innerHTML = ICON.check + ' 관리자 모드를 해제했습니다 — 편집하려면 다시 인증하세요'; m.style.color = 'var(--muted)'; }
-    }); }
+  // ── 관리자 인증 배선은 폐지됐다(USER-LOGIN §3.3) ──
+  //    설정창의 인증·해제·비밀번호 변경 핸들러 4개가 여기 있었다. 편집 권한은 로그인 신원으로
+  //    호스트가 판정하므로 설정창에 인증할 것이 남아 있지 않다.
   { const n = $('#updNow'); if(n) n.addEventListener('click', () => {
       __updShowProgress('업데이트 준비 중…');
       hpost({ cmd: 'updateApply' });   // 내려받기·검증·설치 후 자동 재시작(호스트)
@@ -9889,9 +9793,9 @@ function bind(){
       hpost({ cmd: 'openFolder', path: __offExportDir });
     }); }
 
-  /* 공식 과제 편집(P3.2) — 추가/편집/숨김은 전부 offEditGuard(위젯·온라인·관리자)를 거친다 */
+  /* 공식 과제 편집(P3.2) — 추가/편집/숨김은 전부 offEditGuard(위젯·온라인)를 거친다 */
   { const b = $('#offNew'); if(b) b.addEventListener('click', () => {
-      offEditGuard(() => offEditOpen(''), '새 공식 과제를 등록하려면 관리자 비밀번호가 필요합니다.');
+      offEditGuard(() => offEditOpen(''));
     }); }
   { const box = $('#offDetail'); if(box) box.addEventListener('click', ev => {
       const ab = ev.target.closest('[data-offadd]');
@@ -9899,19 +9803,19 @@ function bind(){
       const rb = ev.target.closest('[data-offremove]');
       if(rb){ offUnsubscribeFromCatalog(rb.dataset.offremove); return; }
       const eb = ev.target.closest('[data-offedit]');
-      if(eb){ const id = eb.dataset.offedit; offEditGuard(() => offEditOpen(id), '공식 과제를 편집하려면 관리자 비밀번호가 필요합니다.'); return; }
+      if(eb){ const id = eb.dataset.offedit; offEditGuard(() => offEditOpen(id)); return; }
       const hb = ev.target.closest('[data-offhide]');
-      if(hb){ const id = hb.dataset.offhide; offEditGuard(() => offHideProject(id), '공식 과제를 숨기려면 관리자 비밀번호가 필요합니다.'); }
+      if(hb){ const id = hb.dataset.offhide; offEditGuard(() => offHideProject(id)); }
     }); }
   { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdApplySectionRule); }
   { const b = $('#offEdSave'); if(b) b.addEventListener('click', offEdSaveNow); }
-  // 편집 폼의 '발주처 관리…' / '구분·상태 관리…' — 추가는 각 관리 모달에서만(인라인 추가 제거). 편집 폼은 이미 관리자 컨텍스트.
+  // 편집 폼의 '발주처 관리…' / '구분·상태 관리…' — 추가는 각 관리 모달에서만(인라인 추가 제거).
   { const b = $('#offEdCustMgr'); if(b) b.addEventListener('click', openCustomerModal); }
   { const b = $('#offEdCodeMgr'); if(b) b.addEventListener('click', () => openCodeModal('section')); }
 
-  /* 발주처(customer) 마스터 관리 — 관리 조작은 전부 offEditGuard(위젯·온라인·관리자)를 거친다 */
+  /* 발주처(customer) 마스터 관리 — 관리 조작은 전부 offEditGuard(위젯·온라인)를 거친다 */
   { const b = $('#offCustMgr'); if(b) b.addEventListener('click', () => {
-      offEditGuard(openCustomerModal, '발주처를 관리하려면 관리자 비밀번호가 필요합니다.');
+      offEditGuard(openCustomerModal);
     }); }
   { const b = $('#custAddBtn'); if(b) b.addEventListener('click', custDoAdd); }
   { const inp = $('#custNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); custDoAdd(); } }); }

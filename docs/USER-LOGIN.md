@@ -17,16 +17,19 @@
    일괄 로그아웃 전까지 로그인을 유지한다."**
 2. **"로그인 성공하면 로그인된 정보로 보고서에서 별도로 로그인 요청을 하지 않는다."**
 
+> ※ 1번의 **"업데이트로 인한 일괄 로그아웃"** 은 2026-07-30 재검토로 **폐기**했다 —
+>   해결하는 문제가 없고 릴리스마다 89명이 재로그인하는 비용만 확실했다. 근거는 §3.3.
+
 핵심 해석 — **"시작 시 로그인" ≠ "시작마다 인증"**:
 
 ```
 위젯 시작
-  └ 저장된 세션이 있고 앱 버전이 같은가?
+  └ 저장된 세션이 있는가?
       예   → 회사 시스템(netcus)에 접속하지 않고 즉시 캘린더 진입   ★ 창·네트워크 0
-      아니오 → 로그인 팝업 (최초 1회 / 로그아웃 후 / 업데이트 후)
+      아니오 → 로그인 팝업 (최초 1회 / 로그아웃 후)
 로그인 성공 → 세션 저장 + netcus 자격 저장(valid:true) → 캘린더 진입
 로그아웃    → 세션·자격 둘 다 삭제 → 로그인 팝업
-앱 업데이트 → 저장된 앱 버전 ≠ 현재 → 세션 폐기 = 일괄 로그아웃
+앱 업데이트 → 세션 유지 (버전 기반 일괄 로그아웃은 §3.3에서 폐기)
 보고 전송   → 로그인 때 저장한 자격을 그대로 사용. 재인증·재입력 없음
 ```
 
@@ -41,7 +44,7 @@
 
 | 파일 | 내용 | 형식 |
 |---|---|---|
-| `<dataDir>/user.session` | `{loginId, name, title, orgUnit, viewScope, editRole, appVersion, savedAt}` | JSON → UTF8 → **DPAPI(CurrentUser)** → Base64 |
+| `<dataDir>/user.session` | `{loginId, name, title, orgUnit}` — 4개뿐(§3.3에서 확정) | JSON → UTF8 → **DPAPI(CurrentUser)** → Base64 |
 | `<dataDir>/netcus.cred` (기존) | `{id, pw:<DPAPI Base64>, valid:true}` | 기존 포맷 그대로 |
 
 - 세션을 DPAPI로 감싸는 이유: 평문이면 `loginId` 한 줄만 고쳐 **남의 신원**이 된다.
@@ -54,7 +57,7 @@
 
 ```
 userSessionGet {reqId}            부팅 시 1회. 세션 파일만 읽는다. ★ netcus 접속 절대 금지
-  → {ok:true, user:{loginId,name,title,orgUnit,viewScope,editRole}} | {ok:false}
+  → {ok:true, user:{loginId,name,title,orgUnit}} | {ok:false}
 
 userLogin {reqId, id, pw}         인증(netcus) → 인가(app_user) → 저장 2개
   → {ok:true, user:{…}} | {ok:false, msg:"…"}

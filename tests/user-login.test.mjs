@@ -206,7 +206,7 @@ test('재진입 가드: 버튼 disabled와 JS 플래그를 둘 다 쓴다(Enter�
 
 test('세션 저장: 되읽어 확인된 경우에만 성공을 반환한다', () => {
   const b = bare(userSession, 'public static (bool ok, string msg) Save(');
-  assert.ok(/var back = Load\(dataDir, verifyVersion: false\)/.test(b),
+  assert.ok(/var back = Load\(dataDir\)/.test(b),
     '되읽기 검증이 없다 — "저장 성공" 로그를 찍고도 파일이 그대로였던 사례가 실제로 있었다');
   const chk = b.indexOf('var back = Load(');
   const okRet = b.indexOf('return (true');
@@ -243,7 +243,7 @@ test('로그아웃: 세션과 자격을 함께 지운다', () => {
   assert.ok(/_netcus\.ClearCredsForLogout\(\)/.test(b), '자격을 지우지 않는다 — 보고 전송이 계속 그 사람 자격으로 돈다');
 });
 
-// ══ ⑦ 세션은 DPAPI 경유 · 앱 버전 불일치 시 폐기 ═════════════════════
+// ══ ⑦ 세션은 DPAPI 경유 · 4필드뿐 · 버전 폐기 없음 (USER-LOGIN §3.3) ═══
 
 test('세션: 평문 저장 금지 — DPAPI(CurrentUser)를 반드시 거친다', () => {
   const s = bare(userSession, 'public static (bool ok, string msg) Save(');
@@ -253,14 +253,55 @@ test('세션: 평문 저장 금지 — DPAPI(CurrentUser)를 반드시 거친다
   assert.ok(/Dpapi\.Unprotect\(/.test(l), '복호화를 거치지 않는다');
 });
 
-test('세션: 앱 버전이 다르면 폐기한다(업데이트 = 일괄 로그아웃)', () => {
+test('세션: 필드는 정확히 4개(loginId·name·title·orgUnit) — 권한을 캐시하지 않는다', () => {
+  // 왜 4개인가: loginId=신원(쓰기 관문의 조회 키), 나머지 셋=설정창 「계정」 표시(오프라인에서도 이름이 보여야 한다).
+  // viewScope/editRole을 담으면 "이게 권한이다"는 오해가 생긴다 — 실제로 한 번 일어났고, 그 캐시는 아무도 안 읽었다.
+  const fields = [...stripComments(userSession).matchAll(/^\s*public string (\w+) = "";/gm)].map(m => m[1]);
+  assert.deepStrictEqual(fields, ['LoginId', 'Name', 'Title', 'OrgUnit'],
+    `세션 필드가 4개(loginId·name·title·orgUnit)가 아니다: ${JSON.stringify(fields)}`);
+  for (const dead of ['ViewScope', 'EditRole', 'AppVersion', 'SavedAt']) {
+    assert.ok(!stripComments(userSession).includes(dead), `제거된 세션 필드가 되살아났다: ${dead}`);
+  }
+  // 저장 payload도 4개뿐이어야 한다(필드만 지우고 파일에는 계속 쓰면 의미가 없다).
+  const save = bare(userSession, 'public static (bool ok, string msg) Save(');
+  const payload = save.slice(save.indexOf('var payload = new'), save.indexOf('JsonSerializer.Serialize(payload)'));
+  const keys = [...payload.matchAll(/^\s*(\w+) = /gm)].map(m => m[1]);
+  assert.deepStrictEqual(keys, ['loginId', 'name', 'title', 'orgUnit'],
+    `저장 payload가 4필드가 아니다: ${JSON.stringify(keys)}`);
+  // 웹으로 가는 payload도 같다 — 권한을 화면에 내려보내면 화면이 그걸로 판단하기 시작한다.
+  const wire = bare(mainWindow, 'private static object UserPayload(UserSession s) => new');
+  assert.ok(!/ViewScope|EditRole|viewScope|editRole/.test(wire), '웹 payload에 권한이 실린다');
+});
+
+test('세션: 옛 파일(추가 필드 포함)도 그대로 복원된다 — 이 변경이 일괄 로그아웃을 유발하면 안 된다', () => {
   const l = bare(userSession, 'public static UserSession? Load(');
-  assert.ok(/if \(verifyVersion\)/.test(l), '버전 검사 분기가 없다');
-  assert.ok(/!string\.Equals\(s\.AppVersion, cur, StringComparison\.Ordinal\)/.test(l), '저장 버전과 현재 버전을 비교하지 않는다');
-  assert.ok(/Clear\(dataDir, log\);\s*return null;/.test(l), '버전 불일치 세션을 폐기하지 않는다');
-  // 부팅은 반드시 검증 모드로 읽는다.
-  assert.ok(/UserSession\.Load\(_dataDir, verifyVersion: true, Log\)/.test(mainWindow),
-    '부팅이 verifyVersion:true로 읽지 않는다 — 업데이트해도 옛 세션이 살아남는다');
+  // 필드를 '이름으로' 읽으면 옛 파일의 viewScope/appVersion 같은 잉여 필드는 그냥 무시된다.
+  for (const k of ['loginId', 'name', 'title', 'orgUnit']) {
+    assert.ok(new RegExp(`Str\\(r, "${k}"\\)`).test(l), `${k}를 이름으로 읽지 않는다`);
+  }
+  assert.ok(/TryGetProperty\(key, out var v\)/.test(stripComments(userSession)),
+    '없는 필드를 관대하게 처리하지 않는다(옛/새 파일 상호 호환이 깨진다)');
+  // 폐기 조건은 딱 하나여야 한다: 신원이 없을 때. '모르는 필드가 있으면 폐기' 같은 조건이 붙으면 일괄 로그아웃이 된다.
+  const discards = [...l.matchAll(/return null;/g)].length;
+  assert.ok(/if \(s\.LoginId\.Length == 0\) return null;/.test(l), '신원 없는 세션을 걸러내지 않는다');
+  assert.ok(discards <= 4, `Load의 폐기 경로가 ${discards}곳이다 — 조건이 늘면 멀쩡한 세션이 버려진다`);
+  assert.ok(!/Clear\(dataDir/.test(l), 'Load가 세션 파일을 지운다 — 읽기가 삭제를 겸하면 일괄 로그아웃 경로가 생긴다');
+});
+
+test('세션: 버전 기반 일괄 로그아웃이 소스에서 사라졌다', () => {
+  // 릴리스마다 전원 재로그인이라는 확실한 비용에 비해, 막으려던 문제가 실제로는 없었다(USER-LOGIN §3.3).
+  // 포맷이 정말 깨지는 날에는 파일명을 바꾼다(user.session → user2.session) — 비교 코드 0줄.
+  const s = stripComments(userSession);
+  for (const dead of ['CurrentAppVersion', 'verifyVersion', 'AppVersion', 'GetExecutingAssembly', 'Reflection']) {
+    assert.ok(!s.includes(dead), `버전 폐기 잔재가 남아 있다: ${dead}`);
+  }
+  assert.ok(!/verifyVersion/.test(mainWindow), '호출부가 아직 verifyVersion을 넘긴다');
+  assert.ok(!/UserSession\.CurrentAppVersion/.test(mainWindow), '호출부가 아직 앱 버전을 세션에 싣는다');
+  // 시그니처도 줄었는지 — 인자만 무시하고 남겨두면 다음 사람이 다시 채운다.
+  assert.ok(/public static UserSession\? Load\(string dataDir, Action<string>\? log = null\)/.test(userSession),
+    'Load 시그니처가 (dataDir, log)로 줄지 않았다');
+  assert.ok(/orgUnit, Action<string>\? log = null\)/.test(userSession),
+    'Save 시그니처에 viewScope/editRole/appVersion이 남아 있다');
 });
 
 // ══ ⑧ 비밀번호가 어디에도 남지 않는다 ════════════════════════════════
@@ -321,8 +362,8 @@ test('부팅에 app_user 백그라운드 재조회가 없다(로그아웃과 경
 
 test('불변식①: ProjectDb에서 new MySqlConnection을 직접 부르는 곳은 두 헬퍼 안뿐이다', () => {
   const readSpan  = (() => { const s = projectDb.indexOf('private static async Task<MySqlConnection> OpenReadAsync');
-                             return [s, projectDb.indexOf('private static async Task<MySqlConnection> OpenWriteAsync')]; })();
-  const writeSpan = (() => { const s = projectDb.indexOf('private static async Task<MySqlConnection> OpenWriteAsync');
+                             return [s, projectDb.indexOf('private async Task<MySqlConnection> OpenWriteAsync')]; })();
+  const writeSpan = (() => { const s = projectDb.indexOf('private async Task<MySqlConnection> OpenWriteAsync');
                              return [s, projectDb.indexOf('public async Task<string?> LoadProjectsJsonAsync')]; })();
   assert.ok(readSpan[0] >= 0 && writeSpan[0] >= 0, '관문 헬퍼(OpenReadAsync/OpenWriteAsync)가 없다');
   const hits = [...projectDb.matchAll(/new MySqlConnection\(/g)].map(m => m.index);
@@ -358,6 +399,64 @@ test('관문: 읽기 계열(Load*)은 OpenReadAsync를 쓰고 app_user 조회도
   }
 });
 
+// ══ ⑩-B 쓰기 관문의 권한 판정 (USER-LOGIN §3.3, 2026-07-30) ══════════
+// DB 작업 권한은 '로그인 시점'이 아니라 '작업 요청 시점'에 결정된다. 판정 지점은 이 한 곳뿐이고,
+// 쓰기 11곳은 이미 이 관문을 지나므로 호출부를 고치지 않아도 전부 적용된다.
+
+test('관문: OpenWriteAsync는 non-static이고 세션 loginId로 권한을 조회한다', () => {
+  assert.ok(/private async Task<MySqlConnection> OpenWriteAsync\(CancellationToken ct\)/.test(projectDb),
+    'OpenWriteAsync가 non-static이 아니다 — static이면 _dataDir(세션)에 닿을 수 없어 판정 자체가 불가능하다');
+  assert.ok(!/private static async Task<MySqlConnection> OpenWriteAsync/.test(projectDb),
+    'static 시그니처가 남아 있다');
+  const b = bare(projectDb, 'private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)');
+  // ① 세션(신원)이 먼저 — 없으면 연결조차 열지 않는다.
+  const load = b.indexOf('UserSession.Load(_dataDir');
+  const open = b.indexOf('new MySqlConnection(');
+  assert.ok(load >= 0, '세션을 읽지 않는다 — 누구의 권한인지 모르는 채 연결을 연다');
+  assert.ok(load < open, '세션 검사가 연결 생성보다 뒤에 있다');
+  assert.ok(/throw new NotAuthorizedException\("로그인이 필요합니다\."\)/.test(b), '미로그인 거부 문구가 계약과 다르다');
+  // ② 같은 연결로 '지금 이 순간의' 권한 — 세션 캐시를 믿지 않는다.
+  assert.ok(/SELECT edit_role, is_active FROM app_user WHERE login_id=@id/.test(b),
+    '권한 쿼리가 없거나 계약과 다르다(edit_role·is_active를 한 쿼리로 읽어야 퇴사·회수가 공짜로 반영된다)');
+  assert.ok(/AddWithValue\("@id", s\.LoginId\)/.test(b), '값을 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
+  assert.ok(b.indexOf('conn.OpenAsync(') < b.indexOf('SELECT edit_role'), '권한 조회가 연결 오픈보다 앞에 있다');
+  // ③ 거부 3분기 — 사유별 문구가 그대로 사용자에게 간다.
+  for (const m of ['사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.', '비활성 처리된 계정입니다.', '편집 권한이 없습니다.']) {
+    assert.ok(b.includes(m), `거부 문구가 계약과 다르다: ${m}`);
+  }
+  assert.ok(/"editor"/.test(b) && /"admin"/.test(b), 'edit_role 허용값(editor·admin)을 검사하지 않는다');
+  // ④ 거부해도 연결을 흘리지 않는다 — 예외로 빠져나가는 경로마다 정리가 필요하다.
+  const disposes = [...b.matchAll(/conn\.DisposeAsync\(\)/g)].length;
+  assert.ok(disposes >= 3, `거부·실패 경로의 연결 정리가 ${disposes}곳뿐이다(연결 실패·권한 거부·조회 실패 = 3곳 이상)`);
+});
+
+test('관문: OpenReadAsync는 static 그대로이고 권한 검사가 없다(조회는 막지 않는다)', () => {
+  assert.ok(/private static async Task<MySqlConnection> OpenReadAsync\(CancellationToken ct\)/.test(projectDb),
+    'OpenReadAsync 시그니처가 바뀌었다');
+  const b = bare(projectDb, 'private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)');
+  assert.ok(!/UserSession|edit_role|NotAuthorizedException/.test(codeOnly(b)),
+    '읽기 관문에 권한 검사가 들어갔다 — 로그인 인가 조회(LoadAppUserJsonAsync)도 이 경로라 "권한을 알려면 먼저 권한이 필요"한 순환이 생긴다');
+});
+
+test('★ 쓰기 11곳 전부: NotAuthorizedException catch가 Exception catch보다 앞에 있다', () => {
+  // 이걸 빠뜨리면 "편집 권한이 없습니다"가 "서버에 연결할 수 없습니다"로 표시된다(원인 오해).
+  // C#은 먼저 일치하는 catch를 고르므로 '앞'이 아니면 아무 의미가 없다.
+  const sites = [...projectDb.matchAll(/try \{ conn = await OpenWriteAsync\(cts\.Token\); \}\r?\n([\s\S]*?)\r?\n\s*await using var connOwn/g)];
+  assert.strictEqual(sites.length, 11, `쓰기 관문 호출부가 ${sites.length}곳이다(11곳이어야 한다)`);
+  sites.forEach((m, i) => {
+    const tail = m[1];
+    const na = tail.indexOf('catch (NotAuthorizedException nex)');
+    const ex = tail.indexOf('catch (Exception cex)');
+    assert.ok(na >= 0, `쓰기 ${i + 1}번째 호출부에 권한 거부 catch가 없다 — 거부가 '오프라인'으로 표시된다:\n${tail}`);
+    assert.ok(ex >= 0, `쓰기 ${i + 1}번째 호출부에 연결 실패 catch가 없다`);
+    assert.ok(na < ex, `쓰기 ${i + 1}번째 호출부의 권한 거부 catch가 Exception catch보다 뒤에 있다(영원히 안 잡힌다)`);
+    // 거부 사유를 사용자에게 그대로 전달해야 한다 — OfflineMsg로 덮으면 catch를 넣은 의미가 없다.
+    const naLine = tail.split('\n').find(l => l.includes('catch (NotAuthorizedException nex)')) || '';
+    assert.ok(/nex\.Message/.test(naLine), `쓰기 ${i + 1}번째 호출부가 거부 사유를 돌려주지 않는다: ${naLine.trim()}`);
+    assert.ok(!/OfflineMsg/.test(naLine), `쓰기 ${i + 1}번째 호출부가 거부를 OfflineMsg로 덮는다: ${naLine.trim()}`);
+  });
+});
+
 test('app_user 조회: 파라미터 바인딩 · 3분기 반환(행 / "{}" / null)', () => {
   const b = bare(projectDb, 'public async Task<string?> LoadAppUserJsonAsync(string? loginId)');
   assert.ok(/WHERE login_id=@id/.test(b) && /AddWithValue\("@id", id\)/.test(b), '값을 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
@@ -380,7 +479,7 @@ test('설정창: netcus 자격증명 UI가 흔적 없이 제거됐다', () => {
 test('설정창 「계정」: 이름+직급 · 소속 · 로그아웃뿐 — 로그인 입력칸이 없다', () => {
   const s = src.indexOf('<div class="set-sec set-sec-top" id="accountSection">');
   assert.ok(s >= 0, '계정 섹션이 없다');
-  const sec = src.slice(s, src.indexOf('id="adminSection"', s));
+  const sec = src.slice(s, src.indexOf('id="dbSection"', s));
   assert.ok(!/<input/.test(sec), '계정 섹션에 입력칸이 있다 — 로그인 진입점을 둘로 만들면 안 된다(게이트 하나)');
   for (const id of ['acctState', 'acctInfoBlock', 'acctName', 'acctTitle', 'acctOrg', 'acctLogout']) {
     assert.ok(new RegExp('id="' + id + '"').test(sec), `계정 섹션에 #${id}가 없다`);
@@ -395,10 +494,28 @@ test('계정 표기: DB에서 온 값은 textContent로만 넣는다(innerHTML �
   assert.ok(/'· 데스크톱 위젯 전용'/.test(b), '브라우저 단독 표기가 없다');
 });
 
-test('관리자 섹션은 이번 범위 밖 — 그대로 남아 있다(2단계에서 삭제)', () => {
-  for (const id of ['adminSection', 'admAuthPw', 'admAuthOk', 'admLogout']) {
-    assert.ok(src.includes(id), `관리자 섹션이 손상됐다: ${id}`);
-  }
+// ══ ⑪-B 편집 게이트는 '힌트'다 — 권한은 호스트가 판정한다 (§3.3) ══════
+
+test('offEditGuard: HOST·dbOnline만 보고 권한은 보지 않는다', () => {
+  const b = jsBody('offEditGuard');
+  assert.ok(b.indexOf('!HOST') < b.indexOf('!dbOnline'), '위젯 검사가 온라인 검사보다 뒤에 있다');
+  // 권한 판정의 흔적이 하나라도 남으면 낡은 캐시로 미리 막게 된다 — 그 캐시는 반드시 틀린다.
+  assert.ok(!/getRole|admin|role|editRole|currentUser/.test(b),
+    '게이트가 권한을 판단하려 한다 — 화면은 권한을 모른다(호스트가 요청 시점에 판정)');
+  // 통과는 무조건 fn 실행. 조건이 셋이 되면 그 셋째가 곧 죽은 권한 캐시다.
+  assert.ok(/if\(typeof fn === 'function'\) fn\(\);/.test(b), '통과 경로가 바뀌었다');
+  const ifs = [...b.matchAll(/\n\s*if\(/g)].length;
+  assert.strictEqual(ifs, 3, `게이트의 분기가 ${ifs}개다(HOST·dbOnline·fn 실행 = 3이어야 한다)`);
+});
+
+test('offEditGuard: 인자는 fn 하나 — 폐지된 관리자 비밀번호를 언급하는 죽은 문자열이 없다', () => {
+  // 2단계 전에는 (fn, desc)였고 desc가 "…관리자 비밀번호가 필요합니다."를 담았다. 관리자 자격이
+  // 폐지된 뒤 그 문자열은 화면에 뜨지도 않으면서 코드에 거짓 정보를 남긴다 → 인자째 제거했다.
+  assert.ok(/function offEditGuard\(fn\)\{/.test(src), '시그니처가 (fn) 이 아니다');
+  assert.ok(!/관리자 비밀번호/.test(src), '폐지된 관리자 비밀번호를 언급하는 문자열이 남아 있다');
+  // 호출 지점 자체는 늘거나 줄지 않아야 한다(인자만 뺐지 편집 게이트를 옮긴 게 아니다).
+  const hits = [...src.matchAll(/offEditGuard\(/g)].length;
+  assert.strictEqual(hits, 18, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 13 + 주석 4 = 18이어야 한다)`);
 });
 
 test('호스트의 netcusSaveCreds/netcusCredsGet 처리부는 남아 있다(웹이 부르지 않을 뿐)', () => {

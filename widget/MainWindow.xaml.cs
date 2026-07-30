@@ -428,7 +428,6 @@ namespace TaskCalendarWidget
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
-                        SendAdminState();   // 관리자 잠금해제(영속) 복원 — 이미 인증된 PC면 편집 시 프롬프트 없음
                         ReminderInit();   // 시작 알림 타이머·상태 1회 초기화 + __setReminders 통지
                         break;
                     case "save":
@@ -541,31 +540,9 @@ namespace TaskCalendarWidget
                         _ = RunCodeRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"));
                         break;
 
-                    // ----- 관리자(공식 과제 편집 게이트) — 자격은 호스트 config(평문)에서만 검증, JS엔 비번 미노출 -----
-                    case "saveAdminCred":   // 관리자 비밀번호 변경 — 결과(ok,msg)를 전달해 거짓 성공 표시 방지
-                    {
-                        // ★ 인증 여부는 ProjectDb.SaveAdminCred가 호스트에서 검사한다(미인증이면 거부).
-                        //   UI 게이트만 믿지 않는 이유: 브리지 메시지는 웹에서 직접 던질 수 있어 클라이언트 검사는 우회된다.
-                        var (credOk, credMsg) = _projectDb.SaveAdminCred(GetStr(doc, "id"), GetStr(doc, "pw"));
-                        JsCall("window.__adminSaved && window.__adminSaved(" + (credOk ? "true" : "false") + "," + JsonSerializer.Serialize(credMsg) + ")");
-                        // 성공해도 잠금해제는 유지된다(같은 사람이 바꾼 것) — 배지가 어긋나지 않게 상태만 다시 통지
-                        if (credOk) SendAdminState();
-                        break;
-                    }
-                    case "adminStateGet":   // 부팅 시 복원 — 이 PC에서 이미 인증됐는지 웹에 통지
-                        SendAdminState();
-                        break;
-                    case "adminLogout":     // 설정창 '해제' — 영속 잠금해제를 내린다(다음 편집 때 다시 인증)
-                        _projectDb.SetAdminUnlocked(false);
-                        SendAdminState();
-                        break;
-                    case "adminLogin":      // config값과 대조 → 역할('admin'|null)을 __adminResult로 반환
-                    {
-                        var (role, amsg) = _projectDb.VerifyAdmin(GetStr(doc, "id"), GetStr(doc, "pw"));
-                        string roleJs = role == null ? "null" : JsonSerializer.Serialize(role);
-                        JsCall("window.__adminResult && window.__adminResult(" + roleJs + "," + JsonSerializer.Serialize(amsg) + ")");
-                        break;
-                    }
+                    // ★ 관리자 브리지(adminLogin/adminLogout/adminStateGet/saveAdminCred)는 폐지됐다(USER-LOGIN §3.3).
+                    //   공용 관리자 비밀번호로 편집을 여는 모델 자체를 없앴다 — 편집 권한은 로그인 신원으로
+                    //   '작업 요청 시점'에 DB 쓰기 관문(ProjectDb.OpenWriteAsync)이 판정한다.
 
                     // ----- 사용자 로그인(세션 유지) — 계약 3개, 실패 code 없음(USER-LOGIN §2.2) -----
                     case "userSessionGet":   // ★ 부팅 경로다. 세션 파일만 읽는다 — netcus 접속 코드가 한 줄도 없어야 한다.
@@ -1445,10 +1422,6 @@ namespace TaskCalendarWidget
             JsCall("window.__applyProjects && window.__applyProjects(" + JsonSerializer.Serialize(json ?? "") + ")");
         }
 
-        // 관리자 잠금해제 상태(영속)를 웹으로 — 부팅 복원·해제·자격변경 시 호출. JS는 이 값으로 __adminSession을 맞춘다.
-        private void SendAdminState() =>
-            JsCall("window.__adminState && window.__adminState(" + (_projectDb.IsAdminUnlocked() ? "true" : "false") + ")");
-
         // 발주처 마스터 → 편집 폼 드롭다운. 실패면 ""(웹이 기존 목록의 distinct 발주처로 폴백).
         private async Task LoadCustomersToWebAsync()
         {
@@ -1559,14 +1532,17 @@ namespace TaskCalendarWidget
         // 계약은 3개뿐이고 실패 code는 만들지 않는다 — 웹은 msg를 그대로 보여줄 뿐 분기하지 않는다.
 
         // 세션 → 웹 회신 payload. 비밀번호는 애초에 저장하지 않으므로 샐 것이 없다.
+        // ★ 4개뿐이다(USER-LOGIN §3.3) — 권한(view_scope/edit_role)은 웹으로 내려보내지 않는다.
+        //   권한은 '작업 요청 시점'에 DB 쓰기 관문(ProjectDb.OpenWriteAsync)이 판정한다.
         private static object UserPayload(UserSession s) => new
         {
-            loginId = s.LoginId, name = s.Name, title = s.Title,
-            orgUnit = s.OrgUnit, viewScope = s.ViewScope, editRole = s.EditRole,
+            loginId = s.LoginId, name = s.Name, title = s.Title, orgUnit = s.OrgUnit,
         };
 
         // app_user 행 JSON → 필드 튜플. 행 없음("{}")이면 전부 빈 문자열로 나온다.
-        private static (string name, string title, string orgUnit, string viewScope, string editRole, int? isActive) ParseAppUser(string json)
+        // ★ edit_role은 여기서 읽지 않는다 — 로그인 시점의 권한을 캐시하지 않기 위해서다.
+        //   등록 여부 판정은 name/org_unit으로 하고, is_active만 로그인 거부에 쓴다.
+        private static (string name, string title, string orgUnit, int? isActive) ParseAppUser(string json)
         {
             try
             {
@@ -1574,9 +1550,9 @@ namespace TaskCalendarWidget
                 var r = d.RootElement;
                 string S(string k) => r.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
                 int? act = r.TryGetProperty("is_active", out var a) && a.ValueKind == JsonValueKind.Number ? a.GetInt32() : (int?)null;
-                return (S("name"), S("title"), S("org_unit"), S("view_scope"), S("edit_role"), act);
+                return (S("name"), S("title"), S("org_unit"), act);
             }
-            catch { return ("", "", "", "", "", null); }
+            catch { return ("", "", "", null); }
         }
 
         // 부팅 세션 복원 — ★ 로컬 세션 파일(DPAPI)만 읽는다. netcus도 DB도 건드리지 않는다.
@@ -1586,7 +1562,7 @@ namespace TaskCalendarWidget
         private void RunUserSessionGet(string reqId)
         {
             UserSession? s = null;
-            try { s = UserSession.Load(_dataDir, verifyVersion: true, Log); }
+            try { s = UserSession.Load(_dataDir, Log); }
             catch (Exception ex) { Log("사용자 세션 복원 예외(로그인 화면으로): " + ex.Message); }
             if (s == null) { GitReply(reqId, new { ok = false }); return; }
             Log("사용자 세션 복원: " + s.LoginId + " — netcus 접속 없음");
@@ -1616,17 +1592,15 @@ namespace TaskCalendarWidget
                 string? json = await _projectDb.LoadAppUserJsonAsync(id);
                 if (json == null) { Fail("DB에 연결하지 못했습니다."); return; }
                 var u = ParseAppUser(json);
-                if (json.Trim() == "{}" || (u.name.Length == 0 && u.orgUnit.Length == 0 && u.editRole.Length == 0))
+                if (json.Trim() == "{}" || (u.name.Length == 0 && u.orgUnit.Length == 0))
                 { Fail("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요."); return; }
                 if (u.isActive == 0) { Fail("비활성 처리된 계정입니다."); return; }
 
                 // ③ 저장 2개 — 세션(신원) + netcus 자격(보고 전송이 valid:true를 보고 다시 묻지 않는다).
                 //    둘 다 '되읽어 확인'된 경우에만 성공이고, 하나라도 실패하면 양쪽을 지운다(반쪽 상태 금지).
                 const string SaveFail = "로그인 정보를 이 PC에 저장하지 못했습니다 — 다시 시도하세요.";
-                var fresh = new UserSession { LoginId = id, Name = u.name, Title = u.title,
-                                              OrgUnit = u.orgUnit, ViewScope = u.viewScope, EditRole = u.editRole };
-                var (sok, _) = UserSession.Save(_dataDir, id, u.name, u.title, u.orgUnit, u.viewScope, u.editRole,
-                                                UserSession.CurrentAppVersion(), Log);
+                var fresh = new UserSession { LoginId = id, Name = u.name, Title = u.title, OrgUnit = u.orgUnit };
+                var (sok, _) = UserSession.Save(_dataDir, id, u.name, u.title, u.orgUnit, Log);
                 if (!sok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }
                 var (cok, _) = _netcus.SaveCredsForLogin(id, pw);
                 if (!cok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }

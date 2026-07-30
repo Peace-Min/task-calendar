@@ -14,7 +14,9 @@
  *
  * 전제(이 스크립트가 하지 않는 것):
  *   · 위젯 실행/종료를 하지 않는다. 9222에 이미 붙어 있어야 한다(없으면 친절한 에러로 종료).
- *   · 관리자 인증을 하지 않는다. 시작 시 getRole()==='admin'인지 **확인만** 하고 아니면 중단.
+ *   · 로그인을 대신하지 않는다. 시작 시 로그인 상태(currentUser)인지 **확인만** 하고 아니면 중단.
+ * · 편집 권한은 호스트가 쓰기 요청 시점에 app_user.edit_role로 판정한다(USER-LOGIN §3.3) —
+ *   그래서 이 테스트는 **edit_role이 editor/admin인 계정으로 로그인된 위젯**에 붙어야 한다.
  *   · DB 데이터를 스스로 복원하지 않는다(운영자가 스냅샷 보유). 단 **자기가 건 ACCOUNT LOCK은 반드시 푼다**.
  *
  * 실행:
@@ -460,7 +462,7 @@ const INSTALL_JS = `(function(){
   L.state = function(){
     var s = {};
     s.host       = (typeof HOST !== 'undefined') ? !!HOST : null;
-    s.role       = (typeof getRole === 'function') ? getRole() : null;
+    s.loginId    = (typeof currentUser !== 'undefined' && currentUser) ? (currentUser.loginId || '') : '';
     s.dbOnline   = (typeof dbOnline !== 'undefined') ? !!dbOnline : null;
     s.catalogN   = (typeof dbCatalog !== 'undefined' && dbCatalog) ? dbCatalog.length : null;
     s.codeBusy   = (typeof codeBusy !== 'undefined') ? !!codeBusy : null;
@@ -527,7 +529,7 @@ async function doWrite(desc, triggerExpr, opts = {}) {
   const confirmChoice = opts.confirm === 'alt' ? 'alt' : 'ok';
   const expectToast = opts.expectToast !== false;
   const s0 = await state();
-  const rec = { desc, outcome: 'none', toasts: [], confirm: null, adminGate: false, trigger: null };
+  const rec = { desc, outcome: 'none', toasts: [], confirm: null, denied: false, trigger: null };
 
   const tr = await ev(triggerExpr);
   rec.trigger = tr;
@@ -540,12 +542,6 @@ async function doWrite(desc, triggerExpr, opts = {}) {
     const s = await state();
 
     if (s.confirmOpen) {
-      if (s.cfTitle === '관리자 인증 필요') {          // 관리자 게이트에 걸림 = 사전조건 위반
-        rec.adminGate = true;
-        await ev("__lt.click('#cfAlt')");
-        rec.outcome = 'admin-gate';
-        return rec;
-      }
       if (!rec.confirm) {
         rec.confirm = { title: s.cfTitle, msg: s.cfMsg, choice: confirmChoice };
         await sleep(60);
@@ -566,6 +562,9 @@ async function doWrite(desc, triggerExpr, opts = {}) {
   }
 
   rec.toasts = await ev(`__lt.toastsSince(${s0.toastN})`);
+  // 권한 거부는 호스트가 쓰기 관문에서 판정해 msg로 돌려보낸다(USER-LOGIN §3.3).
+  // 사전조건 위반(편집 권한 없는 계정으로 돌림)을 '그냥 실패'로 묻지 않게 따로 표시한다.
+  rec.denied = (rec.toasts || []).some((t) => /편집 권한이 없습니다|비활성 처리된 계정|로그인이 필요합니다|사용자 정보가 등록되어 있지 않습니다/.test(t.msg || ''));
   rec.errs = await ev(`__lt.errsSince(${s0.errN})`);
   const kinds = rec.toasts.map((t) => t.kind);
   rec.outcome = !settled ? 'timeout'
@@ -964,7 +963,7 @@ async function verifyOp(before, plan, rec, ctx) {
 
   if (rec.errs && rec.errs.length) violate('ERR', `조작 중 페이지 예외 ${rec.errs.length}건`, rec.errs.slice(0, 5));
   if (rec.mixed) violate('UI', '한 조작에서 성공·실패 토스트가 함께 떴다', rec.toasts);
-  if (rec.adminGate) violate('PRE', '관리자 인증 게이트에 걸렸다 — adminUnlocked 사전 세팅을 확인하세요');
+  if (rec.denied) violate('PRE', '호스트가 쓰기를 권한 없음으로 거부했다 — 로그인 계정의 app_user.edit_role(editor/admin)을 확인하세요', rec.toasts);
 
   opLog.push({ n: curOp, phase: curPhase, desc: rec.desc, outcome: rec.outcome, confirm: rec.confirm ? rec.confirm.choice : null });
   vlog(`${rec.desc} → ${rec.outcome}${rec.confirm ? ' (확인창:' + rec.confirm.choice + ')' : ''}`);
@@ -1478,13 +1477,13 @@ async function main() {
   curPhase = 'preflight';
   let s = await state();
   if (s.host !== true) { console.error('\n[중단] 위젯(HOST) 컨텍스트가 아닙니다. 브라우저가 아니라 TaskCalendarWidget에 붙어야 합니다.'); process.exit(2); }
-  if (s.role !== 'admin') {
-    console.error(`\n[중단] 관리자 인증 상태가 아닙니다(getRole()='${s.role}').`);
-    console.error('  이 테스트는 관리자 인증 UI 왕복을 수행하지 않습니다.');
-    console.error("  → %APPDATA%\\TaskCalendar\\db-config.json 의 adminUnlocked를 true로 두고 위젯을 띄운 뒤 다시 실행하세요.");
+  if (!s.loginId) {
+    console.error('\n[중단] 로그인 상태가 아닙니다(currentUser 없음).');
+    console.error('  이 테스트는 로그인 UI 왕복을 수행하지 않습니다 — 위젯에서 먼저 로그인해 두세요.');
+    console.error('  → 그 계정의 taskmgr.app_user.edit_role이 editor 또는 admin이어야 합니다(쓰기 관문 판정 기준).');
     process.exit(2);
   }
-  ok(`사전조건 OK — HOST=true, role=admin`);
+  ok(`사전조건 OK — HOST=true, 로그인=${s.loginId}`);
 
   if (s.dbOnline !== true) {
     log('dbOnline=false → 지금 새로고침으로 온라인 확보 시도');
