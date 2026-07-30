@@ -83,8 +83,13 @@ namespace TaskCalendarWidget
             {
                 Log("사용자 로그인 확인 시작: " + id);
                 var sw = System.Diagnostics.Stopwatch.StartNew();
+                bool warm = _w2 != null && _w2.CoreWebView2 != null;   // 재사용인가 신규 생성인가
                 await EnsureW2(background: true);   // 최소화·비활성 창 — 포커스를 뺏지 않는다
-                var cw = _w2!.CoreWebView2;
+                Log($"  WebView2 준비 {sw.ElapsedMilliseconds}ms ({(warm ? "재사용" : "신규 생성")})");
+                // EnsureW2가 실패하면 CoreWebView2가 null일 수 있다. '!'로 덮으면 여기서 NRE가 나고
+                // 로그인 예외로만 보인다 — 원인이 드러나는 실패 경로를 명시한다.
+                var cw = _w2?.CoreWebView2;
+                if (cw == null) { Log("사용자 로그인 확인 실패 — WebView2를 준비하지 못했습니다."); return false; }
                 detach = AttachDialogAutoAccept(cw, "userlogin");   // 레거시 pjm alert() 자동 수락(최소화 창 무한대기 방어)
                 NetcusStatus("userlogin", "login");
                 // ★ navTimeoutMs=4000: 실패 시 netcus는 페이지 이동을 하지 않아 기본 15초를 꽉 기다렸다(실측 15.7초).
@@ -198,13 +203,21 @@ namespace TaskCalendarWidget
         //   실패가 잦은 경로(사용자 로그인)만 짧게 줄일 수 있다. 기존 호출부는 기본값 15000 유지 = 동작 무변경.
         private async Task<bool> NetcusLoginVerify(CoreWebView2 cw, string id, string pw, int navTimeoutMs = 15000)
         {
+            // 단계별 소요를 남긴다 — 실사용에서 '실패가 느리다'는 보고가 반복돼, 어느 구간이 먹는지
+            // 추정하지 않고 로그로 확정하기 위함이다(네트워크 왕복 자체는 실측 47ms로 무시할 수준).
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            long tA, tB, tC;
             await NavTo(cw, "https://www.netcus.com/pjm/login.htm");
+            tA = sw.ElapsedMilliseconds;
             var nav = NavOnce(cw, navTimeoutMs);
             await cw.ExecuteScriptAsync($"(function(){{try{{document.form.id.value={J(id)};document.form.pass.value={J(pw)};goLogin();}}catch(e){{}}}})()");
             await nav;
+            tB = sw.ElapsedMilliseconds;
             // 보호 페이지(오늘자 work_view)로 이동 후 안정 상태에서 판정.
             var t = DateTime.Now;
             await NavTo(cw, $"https://www.netcus.com/pjm/pjm_work_view.jsp?y={t.Year}&m={t.Month}&d={t.Day}&id={Uri.EscapeDataString(id)}");
+            tC = sw.ElapsedMilliseconds;
+            Log($"  로그인 구간: login.htm {tA}ms · 제출대기 {tB - tA}ms(상한 {navTimeoutMs}) · work_view {tC - tB}ms");
             for (int i = 0; i < 16; i++)   // ~4s(제출 사후검증과 동일 규모). 타임아웃=불확실→안전하게 실패
             {
                 var st = (await cw.ExecuteScriptAsync(
