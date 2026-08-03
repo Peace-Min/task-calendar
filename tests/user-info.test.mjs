@@ -399,15 +399,132 @@ const checks = {
     assert.ok(/\$\('#mbSearch'\)[\s\S]{0,140}filterMembers/.test(source), '#mbSearch 검색 배선이 끊겼다');
   },
 
-  // ⑳ 미리보기 배너 — 가짜 데이터가 배너 없이 나가는 것을 막는다.
-  //    US_MEMBERS_PREVIEW 가 실제 조회로 갈아끼워지면 이 의무도 함께 사라진다(그때는 진짜 명부니까).
-  previewBanner(source) {
-    if (!/US_MEMBERS_PREVIEW/.test(source)) return;
+  // ⑳ 계약이 뒤집힌 검사다. 예전엔 "가짜 표본이 있으면 미리보기 배너도 있어야 한다"였다 —
+  //    이제 실데이터(membersGet)로 갔으므로 표본 자체가 0건이어야 한다.
+  //    둘이 섞여 있으면 화면에 뜨는 게 진짜인지 표본인지 코드를 읽기 전에는 알 수 없다.
+  noPreviewSample(source) {
+    assert.ok(!/US_MEMBERS_PREVIEW/.test(source),
+      '가짜 표본 US_MEMBERS_PREVIEW 가 남아 있다 — 실데이터로 갔으면 표본은 사라져야 한다');
+    assert.ok(!/mbPreview/.test(source),
+      '#mbPreview 미리보기 배너가 남아 있다 — 진짜 명부에 "미리보기입니다"가 붙으면 사용자가 실데이터를 안 믿는다');
+    // 표본만 지우고 조회를 안 붙인 상태(목록이 영원히 빈 화면) 방지.
+    assert.ok(/hostRequest\('membersGet'/.test(source),
+      '표본은 지웠는데 membersGet 조회가 없다 — 목록이 영원히 비어 있다');
+  },
+
+  // ㉔ 구성원 조회도 '읽기' 경로다. 쓰기 관문을 쓰면 unit_tree 를 가진 사람(=viewer 다수)이 명부를 못 본다 —
+  //    열람 권한과 편집 권한은 다른 축이다(USER-LOGIN §3.3).
+  membersHostReadPath(csMain, csDb) {
+    const c = csCase(csMain, 'membersGet');
+    assert.ok(/RunMembersGetAsync/.test(c), 'case "membersGet" 이 RunMembersGetAsync 를 부르지 않는다');
+    const b = csMember(csMain, 'private async Task RunMembersGetAsync(string reqId)');
+    assert.ok(/LoadMembersJsonAsync/.test(b), '호스트 핸들러가 구성원 조회를 하지 않는다');
+    assert.ok(/ReplyOnUi\(/.test(b) && !/GitReply\(/.test(b),
+      'async 핸들러가 GitReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
+    assert.ok(/로그인이 필요합니다\./.test(b) && /서버에 연결하지 못했습니다/.test(b) && /사용자 정보가 등록되어 있지 않습니다/.test(b),
+      '세션 없음 / 연결 실패 / 미등록을 구분해 안내하지 않는다 — 사유가 다르면 사용자의 대처도 다르다');
+    assert.ok(!/ex\.Message/.test(b), '예외 원문을 사용자 회신에 실었다 — 내부 사정은 로그에만 남긴다');
+
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    // 순서 주의 — 쓰기 관문으로 바뀌면 두 단언이 함께 깨진다. 원인을 정확히 말하는 쪽을 앞에 둔다.
+    assert.ok(!/OpenWriteAsync/.test(q),
+      '구성원 조회가 쓰기 관문을 쓴다 — unit_tree 를 가진 viewer 전원이 명부를 확인조차 못 한다');
+    assert.ok(/OpenReadAsync/.test(q), '구성원 조회가 읽기 연결을 쓰지 않는다');
+    assert.ok(/AddWithValue\("@id", id\)/.test(q), 'login_id 를 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
+  },
+
+  // ㉕ IN 절은 자리표시자(@u0,@u1,…)로만 만든다 — 유닛 이름도 DB 문자열이라 SQL 에 이어 붙이면 주입 표면이 된다.
+  membersInClauseBound(csDb) {
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    assert.ok(/IN \(/.test(q), '전제: 명부 조회에 IN 절이 없다');
+    assert.ok(/ph\.Add\("@u"/.test(q),
+      'IN 절 자리표시자(@u0,@u1,…)를 만들지 않는다 — 유닛 이름이 SQL 문자열로 그대로 들어간다');
+    assert.ok(/string\.Join\(",", ph\)/.test(q), 'IN 절을 자리표시자 목록으로 잇지 않는다');
+    assert.ok(/AddWithValue\(ph\[i\], unitNames\[i\]\)/.test(q), '자리표시자에 값을 바인딩하지 않는다');
+    assert.ok(!/"'" \+/.test(q) && !/\+ "'"/.test(q),
+      'SQL 에 작은따옴표로 값을 감싸 이어 붙인다 — 전형적인 주입 형태다');
+    // 빈 IN 절은 문법 오류이기도 하다. 허용 집합이 비면 쿼리를 아예 돌리지 않는다.
+    assert.ok(/else if \(allowed\.Count > 0\)/.test(q), '허용 집합이 비어도 명부 쿼리를 돌린다');
+  },
+
+  // ㉖ scope='self' 는 본인 1행만. '전체를 읽어 화면에서 거르기'로 바꾸면 payload 에 남의 명부가 그대로 실린다
+  //    (개발자도구 한 번이면 다 보인다 — 화면 필터는 방어가 아니다).
+  membersSelfOnly(csDb) {
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const m = /switch \(scope\)\s*\{([\s\S]*?)\n\s*\}/.exec(q);
+    assert.ok(m, '허용 유닛 집합을 정하는 switch (scope) 를 찾지 못함');
+    const sw = m[1];
+    assert.ok(/case "all":/.test(sw) && /case "unit_tree":/.test(sw), '전제: all·unit_tree 분기가 없다');
+    assert.ok(!/"self"/.test(sw),
+      'self 가 허용 유닛 집합을 받는다 — self 는 빈 집합이어야 본인 1행만 나간다');
+    assert.ok(/default:\s*break;/.test(sw), 'default(self·알 수 없는 값)가 빈 집합으로 떨어지지 않는다');
+    const s = q.indexOf('if (isSelf)');
+    assert.ok(s >= 0, 'self 분기(if (isSelf))가 없다');
+    const e = q.indexOf('else if', s);
+    assert.ok(e > s, 'self 분기 뒤의 else if 를 찾지 못함');
+    const selfBranch = q.slice(s, e);
+    assert.ok(/\["loginId"\]\s*=\s*id/.test(selfBranch), 'self 분기가 본인 행을 담지 않는다');
+    assert.ok(!/ExecuteReader/.test(selfBranch), 'self 분기에서 명부 쿼리를 돈다 — 본인 1행만이어야 한다');
+  },
+
+  // ㉗ unit_tree 확장은 반복(BFS) + 방문 집합 가드. 재귀 CTE 금지(폐쇄망 MySQL 버전 가정을 늘리지 않는다).
+  membersTreeExpansion(csDb) {
+    const ex = csMember(csDb, 'private static void ExpandUnitTree(List<OrgUnitRow> units, string myUnit, HashSet<string> allowed)');
+    assert.ok(/Queue<string>/.test(ex), '부모→자식 반복 확장이 아니다(큐가 없다)');
+    assert.ok(/if \(allowed\.Add\(/.test(ex),
+      '방문 집합 가드가 없다 — org_unit.parent 에 순환(A→B→A)이 들어오면 무한 루프다');
+    // 주석에 'WITH RECURSIVE 를 쓰지 않는다'는 설명이 들어 있으므로 반드시 주석 제거본을 본다.
+    assert.ok(!/RECURSIVE/i.test(stripComments(csDb)),
+      '재귀 CTE(WITH RECURSIVE)를 쓴다 — 12행짜리 트리 때문에 폐쇄망 MySQL 버전 가정을 늘리지 않기로 했다');
+  },
+
+  // ㉘ 조직명·이름은 전부 DB 문자열이다 — DOM API 로만 그린다(실패 문구도 마찬가지).
+  membersTreeNoHtmlInjection(source) {
+    for (const name of ['renderUnitTree', 'renderMembers', 'mbFail']) {
+      const b = jsBody(source, name);
+      assert.ok(/createElement/.test(b) && /textContent\s*=/.test(b), `${name} 이 DOM API 로 그리지 않는다(전제 붕괴)`);
+      assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(b),
+        `${name} 이 HTML 주입 API 를 쓴다 — 조직명·이름이 마크업으로 해석된다(XSS)`);
+    }
+  },
+
+  // ㉙ 범위 밖 노드는 '보이되 눌리지 않는다'. 숨기면 내 위에 무엇이 있는지조차 알 수 없고,
+  //    조직도 자체는 사내망에 이미 공개된 정보라 감출 이유가 없다.
+  membersOutOfScopeDisabled(source) {
+    const b = jsBody(source, 'renderUnitTree');
+    assert.ok(/b\.disabled = true/.test(b), 'allowed:false 노드를 disabled 로 만들지 않는다');
+    assert.ok(/열람 범위 밖입니다/.test(b), '왜 안 눌리는지 title 로 알려주지 않는다');
+    assert.ok(!/if\(!\(u && u\.allowed\)\)\s*continue/.test(b) && !/filter\(u => u\.allowed\)/.test(b),
+      '범위 밖 노드를 아예 그리지 않는다 — 숨기지 말고 disabled 로 두는 것이 요구사항이다');
+    // disabled 만 믿지 않는다 — 프로그램 호출로 우회되면 범위 밖 조직이 선택된다.
+    const s = jsBody(source, 'mbSelect');
+    assert.ok(/!u\.allowed/.test(s), 'mbSelect 가 allowed 를 확인하지 않는다');
+  },
+
+  // ㉚ 열 때마다 다시 읽는다 — 캐시해 두면 인사이동·권한변경이 낡은 채 남아 화면이 거짓말을 한다.
+  membersRefetchOnOpen(source) {
+    const b = jsBody(source, 'openMembers');
+    assert.ok(/hostRequest\('membersGet'/.test(b), 'openMembers 가 membersGet 을 부르지 않는다');
+    assert.ok(/__mbBusy/.test(b), '재진입 가드가 없다 — 연타로 겹치면 늦은 회신이 먼저 온 것을 덮는다');
+    assert.ok(/__mbUnits = \[\]/.test(b) && /__mbMembers = \[\]/.test(b),
+      'openMembers 가 직전 결과를 비우지 않는다 — 조회에 실패해도 낡은 명부가 화면에 남는다');
+    assert.ok(!/__mbMembers\.length/.test(b) && !/__mbLoaded/.test(b),
+      'openMembers 가 이미 받아 둔 명부를 보고 조회를 건너뛴다(캐시) — 인사이동이 반영되지 않는다');
+    assert.ok(/데스크톱 위젯에서만 동작합니다/.test(b), '브라우저 단독(!HOST)에서 아무 설명도 하지 않는다');
+  },
+
+  // ㉛ 좌 트리 · 우 목록 2단. 세로로 쌓으면 트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
+  membersSplitTwoCols(source) {
+    const r = cssRule(source, '.mb-split');
+    assert.ok(/display:grid/.test(r), '.mb-split 이 grid 가 아니다 — 좌우 2단이 무너진다');
+    const m = /grid-template-columns:([^;]+)/.exec(r);
+    assert.ok(m, '.mb-split 에 grid-template-columns 가 없다 — 열 정의가 없으면 1열(=세로 쌓기)이다');
+    const cols = m[1].trim().split(/\s+/);
+    assert.strictEqual(cols.length, 2,
+      `.mb-split 이 ${cols.length}열이다 — 트리 칸 + 목록 칸 2열이어야 위젯 실폭에서도 2단이 유지된다`);
+    // 2단을 담을 폭의 전제 — .modal.wide 는 ≤440px 에서 100% 가 된다.
     const md = membersModalMarkup(source);
-    assert.ok(/id="mbPreview"/.test(md),
-      '가짜 표본(US_MEMBERS_PREVIEW)은 남았는데 #mbPreview 배너가 없다 — 사용자는 이걸 실제 명부로 믿는다');
-    assert.ok(/미리보기입니다 — 실제 구성원 명부는 아직 연결되지 않았습니다\./.test(md),
-      '#mbPreview 가 "미리보기"임을 말하지 않는다 — 배너가 있어도 사실을 말하지 않으면 없는 것과 같다');
+    assert.ok(/<div class="modal wide">/.test(md), '#membersModal 이 .modal.wide 가 아니다 — 2단을 담을 폭이 안 나온다');
   },
 
   // ㉑ 이름·소속은 (지금은 표본이지만 곧) DB 문자열이다 — 마크업으로 해석되는 순간 목록이 실행 표면이 된다.
@@ -467,10 +584,18 @@ test('사용자정보 ⑯: .us-kv 자식은 전부 dt/dd 요소다(맨 텍스트
 test('사용자정보 ⑰: 권한 문구 6종이 단축형이다(옛 긴 문구 0건)', () => checks.permShortLabels(src));
 test('사용자정보 ⑱: #usPermSec 에 .set-form 카드가 없다(#usPermForm 폐지)', () => checks.permNoCard(src));
 test('구성원 ⑲: #membersModal 은 닫을 수 있는 .overlay 이고 진입점이 배선돼 있다', () => checks.membersModalClosable(src));
-test('구성원 ⑳: 미리보기 표본이 있으면 #mbPreview 배너도 반드시 있다', () => checks.previewBanner(src));
+test('구성원 ⑳: 미리보기 표본(US_MEMBERS_PREVIEW·#mbPreview)이 0건이다', () => checks.noPreviewSample(src));
 test('구성원 ㉑: renderMembers 는 DOM API 로만 그린다(HTML 주입 API 부재)', () => checks.membersNoHtmlInjection(src));
 test('구성원 ㉒: #usMembersSec 는 #usPermSec 와 같은 조건으로 토글된다', () => checks.membersSecToggle(src));
 test('구성원 ㉓: 행에 일정·캘린더·스케줄 UI 가 없고 클릭 가능해 보이지 않는다', () => checks.membersNoScheduleUi(src));
+test('구성원 ㉔: 호스트 membersGet 은 읽기 경로다(OpenWriteAsync 금지)', () => checks.membersHostReadPath(main, pdb));
+test('구성원 ㉕: 명부 IN 절은 파라미터 바인딩이다(유닛 이름 문자열 연결 금지)', () => checks.membersInClauseBound(pdb));
+test('구성원 ㉖: scope=self 는 본인 1행만 담는다(전체 조회 금지)', () => checks.membersSelfOnly(pdb));
+test('구성원 ㉗: unit_tree 확장은 반복 + 방문 집합 가드다(재귀 CTE 금지)', () => checks.membersTreeExpansion(pdb));
+test('구성원 ㉘: renderUnitTree·renderMembers·mbFail 이 DOM API 로만 그린다', () => checks.membersTreeNoHtmlInjection(src));
+test('구성원 ㉙: 범위 밖 노드는 숨기지 않고 disabled 로 그린다', () => checks.membersOutOfScopeDisabled(src));
+test('구성원 ㉚: openMembers 는 열 때마다 membersGet 을 다시 부른다(캐시 금지)', () => checks.membersRefetchOnOpen(src));
+test('구성원 ㉛: .mb-split 은 2열 그리드다(좌 트리 · 우 목록)', () => checks.membersSplitTwoCols(src));
 
 // 세션 파일은 4필드 그대로다 — 권한을 세션에 캐시하는 순간 관리자가 역할을 바꿔도 화면이 낡은 값을 말한다.
 test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않았다', () => {
@@ -612,10 +737,9 @@ test('변이⑲: #membersModal 의 × 닫기를 떼면 membersModalClosable 이 
   assert.throws(() => checks.membersModalClosable(bad), /data-close 닫기 경로|헤더 × 닫기 버튼/);
 });
 
-test('변이⑳: 표본은 남긴 채 #mbPreview 배너만 지우면 previewBanner 가 실패한다', () => {
-  const bad = mutate(src, '      <div class="set-hint" id="mbPreview">미리보기입니다 — 실제 구성원 명부는 아직 연결되지 않았습니다.</div>\n', '');
-  assert.ok(/US_MEMBERS_PREVIEW/.test(bad), '전제: 가짜 표본은 그대로 남아 있다');
-  assert.throws(() => checks.previewBanner(bad), /#mbPreview 배너가 없다/);
+test('변이⑳: 가짜 표본을 되살리면 noPreviewSample 이 실패한다', () => {
+  const bad = mutate(src, 'let __mbUnits = [];', "const US_MEMBERS_PREVIEW = [{name:'김서연'}];\nlet __mbUnits = [];");
+  assert.throws(() => checks.noPreviewSample(bad), /US_MEMBERS_PREVIEW 가 남아 있다/);
 });
 
 test('변이㉑: renderMembers 가 이름을 innerHTML 로 넣으면 membersNoHtmlInjection 이 실패한다', () => {
@@ -638,6 +762,59 @@ test('변이㉓: 구성원 모달에 일정 UI 를 넣으면 membersNoScheduleUi
 test('변이㉓-b: .mb-row 에 cursor:pointer 를 주면 membersNoScheduleUi 가 실패한다', () => {
   const bad = mutate(src, '.mb-row{padding:8px 2px;', '.mb-row{cursor:pointer;padding:8px 2px;');
   assert.throws(() => checks.membersNoScheduleUi(bad), /cursor:pointer 가 붙었다/);
+});
+
+test('변이㉔: 구성원 조회가 쓰기 관문(OpenWriteAsync)을 쓰면 membersHostReadPath 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    'await using var conn = await OpenReadAsync(cts.Token);', 'await using var conn = await OpenWriteAsync(cts.Token);');
+  assert.throws(() => checks.membersHostReadPath(main, bad), /쓰기 관문을 쓴다/);
+});
+
+test('변이㉔-b: 호스트 case "membersGet" 을 지우면 membersHostReadPath 가 실패한다', () => {
+  const bad = mutate(main, 'case "membersGet":', 'case "membersGetX":');
+  assert.throws(() => checks.membersHostReadPath(bad, pdb), /case "membersGet" 을 찾지 못함/);
+});
+
+test('변이㉕: IN 절 자리표시자를 유닛 이름 문자열 연결로 바꾸면 membersInClauseBound 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    'ph.Add("@u" + i.ToString(CultureInfo.InvariantCulture));', 'ph.Add("\'" + unitNames[i] + "\'");');
+  assert.throws(() => checks.membersInClauseBound(bad), /자리표시자.*만들지 않는다/);
+});
+
+test('변이㉖: self 를 unit_tree 와 같은 case 로 묶으면 membersSelfOnly 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    '                    case "unit_tree":', '                    case "self":\n                    case "unit_tree":');
+  assert.throws(() => checks.membersSelfOnly(bad), /self 가 허용 유닛 집합을 받는다/);
+});
+
+test('변이㉗: 방문 집합 가드를 빼면 membersTreeExpansion 이 실패한다(순환 시 무한 루프)', () => {
+  const bad = mutateInMember(pdb, 'private static void ExpandUnitTree(',
+    'if (allowed.Add(k)) queue.Enqueue(k);', '{ allowed.Add(k); queue.Enqueue(k); }');
+  assert.throws(() => checks.membersTreeExpansion(bad), /방문 집합 가드가 없다/);
+});
+
+test('변이㉘: renderUnitTree 가 조직명을 innerHTML 로 넣으면 membersTreeNoHtmlInjection 이 실패한다', () => {
+  const bad = mutate(src, '      b.dataset.unit = nm;\n      b.textContent = nm;',
+                          '      b.dataset.unit = nm;\n      b.innerHTML = nm;');
+  assert.throws(() => checks.membersTreeNoHtmlInjection(bad), /HTML 주입 API/);
+});
+
+test('변이㉙: 범위 밖 노드를 숨기면 membersOutOfScopeDisabled 가 실패한다', () => {
+  const bad = mutate(src, "      if(!(u && u.allowed)){ b.disabled = true; b.title = '열람 범위 밖입니다'; }",
+                          '      if(!(u && u.allowed)) continue;');
+  assert.throws(() => checks.membersOutOfScopeDisabled(bad), /disabled 로 만들지 않는다/);
+});
+
+test('변이㉚: openMembers 가 받아 둔 명부를 재사용하면 membersRefetchOnOpen 이 실패한다', () => {
+  const bad = mutate(src, '  if(__mbBusy) return;   // 재진입 가드',
+                          "  if(__mbMembers.length){ openModal('#membersModal'); return; }\n  if(__mbBusy) return;   // 재진입 가드");
+  assert.throws(() => checks.membersRefetchOnOpen(bad), /캐시\) — 인사이동이 반영되지 않는다/);
+});
+
+test('변이㉛: .mb-split 을 1열로 되돌리면 membersSplitTwoCols 가 실패한다', () => {
+  const bad = mutate(src, '.mb-split{display:grid;grid-template-columns:minmax(112px,36%) 1fr;',
+                          '.mb-split{display:grid;grid-template-columns:1fr;');
+  assert.throws(() => checks.membersSplitTwoCols(bad), /1열이다/);
 });
 
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
@@ -759,54 +936,163 @@ if (!JSDOM) {
       }
     });
 
-    // ── 구성원(미리보기) ─────────────────────────────────────────────
+    // ── 구성원(실데이터 payload) ──────────────────────────────────────
+    // 실제 org_unit(12행 3계층)·app_user 를 그대로 본뜬 표본을 hostRequest 회신으로 먹인다.
+    // ★ payload 의 members 에는 '범위 안 사람만' 들어 있다 — 호스트가 이미 잘랐기 때문이다.
+    //   그러니 화면 필터를 검증하는 게 아니라 '트리 선택 → 서브트리 집계'를 검증하는 것이다.
     const rows = () => w.document.querySelectorAll('#mbList .mb-row').length;
+    const nodes = () => [...w.document.querySelectorAll('#mbTree .mb-node')];
+    const node = (name) => nodes().find((b) => b.dataset.unit === name);
 
-    test('구성원(jsdom): 「구성원 보기」가 6행을 그리고 범위 줄이 「열람 범위」를 따라간다', async () => {
+    const U = (name, parent, sortOrder, allowed) => ({ name, parent, sortOrder, allowed });
+    const UNITS_SW = [
+      U('기술개발총괄', null, 10, false),
+      U('SW개발본부', '기술개발총괄', 20, true),
+      U('SW 1팀', 'SW개발본부', 21, true),
+      U('SW 2팀', 'SW개발본부', 22, true),
+      U('SW 3팀', 'SW개발본부', 23, true),
+      U('SW 4팀', 'SW개발본부', 24, true),
+      U('디자인팀', 'SW개발본부', 25, true),
+      U('시스템개발본부', '기술개발총괄', 30, false),
+      U('시스템 1팀', '시스템개발본부', 31, false),
+      U('시스템 2팀', '시스템개발본부', 32, false),
+      U('사업부', '기술개발총괄', 40, false),
+      U('경영지원팀', '기술개발총괄', 50, false),
+    ];
+    const M = (loginId, name, title, orgUnit) => ({ loginId, name, title, orgUnit });
+    const MEMBERS_SW = [
+      M('a1', '김서연', '수석연구원', 'SW개발본부'),
+      M('a2', '박도현', '책임연구원', 'SW 1팀'),
+      M('a3', '이지훈', '선임연구원', 'SW 1팀'),
+      M('a4', '최유진', '연구원', 'SW 2팀'),
+      M('a5', '정민석', '책임연구원', 'SW 3팀'),
+      M('a6', '한소영', '선임연구원', 'SW 3팀'),
+      M('a7', '오세훈', '연구원', 'SW 4팀'),
+      M('a8', '윤가람', '선임연구원', '디자인팀'),
+    ];
+    const membersReply = (data) => reply({ ok: true, data });
+
+    test('구성원(jsdom): unit_tree — 트리 12노드 · 범위 밖은 disabled · 내 소속이 기본 선택', async () => {
       login();
-      reply({ ok: true, info: { found: true, edit_role: 'admin', view_scope: 'all', is_active: 1 } });
-      await w.eval('loadUserPerm()');
-      w.eval('openUserInfo()');
-      w.eval('openMembers()');
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: MEMBERS_SW });
+      await w.eval('openMembers()');
       assert.ok(!w.document.getElementById('membersModal').classList.contains('hidden'), '구성원 모달이 열리지 않았다');
-      assert.strictEqual(rows(), 6, '미리보기 표본 6명이 다 그려지지 않았다');
-      assert.ok(/전체 — 모든 구성원/.test(txt('mbScope')), `범위 줄이 「열람 범위」를 따라가지 않는다: ${txt('mbScope')}`);
-      assert.ok(/· 6명/.test(txt('mbScope')), '범위 줄에 인원 수가 없다');
+      assert.strictEqual(nodes().length, 12, `조직 트리가 12노드로 그려지지 않았다: ${nodes().length}`);
+      // 구조는 전부 보이되 범위 밖은 눌리지 않는다.
+      assert.ok(node('기술개발총괄').disabled, '범위 밖(기술개발총괄)이 disabled 가 아니다');
+      assert.strictEqual(node('기술개발총괄').title, '열람 범위 밖입니다', 'disabled 이유가 title 에 없다');
+      assert.ok(node('시스템 1팀').disabled, '범위 밖(시스템 1팀)이 disabled 가 아니다');
+      assert.ok(!node('SW 3팀').disabled, '범위 안(SW 3팀)이 눌리지 않는다');
+      // 기본 선택 = 내가 누를 수 있는 가장 위 노드 = 내 소속.
+      assert.ok(node('SW개발본부').classList.contains('sel'), '내 소속이 기본 선택이 아니다');
+      assert.strictEqual(node('SW개발본부').getAttribute('aria-current'), 'true', '선택 노드에 aria-current 가 없다');
+      assert.ok(node('SW개발본부').classList.contains('is-mine'), '내 소속에 .is-mine 이 없다');
+      assert.ok(/· 내 소속/.test(node('SW개발본부').textContent), '「· 내 소속」 꼬리표가 없다');
+      assert.ok(node('SW개발본부').querySelector('span.git-opt'), '꼬리표가 별도 요소가 아니다 — 맨 텍스트로 섞였다');
+      // 선택의 의미는 '그 노드 + 모든 하위' — 본부를 고르면 산하 전원이다.
+      assert.strictEqual(rows(), 8, `SW개발본부 서브트리 8명이 그려지지 않았다: ${rows()}`);
+      assert.ok(/소속 조직/.test(txt('mbScope')), `범위 줄에 권한 문구가 없다: ${txt('mbScope')}`);
+      assert.ok(/SW개발본부 8명/.test(txt('mbScope')), `범위 줄에 선택 조직·인원이 없다: ${txt('mbScope')}`);
       assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '결과가 있는데 빈 안내가 떠 있다');
-      assert.ok(/미리보기입니다/.test(txt('mbPreview')), '미리보기 배너가 비었다 — 사용자가 표본을 실제 명부로 믿는다');
-      // 행 구성: 이름(굵게) + 직급(흐리게) / 소속. 그 이상은 아직 없다.
-      const first = w.document.querySelector('#mbList .mb-row');
-      assert.strictEqual(first.querySelector('b').textContent, '김서연');
-      assert.ok(/· 수석연구원/.test(first.textContent), `직급이 표시되지 않았다: ${first.textContent}`);
-      assert.ok(/SW 1팀/.test(first.textContent), '소속이 표시되지 않았다');
+      assert.ok(!w.document.getElementById('mbTree').classList.contains('hidden'), 'unit_tree 인데 트리가 감춰졌다');
     });
 
-    test('구성원(jsdom): 검색 — 「SW 3」 2행 · 「없는이름」 0행 + 빈 안내 · 비우면 전체 복귀', () => {
-      w.eval("document.getElementById('mbSearch').value = 'SW 3'; filterMembers();");
-      assert.strictEqual(rows(), 2, 'SW 3팀 2명으로 좁혀지지 않았다');
+    test('구성원(jsdom): 하위 조직을 고르면 그 서브트리로 좁혀진다 · 범위 밖 노드는 눌러도 그대로', () => {
+      node('SW 3팀').click();
+      assert.strictEqual(rows(), 2, `SW 3팀 2명으로 좁혀지지 않았다: ${rows()}`);
+      assert.ok(node('SW 3팀').classList.contains('sel'), '선택 표시가 옮겨오지 않았다');
+      assert.ok(!node('SW개발본부').classList.contains('sel'), '이전 선택이 남아 있다 — 선택이 둘로 보인다');
+      assert.strictEqual(node('SW개발본부').getAttribute('aria-current'), null, '이전 선택의 aria-current 가 남았다');
+      assert.ok(/SW 3팀 2명/.test(txt('mbScope')), `범위 줄이 따라오지 않았다: ${txt('mbScope')}`);
+      // 범위 밖 노드 — 눌러도 아무 일도 일어나지 않는다.
+      node('기술개발총괄').click();
+      w.eval("mbSelect('기술개발총괄')");   // disabled 를 우회해 직접 불러도 마찬가지여야 한다
+      assert.strictEqual(rows(), 2, '범위 밖 노드를 눌렀는데 목록이 바뀌었다');
+      assert.ok(node('SW 3팀').classList.contains('sel'), '범위 밖 노드가 선택을 가져갔다');
+    });
+
+    test('구성원(jsdom): 검색은 현재 서브트리 안에서만 — 0건이면 빈 안내', () => {
+      w.eval("mbSelect('SW개발본부')");
+      assert.strictEqual(rows(), 8, '전제: 본부 서브트리 8명');
+      w.eval("document.getElementById('mbSearch').value = 'SW 1'; filterMembers();");
+      assert.strictEqual(rows(), 2, `소속 부분일치가 안 된다: ${rows()}`);
       w.eval("document.getElementById('mbSearch').value = '없는이름'; filterMembers();");
       assert.strictEqual(rows(), 0, '결과가 0건이 아니다');
       assert.ok(!w.document.getElementById('mbEmpty').classList.contains('hidden'), '0건인데 「검색 결과가 없습니다」가 뜨지 않는다');
+      // 서브트리 밖(범위 밖 조직)은 검색으로도 끌려 나오지 않는다 — 애초에 payload 에 없다.
+      w.eval("document.getElementById('mbSearch').value = '시스템'; filterMembers();");
+      assert.strictEqual(rows(), 0, '범위 밖 조직 인원이 검색으로 노출됐다');
+      w.eval("mbSelect('SW 3팀'); document.getElementById('mbSearch').value = '한소영'; filterMembers();");
+      assert.strictEqual(rows(), 1, '선택 조직 안 이름 검색이 안 된다');
       w.eval("document.getElementById('mbSearch').value = ''; filterMembers();");
-      assert.strictEqual(rows(), 6, '검색어를 지우면 전체로 돌아와야 한다');
+      assert.strictEqual(rows(), 2, '검색어를 지우면 선택 조직 전체로 돌아와야 한다');
       assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '결과가 돌아왔는데 빈 안내가 남았다');
     });
 
-    test('구성원(jsdom) ㉑: 이름·소속에 마크업이 와도 텍스트로만 들어간다', () => {
-      w.eval("renderMembers([{name:'<img src=x onerror=alert(1)>', title:'<b>연구원</b>', orgUnit:'<i>SW 1팀</i>'}])");
+    test('구성원(jsdom): scope=all 이면 루트(기술개발총괄)가 기본 선택이고 전원이 보인다', async () => {
+      login();
+      const all = UNITS_SW.map((u) => ({ ...u, allowed: true }));
+      const more = MEMBERS_SW.concat([M('b1', '차은우', '책임연구원', '시스템 1팀'), M('b2', '남도일', '연구원', '경영지원팀')]);
+      membersReply({ found: true, scope: 'all', myUnit: 'SW 3팀', units: all, members: more });
+      await w.eval('openMembers()');
+      assert.ok(node('기술개발총괄').classList.contains('sel'), 'all 인데 루트가 기본 선택이 아니다');
+      assert.ok(node('SW 3팀').classList.contains('is-mine'), '내 소속 표시가 사라졌다');
+      assert.strictEqual(rows(), 10, `전원 10명이 보이지 않는다: ${rows()}`);
+      assert.strictEqual(nodes().filter((b) => b.disabled).length, 0, 'all 인데 눌리지 않는 노드가 있다');
+    });
+
+    test('구성원(jsdom): scope=self 면 트리를 접고 본인 1행만 보여준다', async () => {
+      login();
+      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: [], members: [M('hjlee', '이현진', '책임연구원', 'SW 3팀')] });
+      await w.eval('openMembers()');
+      assert.ok(w.document.getElementById('mbTree').classList.contains('hidden'),
+        'self 인데 트리 칸이 남아 있다 — 그릴 노드가 없다');
+      assert.strictEqual(w.document.querySelector('.mb-split').style.gridTemplateColumns, '1fr',
+        'self 인데 2열 정의가 남아 목록이 좁은 첫 칸으로 끌려간다');
+      assert.strictEqual(rows(), 1, '본인 1행이 아니다');
+      assert.strictEqual(txt('mbScope'), '열람 범위: 본인만 · 1명', `범위 줄이 다르다: ${txt('mbScope')}`);
+    });
+
+    test('구성원(jsdom): 조회 실패는 호스트 사유를 그대로 — 명부를 추측해 그리지 않는다', async () => {
+      login();
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: MEMBERS_SW });
+      await w.eval('openMembers()');
+      assert.strictEqual(rows(), 8, '전제: 직전 조회가 성공해 목록이 차 있다');
+      reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
+      await w.eval('openMembers()');
+      assert.strictEqual(rows(), 0, '실패했는데 직전(낡은) 명부가 그대로 남았다');
+      assert.strictEqual(nodes().length, 0, '실패했는데 직전 조직 트리가 남았다');
+      assert.ok(w.document.getElementById('mbList').textContent.includes('서버에 연결하지 못했습니다'),
+        '목록 자리에 호스트가 준 사유가 없다');
+      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'),
+        '사유가 떠 있는데 「검색 결과가 없습니다」까지 겹쳤다');
+    });
+
+    test('구성원(jsdom) ㉑: 이름·조직명에 마크업이 와도 텍스트로만 들어간다', async () => {
+      login();
+      membersReply({
+        found: true, scope: 'unit_tree', myUnit: '<i>SW 1팀</i>',
+        units: [U('<i>SW 1팀</i>', null, 1, true)],
+        members: [M('x', '<img src=x onerror=1>', '<b>연구원</b>', '<i>SW 1팀</i>')],
+      });
+      await w.eval('openMembers()');
+      const tree = w.document.getElementById('mbTree');
+      assert.strictEqual(tree.querySelector('i'), null, '조직명이 HTML 로 해석됐다');
+      assert.ok(tree.textContent.includes('<i>SW 1팀</i>'), '조직명 원문이 그대로 보이지 않는다');
       const row = w.document.querySelector('#mbList .mb-row');
       assert.ok(row, '행이 그려지지 않았다');
       assert.strictEqual(row.querySelector('img'), null, 'img 요소가 실제로 만들어졌다');
       assert.strictEqual(row.querySelector('b > *'), null, '이름 안에 요소가 생성됐다 — HTML 로 해석됐다');
       assert.strictEqual(row.querySelector('i'), null, '소속이 HTML 로 해석됐다');
-      assert.ok(row.textContent.includes('<img src=x onerror=alert(1)>'), '이름 원문이 그대로 보이지 않는다');
+      assert.ok(row.textContent.includes('<img src=x onerror=1>'), '이름 원문이 그대로 보이지 않는다');
       assert.ok(row.textContent.includes('<i>SW 1팀</i>'), '소속 원문이 그대로 보이지 않는다');
     });
 
-    test('구성원(jsdom): 구성원을 닫아도 #userModal 은 그대로 열려 있다(중첩)', () => {
+    test('구성원(jsdom): 구성원을 닫아도 #userModal 은 그대로 열려 있다(중첩)', async () => {
       login();
+      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: [], members: [M('hjlee', '이현진', '책임연구원', 'SW 3팀')] });
       w.eval('openUserInfo()');
-      w.eval('openMembers()');
+      await w.eval('openMembers()');
       assert.ok(!w.document.getElementById('userModal').classList.contains('hidden'), '전제: 사용자 정보가 열려 있다');
       w.eval("closeModal('#membersModal')");
       assert.ok(!w.document.getElementById('userModal').classList.contains('hidden'),

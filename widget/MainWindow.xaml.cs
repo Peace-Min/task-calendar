@@ -564,6 +564,9 @@ namespace TaskCalendarWidget
                     case "userInfoGet":      // 사용자 정보 모달 — 권한을 '열 때마다' DB에서 새로 읽는다(세션에 없음)
                         _ = RunUserInfoGetAsync(GetStr(doc, "reqId"));
                         break;
+                    case "membersGet":       // 구성원 모달 — 조직 트리 + 내 열람 범위 안의 사람들(열 때마다 재조회)
+                        _ = RunMembersGetAsync(GetStr(doc, "reqId"));
+                        break;
 
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
@@ -1673,6 +1676,40 @@ namespace TaskCalendarWidget
                 // 예외 원문(스택)은 로그에만 — 회신 문구는 고정이다. 내부 사정이 화면으로 새 나가면 안 된다.
                 Log("사용자 정보 조회 예외: " + ex);
                 ReplyOnUi(reqId, new { ok = false, msg = "사용자 정보를 확인하지 못했습니다." });
+            }
+        }
+
+        // 구성원 조회 — 구성원 모달이 열릴 때마다 부른다(캐시 없음: 인사이동·권한변경이 낡은 채 남으면 화면이 거짓말을 한다).
+        // ★ 범위 밖 사람은 payload 에 아예 담기지 않는다(ProjectDb 가 자른다) — 화면 필터로 가리면
+        //   개발자도구로 전부 보인다. 조직 트리는 구조만 함께 보내고 범위 밖 노드는 allowed=false 로 표시한다.
+        // ★ 읽기 경로다(ProjectDb.LoadMembersJsonAsync → OpenReadAsync). 쓰기 관문을 쓰면
+        //   unit_tree 를 가진 viewer 전원이 명부를 못 본다 — 열람 권한과 편집 권한은 다른 축이다.
+        // 회신 문구는 RunUserInfoGetAsync 와 같은 3분기다(세션 없음 / 연결 실패 / 미등록) — 사유가 다르면 대처도 다르다.
+        private async Task RunMembersGetAsync(string reqId)
+        {
+            try
+            {
+                UserSession? s = UserSession.Load(_dataDir, Log);
+                if (s == null || s.LoginId.Length == 0)
+                { ReplyOnUi(reqId, new { ok = false, msg = "로그인이 필요합니다." }); return; }
+
+                string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId);
+                if (json == null)
+                { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요." }); return; }
+
+                // Deserialize<JsonElement> 는 복제본을 돌려준다 — JsonDocument 수명에 묶이지 않아 회신에 그대로 실을 수 있다.
+                var data = JsonSerializer.Deserialize<JsonElement>(json);
+                bool found = data.TryGetProperty("found", out var f) && f.ValueKind == JsonValueKind.True;
+                if (!found)
+                { ReplyOnUi(reqId, new { ok = false, msg = "사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요." }); return; }
+
+                ReplyOnUi(reqId, new { ok = true, data });
+            }
+            catch (Exception ex)
+            {
+                // 예외 원문(스택)은 로그에만 — 회신 문구는 고정이다. 내부 사정이 화면으로 새 나가면 안 된다.
+                Log("구성원 조회 예외: " + ex);
+                ReplyOnUi(reqId, new { ok = false, msg = "구성원 목록을 불러오지 못했습니다." });
             }
         }
 

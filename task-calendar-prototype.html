@@ -1262,6 +1262,20 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
    cursor:pointer·hover 강조를 주면 '눌리는데 아무 일도 안 나는' 행이 된다. */
 .mb-row{padding:8px 2px;border-bottom:1px solid var(--line)}
 .mb-row:last-child{border-bottom:0}
+/* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
+   트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
+   ★ self(그릴 노드 없음)일 때만 JS가 인라인으로 1열로 바꾼다: display:none 인 그리드 자식은
+     열을 차지하지 않아, 열 정의를 그대로 두면 목록이 좁은 첫 칸으로 끌려간다. */
+.mb-split{display:grid;grid-template-columns:minmax(112px,36%) 1fr;gap:12px;min-height:0}
+.mb-tree{overflow:auto;max-height:46vh;border-right:1px solid var(--line);padding-right:8px}
+.mb-pane{min-width:0;display:flex;flex-direction:column;gap:8px}
+#mbList{overflow:auto;max-height:42vh}
+/* 조직 노드 — 범위 밖은 숨기지 않고 disabled 로 둔다(구조는 보이되 누를 수 없다). */
+.mb-node{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;
+         padding:5px 6px;font-size:var(--fs-meta);color:var(--text);cursor:pointer}
+.mb-node:hover:not(:disabled){background:var(--accent-soft)}
+.mb-node.sel{background:var(--accent-soft);font-weight:600}
+.mb-node:disabled{color:var(--faint);cursor:not-allowed}
 
 /* ---------- 과제 데이터 내보내기 모달 ---------- */
 .exp-lb{font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px}
@@ -2553,22 +2567,27 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- ===== 구성원 ===== 내 열람 범위(view_scope)에 속한 사람들.
-     ★ 지금은 '미리보기'다 — 실제 조회(app_user)를 붙이지 않았다. 그래서 배너로 그 사실을 말한다.
-       가짜 데이터를 배너 없이 내보내면 사용자는 그게 실제 명부라고 믿는다.
-     ★ renderMembers()는 실제 데이터가 들어와도 그대로 쓰는 렌더러다 — 나중에 데이터 출처만 갈아끼운다.
+<!-- ===== 구성원 ===== 내 열람 범위(view_scope)에 속한 사람들 — 실제 app_user 조회다(membersGet).
+     ★ 범위 밖 사람은 애초에 payload 에 없다(호스트가 자른다). 화면 필터로 가리면 개발자도구로 전부 보인다.
+     ★ 조직 트리는 구조를 전부 보여주되 범위 밖 노드는 disabled 다 — 숨기면 '내 위에 뭐가 있는지'조차
+       알 수 없고, 조직도는 사내망에 이미 공개된 정보라 감출 이유도 없다.
+     ★ 좌우 2단이다. 세로로 쌓으면 트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
      ★ 일정 관련 UI는 여기 없다(5단계). 자리만 비워 둔다.
      ★ #userModal 위에 겹쳐 연다(_modalStack 이 중첩을 지원한다) — 닫으면 사용자 정보로 되돌아온다. -->
 <div class="overlay hidden" id="membersModal">
-  <div class="modal">
+  <div class="modal wide">
     <div class="modal-head"><h2>구성원</h2><button class="x" data-close aria-label="닫기">×</button></div>
     <div class="modal-body">
-      <div class="set-hint" id="mbPreview">미리보기입니다 — 실제 구성원 명부는 아직 연결되지 않았습니다.</div>
       <div class="set-hint" id="mbScope">—</div>
-      <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다. -->
-      <input type="text" id="mbSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름 · 소속 검색">
-      <div id="mbList"></div>
-      <div class="set-hint hidden" id="mbEmpty">검색 결과가 없습니다.</div>
+      <div class="mb-split">
+        <nav class="mb-tree" id="mbTree" aria-label="조직"></nav>
+        <div class="mb-pane">
+          <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다. -->
+          <input type="text" id="mbSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름 · 소속 검색">
+          <div id="mbList"></div>
+          <div class="set-hint hidden" id="mbEmpty">검색 결과가 없습니다.</div>
+        </div>
+      </div>
     </div>
     <div class="modal-foot">
       <span class="spacer"></span>
@@ -3806,20 +3825,141 @@ function openUserInfo(){
   openModal('#userModal');
   if(HOST && currentUser) loadUserPerm();
 }
-/* ---------- 구성원 (미리보기) ----------
-   내 열람 범위에 속한 사람들. 아직 app_user 조회를 붙이지 않았다 — 이번 단계는 UI/UX 확정까지다.
-   ★ 그래서 #mbPreview 배너가 함께 뜬다. 가짜 명부를 배너 없이 내보내면 사용자는 그걸 실제로 믿는다.
+/* ---------- 구성원 ----------
+   내 열람 범위에 속한 사람들 — 실제 app_user 조회다(호스트 membersGet).
+   ★ 범위 밖 사람은 payload 에 아예 없다. 호스트가 view_scope 로 잘라서 보낸다 —
+     '전부 받아 화면에서 거르기'는 개발자도구 한 번이면 뚫린다.
+   ★ 조직 트리는 구조를 전부 그리되 범위 밖 노드는 disabled 다(숨기지 않는다).
+   ★ 선택의 의미는 '그 노드 + 모든 하위'다. 정확히 그 유닛만이면 본부 노드가 늘 2명짜리가 된다.
+   ★ 캐시하지 않는다 — 열 때마다 다시 읽는다. 인사이동·권한변경이 낡은 채 남으면 화면이 거짓말을 한다.
    ★ 일정 관련 UI는 여기 없다(5단계 '타인 일정 열람'의 자리). 동작하지 않는 약속은 걸지 않는다. */
-// 미리보기 표본 — 실제 app_user 조회로 갈아끼울 자리. 실명 대신 역할이 드러나는 가상 인물로 둔다.
-const US_MEMBERS_PREVIEW = [
-  { name:'김서연', title:'수석연구원', orgUnit:'SW 1팀' },
-  { name:'박도현', title:'책임연구원', orgUnit:'SW 1팀' },
-  { name:'이지훈', title:'선임연구원', orgUnit:'SW 2팀' },
-  { name:'최유진', title:'연구원',     orgUnit:'SW 2팀' },
-  { name:'정민석', title:'책임연구원', orgUnit:'SW 3팀' },
-  { name:'한소영', title:'선임연구원', orgUnit:'SW 3팀' },
-];
-// 행 렌더 — 실제 데이터가 들어와도 이 함수는 그대로 쓴다(바뀌는 건 rows 의 출처뿐).
+let __mbUnits = [];      // 이번 조회의 조직 트리 [{name,parent,sortOrder,allowed}]
+let __mbMembers = [];    // 이번 조회의 구성원 — 이미 범위 안만 들어 있다(호스트가 잘랐다)
+let __mbSel = null;      // 선택된 조직 이름(null = 선택 없음 → 받은 전부를 보여준다)
+let __mbScopeText = '';  // 범위 줄 앞머리(권한 문구) — 「열람 범위」와 같은 매핑표를 쓴다
+let __mbBusy = false;    // 재진입 가드 — 연타로 조회가 겹치면 늦게 온 회신이 먼저 온 것을 덮는다
+// 정렬은 sortOrder → name. 서버가 이미 그 순서로 주지만, 트리는 부모별로 다시 묶으므로 여기서도 필요하다.
+function mbCmp(a, b){
+  const sa = Number(a && a.sortOrder != null ? a.sortOrder : 0), sb = Number(b && b.sortOrder != null ? b.sortOrder : 0);
+  if(sa !== sb) return sa - sb;
+  return String(a && a.name || '').localeCompare(String(b && b.name || ''), 'ko');
+}
+// 부모 이름 → 자식 노드 배열. 트리 렌더와 서브트리 계산이 같은 규칙을 쓰도록 한 곳에서 만든다.
+function mbChildMap(units){
+  const kids = new Map();
+  for(const u of units){
+    const p = (u && u.parent != null) ? String(u.parent) : '';
+    if(!p) continue;
+    if(!kids.has(p)) kids.set(p, []);
+    kids.get(p).push(u);
+  }
+  return kids;
+}
+// 선택 노드 + 모든 하위 조직의 이름 집합. ★ 방문 집합 가드 — parent 에 순환이 와도 멈춘다.
+function mbSubtree(name){
+  const out = new Set();
+  const root = String(name == null ? '' : name);
+  if(!root) return out;
+  const kids = mbChildMap(__mbUnits);
+  const q = [root]; out.add(root);
+  while(q.length){
+    const cur = q.shift();
+    for(const c of (kids.get(cur) || [])){
+      const n = String(c && c.name || '');
+      if(n && !out.has(n)){ out.add(n); q.push(n); }
+    }
+  }
+  return out;
+}
+// 기본 선택 = 내가 누를 수 있는 '가장 위' 노드 = 부모가 허용 집합에 없는 노드 중 첫 번째.
+// unit_tree 면 그게 곧 내 소속이고(허용 집합 = 내 소속 + 하위), all 이면 루트(기술개발총괄)다.
+// ★ all 인데 내 소속을 기본으로 고르지 않는 이유: 열자마자 '내가 볼 수 있는 전부'가 보여야
+//   검색도 그 위에서 바로 먹는다. 내 팀부터 보여주면 전체를 보려고 매번 위로 올라가야 한다.
+function mbDefaultSel(units){
+  const ok = units.filter(u => u && u.allowed);
+  if(!ok.length) return null;
+  const names = new Set(ok.map(u => String(u.name)));
+  const tops = ok.filter(u => !(u.parent != null && names.has(String(u.parent))));   // 조상이 허용 집합에 없는 노드
+  return String((tops.length ? tops : ok).slice().sort(mbCmp)[0].name);
+}
+// 조직 트리 렌더. ★ innerHTML 을 쓰지 않는다 — 조직명도 DB 문자열이다.
+function renderUnitTree(units, myUnit){
+  const nav = document.getElementById('mbTree'); if(!nav) return;
+  while(nav.firstChild) nav.removeChild(nav.firstChild);
+  const arr = Array.isArray(units) ? units.slice() : [];
+  const split = document.querySelector('.mb-split');
+  // 그릴 노드가 없으면(=self, 또는 조회 실패) 트리를 통째로 접고 1열로 만든다.
+  nav.classList.toggle('hidden', arr.length === 0);
+  if(split) split.style.gridTemplateColumns = arr.length ? '' : '1fr';
+  if(!arr.length) return;
+  const names = new Set(arr.map(u => String(u && u.name || '')));
+  const kids = mbChildMap(arr);
+  // 부모가 목록에 없으면 루트로 취급한다. 순환(A→B→A)이면 루트가 하나도 없어 아무것도 그려지지 않지만,
+  // 멈추지 않는 것보다는 낫다 — 여기서 무한히 도는 것만은 막는다.
+  const roots = arr.filter(u => { const p = (u && u.parent != null) ? String(u.parent) : ''; return !p || !names.has(p); });
+  const mine = String(myUnit == null ? '' : myUnit);
+  const walk = (list, depth) => {
+    for(const u of list.slice().sort(mbCmp)){
+      const nm = String(u && u.name == null ? '' : u.name);
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'mb-node';
+      b.style.paddingLeft = (6 + depth * 12) + 'px';   // 깊이 × 12px + 기본 패딩
+      b.dataset.unit = nm;
+      b.textContent = nm;
+      if(!(u && u.allowed)){ b.disabled = true; b.title = '열람 범위 밖입니다'; }
+      if(mine && nm === mine){
+        b.classList.add('is-mine');
+        // 꼬리표는 별도 요소다 — 맨 텍스트로 섞으면 이름과 한 덩어리가 돼 색·굵기를 나눌 수 없다.
+        const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 내 소속';
+        b.appendChild(s);
+      }
+      if(__mbSel && nm === __mbSel){ b.classList.add('sel'); b.setAttribute('aria-current', 'true'); }
+      b.addEventListener('click', () => mbSelect(nm));
+      nav.appendChild(b);
+      walk(kids.get(nm) || [], depth + 1);
+    }
+  };
+  walk(roots, 0);
+}
+// 선택 표시만 갈아끼운다(트리를 다시 그리면 방금 누른 버튼의 포커스가 날아간다).
+function mbMarkSel(){
+  const nav = document.getElementById('mbTree'); if(!nav) return;
+  for(const b of nav.querySelectorAll('.mb-node')){
+    const on = !!__mbSel && b.dataset.unit === __mbSel;
+    b.classList.toggle('sel', on);
+    if(on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+  }
+}
+// 조직 선택 — 그 노드 + 모든 하위의 구성원을 오른쪽에 띄운다.
+function mbSelect(name){
+  const u = __mbUnits.find(x => x && String(x.name) === String(name));
+  if(!u || !u.allowed) return;   // 범위 밖은 눌러도 아무 일도 없다(disabled 만 믿지 않는다)
+  __mbSel = String(name);
+  mbMarkSel();
+  mbApply();
+}
+// 지금 화면에 나갈 구성원 = (선택 서브트리) ∩ (검색어). 둘을 한 곳에서 계산한다 —
+// 두 곳으로 나뉘면 '검색 중 조직을 바꾸면 옛 결과가 남는' 종류의 어긋남이 반드시 생긴다.
+function mbVisible(){
+  let arr = __mbMembers;
+  if(__mbSel){
+    const sub = mbSubtree(__mbSel);
+    arr = arr.filter(m => sub.has(String(m && m.orgUnit || '')));
+  }
+  const q = document.getElementById('mbSearch');
+  const k = q ? String(q.value || '').trim().toLowerCase() : '';
+  if(!k) return arr;
+  return arr.filter(m => [m.name, m.title, m.orgUnit].some(v => String(v == null ? '' : v).toLowerCase().includes(k)));
+}
+// 범위 줄 + 목록을 함께 갱신한다(인원 수가 목록과 어긋나면 안 된다).
+function mbApply(){
+  const rows = mbVisible();
+  renderMembers(rows);
+  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
+  const where = __mbSel ? (' · ' + __mbSel + ' ') : ' · ';
+  set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');
+}
+// 행 렌더 — 데이터 출처와 무관하게 이 함수만 행을 그린다.
 // ★ innerHTML 을 쓰지 않는다: 이름·소속은 DB 문자열이라 마크업으로 해석되는 순간 목록이 실행 표면이 된다.
 //   비우기도 innerHTML='' 이 아니라 removeChild 다 — 한 곳만 예외를 두면 다음 사람이 그걸 관례로 읽는다.
 function renderMembers(rows){
@@ -3842,23 +3982,46 @@ function renderMembers(rows){
   // 0건 안내는 렌더와 한 몸이다 — 목록을 그리는 곳이 둘이면 '빈 목록 + 안내 없음'이 반드시 생긴다.
   const empty = document.getElementById('mbEmpty'); if(empty) empty.classList.toggle('hidden', arr.length > 0);
 }
-// 범위 줄은 「열람 범위」에 이미 그려진 문장을 그대로 읽어 온다 — 같은 규칙을 두 번 계산하지 않는다.
-function openMembers(){
-  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
-  const vs = document.getElementById('usViewScope');
-  set('mbScope', '열람 범위: ' + ((vs && vs.textContent) || '—') + ' · ' + US_MEMBERS_PREVIEW.length + '명');
-  const q = document.getElementById('mbSearch'); if(q) q.value = '';   // 지난 검색어가 남으면 목록이 잘린 채 열린다
-  renderMembers(US_MEMBERS_PREVIEW);
+// 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다.
+// ★ 추측한 명부를 그리지 않는다. 낡거나 지어낸 조직도는 '모른다'고 말하는 것보다 나쁘다.
+function mbFail(msg){
+  const list = document.getElementById('mbList');
+  if(list){
+    while(list.firstChild) list.removeChild(list.firstChild);
+    const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
+    d.textContent = String(msg == null ? '' : msg);   // 호스트 문구도 textContent 로만
+    list.appendChild(d);
+  }
+  const empty = document.getElementById('mbEmpty'); if(empty) empty.classList.add('hidden');   // 사유가 이미 떠 있다
+  const sc = document.getElementById('mbScope'); if(sc) sc.textContent = '열람 범위: 확인할 수 없음';
+}
+// 진입점 — 열 때마다 membersGet 을 새로 부른다(캐시 금지: 인사이동·권한변경이 낡은 채 남으면 화면이 거짓말을 한다).
+// ★ 모달은 회신을 기다리지 않고 먼저 연다(openUserInfo 와 같은 이유) — 대신 '불러오는 중…'을 띄운다.
+async function openMembers(){
+  if(__mbBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  __mbBusy = true;
+  __mbUnits = []; __mbMembers = []; __mbSel = null; __mbScopeText = '';   // 직전 결과를 남기지 않는다
+  const q = document.getElementById('mbSearch'); if(q) q.value = '';      // 지난 검색어가 남으면 목록이 잘린 채 열린다
+  renderUnitTree([], '');
+  renderMembers([]);
+  const sc = document.getElementById('mbScope'); if(sc) sc.textContent = '불러오는 중…';
+  const empty = document.getElementById('mbEmpty'); if(empty) empty.classList.add('hidden');
   openModal('#membersModal');
+  if(!HOST){ __mbBusy = false; mbFail('데스크톱 위젯에서만 동작합니다.'); return; }
+  let r = null;
+  try{ r = await hostRequest('membersGet', {}, 12000); }catch(_){ r = null; }
+  __mbBusy = false;
+  if(!(r && r.ok && r.data)){ mbFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
+  const d = r.data;
+  __mbUnits = Array.isArray(d.units) ? d.units : [];
+  __mbMembers = Array.isArray(d.members) ? d.members : [];
+  __mbScopeText = usRoleText(US_VIEW_SCOPE, d.scope);   // 「열람 범위」와 같은 매핑표 — 같은 규칙을 두 벌로 만들지 않는다
+  __mbSel = mbDefaultSel(__mbUnits);
+  renderUnitTree(__mbUnits, d.myUnit);
+  mbApply();
 }
-// 이름·직급·소속 부분일치. 대소문자 무시(영문 팀명 대비), 앞뒤 공백만 정리한다.
-function filterMembers(){
-  const q = document.getElementById('mbSearch');
-  const k = q ? String(q.value || '').trim().toLowerCase() : '';
-  if(!k){ renderMembers(US_MEMBERS_PREVIEW); return; }
-  renderMembers(US_MEMBERS_PREVIEW.filter(m =>
-    [m.name, m.title, m.orgUnit].some(v => String(v == null ? '' : v).toLowerCase().includes(k))));
-}
+// 이름·직급·소속 부분일치. 대상 집합은 '현재 선택된 서브트리'다. 대소문자 무시(영문 팀명 대비).
+function filterMembers(){ mbApply(); }
 // 부팅 — ★ 첫 줄이 !HOST 차단(브라우저 단독은 게이트 미표시 + 호스트 요청 0회).
 //   요청은 userSessionGet 하나뿐이고 그건 세션 파일만 읽는다 — 이 경로에 netcus는 없다.
 //   app_user 재조회도 하지 않는다(§2.5): 그 갱신이 로그아웃과 경합해 삭제된 세션을 되살린 적이 있다.

@@ -304,6 +304,181 @@ namespace TaskCalendarWidget
         private static string NotFoundJson() =>
             JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = false });
 
+        // 조직 한 노드(org_unit 한 행) — 트리 계산은 전부 메모리에서 돈다(12행이라 왕복이 더 비싸다).
+        private sealed class OrgUnitRow
+        {
+            public string Name = "";
+            public string Parent = "";     // 최상위는 빈 문자열(NULL) — payload 로 나갈 때 null 로 바뀐다
+            public int SortOrder;
+        }
+
+        // 로그인한 사람의 열람 범위(view_scope) 안에 있는 조직 트리 + 구성원.
+        // ★ 범위 밖 사람은 payload 에 '아예 담지 않는다'. 화면에서만 거르면 개발자도구로 전부 보인다.
+        // ★ 조직 트리(이름·계층)는 사내망 인트라넷에 이미 공개된 정보라 구조 자체는 함께 보낸다.
+        //   다만 범위 밖 노드는 allowed=false 로 표시해 화면이 누르지 못하게 한다.
+        // ★ 읽기 경로다(OpenReadAsync): 쓰기 관문을 쓰면 viewer — 즉 unit_tree 를 가진 사람 전원 — 이
+        //   명부를 아예 못 본다. 열람 권한과 편집 권한은 다른 축이다(USER-LOGIN §3.3).
+        // 반환 3분기는 LoadUserInfoJsonAsync 와 같다: 행 있음 → {"found":true,…} / 행 없음 → {"found":false} / 실패 → null.
+        public async Task<string?> LoadMembersJsonAsync(string loginId)
+        {
+            string id = (loginId ?? "").Trim();
+            if (id.Length == 0) return NotFoundJson();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                await using var conn = await OpenReadAsync(cts.Token);
+
+                // ① 나 자신 — 열람 범위와 소속을 여기서 정한다.
+                //   name/title 까지 함께 읽는 이유: scope=self 면 이 한 행이 곧 결과다(왕복을 한 번 아낀다).
+                string scope = "", myUnit = "", myName = "", myTitle = "";
+                int myActive = 0;
+                bool found = false;
+                await using (var cmd = new MySqlCommand(
+                    "SELECT name, title, org_unit, view_scope, is_active FROM app_user WHERE login_id=@id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", id);   // 값은 반드시 파라미터 바인딩(문자열 연결 금지)
+                    await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                    if (await rd.ReadAsync(cts.Token))
+                    {
+                        found    = true;
+                        myName   = Str(rd, "name");
+                        myTitle  = Str(rd, "title");
+                        myUnit   = Str(rd, "org_unit");
+                        scope    = Str(rd, "view_scope");
+                        myActive = IntOrNull(rd, "is_active") ?? 0;
+                    }
+                }
+                if (!found)
+                {
+                    _log("DB 구성원 조회: 미등록(" + id + ")");
+                    return NotFoundJson();
+                }
+                // ★ is_active=0 을 여기서 막지 않는다 — 이건 '읽기'다. 회수의 목적은 편집 차단이지
+                //   조직도 열람 차단이 아니고, 막으면 비활성 계정은 자기 상태를 확인할 화면조차 잃는다.
+                //   실제 차단은 쓰기 관문(OpenWriteAsync) 한 곳에서만 한다.
+
+                bool isSelf = string.Equals(scope, "self", StringComparison.Ordinal);
+
+                // ② 조직 트리 — self 면 그릴 것이 없으므로 아예 읽지 않는다(빈 배열로 나간다).
+                var units = new List<OrgUnitRow>();
+                if (!isSelf)
+                {
+                    await using var cmd = new MySqlCommand(
+                        "SELECT name, parent, sort_order FROM org_unit WHERE is_active=1 ORDER BY sort_order, name", conn);
+                    await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        string n = Str(rd, "name");
+                        if (n.Length == 0) continue;
+                        units.Add(new OrgUnitRow { Name = n, Parent = Str(rd, "parent"), SortOrder = IntOrNull(rd, "sort_order") ?? 0 });
+                    }
+                }
+
+                // ③ 허용 유닛 집합 — 이 집합이 곧 payload 의 경계다(화면 필터가 아니다).
+                var allowed = new HashSet<string>(StringComparer.Ordinal);
+                switch (scope)
+                {
+                    case "all":
+                        foreach (var u in units) allowed.Add(u.Name);
+                        break;
+                    case "unit_tree":
+                        ExpandUnitTree(units, myUnit, allowed);
+                        break;
+                    default:
+                        break;   // self(그리고 알 수 없는 값) — 빈 집합. 명부 쿼리를 돌리지 않는다.
+                }
+
+                // ④ 구성원.
+                var members = new List<Dictionary<string, object?>>();
+                if (isSelf)
+                {
+                    // 본인 1행만. '전체를 읽어 화면에서 거르기'로 바꾸면 payload 에 남의 명부가 그대로 실린다.
+                    members.Add(new Dictionary<string, object?>
+                    {
+                        ["loginId"] = id, ["name"] = myName, ["title"] = myTitle, ["orgUnit"] = myUnit,
+                    });
+                }
+                else if (allowed.Count > 0)
+                {
+                    // IN 절은 자리표시자(@u0,@u1,…)로만 만든다 — 유닛 이름은 DB 문자열이라 SQL 에 이어 붙이지 않는다.
+                    var unitNames = new List<string>(allowed);
+                    var ph = new List<string>(unitNames.Count);
+                    for (int i = 0; i < unitNames.Count; i++) ph.Add("@u" + i.ToString(CultureInfo.InvariantCulture));
+                    string sql = "SELECT login_id, name, title, org_unit FROM app_user " +
+                                 "WHERE is_active=1 AND org_unit IN (" + string.Join(",", ph) + ") ORDER BY org_unit, name";
+                    await using var cmd = new MySqlCommand(sql, conn);
+                    for (int i = 0; i < unitNames.Count; i++) cmd.Parameters.AddWithValue(ph[i], unitNames[i]);
+                    await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        members.Add(new Dictionary<string, object?>
+                        {
+                            ["loginId"] = Str(rd, "login_id"),
+                            ["name"]    = Str(rd, "name"),
+                            ["title"]   = Str(rd, "title"),
+                            ["orgUnit"] = Str(rd, "org_unit"),
+                        });
+                    }
+                }
+                // else: 허용 집합이 비었다(범위 밖) — 쿼리를 돌리지 않고 빈 배열 그대로 내보낸다.
+
+                var unitPayload = new List<Dictionary<string, object?>>(units.Count);
+                foreach (var u in units)
+                {
+                    unitPayload.Add(new Dictionary<string, object?>
+                    {
+                        ["name"]      = u.Name,
+                        ["parent"]    = u.Parent.Length == 0 ? null : u.Parent,   // 최상위는 null(웹이 루트로 읽는다)
+                        ["sortOrder"] = u.SortOrder,
+                        ["allowed"]   = allowed.Contains(u.Name),                 // false = 보이되 누를 수 없음
+                    });
+                }
+                _log("DB 구성원 조회: " + id + " (" + scope + "/" + (myActive != 0 ? "활성" : "비활성") +
+                     ") 유닛 " + unitPayload.Count + "건 · 허용 " + allowed.Count + "건 · 구성원 " + members.Count + "명");
+                return JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["found"]   = true,
+                    ["scope"]   = scope,
+                    ["myUnit"]  = myUnit,
+                    ["units"]   = unitPayload,
+                    ["members"] = members,
+                });
+            }
+            catch (Exception ex) { _log("DB 구성원 조회 실패(" + id + "): " + Short(ex)); return null; }
+        }
+
+        // unit_tree 확장 — 내 소속 + 그 하위 전부. 부모→자식 반복 확장(BFS)이다.
+        // ★ 재귀 CTE(WITH RECURSIVE)를 쓰지 않는다: 폐쇄망 MySQL 버전 가정을 하나 더 늘리는 값이
+        //   12행짜리 트리에서 얻는 이득보다 크다. 메모리에서 도는 편이 싸고 버전에 자유롭다.
+        // ★ allowed 자체가 방문 집합이다 — HashSet.Add 가 false 를 돌려주면 이미 담은 노드라 큐에 다시 넣지 않는다.
+        //   org_unit.parent 에 순환(A→B→A)이 들어와도 여기서 멈춘다(무한 루프 방지).
+        private static void ExpandUnitTree(List<OrgUnitRow> units, string myUnit, HashSet<string> allowed)
+        {
+            string root = (myUnit ?? "").Trim();
+            if (root.Length == 0) return;
+
+            var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var u in units)
+            {
+                if (u.Parent.Length == 0) continue;
+                if (!children.TryGetValue(u.Parent, out var lst)) { lst = new List<string>(); children[u.Parent] = lst; }
+                lst.Add(u.Name);
+            }
+
+            var queue = new Queue<string>();
+            allowed.Add(root);           // 내 소속은 org_unit 에 없더라도(비활성 유닛 등) 항상 내 범위다
+            queue.Enqueue(root);
+            while (queue.Count > 0)
+            {
+                string cur = queue.Dequeue();
+                if (!children.TryGetValue(cur, out var kids)) continue;
+                foreach (var k in kids)
+                {
+                    if (allowed.Add(k)) queue.Enqueue(k);   // 방문 집합 가드
+                }
+            }
+        }
+
         // ================================================================================
         // 구분/상태 코드테이블 — section_code / status_code (발주처 마스터와 대칭 · ENUM 대체)
         //   kind 문자열('section'|'status')로 테이블·컬럼을 단일 소스에서 해석한다(중복 분기 방지).
