@@ -8,7 +8,9 @@
 // 이 파일이 지키는 것 3가지:
 //   ① 비밀번호가 절대 웹으로 새지 않는다 (payload 에 DbPassword 부재)  ← 보안 불변식
 //   ② 접속 대상이 실제로 화면에 도달한다 (호스트 case + 설정 오픈 시 요청 + textContent 렌더)
-//   ③ 곁에 있던 것들(#dbCacheLine 연결상태 · #dbReload · #accountSection)이 부수피해를 안 입는다
+//   ③ 곁에 있던 것들(#dbCacheLine 연결상태 · #dbReload)이 부수피해를 안 입는다
+//     — 이웃이던 #accountSection 은 2026-08-03에 상단바 「사용자 정보」 모달로 승격돼 이 화면을 떠났다.
+//       그래서 ⑥-c의 단언은 '그대로 있다'에서 '되돌아오지 않는다'로 뒤집혔다.
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
 import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
@@ -164,10 +166,18 @@ const checks = {
       '#dbReload 핸들러가 loadProjects 를 보내지 않는다');
   },
 
-  accountSectionIntact(source) {
-    assert.ok(/<div class="set-sec set-sec-top" id="accountSection">/.test(source), '#accountSection 이 사라졌다');
-    for (const id of ['acctState', 'acctHint', 'acctInfoBlock', 'acctName', 'acctOrg', 'acctLogout', 'acctMsg']) {
-      assert.ok(source.includes('id="' + id + '"'), `계정 섹션의 #${id} 가 사라졌다`);
+  // ★ 계약이 뒤집혔다(2026-08-03): 설정창의 「계정」 섹션은 상단바 👤 「사용자 정보」 모달로 승격돼
+  //    이 자리를 떠났다. 지킬 것은 '남아 있는가'가 아니라 '옮겨 갔는가'다 — 옛 id 가 하나라도 살아 있으면
+  //    이동이 아니라 복제이고, 그러면 갱신 코드가 둘로 갈려 한쪽은 반드시 낡는다.
+  //    (모달 자체의 불변식은 tests/user-info.test.mjs 가 지킨다. 여기서는 '이 섹션이 안 돌아온다'만 본다.)
+  accountSectionGone(source) {
+    assert.ok(!source.includes('accountSection'), '#accountSection 이 설정창에 되살아났다 — 계정 표면이 둘이 된다');
+    for (const id of ['acctState', 'acctHint', 'acctInfoBlock', 'acctName', 'acctTitle', 'acctOrg', 'acctLogout', 'acctMsg']) {
+      assert.ok(!source.includes(id), `옛 계정 섹션의 ${id} 가 남아 있다(옮긴 게 아니라 복제됐다)`);
+    }
+    assert.ok(/<div class="overlay hidden" id="userModal">/.test(source), '#userModal 이 없다 — 계정 표면이 통째로 사라졌다');
+    for (const id of ['usState', 'usInfoBlock', 'usName', 'usTitle', 'usOrg', 'usLogout', 'usMsg']) {
+      assert.ok(source.includes('id="' + id + '"'), `사용자 정보 모달의 #${id} 가 없다`);
     }
   },
 };
@@ -182,7 +192,7 @@ test('DB접속정보 ④: #dbConn 은 textContent 로만 채운다(HTML 주입 A
 test('DB접속정보 ⑤: 표시 전용 박스 — 입력칸·[저장] 없음, 기존 CSS 재사용', () => checks.readOnlyBox(src));
 test('DB접속정보 ⑥-a: #dbCacheLine 연결 상태줄이 무변경으로 살아 있다', () => checks.cacheLineIntact(src));
 test('DB접속정보 ⑥-b: #dbReload 버튼·동작이 무변경이다', () => checks.reloadIntact(src));
-test('DB접속정보 ⑥-c: #accountSection 이 손대지 않은 채 남아 있다', () => checks.accountSectionIntact(src));
+test('DB접속정보 ⑥-c: 옛 #accountSection 은 사라지고 「사용자 정보」 모달로 옮겨 갔다', () => checks.accountSectionGone(src));
 
 // 비밀번호는 로그에도 남지 않는다 — 호스트 전체에서 DbPassword 를 읽는 곳은 접속 문자열 조립 한 곳뿐.
 test('DB접속정보 ①-보안: DbPassword 참조는 접속 문자열 조립(ProjectDb) 한 곳뿐이다', () => {
@@ -247,6 +257,12 @@ test('변이⑨: payload 에 DbName/DbUser 를 되살리면 payloadHasHostPortOn
 test('변이⑧: 호스트 case 를 지우면 hostCaseExists 가 실패한다', () => {
   const bad = mutate(main, 'case "dbInfoGet":', 'case "dbInfoGetX":');
   assert.throws(() => checks.hostCaseExists(bad), /case "dbInfoGet" 을 찾지 못함/);
+});
+
+test('변이⑩: 설정창에 계정 섹션을 되살리면 accountSectionGone 이 실패한다', () => {
+  // 뒤집힌 단언도 '실제로 잡는지'를 증명해야 한다 — 안 그러면 항상 참인 장식이 된다.
+  const bad = mutate(src, '<div class="overlay hidden" id="userModal">', '<div class="set-sec set-sec-top" id="accountSection">');
+  assert.throws(() => checks.accountSectionGone(bad), /#accountSection 이 설정창에 되살아났다/);
 });
 
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════

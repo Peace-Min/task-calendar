@@ -256,6 +256,54 @@ namespace TaskCalendarWidget
             catch (Exception ex) { _log("DB 사용자 조회 실패(" + id + "): " + Short(ex)); return null; }
         }
 
+        // 로그인한 사람의 현재 권한을 DB에서 그대로 읽어 온다(표시 전용 — 상단바 「사용자 정보」 모달).
+        // ★ 세션에 캐시하지 않는다 — 관리자가 역할을 바꾼 뒤에도 낡은 값이 남으면 화면이 거짓말을 한다.
+        //   그래서 모달을 열 때마다 이 조회가 다시 돈다(주기 폴링은 없다).
+        // ★ 읽기 경로다: OpenWriteAsync 를 쓰면 viewer 가 자기 권한을 확인조차 못 한다
+        //   ("권한을 보려면 먼저 권한이 있어야 한다"는 순환 — 읽기 관문에 권한 검사를 두지 않는 이유와 같다).
+        // 반환 3분기 — 호출측이 사유별로 다른 안내를 하려면 셋을 구분해야 한다:
+        //   행 있음 → {"found":true, …} / 행 없음 → {"found":false} / 연결·질의 실패 → null
+        //   (LoadAppUserJsonAsync 처럼 "{}" 로 구분하지 않는 이유: 이 payload 는 웹으로 그대로 나가므로
+        //    '없음'도 명시적인 필드여야 한다. 빈 객체는 파싱 실패와 구분되지 않는다.)
+        public async Task<string?> LoadUserInfoJsonAsync(string loginId)
+        {
+            string id = (loginId ?? "").Trim();
+            if (id.Length == 0) return NotFoundJson();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = await OpenReadAsync(cts.Token);
+
+                const string sql =
+                    "SELECT name, title, org_unit, view_scope, edit_role, is_active " +
+                    "FROM app_user WHERE login_id=@id";
+                await using var cmd = new MySqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@id", id);   // 값은 반드시 파라미터 바인딩(문자열 연결 금지)
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+
+                if (!await rd.ReadAsync(cts.Token))
+                {
+                    _log("DB 사용자 권한 조회: 미등록(" + id + ")");
+                    return NotFoundJson();
+                }
+                var row = new Dictionary<string, object?>
+                {
+                    ["found"]      = true,
+                    ["name"]       = Str(rd, "name"),
+                    ["title"]      = Str(rd, "title"),
+                    ["org_unit"]   = Str(rd, "org_unit"),
+                    ["view_scope"] = Str(rd, "view_scope"),
+                    ["edit_role"]  = Str(rd, "edit_role"),
+                    ["is_active"]  = IntOrNull(rd, "is_active"),
+                };
+                _log("DB 사용자 권한 조회: " + id + " (" + Str(rd, "edit_role") + "/" + Str(rd, "view_scope") + ")");
+                return JsonSerializer.Serialize(row);
+            }
+            catch (Exception ex) { _log("DB 사용자 권한 조회 실패(" + id + "): " + Short(ex)); return null; }
+        }
+        private static string NotFoundJson() =>
+            JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = false });
+
         // ================================================================================
         // 구분/상태 코드테이블 — section_code / status_code (발주처 마스터와 대칭 · ENUM 대체)
         //   kind 문자열('section'|'status')로 테이블·컬럼을 단일 소스에서 해석한다(중복 분기 방지).

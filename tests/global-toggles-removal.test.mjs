@@ -141,11 +141,16 @@ test('호스트: 알림 타이머는 조건 없이 시작한다', () => {
 
 // ── ④ 범위 이탈 방지 — 이번 작업에서 손대지 않기로 한 표면들 ────────────────────────
 
-test('범위: 계정 섹션과 과제 DB 섹션은 그대로다(설정창 정리의 부수피해 아님)', () => {
-  for (const id of ['accountSection', 'acctHint', 'acctName', 'acctTitle', 'acctOrg', 'acctLogout', 'acctMsg']) {
-    assert.ok(new RegExp('id="' + id + '"').test(src), `계정 섹션 요소가 사라졌다: #${id}`);
+test('범위: 계정 표면과 과제 DB 섹션은 살아 있다(설정창 정리의 부수피해 아님)', () => {
+  // ★ 계약 갱신(2026-08-03): 계정은 '지워진' 게 아니라 상단바 👤 「사용자 정보」 모달로 승격됐다.
+  //   이 테스트가 지키려는 것(설정창 정리의 부수피해로 계정을 잃지 않았는가)은 그대로고, 확인할 id 만 옮겼다.
+  for (const id of ['userModal', 'usHint', 'usName', 'usTitle', 'usOrg', 'usLogout', 'usMsg']) {
+    assert.ok(new RegExp('id="' + id + '"').test(src), `사용자 정보 모달의 요소가 사라졌다: #${id}`);
   }
-  for (const fn of ['updateAccountUi', 'applyUser', 'submitLogout']) {
+  for (const dead of ['accountSection', 'acctHint', 'acctName', 'acctTitle', 'acctOrg', 'acctLogout', 'acctMsg']) {
+    assert.ok(!src.includes(dead), `옛 설정창 계정 섹션의 잔재가 남아 있다: ${dead}(옮긴 게 아니라 복제됐다)`);
+  }
+  for (const fn of ['updateUserUi', 'applyUser', 'submitLogout']) {
     assert.ok(src.includes(fn), `계정 관련 함수가 사라졌다: ${fn}`);
   }
   assert.ok(/id="dbSection"/.test(src), '과제 DB 섹션이 사라졌다');

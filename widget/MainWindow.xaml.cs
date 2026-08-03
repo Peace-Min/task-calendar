@@ -561,6 +561,9 @@ namespace TaskCalendarWidget
                     case "userLogout":       // 세션 + netcus 자격 동시 삭제(둘 중 하나만 지우면 반쪽 상태가 남는다)
                         RunUserLogout(GetStr(doc, "reqId"));
                         break;
+                    case "userInfoGet":      // 사용자 정보 모달 — 권한을 '열 때마다' DB에서 새로 읽는다(세션에 없음)
+                        _ = RunUserInfoGetAsync(GetStr(doc, "reqId"));
+                        break;
 
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
@@ -1636,6 +1639,41 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex) { Log("사용자 로그아웃 예외: " + ex.Message); }
             GitReply(reqId, new { ok = true });
+        }
+
+        // 사용자 정보(권한) 조회 — 상단바 「사용자 정보」 모달이 열릴 때마다 부른다.
+        // ★ 세션에는 권한이 없다(4필드뿐) — 그래서 DB를 다시 읽는다. 캐시하면 관리자가 역할을 바꾼 뒤
+        //   화면이 낡은 값으로 거짓말을 한다.
+        // ★ 읽기 경로다(ProjectDb.LoadUserInfoJsonAsync → OpenReadAsync). 쓰기 관문을 쓰면
+        //   viewer 가 자기 권한을 확인조차 못 한다("권한을 보려면 먼저 권한이 있어야 한다"는 순환).
+        // ★ 표시 전용이다 — 웹은 이 값으로 무엇도 막지 않는다. 실제 판정은 쓰기 요청 시점(USER-LOGIN §3.3).
+        // async 이므로 회신은 UI 스레드로 마샬하는 ReplyOnUi 를 쓴다(RunUserLoginAsync 와 같은 경로).
+        private async Task RunUserInfoGetAsync(string reqId)
+        {
+            try
+            {
+                UserSession? s = UserSession.Load(_dataDir, Log);
+                if (s == null || s.LoginId.Length == 0)
+                { ReplyOnUi(reqId, new { ok = false, msg = "로그인이 필요합니다." }); return; }
+
+                string? json = await _projectDb.LoadUserInfoJsonAsync(s.LoginId);
+                if (json == null)
+                { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요." }); return; }
+
+                // Deserialize<JsonElement> 는 복제본을 돌려준다 — JsonDocument 수명에 묶이지 않아 회신에 그대로 실을 수 있다.
+                var info = JsonSerializer.Deserialize<JsonElement>(json);
+                bool found = info.TryGetProperty("found", out var f) && f.ValueKind == JsonValueKind.True;
+                if (!found)
+                { ReplyOnUi(reqId, new { ok = false, msg = "사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요." }); return; }
+
+                ReplyOnUi(reqId, new { ok = true, info });
+            }
+            catch (Exception ex)
+            {
+                // 예외 원문(스택)은 로그에만 — 회신 문구는 고정이다. 내부 사정이 화면으로 새 나가면 안 된다.
+                Log("사용자 정보 조회 예외: " + ex);
+                ReplyOnUi(reqId, new { ok = false, msg = "사용자 정보를 확인하지 못했습니다." });
+            }
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

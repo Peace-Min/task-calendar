@@ -476,19 +476,25 @@ test('설정창: netcus 자격증명 UI가 흔적 없이 제거됐다', () => {
   assert.ok(/name="ncMode"/.test(src), '전송 모드 라디오가 사라졌다');
 });
 
-test('설정창 「계정」: 이름+직급 · 소속 · 로그아웃뿐 — 로그인 입력칸이 없다', () => {
-  const s = src.indexOf('<div class="set-sec set-sec-top" id="accountSection">');
-  assert.ok(s >= 0, '계정 섹션이 없다');
-  const sec = src.slice(s, src.indexOf('id="dbSection"', s));
-  assert.ok(!/<input/.test(sec), '계정 섹션에 입력칸이 있다 — 로그인 진입점을 둘로 만들면 안 된다(게이트 하나)');
-  for (const id of ['acctState', 'acctInfoBlock', 'acctName', 'acctTitle', 'acctOrg', 'acctLogout']) {
-    assert.ok(new RegExp('id="' + id + '"').test(sec), `계정 섹션에 #${id}가 없다`);
+// ★ 이 검사는 설정창 「계정」 섹션을 보던 것이다. 그 섹션은 2026-08-03에 상단바 👤 「사용자 정보」
+//   모달(#userModal)로 승격돼 자리를 옮겼다 — 지키는 불변식은 그대로고 대상 마크업만 이관했다.
+//   (모달 고유의 불변식 — 폭 예산·접기·권한 표시 전용 — 은 tests/user-info.test.mjs 가 맡는다.)
+test('「사용자 정보」 모달: 이름+직급 · 소속 · 로그아웃뿐 — 로그인 입력칸이 없다', () => {
+  const s = src.indexOf('<div class="overlay hidden" id="userModal">');
+  assert.ok(s >= 0, '사용자 정보 모달이 없다');
+  const sec = src.slice(s, src.indexOf('<!-- ===== 자세한 사용설명서', s));
+  assert.ok(!/<input/.test(sec), '모달에 입력칸이 있다 — 로그인 진입점을 둘로 만들면 안 된다(게이트 하나)');
+  for (const id of ['usState', 'usInfoBlock', 'usName', 'usTitle', 'usOrg', 'usLogout']) {
+    assert.ok(new RegExp('id="' + id + '"').test(sec), `사용자 정보 모달에 #${id}가 없다`);
   }
-  assert.ok(!/viewScope|editRole|view_scope|edit_role/.test(sec), '권한을 표시한다(이번 범위 밖 — 추후 열람 기능에서)');
+  assert.ok(!/id="accountSection"/.test(src), '설정창 「계정」 섹션이 되살아났다 — 표면이 둘이면 하나는 반드시 낡는다');
+  // 권한은 이제 '표시'한다(추후 열람 기능의 자리). 다만 표시 전용이다 — 화면이 이 값으로 편집을 막지 않는다.
+  assert.ok(/id="usEditRole"/.test(sec) && /id="usViewScope"/.test(sec), '권한 표시 자리가 없다');
+  assert.ok(!/disabled/.test(sec), '권한 구획이 컨트롤을 잠근다 — 판정은 쓰기 요청 시점에 호스트가 한다(§3.3)');
 });
 
-test('계정 표기: DB에서 온 값은 textContent로만 넣는다(innerHTML 금지)', () => {
-  const b = jsBody('updateAccountUi');
+test('사용자 표기: DB에서 온 값은 textContent로만 넣는다(innerHTML 금지)', () => {
+  const b = jsBody('updateUserUi');
   assert.ok(/textContent/.test(b), 'textContent를 쓰지 않는다');
   assert.ok(!/innerHTML/.test(b), 'DB 문자열을 innerHTML로 넣는다 — 이름·소속이 마크업으로 해석된다');
   assert.ok(/'· 데스크톱 위젯 전용'/.test(b), '브라우저 단독 표기가 없다');

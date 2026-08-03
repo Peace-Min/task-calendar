@@ -1432,11 +1432,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 }
 .mm-fold{display:none}   /* 기본: 헤더에 자리가 있으므로 접기 메뉴는 숨김 */
 /* ≤440px — 액션 줄이 nowrap이라 넘침 처리가 없으면 주요 동작(보고서·＋ 새 기록)이 잘린다.
-   보조 3종(검색·과제 관리·문의)을 ⋯ 안으로 접어 자리를 만든다(기능 유실 없음, 경로만 한 단계 깊어짐).
+   보조 4종(검색·과제 관리·문의·사용자 정보)을 ⋯ 안으로 접어 자리를 만든다(기능 유실 없음, 경로만 한 단계 깊어짐).
    380이 아니라 440인 이유: 보고서가 이 폭에서 헤더에 남아야 하고(탭바 진입점을 없앴다),
    440은 이미 '한 줄 nav + 한 줄 액션' 위젯 레이아웃으로 바뀌는 경계라 분기점이 하나로 준다. */
 @media (max-width:440px){
-  #btnSearch,#btnCatsTop,#btnFeedback{display:none}
+  #btnSearch,#btnCatsTop,#btnFeedback,#btnUser{display:none}
   .mm-fold{display:block}
 }
 .mm-fold-rp{display:none}
@@ -1490,8 +1490,11 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
   .modal-foot{padding-left:16px;padding-right:16px}
 }
 /* 헤더 액션 줄은 680px 아래에서 라벨까지 얹으면 확실히 두 줄이 된다(측정: 640px에서 라벨=2줄·아이콘=1줄).
-   보고서는 앱의 1차 목적이라 버튼 자체는 남기고 라벨만 접는다(aria-label·title로 이름은 유지). */
-@media (max-width:679px){
+   보고서는 앱의 1차 목적이라 버튼 자체는 남기고 라벨만 접는다(aria-label·title로 이름은 유지).
+   경계가 679가 아니라 739인 이유: 상단바에 👤 사용자 정보(40px + 간격 8px)가 늘면서 690px 실측에서
+   액션 줄이 넘쳐 헤더가 113px → 158px로 한 줄 늘었다(캘린더 45px 손실). 보고서 라벨(≈50px)을 이 구간에서
+   미리 접으면 늘어난 48px을 정확히 상쇄한다 — 690px에서 헤더 113px 유지 확인. */
+@media (max-width:739px){
   #btnReportTop .btn-label{display:none}
 }
 @media (max-width:720px){
@@ -1596,6 +1599,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <button class="btn icon has-label" id="btnSearch" title="검색 (제목·메모·과제)" aria-label="검색">🔍</button>
     <button class="btn icon has-label" id="btnCatsTop" title="과제 관리 — 과제 추가·수정·삭제·색상" aria-label="과제 관리">🏷️</button>
     <button class="btn icon has-label" id="btnFeedback" title="버그 리포트 · 개선사항 문의 — phmin@netcus.com 또는 랜메신저 민평화" aria-label="버그 리포트 및 개선사항 문의">🐞</button>
+    <!-- 사용자 정보 — 설정창 깊숙이 묻혀 있던 「계정」의 승격 자리. 아이콘 전용이다(has-label 없음):
+         라벨을 붙이면 액션 줄의 폭 예산이 깨져 690px 부근에서 헤더가 한 줄 더 접힌다(아래 ≤739px 주석 참고). -->
+    <button class="btn icon" id="btnUser" title="사용자 정보 — 로그인 계정·권한·로그아웃" aria-label="사용자 정보">👤</button>
     <div class="menu-wrap">
       <button class="btn icon" id="btnTheme" title="모양 — 테마 · 위젯 투명도" aria-label="모양 설정 (테마 및 위젯 투명도)" aria-haspopup="true">🎨</button>
       <div class="menu hidden" id="themeMenu" style="min-width:184px;cursor:default">
@@ -1625,6 +1631,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button id="btnSearchFold">검색</button>
           <button id="btnCatsFold">과제 관리</button>
           <button id="btnFeedbackFold">문의</button>
+          <button id="btnUserFold">사용자 정보</button>
           <hr>
         </div>
         <button id="btnSettings">설정</button>
@@ -1870,19 +1877,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <div class="set-hint" style="margin-top:2px">예: <b>ftp://&lt;서버IP&gt;/TaskCalendar/</b> · http(s):// · 공유폴더(UNC/로컬) 경로도 가능 · <b>비우면 업데이트 확인 안 함</b>.</div>
       </div>
-      <!-- 계정 — 로그인한 사람이 누구인지 + 로그아웃. 그게 전부다.
-           ★ 로그인 입력칸을 넣지 않는다: 진입점은 시작 게이트 하나뿐이다(둘이면 상태 동기화 코드가 늘고 곧 버려진다).
-           ★ 권한(view_scope/edit_role)은 표시하지 않는다(추후 '열람' 기능에서).
-           값은 전부 textContent로만 넣는다 — DB 문자열이 마크업으로 해석되면 안 된다. -->
-      <div class="set-sec set-sec-top" id="accountSection">
-        <div class="set-lb">계정 <span id="acctState" class="git-opt"></span></div>
-        <div class="set-hint" id="acctHint">회사 시스템(netcus) 계정으로 로그인합니다. 데스크톱 위젯에서만 동작합니다.</div>
-        <div class="hidden" id="acctInfoBlock">
-          <div style="margin:2px 0 2px"><b id="acctName">—</b> <span id="acctTitle" class="git-opt"></span></div>
-          <div class="set-hint" id="acctOrg" style="margin-bottom:8px"></div>
-          <div><button type="button" class="btn sm" id="acctLogout">로그아웃</button> <span id="acctMsg" class="git-opt"></span></div>
-        </div>
-      </div>
+      <!-- ★ 여기 있던 「계정」 섹션은 상단바 👤 「사용자 정보」 모달(#userModal)로 승격돼 통째로 옮겨졌다.
+           설정창은 '가끔 바꾸는 구성'의 자리인데, 내가 누구로 로그인해 있는지는 상시 확인 대상이라
+           설정 3단 아래에 묻힐 정보가 아니었다. 권한 표시도 그 모달에서만 한다(열 때마다 DB 재조회). -->
       <!-- 과제 DB — 상태 표시와 새로고침만. 연결정보는 배포 시 구성되므로 입력 UI가 없다.
            ★ 여기 있던 「관리자」 인증 UI(비밀번호·인증·해제·비밀번호 변경)는 통째로 삭제됐다
              (USER-LOGIN §2.4의 소멸 경로 · §3.3). 공용 비밀번호로 편집을 여는 모델이 폐지되고,
@@ -2490,6 +2487,48 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </div>
     </div>
     <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 사용자 정보 ===== 설정창 「계정」 섹션을 승격한 자리.
+     ★ 로그인 입력칸은 없다 — 진입점은 시작 게이트 하나뿐이다(둘이면 상태 동기화 코드가 늘고 곧 버려진다).
+     ★ 권한은 '표시만' 한다. 화면이 이 값으로 편집을 막지 않는다(캐시된 역할로 미리 막으면 낡는 순간 반드시 틀린다).
+       실제 판정은 쓰기 요청 시점에 호스트의 DB 관문이 한다 — USER-LOGIN §3.3.
+     ★ 그래서 권한은 열 때마다 DB에서 새로 읽는다(userInfoGet). 세션 파일에는 권한이 없다(4필드뿐).
+     값은 전부 textContent로만 넣는다 — DB 문자열이 마크업으로 해석되면 안 된다. -->
+<div class="overlay hidden" id="userModal">
+  <div class="modal">
+    <div class="modal-head"><h2>사용자 정보</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="set-sec set-sec-top">
+        <div class="set-lb">계정 <span id="usState" class="git-opt"></span></div>
+        <div class="set-hint" id="usHint">회사 시스템(netcus) 계정으로 로그인합니다. 데스크톱 위젯에서만 동작합니다.</div>
+        <div class="hidden" id="usInfoBlock">
+          <div style="margin:2px 0 2px"><b id="usName">—</b> <span id="usTitle" class="git-opt"></span></div>
+          <div class="set-hint" id="usOrg" style="margin:0"></div>
+        </div>
+      </div>
+      <div class="set-sec set-sec-top hidden" id="usPermSec">
+        <div class="set-lb">권한 <span id="usPermState" class="git-opt"></span></div>
+        <div class="set-hint">과제 DB에 등록된 값입니다. 열 때마다 서버에서 새로 읽습니다.</div>
+        <div class="set-form" id="usPermForm">
+          <label class="qa-lb">편집 권한</label>
+          <div class="set-hint" id="usEditRole" style="margin:0">—</div>
+          <label class="qa-lb" style="margin-top:8px">열람 범위</label>
+          <div class="set-hint" id="usViewScope" style="margin:0">—</div>
+          <div class="set-form-foot">
+            <button type="button" class="btn sm" id="usPermReload">지금 새로고침</button>
+            <span id="usPermMsg" class="git-opt"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn sm" id="usLogout">로그아웃</button>
+      <span id="usMsg" class="git-opt"></span>
       <span class="spacer"></span>
       <button class="btn primary" data-close>닫기</button>
     </div>
@@ -3663,19 +3702,64 @@ function hideLoginGate(){
   const m = document.getElementById('lgMsg'); if(m) m.textContent = '';   // 색은 CSS(.lg-msg)가 소유한다 — 인라인 style을 쓰지 않는다
   _gateInert(false);
 }
-function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateAccountUi(); }catch(_){} }
-// 설정 「계정」 표기 — 이름+직급 · 소속 · 로그아웃, 그게 전부다.
+function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateUserUi(); }catch(_){} }
+// 「사용자 정보」 모달의 신원 표기 — 이름+직급 · 소속 · (로그인돼 있을 때만) 로그아웃, 그게 전부다.
 // ★ 값은 전부 textContent — DB에서 온 이름·소속이 마크업으로 해석되면 안 된다.
-function updateAccountUi(){
+// ★ 권한은 여기서 그리지 않는다(loadUserPerm 담당). 신원은 세션에 있어 오프라인에서도 즉시 뜨지만
+//   권한은 DB 왕복이 필요하다 — 한 함수에 묶으면 서버가 느릴 때 이름조차 늦게 보인다.
+function updateUserUi(){
   const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
-  set('acctState', !HOST ? '· 데스크톱 위젯 전용' : (currentUser ? '· 로그인됨' : '· 로그인 필요'));
-  const blk = document.getElementById('acctInfoBlock');
-  if(blk) blk.classList.toggle('hidden', !(HOST && currentUser));
-  if(HOST && currentUser){
-    set('acctName', currentUser.name || currentUser.loginId || '—');
-    set('acctTitle', currentUser.title ? '· ' + currentUser.title : '');
-    set('acctOrg', currentUser.orgUnit || '');
-  } else set('acctMsg', '');
+  set('usState', !HOST ? '· 데스크톱 위젯 전용' : (currentUser ? '· 로그인됨' : '· 로그인 필요'));
+  const on = !!(HOST && currentUser);
+  const blk = document.getElementById('usInfoBlock'); if(blk) blk.classList.toggle('hidden', !on);
+  const sec = document.getElementById('usPermSec');   if(sec) sec.classList.toggle('hidden', !on);   // 권한 구획은 로그인 상태에서만
+  const out = document.getElementById('usLogout');    if(out) out.classList.toggle('hidden', !on);   // 로그아웃할 대상이 없으면 버튼도 없다
+  if(on){
+    set('usName', currentUser.name || currentUser.loginId || '—');
+    set('usTitle', currentUser.title ? '· ' + currentUser.title : '');
+    set('usOrg', currentUser.orgUnit || '');
+  } else set('usMsg', '');
+}
+// 권한 코드 → 사람이 읽는 문장. 원시 코드값(admin/editor/viewer, all/unit_tree/self)을 그대로 노출하지 않는다 —
+// 화면은 '무엇을 할 수 있는가'를 말해야 하고, 코드값은 DB 스키마의 사정일 뿐이다.
+const US_EDIT_ROLE  = { admin:'관리자 — 과제 추가·수정·삭제 가능', editor:'편집자 — 과제 추가·수정 가능', viewer:'열람자 — 조회만 가능' };
+const US_VIEW_SCOPE = { all:'전체 — 모든 구성원', unit_tree:'소속 조직 — 내 부서와 하위', self:'본인만' };
+// 모르는 값은 숨기지 않고 그대로 보여준 뒤 '알 수 없는 값'을 덧붙인다 — DB에 새 코드가 생겼을 때
+// 화면이 조용히 틀린 설명을 하는 것보다 관리자에게 물어볼 단서를 남기는 편이 낫다(빈 값은 표시할 게 없어 —).
+function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return map[k] || (k ? k + ' — 알 수 없는 값' : '—'); }
+// 권한 조회 — 열 때마다 DB에서 새로 읽는다(세션에는 권한이 없다: 4필드뿐).
+// ★ 실패하면 추측하지 않는다. 낡거나 지어낸 권한을 보여주는 것이 '모른다'고 말하는 것보다 나쁘다.
+let __usPermBusy = false;   // 재진입 가드 — 모달 오픈과 [지금 새로고침]이 겹치면 늦게 온 회신이 먼저 온 것을 덮는다
+async function loadUserPerm(){
+  if(!HOST || !currentUser || __usPermBusy) return;
+  __usPermBusy = true;
+  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
+  set('usPermState', '· 확인 중…');
+  set('usPermMsg', '');
+  let r = null;
+  try{ r = await hostRequest('userInfoGet', {}, 10000); }catch(_){ r = null; }
+  __usPermBusy = false;
+  if(r && r.ok && r.info){
+    const inf = r.info;
+    // is_active=0 은 '편집 불가'라는 결과까지 말해 준다 — 역할만 보고 편집이 될 거라 믿으면 안 된다.
+    const active = Number(inf.is_active == null ? 1 : inf.is_active) !== 0;
+    set('usEditRole', usRoleText(US_EDIT_ROLE, inf.edit_role) + (active ? '' : ' (계정 비활성 — 편집 불가)'));
+    set('usViewScope', usRoleText(US_VIEW_SCOPE, inf.view_scope));
+    set('usPermState', active ? '' : '· 비활성 계정');
+    set('usPermMsg', '');
+    return;
+  }
+  set('usEditRole', '확인할 수 없음');
+  set('usViewScope', '확인할 수 없음');
+  set('usPermState', '');
+  set('usPermMsg', (r && r.msg) || '권한을 확인하지 못했습니다 — 잠시 후 다시 시도하세요.');
+}
+// 👤 진입점 — 신원부터 즉시 그리고(오프라인에서도 이름은 보여야 한다) 모달을 연 뒤 권한 조회를 띄운다.
+// ★ loadUserPerm을 await 하지 않는다 — 기다리면 DB가 느릴 때 버튼을 눌러도 한동안 아무 일도 일어나지 않는다.
+function openUserInfo(){
+  updateUserUi();
+  openModal('#userModal');
+  if(HOST && currentUser) loadUserPerm();
 }
 // 부팅 — ★ 첫 줄이 !HOST 차단(브라우저 단독은 게이트 미표시 + 호스트 요청 0회).
 //   요청은 userSessionGet 하나뿐이고 그건 세션 파일만 읽는다 — 이 경로에 netcus는 없다.
@@ -3711,14 +3795,14 @@ async function submitLogin(){
   say((r && r.msg) || '로그인하지 못했습니다 — 잠시 후 다시 시도하세요.');
   if(pwEl){ pwEl.value = ''; try{ pwEl.focus(); }catch(_){} }   // 비번은 화면에도 남기지 않는다
 }
-// 로그아웃 — 호스트가 세션·자격을 함께 지운다. 설정 모달을 먼저 닫는다
+// 로그아웃 — 호스트가 세션·자격을 함께 지운다. 사용자 정보 모달을 먼저 닫는다
 // (게이트가 그 위를 덮으면 사용자는 뒤에 열린 모달을 인지하지 못한다).
 async function submitLogout(){
   if(!HOST) return;
-  const m = document.getElementById('acctMsg'); if(m) m.textContent = '로그아웃 중…';
+  const m = document.getElementById('usMsg'); if(m) m.textContent = '로그아웃 중…';
   try{ await hostRequest('userLogout', {}, 10000); }catch(_){}
   applyUser(null);
-  try{ closeOverlay(document.getElementById('settingsModal')); }catch(_){}
+  try{ closeOverlay(document.getElementById('userModal')); }catch(_){}
   if(m) m.textContent = '';
   showLoginGate(true, '로그아웃되었습니다. 다시 로그인하세요.');
 }
@@ -5396,9 +5480,7 @@ function openSettings(){
   $$('#settingsModal input[name="ncMode"]').forEach(r => { r.checked = (r.value === ncMode()); });
   { const _pr = document.getElementById('ncProbeRow'); if(_pr) _pr.style.display = HOST ? '' : 'none'; }   // 구조 캡처는 위젯 전용
   { const _pm = $('#ncProbeMsg'); if(_pm){ _pm.textContent = ''; _pm.style.color = ''; } }
-  // 계정 — 표시만 갱신한다(로그인 요청 없음. 게이트가 이미 신원을 확정해 뒀다)
-  { const m = document.getElementById('acctMsg'); if(m){ m.textContent = ''; m.style.color = ''; } }
-  updateAccountUi();
+  // 계정 표기는 여기 없다 — 상단바 👤 「사용자 정보」 모달로 옮겼다(openUserInfo).
   // 자동 업데이트 소스 URL — 호스트가 현재 값(__updateSource)으로 채움
   const um = $('#updSrcMsg'); if(um) um.textContent = '';
   const us = $('#updSrcState'); if(us) us.textContent = HOST ? '' : '· 데스크톱 위젯 전용';
@@ -8844,6 +8926,7 @@ const ICON = {
   calendar: svgIc('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>'),
   git:      svgIc('<circle cx="12" cy="12" r="3"/><path d="M12 3v6M12 15v6"/>'),   // git-commit 글리프
   help:     svgIc('<circle cx="12" cy="12" r="9"/><path d="M9.2 9.2a2.8 2.8 0 0 1 5.3 1c0 1.8-2.5 2.2-2.5 3.8"/><path d="M12 17.5v.5"/>'),
+  user:     svgIc('<circle cx="12" cy="8" r="3.6"/><path d="M5 20.5a7 7 0 0 1 14 0"/>'),   // 사용자 정보(상단바 👤)
   palette:  svgIc('<path d="M12 3a9 9 0 1 0 0 18c1.3 0 2-.9 2-2 0-1.2-1-1.6-1-2.6a1.9 1.9 0 0 1 1.9-1.9H17a4 4 0 0 0 4-4C21 6.6 16.97 3 12 3z"/><circle cx="7.5" cy="11" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="16" cy="11.5" r="1.1" fill="currentColor" stroke="none"/>'),
   keyboard: svgIc('<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/>'),
   clock:    svgIc('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.2 2"/>'),
@@ -8868,6 +8951,7 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnSearch', label(ICON.search, '검색'));
   set('btnCatsTop', label(ICON.tag, '과제 관리'));       // 헤더 직접 노출(⋯ 안에 묻히지 않게)
   set('btnFeedback', label(ICON.bug, '문의'));           // 버그 리포트·개선사항 문의
+  set('btnUser', ICON.user);                             // 라벨 없음 — 상단바 폭 예산(≤739px 미디어쿼리 주석 참고)
   set('btnTheme', ICON.palette);               // 모양: 전체 테마 선택 + 위젯 투명도(HOST)
   set('btnHelp', ICON.help);                   // 상시 도움말
   set('btnMore', ICON.more);
@@ -9146,6 +9230,7 @@ function bind(){
   $('#qaTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') qaSave(); });
   $('#btnCatsTop').addEventListener('click', openCatModal);   // 헤더 직접 노출(⋯ 메뉴에서 제거됨)
   $('#btnFeedback').addEventListener('click', openFeedback);   // 토스트 한 줄 → 모달(로그 첨부 안내를 담을 자리)
+  $('#btnUser').addEventListener('click', openUserInfo);       // 설정 3단 아래 「계정」 → 상단바 단일 진입점
   { const c = $('#btnFbCopyMail'); if(c) c.addEventListener('click', copyFeedbackMail); }
   { const l = $('#btnFbLog'); if(l) l.addEventListener('click', openLogFolder); }
   $('#btnHelp').addEventListener('click', openHelp);
@@ -9364,7 +9449,7 @@ function bind(){
   });
   // ⋯ 접기 항목 — 헤더 원본 버튼의 클릭을 그대로 위임(동작 정의가 두 벌이 되지 않게)
   { const fold = { btnSearchFold:'#btnSearch', btnCatsFold:'#btnCatsTop', btnFeedbackFold:'#btnFeedback',
-                   btnReportFold:'#btnReportTop' };   // ≤320px에서만 보이는 항목 — 숨은 원본도 click()은 동작
+                   btnUserFold:'#btnUser', btnReportFold:'#btnReportTop' };   // ≤320px에서만 보이는 항목 — 숨은 원본도 click()은 동작
     for(const id in fold){ const b = document.getElementById(id), src = $(fold[id]);
       if(b && src) b.addEventListener('click', () => { closeMore(); src.click(); }); } }
   $('#btnSettings').addEventListener('click', () => { closeMore(); openSettings(); });
@@ -9380,14 +9465,15 @@ function bind(){
   $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
   { const bb = $('#bgBodyChk'); if(bb) bb.addEventListener('change', () => setGitCommitBody(bb.checked)); }   // 일괄 불러오기 모달 토글 — 동일 단일 소스
   { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
-  // ── 로그인 게이트 · 계정 ── (진입점은 게이트 하나 — 설정창에는 로그인 입력칸이 없다)
+  // ── 로그인 게이트 · 사용자 정보 ── (로그인 진입점은 게이트 하나 — 사용자 정보 모달에도 입력칸은 없다)
   { const b = $('#lgBtn'); if(b) b.addEventListener('click', submitLogin); }
   // Enter 제출 — 이 경로는 버튼 disabled로 막히지 않으므로 submitLogin의 __loginBusy 플래그가 진짜 가드다.
   ['#lgId','#lgPw'].forEach(s => { const e = $(s); if(e) e.addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); submitLogin(); } }); });
   // 게이트가 호스트바를 덮으므로 탈출구는 이 버튼뿐 — 호스트바의 data-host 위임은 바 안쪽만 듣는다(직접 배선).
   { const q = $('#lgQuit'); if(q) q.addEventListener('click', () => hpost({ cmd: 'close' })); }
-  { const b = $('#acctLogout'); if(b) b.addEventListener('click', submitLogout); }
+  { const b = $('#usLogout'); if(b) b.addEventListener('click', submitLogout); }
+  { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
   { const _pb = $('#ncProbe'); if(_pb) _pb.addEventListener('click', () => { hpost({ cmd: 'netcusProbe' }); const m = $('#ncProbeMsg'); if(m){ m.textContent = '창 여는 중…'; m.style.color = ''; } }); }
   // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
   { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {
