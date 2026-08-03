@@ -11,7 +11,7 @@
 ; 버전 단일 소스 = widget\TaskCalendarWidget.csproj <Version>.
 ; build-installer.ps1이 /DMyAppVersion으로 덮어쓴다. 수동 컴파일 시 아래 기본값 사용.
 #ifndef MyAppVersion
-  #define MyAppVersion "0.16.0"
+  #define MyAppVersion "0.17.0"
 #endif
 #define MyAppName "수행과제 캘린더"
 #define MyAppPublisher "Peace-Min"

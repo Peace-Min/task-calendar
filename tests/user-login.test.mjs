@@ -15,6 +15,17 @@ const netcus      = readFileSync(new URL('../widget/NetcusService.cs', import.me
 const projectDb   = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
 const userSession = readFileSync(new URL('../widget/UserSession.cs', import.meta.url), 'utf8');
 
+// 패치노트(#patchModal)를 도려낸 소스. 폐지된 기능명을 금지하는 검사들이 쓴다 —
+// 변경 안내는 없어진 기능을 이름으로 불러야 성립하므로 그 구간만 예외로 둔다.
+// ★ 경계를 못 찾으면 조용히 전체를 돌려주지 않고 실패시킨다(도려내기가 깨진 채 통과하면 검사가 무력해진다).
+function withoutPatchModal(source) {
+  const s = source.indexOf('<div class="overlay hidden" id="patchModal">');
+  assert.ok(s >= 0, '#patchModal 을 찾지 못했다 — 도려내기 경계가 깨졌다');
+  const e = source.indexOf('<div class="overlay hidden" id="updNotesModal">', s);
+  assert.ok(e > s, '#patchModal 다음 모달(#updNotesModal)을 찾지 못했다 — 도려내기 경계가 깨졌다');
+  return source.slice(0, s) + source.slice(e);
+}
+
 // ── 도우미 ──────────────────────────────────────────────────────────
 // 주석 제거 — "이 경로에 netcus는 없다" 같은 주석이 'netcus 참조'로 오탐되면 불변식이 무의미해진다.
 // 문자열 리터럴은 통째로 보존한다(https:// 를 주석 시작으로 오해하지 않게).
@@ -520,7 +531,12 @@ test('offEditGuard: 인자는 fn 하나 — 폐지된 관리자 비밀번호를 
   // 2단계 전에는 (fn, desc)였고 desc가 "…관리자 비밀번호가 필요합니다."를 담았다. 관리자 자격이
   // 폐지된 뒤 그 문자열은 화면에 뜨지도 않으면서 코드에 거짓 정보를 남긴다 → 인자째 제거했다.
   assert.ok(/function offEditGuard\(fn\)\{/.test(src), '시그니처가 (fn) 이 아니다');
-  assert.ok(!/관리자 비밀번호/.test(src), '폐지된 관리자 비밀번호를 언급하는 문자열이 남아 있다');
+  // ★ 패치노트(#patchModal)는 제외한다(2026-08-03). 이 검사가 막으려는 건 '화면에 뜨지도 않으면서
+  //   코드에 거짓 정보를 남기는' 죽은 문자열이다. 변경 안내는 정반대다 — 화면에 뜨고, 내용도 참이며
+  //   ("공용 관리자 비밀번호가 없어졌습니다"), 없어진 기능을 이름으로 못 부르면 안내가 성립하지 않는다.
+  //   패치노트는 역사 기록이라 폐지된 기능명이 계속 남는 게 정상이다. 그 외 전 구간은 그대로 금지.
+  assert.ok(!/관리자 비밀번호/.test(withoutPatchModal(src)),
+    '폐지된 관리자 비밀번호를 언급하는 문자열이 남아 있다(패치노트 밖)');
   // 호출 지점 자체는 늘거나 줄지 않아야 한다(인자만 뺐지 편집 게이트를 옮긴 게 아니다).
   const hits = [...src.matchAll(/offEditGuard\(/g)].length;
   assert.strictEqual(hits, 18, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 13 + 주석 4 = 18이어야 한다)`);
