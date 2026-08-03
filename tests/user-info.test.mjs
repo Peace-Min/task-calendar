@@ -97,13 +97,43 @@ function actionsMarkup(source) {
   return source.slice(s, e);
 }
 
-// 사용자 정보 모달 마크업 — #userModal 부터 그 다음 모달(사용설명서) 직전까지.
+// 사용자 정보 모달 마크업 — #userModal 부터 그 다음 모달(구성원) 직전까지.
+// ★ 경계가 '사용설명서'였다가 '구성원'으로 당겨졌다: #membersModal 이 그 사이에 끼면서
+//   구성원 모달의 <input>·data-close 가 #userModal 것으로 오탐됐다(입력칸 부재 검사가 통째로 무력화).
 function userModalMarkup(source) {
   const s = source.indexOf('<div class="overlay hidden" id="userModal">');
   assert.ok(s >= 0, '#userModal 마크업을 찾지 못함(.overlay 여야 한다)');
-  const e = source.indexOf('<!-- ===== 자세한 사용설명서', s);
-  assert.ok(e > s, '#userModal 뒤의 사용설명서 모달을 찾지 못함');
+  const e = source.indexOf('<!-- ===== 구성원 =====', s);
+  assert.ok(e > s, '#userModal 뒤의 구성원 모달을 찾지 못함');
   return source.slice(s, e);
+}
+
+// 구성원 모달 마크업 — #membersModal 부터 그 다음 모달(사용설명서) 직전까지.
+function membersModalMarkup(source) {
+  const s = source.indexOf('<div class="overlay hidden" id="membersModal">');
+  assert.ok(s >= 0, '#membersModal 마크업을 찾지 못함(.overlay 여야 한다)');
+  const e = source.indexOf('<!-- ===== 자세한 사용설명서', s);
+  assert.ok(e > s, '#membersModal 뒤의 사용설명서 모달을 찾지 못함');
+  return source.slice(s, e);
+}
+
+// #usPermSec 구획 — 권한 라벨부터 그 다음 구획(#usMembersSec 앞 주석) 직전까지.
+function permSecMarkup(source) {
+  const s = source.indexOf('<div class="set-sec set-sec-top hidden" id="usPermSec">');
+  assert.ok(s >= 0, '#usPermSec 를 찾지 못함');
+  const e = source.indexOf('<!-- 구성원 진입점', s);
+  assert.ok(e > s, '#usPermSec 뒤의 구성원 진입점 구획을 찾지 못함');
+  return source.slice(s, e);
+}
+
+// CSS 규칙 한 덩이 — `<selector>{...}` (중첩 없음).
+function cssRule(source, selector) {
+  const css = source.slice(source.indexOf('<style>'), source.indexOf('</style>'));
+  const i = css.indexOf('\n' + selector + '{');
+  assert.ok(i >= 0, `CSS 규칙 ${selector}{...} 를 찾지 못함`);
+  const open = css.indexOf('{', i), close = css.indexOf('}', open);
+  assert.ok(close > open, `${selector} 규칙이 닫히지 않았다`);
+  return css.slice(open + 1, close);
 }
 
 // `const NAME = { ... }` 한 줄(중첩 중괄호 없음).
@@ -300,6 +330,120 @@ const checks = {
     assert.ok(!/타인|다른 사람|남의 일정|열람 요청/.test(md),
       '아직 없는 「타인 일정 열람」 UI가 모달에 들어왔다 — 동작하지 않는 약속은 걸지 않는다');
   },
+
+  // ⑮ 권한은 '라벨:값' 2행이다. 라벨을 값 위에 쌓으면 4줄이 되고, 400px(위젯 실폭) 모달에서
+  //    그 2줄이 곧 스크롤이다 — 값 2개를 보려고 창을 굴리게 만들면 안 된다.
+  permTwoRows(source) {
+    const r = cssRule(source, '.us-kv');
+    assert.ok(/display:grid/.test(r), '.us-kv 가 grid 가 아니다 — 라벨:값이 다시 세로로 쌓여 4줄이 된다');
+    const m = /grid-template-columns:([^;]+)/.exec(r);
+    assert.ok(m, '.us-kv 에 grid-template-columns 가 없다 — 열 정의가 없으면 1열(=세로 쌓기)이다');
+    const cols = m[1].trim().split(/\s+/);
+    assert.strictEqual(cols.length, 2,
+      `.us-kv 가 ${cols.length}열이다 — 라벨 칸 + 값 칸 2열이어야 한 줄에 붙는다(2줄 유지)`);
+  },
+
+  // ⑯ dl/dt/dd 로 짠 이유: 그리드 자식이 전부 '요소'여야 한다. 맨 텍스트를 섞으면 익명 그리드
+  //    아이템이 생겨 라벨 칸으로 끌려간다 — 이 저장소에서 실제로 겪은 버그다.
+  permKvElementsOnly(source) {
+    const sec = permSecMarkup(source);
+    const m = /<dl class="us-kv">([\s\S]*?)<\/dl>/.exec(sec);
+    assert.ok(m, '#usPermSec 에 <dl class="us-kv"> 가 없다');
+    const inner = m[1];
+    assert.ok(/<dt>편집 권한<\/dt><dd id="usEditRole">/.test(inner),
+      '#usEditRole 이 <dd> 가 아니다 — 값이 라벨 칸으로 끌려간다');
+    assert.ok(/<dt>열람 범위<\/dt><dd id="usViewScope">/.test(inner),
+      '#usViewScope 가 <dd> 가 아니다 — 값이 라벨 칸으로 끌려간다');
+    const rest = inner.replace(/<dt>[\s\S]*?<\/dt>/g, '').replace(/<dd[^>]*>[\s\S]*?<\/dd>/g, '').trim();
+    assert.strictEqual(rest, '',
+      `<dl class="us-kv"> 안에 dt/dd 아닌 내용이 있다(익명 그리드 아이템이 생겨 열이 밀린다): ${JSON.stringify(rest)}`);
+  },
+
+  // ⑰ 문구는 단축형이다 — 한 줄에 안 들어가면 되접혀서 2줄로 줄인 의미가 사라진다.
+  permShortLabels(source) {
+    const edit = constObj(source, 'US_EDIT_ROLE');
+    for (const [k, ko] of [['admin', '관리자 — 추가·수정·삭제'], ['editor', '편집자 — 추가·수정'], ['viewer', '열람자 — 조회만']]) {
+      assert.ok(edit.includes(k + ":'" + ko + "'"), `edit_role 의 ${k} 문구가 단축형이 아니다(기대: ${ko})`);
+    }
+    const view = constObj(source, 'US_VIEW_SCOPE');
+    for (const [k, ko] of [['all', '전체 — 모든 구성원'], ['unit_tree', '소속 조직 — 내 부서와 하위'], ['self', '본인만']]) {
+      assert.ok(view.includes(k + ":'" + ko + "'"), `view_scope 의 ${k} 문구가 다르다(기대: ${ko})`);
+    }
+    for (const old of ['과제 추가·수정·삭제 가능', '과제 추가·수정 가능', '조회만 가능']) {
+      assert.ok(!source.includes(old),
+        `옛 긴 문구가 남아 있다: ${old} — .us-kv 한 줄에서 되접혀 400px 모달이 다시 4줄이 된다`);
+    }
+  },
+
+  // ⑱ 값 2개에 카드(테두리)는 과하다. 테두리는 '제출해야 하는 폼'이라는 계약인데 여기엔 제출할 게 없다.
+  permNoCard(source) {
+    const sec = permSecMarkup(source);
+    assert.ok(!/class="set-form"/.test(sec),
+      '#usPermSec 안에 .set-form 박스가 되살아났다 — 테두리는 「명시 저장 폼」의 표식이다(여긴 표시 전용)');
+    assert.ok(!/usPermForm/.test(source),
+      '옛 #usPermForm 이 남아 있다 — 박스를 버렸으면 그 id 도 함께 사라져야 한다(죽은 참조 방지)');
+  },
+
+  // ⑲ 구성원 모달은 닫을 수 있는 .overlay 이고, 진입점(#usMembers)·검색이 실제로 배선돼 있다.
+  membersModalClosable(source) {
+    assert.ok(/<div class="overlay hidden" id="membersModal">/.test(source),
+      '#membersModal 이 .overlay 가 아니다 — Esc·배경클릭·모달스택이 이 모달을 모른다');
+    const md = membersModalMarkup(source);
+    const closers = [...md.matchAll(/data-close/g)].length;
+    assert.ok(closers >= 2, `data-close 닫기 경로가 ${closers}개다(× 와 [닫기] 둘이어야 한다)`);
+    assert.ok(/<button class="x" data-close aria-label="닫기">×<\/button>/.test(md), '헤더 × 닫기 버튼이 없다');
+    assert.ok(/aria-label="구성원 검색"/.test(md), '#mbSearch 에 aria-label 이 없다 — 이름 없는 입력칸이 된다');
+    // 배선 — 버튼이 있어도 열리지 않으면 아무 의미가 없다.
+    assert.ok(/id="usMembers"/.test(source), '#usMembers(구성원 보기) 버튼이 없다');
+    assert.ok(/\$\('#usMembers'\)[\s\S]{0,140}openMembers/.test(source), '#usMembers 가 openMembers 에 배선되지 않았다');
+    assert.ok(/\$\('#mbSearch'\)[\s\S]{0,140}filterMembers/.test(source), '#mbSearch 검색 배선이 끊겼다');
+  },
+
+  // ⑳ 미리보기 배너 — 가짜 데이터가 배너 없이 나가는 것을 막는다.
+  //    US_MEMBERS_PREVIEW 가 실제 조회로 갈아끼워지면 이 의무도 함께 사라진다(그때는 진짜 명부니까).
+  previewBanner(source) {
+    if (!/US_MEMBERS_PREVIEW/.test(source)) return;
+    const md = membersModalMarkup(source);
+    assert.ok(/id="mbPreview"/.test(md),
+      '가짜 표본(US_MEMBERS_PREVIEW)은 남았는데 #mbPreview 배너가 없다 — 사용자는 이걸 실제 명부로 믿는다');
+    assert.ok(/미리보기입니다 — 실제 구성원 명부는 아직 연결되지 않았습니다\./.test(md),
+      '#mbPreview 가 "미리보기"임을 말하지 않는다 — 배너가 있어도 사실을 말하지 않으면 없는 것과 같다');
+  },
+
+  // ㉑ 이름·소속은 (지금은 표본이지만 곧) DB 문자열이다 — 마크업으로 해석되는 순간 목록이 실행 표면이 된다.
+  membersNoHtmlInjection(source) {
+    const b = jsBody(source, 'renderMembers');
+    assert.ok(/createElement/.test(b) && /textContent\s*=/.test(b),
+      'renderMembers 가 DOM API 로 행을 만들지 않는다(전제 붕괴)');
+    assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(b),
+      'renderMembers 가 HTML 주입 API 를 쓴다 — 이름·소속이 마크업으로 해석된다(XSS)');
+  },
+
+  // ㉒ 구성원 진입점은 권한 구획과 같은 조건(HOST && currentUser)으로 뜬다 — 볼 범위를 정하는 게 그 권한이다.
+  membersSecToggle(source) {
+    const b = jsBody(source, 'updateUserUi');
+    assert.ok(/getElementById\('usPermSec'\)[^\n]*classList\.toggle\('hidden',\s*!on\)/.test(b),
+      '전제: #usPermSec 가 !on 으로 토글되지 않는다');
+    assert.ok(/getElementById\('usMembersSec'\)[^\n]*classList\.toggle\('hidden',\s*!on\)/.test(b),
+      '#usMembersSec 가 #usPermSec 와 같은 조건(!on)으로 토글되지 않는다 — 미로그인에 구성원 진입점이 남는다');
+    assert.ok(/<div class="set-sec set-sec-top hidden" id="usMembersSec">/.test(source),
+      '#usMembersSec 의 초기 상태가 hidden 이 아니다 — 부팅 첫 프레임에 진입점이 번쩍인다');
+  },
+
+  // ㉓ 일정 관련 UI는 5단계 자리다. 그리고 행은 '누를 수 있는 것처럼' 보이면 안 된다 — 열 것이 없다.
+  membersNoScheduleUi(source) {
+    const md = membersModalMarkup(source);
+    const b = jsBody(source, 'renderMembers');
+    for (const w of ['일정', '캘린더', '스케줄']) {
+      assert.ok(!md.includes(w), `구성원 모달에 「${w}」 UI 가 들어왔다 — 타인 일정 열람은 5단계다(빈 약속 금지)`);
+      assert.ok(!b.includes(w), `renderMembers 가 「${w}」 를 그린다 — 행은 아직 이름·직급·소속뿐이다`);
+    }
+    const css = source.slice(source.indexOf('<style>'), source.indexOf('</style>'));
+    assert.ok(!/cursor:pointer/.test(cssRule(source, '.mb-row')),
+      '.mb-row 에 cursor:pointer 가 붙었다 — 눌러도 아무 일도 일어나지 않는 행이 된다');
+    assert.ok(!/\.mb-row:hover/.test(css),
+      '.mb-row:hover 강조가 생겼다 — 클릭 가능한 것처럼 보인다(열 것이 아직 없다)');
+  },
 };
 
 // ══ 검사 실행 ═════════════════════════════════════════════════════════
@@ -318,6 +462,15 @@ test('사용자정보 ⑪: 권한은 표시 전용 — 화면이 이 값으로 �
 test('사용자정보 ⑫: 모달은 조회를 기다리지 않고 먼저 열린다', () => checks.opensBeforeFetch(src));
 test('사용자정보 ⑬: 로그아웃이 닫는 대상은 #userModal 이다', () => checks.logoutClosesUserModal(src));
 test('사용자정보 ⑭: 5단계 「타인 일정 열람」 UI 를 미리 만들지 않았다', () => checks.noFuturePromise(src));
+test('사용자정보 ⑮: 권한은 .us-kv 2열 그리드다(라벨:값 한 줄 · 4줄 → 2줄)', () => checks.permTwoRows(src));
+test('사용자정보 ⑯: .us-kv 자식은 전부 dt/dd 요소다(맨 텍스트 0)', () => checks.permKvElementsOnly(src));
+test('사용자정보 ⑰: 권한 문구 6종이 단축형이다(옛 긴 문구 0건)', () => checks.permShortLabels(src));
+test('사용자정보 ⑱: #usPermSec 에 .set-form 카드가 없다(#usPermForm 폐지)', () => checks.permNoCard(src));
+test('구성원 ⑲: #membersModal 은 닫을 수 있는 .overlay 이고 진입점이 배선돼 있다', () => checks.membersModalClosable(src));
+test('구성원 ⑳: 미리보기 표본이 있으면 #mbPreview 배너도 반드시 있다', () => checks.previewBanner(src));
+test('구성원 ㉑: renderMembers 는 DOM API 로만 그린다(HTML 주입 API 부재)', () => checks.membersNoHtmlInjection(src));
+test('구성원 ㉒: #usMembersSec 는 #usPermSec 와 같은 조건으로 토글된다', () => checks.membersSecToggle(src));
+test('구성원 ㉓: 행에 일정·캘린더·스케줄 UI 가 없고 클릭 가능해 보이지 않는다', () => checks.membersNoScheduleUi(src));
 
 // 세션 파일은 4필드 그대로다 — 권한을 세션에 캐시하는 순간 관리자가 역할을 바꿔도 화면이 낡은 값을 말한다.
 test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않았다', () => {
@@ -406,7 +559,7 @@ test('변이⑨-b: 호스트 case 를 지우면 hostReadPath 가 실패한다', 
 });
 
 test('변이⑩: 권한 매핑에서 viewer 를 빼면 permMapping 이 실패한다', () => {
-  const bad = mutate(src, ", viewer:'열람자 — 조회만 가능' }", ' }');
+  const bad = mutate(src, ", viewer:'열람자 — 조회만' }", ' }');
   assert.throws(() => checks.permMapping(bad), /viewer → 열람자 가 없다/);
 });
 
@@ -430,6 +583,61 @@ test('변이⑫: openUserInfo 가 조회를 await 하면 opensBeforeFetch 가 �
 test('변이⑬: 로그아웃이 설정 모달을 닫으면 logoutClosesUserModal 이 실패한다', () => {
   const bad = mutate(src, "closeOverlay(document.getElementById('userModal'))", "closeOverlay(document.getElementById('settingsModal'))");
   assert.throws(() => checks.logoutClosesUserModal(bad), /사용자 정보 모달을 닫지 않는다/);
+});
+
+test('변이⑮: .us-kv 를 1열로 되돌리면 permTwoRows 가 실패한다', () => {
+  const bad = mutate(src, '.us-kv{display:grid;grid-template-columns:auto 1fr;', '.us-kv{display:grid;grid-template-columns:1fr;');
+  assert.throws(() => checks.permTwoRows(bad), /1열이다/);
+});
+
+test('변이⑯: dl 안에 맨 텍스트를 섞으면 permKvElementsOnly 가 실패한다', () => {
+  const bad = mutate(src, '          <dt>열람 범위</dt><dd id="usViewScope">—</dd>\n',
+                          '          <dt>열람 범위</dt><dd id="usViewScope">—</dd>\n          (표시 전용)\n');
+  assert.throws(() => checks.permKvElementsOnly(bad), /dt\/dd 아닌 내용이 있다/);
+});
+
+test('변이⑰: 권한 문구를 옛 긴 문장으로 되돌리면 permShortLabels 가 실패한다', () => {
+  const bad = mutate(src, "viewer:'열람자 — 조회만' }", "viewer:'열람자 — 조회만 가능' }");
+  assert.throws(() => checks.permShortLabels(bad), /단축형이 아니다|옛 긴 문구가 남아 있다/);
+});
+
+test('변이⑱: #usPermSec 에 .set-form 카드를 되살리면 permNoCard 가 실패한다', () => {
+  const bad = mutate(src, '        <dl class="us-kv">', '        <div class="set-form" id="usPermFormBox">\n        <dl class="us-kv">');
+  assert.throws(() => checks.permNoCard(bad), /\.set-form 박스가 되살아났다/);
+});
+
+test('변이⑲: #membersModal 의 × 닫기를 떼면 membersModalClosable 이 실패한다', () => {
+  const bad = mutate(src, '<div class="modal-head"><h2>구성원</h2><button class="x" data-close aria-label="닫기">×</button></div>',
+                          '<div class="modal-head"><h2>구성원</h2></div>');
+  assert.throws(() => checks.membersModalClosable(bad), /data-close 닫기 경로|헤더 × 닫기 버튼/);
+});
+
+test('변이⑳: 표본은 남긴 채 #mbPreview 배너만 지우면 previewBanner 가 실패한다', () => {
+  const bad = mutate(src, '      <div class="set-hint" id="mbPreview">미리보기입니다 — 실제 구성원 명부는 아직 연결되지 않았습니다.</div>\n', '');
+  assert.ok(/US_MEMBERS_PREVIEW/.test(bad), '전제: 가짜 표본은 그대로 남아 있다');
+  assert.throws(() => checks.previewBanner(bad), /#mbPreview 배너가 없다/);
+});
+
+test('변이㉑: renderMembers 가 이름을 innerHTML 로 넣으면 membersNoHtmlInjection 이 실패한다', () => {
+  const bad = mutate(src, "nm.textContent = (m && m.name) ? String(m.name) : '—';",
+                          "nm.innerHTML = (m && m.name) ? String(m.name) : '—';");
+  assert.throws(() => checks.membersNoHtmlInjection(bad), /HTML 주입 API/);
+});
+
+test('변이㉒: updateUserUi 에서 #usMembersSec 토글을 빼면 membersSecToggle 이 실패한다', () => {
+  const bad = mutate(src, "  const mem = document.getElementById('usMembersSec');if(mem) mem.classList.toggle('hidden', !on);   // 구성원도 같은 조건 — 볼 범위를 정하는 게 그 권한이다\n", '');
+  assert.throws(() => checks.membersSecToggle(bad), /같은 조건\(!on\)으로 토글되지 않는다/);
+});
+
+test('변이㉓: 구성원 모달에 일정 UI 를 넣으면 membersNoScheduleUi 가 실패한다', () => {
+  const bad = mutate(src, '      <div id="mbList"></div>',
+                          '      <div id="mbList"></div>\n      <button type="button" class="btn sm" id="mbSchedule">일정 보기</button>');
+  assert.throws(() => checks.membersNoScheduleUi(bad), /「일정」 UI 가 들어왔다/);
+});
+
+test('변이㉓-b: .mb-row 에 cursor:pointer 를 주면 membersNoScheduleUi 가 실패한다', () => {
+  const bad = mutate(src, '.mb-row{padding:8px 2px;', '.mb-row{cursor:pointer;padding:8px 2px;');
+  assert.throws(() => checks.membersNoScheduleUi(bad), /cursor:pointer 가 붙었다/);
 });
 
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
@@ -549,6 +757,71 @@ if (!JSDOM) {
       for (const id of ['usInfoBlock', 'usPermSec', 'usLogout']) {
         assert.ok(w.document.getElementById(id).classList.contains('hidden'), `#${id} 가 미로그인 상태에서 노출된다`);
       }
+    });
+
+    // ── 구성원(미리보기) ─────────────────────────────────────────────
+    const rows = () => w.document.querySelectorAll('#mbList .mb-row').length;
+
+    test('구성원(jsdom): 「구성원 보기」가 6행을 그리고 범위 줄이 「열람 범위」를 따라간다', async () => {
+      login();
+      reply({ ok: true, info: { found: true, edit_role: 'admin', view_scope: 'all', is_active: 1 } });
+      await w.eval('loadUserPerm()');
+      w.eval('openUserInfo()');
+      w.eval('openMembers()');
+      assert.ok(!w.document.getElementById('membersModal').classList.contains('hidden'), '구성원 모달이 열리지 않았다');
+      assert.strictEqual(rows(), 6, '미리보기 표본 6명이 다 그려지지 않았다');
+      assert.ok(/전체 — 모든 구성원/.test(txt('mbScope')), `범위 줄이 「열람 범위」를 따라가지 않는다: ${txt('mbScope')}`);
+      assert.ok(/· 6명/.test(txt('mbScope')), '범위 줄에 인원 수가 없다');
+      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '결과가 있는데 빈 안내가 떠 있다');
+      assert.ok(/미리보기입니다/.test(txt('mbPreview')), '미리보기 배너가 비었다 — 사용자가 표본을 실제 명부로 믿는다');
+      // 행 구성: 이름(굵게) + 직급(흐리게) / 소속. 그 이상은 아직 없다.
+      const first = w.document.querySelector('#mbList .mb-row');
+      assert.strictEqual(first.querySelector('b').textContent, '김서연');
+      assert.ok(/· 수석연구원/.test(first.textContent), `직급이 표시되지 않았다: ${first.textContent}`);
+      assert.ok(/SW 1팀/.test(first.textContent), '소속이 표시되지 않았다');
+    });
+
+    test('구성원(jsdom): 검색 — 「SW 3」 2행 · 「없는이름」 0행 + 빈 안내 · 비우면 전체 복귀', () => {
+      w.eval("document.getElementById('mbSearch').value = 'SW 3'; filterMembers();");
+      assert.strictEqual(rows(), 2, 'SW 3팀 2명으로 좁혀지지 않았다');
+      w.eval("document.getElementById('mbSearch').value = '없는이름'; filterMembers();");
+      assert.strictEqual(rows(), 0, '결과가 0건이 아니다');
+      assert.ok(!w.document.getElementById('mbEmpty').classList.contains('hidden'), '0건인데 「검색 결과가 없습니다」가 뜨지 않는다');
+      w.eval("document.getElementById('mbSearch').value = ''; filterMembers();");
+      assert.strictEqual(rows(), 6, '검색어를 지우면 전체로 돌아와야 한다');
+      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '결과가 돌아왔는데 빈 안내가 남았다');
+    });
+
+    test('구성원(jsdom) ㉑: 이름·소속에 마크업이 와도 텍스트로만 들어간다', () => {
+      w.eval("renderMembers([{name:'<img src=x onerror=alert(1)>', title:'<b>연구원</b>', orgUnit:'<i>SW 1팀</i>'}])");
+      const row = w.document.querySelector('#mbList .mb-row');
+      assert.ok(row, '행이 그려지지 않았다');
+      assert.strictEqual(row.querySelector('img'), null, 'img 요소가 실제로 만들어졌다');
+      assert.strictEqual(row.querySelector('b > *'), null, '이름 안에 요소가 생성됐다 — HTML 로 해석됐다');
+      assert.strictEqual(row.querySelector('i'), null, '소속이 HTML 로 해석됐다');
+      assert.ok(row.textContent.includes('<img src=x onerror=alert(1)>'), '이름 원문이 그대로 보이지 않는다');
+      assert.ok(row.textContent.includes('<i>SW 1팀</i>'), '소속 원문이 그대로 보이지 않는다');
+    });
+
+    test('구성원(jsdom): 구성원을 닫아도 #userModal 은 그대로 열려 있다(중첩)', () => {
+      login();
+      w.eval('openUserInfo()');
+      w.eval('openMembers()');
+      assert.ok(!w.document.getElementById('userModal').classList.contains('hidden'), '전제: 사용자 정보가 열려 있다');
+      w.eval("closeModal('#membersModal')");
+      assert.ok(!w.document.getElementById('userModal').classList.contains('hidden'),
+        '구성원을 닫자 사용자 정보까지 닫혔다 — 겹쳐 연 모달은 자기 것만 닫아야 한다');
+      assert.ok(!w.document.getElementById('userModal').classList.contains('closing'),
+        '사용자 정보가 함께 닫히는 중이다(페이드아웃) — 중첩이 깨졌다');
+    });
+
+    test('구성원(jsdom) ㉒: 미로그인이면 구성원 진입점도 권한 구획과 함께 감춰진다', () => {
+      w.eval('currentUser = null; updateUserUi();');
+      assert.ok(w.document.getElementById('usMembersSec').classList.contains('hidden'),
+        '미로그인인데 #usMembersSec 가 남았다 — 볼 범위를 정하는 권한이 없는 상태다');
+      login();
+      w.eval('updateUserUi();');
+      assert.ok(!w.document.getElementById('usMembersSec').classList.contains('hidden'), '로그인했는데 구성원 진입점이 뜨지 않는다');
     });
 
     // 부팅에서 걸린 타이머(세션 조회 타임아웃·스켈레톤 폴백)가 러너를 붙잡지 않도록 창을 닫는다.

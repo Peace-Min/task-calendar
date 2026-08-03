@@ -1249,7 +1249,19 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .set-badge.dirty{border-color:var(--danger-text);color:var(--danger-text);background:var(--danger-soft)}
 /* 명시 저장 폼 = 카드. 즉시 저장 구획과 시각적으로 다른 층위에 둔다(테두리 유무가 곧 계약 차이). */
 .set-form{margin:8px 0 2px;padding:10px 12px;border:1px solid var(--line-2);border-radius:var(--r-sm);background:var(--dim-bg)}
-.set-form .set-form-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+/* 푸터는 카드(.set-form) 밖에서도 쓴다 — 사용자 정보 권한 구획은 값 2개뿐이라 테두리를 버렸는데,
+   선택자가 .set-form 자손으로 묶여 있으면 그 순간 [지금 새로고침] 줄만 flex 를 잃는다. */
+.set-form-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:9px}
+/* 사용자 정보 — 라벨:값 2행. 라벨을 값 위에 쌓으면 4줄이 돼 400px 모달 높이의 상당량을 먹는다.
+   ★ dl/dt/dd 로 짠 이유: 그리드 자식이 전부 '요소'여야 한다. 맨 텍스트를 섞으면
+     익명 그리드 아이템이 생겨 라벨 칸으로 끌려간다 — 이 저장소에서 실제로 겪은 버그다. */
+.us-kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:6px 0 10px;align-items:baseline}
+.us-kv dt{margin:0;font-size:var(--fs-meta);color:var(--muted)}
+.us-kv dd{margin:0;font-size:var(--fs-body);color:var(--text)}
+/* 구성원 행 — 구분선만. 지금은 눌러서 열 것이 없다(타인 일정 열람은 5단계):
+   cursor:pointer·hover 강조를 주면 '눌리는데 아무 일도 안 나는' 행이 된다. */
+.mb-row{padding:8px 2px;border-bottom:1px solid var(--line)}
+.mb-row:last-child{border-bottom:0}
 
 /* ---------- 과제 데이터 내보내기 모달 ---------- */
 .exp-lb{font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px}
@@ -2514,21 +2526,51 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="set-sec set-sec-top hidden" id="usPermSec">
         <div class="set-lb">권한 <span id="usPermState" class="git-opt"></span></div>
         <div class="set-hint">과제 DB에 등록된 값입니다. 열 때마다 서버에서 새로 읽습니다.</div>
-        <div class="set-form" id="usPermForm">
-          <label class="qa-lb">편집 권한</label>
-          <div class="set-hint" id="usEditRole" style="margin:0">—</div>
-          <label class="qa-lb" style="margin-top:8px">열람 범위</label>
-          <div class="set-hint" id="usViewScope" style="margin:0">—</div>
-          <div class="set-form-foot">
-            <button type="button" class="btn sm" id="usPermReload">지금 새로고침</button>
-            <span id="usPermMsg" class="git-opt"></span>
-          </div>
+        <dl class="us-kv">
+          <dt>편집 권한</dt><dd id="usEditRole">—</dd>
+          <dt>열람 범위</dt><dd id="usViewScope">—</dd>
+        </dl>
+        <div class="set-form-foot">
+          <button type="button" class="btn sm" id="usPermReload">지금 새로고침</button>
+          <span id="usPermMsg" class="git-opt"></span>
         </div>
+      </div>
+      <!-- 구성원 진입점 — 볼 수 있는 사람의 범위는 위 「열람 범위」가 이미 정해 놨다.
+           그래서 여기서 범위를 다시 고르게 하지 않는다(같은 규칙을 두 곳에서 말하면 하나는 반드시 낡는다). -->
+      <div class="set-sec set-sec-top hidden" id="usMembersSec">
+        <div class="set-lb">구성원</div>
+        <!-- 범위를 다시 설명하지 않는다 — 바로 위 줄이 「열람 범위」다. 되풀이하면 한 줄을 더 먹는다. -->
+        <div class="set-hint">위 열람 범위에 속한 사람들입니다.</div>
+        <button type="button" class="btn sm" id="usMembers">구성원 보기</button>
       </div>
     </div>
     <div class="modal-foot">
       <button type="button" class="btn sm" id="usLogout">로그아웃</button>
       <span id="usMsg" class="git-opt"></span>
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 구성원 ===== 내 열람 범위(view_scope)에 속한 사람들.
+     ★ 지금은 '미리보기'다 — 실제 조회(app_user)를 붙이지 않았다. 그래서 배너로 그 사실을 말한다.
+       가짜 데이터를 배너 없이 내보내면 사용자는 그게 실제 명부라고 믿는다.
+     ★ renderMembers()는 실제 데이터가 들어와도 그대로 쓰는 렌더러다 — 나중에 데이터 출처만 갈아끼운다.
+     ★ 일정 관련 UI는 여기 없다(5단계). 자리만 비워 둔다.
+     ★ #userModal 위에 겹쳐 연다(_modalStack 이 중첩을 지원한다) — 닫으면 사용자 정보로 되돌아온다. -->
+<div class="overlay hidden" id="membersModal">
+  <div class="modal">
+    <div class="modal-head"><h2>구성원</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="set-hint" id="mbPreview">미리보기입니다 — 실제 구성원 명부는 아직 연결되지 않았습니다.</div>
+      <div class="set-hint" id="mbScope">—</div>
+      <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다. -->
+      <input type="text" id="mbSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름 · 소속 검색">
+      <div id="mbList"></div>
+      <div class="set-hint hidden" id="mbEmpty">검색 결과가 없습니다.</div>
+    </div>
+    <div class="modal-foot">
       <span class="spacer"></span>
       <button class="btn primary" data-close>닫기</button>
     </div>
@@ -3713,6 +3755,7 @@ function updateUserUi(){
   const on = !!(HOST && currentUser);
   const blk = document.getElementById('usInfoBlock'); if(blk) blk.classList.toggle('hidden', !on);
   const sec = document.getElementById('usPermSec');   if(sec) sec.classList.toggle('hidden', !on);   // 권한 구획은 로그인 상태에서만
+  const mem = document.getElementById('usMembersSec');if(mem) mem.classList.toggle('hidden', !on);   // 구성원도 같은 조건 — 볼 범위를 정하는 게 그 권한이다
   const out = document.getElementById('usLogout');    if(out) out.classList.toggle('hidden', !on);   // 로그아웃할 대상이 없으면 버튼도 없다
   if(on){
     set('usName', currentUser.name || currentUser.loginId || '—');
@@ -3722,7 +3765,9 @@ function updateUserUi(){
 }
 // 권한 코드 → 사람이 읽는 문장. 원시 코드값(admin/editor/viewer, all/unit_tree/self)을 그대로 노출하지 않는다 —
 // 화면은 '무엇을 할 수 있는가'를 말해야 하고, 코드값은 DB 스키마의 사정일 뿐이다.
-const US_EDIT_ROLE  = { admin:'관리자 — 과제 추가·수정·삭제 가능', editor:'편집자 — 과제 추가·수정 가능', viewer:'열람자 — 조회만 가능' };
+// ★ 문구는 한 줄에 들어가야 한다 — .us-kv 가 라벨:값을 같은 줄에 붙이기 때문에, 값이 길면 400px 위젯 폭에서
+//   되접혀 2줄 절약이 도로 사라진다. 그래서 서술형('… 할 수 있다')을 명사 나열로 줄였다.
+const US_EDIT_ROLE  = { admin:'관리자 — 추가·수정·삭제', editor:'편집자 — 추가·수정', viewer:'열람자 — 조회만' };
 const US_VIEW_SCOPE = { all:'전체 — 모든 구성원', unit_tree:'소속 조직 — 내 부서와 하위', self:'본인만' };
 // 모르는 값은 숨기지 않고 그대로 보여준 뒤 '알 수 없는 값'을 덧붙인다 — DB에 새 코드가 생겼을 때
 // 화면이 조용히 틀린 설명을 하는 것보다 관리자에게 물어볼 단서를 남기는 편이 낫다(빈 값은 표시할 게 없어 —).
@@ -3760,6 +3805,59 @@ function openUserInfo(){
   updateUserUi();
   openModal('#userModal');
   if(HOST && currentUser) loadUserPerm();
+}
+/* ---------- 구성원 (미리보기) ----------
+   내 열람 범위에 속한 사람들. 아직 app_user 조회를 붙이지 않았다 — 이번 단계는 UI/UX 확정까지다.
+   ★ 그래서 #mbPreview 배너가 함께 뜬다. 가짜 명부를 배너 없이 내보내면 사용자는 그걸 실제로 믿는다.
+   ★ 일정 관련 UI는 여기 없다(5단계 '타인 일정 열람'의 자리). 동작하지 않는 약속은 걸지 않는다. */
+// 미리보기 표본 — 실제 app_user 조회로 갈아끼울 자리. 실명 대신 역할이 드러나는 가상 인물로 둔다.
+const US_MEMBERS_PREVIEW = [
+  { name:'김서연', title:'수석연구원', orgUnit:'SW 1팀' },
+  { name:'박도현', title:'책임연구원', orgUnit:'SW 1팀' },
+  { name:'이지훈', title:'선임연구원', orgUnit:'SW 2팀' },
+  { name:'최유진', title:'연구원',     orgUnit:'SW 2팀' },
+  { name:'정민석', title:'책임연구원', orgUnit:'SW 3팀' },
+  { name:'한소영', title:'선임연구원', orgUnit:'SW 3팀' },
+];
+// 행 렌더 — 실제 데이터가 들어와도 이 함수는 그대로 쓴다(바뀌는 건 rows 의 출처뿐).
+// ★ innerHTML 을 쓰지 않는다: 이름·소속은 DB 문자열이라 마크업으로 해석되는 순간 목록이 실행 표면이 된다.
+//   비우기도 innerHTML='' 이 아니라 removeChild 다 — 한 곳만 예외를 두면 다음 사람이 그걸 관례로 읽는다.
+function renderMembers(rows){
+  const list = document.getElementById('mbList'); if(!list) return;
+  while(list.firstChild) list.removeChild(list.firstChild);
+  const arr = Array.isArray(rows) ? rows : [];
+  for(const m of arr){
+    const row = document.createElement('div'); row.className = 'mb-row';
+    const head = document.createElement('div');
+    const nm = document.createElement('b'); nm.textContent = (m && m.name) ? String(m.name) : '—';
+    head.appendChild(nm);
+    const ti = (m && m.title) ? String(m.title) : '';
+    if(ti){ const t = document.createElement('span'); t.className = 'git-opt'; t.textContent = ' · ' + ti; head.appendChild(t); }
+    row.appendChild(head);
+    const org = document.createElement('div'); org.className = 'set-hint'; org.style.margin = '0';
+    org.textContent = (m && m.orgUnit) ? String(m.orgUnit) : '';
+    row.appendChild(org);
+    list.appendChild(row);
+  }
+  // 0건 안내는 렌더와 한 몸이다 — 목록을 그리는 곳이 둘이면 '빈 목록 + 안내 없음'이 반드시 생긴다.
+  const empty = document.getElementById('mbEmpty'); if(empty) empty.classList.toggle('hidden', arr.length > 0);
+}
+// 범위 줄은 「열람 범위」에 이미 그려진 문장을 그대로 읽어 온다 — 같은 규칙을 두 번 계산하지 않는다.
+function openMembers(){
+  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
+  const vs = document.getElementById('usViewScope');
+  set('mbScope', '열람 범위: ' + ((vs && vs.textContent) || '—') + ' · ' + US_MEMBERS_PREVIEW.length + '명');
+  const q = document.getElementById('mbSearch'); if(q) q.value = '';   // 지난 검색어가 남으면 목록이 잘린 채 열린다
+  renderMembers(US_MEMBERS_PREVIEW);
+  openModal('#membersModal');
+}
+// 이름·직급·소속 부분일치. 대소문자 무시(영문 팀명 대비), 앞뒤 공백만 정리한다.
+function filterMembers(){
+  const q = document.getElementById('mbSearch');
+  const k = q ? String(q.value || '').trim().toLowerCase() : '';
+  if(!k){ renderMembers(US_MEMBERS_PREVIEW); return; }
+  renderMembers(US_MEMBERS_PREVIEW.filter(m =>
+    [m.name, m.title, m.orgUnit].some(v => String(v == null ? '' : v).toLowerCase().includes(k))));
 }
 // 부팅 — ★ 첫 줄이 !HOST 차단(브라우저 단독은 게이트 미표시 + 호스트 요청 0회).
 //   요청은 userSessionGet 하나뿐이고 그건 세션 파일만 읽는다 — 이 경로에 netcus는 없다.
@@ -9474,6 +9572,8 @@ function bind(){
   { const q = $('#lgQuit'); if(q) q.addEventListener('click', () => hpost({ cmd: 'close' })); }
   { const b = $('#usLogout'); if(b) b.addEventListener('click', submitLogout); }
   { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
+  { const b = $('#usMembers'); if(b) b.addEventListener('click', openMembers); }       // #userModal 위에 겹쳐 연다(닫으면 되돌아온다)
+  { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
   { const _pb = $('#ncProbe'); if(_pb) _pb.addEventListener('click', () => { hpost({ cmd: 'netcusProbe' }); const m = $('#ncProbeMsg'); if(m){ m.textContent = '창 여는 중…'; m.style.color = ''; } }); }
   // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
   { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {

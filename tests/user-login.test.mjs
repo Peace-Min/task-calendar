@@ -482,7 +482,9 @@ test('설정창: netcus 자격증명 UI가 흔적 없이 제거됐다', () => {
 test('「사용자 정보」 모달: 이름+직급 · 소속 · 로그아웃뿐 — 로그인 입력칸이 없다', () => {
   const s = src.indexOf('<div class="overlay hidden" id="userModal">');
   assert.ok(s >= 0, '사용자 정보 모달이 없다');
-  const sec = src.slice(s, src.indexOf('<!-- ===== 자세한 사용설명서', s));
+  // 경계는 다음 모달(#membersModal) 직전까지 — 구성원 모달에는 검색 입력칸이 있어서, 경계를 그 뒤에 두면
+  // 아래 '입력칸 없음' 검사가 남의 <input> 을 보고 통과·실패를 뒤집는다.
+  const sec = src.slice(s, src.indexOf('<!-- ===== 구성원 =====', s));
   assert.ok(!/<input/.test(sec), '모달에 입력칸이 있다 — 로그인 진입점을 둘로 만들면 안 된다(게이트 하나)');
   for (const id of ['usState', 'usInfoBlock', 'usName', 'usTitle', 'usOrg', 'usLogout']) {
     assert.ok(new RegExp('id="' + id + '"').test(sec), `사용자 정보 모달에 #${id}가 없다`);
