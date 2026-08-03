@@ -145,6 +145,34 @@ function constObj(source, name) {
 
 const jsBody = (source, name) => stripComments(extractFunction(source, name));
 
+// loadUserPerm 의 두 분기를 갈라 준다 — '성공에서 무엇을 칠하는가'와 '실패에서 무엇을 건드리지 않는가'는
+// 서로 다른 계약이라 한 덩어리로 보면 둘 중 하나는 반드시 통과해 버린다.
+//   ok   = `if(r && r.ok && r.info){ … }` 블록 전체(중괄호 짝을 맞춰 자른다)
+//   fail = 그 뒤 전부
+// ★ '확인할 수 없음' 첫 등장으로 자르지 않는다: 실패 문구를 성공 분기 앞에 끼워 넣는 회귀를
+//   실패 쪽으로 보내지 못해 검사가 통째로 무력화된다(실제로 그렇게 짰다가 변이가 안 잡혔다).
+function permBranches(source) {
+  const all = jsBody(source, 'loadUserPerm');
+  const s = all.indexOf('if(r && r.ok && r.info)');
+  assert.ok(s >= 0, 'loadUserPerm 의 성공 분기(if(r && r.ok && r.info))를 찾지 못함');
+  const open = all.indexOf('{', s);
+  assert.ok(open > s, 'loadUserPerm 성공 분기의 여는 중괄호를 찾지 못함');
+  let depth = 0, close = -1;
+  for (let k = open; k < all.length; k++) {
+    const c = all[k];
+    if (c === '"' || c === "'" || c === '`') {   // 문자열 리터럴 안의 중괄호는 세지 않는다
+      let j = k + 1;
+      while (j < all.length) { if (all[j] === '\\') { j += 2; continue; } if (all[j] === c) break; j++; }
+      k = j; continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { close = k; break; } }
+  }
+  assert.ok(close > open, 'loadUserPerm 성공 분기의 중괄호 짝이 맞지 않는다');
+  assert.ok(/확인할 수 없음/.test(all.slice(close)), 'loadUserPerm 의 실패 분기(확인할 수 없음)를 찾지 못함');
+  return { ok: all.slice(s, close + 1), fail: all.slice(close + 1), all };
+}
+
 // 옛 계정 섹션이 남긴 id 8개 — 하나라도 살아 있으면 '옮긴 것'이 아니라 '복제한 것'이다.
 const DEAD_ACCT_IDS = ['acctState', 'acctHint', 'acctInfoBlock', 'acctName', 'acctTitle', 'acctOrg', 'acctLogout', 'acctMsg'];
 
@@ -662,6 +690,127 @@ const checks = {
     assert.ok(/links\+\+/.test(b) && /links === 0/.test(b),
       "누를 수 있는 행 수(links)로 판단하지 않는다 — 전체 행 수로 세면 목록이 '나 혼자'일 때도 예고가 뜬다");
   },
+
+  // ㊲ 신원(이름·직급·소속)은 '실시간 응답'으로 칠한다. 예전엔 같은 회신에 들어 있는 name/title/org_unit 을
+  //    버리고 세션 값만 그렸다 — 그래서 한 모달 안에서 위 두 줄은 로그인 시점, 바로 아래 「열람 범위」만
+  //    최신인 상태가 됐다(실측: DB 소속을 바꿔도 화면은 옛 팀, 범위줄은 즉시 갱신).
+  //    ★ 그러나 currentUser·세션 파일에는 쓰지 않는다 — USER-LOGIN §2.5. 이 검사의 핵심이다.
+  //    ★ 단언 순서는 '가장 위험한 것 먼저'다. 한 변이가 여러 단언을 동시에 깨뜨릴 때
+  //      먼저 걸리는 쪽이 실패 메시지가 되므로, §2.5 위반이 다른 사소한 어긋남에 가려지면 안 된다.
+  identityLiveFromInfo(source) {
+    const { ok, fail, all } = permBranches(source);
+    // ① §2.5 재발 방지 — 조회 결과로 세션을 갱신하는 순간 '로그아웃과 경합해 삭제된 세션이 되살아난' 그 버그가 돌아온다.
+    assert.ok(!/currentUser(\s*\.\s*\w+)*\s*=(?!=)/.test(all),
+      'loadUserPerm 이 currentUser 에 대입한다 — 조회 결과로 세션을 갱신하면 로그아웃과 경합한다(USER-LOGIN §2.5)');
+    assert.ok(!/Object\.assign\(\s*currentUser/.test(all),
+      'loadUserPerm 이 Object.assign 으로 currentUser 를 갱신한다 — 대입과 같은 문제다(§2.5)');
+    assert.ok(!/applyUser\s*\(/.test(all),
+      'loadUserPerm 이 applyUser 를 부른다 — 그 함수가 currentUser 를 갈아끼운다(§2.5)');
+    const reqs = [...all.matchAll(/hostRequest\('([^']+)'/g)].map((m) => m[1]);
+    assert.deepStrictEqual(reqs, ['userInfoGet'],
+      `loadUserPerm 이 보내는 호스트 요청이 userInfoGet 하나가 아니다(${reqs.join(',')}) — 세션을 다시 쓰게 하는 경로가 붙었다`);
+    // ② 신원 렌더도 textContent 로만(DB 문자열이다).
+    assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(all),
+      'loadUserPerm 이 HTML 주입 API 를 쓴다 — 이름·소속이 마크업으로 해석된다(XSS)');
+    // ③ 호스트가 보내는 키는 DB 컬럼 그대로(org_unit)다. camelCase 로 읽으면 조용히 undefined 가 된다.
+    assert.ok(!/inf\.orgUnit/.test(ok),
+      '응답을 inf.orgUnit(camelCase)으로 읽는다 — 호스트는 org_unit 으로 보낸다(ProjectDb.LoadUserInfoJsonAsync)');
+    // ④ 성공 경로 — 세 줄 전부 info 에서. currentUser 에서 칠하면 조회를 해 놓고도 낡은 값을 그린다.
+    assert.ok(/set\('usName',\s*inf\.name/.test(ok),
+      '성공 경로가 #usName 을 응답(inf.name)으로 칠하지 않는다 — 이름이 로그인 시점 값에 굳는다');
+    assert.ok(/set\('usTitle',\s*inf\.title/.test(ok),
+      '성공 경로가 #usTitle 을 응답(inf.title)으로 칠하지 않는다 — 직급 변경이 반영되지 않는다');
+    assert.ok(/set\('usOrg',\s*usOrgText\(inf\.org_unit\)/.test(ok),
+      '성공 경로가 #usOrg 를 응답(inf.org_unit)으로 칠하지 않는다 — 소속만 낡은 채 「열람 범위」와 어긋난다');
+    // ⑤ 실패 경로 — 신원 3줄을 건드리지 않는다. 세션 값이 그대로 남아야 오프라인에서도 이름이 보인다.
+    for (const id of ['usName', 'usTitle', 'usOrg']) {
+      assert.ok(!new RegExp("set\\('" + id + "'").test(fail),
+        `조회 실패가 #${id} 값을 덮어쓴다 — 「권한」이 이미 사유를 말하고 있는데 신원까지 지우면 소음이다`);
+    }
+    // ⑥ 값 우선순위는 실시간 > 세션이다. 세션은 '이름이 비었을 때의 폴백'으로만 남는다.
+    assert.ok(/currentUser\.loginId/.test(ok),
+      '이름이 비었을 때의 폴백(loginId)이 없다 — 빈 이름이 그대로 —  로 떨어진다');
+  },
+
+  // ㊳ 빈 소속은 빈 줄이 아니라 문장이다. org_unit=NULL 이면 그 자리가 통째로 사라져
+  //    '아직 안 불러온 것'처럼 보이고, 바로 아래가 왜 「볼 수 있는 조직 없음」인지 설명하지 못한다.
+  //    ★ 세션 경로와 실시간 경로가 같은 헬퍼를 써야 한다 — 문구가 두 벌이면 조회 전후로 화면이 깜빡인다.
+  identityOrgFallback(source) {
+    const h = jsBody(source, 'usOrgText');
+    assert.ok(/소속 미등록/.test(h), 'usOrgText 가 빈 소속을 문장으로 바꾸지 않는다');
+    assert.ok(/trim\(\)/.test(h), 'usOrgText 가 공백만 든 값을 걸러내지 않는다 — 공백 한 칸도 빈 줄로 보인다');
+    const u = jsBody(source, 'updateUserUi');
+    assert.ok(/set\('usOrg',\s*usOrgText\(/.test(u),
+      '세션 경로(updateUserUi)가 usOrgText 를 거치지 않는다 — 모달을 연 직후와 조회 후 문구가 달라진다');
+    const { ok } = permBranches(source);
+    assert.ok(/set\('usOrg',\s*usOrgText\(/.test(ok),
+      '실시간 경로(loadUserPerm)가 usOrgText 를 거치지 않는다 — 두 경로가 다른 문구를 쓴다');
+    // 문구 리터럴은 헬퍼 안에 딱 한 번. 두 벌이 되면 한쪽만 고쳐지고 깜빡임이 되돌아온다.
+    // (설명 주석에서의 언급은 세지 않는다 — 따옴표로 감싼 리터럴만 본다.)
+    const hits = [...source.matchAll(/'소속 미등록'/g)].length;
+    assert.strictEqual(hits, 1,
+      `'소속 미등록' 리터럴이 소스에 ${hits}곳 있다 — 헬퍼 하나에서만 나와야 두 경로가 같은 말을 한다`);
+  },
+
+  // ㊴ 트리 숨김은 'scope 가 self 인가'가 아니라 '누를 수 있는 노드가 있는가'로 판정한다.
+  //    소속 미등록(org_unit NULL)은 scope=unit_tree 인데도 12노드 전부 allowed:false 라
+  //    회색 트리만 남는다 — self 와 화면상 결과가 같다. 규칙 둘을 하나로 줄인다.
+  membersTreeHiddenByAllowed(source) {
+    const b = jsBody(source, 'renderUnitTree');
+    assert.ok(!/'self'|"self"/.test(b),
+      "트리 숨김을 scope==='self' 문자열 비교로 판정한다 — 소속 미등록(unit_tree)은 잡히지 않는다");
+    assert.ok(/mbAllowedCount\(/.test(b),
+      '트리 숨김이 allowed 개수(mbAllowedCount)로 판정되지 않는다 — 전 노드가 회색인 트리가 그대로 남는다');
+    assert.ok(/classList\.toggle\('hidden',\s*usable === 0\)/.test(b),
+      "숨김 토글이 usable(=allowed 개수)을 보지 않는다");
+    assert.ok(/gridTemplateColumns = usable \?/.test(b),
+      '1열 전환이 allowed 개수를 보지 않는다 — 트리는 접혔는데 빈 첫 칸이 남아 목록이 좁아진다');
+    // 세는 함수는 한 곳뿐이어야 한다 — 곳곳에서 따로 세면 셋 중 하나는 반드시 어긋난다.
+    const c = jsBody(source, 'mbAllowedCount');
+    assert.ok(/u\.allowed/.test(c) && /length/.test(c), 'mbAllowedCount 가 allowed 노드를 세지 않는다');
+    for (const fn of ['mbEmptyText', 'mbApply']) {
+      assert.ok(/mbAllowedCount\(/.test(jsBody(source, fn)),
+        `${fn} 이 mbAllowedCount 를 쓰지 않는다 — 판정 기준이 두 벌이 되면 트리·안내·범위줄이 서로 다른 말을 한다`);
+    }
+  },
+
+  // ㊵ 0건 안내는 3분기다. 하나로 합치면 검색한 적도 없는데 「검색 결과가 없습니다」라고 말하고,
+  //    사용자는 원인을 자기 조작에서 찾는다(소속 미등록 실측에서 실제로 그랬다).
+  membersEmptyThreeCases(source) {
+    const b = jsBody(source, 'mbEmptyText');
+    assert.ok(/mbSearch/.test(b), 'mbEmptyText 가 검색어를 보지 않는다 — 세 경우를 구분할 근거가 없다');
+    assert.ok(/if\(k\) return '검색 결과가 없습니다\.'/.test(b),
+      "「검색 결과가 없습니다」가 검색어 뒤로 가려지지 않는다 — 검색하지 않았는데 검색 얘기를 한다");
+    assert.ok(/이 조직에 등록된 구성원이 없습니다\./.test(b),
+      '볼 수 있는 조직은 있는데 0명인 경우의 문구가 없다 — 빈 조직과 권한 없음이 한 문장으로 뭉개진다');
+    assert.ok(/소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요\./.test(b),
+      '볼 수 있는 조직이 0개인 경우의 문구가 없다 — 사용자가 스스로 고칠 수 없는 상태를 알려야 한다');
+    // 세 문구가 실제로 갈리는가(하나로 합치면 분기가 사라진다).
+    const msgs = new Set([...b.matchAll(/'([^']*습니다[^']*)'/g)].map((m) => m[1]));
+    assert.strictEqual(msgs.size, 3, `mbEmptyText 의 안내 문구가 ${msgs.size}종이다 — 3분기여야 한다`);
+    // 렌더가 실제로 이 문구를 쓴다(계산만 해 놓고 마크업의 고정 문구가 남으면 아무것도 안 바뀐다).
+    const r = jsBody(source, 'renderMembers');
+    assert.ok(/empty\.textContent = mbEmptyText\(\)/.test(r),
+      'renderMembers 가 #mbEmpty 문구를 mbEmptyText 로 갈아끼우지 않는다 — 마크업의 고정 문구가 그대로 뜬다');
+    assert.ok(/classList\.toggle\('hidden',\s*arr\.length > 0\)/.test(r),
+      '#mbEmpty 숨김 토글이 사라졌다 — 결과가 있는데 안내가 남거나 그 반대가 된다');
+  },
+
+  // ㊶ 범위 줄 — 볼 수 있는 조직도 없고 사람도 없으면 '· 0명'은 아무것도 설명하지 못한다
+  //    (조직명 자리까지 비어 「열람 범위: 소속 조직 — 내 부서와 하위 · 0명」 이 된다).
+  //    ★ self 는 allowed 0 이지만 본인 1명이 있어 여기 걸리지 않는다 — 「본인만 · 1명」 그대로다.
+  membersScopeLineNoBlankZero(source) {
+    const b = jsBody(source, 'mbApply');
+    assert.ok(/!mbAllowedCount\(__mbUnits\) && !rows\.length/.test(b),
+      '범위 줄이 「allowed 0 그리고 0명」을 따로 다루지 않는다 — 빈 조직명 + 0명이 그대로 나간다');
+    assert.ok(/볼 수 있는 조직 없음/.test(b), '볼 수 있는 조직이 없다는 말을 하지 않는다');
+    // 분기가 조기 반환해야 '· 0명' 이 뒤이어 덮어쓰지 않는다.
+    const i = b.indexOf('볼 수 있는 조직 없음'), j = b.indexOf("+ '명'");
+    assert.ok(i >= 0 && j > i && /return;/.test(b.slice(i, j)),
+      "「볼 수 있는 조직 없음」 뒤에 return 이 없다 — 곧바로 '· 0명' 이 덮어쓴다");
+    // 정상 경로는 그대로다(회귀 방지).
+    assert.ok(/where \+ rows\.length \+ '명'/.test(b), '정상 경로의 「<조직명> N명」 표기가 사라졌다');
+  },
 };
 
 // ══ 검사 실행 ═════════════════════════════════════════════════════════
@@ -702,6 +851,11 @@ test('구성원 ㉝: 누를 수 있는 행은 <button type="button"> 이다(div+
 test('구성원 ㉞: 셰브론은 CSS ::after 다(JS 는 마크업을 만들지 않는다)', () => checks.membersChevronCssOnly(src));
 test('구성원 ㉟: 행 클릭은 toast 하나뿐 — 모달 유지 · 추가 조회 없음', () => checks.membersClickToastOnly(src));
 test('구성원 ㊱: #mbSoon 예고는 목록 위에 있고 누를 행이 0개면 감춘다', () => checks.membersSoonHint(src));
+test('사용자정보 ㊲: 신원 3줄은 응답(info)으로 칠하되 currentUser·세션은 건드리지 않는다(§2.5)', () => checks.identityLiveFromInfo(src));
+test('사용자정보 ㊳: 빈 소속은 두 경로가 같은 헬퍼(usOrgText)로 같은 문구를 쓴다', () => checks.identityOrgFallback(src));
+test('구성원 ㊴: 트리 숨김은 allowed 개수로 판정한다(self 문자열 비교 금지)', () => checks.membersTreeHiddenByAllowed(src));
+test('구성원 ㊵: 0건 안내는 3분기다(검색 중 / 빈 조직 / 볼 조직 없음)', () => checks.membersEmptyThreeCases(src));
+test('구성원 ㊶: allowed 0 + 0명이면 범위 줄이 「볼 수 있는 조직 없음」이다', () => checks.membersScopeLineNoBlankZero(src));
 
 // 세션 파일은 4필드 그대로다 — 권한을 세션에 캐시하는 순간 관리자가 역할을 바꿔도 화면이 낡은 값을 말한다.
 test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않았다', () => {
@@ -773,8 +927,8 @@ test('변이⑦: openSettings 에 updateAccountUi 호출을 되살리면 setting
 });
 
 test('변이⑧: updateUserUi 가 innerHTML 로 쓰면 textContentOnly 가 실패한다', () => {
-  const bad = mutate(src, "    set('usOrg', currentUser.orgUnit || '');",
-                          "    document.getElementById('usOrg').innerHTML = currentUser.orgUnit || '';");
+  const bad = mutate(src, "    set('usOrg', usOrgText(currentUser.orgUnit));",
+                          "    document.getElementById('usOrg').innerHTML = usOrgText(currentUser.orgUnit);");
   assert.throws(() => checks.textContentOnly(bad), /HTML 주입 API/);
 });
 
@@ -961,6 +1115,114 @@ test('변이㊱: #mbSoon 숨김 토글을 빼면 membersSoonHint 가 실패한�
   assert.throws(() => checks.membersSoonHint(bad), /#mbSoon 을 토글하지 않는다/);
 });
 
+// ── 결함① 신원 갱신 ──────────────────────────────────────────────────
+
+test('변이㊲-a: 신원을 세션(currentUser)에서 칠하면 identityLiveFromInfo 가 실패한다', () => {
+  const bad = mutate(src, "    set('usOrg', usOrgText(inf.org_unit));",
+                          "    set('usOrg', usOrgText(currentUser.orgUnit));");
+  assert.throws(() => checks.identityLiveFromInfo(bad), /#usOrg 를 응답\(inf\.org_unit\)으로 칠하지 않는다/);
+});
+
+test('변이㊲-b: 응답 키를 camelCase(inf.orgUnit)로 읽으면 identityLiveFromInfo 가 실패한다', () => {
+  const bad = mutate(src, 'usOrgText(inf.org_unit)', 'usOrgText(inf.orgUnit)');
+  assert.throws(() => checks.identityLiveFromInfo(bad), /camelCase/);
+});
+
+test('변이㊲-c: 실패 경로가 신원을 지우면 identityLiveFromInfo 가 실패한다', () => {
+  const bad = mutate(src, "  set('usEditRole', '확인할 수 없음');",
+                          "  set('usName', '확인할 수 없음');\n  set('usEditRole', '확인할 수 없음');");
+  assert.throws(() => checks.identityLiveFromInfo(bad), /조회 실패가 #usName 값을 덮어쓴다/);
+});
+
+test('변이㊲-d: 조회 결과를 currentUser 에 대입하면 identityLiveFromInfo 가 실패한다(§2.5)', () => {
+  const bad = mutate(src, "    set('usName', inf.name || (currentUser && currentUser.loginId) || '—');",
+                          "    currentUser.orgUnit = inf.org_unit;\n    set('usName', inf.name || (currentUser && currentUser.loginId) || '—');");
+  assert.throws(() => checks.identityLiveFromInfo(bad), /currentUser 에 대입한다/);
+});
+
+test('변이㊲-e: 조회 뒤 applyUser 로 세션을 갈아끼우면 identityLiveFromInfo 가 실패한다(§2.5)', () => {
+  const bad = mutate(src, "    set('usPermMsg', '');\n    return;",
+                          "    applyUser(Object.assign({}, currentUser, {orgUnit: inf.org_unit}));\n    set('usPermMsg', '');\n    return;");
+  assert.throws(() => checks.identityLiveFromInfo(bad), /applyUser 를 부른다/);
+});
+
+test('변이㊲-f: 세션을 다시 쓰게 하는 호스트 요청을 붙이면 identityLiveFromInfo 가 실패한다(§2.5)', () => {
+  const bad = mutate(src, "  try{ r = await hostRequest('userInfoGet', {}, 10000); }catch(_){ r = null; }",
+                          "  try{ r = await hostRequest('userInfoGet', {}, 10000); }catch(_){ r = null; }\n  try{ await hostRequest('userSessionGet', {}, 10000); }catch(_){}");
+  assert.throws(() => checks.identityLiveFromInfo(bad), /userInfoGet 하나가 아니다/);
+});
+
+test('변이㊲-g: 신원을 innerHTML 로 칠하면 identityLiveFromInfo 가 실패한다', () => {
+  const bad = mutate(src, "    set('usTitle', inf.title ? '· ' + inf.title : '');",
+                          "    document.getElementById('usTitle').innerHTML = inf.title ? '· ' + inf.title : '';");
+  assert.throws(() => checks.identityLiveFromInfo(bad), /HTML 주입 API/);
+});
+
+test('변이㊳-a: 빈 소속을 빈 문자열로 되돌리면 identityOrgFallback 이 실패한다', () => {
+  const bad = mutate(src, "function usOrgText(v){ const s = String(v == null ? '' : v).trim(); return s || '소속 미등록'; }",
+                          "function usOrgText(v){ return String(v == null ? '' : v).trim(); }");
+  assert.throws(() => checks.identityOrgFallback(bad), /빈 소속을 문장으로 바꾸지 않는다/);
+});
+
+test('변이㊳-b: 세션 경로가 헬퍼를 건너뛰면 identityOrgFallback 이 실패한다(문구 두 벌)', () => {
+  const bad = mutate(src, "    set('usOrg', usOrgText(currentUser.orgUnit));",
+                          "    set('usOrg', currentUser.orgUnit || '소속 없음');");
+  assert.throws(() => checks.identityOrgFallback(bad), /updateUserUi\)가 usOrgText 를 거치지 않는다/);
+});
+
+test('변이㊳-c: 문구를 두 곳에 하드코딩하면 identityOrgFallback 이 실패한다', () => {
+  const bad = mutate(src, "    set('usOrg', usOrgText(inf.org_unit));",
+                          "    set('usOrg', inf.org_unit || '소속 미등록');");
+  assert.throws(() => checks.identityOrgFallback(bad), /2곳 있다|usOrgText 를 거치지 않는다/);
+});
+
+test('변이㊳-d: 공백 트림을 빼면 identityOrgFallback 이 실패한다(공백 한 칸도 빈 줄로 보인다)', () => {
+  const bad = mutate(src, "function usOrgText(v){ const s = String(v == null ? '' : v).trim(); return s || '소속 미등록'; }",
+                          "function usOrgText(v){ const s = String(v == null ? '' : v); return s || '소속 미등록'; }");
+  assert.throws(() => checks.identityOrgFallback(bad), /공백만 든 값을 걸러내지 않는다/);
+});
+
+// ── 결함② 소속 없음 빈 상태 ──────────────────────────────────────────
+
+test('변이㊴-a: 트리 숨김을 노드 개수로 되돌리면 membersTreeHiddenByAllowed 가 실패한다', () => {
+  const bad = mutate(src, '  const usable = mbAllowedCount(arr);', '  const usable = arr.length;');
+  assert.throws(() => checks.membersTreeHiddenByAllowed(bad), /allowed 개수\(mbAllowedCount\)로 판정되지 않는다/);
+});
+
+test("변이㊴-b: 트리 숨김을 scope==='self' 비교로 되돌리면 membersTreeHiddenByAllowed 가 실패한다", () => {
+  const bad = mutate(src, '  const usable = mbAllowedCount(arr);', "  const usable = (__mbScopeRaw === 'self') ? 0 : arr.length;");
+  assert.throws(() => checks.membersTreeHiddenByAllowed(bad), /문자열 비교로 판정한다/);
+});
+
+test('변이㊴-c: mbApply 가 allowed 를 따로 세면 membersTreeHiddenByAllowed 가 실패한다', () => {
+  const bad = mutate(src, '  if(!mbAllowedCount(__mbUnits) && !rows.length){',
+                          '  if(!__mbUnits.filter(u => u && u.allowed).length && !rows.length){');
+  assert.throws(() => checks.membersTreeHiddenByAllowed(bad), /mbApply 이 mbAllowedCount 를 쓰지 않는다/);
+});
+
+test('변이㊵-a: 0건 안내를 한 문구로 합치면 membersEmptyThreeCases 가 실패한다', () => {
+  const bad = mutate(src, "  if(k) return '검색 결과가 없습니다.';\n  return mbAllowedCount(__mbUnits)\n    ? '이 조직에 등록된 구성원이 없습니다.'\n    : '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.';",
+                          "  return '검색 결과가 없습니다.';");
+  assert.throws(() => checks.membersEmptyThreeCases(bad), /검색어 뒤로 가려지지 않는다/);
+});
+
+test('변이㊵-b: 「볼 수 있는 조직 없음」 분기를 빈 조직 문구로 합치면 membersEmptyThreeCases 가 실패한다', () => {
+  const bad = mutate(src, "    : '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.';",
+                          "    : '이 조직에 등록된 구성원이 없습니다.';");
+  assert.throws(() => checks.membersEmptyThreeCases(bad), /볼 수 있는 조직이 0개인 경우의 문구가 없다/);
+});
+
+test('변이㊵-c: renderMembers 가 문구를 갈아끼우지 않으면 membersEmptyThreeCases 가 실패한다', () => {
+  const bad = mutate(src, '  if(empty){ empty.textContent = mbEmptyText(); empty.classList.toggle(\'hidden\', arr.length > 0); }',
+                          "  if(empty) empty.classList.toggle('hidden', arr.length > 0);");
+  assert.throws(() => checks.membersEmptyThreeCases(bad), /mbEmptyText 로 갈아끼우지 않는다/);
+});
+
+test('변이㊶: 범위 줄의 「볼 수 있는 조직 없음」 분기를 빼면 membersScopeLineNoBlankZero 가 실패한다', () => {
+  const bad = mutate(src, "  if(!mbAllowedCount(__mbUnits) && !rows.length){\n    set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + ' · 볼 수 있는 조직 없음');\n    return;\n  }\n", '');
+  assert.throws(() => checks.membersScopeLineNoBlankZero(bad), /따로 다루지 않는다/);
+});
+
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
 // 권한 렌더는 HOST(위젯)에서만 도는 코드다 → chrome.webview 를 심어 HOST=true 로 부팅하고,
 // 호스트 왕복은 hostRequest 를 갈아끼워 만든다(실제 DB·WebView2 없이 렌더 결과만 본다).
@@ -1056,6 +1318,66 @@ if (!JSDOM) {
       assert.strictEqual(txt('usViewScope'), '확인할 수 없음');
       assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.', '호스트가 준 사유를 그대로 보여주지 않는다');
       assert.ok(!/관리자|admin/.test(txt('usEditRole')), '실패 상태에서 권한을 추측해 표시했다');
+    });
+
+    // ── 신원 갱신(결함①) ──────────────────────────────────────────────
+    // 실앱 실측: DB 소속을 「기술개발총괄」로 바꿔도 화면 소속은 「SW 3팀」인데 바로 아래 「열람 범위」는
+    // 즉시 갱신됐다 — 한 모달 안에서 위는 로그인 시점, 아래는 지금. 그 어긋남을 여기서 잡는다.
+    const loginSW3 = () => w.eval("currentUser = {loginId:'hjlee', name:'이현진', title:'책임연구원', orgUnit:'SW 3팀'}; __usPermBusy = false;");
+
+    test('사용자정보(jsdom) ㊲: 조회 성공이 신원을 최신값으로 덮는다 — 세션은 그대로 둔다(§2.5)', async () => {
+      loginSW3();
+      w.eval('updateUserUi()');
+      assert.strictEqual(txt('usOrg'), 'SW 3팀', '전제: 세션 값이 먼저 그려진다(오프라인 폴백)');
+      reply({ ok: true, info: { found: true, name: '이현진', title: '수석연구원', org_unit: '기술개발총괄',
+        edit_role: 'editor', view_scope: 'unit_tree', is_active: 1 } });
+      await w.eval('loadUserPerm()');
+      assert.strictEqual(txt('usOrg'), '기술개발총괄',
+        '소속이 로그인 시점 값에 굳었다 — 바로 아래 「열람 범위」만 최신이라 한 모달이 두 시점을 말한다');
+      assert.strictEqual(txt('usTitle'), '· 수석연구원', '직급도 최신값이어야 한다(같은 회신에 들어 있다)');
+      assert.strictEqual(txt('usName'), '이현진');
+      assert.ok(/소속 조직/.test(txt('usViewScope')), '전제: 권한도 같은 회신으로 함께 갱신된다');
+      // ★ 화면만 최신이다. 세션을 여기서 갱신하면 로그아웃과 경합해 삭제된 세션이 되살아난다(USER-LOGIN §2.5).
+      assert.strictEqual(w.eval('currentUser.orgUnit'), 'SW 3팀',
+        'loadUserPerm 이 세션(currentUser)을 갈아끼웠다 — 표시 계층에서 끝나야 한다(§2.5)');
+      assert.strictEqual(w.eval('currentUser.title'), '책임연구원', '세션의 직급까지 덮어썼다(§2.5)');
+    });
+
+    test('사용자정보(jsdom) ㊲: 조회 실패는 신원을 지우지 않는다 — 세션 값이 남는다', async () => {
+      loginSW3();
+      w.eval('updateUserUi()');
+      reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
+      await w.eval('loadUserPerm()');
+      assert.strictEqual(txt('usName'), '이현진', '조회에 실패했다고 이름을 지웠다 — 오프라인에서도 이름은 보여야 한다');
+      assert.strictEqual(txt('usTitle'), '· 책임연구원', '조회 실패가 직급을 지웠다');
+      assert.strictEqual(txt('usOrg'), 'SW 3팀', '조회 실패가 소속을 지웠다');
+      assert.strictEqual(txt('usEditRole'), '확인할 수 없음', '전제: 권한만 「모른다」고 말한다');
+      assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.', '전제: 사유는 권한 블록에 있다');
+    });
+
+    test('사용자정보(jsdom) ㊳: 빈 소속은 두 경로 모두 「소속 미등록」이다(문구 깜빡임 금지)', async () => {
+      w.eval("currentUser = {loginId:'hjlee', name:'이현진', title:'', orgUnit:''}; __usPermBusy = false; updateUserUi();");
+      assert.strictEqual(txt('usOrg'), '소속 미등록',
+        '세션 경로가 빈 소속을 빈 줄로 남긴다 — 그 자리가 사라지면 「아직 안 불러온 것」으로 읽힌다');
+      assert.strictEqual(txt('usTitle'), '', '직급이 없으면 꼬리표도 없다');
+      reply({ ok: true, info: { found: true, name: '이현진', title: '', org_unit: '',
+        edit_role: 'viewer', view_scope: 'unit_tree', is_active: 1 } });
+      await w.eval('loadUserPerm()');
+      assert.strictEqual(txt('usOrg'), '소속 미등록',
+        '실시간 경로가 다른 문구를 쓴다 — 조회 전후로 같은 줄이 다른 말을 하면 화면이 깜빡인다');
+    });
+
+    test('사용자정보(jsdom) ㊲: 응답의 이름·소속에 마크업이 와도 텍스트로만 들어간다', async () => {
+      loginSW3();
+      reply({ ok: true, info: { found: true, name: '<img src=x onerror=1>', title: '<b>수석</b>', org_unit: '<i>총괄</i>',
+        edit_role: 'editor', view_scope: 'all', is_active: 1 } });
+      await w.eval('loadUserPerm()');
+      const nm = w.document.getElementById('usName'), og = w.document.getElementById('usOrg');
+      assert.strictEqual(nm.querySelector('img'), null, '응답 이름의 img 요소가 실제로 만들어졌다');
+      assert.strictEqual(nm.children.length, 0, '#usName 안에 요소가 생성됐다 — HTML 로 해석됐다');
+      assert.strictEqual(og.children.length, 0, '#usOrg 안에 요소가 생성됐다 — HTML 로 해석됐다');
+      assert.ok(nm.textContent.includes('<img src=x onerror=1>'), '이름 원문이 그대로 보이지 않는다');
+      assert.ok(og.textContent.includes('<i>총괄</i>'), '소속 원문이 그대로 보이지 않는다');
     });
 
     test('사용자정보(jsdom) ⑧: 마크업 문자열이 와도 요소로 해석되지 않는다(textContent)', async () => {
@@ -1311,6 +1633,65 @@ if (!JSDOM) {
       assert.strictEqual(linkRows().length, 0, 'self 인데 누를 수 있는 행이 있다 — 목록에 나뿐이다');
       assert.ok(w.document.getElementById('mbSoon').classList.contains('hidden'),
         '누를 행이 0개인데 「준비 중」 예고가 남았다 — 아무도 못 누르는 안내는 소음이다(self 사용자 71명이 이 경우다)');
+    });
+
+    // ── 소속 없음 = 막다른 화면(결함②) ────────────────────────────────
+    // 실앱 실측: org_unit=NULL + unit_tree 면 트리 12노드 전부 회색, 목록 0행, 범위줄 「· 0명」(조직명 자리 빔),
+    // 안내는 「검색 결과가 없습니다.」 — 검색한 적이 없는데 검색 결과라고 말한다.
+    test('구성원(jsdom) ㊴㊵㊶: 소속 미등록 — 트리 숨김 · 관리자 안내 · 범위줄에 0명 없음', async () => {
+      login();
+      const none = UNITS_SW.map((u) => ({ ...u, allowed: false }));
+      membersReply({ found: true, scope: 'unit_tree', myUnit: '', units: none, members: [] });
+      await w.eval('openMembers()');
+      assert.ok(w.document.getElementById('mbTree').classList.contains('hidden'),
+        '전 노드가 회색인데 트리가 남았다 — 12줄 전부 눌리지 않는 화면을 사용자는 자기 조작 탓으로 읽는다');
+      assert.strictEqual(nodes().length, 0, '누를 수 없는 노드만 12개를 그렸다');
+      assert.strictEqual(w.document.querySelector('.mb-split').style.gridTemplateColumns, '1fr',
+        '트리는 접혔는데 2열 정의가 남아 목록이 좁은 첫 칸으로 끌려간다');
+      assert.strictEqual(rows(), 0, '전제: 볼 수 있는 사람이 없다');
+      const empty = w.document.getElementById('mbEmpty');
+      assert.ok(!empty.classList.contains('hidden'), '0건인데 아무 안내도 없다');
+      assert.strictEqual(empty.textContent, '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.',
+        `안내가 사유를 말하지 않는다: ${empty.textContent}`);
+      assert.ok(!/검색/.test(empty.textContent),
+        '검색한 적이 없는데 「검색 결과가 없습니다」라고 말한다 — 사용자가 원인을 자기 조작에서 찾게 된다');
+      assert.ok(!/0명/.test(txt('mbScope')), `범위 줄에 '· 0명'이 남았다(조직명 자리도 비어 있다): ${txt('mbScope')}`);
+      assert.ok(/볼 수 있는 조직 없음/.test(txt('mbScope')), `범위 줄이 왜 0인지 말하지 않는다: ${txt('mbScope')}`);
+    });
+
+    test('구성원(jsdom) ㊵: 볼 수 있는 조직은 있는데 0명이면 「빈 조직」이라고 말한다', async () => {
+      login();
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: [] });
+      await w.eval('openMembers()');
+      assert.ok(!w.document.getElementById('mbTree').classList.contains('hidden'),
+        '누를 수 있는 조직이 6개인데 트리를 접었다');
+      assert.strictEqual(w.document.getElementById('mbEmpty').textContent, '이 조직에 등록된 구성원이 없습니다.',
+        `빈 조직과 「볼 조직 없음」이 한 문장으로 뭉개졌다: ${w.document.getElementById('mbEmpty').textContent}`);
+      assert.ok(/SW개발본부 0명/.test(txt('mbScope')),
+        `조직을 고를 수 있으면 인원 수를 그대로 말한다(현행 유지): ${txt('mbScope')}`);
+    });
+
+    test('구성원(jsdom) ㊵: 검색 중 0건은 여전히 「검색 결과가 없습니다」다(현행 유지)', async () => {
+      login();
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: MEMBERS_SW });
+      await w.eval('openMembers()');
+      w.eval("document.getElementById('mbSearch').value = '없는이름'; filterMembers();");
+      assert.strictEqual(rows(), 0, '전제: 검색 0건');
+      assert.strictEqual(w.document.getElementById('mbEmpty').textContent, '검색 결과가 없습니다.',
+        `검색 중 0건의 문구가 바뀌었다: ${w.document.getElementById('mbEmpty').textContent}`);
+    });
+
+    test('구성원(jsdom) ㊴㊵: self 회귀 — 트리는 접히되 1행이 남고 빈 안내는 뜨지 않는다', async () => {
+      login();
+      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: [],
+        members: [M('hjlee', '이현진', '책임연구원', 'SW 3팀')] });
+      await w.eval('openMembers()');
+      assert.ok(w.document.getElementById('mbTree').classList.contains('hidden'), 'self 인데 트리 칸이 남았다');
+      assert.strictEqual(rows(), 1, 'self 인데 본인 1행이 아니다');
+      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'),
+        'self 에 빈 안내가 떴다 — allowed 0 이지만 구성원이 1명이라 어느 분기도 타면 안 된다');
+      assert.strictEqual(txt('mbScope'), '열람 범위: 본인만 · 1명',
+        `self 범위 줄이 바뀌었다(allowed 0 이지만 1명이라 현행 유지여야 한다): ${txt('mbScope')}`);
     });
 
     // 부팅에서 걸린 타이머(세션 조회 타임아웃·스켈레톤 폴백)가 러너를 붙잡지 않도록 창을 닫는다.

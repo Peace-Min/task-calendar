@@ -3781,10 +3781,18 @@ function hideLoginGate(){
   _gateInert(false);
 }
 function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateUserUi(); }catch(_){} }
+// 소속 한 줄의 문구 — app_user.org_unit 은 NULL 일 수 있다(실제로 있다).
+// 빈 문자열로 두면 그 자리가 통째로 사라져 '아직 안 불러온 것'처럼 보이고, 바로 아래 「열람 범위」가
+// '볼 수 있는 조직 없음'이라고 말하는 이유를 설명하지 못한다. 없는 건 없다고 말한다.
+// ★ 세션 경로(updateUserUi)와 실시간 경로(loadUserPerm)가 이 한 함수를 같이 쓴다 —
+//   문구를 두 벌로 두면 모달을 연 직후와 조회가 끝난 뒤가 서로 다른 말을 해 화면이 깜빡인다.
+function usOrgText(v){ const s = String(v == null ? '' : v).trim(); return s || '소속 미등록'; }
 // 「사용자 정보」 모달의 신원 표기 — 이름+직급 · 소속 · (로그인돼 있을 때만) 로그아웃, 그게 전부다.
 // ★ 값은 전부 textContent — DB에서 온 이름·소속이 마크업으로 해석되면 안 된다.
 // ★ 권한은 여기서 그리지 않는다(loadUserPerm 담당). 신원은 세션에 있어 오프라인에서도 즉시 뜨지만
 //   권한은 DB 왕복이 필요하다 — 한 함수에 묶으면 서버가 느릴 때 이름조차 늦게 보인다.
+// ★ 여기서 그리는 값은 '로그인 시점'의 세션이다(오프라인 폴백). 최신값은 loadUserPerm 이 덮는다 —
+//   그 순서가 뒤집히면 안 된다: 세션이 늦게 와서 최신값을 덮으면 화면이 도로 낡는다.
 function updateUserUi(){
   const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
   set('usState', !HOST ? '· 데스크톱 위젯 전용' : (currentUser ? '· 로그인됨' : '· 로그인 필요'));
@@ -3796,7 +3804,7 @@ function updateUserUi(){
   if(on){
     set('usName', currentUser.name || currentUser.loginId || '—');
     set('usTitle', currentUser.title ? '· ' + currentUser.title : '');
-    set('usOrg', currentUser.orgUnit || '');
+    set('usOrg', usOrgText(currentUser.orgUnit));
   } else set('usMsg', '');
 }
 // 권한 코드 → 사람이 읽는 문장. 원시 코드값(admin/editor/viewer, all/unit_tree/self)을 그대로 노출하지 않는다 —
@@ -3810,6 +3818,13 @@ const US_VIEW_SCOPE = { all:'전체 — 모든 구성원', unit_tree:'소속 조
 function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return map[k] || (k ? k + ' — 알 수 없는 값' : '—'); }
 // 권한 조회 — 열 때마다 DB에서 새로 읽는다(세션에는 권한이 없다: 4필드뿐).
 // ★ 실패하면 추측하지 않는다. 낡거나 지어낸 권한을 보여주는 것이 '모른다'고 말하는 것보다 나쁘다.
+// ★ 신원(이름·직급·소속)도 같은 회신에 들어 있어 함께 칠한다. 예전엔 버렸는데, 그러면 위 두 줄은
+//   로그인 시점의 세션 값이고 바로 아래 「열람 범위」만 최신이라 한 모달 안에서 두 시점이 섞였다
+//   (실측: DB 소속을 바꿔도 위는 옛 팀, 아래는 즉시 갱신). 값 우선순위는 실시간 > 세션이다.
+// ★ 그런데 currentUser·세션 파일에는 절대 쓰지 않는다 — USER-LOGIN §2.5: app_user 재조회가
+//   로그아웃과 경합해 삭제된 세션을 되살린 적이 있다. 세션은 오프라인 폴백이지 진실의 원천이 아니다.
+//   여기서 끝내도 안전한 근거: 세션의 name/title/orgUnit 은 앱 전체에서 updateUserUi 의 그 3줄에서만
+//   쓰인다(loginId 만 로그인 판정에 더 쓰이는데 그건 PK 라 낡지 않는다). 낡은 값이 샐 다른 경로가 없다.
 let __usPermBusy = false;   // 재진입 가드 — 모달 오픈과 [지금 새로고침]이 겹치면 늦게 온 회신이 먼저 온 것을 덮는다
 async function loadUserPerm(){
   if(!HOST || !currentUser || __usPermBusy) return;
@@ -3822,6 +3837,11 @@ async function loadUserPerm(){
   __usPermBusy = false;
   if(r && r.ok && r.info){
     const inf = r.info;
+    // 신원 3줄 — 호스트가 보내는 키는 DB 컬럼 그대로다(name/title/org_unit). orgUnit(camelCase)으로 읽으면
+    // 조용히 undefined 가 되어 이름이 통째로 사라진다. 이름이 비면 loginId, 그것도 비면 —.
+    set('usName', inf.name || (currentUser && currentUser.loginId) || '—');
+    set('usTitle', inf.title ? '· ' + inf.title : '');
+    set('usOrg', usOrgText(inf.org_unit));
     // is_active=0 은 '편집 불가'라는 결과까지 말해 준다 — 역할만 보고 편집이 될 거라 믿으면 안 된다.
     const active = Number(inf.is_active == null ? 1 : inf.is_active) !== 0;
     set('usEditRole', usRoleText(US_EDIT_ROLE, inf.edit_role) + (active ? '' : ' (계정 비활성 — 편집 불가)'));
@@ -3830,6 +3850,8 @@ async function loadUserPerm(){
     set('usPermMsg', '');
     return;
   }
+  // 실패 — 신원 3줄은 건드리지 않는다. 세션 값이 그대로 남는다(오프라인에서도 이름은 보여야 한다).
+  // 「권한」 블록이 이미 '확인할 수 없음' + 사유를 말하고 있으므로, 신원에까지 경고를 겹치면 소음이다.
   set('usEditRole', '확인할 수 없음');
   set('usViewScope', '확인할 수 없음');
   set('usPermState', '');
@@ -3888,6 +3910,11 @@ function mbSubtree(name){
   }
   return out;
 }
+// 누를 수 있는(=열람 범위 안) 노드 수. 트리 숨김 · 빈 상태 문구 · 범위 줄이 전부 이 한 수를 본다 —
+// 세 곳이 따로 세면 '트리는 접혔는데 안내는 조직이 있다고 말하는' 어긋남이 반드시 생긴다.
+// ★ 'scope 가 self 인가'로 묻지 않는 이유: 소속 미등록(org_unit NULL)이면 scope 는 unit_tree 인데도
+//   12노드 전부 allowed:false 라 결과가 같다. 물어야 할 것은 '누를 수 있는 게 있는가' 하나뿐이다.
+function mbAllowedCount(units){ return (Array.isArray(units) ? units : []).filter(u => u && u.allowed).length; }
 // 기본 선택 = 내가 누를 수 있는 '가장 위' 노드 = 부모가 허용 집합에 없는 노드 중 첫 번째.
 // unit_tree 면 그게 곧 내 소속이고(허용 집합 = 내 소속 + 하위), all 이면 루트(기술개발총괄)다.
 // ★ all 인데 내 소속을 기본으로 고르지 않는 이유: 열자마자 '내가 볼 수 있는 전부'가 보여야
@@ -3905,10 +3932,13 @@ function renderUnitTree(units, myUnit){
   while(nav.firstChild) nav.removeChild(nav.firstChild);
   const arr = Array.isArray(units) ? units.slice() : [];
   const split = document.querySelector('.mb-split');
-  // 그릴 노드가 없으면(=self, 또는 조회 실패) 트리를 통째로 접고 1열로 만든다.
-  nav.classList.toggle('hidden', arr.length === 0);
-  if(split) split.style.gridTemplateColumns = arr.length ? '' : '1fr';
-  if(!arr.length) return;
+  // 누를 수 있는 노드가 하나도 없으면 트리를 통째로 접고 1열로 만든다.
+  // self(units 자체가 빈 배열) · 조회 실패 · 소속 미등록(12노드 전부 allowed:false)이 한 규칙으로 덮인다 —
+  // 회색 트리만 12줄 남겨 두면 '눌러도 안 되는' 화면을 사용자가 자기 조작 탓으로 읽는다.
+  const usable = mbAllowedCount(arr);
+  nav.classList.toggle('hidden', usable === 0);
+  if(split) split.style.gridTemplateColumns = usable ? '' : '1fr';
+  if(!usable) return;
   const names = new Set(arr.map(u => String(u && u.name || '')));
   const kids = mbChildMap(arr);
   // 부모가 목록에 없으면 루트로 취급한다. 순환(A→B→A)이면 루트가 하나도 없어 아무것도 그려지지 않지만,
@@ -3968,11 +3998,30 @@ function mbVisible(){
   if(!k) return arr;
   return arr.filter(m => [m.name, m.title, m.orgUnit].some(v => String(v == null ? '' : v).toLowerCase().includes(k)));
 }
+// 0건 안내 문구 — 사유마다 사용자가 할 일이 다르다. 하나로 합치면 검색한 적도 없는데
+// 「검색 결과가 없습니다」라고 말하게 되고, 사용자는 원인을 자기 조작에서 찾는다(실제로 그랬다).
+//   ① 검색 중 0건        → 검색어를 고치면 된다.
+//   ② 조직은 있는데 0명  → 그 조직이 빈 것이다. 사용자 잘못이 아니다.
+//   ③ 볼 수 있는 조직 0  → 소속 미등록. 사용자가 고칠 수 없다 — 관리자에게 보내야 한다.
+function mbEmptyText(){
+  const q = document.getElementById('mbSearch');
+  const k = q ? String(q.value || '').trim() : '';
+  if(k) return '검색 결과가 없습니다.';
+  return mbAllowedCount(__mbUnits)
+    ? '이 조직에 등록된 구성원이 없습니다.'
+    : '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.';
+}
 // 범위 줄 + 목록을 함께 갱신한다(인원 수가 목록과 어긋나면 안 된다).
 function mbApply(){
   const rows = mbVisible();
   renderMembers(rows);
   const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
+  // 누를 수 있는 조직도 없고 사람도 없으면 '· 0명'은 아무것도 설명하지 못한다(조직명 자리도 비어 있다).
+  // ★ self 는 allowed 0 이지만 본인 1명이 있어 여기 걸리지 않는다 — 「본인만 · 1명」 그대로다.
+  if(!mbAllowedCount(__mbUnits) && !rows.length){
+    set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + ' · 볼 수 있는 조직 없음');
+    return;
+  }
   const where = __mbSel ? (' · ' + __mbSel + ' ') : ' · ';
   set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');
 }
@@ -4013,7 +4062,9 @@ function renderMembers(rows){
     list.appendChild(row);
   }
   // 0건 안내는 렌더와 한 몸이다 — 목록을 그리는 곳이 둘이면 '빈 목록 + 안내 없음'이 반드시 생긴다.
-  const empty = document.getElementById('mbEmpty'); if(empty) empty.classList.toggle('hidden', arr.length > 0);
+  // 문구도 여기서 정한다(mbEmptyText): 마크업에 하나만 박아 두면 검색하지 않았을 때도 검색 얘기를 한다.
+  const empty = document.getElementById('mbEmpty');
+  if(empty){ empty.textContent = mbEmptyText(); empty.classList.toggle('hidden', arr.length > 0); }
   // 예고 줄도 같은 이유로 여기서 함께 정한다 — '누를 수 있는 행이 있는가'를 아는 곳이 여기뿐이다.
   const soon = document.getElementById('mbSoon'); if(soon) soon.classList.toggle('hidden', links === 0);
 }
