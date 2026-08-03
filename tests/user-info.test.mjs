@@ -547,19 +547,120 @@ const checks = {
       '#usMembersSec 의 초기 상태가 hidden 이 아니다 — 부팅 첫 프레임에 진입점이 번쩍인다');
   },
 
-  // ㉓ 일정 관련 UI는 5단계 자리다. 그리고 행은 '누를 수 있는 것처럼' 보이면 안 된다 — 열 것이 없다.
-  membersNoScheduleUi(source) {
+  // ㉓ 계약이 한 번 뒤집혔다. 예전엔 "모달에 「일정」이라는 낱말이 있으면 실패"였다 —
+  //    이제 행 클릭 진입점 + 「준비 중」 예고가 생겼으니 그 낱말은 있어야 한다.
+  //    막을 것은 문구가 아니라 '실제 열람 UI가 들어왔는가'다: 월 그리드(renderGrid)·일자 패널(dpBody)·
+  //    편집 컨트롤(새 기록·저장)이 보이면 없는 데이터를 그리고 있다는 뜻이다
+  //    — DB에 일정 테이블 자체가 없다(7개 테이블뿐, 일정은 각 PC 로컬 파일).
+  //    ★ 어포던스도 같은 원리로 좁혔다: cursor:pointer·hover 는 '실제로 눌리는 행'(.is-link)에만.
+  membersEntryOnlyNoRealUi(source) {
     const md = membersModalMarkup(source);
     const b = jsBody(source, 'renderMembers');
-    for (const w of ['일정', '캘린더', '스케줄']) {
-      assert.ok(!md.includes(w), `구성원 모달에 「${w}」 UI 가 들어왔다 — 타인 일정 열람은 5단계다(빈 약속 금지)`);
-      assert.ok(!b.includes(w), `renderMembers 가 「${w}」 를 그린다 — 행은 아직 이름·직급·소속뿐이다`);
+    for (const w of ['renderGrid', 'dpBody', '새 기록', '저장']) {
+      assert.ok(!md.includes(w),
+        `구성원 모달에 실제 일정 열람 UI 흔적(${w})이 들어왔다 — 자리는 열되 구현은 5단계다(일정 테이블이 아직 없다)`);
+      assert.ok(!b.includes(w),
+        `renderMembers 가 실제 일정 열람 UI(${w})를 그린다 — 행은 '진입점'까지다`);
     }
+    // 진입점 자체는 있어야 한다 — 예고만 있고 누를 수 없으면 그것도 거짓말이다.
+    assert.ok(/id="mbSoon"/.test(md), '#mbSoon 예고 줄이 사라졌다 — 누르기 전에 알릴 자리가 없다');
+    assert.ok(/mb-row is-link/.test(b), 'renderMembers 가 누를 수 있는 행(.mb-row.is-link)을 만들지 않는다');
     const css = source.slice(source.indexOf('<style>'), source.indexOf('</style>'));
     assert.ok(!/cursor:pointer/.test(cssRule(source, '.mb-row')),
-      '.mb-row 에 cursor:pointer 가 붙었다 — 눌러도 아무 일도 일어나지 않는 행이 된다');
+      '.mb-row 맨 클래스에 cursor:pointer 가 붙었다 — 못 누르는 행(=나 자신)까지 눌리는 것처럼 보인다');
     assert.ok(!/\.mb-row:hover/.test(css),
-      '.mb-row:hover 강조가 생겼다 — 클릭 가능한 것처럼 보인다(열 것이 아직 없다)');
+      '.mb-row:hover 강조가 생겼다 — hover 는 .mb-row.is-link 에만 준다');
+    assert.ok(/cursor:pointer/.test(cssRule(source, '.mb-row.is-link')),
+      '.mb-row.is-link 에 cursor:pointer 가 없다 — 실제로 눌리는 행이 눌리게 보이지 않는다');
+    assert.ok(/\.mb-row\.is-link:hover\{/.test(css),
+      '.mb-row.is-link:hover 강조가 없다 — 어느 행에 커서가 있는지 알 수 없다');
+  },
+
+  // ㉜ 나 자신은 누를 수 없다 — 이미 보고 있는 캘린더로 가는 링크는 의미가 없다.
+  //    ★ view_scope='self' 인 사용자(89명 중 71명)는 목록이 본인 1행뿐이라, 이 규칙 하나로
+  //      「준비 중」이 아예 보이지 않는다. 의도된 결과다 — 누를 대상이 없는 사람에게 예고할 것도 없다.
+  membersSelfRowNotLink(source) {
+    const b = jsBody(source, 'renderMembers');
+    assert.ok(/currentUser[\s\S]{0,80}loginId/.test(b),
+      'renderMembers 가 currentUser.loginId 를 보지 않는다 — 내 행을 가려낼 근거가 없다');
+    // 판정이 상수로 굳으면(예: const isMe = false) 클래스 삼항은 멀쩡한데 전원이 눌리게 된다.
+    const im = /const isMe = ([^;]+);/.exec(b);
+    assert.ok(im && /loginId/.test(im[1]) && /\bme\b/.test(im[1]),
+      `내 행 판정(isMe)이 loginId 대조가 아니다: ${im ? im[1] : '(없음)'} — 상수로 굳으면 내 행까지 눌린다`);
+    assert.ok(/isMe \?\s*'mb-row'\s*:\s*'mb-row is-link'/.test(b),
+      '내 행에 is-link 가 붙는다(조건이 뒤집혔거나 전원 같은 클래스다) — 내 캘린더로 가는 링크는 의미가 없다');
+    assert.ok(/if\(isMe\)\{[\s\S]{0,200}' · 나'/.test(b),
+      "내 행에만 붙는 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다");
+    assert.ok(/s\.className = 'git-opt';\s*s\.textContent = ' · 나'/.test(b),
+      '「· 나」가 별도 span.git-opt 가 아니다 — 맨 텍스트로 섞으면 이름과 한 덩어리가 돼 색·굵기를 나눌 수 없다');
+  },
+
+  // ㉝ 누를 수 있는 행은 진짜 <button type="button"> 이다. div+onclick 은 Tab 으로 닿지 않고
+  //    Enter/Space 도 안 먹고 스크린리더에 '누를 수 있는 것'으로 나가지도 않는다.
+  membersLinkRowIsButton(source) {
+    const b = jsBody(source, 'renderMembers');
+    assert.ok(/createElement\(isMe \? 'div' : 'button'\)/.test(b),
+      '누를 수 있는 행이 <button> 이 아니다 — div+onclick 은 키보드 접근·포커스를 통째로 잃는다');
+    assert.ok(/row\.type = 'button'/.test(b),
+      "row.type = 'button' 이 없다 — <button> 의 기본 type 은 submit 이다");
+    assert.ok(/addEventListener\('click', mbRowClick\)/.test(b),
+      '행 클릭이 addEventListener(mbRowClick) 로 붙지 않았다');
+    assert.ok(!/onclick/.test(b), 'renderMembers 가 onclick 속성을 쓴다 — 배선은 addEventListener 하나로 통일한다');
+    // 버튼이어도 목록 행처럼 보여야 한다 — 기본 껍데기를 안 벗기면 회색 버튼이 세로로 쌓인다.
+    const r = cssRule(source, '.mb-row.is-link');
+    for (const d of ['display:block', 'width:100%', 'text-align:left', 'background:none', 'border:0']) {
+      assert.ok(r.includes(d), `.mb-row.is-link 에 ${d} 가 없다 — 버튼 기본 껍데기가 목록 모양을 깨뜨린다`);
+    }
+  },
+
+  // ㉞ 셰브론(›)은 CSS ::after 다 — content 는 CSS 리터럴이라 DB 문자열이 섞일 여지가 없다.
+  //    JS 가 그리기 시작하면 그 순간 '행에 마크업을 넣는 경로'가 생기고, 다음 사람은 거기에 이름을 붙인다.
+  membersChevronCssOnly(source) {
+    const css = source.slice(source.indexOf('<style>'), source.indexOf('</style>'));
+    assert.ok(/\.mb-row\.is-link::after\{[^}]*content:'›'/.test(css),
+      ".mb-row.is-link::after 의 셰브론(content:'›')이 없다 — 누를 수 있는 행이라는 표시가 사라진다");
+    const b = jsBody(source, 'renderMembers');
+    assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(b),
+      'renderMembers 가 HTML 주입 API 를 쓴다 — 셰브론은 CSS 로만 그린다(㉑과 같은 규칙)');
+    assert.ok(!/›/.test(b), '셰브론을 JS 가 만든다 — CSS ::after 로만 그려야 DOM 주입 표면이 늘지 않는다');
+    // 이름·소속과 겹치거나 줄바꿈을 유발하면 안 된다(400px 실측) — 자리를 padding 으로 비워 둔다.
+    const r = cssRule(source, '.mb-row.is-link');
+    assert.ok(/position:relative/.test(r) && /padding-right:\d+px/.test(r),
+      '.mb-row.is-link 에 셰브론 자리(position:relative + padding-right)가 없다 — 이름과 겹치거나 되접힌다');
+    assert.ok(!/float:right/.test(cssRule(source, '.mb-row.is-link::after')),
+      '셰브론을 float 로 띄운다 — 두 번째 줄(소속)이 밀려 위젯 실폭에서 레이아웃이 흔들린다');
+  },
+
+  // ㉟ 클릭이 하는 일은 알림 하나가 전부다. 모달을 닫거나·화면을 옮기거나·그 사람을 더 조회하면
+  //    '진입점만 만들었다'는 계약이 깨진다(그리고 열어 보여 줄 데이터가 애초에 없다).
+  membersClickToastOnly(source) {
+    const h = jsBody(source, 'mbRowClick');
+    assert.ok(/toast\('일정 열람은 준비 중입니다', 'info'\)/.test(h),
+      '행 클릭이 「준비 중」 안내를 띄우지 않는다 — 눌러도 아무 반응이 없으면 고장으로 읽힌다');
+    for (const dead of ['closeOverlay', 'closeModal', 'openModal', 'hostRequest', 'renderGrid', 'location']) {
+      assert.ok(!h.includes(dead), `행 클릭이 ${dead} 를 쓴다 — 지금은 알림 하나가 전부다`);
+    }
+    // 렌더 쪽에도 같은 금지 — 핸들러를 인라인으로 되돌리며 슬쩍 끼워 넣는 경로를 함께 막는다.
+    const b = jsBody(source, 'renderMembers');
+    for (const dead of ['closeOverlay', 'closeModal', 'hostRequest']) {
+      assert.ok(!b.includes(dead), `renderMembers 가 ${dead} 를 부른다 — 행을 그리는 일에 그런 부작용은 없다`);
+    }
+  },
+
+  // ㊱ 예고는 '누르기 전에' 보여야 한다(검색칸 아래 · 목록 위). 누른 뒤에만 알리면 낚인 느낌이 든다.
+  //    그리고 누를 수 있는 행이 0개면 감춘다 — 아무도 못 누르는데 안내만 남으면 소음이다.
+  membersSoonHint(source) {
+    const md = membersModalMarkup(source);
+    assert.ok(/<div class="set-hint" id="mbSoon">/.test(md), '#mbSoon 예고 줄이 없다');
+    assert.ok(/준비 중/.test(md), '#mbSoon 이 「준비 중」이라고 말하지 않는다 — 곧 되는 줄 알고 기다리게 된다');
+    const iSearch = md.indexOf('id="mbSearch"'), iSoon = md.indexOf('id="mbSoon"'), iList = md.indexOf('id="mbList"');
+    assert.ok(iSearch >= 0 && iSoon > iSearch && iList > iSoon,
+      '#mbSoon 이 검색칸 아래 · 목록 위가 아니다 — 누르기 전에 눈에 들어오는 자리여야 한다');
+    const b = jsBody(source, 'renderMembers');
+    assert.ok(/getElementById\('mbSoon'\)[\s\S]{0,90}classList\.toggle\('hidden'/.test(b),
+      'renderMembers 가 #mbSoon 을 토글하지 않는다 — 누를 행이 0개여도 안내가 남는다');
+    assert.ok(/links\+\+/.test(b) && /links === 0/.test(b),
+      "누를 수 있는 행 수(links)로 판단하지 않는다 — 전체 행 수로 세면 목록이 '나 혼자'일 때도 예고가 뜬다");
   },
 };
 
@@ -587,7 +688,7 @@ test('구성원 ⑲: #membersModal 은 닫을 수 있는 .overlay 이고 진입�
 test('구성원 ⑳: 미리보기 표본(US_MEMBERS_PREVIEW·#mbPreview)이 0건이다', () => checks.noPreviewSample(src));
 test('구성원 ㉑: renderMembers 는 DOM API 로만 그린다(HTML 주입 API 부재)', () => checks.membersNoHtmlInjection(src));
 test('구성원 ㉒: #usMembersSec 는 #usPermSec 와 같은 조건으로 토글된다', () => checks.membersSecToggle(src));
-test('구성원 ㉓: 행에 일정·캘린더·스케줄 UI 가 없고 클릭 가능해 보이지 않는다', () => checks.membersNoScheduleUi(src));
+test('구성원 ㉓: 행 진입점만 있고 실제 열람 UI(그리드·일자패널·편집)는 없다', () => checks.membersEntryOnlyNoRealUi(src));
 test('구성원 ㉔: 호스트 membersGet 은 읽기 경로다(OpenWriteAsync 금지)', () => checks.membersHostReadPath(main, pdb));
 test('구성원 ㉕: 명부 IN 절은 파라미터 바인딩이다(유닛 이름 문자열 연결 금지)', () => checks.membersInClauseBound(pdb));
 test('구성원 ㉖: scope=self 는 본인 1행만 담는다(전체 조회 금지)', () => checks.membersSelfOnly(pdb));
@@ -596,6 +697,11 @@ test('구성원 ㉘: renderUnitTree·renderMembers·mbFail 이 DOM API 로만 �
 test('구성원 ㉙: 범위 밖 노드는 숨기지 않고 disabled 로 그린다', () => checks.membersOutOfScopeDisabled(src));
 test('구성원 ㉚: openMembers 는 열 때마다 membersGet 을 다시 부른다(캐시 금지)', () => checks.membersRefetchOnOpen(src));
 test('구성원 ㉛: .mb-split 은 2열 그리드다(좌 트리 · 우 목록)', () => checks.membersSplitTwoCols(src));
+test('구성원 ㉜: 내 행은 is-link 가 아니고 「· 나」 꼬리표가 붙는다', () => checks.membersSelfRowNotLink(src));
+test('구성원 ㉝: 누를 수 있는 행은 <button type="button"> 이다(div+onclick 금지)', () => checks.membersLinkRowIsButton(src));
+test('구성원 ㉞: 셰브론은 CSS ::after 다(JS 는 마크업을 만들지 않는다)', () => checks.membersChevronCssOnly(src));
+test('구성원 ㉟: 행 클릭은 toast 하나뿐 — 모달 유지 · 추가 조회 없음', () => checks.membersClickToastOnly(src));
+test('구성원 ㊱: #mbSoon 예고는 목록 위에 있고 누를 행이 0개면 감춘다', () => checks.membersSoonHint(src));
 
 // 세션 파일은 4필드 그대로다 — 권한을 세션에 캐시하는 순간 관리자가 역할을 바꿔도 화면이 낡은 값을 말한다.
 test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않았다', () => {
@@ -753,15 +859,20 @@ test('변이㉒: updateUserUi 에서 #usMembersSec 토글을 빼면 membersSecTo
   assert.throws(() => checks.membersSecToggle(bad), /같은 조건\(!on\)으로 토글되지 않는다/);
 });
 
-test('변이㉓: 구성원 모달에 일정 UI 를 넣으면 membersNoScheduleUi 가 실패한다', () => {
-  const bad = mutate(src, '      <div id="mbList"></div>',
-                          '      <div id="mbList"></div>\n      <button type="button" class="btn sm" id="mbSchedule">일정 보기</button>');
-  assert.throws(() => checks.membersNoScheduleUi(bad), /「일정」 UI 가 들어왔다/);
+test('변이㉓: 구성원 모달에 실제 열람 UI(일자 패널)를 넣으면 membersEntryOnlyNoRealUi 가 실패한다', () => {
+  const bad = mutate(src, '          <div id="mbList"></div>',
+                          '          <div id="mbList"></div>\n          <div class="dp-body" id="dpBody"></div>');
+  assert.throws(() => checks.membersEntryOnlyNoRealUi(bad), /실제 일정 열람 UI 흔적\(dpBody\)/);
 });
 
-test('변이㉓-b: .mb-row 에 cursor:pointer 를 주면 membersNoScheduleUi 가 실패한다', () => {
+test('변이㉓-b: .mb-row 맨 클래스에 cursor:pointer 를 주면 membersEntryOnlyNoRealUi 가 실패한다', () => {
   const bad = mutate(src, '.mb-row{padding:8px 2px;', '.mb-row{cursor:pointer;padding:8px 2px;');
-  assert.throws(() => checks.membersNoScheduleUi(bad), /cursor:pointer 가 붙었다/);
+  assert.throws(() => checks.membersEntryOnlyNoRealUi(bad), /맨 클래스에 cursor:pointer 가 붙었다/);
+});
+
+test('변이㉓-c: .mb-row.is-link 에서 cursor:pointer 를 떼면 membersEntryOnlyNoRealUi 가 실패한다', () => {
+  const bad = mutate(src, 'position:relative;padding-right:16px;cursor:pointer}', 'position:relative;padding-right:16px}');
+  assert.throws(() => checks.membersEntryOnlyNoRealUi(bad), /\.mb-row\.is-link 에 cursor:pointer 가 없다/);
 });
 
 test('변이㉔: 구성원 조회가 쓰기 관문(OpenWriteAsync)을 쓰면 membersHostReadPath 가 실패한다', () => {
@@ -815,6 +926,39 @@ test('변이㉛: .mb-split 을 1열로 되돌리면 membersSplitTwoCols 가 실�
   const bad = mutate(src, '.mb-split{display:grid;grid-template-columns:minmax(112px,36%) 1fr;',
                           '.mb-split{display:grid;grid-template-columns:1fr;');
   assert.throws(() => checks.membersSplitTwoCols(bad), /1열이다/);
+});
+
+test('변이㉜: 내 행 판정을 뒤집으면(나만 is-link) membersSelfRowNotLink 가 실패한다', () => {
+  const bad = mutate(src, "row.className = isMe ? 'mb-row' : 'mb-row is-link';",
+                          "row.className = isMe ? 'mb-row is-link' : 'mb-row';");
+  assert.throws(() => checks.membersSelfRowNotLink(bad), /내 행에 is-link 가 붙는다/);
+});
+
+test('변이㉜-b: 내 행 판정을 상수로 굳히면(isMe=false) membersSelfRowNotLink 가 실패한다', () => {
+  const bad = mutate(src, "const isMe = !!me && String(m && m.loginId == null ? '' : m.loginId) === me;", 'const isMe = false;');
+  assert.throws(() => checks.membersSelfRowNotLink(bad), /isMe\)이 loginId 대조가 아니다/);
+});
+
+test('변이㉝: 누를 수 있는 행을 div 로 되돌리면 membersLinkRowIsButton 이 실패한다', () => {
+  const bad = mutate(src, "const row = document.createElement(isMe ? 'div' : 'button');",
+                          "const row = document.createElement('div');");
+  assert.throws(() => checks.membersLinkRowIsButton(bad), /<button> 이 아니다/);
+});
+
+test('변이㉞: 셰브론 ::after 를 지우면 membersChevronCssOnly 가 실패한다', () => {
+  const bad = mutate(src, ".mb-row.is-link::after{content:'›';", '.mb-row.is-link::after{content:"";');
+  assert.throws(() => checks.membersChevronCssOnly(bad), /셰브론\(content:'›'\)이 없다/);
+});
+
+test('변이㉟: 행 클릭이 모달을 닫으면 membersClickToastOnly 가 실패한다', () => {
+  const bad = mutate(src, "function mbRowClick(){ toast('일정 열람은 준비 중입니다', 'info'); }",
+                          "function mbRowClick(){ toast('일정 열람은 준비 중입니다', 'info'); closeOverlay(document.getElementById('membersModal')); }");
+  assert.throws(() => checks.membersClickToastOnly(bad), /행 클릭이 closeOverlay 를 쓴다/);
+});
+
+test('변이㊱: #mbSoon 숨김 토글을 빼면 membersSoonHint 가 실패한다', () => {
+  const bad = mutate(src, "  const soon = document.getElementById('mbSoon'); if(soon) soon.classList.toggle('hidden', links === 0);\n", '');
+  assert.throws(() => checks.membersSoonHint(bad), /#mbSoon 을 토글하지 않는다/);
 });
 
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
@@ -1108,6 +1252,65 @@ if (!JSDOM) {
       login();
       w.eval('updateUserUi();');
       assert.ok(!w.document.getElementById('usMembersSec').classList.contains('hidden'), '로그인했는데 구성원 진입점이 뜨지 않는다');
+    });
+
+    // ── 행 클릭 진입점(준비 중) ────────────────────────────────────────
+    // 실제 일정 열람은 아직 없다(DB에 일정 테이블이 없다). 여기서 보는 건 '진입점의 모양'뿐이다:
+    // 누를 수 있는 행 / 없는 행이 갈리는가, 눌렀을 때 딱 안내만 뜨는가.
+    const linkRows = () => [...w.document.querySelectorAll('#mbList .mb-row.is-link')];
+
+    test('구성원(jsdom) ㉜㉝: 내 행은 button 이 아니고 「· 나」 · 나머지는 button.is-link', async () => {
+      w.eval("currentUser = {loginId:'phmin', name:'박현민', title:'수석연구원', orgUnit:'SW개발본부'}; __usPermBusy = false;");
+      const all = UNITS_SW.map((u) => ({ ...u, allowed: true }));
+      const ms = [M('phmin', '박현민', '수석연구원', 'SW개발본부')].concat(MEMBERS_SW);
+      membersReply({ found: true, scope: 'all', myUnit: 'SW개발본부', units: all, members: ms });
+      await w.eval('openMembers()');
+      const list = [...w.document.querySelectorAll('#mbList .mb-row')];
+      assert.strictEqual(list.length, 9, `전제: 나 포함 9행이 그려져야 한다: ${list.length}`);
+      const mine = list[0];
+      assert.strictEqual(mine.tagName, 'DIV',
+        '내 행이 버튼이다 — 이미 보고 있는 캘린더로 가는 링크는 의미가 없다');
+      assert.ok(!mine.classList.contains('is-link'), '내 행에 is-link 가 붙었다');
+      assert.ok(/· 나/.test(mine.textContent), '내 행에 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다');
+      assert.ok(mine.querySelector('span.git-opt'), '「· 나」가 별도 요소가 아니다 — 맨 텍스트로 섞였다');
+      const others = list.slice(1);
+      assert.strictEqual(others.length, 8, '전제: 나 말고 8명');
+      for (const r of others) {
+        assert.strictEqual(r.tagName, 'BUTTON', `남의 행이 <button> 이 아니다(${r.textContent}) — 키보드로 닿지 않는다`);
+        assert.strictEqual(r.getAttribute('type'), 'button', `type="button" 이 아니다(${r.textContent})`);
+        assert.ok(r.classList.contains('is-link'), `남의 행에 is-link 가 없다(${r.textContent})`);
+        assert.ok(!/· 나/.test(r.textContent), `남의 행에 「· 나」가 붙었다(${r.textContent})`);
+      }
+      assert.ok(!w.document.getElementById('mbSoon').classList.contains('hidden'),
+        '누를 수 있는 행이 8개인데 「준비 중」 예고가 감춰졌다');
+    });
+
+    test('구성원(jsdom) ㉟: 행을 누르면 안내만 뜬다 — 모달 유지 · 추가 조회 0회', () => {
+      // toast 는 스파이로, hostRequest 는 '부르면 세는' 함수로 갈아끼운다(추가 왕복이 있으면 잡힌다).
+      w.eval('__toastCalls = []; toast = function(msg, kind){ __toastCalls.push([msg, kind]); };');
+      w.eval('__hostCalls = 0; hostRequest = function(){ __hostCalls++; return Promise.resolve({ok:false}); };');
+      const link = linkRows()[0];
+      assert.ok(link, '전제: 누를 수 있는 행이 있다');
+      link.click();
+      const calls = w.eval('JSON.stringify(__toastCalls)');
+      assert.strictEqual(calls, JSON.stringify([['일정 열람은 준비 중입니다', 'info']]),
+        `행 클릭이 「준비 중」 안내 하나를 띄우지 않았다: ${calls}`);
+      const md = w.document.getElementById('membersModal');
+      assert.ok(!md.classList.contains('hidden'), '행을 눌렀더니 구성원 모달이 닫혔다 — 자리를 지켜야 한다');
+      assert.ok(!md.classList.contains('closing'), '구성원 모달이 닫히는 중이다(페이드아웃)');
+      assert.strictEqual(w.eval('__hostCalls'), 0,
+        '행 클릭이 호스트에 추가 조회를 보냈다 — 그 사람 데이터를 더 가져올 이유가 없다(열람은 5단계)');
+    });
+
+    test('구성원(jsdom) ㊱: self(본인 1행)면 누를 행이 0개이고 예고 줄도 감춘다', async () => {
+      w.eval("currentUser = {loginId:'phmin', name:'박현민', title:'수석연구원', orgUnit:'SW개발본부'}; __usPermBusy = false;");
+      membersReply({ found: true, scope: 'self', myUnit: 'SW개발본부', units: [],
+        members: [M('phmin', '박현민', '수석연구원', 'SW개발본부')] });
+      await w.eval('openMembers()');
+      assert.strictEqual(rows(), 1, '본인 1행이 아니다');
+      assert.strictEqual(linkRows().length, 0, 'self 인데 누를 수 있는 행이 있다 — 목록에 나뿐이다');
+      assert.ok(w.document.getElementById('mbSoon').classList.contains('hidden'),
+        '누를 행이 0개인데 「준비 중」 예고가 남았다 — 아무도 못 누르는 안내는 소음이다(self 사용자 71명이 이 경우다)');
     });
 
     // 부팅에서 걸린 타이머(세션 조회 타임아웃·스켈레톤 폴백)가 러너를 붙잡지 않도록 창을 닫는다.

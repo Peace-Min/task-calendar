@@ -1258,9 +1258,21 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .us-kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:6px 0 10px;align-items:baseline}
 .us-kv dt{margin:0;font-size:var(--fs-meta);color:var(--muted)}
 .us-kv dd{margin:0;font-size:var(--fs-body);color:var(--text)}
-/* 구성원 행 — 구분선만. 지금은 눌러서 열 것이 없다(타인 일정 열람은 5단계):
-   cursor:pointer·hover 강조를 주면 '눌리는데 아무 일도 안 나는' 행이 된다. */
+/* 구성원 행 — 구분선만. 어포던스는 '누를 수 있는 행'(.is-link)에만 준다:
+   못 누르는 행(=나 자신)에 cursor:pointer·hover 를 주면 '눌리는데 아무 일도 안 나는' 행이 된다.
+   ★ 지금 누르면 「준비 중」 토스트 하나가 전부다 — 일정은 아직 DB에 없다(각 PC 로컬 파일). */
 .mb-row{padding:8px 2px;border-bottom:1px solid var(--line)}
+/* 누를 수 있는 행은 진짜 <button> 이다(div+onclick 금지 — 키보드 포커스·Enter/Space·역할이 공짜다).
+   대신 버튼 기본 껍데기를 전부 벗겨 목록 행처럼 보이게 한다.
+   ★ 셰브론 자리(padding-right)는 absolute 배치다: float 로 띄우면 두 번째 줄(소속)이 밀려
+     400px 실폭에서 이름·소속이 되접힌다. */
+.mb-row.is-link{display:block;width:100%;text-align:left;font:inherit;color:inherit;background:none;
+  border:0;border-bottom:1px solid var(--line);position:relative;padding-right:16px;cursor:pointer}
+.mb-row.is-link:hover{background:var(--accent-soft)}
+/* 셰브론은 CSS content 로만 그린다 — CSS 리터럴이라 DB 문자열이 아니다(renderMembers 의 innerHTML 금지 유지). */
+.mb-row.is-link::after{content:'›';position:absolute;right:3px;top:50%;transform:translateY(-50%);
+  color:var(--muted);font-size:var(--fs-title);line-height:1}
+/* 마지막 줄 구분선 제거는 .is-link 뒤에 둔다 — 같은 명시도(0,2,0)라 순서가 승부를 가른다. */
 .mb-row:last-child{border-bottom:0}
 /* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
    트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
@@ -2572,7 +2584,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
      ★ 조직 트리는 구조를 전부 보여주되 범위 밖 노드는 disabled 다 — 숨기면 '내 위에 뭐가 있는지'조차
        알 수 없고, 조직도는 사내망에 이미 공개된 정보라 감출 이유도 없다.
      ★ 좌우 2단이다. 세로로 쌓으면 트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
-     ★ 일정 관련 UI는 여기 없다(5단계). 자리만 비워 둔다.
+     ★ 행 클릭은 '진입점'까지만 만들었다 — 누르면 「준비 중」 토스트다. 실제 열람 UI(월 그리드·일자 패널·
+       편집 컨트롤)는 여기 없다: DB에 일정 테이블 자체가 없다(app_user·org_unit 등 7개뿐, 일정은 각 PC 로컬 파일).
      ★ #userModal 위에 겹쳐 연다(_modalStack 이 중첩을 지원한다) — 닫으면 사용자 정보로 되돌아온다. -->
 <div class="overlay hidden" id="membersModal">
   <div class="modal wide">
@@ -2584,6 +2597,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="mb-pane">
           <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다. -->
           <input type="text" id="mbSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름 · 소속 검색">
+          <!-- 누르기 '전에' 알린다 — 눌러 본 뒤에야 「준비 중」이라고 하면 낚인 느낌이 든다.
+               ★ 누를 수 있는 행이 하나도 없으면(=목록이 나뿐이면) renderMembers 가 이 줄을 감춘다:
+                 아무도 못 누르는데 안내만 떠 있으면 소음이다. -->
+          <div class="set-hint" id="mbSoon">사람을 누르면 그 사람 일정을 볼 수 있습니다 — <b>준비 중</b></div>
           <div id="mbList"></div>
           <div class="set-hint hidden" id="mbEmpty">검색 결과가 없습니다.</div>
         </div>
@@ -3959,20 +3976,36 @@ function mbApply(){
   const where = __mbSel ? (' · ' + __mbSel + ' ') : ' · ';
   set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');
 }
+// 행 클릭 — 지금은 이 한 줄이 전부다. 모달을 닫지도, 다른 화면으로 옮기지도, 그 사람 데이터를
+// 더 조회하지도 않는다: 열어 보여 줄 것이 아직 없다(DB에 일정 테이블이 없다 — 각 PC 로컬 파일이다).
+// ★ 여기에 hostRequest·closeOverlay 가 붙는 순간 '진입점만'이라는 계약이 깨진다(기계가 지킨다).
+function mbRowClick(){ toast('일정 열람은 준비 중입니다', 'info'); }
 // 행 렌더 — 데이터 출처와 무관하게 이 함수만 행을 그린다.
 // ★ innerHTML 을 쓰지 않는다: 이름·소속은 DB 문자열이라 마크업으로 해석되는 순간 목록이 실행 표면이 된다.
 //   비우기도 innerHTML='' 이 아니라 removeChild 다 — 한 곳만 예외를 두면 다음 사람이 그걸 관례로 읽는다.
+//   셰브론(›)도 마크업이 아니라 .mb-row.is-link::after 가 그린다(CSS content 는 CSS 리터럴이다).
+// ★ 나 자신은 누를 수 없다: 이미 보고 있는 캘린더로 가는 링크는 의미가 없다. 대신 「· 나」 꼬리표를 단다.
+//   ─ 그래서 view_scope='self' 인 사용자(89명 중 71명)는 목록이 본인 1행뿐이라 「준비 중」 안내가
+//     아예 보이지 않는다. 의도된 결과다 — 누를 대상이 없는 사람에게 예고할 것도 없다.
 function renderMembers(rows){
   const list = document.getElementById('mbList'); if(!list) return;
   while(list.firstChild) list.removeChild(list.firstChild);
   const arr = Array.isArray(rows) ? rows : [];
+  const me = (currentUser && currentUser.loginId != null) ? String(currentUser.loginId) : '';
+  let links = 0;   // 누를 수 있는 행 수 — 0이면 예고 줄을 감춘다
   for(const m of arr){
-    const row = document.createElement('div'); row.className = 'mb-row';
+    const isMe = !!me && String(m && m.loginId == null ? '' : m.loginId) === me;
+    // 누를 수 있는 행은 진짜 <button> 이다 — div+onclick 은 키보드로 닿지 않는다.
+    const row = document.createElement(isMe ? 'div' : 'button');
+    row.className = isMe ? 'mb-row' : 'mb-row is-link';
+    if(!isMe){ row.type = 'button'; row.addEventListener('click', mbRowClick); links++; }
     const head = document.createElement('div');
     const nm = document.createElement('b'); nm.textContent = (m && m.name) ? String(m.name) : '—';
     head.appendChild(nm);
     const ti = (m && m.title) ? String(m.title) : '';
     if(ti){ const t = document.createElement('span'); t.className = 'git-opt'; t.textContent = ' · ' + ti; head.appendChild(t); }
+    // 꼬리표는 별도 요소다 — 맨 텍스트로 섞으면 이름과 한 덩어리가 돼 색·굵기를 나눌 수 없다(트리의 「· 내 소속」과 같은 관례).
+    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 나'; head.appendChild(s); }
     row.appendChild(head);
     const org = document.createElement('div'); org.className = 'set-hint'; org.style.margin = '0';
     org.textContent = (m && m.orgUnit) ? String(m.orgUnit) : '';
@@ -3981,6 +4014,8 @@ function renderMembers(rows){
   }
   // 0건 안내는 렌더와 한 몸이다 — 목록을 그리는 곳이 둘이면 '빈 목록 + 안내 없음'이 반드시 생긴다.
   const empty = document.getElementById('mbEmpty'); if(empty) empty.classList.toggle('hidden', arr.length > 0);
+  // 예고 줄도 같은 이유로 여기서 함께 정한다 — '누를 수 있는 행이 있는가'를 아는 곳이 여기뿐이다.
+  const soon = document.getElementById('mbSoon'); if(soon) soon.classList.toggle('hidden', links === 0);
 }
 // 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다.
 // ★ 추측한 명부를 그리지 않는다. 낡거나 지어낸 조직도는 '모른다'고 말하는 것보다 나쁘다.
