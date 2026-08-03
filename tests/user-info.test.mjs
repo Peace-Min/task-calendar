@@ -461,38 +461,68 @@ const checks = {
     assert.ok(/AddWithValue\("@id", id\)/.test(q), 'login_id 를 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
   },
 
-  // ㉕ IN 절은 자리표시자(@u0,@u1,…)로만 만든다 — 유닛 이름도 DB 문자열이라 SQL 에 이어 붙이면 주입 표면이 된다.
-  membersInClauseBound(csDb) {
+  // ㉕ 명부는 '전원'이다(is_active=1) — 유닛 필터(IN 절)를 두지 않는다.
+  //    ★ 계약이 뒤집힌 자리다. 예전엔 view_scope 로 명부 자체를 잘랐고(범위 밖은 payload 에 없음),
+  //      그래서 self 인 71명(89명 중)이 조직 트리 없이 자기 이름 한 줄만 보는 화면을 받았다.
+  //      이름·직급·소속은 사내망 인트라넷에 이미 공개된 정보다 — 통제 대상은 '일정'이지 명부가 아니다.
+  //      필터가 되살아나면 그 화면이 그대로 돌아온다.
+  membersRosterIsEveryone(csDb) {
     const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
-    assert.ok(/IN \(/.test(q), '전제: 명부 조회에 IN 절이 없다');
-    assert.ok(/ph\.Add\("@u"/.test(q),
-      'IN 절 자리표시자(@u0,@u1,…)를 만들지 않는다 — 유닛 이름이 SQL 문자열로 그대로 들어간다');
-    assert.ok(/string\.Join\(",", ph\)/.test(q), 'IN 절을 자리표시자 목록으로 잇지 않는다');
-    assert.ok(/AddWithValue\(ph\[i\], unitNames\[i\]\)/.test(q), '자리표시자에 값을 바인딩하지 않는다');
+    assert.ok(/SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 ORDER BY org_unit, name/.test(q),
+      '명부 조회가 is_active=1 전원이 아니다 — 조건이 하나라도 붙으면 명부가 다시 잘린다');
+    assert.ok(!/IN \(/.test(q),
+      '명부 조회에 IN 절이 남아 있다 — 유닛 필터가 되살아나면 self 인 사람은 다시 자기 한 줄만 본다');
+    assert.ok(!/ph\.Add|unitNames/.test(q), 'IN 절 자리표시자 코드가 남아 있다(죽은 개념)');
+    assert.ok(!/allowed\.Count > 0/.test(q),
+      '허용 집합 크기로 명부 쿼리를 건너뛴다 — 명부는 열람 범위와 무관하다');
+    // IN 절이 사라져도 SQL 문자열 연결 금지는 그대로다(남은 파라미터는 @id 하나뿐).
     assert.ok(!/"'" \+/.test(q) && !/\+ "'"/.test(q),
       'SQL 에 작은따옴표로 값을 감싸 이어 붙인다 — 전형적인 주입 형태다');
-    // 빈 IN 절은 문법 오류이기도 하다. 허용 집합이 비면 쿼리를 아예 돌리지 않는다.
-    assert.ok(/else if \(allowed\.Count > 0\)/.test(q), '허용 집합이 비어도 명부 쿼리를 돌린다');
+    assert.ok(/AddWithValue\("@id", id\)/.test(q), 'login_id 를 파라미터로 바인딩하지 않는다');
   },
 
-  // ㉖ scope='self' 는 본인 1행만. '전체를 읽어 화면에서 거르기'로 바꾸면 payload 에 남의 명부가 그대로 실린다
-  //    (개발자도구 한 번이면 다 보인다 — 화면 필터는 방어가 아니다).
-  membersSelfOnly(csDb) {
+  // ㉖ view_scope 는 '일정 열람 범위'다 — 명부에서 사람을 빼는 데 쓰지 않는다.
+  //    self 특례(본인 1행만 담던 분기)는 통째로 사라졌다. 본인도 전원 조회에 들어 있다.
+  membersScopeIsScheduleOnly(csDb) {
     const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    assert.ok(!/isSelf/.test(q), 'self 특례 분기(isSelf)가 남아 있다 — self 도 전원 명부를 받아야 한다');
+    assert.ok(!/\["loginId"\]\s*=\s*id\b/.test(q),
+      '본인 행을 따로 만들어 담는다 — 본인도 전원 조회에 들어 있다(두 경로가 되면 한쪽이 낡는다)');
     const m = /switch \(scope\)\s*\{([\s\S]*?)\n\s*\}/.exec(q);
-    assert.ok(m, '허용 유닛 집합을 정하는 switch (scope) 를 찾지 못함');
+    assert.ok(m, '일정 열람 가능 유닛 집합을 정하는 switch (scope) 를 찾지 못함');
     const sw = m[1];
     assert.ok(/case "all":/.test(sw) && /case "unit_tree":/.test(sw), '전제: all·unit_tree 분기가 없다');
     assert.ok(!/"self"/.test(sw),
-      'self 가 허용 유닛 집합을 받는다 — self 는 빈 집합이어야 본인 1행만 나간다');
+      'self 가 일정 열람 가능 유닛을 받는다 — self 는 빈 집합이어야 아무 일정도 열지 못한다');
     assert.ok(/default:\s*break;/.test(sw), 'default(self·알 수 없는 값)가 빈 집합으로 떨어지지 않는다');
-    const s = q.indexOf('if (isSelf)');
-    assert.ok(s >= 0, 'self 분기(if (isSelf))가 없다');
-    const e = q.indexOf('else if', s);
-    assert.ok(e > s, 'self 분기 뒤의 else if 를 찾지 못함');
-    const selfBranch = q.slice(s, e);
-    assert.ok(/\["loginId"\]\s*=\s*id/.test(selfBranch), 'self 분기가 본인 행을 담지 않는다');
-    assert.ok(!/ExecuteReader/.test(selfBranch), 'self 분기에서 명부 쿼리를 돈다 — 본인 1행만이어야 한다');
+  },
+
+  // ㊷ 조직 트리 조회는 scope 와 무관하게 항상 돈다 — self 라고 건너뛰면 71명이 다시 트리 없는 화면을 본다.
+  membersUnitsAlwaysQueried(csDb) {
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    assert.ok(/FROM org_unit WHERE is_active=1/.test(q), '전제: 조직 트리 조회가 없다');
+    assert.ok(!/"self"/.test(q),
+      'scope 를 "self" 와 비교하는 특례가 남아 있다 — self 도 전 조직 트리를 그대로 받아야 한다');
+    assert.ok(!/if \(!isSelf\)|if \(isSelf\)/.test(q), 'self 여부로 조직 트리 조회를 가른다');
+  },
+
+  // ㊸ units payload 에 allowed 를 싣지 않는다 — 트리는 전부 활성이라 노드에 붙일 범위 개념이 없다.
+  membersUnitsHaveNoAllowed(csDb) {
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    assert.ok(/\["sortOrder"\]\s*=\s*u\.SortOrder/.test(q), '전제: units payload 를 만들지 않는다');
+    assert.ok(!/\["allowed"\]/.test(q),
+      'units payload 에 allowed 가 실린다 — 화면이 그 값으로 노드를 다시 잠그게 된다');
+  },
+
+  // ㊹ 열람 범위는 구성원 행의 canViewSchedule 하나로만 표현된다 = 허용 유닛 집합에 그 사람 소속이 있는가.
+  //    ★ 상수로 굳으면(true) 권한이 통째로 사라지고, 계산 근거가 바뀌면 남의 일정이 열린다.
+  membersCanViewScheduleFlag(csDb) {
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    assert.ok(/string ou = Str\(rd, "org_unit"\)/.test(q), '판정 근거가 그 사람의 org_unit 이 아니다');
+    assert.ok(/\["canViewSchedule"\]\s*=\s*allowed\.Contains\(ou\)/.test(q),
+      '구성원 행에 canViewSchedule 이 없다(또는 일정 열람 가능 유닛 집합으로 계산하지 않는다)');
+    assert.ok(/ExpandUnitTree\(units, myUnit, allowed\)/.test(q),
+      'unit_tree 확장이 사라졌다 — 집합이 계산되지 않으면 canViewSchedule 도 의미가 없다');
   },
 
   // ㉗ unit_tree 확장은 반복(BFS) + 방문 집합 가드. 재귀 CTE 금지(폐쇄망 MySQL 버전 가정을 늘리지 않는다).
@@ -516,17 +546,37 @@ const checks = {
     }
   },
 
-  // ㉙ 범위 밖 노드는 '보이되 눌리지 않는다'. 숨기면 내 위에 무엇이 있는지조차 알 수 없고,
-  //    조직도 자체는 사내망에 이미 공개된 정보라 감출 이유가 없다.
-  membersOutOfScopeDisabled(source) {
+  // ㉙ 조직 트리는 '전부 활성'이다 — 누구나 조직도를 탐색할 수 있다.
+  //    ★ 계약이 뒤집힌 자리다(예전: 범위 밖 노드는 disabled). 조직도는 사내망에 이미 공개돼 있고,
+  //      통제 대상은 일정이라 노드에 잠글 것이 없다. 누를 수 없는 것은 '일정을 볼 수 없는 사람의 행'뿐이다.
+  membersTreeAllEnabled(source) {
     const b = jsBody(source, 'renderUnitTree');
-    assert.ok(/b\.disabled = true/.test(b), 'allowed:false 노드를 disabled 로 만들지 않는다');
-    assert.ok(/열람 범위 밖입니다/.test(b), '왜 안 눌리는지 title 로 알려주지 않는다');
-    assert.ok(!/if\(!\(u && u\.allowed\)\)\s*continue/.test(b) && !/filter\(u => u\.allowed\)/.test(b),
-      '범위 밖 노드를 아예 그리지 않는다 — 숨기지 말고 disabled 로 두는 것이 요구사항이다');
-    // disabled 만 믿지 않는다 — 프로그램 호출로 우회되면 범위 밖 조직이 선택된다.
+    assert.ok(!/\.disabled\s*=/.test(b),
+      '트리 노드에 disabled 를 설정한다 — 조직도는 전부 탐색할 수 있어야 한다');
+    assert.ok(!/열람 범위 밖입니다/.test(source),
+      "옛 '열람 범위 밖입니다' 안내가 남아 있다 — 이제 트리에 범위 밖 노드가 없다");
+    assert.ok(!/u\.allowed/.test(b), 'renderUnitTree 가 아직 u.allowed 를 읽는다 — 호스트는 그 키를 보내지 않는다');
+    // 내 소속 표시는 유지 — 트리에서 나를 못 찾으면 탐색의 기준점이 사라진다.
+    assert.ok(/classList\.add\('is-mine'\)/.test(b) && /· 내 소속/.test(b),
+      '.is-mine(「· 내 소속」) 표시가 함께 사라졌다 — 그건 범위와 무관한 표시다');
+    // 프로그램 호출로도 막지 않는다 — 막을 개념 자체가 없다.
     const s = jsBody(source, 'mbSelect');
-    assert.ok(/!u\.allowed/.test(s), 'mbSelect 가 allowed 를 확인하지 않는다');
+    assert.ok(!/allowed/.test(s), 'mbSelect 가 아직 범위를 확인한다 — 이제 모든 조직을 고를 수 있다');
+  },
+
+  // ㊺ 죽은 개념(allowed)은 화면에서 흔적도 남기지 않는다.
+  //    ★ 남겨 두면 더 나쁘다: 호스트가 보내지 않는 키라 전부 undefined 로 읽혀 '조용히 전부 잠긴' 화면이 된다.
+  membersNoDeadAllowedConcept(source) {
+    assert.ok(!/mbAllowedCount/.test(source),
+      '죽은 함수 mbAllowedCount 가 남아 있다 — 트리에 범위 개념이 사라졌다');
+    for (const fn of ['renderUnitTree', 'mbDefaultSel', 'mbSelect', 'mbEmptyText', 'mbApply']) {
+      assert.ok(!/\.allowed\b/.test(jsBody(source, fn)),
+        `${fn} 이 아직 u.allowed 를 읽는다 — 호스트가 보내지 않는 키라 전부 undefined 가 된다`);
+    }
+    // 기본 선택은 '루트 노드'다(옛 규칙: 부모가 허용 집합에 없는 첫 노드).
+    const d = jsBody(source, 'mbDefaultSel');
+    assert.ok(/!p \|\| !names\.has\(p\)/.test(d),
+      '기본 선택이 루트 노드(부모가 없거나 목록에 없는 노드)로 정해지지 않는다');
   },
 
   // ㉚ 열 때마다 다시 읽는다 — 캐시해 두면 인사이동·권한변경이 낡은 채 남아 화면이 거짓말을 한다.
@@ -604,10 +654,11 @@ const checks = {
       '.mb-row.is-link:hover 강조가 없다 — 어느 행에 커서가 있는지 알 수 없다');
   },
 
-  // ㉜ 나 자신은 누를 수 없다 — 이미 보고 있는 캘린더로 가는 링크는 의미가 없다.
-  //    ★ view_scope='self' 인 사용자(89명 중 71명)는 목록이 본인 1행뿐이라, 이 규칙 하나로
-  //      「준비 중」이 아예 보이지 않는다. 의도된 결과다 — 누를 대상이 없는 사람에게 예고할 것도 없다.
-  membersSelfRowNotLink(source) {
+  // ㉜ 누를 수 있는 행 = '내가 아니고' + '그 사람 일정을 볼 수 있고'. 판정이 둘 다를 봐야 한다.
+  //    ★ 계약이 뒤집힌 자리다(예전: 나만 아니면 전부 눌림 — 명부에 범위 안 사람만 있었으니 그걸로 충분했다).
+  //      이제 명부에는 전원이 있다: isMe 만 보면 권한 없는 남의 행이 눌려 눌러도 아무것도 열지 못하고,
+  //      canViewSchedule 만 보면 내 행이 '이미 보고 있는 내 캘린더로 가는 링크'가 된다.
+  membersRowLinkRule(source) {
     const b = jsBody(source, 'renderMembers');
     assert.ok(/currentUser[\s\S]{0,80}loginId/.test(b),
       'renderMembers 가 currentUser.loginId 를 보지 않는다 — 내 행을 가려낼 근거가 없다');
@@ -615,19 +666,27 @@ const checks = {
     const im = /const isMe = ([^;]+);/.exec(b);
     assert.ok(im && /loginId/.test(im[1]) && /\bme\b/.test(im[1]),
       `내 행 판정(isMe)이 loginId 대조가 아니다: ${im ? im[1] : '(없음)'} — 상수로 굳으면 내 행까지 눌린다`);
-    assert.ok(/isMe \?\s*'mb-row'\s*:\s*'mb-row is-link'/.test(b),
-      '내 행에 is-link 가 붙는다(조건이 뒤집혔거나 전원 같은 클래스다) — 내 캘린더로 가는 링크는 의미가 없다');
+    const cv = /const canView = ([^;]+);/.exec(b);
+    assert.ok(cv && /m\.canViewSchedule/.test(cv[1]),
+      `일정 열람 판정(canView)이 m.canViewSchedule 이 아니다: ${cv ? cv[1] : '(없음)'} — 화면이 스스로 범위를 지어낸다`);
+    assert.ok(/const plain = isMe \|\| !canView;/.test(b),
+      '누를 수 없는 행 판정이 「나 이거나 일정을 볼 수 없거나」가 아니다 — 하나만 보면 한쪽이 반드시 틀린다');
+    assert.ok(/plain \?\s*'mb-row'\s*:\s*'mb-row is-link'/.test(b),
+      '누를 수 없는 행에 is-link 가 붙는다(조건이 뒤집혔거나 전원 같은 클래스다)');
     assert.ok(/if\(isMe\)\{[\s\S]{0,200}' · 나'/.test(b),
       "내 행에만 붙는 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다");
     assert.ok(/s\.className = 'git-opt';\s*s\.textContent = ' · 나'/.test(b),
       '「· 나」가 별도 span.git-opt 가 아니다 — 맨 텍스트로 섞으면 이름과 한 덩어리가 돼 색·굵기를 나눌 수 없다');
+    // 권한 없는 남의 행에는 꼬리표를 달지 않는다 — 그냥 안 눌리는 줄이다(꼬리표 자리는 「· 나」 하나뿐).
+    const tails = [...b.matchAll(/textContent = ' · ([^'+]+)';/g)].map((m) => m[1]);
+    assert.deepStrictEqual(tails, ['나'], `행 꼬리표가 「· 나」 하나가 아니다: ${tails.join(',')}`);
   },
 
   // ㉝ 누를 수 있는 행은 진짜 <button type="button"> 이다. div+onclick 은 Tab 으로 닿지 않고
   //    Enter/Space 도 안 먹고 스크린리더에 '누를 수 있는 것'으로 나가지도 않는다.
   membersLinkRowIsButton(source) {
     const b = jsBody(source, 'renderMembers');
-    assert.ok(/createElement\(isMe \? 'div' : 'button'\)/.test(b),
+    assert.ok(/createElement\(plain \? 'div' : 'button'\)/.test(b),
       '누를 수 있는 행이 <button> 이 아니다 — div+onclick 은 키보드 접근·포커스를 통째로 잃는다');
     assert.ok(/row\.type = 'button'/.test(b),
       "row.type = 'button' 이 없다 — <button> 의 기본 type 은 submit 이다");
@@ -676,7 +735,9 @@ const checks = {
   },
 
   // ㊱ 예고는 '누르기 전에' 보여야 한다(검색칸 아래 · 목록 위). 누른 뒤에만 알리면 낚인 느낌이 든다.
-  //    그리고 누를 수 있는 행이 0개면 감춘다 — 아무도 못 누르는데 안내만 남으면 소음이다.
+  //    ★ 계약이 뒤집힌 자리다(예전: 누를 행이 0개면 이 줄을 감췄다). 명부에 전원이 들어오면서
+  //      '한 명도 못 누르는 화면'이 흔해졌다 — 감추면 왜 안 눌리는지 알 수 없고, 그대로 두면
+  //      「누르면 볼 수 있습니다」가 거짓말이 된다. 그래서 문구를 갈아끼운다.
   membersSoonHint(source) {
     const md = membersModalMarkup(source);
     assert.ok(/<div class="set-hint" id="mbSoon">/.test(md), '#mbSoon 예고 줄이 없다');
@@ -685,10 +746,16 @@ const checks = {
     assert.ok(iSearch >= 0 && iSoon > iSearch && iList > iSoon,
       '#mbSoon 이 검색칸 아래 · 목록 위가 아니다 — 누르기 전에 눈에 들어오는 자리여야 한다');
     const b = jsBody(source, 'renderMembers');
-    assert.ok(/getElementById\('mbSoon'\)[\s\S]{0,90}classList\.toggle\('hidden'/.test(b),
-      'renderMembers 가 #mbSoon 을 토글하지 않는다 — 누를 행이 0개여도 안내가 남는다');
-    assert.ok(/links\+\+/.test(b) && /links === 0/.test(b),
-      "누를 수 있는 행 수(links)로 판단하지 않는다 — 전체 행 수로 세면 목록이 '나 혼자'일 때도 예고가 뜬다");
+    assert.ok(/links\+\+/.test(b) && /links > 0/.test(b),
+      "누를 수 있는 행 수(links)로 판단하지 않는다 — 전체 행 수로 세면 아무도 못 누를 때도 예고가 뜬다");
+    assert.ok(/명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다/.test(b),
+      '누를 행이 0개일 때의 문구가 없다 — 「누르면 볼 수 있습니다」를 그대로 두면 거짓말이다');
+    assert.ok(!/toggle\('hidden',\s*links === 0\)/.test(b),
+      '누를 행이 0개라고 예고 줄을 감춘다 — 감추지 말고 왜 안 눌리는지 말해야 한다');
+    assert.ok(/getElementById\('mbSoon'\)[\s\S]{0,140}classList\.toggle\('hidden',\s*arr\.length === 0\)/.test(b),
+      '목록이 아예 비었을 때(0행) 예고 줄을 감추지 않는다 — 안내할 대상이 없는데 말만 남는다');
+    // 문구도 DOM API 로만 만든다(㉑과 같은 규칙 — 이 줄에는 <b> 가 들어간다).
+    assert.ok(!/innerHTML/.test(b), '#mbSoon 문구를 innerHTML 로 갈아끼운다');
   },
 
   // ㊲ 신원(이름·직급·소속)은 '실시간 응답'으로 칠한다. 예전엔 같은 회신에 들어 있는 name/title/org_unit 을
@@ -752,42 +819,38 @@ const checks = {
       `'소속 미등록' 리터럴이 소스에 ${hits}곳 있다 — 헬퍼 하나에서만 나와야 두 경로가 같은 말을 한다`);
   },
 
-  // ㊴ 트리 숨김은 'scope 가 self 인가'가 아니라 '누를 수 있는 노드가 있는가'로 판정한다.
-  //    소속 미등록(org_unit NULL)은 scope=unit_tree 인데도 12노드 전부 allowed:false 라
-  //    회색 트리만 남는다 — self 와 화면상 결과가 같다. 규칙 둘을 하나로 줄인다.
-  membersTreeHiddenByAllowed(source) {
+  // ㊴ 트리 숨김은 '그릴 노드가 있는가'(units.length)로만 판정한다.
+  //    ★ 계약이 뒤집힌 자리다(예전: 누를 수 있는 allowed 노드 수). 이제 트리에 범위가 없으므로
+  //      정상 응답이면 항상 보여야 한다 — 접히는 경우는 조회 실패 등 '그릴 게 없을 때'뿐이다.
+  membersTreeHiddenByUnitCount(source) {
     const b = jsBody(source, 'renderUnitTree');
     assert.ok(!/'self'|"self"/.test(b),
-      "트리 숨김을 scope==='self' 문자열 비교로 판정한다 — 소속 미등록(unit_tree)은 잡히지 않는다");
-    assert.ok(/mbAllowedCount\(/.test(b),
-      '트리 숨김이 allowed 개수(mbAllowedCount)로 판정되지 않는다 — 전 노드가 회색인 트리가 그대로 남는다');
+      "트리 숨김을 scope==='self' 문자열 비교로 판정한다 — self 도 전 조직 트리를 봐야 한다");
+    assert.ok(!/mbAllowedCount/.test(b),
+      'allowed 개수로 판정하던 옛 규칙이 남아 있다 — self 는 그 수가 0이라 트리가 다시 접힌다');
+    assert.ok(/const usable = arr\.length;/.test(b),
+      '트리 숨김이 units 개수(arr.length)로 판정되지 않는다 — 그릴 노드가 있으면 항상 보여야 한다');
     assert.ok(/classList\.toggle\('hidden',\s*usable === 0\)/.test(b),
-      "숨김 토글이 usable(=allowed 개수)을 보지 않는다");
+      '숨김 토글이 usable(=units 개수)을 보지 않는다');
     assert.ok(/gridTemplateColumns = usable \?/.test(b),
-      '1열 전환이 allowed 개수를 보지 않는다 — 트리는 접혔는데 빈 첫 칸이 남아 목록이 좁아진다');
-    // 세는 함수는 한 곳뿐이어야 한다 — 곳곳에서 따로 세면 셋 중 하나는 반드시 어긋난다.
-    const c = jsBody(source, 'mbAllowedCount');
-    assert.ok(/u\.allowed/.test(c) && /length/.test(c), 'mbAllowedCount 가 allowed 노드를 세지 않는다');
-    for (const fn of ['mbEmptyText', 'mbApply']) {
-      assert.ok(/mbAllowedCount\(/.test(jsBody(source, fn)),
-        `${fn} 이 mbAllowedCount 를 쓰지 않는다 — 판정 기준이 두 벌이 되면 트리·안내·범위줄이 서로 다른 말을 한다`);
-    }
+      '1열 전환이 units 개수를 보지 않는다 — 트리는 접혔는데 빈 첫 칸이 남아 목록이 좁아진다');
   },
 
-  // ㊵ 0건 안내는 3분기다. 하나로 합치면 검색한 적도 없는데 「검색 결과가 없습니다」라고 말하고,
-  //    사용자는 원인을 자기 조작에서 찾는다(소속 미등록 실측에서 실제로 그랬다).
-  membersEmptyThreeCases(source) {
+  // ㊵ 0건 안내는 2분기다.
+  //    ★ 계약이 뒤집힌 자리다(예전: 3분기 — 검색 중 / 빈 조직 / 볼 수 있는 조직 0).
+  //      세 번째는 이제 발생하지 않는다: 명부·트리가 범위와 무관해 '볼 수 있는 조직 0'인 상태가 없다.
+  membersEmptyTwoCases(source) {
     const b = jsBody(source, 'mbEmptyText');
-    assert.ok(/mbSearch/.test(b), 'mbEmptyText 가 검색어를 보지 않는다 — 세 경우를 구분할 근거가 없다');
-    assert.ok(/if\(k\) return '검색 결과가 없습니다\.'/.test(b),
+    assert.ok(/mbSearch/.test(b), 'mbEmptyText 가 검색어를 보지 않는다 — 두 경우를 구분할 근거가 없다');
+    assert.ok(/'검색 결과가 없습니다\.'/.test(b) && /k \?/.test(b),
       "「검색 결과가 없습니다」가 검색어 뒤로 가려지지 않는다 — 검색하지 않았는데 검색 얘기를 한다");
     assert.ok(/이 조직에 등록된 구성원이 없습니다\./.test(b),
-      '볼 수 있는 조직은 있는데 0명인 경우의 문구가 없다 — 빈 조직과 권한 없음이 한 문장으로 뭉개진다');
-    assert.ok(/소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요\./.test(b),
-      '볼 수 있는 조직이 0개인 경우의 문구가 없다 — 사용자가 스스로 고칠 수 없는 상태를 알려야 한다');
-    // 세 문구가 실제로 갈리는가(하나로 합치면 분기가 사라진다).
+      '조직은 골랐는데 0명인 경우의 문구가 없다');
+    assert.ok(!/소속이 등록되지 않아/.test(source),
+      "옛 3번째 분기(「볼 수 있는 조직이 없습니다」)가 남아 있다 — 이제 그런 상태가 없다");
+    // 두 문구가 실제로 갈리는가(하나로 합치면 분기가 사라진다).
     const msgs = new Set([...b.matchAll(/'([^']*습니다[^']*)'/g)].map((m) => m[1]));
-    assert.strictEqual(msgs.size, 3, `mbEmptyText 의 안내 문구가 ${msgs.size}종이다 — 3분기여야 한다`);
+    assert.strictEqual(msgs.size, 2, `mbEmptyText 의 안내 문구가 ${msgs.size}종이다 — 2분기여야 한다`);
     // 렌더가 실제로 이 문구를 쓴다(계산만 해 놓고 마크업의 고정 문구가 남으면 아무것도 안 바뀐다).
     const r = jsBody(source, 'renderMembers');
     assert.ok(/empty\.textContent = mbEmptyText\(\)/.test(r),
@@ -796,20 +859,17 @@ const checks = {
       '#mbEmpty 숨김 토글이 사라졌다 — 결과가 있는데 안내가 남거나 그 반대가 된다');
   },
 
-  // ㊶ 범위 줄 — 볼 수 있는 조직도 없고 사람도 없으면 '· 0명'은 아무것도 설명하지 못한다
-  //    (조직명 자리까지 비어 「열람 범위: 소속 조직 — 내 부서와 하위 · 0명」 이 된다).
-  //    ★ self 는 allowed 0 이지만 본인 1명이 있어 여기 걸리지 않는다 — 「본인만 · 1명」 그대로다.
-  membersScopeLineNoBlankZero(source) {
+  // ㊶ 범위 줄은 「일정 열람 범위:」로 시작한다 — 그냥 '열람 범위'라고 하면 눈앞의 명부가
+  //    잘려 있다는 오해를 준다(명부는 전원이다). 실패 경로도 같은 앞머리를 쓴다.
+  membersScopeLineSchedulePrefix(source) {
     const b = jsBody(source, 'mbApply');
-    assert.ok(/!mbAllowedCount\(__mbUnits\) && !rows\.length/.test(b),
-      '범위 줄이 「allowed 0 그리고 0명」을 따로 다루지 않는다 — 빈 조직명 + 0명이 그대로 나간다');
-    assert.ok(/볼 수 있는 조직 없음/.test(b), '볼 수 있는 조직이 없다는 말을 하지 않는다');
-    // 분기가 조기 반환해야 '· 0명' 이 뒤이어 덮어쓰지 않는다.
-    const i = b.indexOf('볼 수 있는 조직 없음'), j = b.indexOf("+ '명'");
-    assert.ok(i >= 0 && j > i && /return;/.test(b.slice(i, j)),
-      "「볼 수 있는 조직 없음」 뒤에 return 이 없다 — 곧바로 '· 0명' 이 덮어쓴다");
-    // 정상 경로는 그대로다(회귀 방지).
+    assert.ok(/'일정 열람 범위: '/.test(b),
+      "범위 줄이 「일정 열람 범위:」로 시작하지 않는다 — 명부 범위로 읽힌다");
+    assert.ok(!/볼 수 있는 조직 없음/.test(source),
+      '옛 「볼 수 있는 조직 없음」 분기가 남아 있다 — 이제 그런 상태가 없다');
     assert.ok(/where \+ rows\.length \+ '명'/.test(b), '정상 경로의 「<조직명> N명」 표기가 사라졌다');
+    assert.ok(/'일정 열람 범위: 확인할 수 없음'/.test(jsBody(source, 'mbFail')),
+      '조회 실패 줄만 옛 앞머리를 쓴다 — 같은 줄이 상황에 따라 다른 이름으로 불린다');
   },
 };
 
@@ -839,23 +899,27 @@ test('구성원 ㉑: renderMembers 는 DOM API 로만 그린다(HTML 주입 API 
 test('구성원 ㉒: #usMembersSec 는 #usPermSec 와 같은 조건으로 토글된다', () => checks.membersSecToggle(src));
 test('구성원 ㉓: 행 진입점만 있고 실제 열람 UI(그리드·일자패널·편집)는 없다', () => checks.membersEntryOnlyNoRealUi(src));
 test('구성원 ㉔: 호스트 membersGet 은 읽기 경로다(OpenWriteAsync 금지)', () => checks.membersHostReadPath(main, pdb));
-test('구성원 ㉕: 명부 IN 절은 파라미터 바인딩이다(유닛 이름 문자열 연결 금지)', () => checks.membersInClauseBound(pdb));
-test('구성원 ㉖: scope=self 는 본인 1행만 담는다(전체 조회 금지)', () => checks.membersSelfOnly(pdb));
+test('구성원 ㉕: 명부는 IN 절 없이 전원(is_active=1)이다', () => checks.membersRosterIsEveryone(pdb));
+test('구성원 ㉖: view_scope 는 일정 열람 범위다(명부에서 사람을 빼지 않는다)', () => checks.membersScopeIsScheduleOnly(pdb));
 test('구성원 ㉗: unit_tree 확장은 반복 + 방문 집합 가드다(재귀 CTE 금지)', () => checks.membersTreeExpansion(pdb));
 test('구성원 ㉘: renderUnitTree·renderMembers·mbFail 이 DOM API 로만 그린다', () => checks.membersTreeNoHtmlInjection(src));
-test('구성원 ㉙: 범위 밖 노드는 숨기지 않고 disabled 로 그린다', () => checks.membersOutOfScopeDisabled(src));
+test('구성원 ㉙: 조직 트리는 전부 활성이다(disabled 노드 0)', () => checks.membersTreeAllEnabled(src));
 test('구성원 ㉚: openMembers 는 열 때마다 membersGet 을 다시 부른다(캐시 금지)', () => checks.membersRefetchOnOpen(src));
 test('구성원 ㉛: .mb-split 은 2열 그리드다(좌 트리 · 우 목록)', () => checks.membersSplitTwoCols(src));
-test('구성원 ㉜: 내 행은 is-link 가 아니고 「· 나」 꼬리표가 붙는다', () => checks.membersSelfRowNotLink(src));
+test('구성원 ㉜: is-link 는 「내가 아님 && 일정 열람 가능」 둘 다 본다', () => checks.membersRowLinkRule(src));
 test('구성원 ㉝: 누를 수 있는 행은 <button type="button"> 이다(div+onclick 금지)', () => checks.membersLinkRowIsButton(src));
 test('구성원 ㉞: 셰브론은 CSS ::after 다(JS 는 마크업을 만들지 않는다)', () => checks.membersChevronCssOnly(src));
 test('구성원 ㉟: 행 클릭은 toast 하나뿐 — 모달 유지 · 추가 조회 없음', () => checks.membersClickToastOnly(src));
 test('구성원 ㊱: #mbSoon 예고는 목록 위에 있고 누를 행이 0개면 감춘다', () => checks.membersSoonHint(src));
 test('사용자정보 ㊲: 신원 3줄은 응답(info)으로 칠하되 currentUser·세션은 건드리지 않는다(§2.5)', () => checks.identityLiveFromInfo(src));
 test('사용자정보 ㊳: 빈 소속은 두 경로가 같은 헬퍼(usOrgText)로 같은 문구를 쓴다', () => checks.identityOrgFallback(src));
-test('구성원 ㊴: 트리 숨김은 allowed 개수로 판정한다(self 문자열 비교 금지)', () => checks.membersTreeHiddenByAllowed(src));
-test('구성원 ㊵: 0건 안내는 3분기다(검색 중 / 빈 조직 / 볼 조직 없음)', () => checks.membersEmptyThreeCases(src));
-test('구성원 ㊶: allowed 0 + 0명이면 범위 줄이 「볼 수 있는 조직 없음」이다', () => checks.membersScopeLineNoBlankZero(src));
+test('구성원 ㊴: 트리 숨김은 units 개수로만 판정한다(범위로 접지 않는다)', () => checks.membersTreeHiddenByUnitCount(src));
+test('구성원 ㊵: 0건 안내는 2분기다(검색 중 / 빈 조직)', () => checks.membersEmptyTwoCases(src));
+test('구성원 ㊶: 범위 줄은 「일정 열람 범위:」로 시작한다', () => checks.membersScopeLineSchedulePrefix(src));
+test('구성원 ㊷: scope 와 무관하게 조직 트리를 조회한다(self 도 건너뛰지 않는다)', () => checks.membersUnitsAlwaysQueried(pdb));
+test('구성원 ㊸: units payload 에 allowed 키가 없다', () => checks.membersUnitsHaveNoAllowed(pdb));
+test('구성원 ㊹: 구성원마다 canViewSchedule 이 허용 유닛 집합으로 계산된다', () => checks.membersCanViewScheduleFlag(pdb));
+test('구성원 ㊺: 화면에 죽은 개념(mbAllowedCount·u.allowed)이 남아 있지 않다', () => checks.membersNoDeadAllowedConcept(src));
 
 // 세션 파일은 4필드 그대로다 — 권한을 세션에 캐시하는 순간 관리자가 역할을 바꿔도 화면이 낡은 값을 말한다.
 test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않았다', () => {
@@ -1040,16 +1104,47 @@ test('변이㉔-b: 호스트 case "membersGet" 을 지우면 membersHostReadPath
   assert.throws(() => checks.membersHostReadPath(bad, pdb), /case "membersGet" 을 찾지 못함/);
 });
 
-test('변이㉕: IN 절 자리표시자를 유닛 이름 문자열 연결로 바꾸면 membersInClauseBound 가 실패한다', () => {
+test('변이㉕: 명부에 유닛 필터(IN 절)를 되살리면 membersRosterIsEveryone 이 실패한다', () => {
   const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
-    'ph.Add("@u" + i.ToString(CultureInfo.InvariantCulture));', 'ph.Add("\'" + unitNames[i] + "\'");');
-  assert.throws(() => checks.membersInClauseBound(bad), /자리표시자.*만들지 않는다/);
+    '"SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 ORDER BY org_unit, name", conn))',
+    '"SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 AND org_unit IN (@u0) ORDER BY org_unit, name", conn))');
+  assert.throws(() => checks.membersRosterIsEveryone(bad), /is_active=1 전원이 아니다/);
 });
 
-test('변이㉖: self 를 unit_tree 와 같은 case 로 묶으면 membersSelfOnly 가 실패한다', () => {
+test('변이㉖: 본인 행을 따로 담는 self 특례를 되살리면 membersScopeIsScheduleOnly 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    '                var members = new List<Dictionary<string, object?>>();',
+    '                var members = new List<Dictionary<string, object?>>();\n' +
+    '                members.Add(new Dictionary<string, object?> { ["loginId"] = id });');
+  assert.throws(() => checks.membersScopeIsScheduleOnly(bad), /본인 행을 따로 만들어 담는다/);
+});
+
+test('변이㉖-b: self 를 unit_tree 와 같은 case 로 묶으면 membersScopeIsScheduleOnly 가 실패한다', () => {
   const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
     '                    case "unit_tree":', '                    case "self":\n                    case "unit_tree":');
-  assert.throws(() => checks.membersSelfOnly(bad), /self 가 허용 유닛 집합을 받는다/);
+  assert.throws(() => checks.membersScopeIsScheduleOnly(bad), /self 가 일정 열람 가능 유닛을 받는다/);
+});
+
+test('변이㊷: self 면 조직 트리 조회를 건너뛰게 하면 membersUnitsAlwaysQueried 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    '                var units = new List<OrgUnitRow>();\n                await using (var cmd = new MySqlCommand(',
+    '                var units = new List<OrgUnitRow>();\n' +
+    '                if (!string.Equals(scope, "self", StringComparison.Ordinal))\n' +
+    '                await using (var cmd = new MySqlCommand(');
+  assert.throws(() => checks.membersUnitsAlwaysQueried(bad), /"self" 와 비교하는 특례가 남아 있다/);
+});
+
+test('변이㊸: units payload 에 allowed 를 되살리면 membersUnitsHaveNoAllowed 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    '                        ["sortOrder"] = u.SortOrder,',
+    '                        ["sortOrder"] = u.SortOrder,\n                        ["allowed"] = allowed.Contains(u.Name),');
+  assert.throws(() => checks.membersUnitsHaveNoAllowed(bad), /allowed 가 실린다/);
+});
+
+test('변이㊹: canViewSchedule 을 true 로 굳히면 membersCanViewScheduleFlag 가 실패한다', () => {
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+    '["canViewSchedule"] = allowed.Contains(ou),', '["canViewSchedule"] = true,');
+  assert.throws(() => checks.membersCanViewScheduleFlag(bad), /일정 열람 가능 유닛 집합으로 계산하지 않는다/);
 });
 
 test('변이㉗: 방문 집합 가드를 빼면 membersTreeExpansion 이 실패한다(순환 시 무한 루프)', () => {
@@ -1064,10 +1159,27 @@ test('변이㉘: renderUnitTree 가 조직명을 innerHTML 로 넣으면 members
   assert.throws(() => checks.membersTreeNoHtmlInjection(bad), /HTML 주입 API/);
 });
 
-test('변이㉙: 범위 밖 노드를 숨기면 membersOutOfScopeDisabled 가 실패한다', () => {
-  const bad = mutate(src, "      if(!(u && u.allowed)){ b.disabled = true; b.title = '열람 범위 밖입니다'; }",
-                          '      if(!(u && u.allowed)) continue;');
-  assert.throws(() => checks.membersOutOfScopeDisabled(bad), /disabled 로 만들지 않는다/);
+test('변이㉙: 범위 밖 노드를 다시 disabled 로 만들면 membersTreeAllEnabled 가 실패한다', () => {
+  const bad = mutate(src, '      b.dataset.unit = nm;\n      b.textContent = nm;\n',
+                          '      b.dataset.unit = nm;\n      b.textContent = nm;\n      if(!(u && u.canViewSchedule)) b.disabled = true;\n');
+  assert.throws(() => checks.membersTreeAllEnabled(bad), /disabled 를 설정한다/);
+});
+
+test('변이㉙-b: mbSelect 가 다시 범위로 막으면 membersTreeAllEnabled 가 실패한다', () => {
+  const bad = mutate(src, '  if(!u) return;   // 트리에 없는 이름이면', '  if(!u || !u.allowed) return;   // 트리에 없는 이름이면');
+  assert.throws(() => checks.membersTreeAllEnabled(bad), /mbSelect 가 아직 범위를 확인한다/);
+});
+
+test('변이㊺: mbAllowedCount 를 되살려 트리를 접으면 membersNoDeadAllowedConcept 가 실패한다', () => {
+  const bad = mutate(src, '  const usable = arr.length;',
+                          '  const usable = arr.filter(u => u && u.allowed).length;');
+  assert.throws(() => checks.membersNoDeadAllowedConcept(bad), /renderUnitTree 이 아직 u\.allowed 를 읽는다/);
+});
+
+test('변이㊺-b: 기본 선택을 옛 허용 집합 규칙으로 되돌리면 membersNoDeadAllowedConcept 가 실패한다', () => {
+  const bad = mutate(src, '  const arr = Array.isArray(units) ? units : [];\n  if(!arr.length) return null;',
+                          '  const arr = (Array.isArray(units) ? units : []).filter(u => u && u.allowed);\n  if(!arr.length) return null;');
+  assert.throws(() => checks.membersNoDeadAllowedConcept(bad), /mbDefaultSel 이 아직 u\.allowed 를 읽는다/);
 });
 
 test('변이㉚: openMembers 가 받아 둔 명부를 재사용하면 membersRefetchOnOpen 이 실패한다', () => {
@@ -1082,19 +1194,35 @@ test('변이㉛: .mb-split 을 1열로 되돌리면 membersSplitTwoCols 가 실�
   assert.throws(() => checks.membersSplitTwoCols(bad), /1열이다/);
 });
 
-test('변이㉜: 내 행 판정을 뒤집으면(나만 is-link) membersSelfRowNotLink 가 실패한다', () => {
-  const bad = mutate(src, "row.className = isMe ? 'mb-row' : 'mb-row is-link';",
-                          "row.className = isMe ? 'mb-row is-link' : 'mb-row';");
-  assert.throws(() => checks.membersSelfRowNotLink(bad), /내 행에 is-link 가 붙는다/);
+test('변이㉜: 판정이 isMe 만 보면(권한 없는 남의 행도 눌림) membersRowLinkRule 이 실패한다', () => {
+  const bad = mutate(src, '    const plain = isMe || !canView;', '    const plain = isMe;');
+  assert.throws(() => checks.membersRowLinkRule(bad), /「나 이거나 일정을 볼 수 없거나」가 아니다/);
 });
 
-test('변이㉜-b: 내 행 판정을 상수로 굳히면(isMe=false) membersSelfRowNotLink 가 실패한다', () => {
+test('변이㉜-b: 판정이 canView 만 보면(내 행도 눌림) membersRowLinkRule 이 실패한다', () => {
+  const bad = mutate(src, '    const plain = isMe || !canView;', '    const plain = !canView;');
+  assert.throws(() => checks.membersRowLinkRule(bad), /「나 이거나 일정을 볼 수 없거나」가 아니다/);
+});
+
+test('변이㉜-c: 일정 열람 판정을 상수로 굳히면(canView=true) membersRowLinkRule 이 실패한다', () => {
+  const bad = mutate(src, '    const canView = !!(m && m.canViewSchedule);', '    const canView = true;');
+  assert.throws(() => checks.membersRowLinkRule(bad), /canView\)이 m\.canViewSchedule 이 아니다/);
+});
+
+test('변이㉜-d: 내 행 판정을 상수로 굳히면(isMe=false) membersRowLinkRule 이 실패한다', () => {
   const bad = mutate(src, "const isMe = !!me && String(m && m.loginId == null ? '' : m.loginId) === me;", 'const isMe = false;');
-  assert.throws(() => checks.membersSelfRowNotLink(bad), /isMe\)이 loginId 대조가 아니다/);
+  assert.throws(() => checks.membersRowLinkRule(bad), /isMe\)이 loginId 대조가 아니다/);
+});
+
+test('변이㉜-e: 권한 없는 남의 행에 꼬리표를 달면 membersRowLinkRule 이 실패한다', () => {
+  const bad = mutate(src, "    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 나'; head.appendChild(s); }",
+                          "    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 나'; head.appendChild(s); }\n" +
+                          "    else if(!canView){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 권한 없음'; head.appendChild(s); }");
+  assert.throws(() => checks.membersRowLinkRule(bad), /행 꼬리표가 「· 나」 하나가 아니다/);
 });
 
 test('변이㉝: 누를 수 있는 행을 div 로 되돌리면 membersLinkRowIsButton 이 실패한다', () => {
-  const bad = mutate(src, "const row = document.createElement(isMe ? 'div' : 'button');",
+  const bad = mutate(src, "const row = document.createElement(plain ? 'div' : 'button');",
                           "const row = document.createElement('div');");
   assert.throws(() => checks.membersLinkRowIsButton(bad), /<button> 이 아니다/);
 });
@@ -1110,9 +1238,16 @@ test('변이㉟: 행 클릭이 모달을 닫으면 membersClickToastOnly 가 실
   assert.throws(() => checks.membersClickToastOnly(bad), /행 클릭이 closeOverlay 를 쓴다/);
 });
 
-test('변이㊱: #mbSoon 숨김 토글을 빼면 membersSoonHint 가 실패한다', () => {
-  const bad = mutate(src, "  const soon = document.getElementById('mbSoon'); if(soon) soon.classList.toggle('hidden', links === 0);\n", '');
-  assert.throws(() => checks.membersSoonHint(bad), /#mbSoon 을 토글하지 않는다/);
+test('변이㊱: 누를 행이 0개일 때 #mbSoon 을 감추면(옛 규칙) membersSoonHint 가 실패한다', () => {
+  const bad = mutate(src, "    soon.classList.toggle('hidden', arr.length === 0);",
+                          "    soon.classList.toggle('hidden', links === 0);");
+  assert.throws(() => checks.membersSoonHint(bad), /감춘다 — 감추지 말고/);
+});
+
+test('변이㊱-b: 권한 없음 문구를 빼면 membersSoonHint 가 실패한다', () => {
+  const bad = mutate(src, "        soon.textContent = '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다';",
+                          "        soon.textContent = '사람을 누르면 그 사람 일정을 볼 수 있습니다';");
+  assert.throws(() => checks.membersSoonHint(bad), /누를 행이 0개일 때의 문구가 없다/);
 });
 
 // ── 결함① 신원 갱신 ──────────────────────────────────────────────────
@@ -1184,43 +1319,43 @@ test('변이㊳-d: 공백 트림을 빼면 identityOrgFallback 이 실패한다(
 
 // ── 결함② 소속 없음 빈 상태 ──────────────────────────────────────────
 
-test('변이㊴-a: 트리 숨김을 노드 개수로 되돌리면 membersTreeHiddenByAllowed 가 실패한다', () => {
-  const bad = mutate(src, '  const usable = mbAllowedCount(arr);', '  const usable = arr.length;');
-  assert.throws(() => checks.membersTreeHiddenByAllowed(bad), /allowed 개수\(mbAllowedCount\)로 판정되지 않는다/);
+test('변이㊴-a: 트리 숨김을 허용 노드 개수로 되돌리면 membersTreeHiddenByUnitCount 가 실패한다', () => {
+  const bad = mutate(src, '  const usable = arr.length;', '  const usable = mbAllowedCount(arr);');
+  assert.throws(() => checks.membersTreeHiddenByUnitCount(bad), /allowed 개수로 판정하던 옛 규칙/);
 });
 
-test("변이㊴-b: 트리 숨김을 scope==='self' 비교로 되돌리면 membersTreeHiddenByAllowed 가 실패한다", () => {
-  const bad = mutate(src, '  const usable = mbAllowedCount(arr);', "  const usable = (__mbScopeRaw === 'self') ? 0 : arr.length;");
-  assert.throws(() => checks.membersTreeHiddenByAllowed(bad), /문자열 비교로 판정한다/);
+test("변이㊴-b: 트리 숨김을 scope==='self' 비교로 되돌리면 membersTreeHiddenByUnitCount 가 실패한다", () => {
+  const bad = mutate(src, '  const usable = arr.length;', "  const usable = (__mbScopeRaw === 'self') ? 0 : arr.length;");
+  assert.throws(() => checks.membersTreeHiddenByUnitCount(bad), /문자열 비교로 판정한다/);
 });
 
-test('변이㊴-c: mbApply 가 allowed 를 따로 세면 membersTreeHiddenByAllowed 가 실패한다', () => {
-  const bad = mutate(src, '  if(!mbAllowedCount(__mbUnits) && !rows.length){',
-                          '  if(!__mbUnits.filter(u => u && u.allowed).length && !rows.length){');
-  assert.throws(() => checks.membersTreeHiddenByAllowed(bad), /mbApply 이 mbAllowedCount 를 쓰지 않는다/);
-});
-
-test('변이㊵-a: 0건 안내를 한 문구로 합치면 membersEmptyThreeCases 가 실패한다', () => {
-  const bad = mutate(src, "  if(k) return '검색 결과가 없습니다.';\n  return mbAllowedCount(__mbUnits)\n    ? '이 조직에 등록된 구성원이 없습니다.'\n    : '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.';",
+test('변이㊵-a: 0건 안내를 한 문구로 합치면 membersEmptyTwoCases 가 실패한다', () => {
+  const bad = mutate(src, "  return k ? '검색 결과가 없습니다.' : '이 조직에 등록된 구성원이 없습니다.';",
                           "  return '검색 결과가 없습니다.';");
-  assert.throws(() => checks.membersEmptyThreeCases(bad), /검색어 뒤로 가려지지 않는다/);
+  assert.throws(() => checks.membersEmptyTwoCases(bad), /검색어 뒤로 가려지지 않는다/);
 });
 
-test('변이㊵-b: 「볼 수 있는 조직 없음」 분기를 빈 조직 문구로 합치면 membersEmptyThreeCases 가 실패한다', () => {
-  const bad = mutate(src, "    : '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.';",
-                          "    : '이 조직에 등록된 구성원이 없습니다.';");
-  assert.throws(() => checks.membersEmptyThreeCases(bad), /볼 수 있는 조직이 0개인 경우의 문구가 없다/);
+test('변이㊵-b: 옛 「볼 수 있는 조직 없음」 분기를 되살리면 membersEmptyTwoCases 가 실패한다', () => {
+  const bad = mutate(src, "  return k ? '검색 결과가 없습니다.' : '이 조직에 등록된 구성원이 없습니다.';",
+                          "  return k ? '검색 결과가 없습니다.' : (__mbUnits.length ? '이 조직에 등록된 구성원이 없습니다.' : '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.');");
+  assert.throws(() => checks.membersEmptyTwoCases(bad), /옛 3번째 분기/);
 });
 
-test('변이㊵-c: renderMembers 가 문구를 갈아끼우지 않으면 membersEmptyThreeCases 가 실패한다', () => {
+test('변이㊵-c: renderMembers 가 문구를 갈아끼우지 않으면 membersEmptyTwoCases 가 실패한다', () => {
   const bad = mutate(src, '  if(empty){ empty.textContent = mbEmptyText(); empty.classList.toggle(\'hidden\', arr.length > 0); }',
                           "  if(empty) empty.classList.toggle('hidden', arr.length > 0);");
-  assert.throws(() => checks.membersEmptyThreeCases(bad), /mbEmptyText 로 갈아끼우지 않는다/);
+  assert.throws(() => checks.membersEmptyTwoCases(bad), /mbEmptyText 로 갈아끼우지 않는다/);
 });
 
-test('변이㊶: 범위 줄의 「볼 수 있는 조직 없음」 분기를 빼면 membersScopeLineNoBlankZero 가 실패한다', () => {
-  const bad = mutate(src, "  if(!mbAllowedCount(__mbUnits) && !rows.length){\n    set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + ' · 볼 수 있는 조직 없음');\n    return;\n  }\n", '');
-  assert.throws(() => checks.membersScopeLineNoBlankZero(bad), /따로 다루지 않는다/);
+test('변이㊶: 범위 줄 앞머리를 「열람 범위:」로 되돌리면 membersScopeLineSchedulePrefix 가 실패한다', () => {
+  const bad = mutate(src, "  set('mbScope', '일정 열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');",
+                          "  set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');");
+  assert.throws(() => checks.membersScopeLineSchedulePrefix(bad), /「일정 열람 범위:」로 시작하지 않는다/);
+});
+
+test('변이㊶-b: 실패 줄만 옛 앞머리를 쓰면 membersScopeLineSchedulePrefix 가 실패한다', () => {
+  const bad = mutate(src, "sc.textContent = '일정 열람 범위: 확인할 수 없음'", "sc.textContent = '열람 범위: 확인할 수 없음'");
+  assert.throws(() => checks.membersScopeLineSchedulePrefix(bad), /실패 줄만 옛 앞머리를 쓴다/);
 });
 
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
@@ -1403,127 +1538,174 @@ if (!JSDOM) {
     });
 
     // ── 구성원(실데이터 payload) ──────────────────────────────────────
-    // 실제 org_unit(12행 3계층)·app_user 를 그대로 본뜬 표본을 hostRequest 회신으로 먹인다.
-    // ★ payload 의 members 에는 '범위 안 사람만' 들어 있다 — 호스트가 이미 잘랐기 때문이다.
-    //   그러니 화면 필터를 검증하는 게 아니라 '트리 선택 → 서브트리 집계'를 검증하는 것이다.
+    // 실제 org_unit(12행 3계층)·app_user(89명)를 그대로 본뜬 표본을 hostRequest 회신으로 먹인다.
+    // ★ payload 의 members 에는 '전원'이 들어 있다 — 명부는 열람 범위와 무관하기 때문이다.
+    //   범위는 각 행의 canViewSchedule 하나로만 나타난다(= 그 사람 일정을 열 수 있는가).
+    //   그러니 여기서 보는 것은 두 가지다: '트리 선택 → 서브트리 집계'와 '누를 수 있는 행이 누구인가'.
     const rows = () => w.document.querySelectorAll('#mbList .mb-row').length;
     const nodes = () => [...w.document.querySelectorAll('#mbTree .mb-node')];
     const node = (name) => nodes().find((b) => b.dataset.unit === name);
+    const linkRows = () => [...w.document.querySelectorAll('#mbList .mb-row.is-link')];
+    const soonText = () => w.document.getElementById('mbSoon').textContent;
 
-    const U = (name, parent, sortOrder, allowed) => ({ name, parent, sortOrder, allowed });
-    const UNITS_SW = [
-      U('기술개발총괄', null, 10, false),
-      U('SW개발본부', '기술개발총괄', 20, true),
-      U('SW 1팀', 'SW개발본부', 21, true),
-      U('SW 2팀', 'SW개발본부', 22, true),
-      U('SW 3팀', 'SW개발본부', 23, true),
-      U('SW 4팀', 'SW개발본부', 24, true),
-      U('디자인팀', 'SW개발본부', 25, true),
-      U('시스템개발본부', '기술개발총괄', 30, false),
-      U('시스템 1팀', '시스템개발본부', 31, false),
-      U('시스템 2팀', '시스템개발본부', 32, false),
-      U('사업부', '기술개발총괄', 40, false),
-      U('경영지원팀', '기술개발총괄', 50, false),
+    const U = (name, parent, sortOrder) => ({ name, parent, sortOrder });
+    const UNITS_ALL = [
+      U('기술개발총괄', null, 10),
+      U('SW개발본부', '기술개발총괄', 20),
+      U('SW 1팀', 'SW개발본부', 21),
+      U('SW 2팀', 'SW개발본부', 22),
+      U('SW 3팀', 'SW개발본부', 23),
+      U('SW 4팀', 'SW개발본부', 24),
+      U('디자인팀', 'SW개발본부', 25),
+      U('시스템개발본부', '기술개발총괄', 30),
+      U('시스템 1팀', '시스템개발본부', 31),
+      U('시스템 2팀', '시스템개발본부', 32),
+      U('사업부', '기술개발총괄', 40),
+      U('경영지원팀', '기술개발총괄', 50),
     ];
-    const M = (loginId, name, title, orgUnit) => ({ loginId, name, title, orgUnit });
-    const MEMBERS_SW = [
-      M('a1', '김서연', '수석연구원', 'SW개발본부'),
-      M('a2', '박도현', '책임연구원', 'SW 1팀'),
-      M('a3', '이지훈', '선임연구원', 'SW 1팀'),
-      M('a4', '최유진', '연구원', 'SW 2팀'),
-      M('a5', '정민석', '책임연구원', 'SW 3팀'),
-      M('a6', '한소영', '선임연구원', 'SW 3팀'),
-      M('a7', '오세훈', '연구원', 'SW 4팀'),
-      M('a8', '윤가람', '선임연구원', '디자인팀'),
-    ];
+    const M = (loginId, name, title, orgUnit, canViewSchedule) =>
+      ({ loginId, name, title, orgUnit, canViewSchedule: !!canViewSchedule });
+    // 실데이터 규모(89명)를 그대로 쓴다 — '명부는 전원이다'라는 계약은 8명짜리 표본으로는 증명되지 않는다.
+    const HEADCOUNT = {
+      '기술개발총괄': 3, 'SW개발본부': 4, 'SW 1팀': 9, 'SW 2팀': 8, 'SW 3팀': 10, 'SW 4팀': 7,
+      '디자인팀': 5, '시스템개발본부': 4, '시스템 1팀': 11, '시스템 2팀': 9, '사업부': 12, '경영지원팀': 7,
+    };
+    // 호스트가 view_scope 로 계산해 각 행에 실어 보내는 값(canViewSchedule)을 여기서 흉내 낸다.
+    const subtreeOf = (root) => {
+      const out = new Set([root]), q = [root];
+      while (q.length) {
+        const cur = q.shift();
+        for (const u of UNITS_ALL) if (u.parent === cur && !out.has(u.name)) { out.add(u.name); q.push(u.name); }
+      }
+      return out;
+    };
+    const roster = (allowedUnits) => {
+      const set = allowedUnits instanceof Set ? allowedUnits : new Set(allowedUnits || []);
+      const out = [];
+      for (const u of UNITS_ALL) {
+        for (let i = 1; i <= (HEADCOUNT[u.name] || 0); i++) {
+          out.push(M('u' + (out.length + 1), u.name + ' ' + i + '번', '연구원', u.name, set.has(u.name)));
+        }
+      }
+      return out;
+    };
     const membersReply = (data) => reply({ ok: true, data });
 
-    test('구성원(jsdom): unit_tree — 트리 12노드 · 범위 밖은 disabled · 내 소속이 기본 선택', async () => {
+    // ★ 이 테스트가 이번 설계 오류를 직접 겨눈다: self 인 71명(89명 중)이 조직 트리가 통째로 사라지고
+    //   자기 이름 한 줄만 보던 화면. 이제 명부·트리는 전부 보이고, 못 누르는 것만 다르다.
+    test('구성원(jsdom): self 라도 전 조직 트리 12노드 · 명부 89명 — 다른 것은 누를 행이 0개라는 점뿐', async () => {
       login();
-      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: MEMBERS_SW });
+      const ms = roster([]);   // self = 일정 열람 가능 유닛 없음
+      assert.strictEqual(ms.length, 89, `전제: 표본이 89명이 아니다: ${ms.length}`);
+      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: UNITS_ALL, members: ms });
       await w.eval('openMembers()');
       assert.ok(!w.document.getElementById('membersModal').classList.contains('hidden'), '구성원 모달이 열리지 않았다');
+      assert.ok(!w.document.getElementById('mbTree').classList.contains('hidden'),
+        'self 인데 트리를 접었다 — 71명이 자기 이름 한 줄만 보던 그 화면이다');
       assert.strictEqual(nodes().length, 12, `조직 트리가 12노드로 그려지지 않았다: ${nodes().length}`);
-      // 구조는 전부 보이되 범위 밖은 눌리지 않는다.
-      assert.ok(node('기술개발총괄').disabled, '범위 밖(기술개발총괄)이 disabled 가 아니다');
-      assert.strictEqual(node('기술개발총괄').title, '열람 범위 밖입니다', 'disabled 이유가 title 에 없다');
-      assert.ok(node('시스템 1팀').disabled, '범위 밖(시스템 1팀)이 disabled 가 아니다');
-      assert.ok(!node('SW 3팀').disabled, '범위 안(SW 3팀)이 눌리지 않는다');
-      // 기본 선택 = 내가 누를 수 있는 가장 위 노드 = 내 소속.
-      assert.ok(node('SW개발본부').classList.contains('sel'), '내 소속이 기본 선택이 아니다');
-      assert.strictEqual(node('SW개발본부').getAttribute('aria-current'), 'true', '선택 노드에 aria-current 가 없다');
+      assert.strictEqual(nodes().filter((b) => b.disabled).length, 0,
+        'self 인데 눌리지 않는 조직 노드가 있다 — 조직도는 누구나 탐색할 수 있어야 한다');
+      assert.strictEqual(w.document.querySelector('.mb-split').style.gridTemplateColumns, '',
+        '트리가 있는데 1열로 접혔다');
+      assert.ok(node('기술개발총괄').classList.contains('sel'), '루트(기술개발총괄)가 기본 선택이 아니다');
+      assert.ok(node('SW 3팀').classList.contains('is-mine'), '내 소속 표시가 사라졌다');
+      assert.strictEqual(rows(), 89, `명부 전원 89행이 아니다: ${rows()}`);
+      assert.strictEqual(linkRows().length, 0, 'self 인데 누를 수 있는 행이 있다 — 일정 열람 범위가 비어 있다');
+      assert.ok(!w.document.getElementById('mbSoon').classList.contains('hidden'),
+        '누를 행이 0개라고 안내를 감췄다 — 왜 안 눌리는지 알 수 없다');
+      assert.strictEqual(soonText(), '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다',
+        `누를 행이 0개인데 「누르면 볼 수 있습니다」가 남았다(거짓말이다): ${soonText()}`);
+      assert.ok(/^일정 열람 범위: 본인만/.test(txt('mbScope')), `범위 줄이 다르다: ${txt('mbScope')}`);
+      assert.ok(/기술개발총괄 89명/.test(txt('mbScope')), `범위 줄에 선택 조직·인원이 없다: ${txt('mbScope')}`);
+      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '89행인데 빈 안내가 떠 있다');
+    });
+
+    const ALLOW_SW = subtreeOf('SW개발본부');   // SW개발본부 + 하위 5팀 = 43명
+    test('구성원(jsdom): unit_tree — 트리 전부 활성 · 명부 전원 · SW 서브트리 사람만 누를 수 있다', async () => {
+      login();
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_ALL, members: roster(ALLOW_SW) });
+      await w.eval('openMembers()');
+      assert.strictEqual(nodes().length, 12, `조직 트리가 12노드로 그려지지 않았다: ${nodes().length}`);
+      assert.strictEqual(nodes().filter((b) => b.disabled).length, 0,
+        '일정 열람 범위 밖 조직이 disabled 다 — 트리는 이제 전부 활성이다');
+      assert.strictEqual(node('기술개발총괄').title, '', '트리 노드에 「열람 범위 밖」 안내가 남았다');
+      assert.ok(node('기술개발총괄').classList.contains('sel'), '루트가 기본 선택이 아니다');
+      assert.strictEqual(node('기술개발총괄').getAttribute('aria-current'), 'true', '선택 노드에 aria-current 가 없다');
       assert.ok(node('SW개발본부').classList.contains('is-mine'), '내 소속에 .is-mine 이 없다');
       assert.ok(/· 내 소속/.test(node('SW개발본부').textContent), '「· 내 소속」 꼬리표가 없다');
       assert.ok(node('SW개발본부').querySelector('span.git-opt'), '꼬리표가 별도 요소가 아니다 — 맨 텍스트로 섞였다');
-      // 선택의 의미는 '그 노드 + 모든 하위' — 본부를 고르면 산하 전원이다.
-      assert.strictEqual(rows(), 8, `SW개발본부 서브트리 8명이 그려지지 않았다: ${rows()}`);
-      assert.ok(/소속 조직/.test(txt('mbScope')), `범위 줄에 권한 문구가 없다: ${txt('mbScope')}`);
-      assert.ok(/SW개발본부 8명/.test(txt('mbScope')), `범위 줄에 선택 조직·인원이 없다: ${txt('mbScope')}`);
-      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '결과가 있는데 빈 안내가 떠 있다');
-      assert.ok(!w.document.getElementById('mbTree').classList.contains('hidden'), 'unit_tree 인데 트리가 감춰졌다');
+      assert.strictEqual(rows(), 89, `명부 전원 89행이 아니다: ${rows()}`);
+      assert.strictEqual(linkRows().length, 43, `SW 서브트리 43명만 눌려야 한다: ${linkRows().length}`);
+      // 범위 밖 사람은 명부에 '있되' 눌리지 않는다 — 꼬리표도 없다(「· 나」는 내 행 전용이다).
+      const outside = [...w.document.querySelectorAll('#mbList .mb-row')].find((r) => /시스템 1팀/.test(r.textContent));
+      assert.ok(outside, '일정 열람 범위 밖 사람이 명부에서 빠졌다 — 명부는 전원이다');
+      assert.strictEqual(outside.tagName, 'DIV', '일정을 볼 수 없는 사람의 행이 눌린다');
+      assert.ok(!/· 나/.test(outside.textContent), '남의 행에 꼬리표가 붙었다 — 그냥 안 눌리는 줄이어야 한다');
+      assert.ok(/준비 중/.test(soonText()), `누를 행이 43개인데 예고가 없다: ${soonText()}`);
+      assert.ok(/^일정 열람 범위: 소속 조직/.test(txt('mbScope')), `범위 줄 앞머리가 다르다: ${txt('mbScope')}`);
     });
 
-    test('구성원(jsdom): 하위 조직을 고르면 그 서브트리로 좁혀진다 · 범위 밖 노드는 눌러도 그대로', () => {
+    test('구성원(jsdom): 범위 밖 조직도 고를 수 있다 — 목록은 보이되 누를 행이 0개', () => {
+      node('시스템개발본부').click();
+      assert.ok(node('시스템개발본부').classList.contains('sel'),
+        '일정 열람 범위 밖 조직이 선택되지 않았다 — 조직도는 전부 탐색할 수 있어야 한다');
+      assert.ok(!node('기술개발총괄').classList.contains('sel'), '이전 선택이 남아 있다 — 선택이 둘로 보인다');
+      assert.strictEqual(rows(), 24, `시스템개발본부 서브트리 24명이 아니다: ${rows()}`);
+      assert.strictEqual(linkRows().length, 0, '일정 열람 범위 밖인데 눌리는 행이 있다');
+      assert.strictEqual(soonText(), '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다',
+        `아무도 못 누르는데 안내가 그대로다: ${soonText()}`);
+      assert.ok(/시스템개발본부 24명/.test(txt('mbScope')), `범위 줄이 따라오지 않았다: ${txt('mbScope')}`);
+      // 내 서브트리로 돌아오면 누를 수 있는 행도 예고 문구도 돌아온다.
       node('SW 3팀').click();
-      assert.strictEqual(rows(), 2, `SW 3팀 2명으로 좁혀지지 않았다: ${rows()}`);
-      assert.ok(node('SW 3팀').classList.contains('sel'), '선택 표시가 옮겨오지 않았다');
-      assert.ok(!node('SW개발본부').classList.contains('sel'), '이전 선택이 남아 있다 — 선택이 둘로 보인다');
-      assert.strictEqual(node('SW개발본부').getAttribute('aria-current'), null, '이전 선택의 aria-current 가 남았다');
-      assert.ok(/SW 3팀 2명/.test(txt('mbScope')), `범위 줄이 따라오지 않았다: ${txt('mbScope')}`);
-      // 범위 밖 노드 — 눌러도 아무 일도 일어나지 않는다.
-      node('기술개발총괄').click();
-      w.eval("mbSelect('기술개발총괄')");   // disabled 를 우회해 직접 불러도 마찬가지여야 한다
-      assert.strictEqual(rows(), 2, '범위 밖 노드를 눌렀는데 목록이 바뀌었다');
-      assert.ok(node('SW 3팀').classList.contains('sel'), '범위 밖 노드가 선택을 가져갔다');
+      assert.strictEqual(rows(), 10, `SW 3팀 10명으로 좁혀지지 않았다: ${rows()}`);
+      assert.strictEqual(linkRows().length, 10, 'SW 3팀 전원이 눌려야 한다');
+      assert.ok(/준비 중/.test(soonText()), `누를 행이 돌아왔는데 예고가 없다: ${soonText()}`);
     });
 
     test('구성원(jsdom): 검색은 현재 서브트리 안에서만 — 0건이면 빈 안내', () => {
       w.eval("mbSelect('SW개발본부')");
-      assert.strictEqual(rows(), 8, '전제: 본부 서브트리 8명');
-      w.eval("document.getElementById('mbSearch').value = 'SW 1'; filterMembers();");
-      assert.strictEqual(rows(), 2, `소속 부분일치가 안 된다: ${rows()}`);
+      assert.strictEqual(rows(), 43, `전제: 본부 서브트리 43명: ${rows()}`);
+      w.eval("document.getElementById('mbSearch').value = 'SW 1팀'; filterMembers();");
+      assert.strictEqual(rows(), 9, `소속 부분일치가 안 된다: ${rows()}`);
       w.eval("document.getElementById('mbSearch').value = '없는이름'; filterMembers();");
       assert.strictEqual(rows(), 0, '결과가 0건이 아니다');
       assert.ok(!w.document.getElementById('mbEmpty').classList.contains('hidden'), '0건인데 「검색 결과가 없습니다」가 뜨지 않는다');
-      // 서브트리 밖(범위 밖 조직)은 검색으로도 끌려 나오지 않는다 — 애초에 payload 에 없다.
+      assert.strictEqual(w.document.getElementById('mbEmpty').textContent, '검색 결과가 없습니다.',
+        `검색 중 0건의 문구가 바뀌었다: ${w.document.getElementById('mbEmpty').textContent}`);
+      assert.ok(w.document.getElementById('mbSoon').classList.contains('hidden'),
+        '목록이 0행인데 예고 줄이 남았다 — 안내할 대상이 없다');
+      // 선택 서브트리 밖 사람은 검색으로도 끌려 나오지 않는다(명부에는 있지만 지금 보는 조직이 아니다).
       w.eval("document.getElementById('mbSearch').value = '시스템'; filterMembers();");
-      assert.strictEqual(rows(), 0, '범위 밖 조직 인원이 검색으로 노출됐다');
-      w.eval("mbSelect('SW 3팀'); document.getElementById('mbSearch').value = '한소영'; filterMembers();");
+      assert.strictEqual(rows(), 0, '선택 서브트리 밖 인원이 검색으로 노출됐다');
+      w.eval("mbSelect('SW 3팀'); document.getElementById('mbSearch').value = 'SW 3팀 7번'; filterMembers();");
       assert.strictEqual(rows(), 1, '선택 조직 안 이름 검색이 안 된다');
       w.eval("document.getElementById('mbSearch').value = ''; filterMembers();");
-      assert.strictEqual(rows(), 2, '검색어를 지우면 선택 조직 전체로 돌아와야 한다');
+      assert.strictEqual(rows(), 10, '검색어를 지우면 선택 조직 전체로 돌아와야 한다');
       assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '결과가 돌아왔는데 빈 안내가 남았다');
     });
 
-    test('구성원(jsdom): scope=all 이면 루트(기술개발총괄)가 기본 선택이고 전원이 보인다', async () => {
+    test('구성원(jsdom): scope=all — 루트가 기본 선택이고 본인 1행만 빼고 전원이 눌린다', async () => {
       login();
-      const all = UNITS_SW.map((u) => ({ ...u, allowed: true }));
-      const more = MEMBERS_SW.concat([M('b1', '차은우', '책임연구원', '시스템 1팀'), M('b2', '남도일', '연구원', '경영지원팀')]);
-      membersReply({ found: true, scope: 'all', myUnit: 'SW 3팀', units: all, members: more });
+      const ms = roster(UNITS_ALL.map((u) => u.name));
+      ms[0] = M('hjlee', '이현진', '책임연구원', ms[0].orgUnit, true);   // 본인도 명부에 그대로 들어 있다
+      membersReply({ found: true, scope: 'all', myUnit: 'SW 3팀', units: UNITS_ALL, members: ms });
       await w.eval('openMembers()');
       assert.ok(node('기술개발총괄').classList.contains('sel'), 'all 인데 루트가 기본 선택이 아니다');
       assert.ok(node('SW 3팀').classList.contains('is-mine'), '내 소속 표시가 사라졌다');
-      assert.strictEqual(rows(), 10, `전원 10명이 보이지 않는다: ${rows()}`);
+      assert.strictEqual(rows(), 89, `전원 89명이 보이지 않는다: ${rows()}`);
       assert.strictEqual(nodes().filter((b) => b.disabled).length, 0, 'all 인데 눌리지 않는 노드가 있다');
-    });
-
-    test('구성원(jsdom): scope=self 면 트리를 접고 본인 1행만 보여준다', async () => {
-      login();
-      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: [], members: [M('hjlee', '이현진', '책임연구원', 'SW 3팀')] });
-      await w.eval('openMembers()');
-      assert.ok(w.document.getElementById('mbTree').classList.contains('hidden'),
-        'self 인데 트리 칸이 남아 있다 — 그릴 노드가 없다');
-      assert.strictEqual(w.document.querySelector('.mb-split').style.gridTemplateColumns, '1fr',
-        'self 인데 2열 정의가 남아 목록이 좁은 첫 칸으로 끌려간다');
-      assert.strictEqual(rows(), 1, '본인 1행이 아니다');
-      assert.strictEqual(txt('mbScope'), '열람 범위: 본인만 · 1명', `범위 줄이 다르다: ${txt('mbScope')}`);
+      assert.strictEqual(linkRows().length, 88, `본인 1행을 뺀 88명이 눌려야 한다: ${linkRows().length}`);
+      const mine = [...w.document.querySelectorAll('#mbList .mb-row')].find((r) => /· 나/.test(r.textContent));
+      assert.ok(mine, '내 행에 「· 나」 꼬리표가 없다');
+      assert.strictEqual(mine.tagName, 'DIV',
+        '내 행이 버튼이다 — canViewSchedule 이 true 여도 내 캘린더로 가는 링크는 의미가 없다');
     });
 
     test('구성원(jsdom): 조회 실패는 호스트 사유를 그대로 — 명부를 추측해 그리지 않는다', async () => {
       login();
-      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: MEMBERS_SW });
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_ALL, members: roster(ALLOW_SW) });
       await w.eval('openMembers()');
-      assert.strictEqual(rows(), 8, '전제: 직전 조회가 성공해 목록이 차 있다');
+      assert.strictEqual(rows(), 89, '전제: 직전 조회가 성공해 목록이 차 있다');
       reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
       await w.eval('openMembers()');
       assert.strictEqual(rows(), 0, '실패했는데 직전(낡은) 명부가 그대로 남았다');
@@ -1538,8 +1720,8 @@ if (!JSDOM) {
       login();
       membersReply({
         found: true, scope: 'unit_tree', myUnit: '<i>SW 1팀</i>',
-        units: [U('<i>SW 1팀</i>', null, 1, true)],
-        members: [M('x', '<img src=x onerror=1>', '<b>연구원</b>', '<i>SW 1팀</i>')],
+        units: [U('<i>SW 1팀</i>', null, 1)],
+        members: [M('x', '<img src=x onerror=1>', '<b>연구원</b>', '<i>SW 1팀</i>', true)],
       });
       await w.eval('openMembers()');
       const tree = w.document.getElementById('mbTree');
@@ -1556,7 +1738,7 @@ if (!JSDOM) {
 
     test('구성원(jsdom): 구성원을 닫아도 #userModal 은 그대로 열려 있다(중첩)', async () => {
       login();
-      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: [], members: [M('hjlee', '이현진', '책임연구원', 'SW 3팀')] });
+      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: UNITS_ALL, members: roster([]) });
       w.eval('openUserInfo()');
       await w.eval('openMembers()');
       assert.ok(!w.document.getElementById('userModal').classList.contains('hidden'), '전제: 사용자 정보가 열려 있다');
@@ -1579,32 +1761,39 @@ if (!JSDOM) {
     // ── 행 클릭 진입점(준비 중) ────────────────────────────────────────
     // 실제 일정 열람은 아직 없다(DB에 일정 테이블이 없다). 여기서 보는 건 '진입점의 모양'뿐이다:
     // 누를 수 있는 행 / 없는 행이 갈리는가, 눌렀을 때 딱 안내만 뜨는가.
-    const linkRows = () => [...w.document.querySelectorAll('#mbList .mb-row.is-link')];
 
-    test('구성원(jsdom) ㉜㉝: 내 행은 button 이 아니고 「· 나」 · 나머지는 button.is-link', async () => {
-      w.eval("currentUser = {loginId:'phmin', name:'박현민', title:'수석연구원', orgUnit:'SW개발본부'}; __usPermBusy = false;");
-      const all = UNITS_SW.map((u) => ({ ...u, allowed: true }));
-      const ms = [M('phmin', '박현민', '수석연구원', 'SW개발본부')].concat(MEMBERS_SW);
-      membersReply({ found: true, scope: 'all', myUnit: 'SW개발본부', units: all, members: ms });
+    test('구성원(jsdom) ㉜㉝: 행은 3종이다 — 나(div·「· 나」) / 볼 수 있는 남(button.is-link) / 못 보는 남(div)', async () => {
+      w.eval("currentUser = {loginId:'phmin', name:'박현민', title:'수석연구원', orgUnit:'SW 3팀'}; __usPermBusy = false;");
+      const ms = [
+        M('phmin', '박현민', '수석연구원', 'SW 3팀', true),      // 나 — canViewSchedule 이 true 라도 안 눌린다
+        M('a5', '정민석', '책임연구원', 'SW 3팀', true),          // 볼 수 있는 남
+        M('b1', '차은우', '책임연구원', '시스템 1팀', false),      // 못 보는 남 — 명부엔 있다
+      ];
+      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW 3팀', units: UNITS_ALL, members: ms });
       await w.eval('openMembers()');
       const list = [...w.document.querySelectorAll('#mbList .mb-row')];
-      assert.strictEqual(list.length, 9, `전제: 나 포함 9행이 그려져야 한다: ${list.length}`);
-      const mine = list[0];
+      assert.strictEqual(list.length, 3, `전제: 3행이 그려져야 한다: ${list.length}`);
+      const [mine, viewable, hidden] = list;
+      // ① 나 — 눌리지 않고 꼬리표가 붙는다.
       assert.strictEqual(mine.tagName, 'DIV',
-        '내 행이 버튼이다 — 이미 보고 있는 캘린더로 가는 링크는 의미가 없다');
+        '내 행이 버튼이다 — canViewSchedule 이 true 여도 이미 보고 있는 캘린더로 가는 링크는 의미가 없다');
       assert.ok(!mine.classList.contains('is-link'), '내 행에 is-link 가 붙었다');
       assert.ok(/· 나/.test(mine.textContent), '내 행에 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다');
       assert.ok(mine.querySelector('span.git-opt'), '「· 나」가 별도 요소가 아니다 — 맨 텍스트로 섞였다');
-      const others = list.slice(1);
-      assert.strictEqual(others.length, 8, '전제: 나 말고 8명');
-      for (const r of others) {
-        assert.strictEqual(r.tagName, 'BUTTON', `남의 행이 <button> 이 아니다(${r.textContent}) — 키보드로 닿지 않는다`);
-        assert.strictEqual(r.getAttribute('type'), 'button', `type="button" 이 아니다(${r.textContent})`);
-        assert.ok(r.classList.contains('is-link'), `남의 행에 is-link 가 없다(${r.textContent})`);
-        assert.ok(!/· 나/.test(r.textContent), `남의 행에 「· 나」가 붙었다(${r.textContent})`);
-      }
+      // ② 볼 수 있는 남 — 진짜 버튼이다.
+      assert.strictEqual(viewable.tagName, 'BUTTON', '볼 수 있는 남의 행이 <button> 이 아니다 — 키보드로 닿지 않는다');
+      assert.strictEqual(viewable.getAttribute('type'), 'button', 'type="button" 이 아니다');
+      assert.ok(viewable.classList.contains('is-link'), '볼 수 있는 남의 행에 is-link 가 없다');
+      assert.ok(!/· 나/.test(viewable.textContent), '남의 행에 「· 나」가 붙었다');
+      // ③ 못 보는 남 — 명부엔 있되 꼬리표 없이 그냥 안 눌리는 줄이다.
+      assert.strictEqual(hidden.tagName, 'DIV', '일정을 볼 수 없는 남의 행이 눌린다 — 눌러도 열 것이 없다');
+      assert.ok(!hidden.classList.contains('is-link'), '일정을 볼 수 없는 행에 is-link 가 붙었다');
+      assert.ok(/차은우/.test(hidden.textContent), '일정을 볼 수 없는 사람이 명부에서 빠졌다 — 명부는 전원이다');
+      assert.ok(!/· /.test(hidden.textContent.replace(' · 책임연구원', '')),
+        '못 보는 행에 별도 꼬리표가 붙었다 — 꼬리표 자리는 「· 나」 하나뿐이다');
       assert.ok(!w.document.getElementById('mbSoon').classList.contains('hidden'),
-        '누를 수 있는 행이 8개인데 「준비 중」 예고가 감춰졌다');
+        '누를 수 있는 행이 1개인데 「준비 중」 예고가 감춰졌다');
+      assert.ok(/준비 중/.test(soonText()), `누를 행이 있는데 권한 없음 문구가 떴다: ${soonText()}`);
     });
 
     test('구성원(jsdom) ㉟: 행을 누르면 안내만 뜬다 — 모달 유지 · 추가 조회 0회', () => {
@@ -1624,74 +1813,43 @@ if (!JSDOM) {
         '행 클릭이 호스트에 추가 조회를 보냈다 — 그 사람 데이터를 더 가져올 이유가 없다(열람은 5단계)');
     });
 
-    test('구성원(jsdom) ㊱: self(본인 1행)면 누를 행이 0개이고 예고 줄도 감춘다', async () => {
-      w.eval("currentUser = {loginId:'phmin', name:'박현민', title:'수석연구원', orgUnit:'SW개발본부'}; __usPermBusy = false;");
-      membersReply({ found: true, scope: 'self', myUnit: 'SW개발본부', units: [],
-        members: [M('phmin', '박현민', '수석연구원', 'SW개발본부')] });
-      await w.eval('openMembers()');
-      assert.strictEqual(rows(), 1, '본인 1행이 아니다');
-      assert.strictEqual(linkRows().length, 0, 'self 인데 누를 수 있는 행이 있다 — 목록에 나뿐이다');
-      assert.ok(w.document.getElementById('mbSoon').classList.contains('hidden'),
-        '누를 행이 0개인데 「준비 중」 예고가 남았다 — 아무도 못 누르는 안내는 소음이다(self 사용자 71명이 이 경우다)');
-    });
-
-    // ── 소속 없음 = 막다른 화면(결함②) ────────────────────────────────
-    // 실앱 실측: org_unit=NULL + unit_tree 면 트리 12노드 전부 회색, 목록 0행, 범위줄 「· 0명」(조직명 자리 빔),
-    // 안내는 「검색 결과가 없습니다.」 — 검색한 적이 없는데 검색 결과라고 말한다.
-    test('구성원(jsdom) ㊴㊵㊶: 소속 미등록 — 트리 숨김 · 관리자 안내 · 범위줄에 0명 없음', async () => {
+    // ── 소속 미등록(org_unit NULL) ────────────────────────────────────
+    // 예전엔 여기가 막다른 화면이었다(트리 12노드 전부 회색 → 통째로 접힘, 목록 0행, 「검색 결과가 없습니다」).
+    // 이제 명부·트리가 범위와 무관하므로 화면은 self 와 같다: 전부 보이고, 누를 행만 0개다.
+    test('구성원(jsdom) ㊴㊵㊶: 소속 미등록도 막다른 화면이 아니다 — 트리·명부 그대로, 누를 행만 0개', async () => {
       login();
-      const none = UNITS_SW.map((u) => ({ ...u, allowed: false }));
-      membersReply({ found: true, scope: 'unit_tree', myUnit: '', units: none, members: [] });
-      await w.eval('openMembers()');
-      assert.ok(w.document.getElementById('mbTree').classList.contains('hidden'),
-        '전 노드가 회색인데 트리가 남았다 — 12줄 전부 눌리지 않는 화면을 사용자는 자기 조작 탓으로 읽는다');
-      assert.strictEqual(nodes().length, 0, '누를 수 없는 노드만 12개를 그렸다');
-      assert.strictEqual(w.document.querySelector('.mb-split').style.gridTemplateColumns, '1fr',
-        '트리는 접혔는데 2열 정의가 남아 목록이 좁은 첫 칸으로 끌려간다');
-      assert.strictEqual(rows(), 0, '전제: 볼 수 있는 사람이 없다');
-      const empty = w.document.getElementById('mbEmpty');
-      assert.ok(!empty.classList.contains('hidden'), '0건인데 아무 안내도 없다');
-      assert.strictEqual(empty.textContent, '소속이 등록되지 않아 볼 수 있는 조직이 없습니다 — 관리자에게 문의하세요.',
-        `안내가 사유를 말하지 않는다: ${empty.textContent}`);
-      assert.ok(!/검색/.test(empty.textContent),
-        '검색한 적이 없는데 「검색 결과가 없습니다」라고 말한다 — 사용자가 원인을 자기 조작에서 찾게 된다');
-      assert.ok(!/0명/.test(txt('mbScope')), `범위 줄에 '· 0명'이 남았다(조직명 자리도 비어 있다): ${txt('mbScope')}`);
-      assert.ok(/볼 수 있는 조직 없음/.test(txt('mbScope')), `범위 줄이 왜 0인지 말하지 않는다: ${txt('mbScope')}`);
-    });
-
-    test('구성원(jsdom) ㊵: 볼 수 있는 조직은 있는데 0명이면 「빈 조직」이라고 말한다', async () => {
-      login();
-      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: [] });
+      membersReply({ found: true, scope: 'unit_tree', myUnit: '', units: UNITS_ALL, members: roster([]) });
       await w.eval('openMembers()');
       assert.ok(!w.document.getElementById('mbTree').classList.contains('hidden'),
-        '누를 수 있는 조직이 6개인데 트리를 접었다');
+        '소속이 없다고 트리를 접었다 — 조직도는 소속과 무관하게 볼 수 있어야 한다');
+      assert.strictEqual(nodes().length, 12, `트리 12노드가 그려지지 않았다: ${nodes().length}`);
+      assert.strictEqual(nodes().filter((b) => b.disabled).length, 0, '눌리지 않는 노드가 있다');
+      assert.strictEqual(nodes().filter((b) => b.classList.contains('is-mine')).length, 0,
+        '소속이 없는데 「· 내 소속」이 붙은 노드가 있다');
+      assert.strictEqual(rows(), 89, `명부 전원 89행이 아니다: ${rows()}`);
+      assert.strictEqual(linkRows().length, 0, '일정 열람 가능 유닛이 없는데 눌리는 행이 있다');
+      assert.strictEqual(soonText(), '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다',
+        `왜 아무도 못 누르는지 말하지 않는다: ${soonText()}`);
+      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '89행인데 빈 안내가 떴다');
+      assert.ok(/^일정 열람 범위: 소속 조직/.test(txt('mbScope')), `범위 줄이 다르다: ${txt('mbScope')}`);
+      assert.ok(!/볼 수 있는 조직 없음/.test(txt('mbScope')),
+        `옛 「볼 수 있는 조직 없음」이 남았다 — 이제 그런 상태가 아니다: ${txt('mbScope')}`);
+    });
+
+    test('구성원(jsdom) ㊵: 조직은 골랐는데 0명이면 「빈 조직」이라고 말하고 예고 줄은 감춘다', async () => {
+      login();
+      const ms = roster(UNITS_ALL.map((u) => u.name)).filter((m) => m.orgUnit !== '경영지원팀');
+      membersReply({ found: true, scope: 'all', myUnit: 'SW개발본부', units: UNITS_ALL, members: ms });
+      await w.eval('openMembers()');
+      w.eval("mbSelect('경영지원팀')");
+      assert.strictEqual(rows(), 0, '전제: 빈 조직을 골랐다');
       assert.strictEqual(w.document.getElementById('mbEmpty').textContent, '이 조직에 등록된 구성원이 없습니다.',
-        `빈 조직과 「볼 조직 없음」이 한 문장으로 뭉개졌다: ${w.document.getElementById('mbEmpty').textContent}`);
-      assert.ok(/SW개발본부 0명/.test(txt('mbScope')),
-        `조직을 고를 수 있으면 인원 수를 그대로 말한다(현행 유지): ${txt('mbScope')}`);
-    });
-
-    test('구성원(jsdom) ㊵: 검색 중 0건은 여전히 「검색 결과가 없습니다」다(현행 유지)', async () => {
-      login();
-      membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_SW, members: MEMBERS_SW });
-      await w.eval('openMembers()');
-      w.eval("document.getElementById('mbSearch').value = '없는이름'; filterMembers();");
-      assert.strictEqual(rows(), 0, '전제: 검색 0건');
-      assert.strictEqual(w.document.getElementById('mbEmpty').textContent, '검색 결과가 없습니다.',
-        `검색 중 0건의 문구가 바뀌었다: ${w.document.getElementById('mbEmpty').textContent}`);
-    });
-
-    test('구성원(jsdom) ㊴㊵: self 회귀 — 트리는 접히되 1행이 남고 빈 안내는 뜨지 않는다', async () => {
-      login();
-      membersReply({ found: true, scope: 'self', myUnit: 'SW 3팀', units: [],
-        members: [M('hjlee', '이현진', '책임연구원', 'SW 3팀')] });
-      await w.eval('openMembers()');
-      assert.ok(w.document.getElementById('mbTree').classList.contains('hidden'), 'self 인데 트리 칸이 남았다');
-      assert.strictEqual(rows(), 1, 'self 인데 본인 1행이 아니다');
-      assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'),
-        'self 에 빈 안내가 떴다 — allowed 0 이지만 구성원이 1명이라 어느 분기도 타면 안 된다');
-      assert.strictEqual(txt('mbScope'), '열람 범위: 본인만 · 1명',
-        `self 범위 줄이 바뀌었다(allowed 0 이지만 1명이라 현행 유지여야 한다): ${txt('mbScope')}`);
+        `빈 조직 안내가 바뀌었다: ${w.document.getElementById('mbEmpty').textContent}`);
+      assert.ok(!/검색/.test(w.document.getElementById('mbEmpty').textContent),
+        '검색한 적이 없는데 「검색 결과가 없습니다」라고 말한다 — 사용자가 원인을 자기 조작에서 찾게 된다');
+      assert.ok(w.document.getElementById('mbSoon').classList.contains('hidden'),
+        '목록이 0행인데 예고 줄이 남았다 — 안내할 대상이 없다');
+      assert.ok(/경영지원팀 0명/.test(txt('mbScope')), `인원 수를 그대로 말하지 않는다: ${txt('mbScope')}`);
     });
 
     // 부팅에서 걸린 타이머(세션 조회 타임아웃·스켈레톤 폴백)가 러너를 붙잡지 않도록 창을 닫는다.
