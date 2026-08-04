@@ -880,3 +880,318 @@ test('E8: 로그만으로 원인이 확정된다 — 구간 계측 유지 + 제�
   const b = bare(netcus, 'public async Task<bool> LoginVerify(string id, string pw)');
   assert.ok(/WebView2 준비/.test(b) && /재사용/.test(b) && /신규 생성/.test(b), 'WebView2 준비 계측이 사라졌다');
 });
+
+// ══ ⑮ 「주간보고」 계정 지목 + 이메일 오입력 차단 (2026-08-04 실사용 결함) ══════
+//
+// 실사용 결함: 사용자들이 로그인 칸에 회사 '이메일 주소'(phmin@netcus.com)를 넣고 실패했다.
+//   옛 문구 「회사 시스템 계정으로 로그인하세요.」가 모호했던 게 원인이다 — 회사 이메일도 회사 계정이다.
+//   우리가 실제로 인증하는 화면은 https://www.netcus.com/pjm/login.htm(사내 주간보고)이고 그 폼의
+//   필드는 ID / Password 다. 그래서 동기화할 것은 '겉모습'이 아니라 "어느 계정을 쓰는지 지목하는 문구"다.
+//   ★ 회사 로그인창의 로고·배경·서식은 흉내내지 않는다. 여기는 우리 앱이 비밀번호를 받는 화면이라
+//     "회사 사이트인가?"로 헷갈리게 만드는 쪽이 더 위험하다.
+// 그리고 '@'가 든 값은 호스트로 보내지 않는다: 실패 왕복(수 초)도 아깝지만, 진짜 이유는 그 실패가
+//   "비밀번호가 틀렸나?"로 오해된다는 것이다. 자동 교정도 하지 않는다 — 사용자가 직접 고쳐야 학습이 끝난다.
+//
+// 검사(lgChecks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
+
+// 소스를 인자로 받는 슬라이서(변이본에도 그대로 쓴다).
+function gateMarkupOf(source) {
+  const s = source.indexOf('<div class="lg-gate hidden" id="loginGate">');
+  assert.ok(s >= 0, '#loginGate 마크업을 찾지 못함');
+  const e = source.indexOf('</div>\n</div>', s);
+  assert.ok(e > s, '#loginGate 마크업의 끝을 찾지 못함');
+  return source.slice(s, e + 13);
+}
+const jsBodyOf = (source, name) => stripComments(extractFunction(source, name));
+
+// 순수 함수라 Node 에서 그대로 돌린다(jsdom 없이도 계약을 검증할 수 있어야 한다).
+function makeLocalPart(source) {
+  return new Function(extractFunction(source, 'lgEmailLocalPart') + '\nreturn lgEmailLocalPart;')();
+}
+
+const lgChecks = {
+  // ① 문구가 「주간보고」를 지목한다 — 화면과 JS 호출부가 같은 말을 해야 한다.
+  pointsToWeekly(source) {
+    const g = gateMarkupOf(source);
+    assert.ok(/<div class="lg-status" id="lgStatus">주간보고\(netcus\)와 같은 계정으로 로그인하세요\.<\/div>/.test(g),
+      '상태 문구가 「주간보고」를 지목하지 않는다 — "회사 계정"은 회사 이메일도 포함하는 말이라 실사용자들이 이메일을 넣고 실패했다');
+    assert.ok(/<label class="qa-lb" for="lgId">주간보고 ID<\/label>/.test(g),
+      'ID 라벨이 「주간보고 ID」가 아니다 — 그 화면의 필드 이름은 ID 지 이메일이 아니다');
+    assert.ok(/placeholder="예: phmin"/.test(g),
+      'placeholder(예: phmin)가 사라졌다 — 형태를 보여주는 유일한 예시다');
+    // 제목은 우리 앱 이름 그대로다. 회사 화면 흉내를 내면 "여기가 회사 사이트인가"로 헷갈린다.
+    assert.ok(/<div class="lg-title">수행과제 캘린더<\/div>/.test(g), '게이트 제목이 우리 앱 이름이 아니다');
+    // JS 호출부도 같은 문구여야 한다 — 마크업만 고치면 세션 복원 실패 화면에서 옛 문구가 되살아난다.
+    assert.ok(/showLoginGate\(true, '주간보고\(netcus\)와 같은 계정으로 로그인하세요\.'\)/.test(jsBodyOf(source, 'bootUserSession')),
+      'bootUserSession 의 상태 문구가 마크업과 다르다 — 복원 실패 화면만 옛 문구로 돌아간다');
+    // 로그아웃 문구는 그대로다(그 자리는 '어느 계정인가'가 아니라 '무슨 일이 일어났는가'를 말한다).
+    assert.ok(/showLoginGate\(true, '로그아웃되었습니다\. 다시 로그인하세요\.'\)/.test(jsBodyOf(source, 'submitLogout')),
+      '로그아웃 문구가 바뀌었다 — 그 줄은 이번 변경 대상이 아니다');
+    // 옛 문구는 소스에서 사라진다(패치노트는 예외 — 변경 안내는 옛 문구를 이름으로 불러야 성립한다).
+    const body = withoutPatchModal(source);
+    assert.ok(!/회사 시스템 계정/.test(body), '옛 문구(회사 시스템 계정)가 남아 있다 — 표면이 둘이면 하나는 반드시 낡는다');
+    assert.ok(!/>회사 ID</.test(body), '옛 라벨(회사 ID)이 남아 있다');
+  },
+
+  // ② ID 입력칸 바로 아래 상시 안내 — 실패한 뒤에 알려주면 늦다.
+  idHint(source) {
+    const g = gateMarkupOf(source);
+    const m = /<div class="lg-note" id="lgIdHint"[^>]*>([\s\S]*?)<\/div>/.exec(g);
+    assert.ok(m, '#lgIdHint 안내가 없다 — 이메일 오입력은 "치기 전에" 막아야 한다(실패 뒤 안내는 이미 왕복 한 번을 버린 뒤다)');
+    assert.ok(/이메일/.test(m[1]), `안내가 '이메일'을 명시하지 않는다 — 무엇이 아닌지를 말하지 않으면 옛 문구와 같은 모호함이다: ${m[1]}`);
+    assert.ok(/\bID\b/.test(m[1]), `안내가 무엇을 넣어야 하는지(ID)를 말하지 않는다: ${m[1]}`);
+    // 자리: ID 입력칸 아래 · 비밀번호 라벨보다 위여야 '이 칸' 안내로 읽힌다.
+    const iIn = g.indexOf('id="lgId"'), iHint = g.indexOf('id="lgIdHint"'), iPw = g.indexOf('for="lgPw"');
+    assert.ok(iIn >= 0 && iHint > iIn && iPw > iHint,
+      `안내가 ID 입력칸 바로 아래가 아니다(입력·안내·비번라벨 순서): ${JSON.stringify([iIn, iHint, iPw])}`);
+    // 신규 CSS 클래스 신설 금지 — 기존 .lg-note 재사용이다.
+    assert.ok(/class="lg-note"/.test(m[0]), '안내가 기존 .lg-note 를 재사용하지 않는다(새 클래스 신설 금지)');
+  },
+
+  // ③ 판정은 '@' 하나로 한다 — 사내 ID 에 @ 가 들어가는 경우는 없다.
+  localPartContract(source) {
+    const f = makeLocalPart(source);
+    assert.strictEqual(f('phmin@netcus.com'), 'phmin', "'@' 앞부분을 돌려주지 않는다 — 화면이 고칠 값을 직접 보여줘야 학습이 끝난다");
+    assert.strictEqual(f('phmin'), null, "'@' 없는 사내 ID 를 이메일로 오판한다 — 정상 로그인이 통째로 막힌다");
+    assert.strictEqual(f('@x'), '', "앞부분이 빈 경우를 null(=이메일 아님)과 구분하지 않는다");
+    assert.strictEqual(f('  phmin @netcus.com'), 'phmin', '앞부분 공백을 다듬지 않는다');
+    assert.strictEqual(f(''), null, '빈 값을 이메일로 오판한다');
+    assert.strictEqual(f(null), null, 'null 을 이메일로 오판한다(또는 던진다)');
+  },
+
+  // ④ ★ 가장 중요 — 이메일이면 hostRequest 를 아예 부르지 않는다(차단이 요청보다 '앞').
+  blocksBeforeHostRequest(source) {
+    const b = jsBodyOf(source, 'submitLogin');
+    const iCall = b.indexOf('lgEmailLocalPart(');
+    assert.ok(iCall >= 0, 'submitLogin 이 이메일 판정(lgEmailLocalPart)을 부르지 않는다 — 이메일이 그대로 호스트로 나간다');
+    const iGuard = b.indexOf('if(local !== null)', iCall);
+    assert.ok(iGuard > iCall, '판정 결과로 분기하지 않는다 — 판정만 하고 그냥 보낸다');
+    const iReq = b.indexOf("hostRequest('userLogin'");
+    assert.ok(iReq >= 0, "submitLogin 에서 hostRequest('userLogin') 을 찾지 못함 — 앵커가 깨졌다");
+    const iRet = b.indexOf('return;', iGuard);
+    assert.ok(iRet > iGuard, '이메일 분기에 return 이 없다 — 안내만 띄우고 요청은 그대로 나간다');
+    assert.ok(iRet < iReq, '이메일 차단이 호스트 요청보다 뒤에 있다 — 차단해봐야 이미 수 초짜리 왕복이 나간 뒤다');
+    // 잠금(__loginBusy)·버튼 비활성보다도 앞이어야 한다 — 잠근 뒤에 빠져나가면 버튼이 '확인 중…'으로 굳는다.
+    assert.ok(iCall < b.indexOf('__loginBusy = true;'), '이메일 차단이 재진입 잠금보다 뒤에 있다 — 잠기고 나서 return 하면 버튼이 굳는다');
+    // 빈값 검사보다는 뒤 — 빈 칸에 대고 "이메일이 아니다"라고 하면 엉뚱한 말이 된다.
+    assert.ok(b.indexOf("say('ID와 비밀번호를 입력하세요.')") < iCall, '이메일 판정이 빈값 검사보다 앞에 있다');
+    // 안내 문구는 실시간 경로와 같은 한 곳(lgEmailHintText)에서 나온다 — 두 벌이면 하나는 낡는다.
+    assert.ok(/say\(lgEmailHintText\(local\)\)/.test(b), '제출 차단이 공용 문구(lgEmailHintText)를 쓰지 않는다');
+  },
+
+  // ⑤ 차단은 비밀번호를 지우지 않는다 — 고칠 것은 ID 뿐이다.
+  keepsPassword(source) {
+    const b = jsBodyOf(source, 'submitLogin');
+    const iGuard = b.indexOf('if(local !== null)');
+    assert.ok(iGuard >= 0, '이메일 차단 분기를 찾지 못함');
+    const seg = b.slice(iGuard, b.indexOf('return;', iGuard) + 7);
+    assert.ok(!/pwEl\s*\.\s*value\s*=/.test(seg),
+      `이메일 차단이 비밀번호 칸을 건드린다 — ID 만 고치면 되는데 비번을 처음부터 다시 치게 만든다: ${seg.trim()}`);
+    assert.ok(/idEl/.test(seg) && /focus\(\)/.test(seg), '고쳐야 할 칸(#lgId)으로 포커스를 옮기지 않는다');
+    // 인증 실패(호스트 회신) 경로의 비우기는 그대로다 — 그건 다른 사건이다(비번이 실제로 틀렸을 수 있다).
+    assert.ok(/pwEl\.value = ''/.test(b), '인증 실패 시 비밀번호를 비우는 기존 동작까지 사라졌다');
+  },
+
+  // ⑥ 안내 렌더는 textContent 뿐 — 「」 안은 사용자가 친 문자열이다.
+  textContentOnly(source) {
+    assert.ok(/msg\.textContent =/.test(jsBodyOf(source, 'lgIdEmailWatch')), '실시간 안내를 textContent 로 넣지 않는다');
+    for (const fn of ['lgIdEmailWatch', 'lgEmailHintText', 'submitLogin']) {
+      const hits = [...jsBodyOf(source, fn).matchAll(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/g)].map(m => m[0]);
+      assert.strictEqual(hits.length, 0,
+        `${fn} 이 HTML 주입 API를 쓴다(${hits}) — 사용자가 친 문자열이 마크업으로 해석된다`);
+    }
+    assert.ok(/const say = t => \{ if\(msg\) msg\.textContent = t; \}/.test(jsBodyOf(source, 'submitLogin')),
+      'submitLogin 의 say 가 textContent 가 아니다 — 제출 차단 문구도 이 경로로 나간다');
+  },
+
+  // ⑥-b 실시간 안내는 '우리가 넣은 것'일 때만 지운다 — 호스트가 준 실패 사유를 덮으면 안 된다.
+  hintFlagged(source) {
+    const w = jsBodyOf(source, 'lgIdEmailWatch');
+    assert.ok(/__lgEmailHintOn = true;/.test(w) && /__lgEmailHintOn = false;/.test(w), '표식 플래그를 세우거나 내리지 않는다');
+    assert.ok(/if\(__lgEmailHintOn\)\{ msg\.textContent = '';/.test(w),
+      "'@'가 사라졌을 때 무조건 지운다 — 호스트가 준 실패 사유(로그인하지 못했습니다 …)까지 함께 지워진다");
+    // 입력 배선이 실제로 있어야 실시간이 된다.
+    assert.ok(/\$\('#lgId'\); if\(e\) e\.addEventListener\('input', lgIdEmailWatch\)/.test(stripComments(source)),
+      '#lgId 의 input 배선이 없다 — 안내가 영영 뜨지 않는다');
+  },
+};
+
+test('게이트 문구: 상태문구·ID 라벨이 「주간보고」를 지목한다', () => lgChecks.pointsToWeekly(src));
+test('게이트 문구: ID 칸 아래 「이메일 아님」 상시 안내(#lgIdHint)가 있다', () => lgChecks.idHint(src));
+test('이메일 판정: lgEmailLocalPart 는 @ 로만 가른다(앞부분 반환)', () => lgChecks.localPartContract(src));
+test('★ 제출 차단: 이메일이면 hostRequest 를 부르지 않는다(차단이 요청보다 앞)', () => lgChecks.blocksBeforeHostRequest(src));
+test('제출 차단: 비밀번호 칸을 비우지 않는다(고칠 것은 ID 뿐)', () => lgChecks.keepsPassword(src));
+test('안내 렌더: textContent 만 쓴다(innerHTML 계열 0건)', () => lgChecks.textContentOnly(src));
+test('실시간 안내: 우리가 넣은 안내일 때만 지운다(남의 실패 사유 보존)', () => lgChecks.hintFlagged(src));
+
+// ── 변이 주입(검사가 실효성이 있는지 증명) ─────────────────────────────
+// 앵커가 소스에서 안 찾히면 여기서 실패한다 — 조용히 통과하지 않는다.
+function lgMutate(base, from, to) {
+  const out = base.replace(from, to);
+  assert.notStrictEqual(out, base, `변이가 원본을 바꾸지 못했다(대상 문자열 없음): ${from}`);
+  return out;
+}
+
+test('변이⑮①: 상태 문구를 옛 「회사 시스템 계정」으로 되돌리면 pointsToWeekly 가 실패한다', () => {
+  const bad = lgMutate(src, '<div class="lg-status" id="lgStatus">주간보고(netcus)와 같은 계정으로 로그인하세요.</div>',
+                            '<div class="lg-status" id="lgStatus">회사 시스템 계정으로 로그인하세요.</div>');
+  assert.throws(() => lgChecks.pointsToWeekly(bad), /「주간보고」를 지목하지 않는다/);
+});
+
+test('변이⑮①-b: ID 라벨을 옛 「회사 ID」로 되돌리면 pointsToWeekly 가 실패한다', () => {
+  const bad = lgMutate(src, '<label class="qa-lb" for="lgId">주간보고 ID</label>',
+                            '<label class="qa-lb" for="lgId">회사 ID</label>');
+  assert.throws(() => lgChecks.pointsToWeekly(bad), /「주간보고 ID」가 아니다/);
+});
+
+test('변이⑮①-c: JS 호출부 문구만 옛것으로 두면 pointsToWeekly 가 실패한다', () => {
+  const bad = lgMutate(src, "showLoginGate(true, '주간보고(netcus)와 같은 계정으로 로그인하세요.');",
+                            "showLoginGate(true, '회사 시스템 계정으로 로그인하세요.');");
+  assert.throws(() => lgChecks.pointsToWeekly(bad), /마크업과 다르다/);
+});
+
+test('변이⑮②: #lgIdHint 를 지우면 idHint 가 실패한다', () => {
+  const bad = lgMutate(src, /\s*<div class="lg-note" id="lgIdHint"[\s\S]*?<\/div>/, '');
+  assert.throws(() => lgChecks.idHint(bad), /#lgIdHint 안내가 없다/);
+});
+
+test('변이⑮②-b: 안내에서 「이메일」을 빼면 idHint 가 실패한다', () => {
+  const bad = lgMutate(src, '이메일 주소가 아닙니다 — 주간보고 로그인에 쓰는 <b>ID</b>를 입력하세요.',
+                            '주간보고 로그인에 쓰는 <b>ID</b>를 입력하세요.');
+  assert.throws(() => lgChecks.idHint(bad), /'이메일'을 명시하지 않는다/);
+});
+
+test('변이⑮③: 판정에서 @ 탐색을 죽이면 localPartContract 가 실패한다', () => {
+  const bad = lgMutate(src, "const i = s.indexOf('@');", 'const i = -1;');
+  assert.throws(() => lgChecks.localPartContract(bad), /'@' 앞부분을 돌려주지 않는다/);
+});
+
+test('변이⑮③-b: 앞부분 트림을 빼면 localPartContract 가 실패한다', () => {
+  const bad = lgMutate(src, 'return s.slice(0, i).trim();', 'return s.slice(0, i);');
+  assert.throws(() => lgChecks.localPartContract(bad), /앞부분 공백을 다듬지 않는다/);
+});
+
+test('변이⑮④: submitLogin 의 이메일 차단을 통째로 빼면 blocksBeforeHostRequest 가 실패한다', () => {
+  const bad = lgMutate(src, /\s*const local = lgEmailLocalPart\(id\);\n\s*if\(local !== null\)\{[\s\S]*?return; \}/, '');
+  assert.throws(() => lgChecks.blocksBeforeHostRequest(bad), /이메일 판정\(lgEmailLocalPart\)을 부르지 않는다/);
+});
+
+test('변이⑮④-b: 차단 분기의 return 만 빼면 blocksBeforeHostRequest 가 실패한다(요청이 그대로 나간다)', () => {
+  const bad = lgMutate(src, 'if(idEl){ try{ idEl.focus(); }catch(_){} } return; }',
+                            'if(idEl){ try{ idEl.focus(); }catch(_){} } }');
+  assert.throws(() => lgChecks.blocksBeforeHostRequest(bad), /호스트 요청보다 뒤에 있다/);
+});
+
+test('변이⑮⑤: 차단이 비밀번호를 비우면 keepsPassword 가 실패한다', () => {
+  const bad = lgMutate(src, 'say(lgEmailHintText(local)); __lgEmailHintOn = true;',
+                            "say(lgEmailHintText(local)); __lgEmailHintOn = true; if(pwEl) pwEl.value = '';");
+  assert.throws(() => lgChecks.keepsPassword(bad), /비밀번호 칸을 건드린다/);
+});
+
+test('변이⑮⑥: 안내를 innerHTML 로 넣으면 textContentOnly 가 실패한다', () => {
+  const bad = lgMutate(src, 'if(local !== null){ msg.textContent = lgEmailHintText(local);',
+                            'if(local !== null){ msg.innerHTML = lgEmailHintText(local);');
+  assert.throws(() => lgChecks.textContentOnly(bad), /textContent 로 넣지 않는다|HTML 주입 API/);
+});
+
+test('변이⑮⑦: 표식 없이 무조건 지우면 hintFlagged 가 실패한다(호스트 실패 사유가 지워진다)', () => {
+  const bad = lgMutate(src, "  if(__lgEmailHintOn){ msg.textContent = ''; __lgEmailHintOn = false; }",
+                            "  msg.textContent = ''; __lgEmailHintOn = false;");
+  assert.throws(() => lgChecks.hintFlagged(bad), /무조건 지운다/);
+});
+
+// ══ ⑯ 실제 렌더(jsdom) — 문자열 검사로는 못 보는 것 ════════════════════
+// 배선(input 리스너·버튼 클릭)까지 실제로 도는지, 그리고 '요청 0회'가 진짜인지는 돌려봐야 안다.
+// HOST=true 로 부팅(chrome.webview 주입)한 뒤 hostRequest 를 스파이로 갈아끼운다.
+// 미설치 시 graceful-skip(이 저장소의 기존 관례).
+
+let JSDOM = null;
+try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
+
+if (!JSDOM) {
+  test('로그인(jsdom): jsdom 미설치 — 렌더 테스트 생략', () => {
+    console.log('      jsdom 미설치 — 렌더 테스트 생략');
+  });
+} else {
+  let w = null, bootErr = null;
+  try {
+    const dom = new JSDOM(src, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://tcapp.local/',
+      beforeParse(win) {
+        win.chrome = { webview: { postMessage() {}, addEventListener() {}, removeEventListener() {} } };
+        if (typeof win.crypto === 'undefined') {
+          win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: a => a };
+        }
+        win.scrollTo = () => {};
+      },
+    });
+    w = dom.window;
+  } catch (e) { bootErr = e; }
+
+  if (bootErr) {
+    test('로그인(jsdom): 부팅 실패(조사 필요)', () => { throw bootErr; });
+  } else {
+    const el = (id) => w.document.getElementById(id);
+    // 호스트 왕복 스파이 — 부팅의 userSessionGet 은 이미 지나갔으므로 여기서부터 0에서 센다.
+    const spy = () => w.eval("__hrCalls = []; hostRequest = function(cmd){ __hrCalls.push(cmd); return Promise.resolve({ok:false, msg:'(테스트)'}); }; __loginBusy = false;");
+    const calls = () => w.eval('__hrCalls.length');
+    // 사용자가 '치는' 흉내 — 값만 넣으면 input 이벤트가 안 나서 실시간 경로가 돌지 않는다.
+    const typeId = (v) => { const e = el('lgId'); e.value = v; e.dispatchEvent(new w.Event('input', { bubbles: true })); };
+
+    test('로그인(jsdom): HOST=true 로 부팅했고 게이트 배선이 살아 있다', () => {
+      assert.strictEqual(w.eval('HOST'), true, '전제: 위젯 모드 부팅');
+      assert.ok(el('lgIdHint'), '#lgIdHint 가 실제 DOM 에 없다');
+      assert.ok(/이메일/.test(el('lgIdHint').textContent), '상시 안내에 이메일 언급이 없다');
+      assert.ok(el('lgBtn') && el('lgId') && el('lgPw'), '게이트 입력 요소가 없다');
+    });
+
+    test('로그인(jsdom): 이메일을 치면 고칠 값(앞부분)이 그 자리에서 보인다', () => {
+      spy();
+      typeId('phmin@netcus.com');
+      const m = el('lgMsg').textContent;
+      assert.ok(/이메일/.test(m), `안내가 뜨지 않았다: ${JSON.stringify(m)}`);
+      assert.ok(m.includes('phmin'), `고칠 값(phmin)을 보여주지 않는다: ${JSON.stringify(m)}`);
+      assert.strictEqual(calls(), 0, '치기만 했는데 호스트로 나갔다');
+    });
+
+    test('★ 로그인(jsdom): 이메일로 로그인 버튼을 눌러도 hostRequest 0회 · 비밀번호는 남는다', () => {
+      spy();
+      el('lgPw').value = 'secret';
+      typeId('phmin@netcus.com');
+      el('lgBtn').dispatchEvent(new w.Event('click', { bubbles: true }));
+      assert.strictEqual(calls(), 0, '이메일인데 호스트로 로그인 요청이 나갔다 — 수 초를 버리고 "비밀번호가 틀렸나"로 오해된다');
+      assert.strictEqual(el('lgPw').value, 'secret', '차단하면서 비밀번호를 지웠다 — ID 만 고치면 되는데 비번을 다시 치게 만든다');
+      assert.ok(el('lgMsg').textContent.includes('phmin'), '차단 안내가 고칠 값을 보여주지 않는다');
+      assert.strictEqual(el('lgBtn').textContent, '로그인', "버튼이 '확인 중…'으로 굳었다 — 잠근 뒤에 빠져나갔다는 뜻이다");
+      assert.strictEqual(w.eval('__loginBusy'), false, '재진입 잠금이 걸린 채로 빠져나갔다 — 다음 로그인이 영영 막힌다');
+    });
+
+    test('로그인(jsdom): @ 가 없는 ID 는 막지 않는다 — 정상 로그인은 그대로 나간다', () => {
+      spy();
+      el('lgPw').value = 'secret';
+      typeId('phmin');
+      el('lgBtn').dispatchEvent(new w.Event('click', { bubbles: true }));
+      assert.strictEqual(calls(), 1, '정상 ID 인데 호스트 요청이 나가지 않았다 — 차단이 넓어져 로그인 자체가 막혔다');
+      assert.strictEqual(w.eval('__hrCalls[0]'), 'userLogin', `보낸 요청이 userLogin 이 아니다: ${w.eval('__hrCalls[0]')}`);
+    });
+
+    test('로그인(jsdom): @ 를 지우면 안내가 사라진다', () => {
+      spy();
+      typeId('phmin@netcus.com');
+      assert.ok(el('lgMsg').textContent.length > 0, '전제: 안내가 떠 있다');
+      typeId('phmin');
+      assert.strictEqual(el('lgMsg').textContent, '', '@ 를 지웠는데 안내가 남아 있다 — 고쳤는데도 계속 야단맞는 화면이 된다');
+    });
+
+    test('로그인(jsdom): 마크업 문자열을 쳐도 텍스트로만 들어간다', () => {
+      spy();
+      typeId('<img src=x onerror=1>@x');
+      const m = el('lgMsg');
+      assert.strictEqual(m.children.length, 0, '#lgMsg 안에 요소가 생성됐다 — 사용자 입력이 HTML 로 해석됐다');
+      assert.strictEqual(m.querySelector('img'), null, 'img 요소가 실제로 만들어졌다');
+      assert.ok(m.textContent.includes('<img src=x onerror=1>'), `원문이 그대로 보이지 않는다: ${JSON.stringify(m.textContent)}`);
+    });
+  }
+}

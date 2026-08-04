@@ -3099,10 +3099,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 <div class="lg-gate hidden" id="loginGate">
   <div class="lg-card">
     <div class="lg-title">수행과제 캘린더</div>
-    <div class="lg-status" id="lgStatus">회사 시스템 계정으로 로그인하세요.</div>
+    <div class="lg-status" id="lgStatus">주간보고(netcus)와 같은 계정으로 로그인하세요.</div>
     <form class="lg-form hidden" id="lgForm" autocomplete="off" onsubmit="return false">
-      <label class="qa-lb" for="lgId">회사 ID</label>
+      <label class="qa-lb" for="lgId">주간보고 ID</label>
       <input type="text" id="lgId" class="set-in" autocomplete="username" spellcheck="false" placeholder="예: phmin">
+      <!-- ★ 상시 안내. 실사용자들이 회사 '이메일 주소'를 넣고 실패했다 — "회사 계정"이라는 옛 문구가
+           이메일도 포함하는 말이라서다. 실패한 뒤에 알려주면 늦으므로 입력칸 바로 아래에 항상 둔다.
+           (회사 로그인창의 겉모습은 흉내내지 않는다 — 여기는 우리 앱이 비밀번호를 받는 화면이다.) -->
+      <div class="lg-note" id="lgIdHint" style="margin:2px 0 6px;padding-top:0;border-top:0">이메일 주소가 아닙니다 — 주간보고 로그인에 쓰는 <b>ID</b>를 입력하세요.</div>
       <label class="qa-lb" for="lgPw">비밀번호</label>
       <input type="password" id="lgPw" class="set-in" autocomplete="current-password">
       <div class="lg-foot"><button type="button" class="btn primary" id="lgBtn">로그인</button></div>
@@ -4134,7 +4138,30 @@ async function bootUserSession(){
   try{ r = await hostRequest('userSessionGet', {}, 10000); }catch(_){ r = null; }
   if(r && r.ok && r.user){ applyUser(r.user); hideLoginGate(); return; }   // 복원 성공에만 내린다
   applyUser(null);
-  showLoginGate(true, '회사 시스템 계정으로 로그인하세요.');
+  showLoginGate(true, '주간보고(netcus)와 같은 계정으로 로그인하세요.');
+}
+// 이메일 오입력 판정 — '@' 하나로 충분하다(사내 ID 에 @ 가 들어가는 경우는 없다).
+// 앞부분을 돌려주는 이유: 사용자가 고칠 값을 화면이 직접 알려주면 학습이 끝난다.
+function lgEmailLocalPart(v){
+  const s = String(v == null ? '' : v);
+  const i = s.indexOf('@');
+  if(i < 0) return null;          // '@' 없음 = 이메일 아님
+  return s.slice(0, i).trim();    // 'phmin@netcus.com' → 'phmin' · '@x' → ''
+}
+// 안내 문구 한 곳 — 실시간(입력)과 제출 차단이 같은 말을 해야 사용자가 두 번 배우지 않는다.
+function lgEmailHintText(local){
+  return local ? '이메일 주소가 아니라 ID를 입력하세요 — 「' + local + '」'
+               : '이메일 주소가 아니라 주간보고 ID를 입력하세요.';
+}
+let __lgEmailHintOn = false;   // 이 안내를 '우리가' 넣었는지 — 남의 실패 문구(호스트 사유)를 지우지 않기 위한 표식
+// #lgId 실시간 감시 — 치는 순간 알려준다(제출까지 가야 알게 되면 왕복 한 번을 그냥 버린다).
+function lgIdEmailWatch(){
+  const idEl = document.getElementById('lgId'), msg = document.getElementById('lgMsg');
+  if(!idEl || !msg) return;
+  const local = lgEmailLocalPart(idEl.value);
+  // ★ textContent 만 쓴다 — 「」 안에 들어가는 건 사용자가 친 문자열이라 마크업으로 해석되면 안 된다.
+  if(local !== null){ msg.textContent = lgEmailHintText(local); __lgEmailHintOn = true; return; }
+  if(__lgEmailHintOn){ msg.textContent = ''; __lgEmailHintOn = false; }
 }
 // 로그인 제출 — netcus 확인 + app_user 조회 + 저장 2개가 이어져 느릴 수 있어 타임아웃을 넉넉히 준다.
 async function submitLogin(){
@@ -4145,6 +4172,11 @@ async function submitLogin(){
   const id = idEl ? String(idEl.value || '').trim() : '', pw = pwEl ? String(pwEl.value || '') : '';
   say('');
   if(!id || !pw){ say('ID와 비밀번호를 입력하세요.'); const t = !id ? idEl : pwEl; if(t){ try{ t.focus(); }catch(_){} } return; }
+  // ★ 이메일은 호스트로 보내지 않는다(요청 0회). 실패 왕복 수 초도 아깝지만, 진짜 이유는
+  //   그 실패가 "비밀번호가 틀렸나?"로 오해된다는 것이다. 자동으로 고쳐 보내지도 않는다 —
+  //   사용자가 직접 고쳐야 다음부터 안 틀린다. 비밀번호는 그대로 둔다(ID만 고치면 되게).
+  const local = lgEmailLocalPart(id);
+  if(local !== null){ say(lgEmailHintText(local)); __lgEmailHintOn = true; if(idEl){ try{ idEl.focus(); }catch(_){} } return; }
   __loginBusy = true;
   // 진행 중: 잠그되(재진입 가드) 시각적으로 죽이지 않는다 — disabled 회색 면은 게이트 배경 대비 1.12:1이라
   // 버튼이 사라진 것처럼 보였다. aria-busy가 채움색을 되살리고(.lg-foot .btn.primary[aria-busy]) 스크린리더에도 알린다.
@@ -9830,6 +9862,8 @@ function bind(){
   { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
   // ── 로그인 게이트 · 사용자 정보 ── (로그인 진입점은 게이트 하나 — 사용자 정보 모달에도 입력칸은 없다)
   { const b = $('#lgBtn'); if(b) b.addEventListener('click', submitLogin); }
+  // 이메일 오입력을 치는 즉시 알린다 — 제출까지 가야 알게 되면 왕복 한 번을 그냥 버린다.
+  { const e = $('#lgId'); if(e) e.addEventListener('input', lgIdEmailWatch); }
   // Enter 제출 — 이 경로는 버튼 disabled로 막히지 않으므로 submitLogin의 __loginBusy 플래그가 진짜 가드다.
   ['#lgId','#lgPw'].forEach(s => { const e = $(s); if(e) e.addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); submitLogin(); } }); });
