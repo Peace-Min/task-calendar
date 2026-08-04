@@ -4,7 +4,7 @@
 
 **바탕화면에 상주하는 오프라인 데스크톱 캘린더 위젯 — 과제별 git/svn 커밋으로 일/주 보고서를 만들고, 사내 보고 시스템 자동 작성과 일정 시작 알림까지**
 
-[![Version](https://img.shields.io/badge/Version-v0.17.0-3e5be0)](#-릴리스-내역)
+[![Version](https://img.shields.io/badge/Version-v0.17.1-3e5be0)](#-릴리스-내역)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078D6?logo=windows&logoColor=white)](#)
 [![.NET](https://img.shields.io/badge/.NET-9.0%20WPF-512BD4?logo=dotnet&logoColor=white)](#)
 [![WebView2](https://img.shields.io/badge/UI-WebView2%20%2B%20HTML-1E9BF0)](#)
@@ -255,6 +255,7 @@ flowchart TB
 
 | 버전 | 날짜 | 핵심 변경 |
 |---|---|---|
+| **v0.17.1** | 2026-08-04 | **구성원 명부를 전 직원 공개로 정정** — 「열람 범위」는 명부가 아니라 **그 사람 일정**을 볼 수 있는 범위(범위 밖은 명부에 나오되 눌리지 않음) · **로그인 화면이 「주간보고 계정」을 지목**하고 **회사 이메일 입력을 차단**(쓸 ID를 직접 표시) |
 | **v0.17.0** | 2026-08-03 | **회사 계정(netcus) 로그인**(시작 시 1회·세션 유지) · **편집 권한을 계정으로 판정**(공용 관리자 인증 폐지 — `app_user.edit_role`을 쓰기 시점에) · 상단바 **「사용자 정보」**(신원·권한 실시간·로그아웃) · **구성원 명부**(조직 트리 · `view_scope`별 제한) · 과제 DB 접속 대상 표시 · 설정창 정리(알림 킬스위치·커밋 토글·계정 섹션 제거) |
 | **v0.16.0** | 2026-07-30 | 공식 과제 **색상 직접 지정**(과제명만 DB 고정) · 재연결 시 색상도 함께 이동 |
 | **v0.15.0** | 2026-07-27 | **문의 · 버그 리포트 모달**(메일 복사 · 진단 기록 폴더 원클릭 · 반출 경고) |
