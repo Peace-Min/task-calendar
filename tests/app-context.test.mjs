@@ -2080,15 +2080,68 @@ if (!JSDOM) {
       assert.strictEqual(evJSON("getTaskHours('2026-07-14','ca')"), null, '음수 → 미입력');
     });
 
-    test('setAttendance: 검증 규약 유지(status 화이트리스트·overtime 0..11) + 기본 정근', () => {
+    // ★ 미기록=null 계약 — 미기록을 '1'(정근)로 흡수하면 netcus에 직접 적어 둔 휴가·병가가 전송으로 덮인다.
+    test('setAttendance: 검증 규약 유지(status 화이트리스트·overtime 0..11) + 미기록=null', () => {
       seed(THS());
-      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '1', overtime: 0 }, '미설정 기본 = 정근/0');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: null, overtime: 0 }, '미설정 = 미기록(null)/0 — 정근 아님');
       ev("setAttendance('2026-07-13','2','3')");
       assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '2', overtime: 3 });
       ev("setAttendance('2026-07-14','99','50')");
-      assert.deepStrictEqual(evJSON("getAttendance('2026-07-14')"), { status: '1', overtime: 0 }, '미지 코드·범위 초과 → 기본값');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-14')"), { status: null, overtime: 0 }, '미지 코드 → 미기록(정근으로 흡수 금지)');
+      assert.ok(!('2026-07-14' in evJSON('state.attendance')), '미지 코드는 기록 자체를 만들지 않는다');
       ev("setAttendance('bad','2','1')");
       assert.ok(!('bad' in evJSON('state.attendance')), '잘못된 날짜는 저장 안 함');
+    });
+
+    test('setAttendance: 빈 값(=드롭다운 (미기록) 선택)은 그 날 기록을 삭제한다', () => {
+      seed(THS({ attendance: { '2026-07-13': { status: '6', overtime: 0 }, '2026-07-14': { status: '2', overtime: 1 } } }));
+      ev("setAttendance('2026-07-13','','0')");
+      assert.deepStrictEqual(evJSON('state.attendance'), { '2026-07-14': { status: '2', overtime: 1 } }, '빈 값 저장이 아니라 키 삭제');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: null, overtime: 0 }, '삭제 후 = 미기록');
+    });
+
+    // 보고서 근태 드롭다운 — (미기록) 옵션 + 선택/삭제 왕복(실사용 경로 그대로 클릭)
+    test('근태 UI: 미기록 날짜는 (미기록) 옵션이 selected — 회사 근태를 덮지 않는다는 신호', () => {
+      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {}, lsMigrated: true }));
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      const html = ev("$('#rptAttendRail').innerHTML");
+      assert.ok(/<option value=""[^>]*>\(미기록\)<\/option>/.test(html), '(미기록) 옵션이 렌더돼야 함');
+      assert.strictEqual(ev("$('#raStatus').value"), '', '미기록 날짜 → (미기록)이 선택됨');
+      assert.ok(/미기록이면 회사 시스템의 기존 근태를 그대로 둡니다/.test(html), '안내 문구(.ra-hint) 노출');
+    });
+
+    test('근태 UI: 휴가 선택 → setAttendance 저장, 다시 (미기록) 선택 → 기록 삭제', () => {
+      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {}, lsMigrated: true }));
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      // 휴가(6) 선택 → change 이벤트로 실제 핸들러(setAttendance) 발화
+      ev("var _s=$('#raStatus'); _s.value='6'; _s.dispatchEvent(new window.Event('change'));");
+      assert.deepStrictEqual(evJSON('state.attendance'), { '2026-07-08': { status: '6', overtime: 0 } }, '휴가 저장');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-08')"), { status: '6', overtime: 0 });
+      // 다시 렌더하면 휴가가 선택된 상태
+      ev('buildReport();');
+      assert.strictEqual(ev("$('#raStatus').value"), '6', '재렌더 시 저장값이 선택됨');
+      // (미기록)으로 되돌리면 기록이 삭제된다(빈 값 저장이 아님)
+      ev("var _s2=$('#raStatus'); _s2.value=''; _s2.dispatchEvent(new window.Event('change'));");
+      assert.deepStrictEqual(evJSON('state.attendance'), {}, '(미기록) → 기록 삭제');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-08')"), { status: null, overtime: 0 });
+    });
+
+    // 전송 버튼 실클릭 → 어댑터가 받는 페이로드에 status:null이 그대로 실리는지(폴백이 끼면 실패)
+    test('근태 미기록: 일간 전송 페이로드가 status:null을 그대로 싣는다(어댑터 캡처)', () => {
+      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {}, lsMigrated: true }));
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
+      ev('globalThis.__origSD = Platform.report.submitDaily; globalThis.__cap = null;');
+      try {
+        ev('Platform.report.submitDaily = function(p){ globalThis.__cap = p; };');
+        ev("$('#btnRptSend').click();");
+        const cap = evJSON('globalThis.__cap');
+        assert.ok(cap, '전송 페이로드가 어댑터에 전달되지 않았다');
+        assert.ok(Object.prototype.hasOwnProperty.call(cap.fields, 'status'), 'fields.status 키가 없다');
+        assert.strictEqual(cap.fields.status, null, '미기록이면 status는 null이어야 한다(정근 폴백 금지)');
+        // 근태를 기록하면 그 코드값이 그대로 실린다(정상 경로 보존)
+        ev("setAttendance('2026-07-08','6','0'); buildReport(); $('#btnRptSend').click();");
+        assert.strictEqual(evJSON('globalThis.__cap').fields.status, '6', '기록된 근태는 코드값 그대로 전송');
+      } finally { ev('Platform.report.submitDaily = globalThis.__origSD;'); }
     });
 
     test('이관: 구 localStorage 값이 state로 이동하고 마커가 선다(반환=이동 건수)', () => {

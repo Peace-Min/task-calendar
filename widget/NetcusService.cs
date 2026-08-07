@@ -48,6 +48,7 @@ namespace TaskCalendarWidget
         private string CredFile => Path.Combine(_host.DataDir, "netcus.cred");
 
         // ----- 공개 API(원시값 입력 — MainWindow는 Req 타입을 몰라도 됨) -----
+        // status: 사이트 근태 코드값 또는 ""(=미기록 — 사이트의 기존 근태를 건드리지 않는다. NetcusReq.Status 주석 참조)
         public Task SubmitDaily(int y, int m, int d, string status, int overtime, string content, bool dryRun)
             => NetcusSubmit(new NetcusReq { Y = y, M = m, D = d, Status = status, Overtime = overtime, Content = content, DryRun = dryRun });
 
@@ -161,6 +162,9 @@ namespace TaskCalendarWidget
         private sealed class NetcusReq
         {
             public int Y, M, D, Overtime;
+            // ★ Status 빈 문자열("") = 미기록. 웹은 fields.status에 null을 싣고, 경계(MainWindow.GetStr)가
+            //   JSON null을 ""로 환원한다 — 그래서 '빈 문자열 = 미기록'을 웹→호스트 공통 규약으로 고정한다.
+            //   미기록이면 폼의 status를 건드리지 않고, 제출 때는 페이지의 현재 값을 되싣는다(사이트 기존 근태 보존).
             public string Status = "", Content = "";
             public bool DryRun = true;
         }
@@ -485,11 +489,24 @@ namespace TaskCalendarWidget
 
                 NetcusProgress("내용 작성 중…");
                 NetcusStatus("submit", "filling");
+                // ★ 미기록(Status="")이면 status 대입 문장 자체를 넣지 않는다 — 페이지가 이미 가진 값
+                //   (= netcus에 직접 기록해 둔 휴가·병가 등)이 그대로 남는다. 대입하면 그게 정근으로 덮인다.
+                bool keepStatus = string.IsNullOrEmpty(req.Status);
+                string stFill = keepStatus ? "" : $"if(st){{st.value={J(req.Status)};}}";
                 string fill = "(function(){try{var st=document.getElementsByName('status')[0],ot=document.getElementsByName('overtime')[0],ct=document.getElementsByName('content')[0];"
-                    + $"if(st){{st.value={J(req.Status)};}}if(ot){{ot.selectedIndex={req.Overtime};}}if(ct){{ct.value={J(req.Content)};}}"
+                    + stFill
+                    + $"if(ot){{ot.selectedIndex={req.Overtime};}}if(ct){{ct.value={J(req.Content)};}}"
                     + "return (st&&ct)?1:0;}catch(e){return 0;}})()";
                 var filled = await cw.ExecuteScriptAsync(fill);
                 if (filled != "1") { NetcusResult(false, "입력 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
+                if (keepStatus)
+                {
+                    // 나중에 "왜 근태가 안 바뀌었지"를 추적할 유일한 근거 — 사이트에서 읽은 값을 그대로 남긴다.
+                    string cur = "";
+                    try { cur = (await cw.ExecuteScriptAsync("(function(){try{var s=document.getElementsByName('status')[0];return (s&&s.value)||'';}catch(e){return '';}})()") ?? "").Trim('"'); }
+                    catch { }
+                    Log("netcus 근태: 미기록 → 사이트 기존값 유지(" + cur + ")");
+                }
 
                 if (req.DryRun)
                 {
@@ -504,13 +521,18 @@ namespace TaskCalendarWidget
                 NetcusProgress("제출 중…");
                 NetcusStatus("submit", "submitting");
                 var submitNav = NavOnce(cw, 20000);
+                // ★ 미기록이면 status를 '페이지의 현재 select 값'으로 되싣는다(dbstatus를 읽어 싣는 바로 아래 줄과 같은 패턴).
+                //   폼에서 status를 아예 빼지는 않는다 — netcus가 필드 부재를 어떻게 다루는지 모르고, 빈 값으로 저장될 수 있다.
+                string stPost = keepStatus ? "H('status',(st&&st.value)?st.value:'1');" : $"H('status',{J(req.Status)});";
                 string post = "(function(){try{"
                     + "var db=document.getElementsByName('dbstatus')[0];"
+                    + "var st=document.getElementsByName('status')[0];"
                     + "var f=document.createElement('form');f.method='post';f.enctype='multipart/form-data';f.acceptCharset='euc-kr';"
                     + $"f.action='pjm_work_view.jsp?go=write&table=report_tbl&y={req.Y}&m={req.M}&d={req.D}&id='+encodeURIComponent({J(id)});"
                     + "function H(n,v){var i=document.createElement('input');i.type='hidden';i.name=n;i.value=v;f.appendChild(i);}"
                     + "H('dbstatus',(db&&db.value)?db.value:'0');"
-                    + $"H('status',{J(req.Status)});H('overtime',{J(req.Overtime.ToString())});"
+                    + stPost
+                    + $"H('overtime',{J(req.Overtime.ToString())});"
                     + $"var ta=document.createElement('textarea');ta.name='content';ta.value={J(req.Content)};f.appendChild(ta);"
                     + "document.body.appendChild(f);f.submit();return 'SUBMITTED';"
                     + "}catch(e){return 'ERR '+((e&&e.message)||e);}})()";

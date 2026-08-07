@@ -453,6 +453,9 @@ namespace TaskCalendarWidget
                     case "netcusSubmit":
                     {
                         bool dryRun = !(doc.RootElement.TryGetProperty("dryRun", out var drEl) && drEl.ValueKind == JsonValueKind.False);
+                        // ★ 근태 미기록 규약: 웹은 status에 null을 싣고, GetStr은 JSON null(문자열이 아님)을 ""로 환원한다.
+                        //   즉 웹→호스트 경계에서 '미기록'은 빈 문자열로 보존된다(NetcusReq.Status 주석과 한 쌍).
+                        //   NetcusService는 빈 값이면 사이트의 status를 건드리지 않고 기존 근태를 유지한다.
                         _ = _netcus.SubmitDaily(GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"),
                             GetStr(doc, "status"), GetInt(doc, "overtime"), GetStr(doc, "content"), dryRun);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
                         break;

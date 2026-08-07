@@ -970,7 +970,8 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 /* 좁은 레일: 근태·초과를 2열 그리드(라벨│컨트롤)로 — 라벨과 셀렉트가 분리돼 잘리던 문제 해소 */
 .rpt-attend-rail .rpt-attend{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:7px 8px;margin-bottom:0}
 .rpt-attend-rail .rpt-attend .ra-sel{width:100%}
-.rpt-attend-rail .rpt-attend .ra-hint{grid-column:1 / -1;margin-left:0}
+/* 레일에선 안내 문구가 한 행을 통째로 쓰므로 말줄임 대신 줄바꿈 — 잘려서 뜻이 안 통하면 안내가 아니다 */
+.rpt-attend-rail .rpt-attend .ra-hint{grid-column:1 / -1;margin-left:0;white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45}
 /* 넓은 폭 — 2단(좌 레일·우 미리보기). #reportModal 한정(다른 wide 모달 불변). 440 시트보다 좁아 겹침 없음. */
 @media (min-width:900px){
   #reportModal .modal.wide{width:min(1040px,96vw)}
@@ -3341,19 +3342,27 @@ const ATTEND_STATUS = [
 const ATTEND_STATUS_SET = new Set(ATTEND_STATUS.map(s => s.v));
 // per-day 근태 — 회사 보고 전송 보조 메타. state.attendance에 두고 data.xml로 영속(호스트가 tmp→File.Move 원자 저장).
 // (구버전은 localStorage 별도 저장이었으나 WebView2 LevelDB 손상으로 최신 기록이 유실된 사고가 있어 XML로 승격했다.)
-// 기본 정근(1). 검증 규약(status는 ATTEND_STATUS_SET, overtime 0..11)은 그대로 유지.
+// ★ 미기록 = null (정근'1'이 아니다). 세 상태 = 미기록(null) / 유효 코드 / (없음).
+//   미기록을 '1'로 흡수하면 netcus에 직접 적어 둔 휴가·병가가 캘린더 일간보고 전송으로 '정근'에 덮인다
+//   (근태는 로컬 data.xml에만 있으므로 다른 자리 PC에서 보내도 같은 사고). 그래서 null을 그대로 흘려보내고
+//   호스트(NetcusService)가 '미기록이면 사이트의 기존 값을 건드리지 않는' 경로를 탄다.
+//   overtime은 현행 유지(0=기본) — '초과 없음'과 '미기록'을 구분할 실익이 없다.
+//   검증 규약(status는 ATTEND_STATUS_SET, overtime 0..11)은 그대로.
 function loadAttendanceMap(){ if(!state.attendance || typeof state.attendance !== 'object') state.attendance = {}; return state.attendance; }
 function getAttendance(date){
   const a = loadAttendanceMap()[date];
   return {
-    status: (a && ATTEND_STATUS_SET.has(String(a.status))) ? String(a.status) : '1',
+    status: (a && ATTEND_STATUS_SET.has(String(a.status))) ? String(a.status) : null,   // 미기록·미지 코드 → null('1'로 흡수 금지)
     overtime: (a && a.overtime >= 0 && a.overtime <= 11) ? (a.overtime | 0) : 0,
   };
 }
+// 미기록 저장 = 기록 삭제(빈 값을 넣어두는 게 아니라 키 자체를 없앤다 — getTaskHours의 '미입력=키 없음'과 같은 규약).
+// 유효 코드가 아니면(빈 값 = 드롭다운의 (미기록) 선택, 미지 코드) 정근으로 흡수하지 않고 지운다.
 function setAttendance(date, status, overtime){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
   const m = loadAttendanceMap();
-  const st = ATTEND_STATUS_SET.has(String(status)) ? String(status) : '1';
+  const st = String(status == null ? '' : status);
+  if(!ATTEND_STATUS_SET.has(st)){ delete m[date]; save(); return; }   // (미기록) → 기록 삭제 = 회사 시스템의 기존 근태를 그대로 둔다
   let ot = parseInt(overtime, 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
   m[date] = { status: st, overtime: ot };
   save();   // 캘린더 데이터와 함께 XML 저장(원자 쓰기) — 별도 저장소 없음
@@ -3426,6 +3435,8 @@ function migrateLocalStores(){
   for(const [date, cat, v] of moved.th) if(getTaskHours(date, cat) !== v){ bad = true; break; }
   if(!bad) for(const [date, a] of moved.at){
     const got = getAttendance(date);
+    // moved.at의 status는 mergeLegacyStores가 이미 유효 코드로 정규화한 값이다(null이 될 수 없다).
+    // 따라서 여기서 getAttendance가 null(미기록)을 주면 실제로 기록이 안 들어간 것 → 검증 실패가 맞다.
     if(got.status !== a.status || got.overtime !== a.overtime){ bad = true; break; }
   }
   if(bad){
@@ -8104,17 +8115,24 @@ function buildReport(){
     if(_iv) _iv.textContent = _indent + '단'; }
   if(attHost && daily){   // 근태·초과시간(회사 일간보고 전송 계약) — 좌측 옵션 레일(기간 아래) 슬롯에 상주. 값=사이트 코드.
     const at = getAttendance(from);
-    const stOpts = ATTEND_STATUS.map(s => `<option value="${s.v}"${s.v === at.status ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
+    // (미기록)은 ATTEND_STATUS(사이트 코드값 목록)에 넣지 않는다 — 옵션 HTML을 만들 때만 앞에 붙인다.
+    // value=""를 고르면 setAttendance가 그 날 기록을 지우고, 전송 시 사이트의 기존 근태를 건드리지 않는다.
+    const stOpts = `<option value=""${at.status == null ? ' selected' : ''}>(미기록)</option>`
+      + ATTEND_STATUS.map(s => `<option value="${s.v}"${s.v === at.status ? ' selected' : ''}>${esc(s.label)}</option>`).join('');
     const otOpts = Array.from({length:12}, (_, i) => `<option value="${i}"${i === at.overtime ? ' selected' : ''}>${i === 0 ? '없음' : '+' + i + '시간'}</option>`).join('');
     attHost.innerHTML = `<div class="rpt-attend">
       <span class="ra-lb">근태</span><select id="raStatus" class="ra-sel" aria-label="근태">${stOpts}</select>
       <span class="ra-lb">초과시간</span><select id="raOT" class="ra-sel" aria-label="초과시간">${otOpts}</select>
-      <span class="ra-hint">회사 일간보고 전송용</span>
+      <span class="ra-hint" id="raHint" title="미기록이면 회사 시스템의 기존 근태를 그대로 둡니다">미기록이면 회사 시스템의 기존 근태를 그대로 둡니다</span>
     </div>`;
-    const sv = () => setAttendance(from, $('#raStatus').value, $('#raOT').value);   // per-day 저장(동작 동일)
+    // 안내 문구는 '미기록'일 때만 — 근태를 고른 뒤에도 남아 있으면 지금 상태를 잘못 설명한다
+    const syncHint = () => { const h = attHost.querySelector('#raHint'), s = attHost.querySelector('#raStatus');
+                             if(h) h.classList.toggle('hidden', !!(s && s.value)); };
+    const sv = () => { setAttendance(from, $('#raStatus').value, $('#raOT').value); syncHint(); };   // per-day 저장(동작 동일)
     const a = attHost.querySelector('#raStatus'), b = attHost.querySelector('#raOT');
     if(a) a.addEventListener('change', sv);
     if(b) b.addEventListener('change', sv);
+    syncHint();
   }
   const spanMulti = (from !== to);   // 기간 보고(여러 날) 여부 — 기간 할일 dayNote 라인에 "요일 M/D" 접두 표시 결정(일간=원문)
   let html = '';
@@ -9935,6 +9953,8 @@ function bind(){
       const at = getAttendance(from), p = from.split('-').map(Number);
       const dry = ncMode() !== 'real';
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
+      // ★ status는 null(미기록)을 그대로 싣는다 — 여기서 '1'로 폴백하면 netcus에 직접 적어둔 휴가·병가가 정근으로 덮인다.
+      //   호스트는 빈 값(웹의 null이 JSON→GetStr에서 "")을 '미기록'으로 읽어 사이트의 기존 근태를 유지한다.
       const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, dryRun: dry };
       // 버튼 disable+스피너는 위젯 모드에서만(호스트 회신 __netcusResult가 다시 활성화) — 브라우저는 회신이 없어 영구 잠김 방지
       if(Platform.caps.reportAuto){
