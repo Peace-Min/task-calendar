@@ -6,6 +6,9 @@
 
 > **모델 전환**: 이전 설계는 DB를 "사업부 Excel 장표의 컴팩트 미러"(Excel 원본 → DB 미러 → 멱등 재임포트)로 봤으나, 지금은 **DB가 원본, Excel은 추출 리포트**로 뒤집었다(모델 B). Excel 흔적 필드(`source_no`·`customer.no`)는 제거되고, 앱 편집용 필드(소프트삭제 `is_active`·감사 `created_at`/`updated_at`)가 추가됐다.
 
+> **캘린더 트랙이 생겼습니다(2026-08).** 이 README 가 다루는 것은 **과제 데이터**(`project`·`customer`)입니다. 같은 `taskmgr` DB 안에 **개인 일정·할 일**을 담는 `cal_*` 트랙이 별도로 설계·구축됐고, 설계 근거는 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md), 구축 절차·배포 순서·종료코드는 [`deploy/README.md`](deploy/README.md) 에 있습니다.
+> ⚠️ **두 트랙은 앱 계정 권한 정책이 다릅니다** — 과제 표는 소프트삭제(`is_active`)라 `DELETE` 를 주지 않지만, `cal_*` 는 소프트삭제가 없어 **의도적으로 `DELETE` 를 줍니다**(감사 트리거로 상쇄). 한쪽 문서를 다른 쪽 근거로 쓰지 마세요.
+
 ## ✅ 현재 상태 (2026-07-21)
 - **모델 B(DB 원본) 재설계 완료 + 실 DB 검증 완료** (더미데이터 13건 기준)
 - **P3 앱↔DB 연동 완료(localhost)**: 위젯이 이 DB를 읽기·캐시(오프라인)·관리자 CRUD(온라인)로 소비. 공식 과제 카탈로그 화면·재연결 도구·단일 카테고리 스토어 구현. 인증은 JIT 프롬프트 스텁(P6.5에서 netcus 위임으로 교체 예정). 상세 `ARCHITECTURE.md` §4.7.
@@ -44,6 +47,8 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 | `schema-overview.html` | ⚠️ **낡음(2026-07-21, ENUM 시절)** — 현행 구조는 [`docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) |
 | [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스** — 4개 표·컬럼·제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
+| `CALENDAR-TABLE-DESIGN.md` | **별도 트랙 — 캘린더(`cal_*`) 설계 근거.** 온라인 전용 정책·동시성 규약·권한/감사·`data.xml` 1회 이관. 컬럼 수준 DDL 의 정본은 이 문서가 아니라 `deploy/schema-calendar.sql` |
+| `deploy/README.md` | **프로비저닝 키트 사용법** — 과제(`init-db`)·캘린더(`init-calendar`) 두 트랙의 실행법·배포 순서·종료코드 |
 | `sample/Dummy_Data.xlsx` | **원본 더미 엑셀** — 초기 1회 이관 픽스처. 사내 AI로 변환한 더미(롤 지명), 실 국방데이터 아님 |
 
 ## 🔜 다음 작업 (우선순위)
