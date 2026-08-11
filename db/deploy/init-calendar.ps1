@@ -6,28 +6,27 @@
     2) 선행 조건 — DB / app_user / GRANT 대상 테이블 / 서버 버전 / login_id 타입·콜레이션
     3) 이미 cal_* 이 있으면 행 수를 보여주고 물어봄(기본 '아니오'. -Force 로만 무인 진행)
     4) schema-calendar.sql   → cal_* 전체 + cal_schema_meta 시딩 + cal_user_rev 전원 시딩
-    5) triggers-calendar.sql → §7.5 감사 트리거. 파일이 없으면 건너뛰고 '미완'(코드 3)으로 끝난다
-    6) grants-calendar.sql   → 앱 계정 권한 (계정이 없으면 건너뛰고 '미완'(코드 4)으로 끝난다)
-    7) 게이트 — 표 명부·개수 / rev 누락 0 / 스키마 버전 행 / GRANT 대조(전역 권한까지) /
-       FK 실재·참조동작 / CHECK 실제 강제(ERROR 3819 확인) / 감사 트리거 실재
+    5) grants-calendar.sql   → 앱 계정 권한 (계정이 없으면 건너뛰고 '미완'(코드 4)으로 끝난다)
+    6) 게이트 — 표 명부·개수 / rev 누락 0 / 스키마 버전 행 / GRANT 대조(전역 권한까지) /
+       FK 실재·참조동작 / CHECK 실제 강제(ERROR 3819 확인) / cal_* 트리거 0개
        하나라도 어긋나면 무엇이 왜 틀렸는지 말하고 exit 1.
 
   ┌ 종료코드 ─────────────────────────────────────────────────────────────────────┐
   │ 0  게이트 전 항목 통과 — 구축 완료. 이 상태만 '배포해도 되는 상태'다.          │
   │ 1  실패 — 선행 조건·안전 스캔·게이트 중 하나가 어긋났다(Die). 고쳐서 다시.     │
   │ 2  사용자가 취소 — 아무것도 바꾸지 않았다.                                     │
-  │ 3  미완: 감사 트리거 없음(triggers-calendar.sql 부재).                         │
-  │    구조·권한은 만들어졌으나 앱 계정의 DELETE 를 상쇄할 근거가 0 이다.          │
+  │ 3  (결번) 옛 '감사 트리거 없음'. 2026-08-11 트리거 폐지로 사라졌다.            │
   │ 4  미완: 앱 계정 없음 → GRANT 미부여. 구조는 있으나 앱이 한 줄도 못 읽는다.    │
-  │ 5  미완: 3 과 4 가 동시에.                                                     │
+  │ 5  (결번) 옛 '3 과 4 가 동시에'.                                               │
   └───────────────────────────────────────────────────────────────────────────────┘
-  왜 3·4·5 를 0 이 아니게 하는가: 판단 기준은 '이 상태로 배포하면 사용자가 다치는가' 다.
-    · 트리거 없음 → 앱 계정이 8개 표에 DELETE 를 가진 채 흔적이 0 이 된다. 조용히 다친다.
-    · 계정 없음   → 앱은 배포 직후 첫 조회부터 ERROR 1142 로 죽는다. 시끄럽게 다친다.
-    둘 다 다치므로 성공(0)이 아니다. 그렇다고 1(Die)로 뭉뚱그리지도 않는다 —
-    1 은 '만든 것이 틀렸다(고쳐서 다시 돌려라)' 이고, 3·4·5 는 '만든 것은 맞고 남은 단계가
-    있다(그 단계만 하면 된다)' 라서 사람이 할 일이 다르다. 1 로 합치면 멀쩡한 구조를 지우고
-    처음부터 다시 돌리는 대응을 부른다.
+  ★ 3·5 를 결번으로 남기고 4 를 3 으로 당기지 않는 이유: 종료코드는 호출자와의 계약이다.
+    이미 4 를 '계정 없음'으로 읽도록 짜 둔 배치가 있다면, 4 의 뜻을 바꾸는 편이 값 하나를
+    비워 두는 것보다 훨씬 위험하다(조용히 다른 분기를 탄다). 값을 재사용하지 말 것.
+  왜 4 를 0 이 아니게 하는가: 판단 기준은 '이 상태로 배포하면 사용자가 다치는가' 다.
+    계정이 없으면 앱은 배포 직후 첫 조회부터 ERROR 1142 로 죽는다 — 다친다. 그렇다고
+    1(Die)로 뭉뚱그리지도 않는다: 1 은 '만든 것이 틀렸다(고쳐서 다시 돌려라)' 이고,
+    4 는 '만든 것은 맞고 남은 단계가 있다' 라서 사람이 할 일이 다르다. 1 로 합치면
+    멀쩡한 구조를 지우고 처음부터 다시 돌리는 대응을 부른다.
   왜 취소(2)를 0 이 아니게 하는가: 이전판은 취소도 0 이라 '아무것도 안 함' 과 '구축 완료' 가
     호출자에게 똑같이 보였다 — 배포 스크립트가 취소된 실행을 성공으로 세고 다음으로 넘어간다.
   무인 실행 호출자는 0 만 성공으로 셀 것. 마지막 줄이 무엇이 빠졌는지 말한다.
@@ -47,23 +46,18 @@
 
   ⚠️ 기존 테이블(app_user/org_unit/title_code/project/customer/section_code/status_code)에는
      SELECT 만 한다. 이 스크립트가 직접 내는 문장 중 읽기가 아닌 것은 단 하나 —
-     게이트의 '일부러 위반하는 INSERT' 이고, 그것도 cal_audit_trash 에 넣고 롤백한다.
+     게이트의 '일부러 위반하는 INSERT' 이고, 그것도 cal_task_hours 에 넣고 곧바로 롤백한다
+     (그 INSERT 의 login_id 는 app_user 에서 SELECT 로 한 명을 읽어 온다. 읽기다).
 
      실행 전 .sql 검사는 '허용 목록(whitelist)' 이다. 주석·문자열을 인식하는 분해기로 문장을
      세미콜론 단위로 자른 뒤, 아래 형태가 아닌 문장이 하나라도 있으면 아예 시작하지 않는다:
        schema : SET NAMES utf8mb4 / DROP TABLE IF EXISTS cal_* / CREATE TABLE cal_*(…) /
                 INSERT INTO cal_schema_meta(…) VALUES(…) /
                 INSERT IGNORE INTO cal_user_rev(…) SELECT … FROM app_user
-       trigger: SET NAMES utf8mb4 / DELIMITER / DROP TRIGGER IF EXISTS trg_* /
-                CREATE … TRIGGER trg_* … ON cal_* … (본문이 쓰는 표도 cal_* 만)
-                ★ '본문이 쓰는 표'는 낱말 검색이 아니라 **자리로** 읽는다. 이전판은
-                  'UPDATE <표> SET' 같은 붙어 있는 형태만 봐서 별칭이 끼면 통째로 놓쳤다
-                  ('UPDATE app_user u SET …' · 'DELETE u FROM app_user u' 가 전부 통과 — 실측).
-                  지금은 INSERT/REPLACE 의 대상, UPDATE 의 표 목록(SET 앞), DELETE 의 FROM 목록을
-                  각각 잘라 '조각의 첫 식별자 = 표 이름' 으로 뽑고, cal_* 이 아니면 Die 한다.
-                  읽기(FROM/JOIN 의 SELECT)는 막지 않는다 — 위 단언이 '기존 표엔 SELECT 만' 이라
-                  읽기는 단언에 어긋나지 않기 때문이다.
        grants : SET NAMES utf8mb4 / GRANT <동사목록> ON <db>.<표> TO '계정'@'호스트' / FLUSH PRIVILEGES
+     ※ 2026-08-11 트리거 폐지 전에는 여기에 triggers-calendar.sql 용 목록이 하나 더 있었다
+       (CREATE TRIGGER 의 본문이 쓰는 표를 '자리로' 읽어 cal_* 인지 보던 검사). 그 파일이
+       사라졌으므로 함께 걷어냈다 — 지금 이 스크립트는 트리거를 만들지도 실행하지도 않는다.
      왜 뒤집었나: 이전판은 '줄 첫머리 정규식으로 위험한 문장을 찾는' 블랙리스트였고, 실제로는
      'SELECT 1; DROP TABLE app_user;' · 'TRUNCATE app_user'(TABLE 키워드 없는 유효 문법) ·
      'DROP TABLE cal_x, app_user' · 'INSERT INTO app_user …' 가 전부 통과했다(적대검증 실측).
@@ -73,13 +67,13 @@
 
   기대값은 원칙적으로 .sql 에서 파싱한다. FK 이름·CHECK 이름·GRANT 동사는 전부 파일이 정본이다 —
   숫자를 박아 두면 .sql 을 고칠 때 게이트만 조용히 헐거워진다.
-  ★ 단 '명부' 둘만은 예외로 이 파일에 상수로 박았다. 파싱값의 출처가 검증 대상 자신이라,
-     .sql 에서 통째로 빼면 기대값도 같이 줄어 초록불이 그대로 뜨기 때문이다(적대검증 지적).
-       · $DESIGN_TABLES   (설계 §5.1) — 표 명부
-       · $DESIGN_TRIGGERS (설계 §7.5) — 감사 트리거 명부(이름 → 대상 표)
-     트리거 쪽이 특히 중요하다: 트리거는 grants-calendar.sql 이 앱 계정에 DELETE 를 준 것을
-     상쇄하는 유일한 근거라, 이 게이트가 헛돌면 '흔적 없이 무보호' 인 채로 배포된다.
-     명부가 바뀌면 이 상수와 schema-calendar.sql / triggers-calendar.sql 을 함께 고칠 것.
+  ★ 단 '표 명부'($DESIGN_TABLES, 설계 §5.1) 하나만은 예외로 이 파일에 상수로 박았다.
+     파싱값의 출처가 검증 대상 자신이라, .sql 에서 표를 통째로 빼면 기대값도 같이 줄어
+     초록불이 그대로 뜨기 때문이다(적대검증 지적). 명부가 바뀌면 이 상수와
+     schema-calendar.sql 을 함께 고칠 것.
+     ※ 옛 $DESIGN_TRIGGERS(설계 §7.5 감사 트리거 명부)는 2026-08-11 트리거 폐지로 제거했다.
+       그 자리를 대신하는 것은 '기대 목록과의 대조'가 아니라 **cal_* 트리거가 0개인지**를
+       보는 게이트다(5-7). 명부가 비면 대조는 성립하지 않지만 '0개' 는 성립한다.
 
   예)  powershell -ExecutionPolicy Bypass -File init-calendar.ps1 -DbHost 192.168.0.50 -Port 3306
 #>
@@ -176,60 +170,28 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
   'cal_todo','cal_todo_day_note','cal_room','cal_task_hours',
-  'cal_user_pref','cal_user_rev','cal_migration_log','cal_audit_trash','cal_schema_meta'
+  'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta'
 )
-# 앱 계정에 권한이 한 줄도 없어야 하는 표. 이것도 차집합으로 '추론'하면 GRANT 파일에서 표가
-# 빠졌을 때 그 표를 감사 휴지통과 같은 부류로 오판한다(cal_schema_meta 가 실제로 그 상태였다).
-$ZERO_GRANT_TABLES = @('cal_audit_trash')
 # FK 가 참조해도 되는 '기존' 표. 여기 없는 표를 스키마가 참조하면 시작조차 하지 않는다.
 $ALLOWED_REF_TABLES = @('app_user')
-
-# ============================================================================
-#  설계 §7.5 감사 트리거 명부 — 이 파일에 박아 두는 두 번째 기대값(머리말 참조)
-# ============================================================================
-# 왜 파일에서 세지 않는가: 기대 목록을 검증 대상인 triggers-calendar.sql 에서 뽑으면,
-#   그 파일에서 트리거를 통째로 빼도 기대값이 함께 줄어 '전부 실재' 초록불이 그대로 뜬다.
-#   트리거는 grants-calendar.sql 이 앱 계정에 DELETE 를 준 것을 상쇄하는 유일한 근거라,
-#   이 게이트가 헛돌면 배포가 '흔적 없이 무보호' 가 된다(적대검증 중대3).
-# 값은 '트리거 이름 → 걸리는 표'. 이름만이 아니라 대상 표까지 대조한다 —
-#   이름이 맞아도 엉뚱한 표에 걸려 있으면 그 표의 삭제는 여전히 흔적이 남지 않는다.
-$DESIGN_TRIGGERS = [ordered]@{
-  'trg_cal_category_bd'       = 'cal_category'
-  'trg_cal_category_bu'       = 'cal_category'
-  'trg_cal_entry_bd'          = 'cal_entry'
-  'trg_cal_entry_bu'          = 'cal_entry'
-  'trg_cal_todo_bd'           = 'cal_todo'
-  'trg_cal_todo_bu'           = 'cal_todo'
-  'trg_cal_task_hours_bd'     = 'cal_task_hours'
-  'trg_cal_task_hours_bu'     = 'cal_task_hours'
-  # 자식 4개 표 — 부모가 살아 있는 채로 자식만 지우는(고치는) 앱 경로가 실재해서,
-  # 부모 트리거의 자식 흡수로는 잡히지 않는다. FK CASCADE 삭제 때는 발화하지 않으므로
-  # 부모 흡수와 중복되지도 않는다.
-  'trg_cal_entry_except_bd'   = 'cal_entry_except'
-  'trg_cal_entry_commit_bd'   = 'cal_entry_commit'
-  'trg_cal_entry_commit_bu'   = 'cal_entry_commit'
-  'trg_cal_todo_day_note_bd'  = 'cal_todo_day_note'
-  'trg_cal_todo_day_note_bu'  = 'cal_todo_day_note'
-  'trg_cal_room_bd'           = 'cal_room'
-  'trg_cal_room_bu'           = 'cal_room'
-}
+# ※ 옛 $ZERO_GRANT_TABLES(= cal_audit_trash. 앱 계정에 권한이 한 줄도 없어야 하는 표)는
+#   그 표가 폐지되면서 함께 없어졌다. 지금 규칙은 더 단순하다 — cal_* 12개 **전부**에
+#   GRANT 가 한 줄씩 있어야 한다. 예외를 하나도 두지 않으므로 '빠진 것'과 '일부러 뺀 것'을
+#   구분할 필요 자체가 없어졌다(아래 $calUngranted 검사가 그대로 Die 한다).
 
 # 종료코드 — 호출자(init-calendar.cmd·무인 실행)가 결과를 구분할 수 있어야 한다.
 # 표와 그 근거는 머리말 참조. 여기와 머리말과 init-calendar.cmd 세 곳이 같은 값을 적는다.
 #   0 = 구축 완료   1 = 실패(Die)   2 = 사용자 취소
-#   3 = 미완(감사 트리거 없음)   4 = 미완(앱 계정 없음 → GRANT 미부여)   5 = 3+4
-# 3·4 를 겹치지 않는 별개 값으로 둔 이유: 남은 단계가 서로 다르다. 3 은 triggers-calendar.sql 을
-#   만들어 다시 돌리는 것이고, 4 는 create-app-user.sql 로 계정을 만들어 다시 돌리는 것이다.
-#   한 코드로 합치면 호출자가 무엇을 해야 하는지 종료코드만으로는 알 수 없다.
+#   3 = (결번)      4 = 미완(앱 계정 없음 → GRANT 미부여)   5 = (결번)
+# ★ 3·5 는 옛 '감사 트리거 없음' / '3+4' 였고 2026-08-11 트리거 폐지로 쓰이지 않는다.
+#   비워 두되 다른 뜻으로 재사용하지 말 것 — 종료코드는 호출자와의 계약이라, 값의 뜻을
+#   바꾸면 옛 값을 그대로 읽는 배치가 조용히 다른 분기를 탄다.
 $EXIT_CANCEL      = 2
-$EXIT_NO_TRIGGERS = 3
 $EXIT_NO_GRANTS   = 4
-$EXIT_NO_BOTH     = 5
 
 $scriptDir   = Split-Path -Parent $PSCommandPath
 $schemaFile  = Join-Path $scriptDir "schema-calendar.sql"
 $grantsFile  = Join-Path $scriptDir "grants-calendar.sql"
-$triggerFile = Join-Path $scriptDir "triggers-calendar.sql"
 
 # ============================================================================
 #  SQL 문장 분해기 — 주석·문자열을 인식해 세미콜론으로 자른다
@@ -284,53 +246,12 @@ function Blank-SqlLiterals([string]$s){
   return [regex]::Replace($s, "'(?:\\.|''|[^'\\])*'", "''")
 }
 
-# ============================================================================
-#  DML 이 '쓰는 표' 추출 — 낱말이 아니라 자리로 읽는다
-# ============================================================================
-# 왜 필요한가: 이전판은 'UPDATE <표> SET' 처럼 표 이름이 키워드에 딱 붙은 형태만 봤다.
-#   MySQL 은 별칭을 허용하므로 'UPDATE app_user u SET …' · 'DELETE u FROM app_user u' 는
-#   그 정규식에 걸리지 않고 통과했다(적대검증 중대4). 머리말은 '기존 표엔 SELECT 만' 이라
-#   단언하는데 실제 검사가 그걸 보장하지 못하던 상태다.
-# 어떻게 고쳤나: 표 참조 목록(table_references)을 쉼표·JOIN 으로 조각내고, 각 조각의
-#   **첫 식별자**만 표 이름으로 본다. 뒤따르는 것은 별칭이므로 자연히 무시된다.
-# 잡지 못하는 범위(의도): 읽기(SELECT … FROM)는 보지 않는다. 위 단언이 허용하는 행위다.
-#   동적 SQL(PREPARE/EXECUTE)·CALL 은 표 이름이 실행 시점에 정해지므로 아래에서 아예 금지한다.
-function Split-TableRefs([string]$refs){
-  $s = "$refs"
-  # UPDATE/DELETE 의 수식어는 표 이름이 아니다. 앞에서 걷어낸다.
-  # ^ 로 고정돼 있어 한 번에 하나씩만 걷힌다(LOW_PRIORITY IGNORE 처럼 겹칠 수 있어 while).
-  while($s -match '^\s*(?i:LOW_PRIORITY|IGNORE|QUICK)\b'){ $s = [regex]::Replace($s,'^\s*(?i:LOW_PRIORITY|IGNORE|QUICK)\b','') }
-  $names = @()
-  foreach($p in [regex]::Split($s,'(?i),|\bSTRAIGHT_JOIN\b|\b(?:INNER|CROSS|LEFT|RIGHT|FULL|OUTER|NATURAL)\s+JOIN\b|\bJOIN\b')){
-    # 조각 안의 ON/USING 뒤는 조인 조건이라 표 이름이 아니다.
-    $t = (([regex]::Split("$p",'(?i)\bON\b|\bUSING\b'))[0]).Trim()
-    if($t -eq ''){ continue }
-    if($t.StartsWith('(')){ continue }   # 파생표(서브쿼리) — 안쪽은 읽기다
-    $m = [regex]::Match($t,'^`?([A-Za-z0-9_$]+)`?\s*(\.\s*`?([A-Za-z0-9_$]+)`?)?')
-    if(-not $m.Success){ $names += $t; continue }   # 해석 실패는 '안전한 쪽'(=보고)으로 넘긴다
-    if($m.Groups[2].Success){ $names += ($m.Groups[1].Value + '.' + $m.Groups[3].Value) }
-    else { $names += $m.Groups[1].Value }
-  }
-  return ,$names
-}
-function Get-SqlWriteTargets([string]$code){
-  $targets = @()
-  # INSERT [수식어] [INTO] <표>  ·  REPLACE [수식어] [INTO] <표>   (INTO 는 MySQL 에서 생략 가능)
-  foreach($m in [regex]::Matches($code,'(?is)\b(?:INSERT|REPLACE)\b(?:\s+(?:LOW_PRIORITY|DELAYED|HIGH_PRIORITY|IGNORE))*(?:\s+INTO)?\s+(`?[A-Za-z0-9_$]+`?(?:\s*\.\s*`?[A-Za-z0-9_$]+`?)?)')){
-    $targets += (Split-TableRefs $m.Groups[1].Value)
-  }
-  # UPDATE <표 목록> SET …   — SET 앞이 전부 표 참조다(다중표 UPDATE 포함)
-  foreach($m in [regex]::Matches($code,'(?is)\bUPDATE\b((?:(?!;|\bSET\b).)*)\bSET\b')){
-    $targets += (Split-TableRefs $m.Groups[1].Value)
-  }
-  # DELETE [별칭목록] FROM <표 목록> …  — 'DELETE u FROM app_user u' 도 FROM 목록에서 잡힌다
-  foreach($m in [regex]::Matches($code,'(?is)\bDELETE\b(?:(?!;|\bFROM\b).)*\bFROM\b((?:(?!;|\bWHERE\b|\bUSING\b|\bORDER\b|\bLIMIT\b).)*)')){
-    $targets += (Split-TableRefs $m.Groups[1].Value)
-  }
-  $out = @()
-  foreach($t in $targets){ if("$t".Trim() -ne '' -and $out -notcontains $t){ $out += $t } }
-  return ,$out
-}
+# ※ 여기에 Split-TableRefs / Get-SqlWriteTargets 두 함수가 있었다(DML 이 '쓰는 표'를 낱말이 아니라
+#   자리로 읽어 'UPDATE app_user u SET …' 같은 별칭 DML 을 잡아내던 물건). 오직 triggers-calendar.sql
+#   본문 스캔에서만 쓰였고, 2026-08-11 트리거 폐지로 호출부가 0 이 되어 함께 지웠다.
+#   한 번도 실행되지 않는 검사 코드를 남겨 두면 다음 사람이 '검사가 있다'고 믿는다 — 그게 더 위험하다.
+#   트리거를 되살린다면 git 이력(2f3aa92)에서 그대로 꺼내 쓸 것. 다시 짜지 말 것 —
+#   그 정규식은 적대검증에서 두 번 고쳐 나온 것이다.
 
 Write-Host "============================================"
 Write-Host "   캘린더(cal_*) 테이블 구축"
@@ -451,23 +372,12 @@ $extTargets = @($fkTargets | Where-Object { $_ -notlike 'cal_*' })
 $grantTables  = @($expGrants.Keys)
 $calGranted   = @($grantTables | Where-Object { $_ -like 'cal_*' } | Sort-Object)
 $extGranted   = @($grantTables | Where-Object { $_ -notlike 'cal_*' } | Sort-Object)
-# 스키마에는 있는데 GRANT 파일에 없는 cal_* = 권한이 0줄이어야 하는 표.
-# ★ 이 차집합을 그대로 '0줄이어야 하는 표'로 믿지 않는다. GRANT 파일에서 표가 빠진 것과
-#   일부러 0줄로 둔 것을 구분할 수 없기 때문이다 — 아래에서 상수와 대조한다.
+# 스키마에는 있는데 GRANT 파일에 없는 cal_*. ★ 이제 예외가 하나도 없다 — 한 표라도 비면 Die 다.
+#   (옛날에는 cal_audit_trash 만 '일부러 0줄'이라 상수와 대조해야 했다. 그 표가 폐지되면서
+#    '빠진 것'과 '일부러 뺀 것'을 구분할 이유가 사라졌고, 검사는 이 한 줄로 줄었다.)
 $calUngranted = @($expTables | Where-Object { $calGranted -notcontains $_ } | Sort-Object)
-$ungrantUnexpected = @($calUngranted | Where-Object { $ZERO_GRANT_TABLES -notcontains $_ })
-if($ungrantUnexpected.Count -gt 0){
-  Die "grants-calendar.sql 에 GRANT 가 한 줄도 없는 표가 있습니다: $($ungrantUnexpected -join ', '). 권한이 0줄이어야 하는 표는 $($ZERO_GRANT_TABLES -join ', ') 뿐입니다 — 앱이 못 읽는 표를 만들어 두고 게이트만 통과시키지 않기 위해 여기서 멈춥니다(cal_schema_meta 라면 GRANT SELECT 한 줄이 필요합니다. §5.5)."
-}
-$zeroMissing = @($ZERO_GRANT_TABLES | Where-Object { $expTables -notcontains $_ })
-if($zeroMissing.Count -gt 0){ Die "권한 0줄 대상 표가 스키마에 없습니다: $($zeroMissing -join ', ')." }
-# ★ 반대 방향도 본다. 위 차집합은 '빠진 표'만 잡으므로, grants 파일이 cal_audit_trash 에 GRANT 를
-#   적어 넣으면 그 표가 $calGranted 로 옮겨가 $calUngranted 에서 사라지고 아무 검사도 발화하지 않는다.
-#   감사 휴지통의 '앱 계정 권한 0줄'은 감사가 성립하는 유일한 조건이라(우회한 사용자가 지우거나 볼 수
-#   없어야 한다), 그 불변식이 파일 한 줄로 조용히 뒤집히게 두면 안 된다.
-$zeroGranted = @($ZERO_GRANT_TABLES | Where-Object { $calGranted -contains $_ })
-if($zeroGranted.Count -gt 0){
-  Die "grants-calendar.sql 이 권한 0줄이어야 하는 표에 GRANT 를 적었습니다: $($zeroGranted -join ', '). 앱 계정이 감사 휴지통을 읽거나 지울 수 있으면 감사가 성립하지 않습니다 — 그 GRANT 줄을 지우고 다시 실행하세요."
+if($calUngranted.Count -gt 0){
+  Die "grants-calendar.sql 에 GRANT 가 한 줄도 없는 cal_* 표가 있습니다: $($calUngranted -join ', '). 스키마가 만드는 cal_* 는 전부 앱이 쓰는 표이므로 권한이 0줄인 표가 있어서는 안 됩니다 — 앱이 못 읽는 표를 만들어 두고 게이트만 통과시키지 않기 위해 여기서 멈춥니다(cal_schema_meta 라면 GRANT SELECT 한 줄이 필요합니다. §5.5)."
 }
 # cal_schema_meta 는 SELECT 만이어야 한다 — 앱이 버전 행을 올릴 수 있으면 '낡은 클라이언트 차단'이 성립하지 않는다(§5.5).
 if($expGrants.ContainsKey('cal_schema_meta') -and $expGrants['cal_schema_meta'] -ne 'SELECT'){
@@ -475,60 +385,12 @@ if($expGrants.ContainsKey('cal_schema_meta') -and $expGrants['cal_schema_meta'] 
 }
 
 # ============================================================================
-#  §7.5 감사 트리거 파일 — 있으면 검사하고 실행, 없으면 '무보호'로 경고
+#  ★ 옛 §7.5 감사 트리거 단계 — 2026-08-11 폐지
 # ============================================================================
-# 왜 없어도 죽이지 않는가: 트리거는 이 스크립트가 만드는 대상이 아니라 별도 파일의 산출물이고,
-#   없다고 해서 구조 구축 자체가 틀리지는 않는다. 다만 grants-calendar.sql 이 앱 계정에 DELETE 를
-#   주는 유일한 상쇄 근거가 이 트리거이므로, 없으면 '노출된 자격증명 + 전 표 DELETE + 흔적 0' 이
-#   된다는 사실을 매 실행마다 눈에 보이게 남긴다.
-$trigNames  = @()     # 파일에서 실제로 파싱한 트리거 이름
-$trigTable  = @{}     # 이름 → 대상 표
-$hasTrigFile = Test-Path $triggerFile
-# CREATE TRIGGER 머리 — 이름·대상 표를 뽑는 데도, 본문 검사 전에 머리를 걷어내는 데도 같은 것을 쓴다.
-#   걷어내는 이유: 머리에 든 'BEFORE UPDATE' · 'BEFORE DELETE' 가 아래 DML 추출기에 UPDATE/DELETE
-#   문장으로 보여, 뒤에 나오는 엉뚱한 SET/FROM 까지 한 문장으로 이어 읽는다.
-$TRIG_HEAD_RE = '(?is)CREATE\s+(?:DEFINER\s*=\s*\S+\s+)?TRIGGER\s+`?([A-Za-z0-9_$]+)`?\s+(?:BEFORE|AFTER)\s+(?:INSERT|UPDATE|DELETE)\s+ON\s+`?([A-Za-z0-9_$]+)`?'
-if($hasTrigFile){
-  $trigText = Get-Content $triggerFile -Raw -Encoding UTF8
-  # 트리거 본문에는 세미콜론이 들어 있고 DELIMITER 로 경계를 바꾸므로, 문장 단위 허용 목록은
-  # 성립하지 않는다. 대신 주석·문자열을 걷어낸 '코드 텍스트' 위에서 대상 표만 전수로 본다.
-  # 잡지 못하는 범위: 동적 SQL(PREPARE/EXECUTE)은 표 이름이 실행 시점에야 정해진다 → 아래에서 금지한다.
-  $trigCode = Blank-SqlLiterals ((Split-SqlStatements $trigText) -join ";`n")
-  # INTO OUTFILE/DUMPFILE 은 표가 아니라 서버 파일시스템에 쓴다. CALL 은 프로시저 안으로 숨는다 —
-  # 셋 다 아래 '쓰는 표' 검사로는 보이지 않으므로 형태로 막는다.
-  foreach($bad in @('DROP\s+TABLE','TRUNCATE','ALTER\s+TABLE','CREATE\s+TABLE','\bGRANT\b','\bREVOKE\b','CREATE\s+USER','DROP\s+DATABASE','\bPREPARE\b','\bEXECUTE\b','SET\s+GLOBAL','INTO\s+OUTFILE','INTO\s+DUMPFILE','LOAD\s+DATA','\bCALL\b')){
-    if($trigCode -match "(?i)$bad"){ Die "triggers-calendar.sql 에 허용되지 않은 문장이 있습니다(패턴 '$bad'). 트리거 파일은 DROP/CREATE TRIGGER 와 cal_* 대상 DML 만 있어야 합니다." }
-  }
-  foreach($m in [regex]::Matches($trigCode,$TRIG_HEAD_RE)){
-    $tn = $m.Groups[1].Value; $tt = $m.Groups[2].Value
-    if($tt -notlike 'cal_*'){ Die "triggers-calendar.sql 의 트리거 '$tn' 이 cal_* 이 아닌 표 '$tt' 에 걸립니다 — 실행하지 않습니다." }
-    if($trigNames -notcontains $tn){ $trigNames += $tn; $trigTable[$tn] = $tt }
-  }
-  if($trigNames.Count -lt 1){ Die "triggers-calendar.sql 이 있는데 CREATE TRIGGER 를 하나도 못 찾았습니다 — 파일 형식을 확인하세요." }
-
-  # ★ 명부 대조 — 기대 목록을 검증 대상(triggers-calendar.sql)에서 뽑으면, 그 파일에서 트리거를
-  #   통째로 빼도 기대값이 함께 줄어 아래 게이트 5-7 이 '전부 실재' 초록불을 띄운다(적대검증 중대3).
-  #   그래서 $DESIGN_TRIGGERS(설계 §7.5)와 차집합·개수·대상 표를 전부 맞춰 본다.
-  $trigMissing = @($DESIGN_TRIGGERS.Keys | Where-Object { $trigNames -notcontains $_ })
-  $trigExtra   = @($trigNames | Where-Object { -not $DESIGN_TRIGGERS.Contains($_) })
-  if($trigMissing.Count -gt 0){ Die "설계 §7.5 명부에 있는 감사 트리거가 triggers-calendar.sql 에 없습니다: $($trigMissing -join ', '). 트리거는 앱 계정 DELETE 권한의 유일한 상쇄 근거입니다 — 명부가 바뀐 것이면 이 스크립트의 `$DESIGN_TRIGGERS 도 함께 고치세요." }
-  if($trigExtra.Count -gt 0){   Die "triggers-calendar.sql 에 명부에 없는 트리거가 있습니다: $($trigExtra -join ', '). 설계 §7.5 와 이 스크립트의 `$DESIGN_TRIGGERS 를 먼저 정하세요." }
-  if($trigNames.Count -ne $DESIGN_TRIGGERS.Count){ Die "감사 트리거 개수 불일치 — 기대 $($DESIGN_TRIGGERS.Count)개 / 파일 $($trigNames.Count)개." }
-  $trigBadTable = @()
-  foreach($n in $DESIGN_TRIGGERS.Keys){
-    if($trigTable[$n] -ne $DESIGN_TRIGGERS[$n]){ $trigBadTable += ("$n (기대 $($DESIGN_TRIGGERS[$n]) / 파일 $($trigTable[$n]))") }
-  }
-  if($trigBadTable.Count -gt 0){ Die "감사 트리거가 명부와 다른 표에 걸립니다: $($trigBadTable -join ' / '). 이름이 맞아도 표가 다르면 그 표의 삭제는 흔적이 남지 않습니다." }
-
-  # 트리거 본문이 쓰는 표도 cal_* 여야 한다(감사 휴지통 적재 외의 쓰기는 없어야 한다).
-  # ★ 별칭 DML 을 놓치지 않도록 '자리로' 읽는다 — Get-SqlWriteTargets 주석 참조.
-  #   이전판은 'UPDATE <표> SET' 처럼 붙은 형태만 봐서 'UPDATE app_user u SET …' 이 통과했다.
-  $trigBody = [regex]::Replace($trigCode, $TRIG_HEAD_RE, ' ')
-  foreach($w in (Get-SqlWriteTargets $trigBody)){
-    if($w -match '\.'){ Die "triggers-calendar.sql 의 트리거 본문이 다른 스키마를 지정해 씁니다: '$w'. 트리거는 자기 DB 의 cal_* 만 써야 합니다 — 실행하지 않습니다." }
-    if($w -notlike 'cal_*'){ Die "triggers-calendar.sql 의 트리거 본문이 cal_* 이 아닌 표 '$w' 를 씁니다(INSERT/REPLACE 대상 · UPDATE 표 목록 · DELETE 의 FROM 목록에서 뽑음) — 실행하지 않습니다." }
-  }
-}
+# 여기에 triggers-calendar.sql 의 안전 스캔(허용 문장·대상 표·본문이 쓰는 표)과 명부 대조가 있었다.
+# 그 파일이 사라졌으므로 통째로 걷어냈다. 트리거를 다시 도입한다면 이 자리에 같은 검사를 되살릴 것 —
+# 트리거는 서버 안에서 DEFINER 권한으로 도는 코드라, 파일을 안 보고 실행하면 안 된다.
+# 지금 남은 것은 '트리거가 하나도 없는지' 를 보는 게이트 둘뿐이다: 1-6(지우기 전) · 5-7(구축 후).
 
 # ============================================================================
 #  접속
@@ -648,21 +510,20 @@ try {
     }
   }
 
-  # 1-6) ★ 명부에 없는 cal_* 트리거 — '지우기 전에' 본다.
-  #   왜 여기인가: 같은 검사가 게이트(5-7)에도 있는데 그 자리에서는 사실상 발화하지 못한다.
-  #   schema-calendar.sql 이 cal_* 를 전부 DROP 하고 DROP TABLE 은 그 표의 트리거까지 함께
-  #   지우므로, 게이트 시점의 DB 에는 방금 triggers-calendar.sql 이 만든 것만 남는다 —
-  #   그리고 명부에 없는 트리거가 그 파일에 있으면 위 안전 스캔($trigExtra)이 이미 Die 했다.
-  #   즉 게이트 5-7 의 rogue 검사는 이 흐름에서는 '남은 경로가 사실상 없는' 검사다(정직하게 적는다).
-  #   반면 여기서는 발화한다: 이전 배포 뒤에 누군가 cal_* 에 붙여 둔 트리거가 실재하면 잡힌다.
-  #   그리고 이 자리가 아니면 볼 기회 자체가 없다 — 몇 줄 아래 DROP 이 증거를 먼저 지운다.
-  #   Die 가 아니라 경고인 이유: 정상적인 재구축까지 막게 되고, 어차피 DROP 으로 사라진다.
-  #   사람이 '누가 무엇을 달아 두었는지' 를 사라지기 전에 볼 수 있게 하는 것이 목적이다.
-  $preRogue = QRows "SELECT CONCAT(TRIGGER_NAME,'|',EVENT_OBJECT_TABLE) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$DbName' AND EVENT_OBJECT_TABLE LIKE 'cal\_%' AND TRIGGER_NAME NOT IN ($(SqlList @($DESIGN_TRIGGERS.Keys)));"
+  # 1-6) ★ cal_* 에 붙어 있는 트리거 — '지우기 전에' 본다.
+  #   2026-08-11 결정으로 이 키트는 트리거를 하나도 만들지 않는다. 그러므로 지금 DB 에 붙어 있는
+  #   cal_* 트리거는 전부 '이 키트 밖에서 누군가 심은 것'이다(옛 배포의 trg_cal_* 잔재 포함).
+  #   왜 여기인가: 몇 줄 아래 schema-calendar.sql 의 DROP TABLE 이 그 표의 트리거를 경고 한 줄
+  #   없이 함께 지운다(실측). 즉 이 자리를 지나면 증거 자체가 사라져 게이트 5-7 은 '방금 만들어진
+  #   것이 없다'만 확인하게 된다. 사람이 무엇이 있었는지 볼 수 있는 유일한 지점이 여기다.
+  #   Die 가 아니라 경고인 이유: 옛 배포 위에 재구축하는 정상 경로까지 막게 되고, 어차피 DROP 으로
+  #   사라진다. 목적은 '무엇이 사라지는지' 를 사라지기 전에 눈에 보이게 하는 것이다.
+  $preRogue = QRows "SELECT CONCAT(TRIGGER_NAME,'|',EVENT_OBJECT_TABLE) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$DbName' AND EVENT_OBJECT_TABLE LIKE 'cal\_%';"
   if($preRogue.Count -gt 0){
-    Warn "★ 설계 §7.5 명부에 없는 cal_* 트리거가 지금 DB 에 붙어 있습니다: $($preRogue -join ', ')"
+    Warn "★ cal_* 에 트리거가 붙어 있습니다($($preRogue.Count)개): $($preRogue -join ', ')"
+    Warn "  → 이 키트는 트리거를 만들지 않습니다(2026-08-11 감사 트리거 폐지). 옛 배포의 잔재이거나 누군가 따로 심은 것입니다."
     Warn "  → 아래 schema-calendar.sql 이 표를 DROP 하면 이 트리거들도 함께 사라집니다(증거가 없어짐)."
-    Warn "     누가 무엇을 위해 달았는지 확인하기 전에는 계속하지 마세요 — SHOW CREATE TRIGGER 로 본문을 먼저 남기세요."
+    Warn "     본문을 먼저 남기세요 — SHOW CREATE TRIGGER <이름>."
   }
 
   # ==========================================================================
@@ -681,8 +542,8 @@ try {
     }
     Write-Host ""
     Write-Host "    계속하면 schema-calendar.sql 이 이 테이블들을 DROP 후 다시 만듭니다." -ForegroundColor Yellow
-    Write-Host "    위 $total 행이 전부 사라지고 되돌릴 수 없습니다 — 감사 휴지통(cal_audit_trash)도 같이 지워지므로" -ForegroundColor Yellow
-    Write-Host "    '지운 흔적'조차 남지 않습니다. 데이터가 있다면 여기서 멈추고 먼저 백업하세요(mysqldump)." -ForegroundColor Yellow
+    Write-Host "    위 $total 행이 전부 사라지고 되돌릴 수 없습니다 — 이 DB 안에는 되돌릴 수단이 없습니다" -ForegroundColor Yellow
+    Write-Host "    (감사 휴지통은 2026-08-11 폐지). 데이터가 있다면 여기서 멈추고 먼저 백업하세요(mysqldump)." -ForegroundColor Yellow
     Write-Host ""
     if($Force){
       Warn "-Force 가 지정되어 확인 없이 진행합니다."
@@ -710,25 +571,7 @@ try {
   if($LASTEXITCODE -ne 0){ Die "schema-calendar.sql 실행 실패. 위에 찍힌 mysql 오류를 그대로 읽으세요(1824=FK 대상 없음 / 3780=콜레이션 불일치 / 1146=참조 테이블 없음)." }
   Ok "schema-calendar.sql 실행 완료"
 
-  # ==========================================================================
-  #  3-b. §7.5 감사 트리거 — 파일이 있을 때만
-  # ==========================================================================
-  $trigRan = $false
-  if($hasTrigFile){
-    Info "감사 트리거 생성: triggers-calendar.sql (트리거 $($trigNames.Count)개)"
-    cmd /c "`"$mysql`" --defaults-extra-file=`"$cnf`" --default-character-set=utf8mb4 `"$DbName`" < `"$triggerFile`""
-    if($LASTEXITCODE -ne 0){ Die "triggers-calendar.sql 실행 실패. 위 mysql 오류를 읽으세요(1419=SUPER/TRIGGER 권한 없음 / 1235=같은 시점 트리거 중복)." }
-    $trigRan = $true
-    Ok "triggers-calendar.sql 실행 완료"
-  } else {
-    Warn "감사 트리거 없음 — triggers-calendar.sql 이 없습니다($scriptDir)."
-    # 대상 표를 글자로 박지 않는다 — 명부가 늘어나면(자식 표 추가 등) 이 경고만 낡는다.
-    $trigTablesTxt = (($DESIGN_TRIGGERS.Values | Sort-Object -Unique) -join '·')
-    Warn "  → 앱 계정의 DELETE 권한이 무보호 상태입니다. grants-calendar.sql 이 $trigTablesTxt 에"
-    Warn "     DELETE 를 주는 상쇄 근거가 §7.5 감사 트리거($($DESIGN_TRIGGERS.Count)개)인데 그 트리거가"
-    Warn "     실재하지 않으므로, 지금 배포하면 '자격증명 + 전 표 DELETE + 흔적 0' 이 됩니다."
-    Warn "  → 이 실행은 종료코드 $EXIT_NO_TRIGGERS(미완)로 끝납니다. 0 이 아니므로 배포 파이프라인이 그냥 넘어가지 못합니다."
-  }
+  # (옛 3-b. 감사 트리거 실행 단계 — 2026-08-11 폐지. 이 스크립트는 트리거를 만들지 않는다)
 
   # ==========================================================================
   #  4. 권한 — 계정이 없으면 건너뛴다(죽지 않는다)
@@ -798,6 +641,14 @@ try {
   $missTbl = @($expTables | Where-Object { $gotTables -notcontains $_ })
   if($missTbl.Count -gt 0){ $fail += "테이블 누락 $($missTbl.Count)개: $($missTbl -join ', ') (기대 $($expTables.Count)개 / 실제 $($gotTables.Count)개)" }
   else { Ok "테이블 $($gotTables.Count)/$($expTables.Count) 생성" }
+  # ★ 있어야 할 것만 세면 '남아 있는 것'을 못 본다. 실제로 그 사고가 났다 — 폐지된 cal_audit_trash 가
+  #   DROP 목록에 없어 옛 배포분에 고아로 살아남았는데, 이 게이트가 '기대 12개 있음'만 보고 초록불을
+  #   냈다. 그 상태에서 문서·GRANT 는 12를, DB 는 13을 갖고 서로 어긋난다.
+  #   schema-calendar.sql 이 만들지 않는 cal_* 가 DB 에 있으면 실패로 처리한다.
+  $extraTbl = @($gotTables | Where-Object { $expTables -notcontains $_ })
+  if($extraTbl.Count -gt 0){
+    $fail += "명부에 없는 cal_* 표가 DB 에 있습니다: $($extraTbl -join ', ') — 옛 배포분의 잔재입니다. schema-calendar.sql 의 DROP 목록에 그 표를 추가하고 다시 실행하세요(폐지된 표는 '안 만든다'만으로는 사라지지 않습니다)"
+  }
   if($badEngine.Count -gt 0){ $fail += "InnoDB 가 아닌 테이블: $($badEngine -join ', ') — InnoDB 가 아니면 FOREIGN KEY 가 조용히 버려집니다" }
 
   # 5-2) ★ 설계 §3.1 릴리스 게이트 — cal_user_rev 시딩 누락 0.
@@ -835,22 +686,21 @@ try {
       $lack = @($expGrants[$t].Split(',') | Where-Object { $have -notcontains $_ })
       if($lack.Count -gt 0){ $fail += "GRANT 누락: $t 에 $($lack -join ',') 이(가) 없습니다" }
     }
-    # ★ 권한을 한 줄도 주면 안 되는 테이블(설계 §7.5 감사 휴지통).
-    foreach($t in $calUngranted){
-      if($actMap.ContainsKey($t)){ $fail += "★ $t 에 권한이 붙었습니다 [$($actMap[$t])] — 여기가 0줄이어야 우회 접속자가 자기 흔적을 읽거나 지우지 못합니다" }
-    }
-    # ★ DB 단위 권한이 있으면 위의 '0줄' 검사는 아무 의미가 없다(테이블 권한 없이도 접근된다).
+    # ★ DB 단위 권한이 있으면 위의 '표별 정확 일치' 는 아무 의미가 없다 — DELETE 를 일부러 빼 둔
+    #   cal_user_rev·cal_user_pref·cal_migration_log·cal_schema_meta 도 DB 단위 DELETE 로 지워진다.
+    #   (옛날에는 여기 '권한 0줄이어야 하는 표(cal_audit_trash)' 검사가 함께 있었다. 그 표가
+    #    폐지되면서 검사도 없어졌다 — 지금 cal_* 는 전부 권한이 붙는 것이 정상이다)
     $schemaPriv = Q "SELECT COUNT(*) FROM information_schema.SCHEMA_PRIVILEGES WHERE TABLE_SCHEMA='$DbName' AND GRANTEE = $granteeExpr;"
-    if($schemaPriv -ne '0'){ $fail += "★ '$appUser'@'$appHost' 에 DB 단위 권한이 $schemaPriv 건 있습니다 — DB 단위 권한이 있으면 $($calUngranted -join ',') 의 권한 0줄 검사가 무의미해집니다" }
-    # ★ 전역 권한(GRANT … ON *.*)은 DB 단위보다 한 칸 더 위다. 이걸 안 보면 '0줄' 게이트가
-    #   초록불인 채로 앱 계정이 cal_audit_trash 를 읽고 지울 수 있다(적대검증 중대11).
+    if($schemaPriv -ne '0'){ $fail += "★ '$appUser'@'$appHost' 에 DB 단위 권한이 $schemaPriv 건 있습니다 — DB 단위 권한이 있으면 표별 정확일치 검사가 무의미해집니다(DELETE 를 안 준 표도 지워집니다)" }
+    # ★ 전역 권한(GRANT … ON *.*)은 DB 단위보다 한 칸 더 위다. 이걸 안 보면 표별 게이트가
+    #   초록불인 채로 앱 계정이 무엇이든 지울 수 있다(적대검증 중대11).
     #   USAGE 는 계정이 있으면 항상 붙는 '권한 없음' 표기라 제외한다.
     $globalPriv = QSrv "SELECT COUNT(*) FROM information_schema.USER_PRIVILEGES WHERE GRANTEE = $granteeExpr AND PRIVILEGE_TYPE <> 'USAGE';"
     if($globalPriv -ne '0'){
       $globalList = (QSrv "SELECT GROUP_CONCAT(PRIVILEGE_TYPE ORDER BY PRIVILEGE_TYPE SEPARATOR ',') FROM information_schema.USER_PRIVILEGES WHERE GRANTEE = $granteeExpr AND PRIVILEGE_TYPE <> 'USAGE';")
-      $fail += "★ '$appUser'@'$appHost' 에 전역 권한이 $globalPriv 건 있습니다 [$globalList] — 전역 권한이 있으면 $($calUngranted -join ',') 의 권한 0줄 검사도, 표별 정확일치 검사도 전부 무의미해집니다. REVOKE 로 걷어내세요"
+      $fail += "★ '$appUser'@'$appHost' 에 전역 권한이 $globalPriv 건 있습니다 [$globalList] — 전역 권한이 있으면 표별 정확일치 검사가 전부 무의미해집니다. REVOKE 로 걷어내세요"
     }
-    if($fail.Count -eq $failBeforeGrant){ Ok "GRANT 대조 — cal_* $($calGranted.Count)개 정확히 일치 · 기존 $($extGranted.Count)개 포함 · 권한 0줄 $($calUngranted -join ',') · DB 단위 0 · 전역 0" }
+    if($fail.Count -eq $failBeforeGrant){ Ok "GRANT 대조 — cal_* $($calGranted.Count)개 정확히 일치 · 기존 $($extGranted.Count)개 포함 · DB 단위 0 · 전역 0" }
   }
 
   # 5-4) FK 가 실제로 걸렸는지 + 참조 동작(CASCADE/RESTRICT)까지.
@@ -880,22 +730,43 @@ try {
   }
 
   # 이름이 붙은 것과 강제되는 것은 다르다(8.0.16 미만은 파싱만 하고 무시).
-  # 시험 대상으로 cal_audit_trash 를 쓰는 이유: CHECK 가 있으면서 FK 가 하나도 없는 테이블이라
-  # 부모 행(실제 login_id)을 만들지 않고 시험할 수 있다. 실데이터를 전혀 건드리지 않는다.
+  #
+  # ★ 시험 대상을 cal_task_hours 로 옮겼다(2026-08-11). 예전 대상은 cal_audit_trash 였고 그 근거는
+  #   'CHECK 가 있으면서 FK 가 하나도 없어 부모 행을 만들지 않고 시험할 수 있다' 였는데, 그 표가
+  #   폐지되면서 **FK 없이 CHECK 만 있는 표가 하나도 남지 않았다.** 그래서 근거를 다시 세운다:
+  #     · cal_task_hours 는 자기 표 하나로 시험이 닫힌다 — category_id 에 FK 가 없어(앱이 동반 정리)
+  #       cal_category 부모 행을 만들 필요가 없다. 다른 cal_* 는 부모 일정·할일·과제를 먼저 만들어야
+  #       하고, 그러면 '시험이 실패한 이유'가 CHECK 인지 준비 부족인지 흐려진다.
+  #     · CHECK 식(hours > 0 AND hours <= 24)이 컬럼 하나짜리라 위반 값을 만드는 데 해석이 필요 없다.
+  #     · 결정 (1)로 공수의 단일 소스가 이 표가 됐다 — 이 표의 CHECK 가 강제되는지가 지금 가장 중요하다.
+  #   남은 FK 는 login_id → app_user 하나뿐인데, 그건 실재하는 login_id 를 SELECT 로 한 명 읽어 채운다.
+  #   ★ 왜 가짜 login_id 를 쓰지 않는가: 실측(8.4.9) 결과 CHECK 는 FK 보다 **먼저** 평가된다
+  #     (가짜 login_id + hours=0 → 3819, 가짜 login_id + hours=1 → 1452). 그래서 가짜 값으로도
+  #     3819 는 나오지만, 그 경우 'CHECK 가 꺼져 있는 서버'에서는 3819 대신 1452 가 나와
+  #     'CHECK 미강제'와 '시험 불성립'을 구분할 수 없다. 실재 login_id 를 쓰면 두 결과가 갈린다:
+  #       3819 = 강제됨 / 성공(행이 들어감) = 강제 안 됨. 판정이 흐려지지 않는다.
+  #   app_user 는 읽기만 한다(이 스크립트가 기존 표에 하는 유일한 접근이 SELECT 라는 단언은 유지된다).
   #
   # ★ 종료코드만 보면 게이트가 아니라 위증이다(적대검증 중대7). probe 의 컬럼 목록은
-  #   cal_audit_trash 정의에 붙어 있어서, 컬럼 이름이 바뀌면 ERROR 1054 로 실패하는데
+  #   cal_task_hours 정의에 붙어 있어서, 컬럼 이름이 바뀌면 ERROR 1054 로 실패하는데
   #   '0 이 아니니 거부된 것' 으로 읽어 [OK] 를 찍는다. 그래서 오류 번호로 판정한다:
   #     exit 0        → CHECK 가 강제되지 않음(실패)
   #     3819          → 정상(CHECK 위반으로 거부)
   #     그 밖의 실패  → 시험 자체가 성립하지 않음(실패로 처리. 조용히 넘기면 안 된다)
   # 출력 캡처는 cmd 의 리다이렉트로 한다 — 5.1 에서 네이티브 exe 에 PowerShell 의 2>&1 을 걸면
   # stderr 줄이 ErrorRecord 로 감싸져 $? 와 문자열 판정이 함께 흔들린다.
-  if($expTables -contains 'cal_audit_trash'){
+  if($expTables -notcontains 'cal_task_hours'){
+    $fail += "CHECK 강제 시험을 하지 못했습니다 — schema-calendar.sql 에 cal_task_hours 가 없습니다(명부 대조에서 이미 걸렸어야 합니다)"
+  } elseif($nUser -eq '0'){
+    # app_user 가 비면 INSERT … SELECT 가 0행을 넣고 조용히 성공한다 — 그걸 'CHECK 미강제'로 읽으면 오진이다.
+    $fail += "CHECK 강제 시험을 하지 못했습니다 — app_user 가 0행이라 FK 를 만족시킬 login_id 가 없습니다(선행 조건부터 다시 보세요)"
+  } else {
     Write-Host "    (아래 ERROR 3819 는 일부러 규칙을 어기는 INSERT 의 결과입니다 — 이게 보이는 것이 정상)"
     $script:tmpProbe = Join-Path $env:TEMP ("calprobe_"+[IO.Path]::GetRandomFileName()+".sql")
     $script:tmpOut   = Join-Path $env:TEMP ("calprobe_"+[IO.Path]::GetRandomFileName()+".txt")
-    $probeSql = "START TRANSACTION;`r`nINSERT INTO cal_audit_trash (table_name, op, login_id, row_key, before_img, acted_at) VALUES ('__probe__','X','__probe__','__probe__',JSON_OBJECT(),UTC_TIMESTAMP(3));`r`nROLLBACK;`r`n"
+    # hours=0 은 chk_cal_task_hours_range(hours > 0) 위반이다. work_date 는 실데이터와 겹치지 않는
+    # 고정 과거일, category_id 는 '__probe__' 라 진짜 행과 PK 가 부딪히지 않는다.
+    $probeSql = "START TRANSACTION;`r`nINSERT INTO cal_task_hours (login_id, work_date, category_id, hours) SELECT login_id, '1970-01-01', '__probe__', 0 FROM app_user LIMIT 1;`r`nROLLBACK;`r`n"
     [IO.File]::WriteAllText($script:tmpProbe, $probeSql, (New-Object System.Text.UTF8Encoding($false)))
     cmd /c "`"$mysql`" --defaults-extra-file=`"$cnf`" --default-character-set=utf8mb4 `"$DbName`" < `"$($script:tmpProbe)`" > `"$($script:tmpOut)`" 2>&1"
     $probeExit = $LASTEXITCODE
@@ -905,19 +776,18 @@ try {
     foreach($l in $probeLines){ Write-Host "      $l" }
     $probeOneLine = ($probeLines -join ' / ')
     if($probeExit -eq 0){
-      $fail += "★ CHECK 가 강제되지 않습니다 — op='X' 가 cal_audit_trash 에 들어갔습니다. 서버가 CHECK 를 무시하는 상태이므로 all_day/반복/공수/색상 규칙이 전부 무방비입니다(서버 버전 확인)"
+      $fail += "★ CHECK 가 강제되지 않습니다 — hours=0 이 cal_task_hours 에 들어갔습니다(chk_cal_task_hours_range 위반). 서버가 CHECK 를 무시하는 상태이므로 all_day/반복/공수/색상 규칙이 전부 무방비입니다(서버 버전 확인)"
     } elseif($probeOut -notmatch '\b3819\b'){
       $fail += "★ CHECK 강제 시험이 성립하지 않았습니다 — 거부되긴 했으나 CHECK 위반(3819)이 아닌 다른 이유입니다. 이 상태에서는 CHECK 가 실제로 작동하는지 알 수 없습니다. mysql 출력: [$probeOneLine]"
     } else {
-      Ok "CHECK 실제 강제 확인 — 위반 INSERT 가 ERROR 3819 로 거부됨"
+      Ok "CHECK 실제 강제 확인 — 위반 INSERT 가 ERROR 3819 로 거부됨(cal_task_hours.hours=0)"
     }
-    # 롤백이 됐는지도 본다. 시험 행이 남으면 감사 휴지통이 첫 행부터 가짜다.
-    $leak = Q "SELECT COUNT(*) FROM cal_audit_trash;"
-    if($leak -ne '0'){ $fail += "시험용 행이 남았습니다 — cal_audit_trash 에 $leak 행. 직접 확인 후 지우세요" }
+    # 롤백이 됐는지도 본다. 표 전체를 세지 않고 시험 행만 본다 — 이 게이트는 데이터가 든 DB 에서도
+    # 같은 뜻이어야 하기 때문이다(전체 COUNT 은 진짜 공수 행까지 세어 무의미해진다).
+    $leak = Q "SELECT COUNT(*) FROM cal_task_hours WHERE category_id='__probe__';"
+    if($leak -ne '0'){ $fail += "시험용 행이 남았습니다 — cal_task_hours 에 category_id='__probe__' 가 $leak 행. 직접 확인 후 지우세요" }
     Remove-Item $script:tmpProbe -Force -ErrorAction SilentlyContinue; $script:tmpProbe = $null
     Remove-Item $script:tmpOut   -Force -ErrorAction SilentlyContinue; $script:tmpOut   = $null
-  } else {
-    $fail += "CHECK 강제 시험을 하지 못했습니다 — schema-calendar.sql 에 cal_audit_trash 가 없습니다(명부 대조에서 이미 걸렸어야 합니다)"
   }
 
   # 5-6) 스키마 버전 행(§5.5). 행이 없으면 낡은 클라이언트 차단이 죽은 문자가 된다.
@@ -927,40 +797,16 @@ try {
     else { Ok "스키마 버전 행 schema_version = $schemaVer" }
   }
 
-  # 5-7) §7.5 감사 트리거가 실제로 붙었는지. 파일이 없으면 실패가 아니라 경고다(머리말 참조).
-  # ★ 기대값은 파일에서 센 $trigNames 가 아니라 상수 $DESIGN_TRIGGERS 다. 파일을 기준으로 세면
-  #   파일에서 트리거를 빼는 순간 기대값도 함께 줄어 '전부 실재' 초록불이 뜬다(적대검증 중대3).
-  #   (파일과 상수가 어긋나면 위 안전 스캔에서 이미 Die 했으므로 여기까지 오지 못한다)
-  $designTrigNames = @($DESIGN_TRIGGERS.Keys)
-  if($trigRan){
-    $gotTrig = QRows "SELECT CONCAT(TRIGGER_NAME,'|',EVENT_OBJECT_TABLE) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$DbName' AND TRIGGER_NAME IN ($(SqlList $designTrigNames));"
-    $gotTrigNames = @(); $badTrigTable = @()
-    foreach($r in $gotTrig){
-      $p = "$r".Split('|')
-      $gotTrigNames += $p[0]
-      if($p.Count -gt 1 -and $DESIGN_TRIGGERS.Contains($p[0]) -and $p[1] -ne $DESIGN_TRIGGERS[$p[0]]){ $badTrigTable += ("$($p[0]) (기대 $($DESIGN_TRIGGERS[$p[0]]) / 실제 $($p[1]))") }
-    }
-    $missTrig = @($designTrigNames | Where-Object { $gotTrigNames -notcontains $_ })
-    if($missTrig.Count -gt 0){ $fail += "★ 감사 트리거 누락 $($missTrig.Count)개: $($missTrig -join ', ') (설계 §7.5 기대 $($designTrigNames.Count)개 / 실제 $($gotTrigNames.Count)개) — 앱 계정의 DELETE 권한을 상쇄하는 유일한 근거가 §7.5 트리거입니다" }
-    else { Ok "감사 트리거 $($gotTrigNames.Count)/$($designTrigNames.Count) 실재(설계 §7.5 명부 대조)" }
-    if($badTrigTable.Count -gt 0){ $fail += "감사 트리거 대상 표 불일치: $($badTrigTable -join ' / ')" }
-    # ★ 명부에 없는 cal_* 트리거가 DB 에 붙어 있으면 그것도 실패다. 감사 트리거와 같은 시점에
-    #   걸린 다른 트리거는 감사 기록을 조작하거나 삭제를 조용히 되돌릴 수 있는데, 이름 대조만
-    #   해서는 '있어야 할 것이 있는지'만 보고 '없어야 할 것'은 못 본다.
-    # ★ 정직하게 적어 둔다: 이 자리에서는 사실상 발화하지 못한다(적대검증 경미3).
-    #   schema-calendar.sql 이 cal_* 를 전부 DROP 하고 DROP TABLE 은 그 표의 트리거까지 함께
-    #   지우므로 게이트 시점의 후보는 방금 triggers-calendar.sql 이 만든 것뿐인데, 명부에 없는
-    #   트리거가 그 파일에 있으면 위 안전 스캔($trigExtra)이 접속 전에 이미 Die 했다.
-    #   그래서 '발화 가능한 자리'는 DROP 전이고, 거기에 같은 검사를 1-6 으로 따로 두었다.
-    #   여기 남겨 두는 이유는 두 가지다: (1) 이 스크립트 밖에서 만들어진 cal_* 표(명부에 없어
-    #   DROP 되지 않는 표)에 트리거가 붙어 있는 경로가 열리면 여기서만 잡힌다.
-    #   (2) 다른 세션이 schema 실행과 게이트 사이에 트리거를 붙이는 경합. 둘 다 드물다 —
-    #   '이 검사가 초록불이니 rogue 가 없다' 는 근거로 쓰지 말 것. 실질 근거는 1-6 쪽이다.
-    $rogueTrig = QRows "SELECT CONCAT(TRIGGER_NAME,'|',EVENT_OBJECT_TABLE) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$DbName' AND EVENT_OBJECT_TABLE LIKE 'cal\_%' AND TRIGGER_NAME NOT IN ($(SqlList $designTrigNames));"
-    if($rogueTrig.Count -gt 0){ $fail += "★ 설계 §7.5 명부에 없는 cal_* 트리거가 붙어 있습니다: $($rogueTrig -join ', ') — 누가 무엇을 위해 달았는지 확인 전에는 배포하지 마세요" }
-  } elseif(-not $hasTrigFile){
-    Warn "★ 감사 트리거 없음 — DELETE 권한이 무보호(§7.5). triggers-calendar.sql 을 만들기 전에는 실배포하지 마세요."
-  }
+  # 5-7) ★ cal_* 트리거가 0개인지. 2026-08-11 결정으로 이 키트는 트리거를 만들지 않는다.
+  #   '있어야 할 것이 있는지' 를 보던 옛 명부 대조를 '없어야 할 것이 없는지' 로 뒤집었다.
+  #   명부가 비면 대조는 성립하지 않지만 0개 검사는 성립한다 — 오히려 이쪽은 상수와 파일이
+  #   함께 헐거워지는 옛 약점(적대검증 중대3)이 원리적으로 없다.
+  #   여기서 무엇이 잡히나: 이 스크립트 밖에서 만들어져 DROP 되지 않는 표에 붙은 트리거,
+  #   그리고 schema 실행과 게이트 사이에 다른 세션이 붙인 트리거. 옛 배포의 trg_cal_* 잔재는
+  #   방금 DROP TABLE 에 함께 지워졌으므로 여기서는 보이지 않는다 — 그건 1-6 이 지우기 전에 본다.
+  $rogueTrig = QRows "SELECT CONCAT(TRIGGER_NAME,'|',EVENT_OBJECT_TABLE) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='$DbName' AND EVENT_OBJECT_TABLE LIKE 'cal\_%';"
+  if($rogueTrig.Count -gt 0){ $fail += "★ cal_* 에 트리거가 $($rogueTrig.Count)개 붙어 있습니다: $($rogueTrig -join ', ') — 이 키트는 트리거를 만들지 않습니다(2026-08-11 감사 트리거 폐지). 누가 무엇을 위해 달았는지 확인 전에는 배포하지 마세요" }
+  else { Ok "cal_* 트리거 0개 (이 키트는 트리거를 만들지 않는다 — 2026-08-11 결정)" }
 
   # ==========================================================================
   #  6. 판정
@@ -971,29 +817,21 @@ try {
     Write-Host ""
     Die "게이트 $($fail.Count) 건 실패. 위 항목을 고치기 전에는 앱을 DB 모드로 전환하지 마세요 — 지금 넘어가면 사용자 데이터로 확인하게 됩니다."
   }
-  # ★ 미완 배포를 '완료' 로 끝내지 않는다(적대검증 중대2). 이전판은 트리거 파일이 없거나
-  #   앱 계정이 없어도 게이트를 통과하면 0 + "구축 완료" 였다 — 배포 파이프라인과 사람 둘 다
-  #   '됐다' 로 읽는다. 기준은 '이 상태로 배포하면 사용자가 다치는가' 이고, 둘 다 다친다:
-  #     · 트리거 없음 → 앱 계정이 DELETE 를 가진 채 흔적이 0 (조용히 다친다 — 더 나쁘다)
-  #     · 계정 없음   → 앱이 첫 조회부터 ERROR 1142 (시끄럽게 다친다)
-  #   1(Die)로 합치지 않는 이유와 코드 값은 머리말의 종료코드 표 참조.
-  #   판정은 '경고를 찍었는가' 가 아니라 '실제로 그 단계를 돌렸는가'($trigRan/$grantsRan)로 한다.
+  # ★ 미완 배포를 '완료' 로 끝내지 않는다(적대검증 중대2). 이전판은 앱 계정이 없어도 게이트를
+  #   통과하면 0 + "구축 완료" 였다 — 배포 파이프라인과 사람 둘 다 '됐다' 로 읽는다.
+  #   기준은 '이 상태로 배포하면 사용자가 다치는가' 이고, 계정이 없으면 앱이 첫 조회부터
+  #   ERROR 1142 로 죽는다. 1(Die)로 합치지 않는 이유와 코드 값은 머리말의 종료코드 표 참조.
+  #   판정은 '경고를 찍었는가' 가 아니라 '실제로 그 단계를 돌렸는가'($grantsRan)로 한다.
   $incomplete = @()
   $nextSteps  = @()
   $exitCode   = 0
-  if(-not $trigRan){
-    $incomplete += "감사 트리거 미설치(§7.5 $($DESIGN_TRIGGERS.Count)개 = 0개)"
-    $nextSteps  += "triggers-calendar.sql 을 $scriptDir 에 두고 이 스크립트를 다시 실행하세요 — 그 전에는 앱 계정의 DELETE 가 흔적 없이 열려 있습니다."
-  }
   if(-not $grantsRan){
     $incomplete += "앱 계정 '$appUser'@'$appHost' 권한 미부여(계정이 없습니다)"
     $nextSteps  += "create-app-user.sql 로 계정을 만든 뒤 이 스크립트를 다시 실행하세요 — 그 전에는 앱이 cal_* 를 한 줄도 못 읽고 ERROR 1142 로 죽습니다."
   }
   Show-RevokeHint
   if($incomplete.Count -gt 0){
-    if($trigRan){ $exitCode = $EXIT_NO_GRANTS }
-    elseif($grantsRan){ $exitCode = $EXIT_NO_TRIGGERS }
-    else { $exitCode = $EXIT_NO_BOTH }
+    $exitCode = $EXIT_NO_GRANTS
     Write-Host ""
     Write-Host "  구조 게이트는 전부 통과했습니다(표·FK·CHECK·rev 시딩·스키마 버전 행)." -ForegroundColor Yellow
     Write-Host "  그러나 배포는 완료가 아닙니다 — 빠진 것:" -ForegroundColor Yellow

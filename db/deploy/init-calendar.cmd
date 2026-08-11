@@ -14,9 +14,13 @@ rem  always clean - i.e. the breakage only shows up in UTF-8 consoles (dev/CI).
 rem
 rem  All Korean documentation lives where it is actually read:
 rem    - init-calendar.ps1 header : usage, parameters, exit codes, safety scan
-rem    - db/deploy/README.md      : deploy order (schema -> triggers -> grants)
+rem    - db/deploy/README.md      : deploy order (schema -> grants)
 rem  Exit codes (must match the ps1 header table):
-rem    0 ok | 1 failed | 2 cancelled | 3 no triggers | 4 no app account | 5 = 3+4
+rem    0 ok | 1 failed | 2 cancelled | 4 no app account
+rem    3 and 5 are RETIRED (they meant "no audit triggers" / "3+4" before the
+rem    2026-08-11 decision to drop the audit triggers). Do not reuse those two
+rem    values for a different meaning - callers pinned to the old table would
+rem    silently take the wrong branch.
 rem
 rem  Usage:  init-calendar.cmd [-DbHost 192.168.0.50] [-DbName taskmgr] [-Force]
 rem  Do NOT end an argument value with a backslash - powershell.exe reads \" as

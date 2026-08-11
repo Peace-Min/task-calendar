@@ -5,17 +5,16 @@
 --  ※ 설계 근거는 db/CALENDAR-TABLE-DESIGN.md. 문서와 이 파일이 어긋나면 이 파일이 정본이다.
 --
 --  ⚠️ 재실행 경고 — 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 전부 사라진다.
---     아래 DROP TABLE 이 cal_* 13개를 자식→부모 순으로 지운다. 일정·할일·공수·회의실·
---     이관 마커·감사 휴지통이 모두 날아가고 되돌릴 수 없다(휴지통 자신도 함께 지워진다).
---     ★ 같은 DROP 이 그 표에 걸린 §7.5 감사 트리거(trg_cal_*)도 함께·조용히 지운다.
---       왜 '조용히'가 문제인가: 실측(8.4.9, --show-warnings 켠 채) DROP TABLE 은 경고를 한 줄도 내지
---       않고 information_schema.triggers 에서 해당 트리거가 사라졌다. 즉 이 파일만 다시 돌리면
---       화면상 '구축 성공'인데 감사는 통째로 없어진 상태가 되고, DELETE 권한을 상쇄하던 유일한
---       근거가 사라진 줄을 아무도 모른다(grants-calendar.sql 이 자식 표까지 DELETE 를 주는 전제가 깨진다).
---       → 재구축했으면 triggers-calendar.sql 을 반드시 다시 돌릴 것.
---       배포 순서(고정): schema-calendar.sql → triggers-calendar.sql → grants-calendar.sql.
---       (사람이 먼저 여는 파일이 이것이라 여기에도 둔다. 세 파일이 같은 순서를 각자 적어 두고 있으므로
---        한 곳을 고치면 나머지도 함께 볼 것 — 순서는 grants 가 트리거 존재를 전제하기 때문에 정해진다.)
+--     아래 DROP TABLE 이 cal_* 12개를 자식→부모 순으로 지운다. 일정·할일·공수·회의실·
+--     이관 마커가 모두 날아가고 되돌릴 수 없다.
+--     ★ 되돌릴 수단은 이 DB 안에 없다. 복구 경로는 '주간 mysqldump + binlog' 하나뿐이다
+--       (2026-08-11 결정: 감사 트리거·cal_audit_trash 폐지. 같은 DB 안에 둔 휴지통은 서버가
+--        통째로 죽는 사고에 함께 사라져 복구에 무력했고, 이 파일을 다시 돌릴 때 DROP TABLE 이
+--        경고 한 줄 없이 그 트리거까지 지워 '보호받는 줄 알았는데 아니었던' 상태를 만들었다).
+--       → 데이터가 있는 DB 라면 이 파일을 돌리기 전에 mysqldump 를 먼저 뜰 것.
+--       배포 순서(고정): schema-calendar.sql → grants-calendar.sql.
+--       (사람이 먼저 여는 파일이 이것이라 여기에도 둔다. 두 파일이 같은 순서를 각자 적어 두고 있으므로
+--        한 곳을 고치면 나머지도 함께 볼 것 — 순서는 GRANT 가 표의 실재를 전제하기 때문에 정해진다.)
 --     이 파일은 '최초 1회 구축' 전용이다. 운영 중 구조 변경은 별도 migrate-*.sql 로 할 것.
 --
 --  ⚠️ 이 파일은 cal_* 만 만든다.
@@ -43,8 +42,8 @@
 --     ※ 앱 코드를 가리킬 때는 함수 이름·요소 id 로 가리킨다(줄번호를 쓰지 않는다).
 --       저 파일은 1.5MB 짜리 단일 HTML 이라 한 줄만 늘어도 이 파일의 모든 줄번호가 어긋나고,
 --       근거를 확인하려 열면 딴 내용이 나와 '실측 근거'가 검증 불가능해진다. 이름은 안 썩는다.
---       같은 이유로 이 파일은 형제 SQL 파일(grants/triggers)의 줄번호도, 그 파일들의 '현재 상태'도
---       베끼지 않는다 — 제약·트리거·GRANT 는 전부 이름으로 가리킨다.
+--       같은 이유로 이 파일은 형제 SQL 파일(grants)의 줄번호도, 그 파일의 '현재 상태'도
+--       베끼지 않는다 — 제약·GRANT 는 전부 이름으로 가리킨다.
 --
 --  ── A. '' → NULL ─────────────────────────────────────────────────────
 --     앱은 '값 없음'을 JS 빈 문자열로 들고 있고 XML 에도 그대로 나간다. 아래 8개 컬럼이 그 대상이다.
@@ -69,7 +68,8 @@
 --            addEntry() / addTodo() / fromXML() 의 entry·todo 매핑 (`getAttribute(...) || null`).
 --            빈 속성 categoryId="" 도 `'' || null` 로 null 이 된다. 실측상 ''를 넣으면 ERROR 1452 이지만
 --            그 값을 만들어 내는 코드 경로가 없다.
---          hours_min / remind — 미입력은 '' 가 아니라 null 이다(numMin() / normRemind()).
+--          remind — 미입력은 '' 가 아니라 null 이다(normRemind()).
+--          (entry@hours 는 아예 대응 컬럼이 없다 — 아래 ★ '이관이 버리는 XML 속성' 참조)
 --
 --     ★ 별개 위험(''와 무관, 어댑터가 아니라 이관 도구가 막아야 한다):
 --        fromXML() 은 존재하지 않는 과제를 가리키는 categoryId 를 그대로 남긴다(주석 "미존재 참조는 표시 시
@@ -87,11 +87,11 @@
 --       ※ fromXML() 도 속성이 없으면 nowIso() 로 채운다 — 구파일도 같은 형태가 된다.
 --       ※ 루트 @exportedAt 도 같은 형태지만 대응 컬럼이 없다. 저장하지 않는다(대상 목록에 넣지 말 것).
 --
---     대상 컬럼은 아래 7개다(DATETIME(3) 11개 중 XML 에서 값이 오는 것 전부. information_schema 로 전수 대조함):
+--     대상 컬럼은 아래 7개다(DATETIME(3) 10개 중 XML 에서 값이 오는 것 전부. information_schema 로 전수 대조함):
 --       cal_category.created_at · cal_category.updated_at   ← updated_at 은 created_at 복사(위 이관 규칙 참조)
 --       cal_entry.created_at    · cal_entry.updated_at
 --       cal_todo.created_at     · cal_todo.updated_at       · cal_todo.completed_at
---     나머지 4개는 XML 을 안 거치므로 이 계약 대상이 아니다 — cal_audit_trash.acted_at 과
+--     나머지 3개는 XML 을 안 거치므로 이 계약 대상이 아니다 —
 --     cal_schema_meta.updated_at 은 UTC_TIMESTAMP(3) 로 서버가 만들고, cal_user_pref.updated_at 과
 --     cal_migration_log.migrated_at 은 이관 도구가 만든다. ★ 단 그 도구가 값을 JS Date 로 만든다면
 --     같은 함정을 그대로 밟는다 — 도구도 아래 형식으로 내보낼 것.
@@ -145,7 +145,6 @@
 --       entry@source                      cal_entry.source                ''       ← NOT NULL. NULL 이면 ERROR 1048
 --       entry@location                    cal_entry.location              ''       ← NOT NULL. NULL 이면 ERROR 1048
 --       entry@categoryId                  cal_entry.category_id           NULL
---       entry@hours                       cal_entry.hours_min             NULL     (validMin() 이 null)
 --       entry@remind                      cal_entry.remind                NULL     (normRemind() 가 null)
 --       entry@endDate                     cal_entry.end_date              NULL
 --       entry 의 <title> 부재/빈값        cal_entry.title                 '(제목 없음)'  ← NOT NULL
@@ -185,6 +184,18 @@
 --       않는다(코드 전역에 'local' 문자열 0건). DB 표기를 정본으로 삼되, DB→XML 재생성 시 'local' 이면
 --       속성을 쓰지 않아 byte 동일성을 지킨다.
 --
+--  ── ★ 이관이 버리는 XML 속성 — entry@hours (대응 컬럼 없음. 오류가 아니다) ──────
+--     data.xml 에는 지금도 <entry hours="120"> 이 들어 있다(toXML 이 여전히 쓴다). 그런데 DB 에는
+--     그 값을 받을 컬럼이 없다 — 2026-08-11 결정으로 cal_entry.hours_min 을 폐지했기 때문이다.
+--     근거: 그 값을 채우는 UI 도 자동계산도 없었고, 소비처는 연구노트용 캘린더 md 의 「일정」 줄
+--       ('· 2시간' 표기) 하나뿐이었다. 과제별 분 합계는 계산만 하고 읽는 코드가 없었고 회사(netcus)
+--       일간보고에도 들어가지 않는다. 공수의 단일 소스는 cal_task_hours(날짜×과제) 하나다.
+--     ★ 계약: 이관 도구는 entry@hours 를 **읽지 않고 그냥 버린다.** 건수 보고도 필요 없다.
+--       이 줄이 없으면 도구가 '대응 컬럼이 없다'며 멈추거나, 사람이 컬럼을 다시 만든다.
+--       (루트 @exportedAt 과 같은 부류다 — 위 B 의 ※ 참조. 대상 목록에 넣지 말 것)
+--     ※ 되살릴 조건: 일정 단위 공수를 실제로 입력·소비하는 화면이 생기면 그때 컬럼을 다시 만들고
+--       cal_task_hours 와의 단위 차이(분 vs 시간)를 먼저 정할 것. 그때까지는 만들지 않는다.
+--
 --  ── D. 불리언 문자열 'true'/'false' → 1/0 ────────────────────────────
 --     toXML() 은 두 값을 **문자열**로 쓴다: `el.setAttribute('allDay', e.allDay ? 'true' : 'false')` 와
 --     todo 의 같은 꼴 `done`. 대상 컬럼은 TINYINT(1) NOT NULL 이다.
@@ -212,12 +223,14 @@
 --     실측: ai_ci 는 대소문자뿐 아니라 전각/반각까지 같게 본다. 'DB'·'Db'·전각 'ｄｂ' 가 CHECK 를
 --     전부 통과하고 입력 그대로 저장됐다. 앱은 `source === 'db'` 로 정확 비교하므로 그런 행은
 --     조용히 개인 과제로 취급된다. 대상: cal_category.source · cal_entry.source · cal_entry.recur_freq ·
---     cal_todo.prio · cal_audit_trash.op · cal_audit_trash.table_name · cal_schema_meta.k/v.
+--     cal_todo.prio · cal_schema_meta.k/v.
 --     ※ color · recur_until 은 REGEXP CHECK 라 이미 폭에 안전하다(실측: 전각 입력 ERROR 3819).
 --       대소문자는 색상 표기가 원래 양쪽을 허용하므로(앱 /^#[0-9a-fA-F]{6}$/) 의도된 통과다 → _bin 불필요.
 --
---  이 파일에 없는 것: 앱 계정 GRANT(create-app-user.sql 계열)와 §7.5 감사 트리거 DDL.
---  둘 다 별도 파일이다. cal_audit_trash 는 앱 계정에 권한을 한 줄도 주지 않아야 감사가 성립한다.
+--  이 파일에 없는 것: 앱 계정 GRANT(create-app-user.sql / grants-calendar.sql 계열). 별도 파일이다.
+--  ★ 감사 트리거(trg_cal_*)와 cal_audit_trash 는 2026-08-11 결정으로 폐지됐다. 이 스키마에는
+--     트리거가 하나도 없어야 한다 — init-calendar.ps1 의 게이트가 'cal_* 트리거 0개'를 확인한다.
+--     되살릴 자리는 이 DB 가 아니라 API 서버 계층이다(같은 DB 안의 휴지통은 그 DB 가 죽으면 함께 죽는다).
 --  ★ cal_schema_meta 는 앱 계정에 SELECT 만 주어야 한다(§5.5) — 앱이 버전 행을 올릴 수 있으면
 --     '낡은 클라이언트 차단'이 성립하지 않는다. 그 부여의 단일 소스는 grants-calendar.sql 이다.
 --     ※ 여기에 그 파일의 '현재 상태'(있다/없다)를 적지 않는다. 한때 "지금은 그 GRANT 가 없다" 고
@@ -228,8 +241,14 @@ SET NAMES utf8mb4;
 
 -- ---------- 멱등 재구축용 DROP — 자식(FK 참조하는 쪽) → 부모 순 ----------
 -- 위 경고를 다시 읽을 것. 이 13줄이 캘린더 데이터 전량을 지운다.
+--
+-- ★ 폐지된 표도 지운다. cal_audit_trash 는 감사 트리거와 함께 폐기됐지만(설계 §7.5),
+--   그 전에 이 키트를 한 번이라도 돌린 DB 에는 실물이 남아 있다. '안 만든다'만으로는
+--   사라지지 않는다 — 지우는 문장이 없으면 고아 표로 살아남아 DB 의 cal_* 가 13개가 되고,
+--   문서·GRANT·게이트는 전부 12를 정본으로 삼아 서로 어긋난다.
+--   지운 뒤 다시 만들지 않으므로 이 줄은 영구히 남는다(재적용마다 무해하게 반복).
+DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용 — 재생성하지 않는다
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음 — 순서 무관
-DROP TABLE IF EXISTS cal_audit_trash;
 DROP TABLE IF EXISTS cal_migration_log;
 DROP TABLE IF EXISTS cal_user_rev;
 DROP TABLE IF EXISTS cal_user_pref;
@@ -326,7 +345,8 @@ CREATE TABLE cal_entry (
   --   maxlength 가 없어 로그 붙여넣기로 실제 도달 가능한 경계다. '앱에 상한이 없어 TEXT' 는 근거가 거꾸로였다.
   memo           MEDIUMTEXT   NOT NULL DEFAULT (''),       -- 메모(여러 줄). 앱에 길이 상한이 없다
   source         VARCHAR(8)   CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',   -- 엔트리 출처. git=커밋에서 자동 생성, ''=사용자 일정. _bin 인 이유는 헤더 참조('GIT'·전각 'ｇｉｔ' 차단)
-  hours_min      SMALLINT UNSIGNED NULL DEFAULT NULL,      -- 일정 공수(분 정수 0~1440). NULL=미입력. cal_task_hours.hours(시간)와 단위가 다름
+  -- ※ 일정 단위 공수(옛 hours_min)는 컬럼이 없다. 2026-08-11 결정 — 공수는 cal_task_hours 하나로
+  --   단일화했다. XML 의 entry@hours 는 버린다(헤더 '★ 이관이 버리는 XML 속성' 참조).
   location       VARCHAR(200) NOT NULL DEFAULT '',         -- 장소(회의실 등). 앱이 200자로 절단
   remind         SMALLINT UNSIGNED NULL DEFAULT NULL,      -- 알림 리드타임(분). NULL=기본 사다리 60/30/10/5, 0=알림 없음, n=n분 전 1회
   recur_freq     VARCHAR(8)   CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,     -- 반복 주기. NULL=반복 없음. weekly/monthly 두 값뿐. _bin — 'WEEKLY'·전각 'ｗｅｅｋｌｙ' 가 통과하면 앱의 freq==='weekly' 분기가 조용히 빗나간다
@@ -346,11 +366,10 @@ CREATE TABLE cal_entry (
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT chk_cal_entry_source   CHECK (source IN ('','git')),
   CONSTRAINT chk_cal_entry_allday01 CHECK (all_day IN (0,1)),
-  -- 아래 4개의 NULL 통과는 전부 '의도'다(NULL 이 곧 정상 상태를 뜻한다). 식이 NULL 을 낳지 않도록
+  -- 아래 3개의 NULL 통과는 전부 '의도'다(NULL 이 곧 정상 상태를 뜻한다). 식이 NULL 을 낳지 않도록
   -- 나머지 항은 NOT NULL 컬럼이거나 IS NULL 판정이라, chk_cal_entry_recur 가 겪은 무음 통과가 없다.
   CONSTRAINT chk_cal_entry_enddate  CHECK (end_date IS NULL OR end_date > entry_date),          -- end_date NULL = 단일일 일정
   CONSTRAINT chk_cal_entry_allday   CHECK (all_day = 0 OR (start_time IS NULL AND end_time IS NULL)),  -- 시각 NULL = '시각 없음'(종일 일정의 정상 상태)
-  CONSTRAINT chk_cal_entry_hours    CHECK (hours_min IS NULL OR hours_min BETWEEN 0 AND 1440),  -- NULL = 공수 미입력(0분과 다르다)
   CONSTRAINT chk_cal_entry_remind   CHECK (remind IS NULL OR remind BETWEEN 0 AND 10080),       -- NULL = 기본 사다리(60/30/10/5). 0 = 알림 없음
   -- 반복은 '전부 NULL' 이거나 '주기+간격+횟수가 갖춰진' 두 상태만 허용한다. 반쪽짜리 반복이 들어오면
   -- 전개 로직이 무한 루프거나 0회 반복이 된다.
@@ -406,8 +425,13 @@ CREATE TABLE cal_entry_except (
   --       중복이 안 보이므로 앱만 써서는 이 결함을 눈치챌 수 없다 — DB 를 붙이는 순간 1062 로 드러난다.
   --   근본 해법은 앱의 append 지점에 가드를 넣는 것이지만 그건 이 파일 범위 밖이다. 그때까지는 어댑터가 막는다.
   PRIMARY KEY (login_id, entry_id, except_date),
-  -- CASCADE 인 이유: §7.5 가 '자식은 부모 BEFORE DELETE 트리거가 JSON 으로 흡수하고 CASCADE 로 지워진다'를
-  -- 전제한다. 부모 방향(category)의 RESTRICT 와 혼동하지 말 것 — 여기는 부모 일정과 생사를 같이한다.
+  -- CASCADE 인 이유: 예외일은 부모 일정 없이는 뜻이 없는 값이고, 앱은 일정을 지울 때 이 행들을
+  -- 따로 지우지 않는다 — recurExcept 는 entry 객체 **안에** 든 배열이고 deleteEntry() 는 그 객체를
+  -- state.entries 에서 걷어내는 한 줄이 전부다(직접 확인). 즉 어댑터는 cal_entry 에 DELETE 한 문장만
+  -- 낸다. RESTRICT 로 두면 그 한 문장이
+  -- ERROR 1451 로 실패한다. 부모 방향(category)의 RESTRICT 와 혼동하지 말 것 — 여기는 부모 일정과
+  -- 생사를 같이한다.  ※ 예전 근거였던 '§7.5 부모 트리거가 자식을 JSON 으로 흡수한다'는 2026-08-11
+  -- 감사 트리거 폐지로 사라졌다. CASCADE 결정 자체는 위 이유로 그대로 유지된다.
   CONSTRAINT fk_cal_entry_except_entry FOREIGN KEY (login_id, entry_id) REFERENCES cal_entry(login_id, id)
     ON UPDATE RESTRICT ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
@@ -544,20 +568,25 @@ CREATE TABLE cal_room (
 -- XML <taskHours><day><t> 대응. 회사 일간/주간보고 '[과제명] : n' 계약의 원천.
 -- 값 0/빈값은 0 저장이 아니라 행 삭제다(setTaskHours). 그래서 hours > 0 CHECK 와 DELETE 권한이 한 쌍이다.
 --
+-- ★ 2026-08-11 결정: 공수의 단일 소스는 이 표 하나다. 옛 cal_entry.hours_min(일정 단위 분)은 폐지했다 —
+--   채우는 UI 도 자동계산도 없었고 회사 일간보고에도 들어가지 않았다. 두 자리에 공수가 있으면
+--   '어느 쪽이 맞는가'를 사람이 매번 판정해야 한다. 되살릴 조건은 헤더의 entry@hours 절에 적어 두었다.
+--
 -- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외). cal_room 과 같은 근거다:
 --   엔티티가 아니라 키 (login_id, work_date, category_id) 로 주소지정되는 값 행이고, 같은 사용자의
 --   동시 쓰기는 §3.1 rev 락이 직렬화한다. 설계 §3.3 도 이 테이블을 지목하지 않았다.
 --   ※ 그 대가는 인정한다 — 두 PC 를 쓰는 사람이 같은 (날짜×과제) 칸을 동시에 고치면 마지막 쓰기가
---     이긴다(실측: 스테일 UPDATE 가 ROW_COUNT=1 로 통과). 이 값은 회사 일간보고에 그대로 나가므로
---     사후 추적은 §7.5 감사 트리거(trg_cal_task_hours_bu / _bd)가 담당한다. 그 트리거가 적용돼 있지
---     않은 배포에서는 이 표에 추적 수단이 0 이다 — 적용 여부는 여기 적어 두지 말고 배포 때 세어 볼 것
---     (grants-calendar.sql 꼬리의 확인 6) / 6b) 가 그 게이트다).
---   재검토 조건: 두 자리 동시 편집으로 공수가 어긋난 사고가 한 번이라도 보고되면 컬럼을 추가할 것.
+--     이긴다(실측: 스테일 UPDATE 가 ROW_COUNT=1 로 통과). 이 값은 회사 일간보고에 그대로 나간다.
+--     ★ 사후 추적 수단은 이 DB 안에 없다(2026-08-11 감사 트리거 폐지). 남는 것은 주간 mysqldump 와
+--       binlog 뿐이고, 둘 다 '언제 무엇이 바뀌었나'를 사람이 직접 파야 나온다. 없는 방어를 있다고
+--       적지 않기 위해 그대로 적는다 — 이 표는 지금 '마지막 쓰기가 이기고, 추적은 백업으로만' 이다.
+--   재검토 조건: 두 자리 동시 편집으로 공수가 어긋난 사고가 한 번이라도 보고되면 updated_at 컬럼을
+--     추가하고 낙관적 잠금 대상으로 편입할 것.
 CREATE TABLE cal_task_hours (
   login_id    VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id
   work_date   DATE NOT NULL,                                                          -- 대상 날짜
   category_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,         -- 과제 id. FK 걸지 않음 — 앱이 과제 삭제 시 이 행을 동반 정리하고, 그 밖의 경로로 생긴 미아 행은 무해
-  hours       DECIMAL(4,2) NOT NULL,                                                  -- 투입 시간(★시간 단위, 소수 2자리). 0 초과 24 이하. cal_entry.hours_min(분)과 60배 다름
+  hours       DECIMAL(4,2) NOT NULL,                                                  -- 투입 시간(★시간 단위, 소수 2자리). 0 초과 24 이하. 앱은 0.5·0.25 같은 소수를 그대로 보낸다
   PRIMARY KEY (login_id, work_date, category_id),
   CONSTRAINT fk_cal_task_hours_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -616,35 +645,20 @@ CREATE TABLE cal_migration_log (
   COMMENT='data.xml→DB 1회성 이관 마커(사람 단위). 행 존재=이관 완료, 재실행 거부 근거.';
 
 -- =====================================================================
---  12. cal_audit_trash — §7.5 감사 트리거가 쓰는 휴지통
+--  (옛 12. cal_audit_trash — 폐지. 결번)
 -- =====================================================================
--- DEFINER BEFORE DELETE/UPDATE 트리거가 before_img 를 적재한다(트리거 DDL 은 이 파일에 없다 — 별도 파일).
--- 앱 계정에는 권한을 한 줄도 주지 않아 우회 사용자가 지우거나 볼 수 없다. 이게 감사가 성립하는 유일한 조건.
--- 이 표는 §7.5 가 요구하는데 설계 §5.1 명부에만 빠져 있어서 신설했다(설계 문서 쪽은 2026-08-10 정정됨).
--- 설계 문서의 현재 상태를 여기 다시 적지 않는다 — 그쪽이 고쳐지면 이 주석만 거짓이 된다.
-CREATE TABLE cal_audit_trash (
-  audit_id   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,  -- 감사 행 일련번호
-  -- 두 컬럼 모두 값 집합이 고정돼 있고 조회 조건으로 정확 비교된다 → _bin(기본 ai_ci 상속 금지).
-  -- 트리거만 쓰는 컬럼이지만, ai_ci 면 감사 조회 WHERE table_name='cal_entry' 가 'CAL_ENTRY' 까지 함께
-  -- 긁어 온다. 감사 기록은 '무엇이 들어 있는지'를 다투는 자리라 표기 흔들림을 남기지 않는다.
-  -- 값의 출처는 triggers-calendar.sql 의 trg_cal_*_bd/_bu 가 쓰는 리터럴이고, '어떤 표가 왜 대상인가' 의
-  -- 정본은 설계 §7.5 명부다(배포 게이트의 기대값도 거기서 온다 — 표 8개·트리거 15개).
-  -- ★ 여기에 표 이름을 열거하지 않는다. 예전엔 4개를 적어 두었는데 그 뒤 감사 대상이 자식 표와 cal_room 까지
-  --   늘어나면서 주석만 뒤처졌다. 다른 파일의 현재 상태를 베껴 두면 반드시 이렇게 썩는다.
-  table_name VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,   -- 원본 테이블명. 폭 32 = 가장 긴 cal_* 표 이름보다 넉넉하게
-  op         VARCHAR(1)  CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,   -- 연산 종류. U=UPDATE 전 이미지, D=DELETE 전 이미지. _bin 아니면 'd'·'u' 도 통과한다(실측)
-  login_id   VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 원본 행의 소유자. ★FK 걸지 않음 — 감사 기록성이 참조무결성보다 우선
-  row_key    VARCHAR(200) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,        -- 원본 행 키를 이어붙인 문자열(예: entry id, work_date|category_id)
-  before_img JSON        NOT NULL,                     -- 변경 전 행 전체. 부모 BEFORE DELETE 안에서 JSON_ARRAYAGG 로 자식(except/commit/day_note)까지 흡수 — CASCADE 자식은 트리거가 발화하지 않는다
-  acted_at   DATETIME(3) NOT NULL,                     -- 발생 시각(UTC). 트리거 본문이 UTC_TIMESTAMP(3) 를 명시 대입 — 컬럼 DEFAULT 로 CURRENT_TIMESTAMP 를 쓰지 않는다
-  PRIMARY KEY (audit_id),
-  KEY ix_cal_audit_login_time (login_id, acted_at),
-  CONSTRAINT chk_cal_audit_op CHECK (op IN ('U','D'))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='감사 휴지통(§7.5). 트리거가 DEFINER 권한으로 적재. 앱 계정 GRANT 0 — 열람·삭제 불가.';
+-- 2026-08-11 결정으로 감사 휴지통과 감사 트리거(trg_cal_*)를 통째로 걷어냈다. 여기에 '왜 없는지'를
+-- 남기는 이유는, 이 표를 요구하던 설계 §7.5 를 읽은 사람이 '스키마가 표를 빠뜨렸다'고 판단해
+-- 다시 만드는 것을 막기 위해서다.
+--   왜 폐지했나: 서버 장애 복구에 무력했다 — 휴지통이 감사 대상과 같은 DB 안에 있어 그 DB 가
+--     죽으면 함께 죽는다. 게다가 이 파일의 DROP TABLE 이 그 표에 걸린 트리거를 경고 없이 함께
+--     지워, 재구축할 때마다 '보호받는 줄 알았는데 아닌' 상태가 조용히 만들어졌다.
+--   대신 무엇을 하나: 표준 복구 경로 — 주간 mysqldump + binlog. 감사가 정말 필요해지면 그 자리는
+--     API 서버 계층이다(앱이 DB 에 직접 붙는 지금 구조에서는 어차피 DEFINER 트리거밖에 둘 데가 없었다).
+--   되살리지 말 것: 이 DB 안에 트리거를 다시 넣으면 init-calendar.ps1 의 '트리거 0개' 게이트가 실패한다.
 
 -- =====================================================================
---  13. cal_schema_meta — 스키마 버전 행 (§5.5)
+--  12. cal_schema_meta — 스키마 버전 행 (§5.5)
 -- =====================================================================
 -- §5.5 가 요구한 '스키마 버전 행 + 빌드 상수를 접속 시 1회 비교, 낡은 클라이언트는 파괴적 연산만 차단'의
 -- 저장소 측 절반이다. 이 행이 없으면 스키마를 ALTER 한 뒤 구버전 위젯이 붙었을 때 막을 수단이 0 이다 —
