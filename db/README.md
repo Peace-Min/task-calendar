@@ -14,7 +14,8 @@
 ## ✅ 현재 상태 (2026-07-21)
 - **모델 B(DB 원본) 재설계 완료 + 실 DB 검증 완료** (더미데이터 13건 기준)
 - **P3 앱↔DB 연동 완료(localhost)**: 위젯이 이 DB를 읽기·캐시(오프라인)·관리자 CRUD(온라인)로 소비. 공식 과제 카탈로그 화면·재연결 도구·단일 카테고리 스토어 구현. 인증은 JIT 프롬프트 스텁(P6.5에서 netcus 위임으로 교체 예정). 상세 `ARCHITECTURE.md` §4.7.
-- **테이블 2개**(`customer`·`project`), **뷰 0개**. `section`/`status`는 **ENUM**(드롭다운 소스). 옛 설계의 색상·**결정론적 uid 앵커(캘린더 결합)**·룩업 테이블·2축(유형×단계)·CHECK는 없음. ※ 단, P3에서 **외부 안정 참조키 `project.uid`(UUID assign-once)**를 추가했다(옛 캘린더 결합 앵커와 다른, 일정이 `db-<uid>`로 참조하는 순수 참조키) — schema.sql 반영 완료.
+- **과제 테이블 2개**(`customer`·`project`) + 코드테이블 2개(`section_code`·`status_code`), **뷰 0개**.
+  ※ `taskmgr` 전체는 **19개 표**다 — 위 4개 + 사용자·조직 3개(`app_user`·`org_unit`·`title_code`, 별도 비공개 저장소에서 구축) + 개인 일정 12개(`cal_*`, 2026-08-11 구축). 이 README 는 **과제 트랙**만 다룬다. `section`/`status`는 **ENUM**(드롭다운 소스). 옛 설계의 색상·**결정론적 uid 앵커(캘린더 결합)**·룩업 테이블·2축(유형×단계)·CHECK는 없음. ※ 단, P3에서 **외부 안정 참조키 `project.uid`(UUID assign-once)**를 추가했다(옛 캘린더 결합 앵커와 다른, 일정이 `db-<uid>`로 참조하는 순수 참조키) — schema.sql 반영 완료.
 - 앱 편집 지원: `id`(편집 식별자) · `is_active`(소프트삭제) · `created_at`/`updated_at`(감사) · FK `ON UPDATE CASCADE`(발주처 개명 전파).
 - 이전의 미러/캘린더 결합 설계는 **모델 B로 대체됨** — `schema.sql` 앞부분이 옛 객체를 DROP하고 재구축.
 - MySQL **8.4.9** 네이티브 설치, Windows 서비스 **`MySQL84`**(자동시작·Running), 포트 3306, `root`/`taskmgr123`, DB `taskmgr` (utf8mb4 / utf8mb4_0900_ai_ci)
@@ -47,7 +48,7 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 | `SETUP.md` | 환경·연결·적용/재적용(클린 rebuild vs 서버 실이관)·설계 모델·검증 결과 |
 | `DESIGN_NOTES.md` | 모델 B 근거·필드별 설계결정·Excel 추출 방향·초기이관/재구축 전략·향후 |
 | `schema-overview.html` | ⚠️ **낡음(2026-07-21, ENUM 시절)** — 현행 구조는 [`docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) |
-| [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스** — 4개 표·컬럼·제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
+| [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스** — 과제 4표 + 사용자·조직 3표(2026-08-11 추가)의 컬럼·제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
 | `CALENDAR-TABLE-DESIGN.md` | **별도 트랙 — 캘린더(`cal_*`) 설계 근거.** 온라인 전용 정책·동시성 규약·권한·로그/백업·`data.xml` 1회 이관. 컬럼 수준 DDL 의 정본은 이 문서가 아니라 `deploy/schema-calendar.sql` |
 | `deploy/README.md` | **프로비저닝 키트 사용법** — 과제(`init-db`)·캘린더(`init-calendar`) 두 트랙의 실행법·배포 순서·종료코드 + **백업(`backup-taskmgr`) 설치·확인·복구** |

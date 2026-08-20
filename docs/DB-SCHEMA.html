@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>과제 DB 테이블 구조 — taskmgr</title>
+<title>taskmgr DB 테이블 구조 — 과제 · 사용자</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 /* 폐쇄망이라 웹폰트를 쓰지 않는다(로드 실패 시 조용히 다른 폰트로 떨어짐).
@@ -138,15 +138,21 @@ footer p{margin:0 0 4px; max-width:none}
 <div class="wrap">
 
 <p class="eyebrow">수행과제 캘린더 · 데이터베이스 레퍼런스</p>
-<h1>과제 DB 테이블 구조</h1>
-<p class="lede">지금 운영되는 <code>taskmgr</code> 데이터베이스가 실제로 어떻게 생겼는지, 그리고 무엇을 DB가 강제하고 무엇을 앱이 지키는지 정리한 문서입니다.</p>
+<h1>taskmgr DB 테이블 구조</h1>
+<p class="lede">지금 운영되는 <code>taskmgr</code> 데이터베이스가 실제로 어떻게 생겼는지, 그리고 무엇을 DB가 강제하고 무엇을 앱이 지키는지 정리한 문서입니다. <b>과제</b>(무엇을 하는가)와 <b>사용자·조직</b>(누가 무엇을 할 수 있는가) 두 묶음을 담습니다.</p>
 <ul class="facts">
   <li>데이터베이스 <b>taskmgr</b></li>
   <li>엔진 <b>MySQL 8.4 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
-  <li>테이블 <b>4</b></li>
-  <li>기준 <b>2026-07-27</b></li>
+  <li>과제 <b>4</b> · 사용자·조직 <b>3</b></li>
+  <li>기준 <b>2026-08-11</b></li>
 </ul>
+
+<div class="callout">
+<h4>이 문서에 없는 것 — 개인 일정 표(<code>cal_*</code>)</h4>
+<p><code>taskmgr</code>에는 개인 일정·할 일을 담는 <code>cal_*</code> 표가 <b>12개 더</b> 있습니다(2026-08-11 구축). 아직 앱이 그 표를 쓰지 않고 구조도 바뀔 수 있어 이 문서에서는 <b>일부러 제외</b>했습니다 — 여기 없는 것이 낡아서가 아닙니다.</p>
+<p>그쪽 구조와 결정 근거는 <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a>, DDL 단일 소스는 <code>db/deploy/schema-calendar.sql</code>입니다.</p>
+</div>
 
 <hr class="rule">
 
@@ -260,6 +266,138 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">예전에는 이 값들을 컬럼 정의(<code>ENUM</code>) 안에 박아 두어 바꾸려면 스키마를 고치고 앱을 다시 배포해야 했습니다. 지금은 표의 <b>행</b>이라 발주처와 똑같이 앱에서 다룹니다.</p>
 </section>
 
+<section id="people">
+<h2>사용자 · 조직 <span class="ko">누가 무엇을 할 수 있는가</span></h2>
+<p>위 네 표가 <b>무엇을 하는가</b>였다면, 아래 세 표는 <b>누가 그것을 볼 수 있고 고칠 수 있는가</b>입니다. 위젯이 켜질 때 로그인한 ID로 이 표를 조회해 권한을 판정합니다.</p>
+
+<div class="callout">
+<h4>비밀번호 컬럼이 없습니다 — 인증은 여기서 하지 않습니다</h4>
+<p>위젯은 <b>사내 주간보고(netcus)로 로그인</b>합니다. 인증이 거기서 끝나므로 이 DB에는 비밀번호가 없습니다. 로그인에 성공한 ID로 이 표를 조회해 <b>“무엇을 할 수 있나”만</b> 판정합니다. 즉 이 표는 <b>인증(authentication)이 아니라 인가(authorization)</b>를 담습니다.</p>
+</div>
+
+<div class="erd">
+<svg viewBox="0 0 700 250" role="img" aria-label="app_user가 org_unit과 title_code를 외래키로 참조하고, org_unit은 자기 자신을 부모로 참조하는 관계도">
+  <rect class="box" x="16" y="30" width="184" height="66" rx="2"/>
+  <text x="28" y="54" font-size="13" font-weight="600">org_unit</text>
+  <text class="t-ko" x="28" y="70">조직 트리 — 자기참조</text>
+  <text class="t-ko" x="28" y="86">조회 범위 계산의 기준점</text>
+  <path class="line" d="M108 30 V14 H196 V63 H200"/>
+  <text class="lbl" x="120" y="10">parent — 자기 자신을 가리킴</text>
+
+  <rect class="box" x="16" y="160" width="184" height="52" rx="2"/>
+  <text x="28" y="184" font-size="13" font-weight="600">title_code</text>
+  <text class="t-ko" x="28" y="200">직급 — 표시·정렬 전용</text>
+
+  <rect class="box-main" x="430" y="82" width="254" height="88" rx="2"/>
+  <text x="448" y="112" font-size="15" font-weight="700">app_user</text>
+  <text class="t-ko" x="448" y="130">사용자 — 비밀번호 없음</text>
+  <text class="t-ko" x="448" y="148">view_scope · edit_role</text>
+
+  <path class="line" d="M200 63 H316 V116 H430"/>
+  <path class="line" d="M200 186 H316 V136 H430"/>
+  <circle cx="430" cy="116" r="3" fill="currentColor" opacity=".35"/>
+  <circle cx="430" cy="136" r="3" fill="currentColor" opacity=".35"/>
+
+  <text class="lbl" x="238" y="57">org_unit</text>
+  <text class="lbl" x="238" y="180">title</text>
+  <text class="lbl" x="332" y="196">조직·직급 이름을 바꾸면 소속자 표기까지 자동 전파 (ON UPDATE CASCADE)</text>
+  <text class="lbl" x="332" y="212">소속자가 있으면 삭제 차단 (ON DELETE RESTRICT)</text>
+</svg>
+</div>
+
+<div class="callout warn">
+<h4>권한 축은 둘이고 <b>서로 독립</b>입니다</h4>
+<p><b>view_scope</b>는 “남의 캘린더를 어디까지 보나”, <b>edit_role</b>은 “과제 DB를 고칠 수 있나”입니다. 한쪽이 높다고 다른 쪽이 따라오지 않습니다 — 전사를 열람하면서 편집은 못 하는 사람도, 자기 것만 보면서 과제를 관리하는 사람도 있습니다.</p>
+</div>
+</section>
+
+<section id="app_user">
+<h2><span class="tname">app_user</span> <span class="ko">사용자 — 인가의 단일 소스</span></h2>
+<p>사내 임직원 한 명이 한 행입니다. 위젯은 로그인 성공 직후 이 표를 한 번 읽고, 그 결과로 화면과 편집 가능 여부를 정합니다.</p>
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">login_id</td><td class="type">VARCHAR(50)</td><td><span class="k pk">PK</span></td><td class="note"><b>사내 주간보고 로그인 ID.</b> 조직도 링크의 <code>id=</code> 값과 같습니다. 캘린더의 모든 개인 데이터가 이 값으로 사람을 가리키므로 <b>바뀌지 않는 값으로 다룹니다</b>.</td></tr>
+<tr><td class="col">name</td><td class="type">VARCHAR(50)</td><td><span class="k nn">NOT NULL</span></td><td class="note">표시 이름.</td></tr>
+<tr><td class="col">title</td><td class="type">VARCHAR(30)</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span></td><td class="note">직급. <code>title_code</code>에 있는 값만 들어갑니다. <b>권한 판정에 쓰지 않습니다</b>(아래 경고 참조).</td></tr>
+<tr><td class="col">org_unit</td><td class="type">VARCHAR(50)</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note"><span class="star">★</span> 소속. <b><code>unit_tree</code> 조회의 기준점</b>입니다 — 같은 설정이라도 이 값에 따라 보이는 범위가 달라집니다.</td></tr>
+<tr><td class="col">view_scope</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 self</span><span class="k">CHECK</span></td><td class="note"><b>남의 일정을 어디까지 보나.</b> <code>self</code>(자기만) · <code>unit_tree</code>(자기 소속 이하 전체) · <code>all</code>(전사). 세 값만 허용됩니다.</td></tr>
+<tr><td class="col">edit_role</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 viewer</span><span class="k">CHECK</span></td><td class="note"><b>과제 DB를 고칠 수 있나.</b> <code>viewer</code>(조회만) · <code>editor</code>(+과제 편집) · <code>admin</code>(+직원·조직 관리). 세 값만 허용됩니다.</td></tr>
+<tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">1=재직, 0=퇴사·휴직. <b>행을 지우지 않고 이 값만 0으로</b> 둡니다 — 그 사람이 남긴 과거 데이터의 참조를 지키기 위해서입니다.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(자동).</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">마지막 수정 시각(자동 갱신).</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout warn">
+<h4>팀장을 <b>직급으로 추론하면 틀립니다</b></h4>
+<p>실제로 같은 팀 안에 <b>‘책임’인 팀장과 ‘부장’인 팀원</b>이 함께 있고, ‘선임’이 팀장인 팀도 있습니다. 직급 순으로 뽑았다면 두 팀 모두 엉뚱한 사람이 팀 전체를 열람했을 것입니다.</p>
+<p>그래서 관리자·팀장 컬럼을 따로 두지 않고 <code>view_scope</code>를 <b>사람마다 직접 지정</b>합니다. <code>title</code>은 <b>표시와 정렬에만</b> 씁니다.</p>
+</div>
+
+<div class="callout">
+<h4>같은 <code>unit_tree</code>라도 보이는 인원이 다릅니다 — 값이 아니라 <b>소속</b>이 범위를 정합니다</h4>
+<p>조회 범위는 <b>설정값 + 소속</b>으로 계산됩니다. <code>unit_tree</code>는 “자기 소속 조직 <b>이하 전체</b>”라서, 팀장은 자기 팀만 보고 본부장은 산하 전 팀을 봅니다. 조직 트리의 뿌리에 있는 사람은 결과적으로 전 직원을 보게 됩니다.</p>
+<p>그래서 <b>1팀장이 3팀을 보는 일은 구조상 없습니다</b> — 조직 구조를 고치면 권한도 자동으로 따라갑니다.</p>
+</div>
+</section>
+
+<section id="org_unit">
+<h2><span class="tname">org_unit</span> <span class="ko">조직 트리 — 자기 자신을 참조합니다</span></h2>
+<p>본부·팀 하나가 한 행이고, <code>parent</code>로 계층을 만듭니다. 조회 범위 계산이 이 트리를 타고 내려갑니다.</p>
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">name</td><td class="type">VARCHAR(50)</td><td><span class="k pk">PK</span></td><td class="note">조직 이름 자체가 키입니다. <b>전사에서 유일해야 합니다</b> — 지금 조직도는 본부 접두사가 붙어 있어 이미 그렇습니다.</td></tr>
+<tr><td class="col">parent</td><td class="type">VARCHAR(50)</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note"><span class="star">★</span> 상위 조직. <b>같은 표를 가리킵니다</b>(자기참조). 최상위는 비어 있고, 팀은 소속 본부를 가리킵니다.</td></tr>
+<tr><td class="col">sort_order</td><td class="type">INT</td><td><span class="k nn">NOT NULL</span></td><td class="note">표시 순서(작을수록 먼저). 조직 구조는 이름순과 무관하므로 필요합니다.</td></tr>
+<tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span></td><td class="note">1=운영, 0=폐지. 폐지된 조직도 <b>과거 소속 표기를 위해 행은 남깁니다</b>.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(자동).</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">마지막 수정 시각(자동 갱신).</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub">조직을 <b>개명</b>하면 소속자 전원의 표기가 한 번에 따라갑니다(<code>ON UPDATE CASCADE</code>). 반대로 <b>소속자나 하위 조직이 남아 있는 조직은 삭제되지 않습니다</b>(<code>ON DELETE RESTRICT</code>).</p>
+</section>
+
+<section id="title_code">
+<h2><span class="tname">title_code</span> <span class="ko">직급 — 표시·정렬 전용</span></h2>
+<p>구조가 <code>section_code</code>·<code>status_code</code>와 사실상 같습니다. <b>권한 판정에는 절대 쓰이지 않습니다.</b></p>
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">name</td><td class="type">VARCHAR(30)</td><td><span class="k pk">PK</span></td><td class="note">직급 이름 자체가 키입니다.</td></tr>
+<tr><td class="col">sort_order</td><td class="type">INT</td><td><span class="k nn">NOT NULL</span></td><td class="note"><b>위계 순서.</b> 이름순으로는 표현할 수 없으므로 필수입니다.</td></tr>
+<tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span></td><td class="note">1=사용, 0=숨김.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(자동).</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">마지막 수정 시각(자동 갱신).</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="people-now">
+<h2>지금 들어 있는 것 <span class="ko">숫자만</span></h2>
+<p>이 저장소에는 <b>구조만</b> 있고 명단·조직명은 없습니다. 실명이 들어간 데이터는 별도 <b>비공개</b> 저장소에서 관리합니다.</p>
+<div class="tw">
+<table>
+<thead><tr><th>항목</th><th>현황</th><th>설명</th></tr></thead>
+<tbody>
+<tr><td class="col">조직</td><td class="type">12개</td><td class="note">최상위 1 · 하위 11</td></tr>
+<tr><td class="col">직급</td><td class="type">11개</td><td class="note">표시·정렬 전용</td></tr>
+<tr><td class="col">사용자</td><td class="type">89명</td><td class="note">전원 활성(<code>is_active=1</code>)</td></tr>
+<tr><td class="col">view_scope</td><td class="type">self 71 · unit_tree 11 · all 7</td><td class="note"><code>unit_tree</code> 11명의 <b>열람 인원은 제각각</b>입니다 — 설정이 같아도 소속이 다르기 때문입니다.</td></tr>
+<tr><td class="col">edit_role</td><td class="type">viewer 82 · editor 6 · admin 1</td><td class="note"><code>admin</code>은 직원·조직 정보를 고칠 최소 한 명입니다.</td></tr>
+<tr><td class="col">기본값 아님</td><td class="type">18명</td><td class="note">나머지 71명은 <code>self</code>/<code>viewer</code> 기본값 그대로입니다.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
 <section id="rules">
 <h2>DB가 강제하는 것 · 앱이 지키는 것</h2>
 <p>둘을 구분해 두면 문제가 생겼을 때 <b>어디를 봐야 하는지</b>가 분명해집니다.</p>
@@ -271,6 +409,8 @@ footer p{margin:0 0 4px; max-width:none}
   <div class="rule-row"><dt>사용 중 삭제 차단</dt><dd>과제가 쓰고 있는 구분·상태는 지워지지 않습니다.</dd></div>
   <div class="rule-row"><dt>uid 유일</dt><dd>과제의 정체성이 겹치지 않습니다.</dd></div>
   <div class="rule-row"><dt>빈 값 표기 통일</dt><dd>계약명·통상명칭·비고는 비어 있으면 빈 문자열입니다(NULL 아님).</dd></div>
+  <div class="rule-row"><dt>권한 값 제한</dt><dd><code>view_scope</code>·<code>edit_role</code>에는 정해진 세 값 외에 아무것도 들어가지 않습니다(CHECK). DB에 새 값을 넣어도 앱이 모르면 아무 권한도 생기지 않으므로, 늘리려면 어차피 코드 변경이 필요합니다.</dd></div>
+  <div class="rule-row"><dt>소속·직급 실재</dt><dd>목록에 없는 조직·직급으로는 사용자를 저장할 수 없습니다. 소속자가 남아 있는 조직도 지워지지 않습니다.</dd></div>
 </dl>
 
 <h3>앱이 지킴 — 규칙이지 물리적 차단은 아닙니다</h3>
@@ -279,7 +419,14 @@ footer p{margin:0 0 4px; max-width:none}
   <div class="rule-row"><dt>선진행 규칙</dt><dd>구분이 <b>선진행</b>이면 날짜·상태를 비웁니다(계약 전이므로).</dd></div>
   <div class="rule-row"><dt>편집 권한</dt><dd>관리자 인증을 통과해야 과제·발주처·코드값을 고칠 수 있습니다.</dd></div>
   <div class="rule-row"><dt>삭제는 숨김으로</dt><dd>화면에서 지우면 <code>is_active=0</code>이 될 뿐 행은 남습니다. 영구 삭제는 DB에서 직접 해야 합니다.</dd></div>
+  <div class="rule-row"><dt>권한 판정</dt><dd><code>view_scope</code>·<code>edit_role</code>을 읽어 화면과 편집을 막는 것은 <b>앱</b>입니다. DB는 그 값을 저장할 뿐 강제하지 않습니다 — 아래 경고를 보세요.</dd></div>
 </dl>
+
+<div class="callout warn">
+<h4>권한은 <b>앱의 관례</b>이지 DB가 지키는 규칙이 아닙니다</h4>
+<p>모든 PC의 위젯이 <b>DB 계정 하나를 공유</b>하고, 그 접속 정보는 배포본에 들어 있습니다. 그래서 앱을 거치지 않고 DB에 직접 붙으면 <code>edit_role</code>이 <code>viewer</code>여도 데이터를 고칠 수 있습니다 — 앱의 권한 검사 코드가 <b>실행조차 되지 않기</b> 때문입니다.</p>
+<p>이건 결함이 아니라 <b>알고 받아들인 한계</b>입니다. 그래서 계정 권한을 최소로 묶고(구조 변경·다른 DB 접근 불가), <b>가장 민감한 근태·급여는 이 DB에 올리지 않습니다.</b> 근본 해결은 접속 정보가 클라이언트에서 사라지는 API 서버 도입입니다. 근거는 <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> §7.</p>
+</div>
 </section>
 
 <section id="confusing">
@@ -307,13 +454,18 @@ footer p{margin:0 0 4px; max-width:none}
   <div class="rule-row"><dt>대량 입력</dt><dd>SQL로 직접 넣습니다. 순서가 중요합니다 — <b>발주처·코드값을 먼저</b> 넣어야 과제가 들어갑니다(<code>db/deploy/load-template.sql</code>).</dd></div>
   <div class="rule-row"><dt>표 구조 변경</dt><dd><code>db/deploy/migrate.cmd</code> — 데이터를 보존하며 최신 구조로 맞춥니다. 여러 번 실행해도 안전합니다.</dd></div>
   <div class="rule-row"><dt>처음 구축</dt><dd><code>db/deploy/init-db.cmd</code> — <b>표를 새로 만듭니다.</b> 데이터가 있는 DB에는 절대 쓰지 마세요.</dd></div>
+  <div class="rule-row"><dt>사람 권한 변경</dt><dd>앱에는 편집 화면이 <b>없습니다.</b> 별도 비공개 저장소의 <code>04-permissions.sql</code>을 고치고 <code>apply.cmd -SkipSchema</code>로 다시 적용합니다 — 앱 계정에 쓰기 권한을 주면 누구나 자기 권한을 <code>admin</code>으로 올릴 수 있기 때문입니다.</dd></div>
+  <div class="rule-row"><dt>인사이동 · 조직 개편</dt><dd>소속만 바꾸면 권한 범위가 자동으로 따라갑니다(<code>UPDATE app_user SET org_unit=…</code>). 조직 신설·개명도 스키마나 코드 변경 없이 행 하나로 됩니다.</dd></div>
+  <div class="rule-row"><dt>명단 갱신</dt><dd>원본은 사내 주간보고 시스템의 좌측 조직도입니다. 링크의 <code>id=</code> 값이 그대로 <code>login_id</code>가 됩니다.</dd></div>
 </dl>
-<p class="sub">앱이 쓰는 DB 계정은 네 표에 대한 <b>읽기·추가·수정</b> 권한만 갖습니다. 삭제나 구조 변경은 할 수 없습니다.</p>
+<p class="sub">앱이 쓰는 DB 계정의 권한은 묶음마다 다릅니다 — <b>과제 네 표</b>는 읽기·추가·수정, <b>사용자·조직 세 표</b>는 <b>읽기만</b>입니다. 어느 쪽도 삭제나 구조 변경은 할 수 없습니다. 사용자 표를 읽기 전용으로 묶은 이유는 위 경고와 같습니다 — 쓰기가 열려 있으면 권한 자체를 탈취할 수 있습니다.</p>
 </section>
 
 <footer>
 <p>이 문서는 <b>지금 구조가 어떻게 생겼는지</b>를 봅니다. <b>왜 그렇게 정했는지</b>(식별 규칙을 정한 근거)는 <a href="../db/table-design-report.html">table-design-report.html</a>, 설계 결정 이력은 <a href="../db/ARCHITECTURE.md">ARCHITECTURE.md</a>에 있습니다.</p>
-<p>원본 정의: <code>db/schema.sql</code> · 배포용(시드 제외): <code>db/deploy/schema-structure.sql</code></p>
+<p>원본 정의 — <b>과제 네 표</b>: <code>db/schema.sql</code> · 배포용(시드 제외) <code>db/deploy/schema-structure.sql</code></p>
+<p><b>사용자·조직 세 표</b>는 이 저장소에 정의가 없습니다. 실명 89명이 함께 들어 있어 별도 <b>비공개</b> 저장소(<code>taskmgr-company-data</code>)에서 구조와 데이터를 같이 관리합니다 — 이 문서의 컬럼 표는 운영 DB의 <code>information_schema</code>를 그대로 읽어 옮긴 것입니다.</p>
+<p><b>개인 일정 열두 표</b>(<code>cal_*</code>)는 이 문서 범위 밖입니다 — 맨 위 안내를 보세요.</p>
 </footer>
 
 </div>
