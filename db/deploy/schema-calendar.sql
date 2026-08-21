@@ -31,7 +31,7 @@
 --     → 접속 프리앰블에 SET SESSION time_zone='+00:00' 을 함께 둘 것.
 --
 --  =====================================================================
---  ★★ XML→DB 어댑터 계약 — 여섯 부류(A·B·C·D·E·F). 여섯 다 '선택'이 아니다.
+--  ★★ DB 어댑터 계약 — 일곱 부류(A~F 는 앱→DB, G 는 DB→앱). 일곱 다 '선택'이 아니다.
 --  =====================================================================
 --     왜 한 절로 묶는가: 병이 하나다. data.xml 의 값을 **그대로** INSERT 하면 둘 중 하나가 난다 —
 --       (1) 이관이 그 자리에서 멈추고 단일 트랜잭션이라 그 사용자의 이관 전체가 롤백되거나,
@@ -368,6 +368,111 @@
 --       ※ toXML() 쪽 흡수는 DB→XML 내보내기에서 같은 왜곡을 만든다. 다만 DB 에는 무효 status 가
 --         애초에 들어갈 수 없으므로(CHECK) 그 경로는 발화하지 않는다 — 앱 코드를 고칠 필요는 없다.
 --         고치려면 '미기록 = day 요소를 쓰지 않는다' 가 되어야 하고, 그건 XML 포맷 변경이다.
+--
+--
+--  ══ G. DB → 앱 (읽기 경로) — 위 A~F 의 반대 방향 ═══════════════════════
+--     A~F 는 전부 'XML/앱 → DB' 였다. 부팅 조회는 반대로 가고, 규칙이 대칭이 아니다.
+--     목표는 하나다: **fromXML() 이 돌려주던 것과 똑같은 모양의 객체**를 만든다.
+--     앱 전체를 고치지 않고 재료만 바꾸는 것이므로, 모양이 한 군데라도 다르면 그 자리에서
+--     화면이 깨지거나(터지면 다행) 조용히 다르게 그려진다.
+--
+--     최상위 반환 객체(fromXML() 의 return 과 키가 정확히 같아야 한다):
+--       { categories, entries, todos, rooms, taskHours, attendance,
+--         gitAuthor, svnAuthor,
+--         reportMarker, reportMarkerCustom, reportIndent, gitCommitBody,
+--         reportFormatPrefs, reportFont, lsMigrated }
+--
+--  ── G-1. 이름이 다르다 ────────────────────────────────────────────────
+--     DB 는 snake_case, 앱은 camelCase 인데 단순 변환으로 안 되는 것들이 있다.
+--       cal_category.description      → category.desc        ★ description 아님
+--       cal_todo.todo_text            → todo.text            ★ todoText 아님
+--       cal_entry_commit.short_hash   → commit.short         ★ shortHash 아님
+--       cal_entry_commit.commit_time  → commit.time
+--       cal_entry.entry_date          → entry.date           ★ entryDate 아님
+--       cal_entry.all_day             → entry.allDay
+--       cal_attendance.work_date      → attendance 맵의 키
+--     나머지는 snake→camel 로 기계 변환이 되지만, 위 다섯은 규칙에서 벗어나므로 표를 보고 쓸 것.
+--
+--  ── G-2. NULL → '' (A 의 역방향) ──────────────────────────────────────
+--     앱은 '값 없음'을 빈 문자열로 들고 있다. NULL 을 그대로 넘기면 `if(e.startTime)` 류 검사가
+--     통과하는 것까지는 같지만, 문자열 메서드(.slice·.localeCompare)에서 터진다.
+--       start_time · end_time · commit_time · end_date(entry·todo) · due · recur_until
+--       · completed_at
+--     ※ 반대로 NULL 을 유지해야 하는 것도 있다 — category_id(앱이 `|| null` 로 다룬다) ·
+--       remind(null = '기본 사다리', 0 = '알림 없음'. ''로 바꾸면 두 상태가 뭉개진다).
+--
+--  ── G-3. DATETIME(3) → ISO 'Z' (B 의 역방향) ──────────────────────────
+--     앱의 시각은 전부 nowIso() = toISOString() 산출물 형태다. DB 값은 UTC 이므로
+--     'yyyy-MM-dd HH:mm:ss.fff' → 'yyyy-MM-ddTHH:mm:ss.fffZ' 로 되돌린다.
+--     대상: category.createdAt · entry.createdAt/updatedAt · todo.createdAt/updatedAt/completedAt
+--     ※ completed_at 은 NULL 이면 '' 다(G-2). ISO 변환은 값이 있을 때만.
+--     ★ 낙관적 잠금 토큰은 이 변환을 거친 값이 아니다 — §3.3 이 요구하는 @prev 는
+--       **DB 가 준 원문 문자열**이다. state 에 넣지 말고 어댑터가 따로 보관할 것(G-6).
+--
+--  ── G-4. TINYINT → boolean (D 의 역방향) ──────────────────────────────
+--     all_day → entry.allDay(true/false) · done → todo.done · git_commit_body → state.gitCommitBody
+--     ※ 0/1 을 그대로 넘기지 말 것. 앱은 `e.allDay ? …` 로 쓰므로 당장은 같게 동작하지만,
+--       toXML() 이 `e.allDay ? 'true' : 'false'` 로 쓰기 때문에 내보내기에서만 값이 달라진다.
+--
+--  ── G-5. 정렬 컬럼 → 배열 순서 / 행 → 맵 (E 의 역방향) ────────────────
+--     DB 는 행 집합이고 앱은 배열·객체다. 접는 규칙이 표마다 다르다.
+--       cal_category    ORDER BY sort_order → categories 배열. sort_order 값 자체는 state 에 넣지 않는다
+--       cal_room        ORDER BY sort_order → rooms 문자열 배열(객체 아님)
+--       cal_entry_commit ORDER BY seq       → entry.commits 배열. seq 는 state 에 넣지 않는다
+--       cal_entry_except ORDER BY except_date → entry.recurExcept 문자열 배열
+--       cal_todo_day_note → todo.dayNotes = { 'YYYY-MM-DD': '설명' }   (배열 아님)
+--       cal_task_hours    → taskHours   = { 'YYYY-MM-DD': { 과제id: 시간 } }  (2단 중첩)
+--       cal_attendance    → attendance  = { 'YYYY-MM-DD': { status, overtime } }
+--     ★ ORDER BY 를 빠뜨리면 MySQL 이 어떤 순서를 주는지 보장이 없다. '대체로 맞게' 나오다가
+--       행이 늘거나 실행계획이 바뀌면 순서가 뒤집힌다 — 화면 순서가 이유 없이 달라진다.
+--     ★ cal_attendance 는 **행이 없는 날짜의 키를 만들지 않는다.** 그게 '미기록' 이다
+--       (getAttendance() 가 그 자리에서 null 을 돌려준다). 빈 객체나 status:'' 를 넣지 말 것.
+--
+--  ── G-6. DB 에 없는 것을 무엇으로 채우나 ★ 가장 위험한 절 ─────────────
+--     아래는 조회 결과에 없다. 안 채우면 undefined 가 되고, undefined 는 대부분의 검사를
+--     조용히 통과하므로 **터지지 않고 다르게 동작한다.**
+--
+--       entry.hours          → null 로 채운다.
+--                              컬럼을 폐지했다(위 '이관이 버리는 XML 속성' 참조). undefined 로 두면
+--                              `e.hours != null` 이 우연히 같게 동작하지만 명시가 낫다.
+--
+--       category.gitRepo     → **로컬 저장소에서 읽어 채운다.** DB 에 없는 것은 의도이고(§4),
+--       category.svnRepo       값이 없어도 되는 것은 아니다. 빈 문자열로 채우면 「연동」 섹션이
+--                              통째로 사라져 사용자는 '커밋이 없는 것'과 구분하지 못한다.
+--                              ★ 이 PC 에 경로가 없으면 그 사실을 화면이 말해야 한다(§4).
+--
+--       category.dbGone      → source='db' 인 행만, LEFT JOIN project 로 파생한다(§6).
+--                              컬럼으로 저장하지 않는다 — 파생값 캐시라 ADR-18 과 충돌한다.
+--
+--       category.source      → 'db' 일 때만 키를 만든다. 'local' 이면 **키 자체를 넣지 않는다**
+--                              (앱은 개인 과제에 source 키를 만들지 않는다 — 계약 C 의 역방향).
+--
+--       state.lsMigrated     → ★★ 반드시 **true**. 이게 이 절에서 제일 위험하다.
+--                              false 나 undefined 면 migrateLocalStores() 가 실행되어
+--                              WebView2 의 localStorage(tc_taskHours · tc_attendance)를 읽어
+--                              state 에 병합하고 save() 한다 — DB 모드에서는 그 좀비 데이터가
+--                              **DB 로 들어간다.** 게다가 mergeLegacyStores() 는 무효 근태 코드를
+--                              유효 코드로 정규화하므로, 방금 구조로 막은 '미기록 → 정근' 이
+--                              그 경로로 되살아난다. 함수 주석 자신이 "재실행하면 사용자가 지운
+--                              값이 되살아난다(좀비)" 라고 적고 있다.
+--                              DB 모드는 그 이관이 이미 끝난 세계이므로 true 가 사실이기도 하다.
+--
+--       낙관적 잠금 토큰      → state 에 넣지 않는다. 어댑터가 별도 맵으로 보관한다:
+--                              Map<'표:login_id:id' → DB 가 준 updated_at 원문>.
+--                              §3.3 이 앱의 entry.updatedAt 을 쓰지 말라고 한 이유는 JS 가
+--                              편집마다 nowIso() 로 덮기 때문이다. 저장할 때 이 맵에서 꺼내
+--                              @prev 로 쓰고, 성공 응답의 새 값으로 갱신한다.
+--                              ※ cal_category·cal_user_pref 는 state 에 updatedAt 키가 아예
+--                                없으므로(fromXML 확인) 이 맵이 유일한 보관처다.
+--
+--  ── G-7. 커밋은 부팅 조회에 넣지 않는다 ───────────────────────────────
+--     §2 — 무게의 대부분이 커밋이고 캘린더를 그리는 데 쓰이지 않는다.
+--     부팅 조회 대상에서 cal_entry_commit 을 빼고, entry.commits 는 **빈 배열**로 채운다.
+--     ★ undefined 로 두지 말 것. 렌더·보고서 경로는 `(e.commits||[])`·Array.isArray 로 방어하지만
+--       **커밋 편집 경로는 가드가 없다**(직접 확인: 커밋 찾기·삭제 함수가 entry.commits.find(…)
+--       와 entry.commits.length 를 바로 읽는다). 사용자가 커밋 내역에서 한 줄 지우려는 순간
+--       TypeError 가 난다 — 조회는 멀쩡한데 편집만 죽는 형태라 원인을 찾기 어렵다.
+--     커밋 화면·보고서를 열 때 그 entry 의 커밋만 지연 조회해 채운다.
 --
 --  값 집합이 고정된 문자열 컬럼은 COLLATE utf8mb4_bin 이다(테이블 기본 utf8mb4_0900_ai_ci 상속 금지).
 --     실측: ai_ci 는 대소문자뿐 아니라 전각/반각까지 같게 본다. 'DB'·'Db'·전각 'ｄｂ' 가 CHECK 를
