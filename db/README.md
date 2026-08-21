@@ -6,7 +6,7 @@
 
 > **모델 전환**: 이전 설계는 DB를 "사업부 Excel 장표의 컴팩트 미러"(Excel 원본 → DB 미러 → 멱등 재임포트)로 봤으나, 지금은 **DB가 원본, Excel은 추출 리포트**로 뒤집었다(모델 B). Excel 흔적 필드(`source_no`·`customer.no`)는 제거되고, 앱 편집용 필드(소프트삭제 `is_active`·감사 `created_at`/`updated_at`)가 추가됐다.
 
-> **캘린더 트랙이 생겼습니다(2026-08).** 이 README 가 다루는 것은 **과제 데이터**(`project`·`customer`)입니다. 같은 `taskmgr` DB 안에 **개인 일정·할 일**을 담는 `cal_*` 트랙이 별도로 설계·구축됐고, 설계 근거는 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md), 구축 절차·배포 순서·종료코드는 [`deploy/README.md`](deploy/README.md) 에 있습니다.
+> **캘린더 트랙이 생겼습니다(2026-08).** 이 README 가 다루는 것은 **과제 데이터**(`project`·`customer`)입니다. 같은 `taskmgr` DB 안에 **개인 일정·할 일·근태**를 담는 `cal_*` 트랙이 별도로 설계·구축됐고, 설계 근거는 [`CALENDAR-TABLE-DESIGN.md`](CALENDAR-TABLE-DESIGN.md), 구축 절차·배포 순서·종료코드는 [`deploy/README.md`](deploy/README.md) 에 있습니다.
 > ⚠️ **두 트랙은 앱 계정 권한 정책이 다릅니다** — 과제 표는 소프트삭제(`is_active`)라 `DELETE` 를 주지 않지만, `cal_*` 는 **소프트삭제가 없어 삭제가 곧 정상 동작이라** 의도적으로 `DELETE` 를 줍니다(안 주면 앱의 삭제 UI 가 전부 `ERROR 1142`). 한쪽 문서를 다른 쪽 근거로 쓰지 마세요.
 > · **2026-08-11 정정**: 이 줄은 그 부여를 *"(감사 트리거로 상쇄)"* 라고 적고 있었습니다. **감사 트리거는 폐기됐습니다**(`CALENDAR-TABLE-DESIGN.md` §7.5 — 휴지통이 감사 대상과 같은 DB 안이라 서버 장애에 무력했고, 표준 복구 경로는 덤프 + binlog 입니다). 위험을 실제로 상쇄하는 것은 **주간 mysqldump + binlog 30일** 이고, 그 실행체가 `deploy/backup-taskmgr` 입니다(설계 §9).
 > · **백업은 `taskmgr` DB 전체가 대상입니다** — 캘린더 트랙에서 만들었지만 과제 표도 함께 받습니다. 서버 이관·신규 구축 뒤에는 `deploy/backup-taskmgr.cmd -Install` 을 잊지 마세요(구조 스크립트에 딸려 오지 않습니다).
@@ -15,7 +15,7 @@
 - **모델 B(DB 원본) 재설계 완료 + 실 DB 검증 완료** (더미데이터 13건 기준)
 - **P3 앱↔DB 연동 완료(localhost)**: 위젯이 이 DB를 읽기·캐시(오프라인)·관리자 CRUD(온라인)로 소비. 공식 과제 카탈로그 화면·재연결 도구·단일 카테고리 스토어 구현. 인증은 JIT 프롬프트 스텁(P6.5에서 netcus 위임으로 교체 예정). 상세 `ARCHITECTURE.md` §4.7.
 - **과제 테이블 2개**(`customer`·`project`) + 코드테이블 2개(`section_code`·`status_code`), **뷰 0개**.
-  ※ `taskmgr` 전체는 **19개 표**다 — 위 4개 + 사용자·조직 3개(`app_user`·`org_unit`·`title_code`, 별도 비공개 저장소에서 구축) + 개인 일정 12개(`cal_*`, 2026-08-11 구축). 이 README 는 **과제 트랙**만 다룬다. `section`/`status`는 **ENUM**(드롭다운 소스). 옛 설계의 색상·**결정론적 uid 앵커(캘린더 결합)**·룩업 테이블·2축(유형×단계)·CHECK는 없음. ※ 단, P3에서 **외부 안정 참조키 `project.uid`(UUID assign-once)**를 추가했다(옛 캘린더 결합 앵커와 다른, 일정이 `db-<uid>`로 참조하는 순수 참조키) — schema.sql 반영 완료.
+  ※ `taskmgr` 전체는 **20개 표**다 — 위 4개 + 사용자·조직 3개(`app_user`·`org_unit`·`title_code`, 별도 비공개 저장소에서 구축) + 개인 일정 13개(`cal_*` — 2026-08-11 구축 12개 + 2026-08-21 근태 `cal_attendance` 1개). 세는 기준은 실 DB 가 아니라 `deploy/schema-calendar.sql` 의 `CREATE TABLE` 이다(적용 전이면 실 DB 가 뒤처진다). 이 README 는 **과제 트랙**만 다룬다. `section`/`status`는 **ENUM**(드롭다운 소스). 옛 설계의 색상·**결정론적 uid 앵커(캘린더 결합)**·룩업 테이블·2축(유형×단계)·CHECK는 없음. ※ 단, P3에서 **외부 안정 참조키 `project.uid`(UUID assign-once)**를 추가했다(옛 캘린더 결합 앵커와 다른, 일정이 `db-<uid>`로 참조하는 순수 참조키) — schema.sql 반영 완료.
 - 앱 편집 지원: `id`(편집 식별자) · `is_active`(소프트삭제) · `created_at`/`updated_at`(감사) · FK `ON UPDATE CASCADE`(발주처 개명 전파).
 - 이전의 미러/캘린더 결합 설계는 **모델 B로 대체됨** — `schema.sql` 앞부분이 옛 객체를 DROP하고 재구축.
 - MySQL **8.4.9** 네이티브 설치, Windows 서비스 **`MySQL84`**(자동시작·Running), 포트 3306, `root`/`taskmgr123`, DB `taskmgr` (utf8mb4 / utf8mb4_0900_ai_ci)

@@ -150,8 +150,8 @@ footer p{margin:0 0 4px; max-width:none}
 
 <div class="callout">
 <h4>이 문서에 없는 것 — 개인 일정 표(<code>cal_*</code>)</h4>
-<p><code>taskmgr</code>에는 개인 일정·할 일을 담는 <code>cal_*</code> 표가 <b>12개 더</b> 있습니다(2026-08-11 구축). 아직 앱이 그 표를 쓰지 않고 구조도 바뀔 수 있어 이 문서에서는 <b>일부러 제외</b>했습니다 — 여기 없는 것이 낡아서가 아닙니다.</p>
-<p>그쪽 구조와 결정 근거는 <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a>, DDL 단일 소스는 <code>db/deploy/schema-calendar.sql</code>입니다.</p>
+<p><code>taskmgr</code>에는 개인 일정·할 일·근태를 담는 <code>cal_*</code> 표가 <b>13개 더</b> 있습니다(2026-08-11 구축 12개 + 2026-08-21 근태 표 <code>cal_attendance</code> 1개). 아직 앱이 그 표를 쓰지 않고 구조도 바뀔 수 있어 이 문서에서는 <b>일부러 제외</b>했습니다 — 여기 없는 것이 낡아서가 아닙니다.</p>
+<p>그쪽 구조와 결정 근거는 <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a>, DDL 단일 소스는 <code>db/deploy/schema-calendar.sql</code>입니다. <b>위 개수를 세는 기준도 그 파일의 <code>CREATE TABLE</code></b>입니다 — 아직 적용하지 않은 서버라면 실 DB 쪽이 더 적을 수 있습니다.</p>
 </div>
 
 <hr class="rule">
@@ -425,7 +425,7 @@ footer p{margin:0 0 4px; max-width:none}
 <div class="callout warn">
 <h4>권한은 <b>앱의 관례</b>이지 DB가 지키는 규칙이 아닙니다</h4>
 <p>모든 PC의 위젯이 <b>DB 계정 하나를 공유</b>하고, 그 접속 정보는 배포본에 들어 있습니다. 그래서 앱을 거치지 않고 DB에 직접 붙으면 <code>edit_role</code>이 <code>viewer</code>여도 데이터를 고칠 수 있습니다 — 앱의 권한 검사 코드가 <b>실행조차 되지 않기</b> 때문입니다.</p>
-<p>이건 결함이 아니라 <b>알고 받아들인 한계</b>입니다. 그래서 계정 권한을 최소로 묶고(구조 변경·다른 DB 접근 불가), <b>가장 민감한 근태·급여는 이 DB에 올리지 않습니다.</b> 근본 해결은 접속 정보가 클라이언트에서 사라지는 API 서버 도입입니다. 근거는 <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> §7.</p>
+<p>이건 결함이 아니라 <b>알고 받아들인 한계</b>입니다. 그래서 계정 권한을 최소로 묶고(구조 변경·다른 DB 접근 불가), <b>가장 민감한 급여·인사평가는 이 DB에 올리지 않습니다.</b>(근태는 2026-08-21에 올리기로 바꿨습니다 — 회사 시스템에서 이미 서로 볼 수 있는 값이라 이 DB가 막고 있던 것이 없었기 때문입니다) 근본 해결은 접속 정보가 클라이언트에서 사라지는 API 서버 도입입니다. 근거는 <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> §7.</p>
 </div>
 </section>
 
@@ -465,7 +465,7 @@ footer p{margin:0 0 4px; max-width:none}
 <p>이 문서는 <b>지금 구조가 어떻게 생겼는지</b>를 봅니다. <b>왜 그렇게 정했는지</b>(식별 규칙을 정한 근거)는 <a href="../db/table-design-report.html">table-design-report.html</a>, 설계 결정 이력은 <a href="../db/ARCHITECTURE.md">ARCHITECTURE.md</a>에 있습니다.</p>
 <p>원본 정의 — <b>과제 네 표</b>: <code>db/schema.sql</code> · 배포용(시드 제외) <code>db/deploy/schema-structure.sql</code></p>
 <p><b>사용자·조직 세 표</b>는 이 저장소에 정의가 없습니다. 실명 89명이 함께 들어 있어 별도 <b>비공개</b> 저장소(<code>taskmgr-company-data</code>)에서 구조와 데이터를 같이 관리합니다 — 이 문서의 컬럼 표는 운영 DB의 <code>information_schema</code>를 그대로 읽어 옮긴 것입니다.</p>
-<p><b>개인 일정 열두 표</b>(<code>cal_*</code>)는 이 문서 범위 밖입니다 — 맨 위 안내를 보세요.</p>
+<p><b>개인 일정 열세 표</b>(<code>cal_*</code>)는 이 문서 범위 밖입니다 — 맨 위 안내를 보세요.</p>
 </footer>
 
 </div>

@@ -5,8 +5,8 @@
 --  ※ 설계 근거는 db/CALENDAR-TABLE-DESIGN.md. 문서와 이 파일이 어긋나면 이 파일이 정본이다.
 --
 --  ⚠️ 재실행 경고 — 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 전부 사라진다.
---     아래 DROP TABLE 이 cal_* 12개를 자식→부모 순으로 지운다. 일정·할일·공수·회의실·
---     이관 마커가 모두 날아가고 되돌릴 수 없다.
+--     아래 DROP TABLE 이 cal_* 13개를 자식→부모 순으로 지운다. 일정·할일·공수·근태·회의실·
+--     보고서 서식·이관 마커가 모두 날아가고 되돌릴 수 없다.
 --     ★ 되돌릴 수단은 이 DB 안에 없다. 복구 경로는 '주간 mysqldump + binlog' 하나뿐이다
 --       (2026-08-11 결정: 감사 트리거·cal_audit_trash 폐지. 같은 DB 안에 둔 휴지통은 서버가
 --        통째로 죽는 사고에 함께 사라져 복구에 무력했고, 이 파일을 다시 돌릴 때 DROP TABLE 이
@@ -72,6 +72,12 @@
 --            그 값을 만들어 내는 코드 경로가 없다.
 --          remind — 미입력은 '' 가 아니라 null 이다(normRemind()).
 --          (entry@hours 는 아예 대응 컬럼이 없다 — 아래 ★ '이관이 버리는 XML 속성' 참조)
+--          cal_attendance.status — '' 를 NULL 로 바꾸는 게 아니라 **행 자체를 넣지 않는다.**
+--            앱의 setAttendance() 가 빈 값·미지 코드면 그 날의 키를 delete 한다(getAttendance() 는
+--            미기록에 null 을 돌려준다 — 커밋 8adb1ab 규약). cal_task_hours 의 '0 = 행 삭제' 와 같은 부류다.
+--            NOT NULL + chk_cal_attendance_status 의 IN 목록에 '' 가 없어 구조로도 막힌다(ERROR 3819).
+--          cal_user_pref.report_marker_custom — '' 가 정상값이다(= 직접 입력 안 함). NULL 로 바꾸지 말 것.
+--            report_font_family 도 마찬가지로 '' = 기본 글꼴이다(NOT NULL DEFAULT '').
 --
 --     ★ 별개 위험(''와 무관, 어댑터가 아니라 이관 도구가 막아야 한다):
 --        fromXML() 은 존재하지 않는 과제를 가리키는 categoryId 를 그대로 남긴다(주석 "미존재 참조는 표시 시
@@ -137,7 +143,9 @@
 --         적용하는 것**이다. CHECK 완화 제안이 나오면 이 줄을 근거로 거절할 것.
 --
 --     전수 목록 — toXML() 에서 `if(...)` 로 감싼 setAttribute / 조건부 자식 요소 전부.
---     대응 컬럼이 있는 것만 적는다(gitRepo·svnRepo·prefs·attendance·dbGone·lsMigrated 는 §4 로 제외).
+--     대응 컬럼이 있는 것만 적는다. 대응 컬럼이 없는 것은 두 부류로 갈라 아래 ★ 두 절에 따로 적었다 —
+--       · 버린다(값이 사라져도 된다): entry@hours · lsMigrated · 루트 @version/@generator/@exportedAt · dbGone
+--       · DB 에 안 올리고 로컬에 남긴다(값은 살아 있어야 한다): category@gitRepo / @svnRepo
 --       XML(부재 시)                    → 컬럼                          → 넣을 값(파서 기본값)
 --       ------------------------------------------------------------------------------------
 --       recur@interval                    cal_entry.recur_interval        1        ← ★ NOT NULL 아님에도 CHECK 가 요구
@@ -170,6 +178,32 @@
 --         ※ cal_category.updated_at 은 예외다 — XML 에 그 속성이 아예 없으므로 '부재'가 아니라
 --           '원본 없음'이고, created_at 을 복사한다(아래 1. cal_category 의 이관 규칙이 정본).
 --       <taskHours> 요소 부재             cal_task_hours                  행 없음
+--       <attendance> 요소 부재            cal_attendance                  행 없음
+--       ─ 보고서 서식(<prefs>) — 요소 자체가 없는 구버전 XML 이 흔하다. 전부 아래 기본값 ────────
+--       <prefs> 요소 자체 부재            cal_user_pref 의 서식 12컬럼    전부 아래 각 줄의 기본값
+--       prefs@reportMarker                cal_user_pref.report_marker          '-'   ← NOT NULL
+--       prefs@reportMarkerCustom          cal_user_pref.report_marker_custom   ''    ← NOT NULL
+--       prefs@reportIndent                cal_user_pref.report_indent          2     ← NOT NULL
+--       prefs@gitCommitBody               cal_user_pref.git_commit_body        0     ← ★ 아래 D 참조('1'만 쓴다)
+--       prefs@reportMarker_daily          cal_user_pref.report_marker_daily    ★ '-' 가 아니다 — 아래 ※ 참조
+--       prefs@reportMarkerCustom_daily    …_marker_custom_daily                ''
+--       prefs@reportIndent_daily          …_indent_daily                       ★ 아래 ※ 참조
+--       prefs@reportMarker_weekly         …_marker_weekly / _custom_weekly / _indent_weekly  (daily 와 동일 규칙)
+--       prefs@fontFamily                  cal_user_pref.report_font_family     ''    ← '' = 기본 글꼴
+--       prefs@fontSize                    cal_user_pref.report_font_size       0     ← 0 = 기본 크기
+--
+--     ※ ★ 종류별(_daily/_weekly) 3속성의 기본값은 '-'·2 가 **아니다.** fromXML() 의
+--       readReportFormatPref(key) 는 세 속성이 모두 없으면 null 을 돌려주고, normalizeReportFormatPrefs()
+--       가 그 자리를 **전역값(reportMarker/reportMarkerCustom/reportIndent)으로** 채운다.
+--       즉 전역이 '•'/4 인 구파일을 이관하면서 종류별에 '-'/2 를 넣으면, 사용자가 보던 서식이
+--       이관 순간 조용히 바뀐다(에러도 경고도 없다). 반대로 세 속성 중 **하나라도** 있으면 그때는
+--       marker·indent 만 전역값으로 메우고, ★ markerCustom 은 전역이 아니라 '' 이 된다
+--       (readReportFormatPref 가 `(rmc || '')` 를 돌려주고, normalizeReportFormatPref 가 그 ''를
+--        문자열로 인정해 폴백을 타지 않는다 — 직접 읽어 확인한 비대칭이다. 셋을 같은 규칙으로 적지 말 것).
+--     ※ 전역 3값(report_marker/_custom/_indent)은 '종류별과 독립인 별도 설정'이 아니라
+--       **마지막으로 본 모드의 거울**이다(syncLegacyReportFormatFields() 가 모드 전환마다 덮어쓴다).
+--       그래서 전역과 daily/weekly 가 서로 달라도 정상이다 — 어긋난다고 '고쳐서' 넣지 말 것.
+--       존치 이유는 하나뿐이다: 종류별 속성이 없는 구파일의 폴백 원본이라 버리면 위 ※ 가 성립하지 않는다.
 --
 --     ※ 실측(8.4.9, STRICT): 위 'NOT NULL' 표시 컬럼에 NULL 을 넣으면 전부 ERROR 1048
 --       (cal_entry.memo·source·location, cal_entry_commit.hash, cal_todo.prio, cal_category.source 로 확인).
@@ -182,11 +216,36 @@
 --       보던 목록이 사라지면 '데이터가 없어졌다'로 보이고, 반대 방향(원치 않는 3개가 생김)은
 --       사용자가 지울 수 있기 때문이다. `<rooms>` 가 있는 파일은 빈 목록도 그대로 존중한다.
 --
+--     ※ ★ 근태만은 '미지 값'을 버리지 않고 흡수한다 — 이 파일에서 유일한 예외다.
+--       fromXML() 의 attendance 매핑은 `ATTEND_STATUS_SET.has(String(st)) ? String(st) : '1'` 이라
+--       미지 코드·빈 속성을 **'1'(정근)으로 바꿔** 그 날을 살려 둔다. 같은 값을 setAttendance() 에
+--       넣으면 반대로 그 날 기록이 삭제된다(위 A ③ 참조). 두 경로가 서로 다르다.
+--       계약: 이관 도구는 파서 쪽을 따른다(F 절의 '파서 결과만 넣는다' 와 일관). 다만 그렇게 들어간
+--       '1' 은 사용자가 적은 값이 아니므로 **건수를 사람에게 보고**할 것 — 회사 일간보고로 그대로
+--       나가는 값이고, netcus 에 손으로 적어 둔 휴가·병가를 '정근'으로 덮을 수 있다(커밋 8adb1ab 가
+--       런타임 경로에서 막은 바로 그 사고다). toXML() 도 같은 흡수를 하므로 정상 앱이 만든 파일에는
+--       이 경우가 나오지 않는다 — 손으로 고친 XML·구버전 파일에서만 나온다.
+--
 --     ※ undefined ↔ 'local' (cal_category.source) 의 반대 방향: 앱은 개인 과제에 source 키를 만들지
 --       않는다(코드 전역에 'local' 문자열 0건). DB 표기를 정본으로 삼되, DB→XML 재생성 시 'local' 이면
 --       속성을 쓰지 않아 byte 동일성을 지킨다.
 --
---  ── ★ 이관이 버리는 XML 속성 — entry@hours (대응 컬럼 없음. 오류가 아니다) ──────
+--  ── ★ DB 에 안 올리고 '로컬에 남기는' 값 — category@gitRepo / @svnRepo ─────────────
+--     ★ 이것은 아래 '버리는' 부류와 **다르다.** 값은 계속 살아 있어야 하고, 저장 위치만 로컬이다.
+--     왜 안 올리나: 두 값은 그 PC 의 작업복사본 경로다(#cGitRepo/#cSvnRepo 로 폴더를 직접 고른다).
+--       · 자리마다 경로가 달라야 하는데 DB 에 올리면 A자리 경로가 B자리에 그대로 따라가 깨진다.
+--       · 더 나쁜 경우는 '경로는 존재하는데 다른 저장소'다 — 그때는 오류 없이 **남의 커밋이
+--         자기 보고서에 실린다.** 깨진 경로보다 이쪽이 위험하다(조용하다).
+--       · 브라우저 지원에는 로컬 파일 경로라는 개념 자체가 없다.
+--     ★ 어댑터 계약: cal_category 에 대응 컬럼을 만들지 않는다. 대신 **로컬 저장소(data.xml /
+--       설정 파일)에 그대로 남기고, 과제 편집·커밋 수집이 계속 그 값을 읽는다.**
+--       버리면 collectCommits 계열이 `cat.gitRepo || ''` 로 빈 경로를 받아 커밋 수집이
+--       오류 없이 조용히 0건이 된다(직접 확인: 커밋 요청 페이로드가 `gitRepo: cat.gitRepo || ''`).
+--       '대응 컬럼이 없다'만 보고 아래 '버린다' 부류와 같이 취급하는 것이 이 계약의 유일한 사고다.
+--     ※ 되살릴 조건: 경로를 PC 별로 분리 저장할 자리(예: cal_category_local(login_id,id,host,...))가
+--       생기면 그때 올릴 것. 지금 구조에는 'PC' 라는 축이 없어서 올릴 수가 없다.
+--
+--  ── ★ 이관이 버리는 XML 속성 — entry@hours 외 (대응 컬럼 없음. 오류가 아니다) ──────
 --     data.xml 에는 지금도 <entry hours="120"> 이 들어 있다(toXML 이 여전히 쓴다). 그런데 DB 에는
 --     그 값을 받을 컬럼이 없다 — 2026-08-11 결정으로 cal_entry.hours_min 을 폐지했기 때문이다.
 --     근거: 그 값을 채우는 UI 도 자동계산도 없었고, 소비처는 연구노트용 캘린더 md 의 「일정」 줄
@@ -198,12 +257,30 @@
 --     ※ 되살릴 조건: 일정 단위 공수를 실제로 입력·소비하는 화면이 생기면 그때 컬럼을 다시 만들고
 --       cal_task_hours 와의 단위 차이(분 vs 시간)를 먼저 정할 것. 그때까지는 만들지 않는다.
 --
+--     같은 부류(읽지 않고 버린다. 대응 컬럼을 만들지 말 것):
+--       root@lsMigrated  — 구 localStorage(tc_taskHours/tc_attendance) → XML 1회 이관의 종료 마커다.
+--         그 이관은 이미 끝났고(migrateLocalStores 는 마커가 서면 재실행하지 않는다), DB 이관의
+--         재실행 방지는 cal_migration_log 가 따로 맡는다. 두 마커를 한 컬럼에 겹쳐 두면 'XML 이관
+--         완료'와 'DB 이관 완료'가 구분되지 않는다.
+--       root@version / @generator / @exportedAt — 파일 메타다(파일이 언제 어느 프로그램에서 나왔나).
+--         DB 는 파일이 아니라 사용자별 행의 집합이라 대응 개념이 없다. @exportedAt 은 위 B 의 ※ 도 참조.
+--       category@dbGone — toXML 이 쓰지만 조회 시 LEFT JOIN project 로 파생한다(§6). 저장하면
+--         DB 의 현재 상태와 어긋난 옛 판정이 굳는다.
+--
 --  ── D. 불리언 문자열 'true'/'false' → 1/0 ────────────────────────────
 --     toXML() 은 두 값을 **문자열**로 쓴다: `el.setAttribute('allDay', e.allDay ? 'true' : 'false')` 와
 --     todo 의 같은 꼴 `done`. 대상 컬럼은 TINYINT(1) NOT NULL 이다.
---     전수 확인: 스키마의 TINYINT 컬럼은 정확히 이 둘뿐이다(information_schema 로 대조).
+--     전수 확인: 'true'/'false' 표기를 쓰는 XML 속성은 정확히 이 둘뿐이다.
 --       cal_entry.all_day ← entry@allDay      cal_todo.done ← todo@done
---       (dbGone·lsMigrated·gitCommitBody 도 불리언이지만 '1' 표기이고 대응 컬럼이 없다 — 대상 아님)
+--
+--     ★ 세 번째 불리언 컬럼 cal_user_pref.git_commit_body 는 표기가 다르다 — 이 변환을 적용하지 말 것.
+--       toXML() 은 `if(state.gitCommitBody) prefs.setAttribute('gitCommitBody','1')` 이라
+--       **켜졌을 때만 '1' 을 쓰고, 꺼졌으면 속성 자체가 없다.** fromXML() 도 `=== '1'` 로만 읽는다.
+--       즉 이 값의 규칙은 D 가 아니라 C(속성 부재 → 기본값 0)다. '1'→1 / 부재→0 이고 'false' 는 나오지 않는다.
+--       (dbGone·lsMigrated 도 같은 '1' 표기지만 대응 컬럼이 없다 — 위 두 ★ 절 참조)
+--     ※ 그래서 'TINYINT 컬럼 = D 부류' 로 세지 말 것. TINYINT 계열에는 불리언이 아닌 것이 섞여 있다
+--       (report_indent·report_indent_daily·report_indent_weekly · report_font_size · attendance.overtime).
+--       D 부류는 위 둘뿐이고, 나머지는 전부 C(속성 부재 → 기본값)로 처리한다.
 --     실측(8.4.9, STRICT): all_day='true' → ERROR 1366, done='false' → ERROR 1366.
 --     ★ 그런데 이 부류는 IGNORE 와 만나면 '조용히 틀린 값'이 된다 — 아래를 볼 것.
 --
@@ -263,6 +340,10 @@
 --                                                                        (41자는 STRICT 에서 1406)
 --       중복 <except date>                 dedup 안 함(A 부류 아님)      PK(login_id,entry_id,except_date)
 --                                                                        가 1062 → 이관 전체 롤백
+--       실재하지 않는 날짜의                fromXML 이 isRealDate(date)   cal_attendance 에 2026-02-30
+--       <attendance day date="2026-02-30"> 로 그 날을 통째로 버림        같은 행. DATE 컬럼이 STRICT 에서
+--                                                                        1292 로 막으므로 여기는 시끄럽다
+--       <taskHours> 의 같은 경우           같은 isRealDate 검사           cal_task_hours 도 동일
 --
 --     ★ 계약: 이관 도구와 런타임 저장은 **fromXML() 을 통과한 결과만** DB 에 넣는다. XML 을 직접
 --       파싱해 INSERT 하지 말 것. 그러면 이 부류가 통째로 해소된다(파서가 이미 다 버렸으므로).
@@ -270,11 +351,43 @@
 --     ※ 왜 '보고'가 필요한가: 버리는 게 정상이지만 '몇 개를 버렸는지'는 사용자가 알아야 한다.
 --       빈 할일 200개를 조용히 버리면 '이관에서 데이터가 샜다'는 의심을 나중에 못 푼다.
 --
+--     ★★ 예외 하나 — 근태(<attendance>)는 fromXML() 을 통과시키면 안 된다.
+--       위 계약('파서 통과 결과만 넣는다')이 근태에서만은 정반대로 작동한다. 실측(앱 코드 직접 확인):
+--         getAttendance()  무효·미기록 → null       ← 2026-08-11 커밋에서 고친 것
+--         setAttendance()  무효·빈 값 → 그 날 기록 삭제  ← 같은 커밋
+--         fromXML()        무효 status → '1'(정근)으로 흡수  ★ 안 고쳐졌다
+--         toXML()          무효 status → '1' 로 흡수        ★ 안 고쳐졌다
+--       즉 이관 도구가 fromXML() 결과를 그대로 쓰면, 손편집·구버전 XML 의 무효 status 가 전부
+--       '정근' 행으로 DB 에 굳는다. 그 커밋이 고친 결함(미기록을 정근으로 흡수)이 이번엔
+--       **영구 데이터로** 재현되는 것이다 — 앱 버그는 화면만 틀리지만 이건 되돌릴 원본이 없다.
+--
+--       계약: <attendance><day> 는 XML 에서 직접 읽고, status 가 코드 목록에 없으면
+--             **행을 만들지 않는다**(NULL 도 '' 도 아니다 — 행 부재가 곧 '미기록'이다).
+--             chk_cal_attendance_status 가 '' 를 막으므로 실수하면 3819 로 시끄럽게 실패한다.
+--             버린 날짜 수를 사람에게 보고할 것(위 ※ 와 같은 이유).
+--       ※ toXML() 쪽 흡수는 DB→XML 내보내기에서 같은 왜곡을 만든다. 다만 DB 에는 무효 status 가
+--         애초에 들어갈 수 없으므로(CHECK) 그 경로는 발화하지 않는다 — 앱 코드를 고칠 필요는 없다.
+--         고치려면 '미기록 = day 요소를 쓰지 않는다' 가 되어야 하고, 그건 XML 포맷 변경이다.
+--
 --  값 집합이 고정된 문자열 컬럼은 COLLATE utf8mb4_bin 이다(테이블 기본 utf8mb4_0900_ai_ci 상속 금지).
 --     실측: ai_ci 는 대소문자뿐 아니라 전각/반각까지 같게 본다. 'DB'·'Db'·전각 'ｄｂ' 가 CHECK 를
 --     전부 통과하고 입력 그대로 저장됐다. 앱은 `source === 'db'` 로 정확 비교하므로 그런 행은
 --     조용히 개인 과제로 취급된다. 대상: cal_category.source · cal_entry.source · cal_entry.recur_freq ·
---     cal_todo.prio · cal_schema_meta.k/v.
+--     cal_todo.prio · cal_schema_meta.k/v · cal_attendance.status · cal_user_pref.report_font_family.
+--     ※ 반대로 cal_user_pref 의 머리기호 3컬럼(report_marker·_daily·_weekly)과 report_marker_custom 은
+--       _bin 이 **아니다.** 값 집합이 고정되어 있지 않기 때문이다 — 드롭다운 프리셋 말고도 fromXML() 이
+--       임의 문자열(길이 8 이하)을 그대로 받아들이고, 앱은 이 값을 비교하지 않고 그냥 앞에 붙여 출력한다.
+--       ai_ci(NO PAD)를 그대로 상속시키는 편이 안전하다 — _bin 은 PAD SPACE 라 공백만으로 된 머리기호가
+--       chk_..._marker(<> '') 에 걸린다(cal_room.name 에서 실제로 그렇게 동작하는 것을 확인했다).
+--     ★ _bin 은 절반만 막는다 — 2026-08-21 실측으로 확인한 구멍이다. utf8mb4_bin 은 PAD SPACE 라
+--       '값+뒤공백' 이 IN 목록을 그대로 통과한다(실측: 'db ' 도, '1 ' 도 통과. HEX 로 확인).
+--       앱은 정확 비교라 그 행을 '다른 값'으로 읽으므로, ai_ci 의 'Db' 사고와 결과가 똑같다.
+--       바꿔 끼우는 것으로는 해결되지 않는다 — ai_ci(NO PAD)는 뒤공백을 막는 대신 전각을 통과시킨다.
+--       → 새로 만드는 값집합 CHECK 에는 `AND <컬럼> NOT LIKE '% '` 를 함께 적는다(LIKE 는 PAD 접기를
+--         하지 않는다). cal_attendance.status 와 cal_user_pref.report_font_family 가 그렇게 되어 있다.
+--       ※ 먼저 만든 네 컬럼(cal_category.source · cal_entry.source · cal_entry.recur_freq ·
+--         cal_todo.prio)에는 아직 그 한 줄이 없다. 이 파일은 '최초 1회 구축' 전용이라 여기서 고치면
+--         이미 배포된 DB 와 어긋나므로, 보완은 migrate-*.sql 로 할 것(아직 안 함 — 미해결로 적어 둔다).
 --     ※ color · recur_until 은 REGEXP CHECK 라 이미 폭에 안전하다(실측: 전각 입력 ERROR 3819).
 --       대소문자는 색상 표기가 원래 양쪽을 허용하므로(앱 /^#[0-9a-fA-F]{6}$/) 의도된 통과다 → _bin 불필요.
 --
@@ -291,18 +404,22 @@
 SET NAMES utf8mb4;
 
 -- ---------- 멱등 재구축용 DROP — 자식(FK 참조하는 쪽) → 부모 순 ----------
--- 위 경고를 다시 읽을 것. 이 13줄이 캘린더 데이터 전량을 지운다.
+-- 위 경고를 다시 읽을 것. 이 14줄이 캘린더 데이터 전량을 지운다.
 --
 -- ★ 폐지된 표도 지운다. cal_audit_trash 는 감사 트리거와 함께 폐기됐지만(설계 §7.5),
 --   그 전에 이 키트를 한 번이라도 돌린 DB 에는 실물이 남아 있다. '안 만든다'만으로는
---   사라지지 않는다 — 지우는 문장이 없으면 고아 표로 살아남아 DB 의 cal_* 가 13개가 되고,
---   문서·GRANT·게이트는 전부 12를 정본으로 삼아 서로 어긋난다.
+--   사라지지 않는다 — 지우는 문장이 없으면 고아 표로 살아남아 DB 의 cal_* 가 명부보다 하나 많아지고,
+--   문서·GRANT·게이트는 명부 개수를 정본으로 삼아 서로 어긋난다.
+--   ※ 숫자를 여기 적지 않는다. 명부는 늘어난다(2026-08-11 12개 → 2026-08-21 13개) — 숫자를 박아 두면
+--     다음 사람이 '정본 파일이 13을 고장난 상태라고 하네' 하고 게이트를 거꾸로 되돌린다. 실제로
+--     이 주석이 한 라운드 동안 그 상태로 남아 있었다. 정본은 아래 CREATE TABLE 목록 자신이다.
 --   지운 뒤 다시 만들지 않으므로 이 줄은 영구히 남는다(재적용마다 무해하게 반복).
 DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용 — 재생성하지 않는다
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음 — 순서 무관
 DROP TABLE IF EXISTS cal_migration_log;
 DROP TABLE IF EXISTS cal_user_rev;
 DROP TABLE IF EXISTS cal_user_pref;
+DROP TABLE IF EXISTS cal_attendance;
 DROP TABLE IF EXISTS cal_task_hours;
 DROP TABLE IF EXISTS cal_room;
 DROP TABLE IF EXISTS cal_todo_day_note;      -- cal_todo 를 참조
@@ -618,6 +735,8 @@ CREATE TABLE cal_room (
 -- =====================================================================
 -- XML <taskHours><day><t> 대응. 회사 일간/주간보고 '[과제명] : n' 계약의 원천.
 -- 값 0/빈값은 0 저장이 아니라 행 삭제다(setTaskHours). 그래서 hours > 0 CHECK 와 DELETE 권한이 한 쌍이다.
+-- ★ 바로 아래 9. cal_attendance 가 같은 규약을 쓴다('미기록 = 행 없음'). 두 표는 같은 코드 경로로 다룰 것 —
+--   한쪽만 '빈 값을 저장'으로 구현하면 보고서 한 줄이 조용히 틀린 채 회사 시스템으로 나간다.
 --
 -- ★ 2026-08-11 결정: 공수의 단일 소스는 이 표 하나다. 옛 cal_entry.hours_min(일정 단위 분)은 폐지했다 —
 --   채우는 UI 도 자동계산도 없었고 회사 일간보고에도 들어가지 않았다. 두 자리에 공수가 있으면
@@ -646,9 +765,82 @@ CREATE TABLE cal_task_hours (
   COMMENT='(날짜×과제) 투입 시간(시간 단위). category_id 에 FK 없음(앱이 동반 정리). 0=행 삭제.';
 
 -- =====================================================================
---  9. cal_user_pref — 커밋 수집용 전역 작성자
+--  9. cal_attendance — 날짜별 근태·초과시간
 -- =====================================================================
--- XML 루트 gitAuthor/svnAuthor 대응. 보고서 서식(<prefs>)은 §4 로 제외했으므로 여기 넣지 않는다.
+-- XML <attendance><day date status overtime/> 대응. 회사 일간보고(netcus) 전송용 보조 메타다.
+--
+-- ★★ 가장 중요한 계약: **미기록 = 행 없음.** status='' 를 저장하지 않는다.
+--   앱 쪽 정본은 setAttendance() 다 — 빈 값이거나 ATTEND_STATUS_SET 밖의 코드가 오면 값을 저장하는
+--   대신 `delete m[date]` 로 그 날 기록을 지운다. 읽는 쪽 getAttendance() 는 기록이 없으면
+--   status:null 을 돌려주고(정근 '1' 로 흡수하지 않는다), 호스트(NetcusService)는 null 을 받으면
+--   회사 사이트의 기존 근태를 건드리지 않는 경로를 탄다.
+--   → 그러므로 DB 에서도 '그 날은 미기록' 의 표현은 **행의 부재 하나뿐**이다. status='' 인 행은
+--     '미기록'이 아니라 '알 수 없는 제3의 상태'가 되어, 조회한 앱이 그것을 유효 코드로 착각하거나
+--     반대로 미기록으로 흡수해 버린다. 어느 쪽이든 netcus 에 직접 적어 둔 휴가·병가가 캘린더
+--     일간보고 전송으로 '정근' 에 덮이는 사고(커밋 8adb1ab 가 고친 그 사고)로 되돌아간다.
+--   → 어댑터·런타임 저장은 '미기록으로 되돌리기' 를 UPDATE 가 아니라 **DELETE** 로 구현한다.
+--     이것이 이 표에 DELETE 권한이 필요한 유일한 이유다(grants-calendar.sql 이 같은 근거를 적는다).
+--   cal_task_hours 의 '0 = 행 삭제' 와 정확히 같은 규약이다. 두 표를 같은 코드 경로로 다룰 것.
+--   ※ 구조로도 막는다 — status 는 NOT NULL 이고 chk_cal_attendance_status 의 IN 목록에 '' 가 없다.
+--     실측(8.4.9): status='' INSERT → ERROR 3819. 정상 행을 ''로 바꾸는 UPDATE → 같은 3819.
+--
+-- ★ 왜 DB 로 올리는가(설계 §4 의 '보류' 판정을 2026-08-21 뒤집었다):
+--   옛 근거는 "12개 중 민감도 최고인데 타인 열람 요구 0" 이었는데 앞부분이 사실과 다르다.
+--   회사 일간보고 URL 이 pjm_work_view.jsp?y&m&d&id 라 id 만 바꾸면 남의 것이 열리고, 좌측
+--   조직도에 전 인원의 id 가 들어 있다(widget/NetcusService.cs · taskmgr-company-data/README.md).
+--   즉 근태는 사내에 이미 열려 있는 값이라 '노출'이 뺄 이유가 되지 못한다. 반대로 올려서 얻는 것:
+--   다른 자리 PC 에서도 근태가 유지되고, 로컬 data.xml 에만 있던 탓에 생기던 미기록/정근 혼동이
+--   근본적으로 완화되며, 주·월 단위 근태 집계가 가능해진다.
+--
+-- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외). cal_task_hours·cal_room 과 같은 근거다:
+--   엔티티가 아니라 키 (login_id, work_date) 로 주소지정되는 값 행이고, 같은 사용자의 동시 쓰기는
+--   §3.1 rev 락이 직렬화한다. 대가도 같다 — 두 자리에서 같은 날을 고치면 마지막 쓰기가 이기고,
+--   사후 추적 수단은 주간 mysqldump + binlog 뿐이다. 재검토 조건도 같다(사고가 한 번이라도 보고되면 추가).
+CREATE TABLE cal_attendance (
+  login_id  VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id
+  work_date DATE NOT NULL,                                                          -- 대상 날짜. 하루에 한 행
+  -- 값 집합이 고정된 문자열이라 _bin 이다(헤더의 그 규칙). 테이블 기본(0900_ai_ci)을 상속하면
+  -- 전각 '１' 이 CHECK 를 통과해 그대로 저장되고, 회사 사이트로 그 값이 그대로 전송된다.
+  -- ★ 코드값은 netcus 근태 select 의 value 를 **그대로** 쓴다(앱이 가공 없이 전송한다). 임의로 채우지 말 것 —
+  --   앱의 ATTEND_STATUS 배열을 직접 읽어 옮긴 전수 목록이고, ★ 8 이 없다(사이트에 그 코드가 없다).
+  --   1=정근 2=야근 3=특근 4=외근 5=출장 6=휴가 12=반차 7=조퇴 9=지각 10=지각+야근 11=병가
+  status    VARCHAR(2) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,          -- 근태 코드. ''(미기록)은 저장 금지 — 위 ★★ 계약. 미기록은 행을 지운다
+  overtime  TINYINT NOT NULL DEFAULT 0,                                             -- 초과시간(시간 단위 정수). 0..11. 0 은 '초과 없음'이고 미기록이 아니다(status 와 달리 삭제 신호가 아니다)
+  PRIMARY KEY (login_id, work_date),
+  CONSTRAINT fk_cal_attendance_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  -- ★ 이 IN 목록이 곧 '미기록 = 행 없음' 의 구조적 강제다 — '' 가 목록에 없으므로 INSERT 도 UPDATE 도
+  --   3819 로 거부된다. 목록을 넓힐 때 ''(또는 NULL 허용)를 끼워 넣지 말 것. 사이트에 코드가 늘어나면
+  --   앱의 ATTEND_STATUS 와 이 줄을 **함께** 고친다(한쪽만 고치면 앱이 만든 값이 이관에서 3819 로 막힌다).
+  -- ★★ `AND status NOT LIKE '% '` 은 군더더기가 아니다 — 없으면 IN 목록만으로 '1 '(뒤 공백)이 통과한다.
+  --   실측(8.4.9): utf8mb4_bin 은 PAD SPACE 라 '1 ' IN ('1',…) 가 TRUE 다. 그렇게 들어간 행은
+  --   HEX 가 3120 이고, 앱의 ATTEND_STATUS_SET.has('1 ') 는 false 라 getAttendance() 가 미기록으로
+  --   읽는다 — 즉 '있는데 없는 것처럼 보이는' 행이 되고, 이 표의 계약(미기록=행 없음)이 깨진다.
+  --   ai_ci 로 바꾸는 것은 해법이 아니다(NO PAD 라 뒤 공백은 막지만 전각 '１' 이 통과한다. 실측 확인).
+  --   LIKE 는 PAD SPACE 접기를 하지 않으므로 이 한 줄로 닫힌다(실측: '1 ' NOT LIKE '% ' → 0 = 거부).
+  --   앞 공백 ' 1' 은 IN 이 이미 막는다(첫 글자가 다르다 — 실측 3819).
+  CONSTRAINT chk_cal_attendance_status   CHECK (status IN ('1','2','3','4','5','6','7','9','10','11','12')
+                                            AND status NOT LIKE '% '),
+  -- 앱의 검증 규약과 같다: `if(!(ot >= 0 && ot <= 11)) ot = 0` (setAttendance·fromXML·toXML 세 곳 동일).
+  -- 부호 있는 TINYINT 로 두는 이유: UNSIGNED 면 음수가 1264(범위 초과)로 걸려 CHECK 이름이 안 나온다.
+  CONSTRAINT chk_cal_attendance_overtime CHECK (overtime >= 0 AND overtime <= 11)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='날짜별 근태·초과시간(netcus 일간보고용). ★미기록=행 없음 — status=''''는 저장 금지, 되돌리기는 DELETE.';
+
+-- =====================================================================
+--  10. cal_user_pref — 사용자당 1행 설정(커밋 수집 작성자 + 보고서 서식)
+-- =====================================================================
+-- XML 루트 gitAuthor/svnAuthor + <prefs> 대응. 사용자당 정확히 1행이고 삭제 경로가 없다.
+--
+-- ★ 왜 서식을 여기에 넣는가(설계 §4 의 '보류' 판정을 2026-08-21 뒤집었다):
+--   브라우저 지원(로컬 파일이 없는 환경)에서도 필요한 값이라 결국 DB 로 온다. 그리고 이 표가 이미
+--   '사용자당 1행 설정' 이므로 표를 늘리지 않고 컬럼만 늘리면 된다.
+-- ★ 왜 JSON 컬럼도, key-value 표도 아닌가(설계 §10 의 기각 근거 그대로):
+--   DB 가 형식을 못 막기 때문이다. JSON 이면 report_indent 에 "가나다"가 들어가도 서버는 통과시키고,
+--   그 값을 읽는 시점(보고서 생성)에 가서야 조용히 기본값으로 흡수된다. key-value 표도 값이 전부
+--   문자열 한 컬럼이라 같은 문제다. 평탄한 컬럼 + CHECK 라야 잘못된 값이 들어오는 그 자리에서 3819 로 멈춘다.
+--   대가는 '서식을 하나 추가할 때마다 ALTER 가 필요하다' 인데, 서식은 UI 를 함께 고쳐야 늘어나는 값이라
+--   어차피 배포가 따라간다(설계 §5.5 의 '추가 컬럼은 DEFAULT 필수' 규칙을 지킬 것).
 CREATE TABLE cal_user_pref (
   login_id   VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id. 사용자당 1행
   -- 폭 120 의 근거: 폼 #cGitAuthor/#cSvnAuthor maxlength=120. fromXML()은 루트 속성을 그대로 읽어
@@ -659,15 +851,66 @@ CREATE TABLE cal_user_pref (
   --   toXML 은 gitAuthor/svnAuthor 를 XML '루트 속성'으로 쓸 뿐(4533-4535) 시각을 함께 적지 않고,
   --   앱 state 에도 이 두 값의 수정 시각이라는 개념이 없다(setGitAuthor() 은 save() 만 한다).
   --   사용자당 1행이고 부팅 직후 이 행을 고치는 흐름이 드물어 충돌 오탐 위험이 cal_category 만큼 크지 않다.
+  -- ── 보고서 서식(XML <prefs>) ──────────────────────────────────────────────────────
+  -- 전부 '표시+복사 서식' 이다 — 캘린더·커밋 데이터를 바꾸지 않는다. 기본값은 파서(fromXML/
+  -- normalizeReportFormatPref/normalizeReportFont)가 쓰는 값과 **같은 값**을 적었다(어댑터 계약 C).
+  --
+  -- (1) 전역 3값 — ★ 종류별과 독립인 설정이 아니라 '마지막으로 본 모드의 거울' 이다.
+  --     syncLegacyReportFormatFields() 가 모드를 바꿀 때마다 현재 모드 값으로 덮어쓴다.
+  --     존치 이유: 종류별 속성이 없는 구버전 XML 을 읽을 때 폴백 원본이 된다(헤더 C 의 ※ 참조).
+  --     전역과 daily/weekly 가 달라도 정상이므로 '맞춰서' 고쳐 넣지 말 것.
+  -- 폭 8 의 근거: 프리셋은 전부 4자 이하이고(#rptMarker 의 option value), 직접 입력은
+  --   #rptMarkerCustom maxlength=8 · normalizeReportFormatPref 의 `.slice(0,8)` · fromXML 의 `rm.length <= 8`.
+  --   셋이 같은 8 이라 초과는 손으로 고친 XML 에서만 나온다(ERROR 1406 → 이관 도구 사전 스캔 대상).
+  -- 콜레이션: 값 집합이 고정이 아니므로 _bin 을 쓰지 않는다(헤더의 그 규칙 마지막 ※ 참조).
+  report_marker              VARCHAR(8) NOT NULL DEFAULT '-',   -- 머리기호. 프리셋 키 또는 임의 문자열(8자 이하). ''는 불가 — 파서가 '-'로 흡수한다
+  report_marker_custom       VARCHAR(8) NOT NULL DEFAULT '',    -- 직접 입력 머리기호. ''=사용 안 함(정상값. NULL 로 바꾸지 말 것)
+  report_indent              TINYINT    NOT NULL DEFAULT 2,     -- 들여쓰기 단수 0..6 (파서가 clamp 하는 범위와 동일)
+  -- ★ D 부류가 아니다 — toXML 은 켜졌을 때만 '1' 을 쓰고 꺼졌으면 속성을 아예 안 쓴다(헤더 D 의 ★ 참조).
+  git_commit_body            TINYINT(1) NOT NULL DEFAULT 0,     -- 보고서에 커밋 본문 포함 여부. 1=포함. XML 속성 부재=0
+  -- (2) 종류별(daily/weekly) — custom 모드는 'weekly' 키를 함께 쓴다(reportFormatKeyForMode: daily 외 전부 weekly).
+  --     그래서 키가 둘뿐이고 컬럼도 둘씩이다. 셋째 모드를 만들려면 컬럼을 늘리기 전에 그 키 규칙부터 볼 것.
+  report_marker_daily        VARCHAR(8) NOT NULL DEFAULT '-',   -- 일간 보고서 머리기호
+  report_marker_custom_daily VARCHAR(8) NOT NULL DEFAULT '',    -- 일간 직접 입력 머리기호
+  report_indent_daily        TINYINT    NOT NULL DEFAULT 2,     -- 일간 들여쓰기 0..6
+  report_marker_weekly       VARCHAR(8) NOT NULL DEFAULT '-',   -- 주간(+기간 취합) 머리기호
+  report_marker_custom_weekly VARCHAR(8) NOT NULL DEFAULT '',   -- 주간 직접 입력 머리기호
+  report_indent_weekly       TINYINT    NOT NULL DEFAULT 2,     -- 주간 들여쓰기 0..6
+  -- (3) 글꼴 — 기간 취합 보고서 전용이지만 모드별이 아닌 **단일 전역** 값이다(state.reportFont).
+  --     서식 pref 와 분리된 이유가 코드 주석에 있다: custom 이 'weekly' 키를 공유해서, 기간 취합에서
+  --     서식을 바꾸면 주간까지 따라 바뀐다. 글꼴만은 그 결합을 피하려고 최상위 단일값으로 뒀다.
+  -- ★ family 는 화이트리스트다(REPORT_FONTS 에서 ''를 뺀 5개 = REPORT_FONT_FAMILY_SET). 값 집합이
+  --   고정이므로 _bin. ''(기본 글꼴)은 목록에 함께 넣는다 — 그게 DEFAULT 이자 '지정 안 함'이다.
+  --   폭 20 의 근거: 가장 긴 'Malgun Gothic' 이 13자. 여유를 두되 화이트리스트가 실질 제한이다.
+  report_font_family         VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '', -- 보고서 글꼴. ''=기본
+  -- ★ 0 은 '크기 지정 안 함(기본)' 이고 10..16 이 실제 pt 다. 1..9 는 두 뜻 사이의 빈 구간이라 막는다
+  --   (normalizeReportFont: `Number.isInteger(n) && n >= 10 && n <= 16` 아니면 0). 드롭다운은 REPORT_FONT_SIZES
+  --   = [0,10,11,12,13,14,15,16] 이지만 파서는 10..16 정수를 전부 받으므로 CHECK 도 범위로 적는다.
+  report_font_size           TINYINT NOT NULL DEFAULT 0,        -- 보고서 글꼴 크기(pt). 0=기본, 그 밖에는 10..16
   updated_at DATETIME(3)  NOT NULL,              -- 수정 시각(UTC). 낙관적 잠금 토큰
   PRIMARY KEY (login_id),
   CONSTRAINT fk_cal_user_pref_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  -- 머리기호는 파서가 빈 값을 '-'로 흡수하므로 앱에서 ''가 나올 수 없다. 구조로도 막아 둔다.
+  -- (custom 쪽은 ''가 정상값이라 이 CHECK 대상이 아니다)
+  CONSTRAINT chk_cal_user_pref_marker CHECK (report_marker        <> ''
+                                         AND report_marker_daily  <> ''
+                                         AND report_marker_weekly <> ''),
+  CONSTRAINT chk_cal_user_pref_indent CHECK (report_indent        BETWEEN 0 AND 6
+                                         AND report_indent_daily  BETWEEN 0 AND 6
+                                         AND report_indent_weekly BETWEEN 0 AND 6),
+  CONSTRAINT chk_cal_user_pref_commit_body CHECK (git_commit_body IN (0,1)),
+  -- NOT LIKE '% ' 의 근거는 chk_cal_attendance_status 에 적어 두었다(utf8mb4_bin PAD SPACE 로
+  -- 'Gulim ' 이 IN 을 통과하는데, REPORT_FONT_FAMILY_SET.has('Gulim ') 는 false 라 앱은 기본 글꼴로 읽는다).
+  -- 'Malgun Gothic' 의 가운데 공백은 이 검사에 걸리지 않는다 — 막는 것은 '끝의' 공백뿐이다.
+  CONSTRAINT chk_cal_user_pref_font_family CHECK (report_font_family IN ('','Malgun Gothic','Gulim','Dotum','Batang','NanumGothic')
+                                              AND report_font_family NOT LIKE '% '),
+  CONSTRAINT chk_cal_user_pref_font_size   CHECK (report_font_size = 0 OR report_font_size BETWEEN 10 AND 16)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='사용자당 1행. 커밋 수집 작성자(git/svn). 삭제 경로 없음 — 비우면 빈 문자열 저장.';
+  COMMENT='사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식(머리기호·들여쓰기·글꼴). 삭제 경로 없음.';
 
 -- =====================================================================
---  10. cal_user_rev — 동시성·동기화 단일 감시점(§3.1)
+--  11. cal_user_rev — 동시성·동기화 단일 감시점(§3.1)
 -- =====================================================================
 -- 모든 쓰기 트랜잭션의 첫 문장이 이 행을 ODKU 로 잡아 같은 사용자의 쓰기를 직렬화하고 삭제까지 감지한다.
 -- XML 원본 없음. DELETE 권한을 주지 않는다 — rev 는 단조증가여야 한다.
@@ -681,7 +924,7 @@ CREATE TABLE cal_user_rev (
   COMMENT='사용자별 동시성 감시점. 쓰기 트랜잭션의 첫 문장이 ODKU 로 잡는 행. DELETE 금지.';
 
 -- =====================================================================
---  11. cal_migration_log — data.xml → DB 1회성 이관의 재실행 방지(§8)
+--  12. cal_migration_log — data.xml → DB 1회성 이관의 재실행 방지(§8)
 -- =====================================================================
 -- 데이터 INSERT 와 같은 트랜잭션에 넣고, 행이 있으면 도구가 거부한다.
 -- XML 원본 없음(구 lsMigrated 마커의 후속). UPSERT·REPLACE·선삭제 금지.
@@ -696,7 +939,7 @@ CREATE TABLE cal_migration_log (
   COMMENT='data.xml→DB 1회성 이관 마커(사람 단위). 행 존재=이관 완료, 재실행 거부 근거.';
 
 -- =====================================================================
---  (옛 12. cal_audit_trash — 폐지. 결번)
+--  (cal_audit_trash — 폐지. 번호를 주지 않는다. 옛 명부에서는 12번이었다)
 -- =====================================================================
 -- 2026-08-11 결정으로 감사 휴지통과 감사 트리거(trg_cal_*)를 통째로 걷어냈다. 여기에 '왜 없는지'를
 -- 남기는 이유는, 이 표를 요구하던 설계 §7.5 를 읽은 사람이 '스키마가 표를 빠뜨렸다'고 판단해
@@ -709,7 +952,7 @@ CREATE TABLE cal_migration_log (
 --   되살리지 말 것: 이 DB 안에 트리거를 다시 넣으면 init-calendar.ps1 의 '트리거 0개' 게이트가 실패한다.
 
 -- =====================================================================
---  12. cal_schema_meta — 스키마 버전 행 (§5.5)
+--  13. cal_schema_meta — 스키마 버전 행 (§5.5)
 -- =====================================================================
 -- §5.5 가 요구한 '스키마 버전 행 + 빌드 상수를 접속 시 1회 비교, 낡은 클라이언트는 파괴적 연산만 차단'의
 -- 저장소 측 절반이다. 이 행이 없으면 스키마를 ALTER 한 뒤 구버전 위젯이 붙었을 때 막을 수단이 0 이다 —
@@ -732,7 +975,10 @@ CREATE TABLE cal_schema_meta (
   COMMENT='스키마 버전 행(§5.5). 앱은 SELECT 만 — 위젯 빌드 상수와 비교해 파괴적 연산만 차단.';
 
 -- 시딩 — 구조를 바꾸는 migrate-*.sql 은 반드시 이 값을 함께 올려야 한다(올리지 않으면 게이트가 죽은 문자가 된다).
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '1', UTC_TIMESTAMP(3));
+-- ★ 2026-08-21: 1 → 2. cal_attendance 신설 + cal_user_pref 서식 12컬럼 = 명백한 구조 변경이다.
+--   올리지 않으면 §5.5 가 이 게이트를 둔 이유(새 컬럼을 모르는 구버전 클라이언트가 파괴적 연산을
+--   돌리는 것)가 그대로 재현되고, 게이트는 죽은 문자가 된다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '2', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

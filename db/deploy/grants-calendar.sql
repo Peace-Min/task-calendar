@@ -4,7 +4,7 @@
 -- ----------------------------------------------------------------------------
 --  선행 조건 두 가지 — 어기면 이 파일은 그 줄에서 시끄럽게 멈춘다:
 --    1) 계정이 있을 것    (db/deploy/create-app-user.sql 이 CREATE USER 를 한다)
---    2) cal_* 테이블이 있을 것 (db/deploy/schema-calendar.sql 이 12개를 만든다)
+--    2) cal_* 테이블이 있을 것 (db/deploy/schema-calendar.sql 이 13개를 만든다)
 --       배포 순서: schema-calendar.sql → 이 파일.
 --  ※ 2026-08-11 결정으로 감사 트리거(triggers-calendar.sql)는 폐지됐다. 예전에는 '트리거가 먼저
 --    적용돼 있을 것'이 세 번째 선행 조건이자 아래 DELETE 부여의 근거였다. 그 근거는 이제 없다 —
@@ -123,10 +123,23 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_room TO 'taskmgr_app'@'%';
 --     다른 경로로 생긴 미아 행은 무해하다' 쪽이 맞다.
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_task_hours TO 'taskmgr_app'@'%';
 
--- ---------- 커밋 수집용 전역 작성자 ----------
+-- ---------- 날짜별 근태·초과시간 ----------
+-- ★ DELETE 필요: '미기록으로 되돌리기' 가 UPDATE 가 아니라 **행 삭제**다.
+--   setAttendance() 는 빈 값·미지 코드가 오면 `delete m[date]` 로 그 날 기록을 지운다
+--   (드롭다운의 '(미기록)' 을 고르는 것이 정확히 이 경로다 — 일상 조작이지 예외 경로가 아니다).
+--   chk_cal_attendance_status 가 ''를 3819 로 거부하므로 "status=''로 UPDATE" 는 대안이 될 수 없고,
+--   DELETE 가 막히면 사용자는 한 번 적은 근태를 영영 못 지운다 — 그 값은 회사 일간보고로 나간다.
+--   INSERT/UPDATE 는 근태를 새로 적거나 코드·초과시간을 바꾸는 통상 경로다.
+-- ※ cal_task_hours 의 '0 = 행 삭제' 와 같은 근거·같은 동사 조합이다. 한 쌍으로 읽을 것.
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_attendance TO 'taskmgr_app'@'%';
+
+-- ---------- 사용자당 1행 설정(커밋 수집 작성자 + 보고서 서식) ----------
 -- DELETE 를 주지 않는다: setGitAuthor(:10726)/setSvnAuthor(:10728)는 값을 비워도
 --   빈 문자열을 저장할 뿐 키를 지우지 않는다. 앱 전체에 삭제 경로가 0건이라
 --   설계 §7.3 의 DELETE 금지와 코드가 일치한다(캘린더에서 문서와 코드가 맞는 몇 안 되는 곳).
+--   2026-08-21 에 이 표로 옮겨 온 보고서 서식도 같다 — 서식을 '기본으로 되돌리기' 는 행 삭제가
+--   아니라 기본값 UPDATE 다(파서가 부재를 기본값으로 읽으므로 '행 없음'과 '기본값'이 같은 뜻이다).
+--   ★ 근태(cal_attendance)와 반대 방향이니 두 표를 같은 규칙으로 묶지 말 것.
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'%';
 
 -- ---------- 동시성 감시점(rev) ----------
@@ -156,7 +169,7 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 -- ---------- 이 파일에 '없는' 동사 — 의도적으로 주지 않는 것들 ----------
 -- ※ 옛 cal_audit_trash(감사 휴지통) 절이 여기 있었다. 그 표는 2026-08-11 결정으로 폐지됐고
 --   스키마에도 없다. 그러므로 지금 이 파일이 만드는 cal_* 권한 표에는 '권한 0줄' 대상이 없다 —
---   schema-calendar.sql 이 만드는 12개 표 전부에 GRANT 가 한 줄씩 붙어야 한다(아래 확인 2b).
+--   schema-calendar.sql 이 만드는 13개 표 전부에 GRANT 가 한 줄씩 붙어야 한다(아래 확인 2b).
 -- ※ TRIGGER 권한은 이 파일 어디에도 없다(의도). 감사와 무관하게 지금도 주면 안 된다:
 --   TRIGGER 는 앱 계정이 자기 표에 임의 트리거를 만들 수 있게 하는 권한이라, 노출된 자격으로
 --   붙은 사람이 '모든 INSERT 를 조용히 바꿔치기하는' 코드를 서버 안에 심을 수 있다.
@@ -182,7 +195,7 @@ FLUSH PRIVILEGES;
 --  1) 권한 전체 눈으로 보기
 --     SHOW GRANTS FOR 'taskmgr_app'@'%';
 --
---  2) 캘린더 12개 테이블 전부에 권한이 붙었는지 (기대값 12 — 이제 '권한 0줄' 대상 표가 없다)
+--  2) 캘린더 13개 테이블 전부에 권한이 붙었는지 (기대값 13 — 이제 '권한 0줄' 대상 표가 없다)
 --     ※ 스키마에 테이블을 더하거나 빼면 이 숫자도 같이 고칠 것. 숫자가 뒤처지면 게이트가
 --       '권한이 통째로 빠진 새 테이블'을 통과시킨다(cal_schema_meta 를 더할 때 실제로 겪었다).
 --     SELECT COUNT(DISTINCT TABLE_NAME) FROM information_schema.TABLE_PRIVILEGES

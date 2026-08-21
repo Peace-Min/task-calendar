@@ -170,12 +170,12 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
   'cal_todo','cal_todo_day_note','cal_room','cal_task_hours',
-  'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta'
+  'cal_attendance','cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta'
 )
 # FK 가 참조해도 되는 '기존' 표. 여기 없는 표를 스키마가 참조하면 시작조차 하지 않는다.
 $ALLOWED_REF_TABLES = @('app_user')
 # ※ 옛 $ZERO_GRANT_TABLES(= cal_audit_trash. 앱 계정에 권한이 한 줄도 없어야 하는 표)는
-#   그 표가 폐지되면서 함께 없어졌다. 지금 규칙은 더 단순하다 — cal_* 12개 **전부**에
+#   그 표가 폐지되면서 함께 없어졌다. 지금 규칙은 더 단순하다 — cal_* 13개 **전부**에
 #   GRANT 가 한 줄씩 있어야 한다. 예외를 하나도 두지 않으므로 '빠진 것'과 '일부러 뺀 것'을
 #   구분할 필요 자체가 없어졌다(아래 $calUngranted 검사가 그대로 Die 한다).
 
@@ -642,8 +642,9 @@ try {
   if($missTbl.Count -gt 0){ $fail += "테이블 누락 $($missTbl.Count)개: $($missTbl -join ', ') (기대 $($expTables.Count)개 / 실제 $($gotTables.Count)개)" }
   else { Ok "테이블 $($gotTables.Count)/$($expTables.Count) 생성" }
   # ★ 있어야 할 것만 세면 '남아 있는 것'을 못 본다. 실제로 그 사고가 났다 — 폐지된 cal_audit_trash 가
-  #   DROP 목록에 없어 옛 배포분에 고아로 살아남았는데, 이 게이트가 '기대 12개 있음'만 보고 초록불을
-  #   냈다. 그 상태에서 문서·GRANT 는 12를, DB 는 13을 갖고 서로 어긋난다.
+  #   DROP 목록에 없어 옛 배포분에 고아로 살아남았는데, 이 게이트가 '기대한 표가 전부 있음'만 보고
+  #   초록불을 냈다. 그 상태에서 문서·GRANT 가 세는 표 수와 DB 의 실제 표 수가 하나 어긋난다
+  #   (당시 숫자는 12 대 13이었다. 지금 명부는 13개이므로 그 숫자를 지금 값으로 읽지 말 것).
   #   schema-calendar.sql 이 만들지 않는 cal_* 가 DB 에 있으면 실패로 처리한다.
   $extraTbl = @($gotTables | Where-Object { $expTables -notcontains $_ })
   if($extraTbl.Count -gt 0){
