@@ -65,6 +65,19 @@
 --            create-app-user.sql 의 CREATE USER 호스트도 같이 바꿔야 한다.
 --    주의 2) 서버 PC 자신에서 돌릴 이관/배치 도구용으로 @'localhost' 계정을 따로 둘지는
 --            아직 정해지지 않았다(미결 — 사내 대역과 함께 사람이 결정).
+-- ----------------------------------------------------------------------------
+--  ★ 2026-08-24 키 전환(login_id/문자열 id → user_id/<표>_no)과 이 파일의 관계
+--    schema-calendar.sql 머리말이 *"컬럼 단위 부여가 있다면 컬럼 이름이 바뀌었다 — 배포 전에 그
+--    파일을 직접 열 것"* 이라며 가리키는 파일이 여기다. **직접 열어 확인한 답: 컬럼 단위 GRANT 는
+--    0건이다.** 아래 부여는 전부 `ON taskmgr.<표>` 표 단위라, 키가 바뀌어도 고칠 GRANT 문이 없다.
+--    실측(2026-08-24, 실 taskmgr):
+--      information_schema.COLUMN_PRIVILEGES WHERE GRANTEE LIKE '%taskmgr_app%'  → 0행
+--      mysql.columns_priv                   WHERE User='taskmgr_app'           → 0행
+--    바뀐 것은 **주석뿐**이고 이번 라운드에 전수 고쳤다(cal_entry_except 의 PK 표기 · rev ODKU 의
+--    키 컬럼 · app_user 를 읽는 근거 · cal_task_hours 의 FK 판정).
+--    ※ 앞으로도 컬럼 단위(`GRANT SELECT (col) ON …`)로 내려가지 말 것. 키가 한 번 더 바뀌면 GRANT 가
+--      없는 컬럼을 가리키게 되는데, 그건 배포 때 실패하지 않고 앱이 첫 조회에서 ERROR 1142 로 죽는다.
+--      표 단위를 유지하면 이 문제 자체가 생기지 않는다.
 -- ============================================================================
 SET NAMES utf8mb4;
 
@@ -79,13 +92,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_category TO 'taskmgr_app'@'%
 -- ---------- 일정 ----------
 -- DELETE 필요: deleteEntry(:4483) 호출부 6곳 + 가져오기 '교체'/초기화의 전량 삭제 +
 --   git 재수집이 [from,to] 범위의 자동생성 일정을 통째로 지우고 다시 넣는 경로(:10892).
--- UPDATE 는 일정 편집뿐 아니라 과제 삭제 시 소속 일정의 categoryId 를 NULL 로 미는 데도 쓴다(:4512).
+-- UPDATE 는 일정 편집뿐 아니라 과제 삭제 시 소속 일정의 categoryId(DB 컬럼 이름은 cal_entry.cat_no 다)를
+--   NULL 로 미는 데도 쓴다(:4512).
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_entry TO 'taskmgr_app'@'%';
 
 -- ---------- 반복 일정의 예외일 ----------
--- UPDATE 를 주지 않는다: PK(login_id, entry_id, except_date) 가 곧 행의 전부라 '수정'이라는
+-- UPDATE 를 주지 않는다: PK(user_id, entry_no, except_date) 가 곧 행의 전부라 '수정'이라는
 --   개념이 없다. 날짜를 바꾸는 것은 삭제 후 삽입이다. 없는 동사를 주면 나중에 누군가
 --   UPDATE 경로를 만들어 낙관적 잠금을 우회할 여지만 생긴다.
+--   ※ 2026-08-24 정정. 여기에는 PK(login_id, entry_id, except_date) 라고 적혀 있었다 — 키 전환 전
+--     표기다. 컬럼 이름만 바뀌었고 '행 전체가 곧 키' 라는 근거는 그대로다
+--     (실측: PK = user_id, entry_no, except_date).
 -- DELETE 필요: 예외 추가(:10152/:10493)의 반대 동작 + 반복 주기가 바뀌면 기존 예외가
 --   의미를 잃어 전량 비운다(:5671-5675).
 GRANT SELECT, INSERT, DELETE ON taskmgr.cal_entry_except TO 'taskmgr_app'@'%';
@@ -118,9 +135,15 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_room TO 'taskmgr_app'@'%';
 --   (setTaskHours :3384 `if(v > 0) day[catId] = v; else delete day[catId];`).
 --   CHECK (hours > 0 AND hours <= 24) 가 0 을 3819 로 거부하므로 '0 으로 UPDATE' 는 대안이 아니다.
 --   과제 삭제 시 그 과제의 공수 행을 전 날짜에서 동반 정리하는 경로도 DELETE 다(:4517-4521).
---   ※ 설계 §5.2 의 'FK 없음 = 과제를 지워도 공수 이력은 남는다'는 근거는 코드와 반대다.
---     FK 를 안 거는 결정은 유지하되 근거는 '앱이 동반 삭제하므로 FK 액션이 필요 없고,
---     다른 경로로 생긴 미아 행은 무해하다' 쪽이 맞다.
+--   ※ ★ 2026-08-24 — 이 자리에는 "설계 §5.2 의 'FK 없음' 근거는 코드와 반대다. FK 를 안 거는
+--     결정은 유지하되 근거만 바꾸자" 고 적혀 있었다. **결정 자체가 뒤집혔다.**
+--     schema-calendar.sql 이 fk_cal_task_hours_category (user_id, cat_no) → cal_category 를
+--     ON DELETE RESTRICT 로 신설했다(설계 §5.2.1 도 같은 판정으로 고쳤다).
+--   ★ 그래서 이 표의 DELETE 는 성격이 달라졌다. 예전에는 '앱이 알아서 하는 뒷정리' 였지만 지금은
+--     **과제 삭제가 성립하기 위한 선행 조건**이다 — RESTRICT 라 공수 행이 한 줄이라도 남아 있으면
+--     cal_category 의 DELETE 가 ERROR 1451 로 막힌다. 이 권한을 회수하면 과제 삭제 UI 는 1142 가
+--     아니라 1451 로 죽고, 사람은 원인을 cal_category 권한 쪽에서 찾다가 못 찾는다.
+--     즉 cal_category.DELETE 와 cal_task_hours.DELETE 는 한 쌍으로만 의미가 있다.
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_task_hours TO 'taskmgr_app'@'%';
 
 -- ---------- 날짜별 근태·초과시간 ----------
@@ -145,7 +168,10 @@ GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'%';
 -- ---------- 동시성 감시점(rev) ----------
 -- INSERT 와 UPDATE 를 둘 다 줘야 한다: §3.1 의 쓰기 트랜잭션 첫 문장이 ODKU 한 문장이라
 --   두 권한이 모두 필요하다 —
---   INSERT INTO cal_user_rev(login_id, rev) VALUES(?, 1) ON DUPLICATE KEY UPDATE rev = rev + 1;
+--   INSERT INTO cal_user_rev(user_id, rev) VALUES(?, 1) ON DUPLICATE KEY UPDATE rev = rev + 1;
+-- ★ 2026-08-24 부터 이 한 문장이 하는 일이 하나 더 늘었다 — 계약 H-1 의 **번호 발급**
+--   (cat_no·entry_no·todo_no 를 MAX()+1 로 뽑는 일)이 이 락 안에서 이뤄진다. 그러므로 여기서
+--   INSERT/UPDATE 를 회수하면 rev 만 멈추는 것이 아니라 **새 행을 만드는 모든 경로**가 함께 죽는다.
 -- DELETE 는 금지: rev 는 단조증가여야 삭제까지 감지할 수 있고, 행이 사라지면 그 사용자의
 --   직렬화가 통째로 풀린다. §8 의 '교체' 이관도 이 테이블만은 전량 삭제 대상에서 제외한다.
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_rev TO 'taskmgr_app'@'%';
@@ -183,7 +209,7 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 --   쓰기 권한 판정(widget/ProjectDb.cs:102)·타인 일정 열람(view_scope)·rev 시딩 게이트가
 --   통째로 깨진다. 캘린더 배포가 이 파일 하나로 자족하도록 여기서 다시 부여한다.
 --   (GRANT 는 누적이라 이미 있는 권한을 다시 줘도 무해하고, project 의 INSERT/UPDATE 도 유지된다)
-GRANT SELECT ON taskmgr.app_user TO 'taskmgr_app'@'%';   -- login_id 실재 확인·view_scope/edit_role 판정·rev 시딩 대상
+GRANT SELECT ON taskmgr.app_user TO 'taskmgr_app'@'%';   -- login_id → user_id 해석(cal_* 의 소유자 키)·view_scope/edit_role 판정·rev 시딩 대상
 GRANT SELECT ON taskmgr.org_unit TO 'taskmgr_app'@'%';   -- 조직 트리 조회(widget/ProjectDb.cs:364)
 GRANT SELECT ON taskmgr.project  TO 'taskmgr_app'@'%';   -- §6 공식 과제 이름 해석 + db_gone 파생 LEFT JOIN
 
@@ -196,6 +222,12 @@ FLUSH PRIVILEGES;
 --     SHOW GRANTS FOR 'taskmgr_app'@'%';
 --
 --  2) 캘린더 13개 테이블 전부에 권한이 붙었는지 (기대값 13 — 이제 '권한 0줄' 대상 표가 없다)
+--     ※ 2026-08-24 명부 대조 완료: schema-calendar.sql 의 CREATE TABLE 은 13개이고, 이 파일이
+--       GRANT 를 거는 표와 **이름까지** 일치한다(격리 DB 에 schema-calendar.sql 을 실제로 적용해
+--       확인 — cal_category · cal_entry · cal_entry_except · cal_entry_commit · cal_todo ·
+--       cal_todo_day_note · cal_room · cal_task_hours · cal_attendance · cal_user_pref ·
+--       cal_user_rev · cal_migration_log · cal_schema_meta).
+--       그래도 정본은 아래 2b) 의 차집합 쿼리다 — 위 목록은 사본이고 사본은 반드시 뒤처진다.
 --     ※ 스키마에 테이블을 더하거나 빼면 이 숫자도 같이 고칠 것. 숫자가 뒤처지면 게이트가
 --       '권한이 통째로 빠진 새 테이블'을 통과시킨다(cal_schema_meta 를 더할 때 실제로 겪었다).
 --     SELECT COUNT(DISTINCT TABLE_NAME) FROM information_schema.TABLE_PRIVILEGES

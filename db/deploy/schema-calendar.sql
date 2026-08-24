@@ -4,6 +4,21 @@
 --  ※ 8.0.13 미만 불가 — memo/note/body/subject(전부 MEDIUMTEXT) 가 식 DEFAULT ('') 를 쓴다.
 --  ※ 설계 근거는 db/CALENDAR-TABLE-DESIGN.md. 문서와 이 파일이 어긋나면 이 파일이 정본이다.
 --
+--  ★★ 2026-08-24 키 전환(schema_version 3) — 이 파일에서 가장 크게 바뀐 것 ★★
+--     cal_* 13표의 소유자 키가 login_id(VARCHAR) 에서 **user_id(SMALLINT UNSIGNED, app_user 의 대리키)** 로,
+--     각 표의 문자열 id 가 **PK 자리에서 내려와 uid 컬럼 + UNIQUE(user_id, uid)** 로 바뀌었다.
+--     PK 는 전부 (user_id, <표>_no) 꼴의 대리키다(cat_no·entry_no·todo_no·…).
+--     왜: login_id 는 netcus 가 소유한 외부 값인데 참조가 다중경로라 ON UPDATE CASCADE 를 걸 수 없었고
+--       (실측 1451/1452), 그래서 RESTRICT 로 갔고, 그 결과 **개명이 영구히 막혔다**(실측: UPDATE 5가지
+--       순서 전부 ERROR 1451). 퇴사자 ID 재발급이 오면 '전임자 행 재사용'이 유일한 조치가 되어
+--       신입이 전임자 근태를 상속하고 그 값이 netcus 일간보고로 회사에 나간다.
+--       user_id 로 옮기면 개명은 app_user 한 행의 UPDATE 로 끝나고 cal_* 는 손댈 필요가 없다.
+--     ★ 손대지 않은 것: project · customer · section_code · status_code(과제 트랙, 운영 중) ·
+--       org_unit · title_code(개명이 ON UPDATE CASCADE 로 실제 전파되는 것을 실측 확인).
+--       코드테이블은 값을 우리가 정하고 참조가 한 갈래라 같은 결함이 없다.
+--     ★ db/deploy/rename-login-id.sql 은 이제 필요 없다(그 파일은 애초에 없었다 — 설계 §5.2 가
+--       '문장으로만 존재하는 대안 절차'라고 스스로 적어 두었던 그것이다).
+--
 --  ⚠️ 재실행 경고 — 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 전부 사라진다.
 --     아래 DROP TABLE 이 cal_* 13개를 자식→부모 순으로 지운다. 일정·할일·공수·근태·회의실·
 --     보고서 서식·이관 마커가 모두 날아가고 되돌릴 수 없다.
@@ -12,7 +27,12 @@
 --        통째로 죽는 사고에 함께 사라져 복구에 무력했고, 이 파일을 다시 돌릴 때 DROP TABLE 이
 --        경고 한 줄 없이 그 트리거까지 지워 '보호받는 줄 알았는데 아니었던' 상태를 만들었다).
 --       → 데이터가 있는 DB 라면 이 파일을 돌리기 전에 mysqldump 를 먼저 뜰 것.
---       배포 순서(고정): schema-calendar.sql → grants-calendar.sql.
+--       배포 순서(고정):
+--         · 신규 DB : 01-schema-users.sql(→02·03…) → schema-calendar.sql → grants-calendar.sql
+--         · 기존 DB : migrate-2026-08-24-user-id.sql → schema-calendar.sql → grants-calendar.sql
+--       ★ 기존 DB 에서 마이그레이션을 건너뛰면 이 파일은 **DROP 에 도달하기 전에** 멈춘다
+--         (아래 SET NAMES 바로 다음의 '0. 선행조건 가드'). 그 가드가 없던 시절에는 DROP 이
+--         전부 실행된 뒤 첫 CREATE TABLE 이 ERROR 3734 로 죽어 cal_* 가 0개 남았다(실측).
 --       (사람이 먼저 여는 파일이 이것이라 여기에도 둔다. 두 파일이 같은 순서를 각자 적어 두고 있으므로
 --        한 곳을 고치면 나머지도 함께 볼 것 — 순서는 GRANT 가 표의 실재를 전제하기 때문에 정해진다.)
 --     이 파일은 '최초 1회 구축' 전용이다. 운영 중 구조 변경은 별도 migrate-*.sql 로 할 것.
@@ -20,7 +40,12 @@
 --  ⚠️ 이 파일은 cal_* 만 만든다.
 --     app_user / org_unit / title_code / project / customer / section_code / status_code 는
 --     FK 로 참조만 하고 DROP·CREATE·ALTER 를 하지 않는다(사내 실데이터 89명분이 들어 있다).
---     선행 조건: app_user 가 이미 존재해야 한다. 없으면 FK 생성이 errno 1824 로 실패한다.
+--     선행 조건: app_user 가 이미 존재하고 **user_id SMALLINT UNSIGNED 를 PK 로** 갖고 있어야 한다.
+--       없거나 타입·부호가 다르면 FK 생성이 errno 1824/3780 으로 실패한다.
+--       ★ 이 선행 조건은 이제 말로만 있지 않다 — 아래 '0. 선행조건 가드'가 DROP 보다 먼저 실제로 검사한다.
+--         가드는 PRIMARY 를 요구한다(UNIQUE 만으로도 FK 자체는 서지만, 그건
+--         migrate-2026-08-24-user-id.sql 이 2단계에서 멈춘 반쯤 된 상태라서 통과시키면 안 된다 — 실측 g3b).
+--       (app_user 쪽 DDL 은 이 파일의 범위가 아니다 — migrate-2026-08-24-user-id.sql / 01-schema-users.sql.)
 --
 --  시각 컬럼 규약(중요):
 --     created_at / updated_at / completed_at 은 앱이 UTC 로 계산해 '명시 대입'한다.
@@ -31,7 +56,8 @@
 --     → 접속 프리앰블에 SET SESSION time_zone='+00:00' 을 함께 둘 것.
 --
 --  =====================================================================
---  ★★ DB 어댑터 계약 — 일곱 부류(A~F 는 앱→DB, G 는 DB→앱). 일곱 다 '선택'이 아니다.
+--  ★★ DB 어댑터 계약 — 여덟 부류(A~F 는 앱→DB, G 는 DB→앱, H 는 양방향 키 해석).
+--      여덟 다 '선택'이 아니다.
 --  =====================================================================
 --     왜 한 절로 묶는가: 병이 하나다. data.xml 의 값을 **그대로** INSERT 하면 둘 중 하나가 난다 —
 --       (1) 이관이 그 자리에서 멈추고 단일 트랜잭션이라 그 사용자의 이관 전체가 롤백되거나,
@@ -39,6 +65,8 @@
 --     A~D 가 그 둘이고, E·F 는 다른 병이다 — E 는 XML 에 원본이 없어 어댑터가 만들어야 하는 값이고,
 --     F 는 XML 에 있는데 앱은 만들지 않는 값이다. 여섯을 어댑터 단일 함수로 강제하고,
 --     런타임 저장 경로와 이관 도구가 같은 함수를 쓴다.
+--     H 는 2026-08-24 키 전환으로 새로 생긴 부류다 — 앱은 문자열 id 만 알고 DB 는 번호만 아는데,
+--     그 사이를 잇는 코드가 없으면 **모든 쓰기가 그 자리에서 멈춘다.** A~G 를 다 지켜도 소용없다.
 --     대상 목록은 task-calendar-prototype.html 을 직접 읽어 전수 확인한 것이다.
 --
 --     ※ 앱 코드를 가리킬 때는 함수 이름·요소 id 로 가리킨다(줄번호를 쓰지 않는다).
@@ -66,10 +94,12 @@
 --             ★ recur_until 만 타입 검사를 통과하고 CHECK 단계에서 걸린다 — 가장 놓치기 쉽다.
 --
 --     ③ 목록에 넣지 않은 것 (직접 확인한 결과 '' 를 만들지 않는다. 받아쓰지 말 것):
---          category_id (entry·todo 양쪽) — 앱은 전 경로가 `|| null` 이다:
+--          categoryId (entry·todo 양쪽) — 앱은 전 경로가 `|| null` 이다:
 --            addEntry() / addTodo() / fromXML() 의 entry·todo 매핑 (`getAttribute(...) || null`).
---            빈 속성 categoryId="" 도 `'' || null` 로 null 이 된다. 실측상 ''를 넣으면 ERROR 1452 이지만
---            그 값을 만들어 내는 코드 경로가 없다.
+--            빈 속성 categoryId="" 도 `'' || null` 로 null 이 된다.
+--            ★ 키 전환 후 이 값이 들어가는 자리는 **cal_entry.cat_no / cal_todo.cat_no(INT UNSIGNED)** 다.
+--              문자열이 애초에 들어갈 수 없으므로 옛 'ERROR 1452' 실측은 더 이상 재현되지 않는다 —
+--              대신 H 절의 해석 실패로 나타난다(미존재 과제 id → cat_no 를 만들 수 없다).
 --          remind — 미입력은 '' 가 아니라 null 이다(normRemind()).
 --          (entry@hours 는 아예 대응 컬럼이 없다 — 아래 ★ '이관이 버리는 XML 속성' 참조)
 --          cal_attendance.status — '' 를 NULL 로 바꾸는 게 아니라 **행 자체를 넣지 않는다.**
@@ -78,11 +108,13 @@
 --            NOT NULL + chk_cal_attendance_status 의 IN 목록에 '' 가 없어 구조로도 막힌다(ERROR 3819).
 --          cal_user_pref.report_marker_custom — '' 가 정상값이다(= 직접 입력 안 함). NULL 로 바꾸지 말 것.
 --            report_font_family 도 마찬가지로 '' = 기본 글꼴이다(NOT NULL DEFAULT '').
+--          ★ uid — 세 표(cal_category·cal_entry·cal_todo)의 uid 는 NOT NULL 이고 '' 를 허용하지 않는다
+--            (chk_*_uid). 앱의 id 는 safeId() 를 거쳐 항상 1자 이상이다. '' 가 오면 그건 값이 아니라 버그다.
 --
 --     ★ 별개 위험(''와 무관, 어댑터가 아니라 이관 도구가 막아야 한다):
 --        fromXML() 은 존재하지 않는 과제를 가리키는 categoryId 를 그대로 남긴다(주석 "미존재 참조는 표시 시
---        '미분류'로 안전 처리"). 앱은 무해하지만 DB 는 fk_cal_entry_category 로 ERROR 1452 를 낸다.
---        이관 도구가 사전에 '실재하지 않는 category_id → NULL' 정리를 하고 그 건수를 보고해야 한다.
+--        '미분류'로 안전 처리"). 앱은 무해하지만 DB 는 그 id 로 cat_no 를 만들 수 없다.
+--        이관 도구가 사전에 '실재하지 않는 categoryId → NULL' 정리를 하고 그 건수를 보고해야 한다(H-3).
 --
 --  ── B. 시각 형식 ─────────────────────────────────────────────────────
 --     앱은 시각을 JS `new Date().toISOString()` 산출물로 들고 있고(nowIso()), toXML() 이 그 문자열을
@@ -154,7 +186,7 @@
 --       <recur> 요소 자체 부재            recur_freq/interval/until/count 전부 NULL (= 반복 없음)
 --       entry@source                      cal_entry.source                ''       ← NOT NULL. NULL 이면 ERROR 1048
 --       entry@location                    cal_entry.location              ''       ← NOT NULL. NULL 이면 ERROR 1048
---       entry@categoryId                  cal_entry.category_id           NULL
+--       entry@categoryId                  cal_entry.cat_no                NULL     ★ 컬럼 이름·타입이 바뀌었다(H 절)
 --       entry@remind                      cal_entry.remind                NULL     (normRemind() 가 null)
 --       entry@endDate                     cal_entry.end_date              NULL
 --       entry 의 <title> 부재/빈값        cal_entry.title                 '(제목 없음)'  ← NOT NULL
@@ -242,7 +274,10 @@
 --       버리면 collectCommits 계열이 `cat.gitRepo || ''` 로 빈 경로를 받아 커밋 수집이
 --       오류 없이 조용히 0건이 된다(직접 확인: 커밋 요청 페이로드가 `gitRepo: cat.gitRepo || ''`).
 --       '대응 컬럼이 없다'만 보고 아래 '버린다' 부류와 같이 취급하는 것이 이 계약의 유일한 사고다.
---     ※ 되살릴 조건: 경로를 PC 별로 분리 저장할 자리(예: cal_category_local(login_id,id,host,...))가
+--     ★ 로컬 쪽 키도 함께 볼 것 — 로컬 파일은 과제를 **앱의 문자열 id** 로 가리킨다(uid). DB 의
+--       cat_no 로 가리키지 말 것. cat_no 는 이 DB 안에서만 뜻이 있는 번호이고, 로컬 파일을 다른
+--       PC·다른 DB 로 옮기면 엉뚱한 과제를 가리킨다.
+--     ※ 되살릴 조건: 경로를 PC 별로 분리 저장할 자리(예: cal_category_local(user_id,cat_no,host,...))가
 --       생기면 그때 올릴 것. 지금 구조에는 'PC' 라는 축이 없어서 올릴 수가 없다.
 --
 --  ── ★ 이관이 버리는 XML 속성 — entry@hours 외 (대응 컬럼 없음. 오류가 아니다) ──────
@@ -293,6 +328,9 @@
 --       UPDATE IGNORE 로 정상 행을 반쪽 반복으로 깨뜨리기 → Warning 3819, 행은 옛 값 그대로(변경 무시).
 --       INSERT IGNORE + all_day='true'(D 부류) → Warning 1366 인데 **행은 들어가고 all_day=0 이 된다**.
 --         즉 '하루 종일'이 '하루 종일 아님'으로 조용히 뒤집힌다. 이게 가장 나쁜 경우다.
+--     ★ 키 전환으로 위험이 하나 늘었다 — UNIQUE(user_id, uid) 위반(1062)도 IGNORE 가 삼킨다.
+--       그러면 '같은 uid 를 두 번 넣으려던 행'이 조용히 사라지고, 어댑터의 uid→_no 맵에는
+--       먼저 들어간 행의 번호가 남아 **두 앱 객체가 같은 DB 행을 가리키게 된다**(H-2 참조).
 --     → 이관 도구는 IGNORE 없이 INSERT/UPDATE 하고, 첫 오류에서 롤백한 뒤 사람에게 보고한다.
 --     ※ 이 파일 맨 아래 cal_user_rev 시딩의 `INSERT IGNORE` 와 혼동하지 말 것. 그쪽은 목적이 다르다 —
 --       무시 대상이 CHECK 위반이 아니라 '이미 있는 PK(ERROR 1062)' 하나이고, 재실행 가능성이 요구사항이며,
@@ -306,6 +344,16 @@
 --       cal_category.sort_order      <category> 문서 순서    ★ 조용히 전 행 0 → 표시 순서 영구 소실
 --       cal_room.sort_order          <room> 문서 순서        ★ 조용히 전 행 0 → 회의실 순서 영구 소실
 --       cal_entry_commit.seq         commits 배열 인덱스     ERROR 1364 (시끄럽게 실패)
+--       cal_category.cat_no          없음(대리키)            ERROR 1364 — 아래 ★ 참조
+--       cal_entry.entry_no           없음(대리키)            ERROR 1364
+--       cal_todo.todo_no             없음(대리키)            ERROR 1364
+--
+--     ★ 대리키 3개(cat_no·entry_no·todo_no)도 이 부류다 — 2026-08-24 키 전환으로 새로 들어왔다.
+--       DEFAULT 도 AUTO_INCREMENT 도 없으므로 안 채우면 STRICT 에서 그 자리에 1364 로 멈춘다(시끄러운 쪽).
+--       할당 규칙과 그것이 왜 경합에 안전한지는 아래 H-1 과 11. cal_user_rev 의 주석에 있다.
+--       ※ AUTO_INCREMENT 를 붙이지 않은 것은 취향이 아니라 실측 결정이다 — 붙이면 MySQL 이 그 컬럼을
+--         어떤 인덱스의 선두로 요구해 불필요한 KEY 가 강제되고, 실측에서 보조 인덱스 합이
+--         25.59MB → 34.13MB 로 늘었다. 되돌리자는 제안이 나오면 이 줄을 근거로 거절할 것.
 --
 --     ★ 위험한 것은 sort_order 둘이다. NOT NULL **DEFAULT 0** 이라 안 채워도 INSERT 가 성공한다 —
 --       오류도 경고도 없고 CHECK 도 게이트도 못 잡는다. 값이 '틀린' 게 아니라 '전부 같은' 상태가
@@ -319,10 +367,16 @@
 --       설계 §5.3 이 이 컬럼을 둔 이유가 그거다 — 화면 순서는 배열 순서인데 created_at 이 대부분
 --       같은 밀리초라(실측 37개 중 33개) 대체할 수단이 없다. 안 채우면 이관 순간 순서가 사라지고,
 --       사용자는 '순서가 뒤죽박죽'으로만 느낀다. 원본이 없으니 사후 복구도 안 된다.
+--     ★ sort_order 를 cat_no 로 대체하려 하지 말 것 — 둘은 다른 값이다. cat_no 는 '한 번 정해지면
+--       안 변하는 신원'이고 sort_order 는 '사용자가 끌어 옮기면 바뀌는 표시 순서'다. 순서를 cat_no
+--       로 표현하면 재정렬이 곧 PK 변경(=자식 재배선)이 되어, 키 전환으로 없앤 문제가 되돌아온다.
 --     ※ 규칙: 문서에 나타난 순서대로 0,1,2… (건너뛰지 말 것 — 앱은 값의 크기가 아니라 정렬 결과만 본다).
 --       seq 도 0-base 로 commits 배열 인덱스 그대로.
 --     ※ 이 부류는 §8 의 이관 왕복 서명에 반드시 포함시킬 것. 서명에서 빠지면 순서가 통째로
 --       뒤집혀도 게이트가 초록불을 낸다(설계 §8 이 카테고리 서명에 sort_order 를 넣은 이유).
+--       ★ 단 cat_no·entry_no·todo_no 는 서명에 **넣지 말 것.** 그 번호는 이 DB 안에서만 뜻이 있고
+--         같은 XML 을 두 번 이관하면 다른 번호가 나오는 것이 정상이다. 서명에 넣으면 정상 왕복이
+--         전부 불일치로 보고된다. 서명의 신원 축은 uid 다.
 --
 --  ── F. 파서가 '버리는' 값 — XML 에 있는데 앱은 안 만드는 것 ──────────────
 --     C 는 '속성이 없을 때' 였고 이건 정반대다 — 속성이 **있는데** fromXML() 이 그 항목을 버린다.
@@ -338,16 +392,23 @@
 --       중복 <room> 이름 / 41자 이상       normRooms(): 공백축약·trim·   중복은 PK 가 1062 로 막지만
 --       / 51개째부터                       40자 절단·중복 제거·50개 상한  절단·상한은 DB 가 안 막는다
 --                                                                        (41자는 STRICT 에서 1406)
---       중복 <except date>                 dedup 안 함(A 부류 아님)      PK(login_id,entry_id,except_date)
+--       중복 <except date>                 dedup 안 함(A 부류 아님)      PK(user_id,entry_no,except_date)
 --                                                                        가 1062 → 이관 전체 롤백
 --       실재하지 않는 날짜의                fromXML 이 isRealDate(date)   cal_attendance 에 2026-02-30
 --       <attendance day date="2026-02-30"> 로 그 날을 통째로 버림        같은 행. DATE 컬럼이 STRICT 에서
 --                                                                        1292 로 막으므로 여기는 시끄럽다
 --       <taskHours> 의 같은 경우           같은 isRealDate 검사           cal_task_hours 도 동일
+--       ★ 중복 <category id>                fromXML 은 dedup 하지 않는다  UNIQUE(user_id,uid) 가 1062.
+--         / 중복 <entry id> / <todo id>     (앱은 나중 것이 배열에 그냥   entry·todo 도 같다.
+--                                            더 붙는다)                   → 2026-08-24 키 전환으로 새로 생긴 줄
 --
 --     ★ 계약: 이관 도구와 런타임 저장은 **fromXML() 을 통과한 결과만** DB 에 넣는다. XML 을 직접
 --       파싱해 INSERT 하지 말 것. 그러면 이 부류가 통째로 해소된다(파서가 이미 다 버렸으므로).
---       그게 불가능한 도구라면 위 다섯 줄을 손으로 구현하고, 버린 건수를 사람에게 보고할 것.
+--       그게 불가능한 도구라면 위 줄들을 손으로 구현하고, 버린 건수를 사람에게 보고할 것.
+--       ※ 마지막 줄(중복 id)만은 파서를 통과시켜도 해소되지 않는다 — 파서가 dedup 을 하지 않기 때문이다.
+--         옛 스키마에서는 PK(login_id,id) 가 같은 1062 를 냈으므로 위험도는 그대로다(새로 생긴 위험이
+--         아니라, 막는 제약의 이름이 PRIMARY 에서 uq_*_uid 로 바뀐 것뿐이다). 장애 대응 때 제약 이름으로
+--         원인을 찾는 절차가 있다면 그 이름을 함께 고칠 것.
 --     ※ 왜 '보고'가 필요한가: 버리는 게 정상이지만 '몇 개를 버렸는지'는 사용자가 알아야 한다.
 --       빈 할일 200개를 조용히 버리면 '이관에서 데이터가 샜다'는 의심을 나중에 못 푼다.
 --
@@ -391,14 +452,34 @@
 --       cal_entry.entry_date          → entry.date           ★ entryDate 아님
 --       cal_entry.all_day             → entry.allDay
 --       cal_attendance.work_date      → attendance 맵의 키
---     나머지는 snake→camel 로 기계 변환이 되지만, 위 다섯은 규칙에서 벗어나므로 표를 보고 쓸 것.
+--
+--     ★★ 2026-08-24 키 전환으로 여기가 크게 늘었다 — **uid ↔ 앱의 id** 대응이 핵심이다.
+--       어댑터는 조회 결과의 uid 를 state 객체의 **id** 로 되돌려야 한다. 번호(_no)가 아니다.
+--       cal_category.uid              → category.id          ★ 앱은 이 값으로 과제를 가리킨다
+--       cal_entry.uid                 → entry.id             ★ 반복 일정의 시리즈 id 로도 쓰인다
+--       cal_todo.uid                  → todo.id
+--       cal_entry.cat_no              → entry.categoryId     ★ **번호가 아니라 그 과제의 uid 로 되돌린다**
+--       cal_todo.cat_no               → todo.categoryId      ★ 같음
+--       cal_task_hours.cat_no         → taskHours 맵의 **안쪽 키**(= 그 과제의 uid)
+--     ★ cat_no 를 그대로 state 에 넣으면 무슨 일이 나는가: 앱은 `e.categoryId === c.id` 로 비교하는데
+--       한쪽은 숫자 7, 다른 쪽은 문자열 'c-…' 라 **어떤 일정도 어떤 과제에도 안 붙는다.** 전부 '미분류'로
+--       그려지고, 오류는 하나도 안 난다. 색·필터·과제별 보고서가 통째로 비는데 원인은 안 보인다.
+--     ★ 반대로 uid 만 있고 번호를 안 들고 있으면 **쓰기를 못 한다**(H-2). 어댑터는 둘 다 들고 있어야 한다 —
+--       state 에는 uid 만, 별도 맵에는 uid↔_no 를 둔다.
+--       cal_entry_except.entry_no / cal_entry_commit.entry_no / cal_todo_day_note.todo_no
+--         → 앱 객체에 대응이 **없다.** 부모 객체 안으로 접히는 값이라 state 에 나타나지 않는다
+--           (G-5 의 접는 규칙 참조). 이 셋을 state 에 흘리지 말 것.
+--       cal_*.user_id → 앱 객체에 대응이 **없다.** state 는 항상 '나 한 사람'이라 소유자 축이 없다.
+--         조회 결과에서 걷어낼 것 — 넣으면 toXML() 이 모르는 키를 만나고, §8 왕복 서명도 어긋난다.
+--     나머지는 snake→camel 로 기계 변환이 되지만, 위 표에 있는 것은 표를 보고 쓸 것.
 --
 --  ── G-2. NULL → '' (A 의 역방향) ──────────────────────────────────────
 --     앱은 '값 없음'을 빈 문자열로 들고 있다. NULL 을 그대로 넘기면 `if(e.startTime)` 류 검사가
 --     통과하는 것까지는 같지만, 문자열 메서드(.slice·.localeCompare)에서 터진다.
 --       start_time · end_time · commit_time · end_date(entry·todo) · due · recur_until
 --       · completed_at
---     ※ 반대로 NULL 을 유지해야 하는 것도 있다 — category_id(앱이 `|| null` 로 다룬다) ·
+--     ※ 반대로 NULL 을 유지해야 하는 것도 있다 — cat_no(앱의 categoryId 는 `|| null` 로 다룬다.
+--       NULL 인 cat_no 는 '' 가 아니라 **null** 로 되돌린다) ·
 --       remind(null = '기본 사다리', 0 = '알림 없음'. ''로 바꾸면 두 상태가 뭉개진다).
 --
 --  ── G-3. DATETIME(3) → ISO 'Z' (B 의 역방향) ──────────────────────────
@@ -416,15 +497,21 @@
 --
 --  ── G-5. 정렬 컬럼 → 배열 순서 / 행 → 맵 (E 의 역방향) ────────────────
 --     DB 는 행 집합이고 앱은 배열·객체다. 접는 규칙이 표마다 다르다.
---       cal_category    ORDER BY sort_order → categories 배열. sort_order 값 자체는 state 에 넣지 않는다
+--       cal_category    ORDER BY sort_order → categories 배열. sort_order·cat_no 는 state 에 넣지 않는다
 --       cal_room        ORDER BY sort_order → rooms 문자열 배열(객체 아님)
+--       cal_entry       ORDER BY entry_date → entries 배열. entry_no 는 state 에 넣지 않는다
+--       cal_todo        ORDER BY … → todos 배열. todo_no 는 state 에 넣지 않는다
 --       cal_entry_commit ORDER BY seq       → entry.commits 배열. seq 는 state 에 넣지 않는다
 --       cal_entry_except ORDER BY except_date → entry.recurExcept 문자열 배열
 --       cal_todo_day_note → todo.dayNotes = { 'YYYY-MM-DD': '설명' }   (배열 아님)
---       cal_task_hours    → taskHours   = { 'YYYY-MM-DD': { 과제id: 시간 } }  (2단 중첩)
+--       cal_task_hours    → taskHours   = { 'YYYY-MM-DD': { 과제uid: 시간 } }  (2단 중첩)
+--                            ★ 안쪽 키는 cat_no 가 아니라 그 과제의 **uid** 다(G-1).
+--                              JOIN cal_category 로 되돌리거나, 이미 만든 _no→uid 맵을 쓴다.
 --       cal_attendance    → attendance  = { 'YYYY-MM-DD': { status, overtime } }
 --     ★ ORDER BY 를 빠뜨리면 MySQL 이 어떤 순서를 주는지 보장이 없다. '대체로 맞게' 나오다가
 --       행이 늘거나 실행계획이 바뀌면 순서가 뒤집힌다 — 화면 순서가 이유 없이 달라진다.
+--     ★ ORDER BY 에 cat_no·entry_no·todo_no 를 쓰지 말 것. 번호는 '만들어진 순서'일 뿐이고
+--       삭제 후 재사용되므로(11. cal_user_rev 주석) 표시 순서의 근거가 되지 못한다.
 --     ★ cal_attendance 는 **행이 없는 날짜의 키를 만들지 않는다.** 그게 '미기록' 이다
 --       (getAttendance() 가 그 자리에서 null 을 돌려준다). 빈 객체나 status:'' 를 넣지 말 것.
 --
@@ -440,6 +527,7 @@
 --       category.svnRepo       값이 없어도 되는 것은 아니다. 빈 문자열로 채우면 「연동」 섹션이
 --                              통째로 사라져 사용자는 '커밋이 없는 것'과 구분하지 못한다.
 --                              ★ 이 PC 에 경로가 없으면 그 사실을 화면이 말해야 한다(§4).
+--                              ★ 로컬 쪽 키는 uid 다 — cat_no 로 찾지 말 것(위 ★ 절).
 --
 --       category.dbGone      → source='db' 인 행만, LEFT JOIN project 로 파생한다(§6).
 --                              컬럼으로 저장하지 않는다 — 파생값 캐시라 ADR-18 과 충돌한다.
@@ -456,9 +544,16 @@
 --                              그 경로로 되살아난다. 함수 주석 자신이 "재실행하면 사용자가 지운
 --                              값이 되살아난다(좀비)" 라고 적고 있다.
 --                              DB 모드는 그 이관이 이미 끝난 세계이므로 true 가 사실이기도 하다.
+--                              ★ 그 좀비 taskHours 의 과제 id 는 대부분 이미 없는 과제를 가리킨다 —
+--                                키 전환 후에는 cat_no 로 해석조차 안 되므로 H-3 의 중단 경로를 탄다.
+--                                즉 증상이 '조용한 오염'에서 '요란한 저장 실패'로 바뀔 뿐, 원인은 같다.
 --
 --       낙관적 잠금 토큰      → state 에 넣지 않는다. 어댑터가 별도 맵으로 보관한다:
---                              Map<'표:login_id:id' → DB 가 준 updated_at 원문>.
+--                              Map<'표:<표>_no' → DB 가 준 updated_at 원문>.
+--                              ★ 키에서 login_id 가 빠졌다 — 한 세션은 한 사용자이고(user_id 고정)
+--                                _no 는 그 사용자 안에서 유일하므로 소유자 축이 필요 없다.
+--                                옛 키 '표:login_id:id' 를 그대로 쓰면 login_id 가 개명된 뒤
+--                                맵이 통째로 미스가 되어 첫 편집이 전부 충돌 오탐이 된다.
 --                              §3.3 이 앱의 entry.updatedAt 을 쓰지 말라고 한 이유는 JS 가
 --                              편집마다 nowIso() 로 덮기 때문이다. 저장할 때 이 맵에서 꺼내
 --                              @prev 로 쓰고, 성공 응답의 새 값으로 갱신한다.
@@ -473,12 +568,111 @@
 --       와 entry.commits.length 를 바로 읽는다). 사용자가 커밋 내역에서 한 줄 지우려는 순간
 --       TypeError 가 난다 — 조회는 멀쩡한데 편집만 죽는 형태라 원인을 찾기 어렵다.
 --     커밋 화면·보고서를 열 때 그 entry 의 커밋만 지연 조회해 채운다.
+--     ★ 지연 조회의 조건절은 (user_id, entry_no) 다 — state 에는 entry_no 가 없으므로(G-1)
+--       H-2 의 uid→_no 맵을 반드시 거쳐야 한다. 이 한 줄을 빠뜨리면 커밋 화면만 안 열린다.
+--
+--  ══ H. 대리키 해석 — 앱의 문자열 id ↔ DB 의 번호 (2026-08-24 신설, 양방향) ═══
+--     앱은 과제·일정·할일을 **문자열 id** 로만 가리킨다(c-<uuid>·e-<uuid>·t-<uuid>·db-<project.uid>).
+--     DB 는 2026-08-24 부터 그것들을 **번호**로 가리킨다(cat_no·entry_no·todo_no).
+--     그 사이를 잇는 코드가 어댑터에 없으면 조회는 되는데 **모든 쓰기가 그 자리에서 멈춘다.**
+--     A~G 를 다 지켜도 소용없으므로 별도 부류로 둔다.
+--
+--  ── H-1. 번호는 누가, 어떻게 매기나 ───────────────────────────────────
+--     ★ AUTO_INCREMENT 를 쓰지 않는다(위 E 절의 근거 — 강제 인덱스로 보조 인덱스 합 25.59→34.13MB).
+--     ★ 시퀀스 표도 두지 않는다. 사용자별 카운터를 **쓰기 트랜잭션 안에서** 계산한다:
+--
+--         -- (1) 모든 쓰기 트랜잭션의 첫 문장 — §3.1. 이 순서는 불변이다.
+--         INSERT INTO cal_user_rev (user_id, rev) VALUES (?, 1)
+--           ON DUPLICATE KEY UPDATE rev = rev + 1;
+--         -- (2) 그 뒤에 새 행의 번호를 뽑는다.
+--         SELECT COALESCE(MAX(entry_no), 0) + 1 FROM cal_entry WHERE user_id = ?;
+--
+--     왜 이것이 경합에 안전한가(실측으로 확인할 것 — 아래 ※ 참조):
+--       (1) 의 ODKU 는 **이미 있는 행**을 갱신하므로 그 사용자의 cal_user_rev 행에 배타 락을 잡고
+--       트랜잭션이 끝날 때까지 놓지 않는다. cal_user_rev 는 배포 시 app_user 전원 시딩이 강제라
+--       (이 파일 맨 아래) 그 행은 항상 존재한다. 따라서 **같은 user_id 의 쓰기는 (1) 에서 이미
+--       직렬화**되어 있고, (2) 의 MAX() 와 그 뒤의 INSERT 사이에 다른 세션이 끼어들 수 없다.
+--       다른 user_id 는 다른 행이라 서로 막지 않는다(경합 없음).
+--       ※ 이 안전성은 (1) 을 **정말로 먼저** 실행할 때만 성립한다. (1) 을 건너뛰고 (2) 부터 하면
+--         두 세션이 같은 MAX() 를 읽어 같은 번호로 INSERT 하고, 한쪽이 1062(PRIMARY)로 죽는다.
+--         조용히 틀리지는 않지만 사용자에게는 '가끔 저장이 실패한다'로 보인다.
+--       ※ ★★ '먼저' 는 문장 순서만의 문제가 아니다 — **리드뷰(read view)가 언제 굳는가**의 문제다.
+--         이 계약에는 격리수준 의존이 숨어 있었다. 이제 조건으로 명시한다.
+--           · REPEATABLE READ 에서 리드뷰는 그 트랜잭션의 **첫 일관읽기** 시점에 굳는다.
+--             (1) 의 ODKU 는 잠금읽기라 리드뷰를 만들지 않는다 → (1) 이 정말 첫 문장이면 (2) 의
+--             MAX() 가 첫 일관읽기가 되어 최신 커밋을 본다(안전).
+--           · 그런데 (1) **앞에** 일관읽기가 한 줄이라도 있으면 리드뷰가 거기서 굳는다.
+--             그 뒤 다른 자리가 커밋한 행을 (2) 가 **못 보고**, 낡은 MAX() 로 발번해 1062 로 죽는다.
+--             ★ 그 '한 줄' 은 cal_entry 를 읽을 필요도 없다 — **무관한 표 한 줄이면 충분하다.**
+--         2026-08-24 실측(8.4.9, 격리 DB, 두 연결. A=발번 세션, B=그 사이에 끼어들어 커밋하는 세션.
+--         cal_entry 에 entry_no=1 하나만 둔 상태에서 시작):
+--           · RR + (1) 앞에 cal_entry 일관읽기 1줄  → A 가 2를 발번 → **ERROR 1062 (PRIMARY '1-2')**
+--           · RR + (1) 앞에 app_user  일관읽기 1줄  → A 가 2를 발번 → **ERROR 1062** (표가 달라도 같다)
+--           · RR + (1) 이 정말 첫 문장             → A 가 3을 발번 → 성공
+--           · READ COMMITTED + (1) 앞에 읽기 1줄   → A 가 3을 발번 → 성공(문장마다 리드뷰를 새로 뜬다)
+--         ⇒ **계약 조건 두 가지. 둘 중 하나만 지켜도 안전하지만, 둘 다 지킬 것.**
+--           ㄱ) 쓰기 연결은 READ COMMITTED 다(설계 §3.2). 이 격리수준이면 (2) 는 항상 최신을 본다.
+--           ㄴ) 그 위에서도 (1) 앞에는 어떤 SELECT 도 두지 않는다(어댑터가 '현재 상태 확인' 한 줄을
+--               습관처럼 앞에 붙이기 쉽다 — 그 한 줄이 정확히 이 사고다).
+--         ★ 설계 §3.2 의 READ COMMITTED 는 이제 '이웃 사용자 차단(1205) 회피' 만이 아니라
+--           **번호 유일성의 전제**이기도 하다. 두 절이 이 한 줄로 묶였다 — §3.2 를 '성능 이야기'로
+--           읽고 빼면 번호가 깨진다.
+--         ※ 다행히 조용히 틀리지는 않는다(1062 로 시끄럽게 죽고, 재시도하면 성공한다).
+--           바로 그래서 오래 남기 쉽다 — '가끔 저장이 실패하는' 산발적 증상으로만 보인다.
+--       ※ cal_user_rev 에 별도 카운터 컬럼(next_entry_no …)을 두는 안은 기각했다 — 표당 한 컬럼씩
+--         13개가 붙고, 그 값이 실제 행과 어긋나는 경로(부분 복구·손수정·표 단위 재적재)가 생기면
+--         1062 이거나 **번호 재사용**이 된다. MAX()+1 은 데이터 자신이 근거라 어긋날 수가 없다.
+--     ★ 번호는 **재사용된다**(MAX 기준이므로 마지막 행을 지우면 그 번호가 다음에 다시 나온다).
+--       안전한 이유: 앱은 번호를 보지 않고(uid 로 본다), 자식 표는 부모 삭제 시 ON DELETE CASCADE 로
+--       함께 사라지며(except·commit·day_note), 유일하게 CASCADE 가 아닌 참조인 cal_task_hours 는
+--       RESTRICT 라 과제가 남아 있는 동안에만 존재한다. 즉 '지워진 번호를 가리키는 행'이 남을 수 없다.
+--       ★ 다만 어댑터의 uid→_no 맵은 예외다 — 삭제한 행의 항목을 **반드시 즉시 지울 것.**
+--         남겨 두면 나중에 같은 번호를 받은 **다른** 행을 가리키게 되고, 그 오염은 조용하다.
+--     ★ 이 규칙은 이관 도구에도 그대로 적용된다. 이관은 사용자별 단일 트랜잭션이므로 도구가
+--       메모리에서 1,2,3… 을 붙여도 되지만, 그때도 (1) 을 먼저 실행해야 한다(다른 자리에서
+--       같은 사용자가 앱을 켜 놓았을 수 있다).
+--
+--  ── H-2. 어댑터가 들고 있어야 하는 맵 ─────────────────────────────────
+--     state 에는 uid 만 들어간다(G-1). 그런데 UPDATE/DELETE 와 자식 조회의 조건절은 번호다.
+--     그래서 어댑터는 부팅 조회 때 아래 세 맵을 함께 만들어 세션이 끝날 때까지 유지한다:
+--       Map<category.id → cat_no>   Map<entry.id → entry_no>   Map<todo.id → todo_no>
+--     (반대 방향 _no→uid 도 필요하다 — cal_task_hours 를 접을 때 쓴다. G-5)
+--     ★ 새 행을 INSERT 한 직후 반드시 맵에 넣을 것. 빠뜨리면 '방금 만든 일정을 곧바로 수정'하는
+--       가장 흔한 흐름이 실패한다. 반대로 DELETE 직후에는 반드시 빼야 한다(H-1 의 ★).
+--     ★ 맵의 수명은 세션이다. 다른 자리에서 만든 행의 번호는 이 맵에 없으므로, 조회를 다시 하기
+--       전에는 그 행을 수정할 수 없다 — 그건 결함이 아니라 §3.1 이 이미 전제한 것이다(rev 로 감지).
+--
+--  ── H-3. 해석 실패 — id 는 있는데 번호가 없을 때 ──────────────────────
+--     실재하지 않는 과제를 가리키는 categoryId 는 앱에서는 무해하다(fromXML 이 그대로 남기고
+--     화면은 '미분류'로 그린다). DB 에서는 **번호를 만들 수 없다.**
+--       · 런타임 저장: 그 값을 NULL(미분류)로 바꿔 저장하고, 사람에게 알린다.
+--         조용히 저장하면 사용자가 보던 '미분류'와 결과가 같아 보이지만, 원본 id 가 영구히 사라진다.
+--       · 이관 도구: **중단하고 사람에게 보고한다**(§8 "버리지 않는다"). 실재하지 않는 categoryId 의
+--         건수와 값을 먼저 보여 주고, 사람이 '미분류로 정리' 를 승인한 뒤에 다시 돌린다.
+--     ★ cal_task_hours 는 다르다 — cat_no 가 NOT NULL 이라 '미분류 공수' 라는 상태가 없다.
+--       해석 실패 시 그 행은 **버릴 수밖에 없다.** 반드시 건수·날짜·과제 id 를 보고할 것.
+--       이 값은 회사(netcus) 일간보고에 그대로 나가는 숫자다. 조용히 버리면 보고 숫자가 줄어든다.
+--       ※ 이 부류가 실제로 존재한다: fromXML() 의 taskHours 파싱은 `cat` 이 실재 과제인지 검사하지
+--         않는다(빈 문자열만 거른다 — 직접 확인). 옛 localStorage 승격분·손편집 XML 에서 나온다.
+--
+--  ── H-4. 공식 과제는 uid 가 89명 전부 같다 ────────────────────────────
+--     공식 과제 id 는 'db-<project.uid>' 라(mapDbRows()), 같은 과제를 구독한 사람이 **전원 같은 uid** 를
+--     갖는다. 그래서 uid 는 **전역 UNIQUE 가 아니라 UNIQUE(user_id, uid)** 다.
+--     ★ 전역 UNIQUE 로 만들면 표 생성은 되지만 두 번째 사람의 구독에서 ERROR 1062 가 난다.
+--       (설계 §5.2 근거① 과 같은 사실이다. 실측 검증 항목에 포함되어 있다 — 서로 다른 두 user_id 가
+--        같은 uid 를 각각 INSERT 할 수 있어야 한다.)
+--     ★ 반대로 cat_no 는 같지 않다. 사람마다 자기 카운터로 받은 번호라 같은 공식 과제가
+--       A 에게는 3, B 에게는 11 일 수 있다. **cat_no 로 '같은 과제인지'를 판정하지 말 것** —
+--       그 판정의 근거는 uid(또는 project_uid)다.
 --
 --  값 집합이 고정된 문자열 컬럼은 COLLATE utf8mb4_bin 이다(테이블 기본 utf8mb4_0900_ai_ci 상속 금지).
 --     실측: ai_ci 는 대소문자뿐 아니라 전각/반각까지 같게 본다. 'DB'·'Db'·전각 'ｄｂ' 가 CHECK 를
 --     전부 통과하고 입력 그대로 저장됐다. 앱은 `source === 'db'` 로 정확 비교하므로 그런 행은
 --     조용히 개인 과제로 취급된다. 대상: cal_category.source · cal_entry.source · cal_entry.recur_freq ·
 --     cal_todo.prio · cal_schema_meta.k/v · cal_attendance.status · cal_user_pref.report_font_family.
+--     ★ uid 3개(cal_category·cal_entry·cal_todo)도 같은 이유로 _bin 이다 — 앱 id 는 대소문자를 구분하고
+--       (safeId 가 [A-Za-z0-9_-] 를 그대로 통과시킨다), ai_ci 면 'c-AB…' 와 'c-ab…' 가 UNIQUE 충돌로
+--       1062 를 내거나 서로를 덮는다. 옛 PK 컬럼(id)이 _bin 이던 것과 같은 판정이다.
 --     ※ 반대로 cal_user_pref 의 머리기호 3컬럼(report_marker·_daily·_weekly)과 report_marker_custom 은
 --       _bin 이 **아니다.** 값 집합이 고정되어 있지 않기 때문이다 — 드롭다운 프리셋 말고도 fromXML() 이
 --       임의 문자열(길이 8 이하)을 그대로 받아들이고, 앱은 이 값을 비교하지 않고 그냥 앞에 붙여 출력한다.
@@ -493,10 +687,15 @@
 --       ※ 먼저 만든 네 컬럼(cal_category.source · cal_entry.source · cal_entry.recur_freq ·
 --         cal_todo.prio)에는 아직 그 한 줄이 없다. 이 파일은 '최초 1회 구축' 전용이라 여기서 고치면
 --         이미 배포된 DB 와 어긋나므로, 보완은 migrate-*.sql 로 할 것(아직 안 함 — 미해결로 적어 둔다).
+--       ※ uid 는 이 부류가 아니다 — 값 집합이 고정이 아니라 '앱이 만든 원문 보존'이 목적이라
+--         뒤공백도 원문의 일부다. 대신 chk_*_uid 가 '' 만 막는다(_bin PAD SPACE 라 공백만인 값도 함께
+--         막힌다 — cal_room.name 과 같은 동작이다. 실측 항목).
 --     ※ color · recur_until 은 REGEXP CHECK 라 이미 폭에 안전하다(실측: 전각 입력 ERROR 3819).
 --       대소문자는 색상 표기가 원래 양쪽을 허용하므로(앱 /^#[0-9a-fA-F]{6}$/) 의도된 통과다 → _bin 불필요.
 --
 --  이 파일에 없는 것: 앱 계정 GRANT(create-app-user.sql / grants-calendar.sql 계열). 별도 파일이다.
+--  ★ 2026-08-24 키 전환은 GRANT 파일에도 영향이 있다 — 컬럼 단위 부여가 있다면 컬럼 이름이 바뀌었다.
+--     이 파일은 그 파일의 현재 상태를 적지 않는다(아래 ※ 와 같은 이유). 배포 전에 그 파일을 직접 열 것.
 --  ★ 감사 트리거(trg_cal_*)와 cal_audit_trash 는 2026-08-11 결정으로 폐지됐다. 이 스키마에는
 --     트리거가 하나도 없어야 한다 — init-calendar.ps1 의 게이트가 'cal_* 트리거 0개'를 확인한다.
 --     되살릴 자리는 이 DB 가 아니라 API 서버 계층이다(같은 DB 안의 휴지통은 그 DB 가 죽으면 함께 죽는다).
@@ -507,6 +706,60 @@
 --       확인한다 — 배포 후 확인 절차는 grants-calendar.sql 꼬리의 검증 쿼리 4b) 가 갖고 있다.
 -- =====================================================================
 SET NAMES utf8mb4;
+
+-- =====================================================================
+--  0. ★★ 선행조건 가드 — 반드시 아래 DROP 보다 **먼저** 있어야 한다 ★★
+-- =====================================================================
+--  왜 있는가 (2026-08-24 신설):
+--    이 파일은 cal_* 13표를 먼저 전부 DROP 하고 그다음 CREATE 한다. 그런데 첫 CREATE TABLE
+--    (cal_category) 의 fk_cal_category_user 가 app_user(user_id) 를 참조한다. user_id 가 없는
+--    DB — 즉 아직 migrate-2026-08-24-user-id.sql 을 안 돌린 기존 DB — 에서는 그 CREATE 가
+--    ERROR 1824/3734 로 죽는다. DDL 은 롤백이 없다. 이미 지나간 DROP 은 되돌아오지 않는다.
+--    → cal_* 가 0개 남는 반파 상태가 되고, 실 taskmgr 기준 cal_user_rev 89행
+--      (§3.1 동시성과 계약 H-1 번호발급의 전제)이 그 자리에서 소실된다.
+--    그래서 '지우기 전에' 멈춘다. 아래 세 가드가 통과해야만 DROP 에 도달한다.
+--
+--  ★ 방식: MySQL 은 스토어드 프로그램 밖에서 IF/THEN 도 SIGNAL 도 못 쓴다
+--    (실측: PREPARE 로 SIGNAL 을 감싸면 ERROR 1295 'not supported in the prepared statement
+--     protocol yet'). 그래서 information_schema 를 읽어 **실행할 문장 자체를 문자열로 고른** 뒤
+--    PREPARE/EXECUTE 한다. 조건 충족이면 'DO 0'(무해한 no-op), 불충족이면 존재하지 않는
+--    테이블명을 SELECT 하는 문장을 골라 일부러 ERROR 1146 을 낸다 — 테이블명 자리에 넣은
+--    한국어 문장이 그대로 에러 메시지로 나온다(실측).
+--    ※ 식별자 64자 제한. ※ Windows(lower_case_table_names=1)는 ASCII 를 소문자로 바꿔 출력한다.
+--
+--  ★★ 실행할 때 --force 를 붙이지 말 것. mysql 클라이언트는 기본적으로 에러에서 멈추지만
+--    --force 는 계속 진행시킨다 — 그러면 이 가드가 무력화되고 DROP 이 그대로 돈다.
+--    (init-calendar.ps1 등 이 파일을 돌리는 모든 러너에 해당한다.)
+-- ---------------------------------------------------------------------
+
+-- 가드 1) app_user 가 있는가
+SET @g_has_app_user := (SELECT COUNT(*) FROM information_schema.TABLES
+                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_user');
+SET @g := IF(@g_has_app_user = 1, 'DO 0',
+             'SELECT 1 FROM `중단: app_user 가 없다 - 01-schema-users.sql 을 먼저 돌릴 것`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+
+-- 가드 2) app_user.user_id 컬럼이 있는가 (= 대리키 전환이 끝났는가)
+SET @g_has_user_id := (SELECT COUNT(*) FROM information_schema.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_user'
+                          AND COLUMN_NAME = 'user_id');
+SET @g := IF(@g_has_user_id = 1, 'DO 0',
+             'SELECT 1 FROM `중단: app_user.user_id 없음 - migrate-2026-08-24-user-id.sql 먼저`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+
+-- 가드 3) 타입과 인덱스가 FK 를 받을 수 있는 모양인가
+--   · COLUMN_TYPE 이 아래 13표의 user_id 와 **글자까지 같아야** FK 가 선다(ERROR 3780).
+--   · 참조 컬럼은 인덱스의 선두여야 한다(ERROR 1822). 설계상 그 인덱스는 PRIMARY 다.
+SET @g_type_ok := (SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_user'
+                      AND COLUMN_NAME = 'user_id' AND COLUMN_TYPE = 'smallint unsigned');
+SET @g_pk_ok := (SELECT COUNT(*) FROM information_schema.STATISTICS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_user'
+                    AND INDEX_NAME = 'PRIMARY' AND SEQ_IN_INDEX = 1 AND COLUMN_NAME = 'user_id');
+SET @g := IF(@g_type_ok = 1 AND @g_pk_ok = 1, 'DO 0',
+             'SELECT 1 FROM `중단: app_user.user_id 가 smallint unsigned PK 가 아니다`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+
 
 -- ---------- 멱등 재구축용 DROP — 자식(FK 참조하는 쪽) → 부모 순 ----------
 -- 위 경고를 다시 읽을 것. 이 14줄이 캘린더 데이터 전량을 지운다.
@@ -519,13 +772,16 @@ SET NAMES utf8mb4;
 --     다음 사람이 '정본 파일이 13을 고장난 상태라고 하네' 하고 게이트를 거꾸로 되돌린다. 실제로
 --     이 주석이 한 라운드 동안 그 상태로 남아 있었다. 정본은 아래 CREATE TABLE 목록 자신이다.
 --   지운 뒤 다시 만들지 않으므로 이 줄은 영구히 남는다(재적용마다 무해하게 반복).
+-- ★ cal_task_hours 가 2026-08-24 부터 cal_category 를 FK 로 참조한다 — DROP 순서에서 cal_category
+--   **앞**에 있어야 한다. 아래는 이미 그 순서다(cal_task_hours 가 위쪽). 순서를 정리한답시고
+--   알파벳순으로 바꾸면 재적용이 ERROR 3730 으로 죽는다.
 DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용 — 재생성하지 않는다
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음 — 순서 무관
 DROP TABLE IF EXISTS cal_migration_log;
 DROP TABLE IF EXISTS cal_user_rev;
 DROP TABLE IF EXISTS cal_user_pref;
 DROP TABLE IF EXISTS cal_attendance;
-DROP TABLE IF EXISTS cal_task_hours;
+DROP TABLE IF EXISTS cal_task_hours;         -- cal_category 를 참조(2026-08-24 신설 FK)
 DROP TABLE IF EXISTS cal_room;
 DROP TABLE IF EXISTS cal_todo_day_note;      -- cal_todo 를 참조
 DROP TABLE IF EXISTS cal_todo;
@@ -539,9 +795,15 @@ DROP TABLE IF EXISTS cal_category;
 -- =====================================================================
 -- 개인 과제와 공식(DB project 유래) 과제를 source 로 갈라 한 테이블에 담는다(§6).
 -- gitRepo/svnRepo 는 §4 로 제외, db_gone 은 조회 시 LEFT JOIN project 로 파생하므로 컬럼이 없다.
+--
+-- ★ 2026-08-24 키 전환: PK 가 (login_id, id) → (user_id, cat_no) 로 바뀌었고, 옛 id 는
+--   uid 컬럼 + uq_cal_category_uid(user_id, uid) 로 내려왔다. 앱이 보는 신원은 여전히 uid 다(G-1).
 CREATE TABLE cal_category (
-  login_id     VARCHAR(50)  CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id (app_user.login_id). 불변 — 개명은 db/deploy/rename-login-id.sql 절차
-  id           VARCHAR(80)  CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,  -- 과제 id. 개인=c-<uuid>(38자), 공식=db-<project.uid>(39자). 대소문자 구분
+  user_id      SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id). 개명은 app_user 한 행의 UPDATE 로 끝난다 — 이 표는 손대지 않는다
+  cat_no       INT UNSIGNED      NOT NULL,   -- 사용자 안에서 유일한 과제 번호. AUTO_INCREMENT 아님 — 할당 규칙은 계약 H-1
+  -- 앱이 만든 문자열 id 원문. 개인=c-<uuid>(38자), 공식=db-<project.uid>(39자). 대소문자 구분(_bin).
+  -- ★ 전역 UNIQUE 가 아니다 — 공식 과제 id 는 89명이 같은 값을 갖는다(계약 H-4). UNIQUE(user_id, uid) 다.
+  uid          VARCHAR(80)  CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,          -- 앱의 category.id 원문
   -- 값 집합이 고정된 컬럼이라 _bin 이다. 테이블 기본(0900_ai_ci)을 상속하면 'DB'·'Db'·전각 'ｄｂ' 가
   -- CHECK 를 통과해 그대로 저장되고, 앱의 `source === 'db'` 정확 비교에서 개인 과제로 오분류된다(실측).
   source       VARCHAR(8)   CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'local', -- 과제 출처. local=개인 과제, db=공식 과제. XML 속성 부재가 local 에 대응
@@ -552,37 +814,72 @@ CREATE TABLE cal_category (
   name         VARCHAR(200) NOT NULL,                                                   -- 과제명. 공식 과제도 저장(소프트삭제 시 라벨 스냅샷 폴백)
   color        CHAR(7)      NOT NULL DEFAULT '#5b6b7d',                                 -- 과제 색 #rrggbb. 공식 과제도 색은 사용자 소유. REGEXP CHECK 라 _bin 불필요(전각은 이미 3819, 대소문자는 의도적 허용)
   description  VARCHAR(200) NOT NULL DEFAULT '',                                        -- 과제 설명. 폼 #cDesc maxlength=200 과 정확히 같다(fromXML 절단 없음 — name 과 같은 단서)
-  -- ★ 값의 출처 = id 접두 제거. XML 에 대응 속성이 전혀 없어 이관 도구가 파생해야 한다(§8).
-  --   규칙: source='db' 이면 project_uid = SUBSTRING(id, 4).
-  --   단 id 가 'db-' 로 시작하고 나머지가 정확히 36자일 때만(공식 과제 id 는 'db-'+project.uid, mapDbRows()).
+  -- ★ 값의 출처 = uid 접두 제거. XML 에 대응 속성이 전혀 없어 이관 도구가 파생해야 한다(§8).
+  --   규칙: source='db' 이면 project_uid = SUBSTRING(uid, 4).
+  --   단 uid 가 'db-' 로 시작하고 나머지가 정확히 36자일 때만(공식 과제 id 는 'db-'+project.uid, mapDbRows()).
   --   조건에 안 맞는 source='db' 행은 조용히 버리지 말고 이관 도구가 사람에게 보고하고 중단한다(§8 "버리지 않는다").
   --   왜 중단인가: fromXML 의 safeId(/^[A-Za-z0-9_-]{1,80}$/)가 id 를 재발급하면 접두가 사라져
   --   복원 근거가 영구 소실되는데, 그 상태로 넣으면 아래 chk_cal_category_projuid 가 3819 를 내고
   --   그 과제에 달린 일정·공수까지 함께 이관이 막힌다. 사람이 원본 XML 을 보고 정해야 하는 문제다.
+  --   ※ cat_no 로는 이 파생을 할 수 없다 — 번호에는 접두가 없다. 근거는 언제나 uid 다.
   project_uid  CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL, -- 공식 과제가 가리키는 project.uid. FK 걸지 않음(§5.2). 콜레이션은 project.uid 와 일치해야 조인 가능
-  sort_order   INT          NOT NULL DEFAULT 0,                                         -- 화면 표시 순서. XML 문서 순서를 박제한 유일한 근거
+  sort_order   INT          NOT NULL DEFAULT 0,                                         -- 화면 표시 순서. XML 문서 순서를 박제한 유일한 근거. ★ cat_no 와 다른 값이다(계약 E 의 ★)
   created_at   DATETIME(3)  NOT NULL,                                                   -- 생성 시각(UTC). 앱이 계산해 보낸다
   -- ★ 이관 규칙: updated_at = created_at 을 그대로 복사한다(원본이 없다).
-  --   근거: toXML 의 category 직렬화(4540-4558)에 updatedAt 속성이 없고 fromXML(4715-4736)이 만드는
-  --   객체에도 updatedAt 키가 없다. NOT NULL 무DEFAULT 라 이관 INSERT 가 그 자리에서 ERROR 1364 로 멈춘다.
+  --   근거: toXML 의 category 직렬화에 updatedAt 속성이 없고 fromXML 이 만드는 객체에도 updatedAt 키가 없다.
+  --   NOT NULL 무DEFAULT 라 이관 INSERT 가 그 자리에서 ERROR 1364 로 멈춘다.
   --   왜 '이관 시각'이 아닌가: 그러면 전 사용자의 모든 과제가 '방금 수정됨'이 되어, 부팅 직후 사용자가
   --   들고 있는 @prev 와 어긋나 첫 편집이 전부 낙관적 잠금 충돌 오탐이 된다.
   updated_at   DATETIME(3)  NOT NULL,                                                   -- 수정 시각(UTC). 낙관적 잠금 토큰 — 서버 자동 갱신 없음
-  PRIMARY KEY (login_id, id),
-  KEY ix_cal_category_login_sort (login_id, sort_order),
-  CONSTRAINT fk_cal_category_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id, cat_no),
+  -- ★ 이 UNIQUE 가 옛 PK(login_id, id) 의 역할을 그대로 이어받는다 — 같은 사람이 같은 과제 id 를
+  --   두 번 만들 수 없다는 계약. 전역 UNIQUE 로 바꾸지 말 것(계약 H-4: 공식 과제는 89명이 같은 uid).
+  UNIQUE KEY uq_cal_category_uid (user_id, uid),
+  KEY ix_cal_category_user_sort (user_id, sort_order),
+  -- 부모 방향 FK 의 자식 인덱스는 PK 의 선두(user_id)가 겸한다 — 별도 KEY 를 만들지 말 것(불필요한 인덱스).
+  CONSTRAINT fk_cal_category_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,                 -- 사람이 지워질 때 캘린더가 조용히 사라지면 안 된다(퇴사 처리는 app_user.is_active=0)
   -- ★ 이 제약은 아래 chk_cal_category_projuid 에 포섭되어 단독 발화하지 않는다 — source 가 두 값이 아니면
   --   projuid 쪽 두 분기가 먼저 모두 FALSE 가 되기 때문이다. 잘못된 source 는 실제로 'chk_cal_category_projuid'
   --   위반으로 보고된다(실측). 장애 대응 때 project_uid 문제로 오진하지 말 것.
   CONSTRAINT chk_cal_category_source  CHECK (source IN ('local','db')),
   CONSTRAINT chk_cal_category_color   CHECK (color REGEXP '^#[0-9a-fA-F]{6}$'),
+  -- uid 는 NOT NULL 이므로 이 식은 NULL 을 낳지 않는다. _bin(PAD SPACE)이라 공백만인 값도 함께 막힌다.
+  CONSTRAINT chk_cal_category_uid     CHECK (uid <> ''),
   -- 공식 과제인데 project_uid 가 없으면 §6 의 LEFT JOIN 이 항상 db_gone 을 뱉는다. 반대로 개인 과제에
   -- project_uid 가 붙으면 남의 과제명을 끌어다 쓰게 된다. 두 방향을 다 막는다.
-  CONSTRAINT chk_cal_category_projuid CHECK ((source = 'db'    AND project_uid IS NOT NULL)
-                                          OR (source = 'local' AND project_uid IS NULL))
+  --
+  -- ★ 2026-08-24 강화 — 예전에는 source='db' 일 때 project_uid 의 **NULL 여부만** 봤다.
+  --   그래서 uid='db-aaaa…' 인데 project_uid='ffff…' 인 **어긋난 쌍**이 조용히 들어갔고(실측: 통과),
+  --   그 행은 §6 의 LEFT JOIN 에서 **남의 과제명**을 끌어온다. 위 주석이 이미 정본 규칙
+  --   (source='db' → project_uid = SUBSTRING(uid,4))을 적어 두었는데 검사만 없던 상태였다.
+  --   이제 그 규칙을 CHECK 로 직접 강제한다. 실측으로 가능함을 확인했고, 세는 함정이 있었다:
+  --     ① 콜레이션이 서로 다르다(uid=utf8mb4_bin, project_uid=utf8mb4_0900_ai_ci). 그냥 '=' 로 써도
+  --        CREATE 는 되지만 어느 쪽 콜레이션이 이기는지가 암묵 규칙에 달린다(실측상 _bin 이 이겨
+  --        대소문자를 구분했다). 암묵에 기대지 않으려고 COLLATE 를 **명시**한다.
+  --     ② PAD SPACE 구멍 — utf8mb4_bin 으로 비교하면 uid 끝의 공백이 접혀
+  --        uid='db-<35자> ' + project_uid='<35자>' 조합이 **통과한다**(실측: 통과 = 구멍).
+  --        utf8mb4_0900_bin(NO PAD)으로 비교하면 막힌다(실측: ERROR 3819). 그래서 0900_bin 이다.
+  --     ③ 길이·접두를 따로 본다. 등호만으로는 uid 가 'db-' 로 시작하지 않아도(예: 'xx-…')
+  --        SUBSTRING(uid,4) 가 우연히 맞을 수 있다. 정본 규칙의 단서('db-' + 정확히 36자)를 그대로 옮긴다.
+  --   ★ 이 식은 NULL 을 낳지 않는다 — source·uid 는 NOT NULL 이고 project_uid 는 비교 **전에**
+  --     IS NOT NULL 로 걸러진다. 'MySQL CHECK 는 NULL 이면 통과' 함정에 해당하지 않는다.
+  --     실측 전수(8.4.9, 격리 DB): INSERT 9종 · UPDATE 9종. 특히 UPDATE 로 한 컬럼씩 미는 경로가
+  --     전부 3819 다 — project_uid 만 바꾸기 · uid 만 바꾸기 · source 만 바꾸기 · project_uid 만 NULL 로.
+  --     정상 경로(uid 와 project_uid 를 짝 맞춰 함께 UPDATE / local↔db 승격)는 통과한다.
+  --   ※ 왜 migrate-*.sql 이 아니라 이 파일에서 고치는가: 이 CHECK 가 붙은 표는 이번 키 전환으로
+  --     어차피 통째로 다시 만들어진다(schema_version 3). v3 로 만들어진 DB 는 아직 없으므로
+  --     '이미 배포된 DB 와 어긋난다' 는 이 파일의 금기에 해당하지 않는다. v3 가 한 번이라도 배포된
+  --     뒤에 이 식을 또 바꾸고 싶어지면 그때는 migrate-*.sql 이다.
+  CONSTRAINT chk_cal_category_projuid CHECK (
+       (source = 'db'
+        AND project_uid IS NOT NULL
+        AND CHAR_LENGTH(uid) = 39
+        AND SUBSTRING(uid, 1, 3) = 'db-'
+        AND project_uid COLLATE utf8mb4_0900_bin = SUBSTRING(uid, 4))
+    OR (source = 'local' AND project_uid IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='캘린더 과제(카테고리). source=local(개인)/db(공식). PK=(login_id,id), id 는 utf8mb4_bin.';
+  COMMENT='캘린더 과제(카테고리). source=local(개인)/db(공식). PK=(user_id,cat_no), 앱 id 는 uid(user_id 안에서 UNIQUE).';
 
 -- =====================================================================
 --  2. cal_entry — 일정
@@ -590,12 +887,13 @@ CREATE TABLE cal_category (
 -- XML <entry> 대응(반복 규칙은 recur_* 컬럼으로 평탄화).
 -- §3.3 낙관적 잠금의 기준 행이자 except/commit 자식의 잠금 단위.
 CREATE TABLE cal_entry (
-  login_id       VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,        -- 소유자 login_id
-  id             VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,        -- 일정 id. 반복 일정의 시리즈 id 로도 쓰임. e-<uuid>(38자)
-  -- NULL = 미분류. 앱은 '' 를 만들지 않는다(전 경로 `|| null`) — 헤더 ③ 참조.
-  -- ★ 단 fromXML 은 실재하지 않는 과제 id 를 그대로 남긴다. DB 는 아래 FK 로 1452 를 내므로
-  --   이관 도구가 사전에 '실재하지 않는 category_id → NULL' 정리를 하고 건수를 보고해야 한다.
-  category_id    VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL,      -- 소속 과제. NULL = 미분류
+  user_id        SMALLINT UNSIGNED NOT NULL,  -- 소유자(app_user.user_id)
+  entry_no       INT UNSIGNED      NOT NULL,  -- 사용자 안에서 유일한 일정 번호. 할당 규칙은 계약 H-1
+  uid            VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 앱의 entry.id 원문. e-<uuid>(38자). 반복 일정의 시리즈 id 로도 쓰인다
+  -- NULL = 미분류. 앱은 '' 를 만들지 않는다(전 경로 `|| null`) — 헤더 A ③ 참조.
+  -- ★ 단 fromXML 은 실재하지 않는 과제 id 를 그대로 남긴다. 그 id 로는 cat_no 를 만들 수 없으므로
+  --   해석 실패가 되고, 처리 규칙은 계약 H-3 에 있다(런타임=NULL 로 낮추고 알림, 이관=중단·보고).
+  cat_no         INT UNSIGNED NULL DEFAULT NULL,                                          -- 소속 과제 번호. NULL = 미분류. 앱으로 돌려줄 때는 그 과제의 uid 로 되돌린다(G-1)
   entry_date     DATE         NOT NULL,                    -- 시작일(반복이면 시리즈 기준일). 파서가 실재 날짜만 통과시키므로 DATE 안전
   end_date       DATE         NULL DEFAULT NULL,           -- 기간 일정 종료일(포함). 단일일이면 NULL. 반드시 entry_date 보다 커야 함
   all_day        TINYINT(1)   NOT NULL DEFAULT 0,          -- 하루 종일 일정 여부. 1이면 시각 두 개가 모두 NULL 이어야 함
@@ -609,7 +907,6 @@ CREATE TABLE cal_entry (
   --   이 컬럼은 cal_entry_commit.subject 를 그대로 받는다(커밋 1건짜리 엔트리). 두 컬럼의 상한이 다르면
   --   같은 문자열이 한쪽만 통과하는 상태가 되고, 그건 근거 없이 갈린 것이다. 네 컬럼(title·subject·
   --   memo·body) 모두 '코드상 상한 0' 이라는 같은 근거를 가지므로 같은 타입이어야 한다.
-  --   한때 title·subject 만 TEXT 로 남아 있었는데, 그건 판정을 안 한 것이지 다르게 판정한 것이 아니었다.
   -- 왜 지금 고치는가: 이관은 단일 트랜잭션이라 긴 제목 한 건이 그 사용자의 이관 전체를 롤백시키고(1406),
   --   이관 후에도 그 사용자는 커밋 수집을 할 때마다 저장이 실패한다. 근본 해법은 앱에 slice(0,2000)를
   --   넣는 것이지만 그건 이 파일 범위 밖이다 — 앱이 상한을 갖게 되면 그때 네 컬럼을 함께 되돌릴 것.
@@ -628,15 +925,18 @@ CREATE TABLE cal_entry (
   recur_count    INT UNSIGNED NULL DEFAULT NULL,           -- 반복 횟수 제한. 0=제한 없음
   created_at     DATETIME(3)  NOT NULL,                    -- 생성 시각(UTC)
   updated_at     DATETIME(3)  NOT NULL,                    -- 수정 시각(UTC). 낙관적 잠금 토큰 — 자식 테이블 변경 시에도 같은 트랜잭션에서 올린다
-  PRIMARY KEY (login_id, id),
-  KEY ix_cal_entry_login_date (login_id, entry_date),      -- 월/주 화면 조회
-  KEY ix_cal_entry_login_cat  (login_id, category_id),     -- 과제별 조회 + 아래 복합 FK 의 자식 인덱스
-  CONSTRAINT fk_cal_entry_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id, entry_no),
+  UNIQUE KEY uq_cal_entry_uid (user_id, uid),              -- 옛 PK(login_id,id) 의 유일성 계약을 이어받는다
+  KEY ix_cal_entry_user_date (user_id, entry_date),        -- 월/주 화면 조회
+  KEY ix_cal_entry_user_cat  (user_id, cat_no),            -- 과제별 조회 + 아래 복합 FK 의 자식 인덱스
+  CONSTRAINT fk_cal_entry_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   -- 부모(과제) 방향은 RESTRICT — 과제를 지우면 그 일정도 같이 사라지는 게 아니라, 앱이 먼저
-  -- 일정의 category_id 를 정리하도록 강제한다(CASCADE/RESTRICT 혼동이 사고의 원인이었다).
-  CONSTRAINT fk_cal_entry_category FOREIGN KEY (login_id, category_id) REFERENCES cal_category(login_id, id)
+  -- 일정의 cat_no 를 정리하도록 강제한다(CASCADE/RESTRICT 혼동이 사고의 원인이었다).
+  -- 앱의 deleteCategory() 가 실제로 그렇게 한다: 먼저 `e.categoryId = null` 로 전부 풀고 과제를 지운다.
+  CONSTRAINT fk_cal_entry_category FOREIGN KEY (user_id, cat_no) REFERENCES cal_category(user_id, cat_no)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT chk_cal_entry_uid      CHECK (uid <> ''),
   CONSTRAINT chk_cal_entry_source   CHECK (source IN ('','git')),
   CONSTRAINT chk_cal_entry_allday01 CHECK (all_day IN (0,1)),
   -- 아래 3개의 NULL 통과는 전부 '의도'다(NULL 이 곧 정상 상태를 뜻한다). 식이 NULL 을 낳지 않도록
@@ -669,15 +969,17 @@ CREATE TABLE cal_entry (
   -- source 는 NOT NULL 이고 나머지 두 항은 IS NULL 판정이라 이 식은 NULL 을 낳지 않는다(항상 TRUE/FALSE).
   CONSTRAINT chk_cal_entry_git      CHECK (source <> 'git' OR (end_date IS NULL AND recur_freq IS NULL))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='일정. 반복 규칙은 recur_* 로 평탄화. updated_at=낙관적 잠금 토큰(앱이 UTC 대입).';
+  COMMENT='일정. PK=(user_id,entry_no), 앱 id 는 uid. 반복은 recur_* 로 평탄화. updated_at=낙관적 잠금 토큰.';
 
 -- =====================================================================
 --  3. cal_entry_except — 반복 일정의 예외일(삭제된 회차)
 -- =====================================================================
 -- XML <recur><except> 대응. 날짜 자체가 값이라 UPDATE 개념이 없다(추가/삭제만).
+-- ★ 이 표는 자기 번호(_no)도 uid 도 갖지 않는다 — 부모 일정 안으로 접히는 값이고(G-5),
+--   앱에는 entry.recurExcept 문자열 배열로만 나타난다. 신원은 (부모, 날짜) 로 충분하다.
 CREATE TABLE cal_entry_except (
-  login_id    VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id (부모에서 전파)
-  entry_id    VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,  -- 부모 일정 id
+  user_id     SMALLINT UNSIGNED NOT NULL,   -- 소유자 (부모에서 전파)
+  entry_no    INT UNSIGNED      NOT NULL,   -- 부모 일정 번호
   except_date DATE NOT NULL,                                                          -- 건너뛸 발생 시작일. 파서가 실재 날짜만 통과시킴
   -- 중복 예외일은 의미가 없다(같은 날짜를 두 번 건너뛰어도 결과가 같다). 그래서 PK 로 못 박았고, 중복이
   -- 들어오면 ERROR 1062 다. ★ 이건 이관 전용 문제가 아니다 — 런타임 저장 경로도 같은 1062 를 맞는다.
@@ -697,7 +999,7 @@ CREATE TABLE cal_entry_except (
   --     · dedup 처럼 보이는 expandOccurrences() 의 includes 가드는 저장이 아니라 **전개(표시)** 단계다. 화면에서는
   --       중복이 안 보이므로 앱만 써서는 이 결함을 눈치챌 수 없다 — DB 를 붙이는 순간 1062 로 드러난다.
   --   근본 해법은 앱의 append 지점에 가드를 넣는 것이지만 그건 이 파일 범위 밖이다. 그때까지는 어댑터가 막는다.
-  PRIMARY KEY (login_id, entry_id, except_date),
+  PRIMARY KEY (user_id, entry_no, except_date),
   -- CASCADE 인 이유: 예외일은 부모 일정 없이는 뜻이 없는 값이고, 앱은 일정을 지울 때 이 행들을
   -- 따로 지우지 않는다 — recurExcept 는 entry 객체 **안에** 든 배열이고 deleteEntry() 는 그 객체를
   -- state.entries 에서 걷어내는 한 줄이 전부다(직접 확인). 즉 어댑터는 cal_entry 에 DELETE 한 문장만
@@ -705,18 +1007,20 @@ CREATE TABLE cal_entry_except (
   -- ERROR 1451 로 실패한다. 부모 방향(category)의 RESTRICT 와 혼동하지 말 것 — 여기는 부모 일정과
   -- 생사를 같이한다.  ※ 예전 근거였던 '§7.5 부모 트리거가 자식을 JSON 으로 흡수한다'는 2026-08-11
   -- 감사 트리거 폐지로 사라졌다. CASCADE 결정 자체는 위 이유로 그대로 유지된다.
-  CONSTRAINT fk_cal_entry_except_entry FOREIGN KEY (login_id, entry_id) REFERENCES cal_entry(login_id, id)
+  -- ★ PK 의 선두 (user_id, entry_no) 가 이 FK 의 자식 인덱스를 겸한다 — 별도 KEY 불필요.
+  CONSTRAINT fk_cal_entry_except_entry FOREIGN KEY (user_id, entry_no) REFERENCES cal_entry(user_id, entry_no)
     ON UPDATE RESTRICT ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='반복 일정의 예외일. 부모 삭제 시 CASCADE. UPDATE 없음(추가/삭제만).';
+  COMMENT='반복 일정의 예외일. PK=(user_id,entry_no,except_date). 부모 삭제 시 CASCADE. UPDATE 없음.';
 
 -- =====================================================================
 --  4. cal_entry_commit — git/svn 커밋 목록
 -- =====================================================================
 -- XML <commits><commit> 대응. 부팅 조회에서 제외하고 커밋 화면·보고서를 열 때만 지연 조회한다(§2).
+-- ★ 이 표도 자기 번호(_no)·uid 를 갖지 않는다 — 부모 안의 배열이고 신원은 (부모, seq) 다.
 CREATE TABLE cal_entry_commit (
-  login_id    VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id (부모에서 전파)
-  entry_id    VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,  -- 부모 일정 id
+  user_id     SMALLINT UNSIGNED NOT NULL,   -- 소유자 (부모에서 전파)
+  entry_no    INT UNSIGNED      NOT NULL,   -- 부모 일정 번호
   seq         SMALLINT UNSIGNED NOT NULL,                                             -- 부모 commits 배열 인덱스(0부터). 표시 순서의 유일한 근거
   hash        VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',  -- git 전체 해시(40자) 또는 svn 리비전 숫자. 중복 제거·편집 보존 키
   short_hash  VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',  -- 표시용 짧은 해시. git=%h, svn='r'+리비전
@@ -729,21 +1033,22 @@ CREATE TABLE cal_entry_commit (
   subject     MEDIUMTEXT NOT NULL DEFAULT (''),                                       -- 커밋 제목 한 줄(공백 축약·trim 됨)
   -- 폭 재판정: TEXT → MEDIUMTEXT. body 는 git 에서 그대로 받는 값이라 코드상 상한이 0 이다(memo 와 같은 이유).
   body        MEDIUMTEXT NOT NULL DEFAULT (''),                                       -- 커밋 본문(여러 줄). 길이 상한 없음. 이관 왕복 대조에 반드시 포함할 것
-  PRIMARY KEY (login_id, entry_id, seq),
-  KEY ix_cal_entry_commit_hash (login_id, hash),   -- 재수집 시 이미 있는 커밋인지 판정
-  CONSTRAINT fk_cal_entry_commit_entry FOREIGN KEY (login_id, entry_id) REFERENCES cal_entry(login_id, id)
+  PRIMARY KEY (user_id, entry_no, seq),
+  KEY ix_cal_entry_commit_hash (user_id, hash),   -- 재수집 시 이미 있는 커밋인지 판정
+  CONSTRAINT fk_cal_entry_commit_entry FOREIGN KEY (user_id, entry_no) REFERENCES cal_entry(user_id, entry_no)
     ON UPDATE RESTRICT ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='일정에 붙은 커밋 목록. 부팅 조회 제외(지연 로드). seq=배열 인덱스 0-base.';
+  COMMENT='일정에 붙은 커밋 목록. PK=(user_id,entry_no,seq). 부팅 조회 제외(지연 로드). seq=배열 인덱스 0-base.';
 
 -- =====================================================================
 --  5. cal_todo — 할 일
 -- =====================================================================
 -- XML <todo> 대응. end_date 유무로 단일/기간 할일이 갈리고 설명 저장소가 note ↔ day_note 로 바뀐다.
 CREATE TABLE cal_todo (
-  login_id     VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,   -- 소유자 login_id
-  id           VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,   -- 할 일 id. t-<uuid>(38자)
-  category_id  VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL DEFAULT NULL, -- 연결된 과제. NULL 허용
+  user_id      SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
+  todo_no      INT UNSIGNED      NOT NULL,   -- 사용자 안에서 유일한 할 일 번호. 할당 규칙은 계약 H-1
+  uid          VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,   -- 앱의 todo.id 원문. t-<uuid>(38자)
+  cat_no       INT UNSIGNED NULL DEFAULT NULL,             -- 연결된 과제 번호. NULL 허용(미분류). 앱으로는 uid 로 되돌린다(G-1)
   todo_text    VARCHAR(200) NOT NULL,                     -- 할 일 본문 한 줄(공백 축약·trim). 빈 값이면 앱이 항목 자체를 폐기. 폼 #todoInput/.te-text maxlength=200 과 정확히 같다(fromXML 절단 없음 — name 과 같은 단서)
   -- 폭 재판정: TEXT → MEDIUMTEXT. 할일 설명 textarea(#qaMemo)에 maxlength 가 없다(memo 와 같은 이유).
   note         MEDIUMTEXT   NOT NULL DEFAULT (''),        -- 단일 할일의 전역 설명(여러 줄). 기간 할일이면 항상 ''
@@ -754,13 +1059,15 @@ CREATE TABLE cal_todo (
   completed_at DATETIME(3)  NULL DEFAULT NULL,            -- 완료 시각(UTC). done=0 이면 반드시 NULL. 보고서 '한 일' 기간 필터 키
   created_at   DATETIME(3)  NOT NULL,                     -- 생성 시각(UTC)
   updated_at   DATETIME(3)  NOT NULL,                     -- 수정 시각(UTC). 낙관적 잠금 토큰이자 day_note 자식의 잠금 단위
-  PRIMARY KEY (login_id, id),
-  KEY ix_cal_todo_login_due (login_id, due),
-  KEY ix_cal_todo_login_cat (login_id, category_id),      -- 아래 복합 FK 의 자식 인덱스 겸용
-  CONSTRAINT fk_cal_todo_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id, todo_no),
+  UNIQUE KEY uq_cal_todo_uid (user_id, uid),              -- 옛 PK(login_id,id) 의 유일성 계약을 이어받는다
+  KEY ix_cal_todo_user_due (user_id, due),
+  KEY ix_cal_todo_user_cat (user_id, cat_no),             -- 아래 복합 FK 의 자식 인덱스 겸용
+  CONSTRAINT fk_cal_todo_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT fk_cal_todo_category FOREIGN KEY (login_id, category_id) REFERENCES cal_category(login_id, id)
+  CONSTRAINT fk_cal_todo_category FOREIGN KEY (user_id, cat_no) REFERENCES cal_category(user_id, cat_no)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT chk_cal_todo_uid     CHECK (uid <> ''),
   CONSTRAINT chk_cal_todo_prio    CHECK (prio IN ('normal','high')),
   CONSTRAINT chk_cal_todo_done01  CHECK (done IN (0,1)),
   -- 일정(cal_entry)과 기준 컬럼이 다르다 — 여기는 due 기준. 이름만 보고 복붙하면 정상 데이터가 3819 로 막힌다.
@@ -771,21 +1078,22 @@ CREATE TABLE cal_todo (
   --   (fromXML() `completedAt: (done && comp) ? comp : ''`). 여기를 조이면 정상 데이터가 3819 로 막힌다.
   CONSTRAINT chk_cal_todo_comp    CHECK (done = 1 OR completed_at IS NULL)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='할 일. end_date 유무로 단일/기간이 갈리고 설명 저장소가 note↔day_note 로 바뀐다.';
+  COMMENT='할 일. PK=(user_id,todo_no), 앱 id 는 uid. end_date 유무로 단일/기간이 갈린다.';
 
 -- =====================================================================
 --  6. cal_todo_day_note — 기간 할일의 날짜별 설명
 -- =====================================================================
 -- XML <dayNotes><dayNote> 대응. 보고서 '한 일' 라인의 원천. 빈 값 저장 = 행 삭제 계약.
+-- ★ 자기 번호(_no)·uid 없음 — 부모 안의 맵이고 신원은 (부모, 날짜) 다(G-5).
 CREATE TABLE cal_todo_day_note (
-  login_id  VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id (부모에서 전파)
-  todo_id   VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,  -- 부모 할 일 id
+  user_id   SMALLINT UNSIGNED NOT NULL,   -- 소유자 (부모에서 전파)
+  todo_no   INT UNSIGNED      NOT NULL,   -- 부모 할 일 번호
   note_date DATE NOT NULL,                                                          -- 설명이 붙는 날짜. 앱이 due <= date <= (end_date||due) 범위를 강제(DB 로는 표현 불가)
   -- 폭 재판정: TEXT → MEDIUMTEXT. 이 화면의 편집 textarea 는 maxlength=500 이지만 그게 상한이 아니다 —
   --   addTodo()가 단일→기간 전환 시 무제한 note 를 통째로 dayNotes[due] 로 옮긴다. note 와 상한이 같아야 한다.
   note_text MEDIUMTEXT NOT NULL,                                                    -- 그 날짜의 설명(trim 된 값). 빈 문자열이면 행을 두지 않는다
-  PRIMARY KEY (login_id, todo_id, note_date),
-  CONSTRAINT fk_cal_todo_day_note_todo FOREIGN KEY (login_id, todo_id) REFERENCES cal_todo(login_id, id)
+  PRIMARY KEY (user_id, todo_no, note_date),
+  CONSTRAINT fk_cal_todo_day_note_todo FOREIGN KEY (user_id, todo_no) REFERENCES cal_todo(user_id, todo_no)
     ON UPDATE RESTRICT ON DELETE CASCADE,
   -- DEFAULT ('') 를 주지 않은 이유: 빈 값은 '빈 설명'이 아니라 '행 삭제'다(normalizeTodoDayNotes).
   -- 기본값이 있으면 실수로 빈 행이 생겨 보고서에 빈 줄이 찍힌다.
@@ -804,7 +1112,7 @@ CREATE TABLE cal_todo_day_note (
   --     '이제 DB 가 막아 준다'는 잘못된 안심만 생긴다. 공백류 제거 책임은 어댑터(JS trim)에 둔다.
   CONSTRAINT chk_cal_todo_day_note_text CHECK (note_text <> '')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='기간 할일의 날짜별 설명. 빈 값=행 삭제 계약. 부모 삭제 시 CASCADE.';
+  COMMENT='기간 할일의 날짜별 설명. PK=(user_id,todo_no,note_date). 빈 값=행 삭제. 부모 삭제 시 CASCADE.';
 
 -- =====================================================================
 --  7. cal_room — 장소(회의실) 빠른선택 목록
@@ -813,18 +1121,35 @@ CREATE TABLE cal_todo_day_note (
 -- ★ 행 0개 = '빈 목록' 으로 확정. DEFAULT_ROOMS 재주입은 DB 전환과 함께 폐기한다
 --   (DB 에서는 '한 번도 없었음'과 '사용자가 전부 지움'을 구분할 수 없기 때문).
 --
+-- ★★ 2026-08-24 판정 — 이 표만 대리키로 가지 않는다. PK 는 (user_id, name) 을 유지한다.
+--   다른 12표와 다르게 가는 이유를 근거로 남긴다(다음 사람이 '일관성'을 이유로 되돌리지 못하게):
+--     ① 이번 전환이 고치려던 병이 여기엔 없다. 병은 'login_id 라는 외부 소유 값이 PK 라 개명이
+--        막힌다' 였고, 그 축은 user_id 로 옮기면서 이미 나았다. name 은 우리(사용자)가 소유한
+--        값이고, 이 표를 FK 로 참조하는 자식이 **하나도 없다** — 즉 값이 바뀌어도 전파할 곳이 없다.
+--     ② 넣을 uid 가 없다. 앱의 rooms 는 객체가 아니라 **문자열 배열**이다(G-5).
+--        room_no 를 만들면 앱이 영원히 읽지 않는 컬럼이 하나 늘 뿐이고, uid 를 만들려면
+--        원문이 없는 값을 지어내야 한다 — 'uid = 앱이 만든 id 원문 보존' 이라는 이 전환의 규칙 자체와 어긋난다.
+--     ③ 중복 금지가 PK 로 강제되고 있었다. 대리키로 가면 그 강제는 UNIQUE(user_id, name) 로 옮겨야
+--        하는데, 그러면 인덱스가 하나 늘고 얻는 것은 0 이다(막는 힘은 완전히 같다).
+--     ④ 제자리 UPDATE 경로가 없다(아래 ★ updated_at 절의 근거와 같다). 자연키의 고질병인
+--        'PK 를 고쳐야 하는 상황'이 이 표에는 존재하지 않는다 — 변경은 추가/삭제뿐이다.
+--     ⑤ 규모가 작다. 사용자당 최대 50행, name 40자 — 폭으로 인한 인덱스 부담이 실질적으로 0 이다.
+--   ※ 재검토 조건: 이 표를 참조하는 자식 표가 생기거나(예: 일정이 회의실을 FK 로 가리키게 되거나),
+--     '이름 바꾸기' 기능이 생기면 그때 대리키로 갈 것. 그 두 경우에는 ①·④ 가 무너진다.
+--
 -- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외).
---   근거: 이 테이블은 엔티티가 아니라 키 (login_id, name) 으로 주소지정되는 값 행이다. 이름 자체가 값이라
+--   근거: 이 테이블은 엔티티가 아니라 키 (user_id, name) 으로 주소지정되는 값 행이다. 이름 자체가 값이라
 --   '같은 행을 두 사람이 서로 다르게 고치는' 상황이 성립하지 않는다(변경 = 추가/삭제뿐, UPDATE 경로가 없다).
 --   같은 사용자의 동시 쓰기는 §3.1 의 cal_user_rev 락이 이미 직렬화한다.
 --   설계 §3.3 도 이 테이블을 낙관적 잠금 대상으로 지목하지 않았다.
 --   재검토 조건: 이 테이블에 '행을 제자리에서 수정하는' 기능(이름 변경 등)이 생기면 그때 컬럼을 추가할 것.
 CREATE TABLE cal_room (
-  login_id   VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id
-  name       VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin        NOT NULL,  -- 회의실/장소 이름. 앱이 공백축약·trim·40자 절단·중복 제거. 중복 판정이 정확 일치라 _bin
+  user_id    SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
+  name       VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 회의실/장소 이름. 앱이 공백축약·trim·40자 절단·중복 제거. 중복 판정이 정확 일치라 _bin
   sort_order INT NOT NULL DEFAULT 0,                                                 -- 표시 순서(XML 문서 순서 박제). 최대 50개
-  PRIMARY KEY (login_id, name),
-  CONSTRAINT fk_cal_room_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id, name),
+  KEY ix_cal_room_user_sort (user_id, sort_order),   -- G-5 의 ORDER BY sort_order 조회용
+  CONSTRAINT fk_cal_room_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   -- ★ 이 CHECK 는 cal_todo_day_note.chk_cal_todo_day_note_text 와 모양이 같지만 더 넓게 막는다 —
   --   name 이 utf8mb4_bin(PAD SPACE)이라 비교 시 공백을 접기 때문이다. 실측(8.4.9): name='   ' → ERROR 3819.
@@ -833,7 +1158,7 @@ CREATE TABLE cal_room (
   --   ※ 개행·탭만 있는 이름은 PAD SPACE 도 접지 않아 통과한다. 그쪽은 어댑터(JS trim)가 막는다.
   CONSTRAINT chk_cal_room_name CHECK (name <> '')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='장소(회의실) 빠른선택. name=자연키(utf8mb4_bin). 행 0개=빈 목록.';
+  COMMENT='장소(회의실) 빠른선택. PK=(user_id,name) — 이 표만 자연키 유지(표 머리 ★★ 판정). 행 0개=빈 목록.';
 
 -- =====================================================================
 --  8. cal_task_hours — (날짜 × 과제) 투입 시간
@@ -847,8 +1172,33 @@ CREATE TABLE cal_room (
 --   채우는 UI 도 자동계산도 없었고 회사 일간보고에도 들어가지 않았다. 두 자리에 공수가 있으면
 --   '어느 쪽이 맞는가'를 사람이 매번 판정해야 한다. 되살릴 조건은 헤더의 entry@hours 절에 적어 두었다.
 --
+-- ★★ 2026-08-24 판정 — 과제 참조에 **FK 를 건다**(전환 전에는 FK 가 없었다).
+--   ※ 설계 문서와 어긋난다. db/CALENDAR-TABLE-DESIGN.md §5.2 의 표는 이 컬럼에 대해
+--     "FK 걸지 않음 / 과제를 지워도 지난 공수 기록은 남아야 한다(집계 이력)" 이라고 적고 있다.
+--     **문서가 앱과 다르다.** 문서 담당이 그 줄을 고칠 것 — 아래가 직접 읽고 확인한 근거다.
+--   ① 앱은 과제를 지울 때 그 과제의 공수 행을 **함께 지운다.** deleteCategory() 가
+--      loadTaskHoursMap() 을 돌며 `delete day[id]` 하고 빈 날짜까지 정리한다(직접 확인).
+--      즉 '지워도 남는다'는 동작은 앱에 존재한 적이 없다. 문서 쪽이 사실과 달랐다.
+--   ② 키 전환으로 '미아 행'이라는 상태 자체가 **표현 불가능**해졌다. 옛 컬럼은 문자열 id 라
+--      존재하지 않는 과제를 가리키는 값을 그냥 담을 수 있었지만, cat_no 는 번호다 —
+--      존재하지 않는 과제에는 줄 번호가 없다. FK 를 안 걸어도 미아를 만들 수 없고,
+--      안 걸면 '아무 번호나 들어갈 수 있는 NOT NULL 정수' 라는 더 나쁜 상태가 된다.
+--   ③ 그래서 방향은 RESTRICT 다(CASCADE 아님). cal_entry·cal_todo 의 과제 FK 와 같은 방향으로 맞춘다.
+--      CASCADE 로 하면 과제 하나를 지울 때 회사 일간보고에 나가는 숫자가 **조용히 여러 달치 사라진다.**
+--      이 DB 에는 감사 휴지통이 없어(2026-08-11 폐지) 되돌릴 수단이 주간 mysqldump 뿐이다.
+--      RESTRICT 면 어댑터가 순서를 틀렸을 때 ERROR 1451 로 시끄럽게 멈춘다 — 이 파일의 일관된 취향이다.
+--   ★ 그 대가로 **어댑터가 지켜야 할 순서가 하나 생겼다**: 과제 삭제 트랜잭션은
+--        (1) cal_entry.cat_no·cal_todo.cat_no 를 NULL 로,
+--        (2) cal_task_hours 의 그 cat_no 행을 DELETE,
+--        (3) 마지막에 cal_category 행을 DELETE.
+--      ★ 앱 메모리에서의 순서와 다르다 — deleteCategory() 는 배열에서 과제를 먼저 걷어내고 공수를 나중에
+--        정리한다. 그 순서를 그대로 SQL 로 옮기면 (3) 이 (2) 보다 앞서 1451 로 죽는다. 순서를 뒤집을 것.
+--   ※ 사용자에게 보이는 문구와도 어긋난다(고칠 대상): 과제 삭제 확인 대화상자는 "이 과제에 속한 N개
+--     기록은 '미분류'로 변경됩니다. (기록 자체는 유지)" 라고만 말하고 공수가 함께 지워진다는 말은 없다.
+--     N 도 일정 수만 센다. 앱 담당이 문구에 공수 삭제를 명시할 것(이 파일 범위 밖).
+--
 -- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외). cal_room 과 같은 근거다:
---   엔티티가 아니라 키 (login_id, work_date, category_id) 로 주소지정되는 값 행이고, 같은 사용자의
+--   엔티티가 아니라 키 (user_id, work_date, cat_no) 로 주소지정되는 값 행이고, 같은 사용자의
 --   동시 쓰기는 §3.1 rev 락이 직렬화한다. 설계 §3.3 도 이 테이블을 지목하지 않았다.
 --   ※ 그 대가는 인정한다 — 두 PC 를 쓰는 사람이 같은 (날짜×과제) 칸을 동시에 고치면 마지막 쓰기가
 --     이긴다(실측: 스테일 UPDATE 가 ROW_COUNT=1 로 통과). 이 값은 회사 일간보고에 그대로 나간다.
@@ -858,16 +1208,34 @@ CREATE TABLE cal_room (
 --   재검토 조건: 두 자리 동시 편집으로 공수가 어긋난 사고가 한 번이라도 보고되면 updated_at 컬럼을
 --     추가하고 낙관적 잠금 대상으로 편입할 것.
 CREATE TABLE cal_task_hours (
-  login_id    VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id
+  user_id     SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
   work_date   DATE NOT NULL,                                                          -- 대상 날짜
-  category_id VARCHAR(80) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,         -- 과제 id. FK 걸지 않음 — 앱이 과제 삭제 시 이 행을 동반 정리하고, 그 밖의 경로로 생긴 미아 행은 무해
+  cat_no      INT UNSIGNED NOT NULL,        -- 과제 번호. ★ NULL 불가 — '미분류 공수' 라는 상태가 없다(계약 H-3)
   hours       DECIMAL(4,2) NOT NULL,                                                  -- 투입 시간(★시간 단위, 소수 2자리). 0 초과 24 이하. 앱은 0.5·0.25 같은 소수를 그대로 보낸다
-  PRIMARY KEY (login_id, work_date, category_id),
-  CONSTRAINT fk_cal_task_hours_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id, work_date, cat_no),
+  -- ★ PK 의 선두가 (user_id, work_date) 라 아래 FK 의 자식 인덱스가 되지 못한다 — 이 KEY 가 필요하다.
+  --   겸사겸사 과제 삭제 시의 DELETE … WHERE user_id=? AND cat_no=? 도 이 인덱스를 쓴다.
+  --   PK 를 (user_id, cat_no, work_date) 로 뒤집어 인덱스를 아끼자는 안은 기각했다 — 조회가
+  --   날짜 범위 기준이다(보고서·부팅 조회 모두 날짜로 자른다).
+  KEY ix_cal_task_hours_user_cat (user_id, cat_no),
+  CONSTRAINT fk_cal_task_hours_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  -- ★ 2026-08-24 신설. 전환 전에는 FK 가 없었고 설계 §5.2 는 그 근거를 '과제를 지워도 지난 공수
+  --   기록은 남아야 한다(집계 이력)' 라고 적었다 — **코드와 반대였다.** deleteCategory()
+  --   (task-calendar-prototype.html:4516-4521)는 과제를 지울 때 그 과제의 (날짜×과제) 공수 행을
+  --   전 날짜에서 함께 지운다("사라진 과제의 시간이 XML에 유령으로 남지 않게" — 그 함수의 주석).
+  --   즉 '남는 이력' 은 구현된 적이 없다. 그리고 키 전환이 요구를 하나 더 만들었다: cat_no 는
+  --   MAX()+1 이라 **번호가 재사용된다**(H-1). FK 가 없으면 지워진 과제의 공수 행이 나중에 같은
+  --   번호를 받은 **다른 과제**의 공수로 조용히 흡수되고, 그 숫자는 회사 일간보고로 나간다.
+  --   문자열 id(UUID) 시절에는 재사용이 없어 미아 행이 무해했지만 번호 키에서는 무해하지 않다.
+  --   CASCADE 가 아니라 RESTRICT 인 이유: 캘린더에 소프트삭제가 없어 CASCADE 는 침묵 삭제와 같은
+  --   말인데 이 값은 보고 숫자다. 앱이 이미 공수를 먼저 지우므로 정상 경로에서는 발화하지 않고,
+  --   발화하면 그건 '앱이 순서를 어겼다' 는 신호다 — 그 신호를 죽이지 않는 쪽을 택했다.
+  CONSTRAINT fk_cal_task_hours_category FOREIGN KEY (user_id, cat_no) REFERENCES cal_category(user_id, cat_no)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT chk_cal_task_hours_range CHECK (hours > 0 AND hours <= 24)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='(날짜×과제) 투입 시간(시간 단위). category_id 에 FK 없음(앱이 동반 정리). 0=행 삭제.';
+  COMMENT='(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.';
 
 -- =====================================================================
 --  9. cal_attendance — 날짜별 근태·초과시간
@@ -897,12 +1265,15 @@ CREATE TABLE cal_task_hours (
 --   다른 자리 PC 에서도 근태가 유지되고, 로컬 data.xml 에만 있던 탓에 생기던 미기록/정근 혼동이
 --   근본적으로 완화되며, 주·월 단위 근태 집계가 가능해진다.
 --
+-- ★ 이 표는 과제를 참조하지 않는다(근태는 날짜 단위다). 앱의 deleteCategory() 도 근태에는
+--   손대지 않는다 — "근태는 날짜 단위라 그대로 둔다" 는 그 함수의 주석이 근거다.
+--
 -- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외). cal_task_hours·cal_room 과 같은 근거다:
---   엔티티가 아니라 키 (login_id, work_date) 로 주소지정되는 값 행이고, 같은 사용자의 동시 쓰기는
+--   엔티티가 아니라 키 (user_id, work_date) 로 주소지정되는 값 행이고, 같은 사용자의 동시 쓰기는
 --   §3.1 rev 락이 직렬화한다. 대가도 같다 — 두 자리에서 같은 날을 고치면 마지막 쓰기가 이기고,
 --   사후 추적 수단은 주간 mysqldump + binlog 뿐이다. 재검토 조건도 같다(사고가 한 번이라도 보고되면 추가).
 CREATE TABLE cal_attendance (
-  login_id  VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id
+  user_id   SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
   work_date DATE NOT NULL,                                                          -- 대상 날짜. 하루에 한 행
   -- 값 집합이 고정된 문자열이라 _bin 이다(헤더의 그 규칙). 테이블 기본(0900_ai_ci)을 상속하면
   -- 전각 '１' 이 CHECK 를 통과해 그대로 저장되고, 회사 사이트로 그 값이 그대로 전송된다.
@@ -911,8 +1282,8 @@ CREATE TABLE cal_attendance (
   --   1=정근 2=야근 3=특근 4=외근 5=출장 6=휴가 12=반차 7=조퇴 9=지각 10=지각+야근 11=병가
   status    VARCHAR(2) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,          -- 근태 코드. ''(미기록)은 저장 금지 — 위 ★★ 계약. 미기록은 행을 지운다
   overtime  TINYINT NOT NULL DEFAULT 0,                                             -- 초과시간(시간 단위 정수). 0..11. 0 은 '초과 없음'이고 미기록이 아니다(status 와 달리 삭제 신호가 아니다)
-  PRIMARY KEY (login_id, work_date),
-  CONSTRAINT fk_cal_attendance_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id, work_date),
+  CONSTRAINT fk_cal_attendance_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   -- ★ 이 IN 목록이 곧 '미기록 = 행 없음' 의 구조적 강제다 — '' 가 목록에 없으므로 INSERT 도 UPDATE 도
   --   3819 로 거부된다. 목록을 넓힐 때 ''(또는 NULL 허용)를 끼워 넣지 말 것. 사이트에 코드가 늘어나면
@@ -930,12 +1301,13 @@ CREATE TABLE cal_attendance (
   -- 부호 있는 TINYINT 로 두는 이유: UNSIGNED 면 음수가 1264(범위 초과)로 걸려 CHECK 이름이 안 나온다.
   CONSTRAINT chk_cal_attendance_overtime CHECK (overtime >= 0 AND overtime <= 11)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='날짜별 근태·초과시간(netcus 일간보고용). ★미기록=행 없음 — status=''''는 저장 금지, 되돌리기는 DELETE.';
+  COMMENT='날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.';
 
 -- =====================================================================
 --  10. cal_user_pref — 사용자당 1행 설정(커밋 수집 작성자 + 보고서 서식)
 -- =====================================================================
 -- XML 루트 gitAuthor/svnAuthor + <prefs> 대응. 사용자당 정확히 1행이고 삭제 경로가 없다.
+-- ★ 사용자당 1행이므로 PK 는 (user_id) 다 — 대리키를 따로 두지 않는다(번호를 붙일 대상이 없다).
 --
 -- ★ 왜 서식을 여기에 넣는가(설계 §4 의 '보류' 판정을 2026-08-21 뒤집었다):
 --   브라우저 지원(로컬 파일이 없는 환경)에서도 필요한 값이라 결국 DB 로 온다. 그리고 이 표가 이미
@@ -947,13 +1319,13 @@ CREATE TABLE cal_attendance (
 --   대가는 '서식을 하나 추가할 때마다 ALTER 가 필요하다' 인데, 서식은 UI 를 함께 고쳐야 늘어나는 값이라
 --   어차피 배포가 따라간다(설계 §5.5 의 '추가 컬럼은 DEFAULT 필수' 규칙을 지킬 것).
 CREATE TABLE cal_user_pref (
-  login_id   VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id. 사용자당 1행
+  user_id    SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id). 사용자당 1행
   -- 폭 120 의 근거: 폼 #cGitAuthor/#cSvnAuthor maxlength=120. fromXML()은 루트 속성을 그대로 읽어
   -- 절단이 없으므로, 손으로 고친 XML 만 초과할 수 있다(1406 → 이관 도구 사전 스캔 대상). name 과 같은 판정.
   git_author VARCHAR(120) NOT NULL DEFAULT '',   -- Git 커밋 수집 작성자. ''=전체 커밋 대상. 형식 검증 없음(이메일 아니어도 됨)
   svn_author VARCHAR(120) NOT NULL DEFAULT '',   -- SVN 커밋 수집 작성자. git 과 독립. '속성 부재→gitAuthor 복사' 구버전 마이그레이션은 파서가 이미 해소한 뒤 들어온다
   -- ★ 이관 규칙: 여기만 '이관 시각'을 쓴다. cal_category 와 달리 복사할 원본이 아예 없다 —
-  --   toXML 은 gitAuthor/svnAuthor 를 XML '루트 속성'으로 쓸 뿐(4533-4535) 시각을 함께 적지 않고,
+  --   toXML 은 gitAuthor/svnAuthor 를 XML '루트 속성'으로 쓸 뿐 시각을 함께 적지 않고,
   --   앱 state 에도 이 두 값의 수정 시각이라는 개념이 없다(setGitAuthor() 은 save() 만 한다).
   --   사용자당 1행이고 부팅 직후 이 행을 고치는 흐름이 드물어 충돌 오탐 위험이 cal_category 만큼 크지 않다.
   -- ── 보고서 서식(XML <prefs>) ──────────────────────────────────────────────────────
@@ -993,8 +1365,8 @@ CREATE TABLE cal_user_pref (
   --   = [0,10,11,12,13,14,15,16] 이지만 파서는 10..16 정수를 전부 받으므로 CHECK 도 범위로 적는다.
   report_font_size           TINYINT NOT NULL DEFAULT 0,        -- 보고서 글꼴 크기(pt). 0=기본, 그 밖에는 10..16
   updated_at DATETIME(3)  NOT NULL,              -- 수정 시각(UTC). 낙관적 잠금 토큰
-  PRIMARY KEY (login_id),
-  CONSTRAINT fk_cal_user_pref_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_cal_user_pref_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   -- 머리기호는 파서가 빈 값을 '-'로 흡수하므로 앱에서 ''가 나올 수 없다. 구조로도 막아 둔다.
   -- (custom 쪽은 ''가 정상값이라 이 CHECK 대상이 아니다)
@@ -1012,36 +1384,55 @@ CREATE TABLE cal_user_pref (
                                               AND report_font_family NOT LIKE '% '),
   CONSTRAINT chk_cal_user_pref_font_size   CHECK (report_font_size = 0 OR report_font_size BETWEEN 10 AND 16)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식(머리기호·들여쓰기·글꼴). 삭제 경로 없음.';
+  COMMENT='사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.';
 
 -- =====================================================================
 --  11. cal_user_rev — 동시성·동기화 단일 감시점(§3.1)
 -- =====================================================================
 -- 모든 쓰기 트랜잭션의 첫 문장이 이 행을 ODKU 로 잡아 같은 사용자의 쓰기를 직렬화하고 삭제까지 감지한다.
 -- XML 원본 없음. DELETE 권한을 주지 않는다 — rev 는 단조증가여야 한다.
+-- ★ 사용자당 1행이므로 PK 는 (user_id) 다.
+--
+-- ★★ 2026-08-24 판정 — 여기에 <표>_no 카운터 컬럼을 두지 **않는다.**
+--   대안이었던 것: next_cat_no / next_entry_no / next_todo_no … 를 이 표에 두고 ODKU 로 함께 올리는 안.
+--   기각 근거:
+--     ① 값이 실제 행과 어긋날 수 있는 경로가 실재한다 — 표 단위 부분 복구, 손수정, mysqldump 를
+--        표별로 골라 넣는 복구. 카운터가 실제 MAX 보다 **낮아지면** 다음 INSERT 가 1062 로 죽거나,
+--        더 나쁘게는 다른 표의 자식이 이미 지워진 뒤라면 **번호가 재사용되어 조용히 남의 행을 가리킨다.**
+--        MAX()+1 은 데이터 자신이 근거라 그런 상태가 성립하지 않는다.
+--     ② 컬럼이 표 수만큼 늘고(번호를 갖는 표 3개 + 앞으로 늘 때마다), 표를 하나 추가할 때마다
+--        이 표를 ALTER 해야 한다. 결합이 잘못된 방향이다.
+--     ③ 성능 이득이 없다. MAX(<표>_no) 는 PK (user_id, <표>_no) 의 오른쪽 끝을 한 번 읽는
+--        인덱스 역방향 탐색이고, 어차피 같은 트랜잭션이 이 행의 락을 이미 쥐고 있어 직렬 실행이다.
+--   ★ 그래서 이 표의 유일한 역할은 그대로다 — **락과 rev.** 번호 발급의 안전성은 그 락에서 나온다.
+--     구체적 문장과 근거는 계약 H-1 에 있다. 요지: (1) 아래 ODKU 가 그 사용자의 행에 배타 락을 잡고
+--     COMMIT 까지 놓지 않으므로, (2) 그 뒤의 SELECT MAX(<표>_no)+1 과 INSERT 사이에 같은 사용자의
+--     다른 세션이 끼어들 수 없다. 전원 시딩이 강제라 그 행은 항상 존재하고, 따라서 (1) 은 항상
+--     '있는 행의 UPDATE'(= 확실한 락)이지 '중복키 삽입 경합'이 아니다 — 아래 시딩 절의 첫째 이유와 같다.
 CREATE TABLE cal_user_rev (
-  login_id VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 소유자 login_id. 배포 시 app_user 전원 시딩 필수
+  user_id  SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id). 배포 시 app_user 전원 시딩 필수
   rev      BIGINT UNSIGNED NOT NULL DEFAULT 0,                                     -- 단조증가 리비전. 시딩값 0, 상시 문장은 신규 행을 1로 만든다
-  PRIMARY KEY (login_id),
-  CONSTRAINT fk_cal_user_rev_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_cal_user_rev_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='사용자별 동시성 감시점. 쓰기 트랜잭션의 첫 문장이 ODKU 로 잡는 행. DELETE 금지.';
+  COMMENT='사용자별 동시성 감시점. 쓰기 첫 문장이 ODKU 로 잡는 행 — 번호 발급도 이 락에 기댄다(H-1). DELETE 금지.';
 
 -- =====================================================================
 --  12. cal_migration_log — data.xml → DB 1회성 이관의 재실행 방지(§8)
 -- =====================================================================
 -- 데이터 INSERT 와 같은 트랜잭션에 넣고, 행이 있으면 도구가 거부한다.
 -- XML 원본 없음(구 lsMigrated 마커의 후속). UPSERT·REPLACE·선삭제 금지.
+-- ★ 사용자당 1행이므로 PK 는 (user_id) 다.
 CREATE TABLE cal_migration_log (
-  login_id    VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,  -- 이관된 사용자. 이관은 PC 단위가 아니라 사람 단위
+  user_id     SMALLINT UNSIGNED NOT NULL,   -- 이관된 사용자. 이관은 PC 단위가 아니라 사람 단위
   source_host VARCHAR(255) NOT NULL DEFAULT '',   -- 이관을 실행한 PC 이름. 두 자리 사용자 사고 추적용
   migrated_at DATETIME(3)  NOT NULL,              -- 이관 시각(UTC)
-  PRIMARY KEY (login_id),
-  CONSTRAINT fk_cal_migration_log_user FOREIGN KEY (login_id) REFERENCES app_user(login_id)
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_cal_migration_log_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='data.xml→DB 1회성 이관 마커(사람 단위). 행 존재=이관 완료, 재실행 거부 근거.';
+  COMMENT='data.xml→DB 1회성 이관 마커(사람 단위). PK=(user_id). 행 존재=이관 완료, 재실행 거부 근거.';
 
 -- =====================================================================
 --  (cal_audit_trash — 폐지. 번호를 주지 않는다. 옛 명부에서는 12번이었다)
@@ -1070,7 +1461,7 @@ CREATE TABLE cal_migration_log (
 --     §5.5 가 '전 쓰기 봉인은 과하다'고 못박았다.
 --   · 앱 계정에는 SELECT 만 준다. 앱이 이 행을 올릴 수 있으면 차단 자체가 무의미해진다(헤더 참조).
 --
--- 사용자별 데이터가 아니라 login_id 도 FK 도 없다. 값 집합이 고정된 토큰이라 두 컬럼 모두 _bin.
+-- 사용자별 데이터가 아니라 user_id 도 FK 도 없다. 값 집합이 고정된 토큰이라 두 컬럼 모두 _bin.
 CREATE TABLE cal_schema_meta (
   k          VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 메타 키. 현재 'schema_version' 하나. 앱이 정확 비교하므로 _bin
   v          VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 값. schema_version 은 단조증가 정수 문자열
@@ -1081,9 +1472,11 @@ CREATE TABLE cal_schema_meta (
 
 -- 시딩 — 구조를 바꾸는 migrate-*.sql 은 반드시 이 값을 함께 올려야 한다(올리지 않으면 게이트가 죽은 문자가 된다).
 -- ★ 2026-08-21: 1 → 2. cal_attendance 신설 + cal_user_pref 서식 12컬럼 = 명백한 구조 변경이다.
---   올리지 않으면 §5.5 가 이 게이트를 둔 이유(새 컬럼을 모르는 구버전 클라이언트가 파괴적 연산을
---   돌리는 것)가 그대로 재현되고, 게이트는 죽은 문자가 된다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '2', UTC_TIMESTAMP(3));
+-- ★ 2026-08-24: 2 → 3. **cal_* 13표 전부의 키가 바뀌었다**(login_id/문자열 id → user_id/대리키).
+--   이번 판은 '새 컬럼을 모르는 구버전' 정도가 아니라 구버전 클라이언트의 모든 SQL 이 아예 성립하지
+--   않는 변경이다. 그런데도 이 행을 올려야 하는 이유는 같다 — 구버전이 붙었을 때 **파괴적 연산이
+--   먼저 막히는 것**이 게이트의 목적이고, 올리지 않으면 그 게이트가 죽은 문자가 된다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '3', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행
@@ -1093,21 +1486,25 @@ INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '2', UT
 --     '이미 있는 행의 UPDATE' 가 아니라 '중복키 삽입 경합' 이 되어, §3.1 이 전제한 락 획득
 --     순서가 사용자마다 달라진다. 같은 사용자가 두 자리(PC 2대)에서 동시에 첫 쓰기를 하는
 --     상황이 바로 이 설계가 막으려던 케이스다.
+--     ★ 2026-08-24 부터 이유가 하나 더 늘었다 — **번호 발급(H-1)이 이 락에 기대고 있다.**
+--       행이 없어 (1) 이 삽입 경합이 되면 MAX()+1 두 개가 같은 값을 읽을 창이 생긴다.
+--       즉 전원 시딩은 이제 '동시성 설계의 전제' 이자 '번호 유일성의 전제' 다.
 --   · 아래 릴리스 게이트('누락 0')가 배포 검증의 유일한 수단인데, 일부만 시딩하면 그 게이트가
 --     통과 여부를 판정할 기준을 잃는다.
 --   · is_active=0(휴직·퇴사 처리) 사용자도 빼지 말 것. 빼면 복직 시 조용히 누락 상태가 된다.
 --   · INSERT IGNORE 인 이유: 재실행 가능해야 하고(신규 입사자 추가 후 다시 돌림), 이미 rev 가 올라간
 --     사용자의 값을 0 으로 되돌리면 안 되기 때문. 기각된 것은 'INSERT IGNORE 후 FOR UPDATE' 조합이지
 --     INSERT IGNORE 자체가 아니다.
-INSERT IGNORE INTO cal_user_rev (login_id, rev)
-SELECT login_id, 0 FROM app_user;
+INSERT IGNORE INTO cal_user_rev (user_id, rev)
+SELECT user_id, 0 FROM app_user;
 
 -- 릴리스 게이트 — 아래 쿼리 결과가 반드시 0 이어야 배포 완료다(0 이 아니면 시딩을 다시 돌릴 것):
 --   SELECT COUNT(*) FROM app_user u
---     LEFT JOIN cal_user_rev r ON r.login_id = u.login_id
---    WHERE r.login_id IS NULL;
+--     LEFT JOIN cal_user_rev r ON r.user_id = u.user_id
+--    WHERE r.user_id IS NULL;
 --
 -- 참고 — 앱의 상시 문장(모든 쓰기 트랜잭션의 첫 문장. 이 파일에서 실행하지 않는다):
---   INSERT INTO cal_user_rev (login_id, rev) VALUES (?, 1)
+--   INSERT INTO cal_user_rev (user_id, rev) VALUES (?, 1)
 --     ON DUPLICATE KEY UPDATE rev = rev + 1;
 --   시딩값 0 과 상시 시작값 1 의 차이는 무해하다(신규 행이 1로 생성될 뿐).
+--   ★ 이 문장 뒤에 오는 것이 계약 H-1 의 번호 발급이다 — 순서를 바꾸지 말 것.

@@ -63,15 +63,69 @@ init-db.cmd -DbHost 192.168.0.50 -Port 3306
 ```
 init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 ```
-- **선행 조건**: `app_user` 가 이미 있어야 합니다(모든 `cal_*` 가 `login_id` FK 로 그 표를 가리킵니다). `init-calendar` 는 이것을 선행 조건 단계에서 확인하고 **아예 시작하지 않습니다**(코드 `1`). `mysql` 로 `schema-calendar.sql` 을 직접 돌리면 그 대신 FK 생성이 errno 1824 로 터집니다.
+- **선행 조건**: `app_user` 가 이미 있어야 하고, **그 표에 `user_id` 컬럼이 있어야** 합니다(`cal_*` 가 그 컬럼을 FK 로 가리킵니다). `init-calendar` 는 이것을 선행 조건 단계(`1-4`)에서 확인하고 어긋나면 **아무것도 만들지 않고 멈춥니다**(코드 `1`). `mysql` 로 `schema-calendar.sql` 을 직접 돌려도 **그 파일 자신의 선행조건 가드**(맨 앞 `0.` 절)가 `DROP` 보다 **먼저** 멈춰 세웁니다 — 실측: 기존 `cal_*` 가 살아남고 에러 메시지가 *"중단: app_user.user_id 없음 - migrate-2026-08-24-user-id.sql 먼저"* 로 나옵니다(`ERROR 1146`). 두 겹인 이유는 러너를 안 거치는 사람이 실재하기 때문입니다.
+  > **⚠️ 그 가드는 `mysql --force` 하나로 무력화됩니다.** `--force` 는 에러가 나도 계속 진행하므로
+  > 가드 다음 줄의 `DROP TABLE` 이 그대로 돕니다. **이 파일을 돌릴 때 `--force` 를 붙이지 마세요.**
+  > **무엇을 보는가 — '컬럼이 있나' 하나가 아닙니다**(`init-calendar.ps1` 의 `1-4`·`1-4b`가 정본):
+  > · `app_user.user_id` 가 **존재**하는가 — 없으면 지금 PK 가 무엇인지까지 찍고, **먼저 적용할 파일 이름**
+  >   (`migrate-2026-08-24-user-id.sql` / 새 DB 라면 `taskmgr-company-data\apply.cmd`)을 알려 주고 멈춥니다.
+  > · **타입이 글자 하나까지 같은가** — `schema-calendar.sql` 이 선언한 `user_id` 타입을 파일에서 읽어
+  >   실제 컬럼과 대조합니다. InnoDB 는 폭·부호가 다르면 FK 를 만들지 않습니다.
+  > · **`NOT NULL` 인가**, **PK/UNIQUE 인덱스가 있는가** — FK 의 부모 컬럼은 인덱스의 선두여야 합니다.
+  > · (`1-4b`) `login_id` 가 **여전히 UNIQUE 인가** — 여기서는 멈추지 않고 **경고**만 합니다.
+  >   `login_id` 는 이제 FK 대상이 아니지만 로그인 입구로 남고, 중복되면 앱이 남의 캘린더를 열 수 있습니다.
+  > **★ 2026-08-24 — 선행 조건이 '표가 있는가' 에서 '표에 그 컬럼이 있는가' 로 좁아졌습니다.**
+  > `cal_*` 의 소유자 FK 대상이 `app_user.login_id` → **`app_user.user_id`(대리키)** 로 바뀌었기 때문입니다
+  > (설계 [`../CALENDAR-TABLE-DESIGN.md`](../CALENDAR-TABLE-DESIGN.md) **§5.2**).
+  > **`app_user` 쪽 DDL 은 이 저장소에 없습니다** — 실명 89명과 함께 별도 비공개 저장소
+  > (`taskmgr-company-data/01-schema-users.sql`)에서 관리합니다. **그쪽을 먼저 적용**하세요.
+  > `app_user` 는 있는데 `user_id` 가 없는 서버(전환 전에 만든 서버)가 그 대상입니다. **가드가 없다면**
+  > `schema-calendar.sql` 은 `cal_*` 를 전부 `DROP` 한 **뒤에** 첫 `CREATE TABLE` 의 FK 에서 죽습니다 —
+  > DDL 은 롤백이 없으므로 `cal_*` 가 0개인 **반파** 상태가 되고, `cal_user_rev` 89행(§3.1·계약 H-1 의
+  > 전제)이 그 자리에서 사라집니다. 그래서 **두 겹으로** 막습니다: `init-calendar` 의 선행 조건 단계와
+  > `schema-calendar.sql` 자신의 `0.` 가드(둘 다 `DROP` 전).
+  > · **표 개수는 바뀌지 않았습니다(여전히 `cal_*` 13개)** — 바뀐 것은 각 표의 키입니다.
+  > · 캘린더 트랙의 전환일 뿐 **과제 트랙(`init-db`)은 대상이 아닙니다.** 그쪽 자연키 PK 는
+  >   `ON UPDATE CASCADE` 가 실제로 도는 정상 설계입니다(실측 근거는 설계 **§5.6**).
 - 앱 계정 비번은 묻지 않습니다 — 이 키트는 **계정을 만들지 않고 권한만 줍니다**(비번이 두 파일에 흩어지는 것을 피하려고 `create-app-user.sql` 과 역할을 갈랐습니다).
 
 ### 배포 순서 — `schema` → `grants` (바꾸지 마세요)
 
 `init-calendar` 가 이 순서로 돌립니다. 손으로 돌릴 때도 같은 순서여야 합니다:
 
+0. **(이 키트 밖) `app_user` — `user_id` 컬럼까지 갖춘 상태.** `cal_*` 의 FK 대상이라 없으면 1의 FK 생성이
+   errno 1824 입니다. **`init-calendar` 는 이것을 확인만 하고 만들지 않습니다**(코드 `1` 로 멈춤).
+   **여기부터 경로가 둘로 갈립니다 — 어느 쪽인지 먼저 판정하세요:**
+
+   ```sql
+   -- 지금 DB 가 어느 쪽인가 (한 줄이라도 나오면 '기존 DB')
+   SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA='taskmgr' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';
+   ```
+
+   | | 상태 | 0 단계에서 할 일 |
+   |---|---|---|
+   | **신규 DB** | `app_user` 가 아예 없다 | 비공개 저장소 `taskmgr-company-data` 의 **`apply.cmd`**(`01-schema-users.sql` → `03-seed-users.sql` …). 처음부터 `user_id` 가 있는 표가 만들어집니다 |
+   | **기존 DB** | `app_user` 는 있는데 **PK 가 `login_id`** 이고 `user_id` 가 없다 | **`migrate-2026-08-24-user-id.sql` 을 먼저 적용**합니다(대리키 신설 + `login_id` UNIQUE 강등). `01-schema-users.sql` 을 그냥 다시 돌리면 **`DROP TABLE app_user` 로 실명 89명이 사라집니다** — 재실행 안전이 아닙니다 |
+
+   > **★ 이 단계를 건너뛰면 무엇이 막아 주는가 — 두 겹입니다. 둘 다 `DROP` 보다 앞에 있습니다.**
+   > `schema-calendar.sql` 은 `cal_*` 를 전부 `DROP` 한 **뒤에** 첫 `CREATE TABLE` 의 FK 를 만나는
+   > 구조라, 막는 것이 없으면 *"옛 표는 이미 지워졌고 새 표는 FK 에서 멈춘"* **반파**가 됩니다
+   > (DDL 은 롤백이 없습니다). 그래서 둘로 막습니다:
+   > · `init-calendar.ps1` 선행 조건 `1-4` — 코드 `1` 로 멈추고 적용할 파일 이름을 찍습니다.
+   > · `schema-calendar.sql` 자신의 `0.` 가드 — 러너를 안 거치고 `mysql` 로 직접 돌려도 멈춥니다
+   >   (실측: 기존 `cal_*` 가 살아남고 `ERROR 1146` 메시지에 *"migrate-2026-08-24-user-id.sql 먼저"*).
+   > **⚠️ 단, `mysql --force` 를 붙이면 두 번째 겹이 무력화됩니다** — 붙이지 마세요.
+   > 그리고 **0 단계는 사람이 먼저 하는 것이 정답**입니다. 스크립트는 막아 줄 뿐 대신 해 주지 않습니다.
+   > ※ 실 `taskmgr` 은 이 문서를 쓰는 시점에 **기존 DB 쪽**입니다(`app_user` PK = `login_id` — 직접 확인).
 1. **`schema-calendar.sql`** — 표가 없으면 GRANT 를 걸 대상이 없습니다(없는 표에 GRANT 는 `ERROR 1146`).
 2. **`grants-calendar.sql`** — 계정이 없으면 `ERROR 1410` 으로 시끄럽게 멈춥니다(의도. 조용히 건너뛰면 앱이 배포 후 첫 조회에서 `ERROR 1142` 로 죽습니다).
+
+> **2026-08-24 — `0` 은 새 단계가 아니라 원래 있던 선행 조건을 번호로 드러낸 것입니다.**
+> `cal_*` 는 처음부터 `app_user` 를 FK 로 가리켰습니다. 달라진 것은 **가리키는 컬럼**이
+> `login_id` 에서 **`user_id`** 로 바뀌어, *"표가 있으면 된다"* 가 더 이상 참이 아니라는 점입니다
+> (설계 §5.2). **`init-calendar` 의 종료코드 계약은 그대로입니다** — 이 실패도 기존 `1` 입니다.
+> 값을 새로 만들지 않았습니다(아래 종료코드 표의 ★ 경고와 같은 이유).
 
 > **2026-08-11 — 세 단계였고 가운데가 `triggers-calendar.sql` 이었습니다.** 그 단계에는
 > *"반드시 grants 보다 먼저 — 3의 `DELETE` 부여를 상쇄하는 근거가 이 트리거"* 라는 강한 주의가
@@ -117,6 +171,15 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 
 > **2026-08-11.** 이 절에는 게이트 항목으로 *'트리거 실재'* 가, 육안 확인으로 *'`cal_audit_trash` 조회·삭제와 `DROP TRIGGER` 가 1142 로 거부되는지'* 가 적혀 있었습니다. 감사 트리거와 그 표가 폐기돼(설계 §7.5) 확인할 대상 자체가 없습니다. **게이트가 봐야 할 것이 하나 뒤집혔습니다** — 트리거가 *있는지* 가 아니라 `cal_*` 트리거가 **하나도 없는지**(기대값 0)입니다. 남아 있으면 폐기 전에 만든 DB 를 그대로 쓰고 있다는 뜻입니다.
 >
+> **2026-08-24 — 게이트가 봐야 할 것이 하나 늘었습니다: `cal_*` 에 `login_id` 컬럼이 하나도 없어야 합니다**(기대값 0).
+> 남아 있으면 대리키 전환(설계 §5.2) 전에 만든 DB 를 그대로 쓰고 있다는 뜻입니다 —
+> 표 개수(13)와 FK 개수만 보는 게이트는 **이 상태를 통과시킵니다**(개수가 같기 때문입니다).
+> ```sql
+> SELECT TABLE_NAME FROM information_schema.COLUMNS
+>  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'cal\_%' AND COLUMN_NAME = 'login_id';
+> ```
+> **개수가 아니라 이름을 보는 검사**라는 점이 핵심입니다. 표 명부를 셀 때 겪은 것과 같은 함정입니다.
+
 > **백업은 이 게이트가 보지 않습니다.** 별도 도구라서입니다 — 아래 '백업' 절의 확인을 따로 하세요.
 
 > ⚠️ `init-calendar`/`schema-calendar.sql` 도 **멱등 재구축이라 기존 `cal_*` 를 DROP** 합니다(최초 1회 구축용). 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 사라집니다. 운영 중 구조 변경은 별도 `migrate-*.sql` 로 하세요.
@@ -248,7 +311,11 @@ init-calendar.cmd -DbHost <새서버>    # 캘린더 구조 + 권한 (app_user �
 mysql -u root -p -h <새서버> taskmgr < taskmgr-data.sql   # 데이터
 # 위젯: DeployConfig.DbHost 를 새 서버로 바꿔 재빌드
 ```
-- 두 스크립트의 **순서가 있습니다** — `cal_*` 가 `app_user` 를 FK 로 가리키므로 그 표가 먼저 있어야 합니다.
+- 두 스크립트의 **순서가 있습니다** — `cal_*` 가 `app_user.user_id` 를 FK 로 가리키므로 **그 컬럼까지 갖춘 `app_user`** 가 먼저 있어야 합니다. `app_user` 자체는 이 키트가 만들지 않습니다(비공개 저장소 `taskmgr-company-data` 의 `apply.cmd`). 위 '배포 순서' 의 단계 `0`.
+  - **새 서버로 옮기는 경우**는 대개 '신규 DB' 경로입니다 — `apply.cmd` 로 사용자 표를 세우면 됩니다.
+    다만 **덤프를 먼저 붓고 그 위에 구축하는 순서**라면 그 덤프가 옛 `app_user`(PK=`login_id`)를 되살려
+    놓았을 수 있습니다. 그때는 새 서버에서도 **`migrate-2026-08-24-user-id.sql` 이 먼저**입니다.
+    판정 쿼리는 위 '배포 순서' 단계 `0` 의 표에 있습니다 — 눈으로 짐작하지 말고 한 번 돌려 보세요.
 - **이관 직후 새 서버에서 `backup-taskmgr.cmd -Install` 을 돌리세요.** 백업은 구조에 딸려 오지 않습니다(별도 도구·스케줄러 등록). 아래 '백업' 절.
 - 캘린더 데이터(`data.xml`)는 이 dump/restore 경로가 아니라 **1회성 이관 도구**로 옮깁니다(설계 §8. `cal_migration_log` 가 재실행을 막습니다).
 

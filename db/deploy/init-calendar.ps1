@@ -3,7 +3,9 @@
 
   하는 일(순서):
     1) mysql.exe 찾기 → 관리자 비번 입력 → 임시 .cnf 로 접속
-    2) 선행 조건 — DB / app_user / GRANT 대상 테이블 / 서버 버전 / login_id 타입·콜레이션
+    2) 선행 조건 — DB / app_user / GRANT 대상 테이블 / 서버 버전 / app_user.user_id 타입·인덱스
+       ★ 2026-08-24 키 전환: cal_* 13표의 소유자 키가 login_id(VARCHAR) → user_id(SMALLINT UNSIGNED,
+         app_user 의 대리키) 로 바뀌었다. app_user 에 user_id 가 없으면 아무것도 만들지 않고 멈춘다.
     3) 이미 cal_* 이 있으면 행 수를 보여주고 물어봄(기본 '아니오'. -Force 로만 무인 진행)
     4) schema-calendar.sql   → cal_* 전체 + cal_schema_meta 시딩 + cal_user_rev 전원 시딩
     5) grants-calendar.sql   → 앱 계정 권한 (계정이 없으면 건너뛰고 '미완'(코드 4)으로 끝난다)
@@ -46,8 +48,8 @@
 
   ⚠️ 기존 테이블(app_user/org_unit/title_code/project/customer/section_code/status_code)에는
      SELECT 만 한다. 이 스크립트가 직접 내는 문장 중 읽기가 아닌 것은 단 하나 —
-     게이트의 '일부러 위반하는 INSERT' 이고, 그것도 cal_task_hours 에 넣고 곧바로 롤백한다
-     (그 INSERT 의 login_id 는 app_user 에서 SELECT 로 한 명을 읽어 온다. 읽기다).
+     게이트의 '일부러 위반하는 INSERT' 이고, 그것도 cal_attendance 에 넣고 곧바로 롤백한다
+     (그 INSERT 의 user_id 는 app_user 에서 SELECT 로 한 명을 읽어 온다. 읽기다).
 
      실행 전 .sql 검사는 '허용 목록(whitelist)' 이다. 주석·문자열을 인식하는 분해기로 문장을
      세미콜론 단위로 자른 뒤, 아래 형태가 아닌 문장이 하나라도 있으면 아예 시작하지 않는다:
@@ -193,11 +195,19 @@ $scriptDir   = Split-Path -Parent $PSCommandPath
 $schemaFile  = Join-Path $scriptDir "schema-calendar.sql"
 $grantsFile  = Join-Path $scriptDir "grants-calendar.sql"
 
+# ★ 기존 DB 를 새 키로 옮기는 마이그레이션 파일. 선행 조건 1-4 가 실패했을 때 사람에게 이름을 말해 준다.
+#   파일 이름을 문자열로 박아 두되, 폴더에 실제로 있으면 전체 경로를 보여 준다(없으면 이름만 말한다) —
+#   있지도 않은 경로를 '여기 있다'고 안내하면 사람이 그 자리에서 한 번 더 막힌다.
+$MIGRATE_FILE = "migrate-2026-08-24-user-id.sql"
+$MIGRATE_HINT = $MIGRATE_FILE
+$migPath = Join-Path $scriptDir $MIGRATE_FILE
+if(Test-Path $migPath){ $MIGRATE_HINT = $migPath }
+
 # ============================================================================
 #  SQL 문장 분해기 — 주석·문자열을 인식해 세미콜론으로 자른다
 # ============================================================================
 # 왜 정규식 한 줄로 안 하는가: 이 스키마는 주석 안에 세미콜론이 들어 있고
-#   (예: 릴리스 게이트 쿼리 '... WHERE r.login_id IS NULL;'), 문자열 안에 주석 기호가 들어 있다
+#   (예: 릴리스 게이트 쿼리 '... WHERE r.user_id IS NULL;'), 문자열 안에 주석 기호가 들어 있다
 #   (예: DEFAULT '#5b6b7d', REGEXP '^#[0-9a-fA-F]{6}$'). 어느 한쪽을 단순 치환하면 문장 경계가
 #   어긋나 허용 목록 검사가 헛돈다. 반환값은 주석이 제거되고 공백이 한 칸으로 접힌 문장 배열이다.
 function Split-SqlStatements([string]$text){
@@ -283,6 +293,21 @@ $grantsText = Get-Content $grantsFile -Raw -Encoding UTF8
 # ============================================================================
 $schemaStmts = Split-SqlStatements $schemaText
 if($schemaStmts.Count -lt 2){ Die "schema-calendar.sql 에서 SQL 문장을 거의 못 찾았습니다($($schemaStmts.Count)개) — 파일이 손상됐거나 인코딩이 다릅니다." }
+
+# ★ 2026-08-24 신설: schema-calendar.sql 머리의 '선행조건 가드' 를 허용 목록에 넣는다.
+#   그 가드가 하는 일: information_schema 를 읽어 **실행할 문장 자체를 문자열로 고른** 뒤
+#   PREPARE/EXECUTE 한다(MySQL 은 스토어드 프로그램 밖에서 IF/SIGNAL 을 못 쓴다).
+#   조건 충족이면 'DO 0'(no-op), 불충족이면 없는 테이블을 SELECT 해 일부러 ERROR 1146 을 낸다.
+#   ★ 허용 목록에 PREPARE 를 들이는 것은 '실행 시점에 정해지는 SQL' 을 들이는 것이라, 문장 형태만
+#     보는 이 검사로는 원래 무엇이 도는지 알 수 없다. 그래서 **변수의 출처를 추적**해 닫는다:
+#       · @변수 := IF(<변수 비교식>, 'DO 0', 'SELECT 1 FROM `…`')  ← 두 리터럴이 이 둘뿐인지 확인
+#       · PREPARE 는 그렇게 만들어진 변수만 허용(위 형태로 대입된 적 없는 변수면 Die)
+#       · EXECUTE 는 그렇게 PREPARE 된 이름만 허용. USING 은 형태에서 배제(정규식이 안 받는다)
+#     즉 EXECUTE 가 돌릴 수 있는 문장은 'DO 0' 아니면 '반드시 실패하는 SELECT' 둘뿐임이
+#     파일을 읽는 것만으로 확정된다. 조건식도 변수·숫자·비교만 허용해 함수 호출을 배제한다.
+$safeExecVars   = @()   # 위 IF 형태로 대입된 변수(= PREPARE 해도 되는 것)
+$unsafeVars     = @()   # 그 밖의 대입을 한 번이라도 받은 변수
+$preparedSafe   = @{}   # PREPARE 이름 → 안전 확인 여부
 foreach($s in $schemaStmts){
   $head = if($s.Length -gt 140){ $s.Substring(0,140) + " …" } else { $s }
   $sc = Blank-SqlLiterals $s      # 키워드 판정은 리터럴을 비운 사본으로 한다(위 함수 주석 참조)
@@ -301,6 +326,46 @@ foreach($s in $schemaStmts){
   }
   if($s -match '^INSERT\s+INTO\s+`?cal_schema_meta`?\s*\([^()]*\)\s*VALUES\s*\('){ continue }
   if($s -match '^INSERT\s+IGNORE\s+INTO\s+`?cal_user_rev`?\s*\([^()]*\)\s*SELECT\s+.+\s+FROM\s+`?app_user`?$'){ continue }
+
+  # --- 선행조건 가드(위 ★ 참조) -------------------------------------------------
+  # (가) 조건 읽기 — information_schema 만 읽는 COUNT 대입. 읽기 전용이라 그 자체로는 무해하다.
+  #      다만 이 변수는 PREPARE 대상이 될 수 없다($unsafeVars 로 못 박는다) — 값이 숫자든 무엇이든
+  #      '파일만 보고 무엇이 실행될지 안다' 는 보장이 깨지기 때문이다.
+  $gm1 = [regex]::Match($s,'(?i)^SET\s+@([A-Za-z0-9_]+)\s*:=\s*\(\s*SELECT\s+COUNT\(\*\)\s+FROM\s+information_schema\.[A-Za-z0-9_]+\s+WHERE\s+.+\)$')
+  if($gm1.Success){
+    if($sc -match '(?i)\b(DROP|DELETE|INSERT|UPDATE|REPLACE|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|CALL|LOAD|PREPARE|EXECUTE)\b'){ Die "schema-calendar.sql 의 가드 대입문에 읽기가 아닌 낱말이 있습니다: $head" }
+    $v = $gm1.Groups[1].Value
+    if($unsafeVars -notcontains $v){ $unsafeVars += $v }
+    continue
+  }
+  # (나) 실행할 문장 고르기 — 리터럴이 'DO 0' 과 'SELECT 1 FROM `…`' 둘뿐이어야 한다.
+  #      조건식은 변수·숫자·비교(AND/OR)만. 괄호도 따옴표도 없으므로 함수 호출이 들어갈 자리가 없다.
+  $gm2 = [regex]::Match($s,'(?i)^SET\s+@([A-Za-z0-9_]+)\s*:=\s*IF\s*\(\s*([^(),'']+?)\s*,\s*''DO 0''\s*,\s*''SELECT 1 FROM `[^`'']*`''\s*\)$')
+  if($gm2.Success){
+    $cond = $gm2.Groups[2].Value
+    if($cond -notmatch '^[@A-Za-z0-9_= <>]+$'){ Die "schema-calendar.sql 의 가드 조건식이 허용 형태가 아닙니다(변수·숫자·비교만): [$cond] — $head" }
+    $v = $gm2.Groups[1].Value
+    if($safeExecVars -notcontains $v){ $safeExecVars += $v }
+    continue
+  }
+  # (다) PREPARE — (나) 로 만들어진 변수만.
+  $gm3 = [regex]::Match($s,'(?i)^PREPARE\s+([A-Za-z0-9_]+)\s+FROM\s+@([A-Za-z0-9_]+)$')
+  if($gm3.Success){
+    $v = $gm3.Groups[2].Value
+    if($safeExecVars -notcontains $v -or $unsafeVars -contains $v){ Die "schema-calendar.sql 이 출처를 확인할 수 없는 변수를 PREPARE 합니다: @$v — 실행 시점에 무엇이 도는지 파일만 보고 알 수 없으므로 실행하지 않습니다: $head" }
+    $preparedSafe[$gm3.Groups[1].Value] = $true
+    continue
+  }
+  # (라) EXECUTE — (다) 로 준비된 이름만. USING 은 이 형태가 받지 않는다.
+  $gm4 = [regex]::Match($s,'(?i)^EXECUTE\s+([A-Za-z0-9_]+)$')
+  if($gm4.Success){
+    if(-not $preparedSafe.ContainsKey($gm4.Groups[1].Value)){ Die "schema-calendar.sql 이 준비되지 않은(또는 확인되지 않은) 문장을 EXECUTE 합니다: $head" }
+    continue
+  }
+  # (마) DEALLOCATE — 준비 목록에서 내린다. 내린 이름을 다시 EXECUTE 하면 위 (라) 가 잡는다.
+  $gm5 = [regex]::Match($s,'(?i)^DEALLOCATE\s+PREPARE\s+([A-Za-z0-9_]+)$')
+  if($gm5.Success){ $preparedSafe.Remove($gm5.Groups[1].Value); continue }
+
   Die "schema-calendar.sql 에 허용 목록에 없는 문장이 있습니다 — 실행하지 않습니다: $head"
 }
 
@@ -331,6 +396,21 @@ if($expGrants.Count -lt 1){ Die "grants-calendar.sql 에서 GRANT 문을 하나�
 #  기대값 파싱 — 주석을 걷어낸 문장에서만 뽑는다(주석 속 예시 SQL 이 섞이지 않게)
 # ============================================================================
 $schemaCode = ($schemaStmts -join ";`n")
+# 문자열 리터럴(COMMENT='…')까지 비운 사본. '실행되는 DDL 이 무엇을 말하는가'만 보는 검사에 쓴다.
+$schemaCodeBare = Blank-SqlLiterals $schemaCode
+
+# ★ 2026-08-24 키 전환 — 실행 문장에 옛 소유자 키가 남아 있으면 아예 시작하지 않는다.
+#   왜 파일에서 먼저 보는가: cal_* 는 이 파일이 만든다. 여기에 login_id 가 한 줄이라도 남아 있으면
+#   그 표는 옛 키로 만들어지고, 앱(=user_id 로 조회)은 그 표에서 ERROR 1054 를 받는다. 그런데 게이트는
+#   '표가 생겼다'만 보므로 초록불이 그대로 뜬다 — 전환이 절반만 끝난 상태가 배포까지 간다.
+#   주석은 대상이 아니다(분해기가 이미 걷어냈다). COMMENT='…' 안의 설명 문구도 대상이 아니다(위 사본).
+$legacyDecl = @()
+foreach($k in @('login_id','category_id','entry_id','todo_id')){
+  if($schemaCodeBare -match ('(?i)\b' + $k + '\b')){ $legacyDecl += $k }
+}
+if($legacyDecl.Count -gt 0){
+  Die "schema-calendar.sql 의 **실행 문장**에 옛 키 컬럼이 남아 있습니다: $($legacyDecl -join ', '). 2026-08-24 키 전환(login_id/문자열 id → user_id/<표>_no)이 절반만 끝난 상태입니다 — 이대로 만들면 앱의 SQL 이 ERROR 1054 로 죽습니다(주석에 남은 것은 여기서 걸리지 않습니다)."
+}
 
 $expTables = @()
 foreach($m in [regex]::Matches($schemaCode,'(?i)\bCREATE\s+TABLE\s+`?([A-Za-z0-9_]+)`?')){ $expTables += $m.Groups[1].Value }
@@ -343,6 +423,32 @@ $tblExtra   = @($expTables    | Where-Object { $DESIGN_TABLES -notcontains $_ })
 if($tblMissing.Count -gt 0){ Die "설계 §5.1 명부에 있는 표가 schema-calendar.sql 에 없습니다: $($tblMissing -join ', '). 명부가 바뀐 것이면 이 스크립트의 `$DESIGN_TABLES 도 함께 고치세요." }
 if($tblExtra.Count -gt 0){   Die "schema-calendar.sql 에 명부에 없는 표가 있습니다: $($tblExtra -join ', '). 설계 §5.1 과 이 스크립트의 `$DESIGN_TABLES 를 먼저 정하세요." }
 if($expTables.Count -ne $DESIGN_TABLES.Count){ Die "표 개수 불일치 — 기대 $($DESIGN_TABLES.Count)개 / 스키마 $($expTables.Count)개." }
+
+# ============================================================================
+#  ★ 소유자 키(user_id) 기대값 — 2026-08-24 키 전환
+# ============================================================================
+# 두 가지를 파일에서 뽑는다. 둘 다 '박아 두지 않고 파일이 정본' 원칙 그대로다.
+#   $expUserType      : cal_* 가 선언하는 user_id 의 타입. app_user.user_id 와 **글자 하나까지** 같아야
+#                       FK 가 선다(InnoDB 는 타입·부호가 다르면 errno 3780/150 으로 거부한다).
+#   $expUserIdTables  : user_id 컬럼을 갖는 cal_* 표 목록. 게이트가 DB 실물과 대조해 '전환 누락'을 잡는다.
+#                       (cal_schema_meta 는 사용자별 데이터가 아니라 이 목록에 없다 — 그 사실까지 대조된다)
+$userTypes = @()
+foreach($m in [regex]::Matches($schemaCodeBare,'(?i)\buser_id\s+((?:TINY|SMALL|MEDIUM|BIG)?INT)\s*(?:\(\s*\d+\s*\))?\s*(UNSIGNED)?\s+NOT\s+NULL')){
+  $t = $m.Groups[1].Value.ToLower()
+  if($m.Groups[2].Success){ $t += ' unsigned' }
+  if($userTypes -notcontains $t){ $userTypes += $t }
+}
+if($userTypes.Count -lt 1){ Die "schema-calendar.sql 에서 user_id 컬럼 선언을 하나도 찾지 못했습니다 — 파일 형식이 바뀌었거나 키 전환이 되돌려진 것 같습니다(2026-08-24 이후 cal_* 의 소유자 키는 user_id 입니다)." }
+if($userTypes.Count -gt 1){ Die "schema-calendar.sql 안의 user_id 선언이 서로 다릅니다: $($userTypes -join ' / '). 타입이 하나라도 다르면 그 표의 FK 가 서지 않습니다 — 전부 같은 타입이어야 합니다." }
+$expUserType = $userTypes[0]
+
+$expUserIdTables = @()
+foreach($s in $schemaStmts){
+  $cm = [regex]::Match($s,'(?i)^CREATE\s+TABLE\s+`?(cal_[A-Za-z0-9_]+)`?\s*\(')
+  if(-not $cm.Success){ continue }
+  if((Blank-SqlLiterals $s) -match '(?i)\buser_id\s+((?:TINY|SMALL|MEDIUM|BIG)?INT)\b'){ $expUserIdTables += $cm.Groups[1].Value }
+}
+if($expUserIdTables.Count -lt 1){ Die "schema-calendar.sql 의 CREATE TABLE 중 user_id 를 갖는 표가 하나도 없습니다 — 키 전환 상태를 확인하세요." }
 
 $expFks = @()
 foreach($m in [regex]::Matches($schemaCode,'(?i)CONSTRAINT\s+`?([A-Za-z0-9_]+)`?\s+FOREIGN\s+KEY')){ $expFks += $m.Groups[1].Value }
@@ -484,20 +590,36 @@ try {
   if($lackTables.Count -gt 0){ Die "'$DbName' 에 다음 테이블이 없습니다: $($lackTables -join ', '). FK 대상이거나 권한 대상이라 지금 진행하면 도중에 실패합니다(taskmgr-company-data\apply.cmd 로 사용자·조직 테이블을 먼저 구축)." }
   Ok "참조 대상 테이블 확인: $($needExisting -join ', ')"
 
-  # 1-4) app_user.login_id 타입·콜레이션.
-  #   InnoDB 는 FK 양쪽 문자열 컬럼의 문자셋·콜레이션이 다르면 ERROR 3780 으로 생성 자체를
-  #   거부한다. 기대값은 schema-calendar.sql 의 login_id 선언에서 그대로 읽어 온다.
-  $lm = [regex]::Match($schemaCode,'(?i)login_id\s+(VARCHAR\s*\(\s*\d+\s*\))\s+CHARACTER\s+SET\s+([A-Za-z0-9_]+)\s+COLLATE\s+([A-Za-z0-9_]+)')
-  if(-not $lm.Success){ Die "schema-calendar.sql 에서 login_id 컬럼 선언을 찾지 못했습니다 — 파일 형식이 바뀐 것 같습니다." }
-  $expLoginType = ($lm.Groups[1].Value -replace '\s','').ToLower()
-  $expLoginColl = $lm.Groups[3].Value
-  $actLoginType = (Q "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='login_id';").ToLower()
-  $actLoginColl =  Q "SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='login_id';"
+  # 1-4) ★ app_user.user_id — cal_* 13표 전부의 소유자 키(2026-08-24 키 전환).
+  #   옛 판은 여기서 login_id 의 타입·콜레이션을 봤다. 그 컬럼은 이제 cal_* 어디에서도 참조되지 않는다
+  #   (app_user 안의 UNIQUE 로 남아 외부 로그인 입구 노릇만 한다). 지금 FK 가 매달린 곳은 user_id 다.
+  #   무엇을 보는가 — 셋 다 '없으면 CREATE 가 도중에 죽는' 조건이다:
+  #     ① 컬럼 실재. 없으면 cal_* 의 app_user 참조 FK 가 전멸한다(errno 150). 기존 DB 는 아직
+  #        login_id 가 PK 인 상태이므로, 여기가 '마이그레이션을 먼저 돌리라'고 말하는 자리다.
+  #     ② 타입 일치. InnoDB 는 FK 양쪽 정수 컬럼의 폭·부호가 다르면 생성을 거부한다
+  #        (SMALLINT UNSIGNED vs SMALLINT 도 다른 타입이다). 기대값은 schema-calendar.sql 이 정본이다.
+  #     ③ 부모 쪽 인덱스. FK 의 부모 컬럼은 인덱스의 **선두**여야 한다. PK 도 UNIQUE 도 아니면 errno 150.
+  #   ★ 왜 시작 전인가: schema-calendar.sql 은 cal_* 를 DROP 하고 다시 만든다. 조건이 어긋난 채
+  #     실행하면 '옛 표는 지워졌는데 새 표는 못 만든' 반파 상태가 된다. 그래서 접속 직후 여기서 막는다.
   $nUserFk = ([regex]::Matches($schemaCode,'(?i)REFERENCES\s+`?app_user`?\s*\(')).Count
-  if($actLoginType -eq ""){ Die "app_user.login_id 컬럼이 없습니다." }
-  if($actLoginType -ne $expLoginType){ Die "app_user.login_id 타입 불일치 — schema-calendar.sql 은 $expLoginType 를 전제하는데 실제는 $actLoginType 입니다. cal_* 의 app_user 참조 FK $nUserFk 개가 전부 실패합니다." }
-  if($actLoginColl -ne $expLoginColl){ Die "app_user.login_id 콜레이션 불일치 — 기대 $expLoginColl / 실제 $actLoginColl. InnoDB 는 콜레이션이 다르면 FK 를 ERROR 3780 으로 거부합니다(FK $nUserFk 개 전멸)." }
-  Ok "app_user.login_id = $actLoginType / $actLoginColl (schema-calendar.sql 전제와 일치)"
+  $actUserType = (Q "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';").ToLower()
+  $actUserNull =  Q "SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';"
+  $actUserKey  =  Q "SELECT COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';"
+  if($actUserType -eq ""){
+    $actUserPk = Q "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND CONSTRAINT_NAME='PRIMARY';"
+    Die "app_user 에 user_id 컬럼이 없습니다(현재 PK: $actUserPk). 2026-08-24 키 전환으로 cal_* 13표는 전부 app_user.user_id($expUserType)를 참조합니다 — 지금 진행하면 FK $nUserFk 개가 전부 errno 150 으로 실패하고, 그 전에 옛 cal_* 는 이미 DROP 된 뒤라 반파 상태가 됩니다. 기존 DB 라면 $MIGRATE_HINT 를 먼저 적용하고, 새 DB 라면 taskmgr-company-data\apply.cmd(01-schema-users.sql)로 사용자 표를 먼저 구축하세요."
+  }
+  if($actUserType -ne $expUserType){ Die "app_user.user_id 타입 불일치 — schema-calendar.sql 은 [$expUserType] 를 전제하는데 실제는 [$actUserType] 입니다. InnoDB 는 폭·부호가 다르면 FK 를 만들지 않습니다 — cal_* 의 app_user 참조 FK $nUserFk 개가 전부 실패합니다." }
+  if($actUserNull -ne 'NO'){ Die "app_user.user_id 가 NULL 을 허용합니다 — 소유자 키에 NULL 이 들어가면 그 사람의 캘린더 행이 주인 없는 행이 됩니다(cal_* 는 전부 NOT NULL 로 만듭니다). NOT NULL 로 고치세요." }
+  if($actUserKey -ne 'PRI' -and $actUserKey -ne 'UNI'){ Die "app_user.user_id 에 PK/UNIQUE 인덱스가 없습니다(COLUMN_KEY=[$actUserKey]). FK 의 부모 컬럼은 인덱스의 선두여야 합니다 — 지금 진행하면 FK $nUserFk 개가 errno 150 으로 전멸합니다." }
+  Ok "app_user.user_id = $actUserType / $actUserKey (schema-calendar.sql 전제와 일치, app_user 참조 FK $nUserFk 개)"
+
+  # 1-4b) login_id 는 사라지지 않았다 — 외부 로그인 입구로 남는다. 없거나 유일하지 않으면 경고만 한다.
+  #   Die 가 아닌 이유: cal_* 의 생성에는 아무 영향이 없다(FK 가 걸리지 않는다). 다만 앱이 netcus 로그인
+  #   id 로 사람을 찾는 경로가 이 컬럼이라, 유일하지 않으면 다른 사람의 캘린더가 열릴 수 있다.
+  $actLoginKey = Q "SELECT COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='login_id';"
+  if($actLoginKey -eq ""){ Warn "app_user 에 login_id 컬럼이 없습니다 — 앱은 netcus 로그인 id 로 user_id 를 찾습니다(그 경로가 막힙니다)." }
+  elseif($actLoginKey -ne 'PRI' -and $actLoginKey -ne 'UNI'){ Warn "app_user.login_id 가 UNIQUE 가 아닙니다(COLUMN_KEY=[$actLoginKey]) — 같은 로그인 id 가 둘이면 앱이 남의 캘린더를 열 수 있습니다. uq_app_user_login_id 를 확인하세요." }
 
   # 1-5) project.uid 콜레이션 — FK 는 아니지만 §6 이 cal_category.project_uid 와 LEFT JOIN 한다.
   #   콜레이션이 다르면 테이블 생성은 멀쩡히 되고 나중에 조회에서 ERROR 1267 이 난다.
@@ -631,16 +753,23 @@ try {
   # 5-1) 테이블이 전부 생겼는지 + 엔진.
   #   MyISAM 이면 FOREIGN KEY 를 문법만 받고 조용히 버린다 → 아래 FK 게이트가 잡긴 하지만
   #   원인을 바로 말해 주기 위해 엔진을 따로 본다.
-  $tblRows = QRows "SELECT CONCAT(TABLE_NAME,'|',ENGINE) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME IN ($(SqlList $expTables));"
+  # ★ 2026-08-24 수정 — 조회 범위가 틀려 아래 '잔재' 검사가 죽은 문자였다.
+  #   이전판은 WHERE … TABLE_NAME IN (기대 목록) 이었다. 그러면 결과는 언제나 기대 목록의 부분집합이라
+  #   $extraTbl 이 **원리적으로 항상 비어** 있었다 — 바로 아래 주석이 '그 사고가 났다'고 적어 둔 검사가
+  #   실제로는 아무것도 보고 있지 않았다(이번 라운드 실측: 옛 cal_room 을 cal_room_legacy 로 남겨 두고
+  #   돌렸더니 이 검사는 조용했고, 새로 넣은 5-1b '옛 키 컬럼' 게이트만 그것을 잡았다).
+  #   그래서 cal_* 전체를 읽고, '기대한 것' 과 '남아 있는 것' 을 그 안에서 가른다.
+  $tblRows = QRows "SELECT CONCAT(TABLE_NAME,'|',ENGINE) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND (TABLE_NAME LIKE 'cal\_%' OR TABLE_NAME IN ($(SqlList $expTables)));"
   $gotTables = @(); $badEngine = @()
   foreach($r in $tblRows){
     $p = "$r".Split('|')
     $gotTables += $p[0]
     if($p.Count -gt 1 -and $p[1] -ne 'InnoDB'){ $badEngine += ($p[0] + '=' + $p[1]) }
   }
+  $gotExpected = @($gotTables | Where-Object { $expTables -contains $_ })
   $missTbl = @($expTables | Where-Object { $gotTables -notcontains $_ })
-  if($missTbl.Count -gt 0){ $fail += "테이블 누락 $($missTbl.Count)개: $($missTbl -join ', ') (기대 $($expTables.Count)개 / 실제 $($gotTables.Count)개)" }
-  else { Ok "테이블 $($gotTables.Count)/$($expTables.Count) 생성" }
+  if($missTbl.Count -gt 0){ $fail += "테이블 누락 $($missTbl.Count)개: $($missTbl -join ', ') (기대 $($expTables.Count)개 / 실제 $($gotExpected.Count)개)" }
+  else { Ok "테이블 $($gotExpected.Count)/$($expTables.Count) 생성" }
   # ★ 있어야 할 것만 세면 '남아 있는 것'을 못 본다. 실제로 그 사고가 났다 — 폐지된 cal_audit_trash 가
   #   DROP 목록에 없어 옛 배포분에 고아로 살아남았는데, 이 게이트가 '기대한 표가 전부 있음'만 보고
   #   초록불을 냈다. 그 상태에서 문서·GRANT 가 세는 표 수와 DB 의 실제 표 수가 하나 어긋난다
@@ -652,12 +781,41 @@ try {
   }
   if($badEngine.Count -gt 0){ $fail += "InnoDB 가 아닌 테이블: $($badEngine -join ', ') — InnoDB 가 아니면 FOREIGN KEY 가 조용히 버려집니다" }
 
+  # 5-1b) ★ 소유자 키 전수 확인 (2026-08-24 키 전환) — 두 가지를 본다.
+  #   (가) cal_* 에 옛 키 컬럼(login_id 등)이 **0건**인가.
+  #        무엇을 잡나: 전환이 절반만 끝난 상태. 파일 쪽은 이미 실행 전에 걸렀지만(위 $legacyDecl),
+  #        이 게이트는 '이 DB 에 실제로 서 있는 표'를 본다 — DROP 목록에 없어 살아남은 옛 표,
+  #        스키마 실행 뒤 누군가 ALTER 로 되살린 컬럼처럼 파일 검사가 볼 수 없는 것들이 여기서 걸린다.
+  #        왜 실패로 다루나: 옛 컬럼이 남아 있으면 앱(user_id 로 조회)과 표가 서로 다른 키를 말하는
+  #        상태이고, 그 사실은 사용자가 첫 쓰기를 하다 ERROR 1054 를 받고서야 드러난다.
+  #   (나) app_user.user_id 와 cal_*.user_id 의 타입이 **글자 하나까지** 같은가, 그리고 user_id 를
+  #        가져야 할 표가 전부 갖고 있는가(기대 목록은 schema-calendar.sql 에서 뽑는다).
+  #        타입이 다르면 FK 가 아예 서지 않으므로 5-4 도 잡긴 하지만, 거기서는 'FK 누락'으로만 보여
+  #        원인이 타입이라는 사실이 드러나지 않는다. 여기서 원인을 이름으로 말해 준다.
+  $legacyCols = QRows "SELECT CONCAT(TABLE_NAME,'.',COLUMN_NAME) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME LIKE 'cal\_%' AND COLUMN_NAME IN ('login_id','category_id','entry_id','todo_id') ORDER BY TABLE_NAME, COLUMN_NAME;"
+  if($legacyCols.Count -gt 0){
+    $fail += "★ cal_* 에 옛 키 컬럼이 $($legacyCols.Count)건 남아 있습니다: $($legacyCols -join ', ') — 2026-08-24 키 전환(login_id/문자열 id → user_id/<표>_no)이 이 DB 에서 절반만 끝났습니다. 앱의 SQL 은 user_id 로 조회하므로 그 표는 ERROR 1054 로 죽습니다"
+  } else {
+    Ok "cal_* 옛 키 컬럼(login_id 등) 0건"
+  }
+  $gotUidTables = @(QRows "SELECT TABLE_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME LIKE 'cal\_%' AND COLUMN_NAME='user_id' ORDER BY TABLE_NAME;")
+  $uidMissing = @($expUserIdTables | Where-Object { $gotUidTables -notcontains $_ })
+  if($uidMissing.Count -gt 0){ $fail += "★ user_id 컬럼이 없는 cal_* 표: $($uidMissing -join ', ') (schema-calendar.sql 은 이 표들이 user_id 를 갖는다고 선언합니다)" }
+  $badUidType = @(QRows "SELECT CONCAT(TABLE_NAME,'=',COLUMN_TYPE) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME LIKE 'cal\_%' AND COLUMN_NAME='user_id' AND LOWER(COLUMN_TYPE) <> '$expUserType' ORDER BY TABLE_NAME;")
+  if($badUidType.Count -gt 0){ $fail += "★ user_id 타입이 기대([$expUserType])와 다른 cal_* 표: $($badUidType -join ', ') — InnoDB 는 폭·부호가 다르면 app_user 참조 FK 를 만들지 않습니다" }
+  # app_user 쪽과의 대조는 선행 조건 1-4 에서 이미 했지만, 그 사이에 ALTER 가 끼어들 수 있으므로 다시 본다.
+  $actUserTypeNow = (Q "SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';").ToLower()
+  if($actUserTypeNow -ne $expUserType){ $fail += "★ app_user.user_id 타입이 [$actUserTypeNow] 입니다 — cal_* 의 [$expUserType] 와 다릅니다(FK 가 설 수 없습니다)" }
+  if($uidMissing.Count -eq 0 -and $badUidType.Count -eq 0 -and $actUserTypeNow -eq $expUserType){
+    Ok "소유자 키 타입 일치 — app_user.user_id = cal_* $($gotUidTables.Count)개 표의 user_id = $expUserType"
+  }
+
   # 5-2) ★ 설계 §3.1 릴리스 게이트 — cal_user_rev 시딩 누락 0.
   #   한 명이라도 빠지면 그 사용자는 직렬화 없이 쓰게 되고, 그 사실은 두 자리에서 동시에
   #   쓰다가 데이터가 덮여 사라진 뒤에야 드러난다. 경고가 아니라 실패로 처리한다.
   $nUser = Q "SELECT COUNT(*) FROM app_user;"
   $nRev  = Q "SELECT COUNT(*) FROM cal_user_rev;"
-  $missRev = Q "SELECT COUNT(*) FROM app_user u LEFT JOIN cal_user_rev r ON r.login_id = u.login_id WHERE r.login_id IS NULL;"
+  $missRev = Q "SELECT COUNT(*) FROM app_user u LEFT JOIN cal_user_rev r ON r.user_id = u.user_id WHERE r.user_id IS NULL;"
   if($missRev -ne '0'){ $fail += "★ cal_user_rev 시딩 누락 $missRev 명 (app_user $nUser / cal_user_rev $nRev). 이 사람들은 §3.1 직렬화 없이 쓰게 됩니다 — schema-calendar.sql 끝의 INSERT IGNORE 를 다시 돌리세요" }
   else { Ok "cal_user_rev 시딩 누락 0 (app_user $nUser 명 / rev $nRev 행)" }
 
@@ -732,42 +890,49 @@ try {
 
   # 이름이 붙은 것과 강제되는 것은 다르다(8.0.16 미만은 파싱만 하고 무시).
   #
-  # ★ 시험 대상을 cal_task_hours 로 옮겼다(2026-08-11). 예전 대상은 cal_audit_trash 였고 그 근거는
-  #   'CHECK 가 있으면서 FK 가 하나도 없어 부모 행을 만들지 않고 시험할 수 있다' 였는데, 그 표가
-  #   폐지되면서 **FK 없이 CHECK 만 있는 표가 하나도 남지 않았다.** 그래서 근거를 다시 세운다:
-  #     · cal_task_hours 는 자기 표 하나로 시험이 닫힌다 — category_id 에 FK 가 없어(앱이 동반 정리)
-  #       cal_category 부모 행을 만들 필요가 없다. 다른 cal_* 는 부모 일정·할일·과제를 먼저 만들어야
-  #       하고, 그러면 '시험이 실패한 이유'가 CHECK 인지 준비 부족인지 흐려진다.
-  #     · CHECK 식(hours > 0 AND hours <= 24)이 컬럼 하나짜리라 위반 값을 만드는 데 해석이 필요 없다.
-  #     · 결정 (1)로 공수의 단일 소스가 이 표가 됐다 — 이 표의 CHECK 가 강제되는지가 지금 가장 중요하다.
-  #   남은 FK 는 login_id → app_user 하나뿐인데, 그건 실재하는 login_id 를 SELECT 로 한 명 읽어 채운다.
-  #   ★ 왜 가짜 login_id 를 쓰지 않는가: 실측(8.4.9) 결과 CHECK 는 FK 보다 **먼저** 평가된다
-  #     (가짜 login_id + hours=0 → 3819, 가짜 login_id + hours=1 → 1452). 그래서 가짜 값으로도
-  #     3819 는 나오지만, 그 경우 'CHECK 가 꺼져 있는 서버'에서는 3819 대신 1452 가 나와
-  #     'CHECK 미강제'와 '시험 불성립'을 구분할 수 없다. 실재 login_id 를 쓰면 두 결과가 갈린다:
+  # ★ 시험 대상을 cal_attendance 로 옮겼다(2026-08-24 키 전환). 이력을 남겨 둔다 —
+  #   ① 원래는 cal_audit_trash 였다. 근거는 'CHECK 는 있고 FK 는 없어 부모 행 없이 시험이 닫힌다'.
+  #      2026-08-11 그 표가 폐지되면서 근거를 잃었다.
+  #   ② 다음이 cal_task_hours 였다. 근거는 'category_id 에 FK 가 없어 cal_category 부모 행이 필요 없다'.
+  #      **그 근거가 2026-08-24 에 사라졌다** — 키 전환으로 fk_cal_task_hours_category(user_id, cat_no)
+  #      가 신설되어, 이제 이 표에 한 줄 넣으려면 cal_category 부모 행부터 만들어야 한다.
+  #      부모를 만들지 않고 없는 cat_no 로 찌르면 'CHECK 가 꺼진 서버'에서 3819 대신 1452 가 나와
+  #      '미강제'와 '시험 불성립'을 구분할 수 없게 된다(아래 ★ 와 같은 이유).
+  #   ③ 그래서 지금은 cal_attendance 다. 근거:
+  #     · 자기 표 하나로 시험이 닫힌다 — FK 가 user_id → app_user 하나뿐이고, 그 값은 실재하는
+  #       app_user 한 명을 SELECT 로 읽어 채운다(다른 cal_* 부모 행을 만들 필요가 없다).
+  #     · CHECK 식이 컬럼 하나짜리라 위반 값을 만드는 데 해석이 필요 없다 — status='' 는
+  #       chk_cal_attendance_status 의 IN 목록에 없다.
+  #     · 그 CHECK 자체가 이 표의 최상위 계약('미기록 = 행 없음')을 지탱한다. status='' 가 들어가는
+  #       순간 회사 일간보고로 나가는 근태가 '알 수 없는 제3의 상태'가 된다.
+  #   ★ 왜 가짜 user_id 를 쓰지 않는가: 실측(8.4.9) 결과 CHECK 는 FK 보다 **먼저** 평가된다.
+  #     그래서 가짜 값으로도 3819 는 나오지만, 'CHECK 가 꺼져 있는 서버'에서는 3819 대신 1452 가 나와
+  #     'CHECK 미강제'와 '시험 불성립'을 구분할 수 없다. 실재 user_id 를 쓰면 두 결과가 갈린다:
   #       3819 = 강제됨 / 성공(행이 들어감) = 강제 안 됨. 판정이 흐려지지 않는다.
   #   app_user 는 읽기만 한다(이 스크립트가 기존 표에 하는 유일한 접근이 SELECT 라는 단언은 유지된다).
   #
   # ★ 종료코드만 보면 게이트가 아니라 위증이다(적대검증 중대7). probe 의 컬럼 목록은
-  #   cal_task_hours 정의에 붙어 있어서, 컬럼 이름이 바뀌면 ERROR 1054 로 실패하는데
+  #   cal_attendance 정의에 붙어 있어서, 컬럼 이름이 바뀌면 ERROR 1054 로 실패하는데
   #   '0 이 아니니 거부된 것' 으로 읽어 [OK] 를 찍는다. 그래서 오류 번호로 판정한다:
   #     exit 0        → CHECK 가 강제되지 않음(실패)
   #     3819          → 정상(CHECK 위반으로 거부)
   #     그 밖의 실패  → 시험 자체가 성립하지 않음(실패로 처리. 조용히 넘기면 안 된다)
+  #   ※ 2026-08-24 이 판정이 실제로 일을 했다 — 옛 probe(login_id/category_id)를 그대로 두고 돌렸더니
+  #     ERROR 1054 가 났고, 종료코드만 봤다면 초록불이었을 자리에서 '시험 불성립'으로 걸렸다.
   # 출력 캡처는 cmd 의 리다이렉트로 한다 — 5.1 에서 네이티브 exe 에 PowerShell 의 2>&1 을 걸면
   # stderr 줄이 ErrorRecord 로 감싸져 $? 와 문자열 판정이 함께 흔들린다.
-  if($expTables -notcontains 'cal_task_hours'){
-    $fail += "CHECK 강제 시험을 하지 못했습니다 — schema-calendar.sql 에 cal_task_hours 가 없습니다(명부 대조에서 이미 걸렸어야 합니다)"
+  if($expTables -notcontains 'cal_attendance'){
+    $fail += "CHECK 강제 시험을 하지 못했습니다 — schema-calendar.sql 에 cal_attendance 가 없습니다(명부 대조에서 이미 걸렸어야 합니다)"
   } elseif($nUser -eq '0'){
     # app_user 가 비면 INSERT … SELECT 가 0행을 넣고 조용히 성공한다 — 그걸 'CHECK 미강제'로 읽으면 오진이다.
-    $fail += "CHECK 강제 시험을 하지 못했습니다 — app_user 가 0행이라 FK 를 만족시킬 login_id 가 없습니다(선행 조건부터 다시 보세요)"
+    $fail += "CHECK 강제 시험을 하지 못했습니다 — app_user 가 0행이라 FK 를 만족시킬 user_id 가 없습니다(선행 조건부터 다시 보세요)"
   } else {
     Write-Host "    (아래 ERROR 3819 는 일부러 규칙을 어기는 INSERT 의 결과입니다 — 이게 보이는 것이 정상)"
     $script:tmpProbe = Join-Path $env:TEMP ("calprobe_"+[IO.Path]::GetRandomFileName()+".sql")
     $script:tmpOut   = Join-Path $env:TEMP ("calprobe_"+[IO.Path]::GetRandomFileName()+".txt")
-    # hours=0 은 chk_cal_task_hours_range(hours > 0) 위반이다. work_date 는 실데이터와 겹치지 않는
-    # 고정 과거일, category_id 는 '__probe__' 라 진짜 행과 PK 가 부딪히지 않는다.
-    $probeSql = "START TRANSACTION;`r`nINSERT INTO cal_task_hours (login_id, work_date, category_id, hours) SELECT login_id, '1970-01-01', '__probe__', 0 FROM app_user LIMIT 1;`r`nROLLBACK;`r`n"
+    # status='' 는 chk_cal_attendance_status 위반이다(IN 목록에 '' 가 없다 — 그것이 '미기록=행 없음' 계약).
+    # work_date 는 실데이터와 겹치지 않는 고정 과거일이라 PK(user_id, work_date)가 진짜 행과 부딪히지 않는다.
+    $probeSql = "START TRANSACTION;`r`nINSERT INTO cal_attendance (user_id, work_date, status, overtime) SELECT user_id, '1970-01-01', '', 0 FROM app_user LIMIT 1;`r`nROLLBACK;`r`n"
     [IO.File]::WriteAllText($script:tmpProbe, $probeSql, (New-Object System.Text.UTF8Encoding($false)))
     cmd /c "`"$mysql`" --defaults-extra-file=`"$cnf`" --default-character-set=utf8mb4 `"$DbName`" < `"$($script:tmpProbe)`" > `"$($script:tmpOut)`" 2>&1"
     $probeExit = $LASTEXITCODE
@@ -777,16 +942,16 @@ try {
     foreach($l in $probeLines){ Write-Host "      $l" }
     $probeOneLine = ($probeLines -join ' / ')
     if($probeExit -eq 0){
-      $fail += "★ CHECK 가 강제되지 않습니다 — hours=0 이 cal_task_hours 에 들어갔습니다(chk_cal_task_hours_range 위반). 서버가 CHECK 를 무시하는 상태이므로 all_day/반복/공수/색상 규칙이 전부 무방비입니다(서버 버전 확인)"
+      $fail += "★ CHECK 가 강제되지 않습니다 — status='' 가 cal_attendance 에 들어갔습니다(chk_cal_attendance_status 위반). 서버가 CHECK 를 무시하는 상태이므로 근태 코드·all_day/반복·공수·색상 규칙이 전부 무방비입니다(서버 버전 확인)"
     } elseif($probeOut -notmatch '\b3819\b'){
       $fail += "★ CHECK 강제 시험이 성립하지 않았습니다 — 거부되긴 했으나 CHECK 위반(3819)이 아닌 다른 이유입니다. 이 상태에서는 CHECK 가 실제로 작동하는지 알 수 없습니다. mysql 출력: [$probeOneLine]"
     } else {
-      Ok "CHECK 실제 강제 확인 — 위반 INSERT 가 ERROR 3819 로 거부됨(cal_task_hours.hours=0)"
+      Ok "CHECK 실제 강제 확인 — 위반 INSERT 가 ERROR 3819 로 거부됨(cal_attendance.status='')"
     }
     # 롤백이 됐는지도 본다. 표 전체를 세지 않고 시험 행만 본다 — 이 게이트는 데이터가 든 DB 에서도
-    # 같은 뜻이어야 하기 때문이다(전체 COUNT 은 진짜 공수 행까지 세어 무의미해진다).
-    $leak = Q "SELECT COUNT(*) FROM cal_task_hours WHERE category_id='__probe__';"
-    if($leak -ne '0'){ $fail += "시험용 행이 남았습니다 — cal_task_hours 에 category_id='__probe__' 가 $leak 행. 직접 확인 후 지우세요" }
+    # 같은 뜻이어야 하기 때문이다(전체 COUNT 은 진짜 근태 행까지 세어 무의미해진다).
+    $leak = Q "SELECT COUNT(*) FROM cal_attendance WHERE work_date='1970-01-01' AND status='';"
+    if($leak -ne '0'){ $fail += "시험용 행이 남았습니다 — cal_attendance 에 work_date='1970-01-01' AND status='' 가 $leak 행. 직접 확인 후 지우세요" }
     Remove-Item $script:tmpProbe -Force -ErrorAction SilentlyContinue; $script:tmpProbe = $null
     Remove-Item $script:tmpOut   -Force -ErrorAction SilentlyContinue; $script:tmpOut   = $null
   }
