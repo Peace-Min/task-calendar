@@ -228,9 +228,13 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
 
+                // ★ 소속 이름은 org_unit 한 곳에만 있다(app_user 에는 org_id 뿐) — JOIN 으로 이름을 만든다.
+                //   별칭 org_unit 은 웹으로 나가는 payload 키다(MainWindow.ParseAppUser 가 "org_unit"을 읽는다).
+                //   LEFT JOIN 이라 소속이 없는 사람(org_id IS NULL)은 그대로 NULL → Str() 이 ""로 바꾼다(종전과 동일).
                 const string sql =
-                    "SELECT login_id, name, title, org_unit, view_scope, edit_role, is_active " +
-                    "FROM app_user WHERE login_id=@id";
+                    "SELECT u.login_id, u.name, u.title, o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
+                    "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "WHERE u.login_id=@id";
                 await using var cmd = new MySqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@id", id);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
@@ -274,9 +278,12 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
 
+                // ★ 소속 이름은 JOIN 으로 만든다(위 LoadAppUserJsonAsync 와 같은 이유·같은 별칭).
+                //   컬럼 순서·이름을 그대로 두었으므로 아래 payload 와 웹(사용자 정보 모달)은 손대지 않는다.
                 const string sql =
-                    "SELECT name, title, org_unit, view_scope, edit_role, is_active " +
-                    "FROM app_user WHERE login_id=@id";
+                    "SELECT u.name, u.title, o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
+                    "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "WHERE u.login_id=@id";
                 await using var cmd = new MySqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@id", id);   // 값은 반드시 파라미터 바인딩(문자열 연결 금지)
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
@@ -335,8 +342,11 @@ namespace TaskCalendarWidget
                 string scope = "", myUnit = "";
                 int myActive = 0;
                 bool found = false;
+                //   ★ 소속 이름은 org_unit 을 JOIN 해서 만든다 — myUnit 은 이름 기준 트리 순회(③)의 시작점이다.
                 await using (var cmd = new MySqlCommand(
-                    "SELECT org_unit, view_scope, is_active FROM app_user WHERE login_id=@id", conn))
+                    "SELECT o.name AS org_unit, u.view_scope, u.is_active " +
+                    "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "WHERE u.login_id=@id", conn))
                 {
                     cmd.Parameters.AddWithValue("@id", id);   // 값은 반드시 파라미터 바인딩(문자열 연결 금지)
                     await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
@@ -359,9 +369,14 @@ namespace TaskCalendarWidget
 
                 // ② 조직 트리 — 열람 범위와 무관하게 항상 전 조직이다(scope 로 건너뛰지 않는다).
                 //   조직도는 사내망에 이미 공개된 정보고, 트리가 없으면 '내 위에 무엇이 있는지'조차 볼 수 없다.
+                //   ★ 부모 '이름'은 자기 JOIN 으로 만든다(정본은 parent_id 뿐이다). 최상위는 parent_id IS NULL →
+                //     LEFT JOIN 이 NULL 을 돌려주고 Str() 이 ""로 바꾼다 → payload 에서 다시 null 이 된다(종전과 동일).
+                //   ★ ORDER BY 대상은 예전 그대로 org_unit 자신의 sort_order·name 이다(화면 순서 불변).
                 var units = new List<OrgUnitRow>();
                 await using (var cmd = new MySqlCommand(
-                    "SELECT name, parent, sort_order FROM org_unit WHERE is_active=1 ORDER BY sort_order, name", conn))
+                    "SELECT t.name, p.name AS parent, t.sort_order " +
+                    "FROM org_unit t LEFT JOIN org_unit p ON p.org_id = t.parent_id " +
+                    "WHERE t.is_active=1 ORDER BY t.sort_order, t.name", conn))
                 {
                     await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                     while (await rd.ReadAsync(cts.Token))
@@ -391,8 +406,13 @@ namespace TaskCalendarWidget
                 //   명부는 통제 대상이 아니고, 필터를 되살리면 self 인 사람은 다시 자기 한 줄만 보게 된다.
                 //   ★ 본인도 이 목록에 그대로 들어 있다(따로 담지 않는다 — 두 경로가 되면 한쪽이 낡는다).
                 var members = new List<Dictionary<string, object?>>();
+                //   ★ 소속 이름은 JOIN 으로 만든다. 정렬 기준도 그 이름이다 — 옛 `ORDER BY org_unit, name` 과
+                //     같은 값을 같은 콜레이션(utf8mb4_0900_ai_ci)으로 비교하므로 행 순서가 바뀌지 않는다.
+                //     소속 없는 사람(NULL)이 앞에 오는 것도 종전과 같다(MySQL 은 ASC 에서 NULL 이 먼저다).
                 await using (var cmd = new MySqlCommand(
-                    "SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 ORDER BY org_unit, name", conn))
+                    "SELECT u.login_id, u.name, u.title, o.name AS org_unit " +
+                    "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "WHERE u.is_active=1 ORDER BY o.name, u.name", conn))
                 {
                     await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                     while (await rd.ReadAsync(cts.Token))
@@ -439,7 +459,9 @@ namespace TaskCalendarWidget
         // ★ 재귀 CTE(WITH RECURSIVE)를 쓰지 않는다: 폐쇄망 MySQL 버전 가정을 하나 더 늘리는 값이
         //   12행짜리 트리에서 얻는 이득보다 크다. 메모리에서 도는 편이 싸고 버전에 자유롭다.
         // ★ allowed 자체가 방문 집합이다 — HashSet.Add 가 false 를 돌려주면 이미 담은 노드라 큐에 다시 넣지 않는다.
-        //   org_unit.parent 에 순환(A→B→A)이 들어와도 여기서 멈춘다(무한 루프 방지).
+        //   org_unit.parent_id 에 순환(A→B→A)이 들어와도 여기서 멈춘다(무한 루프 방지).
+        // ★ 이름 기준 순회를 그대로 둔다: 이름은 이제 org_unit 한 곳에만 있어 표류가 불가능하고,
+        //   입력(units)은 위 ②가 JOIN 으로 만든 이름 쌍이라 id 경로와 같은 트리다(최소 변경).
         private static void ExpandUnitTree(List<OrgUnitRow> units, string myUnit, HashSet<string> allowed)
         {
             string root = (myUnit ?? "").Trim();

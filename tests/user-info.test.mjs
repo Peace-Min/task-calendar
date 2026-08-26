@@ -292,7 +292,9 @@ const checks = {
     assert.ok(!/OpenWriteAsync/.test(q),
       '권한 조회가 쓰기 관문을 쓴다 — "권한을 보려면 먼저 권한이 있어야 한다"는 순환이라 viewer 는 자기 권한을 확인조차 못 한다');
     assert.ok(/OpenReadAsync/.test(q), '권한 조회가 읽기 연결을 쓰지 않는다');
-    assert.ok(/WHERE login_id=@id/.test(q) && /AddWithValue\("@id", id\)/.test(q),
+    // ★ 완전절단 후 이 문은 org_unit 을 LEFT JOIN 하므로 컬럼이 별칭(u.)으로 한정된다.
+    //   지키는 불변식은 그대로다 — 값을 파라미터로 바인딩하는가.
+    assert.ok(/WHERE (?:u\.)?login_id=@id/.test(q) && /AddWithValue\("@id", id\)/.test(q),
       '값을 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
     assert.ok(/"found"/.test(q) && /found.*=.*true|\["found"\]\s*=\s*true/s.test(q),
       '행 있음/없음을 found 로 구분하지 않는다 — 호출측이 미등록과 조회 실패를 구별할 수 없다');
@@ -468,7 +470,12 @@ const checks = {
   //      필터가 되살아나면 그 화면이 그대로 돌아온다.
   membersRosterIsEveryone(csDb) {
     const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
-    assert.ok(/SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 ORDER BY org_unit, name/.test(q),
+    // ★ 완전절단 후 소속 '이름'은 org_unit 에만 있다 — 명부 SQL 은 LEFT JOIN 으로 이름을 만들고,
+    //   C# 소스에서 여러 문자열 리터럴로 쪼개져 있다. 이어붙인 뒤 한 문장으로 본다(qn).
+    //   ★ 정렬은 옛 `ORDER BY org_unit, name` 과 같은 값을 보는 `ORDER BY o.name, u.name` 이어야 한다 —
+    //     여기가 바뀌면 웹 명부의 행 순서가 조용히 달라진다(JS 는 호스트가 준 순서를 그대로 그린다).
+    const qn = q.replace(/"\s*\+\s*"/g, '');
+    assert.ok(/SELECT u\.login_id, u\.name, u\.title, o\.name AS org_unit FROM app_user u LEFT JOIN org_unit o ON o\.org_id = u\.org_id WHERE u\.is_active=1 ORDER BY o\.name, u\.name/.test(qn),
       '명부 조회가 is_active=1 전원이 아니다 — 조건이 하나라도 붙으면 명부가 다시 잘린다');
     assert.ok(!/IN \(/.test(q),
       '명부 조회에 IN 절이 남아 있다 — 유닛 필터가 되살아나면 self 인 사람은 다시 자기 한 줄만 본다');
@@ -500,7 +507,9 @@ const checks = {
   // ㊷ 조직 트리 조회는 scope 와 무관하게 항상 돈다 — self 라고 건너뛰면 71명이 다시 트리 없는 화면을 본다.
   membersUnitsAlwaysQueried(csDb) {
     const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
-    assert.ok(/FROM org_unit WHERE is_active=1/.test(q), '전제: 조직 트리 조회가 없다');
+    // ★ 완전절단 후 부모 '이름'은 자기 JOIN 으로 만든다(정본은 parent_id 뿐) — 리터럴이 쪼개져 있어 이어붙여 본다.
+    assert.ok(/FROM org_unit t LEFT JOIN org_unit p ON p\.org_id = t\.parent_id WHERE t\.is_active=1/.test(q.replace(/"\s*\+\s*"/g, '')),
+      '전제: 조직 트리 조회가 없다');
     assert.ok(!/"self"/.test(q),
       'scope 를 "self" 와 비교하는 특례가 남아 있다 — self 도 전 조직 트리를 그대로 받아야 한다');
     assert.ok(!/if \(!isSelf\)|if \(isSelf\)/.test(q), 'self 여부로 조직 트리 조회를 가른다');
@@ -1106,8 +1115,8 @@ test('변이㉔-b: 호스트 case "membersGet" 을 지우면 membersHostReadPath
 
 test('변이㉕: 명부에 유닛 필터(IN 절)를 되살리면 membersRosterIsEveryone 이 실패한다', () => {
   const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
-    '"SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 ORDER BY org_unit, name", conn))',
-    '"SELECT login_id, name, title, org_unit FROM app_user WHERE is_active=1 AND org_unit IN (@u0) ORDER BY org_unit, name", conn))');
+    '"WHERE u.is_active=1 ORDER BY o.name, u.name", conn))',
+    '"WHERE u.is_active=1 AND o.name IN (@u0) ORDER BY o.name, u.name", conn))');
   assert.throws(() => checks.membersRosterIsEveryone(bad), /is_active=1 전원이 아니다/);
 });
 

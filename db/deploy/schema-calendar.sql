@@ -1212,6 +1212,16 @@ CREATE TABLE cal_task_hours (
   work_date   DATE NOT NULL,                                                          -- 대상 날짜
   cat_no      INT UNSIGNED NOT NULL,        -- 과제 번호. ★ NULL 불가 — '미분류 공수' 라는 상태가 없다(계약 H-3)
   hours       DECIMAL(4,2) NOT NULL,                                                  -- 투입 시간(★시간 단위, 소수 2자리). 0 초과 24 이하. 앱은 0.5·0.25 같은 소수를 그대로 보낸다
+  -- ★ 2026-08-26 신설 — §3.3 낙관적 잠금 토큰. 이 표는 엔티티가 아니라 '값 칸' 이라
+  --   cal_entry·cal_todo 와 달리 타임스탬프가 없었다. 그런데 **덮어쓰기 사고는 값 칸에서도 똑같이 난다** —
+  --   토큰이 없으면 PK 만으로 무조건 덮어쓰므로, 다른 환경에서 적은 값이 흔적 없이 사라지고
+  --   사라졌다는 사실을 알 방법도 없다. 근태·공수는 회사 보고로 나가는 숫자라 조용한 유실이 특히 나쁘다.
+  --   ※ 지금은 클라이언트가 위젯 하나뿐이라 발화하지 않는다. 브라우저가 붙는 순간부터 일한다.
+  --     그때 컬럼을 추가하려면 실제 ALTER 가 되므로, 0행인 지금 미리 둔다.
+  --   ★ 기본값·ON UPDATE 에 서버 함수(NOW(3)·CURRENT_TIMESTAMP)를 달지 않는다 — §5.3 '시각' 규칙.
+  --     세션 time_zone 이 SYSTEM(KST)이면 앱이 보내는 UTC 값과 9시간이 한 컬럼에 영구 혼재되고
+  --     DATETIME 은 사후 구분이 불가능하다. cal_entry·cal_todo 와 같이 **앱이 UTC 로 계산해 명시 대입**한다.
+  updated_at  DATETIME(3) NOT NULL,
   PRIMARY KEY (user_id, work_date, cat_no),
   -- ★ PK 의 선두가 (user_id, work_date) 라 아래 FK 의 자식 인덱스가 되지 못한다 — 이 KEY 가 필요하다.
   --   겸사겸사 과제 삭제 시의 DELETE … WHERE user_id=? AND cat_no=? 도 이 인덱스를 쓴다.
@@ -1278,10 +1288,30 @@ CREATE TABLE cal_attendance (
   -- 값 집합이 고정된 문자열이라 _bin 이다(헤더의 그 규칙). 테이블 기본(0900_ai_ci)을 상속하면
   -- 전각 '１' 이 CHECK 를 통과해 그대로 저장되고, 회사 사이트로 그 값이 그대로 전송된다.
   -- ★ 코드값은 netcus 근태 select 의 value 를 **그대로** 쓴다(앱이 가공 없이 전송한다). 임의로 채우지 말 것 —
-  --   앱의 ATTEND_STATUS 배열을 직접 읽어 옮긴 전수 목록이고, ★ 8 이 없다(사이트에 그 코드가 없다).
+  --   앱의 ATTEND_STATUS 배열을 직접 읽어 옮긴 전수 목록이고, ★ 8 이 없다(**드롭다운에** 그 코드가 없다).
   --   1=정근 2=야근 3=특근 4=외근 5=출장 6=휴가 12=반차 7=조퇴 9=지각 10=지각+야근 11=병가
+  -- ★ 2026-08-26 — 주간보고 시스템의 실제 코드표(workstatus_tbl)를 검토자에게서 받아 대조했다. 두 가지가 다르다:
+  --   ① **8=결근 은 그쪽 DB 에 실재한다.** 위 '없다' 는 드롭다운 기준이 맞다(자기 결근을 스스로 고르지
+  --      않으므로 화면에 없다). 우리는 **쓰기만** 하므로 지금은 무해하다 — 다만 나중에 그쪽 근태를
+  --      **읽어오는** 경로를 만들면 8 이 이 IN 목록에 없어 3819 로 막힌다. 그때 함께 넓힐 것.
+  --   ② **12 를 그쪽 코드표는 '야근+식사' 라 적고 있다.** 우리(=드롭다운)는 '반차' 다. 실데이터가
+  --      우리 쪽을 지지한다 — phmin 2026-08-19 행이 status=12 · overtime=0 인데 content 가
+  --      '[휴가] : 4  - 오후 반차(08.19)' 다(야근이 0시간인데 '야근+식사' 일 수 없다). 그리고 앱 배열의
+  --      순서가 '… 6=휴가 → 12 → 7=조퇴 …' 로 숫자순이 아닌 것이 **화면 순서를 그대로 베꼈다는 증거**다.
+  --      → **코드표(workstatus_tbl)의 이름을 신뢰하지 말 것.** 이름의 정본은 드롭다운(=ATTEND_STATUS)이다.
+  --      (참고: 그 표는 PK 도 UNIQUE 도 없어 '11 병가' 가 중복 적재돼 있다 — 13행/12코드.)
   status    VARCHAR(2) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,          -- 근태 코드. ''(미기록)은 저장 금지 — 위 ★★ 계약. 미기록은 행을 지운다
   overtime  TINYINT NOT NULL DEFAULT 0,                                             -- 초과시간(시간 단위 정수). 0..11. 0 은 '초과 없음'이고 미기록이 아니다(status 와 달리 삭제 신호가 아니다)
+  -- ★ 2026-08-26 신설 — §3.3 낙관적 잠금 토큰. 이 표는 엔티티가 아니라 '값 칸' 이라
+  --   cal_entry·cal_todo 와 달리 타임스탬프가 없었다. 그런데 **덮어쓰기 사고는 값 칸에서도 똑같이 난다** —
+  --   토큰이 없으면 PK 만으로 무조건 덮어쓰므로, 다른 환경에서 적은 값이 흔적 없이 사라지고
+  --   사라졌다는 사실을 알 방법도 없다. 근태·공수는 회사 보고로 나가는 숫자라 조용한 유실이 특히 나쁘다.
+  --   ※ 지금은 클라이언트가 위젯 하나뿐이라 발화하지 않는다. 브라우저가 붙는 순간부터 일한다.
+  --     그때 컬럼을 추가하려면 실제 ALTER 가 되므로, 0행인 지금 미리 둔다.
+  --   ★ 기본값·ON UPDATE 에 서버 함수(NOW(3)·CURRENT_TIMESTAMP)를 달지 않는다 — §5.3 '시각' 규칙.
+  --     세션 time_zone 이 SYSTEM(KST)이면 앱이 보내는 UTC 값과 9시간이 한 컬럼에 영구 혼재되고
+  --     DATETIME 은 사후 구분이 불가능하다. cal_entry·cal_todo 와 같이 **앱이 UTC 로 계산해 명시 대입**한다.
+  updated_at  DATETIME(3) NOT NULL,
   PRIMARY KEY (user_id, work_date),
   CONSTRAINT fk_cal_attendance_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,

@@ -470,7 +470,8 @@ test('★ 쓰기 11곳 전부: NotAuthorizedException catch가 Exception catch�
 
 test('app_user 조회: 파라미터 바인딩 · 3분기 반환(행 / "{}" / null)', () => {
   const b = bare(projectDb, 'public async Task<string?> LoadAppUserJsonAsync(string? loginId)');
-  assert.ok(/WHERE login_id=@id/.test(b) && /AddWithValue\("@id", id\)/.test(b), '값을 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
+  // ★ 완전절단 후 이 문은 org_unit 을 LEFT JOIN 하므로 컬럼이 별칭(u.)으로 한정된다(불변식은 그대로).
+  assert.ok(/WHERE (?:u\.)?login_id=@id/.test(b) && /AddWithValue\("@id", id\)/.test(b), '값을 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
   assert.ok(/return "\{\}";/.test(b), '미등록(행 없음)을 "{}"로 구분하지 않는다');
   assert.ok(/return null;/.test(b), '연결·질의 실패를 null로 구분하지 않는다');
 });
