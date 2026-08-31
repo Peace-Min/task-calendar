@@ -183,6 +183,18 @@ GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_rev TO 'taskmgr_app'@'%';
 --   지금은 이관 도구 계정이 정해지지 않아 앱 계정에 둔다(전용 계정이 생기면 여기서 회수할 것).
 GRANT SELECT, INSERT ON taskmgr.cal_migration_log TO 'taskmgr_app'@'%';
 
+-- ---------- 보고 기록 (§5.9) ----------
+-- 캘린더가 보낸 일간보고·작성한 주간보고를 남긴다. 공수계산기의 원천이다.
+-- ★ DELETE 를 주는 이유 — cal_report_hours 는 재전송 시 그 날짜 행을 비우고 다시 넣는다.
+--   줄 구성 자체가 바뀔 수 있어(과제 추가·삭제) 행 단위 UPSERT 로는 '사라진 줄'이 남는다.
+--   ReportDb.SaveDailyAsync 가 DELETE→INSERT 를 한 트랜잭션으로 묶는다.
+-- ★ cal_report_daily 에도 DELETE 를 주는 이유는 없다 — 보고한 사실은 지우는 대상이 아니다.
+--   재전송은 UPDATE(덮어쓰기)로 끝난다. 그래서 INSERT·UPDATE 까지만 준다.
+--   (cal_report_hours 의 FK 는 ON DELETE CASCADE 라 상위 행을 지울 일이 생기면 그것은 관리 작업이다)
+GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_report_daily  TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_report_hours TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_report_weekly TO 'taskmgr_app'@'%';
+
 -- ---------- 스키마 버전 행 (§5.5) ----------
 -- SELECT 만 준다. 앱은 접속 프리앰블에서 한 줄을 읽어 자기 빌드 상수와 비교하고, 다르면
 --   파괴적 연산(가져오기 '교체'·이관·전량 삭제)만 막는다(schema-calendar.sql:451-455).

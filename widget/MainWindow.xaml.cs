@@ -456,8 +456,11 @@ namespace TaskCalendarWidget
                         // ★ 근태 미기록 규약: 웹은 status에 null을 싣고, GetStr은 JSON null(문자열이 아님)을 ""로 환원한다.
                         //   즉 웹→호스트 경계에서 '미기록'은 빈 문자열로 보존된다(NetcusReq.Status 주석과 한 쌍).
                         //   NetcusService는 빈 값이면 사이트의 status를 건드리지 않고 기존 근태를 유지한다.
+                        //  hours 는 웹이 본문을 만들 때 이미 갖고 있는 값이다 — 파싱이 아니라 전달이다(§5.9.3).
+                        //  없으면 빈 문자열 — 구버전 웹이 붙어도 전송은 그대로 동작하고 본문 기록도 남는다.
                         _ = _netcus.SubmitDaily(GetInt(doc, "y"), GetInt(doc, "m"), GetInt(doc, "d"),
-                            GetStr(doc, "status"), GetInt(doc, "overtime"), GetStr(doc, "content"), dryRun);   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
+                            GetStr(doc, "status"), GetInt(doc, "overtime"), GetStr(doc, "content"), dryRun,
+                            doc.RootElement.TryGetProperty("hours", out var hrsEl) ? hrsEl.GetRawText() : "");   // async — 진행/결과는 __netcusProgress/__netcusResult로 보고
                         break;
                     }
                     // ----- 시작 알림(리마인더) -----
@@ -1723,6 +1726,74 @@ namespace TaskCalendarWidget
         void INetcusHost.Eval(string js) => JsCall(js);
         void INetcusHost.Reply(string reqId, object payload) => GitReply(reqId, payload);
         void INetcusHost.Log(string msg) => Log(msg);
+
+        //  보고 기록 저장(설계 §5.9). NetcusService 는 통신만 하고 DB 를 모른다 —
+        //  페이로드 해석과 저장은 호스트인 여기서 한다.
+        //  ★ await 하지 않는다(반환 void) — 이 시점에는 이미 사이트로 보고서가 나갔고,
+        //    저장 지연이 사용자 피드백을 막으면 안 된다. 실패는 ReportDb 가 로그로 남긴다.
+        void INetcusHost.SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson)
+        {
+            string? loginId = CurrentLoginId();
+            var hours = ParseHoursJson(hoursJson);
+            var db = new ReportDb(Log);
+            _ = Task.Run(async () =>
+            {
+                try { await db.SaveDailyAsync(loginId, y, m, d, status, overtime, content, hours); }
+                catch (Exception ex) { Log("보고 기록 저장 예외(일간): " + ex.Message); }
+            });
+        }
+
+        void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork)
+        {
+            string? loginId = CurrentLoginId();
+            var db = new ReportDb(Log);
+            _ = Task.Run(async () =>
+            {
+                try { await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork); }
+                catch (Exception ex) { Log("보고 기록 저장 예외(주간): " + ex.Message); }
+            });
+        }
+
+        //  cal_* 가 저장하는 것은 user_id 이고, 그 해석의 열쇠는 login_id 다(설계 §3.6).
+        //  세션은 파일 한 번 읽기라 값싸다 — 필드로 캐시하지 않는 이유: 로그아웃/재로그인 뒤에도
+        //  낡은 값으로 남의 계정에 쓰는 사고를 원천 차단한다.
+        private string? CurrentLoginId()
+        {
+            try { return UserSession.Load(_dataDir, Log)?.LoginId; } catch { return null; }
+        }
+
+        //  웹이 보낸 과제별 시간 배열 → ReportHourLine 목록.
+        //  ★ cat_no 는 채우지 않는다(null). 앱은 아직 XML 을 쓰므로 cal_category.cat_no 를 모른다.
+        //    진실은 task_name 이고 cat_no 는 참조일 뿐이라 기록은 이대로도 완전하다(§5.9.6).
+        //    XML→DB 이관 뒤 앱이 cat_no 를 알게 되면 여기서 함께 실으면 된다.
+        //  ★ 파싱 실패는 빈 목록이다 — 예외를 던지지 않는다. 시간줄이 없다고 본문 기록까지
+        //    날리면 "보고한 사실" 자체를 잃는다.
+        private List<ReportHourLine> ParseHoursJson(string? json)
+        {
+            var list = new List<ReportHourLine>();
+            if (string.IsNullOrWhiteSpace(json)) return list;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) return list;
+                foreach (var el in doc.RootElement.EnumerateArray())
+                {
+                    if (el.ValueKind != JsonValueKind.Object) continue;
+                    string name = el.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String ? (n.GetString() ?? "") : "";
+                    if (name.Trim().Length == 0) continue;
+                    decimal h = 0m;
+                    if (el.TryGetProperty("hours", out var hv))
+                    {
+                        if (hv.ValueKind == JsonValueKind.Number) hv.TryGetDecimal(out h);
+                        else if (hv.ValueKind == JsonValueKind.String) decimal.TryParse(hv.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out h);
+                    }
+                    if (h < 0) continue;
+                    list.Add(new ReportHourLine { TaskName = name.Trim(), CatNo = null, Hours = h });
+                }
+            }
+            catch (Exception ex) { Log("보고 시간줄 파싱 실패(본문 기록은 계속한다): " + ex.Message); }
+            return list;
+        }
 
         private class GitResult
         {

@@ -3308,7 +3308,7 @@ const WidgetPlatform = {
   caps: { reportAuto: true },   // 위젯: .NET 호스트가 netcus 자동 전송 수행
   report: {
     // 위젯 경로는 기존 hpost 인자 구성과 바이트 단위로 동일해야 함(회귀 금지)
-    submitDaily(p){ hpost({ cmd: 'netcusSubmit', y: p.date.y, m: p.date.m, d: p.date.d, status: p.fields.status, overtime: p.fields.overtime, content: p.fields.content, dryRun: p.dryRun }); },
+    submitDaily(p){ hpost({ cmd: 'netcusSubmit', y: p.date.y, m: p.date.m, d: p.date.d, status: p.fields.status, overtime: p.fields.overtime, content: p.fields.content, dryRun: p.dryRun, hours: p.hours || [] }); },   // hours: 보고 기록용(§5.9) — 전송 자체에는 안 쓰인다
     submitWeekly(p){ hpost({ cmd: 'netcusWeekSubmit', sdate: p.fields.sdate, edate: p.fields.edate, subject: p.fields.subject, content: p.fields.content, endwork: p.fields.endwork, planwork: p.fields.planwork }); },
   },
 };
@@ -9955,7 +9955,14 @@ function bind(){
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
       // ★ status는 null(미기록)을 그대로 싣는다 — 여기서 '1'로 폴백하면 netcus에 직접 적어둔 휴가·병가가 정근으로 덮인다.
       //   호스트는 빈 값(웹의 null이 JSON→GetStr에서 "")을 '미기록'으로 읽어 사이트의 기존 근태를 유지한다.
-      const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, dryRun: dry };
+      // 과제별 시간 — 본문의 '[과제] : n' 줄과 **같은 값·같은 순서**를 구조화해 함께 싣는다(보고 기록용).
+      //   ★ 파싱이 아니라 전달이다(설계 §5.9.3) — 본문을 만들 때 이미 갖고 있던 값을 그대로 보낸다.
+      //     호스트가 본문을 되파싱하면 전각 콜론·&nbsp; 들여쓰기 같은 표기 문제를 다시 만난다.
+      //   ★ 실는 건 과제 **이름**이다. cat_no 는 싣지 않는다 — 앱이 아직 XML 을 써 DB 번호를 모른다.
+      const rptHours = (state.categories || [])
+        .map(c => ({ name: (c && c.name) || '', hours: getTaskHours(from, c && c.id) }))
+        .filter(x => x.name && x.hours != null);
+      const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, hours: rptHours, dryRun: dry };
       // 버튼 disable+스피너는 위젯 모드에서만(호스트 회신 __netcusResult가 다시 활성화) — 브라우저는 회신이 없어 영구 잠김 방지
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;

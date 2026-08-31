@@ -22,6 +22,12 @@ namespace TaskCalendarWidget
         void Eval(string js);                          // 메인 웹뷰 ExecuteScriptAsync(dispatcher 마샬 + try/catch)
         void Reply(string reqId, object payload);      // window.__hostReply(reqId, payload)
         void Log(string msg);
+
+        //  보고 기록 저장(설계 §5.9). 반환값이 없는 이유 — 이 시점에는 **이미 사이트로 보고서가 나갔다**.
+        //  저장 실패로 전송을 실패처럼 보이게 하면 사용자가 재전송하게 되고 그게 더 큰 사고다.
+        //  실패는 ReportDb 안에서 잡아 로그로 남는다(조용히 삼키는 것이 아니다).
+        void SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
+        void SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork);
     }
 
     // 회사 일간보고(netcus pjm) 자동 전송. 보조 WebView2(메인과 같은 환경=쿠키/세션 공유)로
@@ -49,8 +55,8 @@ namespace TaskCalendarWidget
 
         // ----- 공개 API(원시값 입력 — MainWindow는 Req 타입을 몰라도 됨) -----
         // status: 사이트 근태 코드값 또는 ""(=미기록 — 사이트의 기존 근태를 건드리지 않는다. NetcusReq.Status 주석 참조)
-        public Task SubmitDaily(int y, int m, int d, string status, int overtime, string content, bool dryRun)
-            => NetcusSubmit(new NetcusReq { Y = y, M = m, D = d, Status = status, Overtime = overtime, Content = content, DryRun = dryRun });
+        public Task SubmitDaily(int y, int m, int d, string status, int overtime, string content, bool dryRun, string hoursJson = "")
+            => NetcusSubmit(new NetcusReq { Y = y, M = m, D = d, Status = status, Overtime = overtime, Content = content, DryRun = dryRun, HoursJson = hoursJson });
 
         public Task WeekFill(string sdate, string edate, string subject, string content, string endwork, string planwork)
             => NetcusWeekFill(new NetcusWeekReq { Sdate = sdate, Edate = edate, Subject = subject, Content = content, Endwork = endwork, Planwork = planwork });
@@ -166,6 +172,9 @@ namespace TaskCalendarWidget
             //   JSON null을 ""로 환원한다 — 그래서 '빈 문자열 = 미기록'을 웹→호스트 공통 규약으로 고정한다.
             //   미기록이면 폼의 status를 건드리지 않고, 제출 때는 페이지의 현재 값을 되싣는다(사이트 기존 근태 보존).
             public string Status = "", Content = "";
+            //  웹이 실어 보낸 과제별 시간 배열(JSON 문자열). NetcusService 는 **해석하지 않고 실어 나를 뿐**이다 —
+            //  보고 페이로드를 아는 건 호스트(MainWindow)이고, 여기에 파싱을 두면 통신 책임과 섮인다.
+            public string HoursJson = "";
             public bool DryRun = true;
         }
 
@@ -567,7 +576,14 @@ namespace TaskCalendarWidget
                 }
                 Log("netcus verify: " + vr + " (needle=" + needle + ")");
                 if (vr == -1) NetcusResult(false, "세션 만료/로그인 필요 — 자격증명을 확인하세요.");
-                else if (vr == 1) NetcusResult(true, "회사 일간보고 전송 완료 — 한글까지 정상 저장 확인. netcus 사이트에서도 확인하세요.");
+                else if (vr == 1)
+                {
+                    NetcusResult(true, "회사 일간보고 전송 완료 — 한글까지 정상 저장 확인. netcus 사이트에서도 확인하세요.");
+                    //  ★ 결과를 먼저 알리고 그 다음 기록한다 — 사용자가 보는 진실은 '전송됐다'이고,
+                    //    DB 저장은 그걸 바꾸지 못한다. vr==1(되읽어 검증됨)일 때만 부른다 —
+                    //    실패한 전송을 기록하면 표가 거짓말을 하게 된다.
+                    _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
+                }
                 else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치) — netcus에서 확인하세요.");
                 else NetcusResult(false, "저장 확인 실패(내용이 비어 있음) — 열린 창에서 직접 확인하세요.");
             }
@@ -664,6 +680,10 @@ namespace TaskCalendarWidget
 
                 try { _w2win?.Activate(); } catch { }
                 NetcusResult(true, "주간보고 작성 폼을 채웠습니다 — 차주계획 내용 등을 보완 후 열린 창에서 직접 ‘제출’하세요.");
+                //  ★ 여기서 기록하는 것은 '보냈다'가 아니라 **'캘린더가 작성했다'**다.
+                //    위젯은 주간을 전송하지 않고 사용자가 직접 제출한다(위 문구 그대로).
+                //    그래서 사용자가 폼에서 보완한 내용은 담기지 않고, 컴럼 이름도 composed_at 이다(§5.9.5).
+                _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);
             }
             catch (Exception ex)
             {

@@ -1787,19 +1787,65 @@ buildNetcusHoursText()      :7887  주간 = Σ hoursByDate   ← 파생값
 그리고 어긋나더라도 **「캘린더 기준 공수」라는 정의가 분명하므로 틀린 게 아니라 다른 기준**이다.
 화면 문구도 *"회사 기록"* 이 아니라 *"캘린더 기준"* 으로 써야 한다.
 
-### 5.9.9 미결 — 배선
+### 5.9.9 배선 — 어디서 쓰는가
 
-표 3개는 서 있으나 **쓰기 경로가 없다.** 채울 자리는 정해져 있다:
+```
+widget/ReportDb.cs                   보고 기록 쓰기(신설)
+  SaveDailyAsync   → cal_report_daily UPSERT + cal_report_hours DELETE→재삽입   한 트랜잭션
+  SaveWeeklyAsync  → cal_report_weekly UPSERT
+```
 
-| 지점 | 쓸 것 |
-|---|---|
-| 일간 전송 성공 시 (`NetcusService.cs:570` `vr==1`) | `cal_report_daily` + `cal_report_hours` |
-| 주간 폼 채우기 성공 시 (`:666`) | `cal_report_weekly` |
+| 부르는 자리 | 무엇을 아는가 | 쓰는 것 |
+|---|---|---|
+| `NetcusService.cs` 전송 성공 확인 직후(`vr == 1`) | **보냈다** | `cal_report_daily` + `cal_report_hours` |
+| `NetcusService.cs` 주간 폼 채우기 성공 직후 | **작성했다** | `cal_report_weekly` |
 
-* 되읽기(`netcusWeekMerge`·`netcusWeeklyRangeRead`)에는 **DB 쓰기를 얹지 않는다.**
-  그 기능들은 원래 목적(주간 초안 만들기 · 기간 취합 미리보기)으로만 남는다.
-* 쓰기는 **한 트랜잭션** — 일간 1건 = `daily` 1행 + `hours` N행이 통째로 성공하거나 통째로 실패한다.
-* `cal_report_hours` 는 그 날짜 행을 **DELETE 후 재삽입**한다(줄 구성이 바뀔 수 있다).
+되읽기(`netcusWeekMerge`·`netcusWeeklyRangeRead`)에는 **DB 쓰기를 얹지 않는다.**
+그 기능들은 원래 목적(주간 초안 만들기 · 기간 취합 미리보기)으로만 남는다.
+
+#### 책임 경계
+
+`NetcusService` 는 **DB 를 모른다.** `INetcusHost.SaveDailyReport/SaveWeeklyReport` 로 호스트에 넘기고,
+페이로드 해석과 저장은 `MainWindow` → `ReportDb` 가 한다. 통신과 저장을 한 클래스에 섞지 않는다.
+
+클래스 이름이 `NetcusReportDb` 가 아닌 이유: 저장하는 것은 netcus 의 데이터가 아니라 **우리 기록**이다.
+netcus 는 지금 유일한 호출자일 뿐이고, 레거시 DB 읽기 권한이 생기거나 브라우저판이 붙으면 호출자가 바뀐다.
+
+#### 시간줄은 파싱하지 않는다
+
+웹이 본문을 만들 때 `getTaskHours(date, catId)` 로 이미 갖고 있던 값을 **구조화해서 함께 싣는다**
+(`hours: [{name, hours}]`). 호스트가 본문을 되파싱하면 전각 콜론 `：`·`&nbsp;` 들여쓰기 같은
+표기 문제를 다시 만난다 — 파싱이 아니라 전달이다(§5.9.3).
+
+`cat_no` 는 싣지 않는다(NULL). 앱이 아직 XML 을 써서 `cal_category.cat_no` 를 모른다.
+진실은 `task_name` 이므로 기록은 이대로도 완전하다. 이관 뒤 알게 되면 그때 함께 실으면 된다.
+
+#### 실패해도 전송을 깨지 않는다
+
+`ReportDb` 가 불리는 시점에는 **이미 회사 사이트로 보고서가 나갔다.** 여기서 예외를 던져 실패로
+보이면 사용자가 재전송하게 되고 그게 더 큰 사고다. 모든 실패를 안에서 잡아 로그로 남기고
+`false` 를 돌려준다(조용히 삼키는 것이 아니다 — 원인과 대상 날짜가 로그에 남는다).
+
+#### 권한 — 잊으면 런타임에 죽는다
+
+`taskmgr_app` 은 최소권한 계정이라 **새 표에는 기본적으로 아무 권한이 없다.**
+표만 만들고 `grants-calendar.sql` 을 안 고치면 배선이 `ERROR 1142` 로 죽는다(2026-08-31 실제로 발견).
+
+```sql
+GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_daily  TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_report_hours  TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_app'@'%';
+```
+
+`cal_report_hours` 에만 `DELETE` 를 주는 이유: 재전송 시 줄 구성이 바뀔 수 있어 그 날짜를 비우고
+다시 넣는다. 본문 표는 덮어쓰기(UPDATE)로 끝나므로 `DELETE` 가 필요 없다 — **보고한 사실은
+지우는 대상이 아니다.**
+
+### 5.9.10 남은 것
+
+- **공수계산기** — 데이터가 쌓이기 시작했으니 `cal_report_hours` 를 읽어 만들면 된다
+- **`cat_no` 채우기** — XML→DB 이관(3단계) 뒤
+- **화면 문구** — *"회사 기록"* 이 아니라 **"캘린더 기준"** 으로 쓸 것(§5.9.8)
 
 ## 6. 개인 과제 vs 공식 과제
 
