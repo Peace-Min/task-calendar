@@ -20,8 +20,9 @@
 --       '문장으로만 존재하는 대안 절차'라고 스스로 적어 두었던 그것이다).
 --
 --  ⚠️ 재실행 경고 — 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 전부 사라진다.
---     아래 DROP TABLE 이 cal_* 13개를 자식→부모 순으로 지운다. 일정·할일·공수·근태·회의실·
---     보고서 서식·이관 마커가 모두 날아가고 되돌릴 수 없다.
+--     아래 DROP TABLE 이 cal_* 를 자식→부모 순으로 지운다(개수는 여기 적지 않는다 —
+--     그 DROP 목록과 아래 CREATE TABLE 목록 자신이 정본이다). 일정·할일·공수·근태·회의실·
+--     보고서 서식·보고 기록·이관 마커가 모두 날아가고 되돌릴 수 없다.
 --     ★ 되돌릴 수단은 이 DB 안에 없다. 복구 경로는 '주간 mysqldump + binlog' 하나뿐이다
 --       (2026-08-11 결정: 감사 트리거·cal_audit_trash 폐지. 같은 DB 안에 둔 휴지통은 서버가
 --        통째로 죽는 사고에 함께 사라져 복구에 무력했고, 이 파일을 다시 돌릴 때 DROP TABLE 이
@@ -922,7 +923,7 @@ SET NAMES utf8mb4;
 --  0. ★★ 선행조건 가드 — 반드시 아래 DROP 보다 **먼저** 있어야 한다 ★★
 -- =====================================================================
 --  왜 있는가 (2026-08-24 신설):
---    이 파일은 cal_* 13표를 먼저 전부 DROP 하고 그다음 CREATE 한다. 그런데 첫 CREATE TABLE
+--    이 파일은 cal_* 를 먼저 DROP 하고 그다음 CREATE 한다. 그런데 첫 CREATE TABLE
 --    (cal_category) 의 fk_cal_category_user 가 app_user(user_id) 를 참조한다. user_id 가 없는
 --    DB — 즉 아직 migrate-2026-08-24-user-id.sql 을 안 돌린 기존 DB — 에서는 그 CREATE 가
 --    ERROR 1824/3734 로 죽는다. DDL 은 롤백이 없다. 이미 지나간 DROP 은 되돌아오지 않는다.
@@ -959,7 +960,8 @@ SET @g := IF(@g_has_user_id = 1, 'DO 0',
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
 -- 가드 3) 타입과 인덱스가 FK 를 받을 수 있는 모양인가
---   · COLUMN_TYPE 이 아래 13표의 user_id 와 **글자까지 같아야** FK 가 선다(ERROR 3780).
+--   · COLUMN_TYPE 이 아래 각 표(cal_schema_meta 를 뺀 전부)의 user_id 와 **글자까지 같아야**
+--     FK 가 선다(ERROR 3780). 여기에도 개수를 적지 않는다 — 아래 CREATE TABLE 목록이 정본이다.
 --   · 참조 컬럼은 인덱스의 선두여야 한다(ERROR 1822). 설계상 그 인덱스는 PRIMARY 다.
 SET @g_type_ok := (SELECT COUNT(*) FROM information_schema.COLUMNS
                     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_user'
@@ -973,7 +975,18 @@ PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
 
 -- ---------- 멱등 재구축용 DROP — 자식(FK 참조하는 쪽) → 부모 순 ----------
--- 위 경고를 다시 읽을 것. 이 14줄이 캘린더 데이터 전량을 지운다.
+-- 위 경고를 다시 읽을 것. 아래 DROP 줄들이 캘린더 데이터를 지운다.
+--
+-- ★★ 2026-08-31 미해결 — 이 DROP 목록이 아래 CREATE TABLE 목록보다 **짧다.**
+--   2026-08-31 에 늘어난 cal_report_daily · cal_report_hours · cal_report_weekly 세 표가
+--   여기 없다. 그래서 이 파일은 지금 **멱등이 아니다** — 그 세 표가 이미 있는 DB 에 다시 돌리면
+--   DROP 을 다 지나간 뒤 CREATE TABLE cal_report_daily 에서 ERROR 1050 으로 죽고, 그때는 앞의
+--   표들이 이미 지워진 뒤다(DDL 은 롤백이 없다). 위 선행조건 가드는 이 경우를 보지 않는다 —
+--   그 가드가 검사하는 것은 app_user 쪽 선행조건이지 이 파일 자신의 DROP/CREATE 짝이 아니다.
+--   빈 DB 에 새로 짓는 경로에는 영향이 없어 지금까지 드러나지 않았다.
+--   고칠 때는 DROP 줄 셋을 자식→부모 순으로 더한다 — cal_report_hours 가 cal_report_daily 를
+--   FK 로 참조하므로 **hours 가 먼저**이고, cal_report_weekly 는 app_user 만 참조해 순서 무관이다.
+--   ※ 발견한 라운드가 '문서·주석만 고친다'로 묶여 있어 SQL 을 손대지 않았다. 고치면 이 주석을 지울 것.
 --
 -- ★ 폐지된 표도 지운다. cal_audit_trash 는 감사 트리거와 함께 폐기됐지만(설계 §7.5),
 --   그 전에 이 키트를 한 번이라도 돌린 DB 에는 실물이 남아 있다. '안 만든다'만으로는
@@ -1608,15 +1621,20 @@ CREATE TABLE cal_attendance (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.';
 -- =====================================================================
---  cal_report_daily / cal_report_hours — netcus 일간보고 **사본**
+--  cal_report_daily / cal_report_hours — **캘린더가 보낸** 일간보고 기록
 -- =====================================================================
---  원본은 사이트다. 사용자는 캘린더로 초안을 만든 뒤 netcus 에서 상세를 직접 고친다
---  (2026-08-31 사용자 확인). 그러므로 위젯이 보띸 값은 최종본이 아니다.
+--  ★ 2026-08-31 정정 — 이 자리에는 *"netcus 일간보고 **사본**. 원본은 사이트다"* 라고 적혀
+--    있었다. 사본이 아니다. 사이트는 무효화 신호를 주지 않으므로 *"지금 사이트의 그 날 보고는
+--    무엇인가"* 는 이 표가 답할 수 있는 질문이 아니다. 담는 것은 우리가 아는 사실 하나뿐이다 —
+--    **우리가 무엇을 보냈는가**(설계 §5.9.2. migrate-2026-08-31-sent-only.sql 이 같은 이유로
+--    content_from 을 지우고 content_at 을 sent_at 으로 바꿨다).
+--  사용자는 캘린더로 초안을 만든 뒤 netcus 에서 상세를 직접 고친다(2026-08-31 사용자 확인).
+--  그러므로 이 표의 값은 사이트의 최종본이 아니다 — 그 대가는 설계 §5.9.8 이 명시해 두었다.
 --
 --  ★★ cal_task_hours 와 혼동 금지 — 둘은 다른 것이다
 --     cal_task_hours   = 캘린더에 입력한 시간 = **초안**(사용자가 언제든 고친다)
 --     cal_report_hours = 실제로 보고된 시간   = **확정**(공수계산기의 원천)
---     나누는 이유: 보고 후 캘린더를 고치면 과거 집계가 소급해서 바뀜다.
+--     나누는 이유: 보고 후 캘린더를 고치면 과거 집계가 소급해서 바뀐다.
 --
 --  ★ 왜 일간만 있고 주간이 없나
 --    일간은 주소가 (사번, 날짜)로 결정된다(pjm_work_view.jsp?y&m&d&id) — 검색이 아니라
@@ -1873,6 +1891,14 @@ CREATE TABLE cal_schema_meta (
 -- ★ 2026-08-27: 4 → 5. cal_category 에 uses_repo 신설('저장소를 쓰는 과제' 플래그, 설계 §4).
 --   같은 날 두 번째 판이다 — sort-order(3→4) 를 **먼저** 적용해야 한다(4→5 가드가 그 순서를 강제한다).
 --   실 DB 반영은 migrate-2026-08-27-repo-flag.sql 이 한다.
+-- ★ 2026-08-31: 5 → 6 → 7 → 8. 보고 기록 3표(cal_report_daily · cal_report_hours ·
+--   cal_report_weekly)가 늘었다(설계 §5.9). 한 판이 아니라 세 판인 이유는 결정이 그 순서로
+--   좁혀졌기 때문이다 — 6 = 일간 2표 신설(migrate-2026-08-31-report-daily.sql),
+--   7 = 주간 1표 신설(-report-weekly.sql), 8 = **'캘린더가 만든 것만 담는다'로 좁힘**
+--   (-sent-only.sql. content_from 폐기 · content_at → sent_at · 주간 재작성).
+--   세 파일은 반드시 이 순서로 적용한다 — 각 파일의 가드가 앞 버전(5·6·7)을 요구한다.
+--   ※ 이 아래 시딩값을 고칠 때는 이 목록도 함께 늘릴 것. 2026-08-31 에 값만 8 로 오르고
+--     이 목록이 5 에서 멈춰 있어, 파일 안에서 '무엇이 8 을 만들었는지'를 읽을 수 없었다.
 INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '8', UTC_TIMESTAMP(3));
 
 -- =====================================================================
