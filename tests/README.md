@@ -21,6 +21,7 @@ tests/
 ├─ loop-ui-integrity.mjs      ★ 별도 실행 전용(라이브 위젯+MySQL 필요) — 아래 참조
 ├─ loop-ui-visual.mjs         ★ 별도 실행 전용(라이브 위젯 필요·읽기 전용) — 레이아웃 결함 검출, 아래 참조
 ├─ loop-org-compat.mjs        ★ 별도 실행 전용(MySQL 필요·복제본에서만 씀) — org_unit 완전 절단 루프, 아래 참조
+├─ calendar-adapter.mjs       ★ 별도 실행 전용(MySQL+.NET SDK 필요·복제본에서만 씀) — DB 읽기 계층(1b) 대조, 아래 참조
 ├─ fixtures/
 │  ├─ mock-pjm-daily.html     netcus 일간보고 폼 모의(pjm_work_view.jsp) — 필드명 실제와 동일
 │  └─ mock-pjm-weekly.html    netcus 주간보고 폼 모의(pjm_write.jsp) — 필드명 실제와 동일
@@ -228,6 +229,166 @@ $env:TC_TEST_INJECT_TRUNC_WHAT = '조작 ['   # 쓰기 경로만 → ROW_COUNT �
 실행이 끝나면 유지 접속을 `KILL`해 잠금을 즉시 돌려주므로 **연달아 돌려도 된다**.
 
 위반은 시드·회차·**실행한 SQL 원문**과 함께 찍히고, 요약 끝에 재현 커맨드 한 줄이 나온다.
+
+## calendar-adapter.mjs — DB 읽기 계층(1b) 대조 테스트
+
+기본 스위트에 **포함되지 않는다**. 러너가 `*.test.mjs`만 수집하므로 확장자가 `.mjs`인 이 파일은 자동수집에서 빠진다.
+(→ `*.test.mjs`로 개명하면 CI(ubuntu-latest)가 MySQL과 .NET SDK를 요구하게 되어 깨진다. **개명 금지**.)
+
+증명하는 명제 하나: **같은 데이터를 XML에서 읽은 것과 DB에서 읽은 것이 완전히 같다.**
+
+`widget/CalendarDb.cs`가 만드는 객체가 앱의 `fromXML()`이 돌려주던 것과 **모양까지 같은지**를 본다.
+앱 전체를 고치지 않고 재료만 바꾸는 일이라, 모양이 한 군데라도 다르면 그 자리에서 화면이 깨지거나(터지면 다행)
+**조용히 다르게 그려진다** — 어댑터 계약 G절이 존재하는 이유가 그것이고, 이 파일이 그 절의 게이트다.
+
+### 기준(expected)은 코드다, 문서가 아니다
+
+`fromXML()`을 **재구현하지 않고 실행**한다. ① 위젯이 `TC_DEBUG_PORT=9222`로 떠 있으면 CDP로,
+② 없으면 jsdom으로 같은 `task-calendar-prototype.html`을 부팅해서. ③ 둘 다 안 되면 **exit 2** — 조용히 건너뛰지 않는다.
+`JSON.stringify`가 값이 `undefined`인 키를 통째로 지우므로 센티널 replacer로 키를 살려 둔다
+(**"키가 없다"와 "키는 있는데 undefined"는 이 테스트가 반드시 구분해야 하는 두 상태**다 — 개인 과제에는 `source` 키가 *없어야* 한다).
+
+### 흐름
+
+XML → `fromXML()` → **expected** → INSERT(복제 DB) → `CalendarDb.cs` → **actual** → 깊은 비교.
+적재 방향이 이 순서인 것은 설계 §8이 못박은 계약("이관 도구와 런타임 저장은 `fromXML()`을 통과한 결과만 DB에 넣는다")과 같다.
+
+| 픽스처 | 무엇 |
+|---|---|
+| `real` | `%APPDATA%/TaskCalendar/data.xml` — **읽기만 한다. 고치지 않는다** |
+| `synth` | 실 데이터가 안 건드리는 계약면을 덮는 합성 XML — 반복·예외·dayNotes·taskHours·`remind` 3상태(null/0/n)·공식과제 `source`/`dbGone`·완료시각·NULL 자리 전수. '이관 도구'가 아니라 **시험용 픽스처**다 |
+
+★ `_no`(cat_no·entry_no·todo_no)는 표시 순서와 **일부러 어긋나게** 배정한다. 그래야 `ORDER BY`를 빠뜨린 어댑터가
+PK 순서를 돌려주고 그 자리에서 잡힌다. **오름차순만 깨는 것으로는 부족하다** — 실측(2026-08-27) 옛 구현이
+`_no`를 완전 역순으로 배정했더니 계약 G-5가 금지한 `ORDER BY <표>_no DESC` 어댑터가 real·synth 양쪽에서
+**초록으로 통과**했다. 그래서 조건은 "표시 순서가 `_no`의 오름차순으로도 내림차순으로도 재현되지 않는다"이고,
+그렇지 못하면 「픽스처 조건 미달」로 그 사실을 찍는다(고정 시드 Fisher-Yates라 실행마다 같은 배치가 나온다).
+
+★ 커밋은 **일부러 적재한다.** G-7이 요구하는 것은 '없다'가 아니라 '부팅 조회에 넣지 않는다'이므로,
+DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제로 시험된다.
+
+### ★ 이 게이트가 증명하지 **못하는** 것 — 픽스처 한계
+
+판정력은 픽스처가 그 결함을 **만들 수 있는 모양인가**에 달려 있다. 두 픽스처의 성격이 다르다.
+
+| | 고칠 수 있나 | 무엇을 덮나 | 무엇을 못 덮나 |
+|---|---|---|---|
+| `real` | **아니다** — 사용자 실데이터·읽기 전용 | 실제 사용 형태·실제 규모 | 실 데이터가 우연히 갖지 않은 모양 |
+| `synth` | 그렇다 | real이 못 덮는 계약면을 겨냥해 채운다 | 실제 사용 형태(우리가 상상한 것만 들어 있다) |
+
+실측된 real의 한계 3건 — 모두 `synth`가 덮는다:
+
+| 변이 | real에서 못 만드는 이유 |
+|---|---|
+| `M6` rooms `ORDER BY` 누락 | 실 `data.xml`의 회의실 4개가 **우연히 이미 이름순**이다. `cal_room`은 `_no`가 없고 PK가 `(user_id,name)`이라, `ORDER BY sort_order`를 빠뜨린 어댑터는 이름순을 돌려준다 — 표시 순서가 이미 이름순이면 그 결함이 **정답과 구분되지 않는다** |
+| `M14` `remind` 0 → null | 실 데이터에 `remind=0`(알림 없음)인 일정이 없다 |
+| `M15` `taskHours` DECIMAL→문자열 | 실 데이터에 `taskHours`가 없다 |
+
+> **그래서 `--fixture=real` 단독 실행을 완전한 게이트로 쓰면 안 된다.**
+> 그 실행의 `SKIP`은 '통과'가 아니라 **'그 결함을 만들지 못했다'**이다.
+> 요약이 그 자리를 `✗ SKIP 중 아무 픽스처도 덮지 못한 것`과
+> `★ 이 실행은 완전한 게이트가 아니다`로 찍는다. 게이트로 쓸 실행은 **`--fixture=both --selftest`**(기본값 `both`)다.
+> `--fixture=both`로 돌면 같은 자리가 `· SKIP 중 덮인 것 : M6(→synth) · M14(→synth) · M15(→synth)`로 바뀐다.
+
+「픽스처 조건」은 요약에 **별도 블록**으로 남는다(참고 더미에 섞지 않는다). 그 줄이 늘어나면 그만큼 '같다'의 뜻이 약해진 것이다.
+지금 남는 줄은 real의 회의실 한 줄뿐이고, 그것은 **고칠 수 없으므로 계속 찍히는 것이 정상**이다.
+
+검출기 자체의 시험(잘못된 초록 방지): `TC_TEST_INJECT_NOSCRAMBLE=1`로 돌리면 `_no`를 표시 순서 그대로 배정해
+「픽스처 조건 미달」이 정말 우는지 볼 수 있다(`_no`는 state에 나가지 않으므로 대조 결과는 그대로 0건이다).
+
+그 밖에 이 게이트가 **증명하지 않는** 것: 쓰기 경로(2)·이관 도구(3)·앱 배선(1c)은 대상이 아니다.
+증명하는 명제는 **읽기 한 방향** 하나다 — "같은 데이터를 XML에서 읽은 것과 DB에서 읽은 것이 완전히 같다".
+
+### 비교 규칙
+
+- **키 유무까지** 본다 · `undefined`와 `null`을 구분한다 · 다르면 **어느 경로의 어느 키가 어떻게** 다른지 찍는다(해시 아님)
+- 순서를 보는 배열: `categories`·`rooms`·`recurExcept`·`commits`
+- `entries`·`todos`도 **배열 그대로 인덱스별로** 본다(`diffArrayOrdered`). 화면 순서 = 배열 순서이고
+  렌더 정렬(`entrySort`)도 `createdAt`에서 끝나므로, 정렬 키가 동률이면 배열 순서가 그대로 화면에 새어 나온다.
+  보고는 `[ORDER]`(자리 어긋남 — 동률 그룹 안의 재배치는 따로 센다)와 `[DIFF]`(항목 누락/잉여·내용 차이)로 갈린다.
+  → 예전에는 대조 **직전에** `byId`로 배열을 접어 순서가 비교에서 통째로 빠져 있었다(자리가 뒤바뀌어도 "차이 0건").
+  순서를 포기해야 하는 구간은 `ORDER_EXEMPT`에 적고 요약에 **반드시** 찍는다 — **지금은 비어 있다**
+- 맵(`taskHours`·`attendance`·`dayNotes`)의 **키 순서는 계약이 아니다.** 키 집합과 값만 본다
+- **계약상 차이표** — `entry.hours→null`(컬럼 폐지) · `commits→[]`(G-7) · `lsMigrated→true`(G-6) ·
+  `gitRepo`/`svnRepo`(로컬 소유). 이 표에 **없는** 차이는 전부 위반이고, 표에 있는 것은 요약에 **반드시 찍는다**
+
+### 계약별 개별 검사(깊은 비교와 별개로 돈다)
+
+| 코드 | 검사 |
+|---|---|
+| G-0 | 최상위 키가 정확히 15개인가(그 이상도 이하도 아니다) |
+| G-1b/c | `categoryId`가 실재하는 과제 **uid**인가. **숫자(cat_no)를 흘리면 오류 없이 전 일정이 '미분류'가 된다** · `taskHours` 안쪽 키도 uid |
+| G-1d | `user_id`·`*_no`·`sort_order`·`seq`·`uid`·DB 컬럼명 그대로가 state에 새지 않았나 |
+| G-2 | NULL → `''`(start/end time · endDate 둘 · due · recur.until · completedAt) |
+| G-2b | 반대로 NULL을 유지해야 하는 둘 — `cat_no`(→null, `''` 아님) · `remind`(null=기본 사다리 / 0=알림 없음) |
+| G-3 | 시각 6자리가 ISO `Z` · 소수 **정확히 3자리**(자릿수가 흔들리면 §8 왕복 서명이 어긋난다) |
+| G-4 | `allDay`·`done`·`gitCommitBody`·`lsMigrated`·`dbGone`이 boolean(0/1이면 화면은 같고 내보내기만 달라진다) |
+| G-5 | `recurExcept`가 `except_date` 오름차순 · 근태에 빈 status 키 없음 · `taskHours` 값이 숫자(DECIMAL을 문자열로 흘리면 합계가 문자열 접합이 된다). ※ `entries`/`todos`의 **배열 순서**는 여기서가 아니라 `[ORDER]`가 기준과 인덱스별로 대조해 본다(더 강한 판정 — 날짜뿐 아니라 문서 순서를 본다). 옛 "`entry_date` 단조" 검사는 기준이 갖지 않은 성질을 요구하던 것이라 삭제됐다 |
+| G-6 | **`lsMigrated`가 true인가**(false면 `migrateLocalStores()`가 돌아 좀비 taskHours·attendance가 DB로 들어간다) · `hours`가 명시적 null · `source`/`dbGone`은 공식 과제에만 |
+| G-7 | `commits`가 `[]`인가 — **DB에 커밋이 실제로 있는 상태에서** 통과해야 의미가 있다(0행이면 「검출력 없음」으로 찍는다) |
+| §3.5/§3.6 | `performance_schema` 문장 다이제스트로 **관측**한다: `START TRANSACTION WITH CONSISTENT SNAPSHOT` · 격리수준·time_zone·lock_wait_timeout 설정 · **9개 표 전부** · `cal_entry_commit` 없음 · COMMIT · **연결 1회**. 다이제스트는 리터럴을 `?`로 지우므로 **값**(`REPEATABLE-READ`·`+00:00`·`5`)은 소스 텍스트로 따로 본다 |
+
+### 변이 시험 — `--selftest`
+
+"잡아내지 못하면 그 불변식은 가짜다." 21케이스(M1~M17·M6b·MO1~MO3)를 **일부러 깨뜨려**
+기대한 검출 갈래(코드 + 문구)까지 울었는지 본다. 그냥 아무 이유로나 울면 통과가 아니고,
+**변이하지 않은 상태에서 울어도** 실패다(오탐 확인 ②). 순서 비교기는 **기준과 같은 순서로 다시 늘어놓으면
+`[ORDER]`가 0건인지**까지 따로 본다(오탐 확인 ①).
+
+픽스처에 해당 자료가 없어 만들 수 없는 변이는 `SKIP`으로 남긴다 — **통과로 세지 않는다.**
+요약이 그 `SKIP`을 **다른 픽스처가 CAUGHT 했는지 대조**해서, 덮였으면 `M6(→synth)`로, 아무도 못 덮었으면
+`★ 이 실행은 완전한 게이트가 아니다`로 찍는다(위 「픽스처 한계」 참조).
+
+실측(2026-08-27, `widget/CalendarDb.cs` 대상 · `--fixture=both --selftest`):
+
+| 픽스처 | 결과 |
+|---|---|
+| `synth` | **21/21 CAUGHT · MISSED 0 · SKIP 0 · 오탐 0** |
+| `real` | 18 CAUGHT · MISSED 0 · **3 SKIP**(M6·M14·M15 — 전부 `synth`가 덮는다) |
+
+두 픽스처 모두 깊은 비교 **차이 0건**(순서까지 인덱스별로 대조).
+
+### 안전
+
+**실 DB를 절대 건드리지 않는다.** `mysqldump`로 통째 복제한 별도 스키마(기본 `cal_probe_adapter_<pid>`)에서만 쓰고,
+끝나면 — 예외·Ctrl+C에도 — `DROP DATABASE`한다. 원본에는 `--single-transaction` 덤프(락 없음)와 SELECT만 나간다.
+`--clone`은 `cal_probe_` 접두사를 강제한다(그 이름을 DROP하기 때문에, 접두사 강제가 유일한 안전장치다).
+`CREATE TABLE ... LIKE`를 쓰지 않는 이유는 그것이 **FK를 복사하지 않아** 가짜 결과를 내기 때문이다.
+`data.xml`도 **읽기 전용**이다.
+
+어댑터는 **일회용 전용 계정**(`calprobe_<pid>`, 복제본 SELECT만)으로 붙는다 — 실 앱 계정(`taskmgr_app`)의 GRANT를
+건드리지 않기 위해서다. `DROP DATABASE`는 그 스키마에 준 권한을 자동으로 지우지 않으므로(mysql.db에 유령 행이 남는다)
+계정 자체를 지운다. 이전 실행이 죽어 남긴 `calprobe_%`도 시작할 때 함께 치운다.
+
+동시 실행은 `GET_LOCK('tc_cal_adapter')`로 막는다. **출력 무결성 계약**(종결 마커·읽기 3회 재시도)은
+`loop-org-compat.mjs`와 같고 고장 주입도 같은 환경변수(`TC_TEST_INJECT_TRUNC`)를 쓴다.
+
+### 실행
+
+```
+# 사전: $env:TC_TEST_DB_ADMIN_PW = '<DB 관리자 비번>'   (계정 기본값 root)
+node tests/calendar-adapter.mjs                       # real+synth 전부
+node tests/calendar-adapter.mjs --selftest            # ★ 게이트로 쓸 실행(both + 변이 시험)
+node tests/calendar-adapter.mjs --fixture=synth -v
+node tests/calendar-adapter.mjs --fixture=real        #   ※ 단독으로는 완전한 게이트가 아니다(위 「픽스처 한계」)
+node tests/calendar-adapter.mjs --oracle=cdp          # 기준을 위젯(9222)에서만 받는다
+node tests/calendar-adapter.mjs --login-id=hjlee      # 복제본에서 쓸 app_user.login_id
+node tests/calendar-adapter.mjs --reference-adapter   # 내장 참조 어댑터로 하네스 자체 검증
+node tests/calendar-adapter.mjs --keep                # 복제본·프로브를 남긴다(사후 조사용)
+```
+
+`--reference-adapter`는 `loop-org-compat.mjs`의 '내장 참조 DDL'과 같은 자리다 — 대상이 없거나 의심스러울 때
+**하네스(픽스처 SQL·비교기·검출기)가 맞는지**를 독립 대조본으로 증명한다. 이 모드의 통과는
+"어댑터가 옳다"가 아니라 "하네스가 옳다"의 증거다(요약에도 그렇게 찍힌다).
+`widget/CalendarDb.cs`가 아예 없으면 기본 모드는 **exit 2**로 그 사실을 알린다 — 조용히 통과하지 않는다.
+
+### 종료코드
+
+`0` 위반 0 · `1` **계약 위반**(모양이 다르다) · `2` **판정 없음**(기준 오라클 없음 · MySQL/dotnet 없음 ·
+`CalendarDb.cs` 없음 · `login_id`가 `app_user`에 없음 · 출력 잘림 미회복 · 다른 실행이 잠금 보유) · `130` 중단.
+
+> **`2`를 통과로 읽지 말 것.** `1`은 설계·코드를 봐야 하고, `2`는 환경을 봐야 한다.
+> ★ `login_id`가 `app_user`에 0행이면 **user_id를 만들어 내지 않고** 멈춘다(§3.6) — 없는 사람의 캘린더를 새로 파는 셈이 되기 때문이다.
 
 ## 하네스 API (harness.mjs)
 

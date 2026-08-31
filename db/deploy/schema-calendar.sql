@@ -242,6 +242,14 @@
 --       즉 이 부류는 대체로 '시끄럽게' 실패한다 — 조용히 틀리는 것은 recur 두 컬럼(3819 로 전체 롤백)과
 --       svn_author(''로 채우면 구버전 사용자의 SVN 수집 대상이 조용히 '전체'로 바뀐다) 쪽이다.
 --
+--     ★★ 이 표에 sort_order 가 없는 것은 빠뜨린 게 아니다 — **C 가 아니라 E 다.** 여기가 가장 헷갈리는
+--       자리라 못박아 둔다. C 의 규칙은 '속성이 없다 = 파서 기본값' 인데, sort_order 에는 대응 XML
+--       속성이 **애초에 없다.** 그래서 '부재 → DEFAULT 0' 으로 처리하면 규칙을 지킨 것 같은데 실제로는
+--       배열 순서가 통째로 사라진다. `NOT NULL DEFAULT 0` 이 C 부류처럼 보이는 것이 함정이다.
+--       계약: **이관 도구는 sort_order 네 개(cal_category·cal_room·cal_entry·cal_todo)를 XML 문서
+--             순서(= fromXML() 배열 인덱스)로 직접 채운다.** 상세와 실측 근거는 계약 E 를 볼 것.
+--             값을 안 주고 컬럼 DEFAULT 에 맡기면 오류도 경고도 없이 전 행이 0 이 된다.
+--
 --     ※ 한 건만 '파서 기본값 그대로'가 자동 정답이 아니다 — `<rooms>` 요소 부재(구버전 XML).
 --       파서는 DEFAULT_ROOMS 3개를 주입하는데, cal_room 의 계약은 '행 0개 = 빈 목록'이다(아래 7. 참조).
 --       이관 도구는 파서 쪽(DEFAULT_ROOMS 주입)을 따르고 그 사실을 보고한다 — 이관 직후 사용자가
@@ -343,6 +351,8 @@
 --       ---------------------------------------------------------------------------------
 --       cal_category.sort_order      <category> 문서 순서    ★ 조용히 전 행 0 → 표시 순서 영구 소실
 --       cal_room.sort_order          <room> 문서 순서        ★ 조용히 전 행 0 → 회의실 순서 영구 소실
+--       cal_entry.sort_order         <entry> 문서 순서       ★ 조용히 전 행 0 → 일정 배열 순서 영구 소실
+--       cal_todo.sort_order          <todo> 문서 순서        ★ 조용히 전 행 0 → 할 일 배열 순서 영구 소실
 --       cal_entry_commit.seq         commits 배열 인덱스     ERROR 1364 (시끄럽게 실패)
 --       cal_category.cat_no          없음(대리키)            ERROR 1364 — 아래 ★ 참조
 --       cal_entry.entry_no           없음(대리키)            ERROR 1364
@@ -355,9 +365,20 @@
 --         어떤 인덱스의 선두로 요구해 불필요한 KEY 가 강제되고, 실측에서 보조 인덱스 합이
 --         25.59MB → 34.13MB 로 늘었다. 되돌리자는 제안이 나오면 이 줄을 근거로 거절할 것.
 --
---     ★ 위험한 것은 sort_order 둘이다. NOT NULL **DEFAULT 0** 이라 안 채워도 INSERT 가 성공한다 —
+--     ★ 위험한 것은 sort_order **넷**이다(2026-08-27 에 cal_entry·cal_todo 가 합류했다).
+--       NOT NULL **DEFAULT 0** 이라 안 채워도 INSERT 가 성공한다 —
 --       오류도 경고도 없고 CHECK 도 게이트도 못 잡는다. 값이 '틀린' 게 아니라 '전부 같은' 상태가
 --       되기 때문이다. 실측(8.4.9): sort_order 를 뺀 3행 INSERT → 성공, 세 행 모두 0.
+--     ★★ 계약(이관 도구) — **네 표 모두 sort_order 를 XML 문서 순서로 채운다.** 빼먹으면 조용히 0 이 된다.
+--       cal_category ← <categories> 안의 <category> 등장 순서
+--       cal_room     ← <rooms> 안의 <room> 등장 순서 (= normRooms() 통과 후의 배열 순서)
+--       cal_entry    ← <entries> 안의 <entry> 등장 순서 (= fromXML 이 만든 state.entries 배열 인덱스)
+--       cal_todo     ← <todos> 안의 <todo> 등장 순서   (= 빈 text 를 filter 로 버린 **뒤**의 배열 인덱스)
+--       ※ 값은 0,1,2… 로 건너뛰지 말 것(아래 ※ 규칙). 순서만 맞으면 되지만, 재이관 왕복 서명이
+--         값 자체를 비교하므로 규칙을 고정해 둔다.
+--       ※ '문서 순서' 의 정본은 XML 텍스트가 아니라 **fromXML() 이 돌려준 배열의 인덱스**다.
+--         파서가 버리는 항목이 있어서(계약 F: 빈 <todo>·범위 밖 dayNote·중복 <room>) 두 순서가
+--         어긋날 수 있다. 계약 F 의 '파서를 통과한 결과만 넣는다' 와 짝을 이루는 줄이다.
 --     ※ seq 는 다르다 — NOT NULL 이면서 **DEFAULT 가 없어** STRICT 에서 그 자리에 1364 로 멈춘다
 --       (실측: seq 를 뺀 커밋 2건 INSERT → ERROR 1364 "Field 'seq' doesn't have a default value").
 --       PK 충돌(1062)로 2건째에 걸리는 게 아니라 1건째부터 못 들어간다. 시끄러워서 안전한 쪽이다.
@@ -367,9 +388,18 @@
 --       설계 §5.3 이 이 컬럼을 둔 이유가 그거다 — 화면 순서는 배열 순서인데 created_at 이 대부분
 --       같은 밀리초라(실측 37개 중 33개) 대체할 수단이 없다. 안 채우면 이관 순간 순서가 사라지고,
 --       사용자는 '순서가 뒤죽박죽'으로만 느낀다. 원본이 없으니 사후 복구도 안 된다.
---     ★ sort_order 를 cat_no 로 대체하려 하지 말 것 — 둘은 다른 값이다. cat_no 는 '한 번 정해지면
---       안 변하는 신원'이고 sort_order 는 '사용자가 끌어 옮기면 바뀌는 표시 순서'다. 순서를 cat_no
+--       ★ 2026-08-27 — cal_entry·cal_todo 가 **정확히 같은 상황**임이 실측으로 확인됐다(사용자 실 data.xml):
+--         일정 23건 중 22건 · 할 일 7건 중 5건이 같은 밀리초(2026-06-23T04:45:32.051Z)다.
+--         (entry_date, created_at) 쌍으로 묶어도 동률 그룹이 2개 남고, 그중 한 그룹(2026-06-22 의 3건)은
+--         두 값이 완전히 같아 어떤 보조정렬로도 갈라지지 않는다 — 문서 순서 [wk3, e22a, e22b] 가
+--         이관 후 [e22a, e22b, wk3] 로 뒤바뀌는 것을 게이트가 재현했다(tests/calendar-adapter.mjs).
+--         ※ '화면이 렌더할 때 다시 정렬하니 괜찮다' 는 반론은 실측으로 기각됐다 — 그 정렬(entrySort·sortS)도
+--           created_at 에서 끝나고 JS sort 는 안정 정렬이라, 동률이면 배열 순서가 그대로 화면에 나온다.
+--     ★ sort_order 를 cat_no·entry_no·todo_no 로 대체하려 하지 말 것 — 둘은 다른 값이다. 번호는 '한 번
+--       정해지면 안 변하는 신원'이고 sort_order 는 '사용자가 끌어 옮기면 바뀌는 표시 순서'다. 순서를 번호
 --       로 표현하면 재정렬이 곧 PK 변경(=자식 재배선)이 되어, 키 전환으로 없앤 문제가 되돌아온다.
+--       게다가 번호는 MAX()+1 이라 **재사용된다**(H-1) — 마지막 행을 지우고 새로 만들면 그 항목이
+--       배열 끝이 아니라 옛 자리로 돌아간다.
 --     ※ 규칙: 문서에 나타난 순서대로 0,1,2… (건너뛰지 말 것 — 앱은 값의 크기가 아니라 정렬 결과만 본다).
 --       seq 도 0-base 로 commits 배열 인덱스 그대로.
 --     ※ 이 부류는 §8 의 이관 왕복 서명에 반드시 포함시킬 것. 서명에서 빠지면 순서가 통째로
@@ -442,6 +472,23 @@
 --         gitAuthor, svnAuthor,
 --         reportMarker, reportMarkerCustom, reportIndent, gitCommitBody,
 --         reportFormatPrefs, reportFont, lsMigrated }
+--     ★ 최상위 15키는 **늘지도 줄지도 않는다.** 늘려야 할 것 같으면 그건 대개 원소의 키다.
+--
+--     ★★ 2026-08-27 — 원소의 키 집합이 한 번 늘었다. 계약이므로 여기 명시한다:
+--        **categories 원소에 `usesRepo`(boolean)가 항상 붙는다**(G-6). fromXML() 은 그 키를 만들지
+--        않으므로 '똑같은 모양' 이라는 이 절의 목표에 **의도된 예외**가 하나 생긴 것이다.
+--        · 왜 예외를 두는가: 그 값은 XML 에 표현이 없고(§4 — 경로만 있고 '쓴다/안 쓴다' 는 없다)
+--          DB 에만 있다. 앱이 §4 의 안내를 띄우려면 그 한 비트를 받아야 한다.
+--        · 대조 게이트(tests/calendar-adapter.mjs)는 이 차이를 **덮지 말고 계산해서 맞춰야 한다** —
+--          G-6 의 '없는 것 채우기'(hours=null · commits=[] · lsMigrated=true)와 같은 부류로,
+--          기준(fromXML) 쪽을 정규화해 대조한다. 정규화 규칙은 I-1 과 같다:
+--            expected.usesRepo = (XML 의 gitRepo 또는 svnRepo 가 비어 있지 않다)
+--          ※ 그 규칙은 이관 도구가 세우는 규칙과 **같은 규칙**이므로, 이 대조가 증명하는 것은
+--            '이관 규칙이 옳다' 가 아니라 **'어댑터가 DB 의 그 비트를 손실 없이 앱까지 나른다'** 다.
+--            게이트가 자기 요약에 그 사실을 찍어야 한다(무엇을 증명 못 했는지도 결과의 일부다).
+--        · 이 예외를 **늘리지 말 것.** 다음에 또 '앱에는 없지만 DB 에만 있는 값'을 얹고 싶어지면,
+--          먼저 그것이 §4 처럼 *"DB 에 있어야만 앱이 두 상태를 구분할 수 있다"* 를 만족하는지 보여라.
+--          만족하지 못하면 그건 파생값이고, 파생값은 얹지 않는다(ADR-18).
 --
 --  ── G-1. 이름이 다르다 ────────────────────────────────────────────────
 --     DB 는 snake_case, 앱은 camelCase 인데 단순 변환으로 안 되는 것들이 있다.
@@ -497,10 +544,10 @@
 --
 --  ── G-5. 정렬 컬럼 → 배열 순서 / 행 → 맵 (E 의 역방향) ────────────────
 --     DB 는 행 집합이고 앱은 배열·객체다. 접는 규칙이 표마다 다르다.
---       cal_category    ORDER BY sort_order → categories 배열. sort_order·cat_no 는 state 에 넣지 않는다
---       cal_room        ORDER BY sort_order → rooms 문자열 배열(객체 아님)
---       cal_entry       ORDER BY entry_date → entries 배열. entry_no 는 state 에 넣지 않는다
---       cal_todo        ORDER BY … → todos 배열. todo_no 는 state 에 넣지 않는다
+--       cal_category    ORDER BY sort_order, uid → categories 배열. sort_order·cat_no 는 state 에 넣지 않는다
+--       cal_room        ORDER BY sort_order, name → rooms 문자열 배열(객체 아님)
+--       cal_entry       ORDER BY sort_order, uid → entries 배열. sort_order·entry_no 는 state 에 넣지 않는다
+--       cal_todo        ORDER BY sort_order, uid → todos 배열. sort_order·todo_no 는 state 에 넣지 않는다
 --       cal_entry_commit ORDER BY seq       → entry.commits 배열. seq 는 state 에 넣지 않는다
 --       cal_entry_except ORDER BY except_date → entry.recurExcept 문자열 배열
 --       cal_todo_day_note → todo.dayNotes = { 'YYYY-MM-DD': '설명' }   (배열 아님)
@@ -512,6 +559,30 @@
 --       행이 늘거나 실행계획이 바뀌면 순서가 뒤집힌다 — 화면 순서가 이유 없이 달라진다.
 --     ★ ORDER BY 에 cat_no·entry_no·todo_no 를 쓰지 말 것. 번호는 '만들어진 순서'일 뿐이고
 --       삭제 후 재사용되므로(11. cal_user_rev 주석) 표시 순서의 근거가 되지 못한다.
+--     ★★ 2026-08-27 — cal_entry·cal_todo 의 정렬키가 확정됐다(그 전에는 cal_todo 줄이 '…' 로 열려
+--        있었고, 어댑터가 created_at 을 임시 정렬키로 쓰고 있었다). **created_at 은 정렬키가 아니다.**
+--        근거는 계약 E 의 실측이다 — 일정 23건 중 22건, 할 일 7건 중 5건이 같은 밀리초라 순서를
+--        결정하지 못한다. 배열 순서의 유일한 근거는 sort_order 다.
+--     ★★ 같은 날 cal_entry 에서 **entry_date 를 정렬키에서 뺐다.** 이 줄은 원래 'ORDER BY entry_date'
+--        였다 — 정정이므로 근거를 남긴다.
+--        · 이 절의 목표는 'fromXML() 이 돌려주던 것과 똑같은 모양' 인데, fromXML 의 entries 배열은
+--          **문서 순서이고 날짜순이 아니다.** entry_date 를 1차 키로 두면 그 배열을 재현할 방법이
+--          아예 없다(게이트 실측: real 픽스처 23자리 중 22자리가 어긋난다).
+--        · 옛 'ORDER BY entry_date' 는 sort_order 가 없던 시절의 대용품이었다 — 뜻은 '무순서를 두지
+--          말라' 였고, 이제 그 자리를 sort_order 가 정확히 채운다.
+--        · 화면은 달라지지 않는다(앱 코드 직접 확인): state.entries 를 날짜순으로 신뢰하는 곳이 없다.
+--          entriesOn()·groupByDateHtml() 이 **먼저 날짜로 묶은 뒤** entrySort 로 정렬하고, 작업일지는
+--          rows.sort(date,time) 한다. 배열 순서가 새어 나오는 곳은 entrySort 의 동률뿐인데 그건 언제나
+--          '같은 날짜 안' 이라, 날짜로 먼저 정렬하든 안 하든 같은 날짜 안의 상대 순서는 **동일**하다.
+--        ★ 되돌리자는 제안이 나오면 이 세 줄을 근거로 거절할 것. 되돌리는 순간 게이트가 다시 빨간불이 된다.
+--     ★ 마지막 티브레이커가 uid 인 이유(네 표 공통 — category=uid, room=name, entry=uid, todo=uid):
+--        sort_order 가 동률인 상태는 정상이 아니지만(계약 E 가 0,1,2… 를 요구한다), 이관이 그 값을
+--        빠뜨리면 **전 행이 0** 이 되어 실제로 벌어진다. 그때 티브레이커가 없으면 MySQL 이 매 부팅
+--        다른 순서를 줄 수 있다 — '순서가 틀렸다' 보다 '순서가 매번 바뀐다' 가 훨씬 나쁜 증상이고
+--        재현이 안 돼 원인 추적도 막힌다. uid 는 UNIQUE(user_id, uid) 라 순서를 완전히 결정한다.
+--        ※ 이 티브레이커의 대가는 인덱스로 정렬을 끝낼 수 없다는 것이다(실측: 넣는 순간 filesort).
+--          사용자당 수십 행이라 무시할 수 있다 — 근거와 EXPLAIN 은 cal_entry 의 인덱스 주석에 있다.
+--        ※ _no 를 티브레이커로 쓰지 말 것 — 위 ★ 과 같은 이유(재사용되는 번호)다.
 --     ★ cal_attendance 는 **행이 없는 날짜의 키를 만들지 않는다.** 그게 '미기록' 이다
 --       (getAttendance() 가 그 자리에서 null 을 돌려준다). 빈 객체나 status:'' 를 넣지 말 것.
 --
@@ -528,6 +599,66 @@
 --                              통째로 사라져 사용자는 '커밋이 없는 것'과 구분하지 못한다.
 --                              ★ 이 PC 에 경로가 없으면 그 사실을 화면이 말해야 한다(§4).
 --                              ★ 로컬 쪽 키는 uid 다 — cat_no 로 찾지 말 것(위 ★ 절).
+--
+--                              ★★ 그 '로컬 저장소'가 무엇인지 여기서 못박는다(2026-08-27 신설).
+--                                 이 자리가 "로컬 저장소" 라고만 적혀 있어 구현자가 두 번 헤맸다.
+--                                 · 파일 : %APPDATA%\TaskCalendar\repo-paths.json
+--                                 · 코드 : widget/RepoPaths.cs  (형식·손상 처리·고아 키 규칙의 단일 소스)
+--                                 · 소유 : **웹 계층**(과제 목록과 함께 늘었다 줄었다 하는 키 맵).
+--                                          widget.settings.json 이 아니다 — 그쪽은 창 위치·자동시작
+--                                          같은 호스트(WPF) 소유의 평평한 DTO 라 수명도 소유자도 다르다.
+--                                          data.xml 도 아니다 — DB 전환 뒤 그 파일은 보존만 되므로
+--                                          거기 남기면 로컬 유지가 아니라 **동결**이다(§4).
+--                                 · 형식 : { "version": 1,
+--                                            "paths": { "<category uid>": { "git": "…", "svn": "…" } } }
+--                                          키가 과제 **uid** 다(c-<uuid> / db-<project.uid>).
+--                                          맵을 최상위에 두지 않는 이유는 "version" 이라는 이름의 과제
+--                                          키와 부딪히지 않게 하려는 것이다.
+--                                 · 배선 : 부팅 때 한 번 읽어 세션이 끝날 때까지 들고 있는다.
+--                                            _repoPaths = RepoPaths.Load(_dataDir, Log);
+--                                            await _calDb.LoadSnapshotAsync(loginId, _repoPaths.Map);
+--                                          `.Map` 이 repoPaths 인자와 **정확히 같은 형**이라 변환이 없다.
+--                                          ★ CalendarDb 에 `(string?, RepoPaths)` 편의 오버로드를 만들지
+--                                            말 것 — 어댑터 게이트가 부팅 조회를 **이름 점수**로 고르는데
+--                                            오버로드는 이름도 인자 개수도 같아 어느 쪽이 뽑힐지가 우연이
+--                                            된다. RepoPaths 쪽이 뽑히면 게이트가 null 을 넣어
+--                                            gitRepo·svnRepo 가 전부 '' 가 되고, 게이트는 그것을 '' 로만
+--                                            대조하고 통과시킨다 = **G-6 의 값 대조가 조용히 사라진다.**
+--                                 · 파일이 없거나 깨져도 **예외를 던지지 않는다**(빈 맵 + 원본은 .bak).
+--                                   이 파일 하나 때문에 위젯이 안 뜨면 사용자는 고칠 화면조차 없다.
+--                                 ※ 경로 **문자열**은 여전히 DB 로 올리지 않는다. DB 로 가는 것은
+--                                   "저장소를 쓰는 과제인가" 하는 **비트 하나**뿐이다(§4) — 그 비트가
+--                                   없으면 앱은 '경로가 없다'와 '저장소를 안 쓰는 과제다'를 구분하지
+--                                   못해 위 안내가 모든 과제에 뜨거나 아무 데도 안 뜬다.
+--
+--       category.usesRepo    → ★★ cal_category.uses_repo(0/1) → **boolean**. 위 두 줄의 짝이다.
+--                              (2026-08-27 신설, schema_version 5)
+--                              · **fromXML() 은 이 키를 만들지 않는다.** XML 에 대응 속성이 없다 —
+--                                XML 에는 gitRepo·svnRepo 경로 **문자열**만 있고, 그건 그 파일을 만든
+--                                PC 의 사실이지 과제의 사실이 아니다. 그래서 이 키는 이 절('DB 에
+--                                없는 것을 채운다')의 **거울**이다 — DB 에만 있는 것을 앱에 얹는다.
+--                              · 왜 필요한가: gitRepo=''·svnRepo='' 만으로는 *"이 PC 에 경로가 없다"* 와
+--                                *"저장소를 안 쓰는 과제다"* 가 **같은 모양**이다. 앱은 그 둘을 갈라야
+--                                「연동」 섹션을 숨길지, *"이 PC 에는 이 과제의 저장소 경로가 설정되지
+--                                않았습니다"* 를 띄울지 정할 수 있다(§4). 화면 규칙은 이 셋의 조합이다:
+--                                   usesRepo=false                      → 「연동」 섹션을 숨긴다(지금과 같다)
+--                                   usesRepo=true  · 경로 있음          → 커밋 줄을 그린다(지금과 같다)
+--                                   usesRepo=true  · 경로 없음          → ★ 숨기지 말고 안내를 띄운다
+--                              · **키를 항상 만든다**(true/false 둘 다). 'false 면 키를 만들지 않는' 식으로
+--                                아끼지 말 것 — source·dbGone 과 다른 판정이다. 저 둘은 '공식 과제인가'
+--                                라는 **분류**라 부재가 곧 'local' 이라는 뜻이지만, usesRepo 는 위 3분기의
+--                                **조건**이고 undefined 는 false 와 같은 자리에 떨어져 세 번째 분기가
+--                                통째로 사라진다(터지지 않고 조용히 사라진다 — 이 절이 경고하는 그것).
+--                              · 값을 로컬 경로 유무에서 **파생하지 말 것**(usesRepo = !!gitRepo 금지).
+--                                그러면 정의상 3분기가 2분기로 접혀 이 컬럼을 만든 이유가 사라진다.
+--                                근거는 언제나 DB 컬럼이다.
+--                              · 이 값은 state 에 실리지만 toXML() 은 쓰지 않는다(직렬화 목록에 없다 —
+--                                id·color·gitRepo·svnRepo·createdAt·source·dbGone 뿐). 즉 **내보내기 →
+--                                가져오기 왕복에서 이 비트는 살아남지 못한다.** 그건 손실이 아니라
+--                                설계다 — XML 은 '한 PC 의 파일'이고 이 비트의 원본은 DB 한 곳이다.
+--                                ※ 그래서 §8 의 왕복 서명에도 넣지 않는다(서명은 XML↔DB 대응이 있는
+--                                  값만 센다). 대신 이관 도구가 무엇을 근거로 이 비트를 세우는지는
+--                                  아래 I-1 이 못박는다.
 --
 --       category.dbGone      → source='db' 인 행만, LEFT JOIN project 로 파생한다(§6).
 --                              컬럼으로 저장하지 않는다 — 파생값 캐시라 ADR-18 과 충돌한다.
@@ -632,6 +763,34 @@
 --       메모리에서 1,2,3… 을 붙여도 되지만, 그때도 (1) 을 먼저 실행해야 한다(다른 자리에서
 --       같은 사용자가 앱을 켜 놓았을 수 있다).
 --
+--  ── H-1b. 새 항목의 sort_order 는 무엇으로 주나 (쓰기 계층 계약) ───────
+--     ※ 2026-08-27 신설. 쓰기 계층은 아직 없다 — 만들 때 이 절을 구현할 것.
+--     대상: cal_category · cal_room · cal_entry · cal_todo (sort_order 를 가진 네 표 전부).
+--
+--     ★ 값 — 그 사용자 안에서 **MAX(sort_order) + 1**. 즉 새 항목은 배열의 **끝**에 붙는다.
+--       근거: 앱이 실제로 그렇게 한다(state.entries.push / state.todos.push / categories.push).
+--       ※ 0-base 라 빈 표에서 0 이 나와야 한다 → `COALESCE(MAX(sort_order), -1) + 1`.
+--         `COALESCE(MAX(...), 0) + 1` 로 쓰면 첫 항목이 1 이 되어 값 규칙(0,1,2…)이 어긋나고,
+--         §8 왕복 서명이 sort_order 값 자체를 비교하므로 재이관 대조가 전부 틀어진다.
+--
+--     ★ 자리 — **<표>_no 를 뽑는 그 자리에서, 같은 문장으로 함께 뽑는다.** 위 (2) 를 이렇게 쓴다:
+--         SELECT COALESCE(MAX(entry_no), 0) + 1, COALESCE(MAX(sort_order), -1) + 1
+--           FROM cal_entry WHERE user_id = ?;
+--       왜 같은 자리여야 하는가: 둘 다 '그 사용자의 현재 최댓값' 이라 (1) 의 rev 락이 직렬화해 주는
+--       구간 안에서 읽어야 한다는 조건이 **정확히 같다.** 락 밖에서 읽으면 두 세션이 같은 값을 본다.
+--       ★★ 그런데 결과는 정반대다 — entry_no 충돌은 1062 로 **시끄럽게** 죽지만, sort_order 충돌은
+--         UNIQUE 가 없어 **아무 일도 안 일어난다.** 두 항목이 같은 sort_order 를 갖고, 순서는 G-5 의
+--         uid 티브레이커가 임의로 정한다. 즉 sort_order 쪽이 더 위험하다(조용하다).
+--         그래서 '번호는 락 안에서, 순서는 나중에 대충' 이 성립하지 않는다. 한 문장으로 묶어 둘 것.
+--       ※ 두 값을 같은 수로 쓰지 말 것. _no 는 1-base 신원이고 sort_order 는 0-base 표시 순서다.
+--         한 번의 삭제나 재정렬로 곧바로 갈라진다(계약 E 의 ★ — 둘은 다른 값이다).
+--
+--     ★ 재정렬(드래그) 은 다른 경로다 — 두 행만 맞바꾸지 말고, 그 사용자의 그 표 전체를 배열 순서대로
+--       **0..n-1 로 다시 쓴다.** 앱이 배열을 통째로 들고 있으므로 그게 가능하고, 부분 UPDATE 는
+--       삭제로 생긴 구멍(아래 ※)과 겹쳐 조용히 동률을 만든다.
+--     ※ 삭제가 남긴 구멍(0,1,3,4…)은 메우지 않아도 된다 — 앱은 값의 크기가 아니라 정렬 결과만 본다.
+--       그래서 MAX+1 은 단조 증가하지만 INT 상한까지 여유가 있다(한 사용자의 일생 생성 건수다).
+--
 --  ── H-2. 어댑터가 들고 있어야 하는 맵 ─────────────────────────────────
 --     state 에는 uid 만 들어간다(G-1). 그런데 UPDATE/DELETE 와 자식 조회의 조건절은 번호다.
 --     그래서 어댑터는 부팅 조회 때 아래 세 맵을 함께 만들어 세션이 끝날 때까지 유지한다:
@@ -664,6 +823,58 @@
 --     ★ 반대로 cat_no 는 같지 않다. 사람마다 자기 카운터로 받은 번호라 같은 공식 과제가
 --       A 에게는 3, B 에게는 11 일 수 있다. **cat_no 로 '같은 과제인지'를 판정하지 말 것** —
 --       그 판정의 근거는 uid(또는 project_uid)다.
+--
+--  ══ I. cal_category.uses_repo — 누가 세우고 누가 지우나 (2026-08-27 신설) ══
+--     쓰기 계층이 아직 없다. 그래서 **코드가 아니라 계약으로** 먼저 못박는다. 이 절이 정본이다.
+--     컬럼의 의미·왜 경로가 아니라 비트인지는 cal_category 의 컬럼 주석과 설계 §4 에 있다.
+--
+--  ── I-1. 이관(XML → DB)이 세우는 값 ───────────────────────────────────
+--     uses_repo = (그 <category> 에 gitRepo 또는 svnRepo 가 있고 빈 문자열이 아니면 1, 아니면 0).
+--     ★ 그것이 **이관 시점에 존재하는 유일한 증거**다. 다른 근거는 없다 — 이관은 한 PC 의
+--       data.xml 한 개를 보고 있고, 그 PC 에 경로가 있었다는 사실이 곧 '이 과제는 저장소를 쓴다' 다.
+--     ★ 같은 이관이 **repo-paths.json 도 함께 만든다.** 경로 문자열은 DB 로 가지 않으므로(§4),
+--       이관이 그것을 로컬로 옮기지 않으면 그 PC 는 이관 직후 **자기가 갖고 있던 경로를 잃는다** —
+--       그러면 uses_repo=1 만 남아 §4 의 안내가 방금 이관한 그 PC 에서 곧바로 뜬다. 우스운 상태다.
+--       두 쓰기는 한 도구의 같은 단계에서 함께 일어나야 한다.
+--     ★ 0 으로 백필하지 말고 **행마다 계산**할 것. 전 행 0 이면 안내가 아무 데도 안 뜨고,
+--       전 행 1 이면 모든 과제에 뜬다(§5.5 가 DEFAULT 를 0 으로 정한 이유는 '계산 실패 시 조용한
+--       쪽으로 넘어지게' 하려는 것이지, 계산을 생략해도 된다는 뜻이 아니다).
+--
+--  ── I-2. 런타임이 세우는 시점 — 경로를 **처음 지정할 때** ─────────────
+--     앱이 [과제 관리]에서 그 과제의 gitRepo·svnRepo 중 하나라도 **비어 있지 않은 값으로** 저장하면,
+--     그 자리에서 uses_repo=1 로 올린다. 그 UPDATE 는 §3.1 의 rev 락 안에서, 그 과제의
+--     낙관적 잠금(@prev)과 함께 나간다 — 다른 컬럼의 UPDATE 와 같은 규약이다.
+--     ★ 이미 1 이면 다시 쓰지 않는다(무의미한 updated_at 갱신 = 남의 세션에 충돌 오탐을 만든다).
+--     ※ 경로 **문자열**은 이 UPDATE 에 실리지 않는다. 그건 repo-paths.json 으로만 간다(§4).
+--       한 사용자 동작이 두 저장소에 나뉘어 쓰이는 유일한 자리이므로, 로컬 쓰기가 실패하면
+--       DB 쓰기도 하지 않는다(순서: 로컬 먼저 → 성공하면 DB). 반대로 하면 경로 없이 비트만 서서
+--       방금 경로를 지정한 사람에게 "경로가 설정되지 않았습니다" 가 뜬다.
+--
+--  ── I-3. 지우는 조건 — ★ **자동으로는 지우지 않는다** ─────────────────
+--     이 PC 에서 경로를 지웠다는 사실은 **그 과제가 저장소를 그만 쓴다는 뜻이 아니다.** 다른 자리에
+--     아직 경로가 있을 수 있고, DB 는 그것을 알 방법이 **없다** — 경로도, 'PC 마다의 유무'도
+--     올리지 않기 때문이다(§4. 올리면 그게 바로 §4 가 막으려던 그것이다).
+--     그래서 '마지막 PC 에서 지워졌는가' 는 **판정 불가**다. 판정할 수 없는 것으로 상태를 바꾸지 않는다.
+--
+--     ★ 그러면 어느 쪽으로 틀리는 것이 나은가 — 두 오류의 값이 다르다:
+--       · 잘못 켜 둔 채로 두면(거짓 양성) 저장소를 그만 쓴 과제의 「연동」 자리에
+--         *"이 PC 에는 경로가 설정되지 않았습니다"* 한 줄이 남는다. **보이고, 설명되고,
+--         사용자가 직접 끌 수 있다**(I-4).
+--       · 잘못 꺼 버리면(거짓 음성) 「연동」 섹션이 **다시 통째로 사라진다** — 그게 바로 §4 가
+--         없애려던 상태다. 아무 말도 없이 커밋 줄만 없고, 원인을 알 방법이 없다.
+--       비대칭이다. 그래서 **한 번 켜지면 끄지 않는다**를 택한다.
+--
+--  ── I-4. 그래도 끄는 유일한 경로 — 사람이 명시적으로 ──────────────────
+--     [과제 관리]에 *"이 과제는 저장소를 쓰지 않습니다"* 를 두고, 그것을 누를 때만 0 으로 내린다.
+--     ★ '이 PC 의 경로를 비웠다' 를 그 신호로 **삼지 말 것.** 그건 PC 의 사실이고 이 비트는 과제의
+--       성질이다(컬럼 주석 ③). 사람이 과제에 대해 한 진술만이 과제의 성질을 바꾼다.
+--     ※ 그 UI 는 아직 없다. 없어도 무해하다 — 켜진 채 남은 과제는 안내 한 줄을 띄울 뿐이고,
+--       그 안내는 틀린 말도 아니다("이 PC 에는 경로가 없다"는 사실 그대로다).
+--
+--  ── I-5. 과제가 지워지면 ──────────────────────────────────────────────
+--     cal_category 행이 사라지므로 이 비트도 함께 사라진다. 따로 정리할 것이 없다.
+--     로컬 repo-paths.json 의 그 키는 **고아로 남아도 무해하다**(참조하는 과제가 없으면 안 읽힌다).
+--     지울 수 있으면 지우되, 지우려고 DB 를 뒤지지는 말 것(§4).
 --
 --  값 집합이 고정된 문자열 컬럼은 COLLATE utf8mb4_bin 이다(테이블 기본 utf8mb4_0900_ai_ci 상속 금지).
 --     실측: ai_ci 는 대소문자뿐 아니라 전각/반각까지 같게 본다. 'DB'·'Db'·전각 'ｄｂ' 가 CHECK 를
@@ -823,6 +1034,32 @@ CREATE TABLE cal_category (
   --   그 과제에 달린 일정·공수까지 함께 이관이 막힌다. 사람이 원본 XML 을 보고 정해야 하는 문제다.
   --   ※ cat_no 로는 이 파생을 할 수 없다 — 번호에는 접두가 없다. 근거는 언제나 uid 다.
   project_uid  CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL, -- 공식 과제가 가리키는 project.uid. FK 걸지 않음(§5.2). 콜레이션은 project.uid 와 일치해야 조인 가능
+  -- ★★ '저장소를 쓰는 과제' 플래그 (설계 §4 · 2026-08-27 신설, schema_version 5) ★★
+  --   1 = 이 과제는 git/svn 저장소를 쓴다. 0 = 안 쓴다.
+  --
+  --   ① **경로 문자열은 올리지 않는다.** 올리는 것은 이 비트 하나뿐이다(§4).
+  --      gitRepo·svnRepo 는 DB 로 가지 않는 **유일한 항목**이다 — PC 마다 달라야 하는 값이고
+  --      브라우저에는 개념 자체가 없다. 올리면 A자리의 'D:\repos\report' 가 B자리까지 따라와
+  --      커밋 수집이 조용히 실패하고, 더 나쁜 경우 **경로는 유효한데 다른 저장소**라
+  --      실패조차 안 하고 **남의 커밋이 내 보고서에 실린다.**
+  --      → 경로의 보관처는 %APPDATA%\TaskCalendar\repo-paths.json (과제 uid 를 키로 하는 맵, §4).
+  --        이 컬럼에 경로를 넣거나, 경로를 담을 컬럼을 옆에 새로 만들지 말 것.
+  --
+  --   ② **이 비트가 없으면 앱은 두 상태를 구분하지 못한다** — *"이 PC 에 경로가 없다"* 와
+  --      *"저장소를 안 쓰는 과제다"*. 지금 기록 모달은 저장소가 없으면 「연동」 섹션을 통째로
+  --      숨긴다(updateGitRow() 의 sect.classList.toggle('hidden', !show)). 일정이 DB 로 올라가면
+  --      "A자리에서 보이던 커밋이 B자리에서 사라지는" 것이 일상이 되는데, 화면은 아무 말도 안 한다.
+  --      그 자리에 *"이 PC 에는 이 과제의 저장소 경로가 설정되지 않았습니다 — [과제 관리]에서
+  --      경로를 지정하세요"* 를 띄우려면 조건이 필요하다. 이 비트가 그 조건이다.
+  --      비트가 없으면 그 안내는 **모든 과제에 뜨거나 아무 데도 안 뜬다** — 둘 다 안내가 아니다.
+  --
+  --   ③ **이 값은 과제의 성질이지 PC 의 성질이 아니다.** 그래서 DB 에 둔다.
+  --      '이 PC 에 경로가 있나' 는 PC 의 성질이고 그건 repo-paths.json 이 답한다. 두 물음을
+  --      한 저장소에 섞지 말 것 — 섞는 순간 ①의 사고가 그대로 돌아온다.
+  --
+  --   ④ DEFAULT 는 **0('안 쓴다')** 이다. 1 로 백필하면 ②의 안내가 모든 과제에 뜬다(설계 §5.5).
+  --   ⑤ 누가 세우고 누가 지우나 — 쓰기 계층 계약은 아래 헤더 **I 부류**가 정본이다.
+  uses_repo    TINYINT(1)   NOT NULL DEFAULT 0,                                         -- 저장소를 쓰는 과제인가. 1=쓴다/0=안 쓴다. ★ 경로 문자열이 아니다(위 ①). 앱으로는 category.usesRepo(boolean) 로 나간다(G-6)
   sort_order   INT          NOT NULL DEFAULT 0,                                         -- 화면 표시 순서. XML 문서 순서를 박제한 유일한 근거. ★ cat_no 와 다른 값이다(계약 E 의 ★)
   created_at   DATETIME(3)  NOT NULL,                                                   -- 생성 시각(UTC). 앱이 계산해 보낸다
   -- ★ 이관 규칙: updated_at = created_at 을 그대로 복사한다(원본이 없다).
@@ -846,6 +1083,9 @@ CREATE TABLE cal_category (
   CONSTRAINT chk_cal_category_color   CHECK (color REGEXP '^#[0-9a-fA-F]{6}$'),
   -- uid 는 NOT NULL 이므로 이 식은 NULL 을 낳지 않는다. _bin(PAD SPACE)이라 공백만인 값도 함께 막힌다.
   CONSTRAINT chk_cal_category_uid     CHECK (uid <> ''),
+  -- 불리언 컬럼은 값 집합을 CHECK 로 못박는다(cal_entry.all_day·cal_todo.done 과 같은 관례).
+  -- NOT NULL 이 함께 있어야 실제 방벽이 된다 — MySQL 의 CHECK 는 식이 NULL 이면 통과시킨다(§5.1 ★).
+  CONSTRAINT chk_cal_category_usesrepo01 CHECK (uses_repo IN (0,1)),
   -- 공식 과제인데 project_uid 가 없으면 §6 의 LEFT JOIN 이 항상 db_gone 을 뱉는다. 반대로 개인 과제에
   -- project_uid 가 붙으면 남의 과제명을 끌어다 쓰게 된다. 두 방향을 다 막는다.
   --
@@ -923,11 +1163,33 @@ CREATE TABLE cal_entry (
   recur_interval INT UNSIGNED NULL DEFAULT NULL,           -- 반복 간격(N주/N개월). 반복이 있으면 1 이상 필수
   recur_until    CHAR(10)     NULL DEFAULT NULL,           -- 반복 종료일 YYYY-MM-DD. ★DATE 아님 — 파서가 형식만 검사해 2026-02-31 같은 값이 실재하므로 문자열로 보존
   recur_count    INT UNSIGNED NULL DEFAULT NULL,           -- 반복 횟수 제한. 0=제한 없음
+  -- ★ 왜 두는가 — §5.3 이 cal_category 에 sort_order 를 둔 것과 **정확히 같은 상황**이다.
+  --   '배열 순서는 created_at 으로 복원하면 된다' 는 가정이 실측에서 깨졌다(사용자 실 data.xml, 2026-08-27):
+  --     · 일정 23건 중 **22건이 같은 밀리초**다(2026-06-23T04:45:32.051Z — 옛 localStorage 승격분이 한 번에 찍혔다).
+  --     · (entry_date, created_at) 쌍으로 묶어도 동률 그룹이 2개 남는다: 2026-06-22 의 3건 · 2026-06-23 의 2건.
+  --       그 3건은 두 값이 **완전히 같아** 어떤 보조정렬로도 갈라지지 않는다 — 문서 순서 [wk3, e22a, e22b] 가
+  --       이관 후 [e22a, e22b, wk3] 로 뒤바뀌는 것을 재현했다(tests/calendar-adapter.mjs).
+  --   ★ '화면이 렌더할 때 다시 정렬하니 배열 순서는 아무래도 좋다' 는 반론은 틀렸다 — 그 정렬(entrySort)도
+  --     created_at 에서 끝나고 JS sort 는 **안정 정렬**이라, 동률이면 배열 순서가 그대로 화면에 새어 나온다.
+  --   ★ entry_no 로 대체하지 말 것 — 번호는 '만들어진 순서'이고 삭제 후 재사용된다(H-1). 계약 G-5 가 금지한다.
+  --   ★ entry_date 로 대체할 수도 없다 — fromXML 의 entries 배열은 문서 순서이고 날짜순이 아니다.
+  --     그래서 이 컬럼이 생기면서 부팅 조회의 ORDER BY 에서 entry_date 가 빠졌다(G-5 의 2026-08-27 정정).
+  sort_order     INT          NOT NULL DEFAULT 0,          -- 화면 표시 순서(= state.entries 배열 순서). XML 문서 순서를 박제한 유일한 근거. ★ entry_no 와 다른 값이다(계약 E 의 ★)
   created_at     DATETIME(3)  NOT NULL,                    -- 생성 시각(UTC)
   updated_at     DATETIME(3)  NOT NULL,                    -- 수정 시각(UTC). 낙관적 잠금 토큰 — 자식 테이블 변경 시에도 같은 트랜잭션에서 올린다
   PRIMARY KEY (user_id, entry_no),
   UNIQUE KEY uq_cal_entry_uid (user_id, uid),              -- 옛 PK(login_id,id) 의 유일성 계약을 이어받는다
-  KEY ix_cal_entry_user_date (user_id, entry_date),        -- 월/주 화면 조회
+  -- ★ 이 인덱스는 **부팅 조회용이 아니다.** 부팅 조회는 ORDER BY sort_order, uid 이고 entry_date 를
+  --   정렬키로 쓰지 않는다(G-5 의 2026-08-27 정정). 이건 월/주 화면의 날짜 범위 조회용으로 남는다.
+  KEY ix_cal_entry_user_date (user_id, entry_date),        -- 월/주 화면의 날짜 범위 조회
+  -- ★ 순서 전용 인덱스((user_id, sort_order))를 새로 만들지 말 것. 부팅 조회의 ORDER BY 가
+  --   sort_order, **uid** 로 끝나기 때문에 인덱스로는 정렬이 끝나지 않는다.
+  --   실측(8.4.9, 90명×60건 = 5,400행, ANALYZE 후 EXPLAIN): 후보 인덱스를 만들어도
+  --   key=PRIMARY · **Using filesort** 그대로였다. 이득을 보려면 uid 티브레이커를 버려야 하는데,
+  --   그건 G-5 의 ★(결정성)을 버리는 거래라 하지 않는다. 사용자당 수십 행의 filesort 는 무시할 수 있고,
+  --   인덱스는 쓰기마다 유지 비용을 문다.
+  --   ※ 선례(cal_category)의 ix_cal_category_user_sort 도 같은 이유로 부팅 조회에서는 쓰이지 않는다(실측:
+  --     그 인덱스가 있는데도 key=PRIMARY · Using filesort). 대칭으로 만들면 아무도 안 쓰는 인덱스만 는다.
   KEY ix_cal_entry_user_cat  (user_id, cat_no),            -- 과제별 조회 + 아래 복합 FK 의 자식 인덱스
   CONSTRAINT fk_cal_entry_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -1057,11 +1319,24 @@ CREATE TABLE cal_todo (
   done         TINYINT(1)   NOT NULL DEFAULT 0,           -- 완료 여부
   prio         VARCHAR(8)   CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'normal',  -- 중요 표시 2단계. XML 은 normal 을 기록하지 않음(속성 부재=normal). _bin — 'HIGH' 가 통과하면 앱의 prio==='high' 가 조용히 '보통'으로 읽는다
   completed_at DATETIME(3)  NULL DEFAULT NULL,            -- 완료 시각(UTC). done=0 이면 반드시 NULL. 보고서 '한 일' 기간 필터 키
+  -- ★ 왜 두는가 — cal_entry.sort_order 와 같은 근거이고, 여기가 더 심하다.
+  --   실측(사용자 실 data.xml, 2026-08-27): 할 일 **7건 중 5건이 같은 밀리초**다(2026-06-23T04:45:32.051Z).
+  --   일정은 그나마 entry_date 라는 1차 정렬키가 동률 그룹을 잘게 쪼개 주지만, 할 일에는 그런 축이 없다 —
+  --   due 는 NULL(기한 없음)이 정상 상태라 정렬키로 못 쓴다(계약 G-5 의 cal_todo 줄이 '…' 로 열려 있던 이유).
+  --   즉 sort_order 가 없으면 할 일 배열 순서는 **복원 수단이 아예 없다.**
+  --   ★ 화면의 sortS() 도 created_at 에서 끝나고 JS sort 는 안정 정렬이라, 동률이면 배열 순서가 그대로 보인다.
+  --   ★ todo_no 로 대체하지 말 것 — 재사용되는 번호다(H-1, G-5 ★).
+  sort_order   INT          NOT NULL DEFAULT 0,           -- 화면 표시 순서(= state.todos 배열 순서). XML 문서 순서를 박제한 유일한 근거. ★ todo_no 와 다른 값이다(계약 E 의 ★)
   created_at   DATETIME(3)  NOT NULL,                     -- 생성 시각(UTC)
   updated_at   DATETIME(3)  NOT NULL,                     -- 수정 시각(UTC). 낙관적 잠금 토큰이자 day_note 자식의 잠금 단위
   PRIMARY KEY (user_id, todo_no),
   UNIQUE KEY uq_cal_todo_uid (user_id, uid),              -- 옛 PK(login_id,id) 의 유일성 계약을 이어받는다
   KEY ix_cal_todo_user_due (user_id, due),
+  -- ★ ix_cal_todo_user_sort (user_id, sort_order) 를 만들지 말 것 — cal_category·cal_room 에는 있지만
+  --   여기서는 쓰이지 않는다. 부팅 조회의 ORDER BY 가 sort_order, **uid** 라 인덱스로 정렬이 끝나지 않고,
+  --   실측(8.4.9, 90명×40건 = 3,600행, ANALYZE 후 EXPLAIN)에서 그 인덱스를 만들어도 key=PRIMARY ·
+  --   **Using filesort** 그대로였다(전 컬럼 조회 모양·축약 모양 둘 다). 근거는 cal_entry 의 같은 ★ 를 볼 것.
+  -- ※ ix_cal_todo_user_due 도 부팅 조회용이 아니다 — due 는 정렬키가 아니다(NULL=기한 없음이 정상 상태).
   KEY ix_cal_todo_user_cat (user_id, cat_no),             -- 아래 복합 FK 의 자식 인덱스 겸용
   CONSTRAINT fk_cal_todo_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -1332,6 +1607,91 @@ CREATE TABLE cal_attendance (
   CONSTRAINT chk_cal_attendance_overtime CHECK (overtime >= 0 AND overtime <= 11)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.';
+-- =====================================================================
+--  cal_report_daily / cal_report_hours — netcus 일간보고 **사본**
+-- =====================================================================
+--  원본은 사이트다. 사용자는 캘린더로 초안을 만든 뒤 netcus 에서 상세를 직접 고친다
+--  (2026-08-31 사용자 확인). 그러므로 위젯이 보띸 값은 최종본이 아니다.
+--
+--  ★★ cal_task_hours 와 혼동 금지 — 둘은 다른 것이다
+--     cal_task_hours   = 캘린더에 입력한 시간 = **초안**(사용자가 언제든 고친다)
+--     cal_report_hours = 실제로 보고된 시간   = **확정**(공수계산기의 원천)
+--     나누는 이유: 보고 후 캘린더를 고치면 과거 집계가 소급해서 바뀜다.
+--
+--  ★ 왜 일간만 있고 주간이 없나
+--    일간은 주소가 (사번, 날짜)로 결정된다(pjm_work_view.jsp?y&m&d&id) — 검색이 아니라
+--    직접 주소라 "그 날의 최종본"에 확답이 된다. 레거시 workpaper_tbl 도 하루 한 행이다.
+--    주간은 게시판이라 글을 뒤져서 추측한다(작성일 창 ±7일·기간 겹침·상한 60건).
+--    한 주에 글이 2개면 어느 게 최종인지 코드가 정하지 못한다. 그래서 주간은
+--    그래서 사이트를 되읽지 않고, cal_report_weekly 는 **캘린더가 작성한 것**만 담는다(아래).
+-- =====================================================================
+CREATE TABLE cal_report_daily (
+  user_id      SMALLINT UNSIGNED NOT NULL,                                  -- 소유자(app_user.user_id)
+  work_date    DATE              NOT NULL,                                  -- 보고 대상 날짜. 하루 한 행 — 사이트가 그렇다
+  status       VARCHAR(2) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '',
+                                                                            -- 근태 코드. cal_attendance.status 와 같은 타입이라 대조 가능
+  overtime     TINYINT           NOT NULL DEFAULT 0,                        -- 초과시간(정수). cal_attendance 와 같음
+  content      MEDIUMTEXT        NOT NULL,                                  -- 본문 전체. 레거시 workpaper_tbl.content 와 같은 크기
+  sent_at      DATETIME(3)       NOT NULL,                                  -- 보낸 시각. 이 표는 「보낸 것」만 담는다
+  created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (user_id, work_date),
+  CONSTRAINT fk_crd_user FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다';
+
+-- ── 2단계: cal_report_hours ──────────────────────────────────────────
+--   ★ cat_no 에 FK 를 걸지 않는다. 과제를 지워도 **과거 보고 기록은 남아야 하기 때문**이다.
+--     진실은 task_name(사이트 원문)이고 cat_no 는 매칭 결과일 뿐이다.
+--     복합 FK 로는 ON DELETE SET NULL 도 못 쓴다(user_id 가 NOT NULL 이라 MySQL 이 거부한다).
+CREATE TABLE cal_report_hours (
+  user_id    SMALLINT UNSIGNED NOT NULL,
+  work_date  DATE              NOT NULL,
+  line_no    SMALLINT UNSIGNED NOT NULL,                                    -- content 안에서의 줄 순서(0부터). 순서 보존 + 좁은 키
+  task_name  VARCHAR(200)      NOT NULL,                                    -- 사이트 원문 그대로. 과제명이 바뀌어도 과거는 안 흔들린다
+  cat_no     INT UNSIGNED      NULL,                                        -- 매칭되면 채움 · NULL = 미분류(FK 없음 — 위 ★)
+  hours      DECIMAL(5,2)      NOT NULL,                                    -- 파서가 Math.round(x*100)/100 로 만드는 값과 정확히 같은 정밀도
+  PRIMARY KEY (user_id, work_date, line_no),
+  KEY idx_crh_cat (user_id, cat_no, work_date),                             -- 계산기: 과제별 기간 합계
+  CONSTRAINT fk_crh_daily FOREIGN KEY (user_id, work_date)
+    REFERENCES cal_report_daily (user_id, work_date) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT chk_crh_hours CHECK (hours >= 0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='보고된 과제별 시간 — 공수계산기의 원천. 되읽은 content 를 파싱해 채운다(보낸 값 아님)';
+
+-- =====================================================================
+--  cal_report_weekly — 캘린더가 작성한 주간보고
+-- =====================================================================
+--  ★ 이 표는 사이트의 현재 상태가 아니다
+--    위젯은 주간을 **전송하지 않는다**(NetcusService.cs:666 — 폼만 채우고 사용자가 직접 제출).
+--    사용자가 폼에서 보완한 내용(notendwork·problem·차주계획 등)은 여기 담기지 않는다.
+--    우리가 아는 사실은 '캘린더가 이걸 작성했다'까지다 — 그래서 composed_at 이다.
+--
+--  ★ 키가 (user_id, period_start) 인 이유
+--    사이트 글번호(view_no)는 **크롤링해야 얻는 값**이라 쓸 수 없다.
+--    캘린더는 기간을 스스로 정하므로 기간이 곷 식별자다. 재작성하면 덮어쓴다.
+-- =====================================================================
+CREATE TABLE cal_report_weekly (
+  user_id      SMALLINT UNSIGNED NOT NULL,                                  -- 소유자(app_user.user_id)
+  period_start DATE              NOT NULL,                                  -- 캘린더가 정한 기간 시작(WeekFill 의 sdate)
+  period_end   DATE              NOT NULL,                                  -- 기간 끝(edate)
+  subject      VARCHAR(200)      NOT NULL DEFAULT '',                       -- 캘린더가 만든 제목('8월 셋째주')
+  content      MEDIUMTEXT        NOT NULL,                                  -- 과제투입시간. 집계는 일간 원자로 한다(이중 계산 방지)
+  endwork      MEDIUMTEXT        NOT NULL,                                  -- 진행사항
+  plan         MEDIUMTEXT        NOT NULL,                                  -- 차주계획(캘린더가 만든 머리표)
+  composed_at  DATETIME(3)       NOT NULL,                                  -- 캘린더가 이 주간보고를 작성한 시각
+  created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (user_id, period_start),
+  CONSTRAINT fk_crw_user FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT chk_crw_period CHECK (period_start <= period_end)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='캘린더가 작성한 주간보고. 사이트의 현재 상태가 아니다 - 사용자가 폼에서 보완한 내용은 담기지 않는다';
+--  ★ composed_at 이지 sent_at 이 아닌 이유: 위젯은 주간을 **전송하지 않는다**(NetcusService.cs:666
+--    "폼을 채웠습니다 - 보완 후 열린 창에서 직접 '제출'하세요"). 우리가 아는 사실은 '작성했다'까지다.
+
+
+
 
 -- =====================================================================
 --  10. cal_user_pref — 사용자당 1행 설정(커밋 수집 작성자 + 보고서 서식)
@@ -1506,7 +1866,14 @@ CREATE TABLE cal_schema_meta (
 --   이번 판은 '새 컬럼을 모르는 구버전' 정도가 아니라 구버전 클라이언트의 모든 SQL 이 아예 성립하지
 --   않는 변경이다. 그런데도 이 행을 올려야 하는 이유는 같다 — 구버전이 붙었을 때 **파괴적 연산이
 --   먼저 막히는 것**이 게이트의 목적이고, 올리지 않으면 그 게이트가 죽은 문자가 된다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '3', UTC_TIMESTAMP(3));
+-- ★ 2026-08-27: 3 → 4. cal_entry·cal_todo 에 sort_order 신설(배열=문서 순서 박제).
+--   컬럼 추가라 구버전 SELECT 가 깨지지는 않는다. 그래도 올리는 이유는 위와 같다 — 올리지 않으면
+--   이 숫자가 '어떤 변경에도 안 움직이는 값'이 되어 게이트가 죽는다.
+--   실 DB 반영은 migrate-2026-08-27-sort-order.sql 이 한다(이 파일은 새로 짓는 경로다).
+-- ★ 2026-08-27: 4 → 5. cal_category 에 uses_repo 신설('저장소를 쓰는 과제' 플래그, 설계 §4).
+--   같은 날 두 번째 판이다 — sort-order(3→4) 를 **먼저** 적용해야 한다(4→5 가드가 그 순서를 강제한다).
+--   실 DB 반영은 migrate-2026-08-27-repo-flag.sql 이 한다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '8', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행
