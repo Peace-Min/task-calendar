@@ -1003,6 +1003,9 @@ DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리�
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음 — 순서 무관
 DROP TABLE IF EXISTS cal_migration_log;
 DROP TABLE IF EXISTS cal_user_rev;
+DROP TABLE IF EXISTS cal_report_hours;      -- cal_report_daily 를 참조 — 자식 먼저
+DROP TABLE IF EXISTS cal_report_daily;
+DROP TABLE IF EXISTS cal_report_weekly;     -- 자식 없음
 DROP TABLE IF EXISTS cal_user_pref;
 DROP TABLE IF EXISTS cal_attendance;
 DROP TABLE IF EXISTS cal_task_hours;         -- cal_category 를 참조(2026-08-24 신설 FK)
@@ -1675,7 +1678,10 @@ CREATE TABLE cal_report_hours (
     REFERENCES cal_report_daily (user_id, work_date) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT chk_crh_hours CHECK (hours >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='보고된 과제별 시간 — 공수계산기의 원천. 되읽은 content 를 파싱해 채운다(보낸 값 아님)';
+  COMMENT='보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)';
+--  ★ 이 주석을 '되읽은 content 를 파싱해 채운다' 로 되돌리지 말 것 — 그건 §5.9.2 에서 **버린 안**이다.
+--    표 주석은 DB 안에 남는 설명이라, 여기가 옛 설명을 들고 있으면 재구축할 때마다 버린 설계가
+--    근거처럼 되살아난다(2026-08-31 에 실제로 파일과 운영 DB 의 주석이 서로 반대였다).
 
 -- =====================================================================
 --  cal_report_weekly — 캘린더가 작성한 주간보고
