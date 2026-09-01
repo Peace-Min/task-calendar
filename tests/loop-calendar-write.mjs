@@ -125,7 +125,9 @@ class R {
       return 0;
     }
 
-    var res = await new CalendarWriteDb(log).SaveAsync(use, newState);
+    //  replaceAll : 「XML 가져오기」·「전체 초기화」가 쓰는 전량 교체.
+    bool replaceAll = e.TryGetProperty("replaceAll", out var raEl) && raEl.ValueKind == JsonValueKind.True;
+    var res = await new CalendarWriteDb(log).SaveAsync(use, newState, replaceAll);
 
     // op == "saveChain" : **한 스냅샷으로 연속 저장**한다. 위젯이 실제로 하는 일이다 —
     //   매 저장마다 DB 를 다시 읽지 않고, 앞 저장이 돌려준 토큰/번호로 다음 저장을 친다.
@@ -434,6 +436,58 @@ try {
   const nameNow = one(`SELECT name FROM cal_category WHERE user_id=${U} ORDER BY cat_no LIMIT 1`);
   ok('먼저 저장한 쪽의 값이 남아 있다(덮이지 않았다)', nameNow === 'A가 고친 이름', `현재="${nameNow}"`);
   wipe(U);
+
+  // ── 전량 교체(가져오기) — 지우고 통째로 다시 넣는가 ─────────────────────
+  console.log('\n[전량 교체] 「XML 가져오기」 — 지우고 통째로 다시 넣는다');
+  {
+    //  ① 바탕: 커밋까지 있는 상태를 하나 만들어 둔다.
+    const base = makeState(null, 90);
+    const r0 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(base) });
+    ok('바탕 상태 저장', r0.ok === true, r0.msg || r0.error || '');
+
+    //  ② 지우면 안 되는 것에 표식을 남긴다 — 전량 교체가 건드리면 바로 드러난다.
+    const revBefore = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
+    sql(`INSERT IGNORE INTO cal_migration_log (user_id, source_host, migrated_at) VALUES (${U}, 'LOOPTEST', '2026-01-01 00:00:00.000')`,
+        { readOnly: false, what: '이관 마커 심기' });
+
+    //  ③ 전혀 다른 내용으로 전량 교체(= 가져오기 '교체').
+    const imported = makeState(null, 91);
+    const r1 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(imported), replaceAll: true });
+    ok('전량 교체 저장이 성공한다', r1.ok === true, r1.msg || r1.error || '');
+
+    const rback = run({ op: 'read', loginId: LOGIN });
+    if (rback.ok) {
+      const got = JSON.parse(rback.state);
+      ok('교체 결과가 보낸 state 와 같다', compare(imported, got).length === 0,
+         compare(imported, got).slice(0, 3).join(' | '));
+      //  ★ 옛 데이터가 **한 조각도** 남으면 안 된다 — 교체인데 병합이 되면 사용자는 모른다.
+      const oldIds = new Set((base.categories || []).map((c) => c.id));
+      const leaked = (got.categories || []).filter((c) => oldIds.has(c.id));
+      ok('옛 과제가 남아 있지 않다', leaked.length === 0, leaked.map((c) => c.id).join(','));
+    }
+
+    //  ④ 번호가 1 부터 다시 붙는다 — 삭제가 발번보다 먼저 왔다는 증거다.
+    if (imported.categories.length) {
+      ok('과제 번호가 1 부터 다시 붙었다',
+         Number(one(`SELECT IFNULL(MIN(cat_no),0) FROM cal_category WHERE user_id=${U}`)) === 1);
+    }
+
+    //  ⑤ 지우면 안 되는 것들이 그대로다.
+    ok('rev 는 줄지 않고 늘었다(단조증가)',
+       Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) > revBefore);
+    ok('이관 마커가 살아 있다',
+       Number(one(`SELECT COUNT(*) FROM cal_migration_log WHERE user_id=${U}`)) === 1);
+
+    //  ⑥ 커밋도 함께 갈렸다(고아 없이).
+    ok('교체 뒤 커밋 고아 0',
+       Number(one(`SELECT COUNT(*) FROM cal_entry_commit c LEFT JOIN cal_entry e ON e.user_id=c.user_id AND e.entry_no=c.entry_no WHERE c.user_id=${U} AND e.entry_no IS NULL`)) === 0);
+    ok('교체 뒤 커밋 행수가 보낸 것과 같다',
+       Number(one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`)) ===
+       (imported.entries || []).reduce((a, e) => a + (e.commits || []).length, 0));
+
+    sql(`DELETE FROM cal_migration_log WHERE user_id=${U}`, { readOnly: false, what: '마커 정리' });
+    wipe(U);
+  }
 
   // ── 전량 삭제 — 빈 state 를 저장하면 다 지워지는가 ──────────────────────
   console.log('\n[삭제] 빈 state 저장');

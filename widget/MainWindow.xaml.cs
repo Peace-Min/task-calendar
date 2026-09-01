@@ -451,6 +451,17 @@ namespace TaskCalendarWidget
                         _ = SaveStateToDbAsync(rid, sj);
                         break;
                     }
+                    case "replaceAllState":   // 「XML 가져오기」 — 교체·병합 둘 다 여기로 온다.
+                        //   앱이 이미 합쳐서(교체=파일 그대로 / 병합=현재+파일) 완성한 state 를 준다.
+                        //   호스트는 그것을 **통째로** 반영하기만 한다 — 합치는 판단은 앱의 몫이다.
+                        //   ★ saveState 와 굳이 명령을 나눈 이유: 전량 교체는 되돌릴 수 없는 조작이라
+                        //     "평범한 저장" 과 같은 문으로 들어오면 안 된다. 호출부를 눈으로 셀 수 있어야 한다.
+                    {
+                        string rid = doc.RootElement.TryGetProperty("reqId", out var rReq) ? (rReq.GetString() ?? "") : "";
+                        string rj  = doc.RootElement.TryGetProperty("state", out var rSt) ? rSt.GetRawText() : "";
+                        _ = SaveStateToDbAsync(rid, rj, replaceAll: true);
+                        break;
+                    }
                     case "save":
                         if (doc.RootElement.TryGetProperty("xml", out var xmlEl))
                             SaveData(xmlEl.GetString() ?? "");
@@ -1843,7 +1854,10 @@ namespace TaskCalendarWidget
         //  회신 계약: { ok, conflict, error, rev, ins, upd, del }
         //  ★ 성공하면 스냅샷을 **통째로 교체**한다. 토큰이 낡으면 다음 저장이 전부 충돌하고,
         //    번호 맵이 낡으면 재사용된 번호가 다른 행을 가리킨다(계약 H-1).
-        private async Task SaveStateToDbAsync(string reqId, string stateJson)
+        //  replaceAll=true 는 「XML 가져오기」 전용이다 — 이 사용자의 캘린더를 통째로 바꾼다.
+        //  통상 저장과 **같은 함수**를 쓰는 이유: 스냅샷 교체·충돌 처리·회신 계약이 한 벌이어야
+        //  하고, 두 벌이 되면 한쪽만 고치는 사고가 난다(실제로 그렇게 커밋 표가 빠졌었다).
+        private async Task SaveStateToDbAsync(string reqId, string stateJson, bool replaceAll = false)
         {
             var snap = _calSnap;
             if (snap == null)
@@ -1853,7 +1867,7 @@ namespace TaskCalendarWidget
             }
             try
             {
-                var r = await new CalendarWriteDb(Log).SaveAsync(snap, stateJson);
+                var r = await new CalendarWriteDb(Log).SaveAsync(snap, stateJson, replaceAll);
                 if (r.Ok)
                 {
                     _calSnap = new CalendarSnapshot(stateJson, r.Tokens, r.Rev, snap.SchemaVersion, snap.UserId,

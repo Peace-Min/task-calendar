@@ -10,6 +10,10 @@
 //   그리고 두 경로가 갈라지지 않도록:
 //     ④ state 조립을 XML·DB 가 공유한다(buildStateFrom)
 //     ⑤ DB 경로는 XML 전용 이관 절차를 부르지 않는다(그것들은 내부에서 save() 를 부른다)
+//     ⑥ 「XML 가져오기」·「전체 초기화」는 **전량 교체**로 간다(2026-09-01) — state 를 통째로
+//        갈아끼운 뒤라 차분 저장과 결과는 같지만, 되돌릴 수 없는 조작이 평범한 저장과 같은 문으로
+//        들어오면 호출부를 눈으로 셀 수 없다. 그리고 전량 삭제가 **지우면 안 되는 표**를
+//        건드리지 않는지가 여기서만 검사된다(DB 없이 소스로 확인할 수 있는 유일한 자리다).
 import { readFileSync } from 'node:fs';
 import { test, assert, loadAppSource } from './harness.mjs';
 
@@ -121,7 +125,7 @@ test('출처⑥: 지금 어느 저장소를 쓰는지 화면에 드러낸다', (
 });
 
 test('출처⑦: DB 저장은 직렬화된다(앞 저장 중이면 겹쳐 보내지 않는다)', () => {
-  const body = bodyOf(src, 'function dbSave(){');
+  const body = bodyOf(src, 'function dbSave(opt){');
   assert.ok(/__dbSaving/.test(body),
     '진행 중 가드가 없다 — 겹쳐 보내면 뒤 요청이 낡은 토큰으로 가서 멀쩡한 저장이 충돌로 거부된다');
   assert.ok(/__dbDirty/.test(body), '저장 중 변경을 기억하지 않는다 — 마지막 편집이 유실된다');
@@ -130,7 +134,7 @@ test('출처⑦: DB 저장은 직렬화된다(앞 저장 중이면 겹쳐 보내
 });
 
 test('출처⑧: 충돌은 자동 재시도하지 않고 사용자에게 남는다', () => {
-  const body = bodyOf(src, 'function dbSave(){');
+  const body = bodyOf(src, 'function dbSave(opt){');
   const conflictAt = body.indexOf('res.conflict');
   assert.ok(conflictAt > 0, '충돌을 구분해 다루지 않는다');
   assert.ok(/showDbConflict\(/.test(body),
@@ -186,4 +190,114 @@ test('변이⑬: DB 경로가 migrateLocalStores 를 부르면 출처⑤ 가 실
 test('변이⑭: 미등록 사용자 구분을 없애면 출처③ 이 실패한다', () => {
   const bad = mutate('catch (CalendarUserNotFoundException ex)', 'catch (InvalidOperationException ex)', mainwin);
   assert.throws(() => checks.noSilentXmlFallback(bad), /미등록 사용자를 연결 실패와 구분하지 않는다/);
+});
+
+/* ── ⑥ 전량 교체(가져오기·초기화) ──────────────────────────────────────── */
+
+const writedb = readFileSync(new URL('../widget/CalendarWriteDb.cs', import.meta.url), 'utf8');
+
+//  전량 삭제가 **절대 건드리면 안 되는** 표. 각 항목에 왜 안 되는지를 함께 적는다 —
+//  이유 없이 목록만 있으면 다음 사람이 하나 지우고 통과시킨다.
+const NEVER_WIPE = [
+  ['cal_user_rev',      'rev 는 단조증가여야 삭제까지 감지된다(§3.1). DELETE 권한도 없다'],
+  ['cal_migration_log', '재실행 방지 마커. 지우면 같은 XML 을 두 번 넣을 수 있다'],
+  ['cal_report_daily',  '보고한 사실은 캘린더 데이터가 아니다 — 가져오기로 지난 보고 이력이 사라지면 안 된다'],
+  ['cal_report_hours',  '위와 같다(cal_report_daily 의 자식)'],
+  ['cal_report_weekly', '위와 같다'],
+];
+
+const c6 = {
+  //  ⑥-1 가져오기·초기화가 통상 저장이 아니라 전량 교체로 간다
+  importUsesReplaceAll(app) {
+    const im = app.indexOf('function applyImport(');
+    assert.ok(im > 0, 'applyImport 를 찾지 못했다');
+    const tail = app.slice(im, app.indexOf('async function clearAll'));
+    assert.ok(/saveFull\(\)/.test(tail),
+      '가져오기가 saveFull() 로 저장하지 않는다 — 통상 저장으로 새면 전량 교체가 아니게 되고, 무엇보다 되돌릴 수 없는 조작이 로그에서 평범한 저장과 구분되지 않는다');
+    const ca = app.indexOf('async function clearAll');
+    assert.ok(/saveFull\(\)/.test(app.slice(ca, ca + 1600)),
+      '전체 초기화가 saveFull() 로 저장하지 않는다');
+  },
+
+  //  ⑥-2 saveFull 이 DB 모드에서 replaceAll 을 실어 보낸다
+  saveFullSendsReplaceAll(app) {
+    const b = bodyOf(app, 'function saveFull(){');
+    assert.ok(/dbSave\(\s*\{\s*replaceAll:\s*true\s*\}\s*\)/.test(b),
+      'saveFull 이 replaceAll 을 켜지 않는다 — 그러면 통상 차분 저장과 같아진다');
+    const d = bodyOf(app, 'function dbSave(opt){');
+    assert.ok(/replaceAll \? 'replaceAllState' : 'saveState'/.test(d),
+      'dbSave 가 명령을 가르지 않는다 — 호스트가 전량 교체인지 알 길이 없다');
+  },
+
+  //  ⑥-3 호스트가 그 명령을 받아 replaceAll 로 넘긴다
+  hostHandlesReplaceAll(cs) {
+    assert.ok(/case "replaceAllState":/.test(cs),
+      '호스트에 replaceAllState 명령이 없다 — 웹이 보내도 아무 일도 일어나지 않는다(조용한 무동작)');
+    assert.ok(/SaveStateToDbAsync\([^)]*replaceAll:\s*true\)/.test(cs),
+      'replaceAllState 가 replaceAll:true 로 저장을 부르지 않는다 — 명령만 갈리고 동작은 통상 저장이 된다');
+  },
+
+  //  ⑥-4 전량 삭제가 지우면 안 되는 표를 건드리지 않는다
+  wipeSpares(cs) {
+    const i = cs.indexOf('if (replaceAll)');
+    assert.ok(i > 0, '쓰기 계층에 전량 교체 블록이 없다');
+    const blk = cs.slice(i, cs.indexOf('// ── 2.', i));
+    assert.ok(blk.length > 0 && blk.length < 4000, '전량 교체 블록의 끝을 잘못 잡았다');
+    for (const [t, why] of NEVER_WIPE) {
+      assert.ok(!new RegExp('DELETE FROM ' + t + '\\b').test(blk),
+        `전량 교체가 ${t} 을(를) 지운다 — ${why}`);
+    }
+  },
+
+  //  ⑥-5 삭제가 발번보다 **먼저** 온다
+  wipeBeforeNumbering(cs) {
+    const wipe = cs.indexOf('if (replaceAll)');
+    const num = cs.indexOf('IFNULL(MAX(cat_no),0)');
+    assert.ok(wipe > 0 && num > 0, '전량 교체 블록 또는 발번을 찾지 못했다');
+    assert.ok(wipe < num,
+      '전량 삭제가 발번보다 뒤에 온다 — MAX(<표>_no) 가 지워질 행을 세어 번호가 1 부터 다시 붙지 않는다');
+  },
+
+  //  ⑥-6 FK 순서 — cal_category 는 반드시 마지막
+  wipeOrderRespectsFk(cs) {
+    const i = cs.indexOf('if (replaceAll)');
+    const blk = cs.slice(i, cs.indexOf('// ── 2.', i));
+    const at = (t) => blk.indexOf('DELETE FROM ' + t);
+    for (const t of ['cal_task_hours', 'cal_entry', 'cal_todo']) {
+      assert.ok(at(t) > 0, `전량 교체가 ${t} 를 지우지 않는다`);
+      assert.ok(at(t) < at('cal_category'),
+        `${t} 를 cal_category 보다 나중에 지운다 — FK 가 RESTRICT 라 ERROR 1451 로 죽는다`);
+    }
+  },
+};
+
+test('교체①: 가져오기·초기화가 전량 교체로 간다', () => c6.importUsesReplaceAll(src));
+test('교체②: saveFull 이 replaceAll 명령으로 보낸다', () => c6.saveFullSendsReplaceAll(src));
+test('교체③: 호스트가 replaceAllState 를 받아 replaceAll 로 넘긴다', () => c6.hostHandlesReplaceAll(mainwin));
+test('교체④: 전량 삭제가 rev·이관마커·보고기록을 건드리지 않는다', () => c6.wipeSpares(writedb));
+test('교체⑤: 전량 삭제가 발번보다 먼저 온다', () => c6.wipeBeforeNumbering(writedb));
+test('교체⑥: 전량 삭제 순서가 FK 를 지킨다(과제가 마지막)', () => c6.wipeOrderRespectsFk(writedb));
+
+test('변이⑲: 가져오기를 통상 저장으로 되돌리면 교체① 이 실패한다', () => {
+  const bad = mutate("  saveFull(); closeModal('#importModal')", "  save(); closeModal('#importModal')", src);
+  assert.throws(() => c6.importUsesReplaceAll(bad), /saveFull\(\) 로 저장하지 않는다/);
+});
+
+test('변이⑳: 전량 삭제에 cal_user_rev 를 끼워 넣으면 교체④ 가 실패한다', () => {
+  const bad = mutate('                    wiped += await Exec(conn, tx, $"DELETE FROM cal_task_hours WHERE user_id={u}", ct);',
+    '                    wiped += await Exec(conn, tx, $"DELETE FROM cal_user_rev WHERE user_id={u}", ct);', writedb);
+  assert.throws(() => c6.wipeSpares(bad), /cal_user_rev 을\(를\) 지운다/);
+});
+
+test('변이㉑: 삭제를 발번 뒤로 옮기면 교체⑤ 가 실패한다', () => {
+  //  블록 자체를 발번 뒤로 옮긴 상태를 흉내낸다 — 표식을 지우고 뒤쪽에 다시 심는다.
+  const bad = writedb.replace('if (replaceAll)', 'if (REPLACE_ALL_MOVED)')
+    .replace('IFNULL(MAX(cat_no),0)', 'IFNULL(MAX(cat_no),0)/*x*/ if (replaceAll)');
+  assert.notStrictEqual(bad, writedb, '변이가 원본을 바꾸지 못했다');
+  assert.throws(() => c6.wipeBeforeNumbering(bad), /발번보다 뒤에 온다/);
+});
+
+test('변이㉒: 호스트가 replaceAll 을 통상 저장으로 넘기면 교체③ 이 실패한다', () => {
+  const bad = mutate('_ = SaveStateToDbAsync(rid, rj, replaceAll: true);', '_ = SaveStateToDbAsync(rid, rj);', mainwin);
+  assert.throws(() => c6.hostHandlesReplaceAll(bad), /replaceAll:true 로 저장을 부르지 않는다/);
 });

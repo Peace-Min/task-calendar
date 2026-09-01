@@ -86,7 +86,14 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  공개 API — 상태 전체를 받아 차이만 쓴다
         // ================================================================================
-        public async Task<CalendarSaveResult> SaveAsync(CalendarSnapshot prev, string newStateJson)
+        //  replaceAll — 「XML 가져오기」 전용. 이 사용자의 캘린더를 **통째로** newStateJson 으로 맞춘다.
+        //    ★ 왜 차분이 아니라 전량 교체인가: 가져오기는 "지금 것과 파일을 어떻게 합칠지" 를
+        //      **앱이 이미 정해서**(교체/병합) 완성된 state 를 넘긴다. DB 는 그 결과를 그대로
+        //      반영하기만 하면 된다. 그래서 DB 쪽 원시연산이 하나로 끝난다 — 중복 판정 SQL 도,
+        //      UPSERT 도, uid 조회도 필요 없다.
+        //    ★ 구현은 통상 저장을 그대로 쓴다: 지우고 → **빈 스냅샷**으로 저장하면 전부 INSERT 다.
+        //      낙관적 잠금·rev·발번·자식 정리가 전부 한 경로에 남는다(두 번째 쓰기 경로를 만들지 않는다).
+        public async Task<CalendarSaveResult> SaveAsync(CalendarSnapshot prev, string newStateJson, bool replaceAll = false)
         {
             if (prev == null) return Fail("부팅 스냅샷이 없습니다 — 다시 시작한 뒤 저장하세요");
             if (string.IsNullOrWhiteSpace(newStateJson)) return Fail("저장할 내용이 비었습니다");
@@ -124,6 +131,32 @@ namespace TaskCalendarWidget
                 // 여기서부터는 읽어도 안전하다(락을 이미 잡았다).
                 newRev = Convert.ToInt64(await Scalar(conn, tx, $"SELECT rev FROM cal_user_rev WHERE user_id={u}", ct) ?? 0L,
                                          CultureInfo.InvariantCulture);
+
+                // ── 1b. 전량 교체(가져오기) — 발번보다 **먼저** 지운다 ────────────────────
+                //   MAX(<표>_no) 로 발번하므로, 지운 뒤라야 번호가 1 부터 다시 붙는다.
+                //   FK 순서: 참조하는 쪽부터. cal_entry·cal_todo 는 ON DELETE CASCADE 로
+                //   자기 자식(커밋·예외일·날짜메모)을 데려간다. cal_category 는 세 표가
+                //   RESTRICT 로 잡고 있어 반드시 마지막이다.
+                //   ★ 지우지 않는 것과 그 이유:
+                //     · cal_user_rev      단조증가여야 삭제까지 감지된다. DELETE 권한도 없다
+                //     · cal_migration_log 재실행 방지 마커. DELETE 권한도 없다
+                //     · cal_report_*      보고한 사실은 캘린더 데이터가 아니다(FK 도 없다).
+                //                         가져오기로 지난 보고 이력이 사라지면 안 된다
+                //     · cal_room          8번이 어차피 전량 교체한다
+                //     · cal_user_pref     9번이 UPSERT 한다(토큰 검사 없음)
+                if (replaceAll)
+                {
+                    int wiped = 0;
+                    wiped += await Exec(conn, tx, $"DELETE FROM cal_task_hours WHERE user_id={u}", ct);
+                    wiped += await Exec(conn, tx, $"DELETE FROM cal_entry      WHERE user_id={u}", ct);
+                    wiped += await Exec(conn, tx, $"DELETE FROM cal_todo       WHERE user_id={u}", ct);
+                    wiped += await Exec(conn, tx, $"DELETE FROM cal_category   WHERE user_id={u}", ct);
+                    wiped += await Exec(conn, tx, $"DELETE FROM cal_attendance WHERE user_id={u}", ct);
+                    del += wiped;
+                    //  스냅샷을 비운다 = 이 아래 전부가 "새 행" 이 된다. 10번의 삭제 루프도 자연히 무일이 된다.
+                    tokens.Clear(); catNo.Clear(); entNo.Clear(); todNo.Clear();
+                    _log($"전량 교체(가져오기): user_id={u} 기존 {wiped}행 삭제");
+                }
 
                 // ── 2. 발번 — 락 안에서(§3.1 ★) ────────────────────────────────────────
                 uint nextCat  = (uint)(Convert.ToInt64(await Scalar(conn, tx, $"SELECT IFNULL(MAX(cat_no),0)   FROM cal_category WHERE user_id={u}", ct) ?? 0L, CultureInfo.InvariantCulture) + 1);
@@ -467,7 +500,7 @@ namespace TaskCalendarWidget
                     }
 
                 await tx.CommitAsync(ct);
-                _log($"캘린더 저장: user_id={u} rev={newRev} · 추가 {ins} · 수정 {upd} · 삭제 {del}");
+                _log($"캘린더 저장{(replaceAll ? "(전량 교체)" : "")}: user_id={u} rev={newRev} · 추가 {ins} · 수정 {upd} · 삭제 {del}");
             }
             catch (ConflictException ex)
             {

@@ -3625,6 +3625,12 @@ function load(){
   }
   return defaultState();
 }
+//  전량 교체 저장 — 「가져오기」·「전체 초기화」처럼 state 를 **통째로 갈아끼운 뒤**에 쓴다.
+//  파일 모드에서는 어차피 파일 한 번 쓰기라 save() 와 같다(구분이 DB 에서만 의미가 있다).
+function saveFull(){
+  if(isDbMode()){ dbSave({ replaceAll: true }); return; }
+  save();
+}
 function save(){
   //  ★ DB 모드는 파일이 아니라 DB 로 간다. 갈래를 save() 에 두는 이유:
   //    위젯·브라우저·모든 편집 경로가 여기 한 곳으로 모인다(막을 때도 보낼 때도 같은 자리).
@@ -3756,16 +3762,24 @@ function renderDataSourceBadge(meta){
  *    ② 충돌은 **재시도하지 않는다** — 토큰이 낡은 것이라 같은 내용을 다시 보내도 또 거부된다.
  *       사용자가 새로고침해서 남의 변경을 본 뒤 다시 편집하는 것이 유일하게 맞는 경로다. */
 let __dbSaving = false, __dbDirty = false;
-function dbSave(){
+//  replaceAll=true 는 「XML 가져오기」·「전체 초기화」 전용 — 이 사용자의 캘린더를 통째로 바꾼다.
+//  ★ 차분 저장으로도 같은 결과가 나오지만(state 에 없는 uid 는 지워지므로) 일부러 명령을 나눈다:
+//    되돌릴 수 없는 조작이 '평범한 저장'과 같은 문으로 들어오면 호출부를 눈으로 셀 수 없다.
+//    호스트 로그에도 '(전량 교체)'로 남아 사후에 무엇이 일어났는지 읽을 수 있다.
+function dbSave(opt){
+  const replaceAll = !!(opt && opt.replaceAll);
   if(__dbSaving){ __dbDirty = true; return; }
   __dbSaving = true;
   //  보내는 순간의 상태를 고정한다 — 왕복 중에 state 가 또 바뀌면 무엇을 저장했는지 알 수 없다.
   const payload = JSON.parse(JSON.stringify(state));
-  hostRequest('saveState', { state: payload }, 25000).then(res => {
+  hostRequest(replaceAll ? 'replaceAllState' : 'saveState', { state: payload }, 25000).then(res => {
     __dbSaving = false;
     if(res && res.ok){
       hideDbConflict();
       pushReminders();                       // 파일 경로가 save() 끝에 하던 것과 같은 자리
+      //  ★ 재시도는 **통상 저장**이다 — 전량 교체를 두 번 돌리지 않는다(이미 반영됐고, 그 뒤의
+      //    편집은 차분으로 충분하다). replaceAll 을 물려줘도 결과는 같지만 낭비이고, 무엇보다
+      //    '전량 교체가 몇 번 일어났는가'가 로그에서 흐려진다.
       if(__dbDirty){ __dbDirty = false; dbSave(); }   // 저장 중에 또 고쳤다 → 한 번 더
       return;
     }
@@ -7533,7 +7547,10 @@ function applyImport(mode){
     toast(`데이터를 병합했습니다 — 과제 ${nc}개 · 기록 ${ne}개 추가 (중복 ${pendingImport.categories.length-nc+pendingImport.entries.length-ne}개 제외)`);
   }
   pendingImport = null;
-  save(); closeModal('#importModal'); renderAll();
+  //  ★ 교체·병합 **둘 다** 전량 교체로 보낸다. 합치는 판단(무엇을 남기고 무엇을 더할지)은
+  //    위에서 이미 끝났고, state 가 곧 결과다. DB 는 그 결과를 그대로 반영하기만 하면 된다 —
+  //    그래서 DB 쪽 중복 판정·번호 부여 규칙이 아예 필요 없다.
+  saveFull(); closeModal('#importModal'); renderAll();
 }
 async function clearAll(){
   if(await confirmBox('전체 데이터 초기화',
@@ -7543,8 +7560,10 @@ async function clearAll(){
   // lsMigrated:true 로 두는 건 의도적 — 초기화 후 구 localStorage에서 시간·근태가 되살아나는(좀비) 것을 막는다.
   state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, lsMigrated:true, reportFont:defaultReportFont()};
   filterCatId = null; filterSource = null; noteFilterCat = null;
-  save(); renderAll();
-  toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; save(); renderAll(); }});
+  //  ★ 초기화도 state 를 통째로 갈아끼운 것이므로 전량 교체다(가져오기와 같은 부류).
+  //    실행 취소도 마찬가지 — 되살릴 스냅샷이 곧 결과 state 다.
+  saveFull(); renderAll();
+  toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; saveFull(); renderAll(); }});
 }
 
 /* ---------- 보고서 초안 (기간 → 과제별 작업일지/기록 묶음) ---------- */
