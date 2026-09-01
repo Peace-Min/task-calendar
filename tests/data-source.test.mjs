@@ -5,7 +5,7 @@
 //   변경이 data.xml 로 가고, 다음 부팅에 DB 를 읽는 순간 편집이 사라진 것처럼 보인다.
 //   사용자에게 그건 데이터 유실이다. 그래서 잠글 것이 셋이다:
 //     ① 기본 출처는 파일이다 — DB 는 명시적으로 켤 때만(실수로 켜진 채 배포되면 안 된다)
-//     ② DB 모드에서는 save() 가 입구에서 막힌다
+//     ② DB 모드의 변경은 **파일로 새지 않는다** (2단계에서 '읽기 전용'→'DB 로 간다'로 바뀌었다)
 //     ③ DB 읽기 실패는 XML 로 **조용히 되돌아가지 않는다**
 //   그리고 두 경로가 갈라지지 않도록:
 //     ④ state 조립을 XML·DB 가 공유한다(buildStateFrom)
@@ -46,19 +46,22 @@ const checks = {
       '출처를 파일에 영속시키고 있다 — 켠 채로 배포될 위험이 있다(환경변수만 쓴다)');
   },
 
-  // ② DB 모드에서는 저장이 입구에서 막힌다
-  saveBlockedInDbMode(app) {
+  // ② DB 모드의 변경이 **파일로 새지 않는다**
+  //    (1c 에서는 '읽기 전용'이었고 2단계에서 'DB 로 간다'로 바뀌었다. 불변인 것은 하나 —
+  //     DB 모드의 저장이 data.xml/localStorage 에 **닿으면 안 된다.** 닿으면 두 저장소가 갈린다.)
+  dbSaveNeverTouchesFile(app) {
     const body = bodyOf(app, 'function save(){');
     const guard = body.indexOf('isDbMode()');
-    assert.ok(guard > 0, 'save() 안에 DB 모드 가드가 없다 — 읽기 전용이 강제되지 않는다');
+    assert.ok(guard > 0, 'save() 안에 DB 모드 갈래가 없다 — 변경이 파일로 샌다');
+    assert.ok(/dbSave\(\)/.test(body), 'DB 갈래가 dbSave() 를 부르지 않는다');
     const post = body.indexOf('postMessage');
-    assert.ok(post > 0, 'save() 의 호스트 전송을 찾지 못했다');
-    assert.ok(guard < post, '가드가 호스트 전송보다 뒤에 있다 — 이미 저장이 나간 뒤다');
     const ls = body.indexOf('localStorage.setItem');
-    assert.ok(ls < 0 || guard < ls, '가드가 브라우저 저장보다 뒤에 있다');
-    //  가드는 return 으로 끊어야 한다(경고만 하고 흘려보내면 의미가 없다)
-    const seg = body.slice(guard, post);
-    assert.ok(/\breturn\s*;/.test(seg), 'DB 모드 가드가 return 으로 끊지 않는다 — 경고만 뜨고 저장된다');
+    assert.ok(post > 0, 'save() 의 파일 저장 경로를 찾지 못했다');
+    assert.ok(guard < post, 'DB 갈래가 파일 전송보다 뒤에 있다 — 이미 파일로 나간 뒤다');
+    assert.ok(ls < 0 || guard < ls, 'DB 갈래가 브라우저 저장보다 뒤에 있다');
+    //  갈래는 return 으로 끊어야 한다. 안 끊으면 DB 로도 보내고 파일로도 쓴다.
+    assert.ok(/\breturn\s*;/.test(body.slice(guard, post)),
+      'DB 갈래가 return 으로 끊지 않는다 — DB 와 파일에 **둘 다** 쓰게 된다');
   },
 
   // ③ DB 읽기 실패가 XML 로 조용히 되돌아가지 않는다
@@ -96,14 +99,35 @@ const checks = {
 };
 
 test('출처①: 기본은 파일이고 DB 는 환경변수로만 켠다', () => checks.defaultsToFile(src, mainwin));
-test('출처②: DB 모드에서 save() 가 입구에서 막힌다', () => checks.saveBlockedInDbMode(src));
+test('출처②: DB 모드의 변경이 파일로 새지 않는다', () => checks.dbSaveNeverTouchesFile(src));
 test('출처③: DB 읽기 실패가 XML 로 조용히 되돌아가지 않는다', () => checks.noSilentXmlFallback(mainwin));
 test('출처④: state 조립을 XML·DB 가 공유한다(buildStateFrom)', () => checks.stateBuilderShared(src));
 test('출처⑤: DB 경로가 XML 전용 이관 절차를 부르지 않는다', () => checks.dbPathSkipsXmlMigrations(src));
 
-test('출처⑥: 읽기 전용임을 화면에 드러낸다', () => {
+test('출처⑥: 지금 어느 저장소를 쓰는지 화면에 드러낸다', () => {
   assert.ok(/renderDataSourceBadge/.test(src), '출처 배지 함수가 없다');
-  assert.ok(/읽기 전용/.test(src), "'읽기 전용' 문구가 없다 — 사용자가 편집 가능한 줄 안다");
+  assert.ok(/DB 연결됨/.test(src) && /DB 읽기 전용/.test(src),
+    '배지가 쓰기 가능/읽기 전용 두 상태를 구분하지 않는다 — 사용자가 저장되는지 알 수 없다');
+});
+
+test('출처⑦: DB 저장은 직렬화된다(앞 저장 중이면 겹쳐 보내지 않는다)', () => {
+  const body = bodyOf(src, 'function dbSave(){');
+  assert.ok(/__dbSaving/.test(body),
+    '진행 중 가드가 없다 — 겹쳐 보내면 뒤 요청이 낡은 토큰으로 가서 멀쩡한 저장이 충돌로 거부된다');
+  assert.ok(/__dbDirty/.test(body), '저장 중 변경을 기억하지 않는다 — 마지막 편집이 유실된다');
+  assert.ok(/JSON\.parse\(JSON\.stringify\(state\)\)/.test(body),
+    '보내는 순간의 상태를 고정하지 않는다 — 왕복 중 state 가 바뀌면 무엇을 저장했는지 알 수 없다');
+});
+
+test('출처⑧: 충돌은 자동 재시도하지 않고 사용자에게 남는다', () => {
+  const body = bodyOf(src, 'function dbSave(){');
+  const conflictAt = body.indexOf('res.conflict');
+  assert.ok(conflictAt > 0, '충돌을 구분해 다루지 않는다');
+  assert.ok(/showDbConflict\(/.test(body),
+    '충돌을 지속 안내로 띄우지 않는다 — 토스트는 사라지고, 그 뒤 편집도 전부 거부된다');
+  //  실패 경로에서 dirty 를 내려 자동 재시도를 끊어야 한다(같은 토큰으로 다시 보내면 또 거부된다)
+  assert.ok(/__dbDirty = false;\s*\/\/ 실패했으면/.test(body) || /__dbDirty = false;/.test(body.slice(body.indexOf('return;'))),
+    '실패 후 자동 재시도를 끊지 않는다 — 낡은 토큰으로 무한히 거부된다');
 });
 
 // ── 변이 시험 ────────────────────────────────────────────────────────
@@ -112,16 +136,14 @@ test('변이⑧: 기본 출처를 db 로 바꾸면 출처① 이 실패한다', 
   assert.throws(() => checks.defaultsToFile(bad, mainwin), /기본 출처가 'xml' 이 아니다/);
 });
 
-test('변이⑨: save() 의 DB 가드를 빼면 출처② 가 실패한다', () => {
-  const bad = mutate('if(isDbMode()){', 'if(false){', src);
-  assert.throws(() => checks.saveBlockedInDbMode(bad), /DB 모드 가드가 없다/);
+test('변이⑨: save() 의 DB 갈래를 빼면 출처② 가 실패한다', () => {
+  const bad = mutate('if(isDbMode()){ dbSave(); return; }', 'if(false){ }', src);
+  assert.throws(() => checks.dbSaveNeverTouchesFile(bad), /DB 모드 갈래가 없다/);
 });
 
-test('변이⑩: 가드가 return 없이 경고만 하면 출처② 가 실패한다', () => {
-  const bad = mutate(
-    "    toast('DB 읽기 전용입니다 — 변경은 저장되지 않습니다(쓰기 경로는 다음 단계)', 'warn');\n    return;",
-    "    toast('DB 읽기 전용입니다 — 변경은 저장되지 않습니다(쓰기 경로는 다음 단계)', 'warn');", src);
-  assert.throws(() => checks.saveBlockedInDbMode(bad), /return 으로 끊지 않는다/);
+test('변이⑩: 갈래가 return 없이 dbSave 만 부르면 출처② 가 실패한다(DB·파일 둘 다 쓴다)', () => {
+  const bad = mutate('if(isDbMode()){ dbSave(); return; }', 'if(isDbMode()){ dbSave(); }', src);
+  assert.throws(() => checks.dbSaveNeverTouchesFile(bad), /return 으로 끊지 않는다/);
 });
 
 test('변이⑪: DB 부팅이 실패 시 __applyXml 로 폴백하면 출처③ 이 실패한다', () => {

@@ -3626,14 +3626,9 @@ function load(){
   return defaultState();
 }
 function save(){
-  //  ★ DB 읽기 전용(1c) — 저장을 **입구에서** 막는다.
-  //    쓰기 경로(설계 2단계)가 없어서 여기를 통과시키면 변경이 data.xml 로 가고,
-  //    다음 부팅에 DB 를 읽는 순간 편집이 사라진 것처럼 보인다. 사용자에겐 데이터 유실이다.
-  //    막는 자리를 save() 로 잡는 이유: 위젯·브라우저·모든 편집 경로가 여기로 모인다.
-  if(isDbMode()){
-    toast('DB 읽기 전용입니다 — 변경은 저장되지 않습니다(쓰기 경로는 다음 단계)', 'warn');
-    return;
-  }
+  //  ★ DB 모드는 파일이 아니라 DB 로 간다. 갈래를 save() 에 두는 이유:
+  //    위젯·브라우저·모든 편집 경로가 여기 한 곳으로 모인다(막을 때도 보낼 때도 같은 자리).
+  if(isDbMode()){ dbSave(); return; }
   if(HOST){ // 위젯 모드: 호스트(WPF)가 XML 파일로 영속화
     try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'save', xml: toXML()})); }
     catch(e){ console.warn('호스트 저장 실패', e); }
@@ -3741,11 +3736,58 @@ function renderDataSourceBadge(meta){
     host.insertBefore(b, host.firstChild);
   }
   const m = meta || {};
-  b.textContent = 'DB 읽기 전용 — 서버 데이터를 보고 있습니다' +
+  b.textContent = (m.canWrite ? 'DB 연결됨 — 변경은 서버에 저장됩니다'
+                             : 'DB 읽기 전용 — 변경은 저장되지 않습니다') +
     (m.schemaVersion ? ' · 스키마 v' + m.schemaVersion : '') +
-    (m.rev != null ? ' · rev ' + m.rev : '') +
-    ' · 편집·저장은 아직 파일 모드에서만 됩니다';
+    (m.rev != null ? ' · rev ' + m.rev : '');
 }
+
+/* ---------- DB 저장(2단계) ----------
+ *  호스트가 상태 전체를 받아 **차이만** 쓴다(CalendarWriteDb). 여기서는 두 가지만 책임진다:
+ *    ① 저장을 **직렬화**한다 — 앞 저장이 끝나기 전에 또 보내면, 뒤 요청이 낡은 토큰으로 가서
+ *       멀쩡한 저장이 '충돌'로 거부된다. 진행 중이면 dirty 만 세워 두고 끝나고 한 번 더 보낸다.
+ *    ② 충돌은 **재시도하지 않는다** — 토큰이 낡은 것이라 같은 내용을 다시 보내도 또 거부된다.
+ *       사용자가 새로고침해서 남의 변경을 본 뒤 다시 편집하는 것이 유일하게 맞는 경로다. */
+let __dbSaving = false, __dbDirty = false;
+function dbSave(){
+  if(__dbSaving){ __dbDirty = true; return; }
+  __dbSaving = true;
+  //  보내는 순간의 상태를 고정한다 — 왕복 중에 state 가 또 바뀌면 무엇을 저장했는지 알 수 없다.
+  const payload = JSON.parse(JSON.stringify(state));
+  hostRequest('saveState', { state: payload }, 25000).then(res => {
+    __dbSaving = false;
+    if(res && res.ok){
+      hideDbConflict();
+      pushReminders();                       // 파일 경로가 save() 끝에 하던 것과 같은 자리
+      if(__dbDirty){ __dbDirty = false; dbSave(); }   // 저장 중에 또 고쳤다 → 한 번 더
+      return;
+    }
+    __dbDirty = false;                       // 실패했으면 자동 재시도하지 않는다(위 ②)
+    if(res && res.conflict) showDbConflict(res.error || '다른 곳에서 먼저 수정되었습니다');
+    else toast('저장 실패 — ' + ((res && res.error) || '알 수 없는 오류'), 'error');
+  });
+}
+
+//  충돌 안내 — 토스트로 흘리지 않는다. 이 상태에서 계속 편집하면 그 편집도 전부 거부되므로
+//  사용자가 '새로고침'을 누를 때까지 화면에 남아 있어야 한다.
+function showDbConflict(msg){
+  const host = document.querySelector('.wrap') || document.body;
+  let b = document.getElementById('dbConflict');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'dbConflict';
+    b.style.cssText = 'margin:12px 16px 0;padding:10px 14px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between';
+    const t = document.createElement('span'); t.id = 'dbConflictText';
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = '새로고침';
+    btn.style.cssText = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer';
+    btn.addEventListener('click', () => { hostRequest('reloadState', {}, 25000); });
+    b.appendChild(t); b.appendChild(btn);
+    host.insertBefore(b, host.firstChild);
+  }
+  document.getElementById('dbConflictText').textContent = msg + ' — 새로고침하면 서버의 최신 내용을 불러옵니다(지금 화면의 변경은 사라집니다).';
+}
+function hideDbConflict(){ const b = document.getElementById('dbConflict'); if(b) b.remove(); }
 
 // 호스트가 디스크 쓰기 실패를 알릴 때 — 무음 데이터 손실 방지
 window.__saveFailed = function(){
