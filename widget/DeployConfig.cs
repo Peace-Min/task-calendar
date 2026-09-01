@@ -33,15 +33,17 @@ namespace TaskCalendarWidget
         //  true  = 이관 완료. 그 순간부터 data.xml 은 **정의상 낡은 데이터**이므로
         //          코드가 단 한 곳에서도 참조해선 안 된다(백업 파일로만 남긴다).
         //
-        //  ★ 이 값을 true 로 바꾸면 tests/xml-retirement.test.mjs 가 **XML 경로의 잔재를
-        //    전수 검사**한다 — data.xml · fromXML · toXML · __applyXml · isDbMode ·
-        //    TC_DATA_SOURCE 중 하나라도 남아 있으면 게이트가 실패한다.
-        //    즉 '이관했다고 선언하는 순간' 청소가 강제된다. 잊을 수 없다.
+        //  ★★ 2026-09-01 — **켰다.** 청소를 끝내고 켠 것이 아니라, 켜서 게이트가 잔재를
+        //    지목하게 한 뒤 그것을 지웠다. 지운 것: data.xml 경로 · __applyXml 주입 ·
+        //    isDbMode() 갈래 · TC_DATA_SOURCE 스위치 · SaveData()/_dataFile · cmd "save"/"backupdata".
         //
-        //  ★ 반대로 false 인 동안 XML 경로를 부분적으로 걷어내는 것도 막는다 —
-        //    반쯤 지워진 상태가 가장 위험하다(어느 경로로 도는지 아무도 모른다).
+        //  ★ toXML()/fromXML() 은 **남겼다.** 그 둘은 저장 경로가 아니라 「XML 내보내기/가져오기」다 —
+        //    폐쇄망 서버 백업이 서기 전까지 유일한 자력 백업 수단이고, 옛 data.xml 을 DB 로
+        //    들여오는 이관 경로이기도 하다(자동이관을 폐기했으므로 그것이 유일한 문이다).
+        //    게이트의 폐기④ 가 **과잉 삭제**를 막는다 — 그 둘까지 지우면 실패한다.
         //
-        //  바꾸는 시점: 3단계(XML→DB 이관)를 끝내고 검증까지 통과한 뒤. 그 전에 켜면 안 된다.
-        public const bool XmlRetired = false;
+        //  ★ 되돌리려면(false) XML 경로를 통째로 되살려야 한다 — 폐기① 이 "반쯤 지워진 상태" 를
+        //    막으므로, 스위치만 되돌리면 게이트가 곧바로 실패한다. 그게 의도다.
+        public const bool XmlRetired = true;
     }
 }

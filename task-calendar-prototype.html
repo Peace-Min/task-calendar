@@ -3340,11 +3340,11 @@ const ATTEND_STATUS = [
   {v:'9',label:'지각'},{v:'10',label:'지각+야근'},{v:'11',label:'병가'},
 ];
 const ATTEND_STATUS_SET = new Set(ATTEND_STATUS.map(s => s.v));
-// per-day 근태 — 회사 보고 전송 보조 메타. state.attendance에 두고 data.xml로 영속(호스트가 tmp→File.Move 원자 저장).
+// per-day 근태 — 회사 보고 전송 보조 메타. state.attendance 에 두고 DB(cal_attendance)로 영속.
 // (구버전은 localStorage 별도 저장이었으나 WebView2 LevelDB 손상으로 최신 기록이 유실된 사고가 있어 XML로 승격했다.)
 // ★ 미기록 = null (정근'1'이 아니다). 세 상태 = 미기록(null) / 유효 코드 / (없음).
 //   미기록을 '1'로 흡수하면 netcus에 직접 적어 둔 휴가·병가가 캘린더 일간보고 전송으로 '정근'에 덮인다
-//   (근태는 로컬 data.xml에만 있으므로 다른 자리 PC에서 보내도 같은 사고). 그래서 null을 그대로 흘려보내고
+//   (근태는 이 캘린더에만 있으므로 다른 자리 PC에서 보내도 같은 사고). 그래서 null을 그대로 흘려보내고
 //   호스트(NetcusService)가 '미기록이면 사이트의 기존 값을 건드리지 않는' 경로를 탄다.
 //   overtime은 현행 유지(0=기본) — '초과 없음'과 '미기록'을 구분할 실익이 없다.
 //   검증 규약(status는 ATTEND_STATUS_SET, overtime 0..11)은 그대로.
@@ -3367,7 +3367,7 @@ function setAttendance(date, status, overtime){
   m[date] = { status: st, overtime: ot };
   save();   // 캘린더 데이터와 함께 XML 저장(원자 쓰기) — 별도 저장소 없음
 }
-// per-(날짜×과제) 시간 — 회사 일간보고 '[과제] : n' 계약. 근태와 동일하게 state에 두고 data.xml로 영속. 소수 허용.
+// per-(날짜×과제) 시간 — 회사 일간보고 '[과제] : n' 계약. 근태와 동일하게 state 에 두고 DB(cal_task_hours)로 영속. 소수 허용.
 // 맵 형태 = { "YYYY-MM-DD": { catId: hours } }. 0/미입력은 키 자체를 두지 않음(헤더에 ' : ' 안 붙이는 신호).
 // ※ 미입력=null 계약 유지 — getTaskHours는 값이 없거나 0이면 null을 돌려주고(0이 아님), 보고서는 빈 입력·' : n' 생략으로 렌더한다.
 function loadTaskHoursMap(){ if(!state.taskHours || typeof state.taskHours !== 'object') state.taskHours = {}; return state.taskHours; }
@@ -3606,19 +3606,13 @@ function load(){
 //  전량 교체 저장 — 「가져오기」·「전체 초기화」처럼 state 를 **통째로 갈아끼운 뒤**에 쓴다.
 //  파일 모드에서는 어차피 파일 한 번 쓰기라 save() 와 같다(구분이 DB 에서만 의미가 있다).
 function saveFull(){
-  if(isDbMode()){ dbSave({ replaceAll: true }); return; }
+  if(isDbHost()){ dbSave({ replaceAll: true }); return; }
   save();
 }
 function save(){
   //  ★ DB 모드는 파일이 아니라 DB 로 간다. 갈래를 save() 에 두는 이유:
   //    위젯·브라우저·모든 편집 경로가 여기 한 곳으로 모인다(막을 때도 보낼 때도 같은 자리).
-  if(isDbMode()){ dbSave(); return; }
-  if(HOST){ // 위젯 모드: 호스트(WPF)가 XML 파일로 영속화
-    try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'save', xml: toXML()})); }
-    catch(e){ console.warn('호스트 저장 실패', e); }
-    pushReminders();   // 시간·삭제·추가 변경을 알림 스케줄에 반영
-    return;
-  }
+  if(isDbHost()){ dbSave(); return; }
   try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
   catch(e){ toast('저장 실패: 브라우저 저장소를 사용할 수 없습니다', 'error'); }
 }
@@ -3629,46 +3623,27 @@ function buildStateFrom(data){
   return {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, reportFont:normalizeReportFont(data.reportFont)};
 }
 
-/* ---------- 데이터 출처(1c) — 기본은 XML, DB 는 명시적으로 켤 때만 ----------
- *  DB 모드는 **읽기 전용**이다. 쓰기 경로(설계 2단계)가 아직 없어서, 여기서 편집을 허용하면
- *  변경이 data.xml 로 가고 다음 부팅에 DB 를 읽는 순간 **편집이 사라진 것처럼 보인다.**
- *  그건 사용자에게 데이터 유실이다. 그래서 save() 를 입구에서 막고 화면에 출처를 드러낸다. */
-//  ★ 기본은 'db' 다(2026-09-01, 이관 완료 후 뒤집었다). 호스트도 같은 기본이라 두 쪽이 어긋나지
-//    않는다. 부팅 데이터가 오면 __applyXml / __applyState 가 각자 출처를 **명시**하므로,
-//    이 초기값이 실제로 쓰이는 구간은 '부팅 데이터 도착 전' 뿐이다 — 그 구간이 파일 쪽이면
-//    이관된 사용자의 첫 저장이 낡은 파일로 샌다.
-let __dataSource = 'db';          // 'xml' | 'db'
+/* ---------- 데이터 출처 — 위젯은 DB, 브라우저는 localStorage ----------
+ *  ★ 2026-09-01 — XML **저장 경로를 폐기**했다(DeployConfig.XmlRetired = true).
+ *    이관 뒤 data.xml 은 **정의상 낡은 데이터**라 읽는 것 자체가 버그다. 그래서
+ *    __applyXml(호스트 XML 주입) · __dataSource(출처 갈래) · isDbMode() 를 함께 걷어냈다.
+ *    "지금 어느 경로로 도는가" 가 두 배였던 것이 하나로 줄었다.
+ *
+ *  ★ toXML()/fromXML() 은 **남아 있다.** 그건 저장 경로가 아니라 「XML 내보내기/가져오기」다 —
+ *    사용자가 파일을 고르고 누르는 조작이고, 폐쇄망 서버 백업이 서기 전까지 유일한 자력
+ *    백업 수단이며, 옛 data.xml 을 DB 로 들여오는 이관 경로이기도 하다.
+ *
+ *  갈래는 이제 HOST 하나뿐이다: 위젯이면 DB, 브라우저면 localStorage. */
 //  ★ HOST 조건이 필수다 — 브라우저에는 호스트도 DB 도 없다. 빼면 브라우저의 localStorage
 //    저장이 통째로 막힌다(DB 모드로 오인해서). 위젯에서만 성립하는 모드다.
-const isDbMode = () => HOST && __dataSource === 'db';
+const isDbHost = () => HOST;
 
-// 호스트(WPF)가 시작 시 저장된 XML을 주입한다. 내용이 비어있으면 현재 시드를 그대로 두고 호스트에 저장(파일 생성)
 let __xmlApplied = false;   // 부팅 스켈레톤 폴백이 데이터 도착 전 일찍 사라지지 않도록 가드
-window.__applyXml = function(text){
-  __xmlApplied = true;
-  __dataSource = 'xml';   // ★ 출처를 **명시**한다 — 초기값에 기대지 않는다(초기값은 'db' 다)
-  if(text && text.trim()){
-    try{
-      const data = fromXML(text);
-      state = buildStateFrom(data);
-      filterCatId = null; filterSource = null; noteFilterCat = null;
-      // 마이그레이션: db-* 태그가 있는데 목록에 없으면(구버전 이중 목록 데이터) 카탈로그에서 자동 편입 → 단일 목록 복구(사용자 필터바 실버그의 근본 수정)
-      if(migrateDbSubscriptions()) save();
-      renderAll();
-      pushReminders();   // 초기 로드 후 알림 스케줄 동기화
-    }catch(e){
-      // 파싱 실패: 절대 기본값으로 덮어쓰지 않는다 — 호스트에 원본 백업을 요청하고 경고
-      console.warn('호스트 데이터 적용 실패', e);
-      try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'backupdata'})); }catch(_){}
-      toast('저장된 데이터 파일을 읽지 못했습니다 — 원본을 data.xml.bak 으로 백업했습니다', 'error');
-      renderAll();
-    }
-    hideBootSkeleton();   // 실데이터 렌더 완료 → 부팅 스켈레톤 제거
-    return;   // 어느 경우든 여기서 save()로 덮어쓰지 않음
-  }
-  save(); // 파일이 없거나 비어있음 → 현재 데이터로 파일 생성
-  hideBootSkeleton();
-};
+//  (없앤 것) window.__applyXml — 호스트가 data.xml 을 읽어 주입하던 부팅 경로.
+//    이관 뒤 그 파일은 정의상 낡은 데이터라, 읽어서 화면에 그리는 것 자체가 사용자에게
+//    "내 최신 편집이 사라졌다" 로 보인다. 부팅은 __applyState(DB) 하나로만 온다.
+//    파싱 실패 시 원본을 지키려고 호스트에 요청하던 backupdata 명령도 함께 사라졌다.
+
 /* ---------- DB 읽기 경로(1c) ----------
  *  호스트가 CalendarDb 로 만든 계약 G 모양의 state 를 그대로 주입한다.
  *  ★ fromXML 을 거치지 않는다 — DB 는 XML 이 아니고, 굳이 XML 로 만들었다 되돌리면
@@ -3678,7 +3653,6 @@ window.__applyXml = function(text){
  *    읽기 전용 모드에서 save() 가 도는 것 자체가 계약 위반이다. */
 window.__applyState = function(json, meta){
   __xmlApplied = true;                    // 부팅 스켈레톤 가드는 출처와 무관하게 '데이터 도착'을 뜻한다
-  __dataSource = 'db';
   try{
     const data = (typeof json === 'string') ? JSON.parse(json) : json;
     state = buildStateFrom(data);
@@ -3698,7 +3672,6 @@ window.__applyState = function(json, meta){
 //   믿으면서 파일을 보게 되고, 그 상태로 편집하면 어느 쪽이 진실인지 아무도 모른다.
 window.__applyStateError = function(msg){
   __xmlApplied = true;
-  __dataSource = 'db';
   hideBootSkeleton();
   const host = document.querySelector('.wrap') || document.body;
   let box = document.getElementById('dsError');
@@ -3709,13 +3682,13 @@ window.__applyStateError = function(msg){
     host.insertBefore(box, host.firstChild);
   }
   box.textContent = 'DB 에서 캘린더를 읽지 못했습니다 — ' + String(msg || '') +
-    ' · 파일(data.xml)로 되돌리려면 TC_DATA_SOURCE 를 지우고 다시 시작하세요.';
+    ' · 서버 연결을 확인한 뒤 다시 시작하세요.';
   toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
 };
 
 // 출처 배지 — '지금 무엇을 보고 있는가'를 화면에 드러낸다(읽기 전용도 함께 알린다).
 function renderDataSourceBadge(meta){
-  if(!isDbMode()) return;
+  if(!isDbHost()) return;
   const host = document.querySelector('.wrap') || document.body;
   let b = document.getElementById('dsBadge');
   if(!b){
@@ -11229,7 +11202,7 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
     const blk = $('#opacityBlock'); if(blk) blk.style.display = '';   // 테마 메뉴 하단 투명도 슬라이더 노출(HOST 전용)
     const rng = $('#opacityRange'); if(rng) rng.value = String(op);
     const val = $('#opacityVal'); if(val) val.textContent = op + '%'; }
-  showBootSkeleton();                       // 호스트가 저장 XML을 주입(__applyXml)할 때까지 펄스 — 시드 깜빡임 가림
+  showBootSkeleton();                       // 호스트가 DB 상태를 주입(__applyState)할 때까지 펄스 — 시드 깜빡임 가림
   setTimeout(() => { if(!__xmlApplied) hideBootSkeleton(); }, 4000);   // 주입이 없을 때만 폴백 제거(느린 부팅서 일찍 사라져 깜빡임 재현 방지)
   // (로컬 카탈로그 캐시 없음 — 부팅 선페인트도 없다. 서버에서 읽기 전까지 공식 과제 목록은 비어 있는 게 정직한 상태.)
   try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}

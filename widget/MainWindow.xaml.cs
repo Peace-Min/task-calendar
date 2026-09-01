@@ -22,7 +22,7 @@ namespace TaskCalendarWidget
     public partial class MainWindow : Window, INetcusHost
     {
         private readonly string _dataDir;
-        private readonly string _dataFile;
+        //  (없앤 것) _dataFile — %APPDATA%\TaskCalendar\data.xml 경로.
         private readonly string _settingsFile;
         private readonly string _webviewDir;
         private readonly string _logFile;
@@ -63,7 +63,7 @@ namespace TaskCalendarWidget
 
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             _dataDir = Path.Combine(appData, "TaskCalendar");
-            _dataFile = Path.Combine(_dataDir, "data.xml");
+
             _settingsFile = Path.Combine(_dataDir, "widget.settings.json");
             _webviewDir = Path.Combine(_dataDir, "WebView2");
             _logFile = Path.Combine(_dataDir, "widget.log");
@@ -423,18 +423,13 @@ namespace TaskCalendarWidget
                 switch (cmdEl.GetString())
                 {
                     case "ready":
-                        //  데이터 출처(1c) — 기본은 파일(data.xml). DB 는 TC_DATA_SOURCE=db 로 **명시적으로** 켤 때만.
-                        //  ★ 영속 설정 파일로 만들지 않는다 — 켠 줄 모르고 배포되는 것이 이 단계의 가장 큰 위험이다.
-                        //    환경변수는 그 실행에만 붙으므로 실수로 남지 않는다.
-                        if (DataSourceIsDb)
-                        {
-                            _ = BootFromDbAsync();   // async — 실패도 웹에 명시적으로 알린다(조용한 XML 폴백 없음)
-                        }
-                        else
-                        {
-                            string xml = File.Exists(_dataFile) ? File.ReadAllText(_dataFile, Encoding.UTF8) : "";
-                            _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyXml(" + JsonSerializer.Serialize(xml) + ")");
-                        }
+                        //  ★ 2026-09-01 — 데이터 출처는 **DB 하나**다(XmlRetired = true).
+                        //    갈래가 있던 자리다: TC_DATA_SOURCE 로 파일을 고를 수 있었고, 파일이면
+                        //    data.xml 을 읽어 window.__applyXml 로 주입했다. 이관이 끝난 지금 그 파일은
+                        //    **정의상 낡은 데이터**라 읽는 것 자체가 버그다 — 사용자에게는 "내 최신 편집이
+                        //    사라졌다" 로 보이고, 거기서 편집하면 되돌릴 경로도 없다.
+                        //    옛 파일을 되살릴 일이 생기면 그건 부팅이 아니라 「XML 가져오기」로 한다.
+                        _ = BootFromDbAsync();   // async — 실패도 웹에 명시적으로 알린다(조용한 XML 폴백 없음)
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
@@ -462,18 +457,8 @@ namespace TaskCalendarWidget
                         _ = SaveStateToDbAsync(rid, rj, replaceAll: true);
                         break;
                     }
-                    case "save":
-                        if (doc.RootElement.TryGetProperty("xml", out var xmlEl))
-                            SaveData(xmlEl.GetString() ?? "");
-                        break;
-                    case "backupdata":   // 손상된 data.xml 보존(웹이 파싱 실패 시 요청 — 덮어쓰기 전 백업)
-                        try
-                        {
-                            if (File.Exists(_dataFile)) File.Copy(_dataFile, _dataFile + ".bak", true);
-                            Log("data.xml → data.xml.bak 백업(파싱 실패 보호)");
-                        }
-                        catch (Exception bx) { Log("백업 실패: " + bx.Message); }
-                        break;
+                    //  (없앤 것) case "save" / case "backupdata" — data.xml 쓰기와 그 원본 백업.
+                    //    저장은 saveState(차분) · replaceAllState(전량 교체) 두 문으로만 간다.
 
                     // ----- 회사 일간보고(netcus) 자동 전송 -----
                     case "netcusSaveCreds":
@@ -748,22 +733,8 @@ namespace TaskCalendarWidget
             catch { }
         }
 
-        private void SaveData(string xml)
-        {
-            try
-            {
-                Directory.CreateDirectory(_dataDir);
-                string tmp = _dataFile + ".tmp";
-                File.WriteAllText(tmp, xml, new UTF8Encoding(false));
-                File.Move(tmp, _dataFile, true);
-            }
-            catch (Exception ex)
-            {
-                Log("데이터 저장 실패: " + ex.Message);
-                // 무음 손실 방지 — 웹에 즉시 알림(경고 토스트)
-                try { _ = web.CoreWebView2?.ExecuteScriptAsync("window.__saveFailed && window.__saveFailed()"); } catch { }
-            }
-        }
+        //  (없앤 것) SaveData(string xml) — data.xml 원자 저장(tmp → File.Move).
+        //    XML 저장 경로 폐기(2026-09-01)와 함께 사라졌다. 쓰기는 CalendarWriteDb 로만 간다.
 
         // ============ Git 커밋 연동 ============
         // 과제별 로컬 저장소에서 git log/config를 실행해 '내 커밋'을 읽어 웹(HTML)으로 회신한다.
@@ -1790,15 +1761,8 @@ namespace TaskCalendarWidget
         //  데이터 출처(1c) — DB 읽기 배선
         // ================================================================================
         //  이 단계에서 하는 것은 **읽기뿐**이다. 쓰기 경로(설계 2단계)가 없으므로 웹이 save() 를
-        //  입구에서 막고 화면에 '읽기 전용'을 드러낸다. 여기서도 data.xml 을 건드리지 않는다.
-        private static bool DataSourceIsDb =>
-            //  ★ 2026-09-01 — 기본을 **DB 로 뒤집었다**(3단계 이관 완료). 이관 뒤에는 data.xml 이
-            //    **정의상 낡은 데이터**다. 기본이 파일이면 사용자가 평소처럼 위젯을 켜는 순간
-            //    낡은 쪽을 고치기 시작하고, cal_migration_log 가 재이관을 막으므로
-            //    **그 편집을 DB 로 옮길 경로가 없다.**
-            //    → 파일로 되돌리려면 `TC_DATA_SOURCE=xml` 을 **명시**해야 한다(비상용).
-            //    ※ XML 경로 '제거'는 별개다 — DeployConfig.XmlRetired 와 그 게이트가 담당한다(§3.9).
-            !string.Equals(Environment.GetEnvironmentVariable("TC_DATA_SOURCE"), "xml", StringComparison.OrdinalIgnoreCase);
+        //  (없앤 것) DataSourceIsDb — TC_DATA_SOURCE 환경변수로 파일/DB 를 고르던 스위치.
+        //    이관 기간에만 필요한 임시 배선이었고, 이관이 끝나 갈래 자체가 사라졌다.
 
         //  세션 동안 유지하는 부팅 스냅샷. 쓰기의 **낙관적 잠금 토큰과 번호 맵**이 여기 있다
         //  (계약 H-2 — "부팅 조회 때 함께 만들어 세션이 끝날 때까지 유지한다. 유지 주체는 호출자").

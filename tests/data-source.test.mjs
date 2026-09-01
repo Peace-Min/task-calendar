@@ -38,44 +38,52 @@ function bodyOf(text, header) {
   assert.fail(`${header} 의 끝을 찾지 못했다`);
 }
 
+//  주석은 계약이 아니다 — 왜 지웠는지를 적어 두려면 주석에서는 그 이름이 나와야 한다.
+function stripCmt(t) {
+  return t.replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split(/\r*\n/).map((l) => l.replace(/(^|\s)\/\/[^\r\n]*$/, '')).join('\n')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+}
+
 const checks = {
-  // ① 기본 출처는 **DB** 다 (2026-09-01 이관 완료 후 뒤집었다)
-  //    이관 뒤 data.xml 은 정의상 낡은 데이터다. 기본이 파일이면 사용자가 평소처럼 위젯을 켜는
-  //    순간 낡은 쪽을 고치고, cal_migration_log 가 재이관을 막아 그 편집을 옮길 경로가 없다.
-  defaultsToDb(app, cs) {
-    assert.ok(/let __dataSource = 'db'/.test(app),
-      "웹의 기본 출처가 'db' 가 아니다 — 부팅 데이터 도착 전 저장이 낡은 파일로 샌다");
-    assert.ok(/!string\.Equals\(Environment\.GetEnvironmentVariable\("TC_DATA_SOURCE"\), "xml"/.test(cs),
-      "호스트의 기본이 DB 가 아니다 — 'xml' 을 명시할 때만 파일이어야 한다");
-    //  영속 설정 파일로 만들면 어느 쪽이든 '모르고 그 상태로' 배포된다 — 그래서 환경변수만 쓴다
-    assert.ok(!/data-source\.json|dataSource\.json/.test(cs),
-      '출처를 파일에 영속시키고 있다 — 모르는 채로 배포될 위험이 있다(환경변수만 쓴다)');
+  // ① 출처는 **하나**다 (2026-09-01 XML 저장 경로 폐기)
+  //    갈래가 있던 자리다 — TC_DATA_SOURCE 환경변수 · __dataSource 변수 · isDbMode() ·
+  //    __applyXml 주입. 이관이 끝나 그 넷을 다 걷어냈다. 이제 남은 갈래는 HOST 하나뿐이다:
+  //    위젯이면 DB, 브라우저면 localStorage. "지금 어느 경로로 도는가" 가 두 배였던 것이
+  //    하나로 줄었고, 이 검사는 **다시 두 배가 되는 것**을 막는다.
+  singleSource(app, cs) {
+    for (const [re, why] of [
+      [/__dataSource/,   '출처 갈래 변수(__dataSource)가 되살아났다'],
+      [/\bisDbMode\s*\(/, 'isDbMode() 갈래가 되살아났다'],
+      [/__applyXml/,     'data.xml 주입 경로(__applyXml)가 되살아났다'],
+    ]) assert.ok(!re.test(stripCmt(app)), why + ' — 이관 뒤 data.xml 은 정의상 낡은 데이터다');
+    for (const [re, why] of [
+      [/TC_DATA_SOURCE/, '호스트에 출처 환경변수가 되살아났다'],
+      [/\bdata\.xml\b/,  '호스트가 다시 data.xml 을 가리킨다'],
+    ]) assert.ok(!re.test(stripCmt(cs)), why);
     //  ★ 브라우저에는 호스트도 DB 도 없다. HOST 조건이 빠지면 브라우저 저장이 통째로 막힌다.
-    assert.ok(/const isDbMode = \(\) => HOST &&/.test(app),
-      'isDbMode 에 HOST 조건이 없다 — 브라우저가 DB 모드로 오인돼 localStorage 저장이 막힌다');
-    //  ★ 두 진입점이 각자 출처를 명시해야 한다. 초기값에 기대면 한쪽이 조용히 틀린다.
-    const xml = bodyOf(app, 'window.__applyXml = function(text){');
-    assert.ok(/__dataSource = 'xml'/.test(xml), 'XML 경로가 출처를 명시하지 않는다(초기값에 기대고 있다)');
-    const db = bodyOf(app, 'window.__applyState = function(json, meta){');
-    assert.ok(/__dataSource = 'db'/.test(db), 'DB 경로가 출처를 명시하지 않는다');
+    assert.ok(/const isDbHost = \(\) => HOST;/.test(app),
+      'isDbHost 가 HOST 로 정의돼 있지 않다 — 브라우저가 DB 모드로 오인돼 localStorage 저장이 막힌다');
+    //  영속 설정 파일로 출처를 되살리는 것도 막는다('모르고 그 상태로' 배포되는 부류다)
+    assert.ok(!/data-source\.json|dataSource\.json/.test(cs),
+      '출처를 파일에 영속시키고 있다 — 갈래가 되살아나는 또 다른 문이다');
   },
 
-  // ② DB 모드의 변경이 **파일로 새지 않는다**
-  //    (1c 에서는 '읽기 전용'이었고 2단계에서 'DB 로 간다'로 바뀌었다. 불변인 것은 하나 —
-  //     DB 모드의 저장이 data.xml/localStorage 에 **닿으면 안 된다.** 닿으면 두 저장소가 갈린다.)
-  dbSaveNeverTouchesFile(app) {
+  // ② 위젯의 저장은 **DB 로만** 간다
+  //    예전에는 save() 안에서 DB 갈래가 파일 전송보다 앞에 있고 return 으로 끊는지를 봤다.
+  //    이제 파일 전송 자체가 없다 — 그래서 더 강한 것을 본다: **호스트로 XML 을 보내는 문이
+  //    하나도 없어야 한다.** (localStorage 는 남는다 — 브라우저 모드의 저장소다)
+  widgetSavesOnlyToDb(app) {
     const body = bodyOf(app, 'function save(){');
-    const guard = body.indexOf('isDbMode()');
-    assert.ok(guard > 0, 'save() 안에 DB 모드 갈래가 없다 — 변경이 파일로 샌다');
-    assert.ok(/dbSave\(\)/.test(body), 'DB 갈래가 dbSave() 를 부르지 않는다');
-    const post = body.indexOf('postMessage');
-    const ls = body.indexOf('localStorage.setItem');
-    assert.ok(post > 0, 'save() 의 파일 저장 경로를 찾지 못했다');
-    assert.ok(guard < post, 'DB 갈래가 파일 전송보다 뒤에 있다 — 이미 파일로 나간 뒤다');
-    assert.ok(ls < 0 || guard < ls, 'DB 갈래가 브라우저 저장보다 뒤에 있다');
-    //  갈래는 return 으로 끊어야 한다. 안 끊으면 DB 로도 보내고 파일로도 쓴다.
-    assert.ok(/\breturn\s*;/.test(body.slice(guard, post)),
-      'DB 갈래가 return 으로 끊지 않는다 — DB 와 파일에 **둘 다** 쓰게 된다');
+    assert.ok(/isDbHost\(\)/.test(body), 'save() 에 위젯 갈래가 없다');
+    assert.ok(/dbSave\(\)/.test(body), '위젯 갈래가 dbSave() 를 부르지 않는다');
+    assert.ok(/\breturn\s*;/.test(body.slice(body.indexOf('isDbHost()'))),
+      '위젯 갈래가 return 으로 끊지 않는다 — DB 와 localStorage 에 둘 다 쓰게 된다');
+    //  ★ cmd:'save'(XML 파일 쓰기)로 나가는 문이 앱 전체에 없어야 한다.
+    assert.ok(!/cmd:\s*'save'/.test(stripCmt(app)),
+      "cmd:'save'(data.xml 쓰기)가 되살아났다 — 그 파일은 이관 뒤 낡은 데이터다");
+    assert.ok(!/cmd:\s*'backupdata'/.test(stripCmt(app)),
+      "cmd:'backupdata'가 되살아났다 — data.xml 을 전제하는 명령이다");
   },
 
   // ③ DB 읽기 실패가 XML 로 조용히 되돌아가지 않는다
@@ -83,7 +91,7 @@ const checks = {
     const body = bodyOf(cs, 'private async Task BootFromDbAsync()');
     assert.ok(!/__applyXml/.test(body),
       'DB 부팅 경로가 __applyXml 을 부른다 — 실패를 파일로 덮으면 사용자는 DB 를 본다고 믿으면서 파일을 본다');
-    assert.ok(!/_dataFile/.test(body), 'DB 부팅 경로가 data.xml 을 건드린다');
+    assert.ok(!/_dataFile|data\.xml/.test(body), 'DB 부팅 경로가 data.xml 을 건드린다');
     for (const w of ['ApplyStateError'])
       assert.ok(body.includes(w), `실패 통지(${w})가 없다 — 실패가 빈 화면으로 나타난다`);
     //  '미등록 사용자'와 '연결 실패'는 반드시 구분한다(§3.6)
@@ -91,20 +99,22 @@ const checks = {
       '미등록 사용자를 연결 실패와 구분하지 않는다 — 사용자도 관리자도 엉뚱한 곳을 본다');
   },
 
-  // ④ state 조립을 두 경로가 공유한다
+  // ④ 부팅은 buildStateFrom 하나로 조립한다
+  //    XML 진입점(__applyXml)이 사라져 이제 부팅 경로는 __applyState 하나다. 그래도 이
+  //    검사를 남기는 이유: 가져오기(applyImport)가 **또 하나의 조립처**이고, 거기서 모양이
+  //    갈라지면 '같은 데이터인데 들어온 문에 따라 다른 state' 가 된다.
   stateBuilderShared(app) {
     assert.ok(/function buildStateFrom\(data\)\{/.test(app), 'buildStateFrom 이 없다');
-    const xml = bodyOf(app, 'window.__applyXml = function(text){');
     const db = bodyOf(app, 'window.__applyState = function(json, meta){');
-    assert.ok(/state = buildStateFrom\(/.test(xml), 'XML 경로가 buildStateFrom 을 쓰지 않는다');
-    assert.ok(/state = buildStateFrom\(/.test(db), 'DB 경로가 buildStateFrom 을 쓰지 않는다');
+    assert.ok(/state = buildStateFrom\(/.test(db), '부팅이 buildStateFrom 을 쓰지 않는다');
     //  DB 경로가 XML 파서를 거치면 '굳이 XML 로 만들었다 되돌리는' 변환 결함이 생긴다
-    assert.ok(!/fromXML\(/.test(db), 'DB 경로가 fromXML 을 거친다 — 계약 G 가 존재하는 이유를 무너뜨린다');
+    assert.ok(!/fromXML\(/.test(db), '부팅이 fromXML 을 거친다 — 계약 G 가 존재하는 이유를 무너뜨린다');
   },
 
   // ⑤ DB 경로는 XML 전용 이관 절차를 부르지 않는다(둘 다 내부에서 save() 를 부른다)
   dbPathSkipsXmlMigrations(app) {
     const db = bodyOf(app, 'window.__applyState = function(json, meta){');
+    //  migrateLocalStores 는 2026-09-01 에 없앴다 — 이름을 남겨 두는 것은 되살아나면 잡기 위해서다.
     for (const f of ['migrateDbSubscriptions', 'migrateLocalStores'])
       assert.ok(!db.includes(f),
         `DB 경로가 ${f}() 를 부른다 — 이 함수들은 내부에서 save() 를 부르므로 읽기 전용 계약을 깬다`);
@@ -112,10 +122,10 @@ const checks = {
   },
 };
 
-test('출처①: 기본은 DB 이고 파일로 되돌리려면 명시해야 한다', () => checks.defaultsToDb(src, mainwin));
-test('출처②: DB 모드의 변경이 파일로 새지 않는다', () => checks.dbSaveNeverTouchesFile(src));
+test('출처①: 출처가 하나다 — XML 갈래가 되살아나지 않았다', () => checks.singleSource(src, mainwin));
+test('출처②: 위젯의 저장은 DB 로만 간다(XML 쓰기 문이 없다)', () => checks.widgetSavesOnlyToDb(src));
 test('출처③: DB 읽기 실패가 XML 로 조용히 되돌아가지 않는다', () => checks.noSilentXmlFallback(mainwin));
-test('출처④: state 조립을 XML·DB 가 공유한다(buildStateFrom)', () => checks.stateBuilderShared(src));
+test('출처④: 부팅이 buildStateFrom 으로 조립한다', () => checks.stateBuilderShared(src));
 test('출처⑤: DB 경로가 XML 전용 이관 절차를 부르지 않는다', () => checks.dbPathSkipsXmlMigrations(src));
 
 test('출처⑥: 지금 어느 저장소를 쓰는지 화면에 드러낸다', () => {
@@ -145,29 +155,39 @@ test('출처⑧: 충돌은 자동 재시도하지 않고 사용자에게 남는�
 });
 
 // ── 변이 시험 ────────────────────────────────────────────────────────
-test('변이⑧: 기본 출처를 파일로 되돌리면 출처① 이 실패한다', () => {
-  const bad = mutate("let __dataSource = 'db'", "let __dataSource = 'xml'", src);
-  assert.throws(() => checks.defaultsToDb(bad, mainwin), /기본 출처가 'db' 가 아니다/);
+test('변이⑧: 출처 갈래 변수를 되살리면 출처① 이 실패한다', () => {
+  const bad = src + "\nlet __dataSource = 'db';\n";
+  assert.throws(() => checks.singleSource(bad, mainwin), /출처 갈래 변수/);
 });
 
-test('변이⑮: isDbMode 의 HOST 조건을 빼면 출처① 이 실패한다(브라우저 저장이 막힌다)', () => {
-  const bad = mutate('const isDbMode = () => HOST &&', 'const isDbMode = () =>', src);
-  assert.throws(() => checks.defaultsToDb(bad, mainwin), /HOST 조건이 없다/);
+test('변이⑮: isDbHost 의 HOST 조건을 빼면 출처① 이 실패한다(브라우저 저장이 막힌다)', () => {
+  const bad = mutate('const isDbHost = () => HOST;', 'const isDbHost = () => true;', src);
+  assert.throws(() => checks.singleSource(bad, mainwin), /HOST 로 정의돼 있지 않다/);
 });
 
-test('변이⑯: XML 경로가 출처를 명시하지 않으면 출처① 이 실패한다', () => {
-  const bad = mutate("  __dataSource = 'xml';   // ★ 출처를", "  // 제거됨   // ★ 출처를", src);
-  assert.throws(() => checks.defaultsToDb(bad, mainwin), /XML 경로가 출처를 명시하지 않는다/);
+test('변이⑯: __applyXml 주입 경로를 되살리면 출처① 이 실패한다', () => {
+  const bad = src + '\nwindow.__applyXml = function(t){ };\n';
+  assert.throws(() => checks.singleSource(bad, mainwin), /__applyXml/);
 });
 
-test('변이⑨: save() 의 DB 갈래를 빼면 출처② 가 실패한다', () => {
-  const bad = mutate('if(isDbMode()){ dbSave(); return; }', 'if(false){ }', src);
-  assert.throws(() => checks.dbSaveNeverTouchesFile(bad), /DB 모드 갈래가 없다/);
+test('변이⑯b: 호스트에 TC_DATA_SOURCE 를 되살리면 출처① 이 실패한다', () => {
+  const bad = mainwin + '\nvar x = Environment.GetEnvironmentVariable("TC_DATA_SOURCE");\n';
+  assert.throws(() => checks.singleSource(src, bad), /출처 환경변수/);
 });
 
-test('변이⑩: 갈래가 return 없이 dbSave 만 부르면 출처② 가 실패한다(DB·파일 둘 다 쓴다)', () => {
-  const bad = mutate('if(isDbMode()){ dbSave(); return; }', 'if(isDbMode()){ dbSave(); }', src);
-  assert.throws(() => checks.dbSaveNeverTouchesFile(bad), /return 으로 끊지 않는다/);
+test('변이⑨: save() 의 위젯 갈래를 빼면 출처② 가 실패한다', () => {
+  const bad = mutate('if(isDbHost()){ dbSave(); return; }', 'if(false){ }', src);
+  assert.throws(() => checks.widgetSavesOnlyToDb(bad), /위젯 갈래가 없다/);
+});
+
+test('변이⑩: 갈래가 return 없이 dbSave 만 부르면 출처② 가 실패한다(DB·localStorage 둘 다 쓴다)', () => {
+  const bad = mutate('if(isDbHost()){ dbSave(); return; }', 'if(isDbHost()){ dbSave(); }', src);
+  assert.throws(() => checks.widgetSavesOnlyToDb(bad), /return 으로 끊지 않는다/);
+});
+
+test('변이⑩b: cmd:\'save\'(XML 파일 쓰기)를 되살리면 출처② 가 실패한다', () => {
+  const bad = src + "\nfunction x(){ postMessage({cmd:'save', xml: toXML()}); }\n";
+  assert.throws(() => checks.widgetSavesOnlyToDb(bad), /cmd:'save'/);
 });
 
 test('변이⑪: DB 부팅이 실패 시 __applyXml 로 폴백하면 출처③ 이 실패한다', () => {
