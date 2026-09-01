@@ -2008,8 +2008,8 @@ if (!JSDOM) {
     const setLegacy = (th, at) => ev(
       (th === null ? "localStorage.removeItem('tc_taskHours');" : "localStorage.setItem('tc_taskHours'," + JSON.stringify(JSON.stringify(th)) + ");") +
       (at === null ? "localStorage.removeItem('tc_attendance');" : "localStorage.setItem('tc_attendance'," + JSON.stringify(JSON.stringify(at)) + ");") +
-      '__lsMigrateDone = false;');
-    const clearLegacy = () => ev("localStorage.removeItem('tc_taskHours'); localStorage.removeItem('tc_attendance'); __lsMigrateDone = true;");
+      '');
+    const clearLegacy = () => ev("localStorage.removeItem('tc_taskHours'); localStorage.removeItem('tc_attendance');");
 
     test('taskHours/attendance: XML 왕복 — 값·마커 무손실(localStorage 아닌 data.xml에 영속)', () => {
       seed(THS({
@@ -2144,51 +2144,40 @@ if (!JSDOM) {
       } finally { ev('Platform.report.submitDaily = globalThis.__origSD;'); }
     });
 
-    test('이관: 구 localStorage 값이 state로 이동하고 마커가 선다(반환=이동 건수)', () => {
-      seed(THS({ lsMigrated: false }));
-      setLegacy({ '2026-07-13': { ca: 6.5 }, '2026-07-14': { cb: 3 } }, { '2026-07-13': { status: '2', overtime: 2 } });
-      const n = ev('migrateLocalStores()');
-      assert.strictEqual(n, 3, '시간 2건 + 근태 1건');
-      assert.deepStrictEqual(evJSON('state.taskHours'), { '2026-07-13': { ca: 6.5 }, '2026-07-14': { cb: 3 } });
-      assert.deepStrictEqual(evJSON('state.attendance'), { '2026-07-13': { status: '2', overtime: 2 } });
-      assert.strictEqual(ev('state.lsMigrated'), true, '이관 완료 마커');
-      assert.ok(ev("localStorage.getItem('tc_taskHours')") !== null, '구 키는 수동 복구용으로 남겨둔다(삭제 금지)');
-      clearLegacy();
+    //  ── 자동이관은 폐기됐다(2026-09-01) ────────────────────────────────────
+    //  여기 네 건이 migrateLocalStores() 를 시험하고 있었다. 그 함수는 부팅 경로에서
+    //  localStorage 를 훑어 state 에 병합하고 save() 까지 하는 **자동 1회 이관**이었고,
+    //  스스로 TODO(제거예정) 을 달고도 계속 살아 있었다. 지금은 명시적 「XML 가져오기」가
+    //  그 일을 한다(사용자가 파일을 고르고 교체/병합을 누른다).
+    //
+    //  그래서 시험할 것이 **반대로** 바뀐다: '잘 이관되는가' 가 아니라 '되살아나지 않는가'.
+    //  병합 규칙(mergeLegacyStores)은 살아남은 경로 — 가져오기 병합 — 으로 옮겨 시험한다.
+
+    test('자동이관 폐기: 부팅이 구 localStorage 를 훑지 않는다', () => {
+      const app = loadAppSource();
+      assert.ok(!/function\s+migrateLocalStores\s*\(/.test(app),
+        'migrateLocalStores 가 되살아났다 — 부팅이 다시 대량 쓰기를 하게 된다(사용자가 아무것도 선택하지 않은 순간에, 조용히). 이관이 필요하면 「XML 가져오기」로 한다');
+      //  구 키를 **읽는** 코드가 남아 있으면 안 된다. (지우지도 않는다 — 수동 복구용으로 남긴다)
+      const reads = (app.match(/localStorage\.getItem\('tc_(?:taskHours|attendance)'\)/g) || []);
+      assert.deepStrictEqual(reads, [],
+        `구 저장소를 읽는 코드가 ${reads.length}곳 남아 있다 — 좀비 데이터가 다시 들어올 문이다`);
     });
 
-    test('이관: 기존 XML 값은 절대 덮지 않는다(없는 것만 채움)', () => {
-      seed(THS({ taskHours: { '2026-07-13': { ca: 8 } }, attendance: { '2026-07-13': { status: '6', overtime: 0 } }, lsMigrated: false }));
-      setLegacy({ '2026-07-13': { ca: 6.5, cb: 1 } }, { '2026-07-13': { status: '2', overtime: 5 } });
-      const n = ev('migrateLocalStores()');
-      assert.strictEqual(n, 1, '이미 있는 (날짜×과제)/근태일은 건너뛰고 신규만 이동');
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 8, '기존 XML 값 보존(덮이지 않음)');
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 1, '없던 값만 채움');
-      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '6', overtime: 0 }, '기존 근태 보존');
-      clearLegacy();
-    });
-
-    test('좀비 방지(핵심): 이관 후 삭제한 값은 재이관에도 되살아나지 않는다', () => {
-      seed(THS({ lsMigrated: false }));
-      setLegacy({ '2026-07-13': { ca: 6.5 } }, null);
-      assert.strictEqual(ev('migrateLocalStores()'), 1);
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 6.5);
-      // 사용자가 값을 지운다 — localStorage에는 6.5가 그대로 남아 있는 상태
-      ev("setTaskHours('2026-07-13','ca',0)");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '삭제 반영');
-      // 같은 세션 재호출 + 새 세션(가드 해제) 재호출 모두 마커에서 단락되어야 한다
-      assert.strictEqual(ev('migrateLocalStores()'), 0, '세션 가드로 즉시 종료');
-      ev('__lsMigrateDone = false;');
-      assert.strictEqual(ev('migrateLocalStores()'), 0, '마커(state.lsMigrated)로 영구 종료');
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), null, '지운 값이 좀비로 부활하면 안 됨');
-      clearLegacy();
-    });
-
-    test('이관: 옮길 게 없어도 마커는 남긴다(다음 실행에서 재훑기 없음)', () => {
-      seed(THS({ lsMigrated: false }));
-      setLegacy(null, null);
-      assert.strictEqual(ev('migrateLocalStores()'), 0, '이동 0건');
-      assert.strictEqual(ev('state.lsMigrated'), true, '데이터가 없어도 마커는 기록');
-      clearLegacy();
+    test('가져오기 병합: 기존 값은 절대 덮지 않는다(없는 것만 채움) — mergeLegacyStores 규칙', () => {
+      seed(THS({ taskHours: { '2026-07-13': { ca: 8 } },
+                 attendance: { '2026-07-13': { status: '6', overtime: 0 } } }));
+      //  파일 쪽: 같은 날짜에 다른 값 + 없던 값. 병합은 '현재가 이기고 없는 것만' 이어야 한다.
+      const incoming = {
+        categories: [], entries: [], todos: [], rooms: [],
+        taskHours: { '2026-07-13': { ca: 6.5, cb: 1 } },
+        attendance: { '2026-07-13': { status: '2', overtime: 5 } },
+      };
+      ev('pendingImport = ' + JSON.stringify(incoming) + ';');
+      ev("applyImport('merge')");
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 8, '기존 값이 덮였다');
+      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 1, '없던 값을 안 채웠다');
+      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '6', overtime: 0 },
+        '기존 근태가 덮였다 — 근태는 회사 일간보고로 나가는 값이다');
     });
 
     test('과제 삭제: 그 과제의 (날짜×과제) 시간도 동반 정리, 다른 과제 시간은 보존', () => {
