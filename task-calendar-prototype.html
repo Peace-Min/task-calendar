@@ -3649,13 +3649,20 @@ function buildStateFrom(data){
  *  DB 모드는 **읽기 전용**이다. 쓰기 경로(설계 2단계)가 아직 없어서, 여기서 편집을 허용하면
  *  변경이 data.xml 로 가고 다음 부팅에 DB 를 읽는 순간 **편집이 사라진 것처럼 보인다.**
  *  그건 사용자에게 데이터 유실이다. 그래서 save() 를 입구에서 막고 화면에 출처를 드러낸다. */
-let __dataSource = 'xml';         // 'xml' | 'db'
-const isDbMode = () => __dataSource === 'db';
+//  ★ 기본은 'db' 다(2026-09-01, 이관 완료 후 뒤집었다). 호스트도 같은 기본이라 두 쪽이 어긋나지
+//    않는다. 부팅 데이터가 오면 __applyXml / __applyState 가 각자 출처를 **명시**하므로,
+//    이 초기값이 실제로 쓰이는 구간은 '부팅 데이터 도착 전' 뿐이다 — 그 구간이 파일 쪽이면
+//    이관된 사용자의 첫 저장이 낡은 파일로 샌다.
+let __dataSource = 'db';          // 'xml' | 'db'
+//  ★ HOST 조건이 필수다 — 브라우저에는 호스트도 DB 도 없다. 빼면 브라우저의 localStorage
+//    저장이 통째로 막힌다(DB 모드로 오인해서). 위젯에서만 성립하는 모드다.
+const isDbMode = () => HOST && __dataSource === 'db';
 
 // 호스트(WPF)가 시작 시 저장된 XML을 주입한다. 내용이 비어있으면 현재 시드를 그대로 두고 호스트에 저장(파일 생성)
 let __xmlApplied = false;   // 부팅 스켈레톤 폴백이 데이터 도착 전 일찍 사라지지 않도록 가드
 window.__applyXml = function(text){
   __xmlApplied = true;
+  __dataSource = 'xml';   // ★ 출처를 **명시**한다 — 초기값에 기대지 않는다(초기값은 'db' 다)
   if(text && text.trim()){
     try{
       const data = fromXML(text);

@@ -1,10 +1,10 @@
-// 데이터 출처(1c) 계약 — DB 읽기 배선이 파일 경로를 오염시키지 않는다
+// 데이터 출처 계약 — 두 저장소가 갈라지지 않게 잠근다
 //
 // 이 파일이 존재하는 이유:
-//   1c 는 **읽기만** 한다. 쓰기 경로(설계 2단계)가 없는 상태에서 DB 모드로 편집이 통과하면
-//   변경이 data.xml 로 가고, 다음 부팅에 DB 를 읽는 순간 편집이 사라진 것처럼 보인다.
-//   사용자에게 그건 데이터 유실이다. 그래서 잠글 것이 셋이다:
-//     ① 기본 출처는 파일이다 — DB 는 명시적으로 켤 때만(실수로 켜진 채 배포되면 안 된다)
+//   앱은 한동안 **파일과 DB 두 저장소**를 다 알고 있다(이관 기간). 그 사이에 조용히 갈라지면
+//   어느 쪽이 진실인지 아무도 모르게 된다. 그래서 잠글 것이 다섯이다:
+//     ① 기본 출처는 **DB** 다 — 파일로 되돌리려면 명시해야 한다(2026-09-01 이관 완료 후 뒤집었다.
+//        기본이 파일이면 사용자가 낡은 쪽을 고치기 시작하고 되돌릴 경로가 없다)
 //     ② DB 모드의 변경은 **파일로 새지 않는다** (2단계에서 '읽기 전용'→'DB 로 간다'로 바뀌었다)
 //     ③ DB 읽기 실패는 XML 로 **조용히 되돌아가지 않는다**
 //   그리고 두 경로가 갈라지지 않도록:
@@ -35,15 +35,25 @@ function bodyOf(text, header) {
 }
 
 const checks = {
-  // ① 기본 출처는 파일 — DB 는 명시적으로 켤 때만
-  defaultsToFile(app, cs) {
-    assert.ok(/let __dataSource = 'xml'/.test(app),
-      "웹의 기본 출처가 'xml' 이 아니다 — 켠 적 없는데 DB 로 뜨면 사용자가 파일을 잃었다고 오해한다");
-    assert.ok(/GetEnvironmentVariable\("TC_DATA_SOURCE"\)/.test(cs),
-      '호스트가 TC_DATA_SOURCE 를 보지 않는다');
-    //  영속 설정 파일로 만들면 켠 줄 모르고 배포된다 — 그 위험을 막는 것이 이 검사다
+  // ① 기본 출처는 **DB** 다 (2026-09-01 이관 완료 후 뒤집었다)
+  //    이관 뒤 data.xml 은 정의상 낡은 데이터다. 기본이 파일이면 사용자가 평소처럼 위젯을 켜는
+  //    순간 낡은 쪽을 고치고, cal_migration_log 가 재이관을 막아 그 편집을 옮길 경로가 없다.
+  defaultsToDb(app, cs) {
+    assert.ok(/let __dataSource = 'db'/.test(app),
+      "웹의 기본 출처가 'db' 가 아니다 — 부팅 데이터 도착 전 저장이 낡은 파일로 샌다");
+    assert.ok(/!string\.Equals\(Environment\.GetEnvironmentVariable\("TC_DATA_SOURCE"\), "xml"/.test(cs),
+      "호스트의 기본이 DB 가 아니다 — 'xml' 을 명시할 때만 파일이어야 한다");
+    //  영속 설정 파일로 만들면 어느 쪽이든 '모르고 그 상태로' 배포된다 — 그래서 환경변수만 쓴다
     assert.ok(!/data-source\.json|dataSource\.json/.test(cs),
-      '출처를 파일에 영속시키고 있다 — 켠 채로 배포될 위험이 있다(환경변수만 쓴다)');
+      '출처를 파일에 영속시키고 있다 — 모르는 채로 배포될 위험이 있다(환경변수만 쓴다)');
+    //  ★ 브라우저에는 호스트도 DB 도 없다. HOST 조건이 빠지면 브라우저 저장이 통째로 막힌다.
+    assert.ok(/const isDbMode = \(\) => HOST &&/.test(app),
+      'isDbMode 에 HOST 조건이 없다 — 브라우저가 DB 모드로 오인돼 localStorage 저장이 막힌다');
+    //  ★ 두 진입점이 각자 출처를 명시해야 한다. 초기값에 기대면 한쪽이 조용히 틀린다.
+    const xml = bodyOf(app, 'window.__applyXml = function(text){');
+    assert.ok(/__dataSource = 'xml'/.test(xml), 'XML 경로가 출처를 명시하지 않는다(초기값에 기대고 있다)');
+    const db = bodyOf(app, 'window.__applyState = function(json, meta){');
+    assert.ok(/__dataSource = 'db'/.test(db), 'DB 경로가 출처를 명시하지 않는다');
   },
 
   // ② DB 모드의 변경이 **파일로 새지 않는다**
@@ -98,7 +108,7 @@ const checks = {
   },
 };
 
-test('출처①: 기본은 파일이고 DB 는 환경변수로만 켠다', () => checks.defaultsToFile(src, mainwin));
+test('출처①: 기본은 DB 이고 파일로 되돌리려면 명시해야 한다', () => checks.defaultsToDb(src, mainwin));
 test('출처②: DB 모드의 변경이 파일로 새지 않는다', () => checks.dbSaveNeverTouchesFile(src));
 test('출처③: DB 읽기 실패가 XML 로 조용히 되돌아가지 않는다', () => checks.noSilentXmlFallback(mainwin));
 test('출처④: state 조립을 XML·DB 가 공유한다(buildStateFrom)', () => checks.stateBuilderShared(src));
@@ -131,9 +141,19 @@ test('출처⑧: 충돌은 자동 재시도하지 않고 사용자에게 남는�
 });
 
 // ── 변이 시험 ────────────────────────────────────────────────────────
-test('변이⑧: 기본 출처를 db 로 바꾸면 출처① 이 실패한다', () => {
-  const bad = mutate("let __dataSource = 'xml'", "let __dataSource = 'db'", src);
-  assert.throws(() => checks.defaultsToFile(bad, mainwin), /기본 출처가 'xml' 이 아니다/);
+test('변이⑧: 기본 출처를 파일로 되돌리면 출처① 이 실패한다', () => {
+  const bad = mutate("let __dataSource = 'db'", "let __dataSource = 'xml'", src);
+  assert.throws(() => checks.defaultsToDb(bad, mainwin), /기본 출처가 'db' 가 아니다/);
+});
+
+test('변이⑮: isDbMode 의 HOST 조건을 빼면 출처① 이 실패한다(브라우저 저장이 막힌다)', () => {
+  const bad = mutate('const isDbMode = () => HOST &&', 'const isDbMode = () =>', src);
+  assert.throws(() => checks.defaultsToDb(bad, mainwin), /HOST 조건이 없다/);
+});
+
+test('변이⑯: XML 경로가 출처를 명시하지 않으면 출처① 이 실패한다', () => {
+  const bad = mutate("  __dataSource = 'xml';   // ★ 출처를", "  // 제거됨   // ★ 출처를", src);
+  assert.throws(() => checks.defaultsToDb(bad, mainwin), /XML 경로가 출처를 명시하지 않는다/);
 });
 
 test('변이⑨: save() 의 DB 갈래를 빼면 출처② 가 실패한다', () => {
