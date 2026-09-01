@@ -321,3 +321,78 @@ test('변이㉒: 호스트가 replaceAll 을 통상 저장으로 넘기면 교�
   const bad = mutate('_ = SaveStateToDbAsync(rid, rj, replaceAll: true);', '_ = SaveStateToDbAsync(rid, rj);', mainwin);
   assert.throws(() => c6.hostHandlesReplaceAll(bad), /replaceAll:true 로 저장을 부르지 않는다/);
 });
+
+/* ── ⑦ 미이관 표시등 + 가져오기 파일창 ─────────────────────────────────── */
+//  자동이관을 폐기했으므로(2026-09-01) 이관은 사용자가 「XML 가져오기」로 한다.
+//  그 결정이 성립하려면 둘이 필요하다:
+//    ① 이관하지 않은 사람이 **빈 화면을 사고로 오해하지 않게** 길을 알려 준다
+//    ② 그 길이 실제로 걸을 만해야 한다 — 파일창이 데이터 폴더에서 열려야 한다
+//  둘 중 하나만 빠져도 "명시적 이관" 은 89명 중 상당수에게 일어나지 않는다.
+
+const c7 = {
+  //  ⑦-1 빈 캘린더면 안내가 뜬다. 그리고 그것은 **안내일 뿐** 아무것도 하지 않는다.
+  emptyHintGuidesOnly(app) {
+    const b = bodyOf(app, 'function renderEmptyHint(){');
+    assert.ok(/categories.*length.*entries.*length/s.test(b), '빈 상태 판정이 없다');
+    assert.ok(/startImport\(\)/.test(b), '안내가 가져오기로 이어지지 않는다 — 길을 알려 주지 않으면 안내가 아니다');
+    //  ★ 표시등이지 트리거가 아니다 — 여기서 데이터를 옮기면 그것이 자동이관이다.
+    for (const f of ['applyImport', 'saveFull', 'dbSave', 'fromXML'])
+      assert.ok(!b.includes(f),
+        `안내가 ${f}() 를 부른다 — 그 순간 자동이관이 된다(부팅이 사용자 동의 없이 데이터를 바꾼다). 안내는 길만 알려 준다`);
+    //  부팅 경로가 실제로 이 안내를 부르는지
+    const db = bodyOf(app, 'window.__applyState = function(json, meta){');
+    assert.ok(/renderEmptyHint\(\)/.test(db), '부팅이 빈 캘린더 안내를 부르지 않는다 — 미이관자가 빈 화면만 본다');
+  },
+
+  //  ⑦-2 위젯의 가져오기는 호스트 파일창으로 간다(기본 폴더 = 데이터 폴더)
+  importOpensAtDataDir(app, cs) {
+    const b = bodyOf(app, 'function startImport(){');
+    assert.ok(/!HOST/.test(b), '브라우저 갈래가 없다 — 호스트 없는 곳에서 가져오기가 죽는다');
+    assert.ok(/pickImportXml/.test(b),
+      '위젯이 호스트 파일창을 쓰지 않는다 — <input type=file> 은 시작 폴더를 정할 수 없어 사용자가 %APPDATA% 를 손으로 찾아 들어가야 한다');
+    assert.ok(/case "pickImportXml":/.test(cs), '호스트에 pickImportXml 명령이 없다 — 웹이 불러도 무동작이다');
+    const impl = bodyOf(cs, 'private void PickImportXml(string reqId)');
+    assert.ok(/InitialDirectory\s*=\s*Directory\.Exists\(_dataDir\)/.test(impl),
+      '파일창이 데이터 폴더에서 열리지 않는다 — 옮길 파일이 거기 있는데 사용자가 찾아 들어가야 한다');
+    //  ★ 경로가 아니라 **내용**을 돌려줘야 한다. 경로를 주면 다음에 '저장해 두자' 가 되고,
+    //    그 순간 data.xml 이 다시 데이터 출처가 된다(방금 폐기한 것이다).
+    assert.ok(/text = File\.ReadAllText/.test(impl) && /name = fi\.Name, text/.test(impl),
+      '파일창이 내용을 읽어 넘기지 않는다 — 경로를 넘기면 data.xml 이 출처로 되살아나는 문이 열린다');
+  },
+
+  //  ⑦-3 두 진입점이 미리보기를 공유한다
+  previewShared(app) {
+    assert.ok(/function showImportPreview\(name, text\)\{/.test(app), 'showImportPreview 가 없다');
+    for (const [fn, why] of [['startImport', '호스트 파일창'], ['onImportFile', '<input type=file>']]) {
+      const b = bodyOf(app, `function ${fn}(`);
+      assert.ok(/showImportPreview\(/.test(b),
+        `${why} 진입점이 공용 미리보기를 쓰지 않는다 — 갈라 두면 한쪽만 고쳐진다`);
+    }
+  },
+};
+
+test('표시등①: 빈 캘린더 안내가 뜨고, 안내일 뿐이다(자동이관 금지)', () => c7.emptyHintGuidesOnly(src));
+test('표시등②: 가져오기 파일창이 데이터 폴더에서 열리고 내용을 넘긴다', () => c7.importOpensAtDataDir(src, mainwin));
+test('표시등③: 두 진입점이 미리보기를 공유한다', () => c7.previewShared(src));
+
+test('변이㉓: 안내가 가져오기를 대신 실행하면 표시등① 이 실패한다(자동이관 부활)', () => {
+  const bad = mutate("  btn.addEventListener('click', () => startImport());",
+    "  btn.addEventListener('click', () => startImport()); applyImport('merge');", src);
+  assert.throws(() => c7.emptyHintGuidesOnly(bad), /자동이관이 된다/);
+});
+
+test('변이㉔: 파일창 기본 폴더를 없애면 표시등② 가 실패한다', () => {
+  const bad = mutate('InitialDirectory = Directory.Exists(_dataDir) ? _dataDir : "",', 'InitialDirectory = "",', mainwin);
+  assert.throws(() => c7.importOpensAtDataDir(src, bad), /데이터 폴더에서 열리지 않는다/);
+});
+
+test('변이㉕: 파일창이 경로를 넘기면 표시등② 가 실패한다', () => {
+  const bad = mutate('GitReply(reqId, new { ok = true, name = fi.Name, text });',
+    'GitReply(reqId, new { ok = true, name = fi.Name, path = dlg.FileName });', mainwin);
+  assert.throws(() => c7.importOpensAtDataDir(src, bad), /내용을 읽어 넘기지 않는다/);
+});
+
+test('변이㉖: 부팅이 빈 캘린더 안내를 안 부르면 표시등① 이 실패한다', () => {
+  const bad = mutate('    renderDataSourceBadge(meta);\n    renderEmptyHint();', '    renderDataSourceBadge(meta);', src);
+  assert.throws(() => c7.emptyHintGuidesOnly(bad), /부팅이 빈 캘린더 안내를 부르지 않는다/);
+});

@@ -3660,6 +3660,7 @@ window.__applyState = function(json, meta){
     renderAll();
     pushReminders();
     renderDataSourceBadge(meta);
+    renderEmptyHint();
   }catch(e){
     console.warn('DB 상태 적용 실패', e);
     window.__applyStateError('받은 데이터를 해석하지 못했습니다: ' + (e && e.message || e));
@@ -3685,6 +3686,34 @@ window.__applyStateError = function(msg){
     ' · 서버 연결을 확인한 뒤 다시 시작하세요.';
   toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
 };
+
+//  빈 캘린더 안내 — **미이관 표시등**이다.
+//    ★ 왜 필요한가: 이관하지 않은 사용자가 새 버전을 켜면 로그인도 되고 오류도 없이
+//      **빈 캘린더가 정상처럼** 뜬다. 부팅 실패 안내 셋(로그인 없음·미등록·연결 실패)
+//      어디에도 안 걸린다. 그 사람에게는 "내 데이터가 사라졌다" 로 보인다.
+//    ★ 왜 트리거가 아니라 안내인가: 자동으로 파일을 읽어 옮기는 것이 안티패턴이라
+//      명시적 가져오기로 정했다(2026-09-01). 그래서 여기서는 **아무것도 하지 않고**
+//      길만 알려 준다. 누를지 말지는 사용자가 정한다.
+//    ★ 신규 사용자에게도 무해한 문구여야 한다 — 그 사람에게 빈 화면은 정답이다.
+//      그래서 "옮기세요" 가 아니라 "기존 기록이 있다면" 으로 쓴다.
+function renderEmptyHint(){
+  const box = document.getElementById('emptyHint');
+  const empty = !(state.categories || []).length && !(state.entries || []).length && !(state.todos || []).length;
+  if(!empty || !HOST){ if(box) box.remove(); return; }
+  if(box) return;                                   // 이미 떠 있다
+  const host = document.querySelector('.wrap') || document.body;
+  const b = document.createElement('div');
+  b.id = 'emptyHint';
+  b.style.cssText = 'margin:12px 16px 0;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--muted);font-size:13px;line-height:1.7;display:flex;gap:10px;align-items:center;justify-content:space-between';
+  const t = document.createElement('span');
+  t.innerHTML = '캘린더가 비어 있습니다. <b>이전 버전에서 쓰던 기록이 있다면</b> XML 파일에서 가져올 수 있습니다.';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.textContent = 'XML 가져오기…';
+  btn.style.cssText = 'padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer;white-space:nowrap';
+  btn.addEventListener('click', () => startImport());
+  b.appendChild(t); b.appendChild(btn);
+  host.insertBefore(b, host.firstChild);
+}
 
 // 출처 배지 — '지금 무엇을 보고 있는가'를 화면에 드러낸다(읽기 전용도 함께 알린다).
 function renderDataSourceBadge(meta){
@@ -7433,16 +7462,40 @@ function exportXML(){
     toast(`XML로 내보냈습니다 (과제 ${state.categories.length} · 기록 ${state.entries.length})`);
   }catch(err){ toast('내보내기 실패: ' + err.message, 'error'); }
 }
+//  가져오기 진입점. 위젯이면 **호스트 파일창**을 연다 — 그래야 기본 폴더를 데이터 폴더로
+//  띄울 수 있다. 옮길 파일(옛 data.xml)이 바로 거기 있고, 89명이 각자 통과해야 하는 문이라
+//  "그 숨은 폴더를 손으로 찾아 들어가야 한다" 는 마찰이 그대로 미이관자 수가 된다.
+//  브라우저에는 호스트가 없으니 <input type=file> 로 떨어진다.
+//  파일 내용 → 미리보기 모달. 두 진입점(호스트 파일창·<input type=file>)이 이 하나를 공유한다 —
+//  갈라 두면 한쪽만 고쳐져 "어느 문으로 들어왔느냐에 따라 다르게 동작" 한다.
+function showImportPreview(name, text){
+  try{
+    pendingImport = fromXML(text);
+  }catch(err){ toast('가져오기 실패: ' + err.message, 'error'); return; }
+  $('#importInfo').innerHTML =
+    `${ICON.file} <b>${esc(name)}</b><br>` +
+    `파일 내용: 과제 <b>${pendingImport.categories.length}</b>개 · 기록 <b>${pendingImport.entries.length}</b>개<br>` +
+    `현재 데이터: 과제 <b>${state.categories.length}</b>개 · 기록 <b>${state.entries.length}</b>개`;
+  openModal('#importModal');
+}
+
+function startImport(){
+  if(!HOST){ $('#importFile').click(); return; }
+  hostRequest('pickImportXml', {}, 120000).then(res => {
+    if(!res || !res.ok){
+      if(res && res.canceled) return;                       // 사용자가 닫았다 — 조용히
+      toast('파일을 열지 못했습니다' + ((res && res.error) ? ' — ' + res.error : ''), 'error');
+      return;
+    }
+    showImportPreview(res.name || 'XML', String(res.text || ''));
+  });
+}
+
 function onImportFile(file){
   const reader = new FileReader();
   reader.onload = () => {
     try{
-      pendingImport = fromXML(String(reader.result));
-      $('#importInfo').innerHTML =
-        `${ICON.file} <b>${esc(file.name)}</b><br>` +
-        `파일 내용: 과제 <b>${pendingImport.categories.length}</b>개 · 기록 <b>${pendingImport.entries.length}</b>개<br>` +
-        `현재 데이터: 과제 <b>${state.categories.length}</b>개 · 기록 <b>${state.entries.length}</b>개`;
-      openModal('#importModal');
+      showImportPreview(file.name, String(reader.result));
     }catch(err){ toast('가져오기 실패: ' + err.message, 'error'); }
   };
   reader.onerror = () => toast('파일을 읽을 수 없습니다', 'error');
@@ -7495,7 +7548,7 @@ function applyImport(mode){
   //  ★ 교체·병합 **둘 다** 전량 교체로 보낸다. 합치는 판단(무엇을 남기고 무엇을 더할지)은
   //    위에서 이미 끝났고, state 가 곧 결과다. DB 는 그 결과를 그대로 반영하기만 하면 된다 —
   //    그래서 DB 쪽 중복 판정·번호 부여 규칙이 아예 필요 없다.
-  saveFull(); closeModal('#importModal'); renderAll();
+  saveFull(); closeModal('#importModal'); renderAll(); renderEmptyHint();
 }
 async function clearAll(){
   if(await confirmBox('전체 데이터 초기화',
@@ -7506,7 +7559,7 @@ async function clearAll(){
   filterCatId = null; filterSource = null; noteFilterCat = null;
   //  ★ 초기화도 state 를 통째로 갈아끼운 것이므로 전량 교체다(가져오기와 같은 부류).
   //    실행 취소도 마찬가지 — 되살릴 스냅샷이 곧 결과 state 다.
-  saveFull(); renderAll();
+  saveFull(); renderAll(); renderEmptyHint();
   toast('전체 데이터를 초기화했습니다', 'success', {label:'실행 취소', fn:()=>{ state = snap; saveFull(); renderAll(); }});
 }
 
@@ -10106,7 +10159,7 @@ function bind(){
   });
   $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
-  $('#btnImport').addEventListener('click', () => { closeMore(); $('#importFile').click(); });
+  $('#btnImport').addEventListener('click', () => { closeMore(); startImport(); });
   $('#btnClear').addEventListener('click', () => { closeMore(); clearAll(); });
   $('#btnRoomAdd').addEventListener('click', () => addRoom($('#roomName').value));
   $('#roomName').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); addRoom($('#roomName').value); } });

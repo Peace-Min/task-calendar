@@ -666,6 +666,16 @@ namespace TaskCalendarWidget
                         _ = RunGitAuthorAsync(reqId, repo, vcs);
                         break;
                     }
+                    case "pickImportXml":   // 「XML 가져오기」 파일 선택 — 기본 폴더를 데이터 폴더로 연다.
+                        //   ★ <input type=file> 을 쓰지 않는 이유: 그 대화상자의 시작 폴더를 웹이 정할 수
+                        //     없다. 옮길 파일(%APPDATA%\TaskCalendar\data.xml)이 바로 거기 있는데,
+                        //     사용자가 숨은 폴더 경로를 손으로 찾아 들어가야 한다면 이관을 안 하게 된다.
+                        //     89명이 각자 통과해야 하는 문이라 그 마찰이 그대로 미이관자 수가 된다.
+                    {
+                        string reqId = GetStr(doc, "reqId");
+                        PickImportXml(reqId);   // UI 스레드에서 모달 다이얼로그
+                        break;
+                    }
                     case "pickfolder":   // 네이티브 폴더 선택 다이얼로그(텍스트 입력 대체)
                     {
                         string reqId = GetStr(doc, "reqId"), start = GetStr(doc, "start");
@@ -864,6 +874,42 @@ namespace TaskCalendarWidget
         }
 
         // 네이티브 폴더 선택(.NET 9 WPF OpenFolderDialog). 선택 즉시 저장소 여부 + 작성자까지 회신.
+        //  「XML 가져오기」 파일 선택 + 읽기. 회신: { ok, name, text, error }
+        //    ★ 파일을 여기서 읽어 텍스트로 넘긴다 — 웹에 경로를 주지 않는다. 경로를 주면
+        //      다음에 "그 경로를 저장해 두자" 가 되고, 그 순간 data.xml 이 다시 데이터 출처가 된다.
+        //      한 번 고르고 한 번 읽는다. 그것이 이관이 일회성이라는 사실과도 맞는다.
+        private void PickImportXml(string reqId)
+        {
+            try
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title = "XML 가져오기 — 옮길 파일을 고르세요",
+                    Filter = "캘린더 XML (*.xml)|*.xml|모든 파일 (*.*)|*.*",
+                    CheckFileExists = true,
+                    Multiselect = false,
+                    //  ★ 기본 폴더 = 데이터 폴더. 옛 data.xml 이 여기 있다(개명해 뒀어도 같은 폴더다).
+                    InitialDirectory = Directory.Exists(_dataDir) ? _dataDir : "",
+                };
+                if (dlg.ShowDialog(this) != true) { GitReply(reqId, new { ok = false, canceled = true }); return; }
+                //  용량 상한 — 사용자가 엉뚱한 큰 파일을 골랐을 때 위젯이 굳지 않게 한다.
+                var fi = new FileInfo(dlg.FileName);
+                if (fi.Length > 64L * 1024 * 1024)
+                {
+                    GitReply(reqId, new { ok = false, error = "파일이 너무 큽니다(64MB 초과): " + fi.Name });
+                    return;
+                }
+                string text = File.ReadAllText(dlg.FileName, Encoding.UTF8);
+                Log("가져오기 파일 선택: " + fi.Name + " (" + fi.Length + "B)");
+                GitReply(reqId, new { ok = true, name = fi.Name, text });
+            }
+            catch (Exception ex)
+            {
+                Log("가져오기 파일 읽기 실패: " + ex.Message);
+                GitReply(reqId, new { ok = false, error = ex.Message });
+            }
+        }
+
         private void PickFolder(string reqId, string start)
         {
             try
