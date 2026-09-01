@@ -936,8 +936,8 @@ function loadFixtureIntoDb(exp, userId) {
     for (const d of (e.recurExcept || [])) {
       S.push(`INSERT INTO cal_entry_except (user_id,entry_no,except_date) VALUES (${U},${no},${q(d)});`);
     }
-    // ★ 커밋은 **일부러 적재한다** — G-7 이 요구하는 것은 '없다' 가 아니라 '부팅 조회에 넣지 않는다' 다.
-    //   DB 에 있는데도 commits 가 [] 로 오는지 확인해야 그 계약이 실제로 시험된다.
+    // ★ 커밋을 적재한다 — G-7 개정(2026-09-01) 뒤로는 **부팅이 이것을 실어 와야** 한다.
+    //   DB 에 있는 커밋이 state 에 그대로(순서까지) 오는지가 그 계약의 시험이다.
     (e.commits || []).forEach((c, s) => {
       S.push(`INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,commit_time,subject,body) VALUES (` +
         `${U},${no},${s},${q(c.hash)},${q(c.short)},${c.time ? q(c.time) : 'NULL'},${q(c.subject)},${q(c.body)});`);
@@ -1398,7 +1398,7 @@ namespace TaskCalendarWidget
             var prefFmt = new Dictionary<string, object>();
             var font = new Dictionary<string, object>();
 
-            // ── 부팅 조회는 단일 트랜잭션 · 9개 표(§3.5). cal_entry_commit 은 제외(§2·G-7) ──
+            // ── 부팅 조회는 단일 트랜잭션 · 10개 표(§3.5). cal_entry_commit **포함**(G-7 개정 2026-09-01) ──
             await Exec(conn, "START TRANSACTION WITH CONSISTENT SNAPSHOT", ct);
             try
             {
@@ -1456,7 +1456,7 @@ namespace TaskCalendarWidget
                         o["remind"] = IN(rd, "remind");                                    // G-2b: NULL 유지
                         o["memo"] = S(rd, "memo");
                         o["source"] = S(rd, "source");
-                        o["commits"] = new List<object>();                                 // G-7: 부팅에서는 빈 배열
+                        o["commits"] = new List<object>();                                 // G-7(개정): 아래 ③b 에서 채운다
                         o["endDate"] = S(rd, "end_date");                                  // G-2
                         var f = SN(rd, "recur_freq");
                         o["recur"] = f == null ? null : (object)new Dictionary<string, object> {
@@ -1479,6 +1479,22 @@ namespace TaskCalendarWidget
                     {
                         Dictionary<string, object> p;
                         if (entryNoToObj.TryGetValue(I(rd, "entry_no"), out p)) ((List<object>)p["recurExcept"]).Add(S(rd, "d"));
+                    }
+                }
+                // ③b cal_entry_commit — G-7 개정. ORDER BY entry_no, seq(G-5)
+                using (var cmd = new MySqlCommand(
+                    "SELECT entry_no, hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS ct, subject, body " +
+                    "FROM cal_entry_commit WHERE user_id=@u ORDER BY entry_no, seq", conn))
+                {
+                    cmd.Parameters.AddWithValue("@u", userId);
+                    using var rd = (MySqlDataReader)await cmd.ExecuteReaderAsync(ct);
+                    while (await rd.ReadAsync(ct))
+                    {
+                        Dictionary<string, object> p;
+                        if (!entryNoToObj.TryGetValue(I(rd, "entry_no"), out p)) continue;
+                        ((List<object>)p["commits"]).Add(new Dictionary<string, object> {
+                            ["hash"] = S(rd, "hash"), ["short"] = S(rd, "short_hash"),
+                            ["time"] = S(rd, "ct"), ["subject"] = S(rd, "subject"), ["body"] = S(rd, "body") });
                     }
                 }
                 // ④ cal_todo
@@ -1967,16 +1983,18 @@ function normalizeExpected(exp, { localReposAccepted }) {
   let n = 0;
   for (const en of e.entries) { if (en.hours !== null) n++; en.hours = null; }
   if (n) applied.push(`G-6 entry.hours → null (컬럼 폐지) · ${n}건`);
-  n = 0;
-  for (const en of e.entries) { if ((en.commits || []).length) n++; en.commits = []; }
-  applied.push(`G-7 entry.commits → [] (부팅 조회에서 커밋 제외) · 실제 커밋을 가진 일정 ${n}건`);
+  //  ★ G-7 개정(2026-09-01) — 커밋을 기준에서 지우던 정규화를 **없앴다.**
+  //    예전에는 여기서 en.commits = [] 로 깎아 DB 쪽의 빈 배열과 억지로 맞췄다. 그 줄이
+  //    '계약상 차이' 로 정직하게 찍히긴 했지만, 실제로는 **DB 에서 커밋을 못 읽는 결함**을
+  //    계약으로 덮고 있었다. 이제 양쪽이 그냥 같아야 한다 — 그게 훨씬 강한 명제다.
+  //    (지우는 대신 이 주석을 남긴다. 다시 깎고 싶어지면 그것이 결함의 재발이다.)
   if (e.lsMigrated !== true) applied.push(`G-6 lsMigrated → true (기준은 ${e.lsMigrated})`);
   e.lsMigrated = true;
 
   /* ★ category.usesRepo — 계약 G-0 이 명시한 **유일한 의도된 예외**(2026-08-27, schema_version 5).
    *   fromXML() 은 이 키를 만들지 않는다. XML 에는 경로 **문자열**만 있고 '쓴다/안 쓴다'는 없다(§4) —
    *   경로는 그 파일을 만든 PC 의 사실이지 과제의 사실이 아니기 때문이다.
-   *   그래서 여기서 기준 쪽에 얹는다. **덮지 않고 계산해서 맞춘다** — hours=null·commits=[]·
+   *   그래서 여기서 기준 쪽에 얹는다. **덮지 않고 계산해서 맞춘다** — hours=null·
    *   lsMigrated=true 와 같은 부류다(G-6 '없는 것 채우기').
    *   ★ 이 정규화를 gitRepo/svnRepo **정규화보다 먼저** 한다. 아래에서 두 값을 '' 로 지우고 나면
    *     근거가 사라져 전부 false 가 되고, 그러면 이 검사는 조용히 무력해진다.
@@ -2190,14 +2208,22 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
     ok(`G-6 category.usesRepo 전 과제에 존재 (${act.categories.length}건 중 true ${t}건) — 경로 유무와 별개의 비트다`);
   }
 
-  // ── G-7 커밋은 부팅 조회에 없다 ─────────────────────────────────────
-  const cmBad = (act.entries || []).filter((e) => !Array.isArray(e.commits) || e.commits.length);
-  if (cmBad.length) {
-    violate('G-7', `부팅 조회에 커밋이 섞였다(또는 배열이 아니다) — ${cmBad.length}건, 예: ${cmBad[0].id} → ${TN(cmBad[0].commits)} ${(cmBad[0].commits || []).length}개`);
+  // ── G-7(개정) 커밋은 부팅 조회가 **실어 와야** 한다 ──────────────────
+  //   2026-09-01 이전에는 정반대였다("섞이면 위반"). 그 계약이 배선을 막고 있었고,
+   //  그 결과 DB 모드에서 커밋 기반 보고서가 통째로 비었다. 방향을 뒤집는다.
+  const cmNotArr = (act.entries || []).filter((e) => !Array.isArray(e.commits));
+  const cmLoaded = (act.entries || []).reduce((a, e) => a + (Array.isArray(e.commits) ? e.commits.length : 0), 0);
+  if (cmNotArr.length) {
+    violate('G-7', `entry.commits 가 배열이 아니다 — ${cmNotArr.length}건, 예: ${cmNotArr[0].id} → ${TN(cmNotArr[0].commits)} (undefined 면 커밋 편집 경로가 TypeError 로 죽는다)`);
   } else if (dbFacts && dbFacts.commitRows > 0) {
-    ok(`G-7 commits = [] · DB 에는 커밋 ${dbFacts.commitRows}행이 실제로 있다(검출 가능한 상태에서 통과)`);
+    if (cmLoaded !== dbFacts.commitRows) {
+      violate('G-7', `부팅 조회가 커밋을 다 싣지 않았다 — DB ${dbFacts.commitRows}행인데 state 에는 ${cmLoaded}개. ` +
+        '0 이면 지연 조회 시절로 되돌아간 것이다(그때 보고서가 통째로 비었다).');
+    } else {
+      ok(`G-7(개정) 커밋 ${cmLoaded}개를 부팅에서 실어 왔다 · DB 행수와 일치(검출 가능한 상태에서 통과)`);
+    }
   } else {
-    note('G-7 검출력 없음 — 이 픽스처의 DB 에 커밋이 0행이라 "커밋을 섞었는지" 를 이 실행으로는 증명할 수 없다');
+    note('G-7 검출력 없음 — 이 픽스처의 DB 에 커밋이 0행이라 "커밋을 실어 오는지" 를 이 실행으로는 증명할 수 없다');
   }
 }
 
@@ -2263,10 +2289,12 @@ function emitDiffs(diffs, label, { print = true } = {}) {
 function reportDiffs(diffs, label) { return emitDiffs(diffs, label, { print: true }); }
 
 /* ────────────────────────────── 11. §3.5/§3.6 증거 검사 ──────────────────────────────
- * '어댑터가 정말 한 연결에서, 9개 표를, 스냅샷 트랜잭션으로 읽었나' 를
+ * '어댑터가 정말 한 연결에서, 대상 표 전부를, 스냅샷 트랜잭션으로 읽었나' 를
  * performance_schema 의 문장 다이제스트로 **관측**한다(코드를 읽어 짐작하지 않는다). */
-const NINE = ['cal_category', 'cal_entry', 'cal_entry_except', 'cal_todo', 'cal_todo_day_note',
-  'cal_room', 'cal_task_hours', 'cal_attendance', 'cal_user_pref'];
+//  부팅 조회가 읽어야 하는 표. cal_entry_commit 은 2026-09-01 G-7 개정으로 **들어왔다**
+//  (그전에는 이 목록 밖이었고, 오히려 나타나면 위반이었다).
+const NINE = ['cal_category', 'cal_entry', 'cal_entry_except', 'cal_entry_commit', 'cal_todo',
+  'cal_todo_day_note', 'cal_room', 'cal_task_hours', 'cal_attendance', 'cal_user_pref'];
 
 function psAvailable() {
   const r = mysqlRun(`SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest';`,
@@ -2315,10 +2343,10 @@ function checkBootQuery(connDelta) {
   if (!has(/app_user/i)) violate('§3.6', 'login_id → user_id 해석(app_user 조회)이 관측되지 않았다');
 
   const missed = NINE.filter((t) => !new RegExp(`\\b${t}\\b`, 'i').test(all));
-  if (missed.length) violate('§3.5', `부팅 조회가 9개 표를 다 읽지 않았다 — 빠진 표: ${missed.join(', ')}`);
-  else ok('§3.5 대상 9개 표 전부 조회됨');
-  if (/\bcal_entry_commit\b/i.test(all)) violate('§2/G-7', '부팅 조회에 cal_entry_commit 이 섞였다 — 무게의 대부분이 커밋이고 캘린더를 그리는 데 쓰이지 않는다(지연 조회여야 한다)');
-  else ok('§2 cal_entry_commit 은 부팅 조회에 없다');
+  if (missed.length) violate('§3.5', `부팅 조회가 ${NINE.length}개 표를 다 읽지 않았다 — 빠진 표: ${missed.join(', ')}`);
+  else ok(`§3.5 대상 ${NINE.length}개 표 전부 조회됨`);
+  if (!/\bcal_entry_commit\b/i.test(all)) violate('§2/G-7', '부팅 조회가 cal_entry_commit 을 읽지 않았다 — 커밋이 빈 배열로 남고 검색·통계·보고서가 전부 조용히 틀린다(G-7 개정 2026-09-01)');
+  else ok('§2/G-7 cal_entry_commit 이 부팅 조회에 있다');
   if (!has(/\bCOMMIT\b/i) && !has(/\bROLLBACK\b/i)) violate('§3.5', '부팅 조회 트랜잭션을 닫는 COMMIT/ROLLBACK 이 관측되지 않았다 — 열린 read view 가 undo purge 를 붙잡는다');
 
   if (connDelta >= 0) {
@@ -2416,10 +2444,12 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
     a.lsMigrated = false; return 'lsMigrated = false';
   }, () => true);
 
-  add('M9', 'G-7 — 부팅 조회에 커밋을 섞음', 'G-7', /부팅 조회에 커밋이 섞였다/, (a) => {
-    a.entries[0].commits = [{ hash: 'x', short: 'x', time: '', subject: 's', body: '' }];
-    return `entries[${a.entries[0].id}].commits 에 1건 추가`;
-  }, (a) => a.entries.length > 0);
+  add('M9', 'G-7(개정) — 부팅 조회가 커밋을 빠뜨림', 'G-7', /커밋을 다 싣지 않았다/, (a) => {
+    //  지연 조회 시절로 되돌아간 상태를 그대로 만든다 — 그때 보고서가 통째로 비었다.
+    let n = 0;
+    for (const e of a.entries) { n += (e.commits || []).length; e.commits = []; }
+    return `commits 를 전부 [] 로 비움(${n}개 삭제)`;
+  }, (a) => a.entries.some((e) => (e.commits || []).length > 0));
 
   add('M10', 'G-1c — categoryId 에 cat_no(숫자)를 흘림', 'G-1c', /categoryId 가 숫자다/, (a) => {
     const e = a.entries.find((x) => x.categoryId != null); e.categoryId = 7; return `entries[${e.id}].categoryId = 7`;
@@ -2803,7 +2833,7 @@ async function main() {
     RUN.fixtures.push({
       name: f.name,
       summary: `과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · 장소 ${exp.rooms.length} · ` +
-        `커밋 ${dbFacts.commitRows}행(부팅에서 제외 확인) · 근태 ${Object.keys(exp.attendance).length}일`,
+        `커밋 ${dbFacts.commitRows}행(부팅에서 적재 확인) · 근태 ${Object.keys(exp.attendance).length}일`,
     });
 
     if (OPT.selftest) RUN.mutations.push({ fixture: f.name, ...mutationSuite(expNorm, act, exp, dbFacts) });

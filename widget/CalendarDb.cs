@@ -149,11 +149,23 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  공개 API 2 — 부팅 조회 (설계 §3.5)
         // ================================================================================
-        //   9개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
-        //     cal_category · cal_entry · cal_entry_except · cal_todo · cal_todo_day_note ·
-        //     cal_room · cal_task_hours · cal_attendance · cal_user_pref
-        //   ★ cal_entry_commit 은 제외한다(§2·G-7) — 무게의 대부분인데 캘린더를 그리는 데 안 쓴다.
-        //     entry.commits 는 빈 배열로 채운다(undefined 로 두면 커밋 편집 경로가 TypeError 로 죽는다).
+        //   10개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
+        //     cal_category · cal_entry · cal_entry_except · cal_entry_commit · cal_todo ·
+        //     cal_todo_day_note · cal_room · cal_task_hours · cal_attendance · cal_user_pref
+        //
+        //   ★★ 계약 G-7 개정(2026-09-01) — 커밋을 **부팅에서 전량 읽는다.**
+        //     원안은 지연 조회였다: "무게의 대부분인데 캘린더를 그리는 데 안 쓴다". 전제가 틀렸다.
+        //       · 앱은 커밋을 **전역으로 훑는다** — 검색(:7434)·통계(:8630)·보고서(:7664/:7740).
+        //         일정 하나씩 늦게 읽어서는 이것들이 전부 틀린다. 실제로 틀리고 있었다.
+        //       · 무게가 없다 — 실측 커밋 164건이 42,286자(≈42KB)다. 부팅 state 가 19,534B 였으니
+        //         합쳐도 62KB 남짓이고 쿼리는 한 개 는다.
+        //       · 지연 조회는 **배선된 적이 없었다.** LoadEntryCommitsJsonAsync 가 있었지만 호스트
+        //         브리지에도 웹에도 호출부가 0 이었다 — 그래서 DB 모드에서는 커밋이 영영 빈 배열이고,
+        //         커밋 기반 일간·주간 보고가 통째로 비었다. 이 앱의 주 용도가 그것이다.
+        //       · 쓰기 쪽 부작용도 이것이 원인이었다 — 부팅이 [] 로 두니 차분 저장이 "164→0" 으로
+        //         오판해서, CalendarWriteDb 가 cal_entry_commit 을 통째로 제외해야 했다.
+        //         부팅이 제대로 읽으면 그 제외 사유가 사라진다.
+        //     entry.commits 는 **항상 배열**이다(undefined 로 두면 커밋 편집 경로가 TypeError 로 죽는다).
         //
         //   repoPaths: 과제 uid → (gitRepo, svnRepo). 계약 G-6 — 이 값은 **DB 에 없다**(§4: PC 마다
         //     달라야 하는 유일한 항목). 로컬 저장소를 읽는 것은 이 클래스의 일이 아니라 호출자의
@@ -240,41 +252,13 @@ namespace TaskCalendarWidget
         //    배선은 `.Map` 한 단어면 끝난다 — 위 주석의 두 줄이 그것이다.
 
         // ================================================================================
-        //  공개 API 3 — 커밋 지연 조회 (계약 G-7)
+        //  (없앤 것) 공개 API 3 — 커밋 지연 조회
         // ================================================================================
-        //   부팅에는 쓰지 않는다. 커밋 내역 탭·보고서를 열 때 그 entry 것만 읽는다.
-        //   ★ 조건절이 (user_id, entry_no) 인 이유: state 에는 entry_no 가 없으므로(G-1)
-        //     호출자가 H-2 의 uid→entry_no 맵(= CalendarSnapshot.EntryNoByUid)을 반드시 거쳐야 한다.
-        //     uid 로 WHERE 를 짜면 당장은 동작하지만 그 습관이 쓰기로 넘어가면 낙관적 잠금이 깨진다(§3.3 ★).
-        //   ★ 트랜잭션을 열지 않는다 — 한 부모의 자식 목록을 한 문장으로 읽으므로 찢어질 창이 없다.
-        //
-        //   반환: [{hash, short, time, subject, body}, …] JSON / 실패는 null(호출측이 화면에 알린다)
-        public async Task<string?> LoadEntryCommitsJsonAsync(int userId, uint entryNo)
-        {
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-                var ct = cts.Token;
-                await using var conn = await OpenReadAsync(ct);
-                await ExecAsync(conn, ReadPreambleSql, ct);
+        //   LoadEntryCommitsJsonAsync 가 여기 있었다. 계약 G-7 이 개정되면서(부팅 전량 로드)
+        //   존재 이유가 사라졌고, 애초에 **호출부가 0 이었다** — 호스트 브리지에도 웹에도 없었다.
+        //   지우는 대신 남겨 두면 "지연 조회가 있으니 부팅은 안 읽어도 된다"는 잘못된 근거가
+        //   코드 안에 계속 서 있게 된다. 그 오해가 이 결함의 원인이었으므로 지운다.
 
-                // ORDER BY seq — 부모 commits 배열 인덱스이자 표시 순서의 유일한 근거(G-5).
-                const string sql =
-                    "SELECT hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS commit_time, subject, body " +
-                    "FROM cal_entry_commit WHERE user_id=@u AND entry_no=@e ORDER BY seq";
-                await using var cmd = new MySqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@u", userId);
-                cmd.Parameters.AddWithValue("@e", entryNo);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-
-                var commits = new List<Dictionary<string, object?>>();
-                while (await rd.ReadAsync(ct)) commits.Add(CommitRow(rd));
-
-                _log("커밋 지연 조회: entry_no=" + entryNo + " " + commits.Count + "건");
-                return JsonSerializer.Serialize(commits);
-            }
-            catch (Exception ex) { _log("커밋 지연 조회 실패(entry_no=" + entryNo + "): " + Short(ex)); return null; }
-        }
 
         // ================================================================================
         //  내부 — 연결·프리앰블
@@ -362,7 +346,7 @@ namespace TaskCalendarWidget
                 if (v != null && v is not DBNull) rev = Convert.ToInt64(v, CultureInfo.InvariantCulture);
             }
 
-            // ── 1/9. cal_category ─────────────────────────────────────────────────
+            // ── 1/10. cal_category ─────────────────────────────────────────────────
             //   ORDER BY sort_order — XML 문서 순서를 박제한 유일한 근거(G-5).
             //   동률의 뒷순서는 uid 로 고정한다. ★ cat_no 를 쓰지 않는다 — 번호는 '만들어진 순서'일
             //   뿐이고 삭제 후 재사용되므로 표시 순서의 근거가 되지 못한다(G-5 ★).
@@ -424,7 +408,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 2/9. cal_entry ────────────────────────────────────────────────────
+            // ── 2/10. cal_entry ────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5). ★ entry_date 도 created_at 도 정렬키가 아니다.
             //   ★ 2026-08-27 에 두 번 바뀐 자리다. 원래 `entry_date, created_at, uid` 였다.
             //     ① created_at 을 뺀 이유 — 실 data.xml 의 일정 23건 중 22건이 같은 밀리초라
@@ -448,6 +432,7 @@ namespace TaskCalendarWidget
             //   앱의 `e.categoryId === c.id` 가 어디서도 안 맞아 전 일정이 '미분류'가 되고 오류는 0건이다.
             var entries = new List<Dictionary<string, object?>>();
             var recurExceptByNo = new Dictionary<uint, List<object?>>();
+            var commitsByNo     = new Dictionary<uint, List<object?>>();   // G-7 개정: 4/10 이 여기에 접는다
             const string entrySql =
                 "SELECT e.entry_no, e.uid, cc.uid AS cat_uid, " +
                 "DATE_FORMAT(e.entry_date,'%Y-%m-%d') AS entry_date, " +
@@ -501,19 +486,20 @@ namespace TaskCalendarWidget
                         ["remind"]     = IntOrNull(rd, "remind"),    // G-2 ★ NULL 유지. null=기본 사다리 / 0=알림 없음
                         ["memo"]       = Str(rd, "memo"),
                         ["source"]     = Str(rd, "source"),          // '' 또는 'git' 두 값뿐(CHECK)
-                        ["commits"]    = new List<object?>(),        // G-7: 항상 배열. 지연 조회로 채운다
+                        ["commits"]    = new List<object?>(),        // G-7: 항상 배열. 아래 4/10 에서 채운다
                         ["endDate"]    = Str(rd, "end_date"),        // G-2: NULL → ''
                         ["recur"]      = recur,
-                        ["recurExcept"] = new List<object?>(),       // 아래 3/9 에서 채운다
+                        ["recurExcept"] = new List<object?>(),       // 아래 3/10 에서 채운다
                         ["createdAt"]  = Iso(Str(rd, "created_at")),
                         ["updatedAt"]  = Iso(Str(rd, "updated_at")),
                     };
                     entries.Add(e);
+                    commitsByNo[entryNo] = (List<object?>)e["commits"]!;
                     if (recur != null) recurExceptByNo[entryNo] = (List<object?>)e["recurExcept"]!;
                 }
             }
 
-            // ── 3/9. cal_entry_except ─────────────────────────────────────────────
+            // ── 3/10. cal_entry_except ─────────────────────────────────────────────
             //   ORDER BY except_date(G-5). ★ ORDER BY 에 entry_no 를 쓰지 않는다 — 부모별로 접으므로
             //   행이 어떻게 섞여 오든 각 배열 안의 순서는 날짜순으로 확정된다.
             //   entry_no 는 접는 데만 쓰고 state 에는 남기지 않는다(G-1d).
@@ -537,7 +523,31 @@ namespace TaskCalendarWidget
             }
             if (orphanExcept > 0) _log("반복 없는 일정에 붙은 예외일 " + orphanExcept + "건 — state 에 넣지 않았다(앱이 만들 수 없는 모양)");
 
-            // ── 4/9. cal_todo ─────────────────────────────────────────────────────
+            // ── 4/10. cal_entry_commit ────────────────────────────────────────────
+            //   ORDER BY entry_no, seq — seq 가 부모 commits 배열의 인덱스이자 표시 순서의
+            //   유일한 근거다(G-5). entry_no 를 앞에 두는 것은 순서와 무관하고(부모별로 접으므로)
+            //   같은 부모의 행이 붙어 오게 해 접기를 싸게 만들 뿐이다.
+            //   ★ entry_no 는 접는 데만 쓰고 state 에는 남기지 않는다(G-1d) — 3/10 과 같은 규약.
+            //   ★ 고아 행(부모 없는 커밋)은 FK 가 막지만, 막혔다고 믿고 조용히 버리지 않는다.
+            //     세어서 알린다 — 3/10 이 예외일에 하는 것과 같다.
+            int orphanCommit = 0;
+            const string commitSql =
+                "SELECT entry_no, hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS commit_time, subject, body " +
+                "FROM cal_entry_commit WHERE user_id=@u ORDER BY entry_no, seq";
+            await using (var cmd = new MySqlCommand(commitSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@u", userId);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    uint entryNo = UInt(rd, "entry_no");
+                    if (commitsByNo.TryGetValue(entryNo, out var list)) list.Add(CommitRow(rd));
+                    else orphanCommit++;
+                }
+            }
+            if (orphanCommit > 0) _log("부모 없는 커밋 " + orphanCommit + "건 — state 에 넣지 않았다");
+
+            // ── 5/10. cal_todo ─────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5 — 2026-08-27 에 확정값으로 못박혔다).
             //   ★ 여기가 원래 created_at → uid 였고, 그 근거는 '앱이 push 하므로 배열 순서 = 생성 순서'
             //     였다. 전제는 맞지만 created_at 이 그 순서를 **표현하지 못한다** — 실 data.xml 의
@@ -590,7 +600,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 5/9. cal_todo_day_note ────────────────────────────────────────────
+            // ── 6/10. cal_todo_day_note ────────────────────────────────────────────
             //   { 'YYYY-MM-DD': '설명' } 로 접는다(G-5). todo_no 는 접는 데만 쓰고 state 에는 없다(G-1d).
             //   ORDER BY note_date — 맵이라 의미는 없지만 JSON 키 순서를 재현 가능하게 만든다.
             const string dayNoteSql =
@@ -607,7 +617,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 6/9. cal_room ─────────────────────────────────────────────────────
+            // ── 7/10. cal_room ─────────────────────────────────────────────────────
             //   객체가 아니라 **문자열 배열**이다(G-5). ORDER BY sort_order, 동률은 name(= PK 후단).
             //   ★ 행 0개 = 빈 목록으로 확정. DEFAULT_ROOMS 재주입은 DB 전환과 함께 폐기했다
             //     (DB 에서는 '한 번도 없었음'과 '사용자가 전부 지움'을 구분할 수 없다 — cal_room DDL 주석).
@@ -619,7 +629,7 @@ namespace TaskCalendarWidget
                 while (await rd.ReadAsync(ct)) rooms.Add(Str(rd, "name"));
             }
 
-            // ── 7/9. cal_task_hours ───────────────────────────────────────────────
+            // ── 8/10. cal_task_hours ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { 과제uid: 시간 } } 2단 중첩(G-5).
             //   ★ 안쪽 키는 cat_no 가 아니라 그 과제의 uid 다 — JOIN 으로 되돌린다(G-5 ★).
             //     INNER JOIN 인 이유: cat_no 가 NOT NULL 이고 FK 가 있어 같은 스냅샷 안에서 반드시 해석된다
@@ -650,7 +660,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 8/9. cal_attendance ───────────────────────────────────────────────
+            // ── 9/10. cal_attendance ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { status, overtime } }(G-5).
             //   ★ 행이 없는 날짜의 키를 만들지 않는다 — 그게 '미기록'이다. 빈 객체나 status:'' 를
             //     넣으면 getAttendance() 가 null 을 못 돌려주고, netcus 일간보고가 사용자가 사이트에
@@ -678,7 +688,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 9/9. cal_user_pref ────────────────────────────────────────────────
+            // ── 10/10. cal_user_pref ────────────────────────────────────────────────
             //   사용자당 1행. 최상위의 12개 값이 전부 여기서 온다.
             //   ★ 행이 없을 때(= 아직 이관 전인 사용자)는 fromXML() 이 <prefs> 없는 XML 에 주는 값과
             //     똑같이 채운다. 그것이 이 앱이 '설정을 한 번도 만진 적 없는 사람'에게 주던 값이고,
