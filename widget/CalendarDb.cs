@@ -739,12 +739,11 @@ namespace TaskCalendarWidget
             if (badTimeFmt > 0)
                 _log("DATETIME 문자열이 'yyyy-MM-dd HH:mm:ss.fff' 가 아닌 행 " + badTimeFmt + "건 — 낙관적 잠금 토큰이 어긋날 수 있다");
 
-            // ── 계약 G-0: 최상위 반환 객체 — 키 15개, fromXML() 의 return 과 정확히 동일 ──────
-            //   ★ lsMigrated 는 반드시 true 다. false/undefined 면 migrateLocalStores() 가 실행돼
-            //     WebView2 localStorage(tc_taskHours·tc_attendance)의 좀비 데이터를 state 에 병합하고
-            //     save() 한다 — DB 모드에서는 그게 **DB 로 들어간다.** 게다가 mergeLegacyStores() 가
-            //     무효 근태 코드를 유효 코드로 정규화하므로 방금 구조로 막은 '미기록→정근'이 되살아난다.
-            //     DB 모드는 그 이관이 이미 끝난 세계이므로 true 가 사실이기도 하다(G-6 ★★).
+            // ── 계약 G-0: 최상위 반환 객체 — 키 14개, fromXML() 의 return 과 정확히 동일 ──────
+            //   ★ lsMigrated 는 **없앴다**(2026-09-01). 여기 하드코딩 true 가 있었고, 그 이유는
+            //     "false/undefined 면 migrateLocalStores() 가 localStorage 좀비를 DB 로 밀어 넣는다"
+            //     였다. 즉 이 줄은 **다른 계층의 자동이관을 막으려고** 여기 서 있던 방어 부채였다.
+            //     그 자동이관을 걷어내면서 함께 사라진다. 키가 하나 줄어 최상위 키는 14 다.
             var state = new Dictionary<string, object?>
             {
                 ["categories"]         = categories,
@@ -764,7 +763,6 @@ namespace TaskCalendarWidget
                 },
                 ["taskHours"]          = taskHours,
                 ["attendance"]         = attendance,
-                ["lsMigrated"]         = true,
                 ["reportFont"]         = new Dictionary<string, object?> { ["family"] = fontFamily, ["size"] = fontSize },
             };
 

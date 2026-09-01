@@ -64,7 +64,7 @@
  *        `string` / `Task<string>`                       → 그 문자열이 곧 state JSON
  *        `T` / `Task<T>` (T 에 string 프로퍼티 `StateJson`, 없으면 이름이 …Json 인 것)
  *                                                        → 그 프로퍼티가 state JSON
- *        어느 쪽이든 내용은 계약 G-0 의 **15키 객체**를 직렬화한 것이어야 한다.
+ *        어느 쪽이든 내용은 계약 G-0 의 **14키 객체**를 직렬화한 것이어야 한다.
  *    · 인자 — 순서와 이름에 기대지 않고 **형(型)으로** 맞춘다:
  *        첫 `string`                       ← loginId (필수. 없으면 후보에서 탈락)
  *        `CancellationToken`               ← None
@@ -803,7 +803,7 @@ function synthFixtureXml(projectUid) {
     `<day date="2026-05-07" status="5" overtime="0"/>` +
     `</attendance>`;
 
-  // ★ lsMigrated 속성을 일부러 두지 않는다 → fromXML 은 false, 어댑터는 G-6 대로 true 여야 한다.
+  // ★ lsMigrated 는 2026-09-01 에 없앴다(자동이관과 함께). 픽스처에도 두지 않는다.
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
     `<taskCalendar version="1" generator="calendar-adapter-test" gitAuthor="깃작성자" svnAuthor="svn-author">` +
     `<categories>${cats.join('')}</categories>` +
@@ -1604,7 +1604,7 @@ namespace TaskCalendarWidget
 
             if (pref == null) throw new Exception("cal_user_pref 행이 없습니다(user_id=" + userId + ")");
 
-            // ── 계약 G-0 — 최상위 15키. 그 이상도 이하도 아니다 ──
+            // ── 계약 G-0 — 최상위 14키. 그 이상도 이하도 아니다 ──
             var outObj = new Dictionary<string, object>();
             outObj["categories"] = cats;
             outObj["entries"] = entries;
@@ -1619,7 +1619,6 @@ namespace TaskCalendarWidget
             outObj["reportFormatPrefs"] = prefFmt;
             outObj["taskHours"] = taskHours;
             outObj["attendance"] = attendance;
-            outObj["lsMigrated"] = true;      // ★ G-6 — 반드시 true. false/undefined 면 좀비 이관이 돈다.
             outObj["reportFont"] = font;
             return JsonSerializer.Serialize(outObj);
         }
@@ -1731,7 +1730,7 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
   envFail('어댑터 프로브 빌드 실패 — CalendarDb.cs 를 컴파일하지 못했습니다.', '\n' + lastErr);
 }
 
-/** 프로브 실행 → 어댑터가 돌려준 15키 객체. 실패면 {error}. */
+/** 프로브 실행 → 어댑터가 돌려준 14키 객체. 실패면 {error}. */
 function runProbe(loginId, localReposPath, { allowFail = false } = {}) {
   const r = spawnSync(probeExe, [loginId, localReposPath || ''],
     { windowsHide: true, timeout: 120000, maxBuffer: 128 * 1024 * 1024 });
@@ -1988,14 +1987,14 @@ function normalizeExpected(exp, { localReposAccepted }) {
   //    '계약상 차이' 로 정직하게 찍히긴 했지만, 실제로는 **DB 에서 커밋을 못 읽는 결함**을
   //    계약으로 덮고 있었다. 이제 양쪽이 그냥 같아야 한다 — 그게 훨씬 강한 명제다.
   //    (지우는 대신 이 주석을 남긴다. 다시 깎고 싶어지면 그것이 결함의 재발이다.)
-  if (e.lsMigrated !== true) applied.push(`G-6 lsMigrated → true (기준은 ${e.lsMigrated})`);
-  e.lsMigrated = true;
+  //  ★ lsMigrated 를 true 로 맞추던 정규화를 없앴다(2026-09-01) — 그 키 자체가 사라졌다.
+  //    그 줄이 있던 이유는 자동이관을 봉인하려고 어댑터가 하드코딩 true 를 내보냈기 때문이다.
 
   /* ★ category.usesRepo — 계약 G-0 이 명시한 **유일한 의도된 예외**(2026-08-27, schema_version 5).
    *   fromXML() 은 이 키를 만들지 않는다. XML 에는 경로 **문자열**만 있고 '쓴다/안 쓴다'는 없다(§4) —
    *   경로는 그 파일을 만든 PC 의 사실이지 과제의 사실이 아니기 때문이다.
    *   그래서 여기서 기준 쪽에 얹는다. **덮지 않고 계산해서 맞춘다** — hours=null·
-   *   lsMigrated=true 와 같은 부류다(G-6 '없는 것 채우기').
+   *   hours=null 과 같은 부류다(G-6 '없는 것 채우기').
    *   ★ 이 정규화를 gitRepo/svnRepo **정규화보다 먼저** 한다. 아래에서 두 값을 '' 로 지우고 나면
    *     근거가 사라져 전부 false 가 되고, 그러면 이 검사는 조용히 무력해진다.
    *   ※ 규칙은 loadFixtureIntoDb 가 DB 에 넣을 때 쓴 것과 **같은 함수**(usesRepoOf)다 —
@@ -2029,7 +2028,7 @@ function normalizeExpected(exp, { localReposAccepted }) {
 /* ────────────────────────────── 10. 계약별 개별 검사 ────────────────────────────── */
 
 const TOP15 = ['categories', 'entries', 'todos', 'rooms', 'taskHours', 'attendance', 'gitAuthor', 'svnAuthor',
-  'reportMarker', 'reportMarkerCustom', 'reportIndent', 'gitCommitBody', 'reportFormatPrefs', 'reportFont', 'lsMigrated'];
+  'reportMarker', 'reportMarkerCustom', 'reportIndent', 'gitCommitBody', 'reportFormatPrefs', 'reportFont'];
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 // G-1d — state 에 흘리면 안 되는 이름(자식 표의 부모번호·소유자축·정렬 컬럼·DB 컬럼명 그대로)
 const FORBIDDEN_KEYS = new Set(['user_id', 'userId', 'cat_no', 'catNo', 'entry_no', 'entryNo', 'todo_no', 'todoNo',
@@ -2045,13 +2044,13 @@ function walkKeys(v, path, fn) {
 
 /** act 가 계약 G 를 지키는지 — 깊은 비교와 **별개로** 본다(비교가 통과해도 여기서 걸릴 수 있다). */
 function contractChecks(expNorm, act, expRaw, dbFacts) {
-  // ── G-0 최상위 15키 ─────────────────────────────────────────────────
+  // ── G-0 최상위 14키 ─────────────────────────────────────────────────
   const ka = Object.keys(act);
   const missing = TOP15.filter((k) => !Object.prototype.hasOwnProperty.call(act, k));
   const extra = ka.filter((k) => !TOP15.includes(k));
   if (missing.length) violate('G-0', `최상위에 있어야 할 키가 없다: ${missing.join(', ')}`);
   if (extra.length) violate('G-0', `최상위에 없어야 할 키가 있다: ${extra.join(', ')}`);
-  if (!missing.length && !extra.length) ok(`G-0 최상위 15키 일치`);
+  if (!missing.length && !extra.length) ok(`G-0 최상위 ${TOP15.length}키 일치`);
 
   // ── G-1d 흘리면 안 되는 키 ──────────────────────────────────────────
   const leaked = [];
@@ -2118,13 +2117,12 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   for (const e of act.entries || []) if (typeof e.allDay !== 'boolean') g4.push(`entries[${e.id}].allDay=${TN(e.allDay)} ${short(e.allDay)}`);
   for (const t of act.todos || []) if (typeof t.done !== 'boolean') g4.push(`todos[${t.id}].done=${TN(t.done)} ${short(t.done)}`);
   if (typeof act.gitCommitBody !== 'boolean') g4.push(`gitCommitBody=${TN(act.gitCommitBody)} ${short(act.gitCommitBody)}`);
-  if (typeof act.lsMigrated !== 'boolean') g4.push(`lsMigrated=${TN(act.lsMigrated)} ${short(act.lsMigrated)}`);
   for (const c of act.categories || []) if (Object.prototype.hasOwnProperty.call(c, 'dbGone') && typeof c.dbGone !== 'boolean') g4.push(`categories[${c.id}].dbGone=${TN(c.dbGone)}`);
   // usesRepo 도 TINYINT(1) → boolean 이다(uses_repo. G-6). 키 부재는 아래 G-6 이 따로 본다 —
   // 여기서 함께 울리면 '자료형이 틀렸다'와 '아예 안 실었다'가 한 줄로 뭉개진다.
   for (const c of act.categories || []) if (Object.prototype.hasOwnProperty.call(c, 'usesRepo') && typeof c.usesRepo !== 'boolean') g4.push(`categories[${c.id}].usesRepo=${TN(c.usesRepo)} ${short(c.usesRepo)}`);
   if (g4.length) violate('G-4', `0/1 을 그대로 넘겼다(화면은 같지만 내보내기에서만 값이 달라진다): ${g4.slice(0, 6).join(', ')}`);
-  else ok('G-4 allDay·done·gitCommitBody·lsMigrated·dbGone·usesRepo 전부 boolean');
+  else ok('G-4 allDay·done·gitCommitBody·dbGone·usesRepo 전부 boolean');
 
   // ── G-5 순서 ────────────────────────────────────────────────────────
   // ★ 예전엔 순서 검사가 여기 두 줄뿐이었다 — 'entry_date 가 단조인가' 와 'todo_no 순서와 다른가'.
@@ -2173,11 +2171,9 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   if (thNum.length) violate('G-5', `taskHours 값이 숫자가 아니다(DECIMAL 을 문자열로 흘렸다): ${thNum.slice(0, 5).join(', ')}`);
 
   // ── G-6 채우기 ──────────────────────────────────────────────────────
-  if (act.lsMigrated !== true) {
-    violate('G-6', `lsMigrated 가 true 가 아니다(${short(act.lsMigrated)}) — ★ 이 절에서 제일 위험하다. ` +
-      'migrateLocalStores() 가 돌아 localStorage 의 좀비 taskHours·attendance 가 DB 로 들어가고, ' +
-      "mergeLegacyStores() 가 무효 근태 코드를 '정근'으로 정규화한다");
-  } else ok('G-6 lsMigrated = true (좀비 이관 경로가 봉인된다)');
+  //  (없앤 것) G-6 lsMigrated 검사 — 그 키를 2026-09-01 에 없앴다.
+  //    어댑터가 하드코딩 true 로 내보내던 값이고, 그 이유는 웹의 자동이관을 봉인하기
+  //    위해서였다. 자동이관이 사라지면서 함께 없앴다(G-0 키 15 → 14).
 
   const hoursBad = (act.entries || []).filter((e) => e.hours !== null);
   if (hoursBad.length) violate('G-6', `entry.hours 가 null 이 아니다 — 컬럼이 폐지됐으므로 null 로 채워야 한다: ${hoursBad.slice(0, 5).map((e) => `${e.id}=${short(e.hours)}`).join(', ')}`);
@@ -2440,8 +2436,10 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
     const k = Object.keys(a.attendance)[0]; delete a.attendance[k]; return `attendance['${k}'] 삭제`;
   }, (a) => Object.keys(a.attendance || {}).length > 0);
 
-  add('M8', 'G-6 — lsMigrated = false (좀비 이관이 되살아난다)', 'G-6', /lsMigrated 가 true 가 아니다/, (a) => {
-    a.lsMigrated = false; return 'lsMigrated = false';
+  //  M8 은 방향이 바뀌었다 — 예전에는 'lsMigrated 가 true 가 아니면 위반' 이었다.
+  //  그 키를 2026-09-01 에 없앴으므로(자동이관 폐기), 이제 시험할 것은 **되살아나면 걸리는가** 다.
+  add('M8', 'G-0 — 없앤 lsMigrated 키가 되살아남', 'G-0', /최상위에 없어야 할 키가 있다/, (a) => {
+    a.lsMigrated = true; return 'lsMigrated 키를 되살림';
   }, () => true);
 
   add('M9', 'G-7(개정) — 부팅 조회가 커밋을 빠뜨림', 'G-7', /커밋을 다 싣지 않았다/, (a) => {
@@ -2456,7 +2454,7 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
   }, (a) => a.entries.some((x) => x.categoryId != null));
 
   add('M11', 'G-0 — 최상위에 없어야 할 키', 'G-0', /없어야 할 키가 있다/, (a) => {
-    a.userId = 25; return 'lsMigrated 옆에 userId 추가';
+    a.userId = 25; return '최상위에 userId 추가';
   }, () => true);
 
   add('M12', '키 유무 — 개인 과제에 source 키를 만듦', 'G-6', /키 유무 계약을 어겼다/, (a) => {
@@ -2781,7 +2779,7 @@ async function main() {
     const kmiss = TOP15.filter((k) => !Object.prototype.hasOwnProperty.call(exp, k));
     if (kmiss.length) envFail(`기준(fromXML) 결과에 15키가 없다 — 오라클이 이상하다: ${kmiss.join(', ')}`);
     log(`기준 산출 — 과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · ` +
-      `장소 ${exp.rooms.length} · 공수 ${Object.keys(exp.taskHours).length}일 · 근태 ${Object.keys(exp.attendance).length}일 · lsMigrated=${exp.lsMigrated}`);
+      `장소 ${exp.rooms.length} · 공수 ${Object.keys(exp.taskHours).length}일 · 근태 ${Object.keys(exp.attendance).length}일`);
 
     const maps = loadFixtureIntoDb(exp, userId);
     verifyLoaded(exp, userId, maps);

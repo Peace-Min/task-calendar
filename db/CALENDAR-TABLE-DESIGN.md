@@ -848,7 +848,7 @@ git/svn 작성자 · **근태·초과시간**(`<attendance>` → 신규 `cal_att
 | 항목 | 왜 |
 |---|---|
 | **`gitRepo` · `svnRepo`**(과제별 저장소 경로) | **PC 마다 달라야 하는 값이고, 브라우저에는 개념 자체가 없다.** DB 에 올리면 A자리의 `D:\repos\report` 가 B자리까지 따라와 커밋 수집이 조용히 실패한다. 더 나쁜 경우는 **경로는 유효한데 다른 저장소**인 자리다 — 그러면 실패조차 안 하고 **남의 커밋이 내 보고서에 실린다.** 앱도 이미 그렇게 본다(`updateOfficialLocalFields` 주석: *"desc·gitRepo·svnRepo·color는 로컬 소유"*) |
-| `lsMigrated` | **버린다**(로컬에도 안 남긴다). 구 localStorage→XML **1회성 이관 마커**이고 그 이관은 이미 끝났다. 대응 컬럼을 만들지 않는다 |
+| `lsMigrated` | **버린다**(로컬에도 안 남긴다). 구 localStorage→XML **1회성 이관 마커**이고 그 이관은 이미 끝났다. 대응 컬럼을 만들지 않는다. **★ 2026-09-01: state 에서도 없앴다** — 자동이관(migrateLocalStores)을 폐기하면서 이 값이 가리킬 것이 사라졌다. 계약 G-0 최상위 키 15 → 14 |
 
 루트 `@version` · `@generator` · `@exportedAt` 도 **파일 메타**라 대응 컬럼을 만들지 않는다
 (DB 에는 '파일'이 없다). 내보내기가 그때그때 다시 만든다.

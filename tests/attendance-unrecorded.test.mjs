@@ -490,9 +490,9 @@ function mkAttendanceToXml(source) {
 function mkAttendanceFromXml(source) {
   const dateFn = sliceBetween(source, 'const isRealDate = s => {', '};', 'fromXML isRealDate');
   const code = sliceBetween(source, 'const attendance = {};',
-    "const lsMigrated = root.getAttribute('lsMigrated')", 'fromXML 근태 블록');
-  //  마지막 줄(lsMigrated 선언 머리)은 잘라 버린다 — 근태 블록만 돌린다.
-  const onlyAttend = code.slice(0, code.lastIndexOf('const lsMigrated'));
+    '  return {categories, entries,', 'fromXML 근태 블록');
+  //  마지막 줄(return 문 머리)은 잘라 버린다 — 근태 블록만 돌린다.
+  const onlyAttend = code.slice(0, code.lastIndexOf('  return {categories'));
   return (days) => {
     const mkDay = (d) => ({ getAttribute: (k) => (k in d ? String(d[k]) : null) });
     const root = {

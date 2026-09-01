@@ -2002,7 +2002,7 @@ if (!JSDOM) {
         { id: 'cb', name: '과제나', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
       ],
       entries: [], todos: [], rooms: [],
-      taskHours: {}, attendance: {}, lsMigrated: true,
+      taskHours: {}, attendance: {},
     }, extra || {});
     // 구 저장소 셋업 + 세션 가드 해제(같은 realm에서 여러 번 이관을 시뮬레이션하기 위함)
     const setLegacy = (th, at) => ev(
@@ -2011,42 +2011,37 @@ if (!JSDOM) {
       '');
     const clearLegacy = () => ev("localStorage.removeItem('tc_taskHours'); localStorage.removeItem('tc_attendance');");
 
-    test('taskHours/attendance: XML 왕복 — 값·마커 무손실(localStorage 아닌 data.xml에 영속)', () => {
+    test('taskHours/attendance: XML 왕복 — 값 무손실(localStorage 아닌 data.xml에 영속)', () => {
       seed(THS({
         taskHours: { '2026-07-13': { ca: 6.5, cb: 1.25 }, '2026-07-14': { cb: 8 } },
         attendance: { '2026-07-13': { status: '2', overtime: 3 }, '2026-07-14': { status: '1', overtime: 0 } },
-        lsMigrated: true,
       }));
       const xml = ev('toXML()');
       assert.ok(/<taskHours>/.test(xml), '<taskHours> 컬렉션 기록');
       assert.ok(/<t cat="ca" h="6.5"\/>/.test(xml), 'h는 정규화된 숫자 문자열로 기록');
       assert.ok(/<attendance>/.test(xml), '<attendance> 컬렉션 기록');
-      assert.ok(/lsMigrated="1"/.test(xml), '이관 마커는 루트 속성');
+
       const p = evJSON('fromXML(toXML())');
       assert.deepStrictEqual(p.taskHours, { '2026-07-13': { ca: 6.5, cb: 1.25 }, '2026-07-14': { cb: 8 } });
       assert.deepStrictEqual(p.attendance, { '2026-07-13': { status: '2', overtime: 3 }, '2026-07-14': { status: '1', overtime: 0 } });
-      assert.strictEqual(p.lsMigrated, true, '마커 왕복');
+
       assert.strictEqual(evJSON('xmlRoundTrip()').ok, true, '앱 자체 검증기도 시간·근태 포함 무손실');
     });
 
-    test('taskHours/attendance: 비어 있으면 요소 자체 미기록(기존 파일 byte 동일) + 마커만은 남음', () => {
-      seed(THS({ lsMigrated: false }));
-      let xml = ev('toXML()');
+    test('taskHours/attendance: 비어 있으면 요소 자체 미기록(기존 파일 byte 동일)', () => {
+      seed(THS({}));
+      const xml = ev('toXML()');
       assert.ok(!/<taskHours/.test(xml), '빈 taskHours는 요소 미생성');
       assert.ok(!/<attendance/.test(xml), '빈 attendance는 요소 미생성');
-      assert.ok(!/lsMigrated=/.test(xml), '마커 false면 속성 미기록');
-      // 데이터가 비어도 마커는 살아남아야 한다 — 그래야 재이관(좀비 부활)이 없다
-      seed(THS({ lsMigrated: true }));
-      xml = ev('toXML()');
-      assert.ok(!/<taskHours/.test(xml) && !/<attendance/.test(xml));
-      assert.ok(/lsMigrated="1"/.test(xml));
-      assert.strictEqual(evJSON('fromXML(toXML()).lsMigrated'), true, '빈 컬렉션이어도 마커 왕복');
-      // 구버전 XML(요소·속성 부재) → 빈 맵 + 미이관
+      //  마커(lsMigrated)를 보던 세 줄은 2026-09-01 에 걷어냈다 — 자동이관과 함께 사라진 값이다.
+      assert.ok(!/lsMigrated/.test(xml), '없앤 마커가 되살아났다');
+      // 구버전 XML(요소 부재) → 빈 맵
       const oldXml = '<?xml version="1.0" encoding="UTF-8"?>\n<taskCalendar version="1" gitAuthor="" svnAuthor=""><categories></categories><entries></entries></taskCalendar>';
       const p = evJSON('fromXML(' + JSON.stringify(oldXml) + ')');
       assert.deepStrictEqual(p.taskHours, {}, '요소 부재 → {}');
       assert.deepStrictEqual(p.attendance, {}, '요소 부재 → {}');
-      assert.strictEqual(p.lsMigrated, false, '속성 부재 → false(이관 필요)');
+      //  ★ 옛 XML 에 lsMigrated 속성이 남아 있어도 **읽지 않는다** — 키 자체가 생기면 안 된다.
+      assert.ok(!('lsMigrated' in p), '없앤 마커 키가 되살아났다');
     });
 
     test('getTaskHours 미입력=null 계약: 부재·저장된 0 모두 null, 빈칸/0 저장은 키 제거', () => {
@@ -2102,7 +2097,7 @@ if (!JSDOM) {
 
     // 보고서 근태 드롭다운 — (미기록) 옵션 + 선택/삭제 왕복(실사용 경로 그대로 클릭)
     test('근태 UI: 미기록 날짜는 (미기록) 옵션이 selected — 회사 근태를 덮지 않는다는 신호', () => {
-      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {}, lsMigrated: true }));
+      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
       ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
       const html = ev("$('#rptAttendRail').innerHTML");
       assert.ok(/<option value=""[^>]*>\(미기록\)<\/option>/.test(html), '(미기록) 옵션이 렌더돼야 함');
@@ -2111,7 +2106,7 @@ if (!JSDOM) {
     });
 
     test('근태 UI: 휴가 선택 → setAttendance 저장, 다시 (미기록) 선택 → 기록 삭제', () => {
-      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {}, lsMigrated: true }));
+      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
       ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
       // 휴가(6) 선택 → change 이벤트로 실제 핸들러(setAttendance) 발화
       ev("var _s=$('#raStatus'); _s.value='6'; _s.dispatchEvent(new window.Event('change'));");
@@ -2128,7 +2123,7 @@ if (!JSDOM) {
 
     // 전송 버튼 실클릭 → 어댑터가 받는 페이로드에 status:null이 그대로 실리는지(폴백이 끼면 실패)
     test('근태 미기록: 일간 전송 페이로드가 status:null을 그대로 싣는다(어댑터 캡처)', () => {
-      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {}, lsMigrated: true }));
+      seed(Object.assign({}, reportState, { taskHours: {}, attendance: {} }));
       ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport(); $('#btnRptSend').dataset.mode='daily';");
       ev('globalThis.__origSD = Platform.report.submitDaily; globalThis.__cap = null;');
       try {
