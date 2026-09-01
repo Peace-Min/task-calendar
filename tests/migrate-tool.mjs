@@ -186,6 +186,29 @@ try {
      (r5.out.match(/\[중단\][^\n]*/) || [''])[0]);
   ok('중단했으면 아무것도 안 들어갔다', Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)) === 0);
 
+  /* ⑦b 저장소 경로 파일 — **앱이 읽을 수 있는 모양**이어야 한다 */
+  //  ★ 2026-09-01 실측: 도구가 맵을 최상위에 썼고 앱(RepoPaths.Load)은 "paths" 아래를 요구했다.
+  //    앱은 그 파일을 '손상' 으로 보고 **빈 맵으로 시작**한 뒤 원본을 .bak 로 밀어냈다 —
+  //    이관 직후부터 저장소 경로가 통째로 사라지는데 아무도 모른다(uses_repo=true 인 과제가
+  //    영원히 '이 PC 에는 저장소 경로가 설정되지 않았습니다' 를 띄운다).
+  console.log('\n[⑦b] 저장소 경로 파일 모양');
+  {
+    const rp = join(WORK, 'repo-paths.json');
+    if (!existsSync(rp)) {
+      ok('저장소 경로 파일이 생성됐다', false, '파일 없음 — 픽스처에 gitRepo/svnRepo 가 있는지 확인');
+    } else {
+      const j = JSON.parse(readFileSync(rp, 'utf8'));
+      ok('최상위에 version 이 있다', j.version === 1, JSON.stringify(Object.keys(j)));
+      ok('경로 맵이 paths 아래에 있다',
+         !!j.paths && typeof j.paths === 'object' && !Array.isArray(j.paths),
+         '최상위에 맵을 쓰면 앱이 손상으로 보고 빈 맵으로 시작한다');
+      const keys = Object.keys(j.paths || {});
+      ok('키가 과제 uid 다(번호가 아니다)',
+         keys.length > 0 && keys.every((k) => /^(c-|db-)/.test(k)),
+         keys.join(','));
+    }
+  }
+
   /* ⑦ 없는 사용자 거부 */
   console.log('\n[⑦] 없는 사용자');
   const r7 = tool([`--login-id=__없는사람__`, `--xml=${OPT.xml}`]);

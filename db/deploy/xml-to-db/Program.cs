@@ -387,7 +387,13 @@ static class P
         {
             string dst = repoOut;
             string dir = Path.GetDirectoryName(dst) ?? ".";
-            string json = JsonSerializer.Serialize(repoPaths, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
+            //  ★ 반드시 { version, paths } 로 감싼다 — 앱(RepoPaths.Load)이 최상위 "paths" 를 요구한다.
+            //    맵을 최상위에 쓰면 앱이 손상 으로 보고 **빈 맵으로 시작**하고 원본을 .bak 로 밀어낸다.
+            //    그러면 이관 직후부터 저장소 경로가 통째로 사라지고, uses_repo=true 인 과제는
+            //    영원히 \"이 PC 에는 저장소 경로가 설정되지 않았습니다\" 를 띄운다(§4).
+            //    2026-09-01 실측으로 겪었다 — 위젯 로그의 \"저장소 경로 맵 손상\" 이 그것이다.
+            var wrapped = new Dictionary<string, object> { ["version"] = 1, ["paths"] = repoPaths };
+            string json = JsonSerializer.Serialize(wrapped, new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
             if (dry) Console.WriteLine($"  [예행] {repoPaths.Count}건을 쓸 예정: {dst}\n{Indent(json)}");
             else
             {
