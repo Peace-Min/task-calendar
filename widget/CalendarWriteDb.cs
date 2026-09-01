@@ -41,12 +41,13 @@ namespace TaskCalendarWidget
     //    3. UPDATE/DELETE 는 전부 `AND updated_at=@prev`. 영향 행 0 = 충돌(§3.3).
     //    4. 자식 표를 건드리면 **같은 트랜잭션에서 부모 updated_at 을 올린다**(§3.4).
     //
-    //  【이번 범위에서 쓰지 않는 것 — 의도된 제외】
-    //    ★ cal_entry_commit(커밋)은 **건드리지 않는다.** 부팅 조회가 commits 를 []로 두고
-    //      지연 로드하기 때문에(CalendarDb:504 "G-7: 항상 배열. 지연 조회로 채운다"),
-    //      state 를 그대로 쓰면 **기존 커밋이 전부 삭제된다.** 읽지도 않은 것을 지우는 셈이다.
-    //      그래서 이 클래스는 그 표에 어떤 문장도 보내지 않는다(검사가 이를 잠근다).
-    //      커밋 저장은 '무엇이 로드됐는지'를 웹이 알려주는 계약이 생긴 뒤에 붙인다.
+    //  【cal_entry_commit — 제외했다가 되돌렸다(2026-09-01)】
+    //    ★ 제외했던 이유: 부팅 조회가 commits 를 [] 로 두고 지연 로드했으므로(G-7 원안),
+    //      state 를 그대로 쓰면 **읽지도 않은 커밋이 전부 삭제된다.**
+    //    ★ 그 이유가 사라졌다 — G-7 개정으로 부팅이 커밋을 전량 싣는다(CalendarDb 4/10).
+    //      state 에 실제 커밋이 들어 있으니 차분이 오판하지 않는다.
+    //    ★★ 순서를 기억할 것: **읽기를 고치지 않고 여기만 붙이면 데이터가 지워진다.**
+    //      두 계약은 한 몸이다. 부팅이 커밋을 안 싣는 상태로 되돌아가면 이 코드는 즉시 파괴적이 된다.
     // ================================================================================
     internal sealed class CalendarWriteDb
     {
@@ -233,7 +234,6 @@ namespace TaskCalendarWidget
                     tokens["entry:" + no] = now;
 
                     //  자식: 예외일. 전량 교체다(§3.4 — 부모가 잠금 단위이고 부모 updated_at 은 위에서 올렸다).
-                    //  ★ 커밋(cal_entry_commit)은 여기서 다루지 않는다 — 클래스 주석의 '의도된 제외'.
                     await Exec(conn, tx, $"DELETE FROM cal_entry_except WHERE user_id={u} AND entry_no={no}", ct);
                     foreach (var x in Arr(e, "recurExcept"))
                     {
@@ -243,6 +243,38 @@ namespace TaskCalendarWidget
                             $"INSERT IGNORE INTO cal_entry_except (user_id,entry_no,except_date) VALUES ({u},{no},@d)",
                             ct, new List<(string, object?)> { ("@d", d) }, now);
                     }
+
+                    //  자식: 커밋. 예외일과 같은 **전량 교체**다(§3.4).
+                    //  ★ seq 는 state 배열의 인덱스다 — 표시 순서의 유일한 근거(G-5)이고,
+                    //    읽기(4/10)가 ORDER BY entry_no, seq 로 그 순서를 되살린다.
+                    //    그래서 여기서 i 를 건너뛰거나 재정렬하면 화면 순서가 조용히 바뀐다.
+                    //  ★ 부분 갱신(해시로 대조해 바뀐 것만)을 하지 않는 이유: 커밋은 제목·본문이
+                    //    사용자 편집 대상이고(deleteCommitRow·✎), 같은 해시가 두 번 올 수도 있다.
+                    //    전량 교체면 그 모든 경우가 한 규칙으로 끝난다 — 예외일과 같은 판단이다.
+                    await Exec(conn, tx, $"DELETE FROM cal_entry_commit WHERE user_id={u} AND entry_no={no}", ct);
+                    int cseq = 0;
+                    foreach (var c in Arr(e, "commits"))
+                    {
+                        if (c.ValueKind != JsonValueKind.Object) continue;
+                        //  hash 는 NOT NULL 이고 이 표의 신원이다. 빈 해시는 앱이 만들지 않는다 — 오면 버린다.
+                        string hash = S(c, "hash");
+                        if (hash.Length == 0) continue;
+                        //  commit_time 은 TIME NULL 이고 읽기가 NULL → '' 로 준다(G-2). 되돌려 보낸다.
+                        string tm = S(c, "time");
+                        var cp = new List<(string, object?)>
+                        {
+                            ("@h",  hash),
+                            ("@sh", S(c, "short")),
+                            ("@ct", tm.Length == 0 ? null : (object)tm),
+                            ("@sj", S(c, "subject")),
+                            ("@bd", S(c, "body")),
+                        };
+                        await Exec(conn, tx,
+                            "INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,commit_time,subject,body) " +
+                            $"VALUES ({u},{no},{cseq},@h,@sh,@ct,@sj,@bd)", ct, cp, now);
+                        cseq++;
+                    }
+
                     i++;
                 }
 

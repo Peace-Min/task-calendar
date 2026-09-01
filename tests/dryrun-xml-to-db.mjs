@@ -238,7 +238,7 @@ try {
   const todo = [];
   const gotCommits = s1.entries.reduce((n, e) => n + ((e.commits || []).length), 0);
   if (srcCommits > 0)
-    todo.push(`커밋 ${srcCommits}건 — 쓰기 계층은 cal_entry_commit 을 건드리지 않는다(지연 로드라 지우면 안 되므로).\n` +
+    todo.push(`커밋 ${srcCommits}건 — 이관은 앱 상태(save)를 거치지 않는다 — 쓰기 계층이 커밋을 다루게 된 뒤에도(G-7 개정) 그렇다.\n` +
               `      → 이관 도구가 **직접** INSERT 해야 한다. 안 하면 커밋 ${srcCommits}건이 사라진다(읽기 ${gotCommits}건 확인).`);
 
   const repoCats = s0.categories.filter(c => (c.gitRepo || '') || (c.svnRepo || ''));

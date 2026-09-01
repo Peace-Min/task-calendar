@@ -12,8 +12,9 @@
  *    · rev 는 저장마다 정확히 1 증가하는가(§3.1)
  *    · 낡은 토큰으로 저장하면 거부되고 **아무것도 바뀌지 않는가**(§3.3 — 부분 적용 금지)
  *    · 자식(예외일·날짜메모)이 부모와 함께 정리되는가(§3.4)
- *    · 커밋 표(cal_entry_commit)를 **건드리지 않는가** — 부팅이 commits 를 []로 두므로
- *      쓰면 기존 커밋이 통째로 사라진다(의도된 제외)
+ *    · 커밋(cal_entry_commit)이 **왕복에서 보존되는가** — G-7 개정(2026-09-01) 전에는
+ *      정반대 계약이었다("건드리지 않는가"). 부팅이 commits 를 [] 로 두던 시절의 방어였고,
+ *      그 방어 때문에 커밋 편집·삭제가 DB 에 영영 반영되지 않았다. 이제 순서까지 대조한다
  *
  *  【실 DB 를 쓴다】 DeployConfig 가 const 라 언제나 실 taskmgr 다. 그게 값이다 —
  *    앱 계정 권한까지 함께 검증한다. 전용 시험 사용자를 만들어 쓰고 끝나면 지운다.
@@ -210,6 +211,25 @@ function dropUser(u) {
 
 /* ── 무작위 state 생성 ─────────────────────────────────────────────────── */
 const NAMES = ['표적기(ADD)', '울산급 Batch-IV', '휴가', '기타', '한글 과제 名'];
+//  git 일정과 그 커밋. 커밋은 **순서가 곧 표시 순서**(seq)라 왕복에서 자리까지 봐야 한다.
+//  시각 없는 커밋('' → TIME NULL)과 여러 줄 본문을 일부러 섞는다 — 둘 다 실제로 나온다.
+function gitBits(round, i) {
+  if (rnd() < 0.55) return { source: '', commits: [] };
+  const n = rint(1, 4);
+  const commits = [];
+  for (let k = 0; k < n; k++) {
+    const h = String(round).padStart(2, '0') + String(i) + String(k);
+    commits.push({
+      hash: (h + 'abcdef0123456789abcdef0123456789abcdef').slice(0, 40),
+      short: (h + 'abcdef').slice(0, 7),
+      time: rnd() < 0.3 ? '' : `${String(rint(0, 23)).padStart(2, '0')}:${String(rint(0, 59)).padStart(2, '0')}`,
+      subject: `커밋 제목 ${round}-${i}-${k} 한글`,
+      body: rnd() < 0.5 ? '' : `본문 첫 줄 ${k}\n둘째 줄`,
+    });
+  }
+  return { source: 'git', commits };
+}
+
 function makeState(prev, round) {
   const cats = [];
   const nCat = rint(1, 3);
@@ -219,13 +239,18 @@ function makeState(prev, round) {
   const entries = [];
   for (let i = 0; i < rint(0, 4); i++) {
     const allDay = rnd() < 0.4;
-    const rec = rnd() < 0.3 ? { freq: pick(['weekly','monthly']), interval: rint(1,3), until: '', count: 0 } : null;
+    //  ★ git 일정은 기간·반복을 가질 수 없다 — chk_cal_entry_git.
+    //    "재수집이 [from,to] 범위를 통째로 지우고 다시 넣기 때문에, 기간/반복이 섞이면
+    //    무엇을 지울지가 정의되지 않는다"(schema-calendar.sql:1245). 그래서 git 이면 recur 를 막는다.
+    const git = gitBits(round, i);
+    const rec = (git.source !== 'git' && rnd() < 0.3)
+      ? { freq: pick(['weekly','monthly']), interval: rint(1,3), until: '', count: 0 } : null;
     entries.push({
       id: `e-${round}-${i}`, date: `2026-0${rint(1,9)}-1${rint(0,9)}`, title: `일정 ${i} 한글`,
       categoryId: rnd() < 0.8 ? cats[rint(0, cats.length - 1)].id : null,
       allDay, startTime: allDay ? '' : '09:00', endTime: allDay ? '' : '18:00',
       hours: null, location: rnd() < 0.5 ? '회의실 A' : '', remind: rnd() < 0.3 ? rint(0, 60) : null,
-      memo: `메모 ${i}`, source: '', commits: [], endDate: '',
+      memo: `메모 ${i}`, ...git, endDate: '',
       recur: rec, recurExcept: rec ? [`2026-03-0${rint(1,9)}`] : [],
       createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -257,7 +282,9 @@ function makeState(prev, round) {
 /* ── 왕복 비교 — 저장 후 다시 읽은 state 가 보낸 것과 같은가 ───────────── */
 const IGNORE_TOP = new Set(['reportSource', 'lsMigrated']);   // 읽기가 상수로 채우는 값
 function normEntry(e) {
-  const { updatedAt, createdAt, commits, ...rest } = e;        // 시각은 서버가 정한다 · 커밋은 지연 로드
+  //  ★ commits 를 빼지 않는다(G-7 개정) — 예전에는 여기서 통째로 빼서 왕복 비교가
+  //    커밋을 아예 안 봤다. 그래서 쓰기가 커밋을 지워도 이 테스트는 초록이었다.
+  const { updatedAt, createdAt, ...rest } = e;                 // 시각만 서버가 정한다
   return rest;
 }
 function normTodo(t) { const { updatedAt, createdAt, ...rest } = t; return rest; }
@@ -312,9 +339,18 @@ try {
       ok(`R${r} 왕복이 동일하다(읽기→쓰기→읽기)`, diffs.length === 0, diffs.slice(0, 3).join(' | '));
     }
 
-    // 커밋 표는 건드리지 않는다(의도된 제외)
-    ok(`R${r} 커밋 표를 건드리지 않았다`,
-       Number(one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`)) === 0);
+    // 커밋이 보존된다(G-7 개정). 왕복 비교가 내용·순서를 이미 보므로 여기서는 DB 사실을 본다.
+    {
+      const wantN = (want.entries || []).reduce((a, e) => a + (e.commits || []).length, 0);
+      const gotN = Number(one(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`));
+      ok(`R${r} 커밋 행수가 보낸 것과 같다`, gotN === wantN, `보냄 ${wantN} · DB ${gotN}`);
+      //  seq 가 0..n-1 로 빈틈없이 붙어야 한다 — 표시 순서의 유일한 근거(G-5)다.
+      ok(`R${r} 커밋 seq 가 0 부터 빈틈없다`,
+         Number(one(`SELECT COUNT(*) FROM (SELECT entry_no, MAX(seq)+1 AS mx, COUNT(*) AS c ` +
+           `FROM cal_entry_commit WHERE user_id=${U} GROUP BY entry_no HAVING mx <> c) q`)) === 0);
+      ok(`R${r} 커밋 고아 0`,
+         Number(one(`SELECT COUNT(*) FROM cal_entry_commit c LEFT JOIN cal_entry e ON e.user_id=c.user_id AND e.entry_no=c.entry_no WHERE c.user_id=${U} AND e.entry_no IS NULL`)) === 0);
+    }
 
     // 자식이 부모와 함께만 존재한다(고아 0)
     ok(`R${r} 예외일 고아 0`,
