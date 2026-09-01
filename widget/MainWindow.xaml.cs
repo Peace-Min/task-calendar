@@ -423,8 +423,18 @@ namespace TaskCalendarWidget
                 switch (cmdEl.GetString())
                 {
                     case "ready":
-                        string xml = File.Exists(_dataFile) ? File.ReadAllText(_dataFile, Encoding.UTF8) : "";
-                        _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyXml(" + JsonSerializer.Serialize(xml) + ")");
+                        //  데이터 출처(1c) — 기본은 파일(data.xml). DB 는 TC_DATA_SOURCE=db 로 **명시적으로** 켤 때만.
+                        //  ★ 영속 설정 파일로 만들지 않는다 — 켠 줄 모르고 배포되는 것이 이 단계의 가장 큰 위험이다.
+                        //    환경변수는 그 실행에만 붙으므로 실수로 남지 않는다.
+                        if (DataSourceIsDb)
+                        {
+                            _ = BootFromDbAsync();   // async — 실패도 웹에 명시적으로 알린다(조용한 XML 폴백 없음)
+                        }
+                        else
+                        {
+                            string xml = File.Exists(_dataFile) ? File.ReadAllText(_dataFile, Encoding.UTF8) : "";
+                            _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyXml(" + JsonSerializer.Serialize(xml) + ")");
+                        }
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
@@ -1752,6 +1762,62 @@ namespace TaskCalendarWidget
                 try { await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork); }
                 catch (Exception ex) { Log("보고 기록 저장 예외(주간): " + ex.Message); }
             });
+        }
+
+        // ================================================================================
+        //  데이터 출처(1c) — DB 읽기 배선
+        // ================================================================================
+        //  이 단계에서 하는 것은 **읽기뿐**이다. 쓰기 경로(설계 2단계)가 없으므로 웹이 save() 를
+        //  입구에서 막고 화면에 '읽기 전용'을 드러낸다. 여기서도 data.xml 을 건드리지 않는다.
+        private static bool DataSourceIsDb =>
+            string.Equals(Environment.GetEnvironmentVariable("TC_DATA_SOURCE"), "db", StringComparison.OrdinalIgnoreCase);
+
+        private async Task BootFromDbAsync()
+        {
+            string js;
+            try
+            {
+                var s = UserSession.Load(_dataDir, Log);
+                string? loginId = s?.LoginId;
+                if (string.IsNullOrEmpty(loginId))
+                {
+                    //  ★ 로그인 전이면 '빈 캘린더'가 아니라 **이유**를 보여준다. 빈 화면은
+                    //    "내 데이터가 사라졌다"로 읽힌다 — 실제로는 누구 것인지 모를 뿐이다.
+                    ApplyStateError("로그인 정보가 없습니다 — 로그인 후 다시 시작하세요");
+                    return;
+                }
+
+                //  저장소 경로는 로컬 파일에만 있다(§4) — DB 에는 '쓰는가' 비트만 있고 경로는 없다.
+                var rp = RepoPaths.Load(_dataDir, Log);
+                var snap = await new CalendarDb(Log).LoadSnapshotAsync(loginId, rp.Map);
+                if (snap == null) { ApplyStateError("서버에서 캘린더를 받지 못했습니다"); return; }
+
+                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, rev = snap.Rev, userId = snap.UserId });
+                js = "window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ")";
+                Log($"DB 부팅 조회: user_id={snap.UserId} rev={snap.Rev} schema=v{snap.SchemaVersion}");
+            }
+            catch (CalendarUserNotFoundException ex)
+            {
+                //  '오프라인'과 반드시 구분해야 하는 실패다(§3.6) — 사용자가 원인을 오해하면
+                //  관리자도 엉뚱한 곳을 본다.
+                Log("DB 부팅 조회 실패(미등록 사용자): " + ex.Message);
+                ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요");
+                return;
+            }
+            catch (Exception ex)
+            {
+                Log("DB 부팅 조회 실패: " + ex);
+                ApplyStateError("서버에 연결하지 못했습니다: " + ex.Message);
+                return;
+            }
+            try { await web.CoreWebView2.ExecuteScriptAsync(js); }
+            catch (Exception ex) { Log("DB 상태 주입 실패: " + ex.Message); }
+        }
+
+        private void ApplyStateError(string msg)
+        {
+            try { _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyStateError(" + JsonSerializer.Serialize(msg) + ")"); }
+            catch (Exception ex) { Log("오류 통지 실패: " + ex.Message); }
         }
 
         //  cal_* 가 저장하는 것은 user_id 이고, 그 해석의 열쇠는 login_id 다(설계 §3.6).

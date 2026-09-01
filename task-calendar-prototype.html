@@ -3626,6 +3626,14 @@ function load(){
   return defaultState();
 }
 function save(){
+  //  ★ DB 읽기 전용(1c) — 저장을 **입구에서** 막는다.
+  //    쓰기 경로(설계 2단계)가 없어서 여기를 통과시키면 변경이 data.xml 로 가고,
+  //    다음 부팅에 DB 를 읽는 순간 편집이 사라진 것처럼 보인다. 사용자에겐 데이터 유실이다.
+  //    막는 자리를 save() 로 잡는 이유: 위젯·브라우저·모든 편집 경로가 여기로 모인다.
+  if(isDbMode()){
+    toast('DB 읽기 전용입니다 — 변경은 저장되지 않습니다(쓰기 경로는 다음 단계)', 'warn');
+    return;
+  }
   if(HOST){ // 위젯 모드: 호스트(WPF)가 XML 파일로 영속화
     try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'save', xml: toXML()})); }
     catch(e){ console.warn('호스트 저장 실패', e); }
@@ -3635,6 +3643,20 @@ function save(){
   try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
   catch(e){ toast('저장 실패: 브라우저 저장소를 사용할 수 없습니다', 'error'); }
 }
+// 계약 G 모양의 data → state. **XML 경로와 DB 경로가 이걸 공유한다** —
+//   따로 조립하면 한쪽만 고쳐져 조용히 갈라진다(그 차이는 tests/calendar-adapter.mjs 가
+//   대조하는 바로 그 값이다). 기본값을 바꿀 일이 있으면 여기 한 곳만 고친다.
+function buildStateFrom(data){
+  return {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, lsMigrated:!!data.lsMigrated, reportFont:normalizeReportFont(data.reportFont)};
+}
+
+/* ---------- 데이터 출처(1c) — 기본은 XML, DB 는 명시적으로 켤 때만 ----------
+ *  DB 모드는 **읽기 전용**이다. 쓰기 경로(설계 2단계)가 아직 없어서, 여기서 편집을 허용하면
+ *  변경이 data.xml 로 가고 다음 부팅에 DB 를 읽는 순간 **편집이 사라진 것처럼 보인다.**
+ *  그건 사용자에게 데이터 유실이다. 그래서 save() 를 입구에서 막고 화면에 출처를 드러낸다. */
+let __dataSource = 'xml';         // 'xml' | 'db'
+const isDbMode = () => __dataSource === 'db';
+
 // 호스트(WPF)가 시작 시 저장된 XML을 주입한다. 내용이 비어있으면 현재 시드를 그대로 두고 호스트에 저장(파일 생성)
 let __xmlApplied = false;   // 부팅 스켈레톤 폴백이 데이터 도착 전 일찍 사라지지 않도록 가드
 window.__applyXml = function(text){
@@ -3642,7 +3664,7 @@ window.__applyXml = function(text){
   if(text && text.trim()){
     try{
       const data = fromXML(text);
-      state = {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, lsMigrated:!!data.lsMigrated, reportFont:normalizeReportFont(data.reportFont)};
+      state = buildStateFrom(data);
       filterCatId = null; filterSource = null; noteFilterCat = null;
       // 마이그레이션: db-* 태그가 있는데 목록에 없으면(구버전 이중 목록 데이터) 카탈로그에서 자동 편입 → 단일 목록 복구(사용자 필터바 실버그의 근본 수정)
       if(migrateDbSubscriptions()) save();
@@ -3663,6 +3685,68 @@ window.__applyXml = function(text){
   migrateLocalStores();   // 빈 파일(신규/최초 실행)에서도 구 저장소 이관은 시도 — 마커로 1회 종결
   hideBootSkeleton();
 };
+/* ---------- DB 읽기 경로(1c) ----------
+ *  호스트가 CalendarDb 로 만든 계약 G 모양의 state 를 그대로 주입한다.
+ *  ★ fromXML 을 거치지 않는다 — DB 는 XML 이 아니고, 굳이 XML 로 만들었다 되돌리면
+ *    그 변환에서만 나는 결함이 생긴다(계약 G 가 존재하는 이유다).
+ *  ★ XML 경로의 이관 절차(migrateDbSubscriptions·migrateLocalStores)는 **부르지 않는다** —
+ *    둘 다 구버전 XML/localStorage 를 정리하는 1회성이고, 내부에서 save() 를 부른다.
+ *    읽기 전용 모드에서 save() 가 도는 것 자체가 계약 위반이다. */
+window.__applyState = function(json, meta){
+  __xmlApplied = true;                    // 부팅 스켈레톤 가드는 출처와 무관하게 '데이터 도착'을 뜻한다
+  __dataSource = 'db';
+  try{
+    const data = (typeof json === 'string') ? JSON.parse(json) : json;
+    state = buildStateFrom(data);
+    filterCatId = null; filterSource = null; noteFilterCat = null;
+    renderAll();
+    pushReminders();
+    renderDataSourceBadge(meta);
+  }catch(e){
+    console.warn('DB 상태 적용 실패', e);
+    window.__applyStateError('받은 데이터를 해석하지 못했습니다: ' + (e && e.message || e));
+    return;
+  }
+  hideBootSkeleton();
+};
+
+// DB 읽기 실패 — **XML 로 조용히 되돌아가지 않는다.** 되돌아가면 사용자는 DB 를 보고 있다고
+//   믿으면서 파일을 보게 되고, 그 상태로 편집하면 어느 쪽이 진실인지 아무도 모른다.
+window.__applyStateError = function(msg){
+  __xmlApplied = true;
+  __dataSource = 'db';
+  hideBootSkeleton();
+  const host = document.querySelector('.wrap') || document.body;
+  let box = document.getElementById('dsError');
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'dsError';
+    box.style.cssText = 'margin:16px;padding:14px 16px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;line-height:1.6';
+    host.insertBefore(box, host.firstChild);
+  }
+  box.textContent = 'DB 에서 캘린더를 읽지 못했습니다 — ' + String(msg || '') +
+    ' · 파일(data.xml)로 되돌리려면 TC_DATA_SOURCE 를 지우고 다시 시작하세요.';
+  toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
+};
+
+// 출처 배지 — '지금 무엇을 보고 있는가'를 화면에 드러낸다(읽기 전용도 함께 알린다).
+function renderDataSourceBadge(meta){
+  if(!isDbMode()) return;
+  const host = document.querySelector('.wrap') || document.body;
+  let b = document.getElementById('dsBadge');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'dsBadge';
+    b.style.cssText = 'margin:12px 16px 0;padding:8px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--accent-soft);color:var(--text);font-size:12px';
+    host.insertBefore(b, host.firstChild);
+  }
+  const m = meta || {};
+  b.textContent = 'DB 읽기 전용 — 서버 데이터를 보고 있습니다' +
+    (m.schemaVersion ? ' · 스키마 v' + m.schemaVersion : '') +
+    (m.rev != null ? ' · rev ' + m.rev : '') +
+    ' · 편집·저장은 아직 파일 모드에서만 됩니다';
+}
+
 // 호스트가 디스크 쓰기 실패를 알릴 때 — 무음 데이터 손실 방지
 window.__saveFailed = function(){
   toast('저장 실패 — 디스크에 기록하지 못했습니다. [데이터 → XML 내보내기]로 백업하세요', 'error');
