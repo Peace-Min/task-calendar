@@ -6,11 +6,14 @@
 //   → netcus에 직접 휴가·병가를 적어 둔 날짜에 캘린더로 일간보고를 보내면 '정근'으로 덮였다.
 //     근태는 로컬 data.xml에만 있으므로 다른 자리 PC에서 보내도 같은 사고가 난다.
 //
-// 그래서 잠그는 계약은 넷이다:
+// 그래서 잠그는 계약은 다섯이다:
 //   ① 웹: 미기록 = null (정근'1'로 흡수 금지) · (미기록) 선택 = 기록 삭제
 //   ② 웹→호스트: 페이로드가 null을 그대로 싣는다(|| '1' 같은 폴백 금지)
 //   ③ 호스트 폼 채우기: 미기록이면 st.value에 아예 대입하지 않는다(페이지 값 보존)
 //   ④ 호스트 제출: 미기록이면 페이지의 현재 status 값을 읽어 되싣는다(필드 제거도, 하드코딩 '1'도 아님)
+//   ⑤ XML 왕복: toXML·fromXML 이 무효·미지 코드를 '1'(정근)로 흡수하지 않는다 — 미기록으로 떨어뜨린다
+//      (2026-09-01 추가. 8adb1ab 는 ①~④ 만 고치고 XML 양쪽을 빠뜨렸다 — 이 파일에도 toXML/fromXML
+//       참조가 0 이었다. 그래서 **내보내기만 해도** 휴가·병가가 정근이 되는 자리가 남아 있었다.)
 //
 // ③④는 정규식 구경이 아니라 'C# 소스가 실제로 조립하는 JS'를 재조립해 FakeDoc 위에서 실행해 확인한다
 // (조립식이 바뀌면 재조립도 함께 바뀌므로 검사가 코드를 따라간다).
@@ -450,4 +453,104 @@ test('변이⑫: 미기록 로그를 지우면 로그 검사가 실패한다', (
 test('변이⑬: ATTEND_STATUS에 (미기록)을 끼워 넣으면 상수 검사가 실패한다', () => {
   const bad = mutate("const ATTEND_STATUS = [\n", "const ATTEND_STATUS = [\n  {v:'',label:'(미기록)'},\n", src);
   assert.throws(() => checks.attendStatusUnchanged(bad), /ATTEND_STATUS가 바뀌었다/);
+});
+
+// ── 계약 ⑤ — XML 왕복이 미기록을 정근으로 바꾸지 않는다 ────────────────────
+//   toXML/fromXML 전체는 DOM 이 필요해 Node 에서 통째로 못 돌린다. 그래서 근태 블록만
+//   **원문 그대로 잘라** 최소 DOM 위에서 실행한다 — 정규식 구경이 아니라 실제 코드를 돌린다.
+//   자르는 표식이 사라지면 테스트가 큰 소리로 실패한다(조용히 통과하지 않는다).
+function sliceBetween(source, from, to, what) {
+  const i = source.indexOf(from);
+  assert.ok(i >= 0, `${what}: 시작 표식을 못 찾음 — ${from}`);
+  const j = source.indexOf(to, i);
+  assert.ok(j >= 0, `${what}: 끝 표식을 못 찾음 — ${to}`);
+  return source.slice(i, j + to.length);
+}
+
+//  toXML 의 근태 블록 → [{date,status,overtime}, …] (요소가 안 생기면 그 날짜는 미기록)
+function mkAttendanceToXml(source) {
+  const code = sliceBetween(source,
+    "const at = doc.createElement('attendance');",
+    'if(at.childNodes.length) root.appendChild(at);', 'toXML 근태 블록');
+  return (attendance) => {
+    const mkEl = (tag) => ({
+      tag, attrs: {}, childNodes: [],
+      setAttribute(k, v) { this.attrs[k] = v; },
+      appendChild(c) { this.childNodes.push(c); },
+    });
+    const root = mkEl('taskCalendar');
+    new Function('doc', 'root', 'state', 'ATTEND_STATUS_SET',
+      code)({ createElement: mkEl }, root, { attendance }, statusSet(source));
+    const at = root.childNodes[0];
+    return at ? at.childNodes.map(d => d.attrs) : [];
+  };
+}
+
+//  fromXML 의 근태 블록 → { 'YYYY-MM-DD': {status, overtime} } (키가 없으면 미기록)
+function mkAttendanceFromXml(source) {
+  const dateFn = sliceBetween(source, 'const isRealDate = s => {', '};', 'fromXML isRealDate');
+  const code = sliceBetween(source, 'const attendance = {};',
+    "const lsMigrated = root.getAttribute('lsMigrated')", 'fromXML 근태 블록');
+  //  마지막 줄(lsMigrated 선언 머리)은 잘라 버린다 — 근태 블록만 돌린다.
+  const onlyAttend = code.slice(0, code.lastIndexOf('const lsMigrated'));
+  return (days) => {
+    const mkDay = (d) => ({ getAttribute: (k) => (k in d ? String(d[k]) : null) });
+    const root = {
+      getElementsByTagName: (t) => t === 'attendance'
+        ? [{ getElementsByTagName: () => days.map(mkDay) }] : [],
+    };
+    return new Function('root', 'ATTEND_STATUS_SET',
+      dateFn + '\n' + onlyAttend + '\nreturn attendance;')(root, statusSet(source));
+  };
+}
+
+const VALID = attendStatus(src)[0].v;          // 실제 코드표의 첫 유효 코드
+const BOGUS = 'zzz-not-a-status';              // 코드표에 없는 값
+
+test('⑤-1: toXML — 무효·미지 근태 코드는 XML 에 담기지 않는다(정근 흡수 금지)', () => {
+  const toXml = mkAttendanceToXml(src);
+  const out = toXml({ '2026-09-01': { status: BOGUS, overtime: 0 } });
+  assert.deepStrictEqual(out, [],
+    "무효 코드를 XML 에 담았다 — '1'(정근)로 흡수되면 내보내기만 해도 휴가·병가가 뒤바뀐다");
+});
+
+test('⑤-2: fromXML — 무효·미지 근태 코드는 맵에 들어오지 않는다(정근 흡수 금지)', () => {
+  const fromXml = mkAttendanceFromXml(src);
+  const got = fromXml([{ date: '2026-09-01', status: BOGUS, overtime: '0' }]);
+  assert.deepStrictEqual(got, {},
+    "무효 코드를 읽어 들였다 — '1'(정근)로 흡수되면 옛 파일의 휴가·병가가 조용히 정근이 된다");
+});
+
+test('⑤-3: 유효 근태는 왕복해도 그대로다(거짓 통과 아님)', () => {
+  const toXml = mkAttendanceToXml(src), fromXml = mkAttendanceFromXml(src);
+  const wire = toXml({ '2026-09-02': { status: VALID, overtime: 3 } });
+  assert.strictEqual(wire.length, 1, '유효 근태가 XML 에서 사라졌다 — 검사가 과잉 차단이다');
+  const back = fromXml(wire);
+  assert.deepStrictEqual(back, { '2026-09-02': { status: VALID, overtime: 3 } },
+    '유효 근태가 왕복에서 변형됐다');
+});
+
+test('⑤-4: 미기록(요소 부재)은 왕복해도 미기록으로 남는다', () => {
+  const fromXml = mkAttendanceFromXml(src);
+  assert.deepStrictEqual(fromXml([]), {}, '요소가 없는데 근태가 생겼다');
+});
+
+test("변이⑭: toXML 에 '1' 흡수를 되살리면 ⑤-1 이 실패한다", () => {
+  const bad = mutate("      if(!ATTEND_STATUS_SET.has(String(a.status))) continue;\n      const dEl = doc.createElement('day');",
+    "      const dEl = doc.createElement('day');", src);
+  const bad2 = mutate("      dEl.setAttribute('status', String(a.status));",
+    "      dEl.setAttribute('status', ATTEND_STATUS_SET.has(String(a.status)) ? String(a.status) : '1');", bad);
+  const toXml = mkAttendanceToXml(bad2);
+  assert.deepStrictEqual(toXml({ '2026-09-01': { status: BOGUS, overtime: 0 } })
+    .map(a => a.status), ['1'], '변이가 흡수를 되살리지 못했다 — 이 변이 시험 자체가 무효다');
+});
+
+test("변이⑮-근태: fromXML 에 '1' 흡수를 되살리면 ⑤-2 가 실패한다", () => {
+  const bad = mutate('      if(!ATTEND_STATUS_SET.has(st)) continue;\n', '', src);
+  const bad2 = mutate('      attendance[date] = { status: st, overtime: ot };',
+    "      attendance[date] = { status: ATTEND_STATUS_SET.has(st) ? st : '1', overtime: ot };", bad);
+  const fromXml = mkAttendanceFromXml(bad2);
+  assert.deepStrictEqual(fromXml([{ date: '2026-09-01', status: BOGUS, overtime: '0' }]),
+    { '2026-09-01': { status: '1', overtime: 0 } },
+    '변이가 흡수를 되살리지 못했다 — 이 변이 시험 자체가 무효다');
 });

@@ -4815,9 +4815,13 @@ function toXML(){
     const at = doc.createElement('attendance');
     for(const [date, a] of Object.entries(state.attendance || {}).sort()){
       if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !a || typeof a !== 'object') continue;
+      //  ★ 무효·미지 코드는 '1'(정근)로 흡수하지 않는다 — 그건 미기록이고, 미기록은 요소 부재다.
+      //    흡수하면 내보내기만 해도 휴가·병가가 정근으로 바뀐다(근태는 회사 일간보고로 나가는 값이다).
+      //    setAttendance(:3365) 가 무효 코드에 '행 삭제'로 답하는 것과 같은 규약이다.
+      if(!ATTEND_STATUS_SET.has(String(a.status))) continue;
       const dEl = doc.createElement('day');
       dEl.setAttribute('date', date);
-      dEl.setAttribute('status', ATTEND_STATUS_SET.has(String(a.status)) ? String(a.status) : '1');
+      dEl.setAttribute('status', String(a.status));
       dEl.setAttribute('overtime', String((a.overtime >= 0 && a.overtime <= 11) ? (a.overtime | 0) : 0));
       at.appendChild(dEl);
     }
@@ -5005,16 +5009,20 @@ function fromXML(text){
       if(taskHours[date] && !Object.keys(taskHours[date]).length) delete taskHours[date];   // 빈 날 정리
     }
   }
-  // 근태 <attendance><day date status overtime/></attendance> — 요소 부재 → 빈 맵. status/overtime은 접근자와 동일 검증.
+  // 근태 <attendance><day date status overtime/></attendance> — 요소 부재 → 빈 맵.
+  // status/overtime 은 접근자(getAttendance :3355)와 **동일 검증**이다 — 무효 코드는 미기록으로 떨어뜨린다.
   const attendance = {};
   const atEl = root.getElementsByTagName('attendance')[0];
   if(atEl){
     for(const dEl of [...atEl.getElementsByTagName('day')]){
       const date = dEl.getAttribute('date') || '';
       if(!isRealDate(date)) continue;
-      const st = dEl.getAttribute('status');
+      const st = String(dEl.getAttribute('status'));
+      //  ★ 무효·미지 코드 → 미기록(맵에 넣지 않는다). '1'(정근)로 흡수하면 옛 파일이나
+      //    코드표가 바뀐 파일을 읽을 때 휴가·병가가 조용히 정근이 된다 — 되돌릴 근거도 안 남는다.
+      if(!ATTEND_STATUS_SET.has(st)) continue;
       let ot = parseInt(dEl.getAttribute('overtime'), 10); if(!(ot >= 0 && ot <= 11)) ot = 0;
-      attendance[date] = { status: ATTEND_STATUS_SET.has(String(st)) ? String(st) : '1', overtime: ot };
+      attendance[date] = { status: st, overtime: ot };
     }
   }
   const lsMigrated = root.getAttribute('lsMigrated') === '1';   // 속성 부재(구버전 XML) → false(이관 필요)
