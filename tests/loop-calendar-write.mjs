@@ -109,6 +109,21 @@ class R {
                                  snap.CategoryNoByUid, snap.EntryNoByUid, snap.TodoNoByUid);
     }
 
+    // op == "concurrent" : **진짜 동시 편집**을 재현한다.
+    //   두 클라이언트가 같은 스냅샷을 들고 있다가 각자 저장한다 — 토큰을 인위적으로 조작하지 않는다.
+    //   현실에서 두 PC 가 같은 계정으로 붙어 있을 때 정확히 이 모양이다.
+    if (op == "concurrent") {
+      string a = e.GetProperty("stateA").GetString() ?? "";
+      string b = e.GetProperty("stateB").GetString() ?? "";
+      var ra = await new CalendarWriteDb(log).SaveAsync(snap, a);   // 클라이언트 1 — 먼저 저장
+      var rb = await new CalendarWriteDb(log).SaveAsync(snap, b);   // 클라이언트 2 — **같은(이제 낡은) 스냅샷**으로
+      Console.Out.Write(JsonSerializer.Serialize(new {
+        ok = true,
+        aOk = ra.Ok, aMsg = ra.Message, aRev = ra.Rev,
+        bOk = rb.Ok, bConflict = rb.Conflict, bMsg = rb.Message, logs }));
+      return 0;
+    }
+
     var res = await new CalendarWriteDb(log).SaveAsync(use, newState);
 
     // op == "saveChain" : **한 스냅샷으로 연속 저장**한다. 위젯이 실제로 하는 일이다 —
@@ -362,6 +377,27 @@ try {
   ok('거부됐을 때 데이터가 하나도 안 바뀌었다(부분 적용 없음)', before === after, `${before} → ${after}`);
   ok('거부돼도 rev 는 롤백된다', Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)) === revBefore,
      `${revBefore} → ${one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)}`);
+
+  // ── ★ 진짜 동시 편집 — 두 클라이언트가 같은 스냅샷으로 각자 저장 ────────
+  //    위 '낡은 토큰' 시험은 토큰을 인위적으로 조작한 것이라 "현실에서 이렇게 되나"를 증명하지
+  //    못한다. 여기서는 조작 없이, 두 PC 가 같은 계정으로 붙어 있는 상황을 그대로 재현한다.
+  console.log('\n[동시 편집] 두 클라이언트가 같은 스냅샷으로 각자 저장');
+  wipe(U);
+  const seed = makeState(null, 700);
+  const seedRes = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(seed) });
+  ok('바탕 상태 저장', seedRes.ok === true, seedRes.msg || '');
+
+  const cA = JSON.parse(JSON.stringify(seed)); cA.categories[0].name = 'A가 고친 이름';
+  const cB = JSON.parse(JSON.stringify(seed)); cB.categories[0].name = 'B가 고친 이름';
+  const con = run({ op: 'concurrent', loginId: LOGIN, state: {},
+                    stateA: JSON.stringify(cA), stateB: JSON.stringify(cB) });
+  ok('먼저 저장한 쪽은 성공한다', con.aOk === true, con.aMsg || '');
+  ok('나중 저장한 쪽은 충돌로 거부된다', con.bOk === false && con.bConflict === true,
+     `bOk=${con.bOk} bConflict=${con.bConflict} msg=${con.bMsg}`);
+  //  ★ 거부된 쪽이 이긴 쪽 데이터를 덮지 않았는지 — '마지막 쓴 사람이 이긴다'가 되면 안 된다
+  const nameNow = one(`SELECT name FROM cal_category WHERE user_id=${U} ORDER BY cat_no LIMIT 1`);
+  ok('먼저 저장한 쪽의 값이 남아 있다(덮이지 않았다)', nameNow === 'A가 고친 이름', `현재="${nameNow}"`);
+  wipe(U);
 
   // ── 전량 삭제 — 빈 state 를 저장하면 다 지워지는가 ──────────────────────
   console.log('\n[삭제] 빈 state 저장');
