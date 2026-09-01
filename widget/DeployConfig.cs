@@ -27,5 +27,21 @@ namespace TaskCalendarWidget
 
         // ── 자동 업데이트 소스 (공유폴더/FTP 경로; 설정 UI로도 지정 가능) ───────────
         public const string UpdateSourceUrl = "";           // 저장소엔 비워둠 — 배포 시 공유폴더 경로(latest.json+Setup exe 위치)
+
+        // ── XML 저장 경로 폐기 스위치 (설계 §3.9) ─────────────────────────────
+        //  false = 이관 전. data.xml 읽기/쓰기와 TC_DATA_SOURCE 분기가 **살아 있어야 한다.**
+        //  true  = 이관 완료. 그 순간부터 data.xml 은 **정의상 낡은 데이터**이므로
+        //          코드가 단 한 곳에서도 참조해선 안 된다(백업 파일로만 남긴다).
+        //
+        //  ★ 이 값을 true 로 바꾸면 tests/xml-retirement.test.mjs 가 **XML 경로의 잔재를
+        //    전수 검사**한다 — data.xml · fromXML · toXML · __applyXml · isDbMode ·
+        //    TC_DATA_SOURCE 중 하나라도 남아 있으면 게이트가 실패한다.
+        //    즉 '이관했다고 선언하는 순간' 청소가 강제된다. 잊을 수 없다.
+        //
+        //  ★ 반대로 false 인 동안 XML 경로를 부분적으로 걷어내는 것도 막는다 —
+        //    반쯤 지워진 상태가 가장 위험하다(어느 경로로 도는지 아무도 모른다).
+        //
+        //  바꾸는 시점: 3단계(XML→DB 이관)를 끝내고 검증까지 통과한 뒤. 그 전에 켜면 안 된다.
+        public const bool XmlRetired = false;
     }
 }
