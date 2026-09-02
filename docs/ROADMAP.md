@@ -33,7 +33,7 @@
 | 아키텍처 | 6 | 배치 규칙(도메인=JS/능력=C#)은 지켜짐. `if(HOST)` 47곳·`bind()` 985줄·인계 문서가 XML 시대 |
 | 문서 | 5 | 최신 결정(db/ROADMAP·설계 §11)은 정확. README/USAGE/CHANGELOG/DEPLOY/ARCHITECTURE는 7월에 멈춤 |
 | DB 스키마 | **7** | 상용에 가까움. 재구축본=누적본 0건 차이 실측 |
-| **배포 적합성** | **5 — not_ready** | 감사 시점 P0 3건 → **09-02 전부 해소**(§2-1). 남은 건 §2-2 P1 조건 7건 |
+| **배포 적합성** | **5 — not_ready** | 감사 시점 P0 3건 → **09-02 전부 해소**(§2-1). §2-2 P1 8건 중 3건 완료(테스트 정직화·정합 가드·알림 노트), **5건 남음** |
 | 테스트 | 6 | JS 계약은 잘 잠금. C# 9,423줄 실행 테스트 0건 |
 | 보안 | 6 | SQL 바인딩·XSS·DPAPI 확인. 업데이트 체인 무인증 |
 
@@ -101,7 +101,7 @@
 
 | 부채 | 크기 | 왜 |
 |---|---|---|
-| **인계 문서 일괄 갱신** — README·USAGE·CHANGELOG·docs/ARCHITECTURE·db/ARCHITECTURE·db/README·db/SETUP·db/deploy/README·tests/README + DECISIONS 결정4 갱신 단락 | M | 전부 XML 시대 서술. CHANGELOG는 07-10 v0.9.0에서 멈춤(앱은 0.17.1). **P0 3건 뒤에 한 번에.** `DEPLOY.md`는 제외 — 의도적 공백(§5-4) |
+| ~~**인계 문서 일괄 갱신**~~ ✅ **2026-09-02 완료** — 13파일(`a22928a`) + 스키마 정본 모순 4곳·수기 HTML 정리(`f6fae7b`) + widget/update README(`8b23d2e`). 전수 인벤토리 42개 대조. `db/SETUP.md`·`schema-overview.html` 폐기 | M | `DEPLOY.md`는 의도적 공백(§5-4)이라 제외. 수기 HTML 3개는 생성기가 없어 배너로만 — 스키마 변경 시 또 낡음 |
 | `if(HOST)` 산탄 흡수 | M | 문서가 "걷어내겠다"고 한 뒤 15 → 47곳으로 증가. DB 카탈로그 코드에 '위젯 전용' 토스트 ~20회 복붙 |
 | `bind()` 985줄 분할 | M | 전체 JS의 12%가 한 함수. 무관한 핸들러 201건 공존 |
 | **C# 실행 테스트 도입** | M | 9,423줄에 0건(전부 regex 문자열 검사). Reminders·Update·RepoPaths·XlsxWriter·NetcusText부터 |
