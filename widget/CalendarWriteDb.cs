@@ -289,9 +289,13 @@ namespace TaskCalendarWidget
                     foreach (var c in Arr(e, "commits"))
                     {
                         if (c.ValueKind != JsonValueKind.Object) continue;
-                        //  hash 는 NOT NULL 이고 이 표의 신원이다. 빈 해시는 앱이 만들지 않는다 — 오면 버린다.
+                        //  ★ 해시가 없어도 **버리지 않는다.** 처음엔 "빈 해시는 앱이 만들지 않는다" 고
+                        //    보고 걸러 냈는데, 실 data.xml 3종을 돌려 보니 hash 속성이 아예 없는 커밋이
+                        //    있었다(2026-09-02 실측: 9K 파일 5건 중 3건 · demobak 74건 중 8건).
+                        //    손으로 적어 넣은 작업일지 줄이 그렇게 된다. 버리면 **조용히 사라진다.**
+                        //    hash 는 이 표의 신원이 아니다 — PK 는 (user_id, entry_no, seq) 다.
+                        //    빈 해시로 저장해도 삭제·수정 UI 는 인덱스(cidx)로 찾으므로 동작한다(:9017).
                         string hash = S(c, "hash");
-                        if (hash.Length == 0) continue;
                         //  commit_time 은 TIME NULL 이고 읽기가 NULL → '' 로 준다(G-2). 되돌려 보낸다.
                         string tm = S(c, "time");
                         var cp = new List<(string, object?)>

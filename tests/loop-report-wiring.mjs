@@ -332,13 +332,15 @@ function selftest() {
       { readOnly: false, what: '고장 주입' });
   const rows = sql(`SELECT line_no FROM cal_report_hours WHERE user_id=${UID} AND work_date='${ds}' ORDER BY line_no`);
   const caught = !rows.every((r, k) => Number(r[0]) === k);
-  console.log(caught ? '  ✓ line_no 연속성 검사가 구멍을 잡는다' : '  ✗ 구멍을 못 잡는다 — 검사가 무의미하다');
+  //  ★ console.log 로만 알리지 않는다 — 그러면 요약이 '통과 0 · 실패 0 · 위반 없음' 으로 나와
+  //    자기검사가 무엇을 했는지 요약만 보고는 알 수 없다(그 요약은 거짓말에 가깝다).
+  ok('line_no 연속성 검사가 구멍을 잡는다', caught, '구멍을 못 잡으면 그 검사는 장식이다');
   // 결함 주입: 본문을 손으로 바꿔 I6 가 잡는지
   sql(`UPDATE cal_report_daily SET content='몰래 바뀐 본문' WHERE user_id=${UID} AND work_date='${ds}'`,
       { readOnly: false, what: '고장 주입2' });
   const c = one(`SELECT SHA2(content, 256) FROM cal_report_daily WHERE user_id=${UID} AND work_date='${ds}'`);
   const cw = createHash('sha256').update('x', 'utf8').digest('hex');
-  console.log(c === cw ? '  ✗ 본문 변조를 못 잡는다' : '  ✓ 본문 대조가 변조를 잡는다');
+  ok('본문 대조가 변조를 잡는다', c !== cw, '변조를 못 잡으면 그 검사는 장식이다');
   cleanup();
   return caught && c !== cw;
 }
@@ -388,6 +390,8 @@ console.log('\n' + '═'.repeat(70));
 console.log(`통과 ${pass} · 실패 ${fail} · ${((Date.now() - t0) / 1000).toFixed(1)}초` +
             (truncSeen ? ` · mysql 출력 잘림 ${truncSeen}회(재시도로 회복)` : ''));
 if (F.length) { console.log('\n실패 목록:'); F.slice(0, 20).forEach(f => console.log('  · ' + f)); }
-console.log(fail === 0 ? '위반 없음 ✓ — 보낸 그대로 DB 에 남는다.' : '★ 위반 있음 — 위 목록을 볼 것.');
+console.log(fail !== 0 ? '★ 위반 있음 — 위 목록을 볼 것.'
+  : SELFTEST ? '자기검사 통과 ✓ — 검사기가 주입한 결함을 실제로 잡는다.'
+  : '위반 없음 ✓ — 보낸 그대로 DB 에 남는다.');
 console.log('═'.repeat(70));
 process.exit(code);

@@ -221,9 +221,13 @@ function gitBits(round, i) {
   const commits = [];
   for (let k = 0; k < n; k++) {
     const h = String(round).padStart(2, '0') + String(i) + String(k);
+    //  ★ 해시 없는 커밋을 일부러 섞는다 — 손으로 적어 넣은 작업일지 줄이 그렇다.
+    //    실 data.xml 3종에 실제로 있었고(9K 5건 중 3건 · demobak 74건 중 8건),
+    //    쓰기 계층이 그걸 조용히 버리고 있었다(2026-09-02). 픽스처에 없으면 다시 못 잡는다.
+    const noHash = rnd() < 0.3;
     commits.push({
-      hash: (h + 'abcdef0123456789abcdef0123456789abcdef').slice(0, 40),
-      short: (h + 'abcdef').slice(0, 7),
+      hash: noHash ? '' : (h + 'abcdef0123456789abcdef0123456789abcdef').slice(0, 40),
+      short: noHash ? '' : (h + 'abcdef').slice(0, 7),
       time: rnd() < 0.3 ? '' : `${String(rint(0, 23)).padStart(2, '0')}:${String(rint(0, 59)).padStart(2, '0')}`,
       subject: `커밋 제목 ${round}-${i}-${k} 한글`,
       body: rnd() < 0.5 ? '' : `본문 첫 줄 ${k}\n둘째 줄`,

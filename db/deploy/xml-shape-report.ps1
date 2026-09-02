@@ -29,6 +29,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+#  ★ 콘솔 출력 인코딩 — PowerShell 5.1 은 기본이 시스템 ANSI(한국어 Windows 는 cp949)라
+#    UTF-8 로 쓴 이 스크립트의 한글이 화면에서 통째로 깨진다(파일 출력은 멀쩡한데 화면만 깨진다).
+#    폐쇄망에서 사용자가 **화면으로** 읽고 반출 여부를 판단하는 도구라, 화면이 깨지면 쓸모가 없다.
+#    2026-09-02 실측으로 잡았다.
+try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 if (-not (Test-Path $Xml)) { Write-Error "XML 이 없습니다: $Xml"; exit 2 }
 
 $lines = New-Object System.Collections.Generic.List[string]

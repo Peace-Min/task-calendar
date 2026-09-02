@@ -69,6 +69,7 @@ tests/
 ├─ loop-org-compat.mjs        MySQL(복제본) — org_unit 완전 절단 루프
 ├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
+├─ loop-import-ui.mjs        **실제 위젯**(CDP) + 실 DB — 「XML 가져오기」 실동작(교체·병합 왕복)
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
 ├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
 ├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
