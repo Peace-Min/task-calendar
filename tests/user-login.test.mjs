@@ -6,7 +6,7 @@
 //          Shift+Tab으로 덮개 뒤 버튼이 눌림 / 자격 저장 실패를 삼키고 성공 회신 / 로그아웃과
 //          백그라운드 갱신이 경합해 삭제된 세션 부활 / 실패 code 7종인데 분기 0곳 / 자격 출처 2개.
 // 관례(기억)로는 반드시 다시 뚫린다. 아래 불변식은 전부 '실제로 났던 사고'를 기계가 잡게 한 것이다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src         = loadAppSource();
@@ -1104,15 +1104,14 @@ test('변이⑮⑦: 표식 없이 무조건 지우면 hintFlagged 가 실패한�
 // ══ ⑯ 실제 렌더(jsdom) — 문자열 검사로는 못 보는 것 ════════════════════
 // 배선(input 리스너·버튼 클릭)까지 실제로 도는지, 그리고 '요청 0회'가 진짜인지는 돌려봐야 안다.
 // HOST=true 로 부팅(chrome.webview 주입)한 뒤 hostRequest 를 스파이로 갈아끼운다.
-// 미설치 시 graceful-skip(이 저장소의 기존 관례).
+// 미설치 시 skip = 판정 없음(이 저장소의 관례. 통과가 아니다 — 러너 exit 2).
 
-let JSDOM = null;
-try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
+const JSDOM = (await importOptional('jsdom'))?.JSDOM || null;
 
 if (!JSDOM) {
-  test('로그인(jsdom): jsdom 미설치 — 렌더 테스트 생략', () => {
-    console.log('      jsdom 미설치 — 렌더 테스트 생략');
-  });
+  // ★ 통과가 아니라 '판정 없음'으로 센다(harness.skip → exit 2).
+  skip('로그인(jsdom): jsdom 미설치 — 렌더 테스트를 돌리지 못했다', SKIP_NO_JSDOM,
+       `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수 — 루프 등록분은 못 센다)`);
 } else {
   let w = null, bootErr = null;
   try {

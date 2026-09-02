@@ -11,7 +11,7 @@
 //      OpenReadAsync 여야 한다 — 쓰기 관문을 쓰면 viewer 가 자기 권한을 확인조차 못 한다.
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src  = loadAppSource();
@@ -1370,15 +1370,14 @@ test('변이㊶-b: 실패 줄만 옛 앞머리를 쓰면 membersScopeLineSchedul
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
 // 권한 렌더는 HOST(위젯)에서만 도는 코드다 → chrome.webview 를 심어 HOST=true 로 부팅하고,
 // 호스트 왕복은 hostRequest 를 갈아끼워 만든다(실제 DB·WebView2 없이 렌더 결과만 본다).
-// 미설치 시 graceful-skip(다른 Layer 2 테스트와 같은 관례).
+// 미설치 시 skip = 판정 없음(다른 Layer 2 테스트와 같은 관례. 통과가 아니다 — 러너 exit 2).
 
-let JSDOM = null;
-try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
+const JSDOM = (await importOptional('jsdom'))?.JSDOM || null;
 
 if (!JSDOM) {
-  test('사용자정보(jsdom): jsdom 미설치 — 렌더 테스트 생략', () => {
-    console.log('      jsdom 미설치 — 렌더 테스트 생략');
-  });
+  // ★ 통과가 아니라 '판정 없음'으로 센다(harness.skip → exit 2).
+  skip('사용자정보(jsdom): jsdom 미설치 — 렌더 테스트를 돌리지 못했다', SKIP_NO_JSDOM,
+       `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수 — 루프 등록분은 못 센다)`);
 } else {
   let w = null, bootErr = null;
   try {

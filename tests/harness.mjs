@@ -7,16 +7,61 @@ import { readFileSync } from 'node:fs';
 // test(name, fn)으로 등록하고 run()으로 일괄 실행. fn은 sync/async 모두 지원.
 // 러너(run-tests.mjs)가 *.test.mjs를 전부 import한 뒤 run()을 한 번 호출하는 구조라
 // 모든 테스트가 같은 큐에 모인다. import 순서와 무관하게 동작.
-const _tests = [];
+//
+// ★ skip 은 '통과'가 아니다 — '판정 없음'이다.
+//   옛 판은 의존성(jsdom)이 없을 때 빈 함수를 test() 로 등록해 두었다. 그 결과 218건이
+//   등록조차 되지 않은 채 요약은 「pass」1건이 늘고 exit 0 이 나왔다(실측 2026-09-02:
+//   jsdom 을 막으면 820 → 602 pass / 0 fail / exit 0). 새 클론·폐쇄망 반입 PC 처럼
+//   tests/node_modules 가 없는 곳에서는 그게 상시 상태다 — 게이트가 조용히 거짓말을 했다.
+//   그래서 skip 을 별도 종류로 세고, 하나라도 있으면 exit 2(판정 없음)로 끝낸다.
+//   loop-*.mjs 가 이미 쓰는 0/1/2 규약과 같은 뜻이다(README「종료코드」).
+const _queue = [];
 
 export function test(name, fn) {
-  _tests.push({ name, fn });
+  _queue.push({ kind: 'test', name, fn });
+}
+
+// skip(name, reason, detail)
+//   reason — 집계 키. 짧게(예: 'jsdom 미설치'). 요약에 「사유별」로 묶여 나온다.
+//   detail — 그 줄에만 붙는 자유 문구(예: '이 파일의 jsdom 테스트 213건이 세어지지 않음').
+export function skip(name, reason, detail) {
+  _queue.push({
+    kind: 'skip',
+    name,
+    reason: String(reason || '(사유 없음)'),
+    detail: detail ? String(detail) : '',
+  });
+}
+// test.skip(...) 표기도 허용(다른 러너 관례에 익숙한 사람 대비).
+test.skip = skip;
+
+// TC_TEST_STRICT=1 — skip 을 fail 로 취급한다(릴리스 게이트가 켜는 스위치).
+export function isStrict() {
+  return String(process.env.TC_TEST_STRICT || '') === '1';
 }
 
 export async function run() {
+  const strict = isStrict();
   let pass = 0;
   let fail = 0;
-  for (const t of _tests) {
+  let skipped = 0;
+  const skipReasons = new Map(); // 사유 → 건수
+
+  for (const t of _queue) {
+    if (t.kind === 'skip') {
+      const line = t.detail ? `${t.name} — ${t.detail}` : t.name;
+      skipReasons.set(t.reason, (skipReasons.get(t.reason) || 0) + 1);
+      if (strict) {
+        // 엄격 모드: 판정 없음도 실패다. 게이트가 '환경 때문에 안 돌았다'를 통과로 읽지 못하게.
+        fail++;
+        console.log(`  ✗ ${line}`);
+        console.log(`      TC_TEST_STRICT=1 — 생략(${t.reason})을 실패로 취급합니다.`);
+      } else {
+        skipped++;
+        console.log(`  ○ ${line}`); // ○ = 판정 없음
+      }
+      continue;
+    }
     try {
       await t.fn();
       pass++;
@@ -28,13 +73,81 @@ export async function run() {
       console.log(msg.split('\n').map((l) => '      ' + l).join('\n'));
     }
   }
-  console.log(`\n${pass} pass / ${fail} fail`);
+
+  console.log(`\n${pass} pass / ${fail} fail / ${skipped} skip`);
+  if (skipped > 0) {
+    const parts = [...skipReasons.entries()].map(([r, n]) => `${r}: ${n}`);
+    console.log(`  skip ${skipped} — ${parts.join(' · ')}`);
+    console.log('  ※ skip 은 통과가 아니다 — 그만큼은 판정하지 않았다(exit 2).');
+  }
+  if (strict && skipReasons.size > 0) {
+    const parts = [...skipReasons.entries()].map(([r, n]) => `${r}: ${n}`);
+    console.log(`  strict — 생략 사유별: ${parts.join(' · ')}`);
+  }
+
+  // 종료코드: fail>0 → 1(위반) · fail=0 & skip>0 → 2(판정 없음) · 둘 다 0 → 0.
   if (fail > 0) process.exitCode = 1;
-  return { pass, fail };
+  else if (skipped > 0) process.exitCode = 2;
+
+  return { pass, fail, skip: skipped, skipReasons, strict };
 }
 
 // assert도 재수출(테스트 파일이 한 곳에서 import하도록 편의 제공).
 export { assert };
+
+// ── 선택 의존성 로드 ────────────────────────────────────────────────
+// Layer 2(jsdom) 처럼 '없을 수도 있는' 모듈을 부른다. 없으면 null — 던지지 않는다.
+// ★ TC_TEST_FORCE_MISSING=jsdom  — 있어도 없는 척한다(게이트 자체를 시험하는 주입구).
+//   loop-*.mjs 의 TC_TEST_INJECT_TRUNC / TC_TEST_MUTATE_NOOP 과 같은 관례다.
+//   이 스위치가 없으면 "jsdom 없을 때 정말 exit 2 가 나오는가"를 증명할 방법이
+//   node_modules 를 지우는 것뿐인데, 그 심링크는 main 워크트리와 공유된 실물이다.
+export const SKIP_NO_JSDOM = 'jsdom 미설치';
+
+export async function importOptional(spec) {
+  const forced = String(process.env.TC_TEST_FORCE_MISSING || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  if (forced.includes(spec)) return null;
+  try {
+    return await import(spec);
+  } catch (_) {
+    return null; // 미설치
+  }
+}
+
+// 파일 안에서 marker 뒤에 있는 test( 호출 '자리 수'를 정적으로 센다.
+// skip 줄에 "얼마나 사라졌는가"의 규모를 붙이기 위한 것 — 정확한 건수가 아니다.
+//   · 루프 안에서 등록하는 자리는 1로 세지만 실제로는 여러 건이다(실측: app-context 는
+//     정적 124곳 vs 실제 185건).
+//   · 부팅 실패 때만 등록하는 조건부 test( 도 1로 센다(정상 부팅이면 0건).
+// 주석·문자열 안의 test( 는 제외한다.
+export function countTestsBelow(fileUrl, marker) {
+  let src;
+  try {
+    src = readFileSync(new URL(fileUrl), 'utf8');
+  } catch (_) {
+    return 0;
+  }
+  const at = src.indexOf(marker);
+  if (at < 0) return 0;
+
+  let n = 0;
+  let i = at + marker.length;
+  const len = src.length;
+  while (i < len) {
+    const c = src[i];
+    if (c === "'" || c === '"' || c === '`') { i = skipString(src, i); continue; }
+    if (c === '/' && src[i + 1] === '/') { i = skipLineComment(src, i); continue; }
+    if (c === '/' && src[i + 1] === '*') { i = skipBlockComment(src, i); continue; }
+    // 식별자 경계에서 시작하는 test( 만 센다(latest( · .test( 제외).
+    if (c === 't' && src.startsWith('test', i) && !/[.\w$]/.test(src[i - 1] || '')) {
+      const rest = src.slice(i + 4);
+      const m = /^\s*\(/.exec(rest);
+      if (m) { n++; i += 4 + m[0].length; continue; }
+    }
+    i++;
+  }
+  return n;
+}
 
 // ── 앱 소스 로드 ────────────────────────────────────────────────────
 // task-calendar-prototype.html을 UTF-8 텍스트로 읽어 반환. 경로는 tests/ 기준 상위 폴더.

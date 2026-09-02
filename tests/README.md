@@ -1,6 +1,6 @@
 # tests/ — 수행과제 캘린더 테스트 하네스
 
-2층 구조 — **Layer 1(순수 함수)** 은 의존성 0(Node 내장만, `npm install` 없이 실행), **Layer 2(app-context: XML 왕복·보고서 생성)** 는 jsdom이 실제 앱을 부팅해 검증하는 **test-only devDependency**. jsdom 미설치 시 Layer 2는 graceful-skip(러너는 여전히 green). **배포 산출물(폐쇄망 반입 exe/HTML)은 그대로 의존성 0** — jsdom은 오직 테스트에서만.
+2층 구조 — **Layer 1(순수 함수·소스 텍스트)** 은 의존성 0(Node 내장만, `npm install` 없이 실행), **Layer 2(app-context: XML 왕복·보고서 생성 등)** 는 jsdom이 실제 앱을 부팅해 검증하는 **test-only devDependency**. jsdom이 없으면 Layer 2는 **skip(판정 없음) → exit 2**다. 초록이 아니다. **배포 산출물(폐쇄망 반입 exe/HTML)은 그대로 의존성 0** — jsdom은 오직 테스트에서만.
 지금까지 손으로 하던 검증을 재사용 가능한 자동 테스트로 옮긴 것. Layer 2를 돌리려면 `cd tests && npm ci`(CI가 자동 수행).
 
 ## 실행
@@ -9,14 +9,58 @@
 node tests/run-tests.mjs
 ```
 
-프로젝트 루트(`task-calendar/`)에서 실행. 전부 통과하면 exit 0, 하나라도 실패하면 exit 1.
+프로젝트 루트(`task-calendar/`)에서 실행. 요약은 `N pass / M fail / K skip` 이고, skip이 있으면 **사유별 집계**가 한 줄 더 붙는다(예: `skip 4 — jsdom 미설치: 4`).
+
+### 종료코드
+
+| 코드 | 뜻 | 사람이 할 일 |
+|---|---|---|
+| `0` | 전부 통과 · skip 0 | 없음 |
+| `1` | **실패**(fail>0). `TC_TEST_STRICT=1` 이면 skip도 여기로 | 코드·설계를 본다 |
+| `2` | **판정 없음**(fail 0인데 skip>0) — 그만큼은 아예 돌지 않았다 | **환경**을 본다(의존성 설치) |
+
+`loop-*.mjs`·`calendar-adapter.mjs` 가 쓰는 0/1/2 규약과 같은 뜻이다(아래 각 절의 「종료코드」).
+**`2`를 통과로 읽지 말 것.**
+
+> **왜 생겼나.** 옛 판은 jsdom이 없으면 Layer 2 파일마다 *빈 함수*를 `test()` 로 등록해
+> 「생략」이라는 이름의 **통과 1건**을 만들었다. 실측(2026-09-02): jsdom을 막으면
+> `820 pass` → `598 pass + 가짜 통과 4건`, **fail 0 · exit 0** — 222건이 조용히 사라진 채 초록이었다.
+> 지금은 같은 상황에서 `598 pass / 0 fail / 4 skip` · **exit 2** 가 나온다.
+
+### 환경변수
+
+| 변수 | 효과 |
+|---|---|
+| `TC_TEST_STRICT=1` | **skip을 fail로 취급** → exit 1. 릴리스 게이트가 켜는 스위치다(「돌지 않았다」를 통과로 읽지 않기 위해) |
+| `TC_TEST_FORCE_MISSING=jsdom` | 설치돼 있어도 없는 척한다. **게이트 자체를 시험하는 주입구**(`loop-*.mjs` 의 `TC_TEST_INJECT_TRUNC` 와 같은 관례). 쉼표로 여러 개 |
+
+```powershell
+node tests/run-tests.mjs                                     # 정상 → 0
+$env:TC_TEST_FORCE_MISSING='jsdom'; node tests/run-tests.mjs # jsdom 부재 재현 → 2
+$env:TC_TEST_STRICT='1';            node tests/run-tests.mjs # 위 + 엄격 → 1
+Remove-Item Env:TC_TEST_FORCE_MISSING, Env:TC_TEST_STRICT
+```
+
+### ★ `tests/node_modules` 는 심링크다 (환경 사실 — 고치지 말 것)
+
+이 워크트리(`task-calendar-db/`)의 `tests/node_modules` 는 main 워크트리
+`console/task-calendar/tests/node_modules` 를 가리키는 **디렉터리 심링크**다(실물은 하나, 공유).
+지우거나 이름을 바꾸면 **main 워크트리의 테스트가 함께 죽는다**.
+
+그래서 **새 클론·폐쇄망 반입 PC에는 jsdom이 없다** — 거기서는 상시 exit 2 가 정상이다.
+채우는 방법은 두 가지뿐이다.
+
+- 개발 PC: `cd tests && npm ci`
+- 폐쇄망: 같은 Node 버전 PC에서 만든 `tests/node_modules` 를 통째로 반입(레지스트리 접근 없음)
+
+jsdom이 없으면 러너가 이 세 줄을 요약 뒤에 직접 찍는다(사람이 문서를 찾아 헤매지 않도록).
 
 ## 구조
 
 ```
 tests/
-├─ run-tests.mjs              러너 — tests/*.test.mjs 전부 import 후 run() 호출, 결과 요약·실패 시 exit 1
-├─ harness.mjs                공용 하네스(test/run, loadAppSource, extractFunction, FakeDoc)
+├─ run-tests.mjs              러너 — tests/*.test.mjs 전부 import 후 run() 호출, 결과 요약·종료코드(0/1/2)·jsdom 부재 힌트
+├─ harness.mjs                공용 하네스(test/skip/run, importOptional, loadAppSource, extractFunction, FakeDoc)
 ├─ harness-selftest.test.mjs  하네스 자체 검증 테스트
 ├─ *.test.mjs                 기본 스위트 — 러너가 이름순으로 자동 수집한다(목록은 파일 시스템이 정본)
 ├─ ── 아래는 ★ 별도 실행 전용(`.mjs`라 자동수집에서 빠진다. 개명 금지) ──
@@ -403,10 +447,40 @@ node tests/calendar-adapter.mjs --keep                # 복제본·프로브를 
 > **`2`를 통과로 읽지 말 것.** `1`은 설계·코드를 봐야 하고, `2`는 환경을 봐야 한다.
 > ★ `login_id`가 `app_user`에 0행이면 **user_id를 만들어 내지 않고** 멈춘다(§3.6) — 없는 사람의 캘린더를 새로 파는 셈이 되기 때문이다.
 
+## schema-guards.test.mjs — 재구축·마이그레이션 정합 가드 (Layer 1, 기본 스위트)
+
+DB도 jsdom도 없이 `db/deploy/*.sql` **텍스트만** 읽어 재적용 가능성을 본다.
+`schema-calendar.sql` 에는 `SET FOREIGN_KEY_CHECKS=0` 이 **없어서** DROP/CREATE의 *순서*가 실행 성패를 가른다.
+
+| 가드 | 무엇 | 안 지키면 |
+|---|---|---|
+| DROP ⊇ CREATE | 만드는 표는 전부 먼저 지운다 | 재적용이 `ERROR 1050` |
+| DROP-only 허용 목록 | `cal_audit_trash`(폐지 §7.5)만 예외 — 사유는 테스트 파일 안에 | 재생성 누락과 구분 불가 |
+| DROP 순서 | 자식 → 부모 | `ERROR 3730` |
+| CREATE 순서 | 부모 → 자식 | FK 대상 부재(`ERROR 1824/3734`) |
+| 체인 연속성 | `migrate-*.sql` 의 `schema_version` (N→M)이 구멍·중복 없이 정본 값까지 | 마이그레이션한 DB와 새로 구축한 DB의 버전이 어긋난다 |
+
+실측 체인: `sort-order 3→4` → `repo-flag 4→5` → `report-daily 5→6` → `report-weekly 6→7` → `sent-only 7→8` = 정본 `'8'`.
+`07-24-uniqueness` · `08-24-user-id` · `08-24-org-id` 3개는 **`cal_schema_meta` 를 아예 건드리지 않아** 제외 목록(`PRE_VERSION_FILES`)에 사유와 함께 있고,
+검사가 매번 "정말 안 건드리는가"를 되확인한다 — 나중에 버전 갱신이 들어가면 제외가 거짓이라고 실패한다.
+
+검출기 자신은 **변이 시험 9건**으로 증명한다(이 저장소 관례). 그중 하나는 실제로 났던 결함
+(`c4cf813` — 8-31 보고 기록 3표가 DROP 블록에서 빠져 있던 것)을 그대로 재현해 잡는지 본다.
+파싱은 SQL 전용 마스커로 `--`/`#`/`/* */` 주석과 문자열 리터럴을 지운 판에서 한다
+(harness의 `skipString` 은 JS용 — SQL의 `''` 이스케이프·백틱 식별자를 모른다).
+
 ## 하네스 API (harness.mjs)
 
 - `test(name, fn)` / `run()` — 테스트 등록·일괄 실행. `fn`은 sync/async 모두 가능.
-  실패 시 이름+스택 출력, 요약(`N pass / M fail`), fail>0이면 `process.exitCode=1`.
+  실패 시 이름+스택 출력, 요약(`N pass / M fail / K skip`).
+  종료코드는 fail>0 → `1`, fail 0인데 skip>0 → `2`, 둘 다 0 → `0`.
+- `skip(name, reason, detail)` (= `test.skip`) — **판정 없음**으로 등록한다. 빈 `test()` 로 초록을 만들지 말 것.
+  `reason`은 요약의 집계 키(짧게, 예: `'jsdom 미설치'`), `detail`은 그 줄에만 붙는 자유 문구.
+  `TC_TEST_STRICT=1` 이면 fail로 승격된다.
+- `importOptional(spec)` — 없을 수도 있는 모듈 로드(없으면 `null`). `TC_TEST_FORCE_MISSING` 에 걸리면 있어도 `null`.
+- `SKIP_NO_JSDOM` — jsdom 미설치 skip의 공용 사유 문자열(러너가 이 키를 보고 설치 힌트를 찍는다).
+- `countTestsBelow(fileUrl, marker)` — marker 뒤의 `test(` **자리 수**를 정적으로 센다(주석·문자열 제외).
+  skip 줄에 사라진 규모를 붙이는 용도 — 루프 등록분을 못 세므로 정확한 건수가 아니다.
 - `assert` — Node `node:assert` 재수출(편의).
 - `loadAppSource()` — `../task-calendar-prototype.html`을 UTF-8 텍스트로 반환.
 - `extractFunction(source, fnName)` — 소스에서 `function fnName(...){...}` 선언을 중괄호 짝 맞춰
@@ -425,6 +499,8 @@ node tests/calendar-adapter.mjs --keep                # 복제본·프로브를 
 - 각 파일은 `harness.mjs`에서 `test`/`assert` 등을 import하고 `test(name, fn)`으로 등록만 한다.
   `run()`은 러너가 한 번만 호출하므로 테스트 파일에서 부르지 말 것.
 - 앱 본체(`task-calendar-prototype.html`)는 **수정하지 않는다** — 소스를 읽어 검증만 한다.
+- 의존성이 없어 못 도는 테스트는 **빈 `test()` 로 초록을 만들지 말고 `skip(name, reason, detail)`** 을 쓴다.
+  「돌지 않았다」와 「통과했다」가 요약에서 구분되지 않으면 게이트가 조용히 거짓말을 한다(실제로 그랬다 — 위 「종료코드」).
 - 주석은 이 리포 관례대로 한국어로 간결하게.
 - fixture의 **필드명은 실제 netcus 폼과 동일**해야 한다(값이 아니라 name 속성이 계약).
 

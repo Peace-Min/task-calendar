@@ -1,7 +1,8 @@
 // Layer 2 — 실제 앱을 jsdom에 부팅해 전역 함수(toXML/fromXML/collectReportData/expandOccurrences)를
 // 그대로 호출·검증한다. 이 함수들은 페이지 전역 스코프의 bare global이라 window.eval로 직접 도달 가능.
-// jsdom 미설치 시(폐쇄망 로컬 등) graceful-skip — 러너는 Layer 1만으로도 green. CI는 jsdom을 설치해 여기까지 돈다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+// jsdom 미설치 시(폐쇄망 로컬 등)는 skip = **판정 없음**이다 — 러너가 exit 2 로 끝난다(green 아님).
+// CI는 jsdom을 설치해 여기까지 돈다. 릴리스 게이트는 TC_TEST_STRICT=1 로 이 skip을 fail로 승격한다.
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 
 // ── 토큰 드리프트 가드(jsdom 불필요 — 소스 텍스트 스캔) ─────────────────
 // var(--fs-*/--sp-*/--r-*/--lh-*)로 참조되는 스케일 토큰이 :root에 실제로 정의돼 있는지 검사한다.
@@ -83,13 +84,12 @@ test('보고서 미리보기: REPORT_MIRROR_BASE_PX는 --fs-emph 픽셀값과 �
 });
 
 // ── jsdom 로드(없으면 생략) ─────────────────────────────────────────────
-let JSDOM = null;
-try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
+const JSDOM = (await importOptional('jsdom'))?.JSDOM || null;
 
 if (!JSDOM) {
-  test('app-context: jsdom 미설치 — app-context 테스트 생략', () => {
-    console.log('      jsdom 미설치 — app-context 테스트 생략');
-  });
+  // ★ 통과가 아니라 '판정 없음'으로 센다 — 옛 판은 빈 test() 를 등록해 초록을 만들었다.
+  skip('app-context: jsdom 미설치 — app-context 테스트를 돌리지 못했다', SKIP_NO_JSDOM,
+       `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수 — 루프 등록분은 못 센다)`);
 } else {
   // ── 앱 부팅(1회) — HOST=false(webview 없음) → BrowserPlatform 경로. beforeParse로 최소 shim만 주입. ──
   let dom, w, bootErr = null;

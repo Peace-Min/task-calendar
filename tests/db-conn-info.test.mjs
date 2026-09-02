@@ -13,7 +13,7 @@
 //       그래서 ⑥-c의 단언은 '그대로 있다'에서 '되돌아오지 않는다'로 뒤집혔다.
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src  = loadAppSource();
@@ -266,15 +266,14 @@ test('변이⑩: 설정창에 계정 섹션을 되살리면 accountSectionGone �
 });
 
 // ══ 실제 렌더(jsdom) — 문자열 검사만으로는 못 보는 것 ═══════════════════
-// 미설치 시 graceful-skip(다른 Layer 2 테스트와 같은 관례).
+// 미설치 시 skip = 판정 없음(다른 Layer 2 테스트와 같은 관례. 통과가 아니다 — 러너 exit 2).
 
-let JSDOM = null;
-try { ({ JSDOM } = await import('jsdom')); } catch (_) { /* 미설치 */ }
+const JSDOM = (await importOptional('jsdom'))?.JSDOM || null;
 
 if (!JSDOM) {
-  test('DB접속정보(jsdom): jsdom 미설치 — 렌더 테스트 생략', () => {
-    console.log('      jsdom 미설치 — 렌더 테스트 생략');
-  });
+  // ★ 통과가 아니라 '판정 없음'으로 센다(harness.skip → exit 2).
+  skip('DB접속정보(jsdom): jsdom 미설치 — 렌더 테스트를 돌리지 못했다', SKIP_NO_JSDOM,
+       `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수 — 루프 등록분은 못 센다)`);
 } else {
   let w = null, bootErr = null;
   try {
