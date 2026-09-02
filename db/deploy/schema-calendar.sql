@@ -977,16 +977,12 @@ PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 -- ---------- 멱등 재구축용 DROP — 자식(FK 참조하는 쪽) → 부모 순 ----------
 -- 위 경고를 다시 읽을 것. 아래 DROP 줄들이 캘린더 데이터를 지운다.
 --
--- ★★ 2026-08-31 미해결 — 이 DROP 목록이 아래 CREATE TABLE 목록보다 **짧다.**
---   2026-08-31 에 늘어난 cal_report_daily · cal_report_hours · cal_report_weekly 세 표가
---   여기 없다. 그래서 이 파일은 지금 **멱등이 아니다** — 그 세 표가 이미 있는 DB 에 다시 돌리면
---   DROP 을 다 지나간 뒤 CREATE TABLE cal_report_daily 에서 ERROR 1050 으로 죽고, 그때는 앞의
---   표들이 이미 지워진 뒤다(DDL 은 롤백이 없다). 위 선행조건 가드는 이 경우를 보지 않는다 —
---   그 가드가 검사하는 것은 app_user 쪽 선행조건이지 이 파일 자신의 DROP/CREATE 짝이 아니다.
---   빈 DB 에 새로 짓는 경로에는 영향이 없어 지금까지 드러나지 않았다.
---   고칠 때는 DROP 줄 셋을 자식→부모 순으로 더한다 — cal_report_hours 가 cal_report_daily 를
---   FK 로 참조하므로 **hours 가 먼저**이고, cal_report_weekly 는 app_user 만 참조해 순서 무관이다.
---   ※ 발견한 라운드가 '문서·주석만 고친다'로 묶여 있어 SQL 을 손대지 않았다. 고치면 이 주석을 지울 것.
+-- ★ DROP 목록은 CREATE TABLE 목록보다 **길다**(폐지된 cal_audit_trash 를 더 지우므로). 짧으면
+--   그 자체가 결함이다 — 빠진 표가 있으면 재적용 2회차가 DROP 을 다 지나간 뒤 그 표의 CREATE 에서
+--   ERROR 1050 으로 죽고, 그때는 앞의 표들이 이미 지워진 뒤다(DDL 은 롤백이 없다). 빈 DB 에 새로
+--   짓는 경로에서는 드러나지 않으니, 표를 더할 때 여기를 같이 고치는 것을 잊지 말 것.
+--   (2026-08-31 에 cal_report_* 세 표를 더하면서 실제로 그 상태가 됐고, 재적용 2회차 오류 0 을
+--    실측해 닫았다 — 자식→부모 순이라 cal_report_hours 가 cal_report_daily 보다 먼저다.)
 --
 -- ★ 폐지된 표도 지운다. cal_audit_trash 는 감사 트리거와 함께 폐기됐지만(설계 §7.5),
 --   그 전에 이 키트를 한 번이라도 돌린 DB 에는 실물이 남아 있다. '안 만든다'만으로는

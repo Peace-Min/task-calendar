@@ -169,17 +169,30 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 # ============================================================================
 #  설계 §5.1 표 명부 — 이 파일에 박아 두는 유일한 기대값(머리말 참조)
 # ============================================================================
+#  ※ 순서는 schema-calendar.sql 의 CREATE TABLE 순서에 맞춰 적는다 — 다만 **읽는 사람을 위한
+#    것이지 검사의 근거가 아니다.** 아래 대조(≈421~425행)는 집합의 포함관계와 개수만 본다.
+#    실행 순서를 좌우하는 것은 이 배열이 아니라 schema-calendar.sql 자신의 DROP/CREATE 순서다
+#    (자식→부모 DROP, 부모→자식 CREATE). 여기를 알파벳순으로 '정리'해도 동작은 같지만,
+#    그러면 정본 파일과 눈으로 대조할 수 없게 되므로 하지 말 것.
+#  ※ 2026-08-31 에 cal_report_daily·cal_report_hours·cal_report_weekly 세 표가 늘어
+#    13 → 16 이 됐다. 이 배열이 그때 함께 늘지 않아, 스키마는 16표인데 명부는 13표인 채로
+#    '명부에 없는 표가 있습니다' Die 가 났다(= 폐쇄망 원큐 구축의 진입점이 막혔다).
+#    표를 더하거나 뺄 때 이 배열을 같이 고치는 것이 이 파일에서 유일하게 사람 몫인 일이다.
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
   'cal_todo','cal_todo_day_note','cal_room','cal_task_hours',
-  'cal_attendance','cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta'
+  'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly',
+  'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta'
 )
 # FK 가 참조해도 되는 '기존' 표. 여기 없는 표를 스키마가 참조하면 시작조차 하지 않는다.
 $ALLOWED_REF_TABLES = @('app_user')
 # ※ 옛 $ZERO_GRANT_TABLES(= cal_audit_trash. 앱 계정에 권한이 한 줄도 없어야 하는 표)는
-#   그 표가 폐지되면서 함께 없어졌다. 지금 규칙은 더 단순하다 — cal_* 13개 **전부**에
+#   그 표가 폐지되면서 함께 없어졌다. 지금 규칙은 더 단순하다 — 위 명부의 cal_* **전부**에
 #   GRANT 가 한 줄씩 있어야 한다. 예외를 하나도 두지 않으므로 '빠진 것'과 '일부러 뺀 것'을
 #   구분할 필요 자체가 없어졌다(아래 $calUngranted 검사가 그대로 Die 한다).
+#   ※ 여기에 숫자를 다시 적지 않는다. 이 규칙을 '13개 전부'라고 적어 둔 판이 있었고, 명부가
+#     16으로 늘어난 뒤에도 그 문장이 남아 다음 사람에게 '명부가 고장났다'고 읽혔다.
+#     세는 것은 사람이 아니라 $calUngranted 다.
 
 # 종료코드 — 호출자(init-calendar.cmd·무인 실행)가 결과를 구분할 수 있어야 한다.
 # 표와 그 근거는 머리말 참조. 여기와 머리말과 init-calendar.cmd 세 곳이 같은 값을 적는다.
@@ -460,10 +473,28 @@ foreach($m in [regex]::Matches($schemaCode,'(?i)CONSTRAINT\s+`?([A-Za-z0-9_]+)`?
 # 이 스키마에서 가장 잦은 사고라, 이름만 맞는지 보는 것으로는 부족하다.
 # ★ 이름 패턴을 fk_ 로 좁히지 않는다. 좁히면 다른 접두로 명명한 FK 가 기대표에 안 들어가고,
 #   게이트 5-4 의 규칙 비교가 ContainsKey 로 조용히 건너뛴다(적대검증 경미11).
+# ★ 2026-09-02 — 두 절의 **순서를 가정하지 않는다.** 이전판은 'ON UPDATE … ON DELETE …' 한 순서만
+#   받는 정규식이었는데, 2026-08-31 에 늘어난 cal_report_* 세 FK 는 반대 순서('ON DELETE … ON UPDATE …')
+#   로 적혀 있다. MySQL 은 둘 다 받으므로 표는 멀쩡히 서고, 파싱만 실패해 아래 $fkNoRule 이 Die 했다
+#   (명부 13→16 을 고치자마자 바로 이 자리에서 다시 막혔다 — 실측).
+#   그래서 FK 선언 하나를 잘라낸 뒤 그 안에서 두 절을 **이름으로** 따로 찾는다. 순서가 어느 쪽이든
+#   같은 값이 같은 칸에 들어가고, 위치로 짚지 않으므로 둘이 뒤바뀔 수 없다.
 $expFkUpd = @{}; $expFkDel = @{}
-foreach($m in [regex]::Matches($schemaCode,'(?is)CONSTRAINT\s+`?([A-Za-z0-9_]+)`?\s+FOREIGN\s+KEY.{0,400}?ON\s+UPDATE\s+(RESTRICT|CASCADE|SET\s+NULL|NO\s+ACTION)\s+ON\s+DELETE\s+(RESTRICT|CASCADE|SET\s+NULL|NO\s+ACTION)')){
-  $expFkUpd[$m.Groups[1].Value] = (($m.Groups[2].Value -replace '\s+',' ').ToUpper())
-  $expFkDel[$m.Groups[1].Value] = (($m.Groups[3].Value -replace '\s+',' ').ToUpper())
+foreach($m in [regex]::Matches($schemaCode,'(?is)CONSTRAINT\s+`?([A-Za-z0-9_]+)`?\s+FOREIGN\s+KEY')){
+  $name = $m.Groups[1].Value
+  # 이 FK 하나의 선언 범위 — 다음 제약(CONSTRAINT) · 표 끝(ENGINE=) · 문장 끝(;) 중 먼저 오는 데까지.
+  # ★ 경계를 자르지 않으면, 참조 동작을 생략한 FK 가 **다음** FK 의 ON UPDATE/DELETE 를 제 것으로
+  #   읽어 간다. 그러면 규칙이 뒤집혀도 게이트가 초록불을 낸다 — 이 검사가 막으려는 바로 그 사고다.
+  $tailStart = $m.Index + $m.Length
+  $tail      = $schemaCode.Substring($tailStart, [Math]::Min(400, $schemaCode.Length - $tailStart))
+  $nx = [regex]::Match($tail,'(?is)\bCONSTRAINT\b|\bENGINE\s*=|;')
+  if($nx.Success){ $tail = $tail.Substring(0, $nx.Index) }
+  $um = [regex]::Match($tail,'(?is)\bON\s+UPDATE\s+(RESTRICT|CASCADE|SET\s+NULL|NO\s+ACTION)\b')
+  $dm = [regex]::Match($tail,'(?is)\bON\s+DELETE\s+(RESTRICT|CASCADE|SET\s+NULL|NO\s+ACTION)\b')
+  if($um.Success -and $dm.Success){
+    $expFkUpd[$name] = (($um.Groups[1].Value -replace '\s+',' ').ToUpper())
+    $expFkDel[$name] = (($dm.Groups[1].Value -replace '\s+',' ').ToUpper())
+  }
 }
 $fkNoRule = @($expFks | Where-Object { -not $expFkUpd.ContainsKey($_) })
 if($fkNoRule.Count -gt 0){ Die "FK 의 참조 동작(ON UPDATE/ON DELETE)을 파싱하지 못한 제약이 있습니다: $($fkNoRule -join ', '). 이대로 두면 CASCADE/RESTRICT 가 뒤집혀도 게이트가 조용히 건너뜁니다 — schema-calendar.sql 의 표기를 확인하세요." }
@@ -590,7 +621,10 @@ try {
   if($lackTables.Count -gt 0){ Die "'$DbName' 에 다음 테이블이 없습니다: $($lackTables -join ', '). FK 대상이거나 권한 대상이라 지금 진행하면 도중에 실패합니다(taskmgr-company-data\apply.cmd 로 사용자·조직 테이블을 먼저 구축)." }
   Ok "참조 대상 테이블 확인: $($needExisting -join ', ')"
 
-  # 1-4) ★ app_user.user_id — cal_* 13표 전부의 소유자 키(2026-08-24 키 전환).
+  # 1-4) ★ app_user.user_id — cal_schema_meta 를 뺀 cal_* 전부의 소유자 키(2026-08-24 키 전환).
+  #   숫자를 적지 않는다: 그 목록의 정본은 schema-calendar.sql 에서 뽑는 $expUserIdTables 다
+  #   (예전에는 여기에 '13표'라고 적혀 있었는데, 그 값은 표가 늘 때마다 뒤처지는 데다
+  #    cal_schema_meta 를 세고 있어 처음부터 한 개 많았다).
   #   옛 판은 여기서 login_id 의 타입·콜레이션을 봤다. 그 컬럼은 이제 cal_* 어디에서도 참조되지 않는다
   #   (app_user 안의 UNIQUE 로 남아 외부 로그인 입구 노릇만 한다). 지금 FK 가 매달린 곳은 user_id 다.
   #   무엇을 보는가 — 셋 다 '없으면 CREATE 가 도중에 죽는' 조건이다:
@@ -607,7 +641,7 @@ try {
   $actUserKey  =  Q "SELECT COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';"
   if($actUserType -eq ""){
     $actUserPk = Q "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND CONSTRAINT_NAME='PRIMARY';"
-    Die "app_user 에 user_id 컬럼이 없습니다(현재 PK: $actUserPk). 2026-08-24 키 전환으로 cal_* 13표는 전부 app_user.user_id($expUserType)를 참조합니다 — 지금 진행하면 FK $nUserFk 개가 전부 errno 150 으로 실패하고, 그 전에 옛 cal_* 는 이미 DROP 된 뒤라 반파 상태가 됩니다. 기존 DB 라면 $MIGRATE_HINT 를 먼저 적용하고, 새 DB 라면 taskmgr-company-data\apply.cmd(01-schema-users.sql)로 사용자 표를 먼저 구축하세요."
+    Die "app_user 에 user_id 컬럼이 없습니다(현재 PK: $actUserPk). 2026-08-24 키 전환으로 cal_* 는 cal_schema_meta 를 뺀 전부가 app_user.user_id($expUserType)를 참조합니다 — 지금 진행하면 FK $nUserFk 개가 전부 errno 150 으로 실패하고, 그 전에 옛 cal_* 는 이미 DROP 된 뒤라 반파 상태가 됩니다. 기존 DB 라면 $MIGRATE_HINT 를 먼저 적용하고, 새 DB 라면 taskmgr-company-data\apply.cmd(01-schema-users.sql)로 사용자 표를 먼저 구축하세요."
   }
   if($actUserType -ne $expUserType){ Die "app_user.user_id 타입 불일치 — schema-calendar.sql 은 [$expUserType] 를 전제하는데 실제는 [$actUserType] 입니다. InnoDB 는 폭·부호가 다르면 FK 를 만들지 않습니다 — cal_* 의 app_user 참조 FK $nUserFk 개가 전부 실패합니다." }
   if($actUserNull -ne 'NO'){ Die "app_user.user_id 가 NULL 을 허용합니다 — 소유자 키에 NULL 이 들어가면 그 사람의 캘린더 행이 주인 없는 행이 됩니다(cal_* 는 전부 NOT NULL 로 만듭니다). NOT NULL 로 고치세요." }
@@ -773,7 +807,9 @@ try {
   # ★ 있어야 할 것만 세면 '남아 있는 것'을 못 본다. 실제로 그 사고가 났다 — 폐지된 cal_audit_trash 가
   #   DROP 목록에 없어 옛 배포분에 고아로 살아남았는데, 이 게이트가 '기대한 표가 전부 있음'만 보고
   #   초록불을 냈다. 그 상태에서 문서·GRANT 가 세는 표 수와 DB 의 실제 표 수가 하나 어긋난다
-  #   (당시 숫자는 12 대 13이었다. 지금 명부는 13개이므로 그 숫자를 지금 값으로 읽지 말 것).
+  #   (당시 숫자는 12 대 13이었다 — 그 숫자를 지금 값으로 읽지 말 것. 지금 값은 위 $DESIGN_TABLES 가
+  #    말한다. 이 줄이 예전에는 '지금 명부는 13개'라고 현재값을 함께 적었는데, 명부가 16으로 늘자
+  #    그 문장 자신이 낡은 숫자의 출처가 됐다 — 그래서 현재값을 다시 적지 않는다).
   #   schema-calendar.sql 이 만들지 않는 cal_* 가 DB 에 있으면 실패로 처리한다.
   $extraTbl = @($gotTables | Where-Object { $expTables -notcontains $_ })
   if($extraTbl.Count -gt 0){
@@ -932,7 +968,15 @@ try {
     $script:tmpOut   = Join-Path $env:TEMP ("calprobe_"+[IO.Path]::GetRandomFileName()+".txt")
     # status='' 는 chk_cal_attendance_status 위반이다(IN 목록에 '' 가 없다 — 그것이 '미기록=행 없음' 계약).
     # work_date 는 실데이터와 겹치지 않는 고정 과거일이라 PK(user_id, work_date)가 진짜 행과 부딪히지 않는다.
-    $probeSql = "START TRANSACTION;`r`nINSERT INTO cal_attendance (user_id, work_date, status, overtime) SELECT user_id, '1970-01-01', '', 0 FROM app_user LIMIT 1;`r`nROLLBACK;`r`n"
+    # ★ 2026-09-02 — updated_at 을 명시 대입한다. 없으면 CHECK 까지 가지도 못한다:
+    #   그 컬럼은 2026-08-26 에 DATETIME(3) NOT NULL **기본값 없이** 신설됐고(§5.3 '시각' 규칙상
+    #   서버 함수를 달지 않는다), STRICT 모드(8.x 기본)는 값이 빠진 NOT NULL 을 CHECK 평가 **전에**
+    #   ERROR 1364 로 거부한다. 그래서 이 시험은 2026-08-26 이후 줄곧 '시험 불성립'으로 끝났다
+    #   — 다행히 판정을 종료코드가 아니라 오류 번호로 하도록 짜 둔 덕에 초록불로 새지는 않았다.
+    #   값 자체는 아무 의미가 없다(어차피 ROLLBACK 한다). 위반해야 하는 것은 status 뿐이다.
+    #   ※ 이 표에 NOT NULL·기본값 없는 컬럼이 또 늘면 여기도 같이 늘려야 한다. 빠뜨리면
+    #     ERROR 1364 로 '시험 불성립'이 되고, 그건 조용한 통과가 아니라 게이트 실패로 드러난다.
+    $probeSql = "START TRANSACTION;`r`nINSERT INTO cal_attendance (user_id, work_date, status, overtime, updated_at) SELECT user_id, '1970-01-01', '', 0, '1970-01-01 00:00:00.000' FROM app_user LIMIT 1;`r`nROLLBACK;`r`n"
     [IO.File]::WriteAllText($script:tmpProbe, $probeSql, (New-Object System.Text.UTF8Encoding($false)))
     cmd /c "`"$mysql`" --defaults-extra-file=`"$cnf`" --default-character-set=utf8mb4 `"$DbName`" < `"$($script:tmpProbe)`" > `"$($script:tmpOut)`" 2>&1"
     $probeExit = $LASTEXITCODE

@@ -4,7 +4,8 @@
 -- ----------------------------------------------------------------------------
 --  선행 조건 두 가지 — 어기면 이 파일은 그 줄에서 시끄럽게 멈춘다:
 --    1) 계정이 있을 것    (db/deploy/create-app-user.sql 이 CREATE USER 를 한다)
---    2) cal_* 테이블이 있을 것 (db/deploy/schema-calendar.sql 이 13개를 만든다)
+--    2) cal_* 테이블이 있을 것 (db/deploy/schema-calendar.sql 이 만든다 — 개수는 그 파일의
+--       CREATE TABLE 목록이 정본이다. 여기에 숫자를 적으면 표가 늘 때마다 뒤처진다)
 --       배포 순서: schema-calendar.sql → 이 파일.
 --  ※ 2026-08-11 결정으로 감사 트리거(triggers-calendar.sql)는 폐지됐다. 예전에는 '트리거가 먼저
 --    적용돼 있을 것'이 세 번째 선행 조건이자 아래 DELETE 부여의 근거였다. 그 근거는 이제 없다 —
@@ -207,7 +208,7 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 -- ---------- 이 파일에 '없는' 동사 — 의도적으로 주지 않는 것들 ----------
 -- ※ 옛 cal_audit_trash(감사 휴지통) 절이 여기 있었다. 그 표는 2026-08-11 결정으로 폐지됐고
 --   스키마에도 없다. 그러므로 지금 이 파일이 만드는 cal_* 권한 표에는 '권한 0줄' 대상이 없다 —
---   schema-calendar.sql 이 만드는 13개 표 전부에 GRANT 가 한 줄씩 붙어야 한다(아래 확인 2b).
+--   schema-calendar.sql 이 만드는 cal_* **전부**에 GRANT 가 한 줄씩 붙어야 한다(아래 확인 2b).
 -- ※ TRIGGER 권한은 이 파일 어디에도 없다(의도). 감사와 무관하게 지금도 주면 안 된다:
 --   TRIGGER 는 앱 계정이 자기 표에 임의 트리거를 만들 수 있게 하는 권한이라, 노출된 자격으로
 --   붙은 사람이 '모든 INSERT 를 조용히 바꿔치기하는' 코드를 서버 안에 심을 수 있다.
@@ -233,15 +234,17 @@ FLUSH PRIVILEGES;
 --  1) 권한 전체 눈으로 보기
 --     SHOW GRANTS FOR 'taskmgr_app'@'%';
 --
---  2) 캘린더 13개 테이블 전부에 권한이 붙었는지 (기대값 13 — 이제 '권한 0줄' 대상 표가 없다)
---     ※ 2026-08-24 명부 대조 완료: schema-calendar.sql 의 CREATE TABLE 은 13개이고, 이 파일이
---       GRANT 를 거는 표와 **이름까지** 일치한다(격리 DB 에 schema-calendar.sql 을 실제로 적용해
---       확인 — cal_category · cal_entry · cal_entry_except · cal_entry_commit · cal_todo ·
---       cal_todo_day_note · cal_room · cal_task_hours · cal_attendance · cal_user_pref ·
---       cal_user_rev · cal_migration_log · cal_schema_meta).
---       그래도 정본은 아래 2b) 의 차집합 쿼리다 — 위 목록은 사본이고 사본은 반드시 뒤처진다.
---     ※ 스키마에 테이블을 더하거나 빼면 이 숫자도 같이 고칠 것. 숫자가 뒤처지면 게이트가
---       '권한이 통째로 빠진 새 테이블'을 통과시킨다(cal_schema_meta 를 더할 때 실제로 겪었다).
+--  2) 캘린더 테이블 **전부**에 권한이 붙었는지 (기대값 = schema-calendar.sql 의 CREATE TABLE 개수.
+--     이제 '권한 0줄' 대상 표가 없으므로 예외가 하나도 없다)
+--     ※ 여기에 숫자도 표 이름 목록도 적지 않는다. 예전에는 '기대값 13' 과 표 이름 13개를 함께
+--       적어 두고 '사본은 반드시 뒤처진다'고 스스로 경고했는데, 2026-08-31 에 cal_report_daily ·
+--       cal_report_hours · cal_report_weekly 가 늘자 정확히 그대로 뒤처졌다. 사본을 지운다.
+--     ※ 명부 대조는 사람이 아니라 init-calendar.ps1 이 한다 — 그 스크립트가 schema-calendar.sql 의
+--       CREATE TABLE 목록과 이 파일의 GRANT 대상 표를 **이름까지** 맞춰 보고, 권한이 0줄인 cal_* 가
+--       하나라도 있으면 Die 한다($calUngranted). 2026-09-02 격리 DB 실측으로 전수 일치 확인.
+--     ※ 아래 2b) 의 차집합 쿼리가 사람이 손으로 보는 정본이다. 숫자를 세지 말 것 —
+--       숫자가 뒤처지면 '권한이 통째로 빠진 새 테이블'이 그대로 통과한다(실제로 두 번 겪었다:
+--       cal_schema_meta 를 더할 때, 그리고 cal_report_* 를 더할 때).
 --     SELECT COUNT(DISTINCT TABLE_NAME) FROM information_schema.TABLE_PRIVILEGES
 --      WHERE GRANTEE LIKE '%taskmgr_app%' AND TABLE_SCHEMA = 'taskmgr'
 --        AND TABLE_NAME LIKE 'cal\_%';
