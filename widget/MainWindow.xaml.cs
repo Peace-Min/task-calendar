@@ -73,7 +73,10 @@ namespace TaskCalendarWidget
             ApplyWindowBounds();
             ApplyWindowIcon();   // 작업표시줄/Alt+Tab 버튼 브랜드 아이콘(트레이 모드 노출 시 빈 아이콘 방지)
             _netcus = new NetcusService(this);   // Env/DataDir은 라이브 getter로 읽으므로 이른 생성 안전
-            _projectDb = new ProjectDb(_dataDir, Log);   // 과제 DB(READ) — 같은 데이터 폴더에 db-config.json 저장
+            _projectDb = new ProjectDb(_dataDir, Log);   // 과제 DB. 접속정보는 DeployConfig 상수이고 이 폴더에 쓰는 설정 파일은 없다
+                                                        //   (옛 db-config.json 은 2026-07-30 에 폐지 — ProjectDb.cs 머리말 참조).
+                                                        //   _dataDir 을 넘기는 것은 쓰기 관문이 UserSession.Load(_dataDir) 로
+                                                        //   로그인 신원을 읽어야 하기 때문이다(ProjectDb.OpenWriteAsync).
         }
 
         // ============ 설정 ============

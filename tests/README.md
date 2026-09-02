@@ -18,15 +18,24 @@ tests/
 ├─ run-tests.mjs              러너 — tests/*.test.mjs 전부 import 후 run() 호출, 결과 요약·실패 시 exit 1
 ├─ harness.mjs                공용 하네스(test/run, loadAppSource, extractFunction, FakeDoc)
 ├─ harness-selftest.test.mjs  하네스 자체 검증 테스트
-├─ loop-ui-integrity.mjs      ★ 별도 실행 전용(라이브 위젯+MySQL 필요) — 아래 참조
-├─ loop-ui-visual.mjs         ★ 별도 실행 전용(라이브 위젯 필요·읽기 전용) — 레이아웃 결함 검출, 아래 참조
-├─ loop-org-compat.mjs        ★ 별도 실행 전용(MySQL 필요·복제본에서만 씀) — org_unit 완전 절단 루프, 아래 참조
-├─ calendar-adapter.mjs       ★ 별도 실행 전용(MySQL+.NET SDK 필요·복제본에서만 씀) — DB 읽기 계층(1b) 대조, 아래 참조
+├─ *.test.mjs                 기본 스위트 — 러너가 이름순으로 자동 수집한다(목록은 파일 시스템이 정본)
+├─ ── 아래는 ★ 별도 실행 전용(`.mjs`라 자동수집에서 빠진다. 개명 금지) ──
+├─ loop-ui-integrity.mjs      라이브 위젯(CDP) + MySQL — 구분/상태·발주처 무작위 편집 + 매 조작 DB 불변식
+├─ loop-ui-visual.mjs         라이브 위젯 · 읽기 전용 — 레이아웃 결함 검출
+├─ loop-org-compat.mjs        MySQL(복제본) — org_unit 완전 절단 루프
+├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
+├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
+├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
+├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
+├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
 ├─ fixtures/
 │  ├─ mock-pjm-daily.html     netcus 일간보고 폼 모의(pjm_work_view.jsp) — 필드명 실제와 동일
 │  └─ mock-pjm-weekly.html    netcus 주간보고 폼 모의(pjm_write.jsp) — 필드명 실제와 동일
 └─ README.md                  이 파일
 ```
+
+> **별도 실행 스크립트의 정본은 이 목록이 아니라 `tests/*.mjs` 중 `*.test.mjs`가 아닌 파일들**이다(`harness.mjs`·`run-tests.mjs` 제외). 여기 없는 파일이 보이면 이 표가 뒤처진 것이다 — 실제로 2026-09-02까지 넷만 적혀 있었다.
+> 아래 개별 절이 있는 것은 그중 일부다. 절이 없는 스크립트는 **파일 머리말이 사용법의 정본**이다.
 
 ## loop-ui-integrity.mjs — 루프 UI 정합성 테스트(실배포 전 게이트)
 
@@ -42,7 +51,9 @@ tests/
 계정 잠금(오프라인 시뮬레이션)과 하드삭제 검사에 DDL/계정 권한이 필요하다.
 
 ```
-# 사전: 위젯을 TC_DEBUG_PORT=9222로 띄우고, 관리자 인증(adminUnlocked)을 해 둔 상태여야 한다.
+# 사전: 위젯을 TC_DEBUG_PORT=9222로 띄우고, **edit_role이 editor/admin인 계정으로 로그인**해 둘 것.
+#       (이 스크립트는 로그인 UI 왕복을 하지 않는다 — 로그인 상태인지 확인만 하고 아니면 중단한다.
+#        옛 '관리자 인증(adminUnlocked)'은 v0.17.0에서 폐지됐다. 권한은 app_user.edit_role이 정한다.)
 #       PowerShell:  $env:TC_TEST_DB_ADMIN_PW = '<DB 관리자 비번>'
 node tests/loop-ui-integrity.mjs                 # 60조작, 고정 시드
 node tests/loop-ui-integrity.mjs --ops=120 --seed=42
@@ -309,14 +320,16 @@ DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제
   → 예전에는 대조 **직전에** `byId`로 배열을 접어 순서가 비교에서 통째로 빠져 있었다(자리가 뒤바뀌어도 "차이 0건").
   순서를 포기해야 하는 구간은 `ORDER_EXEMPT`에 적고 요약에 **반드시** 찍는다 — **지금은 비어 있다**
 - 맵(`taskHours`·`attendance`·`dayNotes`)의 **키 순서는 계약이 아니다.** 키 집합과 값만 본다
-- **계약상 차이표** — `entry.hours→null`(컬럼 폐지) · `commits→[]`(G-7) · `lsMigrated→true`(G-6) ·
-  `gitRepo`/`svnRepo`(로컬 소유). 이 표에 **없는** 차이는 전부 위반이고, 표에 있는 것은 요약에 **반드시 찍는다**
+- **계약상 차이표** — `entry.hours→null`(컬럼 폐지) · `category.usesRepo` 신설 키를 기준에 얹음(2026-08-27) ·
+  `gitRepo`/`svnRepo`(로컬 소유). 이 표에 **없는** 차이는 전부 위반이고, 표에 있는 것은 요약에 **반드시 찍는다**.
+  ※ 옛 항목 둘은 없어졌다 — `commits→[]`는 **G-7 개정(2026-09-01)으로 대조 대상이 됐고**(커밋을 지우던 정규화를 제거했다),
+  `lsMigrated→true`는 그 키 자체가 사라졌다. 차이표의 정본은 `calendar-adapter.mjs`의 `normalizeExpected()`다
 
 ### 계약별 개별 검사(깊은 비교와 별개로 돈다)
 
 | 코드 | 검사 |
 |---|---|
-| G-0 | 최상위 키가 정확히 15개인가(그 이상도 이하도 아니다) |
+| G-0 | 최상위 키가 정확히 **14개**인가(그 이상도 이하도 아니다). 명부는 `calendar-adapter.mjs`의 `TOP15` 상수가 정본이다 — **이름은 `TOP15`인데 항목은 14개**다(2026-09-01 `lsMigrated` 제거로 15 → 14가 됐고 상수 이름만 남았다) |
 | G-1b/c | `categoryId`가 실재하는 과제 **uid**인가. **숫자(cat_no)를 흘리면 오류 없이 전 일정이 '미분류'가 된다** · `taskHours` 안쪽 키도 uid |
 | G-1d | `user_id`·`*_no`·`sort_order`·`seq`·`uid`·DB 컬럼명 그대로가 state에 새지 않았나 |
 | G-2 | NULL → `''`(start/end time · endDate 둘 · due · recur.until · completedAt) |
@@ -324,9 +337,9 @@ DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제
 | G-3 | 시각 6자리가 ISO `Z` · 소수 **정확히 3자리**(자릿수가 흔들리면 §8 왕복 서명이 어긋난다) |
 | G-4 | `allDay`·`done`·`gitCommitBody`·`lsMigrated`·`dbGone`이 boolean(0/1이면 화면은 같고 내보내기만 달라진다) |
 | G-5 | `recurExcept`가 `except_date` 오름차순 · 근태에 빈 status 키 없음 · `taskHours` 값이 숫자(DECIMAL을 문자열로 흘리면 합계가 문자열 접합이 된다). ※ `entries`/`todos`의 **배열 순서**는 여기서가 아니라 `[ORDER]`가 기준과 인덱스별로 대조해 본다(더 강한 판정 — 날짜뿐 아니라 문서 순서를 본다). 옛 "`entry_date` 단조" 검사는 기준이 갖지 않은 성질을 요구하던 것이라 삭제됐다 |
-| G-6 | **`lsMigrated`가 true인가**(false면 `migrateLocalStores()`가 돌아 좀비 taskHours·attendance가 DB로 들어간다) · `hours`가 명시적 null · `source`/`dbGone`은 공식 과제에만 |
-| G-7 | `commits`가 `[]`인가 — **DB에 커밋이 실제로 있는 상태에서** 통과해야 의미가 있다(0행이면 「검출력 없음」으로 찍는다) |
-| §3.5/§3.6 | `performance_schema` 문장 다이제스트로 **관측**한다: `START TRANSACTION WITH CONSISTENT SNAPSHOT` · 격리수준·time_zone·lock_wait_timeout 설정 · **9개 표 전부** · `cal_entry_commit` 없음 · COMMIT · **연결 1회**. 다이제스트는 리터럴을 `?`로 지우므로 **값**(`REPEATABLE-READ`·`+00:00`·`5`)은 소스 텍스트로 따로 본다 |
+| G-6 | `hours`가 명시적 null(컬럼 폐지) · `source`/`dbGone`은 공식 과제에만(개인 과제에는 키 자체가 없다) · `usesRepo`는 DB에만 있는 거울값(경로에서 파생하지 않는다) · `gitRepo`/`svnRepo`는 로컬 저장소 몫. ※ 옛 **`lsMigrated` 검사는 2026-09-01에 삭제**됐다 — 자동이관(`migrateLocalStores()`)이 사라지면서 그 키 자체가 없어졌다(G-0 15 → 14) |
+| G-7 | **(2026-09-01 개정)** `entry.commits`를 **부팅 조회가 실어 왔는가** — DB 행수와 일치해야 한다. 개정 전에는 *"`commits`가 `[]`인가"*(지연 조회 전제)였는데, **그 지연 조회가 한 번도 배선된 적이 없어** DB 모드에서 커밋이 영영 빈 배열이었고 커밋 기반 일간·주간 보고가 통째로 비어 나갔다. **DB에 커밋이 실제로 있는 상태에서** 통과해야 의미가 있다(0행이면 「검출력 없음」으로 찍는다) |
+| §3.5/§3.6 | `performance_schema` 문장 다이제스트로 **관측**한다: `START TRANSACTION WITH CONSISTENT SNAPSHOT` · 격리수준·time_zone·lock_wait_timeout 설정 · **부팅 조회가 읽어야 하는 표 전부**(명부는 `calendar-adapter.mjs`의 부팅 조회 표 목록이 정본 — **`cal_entry_commit`도 2026-09-01 G-7 개정으로 들어왔다.** 예전엔 "없음"을 확인했다) · COMMIT · **연결 1회**. 다이제스트는 리터럴을 `?`로 지우므로 **값**(`REPEATABLE-READ`·`+00:00`·`5`)은 소스 텍스트로 따로 본다 |
 
 ### 변이 시험 — `--selftest`
 

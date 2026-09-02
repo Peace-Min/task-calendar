@@ -2,13 +2,13 @@
 
 # 📅 수행과제 캘린더 · TaskCalendar
 
-**바탕화면에 상주하는 오프라인 데스크톱 캘린더 위젯 — 과제별 git/svn 커밋으로 일/주 보고서를 만들고, 사내 보고 시스템 자동 작성과 일정 시작 알림까지**
+**바탕화면에 상주하는 폐쇄망 데스크톱 캘린더 위젯 — 과제별 git/svn 커밋으로 일/주 보고서를 만들고, 사내 보고 시스템 자동 작성과 일정 시작 알림까지**
 
-[![Version](https://img.shields.io/badge/Version-v0.17.1-3e5be0)](#-릴리스-내역)
+[![Version](https://img.shields.io/badge/Version-v0.18.0-3e5be0)](#-릴리스-내역)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078D6?logo=windows&logoColor=white)](#)
 [![.NET](https://img.shields.io/badge/.NET-9.0%20WPF-512BD4?logo=dotnet&logoColor=white)](#)
 [![WebView2](https://img.shields.io/badge/UI-WebView2%20%2B%20HTML-1E9BF0)](#)
-[![Offline](https://img.shields.io/badge/Network-100%25%20Offline-2e9e6b)](#)
+[![Network](https://img.shields.io/badge/Network-폐쇄망%20·%20사내%20MySQL%20직결-2e9e6b)](#-데이터--설정-파일)
 [![Themes](https://img.shields.io/badge/Themes-6종%20·%20Dark-7c5cff)](#-테마)
 [![A11y](https://img.shields.io/badge/Accessibility-WCAG%20AA-1f7a4d)](#-접근성--키보드)
 [![License](https://img.shields.io/badge/License-MIT-555)](LICENSE)
@@ -45,20 +45,21 @@
 
 ## 소개
 
-**수행과제 캘린더**는 인터넷 없이 동작하는 Windows 데스크톱 캘린더 위젯입니다. "수행 과제"를 카테고리로 두고 일정·할 일·근태를 기록하며, 과제별 로컬 **git 저장소의 내 커밋을 끌어와 작업일지**로 만들고, 기간을 골라 **보고서(일간/주간) 초안**을 뽑은 뒤 **사내 보고 시스템에 자동 작성**까지 합니다. 시작시각이 있는 일정은 **시작 전 알림**으로 챙겨줍니다. 데이터는 어디서든 읽기 쉬운 **XML**로 저장됩니다.
+**수행과제 캘린더**는 폐쇄망(망분리) 사내에서 동작하는 Windows 데스크톱 캘린더 위젯입니다. "수행 과제"를 카테고리로 두고 일정·할 일·근태를 기록하며, 과제별 로컬 **git 저장소의 내 커밋을 끌어와 작업일지**로 만들고, 기간을 골라 **보고서(일간/주간) 초안**을 뽑은 뒤 **사내 보고 시스템에 자동 작성**까지 합니다. 시작시각이 있는 일정은 **시작 전 알림**으로 챙겨줍니다. 데이터는 v0.18.0부터 **사내 서버 MySQL**에 저장됩니다 — 어느 자리 PC에서 로그인해도 같은 캘린더가 따라옵니다.
 
-- 🔒 **완전 오프라인** — 외부 리소스·CDN·네트워크 호출 0개. 폐쇄망(망분리)에서 그대로 동작.
+- 🔒 **폐쇄망 전용** — 외부 리소스·CDN·인터넷 호출 0개(번들 자산만). 나가는 통신은 **사내 MySQL(TCP 3306)** 과 **사내 보고 시스템(netcus)** 뿐입니다.
+- 🌐 **서버 저장 · 온라인 전용** — 일정·할 일·과제·공수·근태·커밋·보고 기록이 모두 서버 DB에 있습니다. **로컬 캐시는 두지 않습니다**(두 번째 진실이 되므로 — [db/CALENDAR-TABLE-DESIGN §2](db/CALENDAR-TABLE-DESIGN.md)). 서버에 못 붙으면 화면이 비고 「위젯을 다시 시작」 안내가 뜹니다.
 - 🖥️ **두 가지 창 모드** — 바탕화면 최하위 위젯(기본) ↔ 일반 앱 창(작업표시줄·Alt+Tab·트레이). ⚙에서 전환.
 - 🧾 **보고서 자동화** — 과제별 git·svn 커밋 → 작업일지 → 일간/주간 보고서 초안 → **회사 시스템 자동 작성/전송**.
 - ⏰ **시작 알림** — 시작시각 일정 1시간 전부터 60→30→10→5분 에스컬레이션(무음·폐쇄망 대응).
 - 🎨 **테마 6종 + 다크** — 라이트·다크·포레스트·세피아·고대비·시스템. 단색 SVG 아이콘이 currentColor로 전 테마 자동 적응.
 - 🐞 **사내 문의 동선** — 앱 상단 문의 버튼에서 버그·개선사항 접수처(`phmin@netcus.com` / 랜메신저 민평화)를 바로 확인.
-- 🗂️ **개방형 데이터** — `taskCalendar` XML v1. 내보내기/가져오기로 백업·이전.
+- 🗂️ **개방형 반출 포맷** — `taskCalendar` XML v1. **저장 형식이 아니라 내보내기/가져오기(백업·이관) 형식**입니다. 옛 `data.xml`을 서버로 올리는 문도 이것입니다.
 - ♿ **접근성(WCAG AA)** — 월 그리드 키보드 내비, 모달 포커스 트랩·복원, ARIA 탭/그리드, 가시 포커스 링.
 
-> 단일 HTML(`task-calendar-prototype.html`)을 **그대로 본체로 임베드**해 WPF + WebView2 위젯으로 패키징합니다. 브라우저에서 HTML만 열어도 동일하게 동작합니다(데이터는 localStorage).
+> 단일 HTML(`task-calendar-prototype.html`)을 **그대로 본체로 임베드**해 WPF + WebView2 위젯으로 패키징합니다. 브라우저에서 HTML만 열어도 도메인 기능은 동일하게 동작합니다 — 단 브라우저에는 호스트가 없어 **서버 DB에 붙지 않고 그 브라우저의 localStorage에만** 저장되며, 로그인·커밋 수집·회사 보고 전송·알림도 빠집니다.
 
-> 📖 **사용 방법**: [USAGE.md (사용 설명서)](USAGE.md) · 📄 **이어서 작업**: [CHANGELOG.md](CHANGELOG.md)(인계 문서) · 📐 **명세**: [SPEC.md](SPEC.md)
+> 📖 **사용 방법**: [USAGE.md (사용 설명서)](USAGE.md) · 📄 **개발 이력**: [CHANGELOG.md](CHANGELOG.md) · 🗺 **지금 어디이고 다음이 무엇인가**: [docs/ROADMAP.md](docs/ROADMAP.md) · 📐 **반출 XML 포맷**: [SPEC.md](SPEC.md)
 
 ## ✨ 주요 기능
 
@@ -95,7 +96,7 @@ dotnet publish widget\TaskCalendarWidget.csproj -c Release -r win-x64 --self-con
 - 결과 실행 → 바탕화면 위젯 시작. 배포/시작프로그램/단일 exe 상세는 **[DEPLOY.md](DEPLOY.md)**.
 
 ### ② 브라우저로 바로 써보기 (빌드 없이)
-- `task-calendar-prototype.html`을 더블클릭해 Edge로 열면 그대로 동작(오프라인, 데이터는 localStorage). 단, 회사 보고 전송·시작 알림 등 **호스트 기능은 위젯(앱)에서만** 동작.
+- `task-calendar-prototype.html`을 더블클릭해 Edge로 열면 캘린더·보고서 초안 등 도메인 기능은 그대로 동작합니다. 단 **서버 DB에 붙지 않고 그 브라우저의 localStorage에만** 저장되며(위젯과 데이터가 공유되지 않습니다), 로그인·커밋 수집·회사 보고 전송·시작 알림 등 **호스트 기능은 위젯(앱)에서만** 동작합니다.
 
 ## 📖 사용법
 
@@ -150,6 +151,7 @@ v0.17.0부터 **회사 계정(netcus)으로 로그인**합니다. 위젯(앱) �
 - **무음·폐쇄망 대응**: Windows 토스트가 아니라 **앱 자체 Topmost 알림 창 + 작업표시줄 깜빡임(FlashWindowEx)**. 소리가 꺼져 있어도, Focus Assist/DND·트레이 OFF(위젯) 상태여도 보입니다.
 - **테마별 카드**: 카드 본체는 현재 테마를 따르고, 긴급도는 **헤더 색(60 파랑·30 호박·10 주황·5 빨강)** 으로 표시.
 - **on/off**: **일정마다** 폼의 **미리알림** 행에서 정합니다(없음 / 놓침 방지 / 직접 n분·시간·일 전 1회). 전역 스위치는 없습니다 — 있으면 일정별 설정을 조용히 무효로 만들기 때문입니다. 확인 이력은 `reminders.json`에 저장돼 재시작해도 다시 울리지 않습니다.
+- ⚠️ **서버에 못 붙은 날은 울리지 않습니다.** 알림은 **서버에서 읽어 온 일정**을 대상으로만 돕니다. 로컬 알림표를 따로 두지 않는 것은 의도된 결정입니다 — 전 인원이 서버 DB 하나를 보는 구조에서 로컬 표는 **두 번째 진실**이 되어, 다른 PC에서 지운 일정이 이 PC에서 울립니다([docs/ROADMAP.md](docs/ROADMAP.md) §5 결정 2).
 
 ## 🎨 테마
 
@@ -174,16 +176,17 @@ flowchart TB
     sess["UserSession.cs: 로그인 세션 4필드<br/>DPAPI(user.session) · 권한은 담지 않음"]
   end
   user --> app
-  app <-->|"postMessage 브리지<br/>HTML→호스트 : save · gitlog · ready · netcus* · reminderSync · user*(로그인·권한) · membersGet · dbInfoGet<br/>호스트→HTML : __applyXml · __netcus* · __dbInfo · __hostReply"| hostfn
-  hostfn --> xml[("data.xml<br/>taskCalendar XML v1")]
-  hostfn --> cfg[("widget.settings.json · reminders.json")]
+  app <-->|"postMessage 브리지<br/>HTML→호스트 : ready · saveState · replaceAllState · gitlog · netcus* · reminderSync · user*(로그인·권한) · membersGet · dbInfoGet<br/>호스트→HTML : __applyState · __applyStateError · __netcus* · __dbInfo · __hostReply"| hostfn
+  hostfn --> caldb["CalendarDb.cs / CalendarWriteDb.cs / ReportDb.cs<br/>캘린더 본체 읽기·쓰기·보고 기록"]
+  hostfn --> cfg[("widget.settings.json · reminders.json · repo-paths.json")]
   netcus --> cred[("netcus.cred<br/>DPAPI 암호화")]
   netcus -.HTTPS.-> pjm["사내 보고 시스템<br/>netcus pjm<br/>(인증 = 로그인의 진실 원천)"]
   sess --> ses[("user.session<br/>DPAPI 암호화")]
   hostfn --> db
   hostfn --> sess
   hostfn --> rem
-  db -.TCP 3306.-> mysql[("중앙 MySQL · taskmgr<br/>project·customer·app_user·org_unit")]
+  db -.TCP 3306.-> mysql[("중앙 MySQL · taskmgr<br/>과제: project·customer·코드테이블<br/>사용자: app_user·org_unit·title_code<br/>캘린더 본체: cal_*")]
+  caldb -.TCP 3306.-> mysql
   hostfn --> git["git/svn CLI → 작업일지(source=git)"]
 ```
 
@@ -193,25 +196,38 @@ flowchart TB
 | **WPF 호스트(본체)** | `widget/MainWindow.xaml.cs` | WebView2 호스팅, 창 모드(위젯↔앱창/트레이), 8방향 리사이즈, 자동시작, 우아한 자기교체 |
 | **회사 보고** | `widget/NetcusService.cs` | 보조 WebView2로 netcus 자동 로그인·작성·전송, DPAPI 자격증명 |
 | **로그인 · 세션** | `widget/UserSession.cs` | 로그인 세션 4필드 DPAPI 보관·복원·삭제(`user.session`) |
-| **과제 DB** | `widget/ProjectDb.cs` | MySQL 읽기/쓰기. **쓰기 관문 한 곳**에서 `app_user.edit_role`·`is_active` 판정 |
-| **배포 구성** | `widget/DeployConfig.cs` | DB 접속·업데이트 소스의 **단일 소스**(빌드에 고정) |
+| **과제 DB** | `widget/ProjectDb.cs` | 공식 과제 마스터 MySQL 읽기/쓰기. **쓰기 관문 한 곳**에서 `app_user.edit_role`·`is_active` 판정 |
+| **캘린더 DB** | `widget/CalendarDb.cs` · `CalendarWriteDb.cs` · `ReportDb.cs` | 캘린더 본체(`cal_*`)의 부팅 조회(단일 트랜잭션)·저장(차분/전량 교체)·보고 기록 |
+| **배포 구성** | `widget/DeployConfig.cs` | DB 접속·업데이트 소스·`XmlRetired` 스위치의 **단일 소스**(빌드에 고정) |
 | **시작 알림** | `widget/Reminders.cs` (partial) | 호스트 타이머·단계 계산, 테마별 Topmost 알림창, 영속/GC |
-| **HTML 서빙** | 가상 호스트 `https://tcapp.local` (`SetVirtualHostNameToFolderMapping`) | 실제 origin → **localStorage 영속**(설정·테마·근태·알림 등). 실패 시 `NavigateToString` 폴백 |
-| **데이터/설정** | `%APPDATA%\TaskCalendar\` | `data.xml` · `widget.settings.json` · `reminders.json` · `netcus.cred` · `WebView2\` |
+| **HTML 서빙** | 가상 호스트 `https://tcapp.local` (`SetVirtualHostNameToFolderMapping`) | 실제 origin → **localStorage 영속**(테마·패널 폭 등 이 PC 한정 UI 상태). 실패 시 `NavigateToString` 폴백 |
+| **데이터/설정** | `%APPDATA%\TaskCalendar\` | 아래 표 — **캘린더 본체는 여기 없습니다**(서버 DB) |
 
-**기술 스택**: WPF (.NET 9, `net9.0-windows`) · Microsoft.Web.WebView2 · 의존성 없는 HTML5/CSS3/ES2020 · `taskCalendar` XML v1 · DPAPI(crypt32 P/Invoke). 상세 인계는 [CHANGELOG.md](CHANGELOG.md), 명세는 [SPEC.md](SPEC.md).
+**기술 스택**: WPF (.NET 9, `net9.0-windows`) · Microsoft.Web.WebView2 · MySqlConnector · 의존성 없는 HTML5/CSS3/ES2020 · DPAPI(crypt32 P/Invoke). 상세 인계는 [CHANGELOG.md](CHANGELOG.md), 반출 XML 포맷은 [SPEC.md](SPEC.md) §3.
 
 ## 🗂️ 데이터 / 설정 파일
 
-`%APPDATA%\TaskCalendar\` 에 저장:
+**캘린더 본체(과제·일정·할 일·회의실·공수·근태·커밋·보고 기록)는 사내 서버 MySQL의 `cal_*` 표에 있습니다.** v0.17.1까지 쓰던 `%APPDATA%\TaskCalendar\data.xml`은 **v0.18.0에서 폐기**됐습니다(`DeployConfig.XmlRetired = true`) — 앱은 그 파일을 읽지도 쓰지도 않습니다. 옛 파일은 「XML 가져오기」로 **한 번** 올리는 이관 입구로만 씁니다([아래](#기존-dataxml-이관)).
+
+`%APPDATA%\TaskCalendar\` 에 남는 것 — 전부 **이 PC 한정**입니다:
 
 | 파일 | 내용 |
 |---|---|
-| `data.xml` | `taskCalendar` XML v1 — 과제·일정·할 일·회의실. 전체 스키마는 [SPEC.md](SPEC.md) |
-| `widget.settings.json` | 창 위치·크기·모드 |
+| `widget.settings.json` | 창 위치·크기·모드·업데이트 소스 URL |
 | `reminders.json` | 시작 알림 확인 이력(ack) |
+| `repo-paths.json` | 과제별 git/svn 저장소 경로 — **일부러 서버에 안 올립니다**(자리마다 경로가 달라, 올리면 남의 저장소에서 커밋을 긁어 옵니다. 근거는 `widget/RepoPaths.cs` 머리말) |
 | `netcus.cred` | 회사 보고 자격증명(DPAPI 암호화) |
 | `user.session` | 로그인 세션 — `loginId·name·title·orgUnit` 4필드(DPAPI 암호화). **권한은 담지 않음** |
+| `widget.log` · `WebView2\` | 진단 로그(회전) · WebView2 프로필 |
+
+### 기존 `data.xml` 이관
+
+- **자동으로 옮기지 않습니다.** 캘린더가 비어 있으면 화면 위에 안내(「미이관」 표시등, `renderEmptyHint`)가 뜨고, 거기서 **XML 가져오기**를 누르면 호스트 파일창이 **데이터 폴더에서** 열립니다. 옛 `data.xml`을 고르면 미리보기 후 교체/병합으로 서버에 올라갑니다.
+- 자동 이관을 폐기한 근거와 대안 설계는 [db/CALENDAR-TABLE-DESIGN.md](db/CALENDAR-TABLE-DESIGN.md) §8·3b. 배포자용 일괄 이관 도구는 `db/deploy/xml-to-db`입니다.
+
+### 반출 XML 포맷 (`taskCalendar` v1)
+
+내보내기·가져오기가 쓰는 형식입니다(저장 형식이 아님). 전체 스키마는 [SPEC.md](SPEC.md) §3:
 
 ```xml
 <taskCalendar version="1" gitAuthor="hong@corp">
@@ -255,6 +271,7 @@ flowchart TB
 
 | 버전 | 날짜 | 핵심 변경 |
 |---|---|---|
+| **v0.18.0** | 2026-09-02 | **서버 DB 저장 전환**(breaking) — 일정·할 일·과제·공수·근태가 XML 파일에서 **사내 서버 MySQL(`cal_*`)** 로. 어느 PC에서든 같은 캘린더 · **온라인 전용**(로컬 캐시 없음) · 기존 기록은 **1회 「가져오기」**(자동 이관 안 함, 미이관 표시등) · **커밋 쓰기 배선** · **보고 기록 DB**(`cal_report_daily/hours/weekly`) · 서버 연결 실패 시 그날 미리알림 없음(결정) · 근태 정정 2건 |
 | **v0.17.1** | 2026-08-04 | **구성원 명부를 전 직원 공개로 정정** — 「열람 범위」는 명부가 아니라 **그 사람 일정**을 볼 수 있는 범위(범위 밖은 명부에 나오되 눌리지 않음) · **로그인 화면이 「주간보고 계정」을 지목**하고 **회사 이메일 입력을 차단**(쓸 ID를 직접 표시) |
 | **v0.17.0** | 2026-08-03 | **회사 계정(netcus) 로그인**(시작 시 1회·세션 유지) · **편집 권한을 계정으로 판정**(공용 관리자 인증 폐지 — `app_user.edit_role`을 쓰기 시점에) · 상단바 **「사용자 정보」**(신원·권한 실시간·로그아웃) · **구성원 명부**(조직 트리 · `view_scope`별 제한) · 과제 DB 접속 대상 표시 · 설정창 정리(알림 킬스위치·커밋 토글·계정 섹션 제거) |
 | **v0.16.0** | 2026-07-30 | 공식 과제 **색상 직접 지정**(과제명만 DB 고정) · 재연결 시 색상도 함께 이동 |
@@ -289,9 +306,13 @@ flowchart TB
 - [x] **과제 DB 연동** — 공식 과제 마스터(발주처·구분·상태·계약기간) · 재연결 · Excel 장표 추출
 - [x] **회사 계정 로그인 · 계정별 편집 권한** — netcus 인증 + `app_user` 인가, 쓰기 시점 판정(공용 관리자 인증 폐지)
 - [x] **사용자 정보 · 구성원 명부** — 신원·권한 실시간 확인 · 조직 트리 · `view_scope`별 열람 제한
-- [ ] **타인 일정 열람** — 구성원에서 사람 선택 → 그 사람 캘린더(읽기 전용). **일정이 DB로 올라간 뒤** 가능
+- [x] **캘린더 본체 서버 DB 전환**(v0.18.0) — `cal_*` 읽기·쓰기·보고 기록 · XML 저장 경로 폐기 · 명시적 1회 이관
+- [ ] **타인 일정 열람** — 구성원에서 사람 선택 → 그 사람 캘린더(읽기 전용). 데이터는 이미 DB에 있고 **`view_scope` 판정도 있습니다 — 남은 건 화면**입니다
+- [ ] **부팅 실패 시 [다시 시도]** + 자동 백오프 · **낡은 클라이언트 쓰기 차단**(`schema_version` 비교)
 - [ ] 알림 스킨(사용자 등록 이미지) · 주간/일간 타임라인 뷰
 - [ ] 음력 명절(설·추석) 표시 · 회차별 반복 편집 · 미완료 할 일 롤오버
+
+> 다음 릴리스에 무엇을 해야 하는지(배포 조건 P1 7건·파일럿 계획)와 **왜 원래 계획과 달라졌는지**는 [docs/ROADMAP.md](docs/ROADMAP.md)가 정본입니다.
 
 ## 🐞 이슈 · 피드백
 

@@ -1,5 +1,23 @@
 # 수행과제 캘린더 — 요구사항 분석 · 구현 명세 · 자체 검증 루프 (v1, 2026-06-11)
 
+> ## ⚠️ 읽기 전에 — 이 문서의 유효 범위 (2026-09-02)
+>
+> **이 문서는 2026-06 시점의 기록이다.** 제목의 날짜대로 요구사항 분석·구현 명세·그때 돌린 검증 루프의 결과를 남긴 것이고, **§5~§8의 "검증 결과"·"최종 상태"·"2단계 데스크톱 위젯"은 그 시점의 사실**이다(역사 기록이므로 고치지 않는다).
+>
+> **지금도 유효한 부분은 §3(`taskCalendar` v1 XML 스키마)과 §8의 확장 스키마다.** 다만 그 XML의 **역할이 바뀌었다**:
+>
+> | | 2026-06 (이 문서가 쓰인 때) | 2026-09-02 (현재) |
+> |---|---|---|
+> | 위젯 저장 | `%APPDATA%\TaskCalendar\data.xml` | **사내 서버 MySQL `cal_*`** — `data.xml`은 폐기(`DeployConfig.XmlRetired = true`, v0.18.0) |
+> | 브라우저 저장 | localStorage | localStorage (그대로) |
+> | XML의 역할 | **저장 형식** | **반출·이관 형식** — 내보내기/가져오기 전용. 옛 `data.xml`을 서버로 올리는 문이기도 하다 |
+> | 네트워크 | 호출 0개 | 인터넷 0개(폐쇄망). 사내 MySQL(3306)·사내 보고 시스템(netcus)에는 붙는다 |
+>
+> 그래서 §1 표의 *"단일 HTML 파일로 완결 → USB 복사만 하면 실행"*·§6의 *"데이터는 … `data.xml`에 저장"* 같은 문장은 **그 시점 기준으로 읽어야 한다.**
+> 현행 구조는 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), 현행 DB 설계는 [db/CALENDAR-TABLE-DESIGN.md](db/CALENDAR-TABLE-DESIGN.md), 지금 어디인지는 [docs/ROADMAP.md](docs/ROADMAP.md)가 정본이다.
+>
+> **직렬화의 진짜 정본은 문서가 아니라 코드다** — `task-calendar-prototype.html`의 `toXML()`/`fromXML()`/`xmlRoundTrip()`.
+
 ## 1. 환경 제약 분석
 
 | 제약 | 설계 반영 |

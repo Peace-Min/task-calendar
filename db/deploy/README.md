@@ -36,6 +36,8 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 
 > 두 `.sql` 은 `init-calendar` 없이 `mysql` 로 직접 돌려도 되지만, **순서와 게이트를 사람이 대신 지켜야 한다.** 아래 두 절이 그 내용이다.
 
+> **`init-calendar` 는 최초 1회 구축용이다.** 이미 데이터가 든 DB 의 구조를 바꿀 때는 이것이 아니라 **`migrate-*.sql`** 을 쓴다 — 목록·적용 순서·`schema_version` 개념은 아래 '캘린더 표 마이그레이션' 절.
+
 > **2026-08-11 — `triggers-calendar.sql`(감사 트리거) 이 이 표에서 빠졌습니다.** 파일째 폐기됐습니다.
 > 근거는 설계 [`../CALENDAR-TABLE-DESIGN.md`](../CALENDAR-TABLE-DESIGN.md) **§7.5** — 요약하면
 > ① 휴지통이 **감사 대상과 같은 DB 안**이라 서버·디스크 장애에는 함께 사라져 무력했고,
@@ -84,7 +86,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
   > DDL 은 롤백이 없으므로 `cal_*` 가 0개인 **반파** 상태가 되고, `cal_user_rev` 89행(§3.1·계약 H-1 의
   > 전제)이 그 자리에서 사라집니다. 그래서 **두 겹으로** 막습니다: `init-calendar` 의 선행 조건 단계와
   > `schema-calendar.sql` 자신의 `0.` 가드(둘 다 `DROP` 전).
-  > · **표 개수는 바뀌지 않았습니다(여전히 `cal_*` 13개)** — 바뀐 것은 각 표의 키입니다.
+  > · **이 전환으로 표가 늘거나 줄지 않았습니다** — 바뀐 것은 각 표의 키입니다. *(그 뒤 08-27·08-31 마이그레이션으로는 표가 늘었습니다. 지금 몇 개인지는 `schema-calendar.sql`의 `CREATE TABLE` 목록이 정본이고, `init-calendar.ps1`의 `$DESIGN_TABLES` 명부가 그것과 대조합니다 — **문서에 숫자를 박지 마세요.** 이 줄이 예전에 "여전히 13개"라고 적고 있었고, 스키마가 그보다 늘어난 뒤에도 그 문장이 남아 다음 사람에게 거짓을 말했습니다. 같은 함정이 `init-calendar.ps1` 의 명부에서도 터져 2026-09-02까지 원큐 구축 진입점을 `Die` 로 막고 있었습니다.)*
   > · 캘린더 트랙의 전환일 뿐 **과제 트랙(`init-db`)은 대상이 아닙니다.** 그쪽 자연키 PK 는
   >   `ON UPDATE CASCADE` 가 실제로 도는 정상 설계입니다(실측 근거는 설계 **§5.6**).
 - 앱 계정 비번은 묻지 않습니다 — 이 키트는 **계정을 만들지 않고 권한만 줍니다**(비번이 두 파일에 흩어지는 것을 피하려고 `create-app-user.sql` 과 역할을 갈랐습니다).
@@ -180,7 +182,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 >
 > **2026-08-24 — 게이트가 봐야 할 것이 하나 늘었습니다: `cal_*` 에 `login_id` 컬럼이 하나도 없어야 합니다**(기대값 0).
 > 남아 있으면 대리키 전환(설계 §5.2) 전에 만든 DB 를 그대로 쓰고 있다는 뜻입니다 —
-> 표 개수(13)와 FK 개수만 보는 게이트는 **이 상태를 통과시킵니다**(개수가 같기 때문입니다).
+> 표 개수와 FK 개수만 보는 게이트는 **이 상태를 통과시킵니다**(개수가 같기 때문입니다).
 > ```sql
 > SELECT TABLE_NAME FROM information_schema.COLUMNS
 >  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'cal\_%' AND COLUMN_NAME = 'login_id';
@@ -190,6 +192,37 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 > **백업은 이 게이트가 보지 않습니다.** 별도 도구라서입니다 — 아래 '백업' 절의 확인을 따로 하세요.
 
 > ⚠️ `init-calendar`/`schema-calendar.sql` 도 **멱등 재구축이라 기존 `cal_*` 를 DROP** 합니다(최초 1회 구축용). 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 사라집니다. 운영 중 구조 변경은 별도 `migrate-*.sql` 로 하세요.
+
+## 캘린더 표 마이그레이션 — `cal_*` · `schema_version`
+
+**`init-calendar`(=`schema-calendar.sql`)는 최초 1회 구축용입니다** — 기존 `cal_*` 를 `DROP` 하므로 데이터가 든 DB 에 다시 돌리면 캘린더가 사라집니다. **운영 중 구조 변경은 아래 `migrate-*.sql` 로만** 합니다.
+
+### `schema_version` — 무엇이고 왜 있나
+
+`cal_schema_meta` 표의 `k='schema_version'` 한 행이 **지금 이 DB 구조가 몇 번째 판인지**를 담습니다(단조증가 정수 문자열). 각 마이그레이션이 자기 앞뒤 값을 명시하고 **적용하면서 이 행을 올립니다.** `schema-calendar.sql` 은 새로 구축할 때 **최신 값을 곧바로 시딩**하므로, 새 DB 와 마이그레이션을 순서대로 돌린 DB 가 같은 값으로 만납니다 — **그것이 "같은 구조인가"의 판정 기준**입니다(표 개수보다 강한 기준입니다).
+
+- 앱은 접속 프리앰블에서 이 행을 **1회 읽습니다.** 권한도 `SELECT` 만 줍니다(`grants-calendar.sql`) — 앱이 이 값을 올릴 수 있으면 「낡은 클라이언트 차단」이 성립하지 않기 때문이고, `init-calendar` 가 그 권한을 게이트로 확인합니다(설계 §5.5).
+- ⚠️ **다만 그 비교는 아직 앱 코드에 없습니다**(2026-09-02 현재). 다음 `ALTER` 순간 낡은 위젯이 그대로 쓰게 됩니다 — 배포 전 조건 P1 항목입니다([`../../docs/ROADMAP.md`](../../docs/ROADMAP.md) §2-2).
+- **버전 번호를 이 문서에 적지 않습니다.** 값의 정본은 `schema-calendar.sql` 끝의 `INSERT INTO cal_schema_meta … VALUES ('schema_version', …)` 한 줄이고, 실 DB 값은 아래로 확인합니다:
+  ```sql
+  SELECT v FROM cal_schema_meta WHERE k = 'schema_version';
+  ```
+
+### 적용 순서 — 번호 오름차순, 건너뛰지 마세요
+
+| 파일 | 무엇을 바꾸나 | `schema_version` |
+|---|---|---|
+| `migrate-2026-08-24-user-id.sql` | (사용자 표) `app_user` PK `login_id` → **`user_id`**. `cal_*` 의 FK 대상 — **이것이 먼저입니다** | (전제) |
+| `migrate-2026-08-24-org-id.sql` | (조직 표) `org_unit` PK `name` → **`org_id`** + 구 컬럼 절단 | (전제) |
+| `migrate-2026-08-27-sort-order.sql` | `cal_entry`·`cal_todo` 에 **`sort_order`** 신설 — 배열(문서) 순서를 박제. `created_at` 만으로는 되살릴 수 없었습니다(실 `data.xml` 계측: 일정 23건 중 **22건이 같은 밀리초**) | 3 → 4 |
+| `migrate-2026-08-27-repo-flag.sql` | `cal_category` 에 **`uses_repo`** 신설 — '저장소를 쓰는 과제' 한 비트. **경로 자체는 DB 에 올리지 않으므로**(PC 마다 달라야 하는 값 — 올리면 남의 커밋이 내 보고서에 실립니다) 화면이 판단할 근거로 비트만 올립니다. 경로의 보관처는 `%APPDATA%\TaskCalendar\repo-paths.json` | 4 → 5 |
+| `migrate-2026-08-31-report-daily.sql` | **`cal_report_daily`·`cal_report_hours`** 신설 — 일간보고 사본 2표 | 5 → 6 |
+| `migrate-2026-08-31-report-weekly.sql` | **`cal_report_weekly`** 신설 — 주간보고 사본 1표. 일간과 달리 `content_from` 이 없습니다(위젯이 주간은 폼만 채우고 전송하지 않아 **전송 시점 자체를 모릅니다**) | 6 → 7 |
+| `migrate-2026-08-31-sent-only.sql` | 위 세 표를 **「캘린더가 만든 것만」** 으로 좁힘 — 사이트는 우리에게 무효화 신호를 주지 않으므로 "지금 사이트에 뭐가 있나"는 물어보기 전엔 알 수 없고 물어본 뒤에도 그 순간의 사진일 뿐입니다(2026-08-31 사용자 결정) | 7 → 8 |
+
+> **각 파일의 머리말이 그 마이그레이션의 정본**입니다 — 왜 필요한지·무엇을 깨뜨리는지·되돌릴 수 있는지가 거기 적혀 있습니다. 이 표는 색인일 뿐입니다.
+
+---
 
 ## 사용자·조직 표 마이그레이션 — `app_user` · `org_unit`
 
@@ -699,7 +732,7 @@ mysql -u root -p -h <새서버> taskmgr < taskmgr-data.sql   # 데이터
     놓았을 수 있습니다. 그때는 새 서버에서도 **`migrate-2026-08-24-user-id.sql` 이 먼저**입니다.
     판정 쿼리는 위 '배포 순서' 단계 `0` 의 표에 있습니다 — 눈으로 짐작하지 말고 한 번 돌려 보세요.
 - **이관 직후 새 서버에서 `backup-taskmgr.cmd -Install` 을 돌리세요.** 백업은 구조에 딸려 오지 않습니다(별도 도구·스케줄러 등록). 아래 '백업' 절.
-- 캘린더 데이터(`data.xml`)는 이 dump/restore 경로가 아니라 **1회성 이관 도구**로 옮깁니다(설계 §8. `cal_migration_log` 가 재실행을 막습니다).
+- 사용자 PC 에 남아 있는 옛 캘린더 파일(`%APPDATA%\TaskCalendar\data.xml`)은 이 dump/restore 경로가 아니라 **1회성 이관**으로 옮깁니다(설계 §8. `cal_migration_log` 가 재실행을 막습니다). 두 갈래가 있습니다 — 배포자가 일괄로 돌리는 **`xml-to-db`** 도구, 그리고 사용자가 앱에서 직접 올리는 **「XML 가져오기」**(자동 이관은 폐기했습니다 — 설계 §3b). 어느 쪽이든 **한 번**입니다.
 
 ## 검증
 init-db 후 서버 루트의 `check.cmd`(mysql-offline 저장소) 또는:
@@ -711,14 +744,15 @@ mysql -u root -p -e "USE taskmgr; SHOW TABLES; SELECT COUNT(*) FROM project;"
 
 > ⚠️ `init-db`/`schema-structure.sql`은 멱등 재구축이라 **기존 테이블을 DROP**합니다. 데이터가 있는 DB에 재실행하면 지워집니다(최초 구축용).
 
-## 관리자 비밀번호 (앱 내 공식 과제 편집 게이트)
+## 편집 권한 (앱 내 공식 과제 편집 게이트)
 
-- **최초 설정**: 배포 구성(`widget/DeployConfig.cs`)의 베이크 디폴트로 **먼저 인증**한 뒤,
-  설정 → 관리자 → **관리자 비밀번호 변경**에서 새 비밀번호를 정합니다.
-- **변경은 인증된 상태에서만** 가능합니다. 미인증 상태의 변경 요청은 호스트(`ProjectDb.SaveAdminCred`)가 거부합니다
-  — 클라이언트 UI만으로는 브리지 메시지를 직접 던져 우회할 수 있기 때문입니다(ARCHITECTURE ADR #19).
-- **비밀번호 분실 복구**: 사용자 PC의 `db-config.json`을 **삭제**하면 베이크 디폴트로 되돌아갑니다.
-  그 값으로 다시 인증한 뒤 새 비밀번호를 정하세요.
-  (경로: 앱 데이터 폴더 — 위젯이 `db-config.json`을 쓰는 곳. 파일엔 관리자 자격과 잠금해제 상태만 들어 있고 DB 접속정보는 없습니다.)
+> **~~관리자 비밀번호~~ — 2026-08-03 v0.17.0에서 폐지됐습니다.** 이 자리에는 *베이크 디폴트로 먼저 인증 → 설정에서 비밀번호 변경 → 분실 시 `db-config.json` 삭제로 복구* 절차가 적혀 있었습니다. **그 체계는 없습니다** — `db-config.json`은 앱이 읽지도 쓰지도 않고, 설정창의 관리자 인증칸도 사라졌습니다. 배포자가 챙길 것이 **하나도 없어졌으므로** 그 절차를 따라 하지 마세요.
 
-> 이 자격은 P6.5에서 회사 사이트(netcus) 인증 위임 + `app_user` 역할로 대체될 **스텁**입니다.
+지금은 **회사 계정 로그인 + `app_user`** 로 정해집니다. 배포자 관점에서 챙길 것:
+
+- **선행조건**: `app_user`·`org_unit`·`title_code` 가 서 있고, 앱 계정(`taskmgr_app`)에 그 표들의 `SELECT` 권한이 있어야 합니다. 없으면 사용자가 **로그인 게이트를 넘지 못합니다**(과제 편집만이 아니라 앱 전체가 막힙니다). 그 표들의 DDL·실데이터는 이 저장소가 아니라 별도 비공개 저장소(`taskmgr-company-data`)에 있습니다.
+- **누가 편집할 수 있나**: `app_user.edit_role` 과 `is_active` 가 정합니다. 판정은 앱이 **쓰기를 요청하는 시점**에 호스트 한 곳(`ProjectDb.OpenWriteAsync`)에서 합니다 — 화면이 캐시한 역할로 미리 막지 않으므로, 관리자가 값을 바꾸면 **재로그인 없이 바로** 반영됩니다.
+- **권한을 주고 뺏는 법**: DB 에서 그 사람의 `edit_role` 을 바꾸면 끝입니다. 앱 배포·재빌드가 필요 없습니다.
+- 근거·화면·실패 경로의 정본은 [`../../docs/USER-LOGIN.md`](../../docs/USER-LOGIN.md) 입니다.
+
+> 배포 직전에 **정말로** 챙겨야 하는 자격은 이것이 아니라 **앱 DB 계정 비번**입니다 — `create-app-user.sql` 과 `widget/DeployConfig.cs` 의 `DbPassword` 가 **같은 강한 값**이어야 합니다. 저장소의 기본값은 서로 어긋나 있습니다(SQL `CHANGE_ME_ON_DEPLOY` / config `taskmgr1234`). 주입 기계는 만들지 않기로 했으므로(2026-09-02 결정 3) **배포 체크리스트로** 지킵니다.

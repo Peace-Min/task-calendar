@@ -11,13 +11,14 @@
 ## §2 필드별 설계 결정 (왜 이렇게)
 - **`project.id` = 내부 대리키** — `INT UNSIGNED AUTO_INCREMENT PK`. 내부 조인·PK용. DB가 원본이므로 운영 중 DROP 재구축을 하지 않아 id도 안정적이지만, **외부(위젯) 참조에는 id를 쓰지 않는다** — 아래 uid 사용.
 - **`project.uid` = 외부 안정 참조키(D1)** — `CHAR(36) NOT NULL DEFAULT (UUID())`, `UNIQUE`(assign-once). 위젯 일정이 `db-<uid>`로 참조하고, 앱의 마스터 CRUD도 대상 행을 **uid로 지목**한다(UPSERT/소프트삭제 `WHERE uid=@uid`). 일정이 DB 밖에 있어 rebuild·rename·재채번에 참조가 엉키는 사고를 막는다. ✅ schema.sql 반영 완료(로컬 13행 UUID). (→ `ARCHITECTURE.md` §4.7.3, ADR #13)
-- **`section`/`status` = ENUM** — Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**한다. 값 목록을 **별도 룩업 테이블 없이 컬럼에 고정**했다(13행 규모엔 이게 최소·최적).
-  - `section ENUM('일반계약','선진행','사업부관리') NOT NULL`
-  - `status ENUM('진행중','종료','1차 납품완료','미정') NULL` (선진행 = 계약 前 → NULL)
-  - 트레이드오프: 값 추가 시 `ALTER TABLE ... MODIFY`가 필요. 드물어서 OK. 상태별 색/정렬/잦은 추가가 필요해지면 룩업 테이블로 승급하는 게 업그레이드 경로(§5).
+- **`section`/`status` = 코드테이블 + FK** *(2026-07-24 ADR-22 — 원래 ENUM이었다)* — Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**하는 목표는 같고, 강제 수단이 타입에서 **외래키**로 바뀌었다.
+  - `section VARCHAR(50) NOT NULL` → FK `section_code(name)`
+  - `status VARCHAR(50) NULL` → FK `status_code(name)` (선진행 = 계약 前 → NULL이면 FK 검사 스킵)
+  - 코드테이블은 `name` PK + `sort_order` + `is_active` + 감사. **추가=INSERT · 개명=`name` UPDATE(→ `ON UPDATE CASCADE`로 `project`까지 전파) · 재배치=`sort_order` · 숨김=`is_active=0`** 이 전부 앱에서 된다.
+  - **왜 바꿨나 — ENUM의 트레이드오프가 실제로 아팠다.** 값 추가·개명·순서·숨김에 전부 `ALTER TABLE ... MODIFY`가 필요해 런타임 관리가 불가능했다. 아래 §5가 "필요해지면 룩업 테이블로 승급"이라 적어 둔 그 경로를 실제로 갔다. 기존 DB 이관은 `deploy/migrate.ps1` 단계2(무손실·멱등). 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5.
 - **`is_active` = 소프트 삭제** — `TINYINT(1) DEFAULT 1`. 앱의 "삭제"는 `is_active=0`(숨김, **복구 가능·이력 보존**). 영구 삭제는 권한자가 DB에서 직접 `DELETE`로 청소. 조회는 보통 `WHERE is_active=1`. customer/project 양쪽에 둔다.
 - **`created_at`/`updated_at` = 감사** — `DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)`, `updated_at`은 `ON UPDATE CURRENT_TIMESTAMP(3)`로 **수정된 행만 자동 갱신**. 누가·언제 바꿨는지의 "언제"를 DB가 자동 기록(누가는 추후 `updated_by` 추가 여지, §5).
-- **`UNIQUE(customer, project_name)`** — 같은 발주처 내 동일 사업명 금지라는 **업무 규칙**을 DB가 강제. (예전엔 "재임포트 멱등 UPSERT 키"였지만, 지금은 재임포트가 없으므로 순수 업무 무결성 제약이다.)
+- **~~`UNIQUE(customer, project_name)`~~ → 유니크는 `uid` 하나뿐** *(2026-07-24 ADR-21)* — 같은 발주처 내 동일 사업명 금지를 **업무 규칙으로 DB에 박았다가 뺐다.** 실데이터 144건 검수 결과 `(발주처, 사업명)` 중복이 22조합/68건이었고 그 대부분이 **구성품별 계약**이라 정상이었다. 게다가 콜레이션이 ai_ci·NO PAD라 끝공백 변형은 오히려 통과시켜 **진짜 실수를 못 잡았다.** 지금은 하드 유니크 대신 **앱의 소프트 경고**(저장 시 TRIM + 정규화 비교로 유사하면 "그래도 추가?")로 잡고, `contract_name`/`common_name`은 비교 함정을 없애려 `NOT NULL DEFAULT ''`다. 기존 DB 이관은 `deploy/migrate-2026-07-24-uniqueness.sql`. 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4.
 - **FK `project.customer → customer.name` `ON UPDATE CASCADE`** — 발주처 개명 시 `project.customer`로 **자동 전파**. 삭제는 기본 `RESTRICT`(발주처를 지운다고 딸린 과제가 날아가지 않음 — 먼저 과제를 정리해야 함).
 - **`customer.name` = 자연키 PK** — 발주처명 자체가 키(FK 타겟). 발주처는 소량·고유하므로 대리키 없이 자연키로 충분.
 
@@ -34,8 +35,9 @@ DB → Excel 추출 시:
 - 이관 시 이관 스크립트가 처리할 정리(발주처 표기 정규화, '미정'/공백 날짜→NULL, 선진행 상태 공백→NULL, 섹션 헤더행→section 값 승격)는 **1회성 이관기의 관심사**이지 DB의 상시 규칙이 아니다.
 
 ## §5 향후 (열린 결정 / 업그레이드 경로)
-- ⬜ **ENUM 값 추가**: 새 section/status가 생기면 `ALTER TABLE ... MODIFY ... ENUM(...)`. 드물면 이대로. **상태별 색상·커스텀 정렬·잦은 값 추가**가 필요해지면 `project_status`/`project_type` **룩업 테이블로 승급**(FK로 참조)하는 게 정식 경로.
+- ✅ **~~ENUM 값 추가~~ → 룩업 테이블 승급 완료**(2026-07-24 ADR-22, §2). 이 항목이 예고한 경로를 그대로 갔다 — 값 추가·개명·순서·숨김이 전부 앱에서 되고 `ALTER TABLE`이 필요 없다.
 - ⬜ **`updated_by` 감사 확장**: 지금은 "언제"만 기록. 누가 바꿨는지가 필요하면 `updated_by`(앱 사용자) 컬럼 추가. 앱 인증과 함께 설계.
 - ⬜ **DDL/시드 파일 분리**: 현재 `schema.sql`이 DDL+더미 시드를 겸한다. 서버 배포 시 실 이관이 시드를 대체하므로, 향후 **DDL(`schema.sql`)과 시드/이관(`seed.sql`/이관 스크립트)을 분리** 권장.
-- ✅ **캘린더 앱 연동(P3 완료)**: Admin CRUD UI(등록/수정/소프트삭제 — 대상 행 `uid` 기준) + 위젯이 DB를 읽는 어댑터·단일 카테고리 스토어. 상세 `ARCHITECTURE.md` §4.7.
+- ✅ **캘린더 앱 연동(P3 완료)**: CRUD UI(등록/수정/소프트삭제 — 대상 행 `uid` 기준) + 위젯이 DB를 읽는 어댑터·단일 카테고리 스토어. 상세 `ARCHITECTURE.md` §4.7.
+- ✅ **`updated_by` 대신 계정 기반 권한 판정 도입**(2026-08-03 v0.17.0) — 편집 가능 여부는 로그인 계정의 `app_user.edit_role`이 **쓰기 요청 시점에** 정한다. 다만 *"누가 이 행을 바꿨나"*를 행에 남기는 `updated_by`는 아직 없다(위 항목 그대로 열려 있음). 로그인 설계는 [`../docs/USER-LOGIN.md`](../docs/USER-LOGIN.md).
 - ⬜ **사업:계약 카디널리티**: 현재 1:1 인라인(`contract_name` 컬럼). 1사업 다계약이 실제로 있으면 계약 분리 테이블로 승급.
