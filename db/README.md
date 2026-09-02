@@ -83,7 +83,7 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 | `ROADMAP.md` | **작업 로드맵** — 축 A(과제) P0~P8 · 축 B(캘린더) C1~C5 · 의존성·게이트·규모·선행조건 |
 | `TABLE-DESIGN.md` | 과제 표의 컬럼별 설계 판정(에이전트 기준). ADR-21·ADR-22의 근거표 |
 | `DESIGN_NOTES.md` | 모델 B 근거·필드별 설계결정·Excel 추출 방향·초기이관/재구축 전략·향후 |
-| `schema-overview.html` | ⚠️ **낡음(2026-07-21, ENUM 시절)** — 현행 구조는 [`docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) |
+| ~~`schema-overview.html`~~ | **2026-09-02 삭제** — 스스로 "대체됨"이라 적어 둔 07-21 ENUM 시절 스냅샷. 현행 구조는 아래 `DB-SCHEMA.html`·정본 MD |
 | [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스** — 과제 4표 + 사용자·조직 3표(2026-08-11 추가)의 컬럼·제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
 | `CALENDAR-TABLE-DESIGN.md` | **별도 트랙 — 캘린더(`cal_*`) 설계 근거·정본.** 온라인 전용 정책(§2)·동시성 규약·어댑터 계약 G·권한·로그/백업·`data.xml` 1회 이관(§8·3b) + **키 설계(§5.2 대리키 전환 · §5.6 자연키를 PK 로 써도 되는 조건)**. 컬럼 수준 DDL 의 정본은 이 문서가 아니라 `deploy/schema-calendar.sql` |

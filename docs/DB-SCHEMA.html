@@ -142,6 +142,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <p class="eyebrow">수행과제 캘린더 · 데이터베이스 레퍼런스</p>
 <h1>taskmgr DB 테이블 구조</h1>
+<p style="margin:8px 0 16px;padding:10px 14px;border-left:4px solid #c9a227;background:#fff8e1;font-size:14px;line-height:1.5"><b>⚠️ 2026-08-26 시점 수기 스냅샷</b> — 이후 <b>보고 기록 3표</b>(<code>cal_report_daily</code>·<code>cal_report_hours</code>·<code>cal_report_weekly</code>, 2026-08-31)가 추가돼 <b>cal_* 는 13표가 아니라 16표</b>다(schema_version 8). 이 문서는 생성기가 없어 스키마가 바뀔 때마다 뒤처진다. <b>정본은 <code>db/CALENDAR-TABLE-DESIGN.md</code> §5.1 명부와 <code>db/deploy/schema-calendar.sql</code></b>이며, 개수·컬럼이 다르면 그쪽이 맞다.</p>
 <p class="lede">지금 운영되는 <code>taskmgr</code> 데이터베이스가 실제로 어떻게 생겼는지, 그리고 무엇을 DB가 강제하고 무엇을 앱이 지키는지 정리한 문서입니다. <b>과제</b>(무엇을 하는가)와 <b>사용자·조직</b>(누가 무엇을 할 수 있는가) 두 묶음을 담습니다. <b>단 <a href="#org_unit"><code>org_unit</code></a>의 조직 대리키만은 예외입니다</b> — 이 문서가 실 DB보다 <b>앞서</b> 적고 있습니다(바로 아래 배너).</p>
 
 <div class="callout warn">

@@ -173,6 +173,7 @@
   <header class="report">
     <div class="eyebrow">과제관리 시스템 · 데이터 설계 보고</div>
     <h1>과제 DB 테이블 설계 &amp; 식별 규칙</h1>
+    <p style="margin:6px 0 0;padding:8px 12px;border-left:4px solid #8a8f9a;background:#f4f5f7;font-size:13px;line-height:1.5"><b>범위·시점</b> — 2026-07-24 기준 <b>과제 마스터(축 A: project·customer·코드테이블)</b> 보고. <b>캘린더 표(축 B, cal_* 16표)와 사용자·조직 표는 다루지 않는다</b> → <code>db/CALENDAR-TABLE-DESIGN.md</code>. 축 A 자체는 07-24 이후 변경 없음(2026-09-02 확인).</p>
     <p class="lede">실데이터 검수 결과를 반영해 과제의 식별·유니크 규칙을 확정한다. 핵심은 “과제를 무엇으로 같다고 볼 것인가”이며, 이 문서는 그 결정과 근거, 그리고 유지보수 기준을 남긴다.</p>
     <div class="meta">
       <span class="m"><span class="dot"></span>DB <b>taskmgr</b> · MySQL 8.4 / InnoDB / utf8mb4</span>
