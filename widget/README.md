@@ -4,7 +4,7 @@
 
 ## 동작 방식
 - **UI/로직**: 임베드된 단일 HTML(검증 완료) — 월 그리드, 과제 카테고리, 기록 작성, 키워드/과제별 검색, 드래그 이동, 공휴일 등 동일.
-- **데이터**: 브라우저 localStorage가 아니라 **`%APPDATA%\TaskCalendar\data.xml`** (기계가독 `taskCalendar` XML v1). 다른 SW에서 그대로 읽어 확장 가능. 변경 시마다 원자적(atomic) 저장.
+- **데이터**: **회사 서버 MySQL(`taskmgr`)에 직결**(2026-09-01 XML 은퇴, `DeployConfig.XmlRetired`). 접속정보는 `DeployConfig.cs` 상수. 옛 `%APPDATA%\TaskCalendar\data.xml`은 「가져오기」로 DB에 1회 이관하는 입구로만 남는다.
 - **창 구성**: WPF 창은 **WebView2가 100% 채웁니다.** 상단의 파란 **호스트바**(`⠿ 수행과제 캘린더` + 📌 ⚙ ✕)는 HTML 안에서 그려집니다 — WPF가 직접 그리는 영역을 두면 바탕화면 부착 시 그 부분이 검게 렌더되기 때문(원인은 아래 "알려진 한계" 참고).
 - **바탕화면 배치(톱레벨 최하위)**: 창을 **모든 일반 앱 창 뒤(바탕화면 레이어)** 에 둬 바탕화면처럼 깔립니다(앱 위로 안 떠오름). **클릭·일정 입력·검색·한글 입력 정상 동작.**
   - **📌 = 위치 고정(이동 잠금)**: 켜면 제자리 고정, 끄면 상단 `⠿ 수행과제 캘린더` 바를 드래그해 이동.
@@ -46,7 +46,12 @@ dotnet build -c Release
 ## 데이터 위치
 | 파일 | 용도 |
 |---|---|
-| `%APPDATA%\TaskCalendar\data.xml` | 캘린더 데이터(교환용 XML). HTML 프로토타입의 내보내기/가져오기와 100% 호환 |
+| **서버 MySQL (`taskmgr`)** | **캘린더 데이터** — 일정·할일·과제·공수·근태·커밋·보고기록. 각 PC 위젯이 직결(XML 은퇴, 2026-09-01) |
+| `%APPDATA%\TaskCalendar\data.xml` | **옛 로컬 데이터(0.17.1 이하)** — 「가져오기」로 DB에 1회 이관하는 입구. 이관 후에도 지우지 않는다 |
+| `%APPDATA%\TaskCalendar\repo-paths.json` | 과제별 Git/SVN 저장소 경로 — **PC마다 다른 값이라 DB에 올리지 않는다**(설계 §4) |
+| `%APPDATA%\TaskCalendar\user.session` | netcus 위임 로그인 세션(이름·직급·소속·권한) |
+| `%APPDATA%\TaskCalendar\reminders.json` | 미리알림 **확인(ack) 기록만** — 알림 일정 자체는 서버에서 읽은 데이터로 매번 계산 |
+| `%APPDATA%\TaskCalendar\netcus.cred` | 회사 보고 계정(DPAPI 암호화, 이 PC·이 사용자만 복호) |
 | `%APPDATA%\TaskCalendar\widget.settings.json` | 창 위치·크기·자동시작 상태 |
 | `%APPDATA%\TaskCalendar\WebView2\` | WebView2 사용자 데이터(자기완결) |
 
