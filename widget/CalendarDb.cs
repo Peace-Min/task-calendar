@@ -329,7 +329,13 @@ namespace TaskCalendarWidget
                         });
                 }
 
-                //  일정 — 부팅 조회(2/10)와 **같은 정렬**이다. 화면 순서가 사람마다 달라지면 안 된다.
+                //  일정 — 부팅 조회(2/10)와 **같은 정렬**이어야 한다. 화면 순서가 사람마다 달라지면 안 된다.
+                //  ★ 처음엔 여기에 entry_date 를 앞세워 놓고 주석만 '같은 정렬'이라고 적어 뒀다 — 거짓이었다.
+                //    부팅(:587)은 `ORDER BY e.sort_order, e.uid` 로 **날짜가 없다.** sort_order 는 이 앱에서
+                //    state.entries **배열 전체**의 순서이기 때문이다(실앱 데이터 확인: 한 사람의 값이
+                //    날짜를 가로질러 0,1,2…21 로 이어진다). 날짜를 앞세우면 배열 순서가 달라져,
+                //    달력 칸 안은 같아 보여도 전역으로 훑는 자리(검색 결과 순서 등)에서 주인이 보는 것과
+                //    열람자가 보는 것이 어긋난다. 2026-09-03 더미 데이터를 넣다가 드러났다.
                 var entries = new List<Dictionary<string, object?>>();
                 var exceptByNo = new Dictionary<uint, List<object?>>();
                 await using (var cmd = new MySqlCommand(
@@ -338,7 +344,7 @@ namespace TaskCalendarWidget
                     "DATE_FORMAT(e.start_time,'%H:%i') AS start_time, DATE_FORMAT(e.end_time,'%H:%i') AS end_time, " +
                     "e.title, e.recur_freq, e.recur_interval, DATE_FORMAT(e.recur_until,'%Y-%m-%d') AS recur_until, e.recur_count " +
                     "FROM cal_entry e LEFT JOIN cal_category cc ON cc.user_id = e.user_id AND cc.cat_no = e.cat_no " +
-                    "WHERE e.user_id=@u ORDER BY e.entry_date, e.sort_order, e.uid", conn))
+                    "WHERE e.user_id=@u ORDER BY e.sort_order, e.uid", conn))
                 {
                     cmd.Parameters.AddWithValue("@u", uid);
                     await using var rd = await cmd.ExecuteReaderAsync(ct);

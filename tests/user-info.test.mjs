@@ -966,11 +966,32 @@ const checks = {
     assert.ok(/'일정 열람 범위: 확인할 수 없음'/.test(jsBody(source, 'mbFail')),
       '조회 실패 줄만 옛 앞머리를 쓴다 — 같은 줄이 상황에 따라 다른 이름으로 불린다');
   },
+
+  //  열람 모달은 명부 모달의 **형제**여야 한다 — 자식으로 들어가면 보이지 않는다.
+  //  ★ 실제로 그랬다(2026-09-03). #peerModal 을 #membersModal 의 닫는 </div> 앞에 끼워 넣어
+  //    자식이 됐고, 명부가 .hidden 인 동안 열람 창 전체가 display:none 밑으로 들어가
+  //    **0×0** 이 됐다. 명부를 연 채로 사람을 눌러야만 보이니 겉보기엔 멀쩡했다 — 그래서 안 들켰다.
+  //    거기에 더해, 명부를 닫으면 열람 창이 화면에서만 사라지고 iframe 은 남의 데이터를 실은 채
+  //    **살아 남는다** — 이 앱이 일부러 짧게 유지하려던 생명주기가 무너진다.
+  //  판정: 명부 모달 마크업(그 시작 ~ 열람 모달 주석 직전)의 <div> 가 **스스로 닫히는가.**
+  //    자식으로 들어가 있으면 명부의 여는 <div> 하나가 안 닫힌 채 남아 잔량이 +1 이 된다.
+  //    ★ 주석을 먼저 지운다 — 주석 본문에 </div> 라고 적어 둔 곳이 있어 안 지우면 오검출한다.
+  peerModalIsSiblingNotChild(source) {
+    const seg = membersModalMarkup(source).replace(/<!--[\s\S]*?-->/g, '');
+    const bal = (seg.match(/<div\b/g) || []).length - (seg.match(/<\/div>/g) || []).length;
+    assert.strictEqual(bal, 0,
+      `#membersModal 마크업이 스스로 닫히지 않는다(<div> 잔량 ${bal}) — ` +
+      '#peerModal 이 그 **안에** 들어가 있다는 뜻이다. 형제로 꺼낼 것. ' +
+      '자식이면 명부가 닫힌 동안 열람 창이 display:none 밑에서 0×0 이 되어 보이지 않고, ' +
+      '명부를 닫아도 남의 데이터를 실은 iframe 이 살아 남는다');
+  },
 };
 
 // ══ 검사 실행 ═════════════════════════════════════════════════════════
 
 test('사용자정보 ①: #btnUser 가 상단바에 있고 라벨이 없다(폭 예산)', () => checks.topbarButton(src));
+test('사용자정보 ⑲: 열람 모달이 명부 모달의 형제다(자식이면 0×0 으로 안 보인다)', () =>
+  checks.peerModalIsSiblingNotChild(src));
 test('사용자정보 ②: ≤440px 에서 보조 버튼과 함께 접힌다', () => checks.narrowHidden(src));
 test('사용자정보 ③: 보고서 라벨 접기 경계가 739px 이다(690px 실측 상쇄)', () => checks.reportLabelBreakpoint(src));
 test('사용자정보 ④: ⋯ 접기 btnUserFold → #btnUser 위임', () => checks.foldEntry(src));
@@ -1038,6 +1059,13 @@ function mutate(base, from, to) {
   assert.notStrictEqual(out, base, `변이가 원본을 바꾸지 못했다(대상 문자열 없음): ${from}`);
   return out;
 }
+
+test('변이·중첩: #peerModal 을 명부 모달 안으로 되돌리면 사용자정보 ⑲ 가 잡는다', () => {
+  //  ★ 이것이 2026-09-03 이전의 실제 마크업이다 — 명부를 닫는 </div> 를 열람 모달 뒤로 미룬 꼴.
+  const bad = mutate(src, '  </div>\n\n</div>\n\n<!-- ===== 타인 일정 열람',
+                          '  </div>\n\n<!-- ===== 타인 일정 열람');
+  assert.throws(() => checks.peerModalIsSiblingNotChild(bad), /스스로 닫히지 않는다/);
+});
 
 // 같은 한 줄이 파일 곳곳에 있는 경우(ProjectDb 의 OpenReadAsync 호출 등) 전역 replace 는 엉뚱한 곳을 건드린다.
 // 시그니처 이후 첫 등장만 바꿔 '그 메서드 안에서의 회귀'를 정확히 재현한다.

@@ -291,6 +291,26 @@ const checks = {
       'migrate-*.sql 로 스키마를 올렸다면 widget/CalendarDb.cs 의 상수도 같은 커밋에서 올릴 것. ' +
       '어긋난 채 배포하면 최신 위젯이 스스로를 낡은 클라이언트로 판정해 가져오기·초기화가 막힌다');
   },
+
+  // ⑩ 부팅 조회와 타인 열람 조회가 **같은 순서**로 일정을 읽는가.
+  //    cal_entry.sort_order 는 이 앱에서 state.entries **배열 전체**의 순서다(날짜별 0부터가 아니다 —
+  //    실앱 데이터에서 한 사람의 값이 날짜를 가로질러 0,1,2…21 로 이어진다). 그래서 두 조회는
+  //    똑같이 `ORDER BY e.sort_order, e.uid` 여야 한다.
+  //    ★ 실제로 어긋나 있었다. 열람 조회에 entry_date 를 앞세워 놓고 주석만 '같은 정렬'이라 적어 뒀다
+  //      (2026-09-03 더미 데이터를 넣다가 드러났다). 그러면 달력 칸 안은 같아 보여도 전역으로 훑는
+  //      자리 — 검색 결과 순서 — 에서 **주인이 보는 것과 열람자가 보는 것이 어긋난다.**
+  //      주석은 기계가 아니다. 그래서 여기서 붙잡는다.
+  entryOrderIsSharedByBothReads(adapter) {
+    const orders = [...adapter.matchAll(/WHERE\s+e\.user_id=@u\s+ORDER BY\s+([^"]+)"/g)]
+      .map((m) => m[1].trim().replace(/\s+/g, ' '));
+    assert.strictEqual(orders.length, 2,
+      `widget/CalendarDb.cs 에서 cal_entry 조회의 ORDER BY 를 2개 찾지 못했다(찾은 수 ${orders.length}) — ` +
+      '조회가 늘거나 문장 모양이 바뀌었다면 이 검사도 함께 고칠 것(안 고치면 게이트가 조용히 사라진다)');
+    assert.strictEqual(orders[0], orders[1],
+      `부팅 조회와 타인 열람 조회의 일정 정렬이 다르다 — [${orders[0]}] vs [${orders[1]}]. ` +
+      'sort_order 는 배열 전체의 순서라 날짜를 앞세우면 배열 순서가 달라지고, ' +
+      '검색처럼 전역으로 훑는 자리에서 주인과 열람자가 서로 다른 순서를 본다');
+  },
 };
 
 // 변이 시험·수동 재현이 같은 검사를 쓰도록 내보낸다(러너는 test() 등록만 본다).
@@ -379,6 +399,9 @@ test('스키마 가드 ⑧: 모든 cal_* 표 이름이 cal_ 로 시작한다(오
 test('스키마 가드 ⑨: 위젯의 ExpectedSchemaVersion 이 정본이 심는 값과 같다(§5.5 낡은 클라이언트 차단)', () =>
   checks.widgetSchemaMatchesCanon(adapterSrc, canonSql));
 
+test('스키마 가드 ⑩: 부팅 조회와 타인 열람 조회가 일정을 같은 순서로 읽는다', () =>
+  checks.entryOrderIsSharedByBothReads(adapterSrc));
+
 // ══ 변이 시험 — 검출기가 정말 잡는지 ══════════════════════════════════
 // 소스 문자열을 고쳐 넣고 '빨간불이 나는가'를 본다. 이 절이 없으면 위 8건은
 // '아무것도 검사하지 않아서 통과하는' 상태와 구분되지 않는다.
@@ -456,6 +479,18 @@ test('변이⑨: 실제로 났던 결함(보고 기록 3표의 DROP 누락, c4cf
   assert.notStrictEqual(mutated, canonSql, '변이 준비 실패: 보고 기록 DROP 줄을 찾지 못했다');
   assert.throws(() => checks.dropCoversCreate(mutated),
     /cal_report_daily|cal_report_hours|cal_report_weekly/);
+});
+
+test('변이·정렬: 열람 조회에 날짜를 앞세우면(원래 있던 결함) 가드 ⑩ 이 잡는다', () => {
+  //  ★ 이것이 2026-09-03 이전의 실제 코드다. 되살아나면 여기서 걸린다.
+  const bad = adapterSrc.replace(
+    /(cc\.uid AS cat_uid[\s\S]*?WHERE\s+e\.user_id=@u\s+ORDER BY\s+)e\.sort_order, e\.uid"/,
+    '$1e.entry_date, e.sort_order, e.uid"');
+  assert.notStrictEqual(bad, adapterSrc, '변이 준비 실패: 열람 조회의 ORDER BY 를 찾지 못했다');
+  assert.throws(() => checks.entryOrderIsSharedByBothReads(bad), /정렬이 다르다/);
+  //  조회 자체가 사라진 경우(=게이트 폐기)도 조용히 통과하면 안 된다.
+  const gone = adapterSrc.replace(/WHERE\s+e\.user_id=@u\s+ORDER BY\s+e\.sort_order, e\.uid"/, 'WHERE e.user_id=@u"');
+  assert.throws(() => checks.entryOrderIsSharedByBothReads(gone), /2개 찾지 못했다/);
 });
 
 test('변이⑩: 위젯 상수만 낡게 두면(마이그레이션 후 갱신 누락) 가드 ⑨ 가 잡는다', () => {

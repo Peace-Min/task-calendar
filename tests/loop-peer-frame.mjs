@@ -213,6 +213,20 @@ try {
     ok(`R${r} 열람 창이 뜨고 데이터가 들어온다`, loaded);
     if (!loaded) { await cdp.ev('closeModal("#peerModal")'); continue; }
 
+    //  ①b **부모 문서에서 실제로 보이는가.** 프레임 안이 아무리 잘 그려져도, 부모 쪽에서
+    //  모달이 0×0 이면 사용자에게는 아무것도 안 보인다.
+    //  ★ 이 줄이 없어서 오래 못 잡았다 — #peerModal 이 #membersModal 의 **자식**으로 들어가
+    //    명부가 .hidden 인 동안 display:none 밑에서 0×0 이었는데, 위 검사들은 전부
+    //    프레임 **안쪽**만 보므로 113건이 초록으로 통과했다(2026-09-03 실측: .modal 0×0).
+    //    안쪽만 보는 오라클은 바깥이 무너진 것을 원리적으로 못 본다.
+    const box = JSON.parse(await cdp.ev(`(()=>{const m=document.querySelector("#peerModal .modal");
+      if(!m) return JSON.stringify({w:0,h:0,op:"0",err:"#peerModal .modal 없음"});
+      const r=m.getBoundingClientRect(), c=getComputedStyle(m);
+      return JSON.stringify({w:Math.round(r.width), h:Math.round(r.height), op:c.opacity});})()`));
+    ok(`R${r} **부모에서 보인다**: 열람 모달이 0×0 이 아니다`, box.w >= 300 && box.h >= 200,
+       `모달 ${box.w}×${box.h} op=${box.op}${box.err ? ' · ' + box.err : ''} — ` +
+       '숨겨진 조상 밑에 들어갔는지 확인할 것(#membersModal 의 자식이 되면 이렇게 된다)');
+
     //  ② **그 사람의** 것이 떴는가 — 내 것이 아니라
     const shown = JSON.parse(await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
       const st=w.__test.state(); return JSON.stringify({
@@ -244,6 +258,17 @@ try {
     //    위젯 창이 화면에 안 그려진 상태에서는 iframe 이 0×0 이라 **모든 요소가 "안 보임"** 이 되고,
     //    그러면 이 검사는 무엇을 노출하든 늘 통과한다(2026-09-03 실측: 보이는 것 0개로 변이가 안 잡혔다).
     //    그래서 조상 사슬의 display/visibility 만 본다 — 이건 레이아웃 없이도 결정된다.
+    //  ★ **일정이 있는 날을 먼저 고른다.** 안 그러면 일자 패널이 「기록 없음」이라 카드가 하나도
+    //    안 그려지고, 카드 안의 「수정·삭제」(.card-actions)는 존재조차 하지 않아 이 검사가
+    //    그 자리를 못 본다. 실제로 그 틈으로 새어 나갔다 — allowlist 로 뒤집을 때 옛 [data-edit]
+    //    규칙이 빠져 남의 일정 카드에 삭제 버튼이 붙어 있었는데, 이 검사는 8라운드 내내 초록이었다
+    //    (2026-09-03 캡처로 발견). 검사가 볼 수 없는 것은 검사하지 않은 것이다.
+    const picked = await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
+      try{ return w.eval("(function(){var e=state.entries[0]; if(!e) return ''; selectedDate=e.date;"
+        + " if(typeof renderPanel==='function') renderPanel(); return selectedDate;})()"); }catch(_){ return ''; }})()`);
+    ok(`R${r} 일정이 있는 날을 골랐다(카드가 그려져야 편집 어포던스를 볼 수 있다)`, !!picked,
+       '날짜 선택에 실패 — 이 라운드의 노출 검사는 카드 영역을 못 본다');
+    await sleep(200);
     const vis = JSON.parse(await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
       const shown=(el)=>{ for(let n=el; n && n!==w.document.documentElement; n=n.parentElement){
         const cs=w.getComputedStyle(n);

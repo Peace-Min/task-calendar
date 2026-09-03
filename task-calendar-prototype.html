@@ -1290,7 +1290,12 @@ body[data-peer] .actions > #btnSearch{ display:inline-flex !important }
       "이 사람은 할 일이 없다" 는 **거짓말**을 하게 된다. 안 보내는 것을 보여주는 자리를 두지 않는다.  */
 body[data-peer] #btnAddHere,
 body[data-peer] #dptab-todo,
-body[data-peer] #dptab-git{ display:none !important }
+body[data-peer] #dptab-git,
+/*  ★ 카드의 「수정 · 삭제」. blocklist 를 allowlist 로 뒤집을 때 옛 [data-edit] 규칙과 함께
+    이 자리가 빠져 그대로 노출됐다(2026-09-03 캡처에서 발견). 남의 일정 카드에 삭제 버튼이
+    붙어 있는 것은 그 자체로 잘못된 약속이다 — 눌러도 DB 는 안 바뀌지만(hpost 봉인),
+    화면에서는 사라지므로 "지웠다"고 믿게 된다. 그래서 감추고, deleteEntry 에서도 막는다.  */
+body[data-peer] .card-actions{ display:none !important }
 
 /*  달력 자체는 읽기 전용으로 보인다 — 편집 어포던스만 뺀다.  */
 body[data-peer] .cell{ cursor:default }
@@ -2676,7 +2681,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
   </div>
 
+</div>
+
 <!-- ===== 타인 일정 열람 (C4) ===== 「구성원」에서 사람을 누르면 열린다.
+     ★★ **#membersModal 의 형제여야 한다 — 자식으로 넣지 말 것.**
+       처음에 명부 모달의 닫는 </div> 앞에 끼워 넣어 자식이 돼 있었다(2026-09-03 발견).
+       그러면 명부가 .hidden 인 동안 이 창 전체가 display:none 밑으로 들어가 **0×0 으로 안 보인다.**
+       명부를 연 채로 눌러야만 보이니 겉보기엔 멀쩡했다 — 그래서 오래 안 들켰다.
+       또 명부를 닫으면 열람 창이 화면에서 사라지면서도 iframe 은 **살아 남는다**(남의 데이터를 실은 채로).
      ★★ 열람 화면을 따로 만들지 않는다 — **이 앱 자신을 iframe 으로 한 번 더 띄운다.**
        그래서 달력·과제 필터·일자 패널이 통째로 딸려오고, 메인 UI 가 바뀌면 여기도 저절로 따라온다.
        (따로 만들면 메인이 바뀔 때마다 두 곳을 맞춰야 하고, 언젠가 반드시 갈라진다.)
@@ -2693,7 +2705,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <button class="btn primary" data-close>닫기</button>
     </div>
   </div>
-</div>
 </div>
 
 <!-- ===== 자세한 사용설명서(A–Z) 모달 ===== -->
@@ -4970,6 +4981,11 @@ function updateEntry(id, d){
   save();
 }
 function deleteEntry(id){
+  //  ★ 열람 창에서는 **지역 상태조차 건드리지 않는다.** hpost 봉인 덕에 DB 는 안 바뀌지만,
+  //    state 에서 빼면 화면에서는 사라져 "남의 일정을 지웠다"고 믿게 된다 — 봉인보다 앞서
+  //    사람이 속는 자리다. CSS 로 버튼을 감춰도(.card-actions) 단축키·다른 경로가 남을 수 있어
+  //    여기서도 막는다. openEntryModal 과 같은 방식이다.
+  if(PEER){ try{ toast('읽기 전용 보기입니다 — 여기서는 지울 수 없습니다', 'info'); }catch(_){} return; }
   state.entries = state.entries.filter(e => e.id !== id); save();
 }
 function entrySort(a,b){
@@ -5773,7 +5789,12 @@ function dayDetailHtml(){
   </div>`;
   html += list.length
     ? `<div class="dp-list">${list.map(cardHtml).join('')}</div>`
-    : `<div class="dp-empty">이 날짜에 기록이 없습니다.<br>날짜를 <b>더블클릭</b>하거나 위 <b>＋ 추가</b> 버튼으로<br>새 기록을 작성하세요.</div>`;
+    //  ★ 열람 창에서는 **만드는 법을 알려 주지 않는다.** 거기서는 더블클릭도 ＋ 추가도 막혀 있어
+    //    (openEntryModal 이 PEER 에서 되돌아간다) 시키는 대로 해 봐야 아무 일도 안 일어난다.
+    //    없는 문을 가리키는 안내는 안내가 아니라 함정이다. 2026-09-03 캡처에서 발견.
+    : PEER
+      ? `<div class="dp-empty">이 날짜에 기록이 없습니다.</div>`
+      : `<div class="dp-empty">이 날짜에 기록이 없습니다.<br>날짜를 <b>더블클릭</b>하거나 위 <b>＋ 추가</b> 버튼으로<br>새 기록을 작성하세요.</div>`;
   return html;
 }
 // 우측 패널 렌더 — 탭바는 보존하고 본문(#dpBody)만 교체
