@@ -70,6 +70,7 @@ tests/
 ├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
 ├─ loop-import-ui.mjs        **실제 위젯**(CDP) + 실 DB — 「XML 가져오기」 실동작(교체·병합 왕복)
+├─ loop-schema-gate.mjs     **실제 위젯**(CDP) + 실 DB — P1-1 스키마 게이트·P1-2 부팅 재시도·P1-8 개명 가드 회귀
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
 ├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
 ├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
@@ -571,3 +572,28 @@ v0.12.0에서 나온 결함이 **대부분 레이아웃**이었고 전부 수작
 - [ ] **업데이트 무음 실패 완화** — 설정에 "마지막 업데이트 확인: N일 전" 노출 + 테스트.
       팝업 없이 정보만 남기는 방식(현 설계 철학 유지).
 - [x] ~~**`feat/db-app` → main 병합 시 통합 검증**~~ — **결정 1(2026-09-02)로 종결.** 승격·병합하지 않는다(`docs/ROADMAP.md` §5-1). main 잔여 커밋 중 이 백로그(`5d371c6`)는 cherry-pick됐고(`4953c30`), 나머지(`a90e56c`, 옛 로드맵 주석)는 로드맵 재작성으로 불필요 — main 잔여 0건.
+
+## loop-schema-gate.mjs — 스키마 게이트·부팅 재시도·개명 가드 회귀(P1-1·P1-2·P1-8)
+
+`f6d6c2d`로 넣은 배포 전 안전장치 셋을, **다음 빌드가 스스로 재증명**하게 하는 실동작 테스트다.
+만들 때는 CDP로 실위젯 검증했지만 그 검증이 일회성이라, 부팅 경로·스키마 비교·배지처럼
+**실행돼야 드러나는** 것을 회귀로 못 박았다(계약 테스트·순수 로직 게이트가 못 보는 영역).
+
+- **P1-1** 서버 스키마를 잠깐 9로 올려(위젯은 8) 배지 경고·웹 게이트·호스트 게이트 삼중 확인,
+  통상 저장은 §5.5대로 허용됨을 확인, 8로 복구.
+- **P1-2** `__applyStateError`로 15·30·60초 백오프·수동 재시도·성공 시 해제·retryable=false 무재시도.
+- **P1-8** pick 없이 온 전량 교체는 개명하지 않음(`_lastImportPath` null 가드). 네이티브 파일창으로
+  고른 원본의 실개명은 범위 밖(모달) — 계약 `data-source ⑨` + 2026-09-03 수기 로그로 증명됨.
+
+```bash
+# 사전: 위젯을 TC_DEBUG_PORT=9222로 로그인된 채 띄워 둘 것.
+#       Bash:        export TC_TEST_DB_ADMIN_PW=<DB 관리자 비번>
+#       PowerShell:  $env:TC_TEST_DB_ADMIN_PW = '<DB 관리자 비번>'
+node tests/loop-schema-gate.mjs
+```
+
+**⚠️ 전역 행을 만진다.** 이 테스트는 `cal_schema_meta.schema_version`을 잠깐 9로 바꾼다 —
+그 창 동안 이 DB를 보는 **모든** 위젯이 전량 교체를 거부하므로 **테스트 DB에서만** 돌린다.
+끝나면(중단돼도) `finally`가 8로 되돌리고, 되돌림 실패 시 마지막에 크게 경고한다.
+
+**종료코드**: 통과=0, 실패 또는 schema_version 복구 실패=1, `TC_TEST_DB_ADMIN_PW` 없음=2.
