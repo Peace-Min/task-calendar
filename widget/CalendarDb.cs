@@ -36,7 +36,10 @@ namespace TaskCalendarWidget
         public long Rev { get; }
 
         // 프리앰블에서 읽은 스키마 버전(§3.6). 값을 나르기만 한다 —
-        //   '낡은 클라이언트의 파괴적 연산 차단' 판정은 쓰기 경로의 몫이다(§5.5, 이번 범위 아님).
+        //   '낡은 클라이언트의 파괴적 연산 차단' 판정은 쓰기 경로의 몫이다(§5.5).
+        //   ★ 그 판정 지점은 **CalendarWriteDb.SaveAsync 의 replaceAll 분기 하나뿐**이고,
+        //     비교 상대는 CalendarDb.ExpectedSchemaVersion 이다. 여기서 판정하지 않는 이유는
+        //     읽기를 막을 이유가 없어서다 — 낡은 위젯도 조회·편집은 계속되어야 한다(§5.5).
         public string SchemaVersion { get; }
 
         // 이 스냅샷의 소유자. 쓰기 경로가 WHERE user_id 로 쓸 값이다.
@@ -90,6 +93,17 @@ namespace TaskCalendarWidget
     // ================================================================================
     internal sealed class CalendarDb
     {
+        // ── 이 위젯이 아는 스키마 판본(§5.5 「스키마 진화 규칙」) ──────────────────────
+        //   부팅 프리앰블이 읽은 서버 값(cal_schema_meta.schema_version)과 **접속 시 1회** 비교하고,
+        //   다르면 **파괴적 연산만** 막는다(전량 교체 = 가져오기·전체 초기화). 통상 저장·조회는
+        //   그대로 둔다 — 전 쓰기 봉인은 과하고, 낡은 위젯이라고 하루를 못 쓰게 만들 이유가 없다.
+        //   ★ `migrate-*.sql` 로 정본(db/deploy/schema-calendar.sql)의 값을 올릴 때 **이 상수도
+        //     같이 올린다.** 잊으면 tests/schema-guards.test.mjs 가드 ⑨ 가 빨간불을 낸다.
+        //   ★ 서버 값을 앱이 올려서 통과할 수는 없다 — 앱 계정의 cal_schema_meta 권한은 SELECT
+        //     하나뿐이다(db/deploy/grants-calendar.sql). 막으려는 대상이 자기 통과증을 발급하면
+        //     이 게이트는 무의미해진다(§5.5 ★).
+        internal const string ExpectedSchemaVersion = "8";
+
         private readonly Action<string> _log;
 
         // ★ ProjectDb 와 달리 _dataDir 이 없다. 그 필드는 오직 쓰기 권한 관문(UserSession.Load)을

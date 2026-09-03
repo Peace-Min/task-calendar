@@ -202,7 +202,8 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 `cal_schema_meta` 표의 `k='schema_version'` 한 행이 **지금 이 DB 구조가 몇 번째 판인지**를 담습니다(단조증가 정수 문자열). 각 마이그레이션이 자기 앞뒤 값을 명시하고 **적용하면서 이 행을 올립니다.** `schema-calendar.sql` 은 새로 구축할 때 **최신 값을 곧바로 시딩**하므로, 새 DB 와 마이그레이션을 순서대로 돌린 DB 가 같은 값으로 만납니다 — **그것이 "같은 구조인가"의 판정 기준**입니다(표 개수보다 강한 기준입니다).
 
 - 앱은 접속 프리앰블에서 이 행을 **1회 읽습니다.** 권한도 `SELECT` 만 줍니다(`grants-calendar.sql`) — 앱이 이 값을 올릴 수 있으면 「낡은 클라이언트 차단」이 성립하지 않기 때문이고, `init-calendar` 가 그 권한을 게이트로 확인합니다(설계 §5.5).
-- ⚠️ **다만 그 비교는 아직 앱 코드에 없습니다**(2026-09-02 현재). 다음 `ALTER` 순간 낡은 위젯이 그대로 쓰게 됩니다 — 배포 전 조건 P1 항목입니다([`../../docs/ROADMAP.md`](../../docs/ROADMAP.md) §2-2).
+- 그 비교는 **`widget/CalendarDb.cs` 의 `ExpectedSchemaVersion` 상수**와 합니다(2026-09-03 구현). 다르면 **전량 교체(가져오기·전체 초기화)만** 거부하고 조회·통상 저장은 그대로 둡니다(설계 §5.5 — 전 쓰기 봉인은 과합니다).
+- ⚠️ **`migrate-*.sql` 을 하나 더할 때 `CalendarDb.ExpectedSchemaVersion` 도 같은 커밋에서 올리세요**(`tests/schema-guards.test.mjs` 가드 ⑨ 가 잡습니다). 안 올리면 게이트가 **거꾸로** 터집니다 — 새 서버에서 최신 위젯이 스스로를 낡은 클라이언트로 판정해 가져오기·초기화가 전부 막힙니다.
 - **버전 번호를 이 문서에 적지 않습니다.** 값의 정본은 `schema-calendar.sql` 끝의 `INSERT INTO cal_schema_meta … VALUES ('schema_version', …)` 한 줄이고, 실 DB 값은 아래로 확인합니다:
   ```sql
   SELECT v FROM cal_schema_meta WHERE k = 'schema_version';

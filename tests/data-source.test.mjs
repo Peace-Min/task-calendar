@@ -396,3 +396,226 @@ test('변이㉖: 부팅이 빈 캘린더 안내를 안 부르면 표시등① �
   const bad = mutate('    renderDataSourceBadge(meta);\n    renderEmptyHint();', '    renderDataSourceBadge(meta);', src);
   assert.throws(() => c7.emptyHintGuidesOnly(bad), /부팅이 빈 캘린더 안내를 부르지 않는다/);
 });
+
+/* ── ⑧ 낡은 클라이언트의 파괴적 연산 차단 (설계 §5.5 · P1-1) ─────────────── */
+//  전제: 스키마는 앞으로도 오른다(migrate-*.sql). 그때 낡은 위젯이 **전량 교체**를 돌리면
+//    자기가 아는 모양으로 통째로 다시 넣기 때문에, 새 스키마에서 늘어난 값이 조용히 사라진다.
+//    차분 저장은 자기가 아는 컬럼만 건드리므로 그 사고가 없다 — 그래서 §5.5 는 **파괴적 연산만**
+//    막고 조회·편집은 계속되게 하라고 못박았다. 이 절은 그 '만' 을 양쪽에서 잠근다:
+//      · 막아야 할 것을 안 막는가 (전량 교체)
+//      · 막지 말아야 할 것을 막는가 (통상 저장)
+
+const grants = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
+
+const c8 = {
+  //  ⑧-1 게이트가 **트랜잭션을 열기 전에** 있다. 열고 나서 막으면 rev 가 이미 올라 있고
+  //       (§3.1 의 첫 문장) 롤백해도 '아무것도 안 했다'가 아니게 된다 — 다음 사람이
+  //       "왜 실패한 저장이 rev 를 올렸나"를 다시 조사한다.
+  gateBeforeTransaction(cs) {
+    const g = cs.indexOf('if (replaceAll && !string.Equals(prev.SchemaVersion');
+    assert.ok(g > 0, '쓰기 계층에 스키마 게이트가 없다 — 다음 ALTER 순간 낡은 위젯이 그대로 전량 교체한다');
+    const tx = cs.indexOf('BeginTransactionAsync');
+    assert.ok(tx > 0, '트랜잭션 시작을 찾지 못했다');
+    assert.ok(g < tx, '스키마 게이트가 트랜잭션을 연 뒤에 있다 — 거부해도 rev 가 이미 올라간다(§3.1)');
+    assert.ok(/CalendarDb\.ExpectedSchemaVersion/.test(cs.slice(g, g + 400)),
+      '게이트가 위젯 상수(CalendarDb.ExpectedSchemaVersion)와 비교하지 않는다');
+  },
+
+  //  ⑧-2 통상 저장은 **막지 않는다**(§5.5 "전 쓰기 봉인은 과하다"). 게이트 조건에서 replaceAll 이
+  //       빠지면 낡은 위젯을 쓰는 사람은 그날 하루 아무것도 저장하지 못한다.
+  normalSaveNotBlocked(cs) {
+    const g = cs.indexOf('if (replaceAll && !string.Equals(prev.SchemaVersion');
+    assert.ok(g > 0, '스키마 게이트를 찾지 못했다');
+    //  게이트 앞에 다른 스키마 비교가 또 있으면 그쪽이 통상 저장까지 막고 있을 수 있다.
+    assert.ok(!/ExpectedSchemaVersion/.test(cs.slice(0, g)),
+      '게이트보다 앞에서 스키마를 또 비교한다 — 통상 저장까지 막고 있지 않은지 확인할 것(§5.5)');
+  },
+
+  //  ⑧-3 거부는 **충돌과 구분되는 신호**로 나간다. 같은 상자에 담으면 사용자가 '새로고침'만
+  //       반복한다 — 그건 위젯을 업데이트하기 전에는 영원히 안 풀리는 실패다.
+  mismatchIsNotConflict(cs, mw, app) {
+    assert.ok(/public bool SchemaMismatch \{ get; init; \}/.test(cs),
+      '결과에 SchemaMismatch 가 없다 — 호스트가 충돌과 구분해 넘길 방법이 없다');
+    assert.ok(/schemaMismatch = r\.SchemaMismatch/.test(mw),
+      '호스트가 schemaMismatch 를 웹으로 넘기지 않는다');
+    const d = bodyOf(app, 'function dbSave(opt){');
+    const i = d.indexOf('res.schemaMismatch');
+    const j = d.indexOf('res.conflict');
+    assert.ok(i > 0, '웹이 schemaMismatch 를 읽지 않는다');
+    assert.ok(i < j, '스키마 불일치보다 충돌 분기가 먼저다 — 불일치가 충돌 상자로 샌다');
+  },
+
+  //  ⑧-4 부팅 meta 가 두 판본을 함께 실어, 화면이 '어느 쪽이 낡았는지'를 말할 수 있게 한다.
+  bootMetaCarriesBoth(mw, app) {
+    assert.ok(/expectedSchema = CalendarDb\.ExpectedSchemaVersion/.test(mw) && /schemaMismatch,/.test(mw),
+      '부팅 meta 에 expectedSchema·schemaMismatch 가 없다 — 배지가 서버 값만 보고 정상으로 보인다');
+    const b = bodyOf(app, 'function renderDataSourceBadge(meta){');
+    assert.ok(/m\.schemaMismatch/.test(b) && /var\(--danger\)/.test(b),
+      '배지가 스키마 불일치를 경고 톤으로 알리지 않는다');
+  },
+
+  //  ⑧-5 웹은 **누르기 전에** 막는다(UX). 진짜 방어는 호스트지만, 눌러 본 뒤 거부당하는 흐름은
+  //       특히 「전체 초기화」에서 나쁘다 — 화면만 비고 DB 는 그대로라 사용자가 사고로 읽는다.
+  webGatesBothEntrances(app) {
+    for (const [fn, why] of [['function startImport(){', '가져오기'], ['async function clearAll(){', '전체 초기화']]) {
+      const b = bodyOf(app, fn);
+      assert.ok(/schemaBlocked\(\)/.test(b), `${why} 진입점에 스키마 게이트가 없다`);
+    }
+    const g = bodyOf(app, 'function schemaBlocked(){');
+    assert.ok(/__bootMeta/.test(g) && /toast\(/.test(g), '게이트가 부팅 meta 를 읽거나 사유를 알리지 않는다');
+  },
+
+  //  ⑧-6 앱 계정은 버전 행을 **읽기만** 한다(§5.5 ★). 한 줄이라도 쓰기를 주면 막으려는 대상이
+  //       자기 통과증을 발급할 수 있게 되어 이 게이트 전체가 무의미해진다.
+  versionRowIsReadOnlyForApp(sql) {
+    const lines = sql.split(/\r?\n/).filter((l) => /^\s*GRANT\b/.test(l) && /cal_schema_meta/.test(l));
+    assert.ok(lines.length > 0, 'cal_schema_meta 에 대한 GRANT 가 없다 — 앱이 버전을 읽지 못한다');
+    for (const l of lines) {
+      const verbs = l.slice(l.indexOf('GRANT') + 5, l.indexOf(' ON ')).split(',').map((s) => s.trim().toUpperCase());
+      assert.deepStrictEqual(verbs, ['SELECT'],
+        `cal_schema_meta 에 SELECT 외의 권한을 준다(${verbs.join(', ')}) — ` +
+        '낡은 클라이언트가 스스로 버전을 올려 게이트를 통과할 수 있게 된다(§5.5 ★)');
+    }
+  },
+};
+
+test('낡은①: 전량 교체 게이트가 트랜잭션을 열기 전에 있다', () => c8.gateBeforeTransaction(writedb));
+test('낡은②: 통상 저장은 막지 않는다(§5.5 — 조회·편집은 계속되게)', () => c8.normalSaveNotBlocked(writedb));
+test('낡은③: 스키마 불일치가 낙관적 잠금 충돌과 구분돼 나간다', () => c8.mismatchIsNotConflict(writedb, mainwin, src));
+test('낡은④: 부팅 meta 가 서버·위젯 두 판본을 함께 싣고 배지가 경고한다', () => c8.bootMetaCarriesBoth(mainwin, src));
+test('낡은⑤: 가져오기·초기화 진입점이 누르기 전에 사유를 알린다', () => c8.webGatesBothEntrances(src));
+test('낡은⑥: 앱 계정의 cal_schema_meta 권한은 SELECT 하나뿐이다(§5.5 ★)', () => c8.versionRowIsReadOnlyForApp(grants));
+
+test('변이㉗: 게이트를 트랜잭션 뒤로 옮기면 낡은① 이 실패한다', () => {
+  const bad = writedb
+    .replace('if (replaceAll && !string.Equals(prev.SchemaVersion', 'if (SCHEMA_GATE_MOVED && !string.Equals(prev.SchemaVersion')
+    .replace('BeginTransactionAsync', 'BeginTransactionAsync/*x*/ if (replaceAll && !string.Equals(prev.SchemaVersion');
+  assert.notStrictEqual(bad, writedb, '변이가 원본을 바꾸지 못했다');
+  assert.throws(() => c8.gateBeforeTransaction(bad), /트랜잭션을 연 뒤에 있다/);
+});
+
+test('변이㉘: 게이트에서 replaceAll 조건을 빼면(통상 저장까지 봉인) 낡은①·② 가 실패한다', () => {
+  const bad = mutate('if (replaceAll && !string.Equals(prev.SchemaVersion', 'if (!string.Equals(prev.SchemaVersion', writedb);
+  assert.throws(() => c8.gateBeforeTransaction(bad), /스키마 게이트가 없다/);
+  assert.throws(() => c8.normalSaveNotBlocked(bad), /스키마 게이트를 찾지 못했다/);
+});
+
+test('변이㉙: 불일치를 충돌 상자에 담으면 낡은③ 이 실패한다', () => {
+  const bad = mutate("    if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');\n    else if(res && res.conflict)",
+    '    if(res && res.conflict)', src);
+  assert.throws(() => c8.mismatchIsNotConflict(writedb, mainwin, bad), /schemaMismatch 를 읽지 않는다/);
+});
+
+test('변이㉚: 가져오기 게이트를 없애면 낡은⑤ 가 실패한다', () => {
+  const bad = mutate('  if(schemaBlocked()) return;   // P1-1 — 낡은 위젯의 전량 교체는 호스트가 거부한다. 여기서 사유를 먼저 알린다\n', '', src);
+  assert.throws(() => c8.webGatesBothEntrances(bad), /가져오기 진입점에 스키마 게이트가 없다/);
+});
+
+test('변이㉛: 버전 행에 UPDATE 권한을 주면 낡은⑥ 이 실패한다', () => {
+  const bad = mutate("GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';",
+    "GRANT SELECT, UPDATE ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';", grants);
+  assert.throws(() => c8.versionRowIsReadOnlyForApp(bad), /SELECT 외의 권한을 준다/);
+});
+
+/* ── ⑨ 가져오기 후 원본 개명 (설계 §8 · P1-8) ───────────────────────────── */
+//  왜: 이관을 마친 파일이 원래 이름 그대로 남아 있으면 **다음에 또 가져온다.** 그 사이의 편집이
+//    통째로 옛 파일로 덮이고 되돌릴 경로가 없다(가져오기는 전량 교체다). 이름에 이관 사실이
+//    적혀 있으면 파일창에서 눈으로 걸러진다.
+//  ★ 지우지 않는다 — 이관 결과를 사람이 대조할 유일한 원본이다.
+
+const c9 = {
+  //  ⑨-1 경로는 **pick 에서만** 기억한다. 다른 곳에서 세우기 시작하면 '무엇을 개명하는가'가
+  //       추적 불가가 되고, 무엇보다 사용자가 고르지 않은 파일이 대상이 될 수 있다.
+  pathSetOnlyByPicker(cs) {
+    const pick = bodyOf(cs, 'private void PickImportXml(string reqId)');
+    assert.ok(/_lastImportPath = dlg\.FileName;/.test(pick), '파일창이 고른 경로를 기억하지 않는다');
+    assert.ok(/_lastImportPath = null;/.test(pick), '새 선택 때 지난 선택을 지우지 않는다(취소·실패가 남는다)');
+    //  세팅은 **읽은 뒤**에 온다 — 읽기가 실패한 파일이 개명 대상이 되면 안 된다.
+    assert.ok(pick.indexOf('File.ReadAllText') < pick.indexOf('_lastImportPath = dlg.FileName'),
+      '파일을 읽기 전에 개명 대상으로 기억한다 — 읽기 실패한 파일이 개명된다');
+    //  ★ 경로는 웹으로 새지 않는다(⑦-2 와 같은 이유).
+    assert.ok(!/path = dlg\.FileName/.test(pick), '경로를 웹에 넘긴다 — data.xml 이 출처로 되살아나는 문이다');
+    //  세팅 지점은 파일창과 개명 함수 두 곳뿐이어야 한다.
+    const owners = ['private void PickImportXml(string reqId)', 'private (string, string) RenameImportedSource()']
+      .map((h) => bodyOf(cs, h)).join('\n');
+    const total = (cs.match(/_lastImportPath\s*=/g) || []).length;
+    const mine = (owners.match(/_lastImportPath\s*=/g) || []).length;
+    assert.strictEqual(total, mine,
+      '_lastImportPath 를 파일창·개명 함수 밖에서도 세운다 — 사용자가 고르지 않은 파일이 개명 대상이 된다');
+  },
+
+  //  ⑨-2 개명은 **한 번만** 쓴다. 성공이든 실패든 즉시 null 로 되돌리지 않으면, pick 없이 오는
+  //       전량 교체(전체 초기화·루프 테스트)가 엉뚱한 파일을 건드린다.
+  pathConsumedOnce(cs) {
+    const b = bodyOf(cs, 'private (string, string) RenameImportedSource()');
+    const read = b.indexOf('string? p = _lastImportPath;');
+    const clear = b.indexOf('_lastImportPath = null;');
+    assert.ok(read >= 0 && clear > read, '개명 함수가 경로를 읽자마자 비우지 않는다');
+    assert.ok(clear < b.indexOf('try'), '비우기가 try 안에 있다 — 예외가 나면 경로가 남는다');
+    assert.ok(/if \(string\.IsNullOrEmpty\(p\)\) return \("", ""\);/.test(b),
+      'pick 없이 온 전량 교체(전체 초기화)에서 아무것도 안 한다는 보장이 없다');
+  },
+
+  //  ⑨-3 데이터 폴더 안 · `.migrated-<날짜>` · 덮어쓰기 금지.
+  renameIsSafe(cs) {
+    const b = bodyOf(cs, 'private (string, string) RenameImportedSource()');
+    assert.ok(/_dataDir/.test(b) && /StringComparison\.OrdinalIgnoreCase/.test(b),
+      '데이터 폴더 안인지 검사하지 않는다 — 사용자가 바탕화면에서 고른 파일을 말없이 개명한다');
+    assert.ok(/"\.migrated-"/.test(b) && /yyyyMMdd/.test(b), '개명 이름에 `.migrated-<날짜>` 규약이 없다(설계 §8)');
+    assert.ok(/File\.Move\(p, target\);/.test(b) && !/File\.Move\([^)]*,\s*true\s*\)/.test(b),
+      'File.Move 가 덮어쓰기 모드다 — 지난 이관본의 원본이 사라진다');
+    assert.ok(/File\.Exists\(target\)/.test(b) && /stem \+ "-" \+ n/.test(b),
+      '같은 이름이 있을 때 접미(-2,-3)를 붙이지 않는다');
+  },
+
+  //  ⑨-4 저장이 **성공한 뒤**, **전량 교체일 때만** 부른다. 실패했는데 개명하면 사용자는
+  //       원본을 잃은 것처럼 본다. 개명 실패는 반대로 가져오기 실패가 아니다(ok=true 유지).
+  renamedAfterSuccessOnly(cs) {
+    const b = bodyOf(cs, 'private async Task SaveStateToDbAsync(string reqId, string stateJson, bool replaceAll = false)');
+    assert.ok(/var rn = replaceAll \? RenameImportedSource\(\) : \("", ""\);/.test(b),
+      '전량 교체가 아닐 때도 개명을 시도한다(또는 아예 안 한다)');
+    assert.ok(b.indexOf('if (r.Ok)') < b.indexOf('RenameImportedSource()'),
+      '저장 성공 판정보다 먼저 개명한다 — 저장이 실패해도 원본 이름이 바뀐다');
+    assert.ok(/ok = true,[^;]*renamedTo = rn\.Item1, renameError = rn\.Item2/.test(b),
+      '개명 결과를 회신에 싣지 않는다 — 이름이 말없이 바뀌면 사용자는 파일이 사라졌다고 읽는다');
+  },
+
+  //  ⑨-5 웹이 그 사실을 알린다(성공·실패 둘 다).
+  webTellsRename(app) {
+    const d = bodyOf(app, 'function dbSave(opt){');
+    assert.ok(/res\.renamedTo/.test(d) && /res\.renameError/.test(d), '웹이 개명 결과를 알리지 않는다');
+    const ok = d.indexOf('if(res && res.ok)');
+    assert.ok(ok >= 0 && d.indexOf('res.renamedTo') > ok, '개명 안내가 성공 분기 밖에 있다');
+  },
+};
+
+test('개명①: 원본 경로는 파일창에서만, 읽기에 성공한 뒤에 기억한다', () => c9.pathSetOnlyByPicker(mainwin));
+test('개명②: 경로는 한 번만 쓰인다(pick 없는 전량 교체는 무동작)', () => c9.pathConsumedOnce(mainwin));
+test('개명③: 데이터 폴더 안·`.migrated-<날짜>`·덮어쓰기 금지', () => c9.renameIsSafe(mainwin));
+test('개명④: 저장 성공 + 전량 교체일 때만 개명하고 결과를 회신한다', () => c9.renamedAfterSuccessOnly(mainwin));
+test('개명⑤: 웹이 개명 사실(또는 실패)을 사용자에게 알린다', () => c9.webTellsRename(src));
+
+test('변이㉜: 경로를 비우지 않으면 개명② 가 실패한다(전체 초기화가 엉뚱한 파일을 건드린다)', () => {
+  //  ★ 주석 처리가 아니라 **문장을 지운다** — 주석으로 남기면 indexOf 가 그 글자를 그대로 찾아
+  //    변이가 성립하지 않는다(이 검사는 텍스트 대조다).
+  const bad = mutate('            _lastImportPath = null;   // ★ 한 번만 쓴다', '            /* 비우지 않는다 */', mainwin);
+  assert.throws(() => c9.pathConsumedOnce(bad), /읽자마자 비우지 않는다/);
+});
+
+test('변이㉝: File.Move 를 덮어쓰기로 바꾸면 개명③ 이 실패한다', () => {
+  const bad = mutate('File.Move(p, target);', 'File.Move(p, target, true);', mainwin);
+  assert.throws(() => c9.renameIsSafe(bad), /덮어쓰기 모드다/);
+});
+
+test('변이㉞: 데이터 폴더 검사를 없애면 개명③ 이 실패한다', () => {
+  const bad = mainwin.replace(/string data = Directory\.Exists\(_dataDir\)[\s\S]{0,400}?OrdinalIgnoreCase\)\)/,
+    'string data = ""; if (false)');
+  assert.notStrictEqual(bad, mainwin, '변이가 원본을 바꾸지 못했다');
+  assert.throws(() => c9.renameIsSafe(bad), /데이터 폴더 안인지 검사하지 않는다/);
+});
+
+test('변이㉟: 저장 실패에도 개명하면 개명④ 가 실패한다', () => {
+  const bad = mutate('                var r = await new CalendarWriteDb(Log).SaveAsync(snap, stateJson, replaceAll);',
+    '                var r = await new CalendarWriteDb(Log).SaveAsync(snap, stateJson, replaceAll);\r\r\n                var rn0 = replaceAll ? RenameImportedSource() : ("", "");', mainwin);
+  assert.throws(() => c9.renamedAfterSuccessOnly(bad), /저장 성공 판정보다 먼저 개명한다/);
+});

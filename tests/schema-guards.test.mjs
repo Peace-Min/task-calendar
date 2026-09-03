@@ -21,6 +21,9 @@ const loadSql = (name) => readFileSync(new URL(name, DEPLOY), 'utf8');
 const CANON = 'schema-calendar.sql';   // 정본 재구축 스크립트
 const canonSql = loadSql(CANON);
 
+// 가드 ⑨ 전용 — 위젯이 아는 스키마 판본(§5.5). SQL 이 아니라 C# 소스에서 읽는다.
+const adapterSrc = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.url), 'utf8');
+
 // migrate-*.sql 전수(이름순 — 날짜가 이름 앞에 있어 사전순 = 시간순).
 const MIGRATE_FILES = readdirSync(DEPLOY)
   .filter((f) => /^migrate-.*\.sql$/i.test(f))
@@ -269,6 +272,25 @@ const checks = {
 
     return sorted;
   },
+
+  // ⑨ 위젯 빌드 상수 == 정본이 심는 값 (설계 §5.5 「낡은 클라이언트 차단」).
+  //    이 게이트의 재료는 둘이다: 서버가 들고 있는 schema_version 과 위젯이 아는 상수.
+  //    ★ 상수를 안 올리면 게이트가 **거꾸로 터진다** — 새 스키마로 올린 서버에서 최신 위젯이
+  //      "낡은 클라이언트" 로 판정돼 가져오기·초기화가 전부 막힌다.
+  //    ★ 상수만 먼저 올려도 마찬가지로 위험하다 — 아직 안 올린 서버에서 같은 증상이 난다.
+  //      즉 이 둘은 **한 커밋 안에서 같이 움직여야 하고**, 그것을 기계가 붙잡는 자리가 여기다.
+  widgetSchemaMatchesCanon(adapter, canon) {
+    const v = widgetExpectedSchema(adapter);
+    assert.ok(v !== null,
+      'widget/CalendarDb.cs 에서 `internal const string ExpectedSchemaVersion = "N";` 를 찾지 못했다 — ' +
+      '이름이나 형태를 바꿨다면 이 검사도 함께 고칠 것(안 고치면 게이트가 조용히 검사 없는 상태가 된다)');
+    const canonVer = canonSchemaVersion(canon);
+    assert.ok(canonVer !== null, `${CANON} 에서 schema_version INSERT 값을 찾지 못했다`);
+    assert.strictEqual(v, canonVer,
+      `위젯 상수(ExpectedSchemaVersion=${v}) 와 정본(${CANON} 의 ${canonVer}) 이 다르다 — ` +
+      'migrate-*.sql 로 스키마를 올렸다면 widget/CalendarDb.cs 의 상수도 같은 커밋에서 올릴 것. ' +
+      '어긋난 채 배포하면 최신 위젯이 스스로를 낡은 클라이언트로 판정해 가져오기·초기화가 막힌다');
+  },
 };
 
 // 변이 시험·수동 재현이 같은 검사를 쓰도록 내보낸다(러너는 test() 등록만 본다).
@@ -304,6 +326,12 @@ function canonSchemaVersion(sql) {
     return Number(m[1]);
   }
   return null;
+}
+
+// widget/CalendarDb.cs 의 `internal const string ExpectedSchemaVersion = "N";` → N. 없으면 null.
+function widgetExpectedSchema(cs) {
+  const m = /\bconst\s+string\s+ExpectedSchemaVersion\s*=\s*"(\d+)"\s*;/.exec(cs);
+  return m ? Number(m[1]) : null;
 }
 
 // ══ 테스트 ════════════════════════════════════════════════════════════
@@ -347,6 +375,9 @@ test('스키마 가드 ⑧: 모든 cal_* 표 이름이 cal_ 로 시작한다(오
   const odd = createList(canonSql).map((c) => c.name).filter((n) => !/^cal_/.test(n));
   assert.deepStrictEqual(odd, [], `cal_ 로 시작하지 않는 표: ${odd.join(', ')}`);
 });
+
+test('스키마 가드 ⑨: 위젯의 ExpectedSchemaVersion 이 정본이 심는 값과 같다(§5.5 낡은 클라이언트 차단)', () =>
+  checks.widgetSchemaMatchesCanon(adapterSrc, canonSql));
 
 // ══ 변이 시험 — 검출기가 정말 잡는지 ══════════════════════════════════
 // 소스 문자열을 고쳐 넣고 '빨간불이 나는가'를 본다. 이 절이 없으면 위 8건은
@@ -425,6 +456,15 @@ test('변이⑨: 실제로 났던 결함(보고 기록 3표의 DROP 누락, c4cf
   assert.notStrictEqual(mutated, canonSql, '변이 준비 실패: 보고 기록 DROP 줄을 찾지 못했다');
   assert.throws(() => checks.dropCoversCreate(mutated),
     /cal_report_daily|cal_report_hours|cal_report_weekly/);
+});
+
+test('변이⑩: 위젯 상수만 낡게 두면(마이그레이션 후 갱신 누락) 가드 ⑨ 가 잡는다', () => {
+  const bad = adapterSrc.replace(/(\bconst\s+string\s+ExpectedSchemaVersion\s*=\s*")\d+(")/, '$17$2');
+  assert.notStrictEqual(bad, adapterSrc, '변이 준비 실패: ExpectedSchemaVersion 선언을 찾지 못했다');
+  assert.throws(() => checks.widgetSchemaMatchesCanon(bad, canonSql), /ExpectedSchemaVersion=7/);
+  //  상수 선언 자체가 사라진 경우(=게이트 폐기)도 조용히 통과하면 안 된다.
+  const gone = adapterSrc.replace(/\bconst\s+string\s+ExpectedSchemaVersion\s*=\s*"\d+"\s*;/, '');
+  assert.throws(() => checks.widgetSchemaMatchesCanon(gone, canonSql), /찾지 못했다/);
 });
 
 test('변이⑧: 주석·문자열 안의 DDL 을 세면 안 된다(마스커 회귀)', () => {

@@ -14,6 +14,11 @@ namespace TaskCalendarWidget
         public bool Ok { get; init; }
         public string? Message { get; init; }              // 실패 사유(사용자에게 그대로 보여줄 문장)
         public bool Conflict { get; init; }                // true = 낙관적 잠금 충돌(§3.3)
+        //  true = 서버 스키마가 이 위젯이 아는 판본과 달라 **전량 교체를 거부**했다(§5.5).
+        //  ★ Conflict 와 반드시 구분한다 — 충돌은 '새로고침하면 풀리는' 실패이고, 이것은
+        //    위젯을 업데이트하기 전에는 몇 번을 눌러도 풀리지 않는다. 같은 상자에 담으면
+        //    사용자가 새로고침만 반복하다 데이터를 잃는다(그 사이 편집은 저장된다).
+        public bool SchemaMismatch { get; init; }
         public long Rev { get; init; }
         public IReadOnlyDictionary<string, string> Tokens { get; init; } = new Dictionary<string, string>();
         public IReadOnlyDictionary<string, uint> CategoryNoByUid { get; init; } = new Dictionary<string, uint>();
@@ -97,6 +102,24 @@ namespace TaskCalendarWidget
         {
             if (prev == null) return Fail("부팅 스냅샷이 없습니다 — 다시 시작한 뒤 저장하세요");
             if (string.IsNullOrWhiteSpace(newStateJson)) return Fail("저장할 내용이 비었습니다");
+
+            // ── 0. 낡은 클라이언트 게이트(§5.5) — 트랜잭션을 **열기 전에** 끊는다 ─────────
+            //   막는 것은 **전량 교체뿐**이다. 통상 저장(replaceAll=false)은 그대로 통과시킨다 —
+            //   §5.5 가 "전 쓰기 봉인은 과하다(조회·편집은 계속되게)" 로 못박은 자리다.
+            //   ★ 왜 전량 교체만인가: 차분 저장은 자기가 아는 컬럼만 건드리므로 새 스키마에서도
+            //     남의 데이터를 지우지 않는다. 전량 교체는 **먼저 전부 DELETE 한 뒤** 자기가 아는
+            //     모양으로 다시 넣기 때문에, 낡은 위젯이 돌면 새 스키마에서 늘어난 값이 통째로
+            //     사라진다. 되돌릴 방법이 없다.
+            //   ★ 서버 값이 ''(cal_schema_meta 행 없음)이어도 막는다. '모르는 상태'에서 되돌릴 수
+            //     없는 연산을 실행할 이유가 없다 — 정상 배포에서는 정본이 반드시 심는다.
+            if (replaceAll && !string.Equals(prev.SchemaVersion, CalendarDb.ExpectedSchemaVersion, StringComparison.Ordinal))
+            {
+                string sv = prev.SchemaVersion.Length == 0 ? "(알 수 없음)" : prev.SchemaVersion;
+                string m = "서버 스키마 v" + sv + " · 위젯은 v" + CalendarDb.ExpectedSchemaVersion +
+                           " — 전량 교체(가져오기·초기화)는 위젯을 업데이트한 뒤 하세요";
+                _log("전량 교체 거부(스키마 불일치): " + m);
+                return new CalendarSaveResult { Ok = false, SchemaMismatch = true, Message = m };
+            }
 
             //  이 저장 전체가 쓰는 단 하나의 시각. §3.3 의 포맷 계약(소수 정확히 3자리)을 지킨다 —
             //  모자라도 넘쳐도 다음 저장이 조용히 충돌 오탐이 된다.

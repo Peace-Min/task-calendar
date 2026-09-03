@@ -3667,10 +3667,15 @@ window.__applyState = function(json, meta){
     const data = (typeof json === 'string') ? JSON.parse(json) : json;
     state = buildStateFrom(data);
     filterCatId = null; filterSource = null; noteFilterCat = null;
+    __bootMeta = meta || null;            // 스키마 게이트(가져오기·초기화)가 읽는 값 — 배지보다 먼저 세운다
     renderAll();
     pushReminders();
     renderDataSourceBadge(meta);
     renderEmptyHint();
+    //  ★ 부팅이 **성공했다** — 빨간 상자와 자동 재시도 타이머를 함께 걷는다.
+    //    안 걷으면 재시도로 살아난 화면 위에 "읽지 못했습니다" 가 그대로 남아, 사용자는
+    //    지금 보고 있는 데이터를 믿지 못한다(그리고 타이머는 계속 서버를 두드린다).
+    clearBootError();
   }catch(e){
     console.warn('DB 상태 적용 실패', e);
     window.__applyStateError('받은 데이터를 해석하지 못했습니다: ' + (e && e.message || e));
@@ -3679,22 +3684,127 @@ window.__applyState = function(json, meta){
   hideBootSkeleton();
 };
 
+/* ---------- 부팅 실패 재시도(P1-2) ----------
+ *  왜 필요한가: 아침에 PC 가 켜지는 순서가 서버보다 빠르면 부팅 조회가 그냥 실패한다.
+ *    그 상태의 유일한 탈출구가 "위젯을 다시 켜세요" 였다 — 89명 중 상당수가 그걸 장애로 신고한다.
+ *    기다리면 풀리는 실패이므로 **위젯이 스스로 다시 걸어 본다.**
+ *  왜 15·30·60 인가: 첫 번째는 사람이 눈치채기 전에 끝나야 하고(15s), 마지막까지 합쳐도
+ *    1분 45초라 "켜 두면 알아서 붙는다" 가 성립한다. 그 뒤로는 **멈춘다** — 무한 재시도는
+ *    서버가 죽은 아침에 89대가 영원히 두드리는 것이고, 화면에도 '실패'가 안 남는다.
+ *  ★ 재시도는 hostRequest 가 아니라 hpost 다 — reloadState 는 **회신이 없는 명령**이라
+ *    hostRequest 로 보내면 25초 뒤 타임아웃으로 조용히 끝난다(성공해도 실패로 보인다).
+ *    결과는 호스트가 __applyState / __applyStateError 로 따로 알려 준다. */
+const BOOT_RETRY_DELAYS = [15000, 30000, 60000];
+//  attempt(지금까지 보낸 자동 재시도 횟수) → 다음 지연(ms). 상한을 넘으면 null = 중단.
+//  ★ 아래 createBootRetry 가 **이 함수를 쓴다.** 규칙을 두 벌로 두지 않기 위해서다 —
+//    스케줄러가 배열을 직접 인덱싱하면, 테스트는 이 함수를 보고 화면은 저쪽을 보게 된다.
+function nextRetryDelay(attempt, delays){
+  const d = delays || BOOT_RETRY_DELAYS;
+  return (Number.isInteger(attempt) && attempt >= 0 && attempt < d.length) ? d[attempt] : null;
+}
+//  스케줄러 — 타이머·DOM 을 **주입**받는다(io). 그래야 Layer 1 에서 실제 시간을 기다리지 않고
+//  '지연 순서·3회 상한·성공 시 해제·수동 즉시 1회'를 그대로 검증할 수 있다(tests/boot-retry.test.mjs).
+//  ★ 타이머를 하나만 둔다(1초 틱이 카운트다운과 발사를 겸한다) — 둘로 나누면 해제를 한쪽만
+//    빠뜨리는 사고가 나고, 그 증상은 '가끔 두 번 보낸다' 라 재현이 안 된다.
+function createBootRetry(io){
+  const post = io.post;
+  const setT = io.setTimeout, clearT = io.clearTimeout;
+  const render = io.render || function(){};
+  const delays = io.delays || BOOT_RETRY_DELAYS;
+  let attempt = 0;       // 보낸 자동 재시도 횟수(0..delays.length)
+  let timer = null;      // 1초 틱 핸들. null = 대기 중 아님
+  let left = 0;          // 남은 초
+  function stopTimer(){ if(timer !== null){ clearT(timer); timer = null; } }
+  function fire(){
+    stopTimer();
+    render({ phase:'sending', attempt: attempt, total: delays.length, secondsLeft: 0 });
+    post();
+  }
+  function tick(){
+    left--;
+    if(left > 0){
+      render({ phase:'waiting', attempt: attempt, total: delays.length, secondsLeft: left });
+      timer = setT(tick, 1000);
+      return;
+    }
+    fire();
+  }
+  return {
+    //  부팅 실패 도착. retryable=false 면 자동 재시도를 하지 않는다 —
+    //  로그인 없음·미등록은 몇 번을 다시 걸어도 같은 답이 온다(서버만 두드린다).
+    onError(retryable){
+      stopTimer();
+      if(retryable === false){ render({ phase:'manual', attempt: attempt, total: delays.length, secondsLeft: 0 }); return; }
+      const d = nextRetryDelay(attempt, delays);
+      if(d == null){ render({ phase:'exhausted', attempt: attempt, total: delays.length, secondsLeft: 0 }); return; }
+      attempt++;
+      left = Math.round(d / 1000);
+      render({ phase:'waiting', attempt: attempt, total: delays.length, secondsLeft: left });
+      timer = setT(tick, 1000);
+    },
+    //  부팅 성공 — 타이머를 걷고 카운터를 리셋한다(다음 실패는 다시 15초부터).
+    onSuccess(){ stopTimer(); attempt = 0; left = 0; },
+    //  수동 [다시 시도] — **자동 시리즈를 리셋하지 않고** 즉시 한 번 보낸다.
+    //  ★ 리셋하면 사람이 버튼을 누를 때마다 상한 3회가 처음부터 다시 생겨 '중단'이 영영 안 온다.
+    manual(){ fire(); },
+    state(){ return { attempt: attempt, secondsLeft: left, pending: timer !== null }; },
+  };
+}
+
+let __bootRetry = null, __bootLastError = '';
+function bootRetry(){
+  if(!__bootRetry) __bootRetry = createBootRetry({
+    post: () => hpost({ cmd:'reloadState' }),
+    setTimeout: (f, d) => setTimeout(f, d),
+    clearTimeout: (t) => clearTimeout(t),
+    render: renderBootErrorBox,
+  });
+  return __bootRetry;
+}
+//  성공 시 해제 — 타이머와 상자를 함께 걷는다(한쪽만 걷으면 다른 쪽이 유령으로 남는다).
+function clearBootError(){
+  if(__bootRetry) __bootRetry.onSuccess();
+  const b = document.getElementById('dsError'); if(b) b.remove();
+}
+function ensureBootErrorBox(){
+  let box = document.getElementById('dsError');
+  if(box) return box;
+  const host = document.querySelector('.wrap') || document.body;
+  box = document.createElement('div');
+  box.id = 'dsError';
+  box.style.cssText = 'margin:16px;padding:14px 16px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;line-height:1.6;display:flex;gap:12px;align-items:center;justify-content:space-between';
+  const t = document.createElement('span'); t.id = 'dsErrorText';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.id = 'dsErrorRetry'; btn.textContent = '다시 시도';
+  btn.style.cssText = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer;white-space:nowrap';
+  btn.addEventListener('click', () => bootRetry().manual());
+  box.appendChild(t); box.appendChild(btn);
+  host.insertBefore(box, host.firstChild);
+  return box;
+}
+function renderBootErrorBox(st){
+  const t = document.getElementById('dsErrorText');
+  if(!t) return;
+  const head = 'DB 에서 캘린더를 읽지 못했습니다 — ' + __bootLastError;
+  if(st.phase === 'sending')   { t.textContent = head + ' · 서버에 연결 중…'; return; }
+  if(st.phase === 'waiting')   { t.textContent = head + ' · ' + st.secondsLeft + '초 후 자동 재시도 (' + st.attempt + '/' + st.total + ')'; return; }
+  if(st.phase === 'exhausted') { t.textContent = head + ' · 자동 재시도 중단 — [다시 시도]를 누르세요.'; return; }
+  t.textContent = head + ' · 확인한 뒤 [다시 시도]를 누르세요.';
+}
+
 // DB 읽기 실패 — **XML 로 조용히 되돌아가지 않는다.** 되돌아가면 사용자는 DB 를 보고 있다고
 //   믿으면서 파일을 보게 되고, 그 상태로 편집하면 어느 쪽이 진실인지 아무도 모른다.
-window.__applyStateError = function(msg){
+//   opt.retryable=false 면 자동 재시도를 걸지 않는다(로그인 없음·미등록 — 기다려도 안 풀린다).
+window.__applyStateError = function(msg, opt){
   __xmlApplied = true;
   hideBootSkeleton();
-  const host = document.querySelector('.wrap') || document.body;
-  let box = document.getElementById('dsError');
-  if(!box){
-    box = document.createElement('div');
-    box.id = 'dsError';
-    box.style.cssText = 'margin:16px;padding:14px 16px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;line-height:1.6';
-    host.insertBefore(box, host.firstChild);
-  }
-  box.textContent = 'DB 에서 캘린더를 읽지 못했습니다 — ' + String(msg || '') +
-    ' · 서버 연결을 확인한 뒤 다시 시작하세요.';
-  toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
+  __bootLastError = String(msg || '');
+  const fresh = !document.getElementById('dsError');
+  ensureBootErrorBox();
+  bootRetry().onError(!(opt && opt.retryable === false));
+  //  ★ 토스트는 **시리즈의 첫 실패에만** 띄운다. 재시도마다 띄우면 사용자가 아무것도 하지
+  //    않았는데 토스트가 네 번 뜬다 — 상자가 이미 그 사실을 계속 보여 주고 있다.
+  if(fresh) toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
 };
 
 //  빈 캘린더 안내 — **미이관 표시등**이다.
@@ -3725,7 +3835,12 @@ function renderEmptyHint(){
   host.insertBefore(b, host.firstChild);
 }
 
+//  부팅이 준 meta(schemaVersion·expectedSchema·schemaMismatch·rev·userId). 배지와 스키마 게이트가 읽는다.
+let __bootMeta = null;
+
 // 출처 배지 — '지금 무엇을 보고 있는가'를 화면에 드러낸다(읽기 전용도 함께 알린다).
+//   스키마가 어긋나면 **경고 톤**으로 바뀐다 — 그 상태에서 막히는 것이 무엇인지 미리 알려야
+//   사용자가 「가져오기」를 눌러 보고 나서야 거부당하지 않는다.
 function renderDataSourceBadge(meta){
   if(!isDbHost()) return;
   const host = document.querySelector('.wrap') || document.body;
@@ -3737,10 +3852,31 @@ function renderDataSourceBadge(meta){
     host.insertBefore(b, host.firstChild);
   }
   const m = meta || {};
+  const mismatch = !!m.schemaMismatch;
+  b.style.borderColor = mismatch ? 'var(--danger)' : 'var(--line-2)';
+  b.style.background  = mismatch ? 'var(--danger-soft)' : 'var(--accent-soft)';
+  b.style.color       = mismatch ? 'var(--danger-text)' : 'var(--text)';
+  if(mismatch){
+    b.textContent = '서버 스키마 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') +
+      ' — 위젯 업데이트 필요 · 가져오기/초기화 차단' +
+      (m.rev != null ? ' · rev ' + m.rev : '');
+    return;
+  }
   b.textContent = (m.canWrite ? 'DB 연결됨 — 변경은 서버에 저장됩니다'
                              : 'DB 읽기 전용 — 변경은 저장되지 않습니다') +
     (m.schemaVersion ? ' · 스키마 v' + m.schemaVersion : '') +
     (m.rev != null ? ' · rev ' + m.rev : '');
+}
+
+//  낡은 위젯 게이트의 **웹쪽 안내**(§5.5, P1-1). true 면 호출부가 그 자리에서 멈춘다.
+//  ★ 이것은 방어가 아니라 UX 다 — 진짜 차단은 호스트(CalendarWriteDb.SaveAsync)가 한다.
+//    여기만 있으면 콘솔 한 줄로 우회되고, 여기가 없으면 사용자가 눌러 본 뒤에야 거부당한다.
+function schemaBlocked(){
+  const m = __bootMeta;
+  if(!m || !m.schemaMismatch) return false;
+  toast('서버 스키마 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') +
+        ' — 위젯을 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다', 'error');
+  return true;
 }
 
 /* ---------- DB 저장(2단계) ----------
@@ -3765,6 +3901,10 @@ function dbSave(opt){
     if(res && res.ok){
       hideDbConflict();
       pushReminders();                       // 파일 경로가 save() 끝에 하던 것과 같은 자리
+      //  P1-8 — 호스트가 가져오기 원본을 개명했으면 그 사실을 알린다. 말없이 이름이 바뀌면
+      //    다음에 그 파일을 찾는 사람이 "없어졌다" 로 읽는다.
+      if(res.renamedTo) toast('원본 파일은 ' + res.renamedTo + ' 로 이름을 바꿔 두었습니다(다시 가져오지 않도록)', 'success');
+      else if(res.renameError) toast('가져오기는 끝났지만 원본 파일 이름을 바꾸지 못했습니다 — ' + res.renameError, 'error');
       //  ★ 재시도는 **통상 저장**이다 — 전량 교체를 두 번 돌리지 않는다(이미 반영됐고, 그 뒤의
       //    편집은 차분으로 충분하다). replaceAll 을 물려줘도 결과는 같지만 낭비이고, 무엇보다
       //    '전량 교체가 몇 번 일어났는가'가 로그에서 흐려진다.
@@ -3772,7 +3912,10 @@ function dbSave(opt){
       return;
     }
     __dbDirty = false;                       // 실패했으면 자동 재시도하지 않는다(위 ②)
-    if(res && res.conflict) showDbConflict(res.error || '다른 곳에서 먼저 수정되었습니다');
+    //  ★ 스키마 불일치는 **충돌 상자에 담지 않는다**(P1-1). 그 상자는 '새로고침하면 풀린다'고
+    //    말하는데, 이건 위젯을 업데이트하기 전에는 몇 번을 눌러도 풀리지 않는다.
+    if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');
+    else if(res && res.conflict) showDbConflict(res.error || '다른 곳에서 먼저 수정되었습니다');
     else toast('저장 실패 — ' + ((res && res.error) || '알 수 없는 오류'), 'error');
   });
 }
@@ -3790,7 +3933,9 @@ function showDbConflict(msg){
     const btn = document.createElement('button');
     btn.type = 'button'; btn.textContent = '새로고침';
     btn.style.cssText = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer';
-    btn.addEventListener('click', () => { hostRequest('reloadState', {}, 25000); });
+    //  ★ hostRequest 가 아니라 hpost 다 — reloadState 는 **회신이 없는 명령**이라 hostRequest 로
+    //    보내면 성공해도 25초 뒤 '응답 시간 초과'로 끝난다(결과는 __applyState 로 따로 온다).
+    btn.addEventListener('click', () => { hpost({ cmd:'reloadState' }); });
     b.appendChild(t); b.appendChild(btn);
     host.insertBefore(b, host.firstChild);
   }
@@ -7490,6 +7635,7 @@ function showImportPreview(name, text){
 }
 
 function startImport(){
+  if(schemaBlocked()) return;   // P1-1 — 낡은 위젯의 전량 교체는 호스트가 거부한다. 여기서 사유를 먼저 알린다
   if(!HOST){ $('#importFile').click(); return; }
   hostRequest('pickImportXml', {}, 120000).then(res => {
     if(!res || !res.ok){
@@ -7561,6 +7707,7 @@ function applyImport(mode){
   saveFull(); closeModal('#importModal'); renderAll(); renderEmptyHint();
 }
 async function clearAll(){
+  if(schemaBlocked()) return;   // P1-1 — 초기화도 전량 교체다. 지운 뒤에 거부당하면 화면만 비고 DB 는 그대로다
   if(await confirmBox('전체 데이터 초기화',
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
     '모두 삭제') !== 'ok') return;

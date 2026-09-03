@@ -877,6 +877,14 @@ namespace TaskCalendarWidget
         }
 
         // 네이티브 폴더 선택(.NET 9 WPF OpenFolderDialog). 선택 즉시 저장소 여부 + 작성자까지 회신.
+        //  마지막으로 「가져오기」로 고른 파일의 **경로**(P1-8, 설계 §8).
+        //  ★ 이 값은 **웹에 절대 나가지 않는다.** 파일창 회신은 지금도 내용만 준다 —
+        //    경로가 웹으로 새면 "그 경로를 저장해 두자" 가 되고 data.xml 이 다시 출처가 된다.
+        //    여기 두는 목적은 하나뿐이다: 이관이 **성공한 뒤** 그 파일을 개명해 두는 것.
+        //  ★ pick 에서만 세팅하고, 개명을 시도한 즉시 null 로 되돌린다(RenameImportedSource).
+        //    남겨 두면 다음 전량 교체(전체 초기화)가 엉뚱한 파일을 건드린다.
+        private string? _lastImportPath;
+
         //  「XML 가져오기」 파일 선택 + 읽기. 회신: { ok, name, text, error }
         //    ★ 파일을 여기서 읽어 텍스트로 넘긴다 — 웹에 경로를 주지 않는다. 경로를 주면
         //      다음에 "그 경로를 저장해 두자" 가 되고, 그 순간 data.xml 이 다시 데이터 출처가 된다.
@@ -894,6 +902,7 @@ namespace TaskCalendarWidget
                     //  ★ 기본 폴더 = 데이터 폴더. 옛 data.xml 이 여기 있다(개명해 뒀어도 같은 폴더다).
                     InitialDirectory = Directory.Exists(_dataDir) ? _dataDir : "",
                 };
+                _lastImportPath = null;   // 새 선택이 시작됐다 — 지난 선택의 흔적을 남기지 않는다
                 if (dlg.ShowDialog(this) != true) { GitReply(reqId, new { ok = false, canceled = true }); return; }
                 //  용량 상한 — 사용자가 엉뚱한 큰 파일을 골랐을 때 위젯이 굳지 않게 한다.
                 var fi = new FileInfo(dlg.FileName);
@@ -903,6 +912,7 @@ namespace TaskCalendarWidget
                     return;
                 }
                 string text = File.ReadAllText(dlg.FileName, Encoding.UTF8);
+                _lastImportPath = dlg.FileName;   // 이관 성공 뒤 개명할 대상(P1-8). 실패·취소면 위에서 null 이다
                 Log("가져오기 파일 선택: " + fi.Name + " (" + fi.Length + "B)");
                 GitReply(reqId, new { ok = true, name = fi.Name, text });
             }
@@ -1831,7 +1841,7 @@ namespace TaskCalendarWidget
                 {
                     //  ★ 로그인 전이면 '빈 캘린더'가 아니라 **이유**를 보여준다. 빈 화면은
                     //    "내 데이터가 사라졌다"로 읽힌다 — 실제로는 누구 것인지 모를 뿐이다.
-                    ApplyStateError("로그인 정보가 없습니다 — 로그인 후 다시 시작하세요");
+                    ApplyStateError("로그인 정보가 없습니다 — 로그인 후 다시 시작하세요", retryable: false);
                     return;
                 }
 
@@ -1841,7 +1851,11 @@ namespace TaskCalendarWidget
                 if (snap == null) { ApplyStateError("서버에서 캘린더를 받지 못했습니다"); return; }
 
                 _calSnap = snap;   // 쓰기가 쓸 토큰·번호 맵. 세션 동안 유지한다(계약 H-2)
-                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, rev = snap.Rev, userId = snap.UserId, canWrite = true });
+                //  ★ expectedSchema·schemaMismatch 는 §5.5 게이트의 **거울**이다 — 진짜 방어는
+                //    쓰기 계층(CalendarWriteDb)이 하고, 웹은 이 값으로 배지를 경고 톤으로 바꾸고
+                //    가져오기·초기화를 미리 막는다(눌러 본 뒤 거부당하는 것보다 낫다).
+                bool schemaMismatch = !string.Equals(snap.SchemaVersion, CalendarDb.ExpectedSchemaVersion, StringComparison.Ordinal);
+                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema = CalendarDb.ExpectedSchemaVersion, schemaMismatch, rev = snap.Rev, userId = snap.UserId, canWrite = true });
                 js = "window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ")";
                 Log($"DB 부팅 조회: user_id={snap.UserId} rev={snap.Rev} schema=v{snap.SchemaVersion}");
             }
@@ -1850,7 +1864,7 @@ namespace TaskCalendarWidget
                 //  '오프라인'과 반드시 구분해야 하는 실패다(§3.6) — 사용자가 원인을 오해하면
                 //  관리자도 엉뚱한 곳을 본다.
                 Log("DB 부팅 조회 실패(미등록 사용자): " + ex.Message);
-                ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요");
+                ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요", retryable: false);
                 return;
             }
             catch (Exception ex)
@@ -1885,13 +1899,17 @@ namespace TaskCalendarWidget
                 {
                     _calSnap = new CalendarSnapshot(stateJson, r.Tokens, r.Rev, snap.SchemaVersion, snap.UserId,
                                                     r.CategoryNoByUid, r.EntryNoByUid, r.TodoNoByUid);
-                    GitReply(reqId, new { ok = true, conflict = false, error = "", rev = r.Rev, ins = r.Inserted, upd = r.Updated, del = r.Deleted });
+                    //  P1-8 — 이관이 **실제로 DB 에 들어간 뒤에만** 원본을 개명한다.
+                    //    ★ 저장 전에 개명하면 저장이 실패했을 때 사용자는 원본을 잃은 것처럼 본다.
+                    //    ★ 개명 실패는 **가져오기 실패가 아니다** — ok=true 를 그대로 두고 사유만 싣는다.
+                    var rn = replaceAll ? RenameImportedSource() : ("", "");
+                    GitReply(reqId, new { ok = true, conflict = false, error = "", rev = r.Rev, ins = r.Inserted, upd = r.Updated, del = r.Deleted, renamedTo = rn.Item1, renameError = rn.Item2 });
                 }
                 else
                 {
                     //  ★ 실패했으면 스냅샷을 **건드리지 않는다.** 트랜잭션이 통째로 롤백됐으므로
                     //    DB 는 저장 전 상태이고, 우리 토큰도 그때 것이 맞다.
-                    GitReply(reqId, new { ok = false, conflict = r.Conflict, error = r.Message ?? "저장하지 못했습니다" });
+                    GitReply(reqId, new { ok = false, conflict = r.Conflict, schemaMismatch = r.SchemaMismatch, error = r.Message ?? "저장하지 못했습니다" });
                 }
             }
             catch (Exception ex)
@@ -1901,9 +1919,60 @@ namespace TaskCalendarWidget
             }
         }
 
-        private void ApplyStateError(string msg)
+        //  가져오기 원본 개명(P1-8, 설계 §8) — `data.xml` → `data.xml.migrated-<yyyyMMdd>`.
+        //  왜 하나: 이관을 마친 파일이 원래 이름 그대로 남아 있으면 **다음에 또 가져온다.**
+        //    그 사이의 편집이 통째로 옛 파일로 덮이고, 되돌릴 경로가 없다. 이름에 이관 사실이
+        //    적혀 있으면 파일창에서 눈으로 걸러진다.
+        //  ★ 지우지 않고 **개명한다.** 이관 결과를 사람이 대조할 유일한 원본이다(설계 §8).
+        //  ★ 데이터 폴더 **안**의 파일만 건드린다 — 사용자가 바탕화면·공유폴더에서 고른 파일을
+        //    말없이 개명하는 것은 위젯의 권한 밖이다. 밖이면 로그만 남기고 그대로 둔다.
+        //  ★ 같은 이름이 이미 있으면 `-2`,`-3` 을 붙인다. **덮어쓰지 않는다** — 그 자리에 있는 것은
+        //    지난 이관본이고, 덮으면 그때의 원본이 사라진다.
+        //  반환: (개명된 파일명, 실패 사유). 둘 다 "" 면 개명할 대상이 없었다는 뜻이다.
+        private (string, string) RenameImportedSource()
         {
-            try { _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyStateError(" + JsonSerializer.Serialize(msg) + ")"); }
+            string? p = _lastImportPath;
+            _lastImportPath = null;   // ★ 한 번만 쓴다(성공·실패 무관) — 남기면 다음 전량 교체가 엉뚱한 파일을 건드린다
+            if (string.IsNullOrEmpty(p)) return ("", "");   // pick 없이 온 전량 교체(전체 초기화 등)
+            try
+            {
+                if (!File.Exists(p)) return ("", "");
+                string dir = Path.GetFullPath(Path.GetDirectoryName(p) ?? "").TrimEnd(Path.DirectorySeparatorChar);
+                string data = Directory.Exists(_dataDir) ? Path.GetFullPath(_dataDir).TrimEnd(Path.DirectorySeparatorChar) : "";
+                if (data.Length == 0 || !string.Equals(dir, data, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("가져오기 원본이 데이터 폴더 밖이라 개명하지 않았다: " + p);
+                    return ("", "");
+                }
+                string stem = Path.GetFileName(p) + ".migrated-" +
+                              DateTime.Now.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
+                string target = Path.Combine(data, stem);
+                for (int n = 2; File.Exists(target) && n <= 99; n++) target = Path.Combine(data, stem + "-" + n);
+                if (File.Exists(target)) return ("", "같은 날짜의 이관 파일이 이미 너무 많습니다");
+                File.Move(p, target);   // ★ overwrite 오버로드를 쓰지 않는다(덮어쓰기 금지)
+                string name = Path.GetFileName(target);
+                Log("가져오기 원본 개명: " + Path.GetFileName(p) + " → " + name);
+                return (name, "");
+            }
+            catch (Exception ex)
+            {
+                //  개명 실패는 가져오기 실패가 아니다 — DB 는 이미 새 데이터다. 알리기만 한다.
+                Log("가져오기 원본 개명 실패(가져오기 자체는 성공): " + ex.Message);
+                return ("", ex.Message);
+            }
+        }
+
+        //  부팅 실패 통지. retryable 은 **기다리면 풀릴 실패인가**를 가른다(P1-2):
+        //    · true  — 서버 미기동·네트워크 단절. 아침 부팅이 서버보다 빠른 경우가 이 부류라
+        //              웹이 15·30·60초 백오프로 스스로 다시 시도한다(사람이 재시작하지 않아도 된다).
+        //    · false — 로그인 없음·미등록 사용자. 몇 번을 다시 걸어도 같은 답이 온다.
+        //              자동 재시도는 서버만 두드리고 사용자에게는 "계속 실패 중"으로만 보인다.
+        //  ★ [다시 시도] 버튼은 두 경우 모두 남는다 — 로그인·등록은 이 창 밖에서 해결되고,
+        //    해결한 사람이 위젯을 재시작하지 않고 이어 갈 유일한 문이 그 버튼이다.
+        private void ApplyStateError(string msg, bool retryable = true)
+        {
+            string opt = "{\"retryable\":" + (retryable ? "true" : "false") + "}";
+            try { _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyStateError(" + JsonSerializer.Serialize(msg) + "," + opt + ")"); }
             catch (Exception ex) { Log("오류 통지 실패: " + ex.Message); }
         }
 
