@@ -3596,7 +3596,17 @@ function reportFontCss(font){
 //    내 것이 새는 것보다는 낫지만 그것도 거짓이다 — 보는 사람은 그 사람 일정으로 읽는다.
 //    조회가 늦거나 실패하면 **비어 있는 것**이 정직한 상태다(부팅 스켈레톤이 그 사이를 덮는다).
 //    빈 상태도 buildStateFrom 으로 만든다 — 모양이 갈라질 자리를 만들지 않는다(계약 G).
-let state = PEER ? buildStateFrom({ categories: [], entries: [] }) : load();
+//  ★★ **위젯(HOST)도 빈 상태로 시작한다** — 열람 창만의 문제가 아니었다.
+//    위젯의 데이터 출처는 DB 주입 하나뿐이다(계약 출처①). 그런데 씨앗은 load() 였고,
+//    load() 는 로컬 저장소가 비면 defaultState() 의 **샘플 시드**를 준다.
+//    실측(2026-09-03, DB 포트를 막고 부팅): 오류 상자는 제대로 떴는데 그 아래 달력에
+//    「[샘플 일정] 프로젝트 회의」 3건이 그려졌다. 읽기에 실패한 사람에게 **없는 일정**을
+//    보여 주는 것이다 — 배너를 안 읽으면 그게 자기 일정인 줄 안다.
+//    ★ 조회가 실패하면 **비어 있는 것**이 정직한 상태다. 부팅 스켈레톤이 그 사이를 덮고,
+//      실패하면 #dsError 상자가 사실을 말하며 자동 재시도한다.
+//    ★ 브라우저(비-HOST)는 그대로 둔다 — 거기서는 localStorage 가 **진짜 출처**이고,
+//      첫 방문 샘플 시드도 데모로서 의미가 있다.
+let state = (HOST || PEER) ? buildStateFrom({ categories: [], entries: [] }) : load();
 
 function defaultReportFormatPref(){
   return { marker: '-', markerCustom: '', indent: 2 };

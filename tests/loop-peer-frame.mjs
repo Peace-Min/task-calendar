@@ -249,6 +249,26 @@ try {
     ok(`R${r} 같은 캘린더 UI 가 그대로 뜬다(격자·과제 필터)`, shown.grid === 35 && shown.chips >= 1,
        `격자 ${shown.grid} · 필터칩 ${shown.chips}`);
     ok(`R${r} 메모가 새지 않는다`, shown.memoLeak === false);
+
+    //  ②b 호스트가 부모에 채워 준 것이 **프레임으로 넘어오지 않는가.**
+    //  ★ 호스트는 web.CoreWebView2.ExecuteScriptAsync 만 쓴다 — 최상위 문서 전용이고
+    //    ExecuteScriptInFrameAsync 는 이 저장소에 없다. 그래서 콜백은 프레임에 안 간다.
+    //    실측으로도 확인했다(2026-09-03: 부모 __applyProjects/__applyCodes/__hostReply 3종이
+    //    움직이는 동안 프레임 계기는 0). 여기서는 그 결과를 **싸게** 지킨다 —
+    //    공식 과제 목록이 부모엔 있고 프레임엔 없어야 한다.
+    //  ★ 부모가 0이면 이 비교는 아무것도 증명하지 않으므로 그때는 판정하지 않고 말한다.
+    const cat = JSON.parse(await cdp.ev(`(()=>{
+      const mine = (typeof dbCatalog !== "undefined" && dbCatalog) ? dbCatalog.length : -1;
+      const w = document.querySelector("#pvHost iframe").contentWindow;
+      let theirs = -1;
+      try{ theirs = Number(w.eval("(typeof dbCatalog!=='undefined' && dbCatalog) ? dbCatalog.length : -1")); }catch(_){}
+      return JSON.stringify({mine, theirs}); })()`));
+    if (cat.mine <= 0) {
+      console.log(`  · 참고: 부모의 공식 과제 목록이 ${cat.mine}개라 프레임 대조를 건너뛴다(전제 불충족)`);
+    } else {
+      ok(`R${r} 호스트가 부모에 준 공식 과제가 프레임엔 없다`, cat.theirs === 0,
+         `부모 ${cat.mine}개 · 프레임 ${cat.theirs}개 — 호스트 데이터가 프레임으로 넘어갔다`);
+    }
     //  ★★ **allowlist 검사** — 보이는 조작 수단이 허용 목록뿐인가.
     //    감추기를 blocklist 로 했다가 열람 창에 보고서·⋯메뉴·문의·테마까지 다 노출됐다(사용자 지적).
     //    그래서 CSS 를 allowlist 로 뒤집었는데, **그것만으로는 부패를 못 막는다** —
@@ -319,6 +339,23 @@ try {
     //  ★ 여기가 이 테스트의 핵심 한 줄이다 — 문이 한 번도 안 열려야 한다.
     ok(`R${r} **봉인**: 열람 창이 postMessage 를 한 번도 부르지 않았다`, sealed.posted === 0,
        `postMessage ${sealed.posted}회 — 봉인이 샌다`);
+
+    //  ③a **통제군** — 위의 0회가 *봉인 때문인지* 확인한다.
+    //  ★ 0회는 두 가지를 뜻할 수 있다: (a) 봉인이 잡았다, (b) 그 조작이 원래 아무것도 안 한다.
+    //    (b) 면 위 한 줄은 아무것도 증명하지 않는다. 그래서 **같은 명령을 부모에서** 쏴 보고
+    //    거기서는 반드시 나가는 것을 확인한다. 나가지 않으면 이 시험 전체가 헛돌고 있는 것이다.
+    //    (2026-09-03 감사에서 이 통제군이 없어 '봉인의 증거'라고 말할 근거가 없었다.)
+    //  ★ 부모의 postMessage 는 **삼킨다**(원본을 부르지 않는다) — 진짜로 나가면 호스트가 실행한다.
+    const ctl = JSON.parse(await cdp.ev(`(()=>{
+      let n=0; const orig=window.chrome.webview.postMessage.bind(window.chrome.webview);
+      window.chrome.webview.postMessage=function(m){ n++; };   // 삼킨다
+      let err=null;
+      try{ hpost({cmd:"loadCodes"}); hpost({cmd:"loadProjects"}); }catch(e){ err=e.message; }
+      window.chrome.webview.postMessage=orig;
+      return JSON.stringify({posted:n, err}); })()`));
+    ok(`R${r} **통제군**: 같은 명령이 부모에서는 실제로 나간다`, ctl.posted > 0 && !ctl.err,
+       `부모 postMessage ${ctl.posted}회${ctl.err ? ' · ' + ctl.err : ''} — ` +
+       '부모에서도 안 나가면 위의 「봉인」 판정은 근거가 없다(조작 자체가 무해한 것일 뿐)');
 
     //  ③b 봉인은 DB 를 지킨다. 그런데 **화면**은? — 지역 state 가 바뀐 채로 남으면
     //  사용자는 '남의 일정을 바꿨다'고 믿는다. 실제로 드래그&드롭이 그랬다(「옮겼습니다」 토스트).

@@ -136,22 +136,32 @@ const checks = {
   //    localStorage 의 taskCalendar.v1(= XML 시절의 **내** 캘린더)을 집어왔다. 같은 origin 이라
   //    그 키가 그대로 보인다. 주입이 늦거나 실패하면 부팅 스켈레톤이 4초 뒤 스스로 걷히므로,
   //    「○○ 님의 일정 · 읽기 전용」 창에 **내 일정이 그려졌다**(마커를 심어 재현했다. gitAuthor 도 실렸다).
-  //    v0.17.1 에서 올라온 89대에 그 키가 남아 있어 실제로 일어날 수 있는 일이다.
-  //  ★ defaultState() 로 바꾸는 것도 답이 아니다 — 거긴 「[샘플 일정] …」 시드가 들어 있어
-  //    남의 이름이 붙은 창에 **있지도 않은 일정**이 뜬다. 내 것이 새는 것보다 낫지만 그것도 거짓이다.
-  //    조회가 실패하면 **비어 있는 것**이 정직한 상태다.
+  //  ★ 정정(2026-09-03): 처음엔 "v0.17.1 에서 올라온 89대에 그 키가 남아 있다" 고 적었는데 **틀렸다.**
+  //    폐기 이전 위젯의 save() 는 HOST 면 cmd:'save' 로 XML 파일에 저장했고 localStorage 갈래는
+  //    브라우저 전용이었다(git 40109f9~1 확인). 그래서 배포된 위젯에 그 키는 없다.
+  //    → 배포기에서 실제로 뜨는 것은 내 데이터가 아니라 **defaultState() 의 샘플 시드**다.
+  //      유출은 아니지만 남의 이름이 붙은 창에 **없는 일정**이 뜨는 것이라 마찬가지로 거짓이다.
+  //  ★★ 그래서 이 계약은 PEER 만이 아니라 **HOST 전체**를 덮는다. 위젯의 출처는 DB 주입 하나뿐인데
+  //    (계약 출처①) 씨앗이 load() 면 그 원칙이 부팅 첫 화면에서 이미 깨진다.
+  //    실측: DB 포트를 막고 부팅하면 오류 상자 아래에 「[샘플 일정] …」 3건이 그려졌다.
+  //  ★ 브라우저(비-HOST)는 예외다 — 거기서는 localStorage 가 진짜 출처이고 첫 방문 샘플도 의미가 있다.
   peerSeedsEmptyNotLocal(app) {
     const m = /let\s+state\s*=\s*([^\n;]+);/.exec(app);
     assert.ok(m, '최상위 `let state = …` 를 찾지 못했다 — 이름이나 형태를 바꿨다면 이 검사도 함께 고칠 것');
     const seed = m[1].trim();
     assert.ok(/\bPEER\b/.test(seed),
-      `열람 창이 부팅 씨앗을 가르지 않는다(현재: ${seed}) — PEER 면 로컬 저장소를 읽지 않아야 한다. ` +
-      'load() 는 localStorage 의 내 캘린더를 집어오고, 주입이 실패하면 그게 남의 이름으로 그려진다');
-    assert.ok(!/PEER\s*\?\s*load\(/.test(seed), `PEER 갈래가 여전히 load() 를 쓴다: ${seed}`);
-    assert.ok(!/PEER\s*\?\s*defaultState\(/.test(seed),
-      `PEER 갈래가 defaultState() 를 쓴다 — 거긴 샘플 시드가 있어 남의 창에 없는 일정이 뜬다: ${seed}`);
-    assert.ok(/PEER\s*\?\s*buildStateFrom\(/.test(seed),
-      `PEER 갈래가 빈 상태를 buildStateFrom 으로 만들지 않는다(계약 G 와 모양이 갈라진다): ${seed}`);
+      `부팅 씨앗이 PEER 를 가르지 않는다(현재: ${seed}) — 열람 창은 로컬 저장소를 읽으면 안 된다`);
+    assert.ok(/\bHOST\b/.test(seed),
+      `부팅 씨앗이 HOST 를 가르지 않는다(현재: ${seed}) — 위젯의 출처는 DB 주입 하나뿐인데(출처①) ` +
+      'load() 를 씨앗으로 쓰면 DB 읽기 실패 시 샘플 시드가 자기 일정처럼 그려진다');
+    assert.ok(!/\?\s*load\(/.test(seed), `HOST/PEER 갈래가 여전히 load() 를 쓴다: ${seed}`);
+    assert.ok(!/\?\s*defaultState\(/.test(seed),
+      `HOST/PEER 갈래가 defaultState() 를 쓴다 — 거긴 샘플 시드가 있어 없는 일정이 뜬다: ${seed}`);
+    assert.ok(/\?\s*buildStateFrom\(/.test(seed),
+      `빈 상태를 buildStateFrom 으로 만들지 않는다(계약 G 와 모양이 갈라진다): ${seed}`);
+    //  ★ 브라우저 갈래는 살아 있어야 한다 — 없애면 웹에서 저장이 통째로 사라진다.
+    assert.ok(/:\s*load\(\)/.test(seed),
+      `브라우저 갈래(: load())가 사라졌다 — 비-HOST 에서는 localStorage 가 진짜 출처다: ${seed}`);
   },
 };
 
@@ -242,15 +252,22 @@ test('변이⑬: DB 경로가 migrateLocalStores 를 부르면 출처⑤ 가 실
   assert.throws(() => checks.dbPathSkipsXmlMigrations(bad), /migrateLocalStores\(\) 를 부른다/);
 });
 
-test('변이·씨앗: 열람 창 씨앗을 옛 모양으로 되돌리면 출처⑤b 가 잡는다', () => {
-  //  ★ 이것이 2026-09-03 이전의 실제 코드다 — 열람 프레임이 내 localStorage 를 집어왔다.
-  const old = mutate('let state = PEER ? buildStateFrom({ categories: [], entries: [] }) : load();',
-                     'let state = load();', src);
-  assert.throws(() => checks.peerSeedsEmptyNotLocal(old), /부팅 씨앗을 가르지 않는다/);
-  //  샘플 시드로 바꾸는 '반쪽 수정' 도 막는다 — 남의 창에 없는 일정이 뜬다.
-  const sample = mutate('let state = PEER ? buildStateFrom({ categories: [], entries: [] }) : load();',
-                        'let state = PEER ? defaultState() : load();', src);
-  assert.throws(() => checks.peerSeedsEmptyNotLocal(sample), /샘플 시드/);
+test('변이·씨앗: 부팅 씨앗을 옛 모양으로 되돌리면 출처⑤b 가 잡는다', () => {
+  const NOW = 'let state = (HOST || PEER) ? buildStateFrom({ categories: [], entries: [] }) : load();';
+  //  ① 2026-09-03 이전의 실제 코드 — 프레임도 위젯도 내 localStorage 를 집어왔다.
+  assert.throws(() => checks.peerSeedsEmptyNotLocal(mutate(NOW, 'let state = load();', src)),
+    /PEER 를 가르지 않는다/);
+  //  ② PEER 만 고치고 HOST 를 빠뜨린 '반쪽 수정'(내가 실제로 그렇게 멈출 뻔했다).
+  assert.throws(() => checks.peerSeedsEmptyNotLocal(
+    mutate(NOW, 'let state = PEER ? buildStateFrom({ categories: [], entries: [] }) : load();', src)),
+    /HOST 를 가르지 않는다/);
+  //  ③ 샘플 시드로 바꾸는 수정 — 없는 일정이 자기 일정처럼 뜬다.
+  assert.throws(() => checks.peerSeedsEmptyNotLocal(
+    mutate(NOW, 'let state = (HOST || PEER) ? defaultState() : load();', src)), /샘플 시드/);
+  //  ④ 브라우저 갈래를 없애는 과잉 수정 — 웹에서 저장이 통째로 사라진다.
+  assert.throws(() => checks.peerSeedsEmptyNotLocal(
+    mutate(NOW, 'let state = buildStateFrom({ categories: [], entries: [] });', src)),
+    /PEER 를 가르지 않는다|브라우저 갈래/);
 });
 
 test('변이⑬b: 주석을 걷어도 **진짜** save() 호출은 여전히 잡힌다', () => {
