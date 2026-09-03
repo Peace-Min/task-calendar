@@ -2331,9 +2331,23 @@ function main() {
   curPhase = 'clone';
   createClone();
 
-  /* ── 2. 절단 **전** 대조 — 옛 스키마가 정말 본부 개명을 막는지(이 테스트가 무엇을 없앴는지의 근거) ── */
+  /* ── 2. 원본이 절단 **전**인가 **후**인가 ───────────────────────────────────
+   *  ★ 이 테스트는 처음 쓸 때 원본(taskmgr)이 아직 절단 전이라고 전제했다. 그 전제가
+   *    f020b0c 로 깨졌다 — 실 DB 에 절단이 적용되면서 org_unit.parent 가 사라졌다.
+   *    그런데 아래 '절단 전 대조'가 그 컬럼을 그냥 조회해서, 복제 직후 ERROR 1054 로
+   *    **중단**했다. 그 결과 60개 조작 중 0개가 돌았고, 요약에는 "위반 없음 ✓" 이 찍혔다
+   *    (2026-09-03 발견 · exit 1 이라 호출자는 알았지만 사람 눈에는 초록으로 보였다).
+   *    이제 먼저 판별하고, 절단 후 원본이면 ②·③을 건너뛴 채 **루프 본체는 그대로 돈다.**
+   *    루프의 값어치(조작 60회 + 불변식)는 절단된 스키마에서도 그대로다.               */
   curPhase = 'baseline';
-  {
+  const clonePreSevered = Number(mustQuery(
+    `SELECT COUNT(*) FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='org_unit' AND COLUMN_NAME='parent';`,
+    '원본 스키마 판별(절단 전/후)', CLONE)[0][0]) === 1;
+  if (!clonePreSevered) {
+    log('원본이 이미 절단된 스키마다 — 절단 전 대조(②)와 시험대 DDL(③)을 건너뛰고 그대로 시험대로 쓴다');
+  }
+  if (clonePreSevered) {
     const br = mustQuery(
       `SELECT c.parent FROM org_unit c WHERE c.parent IS NOT NULL LIMIT 1;`, '절단 전 본부 찾기', CLONE);
     if (br.length) {
@@ -2347,10 +2361,13 @@ function main() {
 
   /* ── 3. 시험대 세우기(절단) ── */
   curPhase = 'migrate';
-  const mig = resolveMigration();
+  //  ★ 이미 절단된 원본을 복제했다면 적용할 것이 없다(적용하면 중복 컬럼으로 깨진다).
+  const mig = clonePreSevered ? resolveMigration() : { source: '(생략 — 원본이 이미 절단됨)', sql: '', builtin: true };
   stats.migSource = mig.source;
-  log(`시험대 DDL 적용: ${mig.source}`);
-  const mr = mysqlRun(mig.sql, { db: CLONE, timeout: 300000, what: '시험대 DDL 적용' });
+  log(clonePreSevered ? `시험대 DDL 적용: ${mig.source}` : `시험대 DDL: ${mig.source}`);
+  const mr = clonePreSevered
+    ? mysqlRun(mig.sql, { db: CLONE, timeout: 300000, what: '시험대 DDL 적용' })
+    : { ok: true };
   if (!mr.ok) {
     console.error('[중단] 시험대 DDL 적용 실패: ' + cleanErr(mr.err));
     violate('I0', '시험대 DDL(마이그레이션) 적용이 실패했다 — 절단된 스키마를 세우지 못했다', cleanErr(mr.err));

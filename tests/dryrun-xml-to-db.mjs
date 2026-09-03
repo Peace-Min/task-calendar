@@ -89,6 +89,14 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using TaskCalendarWidget;
+
+//  ★ 컴파일 전용 대역 — UserSession 이 참조하는 Dpapi 는 NetcusService.cs 안에 있고
+//    그 파일을 링크하면 WebView2 의존이 딸려온다. 이 시험은 세션 경로를 타지 않는다.
+internal static class Dpapi
+{
+    public static byte[] Protect(byte[] b) => throw new InvalidOperationException("시험 대역이 불렸다");
+    public static byte[] Unprotect(byte[] b) => throw new InvalidOperationException("시험 대역이 불렸다");
+}
 class R {
   static async Task<int> Main() {
     string raw = Console.In.ReadToEnd();
@@ -115,6 +123,11 @@ const PROJ = root => `<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup><Compile Include="R.cs" />
     <Compile Include="${root}/widget/CalendarDb.cs" />
     <Compile Include="${root}/widget/CalendarWriteDb.cs" />
+    <!-- ★ C4(2026-09-03)부터 CalendarDb 가 ProjectDb.CanViewScheduleAsync 를 쓴다 —
+         인가 판정을 한 벌로 두려고 거기 뒀다. 이 러너도 그 사슬을 링크해야 한다. -->
+    <Compile Include="${root}/widget/ProjectDb.cs" />
+    <Compile Include="${root}/widget/RepoPaths.cs" />
+    <Compile Include="${root}/widget/UserSession.cs" />
     <Compile Include="${root}/widget/DeployConfig.cs" /></ItemGroup>
   <ItemGroup><PackageReference Include="MySqlConnector" Version="2.3.7" /></ItemGroup>
 </Project>`;

@@ -1101,6 +1101,18 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+namespace TaskCalendarWidget
+{
+    //  ★ 컴파일 전용 대역 — UserSession.cs 가 Dpapi 를 참조하는데 그 클래스는 NetcusService.cs
+    //    안에 있고, 그 파일을 링크하면 WebView2 의존이 통째로 딸려온다(프로브는 net9.0 콘솔이다).
+    //    이 프로브는 세션 경로를 타지 않는다. ★ 그래도 불리면 검사가 거짓이 되므로 즉시 터뜨린다.
+    internal static class Dpapi
+    {
+        public static byte[] Protect(byte[] b) => throw new InvalidOperationException("프로브 대역이 불렸다");
+        public static byte[] Unprotect(byte[] b) => throw new InvalidOperationException("프로브 대역이 불렸다");
+    }
+}
+
 internal static class TcProbeMain
 {
     static readonly List<string> Logs = new List<string>();
@@ -1710,7 +1722,14 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
   const base = [join(PROBE_DIR, 'Program.cs'), join(PROBE_DIR, 'DeployConfig.cs'), adapterSrc.path];
   const REPO_PATHS_CS = join(WIDGET_DIR, 'RepoPaths.cs');
   const USER_SESSION_CS = join(WIDGET_DIR, 'UserSession.cs');
-  const extraCandidates = [[], [REPO_PATHS_CS], [USER_SESSION_CS], [USER_SESSION_CS, REPO_PATHS_CS]];
+  /*   실측 2026-09-03: C4(타인 일정 열람)에서 CalendarDb 가 ProjectDb.CanViewScheduleAsync 를
+   *   부르게 되면서 — 명부와 조회가 **같은 인가 규칙**을 쓰게 하려고 거기 뒀다 — 모든 조합이
+   *   CS0103 으로 깨져 이 검사가 통째로 '판정 없음'(exit 2)이 됐다. 조합을 더해 회복했다.
+   *   ProjectDb 는 RepoPaths·UserSession 을 함께 요구하고, UserSession 은 Dpapi 를 요구한다
+   *   (그 클래스는 NetcusService.cs 안에 있어 링크하면 WebView2 가 딸려온다 → Program.cs 의 대역). */
+  const PROJECT_DB_CS = join(WIDGET_DIR, 'ProjectDb.cs');
+  const extraCandidates = [[], [REPO_PATHS_CS], [USER_SESSION_CS], [USER_SESSION_CS, REPO_PATHS_CS],
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS]];
   let lastErr = '';
   for (const ex of extraCandidates) {
     const files = base.concat(ex.filter((f) => existsSync(f)));
