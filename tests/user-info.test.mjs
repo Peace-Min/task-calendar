@@ -752,24 +752,58 @@ const checks = {
     }
   },
 
-  //  ㉟b 열람 화면은 **읽기 전용**이고 내 데이터를 건드리지 않는다.
+  //  ㉟b 열람은 **같은 앱을 iframe 으로 띄운다**(2026-09-03 개정).
+  //    처음엔 전용 목록 화면이었는데 걷어냈다 — 메인 캘린더가 바뀌면 그 화면도 같이 고쳐야 하고,
+  //    언젠가 반드시 갈라지기 때문이다. 그래서 이 검사도 "그 화면이 어떻게 그리나" 가 아니라
+  //    **"열람 창이 무엇을 할 수 있나"** 를 본다.
   peerViewIsReadOnly(source) {
     const open = jsBody(source, 'openPeerSchedule');
-    const render = jsBody(source, 'renderPeerMonth');
-    //  ★ 남의 일정이 내 state 에 섞이면 **다음 저장이 그걸 내 것으로 DB 에 쓴다.**
-    for (const [body, name] of [[open, 'openPeerSchedule'], [render, 'renderPeerMonth']]) {
-      assert.ok(!/\bstate\s*=/.test(body), `${name} 가 state 를 대입한다 — 남의 일정이 내 것이 된다`);
-      for (const dead of ['save(', 'saveFull(', 'dbSave(', 'applyImport(']) {
-        assert.ok(!body.includes(dead), `${name} 가 ${dead} 를 부른다 — 열람은 아무것도 저장하지 않는다`);
+    const mount = jsBody(source, 'mountPeerFrame');
+    const close = jsBody(source, 'closePeerFrame');
+
+    //  ① 부모는 남의 데이터를 **자기 state 에 넣지 않는다.** 넣으면 다음 저장이 내 것으로 쓴다.
+    for (const [body, name] of [[open, 'openPeerSchedule'], [mount, 'mountPeerFrame'], [close, 'closePeerFrame']]) {
+      assert.ok(!/\bstate\s*=[^=]/.test(body), `${name} 가 state 를 대입한다 — 남의 일정이 내 것이 된다`);
+      for (const dead of ['save(', 'saveFull(', 'dbSave(', 'applyImport(', 'buildStateFrom(']) {
+        assert.ok(!body.includes(dead), `${name} 가 ${dead} 를 부른다 — 부모는 남의 데이터를 해석조차 하지 않는다`);
       }
     }
-    //  ★ 전개는 내 캘린더와 같은 함수여야 한다 — 다른 규칙으로 그리면 같은 일정이 사람마다 다르게 보인다.
-    assert.ok(/expandOccurrences\(/.test(render), '열람이 반복 전개를 따로 구현한다(expandOccurrences 를 안 쓴다)');
-    //  ★ 남의 DB 문자열은 마크업으로 해석되면 안 된다(명부와 같은 규약).
-    assert.ok(!/innerHTML/.test(render), 'renderPeerMonth 가 innerHTML 을 쓴다 — 남의 제목이 실행 표면이 된다');
+
+    //  ② 같은 앱을 띄운다 — 열람 전용 렌더러를 다시 만들면 이 검사가 막는다.
+    assert.ok(/createElement\('iframe'\)/.test(mount), '열람이 iframe 을 만들지 않는다 — 전용 화면을 다시 만든 것이다');
+    assert.ok(/\?peer=1/.test(mount), 'iframe 이 ?peer=1 없이 뜬다 — 그 창이 ready 를 보내 **내** 캘린더를 받는다');
+    assert.ok(/__applyState\(/.test(mount), '주입이 __applyState 가 아니다 — 부팅과 다른 문이 생기면 모양이 갈라진다');
+
+    //  ③ 닫으면 **없앤다.** 숨기기만 하면 남의 데이터를 실은 문서가 계속 살아 있다.
+    assert.ok(/\.remove\(\)/.test(close), 'closePeerFrame 이 프레임을 없애지 않는다');
+    assert.ok(/__pv = null/.test(close), 'closePeerFrame 이 __pv 를 비우지 않는다 — 생명주기가 안 끝난다');
+    assert.ok(/MutationObserver/.test(source) && /closePeerFrame\(\)/.test(source),
+      '닫힘을 한 곳에서 감시하지 않는다 — 닫기 경로가 여럿이라 버튼마다 붙이면 새 경로에서 샌다');
+
+    //  ④ 남의 DB 문자열을 마크업으로 해석하지 않는다.
     assert.ok(!/innerHTML/.test(jsBody(source, 'pvFail')), 'pvFail 이 innerHTML 을 쓴다');
-    //  ★ 권한 없음과 통신 실패를 구분해 말한다 — 사용자에게 다른 사실이다.
+    //  ⑤ 권한 없음과 통신 실패를 구분해 말한다 — 사용자에게 다른 사실이다.
     assert.ok(/allowed/.test(open) && /권한/.test(open), '열람이 권한 없음을 따로 안내하지 않는다');
+  },
+
+  //  ㉟d **봉인** — 열람 창이 호스트로 아무것도 못 보낸다.
+  //    ★ WebView2 는 iframe 에도 chrome.webview 를 주입한다(2026-09-03 실측). 격리가 저절로
+    //  되지 않으므로 봉인은 명시적이어야 하고, **한 곳**이어야 한다.
+  peerBridgeSealed(source) {
+    //  앱 전체에서 호스트로 나가는 문이 둘뿐임을 먼저 못박는다 — 셋이 되면 봉인이 새기 시작한다.
+    const exits = (source.match(/chrome\.webview\.postMessage/g) || []).length;
+    assert.strictEqual(exits, 2,
+      `호스트로 나가는 문이 ${exits}개다(기대 2: 부팅 ready · hpost). 늘어나면 봉인 한 곳으로는 못 막는다`);
+    const h = jsBody(source, 'hpost');
+    assert.ok(/if\(PEER\)/.test(h), 'hpost 가 PEER 를 막지 않는다 — 열람 창이 저장·전송을 할 수 있다');
+    assert.ok(/return;/.test(h), 'hpost 의 PEER 갈래가 return 으로 끊지 않는다');
+    //  ★ 조용히 버리지 않는다 — 새 편집 버튼이 생겨도 「고장」이 아니라 「읽기 전용」으로 보이게.
+    assert.ok(/toast\(/.test(h), 'PEER 차단이 아무 말도 하지 않는다 — 눌러도 무반응이면 고장으로 읽힌다');
+    //  부팅 ready 도 PEER 에서는 안 나간다(나가면 **내** 캘린더가 그 창에 뜬다).
+    assert.ok(/if\(!PEER\)\s*try\{\s*window\.chrome\.webview\.postMessage\(JSON\.stringify\(\{cmd:'ready'\}\)\)/.test(source),
+      'PEER 가 ready 를 보낸다 — 호스트가 로그인한 사람의 캘린더를 그 창에 주입한다');
+    //  PEER 판정 자체가 있어야 한다.
+    assert.ok(/const PEER = /.test(source), 'PEER 플래그가 없다');
   },
 
   //  ㉟c 호스트가 **권한을 다시 판정**하고, 보는 사람을 웹에서 받지 않는다.
@@ -971,7 +1005,8 @@ test('구성원 ㉜: is-link 는 「내가 아님 && 일정 열람 가능」 둘
 test('구성원 ㉝: 누를 수 있는 행은 <button type="button"> 이다(div+onclick 금지)', () => checks.membersLinkRowIsButton(src));
 test('구성원 ㉞: 셰브론은 CSS ::after 다(JS 는 마크업을 만들지 않는다)', () => checks.membersChevronCssOnly(src));
 test('구성원 ㉟: 행 클릭이 읽기 전용 열람을 연다(대상은 login_id)', () => checks.membersClickOpensReadOnlyView(src));
-test('열람 ㉟b: 열람은 읽기 전용이고 내 state 를 건드리지 않는다', () => checks.peerViewIsReadOnly(src));
+test('열람 ㉟b: 같은 앱을 iframe 으로 띄우고 부모는 남의 데이터를 안 만진다', () => checks.peerViewIsReadOnly(src));
+test('열람 ㉟d: 열람 창은 호스트로 아무것도 못 보낸다(봉인 한 곳)', () => checks.peerBridgeSealed(src));
 test('열람 ㉟c: 호스트가 권한을 다시 판정하고 viewer 를 웹에서 받지 않는다', () => checks.peerHostReauthorizes(main, caldb, pdb));
 test('구성원 ㊱: #mbSoon 예고는 목록 위에 있고 누를 행이 0개면 감춘다', () => checks.membersSoonHint(src));
 test('사용자정보 ㊲: 신원 3줄은 응답(info)으로 칠하되 currentUser·세션은 건드리지 않는다(§2.5)', () => checks.identityLiveFromInfo(src));
@@ -1307,10 +1342,30 @@ test('변이㉟-b: 행 클릭이 이름으로 대상을 정하면 ㉟ 가 실패
   assert.throws(() => checks.membersClickOpensReadOnlyView(bad), /login_id 가 아닌 것으로/);
 });
 
-test('변이㉟-c: 열람이 state 를 대입하면 ㉟b 가 실패한다(남의 일정이 내 것이 된다)', () => {
-  const bad = mutate(src, '  __pv.entries = (res.entries||[]);',
-                          '  __pv.entries = (res.entries||[]); state = {entries: res.entries};');
+test('변이㉟-c: 부모가 남의 데이터를 state 에 넣으면 ㉟b 가 실패한다', () => {
+  const bad = mutate(src, '  __pv.frame = f;', '  __pv.frame = f; state = {entries: res.entries};');
   assert.throws(() => checks.peerViewIsReadOnly(bad), /state 를 대입한다/);
+});
+
+test('변이㉟-g: iframe 에서 ?peer=1 을 빼면 ㉟b 가 실패한다(내 캘린더가 뜬다)', () => {
+  const bad = mutate(src, "f.src = location.pathname + '?peer=1';", "f.src = location.pathname;");
+  assert.throws(() => checks.peerViewIsReadOnly(bad), /\?peer=1 없이 뜬다/);
+});
+
+test('변이㉟-h: hpost 의 PEER 봉인을 풀면 ㉟d 가 실패한다', () => {
+  const bad = mutate(src, '  if(PEER){\n    const now = Date.now();', '  if(false){\n    const now = Date.now();');
+  assert.throws(() => checks.peerBridgeSealed(bad), /PEER 를 막지 않는다/);
+});
+
+test('변이㉟-i: 호스트로 나가는 문을 하나 더 만들면 ㉟d 가 실패한다', () => {
+  const bad = src + '\nfunction sneak(o){ window.chrome.webview.postMessage(JSON.stringify(o)); }\n';
+  assert.throws(() => checks.peerBridgeSealed(bad), /문이 3개다/);
+});
+
+test('변이㉟-j: PEER 가 ready 를 보내면 ㉟d 가 실패한다', () => {
+  const bad = mutate(src, "if(!PEER) try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'}))",
+                          "try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'}))");
+  assert.throws(() => checks.peerBridgeSealed(bad), /ready 를 보낸다/);
 });
 
 test('변이㉟-d: 호스트가 viewer 를 웹에서 받으면 ㉟c 가 실패한다', () => {

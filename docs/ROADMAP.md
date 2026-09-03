@@ -21,8 +21,10 @@
 - **과제 카탈로그 DB** (축 A P0~P4) — `project`·`customer`·코드테이블, 앱에서 CRUD, Excel 추출. 로컬 MySQL에서 검증 완료.
 - **캘린더 데이터 DB 전환** (축 B C1~C3.6) — `cal_*` 16표(schema_version 8), 읽기(`CalendarDb`)·쓰기(`CalendarWriteDb`) 배선, **XML 은퇴**(`DeployConfig.XmlRetired = true`, 2026-09-01), 이관 도구(`db/deploy/xml-to-db`), 명시적 가져오기.
 - **보고 기록 DB** — `cal_report_daily/hours/weekly`(2026-08-31): 캘린더가 보낸 것을 DB에 남긴다.
-- **타인 일정 열람** (C4, 2026-09-03) — 「구성원」 행 클릭 = **읽기 전용** 열람. 권한은 호스트가 다시 판정하고
-  (`ProjectDb.CanViewScheduleAsync` 한 벌), 일정만 보낸다(메모·커밋·할 일·공수·근태 제외).
+- **타인 일정 열람** (C4, 2026-09-03) — 「구성원」 행 클릭 = **읽기 전용** 열람.
+  ★ 전용 화면을 만들지 않고 **이 앱을 iframe(`?peer=1`)으로 다시 띄운다** — 메인 UI 가 바뀌면 열람도 저절로 따라온다.
+  권한은 호스트가 다시 판정하고(`ProjectDb.CanViewScheduleAsync` 한 벌), 일정만 보낸다(메모·커밋·할 일·공수·근태 제외).
+  봉인은 `hpost()` 한 곳 — 앱 전체에서 호스트로 나가는 문이 둘뿐이라 거기만 잠그면 미래 명령까지 막힌다.
 
 ### 미완
 - API 서버 (없음 — 각 PC 위젯이 MySQL 직결)
