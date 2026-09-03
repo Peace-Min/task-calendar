@@ -203,7 +203,7 @@ test('변이⑫: DB 경로가 fromXML 을 거치면 출처④ 가 실패한다',
 });
 
 test('변이⑬: DB 경로가 migrateLocalStores 를 부르면 출처⑤ 가 실패한다', () => {
-  const bad = mutate('    renderDataSourceBadge(meta);', '    migrateLocalStores();\n    renderDataSourceBadge(meta);', src);
+  const bad = mutate('    renderAll();\n    pushReminders();', '    renderAll();\n    migrateLocalStores();\n    pushReminders();', src);
   assert.throws(() => checks.dbPathSkipsXmlMigrations(bad), /migrateLocalStores\(\) 를 부른다/);
 });
 
@@ -393,7 +393,9 @@ test('변이㉕: 파일창이 경로를 넘기면 표시등② 가 실패한다'
 });
 
 test('변이㉖: 부팅이 빈 캘린더 안내를 안 부르면 표시등① 이 실패한다', () => {
-  const bad = mutate('    renderDataSourceBadge(meta);\n    renderEmptyHint();', '    renderDataSourceBadge(meta);', src);
+  //  ★ 안내는 이제 if(!PEER) 안에 있다 — 열람 창에 내 이관 안내가 뜨던 것을 막으면서 옮겼다.
+  const bad = mutate('if(!PEER){ renderDataSourceBadge(meta); renderEmptyHint(); }',
+                     'if(!PEER){ renderDataSourceBadge(meta); }', src);
   assert.throws(() => c7.emptyHintGuidesOnly(bad), /부팅이 빈 캘린더 안내를 부르지 않는다/);
 });
 

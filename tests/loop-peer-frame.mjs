@@ -235,6 +235,39 @@ try {
     ok(`R${r} 같은 캘린더 UI 가 그대로 뜬다(격자·과제 필터)`, shown.grid === 35 && shown.chips >= 1,
        `격자 ${shown.grid} · 필터칩 ${shown.chips}`);
     ok(`R${r} 메모가 새지 않는다`, shown.memoLeak === false);
+    //  ★★ **allowlist 검사** — 보이는 조작 수단이 허용 목록뿐인가.
+    //    감추기를 blocklist 로 했다가 열람 창에 보고서·⋯메뉴·문의·테마까지 다 노출됐다(사용자 지적).
+    //    그래서 CSS 를 allowlist 로 뒤집었는데, **그것만으로는 부패를 못 막는다** —
+    //    새 버튼이 .actions 밖에 생기면 또 샌다. 그래서 여기서 **실제로 보이는 것을 세어** 대조한다.
+    //    앞으로 UI 가 늘어도 이 검사가 먼저 운다.
+    //  ★ **레이아웃에 기대지 않는다.** 1차 구현은 offsetParent 로 판정했다가 통째로 헛돌았다 —
+    //    위젯 창이 화면에 안 그려진 상태에서는 iframe 이 0×0 이라 **모든 요소가 "안 보임"** 이 되고,
+    //    그러면 이 검사는 무엇을 노출하든 늘 통과한다(2026-09-03 실측: 보이는 것 0개로 변이가 안 잡혔다).
+    //    그래서 조상 사슬의 display/visibility 만 본다 — 이건 레이아웃 없이도 결정된다.
+    const vis = JSON.parse(await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
+      const shown=(el)=>{ for(let n=el; n && n!==w.document.documentElement; n=n.parentElement){
+        const cs=w.getComputedStyle(n);
+        if(cs.display==="none"||cs.visibility==="hidden") return false;
+        if(n.classList && n.classList.contains("hidden")) return false; } return true; };
+      const seen=[];
+      for(const el of w.document.querySelectorAll("#appSurface button, #appSurface input, #appSurface a[href]")){
+        if(!shown(el)) continue;
+        seen.push(el.id || (el.className||"").toString().split(" ")[0] || el.tagName.toLowerCase());
+      }
+      return JSON.stringify({seen:[...new Set(seen)], w:w.innerWidth});})()`));
+    //  달력 이동 · 연월 · 검색 · 과제 필터칩 · 일자 패널 안의 읽기 컨트롤만 허용한다.
+    //  달력 이동 · 연월 · 검색 · 과제 필터칩 · 일자 패널의 **읽기** 컨트롤만 허용한다.
+    //  ★ 여기에 무언가를 더할 때는 "그게 읽기인가" 를 먼저 물을 것. 편집이면 CSS 에서 감춰야 한다.
+    const ALLOW = new Set(["btnPrev","btnToday","btnNext","btnTitle","jumpMonth","btnSearch",
+                           "fchip","dpSheetClose","dptab-detail"]);
+    const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
+    //  ★ 한계를 적어 둔다: 위젯 창이 화면에 안 그려지면 iframe 뷰포트가 0폭이 되고,
+    //    그러면 **좁은 화면용 반응형 규칙**이 켜져 일부 버튼이 저절로 숨는다 — 이 검사가 그만큼 약해진다.
+    //    (실측: allowlist 를 blocklist 로 되돌리는 변이에서 7개 중 3개만 검출됐다. 잡히긴 잡힌다.)
+    //    창을 띄워 놓고 돌리면 온전해진다. 그래서 폭을 함께 찍어 결과를 과신하지 않게 한다.
+    if (r === 1 && !vis.w) console.log(`  · 참고: 열람 창 뷰포트가 0폭이다(창이 안 그려짐) — 노출 검사가 약해진다`);
+    ok(`R${r} 보이는 조작 수단이 허용 목록뿐이다`, extra.length === 0,
+       `허용 밖: ${extra.join(", ")}`);
     ok(`R${r} 로그인 게이트가 뜨지 않는다`, shown.gate === false,
        '열람 창이 로그인을 묻는다 — 인증은 부모가 이미 했고, 봉인 때문에 이 게이트는 안 풀린다');
 

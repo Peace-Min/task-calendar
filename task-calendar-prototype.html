@@ -1268,15 +1268,39 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
    ★ 여기서 감추는 것은 **어포던스**일 뿐이다. 데이터 안전은 hpost() 봉인이 맡는다.
      그래서 이 선택자가 새 버튼을 놓쳐도 DB 에는 닿지 않는다 — 어색할 뿐이다.
    ★ 호스트바(창 이동·닫기)와 설정·업데이트처럼 '이 창의 것이 아닌' 조작도 함께 감춘다. */
-body[data-peer] #hostbar,      /* 창 이동·핀·닫기 — 이 창의 것이 아니다 */
-body[data-peer] #btnNew,       /* ＋ 새 기록 */
-body[data-peer] #btnAddHere,   /* 일자 패널의 추가 */
-body[data-peer] #btnMore,      /* ⋯ 더보기(과제 관리·데이터·초기화) */
-body[data-peer] #btnUser,      /* 👤 사용자 정보 — 남의 창에서 내 계정을 열 이유가 없다 */
-body[data-peer] [data-edit]{ display:none !important }
+/*  ★★ **allowlist** 다 — "이건 감춰라" 가 아니라 "이것만 보여라".
+    처음엔 blocklist 로 썼다가 뒤집었다(2026-09-03). 이유가 분명하다:
+      · blocklist 는 **새 버튼이 생길 때마다 샌다.** 실제로 그래서 열람 창에 보고서·⋯메뉴·
+        문의·테마까지 다 노출됐다(사용자 지적).
+      · allowlist 는 기본이 '숨김' 이라 **앞으로 생길 UI 도 자동으로 안 보인다.**
+        이 방식이라야 "메인이 바뀌어도 열람 화면은 따라오되, 편집 수단은 안 따라온다" 가 성립한다.
+    ★ 보이는 것은 셋뿐이다: 달력 이동(.nav) · 검색 · 과제 필터(#filterbar) · 달력 본체(main).  */
+body[data-peer] #hostbar,
+body[data-peer] #updateBanner,
+body[data-peer] .brand,
+body[data-peer] .actions > *{ display:none !important }
+
+/*  되살리는 것 — 여기 적힌 것만 보인다.  */
+body[data-peer] .actions > #btnSearch{ display:inline-flex !important }
+
+/*  일자 패널 — 읽는 것만 남긴다.
+    ★ #btnAddHere(＋추가)가 그대로 노출돼 있었다. topbar 만 allowlist 로 덮고 본문은 안 덮은 탓이다
+      — 루프 검사(보이는 조작 수단 대조)가 잡아 줬다(2026-09-03).
+    ★ 할 일·작업일지 탭은 감춘다: 열람 조회는 일정만 보내므로(§ 최소 payload) 그 탭들은 늘 비어
+      "이 사람은 할 일이 없다" 는 **거짓말**을 하게 된다. 안 보내는 것을 보여주는 자리를 두지 않는다.  */
+body[data-peer] #btnAddHere,
+body[data-peer] #dptab-todo,
+body[data-peer] #dptab-git{ display:none !important }
+
+/*  달력 자체는 읽기 전용으로 보인다 — 편집 어포던스만 뺀다.  */
 body[data-peer] .cell{ cursor:default }
-.pv-frame{ width:100%; height:min(72vh, 640px); border:1px solid var(--line); border-radius:8px;
-           background:var(--bg); display:block }
+body[data-peer] .cell:hover{ background:inherit }
+/*  ★ 달력은 넓어야 달력이다. 좁으면 칸이 뭉개져 '무엇을 하는 사람인가'가 안 읽힌다.
+    모달 기본폭(540px)으로는 주 7칸이 각 70px 남짓이 된다 — 그래서 이 모달만 따로 넓힌다.  */
+#peerModal .modal{ width:min(1180px, 97vw); max-width:none; max-height:96vh }
+#peerModal .modal-body{ padding:10px 12px }
+.pv-frame{ width:100%; height:min(78vh, 820px); min-height:420px; border:1px solid var(--line);
+           border-radius:8px; background:var(--bg); display:block }
 #peerBanner{ display:none }
 body[data-peer] #peerBanner{
   display:block; padding:6px 12px; font-size:12px; text-align:center;
@@ -3751,8 +3775,11 @@ window.__applyState = function(json, meta){
     __bootMeta = meta || null;            // 스키마 게이트(가져오기·초기화)가 읽는 값 — 배지보다 먼저 세운다
     renderAll();
     pushReminders();
-    renderDataSourceBadge(meta);
-    renderEmptyHint();
+    //  ★ 이 둘은 **내 창의 것**이다 — 열람 창에서는 뜨면 안 된다.
+    //    · 출처 배지: 배너가 이미 "읽기 전용" 이라고 말한다(두 번 말할 자리가 아니다)
+    //    · 미이관 안내: 남의 캘린더가 비었을 때 **내** 이관을 권하는 「XML 가져오기」 버튼이 떴다
+    //      (2026-09-03 사용자 스크린샷). 남의 빈 달력에 내 이관 안내가 뜰 이유가 없다.
+    if(!PEER){ renderDataSourceBadge(meta); renderEmptyHint(); }
     //  ★ 부팅이 **성공했다** — 빨간 상자와 자동 재시도 타이머를 함께 걷는다.
     //    안 걷으면 재시도로 살아난 화면 위에 "읽지 못했습니다" 가 그대로 남아, 사용자는
     //    지금 보고 있는 데이터를 믿지 못한다(그리고 타이머는 계속 서버를 두드린다).
@@ -6048,6 +6075,9 @@ function updateRecurPreview(){
   prev.textContent = msg;
 }
 function openEntryModal(mode, ref){
+  //  ★ 열람 창에서는 아예 열지 않는다. CSS 로 버튼을 감춰도 **날짜 더블클릭**은 남아 있고,
+  //    열리면 사용자가 다 채운 뒤에야 "읽기 전용" 을 만난다 — 그게 감추는 것보다 나쁘다.
+  if(PEER){ try{ toast('읽기 전용 보기입니다 — 여기서는 기록을 만들 수 없습니다', 'info'); }catch(_){} return; }
   fillCatSelect($('#fCat'));
   fillTimeSelects($('#fStartH'), $('#fStartM')); fillTimeSelects($('#fEndH'), $('#fEndM'));
   $('#fTimeHint').textContent = '';
