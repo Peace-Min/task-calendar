@@ -130,6 +130,29 @@ const checks = {
         `DB 경로가 ${f}() 를 부른다 — 이 함수들은 내부에서 save() 를 부르므로 읽기 전용 계약을 깬다`);
     assert.ok(!/\bsave\(\)/.test(db), 'DB 경로가 save() 를 부른다 — 읽기 전용이 아니다');
   },
+
+  //  ⑦ 열람 창(PEER)의 출처는 **부모의 주입 하나뿐**이다 — 로컬 저장소를 씨앗으로 삼지 않는다.
+  //  ★ 실제로 그랬다(2026-09-03 실측). 최상위 `let state = load()` 가 PEER 프레임에서도 그대로 돌아
+  //    localStorage 의 taskCalendar.v1(= XML 시절의 **내** 캘린더)을 집어왔다. 같은 origin 이라
+  //    그 키가 그대로 보인다. 주입이 늦거나 실패하면 부팅 스켈레톤이 4초 뒤 스스로 걷히므로,
+  //    「○○ 님의 일정 · 읽기 전용」 창에 **내 일정이 그려졌다**(마커를 심어 재현했다. gitAuthor 도 실렸다).
+  //    v0.17.1 에서 올라온 89대에 그 키가 남아 있어 실제로 일어날 수 있는 일이다.
+  //  ★ defaultState() 로 바꾸는 것도 답이 아니다 — 거긴 「[샘플 일정] …」 시드가 들어 있어
+  //    남의 이름이 붙은 창에 **있지도 않은 일정**이 뜬다. 내 것이 새는 것보다 낫지만 그것도 거짓이다.
+  //    조회가 실패하면 **비어 있는 것**이 정직한 상태다.
+  peerSeedsEmptyNotLocal(app) {
+    const m = /let\s+state\s*=\s*([^\n;]+);/.exec(app);
+    assert.ok(m, '최상위 `let state = …` 를 찾지 못했다 — 이름이나 형태를 바꿨다면 이 검사도 함께 고칠 것');
+    const seed = m[1].trim();
+    assert.ok(/\bPEER\b/.test(seed),
+      `열람 창이 부팅 씨앗을 가르지 않는다(현재: ${seed}) — PEER 면 로컬 저장소를 읽지 않아야 한다. ` +
+      'load() 는 localStorage 의 내 캘린더를 집어오고, 주입이 실패하면 그게 남의 이름으로 그려진다');
+    assert.ok(!/PEER\s*\?\s*load\(/.test(seed), `PEER 갈래가 여전히 load() 를 쓴다: ${seed}`);
+    assert.ok(!/PEER\s*\?\s*defaultState\(/.test(seed),
+      `PEER 갈래가 defaultState() 를 쓴다 — 거긴 샘플 시드가 있어 남의 창에 없는 일정이 뜬다: ${seed}`);
+    assert.ok(/PEER\s*\?\s*buildStateFrom\(/.test(seed),
+      `PEER 갈래가 빈 상태를 buildStateFrom 으로 만들지 않는다(계약 G 와 모양이 갈라진다): ${seed}`);
+  },
 };
 
 test('출처①: 출처가 하나다 — XML 갈래가 되살아나지 않았다', () => checks.singleSource(src, mainwin));
@@ -137,6 +160,8 @@ test('출처②: 위젯의 저장은 DB 로만 간다(XML 쓰기 문이 없다)'
 test('출처③: DB 읽기 실패가 XML 로 조용히 되돌아가지 않는다', () => checks.noSilentXmlFallback(mainwin));
 test('출처④: 부팅이 buildStateFrom 으로 조립한다', () => checks.stateBuilderShared(src));
 test('출처⑤: DB 경로가 XML 전용 이관 절차를 부르지 않는다', () => checks.dbPathSkipsXmlMigrations(src));
+test('출처⑤b: 열람 창의 출처는 주입 하나뿐이다(로컬 저장소를 씨앗으로 안 쓴다)', () =>
+  checks.peerSeedsEmptyNotLocal(src));
 
 test('출처⑥: 지금 어느 저장소를 쓰는지 화면에 드러낸다', () => {
   assert.ok(/renderDataSourceBadge/.test(src), '출처 배지 함수가 없다');
@@ -215,6 +240,17 @@ test('변이⑫: DB 경로가 fromXML 을 거치면 출처④ 가 실패한다',
 test('변이⑬: DB 경로가 migrateLocalStores 를 부르면 출처⑤ 가 실패한다', () => {
   const bad = mutate('    renderAll();\n    pushReminders();', '    renderAll();\n    migrateLocalStores();\n    pushReminders();', src);
   assert.throws(() => checks.dbPathSkipsXmlMigrations(bad), /migrateLocalStores\(\) 를 부른다/);
+});
+
+test('변이·씨앗: 열람 창 씨앗을 옛 모양으로 되돌리면 출처⑤b 가 잡는다', () => {
+  //  ★ 이것이 2026-09-03 이전의 실제 코드다 — 열람 프레임이 내 localStorage 를 집어왔다.
+  const old = mutate('let state = PEER ? buildStateFrom({ categories: [], entries: [] }) : load();',
+                     'let state = load();', src);
+  assert.throws(() => checks.peerSeedsEmptyNotLocal(old), /부팅 씨앗을 가르지 않는다/);
+  //  샘플 시드로 바꾸는 '반쪽 수정' 도 막는다 — 남의 창에 없는 일정이 뜬다.
+  const sample = mutate('let state = PEER ? buildStateFrom({ categories: [], entries: [] }) : load();',
+                        'let state = PEER ? defaultState() : load();', src);
+  assert.throws(() => checks.peerSeedsEmptyNotLocal(sample), /샘플 시드/);
 });
 
 test('변이⑬b: 주석을 걷어도 **진짜** save() 호출은 여전히 잡힌다', () => {
