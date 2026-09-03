@@ -4606,6 +4606,13 @@ function filterMembers(){ mbApply(); }
 //   app_user 재조회도 하지 않는다(§2.5): 그 갱신이 로그아웃과 경합해 삭제된 세션을 되살린 적이 있다.
 async function bootUserSession(){
   if(!HOST) return;
+  //  ★ 열람 창(PEER)은 **자기 신원이 없다.** 그린 화면일 뿐이고, 인증은 이미 부모 창이 했고
+  //    권한은 호스트가 조회 시점에 다시 판정했다(ProjectDb.CanViewScheduleAsync).
+  //    여기서 게이트를 띄우면 두 가지가 동시에 잘못된다:
+  //      ① 남의 일정을 보려는데 **로그인 화면**이 뜬다 — 절차가 말이 안 된다.
+  //      ② hpost 가 봉인돼 있어 userSessionGet 이 나가지 못하므로 그 게이트는 **영영 안 풀린다.**
+  //    2026-09-03 사용자 지적으로 발견. 게이트를 띄우기 **전에** 끊는다(첫 프레임에도 안 보이게).
+  if(PEER){ hideLoginGate(); return; }
   showLoginGate(false, '로그인 확인 중…');   // ★ 회신을 기다리지 않고 지금 덮는다(첫 프레임부터)
   let r = null;
   try{ r = await hostRequest('userSessionGet', {}, 10000); }catch(_){ r = null; }
