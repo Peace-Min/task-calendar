@@ -319,6 +319,29 @@ try {
     //  ★ 여기가 이 테스트의 핵심 한 줄이다 — 문이 한 번도 안 열려야 한다.
     ok(`R${r} **봉인**: 열람 창이 postMessage 를 한 번도 부르지 않았다`, sealed.posted === 0,
        `postMessage ${sealed.posted}회 — 봉인이 샌다`);
+
+    //  ③b 봉인은 DB 를 지킨다. 그런데 **화면**은? — 지역 state 가 바뀐 채로 남으면
+    //  사용자는 '남의 일정을 바꿨다'고 믿는다. 실제로 드래그&드롭이 그랬다(「옮겼습니다」 토스트).
+    //  ★ 그래서 편집 경로를 **흉내내지 않고** 그 경로들이 하는 짓을 그대로 한다:
+    //    state 를 직접 바꾸고 save() 를 부른다. save() 가 되돌려야 통과다.
+    //    이 검사는 특정 버튼이 아니라 **모든 편집 경로의 공통 마지막 관문**을 본다 —
+    //    새 편집 기능이 생겨도 그것이 save() 를 부르는 한 여기서 함께 지켜진다.
+    const rev = JSON.parse(await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
+      try{ return w.eval("(function(){"
+        + " var before=JSON.stringify(state.entries.map(function(e){return e.id+'@'+e.date;}));"
+        + " var n0=state.entries.length;"
+        + " if(state.entries[0]) state.entries[0].date='2000-01-02';"   /* 드래그&드롭이 하는 짓 */
+        + " state.entries.push({id:'e-intruder',date:'2000-01-03',title:'침입',allDay:true});"
+        + " if(state.todos) state.todos.length=0;"                       /* 할 일 몰살 */
+        + " save();"
+        + " var after=JSON.stringify(state.entries.map(function(e){return e.id+'@'+e.date;}));"
+        + " return JSON.stringify({restored: before===after, n0:n0, n1:state.entries.length,"
+        + "   intruder: state.entries.some(function(e){return e.id==='e-intruder';})});"
+        + "})()"); }catch(e){ return JSON.stringify({err:String(e && e.message)}); }})()`));
+    ok(`R${r} **되돌리기**: state 를 바꾸고 save() 해도 원본으로 돌아온다`,
+       rev.restored === true && rev.intruder === false && rev.n0 === rev.n1,
+       `복원=${rev.restored} 침입행=${rev.intruder} 행수 ${rev.n0}→${rev.n1}${rev.err ? ' · ' + rev.err : ''} — ` +
+       'save() 의 peerRevert 가 없거나 원본 스냅샷(__peerPristine)이 안 잡혔다');
     await sleep(300);
 
     //  ④ 닫기 — 프레임이 사라져야 한다

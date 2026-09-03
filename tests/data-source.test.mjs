@@ -26,6 +26,16 @@ function mutate(from, to, base) {
   return out;
 }
 
+//  주석 제거 — 계약이 보는 것은 **호출**이지 글자가 아니다.
+//  ★ 2026-09-03: __applyState 안에 "save() 가 이걸로 되돌린다" 라고 적었더니 계약 ⑤ 가
+//    빨간불이 났다. 코드는 그대로였고 주석만 늘었는데도 그랬다 — 함수를 설명하는 사람마다
+//    걸리는 덫이다. 그래서 주석을 먼저 걷고 본다. (구현은 xml-retirement.test.mjs 와 같은 꼴.)
+//  ★ 줄끝 주의: 정규식의 `.` 는 \r 를 안 먹는다. CRLF 파일에서 조용히 실패하지 않게 \r*\n 로 쪼갠다.
+function stripJsComments(text) {
+  let t = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  return t.split(/\r*\n/).map((l) => l.replace(/(^|\s)\/\/[^\r\n]*$/, '')).join('\n');
+}
+
 // 함수 본문을 중괄호 균형으로 잘라낸다(정규식 구경보다 정확하다).
 function bodyOf(text, header) {
   const i = text.indexOf(header);
@@ -113,7 +123,7 @@ const checks = {
 
   // ⑤ DB 경로는 XML 전용 이관 절차를 부르지 않는다(둘 다 내부에서 save() 를 부른다)
   dbPathSkipsXmlMigrations(app) {
-    const db = bodyOf(app, 'window.__applyState = function(json, meta){');
+    const db = stripJsComments(bodyOf(app, 'window.__applyState = function(json, meta){'));
     //  migrateLocalStores 는 2026-09-01 에 없앴다 — 이름을 남겨 두는 것은 되살아나면 잡기 위해서다.
     for (const f of ['migrateDbSubscriptions', 'migrateLocalStores'])
       assert.ok(!db.includes(f),
@@ -205,6 +215,17 @@ test('변이⑫: DB 경로가 fromXML 을 거치면 출처④ 가 실패한다',
 test('변이⑬: DB 경로가 migrateLocalStores 를 부르면 출처⑤ 가 실패한다', () => {
   const bad = mutate('    renderAll();\n    pushReminders();', '    renderAll();\n    migrateLocalStores();\n    pushReminders();', src);
   assert.throws(() => checks.dbPathSkipsXmlMigrations(bad), /migrateLocalStores\(\) 를 부른다/);
+});
+
+test('변이⑬b: 주석을 걷어도 **진짜** save() 호출은 여전히 잡힌다', () => {
+  //  ★ 주석 제거를 넣은 뒤 이 검사가 물렁해지지 않았는지 확인한다 —
+  //    "오검출을 없앴다" 가 "아무것도 안 잡는다" 로 바뀌는 것이 이런 완화의 흔한 결말이다.
+  const bad = mutate('    renderAll();\n    pushReminders();', '    renderAll();\n    save();\n    pushReminders();', src);
+  assert.throws(() => checks.dbPathSkipsXmlMigrations(bad), /save\(\) 를 부른다/);
+  //  그리고 주석 안의 save() 는 **잡지 않아야** 한다(그게 이 완화의 목적이다).
+  const okSrc = mutate('    renderAll();\n    pushReminders();',
+                       '    renderAll();\n    // save() 는 여기서 부르지 않는다\n    pushReminders();', src);
+  checks.dbPathSkipsXmlMigrations(okSrc);
 });
 
 test('변이⑭: 미등록 사용자 구분을 없애면 출처③ 이 실패한다', () => {
