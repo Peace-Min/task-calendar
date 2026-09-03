@@ -69,6 +69,7 @@ tests/
 ├─ loop-org-compat.mjs        MySQL(복제본) — org_unit 완전 절단 루프
 ├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
+├─ loop-peer-view.mjs        실 DB + 앱 계정 — **타인 일정 열람의 권한 경계**(허용/거부/최소 payload)
 ├─ loop-import-ui.mjs        **실제 위젯**(CDP) + 실 DB — 「XML 가져오기」 실동작(교체·병합 왕복)
 ├─ loop-schema-gate.mjs     **실제 위젯**(CDP) + 실 DB — P1-1 스키마 게이트·P1-2 부팅 재시도·P1-8 개명 가드 회귀
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)

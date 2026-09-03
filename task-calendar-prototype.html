@@ -1261,8 +1261,21 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .us-kv dd{margin:0;font-size:var(--fs-body);color:var(--text)}
 /* 구성원 행 — 구분선만. 어포던스는 '누를 수 있는 행'(.is-link)에만 준다:
    못 누르는 행(=나 자신)에 cursor:pointer·hover 를 주면 '눌리는데 아무 일도 안 나는' 행이 된다.
-   ★ 지금 누르면 「준비 중」 토스트 하나가 전부다 — 일정은 아직 DB에 없다(각 PC 로컬 파일). */
+   ★ 누르면 읽기 전용 열람 모달(#peerModal)이 열린다(C4, 2026-09-03). 일정은 DB 에 있다. */
 .mb-row{padding:8px 2px;border-bottom:1px solid var(--line)}
+/* 타인 일정 열람(C4) — **읽기 전용**이다. 편집 어포던스를 하나도 주지 않는다:
+   커서는 기본값, hover 강조 없음, 누를 수 있는 것은 월 이동과 닫기뿐. */
+.pv-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.pv-who{font-weight:600}
+.pv-nav{margin-left:auto;display:flex;align-items:center;gap:6px}
+.pv-nav button{padding:3px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer}
+.pv-ym{min-width:88px;text-align:center;font-variant-numeric:tabular-nums}
+.pv-day{margin:10px 0 4px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line);padding-bottom:3px}
+.pv-item{display:flex;gap:8px;align-items:baseline;padding:4px 2px}
+.pv-time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:82px}
+.pv-dot{width:8px;height:8px;border-radius:50%;flex:none;align-self:center}
+.pv-title{flex:1;min-width:0;overflow-wrap:anywhere}
+.pv-cat{font-size:12px;color:var(--muted);white-space:nowrap}
 /* 누를 수 있는 행은 진짜 <button> 이다(div+onclick 금지 — 키보드 포커스·Enter/Space·역할이 공짜다).
    대신 버튼 기본 껍데기를 전부 벗겨 목록 행처럼 보이게 한다.
    ★ 셰브론 자리(padding-right)는 absolute 배치다: float 로 띄우면 두 번째 줄(소속)이 밀려
@@ -2586,8 +2599,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
      ★ 그래서 트리 노드는 전부 눌린다. 누를 수 없는 것은 '일정을 볼 수 없는 사람의 행'뿐이다
        (구성원 행의 canViewSchedule=false → 셰브론 없는 평범한 줄).
      ★ 좌우 2단이다. 세로로 쌓으면 트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
-     ★ 행 클릭은 '진입점'까지만 만들었다 — 누르면 「준비 중」 토스트다. 실제 열람 UI(월 그리드·일자 패널·
-       편집 컨트롤)는 여기 없다: DB에 일정 테이블 자체가 없다(app_user·org_unit 등 7개뿐, 일정은 각 PC 로컬 파일).
+     ★ 행 클릭은 **읽기 전용 열람 모달**(#peerModal)을 연다(C4, 2026-09-03).
+       이 모달 안에는 여전히 열람 UI 를 두지 않는다 — 명부는 명부다. 그리고 어디에도 **편집 컨트롤은 없다**:
+       남의 일정을 고칠 수 있으면 그건 열람 권한이 아니다(edit_role 은 자기 것에만 준다).
      ★ #userModal 위에 겹쳐 연다(_modalStack 이 중첩을 지원한다) — 닫으면 사용자 정보로 되돌아온다. -->
 <div class="overlay hidden" id="membersModal">
   <div class="modal wide">
@@ -2602,7 +2616,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <!-- 누르기 '전에' 알린다 — 눌러 본 뒤에야 「준비 중」이라고 하면 낚인 느낌이 든다.
                ★ 누를 수 있는 행이 하나도 없으면 renderMembers 가 이 줄을 「권한 없음」으로 바꾼다(감추지 않는다):
                  아무도 못 누르는데 '누르면 볼 수 있다'고 하면 거짓말이고, 아무 말도 없으면 왜 안 눌리는지 모른다. -->
-          <div class="set-hint" id="mbSoon">사람을 누르면 그 사람 일정을 볼 수 있습니다 — <b>준비 중</b></div>
+          <div class="set-hint" id="mbSoon">사람을 누르면 그 사람 일정을 볼 수 있습니다(읽기 전용)</div>
           <div id="mbList"></div>
           <div class="set-hint hidden" id="mbEmpty">검색 결과가 없습니다.</div>
         </div>
@@ -2613,6 +2627,36 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <button class="btn primary" data-close>닫기</button>
     </div>
   </div>
+
+<!-- ===== 타인 일정 열람 (C4) ===== 「구성원」에서 사람을 누르면 열린다.
+     ★ **읽기 전용**이다. 편집 컨트롤이 하나도 없다 — 남의 일정을 여기서 고칠 수 있으면
+       그건 열람 권한이 아니라 편집 권한이다(edit_role 은 자기 것에만 준다).
+     ★ 구성원 모달과 **다른 모달**로 둔다. 명부는 명부고 열람은 열람이다 — 한 모달에 섞으면
+       '명부에는 열람 UI 가 없다'는 계약(구성원 ㉓)을 지킬 수 없고, 그 계약은 여전히 값이 있다.
+     ★ 보여주는 것은 **일정뿐**이다 — 메모·커밋·할 일·공수·근태는 호스트가 아예 보내지 않는다
+       (CalendarDb.LoadPeerScheduleJsonAsync). 목적은 '언제 무엇을 하는가'이지 개인 기록 열람이 아니다. -->
+<div class="overlay hidden" id="peerModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>일정 보기</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="pv-head">
+        <span class="pv-who" id="pvWho">—</span>
+        <span class="set-hint" id="pvScope">읽기 전용</span>
+        <span class="pv-nav">
+          <button type="button" id="pvPrev" aria-label="이전 달">◀</button>
+          <span class="pv-ym" id="pvYm">—</span>
+          <button type="button" id="pvNext" aria-label="다음 달">▶</button>
+        </span>
+      </div>
+      <div id="pvList" aria-live="polite"></div>
+      <div class="set-hint hidden" id="pvEmpty">이 달에는 일정이 없습니다.</div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn primary" data-close>닫기</button>
+    </div>
+  </div>
+</div>
 </div>
 
 <!-- ===== 자세한 사용설명서(A–Z) 모달 ===== -->
@@ -2836,7 +2880,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <li><b>구성원 명부 (신규)</b> — 「사용자 정보 → 구성원 보기」에서 <b>조직도</b>를 따라 사람들을 볼 수 있습니다. 볼 수 있는 범위는 계정마다 다르며, <b>범위 밖 조직은 눌리지 않습니다.</b></li>
         <li><b>과제 DB 접속 대상 표시</b> — 설정창에서 지금 이 프로그램이 <b>어느 서버에 붙는지</b>(주소·포트) 확인할 수 있습니다.</li>
         <li><b>설정창을 정리했습니다</b> — 잘 쓰지 않던 「알림 전체 끄기」와 「커밋 가져오기」 토글을 없앴습니다. 알림은 <b>일정마다</b> 정하고, 커밋은 <b>보고서에서</b> 가져오면 됩니다.</li>
-        <li>「구성원」에서 사람을 누르면 <b>그 사람 일정 보기</b>가 열릴 예정입니다 — <b>아직 준비 중</b>입니다.</li>
+        <li>「구성원」에서 사람을 누르면 <b>그 사람 일정</b>을 볼 수 있습니다(읽기 전용 · 볼 수 있는 범위는 관리자가 정합니다).</li>
       </ul>
       <div class="patch-ver"><span class="pv-tag old">v0.16.0</span><span class="pv-date">2026-07-30</span></div>
       <p class="patch-intro">공식 과제도 <b>색상을 직접 고를 수 있게</b> 했습니다.</p>
@@ -4328,7 +4372,103 @@ function mbApply(){
 // 행 클릭 — 지금은 이 한 줄이 전부다. 모달을 닫지도, 다른 화면으로 옮기지도, 그 사람 데이터를
 // 더 조회하지도 않는다: 열어 보여 줄 것이 아직 없다(DB에 일정 테이블이 없다 — 각 PC 로컬 파일이다).
 // ★ 여기에 hostRequest·closeOverlay 가 붙는 순간 '진입점만'이라는 계약이 깨진다(기계가 지킨다).
-function mbRowClick(){ toast('일정 열람은 준비 중입니다', 'info'); }
+//  ── 타인 일정 열람(C4) ────────────────────────────────────────────────
+//  ★ 이 화면은 **아무것도 저장하지 않는다.** state 를 건드리지 않고 별도 변수에만 담는다 —
+//    남의 일정이 내 state 에 섞이면 다음 저장이 그걸 내 것으로 DB 에 쓴다.
+let __pv = null;   // { loginId, name, ym:{y,m}, cats:Map, entries:[] } | null
+
+function mbRowClick(ev){
+  const row = ev && ev.currentTarget;
+  const lid = row && row.dataset ? row.dataset.login : '';
+  const nm  = row && row.dataset ? (row.dataset.name || lid) : '';
+  if(!lid){ toast('대상을 알 수 없습니다', 'error'); return; }
+  openPeerSchedule(lid, nm);
+}
+
+function openPeerSchedule(loginId, name){
+  const t = new Date();
+  __pv = { loginId, name, ym:{ y:t.getFullYear(), m:t.getMonth() }, cats:new Map(), entries:null };
+  $('#pvWho').textContent = name || loginId;
+  $('#pvScope').textContent = '읽기 전용 — 일정만 보입니다';
+  $('#pvList').textContent = '';
+  $('#pvEmpty').classList.add('hidden');
+  $('#pvYm').textContent = '…';
+  openModal('#peerModal');
+  hostRequest('peerSchedule', { loginId }, 20000).then(res => {
+    if(!__pv || __pv.loginId !== loginId) return;             // 그 사이 다른 사람을 열었다
+    if(!res || !res.ok){ pvFail((res && res.error) || '일정을 불러오지 못했습니다'); return; }
+    //  ★ '권한 없음' 과 '통신 실패' 를 구분해 말한다 — 사용자에게 다른 사실이다.
+    if(!res.allowed){ pvFail('이 사람의 일정을 볼 권한이 없습니다.'); return; }
+    __pv.cats = new Map((res.categories||[]).map(c => [c.id, c]));
+    __pv.entries = (res.entries||[]);
+    renderPeerMonth();
+  });
+}
+
+function pvFail(msg){
+  $('#pvYm').textContent = '—';
+  $('#pvList').textContent = '';
+  const p = document.createElement('div');
+  p.className = 'set-hint';
+  p.textContent = msg;                                        // textContent — DB 문자열을 마크업으로 해석하지 않는다
+  $('#pvList').appendChild(p);
+  $('#pvEmpty').classList.add('hidden');
+}
+
+function pvShiftMonth(d){
+  if(!__pv || !__pv.entries) return;
+  const n = new Date(__pv.ym.y, __pv.ym.m + d, 1);
+  __pv.ym = { y:n.getFullYear(), m:n.getMonth() };
+  renderPeerMonth();
+}
+
+//  그 달에 실제로 발생하는 것만 그린다 — 반복 전개는 내 캘린더와 **같은 함수**를 쓴다
+//  (expandOccurrences). 다른 규칙으로 그리면 같은 일정이 사람에 따라 다르게 보인다.
+function renderPeerMonth(){
+  if(!__pv || !__pv.entries) return;
+  const { y, m } = __pv.ym;
+  const from = ymd(new Date(y, m, 1)), to = ymd(new Date(y, m + 1, 0));
+  $('#pvYm').textContent = y + '-' + String(m + 1).padStart(2, '0');
+
+  const occ = [];
+  for(const e of __pv.entries){
+    try{ for(const o of expandOccurrences(e, from, to)) occ.push(o); }catch(_){}
+  }
+  occ.sort((a, b) => (a._occStart < b._occStart ? -1 : a._occStart > b._occStart ? 1
+    : String(a.startTime||'').localeCompare(String(b.startTime||''))));
+
+  const host = $('#pvList');
+  host.textContent = '';
+  $('#pvEmpty').classList.toggle('hidden', occ.length > 0);
+  let curDay = '';
+  for(const o of occ){
+    if(o._occStart !== curDay){
+      curDay = o._occStart;
+      const h = document.createElement('div');
+      h.className = 'pv-day';
+      h.textContent = fmtDateK(curDay);
+      host.appendChild(h);
+    }
+    const c = __pv.cats.get(o.categoryId);
+    const row = document.createElement('div');
+    row.className = 'pv-item';
+    const tm = document.createElement('span');
+    tm.className = 'pv-time';
+    tm.textContent = o.allDay ? '종일'
+      : (o.startTime ? (o.startTime + (o.endTime ? '~' + o.endTime : '')) : '');
+    const dot = document.createElement('span');
+    dot.className = 'pv-dot';
+    dot.style.background = (c && c.color) ? c.color : 'var(--line)';
+    const ti = document.createElement('span');
+    ti.className = 'pv-title';
+    ti.textContent = o.title || '(제목 없음)';               // textContent — 남의 DB 문자열이다
+    const ca = document.createElement('span');
+    ca.className = 'pv-cat';
+    ca.textContent = c ? c.name : '';
+    row.appendChild(tm); row.appendChild(dot); row.appendChild(ti); row.appendChild(ca);
+    host.appendChild(row);
+  }
+}
 // 행 렌더 — 데이터 출처와 무관하게 이 함수만 행을 그린다.
 // ★ innerHTML 을 쓰지 않는다: 이름·소속은 DB 문자열이라 마크업으로 해석되는 순간 목록이 실행 표면이 된다.
 //   비우기도 innerHTML='' 이 아니라 removeChild 다 — 한 곳만 예외를 두면 다음 사람이 그걸 관례로 읽는다.
@@ -4350,7 +4490,13 @@ function renderMembers(rows){
     // 누를 수 있는 행은 진짜 <button> 이다 — div+onclick 은 키보드로 닿지 않는다.
     const row = document.createElement(plain ? 'div' : 'button');
     row.className = plain ? 'mb-row' : 'mb-row is-link';
-    if(!plain){ row.type = 'button'; row.addEventListener('click', mbRowClick); links++; }
+    if(!plain){
+      row.type = 'button'; row.addEventListener('click', mbRowClick); links++;
+      //  ★ 대상은 **login_id** 다(이름이 아니다) — 동명이인이 있고, 호스트의 권한 판정도 login_id 로 한다.
+      //    dataset 에 담아 클릭 핸들러가 currentTarget 에서 읽는다(클로저로 캡처하면 재렌더 때 낡는다).
+      row.dataset.login = String(m && m.loginId != null ? m.loginId : '');
+      row.dataset.name  = (m && m.name) ? String(m.name) : '';
+    }
     const head = document.createElement('div');
     const nm = document.createElement('b'); nm.textContent = (m && m.name) ? String(m.name) : '—';
     head.appendChild(nm);
@@ -10314,6 +10460,8 @@ function bind(){
       Platform.report.submitWeekly(payload);
     }
   });
+  $('#pvPrev').addEventListener('click', () => pvShiftMonth(-1));
+  $('#pvNext').addEventListener('click', () => pvShiftMonth(1));
   $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
   $('#btnImport').addEventListener('click', () => { closeMore(); startImport(); });

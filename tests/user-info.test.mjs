@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 const src  = loadAppSource();
 const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
 const pdb  = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+const caldb = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.url), 'utf8');
 
 // ── 소스 슬라이서 ──────────────────────────────────────────────────────
 
@@ -112,8 +113,11 @@ function userModalMarkup(source) {
 function membersModalMarkup(source) {
   const s = source.indexOf('<div class="overlay hidden" id="membersModal">');
   assert.ok(s >= 0, '#membersModal 마크업을 찾지 못함(.overlay 여야 한다)');
-  const e = source.indexOf('<!-- ===== 자세한 사용설명서', s);
-  assert.ok(e > s, '#membersModal 뒤의 사용설명서 모달을 찾지 못함');
+  //  ★ 끝 표식이 '사용설명서' 였는데, 2026-09-03 에 그 사이로 #peerModal(타인 일정 열람)이
+  //    들어왔다. 그대로 두면 이 함수가 **두 모달을 합쳐** 돌려주고, '구성원 모달에는 열람 UI가
+  //    없다'는 계약이 조용히 무의미해진다(열람 모달의 마크업을 구성원 것으로 세게 된다).
+  const e = source.indexOf('<!-- ===== 타인 일정 열람', s);
+  assert.ok(e > s, '#membersModal 뒤의 타인 일정 열람 모달을 찾지 못함');
   return source.slice(s, e);
 }
 
@@ -645,9 +649,9 @@ const checks = {
     const b = jsBody(source, 'renderMembers');
     for (const w of ['renderGrid', 'dpBody', '새 기록', '저장']) {
       assert.ok(!md.includes(w),
-        `구성원 모달에 실제 일정 열람 UI 흔적(${w})이 들어왔다 — 자리는 열되 구현은 5단계다(일정 테이블이 아직 없다)`);
+        `구성원 모달에 일정 열람 UI 흔적(${w})이 들어왔다 — 열람은 #peerModal 이 한다(명부는 명부다). 그리고 renderGrid·dpBody 는 **편집 가능한** 내 캘린더 렌더러다 — 남의 화면에 끌어오면 편집 컨트롤이 딸려 온다`);
       assert.ok(!b.includes(w),
-        `renderMembers 가 실제 일정 열람 UI(${w})를 그린다 — 행은 '진입점'까지다`);
+        `renderMembers 가 일정 열람 UI(${w})를 그린다 — 행은 '진입점'까지다(여는 것은 openPeerSchedule)`);
     }
     // 진입점 자체는 있어야 한다 — 예고만 있고 누를 수 없으면 그것도 거짓말이다.
     assert.ok(/id="mbSoon"/.test(md), '#mbSoon 예고 줄이 사라졌다 — 누르기 전에 알릴 자리가 없다');
@@ -729,17 +733,65 @@ const checks = {
 
   // ㉟ 클릭이 하는 일은 알림 하나가 전부다. 모달을 닫거나·화면을 옮기거나·그 사람을 더 조회하면
   //    '진입점만 만들었다'는 계약이 깨진다(그리고 열어 보여 줄 데이터가 애초에 없다).
-  membersClickToastOnly(source) {
+  //  ★ 2026-09-03 에 방향이 뒤집혔다(C4). 예전 계약은 "행 클릭은 toast 하나뿐" 이었다 —
+  //    일정이 DB 에 없던 시절의 계약이다. 이제 누르면 **읽기 전용 열람**이 열린다.
+  membersClickOpensReadOnlyView(source) {
     const h = jsBody(source, 'mbRowClick');
-    assert.ok(/toast\('일정 열람은 준비 중입니다', 'info'\)/.test(h),
-      '행 클릭이 「준비 중」 안내를 띄우지 않는다 — 눌러도 아무 반응이 없으면 고장으로 읽힌다');
-    for (const dead of ['closeOverlay', 'closeModal', 'openModal', 'hostRequest', 'renderGrid', 'location']) {
-      assert.ok(!h.includes(dead), `행 클릭이 ${dead} 를 쓴다 — 지금은 알림 하나가 전부다`);
+    assert.ok(/openPeerSchedule\(/.test(h), '행 클릭이 열람을 열지 않는다 — 눌러도 아무 반응이 없으면 고장으로 읽힌다');
+    //  ★ 대상은 login_id 다. 이름으로 열면 동명이인이 남의 일정을 연다.
+    assert.ok(/dataset\.login/.test(h), '행 클릭이 login_id 가 아닌 것으로 대상을 정한다');
+    assert.ok(/dataset\.login/.test(jsBody(source, 'renderMembers')),
+      'renderMembers 가 행에 login_id 를 심지 않는다 — 클릭 핸들러가 대상을 알 수 없다');
+    //  ★ 여는 것 말고는 아무것도 하지 않는다 — 명부를 닫거나 내 화면을 다시 그리지 않는다.
+    for (const dead of ['closeOverlay', 'closeModal', 'renderGrid', 'location', 'save(']) {
+      assert.ok(!h.includes(dead), `행 클릭이 ${dead} 를 쓴다 — 여는 것 말고는 하지 않는다`);
     }
-    // 렌더 쪽에도 같은 금지 — 핸들러를 인라인으로 되돌리며 슬쩍 끼워 넣는 경로를 함께 막는다.
     const b = jsBody(source, 'renderMembers');
     for (const dead of ['closeOverlay', 'closeModal', 'hostRequest']) {
       assert.ok(!b.includes(dead), `renderMembers 가 ${dead} 를 부른다 — 행을 그리는 일에 그런 부작용은 없다`);
+    }
+  },
+
+  //  ㉟b 열람 화면은 **읽기 전용**이고 내 데이터를 건드리지 않는다.
+  peerViewIsReadOnly(source) {
+    const open = jsBody(source, 'openPeerSchedule');
+    const render = jsBody(source, 'renderPeerMonth');
+    //  ★ 남의 일정이 내 state 에 섞이면 **다음 저장이 그걸 내 것으로 DB 에 쓴다.**
+    for (const [body, name] of [[open, 'openPeerSchedule'], [render, 'renderPeerMonth']]) {
+      assert.ok(!/\bstate\s*=/.test(body), `${name} 가 state 를 대입한다 — 남의 일정이 내 것이 된다`);
+      for (const dead of ['save(', 'saveFull(', 'dbSave(', 'applyImport(']) {
+        assert.ok(!body.includes(dead), `${name} 가 ${dead} 를 부른다 — 열람은 아무것도 저장하지 않는다`);
+      }
+    }
+    //  ★ 전개는 내 캘린더와 같은 함수여야 한다 — 다른 규칙으로 그리면 같은 일정이 사람마다 다르게 보인다.
+    assert.ok(/expandOccurrences\(/.test(render), '열람이 반복 전개를 따로 구현한다(expandOccurrences 를 안 쓴다)');
+    //  ★ 남의 DB 문자열은 마크업으로 해석되면 안 된다(명부와 같은 규약).
+    assert.ok(!/innerHTML/.test(render), 'renderPeerMonth 가 innerHTML 을 쓴다 — 남의 제목이 실행 표면이 된다');
+    assert.ok(!/innerHTML/.test(jsBody(source, 'pvFail')), 'pvFail 이 innerHTML 을 쓴다');
+    //  ★ 권한 없음과 통신 실패를 구분해 말한다 — 사용자에게 다른 사실이다.
+    assert.ok(/allowed/.test(open) && /권한/.test(open), '열람이 권한 없음을 따로 안내하지 않는다');
+  },
+
+  //  ㉟c 호스트가 **권한을 다시 판정**하고, 보는 사람을 웹에서 받지 않는다.
+  peerHostReauthorizes(mainwin, caldb, pdb) {
+    assert.ok(/case "peerSchedule":/.test(mainwin), '호스트에 peerSchedule 명령이 없다');
+    const run = mainwin.slice(mainwin.indexOf('private async Task RunPeerScheduleAsync'));
+    const body = run.slice(0, run.indexOf('\n        }') + 10);
+    assert.ok(/CurrentLoginId\(\)/.test(body),
+      '보는 사람을 세션에서 읽지 않는다 — 웹이 viewer 를 실어 보내면 그 값만 바꿔 남의 권한을 빌려 쓴다');
+    assert.ok(!/GetStr\(doc, "viewer"\)/.test(mainwin), '웹에서 viewer 를 받는 경로가 생겼다');
+    //  ★ 조회 쪽에서 반드시 다시 판정한다. 명부가 붙여 보낸 canViewSchedule 은 화면용이다.
+    assert.ok(/CanViewScheduleAsync\(/.test(caldb),
+      '타인 일정 조회가 권한을 다시 판정하지 않는다 — 화면을 우회한 요청 하나로 아무나 가져간다');
+    //  ★ 판정 규칙은 **한 벌**이다. 두 벌이면 화면과 조회가 갈라진다.
+    assert.ok(/internal static async Task<bool> CanViewScheduleAsync\(/.test(pdb),
+      '공유 인가 판정이 ProjectDb 에 없다 — 명부와 조회가 다른 규칙을 쓰게 된다');
+    //  ★ 최소 payload — 메모·커밋·할 일·공수·근태는 보내지 않는다.
+    const q = caldb.slice(caldb.indexOf('LoadPeerScheduleJsonAsync'));
+    const sql = q.slice(0, q.indexOf('catch (Exception'));
+    for (const leak of ['e.memo', 'cal_entry_commit', 'cal_todo', 'cal_task_hours', 'cal_attendance', 'cal_user_pref']) {
+      assert.ok(!sql.includes(leak),
+        `타인 일정 조회가 ${leak} 을(를) 읽는다 — 목적은 '언제 무엇을 하는가' 이지 개인 기록 열람이 아니다`);
     }
   },
 
@@ -918,7 +970,9 @@ test('구성원 ㉛: .mb-split 은 2열 그리드다(좌 트리 · 우 목록)',
 test('구성원 ㉜: is-link 는 「내가 아님 && 일정 열람 가능」 둘 다 본다', () => checks.membersRowLinkRule(src));
 test('구성원 ㉝: 누를 수 있는 행은 <button type="button"> 이다(div+onclick 금지)', () => checks.membersLinkRowIsButton(src));
 test('구성원 ㉞: 셰브론은 CSS ::after 다(JS 는 마크업을 만들지 않는다)', () => checks.membersChevronCssOnly(src));
-test('구성원 ㉟: 행 클릭은 toast 하나뿐 — 모달 유지 · 추가 조회 없음', () => checks.membersClickToastOnly(src));
+test('구성원 ㉟: 행 클릭이 읽기 전용 열람을 연다(대상은 login_id)', () => checks.membersClickOpensReadOnlyView(src));
+test('열람 ㉟b: 열람은 읽기 전용이고 내 state 를 건드리지 않는다', () => checks.peerViewIsReadOnly(src));
+test('열람 ㉟c: 호스트가 권한을 다시 판정하고 viewer 를 웹에서 받지 않는다', () => checks.peerHostReauthorizes(main, caldb, pdb));
 test('구성원 ㊱: #mbSoon 예고는 목록 위에 있고 누를 행이 0개면 감춘다', () => checks.membersSoonHint(src));
 test('사용자정보 ㊲: 신원 3줄은 응답(info)으로 칠하되 currentUser·세션은 건드리지 않는다(§2.5)', () => checks.identityLiveFromInfo(src));
 test('사용자정보 ㊳: 빈 소속은 두 경로가 같은 헬퍼(usOrgText)로 같은 문구를 쓴다', () => checks.identityOrgFallback(src));
@@ -1089,7 +1143,7 @@ test('변이㉒: updateUserUi 에서 #usMembersSec 토글을 빼면 membersSecTo
 test('변이㉓: 구성원 모달에 실제 열람 UI(일자 패널)를 넣으면 membersEntryOnlyNoRealUi 가 실패한다', () => {
   const bad = mutate(src, '          <div id="mbList"></div>',
                           '          <div id="mbList"></div>\n          <div class="dp-body" id="dpBody"></div>');
-  assert.throws(() => checks.membersEntryOnlyNoRealUi(bad), /실제 일정 열람 UI 흔적\(dpBody\)/);
+  assert.throws(() => checks.membersEntryOnlyNoRealUi(bad), /일정 열람 UI 흔적\(dpBody\)/);
 });
 
 test('변이㉓-b: .mb-row 맨 클래스에 cursor:pointer 를 주면 membersEntryOnlyNoRealUi 가 실패한다', () => {
@@ -1241,10 +1295,39 @@ test('변이㉞: 셰브론 ::after 를 지우면 membersChevronCssOnly 가 실�
   assert.throws(() => checks.membersChevronCssOnly(bad), /셰브론\(content:'›'\)이 없다/);
 });
 
-test('변이㉟: 행 클릭이 모달을 닫으면 membersClickToastOnly 가 실패한다', () => {
-  const bad = mutate(src, "function mbRowClick(){ toast('일정 열람은 준비 중입니다', 'info'); }",
-                          "function mbRowClick(){ toast('일정 열람은 준비 중입니다', 'info'); closeOverlay(document.getElementById('membersModal')); }");
-  assert.throws(() => checks.membersClickToastOnly(bad), /행 클릭이 closeOverlay 를 쓴다/);
+test('변이㉟: 행 클릭이 명부를 닫으면 membersClickOpensReadOnlyView 가 실패한다', () => {
+  const bad = mutate(src, '  openPeerSchedule(lid, nm);',
+                          "  openPeerSchedule(lid, nm); closeOverlay(document.getElementById('membersModal'));");
+  assert.throws(() => checks.membersClickOpensReadOnlyView(bad), /행 클릭이 closeOverlay 를 쓴다/);
+});
+
+test('변이㉟-b: 행 클릭이 이름으로 대상을 정하면 ㉟ 가 실패한다(동명이인)', () => {
+  const bad = mutate(src, "  const lid = row && row.dataset ? row.dataset.login : '';",
+                          "  const lid = row && row.textContent ? row.textContent : '';");
+  assert.throws(() => checks.membersClickOpensReadOnlyView(bad), /login_id 가 아닌 것으로/);
+});
+
+test('변이㉟-c: 열람이 state 를 대입하면 ㉟b 가 실패한다(남의 일정이 내 것이 된다)', () => {
+  const bad = mutate(src, '  __pv.entries = (res.entries||[]);',
+                          '  __pv.entries = (res.entries||[]); state = {entries: res.entries};');
+  assert.throws(() => checks.peerViewIsReadOnly(bad), /state 를 대입한다/);
+});
+
+test('변이㉟-d: 호스트가 viewer 를 웹에서 받으면 ㉟c 가 실패한다', () => {
+  const bad = mutate(main, 'string? me = CurrentLoginId();', 'string? me = GetStr(doc, "viewer");');
+  assert.throws(() => checks.peerHostReauthorizes(bad, caldb, pdb), /세션에서 읽지 않는다/);
+});
+
+test('변이㉟-e: 조회가 권한 재판정을 빼면 ㉟c 가 실패한다', () => {
+  const bad = caldb.replace(/CanViewScheduleAsync\(/g, 'AlwaysTrue(');
+  assert.notStrictEqual(bad, caldb, '변이가 원본을 바꾸지 못했다');
+  assert.throws(() => checks.peerHostReauthorizes(main, bad, pdb), /권한을 다시 판정하지 않는다/);
+});
+
+test('변이㉟-f: 조회가 메모를 함께 읽으면 ㉟c 가 실패한다(최소 payload)', () => {
+  const bad = caldb.replace('"e.title, e.recur_freq,', '"e.title, e.memo, e.recur_freq,');
+  assert.notStrictEqual(bad, caldb, '변이가 원본을 바꾸지 못했다');
+  assert.throws(() => checks.peerHostReauthorizes(main, bad, pdb), /e\.memo 을\(를\) 읽는다/);
 });
 
 test('변이㊱: 누를 행이 0개일 때 #mbSoon 을 감추면(옛 규칙) membersSoonHint 가 실패한다', () => {
@@ -1804,21 +1887,25 @@ if (!JSDOM) {
       assert.ok(/준비 중/.test(soonText()), `누를 행이 있는데 권한 없음 문구가 떴다: ${soonText()}`);
     });
 
-    test('구성원(jsdom) ㉟: 행을 누르면 안내만 뜬다 — 모달 유지 · 추가 조회 0회', () => {
-      // toast 는 스파이로, hostRequest 는 '부르면 세는' 함수로 갈아끼운다(추가 왕복이 있으면 잡힌다).
-      w.eval('__toastCalls = []; toast = function(msg, kind){ __toastCalls.push([msg, kind]); };');
-      w.eval('__hostCalls = 0; hostRequest = function(){ __hostCalls++; return Promise.resolve({ok:false}); };');
+    test('구성원(jsdom) ㉟: 행을 누르면 열람이 열리고 login_id 로 조회한다 — 명부는 그대로', () => {
+      //  hostRequest 를 가로채 '무엇을 어떤 인자로 불렀나' 를 본다(실제 왕복은 없다).
+      w.eval('__hostCalls = []; hostRequest = function(cmd, p){ __hostCalls.push([cmd, p]); return new Promise(function(){}); };');
       const link = linkRows()[0];
       assert.ok(link, '전제: 누를 수 있는 행이 있다');
+      const wantLogin = link.dataset.login;
+      assert.ok(wantLogin, '누를 수 있는 행에 login_id 가 없다');
       link.click();
-      const calls = w.eval('JSON.stringify(__toastCalls)');
-      assert.strictEqual(calls, JSON.stringify([['일정 열람은 준비 중입니다', 'info']]),
-        `행 클릭이 「준비 중」 안내 하나를 띄우지 않았다: ${calls}`);
+      const calls = JSON.parse(w.eval('JSON.stringify(__hostCalls)'));
+      assert.strictEqual(calls.length, 1, `행 클릭이 조회를 정확히 1회 보내지 않았다: ${JSON.stringify(calls)}`);
+      assert.strictEqual(calls[0][0], 'peerSchedule', `다른 명령을 보냈다: ${calls[0][0]}`);
+      assert.strictEqual(calls[0][1] && calls[0][1].loginId, wantLogin,
+        '조회 대상이 그 행의 login_id 가 아니다 — 동명이인이면 남의 일정을 연다');
+      //  ★ 열람 모달이 열리고, **명부는 그대로 있어야 한다**(닫으면 되돌아갈 자리가 없다).
+      const pv = w.document.getElementById('peerModal');
+      assert.ok(pv && !pv.classList.contains('hidden'), '열람 모달이 열리지 않았다');
       const md = w.document.getElementById('membersModal');
       assert.ok(!md.classList.contains('hidden'), '행을 눌렀더니 구성원 모달이 닫혔다 — 자리를 지켜야 한다');
       assert.ok(!md.classList.contains('closing'), '구성원 모달이 닫히는 중이다(페이드아웃)');
-      assert.strictEqual(w.eval('__hostCalls'), 0,
-        '행 클릭이 호스트에 추가 조회를 보냈다 — 그 사람 데이터를 더 가져올 이유가 없다(열람은 5단계)');
     });
 
     // ── 소속 미등록(org_unit NULL) ────────────────────────────────────

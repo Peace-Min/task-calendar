@@ -462,6 +462,69 @@ namespace TaskCalendarWidget
         //   org_unit.parent_id 에 순환(A→B→A)이 들어와도 여기서 멈춘다(무한 루프 방지).
         // ★ 이름 기준 순회를 그대로 둔다: 이름은 이제 org_unit 한 곳에만 있어 표류가 불가능하고,
         //   입력(units)은 위 ②가 JOIN 으로 만든 이름 쌍이라 id 경로와 같은 트리다(최소 변경).
+        // ================================================================================
+        //  공유 인가 판정 — "이 사람이 저 사람의 **일정**을 볼 수 있는가"
+        // ================================================================================
+        //   ★ 여기 두는 이유: 명부(LoadMembersJsonAsync)가 행마다 붙이는 canViewSchedule 과
+        //     **정확히 같은 규칙**이어야 한다. 두 벌이 되는 순간 화면은 "누를 수 있다" 고 하는데
+        //     조회는 거부하거나, 더 나쁘게는 그 반대가 된다.
+        //   ★ 조회 쪽에서 **반드시 다시 부른다.** 웹이 보낸 대상 login_id 를 믿고 읽으면,
+        //     화면을 우회한 요청 하나로 아무나 남의 일정을 가져간다(웹은 신뢰 경계 밖이다).
+        //   ★ 호출자의 연결을 그대로 쓴다 — 조회와 같은 트랜잭션·같은 왕복에서 판정하기 위해서다.
+        internal static async Task<bool> CanViewScheduleAsync(
+            MySqlConnection conn, string viewerLoginId, string targetLoginId, CancellationToken ct)
+        {
+            string viewer = (viewerLoginId ?? "").Trim(), target = (targetLoginId ?? "").Trim();
+            if (viewer.Length == 0 || target.Length == 0) return false;
+            //  자기 자신은 언제나 볼 수 있다(명부에서는 누를 수 없게 두지만, 규칙 자체는 참이다).
+            if (string.Equals(viewer, target, StringComparison.Ordinal)) return true;
+
+            string scope = "", myUnit = "", targetUnit = "";
+            bool haveViewer = false, haveTarget = false;
+            await using (var cmd = new MySqlCommand(
+                "SELECT u.login_id, o.name AS org_unit, u.view_scope " +
+                "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                "WHERE u.login_id IN (@v, @t)", conn))
+            {
+                cmd.Parameters.AddWithValue("@v", viewer);
+                cmd.Parameters.AddWithValue("@t", target);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    string lid = Str(rd, "login_id");
+                    if (string.Equals(lid, viewer, StringComparison.Ordinal))
+                    { haveViewer = true; myUnit = Str(rd, "org_unit"); scope = Str(rd, "view_scope"); }
+                    else if (string.Equals(lid, target, StringComparison.Ordinal))
+                    { haveTarget = true; targetUnit = Str(rd, "org_unit"); }
+                }
+            }
+            //  둘 중 하나라도 app_user 에 없으면 거부한다 — 없는 사람의 일정을 열 이유가 없고,
+            //  '없음' 을 '허용' 으로 흘리면 오타 하나가 권한 우회가 된다.
+            if (!haveViewer || !haveTarget) return false;
+
+            if (string.Equals(scope, "all", StringComparison.Ordinal)) return true;
+            if (!string.Equals(scope, "unit_tree", StringComparison.Ordinal)) return false;   // self · 미지값 → 거부
+            if (targetUnit.Length == 0) return false;   // 소속 없는 사람은 unit_tree 로 못 닿는다
+
+            var units = new List<OrgUnitRow>();
+            await using (var cmd = new MySqlCommand(
+                "SELECT t.name, p.name AS parent, t.sort_order " +
+                "FROM org_unit t LEFT JOIN org_unit p ON p.org_id = t.parent_id " +
+                "WHERE t.is_active=1 ORDER BY t.sort_order, t.name", conn))
+            {
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length == 0) continue;
+                    units.Add(new OrgUnitRow { Name = n, Parent = Str(rd, "parent"), SortOrder = IntOrNull(rd, "sort_order") ?? 0 });
+                }
+            }
+            var allowed = new HashSet<string>(StringComparer.Ordinal);
+            ExpandUnitTree(units, myUnit, allowed);
+            return allowed.Contains(targetUnit);
+        }
+
         private static void ExpandUnitTree(List<OrgUnitRow> units, string myUnit, HashSet<string> allowed)
         {
             string root = (myUnit ?? "").Trim();

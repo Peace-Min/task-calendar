@@ -594,6 +594,13 @@ namespace TaskCalendarWidget
                         _ = RunMembersGetAsync(GetStr(doc, "reqId"));
                         break;
 
+                    case "peerSchedule":     // 타인 일정 열람(C4) — 읽기 전용.
+                        //   ★ 대상만 받는다. **보는 사람은 웹이 정하지 않는다** — 호스트가 세션에서
+                        //     읽는다. 웹이 viewer 를 실어 보내게 하면 그 값을 바꾸는 것만으로
+                        //     남의 권한을 빌려 쓴다.
+                        _ = RunPeerScheduleAsync(GetStr(doc, "reqId"), GetStr(doc, "loginId"));
+                        break;
+
                     case "netcusWeekSubmit":
                         _ = _netcus.WeekFill(GetStr(doc, "sdate"), GetStr(doc, "edate"), GetStr(doc, "subject"),
                             GetStr(doc, "content"), GetStr(doc, "endwork"), GetStr(doc, "planwork"));   // 주간보고는 '채우고 열어두기'(직접 제출) — POST 안 함
@@ -1753,6 +1760,34 @@ namespace TaskCalendarWidget
         // ★ 읽기 경로다(ProjectDb.LoadMembersJsonAsync → OpenReadAsync). 쓰기 관문을 쓰면
         //   unit_tree 를 가진 viewer 전원이 명부를 못 본다 — 열람 권한과 편집 권한은 다른 축이다.
         // 회신 문구는 RunUserInfoGetAsync 와 같은 3분기다(세션 없음 / 연결 실패 / 미등록) — 사유가 다르면 대처도 다르다.
+        //  타인 일정 조회(C4). 회신: { ok, allowed, categories, entries, error }
+        //    ★ viewer 는 **세션에서** 읽는다(CurrentLoginId) — 웹이 준 값을 쓰지 않는다.
+        //      그리고 CalendarDb 가 그 둘로 권한을 **다시** 판정한다. 여기서 한 번 더 거르지
+        //      않는 이유는 판정을 두 곳에 두면 갈라지기 때문이다 — 한 곳(ProjectDb)에만 둔다.
+        private async Task RunPeerScheduleAsync(string reqId, string targetLoginId)
+        {
+            string? me = CurrentLoginId();
+            if (string.IsNullOrEmpty(me))
+            {
+                GitReply(reqId, new { ok = false, error = "로그인 정보가 없습니다 — 다시 시작하세요" });
+                return;
+            }
+            try
+            {
+                string? json = await new CalendarDb(Log).LoadPeerScheduleJsonAsync(me, targetLoginId);
+                if (json == null) { GitReply(reqId, new { ok = false, error = "서버에서 일정을 받지 못했습니다" }); return; }
+                //  ★ allowed:false 도 **성공 회신**이다 — 통신 실패와 권한 없음은 사용자에게 다른 사실이다.
+                //    한 덩어리로 묶으면 화면이 "서버가 이상한가?" 와 "내가 볼 수 없는가?" 를 구분 못 한다.
+                _ = web.CoreWebView2.ExecuteScriptAsync(
+                    "window.__hostReply(" + JsonSerializer.Serialize(reqId) + ", Object.assign({ok:true}, " + json + "))");
+            }
+            catch (Exception ex)
+            {
+                Log("타인 일정 조회 예외: " + ex.Message);
+                GitReply(reqId, new { ok = false, error = ex.Message });
+            }
+        }
+
         private async Task RunMembersGetAsync(string reqId)
         {
             try

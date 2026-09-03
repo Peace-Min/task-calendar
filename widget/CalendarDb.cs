@@ -269,6 +269,129 @@ namespace TaskCalendarWidget
         //    배선은 `.Map` 한 단어면 끝난다 — 위 주석의 두 줄이 그것이다.
 
         // ================================================================================
+        //  공개 API 3 — 타인 일정 조회 (C4 · 읽기 전용)
+        // ================================================================================
+        //   「구성원」에서 사람을 눌렀을 때 그 사람의 일정을 읽는다.
+        //
+        //   ★★ 권한을 **여기서 다시 판정한다**(ProjectDb.CanViewScheduleAsync).
+        //     명부가 이미 canViewSchedule 을 붙여 보내지만 그건 **화면을 그리기 위한 것**이고,
+        //     웹은 신뢰 경계 밖이다. 여기서 안 막으면 화면을 우회한 요청 하나로 아무나
+        //     남의 일정을 가져간다. 판정 규칙이 한 벌인 이유도 같다 — 두 벌이면 갈라진다.
+        //
+        //   ★ 무엇을 주고 무엇을 안 주나 — **일정만** 준다.
+        //     주는 것: 날짜·시간·제목·과제(이름/색)·반복·예외일.
+        //     안 주는 것: **메모 · 커밋 · 할 일 · 공수 · 근태 · 설정.**
+        //     열람의 목적은 "그 사람이 언제 무엇을 하는가"(회의 잡기·부하 파악)이고,
+        //     메모와 커밋은 개인 작업 노트다. 목적에 필요 없는 것을 주면 그때부터
+        //     '열람 권한'이 '개인 기록 열람'이 된다. 필요해지면 그때 근거를 적고 늘린다.
+        //
+        //   ★ 날짜로 거르지 않고 **전부** 준다. 반복 일정은 종료일이 없을 수 있어
+        //     범위로 거를 수 없다(2020년 시작이 2026년에도 떠야 한다). 전개는 웹의
+        //     expandOccurrences 하나가 단일 진실이므로 그쪽에 맡긴다 — 내 일정과 같은 규칙이 된다.
+        //
+        //   반환: {"allowed":true,"entries":[…],"categories":[…]} / 권한 없음 {"allowed":false}
+        //         / 실패는 null(호출측이 화면에 알린다)
+        public async Task<string?> LoadPeerScheduleJsonAsync(string viewerLoginId, string targetLoginId)
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                var ct = cts.Token;
+                await using var conn = await OpenReadAsync(ct);
+                await ExecAsync(conn, ReadPreambleSql, ct);
+
+                if (!await ProjectDb.CanViewScheduleAsync(conn, viewerLoginId, targetLoginId, ct))
+                {
+                    _log("타인 일정 조회 거부: " + viewerLoginId + " → " + targetLoginId);
+                    return "{\"allowed\":false}";
+                }
+
+                int uid;
+                await using (var cmd = new MySqlCommand("SELECT user_id FROM app_user WHERE login_id=@id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", (targetLoginId ?? "").Trim());
+                    var v = await cmd.ExecuteScalarAsync(ct);
+                    if (v == null) return "{\"allowed\":false}";
+                    uid = Convert.ToInt32(v, CultureInfo.InvariantCulture);
+                }
+
+                //  과제 — 이름·색만. uses_repo·저장소 경로·설명은 남의 화면에 필요 없다.
+                var cats = new List<Dictionary<string, object?>>();
+                await using (var cmd = new MySqlCommand(
+                    "SELECT uid, name, color FROM cal_category WHERE user_id=@u ORDER BY sort_order", conn))
+                {
+                    cmd.Parameters.AddWithValue("@u", uid);
+                    await using var rd = await cmd.ExecuteReaderAsync(ct);
+                    while (await rd.ReadAsync(ct))
+                        cats.Add(new Dictionary<string, object?>
+                        {
+                            ["id"] = Str(rd, "uid"), ["name"] = Str(rd, "name"), ["color"] = Str(rd, "color"),
+                        });
+                }
+
+                //  일정 — 부팅 조회(2/10)와 **같은 정렬**이다. 화면 순서가 사람마다 달라지면 안 된다.
+                var entries = new List<Dictionary<string, object?>>();
+                var exceptByNo = new Dictionary<uint, List<object?>>();
+                await using (var cmd = new MySqlCommand(
+                    "SELECT e.entry_no, e.uid, cc.uid AS cat_uid, DATE_FORMAT(e.entry_date,'%Y-%m-%d') AS entry_date, " +
+                    "DATE_FORMAT(e.end_date,'%Y-%m-%d') AS end_date, e.all_day, " +
+                    "DATE_FORMAT(e.start_time,'%H:%i') AS start_time, DATE_FORMAT(e.end_time,'%H:%i') AS end_time, " +
+                    "e.title, e.recur_freq, e.recur_interval, DATE_FORMAT(e.recur_until,'%Y-%m-%d') AS recur_until, e.recur_count " +
+                    "FROM cal_entry e LEFT JOIN cal_category cc ON cc.user_id = e.user_id AND cc.cat_no = e.cat_no " +
+                    "WHERE e.user_id=@u ORDER BY e.entry_date, e.sort_order, e.uid", conn))
+                {
+                    cmd.Parameters.AddWithValue("@u", uid);
+                    await using var rd = await cmd.ExecuteReaderAsync(ct);
+                    while (await rd.ReadAsync(ct))
+                    {
+                        uint no = UInt(rd, "entry_no");
+                        string freq = Str(rd, "recur_freq");
+                        Dictionary<string, object?>? recur = freq.Length == 0 ? null : new Dictionary<string, object?>
+                        {
+                            ["freq"] = freq,
+                            ["interval"] = IntOrNull(rd, "recur_interval") ?? 1,
+                            ["until"] = Str(rd, "recur_until"),
+                            ["count"] = IntOrNull(rd, "recur_count") ?? 0,
+                        };
+                        var e = new Dictionary<string, object?>
+                        {
+                            ["id"] = Str(rd, "uid"),
+                            ["date"] = Str(rd, "entry_date"),
+                            ["title"] = Str(rd, "title"),
+                            ["categoryId"] = NullableStr(rd, "cat_uid"),
+                            ["allDay"] = (IntOrNull(rd, "all_day") ?? 0) != 0,
+                            ["startTime"] = Str(rd, "start_time"),
+                            ["endTime"] = Str(rd, "end_time"),
+                            ["endDate"] = Str(rd, "end_date"),
+                            ["recur"] = recur,
+                            ["recurExcept"] = new List<object?>(),
+                        };
+                        entries.Add(e);
+                        if (recur != null) exceptByNo[no] = (List<object?>)e["recurExcept"]!;
+                    }
+                }
+
+                //  예외일 — 반복 일정에만 붙인다(부팅 조회 3/10 과 같은 규약).
+                await using (var cmd = new MySqlCommand(
+                    "SELECT entry_no, DATE_FORMAT(except_date,'%Y-%m-%d') AS d " +
+                    "FROM cal_entry_except WHERE user_id=@u ORDER BY except_date", conn))
+                {
+                    cmd.Parameters.AddWithValue("@u", uid);
+                    await using var rd = await cmd.ExecuteReaderAsync(ct);
+                    while (await rd.ReadAsync(ct))
+                        if (exceptByNo.TryGetValue(UInt(rd, "entry_no"), out var lst)) lst.Add(Str(rd, "d"));
+                }
+
+                _log($"타인 일정 조회: {viewerLoginId} → {targetLoginId} · 과제 {cats.Count} · 일정 {entries.Count}");
+                return JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["allowed"] = true, ["categories"] = cats, ["entries"] = entries,
+                });
+            }
+            catch (Exception ex) { _log("타인 일정 조회 실패: " + Short(ex)); return null; }
+        }
+
+        // ================================================================================
         //  (없앤 것) 공개 API 3 — 커밋 지연 조회
         // ================================================================================
         //   LoadEntryCommitsJsonAsync 가 여기 있었다. 계약 G-7 이 개정되면서(부팅 전량 로드)
