@@ -207,6 +207,14 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .sk-grid{flex:1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:6px}   /* 실제 7열 월 그리드 모사 */
 @keyframes skPulse{0%,100%{opacity:.45}50%{opacity:.85}}
 @media (prefers-reduced-motion:reduce){.sk-line,.sk-cell{opacity:.6}}   /* 모션 정지 시 의도된 placeholder로 */
+/* 열람 창 조회 대기 — 부팅 스켈레톤과 **같은 조각**(.sk-line/.sk-cell)을 쓴다.
+   #bootSkeleton 은 absolute 로 화면을 덮지만 여기는 모달 본문 안이라 흐름 배치다.
+   높이를 .pv-frame 과 맞춰 두어 프레임이 뜰 때 모달이 튀지 않게 한다. */
+.pv-skeleton{height:min(78vh,820px);min-height:420px;display:flex;flex-direction:column;gap:12px;
+             padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+/* 눈에는 안 보이고 스크린리더에는 읽히는 문구 */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+         clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .cal{flex:1;display:flex;flex-direction:column;min-width:0;padding:12px 12px 8px}
 .weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px}
 .weekdays div{
@@ -4537,10 +4545,24 @@ function openPeerSchedule(loginId, name){
   $('#pvTitle').textContent = (name || loginId) + ' 님의 일정';
   const host = $('#pvHost');
   host.textContent = '';
-  const wait = document.createElement('div');
-  wait.className = 'set-hint';
-  wait.textContent = '불러오는 중…';
-  host.appendChild(wait);
+  //  ★ 조회하는 동안 **앱과 같은 스켈레톤**을 보여 준다.
+  //    처음엔 「불러오는 중…」 글자 한 줄이었는데, 그건 이 앱이 자기 부팅에 쓰는 것과 다른 대우다.
+  //    지금은 데이터가 적어 금방 오지만 사람이 쌓이고 일정이 쌓이면 이 구간이 눈에 띄게 길어진다
+  //    (조회 타임아웃이 20초다). 그때 글자 한 줄만 있으면 멈춘 것처럼 보인다.
+  //    ★ 부팅 스켈레톤(#bootSkeleton)과 **같은 클래스**를 쓴다 — 모양이 갈라질 자리를 만들지 않는다.
+  const sk = document.createElement('div');
+  sk.className = 'pv-skeleton';
+  sk.setAttribute('aria-hidden', 'true');
+  const line = document.createElement('div');
+  line.className = 'sk-line'; line.style.cssText = 'width:30%;height:14px';
+  const grid = document.createElement('div');
+  grid.className = 'sk-grid';
+  for(let i = 0; i < 35; i++){ const c = document.createElement('div'); c.className = 'sk-cell'; grid.appendChild(c); }
+  sk.appendChild(line); sk.appendChild(grid);
+  //  ★ 스크린리더에는 글자로 알린다 — 스켈레톤은 눈으로만 읽히는 신호다.
+  const say = document.createElement('div');
+  say.className = 'sr-only'; say.setAttribute('role', 'status'); say.textContent = '일정을 불러오는 중입니다';
+  host.appendChild(say); host.appendChild(sk);
   openModal('#peerModal');
 
   hostRequest('peerSchedule', { loginId }, 20000).then(res => {
