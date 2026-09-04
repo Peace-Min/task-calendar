@@ -11,6 +11,120 @@ const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8'
 const schemaDeploy = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
 const migratePs1 = readFileSync(new URL('../db/deploy/migrate.ps1', import.meta.url), 'utf8');
 
+// ══ 범위 고정 도구 ═════════════════════════════════════════════════════
+// ★ 2026-09-04 변이감사(P5)로 드러난 구멍: 이 파일의 여러 단언이 **파일 전체**에 대한
+//   존재검사였다. 같은 문자열이 여러 곳에 있으면 한 곳이 망가져도 나머지가 단언을
+//   만족시켜 게이트가 초록으로 남는다. 실측(896 pass / 0 fail / exit 0 = 전부 조용히 통과):
+//     · 부팅(11742)의 hpost({ cmd:'loadCodes' }) 만 지움
+//     · 모달 프리로드(6918)의 loadCodes 만 지움
+//     · 부팅+모달 **둘 다** 지우고 codeSend 후 갱신만 남김
+//       ↑ 이 제품은 코드 CRUD 를 한 번이라도 하기 전까지 구분·상태 드롭다운이 세션 내내 빈 채다.
+//     · 부팅의 hpost({ cmd:'loadProjects' }) 를 지움(공식 과제 조회 자체가 사라짐)
+//   그래서 아래 검사들은 **경로별로 범위를 잘라** 본다. 존재검사는 '어딘가 남아 있는가'를
+//   재지 '그 경로가 하는가'를 재지 못한다.
+
+// 변이 주입 도우미 — 대상 문자열이 없으면 변이 자체가 무효이므로 그 자리에서 실패시킨다.
+function mutate(from, to, base) {
+  const out = base.replace(from, to);
+  assert.notStrictEqual(out, base, `변이가 원본을 바꾸지 못했다(대상 문자열 없음): ${from}`);
+  return out;
+}
+
+// 주석 제거 — 계약이 보는 것은 **호출**이지 글자가 아니다(설명 주석에 hpost({cmd:'loadCodes'})
+// 라고 적어 두면 존재검사가 그걸로 만족해 버린다). 줄끝 \r 대비로 \r*\n 으로 쪼갠다.
+function stripJsComments(text) {
+  const t = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+  return t.split(/\r*\n/).map((l) => l.replace(/(^|\s)\/\/[^\r\n]*$/, '')).join('\n');
+}
+
+// C# 소스에서 [시작 선언, 다음 선언) 구간만 잘라낸다. 두 마커가 다 있고 순서가 맞아야 한다
+// (마커가 사라진 채 빈 슬라이스로 통과하는 오탐을 막는다).
+function csSlice(source, startMarker, endMarker) {
+  const i = source.indexOf(startMarker);
+  assert.ok(i >= 0, `범위 시작 마커를 찾지 못했다: ${startMarker}`);
+  const j = source.indexOf(endMarker, i + startMarker.length);
+  assert.ok(j > i, `범위 끝 마커를 찾지 못했다(또는 순서가 뒤집혔다): ${endMarker}`);
+  return source.slice(i, j);
+}
+
+// 웹 부팅 경로 — 최상위 `if(HOST){ // 데스크톱 위젯 모드 … }` 블록. **함수가 아니라서**
+// extractFunction 으로는 잡히지 않는다(이 소스에 bootstrap 이라는 함수는 없다).
+// 바로 뒤에 오는 `function hpost(o){` 선언을 끝으로 삼는다.
+const BOOT_HEAD = 'if(HOST){ // 데스크톱 위젯 모드';
+const BOOT_TAIL = 'function hpost(o){';
+function bootBlock(source) {
+  const i = source.indexOf(BOOT_HEAD);
+  assert.ok(i >= 0, `부팅 블록(${BOOT_HEAD})을 찾지 못했다 — 부팅 경로 계약이 통째로 무력화된다`);
+  const j = source.indexOf(BOOT_TAIL, i);
+  assert.ok(j > i, `부팅 블록의 끝(${BOOT_TAIL})을 찾지 못했다`);
+  return stripJsComments(source.slice(i, j));
+}
+
+// hpost({ cmd:'loadCodes' }) — 공백 유무 두 표기(부팅은 cmd:'…', 나머지는 cmd: '…')를 모두 받는다.
+const HPOST_CODES = /hpost\(\s*\{\s*cmd:\s*'loadCodes'\s*\}\s*\)/;
+const HPOST_CODES_G = /hpost\(\s*\{\s*cmd:\s*'loadCodes'\s*\}\s*\)/g;
+const HPOST_PROJECTS = /hpost\(\s*\{\s*cmd:\s*'loadProjects'\s*\}\s*\)/;
+
+// ── 검사 함수(테스트 + 변이 주입이 같은 함수를 쓴다) ────────────────────
+const checks = {
+  // 부팅 경로가 카탈로그 소스를 **직접** 싣는가. 모달 프리로드로 대체되지 않는다 —
+  // 모달을 열기 전까지 offSections/offStatuses 가 []라 그룹 정렬(rank)이 전부 '미발견'이 된다.
+  bootLoadsCatalog(source) {
+    const boot = bootBlock(source);
+    assert.ok(HPOST_CODES.test(boot),
+      '부팅에서 loadCodes 를 부르지 않는다(드롭다운·그룹정렬 소스가 빈 채로 시작한다)');
+    assert.ok(HPOST_PROJECTS.test(boot),
+      '부팅에서 loadProjects 를 부르지 않는다(공식 과제 목록 조회 자체가 사라진다)');
+  },
+  // 모달 프리로드 — 부팅 뒤 DB 에서 코드가 바뀌었을 수 있으므로 열 때 한 번 더 싣는다.
+  modalPreloadsCodes(source) {
+    const b = stripJsComments(extractFunction(source, 'openOfficialModal'));
+    assert.ok(HPOST_CODES.test(b), '공식과제 모달 프리로드에 loadCodes 가 없다(모달이 낡은 코드목록으로 그려진다)');
+    assert.ok(/hpost\(\s*\{\s*cmd:\s*'loadCustomers'\s*\}\s*\)/.test(b), '공식과제 모달 프리로드에 loadCustomers 가 없다');
+  },
+  // 코드 CRUD 성공 후 갱신 — 세 번째 경로.
+  codeSendReloadsCodes(source) {
+    const b = stripJsComments(extractFunction(source, 'codeSend'));
+    assert.ok(HPOST_CODES.test(b), 'codeSend 성공 후 드롭다운 갱신(loadCodes)이 없다');
+  },
+  // 호출부는 정확히 세 곳이다. 넷째가 생기면 '한 곳이 망가져도 다른 곳이 만족시키는' 구멍이
+  // 다시 열리므로, 그때는 그 경로에 대한 범위고정 단언도 위에 함께 늘려야 한다.
+  loadCodesCallSites(source) {
+    const n = (stripJsComments(source).match(HPOST_CODES_G) || []).length;
+    assert.strictEqual(n, 3,
+      `loadCodes 호출부가 3곳(부팅·모달 프리로드·codeSend 후)이 아니다(실측 ${n}곳)`);
+  },
+  // 활성 코드 로더(드롭다운 소스)는 sort_order 순 — 로더 **구간 안에서** 확인한다.
+  activeLoaderSorted(pdb) {
+    const b = csSlice(pdb, 'private async Task<string?> LoadActiveCodeNamesJsonAsync',
+                           'public async Task<string?> LoadCodesFullJsonAsync');
+    assert.ok(/WHERE is_active=1 ORDER BY sort_order, name/.test(b), '활성 코드 로더가 sort_order 순이 아니다');
+  },
+  // full 로더(관리 화면)는 활성 먼저 · 그 안에서 sort_order.
+  fullLoaderSorted(pdb) {
+    const b = csSlice(pdb, 'public async Task<string?> LoadCodesFullJsonAsync',
+                           'private static async Task<HashSet<string>> LoadCodeNameSetAsync');
+    assert.ok(/ORDER BY is_active DESC, sort_order, name/.test(b), 'full 로더 정렬이 다르다');
+  },
+  // note 는 쓰기(UpsertProjectAsync)·바인딩(BindProject)·읽기(LoadProjectsJsonAsync) 세 구간에
+  // 각각 있어야 한다. 한 구간에서 빠져도 다른 구간의 같은 문자열이 존재검사를 만족시키면 안 된다.
+  noteWiredPerScope(pdb) {
+    const up = csSlice(pdb, 'public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync',
+                            'private static async Task<(string pn, string cn)?> FindSimilarActiveAsync');
+    assert.ok(/INSERT INTO project \(section, customer, project_name, contract_name, common_name, [\s\S]{0,80}status, note\)/.test(up),
+      'UpsertProjectAsync 의 INSERT 에 note 가 없다');
+    assert.ok(/status=@st, note=@note WHERE uid=@uid/.test(up), 'UpsertProjectAsync 의 UPDATE 에 note 가 없다');
+    const bind = csSlice(pdb, 'private static void BindProject',
+                              'public async Task<(bool ok, string msg)> SetProjectActiveAsync');
+    assert.ok(/AddWithValue\("@note", nt\)/.test(bind),
+      'BindProject 에 note 바인딩이 없다(INSERT/UPDATE 둘 다 @note 미바인딩으로 터진다)');
+    const sel = csSlice(pdb, 'public async Task<string?> LoadProjectsJsonAsync',
+                             'public async Task<string?> LoadCustomersJsonAsync');
+    assert.ok(/status, note, is_active FROM project WHERE is_active=1/.test(sel),
+      'LoadProjectsJsonAsync 의 SELECT 에 note 가 없다(저장은 되는데 다시 읽히지 않는다)');
+  },
+};
+
 // ── 스키마: 코드테이블 · FK · note (두 파일 모두) ───────────────────────
 for (const [label, sql] of [['schema.sql', schema], ['deploy/schema-structure.sql', schemaDeploy]]) {
   test(`스키마(${label}): section_code/status_code 테이블(name PK·sort_order·is_active)`, () => {
@@ -95,6 +209,10 @@ test('호스트: 코드 로더 5종(활성 sections/statuses·full·nameset) 존
   assert.ok(/WHERE is_active=1 ORDER BY sort_order, name/.test(projectDb), '활성 코드 로더가 sort_order 순이 아니다');
   // full 로더는 활성 먼저 sort_order
   assert.ok(/ORDER BY is_active DESC, sort_order, name/.test(projectDb), 'full 로더 정렬이 다르다');
+  // ★ 위 두 줄은 파일 전체 존재검사다 — 같은 SQL 을 쓰는 로더가 하나 더 생기면 진짜 로더가
+  //   망가져도 통과한다(P5 와 같은 형태). 그래서 로더 구간 안에서 한 번 더 못박는다.
+  checks.activeLoaderSorted(projectDb);
+  checks.fullLoaderSorted(projectDb);
 });
 test('호스트: 코드 CRUD 5종(add/rename/setActive/reorder/refCount) 존재 + kind 파라미터', () => {
   for (const m of ['AddCodeAsync', 'RenameCodeAsync', 'SetCodeActiveAsync', 'ReorderCodesAsync', 'CountActiveProjectsByCodeAsync']) {
@@ -138,6 +256,8 @@ test('호스트: INSERT/UPDATE/SELECT에 note 반영', () => {
   assert.ok(/status=@st, note=@note WHERE uid=@uid/.test(projectDb), 'UPDATE에 note가 없다');
   assert.ok(/status, note, is_active FROM project WHERE is_active=1/.test(projectDb), 'SELECT에 note가 없다');
   assert.ok(/AddWithValue\("@note", nt\)/.test(projectDb), 'note 바인딩이 없다');
+  // ★ 위 네 줄도 파일 전체 존재검사다 — 쓰기·바인딩·읽기 세 구간으로 잘라 각각 못박는다.
+  checks.noteWiredPerScope(projectDb);
 });
 test('호스트: MySqlMsg가 FK 3종을 제약명으로 구분', () => {
   const m = projectDb.slice(projectDb.indexOf('private static string MySqlMsg'), projectDb.indexOf('private static string NormalizeName'));
@@ -201,4 +321,103 @@ test('웹: note — payload·mapDbRows·offEditOpen 반영, 편입분엔 안 넘
   // 편입분(subscribeDbCat)엔 note 없음 — 라벨 최소 메타(name/color)만
   const sub = extractFunction(src, 'subscribeDbCat');
   assert.ok(!/note/.test(sub), '편입분에 note가 새어 든다(전시로 유출 위험)');
+});
+
+// ══ 카탈로그 소스 적재 — 경로별 범위 고정 ══════════════════════════════
+// 위 '__applyCodes' 테스트의 마지막 줄은 src 전체 OR 존재검사라 세 호출부 중 둘이 사라져도
+// 통과한다(감사 실측). 아래 셋은 **각 경로 안에서** 본다 — 한 경로가 사라지면 그 경로의 검사만 운다.
+
+test('웹: 부팅 경로가 loadCodes·loadProjects 를 부른다(모달 프리로드로 대체 불가)', () => {
+  checks.bootLoadsCatalog(src);
+});
+
+test('웹: 공식과제 모달 프리로드가 loadCodes·loadCustomers 를 부른다', () => {
+  checks.modalPreloadsCodes(src);
+});
+
+test('웹: loadCodes 호출부는 정확히 3곳(부팅·모달 프리로드·codeSend 후)', () => {
+  checks.loadCodesCallSites(src);
+});
+
+// ══ 변이 주입(검사가 실효성이 있는지 증명) ═════════════════════════════
+// 각 변이는 감사에서 **실제로 조용히 통과했던** 파손이다. 검사가 안 잡으면 그 검사는 장식이다.
+
+test('변이⑲: 부팅의 loadCodes 를 지우면 부팅 경로 검사가 실패한다(모달 프리로드가 남아 있어도)', () => {
+  const bad = mutate("  hpost({ cmd:'loadCodes' });", '  ;', src);
+  // 대조군 — 옛 판(파일 전체 OR 존재검사)은 이 상태를 여전히 통과시킨다. 그게 P5 의 구멍이었다.
+  assert.ok(/hpost\(\{ cmd:'loadCodes' \}\)/.test(bad) || /hpost\(\{ cmd: 'loadCodes' \}\)/.test(bad),
+    '변이 전제가 깨졌다 — 남은 호출부가 없어서 옛 존재검사도 잡아 버린다(이 변이는 무의미)');
+  assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadCodes 를 부르지 않는다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 3곳[\s\S]*아니다/);
+});
+
+test('변이⑳: 부팅의 loadProjects 를 지우면 부팅 경로 검사가 실패한다', () => {
+  const bad = mutate("  hpost({ cmd:'loadProjects' });", '  ;', src);
+  assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadProjects 를 부르지 않는다/);
+});
+
+test('변이㉑: 모달 프리로드의 loadCodes 를 지우면 프리로드 검사가 실패한다', () => {
+  const bad = mutate("if(HOST){ hpost({ cmd: 'loadCustomers' }); hpost({ cmd: 'loadCodes' }); }",
+                     "if(HOST){ hpost({ cmd: 'loadCustomers' }); }", src);
+  assert.ok(/hpost\(\{ cmd: 'loadCodes' \}\)/.test(bad), '변이 전제가 깨졌다(남은 호출부 없음)');
+  assert.throws(() => checks.modalPreloadsCodes(bad), /모달 프리로드에 loadCodes 가 없다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 3곳[\s\S]*아니다/);
+});
+
+test('변이㉒: 부팅+모달을 동시에 지우고 codeSend 후 갱신만 남겨도 잡힌다(감사에서 가장 센 파손)', () => {
+  // 이 제품은 코드 CRUD 를 한 번이라도 하기 전까지 구분·상태 드롭다운이 세션 내내 빈 채다.
+  // 그런데 남은 1곳이 옛 존재검사와 codeSend 범위검사를 동시에 만족시켜 게이트가 초록이었다.
+  let bad = mutate("  hpost({ cmd:'loadCodes' });", '  ;', src);
+  bad = mutate("if(HOST){ hpost({ cmd: 'loadCustomers' }); hpost({ cmd: 'loadCodes' }); }",
+               "if(HOST){ hpost({ cmd: 'loadCustomers' }); }", bad);
+  // 대조군 — 옛 판은 여전히 통과한다(codeSend 안의 1곳이 남아 있으므로).
+  assert.ok(/hpost\(\{ cmd: 'loadCodes' \}\)/.test(bad), '변이 전제가 깨졌다');
+  checks.codeSendReloadsCodes(bad);   // 남은 경로는 멀쩡 — 그래서 옛 검사가 조용했다
+  assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadCodes 를 부르지 않는다/);
+  assert.throws(() => checks.modalPreloadsCodes(bad), /모달 프리로드에 loadCodes 가 없다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /실측 1곳/);
+});
+
+test('변이㉓: codeSend 성공 후 갱신을 지우면 codeSend 범위검사가 실패한다', () => {
+  // 줄머리 개행+4칸 들여쓰기로 codeSend 안의 그 줄만 겨냥한다(모달 프리로드는 한 줄에 붙어 있다).
+  const bad = mutate("\n    hpost({ cmd: 'loadCodes' });", '\n    ;', src);
+  assert.throws(() => checks.codeSendReloadsCodes(bad), /codeSend 성공 후 드롭다운 갱신/);
+});
+
+test('변이㉔: 주석에만 남은 호출은 호출로 세지 않는다(존재검사 우회 차단)', () => {
+  // 코드를 지우고 설명 주석으로만 남기는 흔한 리팩터. 문자열은 파일에 남지만 실행되지 않는다.
+  const bad = mutate("  hpost({ cmd:'loadCodes' });",
+                     "  // 부팅에서는 hpost({ cmd:'loadCodes' }) 를 부르지 않는다(모달에서 싣는다)", src);
+  assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadCodes 를 부르지 않는다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 3곳[\s\S]*아니다/);
+});
+
+test('변이㉕: 부팅 블록 자체가 사라지면 조용히 통과하지 않는다(빈 슬라이스 방어)', () => {
+  const bad = mutate(BOOT_HEAD, 'if(HOST){ // (블록 표식 제거)', src);
+  assert.throws(() => checks.bootLoadsCatalog(bad), /부팅 블록.*찾지 못했다/);
+});
+
+test('변이㉖: 활성 코드 로더의 정렬이 사라져도 같은 SQL 이 다른 로더에 있으면 옛 존재검사는 통과한다(범위고정이 잡는다)', () => {
+  // '필터 전용 활성 코드 로더가 하나 더 생긴' 상황을 모사 — 감사가 지적한 구조적 약점.
+  let bad = mutate('$"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name"',
+                   '$"SELECT name FROM {table} WHERE is_active=1"', projectDb);
+  bad = mutate('private static bool IsDateOrEmpty(string? s)',
+    'private async Task<string?> LoadFilterCodeNamesJsonAsync(string table)\n' +
+    '        {\n            var q = $"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name";\n' +
+    '            return await Task.FromResult<string?>(q);\n        }\n\n' +
+    '        private static bool IsDateOrEmpty(string? s)', bad);
+  // 대조군 — 옛 판(파일 전체 존재검사)은 통과한다.
+  assert.ok(/WHERE is_active=1 ORDER BY sort_order, name/.test(bad), '변이 전제가 깨졌다(대조 문자열이 안 남았다)');
+  assert.throws(() => checks.activeLoaderSorted(bad), /활성 코드 로더가 sort_order 순이 아니다/);
+});
+
+test('변이㉗: 읽기 SELECT 에서 note 만 빠져도 잡힌다(쓰기 쪽 note 가 존재검사를 만족시켜도)', () => {
+  const bad = mutate('"status, note, is_active FROM project WHERE is_active=1 ORDER BY common_name"',
+                     '"status, is_active FROM project WHERE is_active=1 ORDER BY common_name"', projectDb);
+  assert.throws(() => checks.noteWiredPerScope(bad), /LoadProjectsJsonAsync 의 SELECT 에 note 가 없다/);
+});
+
+test('변이㉘: BindProject 의 note 바인딩을 지우면 잡힌다(INSERT/UPDATE 문구가 남아 있어도)', () => {
+  const bad = mutate('cmd.Parameters.AddWithValue("@note", nt);', '', projectDb);
+  assert.throws(() => checks.noteWiredPerScope(bad), /BindProject 에 note 바인딩이 없다/);
 });

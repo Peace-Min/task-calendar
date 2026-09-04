@@ -229,8 +229,9 @@ function hostSource() {
   return readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
 }
 
-function hostExportCols() {
-  const cs = hostSource();
+// cs를 주면 그 소스를 파싱한다(변이 주입용) — 안 주면 실제 호스트 파일.
+function hostExportCols(cs) {
+  cs = cs || hostSource();
   const start = cs.indexOf('ProjectExportCols =');
   assert.ok(start >= 0, 'ProjectExportCols 정의를 찾지 못함');
   const end = cs.indexOf('};', start);
@@ -245,6 +246,33 @@ test('추출 계약(v2): 호스트 컬럼 정의는 9개 · No→구분→발주
   assert.deepStrictEqual(cols.map(c => c.header),
     ['No', '구분', '발주처', '사업명', '통상명칭', '계약명', '시작일', '종료일', '상태']);
   assert.ok(!cols.some(c => c.header === '사용여부'), '상수 열(사용여부)이 되살아났다');
+});
+
+// ── 열 너비 계약 ───────────────────────────────────────────────────────
+// 너비는 '보기 좋으라고' 있는 값이 아니다. 아래 '행 높이' 구역의 LibreOffice 실측 캘리브레이션이
+// 이 폭에서 나왔고, 호스트 DataRowHeightFor도 cols[i].Width로 줄 수를 센다 —
+// 폭이 바뀌면 (a) 열이 찌그러져 값이 잘려 보이고 (b) 실측 줄 수 표가 통째로 무의미해진다.
+const EXPORT_COL_WIDTHS = [
+  ['No', 6], ['구분', 12], ['발주처', 18], ['사업명', 40], ['통상명칭', 20],
+  ['계약명', 34], ['시작일', 12], ['종료일', 12], ['상태', 14],
+];
+
+// 헤더 → 너비. cols를 주면 그 정의(변이 주입 포함)를, 안 주면 실제 호스트 값을 쓴다.
+function colWidthMap(cols) {
+  return Object.fromEntries((cols || hostExportCols()).map(c => [c.header, c.width]));
+}
+
+function checkColWidths(cols) {
+  cols = cols || hostExportCols();
+  const w = colWidthMap(cols);
+  assert.deepStrictEqual([w['사업명'], w['계약명']], [40, 34],
+    '행 높이 캘리브레이션은 이 폭에서 실측됐다 — 폭을 바꾸면 RENDERED 표를 다시 실측할 것');
+  assert.deepStrictEqual(cols.map(c => [c.header, c.width]), EXPORT_COL_WIDTHS,
+    '열 너비가 바뀌었다 — 찌그러진 열은 모든 추출 파일에서 값이 잘려 보인다');
+}
+
+test('추출 계약(v2): 열 너비도 계약이다 — 실측 캘리브레이션 기준 폭(사업명 40·계약명 34)이 호스트에 그대로 있다', () => {
+  checkColWidths();
 });
 
 test('추출 계약(v2): 웹이 만드는 행의 키 집합 = 호스트가 읽는 필드 집합(No는 호스트 전용이라 제외)', () => {
@@ -537,24 +565,36 @@ const RENDERED = [
   ['적외선 탐색추적장비 시제 개발', '적외선 탐색추적장비 시제 개발 계약', 1, 1],
 ];
 
-test('행 높이: 렌더 실측 줄 수와 추정이 18개 셀 전부 일치(계수 캘리브레이션 고정)', () => {
+// ★ 폭은 호스트(ProjectExportCols)에서 읽는다 — 여기에 40·34를 박아두면 호스트 폭이 어떻게 바뀌든
+//   이 실측 표가 조용히 통과한다(2026-09-04 변이 감사: 사업명 40 → 12 가 69개 계약 중 하나도 못 울렸다).
+function checkRenderedLines(cols) {
+  const HW = colWidthMap(cols);
   for (const [project, contract, pl, cl] of RENDERED) {
-    assert.strictEqual(estimateWrapLines(project, 40, 3), pl, `사업명 줄 수 불일치: ${project.slice(0, 24)}`);
-    if (contract) assert.strictEqual(estimateWrapLines(contract, 34, 3), cl, `계약명 줄 수 불일치: ${contract.slice(0, 24)}`);
+    assert.strictEqual(estimateWrapLines(project, HW['사업명'], 3), pl, `사업명 줄 수 불일치: ${project.slice(0, 24)}`);
+    if (contract) assert.strictEqual(estimateWrapLines(contract, HW['계약명'], 3), cl, `계약명 줄 수 불일치: ${contract.slice(0, 24)}`);
   }
-});
+}
 
-test('행 높이: 잘렸던 행은 높아지고(>20), 나머지 행은 그대로(20)', () => {
-  const cols = [{ width: 40, wrap: true }, { width: 34, wrap: true }];
+function checkRenderedHeights(cols) {
+  const HW = colWidthMap(cols);
+  const dcols = [{ width: HW['사업명'], wrap: true }, { width: HW['계약명'], wrap: true }];
   for (const [project, contract, pl, cl] of RENDERED) {
-    const h = dataRowHeight(cols, [project, contract]);
+    const h = dataRowHeight(dcols, [project, contract]);
     const expected = 20 + (Math.max(pl, contract ? cl : 1) - 1) * 15;
     assert.strictEqual(h, expected, `행 높이 불일치: ${project.slice(0, 24)}`);
   }
   // 잘렸던 두 행만 커지고, 짧은 행 8개는 기본 높이 유지(= '일괄 상향'을 기각한 이유가 지켜짐)
-  const heights = RENDERED.map(([p, c]) => dataRowHeight(cols, [p, c]));
-  assert.strictEqual(heights.filter(h => h === 20).length, 8);
-  assert.strictEqual(heights.filter(h => h > 20).length, 2);
+  const heights = RENDERED.map(([p, c]) => dataRowHeight(dcols, [p, c]));
+  assert.strictEqual(heights.filter(h => h === 20).length, 8, '기본 높이(20) 행이 8개가 아니다');
+  assert.strictEqual(heights.filter(h => h > 20).length, 2, '높아진 행이 2개가 아니다');
+}
+
+test('행 높이: 렌더 실측 줄 수와 추정이 18개 셀 전부 일치(계수 캘리브레이션 고정)', () => {
+  checkRenderedLines();   // 폭은 호스트 ProjectExportCols에서 읽는다(리터럴 금지)
+});
+
+test('행 높이: 잘렸던 행은 높아지고(>20), 나머지 행은 그대로(20)', () => {
+  checkRenderedHeights();
 });
 
 test('행 높이: AutoRowHeight를 끄면 전 행이 기준 높이 고정', () => {
@@ -798,4 +838,44 @@ test('발주처 관리 UI: 관리 버튼은 위젯에서만 노출(offSyncExport
   const b = extractFunction(src, 'offSyncExportBtn');
   assert.ok(/getElementById\('offCustMgr'\)/.test(b), '발주처 관리 버튼 표시 동기화가 없다');
   assert.ok(/cm\.style\.display = HOST \? '' : 'none'/.test(b), '관리 버튼이 위젯에서만 노출되지 않는다');
+});
+
+// ══ 변이 주입(열 너비 계약이 실효성이 있는지 증명) ══════════════════════
+// 2026-09-04 변이 감사: 호스트 사업명 폭 40 → 12 를 넣어도 이 파일의 계약 중 아무것도 울지 않았다.
+// 원인 — hostExportCols()가 width를 파싱만 해두고 어느 단언에서도 쓰지 않았고,
+//       행 높이 실측 테스트는 호스트 값이 아니라 JS에 박아둔 40·34로 돌았다.
+// 아래 변이들이 그 구멍을 지킨다. 앵커가 소스에서 안 찾히면 여기서 실패한다(조용히 통과 금지).
+function mutate(base, from, to) {
+  const out = base.replace(from, to);
+  assert.notStrictEqual(out, base, `변이가 원본을 바꾸지 못했다(대상 문자열 없음): ${from}`);
+  return out;
+}
+const mutCols = (from, to) => hostExportCols(mutate(hostSource(), from, to));
+
+test('변이㉑: 사업명 폭 40 → 12 로 찌그러뜨리면 열 너비 계약이 실패한다', () => {
+  const bad = mutCols('("사업명",   "projectName",  40,', '("사업명",   "projectName",  12,');
+  assert.throws(() => checkColWidths(bad), /캘리브레이션은 이 폭에서 실측됐다/);
+});
+
+test('변이㉑-b: 사업명 폭 40 → 12 는 렌더 실측 줄 수·행 높이까지 함께 깨뜨린다(잘림 회귀 재발 감지)', () => {
+  const bad = mutCols('("사업명",   "projectName",  40,', '("사업명",   "projectName",  12,');
+  assert.throws(() => checkRenderedLines(bad), /사업명 줄 수 불일치/);
+  assert.throws(() => checkRenderedHeights(bad), /행 높이 불일치|기본 높이|높아진 행/);
+});
+
+test('변이㉒: 계약명 폭 34 → 60 으로 넓혀도(찌그러뜨리지 않아도) 실측 캘리브레이션이 깨진 걸 잡는다', () => {
+  const bad = mutCols('("계약명",   "contractName", 34,', '("계약명",   "contractName", 60,');
+  assert.throws(() => checkColWidths(bad), /캘리브레이션은 이 폭에서 실측됐다/);
+  assert.throws(() => checkRenderedLines(bad), /계약명 줄 수 불일치/);
+});
+
+test('변이㉓: 캘리브레이션 대상이 아닌 열(통상명칭 20 → 4)의 조용한 붕괴도 9열 전 폭 계약이 잡는다', () => {
+  const bad = mutCols('("통상명칭", "commonName",   20,', '("통상명칭", "commonName",   4,');
+  assert.throws(() => checkColWidths(bad), /열 너비가 바뀌었다/);
+});
+
+test('변이㉔: 미세 드리프트(사업명 40 → 38)는 실측 줄 수로는 안 잡힌다 — 그래서 폭 계약이 따로 필요하다', () => {
+  const bad = mutCols('("사업명",   "projectName",  40,', '("사업명",   "projectName",  38,');
+  checkRenderedLines(bad);   // 줄 수는 그대로 통과한다(= 실측 검사만으로는 폭 드리프트를 못 본다)
+  assert.throws(() => checkColWidths(bad), /캘리브레이션은 이 폭에서 실측됐다/);
 });

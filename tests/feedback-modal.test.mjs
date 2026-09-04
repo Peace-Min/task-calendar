@@ -226,3 +226,171 @@ test('문의 모달: 색은 전부 디자인 토큰(하드코딩 hex 없음)', (
   assert.ok(/var\(--danger-text\)/.test(css) && /var\(--danger-soft\)/.test(css),
     '반출 경고가 위험 의미색 토큰을 쓰지 않는다');
 });
+
+// ── ⑨ ★ 버튼 → 핸들러 배선(button ↔ handler) ──────────────────────────
+// 왜 따로 있나: 위의 계약들은 「마크업에 id="btnFbLog" 가 있다」와 「openLogFolder() 본문이 옳다」를
+// **따로따로** 본다. 그 둘을 잇는 addEventListener 한 줄은 아무도 안 봤다.
+// 그래서 배선 줄만 지우면 이 파일이 존재 이유 ②로 못 박은 '로그 폴더 원클릭 열기'가 통째로 죽는데도
+// 전 스위트가 초록이었다(실측 896 pass / 0 fail). 버튼과 함수가 각각 살아 있어도 기능은 죽는다.
+//
+// 이 검사가 잡아야 할 회귀 8종:
+//   ① 배선 줄 삭제        ② 핸들러를 no-op/인라인 함수로 교체   ③ 셀렉터 오타
+//   ④ 가드 극성 반전(if(x)→if(!x))                            ⑤ 이벤트명 변경('click'→다른 것)
+//   ⑥ 핸들러 교차(두 버튼 맞바꾸기)                            ⑦ 경로 전달 openFolder 로 재배선
+//   ⑧ 집은 것과 다른 변수에 붙이기(const l = $(...); m.addEventListener)
+// ④·⑧ 은 '셀렉터와 핸들러 이름이 근처에 같이 보이는가' 식의 느슨한 정규식으로는 못 잡는다.
+// 그래서 배선 문장의 **모양 전체**를 역참조(\1)로 묶어 확인한다.
+function clickWiring(source, sel) {
+  // ⓐ 셀렉터와 addEventListener 가 같은 문장 안에서 만나기는 하는가(= 배선의 존재).
+  const near = new RegExp("\\$\\('" + sel + "'\\)[\\s\\S]{0,120}?addEventListener\\s*\\(");
+  assert.ok(near.test(source),
+    sel + ' 를 addEventListener 로 잇는 배선이 없다 — 버튼도 있고 핸들러 함수도 있는데 둘이 만나지 않는다(눌러도 아무 일도 일어나지 않는다)');
+  // ⓑ 배선의 모양이 계약대로인가 — 집은 그 요소에, 참일 때, click 으로, 이름 있는 함수를.
+  const strict = new RegExp(
+    "\\{\\s*const\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*\\$\\('" + sel + "'\\)\\s*;\\s*" +
+    "if\\s*\\(\\s*\\1\\s*\\)\\s*" +
+    "\\1\\s*\\.\\s*addEventListener\\(\\s*'([^']*)'\\s*,\\s*([A-Za-z_$][\\w$]*)\\s*\\)");
+  const m = strict.exec(source);
+  assert.ok(m, sel + ' 배선의 모양이 계약과 다르다 — 가드가 반전됐거나(if(!x)) · 집은 것과 다른 변수에 붙였거나 · 핸들러가 이름 없는 인라인 함수다');
+  return { event: m[2], handler: m[3] };
+}
+
+function checkWiring(source, sel, expected) {
+  const w = clickWiring(source, sel);
+  assert.strictEqual(w.event, 'click',
+    sel + " 배선이 click 이 아닌 '" + w.event + "' 에 붙어 있다 — 버튼은 클릭으로 쓴다");
+  assert.strictEqual(w.handler, expected,
+    sel + ' 의 핸들러가 다르다(기대 ' + expected + ' / 실제 ' + w.handler + ')');
+}
+
+test('배선(핵심): [로그 폴더 열기] 버튼이 openLogFolder 에 실제로 연결돼 있다', () =>
+  checkWiring(src, '#btnFbLog', 'openLogFolder'));
+
+test('배선(핵심): [복사] 버튼이 copyFeedbackMail 에 실제로 연결돼 있다', () =>
+  checkWiring(src, '#btnFbCopyMail', 'copyFeedbackMail'));
+
+// 진입점도 같은 잣대로 — 위 ①의 계약은 '토스트가 아니다 / openFeedback 이 보인다'까지만 본다.
+const FEEDBACK_ENTRY_RE =
+  /\$\('#btnFeedback'\)\s*\.\s*addEventListener\(\s*'([^']*)'\s*,\s*([A-Za-z_$][\w$]*)\s*\)/;
+
+function checkFeedbackEntry(source) {
+  const m = FEEDBACK_ENTRY_RE.exec(source);
+  assert.ok(m, '#btnFeedback 배선을 찾지 못함 — 문의 모달로 들어갈 길이 없다');
+  assert.strictEqual(m[1], 'click', "#btnFeedback 가 click 이 아닌 '" + m[1] + "' 에 붙어 있다");
+  assert.strictEqual(m[2], 'openFeedback', '#btnFeedback 의 핸들러가 다르다: ' + m[2]);
+}
+
+test('배선: 🐞 #btnFeedback 는 click 으로 openFeedback 에 연결돼 있다', () => checkFeedbackEntry(src));
+
+// ── ⑩ ★ 경로 무전달 계약 — 우회로까지 막는다 ──────────────────────────
+// 위 ③의 검사는 openLogFolder 안 **첫 번째** hpost 만 보고, 방어가 리터럴 매칭이었다.
+// 그래서 (a) 두 번째 hpost 를 덧붙이거나 (b) 'open'+'Folder' · ['pa'+'th'] 로 이름을 조립하면
+// 호스트까지 실제로 도달하는 익스플로잇이 초록으로 통과했다. 아래가 그 두 구멍을 막는다.
+function logFolderNoArgs(source) {
+  const fn = extractFunction(source, 'openLogFolder');
+  const code = fn.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const n = (code.match(/hpost\s*\(/g) || []).length;
+  assert.strictEqual(n, 1,
+    'openLogFolder 안의 hpost 호출이 ' + n + '개다 — 계약은 정확히 1개. 두 번째 호출은 "첫 번째만 보는" 검사를 우회해 문자열을 밀수하는 자리가 된다');
+  const calls = [...code.matchAll(/hpost\s*\(\s*(\{[\s\S]*?\})\s*\)/g)].map((mm) => mm[1]);
+  assert.strictEqual(calls.length, 1,
+    'hpost 페이로드를 객체 리터럴로 읽지 못했다 — 리터럴이 아니면 무엇을 싣는지 정적으로 확인할 수 없다');
+  assert.strictEqual(calls[0].replace(/\s+/g, ' ').trim(), "{ cmd: 'openLogFolder' }",
+    'payload 에 cmd 외의 것이 실렸다 — 로그 경로는 호스트가 이미 안다: ' + calls[0]);
+  assert.ok(!/\+/.test(code),
+    "openLogFolder 에 문자열 연결(+)이 있다 — 'open'+'Folder' 같은 조립은 리터럴 검사를 그대로 통과한다. 이 함수엔 조립할 것이 없다");
+  assert.ok(!/\[/.test(code),
+    'openLogFolder 에 계산된 키·인덱싱([)이 있다 — 키 이름을 런타임에 만들면 무엇을 싣는지 읽을 수 없다');
+}
+
+test('보안(핵심): openLogFolder 의 hpost 는 정확히 1개이고 조립된 이름을 쓰지 않는다', () =>
+  logFolderNoArgs(src));
+
+// ── ⑪ 변이 주입(검사가 실효성이 있는지 증명) ──────────────────────────
+// 각 변이는 "실제로 날 수 있는 회귀"다. 검사가 안 잡으면 그 검사는 장식이다.
+// ★ 앵커가 소스에서 안 찾히면 여기서 실패한다 — 조용히 통과하지 않는다.
+function mutate(base, from, to) {
+  const out = base.replace(from, to);
+  assert.notStrictEqual(out, base, '변이가 원본을 바꾸지 못했다(대상 문자열 없음): ' + from);
+  return out;
+}
+
+const WIRE_LOG = "{ const l = $('#btnFbLog'); if(l) l.addEventListener('click', openLogFolder); }";
+const WIRE_MAIL = "{ const c = $('#btnFbCopyMail'); if(c) c.addEventListener('click', copyFeedbackMail); }";
+const POST_LINE = "  hpost({ cmd: 'openLogFolder' });";
+
+test('변이①: [로그 폴더 열기] 배선 줄을 지우면 잡는다(감사에서 미검출이던 그 변이)', () => {
+  const bad = mutate(src, WIRE_LOG, '/* 배선 제거 */');
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /잇는 배선이 없다/);
+});
+
+test('변이②: [복사] 배선 줄을 지우면 잡는다(감사에서 미검출이던 그 변이)', () => {
+  const bad = mutate(src, WIRE_MAIL, '/* 배선 제거 */');
+  assert.throws(() => checkWiring(bad, '#btnFbCopyMail', 'copyFeedbackMail'), /잇는 배선이 없다/);
+});
+
+test('변이③: 핸들러를 이름 없는 no-op 으로 바꾸면 잡는다', () => {
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLog'); if(l) l.addEventListener('click', function(){}); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /모양이 계약과 다르다/);
+});
+
+test('변이④: 배선 쪽 셀렉터에 오타를 내면 잡는다', () => {
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLogs'); if(l) l.addEventListener('click', openLogFolder); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /잇는 배선이 없다/);
+});
+
+test('변이⑤: 가드 극성을 뒤집으면(if(l)→if(!l)) 잡는다 — 느슨한 정규식이 놓치던 자리', () => {
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLog'); if(!l) l.addEventListener('click', openLogFolder); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /모양이 계약과 다르다/);
+});
+
+test('변이⑥: 집은 요소가 아닌 다른 변수에 붙이면 잡는다', () => {
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLog'); const m = document.body; if(l) m.addEventListener('click', openLogFolder); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /모양이 계약과 다르다/);
+});
+
+test('변이⑦: 이벤트명을 바꾸면(click→mouseenter) 잡는다', () => {
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLog'); if(l) l.addEventListener('mouseenter', openLogFolder); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /click 이 아닌/);
+});
+
+test('변이⑧: 두 버튼의 핸들러를 맞바꾸면 잡는다', () => {
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLog'); if(l) l.addEventListener('click', copyFeedbackMail); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /핸들러가 다르다/);
+});
+
+test('변이⑨: ★ [로그 폴더 열기]를 경로 전달 openFolder 로 재배선하면 잡는다', () => {
+  // 이게 가장 위험한 변이다 — ★ 보안 계약 2개는 openLogFolder 본문과 호스트 case 만 보므로
+  // '아무도 부르지 않는 함수'를 지키며 전부 초록이었다.
+  const bad = mutate(src, WIRE_LOG,
+    "{ const l = $('#btnFbLog'); if(l) l.addEventListener('click', openFolder); }");
+  assert.throws(() => checkWiring(bad, '#btnFbLog', 'openLogFolder'), /핸들러가 다르다/);
+});
+
+test('변이⑩: openLogFolder 에 두 번째 hpost 를 덧붙여 경로를 밀수하면 잡는다', () => {
+  const bad = mutate(src, POST_LINE,
+    POST_LINE + "\n  hpost({ cmd: 'openFolder', path: '%APPDATA%' });");
+  assert.throws(() => logFolderNoArgs(bad), /hpost 호출이 2개다/);
+});
+
+test('변이⑪: 이름을 문자열 연결로 조립해 리터럴 검사를 우회하면 잡는다', () => {
+  const bad = mutate(src, POST_LINE, "  hpost({ cmd: 'open' + 'LogFolder' });");
+  assert.throws(() => logFolderNoArgs(bad), /cmd 외의 것이 실렸다|문자열 연결/);
+});
+
+test('변이⑫: 계산된 키(["pa"+"th"])로 경로를 실으면 잡는다', () => {
+  const bad = mutate(src, POST_LINE,
+    "  hpost({ cmd: 'openLogFolder', ['pa' + 'th']: '%APPDATA%' });");
+  assert.throws(() => logFolderNoArgs(bad), /cmd 외의 것이 실렸다|계산된 키|문자열 연결/);
+});
+
+test('변이⑬: 🐞 진입점 배선을 지우면 잡는다(문의 모달로 들어갈 길이 사라진다)', () => {
+  const bad = mutate(src, "$('#btnFeedback').addEventListener('click', openFeedback);", '/* 배선 제거 */');
+  assert.throws(() => checkFeedbackEntry(bad), /배선을 찾지 못함/);
+});

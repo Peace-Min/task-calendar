@@ -58,15 +58,59 @@ function upsertBody() {
   return projectDb.slice(s, e);
 }
 
+// ── 반환 계약 검사(테스트 + 변이 주입이 같은 함수를 쓴다) ─────────────────
+// ★ 여기 계약은 '문자열이 남아 있는가'가 아니라 '플래그 값'을 못박는다.
+//   메시지만 보고 통과시키면 (false, msg, true) → (true, msg, true) 변이가 그대로 새어나간다.
+//   그러면 웹 __projectSaved 가 if(!ok && needConfirm) 확인 분기를 건너뛰고 if(ok) 성공 경로로 들어가
+//   편집 모달을 닫고 '비슷한 과제가 있습니다…'를 초록 success 토스트로 띄운다.
+//   INSERT 는 일어나지 않았는데 사용자는 저장됐다고 믿는다 = 조용한 데이터 유실.
+//   ※ ProjectDb.cs 는 LF 개행이지만, CRLF 체크아웃에서도 같게 동작하도록 \r?\n 으로 쓴다.
+const checks = {
+  // 소프트경고 메시지 자체가 살아 있는가(전제).
+  softWarnMessage(b) {
+    assert.ok(/"비슷한 과제가 있습니다: /.test(b), '소프트경고 메시지가 없다');
+  },
+  // 그 메시지를 돌려주는 return 의 ok 가 false 인가(= 웹이 확인 분기로 간다).
+  softWarnOkFalse(b) {
+    assert.ok(/return \(false,\s*\r?\n\s*"비슷한 과제가 있습니다: /.test(b),
+      '소프트경고 반환의 ok가 false가 아니다(웹이 성공 경로로 빠진다)');
+  },
+  // 3-튜플 전체를 한 덩어리로 — needConfirm 자리까지 같은 정규식에 묶어야 값 뒤집기가 보인다.
+  softWarnTuple(b) {
+    assert.ok(/return \(false,\r?\n\s*"비슷한 과제가 있습니다: "[\s\S]{0,300}?,\r?\n\s*true\);/.test(b),
+      '소프트경고 반환이 (false, msg, true) 3-튜플이 아니다');
+  },
+  // 경고 가드의 조건까지 반환에 묶는다 — if (!sim.HasValue) 로 뒤집으면 유사 과제가 있어도 경고 없이
+  // INSERT 되고, 정상 신규 등록은 sim.Value 접근에서 예외로 전부 실패한다.
+  softWarnGuard(insBlock) {
+    assert.ok(/if \(sim\.HasValue\)\s*\r?\n?\s*\{[\s\S]{0,400}?return \(false,\r?\n\s*"비슷한 과제가 있습니다: /.test(insBlock),
+      '유사 과제가 있을 때(sim.HasValue)가 경고 반환의 조건이 아니다');
+  },
+  // 성공 반환도 needConfirm 자리까지 한 정규식에 묶는다(소프트경고와 대칭).
+  successTuples(b) {
+    assert.ok(/return \(true, "공식 과제를 추가했습니다\.", false\);/.test(b), '추가 성공 반환 계약이 다르다');
+    assert.ok(/return \(true, "공식 과제를 저장했습니다\.", false\);/.test(b), '수정 성공 반환 계약이 다르다');
+  },
+};
+
+// 변이 주입 도우미 — 대상이 실제로 바뀌었는지 확인한다(원형이 남으면 시험이 거짓양성).
+function mutate(from, to, src) {
+  const out = src.replace(from, to);
+  assert.notStrictEqual(out, src, `변이가 원본을 바꾸지 못했다(대상 없음): ${from}`);
+  return out;
+}
+
 test('호스트: UpsertProjectAsync에 confirmSimilar 파라미터 + needConfirm 반환', () => {
   const b = upsertBody();
   assert.ok(/bool confirmSimilar = false\)/.test(b), 'confirmSimilar 파라미터가 없다');
-  // 소프트경고 반환: (false, msg, true)
-  assert.ok(/return \(false,\s*\n?\s*"비슷한 과제가 있습니다: /.test(b) || /비슷한 과제가 있습니다: /.test(b), '소프트경고 메시지가 없다');
-  assert.ok(/,\s*\n?\s*true\);/.test(b), 'needConfirm=true 반환이 없다');
+  // 소프트경고 반환: (false, msg, true) — 메시지 존재 → ok 플래그 → 3-튜플 순으로 좁힌다.
+  //  ※ 옛 단언은 `|| /비슷한 과제가 있습니다: /` 폴백이 앞 절의 상위집합이라 앞 절이 죽은 코드였고,
+  //    needConfirm 은 본문 아무 데나 있는 `, true);` 로도 통과해 값 뒤집기를 못 잡았다(변이⑲·⑳).
+  checks.softWarnMessage(b);
+  checks.softWarnOkFalse(b);
+  checks.softWarnTuple(b);
   // 성공 반환은 needConfirm=false
-  assert.ok(/return \(true, "공식 과제를 추가했습니다\.", false\);/.test(b), '추가 성공 반환 계약이 다르다');
-  assert.ok(/return \(true, "공식 과제를 저장했습니다\.", false\);/.test(b), '수정 성공 반환 계약이 다르다');
+  checks.successTuples(b);
 });
 
 test('호스트: 이름 필드 TRIM + 빈 계약명/통상명칭은 \'\'(NULL 금지)', () => {
@@ -88,6 +132,7 @@ test('호스트: INSERT에만 소프트경고, UPDATE(자기수정)엔 검사 �
   const insBlock = b.slice(b.indexOf('if (u.Length == 0)'), b.indexOf('const string upd'));
   assert.ok(/if \(!confirmSimilar\)/.test(insBlock), 'INSERT 블록에 소프트경고 검사가 없다');
   assert.ok(/FindSimilarActiveAsync\(conn, cts\.Token, cust, pname, cn\)/.test(insBlock), '유사 검사 호출이 없다');
+  checks.softWarnGuard(insBlock);   // 조건(sim.HasValue)과 경고 반환을 한 덩어리로 — 조건 뒤집기 방지
   const updBlock = b.slice(b.indexOf('const string upd'));
   assert.ok(!/FindSimilarActiveAsync/.test(updBlock), 'UPDATE에도 유사 검사가 걸려 자기수정이 막힌다');
 });
@@ -185,4 +230,44 @@ test('소프트경고: 끝공백/연속공백 변형 → 정규화가 같아 경
 test('소프트경고: 빈 계약명끼리는 같게, 한쪽만 계약명 있으면 다르게', () => {
   assert.strictEqual(wouldWarn([{ pn: 'A', cn: '' }], { pn: 'A', cn: '' }), true, '둘 다 빈 계약명이면 같다');
   assert.strictEqual(wouldWarn([{ pn: 'A', cn: '' }], { pn: 'A', cn: '계약X' }), false, '계약명 유무가 다르면 별건이다');
+});
+
+// ── 변이 시험: 위 반환 계약이 실제로 값 뒤집기를 잡는지 증명한다 ──────────
+// 이 파일의 호스트·브리지·웹 계약은 전부 소스 텍스트 매칭이라, 문자열을 남긴 채
+// 불리언·조건만 뒤집는 변이는 원리적으로 안 보인다. 아래가 그 구멍을 막는 자물쇠다.
+const insBlockOf = b => b.slice(b.indexOf('if (u.Length == 0)'), b.indexOf('const string upd'));
+
+test('변이⑲: 소프트경고 반환의 ok를 true로 뒤집으면 반환 계약이 실패한다(조용한 데이터 유실)', () => {
+  const bad = mutate(/return \(false,(\r?\n\s*"비슷한 과제)/, 'return (true,$1', upsertBody());
+  assert.ok(!/return \(false,\s*\r?\n\s*"비슷한 과제/.test(bad), '변이 후에도 원형이 남았다(시험이 거짓양성)');
+  checks.softWarnMessage(bad);   // 메시지는 그대로 남는다 — 메시지만 보는 옛 단언은 여기서 안 운다
+  assert.throws(() => checks.softWarnOkFalse(bad), /ok가 false가 아니다/);
+  assert.throws(() => checks.softWarnTuple(bad), /3-튜플이 아니다/);
+});
+
+test('변이⑳: 소프트경고의 needConfirm을 false로 뒤집으면 3-튜플 계약이 실패한다(확인 기회 없이 그냥 실패로 보인다)', () => {
+  const bad = mutate(/("비슷한 과제가 있습니다: "[\s\S]{0,300}?,\r?\n\s*)true\);/, '$1false);', upsertBody());
+  checks.softWarnMessage(bad);
+  checks.softWarnOkFalse(bad);   // ok=false 는 그대로다 — 앞 두 단언만으론 못 잡는다
+  assert.throws(() => checks.softWarnTuple(bad), /3-튜플이 아니다/);
+});
+
+test('변이㉑: 유사 가드를 !sim.HasValue 로 뒤집으면 가드 계약이 실패한다(경고 없이 INSERT · 정상 등록은 예외)', () => {
+  const bad = mutate('if (sim.HasValue)', 'if (!sim.HasValue)', upsertBody());
+  assert.ok(!/if \(sim\.HasValue\)/.test(bad), '변이 후에도 원형이 남았다(시험이 거짓양성)');
+  checks.softWarnMessage(bad);
+  checks.softWarnOkFalse(bad);
+  checks.softWarnTuple(bad);     // 반환 3-튜플은 멀쩡하다 — 조건을 묶은 가드만이 잡는다
+  assert.throws(() => checks.softWarnGuard(insBlockOf(bad)), /경고 반환의 조건이 아니다/);
+});
+
+test('변이㉒: 성공 반환의 needConfirm을 true로 뒤집으면 성공 계약이 실패한다(저장됐는데 확인창이 뜬다)', () => {
+  const bad = mutate('return (true, "공식 과제를 추가했습니다.", false);',
+                     'return (true, "공식 과제를 추가했습니다.", true);', upsertBody());
+  assert.throws(() => checks.successTuples(bad), /추가 성공 반환 계약이 다르다/);
+});
+
+test('변이㉓: 소프트경고 메시지를 통째로 바꾸면 메시지 계약이 먼저 운다(단언 순서 확인)', () => {
+  const bad = mutate('"비슷한 과제가 있습니다: "', '"중복 후보: "', upsertBody());
+  assert.throws(() => checks.softWarnMessage(bad), /소프트경고 메시지가 없다/);
 });
