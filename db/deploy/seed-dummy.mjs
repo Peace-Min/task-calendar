@@ -81,6 +81,7 @@ function printHelp() {
     '  --keep                기존 데이터가 있는 사람은 지우지 않고 건너뛴다',
     '  --dry-run             SQL 만 만들고 실행하지 않는다(DB 를 전혀 바꾸지 않는다)',
     '  --verify              시딩하지 않고 자체 검증(V1~V10)만 수행',
+    '  --purge               넣지 않고 지운다 — 대상 사용자의 캘린더 데이터 삭제 + 검증 P1~P4',
     '  --db=<name>           대상 스키마(기본 ' + DEFAULTS.db + ')',
     '  --mysql=<path>        mysql.exe 경로',
     '  --db-host=/--db-port= 접속 정보(기본 ' + DEFAULTS.dbHost + ':' + DEFAULTS.dbPort + ')',
@@ -108,6 +109,9 @@ function parseArgs(argv) {
     else if (a === '--keep') { o.keep = true; o.clear = false; }
     else if (a === '--dry-run') o.dryRun = true;
     else if (a === '--verify') o.verifyOnly = true;
+    //  ★ 되돌리는 수단. 넣기만 하고 지우지 못하는 도구는 쓸 수 없다 —
+    //    첫 판에 이게 빠져 있어서 18,271행을 넣고도 원복할 방법이 없었다(2026-09-03).
+    else if (a === '--purge') o.purge = true;
     else if ((m = /^--db=(.+)$/.exec(a))) o.db = m[1].trim();
     else if ((m = /^--mysql=(.+)$/.exec(a))) o.mysql = m[1];
     else if ((m = /^--db-host=(.+)$/.exec(a))) o.dbHost = m[1].trim();
@@ -144,6 +148,10 @@ if (!OPT.adminPw) {
 }
 if (OPT.keep && process.argv.includes('--clear')) {
   console.error('[중단] --clear 와 --keep 은 함께 쓸 수 없습니다(지울지 말지가 반대입니다).');
+  process.exit(2);
+}
+if (OPT.purge && (OPT.keep || OPT.verifyOnly)) {
+  console.error('[중단] --purge 는 --keep · --verify 와 함께 쓸 수 없습니다(하는 일이 서로 반대입니다).');
   process.exit(2);
 }
 if (!existsSync(OPT.mysql)) {
@@ -789,16 +797,38 @@ function insertChunks(out, table, cols, valueRows) {
   }
 }
 
+//  한 사람의 캘린더 데이터를 지우는 문장들 — 삽입과 **같은 목록**을 쓴다.
+//  ★ 여기 한 곳만 두는 이유: 지우는 표와 넣는 표가 갈라지면 --purge 뒤에 찌꺼기가 남는다.
+//  ★ R2 FK 순서. cal_category 는 cal_entry·cal_todo·cal_task_hours 가 RESTRICT 로 잡고 있어 맨 마지막.
+//  ★ cal_user_rev 는 여기 없다 — 단조 증가라 DELETE 하지 않는다(bump 만 한다).
+//  ★ cal_report_* · cal_migration_log · cal_user_pref · cal_room 도 없다 — 이 도구가 만든 것이 아니다.
+function deleteStatements(uid) {
+  return [
+    'DELETE FROM cal_task_hours WHERE user_id = ' + uid + ';',
+    'DELETE FROM cal_entry      WHERE user_id = ' + uid + ';',   // commit·except 는 CASCADE
+    'DELETE FROM cal_todo       WHERE user_id = ' + uid + ';',   // day_note 는 CASCADE
+    'DELETE FROM cal_category   WHERE user_id = ' + uid + ';',
+    'DELETE FROM cal_attendance WHERE user_id = ' + uid + ';',   // FK 없음 — 독립
+  ];
+}
+
+//  --purge — 넣지 않고 **지우기만** 한다.
+//  ★ 되돌리는 수단이 없는 도구는 쓸 수 없다. 첫 판에 이게 없어서 88명에게 18,271행을 넣고도
+//    원복할 방법이 없었다(2026-09-03). 대상 산정·안전 규칙은 시딩과 완전히 같다.
+function buildPurgeSql(userId) {
+  const uid = I(userId);
+  return ['SET NAMES utf8mb4;', 'START TRANSACTION;']
+    .concat(deleteStatements(uid))
+    .concat([
+      //  rev 는 올린다 — 앱이 '바뀌었다'를 알아야 화면이 비워진다.
+      'INSERT INTO cal_user_rev(user_id, rev) VALUES(' + uid + ',1) ON DUPLICATE KEY UPDATE rev = rev + 1;',
+      'COMMIT;',
+    ]).join('\n');
+}
+
 function buildUserSql(userId, data) {
   const uid = I(userId);
-  const out = ['SET NAMES utf8mb4;', 'START TRANSACTION;'];
-
-  // R2 — FK 순서. cal_category 는 cal_entry·cal_todo·cal_task_hours 가 RESTRICT 로 잡고 있어 맨 마지막.
-  out.push('DELETE FROM cal_task_hours WHERE user_id = ' + uid + ';');
-  out.push('DELETE FROM cal_entry      WHERE user_id = ' + uid + ';');   // commit·except 는 CASCADE
-  out.push('DELETE FROM cal_todo       WHERE user_id = ' + uid + ';');   // day_note 는 CASCADE
-  out.push('DELETE FROM cal_category   WHERE user_id = ' + uid + ';');
-  out.push('DELETE FROM cal_attendance WHERE user_id = ' + uid + ';');   // FK 없음 — 독립
+  const out = ['SET NAMES utf8mb4;', 'START TRANSACTION;'].concat(deleteStatements(uid));
 
   insertChunks(out, 'cal_category',
     ['user_id', 'cat_no', 'uid', 'source', 'name', 'color', 'description', 'project_uid', 'uses_repo', 'sort_order', 'created_at', 'updated_at'],
@@ -1046,6 +1076,69 @@ function main() {
   log('뷰어: ' + (viewer ? viewer.loginId + '(' + viewer.name + ", view_scope='" + viewer.scope + "')" : '(권한 계산 생략)') +
     ' · ' + mode);
   log('대상 사용자 ' + targets.length + '명' + (excluded.length ? ' · 제외: ' + excluded.join(' / ') : ''));
+
+  /* ── --purge: 넣지 않고 지운다 ─────────────────────────────── */
+  if (OPT.purge) {
+    const L = inList(targetIds);
+    const countRows = () => {
+      if (!targetIds.length) return 0;
+      const r = mustQuery(
+        'SELECT (SELECT COUNT(*) FROM cal_category   WHERE user_id IN ' + L + ')' +
+        '     + (SELECT COUNT(*) FROM cal_entry      WHERE user_id IN ' + L + ')' +
+        '     + (SELECT COUNT(*) FROM cal_todo       WHERE user_id IN ' + L + ')' +
+        '     + (SELECT COUNT(*) FROM cal_task_hours WHERE user_id IN ' + L + ')' +
+        '     + (SELECT COUNT(*) FROM cal_attendance WHERE user_id IN ' + L + ');', '삭제 전 행수');
+      return Number(r[0][0]);
+    };
+    //  ★ 대상 **밖**은 한 행도 건드리지 않는다 — 전후로 세어 증명한다(R1).
+    //    시딩이 쓰는 snapshot() 을 그대로 재사용한다(대조 기준이 갈라지지 않게).
+    const snapBefore = snapshot();
+    const before = targetIds.length ? countRows() : 0;
+    log('삭제 대상 ' + targets.length + '명 · 캘린더 행 ' + before + '건' +
+      (OPT.dryRun ? ' (--dry-run — 실행하지 않습니다)' : ''));
+    if (OPT.dryRun) {
+      log('--dry-run 이라 SQL 만 만들고 끝냅니다. 실제로 지우려면 --purge 를 --dry-run 없이 실행하세요.');
+      return finish({ seeded: [], skipped: [], failed: [], totals: null, purged: 0, viewer, mode, targets, excluded });
+    }
+    let done = 0; const failed = [];
+    for (const u of targets) {
+      const r = mysqlRun(buildPurgeSql(u.userId), { what: u.loginId + ' 삭제' });
+      if (r.ok) { done++; vlog(u.loginId + ' 삭제 완료'); }
+      else { failed.push(u.loginId); console.error('  ✗ ' + u.loginId + ' 삭제 실패: ' + cleanErr(r.err)); }
+    }
+    const after = targetIds.length ? countRows() : 0;
+    log('삭제 완료 — ' + done + '명 · 남은 행 ' + after + '건');
+    //  ── 검증: 대상은 0행 · 대상 밖 불변 · 보호표 불변 · rev 는 올랐다 ──
+    const snapAfter = snapshot();
+    const inTarget = new Set(targetIds);
+    const okEmpty = after === 0;
+    const movedOutside = [];
+    for (const [uidK, n] of snapBefore.entryCounts) {
+      if (inTarget.has(uidK)) continue;
+      if ((snapAfter.entryCounts.get(uidK) || 0) !== n) movedOutside.push(uidK);
+    }
+    for (const [uidK] of snapAfter.entryCounts) {
+      if (!inTarget.has(uidK) && !snapBefore.entryCounts.has(uidK)) movedOutside.push(uidK);
+    }
+    const guardDiff = Object.keys(snapBefore.protectedCounts)
+      .filter((tb) => snapBefore.protectedCounts[tb] !== snapAfter.protectedCounts[tb]);
+    const revNotUp = targetIds.filter((uidK) =>
+      (snapAfter.revs.get(uidK) || 0) <= (snapBefore.revs.get(uidK) || 0));
+    console.log('');
+    console.log(okEmpty ? '   ✓ P1  대상 사용자의 캘린더 행이 0이다'
+      : '   ✗ P1  대상에 ' + after + '행이 남았다');
+    console.log(!movedOutside.length ? '   ✓ P2  대상 밖 사용자의 cal_entry 행수가 그대로다'
+      : '   ✗ P2  대상 밖 ' + movedOutside.length + '명의 행수가 변했다: ' + movedOutside.slice(0, 8).join(', '));
+    console.log(!guardDiff.length ? '   ✓ P3  보호표(보고기록·migration_log·pref·room)가 그대로다'
+      : '   ✗ P3  보호표가 바뀌었다: ' + guardDiff.join(', '));
+    console.log(!revNotUp.length ? '   ✓ P4  대상 전원의 cal_user_rev 가 올랐다(앱이 변경을 안다)'
+      : '   ✗ P4  rev 가 안 오른 사용자 ' + revNotUp.length + '명: ' + revNotUp.slice(0, 8).join(', '));
+    const bad = (!okEmpty ? 1 : 0) + (movedOutside.length ? 1 : 0) + (guardDiff.length ? 1 : 0)
+      + (revNotUp.length ? 1 : 0) + failed.length;
+    console.log('');
+    console.log(bad ? '삭제 검증 실패 — 위 항목을 확인하세요.' : '삭제 검증 통과 ✓ — 대상만 비었고 나머지는 그대로다.');
+    process.exit(bad ? 1 : 0);
+  }
 
   /* ── --verify 단독: V1~V10 만 ─────────────────────────────── */
   if (OPT.verifyOnly) {
