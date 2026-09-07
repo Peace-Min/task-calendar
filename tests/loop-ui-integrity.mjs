@@ -278,9 +278,47 @@ function emergencyUnlock() {
   } catch (_) { console.error('[cleanup] UNLOCK 실패 — 수동으로 ALTER USER ... ACCOUNT UNLOCK 하세요'); }
   offlineActive = false;
 }
-process.on('exit', emergencyUnlock);
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { emergencyUnlock(); process.exit(130); });
-process.on('uncaughtException', (e) => { console.error(e); emergencyUnlock(); process.exit(1); });
+/** 테스트가 만든 임시값을 걷어낸다 — 어느 경로로 끝나든(정상·예외·신호), 그리고 **시작할 때 먼저**.
+ *  ★ 2026-09-07 실측: 정리가 I7(phaseHardDelete) 단계 안에만 있어서, 거기 닿기 전에 죽으면
+ *    zzC/zzT 행이 그대로 남았다(개발 DB 에 18건 누적 — 09-03~09-07). 재현: 시작 2초 뒤 강제 종료 → 19건.
+ *    강제 종료(TerminateProcess)는 어떤 핸들러도 못 받으므로, 종료 정리만으로는 부족하다 —
+ *    그래서 **다음 실행이 시작할 때 이전 잔재를 먼저 걷어낸다**(선행 정리). 둘을 합쳐야 닫힌다.
+ *  · `_zzR<seed>` 개명 중 죽은 행은 원래 이름으로 되돌린다(project 는 FK UPDATE CASCADE 로 따라온다).
+ *  · `zzT<seed>_*` · `zzC<seed>_*` 는 지운다. project 가 참조 중이면(FK RESTRICT/NO ACTION → 1451) 지우지 않고 보고한다.
+ *  · 동기(spawnSync)라 process.on('exit') 안에서도 돈다. isTemp 는 뒤에서 선언되는 const 라(TDZ) 여기선 안 쓴다. */
+function sweepTemp(reason) {
+  const seed = String(OPT.seed || '');
+  if (!seed || !OPT.adminPw) return;
+  const report = { renamed: 0, deleted: 0, kept: [], failed: [] };
+  const esc = (v) => "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "''") + "'";
+  for (const table of ['section_code', 'status_code', 'customer']) {
+    // 1) 개명 중 죽은 행 복원 — 접미사만 떼면 원래 이름이다
+    const q = mysqlRun(`SELECT name FROM ${table} WHERE name LIKE '%\\_zzR${seed}';`);
+    if (q.ok) for (const line of q.out.split(/\r?\n/).filter(Boolean)) {
+      const orig = line.slice(0, line.length - ('_zzR' + seed).length);
+      const u = mysqlRun(`UPDATE ${table} SET name=${esc(orig)} WHERE name=${esc(line)};`);
+      if (u.ok) report.renamed++; else report.failed.push(`${table} ${line} → ${orig} (errno ${u.errno})`);
+    }
+    // 2) 임시 행 삭제 — 참조 중이면 남기고 보고
+    const t = mysqlRun(`SELECT name FROM ${table} WHERE name LIKE 'zzT${seed}\\_%' OR name LIKE 'zzC${seed}\\_%';`);
+    if (t.ok) for (const nm of t.out.split(/\r?\n/).filter(Boolean)) {
+      const d = mysqlRun(`DELETE FROM ${table} WHERE name=${esc(nm)};`);
+      if (d.ok) report.deleted++;
+      else if (d.errno === 1451) report.kept.push(`${table} ${nm}`);
+      else report.failed.push(`${table} ${nm} (errno ${d.errno})`);
+    }
+  }
+  const any = report.renamed || report.deleted || report.kept.length || report.failed.length;
+  if (any) console.error(`[cleanup] 임시값 정리(${reason}): 개명 복원 ${report.renamed} · 삭제 ${report.deleted}`
+    + (report.kept.length ? ` · 참조 중이라 남김 ${report.kept.length}: ${report.kept.join(', ')}` : '')
+    + (report.failed.length ? ` · 실패 ${report.failed.length}: ${report.failed.join(', ')}` : ''));
+  return report;
+}
+let __swept = false;
+function sweepOnce(reason) { if (__swept) return; __swept = true; try { sweepTemp(reason); } catch (e) { console.error('[cleanup] 임시값 정리 실패: ' + (e && e.message)); } }
+process.on('exit', () => { emergencyUnlock(); sweepOnce('exit'); });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => { emergencyUnlock(); sweepOnce(sig); process.exit(130); });
+process.on('uncaughtException', (e) => { console.error(e); emergencyUnlock(); sweepOnce('uncaughtException'); process.exit(1); });
 
 /* ────────────────────────────── 5. CDP 클라이언트 ────────────────────────────── */
 // node v24 전역 WebSocket 사용(ws 모듈 없음 · 설치 금지). Runtime.evaluate로 페이지 JS 실행.
@@ -1299,6 +1337,13 @@ async function scenarioC(before) {
 }
 
 /** 오프라인 구간 종료 후 재수렴 — 관리 목록을 다시 열어 DB와 일치하는지 확인 */
+async function resyncDropdowns() {
+  const snap = snapshot();
+  await ev(`(hpost({cmd:'loadCodes'}), hpost({cmd:'loadCustomers'}), 1)`);
+  const secN = snap.sections.filter((x) => x.active).length, stN = snap.statuses.filter((x) => x.active).length, cuN = snap.customers.filter((x) => x.active).length;
+  await waitFor((x) => (x.offSections || []).length === secN && (x.offStatuses || []).length === stN && (x.dbCustomers || []).length === cuN, { timeout: 8000, desc: '드롭다운 재조회 수렴(시작)' });
+}
+
 async function reconverge() {
   const snap = snapshot();
   await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal');
@@ -1410,6 +1455,8 @@ function printSummary(finalSnap) {
     console.log(`  customer     : ${finalSnap.customers.map((x) => x.name + (x.active ? '' : '(숨김)')).join(', ')}`);
     const leftovers = [...finalSnap.sections, ...finalSnap.statuses, ...finalSnap.customers].filter((x) => isTemp(x.name) || /_zzR\d+$/.test(x.name));
     console.log(`  테스트 잔여 임시값: ${leftovers.length ? leftovers.map((x) => x.name).join(', ') : '없음'}`);
+    //  ★ 출력만 하면 아무도 안 읽는다 — 2026-09-07 까지 18건이 그렇게 쌓였다. 잔재는 **위반**이다.
+    if (leftovers.length) violate('FIN', `테스트 잔여 임시값 ${leftovers.length}건 — 정리가 새고 있다`, leftovers.map((x) => x.name));
     console.log(`  스냅샷 해시: ${finalSnap.hash}`);
   }
 
@@ -1491,6 +1538,13 @@ async function main() {
   }
   if (s.dbOnline !== true) { console.error('\n[중단] DB에 연결되지 않았습니다(dbOnline=false). MySQL/계정 잠금 상태를 확인하세요.'); process.exit(2); }
 
+  const swept = sweepTemp('선행 정리 — 이전 실행 잔재');   // ★ 강제 종료된 이전 실행이 남긴 zz* 를 먼저 걷어낸다(시작 해시가 오염되지 않게)
+  //  ★ DB 를 밖에서 바꿨으면 위젯의 코드표 캐시도 다시 맞춘다 — 안 맞추면 첫 op 의 I6 가 지운 zzT* 를 아직 든
+  //    드롭다운과 비교해 '불일치' 로 운다(2026-09-07 실측: 선행 정리 19건 뒤 I6 2건).
+  //  ★ 위젯의 드롭다운 소스(offSections/offStatuses/dbCustomers)는 #dbReload 가 아니라 loadCodes/loadCustomers 로만 갱신된다
+  //    (reconverge 의 주석 참조). 직전 실행이 종료 정리로 DB 만 바꾸고 끝났거나 강제 종료됐으면 위젯은 유령을 들고 있다 —
+  //    그래서 정리한 게 없어도 **항상** 재조회시킨다. 안 하면 op#1 의 I6 가 유령 목록과 비교해 운다(2026-09-07 실측).
+  await resyncDropdowns();
   let snap = snapshot();
   PROJECT_N0 = snap.projects.length;
   log(`시작 DB — project ${snap.projects.length} · customer ${snap.customers.length} · section ${snap.sections.length} · status ${snap.statuses.length} · hash ${snap.hash}`);
@@ -1550,6 +1604,7 @@ async function main() {
 
   /* ── 최종 재수렴 ── */
   curPhase = 'final';
+  sweepOnce('정상 종료');                      // ★ 재수렴 **앞**에서 — 뒤에 두면 DB 만 바뀌고 위젯은 유령을 든 채 끝난다(실측: 다음 실행 op#1 I6)
   try { snap = await reconverge(); } catch (e) { violate('FIN', `최종 재수렴 중 예외: ${e.message}`); snap = snapshot(); }
   try { await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal'); } catch (_) { }
 
@@ -1561,6 +1616,7 @@ async function main() {
 main().catch((e) => {
   console.error('\n[치명] ' + (e && e.stack ? e.stack : e));
   emergencyUnlock();
+  sweepOnce('치명 예외');
   printSummary(null);
   process.exit(1);
 });
