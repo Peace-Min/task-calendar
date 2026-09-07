@@ -80,7 +80,11 @@ namespace TaskCalendarWidget
         }
 
         // 최후수단 — 종료 신호에 응답하지 않는(구버전 등) 동일 앱 프로세스를 강제 종료(자기 자신 제외).
-        // 저장은 원자적(temp→rename)이라 강제 종료해도 data.xml 손상 없음.
+        // 강제 종료해도 데이터가 반쯤 쓰이지 않는 근거(2026-09-07 갱신 — 옛 근거는 "data.xml 원자 저장"
+        // 이었으나 그 파일은 2026-09-01 에 데이터 출처에서 폐기됐으므로 더는 근거가 못 된다):
+        //   쓰기 진입점은 CalendarWriteDb.SaveAsync 하나뿐이고 그 안이 통째로 한 트랜잭션이다
+        //   (BeginTransactionAsync → Commit). 프로세스를 죽이면 커밋 전 트랜잭션은 InnoDB 가 되돌리므로
+        //   반쯤 반영된 상태가 남지 않는다. 잃는 것은 아직 커밋되지 않은 마지막 편집뿐이다.
         private static void KillOtherInstances()
         {
             try

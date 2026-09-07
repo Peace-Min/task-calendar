@@ -14,12 +14,31 @@
 //
 //   ★ 반대 방향도 잠근다 — false 인 동안 XML 경로를 부분적으로 걷어내는 것도 막는다.
 //     반쯤 지워진 상태가 가장 위험하다(어느 경로로 도는지 아무도 모른다).
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { test, assert, loadAppSource } from './harness.mjs';
 
 const app = loadAppSource();
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const deploy = readFileSync(new URL('../widget/DeployConfig.cs', import.meta.url), 'utf8');
+
+// ── 호스트 소스 = widget/ 의 .cs **전부**(파일 목록이 아니라 디렉터리 열거) ──────────
+//  ★ 2026-09-07 — 예전에는 MainWindow.xaml.cs 한 파일만 봤다. 그건 blocklist 였다:
+//    잔재가 다른 .cs 로 옮겨 앉기만 하면 게이트가 **조용히 통과**한다. 빈 걱정이 아니다 —
+//    RepoPaths.cs 는 "data.xml 에 남기지 않는다" 를 주석으로 못 박아 둘 만큼 그 유혹이
+//    실재했던 자리다. 디렉터리를 열거하면 **앞으로 새로 생길 .cs 도 자동으로 덮인다**.
+//    (같은 이유로 감추기 CSS 를 allowlist 로 바꾼 적이 있다 — 이 저장소의 반복 교훈이다.)
+const WIDGET_DIR = new URL('../widget/', import.meta.url);
+const hostFiles = readdirSync(WIDGET_DIR).filter(f => f.endsWith('.cs')).sort();
+const hosts = hostFiles.map(f => ({ name: 'widget/' + f, src: readFileSync(new URL(f, WIDGET_DIR), 'utf8') }));
+//  ★ 최상위에서 throw 하지 않는다 — run-tests.mjs 의 import 루프에서 던지면 프로세스가 죽고
+//    **전 스위트 판정이 증발**한다(commit-merge.test.mjs 가 같은 사고를 겪고 남긴 교훈).
+//    기준 파일 부재는 아래 '폐기⓪' 한 건의 실패로 강등하고, 나머지 커버리지는 살린다.
+const missingHosts = [];
+const pick = (want) => {
+  const h = hosts.find(x => x.name === want);
+  if (!h) { missingHosts.push(want); return ''; }
+  return h.src;
+};
+const mainwin = pick('widget/MainWindow.xaml.cs');
+const deploy = pick('widget/DeployConfig.cs');
 
 // 주석을 걷어낸 '실제 코드'만 본다 — 주석에 남은 설명 문구까지 잔재로 세면
 //   "왜 지웠는지"를 기록하지 못하게 된다(그 기록이 재론을 막는 장치다).
@@ -60,23 +79,20 @@ const TRACES = [
   [/TC_DATA_SOURCE/,       'TC_DATA_SOURCE 스위치',    'both'],
 ];
 
-function scan(re, where) {
-  const hits = [];
-  if (where !== 'host') { if (re.test(stripComments(app, 'html'))) hits.push('task-calendar-prototype.html'); }
-  if (where !== 'app')  { if (re.test(stripComments(mainwin, 'cs'))) hits.push('widget/MainWindow.xaml.cs'); }
-  return hits;
+// 잔재가 걸린 호스트 파일 **이름들**을 돌려준다(개수가 아니라 이름 — 어디를 고쳐야 하는지가 답이다).
+function hostHits(re, hostList) {
+  return hostList.filter(h => re.test(stripComments(h.src, 'cs'))).map(h => h.name);
 }
-const target = w => (w === 'app' ? 'app' : w === 'host' ? 'host' : 'both');
 
 const checks = {
   //  이관 완료를 선언했으면 잔재가 하나도 없어야 한다
-  noTracesWhenRetired(cs, srcApp, srcHost) {
+  noTracesWhenRetired(cs, srcApp, hostList) {
     if (!xmlRetiredFlag(cs)) return;      // 아직 이관 전 — 이 검사는 자고 있다
     const left = [];
     for (const [re, name, where] of TRACES) {
       const hits = [];
       if (where !== 'host' && re.test(stripComments(srcApp, 'html'))) hits.push('prototype.html');
-      if (where !== 'app'  && re.test(stripComments(srcHost, 'cs'))) hits.push('MainWindow.xaml.cs');
+      if (where !== 'app') hits.push(...hostHits(re, hostList));
       if (hits.length) left.push(`${name}(${hits.join(', ')})`);
     }
     assert.strictEqual(left.length, 0,
@@ -85,12 +101,12 @@ const checks = {
   },
 
   //  이관 전인데 부분적으로 지워지는 것도 막는다(반쯤 지워진 상태가 가장 위험하다)
-  pathIntactWhenNotRetired(cs, srcApp, srcHost) {
+  pathIntactWhenNotRetired(cs, srcApp, hostList) {
     if (xmlRetiredFlag(cs)) return;       // 이관 완료 — 위 검사가 대신 본다
     const missing = [];
     for (const [re, name, where] of TRACES) {
       const found = (where !== 'host' && re.test(stripComments(srcApp, 'html')))
-                 || (where !== 'app'  && re.test(stripComments(srcHost, 'cs')));
+                 || (where !== 'app'  && hostHits(re, hostList).length > 0);
       if (!found) missing.push(name);
     }
     assert.strictEqual(missing.length, 0,
@@ -100,12 +116,17 @@ const checks = {
   },
 };
 
+test('폐기⓪: 게이트의 기준 파일이 실재한다(개명되면 조용히 넘어가지 않는다)', () => {
+  assert.deepStrictEqual(missingHosts, [],
+    '폐기 게이트가 기준 파일을 잃었다 — 개명됐다면 pick(...) 의 이름을 갱신할 것. 없는 것: ' + missingHosts.join(', '));
+});
+
 test('폐기①: 이관 전에는 XML 경로가 온전하다(반쯤 지워짐 금지)', () => {
-  checks.pathIntactWhenNotRetired(deploy, app, mainwin);
+  checks.pathIntactWhenNotRetired(deploy, app, hosts);
 });
 
 test('폐기②: 이관 완료를 선언하면 XML 잔재가 0 이어야 한다', () => {
-  checks.noTracesWhenRetired(deploy, app, mainwin);
+  checks.noTracesWhenRetired(deploy, app, hosts);
 });
 
 test('폐기③: 스위치가 실재하고 켜져 있다(이관 완료)', () => {
@@ -117,12 +138,12 @@ test('폐기③: 스위치가 실재하고 켜져 있다(이관 완료)', () => 
 test('변이⑮: 폐기 뒤에 XML 경로가 되살아나면 폐기② 가 실패한다', () => {
   //  잔재를 하나 심는다 — 되살리는 방향의 변이다(예전에는 반대 방향이었다: 스위치만 켜 보는 것).
   const bad = app + '\nwindow.__applyXml = function(t){ };\n';
-  assert.throws(() => checks.noTracesWhenRetired(deploy, bad, mainwin),
+  assert.throws(() => checks.noTracesWhenRetired(deploy, bad, hosts),
     /XML 경로가 남아 있다/);
 });
 
 test('변이⑮b: 호스트에 data.xml 이 되살아나도 폐기② 가 실패한다', () => {
-  const bad = mainwin + '\n// x\nvar f = Path.Combine(_dataDir, "data.xml");\n';
+  const bad = [{ name: 'widget/MainWindow.xaml.cs', src: mainwin + '\n// x\nvar f = Path.Combine(_dataDir, "data.xml");\n' }];
   assert.throws(() => checks.noTracesWhenRetired(deploy, app, bad),
     /XML 경로가 남아 있다/);
 });
@@ -133,7 +154,7 @@ test('변이⑯: 이관 완료 뒤 잔재가 정말 0 이면 폐기② 가 통�
   //  통과 불가능한 게이트는 이관을 영원히 막는다(그것도 결함이다).
   const cleanApp = 'const state = {}; function renderAll(){}';
   const cleanHost = 'class MainWindow { void Boot(){ } }';
-  assert.doesNotThrow(() => checks.noTracesWhenRetired(retired, cleanApp, cleanHost));
+  assert.doesNotThrow(() => checks.noTracesWhenRetired(retired, cleanApp, [{ name: 'widget/Clean.cs', src: cleanHost }]));
 });
 
 test('변이⑰: 스위치를 되돌리면(false) 폐기① 이 사라진 경로를 잡는다', () => {
@@ -141,7 +162,7 @@ test('변이⑰: 스위치를 되돌리면(false) 폐기① 이 사라진 경로
   //  XML 경로가 없으므로 반드시 걸려야 한다 — 즉 "반쯤 지워진 상태" 를 여전히 막는다.
   const back = deploy.replace('public const bool XmlRetired = true;', 'public const bool XmlRetired = false;');
   assert.notStrictEqual(back, deploy, '변이가 원본을 바꾸지 못했다');
-  assert.throws(() => checks.pathIntactWhenNotRetired(back, app, mainwin),
+  assert.throws(() => checks.pathIntactWhenNotRetired(back, app, hosts),
     /XML 경로 일부가 사라졌다/);
 });
 
@@ -153,6 +174,34 @@ test('폐기④: 내보내기·가져오기는 살아 있다(과잉 삭제 방�
   assert.ok(/function toXML\(/.test(code), 'toXML() 이 사라졌다 — 「XML 내보내기」가 죽는다');
   assert.ok(/function fromXML\(/.test(code), 'fromXML() 이 사라졌다 — 「XML 가져오기」가 죽는다(= 이관 경로)');
   assert.ok(/function applyImport\(/.test(code), 'applyImport() 가 사라졌다 — 교체/병합이 죽는다');
+});
+
+test('폐기⑤: 호스트 훑기가 widget/*.cs 를 전부 덮는다(한 파일만 보지 않는다)', () => {
+  //  ★ 이 검사가 없으면 넓힌 훑기가 조용히 좁아져도(글롭이 빗나가 0개가 되어도)
+  //    "잔재 0" 으로 **통과**해 버린다. 판정 불가를 통과로 만들지 않기 위한 하한선이다.
+  assert.ok(hostFiles.length >= 12,
+    'widget/*.cs 를 ' + hostFiles.length + '개만 찾았다 — 열거가 빗나가면 폐기②는 아무것도 안 보고 통과한다');
+  for (const must of ['widget/MainWindow.xaml.cs', 'widget/DeployConfig.cs', 'widget/CalendarDb.cs', 'widget/RepoPaths.cs']) {
+    assert.ok(hosts.some(h => h.name === must), must + ' 가 훑기 대상에서 빠졌다');
+  }
+  assert.ok(hosts.every(h => typeof h.src === 'string' && h.src.length > 0),
+    '내용이 빈 호스트 소스가 있다 — 읽기가 실패했는데 검사는 통과할 뻔했다');
+});
+
+test('변이⑲: MainWindow 아닌 .cs 에 잔재가 앉아도 폐기② 가 잡는다(사각지대 봉인)', () => {
+  //  ★ 이것이 2026-09-07 에 메운 구멍 그 자체다. 예전 게이트는 MainWindow.xaml.cs 만 봤으므로
+  //    아래 변이를 **통과시켰다**(= 잔재가 다른 .cs 로 옮겨 앉으면 못 봤다).
+  const ANCHOR = 'widget/Reminders.cs';
+  assert.ok(hosts.some(h => h.name === ANCHOR),
+    ANCHOR + ' 가 없다 — 변이 앵커가 사라졌으니 다른 비-MainWindow .cs 로 갱신할 것(앵커 없음은 통과가 아니다)');
+  const planted = hosts.map(h => h.name === ANCHOR
+    ? { name: h.name, src: h.src + '\nvar legacy = Path.Combine(dir, "data.xml");\n' }
+    : h);
+  assert.throws(() => checks.noTracesWhenRetired(deploy, app, planted),
+    /widget\/Reminders\.cs/,
+    '잔재를 심은 파일 이름이 실패 메시지에 나와야 한다 — 어디를 고칠지가 답이다');
+  //  통제군 — 심지 않은 원본은 통과한다(위 실패가 '변이 때문' 임을 증명. 봉인이 과하지 않다)
+  assert.doesNotThrow(() => checks.noTracesWhenRetired(deploy, app, hosts));
 });
 
 test('변이⑱: 스위치 선언 자체를 지우면 게이트가 멈춘다(조용히 통과하지 않는다)', () => {

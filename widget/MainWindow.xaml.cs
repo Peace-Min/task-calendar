@@ -962,7 +962,12 @@ namespace TaskCalendarWidget
                 {
                     bool exists = !string.IsNullOrWhiteSpace(repo) && Directory.Exists(repo);
                     string detected = exists ? DetectVcs(repo) : "";            // 폴더의 실제 마커(.git/.svn)
-                    string useVcs = string.IsNullOrWhiteSpace(vcs) ? detected : vcs;   // 사용자 선택 우선
+                    // 분기 단일 소스 — gitlog/gitauthor 와 **같은 헬퍼**를 쓴다(2026-09-07).
+                    //   예전에는 여기만 같은 식(빈 vcs 면 detected, 아니면 vcs)을 손으로 복제해 뒀다.
+                    //   그때도 동작은 같았지만, ResolveVcs 가 바뀌면 이 한 곳만 조용히 뒤처진다 —
+                    //   Svn.cs 의 주석이 "gitlog/gitauthor/gitcheck 는 모두 이 헬퍼로 통일" 이라고
+                    //   적어 둔 바로 그 상태를 실제로 맞춘 것이다(주석이 앞서 있었고 코드가 뒤처져 있었다).
+                    string useVcs = ResolveVcs(repo, vcs);   // 명시 선택 우선, 없으면 DetectVcs
                     // 핵심: '선택한 종류로 유효한가'를 본다 — git 선택이면 .svn이 끼어 있어도 git 저장소면 OK,
                     // svn 선택이면 .svn 작업복사본이면 OK. (.git+.svn 혼재 폴더에서 선택을 존중해 오탐 방지)
                     bool isRepo = exists && (useVcs == "svn" ? Directory.Exists(Path.Combine(repo, ".svn"))

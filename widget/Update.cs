@@ -151,7 +151,10 @@ namespace TaskCalendarWidget
                 Log("해시 검증 통과");
 
                 // 설치기 실행(/SILENT). /UPDATED=1 로 무인 재시작 트리거(.iss [Run] Check:IsAutoUpdate).
-                // 그다음 앱 종료 → exe 잠금 해제 → 설치기가 교체 후 새 앱을 재시작. data.xml(%APPDATA%)은 불변.
+                // 그다음 앱 종료 → exe 잠금 해제 → 설치기가 교체 후 새 앱을 재시작.
+                // 사용자 데이터는 이 교체와 무관하다(2026-09-07 갱신 — 옛 근거는 "data.xml(%APPDATA%)은 불변"
+                // 이었으나 그 파일은 2026-09-01 에 데이터 출처에서 폐기됐다): 일정·과제는 MySQL 에 있고
+                // 설치기는 프로그램 파일만 교체하므로, 갱신 도중 꺼져도 DB 쪽에 남는 흔적이 없다.
                 UpdateProgress("설치 후 자동으로 재시작합니다…");
                 Log($"설치기 실행(/SILENT /UPDATED=1): {dest} (v{mver})");
                 Process.Start(new ProcessStartInfo(dest, "/SILENT /UPDATED=1") { UseShellExecute = true });
