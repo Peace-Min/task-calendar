@@ -12,9 +12,10 @@ const num = (n) => Number(n).toLocaleString('ko-KR');
 const d = new Date(S.meta.dumpedAt);
 const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const PROJECT = ['project', 'customer', 'section_code', 'status_code', 'app_user', 'org_unit', 'title_code'];
+const PROJECT = ['project', 'customer', 'section_code', 'status_code'];
+const USERS = ['app_user', 'org_unit', 'title_code'];
 const byName = Object.fromEntries(S.tables.map((t) => [t.name, t]));
-const calendar = S.tables.map((t) => t.name).filter((n) => !PROJECT.includes(n));
+const calendar = S.tables.map((t) => t.name).filter((n) => !PROJECT.includes(n) && !USERS.includes(n));
 const PURPOSE_FALLBACK = {
   section_code: '과제 구분 코드값. name 이 자연키이고 project.section 이 참조한다.',
   status_code: '과제 상태 코드값. name 이 자연키이고 project.status 가 참조한다.',
@@ -224,8 +225,8 @@ const html = `<!DOCTYPE html>
 <header class="report">
   <div class="eyebrow">과제관리 시스템 · 데이터 설계 보고</div>
   <h1>taskmgr 스키마 v${esc(S.meta.schemaVersion)}</h1>
-  <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 캘린더 표 16개와 사용자·조직 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
-  <p class="lede">테이블은 두 그룹으로 나뉜다. 회사가 관리하는 마스터 테이블은 이름을 자연키로 쓰고, 사용자별 캘린더 테이블은 user_id 로 시작하는 복합 키를 쓴다. 앱 계정 권한도 이 구분을 따른다.</p>
+  <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 사용자·조직 표와 캘린더 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
+  <p class="lede">테이블은 과제, 사용자·조직, 캘린더 세 그룹으로 나뉜다. 과제와 사용자·조직은 회사가 관리하는 마스터이고, 캘린더는 사용자별 데이터라 user_id 로 시작하는 복합 키를 쓴다. 앱 계정 권한도 이 구분을 따른다.</p>
   <div class="meta">
     <span class="m"><span class="dot"></span>DB <b>taskmgr</b> · MySQL <b>${esc(S.meta.mysql)}</b> · ${esc(S.meta.charset[0])}</span>
     <span class="m">스키마 버전 <b>${esc(S.meta.schemaVersion)}</b></span>
@@ -236,11 +237,11 @@ const html = `<!DOCTYPE html>
 
 <div class="thesis">
   <div class="k">핵심 결정</div>
-  <p>과제 트랙 <span class="hl">${PROJECT.length}표</span>는 이름으로 식별하고 앱 계정은 대부분 읽기 권한만 갖는다. 캘린더 트랙 <span class="hl">${calendar.length}표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 자기 user_id 의 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 보고 기록 ${ownerCascade.length}표뿐이다. 사용자를 지우면 같이 지워도 되는 부속 테이블이라 CASCADE 로 두었다.</p>
+  <p>사용자·조직 <span class="hl">${USERS.length}표</span>는 앱이 읽기만 한다(인증은 netcus 가 하고 여기서는 인가만 읽는다). 과제 <span class="hl">${PROJECT.length}표</span>는 이름을 자연키로 쓰고 앱이 추가·수정은 하되 삭제는 is_active 로만 한다. 캘린더 <span class="hl">${calendar.length}표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 자기 user_id 의 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 보고 기록 ${ownerCascade.length}표뿐이다. 사용자를 지우면 같이 지워도 되는 부속 테이블이라 CASCADE 로 두었다.</p>
 </div>
 
 <div class="stats">
-  <div class="stat"><div class="n">${S.tables.length}<span class="u">표</span></div><div class="l">과제 ${PROJECT.length} + 캘린더 ${calendar.length} · 컬럼 ${totalCols}</div></div>
+  <div class="stat"><div class="n">${S.tables.length}<span class="u">표</span></div><div class="l">과제 ${PROJECT.length} · 사용자·조직 ${USERS.length} · 캘린더 ${calendar.length} · 컬럼 ${totalCols}</div></div>
   <div class="stat"><div class="n">${edges.length}<span class="u">개</span></div><div class="l">외래키 · 소유자 FK ${ownerFks.length}개 중 RESTRICT ${ownerRestrict.length}</div></div>
   <div class="stat"><div class="n">${totalChk}<span class="u">개</span></div><div class="l">CHECK 제약 · 값 형식을 DB 가 지킨다</div></div>
   <div class="stat"><div class="n">${MIGRATIONS.length}<span class="u">건</span></div><div class="l">8월 24일 이후 구조 변경</div></div>
@@ -248,19 +249,20 @@ const html = `<!DOCTYPE html>
 
 <section>
   <h2><span class="idx">01</span>테이블 구성과 관계</h2>
-  <p class="sub">과제 트랙은 project 를 중심으로 코드표 셋이 FK 로 연결된다. 캘린더 트랙은 app_user 를 부모로 과제(cal_category)와 일정(cal_entry)이 이어진다.</p>
-  <h3>과제 트랙</h3>
+  <p class="sub">과제 그룹은 project 를 중심으로 코드표 셋이 FK 로 연결된다. 사용자·조직 그룹은 app_user 가 중심이고, 캘린더 그룹은 그 app_user 를 부모로 과제(cal_category)와 일정(cal_entry)이 이어진다.</p>
+  <h3>과제</h3>
   <div class="er">
     ${ent('customer', ['<span class="key">PK</span> name', 'is_active'], '발주처')}${rel('project.customer', 'UPDATE CASCADE · DELETE 막힘')}
     ${ent('project', ['<span class="key">PK</span> id · <span class="key">UQ</span> uid', 'section · status · customer', 'is_active'], '과제')}${rel('section · status', 'UPDATE CASCADE · DELETE RESTRICT')}
     ${ent('section_code · status_code', ['<span class="key">PK</span> name', 'sort_order'], '코드표')}
   </div>
+  <h3>사용자·조직</h3>
   <div class="er">
     ${ent('org_unit', ['<span class="key">PK</span> org_id · <span class="key">UQ</span> name', 'parent_id (자기참조)'], '조직')}${rel('app_user.org_id', 'RESTRICT')}
     ${ent('app_user', ['<span class="key">PK</span> user_id · <span class="key">UQ</span> login_id', 'org_id · title · view_scope · edit_role'], '사용자 ' + num(byName.app_user.exact) + '명')}${rel('app_user.title', 'title_code.name')}
     ${ent('title_code', ['<span class="key">PK</span> name', 'sort_order'], '직급')}
   </div>
-  <h3>캘린더 트랙</h3>
+  <h3>캘린더</h3>
   <div class="er">
     ${ent('app_user', ['<span class="key">PK</span> user_id'], '소유자')}${rel('user_id 전파', '모든 cal_* 의 선두 키')}
     ${ent('cal_category', ['<span class="key">PK</span> user_id · cat_no', '<span class="key">UQ</span> user_id · uid', 'source · uses_repo · sort_order'], '과제')}${rel('(user_id, cat_no)', 'RESTRICT')}
@@ -287,9 +289,11 @@ const html = `<!DOCTYPE html>
   <h2><span class="idx">03</span>테이블 상세</h2>
   <p class="sub">이름 · PK · 개발 DB 행 수 · 앱 계정 권한 순이다. 항목을 누르면 컬럼과 제약이 펼쳐진다. 테이블 설명은 DB 의 테이블 주석 그대로다.</p>
   <div class="toolbar"><button type="button" data-open="1">모두 펼치기</button><button type="button" data-open="0">모두 접기</button></div>
-  <h3>과제 트랙 ${PROJECT.length}</h3>
+  <h3>과제 ${PROJECT.length}</h3>
   ${PROJECT.map((n) => tableDetails(byName[n])).join('')}
-  <h3>캘린더 트랙 ${calendar.length}</h3>
+  <h3>사용자·조직 ${USERS.length}</h3>
+  ${USERS.map((n) => tableDetails(byName[n])).join('')}
+  <h3>캘린더 ${calendar.length}</h3>
   ${calendar.map((n) => tableDetails(byName[n])).join('')}
 </section>
 
