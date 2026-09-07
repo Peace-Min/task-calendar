@@ -3,1744 +3,487 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>taskmgr 스키마 v8 검토본</title>
+<title>taskmgr 스키마 v8 설계 보고</title>
 <style>
   :root{
-    --ground:#eceff4; --panel:#ffffff; --panel2:#f4f7fb; --ink:#16202e; --muted:#5a6678; --faint:#8894a6;
-    --line:#d8e0ea; --line2:#c3cedb; --accent:#2a5d8f; --accent-bg:#e6eff8; --ok:#1f7a4d; --warn:#9a5b00; --warn-bg:#fff4e0;
-    --mono:"Cascadia Code","D2Coding","Consolas",ui-monospace,monospace;
-    --sans:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+    --bg:#eceff4; --surface:#ffffff; --surface-2:#f4f7fb; --surface-3:#eef2f7;
+    --ink:#16202e; --muted:#5a6678; --faint:#8894a6;
+    --line:#d8e0ea; --line-strong:#c3cedb;
+    --accent:#2a5d8f; --accent-soft:#e6eff8;
+    --good:#1f7a4d; --good-soft:#e2f2ea; --warn:#9c6410; --warn-soft:#f6ecd8; --bad:#a53a30; --bad-soft:#f6e3e0;
+    --shadow:0 1px 2px rgba(20,32,48,.04), 0 8px 24px rgba(20,32,48,.06);
+    --mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,"D2Coding",monospace;
+    --sans:-apple-system,"Apple SD Gothic Neo","Malgun Gothic","Segoe UI",system-ui,sans-serif;
   }
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-    --ground:#14171c; --panel:#1c2027; --panel2:#232830; --ink:#e6e9ef; --muted:#9aa3b2; --faint:#6f7a8b;
-    --line:#2b313c; --line2:#3a4250; --accent:#7ea2ff; --accent-bg:#1e2a44; --ok:#5fc48a; --warn:#e2b46a; --warn-bg:#2a2214;
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --bg:#0d131c; --surface:#141d29; --surface-2:#19232f; --surface-3:#1e2836;
+    --ink:#e7edf5; --muted:#95a3b6; --faint:#6f7d92; --line:#263243; --line-strong:#334254;
+    --accent:#6ba4dd; --accent-soft:#152941; --good:#4cbb89; --good-soft:#13291f; --warn:#d69b45; --warn-soft:#2b2312; --bad:#dd7d72; --bad-soft:#2c1613;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
   }}
   :root[data-theme="dark"]{
-    --ground:#14171c; --panel:#1c2027; --panel2:#232830; --ink:#e6e9ef; --muted:#9aa3b2; --faint:#6f7a8b;
-    --line:#2b313c; --line2:#3a4250; --accent:#7ea2ff; --accent-bg:#1e2a44; --ok:#5fc48a; --warn:#e2b46a; --warn-bg:#2a2214;
+    --bg:#0d131c; --surface:#141d29; --surface-2:#19232f; --surface-3:#1e2836;
+    --ink:#e7edf5; --muted:#95a3b6; --faint:#6f7d92; --line:#263243; --line-strong:#334254;
+    --accent:#6ba4dd; --accent-soft:#152941; --good:#4cbb89; --good-soft:#13291f; --warn:#d69b45; --warn-soft:#2b2312; --bad:#dd7d72; --bad-soft:#2c1613;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
   }
-  *{ box-sizing:border-box }
-  html,body{ margin:0; background:var(--ground); color:var(--ink); font:14px/1.6 var(--sans) }
-  a{ color:var(--accent); text-decoration:none } a:hover{ text-decoration:underline }
-  code,.mono{ font-family:var(--mono); font-size:.92em }
-  .wrap{ display:grid; grid-template-columns:230px minmax(0,1fr); gap:24px; max-width:1360px; margin:0 auto; padding:24px 20px 80px }
-  nav{ position:sticky; top:16px; align-self:start; max-height:calc(100vh - 32px); overflow:auto; font-size:12.5px; padding-right:6px }
-  nav h4{ margin:14px 0 4px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--faint); font-weight:600 }
-  nav a{ display:block; padding:2px 6px; border-radius:4px; color:var(--muted) }
-  nav a:hover{ background:var(--panel); color:var(--ink); text-decoration:none }
-  main{ min-width:0 }
-  header.top{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px 24px; margin-bottom:18px }
-  h1{ margin:0 0 6px; font-size:22px; letter-spacing:-.01em }
-  .meta{ color:var(--muted); font-size:13px; display:flex; flex-wrap:wrap; gap:6px 18px; font-variant-numeric:tabular-nums }
-  .meta b{ color:var(--ink); font-weight:600 }
-  h2{ font-size:16px; margin:34px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--line2) }
-  h2 small{ color:var(--faint); font-weight:400; font-size:12px; margin-left:8px }
-  p{ margin:8px 0; max-width:78ch }
-  .note{ background:var(--warn-bg); color:var(--warn); border-radius:6px; padding:10px 14px; font-size:13px; max-width:none }
-  table{ border-collapse:collapse; width:100%; font-size:13px; background:var(--panel) }
-  th,td{ text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); vertical-align:top }
-  th{ font-weight:600; color:var(--muted); font-size:12px; background:var(--panel2) }
-  .grid{ overflow-x:auto; border:1px solid var(--line); border-radius:8px }
-  .grid table td:first-child, .grid table th:first-child{ white-space:nowrap }
-  .muted{ color:var(--faint) } .small{ font-size:12px } .nn{ color:var(--ink); font-weight:600 }
-  .tag{ display:inline-block; font:600 10px/1 var(--sans); padding:2px 5px; border-radius:3px; vertical-align:1px; margin-left:4px }
-  .tag.pk{ background:var(--accent-bg); color:var(--accent) } .tag.uq{ background:var(--panel2); color:var(--muted); border:1px solid var(--line2) } .tag.ix{ background:var(--panel2); color:var(--faint) }
-  .tbl{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px 14px; margin:14px 0 }
-  .tbl h3{ margin:0 0 4px; font-size:15px; display:flex; align-items:baseline; gap:12px }
-  .tbl h3 .rows{ font:12px/1 var(--sans); color:var(--faint); font-variant-numeric:tabular-nums }
-  .purpose{ color:var(--muted); font-size:13px; margin:2px 0 10px }
-  .kv{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:4px 18px; font-size:12.5px; margin-bottom:10px }
-  .kv div{ display:flex; gap:8px; min-width:0 } .kv span{ color:var(--faint); flex:0 0 64px } .kv b{ font-weight:500; word-break:break-all }
-  table.cols td:nth-child(1){ white-space:nowrap }
-  table.sub{ margin-top:8px } table.sub th{ background:transparent }
-  .matrix td.y{ color:var(--ok); font-weight:600; text-align:center } .matrix td.n{ color:var(--line2); text-align:center }
-  .matrix td:first-child{ white-space:nowrap }
-  .graph{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:8px 24px; font-size:13px }
-  .graph div{ padding:4px 0; border-bottom:1px dashed var(--line) }
-  .graph .rule{ color:var(--faint); font-size:11.5px; margin-left:6px }
-  @media (max-width:900px){ .wrap{ grid-template-columns:1fr } nav{ position:static; max-height:none } }
-  @media print{ nav{ display:none } .wrap{ grid-template-columns:1fr } .tbl{ break-inside:avoid } }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans); font-size:16px; line-height:1.7; letter-spacing:-.003em; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:980px; margin:0 auto; padding:clamp(28px,5vw,64px) clamp(18px,4vw,40px) 80px}
+  .eyebrow{font-size:12px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+  header.report{border-bottom:1px solid var(--line); padding-bottom:26px; margin-bottom:34px}
+  h1{font-size:clamp(26px,4.4vw,40px); line-height:1.15; margin:.35em 0 .15em; letter-spacing:-.02em; text-wrap:balance; font-weight:800}
+  .scope{font-size:13px; color:var(--muted); background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:8px 12px; margin:10px 0 14px}
+  .scope b{color:var(--ink)}
+  .lede{font-size:clamp(16px,2vw,18px); color:var(--muted); max-width:64ch; margin:.2em 0 0}
+  .meta{display:flex; flex-wrap:wrap; gap:8px; margin-top:22px}
+  .meta .m{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:5px 12px}
+  .meta .m b{color:var(--ink); font-weight:650}
+  .meta .m .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+  .thesis{background:var(--surface); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:12px; padding:22px 24px; box-shadow:var(--shadow); margin-bottom:14px}
+  .thesis .k{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
+  .thesis p{margin:0; font-size:clamp(17px,2.1vw,19px); line-height:1.6}
+  .thesis .hl{color:var(--accent); font-weight:700; white-space:nowrap}
+  .stats{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:22px 0 8px}
+  @media (max-width:680px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:16px 16px 14px}
+  .stat .n{font-size:30px; font-weight:800; line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+  .stat .u{font-size:12px; color:var(--faint); font-weight:600; margin-left:2px}
+  .stat .l{font-size:12.5px; color:var(--muted); margin-top:8px; line-height:1.4}
+  section{margin-top:52px}
+  h2{font-size:22px; font-weight:750; letter-spacing:-.015em; margin:0 0 4px; display:flex; align-items:baseline; gap:10px}
+  h2 .idx{font-family:var(--mono); font-size:13px; color:var(--accent); font-weight:600}
+  .sub{color:var(--muted); margin:0 0 20px; max-width:66ch}
+  h3{font-size:15px; font-weight:700; margin:26px 0 10px; letter-spacing:-.01em}
+  .tbl-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--surface); box-shadow:var(--shadow)}
+  table{border-collapse:collapse; width:100%; font-size:14px; min-width:520px}
+  thead th{background:var(--surface-2); text-align:left; font-weight:700; font-size:12px; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); padding:11px 14px; border-bottom:1px solid var(--line-strong); white-space:nowrap}
+  tbody td{padding:10px 14px; border-top:1px solid var(--line); vertical-align:top}
+  tbody tr:first-child td{border-top:none}
+  code,.mono{font-family:var(--mono); font-size:.88em}
+  td .col{font-family:var(--mono); font-weight:600; color:var(--ink); white-space:nowrap}
+  td .ty{font-family:var(--mono); font-size:12.5px; color:var(--muted); white-space:nowrap}
+  .desc-td{color:var(--muted); min-width:220px; font-size:13.5px}
+  .chip{display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:700; padding:2.5px 9px; border-radius:999px; white-space:nowrap; line-height:1.5}
+  .chip.pk{color:var(--accent); background:var(--accent-soft)}
+  .chip.uq{color:var(--accent); background:transparent; border:1px solid var(--accent)}
+  .chip.fk{color:var(--muted); background:var(--surface-3); border:1px solid var(--line)}
+  .chip.warn{color:var(--warn); background:var(--warn-soft)}
+  /* 관계도 */
+  .er{display:flex; align-items:center; gap:0; flex-wrap:wrap; margin:6px 0 2px; font-family:var(--mono); font-size:13px}
+  .er .ent{border:1px solid var(--line-strong); border-radius:10px; background:var(--surface); box-shadow:var(--shadow); overflow:hidden; min-width:190px; margin:6px 0}
+  .er .ent .h{background:var(--surface-2); padding:8px 13px; font-weight:700; border-bottom:1px solid var(--line); color:var(--ink); display:flex; justify-content:space-between; align-items:center; gap:10px}
+  .er .ent .h small{font-family:var(--sans); font-size:11px; font-weight:600; color:var(--faint)}
+  .er .ent ul{margin:0; padding:8px 13px; list-style:none; font-size:12px; color:var(--muted)}
+  .er .ent li{padding:2px 0}
+  .er .ent li .key{color:var(--accent); font-weight:700}
+  .er .rel{padding:0 14px; color:var(--muted); text-align:center; font-family:var(--sans); font-size:12px; min-width:110px; flex:0 0 auto}
+  .er .rel .card-note{display:block; font-size:11px; color:var(--faint); margin-top:2px}
+  .er .rel .line{font-size:19px; color:var(--accent); letter-spacing:-1px}
+  @media (max-width:640px){.er{flex-direction:column; align-items:stretch} .er .rel{padding:10px 0}}
+  /* 표 목록(접기) */
+  details{background:var(--surface); border:1px solid var(--line); border-radius:12px; margin:8px 0; box-shadow:var(--shadow)}
+  details > summary{list-style:none; cursor:pointer; display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(160px,1.6fr) 80px 96px; gap:12px; align-items:baseline; padding:12px 16px; font-size:14px}
+  details > summary::-webkit-details-marker{display:none}
+  details > summary .name{font-weight:700; color:var(--ink)}
+  details > summary .pk{font-family:var(--mono); font-size:12px; color:var(--muted)}
+  details > summary .cnt{font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--faint); text-align:right}
+  details > summary .pv{font-size:12px; color:var(--muted); text-align:right}
+  details > summary:hover{background:var(--surface-2)}
+  details[open] > summary{border-bottom:1px solid var(--line); background:var(--surface-2)}
+  details .body{padding:14px 16px 16px}
+  details .purpose{margin:0 0 12px; color:var(--ink); font-size:14.5px}
+  details .body .tbl-wrap{box-shadow:none}
+  details .body table{min-width:0}
+  .note{font-size:12.5px; color:var(--faint); margin:10px 0 0; font-style:italic}
+  .toolbar{display:flex; gap:8px; justify-content:flex-end; margin:0 0 6px}
+  .toolbar button{font:600 12px/1 var(--sans); color:var(--accent); background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:6px 12px; cursor:pointer}
+  .toolbar button:hover{background:var(--accent-soft)}
+  @media (max-width:640px){ details > summary{grid-template-columns:1fr 1fr} details > summary .pk{grid-column:1/-1} }
+  /* 지킨다 / 하지 않는다 */
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media (max-width:720px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px 20px; box-shadow:var(--shadow)}
+  .panel h4{margin:0 0 12px; font-size:14px; font-weight:700; display:flex; align-items:center; gap:8px}
+  .panel h4 .bar{width:3px; height:15px; border-radius:2px; background:var(--accent)}
+  .panel.dont h4 .bar{background:var(--bad)}
+  .lst{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:9px}
+  .lst li{position:relative; padding-left:22px; font-size:13.5px; color:var(--ink); line-height:1.5}
+  .lst li::before{content:""; position:absolute; left:2px; top:.62em; width:6px; height:6px; border-radius:50%; background:var(--good)}
+  .panel.dont .lst li::before{background:none; content:"×"; width:auto; height:auto; top:0; left:2px; color:var(--bad); font-weight:800; font-size:13px}
+  .lst li b{font-weight:700} .lst li .why{color:var(--muted); font-weight:400}
+  /* 배포 점검 · 연혁 */
+  .road{display:flex; flex-direction:column}
+  .road .r{display:grid; grid-template-columns:110px 1fr; gap:16px; padding:14px 0; border-top:1px solid var(--line)}
+  .road .r:first-child{border-top:none}
+  .road .when{font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--accent); padding-top:2px}
+  .road .what b{font-weight:700} .road .what p{margin:3px 0 0; font-size:13.5px; color:var(--muted)}
+  footer{margin-top:56px; padding-top:22px; border-top:1px solid var(--line); color:var(--faint); font-size:12.5px; line-height:1.7}
+  footer code{color:var(--muted)}
+  a{color:var(--accent); text-decoration:none} a:hover{text-decoration:underline}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:4px}
+  @media print{ body{background:#fff} .thesis,.stat,.panel,.tbl-wrap,.er .ent,details{box-shadow:none} section{break-inside:avoid} details{break-inside:avoid} .toolbar{display:none} }
 </style>
 </head>
 <body>
 <div class="wrap">
-<nav>
-  <h4>문서</h4>
-  <a href="#check">배포 전에 볼 것</a>
-  <a href="#shape">구성</a>
-  <a href="#graph">참조 그래프</a>
-  <a href="#grant">앱 계정 권한</a>
-  <a href="#history">8월 24일 이후 바뀐 것</a>
-  <a href="#about">이 문서</a>
-  <h4>과제 트랙 7</h4>
-  <a href="#t-project" class="mono">project</a><a href="#t-customer" class="mono">customer</a><a href="#t-section_code" class="mono">section_code</a><a href="#t-status_code" class="mono">status_code</a><a href="#t-app_user" class="mono">app_user</a><a href="#t-org_unit" class="mono">org_unit</a><a href="#t-title_code" class="mono">title_code</a>
-  <h4>캘린더 트랙 16</h4>
-  <a href="#t-cal_attendance" class="mono">cal_attendance</a><a href="#t-cal_category" class="mono">cal_category</a><a href="#t-cal_entry" class="mono">cal_entry</a><a href="#t-cal_entry_commit" class="mono">cal_entry_commit</a><a href="#t-cal_entry_except" class="mono">cal_entry_except</a><a href="#t-cal_migration_log" class="mono">cal_migration_log</a><a href="#t-cal_report_daily" class="mono">cal_report_daily</a><a href="#t-cal_report_hours" class="mono">cal_report_hours</a><a href="#t-cal_report_weekly" class="mono">cal_report_weekly</a><a href="#t-cal_room" class="mono">cal_room</a><a href="#t-cal_schema_meta" class="mono">cal_schema_meta</a><a href="#t-cal_task_hours" class="mono">cal_task_hours</a><a href="#t-cal_todo" class="mono">cal_todo</a><a href="#t-cal_todo_day_note" class="mono">cal_todo_day_note</a><a href="#t-cal_user_pref" class="mono">cal_user_pref</a><a href="#t-cal_user_rev" class="mono">cal_user_rev</a>
-</nav>
-<main>
-<header class="top">
-  <h1>taskmgr 스키마 v8 검토본</h1>
+<header class="report">
+  <div class="eyebrow">과제관리 시스템 · 데이터 설계 보고</div>
+  <h1>taskmgr 스키마 v8</h1>
+  <div class="scope"><b>범위·시점</b> 2026-09-07 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 캘린더 표 16개와 사용자·조직 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 직전에 실제로 선 구조를 한 장에서 훑는 용도다.</div>
+  <p class="lede">한 DB 안에 성격이 다른 두 무리가 산다. 회사가 관리하는 마스터는 이름이 자연키이고, 사람마다 쌓이는 캘린더는 사용자 번호가 앞장서는 복합 키를 쓴다. 권한도 그 경계를 따라 갈린다.</p>
   <div class="meta">
-    <span>캡처 <b>2026-09-07 16:46</b></span><span>MySQL <b>8.4.9</b></span><span>utf8mb4 / utf8mb4_0900_ai_ci</span>
-    <span>표 <b>23</b></span><span>컬럼 <b>173</b></span><span>FK <b>24</b></span><span>CHECK <b>33</b></span><span>인덱스 <b>46</b></span>
-    <span>트리거 <b>0</b> · 루틴 <b>0</b> · 뷰 <b>0</b></span>
+    <span class="m"><span class="dot"></span>DB <b>taskmgr</b> · MySQL <b>8.4.9</b> · utf8mb4</span>
+    <span class="m">스키마 버전 <b>8</b></span>
+    <span class="m">캡처 <b>2026-09-07</b></span>
+    <span class="m">트리거 <b>0</b> · 루틴 <b>0</b> · 뷰 <b>0</b></span>
   </div>
-  <p>개발 PC 의 실제 DB 에서 <code>information_schema</code> 를 읽어 만들었다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, DDL 의 단일 소스는 <a href="deploy/schema-calendar.sql">deploy/schema-calendar.sql</a> 이다. 이 문서는 그 둘을 대신하지 않고, 배포 직전에 실제로 선 구조를 한 장에서 훑는 용도다.</p>
 </header>
 
-<h2 id="check">배포 전에 볼 것</h2>
-<p>아래는 개발 PC 에서 확인한 지금 상태다. 오른쪽 칸에는 폐쇄망 서버에서 달라져야 할 점을 적었다.</p>
-<div class="grid"><table>
-  <thead><tr><th>항목</th><th>지금(개발 PC)</th><th>서버에서</th></tr></thead>
-  <tbody>
-    <tr><td>앱 계정 접속 범위</td><td class="mono">taskmgr_app@% · taskmgr_backup@localhost</td><td><code>taskmgr_app@%</code> 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</td></tr>
-    <tr><td>스키마 버전</td><td class="mono">cal_schema_meta.schema_version = 8</td><td>위젯 빌드 상수와 같아야 부팅한다. 다르면 파괴적 연산만 막고 읽기는 한다.</td></tr>
-    <tr><td>트리거 · 루틴 · 뷰</td><td class="mono">0 · 0 · 0</td><td>감사 트리거는 8월 11일에 없앴다. 서버에 트리거가 하나라도 있으면 폐기 전 DB 를 쓰고 있다는 뜻이다.</td></tr>
-    <tr><td>행 수</td><td class="mono">cal_* 합 18,590행</td><td>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 걷어낸다. 표별 행 수는 아래 상세의 숫자를 그 눈으로 읽을 것.</td></tr>
-    <tr><td>신규 구축 vs 마이그레이션</td><td>마이그레이션 7건을 순서대로 적용한 상태</td><td>서버는 처음 세우므로 <code>schema-calendar.sql</code> 한 번으로 끝난다. migrate-*.sql 은 이미 선 DB 를 옮길 때만 쓴다.</td></tr>
-    <tr><td>백업</td><td class="mono">taskmgr_backup@localhost 계정 · .cnf 방식</td><td><code>backup-taskmgr -Install</code> 로 주 1회 등록하고 첫 회차를 <code>restore-taskmgr</code> 로 되살려 본다(deploy/README.md 복구 절).</td></tr>
-  </tbody>
-</table></div>
-
-<h2 id="shape">구성</h2>
-<p>표는 두 무리로 나뉜다. 과제 트랙 7개는 회사 차원의 마스터(과제·발주처·코드·사용자·조직)이고 이름이 자연키다. 캘린더 트랙 16개는 사람마다 따로 쌓이는 데이터이고, 전부 <code>user_id</code> 로 시작하는 복합 PK 를 쓴다. 이 구분이 권한에도 그대로 나타난다. 과제 트랙은 앱 계정이 대부분 읽기만 하고, 캘린더 트랙은 제 행을 마음대로 쓴다.</p>
-<p>캘린더 트랙의 소유자 키는 8월 24일에 <code>login_id</code> 에서 <code>user_id</code> 로 바뀌었다. <code>login_id</code> 는 사내 보고 사이트의 값이라 우리가 바꿀 수 없는데 FK 참조가 여러 경로라 개명이 실행조차 안 됐고, 그래서 대리키를 두고 <code>login_id</code> 는 UNIQUE 로 내렸다. 소유자 FK 는 전부 <code>ON DELETE RESTRICT</code> 다. 사용자 한 행을 지웠을 때 캘린더가 조용히 사라지지 않게 하려고 그렇게 두었다.</p>
-
-<h2 id="graph">참조 그래프 <small>자식 → 부모 · 24개</small></h2>
-<div class="graph">
-  <div><a href="#t-app_user" class="mono">app_user</a>.<span class="mono">org_id</span> → <a href="#t-org_unit" class="mono">org_unit</a><span class="rule">CASCADE / RESTRICT</span></div><div><a href="#t-app_user" class="mono">app_user</a>.<span class="mono">title</span> → <a href="#t-title_code" class="mono">title_code</a><span class="rule">CASCADE / RESTRICT</span></div><div><a href="#t-cal_attendance" class="mono">cal_attendance</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_category" class="mono">cal_category</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_entry" class="mono">cal_entry</a>.<span class="mono">user_id,cat_no</span> → <a href="#t-cal_category" class="mono">cal_category</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_entry" class="mono">cal_entry</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_entry_commit" class="mono">cal_entry_commit</a>.<span class="mono">user_id,entry_no</span> → <a href="#t-cal_entry" class="mono">cal_entry</a><span class="rule">RESTRICT / CASCADE</span></div><div><a href="#t-cal_entry_except" class="mono">cal_entry_except</a>.<span class="mono">user_id,entry_no</span> → <a href="#t-cal_entry" class="mono">cal_entry</a><span class="rule">RESTRICT / CASCADE</span></div><div><a href="#t-cal_migration_log" class="mono">cal_migration_log</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_report_daily" class="mono">cal_report_daily</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">CASCADE / CASCADE</span></div><div><a href="#t-cal_report_hours" class="mono">cal_report_hours</a>.<span class="mono">user_id,work_date</span> → <a href="#t-cal_report_daily" class="mono">cal_report_daily</a><span class="rule">CASCADE / CASCADE</span></div><div><a href="#t-cal_report_weekly" class="mono">cal_report_weekly</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">CASCADE / CASCADE</span></div><div><a href="#t-cal_room" class="mono">cal_room</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_task_hours" class="mono">cal_task_hours</a>.<span class="mono">user_id,cat_no</span> → <a href="#t-cal_category" class="mono">cal_category</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_task_hours" class="mono">cal_task_hours</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_todo" class="mono">cal_todo</a>.<span class="mono">user_id,cat_no</span> → <a href="#t-cal_category" class="mono">cal_category</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_todo" class="mono">cal_todo</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_todo_day_note" class="mono">cal_todo_day_note</a>.<span class="mono">user_id,todo_no</span> → <a href="#t-cal_todo" class="mono">cal_todo</a><span class="rule">RESTRICT / CASCADE</span></div><div><a href="#t-cal_user_pref" class="mono">cal_user_pref</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-cal_user_rev" class="mono">cal_user_rev</a>.<span class="mono">user_id</span> → <a href="#t-app_user" class="mono">app_user</a><span class="rule">RESTRICT / RESTRICT</span></div><div><a href="#t-org_unit" class="mono">org_unit</a>.<span class="mono">parent_id</span> → <a href="#t-org_unit" class="mono">org_unit</a><span class="rule">CASCADE / RESTRICT</span></div><div><a href="#t-project" class="mono">project</a>.<span class="mono">customer</span> → <a href="#t-customer" class="mono">customer</a><span class="rule">CASCADE / NO ACTION</span></div><div><a href="#t-project" class="mono">project</a>.<span class="mono">section</span> → <a href="#t-section_code" class="mono">section_code</a><span class="rule">CASCADE / RESTRICT</span></div><div><a href="#t-project" class="mono">project</a>.<span class="mono">status</span> → <a href="#t-status_code" class="mono">status_code</a><span class="rule">CASCADE / RESTRICT</span></div>
+<div class="thesis">
+  <div class="k">핵심 구조</div>
+  <p>과제 트랙 <span class="hl">7표</span>는 이름으로 식별하고 앱은 거의 읽기만 한다. 캘린더 트랙 <span class="hl">16표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 제 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 소유자 FK <span class="hl">11개 중 9개</span>가 RESTRICT 다. 예외는 보고 기록 2표뿐이고, 사람이 사라지면 같이 지워도 되는 부속이라 CASCADE 로 두었다.</p>
 </div>
-<p class="small muted">규칙은 UPDATE / DELETE 순이다. CASCADE 가 걸린 곳은 부모 행을 지우면 자식이 함께 사라지는 자리이므로 배포 전에 한 번 더 읽어 둘 것.</p>
 
-<h2 id="grant">앱 계정 권한 <small>taskmgr_app@%</small></h2>
-<div class="grid"><table class="matrix">
-  <thead><tr><th>표</th><th style="text-align:center">SELECT</th><th style="text-align:center">INSERT</th><th style="text-align:center">UPDATE</th><th style="text-align:center">DELETE</th><th>비고</th></tr></thead>
-  <tbody><tr><td class="mono">app_user</td><td class="y">●</td><td class="n">·</td><td class="n">·</td><td class="n">·</td><td class="small muted">읽기만</td></tr><tr><td class="mono">cal_attendance</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_category</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_entry</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_entry_commit</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_entry_except</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_migration_log</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">cal_report_daily</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">cal_report_hours</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_report_weekly</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">cal_room</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_schema_meta</td><td class="y">●</td><td class="n">·</td><td class="n">·</td><td class="n">·</td><td class="small muted">읽기만</td></tr><tr><td class="mono">cal_task_hours</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_todo</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_todo_day_note</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="small muted"></td></tr><tr><td class="mono">cal_user_pref</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">cal_user_rev</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">customer</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">org_unit</td><td class="y">●</td><td class="n">·</td><td class="n">·</td><td class="n">·</td><td class="small muted">읽기만</td></tr><tr><td class="mono">project</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">section_code</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">status_code</td><td class="y">●</td><td class="y">●</td><td class="y">●</td><td class="n">·</td><td class="small muted">지우지 않는다</td></tr><tr><td class="mono">title_code</td><td class="y">●</td><td class="n">·</td><td class="n">·</td><td class="n">·</td><td class="small muted">읽기만</td></tr></tbody>
-</table></div>
-<p class="small muted">GRANT 원문은 <a href="deploy/grants-calendar.sql">deploy/grants-calendar.sql</a>. DELETE 가 없는 표는 앱에 그 경로가 없다는 뜻이다(예: <code>cal_user_rev</code> 는 단조증가 카운터라 지우면 안 된다).</p>
-
-<h2 id="t-project-track">과제 트랙 <small>7개</small></h2>
-
-  <section class="tbl" id="t-project">
-    <h3><span class="mono">project</span><span class="rows" title="개발 DB 행 수 · 더미 포함">14행</span></h3>
-    <p class="purpose">과제 마스터. DB 원본. section/status=ENUM, is_active=소프트삭제.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">id</b></div>
-      <div><span>UNIQUE</span><b class="mono">uid</b></div>
-      <div><span>인덱스</span><b class="mono">status · is_active · customer · section</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">id <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted">auto_increment</td>
-      </tr>
-      <tr>
-        <td class="mono">uid <span class="tag uq">UQ</span></td>
-        <td class="mono">char(36)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">uuid()</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">section <span class="tag ix">IX</span></td>
-        <td class="mono">varchar(50)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">customer <span class="tag ix">IX</span></td>
-        <td class="mono">varchar(100)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">project_name</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">contract_name</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">common_name</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">start_date</td>
-        <td class="mono">date</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">end_date</td>
-        <td class="mono">date</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">status <span class="tag ix">IX</span></td>
-        <td class="mono">varchar(50)</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">note</td>
-        <td class="mono">varchar(500)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active <span class="tag ix">IX</span></td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">customer</td><td>→ <code>customer</code>.<code>name</code></td><td class="mono">UPDATE CASCADE · DELETE NO ACTION</td></tr><tr><td class="mono">section</td><td>→ <code>section_code</code>.<code>name</code></td><td class="mono">UPDATE CASCADE · DELETE RESTRICT</td></tr><tr><td class="mono">status</td><td>→ <code>status_code</code>.<code>name</code></td><td class="mono">UPDATE CASCADE · DELETE RESTRICT</td></tr></tbody></table>
-    
-  </section>
-  <section class="tbl" id="t-customer">
-    <h3><span class="mono">customer</span><span class="rows" title="개발 DB 행 수 · 더미 포함">8행</span></h3>
-    <p class="purpose">발주처 마스터. name=자연키. Admin 관리.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">name</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-project" class="mono">project</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">name <span class="tag pk">PK</span></td>
-        <td class="mono">varchar(100)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    
-    
-  </section>
-  <section class="tbl" id="t-section_code">
-    <h3><span class="mono">section_code</span><span class="rows" title="개발 DB 행 수 · 더미 포함">3행</span></h3>
-    <p class="purpose">과제 구분 코드값. name 이 자연키이고 project.section 이 참조한다. 이름을 바꾸면 project 가 따라오고(ON UPDATE CASCADE), 참조 중이면 지울 수 없다(ON DELETE RESTRICT).</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">name</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-project" class="mono">project</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">name <span class="tag pk">PK</span></td>
-        <td class="mono">varchar(50)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    
-    
-  </section>
-  <section class="tbl" id="t-status_code">
-    <h3><span class="mono">status_code</span><span class="rows" title="개발 DB 행 수 · 더미 포함">4행</span></h3>
-    <p class="purpose">과제 상태 코드값. name 이 자연키이고 project.status 가 참조한다. 참조 동작은 section_code 와 같다.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">name</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-project" class="mono">project</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">name <span class="tag pk">PK</span></td>
-        <td class="mono">varchar(50)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    
-    
-  </section>
-  <section class="tbl" id="t-app_user">
-    <h3><span class="mono">app_user</span><span class="rows" title="개발 DB 행 수 · 더미 포함">89행</span></h3>
-    <p class="purpose">사용자. 인증은 netcus, 여기는 인가만. 비밀번호 컬럼 없음. 소속 정본은 org_id 하나 — 이름 미러 없음.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id</b></div>
-      <div><span>UNIQUE</span><b class="mono">login_id</b></div>
-      <div><span>인덱스</span><b class="mono">org_id · title · is_active</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-cal_attendance" class="mono">cal_attendance</a> · <a href="#t-cal_category" class="mono">cal_category</a> · <a href="#t-cal_entry" class="mono">cal_entry</a> · <a href="#t-cal_migration_log" class="mono">cal_migration_log</a> · <a href="#t-cal_report_daily" class="mono">cal_report_daily</a> · <a href="#t-cal_report_weekly" class="mono">cal_report_weekly</a> · <a href="#t-cal_room" class="mono">cal_room</a> · <a href="#t-cal_task_hours" class="mono">cal_task_hours</a> · <a href="#t-cal_todo" class="mono">cal_todo</a> · <a href="#t-cal_user_pref" class="mono">cal_user_pref</a> · <a href="#t-cal_user_rev" class="mono">cal_user_rev</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted">auto_increment</td>
-      </tr>
-      <tr>
-        <td class="mono">login_id <span class="tag uq">UQ</span></td>
-        <td class="mono">varchar(50)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">name</td>
-        <td class="mono">varchar(50)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">title <span class="tag ix">IX</span></td>
-        <td class="mono">varchar(30)</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">org_id <span class="tag ix">IX</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">view_scope</td>
-        <td class="mono">varchar(20)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">self</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">edit_role</td>
-        <td class="mono">varchar(20)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">viewer</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active <span class="tag ix">IX</span></td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">org_id</td><td>→ <code>org_unit</code>.<code>org_id</code></td><td class="mono">UPDATE CASCADE · DELETE RESTRICT</td></tr><tr><td class="mono">title</td><td>→ <code>title_code</code>.<code>name</code></td><td class="mono">UPDATE CASCADE · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_edit_role</td><td class="mono small">(`edit_role` in (_utf8mb4\\'viewer\\',_utf8mb4\\'editor\\',_utf8mb4\\'admin\\'))</td></tr><tr><td class="mono">chk_view_scope</td><td class="mono small">(`view_scope` in (_utf8mb4\\'self\\',_utf8mb4\\'unit_tree\\',_utf8mb4\\'all\\'))</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-org_unit">
-    <h3><span class="mono">org_unit</span><span class="rows" title="개발 DB 행 수 · 더미 포함">12행</span></h3>
-    <p class="purpose">조직 트리. PK=org_id(내부 정체성) · name=UNIQUE. 계층 정본은 parent_id 하나 — 이름 미러 없음.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">org_id</b></div>
-      <div><span>UNIQUE</span><b class="mono">name</b></div>
-      <div><span>인덱스</span><b class="mono">parent_id</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-app_user" class="mono">app_user</a> · <a href="#t-org_unit" class="mono">org_unit</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">org_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted">auto_increment</td>
-      </tr>
-      <tr>
-        <td class="mono">name <span class="tag uq">UQ</span></td>
-        <td class="mono">varchar(50)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">parent_id <span class="tag ix">IX</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">parent_id</td><td>→ <code>org_unit</code>.<code>org_id</code></td><td class="mono">UPDATE CASCADE · DELETE RESTRICT</td></tr></tbody></table>
-    
-  </section>
-  <section class="tbl" id="t-title_code">
-    <h3><span class="mono">title_code</span><span class="rows" title="개발 DB 행 수 · 더미 포함">11행</span></h3>
-    <p class="purpose">직급 코드. 표시·정렬 전용 — 권한 판정에 쓰지 않는다.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">name</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-app_user" class="mono">app_user</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">name <span class="tag pk">PK</span></td>
-        <td class="mono">varchar(30)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">is_active</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">1</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    
-    
-  </section>
-
-<h2 id="t-calendar-track">캘린더 트랙 <small>16개</small></h2>
-<p class="note">행 수는 개발 DB 의 값이고 더미가 섞여 있다. 구조를 볼 때만 쓰고 용량 산정에는 쓰지 말 것.</p>
-
-  <section class="tbl" id="t-cal_attendance">
-    <h3><span class="mono">cal_attendance</span><span class="rows" title="개발 DB 행 수 · 더미 포함">5,837행</span></h3>
-    <p class="purpose">날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,work_date</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">work_date <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">status</td>
-        <td class="mono">varchar(2)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">overtime</td>
-        <td class="mono">tinyint</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_attendance_overtime</td><td class="mono small">((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</td></tr><tr><td class="mono">chk_cal_attendance_status</td><td class="mono small">((`status` in (_utf8mb4\\'1\\',_utf8mb4\\'2\\',_utf8mb4\\'3\\',_utf8mb4\\'4\\',_utf8mb4\\'5\\',_utf8mb4\\'6\\',_utf8mb4\\'7\\',_utf8mb4\\'9\\',_utf8mb4\\'10\\',_utf8mb4\\'11\\',_utf8mb4\\'12\\')) and (not((`status` like _utf8mb4\\'% \\'))))</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_category">
-    <h3><span class="mono">cal_category</span><span class="rows" title="개발 DB 행 수 · 더미 포함">711행</span></h3>
-    <p class="purpose">캘린더 과제(카테고리). source=local(개인)/db(공식). PK=(user_id,cat_no), 앱 id 는 uid(user_id 안에서 UNIQUE).</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,cat_no</b></div>
-      <div><span>UNIQUE</span><b class="mono">user_id,uid</b></div>
-      <div><span>인덱스</span><b class="mono">user_id,sort_order</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-cal_entry" class="mono">cal_entry</a> · <a href="#t-cal_task_hours" class="mono">cal_task_hours</a> · <a href="#t-cal_todo" class="mono">cal_todo</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">cat_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">uid</td>
-        <td class="mono">varchar(80)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">source</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">local</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">name</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">color</td>
-        <td class="mono">char(7)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">#5b6b7d</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">description</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">project_uid</td>
-        <td class="mono">char(36)</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">uses_repo</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_category_color</td><td class="mono small">regexp_like(`color`,_utf8mb4\\'^#[0-9a-fA-F]{6}$\\')</td></tr><tr><td class="mono">chk_cal_category_projuid</td><td class="mono small">(((`source` = _utf8mb4\\'db\\') and (`project_uid` is not null) and (char_length(`uid`) = 39) and (substr(`uid`,1,3) = _utf8mb4\\'db-\\') and ((`project_uid` collate utf8mb4_0900_bin) = substr(`uid`,4))) or ((`source` = _utf8mb4\\'local\\') and (`project_uid` is null)))</td></tr><tr><td class="mono">chk_cal_category_source</td><td class="mono small">(`source` in (_utf8mb4\\'local\\',_utf8mb4\\'db\\'))</td></tr><tr><td class="mono">chk_cal_category_uid</td><td class="mono small">(`uid` &lt;&gt; _utf8mb4\\'\\')</td></tr><tr><td class="mono">chk_cal_category_usesrepo01</td><td class="mono small">(`uses_repo` in (0,1))</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_entry">
-    <h3><span class="mono">cal_entry</span><span class="rows" title="개발 DB 행 수 · 더미 포함">3,625행</span></h3>
-    <p class="purpose">일정. PK=(user_id,entry_no), 앱 id 는 uid. 반복은 recur_* 로 평탄화. updated_at=낙관적 잠금 토큰.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,entry_no</b></div>
-      <div><span>UNIQUE</span><b class="mono">user_id,uid</b></div>
-      <div><span>인덱스</span><b class="mono">user_id,cat_no · user_id,entry_date</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-cal_entry_commit" class="mono">cal_entry_commit</a> · <a href="#t-cal_entry_except" class="mono">cal_entry_except</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">entry_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">uid</td>
-        <td class="mono">varchar(80)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">cat_no</td>
-        <td class="mono">int unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">entry_date</td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">end_date</td>
-        <td class="mono">date</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">all_day</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">start_time</td>
-        <td class="mono">time</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">end_time</td>
-        <td class="mono">time</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">title</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">memo</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">_utf8mb4\\'\\'</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">source</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">location</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">remind</td>
-        <td class="mono">smallint unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">recur_freq</td>
-        <td class="mono">varchar(8)</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">recur_interval</td>
-        <td class="mono">int unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">recur_until</td>
-        <td class="mono">char(10)</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">recur_count</td>
-        <td class="mono">int unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,cat_no</td><td>→ <code>cal_category</code>.<code>user_id,cat_no</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_entry_allday</td><td class="mono small">((`all_day` = 0) or ((`start_time` is null) and (`end_time` is null)))</td></tr><tr><td class="mono">chk_cal_entry_allday01</td><td class="mono small">(`all_day` in (0,1))</td></tr><tr><td class="mono">chk_cal_entry_enddate</td><td class="mono small">((`end_date` is null) or (`end_date` &gt; `entry_date`))</td></tr><tr><td class="mono">chk_cal_entry_git</td><td class="mono small">((`source` &lt;&gt; _utf8mb4\\'git\\') or ((`end_date` is null) and (`recur_freq` is null)))</td></tr><tr><td class="mono">chk_cal_entry_recur</td><td class="mono small">(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in (_utf8mb4\\'weekly\\',_utf8mb4\\'monthly\\')) and (`recur_interval` is not null) and (`recur_interval` &gt;= 1) and (`recur_count` is not null) and (`recur_count` &gt;= 0)))</td></tr><tr><td class="mono">chk_cal_entry_remind</td><td class="mono small">((`remind` is null) or (`remind` between 0 and 10080))</td></tr><tr><td class="mono">chk_cal_entry_source</td><td class="mono small">(`source` in (_utf8mb4\\'\\',_utf8mb4\\'git\\'))</td></tr><tr><td class="mono">chk_cal_entry_uid</td><td class="mono small">(`uid` &lt;&gt; _utf8mb4\\'\\')</td></tr><tr><td class="mono">chk_cal_entry_until</td><td class="mono small">((`recur_until` is null) or regexp_like(`recur_until`,_utf8mb4\\'^[0-9]{4}-[0-9]{2}-[0-9]{2}$\\'))</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_entry_commit">
-    <h3><span class="mono">cal_entry_commit</span><span class="rows" title="개발 DB 행 수 · 더미 포함">708행</span></h3>
-    <p class="purpose">일정에 붙은 커밋 목록. PK=(user_id,entry_no,seq). 부팅 조회 제외(지연 로드). seq=배열 인덱스 0-base.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,entry_no,seq</b></div>
-      
-      <div><span>인덱스</span><b class="mono">user_id,hash</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">entry_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">seq <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">hash</td>
-        <td class="mono">varchar(64)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">short_hash</td>
-        <td class="mono">varchar(64)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">commit_time</td>
-        <td class="mono">time</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">subject</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">_utf8mb4\\'\\'</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">body</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">_utf8mb4\\'\\'</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,entry_no</td><td>→ <code>cal_entry</code>.<code>user_id,entry_no</code></td><td class="mono">UPDATE RESTRICT · DELETE CASCADE</td></tr></tbody></table>
-    
-  </section>
-  <section class="tbl" id="t-cal_entry_except">
-    <h3><span class="mono">cal_entry_except</span><span class="rows" title="개발 DB 행 수 · 더미 포함">326행</span></h3>
-    <p class="purpose">반복 일정의 예외일. PK=(user_id,entry_no,except_date). 부모 삭제 시 CASCADE. UPDATE 없음.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,entry_no,except_date</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">entry_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">except_date <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,entry_no</td><td>→ <code>cal_entry</code>.<code>user_id,entry_no</code></td><td class="mono">UPDATE RESTRICT · DELETE CASCADE</td></tr></tbody></table>
-    
-  </section>
-  <section class="tbl" id="t-cal_migration_log">
-    <h3><span class="mono">cal_migration_log</span><span class="rows" title="개발 DB 행 수 · 더미 포함">1행</span></h3>
-    <p class="purpose">data.xml→DB 1회성 이관 마커(사람 단위). PK=(user_id). 행 존재=이관 완료, 재실행 거부 근거.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">source_host</td>
-        <td class="mono">varchar(255)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">migrated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    
-  </section>
-  <section class="tbl" id="t-cal_report_daily">
-    <h3><span class="mono">cal_report_daily</span><span class="rows" title="개발 DB 행 수 · 더미 포함">0행</span></h3>
-    <p class="purpose">캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,work_date</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-cal_report_hours" class="mono">cal_report_hours</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">work_date <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">status</td>
-        <td class="mono">varchar(2)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">overtime</td>
-        <td class="mono">tinyint</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">content</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sent_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE CASCADE · DELETE CASCADE</td></tr></tbody></table>
-    
-  </section>
-  <section class="tbl" id="t-cal_report_hours">
-    <h3><span class="mono">cal_report_hours</span><span class="rows" title="개발 DB 행 수 · 더미 포함">0행</span></h3>
-    <p class="purpose">보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,work_date,line_no</b></div>
-      
-      <div><span>인덱스</span><b class="mono">user_id,cat_no,work_date</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">work_date <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">line_no <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">task_name</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">cat_no</td>
-        <td class="mono">int unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">hours</td>
-        <td class="mono">decimal(5,2)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,work_date</td><td>→ <code>cal_report_daily</code>.<code>user_id,work_date</code></td><td class="mono">UPDATE CASCADE · DELETE CASCADE</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_crh_hours</td><td class="mono small">(`hours` &gt;= 0)</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_report_weekly">
-    <h3><span class="mono">cal_report_weekly</span><span class="rows" title="개발 DB 행 수 · 더미 포함">0행</span></h3>
-    <p class="purpose">캘린더가 작성한 주간보고. 사이트의 현재 상태가 아니다 - 사용자가 폼에서 보완한 내용은 담기지 않는다</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,period_start</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">period_start <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">period_end</td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">subject</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">content</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">endwork</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">plan</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">composed_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">CURRENT_TIMESTAMP(3)</td>
-        <td class="mono muted">DEFAULT_GENERATED on update CURRENT_TIMESTAMP(3)</td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE CASCADE · DELETE CASCADE</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_crw_period</td><td class="mono small">(`period_start` &lt;= `period_end`)</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_room">
-    <h3><span class="mono">cal_room</span><span class="rows" title="개발 DB 행 수 · 더미 포함">3행</span></h3>
-    <p class="purpose">장소(회의실) 빠른선택. PK=(user_id,name) — 이 표만 자연키 유지(표 머리 ★★ 판정). 행 0개=빈 목록.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,name</b></div>
-      
-      <div><span>인덱스</span><b class="mono">user_id,sort_order</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">name <span class="tag pk">PK</span></td>
-        <td class="mono">varchar(40)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_room_name</td><td class="mono small">(`name` &lt;&gt; _utf8mb4\\'\\')</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_schema_meta">
-    <h3><span class="mono">cal_schema_meta</span><span class="rows" title="개발 DB 행 수 · 더미 포함">1행</span></h3>
-    <p class="purpose">스키마 버전 행(§5.5). 앱은 SELECT 만 — 위젯 빌드 상수와 비교해 파괴적 연산만 차단.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">k</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">k <span class="tag pk">PK</span></td>
-        <td class="mono">varchar(32)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">v</td>
-        <td class="mono">varchar(64)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    
-    
-  </section>
-  <section class="tbl" id="t-cal_task_hours">
-    <h3><span class="mono">cal_task_hours</span><span class="rows" title="개발 DB 행 수 · 더미 포함">6,561행</span></h3>
-    <p class="purpose">(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,work_date,cat_no</b></div>
-      
-      <div><span>인덱스</span><b class="mono">user_id,cat_no</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">work_date <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">cat_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">hours</td>
-        <td class="mono">decimal(4,2)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,cat_no</td><td>→ <code>cal_category</code>.<code>user_id,cat_no</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_task_hours_range</td><td class="mono small">((`hours` &gt; 0) and (`hours` &lt;= 24))</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_todo">
-    <h3><span class="mono">cal_todo</span><span class="rows" title="개발 DB 행 수 · 더미 포함">558행</span></h3>
-    <p class="purpose">할 일. PK=(user_id,todo_no), 앱 id 는 uid. end_date 유무로 단일/기간이 갈린다.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,todo_no</b></div>
-      <div><span>UNIQUE</span><b class="mono">user_id,uid</b></div>
-      <div><span>인덱스</span><b class="mono">user_id,cat_no · user_id,due</b></div>
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      <div><span>참조하는 표</span><b><a href="#t-cal_todo_day_note" class="mono">cal_todo_day_note</a></b></div>
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">todo_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">uid</td>
-        <td class="mono">varchar(80)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">cat_no</td>
-        <td class="mono">int unsigned</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">todo_text</td>
-        <td class="mono">varchar(200)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">note</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">_utf8mb4\\'\\'</td>
-        <td class="mono muted">DEFAULT_GENERATED</td>
-      </tr>
-      <tr>
-        <td class="mono">due</td>
-        <td class="mono">date</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">end_date</td>
-        <td class="mono">date</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">done</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">prio</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">normal</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">completed_at</td>
-        <td class="mono">datetime(3)</td>
-        <td>NULL</td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">sort_order</td>
-        <td class="mono">int</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">created_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,cat_no</td><td>→ <code>cal_category</code>.<code>user_id,cat_no</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_todo_comp</td><td class="mono small">((`done` = 1) or (`completed_at` is null))</td></tr><tr><td class="mono">chk_cal_todo_done01</td><td class="mono small">(`done` in (0,1))</td></tr><tr><td class="mono">chk_cal_todo_enddate</td><td class="mono small">((`end_date` is null) or ((`due` is not null) and (`end_date` &gt; `due`)))</td></tr><tr><td class="mono">chk_cal_todo_prio</td><td class="mono small">(`prio` in (_utf8mb4\\'normal\\',_utf8mb4\\'high\\'))</td></tr><tr><td class="mono">chk_cal_todo_uid</td><td class="mono small">(`uid` &lt;&gt; _utf8mb4\\'\\')</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_todo_day_note">
-    <h3><span class="mono">cal_todo_day_note</span><span class="rows" title="개발 DB 행 수 · 더미 포함">169행</span></h3>
-    <p class="purpose">기간 할일의 날짜별 설명. PK=(user_id,todo_no,note_date). 빈 값=행 삭제. 부모 삭제 시 CASCADE.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id,todo_no,note_date</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE, DELETE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">todo_no <span class="tag pk">PK</span></td>
-        <td class="mono">int unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">note_date <span class="tag pk">PK</span></td>
-        <td class="mono">date</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">note_text</td>
-        <td class="mono">mediumtext</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id,todo_no</td><td>→ <code>cal_todo</code>.<code>user_id,todo_no</code></td><td class="mono">UPDATE RESTRICT · DELETE CASCADE</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_todo_day_note_text</td><td class="mono small">(`note_text` &lt;&gt; _utf8mb4\\'\\')</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_user_pref">
-    <h3><span class="mono">cal_user_pref</span><span class="rows" title="개발 DB 행 수 · 더미 포함">1행</span></h3>
-    <p class="purpose">사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">git_author</td>
-        <td class="mono">varchar(120)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">svn_author</td>
-        <td class="mono">varchar(120)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_marker</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">-</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_marker_custom</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_indent</td>
-        <td class="mono">tinyint</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">2</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">git_commit_body</td>
-        <td class="mono">tinyint(1)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_marker_daily</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">-</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_marker_custom_daily</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_indent_daily</td>
-        <td class="mono">tinyint</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">2</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_marker_weekly</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">-</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_marker_custom_weekly</td>
-        <td class="mono">varchar(8)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_indent_weekly</td>
-        <td class="mono">tinyint</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">2</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_font_family</td>
-        <td class="mono">varchar(20)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">report_font_size</td>
-        <td class="mono">tinyint</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">updated_at</td>
-        <td class="mono">datetime(3)</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    <table class="sub"><thead><tr><th>CHECK</th><th>조건</th></tr></thead><tbody><tr><td class="mono">chk_cal_user_pref_marker</td><td class="mono small">((`report_marker` &lt;&gt; _utf8mb4\\'\\') and (`report_marker_daily` &lt;&gt; _utf8mb4\\'\\') and (`report_marker_weekly` &lt;&gt; _utf8mb4\\'\\'))</td></tr><tr><td class="mono">chk_cal_user_pref_indent</td><td class="mono small">((`report_indent` between 0 and 6) and (`report_indent_daily` between 0 and 6) and (`report_indent_weekly` between 0 and 6))</td></tr><tr><td class="mono">chk_cal_user_pref_commit_body</td><td class="mono small">(`git_commit_body` in (0,1))</td></tr><tr><td class="mono">chk_cal_user_pref_font_family</td><td class="mono small">((`report_font_family` in (_utf8mb4\\'\\',_utf8mb4\\'Malgun Gothic\\',_utf8mb4\\'Gulim\\',_utf8mb4\\'Dotum\\',_utf8mb4\\'Batang\\',_utf8mb4\\'NanumGothic\\')) and (not((`report_font_family` like _utf8mb4\\'% \\'))))</td></tr><tr><td class="mono">chk_cal_user_pref_font_size</td><td class="mono small">((`report_font_size` = 0) or (`report_font_size` between 10 and 16))</td></tr></tbody></table>
-  </section>
-  <section class="tbl" id="t-cal_user_rev">
-    <h3><span class="mono">cal_user_rev</span><span class="rows" title="개발 DB 행 수 · 더미 포함">89행</span></h3>
-    <p class="purpose">사용자별 동시성 감시점. 쓰기 첫 문장이 ODKU 로 잡는 행 — 번호 발급도 이 락에 기댄다(H-1). DELETE 금지.</p>
-    <div class="kv">
-      <div><span>PK</span><b class="mono">user_id</b></div>
-      
-      
-      <div><span>앱 권한</span><b class="mono">SELECT, INSERT, UPDATE</b></div>
-      
-    </div>
-    <table class="cols">
-      <thead><tr><th>컬럼</th><th>타입</th><th>NULL</th><th>기본값</th><th>extra</th></tr></thead>
-      <tbody>
-      <tr>
-        <td class="mono">user_id <span class="tag pk">PK</span></td>
-        <td class="mono">smallint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono"></td>
-        <td class="mono muted"></td>
-      </tr>
-      <tr>
-        <td class="mono">rev</td>
-        <td class="mono">bigint unsigned</td>
-        <td><span class="nn">NOT NULL</span></td>
-        <td class="mono">0</td>
-        <td class="mono muted"></td>
-      </tr></tbody>
-    </table>
-    <table class="sub"><thead><tr><th>FK 컬럼</th><th>참조</th><th>동작</th></tr></thead><tbody><tr><td class="mono">user_id</td><td>→ <code>app_user</code>.<code>user_id</code></td><td class="mono">UPDATE RESTRICT · DELETE RESTRICT</td></tr></tbody></table>
-    
-  </section>
-
-<h2 id="history">8월 24일 이후 바뀐 것 <small>마이그레이션 7건</small></h2>
-<div class="grid"><table>
-  <thead><tr><th>날짜</th><th>파일</th><th>내용</th></tr></thead>
-  <tbody><tr><td class="mono">2026-08-24</td><td class="mono small"><a href="deploy/migrate-2026-08-24-user-id.sql">migrate-2026-08-24-user-id.sql</a></td><td>app_user 에 대리키 user_id 를 두고 login_id 는 UNIQUE 로 내렸다. cal_* 의 소유자 키가 전부 user_id 로 바뀌었다.</td></tr><tr><td class="mono">2026-08-24</td><td class="mono small"><a href="deploy/migrate-2026-08-24-org-id.sql">migrate-2026-08-24-org-id.sql</a></td><td>org_unit 의 PK 를 name 에서 org_id 로 옮겼다. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 본부 개명이 1451 로 막히던 것이 계기다. 이름 미러는 남기지 않았다.</td></tr><tr><td class="mono">2026-08-27</td><td class="mono small"><a href="deploy/migrate-2026-08-27-repo-flag.sql">migrate-2026-08-27-repo-flag.sql</a></td><td>cal_category 에 uses_repo 를 더했다.</td></tr><tr><td class="mono">2026-08-27</td><td class="mono small"><a href="deploy/migrate-2026-08-27-sort-order.sql">migrate-2026-08-27-sort-order.sql</a></td><td>cal_category · cal_entry · cal_todo · cal_room 등에 sort_order 를 더해 부팅 조회의 순서를 fromXML() 의 문서 순서와 맞췄다.</td></tr><tr><td class="mono">2026-08-31</td><td class="mono small"><a href="deploy/migrate-2026-08-31-report-daily.sql">migrate-2026-08-31-report-daily.sql</a></td><td>cal_report_daily · cal_report_hours 신설(v5→6). 캘린더가 보낸 일간보고와 과제별 시간.</td></tr><tr><td class="mono">2026-08-31</td><td class="mono small"><a href="deploy/migrate-2026-08-31-report-weekly.sql">migrate-2026-08-31-report-weekly.sql</a></td><td>cal_report_weekly 신설(v6→7).</td></tr><tr><td class="mono">2026-08-31</td><td class="mono small"><a href="deploy/migrate-2026-08-31-sent-only.sql">migrate-2026-08-31-sent-only.sql</a></td><td>cal_report_weekly 를 보낸 것만 담도록 다시 만들었다(v7→8).</td></tr></tbody>
-</table></div>
-<p>9월 7일의 겹쳐보기(C4.1)는 스키마를 바꾸지 않았다. 열람 창 안에서만 도는 화면 기능이다.</p>
-
-<h2 id="about">이 문서</h2>
-<p>이전 판(2026-07-24)은 과제 트랙 5개 표만 다뤘고, 그 뒤의 변경 7건과 캘린더 트랙 16개 표가 빠져 있었다. 이 판은 실제 DB 를 읽어 만들었으므로 손으로 옮기다 어긋날 자리가 없다. 다시 만들려면 개발 PC 에서 아래 두 줄이면 된다.</p>
-<pre class="mono small" style="background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px 14px;overflow-x:auto">TC_TEST_DB_ADMIN_PW=&lt;root 비번&gt; node tools/schema-report/dump-schema.mjs tools/schema-report/schema.json
-node tools/schema-report/build-schema-html.mjs tools/schema-report/schema.json db/table-design-report.html</pre>
-<p class="small muted">컬럼 주석은 DB 에 없어서(0/173) 이 문서에도 없다. 컬럼의 뜻은 정본 md 의 §5.3 과 schema-calendar.sql 의 주석이 담고 있다.</p>
-</main>
+<div class="stats">
+  <div class="stat"><div class="n">23<span class="u">표</span></div><div class="l">과제 7 + 캘린더 16 · 컬럼 173</div></div>
+  <div class="stat"><div class="n">24<span class="u">개</span></div><div class="l">외래키 · 소유자 FK 11개 중 RESTRICT 9</div></div>
+  <div class="stat"><div class="n">33<span class="u">개</span></div><div class="l">CHECK 제약 · 값 형식을 DB 가 지킨다</div></div>
+  <div class="stat"><div class="n">5<span class="u">건</span></div><div class="l">8월 24일 이후 구조 변경</div></div>
 </div>
+
+<section>
+  <h2><span class="idx">01</span>두 무리와 그 사이</h2>
+  <p class="sub">과제 트랙은 project 를 가운데 두고 코드표 셋이 FK 로 붙는다. 캘린더 트랙은 app_user 에서 시작해 과제(cal_category)와 일정(cal_entry)으로 내려간다.</p>
+  <h3>과제 트랙</h3>
+  <div class="er">
+    <div class="ent"><div class="h">customer<small>발주처</small></div><ul><li><span class="key">PK</span> name</li><li>is_active</li></ul></div><div class="rel"><div class="line">──▶</div>project.customer<span class="card-note">UPDATE CASCADE · DELETE 막힘</span></div>
+    <div class="ent"><div class="h">project<small>과제</small></div><ul><li><span class="key">PK</span> id · <span class="key">UQ</span> uid</li><li>section · status · customer</li><li>is_active</li></ul></div><div class="rel"><div class="line">──▶</div>section · status<span class="card-note">UPDATE CASCADE · DELETE RESTRICT</span></div>
+    <div class="ent"><div class="h">section_code · status_code<small>코드표</small></div><ul><li><span class="key">PK</span> name</li><li>sort_order</li></ul></div>
+  </div>
+  <div class="er">
+    <div class="ent"><div class="h">org_unit<small>조직</small></div><ul><li><span class="key">PK</span> org_id · <span class="key">UQ</span> name</li><li>parent_id (자기참조)</li></ul></div><div class="rel"><div class="line">──▶</div>app_user.org_id<span class="card-note">RESTRICT</span></div>
+    <div class="ent"><div class="h">app_user<small>사용자 89명</small></div><ul><li><span class="key">PK</span> user_id · <span class="key">UQ</span> login_id</li><li>org_id · title · view_scope · edit_role</li></ul></div><div class="rel"><div class="line">──▶</div>app_user.title<span class="card-note">title_code.name</span></div>
+    <div class="ent"><div class="h">title_code<small>직급</small></div><ul><li><span class="key">PK</span> name</li><li>sort_order</li></ul></div>
+  </div>
+  <h3>캘린더 트랙</h3>
+  <div class="er">
+    <div class="ent"><div class="h">app_user<small>소유자</small></div><ul><li><span class="key">PK</span> user_id</li></ul></div><div class="rel"><div class="line">──▶</div>user_id 전파<span class="card-note">모든 cal_* 의 선두 키</span></div>
+    <div class="ent"><div class="h">cal_category<small>과제</small></div><ul><li><span class="key">PK</span> user_id · cat_no</li><li><span class="key">UQ</span> user_id · uid</li><li>source · uses_repo · sort_order</li></ul></div><div class="rel"><div class="line">──▶</div>(user_id, cat_no)<span class="card-note">RESTRICT</span></div>
+    <div class="ent"><div class="h">cal_entry<small>일정</small></div><ul><li><span class="key">PK</span> user_id · entry_no</li><li><span class="key">UQ</span> user_id · uid</li><li>entry_date · recur_* · sort_order</li><li>updated_at = 낙관적 잠금</li></ul></div><div class="rel"><div class="line">──▶</div>entry_no<span class="card-note">CASCADE</span></div>
+    <div class="ent"><div class="h">cal_entry_except · cal_entry_commit<small>부속</small></div><ul><li><span class="key">PK</span> user_id · entry_no · (날짜|seq)</li></ul></div>
+  </div>
+  <p class="note">그림에는 선을 이해하는 데 필요한 키만 적었다. 컬럼 전체와 CHECK 는 03 절의 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE) · cal_room · cal_task_hours(과제 FK RESTRICT) · cal_attendance · cal_user_pref · cal_user_rev · cal_migration_log · cal_report_daily(→ cal_report_hours CASCADE) · cal_report_weekly. 보고 기록 두 표만 소유자 FK 가 CASCADE 다.</p>
+</section>
+
+<section>
+  <h2><span class="idx">02</span>배포 전에 볼 것</h2>
+  <p class="sub">개발 PC 에서 확인한 지금 상태와, 폐쇄망 서버에서 달라져야 할 점.</p>
+  <div class="road">
+    <div class="r"><div class="when">접속 범위</div><div class="what"><b>taskmgr_app@% · taskmgr_backup@localhost</b><p>taskmgr_app@% 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</p></div></div>
+    <div class="r"><div class="when">버전</div><div class="what"><b>cal_schema_meta.schema_version = 8</b><p>위젯 빌드 상수와 같아야 부팅한다. 다르면 파괴적 연산만 막고 읽기는 한다.</p></div></div>
+    <div class="r"><div class="when">트리거</div><div class="what"><b>0개</b><p>감사 트리거는 8월 11일에 없앴다. 서버에 트리거가 하나라도 있으면 폐기 전 DB 를 쓰고 있다는 뜻이다.</p></div></div>
+    <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 18,590행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 걷어낸다. 03 절의 행 수는 그 눈으로 읽을 것.</p></div></div>
+    <div class="r"><div class="when">구축</div><div class="what"><b>schema-calendar.sql 한 번</b><p>서버는 처음 세우므로 마이그레이션 파일은 쓰지 않는다. migrate-*.sql 은 이미 선 DB 를 옮길 때만 쓴다.</p></div></div>
+    <div class="r"><div class="when">백업</div><div class="what"><b>backup-taskmgr -Install · restore-taskmgr</b><p>주 1회 등록하고 첫 회차를 되살려 본다. 절차는 deploy/README.md 의 복구 절.</p></div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="idx">03</span>표 한 장씩</h2>
+  <p class="sub">이름 · PK · 개발 DB 행 수 · 앱 계정 권한. 눌러서 펼치면 컬럼과 제약이 나온다. 표 목적은 DB 에 적힌 표 주석 그대로다.</p>
+  <div class="toolbar"><button type="button" data-open="1">모두 펼치기</button><button type="button" data-open="0">모두 접기</button></div>
+  <h3>과제 트랙 7</h3>
+  
+      <details id="t-project">
+        <summary><span class="mono name">project</span><span class="pk">PK id</span><span class="cnt">14행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">과제 마스터. DB 원본. section/status=ENUM, is_active=소프트삭제.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">id</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · 자동 증가</td></tr><tr><td><span class="col">uid</span></td><td><span class="ty">char(36)</span></td><td class="desc-td"><span class="chip uq">UNIQUE</span> · 필수 · 기본 uuid()()</td></tr><tr><td><span class="col">section</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip fk">FK</span> section_code.name · 참조 중이면 부모를 지울 수 없다 · 필수</td></tr><tr><td><span class="col">customer</span></td><td><span class="ty">varchar(100)</span></td><td class="desc-td"><span class="chip fk">FK</span> customer.name · 참조 중이면 부모를 지울 수 없다 · 필수</td></tr><tr><td><span class="col">project_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">contract_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">common_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">start_date</span></td><td><span class="ty">date</span></td><td class="desc-td"></td></tr><tr><td><span class="col">end_date</span></td><td><span class="ty">date</span></td><td class="desc-td"></td></tr><tr><td><span class="col">status</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip fk">FK</span> status_code.name · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">note</span></td><td><span class="ty">varchar(500)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>status</code> · <code>is_active</code> · <code>customer</code> · <code>section</code> · UNIQUE <code>uid</code></p>
+          
+          
+        </div>
+      </details>
+      <details id="t-customer">
+        <summary><span class="mono name">customer</span><span class="pk">PK name</span><span class="cnt">8행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">발주처 마스터. name=자연키. Admin 관리.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(100)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          
+          
+          <p class="note">이 표를 참조: <a href="#t-project"><code>project</code></a></p>
+        </div>
+      </details>
+      <details id="t-section_code">
+        <summary><span class="mono name">section_code</span><span class="pk">PK name</span><span class="cnt">3행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">과제 구분 코드값. name 이 자연키이고 project.section 이 참조한다.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          
+          
+          <p class="note">이 표를 참조: <a href="#t-project"><code>project</code></a></p>
+        </div>
+      </details>
+      <details id="t-status_code">
+        <summary><span class="mono name">status_code</span><span class="pk">PK name</span><span class="cnt">4행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">과제 상태 코드값. name 이 자연키이고 project.status 가 참조한다.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          
+          
+          <p class="note">이 표를 참조: <a href="#t-project"><code>project</code></a></p>
+        </div>
+      </details>
+      <details id="t-app_user">
+        <summary><span class="mono name">app_user</span><span class="pk">PK user_id</span><span class="cnt">89행</span><span class="pv">읽기</span></summary>
+        <div class="body">
+          <p class="purpose">사용자. 인증은 netcus, 여기는 인가만. 비밀번호 컬럼 없음. 소속 정본은 org_id 하나 — 이름 미러 없음.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · 자동 증가</td></tr><tr><td><span class="col">login_id</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip uq">UNIQUE</span> · 필수</td></tr><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">title</span></td><td><span class="ty">varchar(30)</span></td><td class="desc-td"><span class="chip fk">FK</span> title_code.name · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">org_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip fk">FK</span> org_unit.org_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">view_scope</span></td><td><span class="ty">varchar(20)</span></td><td class="desc-td">필수 · 기본 self · CHECK 1개</td></tr><tr><td><span class="col">edit_role</span></td><td><span class="ty">varchar(20)</span></td><td class="desc-td">필수 · 기본 viewer · CHECK 1개</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>org_id</code> · <code>title</code> · <code>is_active</code> · UNIQUE <code>login_id</code></p>
+          <p class="note">CHECK 2개: <code>(`edit_role` in (_utf8mb4\\'viewer\\',_utf8mb4\\'editor\\',_utf8mb4\\'admin\\'))</code> · <code>(`view_scope` in (_utf8mb4\\'self\\',_utf8mb4\\'unit_tree\\',_utf8mb4\\'all\\'))</code></p>
+          <p class="note">이 표를 참조: <a href="#t-cal_attendance"><code>cal_attendance</code></a> · <a href="#t-cal_category"><code>cal_category</code></a> · <a href="#t-cal_entry"><code>cal_entry</code></a> · <a href="#t-cal_migration_log"><code>cal_migration_log</code></a> · <a href="#t-cal_report_daily"><code>cal_report_daily</code></a> · <a href="#t-cal_report_weekly"><code>cal_report_weekly</code></a> · <a href="#t-cal_room"><code>cal_room</code></a> · <a href="#t-cal_task_hours"><code>cal_task_hours</code></a> · <a href="#t-cal_todo"><code>cal_todo</code></a> · <a href="#t-cal_user_pref"><code>cal_user_pref</code></a> · <a href="#t-cal_user_rev"><code>cal_user_rev</code></a></p>
+        </div>
+      </details>
+      <details id="t-org_unit">
+        <summary><span class="mono name">org_unit</span><span class="pk">PK org_id</span><span class="cnt">12행</span><span class="pv">읽기</span></summary>
+        <div class="body">
+          <p class="purpose">조직 트리. PK=org_id(내부 정체성) · name=UNIQUE. 계층 정본은 parent_id 하나 — 이름 미러 없음.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">org_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · 자동 증가</td></tr><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip uq">UNIQUE</span> · 필수</td></tr><tr><td><span class="col">parent_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip fk">FK</span> org_unit.org_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>parent_id</code> · UNIQUE <code>name</code></p>
+          
+          <p class="note">이 표를 참조: <a href="#t-app_user"><code>app_user</code></a> · <a href="#t-org_unit"><code>org_unit</code></a></p>
+        </div>
+      </details>
+      <details id="t-title_code">
+        <summary><span class="mono name">title_code</span><span class="pk">PK name</span><span class="cnt">11행</span><span class="pv">읽기</span></summary>
+        <div class="body">
+          <p class="purpose">직급 코드. 표시·정렬 전용 — 권한 판정에 쓰지 않는다.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(30)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          
+          
+          <p class="note">이 표를 참조: <a href="#t-app_user"><code>app_user</code></a></p>
+        </div>
+      </details>
+  <h3>캘린더 트랙 16</h3>
+  
+      <details id="t-cal_attendance">
+        <summary><span class="mono name">cal_attendance</span><span class="pk">PK user_id,work_date</span><span class="cnt">5,837행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">work_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">status</span></td><td><span class="ty">varchar(2)</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">overtime</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          
+          <p class="note">CHECK 2개: <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code> · <code>((`status` in (_utf8mb4\\'1\\',_utf8mb4\\'2\\',_utf8mb4\\'3\\',_utf8mb4\\'4\\',_utf8mb4\\'5\\',_utf8mb4\\'6\\',_utf8mb4\\'7\\',_utf8mb4\\'9\\',_utf8mb4\\'10\\',_utf8mb4\\'11\\',_utf8mb4\\'12\\')) and (not((`status` like _utf8mb4\\'% \\'))))</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_category">
+        <summary><span class="mono name">cal_category</span><span class="pk">PK user_id,cat_no</span><span class="cnt">711행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">캘린더 과제(카테고리). source=local(개인)/db(공식). PK=(user_id,cat_no), 앱 id 는 uid(user_id 안에서 UNIQUE).</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다 · UNIQUE(user_id,uid)</td></tr><tr><td><span class="col">cat_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">uid</span></td><td><span class="ty">varchar(80)</span></td><td class="desc-td">UNIQUE(user_id,uid) · 필수 · CHECK 2개</td></tr><tr><td><span class="col">source</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 local · CHECK 2개</td></tr><tr><td><span class="col">name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">color</span></td><td><span class="ty">char(7)</span></td><td class="desc-td">필수 · 기본 #5b6b7d · CHECK 1개</td></tr><tr><td><span class="col">description</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">project_uid</span></td><td><span class="ty">char(36)</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">uses_repo</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,sort_order</code> · UNIQUE <code>user_id,uid</code></p>
+          <p class="note">CHECK 5개: <code>regexp_like(`color`,_utf8mb4\\'^#[0-9a-fA-F]{6}$\\')</code> · <code>(((`source` = _utf8mb4\\'db\\') and (`project_uid` is not null) and (char_length(`uid`) = 39) and (substr(`uid`,1,3) = _utf8mb4\\'db-\\') and ((`project_uid` collate utf8mb4_0900_bin) = substr(`uid`,4))) or ((`source` = _utf8mb4\\'local\\') and (`project_uid` is null)))</code> · <code>(`source` in (_utf8mb4\\'local\\',_utf8mb4\\'db\\'))</code> · <code>(`uid` &lt;&gt; _utf8mb4\\'\\')</code> · <code>(`uses_repo` in (0,1))</code></p>
+          <p class="note">이 표를 참조: <a href="#t-cal_entry"><code>cal_entry</code></a> · <a href="#t-cal_task_hours"><code>cal_task_hours</code></a> · <a href="#t-cal_todo"><code>cal_todo</code></a></p>
+        </div>
+      </details>
+      <details id="t-cal_entry">
+        <summary><span class="mono name">cal_entry</span><span class="pk">PK user_id,entry_no</span><span class="cnt">3,625행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">일정. PK=(user_id,entry_no), 앱 id 는 uid. 반복은 recur_* 로 평탄화. updated_at=낙관적 잠금 토큰.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_category.user_id,cat_no · 참조 중이면 부모를 지울 수 없다 · UNIQUE(user_id,uid)</td></tr><tr><td><span class="col">entry_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">uid</span></td><td><span class="ty">varchar(80)</span></td><td class="desc-td">UNIQUE(user_id,uid) · 필수 · CHECK 1개</td></tr><tr><td><span class="col">cat_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip fk">FK</span> cal_category.user_id,cat_no · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">entry_date</span></td><td><span class="ty">date</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">end_date</span></td><td><span class="ty">date</span></td><td class="desc-td">CHECK 2개</td></tr><tr><td><span class="col">all_day</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 0 · CHECK 2개</td></tr><tr><td><span class="col">start_time</span></td><td><span class="ty">time</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">end_time</span></td><td><span class="ty">time</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">title</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">memo</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수 · 기본 _utf8mb4\\'\\'()</td></tr><tr><td><span class="col">source</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · CHECK 2개</td></tr><tr><td><span class="col">location</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">remind</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">recur_freq</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">CHECK 2개</td></tr><tr><td><span class="col">recur_interval</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">recur_until</span></td><td><span class="ty">char(10)</span></td><td class="desc-td">CHECK 2개</td></tr><tr><td><span class="col">recur_count</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,cat_no</code> · <code>user_id,entry_date</code> · UNIQUE <code>user_id,uid</code></p>
+          <p class="note">CHECK 9개: <code>((`all_day` = 0) or ((`start_time` is null) and (`end_time` is null)))</code> · <code>(`all_day` in (0,1))</code> · <code>((`end_date` is null) or (`end_date` &gt; `entry_date`))</code> · <code>((`source` &lt;&gt; _utf8mb4\\'git\\') or ((`end_date` is null) and (`recur_freq` is null)))</code> · <code>(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in (_utf8mb4\\'weekly\\',_utf8mb4\\'monthly\\')) and (`recur_interval` is not null) and (`recur_interval` &gt;= 1) and (`recur_count` is not null) and (`recur_count` &gt;= 0)))</code> · <code>((`remind` is null) or (`remind` between 0 and 10080))</code> · <code>(`source` in (_utf8mb4\\'\\',_utf8mb4\\'git\\'))</code> · <code>(`uid` &lt;&gt; _utf8mb4\\'\\')</code> · <code>((`recur_until` is null) or regexp_like(`recur_until`,_utf8mb4\\'^[0-9]{4}-[0-9]{2}-[0-9]{2}$\\'))</code></p>
+          <p class="note">이 표를 참조: <a href="#t-cal_entry_commit"><code>cal_entry_commit</code></a> · <a href="#t-cal_entry_except"><code>cal_entry_except</code></a></p>
+        </div>
+      </details>
+      <details id="t-cal_entry_commit">
+        <summary><span class="mono name">cal_entry_commit</span><span class="pk">PK user_id,entry_no,seq</span><span class="cnt">708행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">일정에 붙은 커밋 목록. PK=(user_id,entry_no,seq). 부팅 조회 제외(지연 로드). seq=배열 인덱스 0-base.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_entry.user_id,entry_no · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">entry_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_entry.user_id,entry_no · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">seq</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">hash</span></td><td><span class="ty">varchar(64)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">short_hash</span></td><td><span class="ty">varchar(64)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">commit_time</span></td><td><span class="ty">time</span></td><td class="desc-td"></td></tr><tr><td><span class="col">subject</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수 · 기본 _utf8mb4\\'\\'()</td></tr><tr><td><span class="col">body</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수 · 기본 _utf8mb4\\'\\'()</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,hash</code></p>
+          
+          
+        </div>
+      </details>
+      <details id="t-cal_entry_except">
+        <summary><span class="mono name">cal_entry_except</span><span class="pk">PK user_id,entry_no,except_date</span><span class="cnt">326행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">반복 일정의 예외일. PK=(user_id,entry_no,except_date). 부모 삭제 시 CASCADE. UPDATE 없음.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_entry.user_id,entry_no · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">entry_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_entry.user_id,entry_no · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">except_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr></tbody></table></div>
+          
+          
+          
+        </div>
+      </details>
+      <details id="t-cal_migration_log">
+        <summary><span class="mono name">cal_migration_log</span><span class="pk">PK user_id</span><span class="cnt">1행</span><span class="pv">읽기·추가</span></summary>
+        <div class="body">
+          <p class="purpose">data.xml→DB 1회성 이관 마커(사람 단위). PK=(user_id). 행 존재=이관 완료, 재실행 거부 근거.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">source_host</span></td><td><span class="ty">varchar(255)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">migrated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          
+          
+          
+        </div>
+      </details>
+      <details id="t-cal_report_daily">
+        <summary><span class="mono name">cal_report_daily</span><span class="pk">PK user_id,work_date</span><span class="cnt">0행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">work_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">status</span></td><td><span class="ty">varchar(2)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">overtime</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">content</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">sent_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          
+          
+          <p class="note">이 표를 참조: <a href="#t-cal_report_hours"><code>cal_report_hours</code></a></p>
+        </div>
+      </details>
+      <details id="t-cal_report_hours">
+        <summary><span class="mono name">cal_report_hours</span><span class="pk">PK user_id,work_date,line_no</span><span class="cnt">0행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_report_daily.user_id,work_date · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">work_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_report_daily.user_id,work_date · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">line_no</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">task_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">cat_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"></td></tr><tr><td><span class="col">hours</span></td><td><span class="ty">decimal(5,2)</span></td><td class="desc-td">필수 · CHECK 1개</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,cat_no,work_date</code></p>
+          <p class="note">CHECK 1개: <code>(`hours` &gt;= 0)</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_report_weekly">
+        <summary><span class="mono name">cal_report_weekly</span><span class="pk">PK user_id,period_start</span><span class="cnt">0행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">캘린더가 작성한 주간보고. 사이트의 현재 상태가 아니다 - 사용자가 폼에서 보완한 내용은 담기지 않는다</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">period_start</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span> · CHECK 1개</td></tr><tr><td><span class="col">period_end</span></td><td><span class="ty">date</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">subject</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">content</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">endwork</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">plan</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">composed_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)()</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
+          
+          <p class="note">CHECK 1개: <code>(`period_start` &lt;= `period_end`)</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_room">
+        <summary><span class="mono name">cal_room</span><span class="pk">PK user_id,name</span><span class="cnt">3행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">장소(회의실) 빠른선택. PK=(user_id,name) — 이 표만 자연키 유지(표 머리 ★★ 판정). 행 0개=빈 목록.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">name</span></td><td><span class="ty">varchar(40)</span></td><td class="desc-td"><span class="chip pk">PK</span> · CHECK 1개</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,sort_order</code></p>
+          <p class="note">CHECK 1개: <code>(`name` &lt;&gt; _utf8mb4\\'\\')</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_schema_meta">
+        <summary><span class="mono name">cal_schema_meta</span><span class="pk">PK k</span><span class="cnt">1행</span><span class="pv">읽기</span></summary>
+        <div class="body">
+          <p class="purpose">스키마 버전 행(§5.5). 앱은 SELECT 만 — 위젯 빌드 상수와 비교해 파괴적 연산만 차단.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">k</span></td><td><span class="ty">varchar(32)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">v</span></td><td><span class="ty">varchar(64)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          
+          
+          
+        </div>
+      </details>
+      <details id="t-cal_task_hours">
+        <summary><span class="mono name">cal_task_hours</span><span class="pk">PK user_id,work_date,cat_no</span><span class="cnt">6,561행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_category.user_id,cat_no · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">work_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">cat_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_category.user_id,cat_no · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">hours</span></td><td><span class="ty">decimal(4,2)</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,cat_no</code></p>
+          <p class="note">CHECK 1개: <code>((`hours` &gt; 0) and (`hours` &lt;= 24))</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_todo">
+        <summary><span class="mono name">cal_todo</span><span class="pk">PK user_id,todo_no</span><span class="cnt">558행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">할 일. PK=(user_id,todo_no), 앱 id 는 uid. end_date 유무로 단일/기간이 갈린다.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_category.user_id,cat_no · 참조 중이면 부모를 지울 수 없다 · UNIQUE(user_id,uid)</td></tr><tr><td><span class="col">todo_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">uid</span></td><td><span class="ty">varchar(80)</span></td><td class="desc-td">UNIQUE(user_id,uid) · 필수 · CHECK 1개</td></tr><tr><td><span class="col">cat_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip fk">FK</span> cal_category.user_id,cat_no · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">todo_text</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">note</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수 · 기본 _utf8mb4\\'\\'()</td></tr><tr><td><span class="col">due</span></td><td><span class="ty">date</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">end_date</span></td><td><span class="ty">date</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">done</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 0 · CHECK 2개</td></tr><tr><td><span class="col">prio</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 normal · CHECK 1개</td></tr><tr><td><span class="col">completed_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">CHECK 1개</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          <p class="note">인덱스: <code>user_id,cat_no</code> · <code>user_id,due</code> · UNIQUE <code>user_id,uid</code></p>
+          <p class="note">CHECK 5개: <code>((`done` = 1) or (`completed_at` is null))</code> · <code>(`done` in (0,1))</code> · <code>((`end_date` is null) or ((`due` is not null) and (`end_date` &gt; `due`)))</code> · <code>(`prio` in (_utf8mb4\\'normal\\',_utf8mb4\\'high\\'))</code> · <code>(`uid` &lt;&gt; _utf8mb4\\'\\')</code></p>
+          <p class="note">이 표를 참조: <a href="#t-cal_todo_day_note"><code>cal_todo_day_note</code></a></p>
+        </div>
+      </details>
+      <details id="t-cal_todo_day_note">
+        <summary><span class="mono name">cal_todo_day_note</span><span class="pk">PK user_id,todo_no,note_date</span><span class="cnt">169행</span><span class="pv">전부</span></summary>
+        <div class="body">
+          <p class="purpose">기간 할일의 날짜별 설명. PK=(user_id,todo_no,note_date). 빈 값=행 삭제. 부모 삭제 시 CASCADE.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_todo.user_id,todo_no · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">todo_no</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> cal_todo.user_id,todo_no · 부모를 지우면 함께 지워진다</td></tr><tr><td><span class="col">note_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">note_text</span></td><td><span class="ty">mediumtext</span></td><td class="desc-td">필수 · CHECK 1개</td></tr></tbody></table></div>
+          
+          <p class="note">CHECK 1개: <code>(`note_text` &lt;&gt; _utf8mb4\\'\\')</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_user_pref">
+        <summary><span class="mono name">cal_user_pref</span><span class="pk">PK user_id</span><span class="cnt">1행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">git_author</span></td><td><span class="ty">varchar(120)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">svn_author</span></td><td><span class="ty">varchar(120)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_marker</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 - · CHECK 1개</td></tr><tr><td><span class="col">report_marker_custom</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_indent</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 2 · CHECK 1개</td></tr><tr><td><span class="col">git_commit_body</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">report_marker_daily</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 - · CHECK 1개</td></tr><tr><td><span class="col">report_marker_custom_daily</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_indent_daily</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 2 · CHECK 1개</td></tr><tr><td><span class="col">report_marker_weekly</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 - · CHECK 1개</td></tr><tr><td><span class="col">report_marker_custom_weekly</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_indent_weekly</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 2 · CHECK 1개</td></tr><tr><td><span class="col">report_font_family</span></td><td><span class="ty">varchar(20)</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">report_font_size</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
+          
+          <p class="note">CHECK 5개: <code>((`report_marker` &lt;&gt; _utf8mb4\\'\\') and (`report_marker_daily` &lt;&gt; _utf8mb4\\'\\') and (`report_marker_weekly` &lt;&gt; _utf8mb4\\'\\'))</code> · <code>((`report_indent` between 0 and 6) and (`report_indent_daily` between 0 and 6) and (`report_indent_weekly` between 0 and 6))</code> · <code>(`git_commit_body` in (0,1))</code> · <code>((`report_font_family` in (_utf8mb4\\'\\',_utf8mb4\\'Malgun Gothic\\',_utf8mb4\\'Gulim\\',_utf8mb4\\'Dotum\\',_utf8mb4\\'Batang\\',_utf8mb4\\'NanumGothic\\')) and (not((`report_font_family` like _utf8mb4\\'% \\'))))</code> · <code>((`report_font_size` = 0) or (`report_font_size` between 10 and 16))</code></p>
+          
+        </div>
+      </details>
+      <details id="t-cal_user_rev">
+        <summary><span class="mono name">cal_user_rev</span><span class="pk">PK user_id</span><span class="cnt">89행</span><span class="pv">읽기·추가·수정</span></summary>
+        <div class="body">
+          <p class="purpose">사용자별 동시성 감시점. 쓰기 첫 문장이 ODKU 로 잡는 행 — 번호 발급도 이 락에 기댄다(H-1). DELETE 금지.</p>
+          <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">rev</span></td><td><span class="ty">bigint unsigned</span></td><td class="desc-td">필수 · 기본 0</td></tr></tbody></table></div>
+          
+          
+          
+        </div>
+      </details>
+</section>
+
+<section>
+  <h2><span class="idx">04</span>앱 계정의 권한</h2>
+  <p class="sub">taskmgr_app 의 GRANT 를 표별로 묶었다. DELETE 가 빠진 표는 앱에 그 경로가 없다는 뜻이다.</p>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>권한</th><th>표</th></tr></thead>
+    <tbody>
+      <tr><td><b>전부</b></td><td class="desc-td"><code>cal_attendance</code> · <code>cal_category</code> · <code>cal_entry</code> · <code>cal_entry_commit</code> · <code>cal_entry_except</code> · <code>cal_report_hours</code> · <code>cal_room</code> · <code>cal_task_hours</code> · <code>cal_todo</code> · <code>cal_todo_day_note</code></td></tr>
+      <tr><td><b>읽기·추가·수정</b></td><td class="desc-td"><code>cal_report_daily</code> · <code>cal_report_weekly</code> · <code>cal_user_pref</code> · <code>cal_user_rev</code> · <code>customer</code> · <code>project</code> · <code>section_code</code> · <code>status_code</code><br><span class="note">cal_user_rev 는 단조증가 카운터라 지우면 안 되고, 보고 기록은 보낸 사실이라 지우지 않는다.</span></td></tr>
+      <tr><td><b>읽기·추가</b></td><td class="desc-td"><code>cal_migration_log</code></td></tr>
+      <tr><td><b>읽기</b></td><td class="desc-td"><code>app_user</code> · <code>cal_schema_meta</code> · <code>org_unit</code> · <code>title_code</code></td></tr>
+      
+    </tbody>
+  </table></div>
+  <p class="note">원문은 <a href="deploy/grants-calendar.sql">deploy/grants-calendar.sql</a>. 백업 계정 taskmgr_backup@localhost 는 SELECT 와 TRIGGER 만 갖는다.</p>
+</section>
+
+<section>
+  <h2><span class="idx">05</span>지킨다 · 하지 않는다</h2>
+  <p class="sub">이 구조를 이어받는 사람이 알아야 할 규칙. 어기면 오류 없이 조용히 깨진다.</p>
+  <div class="grid2">
+    <div class="panel"><h4><span class="bar"></span>지킨다</h4><ul class="lst">
+      <li><b>쓰기 트랜잭션의 첫 문장은 cal_user_rev 의 rev 증가</b> <span class="why">그 행의 락이 번호 발급과 동시 편집을 막는다.</span></li>
+      <li><b>UPDATE·DELETE 는 updated_at 을 비교한다</b> <span class="why">영향 행이 0 이면 충돌이다. 덮어쓰지 않는다.</span></li>
+      <li><b>읽기는 REPEATABLE READ, 쓰기는 READ COMMITTED</b> <span class="why">부팅 조회 한 트랜잭션이 한 시점을 본다.</span></li>
+      <li><b>새 컬럼은 NULL 허용이거나 DEFAULT 가 있어야 한다</b> <span class="why">구버전 위젯이 같은 DB 를 쓰는 기간이 있다.</span></li>
+      <li><b>cal_attendance 는 미기록이면 행이 없다</b> <span class="why">되돌리기는 DELETE 다. 기본값을 두면 이 계약이 깨진다.</span></li>
+    </ul></div>
+    <div class="panel dont"><h4><span class="bar"></span>하지 않는다</h4><ul class="lst">
+      <li><b>cal_user_rev 를 지우지 않는다</b> <span class="why">단조증가가 동기화의 기준이다.</span></li>
+      <li><b>데이터 표의 소유자 FK 를 CASCADE 로 바꾸지 않는다</b> <span class="why">app_user 한 행 삭제가 캘린더 침묵 삭제가 된다. CASCADE 는 보고 기록 cal_report_daily · cal_report_weekly 두 표에만 있다.</span></li>
+      <li><b>login_id 를 키로 다시 쓰지 않는다</b> <span class="why">사내 사이트의 값이라 바뀔 수 있고, 그래서 user_id 를 두었다.</span></li>
+      <li><b>이름에 하드 유니크를 걸지 않는다</b> <span class="why">발주처·사업명 중복은 정상 업무 패턴이다(07-24 판의 실데이터 검수).</span></li>
+      <li><b>보고 기록 표를 사이트 상태의 거울로 보지 않는다</b> <span class="why">캘린더가 보낸 것만 담는다.</span></li>
+    </ul></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="idx">06</span>8월 24일 이후 바뀐 것</h2>
+  <p class="sub">07-24 판 이후의 구조 변경. 9월 7일의 겹쳐보기는 화면 기능이라 스키마를 바꾸지 않았다.</p>
+  <div class="road">
+    <div class="r"><div class="when">08-24</div><div class="what"><b>user_id 대리키</b><p>app_user 에 user_id 를 두고 login_id 는 UNIQUE 로 내렸다. cal_* 의 소유자 키가 전부 user_id 로 바뀌었다. login_id 는 사내 보고 사이트의 값이라 우리가 못 바꾸는데 참조가 여러 경로라 개명이 실행조차 안 됐기 때문이다.</p></div></div><div class="r"><div class="when">08-24</div><div class="what"><b>org_unit 대리키</b><p>PK 를 name 에서 org_id 로 옮겼다. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 본부 개명이 1451 로 막히던 것을 실측하고 바꿨다. 이름 미러는 남기지 않았다.</p></div></div><div class="r"><div class="when">08-27</div><div class="what"><b>uses_repo</b><p>cal_category 에 저장소 사용 여부를 더했다.</p></div></div><div class="r"><div class="when">08-27</div><div class="what"><b>sort_order</b><p>cal_category · cal_entry · cal_todo · cal_room 에 순서 컬럼을 더해 부팅 조회의 순서를 앱의 문서 순서와 맞췄다.</p></div></div><div class="r"><div class="when">08-31</div><div class="what"><b>보고 기록 3표</b><p>cal_report_daily · cal_report_hours(v6) · cal_report_weekly(v7) 를 만들고, 주간은 보낸 것만 담도록 다시 만들었다(v8). 캘린더가 만든 것만 담고 사이트의 현재 상태는 담지 않는다.</p></div></div>
+  </div>
+</section>
+
+<footer>
+  정본 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> · DDL 단일 소스 <a href="deploy/schema-calendar.sql">deploy/schema-calendar.sql</a> · 마이그레이션 <a href="deploy/">deploy/migrate-*.sql</a><br>
+  이 문서는 <code>information_schema</code> 에서 생성했다. 다시 만들려면 <code>TC_TEST_DB_ADMIN_PW=&lt;root 비번&gt; node tools/schema-report/dump-schema.mjs tools/schema-report/schema.json</code> 뒤에 <code>node tools/schema-report/build-schema-html.mjs tools/schema-report/schema.json db/table-design-report.html</code>.<br>
+  컬럼 주석은 DB 에 없어(0/173) 설명 열은 키·제약·기본값으로 채웠다. 컬럼의 뜻은 정본 md 의 5.3 절과 schema-calendar.sql 의 주석에 있다.
+</footer>
+</div>
+<script>
+  for (const b of document.querySelectorAll('.toolbar button')) b.addEventListener('click', () => { const open = b.dataset.open === '1'; for (const d of document.querySelectorAll('details')) d.open = open; });
+  if (location.hash) { const t = document.querySelector(location.hash); if (t && t.tagName === 'DETAILS') t.open = true; }
+  document.addEventListener('click', (e) => { const a = e.target.closest('a[href^="#t-"]'); if (!a) return; const t = document.querySelector(a.getAttribute('href')); if (t) t.open = true; });
+</script>
 </body>
 </html>
