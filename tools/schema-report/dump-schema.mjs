@@ -1,0 +1,21 @@
+// 실제 DB(information_schema)에서 스키마를 JSON 으로. 읽기 전용.
+//   사용: TC_TEST_DB_ADMIN_PW=<root 비번> node tools/schema-report/dump-schema.mjs <out.json>
+//   비밀번호는 환경변수로만 받는다(명령줄·소스에 두지 않는다).
+import { spawnSync } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+const MY=process.env.TC_TEST_MYSQL||'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe', DB=process.env.TC_TEST_DB_NAME||'taskmgr';
+if(!process.env.TC_TEST_DB_ADMIN_PW){ console.error('TC_TEST_DB_ADMIN_PW 가 필요하다'); process.exit(2); }
+if(!process.argv[2]){ console.error('사용: node dump-schema.mjs <out.json>'); process.exit(2); }
+const q=(sql)=>{const r=spawnSync(MY,['-uroot','--default-character-set=utf8mb4','-NB','-e',sql],{encoding:'utf8',env:{...process.env,MYSQL_PWD:process.env.TC_TEST_DB_ADMIN_PW||''}}); if(r.status!==0) throw new Error(r.stderr); return (r.stdout||'').split(/\r?\n/).filter(Boolean).map(l=>l.split('\t').map(c=>c==='NULL'?null:c));};
+const S=`'${DB}'`;
+const tables=q(`SELECT TABLE_NAME, ENGINE, TABLE_ROWS, IFNULL(TABLE_COMMENT,''), TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA=${S} AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME`).map(([name,engine,rows,comment,coll])=>({name,engine,rows:Number(rows),comment,coll}));
+for(const t of tables){
+  t.exact=Number(q(`SELECT COUNT(*) FROM ${DB}.${t.name}`)[0][0]);
+  t.columns=q(`SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, IFNULL(COLUMN_DEFAULT,'∅'), COLUMN_KEY, EXTRA, IFNULL(COLUMN_COMMENT,'') FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=${S} AND TABLE_NAME='${t.name}' ORDER BY ORDINAL_POSITION`).map(([name,type,nullable,def,key,extra,comment])=>({name,type,nullable:nullable==='YES',def:def==='∅'?null:def,key,extra,comment}));
+  t.indexes=q(`SELECT INDEX_NAME, NON_UNIQUE, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=${S} AND TABLE_NAME='${t.name}' GROUP BY INDEX_NAME, NON_UNIQUE ORDER BY INDEX_NAME`).map(([name,nu,cols])=>({name,unique:nu==='0',cols}));
+  t.fks=q(`SELECT k.CONSTRAINT_NAME, GROUP_CONCAT(k.COLUMN_NAME ORDER BY k.ORDINAL_POSITION), k.REFERENCED_TABLE_NAME, GROUP_CONCAT(k.REFERENCED_COLUMN_NAME ORDER BY k.ORDINAL_POSITION), r.UPDATE_RULE, r.DELETE_RULE FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME WHERE k.TABLE_SCHEMA=${S} AND k.TABLE_NAME='${t.name}' AND k.REFERENCED_TABLE_NAME IS NOT NULL GROUP BY k.CONSTRAINT_NAME, k.REFERENCED_TABLE_NAME, r.UPDATE_RULE, r.DELETE_RULE`).map(([name,cols,ref,refCols,upd,del])=>({name,cols,ref,refCols,upd,del}));
+  t.checks=q(`SELECT c.CONSTRAINT_NAME, c.CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS c JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME=c.CONSTRAINT_NAME WHERE t.TABLE_SCHEMA=${S} AND t.TABLE_NAME='${t.name}' AND t.CONSTRAINT_TYPE='CHECK'`).map(([name,clause])=>({name,clause}));
+}
+const meta={schemaVersion:(q(`SELECT v FROM ${DB}.cal_schema_meta WHERE k='schema_version'`)[0]||[null])[0], mysql:q('SELECT VERSION()')[0][0], charset:q(`SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=${S}`)[0], triggers:Number(q(`SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=${S}`)[0][0]), routines:Number(q(`SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=${S}`)[0][0]), views:Number(q(`SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA=${S}`)[0][0]), grants:q(`SHOW GRANTS FOR 'taskmgr_app'@'%'`).map(r=>r[0]), users:q(`SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user LIKE 'taskmgr%'`).map(r=>r[0]), dumpedAt:new Date().toISOString()};
+writeFileSync(process.argv[2], JSON.stringify({meta,tables},null,1),'utf8');
+console.log(`표 ${tables.length} · 컬럼 ${tables.reduce((a,t)=>a+t.columns.length,0)} · FK ${tables.reduce((a,t)=>a+t.fks.length,0)} · CHECK ${tables.reduce((a,t)=>a+t.checks.length,0)} · 인덱스 ${tables.reduce((a,t)=>a+t.indexes.length,0)} · schema v${meta.schemaVersion} · MySQL ${meta.mysql} · 트리거 ${meta.triggers} 루틴 ${meta.routines} 뷰 ${meta.views}`);
+console.log('GRANT 줄 '+meta.grants.length+' · 계정 '+meta.users.join(', '));
