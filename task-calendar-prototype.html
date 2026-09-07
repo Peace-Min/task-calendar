@@ -15,6 +15,7 @@
   --faint:#9aa2b3;        /* 1px 테두리·비활성 전용(본문 금지, 약 2.6:1) */
   --faint-text:#6c7488;   /* 약화된 '본문' 텍스트용(완료·힌트) — #fff에서 4.68:1로 AA(일반 4.5:1) 충족 */
   --chip-outline:#818a9e; /* hollow 할 일 칩 경계 — #fff에서 3.38:1로 비텍스트 3:1 충족(모양 신호 강화) */
+  --mine-ink:#4b5563;     /* C4.1 '내 일정 겹'(열람 창) 전용 중립 잉크 — 과제 색과 절대 안 겹치게 무채색. #fff에서 7.6:1 */
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --accent-fill:var(--accent);    /* 흰 글자를 얹는 accent '채움' 전용 — 테마의 --accent가 흰 글자에서 AA 미달이면 여기만 어둡게 리맵 */
@@ -1316,9 +1317,31 @@ body[data-peer] .cell:hover{ background:inherit }
            border-radius:8px; background:var(--bg); display:block }
 #peerBanner{ display:none }
 body[data-peer] #peerBanner{
-  display:block; padding:6px 12px; font-size:12px; text-align:center;
+  display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap;
+  padding:6px 12px; font-size:12px; text-align:center;
   background:var(--panel); color:var(--muted);
   border-bottom:1px solid var(--line); letter-spacing:.01em }
+/*  띠 안의 토글 — 앱의 기존 체크박스 관례(.check)를 그대로 쓴다(새 컴포넌트를 만들지 않는다).
+    띠 글자 크기(12px)에 맞추는 것만 여기서 덮는다. */
+body[data-peer] #peerBanner .check{ font-size:12px !important; color:var(--muted) !important; gap:5px }
+body[data-peer] #peerBanner .check input{ width:13px; height:13px }
+.peer-legend{ display:inline-flex; align-items:center; gap:5px }
+.peer-legend i{ display:inline-block; width:16px; height:0; border-top:1.5px dashed var(--mine-ink) }
+
+/* ── C4.1 내 일정 겹(열람 창 전용) ─────────────────────────────────────────
+   ★ **과제 색을 쓰지 않는다.** 내 겹에 과제 색을 주면 상대의 어떤 과제 색과도 부딪힐 수 있고,
+     그 순간 "이건 누구 것인가"가 색으로는 안 읽힌다. 그래서 모양으로 가른다:
+     점선 · 채움 없음 · 중립 잉크(--mine-ink) 하나. 상대 칩은 지금 그대로 두는 게 요점이다.
+   ★ catById(null) → validColor 기본색이 style 로 들어오는 건 정상이다(칩 생성 경로가 하나다).
+     그 인라인 style 을 이기려면 !important 가 필요하다 — 여기서만 쓴다.
+   ★ 토글이 꺼지면 body 의 data-peer-overlay 가 사라지고 겹이 통째로 안 보인다.
+     :not() 로 '끈 상태'를 겨냥해야 렌더 없이도 즉시 반응한다(렌더는 「+N」 때문에 따로 돈다). */
+body[data-peer] .chip.chip-mine{ background:transparent !important; border:1.5px dashed var(--mine-ink) !important; border-left-width:1.5px !important; color:inherit }
+body[data-peer] .chip.chip-mine .cdot{ background:var(--mine-ink) !important }
+body[data-peer] .card.card-mine{ outline:1.5px dashed var(--mine-ink); outline-offset:-2px; background:transparent }
+body[data-peer] .card.card-mine .card-actions{ display:none !important }
+body[data-peer]:not([data-peer-overlay]) .chip-mine,
+body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 /* 타인 일정 열람(C4) — **읽기 전용**이다. 편집 어포던스를 하나도 주지 않는다:
    커서는 기본값, hover 강조 없음, 누를 수 있는 것은 월 이동과 닫기뿐. */
 .pv-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
@@ -1634,6 +1657,7 @@ html.dark{
   --shadow:0 12px 34px rgba(0,0,0,.55);
   --seg-sh:rgba(0,0,0,.55);   /* 다크는 패널이 트랙보다 '밝아' 떠오르므로 그림자를 더 진하게 */
   --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27; --chip-outline:#6b7588;
+  --mine-ink:#cbd5e1;     /* C4.1 '내 일정 겹' — 다크 패널(#1a2031)에서 9.9:1(라이트 --mine-ink 를 그대로 두면 1.9:1로 안 보인다) */
   --wknd-sun-bg:#2f2838; --wknd-sat-bg:#252c41;   /* = --sun/--sat 9% + --panel(#1a2031) — .num.sun 5.74:1 · .num.sat 5.72:1 */
 }
 /* 남은 건 라이트 전용 '틴트' surface 둘뿐 — 나머지는 베이스가 var(--panel)이라 리맵만으로 따라온다(열거 목록 삭제) */
@@ -3425,6 +3449,29 @@ let __peerPristine = null;
 let __peerReverting = false;   // 되돌리는 중의 재렌더가 다시 save() 를 부르면 무한루프가 된다
 const PEER = (() => { try { return new URLSearchParams(location.search).get('peer') === '1'; }
                       catch (_) { return false; } })();
+/*  C4.1 — 열람 창에 얹은 **내 일정 겹**의 on/off.
+ *  ★ 열람 창 **안에서만** 도는 상태다 — 부모와 통신하지 않는다(문을 늘리지 않는다).
+ *  ★ 저장은 localStorage 다. 열람 창은 부모와 **같은 출처**라(같은 파일을 iframe 으로 띄운다)
+ *    「월 보기 밀도」(tc_calDensity)가 그러하듯 저장소가 그대로 이어진다 — 다음에 열어도 유지된다.
+ *  ★ 기본은 켬('1'). 겹쳐 보려고 여는 기능이라 꺼진 채로 시작하면 아무 일도 안 일어난 것처럼 보인다.
+ *  ★ __peerOverlay 는 let 이다 — hpost() 앞의 __peerToldAt 이 TDZ 로 부팅을 끊었던 것과 같은
+ *    자리이므로(2026-09-03), 선언을 쓰는 곳(passFilter)보다 **위에** 둔다. */
+let __peerOverlay = true;
+function peerOverlayOn(){ try{ return localStorage.getItem('tc_peerOverlay') !== '0'; }catch(_){ return true; } }
+//  data-peer-overlay 는 CSS 가 즉시 반응하는 스위치이고, renderAll() 은 격자의 「+N」 계산을
+//  다시 시키기 위한 것이다(감추기만 하면 넘침 개수가 겹을 센 채로 남는다).
+function setPeerOverlay(v){
+  __peerOverlay = !!v;
+  try{ localStorage.setItem('tc_peerOverlay', __peerOverlay ? '1' : '0'); }catch(_){}
+  syncPeerOverlayAttr();
+  renderAll();
+}
+function syncPeerOverlayAttr(){
+  try{
+    if(__peerOverlay) document.body.dataset.peerOverlay = '1';
+    else delete document.body.dataset.peerOverlay;
+  }catch(_){}
+}
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
    caps(능력 유무)만 묻고 report.*(실행)를 위임한다. 환경 판별은 아래 한 줄뿐.
@@ -3837,8 +3884,20 @@ window.__applyState = function(json, meta){
     try{
       document.body.dataset.peer = '1';
       const who = (meta && meta.peerName) ? String(meta.peerName) : '';
+      //  ★ C4.1 — 저장된 겹 설정을 여기서 읽는다. 주입은 열람 창이 반드시 지나는 한 곳이고,
+      //    body[data-peer] 가 막 세워진 자리라 CSS 스위치도 같이 세우기에 맞다.
+      __peerOverlay = peerOverlayOn();
+      syncPeerOverlayAttr();
       const b = document.getElementById('peerBanner');
-      if(b) b.textContent = (who ? who + ' 님의 일정' : '다른 사람의 일정') + ' · 읽기 전용';
+      if(b){
+        //  이름은 남의 DB 문자열이다 — esc() 로 이스케이프한다(innerHTML 을 쓰는 유일한 이유는 토글·범례).
+        b.innerHTML =
+          `<span class="pb-who">${esc((who ? who + ' 님의 일정' : '다른 사람의 일정') + ' · 읽기 전용')}</span>`
+          + `<label class="check"><input type="checkbox" id="peerOverlayToggle"${__peerOverlay ? ' checked' : ''}> 내 일정 겹쳐보기</label>`
+          + `<span class="peer-legend"><i></i>점선 = 내 일정</span>`;
+        const t = b.querySelector('#peerOverlayToggle');
+        if(t) t.addEventListener('change', () => setPeerOverlay(t.checked));
+      }
     }catch(_){}
   }
   try{
@@ -4580,6 +4639,38 @@ function openPeerSchedule(loginId, name){
   });
 }
 
+/*  C4.1 — **내 일정을 열람 창으로 내려보낼 때의 모양**(순수 함수 · 전역/DOM 무의존).
+ *  ★ 방향이 이쪽인 이유: 반대(남의 일정을 내 state 에 병합)로 가면 `state.entries` 를 읽는
+ *    40 곳이 전부 "이건 누구 것인가"를 알아야 한다 — 저장·보고서·알림·근태까지 소유자 축이
+ *    번진다. 여기서는 **열람 창 쪽 한 겹**으로 끝나므로 번질 자리가 없다.
+ *  ★ 새 문을 열지 않는다 — 부모는 이미 `__applyState` 로 iframe 안에 직접 쓴다(문은 그대로 하나).
+ *  ★ **허용 키만** 담은 새 객체로 옮긴다(원본을 참조로 넘기지 않는다). 메모·장소·알림·공수·
+ *    근태·커밋·할 일은 **아예 만들지 않는다** — 상대에게 보내는 최소 payload(§C4)와 같은 원칙을
+ *    내 쪽에도 그대로 적용한다. 목적은 "언제 무엇을 하는가" 한 겹이지 개인 기록 열람이 아니다.
+ *  ★ `categoryId: null` — 내 겹은 **과제 구분이 없는 한 겹**이다. 내 과제를 보내면 열람 창
+ *    필터바에 상대 과제와 내 과제가 섞여(동명이면 두 칩) 무엇을 고르는 축인지가 깨진다.
+ *  ★ 예외일은 `recurExcept`(엔트리 레벨)다 — expandOccurrences 가 거기를 본다. 이걸 빼면
+ *    내가 지운 반복 회차가 열람 창에서 되살아난다.
+ *  ★ 커밋(source==='git')은 제외 — 캘린더 격자에 애초에 안 그려지는 기록이다. */
+function buildMineOverlay(entries){
+  if(!Array.isArray(entries)) return [];
+  const out = [];
+  for(const e of entries){
+    if(!e || e.source === 'git') continue;
+    const r = e.recur;
+    out.push({
+      id: e.id, date: e.date, title: e.title,
+      allDay: !!e.allDay,
+      startTime: e.startTime || '', endTime: e.endTime || '', endDate: e.endDate || '',
+      recur: r ? { freq:r.freq, interval:r.interval, until:r.until, count:r.count } : null,
+      recurExcept: Array.isArray(e.recurExcept) ? e.recurExcept.slice() : [],
+      categoryId: null,
+      _mine: true,
+    });
+  }
+  return out;
+}
+
 //  iframe 을 만들고, 뜨면 데이터를 넣는다.
 function mountPeerFrame(res){
   const host = $('#pvHost');
@@ -4594,7 +4685,10 @@ function mountPeerFrame(res){
     try{
       //  ★ 부팅과 **같은 함수**로 넣는다(__applyState) — 모양이 갈라질 자리를 만들지 않는다.
       f.contentWindow.__applyState(JSON.stringify({
-        categories: res.categories || [], entries: res.entries || [],
+        //  ★ C4.1 — 남의 일정 뒤에 **내 일정 한 겹**을 붙여 보낸다(내 과제는 안 보낸다).
+        //    부모 state 는 여기서 **읽기만** 한다 — buildMineOverlay 는 새 객체만 만든다.
+        categories: res.categories || [],
+        entries: (res.entries || []).concat(buildMineOverlay(state.entries)),
         todos: [], rooms: [], taskHours: {}, attendance: {},
         gitAuthor: '', svnAuthor: '',
       }), { peerName: __pv.name || __pv.loginId, canWrite: false });
@@ -5079,6 +5173,12 @@ function entrySort(a,b){
       || String(a.createdAt).localeCompare(String(b.createdAt));
 }
 function passFilter(e){
+  //  ★ C4.1 — 내 일정 겹은 **과제 축을 타지 않는다.** 열람 창 필터바에 있는 칩은 전부 상대 과제고,
+  //    내 겹은 과제 구분이 없는 한 겹이다(categoryId=null). 그래서 상대 과제를 켜고 꺼도 내 겹은
+  //    그대로 남는다 — 여기서 categoryId 비교를 태우면 상대 과제를 고르는 순간 내 겹이 통째로
+  //    사라져 "내 일정이 없는 날"처럼 보인다.
+  //  ★ PEER && — 열람 창이 아닌 창에 _mine 이 들어올 리는 없지만, 들어와도 안 그린다.
+  if(e && e._mine) return PEER && __peerOverlay;
   return (!filterCatId || e.categoryId === filterCatId) && (!filterSource || e.source === filterSource);
 }
 function entriesOn(date){
@@ -5609,7 +5709,11 @@ function chipHtml(item){
   const timed = (!git && !!time && seg === 'single');
   const dot = timed ? `<span class="cdot" style="background:${col}"></span>` : '';
   const tdisp = timed ? chipTimeShort(e) : time;   // 시간 칩은 축약 시각(9시), 그 외는 기존
-  return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${rangeCls}" draggable="${kind==='recur'?'false':'true'}"
+  //  ★ C4.1 — 내 겹은 chip-mine 으로만 구분한다(색은 CSS 가 점선·무채색으로 덮는다).
+  //    과제 색을 쓰지 않는 이유: 어떤 상대 과제 색과도 부딪히면 안 되기 때문이다.
+  //    draggable=false — 끌어도 되돌아가지만(peerRevert), 끌리는 것처럼 보이는 것 자체가 거짓말이다.
+  const mine = !!e._mine;
+  return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${mine?' chip-mine':''}${rangeCls}" draggable="${(mine||kind==='recur')?'false':'true'}"
     data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
     style="border-left-color:${col};background:${tint(col, seg !== 'single' ? 0.2 : undefined)}"
     title="${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${tdisp?`<span class="chip-t">${esc(tdisp)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
@@ -5838,7 +5942,9 @@ function cardHtml(e){
   const loc = (e.location || '').trim();
   // 시간·장소 강조행 — 회의 등 '몇 시·어디'가 핵심인 일정을 일정 상세에서 눈에 띄게
   const whenRow = (time || loc) ? `<div class="card-when">${time?`<span class="cw-time">${ICON.clock} ${esc(time)}</span>`:''}${loc?`<span class="cw-loc">${ICON.pin} ${esc(loc)}</span>`:''}</div>` : '';
-  return `<div class="card${flashTargetId===e.id?' flash':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
+  //  ★ C4.1 — 내 겹 카드. 편집 어포던스는 body[data-peer] .card-actions allowlist 가 이미 감추지만,
+  //    거기 기대는 것만으로는 "이 카드가 내 것이라서 못 고친다"가 안 보인다 — CSS 에서 한 번 더 준다.
+  return `<div class="card${flashTargetId===e.id?' flash':''}${e._mine?' card-mine':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
       ${git?`<span class="badge badge-git" title="커밋에서 가져온 기록(Git·SVN)">${ICON.git} 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
