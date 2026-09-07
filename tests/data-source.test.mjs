@@ -163,6 +163,31 @@ const checks = {
     assert.ok(/:\s*load\(\)/.test(seed),
       `브라우저 갈래(: load())가 사라졌다 — 비-HOST 에서는 localStorage 가 진짜 출처다: ${seed}`);
   },
+
+  //  ⑧ 열람 창은 부팅 때 호스트에게 **아무것도 요구하지 않는다.**
+  //  ★ 이 계약을 루프 검사(loop-peer-frame)는 **원리적으로 못 본다** — 봉인 계기(postMessage 스파이)를
+  //    프레임이 다 뜬 **뒤에** 붙이기 때문에 부팅 시점의 호출은 이미 지나갔다.
+  //    C4 변이 감사(2026-09-04)에서 `if(!PEER)` 를 떼어도 루프 153건이 전부 초록이었다.
+  //  ★ 정정: 그 변이가 '남의 창에 내 것이 뜬다'를 일으키지는 **않았다**(실측: 프레임은 대상 51건 유지).
+  //    호스트 회신이 ExecuteScriptAsync — 최상위 문서 전용 — 이라 프레임에 안 닿기 때문이다.
+  //    그래도 막아야 하는 이유: ① 내 user_id 로 부팅 조회가 한 번 더 나간다(헛일)
+  //    ② 이 줄은 hpost 봉인을 **우회하는 유일한 자리**다. 그 예외를 늘리지 않는다.
+  //  ★ 정규식으로 '그 줄 앞부분' 을 잡으려다 2MB 파일에서 파멸적 역추적이 났다(실측: 10분 초과).
+  //    문자열 인덱스로 줄만 잘라 본다 — 같은 판정, 상수 시간.
+  peerSendsNothingAtBoot(app) {
+    const NEEDLE = "window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'}))";
+    const i = app.indexOf(NEEDLE);
+    assert.ok(i > 0, '부팅의 ready 전송 줄을 찾지 못했다 — 모양이 바뀌었다면 이 검사도 함께 고칠 것 ' +
+      '(안 고치면 게이트가 조용히 검사 없는 상태가 된다)');
+    assert.strictEqual(app.indexOf(NEEDLE, i + 1), -1,
+      'ready 전송이 두 곳 이상이다 — 새로 생긴 곳에도 같은 가드가 필요하다');
+    const lineStart = app.lastIndexOf('\n', i) + 1;
+    const before = app.slice(lineStart, i);
+    assert.ok(/\bif\s*\(\s*!\s*PEER\s*\)/.test(before),
+      `부팅의 ready 전송에 if(!PEER) 가드가 없다(그 줄 앞부분: "${before.trim().slice(0, 60)}") — ` +
+      '열람 창이 호스트로 직접 나간다. 이 줄은 hpost 봉인을 우회하는 유일한 자리라 ' +
+      '루프 검사가 못 본다(계기가 부팅 뒤에 붙는다). 여기서만 지킬 수 있다');
+  },
 };
 
 test('출처①: 출처가 하나다 — XML 갈래가 되살아나지 않았다', () => checks.singleSource(src, mainwin));
@@ -172,6 +197,8 @@ test('출처④: 부팅이 buildStateFrom 으로 조립한다', () => checks.sta
 test('출처⑤: DB 경로가 XML 전용 이관 절차를 부르지 않는다', () => checks.dbPathSkipsXmlMigrations(src));
 test('출처⑤b: 열람 창의 출처는 주입 하나뿐이다(로컬 저장소를 씨앗으로 안 쓴다)', () =>
   checks.peerSeedsEmptyNotLocal(src));
+test('출처⑤c: 열람 창은 부팅 때 호스트에 아무것도 요구하지 않는다(루프 검사가 못 보는 자리)', () =>
+  checks.peerSendsNothingAtBoot(src));
 
 test('출처⑥: 지금 어느 저장소를 쓰는지 화면에 드러낸다', () => {
   assert.ok(/renderDataSourceBadge/.test(src), '출처 배지 함수가 없다');
@@ -250,6 +277,17 @@ test('변이⑫: DB 경로가 fromXML 을 거치면 출처④ 가 실패한다',
 test('변이⑬: DB 경로가 migrateLocalStores 를 부르면 출처⑤ 가 실패한다', () => {
   const bad = mutate('    renderAll();\n    pushReminders();', '    renderAll();\n    migrateLocalStores();\n    pushReminders();', src);
   assert.throws(() => checks.dbPathSkipsXmlMigrations(bad), /migrateLocalStores\(\) 를 부른다/);
+});
+
+test('변이·부팅전송: if(!PEER) 를 떼면 출처⑤c 가 잡는다(루프 153건은 침묵했다)', () => {
+  //  ★ C4 변이 감사에서 실제로 통과해 버린 변이다 — 루프 검사의 계기가 부팅 뒤에 붙어서다.
+  const bad = mutate("if(!PEER) try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}",
+                     "try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}", src);
+  assert.throws(() => checks.peerSendsNothingAtBoot(bad), /if\(!PEER\) 가드가 없다/);
+  //  전송 줄 자체가 사라진 경우(=게이트 폐기)도 조용히 통과하면 안 된다.
+  const gone = mutate("if(!PEER) try{ window.chrome.webview.postMessage(JSON.stringify({cmd:'ready'})); }catch(e){}",
+                      '/* 부팅 전송 없음 */', src);
+  assert.throws(() => checks.peerSendsNothingAtBoot(gone), /찾지 못했다/);
 });
 
 test('변이·씨앗: 부팅 씨앗을 옛 모양으로 되돌리면 출처⑤b 가 잡는다', () => {
