@@ -92,20 +92,23 @@ if (!JSDOM) {
        `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수 — 루프 등록분은 못 센다)`);
 } else {
   // ── 앱 부팅(1회) — HOST=false(webview 없음) → BrowserPlatform 경로. beforeParse로 최소 shim만 주입. ──
+  // ★ 옵션을 상수로 뽑아 둔다 — 파일 끝의 '변이 시험'이 **똑같은 옵션으로** 변이 소스를 띄우기 위해서다.
+  //   옵션이 갈리면 "변이 때문에 결과가 달라졌다"고 말할 수 없다(부팅 차이가 설명이 돼 버린다).
+  const BOOT_OPTS = {
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,   // requestAnimationFrame/cancelAnimationFrame 제공
+    url: 'https://tcapp.local/',
+    beforeParse(window) {
+      // crypto.randomUUID가 없는 런타임 방어(uid()가 부팅 시드 생성에 사용). 있으면 건드리지 않음.
+      if (typeof window.crypto === 'undefined') {
+        window.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: a => a };
+      }
+      window.scrollTo = () => {};   // 일부 렌더 경로가 호출 — jsdom 미구현 경고 억제
+    },
+  };
   let dom, w, bootErr = null;
   try {
-    dom = new JSDOM(loadAppSource(), {
-      runScripts: 'dangerously',
-      pretendToBeVisual: true,   // requestAnimationFrame/cancelAnimationFrame 제공
-      url: 'https://tcapp.local/',
-      beforeParse(window) {
-        // crypto.randomUUID가 없는 런타임 방어(uid()가 부팅 시드 생성에 사용). 있으면 건드리지 않음.
-        if (typeof window.crypto === 'undefined') {
-          window.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: a => a };
-        }
-        window.scrollTo = () => {};   // 일부 렌더 경로가 호출 — jsdom 미구현 경고 억제
-      },
-    });
+    dom = new JSDOM(loadAppSource(), BOOT_OPTS);
     w = dom.window;
   } catch (e) {
     bootErr = e;
@@ -2921,6 +2924,197 @@ if (!JSDOM) {
       assert.ok(txt.includes('%APPDATA%\\TaskCalendar'), '안내에 로그 폴더 경로가 없다: ' + txt);
       // 뒷정리 — 다음 파일의 테스트가 열린 모달을 물려받지 않게
       ev("document.getElementById('feedbackModal').classList.add('hidden');");
+    });
+
+    // ══════════════════════════════════════════════════════════════════
+    // 변이 시험(mutation test) — "통과한다"가 "검사하고 있다"인지 못박는다 (2026-09-07)
+    //
+    // 왜: 위 계약들(왕복 · 보고서 · 반복 전개 · 알림)은 이 저장소에서 가장 값진 구역인데,
+    //     정작 "제품 코드를 망가뜨려도 여전히 초록인가"는 확인된 적이 없었다. 1회 감사에서
+    //     표본 12건이 전부 잡히긴 했지만 그건 **그날 소스의 스냅숏**일 뿐이다 — 나중에 누가
+    //     단언을 지우거나 약하게 고치면 다시 아무 신호도 안 남는다. 그래서 감사에서 값이 높았던
+    //     6건을 상시 시험으로 박는다(이제 계약을 약화시키면 이 시험들이 먼저 빨개진다).
+    //
+    // 방법: 변이된 소스로 **두 번째 jsdom** 을 띄워 같은 전역 함수를 부르고, 결과가 실제로
+    //     틀려지는지 단언한다. ★ 변이했는데도 결과가 같으면 실패 — 그게 곧 "이 계약이 그 코드를
+    //     안 본다"는 증거다. 정규식으로 소스를 구경하는 방식으로는 이 판정을 낼 수 없다.
+    //     각 시험은 (1) 정상 앱에서 기대값이 실제로 나오는지 → (2) 변이 앱에서 그게 무너지는지
+    //     둘 다 본다. (1)이 없으면 픽스처가 썩어도 (2)가 공짜로 통과한다.
+    //
+    // 비용: 부팅 1회 ≈ 0.4초 × 6 ≈ 2.5초. 그래서 **부팅이 꼭 필요한 변이에만** 쓴다 —
+    //     소스 스캔으로 잡히는 종류는 이 파일 위쪽의 텍스트 가드가 이미 담당한다.
+    // 생략 규약: 이 시험들도 jsdom 이 없으면 등록되지 않고 위의 skip(판정 없음)에 함께 계수된다.
+    // ══════════════════════════════════════════════════════════════════
+
+    // 변이된 앱을 한 번 띄워 fn(m) 에 넘긴다. m = { w, ev, evJSON, seed } — 원본 부팅 헬퍼와 같은 꼴.
+    // ★ 앵커를 못 찾거나 여러 곳이면 **조용히 통과하지 않고 실패**한다(이 저장소 mutate() 관례).
+    //   리팩터로 앵커가 사라졌는데 초록이면 이 시험은 아무것도 지키지 않는 껍데기가 된다.
+    // ★ BOOT_OPTS 를 원본 부팅과 공유한다 — 옵션이 갈리면 "변이 탓"이라고 말할 수 없다.
+    function withMutatedApp(find, replace, fn) {
+      const src = loadAppSource();
+      const at = src.indexOf(find);
+      assert.ok(at >= 0, '변이 앵커를 앱 소스에서 찾지 못했다(리팩터로 사라졌다면 앵커를 갱신할 것): ' + find);
+      assert.strictEqual(at, src.lastIndexOf(find),
+        '변이 앵커가 여러 곳에 있다 — 겨냥이 흐려진다. 앞뒤 줄을 붙여 유일하게 만들 것: ' + find);
+      const mutated = src.slice(0, at) + replace + src.slice(at + find.length);
+      assert.notStrictEqual(mutated, src, '변이가 원본을 바꾸지 못했다(find 와 replace 가 같다)');
+      let mdom = null;
+      try {
+        mdom = new JSDOM(mutated, BOOT_OPTS);
+        const win = mdom.window;
+        return fn({
+          w: win,
+          ev: (code) => win.eval(code),
+          evJSON: (code) => JSON.parse(win.eval('JSON.stringify(' + code + ')')),
+          seed: (stateObj) => { win.eval('state = ' + JSON.stringify(stateObj) + ';'); },
+        });
+      } finally {
+        // 6번 띄우므로 창을 닫아 타이머·메모리를 회수한다(뒷정리 실패로 시험이 빨개지진 않게).
+        try { if (mdom) mdom.window.close(); } catch (_) {}
+      }
+    }
+
+    const MEMO_E1 = '명세 작성\n검색 포함';   // roundtripState 의 e-1 메모(왕복 대상)
+    const memoOf = (ej, id) => ej('fromXML(toXML()).entries.filter(function(e){return e.id===' + JSON.stringify(id) + ';})[0].memo');
+    const occStartsIn = (ej, entry, from, to) =>
+      ej('expandOccurrences(' + JSON.stringify(entry) + ',' + JSON.stringify(from) + ',' + JSON.stringify(to) + ').map(function(o){return o._occStart;})');
+
+    // ── 변이① toXML 이 memo 를 안 쓴다 → 내보내기에서 메모가 통째로 사라진다 ──
+    test('변이①: toXML 이 memo 를 버리면 roundtrip 계약이 깨진다(안 깨지면 계약이 memo 를 안 보는 것)', () => {
+      seed(roundtripState);
+      assert.ok(ev('toXML()').includes('명세 작성'), '사전조건: 정상 앱은 메모를 XML 로 내보낸다');
+      assert.strictEqual(memoOf(evJSON, 'e-1'), MEMO_E1, '사전조건: 정상 앱은 메모를 왕복시킨다');
+
+      withMutatedApp(
+        "const m = doc.createElement('memo');  m.textContent = e.memo || '';",
+        "const m = doc.createElement('memo');  m.textContent = '';",
+        (m) => {
+          m.seed(roundtripState);
+          assert.ok(!m.ev('toXML()').includes('명세 작성'),
+            '변이했는데도 메모가 XML 에 남아 있다 — 변이가 실제 직렬화 경로에 닿지 않았다(앵커 재검토)');
+          assert.notStrictEqual(memoOf(m.evJSON, 'e-1'), MEMO_E1,
+            '변이했는데도 메모가 왕복한다 — roundtrip 계약이 memo 를 안 본다');
+          assert.strictEqual(m.evJSON('xmlRoundTrip().ok'), false,
+            '앱 자체 검증기(xmlRoundTrip)가 메모 소실을 ok=true 로 통과시킨다');
+        });
+    });
+
+    // ── 변이② fromXML 이 memo 를 안 읽는다 → 가져오기에서 메모가 사라진다(①의 반대 방향) ──
+    // ①과 같은 관측값을 쓰지만 겨냥하는 코드가 다르다. 쓰기·읽기 중 한쪽만 지키면
+    // 다른 쪽이 조용히 썩어도 왕복 계약이 못 잡는다 — 그래서 두 방향을 따로 못박는다.
+    test('변이②: fromXML 이 memo 를 안 읽으면 roundtrip 계약이 깨진다(쓰기는 멀쩡한데 읽기가 버리는 경우)', () => {
+      seed(roundtripState);
+      assert.strictEqual(memoOf(evJSON, 'e-1'), MEMO_E1, '사전조건: 정상 앱은 메모를 왕복시킨다');
+
+      withMutatedApp(
+        "memo: txt(e,'memo'),",
+        "memo: '',",
+        (m) => {
+          m.seed(roundtripState);
+          assert.ok(m.ev('toXML()').includes('명세 작성'),
+            '이 변이는 읽기 쪽만 건드린다 — 내보내기 XML 에는 메모가 그대로 있어야 한다');
+          assert.notStrictEqual(memoOf(m.evJSON, 'e-1'), MEMO_E1,
+            '읽기가 메모를 버리는데도 왕복 결과가 같다 — 계약이 fromXML 의 memo 를 안 본다');
+          assert.strictEqual(m.evJSON('xmlRoundTrip().ok'), false,
+            'xmlRoundTrip 이 가져오기 쪽 메모 소실을 ok=true 로 통과시킨다');
+        });
+    });
+
+    // ── 변이③ toXML 이 remind 를 안 쓴다 → 일정별 알림 시점이 저장 안 돼 재시작하면 기본으로 리셋 ──
+    const remindXmlState = {
+      gitAuthor: '', svnAuthor: '', categories: [],
+      entries: [
+        { id: 'r-30', date: '2026-07-08', title: '30분', categoryId: null, allDay: false, startTime: '12:00', endTime: '', location: '', memo: '',
+          source: '', commits: [], hours: null, remind: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        { id: 'r-off', date: '2026-07-08', title: '없음', categoryId: null, allDay: false, startTime: '11:00', endTime: '', location: '', memo: '',
+          source: '', commits: [], hours: null, remind: 0, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+      ],
+      todos: [], rooms: [],
+    };
+    const remindOf = (ej, id) => ej('fromXML(toXML()).entries.filter(function(e){return e.id===' + JSON.stringify(id) + ';})[0].remind');
+
+    test('변이③: toXML 이 remind 를 안 쓰면 remind XML 계약이 깨진다(알림 설정이 저장에서 증발)', () => {
+      seed(remindXmlState);
+      assert.ok(/id="r-30"[^>]*remind="30"/.test(ev('toXML()')), '사전조건: 정상 앱은 remind="30" 을 기록한다');
+      assert.strictEqual(remindOf(evJSON, 'r-30'), 30, '사전조건: 정상 앱은 30분 설정을 왕복시킨다');
+      assert.strictEqual(remindOf(evJSON, 'r-off'), 0, '사전조건: 정상 앱은 0(알림 없음)을 왕복시킨다');
+
+      withMutatedApp(
+        "if(e.remind != null) el.setAttribute('remind', String(e.remind));",
+        "if(false) el.setAttribute('remind', String(e.remind));",
+        (m) => {
+          m.seed(remindXmlState);
+          const xml = m.ev('toXML()');
+          assert.ok(!/id="r-30"[^>]*remind="30"/.test(xml), '변이했는데도 remind 속성이 기록된다(앵커 재검토)');
+          assert.notStrictEqual(remindOf(m.evJSON, 'r-30'), 30,
+            '변이했는데도 30분 설정이 왕복한다 — remind XML 계약이 쓰기 경로를 안 본다');
+          assert.notStrictEqual(remindOf(m.evJSON, 'r-off'), 0,
+            "변이했는데도 '알림 없음'(0)이 왕복한다 — 꺼 둔 알림이 되살아나는 결함을 못 잡는다");
+          assert.strictEqual(m.evJSON('xmlRoundTrip().ok'), false, 'xmlRoundTrip 이 remind 소실을 통과시킨다');
+        });
+    });
+
+    // ── 변이④ expandOccurrences 가 예외일(recurExcept)을 무시 → 지운 반복 날짜가 되살아난다 ──
+    const EXC_ENTRY = { id: 'x', date: '2026-07-06', endDate: '', recur: { freq: 'weekly', interval: 1, until: '', count: 3 }, recurExcept: ['2026-07-13'] };
+    test('변이④: expandOccurrences 가 recurExcept 를 무시하면 예외 날짜 계약이 깨진다(지운 회차 부활)', () => {
+      assert.deepStrictEqual(occStarts(EXC_ENTRY, '2026-07-01', '2026-07-31'), ['2026-07-06', '2026-07-20'],
+        '사전조건: 정상 앱은 예외일(07-13)을 건너뛴다');
+
+      withMutatedApp(
+        'if((e.recurExcept||[]).includes(os)) return;',
+        'if(false) return;',
+        (m) => {
+          const got = occStartsIn(m.evJSON, EXC_ENTRY, '2026-07-01', '2026-07-31');
+          assert.ok(got.includes('2026-07-13'),
+            '변이했는데도 예외일이 안 나온다 — 변이가 전개 경로에 닿지 않았다(앵커 재검토): ' + JSON.stringify(got));
+          assert.notDeepStrictEqual(got, ['2026-07-06', '2026-07-20'],
+            '예외일 처리를 꺼도 결과가 같다 — 계약이 recurExcept 를 안 본다');
+        });
+    });
+
+    // ── 변이⑤ expandOccurrences(주간)가 반복 횟수(count)를 무시 → N회 반복이 무한이 된다 ──
+    // ★ until·count 검사는 주간·월간 두 분기에 **같은 줄**로 있다. 뒷줄(const os = addDays)을 붙여
+    //   주간만 겨냥한다 — 유일하지 않으면 withMutatedApp 이 실패시킨다.
+    const WK3 = { id: 'x', date: '2026-07-06', endDate: '', recur: { freq: 'weekly', interval: 1, until: '', count: 3 }, recurExcept: [] };
+    const MO3 = { id: 'x', date: '2026-07-15', endDate: '', recur: { freq: 'monthly', interval: 1, until: '', count: 3 }, recurExcept: [] };
+    test('변이⑤: expandOccurrences(주간)가 count 를 무시하면 주간 반복 횟수 계약이 깨진다', () => {
+      assert.deepStrictEqual(occStarts(WK3, '2026-07-01', '2026-07-31'), ['2026-07-06', '2026-07-13', '2026-07-20'],
+        '사전조건: 정상 앱은 주간 3회에서 멈춘다');
+
+      withMutatedApp(
+        'if(r.count && k >= r.count) break;\n      const os = addDays',
+        'if(false) break;\n      const os = addDays',
+        (m) => {
+          const got = occStartsIn(m.evJSON, WK3, '2026-07-01', '2026-07-31');
+          assert.notDeepStrictEqual(got, ['2026-07-06', '2026-07-13', '2026-07-20'],
+            'count 검사를 꺼도 결과가 같다 — 계약이 주간 반복 횟수를 안 본다');
+          assert.ok(got.includes('2026-07-27'),
+            '변이했는데도 4회차(07-27)가 안 나온다 — 변이가 주간 분기에 닿지 않았다: ' + JSON.stringify(got));
+          // 앵커가 정말 '주간만' 겨냥했는지 — 월간 분기는 손대지 않았으므로 그대로여야 한다.
+          assert.deepStrictEqual(occStartsIn(m.evJSON, MO3, '2026-07-01', '2026-09-30'), ['2026-07-15', '2026-08-15', '2026-09-15'],
+            '월간 분기까지 함께 변이됐다 — 앵커가 주간을 겨냥하지 못했다');
+        });
+    });
+
+    // ── 변이⑥ collectReportData 의 skipEmpty 무력화 → 내용 없는 항목이 보고서에 빈 줄로 실린다 ──
+    test('변이⑥: collectReportData 가 skipEmpty 를 무시하면 빈 항목 제외 계약이 깨진다', () => {
+      seed(dnState());
+      const okTitles = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true })).titles;
+      assert.ok(!okTitles.includes('빈 기간할일'), '사전조건: 정상 앱은 skipEmpty ON 에서 빈 기간할일을 뺀다');
+      assert.ok(okTitles.includes('보고서 준비'), '사전조건: 내용 있는 항목은 남는다');
+
+      withMutatedApp(
+        'const skipEmpty = !!src.skipEmpty;',
+        'const skipEmpty = false;',
+        (m) => {
+          m.seed(dnState());
+          const r = m.evJSON('collectReportData("2026-07-13","2026-07-19",' +
+            JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')');
+          const row = r.rows.filter(x => x.name === '기획')[0];
+          assert.ok(row, '변이 앱에서 기획 과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
+          assert.ok(row.titles.includes('빈 기간할일'),
+            '변이했는데도 빈 기간할일이 제외된다 — 계약이 skipEmpty 스위치를 안 본다');
+        });
     });
   }
 }
