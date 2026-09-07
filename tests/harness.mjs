@@ -35,6 +35,24 @@ export function skip(name, reason, detail) {
 // test.skip(...) 표기도 허용(다른 러너 관례에 익숙한 사람 대비).
 test.skip = skip;
 
+// ── 등록 인구조사(census) ────────────────────────────────────────────
+//  위 주석의 사고("등록조차 되지 않은 채 exit 0")는 skip 규약으로 한 갈래를 막았다.
+//  남은 두 갈래는 skip 조차 남기지 않아 더 조용하다:
+//    ① 시험 파일이 통째로 사라진다 — 개명(foo.test.mjs → foo.tests.mjs)·삭제.
+//       러너는 *.test.mjs 만 수집하므로 **수집조차 안 되고**, 큐에 아무 흔적이 없다.
+//    ② 한 파일이 0건을 등록한다 — 전부 조건 밖으로 밀려나거나 이른 return 이 생긴 경우.
+//  둘 다 "pass 가 줄고 fail 은 0" 으로 나타난다. 사람이 총합을 외우고 있지 않으면 못 본다.
+//  그래서 러너가 파일별 등록 수를 세고, 아래 두 함수로 계약을 만든다(run-tests.mjs).
+export function queuedCount() {
+  return _queue.length;
+}
+
+// counts = { '파일명': 등록건수 } → 0건인 파일 이름들(정렬). 순수 함수라 단독 시험 대상.
+export function filesWithNoTests(counts) {
+  const c = counts || {};
+  return Object.keys(c).filter((f) => !(c[f] > 0)).sort();
+}
+
 // TC_TEST_STRICT=1 — skip 을 fail 로 취급한다(릴리스 게이트가 켜는 스위치).
 export function isStrict() {
   return String(process.env.TC_TEST_STRICT || '') === '1';

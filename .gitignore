@@ -22,3 +22,7 @@ desktop.ini
 
 # 진단용 임시 위젯 캡처
 _widget_capture.png
+
+# 하네스 변이 시험(tests/harness-selftest.test.mjs)이 만드는 임시 사본 — finally 에서 지우지만
+#   강제 종료 시 남을 수 있다. 러너는 *.test.mjs 만 줍기 때문에 실행에는 영향이 없다.
+tests/.harness-mutant-*
