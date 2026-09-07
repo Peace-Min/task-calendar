@@ -279,7 +279,10 @@ test('변이④: 재시도를 hostRequest 로 되돌리면 배선① 이 실패�
 });
 
 test('변이⑤: 성공 시 상자를 안 걷으면 배선③ 이 실패한다', () => {
-  const bad = mutate('    clearBootError();\n  }catch(e){', '  }catch(e){', src);
+  //  ★ 앵커가 `clearBootError();\n  }catch(e){` 였는데, 2026-09-07 에 그 사이로
+  //    hideDbConflict() 가 들어오면서 깨졌다. **조용히 통과하지 않고 크게 울었다** — 의도한 동작이다
+  //    (mutate 가 '대상 문자열 없음' 으로 실패시킨다). 앵커를 줄 하나로 좁혀 이웃 줄에 안 묶이게 한다.
+  const bad = mutate('    clearBootError();\n', '', src);
   assert.throws(() => wiring.successClearsBox(bad), /실패 상자를 걷지 않는다/);
 });
 

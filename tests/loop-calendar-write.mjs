@@ -16,12 +16,24 @@
  *      정반대 계약이었다("건드리지 않는가"). 부팅이 commits 를 [] 로 두던 시절의 방어였고,
  *      그 방어 때문에 커밋 편집·삭제가 DB 에 영영 반영되지 않았다. 이제 순서까지 대조한다
  *
+ *  【그리고 진짜로 겹치는 저장을 친다 — op=parallel(2026-09-07 추가)】
+ *    아래 [동시 편집](op=concurrent)은 **순차**다: A 가 끝난 뒤 B 가 같은 낡은 스냅샷으로 저장한다.
+ *    낡은 토큰이 거부된다는 것은 그것으로 증명되지만, **겹치지 않으면 원리적으로 안 보이는 것**이 있다:
+ *      · §3.1 「rev 선점」(트랜잭션 첫 문장의 rev 증가)이 실제로 직렬화를 만드는가
+ *      · 겹친 트랜잭션에서 데드락(1213)·락 대기 초과(1205)가 나지 않는가
+ *      · 진 트랜잭션이 rev 를 올린 채 남지 않는가(rev 가 정확히 +1 인가)
+ *    그래서 N개(기본 4)를 대기선에 세웠다가 한꺼번에 풀고, **각자의 시작·종료 시각을 재서**
+ *    정말 겹쳤는지까지 판정한다. 안 겹쳤으면 통과가 아니라 '판정 불가' 다 — 그건 순차를 한 번 더 돈 것이다.
+ *
  *  【실 DB 를 쓴다】 DeployConfig 가 const 라 언제나 실 taskmgr 다. 그게 값이다 —
  *    앱 계정 권한까지 함께 검증한다. 전용 시험 사용자를 만들어 쓰고 끝나면 지운다.
+ *    ★ 파괴적 조작(wipe/dropUser) 앞에는 assertTestUser 가 있다 — 대상 login_id 를 DB 에 되묻고
+ *      시험 계정이 아니면 즉시 중단한다. 실사용자 데이터를 지운 사고(2026-09-07)에서 없던 문이다.
  *
  *  【실행】
  *    $env:TC_TEST_DB_ADMIN_PW = '<root 비번>'
- *    node tests/loop-calendar-write.mjs [--rounds=10] [--seed=N]
+ *    node tests/loop-calendar-write.mjs [--rounds=10] [--seed=N] [--parN=4] [--parRounds=5]
+ *    종료코드: 0 통과 · 1 실패 · 2 판정 불가(전제가 안 서서 증명하지 못함 — 초록 아님)
  * ===================================================================== */
 
 import { spawnSync } from 'node:child_process';
@@ -68,11 +80,17 @@ const pick = a => a[Math.floor(rnd() * a.length)];
 
 let pass = 0, fail = 0; const F = [];
 const ok = (n, c, d = '') => { if (c) pass++; else { fail++; F.push(n + (d ? ' — ' + d : '')); console.log(`  ✗ ${n}${d ? ' — ' + d : ''}`); } };
+//  ★ '판정 불가' 는 통과가 아니다. 전제가 안 서서 아무것도 증명하지 못한 경우를 따로 센다 —
+//    실패 0 이라고 초록으로 끝내면 "시험이 돌았지만 아무 말도 안 했다" 를 통과로 읽게 된다.
+//    실패가 없고 판정 불가만 있으면 exit 2 로 끝낸다(run-tests.mjs 의 skip 규약과 같은 뜻).
+let undecided = 0; const UD = [];
+const undecide = (n, d = '') => { undecided++; UD.push(n + (d ? ' — ' + d : '')); console.log(`  ? ${n} — 판정 불가${d ? ': ' + d : ''}`); };
 
 /* ── 러너 — 위젯이 쓰는 두 클래스를 그대로 링크한다(복사 아님) ─────────── */
 const RUNNER_CS = `using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using TaskCalendarWidget;
 
@@ -83,6 +101,21 @@ internal static class Dpapi
 {
     public static byte[] Protect(byte[] b) => throw new InvalidOperationException("시험 대역이 불렸다");
     public static byte[] Unprotect(byte[] b) => throw new InvalidOperationException("시험 대역이 불렸다");
+}
+
+//  병렬 저장 한 건의 결과. 익명형 대신 이름을 붙인 이유: 예외로 끝난 경우와 정상 반환이
+//  **같은 모양**이어야 JS 가 "충돌인가 · 알 수 없는 오류인가" 를 한 자리에서 가른다.
+//  ★ startMs/endMs 를 함께 싣는다 — 이게 없으면 "정말 겹쳤는가" 를 증명할 길이 없고,
+//    안 겹친 병렬 시험은 **순차를 한 번 더 돈 것**이라 아무것도 증명하지 못한다.
+class PR {
+  public int i { get; set; }
+  public bool ok { get; set; }
+  public bool conflict { get; set; }
+  public string msg { get; set; } = "";
+  public string ex { get; set; } = "";      // 예외 형식 이름. ""이 아니면 그건 충돌이 아니라 사고다
+  public long rev { get; set; }
+  public double startMs { get; set; }
+  public double endMs { get; set; }
 }
 
 class R {
@@ -119,9 +152,15 @@ class R {
                                  snap.CategoryNoByUid, snap.EntryNoByUid, snap.TodoNoByUid);
     }
 
-    // op == "concurrent" : **진짜 동시 편집**을 재현한다.
-    //   두 클라이언트가 같은 스냅샷을 들고 있다가 각자 저장한다 — 토큰을 인위적으로 조작하지 않는다.
-    //   현실에서 두 PC 가 같은 계정으로 붙어 있을 때 정확히 이 모양이다.
+    // op == "concurrent" : 같은 스냅샷을 든 두 클라이언트가 **차례로** 저장한다(순차).
+    //   토큰을 인위적으로 조작하지 않는다는 것이 값이다 — "낡은 토큰이 현실에서 이렇게 생긴다" 를
+    //   조작 없이 보여 준다. 두 PC 가 같은 계정으로 붙어 있는 상황의 **결과**가 이 모양이다.
+    //   ★ 그러나 이것은 **동시가 아니다.** A 가 끝난 뒤에 B 가 시작하므로 두 트랜잭션이 한 번도
+    //     겹치지 않는다. 그래서 이 경로로는 원리적으로 볼 수 없는 것들이 있다:
+    //       · §3.1 「rev 선점」이 **직렬화를 만드는가**(겹쳐야 락 경합이 생긴다)
+    //       · 겹친 트랜잭션에서 데드락(1213)·락 대기 초과(1205)가 나지 않는가
+    //       · 진 트랜잭션이 rev 를 올린 채 남지 않는가(rev 가 정확히 +1 인가)
+    //     그것들은 op == "parallel" 이 본다. **둘 다 남긴다** — 증명하는 명제가 다르다.
     if (op == "concurrent") {
       string a = e.GetProperty("stateA").GetString() ?? "";
       string b = e.GetProperty("stateB").GetString() ?? "";
@@ -131,6 +170,54 @@ class R {
         ok = true,
         aOk = ra.Ok, aMsg = ra.Message, aRev = ra.Rev,
         bOk = rb.Ok, bConflict = rb.Conflict, bMsg = rb.Message, logs }));
+      return 0;
+    }
+
+    // op == "parallel" : **정말 겹치는** 동시 저장. 같은 user_id 에 N개의 SaveAsync 를 한꺼번에 띄운다.
+    //   ★ Task.WhenAll 만으로는 안 된다 — 만드는 순간 도는 첫 Task 가 뒤 Task 가 시작하기도 전에
+    //     끝나 버리면 그건 그냥 순차다(그러면 이 시험은 concurrent 를 한 번 더 돈 것이 된다).
+    //     그래서 전원이 대기선에 설 때까지 센 뒤(armed == n) TaskCompletionSource 로 **동시에** 푼다.
+    //   ★ 각자의 시작·종료 시각을 함께 돌려준다. "겹쳤다" 는 시험자가 믿을 일이 아니라 **재는 일**이다.
+    //   ★ 로그 List 는 스레드 안전하지 않다 — 여기서만 잠근다(제품 코드가 아니라 이 러너의 문제다).
+    if (op == "parallel") {
+      var arr = e.GetProperty("states");
+      int n = arr.GetArrayLength();
+      var payloads = new List<string>();
+      for (int k = 0; k < n; k++)
+        payloads.Add(arr[k].ValueKind == JsonValueKind.String ? (arr[k].GetString() ?? "") : arr[k].GetRawText());
+
+      var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+      var armedAll = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+      int armed = 0;
+      object logLock = new object();
+      Action<string> plog = m => { lock (logLock) logs.Add(m); };
+      var sw = System.Diagnostics.Stopwatch.StartNew();
+
+      var tasks = new List<Task<PR>>();
+      for (int k = 0; k < n; k++) {
+        int idx = k;
+        string sj3 = payloads[k];
+        tasks.Add(Task.Run(async () => {
+          if (Interlocked.Increment(ref armed) == n) armedAll.TrySetResult(true);
+          await gate.Task;                                  // ← 전원 동시 출발
+          double t0 = sw.Elapsed.TotalMilliseconds;
+          try {
+            var rr = await new CalendarWriteDb(plog).SaveAsync(snap, sj3);
+            return new PR { i = idx, ok = rr.Ok, conflict = rr.Conflict, msg = rr.Message ?? "", ex = "",
+                            rev = rr.Rev, startMs = Math.Round(t0, 1), endMs = Math.Round(sw.Elapsed.TotalMilliseconds, 1) };
+          } catch (Exception ex2) {
+            //  ★ 예외는 **충돌이 아니다.** 사용자에게 '충돌' 과 '알 수 없는 오류' 는 전혀 다른 사건이라
+            //    여기서 섞으면 시험이 거짓 초록을 낸다. 형식 이름을 그대로 실어 올린다.
+            return new PR { i = idx, ok = false, conflict = false, msg = ex2.Message, ex = ex2.GetType().Name,
+                            rev = 0, startMs = Math.Round(t0, 1), endMs = Math.Round(sw.Elapsed.TotalMilliseconds, 1) };
+          }
+        }));
+      }
+      //  전원이 대기선에 서기를 기다린다. 못 서면(비정상) 그냥 출발시키고, JS 가 겹침 측정으로 잡는다.
+      await Task.WhenAny(armedAll.Task, Task.Delay(10000));
+      gate.TrySetResult(true);
+      var results = await Task.WhenAll(tasks);
+      Console.Out.Write(JsonSerializer.Serialize(new { ok = true, results, logs }));
       return 0;
     }
 
@@ -215,12 +302,28 @@ function makeUser() {
   sql(`INSERT IGNORE INTO cal_user_rev (user_id, rev) VALUES (${uid}, 0)`, { readOnly: false, what: 'rev 시딩' });
   return Number(uid);
 }
+//  ★★ 파괴적 조작 앞의 마지막 문 — 대상이 **정말 시험 계정인가** 를 매번 DB 에 되묻는다.
+//    2026-09-07 에 컨텍스트를 잘못 골라 실사용자 데이터를 지운 사고가 있었다. 그때 없던 것이 이 줄이다.
+//    ★ 58(phmin) 을 이름으로 막는 것만으로는 부족하다 — 다음에 다른 실계정이 걸리면 또 지운다.
+//      그래서 **화이트리스트**로 잠근다: login_id 가 시험 계정이 아니면 무조건 중단한다.
+const REAL_USER_IDS = new Set([58]);   // phmin — 개발자 본인의 실데이터(cal_entry 34 · cal_category 10)
+function assertTestUser(u, what) {
+  const n = Number(u);
+  if (!Number.isInteger(n) || n <= 0) throw new Error(`${what} 중단 — 대상 user_id 가 이상하다: ${u}`);
+  if (REAL_USER_IDS.has(n)) throw new Error(`${what} 중단 — user_id=${n} 은 실사용자다. 시험이 건드릴 대상이 아니다`);
+  const lid = one(`SELECT login_id FROM app_user WHERE user_id=${n}`, 'login_id 확인');
+  if (lid !== LOGIN)
+    throw new Error(`${what} 중단 — user_id=${n}(login_id=${lid ?? '없음'}) 는 시험 계정 '${LOGIN}' 이 아니다`);
+  return n;
+}
 function wipe(u) {
+  assertTestUser(u, '정리(wipe)');
   for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours',
                    'cal_attendance','cal_entry','cal_todo','cal_category','cal_room','cal_user_pref'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
 }
 function dropUser(u) {
+  assertTestUser(u, '시험 사용자 삭제');
   wipe(u);
   sql(`DELETE FROM cal_user_rev WHERE user_id=${u}`, { readOnly: false, what: 'rev 정리' });
   sql(`DELETE FROM app_user WHERE user_id=${u}`, { readOnly: false, what: '시험 사용자 삭제' });
@@ -520,15 +623,134 @@ try {
     + (SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}) + (SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U})`));
   ok('전부 지워졌다(자식 포함)', left === 0, `${left}행 남음`);
 
-  code = fail === 0 ? 0 : 1;
+  // ── ★★ 진짜 병렬 쓰기 — 같은 계정에 N개를 **동시에** 던진다 ────────────────
+  //    위 [동시 편집](op=concurrent)은 순차다. 순차로는 원리적으로 볼 수 없는 것 셋을 여기서 본다:
+  //      ① §3.1 「rev 선점」— 트랜잭션 첫 문장의 rev 증가가 **실제로 직렬화를 만드는가**.
+  //         만들지 않으면 두 트랜잭션이 나란히 통과해 "정확히 하나만 성공" 이 깨진다.
+  //      ② 격리 비대칭(§3.2, 쓰기 READ-COMMITTED)에서 데드락(1213)·락 대기 초과(1205)가 나지 않는가.
+  //         이건 겹쳐야만 관측된다. 나면 사용자에게는 '충돌' 이 아니라 '알 수 없는 오류' 로 보인다.
+  //      ③ 진 트랜잭션이 rev 를 올린 채 남지 않는가 — 롤백이 rev 까지 되돌리는가.
+  //    ★ 89명이 한 MySQL 을 쓰고 같은 사람이 두 PC 를 켜 두는 구성이라, 이 자리는 가정이 아니라 일상이다.
+  //    ★ 경합은 **한 번 통과가 증거가 못 된다.** 5회 반복하고 매회 전부 본다.
+  {
+    const PAR_N = Number(ARG.get('parN') || 4);
+    const PAR_ROUNDS = Number(ARG.get('parRounds') || 5);
+    console.log(`\n[병렬 저장] 같은 스냅샷으로 ${PAR_N}개를 **동시에** — ${PAR_ROUNDS}회 반복`);
+    const BAD_LOCK = /Deadlock|1213|Lock wait timeout|1205/i;
+
+    //  겹침 측정 — 구간 [start,end] 가 한 시점에 몇 개나 동시에 열려 있었나(최대 깊이).
+    //  ★ 같은 시각에서는 종료(-1)를 시작(+1)보다 **먼저** 센다. 끝점만 닿은 두 구간을
+    //    '겹쳤다' 로 세면 순차를 병렬로 오판한다 — 이 시험이 가장 피해야 할 거짓이다.
+    const maxOverlap = (iv) => {
+      const ev = [];
+      for (const x of iv) { ev.push([x.s, 1]); ev.push([x.e, -1]); }
+      ev.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+      let cur = 0, mx = 0;
+      for (const [, d] of ev) { cur += d; if (cur > mx) mx = cur; }
+      return mx;
+    };
+
+    for (let r = 1; r <= PAR_ROUNDS; r++) {
+      wipe(U);
+      const seed = makeState(null, 800 + r);
+      const seedRes = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(seed) });
+      ok(`P${r} 바탕 상태 저장`, seedRes.ok === true, seedRes.msg || '');
+      if (!seedRes.ok) continue;
+
+      const revBefore = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
+      //  각 클라이언트는 **같은 스냅샷**을 들고 **서로 다른 값**으로 저장한다.
+      //  이름을 서로 다르게 하는 이유: 이긴 사람의 값만 남았는지(P3)를 값으로 판정하려면 구별돼야 한다.
+      const names = [];
+      const states = [];
+      for (let k = 0; k < PAR_N; k++) {
+        const s = JSON.parse(JSON.stringify(seed));
+        const nm = `병렬-${r}-${k}`;
+        s.categories[0].name = nm;
+        names.push(nm); states.push(JSON.stringify(s));
+      }
+
+      const par = run({ op: 'parallel', loginId: LOGIN, state: {}, states });
+      const rs = Array.isArray(par.results) ? par.results : [];
+      if (rs.length !== PAR_N) {
+        undecide(`P${r} 병렬 결과 수집`, `결과 ${rs.length}건 / ${PAR_N}건 — 러너가 전부 돌리지 못했다`);
+        continue;
+      }
+
+      //  ★ **겹침 측정이 먼저다.** 안 겹쳤으면 아래 P1~P5 는 순차를 다시 잰 것이라
+      //    통과해도 아무것도 증명하지 못한다. 그래서 그 경우는 '판정 불가' 로 끊는다.
+      const iv = rs.map(x => ({ s: Number(x.startMs), e: Number(x.endMs) }));
+      const depth = maxOverlap(iv);
+      const span = Math.max(...iv.map(x => x.e)) - Math.min(...iv.map(x => x.s));
+      console.log(`  · P${r} 구간(ms): ` + rs.map(x => `#${x.i}[${x.startMs}→${x.endMs}]`).join(' ') +
+                  ` · 최대 동시 ${depth}/${PAR_N} · 전체 ${span.toFixed(1)}ms`);
+      if (depth < 2) {
+        undecide(`P${r} 병렬이 실제로 겹쳤다`,
+                 `최대 동시 ${depth}개 — 이건 순차다. 이 라운드는 아무것도 증명하지 못했다`);
+        continue;
+      }
+      ok(`P${r} ${PAR_N}개 구간이 한 시점에 모두 열려 있었다(진짜 병렬)`, depth === PAR_N,
+         `최대 동시 ${depth}/${PAR_N}`);
+
+      // P1 — 정확히 하나만 성공한다
+      const wins = rs.filter(x => x.ok === true);
+      ok(`P${r} **정확히 하나만 성공한다**`, wins.length === 1,
+         `성공 ${wins.length}건 — 0이면 전부 실패한 것이고, 2 이상이면 잠금이 샌다: ` +
+         rs.map(x => `#${x.i} ok=${x.ok} conflict=${x.conflict} ${x.ex || ''}${x.msg ? ' "' + x.msg + '"' : ''}`).join(' | '));
+
+      // P2 — 나머지는 전부 Conflict. 예외·타임아웃·데드락은 **충돌이 아니다**
+      const losers = rs.filter(x => x.ok !== true);
+      const notConflict = losers.filter(x => x.conflict !== true);
+      ok(`P${r} 진 쪽은 전부 '충돌' 이다(예외·타임아웃이 아니다)`, notConflict.length === 0,
+         notConflict.map(x => `#${x.i} ex=${x.ex || '없음'} msg="${x.msg}"`).join(' | '));
+      const crashed = rs.filter(x => x.ex);
+      ok(`P${r} 예외로 죽은 저장이 없다`, crashed.length === 0,
+         crashed.map(x => `#${x.i} ${x.ex}: ${x.msg}`).join(' | '));
+
+      // P3 — DB 에 이긴 사람의 값만 남는다
+      if (wins.length === 1) {
+        const winName = names[wins[0].i];
+        const nameNow = one(`SELECT name FROM cal_category WHERE user_id=${U} ORDER BY cat_no LIMIT 1`);
+        ok(`P${r} DB 에 이긴 쪽(#${wins[0].i})의 값만 남았다`, nameNow === winName,
+           `기대="${winName}" 현재="${nameNow}"`);
+        //  진 쪽의 값이 한 조각이라도 섞이면 '부분 적용' 이다 — §3.3 이 금지하는 바로 그것.
+        const others = names.filter((_, k) => k !== wins[0].i);
+        const leaked = Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U} AND name IN (` +
+          others.map(n => `'${n.replace(/'/g, "''")}'`).join(',') + `)`));
+        ok(`P${r} 진 쪽의 값이 섞이지 않았다`, leaked === 0, `${leaked}행`);
+      }
+
+      // P4 — rev 가 정확히 1 만 올랐다(§3.1 「rev 선점」이 직렬화를 만드는 자리)
+      const revAfter = Number(one(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`));
+      ok(`P${r} **rev 가 정확히 1 올랐다**`, revAfter === revBefore + 1,
+         `${revBefore} → ${revAfter} (+${revAfter - revBefore}) — ` +
+         '2 이상이면 진 트랜잭션도 rev 를 올린 것이고(롤백이 안 됐다), 0 이면 선점이 안 걸렸다');
+
+      // P5 — 데드락·락 대기 초과가 없다
+      const locky = rs.filter(x => BAD_LOCK.test(x.msg || ''));
+      ok(`P${r} 데드락·락 대기 초과가 없다`, locky.length === 0,
+         locky.map(x => `#${x.i} "${x.msg}"`).join(' | ') + ' — 겹친 트랜잭션이 락에서 갈렸다(설계가 알아야 할 사실)');
+
+      //  ★ 실측값을 통과할 때도 찍는다 — 초록 한 줄은 "무엇이 일어났는지" 를 말해 주지 않는다.
+      console.log(`    승자 #${wins.length === 1 ? wins[0].i : '?'} · 충돌 ${losers.filter(x => x.conflict).length}/${losers.length}` +
+                  ` · rev ${revBefore}→${revAfter}(+${revAfter - revBefore}) · 예외 ${crashed.length} · 락사고 ${locky.length}`);
+    }
+    wipe(U);
+  }
+
+  code = fail === 0 ? (undecided === 0 ? 0 : 2) : 1;
 } finally {
   try { if (U) dropUser(U); } catch (e) { console.log('  ! 정리 실패: ' + e.message); }
   if (WORK && existsSync(WORK)) { try { rmSync(WORK, { recursive: true, force: true }); } catch {} }
 }
 
 console.log('\n' + '═'.repeat(70));
-console.log(`통과 ${pass} · 실패 ${fail} · ${((Date.now() - t0) / 1000).toFixed(1)}초`);
+console.log(`통과 ${pass} · 실패 ${fail} · 판정 불가 ${undecided} · ${((Date.now() - t0) / 1000).toFixed(1)}초`);
 if (F.length) { console.log('\n실패 목록:'); F.slice(0, 12).forEach(f => console.log('  · ' + f)); }
-console.log(fail === 0 ? '위반 없음 ✓ — 읽기→쓰기→읽기 왕복이 동일하다.' : '★ 위반 있음');
+if (UD.length) { console.log('\n판정 불가 목록(통과가 아니다):'); UD.slice(0, 12).forEach(f => console.log('  · ' + f)); }
+console.log(fail === 0
+  ? (undecided === 0
+      ? '위반 없음 ✓ — 읽기→쓰기→읽기 왕복이 동일하고, 동시 저장은 하나만 이긴다.'
+      : '★ 판정 불가 — 실패는 없지만 전제가 서지 않아 증명하지 못한 것이 있다(초록 아님)')
+  : '★ 위반 있음');
 console.log('═'.repeat(70));
 process.exit(code);
