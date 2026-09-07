@@ -23,6 +23,22 @@
   무인 호출자는 0 만 성공으로 셀 것. 1 과 2·3·4 를 나눈 이유는 사람이 할 일이 달라서다:
   1 은 '백업이 반쪽이다(복구에 못 쓴다)', 2·3·4 는 '백업을 시작조차 못했다' 이다.
 
+  --- EXITCODES (ASCII; this block must match line-for-line in .ps1 and .cmd) ---
+    0 ok - dump written and every verification passed (-Install / -Uninstall / -Status success is 0 too)
+    1 backup or verification failed - the dump is kept as .partial and must not be restored from
+    2 config problem - .cnf missing or unreadable, or the backup folder cannot be created
+    3 connection or privilege problem - cannot connect, or the account lacks SELECT and TRIGGER
+    4 mysqldump.exe / mysql.exe not found
+    5 administrator rights required - -Install / -Uninstall need an elevated console
+  --- END EXITCODES ---
+  ★ 위 ASCII 블록은 사람이 아니라 **기계가 읽는 사본**이다. backup-taskmgr.cmd 는 비ASCII 를
+    담을 수 없어(그 파일 머리말의 'ASCII ONLY' 절 참조) 위 한글 표를 그대로 복사할 수 없다.
+    옛 .cmd 는 "0 ok | 1 backup failed …" 처럼 한 줄에 두 코드를 `|` 로 나눠 적었는데,
+    그 형식은 사람에게도 표 테두리로 오해되고 기계 대조도 어렵게 만든다(실제로 한 번 오판이 났다).
+    그래서 restore-taskmgr 와 같은 ASCII 블록을 한 벌 더 두고 한 줄에 코드 하나만 적는다.
+    tests/backup-guards.test.mjs 가 이 블록을 .cmd 와 줄 단위로 대조하고, 블록의 숫자와
+    이 파일이 **실제로 내는** exit 값 집합이 어긋나면 실패한다.
+
   ★ 이 스크립트의 존재 이유 — 종료코드만 믿으면 안 되는 실측 사례:
      백업 계정에 SELECT 만 주고 mysqldump 를 돌리면 **에러도 경고도 없이 exit 0** 으로
      끝나는데 트리거가 통째로 빠진다.

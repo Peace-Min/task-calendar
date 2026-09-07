@@ -23,7 +23,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 
 ## 구성 — 캘린더 트랙 (`cal_*`) · 백업
 
-> 아래 다섯 중 **앞의 셋만** 캘린더 트랙입니다. **백업 두 파일은 `taskmgr` DB 전체**가 대상이며,
+> 아래 여섯 중 **앞의 셋만** 캘린더 트랙입니다. **백업·복구 파일은 `taskmgr` DB 전체**가 대상이며,
 > 캘린더 트랙 작업 중에 만들어졌을 뿐 과제 표도 함께 받습니다.
 
 | 파일 | 역할 |
@@ -33,6 +33,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `grants-calendar.sql` | 앱 계정(`taskmgr_app`) 권한 **단일 소스**. 표마다 '왜 그 동사를 주는지 / 왜 안 주는지'가 주석으로 붙어 있다 |
 | `backup-taskmgr.cmd` / `backup-taskmgr.ps1` | **주간 mysqldump 백업 + '온전한 덤프인지' 대조.** 구축이 아니라 **운영** 도구라 `init-calendar` 와 별개로 돈다. `-Install` 로 작업 스케줄러에 등록. 아래 '백업' 절 |
 | `create-backup-user.sql` | 백업 전용 최소권한 계정(`taskmgr_backup`). **주는 권한과 안 주는 권한의 근거가 주석에 붙어 있다** — 특히 `TRIGGER` 를 왜 함께 줘야 하는지 |
+| `restore-taskmgr.cmd` / `restore-taskmgr.ps1` | **덤프 되살리기 + '정말 되살아났는지' 대조.** `backup-taskmgr` 의 짝이다. 기본은 라이브가 아닌 **별도 DB** 로 복구하고, 라이브 덮어쓰기는 스위치+**이름 타이핑**이 있어야만 열린다. `-Grants` 가 `복구방법.txt` 4번(계정·권한은 덤프에 없다)을 대신한다. 아래 '복구' 절 |
 
 > 두 `.sql` 은 `init-calendar` 없이 `mysql` 로 직접 돌려도 되지만, **순서와 게이트를 사람이 대신 지켜야 한다.** 아래 두 절이 그 내용이다.
 
@@ -632,11 +633,126 @@ backup-taskmgr.cmd -Status                     # 등록 상태만 조회
 `1` 과 `2`·`3`·`4` 를 나눈 이유는 사람이 할 일이 달라서입니다 — `1` 은 *"백업이 반쪽이다(복구에 못 쓴다)"*,
 `2`·`3`·`4` 는 *"백업을 시작조차 못했다"* 입니다. **전자가 더 위험합니다**(파일이 있으니 있는 줄 안다).
 
-### 복구
+## 복구 — `restore-taskmgr` (덤프 되살리기 + 대조)
+
+`backup-taskmgr` 의 짝입니다. 저쪽이 *"제대로 떴는가"* 를 보고, 이쪽이 *"되살아나는가"* 를 봅니다.
+**검증되지 않은 백업은 백업이 아닙니다** — 2026-09-07 이전까지 복구는 문서(`D:\taskmgr-backup\복구방법.txt`)
+로만 있었고 실행체가 없었습니다.
 
 ```
-# 1) 기준 스냅샷 되돌리기 (해당 회차 덤프 파일)
-mysql -u root -p taskmgr < taskmgr-<날짜>.sql
+restore-taskmgr.cmd -WhatIf                                        # 계획만 보기(쓰기 없음)
+restore-taskmgr.cmd -TargetDb taskmgr_restore_drill -Grants        # 최신 덤프를 별도 DB 로 복구
+restore-taskmgr.cmd -DumpPath "D:\taskmgr-backup\taskmgr-<날짜>.sql" -Grants
+restore-taskmgr.cmd -TargetDb taskmgr_restore_drill -DropTarget    # 리허설 뒷정리(권한 회수까지)
+```
+
+- 기본 대상은 **라이브가 아닌 별도 DB**(`taskmgr_restore`)입니다. `-TargetDb` 가 `-LiveDb` 와 같으면
+  스크립트가 **거부**합니다(코드 `6`). `-OverwriteLive` 스위치만으로도 열리지 않습니다 —
+  **사람이 DB 이름을 직접 타이핑해야** 하고, 비대화형(stdin 리다이렉트)이면 무조건 거부합니다.
+  가드가 스크립트 **안**에 있는 이유: 호출자의 조심성에 기대면 언젠가 반드시 집니다.
+- **비밀번호를 명령줄로 받지 않습니다**(`-p<비번>` 금지 — 같은 PC 의 다른 프로세스가 명령줄을 읽습니다).
+  자격은 아래 **자격 획득 순서**대로 구합니다.
+
+#### 자격 획득 순서 — 무인 실행이 조용히 멎지 않게
+
+| 순서 | 통로 | stdin 을 읽나 |
+|---|---|---|
+| ① | `-CnfPath <파일>` | 안 읽음 |
+| ② | 기본 `.cnf` = **`%ProgramData%\taskmgr\restore-taskmgr.cnf`** (`backup-taskmgr.cnf` 와 같은 자리 관례) | 안 읽음 |
+| ③ | 환경변수 **`TASKMGR_ADMIN_PW`** (이 저장소가 시험에서 `TC_TEST_DB_ADMIN_PW` 를 쓰는 것과 같은 관례) | 안 읽음 |
+| ④ | stdin 첫 줄 — **상한 10초**. 그 안에 한 줄이 안 오면 코드 `2` 로 끝냅니다 | 읽음(상한 있음) |
+| ⑤ | 대화형이면 물어봅니다 | — |
+
+> ⚠️ **④ 의 상한은 취향이 아니라 결함 수리입니다.** 2026-09-07 실측: stdin 이 리다이렉트돼 있고
+> **파이프가 열린 채 비어 있으면**(아무도 안 씀) `[Console]::In.ReadLine()` 이 영원히 돌아오지 않아
+> `restore-taskmgr.ps1 -WhatIf` 가 5분이 지나도 끝나지 않았습니다(바깥에서 25초 상한으로 강제 종료,
+> 코드 `124`). `< NUL`(즉시 EOF)에서는 멀쩡했으므로 **대화형·수동 실행에서는 절대 드러나지 않습니다** —
+> 드러나는 곳은 작업 스케줄러·CI·다른 스크립트 안, 즉 이 스크립트가 실제로 돌아야 할 자리입니다.
+> 무인 실행에서 **실패는 알람이 되지만 무한 대기는 아무 신호도 내지 않습니다**(백업 계정에 `SELECT` 만
+> 줬을 때 `mysqldump` 가 조용히 `exit 0` 으로 끝나던 것과 같은 침묵). 무인 호출자는 ①②③ 중 하나를
+> 쓰세요. `tests/restore-guards.test.mjs` 가 상한과 이 순서를 계약으로 잠급니다.
+
+```
+:: 무인 실행 — 셋 중 하나
+restore-taskmgr.cmd -WhatIf -CnfPath "%ProgramData%\taskmgr\restore-taskmgr.cnf"
+set TASKMGR_ADMIN_PW=<관리계정 비밀번호> && restore-taskmgr.cmd -WhatIf
+echo <관리계정 비밀번호>| restore-taskmgr.cmd -WhatIf
+```
+
+측정(개발 PC, `-WhatIf`):
+
+| 상황 | 종료코드 | 걸린 시간 |
+|---|---|---|
+| `echo <비번> \|` (파이프에 값이 있음) | `0` | 1.7초 |
+| 파이프가 **열린 채 비어 있음** | `2` | 11.1초 (상한 10초 + 기동) |
+| `< NUL` (즉시 EOF) | `2` | 1.1초 |
+| `-CnfPath` / 기본 `.cnf` / `TASKMGR_ADMIN_PW` (빈 파이프를 물려도) | `0` | 1.6초 |
+
+- 대상 DB 가 이미 있으면 **먼저 통째로 떠서** `<BackupDir>\pre-restore-<db>-<타임스탬프>.sql` 로 남기고,
+  **그 덤프가 성공한 뒤에야** 대상을 비우고 다시 만듭니다. 못 남기면 진행하지 않습니다(코드 `2`).
+- `-Grants` 는 `create-app-user.sql` + `grants-calendar.sql` 을 **둘 다** 적용합니다(아래 ★ 절).
+
+### ★ 왜 `-Grants` 가 있어야 하는가 — 덤프에는 계정도 권한도 없습니다
+
+`복구방법.txt` 4번이 말하는 그 단계입니다. 백업은 `taskmgr` **한 DB** 만 뜨고 계정 정보는 `mysql`
+스키마에 있어 대상이 아닙니다. 그래서 이 단계를 건너뛰면 **표도 데이터도 전부 제자리에 있는데**
+위젯이 첫 조회에서 죽습니다. 2026-09-07 리허설에서 세 가지 오류 번호를 전부 실측했습니다:
+
+| 상황 | 앱 계정이 받는 오류 | 왜 |
+|---|---|---|
+| 두 SQL 을 **둘 다** 건너뜀 (그 DB 권한이 0줄) | **`ERROR 1044`** Access denied ... to database | DB 단위에서 막힘 |
+| `create-app-user.sql` 만 적용, `grants-calendar.sql` 건너뜀 | **`ERROR 1142`** SELECT command denied ... for table `cal_schema_meta` | DB 에는 붙지만 `cal_*` 표 권한이 없음 |
+| 계정이 없거나 비번이 배포본과 다름 | **`ERROR 1045`** | `create-app-user.sql` 의 `CHANGE_ME_ON_DEPLOY` 를 안 바꿨을 때 |
+
+`복구방법.txt` 는 `1142` 만 적었지만 **실제로는 1044 가 더 흔합니다**(복구 DB 이름이 배포 GRANT 와 다를 때).
+어느 쪽이든 원인은 하나입니다 — 덤프에 계정·권한이 없다.
+
+> ⚠️ **두 SQL 은 DB 이름을 글자로 박아 두었습니다**(`ON taskmgr.<표>` — `grants-calendar.sql` 머리말이
+> 그렇게 못박고, 배포 스크립트가 한 줄로 치환하도록 계정 표기까지 통일해 두었습니다).
+> 그래서 대상이 `taskmgr` 가 아니면 원본을 그대로 돌릴 수 없습니다 — 돌리면 **리허설이 라이브 계정
+> 권한을 건드립니다.** 스크립트는 `init-calendar.ps1` 과 같은 결론을 따릅니다: 임시 사본에서 스키마
+> 이름만 바꿔 실행하고(원본 불변) 되돌리는 `REVOKE` 문을 찍습니다.
+> **`DROP DATABASE` 는 표 단위 권한(`mysql.tables_priv`)을 지우지 않습니다** — 남겨 두면 나중에 같은
+> 이름의 DB 가 생겼을 때 되살아납니다. `-DropTarget` 이 그 회수까지 하고 0행을 확인합니다.
+
+### 종료코드 — 복구
+
+`restore-taskmgr.cmd` 는 `.ps1` 의 종료코드를 그대로 돌려줍니다. **`0` 만 성공으로 세세요.**
+
+| 코드 | 뜻 | 그다음에 할 일 |
+|---|---|---|
+| `0` | 성공 — 복구했고 **검증을 전부 통과** (`-WhatIf`/`-DropTarget` 성공도 0) | 없음 |
+| `1` | 복구 실행 실패 또는 **검증 불일치**. 대상 DB 는 원인 확인용으로 남는다 | 화면의 불일치 표를 읽고 원인을 고친 뒤 재실행 |
+| `2` | 설정 문제 — 덤프가 없거나 못 읽음 / **복구 전 안전 덤프 실패** / `.cnf` 문제 | 되돌릴 수단 없이는 덮어쓰지 않는다. 안전 덤프부터 되게 할 것 |
+| `3` | 접속·권한 문제 — DB 에 못 붙거나 관리 계정에 `CREATE`·`GRANT` 가 없음 | 관리 계정 확인. `1146` 이면 아래 ★ 참조 |
+| `4` | 도구 없음 — `mysql.exe` / `mysqldump.exe` 를 못 찾음 | `-BaseDir` 로 위치 지정 |
+| `5` | (결번) 관리자 권한 필요 — `backup-taskmgr` 와 뜻만 맞춰 비워 둠 | — |
+| `6` | **거부** — 라이브 덮어쓰기 가드에 걸림. 아무것도 바꾸지 않음 | 별도 DB 로 복구한 뒤 필요한 행만 옮기세요 |
+| `7` | **검증 못 함** — 라이브 DB 에 못 붙어 대조 기준이 없음. **통과가 아닙니다** | 라이브가 죽은 진짜 재해 상황이면 이 코드가 정상입니다. 0 으로 읽지 마세요 |
+
+`6` 과 `7` 은 이 스크립트에만 있습니다. 기존 값의 뜻을 바꾸지 않고 새 값을 준 이유는
+`init-calendar.ps1` 이 `3`·`5` 를 결번으로 남긴 것과 같습니다 — **종료코드는 호출자와의 계약**입니다.
+`7` 이 `0` 이 아닌 이유는 이 저장소의 원칙 그대로입니다: **판정 불가 ≠ 통과**
+(`tests/harness.mjs` 가 skip 을 `exit 2` 로 따로 세는 것과 같은 뜻).
+
+### ★ 옛 덤프를 복구할 때 걸리는 두 가지 (2026-09-07 실측)
+
+1. **`ERROR 3734` — 비우지 않고 부으면 죽습니다.**
+   `Failed to add the foreign key constraint. Missing column 'org_id' for constraint 'fk_user_org_id' in the referenced table 'org_unit'`
+   덤프는 표마다 `DROP`→`CREATE` 를 하지만 **표 순서대로** 합니다. 대상에 다른 세대의 스키마가 남아 있으면
+   아직 안 지워진 옛 표를 참조하는 FK 에서 죽습니다. 덤프 머리의 `FOREIGN_KEY_CHECKS=0` 은
+   *'없는 표 참조'* 만 봐주고 *'있는 표에 컬럼이 없다'* 는 못 봐줍니다.
+   → 스크립트는 안전 덤프 성공 후 대상을 **통째로 다시 만듭니다**(`-KeepExisting` 으로 끌 수 있습니다).
+2. **`ERROR 1146` — 옛 덤프 + 지금 `grants-calendar.sql` 은 맞지 않습니다.**
+   `Table 'taskmgr_restore_drill.cal_report_daily' doesn't exist` — GRANT 목록은 **지금** 스키마를 전제로 하고,
+   없는 표에 GRANT 하면 그 줄에서 배치가 멈춥니다(그 파일이 일부러 그렇게 만들어져 있습니다).
+   → 복구본에 `migrate-*.sql` 을 순서대로 적용해 스키마를 현재로 올린 뒤 다시 `-Grants`.
+
+### 부분 복구 · 시점 복구
+
+```
+# 1) 기준 스냅샷 되돌리기 — 반드시 별도 DB 로 (restore-taskmgr 가 이것을 대신합니다)
+restore-taskmgr.cmd -TargetDb taskmgr_restore -DumpPath "D:\taskmgr-backup\taskmgr-<날짜>.sql" -Grants
 # 2) 그 이후 변경 재생 (binlog. 덤프 시점 이후 구간만)
 mysqlbinlog --start-datetime="<덤프 시각>" <binlog 파일들> | mysql -u root -p
 ```
@@ -647,7 +763,31 @@ mysqlbinlog --start-datetime="<덤프 시각>" <binlog 파일들> | mysql -u roo
 - **`cal_migration_log` 를 함께 되돌린다는 점에 주의**하세요. 그 표는 이관 재실행 방지 마커라,
   복원 시점이 이관 이전이면 이관 도구가 다시 돌 수 있는 상태가 됩니다(설계 §8).
 
-### 리허설 기록 — 2026-09-02 (개발 PC)
+### 회귀 계약 — `tests/restore-guards.test.mjs` · `tests/backup-guards.test.mjs`
+
+백업·복구는 1년에 한 번 쓸까 말까 한 경로(백업은 아예 무인)라 **조용히 썩습니다.** 그래서 계약을
+소스 텍스트로 잠갔고, 계약마다 **변이 시험**(가드를 지우면 정말 우는가)을 붙였습니다 —
+DB 도 jsdom 도 필요 없고 `mysqldump` 를 돌리지도 않습니다.
+
+| 파일 | 잠근 계약 |
+|---|---|
+| `restore-guards.test.mjs` (40건) | ① 라이브 덮어쓰기 거부 가드(+타이핑 확인) · ② `-p<비번>` 자리 없음 · ③ 검증이 **개수가 아니라 이름 집합** · ④ `-Grants` 가 두 SQL 을 다 씀 · ⑤ `.ps1`↔`.cmd` 종료코드 표 일치 · ⑥ *"검증 못 함"* 분기 존재 · ⑦ `.cmd` 순수 ASCII · **⑧ stdin 읽기에 상한이 있다** · **⑨ 자격 획득 순서에서 `.cnf`·환경변수가 stdin 보다 앞선다** · ⑩ 환경변수 이름이 스크립트·머리말·README 셋에 같은 글자 |
+| `backup-guards.test.mjs` (30건) | ① `-p<비번>`/`--password=` 자리 없음 · ② `.ps1`↔`.cmd` 종료코드 표 일치 · ③ 표의 숫자 = **실제로 내는** `exit`/`Die` 값 · ④ `.cmd` 순수 ASCII · ⑤ `mysqldump` 인자 넷(`--no-tablespaces`·`--single-transaction`·`--routines`·`--triggers`) 생존 · ⑥ 덤프 검증이 **이름 집합** 대조 · ⑦ 덤프 **전에** `SHOW GRANTS` 로 `TRIGGER` 보유 선검사 |
+
+공용 기계(PowerShell 주석 마스커 · 종료코드 표 파서 · 변이 주입기)는 `tests/ps-guard-lib.mjs` 에
+한 벌만 둡니다. 두 시험 파일이 서로를 `import` 하면 러너의 '파일별 등록 건수' 인구조사가 무너집니다
+(ES 모듈은 한 번만 평가되므로 먼저 부른 쪽이 상대의 등록까지 삼키고, 뒤쪽은 0건이 되어 러너② 가 웁니다).
+
+> ★ `backup-taskmgr.cmd` 의 종료코드 표는 원래 `0 ok | 1 backup failed …` 처럼 **한 줄에 두 코드**를
+> `|` 로 나눠 적었습니다. 사람은 그것을 표 테두리로 오해하고(실제로 "불일치" 오판이 한 번 났습니다)
+> 기계는 파싱이 번거로워집니다. **계약을 그 형식에 맞추는 대신 형식을 고쳤습니다** —
+> `restore-taskmgr` 와 같은 ASCII `EXITCODES` 블록을 `.ps1` 머리말과 `.cmd` 양쪽에 한 벌씩 두고,
+> **한 줄에 코드 하나**로 적습니다. 한글 표는 사람용으로 그대로 남습니다(`.cmd` 는 비ASCII 금지라
+> 한글 표를 복사할 수 없습니다 — 그래서 기계용 사본이 따로 필요합니다).
+
+`TC_TEST_STRICT=1 node tests/run-tests.mjs` 로 함께 돕니다.
+
+### 리허설 기록 ① — 2026-09-02 (손으로, 개발 PC)
 
 **왜 남기는가**: 설계 §11 은 이관·앱 전환보다 **먼저** 백업을 설치하고 첫 회차를 내용까지
 대조하라고 못박았는데, 앱 전환(`XmlRetired = true`)이 먼저 나갔습니다. 즉 **지금 백업은 0회**이고,
@@ -695,6 +835,117 @@ mysqlbinlog --start-datetime="<덤프 시각>" <binlog 파일들> | mysql -u roo
 `localhost` 한정·최소권한이라 무해하며 앞으로 이 스크립트가 씁니다). 리허설용 `taskmgr_restore`
 와 `taskmgr_v16chk` 는 **DROP** 했고, `mysql.tables_priv`·`mysql.db` 에 그 DB 들의 잔여 권한이
 0행임을 확인했습니다(`DROP DATABASE` 는 표 단위 권한을 지우지 않습니다).
+
+### 리허설 기록 ② — 2026-09-07 (`restore-taskmgr.ps1` 로, 개발 PC)
+
+**①과 무엇이 다른가**: ①은 사람이 손으로 한 번 해 본 기록이고, ②는 **스크립트가 한 것**입니다.
+손으로 한 절차는 다음 사람이 다시 손으로 해야 하고, 그 사이에 절차가 바뀌면 아무도 모릅니다.
+그래서 실행체(`restore-taskmgr.ps1` / `.cmd`)와 회귀 계약(`tests/restore-guards.test.mjs`)을 만들고,
+**그 실행체로** 처음부터 끝까지 다시 돌렸습니다.
+
+**대상 DB 는 `taskmgr_restore_drill` 고정. `taskmgr` 에는 SELECT·`mysqldump` 만 했습니다.**
+
+**덤프 머리 확인** (`taskmgr-20260824-102609.sql`, 47,665 B):
+`CREATE DATABASE` **0건** / `USE` **0건** — 단일 DB 덤프라 **대상 DB 인자로만** 들어갑니다.
+그래서 인자를 빼면 *"No database selected"* 로 끝나지 조용히 엉뚱한 DB 에 들어가지는 않습니다.
+(스크립트는 매 실행마다 이 두 문장의 유무를 세어 화면에 찍습니다 — 언젠가 `--databases` 로 뜬
+파일이 섞이면 그때는 **파일에 적힌 DB 로** 들어가기 때문입니다.)
+
+#### ㉮ 옛 스냅샷(8-24) 복구 — 스키마는 **틀렸고**, 행 수는 시점 차입니다
+
+| 대조 항목 | 라이브 `taskmgr` | 복구본(8-24 스냅샷) | 판정 |
+|---|---|---|---|
+| base table **이름 집합** | 23 | **20** — `cal_report_daily`·`cal_report_hours`·`cal_report_weekly` 없음 | **불일치(진짜 문제)** |
+| 뷰 / 트리거 / 루틴 이름 집합 | 0 / 0 / 0 | 0 / 0 / 0 | 일치 |
+| 표별 행 수 | 합 **18,749** | 합 **231** (16표 차이) | 시점 차(예상됨) |
+| 덤프 마감 표시 | — | `-- Dump completed` 있음 | 일치 |
+
+**스키마 차이의 정체**: 빠진 3표는 8-24 **이후** 마이그레이션이 만든 것입니다 —
+`migrate-2026-08-31-report-daily.sql`(`schema_version` 5→6, `cal_report_daily`·`cal_report_hours`),
+`migrate-2026-08-31-report-weekly.sql`(6→7, `cal_report_weekly`),
+`migrate-2026-08-31-sent-only.sql`(7→8, `cal_report_weekly` 재작성).
+즉 *"덤프가 낡았다"* 이지 *"백업이 반쪽이다"* 가 아닙니다. **스키마 이름 집합은 같아야 하고,
+행 수는 시점 차로 다를 수 있다** — 스크립트는 이 둘을 나눠 판정합니다(`-AllowRowDiff` 는
+행 수 차이만 경고로 낮추고 **스키마는 그대로 엄격**합니다).
+
+**표별 행 수 차이(16표)** — 나머지 7표(`app_user` 89 · `cal_schema_meta` 1 · `cal_user_rev` 89 ·
+`org_unit` 12 · `project` 14 · `status_code` 4 · `title_code` 11)는 양쪽이 같았습니다:
+
+| 표 | 라이브 | 복구본 | 차이 |
+|---|---:|---:|---:|
+| `cal_task_hours` | 6,561 | 0 | −6,561 |
+| `cal_attendance` | 5,837 | 0 | −5,837 |
+| `cal_entry` | 3,625 | 0 | −3,625 |
+| `cal_category` | 711 | 0 | −711 |
+| `cal_entry_commit` | 708 | 0 | −708 |
+| `cal_todo` | 558 | 0 | −558 |
+| `cal_entry_except` | 326 | 0 | −326 |
+| `cal_todo_day_note` | 169 | 0 | −169 |
+| `customer` | 19 | 8 | −11 |
+| `section_code` | 10 | 3 | −7 |
+| `cal_room` | 3 | 0 | −3 |
+| `cal_migration_log` | 1 | 0 | −1 |
+| `cal_user_pref` | 1 | 0 | −1 |
+| `cal_report_daily` / `cal_report_hours` / `cal_report_weekly` | 0 / 0 / 0 | (표 없음) | — |
+
+`cal_*` 가 전부 0 인 것은 결손이 아닙니다 — **XML→DB 이관이 9-01 에 있었습니다**
+(`dist/backup/taskmgr-before-xml-migration-20260901-104618.sql`). 8-24 시점에는 캘린더가 비어 있었습니다.
+
+#### ㉯ `-Grants` 없이 복구하면 정말 죽는가 — 실측했습니다
+
+`복구방법.txt` 4번의 근거를 우리 스크립트로 재현한 자리입니다. 스모크는 `widget/CalendarDb.cs`
+부팅 경로의 실제 SQL 6건입니다(프리앰블 §3.6 → `cal_schema_meta` §5.5 → `app_user` 공개API1 →
+`cal_user_rev` §3.5 → `cal_category` 부팅조회 1/10 → `cal_entry` LEFT JOIN 부팅조회 2/10).
+
+```
+· 프리앰블        → ERROR 1044 (42000): Access denied for user 'taskmgr_app'@'%' to database 'taskmgr_restore_drill'
+· cal_schema_meta → ERROR 1044   · app_user → ERROR 1044   · cal_user_rev → ERROR 1044
+· cal_category    → ERROR 1044   · cal_entry → ERROR 1044          (6/6 실패, 종료코드 1)
+```
+
+**`1142` 가 아니라 `1044` 였습니다.** 권한이 **한 줄도** 없으면 MySQL 은 DB 단위에서 먼저 막습니다.
+`복구방법.txt` 가 적은 `1142` 는 *"DB 에는 붙는데 그 표만 권한이 없는"* 경우입니다 — 그 쪽도 따로 냈습니다:
+
+```
+GRANT SELECT ON taskmgr_restore_drill.project TO 'taskmgr_app'@'%';   -- create-app-user.sql 만 돈 상태를 흉내
+SELECT v FROM cal_schema_meta WHERE k='schema_version';
+→ ERROR 1142 (42000): SELECT command denied to user 'taskmgr_app'@'localhost' for table 'cal_schema_meta'
+```
+
+즉 **`create-app-user.sql` 만 돌리고 `grants-calendar.sql` 을 건너뛰면 정확히 `1142`** 입니다.
+둘 다 건너뛰면 `1044`. 표와 데이터는 양쪽 모두 멀쩡합니다 — 그래서 행 수 대조만으로는 안 잡힙니다.
+
+#### ㉰ `-Grants` 로 재적용 후 스모크 성공 — 여기서 "복구되었다"고 말할 수 있습니다
+
+옛 스냅샷은 `grants-calendar.sql` 과 세대가 맞지 않아(`ERROR 1146`, 위 ★ 절) 여기서 멈춥니다.
+그래서 **같은 날 뜬 덤프**(`dist/backup/taskmgr-pre-restore-drill-20260907-131414.sql`, 1,743,789 B)로
+전 과정을 다시 돌렸습니다 — 검증이 **초록불도 낼 수 있다**는 증거이기도 합니다(늘 빨간 검사는 검사가 아닙니다):
+
+| 대조 항목 | 결과 |
+|---|---|
+| base table / 뷰 / 트리거 / 루틴 **이름 집합** | 23 / 0 / 0 / 0 — 전부 동일 |
+| 표별 행 수 | **23표 전수 일치, 합 18,749행** |
+| 덤프 마감 표시 | 있음 |
+| `-Grants` (`create-app-user.sql` + `grants-calendar.sql`, 임시 사본에서 DB 이름 치환) | 22표에 권한 부여 |
+| **앱 스모크 6건** (`taskmgr_app`, 비번은 `widget/DeployConfig.cs` 에서 읽음) | **6/6 성공** (`login_id='arbaek'`) |
+| 종료코드 | **`0`** |
+
+#### ㉱ 뒷정리와 `taskmgr` 불변 증명
+
+- `-DropTarget` → `DROP DATABASE taskmgr_restore_drill` + **남은 표 단위 권한 22건 회수** →
+  `mysql.tables_priv` · `mysql.db` **0행 확인**.
+  (`DROP DATABASE` 는 표 단위 권한을 지우지 않습니다. 회수를 빠뜨리면 같은 이름의 DB 가 생길 때 되살아납니다.)
+- `SHOW DATABASES` → `information_schema` / `mysql` / `performance_schema` / `sys` / `taskmgr` — **원래대로**.
+- `taskmgr_app` 의 표 단위 권한이 붙은 DB → `taskmgr` **하나뿐**.
+- **`taskmgr` 불변 증명**: 리허설 전후 표별 행 수 23표 전수 동일(합 18,749). 그리고 더 센 증거로,
+  리허설 **전**에 뜬 덤프와 **후**에 뜬 덤프의 `sha256` 이 같았습니다
+  (`-- Dump completed on <시각>` 한 줄만 제외 — `ba59be30…95e3`, 둘 다 1,743,789 B).
+  행 수 대조는 값이 바뀐 것을 못 잡지만 이것은 잡습니다.
+
+#### ㉲ 게이트
+
+`TC_TEST_STRICT=1 node tests/run-tests.mjs` → **`1160 pass / 0 fail / 0 skip`, exit `0`**
+(그중 `restore-guards.test.mjs` 40건 · `backup-guards.test.mjs` 30건 — 위 '회귀 계약' 절 참조).
 
 #### 서버(배포 PC)에서 달라지는 것 — 여기만 바꿔서 그대로 하세요
 

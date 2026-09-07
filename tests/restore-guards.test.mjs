@@ -1,0 +1,549 @@
+// Layer 1 — 복구 스크립트(db/deploy/restore-taskmgr.ps1 / .cmd)의 **계약**을 소스 텍스트만으로
+// 검사한다. DB 도 jsdom 도 필요 없다(두 파일을 읽어 파싱할 뿐).
+//
+// 왜 있나
+//   복구는 1년에 한 번 쓸까 말까 한 경로다. 그래서 조용히 썩는다 — 누가 가드 한 줄을 지워도
+//   다음 릴리스까지 아무도 모르고, 알게 되는 날은 서버가 죽어 있는 날이다.
+//   여기서 잠그는 것은 '복구가 잘 되는가' 가 아니라(그건 실제 리허설이 한다),
+//   **복구 스크립트가 가진 안전 계약이 사라지지 않았는가** 다:
+//     ① 라이브 DB 를 덮어쓰지 못하게 하는 가드가 있고, 스위치 하나로 열리지 않는다
+//     ② 비밀번호를 `-p<비번>` 꼴로 명령줄에 실어 보내는 자리가 없다
+//     ③ 검증이 '개수' 가 아니라 '이름 집합' 을 대조한다 (개수는 같고 이름이 다를 수 있다)
+//     ④ -Grants 경로가 create-app-user.sql + grants-calendar.sql 을 둘 다 참조한다
+//        (복구방법.txt 4번 — 이 단계를 건너뛰면 위젯이 첫 조회에서 ERROR 1044/1142 로 죽는다)
+//     ⑤ .ps1 과 .cmd 의 종료코드 표가 글자 그대로 같다
+//     ⑥ 라이브에 못 붙으면 '검증 못 함' 으로 끝난다 — 통과(0)로 세지 않는다
+//     ⑦ .cmd 에 비ASCII 가 한 글자도 없다
+//     ⑧ ★ stdin 첫 줄 읽기에 **상한**이 있다 — 무인 실행이 영원히 멎지 않는다
+//     ⑨ ★ 자격 획득 순서에서 .cnf 와 환경변수가 stdin 보다 **앞선다**
+//
+//   ⑧⑨ 는 2026-09-07 에 실측된 결함의 회귀 잠금이다:
+//     stdin 이 리다이렉트돼 있고 파이프가 **열린 채 비어 있으면**(작업 스케줄러·CI·다른
+//     스크립트 안에서 흔한 모양) [Console]::In.ReadLine() 이 영원히 돌아오지 않아
+//     `restore-taskmgr.ps1 -WhatIf` 가 5분이 지나도 끝나지 않았다. `< NUL`(즉시 EOF)에서는
+//     멀쩡했으므로 대화형·수동 실행에서는 절대 드러나지 않는 결함이다.
+//     무인 실행에서 **실패는 알람이 되지만 무한 대기는 아무 신호도 내지 않는다** —
+//     백업 계정에 SELECT 만 줬을 때 mysqldump 가 조용히 exit 0 으로 끝나던 것과 같은 침묵이다.
+//
+// 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다
+// (이 저장소의 관례. schema-guards.test.mjs · holiday.test.mjs 와 같은 꼴).
+//
+// 공용 기계(마스커·종료코드 표 파서·변이 주입기)는 tests/ps-guard-lib.mjs 에 있다 —
+// backup-guards.test.mjs 가 같은 것을 쓴다. 두 시험 파일이 서로를 import 하면 러너의
+// 파일별 등록 인구조사가 무너지므로(ES 모듈은 한 번만 평가된다) 공용부를 따로 뺐다.
+import { test, assert } from './harness.mjs';
+import {
+  loadDeploy, maskPs, passwordOnCommandLineHits,
+  exitCodeTable, exitCodesInTable, exitCodesUsed, mutate, nonAsciiLines,
+} from './ps-guard-lib.mjs';
+
+const PS1 = 'restore-taskmgr.ps1';
+const CMD = 'restore-taskmgr.cmd';
+const psSrc = loadDeploy(PS1);
+const cmdSrc = loadDeploy(CMD);
+
+// ══ 검사 함수(테스트 + 변이 주입이 같은 함수를 쓴다) ═══════════════════
+const checks = {
+  // ① 라이브 덮어쓰기 거부 가드 — 스위치 하나로 열리지 않는다.
+  liveOverwriteGuard(ps) {
+    assert.ok(/Bad "라이브 덮어쓰기 거부 —/.test(ps),
+      '라이브 덮어쓰기 거부 가드가 없다 — -TargetDb 가 -LiveDb 와 같을 때 멈추는 자리가 사라졌다');
+    assert.ok(/if\(-not \$OverwriteLive\)\{/.test(ps),
+      '-OverwriteLive 없이도 라이브를 덮어쓸 수 있는 상태다');
+    // 스위치만으로는 부족해야 한다 — 사람이 DB 이름을 직접 타이핑해야 열린다.
+    assert.ok(/Read-Host "덮어쓸 DB 이름을 입력/.test(ps),
+      '이름 타이핑 확인이 없다 — -OverwriteLive 스위치 하나로 라이브가 열린다');
+    assert.ok(/if\("\$typed" -cne "\$LiveDb"\)\{/.test(ps),
+      '타이핑한 이름을 대소문자까지(-cne) 대조하지 않는다 — 확인 절차가 느슨해졌다');
+    // 비대화형에서는 그 타이핑이 불가능하므로 무조건 거부해야 한다(무인 배치가 이 문을 못 열게).
+    assert.ok(/if\(\[Console\]::IsInputRedirected\)\{[\s\S]{0,400}?라이브 덮어쓰기는 사람이 DB 이름을 직접 타이핑/.test(ps),
+      '비대화형(stdin 리다이렉트)에서도 라이브 덮어쓰기가 열린다 — 무인 실행에서 열려서는 안 된다');
+    // -DropTarget 으로 라이브를 지우는 조합은 어떤 스위치로도 열리지 않아야 한다.
+    assert.ok(/-DropTarget 으로 라이브 DB\(\$LiveDb\) 를 지울 수는 없습니다/.test(ps),
+      '-DropTarget + 라이브 DB 조합을 막는 자리가 없다');
+  },
+
+  // ② 비밀번호를 명령줄에 싣지 않는다.
+  //    Windows 는 같은 사용자면 다른 프로세스의 명령줄을 그대로 읽는다(파일 머리말의 실측).
+  noPasswordOnCommandLine(ps) {
+    // -p<값> (mysql/mysqldump 의 비번 인자) · --password=<값>.
+    // 마스커와 이 규칙은 ps-guard-lib 에 있다 — backup-guards.test.mjs 가 **같은 것**을 쓴다.
+    const bad = passwordOnCommandLineHits(ps);
+    assert.deepStrictEqual(bad, [],
+      `비밀번호를 명령줄로 넘기는 자리가 생겼다: ${bad.join(' , ')} — ` +
+      '자격은 --defaults-extra-file(보호된 .cnf)로만 넘겨야 한다');
+    // 없는 것을 확인하는 검사는 '아무 데도 안 보고 있는' 상태와 구별되지 않는다.
+    // 그래서 정본 경로가 실재하는지도 함께 본다.
+    assert.ok(/--defaults-extra-file=\$adminCnf/.test(ps),
+      '자격을 .cnf 로 넘기는 자리가 없다 — 검사가 볼 대상 자체가 사라졌다');
+  },
+
+  // ③ 검증이 개수가 아니라 이름 집합을 대조한다.
+  verifiesNameSetsNotCounts(ps) {
+    const m = /function NameSetDiff\(\$expect, \$actual\)\{([\s\S]*?)\n\}/.exec(ps);
+    assert.ok(m, 'NameSetDiff 함수가 없다 — 이름 집합 대조가 통째로 사라졌다');
+    const body = m[1];
+    assert.ok(/Missing\s*=\s*@\(\$e \| Where-Object \{ \$a -notcontains \$_ \}\)/.test(body),
+      'NameSetDiff 가 "라이브에 있는데 복구본에 없는 이름"을 뽑지 않는다');
+    assert.ok(/Extra\s*=\s*@\(\$a \| Where-Object \{ \$e -notcontains \$_ \}\)/.test(body),
+      'NameSetDiff 가 "복구본에만 있는 이름"을 뽑지 않는다');
+    assert.ok(!/\.Count\s*-(eq|ne)\s*/.test(body),
+      'NameSetDiff 가 개수 비교로 바뀌었다 — 개수는 같고 이름이 다를 수 있다');
+    // 표·뷰·트리거·루틴 넷 다 이름으로 본다.
+    const calls = [...ps.matchAll(/^CheckNames\s+"([^"]+)"/gm)].map((x) => x[1]);
+    assert.deepStrictEqual(calls, ['base table 이름', '뷰 이름', '트리거 이름', '루틴 이름'],
+      `이름 집합으로 대조하는 대상이 바뀌었다: [${calls.join(', ')}] — ` +
+      '표·뷰·트리거·루틴 넷을 모두 이름으로 봐야 한다');
+    // CheckNames 자신이 NameSetDiff 를 쓰는지(호출만 남고 알맹이가 바뀌지 않았는지).
+    assert.ok(/function CheckNames\([\s\S]*?\$d = NameSetDiff \$expect \$actual/.test(ps),
+      'CheckNames 가 NameSetDiff 를 쓰지 않는다');
+    // 표별 행 수는 information_schema 의 추정치가 아니라 실제 COUNT(*) 여야 한다.
+    assert.ok(/COUNT\(\*\) AS n FROM/.test(ps),
+      '표별 행 수를 COUNT(*) 로 세지 않는다 — information_schema.TABLE_ROWS 는 InnoDB 에서 추정치다');
+  },
+
+  // ④ -Grants 경로가 두 SQL 을 둘 다 참조한다(복구방법.txt 4번).
+  grantsPathUsesBothSqlFiles(ps) {
+    const m = /\nif\(\$Grants\)\{([\s\S]*?)\n\} else \{/.exec(ps);
+    assert.ok(m, '-Grants 분기를 찾지 못했다 — 계정·권한 재적용 경로가 사라졌다');
+    const body = m[1];
+    assert.ok(/Join-Path \$scriptDir "create-app-user\.sql"/.test(ps),
+      'create-app-user.sql 을 가리키는 자리가 없다');
+    assert.ok(/Join-Path \$scriptDir "grants-calendar\.sql"/.test(ps),
+      'grants-calendar.sql 을 가리키는 자리가 없다');
+    assert.ok(/\$appUserSql/.test(body) && /\$grantsSql/.test(body),
+      '-Grants 분기가 두 SQL 을 둘 다 쓰지 않는다 — 하나만 돌리면 앱은 1044/1142 로 죽는다');
+    // 두 파일은 DB 이름을 글자로 박아 두었다. 대상이 다르면 사본에서 바꿔 돌려야 한다 —
+    // 안 그러면 리허설이 라이브 계정 권한을 건드린다.
+    // ★ '분기가 있다'만 보면 안 된다 — 분기 조건만 죽여도(if($false)) 통과해 버린다(변이④-b 로 실측).
+    //   조건과 **치환 자체**가 한 덩어리로 살아 있는지 본다.
+    assert.ok(
+      /if\(\$TargetDb -ne \$grantSchema\)\{[\s\S]{0,2000}?\[regex\]::Replace\([\s\S]{0,200}?\[regex\]::Escape\(\$grantSchema\)[\s\S]{0,160}?\$TargetDb/.test(body),
+      'grants 파일의 하드코딩된 DB 이름을 대상에 맞추는 자리가 없다 — 리허설이 라이브 권한을 건드린다');
+    assert.ok(/DROP DATABASE 로 표 단위 권한\(mysql\.tables_priv\)을 지우지 않습니다/.test(ps),
+      'DROP DATABASE 가 표 단위 권한을 남긴다는 경고가 사라졌다(그 권한은 같은 이름의 DB 가 생기면 되살아난다)');
+  },
+
+  // ⑤ .ps1 과 .cmd 의 종료코드 표가 글자 그대로 같다.
+  exitCodeTablesMatch(ps, cmd) {
+    const a = exitCodeTable(ps, false);
+    const b = exitCodeTable(cmd, true);
+    assert.ok(a.length >= 8, `종료코드 표가 너무 짧다(${a.length}줄) — 표가 비면 대조가 성립하지 않는다`);
+    assert.strictEqual(a.length, b.length,
+      `종료코드 표의 줄 수가 다르다(.ps1 ${a.length} / .cmd ${b.length})`);
+    for (let i = 0; i < a.length; i++) {
+      assert.strictEqual(a[i], b[i],
+        `종료코드 표 ${i + 1}번째 줄이 다르다\n  .ps1: ${a[i]}\n  .cmd: ${b[i]}`);
+    }
+    // 표에 적힌 숫자와 스크립트 안의 $EXIT_* 상수가 어긋나면, 표는 맞는데 코드가 딴 값을 낸다.
+    const declared = new Map();
+    for (const m of ps.matchAll(/^\$(EXIT_[A-Z_]+)\s*=\s*(\d+)/gm)) declared.set(m[1], Number(m[2]));
+    assert.ok(declared.size >= 8, `$EXIT_* 상수를 ${declared.size}개밖에 못 찾았다 — 숫자가 코드에 흩어져 있다`);
+    const inTable = a.slice(1, -1).map((l) => Number(/^(\d+)\s/.exec(l)?.[1]));
+    assert.deepStrictEqual(inTable, [...new Set(declared.values())].sort((x, y) => x - y),
+      `표의 코드 목록과 $EXIT_* 상수 값이 다르다 (표 ${inTable.join(',')} / 상수 ${[...declared.values()].join(',')})`);
+  },
+
+  // ⑥ 라이브에 못 붙으면 '검증 못 함' — 통과가 아니다.
+  cannotVerifyIsNotAPass(ps) {
+    assert.ok(/\$EXIT_NOBASELINE\s*=\s*7/.test(ps),
+      "'검증 못 함' 전용 종료코드가 없다 — 판정 불가와 통과가 호출자에게 같아 보인다");
+    assert.ok(/if\(-not \$liveExists\)\{[\s\S]{0,300}?검증 못 함 — 라이브/.test(ps),
+      "라이브가 없을 때 '검증 못 함'으로 표시하는 분기가 없다");
+    assert.ok(/\$script:unknown \+= \$label/.test(ps),
+      "'검증 못 함' 항목을 따로 모으는 자리가 없다 — 모으지 않으면 판정에 반영되지 않는다");
+    assert.ok(/Warn "검증 못 함 — 아래 항목은 판정하지 않았습니다\./.test(ps),
+      "'검증 못 함' 을 사람에게 알리는 자리가 없다");
+    assert.ok(/if\(-not \$DropTarget\)\{ Cleanup; exit \$EXIT_NOBASELINE \}/.test(ps),
+      "'검증 못 함' 이 있는데도 0(성공)으로 끝난다 — 판정 불가를 통과로 세고 있다");
+    // 스모크 자격을 못 구한 경우도 통과가 아니라 '검증 못 함' 이어야 한다.
+    assert.ok(/앱 계정 자격을 못 구했습니다/.test(ps),
+      '앱 스모크 자격을 못 구했을 때 조용히 넘어간다 — 그 상태는 통과가 아니다');
+  },
+
+  // ⑧ ★ stdin 첫 줄 읽기에 상한이 있다 — 무인 실행이 영원히 멎지 않는다.
+  //    2026-09-07 실측: 파이프가 열린 채 비어 있으면 [Console]::In.ReadLine() 이 돌아오지 않아
+  //    -WhatIf 가 5분이 지나도 끝나지 않았다. 무한 대기는 실패와 달리 아무 신호도 내지 않는다.
+  stdinReadIsBounded(ps) {
+    // (a) 상한 값이 상수로 있고, 사람이 기다릴 수 있는 범위다. 0(즉시 만료)도 무한도 아니다.
+    const m = /^\$STDIN_WAIT_SEC\s*=\s*(\d+)/m.exec(ps);
+    assert.ok(m, 'stdin 읽기 상한 상수($STDIN_WAIT_SEC)가 없다 — 상한 없는 읽기는 무인 실행을 멈춰 세운다');
+    const sec = Number(m[1]);
+    assert.ok(sec >= 1 && sec <= 60,
+      `stdin 읽기 상한이 ${sec}초다 — 1~60초 사이여야 한다(0 이면 정상 파이프도 못 읽고, 너무 길면 무한 대기와 다를 바 없다)`);
+
+    // (b) 상한 있는 읽기 함수가 실재하고, 완료 대기에 **인자 있는** WaitOne 을 쓴다.
+    //     WaitOne() 은 무한 대기다 — 인자가 없으면 함수 이름만 바뀐 채 결함이 그대로 남는다.
+    const fn = /function ReadStdinLineBounded\(\[int\]\$timeoutSec\)\{([\s\S]*?)\n\}\n/.exec(ps);
+    assert.ok(fn, 'ReadStdinLineBounded 함수가 없다 — 상한 있는 stdin 읽기가 통째로 사라졌다');
+    const body = fn[1];
+    assert.ok(/\$stdin\.BeginRead\(/.test(body),
+      '비동기 읽기(BeginRead)를 쓰지 않는다 — PS 5.1 의 동기 읽기에는 상한을 걸 수 없다');
+    assert.ok(/AsyncWaitHandle\.WaitOne\(\$?[A-Za-z_][A-Za-z0-9_]*\)/.test(body),
+      '완료 대기에 상한 인자가 없다(WaitOne() 은 무한 대기다) — 결함이 그대로 남는다');
+    assert.ok(/\$res\.TimedOut = \$true/.test(body),
+      '상한 초과를 호출자에게 알리는 자리가 없다 — 알리지 않으면 빈 비번과 구별되지 않는다');
+
+    // (c) 무한 대기의 원인이던 동기 읽기가 코드에 남아 있으면 안 된다(주석의 설명은 세지 않는다).
+    const code = maskPs(ps);
+    assert.ok(!/\[Console\]::In\.ReadLine\(\)/.test(code),
+      '상한 없는 [Console]::In.ReadLine() 이 코드에 남아 있다 — 이것이 무한 대기의 원인이었다');
+
+    // (d) 상한을 넘기면 **끝낸다**. 경고만 하고 계속 가면 침묵이 그대로다.
+    assert.ok(/if\(\$r\.TimedOut\)\{\n\s*Die "stdin 첫 줄을 \$STDIN_WAIT_SEC 초 안에 받지 못했습니다/.test(ps),
+      '상한을 넘겨도 Die 로 끝내지 않는다 — 무인 호출자에게 아무 신호도 가지 않는다');
+    // 종료코드는 '설정 문제'(2) 여야 한다 — 자격을 못 구한 것이지 복구가 실패한 것이 아니다.
+    const die = /Die "stdin 첫 줄을 [^\n]*?" (\$EXIT_[A-Z_]+)/.exec(ps);
+    assert.ok(die, '상한 초과 Die 의 종료코드를 읽지 못했다');
+    assert.strictEqual(die[1], '$EXIT_CONFIG',
+      `상한 초과가 ${die[1]} 로 끝난다 — 자격을 못 구한 것은 '설정 문제'($EXIT_CONFIG)다`);
+
+    // (e) 사람이 다음에 무엇을 해야 하는지 메시지에 적혀 있다.
+    assert.ok(/받지 못했습니다\(파이프가 열린 채 비어 있습니다\)\. 무인 실행이면 -CnfPath 를 주거나 \$ADMIN_PW_ENV 를 설정하세요\./.test(ps),
+      '상한 초과 메시지가 조치(-CnfPath / 환경변수)를 알려 주지 않는다');
+  },
+
+  // ⑨ ★ 자격 획득 순서 — .cnf 와 환경변수가 stdin 보다 앞선다.
+  //    앞서지 않으면, 자격을 이미 갖고 있는 무인 호출자도 stdin 앞에서 상한만큼 서게 된다.
+  credentialOrderPrefersCnfAndEnv(ps) {
+    const code = maskPs(ps);   // 순서는 '코드' 의 순서다. 주석에 적힌 순서는 순서가 아니다.
+
+    // 환경변수 이름은 상수 한 곳에서 정한다(에러 메시지·머리말·README 가 같은 글자를 가리키게).
+    const envName = /^\$ADMIN_PW_ENV\s*=\s*"([A-Z_][A-Z0-9_]*)"/m.exec(ps);
+    assert.ok(envName, '환경변수 이름 상수($ADMIN_PW_ENV)가 없다 — 이름이 흩어지면 사람이 못 찾는다');
+    assert.ok(ps.slice(0, ps.indexOf('#>')).includes(envName[1]),
+      `머리말이 환경변수 이름(${envName[1]})을 적어 두지 않았다 — 무인 호출자가 읽는 곳은 머리말이다`);
+
+    // ② 기본 .cnf 자리 관례 — backup-taskmgr.ps1 과 같은 %ProgramData%\taskmgr\ 아래.
+    const iDefaultCnf = code.indexOf('$defaultCnf = Join-Path $env:ProgramData');
+    assert.ok(iDefaultCnf >= 0,
+      '기본 .cnf(%ProgramData%\\taskmgr\\restore-taskmgr.cnf)를 찾는 자리가 없다 — 무인 실행의 1순위 통로가 없다');
+    assert.ok(/if\(-not \$CnfPath -and \(Test-Path \$defaultCnf\)\)\{\n\s*\$CnfPath = \$defaultCnf/.test(code),
+      '기본 .cnf 가 있어도 쓰지 않는다 — 찾기만 하고 쓰지 않으면 아무 일도 안 한 것이다');
+
+    // ③ 환경변수 · ④ stdin — 코드 순서가 환경변수 → stdin 이어야 한다.
+    const iEnv = code.indexOf('$envPw = [Environment]::GetEnvironmentVariable($ADMIN_PW_ENV)');
+    assert.ok(iEnv >= 0, `환경변수(${envName[1]})를 읽는 자리가 없다 — 무인 호출자가 값을 넘길 통로가 없다`);
+    const iStdin = code.indexOf('$r = ReadStdinLineBounded $STDIN_WAIT_SEC');
+    assert.ok(iStdin >= 0, 'stdin 첫 줄을 읽는 자리를 찾지 못했다');
+    assert.ok(iDefaultCnf < iEnv,
+      `자격 획득 순서가 뒤집혔다 — 기본 .cnf(${iDefaultCnf})가 환경변수(${iEnv})보다 뒤에 있다`);
+    assert.ok(iEnv < iStdin,
+      `자격 획득 순서가 뒤집혔다 — 환경변수(${iEnv})를 stdin(${iStdin})보다 나중에 본다. ` +
+      '그러면 자격을 이미 가진 무인 호출자도 stdin 앞에서 상한만큼 서게 된다');
+
+    // 순서만 맞고 분기가 죽어 있으면(if($false)) 아무 소용이 없다 — 구조까지 본다.
+    assert.ok(/if\(-not \[string\]::IsNullOrEmpty\(\$envPw\)\)\{[\s\S]{0,400}?\} elseif\(\[Console\]::IsInputRedirected\)\{/.test(code),
+      '환경변수 분기가 stdin 분기보다 앞선 elseif 사슬이 아니다 — 둘 다 실행되거나 순서가 무의미해진다');
+
+    // ① -CnfPath / ② 기본 .cnf 를 쓰는 갈래에서는 stdin 을 **아예 읽지 않는다**.
+    const cnfBranch = /\nif\(\$CnfPath\)\{([\s\S]*?)\n\} else \{/.exec(code);
+    assert.ok(cnfBranch, '.cnf 를 쓰는 분기를 찾지 못했다');
+    assert.ok(!/ReadStdinLineBounded|IsInputRedirected|Read-Host/.test(cnfBranch[1]),
+      '.cnf 가 있는데도 stdin 을 읽는다 — 자격이 이미 있는데 파이프를 기다릴 이유가 없다');
+
+    // 대화형(⑤)은 그대로 물어본다 — 사람이 보고 있으니 기다려도 된다.
+    assert.ok(/\} else \{\n[\s\S]{0,200}?\$s = Read-Host "MySQL \$AdminUser 비밀번호" -AsSecureString/.test(code),
+      '대화형 질문 갈래가 사라졌다 — 사람이 직접 돌릴 때 물어볼 곳이 없다');
+  },
+};
+
+export { checks, psSrc, cmdSrc };
+
+// ══ 테스트 ════════════════════════════════════════════════════════════
+
+test('복구 가드 ⓪: 마스커가 실제로 파싱한다(0건이면 아래 ②가 거짓 초록)', () => {
+  const code = maskPs(psSrc);
+  assert.strictEqual(code.length, psSrc.length, '마스커가 길이를 바꿨다 — 인덱스가 안 맞는다');
+  // 머리말(<# … #>)이 실제로 지워졌는가.
+  assert.ok(psSrc.includes('라이브 덮어쓰기 가드'), '준비 실패: 머리말 문구를 못 찾았다');
+  assert.ok(!/<#/.test(code), '블록 주석이 지워지지 않았다');
+  // 코드는 남아 있는가(전부 지워 버리면 ②가 늘 통과한다).
+  assert.ok(/function NameSetDiff/.test(code), '마스커가 코드까지 지웠다');
+  // 문자열 '내용'은 일부러 남긴다(위 ★). 대신 따옴표 안의 '#' 이 가짜 주석을 만들지 않는지 본다.
+  assert.ok(/Write-Host "\[OK\] \$m"/.test(code) || /\[OK\] \$m/.test(code),
+    '문자열 내용이 지워졌다 — 그러면 계약 ②가 정확히 잡아야 할 자리를 못 본다');
+  const stripped = psSrc.length - code.replace(/ /g, 'x').length;
+  assert.strictEqual(stripped, 0, '마스커가 길이를 바꿨다');
+});
+
+test('복구 가드 ①: 라이브 DB 덮어쓰기 거부 가드가 있고 스위치 하나로 열리지 않는다', () =>
+  checks.liveOverwriteGuard(psSrc));
+
+test('복구 가드 ②: 비밀번호를 -p<비번> 으로 명령줄에 싣는 자리가 없다', () =>
+  checks.noPasswordOnCommandLine(psSrc));
+
+test('복구 가드 ③: 검증이 개수가 아니라 이름 집합을 대조한다', () =>
+  checks.verifiesNameSetsNotCounts(psSrc));
+
+test('복구 가드 ④: -Grants 가 create-app-user.sql + grants-calendar.sql 을 둘 다 쓴다', () =>
+  checks.grantsPathUsesBothSqlFiles(psSrc));
+
+test('복구 가드 ⑤: .ps1 과 .cmd 의 종료코드 표가 줄 단위로 같다', () => {
+  checks.exitCodeTablesMatch(psSrc, cmdSrc);
+  for (const l of exitCodeTable(psSrc, false)) console.log(`      ${l}`);
+});
+
+test('복구 가드 ⑥: 라이브에 못 붙으면 "검증 못 함"으로 끝난다(통과가 아니다)', () =>
+  checks.cannotVerifyIsNotAPass(psSrc));
+
+test('복구 가드 ⑦: .cmd 에 비ASCII 가 한 글자도 없다(cmd.exe 바이트 오프셋 사고 방지)', () => {
+  const bad = nonAsciiLines(cmdSrc);
+  assert.deepStrictEqual(bad, [],
+    `restore-taskmgr.cmd 에 비ASCII 가 있다 — cmd.exe 가 코드페이지 65001 에서 배치 재개 위치를 ` +
+    `잘못 계산해 주석 조각을 명령으로 실행한다(init-calendar.cmd 로 실측):\n${bad.join('\n')}`);
+});
+
+// ══ 변이 주입 — 위 계약이 '정말 우는지' 증명한다 ═══════════
+// 주입기 mutate() 는 tests/ps-guard-lib.mjs 에 있다 — 접미사 변이 금지 · 앵커 유일성 단언 ·
+// 앵커가 없으면 크게 실패하는 규약을 그 파일이 가진다.
+
+test('변이①: 라이브 덮어쓰기 거부 자체를 없애면 가드 ① 이 실패한다', () => {
+  const bad = mutate(psSrc, 'Bad "라이브 덮어쓰기 거부 —', 'Info "그냥 진행합니다 (');
+  assert.doesNotThrow(() => checks.liveOverwriteGuard(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.liveOverwriteGuard(bad), /라이브 덮어쓰기 거부 가드가 없다/);
+});
+
+test('변이①-b: 이름 타이핑 확인을 없애고 스위치만으로 열면 가드 ① 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    '  $typed = ""\n  try { $typed = Read-Host "덮어쓸 DB 이름을 입력(\'$LiveDb\')" } catch { $typed = "" }',
+    '  $typed = $LiveDb   # 확인 없이 통과');
+  assert.throws(() => checks.liveOverwriteGuard(bad), /이름 타이핑 확인이 없다/);
+});
+
+test('변이①-c: 타이핑 대조를 대소문자 무시(-cne → -ne)로 낮추면 가드 ① 이 실패한다', () => {
+  const bad = mutate(psSrc, 'if("$typed" -cne "$LiveDb"){', 'if("$typed" -ne "$LiveDb"){');
+  assert.throws(() => checks.liveOverwriteGuard(bad), /대소문자까지\(-cne\) 대조하지 않는다/);
+});
+
+test('변이①-d: 비대화형 거부를 없애면(무인 실행에 문이 열리면) 가드 ① 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    '  if([Console]::IsInputRedirected){\n    Write-Host "  -OverwriteLive 가 있지만 stdin 이 리다이렉트돼 있습니다(비대화형)."',
+    '  if($false){\n    Write-Host "  (비대화형 거부를 없앤 변이)"');
+  assert.throws(() => checks.liveOverwriteGuard(bad), /비대화형\(stdin 리다이렉트\)에서도 라이브 덮어쓰기가 열린다/);
+});
+
+test('변이②: 비밀번호를 -p 로 넘기는 자리를 만들면 가드 ② 가 실패한다', () => {
+  // 실제로 하기 쉬운 실수 — "간단하게" .cnf 대신 인자로 넘기는 것.
+  const bad = mutate(psSrc,
+    'function AdminArgs(){ return @("--defaults-extra-file=$adminCnf","--default-character-set=utf8mb4") }',
+    'function AdminArgs(){ return @("-u$AdminUser","-p$AdminPw","--default-character-set=utf8mb4") }');
+  assert.doesNotThrow(() => checks.noPasswordOnCommandLine(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.noPasswordOnCommandLine(bad), /비밀번호를 명령줄로 넘기는 자리가 생겼다/);
+});
+
+test('변이②-b: --password= 꼴도 잡는다', () => {
+  const bad = mutate(psSrc,
+    '"--defaults-extra-file=$adminCnf","--default-character-set=utf8mb4"',
+    '"--user=$AdminUser","--password=$AdminPw"');
+  assert.throws(() => checks.noPasswordOnCommandLine(bad), /비밀번호를 명령줄로 넘기는 자리가 생겼다/);
+});
+
+test('변이②-c: .cnf 경로가 통째로 사라지면(검사 대상 소멸) 가드 ② 가 실패한다', () => {
+  const bad = psSrc.split('--defaults-extra-file=$adminCnf').join('--defaults-file=NONE');
+  assert.notStrictEqual(bad, psSrc, '변이 준비 실패: .cnf 인자를 못 찾았다');
+  assert.throws(() => checks.noPasswordOnCommandLine(bad), /검사가 볼 대상 자체가 사라졌다/);
+});
+
+test('변이③: 이름 집합 대조를 개수 비교로 바꾸면 가드 ③ 이 실패한다', () => {
+  // 개수는 같고 이름이 다를 수 있다 — 이 변이는 바로 그 구멍을 만든다.
+  const bad = mutate(psSrc,
+    '  return @{\n    Missing = @($e | Where-Object { $a -notcontains $_ })\n    Extra   = @($a | Where-Object { $e -notcontains $_ })\n  }',
+    '  if($e.Count -eq $a.Count){ return @{ Missing = @(); Extra = @() } }\n  return @{ Missing = @("개수가 다름"); Extra = @() }');
+  assert.doesNotThrow(() => checks.verifiesNameSetsNotCounts(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.verifiesNameSetsNotCounts(bad), /뽑지 않는다|개수 비교로 바뀌었다/);
+});
+
+test('변이③-b: 트리거를 이름 대조 대상에서 빼면 가드 ③ 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    'CheckNames "트리거 이름"      $liveTrigs  $gotTrigs\n',
+    '');
+  assert.throws(() => checks.verifiesNameSetsNotCounts(bad), /이름 집합으로 대조하는 대상이 바뀌었다/);
+});
+
+test('변이③-c: 행 수를 COUNT(*) 대신 추정치로 바꾸면 가드 ③ 이 실패한다', () => {
+  // information_schema.TABLE_ROWS 는 InnoDB 에서 추정치다 — 대조에 쓰면 조용히 어긋난다.
+  const bad = mutate(psSrc, "COUNT(*) AS n FROM", "TABLE_ROWS AS n FROM information_schema.TABLES t --");
+  assert.throws(() => checks.verifiesNameSetsNotCounts(bad), /COUNT\(\*\) 로 세지 않는다/);
+});
+
+test('변이④: -Grants 가 grants-calendar.sql 을 안 쓰면 가드 ④ 가 실패한다', () => {
+  // 이게 복구방법.txt 4번의 사고 그 자체다 — 계정만 만들고 cal_* 권한을 안 주면
+  // 표와 데이터가 다 있는데 위젯이 첫 조회에서 ERROR 1142 로 죽는다(2026-09-07 실측).
+  const bad = mutate(psSrc,
+    '$grantsSql  = Join-Path $scriptDir "grants-calendar.sql"',
+    '$grantsSql  = $null   # cal_* 권한을 건너뛴다');
+  assert.doesNotThrow(() => checks.grantsPathUsesBothSqlFiles(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.grantsPathUsesBothSqlFiles(bad), /grants-calendar\.sql 을 가리키는 자리가 없다/);
+});
+
+test('변이④-b: 하드코딩된 DB 이름을 대상에 맞추는 자리를 없애면 가드 ④ 가 실패한다', () => {
+  // 없애면 리허설이 **라이브 계정 권한**을 건드린다(두 SQL 은 ON taskmgr.<표> 를 글자로 박아 뒀다).
+  // 앵커는 1회만 나와야 한다. `if($TargetDb -ne $grantSchema){` 자체는 두 곳(치환 · REVOKE 안내)에
+  // 있으므로 뒤 문구까지 붙여 자리를 특정한다.
+  const bad = mutate(psSrc,
+    '  if($TargetDb -ne $grantSchema){\n    Warn "대상이',
+    '  if($false){\n    Warn "대상이');
+  assert.throws(() => checks.grantsPathUsesBothSqlFiles(bad), /리허설이 라이브 권한을 건드린다/);
+});
+
+test('변이⑤: .cmd 의 종료코드 한 줄만 손대도 가드 ⑤ 가 실패한다', () => {
+  const bad = mutate(cmdSrc,
+    'rem    6 refused - live-overwrite guard tripped; nothing was changed',
+    'rem    6 refused - guard tripped');
+  assert.doesNotThrow(() => checks.exitCodeTablesMatch(psSrc, cmdSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.exitCodeTablesMatch(psSrc, bad), /번째 줄이 다르다/);
+});
+
+test('변이⑤-b: 한쪽에서 코드 한 줄을 지우면 줄 수 대조가 실패한다', () => {
+  const bad = mutate(cmdSrc,
+    'rem    7 cannot verify - no live baseline to compare against; this is NOT a pass\n',
+    '');
+  assert.throws(() => checks.exitCodeTablesMatch(psSrc, bad), /줄 수가 다르다/);
+});
+
+test('변이⑤-c: 표는 그대로 두고 상수만 바꾸면(표가 거짓말하면) 가드 ⑤ 가 실패한다', () => {
+  const bad = mutate(psSrc, '$EXIT_NOBASELINE = 7', '$EXIT_NOBASELINE = 9');
+  assert.throws(() => checks.exitCodeTablesMatch(bad, cmdSrc), /표의 코드 목록과 \$EXIT_\* 상수 값이 다르다/);
+});
+
+test('변이⑥: "검증 못 함"을 통과(0)로 바꾸면 가드 ⑥ 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    'if(-not $DropTarget){ Cleanup; exit $EXIT_NOBASELINE }',
+    'if(-not $DropTarget){ Cleanup; exit $EXIT_OK }');
+  assert.doesNotThrow(() => checks.cannotVerifyIsNotAPass(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.cannotVerifyIsNotAPass(bad), /판정 불가를 통과로 세고 있다/);
+});
+
+test('변이⑥-b: 라이브 부재 분기를 없애면 가드 ⑥ 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    '  if(-not $liveExists){\n    Row "unk" $label "검증 못 함 — 라이브',
+    '  if($false){\n    Row "ok" $label "통과 — 라이브');
+  assert.throws(() => checks.cannotVerifyIsNotAPass(bad), /'검증 못 함'으로 표시하는 분기가 없다/);
+});
+
+test('변이⑥-c: "검증 못 함" 항목을 모으지 않으면(판정에 반영 안 되면) 가드 ⑥ 이 실패한다', () => {
+  const bad = mutate(psSrc, '    $script:unknown += $label\n', '');
+  assert.throws(() => checks.cannotVerifyIsNotAPass(bad), /따로 모으는 자리가 없다/);
+});
+
+test('변이⑦: 주석 안의 -p 를 세면 안 된다(마스커 회귀)', () => {
+  // restore-taskmgr.ps1 의 머리말은 '-p<pw> 를 쓰지 마라'고 설명하느라 그 문자열을 담는다.
+  // 마스커가 없으면 가드 ②가 자기 설명문에 걸려 늘 빨간불이 되고, 그러면 사람이 검사를 헐겁게 고친다.
+  const noise = psSrc +
+    '\n# 줄 주석 안의 -p비밀번호 와 --password=x 는 세지 않는다(설명용).\n' +
+    '<#\n  블록 주석 안의 -p<pw> 도 마찬가지다.\n#>\n';
+  assert.doesNotThrow(() => checks.noPasswordOnCommandLine(noise),
+    '마스커가 주석 안의 -p 를 코드로 셌다');
+  // ★ 반대로 **문자열 리터럴 안**은 일부러 코드로 센다. PowerShell 에서 명령 인자는 문자열이라
+  //   ("-p$pw") 문자열을 봐주면 정확히 잡아야 할 자리를 못 본다. 안내 문구에 -p 를 적고 싶으면
+  //   주석에 적을 것 — 그것이 이 저장소의 규약이다.
+  const inString = psSrc + '\n$안내 = "mysql -p비밀번호 는 쓰지 마세요"\n';
+  assert.throws(() => checks.noPasswordOnCommandLine(inString),
+    /비밀번호를 명령줄로 넘기는 자리가 생겼다/);
+  // 진짜 코드 자리에 넣으면 당연히 잡아야 한다(마스커가 전부 지워 버리지 않았다는 증거).
+  const real = psSrc + '\n& $mysql "-p$AdminPw" "-e" "SELECT 1;"\n';
+  assert.throws(() => checks.noPasswordOnCommandLine(real), /비밀번호를 명령줄로 넘기는 자리가 생겼다/);
+});
+
+test('복구 가드 ⑧: stdin 첫 줄 읽기에 상한이 있다(무인 실행 무한 대기 회귀)', () =>
+  checks.stdinReadIsBounded(psSrc));
+
+test('복구 가드 ⑨: 자격 획득 순서에서 .cnf·환경변수가 stdin 보다 앞선다', () =>
+  checks.credentialOrderPrefersCnfAndEnv(psSrc));
+
+test('복구 가드 ⑩: 환경변수 이름이 스크립트·머리말·README 셋에 같은 글자로 적혀 있다', () => {
+  // 이름이 한 곳에서만 바뀌면 무인 호출자는 '설정했는데 안 먹는' 상태에 빠지고,
+  // 그때 스크립트는 상한만큼 기다렸다가 코드 2 로 죽는다 — 원인은 아무 데도 안 적혀 있다.
+  const m = /^\$ADMIN_PW_ENV\s*=\s*"([A-Z_][A-Z0-9_]*)"/m.exec(psSrc);
+  assert.ok(m, '환경변수 이름 상수($ADMIN_PW_ENV)가 없다');
+  const name = m[1];
+  const readme = loadDeploy('README.md');
+  assert.ok(readme.includes(name),
+    `db/deploy/README.md 에 환경변수 이름(${name})이 없다 — 무인 실행 방법을 읽는 곳은 README 다`);
+  assert.ok(readme.includes('restore-taskmgr.cnf'),
+    'README 에 기본 .cnf 경로(restore-taskmgr.cnf)가 없다 — ①②③ 중 첫 통로를 아무도 못 찾는다');
+  console.log(`      환경변수 = ${name} · 기본 .cnf = %ProgramData%\\taskmgr\\restore-taskmgr.cnf · 상한 = ${/^\$STDIN_WAIT_SEC\s*=\s*(\d+)/m.exec(psSrc)[1]}초`);
+});
+
+test('변이⑧: WaitOne 의 상한 인자를 빼면(무한 대기) 가드 ⑧ 이 실패한다', () => {
+  // 이것이 정확히 고치기 전의 상태다 — 파이프가 열린 채 비어 있으면 영원히 돌아오지 않는다.
+  const bad = mutate(psSrc,
+    'if(-not $ar.AsyncWaitHandle.WaitOne($leftMs)){ $res.TimedOut = $true; return $res }',
+    'if(-not $ar.AsyncWaitHandle.WaitOne()){ $res.TimedOut = $true; return $res }');
+  assert.doesNotThrow(() => checks.stdinReadIsBounded(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.stdinReadIsBounded(bad), /완료 대기에 상한 인자가 없다/);
+});
+
+test('변이⑧-b: 상한 있는 읽기를 옛 [Console]::In.ReadLine() 으로 되돌리면 가드 ⑧ 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    '    $r = ReadStdinLineBounded $STDIN_WAIT_SEC\n',
+    '    $r = @{ Line = [Console]::In.ReadLine(); TimedOut = $false }\n');
+  assert.throws(() => checks.stdinReadIsBounded(bad),
+    /\[Console\]::In\.ReadLine\(\) 이 코드에 남아 있다/);
+});
+
+test('변이⑧-c: 상한 값을 0(또는 하루)으로 바꾸면 가드 ⑧ 이 실패한다', () => {
+  const zero = mutate(psSrc, '$STDIN_WAIT_SEC = 10', '$STDIN_WAIT_SEC = 0');
+  assert.throws(() => checks.stdinReadIsBounded(zero), /1~60초 사이여야 한다/);
+  const day = mutate(psSrc, '$STDIN_WAIT_SEC = 10', '$STDIN_WAIT_SEC = 86400');
+  assert.throws(() => checks.stdinReadIsBounded(day), /1~60초 사이여야 한다/);
+});
+
+test('변이⑧-d: 상한을 넘겨도 Die 하지 않고 경고만 하면 가드 ⑧ 이 실패한다', () => {
+  // 무인 실행에서 '경고 후 계속' 은 침묵과 같다 — 아무도 그 화면을 안 본다.
+  const bad = mutate(psSrc,
+    '      Die "stdin 첫 줄을 $STDIN_WAIT_SEC 초 안에 받지 못했습니다',
+    '      Warn "stdin 첫 줄을 $STDIN_WAIT_SEC 초 안에 받지 못했습니다');
+  assert.throws(() => checks.stdinReadIsBounded(bad), /Die 로 끝내지 않는다/);
+});
+
+test('변이⑧-e: 상한 초과를 코드 2 가 아닌 값으로 끝내면 가드 ⑧ 이 실패한다', () => {
+  const bad = mutate(psSrc,
+    '(파이프가 열린 채 비어 있습니다). 무인 실행이면 -CnfPath 를 주거나 $ADMIN_PW_ENV 를 설정하세요." $EXIT_CONFIG',
+    '(파이프가 열린 채 비어 있습니다). 무인 실행이면 -CnfPath 를 주거나 $ADMIN_PW_ENV 를 설정하세요." $EXIT_OK');
+  assert.throws(() => checks.stdinReadIsBounded(bad), /설정 문제.*\$EXIT_CONFIG/s);
+});
+
+test('변이⑨: 환경변수 조회를 stdin 읽기 뒤로 옮기면 가드 ⑨ 가 실패한다', () => {
+  // 순서가 뒤집히면 자격을 이미 가진 무인 호출자도 stdin 앞에서 상한만큼 서게 된다.
+  const line = '  $envPw = [Environment]::GetEnvironmentVariable($ADMIN_PW_ENV)\n';
+  let bad = mutate(psSrc, line, '  $envPw = $null\n');
+  bad = mutate(bad, '    $pwFrom = "stdin 첫 줄"\n', '    $pwFrom = "stdin 첫 줄"\n' + line);
+  assert.doesNotThrow(() => checks.credentialOrderPrefersCnfAndEnv(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
+    /환경변수\(\d+\)를 stdin\(\d+\)보다 나중에 본다/);
+});
+
+test('변이⑨-b: 기본 .cnf 를 찾기만 하고 쓰지 않으면 가드 ⑨ 가 실패한다', () => {
+  const bad = mutate(psSrc,
+    'if(-not $CnfPath -and (Test-Path $defaultCnf)){\n  $CnfPath = $defaultCnf',
+    'if($false){\n  $unused = $defaultCnf');
+  assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad), /기본 \.cnf 가 있어도 쓰지 않는다/);
+});
+
+test('변이⑨-c: .cnf 가 있는데도 stdin 을 읽게 만들면 가드 ⑨ 가 실패한다', () => {
+  const bad = mutate(psSrc,
+    '  $adminCnf = $CnfPath\n',
+    '  $null = ReadStdinLineBounded $STDIN_WAIT_SEC\n  $adminCnf = $CnfPath\n');
+  assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
+    /\.cnf 가 있는데도 stdin 을 읽는다/);
+});
+
+test('변이⑨-d: 환경변수 분기를 죽이면(if($false)) 가드 ⑨ 가 실패한다', () => {
+  const bad = mutate(psSrc,
+    '  if(-not [string]::IsNullOrEmpty($envPw)){',
+    '  if($false){');
+  assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
+    /elseif 사슬이 아니다/);
+});
+
+test('변이⑨-e: 머리말에서 환경변수 이름을 지우면 가드 ⑨ 가 실패한다', () => {
+  // 머리말은 무인 호출자가 실제로 읽는 곳이다. 코드에만 있고 문서에 없으면 아무도 못 쓴다.
+  const head = psSrc.slice(0, psSrc.indexOf('#>'));
+  const rest = psSrc.slice(psSrc.indexOf('#>'));
+  const bad = head.split('TASKMGR_ADMIN_PW').join('<그 환경변수>') + rest;
+  assert.notStrictEqual(bad, psSrc, '변이 준비 실패: 머리말에서 이름을 못 찾았다');
+  assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
+    /머리말이 환경변수 이름/);
+});

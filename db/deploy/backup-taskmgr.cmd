@@ -15,12 +15,18 @@ rem    - create-backup-user.sql    : the backup account and why SELECT alone
 rem                                  silently produces a trigger-less dump
 rem    - db/deploy/README.md       : deploy order
 rem
-rem  Exit codes (must match the ps1 header table):
-rem    0 ok | 1 backup failed or verification mismatch (file kept as .partial)
-rem    2 config problem (.cnf missing / backup folder cannot be created)
-rem    3 connection or privilege problem (no SELECT+TRIGGER on the database)
+rem  --- EXITCODES (ASCII; this block must match line-for-line in .ps1 and .cmd) ---
+rem    0 ok - dump written and every verification passed (-Install / -Uninstall / -Status success is 0 too)
+rem    1 backup or verification failed - the dump is kept as .partial and must not be restored from
+rem    2 config problem - .cnf missing or unreadable, or the backup folder cannot be created
+rem    3 connection or privilege problem - cannot connect, or the account lacks SELECT and TRIGGER
 rem    4 mysqldump.exe / mysql.exe not found
-rem    5 administrator rights required (-Install / -Uninstall)
+rem    5 administrator rights required - -Install / -Uninstall need an elevated console
+rem  --- END EXITCODES ---
+rem
+rem  One code per line, on purpose. The old table packed two codes onto one line
+rem  ("0 ok | 1 backup failed ...") which reads as a table border and made the
+rem  machine comparison in tests/backup-guards.test.mjs harder than it needs to be.
 rem
 rem  Usage:
 rem    backup-taskmgr.cmd
