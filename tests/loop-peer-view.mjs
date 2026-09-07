@@ -44,7 +44,16 @@ function sql(q, { readOnly = true, what = 'SQL' } = {}) {
     const lines = (r.stderr || '').split('\n').filter((l) => l.trim() && !/Using a password/.test(l));
     throw new Error(`${what} 실패: ${lines[0] || (r.stderr || '').trim() || '(stderr 없음)'}`);
   }
-  return (r.stdout || '').trim().split('\n').filter(Boolean).map((l) => l.split('\t'));
+  //  ★ /\r?\n/ 로 자른다 — mysql.exe 는 Windows 에서 \r\n 을 내므로 '\n' 으로만 자르면
+  //    각 행의 마지막 열에 \r 가 남는다. 한 행짜리 결과는 바깥 .trim() 이 가려 주기 때문에
+  //    지금껏 조용했고, Number() 는 \r 를 공백으로 먹어 더 조용하다 — 여러 행 문자열 비교에서만
+  //    어긋난다. 그런 종류의 결함은 '언젠가 이상한 실패' 로 돌아온다. 다른 러너는 이미 /\r?\n/ 다.
+  const rows = (r.stdout || '').trim().split(/\r?\n/).filter(Boolean).map((l) => l.split('\t'));
+  //  재발하면 조용히 틀리는 대신 크게 실패시킨다(판정 불가 ≠ 통과).
+  for (const row of rows) for (const cell of row) {
+    if (cell.includes('\r')) throw new Error(`${what}: 결과 셀에 CR 가 남았다 — 줄 자르기가 다시 좁아졌다: ${JSON.stringify(cell)}`);
+  }
+  return rows;
 }
 const one = (q) => { const r = sql(q); return r.length ? r[0][0] : null; };
 const num = (q) => Number(one(q));
