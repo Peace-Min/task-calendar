@@ -224,8 +224,8 @@ const html = `<!DOCTYPE html>
 <header class="report">
   <div class="eyebrow">과제관리 시스템 · 데이터 설계 보고</div>
   <h1>taskmgr 스키마 v${esc(S.meta.schemaVersion)}</h1>
-  <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 캘린더 표 16개와 사용자·조직 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 직전에 실제로 선 구조를 한 장에서 훑는 용도다.</div>
-  <p class="lede">한 DB 안에 성격이 다른 두 무리가 산다. 회사가 관리하는 마스터는 이름이 자연키이고, 사람마다 쌓이는 캘린더는 사용자 번호가 앞장서는 복합 키를 쓴다. 권한도 그 경계를 따라 갈린다.</p>
+  <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 캘린더 표 16개와 사용자·조직 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
+  <p class="lede">테이블은 두 그룹으로 나뉜다. 회사가 관리하는 마스터 테이블은 이름을 자연키로 쓰고, 사용자별 캘린더 테이블은 user_id 로 시작하는 복합 키를 쓴다. 앱 계정 권한도 이 구분을 따른다.</p>
   <div class="meta">
     <span class="m"><span class="dot"></span>DB <b>taskmgr</b> · MySQL <b>${esc(S.meta.mysql)}</b> · ${esc(S.meta.charset[0])}</span>
     <span class="m">스키마 버전 <b>${esc(S.meta.schemaVersion)}</b></span>
@@ -235,8 +235,8 @@ const html = `<!DOCTYPE html>
 </header>
 
 <div class="thesis">
-  <div class="k">핵심 구조</div>
-  <p>과제 트랙 <span class="hl">${PROJECT.length}표</span>는 이름으로 식별하고 앱은 거의 읽기만 한다. 캘린더 트랙 <span class="hl">${calendar.length}표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 제 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 보고 기록 ${ownerCascade.length}표뿐이고, 사람이 사라지면 같이 지워도 되는 부속이라 CASCADE 로 두었다.</p>
+  <div class="k">핵심 결정</div>
+  <p>과제 트랙 <span class="hl">${PROJECT.length}표</span>는 이름으로 식별하고 앱 계정은 대부분 읽기 권한만 갖는다. 캘린더 트랙 <span class="hl">${calendar.length}표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 자기 user_id 의 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 보고 기록 ${ownerCascade.length}표뿐이다. 사용자를 지우면 같이 지워도 되는 부속 테이블이라 CASCADE 로 두었다.</p>
 </div>
 
 <div class="stats">
@@ -247,8 +247,8 @@ const html = `<!DOCTYPE html>
 </div>
 
 <section>
-  <h2><span class="idx">01</span>두 무리와 그 사이</h2>
-  <p class="sub">과제 트랙은 project 를 가운데 두고 코드표 셋이 FK 로 붙는다. 캘린더 트랙은 app_user 에서 시작해 과제(cal_category)와 일정(cal_entry)으로 내려간다.</p>
+  <h2><span class="idx">01</span>테이블 구성과 관계</h2>
+  <p class="sub">과제 트랙은 project 를 중심으로 코드표 셋이 FK 로 연결된다. 캘린더 트랙은 app_user 를 부모로 과제(cal_category)와 일정(cal_entry)이 이어진다.</p>
   <h3>과제 트랙</h3>
   <div class="er">
     ${ent('customer', ['<span class="key">PK</span> name', 'is_active'], '발주처')}${rel('project.customer', 'UPDATE CASCADE · DELETE 막힘')}
@@ -267,25 +267,25 @@ const html = `<!DOCTYPE html>
     ${ent('cal_entry', ['<span class="key">PK</span> user_id · entry_no', '<span class="key">UQ</span> user_id · uid', 'entry_date · recur_* · sort_order', 'updated_at = 낙관적 잠금'], '일정')}${rel('entry_no', 'CASCADE')}
     ${ent('cal_entry_except · cal_entry_commit', ['<span class="key">PK</span> user_id · entry_no · (날짜|seq)'], '부속')}
   </div>
-  <p class="note">그림에는 선을 이해하는 데 필요한 키만 적었다. 컬럼 전체와 CHECK 는 03 절의 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE) · cal_room · cal_task_hours(과제 FK RESTRICT) · cal_attendance · cal_user_pref · cal_user_rev · cal_migration_log · cal_report_daily(→ cal_report_hours CASCADE) · cal_report_weekly. 보고 기록 두 표만 소유자 FK 가 CASCADE 다.</p>
+  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE) · cal_room · cal_task_hours(과제 FK RESTRICT) · cal_attendance · cal_user_pref · cal_user_rev · cal_migration_log · cal_report_daily(→ cal_report_hours CASCADE) · cal_report_weekly. 보고 기록 두 표만 소유자 FK 가 CASCADE 다.</p>
 </section>
 
 <section>
-  <h2><span class="idx">02</span>배포 전에 볼 것</h2>
-  <p class="sub">개발 PC 에서 확인한 지금 상태와, 폐쇄망 서버에서 달라져야 할 점.</p>
+  <h2><span class="idx">02</span>배포 전 점검 항목</h2>
+  <p class="sub">개발 PC 에서 확인한 현재 상태와 폐쇄망 서버에서 달라져야 할 항목.</p>
   <div class="road">
     <div class="r"><div class="when">접속 범위</div><div class="what"><b>${esc(S.meta.users.join(' · '))}</b><p>taskmgr_app@% 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</p></div></div>
     <div class="r"><div class="when">버전</div><div class="what"><b>cal_schema_meta.schema_version = ${esc(S.meta.schemaVersion)}</b><p>위젯 빌드 상수와 같아야 부팅한다. 다르면 파괴적 연산만 막고 읽기는 한다.</p></div></div>
     <div class="r"><div class="when">트리거</div><div class="what"><b>${S.meta.triggers}개</b><p>감사 트리거는 8월 11일에 없앴다. 서버에 트리거가 하나라도 있으면 폐기 전 DB 를 쓰고 있다는 뜻이다.</p></div></div>
-    <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 ${num(calRows)}행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 걷어낸다. 03 절의 행 수는 그 눈으로 읽을 것.</p></div></div>
+    <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 ${num(calRows)}행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 삭제한다. 03 절의 행 수도 같은 기준으로 볼 것.</p></div></div>
     <div class="r"><div class="when">구축</div><div class="what"><b>schema-calendar.sql 한 번</b><p>서버는 처음 세우므로 마이그레이션 파일은 쓰지 않는다. migrate-*.sql 은 이미 선 DB 를 옮길 때만 쓴다.</p></div></div>
-    <div class="r"><div class="when">백업</div><div class="what"><b>backup-taskmgr -Install · restore-taskmgr</b><p>주 1회 등록하고 첫 회차를 되살려 본다. 절차는 deploy/README.md 의 복구 절.</p></div></div>
+    <div class="r"><div class="when">백업</div><div class="what"><b>backup-taskmgr -Install · restore-taskmgr</b><p>주 1회 백업을 등록하고 첫 회차를 복구해 확인한다. 절차는 deploy/README.md 의 복구 절.</p></div></div>
   </div>
 </section>
 
 <section>
-  <h2><span class="idx">03</span>표 한 장씩</h2>
-  <p class="sub">이름 · PK · 개발 DB 행 수 · 앱 계정 권한. 눌러서 펼치면 컬럼과 제약이 나온다. 표 목적은 DB 에 적힌 표 주석 그대로다.</p>
+  <h2><span class="idx">03</span>테이블 상세</h2>
+  <p class="sub">이름 · PK · 개발 DB 행 수 · 앱 계정 권한 순이다. 항목을 누르면 컬럼과 제약이 펼쳐진다. 테이블 설명은 DB 의 테이블 주석 그대로다.</p>
   <div class="toolbar"><button type="button" data-open="1">모두 펼치기</button><button type="button" data-open="0">모두 접기</button></div>
   <h3>과제 트랙 ${PROJECT.length}</h3>
   ${PROJECT.map((n) => tableDetails(byName[n])).join('')}
@@ -294,8 +294,8 @@ const html = `<!DOCTYPE html>
 </section>
 
 <section>
-  <h2><span class="idx">04</span>앱 계정의 권한</h2>
-  <p class="sub">taskmgr_app 의 GRANT 를 표별로 묶었다. DELETE 가 빠진 표는 앱에 그 경로가 없다는 뜻이다.</p>
+  <h2><span class="idx">04</span>앱 계정 권한</h2>
+  <p class="sub">taskmgr_app 의 GRANT 를 권한 조합별로 묶었다. DELETE 가 없는 테이블은 앱에 삭제 경로가 없다.</p>
   <div class="tbl-wrap"><table>
     <thead><tr><th>권한</th><th>표</th></tr></thead>
     <tbody>
@@ -310,8 +310,8 @@ const html = `<!DOCTYPE html>
 </section>
 
 <section>
-  <h2><span class="idx">05</span>지킨다 · 하지 않는다</h2>
-  <p class="sub">이 구조를 이어받는 사람이 알아야 할 규칙. 어기면 오류 없이 조용히 깨진다.</p>
+  <h2><span class="idx">05</span>유지보수 원칙</h2>
+  <p class="sub">유지보수 시 지켜야 할 규칙. 어기면 오류 없이 데이터가 어긋난다.</p>
   <div class="grid2">
     <div class="panel"><h4><span class="bar"></span>지킨다</h4><ul class="lst">
       <li><b>쓰기 트랜잭션의 첫 문장은 cal_user_rev 의 rev 증가</b> <span class="why">그 행의 락이 번호 발급과 동시 편집을 막는다.</span></li>
@@ -331,8 +331,8 @@ const html = `<!DOCTYPE html>
 </section>
 
 <section>
-  <h2><span class="idx">06</span>8월 24일 이후 바뀐 것</h2>
-  <p class="sub">07-24 판 이후의 구조 변경. 9월 7일의 겹쳐보기는 화면 기능이라 스키마를 바꾸지 않았다.</p>
+  <h2><span class="idx">06</span>변경 이력</h2>
+  <p class="sub">07-24 판 이후의 구조 변경. 9월 7일의 겹쳐보기는 화면 기능이라 스키마 변경이 없다.</p>
   <div class="road">
     ${MIGRATIONS.map(([w, t, p]) => `<div class="r"><div class="when">${esc(w)}</div><div class="what"><b>${esc(t)}</b><p>${esc(p)}</p></div></div>`).join('')}
   </div>
