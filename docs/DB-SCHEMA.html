@@ -161,8 +161,8 @@ footer p{margin:0 0 4px; max-width:none}
   <li>엔진 <b>MySQL 8.4.9 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
   <li>표 <b>23</b> <span class="ko">과제 4 · 사용자 · 조직 3 · 캘린더 16</span></li>
-  <li>컬럼 <b>173</b> · 외래키 <b>24</b> · CHECK <b>33</b></li>
-  <li>schema_version <b>8</b></li>
+  <li>컬럼 <b>173</b> · 외래키 <b>25</b> · CHECK <b>35</b></li>
+  <li>schema_version <b>9</b></li>
   <li>기준 <b>2026-09-09</b></li>
 </ul>
 <!-- GEN:FACTS:END -->
@@ -287,7 +287,7 @@ footer p{margin:0 0 4px; max-width:none}
 <p>두 표는 <b>구조가 완전히 같습니다.</b> 구분(일반계약·선진행·사업부관리)과 상태(진행중·종료·1차 납품완료·미정)를 담고, 앱의 <b>구분·상태 관리</b> 화면에서 다룹니다.</p>
 <!-- /PROSE:codes.intro -->
 
-<h3><span class="tname">section_code</span></h3>
+<h3><span class="tname">section_code</span> <span class="ko">구분 코드</span></h3>
 
 <div class="tw">
 <table>
@@ -302,7 +302,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 
-<h3><span class="tname">status_code</span></h3>
+<h3><span class="tname">status_code</span> <span class="ko">상태 코드</span></h3>
 
 <div class="tw">
 <table>
@@ -654,10 +654,10 @@ footer p{margin:0 0 4px; max-width:none}
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
 <tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키 <code>(user_id, work_date)</code>의 일부입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
+<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키 <code>(user_id, work_date)</code>의 일부입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
 <tr class="pk"><td class="col">work_date</td><td class="type">DATE</td><td><span class="k pk">PK</span></td><td class="note auto">기본키 <code>(user_id, work_date)</code>의 일부입니다.</td></tr>
-<tr><td class="col">status</td><td class="type">VARCHAR(2)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
-<tr><td class="col">overtime</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다.</td></tr>
+<tr><td class="col">status</td><td class="type">VARCHAR(2)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다. 허용값은 <code></code> · <code>1</code> · <code>2</code> · <code>3</code> · <code>4</code> · <code>5</code> · <code>6</code> · <code>7</code> · <code>9</code> · <code>10</code> · <code>11</code> · <code>12</code>뿐입니다.</td></tr>
+<tr><td class="col">overtime</td><td class="type">TINYINT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. <code>chk_crd_overtime</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">content</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr><td class="col">sent_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다.</td></tr>
@@ -665,6 +665,7 @@ footer p{margin:0 0 4px; max-width:none}
 </tbody>
 </table>
 </div>
+<p class="sub">CHECK 2개 — <code>chk_crd_status</code> <code>((`status` in ('','1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code> · <code>chk_crd_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code></p>
 </section>
 
 <section id="cal_report_hours">
@@ -676,17 +677,17 @@ footer p{margin:0 0 4px; max-width:none}
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
 <tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다. <code>cal_report_daily</code>의 <code>(user_id, work_date)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
+<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다. <code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. <code>cal_report_daily</code>의 <code>(user_id, work_date)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
 <tr class="pk"><td class="col">work_date</td><td class="type">DATE</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다. <code>cal_report_daily</code>의 <code>(user_id, work_date)</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
 <tr class="pk"><td class="col">line_no</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span></td><td class="note auto">기본키 <code>(user_id, work_date, line_no)</code>의 일부입니다.</td></tr>
 <tr><td class="col">task_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
-<tr><td class="col">cat_no</td><td class="type">INT UNSIGNED</td><td><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note auto">비워 둘 수 있습니다.</td></tr>
-<tr><td class="col">hours</td><td class="type">DECIMAL(5,2)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. <code>chk_crh_hours</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">cat_no</td><td class="type">INT UNSIGNED</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note auto"><code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. 비워 둘 수 있습니다.</td></tr>
+<tr><td class="col">hours</td><td class="type">DECIMAL(4,2)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. <code>chk_crh_hours</code> 제약이 걸려 있습니다.</td></tr>
 </tbody>
 </table>
 </div>
 <p class="sub">인덱스 — <code>user_id, cat_no, work_date</code> <span class="ko">idx_crh_cat</span></p>
-<p class="sub">CHECK 1개 — <code>chk_crh_hours</code> <code>(`hours` &gt;= 0)</code></p>
+<p class="sub">CHECK 1개 — <code>chk_crh_hours</code> <code>((`hours` &gt; 0) and (`hours` &lt;= 24))</code></p>
 </section>
 
 <section id="cal_report_weekly">
@@ -698,7 +699,7 @@ footer p{margin:0 0 4px; max-width:none}
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
 <tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키 <code>(user_id, period_start)</code>의 일부입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 부모 행이 지워지면 이 행도 함께 지워집니다. 부모 값이 바뀌면 따라 바뀝니다.</td></tr>
+<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span></td><td class="note auto">기본키 <code>(user_id, period_start)</code>의 일부입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
 <tr class="pk"><td class="col">period_start</td><td class="type">DATE</td><td><span class="k pk">PK</span><span class="k">CHECK</span></td><td class="note auto">기본키 <code>(user_id, period_start)</code>의 일부입니다. <code>chk_crw_period</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">period_end</td><td class="type">DATE</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. <code>chk_crw_period</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">subject</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
@@ -912,8 +913,8 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">customer</td><td class="type">8</td><td class="note">발주처 마스터</td></tr>
 <tr><td class="col">org_unit</td><td class="type">12</td><td class="note">조직 트리</td></tr>
 <tr><td class="col">project</td><td class="type">14</td><td class="note">과제 마스터</td></tr>
-<tr><td class="col">section_code</td><td class="type">3</td><td class="note"></td></tr>
-<tr><td class="col">status_code</td><td class="type">4</td><td class="note"></td></tr>
+<tr><td class="col">section_code</td><td class="type">3</td><td class="note">구분 코드</td></tr>
+<tr><td class="col">status_code</td><td class="type">4</td><td class="note">상태 코드</td></tr>
 <tr><td class="col">title_code</td><td class="type">11</td><td class="note">직급 코드</td></tr>
 </tbody>
 </table>

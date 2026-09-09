@@ -1,6 +1,6 @@
 {
  "meta": {
-  "schemaVersion": "8",
+  "schemaVersion": "9",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -39,7 +39,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-09T00:54:19.143Z",
+  "dumpedAt": "2026-09-09T07:09:27.257Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -1047,11 +1047,20 @@
      "cols": "user_id",
      "ref": "app_user",
      "refCols": "user_id",
-     "upd": "CASCADE",
-     "del": "CASCADE"
+     "upd": "RESTRICT",
+     "del": "RESTRICT"
     }
    ],
-   "checks": []
+   "checks": [
+    {
+     "name": "chk_crd_status",
+     "clause": "((`status` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'1\\\\',_utf8mb4\\\\'2\\\\',_utf8mb4\\\\'3\\\\',_utf8mb4\\\\'4\\\\',_utf8mb4\\\\'5\\\\',_utf8mb4\\\\'6\\\\',_utf8mb4\\\\'7\\\\',_utf8mb4\\\\'9\\\\',_utf8mb4\\\\'10\\\\',_utf8mb4\\\\'11\\\\',_utf8mb4\\\\'12\\\\')) and (not((`status` like _utf8mb4\\\\'% \\\\'))))"
+    },
+    {
+     "name": "chk_crd_overtime",
+     "clause": "((`overtime` >= 0) and (`overtime` <= 11))"
+    }
+   ]
   },
   {
    "name": "cal_report_hours",
@@ -1108,7 +1117,7 @@
     },
     {
      "name": "hours",
-     "type": "decimal(5,2)",
+     "type": "decimal(4,2)",
      "nullable": false,
      "def": null,
      "key": "",
@@ -1130,6 +1139,14 @@
    ],
    "fks": [
     {
+     "name": "fk_crh_cat",
+     "cols": "user_id,cat_no",
+     "ref": "cal_category",
+     "refCols": "user_id,cat_no",
+     "upd": "RESTRICT",
+     "del": "RESTRICT"
+    },
+    {
      "name": "fk_crh_daily",
      "cols": "user_id,work_date",
      "ref": "cal_report_daily",
@@ -1141,7 +1158,7 @@
    "checks": [
     {
      "name": "chk_crh_hours",
-     "clause": "(`hours` >= 0)"
+     "clause": "((`hours` > 0) and (`hours` <= 24))"
     }
    ]
   },
@@ -1257,8 +1274,8 @@
      "cols": "user_id",
      "ref": "app_user",
      "refCols": "user_id",
-     "upd": "CASCADE",
-     "del": "CASCADE"
+     "upd": "RESTRICT",
+     "del": "RESTRICT"
     }
    ],
    "checks": [
@@ -2136,7 +2153,7 @@
    "name": "project",
    "engine": "InnoDB",
    "rows": 14,
-   "comment": "과제 마스터. DB 원본. section/status=ENUM, is_active=소프트삭제.",
+   "comment": "과제 마스터. DB 원본. section/status=코드테이블+FK, is_active=소프트삭제.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 14,
    "columns": [
@@ -2331,7 +2348,7 @@
    "name": "section_code",
    "engine": "InnoDB",
    "rows": 3,
-   "comment": "",
+   "comment": "구분 코드. name=자연키. 개명=FK CASCADE. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 3,
    "columns": [
@@ -2395,7 +2412,7 @@
    "name": "status_code",
    "engine": "InnoDB",
    "rows": 4,
-   "comment": "",
+   "comment": "상태 코드. name=자연키. 개명=FK CASCADE. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 4,
    "columns": [
