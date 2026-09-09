@@ -39,7 +39,22 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-07T07:46:28.148Z"
+  "dumpedAt": "2026-09-09T00:54:19.143Z",
+  "stats": {
+   "viewScope": {
+    "self": 71,
+    "unit_tree": 11,
+    "all": 7
+   },
+   "editRole": {
+    "viewer": 82,
+    "editor": 6,
+    "admin": 1
+   },
+   "nonDefaultUsers": 18,
+   "activeUsers": 89,
+   "orgRoots": 1
+  }
  },
  "tables": [
   {

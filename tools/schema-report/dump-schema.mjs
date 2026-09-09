@@ -16,6 +16,15 @@ for(const t of tables){
   t.checks=q(`SELECT c.CONSTRAINT_NAME, c.CHECK_CLAUSE FROM information_schema.CHECK_CONSTRAINTS c JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME=c.CONSTRAINT_NAME WHERE t.TABLE_SCHEMA=${S} AND t.TABLE_NAME='${t.name}' AND t.CONSTRAINT_TYPE='CHECK'`).map(([name,clause])=>({name,clause}));
 }
 const meta={schemaVersion:(q(`SELECT v FROM ${DB}.cal_schema_meta WHERE k='schema_version'`)[0]||[null])[0], mysql:q('SELECT VERSION()')[0][0], charset:q(`SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME=${S}`)[0], triggers:Number(q(`SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=${S}`)[0][0]), routines:Number(q(`SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=${S}`)[0][0]), views:Number(q(`SELECT COUNT(*) FROM information_schema.VIEWS WHERE TABLE_SCHEMA=${S}`)[0][0]), grants:q(`SHOW GRANTS FOR 'taskmgr_app'@'%'`).map(r=>r[0]), users:q(`SELECT CONCAT(user,'@',host) FROM mysql.user WHERE user LIKE 'taskmgr%'`).map(r=>r[0]), dumpedAt:new Date().toISOString()};
+// 분포 — 구조가 아니라 내용이지만 실명이 없는 집계라 문서에 그대로 싣는다(docs/DB-SCHEMA.html 「지금 들어 있는 것」).
+const tally=(col)=>Object.fromEntries(q(`SELECT ${col}, COUNT(*) FROM ${DB}.app_user GROUP BY ${col} ORDER BY COUNT(*) DESC`).map(([k,n])=>[k,Number(n)]));
+meta.stats={
+  viewScope:tally('view_scope'),
+  editRole:tally('edit_role'),
+  nonDefaultUsers:Number(q(`SELECT COUNT(*) FROM ${DB}.app_user WHERE NOT(view_scope='self' AND edit_role='viewer')`)[0][0]),
+  activeUsers:Number(q(`SELECT COUNT(*) FROM ${DB}.app_user WHERE is_active=1`)[0][0]),
+  orgRoots:Number(q(`SELECT COUNT(*) FROM ${DB}.org_unit WHERE parent_id IS NULL`)[0][0]),
+};
 writeFileSync(process.argv[2], JSON.stringify({meta,tables},null,1),'utf8');
 console.log(`표 ${tables.length} · 컬럼 ${tables.reduce((a,t)=>a+t.columns.length,0)} · FK ${tables.reduce((a,t)=>a+t.fks.length,0)} · CHECK ${tables.reduce((a,t)=>a+t.checks.length,0)} · 인덱스 ${tables.reduce((a,t)=>a+t.indexes.length,0)} · schema v${meta.schemaVersion} · MySQL ${meta.mysql} · 트리거 ${meta.triggers} 루틴 ${meta.routines} 뷰 ${meta.views}`);
 console.log('GRANT 줄 '+meta.grants.length+' · 계정 '+meta.users.join(', '));
