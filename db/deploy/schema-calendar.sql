@@ -48,13 +48,30 @@
 --         migrate-2026-08-24-user-id.sql 이 2단계에서 멈춘 반쯤 된 상태라서 통과시키면 안 된다 — 실측 g3b).
 --       (app_user 쪽 DDL 은 이 파일의 범위가 아니다 — migrate-2026-08-24-user-id.sql / 01-schema-users.sql.)
 --
---  시각 컬럼 규약(중요):
---     created_at / updated_at / completed_at 은 앱이 UTC 로 계산해 '명시 대입'한다.
---     서버 DEFAULT CURRENT_TIMESTAMP(3) 도, ON UPDATE CURRENT_TIMESTAMP(3) 도 일부러 쓰지 않았다.
---     왜: CURRENT_TIMESTAMP 는 세션 time_zone(현 서버는 SYSTEM=KST)으로 평가된다. 서버가 한 번이라도
---     값을 쓰면 같은 컬럼에 KST 와 UTC 가 섞이고, DATETIME 은 사후에 둘을 구분할 수단이 없다(복구 불가).
---     updated_at 은 동시에 낙관적 잠금 토큰이라 쓰기 주체가 둘이면 토큰 자체가 무너진다.
---     → 접속 프리앰블에 SET SESSION time_zone='+00:00' 을 함께 둘 것.
+--  시각 컬럼 규약(중요) — ★ 2026-09-09 정정:
+--     이 자리에는 *"서버 DEFAULT CURRENT_TIMESTAMP(3) 도, ON UPDATE CURRENT_TIMESTAMP(3) 도
+--     일부러 쓰지 않았다"* 라고 적혀 있었다. **이 파일 안에서 이미 거짓이었다** —
+--     아래 cal_report_daily·cal_report_weekly 의 created_at/updated_at 이 둘 다 쓴다(1654·1704 부근).
+--     동작이 틀린 것이 아니라 머리말이 낡은 것이었다(값은 실제로 UTC 로 들어간다. 아래 근거).
+--     낡은 머리말을 그냥 두면 다음 사람이 '규약과 코드 중 어느 쪽이 진짜냐'를 매번 다시 판정해야 한다.
+--
+--     지금의 규약은 이렇다:
+--       · **이 DB 의 시각 값은 전부 UTC 다.** 예외 없다.
+--       · cal_* 대부분은 앱이 UTC 로 계산해 '명시 대입'한다(created_at/updated_at/completed_at).
+--         updated_at 은 동시에 낙관적 잠금 토큰이라, 쓰기 주체가 둘이면 토큰 자체가 무너지기 때문이다.
+--       · 예외가 둘 있다 — cal_report_daily·cal_report_weekly 의 created_at/updated_at 은
+--         **서버 기본값을 쓴다**(그 두 표는 '보낸 사실'을 담을 뿐이고 낙관적 잠금 대상이 아니다).
+--       · 그것이 안전한 이유는 하나뿐이다: **DB 에 접근하는 모든 호스트 코드가 접속 프리앰블에서
+--         SET SESSION time_zone='+00:00' 을 건다.** 그래서 CURRENT_TIMESTAMP 도 UTC 로 평가된다.
+--         (CalendarDb.ReadPreambleSql · CalendarWriteDb/ReportDb.WritePreambleSql ·
+--          ProjectDb 의 읽기/쓰기 프리앰블 — 마지막 것은 2026-09-09 에 신설했다.)
+--       · 그 전제는 말이 아니라 **계약으로 지킨다** — tests/schema-integrity.test.mjs 의
+--         '계약①: 프리앰블' 이 widget/ 의 .cs 를 디렉터리로 열거해, DB 접속 문자열을 만드는 파일에
+--         time_zone='+00:00' 이 있는지 검사한다(새 파일도 자동 편입된다).
+--       · 프리앰블 없는 쓰기 주체를 새로 만들면 그 순간 한 컬럼에 KST 와 UTC 가 섞이고,
+--         DATETIME 은 사후에 둘을 구분할 수단이 없다(복구 불가). 실제로 그렇게 됐던 적이 있다 —
+--         ProjectDb 에 프리앰블이 없어 project·customer·section_code·status_code 의 감사 컬럼이
+--         KST 로 적혀 왔고, migrate-2026-09-09-integrity.sql (5)가 그 행들을 1회 정규화했다.
 --
 --  =====================================================================
 --  ★★ DB 어댑터 계약 — 여덟 부류(A~F 는 앱→DB, G 는 DB→앱, H 는 양방향 키 해석).
@@ -1653,26 +1670,61 @@ CREATE TABLE cal_report_daily (
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (user_id, work_date),
-  CONSTRAINT fk_crd_user FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE CASCADE ON UPDATE CASCADE
+  -- ★ 2026-09-09 CASCADE → RESTRICT (migrate-2026-09-09-integrity.sql (1)).
+  --   grants-calendar.sql 은 이 표에 DELETE 권한을 주지 않는다("보고한 사실은 지우는 대상이 아니다").
+  --   그런데 FK 가 CASCADE 라, 퇴사자 정리에서 app_user 행을 지우는 순간 보고 이력이
+  --   **DELETE 권한 없이도** 함께 사라졌다 — FK 의 참조 동작은 GRANT 검사를 거치지 않는다.
+  --   두 장치의 의도가 반대였고 FK 쪽이 GRANT 의 방어를 우회했다. 소유자 FK 11개 중 나머지가
+  --   전부 RESTRICT 인 것도 같은 이유다. 멈추는 것이 답이다.
+  CONSTRAINT fk_crd_user FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  -- ★ 2026-09-09 신설 — 쌍둥이 cal_attendance 의 규율을 이식했다(migrate-…-integrity.sql (3)).
+  --   두 컬럼은 "cal_attendance 와 같은 타입이라 대조 가능" 을 노리고 만들었는데 값의 규율이
+  --   한쪽에만 있었다. 한쪽에만 들어갈 수 있는 값이 있으면 대조 자체가 성립하지 않는다.
+  --   ★ '' 가 목록에 있는 것이 cal_attendance 와의 **유일한 차이이고 의도된 차이**다:
+  --     그쪽은 '미기록 = 행 없음' 이라 '' 가 필요 없지만, 이 표는 보고를 보내면 하루 한 행이
+  --     반드시 생기므로 '근태 미기재' 를 표현할 값이 필요하다. 게다가 ReportDb 는 Clamp2 로
+  --     길이만 자르고 값을 검증하지 않아, '' 를 막으면 근태 미기재일의 보고 저장이 통째로 3819 로 죽는다.
+  --   NOT LIKE '% ' 의 근거는 위 chk_cal_attendance_status 주석에 적혀 있다(PAD SPACE 구멍).
+  CONSTRAINT chk_crd_status   CHECK (status IN ('','1','2','3','4','5','6','7','9','10','11','12')
+                                 AND status NOT LIKE '% '),
+  CONSTRAINT chk_crd_overtime CHECK (overtime >= 0 AND overtime <= 11)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다';
 
 -- ── 2단계: cal_report_hours ──────────────────────────────────────────
---   ★ cat_no 에 FK 를 걸지 않는다. 과제를 지워도 **과거 보고 기록은 남아야 하기 때문**이다.
---     진실은 task_name(사이트 원문)이고 cat_no 는 매칭 결과일 뿐이다.
---     복합 FK 로는 ON DELETE SET NULL 도 못 쓴다(user_id 가 NOT NULL 이라 MySQL 이 거부한다).
+--   ★★ 2026-09-09 뒤집음 — cat_no 에 **RESTRICT FK 를 건다**(fk_crh_cat).
+--     이 자리에는 *"cat_no 에 FK 를 걸지 않는다. 과제를 지워도 과거 보고 기록은 남아야 하기
+--     때문이다"* 라고 적혀 있었다. 그 문장은 cal_task_hours 가 2026-08-24 에 이미 기각한 논리와
+--     같다 — cat_no 는 AUTO_INCREMENT 가 아니라 MAX()+1 발번이라 **번호가 재사용된다**(H-1).
+--     FK 가 없으면 '남은 과거 기록' 은 남는 것이 아니라, 나중에 같은 번호를 받은 **다른 과제**의
+--     공수로 조용히 흡수된다. 그리고 그 숫자는 회사 일간보고로 나간다.
+--     (ON DELETE SET NULL 을 못 쓰는 것은 사실이다 — user_id 가 NOT NULL 이라 MySQL 이 거부한다.
+--      그래서 남는 선택지는 RESTRICT 뿐이고, 그게 쌍둥이 cal_task_hours 가 고른 것과 같다.)
+--   ★ 오늘은 아무 동작도 바뀌지 않는다: 앱은 cat_no 를 항상 NULL 로 쓴다
+--     (MainWindow.xaml.cs:2053). 복합 FK 는 MATCH SIMPLE 이라 NULL 행은 검사 면제다.
+--     이 제약이 하는 일은 **나중에 이 컬럼을 채우는 사람에게 "과제를 지우기 전에 먼저 비워라"를
+--     강제하는 것**이다. 그 사람이 이 주석을 못 봐도 DB 가 1451 로 알려 준다.
 CREATE TABLE cal_report_hours (
   user_id    SMALLINT UNSIGNED NOT NULL,
   work_date  DATE              NOT NULL,
   line_no    SMALLINT UNSIGNED NOT NULL,                                    -- content 안에서의 줄 순서(0부터). 순서 보존 + 좁은 키
   task_name  VARCHAR(200)      NOT NULL,                                    -- 사이트 원문 그대로. 과제명이 바뀌어도 과거는 안 흔들린다
-  cat_no     INT UNSIGNED      NULL,                                        -- 매칭되면 채움 · NULL = 미분류(FK 없음 — 위 ★)
-  hours      DECIMAL(5,2)      NOT NULL,                                    -- 파서가 Math.round(x*100)/100 로 만드는 값과 정확히 같은 정밀도
+  cat_no     INT UNSIGNED      NULL,                                        -- 매칭되면 채움 · NULL = 미분류(NULL 은 FK 검사 면제 — 위 ★)
+  hours      DECIMAL(4,2)      NOT NULL,                                    -- 폭은 쌍둥이 cal_task_hours 와 같게(2026-09-09). 소수 2자리는 파서의 Math.round(x*100)/100 과 정확히 같다
   PRIMARY KEY (user_id, work_date, line_no),
-  KEY idx_crh_cat (user_id, cat_no, work_date),                             -- 계산기: 과제별 기간 합계
+  KEY idx_crh_cat (user_id, cat_no, work_date),                             -- 계산기: 과제별 기간 합계 + fk_crh_cat 의 지지 인덱스(선두 두 열이 FK 열)
   CONSTRAINT fk_crh_daily FOREIGN KEY (user_id, work_date)
     REFERENCES cal_report_daily (user_id, work_date) ON DELETE CASCADE ON UPDATE CASCADE,
-  CONSTRAINT chk_crh_hours CHECK (hours >= 0)
+  -- ★ 2026-09-09 신설 — 위 ★★ 참조. cal_category 는 이 파일 앞쪽(1. cal_category)에서 이미 만들어지므로
+  --   여기서 인라인으로 선언할 수 있다(파일 끝 ALTER 로 미룰 이유가 없다 — 표 정의 한자리에 다 보이는 편이 낫다).
+  CONSTRAINT fk_crh_cat FOREIGN KEY (user_id, cat_no) REFERENCES cal_category (user_id, cat_no)
+    ON DELETE RESTRICT ON UPDATE RESTRICT,
+  -- ★ 2026-09-09 hours >= 0 → hours > 0 AND hours <= 24. cal_task_hours 의 chk_cal_task_hours_range 와 같다.
+  --   0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다(캘린더 쪽은 이미 0 을 행 삭제로 다룬다).
+  --   상한 24 가 없으면 파서가 잘못 읽은 240 이 그대로 회사 보고 집계에 들어간다.
+  --   ★ 앱과 짝이다 — ReportDb.cs 의 0시간 줄 필터가 `<= 0` 이어야 한다(한쪽만 고치면 저장 트랜잭션이 죽는다).
+  --     그 짝을 tests/schema-integrity.test.mjs 의 '계약④: 공수 상한' 이 기계로 붙잡는다.
+  CONSTRAINT chk_crh_hours CHECK (hours > 0 AND hours <= 24)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='보낸 과제별 시간 — 공수계산기의 원천. 캘린더가 본문을 만들 때 이미 아는 값이다(파싱 아님)';
 --  ★ 이 주석을 '되읽은 content 를 파싱해 채운다' 로 되돌리지 말 것 — 그건 §5.9.2 에서 **버린 안**이다.
@@ -1703,7 +1755,9 @@ CREATE TABLE cal_report_weekly (
   created_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at   DATETIME(3)       NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   PRIMARY KEY (user_id, period_start),
-  CONSTRAINT fk_crw_user FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  -- ★ 2026-09-09 CASCADE → RESTRICT — 근거는 위 fk_crd_user 와 같다(GRANT 는 DELETE 를 안 주는데
+  --   FK 가 지웠다). 소유자 FK 는 이 DB 에서 전부 RESTRICT 로 통일한다.
+  CONSTRAINT fk_crw_user FOREIGN KEY (user_id) REFERENCES app_user (user_id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT chk_crw_period CHECK (period_start <= period_end)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='캘린더가 작성한 주간보고. 사이트의 현재 상태가 아니다 - 사용자가 폼에서 보완한 내용은 담기지 않는다';
@@ -1899,9 +1953,16 @@ CREATE TABLE cal_schema_meta (
 --   7 = 주간 1표 신설(-report-weekly.sql), 8 = **'캘린더가 만든 것만 담는다'로 좁힘**
 --   (-sent-only.sql. content_from 폐기 · content_at → sent_at · 주간 재작성).
 --   세 파일은 반드시 이 순서로 적용한다 — 각 파일의 가드가 앞 버전(5·6·7)을 요구한다.
+-- ★ 2026-09-09: 8 → 9. 무결성 규칙 통일 + 감사 시각 1회 정규화(migrate-2026-09-09-integrity.sql).
+--   소유자 FK 두 개를 CASCADE→RESTRICT · cal_report_hours 에 fk_crh_cat 신설 ·
+--   cal_report_daily 에 chk_crd_status/chk_crd_overtime 신설 · hours 를 DECIMAL(4,2)/>0..24 로 좁힘 ·
+--   project·section_code·status_code 표 주석 드리프트 복구 · 7표 감사 컬럼 KST→UTC 시프트.
+--   ★ 그 마이그레이션은 **재실행 안전이 아니다**(시각 시프트). v8 에서만 적용된다.
 --   ※ 이 아래 시딩값을 고칠 때는 이 목록도 함께 늘릴 것. 2026-08-31 에 값만 8 로 오르고
 --     이 목록이 5 에서 멈춰 있어, 파일 안에서 '무엇이 8 을 만들었는지'를 읽을 수 없었다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '8', UTC_TIMESTAMP(3));
+--   ※ 이 값과 db/deploy 의 최신 migrate-*.sql 이 올리는 값이 어긋나면
+--     tests/schema-integrity.test.mjs 의 '계약⑥: 버전 정합' 이 실패한다(둘이 갈라지지 않게).
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '9', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

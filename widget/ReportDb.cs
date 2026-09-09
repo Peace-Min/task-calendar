@@ -10,9 +10,18 @@ using MySqlConnector;
 namespace TaskCalendarWidget
 {
     // 보고서에 실어 보낸 과제별 시간 한 줄. cal_report_hours 의 한 행이 된다.
-    //   ★ CatNo 는 null 이 정상이다. 진실은 TaskName(보낸 그대로)이고 CatNo 는 참조일 뿐이다
-    //     (설계 §5.9.6 — 과제를 지워도 과거 보고 기록은 남아야 하므로 FK 를 걸지 않았다).
-    //     XML→DB 이관 전에는 앱이 cal_category.cat_no 를 모르므로 항상 null 이다. 그래도 기록은 완전하다.
+    //   ★ CatNo 는 null 이 정상이다. 진실은 TaskName(보낸 그대로)이고 CatNo 는 참조일 뿐이다.
+    //     지금 이 값을 채우는 코드는 없다 — 유일한 생성지가 MainWindow.xaml.cs 의
+    //     `new ReportHourLine { TaskName = …, CatNo = null, Hours = h }` 한 줄이다.
+    //   ★★ 2026-09-09 정정 — 이 자리에는 "과제를 지워도 과거 보고 기록은 남아야 하므로 **FK 를
+    //     걸지 않았다**" 고 적혀 있었다. 이제 거짓이다: cal_report_hours 에 fk_crh_cat 이 있다
+    //     (user_id, cat_no) → cal_category, ON DELETE/UPDATE RESTRICT.
+    //     이유는 cat_no 가 MAX()+1 발번이라 **번호가 재사용되기** 때문이다 — FK 가 없으면
+    //     '남은 과거 기록' 은 남는 것이 아니라 같은 번호를 받은 다른 과제의 공수로 흡수된다.
+    //     · 현 동작은 그대로다: 복합 FK 는 MATCH SIMPLE 이라 cat_no 가 NULL 인 행은 검사 면제다.
+    //     · 앞으로 이 필드를 실제로 채우려면 규칙이 하나 붙는다 —
+    //       **과제를 지우기 전에 그 과제를 가리키는 보고 공수의 cat_no 를 먼저 비울 것.**
+    //       안 그러면 과제 삭제가 1451 로 막힌다(그게 이 가드의 목적이다).
     internal sealed class ReportHourLine
     {
         public string TaskName = "";
@@ -151,7 +160,12 @@ namespace TaskCalendarWidget
                         string name = (h.TaskName ?? "").Trim();
                         if (name.Length == 0) continue;                 // 이름 없는 줄은 기록할 대상이 아니다
                         if (name.Length > 200) name = name.Substring(0, 200);   // 컬럼 폭에 맞춰 자른다(예외로 전송을 깨지 않는다)
-                        if (h.Hours < 0) continue;                      // CHECK 위반을 미리 거른다 — 트랜잭션 전체를 죽이지 않게
+                        // ★ 2026-09-09 `< 0` → `<= 0`. chk_crh_hours 가 `hours >= 0` 에서
+                        //   `hours > 0 AND hours <= 24` 로 좁아졌으므로(cal_task_hours 와 같은 규율)
+                        //   0시간 줄도 여기서 미리 걸러야 한다. 안 그러면 그 한 줄이 3819 를 내고
+                        //   **그 날 보고 저장 트랜잭션 전체가 죽는다** — 전송은 이미 나간 뒤라 가장 나쁜 실패다.
+                        //   의미상으로도 0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다.
+                        if (h.Hours <= 0) continue;                     // CHECK 위반을 미리 거른다 — 트랜잭션 전체를 죽이지 않게
 
                         if (lineNo > 0) sb.Append(',');
                         sb.Append("(@u, @dt, @l").Append(lineNo)

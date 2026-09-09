@@ -56,6 +56,44 @@ namespace TaskCalendarWidget
                 Pooling = false,               // 위젯 단발성 조회 — 풀 미유지(정지된 서버로 소켓 재사용 방지)
             }.ConnectionString;
 
+        // ── 접속 프리앰블 — 시각 컬럼 규약(schema-calendar.sql 머리말 「시각 컬럼 규약」) ──────
+        //   ★ 2026-09-09 신설. 왜 이 파일에만 없었는가가 곧 이 코드가 존재하는 이유다:
+        //     CalendarDb·CalendarWriteDb·ReportDb 는 셋 다 프리앰블에서 time_zone='+00:00' 을 걸었는데
+        //     ProjectDb 만 걸지 않았다. 그런데 이 파일이 쓰는 표들(project · customer ·
+        //     section_code · status_code)의 created_at/updated_at 은 **서버 기본값**
+        //     CURRENT_TIMESTAMP(3) 이고, 그 함수는 세션 time_zone 으로 평가된다.
+        //     이 서버의 time_zone 은 SYSTEM=KST 다 → 그 표들만 KST 로 적혀 왔다.
+        //     실측(2026-09-09): customer 저장 16:05:39 / 물리 기록 16:05:56(같은 시계 = KST),
+        //                       cal_category 저장 03:09:01 / 물리 기록 12:09:01(9시간 차 = UTC).
+        //     즉 같은 DB 한복판에 기준이 둘이었고, DATETIME 은 사후에 둘을 구분하지 못한다.
+        //     경계 이전 행은 migrate-2026-09-09-integrity.sql 의 (5)가 1회 정규화했다 —
+        //     그 마이그레이션과 이 코드는 반드시 같이 가야 한다(한쪽만 가면 혼재가 남는다).
+        //
+        //   ★ 읽기와 쓰기를 한 상수로 합치지 않는다. 쓰기는 격리수준까지 고정하지만
+        //     읽기 경로는 **기존 동작을 바꾸지 않는다** — 여기서 격리수준을 건드리면
+        //     LoadProjectsJsonAsync·LoadAppUserJsonAsync 등 읽기 전량의 동작이 함께 바뀐다.
+        //     읽기에 필요한 것은 시각 기준 하나뿐이다(읽기 경로도 감사 컬럼을 그대로 돌려주므로).
+        private const string ReadPreambleSql =
+            "SET SESSION time_zone='+00:00'";
+
+        private const string WritePreambleSql =
+            "SET SESSION innodb_lock_wait_timeout=5, " +      // DefaultCommandTimeout(8s)보다 짧게 — DB 가 진단 가능한 1205 를 먼저 내게
+            "SESSION time_zone='+00:00', " +                  // 위 ★ — 서버 기본값 CURRENT_TIMESTAMP(3) 이 UTC 로 평가되게
+            "SESSION transaction_isolation='READ-COMMITTED'";
+
+        // 연 연결마다 프리앰블 1회. 실패하면 연결을 정리하고 원인을 그대로 전파한다 —
+        // 프리앰블이 안 걸린 연결로 계속 진행하면 그 세션이 쓴 값만 조용히 KST 가 된다(무음 오염).
+        private static async Task ApplyPreambleAsync(MySqlConnection conn, string sql, CancellationToken ct)
+        {
+            try
+            {
+                await using var pre = conn.CreateCommand();
+                pre.CommandText = sql;
+                await pre.ExecuteNonQueryAsync(ct);
+            }
+            catch { await conn.DisposeAsync(); throw; }
+        }
+
         // ================================================================================
         // DB 접근 관문 — 연결 획득을 두 헬퍼로 좁힌다 (USER-LOGIN §3)
         //   메서드 18개가 각자 new MySqlConnection을 열면, 쓰기 권한 검사를 '호출부마다 한 줄'로 넣는 설계는
@@ -74,6 +112,7 @@ namespace TaskCalendarWidget
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }   // 못 연 연결을 새지 않게 정리하고 원인은 그대로 전파
+            await ApplyPreambleAsync(conn, ReadPreambleSql, ct);   // 프리앰블은 연 연결마다 — 예외를 두면 그 자리가 규약 밖이 된다
             return conn;
         }
 
@@ -93,6 +132,9 @@ namespace TaskCalendarWidget
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
+            // ★ 프리앰블은 권한 판정보다 **먼저** 건다. 판정 쿼리도 이 연결로 도는 데다,
+            //   순서를 뒤집으면 '권한은 통과했는데 프리앰블에서 죽는' 창이 생겨 실패 원인이 흐려진다.
+            await ApplyPreambleAsync(conn, WritePreambleSql, ct);
             try
             {
                 bool found = false;

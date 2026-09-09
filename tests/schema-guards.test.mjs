@@ -460,9 +460,17 @@ test('변이⑤: CREATE 를 부모보다 앞으로 옮기면 createOrderParentFi
 });
 
 test('변이⑥: 정본 버전만 올리고 마이그레이션을 안 쓰면 migrationChain 이 실패한다', () => {
-  const bumped = canonSql.replace(/('schema_version',\s*)'8'/, "$1'9'");
-  assert.notStrictEqual(bumped, canonSql, '변이 준비 실패: 정본 버전 문자열을 찾지 못했다');
-  assert.throws(() => checks.migrationChain(migrateSrc, bumped), /정본 값\(9\)/);
+  //  ★ 2026-09-09 — 판본 숫자를 박아 두지 않는다. 예전에는 '8' → '9' 를 문자열로 적어 두어,
+  //    정본이 9 로 오르는 순간 이 변이가 **대상을 못 찾고 "변이 준비 실패"로 죽었다**.
+  //    변이 시험이 판본마다 손을 타면 다음 사람은 그 손질을 귀찮아하다 시험을 지운다.
+  //    지금 값을 읽어서 +1 로 올린다 — 무엇이 정본이든 '정본만 올린 상태'를 만들 수 있다.
+  const cur = canonSchemaVersion(canonSql);
+  assert.ok(cur !== null, '변이 준비 실패: 정본 버전 문자열을 찾지 못했다');
+  const bumped = canonSql.replace(
+    new RegExp("('schema_version',\\s*)'" + cur + "'"), "$1'" + (cur + 1) + "'");
+  assert.notStrictEqual(bumped, canonSql, '변이 준비 실패: 정본 버전 문자열을 바꾸지 못했다');
+  assert.throws(() => checks.migrationChain(migrateSrc, bumped),
+    new RegExp('정본 값\\(' + (cur + 1) + '\\)'));
 });
 
 test('변이⑦: 버전 도입 전 파일이 버전을 올리기 시작하면 제외 목록이 거짓이라고 알린다', () => {

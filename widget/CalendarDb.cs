@@ -102,7 +102,8 @@ namespace TaskCalendarWidget
         //   ★ 서버 값을 앱이 올려서 통과할 수는 없다 — 앱 계정의 cal_schema_meta 권한은 SELECT
         //     하나뿐이다(db/deploy/grants-calendar.sql). 막으려는 대상이 자기 통과증을 발급하면
         //     이 게이트는 무의미해진다(§5.5 ★).
-        internal const string ExpectedSchemaVersion = "8";
+        //   ★ 2026-09-09: 8 → 9(migrate-2026-09-09-integrity.sql — 무결성 규칙 통일 + 감사 시각 정규화).
+        internal const string ExpectedSchemaVersion = "9";
 
         private readonly Action<string> _log;
 
