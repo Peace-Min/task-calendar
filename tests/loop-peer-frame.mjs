@@ -2,10 +2,24 @@
 /* ============================================================================
  *  tests/loop-peer-frame.mjs — 타인 일정 열람 **창**의 실동작 루프 검증 (C4)
  * ----------------------------------------------------------------------------
- *  증명하는 명제 셋:
- *    ① 열람 창에는 **그 사람의** 일정이 뜬다 (내 것이 아니다)
+ *  증명하는 명제 넷:
+ *    ① 「내 일정 겹쳐보기」를 **끄면** 열람 창에는 **그 사람의** 일정만 뜬다
+ *    ①' 「내 일정 겹쳐보기」를 **켜면**(C4.1 · 기본값) 내 일정이 한 겹 함께 뜨되,
+ *        내 것은 점선 칩(chip-mine)에 draggable=false 이고 **고칠 수 없다**(save 가 되돌린다)
  *    ② 그 창은 호스트로 **아무것도 내보내지 못한다** — 봉인
  *    ③ 몇 번을 열고 닫아도 **내 데이터도 DB 도 변하지 않고**, 프레임이 쌓이지 않는다
+ *
+ *  ★★ 2026-09-09 — 이 시험이 낡아서 실패했던 자리(고친 경위):
+ *    2026-09-07 에 C4.1 「내 일정 겹쳐보기」가 들어왔고 **기본값이 켬**이다. 그래서 열람 창에는
+ *    대상 3건이 아니라 3 + 내 겹 이 뜬다. 이 시험은 겹을 모른 채 `state.entries.length === 3` 을
+ *    요구해 R4~R8 이 줄줄이 붉었다 — **기능이 옳고 시험이 낡은 것**이었다.
+ *    고치면서 배운 것을 남긴다: 내 겹은 **토글과 무관하게 늘 payload 에 들어 있고**, 토글은
+ *    그리는 단계(passFilter)에서 걸린다. 그래서 개수는 반드시 **앱 자신의 판정 함수로** 세야 한다.
+ *    state.entries 를 세면 토글이 무슨 일을 하는지 원리적으로 못 본다.
+ *
+ *  ★ tests/peer-overlay.test.mjs 와 역할을 나눈다 — 그쪽은 소스·jsdom 계약(buildMineOverlay 가
+ *    무엇을 안 보내는가, 봉인이 여전한가)을 본다. 여기서는 **실제 위젯의 실동작**만 본다.
+ *    같은 단언을 두 번 쓰지 않는다.
  *
  *  왜 루프인가:
  *    한 번 열어 보는 것으로는 '누수'가 안 드러난다. 프레임이 안 지워지거나, 봉인이
@@ -150,6 +164,75 @@ class Cdp {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* ══════════════════════════════════════════════════════════════════════
+ *  C4.1 「내 일정 겹쳐보기」를 다루는 도구들
+ * ══════════════════════════════════════════════════════════════════════ */
+const FRAME_W = 'document.querySelector("#pvHost iframe").contentWindow';
+
+//  겹 토글을 **앱이 사람에게 준 그 경로로** 누른다 — 배너의 체크박스다(click → change → setPeerOverlay).
+//  ★ 상태를 만드는 것은 시험의 일이다. 앱을 고치거나 내부 변수에 직접 대입하면
+//    "사용자가 껐을 때 정말 이렇게 되는가" 를 증명하지 못한다.
+//  ★ 설정은 localStorage(tc_peerOverlay) 라 **라운드를 넘어 남는다.** 그래서 라운드마다
+//    원하는 상태를 명시적으로 만들고, 읽어 온 값으로 그것이 실제로 섰는지 확인한다.
+async function setOverlay(cdp, on) {
+  const r = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+    const t=w.document.getElementById("peerOverlayToggle");
+    if(!t) return JSON.stringify({err:"배너에 #peerOverlayToggle 이 없다 — 겹 토글이 사라졌거나 배너가 안 그려졌다"});
+    if(t.checked !== ${on ? 'true' : 'false'}) t.click();
+    return JSON.stringify({checked:!!t.checked,
+      attr:(w.document.body.dataset.peerOverlay || null),
+      ls:(()=>{try{ return w.localStorage.getItem("tc_peerOverlay"); }catch(_){ return "(못 읽음)"; }})()});})()`));
+  if (r.err) throw new Error('겹 토글 조작 실패: ' + r.err);
+  await sleep(150);   // renderAll() 이 돌 틈
+  return r;
+}
+
+//  지금 **보이는 것**을 앱 자신의 판정 함수(passFilter)로 센다 — 데이터 개수가 아니다.
+//  ★ passFilter 가 없으면 세지 않고 실패시킨다(판정 불가 ≠ 통과).
+async function visible(cdp) {
+  const r = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+    if(typeof w.passFilter !== "function") return JSON.stringify({err:"프레임에 passFilter 가 없다 — 이 시험은 아무것도 세지 못한다"});
+    const st=w.__test.state(), mine=(e)=>!!(e&&e._mine);
+    const vis=st.entries.filter((e)=>w.passFilter(e));
+    return JSON.stringify({
+      dataAll: st.entries.length,          // payload 에 들어온 전부(토글과 무관)
+      dataMine: st.entries.filter(mine).length,
+      visTheirs: vis.filter((e)=>!mine(e)).length,
+      visMine: vis.filter(mine).length,
+      theirTitles: vis.filter((e)=>!mine(e)).map((e)=>e.title).sort(),
+      chipMine: w.document.querySelectorAll("#grid .chip.chip-mine").length,
+      attr: (w.document.body.dataset.peerOverlay || null)});})()`));
+  if (r.err) throw new Error(r.err);
+  return r;
+}
+
+//  내 겹이 **어떻게 그려지는가** — 격자에 칩이 실제로 있는 달로 옮겨 가서 본다.
+//  ★ 후보를 훑는다: 열린 달에 내 일정이 없으면 칩이 아예 없어 아무것도 못 본다.
+//    끝까지 못 찾으면 통과가 아니라 실패다.
+async function mineChipProbe(cdp) {
+  return JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+    const st=w.__test.state();
+    const mine=st.entries.filter((e)=>e&&e._mine);
+    if(!mine.length) return JSON.stringify({err:"프레임에 _mine 일정이 하나도 없다 — 부모가 겹을 안 보냈다"});
+    const cand=mine.slice(0,12);
+    for(const e of cand){
+      const d=String(e.date||""); const y=Number(d.slice(0,4)), mo=Number(d.slice(5,7));
+      if(!y||!mo) continue;
+      w.eval("view.y="+y+"; view.m="+(mo-1)+"; selectedDate="+JSON.stringify(d)
+             +"; renderAll(); if(typeof renderPanel==='function') renderPanel();");
+      const chip=w.document.querySelector('#grid .chip[data-id="'+e.id+'"]');
+      if(!chip) continue;
+      const card=w.document.querySelector('#dpBody .card[data-id="'+e.id+'"]');
+      return JSON.stringify({
+        id:e.id, date:d,
+        chipMine: chip.classList.contains("chip-mine"),
+        draggable: chip.getAttribute("draggable"),
+        card: !!card,
+        cardMine: !!(card && card.classList.contains("card-mine"))});
+    }
+    return JSON.stringify({err:"내 겹 중 격자에 칩이 그려진 것을 찾지 못했다(후보 "+cand.length+"건)"});})()`));
+}
+
 /* ── 시험 대상 사용자 — 내 것과 **다른** 데이터를 심는다 ───────────────── */
 //   같은 데이터면 "그 사람 것이 떴는가" 를 증명할 수 없다.
 const TU = '__pf_target__';
@@ -222,6 +305,14 @@ try {
     ok(`R${r} 열람 창이 뜨고 데이터가 들어온다`, loaded);
     if (!loaded) { await cdp.ev('closeModal("#peerModal")'); continue; }
 
+    //  ①-0 **겹쳐보기를 끈 상태를 먼저 만든다.** 아래 ② 는 "대상의 것만 보인다" 를 보는데,
+    //  기본값이 켬이므로 끄지 않으면 내 겹까지 세어 대상 3건과 어긋난다(2026-09-09 실패 원인).
+    //  ★ 끄고 켜는 것은 그 다음 ①' 에서 왕복으로 다시 본다.
+    const offSt = await setOverlay(cdp, false);
+    ok(`R${r} 겹 토글을 끄면 체크가 풀리고 body 의 스위치도 내려간다`,
+       offSt.checked === false && offSt.attr === null && offSt.ls === '0',
+       `checked=${offSt.checked} data-peer-overlay=${offSt.attr} tc_peerOverlay=${offSt.ls}`);
+
     //  ①b **부모 문서에서 실제로 보이는가.** 프레임 안이 아무리 잘 그려져도, 부모 쪽에서
     //  모달이 0×0 이면 사용자에게는 아무것도 안 보인다.
     //  ★ 이 줄이 없어서 오래 못 잡았다 — #peerModal 이 #membersModal 의 **자식**으로 들어가
@@ -239,8 +330,8 @@ try {
     //  ② **그 사람의** 것이 떴는가 — 내 것이 아니라
     const shown = JSON.parse(await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
       const st=w.__test.state(); return JSON.stringify({
-        ent: st.entries.length, cat: st.categories.length,
-        titles: st.entries.map(e=>e.title).sort(),
+        //  ★ 개수·제목은 여기서 세지 않는다 — 겹 때문에 데이터 개수는 '보이는 것'이 아니다.
+        //    그 판정은 위의 visible()(passFilter) 이 맡는다.
         peerAttr: w.document.body.dataset.peer||null,
         banner: (w.document.getElementById("peerBanner")||{}).textContent||"",
         grid: w.document.querySelectorAll("#grid .cell").length,
@@ -250,10 +341,15 @@ try {
         gate: (()=>{ const g=w.document.getElementById("loginGate");
                      return g ? (getComputedStyle(g).display !== "none" && !g.classList.contains("hidden")) : false; })(),
         memoLeak: JSON.stringify(st).includes("비밀메모") });})()`));
-    ok(`R${r} 대상의 일정 ${TITLES.length}건이 뜬다(내 ${base.myEnt}건이 아니다)`,
-       shown.ent === TITLES.length, `표시 ${shown.ent}건`);
-    ok(`R${r} 제목이 대상의 것이다`, JSON.stringify(shown.titles) === JSON.stringify([...TITLES].sort()),
-       shown.titles.join(','));
+    //  ★ 개수는 **앱의 passFilter 로** 센다 — 내 겹은 토글과 무관하게 payload 에 늘 들어 있어서
+    //    state.entries 를 세면 "겹을 껐다" 를 확인할 수가 없다(2026-09-09 에 배운 것).
+    const off = await visible(cdp);
+    ok(`R${r} 겹을 끄면 대상의 일정 ${TITLES.length}건만 보인다(내 것 0건)`,
+       off.visTheirs === TITLES.length && off.visMine === 0,
+       `대상 ${off.visTheirs}건 · 내 겹 ${off.visMine}건(payload 에는 내 겹 ${off.dataMine}건이 그대로 있다)`);
+    ok(`R${r} 겹을 끄면 내 겹 칩이 격자에 하나도 없다`, off.chipMine === 0, `chip-mine ${off.chipMine}개`);
+    ok(`R${r} 제목이 대상의 것이다`, JSON.stringify(off.theirTitles) === JSON.stringify([...TITLES].sort()),
+       off.theirTitles.join(','));
     ok(`R${r} 읽기 전용 표시가 있다`, shown.peerAttr === '1' && /읽기 전용/.test(shown.banner), shown.banner);
     ok(`R${r} 같은 캘린더 UI 가 그대로 뜬다(격자·과제 필터)`, shown.grid === 35 && shown.chips >= 1,
        `격자 ${shown.grid} · 필터칩 ${shown.chips}`);
@@ -389,6 +485,65 @@ try {
        `복원=${rev.restored} 침입행=${rev.intruder} 행수 ${rev.n0}→${rev.n1}${rev.err ? ' · ' + rev.err : ''} — ` +
        'save() 의 peerRevert 가 없거나 원본 스냅샷(__peerPristine)이 안 잡혔다');
     await sleep(300);
+
+    //  ①' C4.1 「내 일정 겹쳐보기」 — **켠 상태**의 실동작.
+    //  ★ 여기가 이번(2026-09-09) 보완의 실질이다. 그전까지 이 파일에는 peerOverlay·_mine 이
+    //    한 글자도 없었다 — 기능이 들어온 지 이틀이 지나도록 아무도 이 창에서 그것을 보지 않았다.
+    const onSt = await setOverlay(cdp, true);
+    ok(`R${r} 겹 토글을 켜면 body 의 스위치가 선다`,
+       onSt.checked === true && onSt.attr === '1' && onSt.ls === '1',
+       `checked=${onSt.checked} data-peer-overlay=${onSt.attr} tc_peerOverlay=${onSt.ls}`);
+
+    const on = await visible(cdp);
+    //  통제군 — 부모가 실제로 겹을 만들어 보냈는가. 부모의 비-git 일정 수와 맞아야 한다.
+    //  (0 건이면 아래 "함께 보인다" 는 아무것도 증명하지 않는다.)
+    const parentMine = Number(await cdp.ev(`state.entries.filter(e=>e && e.source!=='git').length`));
+    ok(`R${r} 부모가 보낸 겹의 수가 부모의 비-git 일정 수와 같다(겹이 실제로 만들어졌다)`,
+       on.dataMine === parentMine && parentMine > 0,
+       `프레임 _mine ${on.dataMine}건 · 부모 비-git ${parentMine}건 — 0 이면 아래 검사들이 헛돈다`);
+    ok(`R${r} 겹을 켜면 내 일정이 **함께** 보인다(대상 ${TITLES.length}건 + 내 ${on.dataMine}건)`,
+       on.visTheirs === TITLES.length && on.visMine === on.dataMine && on.visMine > 0,
+       `대상 ${on.visTheirs}건 · 내 겹 ${on.visMine}/${on.dataMine}건`);
+
+    //  내 것은 **모양으로** 구분되고 끌 수 없다 — 끌리는 것처럼 보이는 것 자체가 거짓말이다.
+    const mc = await mineChipProbe(cdp);
+    ok(`R${r} 내 겹 칩을 격자에서 찾았다`, !mc.err, mc.err || `${mc.id}@${mc.date}`);
+    if (!mc.err) {
+      ok(`R${r} 내 겹 칩이 chip-mine 이다(점선·무채색)`, mc.chipMine === true, `class 에 chip-mine 없음`);
+      ok(`R${r} 내 겹 칩은 draggable="false" 다`, mc.draggable === 'false', `draggable=${mc.draggable}`);
+      ok(`R${r} 일자 패널의 내 겹 카드가 card-mine 이다`, mc.card === true && mc.cardMine === true,
+         `card=${mc.card} card-mine=${mc.cardMine}`);
+    }
+
+    //  ★ **내 것도 고칠 수 없다.** ③b 는 대상의 일정으로 저장 문을 확인했다. 겹이 들어오면서
+    //    "내 일정이니 내가 고쳐도 되지 않나" 로 새기 가장 쉬운 자리가 생겼다 — 그런데 이 창은
+    //    부모로 나가는 문이 봉인돼 있어, 여기서 고친 것은 **어디에도 반영되지 않는다.**
+    //    그러니 되돌아가야 한다(save() 의 if(PEER){ peerRevert(); return; }).
+    const mineLock = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+      try{ return w.eval("(function(){"
+        + " var i=state.entries.findIndex(function(e){return e && e._mine;});"
+        + " if(i<0) return JSON.stringify({err:'_mine 일정이 없다'});"
+        + " var id=state.entries[i].id, d0=state.entries[i].date, t0=state.entries[i].title;"
+        + " state.entries[i].date='2000-01-04'; state.entries[i].title='내 것을 열람 창에서 고쳤다';"
+        + " save();"
+        + " var e=state.entries.filter(function(x){return x.id===id;})[0];"
+        + " return JSON.stringify({restored: !!e && e.date===d0 && e.title===t0,"
+        + "   stillMine: !!(e && e._mine), n:state.entries.length});})()");
+      }catch(e){ return JSON.stringify({err:String(e && e.message)}); }})()`));
+    ok(`R${r} **내 겹도 읽기 전용**: 고치고 save() 해도 원본으로 돌아온다`,
+       mineLock.restored === true && mineLock.stillMine === true,
+       `복원=${mineLock.restored} _mine 유지=${mineLock.stillMine}${mineLock.err ? ' · ' + mineLock.err : ''} — ` +
+       'save() 의 peerRevert 가 겹까지 덮지 못하면 사용자는 「내 일정을 고쳤다」고 믿는다');
+
+    //  왕복 — 다시 끄면 대상 것만 남는다(한 방향만 보면 토글이 아니라 초기값을 본 것이다).
+    await setOverlay(cdp, false);
+    const back = await visible(cdp);
+    ok(`R${r} 토글을 끄면 다시 대상 것만 남는다(왕복)`,
+       back.visTheirs === TITLES.length && back.visMine === 0 && back.chipMine === 0,
+       `대상 ${back.visTheirs}건 · 내 겹 ${back.visMine}건 · chip-mine ${back.chipMine}개`);
+    //  다음 라운드는 앱 기본값(켬)에서 시작하게 되돌려 둔다 — 이 시험이 사용자 설정을 껀 채
+    //  남기면, 다음에 사람이 열람 창을 열었을 때 겹이 꺼져 있다(localStorage 는 창을 넘어 남는다).
+    await setOverlay(cdp, true);
 
     //  ④ 닫기 — 프레임이 사라져야 한다
     await cdp.ev('closeModal("#peerModal")');

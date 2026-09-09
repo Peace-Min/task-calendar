@@ -34,6 +34,7 @@ import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { canonStatusCodes, CANON_PATH } from './canon-schema.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ARG = new Map(process.argv.slice(2).map(a => {
@@ -57,13 +58,36 @@ if (!OPT.adminPw) {
 }
 
 /* ── mysql 출력 무결성 계약 ──────────────────────────────────────────────
- *   mysql.exe 는 드물게(실측 3,000 회 중 2~4 회) 종료코드 0 · stderr 없음인데도
- *   stdout 을 자른다. 종결 마커가 없으면 '출력을 믿을 수 없다'로 보고 재시도한다.
- *   읽기만 재시도한다 — 쓰기를 재시도하면 두 번 적용된다. */
+ *   mysql.exe 는 드물게 종료코드 0 인데도 stdout 을 잃는다. 종결 마커가 없으면
+ *   '출력을 믿을 수 없다'로 본다.
+ *
+ *   ★★ 2026-09-09 실측으로 이 현상의 정체를 확정했다(그 전까지는 '가끔 잘린다'였다):
+ *     · 발생 조건은 **머신 부하**다. 한가할 때 1,800 회 연속 0건, 프로세스 생성 부하를
+ *       걸면 900 회 중 8 건(≈0.9%). 이 시험이 라운드마다 dotnet 을 띄우므로 늘 부하 쪽이다.
+ *     · 모양은 **부분 잘림이 아니라 전량 소실**이다 — stdout 길이가 0 이고
+ *       stderr 에는 비번 경고 한 줄뿐, 종료코드는 0.
+ *     · ★ 그런데 **문장은 실행됐다.** 전용 DB 를 만들어 `UPDATE … n=n+1` 을 900 회 보내며
+ *       확인했더니, 소실이 8 번 났는데도 n 은 정확히 900 이었다(누락 0). 즉 소실된 것은
+ *       출력뿐이고 DB 변경은 적용된다. 그러므로 **쓰기를 그냥 재시도하면 두 번 적용된다.**
+ *     · 어느 문장에서 날지는 **운**이다(실측 소실은 hours·daily·weekly 를 가리지 않았다).
+ *       2026-09-09 에 weekly 에서만 터져 보였던 것은 읽기가 3회 재시도로 덮이는 동안
+ *       쓰기만 첫 소실에 즉사했기 때문이고, 그날 그 제비를 weekly 가 뽑았을 뿐이다.
+ *
+ *   그래서 감지기는 끄지 않는다(이건 조용한 오답을 막는 장치다). 대신 재시도 자격을
+ *   **다시 적용해도 결과가 같은 문장인가**로 가른다:
+ *     readOnly (기본)  — 읽기. 몇 번을 읽어도 같다.
+ *     idempotent: true — 쓰기지만 **재적용이 증명 가능한 무동작**인 문장만
+ *                        (범위가 고정된 DELETE, 절대값 UPDATE 처럼 증분이 아닌 것).
+ *                        INSERT·증분 UPDATE 에는 절대 붙이지 말 것 — 위 실측대로 두 번 적용된다.
+ *   자격이 없는 쓰기는 예전처럼 즉시 실패시킨다. 다만 메시지가 "적용됐는지 알 수 없다"가
+ *   아니라 "**적용됐을 가능성이 높다**"고 말하게 고쳤다(위 실측이 그렇게 말한다).
+ *
+ *   ★ 예전 메시지는 '종료코드 0·stderr 없음' 을 **확인하지도 않고** 그렇게 적었다.
+ *     진단문이 사실이 아니면 다음 사람이 엉뚱한 데를 판다. 이제 실제 값을 찍는다. */
 const EOF = '__TCEOF__';
 let truncSeen = 0;
-function sql(q, { readOnly = true, what = 'SQL' } = {}) {
-  const tries = readOnly ? 3 : 1;
+function sql(q, { readOnly = true, idempotent = false, what = 'SQL' } = {}) {
+  const tries = (readOnly || idempotent) ? 3 : 1;
   for (let i = 1; i <= tries; i++) {
     const r = spawnSync(OPT.mysql,
       ['-u' + OPT.adminUser, '-p' + OPT.adminPw, '--get-server-public-key',
@@ -75,7 +99,15 @@ function sql(q, { readOnly = true, what = 'SQL' } = {}) {
     if (!out.includes(EOF)) {
       truncSeen++;
       if (i < tries) continue;
-      throw new Error(`${what}: mysql 출력이 잘렸다(종료코드 0·stderr 없음) — 결과를 믿을 수 없다`);
+      //  실측값을 그대로 붙인다 — '전량 소실'인지 '중간에서 끊겼는지'는 다음 사람이 볼 유일한 단서다.
+      const errLine = err.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+                         .filter(l => !/Using a password/.test(l))[0] || '(없음)';
+      throw new Error(`${what}: mysql 이 종결 마커를 내지 않았다 — 결과를 믿을 수 없다 ` +
+        `(종료코드=${r.status} · stdout ${out.length}자 · stderr=${errLine} · 시도 ${i}/${tries}). ` +
+        (readOnly || idempotent
+          ? '재시도까지 전부 실패했다.'
+          : '★ 이 문장은 재시도 자격이 없어 한 번만 보냈다. 실측상 **문장 자체는 적용됐을 가능성이 높다** ' +
+            '(출력만 사라진다) — 아무 일도 없었다고 가정하지 말고 DB 를 직접 확인할 것.'));
     }
     return out.split(/\r?\n/).filter(l => l.length && l !== EOF).map(l => l.split('\t'));
   }
@@ -185,15 +217,37 @@ if (!LID) { console.error('[중단] app_user 에 활성 사용자가 없다'); p
 const YEAR = 2099;
 const scope = `user_id=${UID} AND YEAR(work_date)=${YEAR}`;
 const wscope = `user_id=${UID} AND YEAR(period_start)=${YEAR}`;
+//  ★ 세 DELETE 는 범위가 고정돼 있다(user_id × 2099년). 두 번 돌려도 두 번째는 0행이라
+//    결과가 같다 — 그래서 idempotent 로 표시해 출력 소실 때 재시도하게 둔다.
+//    정리가 중간에 죽으면 실 DB 에 2099 시험 행이 그대로 남는다(2026-09-09 에 실제로 죽었다).
 const cleanup = () => {
-  sql(`DELETE FROM cal_report_hours WHERE ${scope}`, { readOnly: false, what: '정리(hours)' });
-  sql(`DELETE FROM cal_report_daily WHERE ${scope}`, { readOnly: false, what: '정리(daily)' });
-  sql(`DELETE FROM cal_report_weekly WHERE ${wscope}`, { readOnly: false, what: '정리(weekly)' });
+  sql(`DELETE FROM cal_report_hours WHERE ${scope}`, { readOnly: false, idempotent: true, what: '정리(hours)' });
+  sql(`DELETE FROM cal_report_daily WHERE ${scope}`, { readOnly: false, idempotent: true, what: '정리(daily)' });
+  sql(`DELETE FROM cal_report_weekly WHERE ${wscope}`, { readOnly: false, idempotent: true, what: '정리(weekly)' });
 };
 
 const NAMES = ['표적기(ADD)', 'LSAM-II RMSS', '울산급 Batch-IV 개발벤치 및 DAS', '휴가', '기타',
                '  앞뒤 공백  ', '전각：콜론', 'A'.repeat(250), ''];
-const STATUS = ['1', '12', '8', '', '11'];
+/* ── 근태코드 — **정본에서 읽는다**(목록을 여기 박지 않는다) ─────────────
+ *   왜 박으면 안 되나(2026-09-09 실제 사고):
+ *     여기엔 '8'(결근)이 박혀 있었다. 그건 **앱이 만들 수 없는 값**이다 —
+ *     ATTEND_STATUS 는 1,2,3,4,5,6,7,9,10,11,12 뿐이고 ATTEND_STATUS_SET 이 웹 층에서 거른다.
+ *     cal_report_daily 에 CHECK 가 아예 없던 동안에는 통과했고, chk_crd_status 가 들어온 날
+ *     20라운드 중 2회가 3819 로 터졌다. **CHECK 가 옳고 시험 데이터가 틀렸다.**
+ *   왜 이게 중요한가:
+ *     앱이 보낼 수 있는 값과 DB 가 받는 값이 갈리면, 전송은 성공했는데 기록만 조용히 사라진다 —
+ *     SaveDailyReport 는 fire-and-forget 이고 예외를 로그로만 남긴다. 그 침묵이 이 시험이 막을 것이다.
+ *   그래서 시험 데이터를 정본의 chk_crd_status 목록 그대로 쓴다. 사이트에 코드가 늘어
+ *   정본이 바뀌면 이 시험은 손대지 않아도 새 값을 함께 돈다. 못 읽으면 중단(측정 못 함).
+ *   ※ 정본 목록이 앱의 ATTEND_STATUS 와 같은 집합인지는 tests/schema-integrity.test.mjs
+ *     계약③ 이 따로 잠근다 — 여기서 다시 세지 않는다(중복 단언을 만들지 않는다). */
+let STATUS;
+try {
+  STATUS = canonStatusCodes('chk_crd_status');
+} catch (e) {
+  console.error(`[중단] 정본에서 근태코드 목록을 읽지 못했습니다(${CANON_PATH}): ` + e.message);
+  process.exit(2);
+}
 
 /* ── 라운드 1회 ──────────────────────────────────────────────────────── */
 function round(i) {
@@ -329,7 +383,8 @@ function selftest() {
         hours: [{ name: 'A', hours: 1 }, { name: 'B', hours: 2 }] });
   // 결함 주입: 줄 하나를 손으로 지워 '구멍'을 만든다 → I2 가 잡아야 한다
   sql(`DELETE FROM cal_report_hours WHERE user_id=${UID} AND work_date='${ds}' AND line_no=0`,
-      { readOnly: false, what: '고장 주입' });
+      //  범위 고정 DELETE — 두 번째는 0행이라 재적용이 무동작이다(위 sql() 의 idempotent 규칙).
+      { readOnly: false, idempotent: true, what: '고장 주입' });
   const rows = sql(`SELECT line_no FROM cal_report_hours WHERE user_id=${UID} AND work_date='${ds}' ORDER BY line_no`);
   const caught = !rows.every((r, k) => Number(r[0]) === k);
   //  ★ console.log 로만 알리지 않는다 — 그러면 요약이 '통과 0 · 실패 0 · 위반 없음' 으로 나와
@@ -337,7 +392,8 @@ function selftest() {
   ok('line_no 연속성 검사가 구멍을 잡는다', caught, '구멍을 못 잡으면 그 검사는 장식이다');
   // 결함 주입: 본문을 손으로 바꿔 I6 가 잡는지
   sql(`UPDATE cal_report_daily SET content='몰래 바뀐 본문' WHERE user_id=${UID} AND work_date='${ds}'`,
-      { readOnly: false, what: '고장 주입2' });
+      //  절대값 UPDATE(증분이 아니다) — 몇 번을 써도 같은 값이라 재적용이 무동작이다.
+      { readOnly: false, idempotent: true, what: '고장 주입2' });
   const c = one(`SELECT SHA2(content, 256) FROM cal_report_daily WHERE user_id=${UID} AND work_date='${ds}'`);
   const cw = createHash('sha256').update('x', 'utf8').digest('hex');
   ok('본문 대조가 변조를 잡는다', c !== cw, '변조를 못 잡으면 그 검사는 장식이다');
@@ -349,6 +405,8 @@ function selftest() {
 const t0 = Date.now();
 console.log('═'.repeat(70));
 console.log(`보고 기록 배선 루프 테스트 — DB=${OPT.db} · 대상=${LID}(user_id=${UID}) · seed=${OPT.seed}`);
+//  ★ 어떤 근태코드로 돌았는지 남긴다 — 정본에서 읽은 값이라 판본이 바뀌면 이 줄도 바뀐다.
+console.log(`근태코드(정본 chk_crd_status): [${STATUS.map(s => s === '' ? "''" : s).join(', ')}]`);
 console.log('═'.repeat(70));
 
 if (VERIFY_LIVE) { verifyLive(); process.exit(0); }

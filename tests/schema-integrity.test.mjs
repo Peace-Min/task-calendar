@@ -16,6 +16,12 @@
 //     "판정 못 함"을 통과로 만들지 않는 것이 이 저장소의 규칙이다(계약⑦ 참조).
 import { readFileSync, readdirSync } from 'node:fs';
 import { test, assert } from './harness.mjs';
+//  ★ 정본 파싱은 tests/canon-schema.mjs 한 곳에만 둔다. 여기 있던 두 정규식을 루프 시험들이
+//    베껴 가면서 2026-09-09 사고 둘이 났다(판본·근태코드를 각자 박아 둔 결과). 파서를 나눠 쓰면
+//    정본의 문장 형태가 바뀌어도 고칠 곳이 하나다.
+//  ★ 이 모듈의 canon* 접근자는 **쓰지 않는다** — 이 파일은 최상위에서 던지지 않는 것이 규칙이라
+//    (readOr 참조) 파일 읽기는 계속 여기서 하고, 순수 파서만 가져다 쓴다.
+import { parseStatusCodes, parseSeededSchemaVersion } from './canon-schema.mjs';
 
 const DEPLOY_DIR = new URL('../db/deploy/', import.meta.url);
 const WIDGET_DIR = new URL('../widget/', import.meta.url);
@@ -133,16 +139,7 @@ function checkOwnerFkRestrict(sql) {
 //  계약③ — 보고 표 CHECK 가 쌍둥이 원본과 같은 규율인가.
 //    ★ 코드 목록을 문자열로 하드코딩하지 않는다. 원본(cal_attendance)이 바뀌면 사본도
 //      함께 바뀌어야 하고, 안 바뀌면 여기서 실패해야 한다 — 그것이 이 계약의 존재 이유다.
-function statusCodes(sql, constraintName) {
-  const re = new RegExp('CONSTRAINT\\s+' + constraintName + '\\s+CHECK\\s*\\(\\s*status\\s+IN\\s*\\(([^)]*)\\)', 'i');
-  const m = re.exec(sql);
-  if (!m) return null;
-  const codes = [];
-  const lit = /'([^']*)'/g;
-  let x;
-  while ((x = lit.exec(m[1])) !== null) codes.push(x[1]);
-  return codes;
-}
+const statusCodes = parseStatusCodes;
 function checkReportChecks(sql) {
   const twin = statusCodes(sql, 'chk_cal_attendance_status');
   const mine = statusCodes(sql, 'chk_crd_status');
@@ -205,9 +202,11 @@ function checkCatNoFk(sql) {
 
 //  계약⑥ — 정본이 시딩하는 schema_version 과 마이그레이션 최댓값이 같다.
 //    갈라지면 "새로 세운 DB" 와 "마이그레이션으로 온 DB" 가 서로 다른 버전을 자칭한다.
+//  ★ 파서는 문자열을 준다(DB·위젯의 비교가 문자열이라 그쪽이 정본이다). 이 계약만 마이그레이션의
+//    최댓값과 크기 비교를 하므로 여기서 숫자로 바꾼다.
 function seededVersion(sql) {
-  const m = /INSERT\s+INTO\s+cal_schema_meta[\s\S]{0,200}?VALUES\s*\(\s*'schema_version'\s*,\s*'(\d+)'/i.exec(sql);
-  return m ? Number(m[1]) : null;
+  const v = parseSeededSchemaVersion(sql);
+  return v === null ? null : Number(v);
 }
 function migratedVersions(files, readFn) {
   const out = [];
