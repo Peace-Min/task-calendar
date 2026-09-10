@@ -1,0 +1,245 @@
+# 휴지통 · 영구 삭제 — 확정 설계 (TRASH-DELETE)
+
+> 작성 2026-09-10 · 대상 판번호 **12 → 12**(스키마 변경 없음 — GRANT 만 바뀐다) · 위젯 **v0.19.0**(기능 추가 = 마이너, 판번호 12 와 같은 창)
+> 짝 문서: [USER-ADMIN.md](USER-ADMIN.md)(관리자 편집·관문) · [USER-LOGIN.md](USER-LOGIN.md)(쓰기 관문) · [../db/CALENDAR-TABLE-DESIGN.md](../db/CALENDAR-TABLE-DESIGN.md)(표 설계 정본)
+> 이 문서는 **구현 전 설계**다. 구현하며 달라지는 곳은 [§11 정정 이력](#11-정정-이력)에 적는다. **본문과 §11 이 다르면 §11 이 맞다.**
+
+---
+
+## 1. 확정 요구 (검토자 지적 + 사용자 결정 — 이것이 판정 기준)
+
+- 검토자: "과제는 지금 **숨기기만** 되어 있지 실질적으로 DB 에서 데이터 삭제 기능이 별도로 없다. 숨겨진 과제들만 **별도 목록화**하고 거기서 **실제 DB 에서 데이터 삭제**하는 메커니즘이 필요하다."
+- 사용자: "이건 과제랑 인력이랑 **포괄적인** 건데."
+- 사용자 결정(2026-09-10): "**기록 0건만 삭제**, **다섯 표 한 번에**, 설계 문서부터."
+
+요구를 한 줄로: **숨긴(퇴사·숨김) 항목만 모아 보여 주는 관리자 전용 「휴지통」에서, 복구하거나 DB 행을 실제로 지운다. 인력은 기록이 한 건도 없는 계정만 지운다. 다섯 표(과제·인력·발주처·구분·상태)를 같은 틀로 한 번에 한다.**
+
+### 1.1 지적이 맞는 이유 — 지금 상태 (2026-09-10 실측)
+
+| 표 | 숨김 | 숨긴 항목 보기 | 복구 | 삭제 | 앱 계정 권한 |
+|---|---|---|---|---|---|
+| `project` | 있음(`setProjectActive`) | **없음** — 호스트가 `is_active=1` 만 읽는다 | **없음** | 없음 | SELECT·INSERT·UPDATE |
+| `app_user` | 있음(퇴사 처리) | 있음(「퇴사자 보기」) | 있음 | 없음 — 시험 계약 ⑤가 DELETE 부재를 잠가 둠 | SELECT·INSERT·UPDATE |
+| `customer` | 있음 | 있음(관리 화면에 흐리게) | 있음 | 없음 | SELECT·INSERT·UPDATE |
+| `section_code` · `status_code` | 있음 | 있음 | 있음 | 없음 | SELECT·INSERT·UPDATE |
+
+과제는 지적보다 한 단계 더 비어 있다 — **숨기면 앱에서 다시는 볼 수 없다.** 실수로 숨긴 과제, 오타로 두 번 등록한 과제가 DB 를 직접 만지지 않으면 영원히 남는다. "앱에서만 관리한다"(USER-ADMIN §1)는 요구가 여기서 깨진다.
+
+---
+
+## 2. 결정 요약
+
+| 항목 | 결정 | 근거 |
+|---|---|---|
+| 화면 | 관리자 전용 **「휴지통」** 한 화면(`#trashModal`), 탭 다섯(과제·인력·발주처·구분·상태). 각 탭은 **숨긴 항목만** 나열하고 행마다 [복구] [영구 삭제] | 검토자가 요구한 "별도 목록화". 다섯 표가 같은 틀이라 한 화면이 싸다(사용자 결정) |
+| 진입 | 「사용자 정보」의 버튼 `#usTrash` — `edit_role='admin'` 회신일 때만 DOM 에 만든다(`#usUserAdmin` 과 같은 규칙: 숨김이 아니라 부재) | USER-ADMIN §5.0·§8-7(c) 를 그대로 잇는다. 새 규칙을 만들지 않는다 |
+| 삭제 주체 | `admin` 만. 발주처·코드의 **숨김**은 지금처럼 `editor` 도 되지만 **삭제**는 `OpenAdminAsync` 를 지난다 | 되돌릴 수 없는 조작은 가장 좁은 권한으로. 과제 편집이 `editor` 인 것과 별개다 |
+| 삭제 전제 | **숨긴 항목만** 지울 수 있다(`is_active=0`). 활성 항목은 호스트가 거부한다 | 두 단계(숨김 → 삭제)가 실수 방지의 전부다. 한 번에 지우는 길을 두지 않는다 |
+| 과제 삭제 조건 | 참조가 있어도 지울 수 있다 — 대신 확인창에 **몇 명이 편입 중인지** 보여 준다 | `project` 를 가리키는 FK 가 없다. 개인 카테고리의 `project_uid` 는 문자열 참조고, 과제가 없어지면 조회 시 **`db_gone`** 으로 파생돼 라벨·일정·보고가 그대로 남는다(§3.1). 데이터 모델이 이미 "과제가 사라진 세계"를 견딘다 |
+| 인력 삭제 조건 | **기록 0건**인 계정만(§3.2 의 9개 표 합계 0). 기록이 있으면 거부하고 퇴사 상태로 둔다 | 사용자 결정. 11개 표가 `app_user` 를 FK 로 붙들고 있어 기록이 있으면 DB 도 거부한다(1451). 기록까지 지우는 연쇄 삭제는 보고 이력·감사 기록을 통째로 없애므로 하지 않는다 |
+| 코드 3종 삭제 조건 | 그 값을 쓰는 과제가 **숨긴 과제까지 포함해** 0건일 때만 | `project.customer / section / status` 가 FK(RESTRICT). 앱이 미리 세어 안내하고, 최종 보증은 FK |
+| 확인 | 확인창 한 번 + **이름을 그대로 입력**해야 [영구 삭제]가 켜진다. 호스트도 입력값을 대조한다 | 되돌릴 수 없는 조작의 관례(GitHub 저장소 삭제와 같다). 폐쇄망이라 되돌리기는 백업뿐이다(§7) |
+| 기록 | 삭제 직전 행 전체를 JSON 한 줄로 위젯 로그에 남긴다 | 표를 새로 두지 않는다 — 감사 표가 있어도 폐쇄망에서 되살릴 수단은 백업뿐이라 로그로 충분하다 |
+| 권한 | 앱 계정에 다섯 표 **DELETE** 를 준다(세 파일, §3.3) | 관문이 호스트에 있으므로 DB 권한은 '가능하게'만 한다 |
+| 판번호 | **12 그대로** | 컬럼·제약이 바뀌지 않는다. GRANT 는 `schema_version` 의 대상이 아니다(`loop-schema-gate` 가 보는 것은 표 구조다) |
+
+---
+
+## 3. 데이터
+
+### 3.1 참조 지도 — 무엇이 무엇을 붙들고 있나 (정본 `db/deploy/schema-calendar.sql`·`db/schema.sql` 2026-09-10)
+
+| 지울 표 | 붙드는 쪽 | 종류 | 지웠을 때 |
+|---|---|---|---|
+| `project` | `cal_category.project_uid` | **문자열 참조, FK 없음**(설계 §5.2) | 조회 시 `LEFT JOIN project` 가 `db_gone` 을 파생. 카테고리·일정·할일·공수·보고 기록은 **전부 남는다.** 화면은 `dbGone` 카테고리를 새 선택 대상에서만 빼고 라벨은 유지한다(`isPickableCat`) |
+| `app_user` | `cal_category` `cal_entry` `cal_todo` `cal_room` `cal_task_hours` `cal_attendance` `cal_report_daily` `cal_report_weekly` `cal_migration_log` (기록 9) + `cal_user_pref` `cal_user_rev` (부속 2) | FK 11개, 전부 RESTRICT(기본 또는 명시) | 하나라도 남아 있으면 DB 가 거부(1451). 부속 2는 로그인만 해도 생기므로 **같은 트랜잭션에서 먼저 지운다** |
+| `customer` | `project.customer` (`fk_project_customer`) | FK RESTRICT | 숨긴 과제가 쓰고 있어도 거부 |
+| `section_code` | `project.section` (`fk_project_section`) | FK RESTRICT | 위와 같다 |
+| `status_code` | `project.status` (`fk_project_status`) | FK RESTRICT | 위와 같다 |
+
+`cal_entry_except`·`cal_entry_commit`·`cal_todo_day_note`·`cal_report_hours` 는 사용자를 직접 붙들지 않고 부모 행(`cal_entry`·`cal_todo`·`cal_report_daily`)에 딸린다 — 부모가 0 이면 이들도 0 이다.
+
+### 3.2 "기록 0건" 의 정의 (인력)
+
+아래 9개 표의 `user_id = @uid` 행 수 합계가 **0**. 목록은 정본의 `REFERENCES app_user` 에서 `cal_user_pref`·`cal_user_rev` 를 뺀 것과 **글자까지 같아야** 한다(시험 계약 ③ 이 정본을 파싱해 대조한다 — 숫자·표 이름 박제 금지).
+
+```
+cal_category · cal_entry · cal_todo · cal_room · cal_task_hours · cal_attendance ·
+cal_report_daily · cal_report_weekly · cal_migration_log
+```
+
+- `cal_migration_log` 를 기록에 넣는 이유: XML 이관을 한 번이라도 한 계정은 일정이 있었던 계정이다(감사 흔적). 지우지 않는다.
+- `cal_user_pref`·`cal_user_rev` 를 뺀 이유: 로그인 한 번이면 생기는 부속 행이라 "기록"이 아니다. 삭제 트랜잭션이 이 둘을 먼저 지우고 `app_user` 를 지운다.
+- 이 정의로 실제 지워지는 계정은 **오등록(ID 오타·중복)·한 번도 안 쓴 계정** 뿐이다. 퇴사자는 거의 전부 기록이 있으므로 퇴사 상태로 남는다 — 그것이 사용자 결정의 뜻이다.
+
+### 3.3 권한 — 세 파일에 DELETE 를 더한다 (스키마 변경 아님)
+
+| 파일 | 지금 | 뒤 |
+|---|---|---|
+| `db/deploy/create-app-user.sql` | `GRANT SELECT, INSERT, UPDATE ON taskmgr.project` (+customer·section_code·status_code) | `SELECT, INSERT, UPDATE, DELETE` 넷 |
+| `db/deploy/grants-calendar.sql` | `GRANT SELECT ON taskmgr.app_user` · `GRANT SELECT ON taskmgr.project` + 머리말 "app_user 의 DELETE 는 어디에도 없다" | 부여는 그대로 두고(이 파일은 캘린더 표 담당) 머리말 문장을 "**DELETE 는 휴지통 관문(`ProjectDb.DeleteTrashAsync`) 한 곳뿐이다**" 로 고친다 |
+| `taskmgr-company-data/05-grants.sql` (비공개) | `GRANT SELECT, INSERT, UPDATE ON app_user` | `SELECT, INSERT, UPDATE, DELETE` |
+
+- 재적용은 GRANT 문 재실행(멱등). `DEPLOY.md §0` 에 "휴지통 배포 전 GRANT 재적용" 한 줄과 검증 SQL(`SHOW GRANTS FOR 'taskmgr_app'@'%'` 에 다섯 표 DELETE 가 보여야 한다)을 넣는다.
+- 이관 경로·신규 구축 경로 동치(덤프 diff = 0)는 표 구조 이야기라 영향 없다. GRANT 정합은 시험 계약 ① 이 세 파일을 직접 읽어 대조한다.
+
+### 3.4 삭제 트랜잭션 (호스트 — 표별로 한 문장씩, 전부 같은 뼈대)
+
+```
+BEGIN
+  SELECT … FROM <표> WHERE <키>=@k FOR UPDATE          -- 없으면 "이미 삭제됐거나 없는 항목"
+  is_active = 0 인지                                   -- 아니면 "숨긴(퇴사) 항목만 지울 수 있습니다"
+  참조 수 재계산(§3.1 의 쿼리)                          -- 인력·코드: 0 아니면 거부. 과제: 수만 로그에 남긴다
+  이름 대조(@confirm = 저장된 이름, 대소문자·앞뒤 공백 그대로)  -- 다르면 "입력한 이름이 다릅니다"
+  (인력) DELETE cal_user_pref · cal_user_rev
+  DELETE <표>                                          -- 1451 이 나면 롤백하고 "다른 기록이 붙어 있어 지울 수 없습니다"
+  로그: 삭제 직전 행 JSON 한 줄
+COMMIT
+```
+
+- 인력 삭제에 **자기 자신 금지**를 그대로 건다(퇴사 규칙 §4.4-1 과 같다). 기록 0 이면 로그인한 적도 없어 실제로는 걸릴 일이 없지만, 규칙은 두 벌이 아니라 한 벌이어야 한다.
+- 마지막 관리자 규칙은 필요 없다 — 삭제 대상은 `is_active=0` 이라 "활성 관리자" 수에 이미 들어 있지 않다(퇴사 시점에 §4.4-3 이 걸렀다).
+
+---
+
+## 4. 호스트 (`widget/ProjectDb.cs` · `widget/MainWindow.xaml.cs`)
+
+### 4.1 관문
+
+다섯 표 삭제·휴지통 조회·복구 전부 **`OpenAdminAsync`**(USER-ADMIN §4.1). 발주처·코드의 기존 숨김/복구(`setCustomerActive`·`codeSetActive`, `OpenWriteAsync`)는 손대지 않는다 — 휴지통의 [복구] 는 **같은 호스트 함수**를 부르되 휴지통 경로는 관리자만 닿는다(진입 버튼이 관리자에게만 있다).
+
+### 4.2 메시지 계약 (호스트 ↔ 웹) — 사용자 관리와 같은 모양
+
+| 메시지 | 방향 | 내용 |
+|---|---|---|
+| `trashGet` | 웹 → 호스트 | 인자 없음. 회신 `__applyTrash(json)`: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid` · 인력 `userId` · 나머지 `name`) · `name` · `sub`(부제: 발주처·구분 / 소속·직급·ID / 없음) · `refs`(참조 수, §3.1) · `deletable`(bool) · `why`(불가 사유 문장, 없으면 '') |
+| `trashRestore` | 웹 → 호스트 | `{ kind, key }`. `kind ∈ project / user / customer / section / status`. 내부적으로 기존 `SetProjectActiveAsync(uid,true)` / `SetUserActiveAsync` / `SetCustomerActiveAsync` / `SetCodeActiveAsync` 를 부른다. 회신 `__trashDone(ok, msg)` |
+| `trashDelete` | 웹 → 호스트 | `{ kind, key, confirm }`. `confirm` = 사용자가 입력한 이름. 회신 `__trashDone(ok, msg)` |
+
+- 성공하면 호스트가 곧바로 `trashGet` 을 다시 돌려 휴지통을 다시 칠하고, **관련 목록도 다시 민다**: 과제·코드·발주처면 `LoadProjectsToWebAsync`(카탈로그 + 개인 카테고리의 `dbGone` 재판정), 인력이면 `LoadMembersToWebAsync`. 웹은 회신을 기다리지 않고 푸시로 그린다.
+- `deletable`·`why` 는 **화면용 힌트**다. 최종 판정은 `trashDelete` 시점에 호스트가 같은 트랜잭션 안에서 다시 한다(§3.4). 힌트와 판정이 갈리면 판정이 이긴다.
+
+### 4.3 거부 문구 (호스트가 사용자 문장으로)
+
+| 상황 | 문구 |
+|---|---|
+| 활성 항목 | "숨긴(퇴사) 항목만 지울 수 있습니다. 먼저 숨기세요." |
+| 인력에 기록 | "기록 {n}건이 있어 지울 수 없습니다. 퇴사 상태로 유지됩니다." |
+| 코드가 사용 중 | "이 값을 쓰는 과제가 {n}건(숨긴 과제 포함) 있어 지울 수 없습니다." |
+| 이름 불일치 | "입력한 이름이 다릅니다." |
+| 자기 계정 | "자기 계정은 지울 수 없습니다." |
+| 이미 없음 | "이미 삭제됐거나 없는 항목입니다 — 목록을 새로고침합니다." |
+| FK 1451 | "다른 기록이 붙어 있어 지울 수 없습니다." (힌트가 틀렸을 때의 최후 방어 — 로그에 FK 이름을 남긴다) |
+| 권한 | `NotAuthorizedException` 문장 그대로(USER-LOGIN §3.3) |
+
+### 4.4 로그 한 줄
+
+`_log("영구 삭제 " + kind + " " + key + " by " + loginId + " " + JSON(행))`. 행 JSON 은 삭제 직전 `SELECT *` 결과 그대로(컬럼명 = DB 컬럼명). 인력이면 `sort_order` 까지 들어간다. 위젯 로그 파일 위치는 `DEPLOY.md` 의 로그 절과 같다.
+
+---
+
+## 5. 화면 (`task-calendar-prototype.html`)
+
+### 5.0 진입 — 「사용자 정보」의 세 번째 버튼
+
+`#usMemberBtns` 에 `#usTrash`「휴지통」. `usAdminBtnSync(editRole)` 가 `#usUserAdmin` 을 만들 때 **같은 자리에서 함께** 만들고 함께 없앤다(한 함수, 한 판정 문자열). 마크업에는 없다.
+
+### 5.1 휴지통 `#trashModal` — 관리자 전용, 순수 관리 화면
+
+- 머리: 「휴지통」. 부제 `#trScope`: "숨긴 항목 {n}건 · 되돌릴 수 없는 삭제는 이름을 입력해야 합니다".
+- 탭 다섯(`#trTabs`, 세그먼트 버튼): 과제 · 인력 · 발주처 · 구분 · 상태. 탭마다 건수 배지. 마크업의 탭 컨테이너와 목록 `#trList` 는 **빈 자리**고, `admin:true` 회신이 와야 채운다(USER-ADMIN §8-7(b) 와 같은 '부재' 계약). `admin:false` 면 "관리자만 사용할 수 있습니다." 한 줄.
+- 행(`.mba-line` 재사용 — 「구성원 편집」과 같은 골격): 이름(굵게) · 부제 · 참조 요약(`refs`가 0 이 아니면 "편입 {n}명" / "과제 {n}건" / "기록 {n}건"). 오른쪽 `[복구]` `[영구 삭제]`(danger). `deletable:false` 면 [영구 삭제] 를 `disabled` 하고 `title` 에 `why`. 행은 눌리지 않는다.
+- 검색칸 없음(숨긴 항목은 적다). 빈 탭: "숨긴 {탭이름}이(가) 없습니다."
+- 하단: `[닫기]` 만. 휴지통에 '주 동작'은 없다 — 등록 버튼 같은 primary 를 두지 않는다.
+
+### 5.2 확인창 — 이름 입력형 `confirmTyped`
+
+기존 `confirmBox(title, msg, okLabel, altLabel, tone)` 옆에 **입력칸이 하나 더 있는** 변형을 둔다. 입력값이 대상 이름과 글자까지 같아야 [영구 삭제] 가 켜진다. 문구:
+
+| 종류 | 본문 |
+|---|---|
+| 과제 | "'{이름}' 과제를 DB 에서 **영구 삭제**합니다. 편입 중인 {n}명의 화면에는 '삭제된 과제'로 남고 일정·보고 기록은 지워지지 않습니다. 되돌릴 수 없습니다(백업으로만 복구). 과제명을 그대로 입력하세요." |
+| 인력 | "'{이름}' 계정을 DB 에서 **영구 삭제**합니다. 기록이 없는 계정입니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요." |
+| 발주처·구분·상태 | "'{이름}' 을(를) DB 에서 **영구 삭제**합니다. 쓰는 과제가 없습니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요." |
+
+`confirm` 값은 입력칸의 값을 **가공 없이** 보낸다(TRIM 도 호스트가 하지 않는다 — 이름에 공백이 있으면 공백까지 같아야 한다).
+
+### 5.3 삭제·복구 뒤
+
+- 과제: 호스트 푸시 `__applyProjects` 가 오면 기존 `dbGone` 재판정 로직이 개인 카테고리를 "삭제된 과제"로 바꾼다 — **새 코드 없음.** 복구하면 다시 살아난다.
+- 인력: `__applyMembers` 푸시(구성원 편집 화면이 열려 있으면 그것도 갱신).
+- 발주처·코드: 카탈로그 드롭다운 소스가 다시 온다(`LoadProjectsToWebAsync` 가 셋을 함께 싣는다 — 실제 페이로드 구성은 구현 때 확인, §11 에 적는다).
+- 휴지통은 `__applyTrash` 로 다시 칠한다. 탭 위치는 유지.
+
+### 5.4 과제 숨김 뒤 갈 곳
+
+지금은 숨기면 사라진다. 카탈로그의 숨김 확인창 문구 끝에 "숨긴 과제는 **휴지통**에서 복구하거나 삭제할 수 있습니다." 한 문장을 더한다. 카탈로그 자체에 숨긴 과제를 섞어 보여 주지 않는다 — 그 목록은 휴지통이다(한 곳).
+
+---
+
+## 6. 하지 않는 것
+
+- **연쇄 삭제.** 기록이 있는 인력을 기록째 지우지 않는다. 과제도 개인 카테고리·일정을 따라 지우지 않는다.
+- **활성 항목 직접 삭제.** 숨김 → 휴지통 → 삭제 두 단계가 실수 방지의 전부다.
+- **보존 기간·자동 비우기.** 휴지통은 시간이 지나도 스스로 지우지 않는다.
+- **되돌리기(undo).** 삭제 뒤 복구 수단은 DB 백업뿐이다. 확인창에 그 사실을 적는다.
+- **감사 표 신설.** 위젯 로그 한 줄로 갈음(§4.4).
+- **비관리자 열람.** 휴지통은 보기 화면이 아니다.
+- **일괄 삭제·전체 비우기.** 한 번에 하나. 이름을 입력하는 확인이 일괄과 양립하지 않는다.
+
+---
+
+## 7. 정직한 한계
+
+- **되돌리기는 백업뿐이다.** 폐쇄망 서버의 백업 주기는 `DEPLOY.md` 의 몫이고 이 앱이 정하지 않는다.
+- **과제를 지우면 개인 카테고리의 라벨은 각자 정리해야 한다.** `dbGone` 카테고리는 새 선택에서만 빠지고 목록에는 남는다(설계된 동작 — 일정의 태그를 지키기 위해). 사람마다 "삭제된 과제" 카테고리를 언제 정리할지는 그 사람의 일이다.
+- **기록 0 정의 때문에 실제로 지워지는 인력은 오등록 계정뿐이다.** 검토자가 "퇴사자를 DB 에서 지우고 싶다"는 뜻이었다면 이 설계는 그것을 **일부러** 하지 않는다 — 보고 이력이 그 사람 이름으로 남아야 하기 때문이다. 이 문장을 검토자 답변에 그대로 쓴다.
+- **참조 수 힌트는 조회 시점 값이다.** 두 관리자가 동시에 만지면 힌트가 낡을 수 있다. 최종 판정은 트랜잭션 안(§3.4)이라 결과는 안전하다.
+
+---
+
+## 8. 시험 계약 (구현과 함께 — 각 계약에 변이 시험을 짝으로)
+
+1. **권한 세 파일 정합** — `create-app-user.sql` 다섯 표 DELETE · `05-grants.sql` app_user DELETE · `grants-calendar.sql` 머리말 문장. USER-ADMIN 계약 ⑤("DELETE 없음")를 **"DELETE 는 `DeleteTrashAsync` 한 곳뿐"** 으로 개정 — `DELETE FROM app_user` 가 그 함수 밖에 나타나면 실패. 변이: 다른 함수에 DELETE 한 줄 → 실패.
+2. **관문** — `trashGet`·`trashRestore`·`trashDelete` 가 여는 연결은 전부 `OpenAdminAsync`. `OpenWriteAsync` 로 열고 다섯 표를 DELETE 하는 경로 0. `tests/admin-auth.test.mjs` 확장.
+3. **기록 0 목록 = 정본** — 호스트의 9개 표 목록이 `schema-calendar.sql` 의 `REFERENCES app_user` 집합에서 `cal_user_pref`·`cal_user_rev` 를 뺀 것과 글자까지 같다(`tests/canon-schema.mjs` 로 파싱, 박제 금지). 변이: 표 하나 빼기 → 실패.
+4. **활성 항목 거부** — `is_active=1` 이면 DELETE 문에 닿지 않는다(순수 로직 + 실 DB 루프).
+5. **이름 대조는 호스트도 한다** — `confirm` 이 다르면 DELETE 에 닿지 않는다. 변이: 대조 지우기 → 실패.
+6. **화면 부재 계약** — `#usTrash` 는 `admin` 회신에만 DOM 에 있고 내려가면 사라진다(`usAdminBtnSync` 한 함수). `#trashModal` 마크업에 탭 버튼·[영구 삭제] 문자열이 없다. jsdom 으로 그려서 센다(USER-ADMIN ⑦-DOM 과 같은 하네스).
+7. **확인창 입력형** — `confirmTyped` 는 입력이 이름과 같을 때만 ok 버튼이 켜진다. `TRIM` 하지 않는다.
+8. **루프 `tests/loop-trash.mjs`** — 실 위젯(CDP 9222, admin 로그인) + 실 DB. 시험 데이터는 접두 규약(`zzP`·`zzU`·`zzC`·`zzT`), 정리 세 겹(sweep·finally·exit). 한 라운드:
+   - 과제 `zzP` 등록 → 숨김 → 휴지통에 보임 → 복구 → 카탈로그 복귀 → 숨김 → **이름 오타로 삭제 거부** → 이름 일치로 삭제 → DB 0행 · 카탈로그 0 · 그 과제를 편입한 개인 카테고리가 `dbGone` 으로 표시됨(편입은 시험이 미리 만든다).
+   - 인력 `zzU` 등록 → 퇴사 → 휴지통 → 삭제 ok(기록 0) → DB 0행. 두 번째 `zzU` 에 일정 1건을 넣고 → 퇴사 → 휴지통에 `deletable:false`·`why` → 삭제 시도 → 거부 문구 그대로 → 행 유지.
+   - 발주처·구분·상태 `zzC`/`zzT` 등록 → 숨김 → 휴지통 → **숨긴 과제가 쓰는 값은 거부** → 미사용 값은 삭제 ok.
+   - 활성 항목에 `trashDelete` 를 직접 보내면 거부(호스트 계약, 화면 우회).
+   - 비관리자(로그인 계정을 잠시 `editor` 로 내렸다 **반드시 복원**): 진입 버튼 부재 · `trashGet` 이 `admin:false` · `trashDelete` 거부.
+   - 케이스마다 불변식: 실직원·실과제 행 수 불변 · `schema_version` 불변 · zz 잔재 0.
+   - 배포 게이트 규약: **무작위 시드 5회 연속 통과, 실패 시 1부터.**
+9. **판번호 게이트** — 손댈 것 없음(구조 불변). `loop-schema-gate` 그대로.
+
+---
+
+## 9. 문서·배포에 같이 갈 것
+
+- `USER-ADMIN.md` §2 표 '삭제' 행·§3.3·§8-5 를 "휴지통 관문을 지난 영구 삭제만" 으로 개정하고 §11 에 정정 항목을 남긴다.
+- `db/CALENDAR-TABLE-DESIGN.md` §5.2(project_uid 문자열 참조)에 "과제 영구 삭제 시 `db_gone` 으로 파생" 한 줄.
+- 권한 세 파일(§3.3) + `DEPLOY.md §0` GRANT 재적용·검증 SQL.
+- `RELEASE_NOTES.md`·`CHANGELOG.md`·`#patchModal` v0.19.0 항목("휴지통 — 숨긴 과제·퇴사자·발주처·코드 복구/영구 삭제(관리자)").
+- `tests/README.md` 에 `loop-trash.mjs` 절.
+- 검토자 보고용 `docs/DB-SCHEMA.html` 은 구조 불변이라 재생성 불필요(권한 절이 있다면 그 문장만).
+
+---
+
+## 10. 구현 순서 (오퍼스 브리프의 뼈대)
+
+1. 권한 세 파일 + 시험 계약 ①(파일 대조) — 먼저 잠근다.
+2. 호스트: `LoadTrashJsonAsync`(§4.2 회신) · `DeleteTrashAsync(kind, key, confirm, loginId)`(§3.4) · 브리지 case 셋 · 성공 뒤 푸시. 계약 ②③④⑤ + 변이.
+3. 화면: `#usTrash` 생성/제거(`usAdminBtnSync` 확장) · `#trashModal` 탭·목록 · `confirmTyped` · 숨김 확인창 문구 한 줄. 계약 ⑥⑦ + jsdom.
+4. `loop-trash.mjs` + 5회 연속.
+5. 문서(§9) · 엄격 게이트 · 줄끝 확인 · 커밋.
+
+---
+
+## 11. 정정 이력
+
+(구현 전 — 비어 있음)
