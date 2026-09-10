@@ -73,6 +73,8 @@ tests/
 ├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
 ├─ loop-conflict-ui.mjs       라이브 위젯(CDP) + MySQL — 충돌 안내의 실동작: 충돌이 화면에 뜨는가 ·
 │                            재시도하지 않는가 · DB 를 덮지 않는가 · 되돌릴 문이 있는가
+├─ loop-user-admin.mjs        **실제 위젯**(CDP) + 실 DB — 사용자 관리(USER-ADMIN) 실동작: 등록·수정·권한·퇴사·복구·순서 저장 ·
+│                            잠금 방지·검증 5종·null 정수 내성·비관리자 뷰·재진입 가드 — 케이스마다 DB 불변식, zzU 잔재 0
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
 ├─ loop-peer-view.mjs        실 DB + 앱 계정 — **타인 일정 열람의 권한 경계**(허용/거부/최소 payload)
 ├─ loop-peer-frame.mjs       **실 위젯**(CDP) + 실 DB — 열람 **창**(iframe)의 실동작: 그 사람 것이 뜨나 ·
@@ -653,3 +655,22 @@ node tests/loop-schema-gate.mjs
 > `finally`가 무조건 '8'을 써서 **실 DB를 강등**시켰다. 구조는 v9인데 판번호만 v8이 된 DB를 보는 위젯은 전량 교체를 전부 거부한다.
 
 **종료코드**: 통과=0, 실패 또는 schema_version 복구 실패=1, `TC_TEST_DB_ADMIN_PW` 없음=2.
+
+## loop-user-admin.mjs — 사용자 관리 실동작 루프(USER-ADMIN §8-8)
+
+실행 중인 위젯(CDP 9222, **관리자 계정으로 로그인**)과 실 DB 로 `docs/USER-ADMIN.md` 의 편집 경로를 한 라운드에 15 케이스로 돈다.
+등록(폼 경로·전체 필드) · 수정(이름·직급·소속·열람 범위·편집 권한) · 순서 편집(실제 ▲▼ 클릭 → 저장 → DB 순서·10 간격·NULL 0) ·
+퇴사·복구 · 잠금 방지(자기 퇴사·자기 권한) · 검증 5종(잘못된 ID·중복 ID·빈 이름·미등록 직급·도메인 밖) · `orgId:null`/`userId:null` 회귀 ·
+비관리자 뷰(로그인 계정을 잠시 editor 로 내려 편집 컨트롤 부재 확인 후 **반드시 복원**) · 재진입 가드. 케이스마다 불변식 I1~I5
+(활성 admin ≥ 1 · sort_order NULL 은 순서 저장 전 신규뿐 · 총원 = 실직원 + zzU · zzU 외 8필드 불변 · schema_version 불변).
+
+```
+# 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 admin 계정으로 로그인 · $env:TC_TEST_DB_ADMIN_PW
+node tests/loop-user-admin.mjs                 # 시각 기반 시드
+node tests/loop-user-admin.mjs --seed=66       # 재현
+```
+
+**종료코드**: 통과=0 · 실패 또는 복원 실패=1 · 자격 없음/선행 조건 미달(활성 admin 2 미만이면 C13 판정 없음)=2.
+정리는 시작(sweep)·종료(finally)·프로세스 exit 그물 세 겹이다 — 시험 계정(zzU) 삭제 · 로그인 계정 권한 복원 · 실직원 sort_order 복원.
+알려진 구멍(§7-1a: 퇴사자 보기를 끈 채 순서 저장 → 퇴사자 순번 충돌)은 C15 가 재현만 하고 실패로 두지 않는다.
+배포 전 게이트 규약: **무작위 시드로 5회 연속 통과**, 한 번이라도 실패하면 1부터 다시 센다(2026-09-10 실측: 5/5).
