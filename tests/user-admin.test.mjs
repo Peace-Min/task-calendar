@@ -8,6 +8,11 @@
 //     ② 관리자가 **자기 문을 닫지 못한다**(자기 퇴사·자기 권한·마지막 관리자).
 //         못 막으면 그 순간 DB 로 가야 풀린다 — "앱에서만 관리한다"는 요구가 바로 거기서 깨진다.
 //     ③ 관리자가 아닌 사람의 화면에는 편집 컨트롤이 **아예 없다**(숨김이 아니라 부재).
+//         ★★ 2026-09-10 사용자 결정으로 이 계약이 넓어졌다: 「구성원 보기」(#membersModal)에는
+//           **관리자에게도** 편집 컨트롤이 없다. 편집은 관리자에게만 존재하는 별도 버튼
+//           (#usUserAdmin)과 별도 화면(#userAdminModal)이다. 그래서 볼 것이 셋으로 갈린다 —
+//           (a) 보기 화면은 admin:true 회신에도 컨트롤 0 · (b) 편집 화면은 admin:true 일 때만 컨트롤 ·
+//           (c) 진입 버튼은 edit_role!=='admin' 이면 DOM 에 없다(숨김이 아니라 부재).
 //
 //   ★ 관문 자체의 우회 금지는 tests/admin-auth.test.mjs 가 진다(그 파일이 opener 집합·모든 연결
 //     개시 지점·쓰기 SQL 을 형태로 훑는다). 여기서는 그 위에 얹히는 계약을 본다 — 잠금 방지 문구,
@@ -266,7 +271,13 @@ const checks = {
     const rm = extractFunction(web, 'renderMembers');
     assert.ok(!/\.sort\(/.test(rm),
       'renderMembers 가 목록을 다시 정렬한다 — 순서를 정하는 곳이 둘이 되면 반드시 갈린다(§5.3)');
-    for (const fn of ['mbVisible', 'mbApplyData']) {
+    //  「구성원 편집」 화면도 같은 규칙이다 — 순서를 정하는 곳이 둘이면 반드시 갈린다.
+    const ur = extractFunction(web, 'uaRender');
+    assert.ok(!/\.sort\(/.test(ur),
+      'uaRender 가 목록을 다시 정렬한다 — 화면은 호스트가 준 순서를 그대로 그린다(§5.3)');
+    assert.ok(!/sortOrder/.test(ur),
+      'uaRender 가 sortOrder 를 읽는다 — 순번 숫자는 화면에 나타나지 않는다(§5.1)');
+    for (const fn of ['mbVisible', 'mbApplyData', 'uaVisible', 'uaApplyData']) {
       assert.ok(!/\.sort\(/.test(extractFunction(web, fn)),
         `${fn} 이 명부를 다시 정렬한다 — 화면은 호스트가 준 순서를 그대로 그린다(§5.3)`);
     }
@@ -276,31 +287,79 @@ const checks = {
   },
 
   // ⑦ 관리자 회신은 '호스트가 준 값'으로만 켜진다 — 화면이 스스로 관리자라고 판단하지 않는다.
+  //    ★ 그 값을 읽는 곳은 이제 **「구성원 편집」 화면 하나**다(uaApplyData). 보기 화면은 읽지 않는다.
   adminFlagComesFromHost(web) {
-    const b = extractFunction(web, 'mbApplyData');
-    assert.ok(/__mbAdmin = d\.admin === true;/.test(b),
+    const b = extractFunction(web, 'uaApplyData');
+    assert.ok(/__uaAdmin = d\.admin === true;/.test(b),
       '관리자 여부를 호스트 회신(d.admin)에서 그대로 받지 않는다 — 화면이 권한을 지어내면 반드시 낡는다');
-    assert.ok(/__mbInactive = __mbAdmin && d\.includeInactive === true;/.test(b),
+    assert.ok(/__uaInactive = __uaAdmin && d\.includeInactive === true;/.test(b),
       '「퇴사자 보기」 상태를 호스트가 정한 값으로 맞추지 않는다 — 요청과 결과가 갈리면 화면이 거짓말을 한다');
     // 여는 순간에도 낡은 값이 남지 않는다(한 프레임의 거짓말도 거짓말이다).
-    assert.ok(/__mbAdmin = false;/.test(extractFunction(web, 'openMembers')),
-      'openMembers 가 __mbAdmin 을 비우지 않는다 — 회신 전 한 프레임 동안 편집 컨트롤이 번쩍인다');
+    assert.ok(/__uaAdmin = false;/.test(extractFunction(web, 'openUserAdmin')),
+      'openUserAdmin 이 __uaAdmin 을 비우지 않는다 — 회신 전 한 프레임 동안 편집 컨트롤이 번쩍인다');
+    //  ★ 보기 화면은 admin 을 **아예 읽지 않는다**(2026-09-10 결정). 읽기 시작하면 그 값에 따라
+    //    보기 화면 모습이 갈리고, "보기는 전원에게 같다"는 결정이 조용히 깨진다.
+    for (const fn of ['mbApplyData', 'renderMembers', 'openMembers', 'mbApply', 'mbSelect']) {
+      const src = extractFunction(web, fn);
+      assert.ok(!/\bd\.admin\b|__uaAdmin|__mbAdmin/.test(src),
+        `${fn} 이 관리자 여부를 본다 — 「구성원 보기」는 권한과 무관하게 같은 모습이어야 한다(§5)`);
+    }
   },
 
-  // ⑦ 계속 — 마크업에는 편집 컨트롤이 없다(전부 JS 가 관리자일 때만 만든다).
+  // ⑦-a 「구성원 보기」 마크업에는 관리 자리조차 없다 — 관리자에게도 컨트롤이 없기 때문이다.
   membersMarkupHasNoControls(web) {
     const s = web.indexOf('<div class="overlay hidden" id="membersModal">');
     assert.ok(s >= 0, '#membersModal 마크업을 찾지 못함');
     const e = web.indexOf('<!-- ===== 타인 일정 열람', s);
     assert.ok(e > s, '#membersModal 뒤의 타인 일정 열람 모달을 찾지 못함');
     const md = web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');   // 주석의 설명 문구는 컨트롤이 아니다
-    assert.ok(/id="mbAdmin"/.test(md), '#mbAdmin 자리가 없다 — 관리자 막대를 넣을 곳이 사라졌다');
-    assert.ok(/<div id="mbAdmin"><\/div>/.test(md),
-      '#mbAdmin 이 비어 있지 않다 — 컨트롤을 마크업에 적으면 비관리자 DOM 에도 남는다(숨김 ≠ 부재)');
+    assert.ok(!/id="mbAdmin"/.test(md),
+      '#mbAdmin(옛 관리자 막대 자리)이 아직 「구성원 보기」에 있다 — 편집은 별도 화면으로 옮겼다(2026-09-10)');
+    for (const dead of ['직원 등록', '순서 편집', '순서 저장', '퇴사자 보기', 'data-uop', 'mba-']) {
+      assert.ok(!md.includes(dead),
+        `구성원 보기 모달 마크업에 편집 컨트롤(${dead})이 들어왔다 — 관리자에게도 없어야 한다(§5)`);
+    }
+  },
+
+  // ⑦-b 「구성원 편집」 마크업도 **빈 자리**뿐이다 — 컨트롤은 admin:true 회신 뒤에만 생긴다.
+  userAdminMarkupHasNoControls(web) {
+    const s = web.indexOf('<div class="overlay hidden" id="userAdminModal">');
+    assert.ok(s >= 0, '#userAdminModal 마크업을 찾지 못함 — 「구성원 편집」 화면이 없다');
+    const e = web.indexOf('<!-- ===== 직원 등록', s);
+    assert.ok(e > s, '#userAdminModal 뒤의 직원 등록·수정 폼을 찾지 못함');
+    const md = web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
+    assert.ok(/<div class="modal wide">/.test(md), '#userAdminModal 이 .modal.wide 가 아니다');
+    assert.ok(/<div id="uaAdmin"><\/div>/.test(md),
+      '#uaAdmin 이 비어 있지 않다 — 컨트롤을 마크업에 적으면 admin:false 회신에도 DOM 에 남는다(숨김 ≠ 부재)');
+    assert.ok(/id="uaList"/.test(md), '#uaList 목록 자리가 없다');
     for (const dead of ['직원 등록', '순서 편집', '순서 저장', '퇴사자 보기', 'data-uop']) {
       assert.ok(!md.includes(dead),
-        `구성원 모달 마크업에 편집 컨트롤(${dead})이 들어왔다 — 관리자가 아닐 때 DOM 에 없어야 한다(§5.1)`);
+        `구성원 편집 모달 마크업에 컨트롤(${dead})이 들어왔다 — 관리자 회신 없이는 DOM 에 없어야 한다(§5)`);
     }
+  },
+
+  // ⑦-c 진입 버튼(#usUserAdmin)은 edit_role==='admin' 회신일 때만 만들어진다 — 숨김이 아니라 부재.
+  adminEntryButtonIsBuiltNotHidden(web) {
+    assert.ok(!/id="usUserAdmin"/.test(web),
+      '「구성원 편집」 버튼이 마크업에 있다 — 비관리자 DOM 에 남는다(숨김 ≠ 부재). JS 가 만들어야 한다');
+    assert.ok(/<div class="us-mem-row" id="usMemberBtns">/.test(web),
+      '#usMemberBtns(버튼이 들어갈 자리)가 없다 — 만들어 넣을 곳이 사라졌다');
+    const b = extractFunction(web, 'usAdminBtnSync');
+    assert.ok(/=== 'admin'/.test(b),
+      "usAdminBtnSync 가 edit_role 을 'admin' 과 대조하지 않는다 — 판정 기준이 사라졌다");
+    assert.ok(/removeChild/.test(b),
+      'usAdminBtnSync 가 버튼을 DOM 에서 제거하지 않는다 — 남겨 두면 관리자에서 내려가도 문이 남는다');
+    //  ★ 숨김으로 바꾸는 변이를 형태로도 막는다: 이 함수에 classList·hidden·display 가 있으면 안 된다.
+    assert.ok(!/classList|\.hidden|style\.display/.test(b),
+      'usAdminBtnSync 가 숨김(classList/hidden/display)을 쓴다 — 부재여야 한다. 숨김은 클래스 하나로 풀린다');
+    //  권한 회신을 읽는 곳에서 실제로 불린다(성공·실패 양쪽).
+    const lp = extractFunction(web, 'loadUserPerm');
+    assert.ok(/usAdminBtnSync\(inf\.edit_role\)/.test(lp),
+      'loadUserPerm 이 회신의 edit_role 로 진입 버튼을 동기화하지 않는다');
+    assert.ok(/usAdminBtnSync\(''\)/.test(lp),
+      '권한 조회 실패 경로가 진입 버튼을 없애지 않는다 — 확인하지 못한 채 문이 열려 있게 된다');
+    assert.ok(/usAdminBtnSync\(''\)/.test(extractFunction(web, 'updateUserUi')),
+      '미로그인 경로가 진입 버튼을 없애지 않는다');
   },
 };
 
@@ -336,9 +395,13 @@ test('계약⑤: 권한 파일이 app_user 에 INSERT·UPDATE 를 주고 DELETE 
 test('계약⑥: 명부 순서는 호스트가 정하고 화면은 다시 정렬하지 않는다(순번 숫자 비노출)', () => {
   checks.orderIsHostOnly(pdb, app);
 });
-test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 마크업에는 편집 컨트롤이 없다', () => {
+test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 두 모달 마크업에는 편집 컨트롤이 없다', () => {
   checks.adminFlagComesFromHost(app);
   checks.membersMarkupHasNoControls(app);
+  checks.userAdminMarkupHasNoControls(app);
+});
+test("계약⑦-c: 「구성원 편집」 진입 버튼은 edit_role==='admin' 일 때만 만들어진다(숨김 ≠ 부재)", () => {
+  checks.adminEntryButtonIsBuiltNotHidden(app);
 });
 
 // ── 브리지 배선 — 세 명령이 실제로 호스트에 닿고, 성공하면 명부가 갱신된다 ──────────
@@ -460,57 +523,125 @@ test('변이⑥-b: 화면이 명부를 다시 정렬하면 계약⑥ 이 실패�
 });
 
 test('변이⑦: 화면이 스스로 관리자라고 판단하면 계약⑦ 이 실패한다', () => {
-  const bad = mutate(app, '  __mbAdmin = d.admin === true;', '  __mbAdmin = true;');
+  const bad = mutate(app, '  __uaAdmin = d.admin === true;', '  __uaAdmin = true;');
   assert.throws(() => checks.adminFlagComesFromHost(bad), /호스트 회신\(d\.admin\)에서 그대로 받지 않는다/);
+  assert.doesNotThrow(() => checks.adminFlagComesFromHost(app));   // 통제군
 });
 
-test('변이⑦-b: 편집 컨트롤을 마크업에 적으면 계약⑦ 이 실패한다(숨김 ≠ 부재)', () => {
-  const bad = mutate(app, '          <div id="mbAdmin"></div>',
-                          '          <div id="mbAdmin"><button type="button" class="btn sm" id="mbaNew">직원 등록</button></div>');
-  assert.throws(() => checks.membersMarkupHasNoControls(bad), /비어 있지 않다|편집 컨트롤\(직원 등록\)/);
+test('변이⑦-b: 편집 컨트롤을 「구성원 편집」 마크업에 적으면 계약⑦ 이 실패한다(숨김 ≠ 부재)', () => {
+  const bad = mutate(app, '      <div id="uaAdmin"></div>',
+                          '      <div id="uaAdmin"><button type="button" class="btn sm" id="uaNew">직원 등록</button></div>');
+  assert.throws(() => checks.userAdminMarkupHasNoControls(bad), /비어 있지 않다|컨트롤\(직원 등록\)/);
+});
+
+test('변이⑦-c: 보기 화면이 admin 을 다시 읽기 시작하면 계약⑦ 이 실패한다(두 화면이 도로 엉킨다)', () => {
+  const bad = mutate(app, '  __mbSel = mbDefaultSel(__mbUnits);',
+                          '  __mbSel = d.admin === true ? null : mbDefaultSel(__mbUnits);');
+  assert.throws(() => checks.adminFlagComesFromHost(bad), /mbApplyData 이 관리자 여부를 본다/);
+});
+
+test('변이⑦-d: 진입 버튼을 숨김으로 바꾸면 계약⑦-c 가 실패한다(숨김 ≠ 부재)', () => {
+  const bad = mutate(app, '  if(!on){ if(cur && cur.parentNode) cur.parentNode.removeChild(cur); return; }',
+                          "  if(!on){ if(cur) cur.classList.add('hidden'); return; }");
+  assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad), /제거하지 않는다|숨김\(classList/);
+  assert.doesNotThrow(() => checks.adminEntryButtonIsBuiltNotHidden(app));   // 통제군
+});
+
+test('변이⑦-e: 진입 버튼을 마크업에 적으면 계약⑦-c 가 실패한다', () => {
+  const bad = mutate(app, '          <button type="button" class="btn sm" id="usMembers">구성원 보기</button>',
+                          '          <button type="button" class="btn sm" id="usMembers">구성원 보기</button>\n' +
+                          '          <button type="button" class="btn sm" id="usUserAdmin">구성원 편집</button>');
+  assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad), /마크업에 있다/);
 });
 
 // ══════════════════════════════════════════════════════════════════════
-//  §8-7 — 비관리자 DOM 에는 편집 컨트롤이 **없다**(숨김이 아니라 부재)
+//  §8-7 — 편집 컨트롤은 **있어야 할 곳에만** 있다(숨김이 아니라 부재)
+//  ★ 2026-09-10 사용자 결정으로 볼 것이 셋이다:
+//      (a) 「구성원 보기」(#membersModal)는 **admin:true 회신에도** 편집 컨트롤이 0 이다.
+//      (b) 「구성원 편집」(#userAdminModal)의 컨트롤은 **admin:true 일 때만** DOM 에 있다.
+//      (c) 「구성원 편집」 진입 버튼은 edit_role!=='admin' 이면 DOM 에 **없다**(숨기지 않는다).
 //  ★ 소스 문자열 검사로는 이 계약을 증명할 수 없다. 컨트롤을 만드는 코드는 어차피 파일 안에 있고,
 //    문제는 '그 코드가 언제 도는가'이기 때문이다. 그래서 실제로 그려 보고 DOM 을 센다.
-//  ★ 앱 전체를 부팅하지 않는다 — 명부를 그리는 함수 넷만 떼어 내 빈 문서에 심는다.
+//  ★ 앱 전체를 부팅하지 않는다 — 그리는 함수만 떼어 내 빈 문서에 심는다.
 //    부팅하면 호스트 브리지·세션·타이머가 딸려 와 이 계약과 무관한 이유로 깨진다.
 // ══════════════════════════════════════════════════════════════════════
 
 const jsdom = await importOptional('jsdom');
 
-// 명부를 그리는 데 실제로 필요한 함수만 원본에서 떼어 낸다(사본을 만들지 않는다 — 사본은 반드시 낡는다).
-function renderHarnessJs() {
-  const fns = ['renderMembers', 'mbRowActions', 'mbAdminBar', 'mbEmptyText'].map((n) => extractFunction(app, n));
+const COUNT_JS = [
+  'function __count(boxId, barId){',
+  '  var list = document.getElementById(boxId);',
+  '  var bar = barId ? document.getElementById(barId) : null;',
+  '  return {',
+  '    barChildren: bar ? bar.children.length : -1,',
+  '    uops: Array.prototype.map.call(list.querySelectorAll("[data-uop]"), function(b){ return b.dataset.uop; }),',
+  '    lines: list.querySelectorAll(".mba-line").length,',
+  '    acts: list.querySelectorAll(".mba-act").length,',
+  '    rows: list.querySelectorAll(".mb-row").length,',
+  '    links: list.querySelectorAll(".mb-row.is-link").length,',
+  '    text: String(list.textContent || ""),',
+  '    texts: Array.prototype.map.call(list.querySelectorAll("button"), function(b){ return b.textContent; }),',
+  '  };',
+  '}',
+].join('\n');
+
+// (a) 보기 화면 — 그리는 데 실제로 필요한 함수만 원본에서 떼어 낸다(사본은 반드시 낡는다).
+//     ★ 관리자 상태를 **일부러 켜 둔 채로** 그린다: 보기 화면이 그 값을 어떤 경로로든 읽는다면
+//       여기서 드러난다. 결정은 "관리자에게도 보기 화면은 같다" 이므로 켜 놓고 세는 것이 옳다.
+function viewHarnessJs(src) {
+  const fns = ['renderMembers', 'mbEmptyText'].map((n) => extractFunction(src, n));
   return [
     "var currentUser = { loginId: 'zzUme' };",
-    'var __mbAdmin = false, __mbOrder = false, __mbInactive = false;',
-    '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
-    'function mbRowClick(){} function userEdOpen(){} function mbSetActive(){} function mbMove(){}',
-    'function mbOrderToggle(){} function mbOrderSave(){} function openMembersReload(){} function toast(){}',
+    'var __uaAdmin = true, __mbAdmin = true, __uaOrder = false;   // 켜 둔다 — 그래도 컨트롤이 0 이어야 한다',
+    'function mbRowClick(){} function userEdOpen(){} function uaSetActive(){} function uaMove(){}',
+    'function uaRowActions(){ var d = document.createElement("div"); d.className = "mba-act"; return d; }',
+    'function toast(){}',
     ...fns,
+    COUNT_JS,
+    'window.__probe = function(rows){ renderMembers(rows); return __count("mbList", "mbAdmin"); };',
+  ].join('\n');
+}
+
+// (b) 편집 화면 — 관리 막대와 목록을 그리는 함수만.
+function adminHarnessJs(src) {
+  const fns = ['uaRender', 'uaRowActions', 'uaAdminBar', 'uaEmptyText'].map((n) => extractFunction(src, n));
+  return [
+    "var currentUser = { loginId: 'zzUme' };",
+    'var __uaAdmin = false, __uaOrder = false, __uaInactive = false;',
+    '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
+    'function userEdOpen(){} function uaSetActive(){} function uaMove(){}',
+    'function uaOrderToggle(){} function uaOrderSave(){} function uaReload(){} function toast(){}',
+    ...fns,
+    COUNT_JS,
     'window.__probe = function(rows, admin, order){',
-    '  __mbAdmin = !!admin; __mbOrder = !!order;',
-    '  mbAdminBar(); renderMembers(rows);',
-    '  var list = document.getElementById("mbList");',
-    '  var bar = document.getElementById("mbAdmin");',
-    '  return {',
-    '    barChildren: bar.children.length,',
-    '    uops: Array.prototype.map.call(list.querySelectorAll("[data-uop]"), function(b){ return b.dataset.uop; }),',
-    '    lines: list.querySelectorAll(".mba-line").length,',
-    '    acts: list.querySelectorAll(".mba-act").length,',
-    '    rows: list.querySelectorAll(".mb-row").length,',
-    '    links: list.querySelectorAll(".mb-row.is-link").length,',
-    '    texts: Array.prototype.map.call(list.querySelectorAll("button"), function(b){ return b.textContent; }),',
-    '  };',
+    '  __uaAdmin = !!admin; __uaOrder = !!order;',
+    '  uaAdminBar(); uaRender(rows);',
+    '  return __count("uaList", "uaAdmin");',
     '};',
   ].join('\n');
 }
 
-const FIXTURE = '<!doctype html><html><body>' +
-  '<div id="mbAdmin"></div><input type="text" id="mbSearch">' +
+// (c) 진입 버튼 — usAdminBtnSync 하나만 떼어 내 역할 문자열로 굴린다.
+function entryHarnessJs(src) {
+  return [
+    'function openUserAdmin(){}',
+    extractFunction(src, 'usAdminBtnSync'),
+    'window.__probe = function(role){',
+    '  usAdminBtnSync(role);',
+    '  var b = document.getElementById("usUserAdmin");',
+    '  return { present: !!b, text: b ? String(b.textContent || "") : "" };',
+    '};',
+  ].join('\n');
+}
+
+const VIEW_FIXTURE = '<!doctype html><html><body>' +
+  '<input type="text" id="mbSearch">' +
   '<div id="mbSoon"></div><div id="mbList"></div><div id="mbEmpty"></div></body></html>';
+const ADMIN_FIXTURE = '<!doctype html><html><body>' +
+  '<div id="uaAdmin"></div><input type="text" id="uaSearch">' +
+  '<div id="uaScope"></div><div id="uaList"></div><div id="uaEmpty"></div></body></html>';
+const ENTRY_FIXTURE = '<!doctype html><html><body><div class="us-mem-row" id="usMemberBtns">' +
+  '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div></body></html>';
 
 const ROWS = [
   { userId: 11, loginId: 'zzUa', name: 'zzU_a', title: 'zzU-T1', orgUnit: 'zzU-조직', canViewSchedule: true, isActive: true },
@@ -518,47 +649,67 @@ const ROWS = [
   { userId: 13, loginId: 'zzUb', name: 'zzU_b', title: 'zzU-T2', orgUnit: 'zzU-조직', canViewSchedule: false, isActive: false },
 ];
 
-function probe(admin, order) {
+//  ★ JSON 왕복으로 **이쪽 realm 의 값**으로 바꾼다. jsdom 의 Array 는 다른 realm 이라
+//    deepStrictEqual 이 프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
+function run(fixture, js, ...args) {
   const { JSDOM } = jsdom;
   //  runScripts: outside-only — window 가 실제 realm 으로 선다(없으면 eval 안에서 window 가 미정의다).
-  const dom = new JSDOM(FIXTURE, { runScripts: 'outside-only' });
-  dom.window.eval(renderHarnessJs());
-  //  ★ JSON 왕복으로 **이쪽 realm 의 값**으로 바꾼다. jsdom 의 Array 는 다른 realm 이라
-  //    deepStrictEqual 이 프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
-  return JSON.parse(JSON.stringify(dom.window.__probe(ROWS, admin, order)));
+  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
+  dom.window.eval(js);
+  return JSON.parse(JSON.stringify(dom.window.__probe(...args)));
+}
+const probeView = (src = app) => run(VIEW_FIXTURE, viewHarnessJs(src), ROWS);
+const probeAdmin = (admin, order, src = app) => run(ADMIN_FIXTURE, adminHarnessJs(src), ROWS, admin, order);
+const probeEntry = (role, src = app) => run(ENTRY_FIXTURE, entryHarnessJs(src), role);
+//  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
+function probeEntrySeq(roles, src = app) {
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(ENTRY_FIXTURE, { runScripts: 'outside-only' });
+  dom.window.eval(entryHarnessJs(src));
+  return roles.map((r) => JSON.parse(JSON.stringify(dom.window.__probe(r))));
 }
 
 if (!jsdom) {
   // skip 은 통과가 아니다 — 러너가 exit 2(판정 없음)로 끝나고, 릴리스 게이트(TC_TEST_STRICT=1)는 실패로 승격한다.
   const { skip } = await import('./harness.mjs');
-  skip('계약⑦-DOM: 비관리자 명부에 편집 컨트롤이 하나도 없다', SKIP_NO_JSDOM, '이 파일의 DOM 계약 3건이 세어지지 않음');
-  skip('계약⑦-DOM: 관리자 명부에는 행마다 [편집] + [퇴사]/[복구] 가 있다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM: 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(a): 「구성원 보기」는 관리자에게도 편집 컨트롤이 0', SKIP_NO_JSDOM, '이 파일의 DOM 계약 5건이 세어지지 않음');
+  skip('계약⑦-DOM(b): 「구성원 편집」 컨트롤은 admin:true 일 때만 있다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', SKIP_NO_JSDOM);
+  skip("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다", SKIP_NO_JSDOM);
+  skip('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
 } else {
-  test('계약⑦-DOM: 비관리자 명부에 편집 컨트롤이 하나도 없다(숨김이 아니라 부재)', () => {
-    const r = probe(false, false);
-    assert.strictEqual(r.rows, ROWS.length, '전제 붕괴: 비관리자 명부에 행이 그려지지 않았다');
-    assert.strictEqual(r.barChildren, 0, `#mbAdmin 에 자식이 ${r.barChildren}개 있다 — 비관리자에게는 관리 막대가 없어야 한다`);
-    assert.deepStrictEqual(r.uops, [], `비관리자 DOM 에 조작 버튼이 있다: ${r.uops.join(', ')}`);
-    assert.strictEqual(r.lines, 0, '비관리자 DOM 에 .mba-line 래퍼가 생겼다 — 행 구조까지 관리자 것과 같아졌다');
-    assert.strictEqual(r.acts, 0, '비관리자 DOM 에 .mba-act 조작칸이 생겼다');
+  test('계약⑦-DOM(a): 「구성원 보기」는 관리자에게도 편집 컨트롤이 0 이다(숨김이 아니라 부재)', () => {
+    const r = probeView();
+    assert.strictEqual(r.rows, ROWS.length, '전제 붕괴: 보기 명부에 행이 그려지지 않았다');
+    assert.deepStrictEqual(r.uops, [], `보기 화면 DOM 에 조작 버튼이 있다: ${r.uops.join(', ')}`);
+    assert.strictEqual(r.lines, 0, '보기 화면에 .mba-line 래퍼가 생겼다 — 편집 화면의 행 구조가 흘러들어 왔다');
+    assert.strictEqual(r.acts, 0, '보기 화면에 .mba-act 조작칸이 생겼다');
     for (const t of r.texts) {
-      assert.ok(!/편집|퇴사|복구|▲|▼|저장/.test(t), `비관리자 DOM 에 편집 컨트롤 문구가 있다: ${t}`);
+      assert.ok(!/편집|퇴사|복구|▲|▼|저장/.test(t), `보기 화면 DOM 에 편집 컨트롤 문구가 있다: ${t}`);
     }
     // 열람 진입점은 그대로여야 한다 — 과잉 차단도 결함이다(명부는 명부다).
     assert.strictEqual(r.links, 1, `누를 수 있는 행이 ${r.links}개다(내가 아니고 일정을 볼 수 있는 1명이어야 한다)`);
   });
 
-  test('계약⑦-DOM: 관리자 명부에는 행마다 [편집] + [퇴사]/[복구] 가 있다', () => {
-    const r = probe(true, false);
-    assert.strictEqual(r.lines, ROWS.length, '관리자 명부의 행이 .mba-line 으로 묶이지 않았다');
-    assert.deepStrictEqual(r.uops, ['edit', 'off', 'edit', 'off', 'edit', 'on'],
-      `행 조작 버튼 구성이 계약과 다르다: ${r.uops.join(', ')} — 활성은 [편집][퇴사], 퇴사자는 [편집][복구]`);
-    assert.strictEqual(r.barChildren > 0, true, '관리자인데 #mbAdmin 막대가 비어 있다');
+  test('계약⑦-DOM(b): 「구성원 편집」 컨트롤은 admin:true 일 때만 DOM 에 있다', () => {
+    const off = probeAdmin(false, false);
+    assert.strictEqual(off.barChildren, 0, `admin:false 인데 #uaAdmin 에 자식이 ${off.barChildren}개 있다`);
+    assert.deepStrictEqual(off.uops, [], `admin:false DOM 에 조작 버튼이 있다: ${off.uops.join(', ')}`);
+    assert.strictEqual(off.lines, 0, 'admin:false 인데 행이 그려졌다 — 편집 화면은 관리자 회신 없이 아무것도 그리지 않는다');
+    assert.ok(/관리자만 사용할 수 있습니다/.test(off.text),
+      `admin:false 안내 문구가 없다(실제: ${JSON.stringify(off.text.slice(0, 60))}) — 빈 화면은 고장처럼 보인다`);
+
+    const on = probeAdmin(true, false);
+    assert.strictEqual(on.lines, ROWS.length, '관리자인데 행이 .mba-line 으로 묶이지 않았다');
+    assert.deepStrictEqual(on.uops, ['edit', 'off', 'edit', 'off', 'edit', 'on'],
+      `행 조작 버튼 구성이 계약과 다르다: ${on.uops.join(', ')} — 활성은 [편집][퇴사], 퇴사자는 [편집][복구]`);
+    assert.ok(on.barChildren > 0, '관리자인데 #uaAdmin 막대가 비어 있다');
+    //  ★ 편집 화면의 행은 눌리지 않는다 — 남의 일정 열람은 「구성원 보기」의 일이다.
+    assert.strictEqual(on.links, 0, `편집 화면 행이 눌린다(.mb-row.is-link ${on.links}개) — 이 화면은 고치는 화면이다`);
   });
 
-  test('계약⑦-DOM: 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', () => {
-    const r = probe(true, true);
+  test('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', () => {
+    const r = probeAdmin(true, true);
     assert.deepStrictEqual(r.uops, ['up', 'down', 'up', 'down', 'up', 'down'],
       `순서 편집 중 조작 버튼이 ▲▼ 가 아니다: ${r.uops.join(', ')} — 좁은 폭에서 버튼 넷이 붙으면 이름이 되접힌다`);
     for (const t of r.texts) {
@@ -566,15 +717,46 @@ if (!jsdom) {
     }
   });
 
-  test('변이⑦-DOM: 비관리자 분기를 지우면 계약⑦-DOM 이 실패한다(그 한 줄이 전부다)', () => {
-    const bad = mutate(app, '    if(!__mbAdmin){ list.appendChild(row); continue; }', '    if(false){ list.appendChild(row); continue; }');
-    const { JSDOM } = jsdom;
-    const dom = new JSDOM(FIXTURE, { runScripts: 'outside-only' });
-    //  ★ 변이본에서 함수를 다시 떼어 낸다 — 원본 하네스를 쓰면 변이가 반영되지 않아 아무것도 시험하지 않는다.
-    const fns = ['renderMembers', 'mbRowActions', 'mbAdminBar', 'mbEmptyText'].map((n) => extractFunction(bad, n));
-    dom.window.eval(renderHarnessJs().replace(extractFunction(app, 'renderMembers'), fns[0]));
-    const r = JSON.parse(JSON.stringify(dom.window.__probe(ROWS, false, false)));
-    assert.ok(r.uops.length > 0, '변이 전제: 분기를 지우면 비관리자에게도 조작 버튼이 그려져야 한다');
+  test("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다(숨김이 아니라 부재)", () => {
+    for (const role of ['viewer', 'editor', '', null, 'superuser', 'Admin']) {
+      const r = probeEntry(role);
+      assert.strictEqual(r.present, false,
+        `edit_role=${JSON.stringify(role)} 인데 「구성원 편집」 버튼이 DOM 에 있다 — 관리자만 이 문을 본다`);
+    }
+    const on = probeEntry('admin');
+    assert.strictEqual(on.present, true, "edit_role='admin' 인데 「구성원 편집」 버튼이 만들어지지 않았다");
+    assert.strictEqual(on.text, '구성원 편집', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
+    //  ★ 진짜 관문: 관리자였다가 내려간 경우. 숨김으로 바꾸면 여기서만 드러난다.
+    const seq = probeEntrySeq(['admin', 'editor', 'admin', '']);
+    assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
+      `역할이 바뀔 때 버튼이 생겼다 사라지지 않는다: ${JSON.stringify(seq.map((x) => x.present))} — 남으면 내려간 사람에게 문이 남는다`);
+  });
+
+  test('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
+    // (a) 보기 화면에 조작 버튼을 다는 한 줄
+    const badA = mutate(app, '    list.appendChild(row);\n  }',
+      '    var __l = document.createElement("div"); __l.className = "mba-line";' +
+      ' __l.appendChild(row); __l.appendChild(uaRowActions(m, arr)); list.appendChild(__l);\n  }');
+    const ra = probeView(badA);
+    assert.ok(ra.lines > 0 || ra.acts > 0,
+      '변이 전제: 보기 화면에 .mba-line/.mba-act 가 생겨야 한다(변이가 먹지 않았다)');
+
+    // (b) 비관리자 분기를 지우는 한 줄
+    const badB = mutate(app, '  if(!__uaAdmin){\n', '  if(false){\n');
+    const rb = probeAdmin(false, false, badB);
+    assert.ok(rb.uops.length > 0 || rb.lines > 0,
+      '변이 전제: 분기를 지우면 admin:false 에도 조작 버튼이 그려져야 한다');
+
+    // (c) 진입 버튼 제거를 숨김으로 바꾸는 한 줄
+    const badC = mutate(app, '  if(!on){ if(cur && cur.parentNode) cur.parentNode.removeChild(cur); return; }',
+      "  if(!on){ if(cur) cur.classList.add('hidden'); return; }");
+    const rc = probeEntrySeq(['admin', 'editor'], badC);
+    assert.strictEqual(rc[1].present, true,
+      '변이 전제: 숨김으로 바꾸면 내려간 뒤에도 버튼이 DOM 에 남아야 한다(그래서 부재 계약이 필요하다)');
+    // 통제군 — 원본은 셋 다 계약을 지킨다.
+    assert.strictEqual(probeView().lines, 0);
+    assert.strictEqual(probeAdmin(false, false).uops.length, 0);
+    assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].present, false);
   });
 }
 

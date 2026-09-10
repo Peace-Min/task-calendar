@@ -253,7 +253,9 @@ const isTempUser = (s) => /^zzU\d+_/.test(s || '');
  *  U1 활성 관리자 ≥ 1  — 이게 0 이 되는 순간 "앱에서만 관리한다"는 요구가 깨진다(DB 로 가야 푼다).
  *  U2 sort_order 가 소속 안에서 단조 — 앱이 전량 재작성하므로 겹치거나 뒤집히면 재작성이 샌 것이다.
  *  U3 퇴사자가 명부 화면에 없다(「퇴사자 보기」가 꺼져 있을 때).
- *  U4 화면 순서 = DB 순서 — 화면이 다시 정렬하지 않는다는 계약의 실측판(§5.3).                */
+ *  U4 화면 순서 = DB 순서 — 화면이 다시 정렬하지 않는다는 계약의 실측판(§5.3).
+ *  U6 「구성원 보기」에는 편집 컨트롤이 0 — **관리자에게도** 없다(2026-09-10 사용자 결정).
+ *     invUsers 가 아니라 phaseUserAdmin 이 시작할 때 한 번 본다(조작마다 볼 값이 아니다).      */
 function invUsers(users, screenRows, opts = {}) {
   const admins = users.filter((u) => u.role === 'admin' && u.active);
   if (admins.length < 1) violate('U1', '활성 관리자가 0명이다 — 앱에서 권한을 되돌릴 길이 사라졌다(DB 직접 조작 필요)');
@@ -552,30 +554,33 @@ const INSTALL_JS = `(function(){
     inp.dispatchEvent(new Event('change', { bubbles:true }));
     return { ok:true };
   };
-  /* 구성원 명부 행 — **화면에 그려진 순서 그대로** 돌려준다(USER-ADMIN §8-8).
-     ★ 관리자 모드에서는 행이 .mba-line 으로 묶이고 조작 버튼에 data-uid 가 붙는다.
-       비관리자 모드에는 그 래퍼도 버튼도 **없다**(숨김이 아니라 부재) — 그래서 분기가 둘이다.
+  /* 「구성원 편집」(#userAdminModal) 행 — **화면에 그려진 순서 그대로** 돌려준다(USER-ADMIN §8-8).
+     ★★ 2026-09-10 결정으로 목록이 옮겨 갔다: 편집 행은 #uaList 에만 있다.
+       「구성원 보기」(#mbList)에는 관리자에게도 조작 버튼이 없으므로 여기서 읽을 것이 없다.
+     ★ 관리자 회신을 받았을 때만 행이 .mba-line 으로 묶이고 조작 버튼에 data-uid 가 붙는다.
+       admin:false 면 그 래퍼도 버튼도 **없다**(숨김이 아니라 부재) — 그때는 빈 배열이다.
      ★ 이름이 아니라 번호(user_id)를 손잡이로 쓴다: 동명이인이 있고, 한글 셀렉터 이스케이프도 피한다. */
   L.uRows = function(){
-    var box = document.getElementById('mbList'); if(!box) return [];
+    var box = document.getElementById('uaList'); if(!box) return [];
     var out = [], i;
     var lines = box.querySelectorAll('.mba-line');
-    if (lines.length){
-      for (i=0;i<lines.length;i++){
-        var b = lines[i].querySelector('[data-uid]');
-        var nm = lines[i].querySelector('.mb-row b');
-        out.push({ uid: b ? Number(b.getAttribute('data-uid')) : 0,
-                   name: nm ? String(nm.textContent||'') : '',
-                   off: lines[i].classList.contains('is-off') });
-      }
-      return out;
-    }
-    var rows = box.querySelectorAll('.mb-row');
-    for (i=0;i<rows.length;i++){
-      var n2 = rows[i].querySelector('b');
-      out.push({ uid: 0, name: n2 ? String(n2.textContent||'') : '', off: false });
+    for (i=0;i<lines.length;i++){
+      var b = lines[i].querySelector('[data-uid]');
+      var nm = lines[i].querySelector('.mb-row b');
+      out.push({ uid: b ? Number(b.getAttribute('data-uid')) : 0,
+                 name: nm ? String(nm.textContent||'') : '',
+                 off: lines[i].classList.contains('is-off') });
     }
     return out;
+  };
+  /* 「구성원 보기」에 편집 컨트롤이 새어 들어왔는지 세는 자 — 0 이어야 한다(관리자에게도). */
+  L.mbEditControls = function(){
+    var box = document.getElementById('mbList');
+    return {
+      lines: box ? box.querySelectorAll('.mba-line').length : 0,
+      uops: box ? box.querySelectorAll('[data-uop]').length : 0,
+      bar: !!document.getElementById('mbAdmin')
+    };
   };
   /* 드롭다운의 n 번째 옵션 고르기 — 직급·소속은 DB 마스터라 값 목록을 시험이 알 수 없다. */
   L.pickOption = function(sel, idx){
@@ -639,13 +644,18 @@ const INSTALL_JS = `(function(){
     s.codeOpen = L.isOpen('#codeModal'); s.custOpen = L.isOpen('#customerModal');
     s.confirmOpen = L.isOpen('#confirmModal');
     s.cfTitle = L.txt('#cfTitle'); s.cfMsg = L.txt('#cfMsg');
-    /* 구성원 명부·직원 관리(USER-ADMIN §8-8) — 없는 페이지(구버전)에서는 전부 null 이다. */
+    /* 구성원 보기·구성원 편집(USER-ADMIN §8-8) — 없는 페이지(구버전)에서는 전부 null 이다.
+       ★ 두 화면이 갈렸다(2026-09-10): mb* 는 보기, ua* 는 편집이다. 섞어 읽지 않는다. */
     s.mbOpen   = L.isOpen('#membersModal');
+    s.uaOpen   = L.isOpen('#userAdminModal');
     s.ueOpen   = L.isOpen('#userEditModal');
-    s.mbAdmin  = (typeof __mbAdmin  !== 'undefined') ? !!__mbAdmin  : null;
-    s.mbOrder  = (typeof __mbOrder  !== 'undefined') ? !!__mbOrder  : null;
-    s.mbSaving = (typeof __mbSaving !== 'undefined') ? !!__mbSaving : null;
+    s.entryBtn = !!document.getElementById('usUserAdmin');
     s.mbBusy   = (typeof __mbBusy   !== 'undefined') ? !!__mbBusy   : null;
+    s.mbEdit   = L.mbEditControls();
+    s.uaAdmin  = (typeof __uaAdmin  !== 'undefined') ? !!__uaAdmin  : null;
+    s.uaOrder  = (typeof __uaOrder  !== 'undefined') ? !!__uaOrder  : null;
+    s.uaSaving = (typeof __uaSaving !== 'undefined') ? !!__uaSaving : null;
+    s.uaBusy   = (typeof __uaBusy   !== 'undefined') ? !!__uaBusy   : null;
     s.mbRows   = L.uRows();
     s.ueMsg    = L.txt('#userEdMsg');
     s.toastN = L.seq; s.errN = L.errors.length;
@@ -678,10 +688,10 @@ async function waitFor(pred, { timeout = 25000, interval = 120, desc = '' } = {}
 }
 
 /** 조작 후 '정지' 판정: 확인창 없음 + busy 아님 + 목록이 로딩중 아님 */
-//  ★ mbSaving 은 직원 쓰기 왕복 중이라는 뜻이다(USER-ADMIN §8-8). 구버전 페이지에서는 null 이고,
+//  ★ uaSaving 은 직원 쓰기 왕복 중이라는 뜻이다(USER-ADMIN §8-8). 구버전 페이지에서는 null 이고,
 //    !null === true 라 옛 동작이 그대로 유지된다 — 새 플래그가 옛 조작을 막지 않는다.
 const isIdle = (s) =>
-  !s.confirmOpen && !s.codeBusy && !s.custBusy && !s.mbSaving && !s.mbBusy &&
+  !s.confirmOpen && !s.codeBusy && !s.custBusy && !s.uaSaving && !s.uaBusy && !s.mbBusy &&
   !/불러오는 중/.test(s.codeListText || '') && !/불러오는 중/.test(s.custListText || '');
 
 /**
@@ -1553,6 +1563,11 @@ async function phaseHardDelete(snap) {
 /* ───────────────── 15.5 직원 관리 5종(USER-ADMIN §8-8) ─────────────────
  *  등록 → 편집 → 순서 → 퇴사 → 복구 를 **실제 클릭**으로 왕복하고, 매 조작 뒤 U1~U4 를 본다.
  *
+ *  ★★ 2026-09-10 결정으로 조작 화면이 「구성원 편집」(#userAdminModal)으로 옮겨 갔다.
+ *    진입은 「사용자 정보」의 「구성원 편집」 버튼(#usUserAdmin)이고, 그 버튼은 edit_role='admin'
+ *    회신일 때만 DOM 에 생긴다 — 그래서 '버튼이 없다'가 곧 '관리자가 아니다'이고 건너뛰기 조건이다.
+ *    그리고 이 구간은 시작할 때 「구성원 보기」가 **관리자에게도** 순수 보기인지 먼저 본다(U6).
+ *
  *  ★ 이 구간은 로그인 계정이 **admin** 일 때만 의미가 있다. editor 로 돌면 첫 조작에서
  *    "직원 정보는 관리자만 고칠 수 있습니다"가 돌아오는데, 그건 결함이 아니라 사전조건 미충족이다 —
  *    그래서 위반이 아니라 **건너뜀**으로 기록한다(없는 실패를 만들어 내지 않는다).
@@ -1560,6 +1575,21 @@ async function phaseHardDelete(snap) {
  *  ★ 마지막 관리자 규칙 때문에 **자기 계정과 실명 계정에는 손대지 않는다** — 조작 대상은 자기가 만든 zzU 뿐이다. */
 const tmpUser = () => `zzU${OPT.seed}_${++tempSeq}`;   // login_id 형식 ^[A-Za-z0-9._-]{1,50}$ 를 지킨다
 
+// 「구성원 편집」 열기 — 진입 버튼 자체가 관리자에게만 생기므로, 없으면 그 사실을 그대로 돌려준다.
+//   ★ 버튼을 만드는 것은 「사용자 정보」의 권한 조회다(loadUserPerm). 그래서 #btnUser 를 먼저 누른다.
+async function openUserAdminModal() {
+  const s0 = await state();
+  if (s0.uaOpen) return s0;
+  await ev(`__lt.click('#btnUser')`);
+  await sleep(150);
+  const s1 = await waitFor((x) => x.entryBtn === true, { timeout: 15000, desc: '「구성원 편집」 진입 버튼' });
+  if (!s1) return await state();   // 버튼이 없다 = 관리자가 아니다(호출한 쪽이 건너뛴다)
+  await ev(`__lt.click('#usUserAdmin')`);
+  const s = await waitFor((x) => x.uaOpen && !x.uaBusy, { timeout: 20000, desc: '구성원 편집 열림' });
+  return s || (await state());
+}
+
+// 「구성원 보기」 열기 — 이 화면에는 편집 컨트롤이 하나도 없어야 한다(관리자에게도).
 async function openMembersModal() {
   const s0 = await state();
   if (s0.mbOpen) return s0;
@@ -1573,7 +1603,7 @@ async function openMembersModal() {
 /** 조작 뒤 공통 검증 — DB 와 화면을 같은 시점에 본다. */
 async function verifyUserOp(desc, rec, opts = {}) {
   const users = userSnapshot();
-  const s = await waitConverge((x) => !x.mbBusy && !x.mbSaving, 4000);
+  const s = await waitConverge((x) => !x.uaBusy && !x.uaSaving, 4000);
   invUsers(users, s.mbRows, opts);
   if (rec.outcome === 'success') ok(`직원 조작 성공: ${desc}`);
   else if (rec.denied || /관리자만 고칠 수 있습니다/.test((rec.toasts || []).map((t) => t.msg).join(' '))) {
@@ -1588,12 +1618,30 @@ async function phaseUserAdmin() {
   curPhase = 'U-user-admin';
   log('── U: 직원 관리 5종(등록·편집·순서·퇴사·복구) ──');
 
-  let s = await openMembersModal();
-  if (!s.mbOpen) { violate('U0', '구성원 명부를 열지 못했다 — 이 구간을 판정할 수 없다'); return; }
-  invUsers(userSnapshot(), s.mbRows);
-  if (s.mbAdmin !== true) {
-    log('   [건너뜀] 로그인 계정이 관리자가 아니다(회신에 admin 없음) — 직원 관리 구간은 admin 계정으로만 판정된다.');
+  /* (0) 「구성원 보기」는 관리자에게도 순수 보기다 — 이 구간에서 가장 먼저 본다(2026-09-10 결정). */
+  {
+    const sv = await openMembersModal();
+    if (!sv.mbOpen) violate('U0', '구성원 보기를 열지 못했다');
+    else {
+      const e = sv.mbEdit || {};
+      if (e.bar) violate('U6', '「구성원 보기」에 옛 관리자 막대(#mbAdmin)가 남아 있다 — 편집은 별도 화면이다');
+      if (e.lines > 0) violate('U6', `「구성원 보기」에 편집 행 구조(.mba-line)가 ${e.lines}개 있다 — 관리자에게도 없어야 한다`);
+      if (e.uops > 0) violate('U6', `「구성원 보기」에 조작 버튼(data-uop)이 ${e.uops}개 있다 — 관리자에게도 없어야 한다`);
+      if (!e.bar && !e.lines && !e.uops) ok('「구성원 보기」에 편집 컨트롤 0(관리자에게도)');
+    }
     await closeIfOpen('#membersModal');
+  }
+
+  let s = await openUserAdminModal();
+  if (s.entryBtn !== true) {
+    log('   [건너뜀] 「구성원 편집」 진입 버튼이 없다(관리자가 아니다) — 이 구간은 admin 계정으로만 판정된다.');
+    return;
+  }
+  if (!s.uaOpen) { violate('U0', '「구성원 편집」 화면을 열지 못했다 — 이 구간을 판정할 수 없다'); return; }
+  invUsers(userSnapshot(), s.mbRows);
+  if (s.uaAdmin !== true) {
+    log('   [건너뜀] 로그인 계정이 관리자가 아니다(회신에 admin 없음) — 직원 관리 구간은 admin 계정으로만 판정된다.');
+    await closeIfOpen('#userAdminModal');
     return;
   }
 
@@ -1602,7 +1650,7 @@ async function phaseUserAdmin() {
 
   /* (1) 등록 — 「＋ 직원 등록」 → 폼 채우기 → 저장 */
   {
-    const t = await ev(`__lt.click('#mbaNew')`);
+    const t = await ev(`__lt.click('#uaNew')`);
     if (!t || t.ok === false) { violate('U0', '「직원 등록」 버튼을 누르지 못했다', t); return; }
     await waitFor((x) => x.ueOpen, { timeout: 8000, desc: '편집 폼 열림' });
     await ev(`__lt.setVal('#userEdLogin', ${jstr(lid)})`);
@@ -1621,11 +1669,11 @@ async function phaseUserAdmin() {
       if (made.sort !== null) violate('U0', `신규 등록에 sort_order 가 매겨졌다(${made.sort}) — 신규는 NULL(맨 뒤)이어야 한다`);
     }
   }
-  if (!uid) { await closeIfOpen('#userEditModal'); await closeIfOpen('#membersModal'); return; }
+  if (!uid) { await closeIfOpen('#userEditModal'); await closeIfOpen('#userAdminModal'); return; }
 
   /* (2) 편집 — 이름만 바꾼다(권한은 건드리지 않는다: 자기 권한 규칙과 무관한 계정이라도 범위를 좁힌다) */
   {
-    const t = await ev(`__lt.click('#mbList [data-uop="edit"][data-uid="${uid}"]')`);
+    const t = await ev(`__lt.click('#uaList [data-uop="edit"][data-uid="${uid}"]')`);
     if (!t || t.ok === false) violate('U0', `편집 버튼을 누르지 못했다(uid=${uid})`, t);
     else {
       await waitFor((x) => x.ueOpen, { timeout: 8000, desc: '편집 폼 열림' });
@@ -1641,15 +1689,15 @@ async function phaseUserAdmin() {
 
   /* (3) 순서 — 「순서 편집」 → ▲ 한 번 → 「순서 저장」. 전량 재작성이라 전원이 10 간격이 된다. */
   {
-    const t = await ev(`__lt.click('#mbaOrder')`);
+    const t = await ev(`__lt.click('#uaOrderEdit')`);
     if (!t || t.ok === false) violate('U0', '「순서 편집」을 켜지 못했다', t);
     else {
-      const s1 = await waitConverge((x) => x.mbOrder === true, 4000);
+      const s1 = await waitConverge((x) => x.uaOrder === true, 4000);
       const idx = (s1.mbRows || []).findIndex((r) => r.uid === uid);
       if (idx <= 0) log(`   순서: uid=${uid} 가 이미 맨 위이거나 화면에 없다(idx=${idx}) — ▲ 를 건너뛴다`);
-      else await ev(`__lt.click('#mbList [data-uop="up"][data-uid="${uid}"]')`);
+      else await ev(`__lt.click('#uaList [data-uop="up"][data-uid="${uid}"]')`);
       const before = (await state()).mbRows.map((r) => r.uid);
-      const rec = await doWrite('명부 순서 저장', `__lt.click('#mbaOrderSave')`);
+      const rec = await doWrite('명부 순서 저장', `__lt.click('#uaOrderSave')`);
       const { users } = await verifyUserOp('순서 저장', rec);
       if (rec.outcome === 'success') {
         const after = users.filter((u) => u.active).map((u) => u.uid);
@@ -1662,13 +1710,13 @@ async function phaseUserAdmin() {
           violate('U0', '순서 저장 뒤 sort_order 가 10·20·30… 이 아니다(전량 재작성 계약)', gaps.slice(0, 12));
         }
       }
-      if ((await state()).mbOrder === true) await ev(`__lt.click('#mbaOrderCancel')`);
+      if ((await state()).uaOrder === true) await ev(`__lt.click('#uaOrderCancel')`);
     }
   }
 
   /* (4) 퇴사 — 확인창 한 번. 행은 남고 명부에서만 사라진다. */
   {
-    const rec = await doWrite(`퇴사 처리 ${lid}`, `__lt.click('#mbList [data-uop="off"][data-uid="${uid}"]')`);
+    const rec = await doWrite(`퇴사 처리 ${lid}`, `__lt.click('#uaList [data-uop="off"][data-uid="${uid}"]')`);
     const { users, s: sc } = await verifyUserOp(`퇴사 ${lid}`, rec);
     const row = users.find((u) => u.uid === uid);
     if (!row) violate('U0', `퇴사 처리로 행이 사라졌다(uid=${uid}) — 퇴사는 is_active=0 이고 행은 남는다(§3.3)`);
@@ -1678,13 +1726,13 @@ async function phaseUserAdmin() {
 
   /* (5) 복구 — 「퇴사자 보기」를 켜야 대상이 보인다. */
   {
-    const t = await ev(`__lt.click('#mbaInactive')`);
+    const t = await ev(`__lt.click('#uaInactive')`);
     if (!t || t.ok === false) violate('U0', '「퇴사자 보기」를 켜지 못했다', t);
     else {
       const s1 = await waitFor((x) => (x.mbRows || []).some((r) => r.uid === uid), { timeout: 12000, desc: '퇴사자 표시' });
       if (!s1) violate('U0', `「퇴사자 보기」를 켰는데 대상이 나타나지 않는다(uid=${uid})`);
       else {
-        const rec = await doWrite(`복구 ${lid}`, `__lt.click('#mbList [data-uop="on"][data-uid="${uid}"]')`);
+        const rec = await doWrite(`복구 ${lid}`, `__lt.click('#uaList [data-uop="on"][data-uid="${uid}"]')`);
         const { users } = await verifyUserOp(`복구 ${lid}`, rec, { includeInactive: true });
         const row = users.find((u) => u.uid === uid);
         if (rec.outcome === 'success' && row && !row.active) violate('U0', `복구가 성공이라 했는데 is_active 가 0 이다(uid=${uid})`);
@@ -1693,7 +1741,7 @@ async function phaseUserAdmin() {
   }
 
   await closeIfOpen('#userEditModal');
-  await closeIfOpen('#membersModal');
+  await closeIfOpen('#userAdminModal');
 
   /* 잔재 0 — 정리는 sweepTemp 가 하지만, **이 구간이 스스로도 확인한다**(09-07 잔재 사고의 교훈). */
   sweepTemp('직원 관리 구간 종료');

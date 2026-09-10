@@ -10,7 +10,13 @@
  * 무엇을 하나:
  *   이미 떠 있는 위젯(TC_DEBUG_PORT=9222)에 CDP 로 붙어, **실제 화면의 함수·DOM 을 그대로 써서**
  *   직원 등록 → 수정 → 열람범위 → 권한 → 순서 → 퇴사 → 복구 → 잠금 방지 → 검증 → 비관리자 뷰까지
- *   한 라운드(C01~C15)를 왕복하고, **매 케이스 뒤에 MySQL 을 직접 읽어 불변식 다섯**을 본다.
+ *   한 라운드(C01~C16)를 왕복하고, **매 케이스 뒤에 MySQL 을 직접 읽어 불변식 다섯**을 본다.
+ *
+ *   ★★ 2026-09-10 사용자 결정으로 화면이 둘로 갈렸다:
+ *     · 「구성원 보기」(#membersModal, openMembers) = **순수 보기**. 관리자에게도 편집 컨트롤이 없다.
+ *     · 「구성원 편집」(#userAdminModal, openUserAdmin) = 관리자 전용 관리 화면. 조작은 전부 여기다.
+ *     그래서 편집 케이스는 전부 openUserAdmin() 경로로 돌고(C16 이 보기 화면을 따로 본다),
+ *     C13 은 「진입 버튼 부재 + 모달 진입 불가(컨트롤 0) + 관문 거부」 셋을 함께 본다.
  *
  * 불변식(케이스마다):
  *   I1 활성 admin ≥ 1                       — 0 이 되는 순간 "앱에서만 관리한다"가 깨진다(DB 로 가야 푼다)
@@ -259,17 +265,24 @@ const INSTALL_JS = `(function(){
 /** 페이지 상태 한 덩어리 — 폴링은 전부 이걸로 한다(왕복 수를 줄인다). */
 const PSTATE = `JSON.stringify({
   r: __ua.replies.length, a: __ua.applies,
-  saving: !!__mbSaving, busy: !!__mbBusy, admin: !!__mbAdmin, inact: !!__mbInactive, order: !!__mbOrder,
-  n: __mbMembers.length,
+  saving: !!__uaSaving, busy: !!__uaBusy, admin: !!__uaAdmin, inact: !!__uaInactive, order: !!__uaOrder,
+  n: __uaMembers.length,
+  uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden'); })(),
+  lines: document.querySelectorAll('#uaList .mba-line').length,
+  barBtns: document.querySelectorAll('#uaAdmin button').length,
+  entryBtn: !!document.getElementById('usUserAdmin'),
+  ueOpen: (function(){ var e=document.getElementById('userEditModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbOpen: (function(){ var e=document.getElementById('membersModal'); return !!e && !e.classList.contains('hidden'); })(),
-  lines: document.querySelectorAll('#mbList .mba-line').length,
-  barBtns: document.querySelectorAll('#mbAdmin button').length
+  mbBusy: !!__mbBusy, mbN: __mbMembers.length,
+  mbLines: document.querySelectorAll('#mbList .mba-line').length,
+  mbUops: document.querySelectorAll('#mbList [data-uop]').length,
+  mbHasBar: !!document.getElementById('mbAdmin')
 })`;
 const pstate = () => evj(PSTATE);
-/** 명부(호스트가 준 그대로 · 화면 필터 전) */
-const members = () => evj(`JSON.stringify(__mbMembers.map(function(m){return {uid:m.userId,loginId:m.loginId,name:m.name,title:m.title,org:m.orgUnit,orgId:m.orgId,scope:m.viewScope,role:m.editRole,active:m.isActive,sort:m.sortOrder};}))`);
-/** 화면에 실제로 그려진 행 순서(관리자 모드의 .mba-line) */
-const screenIds = () => evj(`JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#mbList .mba-line'), function(l){ var b=l.querySelector('[data-uid]'); return b?Number(b.getAttribute('data-uid')):0; }))`);
+/** 명부(호스트가 준 그대로 · 화면 필터 전) — 「구성원 편집」 화면의 상태다 */
+const members = () => evj(`JSON.stringify(__uaMembers.map(function(m){return {uid:m.userId,loginId:m.loginId,name:m.name,title:m.title,org:m.orgUnit,orgId:m.orgId,scope:m.viewScope,role:m.editRole,active:m.isActive,sort:m.sortOrder};}))`);
+/** 화면에 실제로 그려진 행 순서(「구성원 편집」의 .mba-line) */
+const screenIds = () => evj(`JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#uaList .mba-line'), function(l){ var b=l.querySelector('[data-uid]'); return b?Number(b.getAttribute('data-uid')):0; }))`);
 
 async function waitPage(pred, { timeout = 15000, interval = 80, desc = '' } = {}) {
   const t = Date.now();
@@ -281,13 +294,13 @@ async function waitPage(pred, { timeout = 15000, interval = 80, desc = '' } = {}
   }
 }
 
-/** 호스트 쓰기 1건 — mbSend 로 보내고 __userSaved 회신을 기다린다.
+/** 호스트 쓰기 1건 — uaSend 로 보내고 __userSaved 회신을 기다린다.
  *  성공이면 호스트가 곧바로 명부를 다시 읽어 __applyMembers 로 민다(§4.2) — 그것까지 기다린다. */
 async function send(payload, { expectApply = true, timeout = 15000 } = {}) {
   const idle = await waitPage((s) => !s.saving && !s.busy, { timeout: 14000, desc: 'idle' });
-  if (!idle) throw new Error('직전 조작이 끝나지 않았다(__mbSaving/__mbBusy 가 안 내려간다)');
+  if (!idle) throw new Error('직전 조작이 끝나지 않았다(__uaSaving/__uaBusy 가 안 내려간다)');
   const b = idle;
-  await ev(`mbSend(${JSON.stringify(payload)})`);
+  await ev(`uaSend(${JSON.stringify(payload)})`);
   const s = await waitPage((x) => x.r > b.r, { timeout, desc: '회신' });
   if (!s) throw new Error(`호스트 회신이 오지 않았다: ${JSON.stringify(payload).slice(0, 160)}`);
   const rep = await evj(`JSON.stringify(__ua.replies[__ua.replies.length-1])`);
@@ -459,7 +472,7 @@ async function formSave({ uid = 0, loginId, name, title, orgId, scope, role }) {
 async function setInactiveView(on) {
   const s0 = await pstate();
   if (!!s0.inact === !!on) return s0;
-  const r = await ev(`(function(){var c=document.getElementById('mbaInactive'); if(!c) return false; c.click(); return true;})()`);
+  const r = await ev(`(function(){var c=document.getElementById('uaInactive'); if(!c) return false; c.click(); return true;})()`);
   if (!r) throw new Error('「퇴사자 보기」 체크박스가 없다');
   const s = await waitPage((x) => !x.busy && !!x.inact === !!on, { timeout: 12000 });
   if (!s) throw new Error(`「퇴사자 보기」 ${on ? '켜기' : '끄기'} 가 반영되지 않았다`);
@@ -501,16 +514,23 @@ async function main() {
   }
   log(`로그인 계정 ${ME}(uid=${meRow.uid}) · 활성 admin 확인`);
 
-  /* 구성원 명부 열기 — 관리자 회신을 받아야 편집 컨트롤이 생긴다 */
-  await ev(`openMembers()`);
-  let s = await waitPage((x) => x.mbOpen && !x.busy && x.n > 0, { timeout: 20000 });
-  if (!s) { console.error('[판정 없음] 구성원 명부를 열지 못했다'); process.exit(2); }
+  /* 「구성원 편집」 열기 — 관리자 회신을 받아야 편집 컨트롤이 생긴다(진입 자체가 관리자 전용이다) */
+  await ev(`openUserAdmin()`);
+  let s = await waitPage((x) => x.uaOpen && !x.busy && x.n > 0, { timeout: 20000 });
+  if (!s) { console.error('[판정 없음] 「구성원 편집」 화면을 열지 못했다'); process.exit(2); }
   if (!s.admin) { console.error('[판정 없음] 회신에 admin 이 없다 — 호스트가 이 계정을 관리자로 보지 않는다'); process.exit(2); }
-  const meta = await evj(`JSON.stringify({titles: __mbTitles.slice(), units: __mbUnits.filter(function(u){return u&&u.orgId!=null;}).map(function(u){return {orgId:u.orgId,name:u.name};})})`);
+  const meta = await evj(`JSON.stringify({titles: __uaTitles.slice(), units: __uaUnits.filter(function(u){return u&&u.orgId!=null;}).map(function(u){return {orgId:u.orgId,name:u.name};})})`);
   if (meta.titles.length < 2 || meta.units.length < 2) {
     console.error('[판정 없음] 직급 또는 조직이 2개 미만이다 — 수정 케이스를 만들 수 없다');
     process.exit(2);
   }
+  //  「구성원 편집」 진입 버튼은 「사용자 정보」의 권한 조회(loadUserPerm)가 만든다 —
+  //  이 시험이 그 경로를 한 번 돌려 둔다. C13 이 '내려가면 사라진다'를 보려면 먼저 서 있어야 한다.
+  await ev(`loadUserPerm()`);
+  const entry0 = await waitPage((x) => x.entryBtn === true, { timeout: 15000 });
+  if (!entry0) { console.error("[판정 없음] 관리자인데 「구성원 편집」 진입 버튼(#usUserAdmin)이 만들어지지 않았다"); process.exit(2); }
+  log('진입 버튼 #usUserAdmin 확인(관리자 회신으로 생성됨)');
+
   const T1 = meta.titles[0], T2 = meta.titles[1];
   const O1 = meta.units[rint(0, meta.units.length - 1)];
   const O2 = meta.units.find((u) => u.orgId !== O1.orgId) || meta.units[0];
@@ -602,7 +622,7 @@ async function main() {
   //  ★ 여기서 하는 이유: 두 zzU 가 모두 서 있는 가장 이른 시점이고, 뒤의 퇴사(C06)가
   //    §7-1a 의 사각지대(C15)를 만들려면 **그 전에 한 번은 전량 재작성이 있어야** 하기 때문이다.
   await runCase('C08', '순서 편집(위로/아래로) → 순서 저장', async () => {
-    const t = await ev(`(function(){var b=document.getElementById('mbaOrder'); if(!b) return false; b.click(); return true;})()`);
+    const t = await ev(`(function(){var b=document.getElementById('uaOrderEdit'); if(!b) return false; b.click(); return true;})()`);
     if (!okq('C08 「순서 편집」 켜기', !!t)) return;
     const s1 = await waitPage((x) => x.order === true, { timeout: 8000 });
     if (!okq('C08 순서 편집 모드 진입', !!s1)) return;
@@ -611,8 +631,8 @@ async function main() {
 
     const down = rint(1, 3), up = rint(1, 3);
     const moved = await evj(`JSON.stringify({
-      down: (function(){var n=0;for(var i=0;i<${down};i++){var b=document.querySelector('#mbList [data-uop="down"][data-uid="${A.uid}"]');if(!b||b.disabled)break;b.click();n++;}return n;})(),
-      up:   (function(){var n=0;for(var i=0;i<${up};i++){var b=document.querySelector('#mbList [data-uop="up"][data-uid="${B.uid}"]');if(!b||b.disabled)break;b.click();n++;}return n;})()
+      down: (function(){var n=0;for(var i=0;i<${down};i++){var b=document.querySelector('#uaList [data-uop="down"][data-uid="${A.uid}"]');if(!b||b.disabled)break;b.click();n++;}return n;})(),
+      up:   (function(){var n=0;for(var i=0;i<${up};i++){var b=document.querySelector('#uaList [data-uop="up"][data-uid="${B.uid}"]');if(!b||b.disabled)break;b.click();n++;}return n;})()
     })`);
     note(`[아래로] ${moved.down}회(uid=${A.uid}) · [위로] ${moved.up}회(uid=${B.uid})`);
     const after = await screenIds();
@@ -620,7 +640,7 @@ async function main() {
       '▲▼ 를 눌렀는데 순서가 그대로다 — 이 케이스는 아무것도 증명하지 못한다');
 
     const b0 = await pstate();
-    await ev(`(function(){var b=document.getElementById('mbaOrderSave'); if(b) b.click(); return 1;})()`);
+    await ev(`(function(){var b=document.getElementById('uaOrderSave'); if(b) b.click(); return 1;})()`);
     const sv = await waitPage((x) => x.r > b0.r, { timeout: 15000 });
     if (!okq('C08 「순서 저장」 회신', !!sv)) return;
     const rep = await evj(`JSON.stringify(__ua.replies[__ua.replies.length-1])`);
@@ -663,10 +683,10 @@ async function main() {
   await runCase('C15', '(선택) 순서 저장 시 퇴사자 순번 사각지대 §7-1a', async () => {
     const beforeRow = dbSnap('C15 전').byId.get(B.uid);
     await setInactiveView(false);   // 퇴사자를 감춘 채 저장하는 것이 바로 그 구멍의 조건이다
-    await ev(`(function(){var b=document.getElementById('mbaOrder'); if(b) b.click(); return 1;})()`);
+    await ev(`(function(){var b=document.getElementById('uaOrderEdit'); if(b) b.click(); return 1;})()`);
     await waitPage((x) => x.order === true, { timeout: 8000 });
     const b0 = await pstate();
-    await ev(`(function(){var b=document.getElementById('mbaOrderSave'); if(b) b.click(); return 1;})()`);
+    await ev(`(function(){var b=document.getElementById('uaOrderSave'); if(b) b.click(); return 1;})()`);
     const sv = await waitPage((x) => x.r > b0.r, { timeout: 15000 });
     if (!sv) { note('C15: 순서 저장 회신이 없어 재현하지 못했다(보고만)'); return; }
     const rep = await evj(`JSON.stringify(__ua.replies[__ua.replies.length-1])`);
@@ -763,13 +783,13 @@ async function main() {
   });
 
   /* ── C14 재진입 가드 ────────────────────────────────────────────────── */
-  await runCase('C14', '재진입 가드(mbSend 연타 → 한 번만 반영)', async () => {
+  await runCase('C14', '재진입 가드(uaSend 연타 → 한 번만 반영)', async () => {
     const idle = await waitPage((x) => !x.saving && !x.busy, { timeout: 12000 });
     if (!okq('C14 시작 시 유휴', !!idle)) return;
     const n1 = A.lid + '_x1', n2 = A.lid + '_x2';
     const mk = (nm) => ({ cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: nm, title: T1, orgId: null, viewScope: 'self', editRole: 'viewer' });
-    //  같은 평가 안에서 연달아 두 번 — 두 번째는 __mbSaving 으로 막혀야 한다.
-    await ev(`(mbSend(${JSON.stringify(mk(n1))}), mbSend(${JSON.stringify(mk(n2))}), 1)`);
+    //  같은 평가 안에서 연달아 두 번 — 두 번째는 __uaSaving 으로 막혀야 한다.
+    await ev(`(uaSend(${JSON.stringify(mk(n1))}), uaSend(${JSON.stringify(mk(n2))}), 1)`);
     const s = await waitPage((x) => x.r > idle.r, { timeout: 15000 });
     if (!okq('C14 회신 도착', !!s)) return;
     await waitPage((x) => x.a > idle.a, { timeout: 10000 });
@@ -785,7 +805,7 @@ async function main() {
   /* ── C13 비관리자 뷰 ────────────────────────────────────────────────── */
   //  ★★ 이 케이스만 **로그인 계정의 권한을 실제로 내린다.** 복원 실패는 사람이 DB 로 가야 푸는
   //    상태를 남기므로(판번호 사고와 같은 규율), finally 에서 반드시 되돌리고 **읽어서 확인**한다.
-  await runCase('C13', '비관리자 뷰(편집 컨트롤 부재 + 쓰기 거부)', async () => {
+  await runCase('C13', '비관리자 뷰(진입 버튼 부재 + 편집 화면 진입 불가 + 관문 거부)', async () => {
     const admins = Number(sql(`SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1`, { what: 'C13 전 admin 수' })[0][0]);
     if (admins < 2) {
       skip('C13', `활성 admin 이 ${admins}명뿐이라 ${ME} 를 내리면 관리자가 0이 된다 — 앞 케이스(C05/C07)가 깨졌다는 뜻`);
@@ -798,12 +818,26 @@ async function main() {
       //  I4 기대값도 함께 내린다 — 이건 **시험이 일부러 낸 변경**이라 불변식이 눈감을 자리가 아니다.
       const e = expect.get(meRow.uid); if (e) e[5] = 'editor';
 
-      await ev(`openMembers()`);
-      const s2 = await waitPage((x) => x.mbOpen && !x.busy && x.n > 0, { timeout: 20000 });
-      if (!okq('C13 비관리자로 명부 열림', !!s2)) return;
-      okq('C13 __mbAdmin = false', s2.admin === false, String(s2.admin));
-      okq('C13 명부에 편집 컨트롤 DOM 부재(.mba-line 0 · §5.1)', s2.lines === 0, `실제 ${s2.lines}`);
-      okq('C13 관리자 막대도 비어 있다(#mbAdmin button 0)', s2.barBtns === 0, `실제 ${s2.barBtns}`);
+      //  ① 진입 버튼이 **DOM 에서 사라진다**(숨김이 아니라 부재). 권한 회신을 다시 받게 한다.
+      await ev(`(typeof closeModal === 'function' && closeModal('#userAdminModal'), 1)`);
+      await ev(`loadUserPerm()`);
+      const gone = await waitPage((x) => x.entryBtn === false, { timeout: 15000 });
+      okq('C13 「구성원 편집」 진입 버튼이 DOM 에서 사라졌다(숨김 아님)', !!gone,
+        gone ? '' : '#usUserAdmin 이 남아 있다 — 관리자에서 내려갔는데 문이 그대로다');
+
+      //  ② 그래도 함수를 직접 불러 본다(버튼이 없다고 경로가 없는 것은 아니다).
+      //     호스트가 admin:false 로 답하므로 컨트롤이 하나도 만들어지지 않아야 한다.
+      await ev(`openUserAdmin()`);
+      const s2 = await waitPage((x) => x.uaOpen && !x.busy, { timeout: 20000 });
+      if (!okq('C13 비관리자로 「구성원 편집」 화면이 열림(진입 시도는 된다)', !!s2)) return;
+      okq('C13 __uaAdmin = false', s2.admin === false, String(s2.admin));
+      okq('C13 편집 화면에 컨트롤 DOM 부재(.mba-line 0 · §5)', s2.lines === 0, `실제 ${s2.lines}`);
+      okq('C13 관리자 막대도 비어 있다(#uaAdmin button 0)', s2.barBtns === 0, `실제 ${s2.barBtns}`);
+      //  ③ 편집 폼에도 닿을 수 없다 — userEdOpen 이 __uaAdmin 을 먼저 본다.
+      await ev(`userEdOpen(${A.uid})`);
+      await sleep(200);
+      const s3 = await pstate();
+      okq('C13 편집 폼에 닿을 수 없다(#userEditModal 안 열림)', s3.ueOpen === false, String(s3.ueOpen));
 
       const rep = await send({
         cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: A.lid + '_nope', title: T1,
@@ -827,8 +861,32 @@ async function main() {
       }
       okq('C13 로그인 계정 admin 복원 확인(DB 재조회)', true);
       //  화면도 관리자 상태로 되돌려 둔다(다음 사람이 위젯을 그대로 쓸 수 있게).
-      try { await ev(`openMembers()`); await waitPage((x) => x.mbOpen && !x.busy && x.admin === true, { timeout: 15000 }); } catch (_) { }
+      //  ★ 진입 버튼도 함께 되살린다 — loadUserPerm 이 다시 admin 을 읽어야 버튼이 돌아온다.
+      try {
+        await ev(`loadUserPerm()`);
+        await ev(`openUserAdmin()`);
+        await waitPage((x) => x.uaOpen && !x.busy && x.admin === true && x.entryBtn === true, { timeout: 15000 });
+      } catch (_) { }
     }
+  });
+
+  /* ── C16 「구성원 보기」는 관리자에게도 순수 보기다(2026-09-10 결정) ──── */
+  //  ★ 여기가 이 판의 핵심 계약이다. 관리자로 로그인한 채 보기 화면을 열어 **컨트롤이 0** 인지 본다.
+  //    앞의 계약들은 "비관리자에게 없다"였지만, 이제는 "관리자에게도 없다"가 판정 기준이다.
+  await runCase('C16', '「구성원 보기」는 관리자에게도 편집 컨트롤이 0', async () => {
+    await ev(`(typeof closeModal === 'function' && closeModal('#userAdminModal'), 1)`);
+    await ev(`openMembers()`);
+    const sv = await waitPage((x) => x.mbOpen && !x.mbBusy && x.mbN > 0, { timeout: 20000 });
+    if (!okq('C16 구성원 보기 열림', !!sv)) return;
+    okq('C16 명부가 실제로 그려졌다(전제)', sv.mbN > 0, `명부 ${sv.mbN}명`);
+    okq('C16 보기 화면에 .mba-line 0(편집 행 구조 없음)', sv.mbLines === 0, `실제 ${sv.mbLines}`);
+    okq('C16 보기 화면에 data-uop 버튼 0(편집·퇴사·▲▼ 없음)', sv.mbUops === 0, `실제 ${sv.mbUops}`);
+    okq('C16 옛 관리자 막대 자리(#mbAdmin) 자체가 없다', sv.mbHasBar === false, String(sv.mbHasBar));
+    //  ★ 그런데 관리자 상태는 여전히 참이다 — 즉 "권한이 없어서 안 보이는 것"이 아니라
+    //    "보기 화면에는 원래 없는 것"임을 같은 순간에 확인한다.
+    const admin = await evj(`JSON.stringify({ ua: !!__uaAdmin })`);
+    okq('C16 같은 순간에 관리자 상태는 참이다(권한 때문이 아니다)', admin.ua === true, String(admin.ua));
+    await ev(`(typeof closeModal === 'function' && closeModal('#membersModal'), 1)`);
   });
 
   /* ── 종료 정리 + 전량 대조 ──────────────────────────────────────────── */
@@ -853,7 +911,7 @@ async function main() {
     for (const line of d) console.log('        ' + line);
   }
 
-  try { await ev(`(typeof closeModal==='function' && closeModal('#membersModal'), 1)`); } catch (_) { }
+  try { await ev(`(typeof closeModal==='function' && (closeModal('#membersModal'), closeModal('#userAdminModal')), 1)`); } catch (_) { }
   cdp.close();
 }
 

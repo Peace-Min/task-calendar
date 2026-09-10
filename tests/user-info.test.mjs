@@ -1469,8 +1469,10 @@ test('변이㊲-d: 조회 결과를 currentUser 에 대입하면 identityLiveFro
 });
 
 test('변이㊲-e: 조회 뒤 applyUser 로 세션을 갈아끼우면 identityLiveFromInfo 가 실패한다(§2.5)', () => {
-  const bad = mutate(src, "    set('usPermMsg', '');\n    return;",
-                          "    applyUser(Object.assign({}, currentUser, {orgUnit: inf.org_unit}));\n    set('usPermMsg', '');\n    return;");
+  //  ★ 앵커가 한 번 밀렸다(2026-09-10): 이 자리에 usAdminBtnSync 호출이 끼어들면서
+  //    "set('usPermMsg','') 바로 다음이 return" 이 아니게 됐다. 앵커를 그 뒷줄(주석 시작)로 옮긴다.
+  const bad = mutate(src, "    set('usPermMsg', '');\n    //",
+                          "    applyUser(Object.assign({}, currentUser, {orgUnit: inf.org_unit}));\n    set('usPermMsg', '');\n    //");
   assert.throws(() => checks.identityLiveFromInfo(bad), /applyUser 를 부른다/);
 });
 
