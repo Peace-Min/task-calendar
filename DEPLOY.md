@@ -29,7 +29,7 @@
 
 ## 0. 서버 DB 선행 작업 (§2~§3보다 **먼저**)
 
-캘린더 데이터는 서버 MySQL(`taskmgr`)에 있다(v0.18.0~). 그래서 **빌드보다 서버가 먼저**다 — 아래 넷을 끝내지 않으면 잘 만들어진 인스톨러를 배포해도 동료 PC에서 캘린더가 열리지 않는다.
+캘린더 데이터는 서버 MySQL(`taskmgr`)에 있다(v0.18.0~). 그래서 **빌드보다 서버가 먼저**다 — 아래 다섯을 끝내지 않으면 잘 만들어진 인스톨러를 배포해도 동료 PC에서 캘린더가 열리지 않는다.
 
 ### 0-1. 배포 구성 채우기 — `widget/DeployConfig.cs` (빌드 **전**)
 
@@ -67,6 +67,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1
 
 - 다르면 **올리지 않는다.** 어느 한쪽만 앞서면 위젯 배지가 경고로 바뀌고 **전량 교체(가져오기·전체 초기화)가 거부**된다(조회·통상 저장은 계속된다).
 - 즉 **서버 적용과 위젯 배포는 같은 창에서** 한다. 순서는 서버가 먼저다.
+
+### 0-5. GRANT 재적용 — 휴지통(v0.19.0~)
+
+휴지통의 **영구 삭제**는 앱 계정(`taskmgr_app`)에 **일곱 표** `DELETE` 가 있어야 동작한다(다섯 표 + 계정 삭제에 딸려 지우는 `cal_user_pref`·`cal_user_rev`)(없으면 ERROR 1142). GRANT 문은 멱등이라 **다시 실행하기만** 하면 된다.
+
+- `db/deploy/create-app-user.sql` — `project` · `customer` · `section_code` · `status_code`
+- `db/deploy/grants-calendar.sql` — `cal_user_pref` · `cal_user_rev`(계정 영구 삭제가 먼저 지우는 부속 2표) + 머리말 서술
+- `taskmgr-company-data/05-grants.sql` — `app_user`
+
+확인(일곱 표에 DELETE 가 보여야 한다 — 2026-09-10 개발 DB 에서 부속 2표가 빠져 계정 삭제가 ERROR 1142 로 죽는 것을 루프 시험이 잡았다):
+
+```sql
+SHOW GRANTS FOR 'taskmgr_app'@'%';
+```
+
+> 이 권한은 '가능하게'만 한다. 무엇을 지울 수 있는지는 호스트 관문이 정한다 — 숨긴 항목만, 관리자만, 이름을 그대로 입력해야 지워진다(docs/TRASH-DELETE.md §3.3).
 
 ---
 

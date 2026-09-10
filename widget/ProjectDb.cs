@@ -1645,5 +1645,459 @@ namespace TaskCalendarWidget
             m = m.Replace("\r", " ").Replace("\n", " ").Trim();
             return m.Length > 120 ? m.Substring(0, 120) + "…" : m;
         }
+
+        // ================================================================================
+        //  휴지통 — 숨긴 항목 조회 · 복구 · 영구 삭제 (TRASH-DELETE §3·§4)
+        //    검토자 지적이 이 자리의 이유다: "숨기기만 되어 있지 실제로 지우는 메커니즘이 없다."
+        //    과제는 한 걸음 더 비어 있었다 — 숨기면 앱에서 **다시는 볼 수 없다**(호스트가 is_active=1 만 읽는다).
+        //    그래서 다섯 표(과제·인력·발주처·구분·상태)의 숨긴 항목을 한 화면에 모으고 거기서만 지운다.
+        //
+        //    ★ 세 함수 전부 OpenAdminAsync 다. 되돌릴 수 없는 조작은 가장 좁은 관문으로 — 발주처·코드의
+        //      '숨김'은 지금처럼 editor 도 하지만(SetCustomerActiveAsync·SetCodeActiveAsync, 쓰기 관문)
+        //      '삭제'와 '휴지통 열람'은 admin 뿐이다. 관문이 갈린 게 아니라 조작이 다른 것이다.
+        //    ★ 지울 수 있는 것은 **숨긴 항목(is_active=0)** 뿐이다. 숨김 → 휴지통 → 삭제, 이 두 단계가
+        //      실수 방지의 전부다(한 번에 지우는 길을 두지 않는다 · §2).
+        //    ★ 되돌리기는 없다. 삭제 뒤 복구 수단은 DB 백업뿐이라, 확인은 **이름을 그대로 입력**하는 방식이고
+        //      호스트도 그 입력을 대조한다(§5.2 — Trim 도 대소문자 무시도 하지 않는다).
+        // ================================================================================
+
+        // 대상 종류 → 표·키 컬럼·이름 컬럼·라벨. 다섯 표가 같은 뼈대라 해석을 한 곳에 모은다(분기 복제 방지).
+        //   ★ 나오는 값은 전부 **코드 상수**다. 표·컬럼 이름이 SQL 에 이어 붙어도 사용자 입력은 닿지 않는다
+        //     (값은 언제나 @파라미터 바인딩 — 이 파일의 규약 ①).
+        private static bool ResolveTrashKind(string? kind, out string table, out string keyCol, out string nameCol, out string label)
+        {
+            switch ((kind ?? "").Trim())
+            {
+                case "project":  table = "project";      keyCol = "uid";     nameCol = "project_name"; label = "과제";   return true;
+                case "user":     table = "app_user";     keyCol = "user_id"; nameCol = "name";         label = "인력";   return true;
+                case "customer": table = "customer";     keyCol = "name";    nameCol = "name";         label = "발주처"; return true;
+                case "section":  table = "section_code"; keyCol = "name";    nameCol = "name";         label = "구분";   return true;
+                case "status":   table = "status_code";  keyCol = "name";    nameCol = "name";         label = "상태";   return true;
+                default:         table = ""; keyCol = ""; nameCol = ""; label = ""; return false;
+            }
+        }
+
+        // 인력 '기록 0건'의 기준 표 9개(§3.2).
+        //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev 를
+        //     뺀 것과 **글자까지 같아야 한다** — 시험 계약 ③ 이 정본을 파싱해 이 배열과 대조한다(표 이름 박제 금지).
+        //   ★ 뺀 둘은 로그인 한 번이면 생기는 부속 행이라 '기록'이 아니다. 삭제 트랜잭션이 그 둘을 먼저 지운다.
+        //   ★ cal_migration_log 는 뺄 수 없다 — XML 이관을 한 번이라도 한 계정은 일정이 있었던 계정이다(감사 흔적).
+        private static readonly string[] UserRecordTables =
+        {
+            "cal_category", "cal_entry", "cal_todo", "cal_room", "cal_task_hours",
+            "cal_attendance", "cal_report_daily", "cal_report_weekly", "cal_migration_log",
+        };
+
+        // 한 사람의 기록 수 = 9개 표의 합. 표 이름은 위 배열(상수)에서만 온다.
+        private static string UserRefCountSql()
+        {
+            var parts = new List<string>(UserRecordTables.Length);
+            foreach (var t in UserRecordTables) parts.Add("(SELECT COUNT(*) FROM " + t + " WHERE user_id=@u)");
+            return "SELECT " + string.Join(" + ", parts);
+        }
+
+        // 전원의 기록 수를 한 문장으로 — 휴지통 목록이 사람마다 9회 왕복하지 않게(같은 배열이 소스다).
+        private static string UserRefCountAllSql()
+        {
+            var parts = new List<string>(UserRecordTables.Length);
+            foreach (var t in UserRecordTables) parts.Add("SELECT user_id, COUNT(*) AS c FROM " + t + " GROUP BY user_id");
+            return "SELECT user_id, SUM(c) AS c FROM (" + string.Join(" UNION ALL ", parts) + ") x GROUP BY user_id";
+        }
+
+        // 거부 문구(§4.3) — 같은 말을 두 곳에 적으면 한쪽만 고쳐진다. 시험도 이 문장들을 계약으로 붙잡는다.
+        private const string TrashKindMsg   = "알 수 없는 대상입니다.";
+        private const string TrashGoneMsg   = "이미 삭제됐거나 없는 항목입니다 — 목록을 새로고침합니다.";
+        private const string TrashActiveMsg = "숨긴(퇴사) 항목만 지울 수 있습니다. 먼저 숨기세요.";
+        private const string TrashNameMsg   = "입력한 이름이 다릅니다.";
+        private const string TrashSelfMsg   = "자기 계정은 지울 수 없습니다.";
+        private const string TrashFkMsg     = "다른 기록이 붙어 있어 지울 수 없습니다.";
+        private const string TrashNoTarget  = "대상이 지정되지 않았습니다.";
+        private const string TrashDoneMsg   = "영구 삭제했습니다.";
+        private static string UserRecordsMsg(long n) => "기록 " + n + "건이 있어 지울 수 없습니다. 퇴사 상태로 유지됩니다.";
+        private static string CodeInUseMsg(long n)   => "이 값을 쓰는 과제가 " + n + "건(숨긴 과제 포함) 있어 지울 수 없습니다.";
+
+        // 삭제 직전 행을 로그에 남길 때 쓰는 직렬화 설정 — 감사 표를 새로 두지 않는 대신 이 한 줄이 그 역할이다(§4.4).
+        //   ★ 한글을 \uXXXX 로 이스케이프하지 않는다. 사람이 읽지 못하는 감사 기록은 없는 것과 같다.
+        private static readonly JsonSerializerOptions TrashLogJson = new JsonSerializerOptions
+        {
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+
+        private static string RowJson(Dictionary<string, object?> row)
+        {
+            try { return JsonSerializer.Serialize(row, TrashLogJson); }
+            catch (Exception ex) { return "{\"직렬화실패\":\"" + Short(ex) + "\"}"; }
+        }
+
+        // 부제 — 빈 조각은 빼고 ' · ' 로 잇는다(빈 칸이 점만 남는 줄을 만들지 않는다).
+        private static string SubLine(params string[] parts)
+        {
+            var keep = new List<string>(parts.Length);
+            foreach (var p in parts) { string t = (p ?? "").Trim(); if (t.Length > 0) keep.Add(t); }
+            return string.Join(" · ", keep);
+        }
+
+        // 휴지통 한 줄 — 다섯 탭이 **같은 모양**이라 화면도 한 벌로 그린다(§5.1).
+        private static Dictionary<string, object?> TrashRow(string key, string name, string sub, long refs, bool deletable, string why) =>
+            new Dictionary<string, object?>
+            {
+                ["key"] = key,
+                ["name"] = name,
+                ["sub"] = sub,
+                ["refs"] = refs,
+                ["deletable"] = deletable,
+                ["why"] = why,
+            };
+
+        private static string TrashFailJson(string msg) =>
+            JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = false, ["msg"] = msg });
+
+        private static long LongOrZero(DbDataReader rd, string col)
+        {
+            int i = rd.GetOrdinal(col);
+            if (rd.IsDBNull(i)) return 0L;
+            try { return Convert.ToInt64(rd.GetValue(i)); } catch { return 0L; }
+        }
+
+        // 코드 3종(발주처·구분·상태)의 숨긴 값 + 참조 수. 참조는 **숨긴 과제까지 포함한** 전 과제다 —
+        //   FK 가 RESTRICT 라 숨긴 과제 하나만 남아 있어도 DB 가 거부한다(활성만 세면 힌트가 거짓말을 한다).
+        private static async Task<List<Dictionary<string, object?>>> TrashCodeListAsync(
+            MySqlConnection conn, string table, string projCol, CancellationToken ct)
+        {
+            var refs = new Dictionary<string, long>(StringComparer.Ordinal);
+            await using (var cmd = new MySqlCommand(
+                "SELECT " + projCol + " AS v, COUNT(*) AS c FROM project WHERE " + projCol + " IS NOT NULL GROUP BY " + projCol, conn))
+            await using (var rd = await cmd.ExecuteReaderAsync(ct))
+            {
+                while (await rd.ReadAsync(ct)) refs[Str(rd, "v")] = LongOrZero(rd, "c");
+            }
+            var rows = new List<Dictionary<string, object?>>();
+            await using (var cmd = new MySqlCommand("SELECT name FROM " + table + " WHERE is_active=0 ORDER BY name", conn))
+            await using (var rd = await cmd.ExecuteReaderAsync(ct))
+            {
+                while (await rd.ReadAsync(ct))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length == 0) continue;
+                    long c = refs.TryGetValue(n, out var x) ? x : 0L;
+                    rows.Add(TrashRow(n, n, "", c, c == 0, c == 0 ? "" : CodeInUseMsg(c)));
+                }
+            }
+            return rows;
+        }
+
+        // 휴지통 조회 — 다섯 표의 **숨긴 항목만**(§4.2).
+        //   회신 3분기: 관리자면 {found:true, admin:true, 목록 다섯} · 관리자가 아니면 {found:true, admin:false} ·
+        //   연결/질의 실패면 {found:false, msg}. 권한 없음을 실패로 뭉개지 않는 이유는 늘 같다 —
+        //   화면이 "서버가 이상한가?" 와 "내가 볼 수 없는가?" 를 구분해야 한다(USER-LOGIN §3.3 함정).
+        //   ★ refs·deletable·why 는 **화면용 힌트**다. 최종 판정은 DeleteTrashAsync 가 같은 트랜잭션에서 다시 한다.
+        //     힌트와 판정이 갈리면 판정이 이긴다(§4.2).
+        public async Task<string?> LoadTrashJsonAsync(string loginId)
+        {
+            string me = (loginId ?? "").Trim();
+            if (me.Length == 0) me = SessionLoginId();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex)
+                {
+                    // 미로그인·미등록·비활성·비관리자 — 넷 다 '휴지통을 볼 수 없는 사람'이다. 목록을 싣지 않는다.
+                    _log("휴지통 조회 거부(" + me + "): " + nex.Message);
+                    return JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = true, ["admin"] = false });
+                }
+                catch (Exception cex) { _log("DB 연결 실패(휴지통 조회): " + Short(cex)); return TrashFailJson(OfflineMsg); }
+                await using var connOwn = conn;
+
+                // 나 자신 — '자기 계정은 지울 수 없다' 힌트의 근거(판정은 삭제 트랜잭션이 잠근 채 다시 한다).
+                int myId = 0;
+                await using (var cmd = new MySqlCommand("SELECT user_id FROM app_user WHERE login_id=@me", conn))
+                {
+                    cmd.Parameters.AddWithValue("@me", me);
+                    var o = await cmd.ExecuteScalarAsync(cts.Token);
+                    if (o != null && o != DBNull.Value) myId = Convert.ToInt32(o);
+                }
+
+                // ① 과제 — 참조는 '이 과제를 편입한 개인 카테고리' 수다. FK 가 아니라 문자열 참조라(§3.1)
+                //    지워도 DB 는 막지 않는다. 그래서 deletable 은 항상 true 고, 수는 확인창이 보여 준다.
+                var catRefs = new Dictionary<string, long>(StringComparer.Ordinal);
+                await using (var cmd = new MySqlCommand(
+                    "SELECT project_uid, COUNT(*) AS c FROM cal_category WHERE project_uid IS NOT NULL AND project_uid<>'' GROUP BY project_uid", conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token)) catRefs[Str(rd, "project_uid")] = LongOrZero(rd, "c");
+                }
+                var projects = new List<Dictionary<string, object?>>();
+                await using (var cmd = new MySqlCommand(
+                    "SELECT uid, project_name, common_name, customer, section FROM project WHERE is_active=0 ORDER BY project_name", conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        string uid = Str(rd, "uid");
+                        long c = catRefs.TryGetValue(uid, out var x) ? x : 0L;
+                        projects.Add(TrashRow(uid, Str(rd, "project_name"),
+                            SubLine(Str(rd, "common_name"), Str(rd, "customer"), Str(rd, "section")), c, true, ""));
+                    }
+                }
+
+                // ② 인력 — 기록 9표 합계가 0 이고 자기 자신이 아닐 때만 지울 수 있다(§3.2).
+                var userRefs = new Dictionary<int, long>();
+                await using (var cmd = new MySqlCommand(UserRefCountAllSql(), conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        int uid = IntOrNull(rd, "user_id") ?? 0;
+                        if (uid > 0) userRefs[uid] = LongOrZero(rd, "c");
+                    }
+                }
+                var users = new List<Dictionary<string, object?>>();
+                await using (var cmd = new MySqlCommand(
+                    "SELECT u.user_id, u.name, u.title, u.login_id, o.name AS org_unit " +
+                    "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "WHERE u.is_active=0 ORDER BY u.name", conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        int uid = IntOrNull(rd, "user_id") ?? 0;
+                        long c = userRefs.TryGetValue(uid, out var x) ? x : 0L;
+                        bool self = uid != 0 && uid == myId;
+                        string why = c > 0 ? UserRecordsMsg(c) : (self ? TrashSelfMsg : "");
+                        users.Add(TrashRow(uid.ToString(CultureInfo.InvariantCulture), Str(rd, "name"),
+                            SubLine(Str(rd, "org_unit"), Str(rd, "title"), Str(rd, "login_id")), c, c == 0 && !self, why));
+                    }
+                }
+
+                // ③ 코드 3종 — 셋이 같은 함수다(발주처도 이름 자연키 마스터라 코드와 구조가 같다).
+                var customers = await TrashCodeListAsync(conn, "customer", "customer", cts.Token);
+                var sections  = await TrashCodeListAsync(conn, "section_code", "section", cts.Token);
+                var statuses  = await TrashCodeListAsync(conn, "status_code", "status", cts.Token);
+
+                _log("휴지통 조회: 과제 " + projects.Count + " · 인력 " + users.Count + " · 발주처 " + customers.Count +
+                     " · 구분 " + sections.Count + " · 상태 " + statuses.Count + "건");
+                return JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["found"] = true,
+                    ["admin"] = true,
+                    ["projects"] = projects,
+                    ["users"] = users,
+                    ["customers"] = customers,
+                    ["sections"] = sections,
+                    ["statuses"] = statuses,
+                });
+            }
+            catch (Exception ex) { _log("휴지통 조회 실패: " + Short(ex)); return TrashFailJson("휴지통을 불러오지 못했습니다: " + Short(ex)); }
+        }
+
+        // 복구 — 숨긴 항목을 목록으로 되돌린다(is_active=1).
+        //   ★ 설계 §4.1 은 기존 Set*ActiveAsync 재사용을 적었지만 그 넷은 OpenWriteAsync(editor 통과)다.
+        //     재사용하면 "휴지통의 세 함수는 관리자 관문만 쓴다"는 계약이 그 자리에서 깨지므로 UPDATE 를 여기 둔다
+        //     (TRASH-DELETE §11 정정). 기존 숨김/복구 경로는 손대지 않는다 — 그쪽은 그대로 editor 의 일이다.
+        //   ★ 코드 2종의 복구는 sort_order 를 맨 뒤(MAX+10)로 새로 부여한다. 옛 순번을 들고 돌아오면 활성끼리
+        //     sort_order 가 겹쳐 드롭다운 순서가 콜레이션에 좌우된다(SetCodeActiveAsync 가 루프테스트 I5 로
+        //     실측해 고친 결함 — 여기서 되풀이하지 않는다).
+        public async Task<(bool ok, string msg)> RestoreTrashAsync(string? kind, string? key)
+        {
+            if (!ResolveTrashKind(kind, out string table, out string keyCol, out string nameCol, out string label))
+                return (false, TrashKindMsg);
+            string kd = (kind ?? "").Trim();
+            string k = (key ?? "").Trim();
+            if (k.Length == 0) return (false, TrashNoTarget);
+            object keyVal = k;
+            if (kd == "user")
+            {
+                if (!int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tid) || tid <= 0)
+                    return (false, TrashNoTarget);
+                keyVal = tid;
+            }
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(휴지통 복구): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(휴지통 복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    // 대상 행을 잠근 채 읽는다 — 없으면 다른 관리자가 이미 지운 것이다(목록을 새로 그리게 한다).
+                    bool found = false;
+                    string name = "";
+                    await using (var sel = new MySqlCommand(
+                        "SELECT " + nameCol + " AS nm FROM " + table + " WHERE " + keyCol + "=@k FOR UPDATE", conn, tx))
+                    {
+                        sel.Parameters.AddWithValue("@k", keyVal);
+                        await using var rd = await sel.ExecuteReaderAsync(cts.Token);
+                        if (await rd.ReadAsync(cts.Token)) { found = true; name = Str(rd, "nm"); }
+                    }
+                    if (!found) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }
+
+                    string sql;
+                    switch (kd)
+                    {
+                        case "project":  sql = "UPDATE project SET is_active=1 WHERE uid=@k"; break;
+                        case "user":     sql = "UPDATE app_user SET is_active=1 WHERE user_id=@k"; break;
+                        case "customer": sql = "UPDATE customer SET is_active=1 WHERE name=@k"; break;
+                        case "section":  sql = "UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE name=@k"; break;
+                        default:         sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;
+                    }
+                    await using (var cmd = new MySqlCommand(sql, conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@k", keyVal);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("휴지통 복구 " + label + " " + k + " (" + name + ")");
+                    if (kd == "project") return (true, "공식 과제를 목록에 다시 표시합니다.");
+                    if (kd == "user")    return (true, "복구했습니다. 명부에 다시 표시됩니다.");
+                    return (true, "복구했습니다.");
+                }
+                catch { await tx.RollbackAsync(cts.Token); throw; }
+            }
+            catch (MySqlException mex) { _log("휴지통 복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log("휴지통 복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 영구 삭제 — 되돌릴 수 없다. 다섯 표의 뼈대가 같다(§3.4):
+        //   행 잠금 → 숨김인가 → 참조 수 **재계산** → 이름 대조 → (인력) 부속 2표 → DELETE → 로그 한 줄.
+        //   ★ 화면이 같은 판정을 힌트로 먼저 보여 주지만 그건 조회 시점 값이다. 판정은 여기, 트랜잭션 안이다.
+        //   ★ 다섯 표의 DELETE 문은 이 함수 안에만 있다 — 시험 계약 ①·⑥ 이 그 사실을 잠근다.
+        //   ★ 자기 계정 금지는 퇴사 규칙(§4.4-1)과 **한 벌**이다. 기록 0 이면 로그인한 적도 없어 실제로는
+        //     걸릴 일이 없지만, 규칙이 두 벌이 되는 순간 한쪽이 낡는다.
+        public async Task<(bool ok, string msg)> DeleteTrashAsync(string? kind, string? key, string? confirm)
+        {
+            if (!ResolveTrashKind(kind, out string table, out string keyCol, out string nameCol, out string label))
+                return (false, TrashKindMsg);
+            string kd = (kind ?? "").Trim();
+            string k = (key ?? "").Trim();
+            if (k.Length == 0) return (false, TrashNoTarget);
+            object keyVal = k;
+            int targetUserId = 0;
+            if (kd == "user")
+            {
+                if (!int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out targetUserId) || targetUserId <= 0)
+                    return (false, TrashNoTarget);
+                keyVal = targetUserId;
+            }
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(영구 삭제): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(영구 삭제): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+                string me = SessionLoginId();
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    // ① 행 전체를 잠근 채 읽는다 — 이것이 로그에 남길 '삭제 직전 행'이다(§4.4).
+                    var row = new Dictionary<string, object?>(StringComparer.Ordinal);
+                    await using (var sel = new MySqlCommand(
+                        "SELECT * FROM " + table + " WHERE " + keyCol + "=@k FOR UPDATE", conn, tx))
+                    {
+                        sel.Parameters.AddWithValue("@k", keyVal);
+                        await using var rd = await sel.ExecuteReaderAsync(cts.Token);
+                        if (await rd.ReadAsync(cts.Token))
+                            for (int i = 0; i < rd.FieldCount; i++)
+                                row[rd.GetName(i)] = rd.IsDBNull(i) ? null : rd.GetValue(i);
+                    }
+                    if (row.Count == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }
+
+                    // ② 숨긴 항목만 지운다. 읽지 못하면 **활성으로 친다**(fail-closed) — 모르는 상태를 지우지 않는다.
+                    int isActive = 1;
+                    try { isActive = row.TryGetValue("is_active", out var av) && av != null ? Convert.ToInt32(av) : 1; }
+                    catch { isActive = 1; }
+                    if (isActive != 0) { await tx.RollbackAsync(cts.Token); return (false, TrashActiveMsg); }
+
+                    // ③ 참조 수 재계산 — 힌트가 낡았을 수 있다(두 관리자가 동시에 만지면).
+                    long refs = 0L;
+                    if (kd == "user")
+                    {
+                        await using (var cmd = new MySqlCommand(UserRefCountSql(), conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@u", targetUserId);
+                            refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        }
+                        if (refs > 0) { await tx.RollbackAsync(cts.Token); return (false, UserRecordsMsg(refs)); }
+                        int? myId = await LockedMyUserIdAsync(conn, tx, me, cts.Token);
+                        if (myId.HasValue && myId.Value == targetUserId)
+                        { await tx.RollbackAsync(cts.Token); return (false, TrashSelfMsg); }
+                    }
+                    else if (kd == "project")
+                    {
+                        // 과제는 참조가 있어도 지운다 — 개인 카테고리는 문자열 참조라 db_gone 으로 남는다(§3.1).
+                        //   막는 대신 **몇 명이 편입 중이었는지**를 로그에 남긴다.
+                        await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM cal_category WHERE project_uid=@k", conn, tx);
+                        cmd.Parameters.AddWithValue("@k", k);
+                        refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                    }
+                    else
+                    {
+                        // 코드 3종은 그 값을 쓰는 과제가 **숨긴 과제까지 포함해** 0건일 때만. 최종 보증은 FK RESTRICT 다.
+                        string cntSql = kd == "customer" ? "SELECT COUNT(*) FROM project WHERE customer=@n"
+                                      : kd == "section"  ? "SELECT COUNT(*) FROM project WHERE section=@n"
+                                                         : "SELECT COUNT(*) FROM project WHERE status=@n";
+                        await using (var cmd = new MySqlCommand(cntSql, conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@n", k);
+                            refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        }
+                        if (refs > 0) { await tx.RollbackAsync(cts.Token); return (false, CodeInUseMsg(refs)); }
+                    }
+
+                    // ④ 이름 대조 — Trim 도 대소문자 무시도 하지 않는다(§5.2). 이름에 공백이 있으면 공백까지 같아야 한다.
+                    string storedName = row.TryGetValue(nameCol, out var nv) && nv != null ? (nv.ToString() ?? "") : "";
+                    if (!string.Equals(confirm ?? "", storedName, StringComparison.Ordinal))
+                    { await tx.RollbackAsync(cts.Token); return (false, TrashNameMsg); }
+
+                    // ⑤ (인력) 부속 2표를 같은 트랜잭션에서 먼저 지운다 — 로그인 한 번이면 생기는 행이라
+                    //    '기록 0' 계정에도 남아 있고, 남으면 FK RESTRICT 가 1451 로 거부한다(§3.1).
+                    if (kd == "user")
+                    {
+                        await using (var cmd = new MySqlCommand("DELETE FROM cal_user_pref WHERE user_id=@u", conn, tx))
+                        { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
+                        await using (var cmd = new MySqlCommand("DELETE FROM cal_user_rev WHERE user_id=@u", conn, tx))
+                        { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
+                    }
+
+                    // ⑥ 본체.
+                    string delSql;
+                    switch (kd)
+                    {
+                        case "project":  delSql = "DELETE FROM project WHERE uid=@k"; break;
+                        case "user":     delSql = "DELETE FROM app_user WHERE user_id=@k"; break;
+                        case "customer": delSql = "DELETE FROM customer WHERE name=@k"; break;
+                        case "section":  delSql = "DELETE FROM section_code WHERE name=@k"; break;
+                        default:         delSql = "DELETE FROM status_code WHERE name=@k"; break;
+                    }
+                    int n;
+                    await using (var cmd = new MySqlCommand(delSql, conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@k", keyVal);
+                        n = await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    if (n == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }
+                    await tx.CommitAsync(cts.Token);
+                    _log("영구 삭제 " + kd + " " + k + " by " + me + " " + RowJson(row) + " 참조 " + refs + "건");
+                    return (true, TrashDoneMsg);
+                }
+                catch { await tx.RollbackAsync(cts.Token); throw; }
+            }
+            catch (MySqlException mex) when (mex.Number == 1451)
+            {
+                // 힌트가 틀렸을 때의 최후 방어 — 어느 제약이 붙들었는지는 로그에만 남긴다(사용자 문장은 고정이다).
+                _log("영구 삭제 거부(FK 1451) " + label + " " + k + ": " + Short(mex));
+                return (false, TrashFkMsg);
+            }
+            catch (MySqlException mex) { _log("영구 삭제 실패(" + mex.Number + "): " + Short(mex)); return (false, "지우지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { _log("영구 삭제 실패: " + Short(ex)); return (false, "지우지 못했습니다: " + Short(ex)); }
+        }
     }
 }

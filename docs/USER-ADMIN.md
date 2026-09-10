@@ -28,7 +28,7 @@
 | 관리 주체 | `edit_role='admin'` 만. `editor` 는 과제만 | `taskmgr-company-data/04-permissions.sql` 이 이미 admin 을 "+ 시스템·**직원 정보 관리**" 로 정의한다. 새 등급을 만들지 않는다 |
 | 화면 | **두 화면으로 나눈다.** 「구성원 보기」(`#membersModal`)는 전원이 쓰는 읽기 전용 명부 — **관리자에게도 편집 컨트롤이 없다.** 「구성원 편집」(`#userAdminModal`)은 관리자에게만 존재하는 별도 화면이고, 진입 버튼(`#usUserAdmin`)도 `edit_role='admin'` 회신일 때만 DOM 에 생긴다 | 사용자 결정(2026-09-10). 한 화면에 편집 모드를 얹으니 한쪽 상태(순서 편집 중·퇴사자 보기)가 다른 쪽 화면을 물들였다. 목록이 갈리는 문제는 **같은 `membersGet` 회신을 두 화면이 각자 필요한 것만 읽는 것**으로 막는다 |
 | 편집 폼 | `#userEditModal` — 과제 편집 폼(`#officialEditModal`)과 같은 골격 | 사용법이 같아야 관리자가 새로 배울 게 없다 |
-| 삭제 | 없다. 퇴사 = `is_active=0` | 과제와 같다. 그리고 `cal_*` 11개 표가 `RESTRICT` 로 `app_user` 를 붙들고 있어 DELETE 는 애초에 안 된다(§3.3) |
+| 삭제 | 이 화면에는 없다. 퇴사 = `is_active=0`. **영구 삭제는 「휴지통」**([TRASH-DELETE.md](TRASH-DELETE.md)) 에서, 기록 0건인 퇴사 계정만(§11-18) | 과제와 같다. `cal_*` 11개 표가 `RESTRICT` 로 `app_user` 를 붙들고 있어 기록이 있는 사람은 DELETE 자체가 안 된다(§3.3) |
 | 순번 컬럼 | `app_user.sort_order INT UNSIGNED NULL`, `title` 바로 뒤 (처음엔 SMALLINT 였다 — §11-14) | 별도 표를 두려던 이유(app_user 읽기 전용 유지)가 이 결정으로 사라졌다(§7). 한 표가 낫다 |
 | 순번 범위 | **전체 직원 단일 서열** | 사용자 확정. 팀을 옮겨도 다시 매길 필요가 없다 |
 | 순번 저장 | 앱이 **전체를 10 간격으로 다시 써서** 저장 | 관리자는 숫자를 보지 않는다. "사이값·밀기" 규칙이 아예 없어진다. 캘린더의 `sort_order` 전량 재작성과 같은 방식 |
@@ -81,6 +81,8 @@ UPDATE app_user u
 ### 3.3 왜 삭제가 없는가 — 표가 스스로 막는다
 
 `app_user` 를 부모로 삼는 외래키 11개가 전부 `ON DELETE RESTRICT` 다(09-09 통일). 일정·근태·공수·보고가 한 건이라도 있는 사람은 DELETE 자체가 `ERROR 1451` 이다. 퇴사는 `is_active=0` 이고 행은 남는다. 이건 새 결정이 아니라 `01-schema-users.sql` 이 이미 적어 둔 것("퇴사·휴직은 0. 행은 남겨 과거 데이터 참조를 지킨다")을 화면이 따르는 것이다.
+
+**2026-09-10 추가 — 예외는 「휴지통」 하나다.** 기록이 0건인 퇴사 계정(오등록·한 번도 안 쓴 계정)만 관리자가 `docs/TRASH-DELETE.md` 의 관문(`ProjectDb.DeleteTrashAsync`, `OpenAdminAsync` 전용, 이름 입력 확인)을 지나 실제로 지운다. `DELETE FROM app_user` 는 앱 전체에서 그 함수 안에만 있다(계약 ⑤). 기록이 있는 사람은 여전히 퇴사 상태로 남는다.
 
 ### 3.4 권한 파일
 
@@ -248,7 +250,7 @@ ORDER BY u.sort_order IS NULL, u.sort_order, u.name        -- 편집(flatOrder)
 2. **관리자 관문** — `app_user` 에 INSERT/UPDATE 하는 SQL 은 전부 `OpenAdminAsync` 를 지난다. `OpenWriteAsync`(editor 통과)로 열고 `app_user` 를 쓰는 경로가 0 이다. `tests/admin-auth.test.mjs` 의 관문 계약을 확장.
 3. **잠금 방지 셋** — 순수 로직 단위시험(자기 퇴사·자기 권한·마지막 관리자) + 실 DB 루프에서 마지막 관리자 강등이 실제로 거부되는가.
 4. **입력 검증** — 정규식·빈 이름·미등록 직급/소속·도메인 밖 값이 사용자 문장으로 거부된다.
-5. **권한 파일** — `05-grants.sql` 과 `grants-calendar.sql` 서술에 `app_user` INSERT·UPDATE 가 있고 DELETE 가 없다.
+5. **권한 파일** — `05-grants.sql` 이 `app_user` 에 SELECT·INSERT·UPDATE·DELETE 넷을 주고(DELETE 는 2026-09-10 휴지통 — §11-18), `grants-calendar.sql` 머리말이 "`app_user` 의 DELETE 는 휴지통 관문(`ProjectDb.DeleteTrashAsync`) 한 곳뿐"이라고 적으며, 코드에서 `DELETE FROM app_user` 는 그 함수 안에만 있다.
 6. **정렬** — 명부 SQL 의 ORDER BY 가 §5.3 과 글자까지 같고, 화면이 재정렬하지 않는다(`renderMembers` 에 `sort(` 없음).
 7. **편집 컨트롤은 있어야 할 곳에만 있다**(2026-09-10 결정으로 셋으로 갈렸다 — 전부 jsdom 으로 실제로 그려 보고 센다):
    - (a) **「구성원 보기」는 `admin:true` 회신에도 컨트롤이 0** 이다. 관리자에게도 없다.
@@ -397,3 +399,11 @@ user-info 시험의 시그니처 앵커 15곳 갱신.
   루프: `loop-user-admin.mjs` 의 `formSave` 가 폼을 열 때마다 `#userEdSort` 를 명부 값과 대조하고(신규는 빈 칸),
   권한은 드롭다운에 값이 붙었는지 확인해 안 붙으면 던진다(옵션 없는 값이 조용히 흘러 '권한이 딴 값'으로 통과하던 구멍).
   `loop-ui-integrity.mjs` U0 은 `pickRadio` 대신 `setVal('#userEdScope'/'#userEdRole')` 을 쓰고 값이 붙었는지 본다(`__lt.pickRadio` 삭제).
+
+**18. 영구 삭제가 생겼다 — 「휴지통」(2026-09-10, 검토자 지적 → 사용자 결정 "기록 0건만, 다섯 표 한 번에").**
+§2 표의 "삭제 없음" 과 §3.3·§8-5 의 "DELETE 어디에도 없음" 은 더 이상 사실이 아니다. 설계와 계약은 [TRASH-DELETE.md](TRASH-DELETE.md) 에 있다.
+이 화면(「구성원 편집」)에는 여전히 삭제가 없다 — 퇴사 처리까지다. 퇴사자 중 기록이 0건인 계정만 관리자가 휴지통에서
+이름을 입력해 지운다(`ProjectDb.DeleteTrashAsync`, `OpenAdminAsync` 전용). `05-grants.sql` 은 `app_user` 에 DELETE 를 더했고,
+계약 ⑤ 는 "DELETE 없음" 에서 "`DELETE FROM app_user` 는 그 함수 안에만" 으로 바뀌었다(변이 ⑤/⑤-b/⑤-d 갱신).
+`admin-auth.test` 의 관문 열거에 휴지통 세 함수를 더했다. 부속 2표(`cal_user_pref`·`cal_user_rev`)의 DELETE 도 필요했는데
+설계가 빠뜨렸고 루프가 잡았다(TRASH-DELETE §11-2).

@@ -164,7 +164,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_attendance TO 'taskmgr_app'@
 --   2026-08-21 에 이 표로 옮겨 온 보고서 서식도 같다 — 서식을 '기본으로 되돌리기' 는 행 삭제가
 --   아니라 기본값 UPDATE 다(파서가 부재를 기본값으로 읽으므로 '행 없음'과 '기본값'이 같은 뜻이다).
 --   ★ 근태(cal_attendance)와 반대 방향이니 두 표를 같은 규칙으로 묶지 말 것.
-GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'%';
+--   ★ 2026-09-10 예외 하나 — 휴지통의 **계정 영구 삭제**(ProjectDb.DeleteTrashAsync, TRASH-DELETE §3.2)만은
+--     app_user 행을 지우기 직전에 이 표의 그 사용자 행을 같은 트랜잭션에서 지운다(FK RESTRICT 라 먼저 지워야 한다).
+--     대상은 기록 0건인 계정뿐이고 경로는 그 함수 하나다. 앱의 다른 어디에도 이 표의 DELETE 는 없다.
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'%';
 
 -- ---------- 동시성 감시점(rev) ----------
 -- INSERT 와 UPDATE 를 둘 다 줘야 한다: §3.1 의 쓰기 트랜잭션 첫 문장이 ODKU 한 문장이라
@@ -175,7 +178,10 @@ GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_pref TO 'taskmgr_app'@'%';
 --   INSERT/UPDATE 를 회수하면 rev 만 멈추는 것이 아니라 **새 행을 만드는 모든 경로**가 함께 죽는다.
 -- DELETE 는 금지: rev 는 단조증가여야 삭제까지 감지할 수 있고, 행이 사라지면 그 사용자의
 --   직렬화가 통째로 풀린다. §8 의 '교체' 이관도 이 테이블만은 전량 삭제 대상에서 제외한다.
-GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_rev TO 'taskmgr_app'@'%';
+--   ★ 2026-09-10 예외 하나 — 위 cal_user_pref 와 같다: 휴지통의 계정 영구 삭제(DeleteTrashAsync)가 app_user 행을
+--     지우기 직전에 그 사용자의 rev 행을 같은 트랜잭션에서 지운다. 사용자 자체가 사라지므로 '단조증가' 규칙이
+--     지켜야 할 대상도 함께 사라진다. 다른 DELETE 경로는 여전히 0건이다.
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_user_rev TO 'taskmgr_app'@'%';
 
 -- ---------- 이관 1회성 마커 ----------
 -- SELECT + INSERT 만: 존재 확인 후 데이터 INSERT 와 같은 트랜잭션에서 한 행을 남기는 것이
@@ -225,12 +231,15 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 --
 -- ★ 2026-09-10 — app_user 의 권한 분포가 바뀌었다. 여기 적힌 SELECT 는 **이 파일이 필요로 하는
 --   최소치**이지 그 표의 전부가 아니다. 실제 분포는 이렇다:
---     app_user   SELECT + **INSERT · UPDATE**   ← 관리자가 앱에서 직원을 등록·수정·퇴사 처리한다
---                                                 (docs/USER-ADMIN.md · 관문은 ProjectDb.OpenAdminAsync)
+--     app_user   SELECT + **INSERT · UPDATE · DELETE**   ← 관리자가 앱에서 직원을 등록·수정·퇴사 처리하고,
+--                                                          휴지통에서 기록 0건 계정을 지운다
+--                                                          (docs/USER-ADMIN.md · docs/TRASH-DELETE.md ·
+--                                                           관문은 ProjectDb.OpenAdminAsync)
 --     org_unit   SELECT                          ← 조직 편집은 이번 범위 밖
 --     title_code SELECT                          ← 직급 코드 편집도 이번 범위 밖
---     app_user 의 DELETE 는 어디에도 없다 — 퇴사는 is_active=0 이고 행은 남는다
---     (cal_* 11개 표가 RESTRICT 로 붙들고 있어 DELETE 는 애초에 ERROR 1451 이다).
+--     app_user 의 DELETE 는 휴지통 관문(ProjectDb.DeleteTrashAsync) 한 곳뿐이다 — 퇴사는 is_active=0 이고 행은 남으며, 기록 0건인 계정만 관리자가 지운다(TRASH-DELETE §3.2)
+--     (cal_* 11개 표가 RESTRICT 로 붙들고 있어 기록이 한 건이라도 있으면 DELETE 는 ERROR 1451 이다 —
+--      그래서 호스트가 미리 9개 표를 세어 거부하고, 최후 보증은 이 FK 다).
 --   그 쓰기 동사를 **여기서 부여하지 않는 이유**: 이 파일은 캘린더(cal_*) 배포의 GRANT 단일
 --   소스이고, app_user 는 캘린더가 만든 표가 아니라 사용자·조직 도메인의 표다. 같은 표의 권한을
 --   두 파일이 각각 늘리면 어느 쪽이 정본인지 알 수 없게 된다 — 그 도메인의 정본은

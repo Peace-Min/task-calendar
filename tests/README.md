@@ -75,6 +75,8 @@ tests/
 │                            재시도하지 않는가 · DB 를 덮지 않는가 · 되돌릴 문이 있는가
 ├─ loop-user-admin.mjs        **실제 위젯**(CDP) + 실 DB — 사용자 관리(USER-ADMIN) 실동작: 「구성원 편집」 화면에서 등록·수정·권한·퇴사·복구·순서 저장 ·
 │                            잠금 방지·검증 5종·null 정수 내성·비관리자 뷰·재진입 가드 — 케이스마다 DB 불변식, zzU 잔재 0
+├─ loop-trash.mjs             **실제 위젯**(CDP) + 실 DB — 휴지통(TRASH-DELETE) 실동작: 다섯 표(과제·인력·발주처·구분·상태) 숨김 → 복구 →
+│                            이름 대조 → 영구 삭제 · 기록 있는 계정/쓰는 코드값 거부 · 비관리자 부재 계약 — 케이스마다 DB 불변식, zz 잔재 0
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
 ├─ loop-peer-view.mjs        실 DB + 앱 계정 — **타인 일정 열람의 권한 경계**(허용/거부/최소 payload)
 ├─ loop-peer-frame.mjs       **실 위젯**(CDP) + 실 DB — 열람 **창**(iframe)의 실동작: 그 사람 것이 뜨나 ·
@@ -677,3 +679,35 @@ node tests/loop-user-admin.mjs --seed=66       # 재현
 정리는 시작(sweep)·종료(finally)·프로세스 exit 그물 세 겹이다 — 시험 계정(zzU) 삭제 · 로그인 계정 권한 복원 · 실직원 sort_order 복원.
 알려진 구멍(§7-1a: 퇴사자 보기를 끈 채 순서 저장 → 퇴사자 순번 충돌)은 C15 가 재현만 하고 실패로 두지 않는다.
 배포 전 게이트 규약: **무작위 시드로 5회 연속 통과**, 한 번이라도 실패하면 1부터 다시 센다(2026-09-10 실측: 5/5).
+
+## loop-trash.mjs — 휴지통(영구 삭제) 실동작 루프(TRASH-DELETE §8-8)
+
+실행 중인 위젯(CDP 9222, **관리자 계정으로 로그인**)과 실 DB 로 `docs/TRASH-DELETE.md` 의 휴지통 경로를 한 라운드 9 케이스로 돈다.
+시험 데이터는 접두 규약(**`zzP` 과제 · `zzU` 로그인 ID · `zzC` 발주처 · `zzT` 구분/상태**)으로만 만들고, 실행(zz 아닌 행)은 참조만 한다.
+C00 전제·`trashGet` 회신 모양 · C01 과제(등록 → 카탈로그 편입 → 숨김 → **화면으로 복구** → 다시 숨김 → 이름 오타 거부(화면 버튼 미점등 + 호스트 문장)
+→ 이름 일치 삭제 → DB 0행·카탈로그 0·편입분 `dbGone`) · C02 인력 기록 0(삭제 성공 + `cal_user_pref`/`cal_user_rev` 0행) ·
+C03 인력 기록 있음(`deletable:false` · `why` 문장 그대로 · 화면 버튼 `disabled`+`title` · 호스트 우회도 같은 문장으로 거부) ·
+C04 코드 3종(숨긴 과제가 쓰면 거부 → 그 과제를 지우면 삭제 가능 · 복구 시 `sort_order = MAX+10`) · C05 활성 항목 거부 ·
+C06 알 수 없는 대상/이미 없는 항목 · C07 자기 계정 · C08 비관리자(로그인 계정을 잠시 `editor` 로 내려 **`#usTrash` 부재 + `admin:false` +
+목록 미탑재 + 관문 거부** 확인 후 **반드시 복원**. 활성 관리자가 0 이 되지 않도록 대역 관리자(zzU)를 먼저 세우고 끝에 치운다).
+케이스마다 불변식 I1~I4 — 다섯 표의 **실행 수** 불변 · 실행 **내용 해시** 불변(과제 활성·직원 권한/활성·코드 활성/순번) ·
+`schema_version` 불변 · 로그인 계정이 활성 admin(C08 안에서만 예외 · 그 케이스가 스스로 기준을 옮기고 되돌린다).
+
+**선행 조건**: 앱 계정(`taskmgr_app`)에 다섯 표 **DELETE** 권한이 적용돼 있어야 한다(TRASH-DELETE §3.3 — `db/deploy/create-app-user.sql` ·
+`taskmgr-company-data/05-grants.sql` 재실행). 없으면 삭제 케이스가 "DELETE command denied" 로 전부 실패한다 — 시험 결함이 아니라 배포 누락이다.
+확인: `SHOW GRANTS FOR 'taskmgr_app'@'%';` 에 `project`·`customer`·`section_code`·`status_code`·`app_user` 의 DELETE 가 보여야 한다
+(인력 삭제는 부속 2표 `cal_user_pref`·`cal_user_rev` 도 같은 트랜잭션에서 지우므로 그 둘의 DELETE 도 함께 필요하다).
+
+```
+# 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 admin 계정으로 로그인 · $env:TC_TEST_DB_ADMIN_PW
+node tests/loop-trash.mjs                      # 시각 기반 시드
+node tests/loop-trash.mjs --seed=1001          # 재현(요약 줄이 이 명령을 그대로 찍어 준다)
+node tests/loop-trash.mjs -v                   # 케이스별 상세
+```
+
+**종료코드**: 통과=0 · 실패=1 · 자격 없음/전제 미충족(위젯 미기동·비로그인·admin 아님·시작 정리 실패, 또는 C08 건너뜀)=2.
+정리는 시작(sweep)·종료(finally)·프로세스 exit 그물 세 겹이다 — zz 다섯 표 + 그 계정의 캘린더 자식 표 + 편입분(`cal_category` 의 `source='db'` `name LIKE 'zzP%'`)
+삭제 · 로그인 계정 권한 복원. 편입/해제는 **앱 경로**(`offSubscribeFromCatalog`/`offUnsubscribeFromCatalog`)로만 한다 — DB 모드에서 뒤로 행을 만들거나
+지우면 앱 state 와 갈려 다음 저장이 지운 행을 되살린다.
+배포 전 게이트 규약: **무작위 시드로 5회 연속 통과**, 한 번이라도 실패하면 1부터 다시 센다.
+

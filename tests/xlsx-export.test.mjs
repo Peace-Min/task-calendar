@@ -766,7 +766,15 @@ test('발주처 CRUD: setActive는 UPDATE is_active(하드삭제 없음)', () =>
   const db = projectDbSource();
   const b = db.slice(db.indexOf('SetCustomerActiveAsync'), db.indexOf('CountActiveProjectsByCustomerAsync'));
   assert.ok(/UPDATE customer SET is_active=@a WHERE name=@n/.test(b), 'is_active 소프트삭제 UPDATE가 없다');
-  assert.ok(!/DELETE FROM customer/.test(db), '앱이 발주처를 하드삭제하면 안 된다(방침 위반)');
+  //  ★ 2026-09-10(휴지통) — 하드삭제 경로가 **하나** 생겼다(docs/TRASH-DELETE.md §3.3).
+  //    "앱은 발주처를 지우지 않는다"는 방침은 "지우는 자리는 휴지통 한 곳뿐"으로 좁혀졌다:
+  //    관리자만·숨긴 값만·그 값을 쓰는 과제 0건(숨긴 과제 포함)일 때만·이름을 그대로 입력해야 지워진다.
+  //    그래서 이 계약은 '없다'가 아니라 '그 함수 밖에 없다'를 본다 — 숨김 경로에 DELETE 가 끼면 여기서 운다.
+  const delTrash = db.slice(db.indexOf('public async Task<(bool ok, string msg)> DeleteTrashAsync'));
+  assert.ok(delTrash.length > 0, 'DeleteTrashAsync 를 찾지 못했다(측정 불가 ≠ 통과)');
+  assert.ok(/DELETE FROM customer WHERE name=@k/.test(delTrash), '휴지통의 발주처 영구 삭제 SQL 이 없다');
+  assert.ok(!/DELETE FROM customer/.test(db.replace(delTrash, '')),
+    '휴지통(DeleteTrashAsync) 밖에서 발주처를 하드삭제한다 — 숨김은 is_active=0 이고 행은 남는다(방침 위반)');
 });
 
 test('발주처 CRUD: refCount는 활성 과제만 센다', () => {

@@ -77,7 +77,7 @@ cal_report_daily · cal_report_weekly · cal_migration_log
 | 파일 | 지금 | 뒤 |
 |---|---|---|
 | `db/deploy/create-app-user.sql` | `GRANT SELECT, INSERT, UPDATE ON taskmgr.project` (+customer·section_code·status_code) | `SELECT, INSERT, UPDATE, DELETE` 넷 |
-| `db/deploy/grants-calendar.sql` | `GRANT SELECT ON taskmgr.app_user` · `GRANT SELECT ON taskmgr.project` + 머리말 "app_user 의 DELETE 는 어디에도 없다" | 부여는 그대로 두고(이 파일은 캘린더 표 담당) 머리말 문장을 "**DELETE 는 휴지통 관문(`ProjectDb.DeleteTrashAsync`) 한 곳뿐이다**" 로 고친다 |
+| `db/deploy/grants-calendar.sql` | `GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_user_pref` · `… cal_user_rev` + 머리말 "app_user 의 DELETE 는 어디에도 없다" | **부속 2표(`cal_user_pref`·`cal_user_rev`)에 DELETE 를 더한다** — 계정 삭제 트랜잭션이 이 둘을 먼저 지운다(§3.4). 빠지면 첫 문장에서 ERROR 1142(§11-2). `app_user`·`project` 의 부여는 그대로(이 파일은 캘린더 표 담당) 두고 머리말 문장을 "**DELETE 는 휴지통 관문(`ProjectDb.DeleteTrashAsync`) 한 곳뿐이다**" 로 고친다 |
 | `taskmgr-company-data/05-grants.sql` (비공개) | `GRANT SELECT, INSERT, UPDATE ON app_user` | `SELECT, INSERT, UPDATE, DELETE` |
 
 - 재적용은 GRANT 문 재실행(멱등). `DEPLOY.md §0` 에 "휴지통 배포 전 GRANT 재적용" 한 줄과 검증 SQL(`SHOW GRANTS FOR 'taskmgr_app'@'%'` 에 다섯 표 DELETE 가 보여야 한다)을 넣는다.
@@ -242,4 +242,30 @@ COMMIT
 
 ## 11. 정정 이력
 
-(구현 전 — 비어 있음)
+구현 2026-09-10. 설계와 다르게 처리한 곳.
+
+**1. 복구는 기존 `Set*ActiveAsync` 를 재사용하지 않고 `RestoreTrashAsync` 가 `UPDATE … SET is_active=1` 을 직접 한다.** §4.1 은 재사용을 적었지만, 그러면 복구 경로가 `OpenWriteAsync`(editor 통과)를 지나 "휴지통 세 함수는 `OpenAdminAsync` 뿐"(계약 ②)이 깨진다. 구분·상태 코드의 복구는 `SetCodeActiveAsync` 와 같은 이유로 `sort_order = MAX+10` 을 다시 매긴다(옛 순번이 활성 목록 사이에 끼어드는 충돌 방지). 기존 숨김/복구 경로는 손대지 않았다.
+
+**2. 권한은 다섯 표가 아니라 일곱 표다 — `cal_user_pref`·`cal_user_rev` DELETE 가 빠져 있었다.** §3.3 표가 "grants-calendar.sql 부여는 그대로" 라고 적었는데, §3.4 의 계정 삭제 트랜잭션은 그 두 표를 먼저 지운다. 개발 DB 에 옛 권한이 그대로 있어 `loop-trash` C02/C08 이 첫 실행에서 `DELETE command denied … cal_user_pref` 로 잡았다(설계 문서의 두 절이 서로 어긋난 것을 루프가 잡은 사례). `grants-calendar.sql` 두 GRANT 에 DELETE 를 더하고 그 표의 "DELETE 금지" 주석에 예외를 적었으며, 계약 ① 이 그 두 줄도 대조한다(변이 ①-c). `DEPLOY.md §0-5` 는 "일곱 표". 개발 DB 에는 2026-09-10 에 적용했다(적용 전 `SHOW GRANTS` 스냅샷 보관).
+
+**3. 쓰기 성공 뒤 푸시가 §4.2 보다 많다.** 발주처 → `LoadCustomersToWebAsync`, 구분·상태 → `LoadCodesToWebAsync` 도 함께 민다(복구하면 드롭다운 소스가 바뀐다). 과제·코드·발주처 공통의 `LoadProjectsToWebAsync`(dbGone 재판정)와 인력의 `LoadMembersToWebAsync` 는 설계대로.
+
+**4. `trashGet` 회신은 `{ ok, data, msg }` 로 감싼다**(`membersGet` 과 같은 요청/회신 배관). `data` 가 §4.2 의 페이로드다. 화면은 `r.data || r` 로 읽어 푸시(`__applyTrash`, 감싸지 않음)와 같은 함수로 그린다. `LoadTrashJsonAsync` 는 null 을 돌려주지 않는다 — 미로그인·미등록·비활성·비관리자 전부 `{found:true, admin:false}`, 연결·조회 실패는 `{found:false, msg}`.
+
+**5. 목록의 `refs` 는 종류별 한 문장(GROUP BY 롤업, 인력은 9표 `UNION ALL`)으로 센다.** 행마다 세면 숨긴 항목 수만큼 왕복이다. `DeleteTrashAsync` 는 트랜잭션 안에서 §3.1 의 행 단위 쿼리로 다시 센다(힌트 ≠ 판정).
+
+**6. 로그 한 줄 끝에 참조 수를 붙인다** — `영구 삭제 {kind} {key} by {me} {행 JSON} 참조 {n}건`. 행 JSON 은 한글이 읽히게 relaxed escaping. `is_active` 를 읽지 못하면 활성으로 간주해 거부한다(닫힌 쪽으로 실패). DELETE 가 0행이면 롤백하고 '이미 없음' 문구.
+
+**7. 코드 배치** — 휴지통 블록은 `ProjectDb.cs` 끝에 둔다. 중간에 넣으니 소스를 문자열 위치로 자르는 옛 시험 5건(code-tables·project-dev-end·xlsx-export)이 순서만으로 깨졌다. `xlsx-export.test.mjs` 의 "`DELETE FROM customer` 가 파일 어디에도 없다" 는 "`DeleteTrashAsync` 안에만 있다" 로 고쳤다.
+
+**8. 진입 버튼 핸들러는 `() => openTrash()`** — `user-admin.test` 의 진입 하네스가 `usAdminBtnSync` 만 떼어 내 `openUserAdmin` 만 스텁하므로 직접 참조면 `ReferenceError` 다. 같은 함수 안에서 `#usUserAdmin` 뒤에 만들고 함께 없앤다.
+
+**9. 탭은 검색 모달의 `.tabs/.tab` 컨트롤을 재사용**한다. `#trTabs` 는 마크업에서 빈 `<div>` 이고 `trRender` 가 관리자일 때만 `className='tabs'` 를 준다(`uaAdminBar` 와 같은 방식). 새 CSS 는 배지 간격·목록 스크롤 상한 두 줄뿐.
+
+**10. 과제 행의 참조 문구는 "편입 {n}건"**(§5.1 은 "명"). 카테고리 행 수라 '건'이 정확하다. 확인창 본문은 §5.2 대로 "편입 {n}명".
+
+**11. `#confirmTypedModal` 은 `#confirmModal` 옆에 둔다**(휴지통 마크업 조각을 깨끗이 유지 + 변형의 원본 옆). `confirmBox`·`#cfOk` 는 손대지 않았다(루프 시험이 그 손잡이를 쓴다). 삭제 확인창 제목은 "{탭 이름} 영구 삭제". Enter 는 버튼이 켜져 있을 때만, IME 조합 중(keyCode 229)은 무시.
+
+**12. 숨김 확인창의 안내 문장은 "계속할까요?" 뒤에 붙는다.** 발주처·코드 쪽은 editor 도 숨길 수 있으므로 "(관리자)" 를 덧붙였다 — 휴지통은 관리자만 본다.
+
+**13. 루프(`loop-trash.mjs`) 실측 2026-09-10** — 케이스 C00~C08, 판정 182, 무작위 시드 5회 연속 통과(권한 적용 뒤). 실패 경로에서는 푸시를 기다리지 않는다(성공에만 오는 푸시를 기다리면 12초씩 태운다). 정리 3겹, 실행 후 zz 잔재 0·실직원/실과제 행 수·`schema_version`·로그인 계정 권한 불변 확인.

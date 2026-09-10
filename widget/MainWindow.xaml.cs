@@ -627,6 +627,20 @@ namespace TaskCalendarWidget
                         _ = SaveUserOrderAsync(GetIntArray(doc, "userIds"), GetBool(doc, "includeInactive"));
                         break;
 
+                    // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용. 숨긴 항목만 모아 복구/영구 삭제한다 -----
+                    //   ★ 조회는 reqId 왕복(membersGet 과 같은 모양), 복구·삭제는 결과를 __trashDone(ok,msg) 로 밀고
+                    //     성공하면 휴지통(__applyTrash)과 **관련 목록**을 함께 다시 민다(웹이 재조회를 챙기지 않아도 되게).
+                    //   ★ 권한은 여기서 보지 않는다 — 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
+                    case "trashGet":
+                        _ = RunTrashGetAsync(GetStr(doc, "reqId"));
+                        break;
+                    case "trashRestore":
+                        _ = TrashRestoreAsync(GetStr(doc, "kind"), GetStr(doc, "key"), GetBool(doc, "includeInactive"));
+                        break;
+                    case "trashDelete":      // confirm = 사용자가 입력한 이름. 가공 없이 그대로 넘긴다(TRIM 금지 · §5.2)
+                        _ = TrashDeleteAsync(GetStr(doc, "kind"), GetStr(doc, "key"), GetStr(doc, "confirm"), GetBool(doc, "includeInactive"));
+                        break;
+
                     case "peerSchedule":     // 타인 일정 열람(C4) — 읽기 전용.
                         //   ★ 대상만 받는다. **보는 사람은 웹이 정하지 않는다** — 호스트가 세션에서
                         //     읽는다. 웹이 viewer 를 실어 보내게 하면 그 값을 바꾸는 것만으로
@@ -1904,6 +1918,78 @@ namespace TaskCalendarWidget
             var (ok, msg) = await _projectDb.SaveUserOrderAsync(userIds);
             UserSaved(ok, msg);
             if (ok) await LoadMembersToWebAsync(includeInactive);
+        }
+
+        // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용 -----
+        // 조회는 membersGet 과 같은 왕복이다(ReplyOnUi = UI 스레드 마샬). 다만 ok 를 found 로 싣는다 —
+        //   휴지통은 '볼 수 없는 사람'(admin:false)과 '서버가 안 된다'(found:false)를 화면에서 갈라 보여 준다.
+        private async Task RunTrashGetAsync(string reqId)
+        {
+            try
+            {
+                UserSession? s = UserSession.Load(_dataDir, Log);
+                if (s == null || s.LoginId.Length == 0)
+                { ReplyOnUi(reqId, new { ok = false, msg = "로그인이 필요합니다." }); return; }
+
+                string? json = await _projectDb.LoadTrashJsonAsync(s.LoginId);
+                if (json == null)
+                { ReplyOnUi(reqId, new { ok = false, msg = "휴지통을 불러오지 못했습니다." }); return; }
+
+                // Deserialize<JsonElement> 는 복제본을 돌려준다 — JsonDocument 수명에 묶이지 않아 회신에 그대로 실을 수 있다.
+                var data = JsonSerializer.Deserialize<JsonElement>(json);
+                bool found = data.TryGetProperty("found", out var f) && f.ValueKind == JsonValueKind.True;
+                string msg = data.TryGetProperty("msg", out var m) && m.ValueKind == JsonValueKind.String ? (m.GetString() ?? "") : "";
+                ReplyOnUi(reqId, new { ok = found, data, msg });
+            }
+            catch (Exception ex)
+            {
+                // 예외 원문(스택)은 로그에만 — 회신 문구는 고정이다. 내부 사정이 화면으로 새 나가면 안 된다.
+                Log("휴지통 조회 예외: " + ex);
+                ReplyOnUi(reqId, new { ok = false, msg = "휴지통을 불러오지 못했습니다." });
+            }
+        }
+
+        // 복구·삭제 결과 통지. 웹 __trashDone(ok, msg) — 직원의 __userSaved 와 같은 JsCall 패턴이다.
+        private void TrashDone(bool ok, string msg) =>
+            JsCall("window.__trashDone && window.__trashDone(" + (ok ? "true" : "false") + ","
+                + JsonSerializer.Serialize(msg ?? "") + ")");
+
+        // 휴지통을 다시 읽어 웹으로 민다(__applyTrash). 실패(null)면 아무것도 밀지 않는다 —
+        //   빈 휴지통을 밀면 "내가 뭘 지웠나"로 읽힌다(명부 푸시와 같은 규칙).
+        private async Task LoadTrashToWebAsync()
+        {
+            UserSession? s = UserSession.Load(_dataDir, Log);
+            if (s == null || s.LoginId.Length == 0) return;
+            string? json = await _projectDb.LoadTrashJsonAsync(s.LoginId);
+            if (json == null) { Log("휴지통 재조회 실패 — 화면은 직전 목록을 유지한다"); return; }
+            JsCall("window.__applyTrash && window.__applyTrash(" + JsonSerializer.Serialize(json) + ")");
+        }
+
+        // 복구·삭제 뒤 화면 갱신 — 휴지통 + **그 종류의 목록**을 함께 민다(§5.3).
+        //   ★ 과제·코드 3종은 카탈로그(dbGone 재판정)가 걸려 있어 LoadProjectsToWebAsync 가 필수고,
+        //     발주처·구분·상태는 **복구**로 드롭다운 소스(활성 목록)가 바뀌므로 그 소스도 함께 민다
+        //     (설계 §5.3 이 "실제 페이로드 구성은 구현 때 확인"으로 남겨 둔 자리 — §11 정정).
+        private async Task TrashRefreshAsync(string kind, bool includeInactive)
+        {
+            await LoadTrashToWebAsync();
+            if (kind == "user") { await LoadMembersToWebAsync(includeInactive); return; }
+            await LoadProjectsToWebAsync();
+            if (kind == "customer") await LoadCustomersToWebAsync();
+            else if (kind == "section" || kind == "status") await LoadCodesToWebAsync();
+        }
+
+        private async Task TrashRestoreAsync(string kind, string key, bool includeInactive)
+        {
+            var (ok, msg) = await _projectDb.RestoreTrashAsync(kind, key);
+            TrashDone(ok, msg);
+            if (ok) await TrashRefreshAsync(kind, includeInactive);
+        }
+
+        private async Task TrashDeleteAsync(string kind, string key, string confirm, bool includeInactive)
+        {
+            var (ok, msg) = await _projectDb.DeleteTrashAsync(kind, key, confirm);
+            TrashDone(ok, msg);
+            if (ok) await TrashRefreshAsync(kind, includeInactive);
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

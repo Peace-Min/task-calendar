@@ -223,9 +223,16 @@ const checks = {
     assert.ok(/if \(!active\)\s*\{/.test(sa),
       '퇴사/복구가 같은 규칙을 받는다 — 잠금 방지는 퇴사(!active)에만 걸어야 한다');
 
-    // 하드삭제는 어디에도 없다(§3.3 — 표가 스스로 막지만, 코드에도 그 경로를 만들지 않는다).
-    assert.ok(!/DELETE\s+FROM\s+app_user/i.test(code),
-      'app_user 를 DELETE 하는 SQL 이 생겼다 — 퇴사는 is_active=0 이고 행은 남는다(§3.3)');
+    // 하드삭제 경로는 **휴지통 한 곳뿐**이다(2026-09-10 개정 · TRASH-DELETE §3.3).
+    //   옛 계약은 "어디에도 없다"였다. 휴지통이 생기며 그 문장은 거짓이 됐지만, 느슨해진 것이 아니라
+    //   **자리가 하나로 좁혀진** 것이다 — DeleteTrashAsync 밖에서 app_user 를 지우면 여기서 운다
+    //   (그 함수는 숨김 여부·기록 0건·자기 계정·이름 대조를 전부 지난 뒤에야 DELETE 에 닿는다).
+    const delTrash = csMember(cs, 'DeleteTrashAsync(');
+    const outside = code.replace(delTrash, '');
+    assert.ok(!/DELETE\s+FROM\s+app_user/i.test(outside),
+      'DeleteTrashAsync 밖에서 app_user 를 DELETE 하는 SQL 이 생겼다 — 퇴사는 is_active=0 이고 행은 남는다(§3.3)');
+    assert.ok(/DELETE\s+FROM\s+app_user/i.test(delTrash),
+      '휴지통의 영구 삭제에 app_user DELETE 가 없다 — 계약이 지킬 대상을 잃었다(측정 불가 ≠ 통과)');
   },
 
   // ④ 입력 검증 — 형식·도메인이 **사용자 문장**으로 거부된다(최종 보증은 DB 제약).
@@ -255,12 +262,14 @@ const checks = {
       '기존 사용자의 login_id 를 UPDATE 한다 — 그 값은 넷커스 소유다(§6). 필요하면 DBA 경로다');
   },
 
-  // ⑤ 권한 파일 — app_user 는 SELECT+INSERT+UPDATE, DELETE 는 없다. org_unit·title_code 는 SELECT 그대로.
+  // ⑤ 권한 파일 — app_user 는 SELECT+INSERT+UPDATE+DELETE 넷(2026-09-10 개정 · TRASH-DELETE §3.3).
+  //    DELETE 가 늘어난 이유는 휴지통 하나다. 권한은 '가능하게'만 하고, 무엇을 지울 수 있는지는
+  //    호스트 관문(DeleteTrashAsync)이 정한다 — 그래서 여기서는 **넷 정확히**를 본다(늘어도 줄어도 실패).
   grantFiles(userGrantsSql, calGrantsSql) {
-    assert.ok(/GRANT SELECT, INSERT, UPDATE[^\n]*app_user/.test(userGrantsSql),
-      '05-grants.sql 이 app_user 에 INSERT·UPDATE 를 부여하지 않는다 — 관리 화면이 ERROR 1142 로 죽는다');
-    assert.ok(!/GRANT[^\n]*DELETE[^\n]*app_user/i.test(userGrantsSql),
-      '05-grants.sql 이 app_user 에 DELETE 를 준다 — 퇴사는 is_active=0 이고 행은 남는다(§3.3)');
+    const m = /GRANT ([A-Z, ]+) ON [^\n]*app_user/.exec(userGrantsSql);
+    assert.ok(m, '05-grants.sql 에 app_user GRANT 가 없다 — 관리 화면이 ERROR 1142 로 죽는다');
+    assert.strictEqual(m[1].trim(), 'SELECT, INSERT, UPDATE, DELETE',
+      `05-grants.sql 이 app_user 에 [${m[1].trim()}] 을 준다 — 넷이어야 한다(INSERT·UPDATE 는 직원 관리, DELETE 는 휴지통 §3.3)`);
     for (const t of ['org_unit', 'title_code']) {
       const m = new RegExp("GRANT ([A-Z, ]+) ON [^\\n]*" + t).exec(userGrantsSql);
       assert.ok(m, `05-grants.sql 에 ${t} GRANT 가 없다`);
@@ -268,10 +277,10 @@ const checks = {
         `05-grants.sql 이 ${t} 에 ${m[1].trim()} 을 준다 — 조직·직급 코드 편집은 이번 범위 밖이다(§6)`);
     }
     // grants-calendar.sql 은 GRANT 를 늘리지 않는다(캘린더 표의 단일 소스다). 대신 **서술이 사실이어야** 한다.
-    assert.ok(/app_user\s+SELECT \+ \*\*INSERT · UPDATE\*\*/.test(calGrantsSql),
-      'grants-calendar.sql 머리말이 app_user 를 아직 SELECT 전용으로 서술한다 — 없는 사실을 적어 두면 다음 사람이 그걸 믿는다');
-    assert.ok(/app_user 의 DELETE 는 어디에도 없다/.test(calGrantsSql),
-      'grants-calendar.sql 서술에 "app_user DELETE 없음"이 없다');
+    assert.ok(/app_user\s+SELECT \+ \*\*INSERT · UPDATE · DELETE\*\*/.test(calGrantsSql),
+      'grants-calendar.sql 머리말의 app_user 권한 서술이 실제 분포(SELECT·INSERT·UPDATE·DELETE)와 다르다 — 없는 사실도, 빠진 사실도 다음 사람이 그대로 믿는다');
+    assert.ok(/app_user 의 DELETE 는 휴지통 관문\(ProjectDb\.DeleteTrashAsync\) 한 곳뿐이다 — 퇴사는 is_active=0 이고 행은 남으며, 기록 0건인 계정만 관리자가 지운다\(TRASH-DELETE §3\.2\)/.test(calGrantsSql),
+      'grants-calendar.sql 서술이 아직 "app_user DELETE 없음"이다 — DELETE 는 휴지통 한 곳뿐이라고 적어야 한다(§3.3)');
     assert.ok(!/GRANT[^\n]*(?:INSERT|UPDATE|DELETE)[^\n]*taskmgr\.app_user/.test(calGrantsSql),
       'grants-calendar.sql 이 app_user 쓰기를 직접 부여한다 — 그 도메인의 GRANT 정본은 05-grants.sql 하나다');
   },
@@ -498,7 +507,7 @@ test('계약③: 잠금 방지 3규칙이 같은 트랜잭션 안에서 FOR UPDA
 test('계약④: 입력 검증이 형식·도메인을 사용자 문장으로 거부한다(최종 보증은 DB 제약)', () => {
   checks.inputValidation(pdb);
 });
-test('계약⑤: 권한 파일이 app_user 에 INSERT·UPDATE 를 주고 DELETE 는 주지 않는다', () => {
+test('계약⑤: 권한 파일이 app_user 에 SELECT·INSERT·UPDATE·DELETE 넷을 주고, 서술이 휴지통 관문을 가리킨다', () => {
   checks.grantFiles(userGrants, calGrants);
 });
 test('계약⑥: 명부 순서는 호스트가 정하고 화면은 다시 정렬하지 않는다(순번 숫자 비노출)', () => {
@@ -613,14 +622,21 @@ test('변이④-b: 직급 검증을 숨김 포함으로 바꾸면 계약④ 가 
 });
 
 test('변이⑤: 05-grants.sql 을 옛 SELECT 전용으로 되돌리면 계약⑤ 가 실패한다', () => {
-  const bad = mutate(userGrants, 'GRANT SELECT, INSERT, UPDATE ON `', 'GRANT SELECT ON `');
-  assert.throws(() => checks.grantFiles(bad, calGrants), /INSERT·UPDATE 를 부여하지 않는다/);
+  const bad = mutate(userGrants, 'GRANT SELECT, INSERT, UPDATE, DELETE ON `', 'GRANT SELECT ON `');
+  assert.throws(() => checks.grantFiles(bad, calGrants), /넷이어야 한다/);
   assert.doesNotThrow(() => checks.grantFiles(userGrants, calGrants));   // 통제군
 });
 
-test('변이⑤-b: app_user 에 DELETE 를 주면 계약⑤ 가 실패한다', () => {
-  const bad = mutate(userGrants, 'GRANT SELECT, INSERT, UPDATE ON `', 'GRANT SELECT, INSERT, UPDATE, DELETE ON `');
-  assert.throws(() => checks.grantFiles(bad, calGrants), /DELETE 를 준다/);
+test('변이⑤-b: app_user 에서 DELETE 를 빼면 계약⑤ 가 실패한다(휴지통이 ERROR 1142 로 죽는다)', () => {
+  const bad = mutate(userGrants, 'GRANT SELECT, INSERT, UPDATE, DELETE ON `', 'GRANT SELECT, INSERT, UPDATE ON `');
+  assert.throws(() => checks.grantFiles(bad, calGrants), /넷이어야 한다/);
+});
+
+test('변이⑤-d: grants-calendar.sql 서술을 옛 "DELETE 없음"으로 되돌리면 계약⑤ 가 실패한다', () => {
+  const bad = mutate(calGrants,
+    'app_user 의 DELETE 는 휴지통 관문(ProjectDb.DeleteTrashAsync) 한 곳뿐이다',
+    'app_user 의 DELETE 는 어디에도 없다');
+  assert.throws(() => checks.grantFiles(userGrants, bad), /아직 "app_user DELETE 없음"이다/);
 });
 
 test('변이⑤-c: org_unit 에도 쓰기를 열면 계약⑤ 가 실패한다(이번 범위 밖)', () => {

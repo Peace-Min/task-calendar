@@ -1404,6 +1404,11 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 /* 「사용자 정보」의 구성원 버튼 줄 — 「구성원 보기」(전원) + 「구성원 편집」(관리자에게만 생긴다). */
 .us-mem-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
 #uaList{overflow:auto;max-height:46vh}
+/* 휴지통 — 탭은 검색 모달의 .tabs/.tab 을 **그대로** 쓴다(세그먼트 문법을 새로 만들지 않는다).
+   여기서 더하는 것은 둘뿐이다: 탭 안 건수 배지의 간격(.mba-line 밖이라 위 규칙이 닿지 않는다)과
+   긴 목록의 스크롤 상한(#uaList 와 같은 값 — 두 관리 화면의 세로 크기가 같아야 창이 튀지 않는다). */
+#trTabs .badge{margin-left:var(--sp-1);vertical-align:1px}
+#trList{overflow:auto;max-height:46vh}
 /* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
    트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
    ★ self(그릴 노드 없음)일 때만 JS가 인라인으로 1열로 바꾼다: display:none 인 그리드 자식은
@@ -2879,6 +2884,28 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- ===== 휴지통(TRASH-DELETE §5.1) ===== 관리자 전용 — 숨긴 항목만 모아 복구하거나 DB 행을 실제로 지운다.
+     ★ 진입은 「사용자 정보」의 #usTrash 하나뿐이고, 그 버튼 자체가 edit_role='admin' 회신일 때만 DOM 에 생긴다.
+     ★ 탭 자리(#trTabs)와 목록(#trList)은 **빈 자리**다 — 탭 버튼·[영구 삭제] 를 마크업에 적으면 호스트가
+       admin:false 로 답해도 DOM 에 남는다. 숨김이 아니라 부재여야 한다(#uaAdmin·#uaFoot 과 같은 계약).
+     ★ 검색칸이 없다(숨긴 항목은 적다) · 주 동작(primary)도 없다 — 휴지통이 권하는 일은 없다. 하단은 [닫기] 하나다.
+     ★ #userEditModal 과 형제다. 어느 모달의 자식으로도 넣지 않는다(부모가 .hidden 이면 통째로 0×0 이 된다). -->
+<div class="overlay hidden" id="trashModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>휴지통</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="set-hint" id="trScope">—</div>
+      <div id="trTabs"></div>
+      <div id="trList"></div>
+      <div class="set-hint hidden" id="trEmpty"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 자세한 사용설명서(A–Z) 모달 ===== -->
 <div class="overlay hidden" id="guideModal">
   <div class="modal wide">
@@ -3375,6 +3402,26 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <!-- 두 버튼의 톤은 confirmBox(…, tone)가 호출마다 다시 칠한다(여기 값은 초기 표시용) -->
       <button class="btn" id="cfAlt" style="display:none"></button>
       <button class="btn danger-solid" id="cfOk">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 이름 입력형 확인 모달 (되돌릴 수 없는 삭제 전용 — TRASH-DELETE §5.2) =====
+     ★ #confirmModal 을 고쳐 쓰지 않는다: 그 모달은 앱 전체의 삭제 확인 경로(#cfOk)라 입력칸이 끼면
+       모든 확인이 한 칸씩 밀린다. 형제로 둔다 — 반환 규약·닫기 처리는 confirmBox 와 같다.
+     ★ 버튼 문구는 호출부가 준다(여기는 빈 채로 둔다). 처음엔 disabled — 이름을 그대로 칠 때까지 켜지지 않는다. -->
+<div class="overlay hidden" id="confirmTypedModal">
+  <div class="modal" style="width:min(380px,100%)">
+    <div class="modal-head"><h2 id="ctTitle">확인</h2><button class="x" data-close>×</button></div>
+    <div class="modal-body">
+      <p id="ctMsg" style="font-size:var(--fs-emph);line-height:1.6;white-space:pre-wrap;margin:0"></p>
+      <label for="ctInput" id="ctLabel"></label>
+      <input type="text" id="ctInput" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>취소</button>
+      <button class="btn danger-solid" id="ctOk" disabled></button>
     </div>
   </div>
 </div>
@@ -4548,14 +4595,27 @@ function usAdminBtnSync(editRole){
   const box = document.getElementById('usMemberBtns'); if(!box) return;
   const on = String(editRole == null ? '' : editRole).trim() === 'admin';
   const cur = document.getElementById('usUserAdmin');
+  //  ★ 「휴지통」(#usTrash)도 **같은 판정·같은 자리**에서 함께 나고 함께 진다(TRASH-DELETE §5.0).
+  //    두 버튼을 한 함수가 지는 이유는 판정 문자열이 한 곳이어야 하기 때문이다 — 두 곳이면 한쪽이 낡는다.
+  //    없애는 줄이 아래 한 줄보다 먼저 오는 이유: 그 줄은 이미 시험이 형태로 잡고 있는 계약이라 그대로 둔다.
+  const curT = document.getElementById('usTrash');
+  if(!on && curT && curT.parentNode) curT.parentNode.removeChild(curT);
   if(!on){ if(cur && cur.parentNode) cur.parentNode.removeChild(cur); return; }
-  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다
+  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다(둘은 늘 같이 생긴다)
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'btn sm'; b.id = 'usUserAdmin';
   b.textContent = '구성원 편집';
   b.title = '직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)';
   b.addEventListener('click', openUserAdmin);
   box.appendChild(b);
+  const t = document.createElement('button');
+  t.type = 'button'; t.className = 'btn sm'; t.id = 'usTrash';
+  t.textContent = '휴지통';
+  t.title = '숨긴 과제·퇴사자·발주처·코드 복구 / 영구 삭제(관리자 전용)';
+  //  ★ 화살표로 감싼다 — 이 함수를 떼어 내 그려 보는 시험 하네스(user-admin.test.mjs)가 openTrash 를
+  //    모르기 때문이다. 값으로 넘기면 만들기만 해도 ReferenceError 가 나고, 하네스는 이 계약과 무관하다.
+  t.addEventListener('click', () => openTrash());
+  box.appendChild(t);
 }
 // 권한 조회 — 열 때마다 DB에서 새로 읽는다(세션에는 권한이 없다: 4필드뿐).
 // ★ 실패하면 추측하지 않는다. 낡거나 지어낸 권한을 보여주는 것이 '모른다'고 말하는 것보다 나쁘다.
@@ -5446,6 +5506,219 @@ window.__applyMembers = function(json){
   if(!(d && d.found)) return;   // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
   uaOrderReset();   // 서버에 저장된 순서가 도착했다 — 편집 모드는 여기서 끝이다(되돌릴 것은 없다)
   uaApplyData(d);
+};
+
+/* ── 휴지통(#trashModal) — 숨긴 항목 복구 · 영구 삭제 (docs/TRASH-DELETE §5) ───────────────
+   ★ 「구성원 편집」(ua*)과 **같은 뼈대**다: 열 때마다 호스트에서 새로 읽고(캐시 금지), 관리자 여부는
+     회신(d.admin)이 정하며, 비관리자에게는 컨트롤이 아니라 안내 한 줄뿐이다. 새 규칙을 만들지 않는다.
+   ★ 다섯 표(과제·인력·발주처·구분·상태)가 같은 틀이라 한 화면·한 렌더가 전부를 진다 — 표마다
+     화면을 두면 다섯 벌이 되고, 그중 넷은 반드시 낡는다.
+   ★ 문자열은 전부 textContent 다(이름·부제는 DB 문자열이다 — 명부 규칙 ㉑과 같다).
+   ★ 목록을 **다시 정렬하지 않는다** — 순서는 호스트가 정한다. 정하는 곳이 둘이면 반드시 갈린다.
+   ★ deletable/why 는 **화면용 힌트**다. 최종 판정은 삭제 시점에 호스트가 트랜잭션 안에서 다시 한다
+     (설계 §4.2). 그래서 화면은 미리 막지 않고 '왜 안 되는지'만 말한다.                      */
+let __trData = null, __trTab = 'project', __trBusy = false, __trSaving = false;
+let __trAdmin = false;      // 이번 조회에서 호스트가 인정한 관리자 여부(회신에 admin:true 가 있었나)
+let __trSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주는 타이머(uaSetSaving 과 같은 이유)
+//  탭 정의 한 벌 — 종류·라벨·회신의 목록 키·참조 문구가 **여기서만** 갈라진다.
+//  ★ 참조 문구가 종류마다 다른 이유: 과제는 사람이 편입하고, 인력은 기록을 남기고, 코드는 과제가 쓴다.
+//    같은 숫자라도 뜻이 달라서 한 문장으로 뭉치면 관리자가 무엇을 지우는지 모르게 된다.
+const TR_TABS = [
+  { kind: 'project',  label: '과제',   key: 'projects',  refs: n => '편입 ' + n + '건' },
+  { kind: 'user',     label: '인력',   key: 'users',     refs: n => '기록 ' + n + '건' },
+  { kind: 'customer', label: '발주처', key: 'customers', refs: n => '과제 ' + n + '건' },
+  { kind: 'section',  label: '구분',   key: 'sections',  refs: n => '과제 ' + n + '건' },
+  { kind: 'status',   label: '상태',   key: 'statuses',  refs: n => '과제 ' + n + '건' },
+];
+const trTabDef = kind => TR_TABS.find(t => t.kind === kind) || TR_TABS[0];
+const trRows = kind => { const a = __trData ? __trData[trTabDef(kind).key] : null; return Array.isArray(a) ? a : []; };
+
+// 탭 + 목록 렌더 — innerHTML 금지. 관리자가 아니면 **행도 컨트롤도 탭도 만들지 않는다**(숨김이 아니라 부재).
+//   ★ 안내 한 줄은 남긴다: 관리자에서 내려간 사람에게 빈 화면은 '고장'으로 보인다(uaRender 와 같은 이유).
+//   ★ 행은 눌리지 않는다(평범한 div) — 이 화면의 동작은 오른쪽 버튼 둘뿐이다.
+function trRender(){
+  const tabs = document.getElementById('trTabs');
+  const list = document.getElementById('trList');
+  if(!tabs || !list) return;
+  const empty = document.getElementById('trEmpty');
+  const sc = document.getElementById('trScope');
+  while(tabs.firstChild) tabs.removeChild(tabs.firstChild);
+  while(list.firstChild) list.removeChild(list.firstChild);
+  //  ★ 클래스도 관리자일 때만 붙인다(uaAdminBar 와 같은 관례) — 빈 자리에 탭 밑줄만 남는 꼴을 피한다.
+  tabs.className = __trAdmin ? 'tabs' : '';
+  if(!__trAdmin){
+    const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
+    d.textContent = '관리자만 사용할 수 있습니다.';
+    list.appendChild(d);
+    if(empty) empty.classList.add('hidden');
+    if(sc) sc.textContent = '관리자만 사용할 수 있습니다.';
+    return;
+  }
+  let total = 0;
+  for(const t of TR_TABS) total += trRows(t.kind).length;
+  if(sc) sc.textContent = '숨긴 항목 ' + total + '건 · 되돌릴 수 없는 삭제는 이름을 입력해야 합니다';
+  //  탭 다섯 — 건수 배지를 함께 낸다. '어느 표에 뭐가 남아 있나'를 탭을 눌러 보며 찾게 하지 않는다.
+  for(const t of TR_TABS){
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = (t.kind === __trTab) ? 'tab on' : 'tab';
+    b.dataset.trtab = t.kind;
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', t.kind === __trTab ? 'true' : 'false');
+    b.textContent = t.label;
+    const n = document.createElement('span');
+    n.className = 'badge badge-git'; n.textContent = String(trRows(t.kind).length);
+    b.appendChild(n);
+    b.addEventListener('click', () => { __trTab = t.kind; trRender(); });
+    tabs.appendChild(b);
+  }
+  const def = trTabDef(__trTab), arr = trRows(__trTab);
+  for(const it of arr){
+    const key = String(it && it.key != null ? it.key : '');
+    const nm = (it && it.name) ? String(it.name) : '—';
+    const refs = Number(it && it.refs != null ? it.refs : 0) || 0;
+    const row = document.createElement('div');
+    row.className = 'mb-row';
+    const head = document.createElement('div');
+    const b1 = document.createElement('b'); b1.textContent = nm; head.appendChild(b1);
+    //  참조 요약은 0 이면 내지 않는다 — '편입 0건'은 읽는 사람에게 아무것도 알려 주지 않는다.
+    if(refs > 0){
+      const rf = document.createElement('span');
+      rf.className = 'git-opt'; rf.textContent = ' · ' + def.refs(refs);
+      head.appendChild(rf);
+    }
+    row.appendChild(head);
+    const sub = document.createElement('div'); sub.className = 'set-hint'; sub.style.margin = '0';
+    sub.textContent = (it && it.sub) ? String(it.sub) : '';
+    row.appendChild(sub);
+    //  행과 버튼은 **형제**다(.mba-line 이 한 줄로 묶는다 — 「구성원 편집」과 같은 골격).
+    //  ★ data-top / data-tkey 는 시험·루프가 잡을 손잡이다. 이름으로 셀렉터를 만들면 한글 이스케이프가 낀다.
+    const act = document.createElement('div');
+    act.className = 'mba-act';
+    const rb = document.createElement('button');
+    rb.type = 'button'; rb.className = 'btn sm'; rb.textContent = '복구';
+    rb.dataset.top = 'restore'; rb.dataset.tkey = key;
+    rb.addEventListener('click', () => trRestore(def.kind, key, nm));
+    act.appendChild(rb);
+    const db = document.createElement('button');
+    db.type = 'button'; db.className = 'btn sm danger'; db.textContent = '영구 삭제';
+    db.dataset.top = 'delete'; db.dataset.tkey = key;
+    //  ★ 지울 수 없으면 **끄고 사유를 붙인다**. 눌러 봐야 거부되는 버튼은 관리자에게 이유를 알려 주지 않는다.
+    if(!(it && it.deletable === true)){ db.disabled = true; db.title = (it && it.why) ? String(it.why) : ''; }
+    db.addEventListener('click', () => trDelete(def.kind, key, nm, refs));
+    act.appendChild(db);
+    const line = document.createElement('div');
+    line.className = 'mba-line';
+    line.appendChild(row);
+    line.appendChild(act);
+    list.appendChild(line);
+  }
+  if(empty){ empty.textContent = '숨긴 ' + def.label + '이(가) 없습니다.'; empty.classList.toggle('hidden', arr.length > 0); }
+}
+
+// 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회(openTrash)와 쓰기 뒤 푸시(__applyTrash)가 **같은 함수**를 쓴다.
+//   ★ 탭 위치는 유지한다(설계 §5.3) — 지우자마자 보던 자리에서 튕겨 나가면 다음 대상을 다시 찾아야 한다.
+function trApplyData(d){
+  __trData = d || null;
+  __trAdmin = !!(d && d.admin === true);   // 관리자 여부는 **호스트가 정한 값**이다(화면이 판단하지 않는다)
+  trRender();
+}
+
+// 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다(추측한 목록을 그리지 않는다 · uaFail 과 같다).
+function trFail(msg){
+  const tabs = document.getElementById('trTabs');
+  if(tabs){ while(tabs.firstChild) tabs.removeChild(tabs.firstChild); tabs.className = ''; }
+  const list = document.getElementById('trList');
+  if(list){
+    while(list.firstChild) list.removeChild(list.firstChild);
+    const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
+    d.textContent = String(msg == null ? '' : msg);   // 호스트 문구도 textContent 로만
+    list.appendChild(d);
+  }
+  const empty = document.getElementById('trEmpty'); if(empty) empty.classList.add('hidden');
+  const sc = document.getElementById('trScope'); if(sc) sc.textContent = '휴지통을 확인할 수 없음';
+}
+
+// 진입점 — 열 때마다 trashGet 을 새로 부른다(캐시 금지: 낡은 목록은 이미 지운 것을 다시 지우게 한다).
+// ★ 모달은 회신을 기다리지 않고 먼저 연다(openUserAdmin 과 같은 이유) — 대신 '불러오는 중…'을 띄운다.
+// ★ __trAdmin 을 먼저 비운다: 낡은 값이 남으면 회신 전 한 프레임 동안 [영구 삭제]가 번쩍인다.
+async function openTrash(){
+  if(__trBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  __trBusy = true;
+  __trData = null; __trAdmin = false; __trTab = 'project';
+  trRender();
+  const sc = document.getElementById('trScope'); if(sc) sc.textContent = '불러오는 중…';
+  const empty = document.getElementById('trEmpty'); if(empty) empty.classList.add('hidden');
+  openModal('#trashModal');
+  if(!HOST){ __trBusy = false; trFail('데스크톱 위젯에서만 동작합니다.'); return; }
+  let r = null;
+  try{ r = await hostRequest('trashGet', {}, 12000); }catch(_){ r = null; }
+  __trBusy = false;
+  //  회신 덩어리는 푸시(__applyTrash)와 **같은 모양**이다 — 호스트가 {ok,data} 로 감싸도 그대로 읽는다.
+  const d = (r && r.data) ? r.data : r;
+  if(!(d && d.found)){ trFail((d && d.msg) || (r && r.msg) || '휴지통을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
+  trApplyData(d);
+}
+
+// 쓰기 성공 뒤 호스트가 밀어 주는 갱신 목록(문자열 JSON — __applyMembers 와 같은 전달 규약).
+window.__applyTrash = function(json){
+  let d = null;
+  try{ d = JSON.parse(String(json || '')); }catch(_){ d = null; }
+  if(!(d && d.found)) return;   // 못 읽으면 직전 화면을 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  trApplyData(d);
+};
+
+// 복구 — 확인 한 번. 되돌릴 수 있는 조작이라 이름 입력까지 요구하지 않는다.
+function trRestore(kind, key, name){
+  confirmBox('복구', "'" + name + "' 을(를) 목록에 다시 표시합니다. 계속할까요?", '복구', '취소').then(r => {
+    if(r !== 'ok') return;
+    trSend({ cmd: 'trashRestore', kind: kind, key: key });
+  });
+}
+
+// 영구 삭제 — 확인창에서 **이름을 그대로 입력**해야 버튼이 켜진다(설계 §5.2).
+//   ★ 문장이 종류마다 다른 이유: 지운 뒤에 남는 것이 다르다. 과제는 편입한 사람의 화면에 '삭제된 과제'로
+//     남고 일정·보고는 지워지지 않는다 — 그 사실을 모르고 지우면 '왜 아직 보이지'가 된다.
+//   ★ 입력값은 **가공 없이** 보낸다(TRIM 도 하지 않는다). 이름에 공백이 있으면 공백까지 같아야 한다.
+function trDelete(kind, key, name, refs){
+  const n = Number(refs) || 0;
+  const msg = kind === 'project'
+    ? "'" + name + "' 과제를 DB 에서 영구 삭제합니다. 편입 중인 " + n + "명의 화면에는 '삭제된 과제'로 남고 일정·보고 기록은 지워지지 않습니다. 되돌릴 수 없습니다(백업으로만 복구). 과제명을 그대로 입력하세요."
+    : kind === 'user'
+      ? "'" + name + "' 계정을 DB 에서 영구 삭제합니다. 기록이 없는 계정입니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요."
+      : "'" + name + "' 을(를) DB 에서 영구 삭제합니다. 쓰는 과제가 없습니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요.";
+  confirmTyped(trTabDef(kind).label + ' 영구 삭제', msg, name, '영구 삭제').then(r => {
+    if(r !== 'ok') return;
+    const inp = document.getElementById('ctInput');
+    trSend({ cmd: 'trashDelete', kind: kind, key: key, confirm: inp ? inp.value : '' });
+  });
+}
+
+// 호스트 왕복 한 곳 — 복구·삭제가 같은 가드·같은 워치독을 쓴다(uaSend 와 같은 골격).
+//   ★ includeInactive 를 함께 보낸다: 인력을 지우면 호스트가 곧바로 명부를 다시 읽어 미는데,
+//     그때 「퇴사자 보기」 상태를 모르면 「구성원 편집」 화면이 제멋대로 바뀐다.
+//   ★ 여기에 __trAdmin 가드를 **두지 않는다.** 권한 판정은 호스트가 요청 시점에 한다(USER-LOGIN §3.3) —
+//     화면이 미리 막으면 거부 사유가 화면 문장으로 바뀌어, 관문이 실제로 막는지 아무도 확인하지 못한다.
+function trSend(payload){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  if(__trSaving) return;   // 연타·중복 전송 차단
+  __trSaving = true;
+  clearTimeout(__trSaveWatchdog);
+  //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
+  __trSaveWatchdog = setTimeout(() => {
+    __trSaving = false;
+    toast('응답이 없습니다 — 다시 시도해 주세요.', 'warn');
+  }, 12000);
+  hpost(Object.assign({ includeInactive: __uaInactive }, payload));   // 결과는 __trashDone(ok, msg)
+}
+
+// 호스트 쓰기 결과(복구·삭제 공용). 목록 갱신은 여기서 하지 않는다 — 호스트가 __applyTrash 로 밀어 준다.
+//   ★ 문장을 **다시 쓰지 않는다**: 거부 사유(기록 n건·사용 중·이름 불일치)는 호스트가 사용자 문장으로
+//     만들었다. 화면이 '처리하지 못했습니다'로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다.
+window.__trashDone = function(ok, msg){
+  __trSaving = false;
+  clearTimeout(__trSaveWatchdog);
+  toast(msg || (ok ? '처리했습니다' : '처리하지 못했습니다'), ok ? 'success' : 'error');
 };
 
 // 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다.
@@ -8060,7 +8333,7 @@ window.__projectSaved = function(ok, msg, needConfirm){
 function offHideProject(id){
   const c = dbCatalogById(id); if(!c) return;
   confirmBox('공식 과제 숨김',
-    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요?`,
+    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요? 숨긴 과제는 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다.`,
     '숨김', '취소')
     .then(r => {
       if(r !== 'ok') return;
@@ -8159,11 +8432,11 @@ function custDoHide(name){
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
       const r = await confirmBox('발주처 숨김',
-        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요?`, '숨김', '취소');
+        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     } else if(n > 0){
       const r = await confirmBox('발주처 숨김',
-        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요?`, '숨김', '취소');
+        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
     custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다');
@@ -8306,11 +8579,11 @@ function codeDoHide(name){
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
-        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요?`, '숨김', '취소');
+        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     } else if(n > 0){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
-        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요?`, '숨김', '취소');
+        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
     codeSend('codeSetActive', { name, active: false }, codeKindLabel() + '을(를) 숨겼습니다');
@@ -10123,6 +10396,46 @@ function confirmBox(title, msg, okLabel, altLabel, tone){
     });
     mo.observe(ov, {attributes:true, attributeFilter:['class']});
     openModal('#confirmModal');
+  });
+}
+
+/* ---------- 이름 입력형 확인 모달 (되돌릴 수 없는 삭제 전용 — TRASH-DELETE §5.2) ----------
+   반환: 'ok' | 'cancel'. 취소·배경클릭·Esc 는 confirmBox 와 같은 MutationObserver 로 'cancel'.
+   ★ confirmBox 를 고쳐 쓰지 않는다: #confirmModal 은 앱 전체의 삭제 확인 경로(#cfOk)라 입력칸이 끼면
+     모든 확인이 한 칸씩 밀리고, 그 경로를 잡고 있는 루프 시험도 함께 어긋난다. 형제 모달로 둔다.
+   ★ 대조는 **엄격 일치**다 — trim 도, 대소문자 접기도 없다(설계 §5.2). 이름에 공백이 있으면 공백까지
+     같아야 한다. 호스트도 같은 대조를 다시 하므로(§3.4) 화면이 느슨해지면 둘의 기준이 갈린다.
+   ★ Enter 는 버튼이 켜졌을 때만 제출한다 — 꺼진 버튼을 Enter 로 우회하면 입력 확인이 장식이 된다. */
+function confirmTyped(title, msg, mustType, okLabel){
+  return new Promise(resolve => {
+    const ov = $('#confirmTypedModal'), ok = $('#ctOk'), inp = $('#ctInput');
+    const want = String(mustType == null ? '' : mustType);
+    $('#ctTitle').textContent = title || '확인';
+    $('#ctMsg').textContent = msg || '';
+    $('#ctLabel').textContent = "확인을 위해 '" + want + "' 을(를) 그대로 입력하세요";
+    ok.textContent = okLabel || '삭제';
+    inp.value = '';           // 지난 대상의 이름이 남아 있으면 그대로 눌려 버린다
+    ok.disabled = true;
+    const sync = () => { ok.disabled = inp.value !== want; };
+    let result = 'cancel';
+    inp.oninput = sync;
+    inp.onkeydown = ev => {
+      if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
+      if(ev.key !== 'Enter') return;
+      ev.preventDefault();
+      sync();
+      if(!ok.disabled){ result = 'ok'; closeOverlay(ov); }
+    };
+    ok.onclick = () => { result = 'ok'; closeOverlay(ov); };
+    const mo = new MutationObserver(() => {
+      if(ov.classList.contains('hidden')){
+        mo.disconnect(); ok.onclick = null; inp.oninput = null; inp.onkeydown = null;
+        resolve(result);
+      }
+    });
+    mo.observe(ov, {attributes:true, attributeFilter:['class']});
+    openModal('#confirmTypedModal');
+    try{ inp.focus(); }catch(_){}
   });
 }
 

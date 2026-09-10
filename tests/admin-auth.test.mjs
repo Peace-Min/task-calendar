@@ -229,7 +229,15 @@ const WRITE_SQL = /\b(?:INSERT\s+INTO|REPLACE\s+INTO|DELETE\s+FROM|TRUNCATE\s+TA
 // 직원 정보(app_user)를 쓰는 SQL 의 '모양'. 이 표만 관문이 다르다(USER-ADMIN §8-2, 2026-09-10):
 //   과제 쓰기는 editor 도 통과하지만, 이 표는 **누가 관리자인가**를 담고 있어 admin 만 통과한다.
 //   editor 가 이 표를 쓸 수 있으면 자기 행의 edit_role 을 'admin' 으로 올려 관문을 무의미하게 만든다.
-const USER_WRITE_SQL = /\b(?:INSERT\s+INTO\s+app_user|UPDATE\s+app_user)\b/;
+//   ★ 2026-09-10(휴지통) — DELETE 가 이 모양에 들어왔다. 그전까지 app_user 하드삭제 경로는 아예 없었지만
+//     이제 하나 있다(ProjectDb.DeleteTrashAsync). 지우는 쪽이 고치는 쪽보다 가벼울 수는 없으므로
+//     같은 관문을 요구한다 — 빼 두면 '지우기'만 쓰기 관문으로 내려가도 침묵한다.
+const USER_WRITE_SQL = /\b(?:INSERT\s+INTO\s+app_user|UPDATE\s+app_user|DELETE\s+FROM\s+app_user)\b/;
+
+// 휴지통 세 함수(TRASH-DELETE §4.1) — 조회·복구·삭제 전부 관리자 관문이다.
+//   조회(LoadTrashJsonAsync)는 쓰기 SQL 이 없어 위 모양 검사에 걸리지 않는다. 그래서 여기 이름으로 적는다:
+//   '숨긴 항목 전량을 훑는 목록'은 읽기라도 관리자만 볼 것이라는 결정이 이 앱의 계약이기 때문이다.
+const TRASH_MEMBERS = ['LoadTrashJsonAsync', 'RestoreTrashAsync', 'DeleteTrashAsync'];
 
 const gate = {
   // 연결을 여는 헬퍼는 딱 셋이다(읽기·쓰기·관리자). 무검사 opener 를 하나 더 다는 순간 여기서 운다.
@@ -283,8 +291,29 @@ const gate = {
       assert.ok(!/OpenAdminAsync\(/.test(w.body),
         `${w.name} 가 과제 쓰기에 관리자 관문을 쓴다 — 사업부 editor 가 과제를 못 고치게 된다(과잉 차단도 결함이다)`);
     }
-    assert.deepStrictEqual(userWriters.sort(), ['SaveUserOrderAsync', 'SetUserActiveAsync', 'UpsertUserAsync'],
+    assert.deepStrictEqual(userWriters.sort(),
+      ['DeleteTrashAsync', 'RestoreTrashAsync', 'SaveUserOrderAsync', 'SetUserActiveAsync', 'UpsertUserAsync'],
       `app_user 를 쓰는 메서드가 [${userWriters.join(', ')}] 이다 — 늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
+  },
+
+  // 휴지통 세 함수는 **관리자 관문만** 연다(TRASH-DELETE §4.1 · 시험 계약 ②).
+  //   위 모양 검사가 복구·삭제는 잡지만 조회는 잡지 못한다(읽기라서). 되돌릴 수 없는 조작의 목록을
+  //   editor 가 훑을 수 있으면 그건 이미 화면 계약이 깨진 것이라, 셋을 한 묶음으로 본다.
+  trashGoesThroughAdminGate(pdb) {
+    const members = csMembers(pdb);
+    for (const nm of TRASH_MEMBERS) {
+      const m = members.find((x) => x.name === nm);
+      assert.ok(m, `휴지통 함수를 찾지 못했다: ${nm}(측정 불가 ≠ 통과)`);
+      assert.ok(/OpenAdminAsync\(/.test(m.body), `${nm} 가 관리자 관문을 지나지 않는다 — 휴지통은 admin 전용이다`);
+      assert.ok(!/OpenWriteAsync\(/.test(m.body), `${nm} 가 쓰기 관문(editor 통과)으로 연결을 연다 — 삭제·복구가 editor 에게 열린다`);
+      assert.ok(!/OpenReadAsync\(/.test(m.body), `${nm} 가 읽기 관문으로 연결을 연다 — 권한 검사를 통째로 건너뛴다`);
+    }
+    // 브리지 세 명령이 실제로 그 셋에 닿는다(관문이 있어도 아무도 안 지나면 소용없다 — G1 과 같은 이유).
+    const bridge = stripCs(mainWindow);
+    for (const [cmd, fn] of [['trashGet', 'LoadTrashJsonAsync'], ['trashRestore', 'RestoreTrashAsync'], ['trashDelete', 'DeleteTrashAsync']]) {
+      assert.ok(new RegExp('case "' + cmd + '":').test(bridge), `브리지 case "${cmd}" 가 없다`);
+      assert.ok(new RegExp('_projectDb\\.' + fn + '\\(').test(bridge), `브리지가 ${fn} 을 부르지 않는다`);
+    }
   },
 
   // 관리자 관문 안에도 우회 출구가 없어야 한다(쓰기 관문과 같은 규칙 · 같은 이유).
@@ -335,6 +364,7 @@ test('관문 우회 금지: 모든 연결 개시가 세 관문 중 하나를 지
 test('관문 우회 금지: 쓰기 SQL 을 가진 메서드는 이름·반환형과 무관하게 대상 표에 맞는 관문으로 연다', () => gate.writeSqlGoesThroughGate(projectDb));
 test('관문 우회 금지: 쓰기 관문 안에 거부 3분기를 건너뛰는 출구가 없다', () => gate.gateHasNoEarlyExit(projectDb));
 test('관문 우회 금지: 관리자 관문은 admin 만 통과시키고 조기 출구가 없다', () => gate.adminGateHasNoEarlyExit(projectDb));
+test('관문 우회 금지: 휴지통 조회·복구·영구 삭제는 관리자 관문만 연다(TRASH-DELETE §4.1)', () => gate.trashGoesThroughAdminGate(projectDb));
 
 // ══════════════════════════════════════════════════════════════════════
 // 검사 ② 부활 금지는 '이름'이 아니라 '형태'로 (G2)
