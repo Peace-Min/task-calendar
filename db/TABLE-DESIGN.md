@@ -74,6 +74,7 @@
 | `common_name` | VARCHAR(200) | NOT NULL, 기본 `''` ¹ | 통상명칭 |
 | `start_date` | DATE | NULL | 계약시작일(선진행/미정=NULL) |
 | `end_date` | DATE | NULL | 계약종료일(선진행/미정=NULL) |
+| `dev_end_date` | DATE | NULL | **개발종료일** — 계약종료일과 **별개**(개발 완료 목표·실제). **선진행이어도 잠그지 않는다**(계약 전이어도 개발은 진행 중이라 이 날짜만이 의미를 갖는다). 미정=NULL. 목록 행에는 안 나온다(폭 고정) — 상세·편집·Excel 전용 |
 | `status` | VARCHAR(50) | NULL, **FK→status_code.name** | 상태(선진행=NULL이면 FK 스킵). CASCADE / RESTRICT |
 | `note` | VARCHAR(500) | NOT NULL, 기본 `''` | **비고** — 관리 화면 전용 내부메모. **캘린더·보고서엔 미노출** |
 | `is_active` | TINYINT(1) | NOT NULL, 기본 1 | 소프트 삭제(0=숨김) |
@@ -149,7 +150,7 @@
 |---|---|
 | `section` | 코드테이블(section_code) 존재값만. 없는 값은 FK 거부(ERROR 1452). 표준 3값 + 앱에서 추가 가능 |
 | `status` | 코드테이블(status_code) 존재값 또는 NULL(선진행). 표준 4값 + 앱에서 추가 가능 |
-| **선진행(계약 전)** | `start_date`·`end_date`·`status` = NULL |
+| **선진행(계약 전)** | `start_date`·`end_date`·`status` = NULL (`dev_end_date` 는 잠그지 않음 — 계약 전이어도 개발은 진행 중) |
 | 날짜 | `'YYYY-MM-DD'` 또는 NULL |
 | 이름 필드 쓰기 | **앞뒤 공백 TRIM**(위생) |
 | 빈 계약명/통상명칭 | `''`(빈 문자열)로 저장 — NULL 금지(비교 함정 방지) ¹ |

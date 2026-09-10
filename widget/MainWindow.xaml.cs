@@ -526,7 +526,7 @@ namespace TaskCalendarWidget
                     case "saveProject":     // uid 없으면 신규 INSERT, 있으면 그 uid UPDATE. confirm=true면 소프트 경고 검사 건너뜀.
                         _ = SaveProjectAsync(GetStr(doc, "uid"), GetStr(doc, "section"), GetStr(doc, "customer"),
                             GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
-                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "status"),
+                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "devEndDate"), GetStr(doc, "status"),
                             GetStr(doc, "note"), GetBool(doc, "confirm"));
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
@@ -1124,6 +1124,7 @@ namespace TaskCalendarWidget
             ("계약명",   "contractName", 34, XlsxWriter.Align.Left,   false, true),   // 길고 덜 보는 열은 뒤로
             ("시작일",   "startDate",    12, XlsxWriter.Align.Center, true,  false),
             ("종료일",   "endDate",      12, XlsxWriter.Align.Center, true,  false),
+            ("개발종료일", "devEndDate",   12, XlsxWriter.Align.Center, true,  false),   // 계약종료일과 별개(개발 완료 목표·실제)
             ("상태",     "status",       14, XlsxWriter.Align.Center, false, false),
         };
 
@@ -1531,10 +1532,10 @@ namespace TaskCalendarWidget
 
         // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
         private async Task SaveProjectAsync(string uid, string section, string customer, string projectName,
-            string contractName, string commonName, string startDate, string endDate, string status, string note, bool confirm)
+            string contractName, string commonName, string startDate, string endDate, string devEndDate, string status, string note, bool confirm)
         {
             var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, section, customer, projectName,
-                contractName, commonName, startDate, endDate, status, note: note, confirmSimilar: confirm);
+                contractName, commonName, startDate, endDate, devEndDate, status, note: note, confirmSimilar: confirm);
             ProjectSaved(ok, msg, needConfirm);
             if (ok) await LoadProjectsToWebAsync();
         }

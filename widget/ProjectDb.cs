@@ -178,6 +178,7 @@ namespace TaskCalendarWidget
                 const string sql =
                     "SELECT uid, section, customer, project_name, contract_name, common_name, " +
                     "DATE_FORMAT(start_date,'%Y-%m-%d') start_date, DATE_FORMAT(end_date,'%Y-%m-%d') end_date, " +
+                    "DATE_FORMAT(dev_end_date,'%Y-%m-%d') dev_end_date, " +
                     "status, note, is_active FROM project WHERE is_active=1 ORDER BY common_name";
                 await using var cmd = new MySqlCommand(sql, conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
@@ -195,6 +196,7 @@ namespace TaskCalendarWidget
                         ["common_name"]   = Str(rd, "common_name"),
                         ["start_date"]    = Str(rd, "start_date"),
                         ["end_date"]      = Str(rd, "end_date"),
+                        ["dev_end_date"]  = Str(rd, "dev_end_date"),
                         ["status"]        = Str(rd, "status"),
                         ["note"]          = Str(rd, "note"),
                         ["is_active"]     = IntOrNull(rd, "is_active"),
@@ -727,7 +729,7 @@ namespace TaskCalendarWidget
         //   — 비슷한 과제가 이미 있으니 그래도 추가할지 사용자에게 물으라는 신호. confirmSimilar=true로 재호출하면 검사 없이 저장한다.
         // 이름 필드(사업명·계약명·통상명칭·발주처)는 저장 전 TRIM. 빈 계약명/통상명칭은 ''로 저장(NULL 금지 — 비교 함정 방지).
         public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(string? uid, string section, string customer,
-            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? status,
+            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? devEndDate, string? status,
             string? note = null, bool confirmSimilar = false)
         {
             // ── 앱단 선검증(형식·필수) — DB까지 보내지 않고 바로 사용자 문장으로. 구분/상태 존재 검증은 연결 후(코드테이블 로드).
@@ -736,17 +738,23 @@ namespace TaskCalendarWidget
             string cn = (contractName ?? "").Trim(), mn = (commonName ?? "").Trim();   // 빈값은 ''(NULL 아님)
             string nt = (note ?? "").Trim();                                            // 비고(빈값 '')
             string st = (status ?? "").Trim(), sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
+            string ded = (devEndDate ?? "").Trim();                                    // 개발종료일 — 아래 선진행 분기에서 비우지 않는다
             if (pname.Length == 0) return (false, "사업명을 입력하세요.", false);
             if (cust.Length == 0) return (false, "발주처를 선택하세요.", false);
             if (sec.Length == 0) return (false, "구분을 선택하세요.", false);
             // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
             //   ※ '선진행'은 코드테이블 개명 가능하나, 이 특수규칙은 표준 시드값 기준(개명하면 규칙도 함께 손봐야 함).
+            //   ★ ded(개발종료일)는 여기서 비우지 않는다 — 선진행은 '계약 전'일 뿐 개발은 이미 돌고 있어
+            //     개발종료일이야말로 이 구간에서 유일하게 의미 있는 날짜다(2026-09-10 설계 결정).
             if (sec == "선진행") { sd = ""; ed = ""; st = ""; }
             // 날짜 형식 선검증 — 잘못된 형식을 조용히 NULL로 저장하지 않고 사용자에게 되돌린다(무음 데이터 유실 방지).
             if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
+            if (!IsDateOrEmpty(ded)) return (false, "개발종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (sd.Length > 0 && ed.Length > 0 && string.CompareOrdinal(sd, ed) > 0)
                 return (false, "계약종료일이 계약시작일보다 빠릅니다.", false);
+            // ★ ded 에는 순서 검증을 걸지 않는다 — 계약 시작 전에 개발이 끝나는 일이 실제로 있다
+            //   (선진행분을 나중에 계약으로 덮는 경우). 계약종료일과의 대소도 마찬가지다.
 
             try
             {
@@ -783,10 +791,11 @@ namespace TaskCalendarWidget
                         }
                     }
                     const string ins = "INSERT INTO project (section, customer, project_name, contract_name, common_name, " +
-                                       "start_date, end_date, status, note) VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@st,@note)";
+                                       "start_date, end_date, dev_end_date, status, note) " +
+                                       "VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@ded,@st,@note)";
                     await using (var cmd = new MySqlCommand(ins, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st, nt);
+                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, ded, st, nt);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
@@ -799,11 +808,12 @@ namespace TaskCalendarWidget
                 else
                 {
                     const string upd = "UPDATE project SET section=@sec, customer=@cust, project_name=@pn, contract_name=@cn, " +
-                                       "common_name=@mn, start_date=@sd, end_date=@ed, status=@st, note=@note WHERE uid=@uid";
+                                       "common_name=@mn, start_date=@sd, end_date=@ed, dev_end_date=@ded, " +
+                                       "status=@st, note=@note WHERE uid=@uid";
                     int n;
                     await using (var cmd = new MySqlCommand(upd, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, st, nt);
+                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, ded, st, nt);
                         cmd.Parameters.AddWithValue("@uid", u);
                         n = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -847,7 +857,7 @@ namespace TaskCalendarWidget
 
         // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나지 않게 한 곳에서. cn/mn/nt는 이미 TRIM된 문자열('' 허용, NULL 금지).
         private static void BindProject(MySqlCommand cmd, string sec, string cust, string pname,
-            string cn, string mn, string sd, string ed, string st, string nt)
+            string cn, string mn, string sd, string ed, string ded, string st, string nt)
         {
             cmd.Parameters.AddWithValue("@sec", sec);
             cmd.Parameters.AddWithValue("@cust", cust);
@@ -856,6 +866,7 @@ namespace TaskCalendarWidget
             cmd.Parameters.AddWithValue("@mn", mn);   // '' 그대로(NULL 아님)
             cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
             cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
+            cmd.Parameters.AddWithValue("@ded", DateOrNull(ded));   // 개발종료일(빈값=NULL). 선진행이어도 살아 있다
             cmd.Parameters.AddWithValue("@st", TextOrNull(st));
             cmd.Parameters.AddWithValue("@note", nt);  // 비고 '' 그대로(NULL 아님)
         }

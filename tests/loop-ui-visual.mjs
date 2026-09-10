@@ -259,7 +259,7 @@ V._snapCats = prev ? prev._snapCats : JSON.parse(JSON.stringify(state.categories
 V._realRows = prev ? prev._realRows : (typeof dbCatalog !== 'undefined' ? dbCatalog : []).map(function(c){
   return { uid: String(c.id||'').replace(/^db-/,''), project_name:c.projectName, common_name:c.commonName,
            contract_name:c.contractName, customer:c.customer, section:c.section, status:c.status,
-           start_date:c.startDate, end_date:c.endDate, note:c.note };
+           start_date:c.startDate, end_date:c.endDate, dev_end_date:c.devEndDate, note:c.note };
 });
 V._realOnline = prev ? prev._realOnline : ((typeof dbOnline !== 'undefined') ? !!dbOnline : false);
 V._realTheme = prev ? prev._realTheme : (function(){ try{ return localStorage.getItem('tc_theme') || 'system'; }catch(_){ return 'system'; } })();
@@ -334,6 +334,7 @@ V.longRows = function(n){
       status:   ST[idx],
       start_date: '2024-0' + ((idx%9)+1) + '-01',
       end_date:   '2027-1' + (idx%2) + '-31',
+      dev_end_date: '2026-1' + (idx%2) + '-15',
       note: '내부 참고용 메모 — 계약 변경 이력 및 산출물 인도 일정 협의 중(' + (i+1) + ')'
     });
   }

@@ -1958,11 +1958,15 @@ CREATE TABLE cal_schema_meta (
 --   cal_report_daily 에 chk_crd_status/chk_crd_overtime 신설 · hours 를 DECIMAL(4,2)/>0..24 로 좁힘 ·
 --   project·section_code·status_code 표 주석 드리프트 복구 · 7표 감사 컬럼 KST→UTC 시프트.
 --   ★ 그 마이그레이션은 **재실행 안전이 아니다**(시각 시프트). v8 에서만 적용된다.
+-- ★ 2026-09-10: 9 → 10. project 에 dev_end_date(개발종료일) 신설(migrate-2026-09-10-dev-end-date.sql).
+--   컬럼 추가라 구버전 SELECT 가 깨지지는 않지만, **위젯이 새 컬럼을 SELECT 한다** — 구버전 DB 에
+--   새 위젯이 붙으면 1054 로 죽는다. 그 짝 어긋남을 게이트가 먼저 잡으라고 올린다
+--   (widget/CalendarDb.cs 의 ExpectedSchemaVersion 도 같은 배포에서 10 이다).
 --   ※ 이 아래 시딩값을 고칠 때는 이 목록도 함께 늘릴 것. 2026-08-31 에 값만 8 로 오르고
 --     이 목록이 5 에서 멈춰 있어, 파일 안에서 '무엇이 8 을 만들었는지'를 읽을 수 없었다.
 --   ※ 이 값과 db/deploy 의 최신 migrate-*.sql 이 올리는 값이 어긋나면
 --     tests/schema-integrity.test.mjs 의 '계약⑥: 버전 정합' 이 실패한다(둘이 갈라지지 않게).
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '9', UTC_TIMESTAMP(3));
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '10', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

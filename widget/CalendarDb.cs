@@ -103,7 +103,10 @@ namespace TaskCalendarWidget
         //     하나뿐이다(db/deploy/grants-calendar.sql). 막으려는 대상이 자기 통과증을 발급하면
         //     이 게이트는 무의미해진다(§5.5 ★).
         //   ★ 2026-09-09: 8 → 9(migrate-2026-09-09-integrity.sql — 무결성 규칙 통일 + 감사 시각 정규화).
-        internal const string ExpectedSchemaVersion = "9";
+        //   ★ 2026-09-10: 9 → 10(migrate-2026-09-10-dev-end-date.sql — project.dev_end_date 개발종료일 신설).
+        //     이번 판은 짝이 특히 중요하다 — ProjectDb.LoadProjectsJsonAsync 가 **그 새 컬럼을 SELECT 한다.**
+        //     v9 DB 에 이 위젯이 붙으면 그 질의가 1054 로 죽어 과제 목록이 통째로 빈다(DB 를 먼저 올릴 것).
+        internal const string ExpectedSchemaVersion = "10";
 
         private readonly Action<string> _log;
 

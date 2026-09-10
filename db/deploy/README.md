@@ -222,6 +222,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 | `migrate-2026-08-31-report-weekly.sql` | **`cal_report_weekly`** 신설 — 주간보고 사본 1표. 일간과 달리 `content_from` 이 없습니다(위젯이 주간은 폼만 채우고 전송하지 않아 **전송 시점 자체를 모릅니다**) | 6 → 7 |
 | `migrate-2026-08-31-sent-only.sql` | 위 세 표를 **「캘린더가 만든 것만」** 으로 좁힘 — 사이트는 우리에게 무효화 신호를 주지 않으므로 "지금 사이트에 뭐가 있나"는 물어보기 전엔 알 수 없고 물어본 뒤에도 그 순간의 사진일 뿐입니다(2026-08-31 사용자 결정) | 7 → 8 |
 | `migrate-2026-09-09-integrity.sql` | 무결성 규칙 통일 한 판 — ① 소유자 FK 통일(`cal_report_daily`·`cal_report_weekly` 의 `app_user` FK 를 `CASCADE` → **`RESTRICT`**. GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었습니다) ② `cal_report_hours` 의 **과제 FK 신설**(쌍둥이 `cal_task_hours` 만 잠겨 있었습니다) ③ `cal_report_daily` **CHECK 2종**(근태 코드·초과시간 — 쌍둥이 `cal_attendance` 만 잠겨 있었습니다) ④ `hours` 를 **`DECIMAL(4,2)`** 로 ⑤ **감사 시각 KST → UTC 1회 정규화**(`ProjectDb` 가 프리앰블 없이 써 온 표들) ⑥ 표 주석 드리프트 복구 | 8 → 9 |
+| `migrate-2026-09-10-dev-end-date.sql` | `project` 에 **`dev_end_date`**(개발종료일) 신설 — 계약종료일(`end_date`)과 **별개**의 날짜입니다(개발을 먼저 끝내고 검수·납품 기간이 남거나, 계약만 연장되거나, **선진행**처럼 계약 날짜가 아예 없는데 개발은 도는 경우). `AFTER end_date` 로 자리까지 못 박습니다 — 정본(신규 구축)과 컬럼 순서가 같아야 `mysqldump --no-data` 대조가 성립합니다. 기존 행은 전부 NULL(미정). **위젯이 이 컬럼을 SELECT 하므로 DB 를 먼저 올리세요**(구버전 DB + 새 위젯 = `ERROR 1054` 로 과제 목록이 통째로 빔) | 9 → 10 |
 
 > **각 파일의 머리말이 그 마이그레이션의 정본**입니다 — 왜 필요한지·무엇을 깨뜨리는지·되돌릴 수 있는지가 거기 적혀 있습니다. 이 표는 색인일 뿐입니다.
 

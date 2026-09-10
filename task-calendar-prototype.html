@@ -2200,6 +2200,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div><label for="offEdStart">계약시작</label><input type="date" id="offEdStart"></div>
         <div><label for="offEdEnd">계약종료</label><input type="date" id="offEdEnd"></div>
       </div>
+      <!-- 개발종료일 — 계약종료일과 별개(개발 완료 목표·실제). 선진행이어도 잠그지 않는다(계약 전이어도 개발은 돈다).
+           빈 <div>는 2열 격자를 유지하려는 것 — 짝이 없으면 입력칸이 행 전체로 늘어나 위 두 행과 폭이 어긋난다. -->
+      <div class="row2">
+        <div><label for="offEdDevEnd">개발종료</label><input type="date" id="offEdDevEnd"></div>
+        <div></div>
+      </div>
       <label for="offEdNote">비고 <span class="git-opt">· 관리 화면 전용 내부메모(캘린더·보고서에는 안 보임)</span></label>
       <textarea id="offEdNote" rows="2" maxlength="500" autocomplete="off" placeholder="내부 참고용 메모 (선택)"></textarea>
       <div class="git-note" id="offEdHint">발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.</div>
@@ -4227,6 +4233,7 @@ function mapDbRows(arr){
     return { id:'db-' + u, name, color:sectionColor(r.section), source:'db',
       customer:String(r.customer || ''), section:String(r.section || ''), status:String(r.status || ''),
       startDate:String(r.start_date || ''), endDate:String(r.end_date || ''),
+      devEndDate:String(r.dev_end_date || ''),   // 개발종료일 — 계약종료일과 별개. 상세·편집·Excel 에만 쓰인다(목록 행은 폭 고정)
       projectName:String(r.project_name || ''), contractName:String(r.contract_name || ''),
       commonName:String(r.common_name || ''),   // 편집 폼이 '통상명칭 비어 있음'과 '사업명과 같음'을 구분해야 해서 원본도 보존
       note:String(r.note || '') };   // 비고(관리 화면 전용 내부메모) — 편집 폼에서만 노출. 편입분엔 안 넘어감(라벨 최소 메타 원칙)
@@ -4911,7 +4918,7 @@ async function submitLogout(){
 // P3.5 단일 목록 모델: state.categories = 캘린더의 '유일한' 과제 목록. DB 유래 과제도 source:'db'로 여기에 함께 담기고 XML에 영속된다.
 // (이전의 이중 목록 — state.categories vs dbCatalog — 은 소비 지점 33곳 중 일부만 병합돼 필터바에 DB 과제가 안 뜨는 실버그를 낳았다.)
 // dbCatalog = DB 전체 목록(구독 후보) — 카탈로그 화면·재연결 select 전용. 사용자가 고른 것(구독)만 state.categories로 편입된다.
-let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, section, status, startDate, endDate, projectName, contractName, commonName }]
+let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, section, status, startDate, endDate, devEndDate, projectName, contractName, commonName }]
 const DB_SECTION_COLORS = { '일반계약':'#3e5be0', '사업부관리':'#8a5cf6', '선진행':'#c2770a' };
 function sectionColor(section){ return DB_SECTION_COLORS[(section||'').trim()] || '#5b6b7d'; }
 const dbCatalogById = id => dbCatalog.find(c => c.id === id) || null;
@@ -6938,6 +6945,7 @@ function renderOfficialDetail(){
     +   `<dt>구분</dt><dd>${val(c.section)}</dd>`
     +   `<dt>상태</dt><dd><span class="off-st ${k}"><i class="off-dot ${k}" aria-hidden="true"></i>${st ? esc(st) : '—'}</span></dd>`
     +   `<dt>계약기간</dt><dd>${per ? `<span class="off-per">${esc(per)}</span>` : `<span class="off-mut">미정</span>`}</dd>`
+    +   `<dt>개발종료</dt><dd>${c.devEndDate ? esc(offDate(c.devEndDate)) : `<span class="off-mut">미정</span>`}</dd>`
     + `</dl>`
     + `<div class="off-d-ref">참조 id · ${esc(c.id)}</div>`
     // 액션 한 줄 — 왼쪽 편입(주 동작) / 오른쪽 관리(편집·숨김). 포커스 순서도 이 DOM 순서 그대로다.
@@ -7065,6 +7073,7 @@ function offExportRow(c){
     contractName: offTrim(o.contractName),
     startDate:    offDate(o.startDate),     // 'YYYY-MM-DD'만 통과(호스트가 진짜 날짜 셀로 기록)
     endDate:      offDate(o.endDate),
+    devEndDate:   offDate(o.devEndDate),   // 개발종료일(계약종료일과 별개)
     status:       offTrim(o.status),        // 호스트가 이 값을 상태색 힌트로도 쓴다
     // '사용여부' 열은 없앴다 — 호스트 질의가 is_active=1만 읽어(ProjectDb.LoadProjectsJsonAsync) 숨김 행은
     // 애초에 오지 않고, 결과적으로 전 행이 "사용"인 상수 열이 장표에 나갔다(장표에서 상수 열은 노이즈).
@@ -7252,6 +7261,9 @@ function offEdFillEnums(section, status){
 function offEdApplySectionRule(){
   const sec = document.getElementById('offEdSection');
   const pre = !!sec && offTrim(sec.value) === '선진행';
+  // ★ 'offEdDevEnd' 는 이 배열에 넣지 않는다 — 선진행은 '계약 전'일 뿐 개발은 이미 돌고 있어
+  //   개발종료일이야말로 이 구간에서 유일하게 의미 있는 날짜다(2026-09-10 설계 결정).
+  //   호스트(ProjectDb)도 같은 이유로 선진행 분기에서 ded 를 비우지 않는다. 한쪽만 바꾸면 갈린다.
   ['offEdStart', 'offEdEnd', 'offEdStatus'].forEach(id => {
     const e = document.getElementById(id); if(!e) return;
     if(pre && e.value) e.value = '';
@@ -7316,6 +7328,7 @@ function offEditOpen(id){
   set('offEdContract', c ? c.contractName : '');
   set('offEdStart', c ? offDate(c.startDate) : '');
   set('offEdEnd', c ? offDate(c.endDate) : '');
+  set('offEdDevEnd', c ? offDate(c.devEndDate) : '');
   set('offEdNote', c ? c.note : '');   // 비고(관리 전용 내부메모)
   offEdFillEnums(c ? c.section : '', c ? c.status : '');
   offEdFillCustomers(c ? c.customer : '');
@@ -7338,6 +7351,7 @@ function offEdSaveNow(){
     commonName: val('offEdCommon'),
     startDate: val('offEdStart'),
     endDate: val('offEdEnd'),
+    devEndDate: val('offEdDevEnd'),   // 선진행이어도 보낸다 — 잠금 대상이 아니다(offEdApplySectionRule 참조)
     status: val('offEdStatus'),
     note: (document.getElementById('offEdNote') ? String(document.getElementById('offEdNote').value || '').trim() : ''),
   };

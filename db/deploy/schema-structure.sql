@@ -60,6 +60,7 @@ CREATE TABLE project (
   common_name   VARCHAR(200) NOT NULL DEFAULT '',      -- 통상명칭(빈값=''; NULL 금지)
   start_date    DATE         NULL,                     -- 계약시작일(선진행/미정=NULL)
   end_date      DATE         NULL,                     -- 계약종료일(선진행/미정=NULL)
+  dev_end_date  DATE         NULL,                     -- 개발종료일(개발 완료 목표·실제. 계약종료일과 별개. 미정=NULL)
   status        VARCHAR(50)  NULL DEFAULT NULL,        -- 상태 (FK -> status_code.name; NULL이면 검사 스킵)
   note          VARCHAR(500) NOT NULL DEFAULT '',      -- 비고(관리 화면 전용; 캘린더·보고서 미노출). 빈값=''
   is_active     TINYINT(1)   NOT NULL DEFAULT 1,       -- 소프트 삭제(0=숨김)

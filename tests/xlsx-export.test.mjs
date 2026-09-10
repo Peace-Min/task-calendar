@@ -157,7 +157,7 @@ test('추출 행 매핑: null/빈 계약명·통상명칭·상태는 빈 문자�
 test('추출 행 매핑: 상수 열이던 사용여부(active)는 행에 담지 않는다', () => {
   assert.strictEqual('active' in X.offExportRow({ active: false }), false);
   assert.strictEqual('active' in X.offExportRow({}), false);
-  assert.strictEqual(Object.keys(X.offExportRow({})).length, 8);
+  assert.strictEqual(Object.keys(X.offExportRow({})).length, 9);   // 2026-09-10 개발종료일 신설로 8 → 9
   assert.doesNotThrow(() => X.offExportRow(null));   // 방어 — 크래시 금지
 });
 
@@ -241,10 +241,12 @@ function hostExportCols(cs) {
     .map(m => ({ header: m[1], field: m[2], width: Number(m[3]), align: m[4], isDate: m[5] === 'true', wrap: m[6] === 'true' }));
 }
 
-test('추출 계약(v2): 호스트 컬럼 정의는 9개 · No→구분→발주처→사업명→통상명칭→계약명→시작일→종료일→상태', () => {
+// ★ 2026-09-10 — 열이 9 → 10 이 됐다(개발종료일 신설). 계약종료일과 **별개**의 날짜라
+//   기존 '종료일' 열로는 담을 수 없다(db/deploy/migrate-2026-09-10-dev-end-date.sql 머리말).
+test('추출 계약(v2): 호스트 컬럼 정의는 10개 · No→구분→발주처→사업명→통상명칭→계약명→시작일→종료일→개발종료일→상태', () => {
   const cols = hostExportCols();
   assert.deepStrictEqual(cols.map(c => c.header),
-    ['No', '구분', '발주처', '사업명', '통상명칭', '계약명', '시작일', '종료일', '상태']);
+    ['No', '구분', '발주처', '사업명', '통상명칭', '계약명', '시작일', '종료일', '개발종료일', '상태']);
   assert.ok(!cols.some(c => c.header === '사용여부'), '상수 열(사용여부)이 되살아났다');
 });
 
@@ -254,7 +256,7 @@ test('추출 계약(v2): 호스트 컬럼 정의는 9개 · No→구분→발주
 // 폭이 바뀌면 (a) 열이 찌그러져 값이 잘려 보이고 (b) 실측 줄 수 표가 통째로 무의미해진다.
 const EXPORT_COL_WIDTHS = [
   ['No', 6], ['구분', 12], ['발주처', 18], ['사업명', 40], ['통상명칭', 20],
-  ['계약명', 34], ['시작일', 12], ['종료일', 12], ['상태', 14],
+  ['계약명', 34], ['시작일', 12], ['종료일', 12], ['개발종료일', 12], ['상태', 14],
 ];
 
 // 헤더 → 너비. cols를 주면 그 정의(변이 주입 포함)를, 안 주면 실제 호스트 값을 쓴다.
@@ -284,16 +286,16 @@ test('추출 계약(v2): 웹이 만드는 행의 키 집합 = 호스트가 읽�
   assert.strictEqual(cols[0].field, '', '연번은 첫 열이어야 한다');
 });
 
-test('추출 계약(v2): 날짜열은 시작일·종료일 둘뿐(나머지는 문자열 셀)', () => {
+test('추출 계약(v2): 날짜열은 시작일·종료일·개발종료일 셋뿐(나머지는 문자열 셀)', () => {
   const dateFields = hostExportCols().filter(c => c.isDate).map(c => c.field);
-  assert.deepStrictEqual(dateFields, ['startDate', 'endDate']);
+  assert.deepStrictEqual(dateFields, ['startDate', 'endDate', 'devEndDate']);
 });
 
 test('추출 계약(v2): 정렬·줄바꿈 — 긴 문장 열(사업명·계약명)만 wrap, 날짜·상태·구분·No는 가운데', () => {
   const cols = hostExportCols();
   assert.deepStrictEqual(cols.filter(c => c.wrap).map(c => c.header), ['사업명', '계약명']);
   assert.deepStrictEqual(cols.filter(c => c.align === 'Center').map(c => c.header),
-    ['No', '구분', '시작일', '종료일', '상태']);
+    ['No', '구분', '시작일', '종료일', '개발종료일', '상태']);
 });
 
 test('추출 계약(v2): 상태색 규칙은 호스트(도메인)에만 있고 XlsxWriter엔 없다', () => {
@@ -869,7 +871,7 @@ test('변이㉒: 계약명 폭 34 → 60 으로 넓혀도(찌그러뜨리지 않
   assert.throws(() => checkRenderedLines(bad), /계약명 줄 수 불일치/);
 });
 
-test('변이㉓: 캘리브레이션 대상이 아닌 열(통상명칭 20 → 4)의 조용한 붕괴도 9열 전 폭 계약이 잡는다', () => {
+test('변이㉓: 캘리브레이션 대상이 아닌 열(통상명칭 20 → 4)의 조용한 붕괴도 전 열 폭 계약이 잡는다', () => {
   const bad = mutCols('("통상명칭", "commonName",   20,', '("통상명칭", "commonName",   4,');
   assert.throws(() => checkColWidths(bad), /열 너비가 바뀌었다/);
 });

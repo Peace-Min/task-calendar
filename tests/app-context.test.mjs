@@ -2201,7 +2201,7 @@ if (!JSDOM) {
       assert.strictEqual(ev("document.getElementById('offExport').disabled"), true, '0건인데 활성이면 빈 파일이 나온다');
       seedCatalog([
         { id: 'db-1', name: '레이더', color: '#3e5be0', source: 'db', customer: '방위사업청', section: '일반계약',
-          status: '진행중', startDate: '2026-01-01', endDate: '2026-12-31',
+          status: '진행중', startDate: '2026-01-01', endDate: '2026-12-31', devEndDate: '2026-09-30',
           projectName: '레이더 성능개량', contractName: '', commonName: '레이더' },
       ]);
       assert.strictEqual(ev("document.getElementById('offExport').disabled"), false);
@@ -2233,7 +2233,8 @@ if (!JSDOM) {
     // ══════════════════════════════════════════════════════════════════
     const DBROW = (uid, extra) => Object.assign({
       uid, section: '일반계약', customer: 'A청', project_name: 'P' + uid, contract_name: 'C' + uid,
-      common_name: '통상' + uid, start_date: '2026-01-01', end_date: '2026-12-31', status: '진행중', is_active: 1,
+      common_name: '통상' + uid, start_date: '2026-01-01', end_date: '2026-12-31', dev_end_date: '2026-09-30',
+      status: '진행중', is_active: 1,
     }, extra || {});
     const applyRows = (rows) => ev('__applyProjects(' + JSON.stringify(JSON.stringify(rows)) + ')');
 
@@ -2272,7 +2273,9 @@ if (!JSDOM) {
     });
 
     // ── 편입분(XML source="db") 메타 최소화 ────────────────────────────
-    const DROPPED = ['customer', 'section', 'status', 'startDate', 'endDate', 'projectName', 'contractName', 'commonName'];
+    //  ★ 2026-09-10 devEndDate 를 더했다 — 개발종료일도 '라벨 최소 메타' 밖이다(상세·편집·Excel 전용).
+  //    편입분에 실리면 그것이 곧 DB 캐시 재유입이다(그 아래 시험 두 개가 같은 이유로 XML 왕복까지 본다).
+  const DROPPED = ['customer', 'section', 'status', 'startDate', 'endDate', 'devEndDate', 'projectName', 'contractName', 'commonName'];
 
     test('편입분 메타: 편입 객체엔 상세 메타 8개가 없다(name·color만)', () => {
       seed(THS({ categories: [] }));
