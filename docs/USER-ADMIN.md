@@ -29,7 +29,7 @@
 | 화면 | **두 화면으로 나눈다.** 「구성원 보기」(`#membersModal`)는 전원이 쓰는 읽기 전용 명부 — **관리자에게도 편집 컨트롤이 없다.** 「구성원 편집」(`#userAdminModal`)은 관리자에게만 존재하는 별도 화면이고, 진입 버튼(`#usUserAdmin`)도 `edit_role='admin'` 회신일 때만 DOM 에 생긴다 | 사용자 결정(2026-09-10). 한 화면에 편집 모드를 얹으니 한쪽 상태(순서 편집 중·퇴사자 보기)가 다른 쪽 화면을 물들였다. 목록이 갈리는 문제는 **같은 `membersGet` 회신을 두 화면이 각자 필요한 것만 읽는 것**으로 막는다 |
 | 편집 폼 | `#userEditModal` — 과제 편집 폼(`#officialEditModal`)과 같은 골격 | 사용법이 같아야 관리자가 새로 배울 게 없다 |
 | 삭제 | 없다. 퇴사 = `is_active=0` | 과제와 같다. 그리고 `cal_*` 11개 표가 `RESTRICT` 로 `app_user` 를 붙들고 있어 DELETE 는 애초에 안 된다(§3.3) |
-| 순번 컬럼 | `app_user.sort_order SMALLINT UNSIGNED NULL`, `title` 바로 뒤 | 별도 표를 두려던 이유(app_user 읽기 전용 유지)가 이 결정으로 사라졌다(§7). 한 표가 낫다 |
+| 순번 컬럼 | `app_user.sort_order INT UNSIGNED NULL`, `title` 바로 뒤 (처음엔 SMALLINT 였다 — §11-14) | 별도 표를 두려던 이유(app_user 읽기 전용 유지)가 이 결정으로 사라졌다(§7). 한 표가 낫다 |
 | 순번 범위 | **전체 직원 단일 서열** | 사용자 확정. 팀을 옮겨도 다시 매길 필요가 없다 |
 | 순번 저장 | 앱이 **전체를 10 간격으로 다시 써서** 저장 | 관리자는 숫자를 보지 않는다. "사이값·밀기" 규칙이 아예 없어진다. 캘린더의 `sort_order` 전량 재작성과 같은 방식 |
 | 순번 NULL | 미지정 = 그 소속 안에서 **맨 뒤** | 신규 등록 직후 상태. 관리자가 끌어올린다 |
@@ -44,7 +44,7 @@
 
 ```sql
 -- app_user (title 바로 뒤)
-sort_order  SMALLINT UNSIGNED NULL DEFAULT NULL,   -- 전체 직원 서열. 작을수록 위. NULL=미지정(맨 뒤). 앱이 10 간격으로 재작성
+sort_order  INT UNSIGNED NULL DEFAULT NULL,        -- 전체 직원 서열. 작을수록 위. NULL=미지정(맨 뒤). 앱이 10 간격으로 재작성
 ```
 
 - **UNIQUE 를 걸지 않는다.** 재작성 중간에 같은 값이 잠깐 공존해도 이름순으로 갈라져 실해가 없고, UNIQUE 가 있으면 밀기 UPDATE 가 중복 오류로 죽는다.
@@ -57,7 +57,7 @@ sort_order  SMALLINT UNSIGNED NULL DEFAULT NULL,   -- 전체 직원 서열. 작�
 `migrate-2026-09-10-dev-end-date.sql` 과 같은 형식. 가드가 `'10'` 아니면 중단(재실행도 막는다).
 
 ```sql
-ALTER TABLE app_user ADD COLUMN sort_order SMALLINT UNSIGNED NULL DEFAULT NULL AFTER title;
+ALTER TABLE app_user ADD COLUMN sort_order SMALLINT UNSIGNED NULL DEFAULT NULL AFTER title;   -- 11 판. 12 판(§11-14)이 INT UNSIGNED 로 넓힌다
 
 -- 초기값: 직급 서열(title_code.sort_order) → 이름 순으로 10 간격. 관리자가 손대기 전에도 명부가 말이 되게.
 UPDATE app_user u
@@ -319,3 +319,11 @@ Node 시험은 MySQL 을 띄울 수 없다. 그래서 상시 게이트가 보는
 
 **12. 확신이 안 서는 곳 둘을 [§7-1 알려진 구멍](#7-1-알려진-구멍--구현하고-나서-남은-둘-2026-09-10)에 따로 적었다.**
 (a) 「퇴사자 보기」를 끈 채 저장한 순서가 퇴사자를 남겨 두는 것 · (b) 마이그레이션 전 DB 에 이 판의 위젯이 붙으면 명부가 `ERROR 1054` 로 비는 것(**배포 순서는 DB 가 먼저**). 둘 다 설계가 다루지 않았고 실동작으로 확인하지도 않았다 — 그래서 "정정"이 아니라 "구멍"으로 분리했다.
+
+**14. `sort_order` 를 SMALLINT UNSIGNED → INT UNSIGNED 로 넓혔다 — 부하 실측 뒤 배포 전 결정 2026-09-10.**
+간격은 소모되지 않는다(전량 재작성)는 것과 별개로, 타입이 천장이었다. 격리 DB 실측(서버측, mysql 기동 제외):
+89명 31ms · 1,000명 173ms · 3,000명 375ms · 6,553명 923ms 정상, **6,554명째 ERROR 1264 로 전량 롤백**(값 65,540 > 65,535).
+INT UNSIGNED 로 20,000명 재작성 2.7초. 마이그레이션 `migrate-2026-09-10-user-sort-order-int.sql`(11→12, MODIFY 만 · 값 보존),
+비공개 `01-schema-users.sql` 동일 타입, 위젯 `ExpectedSchemaVersion` 12. 시험: user-admin 계약① 을 INT 로, 계약⑨(12 판) 신설,
+계약①-b 는 '한 칸 · 정본을 앞서지 않음' 형태로(11 판이 더는 정본까지 올리는 파일이 아니다). 남은 여지: 재작성이 사람마다
+UPDATE 한 문장이라 수천 명이면 왕복 비용이 초 단위로 붙는다(15초 타임아웃 안) — 그 규모가 오면 한 문장(CASE)으로 묶는다.

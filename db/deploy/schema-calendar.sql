@@ -1974,7 +1974,9 @@ CREATE TABLE cal_schema_meta (
 --     이 목록이 5 에서 멈춰 있어, 파일 안에서 '무엇이 8 을 만들었는지'를 읽을 수 없었다.
 --   ※ 이 값과 db/deploy 의 최신 migrate-*.sql 이 올리는 값이 어긋나면
 --     tests/schema-integrity.test.mjs 의 '계약⑥: 버전 정합' 이 실패한다(둘이 갈라지지 않게).
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '11', UTC_TIMESTAMP(3));
+--   · 12 (2026-09-10): app_user.sort_order SMALLINT→INT UNSIGNED (migrate-2026-09-10-user-sort-order-int.sql)
+--       10 간격 6,553명 천장(SMALLINT 65,535) 제거 — 부하 실측 뒤 배포 전에 넓혔다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '12', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

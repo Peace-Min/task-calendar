@@ -109,7 +109,8 @@ namespace TaskCalendarWidget
         //   ★ 2026-09-10: 10 → 11(migrate-2026-09-10-user-sort-order.sql — app_user.sort_order 명부 서열 신설).
         //     같은 날 두 번째 판이다. 이번에도 짝이 중요하다 — ProjectDb.LoadMembersJsonAsync 가 그 컬럼을
         //     SELECT·ORDER BY 하고 직원 관리 쓰기가 그 컬럼에 UPDATE 를 건다(DB 를 먼저 올릴 것).
-        internal const string ExpectedSchemaVersion = "11";
+        //   ★ 2026-09-10: 11 → 12(migrate-2026-09-10-user-sort-order-int.sql — sort_order SMALLINT→INT UNSIGNED).
+        internal const string ExpectedSchemaVersion = "12";
 
         private readonly Action<string> _log;
 

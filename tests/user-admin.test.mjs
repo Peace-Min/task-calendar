@@ -108,8 +108,10 @@ const checks = {
     const blk = appUserBlock(sql);
     const line = /^[^\S\n]*sort_order[^\n]*$/m.exec(blk);
     assert.ok(line, `${label}: app_user 에 sort_order 컬럼이 없다`);
-    assert.ok(/SMALLINT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(line[0]),
-      `${label}: sort_order 가 SMALLINT UNSIGNED NULL DEFAULT NULL 이 아니다 — 마이그레이션 경로와 타입이 갈리면 덤프 대조가 깨진다`);
+    //  ★ 2026-09-10 INT 로 넓힘 — SMALLINT 은 10 간격 6,553명이 천장이었다(격리 DB 실측 ERROR 1264).
+    //    정본은 INT UNSIGNED 이고, 11 마이그레이션(SMALLINT 신설) 뒤에 12 마이그레이션(MODIFY INT)이 따라와 같은 모양에 이른다.
+    assert.ok(/\bINT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(line[0]) && !/SMALLINT/i.test(line[0]),
+      `${label}: sort_order 가 INT UNSIGNED NULL DEFAULT NULL 이 아니다 — 12 마이그레이션(INT 확장) 뒤의 모양과 갈리면 덤프 대조가 깨진다`);
     // 위치: title 바로 다음 컬럼이어야 한다(ADD COLUMN … AFTER title 과 짝).
     const cols = blk.split('\n').map((l) => /^[^\S\n]*`?([a-z_]+)`?\s+[A-Z]/.exec(l)).filter(Boolean).map((m) => m[1]);
     const iT = cols.indexOf('title'), iS = cols.indexOf('sort_order');
@@ -139,11 +141,14 @@ const checks = {
     assert.ok(/UPDATE\s+app_user[\s\S]{0,600}?updated_at\s*=\s*u\.updated_at/i.test(code),
       MIGRATE + ' 의 초기값 UPDATE 가 updated_at 을 명시하지 않는다 — 89행의 갱신 시각이 전부 지금으로 덮인다');
     //  판번호는 정본에서 읽어 대조한다(시험에 숫자를 박으면 정본이 움직일 때 시험이 거짓말을 한다).
-    const to = String(canonVer), from = String(Number(to) - 1);
+    //  ★ 2026-09-10: 이 파일(11 신설)은 더 이상 '정본까지 올리는' 파일이 아니다 — 12(INT 확장)가 뒤에 있다.
+    //    그래서 '한 칸만 · 가드=출발값 · 정본을 앞서지 않음' 으로 판정한다(project-dev-end 계약⑤ 와 같은 형태).
+    const canonTo = String(canonVer);
     const bump = /UPDATE\s+cal_schema_meta\s+SET\s+v\s*=\s*'(\d+)'[\s\S]{0,200}?AND\s+v\s*=\s*'(\d+)'/i.exec(code);
     assert.ok(bump, MIGRATE + ' 에서 schema_version 승격 문장을 찾지 못했다');
-    assert.strictEqual(bump[1], to, MIGRATE + ' 이 올리는 값(' + bump[1] + ')이 정본이 심는 값(' + to + ')과 다르다');
-    assert.strictEqual(bump[2], from, MIGRATE + ' 의 승격 WHERE 절 출발값(' + bump[2] + ')이 ' + from + ' 이 아니다');
+    const to = bump[1], from = bump[2];
+    assert.strictEqual(String(Number(from) + 1), to, MIGRATE + ' 이 판번호를 ' + from + ' → ' + to + ' 로 움직인다 — 한 번에 한 칸이어야 중간 판이 건너뛰어지지 않는다');
+    assert.ok(Number(to) <= Number(canonTo), MIGRATE + ' 이 올리는 값(' + to + ')이 정본(' + canonTo + ')을 앞서간다 — 아무도 도달할 수 없는 판번호');
     const guard = /@v\s*=\s*'(\d+)'/.exec(code);
     assert.ok(guard, MIGRATE + " 에 선행조건 가드(@v = 'N')가 없다 — 재실행이 1060 으로 죽는다");
     assert.strictEqual(guard[1], from, MIGRATE + ' 의 가드가 v=' + guard[1] + " 를 요구한다 — 정본 기준으로는 '" + from + "' 이어야 한다");
@@ -785,4 +790,30 @@ test("변이⑧-b: 바깥 catch 의 Log 를 지우면 계약⑧ 이 실패한다
   const bad = main.replace(c, " ");
   assert.notStrictEqual(bad, main, "변이가 적용되지 않았다");
   assert.ok(!/\bLog\(/.test(outerCatch(bad) ?? ""), "변이본이 계약⑧ 을 통과한다 — 검사가 무효");
+});
+
+// ── 계약⑨: 12 마이그레이션 — sort_order 를 INT UNSIGNED 로 넓히고, 가드가 11 에서만 열리며, 12 로 올린다 ──
+//   SMALLINT UNSIGNED 는 10 간격 6,553명이 천장이다(2026-09-10 격리 DB 실측: 6,554명째 ERROR 1264 · 전량 롤백).
+const MIGRATE_INT = 'db/deploy/migrate-2026-09-10-user-sort-order-int.sql';
+const migrateIntSql = readOr(new URL('../' + MIGRATE_INT, import.meta.url), MIGRATE_INT);
+test('계약⑨: INT 확장 마이그레이션은 MODIFY sort_order INT UNSIGNED NULL · 가드 11 · 승격 12 다', () => {
+  assert.ok(migrateIntSql, MIGRATE_INT + ' 을 읽지 못했다 — 측정 못 함');
+  const code = stripSqlComments(migrateIntSql);
+  assert.ok(/ALTER\s+TABLE\s+app_user\s+MODIFY\s+sort_order\s+INT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(code),
+    MIGRATE_INT + ' 이 sort_order 를 INT UNSIGNED NULL DEFAULT NULL 로 MODIFY 하지 않는다');
+  assert.ok(/IF\(@v = '11'/.test(code), MIGRATE_INT + ' 의 가드가 11 에서 열리지 않는다(재실행·건너뛰기 방지)');
+  assert.ok(/SET v = '12'[\s\S]{0,120}AND v = '11'/.test(code), MIGRATE_INT + ' 이 11→12 로 올리지 않는다');
+  assert.strictEqual(canonSchemaVersion(), '12', '정본 시딩이 12 가 아니다 — 위젯·마이그레이션과 어긋난다');
+});
+test('변이⑨: MODIFY 의 INT 를 SMALLINT 로 되돌리면 계약⑨ 가 실패한다 + 통제군', () => {
+  assert.ok(migrateIntSql);
+  const bad = migrateIntSql.replace('MODIFY sort_order INT UNSIGNED', 'MODIFY sort_order SMALLINT UNSIGNED');
+  assert.notStrictEqual(bad, migrateIntSql, '변이가 적용되지 않았다');
+  assert.ok(!/MODIFY\s+sort_order\s+INT\s+UNSIGNED/i.test(stripSqlComments(bad)), '변이본이 계약⑨ 를 통과한다 — 검사가 무효');
+  assert.ok(/MODIFY\s+sort_order\s+INT\s+UNSIGNED/i.test(stripSqlComments(migrateIntSql)), '통제군: 원본은 통과해야 한다');
+});
+test('변이⑨-b: 가드를 10 으로 바꾸면 계약⑨ 가 실패한다(앞선 판을 건너뛴 DB 에서 열린다)', () => {
+  const bad = migrateIntSql.replace("IF(@v = '11'", "IF(@v = '10'");
+  assert.notStrictEqual(bad, migrateIntSql);
+  assert.ok(!/IF\(@v = '11'/.test(stripSqlComments(bad)));
 });
