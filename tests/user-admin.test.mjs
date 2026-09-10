@@ -97,6 +97,16 @@ function mutate(base, from, to) {
   return out;
 }
 
+// window.__xxx = function(...){...} 형태의 호스트 콜백 — extractFunction 은 `function 이름(` 만 찾으므로
+// 여기서 따로 오려 낸다(선언 모양이 다르다고 계약을 못 보면 안 된다 · trash-web.test.mjs 와 같은 도구).
+function windowFn(web, name) {
+  const s = web.indexOf('window.' + name + ' = function');
+  assert.ok(s >= 0, `window.${name} 선언을 찾지 못했다 — 판정 불가`);
+  const e = web.indexOf('\n};', s);
+  assert.ok(e > s, `window.${name} 의 끝(';};')을 찾지 못했다 — 판정 불가`);
+  return web.slice(s, e + 3);
+}
+
 //  편집 폼(#userEditModal) 마크업만 오려 낸다 — 주석은 지운다("왜 안 하는지"를 적어 둔 문장이 계약을 통과시키면 안 된다).
 //  ★ 못 오려 내면 '판정 불가'로 죽는다. 통과가 아니다.
 function userEditModalMarkup(web) {
@@ -203,8 +213,15 @@ const checks = {
     assert.ok(/SELECT COUNT\(\*\) FROM app_user WHERE edit_role='admin' AND is_active=1 FOR UPDATE/.test(code),
       "활성 관리자 수를 FOR UPDATE 로 세지 않는다 — 동시 강등으로 관리자가 0명이 될 수 있다");
     // 대상·나 자신도 잠근 채 읽는다.
-    assert.ok(/SELECT user_id, name, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE/.test(code),
+    //  ★ 컬럼 목록을 글자로 못박지 않는다 — 2026-09-10 에 title·org_id 가 늘었다(§4.3 완화가 '지금 저장된 값'을
+    //    잠근 행에서 읽어야 하기 때문이다). 계약은 '무엇을 잠그고 무엇을 읽는가' 지 '몇 컬럼인가' 가 아니다.
+    const lockedSel = /SELECT ([^"]*) FROM app_user WHERE user_id=@uid FOR UPDATE/.exec(code);
+    assert.ok(lockedSel,
       '대상 직원을 FOR UPDATE 로 읽지 않는다 — 판정과 갱신 사이에 값이 바뀔 수 있다');
+    for (const col of ['user_id', 'name', 'edit_role', 'is_active', 'title', 'org_id']) {
+      assert.ok(new RegExp('\\b' + col + '\\b').test(lockedSel[1]),
+        `잠근 행 읽기에 ${col} 이(가) 없다 — 판정의 근거를 잠그지 않은 채 읽으면 판정과 갱신이 갈린다`);
+    }
     assert.ok(/SELECT user_id FROM app_user WHERE login_id=@me FOR UPDATE/.test(code),
       "'나'를 FOR UPDATE 로 읽지 않는다 — 자기 판정의 근거가 흔들린다");
 
@@ -260,6 +277,42 @@ const checks = {
     // 기존 사용자의 login_id 는 UPDATE 대상이 아니다(§6 — 넷커스 소유).
     assert.ok(!/UPDATE app_user SET[^"]*login_id=/.test(code),
       '기존 사용자의 login_id 를 UPDATE 한다 — 그 값은 넷커스 소유다(§6). 필요하면 DBA 경로다');
+
+    //  ★ 2026-09-10 완화 — **수정**에서는 '활성이거나 지금 저장된 값'이면 통과한다.
+    //    폐지된 직급·조직을 단 사람의 이름 한 글자를 고치려는데 "등록되지 않은 직급입니다"로 막히면,
+    //    관리자는 그 사람의 직급부터 바꿔야 한다. 화면은 저장된 값을 드롭다운에 그대로 남기므로
+    //    '보이는 값'과 '되는 값'이 갈린다. 판정의 근거는 **잠근 행**(LockedUserAsync 의 FOR UPDATE)이다.
+    assert.ok(/!titleSet\.Contains\(ti\) && !string\.Equals\(ti, target\.Value\.title, StringComparison\.Ordinal\)/.test(up),
+      '수정의 직급 검사가 "활성이거나 현재 저장된 값"이 아니다 — 폐지된 직급을 단 사람은 이름 한 글자도 못 고친다(§4.3)');
+    assert.ok(/orgId\.HasValue && orgId\.Value != \(target\.Value\.orgId \?\? -1\)/.test(up),
+      '수정의 소속 검사가 "활성이거나 현재 저장된 값"이 아니다 — 값이 그대로면 조회조차 하지 않아야 한다(§4.3)');
+    //    완화는 **수정에만**이다. 신규 등록은 활성만 — 폐지된 값으로 새 사람을 배정하지 않는다.
+    assert.ok(/else\s*\{[\s\S]{0,120}?if \(!titleSet\.Contains\(ti\)\)[\s\S]{0,160}?등록되지 않은 직급입니다/.test(up),
+      '신규 등록 분기에 활성 직급 검사가 없다 — 완화가 등록까지 번지면 폐지된 직급으로 새 사람이 들어온다');
+  },
+
+  // ⑥-f 순서 저장은 목록 **밖** 사람의 서열도 비운다(USER-ADMIN §7-1a 를 닫는다 · 2026-09-10).
+  //    「퇴사자 보기」를 끈 채 저장하면 퇴사자는 목록에 없어 옛 숫자를 그대로 들고 남았고, 복구하면
+  //    그 숫자가 새 서열 **사이에 끼어들었다**. NULL 은 명부 ORDER BY 에서 맨 뒤다(§5.3).
+  orderClearsOutsiders(cs) {
+    const so = csMember(cs, 'SaveUserOrderAsync(');
+    assert.ok(/UPDATE app_user SET sort_order=@s WHERE user_id=@uid/.test(so),
+      '순서 저장이 받은 순서대로 sort_order 를 전량 재작성하지 않는다(측정 불가 ≠ 통과)');
+    assert.ok(/UPDATE app_user SET sort_order=NULL WHERE[^"]*user_id NOT IN \(/.test(so),
+      '목록 밖 사람의 sort_order 를 비우지 않는다 — 숨긴 채 저장하면 그 사람은 옛 서열을 들고 남고, ' +
+      '복구했을 때 새 서열 사이에 끼어든다(§7-1a)');
+    //  재작성 → 비우기 → 커밋. 셋이 **한 트랜잭션**이어야 중간 상태(서열 중복)가 남지 않는다.
+    const renum = so.indexOf('sort_order=@s');
+    const clear = so.indexOf('sort_order=NULL');
+    const commit = so.indexOf('CommitAsync');
+    assert.ok(renum >= 0 && clear > renum && commit > clear,
+      '서열 비우기가 재작성보다 앞이거나 커밋 뒤에 있다 — 한 트랜잭션 안에서 재작성 → 비우기 → 커밋 순이어야 한다');
+    //  받은 목록이 통째로 쓸모없으면(전부 0 이하) 거부한다 — 안 그러면 전원의 서열이 NULL 이 된다.
+    assert.ok(/kept\.Count == 0/.test(so) && /정렬할 명부가 비어 있습니다/.test(so),
+      '목록이 통째로 비었을 때 거부하지 않는다 — NOT IN () 로 전원의 서열을 지우는 사고가 남는다');
+    //  updated_at 은 두 UPDATE 모두 손대지 않는다(§4.5 — 서버 ON UPDATE 의 몫).
+    assert.ok(!/updated_at/.test(so),
+      '순서 저장이 updated_at 을 직접 쓴다 — 이 표의 감사 시각은 서버 ON UPDATE 가 정한다(§4.5)');
   },
 
   // ⑤ 권한 파일 — app_user 는 SELECT+INSERT+UPDATE+DELETE 넷(2026-09-10 개정 · TRASH-DELETE §3.3).
@@ -478,6 +531,169 @@ const checks = {
       '.modal label 의 세로 리듬이 토큰(--sp-4 / 6px)이 아니다 — 폼마다 손으로 여백을 주면 반드시 갈린다');
     assert.ok(/\.row2\{[^}]*gap:var\(--sp-4\)\}/.test(css),
       '.row2 의 칸 사이가 토큰(--sp-4)이 아니다');
+    //  ★ 자기 윗여백을 이미 가진 묶음의 첫 라벨은 그 여백과 16px 이 겹쳐 32~40px 이 된다(2026-09-10).
+    assert.ok(/\.fsect > label:first-child,\.rem-block > label:first-child,\.cat-form > label:first-child,\.room-form > label:first-child\{margin-top:0\}/.test(css),
+      '윗여백을 가진 묶음 넷(.fsect·.rem-block·.cat-form·.room-form)의 첫 라벨 예외가 없다 — 라벨 위가 두 벌로 쌓인다');
+    //  ★ 좁은 폭에서는 2열을 접는다 — 위젯 실폭에서 드롭다운 문구가 통째로 잘렸다.
+    assert.ok(/@media \(max-width:420px\)\{ \.modal \.row2\{grid-template-columns:minmax\(0,1fr\)\} \}/.test(css),
+      '좁은 폭(≤420px)에서 .row2 가 1열로 접히지 않는다 — 잘린 라벨은 고를 수 없는 라벨이다');
+    //  ★ disabled 칸도 '못 고치는 칸'으로 보여야 한다(#userEdLogin — 기존 직원의 ID 는 잠긴다).
+    assert.ok(/\.modal input:disabled\{color:var\(--muted\);background:var\(--dim-bg\);cursor:not-allowed\}/.test(css),
+      '.modal input:disabled 가 읽기전용 wash 를 받지 않는다 — 흰 입력칸과 똑같이 생기면 눌러 보고서야 안다');
+  },
+
+  // ⑫ 파괴 버튼의 테두리는 **토큰**이다 — 하드코딩(#efc7c9)은 다크에서 형광 분홍선이 됐다(2026-09-10).
+  //    그리고 읽기전용 wash(--dim-bg)는 다섯 테마 전부가 자기 값을 가져야 한다(없으면 라이트값을 물려받아
+  //    그 테마의 패널과 구분되지 않는다 = 잠긴 칸이 열린 칸처럼 보인다).
+  themeTokens(web) {
+    const css = web.replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(/\.btn\.danger\{color:var\(--danger-text\);border-color:var\(--danger-line\)\}/.test(css),
+      '.btn.danger 의 테두리가 토큰(--danger-line)이 아니다 — 테마마다 다시 칠할 길이 없다');
+    assert.ok(!/border-color:#efc7c9/.test(css), '하드코딩된 파괴 테두리(#efc7c9)가 남아 있다');
+    for (const [sel, label] of [[':root', '라이트'], ['html\\.dark', '다크'],
+      [':root\\[data-theme="forest"\\]', 'forest'], [':root\\[data-theme="sepia"\\]', 'sepia'],
+      [':root\\[data-theme="contrast"\\]', 'contrast']]) {
+      const m = new RegExp(sel + '\\{[\\s\\S]*?\\n?\\}').exec(css);
+      assert.ok(m, `${label} 테마 블록을 찾지 못했다 — 판정 불가`);
+      assert.ok(/--dim-bg:/.test(m[0]), `${label} 테마에 --dim-bg 가 없다 — 읽기전용·disabled 칸이 그 테마의 패널과 구분되지 않는다`);
+      assert.ok(/--danger-line:/.test(m[0]), `${label} 테마에 --danger-line 이 없다 — 파괴 버튼 테두리가 라이트 분홍으로 남는다`);
+    }
+  },
+
+  // ⑬ 순서 편집의 ▲▼ — 목록을 통째로 다시 그리므로 스크롤 자리와 포커스를 **손으로** 지켜야 한다.
+  //    89행에서 한 칸 옮길 때마다 맨 위로 튀고 포커스가 body 로 떨어지면 연속 조작이 불가능하다(2026-09-10).
+  moveKeepsPlace(web) {
+    const b = extractFunction(web, 'uaMove');
+    assert.ok(/getElementById\('uaList'\)/.test(b) && /scrollTop/.test(b),
+      'uaMove 가 #uaList 의 스크롤 자리를 기억·복원하지 않는다 — 한 칸 옮길 때마다 목록이 맨 위로 튄다');
+    assert.ok(/activeElement/.test(b),
+      'uaMove 가 누르고 있던 화살표(activeElement)를 기억하지 않는다 — 어디로 포커스를 되돌릴지 알 수 없다');
+    assert.ok(/uaFocusMoved\(/.test(b),
+      'uaMove 가 포커스를 되돌리지 않는다 — 한 번 누르면 포커스가 사라져 두 번째를 누를 수 없다');
+    const f = extractFunction(web, 'uaFocusMoved');
+    assert.ok(/data-uop/.test(f) && /data-uid/.test(f),
+      'uaFocusMoved 가 data-uop/data-uid 손잡이로 버튼을 찾지 않는다 — 이름으로 찾으면 동명이인에서 갈린다');
+    assert.ok(/disabled/.test(f) && /'down' : 'up'/.test(f),
+      'uaFocusMoved 가 꺼진 화살표일 때 반대쪽을 잡지 않는다 — 끝(맨 위·맨 아래)에 닿는 순간 포커스가 사라진다');
+    assert.ok(/scrollIntoView/.test(f), 'uaFocusMoved 가 옮긴 행을 보이는 자리로 끌어오지 않는다');
+  },
+
+  // ⑭ 요청 상관관계(세대) — A 의 늦은 회신이 지금 열려 있는 **B 의 폼**을 닫고 '저장했습니다'를 띄우던 자리다.
+  //    과제 쪽 규약(projBeginRequest/__projGen)과 같은 모양이되, '어느 폼인가'를 알아야 해서 대상까지 기억한다.
+  requestGeneration(web) {
+    const s = extractFunction(web, 'uaSend');
+    assert.ok(/__uaGen = \+\+__uaSeq;/.test(s), 'uaSend 가 요청 세대를 올리지 않는다 — 늦은 회신을 구별할 길이 없다');
+    assert.ok(/__uaTarget = \{/.test(s), 'uaSend 가 요청 대상(__uaTarget)을 기억하지 않는다 — 어느 폼을 닫아도 되는지 알 수 없다');
+    const w = windowFn(web, '__userSaved');
+    assert.ok(/if\(__uaGen === 0\) return;/.test(w),
+      '__userSaved 가 이월 회신을 걸러내지 않는다 — 워치독이 푼 뒤 도착한 회신이 다른 폼을 닫는다');
+    assert.ok(/Number\(tg\.uid \|\| 0\) === Number\(__ueId \|\| 0\)/.test(w),
+      '__userSaved 가 회신 대상과 **지금 폼이 연 사람**을 대조하지 않는다 — 세대만으로는 어느 폼인지 알 수 없다');
+    assert.ok(/__uaGen = 0;/.test(w), '__userSaved 가 세대를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
+    //  워치독도 세대를 무효화해야 한다(그러지 않으면 12초 뒤 도착한 회신이 그대로 먹힌다).
+    const ss = extractFunction(web, 'uaSetSaving');
+    assert.ok(/__uaGen = 0;/.test(ss), 'uaSetSaving 의 워치독이 세대를 무효화하지 않는다');
+    //  전송 중에는 폼 자체가 닫히지 않는다(offEdSetBusy 와 같은 장치).
+    assert.ok(/dataset\.busy = '1'/.test(ss) && /delete ov\.dataset\.busy/.test(ss),
+      'uaSetSaving 이 #userEditModal 의 dataset.busy 를 세우고 지우지 않는다 — 저장 중에 창을 닫으면 결과를 알릴 곳이 사라진다');
+  },
+
+  // ⑮ 여는 순간 낡은 잠금을 정리한다 — 다만 **도는 중이면 풀지 않는다**(가드와 워치독이 함께 사라진다).
+  openKeepsGuard(web) {
+    const oa = extractFunction(web, 'openUserAdmin');
+    assert.ok(/if\(__uaSaving\) uaSetSaving\(true\); else uaSetSaving\(false\);/.test(oa),
+      'openUserAdmin 이 낡은 잠금을 정리하지 않는다 — 회신 없이 닫았다 다시 열면 화면이 잠긴 채로 선다');
+    const o = extractFunction(web, 'userEdOpen');
+    assert.ok(/if\(__uaSaving\)\{/.test(o),
+      'userEdOpen 이 진행 중 왕복을 무조건 풀어 버린다 — 전송 중에 다른 사람을 열면 가드와 워치독이 함께 사라진다');
+    assert.ok(/uaSetSaving\(false\);\s*\/\/ 왕복이 없을 때만/.test(o),
+      'userEdOpen 의 잠금 해제가 "왕복이 없을 때만"으로 좁혀져 있지 않다');
+  },
+
+  // ⑯ 순서 편집 중에 오는 **관계없는 명부 푸시**가 편집 중인 순서를 지우지 않는다(2026-09-10).
+  orderSurvivesPush(web) {
+    const ap = windowFn(web, '__applyMembers');
+    assert.ok(/if\(__uaOrder && !__uaOrderSaving\)\{ __uaPendingData = d;/.test(ap),
+      '__applyMembers 가 순서 편집 중의 관계없는 푸시를 미뤄 두지 않는다 — 남의 저장 한 번에 편집 중인 순서가 날아간다');
+    const s = extractFunction(web, 'uaSend');
+    assert.ok(/__uaOrderSaving = \(__uaTarget\.cmd === 'saveUserOrder'\)/.test(s),
+      "uaSend 가 '이 왕복이 순서 저장인가'를 표시하지 않는다 — 내 저장의 결과까지 미뤄지면 순서가 영영 반영되지 않는다");
+    const us = windowFn(web, '__userSaved');
+    assert.ok(/__uaOrderSaving = false;/.test(us), '__userSaved 가 순서 저장 표시를 닫지 않는다');
+    assert.ok(/if\(wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(us),
+      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다 — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
+    const tog = extractFunction(web, 'uaOrderToggle');
+    assert.ok(/__uaPendingData/.test(tog) && /uaFlushPending\(\)/.test(tog),
+      'uaOrderToggle 이 미뤄 둔 갱신을 반영하지 않는다 — 편집을 끄면 그 사이의 진짜 변경이 사라진다');
+    const bar = extractFunction(web, 'uaAdminBar');
+    assert.ok(/명부가 갱신되었습니다 — 순서 편집을 마치면 반영됩니다\./.test(bar),
+      '미뤄 둔 갱신을 화면이 말하지 않는다 — 관리자는 자기 화면이 낡은 줄 모른 채 순서를 정한다');
+  },
+
+  // ⑰ 「퇴사자 보기」는 **조회가 실제로 시작됐을 때만** 켜진 채로 남는다(2026-09-10).
+  inactiveToggleIsHonest(web) {
+    const r = extractFunction(web, 'uaReload');
+    assert.ok(/return false;/.test(r) && /return true;/.test(r),
+      'uaReload 가 시작 여부를 불린으로 돌려주지 않는다 — 호출부가 "시작조차 못 했다"를 알 수 없다');
+    assert.ok(!/^async function uaReload/m.test(web),
+      'uaReload 가 async 다 — 그러면 반환값이 언제나 Promise(늘 참)라 재진입 판정이 무의미해진다');
+    const bar = extractFunction(web, 'uaAdminBar');
+    assert.ok(/if\(uaReload\(\)\) return;/.test(bar),
+      '「퇴사자 보기」가 uaReload 의 반환값을 보지 않는다 — 체크만 켜지고 목록은 그대로인 화면이 된다');
+    assert.ok(/cb\.checked = prev;/.test(bar), '조회를 시작하지 못했는데 체크를 되돌리지 않는다');
+    assert.ok(/불러오는 중입니다 — 잠시 후 다시 시도하세요/.test(bar), '되돌린 이유를 말하지 않는다 — 조용한 무시는 고장으로 읽힌다');
+  },
+
+  // ⑱ 폼의 드롭다운은 **모르는 값을 말없이 갈아치우지 않는다**(2026-09-10).
+  //    비활성 직급·폐지된 소속을 가진 사람을 열어 [저장]만 눌러도 그 값이 조용히 바뀌던 자리다.
+  unknownValueIsKept(web) {
+    const f = extractFunction(web, 'userEdFillSelect');
+    assert.ok(/목록에 없음/.test(f), 'userEdFillSelect 가 목록에 없는 값을 끼워 넣지 않는다 — 첫 항목으로 조용히 바뀐다');
+    assert.ok(/insertBefore/.test(f), '끼워 넣은 옵션이 맨 위가 아니다 — 지금 값은 첫 줄에 있어야 눈에 든다');
+    assert.ok(/return !known;/.test(f), 'userEdFillSelect 가 "끼워 넣었나"를 돌려주지 않는다 — 호출부가 안내할 근거가 없다');
+    const o = extractFunction(web, 'userEdOpen');
+    assert.ok(/현재 값이 목록에 없습니다\(비활성 직급\/소속 등\)\. 그대로 두면 유지됩니다\./.test(o),
+      'userEdOpen 이 "목록에 없는 값"을 안내하지 않는다 — 관리자는 왜 이상한 옵션이 있는지 모른다');
+    assert.ok(/직급 목록을 불러오지 못했습니다 — 명부를 새로고침하세요\./.test(o),
+      '직급 목록이 비었을 때의 안내가 없다 — 다 채우고 [저장]에서야 막힌다');
+    assert.ok(/if\(!__uaTitles\.length && sv\) sv\.disabled = true;/.test(o),
+      '직급 목록이 비었는데 [저장]이 열려 있다 — 성립할 수 없는 저장을 권하는 셈이다');
+  },
+
+  // ⑲ 퇴사 확인창은 **저장된 이름**으로 말하고, 버려질 편집이 있으면 그 사실을 먼저 말한다(2026-09-10).
+  retireConfirmIsHonest(web) {
+    const s = extractFunction(web, 'uaSetActive');
+    assert.ok(/userEdIsDirty\(\)/.test(s), 'uaSetActive 가 저장하지 않은 편집을 확인하지 않는다');
+    assert.ok(/저장하지 않은 변경은 버려집니다\./.test(s),
+      '퇴사 확인창이 "저장하지 않은 변경은 버려집니다."를 말하지 않는다 — 성공하면 폼이 닫히며 편집이 사라진다');
+    assert.ok(/uaMemberName\(__ueId\)/.test(web),
+      '#userEdActive 배선이 저장된 이름(uaMemberName)을 쓰지 않는다 — 고쳐 놓은 이름으로 확인창이 말한다');
+    const d = extractFunction(web, 'userEdIsDirty');
+    for (const id of ['userEdName', 'userEdTitle', 'userEdOrg', 'userEdScope', 'userEdRole']) {
+      assert.ok(new RegExp("'" + id + "'").test(d), `userEdIsDirty 가 #${id} 를 견주지 않는다 — 그 칸의 편집은 조용히 버려진다`);
+    }
+    //  Esc·배경 클릭도 같은 규칙을 받는다(#officialEditModal 과 같은 자리).
+    assert.ok(/ov\.id==='userEditModal'/.test(extractFunction(web, 'isGuardedModal')),
+      '#userEditModal 이 우발적 닫기 가드에 들어 있지 않다 — Esc 한 번에 남의 권한 편집이 사라진다');
+    assert.ok(/ov\.__openSnap = formSnapshot\(ov\)/.test(extractFunction(web, 'userEdOpen')),
+      'userEdOpen 이 dirty-check 기준(__openSnap)을 남기지 않는다 — 가드가 늘 "변경됨"으로 읽는다');
+  },
+
+  // ⑳ 머리줄의 인원 수는 **거짓말을 하지 않는다** — 검색 중이면 걸러진 수와 전체 수를 함께 낸다(2026-09-10).
+  scopeCountIsHonest(web) {
+    const a = extractFunction(web, 'uaApply');
+    assert.ok(/검색 결과 ' \+ rows\.length \+ '명 · 전체 ' \+ __uaMembers\.length \+ '명/.test(a),
+      "검색 중에도 '구성원 n명' 만 낸다 — 걸러진 수라서 명부가 줄어든 것처럼 읽힌다");
+    assert.ok(/구성원 ' \+ rows\.length \+ '명/.test(a), "검색어가 없을 때의 문구('구성원 N명')가 사라졌다");
+    assert.ok(/퇴사자 포함/.test(a), "'· 퇴사자 포함' 꼬리가 사라졌다");
+  },
+
+  // ㉑ 열람 범위 문구는 **남의 폼에서도 맞아야** 한다 — 매핑표 한 벌을 두 화면이 함께 쓴다(2026-09-10).
+  scopeTextIsNotFirstPerson(web) {
+    assert.ok(/unit_tree:'소속 조직 — 본인 부서와 하위'/.test(web),
+      "US_VIEW_SCOPE 의 unit_tree 문구가 '본인 부서와 하위' 가 아니다");
+    assert.ok(!/내 부서와 하위/.test(web),
+      "1인칭 문구('내 부서와 하위')가 남아 있다 — 남의 권한을 고치는 폼에서 그 '나'는 누구인지 알 수 없다");
   },
 };
 
@@ -513,6 +729,9 @@ test('계약⑤: 권한 파일이 app_user 에 SELECT·INSERT·UPDATE·DELETE �
 test('계약⑥: 명부 순서는 호스트가 정하고 화면은 다시 정렬하지 않는다(순번 숫자 비노출)', () => {
   checks.orderIsHostOnly(pdb, app);
 });
+test('계약⑥-f: 순서 저장이 목록 밖 사람의 서열을 비운다(§7-1a — 복구했을 때 끼어들지 않게)', () => {
+  checks.orderClearsOutsiders(pdb);
+});
 test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 두 모달 마크업에는 편집 컨트롤이 없다', () => {
   checks.adminFlagComesFromHost(app);
   checks.membersMarkupHasNoControls(app);
@@ -529,6 +748,84 @@ test('계약⑩: 열람 범위·편집 권한은 드롭다운이고, 문구는 �
 });
 test('계약⑪: 모달 폼의 세로 리듬은 토큰 한 곳에서 정한다(.row2 셀 라벨이 위 칸에 붙지 않는다)', () => {
   checks.modalFormRhythm(app);
+});
+test('계약⑫: 파괴 테두리·읽기전용 wash 는 다섯 테마 전부가 자기 토큰을 갖는다', () => checks.themeTokens(app));
+test('계약⑬: 순서 편집 ▲▼ 는 스크롤 자리와 포커스를 지킨다(89행에서 연속 조작이 된다)', () => checks.moveKeepsPlace(app));
+test('계약⑭: 직원 쓰기는 세대·대상으로 상관된다(늦은 회신이 다른 폼을 닫지 않는다)', () => checks.requestGeneration(app));
+test('계약⑮: 화면을 (다시) 열 때 낡은 잠금은 풀되, 도는 중이면 워치독만 다시 건다', () => checks.openKeepsGuard(app));
+test('계약⑯: 순서 편집 중의 관계없는 명부 푸시는 미뤄 두고 편집을 마칠 때 반영한다', () => checks.orderSurvivesPush(app));
+test('계약⑰: 「퇴사자 보기」는 조회가 실제로 시작됐을 때만 켜진 채로 남는다', () => checks.inactiveToggleIsHonest(app));
+test('계약⑱: 목록에 없는 값을 말없이 갈아치우지 않는다(직급 목록이 비면 저장을 잠근다)', () => checks.unknownValueIsKept(app));
+test('계약⑲: 퇴사 확인창은 저장된 이름으로 말하고, 버려질 편집을 먼저 말한다', () => checks.retireConfirmIsHonest(app));
+test('계약⑳: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', () => checks.scopeCountIsHonest(app));
+test('계약㉑: 열람 범위 문구는 1인칭이 아니다(매핑표 한 벌을 두 화면이 함께 쓴다)', () => checks.scopeTextIsNotFirstPerson(app));
+
+test('변이⑫: 파괴 테두리를 하드코딩으로 되돌리면 계약⑫ 가 실패한다', () => {
+  const bad = mutate(app, '.btn.danger{color:var(--danger-text);border-color:var(--danger-line)}',
+    '.btn.danger{color:var(--danger-text);border-color:#efc7c9}');
+  assert.throws(() => checks.themeTokens(bad), /토큰\(--danger-line\)이 아니다|하드코딩된 파괴 테두리/);
+  assert.doesNotThrow(() => checks.themeTokens(app));   // 통제군
+});
+
+test('변이⑬: uaMove 에서 포커스 복원을 빼면 계약⑬ 이 실패한다', () => {
+  const bad = mutate(app, '  uaFocusMoved(userId, uop);', '  ');
+  assert.throws(() => checks.moveKeepsPlace(bad), /포커스를 되돌리지 않는다/);
+  assert.doesNotThrow(() => checks.moveKeepsPlace(app));   // 통제군
+});
+
+test('변이⑭: __userSaved 의 이월 회신 가드를 지우면 계약⑭ 가 실패한다', () => {
+  const bad = mutate(app, '  if(__uaGen === 0) return;   // 기다리는 요청이 없다 = 이 회신은 이월분이다', '  ');
+  assert.throws(() => checks.requestGeneration(bad), /이월 회신을 걸러내지 않는다/);
+  assert.doesNotThrow(() => checks.requestGeneration(app));   // 통제군
+});
+
+test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패한다(전송 중 가드가 사라진다)', () => {
+  const bad = mutate(app, '    uaSetSaving(false);                                    // 왕복이 없을 때만 잠금·워치독을 푼다',
+    '    uaSetSaving(false);');
+  assert.throws(() => checks.openKeepsGuard(bad), /"왕복이 없을 때만"으로 좁혀져 있지 않다/);
+  assert.doesNotThrow(() => checks.openKeepsGuard(app));   // 통제군
+});
+
+test('변이⑯: 관계없는 푸시를 그대로 반영하게 되돌리면 계약⑯ 이 실패한다', () => {
+  const bad = mutate(app, '  if(__uaOrder && !__uaOrderSaving){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
+  assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 두지 않는다/);
+  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
+});
+
+test('변이⑰: uaReload 를 async 로 되돌리면 계약⑰ 이 실패한다(반환값이 늘 참이 된다)', () => {
+  const bad = mutate(app, 'function uaReload(){\n  if(!HOST || __uaBusy) return false;',
+    'async function uaReload(){\n  if(!HOST || __uaBusy) return false;');
+  assert.throws(() => checks.inactiveToggleIsHonest(bad), /uaReload 가 async 다/);
+  assert.doesNotThrow(() => checks.inactiveToggleIsHonest(app));   // 통제군
+});
+
+test('변이⑱: 끼워 넣은 옵션의 라벨을 지우면 계약⑱ 이 실패한다(무엇이 문제인지 화면이 말하지 않는다)', () => {
+  //  ★ '갈아치우기'로 되돌리는 변이(const known = true)는 **형태로는 안 잡힌다** — 코드가 그대로 남고 안 돌 뿐이다.
+  //    그건 DOM 쪽 변이(변이⑱-DOM)가 잡는다. 여기서는 형태가 실제로 잡는 자리를 흔든다.
+  const bad = mutate(app, "    o.value = want; o.textContent = want + ' — 목록에 없음';",
+    '    o.value = want; o.textContent = want;');
+  assert.throws(() => checks.unknownValueIsKept(bad), /끼워 넣지 않는다/);
+  assert.doesNotThrow(() => checks.unknownValueIsKept(app));   // 통제군
+});
+
+test('변이⑲: 퇴사 확인창이 입력칸의 이름을 쓰게 되돌리면 계약⑲ 가 실패한다', () => {
+  const bad = mutate(app, '      uaSetActive(__ueId, uaMemberName(__ueId), b.dataset.uop === \'on\'); }); }',
+    "      const n = $('#userEdName'); uaSetActive(__ueId, n ? n.value : '', b.dataset.uop === 'on'); }); }");
+  assert.throws(() => checks.retireConfirmIsHonest(bad), /저장된 이름\(uaMemberName\)을 쓰지 않는다/);
+  assert.doesNotThrow(() => checks.retireConfirmIsHonest(app));   // 통제군
+});
+
+test('변이⑳: 검색 중에도 걸러진 수만 내게 되돌리면 계약⑳ 이 실패한다', () => {
+  const bad = mutate(app, "  sc.textContent = (k ? ('검색 결과 ' + rows.length + '명 · 전체 ' + __uaMembers.length + '명')\n                      : ('구성원 ' + rows.length + '명'))",
+    "  sc.textContent = ('구성원 ' + rows.length + '명')");
+  assert.throws(() => checks.scopeCountIsHonest(bad), /'구성원 n명' 만 낸다/);
+  assert.doesNotThrow(() => checks.scopeCountIsHonest(app));   // 통제군
+});
+
+test('변이㉑: 1인칭 문구로 되돌리면 계약㉑ 이 실패한다', () => {
+  const bad = mutate(app, "unit_tree:'소속 조직 — 본인 부서와 하위'", "unit_tree:'소속 조직 — 내 부서와 하위'");
+  assert.throws(() => checks.scopeTextIsNotFirstPerson(bad), /'본인 부서와 하위' 가 아니다|1인칭 문구/);
+  assert.doesNotThrow(() => checks.scopeTextIsNotFirstPerson(app));   // 통제군
 });
 
 // ── 브리지 배선 — 세 명령이 실제로 호스트에 닿고, 성공하면 명부가 갱신된다 ──────────
@@ -619,6 +916,34 @@ test('변이④-b: 직급 검증을 숨김 포함으로 바꾸면 계약④ 가 
   const bad = mutate(pdb, 'LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: true)',
                           'LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: false)');
   assert.throws(() => checks.inputValidation(bad), /활성 title_code 로드가 아니다/);
+});
+
+test('변이④-c: 수정에서 "현재 저장된 값 허용"을 지우면 계약④ 가 실패한다(폐지 직급인 사람을 못 고친다)', () => {
+  const bad = mutate(pdb,
+    'if (!titleSet.Contains(ti) && !string.Equals(ti, target.Value.title, StringComparison.Ordinal))',
+    'if (!titleSet.Contains(ti))');
+  assert.throws(() => checks.inputValidation(bad), /수정의 직급 검사가/);
+  assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
+});
+
+test('변이④-d: 신규 등록의 활성 직급 검사를 지우면 계약④ 가 실패한다(폐지된 직급으로 새 사람이 들어온다)', () => {
+  const bad = mutate(pdb,
+    '                        if (!titleSet.Contains(ti)) { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 직급입니다."); }\n',
+    '');
+  assert.throws(() => checks.inputValidation(bad), /신규 등록 분기에 활성 직급 검사가 없다/);
+});
+
+test('변이⑥-f: 목록 밖 서열 비우기를 지우면 계약⑥-f 가 실패한다(§7-1a 가 되살아난다)', () => {
+  const bad = mutate(pdb,
+    '"UPDATE app_user SET sort_order=NULL WHERE sort_order IS NOT NULL AND user_id NOT IN ("',
+    '"UPDATE app_user SET sort_order=sort_order WHERE user_id IN ("');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /목록 밖 사람의 sort_order 를 비우지 않는다/);
+  assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
+});
+
+test('변이⑥-g: 빈 목록 거부를 지우면 계약⑥-f 가 실패한다(전원의 서열이 NULL 이 된다)', () => {
+  const bad = mutate(pdb, 'if (kept.Count == 0)', 'if (false)');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /목록이 통째로 비었을 때 거부하지 않는다/);
 });
 
 test('변이⑤: 05-grants.sql 을 옛 SELECT 전용으로 되돌리면 계약⑤ 가 실패한다', () => {
@@ -792,15 +1117,84 @@ function adminHarnessJs(src) {
   return [
     "var currentUser = { loginId: 'zzUme' };",
     'var __uaAdmin = false, __uaOrder = false, __uaInactive = false;',
+    'var __uaPendingData = null;   // 미뤄 둔 명부 푸시(uaAdminBar 가 안내 줄을 낼지 판단한다)',
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function userEdOpen(){} function uaSetActive(){} function uaMove(){}',
     'function uaOrderToggle(){} function uaOrderSave(){} function uaReload(){} function toast(){}',
     ...fns,
     COUNT_JS,
     'window.__probe = function(rows, admin, order){',
-    '  __uaAdmin = !!admin; __uaOrder = !!order;',
+    '  __uaAdmin = !!admin; __uaOrder = !!order; __uaPendingData = null;',
     '  uaAdminBar(); uaRender(rows);',
     '  return __count("uaList", "uaAdmin");',
+    '};',
+    //  미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말해야 한다(계약⑯의 DOM 쪽).
+    'window.__probePending = function(rows, pending){',
+    '  __uaAdmin = true; __uaOrder = true; __uaPendingData = pending ? { found: true } : null;',
+    '  uaAdminBar(); uaRender(rows);',
+    '  var bar = document.getElementById("uaAdmin");',
+    '  return { hint: !!document.getElementById("uaPendHint"), text: String(bar.textContent || "") };',
+    '};',
+  ].join('\n');
+}
+
+// (d) 순서 편집의 ▲▼ — 목록을 다시 그린 **뒤에도** 포커스가 같은 행의 화살표에 남는가.
+//     ★ jsdom 에는 레이아웃이 없어 scrollTop 은 늘 0 이다 — 그건 형태 계약(계약⑬)이 본다.
+//       여기서 보는 것은 레이아웃이 없어도 참·거짓이 갈리는 것 하나, **포커스**다.
+function moveHarnessJs(src) {
+  const fns = ['uaVisible', 'uaEmptyText', 'uaRowActions', 'uaRender', 'uaApply', 'uaMove', 'uaFocusMoved']
+    .map((n) => extractFunction(src, n));
+  return [
+    "var currentUser = { loginId: 'zzUme' };",
+    'var __uaAdmin = true, __uaOrder = true, __uaInactive = false, __uaMembers = [];',
+    'function userEdOpen(){} function uaSetActive(){} function toast(){}',
+    ...fns,
+    'function __focused(){',
+    '  var a = document.activeElement;',
+    '  return { uop: (a && a.dataset) ? String(a.dataset.uop || "") : "",',
+    '           uid: (a && a.dataset) ? String(a.dataset.uid || "") : "",',
+    '           isBody: a === document.body };',
+    '}',
+    'window.__probe = function(rows, uid, delta, pressUop){',
+    '  __uaMembers = rows.slice();',
+    '  uaApply();',
+    '  var b = document.querySelector("[data-uop=\'" + pressUop + "\'][data-uid=\'" + uid + "\']");',
+    '  var started = false;',
+    '  if(b){ b.focus(); started = document.activeElement === b; }',
+    '  uaMove(uid, delta);',
+    '  return { started: started, order: __uaMembers.map(function(m){ return m.userId; }), focus: __focused() };',
+    '};',
+  ].join('\n');
+}
+
+// (e) 드롭다운 채우기 — '목록에 없는 값'을 만났을 때 무엇이 남는가(계약⑱의 DOM 쪽).
+function fillHarnessJs(src) {
+  return [
+    extractFunction(src, 'userEdFillSelect'),
+    'window.__probe = function(items, cur, blank){',
+    '  var injected = userEdFillSelect("sel", items, cur, blank);',
+    '  var sel = document.getElementById("sel");',
+    '  return { injected: !!injected, value: String(sel.value),',
+    '    options: Array.prototype.map.call(sel.options, function(o){',
+    '      return { v: String(o.value), t: String(o.textContent), dis: !!o.disabled }; }) };',
+    '};',
+  ].join('\n');
+}
+
+// (f) 머리줄의 인원 수 — 검색 중이면 두 수를 함께 낸다(계약⑳의 DOM 쪽).
+function scopeHarnessJs(src) {
+  const fns = ['uaVisible', 'uaEmptyText', 'uaRowActions', 'uaRender', 'uaApply'].map((n) => extractFunction(src, n));
+  return [
+    "var currentUser = { loginId: 'zzUme' };",
+    'var __uaAdmin = true, __uaOrder = false, __uaInactive = false, __uaMembers = [];',
+    'function userEdOpen(){} function uaSetActive(){} function uaMove(){} function toast(){}',
+    ...fns,
+    'window.__probe = function(rows, search, inactive, admin){',
+    '  __uaMembers = rows.slice(); __uaInactive = !!inactive; __uaAdmin = admin !== false;',
+    '  document.getElementById("uaSearch").value = search || "";',
+    '  uaApply();',
+    '  return { scope: String(document.getElementById("uaScope").textContent || ""),',
+    '           lines: document.querySelectorAll("#uaList .mba-line").length };',
     '};',
   ].join('\n');
 }
@@ -843,8 +1237,20 @@ function run(fixture, js, ...args) {
   dom.window.eval(js);
   return JSON.parse(JSON.stringify(dom.window.__probe(...args)));
 }
+//  __probe 말고 다른 이름의 창구를 부를 때(한 하네스가 여러 각도를 재는 경우).
+function runNamed(fixture, js, name, ...args) {
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
+  dom.window.eval(js);
+  return JSON.parse(JSON.stringify(dom.window[name](...args)));
+}
+const FILL_FIXTURE = '<!doctype html><html><body><select id="sel"></select></body></html>';
 const probeView = (src = app) => run(VIEW_FIXTURE, viewHarnessJs(src), ROWS);
 const probeAdmin = (admin, order, src = app) => run(ADMIN_FIXTURE, adminHarnessJs(src), ROWS, admin, order);
+const probePending = (pending, src = app) => runNamed(ADMIN_FIXTURE, adminHarnessJs(src), '__probePending', ROWS, pending);
+const probeMove = (uid, delta, pressUop, src = app) => run(ADMIN_FIXTURE, moveHarnessJs(src), ROWS, uid, delta, pressUop);
+const probeFill = (items, cur, blank, src = app) => run(FILL_FIXTURE, fillHarnessJs(src), items, cur, blank);
+const probeScope = (search, inactive, admin, src = app) => run(ADMIN_FIXTURE, scopeHarnessJs(src), ROWS, search, inactive, admin);
 const probeEntry = (role, src = app) => run(ENTRY_FIXTURE, entryHarnessJs(src), role);
 //  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
 function probeEntrySeq(roles, src = app) {
@@ -862,6 +1268,13 @@ if (!jsdom) {
   skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집은 사라진다(하단 등록도 함께 사라진다)', SKIP_NO_JSDOM);
   skip("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다", SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM: ▲▼ 를 눌러도 포커스가 같은 행의 화살표에 남는다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 반대쪽 화살표를 잡는다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM: 포커스 복원을 지우면 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', SKIP_NO_JSDOM);
+  skip('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 그대로 선택된다', SKIP_NO_JSDOM);
+  skip('변이⑱-DOM: 옛 동작(첫 항목으로 갈아치우기)이면 값이 조용히 바뀐다', SKIP_NO_JSDOM);
+  skip('계약⑳-DOM: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', SKIP_NO_JSDOM);
 } else {
   test('계약⑦-DOM(a): 「구성원 보기」는 관리자에게도 편집 컨트롤이 0 이다(숨김이 아니라 부재)', () => {
     const r = probeView();
@@ -952,6 +1365,86 @@ if (!jsdom) {
     assert.strictEqual(probeView().lines, 0);
     assert.strictEqual(probeAdmin(false, false).uops.length, 0);
     assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].present, false);
+  });
+
+  test('계약⑬-DOM: ▲▼ 를 눌러도 포커스가 **같은 행의 같은 화살표**에 남는다(연속 조작이 된다)', () => {
+    //  [11, 12, 13] 에서 11 을 ▼ 로 내린다 → [12, 11, 13]. 11 은 가운데라 ▼ 가 살아 있으니 그대로 잡혀 있어야 한다.
+    const r = probeMove(11, +1, 'down');
+    assert.strictEqual(r.started, true, '전제 붕괴: ▼ 버튼에 포커스가 가지 않았다');
+    assert.deepStrictEqual(r.order, [12, 11, 13], `한 칸 이동이 반영되지 않았다: ${JSON.stringify(r.order)}`);
+    assert.strictEqual(r.focus.isBody, false,
+      '한 칸 옮기자 포커스가 body 로 떨어졌다 — 두 번째 ▼ 를 누르려면 마우스로 다시 찾아야 한다');
+    assert.strictEqual(r.focus.uid, '11', `포커스가 옮긴 행이 아닌 곳에 있다: ${JSON.stringify(r.focus)}`);
+    assert.strictEqual(r.focus.uop, 'down', `누르던 화살표가 아닌 곳에 포커스가 있다: ${JSON.stringify(r.focus)}`);
+  });
+
+  test('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 **반대쪽** 화살표를 잡는다(포커스가 사라지지 않는다)', () => {
+    //  [11, 12, 13] 에서 12 를 ▲ 로 올리면 [12, 11, 13] — 12 가 맨 위라 그 행의 ▲ 는 꺼진다.
+    //  꺼진 버튼에 포커스를 주면 브라우저가 body 로 떨어뜨린다. 그래서 같은 행의 ▼ 를 잡아야 한다.
+    const r = probeMove(12, -1, 'up');
+    assert.deepStrictEqual(r.order, [12, 11, 13], `전제 붕괴: ${JSON.stringify(r.order)}`);
+    assert.strictEqual(r.focus.isBody, false, '맨 위로 올린 뒤 포커스가 사라졌다 — 다음 조작을 마우스로 다시 찾아야 한다');
+    assert.strictEqual(r.focus.uid, '12', `포커스가 옮긴 행에 없다: ${JSON.stringify(r.focus)}`);
+    assert.strictEqual(r.focus.uop, 'down',
+      `꺼진 ▲ 대신 ▼ 를 잡지 않았다: ${JSON.stringify(r.focus)} — 끝에 닿는 순간 포커스가 사라진다`);
+  });
+
+  test('변이⑬-DOM: 포커스 복원을 지우면 포커스가 body 로 떨어진다(그래서 이 계약이 필요하다)', () => {
+    const bad = mutate(app, '  uaFocusMoved(userId, uop);', '  ');
+    const r = probeMove(11, +1, 'down', bad);
+    assert.strictEqual(r.focus.isBody, true, '변이 전제: 복원을 지우면 포커스가 body 로 떨어져야 한다');
+    assert.strictEqual(probeMove(11, +1, 'down').focus.isBody, false);   // 통제군
+  });
+
+  test('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', () => {
+    const off = probePending(false);
+    assert.strictEqual(off.hint, false, '미뤄 둔 갱신이 없는데 안내가 떴다');
+    const on = probePending(true);
+    assert.strictEqual(on.hint, true, '미뤄 둔 갱신이 있는데 안내가 없다 — 관리자는 낡은 화면인 줄 모른다');
+    assert.ok(/명부가 갱신되었습니다 — 순서 편집을 마치면 반영됩니다\./.test(on.text),
+      `안내 문구가 계약과 다르다: ${JSON.stringify(on.text)}`);
+  });
+
+  test('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 **그대로 선택**된다(조용히 안 바뀐다)', () => {
+    const TITLES = [{ value: '사원', label: '사원' }, { value: '대리', label: '대리' }];
+    //  ① 목록에 있는 값 — 끼워 넣지 않는다.
+    const ok = probeFill(TITLES, '대리', null);
+    assert.strictEqual(ok.injected, false, '목록에 있는 값인데 "목록에 없음" 옵션이 끼었다');
+    assert.strictEqual(ok.value, '대리', '목록에 있는 값이 선택되지 않았다');
+    assert.strictEqual(ok.options.length, 2, `옵션 수가 다르다: ${JSON.stringify(ok.options)}`);
+    //  ② 목록에 없는 값(폐지된 직급) — 맨 위에 끼워 넣고 그대로 고른다.
+    const gone = probeFill(TITLES, '주임', null);
+    assert.strictEqual(gone.injected, true, '목록에 없는 값인데 끼워 넣지 않았다 — 첫 항목으로 조용히 바뀐다');
+    assert.strictEqual(gone.value, '주임',
+      `목록에 없는 값이 선택되지 않았다(실제: ${JSON.stringify(gone.value)}) — [저장]만 눌러도 직급이 바뀐다`);
+    assert.strictEqual(gone.options[0].v, '주임', '끼워 넣은 옵션이 맨 위가 아니다');
+    assert.strictEqual(gone.options[0].t, '주임 — 목록에 없음', `끼워 넣은 옵션의 라벨이 다르다: ${JSON.stringify(gone.options[0].t)}`);
+    assert.strictEqual(gone.options[0].dis, false, '끼워 넣은 옵션이 disabled 다 — 그대로 두는 것이 기본값이라 고를 수 있어야 한다');
+    //  ③ 빈 값 + 빈 옵션(소속 없음) — 끼워 넣지 않는다.
+    const blank = probeFill([{ value: '3', label: 'SW 3팀' }], '', '(소속 없음)');
+    assert.strictEqual(blank.injected, false, '빈 값에 "목록에 없음" 옵션이 끼었다');
+    assert.strictEqual(blank.value, '', '빈 값이 선택되지 않았다');
+  });
+
+  test('변이⑱-DOM: 옛 동작(첫 항목으로 갈아치우기)이면 값이 조용히 바뀐다(그래서 이 계약이 필요하다)', () => {
+    const bad = mutate(app, "  const known = want === '' || Array.prototype.some.call(sel.options, o => o.value === want);",
+      '  const known = true;');
+    const r = probeFill([{ value: '사원', label: '사원' }, { value: '대리', label: '대리' }], '주임', null, bad);
+    assert.strictEqual(r.value, '사원', '변이 전제: 옛 동작이면 첫 항목으로 갈아치워져야 한다');
+    assert.strictEqual(probeFill([{ value: '사원', label: '사원' }], '주임', null).value, '주임');   // 통제군
+  });
+
+  test('계약⑳-DOM: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', () => {
+    const all = probeScope('', false);
+    assert.strictEqual(all.scope, '구성원 3명', `검색어가 없을 때의 문구가 다르다: ${JSON.stringify(all.scope)}`);
+    const inact = probeScope('', true);
+    assert.strictEqual(inact.scope, '구성원 3명 · 퇴사자 포함', `퇴사자 포함 꼬리가 다르다: ${JSON.stringify(inact.scope)}`);
+    const q = probeScope('zzU_a', false);
+    assert.strictEqual(q.lines, 1, `검색이 1명으로 좁혀지지 않았다: ${q.lines}`);
+    assert.strictEqual(q.scope, '검색 결과 1명 · 전체 3명',
+      `검색 중 머리줄이 계약과 다르다: ${JSON.stringify(q.scope)} — 걸러진 수만 내면 명부가 줄어든 것처럼 읽힌다`);
+    //  비관리자에게는 인원 수 자체가 없다(그 화면에는 명부가 없다).
+    assert.strictEqual(probeScope('', false, false).scope, '관리자만 사용할 수 있습니다.', '비관리자 머리줄이 안내가 아니다');
   });
 }
 

@@ -21,6 +21,7 @@
   --accent-fill:var(--accent);    /* 흰 글자를 얹는 accent '채움' 전용 — 테마의 --accent가 흰 글자에서 AA 미달이면 여기만 어둡게 리맵 */
   --on-accent:#fff;               /* --accent-fill 위 글자색 */
   --danger:#d6494e; --danger-soft:#fdeeee; --danger-text:#c0343a; /* 파괴 텍스트 AA — #fff 5.5:1 (채움·테두리는 --danger 유지) */
+  --danger-line:#efc7c9;          /* ★ .btn.danger 의 테두리 — 하드코딩(#efc7c9)이던 것을 토큰으로. 다크에서 분홍 형광선이 되던 자리다 */
   --sun:#c43a3f; --sat:#4b62a0;   /* 주말 라벨 — 선택/액션 파랑과 분리. 대비는 '흰 패널'이 아니라 실제로 깔리는 --wknd-*-bg 위에서 본다(아래) */
   /* 주말 셀 배경 = --sun/--sat 9% + --panel 을 미리 합성한 '불투명' 값.
      반투명 rgba로 두면 .grid 의 background(=--line) 위에 얹혀 패널이 아니라 '격자선 색'이 틴트된다
@@ -170,7 +171,7 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .btn.sm{padding:4px 10px;font-size:var(--fs-body)}
 .btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);font-weight:600}
 .btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
-.btn.danger{color:var(--danger-text);border-color:#efc7c9}
+.btn.danger{color:var(--danger-text);border-color:var(--danger-line)}
 .btn.danger:hover{background:var(--danger-soft)}
 
 .menu-wrap{position:relative}
@@ -511,6 +512,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
      하나뿐이므로 자식 선택자로 그 하나만 집는다. 폼별 예외 대신 토큰으로 고친다. */
 .modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:var(--sp-4) 0 6px}
 .modal-body > label:first-child{margin-top:0}
+/* ★ 자기 윗여백을 이미 가진 묶음(.fsect 24px · .rem-block 8px · .cat-form/.room-form 14px)의 **첫 라벨**은
+   그 여백과 .modal label 의 16px 이 겹쳐 32~40px 이 된다. 겹치는 자리 넷만 0 으로 되돌린다
+   (묶음의 여백이 '칸과 칸 사이의 숨'을 이미 내고 있으므로, 지워야 할 쪽은 라벨이다). */
+.fsect > label:first-child,.rem-block > label:first-child,.cat-form > label:first-child,.room-form > label:first-child{margin-top:0}
 /* ★ `.modal .check + .check{margin-top:…}` 같은 '묶음 간격' 규칙은 두지 않는다 — 모달 안의 체크박스 묶음은
    전부 자기 간격을 이미 갖고 있고(.recur-end 3px · .rpt-srcs 인라인 0 · 일괄 커밋 모달 인라인),
    그 규칙은 (0,3,0)이라 .recur-end .check(0,2,0)를 **덮어써서** 손대지 않기로 한 폼을 바꾼다. */
@@ -532,8 +537,14 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .modal textarea{resize:vertical;min-height:90px;line-height:1.55}
 /* 읽기전용 칸은 '읽기전용으로 보여야' 한다 — 흰 입력칸과 똑같이 생기면 눌러 보고서야 못 고치는 걸 안다(#userEdSort) */
 .modal input[readonly]{color:var(--muted);background:var(--dim-bg);cursor:default}
+/* ★ disabled 칸도 마찬가지다 — 기존 사용자의 로그인 ID(#userEdLogin)는 잠겨 있는데 흰 입력칸과 똑같이 생겨서
+   관리자가 눌러 보고서야 못 고치는 걸 알았다(2026-09-10). readonly 와 같은 wash 를 주되 커서로 한 번 더 말한다. */
+.modal input:disabled{color:var(--muted);background:var(--dim-bg);cursor:not-allowed}
 /* minmax(0,…) — 내용 폭이 칼럼을 밀어 셀렉트가 잘리는 것 방지. 윗여백은 두지 않는다 — 셀 안 라벨이 그 몫을 낸다(두 벌이면 32px 이 된다) */
 .row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-4)}
+/* 좁은 폭(위젯 실폭 ≈380~420px)에서는 2열이 각 칸을 ~170px 로 줄여 드롭다운 문구('소속 조직 — 본인 부서와 하위')가
+   통째로 잘린다. 열을 하나로 접어 세로로 쌓는다 — 잘린 라벨은 고를 수 없는 라벨이다. */
+@media (max-width:420px){ .modal .row2{grid-template-columns:minmax(0,1fr)} }
 .check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer}
 .check input{width:15px;height:15px;accent-color:var(--accent)}
 #timeRow.off{display:none}   /* 종일 시 시간행 완전 숨김 — quick-add와 동일 패턴(흐림→'편집 가능?' 오해 제거) */
@@ -1408,6 +1419,9 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
    여기서 더하는 것은 둘뿐이다: 탭 안 건수 배지의 간격(.mba-line 밖이라 위 규칙이 닿지 않는다)과
    긴 목록의 스크롤 상한(#uaList 와 같은 값 — 두 관리 화면의 세로 크기가 같아야 창이 튀지 않는다). */
 #trTabs .badge{margin-left:var(--sp-1);vertical-align:1px}
+/* ★ .tabs 는 nowrap 이다(검색 모달은 탭이 둘이라 문제가 없었다). 휴지통은 다섯이고 배지까지 달려
+   위젯 실폭(≈390px)에서 마지막 탭이 잘려 나갔다 — 잘린 탭은 없는 탭이다. 여기서만 접히게 한다. */
+#trTabs{flex-wrap:wrap;row-gap:var(--sp-1)}
 #trList{overflow:auto;max-height:46vh}
 /* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
    트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
@@ -1693,6 +1707,7 @@ html.dark{
   --accent-fill:#4f66d8;  /* --accent(#6182ff)는 흰 글자에서 3.42:1로 AA 미달 → '채움'만 어둡게: 흰 글자 4.97:1, 패널(#1a2031) 대비 3.26:1 */
   --ctl-border:#666f8a;   /* 폼 컨트롤 경계 — 패널 대비 3.25:1(--line-2 #3a4357는 1.64:1) */
   --danger:#ff6b70; --danger-soft:#3a1f23; --danger-text:#ff6b70; /* 다크 패널에서 텍스트 AA */
+  --danger-line:#5c3439;   /* 라이트값(#efc7c9)을 그대로 두면 다크 패널 위에서 형광 분홍 테두리가 된다 — 채움(--danger-soft) 계열로 낮춘다 */
   --sun:#ff7d82; --sat:#90a4e8;
   --ok:#6fd49a; --warn-text:#e3b766;   /* 다크 패널에서 텍스트 AA(8.9:1·8.6:1) — git-badge 다크 색과 같은 계열 */
   --hover-bg:#222b3e;
@@ -1715,11 +1730,15 @@ html.dark .git-badge.warn{ background:#352b12;color:#e3b766 }
 html.dark mark{ background:#ffe27a;color:#1d2433 }
 html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 /* 색 테마 — 라이트 기반 토큰 리맵 */
-:root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
-:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#7a6a52; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+/* ★ --dim-bg 는 읽기전용·disabled 칸의 wash 다. 라이트(#fafbfd)를 물려받으면 이 테마들의 --panel 과 구분이 안 가
+   "고칠 수 있는 칸"으로 보인다 — 테마마다 자기 패널보다 한 단계 어두운 값을 직접 준다(2026-09-10).
+   --danger-line 도 같은 이유로 각 테마의 색조에 맞춘다(라이트 분홍 테두리가 초록·크림 위에서 튄다). */
+:root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#7a6a52; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+   --faint-text 재맵(2026-09-10): --dim-bg 를 세피아 크림(#f4ecdd)으로 두자 :root 의 #6c7488 이 다른 달 날짜(.cell.dim .num)에서 3.98:1 로 AA 미달 → #5f6779 (4.83:1). loop-ui-visual 이 잡았다.
    --sun 재맵: 크림색 패널·배경에서 #c43a3f는 요일머리 4.37:1·주말 숫자 4.27:1로 AA 미달 → 같은 색상각을 유지한 채 한 단계만 어둡게(5.04:1·4.91:1). --sat(#4b62a0)는 4.87~4.95:1로 충족해 그대로 둔다.
    --wknd-*-bg: 세피아 패널(#fbf6ec) 기준으로 미리 합성한 값 */
-:root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --ctl-border:#111; --star:#8a5a00; /* 고대비 — 골드도 흰 배경 5.93:1까지 낮춰 별표가 텍스트급 대비 */ }
+:root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --danger-line:#a3000a; --ctl-border:#111; --dim-bg:#ededed; --star:#8a5a00; /* 고대비 — 골드도 흰 배경 5.93:1까지 낮춰 별표가 텍스트급 대비. --dim-bg 는 흰 패널과 확실히 갈리는 회색(읽기전용 칸이 흰칸으로 보이면 안 된다) */ }
 /* 테마 선택 메뉴 */
 .thm-sw{display:inline-block;width:13px;height:13px;border-radius:4px;border:1px solid var(--line-2);flex:none;margin-right:7px}
 #themeMenu button{display:flex;align-items:center}
@@ -2760,7 +2779,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                한 화면이 두 일을 하면 한쪽 상태(순서 편집 중·퇴사자 보기)가 다른 쪽을 물들인다. -->
           <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다. -->
           <input type="text" id="mbSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름 · 소속 검색">
-          <!-- 누르기 '전에' 알린다 — 눌러 본 뒤에야 「준비 중」이라고 하면 낚인 느낌이 든다.
+          <!-- 누르기 '전에' 알린다 — 눌러 본 뒤에야 「읽기 전용」이라고 하면 낚인 느낌이 든다.
                ★ 누를 수 있는 행이 하나도 없으면 renderMembers 가 이 줄을 「권한 없음」으로 바꾼다(감추지 않는다):
                  아무도 못 누르는데 '누르면 볼 수 있다'고 하면 거짓말이고, 아무 말도 없으면 왜 안 눌리는지 모른다. -->
           <div class="set-hint" id="mbSoon">사람을 누르면 그 사람 일정을 볼 수 있습니다(읽기 전용)</div>
@@ -3333,7 +3352,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="rpt-range">
         <input type="date" id="bgFrom" aria-label="불러올 기간 시작일"> <span style="color:var(--muted)">~</span> <input type="date" id="bgTo" aria-label="불러올 기간 종료일">
       </div>
-      <div style="margin-top:12px">
+      <div style="margin-top:4px">
         <label for="bgCat" style="font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px">과제 범위</label>
         <select id="bgCat" style="width:100%"></select>
       </div>
@@ -3355,7 +3374,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-head"><h2>이 날 커밋 불러오기</h2><button class="x" data-close>×</button></div>
     <div class="modal-body">
       <div style="font-size:var(--fs-meta);color:var(--muted)">날짜 <b id="dgDate"></b></div>
-      <div style="margin-top:12px">
+      <div style="margin-top:4px">
         <label for="dgCat" style="font-size:var(--fs-meta);color:var(--muted);display:block;margin-bottom:4px">과제 범위</label>
         <select id="dgCat" style="width:100%"></select>
       </div>
@@ -4582,7 +4601,9 @@ function updateUserUi(){
 // ★ 문구는 한 줄에 들어가야 한다 — .us-kv 가 라벨:값을 같은 줄에 붙이기 때문에, 값이 길면 400px 위젯 폭에서
 //   되접혀 2줄 절약이 도로 사라진다. 그래서 서술형('… 할 수 있다')을 명사 나열로 줄였다.
 const US_EDIT_ROLE  = { admin:'관리자 — 추가·수정·삭제', editor:'편집자 — 추가·수정', viewer:'열람자 — 조회만' };
-const US_VIEW_SCOPE = { all:'전체 — 모든 구성원', unit_tree:'소속 조직 — 내 부서와 하위', self:'본인만' };
+//  ★ 1인칭('내 부서')을 쓰지 않는다 — 이 매핑표는 「사용자 정보」(내 권한)와 「직원 편집」(**남의 권한**)이
+//    같이 쓴다. 남의 폼에서 '내 부서'라고 하면 그 '나'가 누구인지 화면이 거짓말을 한다(2026-09-10).
+const US_VIEW_SCOPE = { all:'전체 — 모든 구성원', unit_tree:'소속 조직 — 본인 부서와 하위', self:'본인만' };
 // 모르는 값은 숨기지 않고 그대로 보여준 뒤 '알 수 없는 값'을 덧붙인다 — DB에 새 코드가 생겼을 때
 // 화면이 조용히 틀린 설명을 하는 것보다 관리자에게 물어볼 단서를 남기는 편이 낫다(빈 값은 표시할 게 없어 —).
 function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return map[k] || (k ? k + ' — 알 수 없는 값' : '—'); }
@@ -5014,8 +5035,9 @@ function renderMembers(rows){
     while(soon.firstChild) soon.removeChild(soon.firstChild);   // 비우기도 DOM API 로만(㉑과 같은 규칙)
     if(arr.length){
       if(links > 0){
-        soon.appendChild(document.createTextNode('사람을 누르면 그 사람 일정을 볼 수 있습니다 — '));
-        const em = document.createElement('b'); em.textContent = '준비 중'; soon.appendChild(em);
+        //  ★ 「준비 중」이 아니다 — #peerModal 이 실제로 열린다(C4, 2026-09-03 구현). 예고가 낡아 남아 있었다
+        //    (2026-09-10 발견). 마크업의 기본 문구와 **글자까지 같은 말**이어야 한다: 두 벌이면 한쪽이 낡는다.
+        soon.textContent = '사람을 누르면 그 사람 일정을 볼 수 있습니다(읽기 전용)';
       }else{
         soon.textContent = '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다';
       }
@@ -5061,6 +5083,15 @@ let __uaBusy = false;       // 조회 재진입 가드 — 연타로 조회가 �
 let __uaSaving = false;     // 직원 쓰기 왕복 중(연타·중복 전송 차단)
 let __uaSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주는 타이머(offEd 의 워치독과 같은 이유)
 let __ueId = 0;             // 편집 중인 대상 user_id(0 = 신규 등록)
+//  ★ 요청 상관관계(세대) — 호스트가 reqId 를 돌려주지 않으므로 요청마다 세대를 올리고, '기다리는 세대'가
+//    살아 있을 때만 회신을 처리한다(과제의 projBeginRequest/__projGen 과 같은 규약).
+//    대상(__uaTarget)까지 기억하는 이유: A 를 저장하고 폼을 닫은 뒤 B 를 연 상태에서 A 의 늦은 회신이
+//    도착하면 세대만으로는 '어느 폼을 닫아도 되는가'를 알 수 없다(2026-09-10 발견).
+let __uaSeq = 0;            // 세대 카운터(증가만)
+let __uaGen = 0;            // 지금 회신을 기다리는 세대(0 = 대기 없음 → 늦은/이월 회신 무시)
+let __uaTarget = null;      // 그 요청의 대상 { uid, cmd }
+let __uaOrderSaving = false;// 「순서 저장」 왕복 중 — 이때 따라오는 명부 푸시만 순서 편집을 끝낸다
+let __uaPendingData = null; // 순서 편집 중에 도착한 **관계없는** 명부 푸시. 편집을 마칠 때 반영한다
 
 // 지금 화면에 나갈 사람 = 검색어로 거른 명부. 순서 편집 중에는 검색칸이 잠겨 있어 전 명부가 곧 이 목록이다.
 //   ★ 화면은 **다시 정렬하지 않는다** — 순서는 호스트가 정한다(§5.3). 여기 있는 것은 거르기뿐이다.
@@ -5182,6 +5213,14 @@ function uaAdminBar(){
     hint.className = 'mba-hint';
     hint.textContent = '▲▼ 로 옮긴 뒤 저장하세요. 화면의 순서가 곧 서열입니다.';
     box.appendChild(hint);
+    //  ★ 편집 중에 남이 명부를 바꿨다면(다른 관리자의 저장·휴지통 복구) 그 갱신은 **미뤄 둔다**(__applyMembers).
+    //    미뤄 둔 사실을 말하지 않으면 관리자는 자기 화면이 낡은 줄 모른 채 순서를 정한다.
+    if(__uaPendingData){
+      const ph = document.createElement('span');
+      ph.className = 'mba-hint'; ph.id = 'uaPendHint';
+      ph.textContent = '명부가 갱신되었습니다 — 순서 편집을 마치면 반영됩니다.';
+      box.appendChild(ph);
+    }
     const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
     mk('취소', 'uaOrderCancel', 'btn sm', () => uaOrderToggle(false));
     mk('순서 저장', 'uaOrderSave', 'btn sm primary', uaOrderSave);
@@ -5201,20 +5240,33 @@ function uaAdminBar(){
   lb.className = 'check';
   const cb = document.createElement('input');
   cb.type = 'checkbox'; cb.id = 'uaInactive'; cb.checked = __uaInactive;
-  cb.addEventListener('change', () => { __uaInactive = !!cb.checked; uaReload(); });
+  //  ★ 조회가 **시작조차 못 하면**(다른 조회가 도는 중) 체크만 켜지고 목록은 그대로다 — 화면이 거짓말을 한다.
+  //    그래서 uaReload 는 불린을 돌려주고, 시작 못 했으면 체크를 되돌리고 이유를 말한다(2026-09-10).
+  cb.addEventListener('change', () => {
+    const prev = __uaInactive;
+    __uaInactive = !!cb.checked;
+    if(uaReload()) return;
+    __uaInactive = prev; cb.checked = prev;
+    toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn');
+  });
   lb.appendChild(cb);
   lb.appendChild(document.createTextNode(' 퇴사자 보기'));
   box.appendChild(lb);
 }
 
 // 머리줄 + 목록을 함께 갱신한다(인원 수가 목록과 어긋나면 안 된다).
+//   ★ 검색 중에는 '구성원 n명' 이 **걸러진 수**라서 명부가 줄어든 것처럼 읽힌다(2026-09-10).
+//     검색어가 있으면 두 수를 함께 낸다 — 관리자가 보는 것이 전부가 아님을 그 줄이 말해야 한다.
 function uaApply(){
   const rows = uaVisible();
   uaRender(rows);
-  const sc = document.getElementById('uaScope');
-  if(sc) sc.textContent = __uaAdmin
-    ? ('구성원 ' + rows.length + '명' + (__uaInactive ? ' · 퇴사자 포함' : ''))
-    : '관리자만 사용할 수 있습니다.';
+  const sc = document.getElementById('uaScope'); if(!sc) return;
+  if(!__uaAdmin){ sc.textContent = '관리자만 사용할 수 있습니다.'; return; }
+  const q = document.getElementById('uaSearch');
+  const k = q ? String(q.value || '').trim() : '';
+  sc.textContent = (k ? ('검색 결과 ' + rows.length + '명 · 전체 ' + __uaMembers.length + '명')
+                      : ('구성원 ' + rows.length + '명'))
+                 + (__uaInactive ? ' · 퇴사자 포함' : '');
 }
 
 // 순서 편집 켜기/끄기.
@@ -5230,11 +5282,21 @@ function uaOrderToggle(on){
     const q = document.getElementById('uaSearch');
     if(q){ q.value = ''; q.disabled = true; }
   }else{
+    //  ★ 편집 중에 미뤄 둔 갱신(__uaPendingData)이 있으면 **그것이 이긴다.** 스냅샷(편집을 켠 시점의 옛 명부)
+    //    으로 되돌리면 그 사이에 실제로 일어난 변경(신규 등록·퇴사·삭제)이 화면에서 사라진다.
+    if(__uaPendingData){ uaOrderReset(); uaFlushPending(); return; }
     if(__uaOrderBackup) __uaMembers = __uaOrderBackup;   // 저장하지 않은 이동을 되돌린다
     uaOrderReset();
   }
   uaAdminBar();
   uaApply();
+}
+// 미뤄 둔 명부 푸시를 그때 반영한다(순서 편집을 마치는 모든 경로가 여기를 지난다).
+function uaFlushPending(){
+  const d = __uaPendingData; __uaPendingData = null;
+  if(!d){ uaAdminBar(); uaApply(); return false; }
+  uaApplyData(d);   // uaApplyData 가 막대·목록을 함께 다시 그린다
+  return true;
 }
 // 순서 편집 상태만 푼다(명부는 건드리지 않는다). 새 명부가 도착했을 때처럼 '되돌릴 것이 없는' 경우용.
 //   ★ 한 곳에 모아 둔다 — 검색칸 잠금 해제를 한 군데라도 빠뜨리면 관리자가 검색을 영영 못 하게 된다.
@@ -5246,12 +5308,34 @@ function uaOrderReset(){
 }
 
 // 한 칸 이동 — 화면에 즉시 반영하고, 저장은 「순서 저장」이 한다(§5.1).
+//   ★ uaApply() 는 #uaList 를 **통째로 다시 만든다.** 그대로 두면 스크롤이 맨 위로 튀고 포커스가 body 로
+//     떨어져, 89행짜리 명부에서 ▲ 를 두 번 연달아 누르는 것이 불가능했다(2026-09-10).
+//     그래서 스크롤 자리와 포커스를 손으로 되돌린다 — 목록을 다시 그리는 쪽이 그 값을 지켜야 한다.
 function uaMove(userId, delta){
   const i = __uaMembers.findIndex(m => m && Number(m.userId) === Number(userId));
   const j = i + delta;
   if(i < 0 || j < 0 || j >= __uaMembers.length) return;
+  const list = document.getElementById('uaList');
+  const top = list ? list.scrollTop : 0;
+  //  누르고 있던 화살표를 기억한다(클릭·Enter 어느 쪽이든 그 버튼이 활성 요소다). 못 읽으면 방향으로 유추한다.
+  const act = document.activeElement;
+  const uop = (act && act.dataset && act.dataset.uop && String(act.dataset.uid) === String(userId))
+    ? String(act.dataset.uop) : (delta < 0 ? 'up' : 'down');
   const t = __uaMembers[i]; __uaMembers[i] = __uaMembers[j]; __uaMembers[j] = t;
   uaApply();
+  if(list) list.scrollTop = top;
+  uaFocusMoved(userId, uop);
+}
+// 옮긴 행의 **같은 화살표**로 포커스를 되돌린다.
+//   ★ 그 화살표가 끝(맨 위·맨 아래)에 닿아 꺼졌으면 **반대쪽 화살표**를 잡는다 — 꺼진 버튼에 포커스를 주면
+//     브라우저가 포커스를 body 로 떨어뜨려, 결국 처음 문제로 되돌아간다.
+function uaFocusMoved(userId, uop){
+  const pick = op => document.querySelector('#uaList [data-uop="' + op + '"][data-uid="' + String(userId) + '"]');
+  let b = pick(uop);
+  if(!b || b.disabled) b = pick(uop === 'up' ? 'down' : 'up');
+  if(!b || b.disabled) return;
+  try{ b.focus(); }catch(_){}
+  try{ b.scrollIntoView({ block: 'nearest' }); }catch(_){}
 }
 
 // 순서 저장 — 화면에 보이는 순서 그대로 user_id 배열을 보낸다. 10·20·30… 재작성은 호스트가 한다(§2).
@@ -5262,13 +5346,37 @@ function uaOrderSave(){
   uaSend({ cmd: 'saveUserOrder', userIds: ids });
 }
 
+// 저장된 명부에서 그 사람을 찾는다 — 확인창에 쓰는 이름은 **DB 가 아는 이름**이어야 한다(입력칸이 아니라).
+function uaMemberOf(userId){
+  const uid = Number(userId || 0);
+  return uid ? (__uaMembers.find(x => x && Number(x.userId) === uid) || null) : null;
+}
+function uaMemberName(userId){ const m = uaMemberOf(userId); return m && m.name ? String(m.name) : ''; }
+// 폼이 '저장하지 않은 편집'을 안고 있나 — 칸 값을 그 사람의 **저장된 값**과 하나씩 견준다.
+//   ★ formSnapshot(모달 통째 스냅샷)을 쓰지 않는다: 여기서 필요한 것은 '무엇이 달라졌나'가 아니라
+//     '버려질 것이 있나' 하나이고, 신규 등록(uid 0)에는 견줄 저장값이 아예 없다.
+function userEdIsDirty(){
+  const v = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  const m = uaMemberOf(__ueId);
+  if(!m) return !!(v('userEdLogin') || v('userEdName'));   // 신규 등록 — 뭔가 쳐 넣었으면 버려질 것이 있다
+  const s = x => String(x == null ? '' : x);
+  return v('userEdName')  !== s(m.name)
+      || v('userEdTitle') !== s(m.title)
+      || v('userEdOrg')   !== (m.orgId == null ? '' : String(m.orgId))
+      || v('userEdScope') !== s(m.viewScope)
+      || v('userEdRole')  !== s(m.editRole);
+}
 // 퇴사/복구 — 확인 한 번. '삭제'가 아니라는 사실을 문장에 담는다(기록은 남는다).
+//   ★ 이름은 호출부가 **명부에서** 읽어 넘긴다(uaMemberName). 입력칸의 값을 쓰면, 관리자가 이름을 고쳐 놓고
+//     [퇴사 처리]를 눌렀을 때 확인창이 아직 존재하지 않는 이름으로 말한다(2026-09-10).
+//   ★ 성공하면 __userSaved 가 폼을 닫는다 — 저장하지 않은 편집은 그 자리에서 사라진다. 미리 말한다.
 function uaSetActive(userId, name, active){
   if(!userId){ toast('대상을 알 수 없습니다', 'error'); return; }
   const who = name || '이 직원';
+  const dirty = userEdIsDirty() ? ' 저장하지 않은 변경은 버려집니다.' : '';
   const ask = active
-    ? { t: '직원 복구', m: "'" + who + "' 님을 명부에 다시 표시합니다. 계속할까요?", ok: '복구' }
-    : { t: '퇴사 처리', m: "'" + who + "' 님을 퇴사 처리합니다. 기록은 남고 명부에서만 사라집니다.", ok: '퇴사 처리' };
+    ? { t: '직원 복구', m: "'" + who + "' 님을 명부에 다시 표시합니다. 계속할까요?" + dirty, ok: '복구' }
+    : { t: '퇴사 처리', m: "'" + who + "' 님을 퇴사 처리합니다. 기록은 남고 명부에서만 사라집니다." + dirty, ok: '퇴사 처리' };
   confirmBox(ask.t, ask.m, ask.ok, '취소').then(r => {
     if(r !== 'ok') return;
     uaSend({ cmd: 'setUserActive', userId: userId, active: active });
@@ -5280,15 +5388,24 @@ function uaSetActive(userId, name, active){
 //     그때 「퇴사자 보기」 상태를 모르면 화면이 제멋대로 바뀐다(켜 뒀는데 퇴사자가 사라진다).
 //   ★ 여기에 __uaAdmin 가드를 **두지 않는다.** 권한 판정은 호스트가 요청 시점에 한다(USER-LOGIN §3.3) —
 //     화면이 미리 막으면 거부 사유가 화면 문장으로 바뀌어, 관문이 실제로 막는지 아무도 확인하지 못한다.
+//   ★ 세대(__uaGen)·대상(__uaTarget)을 여기서 세운다 — 늦은/이월 회신이 지금 열려 있는 **다른 사람의 폼**을
+//     닫고 '저장했습니다'를 띄우던 자리다(2026-09-10). 판정은 __userSaved 가 한다.
 function uaSend(payload){
   if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   if(__uaSaving) return;   // 연타·중복 전송 차단
+  __uaGen = ++__uaSeq;
+  __uaTarget = { uid: Number((payload && payload.userId) || 0), cmd: String((payload && payload.cmd) || '') };
+  __uaOrderSaving = (__uaTarget.cmd === 'saveUserOrder');   // 이 왕복의 명부 푸시만 순서 편집을 끝낸다(W18)
   uaSetSaving(true);
   hpost(Object.assign({ includeInactive: __uaInactive }, payload));   // 결과는 __userSaved(ok, msg)
 }
 function uaSetSaving(on){
   __uaSaving = !!on;
   clearTimeout(__uaSaveWatchdog);
+  //  ★ 전송 중에는 폼 자체를 닫지 못하게 한다(offEdSetBusy 와 같은 장치) — 닫아도 호스트 작업은 계속되는데
+  //    결과를 알릴 곳만 사라진다. closeOverlay 의 busy 가드가 Esc·배경·×·취소를 함께 막는다.
+  const ov = document.getElementById('userEditModal');
+  if(ov){ if(on) ov.dataset.busy = '1'; else delete ov.dataset.busy; }
   //  ★ [저장]과 [퇴사 처리]를 함께 잠근다 — 폼 하단의 두 버튼이 같은 왕복(uaSend)을 쓰므로,
   //    한쪽만 잠그면 전송 중에 다른 쪽을 눌러 두 요청이 겹친다.
   const s = document.getElementById('userEdSave');
@@ -5299,23 +5416,31 @@ function uaSetSaving(on){
   //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
   __uaSaveWatchdog = setTimeout(() => {
     __uaSaving = false;
+    __uaGen = 0; __uaTarget = null; __uaOrderSaving = false;   // ★ 세대 무효화 — 뒤늦게 오는 회신은 무시된다
     const b = document.getElementById('userEdSave'); if(b) b.disabled = false;
     const ab = document.getElementById('userEdActive'); if(ab) ab.disabled = false;
     const ed = document.getElementById('userEditModal');
+    if(ed) delete ed.dataset.busy;
     if(ed && !ed.classList.contains('hidden')) userEdMsgSet(ICON.alert + ' 응답이 없습니다 — 다시 시도해 주세요.', 'err');
     else toast('응답이 없습니다 — 다시 시도해 주세요.', 'warn');
   }, 12000);
 }
 
 // 목록만 다시 읽는다(「퇴사자 보기」 전환용). openUserAdmin 과 달리 모달을 새로 열지 않는다.
-async function uaReload(){
-  if(!HOST || __uaBusy) return;
+//   ★ **불린을 돌려준다**: 조회를 시작했나(true) / 재진입 가드에 막혔나(false). 호출부(「퇴사자 보기」)는
+//     시작조차 못 했을 때 체크를 되돌려야 한다 — 안 그러면 체크는 켜졌는데 목록은 그대로다(2026-09-10).
+//     그래서 이 함수는 async 가 아니다(async 면 언제나 Promise = 늘 참이라 판정이 무의미해진다).
+function uaReload(){
+  if(!HOST || __uaBusy) return false;
   __uaBusy = true;
-  let r = null;
-  try{ r = await hostRequest('membersGet', { includeInactive: __uaInactive, flat: true }, 12000); }catch(_){ r = null; }
-  __uaBusy = false;
-  if(!(r && r.ok && r.data)){ uaFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
-  uaApplyData(r.data);
+  (async () => {
+    let r = null;
+    try{ r = await hostRequest('membersGet', { includeInactive: __uaInactive, flat: true }, 12000); }catch(_){ r = null; }
+    __uaBusy = false;
+    if(!(r && r.ok && r.data)){ uaFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
+    uaApplyData(r.data);
+  })();
+  return true;
 }
 
 // 회신 한 덩어리를 편집 화면의 상태로 옮긴다 — 첫 조회(openUserAdmin)·재조회(uaReload)·
@@ -5358,7 +5483,12 @@ async function openUserAdmin(){
   if(__uaBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
   __uaBusy = true;
   __uaAdmin = false; __uaMembers = []; __uaUnits = []; __uaTitles = []; __uaInactive = false;
+  __uaPendingData = null;
   uaOrderReset();
+  //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(워치독이 아직 안 돌았거나,
+  //    회신 없이 창을 닫은 경우). 왕복이 없으면 풀고, **아직 도는 중이면 풀지 말고 워치독만 다시 건다** —
+  //    그래야 12초 뒤 반드시 풀린다(2026-09-10).
+  if(__uaSaving) uaSetSaving(true); else uaSetSaving(false);
   uaAdminBar();
   const q = document.getElementById('uaSearch'); if(q) q.value = '';
   uaRender([]);
@@ -5378,10 +5508,17 @@ function userEdMsgSet(html, tone){
   const m = document.getElementById('userEdMsg'); if(!m) return;
   m.innerHTML = html || '';   // 폼 메시지는 우리가 만든 문자열이다(과제 폼 offEdMsgSet 과 같은 관례)
   m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
+  //  ★ 이 줄은 폼 맨 아래에 있다 — 390×700 위젯에서는 화면 밖일 때가 많아, 거부 사유를 적어 놓고도
+  //    관리자에게는 "눌렀는데 아무 일도 없다"로 보였다(2026-09-10). 띄웠으면 보이는 자리까지 끌어온다.
+  if(html) try{ m.scrollIntoView({ block: 'nearest' }); }catch(_){}
 }
 // 드롭다운 채우기 — 값 목록은 전부 호스트가 준 것이다(직급·조직은 DB 마스터). blankLabel=null 이면 빈 옵션을 넣지 않는다.
+//   ★ 지금 값이 목록에 없으면(비활성 직급·폐지된 소속·모르는 코드) **말없이 첫 항목으로 바꾸지 않는다**
+//     (2026-09-10). 그러면 관리자가 이름 하나 고치려고 열어 [저장]만 눌러도 그 사람의 직급이 조용히 바뀐다.
+//     대신 그 값을 맨 위에 끼워 넣고 '목록에 없음'이라고 말한다 — 그대로 두면 호스트가 기존 값을 받아 준다.
+//   ★ 반환값 = '끼워 넣었나'. 호출부(userEdOpen)가 안내 문구를 띄울 근거다.
 function userEdFillSelect(id, items, cur, blankLabel){
-  const sel = document.getElementById(id); if(!sel) return;
+  const sel = document.getElementById(id); if(!sel) return false;
   while(sel.firstChild) sel.removeChild(sel.firstChild);
   if(blankLabel != null){
     const o = document.createElement('option');
@@ -5393,8 +5530,16 @@ function userEdFillSelect(id, items, cur, blankLabel){
     o.value = String(it.value); o.textContent = String(it.label);
     sel.appendChild(o);
   }
-  sel.value = (cur == null ? '' : String(cur));
-  if(sel.value !== (cur == null ? '' : String(cur)) && sel.options.length) sel.selectedIndex = 0;
+  const want = (cur == null ? '' : String(cur));
+  const known = want === '' || Array.prototype.some.call(sel.options, o => o.value === want);
+  if(!known){
+    const o = document.createElement('option');
+    o.value = want; o.textContent = want + ' — 목록에 없음';   // 고를 수 있는 옵션이다(disabled 아님 — 유지가 기본값이다)
+    sel.insertBefore(o, sel.firstChild);
+  }
+  sel.value = want;
+  if(sel.value !== want && sel.options.length) sel.selectedIndex = 0;
+  return !known;
 }
 //  선택칸에서 값 읽기 — 라디오 묶음(input[name=…]:checked)이던 것을 드롭다운 id 로 바꿨다(2026-09-10).
 function userEdPick(id){
@@ -5415,21 +5560,30 @@ function userEdOpen(userId){
   if(head) head.textContent = m ? '직원 정보 수정' : '직원 등록';
   set('userEdLogin', m ? m.loginId : '');
   const lg = document.getElementById('userEdLogin'); if(lg) lg.disabled = !!m;
+  //  ★ 잠긴 칸은 '왜 잠겼는지'를 말해야 한다 — 회색 칸만 보면 고장으로 읽힌다(2026-09-10).
+  //    신규 등록에는 잠금이 없으므로 원래 안내(무엇을 적어야 하나)를 그대로 둔다.
+  const ih = document.getElementById('userEdIdHint');
+  if(ih){
+    if(m) ih.textContent = '기존 직원의 ID 는 바꿀 수 없습니다(주간보고 계정과 같습니다). 바꿔야 하면 DBA 에게.';
+    else ih.innerHTML = '주간보고(netcus)에 쓰는 <b>ID</b>와 같아야 합니다(이메일 아님). 이 앱이 계정을 만들지는 않습니다 — 본인이 그 계정으로 로그인하면 연결됩니다.';
+  }
   set('userEdName', m ? m.name : '');
-  userEdFillSelect('userEdTitle', __uaTitles.map(t => ({ value: t, label: t })), m ? m.title : '', null);
-  userEdFillSelect('userEdOrg',
+  //  ★ 목록에 없는 값이 하나라도 있으면(비활성 직급·폐지된 소속 등) 아래에서 그 사실을 말한다.
+  let unknown = false;
+  unknown = userEdFillSelect('userEdTitle', __uaTitles.map(t => ({ value: t, label: t })), m ? m.title : '', null) || unknown;
+  unknown = userEdFillSelect('userEdOrg',
     __uaUnits.filter(u => u && u.orgId != null).map(u => ({ value: u.orgId, label: u.name })),
-    m && m.orgId != null ? m.orgId : '', '(소속 없음)');
+    m && m.orgId != null ? m.orgId : '', '(소속 없음)') || unknown;
   const me = (currentUser && currentUser.loginId != null) ? String(currentUser.loginId) : '';
   const isMe = !!me && !!m && String(m.loginId) === me;
   //  ★ 문구는 「사용자 정보」의 매핑표 그대로다(usRoleText) — 같은 규칙을 두 벌로 적으면 한쪽이 반드시 낡는다.
   //    빈 옵션은 넣지 않는다(blankLabel=null): 열람 범위·편집 권한에 '미지정'은 없다.
-  userEdFillSelect('userEdScope',
+  unknown = userEdFillSelect('userEdScope',
     ['self', 'unit_tree', 'all'].map(k => ({ value: k, label: usRoleText(US_VIEW_SCOPE, k) })),
-    m ? m.viewScope : 'self', null);
-  userEdFillSelect('userEdRole',
+    m ? m.viewScope : 'self', null) || unknown;
+  unknown = userEdFillSelect('userEdRole',
     ['viewer', 'editor', 'admin'].map(k => ({ value: k, label: usRoleText(US_EDIT_ROLE, k) })),
-    m ? m.editRole : 'viewer', null);
+    m ? m.editRole : 'viewer', null) || unknown;
   //  ★ 자기 행이면 편집 권한만 잠근다(§4.4-2). **힌트일 뿐이고 최종 판정은 호스트**다 — 그래서 다른 사람을
   //    열 때는 반드시 도로 풀어야 한다(한 번 잠근 칸이 남으면 그 다음 사람이 통째로 못 고쳐진다).
   const rs = document.getElementById('userEdRole'); if(rs) rs.disabled = isMe;
@@ -5453,9 +5607,30 @@ function userEdOpen(userId){
     ab.dataset.uop = off ? 'off' : 'on';
     ab.dataset.uid = String(uid);
   }
-  userEdMsgSet('');
-  uaSetSaving(false);
+  //  ★ 직급 목록이 통째로 비어 있으면 이 폼으로는 **아무도 저장할 수 없다**(직급은 필수다).
+  //    빈 드롭다운을 그대로 내주면 관리자가 다 채우고 [저장]에서야 막힌다 — 열자마자 말하고 잠근다.
+  const sv = document.getElementById('userEdSave');
+  if(!__uaTitles.length){
+    userEdMsgSet(ICON.alert + ' 직급 목록을 불러오지 못했습니다 — 명부를 새로고침하세요.', 'err');
+    if(sv) sv.disabled = true;
+  }else if(unknown){
+    userEdMsgSet(ICON.alert + ' 현재 값이 목록에 없습니다(비활성 직급/소속 등). 그대로 두면 유지됩니다.', 'warn');
+  }else{
+    userEdMsgSet('');
+  }
+  //  ★ 진행 중인 왕복이 있으면 잠금을 **풀지 않는다**(openUserAdmin 과 같은 이유). 예전에는 무조건 풀어서
+  //    전송 중에 다른 사람을 열면 가드와 워치독이 함께 사라졌다(2026-09-10).
+  if(__uaSaving){
+    if(sv) sv.disabled = true;
+    if(ab) ab.disabled = true;          // 같은 왕복을 쓰는 두 버튼은 언제나 함께 잠긴다(uaSetSaving 과 같은 규칙)
+  }else{
+    uaSetSaving(false);                                    // 왕복이 없을 때만 잠금·워치독을 푼다
+    if(!__uaTitles.length && sv) sv.disabled = true;       // 직급이 없으면 저장 자체가 성립하지 않는다
+  }
   openModal('#userEditModal');
+  //  dirty-check 기준(폼을 다 채운 뒤) — Esc·배경 클릭이 저장하지 않은 편집을 조용히 버리지 않게(confirmDiscardIfDirty).
+  const ov = document.getElementById('userEditModal');
+  if(ov) ov.__openSnap = formSnapshot(ov);
 }
 function userEdSaveNow(){
   if(__uaSaving) return;
@@ -5482,11 +5657,23 @@ function userEdSaveNow(){
 // 호스트 쓰기 결과(등록·수정·퇴사·복구·순서 공용). 성공=폼 닫고 토스트, 실패=폼 유지 + 사유 표시.
 //   ★ 목록 갱신은 여기서 하지 않는다 — 호스트가 곧바로 명부를 다시 읽어 __applyMembers 로 밀어 준다.
 //     웹이 스스로 다시 조회하면 '누가 갱신하는가'가 두 곳이 되고, 둘의 결과가 다를 때 어느 쪽이 참인지 알 수 없다.
+//   ★ 늦은/이월 회신은 여기서 끊는다(2026-09-10). 워치독이 세대를 무효화(0)한 뒤 도착한 A 의 회신이
+//     지금 열려 있는 **B 의 폼**을 닫고 '저장했습니다'를 띄우던 자리다. 세대(무시할까)와 대상(폼을 닫아도 되나)을
+//     따로 본다 — 세대만으로는 '어느 폼'인지 알 수 없다.
 window.__userSaved = function(ok, msg){
+  if(__uaGen === 0) return;   // 기다리는 요청이 없다 = 이 회신은 이월분이다
+  const tg = __uaTarget;
+  const wasOrder = __uaOrderSaving;
+  __uaGen = 0; __uaTarget = null; __uaOrderSaving = false;
   uaSetSaving(false);
   const ed = document.getElementById('userEditModal');
-  const edOpen = !!ed && !ed.classList.contains('hidden');
+  //  폼을 닫아도 되는 회신인가 = 그 요청의 대상이 **지금 폼이 연 사람**인가(순서 저장은 폼과 무관하다).
+  const forForm = !!tg && tg.cmd !== 'saveUserOrder' && Number(tg.uid || 0) === Number(__ueId || 0);
+  const edOpen = !!ed && !ed.classList.contains('hidden') && forForm;
   if(ok){
+    //  ★ 「순서 저장」이 성공했다 — 이 회신이 먼저 오고 갱신 명부(__applyMembers)가 곧바로 뒤따른다(호스트 순서).
+    //    여기서 편집 모드를 끝내야 그 푸시가 '관계없는 갱신'으로 오해받아 미뤄지지 않는다(아래 가드).
+    if(wasOrder){ uaOrderReset(); __uaPendingData = null; }
     if(edOpen){ userEdMsgSet(''); closeModal('#userEditModal'); }
     toast(msg || '저장했습니다', 'success');
     return;
@@ -5504,6 +5691,10 @@ window.__applyMembers = function(json){
   let d = null;
   try{ d = JSON.parse(String(json || '')); }catch(_){ d = null; }
   if(!(d && d.found)) return;   // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  //  ★ 순서 편집 중에 **관계없는 푸시**(다른 관리자의 저장·휴지통 복구 등)가 오면 편집 중인 순서가 통째로
+  //    날아간다(2026-09-10). 내 「순서 저장」의 결과가 아니면 미뤄 두고, 편집을 마칠 때 반영한다.
+  //    (내 순서 저장이면 __userSaved 가 이미 편집 모드를 끝냈으므로 여기로 오지 않는다.)
+  if(__uaOrder && !__uaOrderSaving){ __uaPendingData = d; uaAdminBar(); return; }
   uaOrderReset();   // 서버에 저장된 순서가 도착했다 — 편집 모드는 여기서 끝이다(되돌릴 것은 없다)
   uaApplyData(d);
 };
@@ -5523,12 +5714,17 @@ let __trSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주
 //  탭 정의 한 벌 — 종류·라벨·회신의 목록 키·참조 문구가 **여기서만** 갈라진다.
 //  ★ 참조 문구가 종류마다 다른 이유: 과제는 사람이 편입하고, 인력은 기록을 남기고, 코드는 과제가 쓴다.
 //    같은 숫자라도 뜻이 달라서 한 문장으로 뭉치면 관리자가 무엇을 지우는지 모르게 된다.
+//  ★ 조사는 받침이 정한다 — "숨긴 과제**가**" / "숨긴 인력**이**". 「이(가)」 병기는 다섯 탭 어디서도 맞지 않는
+//    타협이고, 화면이 자기 말을 못 고르는 것처럼 읽힌다(2026-09-10). 한글 음절의 받침 유무만 보면 된다.
+//    ※ 여기 한 곳에서만 쓴다 — 일반 조사 엔진을 만들 일이 아니다(영문·숫자 꼬리는 이 표에 없다).
+const josa = (w, withBatchim, noBatchim) => { const c = String(w == null ? '' : w).slice(-1).charCodeAt(0) || 0; return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0) ? withBatchim : noBatchim; };
+const trEmptyLabel = label => '숨긴 ' + label + josa(label, '이', '가') + ' 없습니다.';
 const TR_TABS = [
-  { kind: 'project',  label: '과제',   key: 'projects',  refs: n => '편입 ' + n + '건' },
-  { kind: 'user',     label: '인력',   key: 'users',     refs: n => '기록 ' + n + '건' },
-  { kind: 'customer', label: '발주처', key: 'customers', refs: n => '과제 ' + n + '건' },
-  { kind: 'section',  label: '구분',   key: 'sections',  refs: n => '과제 ' + n + '건' },
-  { kind: 'status',   label: '상태',   key: 'statuses',  refs: n => '과제 ' + n + '건' },
+  { kind: 'project',  label: '과제',   key: 'projects',  refs: n => '편입 ' + n + '건', empty: trEmptyLabel('과제') },
+  { kind: 'user',     label: '인력',   key: 'users',     refs: n => '기록 ' + n + '건', empty: trEmptyLabel('인력') },
+  { kind: 'customer', label: '발주처', key: 'customers', refs: n => '과제 ' + n + '건', empty: trEmptyLabel('발주처') },
+  { kind: 'section',  label: '구분',   key: 'sections',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('구분') },
+  { kind: 'status',   label: '상태',   key: 'statuses',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('상태') },
 ];
 const trTabDef = kind => TR_TABS.find(t => t.kind === kind) || TR_TABS[0];
 const trRows = kind => { const a = __trData ? __trData[trTabDef(kind).key] : null; return Array.isArray(a) ? a : []; };
@@ -5542,16 +5738,25 @@ function trRender(){
   if(!tabs || !list) return;
   const empty = document.getElementById('trEmpty');
   const sc = document.getElementById('trScope');
+  //  ★ 탭 줄을 통째로 다시 만든다 = 탭에 있던 포커스가 body 로 떨어진다(키보드로 탭을 옮기면 그다음
+  //    화살표키가 먹지 않았다 · 2026-09-10). 다시 그린 뒤 같은 자리로 되돌린다.
+  const hadFocus = tabs.contains(document.activeElement);
   while(tabs.firstChild) tabs.removeChild(tabs.firstChild);
   while(list.firstChild) list.removeChild(list.firstChild);
   //  ★ 클래스도 관리자일 때만 붙인다(uaAdminBar 와 같은 관례) — 빈 자리에 탭 밑줄만 남는 꼴을 피한다.
+  //    role 도 같다: 탭이 하나도 없는데 tablist 라고 하면 보조기술에 없는 구조를 알린다.
   tabs.className = __trAdmin ? 'tabs' : '';
+  if(__trAdmin){ tabs.setAttribute('role', 'tablist'); list.setAttribute('role', 'tabpanel'); }
+  else { tabs.removeAttribute('role'); list.removeAttribute('role'); }
   if(!__trAdmin){
     const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
-    d.textContent = '관리자만 사용할 수 있습니다.';
+    //  ★ 호스트가 사유를 실어 보내면 그것을 쓴다(비활성·미등록 계정은 '관리자가 아니다'와 이유가 다르다).
+    //    화면이 다시 쓰지 않는다 — 다시 쓰면 무엇을 고쳐야 하는지가 사라진다(__trashDone 과 같은 규칙).
+    const why = (__trData && __trData.msg) ? String(__trData.msg) : '관리자만 사용할 수 있습니다.';
+    d.textContent = why;
     list.appendChild(d);
     if(empty) empty.classList.add('hidden');
-    if(sc) sc.textContent = '관리자만 사용할 수 있습니다.';
+    if(sc) sc.textContent = why;
     return;
   }
   let total = 0;
@@ -5565,12 +5770,18 @@ function trRender(){
     b.dataset.trtab = t.kind;
     b.setAttribute('role', 'tab');
     b.setAttribute('aria-selected', t.kind === __trTab ? 'true' : 'false');
+    b.tabIndex = (t.kind === __trTab) ? 0 : -1;   // roving tabindex — 탭 줄 전체가 Tab 한 번으로 지나간다(APG)
     b.textContent = t.label;
     const n = document.createElement('span');
     n.className = 'badge badge-git'; n.textContent = String(trRows(t.kind).length);
     b.appendChild(n);
     b.addEventListener('click', () => { __trTab = t.kind; trRender(); });
     tabs.appendChild(b);
+  }
+  //  ★ 다시 그리기 전에 탭 줄 안에 있던 포커스를 **지금 선택된 탭**으로 되돌린다(위 hadFocus).
+  if(hadFocus){
+    const cur = tabs.querySelector('[data-trtab="' + __trTab + '"]');
+    if(cur) try{ cur.focus(); }catch(_){}
   }
   const def = trTabDef(__trTab), arr = trRows(__trTab);
   for(const it of arr){
@@ -5591,6 +5802,16 @@ function trRender(){
     const sub = document.createElement('div'); sub.className = 'set-hint'; sub.style.margin = '0';
     sub.textContent = (it && it.sub) ? String(it.sub) : '';
     row.appendChild(sub);
+    //  ★ 사유(why)를 **보이는 줄**로 낸다(2026-09-10). 예전에는 꺼진 버튼의 title 에만 있었는데,
+    //    Chromium 은 disabled 컨트롤에 툴팁을 띄우지 않는다 — 관리자는 '왜 안 눌리지'를 영영 알 수 없었다.
+    //    title 은 그대로 둔다(마우스가 아닌 경로·기존 시험의 손잡이).
+    if(it && it.deletable === false && it.why){
+      const wy = document.createElement('div');
+      wy.className = 'set-hint'; wy.style.margin = '0';
+      wy.dataset.trwhy = key;   // 시험이 잡는 손잡이(이름으로 셀렉터를 만들면 한글 이스케이프가 낀다)
+      wy.textContent = String(it.why);
+      row.appendChild(wy);
+    }
     //  행과 버튼은 **형제**다(.mba-line 이 한 줄로 묶는다 — 「구성원 편집」과 같은 골격).
     //  ★ data-top / data-tkey 는 시험·루프가 잡을 손잡이다. 이름으로 셀렉터를 만들면 한글 이스케이프가 낀다.
     const act = document.createElement('div');
@@ -5613,7 +5834,7 @@ function trRender(){
     line.appendChild(act);
     list.appendChild(line);
   }
-  if(empty){ empty.textContent = '숨긴 ' + def.label + '이(가) 없습니다.'; empty.classList.toggle('hidden', arr.length > 0); }
+  if(empty){ empty.textContent = def.empty; empty.classList.toggle('hidden', arr.length > 0); }
 }
 
 // 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회(openTrash)와 쓰기 뒤 푸시(__applyTrash)가 **같은 함수**를 쓴다.
@@ -5646,6 +5867,9 @@ async function openTrash(){
   if(__trBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
   __trBusy = true;
   __trData = null; __trAdmin = false; __trTab = 'project';
+  //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 닫은 경우).
+  //    왕복이 없으면 풀고, **아직 도는 중이면 워치독만 다시 걸어** 12초 뒤 반드시 풀리게 한다(2026-09-10).
+  if(__trSaving) trSetSaving(true); else trSetSaving(false);
   trRender();
   const sc = document.getElementById('trScope'); if(sc) sc.textContent = '불러오는 중…';
   const empty = document.getElementById('trEmpty'); if(empty) empty.classList.add('hidden');
@@ -5699,25 +5923,47 @@ function trDelete(kind, key, name, refs){
 //     그때 「퇴사자 보기」 상태를 모르면 「구성원 편집」 화면이 제멋대로 바뀐다.
 //   ★ 여기에 __trAdmin 가드를 **두지 않는다.** 권한 판정은 호스트가 요청 시점에 한다(USER-LOGIN §3.3) —
 //     화면이 미리 막으면 거부 사유가 화면 문장으로 바뀌어, 관문이 실제로 막는지 아무도 확인하지 못한다.
+//   ★ 진행 중임을 **화면이 보여 준다**(2026-09-10). 예전에는 가드가 두 번째 클릭을 조용히 버리고 첫 요청도
+//     아무 표시가 없어서, 관리자에게는 [영구 삭제]가 먹지 않는 것처럼 보였다.
 function trSend(payload){
   if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
-  if(__trSaving) return;   // 연타·중복 전송 차단
-  __trSaving = true;
+  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 조용히 버리지 않는다
+  trSetSaving(true);
+  hpost(Object.assign({ includeInactive: __uaInactive }, payload));   // 결과는 __trashDone(ok, msg)
+}
+// 휴지통 쓰기 잠금 한 곳 — 행 버튼 전부 + overlay dataset.busy(닫기 차단) + 워치독(uaSetSaving·offEdSetBusy 와 같은 장치).
+//   ★ 잠금을 풀 때 **원래 꺼져 있던 버튼**(deletable:false 인 [영구 삭제])을 켜지 않는다. 그래서 잠글 때
+//     원래 상태를 data-trwas 에 적어 두고 풀 때 그대로 되돌린다 — 안 그러면 잠금 한 번이 계약을 뒤집는다.
+function trSetSaving(on){
+  __trSaving = !!on;
   clearTimeout(__trSaveWatchdog);
+  const ov = document.getElementById('trashModal');
+  if(ov){ if(on) ov.dataset.busy = '1'; else delete ov.dataset.busy; }
+  const list = document.getElementById('trList');
+  if(list){
+    for(const b of list.querySelectorAll('[data-top]')){
+      if(on){
+        if(b.dataset.trwas == null) b.dataset.trwas = b.disabled ? '1' : '0';
+        b.disabled = true;
+      }else if(b.dataset.trwas != null){
+        b.disabled = b.dataset.trwas === '1';
+        delete b.dataset.trwas;
+      }
+    }
+  }
+  if(!on) return;
   //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
   __trSaveWatchdog = setTimeout(() => {
-    __trSaving = false;
+    trSetSaving(false);
     toast('응답이 없습니다 — 다시 시도해 주세요.', 'warn');
   }, 12000);
-  hpost(Object.assign({ includeInactive: __uaInactive }, payload));   // 결과는 __trashDone(ok, msg)
 }
 
 // 호스트 쓰기 결과(복구·삭제 공용). 목록 갱신은 여기서 하지 않는다 — 호스트가 __applyTrash 로 밀어 준다.
 //   ★ 문장을 **다시 쓰지 않는다**: 거부 사유(기록 n건·사용 중·이름 불일치)는 호스트가 사용자 문장으로
 //     만들었다. 화면이 '처리하지 못했습니다'로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다.
 window.__trashDone = function(ok, msg){
-  __trSaving = false;
-  clearTimeout(__trSaveWatchdog);
+  trSetSaving(false);   // 잠금·워치독·행 버튼을 한 곳에서 함께 푼다
   toast(msg || (ok ? '처리했습니다' : '처리하지 못했습니다'), ok ? 'success' : 'error');
 };
 
@@ -7057,7 +7303,9 @@ function formSnapshot(ov){
   const rem = [...ov.querySelectorAll('.seg-b.active[data-remmode]')].map(function(b){ return b.dataset.remmode; }).join('|');
   return base + '' + rem;
 }
-function isGuardedModal(ov){ return !!ov && (ov.id==='entryModal' || ov.id==='quickAdd' || ov.id==='settingsModal'); }
+// ★ #userEditModal 도 가드 대상이다(2026-09-10) — 남의 직급·권한을 고쳐 놓고 Esc 나 배경 클릭 한 번에
+//   조용히 버려지면, 관리자는 저장된 줄 알고 창을 닫는다. 스냅샷 기준은 userEdOpen 이 __openSnap 에 남긴다.
+function isGuardedModal(ov){ return !!ov && (ov.id==='entryModal' || ov.id==='quickAdd' || ov.id==='settingsModal' || ov.id==='userEditModal'); }
 function confirmDiscardIfDirty(ov){
   if(!isGuardedModal(ov)) return Promise.resolve(true);
   // 설정은 formSnapshot을 쓰지 않는다 — 스냅샷은 모든 input의 value를 이어 붙이므로 비밀번호가
@@ -8333,7 +8581,7 @@ window.__projectSaved = function(ok, msg, needConfirm){
 function offHideProject(id){
   const c = dbCatalogById(id); if(!c) return;
   confirmBox('공식 과제 숨김',
-    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요? 숨긴 과제는 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다.`,
+    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요? 숨긴 과제는 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`,
     '숨김', '취소')
     .then(r => {
       if(r !== 'ok') return;
@@ -11629,11 +11877,11 @@ function bind(){
   //  직원 편집 폼의 [저장]·[퇴사 처리] — 편집 화면의 관리자 컨트롤은 uaAdminBar·uaRowActions 가 만들면서
   //  그 자리에서 배선한다(동적 생성이라 여기서 배선할 수 없다). 이 둘만 마크업에 상주하므로 여기서 한 번 묶는다.
   { const b = $('#userEdSave'); if(b) b.addEventListener('click', userEdSaveNow); }
-  //  ★ 이름은 입력칸에서 읽는다 — 관리자가 이름을 고쳐 놓고 퇴사를 누르면 확인 문장도 고친 이름이어야 한다.
+  //  ★ 이름은 **저장된 명부**에서 읽는다(uaMemberName) — 입력칸의 값은 아직 저장되지 않은 편집일 수 있고,
+  //    그러면 확인창이 "'새 이름' 님을 퇴사 처리합니다"라고 말하면서 실제로는 DB 의 다른 이름을 끈다(2026-09-10).
   //    대상은 dataset 이 아니라 __ueId 다(폼이 연 사람 하나뿐이다. dataset.uid 는 시험이 잡는 손잡이).
   { const b = $('#userEdActive'); if(b) b.addEventListener('click', () => {
-      const n = $('#userEdName'); const nm = n ? String(n.value || '').trim() : '';
-      uaSetActive(__ueId, nm, b.dataset.uop === 'on'); }); }
+      uaSetActive(__ueId, uaMemberName(__ueId), b.dataset.uop === 'on'); }); }
   { const _pb = $('#ncProbe'); if(_pb) _pb.addEventListener('click', () => { hpost({ cmd: 'netcusProbe' }); const m = $('#ncProbeMsg'); if(m){ m.textContent = '창 여는 중…'; m.style.color = ''; } }); }
   // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
   { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {
@@ -12150,6 +12398,9 @@ function bind(){
   // ARIA 탭 roving — dpTabs와 같은 규약(←/→/Home/End 이동+자동 활성화)
   tablistRoving('#sTabs', '.tab', b => setSearchMode(b.id === 'tabKeyword' ? 'keyword' : 'category'));
   tablistRoving('#reportModal .rpt-presets[role=tablist]', '[data-rmode]', b => setReportMode(b.dataset.rmode));
+  //  휴지통 탭 다섯 — 검색 탭과 **같은 규약**을 쓴다(←/→/Home/End + 자동 활성화). 버튼은 trRender 가 매번
+  //  다시 만들지만 컨테이너(#trTabs)는 그대로라 여기 한 번의 배선으로 충분하다.
+  tablistRoving('#trTabs', '.tab', b => { __trTab = b.dataset.trtab; trRender(); });
   let debounce = null;
   $('#sInput').addEventListener('input', () => {
     clearTimeout(debounce);

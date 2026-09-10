@@ -9,7 +9,8 @@
 //     ① 라이브 DB 를 덮어쓰지 못하게 하는 가드가 있고, 스위치 하나로 열리지 않는다
 //     ② 비밀번호를 `-p<비번>` 꼴로 명령줄에 실어 보내는 자리가 없다
 //     ③ 검증이 '개수' 가 아니라 '이름 집합' 을 대조한다 (개수는 같고 이름이 다를 수 있다)
-//     ④ -Grants 경로가 create-app-user.sql + grants-calendar.sql 을 둘 다 참조한다
+//     ④ -Grants 경로가 create-app-user.sql + grants-calendar.sql 을 둘 다 참조하고,
+//        **세 번째 정본**인 비공개 taskmgr-company-data/05-grants.sql 도 찾아 적용하거나 경고한다
 //        (복구방법.txt 4번 — 이 단계를 건너뛰면 위젯이 첫 조회에서 ERROR 1044/1142 로 죽는다)
 //     ⑤ .ps1 과 .cmd 의 종료코드 표가 글자 그대로 같다
 //     ⑥ 라이브에 못 붙으면 '검증 못 함' 으로 끝난다 — 통과(0)로 세지 않는다
@@ -122,6 +123,37 @@ const checks = {
       'grants 파일의 하드코딩된 DB 이름을 대상에 맞추는 자리가 없다 — 리허설이 라이브 권한을 건드린다');
     assert.ok(/DROP DATABASE 로 표 단위 권한\(mysql\.tables_priv\)을 지우지 않습니다/.test(ps),
       'DROP DATABASE 가 표 단위 권한을 남긴다는 경고가 사라졌다(그 권한은 같은 이름의 DB 가 생기면 되살아난다)');
+  },
+
+  // ④-b **세 번째 정본** — 비공개 taskmgr-company-data/05-grants.sql (app_user 의 SELECT/INSERT/UPDATE/DELETE).
+  //
+  //   왜 따로 잠그나: 그 파일은 이 저장소에 **없다**(비공개 형제 저장소). 그래서 db/deploy 의 두 파일만
+  //   적용하고 끝내면 복구본은 '캘린더는 도는데 직원 관리와 휴지통의 인력 영구 삭제가 전부 ERROR 1142'
+  //   라는 상태가 된다(USER-ADMIN §11-11 · TRASH-DELETE §3.3). 두 파일만 보는 ④ 는 그 구멍을 못 본다.
+  //
+  //   여기서 요구하는 것은 셋이다 — **찾고**(경로·매개변수) · **적용하고** · 없으면 **경고를 남긴다**.
+  //   셋 중 하나만 빠져도 사고는 조용해진다(경고 없이 넘어가면 아무도 모른 채 복구가 '성공' 한다).
+  grantsPathHandlesPrivateUserGrants(ps) {
+    const m = /\nif\(\$Grants\)\{([\s\S]*?)\n\} else \{/.exec(ps);
+    assert.ok(m, '-Grants 분기를 찾지 못했다 — 계정·권한 재적용 경로가 사라졌다');
+    const body = m[1];
+    // 1) 찾는 자리 — 형제 폴더 후보 + 직접 지정 매개변수.
+    assert.ok(/function FindUserGrants\(\)\{[\s\S]{0,1200}?taskmgr-company-data\\05-grants\.sql/.test(ps),
+      '05-grants.sql 을 찾는 자리(FindUserGrants)가 없다 — app_user 권한의 정본은 이 저장소에 없다');
+    assert.ok(/\[string\]\$UserGrantsPath\s*=\s*""/.test(ps),
+      '-UserGrantsPath 매개변수가 없다 — 형제 폴더가 아닌 곳에 둔 사람이 지정할 길이 사라졌다');
+    // 2) 적용하는 자리 — -Grants 분기 안에서 실제로 mysql 에 먹인다.
+    assert.ok(/\$userGrants = FindUserGrants/.test(body),
+      '-Grants 분기가 05-grants.sql 을 찾지 않는다 — 두 파일만 돌면 직원 관리가 1142 로 죽는다');
+    assert.ok(/if\(\$userGrants\)\{[\s\S]{0,600}?--defaults-extra-file=\$adminCnf[\s\S]{0,200}?\$userGrants/.test(body),
+      '찾아 놓고 적용하지 않는다 — 경로만 구하고 mysql 에 먹이는 자리가 없다');
+    // 3) 못 찾았을 때 — 화면 경고 + 복구방법.txt 에 같은 말.
+    assert.ok(/UserGrantsWarnText/.test(body) && /WriteUserGrantsHowto/.test(body),
+      '05-grants.sql 이 없을 때 경고를 남기지 않는다 — 조용히 넘어가면 복구가 "성공" 으로 끝난다');
+    assert.ok(/ERROR 1142/.test(ps) && /직원 등록/.test(ps) && /영구 삭제/.test(ps),
+      '경고문이 무엇이 죽는지(직원 관리·인력 영구 삭제 = ERROR 1142) 말하지 않는다');
+    assert.ok(/function WriteUserGrantsHowto\(\)\{[\s\S]{0,800}?복구방법\.txt/.test(ps),
+      '같은 경고를 복구방법.txt 에 남기는 자리가 없다 — 화면은 스크롤로 사라진다');
   },
 
   // ⑤ .ps1 과 .cmd 의 종료코드 표가 글자 그대로 같다.
@@ -279,6 +311,9 @@ test('복구 가드 ③: 검증이 개수가 아니라 이름 집합을 대조�
 test('복구 가드 ④: -Grants 가 create-app-user.sql + grants-calendar.sql 을 둘 다 쓴다', () =>
   checks.grantsPathUsesBothSqlFiles(psSrc));
 
+test('복구 가드 ④-b: -Grants 가 비공개 05-grants.sql 을 찾아 적용하거나 경고를 남긴다', () =>
+  checks.grantsPathHandlesPrivateUserGrants(psSrc));
+
 test('복구 가드 ⑤: .ps1 과 .cmd 의 종료코드 표가 줄 단위로 같다', () => {
   checks.exitCodeTablesMatch(psSrc, cmdSrc);
   for (const l of exitCodeTable(psSrc, false)) console.log(`      ${l}`);
@@ -385,6 +420,26 @@ test('변이④-b: 하드코딩된 DB 이름을 대상에 맞추는 자리를 �
     '  if($TargetDb -ne $grantSchema){\n    Warn "대상이',
     '  if($false){\n    Warn "대상이');
   assert.throws(() => checks.grantsPathUsesBothSqlFiles(bad), /리허설이 라이브 권한을 건드린다/);
+});
+
+test('변이④-c: 세 번째 정본(05-grants.sql) 적용을 빼면 가드 ④-b 가 실패한다', () => {
+  // 2026-09-10 리뷰가 잡은 실제 구멍이다 — 두 파일만 돌린 복구본은 조회는 되고 쓰기만 죽는다.
+  const bad = mutate(psSrc,
+    '  $userGrants = FindUserGrants',
+    '  $userGrants = $null   # app_user 권한을 건너뛴다');
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc), '원본은 통과해야 한다');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /05-grants\.sql 을 찾지 않는다/);
+});
+
+test('변이④-d: 못 찾았을 때의 경고를 없애면 가드 ④-b 가 실패한다', () => {
+  // '조용한 실패' 가 가장 나쁘다 — 경고가 없으면 복구는 exit 0 으로 끝나고 아무도 모른다.
+  const bad = mutate(psSrc, '\n    WriteUserGrantsHowto\n', '\n    # (경고를 남기지 않는다)\n');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /경고를 남기지 않는다/);
+});
+
+test('변이④-e: -UserGrantsPath 매개변수를 없애면 가드 ④-b 가 실패한다', () => {
+  const bad = mutate(psSrc, '[string]$UserGrantsPath = ""', '[string]$UnusedGrantsPath = ""');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /-UserGrantsPath 매개변수가 없다/);
 });
 
 test('변이⑤: .cmd 의 종료코드 한 줄만 손대도 가드 ⑤ 가 실패한다', () => {

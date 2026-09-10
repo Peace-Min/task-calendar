@@ -166,6 +166,11 @@ namespace TaskCalendarWidget
                         //   **그 날 보고 저장 트랜잭션 전체가 죽는다** — 전송은 이미 나간 뒤라 가장 나쁜 실패다.
                         //   의미상으로도 0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다.
                         if (h.Hours <= 0) continue;                     // CHECK 위반을 미리 거른다 — 트랜잭션 전체를 죽이지 않게
+                        //   ★ 2026-09-10 위쪽 절반(> 24)도 함께 건다. CHECK 는 `hours > 0 AND hours <= 24` 인데
+                        //     여기서는 아래쪽만 보고 있었다 — 24 를 넘는 값 하나가 그대로 3819 를 내고 같은 사고가 난다.
+                        //     들어오는 자리(MainWindow.ParseHoursJson)에서 이미 거르지만, 마지막 관문도 같은 판정을 한다.
+                        //     (두 문장으로 나눠 둔다 — 아래쪽 필터의 **글자**를 정본 CHECK 와 짝지어 보는 계약이 있다.)
+                        if (h.Hours > 24) continue;
 
                         if (lineNo > 0) sb.Append(',');
                         sb.Append("(@u, @dt, @l").Append(lineNo)

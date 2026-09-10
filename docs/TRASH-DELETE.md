@@ -112,12 +112,13 @@ COMMIT
 
 | 메시지 | 방향 | 내용 |
 |---|---|---|
-| `trashGet` | 웹 → 호스트 | 인자 없음. 회신 `__applyTrash(json)`: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid` · 인력 `userId` · 나머지 `name`) · `name` · `sub`(부제: 발주처·구분 / 소속·직급·ID / 없음) · `refs`(참조 수, §3.1) · `deletable`(bool) · `why`(불가 사유 문장, 없으면 '') |
-| `trashRestore` | 웹 → 호스트 | `{ kind, key }`. `kind ∈ project / user / customer / section / status`. 내부적으로 기존 `SetProjectActiveAsync(uid,true)` / `SetUserActiveAsync` / `SetCustomerActiveAsync` / `SetCodeActiveAsync` 를 부른다. 회신 `__trashDone(ok, msg)` |
+| `trashGet` | 웹 → 호스트 | 인자 없음(`reqId` 왕복). **회신은 `{ ok, data, msg }` 로 감싼다**(`membersGet` 과 같은 요청/회신 배관) — 페이로드는 `data` 안이다. 호스트 **푸시**는 감싸지 않은 채 `__applyTrash(json)` 로 온다. 화면은 `r.data || r` 로 읽어 두 길을 한 함수로 그린다. 페이로드: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid` · 인력 `userId` · 나머지 `name`) · `name` · `sub`(부제: 발주처·구분 / 소속·직급·ID / 없음) · `refs`(참조 수, §3.1) · `deletable`(bool) · `why`(불가 사유 문장, 없으면 '') |
+| `trashRestore` | 웹 → 호스트 | `{ kind, key }`. `kind ∈ project / user / customer / section / status`. **`RestoreTrashAsync` 가 `OpenAdminAsync` 로 열고 `UPDATE … SET is_active=1` 을 직접 한다** — 기존 `Set*ActiveAsync` 를 재사용하지 않는다(그 길은 `OpenWriteAsync` 라 editor 가 통과해 "휴지통 세 함수는 관리자만" 계약이 깨진다). 구분·상태는 복구 시 `sort_order = MAX+10` 을 다시 매긴다(활성 순번 충돌 방지). 회신 `__trashDone(ok, msg)` |
 | `trashDelete` | 웹 → 호스트 | `{ kind, key, confirm }`. `confirm` = 사용자가 입력한 이름. 회신 `__trashDone(ok, msg)` |
 
 - 성공하면 호스트가 곧바로 `trashGet` 을 다시 돌려 휴지통을 다시 칠하고, **관련 목록도 다시 민다**: 과제·코드·발주처면 `LoadProjectsToWebAsync`(카탈로그 + 개인 카테고리의 `dbGone` 재판정), 인력이면 `LoadMembersToWebAsync`. 웹은 회신을 기다리지 않고 푸시로 그린다.
 - `deletable`·`why` 는 **화면용 힌트**다. 최종 판정은 `trashDelete` 시점에 호스트가 같은 트랜잭션 안에서 다시 한다(§3.4). 힌트와 판정이 갈리면 판정이 이긴다.
+- ★ 위 표의 `trashGet` 회신 모양과 `trashRestore` 구현은 **설계와 다르게 간 곳**이다. 왜 그렇게 됐는지는 [§11-4](#11-정정-이력)(회신을 감싼 이유)와 [§11-1](#11-정정-이력)(복구를 재사용하지 않은 이유)에 남아 있다 — 표는 **지금의 사실**을 적고, 이력은 그 자리에 그대로 둔다.
 
 ### 4.3 거부 문구 (호스트가 사용자 문장으로)
 
@@ -129,8 +130,16 @@ COMMIT
 | 이름 불일치 | "입력한 이름이 다릅니다." |
 | 자기 계정 | "자기 계정은 지울 수 없습니다." |
 | 이미 없음 | "이미 삭제됐거나 없는 항목입니다 — 목록을 새로고침합니다." |
+| **이미 복구됨**(복구, 2026-09-10) | "이미 복구된 항목입니다 — 목록을 새로고침합니다." (§11-15 — 실패가 아니라 목록이 낡은 것이다) |
 | FK 1451 | "다른 기록이 붙어 있어 지울 수 없습니다." (힌트가 틀렸을 때의 최후 방어 — 로그에 FK 이름을 남긴다) |
-| 권한 | `NotAuthorizedException` 문장 그대로(USER-LOGIN §3.3) |
+| **잠금 경합 1205·1213**(2026-09-10) | "다른 관리자가 같은 항목을 편집 중입니다 — 잠시 후 다시 시도하세요." (§11-16) |
+| **그 밖의 실패**(2026-09-10) | 조회 "휴지통을 불러오지 못했습니다." · 복구 "복구하지 못했습니다." · 삭제 "지우지 못했습니다." — **예외 원문을 문장에 잇지 않는다.** SQL·컬럼·스택은 위젯 로그에만 남긴다(§11-16) |
+| 권한 | `NotAuthorizedException` 문장 그대로(USER-LOGIN §3.3). **비관리자만** 문장 없이 `{admin:false}` 고, 미로그인·미등록·비활성은 그 문장을 `msg` 로 함께 싣는다(§11-17) |
+| 알 수 없는 대상(`kind` 가 다섯 중 하나가 아님) | "알 수 없는 대상입니다." (`TrashKindMsg`) |
+| 대상 미지정(`key` 가 비었거나 인력의 `userId` 가 정수가 아님) | "대상이 지정되지 않았습니다." (`TrashNoTarget`) |
+| **성공**(거부가 아니다 — 완료 문장) | "영구 삭제했습니다." (`TrashDoneMsg`) |
+
+> 이 표의 문장은 `ProjectDb.cs` 의 상수 한 벌(`Trash*Msg`)이 정본이다 — 같은 말을 두 곳에 적으면 한쪽만 고쳐진다. 시험도 그 상수를 계약으로 붙잡는다(§8).
 
 ### 4.4 로그 한 줄
 
@@ -269,3 +278,36 @@ COMMIT
 **12. 숨김 확인창의 안내 문장은 "계속할까요?" 뒤에 붙는다.** 발주처·코드 쪽은 editor 도 숨길 수 있으므로 "(관리자)" 를 덧붙였다 — 휴지통은 관리자만 본다.
 
 **13. 루프(`loop-trash.mjs`) 실측 2026-09-10** — 케이스 C00~C08, 판정 182, 무작위 시드 5회 연속 통과(권한 적용 뒤). 실패 경로에서는 푸시를 기다리지 않는다(성공에만 오는 푸시를 기다리면 12초씩 태운다). 정리 3겹, 실행 후 zz 잔재 0·실직원/실과제 행 수·`schema_version`·로그인 계정 권한 불변 확인.
+
+**14. 배포·복구 경로의 문서 결함 셋을 고쳤다 — 2026-09-10 전면 검토(D1·D2·D7).**
+① **`DEPLOY.md §6-1` 이 이 기능을 배포 절차에서 지워 버릴 뻔했다.** 그 줄은 *"스키마 변경이 딸린 버전이면 §0 을 먼저"* 였는데,
+v0.19.0 은 `migrate-*.sql` 이 한 개도 없고 **권한(GRANT)만 바뀐다** — 그래서 §0 을 통째로 건너뛰는 것으로 읽혔고, 그러면 §0-5 의 GRANT 가
+재적용되지 않아 **영구 삭제가 전부 `ERROR 1142`** 다(§11-2 가 개발 DB 에서 겪은 그 사고). "스키마 변경 **또는 권한(GRANT) 변경**" 으로
+고치고 그 자리에 이 판을 실례로 적었다. §3 배포 체크리스트에는 게이트 네 줄(§0-5 재적용 + `SHOW GRANTS` · `TC_TEST_STRICT=1` exit 0 ·
+sha256 대조 · 루프 5회 연속)을 더했다.
+② **복구 경로에도 같은 구멍이 있었다.** `restore-taskmgr.ps1 -Grants` 가 `db/deploy` 의 두 파일만 적용해, 복구본에서는 §3.3 의 일곱 표 중
+`app_user` 가 비어 인력 영구 삭제가 1142 로 죽었다. 비공개 `taskmgr-company-data/05-grants.sql` 을 형제 폴더에서 찾아 함께 적용하고,
+못 찾으면 화면과 `복구방법.txt` 두 곳에 같은 경고를 남긴다(복구 가드 ④-b). **백업·복구 리허설은 이제 이 기능의 전제다** — §7 대로
+영구 삭제에는 되돌리기가 없어서, 마지막 안전망이 백업 하나뿐이다(`DEPLOY.md §9`).
+③ **§4.2 표가 §11-1·§11-4 와 어긋난 채였다.** 표는 `trashGet` 회신을 감싸지 않은 것으로, 복구를 `Set*ActiveAsync` 재사용으로 적고 있었다.
+둘 다 **표를 지금의 사실로** 고치고(회신은 `{ok,data,msg}` · 복구는 `RestoreTrashAsync` 가 직접 `UPDATE`), 이력은 §11 에 그대로 뒀다.
+§4.3 에는 `TrashKindMsg`·`TrashNoTarget` 과 완료 문장 `"영구 삭제했습니다."` 가 빠져 있어 채웠다 — 문서에 없는 문장은 시험도 사람도
+계약으로 붙잡지 못한다.
+
+전면 검토 2026-09-10(구현 뒤 두 번째 판). 지적 여덟 건을 호스트에서 닫았다.
+
+**15. 복구가 `is_active` 를 보지 않았다 — 이미 복구된 항목을 또 복구했다.** 잠근 SELECT 가 이름만 읽었으므로 두 관리자가 같은 항목을 복구하면 뒤에 온 쪽이 이미 활성인 행에 UPDATE 를 걸었고, 구분·상태는 그 자리에서 `sort_order` 를 MAX+10 으로 **다시** 매겨 멀쩡히 쓰이던 값이 목록 맨 뒤로 튀었다. 이제 `is_active` 를 같은 SELECT 에서 잠근 채 읽고, 1 이면 UPDATE 전에 롤백하고 `TrashAlreadyActiveMsg`(§4.3)를 돌려준다. 시험 계약 ⑧(판정이 첫 UPDATE 보다 앞)과 ⑦(재매김은 구분·상태에만) + 변이 넷.
+
+**16. 사용자 문장에 예외 원문이 실려 나갔다.** 조회·복구·삭제 셋이 `"…: " + Short(ex)` 였다 — SQL·컬럼명이 화면으로 새고 정작 사용자는 무엇을 할지 몰랐다. 셋 다 고정 문장으로 바꾸고 원문은 `_log` 로만 보낸다. 대신 **잠금 경합(1205·1213)** 은 따로 말해 준다(§4.3) — 그건 '다시 하면 되는' 사건이다. 같은 이유로 `MySqlUserMsg` 의 `default` 도 "처리하지 못했습니다(DB 오류)." 로 고정했다(USER-ADMIN §4.3).
+
+**17. `LoadTrashJsonAsync` 가 거부 사유 넷을 하나로 뭉갰다.** 미로그인·미등록·비활성·비관리자가 모두 `{found:true, admin:false}` 였고 화면은 "관리자만 사용할 수 있습니다." 만 보여 줬다 — 퇴사 처리된 사람은 원인을 영영 못 찾는다. `NotAuthorizedException` 에 `RoleOnly` 를 두어 '권한이 모자란 것'과 '신원이 서지 않는 것'을 가르고, 뒤쪽만 관문의 문장을 `msg` 로 함께 싣는다(화면이 `d.msg` 를 그린다). `RunTrashGetAsync` 는 `data` 를 통째로 전달하므로 배관은 그대로다.
+
+**18. 종류 switch 의 `default:` 가 status_code 였다(복구·삭제 둘 다).** 종류가 하나 늘고 한쪽만 안 고치면 **엉뚱한 표가 복구·삭제된다** — 되돌릴 수 없는 조작에 '기본값으로 아무거나'는 남겨 둘 수 없다. 다섯을 전부 이름으로 적고 `default:` 는 `TrashKindMsg` 로 거부한다. SQL 자체를 `ResolveTrashKind` 로 끌어올리지는 **않았다**: `admin-auth` 의 "쓰기 SQL 을 가진 메서드는 대상 표에 맞는 관문으로 연다" 와 "다섯 표의 DELETE 는 `DeleteTrashAsync` 안에만" (계약 ⑥·xlsx-export) 이 그 이동을 막는다. 계약 ⑨ + 변이 둘.
+
+**19. 참조 롤업이 대소문자를 갈랐다.** 코드 3종의 참조 수를 `StringComparer.Ordinal` 로 묶었는데, 삭제 시점의 판정(`WHERE customer=@n`)은 FK 컬럼의 콜레이션(`utf8mb4_0900_ai_ci`)이라 대소문자를 무시한다. 표기가 한 글자 다른 자식이 있으면 힌트가 0건이라 화면이 [영구 삭제] 를 켜고 DB 가 1451 로 막았다. `OrdinalIgnoreCase` 로 바꾸고, 두 표기가 한 칸으로 합쳐지면 수를 **더한다**(덮어쓰면 한쪽이 사라진다).
+
+**20. 퇴사자 목록을 그리려고 9개 표를 전원분 훑었다.** `UserRefCountAllSql` 에 사용자 조건이 없어 일정·할일·공수를 재직자 전 기간까지 세고 있었다 — 쓰는 값은 퇴사자 몇 명분이다. 각 하위 조회에 `WHERE user_id IN (SELECT user_id FROM app_user WHERE is_active=0)` 을 걸고, 퇴사자가 0명이면 그 조회를 **아예 돌리지 않는다**(명부를 먼저 읽는 순서로 바꿨다). 기준 표 9개는 여전히 정본에서 파생된 배열 한 곳에서만 온다(계약 ③ 무변경).
+
+**21. 예외 경로의 롤백이 원래 예외를 덮었다.** `catch { await tx.RollbackAsync(cts.Token); throw; }` 는 cts 가 이미 타임아웃된 자리에서 롤백 자체를 `OperationCanceled` 로 죽였고, 그 예외가 1205·1213·1451 을 덮어 사용자 문장 매퍼에 닿지 못하게 했다. `SafeRollbackAsync`(취소되지 않은 토큰 + 롤백 실패 삼킴)로 여섯 자리를 함께 고쳤다.
+
+**22. `TrashSelfMsg`(자기 계정)는 실동작으로 닿지 않는다 — 정적 계약으로 남긴다(2026-09-10 루프 시험 C07).** 자기 계정은 애초에 퇴사 처리할 수 없어서(USER-ADMIN §4.4-1) 휴지통에 자기 자신이 실릴 수 없고, §3.4 의 관문 순서가 ② 숨긴 항목만 → ③ 자기 계정이라 로그인 계정을 대상으로 보낸 `trashDelete` 는 **언제나** `TrashActiveMsg` 로 먼저 막힌다. `tests/loop-trash.mjs` C07 은 그래서 "둘 중 하나" 를 버리고 `TrashActiveMsg` **하나로** 판정한다(둘 중 하나로 두면 관문 순서가 뒤바뀌어도 통과한다). 규칙은 퇴사 규칙과 한 벌이므로 지우지 않는다 — 두 벌이 되는 순간 한쪽이 낡는다.

@@ -76,6 +76,14 @@ const SCREENS = [
   { id: 'helpModal',               enter: '__vt.closeAll(); openHelp()' },
   // 문의(버그 리포트) — 로그 폴더 열기 버튼 + 반출 경고가 좁은 폭에서 잘리지 않아야 한다(320px 시트)
   { id: 'feedbackModal',           enter: '__vt.closeAll(); openFeedback()' },
+  // 휴지통(docs/TRASH-DELETE §5) — 탭 5개 + 행마다 [복구][영구 삭제] 둘이라 320px 에서 가장 먼저 접히는 자리다.
+  //   ★ openTrash() 는 async 다 — evaluate 가 awaitPromise 로 기다리므로 목록이 그려진 뒤에 감사한다.
+  //     DB 를 읽지만 **쓰지 않는다**(trashGet 은 조회다). 이 하네스의 '쓰지 않는다' 규약은 그대로다.
+  { id: 'trashModal',              enter: '__vt.closeAll(); openTrash()' },
+  // 이름 대조 확인창 — 긴 과제명이 들어간 안내문(pre-wrap)과 입력칸·[영구 삭제] 버튼이 좁은 폭에서 넘치지 않아야 한다.
+  //   ★ confirmTyped 는 **닫힐 때 resolve 되는 Promise** 를 돌려준다 — 그대로 두면 evaluate 가 영영 기다린다.
+  //     그래서 값을 버리고 true 를 낸다. 취소(=Promise 해소)는 다음 화면의 __vt.closeAll() 이 낸다.
+  { id: 'confirmTypedModal',       enter: "__vt.closeAll(); (confirmTyped('과제 영구 삭제', \"'zz표본과제' 를 DB 에서 영구 삭제합니다. 되돌릴 수 없습니다. 과제명을 그대로 입력하세요.\", 'zz표본과제', '영구 삭제'), true)" },
 ];
 
 /** 데이터 상태 — DB는 절대 건드리지 않고 __applyProjects로 **화면에만** 주입 */

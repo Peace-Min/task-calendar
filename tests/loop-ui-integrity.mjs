@@ -662,6 +662,11 @@ const INSTALL_JS = `(function(){
     s.codeMsg = L.txt('#codeMsg'); s.custMsg = L.txt('#custMsg');
     s.codeOpen = L.isOpen('#codeModal'); s.custOpen = L.isOpen('#customerModal');
     s.confirmOpen = L.isOpen('#confirmModal');
+    /* 휴지통·이름대조 확인창(docs/TRASH-DELETE §5) — 이 둘도 **모달 목록**의 일원이다.
+       ★ 여기 없으면 '조작이 끝났는데 확인창이 남아 있다'가 이 시험의 눈에 보이지 않는다:
+         뒤 조작은 그 확인창 위에서 클릭을 잃고, 원인은 엉뚱한 케이스에서 터진다. */
+    s.trOpen = L.isOpen('#trashModal');
+    s.ctOpen = L.isOpen('#confirmTypedModal');
     s.cfTitle = L.txt('#cfTitle'); s.cfMsg = L.txt('#cfMsg');
     /* 구성원 보기·구성원 편집(USER-ADMIN §8-8) — 없는 페이지(구버전)에서는 전부 null 이다.
        ★ 두 화면이 갈렸다(2026-09-10): mb* 는 보기, ua* 는 편집이다. 섞어 읽지 않는다. */
@@ -1999,6 +2004,15 @@ async function main() {
   sweepOnce('정상 종료');                      // ★ 재수렴 **앞**에서 — 뒤에 두면 DB 만 바뀌고 위젯은 유령을 든 채 끝난다(실측: 다음 실행 op#1 I6)
   try { snap = await reconverge(); } catch (e) { violate('FIN', `최종 재수렴 중 예외: ${e.message}`); snap = snapshot(); }
   try { await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal'); } catch (_) { }
+  /* ★ 모달 누수 — 라운드가 끝났는데 휴지통·이름대조 확인창이 열린 채면 다음 실행의 첫 클릭이 그 위에서
+     사라진다(그리고 원인은 엉뚱한 케이스에서 터진다). 닫지 않고 **보고만** 한다: 닫아 버리면
+     '누가 열어 두었나'가 영영 안 보인다. */
+  try {
+    const leak = await state();
+    if (leak && (leak.trOpen || leak.ctOpen)) {
+      violate('FIN', `종료 시 모달이 열린 채로 남았다(휴지통=${leak.trOpen} · 이름대조 확인창=${leak.ctOpen})`);
+    }
+  } catch (_) { }
 
   printSummary(snap);
   cdp.close();

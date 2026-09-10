@@ -143,16 +143,44 @@ const checks = {
   },
 
   // ⑦-b 쓰기 왕복 한 곳 — 가드·워치독·includeInactive, 그리고 호스트 문장을 다시 쓰지 않는다.
+  //   ★ 2026-09-10: 가드가 두 번째 클릭을 **조용히** 버리던 것을 고쳤다. 잠금·워치독은 trSetSaving 한 곳으로
+  //     모였으므로(uaSetSaving·offEdSetBusy 와 같은 장치) 여기서 보는 자리도 함께 옮긴다.
   writeRoundTrip(web) {
     const s = extractFunction(web, 'trSend');
-    assert.ok(/if\(__trSaving\) return;/.test(s), 'trSend 에 중복 전송 가드가 없다 — 연타하면 같은 삭제가 두 번 나간다');
+    assert.ok(/if\(__trSaving\)\{[^}]*return;/.test(s), 'trSend 에 중복 전송 가드가 없다 — 연타하면 같은 삭제가 두 번 나간다');
+    assert.ok(/이전 요청을 처리 중입니다/.test(s),
+      'trSend 가 가드에 걸린 클릭을 조용히 버린다 — 관리자에게는 버튼이 먹지 않는 것으로 보인다(2026-09-10)');
+    assert.ok(/trSetSaving\(true\)/.test(s), 'trSend 가 trSetSaving 으로 잠그지 않는다 — 진행 중임이 화면에 드러나지 않는다');
     assert.ok(/includeInactive: __uaInactive/.test(s),
       'trSend 가 includeInactive 를 함께 보내지 않는다 — 인력 삭제 뒤 밀려오는 명부가 「퇴사자 보기」 상태를 잃는다');
-    assert.ok(/setTimeout/.test(s) && /응답이 없습니다/.test(s),
-      'trSend 에 무응답 워치독이 없다 — 회신이 영영 안 오면 화면이 잠긴 채로 남는다');
+    const b = extractFunction(web, 'trSetSaving');
+    assert.ok(/setTimeout/.test(b) && /응답이 없습니다/.test(b),
+      'trSetSaving 에 무응답 워치독이 없다 — 회신이 영영 안 오면 화면이 잠긴 채로 남는다');
+    assert.ok(/dataset\.busy = '1'/.test(b) && /delete ov\.dataset\.busy/.test(b),
+      'trSetSaving 이 overlay dataset.busy 를 세우고 지우지 않는다 — 전송 중에 창을 닫으면 결과를 알릴 곳이 사라진다');
+    assert.ok(/data-top/.test(b) && /trwas/.test(b),
+      'trSetSaving 이 행 버튼을 잠그며 원래 상태(data-trwas)를 기억하지 않는다 — 풀 때 꺼져 있던 [영구 삭제]까지 켜진다');
     const dn = windowFn(web, '__trashDone');
     assert.ok(/msg \|\|/.test(dn),
       '__trashDone 이 호스트 문구를 쓰지 않는다 — 거부 사유가 "처리하지 못했습니다"로 뭉개지면 무엇을 고칠지 알 수 없다');
+    assert.ok(/trSetSaving\(false\)/.test(dn), '__trashDone 이 잠금을 trSetSaving 으로 풀지 않는다 — 푸는 곳이 둘이면 한쪽이 낡는다');
+    //  ★ (재)오픈은 낡은 잠금을 남기지 않는다. 다만 **도는 중이면 풀지 말고 워치독만 다시 건다**.
+    const o = extractFunction(web, 'openTrash');
+    assert.ok(/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);/.test(o),
+      'openTrash 가 낡은 잠금을 정리하지 않는다 — 회신 없이 닫았다 다시 열면 화면이 잠긴 채로 선다(2026-09-10)');
+  },
+
+  // ⑧ 빈 탭 문구의 조사는 **받침이 정한다**(2026-09-10). 「이(가)」 병기는 다섯 탭 어디서도 맞지 않는 타협이다.
+  emptyTextJosa(web) {
+    const blk = constBlock(web, 'const TR_TABS = [');
+    assert.ok(!/이\(가\)/.test(web.slice(web.indexOf('function trRender'), web.indexOf('function trApplyData'))),
+      "trRender 가 아직 '이(가)' 병기를 쓴다 — 문구는 탭 표(TR_TABS)가 진다");
+    for (const label of ['과제', '인력', '발주처', '구분', '상태']) {
+      assert.ok(new RegExp("empty: trEmptyLabel\\('" + label + "'\\)").test(blk),
+        `TR_TABS 의 ${label} 탭에 빈 탭 문구(empty)가 없다 — 문구가 렌더로 흩어지면 다섯 벌이 된다`);
+    }
+    assert.ok(/josa\(label, '이', '가'\)/.test(constLine(web, 'trEmptyLabel')),
+      'trEmptyLabel 이 josa 로 조사를 고르지 않는다 — 라벨마다 손으로 적으면 다음 탭에서 반드시 틀린다');
   },
 
   // ⑥-e 숨김 확인창은 '숨긴 뒤 어디로 가는가'를 말한다(설계 §5.4) — 지금은 숨기면 사라지기만 한다.
@@ -174,6 +202,21 @@ test('계약⑥-d: 관리자 여부는 호스트 회신이 정하고, 열 때 �
 test('계약⑥-e: 숨김 확인창이 「휴지통」을 가리킨다(설계 §5.4)', () => checks.hideConfirmPointsToTrash(app));
 test('계약⑦: 입력한 이름은 가공 없이 호스트로 가고, 대조는 엄격 일치다', () => checks.confirmIsSentRaw(app));
 test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 호스트 문장을 다시 쓰지 않는다', () => checks.writeRoundTrip(app));
+test('계약⑧: 빈 탭 문구는 탭 표가 지고 조사는 받침이 정한다(「이(가)」 병기 없음)', () => checks.emptyTextJosa(app));
+
+test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약⑦-b 가 실패한다', () => {
+  const bad = mutate(app, "  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }",
+    '  if(__trSaving) return;');
+  assert.throws(() => checks.writeRoundTrip(bad), /중복 전송 가드가 없다|조용히 버린다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑧: 조사를 「이(가)」 병기로 되돌리면 계약⑧ 이 실패한다', () => {
+  const bad = mutate(app, "  if(empty){ empty.textContent = def.empty;",
+    "  if(empty){ empty.textContent = '숨긴 ' + def.label + '이(가) 없습니다.';");
+  assert.throws(() => checks.emptyTextJosa(bad), /'이\(가\)' 병기를 쓴다/);
+  assert.doesNotThrow(() => checks.emptyTextJosa(app));   // 통제군
+});
 
 test('변이⑥-a: 마크업에 탭 버튼을 하나 적으면 계약⑥-a 가 실패한다', () => {
   const bad = mutate(app, '      <div id="trTabs"></div>',
@@ -218,8 +261,13 @@ const SNAP_JS = [
   '  return {',
   '    tabs: Array.prototype.map.call(tabs.querySelectorAll("[data-trtab]"), function(b){',
   '      return { kind: b.dataset.trtab, text: String(b.textContent || ""),',
-  '               on: b.className.split(" ").indexOf("on") >= 0, sel: b.getAttribute("aria-selected") }; }),',
+  '               on: b.className.split(" ").indexOf("on") >= 0, sel: b.getAttribute("aria-selected"),',
+  '               role: b.getAttribute("role") || "", tabIndex: b.tabIndex }; }),',
   '    tabsClass: String(tabs.className || ""),',
+  '    tabsRole: tabs.getAttribute("role") || "",',
+  '    listRole: list.getAttribute("role") || "",',
+  '    whys: Array.prototype.map.call(list.querySelectorAll("[data-trwhy]"), function(d){',
+  '      return { key: d.dataset.trwhy, text: String(d.textContent || "") }; }),',
   '    ops: Array.prototype.map.call(list.querySelectorAll("[data-top]"), function(b){',
   '      return { op: b.dataset.top, key: b.dataset.tkey, text: String(b.textContent || ""),',
   '               disabled: !!b.disabled, title: String(b.title || "") }; }),',
@@ -241,6 +289,8 @@ function renderHarnessJs(src) {
     'var __trData = null, __trTab = "project", __trAdmin = false;',
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function trRestore(){} function trDelete(){} function toast(){} function hostRequest(){}',
+    constLine(src, 'josa'),
+    constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
     constLine(src, 'trTabDef'),
     constLine(src, 'trRows'),
@@ -252,6 +302,60 @@ function renderHarnessJs(src) {
     '  trApplyData(payload);',
     '  if(clickTab){ var tb = document.querySelector("[data-trtab=\'" + clickTab + "\']"); if(tb) tb.click(); }',
     '  return __snap();',
+    '};',
+    //  탭 전환은 탭 줄을 통째로 다시 만든다 — 그때 포커스가 body 로 떨어지지 않는지 본다(키보드 사용자에게 치명적).
+    'window.__probeFocus = function(payload, clickTab){',
+    '  __trData = null; __trAdmin = false; __trTab = "project";',
+    '  trApplyData(payload);',
+    '  var first = document.querySelector("[data-trtab=\'project\']");',
+    '  first.focus();',
+    '  var started = document.activeElement === first;',
+    '  var target = document.querySelector("[data-trtab=\'" + clickTab + "\']");',
+    '  target.click();',
+    '  var act = document.activeElement;',
+    '  return { started: started, onTab: (act && act.dataset) ? String(act.dataset.trtab || "") : "",',
+    '           isBody: act === document.body };',
+    '};',
+  ].join('\n');
+}
+
+// 쓰기 잠금(진행 중 표시) — trSend·trSetSaving·__trashDone 이 실제로 행 버튼과 overlay 를 잠그고 푸는지 본다.
+function busyHarnessJs(src) {
+  return [
+    'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false, __trSaveWatchdog = 0;',
+    'var __uaInactive = false, HOST = true, __posts = [], __toasts = [];',
+    'function hpost(p){ __posts.push(p); }',
+    'function toast(m, k){ __toasts.push({ msg: String(m), kind: String(k || "") }); }',
+    'function trRestore(){} function trDelete(){} function hostRequest(){}',
+    constLine(src, 'josa'),
+    constLine(src, 'trEmptyLabel'),
+    constBlock(src, 'const TR_TABS = ['),
+    constLine(src, 'trTabDef'),
+    constLine(src, 'trRows'),
+    extractFunction(src, 'trApplyData'),
+    extractFunction(src, 'trRender'),
+    extractFunction(src, 'trSend'),
+    extractFunction(src, 'trSetSaving'),
+    windowFn(src, '__trashDone'),
+    'function __state(){',
+    '  var ov = document.getElementById("trashModal");',
+    '  return { busy: ov ? String(ov.dataset.busy || "") : "",',
+    '    ops: Array.prototype.map.call(document.querySelectorAll("#trList [data-top]"), function(b){',
+    '      return { op: b.dataset.top, key: b.dataset.tkey, disabled: !!b.disabled }; }),',
+    '    posts: __posts.length, toasts: __toasts.slice() };',
+    '}',
+    'window.__probe = function(payload, clickTab){',
+    '  __trData = null; __trAdmin = false; __trTab = "project"; __trSaving = false;',
+    '  trApplyData(payload);',
+    '  if(clickTab){ var tb = document.querySelector("[data-trtab=\'" + clickTab + "\']"); if(tb) tb.click(); }',
+    '  var out = { idle: __state() };',
+    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  out.sending = __state();',
+    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  out.second = __state();',
+    '  window.__trashDone(true, "지웠습니다");',
+    '  out.done = __state();',
+    '  return out;',
     '};',
   ].join('\n');
 }
@@ -275,12 +379,34 @@ function ctHarnessJs(src) {
     '  }',
     '  return out;',
     '};',
+    //  ★ 앱의 모달 공통 배선(× · 취소 · 배경)과 **같은 모양**으로 [data-close] 를 묶는다. 이 하네스는 앱을
+    //    부팅하지 않으므로 그 배선이 없고, 없으면 '취소를 눌렀을 때'를 아예 재 볼 수 없다.
+    '(function(){ var ov = document.getElementById("confirmTypedModal");',
+    '  ov.addEventListener("click", function(ev){',
+    '    if(ev.target === ov || (ev.target.closest && ev.target.closest("[data-close]"))) closeOverlay(ov);',
+    '  }); })();',
+    'window.__probeCancel = function(){',
+    '  var p = confirmTyped("과제 영구 삭제", "본문", "zzP 과제 A", "영구 삭제");',
+    '  var inp = document.getElementById("ctInput");',
+    '  inp.value = "zzP 과제 A";',
+    '  inp.dispatchEvent(new window.Event("input"));',
+    '  var okBtn = document.getElementById("ctOk");',
+    '  var armed = !okBtn.disabled;',   // 전제: 이름을 다 쳐서 [영구 삭제]가 켜진 상태에서 취소를 누른다
+    '  var cancel = document.querySelector("#confirmTypedModal .modal-foot [data-close]");',
+    '  var found = !!cancel;',
+    '  if(cancel) cancel.click();',
+    '  return p.then(function(v){',
+    '    return { result: String(v), armed: armed, found: found,',
+    '             hidden: document.getElementById("confirmTypedModal").classList.contains("hidden") };',
+    '  });',
+    '};',
   ].join('\n');
 }
 
-const RENDER_FIXTURE = '<!doctype html><html><body>' +
+//  ★ overlay(#trashModal)까지 감싼다 — 쓰기 잠금이 dataset.busy 를 그 요소에 세운다(closeOverlay 의 busy 가드).
+const RENDER_FIXTURE = '<!doctype html><html><body><div class="overlay" id="trashModal">' +
   '<div class="set-hint" id="trScope">—</div><div id="trTabs"></div><div id="trList"></div>' +
-  '<div class="set-hint hidden" id="trEmpty"></div></body></html>';
+  '<div class="set-hint hidden" id="trEmpty"></div></div></body></html>';
 //  ★ 마크업을 **원본에서** 실어 온다(사본을 적으면 마크업이 바뀌어도 시험은 옛 모양을 계속 통과시킨다).
 //    최상위에서 오려 내지 않는 이유: import 루프에서 던지면 전 스위트 판정이 증발한다(러너 규약).
 const ctFixture = (src = app) => '<!doctype html><html><body>' + confirmTypedMarkupRaw(src) + '</body></html>';
@@ -315,8 +441,25 @@ function runIn(fixture, js, ...args) {
   dom.window.eval(js);
   return JSON.parse(JSON.stringify(dom.window.__probe(...args)));
 }
+//  __probe 말고 다른 이름의 창구를 부를 때(한 하네스가 여러 각도를 재는 경우).
+function runNamed(fixture, js, name, ...args) {
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
+  dom.window.eval(js);
+  return JSON.parse(JSON.stringify(dom.window[name](...args)));
+}
 const probeRender = (payload, clickTab, src = app) => runIn(RENDER_FIXTURE, renderHarnessJs(src), payload, clickTab);
+const probeFocus = (payload, clickTab, src = app) => runNamed(RENDER_FIXTURE, renderHarnessJs(src), '__probeFocus', payload, clickTab);
+const probeBusy = (payload, clickTab, src = app) => runIn(RENDER_FIXTURE, busyHarnessJs(src), payload, clickTab);
 const probeTyped = (mustType, typings, src = app) => runIn(ctFixture(src), ctHarnessJs(src), mustType, typings);
+//  ★ [취소]는 **진짜 클릭**으로 본다(closeModal 직접 호출이 아니라). confirmTyped 의 해소는 MutationObserver 라
+//    비동기다 — 그래서 이 한 건만 Promise 를 기다린다.
+async function probeTypedCancel(src = app) {
+  const { JSDOM } = jsdom;
+  const dom = new JSDOM(ctFixture(src), { runScripts: 'outside-only' });
+  dom.window.eval(ctHarnessJs(src));
+  return JSON.parse(JSON.stringify(await dom.window.__probeCancel()));
+}
 
 //  진입 버튼 — usAdminBtnSync 하나만 떼어 내 역할 문자열로 굴린다(user-admin.test.mjs 와 같은 방식,
 //  다만 그 파일을 import 하지 않는다: 시험끼리 얽히면 한쪽 실패가 다른 쪽 판정을 덮는다).
@@ -350,9 +493,16 @@ if (!jsdom) {
   skip('계약⑥-DOM(b): admin:false 면 탭도 행도 그리지 않는다(안내 한 줄뿐)', SKIP_NO_JSDOM);
   skip('계약⑥-DOM(c): admin:true 면 탭 다섯 + 현재 탭의 행을 그린다', SKIP_NO_JSDOM);
   skip('계약⑥-DOM(d): 삭제 불가 항목은 [영구 삭제]가 꺼지고 사유가 title 에 붙는다', SKIP_NO_JSDOM);
-  skip('계약⑥-DOM(e): 빈 탭은 "숨긴 …이(가) 없습니다."', SKIP_NO_JSDOM);
+  skip('계약⑥-DOM(e): 빈 탭 문구의 조사는 받침이 정한다', SKIP_NO_JSDOM);
+  skip('계약⑥-DOM(f): 삭제 불가 사유가 행에 보이는 줄로 나온다', SKIP_NO_JSDOM);
+  skip('계약⑥-DOM(g): 탭 줄은 tablist 이고 전환해도 포커스가 남는다', SKIP_NO_JSDOM);
+  skip('계약⑥-DOM(h): 비관리자 안내는 호스트가 준 사유를 그대로 쓴다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(c): 전송 중에는 행 버튼이 잠기고 두 번째 클릭은 사유가 뜬다', SKIP_NO_JSDOM);
   skip('변이⑥-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
+  skip('변이⑥-DOM(f): 사유 줄을 지우면 계약⑥-DOM(f) 가 실패한다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(c): 잠금 복구를 무조건 켜기로 바꾸면 계약⑦-DOM(c) 가 실패한다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM: 이름이 글자까지 같을 때만 [영구 삭제]가 켜진다(trim 없음)', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(d): [취소]를 실제로 누르면 확인창이 cancel 로 해소된다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 대조에 trim 을 끼우면 앞뒤 공백이 통과한다', SKIP_NO_JSDOM);
 } else {
   test("계약⑥-DOM(a): 「휴지통」 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다(숨김이 아니라 부재)", () => {
@@ -432,13 +582,95 @@ if (!jsdom) {
     assert.ok(/기록 7건/.test(r.text), `인력 탭의 참조 문구가 '기록 {n}건' 이 아니다: ${JSON.stringify(r.text)}`);
   });
 
-  test('계약⑥-DOM(e): 빈 탭은 "숨긴 …이(가) 없습니다." 한 줄이다', () => {
+  test('계약⑥-DOM(e): 빈 탭 문구의 조사는 받침이 정한다(「이(가)」 병기 없음)', () => {
     const r = probeRender(PAYLOAD, 'section');
     assert.strictEqual(r.lines, 0, '빈 탭인데 행이 그려졌다');
     assert.strictEqual(r.emptyHidden, false, '빈 탭인데 안내가 숨겨져 있다 — 빈 화면은 고장처럼 보인다');
-    assert.strictEqual(r.emptyText, '숨긴 구분이(가) 없습니다.', `빈 탭 안내 문구가 다르다: ${JSON.stringify(r.emptyText)}`);
+    //  ★ 2026-09-10: '숨긴 구분이(가) 없습니다.' → 받침 있는 「구분」은 '이' 하나다.
+    assert.strictEqual(r.emptyText, '숨긴 구분이 없습니다.', `빈 탭 안내 문구가 다르다: ${JSON.stringify(r.emptyText)}`);
     //  탭 자체는 남는다 — 0건이라고 탭이 사라지면 '왜 다섯이 아니지'가 된다.
     assert.strictEqual(r.tabs.length, 5, '빈 탭을 골랐더니 탭 줄이 무너졌다');
+    //  받침 없는 라벨은 '가' 다 — 한 탭만 맞춰 놓고 나머지를 놓치는 것을 막는다.
+    const only = (kind) => probeRender({ found: true, admin: true, projects: [], users: [], customers: [], sections: [], statuses: [] }, kind).emptyText;
+    assert.strictEqual(only('project'), '숨긴 과제가 없습니다.', `과제 탭 문구가 다르다: ${JSON.stringify(only('project'))}`);
+    assert.strictEqual(only('user'), '숨긴 인력이 없습니다.', `인력 탭 문구가 다르다: ${JSON.stringify(only('user'))}`);
+    assert.strictEqual(only('customer'), '숨긴 발주처가 없습니다.', `발주처 탭 문구가 다르다: ${JSON.stringify(only('customer'))}`);
+    assert.strictEqual(only('status'), '숨긴 상태가 없습니다.', `상태 탭 문구가 다르다: ${JSON.stringify(only('status'))}`);
+  });
+
+  test('계약⑥-DOM(f): 삭제 불가 사유는 행에 **보이는 줄**로 나온다(꺼진 버튼의 title 은 뜨지 않는다)', () => {
+    const r = probeRender(PAYLOAD, 'user');
+    assert.deepStrictEqual(r.whys.map((w) => w.key), ['32'],
+      `사유 줄이 붙은 행이 계약과 다르다: ${JSON.stringify(r.whys)} — deletable:false 인 행에만 붙는다`);
+    assert.strictEqual(r.whys[0].text, WHY_USER, `사유 줄의 문구가 호스트 문장 그대로가 아니다: ${JSON.stringify(r.whys[0].text)}`);
+    //  title 은 그대로 남는다 — 보이는 줄이 생겼다고 기존 손잡이를 없애지 않는다.
+    assert.strictEqual(r.ops.filter((o) => o.op === 'delete')[1].title, WHY_USER, '사유가 title 에서 사라졌다');
+    //  지울 수 있는 행에는 붙지 않는다(사유가 없으니 할 말도 없다).
+    assert.strictEqual(probeRender(PAYLOAD).whys.length, 0, '삭제 가능한 과제 행에 사유 줄이 붙었다');
+  });
+
+  test('계약⑥-DOM(g): 탭 줄은 tablist·목록은 tabpanel 이고, 탭을 바꿔도 포커스가 남는다', () => {
+    const r = probeRender(PAYLOAD);
+    assert.strictEqual(r.tabsRole, 'tablist', `#trTabs 가 tablist 가 아니다: ${JSON.stringify(r.tabsRole)}`);
+    assert.strictEqual(r.listRole, 'tabpanel', `#trList 가 tabpanel 이 아니다: ${JSON.stringify(r.listRole)}`);
+    assert.deepStrictEqual(r.tabs.map((t) => t.role), ['tab', 'tab', 'tab', 'tab', 'tab'], '탭 버튼에 role=tab 이 없다');
+    assert.deepStrictEqual(r.tabs.map((t) => t.tabIndex), [0, -1, -1, -1, -1],
+      `roving tabindex 가 아니다: ${JSON.stringify(r.tabs.map((t) => t.tabIndex))} — 탭 줄은 Tab 한 번으로 지나가야 한다(APG)`);
+    //  비관리자에게는 구조 자체가 없다(탭이 없는데 tablist 라고 하면 보조기술에 없는 것을 알린다).
+    const off = probeRender({ found: true, admin: false });
+    assert.strictEqual(off.tabsRole, '', 'admin:false 인데 tablist role 이 남아 있다');
+    assert.strictEqual(off.listRole, '', 'admin:false 인데 tabpanel role 이 남아 있다');
+    //  ★ 탭을 누르면 탭 줄이 통째로 다시 그려진다 — 그때 포커스가 body 로 떨어지면 키보드 사용자는 길을 잃는다.
+    const f = probeFocus(PAYLOAD, 'user');
+    assert.strictEqual(f.started, true, '전제 붕괴: 탭 버튼에 포커스가 가지 않았다');
+    assert.strictEqual(f.isBody, false, '탭을 바꾸자 포커스가 body 로 떨어졌다 — 다음 화살표키가 아무 데도 닿지 않는다');
+    assert.strictEqual(f.onTab, 'user', `포커스가 새로 선택된 탭에 있지 않다: ${JSON.stringify(f.onTab)}`);
+  });
+
+  test('계약⑥-DOM(h): 비관리자 안내는 호스트가 준 사유를 그대로 쓴다(뭉개지 않는다)', () => {
+    const MSG = '퇴사 처리된 계정입니다 — 관리자에게 문의하세요.';
+    const r = probeRender({ found: true, admin: false, msg: MSG });
+    assert.ok(r.text.includes(MSG), `호스트 사유가 목록 자리에 없다: ${JSON.stringify(r.text.slice(0, 80))}`);
+    assert.ok(r.scope.includes(MSG), `호스트 사유가 부제에 없다: ${JSON.stringify(r.scope)}`);
+    //  msg 가 없으면 예전 기본 문구 그대로다.
+    const bare = probeRender({ found: true, admin: false });
+    assert.ok(/관리자만 사용할 수 있습니다/.test(bare.text), '사유가 없을 때의 기본 안내가 사라졌다');
+  });
+
+  test('계약⑦-DOM(c): 전송 중에는 행 버튼이 모두 잠기고, 두 번째 클릭은 사유를 말한다', () => {
+    const r = probeBusy(PAYLOAD, 'user');
+    assert.deepStrictEqual(r.idle.ops.map((o) => o.disabled), [false, false, false, true],
+      `전제 붕괴: 평소 상태의 버튼 구성이 다르다 — ${JSON.stringify(r.idle.ops)}`);
+    assert.strictEqual(r.idle.busy, '', '아무것도 안 보냈는데 overlay 가 busy 다');
+    //  ① 보내는 순간 — 행 버튼 전부 잠기고 창도 닫히지 않는다.
+    assert.deepStrictEqual(r.sending.ops.map((o) => o.disabled), [true, true, true, true],
+      `전송 중인데 행 버튼이 잠기지 않았다: ${JSON.stringify(r.sending.ops)} — 같은 삭제를 두 번 누를 수 있다`);
+    assert.strictEqual(r.sending.busy, '1', '전송 중인데 overlay dataset.busy 가 서지 않았다 — Esc 로 닫으면 결과를 알릴 곳이 사라진다');
+    assert.strictEqual(r.sending.posts, 1, `요청이 ${r.sending.posts}번 나갔다(1번이어야 한다)`);
+    //  ② 두 번째 클릭 — 조용히 버리지 않는다.
+    assert.strictEqual(r.second.posts, 1, '가드를 뚫고 두 번째 요청이 나갔다');
+    const warn = r.second.toasts.filter((t) => /이전 요청을 처리 중입니다/.test(t.msg));
+    assert.strictEqual(warn.length, 1, `진행 중 안내가 뜨지 않았다: ${JSON.stringify(r.second.toasts)} — 버튼이 먹지 않는 것으로 보인다`);
+    assert.strictEqual(warn[0].kind, 'warn', `진행 중 안내의 종류가 warn 이 아니다: ${JSON.stringify(warn[0])}`);
+    //  ③ 회신 뒤 — **원래 꺼져 있던 [영구 삭제]는 그대로 꺼져 있어야 한다**(잠금 한 번이 계약을 뒤집으면 안 된다).
+    assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, true],
+      `회신 뒤 버튼 상태가 원래대로 돌아오지 않았다: ${JSON.stringify(r.done.ops)}`);
+    assert.strictEqual(r.done.busy, '', '회신이 왔는데 overlay 가 busy 인 채로 남았다 — 창을 닫을 길이 없다');
+  });
+
+  test('변이⑥-DOM(f): 사유 줄을 지우면 계약⑥-DOM(f) 가 실패한다(title 만 남으면 아무도 못 본다)', () => {
+    const bad = mutate(app, "    if(it && it.deletable === false && it.why){", '    if(false){');
+    const r = probeRender(PAYLOAD, 'user', bad);
+    assert.strictEqual(r.whys.length, 0, '변이 전제: 사유 줄이 사라져야 한다');
+    assert.strictEqual(probeRender(PAYLOAD, 'user').whys.length, 1);   // 통제군
+  });
+
+  test('변이⑦-DOM(c): 잠금 복구를 "무조건 켜기"로 바꾸면 계약⑦-DOM(c) 가 실패한다', () => {
+    const bad = mutate(app, "        b.disabled = b.dataset.trwas === '1';", '        b.disabled = false;');
+    const r = probeBusy(PAYLOAD, 'user', bad);
+    assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, false],
+      '변이 전제: 복구를 무조건 켜기로 바꾸면 지울 수 없는 계정의 [영구 삭제]도 켜져야 한다');
+    assert.strictEqual(probeBusy(PAYLOAD, 'user').done.ops[3].disabled, true);   // 통제군
   });
 
   test('변이⑥-DOM: 세 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
@@ -481,6 +713,16 @@ if (!jsdom) {
     assert.strictEqual(r[3].disabled, true, '앞에 공백이 붙었는데 버튼이 켜졌다');
     assert.strictEqual(r[4].disabled, true, '대소문자만 다른데 버튼이 켜졌다 — 대조는 글자까지 같아야 한다');
     assert.strictEqual(r[5].disabled, true, '입력을 지웠는데 버튼이 켜진 채로 남았다');
+  });
+
+  test("계약⑦-DOM(d): [취소]를 실제로 누르면 확인창이 'cancel' 로 해소된다(닫히기만 하고 멈추지 않는다)", async () => {
+    const r = await probeTypedCancel();
+    assert.strictEqual(r.found, true, '#confirmTypedModal 하단에 [취소]([data-close])가 없다 — 빠져나갈 길이 사라진다');
+    assert.strictEqual(r.armed, true, '전제 붕괴: 이름을 다 쳤는데 [영구 삭제]가 켜지지 않았다');
+    //  ★ 켜진 상태에서 [취소]를 눌러도 **삭제가 아니다.** 여기서 'ok' 가 나오면 취소가 삭제를 부른다.
+    assert.strictEqual(r.result, 'cancel',
+      `[취소] 클릭이 ${JSON.stringify(r.result)} 로 해소됐다 — 'cancel' 이어야 한다(호출부는 r !== 'ok' 로만 판단한다)`);
+    assert.strictEqual(r.hidden, true, '[취소]를 눌렀는데 확인창이 닫히지 않았다');
   });
 
   test('변이⑦-DOM: 대조에 trim 을 끼우면 앞뒤 공백이 통과한다(그래서 이 계약이 필요하다)', () => {

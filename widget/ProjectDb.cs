@@ -16,6 +16,11 @@ namespace TaskCalendarWidget
     internal sealed class NotAuthorizedException : Exception
     {
         public NotAuthorizedException(string message) : base(message) { }
+        //  ★ '권한이 모자라다'(roleOnly)와 '신원 자체가 서지 않는다'(미로그인·미등록·비활성)를 가른다.
+        //    화면은 앞쪽에 자기 문장을 갖고 있지만("관리자만 사용할 수 있습니다."), 뒤쪽 사유는 **관문만 안다** —
+        //    그 문장을 화면까지 실어 주지 않으면 퇴사 처리된 사람이 원인을 영영 못 찾는다(USER-LOGIN §3.3 함정).
+        public NotAuthorizedException(string message, bool roleOnly) : base(message) { RoleOnly = roleOnly; }
+        public bool RoleOnly { get; }
     }
 
     // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
@@ -92,6 +97,17 @@ namespace TaskCalendarWidget
                 await pre.ExecuteNonQueryAsync(ct);
             }
             catch { await conn.DisposeAsync(); throw; }
+        }
+
+        // 예외 경로의 롤백 — **취소되지 않은 토큰**으로 하고, 롤백 자체의 실패는 삼킨다.
+        //   ★ 왜: cts 는 타임아웃(10~15초)이다. 그 시간을 넘겨 예외가 난 자리에서 RollbackAsync(cts.Token) 을
+        //     부르면 **롤백이 OperationCanceled 로 죽고 그 예외가 원래 예외를 덮어쓴다.** 그러면 1205(잠금 대기)·
+        //     1213(교착)·1451(FK) 같은, 사용자 문장으로 옮길 수 있었던 원인이 catch (MySqlException) 에
+        //     닿지 못하고 "처리하지 못했습니다"로 뭉개진다(2026-09-10 검토 지적).
+        //   ★ 롤백 실패를 삼키는 이유: 여기서 던지면 원래 예외를 또 덮는다. 연결을 닫으면 서버가 어차피 롤백한다.
+        private static async Task SafeRollbackAsync(System.Data.Common.DbTransaction tx)
+        {
+            try { await tx.RollbackAsync(CancellationToken.None); } catch { /* 원래 예외를 덮지 않는다 */ }
         }
 
         // ================================================================================
@@ -203,7 +219,8 @@ namespace TaskCalendarWidget
                 if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");
                 if (active == 0) throw new NotAuthorizedException("비활성 처리된 계정입니다.");
                 if (!string.Equals(role, "admin", StringComparison.Ordinal))
-                    throw new NotAuthorizedException("직원 정보는 관리자만 고칠 수 있습니다.");
+                    //  roleOnly — 위 둘(미등록·비활성)과 달리 '신원은 섰는데 등급이 모자란' 경우다. 부르는 쪽이 갈라 쓴다.
+                    throw new NotAuthorizedException("직원 정보는 관리자만 고칠 수 있습니다.", roleOnly: true);
             }
             catch (NotAuthorizedException nex)
             {
@@ -741,6 +758,13 @@ namespace TaskCalendarWidget
         private const string LastAdminMsg      = "관리자가 한 명뿐이라 처리할 수 없습니다. 먼저 다른 관리자를 지정하세요.";
         private const string UserGoneMsg       = "대상 직원을 찾을 수 없습니다 — 명부를 새로고침해 주세요.";
 
+        // 잠금 경합(1205 잠금 대기 초과 · 1213 교착) — 사람에게는 한 문장이다. 둘 다 "지금은 남이 잡고 있다"이고
+        //   할 일도 같다(잠시 뒤 다시). 번호를 문장에 섞지 않는다 — 번호는 로그의 몫이다.
+        private const string DbBusyMsg = "다른 관리자가 같은 항목을 편집 중입니다 — 잠시 후 다시 시도하세요.";
+        // 매핑되지 않은 DB 오류의 마지막 문장. ★ 예외 원문을 사용자 문장에 이어 붙이지 않는다 —
+        //   SQL·컬럼명·스택이 화면으로 새고, 정작 사용자는 무엇을 할지 알 수 없다(원문은 부르는 쪽이 _log 에 남긴다).
+        private const string DbFailMsg = "처리하지 못했습니다(DB 오류).";
+
         // MySQL 에러번호 → 사용자 문장(직원 정보 전용). 과제용 MySqlMsg 와 섞지 않는다 — 같은 번호가
         //   다른 제약에서 오므로 한 함수로 합치면 "등록되지 않은 발주처입니다"가 직원 저장에서 튀어나온다.
         private static string MySqlUserMsg(MySqlException ex)
@@ -760,7 +784,10 @@ namespace TaskCalendarWidget
                     return "값이 허용 범위를 벗어났습니다.";
                 case 1406: return "값이 너무 깁니다 — 길이를 줄여 주세요.";
                 case 1048: return "필수 항목이 비어 있습니다.";
-                default:   return "저장하지 못했습니다: " + Short(ex);
+                case 1205:   // 잠금 대기 시간 초과 — 다른 트랜잭션이 같은 행을 FOR UPDATE 로 잡고 있다(§4.4 는 전부 잠근다)
+                case 1213:   // 교착 — 서버가 한쪽을 골라 죽인다. 사용자가 할 일은 1205 와 같다
+                    return DbBusyMsg;
+                default:   return DbFailMsg;   // ★ 원문(Short(ex))은 부르는 쪽 _log 에만 — 화면에는 고정 문장이다
             }
         }
 
@@ -791,15 +818,18 @@ namespace TaskCalendarWidget
         }
 
         // 대상 직원 1행을 잠근 채 읽는다(없으면 null).
-        private static async Task<(int userId, string editRole, int isActive, string name)?> LockedUserAsync(
+        //   ★ title·org_id 도 함께 읽는다 — '지금 저장돼 있는 값'은 그 값이 폐지됐어도 다시 저장할 수 있어야 하고
+        //     (§4.3 의 2026-09-10 완화), 그 판정은 잠근 행의 값으로 해야 판정과 갱신이 갈리지 않는다.
+        private static async Task<(int userId, string editRole, int isActive, string name, string title, int? orgId)?> LockedUserAsync(
             MySqlConnection conn, MySqlTransaction tx, int userId, CancellationToken ct)
         {
             await using var cmd = new MySqlCommand(
-                "SELECT user_id, name, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE", conn, tx);
+                "SELECT user_id, name, title, org_id, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE", conn, tx);
             cmd.Parameters.AddWithValue("@uid", userId);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
             if (!await rd.ReadAsync(ct)) return null;
-            return (IntOrNull(rd, "user_id") ?? 0, Str(rd, "edit_role"), IntOrNull(rd, "is_active") ?? 0, Str(rd, "name"));
+            return (IntOrNull(rd, "user_id") ?? 0, Str(rd, "edit_role"), IntOrNull(rd, "is_active") ?? 0,
+                    Str(rd, "name"), Str(rd, "title"), IntOrNull(rd, "org_id"));
         }
 
         // 직원 등록/수정. userId 가 없으면 INSERT, 있으면 그 행 UPDATE.
@@ -830,15 +860,15 @@ namespace TaskCalendarWidget
                 string me = SessionLoginId();
 
                 // 직급·소속 존재 검증 — 좋은 에러문구용(최종은 fk_user_title · fk_user_org_id).
-                //   활성만 본다: 폐지된 직급·조직으로 새로 배정하지 못하게 하는 것이 이 화면의 목적이다.
+                //   활성만 본다: 폐지된 직급·조직으로 **새로** 배정하지 못하게 하는 것이 이 화면의 목적이다.
                 var titleSet = await LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: true);
-                if (!titleSet.Contains(ti)) return (false, "등록되지 않은 직급입니다.");
-                if (orgId.HasValue)
+
+                // 활성 조직인가 — 두 분기(신규·수정)가 같은 문장을 쓴다. 같은 말을 두 벌로 적으면 한쪽만 고쳐진다.
+                async Task<bool> OrgIsActiveAsync(MySqlTransaction? t)
                 {
-                    await using var q = new MySqlCommand("SELECT COUNT(*) FROM org_unit WHERE org_id=@o AND is_active=1", conn);
-                    q.Parameters.AddWithValue("@o", orgId.Value);
-                    if (Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L) == 0)
-                        return (false, "등록되지 않은 소속입니다.");
+                    await using var q = new MySqlCommand("SELECT COUNT(*) FROM org_unit WHERE org_id=@o AND is_active=1", conn, t);
+                    q.Parameters.AddWithValue("@o", orgId!.Value);
+                    return Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L) > 0;
                 }
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -850,6 +880,16 @@ namespace TaskCalendarWidget
                         var target = await LockedUserAsync(conn, tx, userId.Value, cts.Token);
                         if (target == null) { await tx.RollbackAsync(cts.Token); return (false, UserGoneMsg); }
                         int? myId = await LockedMyUserIdAsync(conn, tx, me, cts.Token);
+
+                        // ── 직급·소속: 활성이거나 **현재 저장된 값**이면 통과(2026-09-10 완화 · §4.3).
+                        //    폐지된 직급을 단 사람의 이름 한 글자를 고치려 할 때 "등록되지 않은 직급입니다"로 막히면,
+                        //    관리자는 그 사람의 직급부터 바꿔야 한다 — 화면은 저장된 값을 드롭다운에 그대로 남기므로
+                        //    '보이는 값'과 '되는 값'이 갈린다. 저장된 값과의 대조는 **잠근 행**으로 한다(위 FOR UPDATE).
+                        //    신규 등록은 그대로 활성만이다(아래 else 분기) — 완화는 '이미 그 값인 사람'에게만이다.
+                        if (!titleSet.Contains(ti) && !string.Equals(ti, target.Value.title, StringComparison.Ordinal))
+                        { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 직급입니다."); }
+                        if (orgId.HasValue && orgId.Value != (target.Value.orgId ?? -1) && !await OrgIsActiveAsync(tx))
+                        { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 소속입니다."); }
 
                         // (2) 자기 편집 권한은 올리는 것도 내리는 것도 못 한다. 값이 그대로면 통과(수정 자체를 막지는 않는다).
                         if (myId.HasValue && myId.Value == target.Value.userId &&
@@ -879,6 +919,11 @@ namespace TaskCalendarWidget
                     }
                     else
                     {
+                        // 신규 등록은 **활성만** — 폐지된 직급·조직으로 새 사람을 배정하지 않는다(완화는 수정에만).
+                        if (!titleSet.Contains(ti)) { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 직급입니다."); }
+                        if (orgId.HasValue && !await OrgIsActiveAsync(tx))
+                        { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 소속입니다."); }
+
                         // 신규 등록 — sort_order 는 넣지 않는다(NULL = 맨 뒤). user_id 는 AUTO_INCREMENT 가 준다.
                         await using (var cmd = new MySqlCommand(
                             "INSERT INTO app_user (login_id, name, title, org_id, view_scope, edit_role) " +
@@ -899,7 +944,7 @@ namespace TaskCalendarWidget
                         return (true, "직원을 등록했습니다. 본인이 주간보고 계정으로 로그인하면 사용할 수 있습니다.");
                     }
                 }
-                catch { await tx.RollbackAsync(cts.Token); throw; }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
             catch (MySqlException mex) { _log("직원 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
             catch (Exception ex) { _log("직원 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
@@ -947,7 +992,7 @@ namespace TaskCalendarWidget
                     _log("직원 " + (active ? "복구" : "퇴사 처리") + ": user_id=" + userId + " (" + target.Value.name + ")");
                     return (true, active ? "복구했습니다. 명부에 다시 표시됩니다." : "퇴사 처리했습니다. 기록은 남고 명부에서만 사라집니다.");
                 }
-                catch { await tx.RollbackAsync(cts.Token); throw; }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
             catch (MySqlException mex) { _log("직원 퇴사/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
             catch (Exception ex) { _log("직원 퇴사/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
@@ -958,6 +1003,12 @@ namespace TaskCalendarWidget
         //     그 순서가 곧 서열이다. 전량 재작성이면 규칙이 하나도 없어 어긋날 자리가 없다
         //     (구분·상태 코드값의 순서 재배치와 같은 방식 — 이 파일 아래쪽).
         //   ★ 잠금 방지 3규칙은 여기 없다 — 순서는 권한도 활성 상태도 건드리지 않는다.
+        //   ★ 2026-09-10 — 목록 **밖**의 사람은 sort_order 를 NULL 로 민다(USER-ADMIN §7-1a 를 닫는다).
+        //     「퇴사자 보기」를 끈 채 순서를 저장하면 퇴사자는 목록에 없어 옛 숫자를 그대로 들고 남았고,
+        //     그 사람을 복구하면 그 숫자가 새 서열 **사이에 끼어들었다**. NULL 은 명부 ORDER BY 에서
+        //     맨 뒤다(`u.sort_order IS NULL, u.sort_order`) — 복구한 사람은 맨 뒤에 서고, 관리자가 그때
+        //     한 번 끌어올리면 끝난다. "보이는 순서 = 저장되는 순서" 계약은 그대로다(보이는 사람의 서열은
+        //     받은 순서 그대로고, 안 보이던 사람은 서열을 '가진 척'하지 않게 된다).
         public async Task<(bool ok, string msg)> SaveUserOrderAsync(IReadOnlyList<int>? userIds)
         {
             if (userIds == null || userIds.Count == 0) return (false, "정렬할 명부가 비어 있습니다.");
@@ -974,20 +1025,45 @@ namespace TaskCalendarWidget
                 try
                 {
                     int order = 0;
+                    var kept = new List<int>(userIds.Count);
                     foreach (int uid in userIds)
                     {
                         if (uid <= 0) continue;
                         order += 10;
+                        kept.Add(uid);
                         await using var cmd = new MySqlCommand("UPDATE app_user SET sort_order=@s WHERE user_id=@uid", conn, tx);
                         cmd.Parameters.AddWithValue("@s", order);
                         cmd.Parameters.AddWithValue("@uid", uid);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
+                    // 받은 목록이 통째로 쓸모없으면(전부 0 이하) 아무것도 밀지 않는다 — 빈 목록 거부와 같은 판단이다.
+                    if (kept.Count == 0) { await SafeRollbackAsync(tx); return (false, "정렬할 명부가 비어 있습니다."); }
+
+                    // 목록 **밖**의 사람은 서열을 비운다(§7-1a). 숨긴 채 저장해도 옛 숫자가 남지 않는다.
+                    //   ★ user_id 는 위에서 걸러진 정수뿐이지만 그래도 파라미터로 묶는다 — 이 파일의 규약 ①.
+                    //   ★ updated_at 은 위 UPDATE 와 같이 **손대지 않는다**(서버 ON UPDATE 에 맡긴다 — §4.5).
+                    var names = new List<string>(kept.Count);
+                    await using (var clr = new MySqlCommand())
+                    {
+                        clr.Connection = conn;
+                        clr.Transaction = tx;
+                        for (int i = 0; i < kept.Count; i++)
+                        {
+                            string pn = "@k" + i.ToString(CultureInfo.InvariantCulture);
+                            names.Add(pn);
+                            clr.Parameters.AddWithValue(pn, kept[i]);
+                        }
+                        clr.CommandText = "UPDATE app_user SET sort_order=NULL WHERE sort_order IS NOT NULL AND user_id NOT IN (" +
+                                          string.Join(",", names) + ")";
+                        int cleared = await clr.ExecuteNonQueryAsync(cts.Token);
+                        if (cleared > 0) _log("명부 순서: 목록 밖 " + cleared + "명의 서열을 비웠다(NULL = 맨 뒤 · §7-1a)");
+                    }
+
                     await tx.CommitAsync(cts.Token);
-                    _log("명부 순서 저장: " + userIds.Count + "명 전량 재작성");
+                    _log("명부 순서 저장: " + kept.Count + "명 전량 재작성");
                     return (true, "명부 순서를 저장했습니다.");
                 }
-                catch { await tx.RollbackAsync(cts.Token); throw; }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
             catch (MySqlException mex) { _log("명부 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
             catch (Exception ex) { _log("명부 순서 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
@@ -1596,7 +1672,7 @@ namespace TaskCalendarWidget
                     _log(lbl + " 순서변경: " + orderedNames.Count + "건");
                     return (true, lbl + " 순서를 변경했습니다.");
                 }
-                catch { await tx.RollbackAsync(cts.Token); throw; }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
             catch (MySqlException mex) { _log(lbl + " 순서변경 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
             catch (Exception ex) { _log(lbl + " 순서변경 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
@@ -1664,6 +1740,13 @@ namespace TaskCalendarWidget
         // 대상 종류 → 표·키 컬럼·이름 컬럼·라벨. 다섯 표가 같은 뼈대라 해석을 한 곳에 모은다(분기 복제 방지).
         //   ★ 나오는 값은 전부 **코드 상수**다. 표·컬럼 이름이 SQL 에 이어 붙어도 사용자 입력은 닿지 않는다
         //     (값은 언제나 @파라미터 바인딩 — 이 파일의 규약 ①).
+        //   ★ 2026-09-10 — 모르는 종류를 **여기서만** 거부한다(false). 복구·삭제의 SQL 갈래는 각 함수 안에 남기되,
+        //     둘 다 다섯 종류를 전부 이름으로 적고 `default:` 는 거부다(옛 `default:` 는 status_code 였다 —
+        //     종류가 하나 늘고 한쪽만 안 고치면 **엉뚱한 표가 복구·삭제된다**).
+        //     SQL 을 이 해석기로 끌어올리지 않은 이유는 두 시험 계약이 그것을 막기 때문이다:
+        //       · admin-auth — "쓰기 SQL 을 가진 메서드는 대상 표에 맞는 관문으로 연다"(app_user 쓰기 문자열을
+        //         관문 없는 순수 함수에 두면 그 계약이 운다. 그 계약이 지키는 것은 fail-open 방지다).
+        //       · trash-host ⑥ · user-admin ③ · xlsx-export — "다섯 표의 DELETE 문은 DeleteTrashAsync 안에만".
         private static bool ResolveTrashKind(string? kind, out string table, out string keyCol, out string nameCol, out string label)
         {
             switch ((kind ?? "").Trim())
@@ -1696,11 +1779,18 @@ namespace TaskCalendarWidget
             return "SELECT " + string.Join(" + ", parts);
         }
 
-        // 전원의 기록 수를 한 문장으로 — 휴지통 목록이 사람마다 9회 왕복하지 않게(같은 배열이 소스다).
+        // 휴지통에 뜨는 사람 = 퇴사자(is_active=0) 뿐이다. 기록 수도 **그 사람들만** 센다.
+        //   ★ 전원을 세면 9개 표를 통째로 훑는다 — 일정·할일·공수는 재직자 전원의 전 기간 행이라
+        //     휴지통을 한 번 열 때마다 그 스캔이 돌고, 정작 쓰는 값은 퇴사자 몇 명분이다(2026-09-10 검토 지적).
+        //     서브쿼리 하나로 좁히면 각 표의 user_id 인덱스로 끝난다.
+        private const string InactiveUserFilter = " WHERE user_id IN (SELECT user_id FROM app_user WHERE is_active=0)";
+
+        // 퇴사자들의 기록 수를 한 문장으로 — 휴지통 목록이 사람마다 9회 왕복하지 않게(같은 배열이 소스다).
         private static string UserRefCountAllSql()
         {
             var parts = new List<string>(UserRecordTables.Length);
-            foreach (var t in UserRecordTables) parts.Add("SELECT user_id, COUNT(*) AS c FROM " + t + " GROUP BY user_id");
+            foreach (var t in UserRecordTables)
+                parts.Add("SELECT user_id, COUNT(*) AS c FROM " + t + InactiveUserFilter + " GROUP BY user_id");
             return "SELECT user_id, SUM(c) AS c FROM (" + string.Join(" UNION ALL ", parts) + ") x GROUP BY user_id";
         }
 
@@ -1713,6 +1803,12 @@ namespace TaskCalendarWidget
         private const string TrashFkMsg     = "다른 기록이 붙어 있어 지울 수 없습니다.";
         private const string TrashNoTarget  = "대상이 지정되지 않았습니다.";
         private const string TrashDoneMsg   = "영구 삭제했습니다.";
+        // 이미 활성인 항목의 복구 — 실패가 아니라 **목록이 낡은 것**이다. 그래서 문구가 새로고침을 시킨다(TrashGoneMsg 와 같은 성격).
+        private const string TrashAlreadyActiveMsg = "이미 복구된 항목입니다 — 목록을 새로고침합니다.";
+        // 조회·복구·삭제의 마지막 문장 셋 — ★ 예외 원문을 사용자 문장에 이어 붙이지 않는다(원문은 _log 의 몫이다).
+        private const string TrashLoadFailMsg    = "휴지통을 불러오지 못했습니다.";
+        private const string TrashRestoreFailMsg = "복구하지 못했습니다.";
+        private const string TrashDeleteFailMsg  = "지우지 못했습니다.";
         private static string UserRecordsMsg(long n) => "기록 " + n + "건이 있어 지울 수 없습니다. 퇴사 상태로 유지됩니다.";
         private static string CodeInUseMsg(long n)   => "이 값을 쓰는 과제가 " + n + "건(숨긴 과제 포함) 있어 지울 수 없습니다.";
 
@@ -1764,12 +1860,21 @@ namespace TaskCalendarWidget
         private static async Task<List<Dictionary<string, object?>>> TrashCodeListAsync(
             MySqlConnection conn, string table, string projCol, CancellationToken ct)
         {
-            var refs = new Dictionary<string, long>(StringComparer.Ordinal);
+            // ★ 대소문자를 무시하고 묶는다. FK 를 건 컬럼의 콜레이션이 utf8mb4_0900_ai_ci 라, 삭제 시점의 판정
+            //   (SELECT COUNT(*) FROM project WHERE customer=@n)은 'ABC' 와 'abc' 를 **같은 값으로** 센다.
+            //   여기서 Ordinal 로 묶으면 자식 행의 표기가 한 글자라도 다를 때 힌트가 0 건이라 거짓말을 하고,
+            //   화면은 [영구 삭제] 를 켠 뒤 DB 가 1451 로 막는다(힌트 ≠ 판정이 되는 자리 · 2026-09-10 검토 지적).
+            var refs = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             await using (var cmd = new MySqlCommand(
                 "SELECT " + projCol + " AS v, COUNT(*) AS c FROM project WHERE " + projCol + " IS NOT NULL GROUP BY " + projCol, conn))
             await using (var rd = await cmd.ExecuteReaderAsync(ct))
             {
-                while (await rd.ReadAsync(ct)) refs[Str(rd, "v")] = LongOrZero(rd, "c");
+                //  두 표기가 한 칸으로 합쳐지면 **더한다**(덮어쓰면 한쪽 수가 사라진다 — 힌트가 실제보다 작아진다).
+                while (await rd.ReadAsync(ct))
+                {
+                    string v = Str(rd, "v");
+                    refs[v] = (refs.TryGetValue(v, out var prev) ? prev : 0L) + LongOrZero(rd, "c");
+                }
             }
             var rows = new List<Dictionary<string, object?>>();
             await using (var cmd = new MySqlCommand("SELECT name FROM " + table + " WHERE is_active=0 ORDER BY name", conn))
@@ -1804,8 +1909,14 @@ namespace TaskCalendarWidget
                 catch (NotAuthorizedException nex)
                 {
                     // 미로그인·미등록·비활성·비관리자 — 넷 다 '휴지통을 볼 수 없는 사람'이다. 목록을 싣지 않는다.
+                    //   ★ 그러나 넷이 같은 사건은 아니다. '관리자가 아니다'는 화면이 이미 자기 문장을 갖고 있지만
+                    //     (「관리자만 사용할 수 있습니다.」), 미로그인·미등록·비활성은 **관문만 아는 사유**다.
+                    //     그 문장을 msg 로 실어 화면이 그대로 보여 주게 한다 — 안 그러면 퇴사 처리된 사람이
+                    //     "관리자만 사용할 수 있습니다"를 보고 원인을 영영 못 찾는다(USER-LOGIN §3.3 함정).
                     _log("휴지통 조회 거부(" + me + "): " + nex.Message);
-                    return JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = true, ["admin"] = false });
+                    var deny = new Dictionary<string, object?> { ["found"] = true, ["admin"] = false };
+                    if (!nex.RoleOnly) deny["msg"] = nex.Message ?? "";
+                    return JsonSerializer.Serialize(deny);
                 }
                 catch (Exception cex) { _log("DB 연결 실패(휴지통 조회): " + Short(cex)); return TrashFailJson(OfflineMsg); }
                 await using var connOwn = conn;
@@ -1843,17 +1954,9 @@ namespace TaskCalendarWidget
                 }
 
                 // ② 인력 — 기록 9표 합계가 0 이고 자기 자신이 아닐 때만 지울 수 있다(§3.2).
-                var userRefs = new Dictionary<int, long>();
-                await using (var cmd = new MySqlCommand(UserRefCountAllSql(), conn))
-                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
-                {
-                    while (await rd.ReadAsync(cts.Token))
-                    {
-                        int uid = IntOrNull(rd, "user_id") ?? 0;
-                        if (uid > 0) userRefs[uid] = LongOrZero(rd, "c");
-                    }
-                }
-                var users = new List<Dictionary<string, object?>>();
+                //    ★ 명부를 **먼저** 읽는다: 퇴사자가 하나도 없으면 9개 표 합산은 아예 돌리지 않는다
+                //      (빈 탭 하나를 그리려고 전 기록을 훑을 이유가 없다).
+                var retired = new List<(int uid, string name, string sub)>();
                 await using (var cmd = new MySqlCommand(
                     "SELECT u.user_id, u.name, u.title, u.login_id, o.name AS org_unit " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
@@ -1861,14 +1964,29 @@ namespace TaskCalendarWidget
                 await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
                 {
                     while (await rd.ReadAsync(cts.Token))
+                        retired.Add((IntOrNull(rd, "user_id") ?? 0, Str(rd, "name"),
+                                     SubLine(Str(rd, "org_unit"), Str(rd, "title"), Str(rd, "login_id"))));
+                }
+
+                var userRefs = new Dictionary<int, long>();
+                if (retired.Count > 0)
+                {
+                    await using var cmd = new MySqlCommand(UserRefCountAllSql(), conn);
+                    await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                    while (await rd.ReadAsync(cts.Token))
                     {
                         int uid = IntOrNull(rd, "user_id") ?? 0;
-                        long c = userRefs.TryGetValue(uid, out var x) ? x : 0L;
-                        bool self = uid != 0 && uid == myId;
-                        string why = c > 0 ? UserRecordsMsg(c) : (self ? TrashSelfMsg : "");
-                        users.Add(TrashRow(uid.ToString(CultureInfo.InvariantCulture), Str(rd, "name"),
-                            SubLine(Str(rd, "org_unit"), Str(rd, "title"), Str(rd, "login_id")), c, c == 0 && !self, why));
+                        if (uid > 0) userRefs[uid] = LongOrZero(rd, "c");
                     }
+                }
+
+                var users = new List<Dictionary<string, object?>>();
+                foreach (var r in retired)
+                {
+                    long c = userRefs.TryGetValue(r.uid, out var x) ? x : 0L;
+                    bool self = r.uid != 0 && r.uid == myId;
+                    string why = c > 0 ? UserRecordsMsg(c) : (self ? TrashSelfMsg : "");
+                    users.Add(TrashRow(r.uid.ToString(CultureInfo.InvariantCulture), r.name, r.sub, c, c == 0 && !self, why));
                 }
 
                 // ③ 코드 3종 — 셋이 같은 함수다(발주처도 이름 자연키 마스터라 코드와 구조가 같다).
@@ -1889,7 +2007,8 @@ namespace TaskCalendarWidget
                     ["statuses"] = statuses,
                 });
             }
-            catch (Exception ex) { _log("휴지통 조회 실패: " + Short(ex)); return TrashFailJson("휴지통을 불러오지 못했습니다: " + Short(ex)); }
+            // ★ 실패 문구는 **고정**이다 — 예외 원문(SQL·컬럼·스택)은 _log 에만 남긴다(§4.3, 2026-09-10 검토 지적).
+            catch (Exception ex) { _log("휴지통 조회 실패: " + Short(ex)); return TrashFailJson(TrashLoadFailMsg); }
         }
 
         // 복구 — 숨긴 항목을 목록으로 되돌린다(is_active=1).
@@ -1926,17 +2045,27 @@ namespace TaskCalendarWidget
                 try
                 {
                     // 대상 행을 잠근 채 읽는다 — 없으면 다른 관리자가 이미 지운 것이다(목록을 새로 그리게 한다).
+                    //   ★ is_active 도 **같이 잠근 채** 읽는다. 두 관리자가 같은 항목을 동시에 복구하면
+                    //     뒤에 온 쪽이 이미 활성인 행에 UPDATE 를 걸고, 구분·상태는 그 자리에서 sort_order 를
+                    //     MAX+10 으로 **다시** 매겨 멀쩡히 쓰이던 값이 목록 맨 뒤로 튄다(2026-09-10 검토 지적).
+                    //     '이미 복구됨'은 실패가 아니라 **낡은 목록**이므로, 문구가 새로고침을 시킨다.
                     bool found = false;
                     string name = "";
+                    int wasActive = 0;
                     await using (var sel = new MySqlCommand(
-                        "SELECT " + nameCol + " AS nm FROM " + table + " WHERE " + keyCol + "=@k FOR UPDATE", conn, tx))
+                        "SELECT " + nameCol + " AS nm, is_active AS act FROM " + table + " WHERE " + keyCol + "=@k FOR UPDATE", conn, tx))
                     {
                         sel.Parameters.AddWithValue("@k", keyVal);
                         await using var rd = await sel.ExecuteReaderAsync(cts.Token);
-                        if (await rd.ReadAsync(cts.Token)) { found = true; name = Str(rd, "nm"); }
+                        if (await rd.ReadAsync(cts.Token)) { found = true; name = Str(rd, "nm"); wasActive = IntOrNull(rd, "act") ?? 0; }
                     }
                     if (!found) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }
+                    if (wasActive != 0) { await tx.RollbackAsync(cts.Token); return (false, TrashAlreadyActiveMsg); }
 
+                    // ★ 다섯 종류를 **전부 이름으로** 적고, 모르는 종류는 거부한다 — 옛 `default:` 는 status_code 였고,
+                    //   종류가 하나 늘고 여기만 안 고치면 **엉뚱한 표가 복구된다**(모르는 종류는 ResolveTrashKind 가
+                    //   이미 걸러 여기 닿지 않지만, '기본값으로 아무 표나'는 남겨 둘 수 없는 형태다).
+                    //   구분·상태만 sort_order 를 맨 뒤(MAX+10)로 다시 매긴다 — 옛 순번을 들고 돌아오면 활성끼리 겹친다.
                     string sql;
                     switch (kd)
                     {
@@ -1944,7 +2073,8 @@ namespace TaskCalendarWidget
                         case "user":     sql = "UPDATE app_user SET is_active=1 WHERE user_id=@k"; break;
                         case "customer": sql = "UPDATE customer SET is_active=1 WHERE name=@k"; break;
                         case "section":  sql = "UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE name=@k"; break;
-                        default:         sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;
+                        case "status":   sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;
+                        default:         await tx.RollbackAsync(cts.Token); return (false, TrashKindMsg);
                     }
                     await using (var cmd = new MySqlCommand(sql, conn, tx))
                     {
@@ -1957,10 +2087,16 @@ namespace TaskCalendarWidget
                     if (kd == "user")    return (true, "복구했습니다. 명부에 다시 표시됩니다.");
                     return (true, "복구했습니다.");
                 }
-                catch { await tx.RollbackAsync(cts.Token); throw; }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("휴지통 복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log("휴지통 복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+            // ★ 실패 문구는 **고정**이다 — 예외 원문(SQL·컬럼·스택)은 _log 에만 남긴다(§4.3, 2026-09-10 검토 지적).
+            //   잠금 경합(1205·1213)만 따로 말해 준다 — 두 관리자가 같은 항목을 만지는 상황이라 '다시 하면 된다'가 안내다.
+            catch (MySqlException mex)
+            {
+                _log("휴지통 복구 실패(" + mex.Number + "): " + Short(mex));
+                return (false, mex.Number == 1205 || mex.Number == 1213 ? DbBusyMsg : TrashRestoreFailMsg);
+            }
+            catch (Exception ex) { _log("휴지통 복구 실패: " + Short(ex)); return (false, TrashRestoreFailMsg); }
         }
 
         // 영구 삭제 — 되돌릴 수 없다. 다섯 표의 뼈대가 같다(§3.4):
@@ -2067,7 +2203,10 @@ namespace TaskCalendarWidget
                         { cmd.Parameters.AddWithValue("@u", targetUserId); await cmd.ExecuteNonQueryAsync(cts.Token); }
                     }
 
-                    // ⑥ 본체.
+                    // ⑥ 본체. ★ 다섯 종류를 **전부 이름으로** 적고, 모르는 종류는 거부한다 —
+                    //    옛 `default:` 는 status_code 였다. 종류가 하나 늘고 여기만 안 고치면 **엉뚱한 표가 지워진다**
+                    //    (되돌릴 수 없는 조작에서 '기본값으로 아무거나'는 허용될 수 없다 · 2026-09-10 검토 지적).
+                    //    이 다섯 줄이 이 파일에서 DELETE 문이 사는 유일한 자리다(시험 계약 ⑥).
                     string delSql;
                     switch (kd)
                     {
@@ -2075,7 +2214,8 @@ namespace TaskCalendarWidget
                         case "user":     delSql = "DELETE FROM app_user WHERE user_id=@k"; break;
                         case "customer": delSql = "DELETE FROM customer WHERE name=@k"; break;
                         case "section":  delSql = "DELETE FROM section_code WHERE name=@k"; break;
-                        default:         delSql = "DELETE FROM status_code WHERE name=@k"; break;
+                        case "status":   delSql = "DELETE FROM status_code WHERE name=@k"; break;
+                        default:         await tx.RollbackAsync(cts.Token); return (false, TrashKindMsg);
                     }
                     int n;
                     await using (var cmd = new MySqlCommand(delSql, conn, tx))
@@ -2088,7 +2228,7 @@ namespace TaskCalendarWidget
                     _log("영구 삭제 " + kd + " " + k + " by " + me + " " + RowJson(row) + " 참조 " + refs + "건");
                     return (true, TrashDoneMsg);
                 }
-                catch { await tx.RollbackAsync(cts.Token); throw; }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
             catch (MySqlException mex) when (mex.Number == 1451)
             {
@@ -2096,8 +2236,14 @@ namespace TaskCalendarWidget
                 _log("영구 삭제 거부(FK 1451) " + label + " " + k + ": " + Short(mex));
                 return (false, TrashFkMsg);
             }
-            catch (MySqlException mex) { _log("영구 삭제 실패(" + mex.Number + "): " + Short(mex)); return (false, "지우지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log("영구 삭제 실패: " + Short(ex)); return (false, "지우지 못했습니다: " + Short(ex)); }
+            // ★ 실패 문구는 **고정**이다 — 예외 원문(SQL·컬럼·스택)은 _log 에만 남긴다(§4.3, 2026-09-10 검토 지적).
+            //   잠금 경합(1205·1213)만 따로 말해 준다 — 두 관리자가 같은 항목을 만지는 상황이라 '다시 하면 된다'가 안내다.
+            catch (MySqlException mex)
+            {
+                _log("영구 삭제 실패(" + mex.Number + "): " + Short(mex));
+                return (false, mex.Number == 1205 || mex.Number == 1213 ? DbBusyMsg : TrashDeleteFailMsg);
+            }
+            catch (Exception ex) { _log("영구 삭제 실패: " + Short(ex)); return (false, TrashDeleteFailMsg); }
         }
     }
 }

@@ -16,8 +16,12 @@
 //   ④ 주간 저장은 폼 채우기 성공 뒤에 불린다
 //   ⑤ 웹→호스트 경계가 hours 를 실어 나른다(파싱이 아니라 전달 · §5.9.3)
 //   ⑥ 앱 계정에 세 표의 권한이 있다 — 없으면 런타임 ERROR 1142 로 죽는다
+//   ⑨ (2026-09-10) 쓰기 직전에 09-09 CHECK 도메인 셋(근태코드·잔업·공수)을 호스트가 한 번 더 거른다.
+//     값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**되는데, 전송은 이미 성공한 뒤다
+//     (ReportDb 가 "가장 나쁜 실패"라고 적어 둔 자리). 그래서 도메인 밖 값은 기록 직전에 안전한 값으로 내린다.
 import { readFileSync } from 'node:fs';
 import { test, assert, loadAppSource } from './harness.mjs';
+import { canonSql, canonStatusCodes } from './canon-schema.mjs';
 
 const src = loadAppSource();
 const netcus = readFileSync(new URL('../widget/NetcusService.cs', import.meta.url), 'utf8');
@@ -135,6 +139,46 @@ const checks = {
     for (const [re, what] of need)
       assert.ok(re.test(sqlText), `grants-calendar.sql 에 ${what} 권한이 없다 — 배선이 ERROR 1142 로 죽는다`);
   },
+
+  // ⑨ 쓰기 직전 재검증 — 도메인은 **정본에서** 온다(값을 시험에도 호스트에도 박제하지 않는다).
+  revalidatesCheckDomains(mainCs, rdb, canonText, canonCodes) {
+    // (a) 근태 코드 집합 = 정본 chk_crd_status
+    const m = /private static readonly string\[\] ReportStatusCodes\s*=\s*\{([\s\S]*?)\};/.exec(mainCs);
+    assert.ok(m, 'MainWindow 에서 ReportStatusCodes 배열을 찾지 못했다 — 이름이 바뀌었다면 여기도 함께 고칠 것(판정 불가)');
+    const host = [...m[1].matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+    assert.deepStrictEqual([...host].sort(), [...canonCodes].sort(),
+      `호스트의 근태 코드 집합이 정본(chk_crd_status)과 다르다.\n  정본: [${canonCodes.join(', ')}]\n  호스트: [${host.join(', ')}]\n` +
+      '  집합 밖 값이 그대로 내려가면 3819 로 그 날 보고 저장이 통째로 롤백된다 — 전송은 이미 나간 뒤라 가장 나쁜 실패다.');
+    assert.ok(/Array\.IndexOf\(ReportStatusCodes, v\) >= 0/.test(mainCs),
+      '근태 코드를 집합과 대조하지 않는다 — 배열이 장식이 된다');
+    assert.ok(/private string SafeReportStatus\([\s\S]{0,400}?return "";/.test(mainCs),
+      "집합 밖 근태 코드를 ''(미기록)으로 내리지 않는다 — 3819 로 그 날 기록 전체가 사라진다");
+
+    // (b) 잔업 범위 = 정본 chk_crd_overtime (숫자를 시험에 적지 않는다)
+    const ot = /CONSTRAINT\s+chk_crd_overtime\s+CHECK\s*\(\s*overtime\s*>=\s*(\d+)\s+AND\s+overtime\s*<=\s*(\d+)\s*\)/i.exec(canonText);
+    assert.ok(ot, '정본에서 chk_crd_overtime 의 범위를 읽지 못했다(판정 불가 ≠ 통과)');
+    assert.ok(new RegExp('overtime >= ' + ot[1] + ' && overtime <= ' + ot[2]).test(mainCs),
+      `호스트의 잔업 검증이 정본 범위(${ot[1]}~${ot[2]})와 다르다 — 범위 밖 값이 3819 를 낸다`);
+    assert.ok(/private int SafeOvertime\([\s\S]{0,300}?return 0;/.test(mainCs),
+      '범위 밖 잔업을 0 으로 내리지 않는다');
+
+    // (c) 두 검증이 **저장 호출 앞**에 실제로 끼어 있고, 내린 값이 저장으로 간다(안 그러면 장식이다).
+    const i = mainCs.indexOf('void INetcusHost.SaveDailyReport(');
+    assert.ok(i > 0, 'INetcusHost.SaveDailyReport 를 찾지 못했다');
+    const hook = mainCs.slice(i, i + 1600);
+    assert.ok(/SafeReportStatus\(status\)/.test(hook) && /SafeOvertime\(overtime\)/.test(hook),
+      '저장 훅이 재검증을 부르지 않는다 — 웹이 보낸 값이 그대로 DB 로 간다');
+    assert.ok(/SaveDailyAsync\(loginId, y, m, d, st, ot, content, hours\)/.test(hook),
+      '재검증한 값(st·ot)이 아니라 원본을 저장한다 — 검증이 장식이 된다');
+
+    // (d) 공수 줄은 CHECK 범위 밖이면 **버린다**(줄 하나 때문에 그 날 기록 전체를 잃지 않게).
+    const h = /CONSTRAINT\s+chk_crh_hours\s+CHECK\s*\(\s*hours\s*>\s*(\d+)\s+AND\s+hours\s*<=\s*(\d+)\s*\)/i.exec(canonText);
+    assert.ok(h, '정본에서 chk_crh_hours 의 범위를 읽지 못했다(판정 불가 ≠ 통과)');
+    assert.ok(new RegExp('h <= ' + h[1] + ' \\|\\| h > ' + h[2]).test(mainCs),
+      `ParseHoursJson 이 정본 범위(${h[1]} 초과 ~ ${h[2]} 이하) 밖 줄을 버리지 않는다 — 그 한 줄이 그 날 저장 전체를 롤백시킨다`);
+    assert.ok(new RegExp('h\\.Hours > ' + h[2]).test(rdb),
+      `ReportDb 의 마지막 관문이 상한(${h[2]})을 보지 않는다 — 들어오는 자리와 저장하는 자리가 같은 판정을 해야 한다`);
+  },
 };
 
 // ── 계약 ─────────────────────────────────────────────────────────────
@@ -235,4 +279,35 @@ test('변이⑦: cal_report_hours 의 DELETE 권한을 빼면 배선⑥ 이 실�
   const bad = mutate('GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_report_hours',
     'GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_report_hours', grants);
   assert.throws(() => checks.grantsCoverReportTables(bad), /DELETE\(재삽입 계약\) 권한이 없다/);
+});
+
+// ── 계약⑨ (2026-09-10) — 쓰기 직전 재검증 ────────────────────────────
+test('배선⑨: 근태코드·잔업·공수를 쓰기 직전에 정본 CHECK 도메인으로 한 번 더 거른다', () => {
+  checks.revalidatesCheckDomains(mainwin, reportdb, canonSql(), canonStatusCodes('chk_crd_status'));
+});
+
+test('변이⑧: 호스트의 근태 코드 집합에서 하나를 빼면 배선⑨ 가 실패한다(정본 파생이 아니면 통과할 변이)', () => {
+  const bad = mutate('"", "1", "2",', '"", "1",', mainwin);
+  assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
+    /근태 코드 집합이 정본/);
+  assert.doesNotThrow(() => checks.revalidatesCheckDomains(mainwin, reportdb, canonSql(), canonStatusCodes('chk_crd_status')));
+});
+
+test('변이⑨: 재검증한 값 대신 원본을 저장하면 배선⑨ 가 실패한다(검증이 장식이 된다)', () => {
+  const bad = mutate('SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)',
+    'SaveDailyAsync(loginId, y, m, d, status, overtime, content, hours)', mainwin);
+  assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
+    /재검증한 값\(st·ot\)이 아니라 원본을 저장한다/);
+});
+
+test('변이⑩: 공수 줄 필터를 옛 `h < 0` 으로 되돌리면 배선⑨ 가 실패한다(0·24 초과가 통과한다)', () => {
+  const bad = mutate('if (h <= 0 || h > 24)', 'if (h < 0)', mainwin);
+  assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
+    /정본 범위[\s\S]*밖 줄을 버리지 않는다/);
+});
+
+test('변이⑪: 잔업 상한을 정본과 다르게 넓히면 배선⑨ 가 실패한다', () => {
+  const bad = mutate('overtime >= 0 && overtime <= 11', 'overtime >= 0 && overtime <= 24', mainwin);
+  assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
+    /잔업 검증이 정본 범위/);
 });

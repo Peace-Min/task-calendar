@@ -1,4 +1,4 @@
-// 휴지통(영구 삭제) — 호스트 게이트 · docs/TRASH-DELETE.md §8 계약 ①~⑥
+// 휴지통(영구 삭제) — 호스트 게이트 · docs/TRASH-DELETE.md §8 계약 ①~⑥(+ 2026-09-10 ⑦~⑨)
 //
 // 이 파일이 존재하는 이유:
 //   이 저장소는 지금까지 **아무것도 지우지 않는 앱**이었다. 숨김(is_active=0)만 있었고, 그 사실이
@@ -10,6 +10,10 @@
 //     ④ 활성 항목은 DELETE 에 닿지 않는다 + 거부 문구가 설계 문장 그대로다.
 //     ⑤ 이름 대조를 호스트도 한다(Ordinal · TRIM 없음).
 //     ⑥ 다섯 표의 DELETE 문이 **한 함수 안에만** 있고, 인력은 부속 2표를 먼저 지운다.
+//   2026-09-10 검토로 셋이 늘었다(전부 '조용히 엉뚱한 표를 건드리는' 한 종류의 결함이다):
+//     ⑦ 복구의 sort_order 재매김(MAX+10)은 **구분·상태에만** 있다(§11-1).
+//     ⑧ 복구는 is_active 를 잠근 채 읽고 **UPDATE 보다 먼저** 판정한다(이미 활성이면 거부).
+//     ⑨ 복구·삭제의 종류 switch 에 '기본값으로 아무 표나' 고르는 `default:` 가 없다.
 //
 //   ★ 관문 우회 금지 자체는 tests/admin-auth.test.mjs 가 형태로 훑는다(opener 집합·연결 개시 지점).
 //     여기서는 그 위에 얹히는 계약 — 권한 파일·정본 파생·거부 문구·삭제 순서 — 을 본다.
@@ -261,6 +265,65 @@ const checks = {
     assert.ok(/catch \(MySqlException mex\) when \(mex\.Number == 1451\)/.test(del),
       'FK 1451 을 따로 잡지 않는다 — "지우지 못했습니다: …" 같은 원문이 사용자에게 샌다(§4.3)');
   },
+
+  // ⑦ 복구의 sort_order 재매김은 **구분·상태에만** 있다(§11-1).
+  //    과제·인력·발주처에 재매김이 번지면 없는 컬럼을 건드리거나(과제·인력) 쓰지도 않는 서열을 흔든다.
+  //    반대로 구분·상태에서 빠지면 옛 순번을 들고 돌아와 활성끼리 겹친다(루프 I5 가 실측한 결함).
+  restoreReordersOnlyCodes(cs) {
+    const re = csMember(cs, 'RestoreTrashAsync(');
+    const lines = re.split('\n').filter((l) => /UPDATE\s+\w+\s+SET is_active=1/.test(l));
+    assert.strictEqual(lines.length, 5,
+      `복구 UPDATE 가 ${lines.length}개다 — 다섯 표가 한 갈래씩이어야 한다(측정 불가 ≠ 통과)`);
+    for (const l of lines) {
+      const tbl = /UPDATE\s+(\w+)\s+SET/.exec(l)[1];
+      const has = /COALESCE\(MAX\(sort_order\),0\)\+10/.test(l);
+      const should = tbl === 'section_code' || tbl === 'status_code';
+      assert.strictEqual(has, should, should
+        ? `${tbl} 복구에 sort_order 재매김(MAX+10)이 없다 — 옛 순번이 활성 목록 사이에 끼어든다(§11-1)`
+        : `${tbl} 복구가 sort_order 를 다시 매긴다 — 재매김은 구분·상태 코드에만 있는 규칙이다`);
+    }
+  },
+
+  // ⑧ 복구는 is_active 를 **잠근 채** 읽고 UPDATE 보다 먼저 판정한다(2026-09-10 검토 지적).
+  //    두 관리자가 같은 항목을 동시에 복구하면 뒤에 온 쪽이 이미 활성인 행에 UPDATE 를 걸고,
+  //    구분·상태는 그 자리에서 sort_order 를 MAX+10 으로 **다시** 매겨 멀쩡한 값이 맨 뒤로 튄다.
+  restoreChecksAlreadyActive(cs) {
+    const code = stripCs(cs);
+    const re = csMember(cs, 'RestoreTrashAsync(');
+    //  SQL 은 표·컬럼 이름을 이어 붙여 만든다(상수 조각) — 조각 사이에 따옴표가 끼므로 조각으로 본다.
+    assert.ok(/is_active AS act FROM/.test(re),
+      '복구가 잠근 SELECT 에서 is_active 를 읽지 않는다 — 이미 복구된 항목인지 알 길이 없다');
+    assert.ok(/FOR UPDATE/.test(re),
+      '복구가 대상 행을 FOR UPDATE 로 잠그지 않는다 — 판정과 갱신 사이에 남이 복구할 수 있다');
+    assert.ok(/if \(wasActive != 0\)/.test(re),
+      '복구에 "이미 활성인가" 판정이 없다(값 비교가 아니다)');
+    const guard = re.indexOf('TrashAlreadyActiveMsg');
+    const upd = re.search(/UPDATE\s+\w+\s+SET is_active=1/);
+    assert.ok(guard >= 0, '복구에 이미 활성 거부(TrashAlreadyActiveMsg)가 없다');
+    assert.ok(upd >= 0, '복구에 UPDATE 문이 없다(측정 불가 ≠ 통과)');
+    assert.ok(guard < upd,
+      '이미 활성 판정이 첫 UPDATE 보다 뒤에 있다 — 남이 이미 복구한 코드의 순번이 맨 뒤로 튄다');
+    assert.ok(/const string TrashAlreadyActiveMsg\s*=\s*"이미 복구된 항목입니다 — 목록을 새로고침합니다\."/.test(code),
+      '이미 복구됨 문구 상수가 설계 §4.3 과 다르다 — 실패가 아니라 "목록이 낡았다"고 말해야 한다');
+  },
+
+  // ⑨ 종류 switch 에 '기본값으로 아무 표나' 고르는 자리가 없다.
+  //    옛 `default:` 는 둘 다 status_code 였다 — 종류가 하나 늘고 한쪽만 안 고치면 **엉뚱한 표**가 복구·삭제된다.
+  kindSwitchHasNoSilentDefault(cs) {
+    for (const nm of ['RestoreTrashAsync', 'DeleteTrashAsync']) {
+      const b = csMember(cs, nm + '(');
+      const defaults = [...b.matchAll(/default:([\s\S]{0,160})/g)];
+      assert.ok(defaults.length >= 1, `${nm} 에서 종류 switch 의 default: 를 찾지 못했다(측정 불가 ≠ 통과)`);
+      for (const d of defaults) {
+        assert.ok(!/status_code/.test(d[1]),
+          `${nm} 의 default: 가 status_code 를 고른다 — 종류가 늘고 이 switch 만 안 고치면 상태 코드가 대신 바뀐다`);
+        assert.ok(/TrashKindMsg/.test(d[1]),
+          `${nm} 의 default: 가 TrashKindMsg 로 거부하지 않는다 — 되돌릴 수 없는 조작에 '기본값으로 아무거나'는 없다`);
+      }
+      assert.ok(/case "status":/.test(b),
+        `${nm} 가 status 를 이름으로 적지 않는다 — default: 에 기대는 순간 위 계약이 지킬 것을 잃는다`);
+    }
+  },
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -295,6 +358,18 @@ test('계약⑤: 이름 대조를 호스트도 한다 — Ordinal · TRIM 없음
 
 test('계약⑥: 다섯 표의 DELETE 는 한 함수 안에만 있고, 인력은 부속 2표를 먼저 지운다(§3.1)', () => {
   checks.deleteSqlLivesInOneFunction(pdb);
+});
+
+test('계약⑦: 복구의 sort_order 재매김(MAX+10)은 구분·상태에만 있다(§11-1)', () => {
+  checks.restoreReordersOnlyCodes(pdb);
+});
+
+test('계약⑧: 복구는 is_active 를 잠근 채 읽고 UPDATE 보다 먼저 판정한다(이미 복구된 항목 거부)', () => {
+  checks.restoreChecksAlreadyActive(pdb);
+});
+
+test("계약⑨: 복구·삭제의 종류 switch 에 '기본값으로 status_code' 가 없다", () => {
+  checks.kindSwitchHasNoSilentDefault(pdb);
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -398,4 +473,49 @@ test('변이⑥-b: 부속 2표를 app_user 뒤로 옮기면 계약⑥ 이 실패
   bad = mutate(bad, '                    if (n == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }',
                     PREF + '                    if (n == 0) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }');
   assert.throws(() => checks.deleteSqlLivesInOneFunction(bad), /app_user 보다 뒤에 지운다/);
+});
+
+test('변이⑦: 과제 복구에까지 sort_order 재매김을 번지게 하면 계약⑦ 이 실패한다', () => {
+  const bad = mutate(pdb,
+    '"UPDATE project SET is_active=1 WHERE uid=@k"',
+    '"UPDATE project SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM project) x) WHERE uid=@k"');
+  assert.throws(() => checks.restoreReordersOnlyCodes(bad), /project 복구가 sort_order 를 다시 매긴다/);
+  assert.doesNotThrow(() => checks.restoreReordersOnlyCodes(pdb));   // 통제군
+});
+
+test('변이⑦-b: 구분 복구에서 재매김을 빼면 계약⑦ 이 실패한다(옛 순번이 활성 사이에 끼어든다)', () => {
+  const bad = mutate(pdb,
+    '"UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE name=@k"',
+    '"UPDATE section_code SET is_active=1 WHERE name=@k"');
+  assert.throws(() => checks.restoreReordersOnlyCodes(bad), /section_code 복구에 sort_order 재매김/);
+});
+
+test('변이⑧: 이미 활성 판정을 지우면 계약⑧ 이 실패한다(남이 복구한 코드의 순번이 맨 뒤로 튄다)', () => {
+  const bad = mutate(pdb,
+    'if (wasActive != 0) { await tx.RollbackAsync(cts.Token); return (false, TrashAlreadyActiveMsg); }',
+    'if (false) { }');
+  assert.throws(() => checks.restoreChecksAlreadyActive(bad), /이미 활성 거부\(TrashAlreadyActiveMsg\)가 없다|값 비교가 아니다/);
+  assert.doesNotThrow(() => checks.restoreChecksAlreadyActive(pdb));   // 통제군
+});
+
+test('변이⑧-b: 잠근 SELECT 에서 is_active 를 빼면 계약⑧ 이 실패한다(판정의 근거가 사라진다)', () => {
+  const bad = mutate(pdb, ' AS nm, is_active AS act FROM ', ' AS nm FROM ');
+  assert.throws(() => checks.restoreChecksAlreadyActive(bad), /is_active 를 읽지 않는다/);
+});
+
+test('변이⑨: 복구의 default: 를 옛 status_code 로 되돌리면 계약⑨ 가 실패한다', () => {
+  const bad = mutate(pdb,
+    '                        case "status":   sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;\n' +
+    '                        default:         await tx.RollbackAsync(cts.Token); return (false, TrashKindMsg);',
+    '                        default:         sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;');
+  assert.throws(() => checks.kindSwitchHasNoSilentDefault(bad), /default: 가 status_code 를 고른다|status 를 이름으로 적지 않는다/);
+  assert.doesNotThrow(() => checks.kindSwitchHasNoSilentDefault(pdb));   // 통제군
+});
+
+test('변이⑨-b: 영구 삭제의 default: 를 옛 status_code 로 되돌리면 계약⑨ 가 실패한다', () => {
+  const bad = mutate(pdb,
+    '                        case "status":   delSql = "DELETE FROM status_code WHERE name=@k"; break;\n' +
+    '                        default:         await tx.RollbackAsync(cts.Token); return (false, TrashKindMsg);',
+    '                        default:         delSql = "DELETE FROM status_code WHERE name=@k"; break;');
+  assert.throws(() => checks.kindSwitchHasNoSilentDefault(bad), /default: 가 status_code 를 고른다|status 를 이름으로 적지 않는다/);
 });

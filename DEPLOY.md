@@ -215,6 +215,10 @@ ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 �
 - [ ] `latest.json`의 `version`/`file`이 실제 exe와 일치 (파일명 변경 금지)
 - [ ] 공유폴더(FTP)에 **두 파일 모두** 업로드
 - [ ] 배너 안내문 — `-Notes`를 줬거나, `RELEASE_NOTES.md`에 이번 버전 절이 있어 자동 추출됐는지(콘솔의 `* Notes(자동 …)` 줄로 확인. 둘 다 아니면 빈 채로 나간다)
+- [ ] **§0-5 GRANT 재적용 + `SHOW GRANTS` 로 일곱 표 DELETE 확인** — 스키마가 안 바뀐 판도 해당한다(§6-1 ★)
+- [ ] `TC_TEST_STRICT=1 node tests/run-tests.mjs` **exit 0** — skip 이 있으면 2(판정 없음)라 통과가 아니다. strict 는 skip 을 fail 로 올린다
+- [ ] `latest.json` 의 `sha256` = 실제 Setup exe 해시 (`Get-FileHash <exe> -Algorithm SHA256` 과 눈으로 대조)
+- [ ] 루프 5회 연속 규약 — `node tests/loop-user-admin.mjs` · `node tests/loop-trash.mjs` 를 **무작위 시드로 5회 연속 통과**(한 번이라도 실패하면 1부터 다시 센다. `tests/README.md` 의 두 절)
 
 ---
 
@@ -275,7 +279,8 @@ public const string UpdateSourceUrl = "ftp://<서버IP>/TaskCalendar/";   // 또
 
 ## 6. 다음 버전 낼 때
 
-1. **스키마 변경이 딸린 버전이면 서버 적용을 먼저** — 새 `migrate-*.sql`이 있는 릴리스는 §0(백업 → 적용 → `ExpectedSchemaVersion` 대조)을 끝낸 뒤에 아래로 간다. 위젯만 먼저 나가면 전량 교체가 막힌다.
+1. **스키마 변경 또는 권한(GRANT) 변경이 딸린 버전이면 서버 적용을 먼저** — 새 `migrate-*.sql`이 있는 릴리스는 §0(백업 → 적용 → `ExpectedSchemaVersion` 대조)을, **새 GRANT 가 필요한 릴리스는 §0-5**(일곱 표 DELETE 재적용)를 끝낸 뒤에 아래로 간다. 위젯만 먼저 나가면 전량 교체가 막힌다.
+   > ★ **스키마가 안 바뀌어도 §0 을 건너뛰면 안 되는 판이 있다.** v0.19.0(휴지통)이 그렇다 — `migrate-*.sql` 은 한 개도 없지만 §0-5 의 GRANT 를 다시 주지 않으면 **영구 삭제가 전부 ERROR 1142 로 죽는다**(2026-09-10 개발 DB 에서 실제로 났고 `loop-trash` 가 잡았다: [docs/TRASH-DELETE.md](docs/TRASH-DELETE.md) §11-2). 옛 문장은 "스키마 변경이 딸린 버전이면" 이라 **권한만 바뀐 판은 §0 을 통째로 건너뛰는 것으로 읽혔다** — 그게 그 사고의 원인이다.
 2. **버전 올림** — `widget/TaskCalendarWidget.csproj`의 `<Version>`을 올린다.
    - `<AssemblyVersion>`/`<FileVersion>`도 함께 맞춰 두면 깔끔하다(선택).
 3. **원클릭 빌드** — `installer\배포-빌드.cmd` 더블클릭 (필요 시 `-Notes "이번 버전 요약"`).
@@ -341,6 +346,35 @@ public const string UpdateSourceUrl = "ftp://<서버IP>/TaskCalendar/";   // 또
   2. 여건이 되면 **exe 코드 서명(Authenticode)** — 인증성의 정석.
 - 현재는 **소규모 신뢰 내부망** 전제. 규모가 커지거나 신뢰 경계가 넓어지면 위 통제를 먼저 적용한다.
 - 설정·로컬 파일(`%APPDATA%\TaskCalendar\`)은 업데이트가 건드리지 않는다(exe만 교체). **캘린더 데이터는 서버 DB**라 업데이트와 무관하다.
+
+---
+
+## 9. 정기 백업·복구 리허설 — 휴지통(영구 삭제) 도입 이후 필수
+
+**영구 삭제에는 되돌리기가 없다**([docs/TRASH-DELETE.md](docs/TRASH-DELETE.md) §7). 관리자가 이름을 그대로 입력해 지우면 그 행은 DB 에서 사라지고, 앱 어디에도 복원 경로가 없다. 그래서 v0.19.0 이후 **마지막 안전망은 백업 하나뿐**이다 — 그리고 백업은 **돌려 본 적이 있을 때만** 안전망이다.
+
+### 9-1. 정기 백업 등록 — `backup-taskmgr.ps1 -Install` (관리자 콘솔, 1회)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1 -Install     # 매주 일요일 03:00 · SYSTEM 계정
+powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1 -Status      # 등록 상태만 조회
+powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1 -Uninstall   # 등록 해제(백업 파일은 남긴다)
+```
+
+- 기본값은 `-BackupDir "D:\taskmgr-backup"`(★ C: 와 **다른 물리 볼륨**을 권장한다) · `-Keep 8`(주 1회 → 약 2개월) · `-DbName taskmgr`. `-Install` 은 **그 실행에 준 값 그대로** 등록하므로, 바꿀 값이 있으면 `-Install` 과 함께 준다.
+- 자격은 명령줄이 아니라 `%ProgramData%\taskmgr\backup-taskmgr.cnf` 에서 읽는다(`-CnfPath` 로 바꾼다). 파일이 없으면 만드는 법을 찍고 **코드 2** 로 끝난다 — 등록만 해 두고 `.cnf` 를 안 만들면 일요일마다 실패만 쌓인다.
+- **0 만 성공이다**(1=검증에 실패한 반쪽 백업 `.partial` · 2=설정 · 3=접속·권한 · 4=도구 없음 · 5=관리자 권한 필요). 종료코드 표의 정본은 스크립트 머리말이다.
+
+### 9-2. 복구 리허설 — `restore-taskmgr.ps1 -Grants`
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\restore-taskmgr.ps1 -Grants                 # 기본 대상은 라이브가 아닌 taskmgr_restore
+powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\restore-taskmgr.ps1 -Grants -DropTarget     # 리허설 뒷정리(표 단위 권한까지 회수)
+```
+
+- 검증(표·뷰·트리거·루틴 **이름 집합** + 표별 `COUNT(*)` + 앱 계정 스모크 조회)까지 통과해야 '복구되었다' 고 말할 수 있다. '명령이 안 죽었다' 와는 다른 말이다.
+- ★ **`-Grants` 가 스크립트 폴더에서 적용하는 것은 `db/deploy` 의 두 파일이다.** 세 번째 정본인 **비공개 `taskmgr-company-data\05-grants.sql`(`app_user` 의 SELECT·INSERT·UPDATE·DELETE)** 은 이 저장소에 없다 — 형제 폴더(`..\taskmgr-company-data`)에 있으면 스크립트가 찾아 적용하고, **없으면 경고를 찍고 넘어간다**(`-UserGrantsPath` 로 직접 지정할 수 있다). 빠뜨리면 표와 데이터는 다 있는데 **직원 등록·수정·퇴사와 휴지통의 인력 영구 삭제가 전부 ERROR 1142** 로 죽는다. §0-5 의 세 파일이 같은 목록이다.
+- 리허설이 끝나면 `SHOW GRANTS FOR 'taskmgr_app'@'%';` 로 **일곱 표 DELETE** 를 다시 확인한다(§0-5).
 
 ---
 

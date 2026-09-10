@@ -29,7 +29,11 @@
        라이브 DB 의 실제 값(information_schema.SCHEMATA)을 읽어 그대로 맞춘다
     7) mysql --default-character-set=utf8mb4 <TargetDb> < <덤프>   (대상 DB 인자를 반드시 준다)
     8) -Grants 면 create-app-user.sql + grants-calendar.sql 적용(두 파일은 DB 이름을 글자로
-       박아 두었다 — 대상이 다르면 임시 사본에서 이름만 바꿔 돌리고 REVOKE 문을 찍는다)
+       박아 두었다 — 대상이 다르면 임시 사본에서 이름만 바꿔 돌리고 REVOKE 문을 찍는다).
+       ★ 세 번째 정본 taskmgr-company-data\05-grants.sql(app_user 의 SELECT/INSERT/UPDATE/DELETE)은
+       **이 저장소에 없다**(비공개 형제 저장소). 형제 폴더에 있으면 함께 적용하고, 없으면 경고를
+       찍고 넘어간다 — 그 파일 없이 끝낸 복구본에서는 직원 등록·수정·퇴사와 휴지통의 인력
+       영구 삭제가 전부 ERROR 1142 로 죽는다(-UserGrantsPath 로 직접 지정할 수 있다)
     9) ★ 검증 — 표/트리거/뷰/루틴의 **이름 집합** · 표별 행 수 · 덤프 마감 표시 ·
        그리고 앱 계정 스모크 조회. 하나라도 어긋나면 실패(코드 1)
    10) -DropTarget 이면 뒷정리 — DROP DATABASE + 남은 표 단위 권한 REVOKE(아래 ⚠️)
@@ -134,7 +138,8 @@ param(
   [string]$CnfPath    = "",                        # 관리 계정 자격 파일. 비우면 물어봐서 임시로 만든다
   [string]$AdminUser  = "root",                    # -CnfPath 가 없을 때 물어볼 계정
   [string]$AppCnfPath = "",                        # 스모크용 앱 계정 자격 파일. 비우면 DeployConfig.cs 에서 읽는다
-  [string]$DeployConfigPath = ""                   # 비우면 <저장소>\widget\DeployConfig.cs
+  [string]$DeployConfigPath = "",                  # 비우면 <저장소>\widget\DeployConfig.cs
+  [string]$UserGrantsPath = ""                     # 비공개 05-grants.sql 경로. 비우면 형제 폴더에서 찾는다(8단계 ★)
 )
 
 $ErrorActionPreference = "Continue"
@@ -533,13 +538,80 @@ if($liveExists){
 # ============================================================================
 #  -WhatIf — 여기까지가 '읽기' 다. 계획만 찍고 끝낸다.
 # ============================================================================
+#  비공개 05-grants.sql — app_user 권한의 세 번째 정본 (8단계 ★)
+#
+#   ★ 왜 별도인가: 직원·조직 표(app_user·org_unit·title_code)와 그 권한은 회사 자료라
+#     비공개 형제 저장소 taskmgr-company-data 에 있다(tests/user-admin.test.mjs 머리말과 같은 사실).
+#     db\deploy 만으로 세운 서버는 캘린더는 돌지만 **직원 관리가 통째로 ERROR 1142 로 죽는다**
+#     (docs\USER-ADMIN.md §11-11). 휴지통(v0.19.0~)이 오면서 인력 영구 삭제까지 여기에 걸린다.
+#
+#   ★ 이 파일만은 DB 이름을 치환할 필요가 없다 — 안의 GRANT 가 CONCAT(..., DATABASE(), ...) 로
+#     **접속한 DB** 를 쓴다. 그래서 위 두 파일과 달리 임시 사본을 만들지 않고 그대로 돌린다.
+# ============================================================================
+function FindUserGrants(){
+  if($UserGrantsPath){
+    if(Test-Path $UserGrantsPath){ return (Resolve-Path $UserGrantsPath).Path }
+    return $null
+  }
+  $sd       = Split-Path -Parent $PSCommandPath                 # <저장소>\db\deploy
+  $repoRoot = Split-Path (Split-Path $sd -Parent) -Parent       # <저장소>
+  $cands = @(
+    (Join-Path (Split-Path $repoRoot -Parent) "taskmgr-company-data\05-grants.sql"),  # 형제 폴더(정본 배치)
+    (Join-Path $repoRoot "taskmgr-company-data\05-grants.sql")                        # 저장소 안에 반입해 둔 경우
+  )
+  foreach($c in $cands){ if(Test-Path $c){ return (Resolve-Path $c).Path } }
+  return $null
+}
+
+# 없을 때 사람에게 남기는 경고 — 화면과 복구방법.txt 두 곳에 **같은 말**을 적는다.
+#   화면은 스크롤로 사라지고, 복구를 실제로 하는 사람이 읽는 것은 백업 폴더의 복구방법.txt 다.
+$UserGrantsMark = "[05-grants] app_user 권한은 비공개 저장소에 있다"
+function UserGrantsWarnText(){
+  return @"
+$UserGrantsMark
+--------------------------------------------------------------------
+taskmgr-company-data\05-grants.sql 을 찾지 못했습니다(형제 폴더에 없음).
+이 파일은 app_user 표에 SELECT/INSERT/UPDATE/DELETE 를 주는 **세 번째 정본**이고
+이 저장소(db\deploy)에는 없습니다 — 비공개 저장소에서 따로 적용해야 합니다.
+
+  mysql -uroot -p <대상DB> < <비공개저장소>\05-grants.sql        (또는 그 저장소의 apply.cmd)
+
+적용하지 않으면 표와 데이터가 다 있어도 다음이 전부 ERROR 1142 로 죽습니다:
+  · 직원 등록 · 수정 · 퇴사 처리  (docs\USER-ADMIN.md §11-11)
+  · 휴지통의 인력 영구 삭제       (docs\TRASH-DELETE.md §3.3 · DEPLOY.md §0-5)
+확인: SHOW GRANTS FOR 'taskmgr_app'@'%';  -> app_user 에 DELETE 가 보여야 합니다.
+--------------------------------------------------------------------
+"@
+}
+
+# 복구방법.txt(백업 폴더 — backup-taskmgr.ps1 이 만든다)에 같은 경고를 **한 번만** 덧붙인다.
+#   ★ 새로 만들지는 않는다. 그 문서의 주인은 백업 스크립트고, 없는 폴더에 문서를 흩뿌리면
+#     '어느 것이 정본인가' 가 흐려진다. 있으면 덧붙이고, 없으면 화면 경고로 끝낸다.
+function WriteUserGrantsHowto(){
+  try{
+    $howto = Join-Path $BackupDir "복구방법.txt"
+    if(-not (Test-Path $howto)){ return }
+    $cur = [IO.File]::ReadAllText($howto)
+    if($cur.Contains($UserGrantsMark)){ return }
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($howto, $cur.TrimEnd() + "`r`n`r`n" + (UserGrantsWarnText) + "`r`n", $enc)
+    Info "복구방법.txt 에 같은 경고를 덧붙였습니다: $howto"
+  } catch { }
+}
+
+# ============================================================================
 if($WhatIf){
   Write-Host ""
   Write-Host "---- 계획 (-WhatIf: 아무것도 바꾸지 않습니다) ----"
   Write-Host "  1) 복구 전 안전망 : $TargetDb 가 있으면 $BackupDir\pre-restore-$TargetDb-<타임스탬프>.sql 로 덤프"
   Write-Host "  2) CREATE DATABASE IF NOT EXISTS ``$TargetDb`` CHARACTER SET $liveCharset COLLATE $liveCollate;"
   Write-Host "  3) mysql --default-character-set=utf8mb4 $TargetDb < `"$($dumpItem.FullName)`""
-  if($Grants){ Write-Host "  4) create-app-user.sql + grants-calendar.sql 을 $TargetDb 에 적용" }
+  if($Grants){
+    Write-Host "  4) create-app-user.sql + grants-calendar.sql 을 $TargetDb 에 적용"
+    $ugPlan = FindUserGrants
+    if($ugPlan){ Write-Host "     + $ugPlan  (비공개 05-grants.sql — app_user 쓰기 권한)" }
+    else       { Write-Host "     + (없음 — taskmgr-company-data\05-grants.sql 을 못 찾았습니다. app_user 쓰기 권한은 안 붙습니다)" }
+  }
   else       { Write-Host "  4) (건너뜀 — -Grants 를 주지 않았습니다. 권한 없이 복구하면 앱은 첫 조회에서 ERROR 1142 로 죽습니다)" }
   Write-Host "  5) 검증 — 표/뷰/트리거/루틴 이름 집합 · 표별 행 수 · 덤프 마감 표시 · 앱 계정 스모크 조회"
   if($DropTarget){ Write-Host "  6) DROP DATABASE ``$TargetDb`` + 남은 표 단위 권한 REVOKE" }
@@ -694,6 +766,23 @@ if($Grants){
       Die "권한 적용 중단 — 대상 DB '$TargetDb' 는 원인 확인용으로 남깁니다." $EXIT_CONN
     }
   }
+  # ★ 세 번째 정본 — 비공개 05-grants.sql(app_user 의 SELECT/INSERT/UPDATE/DELETE).
+  #   위 두 파일과 달리 DB 이름 치환이 없다: 그 파일의 GRANT 는 DATABASE() 를 쓴다.
+  $userGrants = FindUserGrants
+  if($userGrants){
+    Info "적용: $(Split-Path $userGrants -Leaf) -> $TargetDb   (비공개 05-grants.sql — app_user 쓰기 권한)"
+    cmd /c "`"$mysql`" `"--defaults-extra-file=$adminCnf`" --default-character-set=utf8mb4 `"$TargetDb`" < `"$userGrants`""
+    if($LASTEXITCODE -ne 0){
+      Bad "05-grants.sql 적용에 실패했습니다. 위 mysql 오류를 읽으세요."
+      Die "권한 적용 중단 — 대상 DB '$TargetDb' 는 원인 확인용으로 남깁니다." $EXIT_CONN
+    }
+  } else {
+    Write-Host ""
+    foreach($l in ((UserGrantsWarnText) -split "`r?`n")){ Warn $l }
+    WriteUserGrantsHowto
+    Write-Host ""
+  }
+
   Ok "계정·권한 재적용 완료 (복구방법.txt 4번)"
 
   if($TargetDb -ne $grantSchema){
@@ -712,6 +801,7 @@ if($Grants){
   Warn "  덤프에는 계정도 권한도 들어 있지 않습니다(복구방법.txt 4번). 표와 데이터가 다 있어도"
   Warn "  앱은 첫 조회에서 죽습니다 — ERROR 1044(그 DB 권한이 0줄) 또는 1142(그 표 권한만 없음)."
   Warn "  아래 스모크가 그것을 실제로 확인합니다."
+  Warn "  ★ -Grants 를 주더라도 app_user 권한(taskmgr-company-data\05-grants.sql)은 비공개 저장소에 있습니다 — 8단계 ★."
 }
 
 # ============================================================================

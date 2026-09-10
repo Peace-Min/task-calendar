@@ -2008,10 +2008,16 @@ namespace TaskCalendarWidget
         {
             string? loginId = CurrentLoginId();
             var hours = ParseHoursJson(hoursJson);
+            //  ★ 쓰기 직전 재검증(2026-09-09 CHECK 도메인 · chk_crd_status / chk_crd_overtime).
+            //    값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**된다 — 전송은 이미 성공한 뒤라
+            //    가장 나쁜 실패다(ReportDb 클래스 주석). 그래서 도메인 밖 값은 여기서 안전한 값으로 내리고,
+            //    무엇을 내렸는지 로그에 남긴다(사이트로 나간 값은 이미 정해졌다 — 여기서 바꾸는 것은 기록뿐이다).
+            string st = SafeReportStatus(status);
+            int ot = SafeOvertime(overtime);
             var db = new ReportDb(Log);
             _ = Task.Run(async () =>
             {
-                try { await db.SaveDailyAsync(loginId, y, m, d, status, overtime, content, hours); }
+                try { await db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours); }
                 catch (Exception ex) { Log("보고 기록 저장 예외(일간): " + ex.Message); }
             });
         }
@@ -2195,6 +2201,33 @@ namespace TaskCalendarWidget
             try { return UserSession.Load(_dataDir, Log)?.LoginId; } catch { return null; }
         }
 
+        //  근태 코드 집합 — cal_report_daily 의 CHECK(chk_crd_status)와 **같은 집합**이어야 한다.
+        //    ★ 값을 여기 박아 두는 것이 계약이 아니라 '정본과 같다'가 계약이다 —
+        //      tests/report-wiring.test.mjs 가 db/deploy/schema-calendar.sql 의 chk_crd_status 를 파싱해
+        //      이 배열과 대조한다(정본이 움직이면 여기도 함께 움직여야 한다). ''(빈 값) = 미기록.
+        private static readonly string[] ReportStatusCodes =
+        {
+            "", "1", "2", "3", "4", "5", "6", "7", "9", "10", "11", "12",
+        };
+
+        //  근태 코드 재검증 — 집합 밖이면 ''(미기록)으로 내린다. 미기록은 이 앱이 이미 쓰는 값이라
+        //    기록이 '거짓말'이 되지 않는다(사이트의 기존 근태를 건드리지 않는다는 규약과 같은 값).
+        private string SafeReportStatus(string? status)
+        {
+            string v = (status ?? "").Trim();
+            if (Array.IndexOf(ReportStatusCodes, v) >= 0) return v;
+            Log("보고 기록: 근태 코드가 허용 집합 밖이라 미기록('')으로 내렸다 — 받은 값 [" + v + "]");
+            return "";
+        }
+
+        //  잔업 시간 재검증 — chk_crd_overtime 은 0~11 이다. 밖이면 0(잔업 없음)으로 내린다.
+        private int SafeOvertime(int overtime)
+        {
+            if (overtime >= 0 && overtime <= 11) return overtime;
+            Log("보고 기록: 잔업 시간이 허용 범위(0~11) 밖이라 0 으로 내렸다 — 받은 값 " + overtime);
+            return 0;
+        }
+
         //  웹이 보낸 과제별 시간 배열 → ReportHourLine 목록.
         //  ★ cat_no 는 채우지 않는다(null). 앱은 아직 XML 을 쓰므로 cal_category.cat_no 를 모른다.
         //    진실은 task_name 이고 cat_no 는 참조일 뿐이라 기록은 이대로도 완전하다(§5.9.6).
@@ -2220,7 +2253,15 @@ namespace TaskCalendarWidget
                         if (hv.ValueKind == JsonValueKind.Number) hv.TryGetDecimal(out h);
                         else if (hv.ValueKind == JsonValueKind.String) decimal.TryParse(hv.GetString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out h);
                     }
-                    if (h < 0) continue;
+                    //  ★ chk_crh_hours 는 `hours > 0 AND hours <= 24` 다. 범위 밖 줄이 하나라도 섞이면 3819 로
+                    //    **그 날 보고 저장 트랜잭션 전체**가 롤백된다(전송은 이미 나간 뒤다). 줄 하나를 버리는 쪽이 낫다 —
+                    //    ReportDb 가 저장 직전에 같은 판정을 한 번 더 하지만, 걸러야 할 자리는 값이 들어오는 여기다.
+                    if (h <= 0 || h > 24)
+                    {
+                        Log("보고 시간줄 제외(허용 범위 0 초과 ~ 24 이하 밖): " + name.Trim() + " " +
+                            h.ToString(System.Globalization.CultureInfo.InvariantCulture) + "시간");
+                        continue;
+                    }
                     list.Add(new ReportHourLine { TaskName = name.Trim(), CatNo = null, Hours = h });
                 }
             }

@@ -400,7 +400,7 @@ const checks = {
       assert.ok(edit.includes(k + ":'" + ko + "'"), `edit_role 의 ${k} 문구가 단축형이 아니다(기대: ${ko})`);
     }
     const view = constObj(source, 'US_VIEW_SCOPE');
-    for (const [k, ko] of [['all', '전체 — 모든 구성원'], ['unit_tree', '소속 조직 — 내 부서와 하위'], ['self', '본인만']]) {
+    for (const [k, ko] of [['all', '전체 — 모든 구성원'], ['unit_tree', '소속 조직 — 본인 부서와 하위'], ['self', '본인만']]) {
       assert.ok(view.includes(k + ":'" + ko + "'"), `view_scope 의 ${k} 문구가 다르다(기대: ${ko})`);
     }
     for (const old of ['과제 추가·수정·삭제 가능', '과제 추가·수정 가능', '조회만 가능']) {
@@ -845,7 +845,10 @@ const checks = {
   membersSoonHint(source) {
     const md = membersModalMarkup(source);
     assert.ok(/<div class="set-hint" id="mbSoon">/.test(md), '#mbSoon 예고 줄이 없다');
-    assert.ok(/준비 중/.test(md), '#mbSoon 이 「준비 중」이라고 말하지 않는다 — 곧 되는 줄 알고 기다리게 된다');
+    //  ★ 2026-09-10: #peerModal 이 실제로 열린 지 오래인데 예고가 「준비 중」으로 남아 있었다.
+    //    이제 말해야 할 것은 '무엇이 열리는가'다 — 읽기 전용 열람이라는 사실.
+    assert.ok(/읽기 전용/.test(md), '#mbSoon 이 「읽기 전용」 열람임을 말하지 않는다 — 무엇이 열리는지 알 수 없다');
+    assert.ok(!/준비 중/.test(md), '#mbSoon 에 「준비 중」 예고가 남아 있다 — 이미 되는 기능을 안 된다고 말한다');
     const iSearch = md.indexOf('id="mbSearch"'), iSoon = md.indexOf('id="mbSoon"'), iList = md.indexOf('id="mbList"');
     assert.ok(iSearch >= 0 && iSoon > iSearch && iList > iSoon,
       '#mbSoon 이 검색칸 아래 · 목록 위가 아니다 — 누르기 전에 눈에 들어오는 자리여야 한다');
@@ -1835,7 +1838,7 @@ if (!JSDOM) {
       assert.ok(outside, '일정 열람 범위 밖 사람이 명부에서 빠졌다 — 명부는 전원이다');
       assert.strictEqual(outside.tagName, 'DIV', '일정을 볼 수 없는 사람의 행이 눌린다');
       assert.ok(!/· 나/.test(outside.textContent), '남의 행에 꼬리표가 붙었다 — 그냥 안 눌리는 줄이어야 한다');
-      assert.ok(/준비 중/.test(soonText()), `누를 행이 43개인데 예고가 없다: ${soonText()}`);
+      assert.ok(/읽기 전용/.test(soonText()), `누를 행이 43개인데 예고가 없다: ${soonText()}`);
       assert.ok(/^일정 열람 범위: 소속 조직/.test(txt('mbScope')), `범위 줄 앞머리가 다르다: ${txt('mbScope')}`);
     });
 
@@ -1853,7 +1856,7 @@ if (!JSDOM) {
       node('SW 3팀').click();
       assert.strictEqual(rows(), 10, `SW 3팀 10명으로 좁혀지지 않았다: ${rows()}`);
       assert.strictEqual(linkRows().length, 10, 'SW 3팀 전원이 눌려야 한다');
-      assert.ok(/준비 중/.test(soonText()), `누를 행이 돌아왔는데 예고가 없다: ${soonText()}`);
+      assert.ok(/읽기 전용/.test(soonText()), `누를 행이 돌아왔는데 예고가 없다: ${soonText()}`);
     });
 
     test('구성원(jsdom): 검색은 현재 서브트리 안에서만 — 0건이면 빈 안내', () => {
@@ -1952,7 +1955,7 @@ if (!JSDOM) {
       assert.ok(!w.document.getElementById('usMembersSec').classList.contains('hidden'), '로그인했는데 구성원 진입점이 뜨지 않는다');
     });
 
-    // ── 행 클릭 진입점(준비 중) ────────────────────────────────────────
+    // ── 행 클릭 진입점(읽기 전용 열람) ────────────────────────────────
     // 실제 일정 열람은 아직 없다(DB에 일정 테이블이 없다). 여기서 보는 건 '진입점의 모양'뿐이다:
     // 누를 수 있는 행 / 없는 행이 갈리는가, 눌렀을 때 딱 안내만 뜨는가.
 
@@ -1986,8 +1989,8 @@ if (!JSDOM) {
       assert.ok(!/· /.test(hidden.textContent.replace(' · 책임연구원', '')),
         '못 보는 행에 별도 꼬리표가 붙었다 — 꼬리표 자리는 「· 나」 하나뿐이다');
       assert.ok(!w.document.getElementById('mbSoon').classList.contains('hidden'),
-        '누를 수 있는 행이 1개인데 「준비 중」 예고가 감춰졌다');
-      assert.ok(/준비 중/.test(soonText()), `누를 행이 있는데 권한 없음 문구가 떴다: ${soonText()}`);
+        '누를 수 있는 행이 1개인데 열람 예고가 감춰졌다');
+      assert.ok(/읽기 전용/.test(soonText()), `누를 행이 있는데 권한 없음 문구가 떴다: ${soonText()}`);
     });
 
     test('구성원(jsdom) ㉟: 행을 누르면 열람이 열리고 login_id 로 조회한다 — 명부는 그대로', () => {

@@ -10,7 +10,14 @@
  * 무엇을 하나:
  *   이미 떠 있는 위젯(TC_DEBUG_PORT=9222)에 CDP 로 붙어, **실제 화면의 함수·DOM 을 그대로 써서**
  *   직원 등록 → 수정 → 열람범위 → 권한 → 순서 → 퇴사 → 복구 → 잠금 방지 → 검증 → 비관리자 뷰까지
- *   한 라운드(C01~C16)를 왕복하고, **매 케이스 뒤에 MySQL 을 직접 읽어 불변식 다섯**을 본다.
+ *   한 라운드(C01~C21)를 왕복하고, **매 케이스 뒤에 MySQL 을 직접 읽어 불변식 다섯**을 본다.
+ *
+ *   ★ 2026-09-10(3차) 호스트·화면이 셋 바뀌어 케이스가 다섯 늘었다:
+ *     · `SaveUserOrderAsync` 가 **목록 밖 사람의 sort_order 를 NULL 로 민다**(§7-1a 닫힘) → C15 가
+ *       '보고만' 하던 자리에서 **진짜 판정**으로 올라섰다(퇴사자 서열 NULL · NULL 은 명부 맨 뒤).
+ *     · 순서 편집 중 도착한 **무관한 명부 푸시**를 미뤄 둔다(`__uaPendingData` · `uaFlushPending`) → C20.
+ *     · ▲▼ 가 스크롤 자리와 포커스를 지킨다(`uaMove`) → C21. 검색칸 잠금은 C18, 닫기 되돌리기는 C19.
+ *     · 마지막 관리자 규칙(§4.4-3)이 앱 경로로 어디까지 닿는지 → C17(결론은 그 케이스 머리말에).
  *
  *   ★★ 2026-09-10 사용자 결정으로 화면이 둘로 갈렸다:
  *     · 「구성원 보기」(#membersModal, openMembers) = **순수 보기**. 관리자에게도 편집 컨트롤이 없다.
@@ -506,6 +513,46 @@ async function setInactiveView(on) {
   return s;
 }
 
+/* ── 순서 편집 손잡이 ──────────────────────────────────────────────────────
+ *  ★ 전부 **실제 버튼 클릭**이다. uaOrderToggle() 을 직접 부르면 막대를 다시 그리는 경로(uaAdminBar)와
+ *    버튼이 실제로 서 있는지가 함께 시험되지 않는다 — 그건 C18~C21 이 보려는 바로 그 자리다.               */
+async function orderOn() {
+  const t = await ev(`(function(){var b=document.getElementById('uaOrderEdit'); if(!b||b.disabled) return false; b.click(); return true;})()`);
+  if (!t) return null;
+  return await waitPage((x) => x.order === true, { timeout: 8000 });
+}
+async function orderCancel() {
+  const t = await ev(`(function(){var b=document.getElementById('uaOrderCancel'); if(!b) return false; b.click(); return true;})()`);
+  if (!t) return null;
+  return await waitPage((x) => x.order === false, { timeout: 8000 });
+}
+/** 「순서 저장」 클릭 → 회신까지. 반환은 send() 와 같은 {ok,msg} 모양이다. */
+async function orderSave() {
+  const b0 = await pstate();
+  const t = await ev(`(function(){var b=document.getElementById('uaOrderSave'); if(!b) return false; b.click(); return true;})()`);
+  if (!t) return { ok: false, msg: '「순서 저장」 버튼이 없다' };
+  const sv = await waitPage((x) => x.r > b0.r, { timeout: 15000 });
+  if (!sv) return { ok: false, msg: '순서 저장 회신이 오지 않았다' };
+  const rep = await evj(`JSON.stringify(__ua.replies[__ua.replies.length-1])`);
+  if (rep.ok) await waitPage((x) => x.a > b0.a, { timeout: 10000 });
+  await waitPage((x) => !x.saving && !x.order, { timeout: 8000 });
+  return rep;
+}
+/** 검색칸 한 덩어리 — 값·잠금·보이는 수·전체 수. 넷이 한 판정에 함께 쓰인다(§11-8). */
+const searchState = () => evj(`JSON.stringify((function(){
+  var q = document.getElementById('uaSearch');
+  return { val: q ? String(q.value) : null, dis: q ? !!q.disabled : null,
+           vis: (typeof uaVisible === 'function') ? uaVisible().length : -1, n: __uaMembers.length };
+})())`);
+/** 검색어를 실제로 친다(input 이벤트까지 — uaFilter 가 그 이벤트로 돈다) */
+const typeSearch = (t) => ev(`(function(){var q=document.getElementById('uaSearch'); if(!q) return false;
+  q.value=${JSON.stringify(String(t))}; q.dispatchEvent(new Event('input',{bubbles:true})); return true;})()`);
+/** 관리자 막대의 안내 문구 전부(둘 이상일 수 있다 — 순서 편집 안내 + 미뤄 둔 갱신 안내) */
+const barHints = () => ev(`Array.prototype.map.call(document.querySelectorAll('#uaAdmin .mba-hint'), function(e){ return String(e.textContent||''); }).join(' | ')`);
+/** 활성자만 sort_order 순으로 — DB 가 아는 '화면에 나올 순서'다(퇴사자 보기 OFF 기준). */
+const dbActiveOrder = (snap) => snap.users.filter((u) => u.active)
+  .slice().sort((x, y) => (x.sort ?? 1e9) - (y.sort ?? 1e9)).map((u) => u.uid);
+
 /* ────────────────────────────── 7. 본체 ────────────────────────────── */
 
 async function main() {
@@ -637,6 +684,67 @@ async function main() {
     }
   });
 
+  /* ── C17 마지막 관리자 규칙(§4.4-3) — 앱 경로로 어디까지 닿는가 ───────── */
+  //  ★★ 결론부터 적는다(읽는 사람이 케이스 이름만 보고 '왜 자기 퇴사를 보나' 하지 않도록):
+  //    호스트 판정은 두 곳에서 **글자까지 같다**(ProjectDb.UpsertUserAsync ③ · SetUserActiveAsync (3)):
+  //        대상이 admin && 대상이 활성 && LockedActiveAdminCountAsync(conn,tx) <= 1
+  //    그런데 요청을 보내려면 **행위자 자신이 활성 admin** 이어야 관문(OpenAdminAsync)을 통과한다.
+  //    · 대상이 **남**이면 행위자 + 대상 = 최소 2 → 수 조건이 참이 될 수 없다.
+  //    · 대상이 **자기 자신**이면 수가 1 일 수 있지만, 그때는 §4.4-1(자기 퇴사)·§4.4-2(자기 권한)가
+  //      **먼저** 거부한다(코드 순서: 자기 규칙이 위, 마지막 관리자 규칙이 아래).
+  //    남는 경로는 관리자 둘이 **동시에** 서로를 강등하는 경합뿐이고 — 그래서 그 COUNT 가 FOR UPDATE 다 —
+  //    이 루프는 그 경합을 결정론적으로 세울 수 없다. 그래서 이 케이스가 실제로 증명하는 것은 둘이다:
+  //      ① 규칙이 **과잉 차단하지 않는다**(관리자 둘일 때 남을 강등하는 것은 성공한다)
+  //      ② 활성 admin 이 하나뿐인 순간에도 **자기 규칙이 먼저** 선다(문구가 §4.4-1 이다)
+  //    나머지(경합 분기)는 정적 계약으로 남긴다 — USER-ADMIN §11-24.
+  const AD = { lid: tmpId(), uid: 0 };
+  await runCase('C17', '마지막 관리자 규칙(§4.4-3) — 과잉 차단 없음 + 자기 규칙이 먼저다', async () => {
+    //  ① 대역 관리자 하나(zzU) — 활성 admin 을 2 로 만든다. 실 관리자는 절대 건드리지 않는다.
+    const mk = await send({
+      cmd: 'saveUser', userId: 0, loginId: AD.lid, name: AD.lid, title: T1,
+      orgId: null, viewScope: 'self', editRole: 'admin',
+    });
+    if (!okq('C17 대역 관리자 등록 성공', mk.ok, mk.msg)) return;
+    const made = dbSnap('C17 등록 확인').users.find((u) => u.loginId === AD.lid);
+    if (!okq('C17 대역 관리자가 DB 에 admin/활성으로 앉았다',
+      !!made && made.editRole === 'admin' && made.active === true,
+      made ? `${made.editRole}/${made.active}` : '행 없음')) return;
+    AD.uid = made.uid; madeUids.add(AD.uid); pendingOrder.add(AD.uid);
+    const n2 = Number(sql(`SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1`, { what: 'C17 admin 수' })[0][0]);
+    okq('C17 활성 admin 이 2 가 됐다', n2 === 2, `실제 ${n2}`);
+
+    //  ② 관리자가 둘이면 **남을 강등하는 것은 성공해야 한다** — 규칙이 과잉 차단하지 않는다는 증명.
+    const dn = await send({
+      cmd: 'saveUser', userId: AD.uid, loginId: AD.lid, name: AD.lid, title: T1,
+      orgId: null, viewScope: 'self', editRole: 'viewer',
+    });
+    okq('C17 관리자가 둘일 때 남(admin)의 강등은 성공한다(§4.4-3 은 과잉 차단하지 않는다)', dn.ok === true, dn.msg);
+    const aft = dbSnap('C17 강등 확인').byId.get(AD.uid);
+    okq('C17 DB edit_role=viewer 로 내려갔다', !!aft && aft.editRole === 'viewer', aft ? aft.editRole : '행 없음');
+
+    //  ③ 이제 활성 admin 은 로그인 계정 하나뿐이다 — 그 순간 자기 퇴사를 시도한다.
+    //     §4.4-3 의 수 조건(<=1)이 **이미 참**인데도 문구는 §4.4-1 이어야 한다(순서가 뒤바뀌지 않았다).
+    const admins = sql(`SELECT login_id FROM app_user WHERE edit_role='admin' AND is_active=1`,
+      { what: 'C17 활성 admin 목록' }).map((r) => r[0]);
+    if (admins.length !== 1 || admins[0] !== ME) {
+      //  ★ 실 관리자가 더 있으면 '수 1' 을 만들 길이 없다 — 남의 권한을 내리는 짓은 하지 않는다.
+      skip('C17-③', `활성 admin 이 ${admins.length}명(${admins.join(', ')}) — 실 관리자를 내리지 않으므로 '수 1' 상황을 만들 수 없다`);
+      return;
+    }
+    okq('C17 활성 admin 이 로그인 계정 하나뿐이다(§4.4-3 의 수 조건이 참인 순간)', true);
+    const rep = await send({ cmd: 'setUserActive', userId: meRow.uid, active: false }, { expectApply: false });
+    okq('C17 거부됐다', rep.ok === false, `ok=${rep.ok}`);
+    okq('C17 문구는 §4.4-1(자기 퇴사)이다 — 자기 규칙이 마지막 관리자 규칙보다 앞이다',
+      rep.msg === '자기 계정은 퇴사 처리할 수 없습니다.', JSON.stringify(rep.msg));
+    const me2 = dbSnap('C17 확인').byId.get(meRow.uid);
+    okq('C17 DB 불변(본인 admin/활성 유지)', !!me2 && me2.editRole === 'admin' && me2.active === true,
+      me2 ? `${me2.editRole}/${me2.active}` : '행 없음');
+    note('C17 증명한 것: ① 과잉 차단 없음 ② 자기 규칙이 먼저. 증명하지 못한 것: §4.4-3 자체의 발화 — ' +
+      '앱 경로로는 대상이 남이면 수가 2 이상이고 대상이 자기면 §4.4-1·2 가 먼저 막아, 남는 경로는 ' +
+      '관리자 둘이 동시에 서로를 강등하는 **경합**뿐이다(그래서 그 COUNT 가 FOR UPDATE 다). ' +
+      '이 루프는 그 경합을 결정론적으로 세울 수 없어 정적 계약으로 남긴다 — USER-ADMIN §11-24.');
+  });
+
   /* ── C05 편집 권한 viewer → editor → admin (대상은 zzU · 본인 아님) ──── */
   await runCase('C05', '편집 권한 viewer → editor → admin', async () => {
     for (const role of ['viewer', 'editor', 'admin']) {
@@ -694,6 +802,192 @@ async function main() {
     note('I4 기대값 재기준: 순서 저장이 전원의 sort_order 를 다시 썼다(종료 시 원본 복원 후 전량 대조)');
   });
 
+  /* ── C18 검색 + 순서 편집(§11-8) ───────────────────────────────────── */
+  //  ★ 왜 여기서 보나: 걸러진 목록에서 ▲▼ 를 누르면 '보이지 않는 사람 위로' 올라가는 셈이라 결과를
+  //    예측할 수 없다. 그래서 순서 편집을 켜면 검색어를 **비우고 칸을 잠근다**. 잠금 해제가 한 곳
+  //    (uaOrderReset)에 모여 있는지는 **나가는 길 둘(취소·저장)** 을 모두 밟아야 드러난다.
+  await runCase('C18', '검색 + 순서 편집(검색칸 잠금 · 전 명부 펼침 · 두 경로 모두 해제)', async () => {
+    if (!okq('C18 시작 시 순서 편집이 꺼져 있다', (await pstate()).order === false)) return;
+    if (!okq('C18 검색어 입력', (await typeSearch('김')) === true)) return;
+    const f = await searchState();
+    okq('C18 검색이 목록을 줄였다(전제 — 안 줄면 이 케이스는 아무것도 증명하지 못한다)',
+      f.val === '김' && f.vis < f.n, JSON.stringify(f));
+
+    //  ① 켜면: 검색어가 비고, 칸이 잠기고, 보이는 목록 = 전 명부.
+    if (!okq('C18 「순서 편집」 진입', !!(await orderOn()))) return;
+    const on = await searchState();
+    okq('C18 검색어가 비워졌다', on.val === '', JSON.stringify(on.val));
+    okq('C18 검색칸이 잠겼다', on.dis === true, String(on.dis));
+    okq('C18 보이는 목록 = 전 명부', on.vis === on.n, `${on.vis} / ${on.n}`);
+    const lines = (await pstate()).lines;
+    okq('C18 그려진 행 수도 전 명부와 같다', lines === on.n, `행 ${lines} / 명부 ${on.n}`);
+
+    //  ② 나가는 길 ㉠ [취소].
+    if (!okq('C18 「취소」로 순서 편집 종료', !!(await orderCancel()))) return;
+    okq('C18 취소 뒤 검색칸이 다시 열린다', (await searchState()).dis === false);
+
+    //  ③ 나가는 길 ㉡ [순서 저장] — 이동이 없어도 잠금은 풀려야 한다.
+    if (!okq('C18 「순서 편집」 재진입', !!(await orderOn()))) return;
+    const rep = await orderSave();
+    if (!okq('C18 이동 없이 「순서 저장」 성공', rep.ok === true, rep.msg)) return;
+    okq('C18 저장 뒤 검색칸이 다시 열린다', (await searchState()).dis === false);
+    okq('C18 저장 뒤 순서 편집이 꺼졌다', (await pstate()).order === false);
+
+    const snap = dbSnap('C18 확인');
+    const act = snap.users.filter((u) => u.active).slice().sort((x, y) => (x.sort ?? 1e9) - (y.sort ?? 1e9));
+    okq('C18 활성 전원이 10 간격으로 다시 매겨졌다', act.every((u, i) => u.sort === (i + 1) * 10),
+      act.slice(0, 6).map((u) => u.sort).join(','));
+    pendingOrder.clear();
+    syncExpect(snap);
+    note('I4 기대값 재기준: C18 의 순서 저장이 전원의 sort_order 를 다시 썼다');
+  });
+
+  /* ── C19 순서 편집 중 닫기(× · Esc)는 저장하지 않은 이동을 버린다 ────── */
+  //  ★ 닫기는 '확정'이 아니다. 화면을 닫고 다시 열면 openUserAdmin 이 호스트에서 새로 읽으므로
+  //    옮겨만 두고 닫은 순서는 **없던 일**이 되어야 한다. 나가는 길이 둘(× · Esc)이라 둘 다 밟는다.
+  await runCase('C19', '순서 편집 중 × / Esc 로 닫으면 이동이 되돌아간다', async () => {
+    const pre = dbSnap('C19 전제');
+    if (!okq('C19 전제: 활성 전원이 서열 숫자를 갖는다(순서 비교가 모호하지 않다)',
+      pre.users.filter((u) => u.active && u.sort === null).length === 0)) return;
+    const base = dbActiveOrder(pre);
+
+    for (const [how, closeJs] of [
+      ['×', `(function(){var b=document.querySelector('#userAdminModal [data-close]'); if(!b) return false; b.click(); return true;})()`],
+      ['Esc', `(document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})), true)`],
+    ]) {
+      if (!okq(`C19 「순서 편집」 진입(${how})`, !!(await orderOn()))) return;
+      const before = await screenIds();
+      const moved = await evj(`JSON.stringify((function(){var n=0;
+        for(var i=0;i<2;i++){ var b=document.querySelector('#uaList [data-uop="up"][data-uid="${A.uid}"]');
+          if(!b || b.disabled) break; b.click(); n++; }
+        return n;})())`);
+      const after = await screenIds();
+      if (!okq(`C19 ▲ 로 화면 순서가 실제로 바뀌었다(${how} · ${moved}회)`,
+        moved > 0 && JSON.stringify(before) !== JSON.stringify(after), `이동 ${moved}회`)) return;
+
+      if (!okq(`C19 모달 닫기 실행(${how})`, (await ev(closeJs)) === true)) return;
+      if (!okq(`C19 「구성원 편집」이 닫혔다(${how})`,
+        !!(await waitPage((x) => x.uaOpen === false, { timeout: 8000 })))) return;
+
+      await ev(`openUserAdmin()`);
+      const re = await waitPage((x) => x.uaOpen && !x.busy && x.n > 0, { timeout: 20000 });
+      if (!okq(`C19 다시 열렸다(${how})`, !!re)) return;
+      okq(`C19 순서 편집이 꺼진 채로 열린다(${how})`, re.order === false, String(re.order));
+      okq(`C19 검색칸이 잠기지 않았다(${how})`, (await searchState()).dis === false);
+      const now = await screenIds();
+      okq(`C19 화면 순서 = DB 순서 — 저장하지 않은 이동은 버려졌다(${how})`,
+        JSON.stringify(now) === JSON.stringify(base),
+        `화면 ${now.slice(0, 6).join(',')} / DB ${base.slice(0, 6).join(',')}`);
+      okq(`C19 DB 도 그대로다(${how})`, JSON.stringify(dbActiveOrder(dbSnap(`C19 ${how} 확인`))) === JSON.stringify(base));
+    }
+  });
+
+  /* ── C20 순서 편집 중 도착한 무관한 명부 푸시 ──────────────────────── */
+  //  ★ 다른 관리자의 저장·휴지통 복구가 그 순간 명부를 밀면, 예전에는 편집 중인 순서가 통째로 날아갔다.
+  //    지금은 미뤄 두고(__uaPendingData) 편집을 마칠 때 반영한다 — 그리고 **미뤄 뒀다고 말한다**.
+  //    말하지 않으면 관리자는 자기 화면이 낡은 줄 모른 채 순서를 정한다.
+  await runCase('C20', '순서 편집 중 무관한 푸시 — 미뤄 두고, 말하고, 마칠 때 반영', async () => {
+    if (!okq('C20 「순서 편집」 진입', !!(await orderOn()))) return;
+    const before = await screenIds();
+    const moved = await evj(`JSON.stringify((function(){
+      var b=document.querySelector('#uaList [data-uop="up"][data-uid="${A.uid}"]');
+      if(!b || b.disabled) return 0; b.click(); return 1;})())`);
+    const afterMove = await screenIds();
+    if (!okq('C20 ▲ 한 번으로 화면 순서가 바뀌었다',
+      moved === 1 && JSON.stringify(before) !== JSON.stringify(afterMove), `이동 ${moved}회`)) return;
+
+    //  ★ 다른 zzU(B)의 **이름만** 바꾼다. 나머지 필드는 DB 가 지금 아는 값을 그대로 되돌려 보낸다 —
+    //    권한을 흘려 바꾸면 뒤 케이스(C05 가 세운 admin 수 · C13 의 전제)가 조용히 무너진다.
+    const cur = dbSnap('C20 전').byId.get(B.uid);
+    if (!okq('C20 대상(B) 행을 읽었다', !!cur)) return;
+    const newName = B.lid + '_p20';
+    const rep = await send({
+      cmd: 'saveUser', userId: B.uid, loginId: cur.loginId, name: newName, title: cur.title,
+      orgId: cur.orgId, viewScope: cur.viewScope, editRole: cur.editRole,
+    });
+    if (!okq('C20 무관한 저장이 성공했다(호스트가 곧바로 명부를 민다)', rep.ok === true, rep.msg)) return;
+
+    const s = await pstate();
+    okq('C20 순서 편집이 유지된다(푸시가 편집을 끝내지 않는다)', s.order === true, String(s.order));
+    okq('C20 옮겨 둔 화면 순서가 그대로다',
+      JSON.stringify(await screenIds()) === JSON.stringify(afterMove), '푸시가 편집 중인 순서를 덮었다');
+    const hint = await barHints();
+    okq('C20 「명부가 갱신되었습니다」 안내가 막대에 선다', /명부가 갱신되었습니다/.test(String(hint)), JSON.stringify(hint));
+    okq('C20 푸시가 __uaPendingData 에 미뤄져 있다', (await ev(`!!__uaPendingData`)) === true);
+    okq('C20 아직 화면 명부에는 새 이름이 없다(미뤄 뒀으므로)',
+      !(await members()).some((m) => m.uid === B.uid && m.name === newName));
+
+    //  ★ 마칠 때는 **미뤄 둔 갱신이 이긴다** — 스냅샷으로 되돌리면 그 사이의 진짜 변경이 사라진다.
+    if (!okq('C20 「취소」로 순서 편집 종료', !!(await orderCancel()))) return;
+    const ms = await members();
+    okq('C20 취소 뒤 미뤄 둔 갱신이 반영된다(새 이름이 보인다)',
+      ms.some((m) => m.uid === B.uid && m.name === newName),
+      JSON.stringify((ms.find((m) => m.uid === B.uid) || {}).name));
+    okq('C20 미뤄 둔 갱신은 비워졌다', (await ev(`!!__uaPendingData`)) === false);
+    const db = dbSnap('C20 확인').byId.get(B.uid);
+    okq('C20 DB 는 이름만 바뀌었다(순서는 저장하지 않았다)',
+      !!db && db.name === newName && db.editRole === cur.editRole && db.active === cur.active,
+      db ? `${db.name}/${db.editRole}/${db.active}` : '행 없음');
+  });
+
+  /* ── C21 ▲ 가 스크롤 자리와 포커스를 지킨다 ─────────────────────────── */
+  //  ★ uaApply() 는 #uaList 를 통째로 다시 만든다 — 그대로 두면 스크롤이 맨 위로 튀고 포커스가 body 로
+  //    떨어져, 89행 명부에서 ▲ 를 연달아 두 번 누르는 것이 불가능했다(2026-09-10). 그래서 uaMove 가
+  //    스크롤 자리와 포커스를 손으로 되돌린다. 이 케이스는 그 되돌림을 실제 클릭으로 본다.
+  await runCase('C21', '순서 편집 ▲ — 스크롤 자리와 포커스가 유지된다', async () => {
+    if (!okq('C21 「순서 편집」 진입', !!(await orderOn()))) return;
+    let measured = false;
+    try {
+      //  아래로 굴린 뒤, **그 화면에 온전히 보이는 마지막 행**을 고른다. 안 보이는 행을 고르면
+      //  focus() 가 스스로 스크롤을 옮겨(브라우저 기본 동작) '자리를 지켰나' 를 물을 수 없다.
+      const pick = await evj(`JSON.stringify((function(){
+        var l = document.getElementById('uaList'); if(!l) return null;
+        l.scrollTop = 600;
+        var lr = l.getBoundingClientRect(), lines = l.querySelectorAll('.mba-line'), best = '';
+        for(var i=0;i<lines.length;i++){
+          var r = lines[i].getBoundingClientRect();
+          if(r.top >= lr.top && r.bottom <= lr.bottom){
+            var b = lines[i].querySelector('[data-uop="up"]');
+            if(b && !b.disabled) best = String(b.dataset.uid || '');
+          }
+        }
+        return { top: l.scrollTop, max: l.scrollHeight - l.clientHeight, rows: lines.length, uid: best };
+      })())`);
+      if (!pick || pick.max <= 0 || pick.top <= 0 || !pick.uid) {
+        skip('C21', `#uaList 를 굴릴 수 없거나 보이는 행이 없다(max=${pick ? pick.max : '?'} top=${pick ? pick.top : '?'} uid=${pick ? pick.uid : '?'}) — 창이 작아 이 결함을 재현할 수 없다`);
+        return;
+      }
+      okq('C21 목록을 아래로 굴렸다', pick.top > 0, `scrollTop=${pick.top} / max=${pick.max} / 행 ${pick.rows}`);
+      //  uid 는 숫자 문자열이라(data-uid) 셀렉터에 그대로 끼워도 이스케이프가 낄 자리가 없다.
+      const tUid = String(pick.uid).replace(/[^0-9]/g, '');
+      const clicked = await ev(`(function(){
+        var b=document.querySelector('#uaList [data-uop="up"][data-uid="${tUid}"]');
+        if(!b || b.disabled) return false; b.click(); return true;})()`);
+      if (!okq('C21 보이는 아래쪽 행의 ▲ 를 눌렀다', clicked === true, `uid=${pick.uid}`)) return;
+      await sleep(150);
+      const st = await evj(`JSON.stringify((function(){
+        var l = document.getElementById('uaList'), a = document.activeElement;
+        return { top: l ? l.scrollTop : -1,
+                 uop: (a && a.dataset) ? String(a.dataset.uop || '') : '',
+                 uid: (a && a.dataset) ? String(a.dataset.uid || '') : '',
+                 inList: !!(l && a && l.contains(a)) };
+      })())`);
+      okq('C21 스크롤이 맨 위로 튀지 않았다', st.top > 0, `scrollTop=${st.top}`);
+      okq('C21 스크롤 자리가 그대로다(±2px)', Math.abs(st.top - pick.top) <= 2, `${pick.top} → ${st.top}`);
+      okq('C21 포커스가 옮긴 행의 ▲▼ 에 남는다(body 로 떨어지지 않는다)',
+        st.inList === true && (st.uop === 'up' || st.uop === 'down') && st.uid === String(pick.uid),
+        JSON.stringify(st));
+      measured = true;
+    } finally {
+      //  ★ 저장하지 않는다 — [취소]가 이동을 되돌린다(이 케이스는 DB 를 건드리지 않는다).
+      await orderCancel();
+    }
+    if (measured) {
+      const nulls = dbSnap('C21 확인').users.filter((u) => u.active && u.sort === null).length;
+      okq('C21 DB 는 손대지 않았다(활성 sort_order NULL 0)', nulls === 0, `실제 ${nulls}`);
+    }
+  });
+
   /* ── C06 퇴사 ───────────────────────────────────────────────────────── */
   await runCase('C06', '퇴사(대상: admin 인 zzU)', async () => {
     //  ★ 화면 경로 먼저 본다(2026-09-10): 행에는 [편집]뿐이고, 퇴사는 폼을 연 뒤 하단 왼쪽 버튼이다.
@@ -725,8 +1019,15 @@ async function main() {
     //  기대값 갱신은 없다 — B 는 zzU 라 I4 대상이 아니다.
   });
 
-  /* ── C15 (선택) §7-1a 사각지대 — 현상 재현만, 실패로 두지 않는다 ─────── */
-  await runCase('C15', '(선택) 순서 저장 시 퇴사자 순번 사각지대 §7-1a', async () => {
+  /* ── C15 §7-1a 가 닫혔다 — 목록 밖 사람의 서열은 비워진다 ────────────── */
+  //  ★★ 2026-09-10 이 케이스는 '보고만' 하던 자리에서 **판정**으로 올라섰다.
+  //    옛 동작: 「퇴사자 보기」를 끈 채 순서를 저장하면 퇴사자는 목록에 없어 **옛 숫자를 그대로 들고** 남았고,
+  //             복구하면 그 숫자가 새 서열 **사이에 끼어들었다**.
+  //    지금 동작(SaveUserOrderAsync 끝의 두 번째 UPDATE): 받은 목록 **밖**의 사람은 sort_order = NULL.
+  //             NULL 은 명부 ORDER BY 에서 맨 뒤다(`u.sort_order IS NULL, u.sort_order`) — 복구하면 맨 뒤에 서고
+  //             관리자가 그때 한 번 끌어올리면 끝난다. 그래서 이 케이스가 보는 것은 셋이다:
+  //             ① 퇴사자의 서열이 NULL 이다 ② 활성자 순번과 겹칠 수 없다 ③ 명부에서 NULL 은 **꼬리 뭉치**다.
+  await runCase('C15', '순서 저장이 목록 밖 사람의 서열을 비운다(§7-1a 닫힘)', async () => {
     const beforeRow = dbSnap('C15 전').byId.get(B.uid);
     await setInactiveView(false);   // 퇴사자를 감춘 채 저장하는 것이 바로 그 구멍의 조건이다
     await ev(`(function(){var b=document.getElementById('uaOrderEdit'); if(b) b.click(); return 1;})()`);
@@ -734,19 +1035,43 @@ async function main() {
     const b0 = await pstate();
     await ev(`(function(){var b=document.getElementById('uaOrderSave'); if(b) b.click(); return 1;})()`);
     const sv = await waitPage((x) => x.r > b0.r, { timeout: 15000 });
-    if (!sv) { note('C15: 순서 저장 회신이 없어 재현하지 못했다(보고만)'); return; }
+    if (!okq('C15 「순서 저장」 회신 도착', !!sv)) return;
     const rep = await evj(`JSON.stringify(__ua.replies[__ua.replies.length-1])`);
+    if (!okq('C15 순서 저장 성공', rep.ok === true, rep.msg)) return;
+    await waitPage((x) => x.a > b0.a, { timeout: 10000 });
     await waitPage((x) => !x.saving && !x.order, { timeout: 10000 });
+
     const snap = dbSnap('C15 확인');
     const after = snap.byId.get(B.uid);
     const actives = snap.users.filter((u) => u.active && u.sort !== null).map((u) => u.sort);
-    const collide = after && after.sort !== null && actives.includes(after.sort);
-    note(`C15 재현: 저장 ok=${rep.ok} · 퇴사자 sort_order ${beforeRow ? beforeRow.sort : '?'} → ${after ? after.sort : '?'} ` +
+    note(`C15 퇴사자(uid=${B.uid}) sort_order ${beforeRow ? beforeRow.sort : '?'} → ${after ? String(after.sort) : '?'} ` +
       `(활성 범위 ${Math.min(...actives)}~${Math.max(...actives)})`);
-    note(`C15 결과: 퇴사자 순번이 ${collide ? '활성자와 **충돌한다**' : '우연히 겹치지 않았다'} — ` +
-      `§7-1a 의 알려진 구멍이다(복구하면 옛 숫자가 새 서열 사이에 끼어든다). **보고만 하고 실패로 두지 않는다.**`);
+    //  ① 목록 밖(퇴사자 보기 OFF 라 빠져 있었다)이므로 서열이 비워졌다.
+    okq('C15 퇴사자의 서열이 NULL 로 비워졌다(§7-1a 닫힘)', !!after && after.sort === null,
+      after ? String(after.sort) : '행 없음');
+    //  ② NULL 은 숫자와 겹칠 수 없다 — '옛 숫자가 새 서열 사이에 끼어든다'는 구멍이 형태로 사라졌다.
+    okq('C15 활성자 순번과 충돌하지 않는다', !(after && after.sort !== null && actives.includes(after.sort)),
+      after ? String(after.sort) : '');
+    //  ③ 그 NULL 이 명부에서 실제로 **맨 뒤**인가 — 복구했을 때 어디에 서는지가 이 판정이다.
+    //     ★ '마지막 한 명' 이 아니라 '꼬리 뭉치' 로 본다: 목록 밖이었던 사람이 여럿이면 전부 NULL 이고
+    //       그 안의 순서는 이름이 정한다(ORDER BY … , u.name). 계약은 "숫자 있는 사람보다 뒤"다.
+    await setInactiveView(true);
+    const ms = await members();
+    const firstNull = ms.findIndex((m) => m.sort == null);
+    const bIdx = ms.findIndex((m) => m.uid === B.uid);
+    okq('C15 「퇴사자 보기」 재조회에 퇴사자가 실렸다', bIdx >= 0, `명부 ${ms.length}명`);
+    okq('C15 서열 없는 사람은 숫자 있는 사람보다 **뒤**에 온다(NULL = 맨 뒤)',
+      firstNull < 0 || ms.slice(firstNull).every((m) => m.sort == null),
+      `첫 NULL 자리 ${firstNull} / 명부 ${ms.length}명`);
+    okq('C15 그 꼬리 뭉치 안에 퇴사자가 있다(복구하면 맨 뒤에 선다)',
+      bIdx >= 0 && firstNull >= 0 && bIdx >= firstNull, `퇴사자 자리 ${bIdx} / 첫 NULL ${firstNull}`);
+
+    //  ★ I2 의 예외 집합을 다시 세운다: 이 사람은 지금 서열이 없고, C07 이 복구하면 **활성 + NULL** 이 된다.
+    //    그건 결함이 아니라 §7-1a 가 의도한 상태다 — 다음 순서 저장이 숫자를 준다.
     pendingOrder.clear();
+    pendingOrder.add(B.uid);
     syncExpect(snap);
+    note('I4 기대값 재기준 · I2 예외 추가: 순서 저장이 전원을 다시 썼고, 목록 밖이던 퇴사자는 서열이 비었다');
   });
 
   /* ── C07 복구 ───────────────────────────────────────────────────────── */

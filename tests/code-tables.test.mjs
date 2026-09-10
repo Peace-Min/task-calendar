@@ -37,6 +37,67 @@ function stripJsComments(text) {
   return t.split(/\r*\n/).map((l) => l.replace(/(^|\s)\/\/[^\r\n]*$/, '')).join('\n');
 }
 
+// ── C# 멤버 슬라이서 ───────────────────────────────────────────────────
+// ★ 2026-09-10 리뷰가 잡은 두 번째 구멍: 아래 호스트 계약들이 `indexOf('이름')` 부터
+//   `indexOf('다음 이름')` 까지를 잘라 쓰고 있었다. 그 방식은 **소스에 있는 멤버 순서**를
+//   계약으로 삼는다 — 순서가 바뀌면 시험이 깨지고(TRASH-DELETE §11-7 이 그 사고다),
+//   더 나쁘게는 **끝 마커 없이 자르면 파일 끝까지 끌어온다**(`CountActiveProjectsByCodeAsync`
+//   부터 EOF 까지가 그랬고, 그 뒤에 붙은 휴지통 블록을 통째로 삼키고 있었다).
+//   범위가 넓어진 슬라이스는 조용히 힘이 빠진다 — 검사가 '이 멤버가 하는가' 대신
+//   '아래 어딘가에 있는가' 를 재게 된다.
+//   그래서 **중괄호 짝**으로 그 멤버 하나만 자른다(admin-auth·user-info 와 같은 기계).
+
+// 주석 제거(문자열 리터럴은 보존) — 설명 주석에 적힌 단어를 '코드가 그걸 한다'로 읽으면 안 된다.
+function stripCsComments(s) {
+  let out = '', i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < s.length) { if (s[j] === '\\') { j += 2; continue; } if (s[j] === c) { j++; break; } j++; }
+      out += s.slice(i, j); i = j; continue;
+    }
+    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '/' && s[i + 1] === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
+// 시그니처 조각부터 **중괄호 짝이 맞는 곳**까지(주석 제거본 기준).
+//   ★ '다음 선언까지'로 자르지 않는다: 접근 한정자 없이 시작하는 멤버 앞에서 멈추지 못해
+//     남의 코드를 끌어온다(user-info.test.mjs 의 csMember 머리말과 같은 이유).
+function csMember(source, sig) {
+  const code = stripCsComments(source);
+  const s = code.indexOf(sig);
+  assert.ok(s >= 0, `C# 멤버를 찾지 못했다: ${sig}`);
+  assert.strictEqual(code.indexOf(sig, s + 1), -1, `C# 멤버 시그니처가 여러 번 나온다: ${sig}`);
+  const open = code.indexOf('{', s);
+  assert.ok(open > s, `${sig} 의 여는 중괄호를 찾지 못했다`);
+  let depth = 0;
+  for (let k = open; k < code.length; k++) {
+    const c = code[k];
+    if (c === '"' || c === "'") {          // 문자열/문자 리터럴 안의 중괄호는 세지 않는다
+      let j = k + 1;
+      while (j < code.length) { if (code[j] === '\\') { j += 2; continue; } if (code[j] === c) break; j++; }
+      k = j; continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return code.slice(s, k + 1); }
+  }
+  assert.fail(`${sig} 의 중괄호 짝이 맞지 않는다`);
+}
+
+// 코드테이블 CRUD 멤버들의 시그니처 — 한곳에 모아 둔다(개명되면 여기 한 줄만 고친다).
+const SIG = {
+  resolve:  'private static bool ResolveCodeKind(string? kind, out string table, out string projCol)',
+  add:      'public async Task<(bool ok, string msg)> AddCodeAsync(string? kind, string? name)',
+  rename:   'public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, string? oldName, string? newName)',
+  setActive:'public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, string? name, bool active)',
+  reorder:  'public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<string>? orderedNames)',
+  refCount: 'public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCodeAsync(string? kind, string? name)',
+};
+
 // C# 소스에서 [시작 선언, 다음 선언) 구간만 잘라낸다. 두 마커가 다 있고 순서가 맞아야 한다
 // (마커가 사라진 채 빈 슬라이스로 통과하는 오탐을 막는다).
 function csSlice(source, startMarker, endMarker) {
@@ -196,7 +257,7 @@ test('호스트: 하드코딩 Sections/Statuses 배열이 제거됐다(코드테
   assert.ok(!/private static readonly string\[\] Statuses/.test(projectDb), 'Statuses 하드코딩 배열이 남아 있다');
 });
 test('호스트: ResolveCodeKind가 section→section_code/section, status→status_code/status로 해석', () => {
-  const b = projectDb.slice(projectDb.indexOf('ResolveCodeKind'), projectDb.indexOf('ResolveCodeKind') + 700);
+  const b = csMember(projectDb, SIG.resolve);
   assert.ok(/case "section": table = "section_code"; projCol = "section";/.test(b), 'section 매핑이 다르다');
   assert.ok(/case "status":\s+table = "status_code";\s+projCol = "status";/.test(b), 'status 매핑이 다르다');
   assert.ok(/default:[\s\S]{0,60}return false;/.test(b), '알 수 없는 kind 방어(default→false)가 없다');
@@ -220,25 +281,25 @@ test('호스트: 코드 CRUD 5종(add/rename/setActive/reorder/refCount) 존재 
   }
 });
 test('호스트: rename은 CASCADE 의존(수동 UPDATE project 없음) · reorder는 트랜잭션', () => {
-  const rn = projectDb.slice(projectDb.indexOf('RenameCodeAsync'), projectDb.indexOf('SetCodeActiveAsync'));
+  const rn = csMember(projectDb, SIG.rename);
   assert.ok(/UPDATE \{table\} SET name=@new WHERE name=@old/.test(rn), '코드 개명이 name UPDATE가 아니다');
   assert.ok(!/UPDATE project SET/.test(rn), 'rename이 project를 직접 UPDATE한다(FK CASCADE로 자동 전파여야 함)');
-  const ro = projectDb.slice(projectDb.indexOf('ReorderCodesAsync'), projectDb.indexOf('CountActiveProjectsByCodeAsync'));
+  const ro = csMember(projectDb, SIG.reorder);
   assert.ok(/BeginTransactionAsync/.test(ro) && /sort_order=@s/.test(ro), 'reorder가 트랜잭션 sort_order 재부여가 아니다');
 });
 test('호스트: 복구(setActive true)는 sort_order를 MAX+10으로 재부여 — 활성 순번 충돌 방지', () => {
   // 왜: 숨김은 sort_order를 그대로 두는데 reorder는 '활성 값만' 10·20·30…으로 재부여한다.
   // 옛 순번을 들고 복구되면 활성끼리 sort_order가 겹쳐 드롭다운 순서가 이름 tiebreak에 좌우된다.
   // (루프 UI 정합성 테스트 I5로 실측된 결함 — tests/loop-ui-integrity.mjs)
-  const sa = projectDb.slice(projectDb.indexOf('SetCodeActiveAsync'), projectDb.indexOf('ReorderCodesAsync'));
+  const sa = csMember(projectDb, SIG.setActive);
   assert.ok(/is_active=1, *sort_order=\(SELECT/.test(sa), '복구가 sort_order를 재부여하지 않는다(순번 충돌 재발)');
   assert.ok(/COALESCE\(MAX\(sort_order\),0\)\+10/.test(sa), '복구 순번이 MAX+10(맨 뒤)이 아니다');
   assert.ok(/UPDATE \{table\} SET is_active=0 WHERE name=@n/.test(sa), '숨김은 sort_order를 건드리지 않아야 한다');
 });
 test('호스트: add는 1062로 활성/숨김 구분 · refCount는 활성 과제만', () => {
-  const ad = projectDb.slice(projectDb.indexOf('AddCodeAsync'), projectDb.indexOf('RenameCodeAsync'));
+  const ad = csMember(projectDb, SIG.add);
   assert.ok(/mex\.Number == 1062/.test(ad) && /숨김 처리된 동일/.test(ad) && /이미 등록된/.test(ad), '1062 활성/숨김 분기가 없다');
-  const rc = projectDb.slice(projectDb.indexOf('CountActiveProjectsByCodeAsync'));
+  const rc = csMember(projectDb, SIG.refCount);
   assert.ok(/SELECT COUNT\(\*\) FROM project WHERE \{projCol\}=@n AND is_active=1/.test(rc), 'refCount가 활성 과제만 세지 않는다');
 });
 test('호스트: UpsertProjectAsync — note 파라미터 + 코드테이블 로드 검증(하드코딩 아님)', () => {

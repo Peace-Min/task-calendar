@@ -23,7 +23,11 @@
  *   C04 코드 3종       — 숨긴 과제가 쓰는 값은 거부 → 그 과제를 지우면 삭제 가능 → 복구 시 sort_order=MAX+10
  *   C05 활성 항목 거부 — 숨기지 않은 과제에 trashDelete → 거부(화면 우회)
  *   C06 알 수 없는 대상 / 이미 없는 항목
- *   C07 자기 계정      — 활성이면 '활성' 문장, 퇴사 상태였다면 '자기 계정' 문장. 둘 중 하나 + 행 불변
+ *   C07 자기 계정      — **활성 관문(②)이 언제나 먼저다.** 자기 계정 문장은 실동작으로 닿지 않는다(§11-22)
+ *   C09 이미 복구됨    — 숨김 → 복구 → **한 번 더 복구** → '이미 복구된 항목입니다 — 목록을 새로고침합니다.'
+ *   C10 확인창 취소    — confirmTyped 의 [data-close] **실클릭** → 호스트로 아무것도 나가지 않는다
+ *   C11 사유 가시화    — 기록 있는 퇴사자의 why 가 **보이는 줄**(.set-hint[data-trwhy])로 그려진다(툴팁만으로는 안 보인다)
+ *   C12 쓰기 중 잠금   — [복구] → [확인] 그 순간 #trList 의 버튼 전부 disabled + #trashModal[data-busy=1] → 회신 뒤 해제
  *   C08 비관리자       — 로그인 계정을 잠시 editor 로 내린다(**반드시 복원**): #usTrash 부재 · admin:false · 삭제 거부
  *
  * 불변식(케이스마다):
@@ -575,6 +579,8 @@ const MSG = {
   active: '숨긴(퇴사) 항목만 지울 수 있습니다. 먼저 숨기세요.',
   name: '입력한 이름이 다릅니다.',
   self: '자기 계정은 지울 수 없습니다.',
+  //  이미 활성인 항목의 복구 — 실패가 아니라 **목록이 낡은 것**이라 문구가 새로고침을 시킨다(TrashAlreadyActiveMsg).
+  already: '이미 복구된 항목입니다 — 목록을 새로고침합니다.',
   done: '영구 삭제했습니다.',
   records: (n) => `기록 ${n}건이 있어 지울 수 없습니다. 퇴사 상태로 유지됩니다.`,
   inUse: (n) => `이 값을 쓰는 과제가 ${n}건(숨긴 과제 포함) 있어 지울 수 없습니다.`,
@@ -669,6 +675,24 @@ async function main() {
       { what: 'C01 편입분 DB 반영' });
     if (!okq('C01 편입분이 DB(cal_category)에 앉았다', seeded, '15초 안에 dbSave 가 반영되지 않았다')) return;
 
+    //  ①-b 두 번째 편입자 — refs 는 '편입한 **사람 수**'다. 하나만 두면 '1이 나온다'가 우연인지 계약인지 갈리지 않는다.
+    //     ★ SQL 로 심는 이유는 C03 과 같다: 이 계정은 한 번도 로그인하지 않으므로(넷커스 자격이 없다) 앱 경로가 없다.
+    //     ★ uid 는 반드시 'db-' + project.uid 다 — chk_cal_category_projuid 가 (source='db' · 39자 · 접두 db-)
+    //       셋을 함께 강제한다. 어기면 3819 로 막힌다(schema-calendar.sql §5.2).
+    const U0 = NM.user(0);
+    let u0 = 0;
+    try { u0 = await makeUser(U0, { title: REAL.title }); }
+    catch (e) { ok('C01 두 번째 편입자 등록', false, e.message); }
+    if (u0) {
+      sql(`DELETE FROM cal_category WHERE user_id=${u0};\n` +
+        `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) ` +
+        `VALUES (${u0},1,${esc('db-' + uid)},'db',${esc(P1)},'#5b6b7d','',${esc(uid)},0,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
+        { readOnly: false, idempotent: true, what: 'C01 두 번째 편입분 심기' });
+      const n2 = n1(`SELECT COUNT(*) FROM cal_category WHERE project_uid=${esc(uid)}`, 'C01 편입분 수');
+      okq('C01 같은 과제를 가리키는 편입분이 둘이 됐다(두 사람)', n2 === 2, `실제 ${n2}`);
+    }
+    const wantRefs = u0 ? 2 : 1;
+
     //  ② 숨김 — 여기서부터 휴지통의 세계다.
     const hide = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
     if (!okq('C01 숨김 성공 회신', hide.ok, hide.msg)) return;
@@ -683,7 +707,7 @@ async function main() {
     if (!okq('C01 휴지통 「과제」 탭에 보인다', !!row, '목록에 없다')) return;
     okq('C01 이름이 그대로다', row.name === P1, JSON.stringify(row.name));
     okq('C01 deletable:true(과제는 참조가 있어도 지울 수 있다 · §3.1)', row.deletable === true, JSON.stringify(row.deletable));
-    okq('C01 refs = 편입한 개인 카테고리 수(1)', Number(row.refs) === 1, `실제 ${row.refs}`);
+    okq(`C01 refs = 편입한 개인 카테고리 수(${wantRefs})`, Number(row.refs) === wantRefs, `실제 ${row.refs}`);
     okq('C01 why 는 비어 있다(막을 이유가 없다)', row.why === '', JSON.stringify(row.why));
 
     //  ④ 화면 — 실제 DOM 의 버튼 둘.
@@ -762,12 +786,27 @@ async function main() {
     }
     okq('C01 DB 에서 과제 행이 사라졌다(0행)', projRows(uid) === 0, `행 ${projRows(uid)}`);
     okq('C01 카탈로그에도 없다', (await catalogHas(uid)) === false);
+    //  ★ 편입분은 **두 사람 몫 다** 남는다 — project_uid 는 FK 가 아니라 문자열 참조라 DB 가 지우지 않는다(§3.1).
+    //    '지워야 할 것이 하나 있는데 하나만 남았다' 를 가리려면 수로 봐야 한다.
+    okq(`C01 편입분 ${wantRefs}행이 그대로 남는다(문자열 참조 · FK 아님 · §3.1)`,
+      n1(`SELECT COUNT(*) FROM cal_category WHERE project_uid=${esc(uid)}`, 'C01 삭제 뒤 편입분') === wantRefs,
+      `실제 ${n1(`SELECT COUNT(*) FROM cal_category WHERE project_uid=${esc(uid)}`, 'C01 삭제 뒤 편입분(재)')}`);
     const c3 = await subCat(uid);
-    okq('C01 편입분은 남고 dbGone 이다(라벨·일정 보존 · §3.1)', !!c3 && c3.dbGone === true, JSON.stringify(c3));
+    okq('C01 내 편입분은 남고 dbGone 이 파생된다(라벨·일정 보존 · §3.1)', !!c3 && c3.dbGone === true, JSON.stringify(c3));
     const g2 = (await trashGet()).data;
     okq('C01 휴지통 「과제」 탭에서도 사라졌다', !trFind(g2, 'projects', uid));
 
-    //  ⑧ 편입분 정리 — 앱 경로(구독 해제). SQL 로 지우면 앱 상태와 갈려 다음 저장이 되살린다.
+    //  ⑧ 편입분 정리 — **내 것은 앱 경로**(구독 해제), 남의 것(SQL 로 심은 zzU)은 SQL 로.
+    //     SQL 로 내 것을 지우면 앱 상태와 갈려 다음 저장이 되살린다(잔재의 씨앗). 반대로 남의 것은 앱 경로가 없다.
+    if (u0) {
+      sql(`DELETE FROM cal_category WHERE user_id=${u0};\n` +
+        `DELETE FROM cal_user_pref WHERE user_id=${u0};\n` +
+        `DELETE FROM cal_user_rev WHERE user_id=${u0};\n` +
+        `DELETE FROM app_user WHERE user_id=${u0}`,
+        { readOnly: false, idempotent: true, what: 'C01 두 번째 편입자 정리' });
+      okq('C01 두 번째 편입자 정리(0행)',
+        n1(`SELECT COUNT(*) FROM app_user WHERE user_id=${u0}`, 'C01 두 번째 편입자 확인') === 0);
+    }
     await appUnsubscribe(uid);
     const gone = await waitSqlCount(`SELECT COUNT(*) FROM cal_category WHERE source='db' AND name=${esc(P1)}`, 0,
       { what: 'C01 편입분 정리' });
@@ -971,15 +1010,196 @@ async function main() {
     const before = dbSnap(ME, 'C07 전');
     const rep = await hsend({ cmd: 'trashDelete', kind: 'user', key: String(before.meUid), confirm: before.meName }, 't');
     okq('C07 거부됐다', rep.ok === false, `ok=${rep.ok}`);
-    //  ★ 지금 로그인 계정은 **활성**이라 '숨긴 항목만' 문장이 먼저 걸린다(§3.4 의 ②가 ③보다 앞이다).
-    //    퇴사 상태였다면 '자기 계정' 문장이다. 둘 중 하나여야 하고, 다른 문장이면 관문 순서가 뒤바뀐 것이다.
-    okq('C07 거부 문구가 활성 또는 자기 계정 문장 중 하나',
-      rep.msg === MSG.active || rep.msg === MSG.self, JSON.stringify(rep.msg));
-    note(`C07 실제 경로: ${rep.msg === MSG.active ? "'활성 항목' 관문(로그인 계정은 활성이다)" : "'자기 계정' 관문"}`);
+    //  ★★ 문장은 **하나로 정해져 있다.** 로그인 계정은 반드시 활성이고(비활성이면 애초에 관문을 못 지난다),
+    //    §3.4 의 관문 순서는 ② 숨긴 항목만 → ③ 자기 계정이다. 그래서 여기서 나올 수 있는 문장은 ② 하나뿐이다.
+    //    '둘 중 하나' 로 두면 관문 순서가 뒤바뀌어도 통과한다 — 그건 판정이 아니라 눈감기다(2026-09-10 검토).
+    okq('C07 거부 문구는 「활성 항목」이다(§3.4 의 ②가 ③보다 앞이다)',
+      rep.msg === MSG.active, JSON.stringify(rep.msg));
+    note('C07 TrashSelfMsg(자기 계정)는 **실동작으로는 닿지 않는다** — 자기 계정은 퇴사 처리할 수 없어서' +
+      '(USER-ADMIN §4.4-1) 휴지통에 자기 자신이 실릴 수 없고, 활성 관문(②)이 언제나 먼저 막는다. ' +
+      '규칙은 퇴사 규칙과 한 벌이라 지우지 않고 **정적 계약**으로 남긴다 — TRASH-DELETE §11-22.');
     const after = dbSnap(ME, 'C07 확인');
     okq('C07 내 행은 손대지 않았다',
       after.meUid === before.meUid && after.meRole === before.meRole && after.meActive === before.meActive,
       `${after.meRole}/${after.meActive}`);
+  });
+
+  /* ── C09 이미 복구된 항목의 재복구 ───────────────────────────────── */
+  //  ★ 두 관리자가 같은 항목을 동시에 복구하면 뒤에 온 쪽이 **이미 활성인 행**에 UPDATE 를 걸었고,
+  //    구분·상태는 그 자리에서 sort_order 를 MAX+10 으로 다시 매겨 멀쩡히 쓰이던 값이 목록 맨 뒤로 튀었다.
+  //    지금은 is_active 를 같은 트랜잭션에서 잠근 채 읽어 **낡은 목록**이라고 말한다(실패가 아니다).
+  const P4 = NM.proj(4);
+  await runCase('C09', `이미 복구된 항목(${P4}) — 재복구는 「목록이 낡았다」로 거부`, async () => {
+    const uid = await makeProject(P4, REAL);
+    const hide = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
+    if (!okq('C09 숨김 성공', hide.ok, hide.msg)) return;
+    okq('C09 DB is_active=0', projActive(uid) === 0, `is_active=${projActive(uid)}`);
+
+    const r1 = await hsend({ cmd: 'trashRestore', kind: 'project', key: uid }, 't', { expectPush: 'ta' });
+    if (!okq('C09 첫 복구 성공', r1.ok === true, r1.msg)) return;
+    okq('C09 DB is_active=1 로 돌아왔다', projActive(uid) === 1, `is_active=${projActive(uid)}`);
+
+    //  ★ 두 번째 복구 — 목록을 새로고침하지 않은 관리자가 같은 버튼을 다시 누른 모양이다.
+    const r2 = await hsend({ cmd: 'trashRestore', kind: 'project', key: uid }, 't');
+    okq('C09 두 번째 복구는 거부된다', r2.ok === false, `ok=${r2.ok}`);
+    okq('C09 거부 문구가 §4.1 그대로(새로고침 안내)', r2.msg === MSG.already, JSON.stringify(r2.msg));
+    okq('C09 DB 는 활성 그대로다(두 번 쓰지 않았다)', projActive(uid) === 1, `is_active=${projActive(uid)}`);
+    okq('C09 휴지통에는 여전히 보이지 않는다(활성이므로)',
+      !trFind((await trashGet()).data, 'projects', uid));
+
+    //  정리 — 숨김 → 이름 대조 삭제. 이 시험도 지름길을 쓰지 않는다.
+    const h2 = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
+    if (!okq('C09 정리: 숨김', h2.ok, h2.msg)) return;
+    const del = await hsend({ cmd: 'trashDelete', kind: 'project', key: uid, confirm: P4 }, 't', { expectPush: 'ta' });
+    okq('C09 정리: 삭제', del.ok === true, del.msg);
+    okq('C09 정리 완료(0행)', projRows(uid) === 0);
+  });
+
+  /* ── C10 confirmTyped 취소(실클릭) ───────────────────────────────── */
+  //  ★ 취소는 '아무 일도 일어나지 않았다'가 계약이다. closeModal() 로 부르면 마크업의 [data-close] 배선이
+  //    시험되지 않는다 — × 를 마크업에서 빼먹어도 통과한다. 그래서 **실제 버튼**을 누른다.
+  const P5 = NM.proj(5);
+  await runCase('C10', `확인창 취소(${P5}) — 호스트로 아무것도 나가지 않는다`, async () => {
+    const uid = await makeProject(P5, REAL);
+    const hide = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
+    if (!okq('C10 숨김 성공', hide.ok, hide.msg)) return;
+    await openTrash({ tab: 'project' });
+
+    const b = await pstate();
+    const c = await uiTrashClick('delete', uid);
+    if (!okq('C10 [영구 삭제] 클릭 → 이름 입력창', c === 'clicked', c)) return;
+    if (!okq('C10 confirmTyped 가 열렸다',
+      !!(await waitPage((x) => x.ctOpen === true, { timeout: 8000 })))) return;
+
+    const x = await ev(`(function(){var b=document.querySelector('#confirmTypedModal [data-close]'); if(!b) return false; b.click(); return true;})()`);
+    if (!okq('C10 [data-close] 실클릭', x === true, '확인창에 닫기 손잡이가 없다')) return;
+    if (!okq('C10 확인창이 닫혔다', !!(await waitPage((y) => y.ctOpen === false, { timeout: 8000 })))) return;
+
+    await sleep(500);   // 늦게 새어 나오는 요청이 있으면 여기서 잡힌다
+    const fin = await pstate();
+    okq('C10 호스트 회신이 0건이다(=아무것도 보내지 않았다)', fin.t === b.t, `${b.t} → ${fin.t}`);
+    okq('C10 휴지통은 열린 채 잠기지도 않았다', fin.trOpen === true &&
+      (await ev(`String((document.getElementById('trashModal')||{dataset:{}}).dataset.busy||'')`)) === '');
+    const btn = await trRow(uid);
+    okq('C10 행이 그대로 서 있다([영구 삭제] 켜짐)', !!btn.del && btn.del.disabled === false, JSON.stringify(btn.del));
+    okq('C10 DB 행 그대로', projRows(uid) === 1, `행 ${projRows(uid)}`);
+
+    //  정리
+    const del = await hsend({ cmd: 'trashDelete', kind: 'project', key: uid, confirm: P5 }, 't', { expectPush: 'ta' });
+    okq('C10 정리: 삭제', del.ok === true, del.msg);
+    okq('C10 정리 완료(0행)', projRows(uid) === 0);
+  });
+
+  /* ── C11 사유(why)를 보이는 줄로 낸다 ────────────────────────────── */
+  //  ★ 예전에는 사유가 **꺼진 버튼의 title** 에만 있었다. 그런데 Chromium 은 disabled 컨트롤에 툴팁을
+  //    띄우지 않는다 — 관리자는 '왜 안 눌리지'를 영영 알 수 없었다(2026-09-10). 지금은 행에 보이는 줄로 낸다.
+  //    title 은 그대로 둔다(마우스가 아닌 경로 · 기존 시험의 손잡이) — 둘 다 있는지 함께 본다.
+  const U4 = NM.user(4);
+  await runCase('C11', `사유 가시화(${U4}) — .set-hint[data-trwhy] 로 보인다`, async () => {
+    const uid = await makeUser(U4, { title: REAL.title });
+    //  기록 1건이면 '기록 있음'이 성립한다(C03 과 같은 이유로 SQL 로 심는다 — 이 계정은 로그인하지 않는다).
+    sql(`DELETE FROM cal_entry WHERE user_id=${uid};\n` +
+      `DELETE FROM cal_category WHERE user_id=${uid};\n` +
+      `INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) ` +
+      `VALUES (${uid},1,${esc('c-zz' + OPT.seed + '-why00000001')},'local',${esc('zz사유과제')},'#5b6b7d','',NULL,0,10,UTC_TIMESTAMP(3),UTC_TIMESTAMP(3))`,
+      { readOnly: false, idempotent: true, what: 'C11 기록 심기' });
+    const seeded = n1(`SELECT COUNT(*) FROM cal_category WHERE user_id=${uid}`, 'C11 기록 수');
+    if (!okq('C11 기록 1건을 심었다', seeded === 1, `실제 ${seeded}`)) return;
+    const want = MSG.records(seeded);
+
+    const off = await hsend({ cmd: 'setUserActive', userId: uid, active: false, includeInactive: false }, 'u');
+    if (!okq('C11 퇴사 성공 회신', off.ok, off.msg)) return;
+    const g = (await trashGet()).data;
+    const row = trFind(g, 'users', uid);
+    if (!okq('C11 휴지통 「인력」 탭에 보인다', !!row)) return;
+    okq('C11 호스트 why 가 §4.3 문장 그대로', row.why === want, `기대 ${JSON.stringify(want)} / 실제 ${JSON.stringify(row.why)}`);
+
+    await openTrash({ tab: 'user' });
+    //  data-trwhy 값은 행의 key(=user_id)라 숫자다 — 셀렉터에 그대로 끼워도 이스케이프가 낄 자리가 없다.
+    const why = await evj(`JSON.stringify((function(){
+      var e = document.querySelector('#trList [data-trwhy="${uid}"]');
+      return e ? { text: String(e.textContent||''), cls: String(e.className||''), tag: e.tagName } : null;
+    })())`);
+    okq('C11 사유가 보이는 줄로 그려졌다(.set-hint[data-trwhy])',
+      !!why && /set-hint/.test(why.cls), JSON.stringify(why));
+    okq('C11 그 줄의 글이 호스트 why 와 글자까지 같다',
+      !!why && why.text === want, `기대 ${JSON.stringify(want)} / 실제 ${JSON.stringify(why && why.text)}`);
+    const btn = await trRow(uid);
+    okq('C11 [영구 삭제]는 꺼져 있다', !!btn.del && btn.del.disabled === true, JSON.stringify(btn.del));
+    okq('C11 꺼진 버튼의 title 도 남아 있다(마우스 아닌 경로)',
+      !!btn.del && btn.del.title === want, JSON.stringify(btn.del && btn.del.title));
+
+    //  정리 — FK 순서: 과제 → 부속 2표 → 사람.
+    sql(`DELETE FROM cal_category WHERE user_id=${uid};\n` +
+      `DELETE FROM cal_user_pref WHERE user_id=${uid};\n` +
+      `DELETE FROM cal_user_rev WHERE user_id=${uid};\n` +
+      `DELETE FROM app_user WHERE user_id=${uid}`,
+      { readOnly: false, idempotent: true, what: 'C11 정리' });
+    okq('C11 정리 완료(0행)', n1(`SELECT COUNT(*) FROM app_user WHERE user_id=${uid}`, 'C11 정리 확인') === 0);
+  });
+
+  /* ── C12 쓰기 중 잠금 ─────────────────────────────────────────────── */
+  //  ★ 예전에는 가드가 두 번째 클릭을 조용히 버리고 첫 요청도 아무 표시가 없어서, 관리자에게는
+  //    [영구 삭제]가 먹지 않는 것처럼 보였다. 지금은 trSetSaving 이 행 버튼 전부 + 모달 busy 를 함께 건다.
+  const P6 = NM.proj(6);
+  await runCase('C12', `쓰기 중 잠금(${P6}) — 행 버튼 전부 꺼지고 모달이 busy 다`, async () => {
+    const uid = await makeProject(P6, REAL);
+    const hide = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
+    if (!okq('C12 숨김 성공', hide.ok, hide.msg)) return;
+    await openTrash({ tab: 'project' });
+
+    const b = await pstate();
+    const c = await uiTrashClick('restore', uid);
+    if (!okq('C12 [복구] 클릭', c === 'clicked', c)) return;
+    if (!okq('C12 confirmBox 가 열렸다', !!(await waitPage((s) => s.cfOpen === true, { timeout: 8000 })))) return;
+
+    //  ★★ [확인]을 누른 **그 순간**을 본다. confirmBox 의 해소는 MutationObserver(마이크로태스크)라
+    //    같은 평가식 안에서 한 틱만 양보하면 trSend 는 이미 돌아 있고, 호스트 회신은 WebView2 IPC 왕복이라
+    //    아직 올 수 없다. 그래서 '보내는 중' 이라는 상태가 실재하는지를 이 한 번에 붙잡을 수 있다.
+    const lock = await evj(`(async function(){
+      var ok = document.getElementById('cfOk'); if(!ok) return JSON.stringify({ err: 'cfOk 없음' });
+      ok.click();
+      var t0 = Date.now();
+      while (Date.now() - t0 < 500){
+        await new Promise(function(r){ setTimeout(r, 0); });
+        var ov = document.getElementById('trashModal');
+        if (ov && ov.dataset.busy === '1'){
+          var bs = document.querySelectorAll('#trList [data-top]'), on = 0;
+          for (var i=0;i<bs.length;i++) if(!bs[i].disabled) on++;
+          return JSON.stringify({ busy: String(ov.dataset.busy), n: bs.length, enabled: on });
+        }
+      }
+      return JSON.stringify({ err: '500ms 안에 busy 가 켜지지 않았다' });
+    })()`);
+    okq('C12 보내는 동안 #trashModal 이 busy 다(닫기 차단)', lock.busy === '1', JSON.stringify(lock));
+    okq('C12 보내는 동안 #trList 의 행 버튼이 하나도 켜져 있지 않다',
+      lock.n > 0 && lock.enabled === 0, JSON.stringify(lock));
+
+    const done = await waitPage((s) => s.t > b.t, { timeout: 20000 });
+    if (!okq('C12 복구 회신 도착', !!done)) return;
+    const rep = await evj(`JSON.stringify(__tr.t[__tr.t.length-1])`);
+    if (!okq('C12 복구 성공', rep.ok === true, rep.msg)) return;
+    await waitPage((s) => s.ta > b.ta, { timeout: 12000 });
+
+    const after = await evj(`JSON.stringify((function(){
+      var ov = document.getElementById('trashModal');
+      var bs = document.querySelectorAll('#trList [data-top]'), on = 0;
+      for (var i=0;i<bs.length;i++) if(!bs[i].disabled) on++;
+      return { busy: String((ov && ov.dataset.busy) || ''), n: bs.length, enabled: on };
+    })())`);
+    okq('C12 회신 뒤 잠금이 풀린다(busy 없음)', after.busy === '', JSON.stringify(after));
+    //  ★ 남은 행이 있으면 켜져 있어야 한다. 복구가 성공하면 그 행은 목록에서 빠지므로 0행일 수도 있다 —
+    //    0행을 '전부 꺼짐'으로 읽으면 통과가 거짓말이 된다(그래서 수를 함께 본다).
+    okq('C12 회신 뒤 행 버튼이 다시 켜진다(남은 행이 있으면)',
+      after.n === 0 || after.enabled > 0, JSON.stringify(after));
+    okq('C12 DB is_active=1', projActive(uid) === 1, `is_active=${projActive(uid)}`);
+
+    //  정리
+    const h2 = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
+    if (!okq('C12 정리: 숨김', h2.ok, h2.msg)) return;
+    const del = await hsend({ cmd: 'trashDelete', kind: 'project', key: uid, confirm: P6 }, 't', { expectPush: 'ta' });
+    okq('C12 정리: 삭제', del.ok === true, del.msg);
+    okq('C12 정리 완료(0행)', projRows(uid) === 0);
   });
 
   /* ── C08 비관리자 ─────────────────────────────────────────────────── */
@@ -1013,6 +1233,16 @@ async function main() {
       okq('C08 admin:false', !!(g && g.admin === false), JSON.stringify(g && g.admin));
       const lists = ['projects', 'users', 'customers', 'sections', 'statuses'].filter((k) => g && k in g);
       okq('C08 목록을 하나도 싣지 않는다', lists.length === 0, '실린 목록: ' + lists.join(', '));
+      //  ★ 이 경로는 **권한 부족**(RoleOnly)이라 msg 를 싣지 않는 것이 계약이다(§11-17).
+      okq('C08 권한 부족에는 사유 문장을 싣지 않는다(화면이 자기 문장을 갖고 있다)',
+        !(g && typeof g.msg === 'string' && g.msg.length > 0), JSON.stringify(g && g.msg));
+      //  ★★ 미판정 하나를 적어 둔다(감추지 않는다): **비활성·미등록 계정**의 trashGet 은
+      //    admin:false 와 함께 msg 를 싣는다(§11-17 의 나머지 절반). 그런데 그걸 실동작으로 보려면
+      //    로그인 계정을 잠시 is_active=0 으로 내려야 하고, 그 순간 위젯은 자기 세션을 잃어
+      //    되돌리는 일이 DB 의 몫이 된다(사람이 SQL 로 가야 푸는 상태 — 이 루프의 금기).
+      //    그래서 여기서는 editor 경로(권한 부족)만 판정하고, 나머지 절반은 정적 계약으로 남긴다.
+      note('C08 미판정: 비활성·미등록 계정의 trashGet(admin:false + msg 실림 · §11-17)은 이 루프가 보지 않는다 — ' +
+        '실 로그인 계정을 비활성으로 내리는 순간 위젯이 세션을 잃고 복구가 DB 몫이 되기 때문이다.');
 
       //  ③ 화면도 컨트롤이 아니라 안내 한 줄이다.
       const s = await openTrash();

@@ -55,6 +55,31 @@ Remove-Item Env:TC_TEST_FORCE_MISSING, Env:TC_TEST_STRICT
 
 jsdom이 없으면 러너가 이 세 줄을 요약 뒤에 직접 찍는다(사람이 문서를 찾아 헤매지 않도록).
 
+### ★ `taskmgr-company-data` 는 이 저장소의 **형제 폴더**여야 한다 (환경 사실 — 전제)
+
+```
+console\                       ← 부모 폴더
+├─ task-calendar-db\           ← 이 저장소(워크트리)
+└─ taskmgr-company-data\       ← 비공개 저장소 — 직원·조직 표와 app_user 권한의 정본
+```
+
+상시 스위트의 **기준선 ⓪** 둘이 그 폴더를 직접 읽는다 — `user-admin.test.mjs`(`01-schema-users.sql` · `05-grants.sql`)와
+`trash-host.test.mjs`(`05-grants.sql`). **없으면 skip 이 아니라 fail** 이고, 그건 설계다:
+그 파일들이 권한의 **정본**이라 못 읽으면 "권한이 맞는가"를 **판정할 수 없는데도 초록으로 남기** 때문이다
+(jsdom 부재를 skip 으로 둔 것과 반대 결정 — 저건 '환경이 없다', 이건 '정본이 없다').
+새 클론·폐쇄망 반입 PC라면 그 저장소도 형제 자리에 함께 받아야 한다.
+같은 이유로 `db/deploy/restore-taskmgr.ps1 -Grants` 도 그 자리에서 `05-grants.sql` 을 찾는다(DEPLOY.md §9-2).
+
+### 배포 전 게이트 — 이 셋을 다 통과해야 올린다
+
+| 게이트 | 명령 | 통과 기준 |
+|---|---|---|
+| 상시 스위트(엄격) | `TC_TEST_STRICT=1 node tests/run-tests.mjs` | **exit 0**. skip 이 있으면 2(판정 없음)이고 strict 는 그것을 1 로 올린다 |
+| 사용자 관리 루프 | `node tests/loop-user-admin.mjs` | **무작위 시드로 5회 연속** 통과(한 번이라도 실패하면 1부터 다시 센다) |
+| 휴지통 루프 | `node tests/loop-trash.mjs` | 같은 규약. 앱 계정에 DELETE 권한이 **먼저** 적용돼 있어야 한다(DEPLOY.md §0-5) |
+
+나머지 루프(`loop-ui-integrity` 등)의 규약은 아래 각 절에 있다.
+
 ## 구조
 
 ```
