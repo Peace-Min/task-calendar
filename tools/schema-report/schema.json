@@ -1,6 +1,6 @@
 {
  "meta": {
-  "schemaVersion": "11",
+  "schemaVersion": "12",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -39,7 +39,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-10T05:50:26.752Z",
+  "dumpedAt": "2026-09-10T07:31:45.589Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -103,7 +103,7 @@
     },
     {
      "name": "sort_order",
-     "type": "smallint unsigned",
+     "type": "int unsigned",
      "nullable": true,
      "def": null,
      "key": "",

@@ -162,7 +162,7 @@ footer p{margin:0 0 4px; max-width:none}
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
   <li>표 <b>23</b> <span class="ko">과제 4 · 사용자 · 조직 3 · 캘린더 16</span></li>
   <li>컬럼 <b>175</b> · 외래키 <b>25</b> · CHECK <b>35</b></li>
-  <li>schema_version <b>11</b></li>
+  <li>schema_version <b>12</b></li>
   <li>기준 <b>2026-09-10</b></li>
 </ul>
 <!-- GEN:FACTS:END -->
@@ -393,7 +393,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">login_id</td><td class="type">VARCHAR(50)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span></td><td class="note"><b>사내 주간보고 로그인 ID.</b> 조직도 링크의 <code>id=</code> 값과 같습니다. 로그인이 들고 오는 값이라 <b>사람을 찾는 입구</b>이지만, <b>저장되는 것은 <code>user_id</code></b> 입니다 — 그래서 이제 <b>이 값을 바꿔도 됩니다</b>(아래 경고 참조).</td></tr>
 <tr><td class="col">name</td><td class="type">VARCHAR(50)</td><td><span class="k nn">NOT NULL</span></td><td class="note">표시 이름.</td></tr>
 <tr><td class="col">title</td><td class="type">VARCHAR(30)</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note">직급. <code>title_code</code>에 있는 값만 들어갑니다. <b>권한 판정에 쓰지 않습니다</b>(아래 경고 참조).</td></tr>
-<tr><td class="col">sort_order</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k">NULL 허용</span></td><td class="note"><b>명부 서열</b>(전사 단일 — 팀별이 아닙니다). <b>작을수록 위</b>입니다. 관리자가 구성원 명부에서 순서를 저장하면 <b>앱이 전원을 10 간격으로 다시 씁니다</b> — 그래서 사이값을 계산하거나 뒷사람을 밀어 줄 일이 없고, 관리자는 숫자를 보지도 않습니다. <code>NULL</code> 은 <b>미지정 = 맨 뒤</b>이고 신규 등록 직후가 그 상태입니다. <code>cal_*</code>의 <code>sort_order</code>와 이름만 같고 뜻이 다릅니다(저쪽은 사용자별 배열 인덱스).</td></tr>
+<tr><td class="col">sort_order</td><td class="type">INT UNSIGNED</td><td><span class="k">NULL 허용</span></td><td class="note"><b>명부 서열</b>(전사 단일 — 팀별이 아닙니다). <b>작을수록 위</b>입니다. 관리자가 구성원 명부에서 순서를 저장하면 <b>앱이 전원을 10 간격으로 다시 씁니다</b> — 그래서 사이값을 계산하거나 뒷사람을 밀어 줄 일이 없고, 관리자는 숫자를 보지도 않습니다. <code>NULL</code> 은 <b>미지정 = 맨 뒤</b>이고 신규 등록 직후가 그 상태입니다. <code>cal_*</code>의 <code>sort_order</code>와 이름만 같고 뜻이 다릅니다(저쪽은 사용자별 배열 인덱스).</td></tr>
 <tr><td class="col">org_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note"><span class="star">★</span> <b>소속 — 정본이자 유일한 경로.</b> <code>org_unit.org_id</code>를 가리킵니다(<code>fk_user_org_id</code>). <b><code>unit_tree</code> 조회의 기준점</b>이라 같은 설정이라도 이 값에 따라 보이는 범위가 달라집니다. <b>소속 이름을 담은 컬럼은 이 표에 없습니다</b> — 2026-08-24 마이그레이션이 <code>org_unit</code>(이름) 컬럼과 <code>fk_user_org</code>를 지웠습니다. 그래서 조직을 개명해도 <b>이 표는 아예 건드릴 일이 없습니다.</b> 소속 변경은 한 문장입니다(<code>db/deploy/org-ops.cmd assign</code>).</td></tr>
 <tr><td class="col">view_scope</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 self</span><span class="k">CHECK</span></td><td class="note"><b>남의 일정을 어디까지 보나.</b> <code>self</code>(자기만) · <code>unit_tree</code>(자기 소속 이하 전체) · <code>all</code>(전사). 세 값만 허용됩니다.</td></tr>
 <tr><td class="col">edit_role</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 viewer</span><span class="k">CHECK</span></td><td class="note"><b>과제 DB를 고칠 수 있나.</b> <code>viewer</code>(조회만) · <code>editor</code>(+과제 편집) · <code>admin</code>(+직원·조직 관리). 세 값만 허용됩니다.</td></tr>
