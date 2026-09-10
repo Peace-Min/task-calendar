@@ -18,6 +18,11 @@
  *     그래서 편집 케이스는 전부 openUserAdmin() 경로로 돌고(C16 이 보기 화면을 따로 본다),
  *     C13 은 「진입 버튼 부재 + 모달 진입 불가(컨트롤 0) + 관문 거부」 셋을 함께 본다.
  *
+ *   ★ 2026-09-10(2차) 버튼 자리가 옮겨졌다: 행에는 [편집]뿐이고 퇴사·복구는 **편집 폼 하단 왼쪽**
+ *     버튼(#userEdActive)이며, 「＋ 직원 등록」은 상단 막대가 아니라 하단(#uaFoot)의 주 버튼이다.
+ *     C06·C07 은 쓰기 자체를 여전히 setUserActive 로 보내되(호스트 계약), 그 **앞에서** 폼을 열어
+ *     버튼이 어떤 모습(퇴사 처리/복구 · danger 유무 · 대상 uid)으로 서는지를 함께 본다.
+ *
  * 불변식(케이스마다):
  *   I1 활성 admin ≥ 1                       — 0 이 되는 순간 "앱에서만 관리한다"가 깨진다(DB 로 가야 푼다)
  *   I2 활성 사용자 중 sort_order NULL 은 **이번 라운드에서 새로 등록해 아직 순서 저장 전인 계정**뿐
@@ -284,6 +289,14 @@ const pstate = () => evj(PSTATE);
 const members = () => evj(`JSON.stringify(__uaMembers.map(function(m){return {uid:m.userId,loginId:m.loginId,name:m.name,title:m.title,org:m.orgUnit,orgId:m.orgId,scope:m.viewScope,role:m.editRole,active:m.isActive,sort:m.sortOrder};}))`);
 /** 화면에 실제로 그려진 행 순서(「구성원 편집」의 .mba-line) */
 const screenIds = () => evj(`JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#uaList .mba-line'), function(l){ var b=l.querySelector('[data-uid]'); return b?Number(b.getAttribute('data-uid')):0; }))`);
+/** 편집 폼 하단 왼쪽 버튼(#userEdActive) — 2026-09-10 퇴사·복구가 행에서 이 자리로 옮겨 왔다.
+ *  ★ 행에 off/on 이 하나라도 남았는지 함께 센다: 같은 동작이 두 자리에 있으면 어느 쪽이 참인지 갈린다. */
+const edActive = () => evj(`JSON.stringify({
+  act: (function(){ var b=document.getElementById('userEdActive');
+        return b ? { hidden: !!b.hidden, uop: String(b.dataset.uop||''), uid: String(b.dataset.uid||''),
+                     text: String(b.textContent||''), danger: b.classList.contains('danger') } : null; })(),
+  rowOff: document.querySelectorAll('#uaList [data-uop="off"],#uaList [data-uop="on"]').length
+})`);
 
 async function waitPage(pred, { timeout = 15000, interval = 80, desc = '' } = {}) {
   const t = Date.now();
@@ -453,6 +466,11 @@ async function runCase(id, title, fn) {
 async function formSave({ uid = 0, loginId, name, title, orgId, scope, role }) {
   await ev(`userEdOpen(${uid})`);
   await sleep(80);
+  //  ★ 신규 등록에는 퇴사시킬 대상이 없다 — 폼 하단 왼쪽 버튼은 감춰져 있어야 한다(2026-09-10).
+  if (uid === 0) {
+    const p = await edActive();
+    okq('신규 등록 폼에 [퇴사 처리]가 서지 않는다(대상 없음)', !!p.act && p.act.hidden === true, JSON.stringify(p.act));
+  }
   const setv = async (sel, v) => ev(`(function(){var e=document.querySelector(${JSON.stringify(sel)});if(!e)return false;e.value=${JSON.stringify(String(v))};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return e.value===${JSON.stringify(String(v))};})()`);
   if (loginId != null) await setv('#userEdLogin', loginId);
   await setv('#userEdName', name);
@@ -520,6 +538,10 @@ async function main() {
   let s = await waitPage((x) => x.uaOpen && !x.busy && x.n > 0, { timeout: 20000 });
   if (!s) { console.error('[판정 없음] 「구성원 편집」 화면을 열지 못했다'); process.exit(2); }
   if (!s.admin) { console.error('[판정 없음] 회신에 admin 이 없다 — 호스트가 이 계정을 관리자로 보지 않는다'); process.exit(2); }
+  //  자리 계약(2026-09-10 2차) — 「＋ 직원 등록」은 하단(#uaFoot)의 주 버튼이고 상단 막대에는 없다.
+  //  ★ 여기서 한 번 본다: 자리가 틀리면 아래 케이스들이 셀렉터 실패로 뭉개져 원인이 보이지 않는다.
+  const foot0 = await evj(`JSON.stringify({ foot: !!document.querySelector('#uaFoot #uaNew'), bar: !!document.querySelector('#uaAdmin #uaNew') })`);
+  okq('「＋ 직원 등록」이 하단(#uaFoot)에 있고 상단 막대에는 없다', foot0.foot === true && foot0.bar === false, JSON.stringify(foot0));
   const meta = await evj(`JSON.stringify({titles: __uaTitles.slice(), units: __uaUnits.filter(function(u){return u&&u.orgId!=null;}).map(function(u){return {orgId:u.orgId,name:u.name};})})`);
   if (meta.titles.length < 2 || meta.units.length < 2) {
     console.error('[판정 없음] 직급 또는 조직이 2개 미만이다 — 수정 케이스를 만들 수 없다');
@@ -666,6 +688,21 @@ async function main() {
 
   /* ── C06 퇴사 ───────────────────────────────────────────────────────── */
   await runCase('C06', '퇴사(대상: admin 인 zzU)', async () => {
+    //  ★ 화면 경로 먼저 본다(2026-09-10): 행에는 [편집]뿐이고, 퇴사는 폼을 연 뒤 하단 왼쪽 버튼이다.
+    //    쓰기 자체는 아래 send 가 호스트 계약으로 판정한다 — 여기서 보는 것은 '버튼이 어디에 어떤 모습으로 서는가'다.
+    await ev(`userEdOpen(${B.uid})`);
+    await sleep(80);
+    {
+      const s0 = await pstate();
+      const p = await edActive();
+      okq('C06 편집 폼이 열렸다', s0.ueOpen === true);
+      okq('C06 폼 하단에 [퇴사 처리]가 선다(danger · uop=off · 대상 uid)',
+        !!p.act && p.act.hidden === false && p.act.uop === 'off' && p.act.uid === String(B.uid)
+          && p.act.text === '퇴사 처리' && p.act.danger === true, JSON.stringify(p.act));
+      okq('C06 행에는 퇴사·복구 버튼이 없다(자리는 하나여야 한다)', p.rowOff === 0, `실제 ${p.rowOff}개`);
+    }
+    await ev(`closeModal('#userEditModal')`);
+    await sleep(80);
     const rep = await send({ cmd: 'setUserActive', userId: B.uid, active: false });
     if (!okq('C06 퇴사 성공 회신', rep.ok, rep.msg)) return;
     const ms = await members();
@@ -707,6 +744,18 @@ async function main() {
   /* ── C07 복구 ───────────────────────────────────────────────────────── */
   await runCase('C07', '복구', async () => {
     await setInactiveView(true);
+    //  ★ 같은 버튼이 퇴사자에게는 [복구]로 선다 — danger 를 벗는다(되돌리기는 파괴적이지 않다).
+    await ev(`userEdOpen(${B.uid})`);
+    await sleep(80);
+    {
+      const p = await edActive();
+      okq('C07 폼 하단이 [복구]로 바뀐다(uop=on · danger 없음)',
+        !!p.act && p.act.hidden === false && p.act.uop === 'on' && p.act.uid === String(B.uid)
+          && p.act.text === '복구' && p.act.danger === false, JSON.stringify(p.act));
+      okq('C07 행에는 여전히 퇴사·복구 버튼이 없다', p.rowOff === 0, `실제 ${p.rowOff}개`);
+    }
+    await ev(`closeModal('#userEditModal')`);
+    await sleep(80);
     const rep = await send({ cmd: 'setUserActive', userId: B.uid, active: true });
     if (!okq('C07 복구 성공 회신', rep.ok, rep.msg)) return;
     const db = dbSnap('C07 확인').byId.get(B.uid);

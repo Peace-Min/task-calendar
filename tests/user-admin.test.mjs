@@ -336,6 +336,9 @@ const checks = {
     assert.ok(/<div class="modal wide">/.test(md), '#userAdminModal 이 .modal.wide 가 아니다');
     assert.ok(/<div id="uaAdmin"><\/div>/.test(md),
       '#uaAdmin 이 비어 있지 않다 — 컨트롤을 마크업에 적으면 admin:false 회신에도 DOM 에 남는다(숨김 ≠ 부재)');
+    //  ★ 2026-09-10 「＋ 직원 등록」이 하단으로 내려왔다 — 그 자리도 **빈 자리**여야 한다. 같은 규칙이다.
+    assert.ok(/<span id="uaFoot"><\/span>/.test(md),
+      '#uaFoot 이 비어 있지 않다 — 등록 버튼을 마크업에 적으면 admin:false 회신에도 DOM 에 남는다(숨김 ≠ 부재)');
     assert.ok(/id="uaList"/.test(md), '#uaList 목록 자리가 없다');
     for (const dead of ['직원 등록', '순서 편집', '순서 저장', '퇴사자 보기', 'data-uop']) {
       assert.ok(!md.includes(dead),
@@ -365,6 +368,42 @@ const checks = {
       '권한 조회 실패 경로가 진입 버튼을 없애지 않는다 — 확인하지 못한 채 문이 열려 있게 된다');
     assert.ok(/usAdminBtnSync\(''\)/.test(extractFunction(web, 'updateUserUi')),
       '미로그인 경로가 진입 버튼을 없애지 않는다');
+  },
+
+  // ⑦-e 퇴사·복구는 **편집 폼 안에만** 산다(2026-09-10 사용자 결정).
+  //    행마다 파괴적 버튼을 두면 89개 행이 그대로 오클릭 면적이 되고, 목록의 주 동작이 무엇인지 읽히지 않는다.
+  //    '누구를 퇴사시키나'는 그 사람을 열어 놓고 판단할 일이다(업계 관례: 비활성화는 상세/편집 화면에 산다).
+  //    ★ 형태로 못 박는 이유: 행에 도로 붙이는 변경은 한 줄이면 되고, 되돌아간 줄은 리뷰에서 눈에 띄지 않는다.
+  retireLivesInForm(web) {
+    const ra = extractFunction(web, 'uaRowActions');
+    assert.ok(!/\buaSetActive\b/.test(ra),
+      'uaRowActions 가 uaSetActive 를 부른다 — 퇴사·복구는 행이 아니라 편집 폼 하단의 일이다');
+    assert.ok(!/'off'|'on'/.test(ra),
+      "uaRowActions 에 'off'/'on' uop 이 남아 있다 — 행에는 [편집](과 순서 편집 중의 ▲▼)뿐이다");
+
+    const s = web.indexOf('<div class="overlay hidden" id="userEditModal">');
+    assert.ok(s >= 0, '#userEditModal 마크업을 찾지 못함');
+    const e = web.indexOf('<!-- ===== 자세한 사용설명서', s);
+    assert.ok(e > s, '#userEditModal 뒤의 사용설명서 모달을 찾지 못했다(판정 불가)');
+    const md = web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
+    const btn = /<button type="button" class="btn danger" id="userEdActive" hidden>/.exec(md);
+    assert.ok(btn,
+      '#userEdActive(퇴사·복구) 버튼이 편집 폼 마크업에 없다 — 이 폼은 admin:true 가 아니면 열리지 않으므로 정적이어도 된다');
+    const sp = md.indexOf('<span class="spacer"></span>');
+    assert.ok(sp > btn.index,
+      '#userEdActive 가 spacer 뒤에 있다 — 파괴적 동작은 [취소][저장] 반대쪽 왼끝에 서야 잘못 눌리지 않는다');
+
+    const o = extractFunction(web, 'userEdOpen');
+    assert.ok(/userEdActive/.test(o), 'userEdOpen 이 #userEdActive 를 손대지 않는다 — 대상·문구가 이전 사람 것으로 남는다');
+    assert.ok(/hidden = !m\b/.test(o),
+      'userEdOpen 이 신규 등록(대상 없음)에서 퇴사 버튼을 감추지 않는다 — 없는 사람을 퇴사시킬 수는 없다');
+    assert.ok(/\.dataset\.uop\s*=/.test(o) && /'off'/.test(o) && /'on'/.test(o),
+      "userEdOpen 이 data-uop 을 'off'/'on' 양쪽으로 세우지 않는다 — 재직·퇴사 두 상태가 같은 버튼을 쓴다");
+    assert.ok(!/isMe\s*\?\s*true|disabled\s*=\s*isMe/.test(o),
+      '화면이 자기 퇴사를 미리 막는다 — 거부는 호스트 문장이어야 관문이 실제로 막는지 확인된다(§4.4-1)');
+
+    assert.ok(/userEdActive/.test(extractFunction(web, 'uaSetSaving')),
+      'uaSetSaving 이 [퇴사 처리]를 함께 잠그지 않는다 — 전송 중에 눌리면 같은 왕복이 겹친다');
   },
 };
 
@@ -407,6 +446,9 @@ test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 두 �
 });
 test("계약⑦-c: 「구성원 편집」 진입 버튼은 edit_role==='admin' 일 때만 만들어진다(숨김 ≠ 부재)", () => {
   checks.adminEntryButtonIsBuiltNotHidden(app);
+});
+test('계약⑦-e: 퇴사·복구는 편집 폼 하단에만 있고 행에는 없다(2026-09-10 사용자 결정)', () => {
+  checks.retireLivesInForm(app);
 });
 
 // ── 브리지 배선 — 세 명령이 실제로 호스트에 닿고, 성공하면 명부가 갱신된다 ──────────
@@ -539,6 +581,34 @@ test('변이⑦-b: 편집 컨트롤을 「구성원 편집」 마크업에 적�
   assert.throws(() => checks.userAdminMarkupHasNoControls(bad), /비어 있지 않다|컨트롤\(직원 등록\)/);
 });
 
+test('변이⑦-b2: 등록 버튼을 하단 자리(#uaFoot)에 적어 두면 계약⑦ 이 실패한다(아래 자리도 같은 규칙이다)', () => {
+  const bad = mutate(app, '      <span id="uaFoot"></span>',
+                          '      <span id="uaFoot"><button type="button" class="btn primary" id="uaNew">＋ 직원 등록</button></span>');
+  assert.throws(() => checks.userAdminMarkupHasNoControls(bad), /비어 있지 않다|컨트롤\(직원 등록\)/);
+  assert.doesNotThrow(() => checks.userAdminMarkupHasNoControls(app));   // 통제군
+});
+
+test('변이⑦-f: 행에 [퇴사]를 도로 붙이면 계약⑦-e 가 실패한다', () => {
+  const bad = mutate(app, "  mk('편집', 'edit', nm + ' 정보 수정', () => userEdOpen(uid));",
+    "  mk('편집', 'edit', nm + ' 정보 수정', () => userEdOpen(uid));\n" +
+    "  mk('퇴사', 'off', nm + ' 퇴사 처리', () => uaSetActive(uid, nm, false));");
+  assert.throws(() => checks.retireLivesInForm(bad), /uaSetActive 를 부른다|uop 이 남아 있다/);
+  assert.doesNotThrow(() => checks.retireLivesInForm(app));   // 통제군
+});
+
+test('변이⑦-f2: userEdOpen 이 폼 하단 버튼을 세우지 않으면 계약⑦-e 가 실패한다(대상이 이전 사람으로 남는다)', () => {
+  const bad = mutate(app, "  const ab = document.getElementById('userEdActive');\n  if(ab){",
+                          '  const ab = null;\n  if(ab){');
+  assert.throws(() => checks.retireLivesInForm(bad), /#userEdActive 를 손대지 않는다/);
+});
+
+test('변이⑦-f3: 퇴사 버튼을 spacer 뒤(=[취소][저장] 옆)로 옮기면 계약⑦-e 가 실패한다', () => {
+  const bad = mutate(app,
+    '      <button type="button" class="btn danger" id="userEdActive" hidden>퇴사 처리</button>\n      <span class="spacer"></span>',
+    '      <span class="spacer"></span>\n      <button type="button" class="btn danger" id="userEdActive" hidden>퇴사 처리</button>');
+  assert.throws(() => checks.retireLivesInForm(bad), /spacer 뒤에 있다/);
+});
+
 test('변이⑦-c: 보기 화면이 admin 을 다시 읽기 시작하면 계약⑦ 이 실패한다(두 화면이 도로 엉킨다)', () => {
   const bad = mutate(app, '  __mbSel = mbDefaultSel(__mbUnits);',
                           '  __mbSel = d.admin === true ? null : mbDefaultSel(__mbUnits);');
@@ -584,8 +654,12 @@ const COUNT_JS = [
   '    acts: list.querySelectorAll(".mba-act").length,',
   '    rows: list.querySelectorAll(".mb-row").length,',
   '    links: list.querySelectorAll(".mb-row.is-link").length,',
+  '    badges: list.querySelectorAll(".badge").length,',
   '    text: String(list.textContent || ""),',
   '    texts: Array.prototype.map.call(list.querySelectorAll("button"), function(b){ return b.textContent; }),',
+  '    footChildren: (function(){ var f = document.getElementById("uaFoot"); return f ? f.children.length : -1; })(),',
+  '    footTexts: (function(){ var f = document.getElementById("uaFoot"); return f ?',
+  '      Array.prototype.map.call(f.querySelectorAll("button"), function(b){ return b.textContent; }) : []; })(),',
   '  };',
   '}',
 ].join('\n');
@@ -644,7 +718,8 @@ const VIEW_FIXTURE = '<!doctype html><html><body>' +
   '<div id="mbSoon"></div><div id="mbList"></div><div id="mbEmpty"></div></body></html>';
 const ADMIN_FIXTURE = '<!doctype html><html><body>' +
   '<div id="uaAdmin"></div><input type="text" id="uaSearch">' +
-  '<div id="uaScope"></div><div id="uaList"></div><div id="uaEmpty"></div></body></html>';
+  '<div id="uaScope"></div><div id="uaList"></div><div id="uaEmpty"></div>' +
+  '<span id="uaFoot"></span></body></html>';   // 하단 자리 — 마크업에선 빈 채고 uaAdminBar 가 채운다
 const ENTRY_FIXTURE = '<!doctype html><html><body><div class="us-mem-row" id="usMemberBtns">' +
   '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div></body></html>';
 
@@ -679,7 +754,7 @@ if (!jsdom) {
   const { skip } = await import('./harness.mjs');
   skip('계약⑦-DOM(a): 「구성원 보기」는 관리자에게도 편집 컨트롤이 0', SKIP_NO_JSDOM, '이 파일의 DOM 계약 5건이 세어지지 않음');
   skip('계약⑦-DOM(b): 「구성원 편집」 컨트롤은 admin:true 일 때만 있다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집은 사라진다(하단 등록도 함께 사라진다)', SKIP_NO_JSDOM);
   skip("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다", SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
 } else {
@@ -703,23 +778,33 @@ if (!jsdom) {
     assert.strictEqual(off.lines, 0, 'admin:false 인데 행이 그려졌다 — 편집 화면은 관리자 회신 없이 아무것도 그리지 않는다');
     assert.ok(/관리자만 사용할 수 있습니다/.test(off.text),
       `admin:false 안내 문구가 없다(실제: ${JSON.stringify(off.text.slice(0, 60))}) — 빈 화면은 고장처럼 보인다`);
+    assert.strictEqual(off.footChildren, 0, `admin:false 인데 #uaFoot 에 자식이 ${off.footChildren}개 있다 — 등록 버튼도 부재여야 한다`);
 
     const on = probeAdmin(true, false);
     assert.strictEqual(on.lines, ROWS.length, '관리자인데 행이 .mba-line 으로 묶이지 않았다');
-    assert.deepStrictEqual(on.uops, ['edit', 'off', 'edit', 'off', 'edit', 'on'],
-      `행 조작 버튼 구성이 계약과 다르다: ${on.uops.join(', ')} — 활성은 [편집][퇴사], 퇴사자는 [편집][복구]`);
+    assert.deepStrictEqual(on.uops, ['edit', 'edit', 'edit'],
+      `행 조작 버튼 구성이 계약과 다르다: ${on.uops.join(', ')} — 행에는 [편집]만 있다(퇴사·복구는 편집 폼 하단으로 옮겼다 2026-09-10)`);
     assert.ok(on.barChildren > 0, '관리자인데 #uaAdmin 막대가 비어 있다');
+    //  ★ 「＋ 직원 등록」은 하단 자리에만 있다 — 상단 막대에 두었더니 관리자가 찾지 못했다(2026-09-10).
+    assert.deepStrictEqual(on.footTexts, ['＋ 직원 등록'],
+      `#uaFoot 의 버튼 구성이 계약과 다르다: ${JSON.stringify(on.footTexts)} — 등록 하나가 이 화면의 주 동작이다`);
+    //  ★ 퇴사자 표시는 이제 알약 하나가 혼자 진다(행에서 [퇴사] 버튼이 사라졌으므로).
+    assert.strictEqual(on.badges, 1,
+      `퇴사 꼬리표(.badge)가 ${on.badges}개다 — 명부의 퇴사자 1명에게만 붙어야 한다`);
     //  ★ 편집 화면의 행은 눌리지 않는다 — 남의 일정 열람은 「구성원 보기」의 일이다.
     assert.strictEqual(on.links, 0, `편집 화면 행이 눌린다(.mb-row.is-link ${on.links}개) — 이 화면은 고치는 화면이다`);
   });
 
-  test('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', () => {
+  test('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집은 사라진다(하단 등록도 함께 사라진다)', () => {
     const r = probeAdmin(true, true);
     assert.deepStrictEqual(r.uops, ['up', 'down', 'up', 'down', 'up', 'down'],
       `순서 편집 중 조작 버튼이 ▲▼ 가 아니다: ${r.uops.join(', ')} — 좁은 폭에서 버튼 넷이 붙으면 이름이 되접힌다`);
     for (const t of r.texts) {
       assert.ok(!/편집|퇴사|복구/.test(t), `순서 편집 중인데 행에 ${t} 버튼이 남아 있다`);
     }
+    //  ★ 등록은 명부를 다시 읽어 와 **편집 중인 순서를 날린다** — 그래서 이 모드에서는 하단도 빈 자리다.
+    assert.strictEqual(r.footChildren, 0,
+      `순서 편집 중인데 #uaFoot 에 자식이 ${r.footChildren}개 있다 — 등록이 명부를 다시 읽어 편집 중인 순서를 날린다`);
   });
 
   test("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다(숨김이 아니라 부재)", () => {

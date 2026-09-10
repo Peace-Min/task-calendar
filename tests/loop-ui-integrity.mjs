@@ -257,6 +257,8 @@ const isTempUser = (s) => /^zzU\d+_/.test(s || '');
  *  U3 퇴사자가 명부 화면에 없다(「퇴사자 보기」가 꺼져 있을 때).
  *  U4 화면 순서 = DB 순서 — 화면이 다시 정렬하지 않는다는 계약의 실측판(§5.3).
  *  U6 「구성원 보기」에는 편집 컨트롤이 0 — **관리자에게도** 없다(2026-09-10 사용자 결정).
+ *     같은 번호로 「구성원 편집」의 **자리 계약**도 본다: 행은 [편집]·▲▼ 뿐이고(퇴사·복구는 폼 하단),
+ *     「＋ 직원 등록」은 상단 막대가 아니라 하단(#uaFoot)에 있다.
  *     invUsers 가 아니라 phaseUserAdmin 이 시작할 때 한 번 본다(조작마다 볼 값이 아니다).      */
 function invUsers(users, screenRows, opts = {}) {
   const admins = users.filter((u) => u.role === 'admin' && u.active);
@@ -1592,6 +1594,10 @@ async function phaseHardDelete(snap) {
  *    회신일 때만 DOM 에 생긴다 — 그래서 '버튼이 없다'가 곧 '관리자가 아니다'이고 건너뛰기 조건이다.
  *    그리고 이 구간은 시작할 때 「구성원 보기」가 **관리자에게도** 순수 보기인지 먼저 본다(U6).
  *
+ *  ★ 2026-09-10(2차) 버튼 자리가 옮겨져 **클릭 경로가 바뀌었다**: 행에는 [편집]·▲▼ 만 있고,
+ *    퇴사·복구는 편집 폼 하단 왼쪽 버튼(#userEdActive)이다 — 그래서 (4)(5) 는 '폼 열기 → 누르기'
+ *    두 걸음이고, 성공하면 폼이 닫혔는지까지 본다. 「＋ 직원 등록」은 하단(#uaFoot)으로 내려갔다.
+ *
  *  ★ 이 구간은 로그인 계정이 **admin** 일 때만 의미가 있다. editor 로 돌면 첫 조작에서
  *    "직원 정보는 관리자만 고칠 수 있습니다"가 돌아오는데, 그건 결함이 아니라 사전조건 미충족이다 —
  *    그래서 위반이 아니라 **건너뜀**으로 기록한다(없는 실패를 만들어 내지 않는다).
@@ -1673,6 +1679,19 @@ async function phaseUserAdmin() {
   const lid = tmpUser();
   let uid = 0;
 
+  /* (0-b) 자리 계약 — 2026-09-10 사용자 결정으로 두 버튼이 자리를 옮겼다.
+     「＋ 직원 등록」은 하단(#uaFoot)의 주 버튼이고, 행에는 [편집]뿐이다(퇴사·복구는 편집 폼 하단).
+     ★ 클릭 경로보다 **먼저** 본다: 자리가 틀리면 아래 (1)(4)(5) 가 셀렉터 실패로 뭉개져 원인이 안 보인다. */
+  {
+    const p = await ev(`(function(){ return { foot: !!document.querySelector('#uaFoot #uaNew'),
+      barNew: !!document.querySelector('#uaAdmin #uaNew'),
+      rowOff: document.querySelectorAll('#uaList [data-uop="off"],#uaList [data-uop="on"]').length }; })()`);
+    if (!p || p.foot !== true) violate('U6', '「＋ 직원 등록」이 하단(#uaFoot)에 없다 — 상단 막대에 두면 관리자가 찾지 못한다(2026-09-10)', p);
+    else if (p.barNew === true) violate('U6', '「＋ 직원 등록」이 상단 막대에도 남아 있다 — 자리는 하나여야 한다', p);
+    else if (p.rowOff > 0) violate('U6', `행에 퇴사·복구 버튼이 ${p.rowOff}개 남아 있다 — 파괴적 동작은 편집 폼 하단으로 옮겼다`, p);
+    else ok('직원 관리 자리 계약: 등록=하단 · 행=[편집]만');
+  }
+
   /* (1) 등록 — 「＋ 직원 등록」 → 폼 채우기 → 저장 */
   {
     const t = await ev(`__lt.click('#uaNew')`);
@@ -1739,14 +1758,26 @@ async function phaseUserAdmin() {
     }
   }
 
-  /* (4) 퇴사 — 확인창 한 번. 행은 남고 명부에서만 사라진다. */
+  /* (4) 퇴사 — 편집 폼을 열고 하단 왼쪽 [퇴사 처리] → 확인창 한 번. 행은 남고 명부에서만 사라진다.
+     ★ 경로가 두 걸음이 됐다(2026-09-10): 행에는 [편집]뿐이라 폼을 먼저 열어야 대상이 정해진다. */
   {
-    const rec = await doWrite(`퇴사 처리 ${lid}`, `__lt.click('#uaList [data-uop="off"][data-uid="${uid}"]')`);
-    const { users, s: sc } = await verifyUserOp(`퇴사 ${lid}`, rec);
-    const row = users.find((u) => u.uid === uid);
-    if (!row) violate('U0', `퇴사 처리로 행이 사라졌다(uid=${uid}) — 퇴사는 is_active=0 이고 행은 남는다(§3.3)`);
-    else if (rec.outcome === 'success' && row.active) violate('U0', `퇴사가 성공이라 했는데 is_active 가 1 이다(uid=${uid})`);
-    if ((sc.mbRows || []).some((r) => r.uid === uid)) violate('U3', `퇴사 처리했는데 명부에 그대로 보인다(uid=${uid})`);
+    const t = await ev(`__lt.click('#uaList [data-uop="edit"][data-uid="${uid}"]')`);
+    if (!t || t.ok === false) { violate('U0', `퇴사하려고 편집 폼을 열지 못했다(uid=${uid})`, t); }
+    else if (!(await waitFor((x) => x.ueOpen, { timeout: 8000, desc: '편집 폼 열림(퇴사)' }))) {
+      violate('U0', `편집 버튼을 눌렀는데 폼이 열리지 않았다(uid=${uid})`);
+    } else {
+      const rec = await doWrite(`퇴사 처리 ${lid}`, `__lt.click('#userEditModal [data-uop="off"][data-uid="${uid}"]')`);
+      const { users, s: sc } = await verifyUserOp(`퇴사 ${lid}`, rec);
+      const row = users.find((u) => u.uid === uid);
+      if (!row) violate('U0', `퇴사 처리로 행이 사라졌다(uid=${uid}) — 퇴사는 is_active=0 이고 행은 남는다(§3.3)`);
+      else if (rec.outcome === 'success' && row.active) violate('U0', `퇴사가 성공이라 했는데 is_active 가 1 이다(uid=${uid})`);
+      if ((sc.mbRows || []).some((r) => r.uid === uid)) violate('U3', `퇴사 처리했는데 명부에 그대로 보인다(uid=${uid})`);
+      //  성공하면 폼이 닫혀야 한다 — 열린 채 남으면 방금 퇴사시킨 사람의 폼에서 [저장]을 또 누를 수 있다.
+      if (rec.outcome === 'success' && (await state()).ueOpen !== false) {
+        violate('U0', '퇴사 성공 뒤 편집 폼이 닫히지 않았다');
+      }
+      await closeIfOpen('#userEditModal');
+    }
   }
 
   /* (5) 복구 — 「퇴사자 보기」를 켜야 대상이 보인다. */
@@ -1757,10 +1788,21 @@ async function phaseUserAdmin() {
       const s1 = await waitFor((x) => (x.mbRows || []).some((r) => r.uid === uid), { timeout: 12000, desc: '퇴사자 표시' });
       if (!s1) violate('U0', `「퇴사자 보기」를 켰는데 대상이 나타나지 않는다(uid=${uid})`);
       else {
-        const rec = await doWrite(`복구 ${lid}`, `__lt.click('#uaList [data-uop="on"][data-uid="${uid}"]')`);
-        const { users } = await verifyUserOp(`복구 ${lid}`, rec, { includeInactive: true });
-        const row = users.find((u) => u.uid === uid);
-        if (rec.outcome === 'success' && row && !row.active) violate('U0', `복구가 성공이라 했는데 is_active 가 0 이다(uid=${uid})`);
+        //  복구도 같은 두 걸음이다 — 폼을 열면 같은 버튼이 [복구]로 서 있다(data-uop="on").
+        const te = await ev(`__lt.click('#uaList [data-uop="edit"][data-uid="${uid}"]')`);
+        if (!te || te.ok === false) violate('U0', `복구하려고 편집 폼을 열지 못했다(uid=${uid})`, te);
+        else if (!(await waitFor((x) => x.ueOpen, { timeout: 8000, desc: '편집 폼 열림(복구)' }))) {
+          violate('U0', `편집 버튼을 눌렀는데 폼이 열리지 않았다(uid=${uid})`);
+        } else {
+          const rec = await doWrite(`복구 ${lid}`, `__lt.click('#userEditModal [data-uop="on"][data-uid="${uid}"]')`);
+          const { users } = await verifyUserOp(`복구 ${lid}`, rec, { includeInactive: true });
+          const row = users.find((u) => u.uid === uid);
+          if (rec.outcome === 'success' && row && !row.active) violate('U0', `복구가 성공이라 했는데 is_active 가 0 이다(uid=${uid})`);
+          if (rec.outcome === 'success' && (await state()).ueOpen !== false) {
+            violate('U0', '복구 성공 뒤 편집 폼이 닫히지 않았다');
+          }
+          await closeIfOpen('#userEditModal');
+        }
       }
     }
   }

@@ -56,6 +56,9 @@ body{
 #appSurface{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg);opacity:var(--wo, 1)}
 button{font-family:inherit}
 .hidden{display:none !important}
+/* ★ hidden 속성으로 감추는 버튼(#userEdActive)용 — .btn 의 display:inline-flex 가 브라우저 기본
+   [hidden]{display:none} 을 덮어써서, 속성만 세우면 **안 감춰진다**(작성자 스타일이 UA 스타일을 이긴다). */
+[hidden]{display:none !important}
 
 /* ---------- 데스크톱 위젯 호스트바 (WebView2 모드 전용) ---------- */
 #hostbar{display:flex;align-items:center;height:32px;background:var(--titlebar);color:#fff;flex:none;user-select:none;-webkit-user-select:none}
@@ -1379,6 +1382,8 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 .mba-line.is-off{opacity:.55}   /* 퇴사자 — 목록에서 흐리게(숨기지 않는다. 「퇴사자 보기」를 켠 상태다) */
 .mba-act{display:inline-flex;gap:2px;flex:none;padding-right:2px}
 .mba-act .btn{padding:2px 7px;line-height:1.1}
+/* 퇴사 꼬리표는 이름줄에 붙는 알약이다 — 글자로 ' · 퇴사'를 이어 붙이면 이름과 한 덩어리로 읽힌다. */
+.mba-line .badge{margin-left:6px;vertical-align:1px}
 .mba-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)}
 .mba-bar .mba-sp{flex:1}
 .mba-hint{font-size:var(--fs-meta);color:var(--muted);margin:0}
@@ -2802,9 +2807,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div id="uaList"></div>
       <div class="set-hint hidden" id="uaEmpty">검색 결과가 없습니다.</div>
     </div>
+    <!-- ★ 「＋ 직원 등록」은 이 아래 자리(#uaFoot)에 산다 — 상단 막대에 두었더니 관리자가 찾지 못했다(2026-09-10).
+         그래서 「닫기」는 더 이상 primary 가 아니다: 이 화면의 주 동작은 등록이다.
+         ★ #uaFoot 는 상단 막대(#uaAdmin)와 같은 **빈 자리**다 — 버튼을 마크업에 적으면 admin:false 회신에도 남는다.
+           숨김이 아니라 부재여야 한다(uaAdminBar 가 관리자·비순서편집일 때만 만든다). -->
     <div class="modal-foot">
       <span class="spacer"></span>
-      <button class="btn primary" data-close>닫기</button>
+      <button class="btn" data-close>닫기</button>
+      <span id="uaFoot"></span>
     </div>
   </div>
 </div>
@@ -2815,7 +2825,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
      ★ 폼 안의 값 목록(직급·소속·라디오)은 전부 JS 가 채운다: 직급·소속은 DB 마스터고,
        라디오 문구는 「사용자 정보」와 **같은 매핑표**(US_VIEW_SCOPE·US_EDIT_ROLE)를 쓴다 —
        같은 규칙을 두 벌로 적으면 한쪽이 반드시 낡는다.
-     ★ 여기에는 '삭제'가 없다. 퇴사는 「구성원 편집」 행의 「퇴사」이고, 행은 남는다(USER-ADMIN §3.3). -->
+     ★ 여기에는 '삭제'가 없다. 퇴사는 이 폼 하단 **왼쪽 버튼**(#userEdActive)이고, 행은 남는다(USER-ADMIN §3.3).
+       행에는 「편집」 하나만 둔다 — 파괴적 버튼을 89개 행마다 두면 오클릭 면적이 되고, '누구를 퇴사시키나'는
+       그 사람을 열어 놓고 판단할 일이다(2026-09-10 사용자 결정).
+     ★ 이 버튼만은 마크업에 **정적으로** 적는다 — 상단 막대(#uaAdmin·#uaFoot)의 '숨김 ≠ 부재' 규칙과 다른 이유는,
+       이 폼 자체가 admin:true 가 아니면 열리지 않기 때문이다(userEdOpen 첫 줄의 __uaAdmin 가드). -->
 <div class="overlay hidden" id="userEditModal">
   <div class="modal">
     <div class="modal-head"><h2 id="userEdHead">직원 등록</h2><button class="x" data-close aria-label="닫기">×</button></div>
@@ -2837,6 +2851,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="off-ed-msg" id="userEdMsg" role="status" aria-live="polite"></div>
     </div>
     <div class="modal-foot">
+      <button type="button" class="btn danger" id="userEdActive" hidden>퇴사 처리</button>
       <span class="spacer"></span>
       <button class="btn" data-close>취소</button>
       <button class="btn primary" id="userEdSave">저장</button>
@@ -4984,8 +4999,10 @@ function uaEmptyText(){
   return k ? '검색 결과가 없습니다.' : '표시할 구성원이 없습니다.';
 }
 
-// 한 행의 조작 버튼 묶음. 순서 편집 중이면 ▲▼, 아니면 [편집] + [퇴사]/[복구].
+// 한 행의 조작 버튼 묶음. 순서 편집 중이면 ▲▼, 아니면 [편집] 하나.
 //   ★ 두 벌을 동시에 내지 않는다: 좁은 폭(≈380px)에서 버튼 넷이 붙으면 이름이 밀려 되접힌다.
+//   ★ 퇴사·복구는 여기 없다 — 편집 폼 하단으로 옮겼다(#userEdActive, 2026-09-10). 행마다 파괴적 버튼을
+//     두면 오클릭 면적이 89개가 되고, 목록의 주 동작이 무엇인지 눈으로 읽히지 않는다.
 function uaRowActions(m, rows){
   const box = document.createElement('div');
   box.className = 'mba-act';
@@ -5012,8 +5029,6 @@ function uaRowActions(m, rows){
     return box;
   }
   mk('편집', 'edit', nm + ' 정보 수정', () => userEdOpen(uid));
-  if(m && m.isActive === false) mk('복구', 'on', nm + ' 복구', () => uaSetActive(uid, nm, true));
-  else { const b = mk('퇴사', 'off', nm + ' 퇴사 처리', () => uaSetActive(uid, nm, false)); b.classList.add('danger'); }
   return box;
 }
 
@@ -5042,7 +5057,9 @@ function uaRender(rows){
     const ti = (m && m.title) ? String(m.title) : '';
     if(ti){ const t = document.createElement('span'); t.className = 'git-opt'; t.textContent = ' · ' + ti; head.appendChild(t); }
     //  꼬리표는 별도 요소다 — 맨 텍스트로 섞으면 이름과 한 덩어리가 돼 색·굵기를 나눌 수 없다.
-    if(m && m.isActive === false){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 퇴사'; head.appendChild(s); }
+    //  ★ 알약(.badge)으로 낸다: 행에서 [퇴사] 버튼이 빠진 지금, 퇴사 여부는 **상태 표시**가 혼자 져야 한다.
+    //    ' · 퇴사' 글자는 직급 꼬리표와 같은 모양이라 훑을 때 눈에 걸리지 않았다.
+    if(m && m.isActive === false){ const s = document.createElement('span'); s.className = 'badge badge-git'; s.textContent = '퇴사'; head.appendChild(s); }
     row.appendChild(head);
     const org = document.createElement('div'); org.className = 'set-hint'; org.style.margin = '0';
     const parts = [];
@@ -5060,14 +5077,18 @@ function uaRender(rows){
   if(empty){ empty.textContent = uaEmptyText(); empty.classList.toggle('hidden', arr.length > 0); }
 }
 
-// 관리자 막대 — 「직원 등록」 · 「순서 편집」 · 「퇴사자 보기」. 순서 편집 중에는 「순서 저장」과 [취소]만 남긴다.
+// 관리자 컨트롤 — 상단 막대(#uaAdmin)는 「순서 편집」 · 「퇴사자 보기」, 하단(#uaFoot)은 「＋ 직원 등록」.
+//   ★ 등록이 아래인 이유: 이 화면의 주 동작이라 [닫기] 옆 primary 자리가 맞고, 상단 막대에 두었을 때
+//     관리자가 실제로 찾지 못했다(2026-09-10 사용자 지적).
 //   ★ 순서 편집 중에 등록·퇴사자 토글을 함께 두면, 그 조작이 명부를 다시 읽어 와 **편집 중인 순서를 날린다.**
-//     그래서 모드가 바뀌면 막대도 통째로 바뀐다(같은 자리에 다른 도구).
+//     그래서 모드가 바뀌면 두 자리 모두 통째로 바뀐다(같은 자리에 다른 도구 / 아예 빈 자리).
 function uaAdminBar(){
   const box = document.getElementById('uaAdmin'); if(!box) return;
+  const foot = document.getElementById('uaFoot');
   while(box.firstChild) box.removeChild(box.firstChild);
+  if(foot) while(foot.firstChild) foot.removeChild(foot.firstChild);   // ★ 매번 비운다 — 모드 전환마다 다시 그린다
   box.className = __uaAdmin ? 'mba-bar' : '';
-  if(!__uaAdmin) return;   // ★ 비관리자 — 여기서 끝. DOM 에 컨트롤이 하나도 없다.
+  if(!__uaAdmin) return;   // ★ 비관리자 — 여기서 끝. DOM 에 컨트롤이 하나도 없다(위도 아래도).
   //  id 를 붙이는 이유는 행 버튼의 data-uop 과 같다 — 시험이 이름 대신 손잡이로 잡는다.
   const mk = (label, id, cls, on) => {
     const b = document.createElement('button');
@@ -5084,9 +5105,15 @@ function uaAdminBar(){
     const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
     mk('취소', 'uaOrderCancel', 'btn sm', () => uaOrderToggle(false));
     mk('순서 저장', 'uaOrderSave', 'btn sm primary', uaOrderSave);
-    return;
+    return;   // ★ 순서 편집 중에는 #uaFoot 도 빈 채로 둔다(등록이 명부를 다시 읽어 편집 중인 순서를 날린다)
   }
-  mk('＋ 직원 등록', 'uaNew', 'btn sm primary', () => userEdOpen(0));
+  //  하단 주 동작 — 관리자이고 순서 편집이 아닐 때만 생긴다.
+  if(foot){
+    const nb = document.createElement('button');
+    nb.type = 'button'; nb.id = 'uaNew'; nb.className = 'btn primary'; nb.textContent = '＋ 직원 등록';
+    nb.addEventListener('click', () => userEdOpen(0));
+    foot.appendChild(nb);
+  }
   mk('순서 편집', 'uaOrderEdit', 'btn sm', () => uaOrderToggle(true));
   const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
   //  「퇴사자 보기」는 조회 조건이라 호스트 왕복이 필요하다(퇴사자는 애초에 회신에 없다).
@@ -5182,13 +5209,18 @@ function uaSend(payload){
 function uaSetSaving(on){
   __uaSaving = !!on;
   clearTimeout(__uaSaveWatchdog);
+  //  ★ [저장]과 [퇴사 처리]를 함께 잠근다 — 폼 하단의 두 버튼이 같은 왕복(uaSend)을 쓰므로,
+  //    한쪽만 잠그면 전송 중에 다른 쪽을 눌러 두 요청이 겹친다.
   const s = document.getElementById('userEdSave');
   if(s) s.disabled = !!on;
+  const a = document.getElementById('userEdActive');
+  if(a) a.disabled = !!on;
   if(!on) return;
   //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
   __uaSaveWatchdog = setTimeout(() => {
     __uaSaving = false;
     const b = document.getElementById('userEdSave'); if(b) b.disabled = false;
+    const ab = document.getElementById('userEdActive'); if(ab) ab.disabled = false;
     const ed = document.getElementById('userEditModal');
     if(ed && !ed.classList.contains('hidden')) userEdMsgSet(ICON.alert + ' 응답이 없습니다 — 다시 시도해 주세요.', 'err');
     else toast('응답이 없습니다 — 다시 시도해 주세요.', 'warn');
@@ -5331,6 +5363,19 @@ function userEdOpen(userId){
   if(rh) rh.textContent = isMe
     ? '자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.'
     : '관리자만 직원 정보를 고칠 수 있습니다.';
+  //  하단 왼쪽 버튼 — 퇴사 처리 / 복구. 신규 등록(uid 0)에는 퇴사시킬 대상이 없으니 감춘다.
+  //   ★ 자기 자신이어도 **미리 막지 않는다**(isMe 를 보지 않는다). 자기 퇴사 거부는 호스트가 자기 문장으로
+  //     돌려주고(§4.4-1) __userSaved 가 그 문장을 폼 안에 띄운다 — 화면이 앞질러 막으면 관문이 실제로
+  //     막는지 아무도 확인하지 못한다(uaSend 에 __uaAdmin 가드를 두지 않는 것과 같은 이유).
+  const ab = document.getElementById('userEdActive');
+  if(ab){
+    ab.hidden = !m;
+    const off = !(m && m.isActive === false);   // 재직 중 → 「퇴사 처리」, 퇴사자 → 「복구」
+    ab.textContent = off ? '퇴사 처리' : '복구';
+    ab.classList.toggle('danger', off);
+    ab.dataset.uop = off ? 'off' : 'on';
+    ab.dataset.uid = String(uid);
+  }
   userEdMsgSet('');
   uaSetSaving(false);
   openModal('#userEditModal');
@@ -11251,9 +11296,14 @@ function bind(){
   //  「구성원 편집」 진입 버튼(#usUserAdmin)은 여기서 배선하지 않는다 — 관리자 회신을 받은 뒤에야
   //  usAdminBtnSync 가 만들면서 그 자리에서 묶는다(마크업에 없으므로 여기서는 잡히지 않는다).
   { const b = $('#uaSearch'); if(b) b.addEventListener('input', uaFilter); }
-  //  직원 편집 폼의 [저장] — 편집 화면의 관리자 컨트롤은 uaAdminBar·uaRowActions 가 만들면서 그 자리에서 배선한다
-  //  (동적 생성이라 여기서 배선할 수 없다. 이 버튼만 마크업에 상주하므로 여기서 묶는다).
+  //  직원 편집 폼의 [저장]·[퇴사 처리] — 편집 화면의 관리자 컨트롤은 uaAdminBar·uaRowActions 가 만들면서
+  //  그 자리에서 배선한다(동적 생성이라 여기서 배선할 수 없다). 이 둘만 마크업에 상주하므로 여기서 한 번 묶는다.
   { const b = $('#userEdSave'); if(b) b.addEventListener('click', userEdSaveNow); }
+  //  ★ 이름은 입력칸에서 읽는다 — 관리자가 이름을 고쳐 놓고 퇴사를 누르면 확인 문장도 고친 이름이어야 한다.
+  //    대상은 dataset 이 아니라 __ueId 다(폼이 연 사람 하나뿐이다. dataset.uid 는 시험이 잡는 손잡이).
+  { const b = $('#userEdActive'); if(b) b.addEventListener('click', () => {
+      const n = $('#userEdName'); const nm = n ? String(n.value || '').trim() : '';
+      uaSetActive(__ueId, nm, b.dataset.uop === 'on'); }); }
   { const _pb = $('#ncProbe'); if(_pb) _pb.addEventListener('click', () => { hpost({ cmd: 'netcusProbe' }); const m = $('#ncProbeMsg'); if(m){ m.textContent = '창 여는 중…'; m.style.color = ''; } }); }
   // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
   { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {
