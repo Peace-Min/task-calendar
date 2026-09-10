@@ -432,7 +432,7 @@ namespace TaskCalendarWidget
         //     '비관리자에게 무엇이 나가는가' 를 다시 감사해야 하고, 기존 시험이 붙잡고 있는 계약도 흔들린다.
         //   includeInactive 는 관리자 전용이다(퇴사자 보기). 비관리자에게는 값과 무관하게 무시된다 —
         //   웹이 그 플래그를 바꾸는 것만으로 퇴사자 명단을 얻으면 안 된다(웹은 신뢰 경계 밖이다).
-        public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)
+        public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)
         {
             string id = (loginId ?? "").Trim();
             if (id.Length == 0) return NotFoundJson();
@@ -524,6 +524,10 @@ namespace TaskCalendarWidget
                 //     전사 서열이 직급을 이미 담고 있고, 끼우면 관리자가 정한 순서를 직급이 뒤엎는다.
                 //     화면은 이 순서를 **그대로** 그린다(renderMembers 에 sort 가 없다) — 두 곳이면 갈린다.
                 //     소속 없는 사람(NULL)이 앞에 오는 것은 종전과 같다(MySQL 은 ASC 에서 NULL 이 먼저다).
+                //   ★ 2026-09-10 — 「구성원 편집」은 flatOrder=true 로 부른다(사용자 결정: 편집은 팀과 무관하게 서열로).
+                //       ORDER BY u.sort_order IS NULL, u.sort_order, u.name
+                //     서열의 주인은 편집 화면이고 전사 단일 서열이라 소속을 첫 키로 두면 그 서열이 팀에 갇힌다.
+                //     보기 화면은 종전대로 소속 → 순번 → 이름. 정렬은 여기 두 리터럴뿐이다 — 화면은 어느 쪽도 재정렬하지 않는다.
                 //   ★ WHERE 는 두 갈래다. 퇴사자 포함은 관리자 전용이고, 그 판정은 이미 위에서
                 //     이 연결로 읽은 edit_role 이 했다(withInactive). 웹이 보낸 플래그만으로는 열리지 않는다.
                 string rosterSql =
@@ -531,7 +535,8 @@ namespace TaskCalendarWidget
                     "o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
                     (withInactive ? "" : "WHERE u.is_active=1 ") +
-                    "ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name";
+                    (flatOrder ? "ORDER BY u.sort_order IS NULL, u.sort_order, u.name"
+                               : "ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name");
                 await using (var cmd = new MySqlCommand(rosterSql, conn))
                 {
                     await using var rd = await cmd.ExecuteReaderAsync(cts.Token);

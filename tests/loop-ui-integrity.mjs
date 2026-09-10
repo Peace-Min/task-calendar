@@ -232,13 +232,15 @@ const activeNames = (snap, table) => listOf(snap, table).filter((x) => x.active)
  *  ★ 위 snapshot() 에 합치지 않는다. 그 해시는 오프라인 구간의 '비트 단위 불변' 비교에 쓰이는데,
  *    거기에 app_user 를 끼워 넣으면 이 판에서 새로 생긴 조작이 옛 시나리오 A/B/C 의 판정을
  *    바꿔 버린다(무엇이 왜 깨졌는지 알 수 없게 된다). 관심사가 다르면 스냅샷도 따로 둔다.
- *  ★ ORDER BY 는 **앱의 명부 조회와 글자까지 같다**(ProjectDb.LoadMembersJsonAsync · §5.3).
+ *  ★ ORDER BY 는 **앱의 「구성원 편집」 조회(flatOrder)와 글자까지 같다**(ProjectDb.LoadMembersJsonAsync · §5.3).
+ *    2026-09-10 — 편집 화면은 팀과 무관한 전사 서열이라 소속을 첫 키로 두지 않는다. 이 스냅샷은 그 화면(#uaList)과 비교한다.
+ *    U2(소속 안 단조)는 JS 에서 소속별로 묶어 보므로 순서가 전사 서열이어도 그대로 성립한다.
  *    다르면 '화면 순서 = DB 순서' 불변식이 JS 콜레이션 차이로 가짜 실패를 낸다.                */
 const USER_SNAP_SQL = `
 SELECT u.user_id, u.login_id, u.name, IFNULL(o.name,'') AS org, CAST(u.is_active AS CHAR),
        IFNULL(CAST(u.sort_order AS CHAR),''), u.edit_role
   FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id
- ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name;
+ ORDER BY u.sort_order IS NULL, u.sort_order, u.name;
 `;
 function userSnapshot() {
   const rs = mustQuery(USER_SNAP_SQL, 'user snapshot');
@@ -382,11 +384,33 @@ function sweepTemp(reason) {
     else report.failed.push(`app_user ${lid} (errno ${d.errno})`);
   }
 
-  const any = report.renamed || report.deleted || report.kept.length || report.failed.length;
-  if (any) console.error(`[cleanup] 임시값 정리(${reason}): 개명 복원 ${report.renamed} · 삭제 ${report.deleted}`
+  // 4) 실직원 sort_order 복원(U(3) 순서 저장 뒤) — 스냅샷이 있을 때만
+  report.orderRestored = 0;
+  restoreOrderSnapshot(report);
+
+  const any = report.renamed || report.deleted || report.kept.length || report.failed.length || report.orderRestored;
+  if (any) console.error(`[cleanup] 임시값 정리(${reason}): 개명 복원 ${report.renamed} · 삭제 ${report.deleted} · 서열 복원 ${report.orderRestored}명`
     + (report.kept.length ? ` · 참조 중이라 남김 ${report.kept.length}: ${report.kept.join(', ')}` : '')
     + (report.failed.length ? ` · 실패 ${report.failed.length}: ${report.failed.join(', ')}` : ''));
   return report;
+}
+/* ── 4) 실직원 sort_order 복원(2026-09-10) — U(3) 「순서 저장」이 전원의 서열을 다시 쓴다. ────────────
+ *  이 파일의 옛 정책("DB 데이터를 스스로 복원하지 않는다")대로 두면 실직원 89명의 서열이 시험이 만든 순서로
+ *  남는다(실측: 소속별로 묶인 값이 개발 DB 에 남아 편집 화면이 팀별로 보였다). 시작 스냅샷(user_id → sort_order)을
+ *  절대값 CASE UPDATE 로 되돌린다(idempotent). updated_at 을 명시해 ON UPDATE 발화를 막는다.               */
+let __uOrderSnap = null;   // [[user_id, sort_order|'NULL'], …] — phaseUserAdmin 진입 시 1회 캡처
+function captureOrderSnapshot() {
+  const seed = String(OPT.seed || '');
+  const q = mysqlRun(`SELECT user_id, IFNULL(sort_order,'NULL') FROM app_user WHERE login_id NOT LIKE 'zzU${seed}\_%' ORDER BY user_id;`);
+  if (!q.ok) { console.error('[cleanup] sort_order 스냅샷 실패 — 순서 복원 불가(errno ' + q.errno + ')'); return; }
+  __uOrderSnap = q.out.split(/\r?\n/).filter(Boolean).map((l) => l.split('\t'));
+}
+function restoreOrderSnapshot(report) {
+  if (!__uOrderSnap || !__uOrderSnap.length) return;
+  const cases = __uOrderSnap.map(([id, v]) => `WHEN ${Number(id)} THEN ${v === 'NULL' ? 'NULL' : Number(v)}`).join(' ');
+  const ids = __uOrderSnap.map(([id]) => Number(id)).join(',');
+  const u = mysqlRun(`UPDATE app_user SET sort_order = CASE user_id ${cases} ELSE sort_order END, updated_at = updated_at WHERE user_id IN (${ids});`);
+  if (u.ok) report.orderRestored = __uOrderSnap.length; else report.failed.push(`sort_order 복원 (errno ${u.errno})`);
 }
 let __swept = false;
 function sweepOnce(reason) { if (__swept) return; __swept = true; try { sweepTemp(reason); } catch (e) { console.error('[cleanup] 임시값 정리 실패: ' + (e && e.message)); } }
@@ -1617,6 +1641,7 @@ async function verifyUserOp(desc, rec, opts = {}) {
 async function phaseUserAdmin() {
   curPhase = 'U-user-admin';
   log('── U: 직원 관리 5종(등록·편집·순서·퇴사·복구) ──');
+  captureOrderSnapshot();   // (3) 순서 저장이 실직원 서열을 다시 쓴다 — 종료 시 되돌리기 위해 먼저 찍는다
 
   /* (0) 「구성원 보기」는 관리자에게도 순수 보기다 — 이 구간에서 가장 먼저 본다(2026-09-10 결정). */
   {

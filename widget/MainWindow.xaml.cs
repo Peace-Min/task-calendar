@@ -608,7 +608,7 @@ namespace TaskCalendarWidget
                     case "membersGet":       // 구성원 모달 — 조직 트리 + 내 열람 범위 안의 사람들(열 때마다 재조회)
                         //   includeInactive 는 관리자의 「퇴사자 보기」다. 여기서 판정하지 않는다 —
                         //   호스트가 DB 에서 읽은 edit_role 로 ProjectDb 가 무시하거나 반영한다(웹은 신뢰 경계 밖).
-                        _ = RunMembersGetAsync(GetStr(doc, "reqId"), GetBool(doc, "includeInactive"));
+                        _ = RunMembersGetAsync(GetStr(doc, "reqId"), GetBool(doc, "includeInactive"), GetBool(doc, "flat"));   // flat = 「구성원 편집」(전사 서열 순)
                         break;
 
                     // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 결과는 __userSaved(ok,msg) + 성공 시 명부 재조회 -----
@@ -1828,7 +1828,7 @@ namespace TaskCalendarWidget
             }
         }
 
-        private async Task RunMembersGetAsync(string reqId, bool includeInactive)
+        private async Task RunMembersGetAsync(string reqId, bool includeInactive, bool flatOrder = false)
         {
             try
             {
@@ -1836,7 +1836,7 @@ namespace TaskCalendarWidget
                 if (s == null || s.LoginId.Length == 0)
                 { ReplyOnUi(reqId, new { ok = false, msg = "로그인이 필요합니다." }); return; }
 
-                string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive);
+                string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive, flatOrder);
                 if (json == null)
                 { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요." }); return; }
 
@@ -1875,7 +1875,8 @@ namespace TaskCalendarWidget
         {
             UserSession? s = UserSession.Load(_dataDir, Log);
             if (s == null || s.LoginId.Length == 0) return;
-            string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive);
+            // ★ 이 푸시는 「구성원 편집」 화면(__applyMembers)으로만 간다 — 그 화면의 순서는 전사 서열이다(flatOrder).
+            string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive, flatOrder: true);
             if (json == null) { Log("명부 재조회 실패 — 화면은 직전 명부를 유지한다"); return; }
             JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ")");
         }

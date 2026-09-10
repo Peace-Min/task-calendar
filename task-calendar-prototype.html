@@ -5200,7 +5200,7 @@ async function uaReload(){
   if(!HOST || __uaBusy) return;
   __uaBusy = true;
   let r = null;
-  try{ r = await hostRequest('membersGet', { includeInactive: __uaInactive }, 12000); }catch(_){ r = null; }
+  try{ r = await hostRequest('membersGet', { includeInactive: __uaInactive, flat: true }, 12000); }catch(_){ r = null; }
   __uaBusy = false;
   if(!(r && r.ok && r.data)){ uaFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
   uaApplyData(r.data);
@@ -5240,6 +5240,8 @@ function uaFail(msg){
 // ★ 모달은 회신을 기다리지 않고 먼저 연다(openMembers 와 같은 이유) — 대신 '불러오는 중…'을 띄운다.
 // ★ __uaAdmin 을 먼저 **비운다**: 낡은 값이 남으면 회신이 오기 전 한 프레임 동안 편집 컨트롤이
 //   번쩍인다(그리고 권한이 회수된 사람에게는 그 프레임이 거짓말이다).
+//  ★ flat:true — 「구성원 편집」은 팀과 무관하게 전사 서열(sort_order)순이다(사용자 결정 2026-09-10).
+//    정렬은 호스트가 한다(ProjectDb flatOrder). 보기 화면(openMembers)은 flat 을 보내지 않아 소속 → 순번 → 이름 그대로다.
 async function openUserAdmin(){
   if(__uaBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
   __uaBusy = true;
@@ -5253,7 +5255,7 @@ async function openUserAdmin(){
   openModal('#userAdminModal');
   if(!HOST){ __uaBusy = false; uaFail('데스크톱 위젯에서만 동작합니다.'); return; }
   let r = null;
-  try{ r = await hostRequest('membersGet', { includeInactive: false }, 12000); }catch(_){ r = null; }
+  try{ r = await hostRequest('membersGet', { includeInactive: false, flat: true }, 12000); }catch(_){ r = null; }
   __uaBusy = false;
   if(!(r && r.ok && r.data)){ uaFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
   uaApplyData(r.data);

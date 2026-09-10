@@ -269,7 +269,7 @@ const checks = {
   // ⑥ 정렬 — 호스트가 정하고 화면은 그대로 그린다. 두 곳이면 갈린다(§5.3).
   orderIsHostOnly(cs, web) {
     assert.ok(/"ORDER BY o\.name, u\.sort_order IS NULL, u\.sort_order, u\.name"/.test(cs),
-      '명부 ORDER BY 가 §5.3(소속 → 순번(NULL 맨 뒤) → 이름)과 글자까지 같지 않다');
+      '명부(보기) ORDER BY 가 §5.3(소속 → 순번(NULL 맨 뒤) → 이름)과 글자까지 같지 않다 — 편집용 리터럴은 계약⑥-c 가 본다');
     //  직급 서열을 끼우지 않는다 — 전사 서열이 직급을 이미 담고 있고, 끼우면 관리자가 정한 순서를 직급이 뒤엎는다.
     assert.ok(!/ORDER BY o\.name[^"]*t\.sort_order/.test(cs),
       '명부 ORDER BY 에 직급 서열이 끼었다 — 관리자가 정한 순서를 직급이 뒤엎는다(§5.3)');
@@ -816,4 +816,34 @@ test('변이⑨-b: 가드를 10 으로 바꾸면 계약⑨ 가 실패한다(앞�
   const bad = migrateIntSql.replace("IF(@v = '11'", "IF(@v = '10'");
   assert.notStrictEqual(bad, migrateIntSql);
   assert.ok(!/IF\(@v = '11'/.test(stripSqlComments(bad)));
+});
+
+// ── 계약⑥-c: 「구성원 편집」은 팀과 무관하게 전사 서열순 — 호스트의 두 번째 ORDER BY(flatOrder)를 편집 화면만 부른다 ──
+//   사용자 결정 2026-09-10. 정렬 리터럴은 호스트에 둘뿐이고(보기: 소속→순번→이름 / 편집: 순번→이름), 화면은 어느 쪽도 재정렬하지 않는다.
+const FLAT_ORDER = '"ORDER BY u.sort_order IS NULL, u.sort_order, u.name"';
+const callSite = (fn) => { const body = extractFunction(app, fn); const m = /hostRequest\('membersGet',\s*\{([^}]*)\}/.exec(body); return m ? m[1] : null; };
+test('계약⑥-c: 편집 화면(uaReload·openUserAdmin)은 flat:true 로 부르고 보기 화면(openMembers)은 부르지 않으며, 호스트에 그 ORDER BY 가 있다', () => {
+  assert.ok(pdb.includes(FLAT_ORDER), 'ProjectDb 에 편집용 ORDER BY(순번→이름)가 없다 — 편집 화면이 팀별로 묶인다');
+  assert.ok(/flatOrder \? "ORDER BY u\.sort_order IS NULL/.test(pdb), 'flatOrder 가 편집용 ORDER BY 를 고르지 않는다');
+  for (const fn of ['uaReload', 'openUserAdmin']) {
+    const args = callSite(fn); assert.ok(args !== null, fn + ' 의 membersGet 호출을 찾지 못했다 — 측정 못 함');
+    assert.ok(/\bflat:\s*true\b/.test(args), fn + ' 이 flat:true 를 보내지 않는다 — 편집 화면이 소속 순으로 묶인다');
+  }
+  const om = callSite('openMembers'); assert.ok(om !== null, 'openMembers 의 membersGet 호출을 찾지 못했다 — 측정 못 함');
+  assert.ok(!/\bflat\b/.test(om), 'openMembers 가 flat 을 보낸다 — 보기 화면은 소속 → 순번 → 이름이어야 한다');
+  const mw = stripCs(main);
+  assert.ok(/GetBool\(doc, "flat"\)/.test(mw), 'membersGet 브리지가 flat 을 읽지 않는다');
+  assert.ok(/LoadMembersJsonAsync\(s\.LoginId, includeInactive, flatOrder: true\)/.test(mw), '쓰기 뒤 푸시(LoadMembersToWebAsync)가 flat 이 아니다 — 저장 직후 편집 화면이 소속 순으로 튄다');
+});
+test('변이⑥-c: uaReload 에서 flat:true 를 빼면 계약⑥-c 가 실패한다', () => {
+  const body = extractFunction(app, 'uaReload'); const bad = app.replace(body, body.replace(', flat: true', ''));
+  assert.notStrictEqual(bad, app, '변이가 적용되지 않았다');
+  const m = /hostRequest\('membersGet',\s*\{([^}]*)\}/.exec(extractFunction(bad, 'uaReload'));
+  assert.ok(m && !/\bflat:\s*true\b/.test(m[1]), '변이본이 계약⑥-c 를 통과한다 — 검사가 무효');
+});
+test('변이⑥-d: openMembers 에 flat:true 를 넣으면 계약⑥-c 가 실패한다(보기 화면까지 전사 서열이 된다)', () => {
+  const body = extractFunction(app, 'openMembers'); const bad = app.replace(body, body.replace('{ includeInactive: false }', '{ includeInactive: false, flat: true }'));
+  assert.notStrictEqual(bad, app, '변이가 적용되지 않았다');
+  const m = /hostRequest\('membersGet',\s*\{([^}]*)\}/.exec(extractFunction(bad, 'openMembers'));
+  assert.ok(m && /\bflat\b/.test(m[1]), '변이본이 계약⑥-c 를 통과한다 — 검사가 무효');
 });

@@ -155,14 +155,15 @@ function sql(q, { readOnly = true, idempotent = false, what = 'SQL' } = {}) {
 const esc = (v) => "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "''") + "'";
 
 /* ── 스냅샷 ────────────────────────────────────────────────────────────────
- *  ORDER BY 는 **앱의 명부 조회와 글자까지 같다**(ProjectDb.LoadMembersJsonAsync · USER-ADMIN §5.3).
+ *  ORDER BY 는 **앱의 「구성원 편집」 조회(flatOrder)와 글자까지 같다**(ProjectDb.LoadMembersJsonAsync · USER-ADMIN §5.3).
+ *  2026-09-10 — 편집 화면은 팀과 무관한 전사 서열이라 소속을 첫 키로 두지 않는다(사용자 결정). 이 스냅샷은 #uaList 와 비교한다.
  *  다르면 '화면 순서 = DB 순서' 비교가 JS 콜레이션 차이로 가짜 실패를 낸다.                     */
 const SNAP_SQL = `
 SELECT 'U', u.user_id, u.login_id, u.name, IFNULL(u.title,''), IFNULL(CAST(u.org_id AS CHAR),''),
        IFNULL(o.name,''), u.view_scope, u.edit_role, CAST(u.is_active AS CHAR),
        IFNULL(CAST(u.sort_order AS CHAR),'~')     -- '~' = NULL. sort_order 는 숫자라 값과 겹칠 수 없다
   FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id
- ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name;
+ ORDER BY u.sort_order IS NULL, u.sort_order, u.name;
 SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version'`;
 
 const isTemp = (lid) => /^zzU/.test(lid || '');
@@ -552,7 +553,7 @@ async function main() {
     const db = dbSnap('C01 확인').byId.get(A.uid);
     okq('C01 DB sort_order NULL(=맨 뒤)', !!db && db.sort === null, db ? String(db.sort) : '행 없음');
     okq('C01 소속 없음(org_id NULL)', !!db && db.orgId === null, db ? String(db.orgId) : '');
-    //  '맨 뒤' = 같은 소속 안에서 마지막(호스트 ORDER BY 는 소속 → 순번(NULL 은 뒤) → 이름)
+    //  '맨 뒤' = 전사 서열의 맨 뒤(편집 화면 ORDER BY 는 순번(NULL 은 뒤) → 이름 — 2026-09-10). 같은 소속 안에서도 당연히 마지막이다.
     const sameOrg = ms.filter((m) => String(m.org || '') === String(row.org || ''));
     okq('C01 같은 소속 안에서 맨 뒤', sameOrg[sameOrg.length - 1].uid === A.uid,
       sameOrg.slice(-3).map((m) => m.loginId).join(' → '));
