@@ -618,14 +618,7 @@ const INSTALL_JS = `(function(){
     e.dispatchEvent(new Event('change', { bubbles:true }));
     return { ok:true, value: e.value };
   };
-  /* 라디오 고르기(name 으로) */
-  L.pickRadio = function(name, value){
-    var r = document.querySelector('input[name="'+name+'"][value="'+value+'"]');
-    if(!r) return { ok:false, err:'라디오 없음: '+name+'='+value };
-    r.checked = true;
-    r.dispatchEvent(new Event('change', { bubbles:true }));
-    return { ok:true };
-  };
+  /* (L.pickRadio 삭제 — 편집 폼의 라디오 묶음이 드롭다운이 되면서 부르는 곳이 사라졌다. 2026-09-10) */
   L.rowNames = function(boxSel){
     var box = document.querySelector(boxSel); if(!box) return [];
     return Array.prototype.slice.call(box.querySelectorAll('.cust-row')).map(function(r){ return r.getAttribute('data-name'); });
@@ -1701,8 +1694,8 @@ async function phaseUserAdmin() {
     await ev(`__lt.setVal('#userEdName', ${jstr(lid)})`);
     await ev(`__lt.pickOption('#userEdTitle', 0)`);
     await ev(`__lt.pickOption('#userEdOrg', 0)`);
-    await ev(`__lt.pickRadio('ueScope', 'self')`);
-    await ev(`__lt.pickRadio('ueRole', 'viewer')`);
+    { const r = await ev(`__lt.setVal('#userEdScope', 'self')`); if (!r || r.value !== 'self') violate('U0', "열람 범위 드롭다운에 'self' 가 붙지 않았다 — 옵션이 없으면 조용히 딴 값이 저장된다", r); }
+    { const r = await ev(`__lt.setVal('#userEdRole', 'viewer')`); if (!r || r.value !== 'viewer') violate('U0', "편집 권한 드롭다운에 'viewer' 가 붙지 않았다 — 옵션이 없으면 조용히 딴 값이 저장된다", r); }
     const rec = await doWrite(`직원 등록 ${lid}`, `__lt.click('#userEdSave')`);
     const { users } = await verifyUserOp(`등록 ${lid}`, rec);
     const made = users.find((u) => u.loginId === lid);

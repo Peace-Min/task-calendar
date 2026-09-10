@@ -489,7 +489,8 @@ main{flex:1;display:flex;min-height:0;position:relative}
   cursor:pointer;padding:2px 7px;border-radius:var(--r-sm);
 }
 .x:hover{background:var(--hover-bg);color:var(--text)}
-.modal-body{padding:16px 20px;overflow-y:auto}
+/* 아래 24px — 마지막 칸·상태문이 푸터 경계선에 붙어 '잘린 폼'처럼 보이던 것을 고친다(2026-09-10) */
+.modal-body{padding:var(--sp-4) 20px var(--sp-5);overflow-y:auto}
 /* flex-wrap:wrap — 이 푸터는 버튼 4개짜리(과제 모달)까지 공유한다. nowrap이면 320~400px에서 주 버튼(저장)이
    모달 밖으로 잘려 누를 수 없었다(측정: 320px 19px · 편집모드 400px 32px 이탈). 줄 간격은 gap:8px가 겸한다. */
 .modal-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
@@ -503,8 +504,18 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .modal-foot > .rl-sum ~ .spacer,.modal-foot > .rpt-send-status ~ .spacer{flex:none}
 /* 내용이 빈 상태문은 flex 항목으로 남아 gap 8px만 먹는다 — 320px에서 그 8px 때문에 버튼 한 개가 접혔다 */
 .modal-foot > .off-msg:empty,.modal-foot > .rl-sum:empty,.modal-foot > .rpt-send-status:empty{display:none}
-.modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:12px 0 4px}
-.modal label:first-child{margin-top:0}
+/* 폼 세로 리듬 — 라벨 위 16px(=칸과 칸 사이의 숨) · 라벨→입력 6px(라벨은 자기 입력칸에 붙는다).
+   ★ 옛 규칙은 `.modal label:first-child{margin-top:0}` 이었다. 그런데 .row2 셀은 <div><label>…</label><select>…
+     구조라 **셀의 첫 라벨도 :first-child** 다 → 윗여백이 0 이 되어 2열 행이 바로 위 입력칸에 들러붙었다
+     (#userEditModal 의 직급/소속 행 — 2026-09-10 사용자 지적). 여백을 지워야 할 라벨은 '모달 본문의 첫 줄'
+     하나뿐이므로 자식 선택자로 그 하나만 집는다. 폼별 예외 대신 토큰으로 고친다. */
+.modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:var(--sp-4) 0 6px}
+.modal-body > label:first-child{margin-top:0}
+/* ★ `.modal .check + .check{margin-top:…}` 같은 '묶음 간격' 규칙은 두지 않는다 — 모달 안의 체크박스 묶음은
+   전부 자기 간격을 이미 갖고 있고(.recur-end 3px · .rpt-srcs 인라인 0 · 일괄 커밋 모달 인라인),
+   그 규칙은 (0,3,0)이라 .recur-end .check(0,2,0)를 **덮어써서** 손대지 않기로 한 폼을 바꾼다. */
+/* 필터 막대의 체크박스는 '세로 가운데 정렬'이 곧 리듬이다 — 라벨 여백이 붙으면 옆 셀렉트와 어긋난다 */
+.modal .off-filters > .check{margin:0}
 /* entryModal 섹션 그룹핑 — 9필드 평면 폼을 기본·시간·반복/기간·연동·메모로 구획 */
 .fsect{margin-top:var(--sp-5)}
 .fsect:first-child{margin-top:0}
@@ -519,7 +530,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
   outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent);
 }
 .modal textarea{resize:vertical;min-height:90px;line-height:1.55}
-.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}   /* minmax(0,…) — 내용 폭이 칼럼을 밀어 셀렉트가 잘리는 것 방지 */
+/* 읽기전용 칸은 '읽기전용으로 보여야' 한다 — 흰 입력칸과 똑같이 생기면 눌러 보고서야 못 고치는 걸 안다(#userEdSort) */
+.modal input[readonly]{color:var(--muted);background:var(--dim-bg);cursor:default}
+/* minmax(0,…) — 내용 폭이 칼럼을 밀어 셀렉트가 잘리는 것 방지. 윗여백은 두지 않는다 — 셀 안 라벨이 그 몫을 낸다(두 벌이면 32px 이 된다) */
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-4)}
 .check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer}
 .check input{width:15px;height:15px;accent-color:var(--accent)}
 #timeRow.off{display:none}   /* 종일 시 시간행 완전 숨김 — quick-add와 동일 패턴(흐림→'편집 가능?' 오해 제거) */
@@ -1390,8 +1404,6 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 /* 「사용자 정보」의 구성원 버튼 줄 — 「구성원 보기」(전원) + 「구성원 편집」(관리자에게만 생긴다). */
 .us-mem-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
 #uaList{overflow:auto;max-height:46vh}
-/* 편집 폼의 라디오 묶음 — 세로 한 줄씩(가로로 늘어놓으면 위젯 실폭에서 되접힌다). */
-.ue-radios{display:flex;flex-direction:column;gap:4px;margin-bottom:var(--sp-2)}
 /* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
    트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
    ★ self(그릴 노드 없음)일 때만 JS가 인라인으로 1열로 바꾼다: display:none 인 그리드 자식은
@@ -2822,8 +2834,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 <!-- ===== 직원 등록·수정 (USER-ADMIN §5.2) ===== 「구성원 편집」 화면에서만 열린다.
      ★ 공식 과제 편집 폼(#officialEditModal)과 **같은 골격**이다 — 라벨·입력·2열·메시지줄·[취소][저장].
        사용법이 같아야 관리자가 새로 배울 것이 없다.
-     ★ 폼 안의 값 목록(직급·소속·라디오)은 전부 JS 가 채운다: 직급·소속은 DB 마스터고,
-       라디오 문구는 「사용자 정보」와 **같은 매핑표**(US_VIEW_SCOPE·US_EDIT_ROLE)를 쓴다 —
+     ★ 폼 안의 값 목록(직급·소속·열람범위·편집권한)은 전부 JS 가 채운다: 직급·소속은 DB 마스터고,
+       열람 범위·편집 권한 드롭다운 문구는 「사용자 정보」와 **같은 매핑표**(US_VIEW_SCOPE·US_EDIT_ROLE)를 쓴다 —
        같은 규칙을 두 벌로 적으면 한쪽이 반드시 낡는다.
      ★ 여기에는 '삭제'가 없다. 퇴사는 이 폼 하단 **왼쪽 버튼**(#userEdActive)이고, 행은 남는다(USER-ADMIN §3.3).
        행에는 「편집」 하나만 둔다 — 파괴적 버튼을 89개 행마다 두면 오클릭 면적이 되고, '누구를 퇴사시키나'는
@@ -2843,11 +2855,19 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div><label for="userEdTitle">직급</label><select id="userEdTitle"></select></div>
         <div><label for="userEdOrg">소속</label><select id="userEdOrg"></select></div>
       </div>
-      <label id="userEdScopeLb">열람 범위</label>
-      <div class="ue-radios" id="userEdScope" role="radiogroup" aria-labelledby="userEdScopeLb"></div>
-      <label id="userEdRoleLb">편집 권한</label>
-      <div class="ue-radios" id="userEdRole" role="radiogroup" aria-labelledby="userEdRoleLb"></div>
+      <!-- 라디오 3개 × 2묶음 → 드롭다운 2개(2026-09-10 사용자 요청). 세로 6줄이 1줄이 되어 폼이 한 화면에 든다.
+           문구는 여전히 「사용자 정보」와 **같은 매핑표**(US_VIEW_SCOPE·US_EDIT_ROLE)에서 나온다. -->
+      <div class="row2">
+        <div><label for="userEdScope">열람 범위</label><select id="userEdScope"></select></div>
+        <div><label for="userEdRole">편집 권한</label><select id="userEdRole"></select></div>
+      </div>
       <div class="git-note" id="userEdRoleHint"></div>
+      <!-- 서열 번호 — **읽기전용**이다. 명부에는 숫자를 내지 않는다(USER-ADMIN §5.1-a 계약⑥)는 규칙은 그대로고,
+           "지금 몇 번인가"를 확인할 곳이 어디에도 없던 것만 폼에서 푼다(2026-09-10 사용자 요청).
+           숫자를 직접 쳐서 옮기는 건 호스트 계약(saveUser)이 달라져야 하는 일이라 이번 판에서는 하지 않는다. -->
+      <label for="userEdSort">서열 번호</label>
+      <input type="text" id="userEdSort" readonly tabindex="-1" placeholder="미지정 — 명부 맨 뒤">
+      <div class="git-note">전사 서열입니다(소속과 무관 · 작을수록 위). 바꾸려면 「구성원 편집」의 「순서 편집」에서 ▲▼ 로 옮긴 뒤 저장하세요 — 저장하면 전원이 10 간격으로 다시 매겨집니다.</div>
       <div class="off-ed-msg" id="userEdMsg" role="status" aria-live="polite"></div>
     </div>
     <div class="modal-foot">
@@ -5299,7 +5319,7 @@ function userEdMsgSet(html, tone){
   m.innerHTML = html || '';   // 폼 메시지는 우리가 만든 문자열이다(과제 폼 offEdMsgSet 과 같은 관례)
   m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
 }
-// 드롭다운·라디오 채우기 — 값 목록은 전부 호스트가 준 것이다(직급·조직은 DB 마스터).
+// 드롭다운 채우기 — 값 목록은 전부 호스트가 준 것이다(직급·조직은 DB 마스터). blankLabel=null 이면 빈 옵션을 넣지 않는다.
 function userEdFillSelect(id, items, cur, blankLabel){
   const sel = document.getElementById(id); if(!sel) return;
   while(sel.firstChild) sel.removeChild(sel.firstChild);
@@ -5316,29 +5336,14 @@ function userEdFillSelect(id, items, cur, blankLabel){
   sel.value = (cur == null ? '' : String(cur));
   if(sel.value !== (cur == null ? '' : String(cur)) && sel.options.length) sel.selectedIndex = 0;
 }
-// 라디오 묶음 — 문구는 「사용자 정보」의 매핑표를 그대로 쓴다(두 벌 금지).
-function userEdRadios(boxId, name, map, order, cur, locked){
-  const box = document.getElementById(boxId); if(!box) return;
-  while(box.firstChild) box.removeChild(box.firstChild);
-  for(const k of order){
-    const lb = document.createElement('label');
-    lb.className = 'check';
-    const r = document.createElement('input');
-    r.type = 'radio'; r.name = name; r.value = k;
-    r.checked = (String(cur || '') === k);
-    if(locked) r.disabled = true;
-    lb.appendChild(r);
-    lb.appendChild(document.createTextNode(' ' + usRoleText(map, k)));
-    box.appendChild(lb);
-  }
-}
-function userEdPick(name){
-  const r = document.querySelector('input[name="' + name + '"]:checked');
-  return r ? String(r.value) : '';
+//  선택칸에서 값 읽기 — 라디오 묶음(input[name=…]:checked)이던 것을 드롭다운 id 로 바꿨다(2026-09-10).
+function userEdPick(id){
+  const e = document.getElementById(id);
+  return e ? String(e.value || '') : '';
 }
 // 폼 열기. userId 0 = 신규 등록.
 //   ★ 기존 사용자의 로그인 ID 는 잠근다 — 그 값은 넷커스 소유다(USER-ADMIN §6). 바꿔야 하면 DBA 다.
-//   ★ 자기 행을 열면 편집 권한 라디오가 잠긴다(§4.4-2). **힌트일 뿐이고 최종 판정은 호스트**다.
+//   ★ 자기 행을 열면 편집 권한 드롭다운이 잠긴다(§4.4-2). **힌트일 뿐이고 최종 판정은 호스트**다.
 function userEdOpen(userId){
   if(!__uaAdmin) return;   // ★ 「구성원 편집」 화면의 상태만 본다 — 보기 화면에서는 이 폼에 닿을 길이 없다
   const uid = Number(userId || 0);
@@ -5357,8 +5362,20 @@ function userEdOpen(userId){
     m && m.orgId != null ? m.orgId : '', '(소속 없음)');
   const me = (currentUser && currentUser.loginId != null) ? String(currentUser.loginId) : '';
   const isMe = !!me && !!m && String(m.loginId) === me;
-  userEdRadios('userEdScope', 'ueScope', US_VIEW_SCOPE, ['self', 'unit_tree', 'all'], m ? m.viewScope : 'self', false);
-  userEdRadios('userEdRole', 'ueRole', US_EDIT_ROLE, ['viewer', 'editor', 'admin'], m ? m.editRole : 'viewer', isMe);
+  //  ★ 문구는 「사용자 정보」의 매핑표 그대로다(usRoleText) — 같은 규칙을 두 벌로 적으면 한쪽이 반드시 낡는다.
+  //    빈 옵션은 넣지 않는다(blankLabel=null): 열람 범위·편집 권한에 '미지정'은 없다.
+  userEdFillSelect('userEdScope',
+    ['self', 'unit_tree', 'all'].map(k => ({ value: k, label: usRoleText(US_VIEW_SCOPE, k) })),
+    m ? m.viewScope : 'self', null);
+  userEdFillSelect('userEdRole',
+    ['viewer', 'editor', 'admin'].map(k => ({ value: k, label: usRoleText(US_EDIT_ROLE, k) })),
+    m ? m.editRole : 'viewer', null);
+  //  ★ 자기 행이면 편집 권한만 잠근다(§4.4-2). **힌트일 뿐이고 최종 판정은 호스트**다 — 그래서 다른 사람을
+  //    열 때는 반드시 도로 풀어야 한다(한 번 잠근 칸이 남으면 그 다음 사람이 통째로 못 고쳐진다).
+  const rs = document.getElementById('userEdRole'); if(rs) rs.disabled = isMe;
+  //  서열 번호 — 읽기전용. NULL(신규·미지정)이면 빈 값으로 두어 placeholder('미지정 — 명부 맨 뒤')가 뜬다.
+  const so = document.getElementById('userEdSort');
+  if(so) so.value = (m && m.sortOrder != null) ? String(m.sortOrder) : '';
   const rh = document.getElementById('userEdRoleHint');
   if(rh) rh.textContent = isMe
     ? '자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.'
@@ -5391,8 +5408,8 @@ function userEdSaveNow(){
     name: val('userEdName'),
     title: val('userEdTitle'),
     orgId: Number(val('userEdOrg') || 0),
-    viewScope: userEdPick('ueScope'),
-    editRole: userEdPick('ueRole'),
+    viewScope: userEdPick('userEdScope'),
+    editRole: userEdPick('userEdRole'),
   };
   //  클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
   if(!payload.loginId){ userEdMsgSet(ICON.alert + ' 로그인 ID 를 입력하세요.', 'err'); focus('userEdLogin'); return; }

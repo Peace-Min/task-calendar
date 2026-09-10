@@ -97,6 +97,16 @@ function mutate(base, from, to) {
   return out;
 }
 
+//  편집 폼(#userEditModal) 마크업만 오려 낸다 — 주석은 지운다("왜 안 하는지"를 적어 둔 문장이 계약을 통과시키면 안 된다).
+//  ★ 못 오려 내면 '판정 불가'로 죽는다. 통과가 아니다.
+function userEditModalMarkup(web) {
+  const s = web.indexOf('<div class="overlay hidden" id="userEditModal">');
+  assert.ok(s >= 0, '#userEditModal 마크업을 찾지 못함');
+  const e = web.indexOf('<!-- ===== 자세한 사용설명서', s);
+  assert.ok(e > s, '#userEditModal 뒤의 사용설명서 모달을 찾지 못했다(판정 불가)');
+  return web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
+}
+
 // ══════════════════════════════════════════════════════════════════════
 //  계약 — 검사와 변이가 같은 함수를 쓴다(검사가 실제로 잡는지 증명하려면 그래야 한다)
 // ══════════════════════════════════════════════════════════════════════
@@ -281,14 +291,22 @@ const checks = {
     assert.ok(!/\.sort\(/.test(ur),
       'uaRender 가 목록을 다시 정렬한다 — 화면은 호스트가 준 순서를 그대로 그린다(§5.3)');
     assert.ok(!/sortOrder/.test(ur),
-      'uaRender 가 sortOrder 를 읽는다 — 순번 숫자는 화면에 나타나지 않는다(§5.1)');
+      'uaRender 가 sortOrder 를 읽는다 — 명부(목록)에는 순번 숫자를 내지 않는다 — 편집 폼의 읽기전용 칸(#userEdSort)만 보여 준다(§5.2, 2026-09-10)');
     for (const fn of ['mbVisible', 'mbApplyData', 'uaVisible', 'uaApplyData']) {
       assert.ok(!/\.sort\(/.test(extractFunction(web, fn)),
         `${fn} 이 명부를 다시 정렬한다 — 화면은 호스트가 준 순서를 그대로 그린다(§5.3)`);
     }
-    // 순번 숫자는 화면 어디에도 표시하지 않는다(§5.1) — 관리자는 순서만 정한다.
+    // 순번 숫자는 **목록**에 표시하지 않는다(§5.1-a) — 관리자는 목록에서 순서만 정한다.
     assert.ok(!/sortOrder/.test(rm),
-      'renderMembers 가 sortOrder 를 읽는다 — 순번 숫자는 화면에 나타나지 않는다(§5.1)');
+      'renderMembers 가 sortOrder 를 읽는다 — 명부(목록)에는 순번 숫자를 내지 않는다 — 편집 폼의 읽기전용 칸(#userEdSort)만 보여 준다(§5.2, 2026-09-10)');
+    //  ★ 2026-09-10 사용자 요청으로 '어디에도 없음'이 '폼에만 있음'이 됐다. 그러니 **폼에는 실제로 있어야** 한다 —
+    //    금지만 남기고 허용을 안 적어 두면, 다음 사람이 계약⑥ 을 보고 폼의 칸까지 지운다.
+    const uo = extractFunction(web, 'userEdOpen');
+    assert.ok(/userEdSort/.test(uo) && /sortOrder/.test(uo),
+      'userEdOpen 이 #userEdSort 에 sortOrder 를 넣지 않는다 — 순번을 확인할 곳이 다시 사라진다(§5.2)');
+    const fm = userEditModalMarkup(web);
+    assert.ok(/<input[^>]*id="userEdSort"[^>]*\breadonly\b/.test(fm),
+      '#userEdSort 가 없거나 readonly 가 아니다 — 숫자를 직접 고치려면 호스트 계약(saveUser)이 달라져야 한다(§11-17)');
   },
 
   // ⑦ 관리자 회신은 '호스트가 준 값'으로만 켜진다 — 화면이 스스로 관리자라고 판단하지 않는다.
@@ -381,11 +399,7 @@ const checks = {
     assert.ok(!/'off'|'on'/.test(ra),
       "uaRowActions 에 'off'/'on' uop 이 남아 있다 — 행에는 [편집](과 순서 편집 중의 ▲▼)뿐이다");
 
-    const s = web.indexOf('<div class="overlay hidden" id="userEditModal">');
-    assert.ok(s >= 0, '#userEditModal 마크업을 찾지 못함');
-    const e = web.indexOf('<!-- ===== 자세한 사용설명서', s);
-    assert.ok(e > s, '#userEditModal 뒤의 사용설명서 모달을 찾지 못했다(판정 불가)');
-    const md = web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
+    const md = userEditModalMarkup(web);
     const btn = /<button type="button" class="btn danger" id="userEdActive" hidden>/.exec(md);
     assert.ok(btn,
       '#userEdActive(퇴사·복구) 버튼이 편집 폼 마크업에 없다 — 이 폼은 admin:true 가 아니면 열리지 않으므로 정적이어도 된다');
@@ -399,11 +413,62 @@ const checks = {
       'userEdOpen 이 신규 등록(대상 없음)에서 퇴사 버튼을 감추지 않는다 — 없는 사람을 퇴사시킬 수는 없다');
     assert.ok(/\.dataset\.uop\s*=/.test(o) && /'off'/.test(o) && /'on'/.test(o),
       "userEdOpen 이 data-uop 을 'off'/'on' 양쪽으로 세우지 않는다 — 재직·퇴사 두 상태가 같은 버튼을 쓴다");
-    assert.ok(!/isMe\s*\?\s*true|disabled\s*=\s*isMe/.test(o),
+    //  ★ 2026-09-10: 편집 권한 **드롭다운**은 isMe 로 잠근다(§4.4-2 힌트) — 그래서 함수 전체에서
+    //    'disabled = isMe' 를 금지할 수 없게 됐다. 금지 대상은 하나다: **퇴사 버튼이 isMe 를 보는 것**.
+    //    그 블록만 오려 내서 본다(자기 퇴사 거부는 호스트 문장이어야 관문이 실제로 막는지 확인된다 · §4.4-1).
+    const abAt = o.indexOf("const ab = document.getElementById('userEdActive');");
+    assert.ok(abAt >= 0, 'userEdOpen 에서 #userEdActive 블록을 찾지 못했다(판정 불가)');
+    assert.ok(!/isMe/.test(o.slice(abAt)),
       '화면이 자기 퇴사를 미리 막는다 — 거부는 호스트 문장이어야 관문이 실제로 막는지 확인된다(§4.4-1)');
 
     assert.ok(/userEdActive/.test(extractFunction(web, 'uaSetSaving')),
       'uaSetSaving 이 [퇴사 처리]를 함께 잠그지 않는다 — 전송 중에 눌리면 같은 왕복이 겹친다');
+  },
+
+  // ⑩ 폼 선택칸 — 열람 범위·편집 권한은 **드롭다운**이다(2026-09-10 사용자 요청: 라디오 6줄 → 2칸).
+  //    바뀐 것은 위젯뿐이고 규칙은 그대로다: 문구는 「사용자 정보」의 매핑표 **한 벌**에서만 나온다.
+  //    ★ 라디오로 되돌아가는 변경은 한 줄이면 되고, 되돌아간 줄은 리뷰에서 눈에 띄지 않는다 — 그래서 형태로 못 박는다.
+  formPickers(web) {
+    const md = userEditModalMarkup(web);
+    for (const id of ['userEdScope', 'userEdRole']) {
+      assert.ok(new RegExp('<select id="' + id + '">').test(md),
+        `#${id} 가 <select> 가 아니다 — 라디오 묶음은 위젯 실폭에서 세로 6줄을 먹었다(2026-09-10)`);
+    }
+    assert.ok(!/ue-radios/.test(md) && !/type="radio"/.test(md),
+      '편집 폼 마크업에 라디오(ue-radios/type="radio")가 남아 있다 — 선택칸은 드롭다운 하나로 통일한다');
+
+    const o = extractFunction(web, 'userEdOpen');
+    for (const [id, map] of [['userEdScope', 'US_VIEW_SCOPE'], ['userEdRole', 'US_EDIT_ROLE']]) {
+      assert.ok(new RegExp("userEdFillSelect\\('" + id + "'").test(o),
+        `userEdOpen 이 #${id} 를 userEdFillSelect 로 채우지 않는다 — 값 목록을 만드는 곳이 둘이 되면 갈린다`);
+      assert.ok(new RegExp('\\b' + map + '\\b').test(o),
+        `userEdOpen 이 ${map} 을 쓰지 않는다 — 같은 규칙을 두 벌로 적으면 한쪽이 반드시 낡는다`);
+    }
+    //  자기 행이면 편집 권한만 잠근다(§4.4-2). isMe 로 **다시 세운다**는 것이 핵심이다 —
+    //  잠그기만 하고 풀지 않으면 그다음에 연 사람의 칸이 잠긴 채로 남는다.
+    assert.ok(/getElementById\('userEdRole'\);[\s\S]{0,80}disabled = isMe/.test(o),
+      "userEdOpen 이 #userEdRole.disabled 를 isMe 로 세우지 않는다 — 잠금이 이전 사람 것으로 남는다(§4.4-2)");
+
+    const sv = extractFunction(web, 'userEdSaveNow');
+    for (const id of ['userEdScope', 'userEdRole']) {
+      assert.ok(new RegExp("userEdPick\\('" + id + "'\\)").test(sv),
+        `userEdSaveNow 가 userEdPick('${id}') 로 읽지 않는다 — 옛 라디오 name 으로 읽으면 빈 값이 저장된다`);
+    }
+  },
+
+  // ⑪ 모달 폼의 세로 리듬 — 폼별 손질이 아니라 **토큰 한 곳**에서 정한다(2026-09-10 사용자 지적).
+  modalFormRhythm(web) {
+    //  ★ 주석을 먼저 지운다 — "옛 규칙은 …이었다"라고 **적어 둔 문장**이 규칙으로 세어지면 안 된다
+    //    (이 파일이 C# 주석을 지우는 것과 같은 이유다. 반대로 주석이 계약을 통과시켜서도 안 된다).
+    const css = web.replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!/\.modal label:first-child\{margin-top:0\}/.test(css),
+      '.row2 셀의 첫 label 이 :first-child 라 윗여백이 0 이 되어 2열 행이 위 칸에 붙는다 — 2026-09-10 사용자 지적');
+    assert.ok(/\.modal-body > label:first-child\{margin-top:0\}/.test(css),
+      "윗여백을 지우는 예외가 '모달 본문의 첫 라벨' 하나로 좁혀져 있지 않다(.modal-body > label:first-child)");
+    assert.ok(/\.modal label\{[^}]*margin:var\(--sp-4\) 0 6px\}/.test(css),
+      '.modal label 의 세로 리듬이 토큰(--sp-4 / 6px)이 아니다 — 폼마다 손으로 여백을 주면 반드시 갈린다');
+    assert.ok(/\.row2\{[^}]*gap:var\(--sp-4\)\}/.test(css),
+      '.row2 의 칸 사이가 토큰(--sp-4)이 아니다');
   },
 };
 
@@ -449,6 +514,12 @@ test("계약⑦-c: 「구성원 편집」 진입 버튼은 edit_role==='admin' �
 });
 test('계약⑦-e: 퇴사·복구는 편집 폼 하단에만 있고 행에는 없다(2026-09-10 사용자 결정)', () => {
   checks.retireLivesInForm(app);
+});
+test('계약⑩: 열람 범위·편집 권한은 드롭다운이고, 문구는 매핑표 한 벌에서만 나온다(2026-09-10)', () => {
+  checks.formPickers(app);
+});
+test('계약⑪: 모달 폼의 세로 리듬은 토큰 한 곳에서 정한다(.row2 셀 라벨이 위 칸에 붙지 않는다)', () => {
+  checks.modalFormRhythm(app);
 });
 
 // ── 브리지 배선 — 세 명령이 실제로 호스트에 닿고, 성공하면 명부가 갱신된다 ──────────
@@ -607,6 +678,24 @@ test('변이⑦-f3: 퇴사 버튼을 spacer 뒤(=[취소][저장] 옆)로 옮기
     '      <button type="button" class="btn danger" id="userEdActive" hidden>퇴사 처리</button>\n      <span class="spacer"></span>',
     '      <span class="spacer"></span>\n      <button type="button" class="btn danger" id="userEdActive" hidden>퇴사 처리</button>');
   assert.throws(() => checks.retireLivesInForm(bad), /spacer 뒤에 있다/);
+});
+
+test('변이⑩: 권한 문구를 폼 안에 직접 적으면 계약⑩ 이 실패한다(매핑표가 두 벌이 된다)', () => {
+  const bad = mutate(app, "usRoleText(US_EDIT_ROLE, k)",
+                          "usRoleText({ viewer: '조회', editor: '편집', admin: '관리자' }, k)");
+  assert.throws(() => checks.formPickers(bad), /US_EDIT_ROLE 을 쓰지 않는다/);
+  assert.doesNotThrow(() => checks.formPickers(app));   // 통제군
+});
+
+test('변이⑩-b: 편집 권한 잠금을 상수로 바꾸면 계약⑩ 이 실패한다(이전 사람의 잠금이 남는다)', () => {
+  const bad = mutate(app, "if(rs) rs.disabled = isMe;", "if(rs && isMe) rs.disabled = true;");
+  assert.throws(() => checks.formPickers(bad), /disabled 를 isMe 로 세우지 않는다/);
+});
+
+test('변이⑪: 옛 선택자(.modal label:first-child)로 되돌리면 계약⑪ 이 실패한다', () => {
+  const bad = mutate(app, '.modal-body > label:first-child{margin-top:0}', '.modal label:first-child{margin-top:0}');
+  assert.throws(() => checks.modalFormRhythm(bad), /2열 행이 위 칸에 붙는다/);
+  assert.doesNotThrow(() => checks.modalFormRhythm(app));   // 통제군
 });
 
 test('변이⑦-c: 보기 화면이 admin 을 다시 읽기 시작하면 계약⑦ 이 실패한다(두 화면이 도로 엉킨다)', () => {

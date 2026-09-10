@@ -472,11 +472,19 @@ async function formSave({ uid = 0, loginId, name, title, orgId, scope, role }) {
     okq('신규 등록 폼에 [퇴사 처리]가 서지 않는다(대상 없음)', !!p.act && p.act.hidden === true, JSON.stringify(p.act));
   }
   const setv = async (sel, v) => ev(`(function(){var e=document.querySelector(${JSON.stringify(sel)});if(!e)return false;e.value=${JSON.stringify(String(v))};e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));return e.value===${JSON.stringify(String(v))};})()`);
+  //  ★ 서열 번호 칸(#userEdSort)은 **읽기전용**이고 명부가 준 값을 그대로 보여야 한다(2026-09-10).
+  //    신규(uid 0)면 빈 칸(placeholder '미지정 — 명부 맨 뒤')이다. 여기서 보는 이유는, 폼을 여는 경로가 이 하나라서다.
+  const so = await evj(`(function(){var e=document.getElementById('userEdSort');var m=${uid}?(__uaMembers||[]).find(function(x){return x&&Number(x.userId)===${uid};}):null;return JSON.stringify({v:e?String(e.value):null,ro:e?!!e.readOnly:false,exp:(m&&m.sortOrder!=null)?String(m.sortOrder):''});})()`);
+  okq(`서열 번호 칸이 명부 값과 같다(uid=${uid})`, so.v === so.exp && so.ro === true, `보임=${JSON.stringify(so.v)} 기대=${JSON.stringify(so.exp)} readonly=${so.ro}`);
   if (loginId != null) await setv('#userEdLogin', loginId);
   await setv('#userEdName', name);
   await setv('#userEdTitle', title);
   await setv('#userEdOrg', orgId == null ? '' : String(orgId));
-  await ev(`(function(){var r=document.querySelector('input[name="ueScope"][value=${JSON.stringify(scope)}]');if(r){r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}));}var q=document.querySelector('input[name="ueRole"][value=${JSON.stringify(role)}]');if(q){q.checked=true;q.dispatchEvent(new Event('change',{bubbles:true}));}return 1;})()`);
+  //  ★ 열람 범위·편집 권한은 드롭다운이다(2026-09-10 · 라디오 3개 × 2묶음 → <select> 2칸).
+  //    값이 안 붙으면 **크게 실패**시킨다: 옵션에 없는 값을 조용히 흘리면 '저장은 성공인데 권한은 딴 값'이 통과한다.
+  const okScope = await setv('#userEdScope', scope);
+  const okRole = await setv('#userEdRole', role);
+  if (!okScope || !okRole) throw new Error(`권한 드롭다운에 값이 붙지 않았다(scope=${scope}:${okScope} role=${role}:${okRole}) — 옵션에 없는 값이다`);
   const b = await pstate();
   await ev(`userEdSaveNow()`);
   const s = await waitPage((x) => x.r > b.r, { timeout: 15000 });
