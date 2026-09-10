@@ -410,6 +410,17 @@ namespace TaskCalendarWidget
             return list;
         }
 
+        // 정수 배열 필드 → List<int>(정수가 아닌 원소는 건너뜀). 명부 순서 저장(saveUserOrder)의 userIds 수집용.
+        //   ★ 문자열판을 재사용하지 않는다 — user_id 는 번호가 정체성이라(01-schema-users.sql) 이름으로 오가면 안 된다.
+        private static List<int> GetIntArray(JsonDocument d, string key)
+        {
+            var list = new List<int>();
+            if (d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Array)
+                foreach (var e in v.EnumerateArray())
+                    if (e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var n)) list.Add(n);
+            return list;
+        }
+
         private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
             string raw;
@@ -591,7 +602,25 @@ namespace TaskCalendarWidget
                         _ = RunUserInfoGetAsync(GetStr(doc, "reqId"));
                         break;
                     case "membersGet":       // 구성원 모달 — 조직 트리 + 내 열람 범위 안의 사람들(열 때마다 재조회)
-                        _ = RunMembersGetAsync(GetStr(doc, "reqId"));
+                        //   includeInactive 는 관리자의 「퇴사자 보기」다. 여기서 판정하지 않는다 —
+                        //   호스트가 DB 에서 읽은 edit_role 로 ProjectDb 가 무시하거나 반영한다(웹은 신뢰 경계 밖).
+                        _ = RunMembersGetAsync(GetStr(doc, "reqId"), GetBool(doc, "includeInactive"));
+                        break;
+
+                    // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 결과는 __userSaved(ok,msg) + 성공 시 명부 재조회 -----
+                    //   ★ 과제 쓰기(saveProject → __projectSaved → loadProjects)와 **같은 모양**이다.
+                    //     관리자가 두 화면에서 같은 절차를 밟게 하려고 일부러 복제했다.
+                    //   ★ 권한은 여기서 보지 않는다. 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
+                    case "saveUser":         // userId 없으면 신규 INSERT, 있으면 그 user_id UPDATE
+                        _ = SaveUserAsync(GetInt(doc, "userId"), GetStr(doc, "loginId"), GetStr(doc, "name"),
+                            GetStr(doc, "title"), GetInt(doc, "orgId"), GetStr(doc, "viewScope"), GetStr(doc, "editRole"),
+                            GetBool(doc, "includeInactive"));
+                        break;
+                    case "setUserActive":    // 퇴사 처리(active=false) / 복구(true) — 행은 남는다
+                        _ = SetUserActiveAsync(GetInt(doc, "userId"), GetBool(doc, "active"), GetBool(doc, "includeInactive"));
+                        break;
+                    case "saveUserOrder":    // 화면에 보이는 순서 그대로 → 호스트가 10·20·30… 전량 재작성
+                        _ = SaveUserOrderAsync(GetIntArray(doc, "userIds"), GetBool(doc, "includeInactive"));
                         break;
 
                     case "peerSchedule":     // 타인 일정 열람(C4) — 읽기 전용.
@@ -1794,7 +1823,7 @@ namespace TaskCalendarWidget
             }
         }
 
-        private async Task RunMembersGetAsync(string reqId)
+        private async Task RunMembersGetAsync(string reqId, bool includeInactive)
         {
             try
             {
@@ -1802,7 +1831,7 @@ namespace TaskCalendarWidget
                 if (s == null || s.LoginId.Length == 0)
                 { ReplyOnUi(reqId, new { ok = false, msg = "로그인이 필요합니다." }); return; }
 
-                string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId);
+                string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive);
                 if (json == null)
                 { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요." }); return; }
 
@@ -1820,6 +1849,55 @@ namespace TaskCalendarWidget
                 Log("구성원 조회 예외: " + ex);
                 ReplyOnUi(reqId, new { ok = false, msg = "구성원 목록을 불러오지 못했습니다." });
             }
+        }
+
+        // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용 -----
+        // 쓰기 결과 통지. 웹 __userSaved(ok, msg) — 과제의 __projectSaved 와 같은 JsCall 패턴이다.
+        //   ★ needConfirm 짝이 없다: 직원 등록에는 「비슷한 사람」 같은 소프트 경고가 없다
+        //     (login_id 가 UNIQUE 라 중복은 소프트 경고가 아니라 그냥 실패다).
+        private void UserSaved(bool ok, string msg) =>
+            JsCall("window.__userSaved && window.__userSaved(" + (ok ? "true" : "false") + ","
+                + JsonSerializer.Serialize(msg ?? "") + ")");
+
+        // 명부를 다시 읽어 웹으로 밀어 넣는다(__applyMembers). 쓰기 성공 뒤 화면 갱신 경로다 —
+        //   과제의 SaveProjectAsync → LoadProjectsToWebAsync 와 같은 모양. 웹이 스스로 재조회하게 두면
+        //   "저장은 됐는데 목록은 그대로" 인 창이 생기고, 그 창에서 관리자가 같은 조작을 한 번 더 한다.
+        //   ★ includeInactive 를 그대로 물려준다 — 「퇴사자 보기」를 켠 채 저장했는데 갱신된 명부에서
+        //     퇴사자가 사라지면 화면이 제멋대로 움직인 것으로 보인다.
+        //   ★ 실패(null)면 아무것도 밀지 않는다. 빈 명부를 밀면 저장 성공 직후 화면이 통째로 비어
+        //     "내가 뭘 지웠나" 로 읽힌다 — 낡은 명부가 남아 있는 편이 낫다(다시 열면 갱신된다).
+        private async Task LoadMembersToWebAsync(bool includeInactive)
+        {
+            UserSession? s = UserSession.Load(_dataDir, Log);
+            if (s == null || s.LoginId.Length == 0) return;
+            string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive);
+            if (json == null) { Log("명부 재조회 실패 — 화면은 직전 명부를 유지한다"); return; }
+            JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ")");
+        }
+
+        // 직원 등록/수정 — userId 0 은 '없음'(신규)이다. orgId 0 도 마찬가지로 '소속 없음'(NULL)이다
+        //   — org_unit.org_id 는 AUTO_INCREMENT 라 0 인 조직이 존재할 수 없다.
+        private async Task SaveUserAsync(int userId, string loginId, string name, string title,
+            int orgId, string viewScope, string editRole, bool includeInactive)
+        {
+            var (ok, msg) = await _projectDb.UpsertUserAsync(userId > 0 ? userId : (int?)null, loginId, name,
+                title, orgId > 0 ? orgId : (int?)null, viewScope, editRole);
+            UserSaved(ok, msg);
+            if (ok) await LoadMembersToWebAsync(includeInactive);
+        }
+
+        private async Task SetUserActiveAsync(int userId, bool active, bool includeInactive)
+        {
+            var (ok, msg) = await _projectDb.SetUserActiveAsync(userId, active);
+            UserSaved(ok, msg);
+            if (ok) await LoadMembersToWebAsync(includeInactive);
+        }
+
+        private async Task SaveUserOrderAsync(List<int> userIds, bool includeInactive)
+        {
+            var (ok, msg) = await _projectDb.SaveUserOrderAsync(userIds);
+            UserSaved(ok, msg);
+            if (ok) await LoadMembersToWebAsync(includeInactive);
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

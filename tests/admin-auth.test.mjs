@@ -226,38 +226,88 @@ function jsCallArgs(source, fnName) {
 // 쓰기 SQL 의 '모양' — 이름과 무관하다. 새 메서드가 어떤 이름·어떤 반환형이든 이 모양을 쓰면 쓰기다.
 const WRITE_SQL = /\b(?:INSERT\s+INTO|REPLACE\s+INTO|DELETE\s+FROM|TRUNCATE\s+TABLE|UPDATE\s+[\w{])/;
 
+// 직원 정보(app_user)를 쓰는 SQL 의 '모양'. 이 표만 관문이 다르다(USER-ADMIN §8-2, 2026-09-10):
+//   과제 쓰기는 editor 도 통과하지만, 이 표는 **누가 관리자인가**를 담고 있어 admin 만 통과한다.
+//   editor 가 이 표를 쓸 수 있으면 자기 행의 edit_role 을 'admin' 으로 올려 관문을 무의미하게 만든다.
+const USER_WRITE_SQL = /\b(?:INSERT\s+INTO\s+app_user|UPDATE\s+app_user)\b/;
+
 const gate = {
-  // 연결을 여는 헬퍼는 딱 둘이다. 무검사 opener 를 하나 더 다는 순간 여기서 운다.
-  openersAreExactlyTwo(pdb) {
+  // 연결을 여는 헬퍼는 딱 셋이다(읽기·쓰기·관리자). 무검사 opener 를 하나 더 다는 순간 여기서 운다.
+  openersAreExactlyThree(pdb) {
     const decls = [...stripCs(pdb).matchAll(/Task<MySqlConnection>\s+(\w+)\s*\(/g)].map((m) => m[1]).sort();
-    assert.deepStrictEqual(decls, ['OpenReadAsync', 'OpenWriteAsync'],
+    assert.deepStrictEqual(decls, ['OpenAdminAsync', 'OpenReadAsync', 'OpenWriteAsync'],
       `연결 헬퍼가 [${decls.join(', ')}] 이다 — 관문 밖에 연결을 여는 통로가 생겼다`);
     const opens = (pdb.match(/new MySqlConnection\(/g) || []).length;
-    assert.strictEqual(opens, 2, `new MySqlConnection 이 ${opens}곳이다(헬퍼 2곳이어야 한다 — 관문 우회 통로)`);
+    assert.strictEqual(opens, 3, `new MySqlConnection 이 ${opens}곳이다(헬퍼 3곳이어야 한다 — 관문 우회 통로)`);
   },
 
-  // 모든 연결 개시 지점이 두 관문 중 하나를 지난다. 11곳을 전부 갈아끼운 변이가 여기서 죽는다.
+  // 모든 연결 개시 지점이 세 관문 중 하나를 지난다. 11곳을 전부 갈아끼운 변이가 여기서 죽는다.
   everyOpenGoesThroughAGate(pdb) {
     const sites = [...stripCs(pdb).matchAll(/await\s+Open(\w+)Async\s*\(/g)].map((m) => m[1]);
-    const stray = sites.filter((k) => k !== 'Read' && k !== 'Write');
+    const stray = sites.filter((k) => k !== 'Read' && k !== 'Write' && k !== 'Admin');
     assert.deepStrictEqual(stray, [],
       `Open${stray[0]}Async 로 연결을 연다 — 관문은 남아 있지만 아무도 지나지 않는다(fail-open)`);
     const writes = sites.filter((k) => k === 'Write').length;
     assert.ok(writes >= 11, `쓰기 관문 통과 지점이 ${writes}곳뿐이다(11곳 이상이어야 한다 — 우회로가 생겼다)`);
+    const admins = sites.filter((k) => k === 'Admin').length;
+    assert.ok(admins >= 3,
+      `관리자 관문 통과 지점이 ${admins}곳뿐이다(직원 등록·퇴사·순서 셋이어야 한다 — 하나라도 쓰기 관문으로 내려가면 editor 가 통과한다)`);
   },
 
-  // 쓰기 SQL 을 가진 메서드는 반환형·이름이 무엇이든 쓰기 관문으로 연다.
+  // 쓰기 SQL 을 가진 메서드는 반환형·이름이 무엇이든 관문으로 연다.
   // ★ (bool ok, …) 튜플 시그니처로 좁히지 않는다 — Task<bool> 로 바꾸면 그대로 빠져나가기 때문이다.
+  // ★ **어느 관문인가는 '대상 표'가 정한다**(2026-09-10): app_user 를 쓰면 관리자 관문, 그 외는 쓰기 관문.
+  //   이름 목록으로 가르지 않는 이유는 늘 같다 — 새 이름으로 들어온 메서드가 그대로 빠져나간다.
   writeSqlGoesThroughGate(pdb) {
     const writers = csMembers(pdb).filter((x) => WRITE_SQL.test(x.body));
-    assert.ok(writers.length >= 9,
-      `쓰기 SQL 을 가진 메서드가 ${writers.length}개뿐이다(9개 이상이어야 한다 — 탐지기가 헛돌고 있다)`);
+    assert.ok(writers.length >= 12,
+      `쓰기 SQL 을 가진 메서드가 ${writers.length}개뿐이다(12개 이상이어야 한다 — 탐지기가 헛돌고 있다)`);
+    const userWriters = [];
     for (const w of writers) {
+      if (USER_WRITE_SQL.test(w.body)) {
+        userWriters.push(w.name);
+        //  단언 순서는 '원인을 정확히 말하는 쪽'이 앞이다 — 쓰기 관문으로 내려간 변이는
+        //  '관리자 관문이 없다'로도 잡히지만, 그 문장은 무엇을 잘못했는지 말해 주지 않는다.
+        assert.ok(!/OpenWriteAsync\(/.test(w.body),
+          `${w.name} 가 app_user 를 쓰면서 쓰기 관문(editor 통과)으로 연결을 연다 — 관리자 전용이라는 계약이 깨진다`);
+        assert.ok(!/OpenReadAsync\(/.test(w.body),
+          `${w.name} 가 읽기 관문으로 연결을 열고 app_user 를 쓴다(권한 검사 우회)`);
+        assert.ok(/OpenAdminAsync\(/.test(w.body),
+          `${w.name} 가 app_user 를 쓰면서 관리자 관문을 지나지 않는다 — editor 가 자기를 admin 으로 올릴 수 있다`);
+        continue;
+      }
       assert.ok(/OpenWriteAsync\(/.test(w.body),
         `${w.name} 가 쓰기 SQL 을 실행하면서 쓰기 관문을 지나지 않는다 — 권한 판정을 통째로 건너뛴다`);
       assert.ok(!/OpenReadAsync\(/.test(w.body),
         `${w.name} 가 읽기 관문으로 연결을 열고 쓰기 SQL 을 실행한다(권한 검사 우회)`);
+      assert.ok(!/OpenAdminAsync\(/.test(w.body),
+        `${w.name} 가 과제 쓰기에 관리자 관문을 쓴다 — 사업부 editor 가 과제를 못 고치게 된다(과잉 차단도 결함이다)`);
     }
+    assert.deepStrictEqual(userWriters.sort(), ['SaveUserOrderAsync', 'SetUserActiveAsync', 'UpsertUserAsync'],
+      `app_user 를 쓰는 메서드가 [${userWriters.join(', ')}] 이다 — 늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
+  },
+
+  // 관리자 관문 안에도 우회 출구가 없어야 한다(쓰기 관문과 같은 규칙 · 같은 이유).
+  //   ★ 거부 문구 셋의 순서가 아니라 '유일한 출구보다 앞인가'를 본다 — 앞이어야 '지난다'고 말할 수 있다.
+  adminGateHasNoEarlyExit(pdb) {
+    const oa = csMembers(pdb).find((x) => x.name === 'OpenAdminAsync');
+    assert.ok(oa, '관리자 관문(OpenAdminAsync)을 찾지 못했다');
+    const rets = [...oa.body.matchAll(/\breturn\b[^;]*;/g)].map((m) => m[0].trim());
+    assert.deepStrictEqual(rets, ['return conn;'],
+      `관리자 관문의 출구가 [${rets.join(' / ')}] 이다 — 거부 분기 앞으로 빠져나가는 조기 반환이 생겼다`);
+    assert.ok(oa.body.includes('if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");'),
+      '미로그인 거부 조건이 계약과 다르다 — 신원 없이도 직원 정보 쓰기 연결이 열린다');
+    const ret = oa.body.lastIndexOf('return conn;');
+    for (const msg of ['사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.', '비활성 처리된 계정입니다.',
+                       '직원 정보는 관리자만 고칠 수 있습니다.']) {
+      const at = oa.body.indexOf(msg);
+      assert.ok(at >= 0 && at < ret, `거부 분기가 없거나 반환 뒤에 있다: ${msg}`);
+    }
+    // ★ 통과 조건이 'admin 하나'인지 본다. editor 를 끼워 넣으면 쓰기 관문과 같아져 이 관문의 존재 이유가 사라진다.
+    assert.ok(/!string\.Equals\(role, "admin", StringComparison\.Ordinal\)/.test(oa.body),
+      '관리자 관문의 통과 조건이 role=="admin" 단독이 아니다');
+    assert.ok(!/"editor"/.test(oa.body),
+      '관리자 관문이 editor 를 통과시킨다 — 직원 정보는 admin 전용이다(USER-ADMIN §2)');
   },
 
   // 관문 '안에서'의 우회 — if (MasterUnlocked) return conn; 처럼 거부 3분기 앞으로 빠져나가는 출구.
@@ -280,10 +330,11 @@ const gate = {
   },
 };
 
-test('관문 우회 금지: 연결을 여는 헬퍼는 읽기·쓰기 둘뿐이다', () => gate.openersAreExactlyTwo(projectDb));
-test('관문 우회 금지: 모든 연결 개시가 두 관문 중 하나를 지난다', () => gate.everyOpenGoesThroughAGate(projectDb));
-test('관문 우회 금지: 쓰기 SQL 을 가진 메서드는 이름·반환형과 무관하게 쓰기 관문으로 연다', () => gate.writeSqlGoesThroughGate(projectDb));
+test('관문 우회 금지: 연결을 여는 헬퍼는 읽기·쓰기·관리자 셋뿐이다', () => gate.openersAreExactlyThree(projectDb));
+test('관문 우회 금지: 모든 연결 개시가 세 관문 중 하나를 지난다', () => gate.everyOpenGoesThroughAGate(projectDb));
+test('관문 우회 금지: 쓰기 SQL 을 가진 메서드는 이름·반환형과 무관하게 대상 표에 맞는 관문으로 연다', () => gate.writeSqlGoesThroughGate(projectDb));
 test('관문 우회 금지: 쓰기 관문 안에 거부 3분기를 건너뛰는 출구가 없다', () => gate.gateHasNoEarlyExit(projectDb));
+test('관문 우회 금지: 관리자 관문은 admin 만 통과시키고 조기 출구가 없다', () => gate.adminGateHasNoEarlyExit(projectDb));
 
 // ══════════════════════════════════════════════════════════════════════
 // 검사 ② 부활 금지는 '이름'이 아니라 '형태'로 (G2)
@@ -379,7 +430,7 @@ test('변이G1: 쓰기 11곳을 전부 무검사 opener 로 갈아끼우면 관�
   let bad = mutate(projectDb, '        private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)', UNCHECKED_OPENER);
   bad = mutateAll(bad, 'conn = await OpenWriteAsync(', 'conn = await OpenUncheckedAsync(');
   assert.throws(() => gate.everyOpenGoesThroughAGate(bad), /관문은 남아 있지만 아무도 지나지 않는다/);
-  assert.throws(() => gate.openersAreExactlyTwo(bad), /관문 밖에 연결을 여는 통로가 생겼다/);
+  assert.throws(() => gate.openersAreExactlyThree(bad), /관문 밖에 연결을 여는 통로가 생겼다/);
   assert.throws(() => gate.writeSqlGoesThroughGate(bad), /쓰기 관문을 지나지 않는다/);
   // 옛 계약(관문 '존재'만 보는 것)은 이 변이를 그대로 통과시킨다 — 그래서 위 셋이 필요하다.
   assert.ok(/private async Task<MySqlConnection> OpenWriteAsync/.test(bad), '변이본에서 관문 정의가 사라졌다(전제 확인)');
@@ -408,9 +459,9 @@ const PURGE_API = [
 test('변이신규B: 관문 밖에 Task<bool> 쓰기 API 를 달면 쓰기 SQL 검사가 실패한다', () => {
   const bad = mutate(projectDb, '        public async Task<(bool ok, string msg)> SetProjectActiveAsync(', PURGE_API);
   assert.throws(() => gate.writeSqlGoesThroughGate(bad), /PurgeProjectsAsync 가 쓰기 SQL 을 실행하면서 쓰기 관문을 지나지 않는다/);
-  // 연결 생성 지점은 2 그대로다 — 개수만 세는 방어로는 절대 안 잡힌다(그래서 위 검사가 필요하다).
-  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 2, '변이 전제: 연결 생성 지점은 늘지 않는다');
-  gate.openersAreExactlyTwo(bad);
+  // 연결 생성 지점은 3 그대로다 — 개수만 세는 방어로는 절대 안 잡힌다(그래서 위 검사가 필요하다).
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  gate.openersAreExactlyThree(bad);
 });
 
 // [신규 A] 관문 '안에서' 우회 — 이미 연 conn 을 거부 3분기 앞에서 그냥 돌려준다.
@@ -419,7 +470,7 @@ test('변이신규A: 쓰기 관문 안에 조기 반환을 넣으면 조기 출�
     '                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");',
     '                if (MasterUnlocked) return conn;\n                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");');
   assert.throws(() => gate.gateHasNoEarlyExit(bad), /거부 3분기 앞으로 빠져나가는 조기 반환이 생겼다/);
-  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 2, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
 });
 
 test('변이신규A-b: 신원 검사를 다른 조건과 엮으면 조기 출구 검사가 실패한다', () => {
@@ -427,6 +478,52 @@ test('변이신규A-b: 신원 검사를 다른 조건과 엮으면 조기 출구
     'if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");',
     'if (!MasterUnlocked && (s == null || s.LoginId.Length == 0)) throw new NotAuthorizedException("로그인이 필요합니다.");');
   assert.throws(() => gate.gateHasNoEarlyExit(bad), /미로그인 거부 조건이 계약과 다르다/);
+});
+
+// ── 관리자 관문(2026-09-10, USER-ADMIN §8-2) — 이 관문이 실제로 무엇을 막는지 변이로 증명한다 ──
+//   막는 것 하나: **editor 가 app_user 를 쓰는 것**. 그게 뚫리면 누구든 자기를 admin 으로 올릴 수 있고,
+//   그 순간 이 저장소의 권한 모델 전체가 장식이 된다.
+
+test('변이A1: 직원 쓰기를 쓰기 관문(editor 통과)으로 내리면 대상 표 검사가 실패한다', () => {
+  const bad = mutate(projectDb, 'try { conn = await OpenAdminAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(직원 저장): "',
+                                'try { conn = await OpenWriteAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(직원 저장): "');
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad),
+    /UpsertUserAsync 가 app_user 를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
+  // 관문 정의도, 연결 생성 지점 수도 그대로다 — '관문이 있다'만 보는 검사로는 절대 안 잡힌다.
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  gate.openersAreExactlyThree(bad);
+});
+
+test('변이A2: 관리자 관문이 editor 도 통과시키면 관문 검사가 실패한다', () => {
+  const bad = mutate(projectDb,
+    'if (!string.Equals(role, "admin", StringComparison.Ordinal))',
+    'if (!string.Equals(role, "admin", StringComparison.Ordinal) && !string.Equals(role, "editor", StringComparison.Ordinal))');
+  assert.throws(() => gate.adminGateHasNoEarlyExit(bad), /editor 를 통과시킨다/);
+});
+
+test('변이A3: 관리자 관문 안에 조기 반환을 넣으면 조기 출구 검사가 실패한다', () => {
+  const bad = mutate(projectDb,
+    '                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");\n                if (active == 0) throw new NotAuthorizedException("비활성 처리된 계정입니다.");\n                if (!string.Equals(role, "admin", StringComparison.Ordinal))',
+    '                if (role.Length > 0) return conn;\n                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");\n                if (active == 0) throw new NotAuthorizedException("비활성 처리된 계정입니다.");\n                if (!string.Equals(role, "admin", StringComparison.Ordinal))');
+  assert.throws(() => gate.adminGateHasNoEarlyExit(bad), /조기 반환이 생겼다/);
+});
+
+test('변이A4: app_user 쓰기 메서드를 하나 더 달면(관문 밖) 대상 표 검사가 실패한다', () => {
+  const ELEVATE = [
+    '        public async Task<bool> ElevateSelfAsync()',
+    '        {',
+    '            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));',
+    '            await using var conn = await OpenWriteAsync(cts.Token);',
+    '            await using var cmd = new MySqlCommand("UPDATE app_user SET edit_role=\'admin\'", conn);',
+    '            await cmd.ExecuteNonQueryAsync(cts.Token);',
+    '            return true;',
+    '        }',
+    '',
+    '        public async Task<(bool ok, string msg)> SetUserActiveAsync(int userId, bool active)',
+  ].join('\n');
+  const bad = mutate(projectDb, '        public async Task<(bool ok, string msg)> SetUserActiveAsync(int userId, bool active)', ELEVATE);
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad),
+    /ElevateSelfAsync 가 app_user 를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
 });
 
 // [G2] 새 어휘로 부활 — 웹·브리지·ProjectDb 세 층. 옛 이름 금지 목록은 한 건도 울리지 않는다.

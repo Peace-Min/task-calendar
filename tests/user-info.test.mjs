@@ -451,7 +451,7 @@ const checks = {
   membersHostReadPath(csMain, csDb) {
     const c = csCase(csMain, 'membersGet');
     assert.ok(/RunMembersGetAsync/.test(c), 'case "membersGet" 이 RunMembersGetAsync 를 부르지 않는다');
-    const b = csMember(csMain, 'private async Task RunMembersGetAsync(string reqId)');
+    const b = csMember(csMain, 'private async Task RunMembersGetAsync(string reqId, bool includeInactive)');
     assert.ok(/LoadMembersJsonAsync/.test(b), '호스트 핸들러가 구성원 조회를 하지 않는다');
     assert.ok(/ReplyOnUi\(/.test(b) && !/GitReply\(/.test(b),
       'async 핸들러가 GitReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
@@ -459,7 +459,7 @@ const checks = {
       '세션 없음 / 연결 실패 / 미등록을 구분해 안내하지 않는다 — 사유가 다르면 사용자의 대처도 다르다');
     assert.ok(!/ex\.Message/.test(b), '예외 원문을 사용자 회신에 실었다 — 내부 사정은 로그에만 남긴다');
 
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)');
     // 순서 주의 — 쓰기 관문으로 바뀌면 두 단언이 함께 깨진다. 원인을 정확히 말하는 쪽을 앞에 둔다.
     assert.ok(!/OpenWriteAsync/.test(q),
       '구성원 조회가 쓰기 관문을 쓴다 — unit_tree 를 가진 viewer 전원이 명부를 확인조차 못 한다');
@@ -473,16 +473,25 @@ const checks = {
   //      이름·직급·소속은 사내망 인트라넷에 이미 공개된 정보다 — 통제 대상은 '일정'이지 명부가 아니다.
   //      필터가 되살아나면 그 화면이 그대로 돌아온다.
   membersRosterIsEveryone(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)');
     // ★ 완전절단 후 소속 '이름'은 org_unit 에만 있다 — 명부 SQL 은 LEFT JOIN 으로 이름을 만들고,
     //   C# 소스에서 여러 문자열 리터럴로 쪼개져 있다. 이어붙인 뒤 한 문장으로 본다(qn).
     //   ★ 정렬은 옛 `ORDER BY org_unit, name` 과 같은 값을 보는 `ORDER BY o.name, u.name` 이어야 한다 —
     //     여기가 바뀌면 웹 명부의 행 순서가 조용히 달라진다(JS 는 호스트가 준 순서를 그대로 그린다).
+    //  ★ 2026-09-10 — SQL 이 삼항으로 갈라졌다(퇴사자 포함은 관리자 전용). 리터럴 이어붙이기만으로는
+    //    한 문장이 되지 않으므로 조각별로 본다. 지켜야 할 사실은 그대로다:
+    //      · 조인·활성 필터에 **다른 조건이 끼지 않는다**(유닛 필터 부활 금지)
+    //      · 활성 필터를 푸는 열쇠는 오직 호스트가 계산한 withInactive 하나다(웹이 보낸 값이 아니다)
     const qn = q.replace(/"\s*\+\s*"/g, '');
-    assert.ok(/SELECT u\.login_id, u\.name, u\.title, o\.name AS org_unit FROM app_user u LEFT JOIN org_unit o ON o\.org_id = u\.org_id WHERE u\.is_active=1 ORDER BY o\.name, u\.name/.test(qn),
-      '명부 조회가 is_active=1 전원이 아니다 — 조건이 하나라도 붙으면 명부가 다시 잘린다');
+    assert.ok(/FROM app_user u LEFT JOIN org_unit o ON o\.org_id = u\.org_id /.test(qn),
+      '명부 조회의 조인이 바뀌었다 — 소속 이름은 org_unit 을 LEFT JOIN 해서 만든다');
+    //  ★ 단언 순서는 '옛 결함 먼저'다 — 유닛 필터 부활이 이 계약이 원래 막던 것이고,
+    //    그게 삼항 안에 숨어 들어와도 이 줄에서 먼저 울어야 원인이 정확히 찍힌다.
     assert.ok(!/IN \(/.test(q),
       '명부 조회에 IN 절이 남아 있다 — 유닛 필터가 되살아나면 self 인 사람은 다시 자기 한 줄만 본다');
+    assert.ok(/\(withInactive \? "" : "WHERE u\.is_active=1 "\)/.test(q),
+      '명부 조회의 활성 필터가 withInactive 삼항 하나로 갈리지 않는다 — 조건이 하나라도 더 붙으면 명부가 다시 잘리고, ' +
+      '웹이 보낸 플래그를 그대로 쓰면 누구나 퇴사자 명단을 얻는다');
     assert.ok(!/ph\.Add|unitNames/.test(q), 'IN 절 자리표시자 코드가 남아 있다(죽은 개념)');
     assert.ok(!/allowed\.Count > 0/.test(q),
       '허용 집합 크기로 명부 쿼리를 건너뛴다 — 명부는 열람 범위와 무관하다');
@@ -495,7 +504,7 @@ const checks = {
   // ㉖ view_scope 는 '일정 열람 범위'다 — 명부에서 사람을 빼는 데 쓰지 않는다.
   //    self 특례(본인 1행만 담던 분기)는 통째로 사라졌다. 본인도 전원 조회에 들어 있다.
   membersScopeIsScheduleOnly(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)');
     assert.ok(!/isSelf/.test(q), 'self 특례 분기(isSelf)가 남아 있다 — self 도 전원 명부를 받아야 한다');
     assert.ok(!/\["loginId"\]\s*=\s*id\b/.test(q),
       '본인 행을 따로 만들어 담는다 — 본인도 전원 조회에 들어 있다(두 경로가 되면 한쪽이 낡는다)');
@@ -510,7 +519,7 @@ const checks = {
 
   // ㊷ 조직 트리 조회는 scope 와 무관하게 항상 돈다 — self 라고 건너뛰면 71명이 다시 트리 없는 화면을 본다.
   membersUnitsAlwaysQueried(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)');
     // ★ 완전절단 후 부모 '이름'은 자기 JOIN 으로 만든다(정본은 parent_id 뿐) — 리터럴이 쪼개져 있어 이어붙여 본다.
     assert.ok(/FROM org_unit t LEFT JOIN org_unit p ON p\.org_id = t\.parent_id WHERE t\.is_active=1/.test(q.replace(/"\s*\+\s*"/g, '')),
       '전제: 조직 트리 조회가 없다');
@@ -521,7 +530,7 @@ const checks = {
 
   // ㊸ units payload 에 allowed 를 싣지 않는다 — 트리는 전부 활성이라 노드에 붙일 범위 개념이 없다.
   membersUnitsHaveNoAllowed(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)');
     assert.ok(/\["sortOrder"\]\s*=\s*u\.SortOrder/.test(q), '전제: units payload 를 만들지 않는다');
     assert.ok(!/\["allowed"\]/.test(q),
       'units payload 에 allowed 가 실린다 — 화면이 그 값으로 노드를 다시 잠그게 된다');
@@ -530,7 +539,7 @@ const checks = {
   // ㊹ 열람 범위는 구성원 행의 canViewSchedule 하나로만 표현된다 = 허용 유닛 집합에 그 사람 소속이 있는가.
   //    ★ 상수로 굳으면(true) 권한이 통째로 사라지고, 계산 근거가 바뀌면 남의 일정이 열린다.
   membersCanViewScheduleFlag(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)');
+    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)');
     assert.ok(/string ou = Str\(rd, "org_unit"\)/.test(q), '판정 근거가 그 사람의 org_unit 이 아니다');
     assert.ok(/\["canViewSchedule"\]\s*=\s*allowed\.Contains\(ou\)/.test(q),
       '구성원 행에 canViewSchedule 이 없다(또는 일정 열람 가능 유닛 집합으로 계산하지 않는다)');
@@ -1220,7 +1229,7 @@ test('변이㉓-c: .mb-row.is-link 에서 cursor:pointer 를 떼면 membersEntry
 });
 
 test('변이㉔: 구성원 조회가 쓰기 관문(OpenWriteAsync)을 쓰면 membersHostReadPath 가 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
     'await using var conn = await OpenReadAsync(cts.Token);', 'await using var conn = await OpenWriteAsync(cts.Token);');
   assert.throws(() => checks.membersHostReadPath(main, bad), /쓰기 관문을 쓴다/);
 });
@@ -1231,14 +1240,23 @@ test('변이㉔-b: 호스트 case "membersGet" 을 지우면 membersHostReadPath
 });
 
 test('변이㉕: 명부에 유닛 필터(IN 절)를 되살리면 membersRosterIsEveryone 이 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
-    '"WHERE u.is_active=1 ORDER BY o.name, u.name", conn))',
-    '"WHERE u.is_active=1 AND o.name IN (@u0) ORDER BY o.name, u.name", conn))');
-  assert.throws(() => checks.membersRosterIsEveryone(bad), /is_active=1 전원이 아니다/);
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
+    '(withInactive ? "" : "WHERE u.is_active=1 ") +',
+    '(withInactive ? "" : "WHERE u.is_active=1 AND o.name IN (@u0) ") +');
+  assert.throws(() => checks.membersRosterIsEveryone(bad), /IN 절이 남아 있다/);
+});
+
+test('변이㉕-b: 활성 필터를 웹이 보낸 플래그로 열면 membersRosterIsEveryone 이 실패한다', () => {
+  //  ★ 이게 진짜 위험이다 — includeInactive 는 웹이 보낸 값이고, withInactive 는 호스트가
+  //    이 연결에서 읽은 edit_role 로 계산한 값이다. 한 글자 차이로 누구나 퇴사자 명단을 얻는다.
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
+    '(withInactive ? "" : "WHERE u.is_active=1 ") +',
+    '(includeInactive ? "" : "WHERE u.is_active=1 ") +');
+  assert.throws(() => checks.membersRosterIsEveryone(bad), /withInactive 삼항 하나로 갈리지 않는다/);
 });
 
 test('변이㉖: 본인 행을 따로 담는 self 특례를 되살리면 membersScopeIsScheduleOnly 가 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
     '                var members = new List<Dictionary<string, object?>>();',
     '                var members = new List<Dictionary<string, object?>>();\n' +
     '                members.Add(new Dictionary<string, object?> { ["loginId"] = id });');
@@ -1246,13 +1264,13 @@ test('변이㉖: 본인 행을 따로 담는 self 특례를 되살리면 members
 });
 
 test('변이㉖-b: self 를 unit_tree 와 같은 case 로 묶으면 membersScopeIsScheduleOnly 가 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
     '                    case "unit_tree":', '                    case "self":\n                    case "unit_tree":');
   assert.throws(() => checks.membersScopeIsScheduleOnly(bad), /self 가 일정 열람 가능 유닛을 받는다/);
 });
 
 test('변이㊷: self 면 조직 트리 조회를 건너뛰게 하면 membersUnitsAlwaysQueried 가 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
     '                var units = new List<OrgUnitRow>();\n                await using (var cmd = new MySqlCommand(',
     '                var units = new List<OrgUnitRow>();\n' +
     '                if (!string.Equals(scope, "self", StringComparison.Ordinal))\n' +
@@ -1261,14 +1279,14 @@ test('변이㊷: self 면 조직 트리 조회를 건너뛰게 하면 membersUni
 });
 
 test('변이㊸: units payload 에 allowed 를 되살리면 membersUnitsHaveNoAllowed 가 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
     '                        ["sortOrder"] = u.SortOrder,',
     '                        ["sortOrder"] = u.SortOrder,\n                        ["allowed"] = allowed.Contains(u.Name),');
   assert.throws(() => checks.membersUnitsHaveNoAllowed(bad), /allowed 가 실린다/);
 });
 
 test('변이㊹: canViewSchedule 을 true 로 굳히면 membersCanViewScheduleFlag 가 실패한다', () => {
-  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId)',
+  const bad = mutateInMember(pdb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)',
     '["canViewSchedule"] = allowed.Contains(ou),', '["canViewSchedule"] = true,');
   assert.throws(() => checks.membersCanViewScheduleFlag(bad), /일정 열람 가능 유닛 집합으로 계산하지 않는다/);
 });

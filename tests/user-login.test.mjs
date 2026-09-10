@@ -371,33 +371,42 @@ test('부팅에 app_user 백그라운드 재조회가 없다(로그아웃과 경
 
 // ══ ⑩ ProjectDb 접근 관문 ═══════════════════════════════════════════
 
-test('불변식①: ProjectDb에서 new MySqlConnection을 직접 부르는 곳은 두 헬퍼 안뿐이다', () => {
+test('불변식①: ProjectDb에서 new MySqlConnection을 직접 부르는 곳은 세 헬퍼 안뿐이다', () => {
+  //  ★ 2026-09-10 — 관문이 셋이 됐다(USER-ADMIN §4.1). 직원 정보(app_user) 쓰기는 admin 만 통과하는
+  //    별도 관문을 지난다: 그 표는 '누가 관리자인가'를 담고 있어 editor 가 쓰면 스스로 승격할 수 있다.
   const readSpan  = (() => { const s = projectDb.indexOf('private static async Task<MySqlConnection> OpenReadAsync');
                              return [s, projectDb.indexOf('private async Task<MySqlConnection> OpenWriteAsync')]; })();
   const writeSpan = (() => { const s = projectDb.indexOf('private async Task<MySqlConnection> OpenWriteAsync');
+                             return [s, projectDb.indexOf('private async Task<MySqlConnection> OpenAdminAsync')]; })();
+  const adminSpan = (() => { const s = projectDb.indexOf('private async Task<MySqlConnection> OpenAdminAsync');
                              return [s, projectDb.indexOf('public async Task<string?> LoadProjectsJsonAsync')]; })();
-  assert.ok(readSpan[0] >= 0 && writeSpan[0] >= 0, '관문 헬퍼(OpenReadAsync/OpenWriteAsync)가 없다');
+  assert.ok(readSpan[0] >= 0 && writeSpan[0] >= 0 && adminSpan[0] >= 0,
+    '관문 헬퍼(OpenReadAsync/OpenWriteAsync/OpenAdminAsync)가 없다');
+  assert.ok(writeSpan[1] > writeSpan[0] && adminSpan[1] > adminSpan[0],
+    '관문 헬퍼의 배치 순서가 읽기 → 쓰기 → 관리자가 아니다(구간 계산이 헛돈다 — 판정 불가)');
+  const spans = [readSpan, writeSpan, adminSpan];
+  const inAnyHelper = (i) => spans.some(([a, b]) => i > a && i < b);
   const hits = [...projectDb.matchAll(/new MySqlConnection\(/g)].map(m => m.index);
-  assert.ok(hits.length === 2, `new MySqlConnection 호출이 ${hits.length}곳이다(헬퍼 2곳이어야 한다)`);
+  assert.ok(hits.length === 3, `new MySqlConnection 호출이 ${hits.length}곳이다(헬퍼 3곳이어야 한다)`);
   for (const i of hits) {
-    const inRead  = i > readSpan[0]  && i < readSpan[1];
-    const inWrite = i > writeSpan[0] && i < writeSpan[1];
-    assert.ok(inRead || inWrite, `헬퍼 밖에서 연결을 직접 연다(offset ${i}) — 관문이 fail-open이 된다`);
+    assert.ok(inAnyHelper(i), `헬퍼 밖에서 연결을 직접 연다(offset ${i}) — 관문이 fail-open이 된다`);
   }
   // 연결 오픈도 헬퍼 밖에 있으면 안 된다.
   const opens = [...projectDb.matchAll(/conn\.OpenAsync\(/g)].map(m => m.index);
   for (const i of opens) {
-    const inHelper = (i > readSpan[0] && i < readSpan[1]) || (i > writeSpan[0] && i < writeSpan[1]);
-    assert.ok(inHelper, `헬퍼 밖에서 conn.OpenAsync를 직접 부른다(offset ${i})`);
+    assert.ok(inAnyHelper(i), `헬퍼 밖에서 conn.OpenAsync를 직접 부른다(offset ${i})`);
   }
 });
 
-test('불변식②: (bool ok, …)를 반환하는 공개 메서드는 전부 OpenWriteAsync를 쓴다', () => {
+test('불변식②: (bool ok, …)를 반환하는 공개 메서드는 전부 쓰기 관문 아니면 관리자 관문을 쓴다', () => {
+  //  ★ '어느 관문인가'는 대상 표가 정한다 — 그 판정은 tests/admin-auth.test.mjs 의 관문 계약이 한다.
+  //    여기서 지키는 것은 더 앞선 사실이다: **읽기 관문으로는 절대 열지 않는다**(권한 검사 자체가 없다).
   const sigs = [...projectDb.matchAll(/public async Task<\(bool ok,[^)]*\)> (\w+)\(/g)];
-  assert.ok(sigs.length >= 11, `쓰기 계열 메서드가 ${sigs.length}개뿐이다(11개 이상이어야 한다 — 시그니처 패턴 확인)`);
+  assert.ok(sigs.length >= 14, `쓰기 계열 메서드가 ${sigs.length}개뿐이다(14개 이상이어야 한다 — 시그니처 패턴 확인)`);
   for (const m of sigs) {
     const body = bare(projectDb, m[0]);
-    assert.ok(/OpenWriteAsync\(/.test(body), `${m[1]}가 쓰기 관문을 거치지 않는다 — 2단계 권한 검사를 빠져나간다`);
+    assert.ok(/OpenWriteAsync\(/.test(body) || /OpenAdminAsync\(/.test(body),
+      `${m[1]}가 쓰기·관리자 관문 어느 쪽도 거치지 않는다 — 2단계 권한 검사를 빠져나간다`);
     assert.ok(!/OpenReadAsync\(/.test(body), `${m[1]}가 읽기 관문으로 연결을 연다(권한 검사 우회)`);
   }
 });

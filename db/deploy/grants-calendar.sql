@@ -222,6 +222,21 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 --   쓰기 권한 판정(widget/ProjectDb.cs:102)·타인 일정 열람(view_scope)·rev 시딩 게이트가
 --   통째로 깨진다. 캘린더 배포가 이 파일 하나로 자족하도록 여기서 다시 부여한다.
 --   (GRANT 는 누적이라 이미 있는 권한을 다시 줘도 무해하고, project 의 INSERT/UPDATE 도 유지된다)
+--
+-- ★ 2026-09-10 — app_user 의 권한 분포가 바뀌었다. 여기 적힌 SELECT 는 **이 파일이 필요로 하는
+--   최소치**이지 그 표의 전부가 아니다. 실제 분포는 이렇다:
+--     app_user   SELECT + **INSERT · UPDATE**   ← 관리자가 앱에서 직원을 등록·수정·퇴사 처리한다
+--                                                 (docs/USER-ADMIN.md · 관문은 ProjectDb.OpenAdminAsync)
+--     org_unit   SELECT                          ← 조직 편집은 이번 범위 밖
+--     title_code SELECT                          ← 직급 코드 편집도 이번 범위 밖
+--     app_user 의 DELETE 는 어디에도 없다 — 퇴사는 is_active=0 이고 행은 남는다
+--     (cal_* 11개 표가 RESTRICT 로 붙들고 있어 DELETE 는 애초에 ERROR 1451 이다).
+--   그 쓰기 동사를 **여기서 부여하지 않는 이유**: 이 파일은 캘린더(cal_*) 배포의 GRANT 단일
+--   소스이고, app_user 는 캘린더가 만든 표가 아니라 사용자·조직 도메인의 표다. 같은 표의 권한을
+--   두 파일이 각각 늘리면 어느 쪽이 정본인지 알 수 없게 된다 — 그 도메인의 정본은
+--   taskmgr-company-data/05-grants.sql 이다.
+--   ※ 그래서 db/deploy 만으로 세운 서버에서는 **직원 관리 화면이 ERROR 1142 로 실패한다.**
+--     그 경로로 서버를 세웠다면 05-grants.sql 을 함께 돌릴 것(없는 자족성을 있다고 적지 않는다).
 GRANT SELECT ON taskmgr.app_user TO 'taskmgr_app'@'%';   -- login_id → user_id 해석(cal_* 의 소유자 키)·view_scope/edit_role 판정·rev 시딩 대상
 GRANT SELECT ON taskmgr.org_unit TO 'taskmgr_app'@'%';   -- 조직 트리 조회(widget/ProjectDb.cs:364)
 GRANT SELECT ON taskmgr.project  TO 'taskmgr_app'@'%';   -- §6 공식 과제 이름 해석 + db_gone 파생 LEFT JOIN

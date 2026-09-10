@@ -167,6 +167,54 @@ namespace TaskCalendarWidget
             return conn;
         }
 
+        // 관리자 전용 관문 = 직원 정보(app_user) 쓰기. OpenWriteAsync 와 **같은 순서**(세션 → 연결 →
+        // 프리앰블 → 같은 연결로 권한 조회)이되 'admin' 만 통과시킨다(USER-ADMIN §4.1).
+        //
+        // 왜 쓰기 관문을 재사용하지 않나 — editor 가 통과하기 때문이다. editor 는 '과제 DB 를 고칠 수 있나'
+        //   축이고, 직원 정보는 '누가 관리자인가' 를 담는 표라 급이 다르다(04-permissions.sql 이 이미
+        //   admin 을 "+ 시스템·직원 정보 관리" 로 정의해 두었다 — 새 등급을 만들지 않고 그 정의를 쓴다).
+        // ★ 판정은 로그인 시점이 아니라 **요청 시점**이다(USER-LOGIN §3.3) — 관리자에서 내려간 사람은
+        //   다음 저장부터 막힌다. 그래서 세션에 아무것도 캐시하지 않고 매번 이 연결로 다시 읽는다.
+        private async Task<MySqlConnection> OpenAdminAsync(CancellationToken ct)
+        {
+            var s = UserSession.Load(_dataDir, _log);
+            if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
+
+            var conn = new MySqlConnection(BuildConnString());
+            try { await conn.OpenAsync(ct); }
+            catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
+            await ApplyPreambleAsync(conn, WritePreambleSql, ct);   // 쓰기와 같은 프리앰블(격리수준까지) — 판정보다 먼저
+            try
+            {
+                bool found = false;
+                string role = "";
+                int active = 0;
+                await using (var cmd = new MySqlCommand("SELECT edit_role, is_active FROM app_user WHERE login_id=@id", conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", s.LoginId);   // 값은 반드시 파라미터 바인딩(문자열 연결 금지)
+                    await using var rd = await cmd.ExecuteReaderAsync(ct);
+                    if (await rd.ReadAsync(ct))
+                    {
+                        found = true;
+                        role = Str(rd, "edit_role");
+                        active = IntOrNull(rd, "is_active") ?? 0;
+                    }
+                }
+                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");
+                if (active == 0) throw new NotAuthorizedException("비활성 처리된 계정입니다.");
+                if (!string.Equals(role, "admin", StringComparison.Ordinal))
+                    throw new NotAuthorizedException("직원 정보는 관리자만 고칠 수 있습니다.");
+            }
+            catch (NotAuthorizedException nex)
+            {
+                _log("직원 정보 쓰기 권한 거부(" + s.LoginId + "): " + nex.Message);
+                await conn.DisposeAsync();
+                throw;
+            }
+            catch { await conn.DisposeAsync(); throw; }
+            return conn;
+        }
+
         // 공식 과제(is_active=1)를 읽어 JSON 배열 문자열로 반환. 연결/조회 실패 시 null(호출측이 웹에 ""를 넘겨 목록을 비운다).
         public async Task<string?> LoadProjectsJsonAsync()
         {
@@ -361,6 +409,10 @@ namespace TaskCalendarWidget
             public string Name = "";
             public string Parent = "";     // 최상위는 빈 문자열(NULL) — payload 로 나갈 때 null 로 바뀐다
             public int SortOrder;
+            //  ★ 관리자 편집 폼의 소속 드롭다운이 **번호로** 저장하기 때문에 필요하다(app_user.org_id).
+            //    이름으로 보내면 개명 한 번에 소속이 통째로 어긋난다 — 완전 절단(01-schema-users.sql ★★)의 요지다.
+            //    비관리자 회신에는 싣지 않는다(쓸 데가 없다).
+            public int? OrgId;
         }
 
         // 전 조직 트리 + 전 구성원 명부, 그리고 '그 사람 일정을 볼 수 있는가'(canViewSchedule).
@@ -372,7 +424,15 @@ namespace TaskCalendarWidget
         // ★ 읽기 경로다(OpenReadAsync): 쓰기 관문을 쓰면 viewer — 즉 unit_tree 를 가진 사람 전원 — 이
         //   명부를 아예 못 본다. 열람 권한과 편집 권한은 다른 축이다(USER-LOGIN §3.3).
         // 반환 3분기는 LoadUserInfoJsonAsync 와 같다: 행 있음 → {"found":true,…} / 행 없음 → {"found":false} / 실패 → null.
-        public async Task<string?> LoadMembersJsonAsync(string loginId)
+        //
+        // ★ 2026-09-10 — 관리자에게만 직원 관리용 필드가 더 실린다(USER-ADMIN §4.2).
+        //   판정은 **이 연결에서 지금 읽은 edit_role** 로 한다(①). 세션에 캐시하지 않는 이유는 쓰기 관문과 같다 —
+        //   관리자에서 내려간 사람의 화면에 편집 컨트롤이 남아 있으면 그건 화면이 거짓말을 하는 것이다.
+        //   ★★ 관리자가 아니면 회신은 **글자까지 종전과 같다**. 키를 하나라도 더 실으면 그 순간
+        //     '비관리자에게 무엇이 나가는가' 를 다시 감사해야 하고, 기존 시험이 붙잡고 있는 계약도 흔들린다.
+        //   includeInactive 는 관리자 전용이다(퇴사자 보기). 비관리자에게는 값과 무관하게 무시된다 —
+        //   웹이 그 플래그를 바꾸는 것만으로 퇴사자 명단을 얻으면 안 된다(웹은 신뢰 경계 밖이다).
+        public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false)
         {
             string id = (loginId ?? "").Trim();
             if (id.Length == 0) return NotFoundJson();
@@ -383,12 +443,13 @@ namespace TaskCalendarWidget
 
                 // ① 나 자신 — 일정 열람 범위와 소속을 여기서 정한다.
                 //   ★ name/title 은 읽지 않는다: 명부에 전원이 담기므로 본인 행도 그 안에 들어 있다.
-                string scope = "", myUnit = "";
+                //   ★ edit_role 은 '직원 관리 화면을 그릴 것인가' 판정용이다(위 ★). 표시용이 아니다.
+                string scope = "", myUnit = "", myRole = "";
                 int myActive = 0;
                 bool found = false;
                 //   ★ 소속 이름은 org_unit 을 JOIN 해서 만든다 — myUnit 은 이름 기준 트리 순회(③)의 시작점이다.
                 await using (var cmd = new MySqlCommand(
-                    "SELECT o.name AS org_unit, u.view_scope, u.is_active " +
+                    "SELECT o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
                     "WHERE u.login_id=@id", conn))
                 {
@@ -399,6 +460,7 @@ namespace TaskCalendarWidget
                         found    = true;
                         myUnit   = Str(rd, "org_unit");
                         scope    = Str(rd, "view_scope");
+                        myRole   = Str(rd, "edit_role");
                         myActive = IntOrNull(rd, "is_active") ?? 0;
                     }
                 }
@@ -411,6 +473,11 @@ namespace TaskCalendarWidget
                 //   조직도 열람 차단이 아니고, 막으면 비활성 계정은 자기 상태를 확인할 화면조차 잃는다.
                 //   실제 차단은 쓰기 관문(OpenWriteAsync) 한 곳에서만 한다.
 
+                // 관리자인가 — 활성 admin 만이다. 비활성 admin 에게 편집 컨트롤을 그려 봐야
+                //   저장이 관문(OpenAdminAsync)에서 전부 거부된다: 화면과 관문이 같은 답을 해야 한다.
+                bool isAdmin = myActive != 0 && string.Equals(myRole, "admin", StringComparison.Ordinal);
+                bool withInactive = isAdmin && includeInactive;   // 퇴사자 보기는 관리자 전용
+
                 // ② 조직 트리 — 열람 범위와 무관하게 항상 전 조직이다(scope 로 건너뛰지 않는다).
                 //   조직도는 사내망에 이미 공개된 정보고, 트리가 없으면 '내 위에 무엇이 있는지'조차 볼 수 없다.
                 //   ★ 부모 '이름'은 자기 JOIN 으로 만든다(정본은 parent_id 뿐이다). 최상위는 parent_id IS NULL →
@@ -418,7 +485,7 @@ namespace TaskCalendarWidget
                 //   ★ ORDER BY 대상은 예전 그대로 org_unit 자신의 sort_order·name 이다(화면 순서 불변).
                 var units = new List<OrgUnitRow>();
                 await using (var cmd = new MySqlCommand(
-                    "SELECT t.name, p.name AS parent, t.sort_order " +
+                    "SELECT t.name, p.name AS parent, t.sort_order, t.org_id " +
                     "FROM org_unit t LEFT JOIN org_unit p ON p.org_id = t.parent_id " +
                     "WHERE t.is_active=1 ORDER BY t.sort_order, t.name", conn))
                 {
@@ -427,7 +494,7 @@ namespace TaskCalendarWidget
                     {
                         string n = Str(rd, "name");
                         if (n.Length == 0) continue;
-                        units.Add(new OrgUnitRow { Name = n, Parent = Str(rd, "parent"), SortOrder = IntOrNull(rd, "sort_order") ?? 0 });
+                        units.Add(new OrgUnitRow { Name = n, Parent = Str(rd, "parent"), SortOrder = IntOrNull(rd, "sort_order") ?? 0, OrgId = IntOrNull(rd, "org_id") });
                     }
                 }
 
@@ -450,19 +517,28 @@ namespace TaskCalendarWidget
                 //   명부는 통제 대상이 아니고, 필터를 되살리면 self 인 사람은 다시 자기 한 줄만 보게 된다.
                 //   ★ 본인도 이 목록에 그대로 들어 있다(따로 담지 않는다 — 두 경로가 되면 한쪽이 낡는다).
                 var members = new List<Dictionary<string, object?>>();
-                //   ★ 소속 이름은 JOIN 으로 만든다. 정렬 기준도 그 이름이다 — 옛 `ORDER BY org_unit, name` 과
-                //     같은 값을 같은 콜레이션(utf8mb4_0900_ai_ci)으로 비교하므로 행 순서가 바뀌지 않는다.
-                //     소속 없는 사람(NULL)이 앞에 오는 것도 종전과 같다(MySQL 은 ASC 에서 NULL 이 먼저다).
-                await using (var cmd = new MySqlCommand(
-                    "SELECT u.login_id, u.name, u.title, o.name AS org_unit " +
+                //   ★ 소속 이름은 JOIN 으로 만든다. 정렬 첫 키도 그 이름이다.
+                //   ★ 2026-09-10 — 정렬에 u.sort_order 가 끼었다(USER-ADMIN §5.3):
+                //       ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name
+                //     소속 → 순번(NULL 은 맨 뒤) → 이름. **직급 서열을 여기 끼우지 않는다** —
+                //     전사 서열이 직급을 이미 담고 있고, 끼우면 관리자가 정한 순서를 직급이 뒤엎는다.
+                //     화면은 이 순서를 **그대로** 그린다(renderMembers 에 sort 가 없다) — 두 곳이면 갈린다.
+                //     소속 없는 사람(NULL)이 앞에 오는 것은 종전과 같다(MySQL 은 ASC 에서 NULL 이 먼저다).
+                //   ★ WHERE 는 두 갈래다. 퇴사자 포함은 관리자 전용이고, 그 판정은 이미 위에서
+                //     이 연결로 읽은 edit_role 이 했다(withInactive). 웹이 보낸 플래그만으로는 열리지 않는다.
+                string rosterSql =
+                    "SELECT u.user_id, u.login_id, u.name, u.title, u.sort_order, u.org_id, " +
+                    "o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
-                    "WHERE u.is_active=1 ORDER BY o.name, u.name", conn))
+                    (withInactive ? "" : "WHERE u.is_active=1 ") +
+                    "ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name";
+                await using (var cmd = new MySqlCommand(rosterSql, conn))
                 {
                     await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                     while (await rd.ReadAsync(cts.Token))
                     {
                         string ou = Str(rd, "org_unit");
-                        members.Add(new Dictionary<string, object?>
+                        var row = new Dictionary<string, object?>
                         {
                             ["loginId"] = Str(rd, "login_id"),
                             ["name"]    = Str(rd, "name"),
@@ -470,31 +546,66 @@ namespace TaskCalendarWidget
                             ["orgUnit"] = ou,
                             // 이 한 값이 곧 열람 범위다 — 화면은 이걸 보고 행을 누를 수 있게 할지 정한다.
                             ["canViewSchedule"] = allowed.Contains(ou),
-                        });
+                        };
+                        // ★ 관리자에게만 더 싣는다. 비관리자 회신은 위 5키에서 한 글자도 늘지 않는다.
+                        if (isAdmin)
+                        {
+                            row["userId"]    = IntOrNull(rd, "user_id");
+                            row["orgId"]     = IntOrNull(rd, "org_id");     // 소속 없으면 null(드롭다운의 '(없음)')
+                            row["viewScope"] = Str(rd, "view_scope");
+                            row["editRole"]  = Str(rd, "edit_role");
+                            row["isActive"]  = (IntOrNull(rd, "is_active") ?? 0) != 0;
+                            row["sortOrder"] = IntOrNull(rd, "sort_order");
+                        }
+                        members.Add(row);
                     }
+                }
+
+                // 직급 목록 — 편집 폼의 드롭다운 소스. 관리자일 때만 읽는다(비관리자에게는 쓸 데가 없다).
+                //   ★ 활성만·직급 서열순이다. title 은 FK 타겟이라 여기 없는 값은 저장이 DB 에서 막힌다 —
+                //     드롭다운을 이 목록으로 채우면 '고를 수 없는 값'과 '저장할 수 없는 값'이 같아진다.
+                List<string>? titles = null;
+                if (isAdmin)
+                {
+                    titles = new List<string>();
+                    await using var cmd = new MySqlCommand(
+                        "SELECT name FROM title_code WHERE is_active=1 ORDER BY sort_order, name", conn);
+                    await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                    while (await rd.ReadAsync(cts.Token)) { string n = Str(rd, "name"); if (n.Length > 0) titles.Add(n); }
                 }
 
                 var unitPayload = new List<Dictionary<string, object?>>(units.Count);
                 foreach (var u in units)
                 {
-                    unitPayload.Add(new Dictionary<string, object?>
+                    var un = new Dictionary<string, object?>
                     {
                         ["name"]      = u.Name,
                         ["parent"]    = u.Parent.Length == 0 ? null : u.Parent,   // 최상위는 null(웹이 루트로 읽는다)
                         ["sortOrder"] = u.SortOrder,
                         // ★ allowed 는 싣지 않는다 — 트리는 전부 활성이라 노드에 붙일 범위 개념이 없다.
-                    });
+                    };
+                    if (isAdmin) un["orgId"] = u.OrgId;   // 편집 폼의 소속 드롭다운 값(이름이 아니라 번호)
+                    unitPayload.Add(un);
                 }
                 _log("DB 구성원 조회: " + id + " (" + scope + "/" + (myActive != 0 ? "활성" : "비활성") +
-                     ") 유닛 " + unitPayload.Count + "건 · 일정 열람 가능 유닛 " + allowed.Count + "건 · 구성원 " + members.Count + "명");
-                return JsonSerializer.Serialize(new Dictionary<string, object?>
+                     (isAdmin ? "/관리자" : "") + ") 유닛 " + unitPayload.Count + "건 · 일정 열람 가능 유닛 " +
+                     allowed.Count + "건 · 구성원 " + members.Count + "명");
+                var payload = new Dictionary<string, object?>
                 {
                     ["found"]   = true,
                     ["scope"]   = scope,
                     ["myUnit"]  = myUnit,
                     ["units"]   = unitPayload,
                     ["members"] = members,
-                });
+                };
+                // ★ 관리자에게만 더 싣는다 — 비관리자 회신은 위 5키 그대로다(키 순서까지 종전과 같다).
+                if (isAdmin)
+                {
+                    payload["admin"] = true;
+                    payload["titles"] = titles;                 // 활성 직급(드롭다운 소스)
+                    payload["includeInactive"] = withInactive;  // 퇴사자 보기 상태 — 화면 토글이 이 값으로 자기를 맞춘다
+                }
+                return JsonSerializer.Serialize(payload);
             }
             catch (Exception ex) { _log("DB 구성원 조회 실패(" + id + "): " + Short(ex)); return null; }
         }
@@ -594,6 +705,287 @@ namespace TaskCalendarWidget
                     if (allowed.Add(k)) queue.Enqueue(k);   // 방문 집합 가드
                 }
             }
+        }
+
+        // ================================================================================
+        //  직원 정보(app_user) 쓰기 — 관리자 전용 (USER-ADMIN §4)
+        //    "관리자가 신규 직원이나 퇴사 직원 있으면 App 단에서만 관리하는 걸 원함. 편집 권한 포함해서."
+        //    · 삭제는 없다. 퇴사 = is_active=0 이고 행은 남는다 —
+        //      cal_* 11개 표가 RESTRICT 로 이 표를 붙들고 있어 DELETE 는 애초에 ERROR 1451 이다(§3.3).
+        //    · 기존 사용자의 login_id 는 바꾸지 않는다. 그 값은 넷커스 소유다(§6).
+        //    · 규약은 과제 쓰기와 같다: 값은 전부 파라미터 바인딩 · 예외는 (false, 한국어 문장)으로 환원 ·
+        //      SQL/스택을 사용자에게 노출하지 않는다. 다만 **권한 거부는 오프라인 문구로 뭉개지 않는다**
+        //      (USER-LOGIN §3.3 의 함정 — "관리자만 고칠 수 있다"가 "서버에 연결할 수 없다"로 표시되면
+        //       사용자는 원인을 영영 못 찾는다).
+        // ================================================================================
+
+        // 로그인 ID 형식 — 넷커스 계정과 같은 값이다(이메일 아님). 정규화(소문자 강제)는 하지 않는다:
+        //   넷커스가 어떤 표기를 쓰는지 이 앱이 정하지 않는다. 중복 판정은 DB 콜레이션(ai_ci)에 맡긴다(1062).
+        private static readonly System.Text.RegularExpressions.Regex LoginIdShape =
+            new System.Text.RegularExpressions.Regex(@"^[A-Za-z0-9._-]{1,50}$",
+                System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        // 도메인 값 — 최종 보증은 chk_view_scope / chk_edit_role 이고, 여기서는 사용자 문장을 만들려고 본다.
+        private static bool IsViewScope(string v) => v == "self" || v == "unit_tree" || v == "all";
+        private static bool IsEditRole(string v)  => v == "viewer" || v == "editor" || v == "admin";
+
+        // 잠금 방지 3문장(§4.4) — 화면은 힌트로 미리 잠그지만 **판정은 여기**다. 상수로 모아 두는 이유는
+        //   같은 말을 두 곳에 적으면 한쪽만 고쳐지기 때문이다(시험도 이 상수를 계약으로 붙잡는다).
+        private const string SelfDeactivateMsg = "자기 계정은 퇴사 처리할 수 없습니다.";
+        private const string SelfRoleMsg       = "자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.";
+        private const string LastAdminMsg      = "관리자가 한 명뿐이라 처리할 수 없습니다. 먼저 다른 관리자를 지정하세요.";
+        private const string UserGoneMsg       = "대상 직원을 찾을 수 없습니다 — 명부를 새로고침해 주세요.";
+
+        // MySQL 에러번호 → 사용자 문장(직원 정보 전용). 과제용 MySqlMsg 와 섞지 않는다 — 같은 번호가
+        //   다른 제약에서 오므로 한 함수로 합치면 "등록되지 않은 발주처입니다"가 직원 저장에서 튀어나온다.
+        private static string MySqlUserMsg(MySqlException ex)
+        {
+            string m = ex.Message ?? "";
+            switch (ex.Number)
+            {
+                case 1062: return "이미 등록된 ID 입니다.";
+                case 1451:
+                case 1452:
+                    if (m.Contains("fk_user_title")) return "등록되지 않은 직급입니다.";
+                    if (m.Contains("fk_user_org_id")) return "등록되지 않은 소속입니다.";
+                    return "등록되지 않은 값이 있습니다 — 직급·소속을 다시 고르세요.";
+                case 3819:   // CHECK 위반
+                    if (m.Contains("chk_view_scope")) return "열람 범위 값이 올바르지 않습니다.";
+                    if (m.Contains("chk_edit_role")) return "편집 권한 값이 올바르지 않습니다.";
+                    return "값이 허용 범위를 벗어났습니다.";
+                case 1406: return "값이 너무 깁니다 — 길이를 줄여 주세요.";
+                case 1048: return "필수 항목이 비어 있습니다.";
+                default:   return "저장하지 못했습니다: " + Short(ex);
+            }
+        }
+
+        // 지금 로그인한 사람의 login_id. OpenAdminAsync 가 이미 신원을 확인한 뒤에만 부른다
+        //   — 그래서 여기서 빈 값이 나오는 경로는 없다(방어적으로 ""를 돌려주면 아래 조회가 0행이 된다).
+        private string SessionLoginId()
+        {
+            var s = UserSession.Load(_dataDir, _log);
+            return s == null ? "" : s.LoginId;
+        }
+
+        // 같은 트랜잭션에서 '나'의 user_id 와 권한을 잠근 채 읽는다(§4.4 — 판정과 갱신 사이에 값이 바뀌면 안 된다).
+        private static async Task<int?> LockedMyUserIdAsync(MySqlConnection conn, MySqlTransaction tx, string me, CancellationToken ct)
+        {
+            await using var cmd = new MySqlCommand("SELECT user_id FROM app_user WHERE login_id=@me FOR UPDATE", conn, tx);
+            cmd.Parameters.AddWithValue("@me", me);
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            return await rd.ReadAsync(ct) ? IntOrNull(rd, "user_id") : null;
+        }
+
+        // 활성 관리자 수 — 같은 트랜잭션에서 잠근 채 센다. 이 한 줄이 '마지막 관리자' 규칙의 전부다.
+        //   ★ FOR UPDATE 가 없으면 두 관리자가 동시에 서로를 강등해 **아무도 남지 않는다**(둘 다 COUNT=2 를 본다).
+        private static async Task<long> LockedActiveAdminCountAsync(MySqlConnection conn, MySqlTransaction tx, CancellationToken ct)
+        {
+            await using var cmd = new MySqlCommand(
+                "SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1 FOR UPDATE", conn, tx);
+            return Convert.ToInt64((await cmd.ExecuteScalarAsync(ct)) ?? 0L);
+        }
+
+        // 대상 직원 1행을 잠근 채 읽는다(없으면 null).
+        private static async Task<(int userId, string editRole, int isActive, string name)?> LockedUserAsync(
+            MySqlConnection conn, MySqlTransaction tx, int userId, CancellationToken ct)
+        {
+            await using var cmd = new MySqlCommand(
+                "SELECT user_id, name, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE", conn, tx);
+            cmd.Parameters.AddWithValue("@uid", userId);
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            if (!await rd.ReadAsync(ct)) return null;
+            return (IntOrNull(rd, "user_id") ?? 0, Str(rd, "edit_role"), IntOrNull(rd, "is_active") ?? 0, Str(rd, "name"));
+        }
+
+        // 직원 등록/수정. userId 가 없으면 INSERT, 있으면 그 행 UPDATE.
+        //   ★ UPDATE 에서 login_id 를 건드리지 않는다 — 넷커스 소유 값이고, 바꿔야 하면 DBA(org-ops)다.
+        //   ★ 신규 등록은 sort_order 를 비워 둔다(NULL = 그 소속의 맨 뒤). 관리자가 ▲▼ 로 끌어올려 저장한다.
+        public async Task<(bool ok, string msg)> UpsertUserAsync(int? userId, string? loginId, string? name,
+            string? title, int? orgId, string? viewScope, string? editRole)
+        {
+            // ── 앱단 선검증(형식·도메인) — DB 까지 보내지 않고 바로 사용자 문장으로. 최종 보증은 DB 제약이다.
+            string lid = (loginId ?? "").Trim();
+            string nm  = (name ?? "").Trim();
+            string ti  = (title ?? "").Trim();
+            string vs  = (viewScope ?? "").Trim();
+            string er  = (editRole ?? "").Trim();
+            if (!LoginIdShape.IsMatch(lid)) return (false, "로그인 ID 는 영문·숫자·._- 만 쓸 수 있습니다.");
+            if (nm.Length == 0) return (false, "이름을 입력하세요.");
+            if (!IsViewScope(vs)) return (false, "열람 범위 값이 올바르지 않습니다.");
+            if (!IsEditRole(er)) return (false, "편집 권한 값이 올바르지 않습니다.");
+
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(직원 저장): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(직원 저장): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+                string me = SessionLoginId();
+
+                // 직급·소속 존재 검증 — 좋은 에러문구용(최종은 fk_user_title · fk_user_org_id).
+                //   활성만 본다: 폐지된 직급·조직으로 새로 배정하지 못하게 하는 것이 이 화면의 목적이다.
+                var titleSet = await LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: true);
+                if (!titleSet.Contains(ti)) return (false, "등록되지 않은 직급입니다.");
+                if (orgId.HasValue)
+                {
+                    await using var q = new MySqlCommand("SELECT COUNT(*) FROM org_unit WHERE org_id=@o AND is_active=1", conn);
+                    q.Parameters.AddWithValue("@o", orgId.Value);
+                    if (Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L) == 0)
+                        return (false, "등록되지 않은 소속입니다.");
+                }
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    if (userId.HasValue)
+                    {
+                        // ── 잠금 방지(§4.4) — 판정과 갱신이 **같은 트랜잭션**이어야 한다.
+                        var target = await LockedUserAsync(conn, tx, userId.Value, cts.Token);
+                        if (target == null) { await tx.RollbackAsync(cts.Token); return (false, UserGoneMsg); }
+                        int? myId = await LockedMyUserIdAsync(conn, tx, me, cts.Token);
+
+                        // (2) 자기 편집 권한은 올리는 것도 내리는 것도 못 한다. 값이 그대로면 통과(수정 자체를 막지는 않는다).
+                        if (myId.HasValue && myId.Value == target.Value.userId &&
+                            !string.Equals(er, target.Value.editRole, StringComparison.Ordinal))
+                        { await tx.RollbackAsync(cts.Token); return (false, SelfRoleMsg); }
+
+                        // (3) 마지막 활성 관리자를 강등할 수 없다.
+                        if (string.Equals(target.Value.editRole, "admin", StringComparison.Ordinal) && target.Value.isActive != 0 &&
+                            !string.Equals(er, "admin", StringComparison.Ordinal) &&
+                            await LockedActiveAdminCountAsync(conn, tx, cts.Token) <= 1)
+                        { await tx.RollbackAsync(cts.Token); return (false, LastAdminMsg); }
+
+                        await using (var cmd = new MySqlCommand(
+                            "UPDATE app_user SET name=@nm, title=@ti, org_id=@org, view_scope=@vs, edit_role=@er WHERE user_id=@uid", conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@nm", nm);
+                            cmd.Parameters.AddWithValue("@ti", ti);
+                            cmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@vs", vs);
+                            cmd.Parameters.AddWithValue("@er", er);
+                            cmd.Parameters.AddWithValue("@uid", userId.Value);
+                            await cmd.ExecuteNonQueryAsync(cts.Token);
+                        }
+                        await tx.CommitAsync(cts.Token);
+                        _log("직원 수정: " + nm + " (user_id=" + userId.Value + ", " + er + "/" + vs + ")");
+                        return (true, "직원 정보를 저장했습니다.");
+                    }
+                    else
+                    {
+                        // 신규 등록 — sort_order 는 넣지 않는다(NULL = 맨 뒤). user_id 는 AUTO_INCREMENT 가 준다.
+                        await using (var cmd = new MySqlCommand(
+                            "INSERT INTO app_user (login_id, name, title, org_id, view_scope, edit_role) " +
+                            "VALUES (@lid,@nm,@ti,@org,@vs,@er)", conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@lid", lid);
+                            cmd.Parameters.AddWithValue("@nm", nm);
+                            cmd.Parameters.AddWithValue("@ti", ti);
+                            cmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@vs", vs);
+                            cmd.Parameters.AddWithValue("@er", er);
+                            await cmd.ExecuteNonQueryAsync(cts.Token);
+                        }
+                        await tx.CommitAsync(cts.Token);
+                        _log("직원 등록: " + nm + " (" + lid + ", " + er + "/" + vs + ")");
+                        //  ★ 넷커스 계정을 만든 것이 아니다 — 이 앱에 등록한 것뿐이고, 그 ID 로 로그인이 되는지는
+                        //    그 사람이 처음 로그인할 때 판명된다(USER-ADMIN §4.6). 그 사실을 문장에 담는다.
+                        return (true, "직원을 등록했습니다. 본인이 주간보고 계정으로 로그인하면 사용할 수 있습니다.");
+                    }
+                }
+                catch { await tx.RollbackAsync(cts.Token); throw; }
+            }
+            catch (MySqlException mex) { _log("직원 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
+            catch (Exception ex) { _log("직원 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 퇴사 처리(active=false) / 복구(true). 행은 지우지 않는다 — 과거 데이터 참조를 지킨다(§3.3).
+        public async Task<(bool ok, string msg)> SetUserActiveAsync(int userId, bool active)
+        {
+            if (userId <= 0) return (false, "대상 직원이 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(직원 퇴사/복구): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(직원 퇴사/복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+                string me = SessionLoginId();
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    var target = await LockedUserAsync(conn, tx, userId, cts.Token);
+                    if (target == null) { await tx.RollbackAsync(cts.Token); return (false, UserGoneMsg); }
+                    int? myId = await LockedMyUserIdAsync(conn, tx, me, cts.Token);
+
+                    if (!active)
+                    {
+                        // (1) 자기 자신을 퇴사 처리할 수 없다 — 하면 그 자리에서 관리 화면을 잃는다.
+                        if (myId.HasValue && myId.Value == target.Value.userId)
+                        { await tx.RollbackAsync(cts.Token); return (false, SelfDeactivateMsg); }
+                        // (3) 마지막 활성 관리자를 퇴사 처리할 수 없다.
+                        if (string.Equals(target.Value.editRole, "admin", StringComparison.Ordinal) && target.Value.isActive != 0 &&
+                            await LockedActiveAdminCountAsync(conn, tx, cts.Token) <= 1)
+                        { await tx.RollbackAsync(cts.Token); return (false, LastAdminMsg); }
+                    }
+
+                    await using (var cmd = new MySqlCommand("UPDATE app_user SET is_active=@a WHERE user_id=@uid", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@uid", userId);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("직원 " + (active ? "복구" : "퇴사 처리") + ": user_id=" + userId + " (" + target.Value.name + ")");
+                    return (true, active ? "복구했습니다. 명부에 다시 표시됩니다." : "퇴사 처리했습니다. 기록은 남고 명부에서만 사라집니다.");
+                }
+                catch { await tx.RollbackAsync(cts.Token); throw; }
+            }
+            catch (MySqlException mex) { _log("직원 퇴사/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
+            catch (Exception ex) { _log("직원 퇴사/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+        }
+
+        // 명부 서열 저장 — 받은 순서대로 sort_order = (index+1)*10 **전량 재작성**(§2).
+        //   ★ '사이값 계산'도 '기존 값 밀기'도 하지 않는다. 관리자는 숫자를 보지 않고 화면의 순서만 정하며,
+        //     그 순서가 곧 서열이다. 전량 재작성이면 규칙이 하나도 없어 어긋날 자리가 없다
+        //     (구분·상태 코드값의 순서 재배치와 같은 방식 — 이 파일 아래쪽).
+        //   ★ 잠금 방지 3규칙은 여기 없다 — 순서는 권한도 활성 상태도 건드리지 않는다.
+        public async Task<(bool ok, string msg)> SaveUserOrderAsync(IReadOnlyList<int>? userIds)
+        {
+            if (userIds == null || userIds.Count == 0) return (false, "정렬할 명부가 비어 있습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(명부 순서): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(명부 순서): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    int order = 0;
+                    foreach (int uid in userIds)
+                    {
+                        if (uid <= 0) continue;
+                        order += 10;
+                        await using var cmd = new MySqlCommand("UPDATE app_user SET sort_order=@s WHERE user_id=@uid", conn, tx);
+                        cmd.Parameters.AddWithValue("@s", order);
+                        cmd.Parameters.AddWithValue("@uid", uid);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("명부 순서 저장: " + userIds.Count + "명 전량 재작성");
+                    return (true, "명부 순서를 저장했습니다.");
+                }
+                catch { await tx.RollbackAsync(cts.Token); throw; }
+            }
+            catch (MySqlException mex) { _log("명부 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
+            catch (Exception ex) { _log("명부 순서 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
         }
 
         // ================================================================================

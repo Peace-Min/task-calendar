@@ -1,0 +1,579 @@
+// 직원 관리(관리자 편집) 게이트 — docs/USER-ADMIN.md §8
+//
+// 이 파일이 존재하는 이유:
+//   사용자 요구는 한 줄이었다 — "관리자가 신규 직원이나 퇴사 직원 있으면 **App 단에서만** 관리하는 걸
+//   원함. **편집 권한 포함**해서." 그 한 줄이 이 저장소에서 가장 위험한 표(app_user — '누가 관리자인가'를
+//   담는 표)에 쓰기를 연다. 그래서 지켜야 할 것이 셋이다:
+//     ① 그 쓰기가 **관리자 관문만** 지난다(editor 는 못 지난다 — 지나면 스스로 admin 이 된다).
+//     ② 관리자가 **자기 문을 닫지 못한다**(자기 퇴사·자기 권한·마지막 관리자).
+//         못 막으면 그 순간 DB 로 가야 풀린다 — "앱에서만 관리한다"는 요구가 바로 거기서 깨진다.
+//     ③ 관리자가 아닌 사람의 화면에는 편집 컨트롤이 **아예 없다**(숨김이 아니라 부재).
+//
+//   ★ 관문 자체의 우회 금지는 tests/admin-auth.test.mjs 가 진다(그 파일이 opener 집합·모든 연결
+//     개시 지점·쓰기 SQL 을 형태로 훑는다). 여기서는 그 위에 얹히는 계약을 본다 — 잠금 방지 문구,
+//     입력 검증, 권한 파일, 정렬, 그리고 비관리자 DOM.
+//
+//   ★ 판번호·문구 같은 값을 시험에 박지 않는다. 판번호는 정본(tests/canon-schema.mjs)에서 읽고,
+//     잠금 방지 문구는 ProjectDb 의 상수 선언에서 읽어 **그 상수가 실제로 쓰이는지**를 본다.
+//     못 읽으면 통과가 아니라 실패다(판정 불가 ≠ 통과).
+import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, extractFunction, importOptional, SKIP_NO_JSDOM } from './harness.mjs';
+import { canonSchemaVersion, stripSqlComments } from './canon-schema.mjs';
+
+const app = loadAppSource();
+const pdb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+
+// ── 기준 파일 — 없으면 '한 건의 실패'로 강등한다 ────────────────────────────
+//  ★ 최상위에서 throw 하지 않는다: run-tests.mjs 의 import 루프에서 던지면 프로세스가 죽어
+//    **전 스위트 판정이 증발한다**(xml-retirement.test.mjs 가 같은 이유로 같은 규칙을 쓴다).
+//  ★ taskmgr-company-data 는 **비공개 형제 저장소**다. 직원·조직 표의 정본이 거기 있고,
+//    이 판(sort_order 신설)은 그 파일과 db/deploy 의 마이그레이션이 **같은 구조**에 도달해야
+//    성립한다. 그래서 없으면 '측정 못 함'이지 '통과'가 아니다.
+const missing = [];
+const readOr = (url, label) => {
+  try { return readFileSync(url, 'utf8'); } catch (_) { missing.push(label); return ''; }
+};
+const MIGRATE = 'db/deploy/migrate-2026-09-10-user-sort-order.sql';
+const migrateSql = readOr(new URL('../' + MIGRATE, import.meta.url), MIGRATE);
+const usersCanon = readOr(new URL('../../taskmgr-company-data/01-schema-users.sql', import.meta.url),
+  'taskmgr-company-data/01-schema-users.sql');
+const userGrants = readOr(new URL('../../taskmgr-company-data/05-grants.sql', import.meta.url),
+  'taskmgr-company-data/05-grants.sql');
+const calGrants = readOr(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'db/deploy/grants-calendar.sql');
+
+// C# 주석 제거(문자열 리터럴은 보존) — "왜 안 하는지"를 적어 둔 주석이 계약을 통과시키면 안 된다.
+const BS = String.fromCharCode(92);
+function stripCs(s) {
+  let out = '', i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < s.length) { if (s[j] === BS) { j += 2; continue; } if (s[j] === c) { j++; break; } j++; }
+      out += s.slice(i, j); i = j; continue;
+    }
+    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '/' && s[i + 1] === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+// C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
+function csMember(source, sig) {
+  const code = stripCs(source);
+  const s = code.indexOf(sig);
+  assert.ok(s >= 0, `C# 멤버를 찾지 못함: ${sig}`);
+  const open = code.indexOf('{', s);
+  assert.ok(open > s, `${sig} 의 여는 중괄호를 찾지 못함`);
+  let depth = 0;
+  for (let k = open; k < code.length; k++) {
+    const c = code[k];
+    if (c === '"' || c === "'") {
+      let j = k + 1;
+      while (j < code.length) { if (code[j] === BS) { j += 2; continue; } if (code[j] === c) break; j++; }
+      k = j; continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) return code.slice(s, k + 1); }
+  }
+  assert.fail(`${sig} 의 중괄호 짝이 맞지 않는다`);
+}
+// app_user 블록만 잘라낸다 — is_active·created_at 같은 이름은 이 파일의 다른 표에도 있다.
+function appUserBlock(sql) {
+  const m = /CREATE TABLE\s+`?app_user`?\s*\(([\s\S]*?)\n\)\s*ENGINE/i.exec(stripSqlComments(sql));
+  assert.ok(m, 'app_user 의 CREATE TABLE 블록을 찾지 못했다 — 정본의 모양이 바뀌었다(판정 불가)');
+  return m[1];
+}
+
+function mutate(base, from, to) {
+  const out = base.replace(from, to);
+  assert.notStrictEqual(out, base, `변이가 원본을 바꾸지 못했다(대상 문자열 없음): ${from}`);
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  계약 — 검사와 변이가 같은 함수를 쓴다(검사가 실제로 잡는지 증명하려면 그래야 한다)
+// ══════════════════════════════════════════════════════════════════════
+
+const checks = {
+  // ① 정본·마이그레이션 동치 — 컬럼이 **같은 자리에 같은 모양으로** 선다.
+  //    (실제 덤프 대조는 격리 DB 로 하고, 여기서는 두 소스가 같은 것을 말하는지 본다.)
+  canonColumnShape(sql, label) {
+    const blk = appUserBlock(sql);
+    const line = /^[^\S\n]*sort_order[^\n]*$/m.exec(blk);
+    assert.ok(line, `${label}: app_user 에 sort_order 컬럼이 없다`);
+    assert.ok(/SMALLINT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(line[0]),
+      `${label}: sort_order 가 SMALLINT UNSIGNED NULL DEFAULT NULL 이 아니다 — 마이그레이션 경로와 타입이 갈리면 덤프 대조가 깨진다`);
+    // 위치: title 바로 다음 컬럼이어야 한다(ADD COLUMN … AFTER title 과 짝).
+    const cols = blk.split('\n').map((l) => /^[^\S\n]*`?([a-z_]+)`?\s+[A-Z]/.exec(l)).filter(Boolean).map((m) => m[1]);
+    const iT = cols.indexOf('title'), iS = cols.indexOf('sort_order');
+    assert.ok(iT >= 0, `${label}: title 컬럼을 찾지 못했다(판정 불가)`);
+    assert.strictEqual(iS, iT + 1,
+      `${label}: sort_order 가 title 바로 뒤가 아니다(title=${iT}, sort_order=${iS}) — ` +
+      '컬럼 순서가 다르면 "마이그레이션으로 온 DB"와 "새로 세운 DB"가 mysqldump 대조에서 갈린다');
+    // UNIQUE·인덱스·COMMENT 를 두지 않는다(§3.1 — 전량 재작성 중간의 중복이 1062 로 죽지 않게).
+    assert.ok(!/UNIQUE[^\n]*sort_order|KEY[^\n]*\(\s*`?sort_order`?\s*\)/i.test(blk),
+      `${label}: sort_order 에 UNIQUE·인덱스가 붙었다 — 앱의 전량 재작성이 중간값 충돌로 죽는다(§3.1)`);
+    assert.ok(!/sort_order[^\n]*COMMENT/i.test(line[0]),
+      `${label}: sort_order 에 컬럼 COMMENT 가 붙었다 — 이 DB 는 컬럼 주석이 0/174 다. ` +
+      '여기만 달면 이관 경로에만 주석이 붙어 정본과 갈린다(09-09 가 복구한 드리프트와 같은 종류)');
+  },
+
+  // ① 계속 — 마이그레이션이 같은 자리·같은 모양으로 붙이고, 감사 시각을 덮지 않는다.
+  migrationShape(sql, canonVer) {
+    const code = stripSqlComments(sql);
+    assert.ok(/ALTER\s+TABLE\s+app_user[\s\S]{0,400}?ADD\s+COLUMN\s+sort_order\s+SMALLINT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(code),
+      MIGRATE + ' 이 app_user 에 sort_order SMALLINT UNSIGNED NULL DEFAULT NULL 을 추가하지 않는다');
+    assert.ok(/ADD\s+COLUMN\s+sort_order[\s\S]{0,400}?AFTER\s+title/i.test(code),
+      MIGRATE + ' 에 `AFTER title` 이 없다 — 컬럼이 표 끝에 붙어 정본(신규 구축)과 순서가 갈린다. ' +
+      '그 차이는 mysqldump 대조에서만 드러나므로, 여기서 못 박지 않으면 아무도 모른다');
+    //  ★ updated_at 을 명시하지 않으면 서버 ON UPDATE 가 89행의 갱신 시각을 전부 덮는다.
+    //    "언제 이 사람의 정보가 마지막으로 바뀌었나"는 인사 이력이고, 컬럼 하나 늘린 일로 지울 값이 아니다.
+    //    (migrate-2026-09-09-integrity.sql (5) 가 같은 이유로 같은 장치를 썼다.)
+    assert.ok(/UPDATE\s+app_user[\s\S]{0,600}?updated_at\s*=\s*u\.updated_at/i.test(code),
+      MIGRATE + ' 의 초기값 UPDATE 가 updated_at 을 명시하지 않는다 — 89행의 갱신 시각이 전부 지금으로 덮인다');
+    //  판번호는 정본에서 읽어 대조한다(시험에 숫자를 박으면 정본이 움직일 때 시험이 거짓말을 한다).
+    const to = String(canonVer), from = String(Number(to) - 1);
+    const bump = /UPDATE\s+cal_schema_meta\s+SET\s+v\s*=\s*'(\d+)'[\s\S]{0,200}?AND\s+v\s*=\s*'(\d+)'/i.exec(code);
+    assert.ok(bump, MIGRATE + ' 에서 schema_version 승격 문장을 찾지 못했다');
+    assert.strictEqual(bump[1], to, MIGRATE + ' 이 올리는 값(' + bump[1] + ')이 정본이 심는 값(' + to + ')과 다르다');
+    assert.strictEqual(bump[2], from, MIGRATE + ' 의 승격 WHERE 절 출발값(' + bump[2] + ')이 ' + from + ' 이 아니다');
+    const guard = /@v\s*=\s*'(\d+)'/.exec(code);
+    assert.ok(guard, MIGRATE + " 에 선행조건 가드(@v = 'N')가 없다 — 재실행이 1060 으로 죽는다");
+    assert.strictEqual(guard[1], from, MIGRATE + ' 의 가드가 v=' + guard[1] + " 를 요구한다 — 정본 기준으로는 '" + from + "' 이어야 한다");
+    //  사후 검증 — 존재만 보지 않는다(위치·NULL·판번호를 @bad 가 기계적으로 막는다).
+    assert.ok(/ORDINAL_POSITION\s*=\s*1\s*\+/.test(code),
+      MIGRATE + ' 의 사후 검증이 컬럼 위치를 보지 않는다 — AFTER 가 먹혔는지 확인할 길이 없다');
+    assert.ok(/is_active\s*=\s*1\s+AND\s+sort_order\s+IS\s+NULL/i.test(code),
+      MIGRATE + ' 의 사후 검증이 "활성 사용자 중 sort_order NULL 0명"을 보지 않는다');
+    assert.ok(/중단: 사후 검증 실패/.test(code),
+      MIGRATE + ' 의 사후 검증이 출력만 하고 멈추지 않는다 — 아무도 안 읽는 경고는 게이트가 아니다');
+  },
+
+  // ② 관리자 관문 — 거부가 '오프라인'으로 뭉개지지 않는다(USER-LOGIN §3.3 의 함정).
+  //    이 함정은 실제로 있었다: 쓰기 메서드가 연결 실패를 전부 OfflineMsg 로 환원하기 때문에
+  //    NotAuthorizedException 을 **먼저** 잡지 않으면 "관리자만 고칠 수 있습니다"가
+  //    "서버에 연결할 수 없습니다"로 표시된다 — 사용자는 원인을 영영 못 찾는다.
+  deniedIsNotOffline(cs) {
+    for (const name of ['UpsertUserAsync', 'SetUserActiveAsync', 'SaveUserOrderAsync']) {
+      const b = csMember(cs, name + '(');
+      assert.ok(/catch \(NotAuthorizedException nex\)[^\n]*return \(false, nex\.Message\)/.test(b),
+        `${name} 가 권한 거부를 사용자 문장 그대로 돌려주지 않는다 — OfflineMsg 로 뭉개지면 원인이 뒤바뀐다`);
+      const iNa = b.indexOf('catch (NotAuthorizedException nex)');
+      const iOff = b.indexOf('return (false, OfflineMsg)');
+      assert.ok(iNa >= 0 && iOff > iNa,
+        `${name} 의 catch 순서가 뒤집혔다 — NotAuthorizedException 을 Exception 보다 앞에서 잡아야 한다`);
+    }
+  },
+
+  // ③ 잠금 방지 — 세 문구가 상수 한 곳에 있고, 각 메서드가 **같은 트랜잭션 안에서** FOR UPDATE 로 판정한다.
+  //    ★ FOR UPDATE 가 없으면 두 관리자가 동시에 서로를 강등해 **아무도 남지 않는다**(둘 다 COUNT=2 를 본다).
+  lockoutGuards(cs) {
+    const code = stripCs(cs);
+    for (const [nm, txt] of [
+      ['SelfDeactivateMsg', '자기 계정은 퇴사 처리할 수 없습니다.'],
+      ['SelfRoleMsg', '자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.'],
+      ['LastAdminMsg', '관리자가 한 명뿐이라 처리할 수 없습니다. 먼저 다른 관리자를 지정하세요.'],
+    ]) {
+      assert.ok(new RegExp('const string ' + nm + '\\s*=\\s*"' + txt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"').test(code),
+        `잠금 방지 문구 상수 ${nm} 이 계약과 다르다 — 같은 말을 두 곳에 적으면 한쪽만 고쳐진다`);
+    }
+    // 활성 관리자 수는 잠근 채 센다.
+    assert.ok(/SELECT COUNT\(\*\) FROM app_user WHERE edit_role='admin' AND is_active=1 FOR UPDATE/.test(code),
+      "활성 관리자 수를 FOR UPDATE 로 세지 않는다 — 동시 강등으로 관리자가 0명이 될 수 있다");
+    // 대상·나 자신도 잠근 채 읽는다.
+    assert.ok(/SELECT user_id, name, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE/.test(code),
+      '대상 직원을 FOR UPDATE 로 읽지 않는다 — 판정과 갱신 사이에 값이 바뀔 수 있다');
+    assert.ok(/SELECT user_id FROM app_user WHERE login_id=@me FOR UPDATE/.test(code),
+      "'나'를 FOR UPDATE 로 읽지 않는다 — 자기 판정의 근거가 흔들린다");
+
+    const up = csMember(cs, 'UpsertUserAsync(');
+    assert.ok(/BeginTransactionAsync/.test(up), 'UpsertUserAsync 가 트랜잭션 안에서 판정하지 않는다');
+    assert.ok(up.includes('SelfRoleMsg'), 'UpsertUserAsync 에 자기 권한 변경 금지(§4.4-2)가 없다');
+    assert.ok(up.includes('LastAdminMsg'), 'UpsertUserAsync 에 마지막 관리자 강등 금지(§4.4-3)가 없다');
+    assert.ok(/LockedActiveAdminCountAsync\(conn, tx, cts\.Token\) <= 1/.test(up),
+      'UpsertUserAsync 의 마지막 관리자 판정이 COUNT<=1 이 아니다');
+
+    const sa = csMember(cs, 'SetUserActiveAsync(');
+    assert.ok(/BeginTransactionAsync/.test(sa), 'SetUserActiveAsync 가 트랜잭션 안에서 판정하지 않는다');
+    assert.ok(sa.includes('SelfDeactivateMsg'), 'SetUserActiveAsync 에 자기 퇴사 금지(§4.4-1)가 없다');
+    assert.ok(sa.includes('LastAdminMsg'), 'SetUserActiveAsync 에 마지막 관리자 퇴사 금지(§4.4-3)가 없다');
+    // 복구(active=true)에는 걸지 않는다 — 막을 것이 없다(사람을 되살리는 조작이다).
+    assert.ok(/if \(!active\)\s*\{/.test(sa),
+      '퇴사/복구가 같은 규칙을 받는다 — 잠금 방지는 퇴사(!active)에만 걸어야 한다');
+
+    // 하드삭제는 어디에도 없다(§3.3 — 표가 스스로 막지만, 코드에도 그 경로를 만들지 않는다).
+    assert.ok(!/DELETE\s+FROM\s+app_user/i.test(code),
+      'app_user 를 DELETE 하는 SQL 이 생겼다 — 퇴사는 is_active=0 이고 행은 남는다(§3.3)');
+  },
+
+  // ④ 입력 검증 — 형식·도메인이 **사용자 문장**으로 거부된다(최종 보증은 DB 제약).
+  inputValidation(cs) {
+    const code = stripCs(cs);
+    assert.ok(/@"\^\[A-Za-z0-9\._-\]\{1,50\}\$"/.test(code),
+      '로그인 ID 형식 정규식이 ^[A-Za-z0-9._-]{1,50}$ 가 아니다 — 넓히면 넷커스에 없는 ID 가 들어온다');
+    const up = csMember(cs, 'UpsertUserAsync(');
+    for (const msg of ['로그인 ID 는 영문·숫자·._- 만 쓸 수 있습니다.', '이름을 입력하세요.',
+                       '등록되지 않은 직급입니다.', '등록되지 않은 소속입니다.',
+                       '열람 범위 값이 올바르지 않습니다.', '편집 권한 값이 올바르지 않습니다.']) {
+      assert.ok(up.includes(msg), `입력 검증 문구가 없다: ${msg}`);
+    }
+    // 직급·소속은 **활성 마스터**로 검사한다 — 폐지된 값으로 새로 배정하지 못하게.
+    assert.ok(/LoadCodeNameSetAsync\(conn, cts\.Token, "title_code", activeOnly: true\)/.test(up),
+      '직급 검증이 활성 title_code 로드가 아니다(하드코딩이거나 숨김 포함이다)');
+    assert.ok(/SELECT COUNT\(\*\) FROM org_unit WHERE org_id=@o AND is_active=1/.test(up),
+      '소속 검증이 활성 org_unit 조회가 아니다');
+    // 대소문자 정규화는 하지 않는다 — 넷커스가 어떤 표기를 쓰는지 이 앱이 정하지 않는다(§4.3).
+    assert.ok(!/lid\s*=\s*lid\.ToLower|ToLowerInvariant\(\)\s*;[\s\S]{0,40}login_id/.test(up),
+      '로그인 ID 를 소문자로 정규화한다 — 중복 판정은 DB 콜레이션(ai_ci)에 맡기기로 했다(§4.3)');
+    // 중복은 DB 가 판정한다(1062).
+    assert.ok(/case 1062: return "이미 등록된 ID 입니다\.";/.test(code),
+      '로그인 ID 중복(1062)을 사용자 문장으로 돌려주지 않는다');
+    // 기존 사용자의 login_id 는 UPDATE 대상이 아니다(§6 — 넷커스 소유).
+    assert.ok(!/UPDATE app_user SET[^"]*login_id=/.test(code),
+      '기존 사용자의 login_id 를 UPDATE 한다 — 그 값은 넷커스 소유다(§6). 필요하면 DBA 경로다');
+  },
+
+  // ⑤ 권한 파일 — app_user 는 SELECT+INSERT+UPDATE, DELETE 는 없다. org_unit·title_code 는 SELECT 그대로.
+  grantFiles(userGrantsSql, calGrantsSql) {
+    assert.ok(/GRANT SELECT, INSERT, UPDATE[^\n]*app_user/.test(userGrantsSql),
+      '05-grants.sql 이 app_user 에 INSERT·UPDATE 를 부여하지 않는다 — 관리 화면이 ERROR 1142 로 죽는다');
+    assert.ok(!/GRANT[^\n]*DELETE[^\n]*app_user/i.test(userGrantsSql),
+      '05-grants.sql 이 app_user 에 DELETE 를 준다 — 퇴사는 is_active=0 이고 행은 남는다(§3.3)');
+    for (const t of ['org_unit', 'title_code']) {
+      const m = new RegExp("GRANT ([A-Z, ]+) ON [^\\n]*" + t).exec(userGrantsSql);
+      assert.ok(m, `05-grants.sql 에 ${t} GRANT 가 없다`);
+      assert.strictEqual(m[1].trim(), 'SELECT',
+        `05-grants.sql 이 ${t} 에 ${m[1].trim()} 을 준다 — 조직·직급 코드 편집은 이번 범위 밖이다(§6)`);
+    }
+    // grants-calendar.sql 은 GRANT 를 늘리지 않는다(캘린더 표의 단일 소스다). 대신 **서술이 사실이어야** 한다.
+    assert.ok(/app_user\s+SELECT \+ \*\*INSERT · UPDATE\*\*/.test(calGrantsSql),
+      'grants-calendar.sql 머리말이 app_user 를 아직 SELECT 전용으로 서술한다 — 없는 사실을 적어 두면 다음 사람이 그걸 믿는다');
+    assert.ok(/app_user 의 DELETE 는 어디에도 없다/.test(calGrantsSql),
+      'grants-calendar.sql 서술에 "app_user DELETE 없음"이 없다');
+    assert.ok(!/GRANT[^\n]*(?:INSERT|UPDATE|DELETE)[^\n]*taskmgr\.app_user/.test(calGrantsSql),
+      'grants-calendar.sql 이 app_user 쓰기를 직접 부여한다 — 그 도메인의 GRANT 정본은 05-grants.sql 하나다');
+  },
+
+  // ⑥ 정렬 — 호스트가 정하고 화면은 그대로 그린다. 두 곳이면 갈린다(§5.3).
+  orderIsHostOnly(cs, web) {
+    assert.ok(/"ORDER BY o\.name, u\.sort_order IS NULL, u\.sort_order, u\.name"/.test(cs),
+      '명부 ORDER BY 가 §5.3(소속 → 순번(NULL 맨 뒤) → 이름)과 글자까지 같지 않다');
+    //  직급 서열을 끼우지 않는다 — 전사 서열이 직급을 이미 담고 있고, 끼우면 관리자가 정한 순서를 직급이 뒤엎는다.
+    assert.ok(!/ORDER BY o\.name[^"]*t\.sort_order/.test(cs),
+      '명부 ORDER BY 에 직급 서열이 끼었다 — 관리자가 정한 순서를 직급이 뒤엎는다(§5.3)');
+    const rm = extractFunction(web, 'renderMembers');
+    assert.ok(!/\.sort\(/.test(rm),
+      'renderMembers 가 목록을 다시 정렬한다 — 순서를 정하는 곳이 둘이 되면 반드시 갈린다(§5.3)');
+    for (const fn of ['mbVisible', 'mbApplyData']) {
+      assert.ok(!/\.sort\(/.test(extractFunction(web, fn)),
+        `${fn} 이 명부를 다시 정렬한다 — 화면은 호스트가 준 순서를 그대로 그린다(§5.3)`);
+    }
+    // 순번 숫자는 화면 어디에도 표시하지 않는다(§5.1) — 관리자는 순서만 정한다.
+    assert.ok(!/sortOrder/.test(rm),
+      'renderMembers 가 sortOrder 를 읽는다 — 순번 숫자는 화면에 나타나지 않는다(§5.1)');
+  },
+
+  // ⑦ 관리자 회신은 '호스트가 준 값'으로만 켜진다 — 화면이 스스로 관리자라고 판단하지 않는다.
+  adminFlagComesFromHost(web) {
+    const b = extractFunction(web, 'mbApplyData');
+    assert.ok(/__mbAdmin = d\.admin === true;/.test(b),
+      '관리자 여부를 호스트 회신(d.admin)에서 그대로 받지 않는다 — 화면이 권한을 지어내면 반드시 낡는다');
+    assert.ok(/__mbInactive = __mbAdmin && d\.includeInactive === true;/.test(b),
+      '「퇴사자 보기」 상태를 호스트가 정한 값으로 맞추지 않는다 — 요청과 결과가 갈리면 화면이 거짓말을 한다');
+    // 여는 순간에도 낡은 값이 남지 않는다(한 프레임의 거짓말도 거짓말이다).
+    assert.ok(/__mbAdmin = false;/.test(extractFunction(web, 'openMembers')),
+      'openMembers 가 __mbAdmin 을 비우지 않는다 — 회신 전 한 프레임 동안 편집 컨트롤이 번쩍인다');
+  },
+
+  // ⑦ 계속 — 마크업에는 편집 컨트롤이 없다(전부 JS 가 관리자일 때만 만든다).
+  membersMarkupHasNoControls(web) {
+    const s = web.indexOf('<div class="overlay hidden" id="membersModal">');
+    assert.ok(s >= 0, '#membersModal 마크업을 찾지 못함');
+    const e = web.indexOf('<!-- ===== 타인 일정 열람', s);
+    assert.ok(e > s, '#membersModal 뒤의 타인 일정 열람 모달을 찾지 못함');
+    const md = web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');   // 주석의 설명 문구는 컨트롤이 아니다
+    assert.ok(/id="mbAdmin"/.test(md), '#mbAdmin 자리가 없다 — 관리자 막대를 넣을 곳이 사라졌다');
+    assert.ok(/<div id="mbAdmin"><\/div>/.test(md),
+      '#mbAdmin 이 비어 있지 않다 — 컨트롤을 마크업에 적으면 비관리자 DOM 에도 남는다(숨김 ≠ 부재)');
+    for (const dead of ['직원 등록', '순서 편집', '순서 저장', '퇴사자 보기', 'data-uop']) {
+      assert.ok(!md.includes(dead),
+        `구성원 모달 마크업에 편집 컨트롤(${dead})이 들어왔다 — 관리자가 아닐 때 DOM 에 없어야 한다(§5.1)`);
+    }
+  },
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  실행
+// ══════════════════════════════════════════════════════════════════════
+
+test('기준⓪: 이 게이트의 기준 파일이 전부 실재한다(못 읽었으면 통과가 아니라 측정 실패다)', () => {
+  assert.deepStrictEqual(missing, [],
+    '직원 관리 게이트가 기준 파일을 읽지 못했다. 없는 것: ' + missing.join(', ') + '\n' +
+    '  · taskmgr-company-data 는 이 저장소의 **형제 폴더**여야 한다(직원·조직 표의 정본이 거기 있다).\n' +
+    '  · 읽지 못한 것을 통과로 넘기면 이 게이트는 그 순간부터 아무것도 지키지 않는다.');
+});
+
+test('계약①: 정본(01-schema-users.sql)의 sort_order 가 title 바로 뒤 · UNIQUE·인덱스·COMMENT 없음', () => {
+  checks.canonColumnShape(usersCanon, 'taskmgr-company-data/01-schema-users.sql');
+});
+test('계약①-b: 마이그레이션이 AFTER title 로 붙이고 감사 시각을 덮지 않으며 판번호 한 칸을 올린다', () => {
+  checks.migrationShape(migrateSql, canonSchemaVersion());
+});
+test('계약②: 직원 쓰기의 권한 거부가 오프라인 문구로 뭉개지지 않는다(USER-LOGIN §3.3 함정)', () => {
+  checks.deniedIsNotOffline(pdb);
+});
+test('계약③: 잠금 방지 3규칙이 같은 트랜잭션 안에서 FOR UPDATE 로 판정된다', () => {
+  checks.lockoutGuards(pdb);
+});
+test('계약④: 입력 검증이 형식·도메인을 사용자 문장으로 거부한다(최종 보증은 DB 제약)', () => {
+  checks.inputValidation(pdb);
+});
+test('계약⑤: 권한 파일이 app_user 에 INSERT·UPDATE 를 주고 DELETE 는 주지 않는다', () => {
+  checks.grantFiles(userGrants, calGrants);
+});
+test('계약⑥: 명부 순서는 호스트가 정하고 화면은 다시 정렬하지 않는다(순번 숫자 비노출)', () => {
+  checks.orderIsHostOnly(pdb, app);
+});
+test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 마크업에는 편집 컨트롤이 없다', () => {
+  checks.adminFlagComesFromHost(app);
+  checks.membersMarkupHasNoControls(app);
+});
+
+// ── 브리지 배선 — 세 명령이 실제로 호스트에 닿고, 성공하면 명부가 갱신된다 ──────────
+test('계약②-b: 브리지 3종(saveUser·setUserActive·saveUserOrder)이 배선돼 있고 성공 시 명부를 재조회한다', () => {
+  const code = stripCs(main);
+  for (const [cmd, fn] of [['saveUser', 'SaveUserAsync'], ['setUserActive', 'SetUserActiveAsync'], ['saveUserOrder', 'SaveUserOrderAsync']]) {
+    assert.ok(new RegExp('case "' + cmd + '":').test(code), `브리지 case "${cmd}" 가 없다 — 화면이 눌러도 아무 일도 안 난다`);
+    const b = csMember(main, 'private async Task ' + fn + '(');
+    assert.ok(/UserSaved\(ok, msg\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다(__userSaved)`);
+    assert.ok(/if \(ok\) await LoadMembersToWebAsync\(includeInactive\);/.test(b),
+      `${fn} 이 성공 뒤 명부를 재조회하지 않는다 — "저장은 됐는데 목록은 그대로"인 창이 생긴다`);
+  }
+  assert.ok(/window\.__userSaved && window\.__userSaved\(/.test(main),
+    '호스트가 __userSaved 를 부르지 않는다(과제의 __projectSaved 와 같은 패턴이어야 한다)');
+  assert.ok(/window\.__applyMembers && window\.__applyMembers\(/.test(main),
+    '호스트가 갱신 명부를 __applyMembers 로 밀어 주지 않는다');
+  assert.ok(/typeof window\.__userSaved|window\.__userSaved = function/.test(app),
+    '웹에 __userSaved 수신부가 없다');
+  assert.ok(/window\.__applyMembers = function/.test(app), '웹에 __applyMembers 수신부가 없다');
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  변이 주입 — 위 계약이 실효성이 있는지 증명한다(안 잡으면 그 검사는 장식이다)
+// ══════════════════════════════════════════════════════════════════════
+
+test('변이①: 정본에서 sort_order 를 org_id 뒤로 옮기면 계약① 이 잡는다(존재만 보면 통과할 변이)', () => {
+  const blk = appUserBlock(usersCanon);
+  const line = /^[^\S\n]*sort_order[^\n]*\n/m.exec(blk);
+  assert.ok(line, '변이 준비 실패: 컬럼 줄을 찾지 못했다');
+  const pulled = blk.replace(line[0], '');
+  const org = /^[^\S\n]*org_id[^\n]*\n/m.exec(pulled);
+  assert.ok(org, '변이 준비 실패: org_id 줄을 찾지 못했다');
+  const movedBlk = pulled.replace(org[0], () => org[0] + line[0]);
+  const bad = stripSqlComments(usersCanon).replace(blk, () => movedBlk);
+  assert.throws(() => checks.canonColumnShape(bad, 'x'), /title 바로 뒤가 아니다/);
+  assert.doesNotThrow(() => checks.canonColumnShape(usersCanon, 'x'));   // 통제군
+});
+
+test('변이①-b: 정본에 UNIQUE 를 걸면 계약① 이 실패한다(전량 재작성이 1062 로 죽는다)', () => {
+  const bad = mutate(usersCanon, '  PRIMARY KEY (user_id),', '  UNIQUE KEY uq_app_user_sort_order (sort_order),\n  PRIMARY KEY (user_id),');
+  assert.throws(() => checks.canonColumnShape(bad, 'x'), /UNIQUE·인덱스가 붙었다/);
+});
+
+test('변이①-c: 마이그레이션에서 AFTER title 을 지우면 계약①-b 가 실패한다', () => {
+  const bad = mutate(migrateSql, '\n  AFTER title;', ';');
+  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /AFTER title` 이 없다/);
+  assert.doesNotThrow(() => checks.migrationShape(migrateSql, canonSchemaVersion()));   // 통제군
+});
+
+test('변이①-d: 초기값 UPDATE 에서 updated_at 명시를 빼면 계약①-b 가 실패한다(감사 시각 전면 덮어쓰기)', () => {
+  const bad = mutate(migrateSql, ',\n       u.updated_at = u.updated_at;', ';');
+  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /updated_at 을 명시하지 않는다/);
+});
+
+test('변이②: 권한 거부를 오프라인 문구로 바꾸면 계약② 가 실패한다', () => {
+  const bad = mutate(pdb,
+    'catch (NotAuthorizedException nex) { _log("권한 거부(직원 저장): " + nex.Message); return (false, nex.Message); }',
+    'catch (NotAuthorizedException nex) { _log("권한 거부(직원 저장): " + nex.Message); return (false, OfflineMsg); }');
+  assert.throws(() => checks.deniedIsNotOffline(bad), /사용자 문장 그대로 돌려주지 않는다/);
+  assert.doesNotThrow(() => checks.deniedIsNotOffline(pdb));   // 통제군
+});
+
+test('변이③: 마지막 관리자 판정에서 FOR UPDATE 를 빼면 계약③ 이 실패한다(동시 강등으로 0명)', () => {
+  const bad = mutate(pdb,
+    "\"SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1 FOR UPDATE\"",
+    "\"SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1\"");
+  assert.throws(() => checks.lockoutGuards(bad), /FOR UPDATE 로 세지 않는다/);
+});
+
+test('변이③-b: 자기 퇴사 금지를 지우면 계약③ 이 실패한다', () => {
+  const bad = mutate(pdb,
+    '                        { await tx.RollbackAsync(cts.Token); return (false, SelfDeactivateMsg); }',
+    '                        { }');
+  assert.throws(() => checks.lockoutGuards(bad), /자기 퇴사 금지/);
+});
+
+test('변이③-c: app_user 하드삭제 경로가 생기면 계약③ 이 실패한다', () => {
+  const bad = mutate(pdb, 'UPDATE app_user SET is_active=@a WHERE user_id=@uid', 'DELETE FROM app_user WHERE user_id=@uid');
+  assert.throws(() => checks.lockoutGuards(bad), /DELETE 하는 SQL 이 생겼다/);
+});
+
+test('변이④: 로그인 ID 정규식을 넓히면 계약④ 가 실패한다', () => {
+  const bad = mutate(pdb, '@"^[A-Za-z0-9._-]{1,50}$"', '@"^.{1,50}$"');
+  assert.throws(() => checks.inputValidation(bad), /정규식이 \^\[A-Za-z0-9/);
+});
+
+test('변이④-b: 직급 검증을 숨김 포함으로 바꾸면 계약④ 가 실패한다(폐지된 직급으로 신규 배정)', () => {
+  const bad = mutate(pdb, 'LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: true)',
+                          'LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: false)');
+  assert.throws(() => checks.inputValidation(bad), /활성 title_code 로드가 아니다/);
+});
+
+test('변이⑤: 05-grants.sql 을 옛 SELECT 전용으로 되돌리면 계약⑤ 가 실패한다', () => {
+  const bad = mutate(userGrants, 'GRANT SELECT, INSERT, UPDATE ON `', 'GRANT SELECT ON `');
+  assert.throws(() => checks.grantFiles(bad, calGrants), /INSERT·UPDATE 를 부여하지 않는다/);
+  assert.doesNotThrow(() => checks.grantFiles(userGrants, calGrants));   // 통제군
+});
+
+test('변이⑤-b: app_user 에 DELETE 를 주면 계약⑤ 가 실패한다', () => {
+  const bad = mutate(userGrants, 'GRANT SELECT, INSERT, UPDATE ON `', 'GRANT SELECT, INSERT, UPDATE, DELETE ON `');
+  assert.throws(() => checks.grantFiles(bad, calGrants), /DELETE 를 준다/);
+});
+
+test('변이⑤-c: org_unit 에도 쓰기를 열면 계약⑤ 가 실패한다(이번 범위 밖)', () => {
+  const bad = mutate(userGrants, "GRANT SELECT ON `', DATABASE(), '`.org_unit", "GRANT SELECT, UPDATE ON `', DATABASE(), '`.org_unit");
+  assert.throws(() => checks.grantFiles(bad, calGrants), /org_unit 에 SELECT, UPDATE 을 준다/);
+});
+
+test('변이⑥: 명부 ORDER BY 에서 순번을 빼면 계약⑥ 이 실패한다(관리자가 정한 서열이 사라진다)', () => {
+  const bad = mutate(pdb, '"ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name"', '"ORDER BY o.name, u.name"');
+  assert.throws(() => checks.orderIsHostOnly(bad, app), /§5\.3\(소속 → 순번/);
+});
+
+test('변이⑥-b: 화면이 명부를 다시 정렬하면 계약⑥ 이 실패한다', () => {
+  const bad = mutate(app, '  const arr = Array.isArray(rows) ? rows : [];',
+                          '  const arr = (Array.isArray(rows) ? rows : []).sort((a,b) => 0);');
+  assert.throws(() => checks.orderIsHostOnly(pdb, bad), /다시 정렬한다/);
+  assert.doesNotThrow(() => checks.orderIsHostOnly(pdb, app));   // 통제군
+});
+
+test('변이⑦: 화면이 스스로 관리자라고 판단하면 계약⑦ 이 실패한다', () => {
+  const bad = mutate(app, '  __mbAdmin = d.admin === true;', '  __mbAdmin = true;');
+  assert.throws(() => checks.adminFlagComesFromHost(bad), /호스트 회신\(d\.admin\)에서 그대로 받지 않는다/);
+});
+
+test('변이⑦-b: 편집 컨트롤을 마크업에 적으면 계약⑦ 이 실패한다(숨김 ≠ 부재)', () => {
+  const bad = mutate(app, '          <div id="mbAdmin"></div>',
+                          '          <div id="mbAdmin"><button type="button" class="btn sm" id="mbaNew">직원 등록</button></div>');
+  assert.throws(() => checks.membersMarkupHasNoControls(bad), /비어 있지 않다|편집 컨트롤\(직원 등록\)/);
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  §8-7 — 비관리자 DOM 에는 편집 컨트롤이 **없다**(숨김이 아니라 부재)
+//  ★ 소스 문자열 검사로는 이 계약을 증명할 수 없다. 컨트롤을 만드는 코드는 어차피 파일 안에 있고,
+//    문제는 '그 코드가 언제 도는가'이기 때문이다. 그래서 실제로 그려 보고 DOM 을 센다.
+//  ★ 앱 전체를 부팅하지 않는다 — 명부를 그리는 함수 넷만 떼어 내 빈 문서에 심는다.
+//    부팅하면 호스트 브리지·세션·타이머가 딸려 와 이 계약과 무관한 이유로 깨진다.
+// ══════════════════════════════════════════════════════════════════════
+
+const jsdom = await importOptional('jsdom');
+
+// 명부를 그리는 데 실제로 필요한 함수만 원본에서 떼어 낸다(사본을 만들지 않는다 — 사본은 반드시 낡는다).
+function renderHarnessJs() {
+  const fns = ['renderMembers', 'mbRowActions', 'mbAdminBar', 'mbEmptyText'].map((n) => extractFunction(app, n));
+  return [
+    "var currentUser = { loginId: 'zzUme' };",
+    'var __mbAdmin = false, __mbOrder = false, __mbInactive = false;',
+    '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
+    'function mbRowClick(){} function userEdOpen(){} function mbSetActive(){} function mbMove(){}',
+    'function mbOrderToggle(){} function mbOrderSave(){} function openMembersReload(){} function toast(){}',
+    ...fns,
+    'window.__probe = function(rows, admin, order){',
+    '  __mbAdmin = !!admin; __mbOrder = !!order;',
+    '  mbAdminBar(); renderMembers(rows);',
+    '  var list = document.getElementById("mbList");',
+    '  var bar = document.getElementById("mbAdmin");',
+    '  return {',
+    '    barChildren: bar.children.length,',
+    '    uops: Array.prototype.map.call(list.querySelectorAll("[data-uop]"), function(b){ return b.dataset.uop; }),',
+    '    lines: list.querySelectorAll(".mba-line").length,',
+    '    acts: list.querySelectorAll(".mba-act").length,',
+    '    rows: list.querySelectorAll(".mb-row").length,',
+    '    links: list.querySelectorAll(".mb-row.is-link").length,',
+    '    texts: Array.prototype.map.call(list.querySelectorAll("button"), function(b){ return b.textContent; }),',
+    '  };',
+    '};',
+  ].join('\n');
+}
+
+const FIXTURE = '<!doctype html><html><body>' +
+  '<div id="mbAdmin"></div><input type="text" id="mbSearch">' +
+  '<div id="mbSoon"></div><div id="mbList"></div><div id="mbEmpty"></div></body></html>';
+
+const ROWS = [
+  { userId: 11, loginId: 'zzUa', name: 'zzU_a', title: 'zzU-T1', orgUnit: 'zzU-조직', canViewSchedule: true, isActive: true },
+  { userId: 12, loginId: 'zzUme', name: 'zzU_me', title: 'zzU-T1', orgUnit: 'zzU-조직', canViewSchedule: true, isActive: true },
+  { userId: 13, loginId: 'zzUb', name: 'zzU_b', title: 'zzU-T2', orgUnit: 'zzU-조직', canViewSchedule: false, isActive: false },
+];
+
+function probe(admin, order) {
+  const { JSDOM } = jsdom;
+  //  runScripts: outside-only — window 가 실제 realm 으로 선다(없으면 eval 안에서 window 가 미정의다).
+  const dom = new JSDOM(FIXTURE, { runScripts: 'outside-only' });
+  dom.window.eval(renderHarnessJs());
+  //  ★ JSON 왕복으로 **이쪽 realm 의 값**으로 바꾼다. jsdom 의 Array 는 다른 realm 이라
+  //    deepStrictEqual 이 프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
+  return JSON.parse(JSON.stringify(dom.window.__probe(ROWS, admin, order)));
+}
+
+if (!jsdom) {
+  // skip 은 통과가 아니다 — 러너가 exit 2(판정 없음)로 끝나고, 릴리스 게이트(TC_TEST_STRICT=1)는 실패로 승격한다.
+  const { skip } = await import('./harness.mjs');
+  skip('계약⑦-DOM: 비관리자 명부에 편집 컨트롤이 하나도 없다', SKIP_NO_JSDOM, '이 파일의 DOM 계약 3건이 세어지지 않음');
+  skip('계약⑦-DOM: 관리자 명부에는 행마다 [편집] + [퇴사]/[복구] 가 있다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM: 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', SKIP_NO_JSDOM);
+} else {
+  test('계약⑦-DOM: 비관리자 명부에 편집 컨트롤이 하나도 없다(숨김이 아니라 부재)', () => {
+    const r = probe(false, false);
+    assert.strictEqual(r.rows, ROWS.length, '전제 붕괴: 비관리자 명부에 행이 그려지지 않았다');
+    assert.strictEqual(r.barChildren, 0, `#mbAdmin 에 자식이 ${r.barChildren}개 있다 — 비관리자에게는 관리 막대가 없어야 한다`);
+    assert.deepStrictEqual(r.uops, [], `비관리자 DOM 에 조작 버튼이 있다: ${r.uops.join(', ')}`);
+    assert.strictEqual(r.lines, 0, '비관리자 DOM 에 .mba-line 래퍼가 생겼다 — 행 구조까지 관리자 것과 같아졌다');
+    assert.strictEqual(r.acts, 0, '비관리자 DOM 에 .mba-act 조작칸이 생겼다');
+    for (const t of r.texts) {
+      assert.ok(!/편집|퇴사|복구|▲|▼|저장/.test(t), `비관리자 DOM 에 편집 컨트롤 문구가 있다: ${t}`);
+    }
+    // 열람 진입점은 그대로여야 한다 — 과잉 차단도 결함이다(명부는 명부다).
+    assert.strictEqual(r.links, 1, `누를 수 있는 행이 ${r.links}개다(내가 아니고 일정을 볼 수 있는 1명이어야 한다)`);
+  });
+
+  test('계약⑦-DOM: 관리자 명부에는 행마다 [편집] + [퇴사]/[복구] 가 있다', () => {
+    const r = probe(true, false);
+    assert.strictEqual(r.lines, ROWS.length, '관리자 명부의 행이 .mba-line 으로 묶이지 않았다');
+    assert.deepStrictEqual(r.uops, ['edit', 'off', 'edit', 'off', 'edit', 'on'],
+      `행 조작 버튼 구성이 계약과 다르다: ${r.uops.join(', ')} — 활성은 [편집][퇴사], 퇴사자는 [편집][복구]`);
+    assert.strictEqual(r.barChildren > 0, true, '관리자인데 #mbAdmin 막대가 비어 있다');
+  });
+
+  test('계약⑦-DOM: 순서 편집을 켜면 ▲▼ 로 바뀌고 편집·퇴사는 사라진다', () => {
+    const r = probe(true, true);
+    assert.deepStrictEqual(r.uops, ['up', 'down', 'up', 'down', 'up', 'down'],
+      `순서 편집 중 조작 버튼이 ▲▼ 가 아니다: ${r.uops.join(', ')} — 좁은 폭에서 버튼 넷이 붙으면 이름이 되접힌다`);
+    for (const t of r.texts) {
+      assert.ok(!/편집|퇴사|복구/.test(t), `순서 편집 중인데 행에 ${t} 버튼이 남아 있다`);
+    }
+  });
+
+  test('변이⑦-DOM: 비관리자 분기를 지우면 계약⑦-DOM 이 실패한다(그 한 줄이 전부다)', () => {
+    const bad = mutate(app, '    if(!__mbAdmin){ list.appendChild(row); continue; }', '    if(false){ list.appendChild(row); continue; }');
+    const { JSDOM } = jsdom;
+    const dom = new JSDOM(FIXTURE, { runScripts: 'outside-only' });
+    //  ★ 변이본에서 함수를 다시 떼어 낸다 — 원본 하네스를 쓰면 변이가 반영되지 않아 아무것도 시험하지 않는다.
+    const fns = ['renderMembers', 'mbRowActions', 'mbAdminBar', 'mbEmptyText'].map((n) => extractFunction(bad, n));
+    dom.window.eval(renderHarnessJs().replace(extractFunction(app, 'renderMembers'), fns[0]));
+    const r = JSON.parse(JSON.stringify(dom.window.__probe(ROWS, false, false)));
+    assert.ok(r.uops.length > 0, '변이 전제: 분기를 지우면 비관리자에게도 조작 버튼이 그려져야 한다');
+  });
+}

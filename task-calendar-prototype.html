@@ -1367,6 +1367,22 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
   color:var(--muted);font-size:var(--fs-title);line-height:1}
 /* 마지막 줄 구분선 제거는 .is-link 뒤에 둔다 — 같은 명시도(0,2,0)라 순서가 승부를 가른다. */
 .mb-row:last-child{border-bottom:0}
+/* ── 직원 관리(관리자 전용, USER-ADMIN §5) ────────────────────────────────
+   ★ 조작 버튼을 행 **안에** 넣지 않는다. 누를 수 있는 행은 진짜 <button> 이라(위) 그 안에
+     또 <button> 을 넣으면 마크업이 무효고, 눌러도 행 클릭이 함께 발화해 남의 일정이 열린다.
+     그래서 행과 버튼을 형제로 두고 .mba-line 이 둘을 한 줄로 묶는다.
+   ★ 이 선택자들이 붙을 요소는 관리자일 때만 만들어진다 — 비관리자 DOM 에는 아예 없다(숨김 아님). */
+.mba-line{display:flex;align-items:center;gap:var(--sp-2);border-bottom:1px solid var(--line)}
+.mba-line > .mb-row{flex:1;min-width:0;border-bottom:0}
+.mba-line:last-child{border-bottom:0}
+.mba-line.is-off{opacity:.55}   /* 퇴사자 — 목록에서 흐리게(숨기지 않는다. 「퇴사자 보기」를 켠 상태다) */
+.mba-act{display:inline-flex;gap:2px;flex:none;padding-right:2px}
+.mba-act .btn{padding:2px 7px;line-height:1.1}
+.mba-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.mba-bar .mba-sp{flex:1}
+.mba-hint{font-size:var(--fs-meta);color:var(--muted);margin:0}
+/* 편집 폼의 라디오 묶음 — 세로 한 줄씩(가로로 늘어놓으면 위젯 실폭에서 되접힌다). */
+.ue-radios{display:flex;flex-direction:column;gap:4px;margin-bottom:var(--sp-2)}
 /* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
    트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
    ★ self(그릴 노드 없음)일 때만 JS가 인라인으로 1열로 바꾼다: display:none 인 그리드 자식은
@@ -2702,6 +2718,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="mb-split">
         <nav class="mb-tree" id="mbTree" aria-label="조직"></nav>
         <div class="mb-pane">
+          <!-- 직원 관리 막대(USER-ADMIN §5.1) — **비어 있는 자리**다.
+               ★ 컨트롤을 여기 마크업으로 적지 않는다: 관리자가 아닐 때 편집 컨트롤은 '숨김'이 아니라
+                 **DOM 에 부재**여야 한다. 숨김은 클래스 하나로 풀리고, 그러면 화면이 권한을 정하는
+                 모양이 된다 — 권한은 호스트가 요청 시점에 판정한다(ProjectDb.OpenAdminAsync).
+                 그래서 mbAdminBar() 가 관리자일 때만 버튼을 만들어 넣는다. -->
+          <div id="mbAdmin"></div>
           <!-- 검색칸 관례는 카탈로그(#offSearch)·재연결(#rlpSearch)과 같다: 클래스 없이 .modal input[type=text]가 그린다. -->
           <input type="text" id="mbSearch" autocomplete="off" spellcheck="false" aria-label="구성원 검색" placeholder="이름 · 소속 검색">
           <!-- 누르기 '전에' 알린다 — 눌러 본 뒤에야 「준비 중」이라고 하면 낚인 느낌이 든다.
@@ -2741,6 +2763,41 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-foot">
       <span class="spacer"></span>
       <button class="btn primary" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 직원 등록·수정 (USER-ADMIN §5.2) ===== 「구성원」 명부의 관리자 편집 모드에서만 열린다.
+     ★ 공식 과제 편집 폼(#officialEditModal)과 **같은 골격**이다 — 라벨·입력·2열·메시지줄·[취소][저장].
+       사용법이 같아야 관리자가 새로 배울 것이 없다.
+     ★ 폼 안의 값 목록(직급·소속·라디오)은 전부 JS 가 채운다: 직급·소속은 DB 마스터고,
+       라디오 문구는 「사용자 정보」와 **같은 매핑표**(US_VIEW_SCOPE·US_EDIT_ROLE)를 쓴다 —
+       같은 규칙을 두 벌로 적으면 한쪽이 반드시 낡는다.
+     ★ 여기에는 '삭제'가 없다. 퇴사는 명부 행의 「퇴사」이고, 행은 남는다(USER-ADMIN §3.3). -->
+<div class="overlay hidden" id="userEditModal">
+  <div class="modal">
+    <div class="modal-head"><h2 id="userEdHead">직원 등록</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <label for="userEdLogin">로그인 ID <span class="off-ed-req" aria-hidden="true">*</span></label>
+      <input type="text" id="userEdLogin" maxlength="50" autocomplete="off" spellcheck="false" placeholder="주간보고(netcus) 계정과 같은 ID">
+      <div class="git-note" id="userEdIdHint">주간보고(netcus)에 쓰는 <b>ID</b>와 같아야 합니다(이메일 아님). 이 앱이 계정을 만들지는 않습니다 — 본인이 그 계정으로 로그인하면 연결됩니다.</div>
+      <label for="userEdName">이름 <span class="off-ed-req" aria-hidden="true">*</span></label>
+      <input type="text" id="userEdName" maxlength="50" autocomplete="off">
+      <div class="row2">
+        <div><label for="userEdTitle">직급</label><select id="userEdTitle"></select></div>
+        <div><label for="userEdOrg">소속</label><select id="userEdOrg"></select></div>
+      </div>
+      <label id="userEdScopeLb">열람 범위</label>
+      <div class="ue-radios" id="userEdScope" role="radiogroup" aria-labelledby="userEdScopeLb"></div>
+      <label id="userEdRoleLb">편집 권한</label>
+      <div class="ue-radios" id="userEdRole" role="radiogroup" aria-labelledby="userEdRoleLb"></div>
+      <div class="git-note" id="userEdRoleHint"></div>
+      <div class="off-ed-msg" id="userEdMsg" role="status" aria-live="polite"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="spacer"></span>
+      <button class="btn" data-close>취소</button>
+      <button class="btn primary" id="userEdSave">저장</button>
     </div>
   </div>
 </div>
@@ -4464,6 +4521,18 @@ let __mbMembers = [];    // 이번 조회의 구성원 — 전원이다. 범위�
 let __mbSel = null;      // 선택된 조직 이름(null = 선택 없음 → 받은 전부를 보여준다)
 let __mbScopeText = '';  // 범위 줄 앞머리(권한 문구) — 「열람 범위」와 같은 매핑표를 쓴다
 let __mbBusy = false;    // 재진입 가드 — 연타로 조회가 겹치면 늦게 온 회신이 먼저 온 것을 덮는다
+/* ── 직원 관리(관리자 전용, USER-ADMIN §5) ─────────────────────────────────
+   ★ __mbAdmin 은 **호스트가 알려 준 값**이다. 화면이 스스로 판정하지 않는다 —
+     권한을 캐시하지 않기로 했고(세션 4필드), 요청 시점 판정은 호스트가 한다(USER-LOGIN §3.3).
+     이 값이 하는 일은 '컨트롤을 만들까'뿐이고, 저장 가부는 언제나 호스트 회신이 정한다. */
+let __mbAdmin = false;      // 이번 조회에서 호스트가 인정한 관리자 여부(회신에 admin:true 가 있었나)
+let __mbTitles = [];        // 활성 직급 이름 배열 — 편집 폼 드롭다운 소스(DB 마스터)
+let __mbInactive = false;   // 「퇴사자 보기」 — 켜면 membersGet 을 includeInactive 로 다시 부른다
+let __mbOrder = false;      // 「순서 편집」 모드 — 켜면 행마다 ▲▼ 가 생긴다
+let __mbOrderBackup = null; // 순서 편집 시작 시점의 명부 스냅샷. 저장하지 않고 끄면 이걸로 되돌린다
+let __mbSaving = false;     // 직원 쓰기 왕복 중(연타·중복 전송 차단)
+let __mbSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주는 타이머(offEd 의 워치독과 같은 이유)
+let __ueId = 0;             // 편집 중인 대상 user_id(0 = 신규 등록)
 // 정렬은 sortOrder → name. 서버가 이미 그 순서로 주지만, 트리는 부모별로 다시 묶으므로 여기서도 필요하다.
 function mbCmp(a, b){
   const sa = Number(a && a.sortOrder != null ? a.sortOrder : 0), sb = Number(b && b.sortOrder != null ? b.sortOrder : 0);
@@ -4559,6 +4628,9 @@ function mbMarkSel(){
 }
 // 조직 선택 — 그 노드 + 모든 하위의 구성원을 오른쪽에 띄운다.
 function mbSelect(name){
+  //  ★ 순서 편집 중에는 조직을 고를 수 없다 — 걸러진 목록에서 ▲▼ 를 누르면 '보이지 않는 사람 위로'
+  //    올라가는 셈이라 결과를 예측할 수 없다. 순서는 전 명부를 펼친 상태에서만 만진다(§5.1).
+  if(__mbOrder){ toast('순서 편집 중에는 조직을 고를 수 없습니다', 'warn'); return; }
   const u = __mbUnits.find(x => x && String(x.name) === String(name));
   if(!u) return;   // 트리에 없는 이름이면 아무 일도 없다(범위로는 막지 않는다 — 조직도는 전부 열려 있다)
   __mbSel = String(name);
@@ -4769,7 +4841,16 @@ function renderMembers(rows){
     const org = document.createElement('div'); org.className = 'set-hint'; org.style.margin = '0';
     org.textContent = (m && m.orgUnit) ? String(m.orgUnit) : '';
     row.appendChild(org);
-    list.appendChild(row);
+    // ★ 관리자가 아니면 여기서 끝이다 — 행이 곧 목록의 자식이고, DOM 은 종전과 글자까지 같다.
+    //   조작 버튼은 '있는데 감춰진' 것이 아니라 아예 만들어지지 않는다(USER-ADMIN §5.1).
+    if(!__mbAdmin){ list.appendChild(row); continue; }
+    //   관리자 모드 — 행과 버튼을 **형제**로 묶는다. 행 안에 버튼을 넣으면 마크업이 무효고(중첩 버튼)
+    //   눌러도 행 클릭이 함께 발화한다(=남의 일정이 열린다).
+    const line = document.createElement('div');
+    line.className = (m && m.isActive === false) ? 'mba-line is-off' : 'mba-line';
+    line.appendChild(row);
+    line.appendChild(mbRowActions(m, arr));
+    list.appendChild(line);
   }
   // 0건 안내는 렌더와 한 몸이다 — 목록을 그리는 곳이 둘이면 '빈 목록 + 안내 없음'이 반드시 생긴다.
   // 문구도 여기서 정한다(mbEmptyText): 마크업에 하나만 박아 두면 검색하지 않았을 때도 검색 얘기를 한다.
@@ -4793,6 +4874,323 @@ function renderMembers(rows){
     }
   }
 }
+/* ══ 직원 관리(관리자 전용) — USER-ADMIN §5 ═══════════════════════════════════
+   ★ 이 구역의 함수는 전부 __mbAdmin 이 참일 때만 DOM 을 만든다. 비관리자에게는
+     '감춰진 버튼'조차 없다 — 화면이 권한을 정하는 모양을 만들지 않기 위해서다.
+   ★ 문자열은 전부 textContent 다(명부 규칙 ㉑과 같다 — 이름·소속은 DB 문자열이다).
+   ★ 배선은 addEventListener 하나로 통일한다(onclick 금지 — 명부 행과 같은 관례).           */
+
+// 한 행의 조작 버튼 묶음. 순서 편집 중이면 ▲▼, 아니면 [편집] + [퇴사]/[복구].
+//   ★ 두 벌을 동시에 내지 않는다: 좁은 폭(≈380px)에서 버튼 넷이 붙으면 이름이 밀려 되접힌다.
+function mbRowActions(m, rows){
+  const box = document.createElement('div');
+  box.className = 'mba-act';
+  const uid = Number(m && m.userId != null ? m.userId : 0);
+  const nm  = (m && m.name) ? String(m.name) : '';
+  //  ★ data-uop / data-uid 는 **시험이 잡을 손잡이**다(tests/loop-ui-integrity.mjs).
+  //    이름으로 셀렉터를 만들면 한글·특수문자 이스케이프가 끼어들고, 동명이인에서 갈린다.
+  //    번호가 사람의 정체성이라는 규칙(01-schema-users.sql)을 화면에서도 그대로 쓴다.
+  const mk = (label, op, title, on) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn sm'; b.textContent = label;
+    b.dataset.uop = op; b.dataset.uid = String(uid);
+    if(title) b.title = title;
+    b.addEventListener('click', on);
+    box.appendChild(b);
+    return b;
+  };
+  if(__mbOrder){
+    //  ▲▼ 는 '보이는 목록 안에서의 자리'로 막는다 — 순서 편집 중에는 그 목록이 곧 전 명부다(mbOrderToggle).
+    const i = rows.indexOf(m);
+    const up = mk('▲', 'up', '위로', () => mbMove(uid, -1));
+    const dn = mk('▼', 'down', '아래로', () => mbMove(uid, +1));
+    if(i <= 0) up.disabled = true;
+    if(i < 0 || i >= rows.length - 1) dn.disabled = true;
+    return box;
+  }
+  mk('편집', 'edit', nm + ' 정보 수정', () => userEdOpen(uid));
+  if(m && m.isActive === false) mk('복구', 'on', nm + ' 복구', () => mbSetActive(uid, nm, true));
+  else { const b = mk('퇴사', 'off', nm + ' 퇴사 처리', () => mbSetActive(uid, nm, false)); b.classList.add('danger'); }
+  return box;
+}
+
+// 관리자 막대 — 「직원 등록」 · 「순서 편집」 · 「퇴사자 보기」. 순서 편집 중에는 「순서 저장」과 [취소]만 남긴다.
+//   ★ 순서 편집 중에 등록·퇴사자 토글을 함께 두면, 그 조작이 명부를 다시 읽어 와 **편집 중인 순서를 날린다.**
+//     그래서 모드가 바뀌면 막대도 통째로 바뀐다(같은 자리에 다른 도구).
+function mbAdminBar(){
+  const box = document.getElementById('mbAdmin'); if(!box) return;
+  while(box.firstChild) box.removeChild(box.firstChild);
+  box.className = __mbAdmin ? 'mba-bar' : '';
+  if(!__mbAdmin) return;   // ★ 비관리자 — 여기서 끝. DOM 에 컨트롤이 하나도 없다.
+  //  id 를 붙이는 이유는 행 버튼의 data-uop 과 같다 — 시험이 이름 대신 손잡이로 잡는다.
+  const mk = (label, id, cls, on) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = id; b.className = cls; b.textContent = label;
+    b.addEventListener('click', on);
+    box.appendChild(b);
+    return b;
+  };
+  if(__mbOrder){
+    const hint = document.createElement('span');
+    hint.className = 'mba-hint';
+    hint.textContent = '▲▼ 로 옮긴 뒤 저장하세요. 화면의 순서가 곧 서열입니다.';
+    box.appendChild(hint);
+    const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
+    mk('취소', 'mbaOrderCancel', 'btn sm', () => mbOrderToggle(false));
+    mk('순서 저장', 'mbaOrderSave', 'btn sm primary', mbOrderSave);
+    return;
+  }
+  mk('＋ 직원 등록', 'mbaNew', 'btn sm primary', () => userEdOpen(0));
+  mk('순서 편집', 'mbaOrder', 'btn sm', () => mbOrderToggle(true));
+  const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
+  //  「퇴사자 보기」는 조회 조건이라 호스트 왕복이 필요하다(퇴사자는 애초에 회신에 없다).
+  const lb = document.createElement('label');
+  lb.className = 'check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox'; cb.id = 'mbaInactive'; cb.checked = __mbInactive;
+  cb.addEventListener('change', () => { __mbInactive = !!cb.checked; openMembersReload(); });
+  lb.appendChild(cb);
+  lb.appendChild(document.createTextNode(' 퇴사자 보기'));
+  box.appendChild(lb);
+}
+
+// 순서 편집 켜기/끄기.
+//   ★ 켤 때 검색어와 조직 선택을 **비운다.** 걸러진 목록에서 ▲▼ 를 누르면 '보이지 않는 사람 위로'
+//     올라가는 셈이라 관리자가 결과를 예측할 수 없다. 전 명부를 펼친 상태에서만 순서를 만진다.
+//   ★ 끌 때는 저장하지 않은 이동을 **되돌린다**(스냅샷). 모달을 닫는 경우도 안전하다 —
+//     다음에 열면 openMembers 가 호스트에서 다시 읽어 오기 때문이다.
+function mbOrderToggle(on){
+  if(!__mbAdmin) return;
+  if(on){
+    __mbOrderBackup = __mbMembers.slice();
+    __mbOrder = true;
+    __mbSel = null;
+    const q = document.getElementById('mbSearch');
+    if(q){ q.value = ''; q.disabled = true; }
+  }else{
+    if(__mbOrderBackup) __mbMembers = __mbOrderBackup;   // 저장하지 않은 이동을 되돌린다
+    mbOrderReset();
+  }
+  mbMarkSel();
+  mbAdminBar();
+  mbApply();
+}
+// 순서 편집 상태만 푼다(명부는 건드리지 않는다). 새 명부가 도착했을 때처럼 '되돌릴 것이 없는' 경우용.
+//   ★ 한 곳에 모아 둔다 — 검색칸 잠금 해제를 한 군데라도 빠뜨리면 관리자가 검색을 영영 못 하게 된다.
+function mbOrderReset(){
+  __mbOrder = false;
+  __mbOrderBackup = null;
+  const q = document.getElementById('mbSearch');
+  if(q) q.disabled = false;
+}
+
+// 한 칸 이동 — 화면에 즉시 반영하고, 저장은 「순서 저장」이 한다(§5.1).
+function mbMove(userId, delta){
+  const i = __mbMembers.findIndex(m => m && Number(m.userId) === Number(userId));
+  const j = i + delta;
+  if(i < 0 || j < 0 || j >= __mbMembers.length) return;
+  const t = __mbMembers[i]; __mbMembers[i] = __mbMembers[j]; __mbMembers[j] = t;
+  mbApply();
+}
+
+// 순서 저장 — 화면에 보이는 순서 그대로 user_id 배열을 보낸다. 10·20·30… 재작성은 호스트가 한다(§2).
+//   ★ 순번 숫자는 화면 어디에도 표시하지 않는다. 관리자는 순서만 정하고 숫자는 앱의 사정이다.
+function mbOrderSave(){
+  const ids = __mbMembers.map(m => Number(m && m.userId)).filter(n => n > 0);
+  if(!ids.length){ toast('저장할 명부가 없습니다', 'warn'); return; }
+  mbSend({ cmd: 'saveUserOrder', userIds: ids });
+}
+
+// 퇴사/복구 — 확인 한 번. '삭제'가 아니라는 사실을 문장에 담는다(기록은 남는다).
+function mbSetActive(userId, name, active){
+  if(!userId){ toast('대상을 알 수 없습니다', 'error'); return; }
+  const who = name || '이 직원';
+  const ask = active
+    ? { t: '직원 복구', m: `'${who}' 님을 명부에 다시 표시합니다. 계속할까요?`, ok: '복구' }
+    : { t: '퇴사 처리', m: `'${who}' 님을 퇴사 처리합니다. 기록은 남고 명부에서만 사라집니다.`, ok: '퇴사 처리' };
+  confirmBox(ask.t, ask.m, ask.ok, '취소').then(r => {
+    if(r !== 'ok') return;
+    mbSend({ cmd: 'setUserActive', userId: userId, active: active });
+  });
+}
+
+// 호스트 왕복 한 곳 — 세 명령(saveUser·setUserActive·saveUserOrder)이 같은 가드·같은 워치독을 쓴다.
+//   ★ includeInactive 를 함께 보낸다: 성공하면 호스트가 곧바로 명부를 다시 읽어 밀어 주는데,
+//     그때 「퇴사자 보기」 상태를 모르면 화면이 제멋대로 바뀐다(켜 뒀는데 퇴사자가 사라진다).
+function mbSend(payload){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  if(__mbSaving) return;   // 연타·중복 전송 차단
+  mbSetSaving(true);
+  hpost(Object.assign({ includeInactive: __mbInactive }, payload));   // 결과는 __userSaved(ok, msg)
+}
+function mbSetSaving(on){
+  __mbSaving = !!on;
+  clearTimeout(__mbSaveWatchdog);
+  const s = document.getElementById('userEdSave');
+  if(s) s.disabled = !!on;
+  if(!on) return;
+  //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
+  __mbSaveWatchdog = setTimeout(() => {
+    __mbSaving = false;
+    const b = document.getElementById('userEdSave'); if(b) b.disabled = false;
+    const ed = document.getElementById('userEditModal');
+    if(ed && !ed.classList.contains('hidden')) userEdMsgSet(ICON.alert + ' 응답이 없습니다 — 다시 시도해 주세요.', 'err');
+    else toast('응답이 없습니다 — 다시 시도해 주세요.', 'warn');
+  }, 12000);
+}
+
+// 명부만 다시 읽는다(「퇴사자 보기」 전환용). openMembers 와 달리 모달을 새로 열지 않는다.
+async function openMembersReload(){
+  if(!HOST || __mbBusy) return;
+  __mbBusy = true;
+  let r = null;
+  try{ r = await hostRequest('membersGet', { includeInactive: __mbInactive }, 12000); }catch(_){ r = null; }
+  __mbBusy = false;
+  if(!(r && r.ok && r.data)){ mbFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
+  mbApplyData(r.data);
+}
+
+// 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회(openMembers)·재조회(openMembersReload)·
+// 쓰기 뒤 푸시(__applyMembers)가 **같은 함수**를 쓴다. 세 경로가 갈라지면 한쪽만 낡는다.
+function mbApplyData(d){
+  __mbUnits = Array.isArray(d.units) ? d.units : [];
+  __mbMembers = Array.isArray(d.members) ? d.members : [];
+  __mbScopeText = usRoleText(US_VIEW_SCOPE, d.scope);   // 「열람 범위」와 같은 매핑표 — 같은 규칙을 두 벌로 만들지 않는다
+  //  ★ 관리자 여부·퇴사자 포함 여부는 **호스트가 정한 값**을 그대로 받는다.
+  //    웹이 보낸 요청과 다를 수 있다(관리자에서 내려갔다면 includeInactive 가 false 로 돌아온다).
+  __mbAdmin = d.admin === true;
+  __mbTitles = Array.isArray(d.titles) ? d.titles : [];
+  __mbInactive = __mbAdmin && d.includeInactive === true;
+  if(!__mbAdmin) mbOrderReset();   // 관리자에서 내려갔다면 순서 편집도 그 자리에서 끝난다
+  __mbOrderBackup = null;          // 새 명부가 왔으므로 옛 스냅샷은 의미가 없다(되돌릴 것이 없다)
+  __mbSel = __mbOrder ? null : mbDefaultSel(__mbUnits);
+  renderUnitTree(__mbUnits, d.myUnit);
+  mbAdminBar();
+  mbApply();
+}
+
+/* ── 편집 폼(#userEditModal) ─────────────────────────────────────────────── */
+function userEdMsgSet(html, tone){
+  const m = document.getElementById('userEdMsg'); if(!m) return;
+  m.innerHTML = html || '';   // 폼 메시지는 우리가 만든 문자열이다(과제 폼 offEdMsgSet 과 같은 관례)
+  m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
+}
+// 드롭다운·라디오 채우기 — 값 목록은 전부 호스트가 준 것이다(직급·조직은 DB 마스터).
+function userEdFillSelect(id, items, cur, blankLabel){
+  const sel = document.getElementById(id); if(!sel) return;
+  while(sel.firstChild) sel.removeChild(sel.firstChild);
+  if(blankLabel != null){
+    const o = document.createElement('option');
+    o.value = ''; o.textContent = blankLabel;
+    sel.appendChild(o);
+  }
+  for(const it of items){
+    const o = document.createElement('option');
+    o.value = String(it.value); o.textContent = String(it.label);
+    sel.appendChild(o);
+  }
+  sel.value = (cur == null ? '' : String(cur));
+  if(sel.value !== (cur == null ? '' : String(cur)) && sel.options.length) sel.selectedIndex = 0;
+}
+// 라디오 묶음 — 문구는 「사용자 정보」의 매핑표를 그대로 쓴다(두 벌 금지).
+function userEdRadios(boxId, name, map, order, cur, locked){
+  const box = document.getElementById(boxId); if(!box) return;
+  while(box.firstChild) box.removeChild(box.firstChild);
+  for(const k of order){
+    const lb = document.createElement('label');
+    lb.className = 'check';
+    const r = document.createElement('input');
+    r.type = 'radio'; r.name = name; r.value = k;
+    r.checked = (String(cur || '') === k);
+    if(locked) r.disabled = true;
+    lb.appendChild(r);
+    lb.appendChild(document.createTextNode(' ' + usRoleText(map, k)));
+    box.appendChild(lb);
+  }
+}
+function userEdPick(name){
+  const r = document.querySelector('input[name="' + name + '"]:checked');
+  return r ? String(r.value) : '';
+}
+// 폼 열기. userId 0 = 신규 등록.
+//   ★ 기존 사용자의 로그인 ID 는 잠근다 — 그 값은 넷커스 소유다(USER-ADMIN §6). 바꿔야 하면 DBA 다.
+//   ★ 자기 행을 열면 편집 권한 라디오가 잠긴다(§4.4-2). **힌트일 뿐이고 최종 판정은 호스트**다.
+function userEdOpen(userId){
+  if(!__mbAdmin) return;
+  const uid = Number(userId || 0);
+  const m = uid ? __mbMembers.find(x => x && Number(x.userId) === uid) : null;
+  if(uid && !m){ toast('대상 직원을 찾을 수 없습니다 — 명부를 새로고침하세요', 'error'); return; }
+  __ueId = uid;
+  const set = (id, v) => { const e = document.getElementById(id); if(e) e.value = v == null ? '' : String(v); };
+  const head = document.getElementById('userEdHead');
+  if(head) head.textContent = m ? '직원 정보 수정' : '직원 등록';
+  set('userEdLogin', m ? m.loginId : '');
+  const lg = document.getElementById('userEdLogin'); if(lg) lg.disabled = !!m;
+  set('userEdName', m ? m.name : '');
+  userEdFillSelect('userEdTitle', __mbTitles.map(t => ({ value: t, label: t })), m ? m.title : '', null);
+  userEdFillSelect('userEdOrg',
+    __mbUnits.filter(u => u && u.orgId != null).map(u => ({ value: u.orgId, label: u.name })),
+    m && m.orgId != null ? m.orgId : '', '(소속 없음)');
+  const me = (currentUser && currentUser.loginId != null) ? String(currentUser.loginId) : '';
+  const isMe = !!me && !!m && String(m.loginId) === me;
+  userEdRadios('userEdScope', 'ueScope', US_VIEW_SCOPE, ['self', 'unit_tree', 'all'], m ? m.viewScope : 'self', false);
+  userEdRadios('userEdRole', 'ueRole', US_EDIT_ROLE, ['viewer', 'editor', 'admin'], m ? m.editRole : 'viewer', isMe);
+  const rh = document.getElementById('userEdRoleHint');
+  if(rh) rh.textContent = isMe
+    ? '자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.'
+    : '관리자만 직원 정보를 고칠 수 있습니다.';
+  userEdMsgSet('');
+  mbSetSaving(false);
+  openModal('#userEditModal');
+}
+function userEdSaveNow(){
+  if(__mbSaving) return;
+  const val = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  const focus = id => { const e = document.getElementById(id); if(e){ try{ e.focus(); }catch(_){} } };
+  const payload = {
+    cmd: 'saveUser',
+    userId: __ueId || 0,
+    loginId: val('userEdLogin'),
+    name: val('userEdName'),
+    title: val('userEdTitle'),
+    orgId: Number(val('userEdOrg') || 0),
+    viewScope: userEdPick('ueScope'),
+    editRole: userEdPick('ueRole'),
+  };
+  //  클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
+  if(!payload.loginId){ userEdMsgSet(ICON.alert + ' 로그인 ID 를 입력하세요.', 'err'); focus('userEdLogin'); return; }
+  if(!payload.name){ userEdMsgSet(ICON.alert + ' 이름을 입력하세요.', 'err'); focus('userEdName'); return; }
+  if(!payload.title){ userEdMsgSet(ICON.alert + ' 직급을 고르세요.', 'err'); focus('userEdTitle'); return; }
+  if(!payload.viewScope || !payload.editRole){ userEdMsgSet(ICON.alert + ' 열람 범위와 편집 권한을 고르세요.', 'err'); return; }
+  userEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
+  mbSend(payload);
+}
+// 호스트 쓰기 결과(등록·수정·퇴사·복구·순서 공용). 성공=폼 닫고 토스트, 실패=폼 유지 + 사유 표시.
+//   ★ 목록 갱신은 여기서 하지 않는다 — 호스트가 곧바로 명부를 다시 읽어 __applyMembers 로 밀어 준다.
+//     웹이 스스로 다시 조회하면 '누가 갱신하는가'가 두 곳이 되고, 둘의 결과가 다를 때 어느 쪽이 참인지 알 수 없다.
+window.__userSaved = function(ok, msg){
+  mbSetSaving(false);
+  const ed = document.getElementById('userEditModal');
+  const edOpen = !!ed && !ed.classList.contains('hidden');
+  if(ok){
+    if(edOpen){ userEdMsgSet(''); closeModal('#userEditModal'); }
+    toast(msg || '저장했습니다', 'success');
+    return;
+  }
+  //  ★ 권한 거부·잠금 방지 문구가 그대로 여기로 온다(호스트가 사용자 문장으로 만들었다).
+  //    화면이 다시 쓰지 않는다 — 다시 쓰면 "관리자만 고칠 수 있다"가 "저장 실패"로 뭉개진다.
+  if(edOpen) userEdMsgSet(ICON.alert + ' ' + esc(msg || '저장하지 못했습니다.'), 'err');
+  toast(msg || '저장하지 못했습니다', 'error');
+};
+// 쓰기 성공 뒤 호스트가 밀어 주는 갱신 명부(문자열 JSON — __applyProjects 와 같은 전달 규약).
+window.__applyMembers = function(json){
+  let d = null;
+  try{ d = JSON.parse(String(json || '')); }catch(_){ d = null; }
+  if(!(d && d.found)) return;   // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  mbOrderReset();   // 서버에 저장된 순서가 도착했다 — 편집 모드는 여기서 끝이다(되돌릴 것은 없다)
+  mbApplyData(d);
+};
+
 // 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다.
 // ★ 추측한 명부를 그리지 않는다. 낡거나 지어낸 조직도는 '모른다'고 말하는 것보다 나쁘다.
 function mbFail(msg){
@@ -4812,6 +5210,11 @@ async function openMembers(){
   if(__mbBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
   __mbBusy = true;
   __mbUnits = []; __mbMembers = []; __mbSel = null; __mbScopeText = '';   // 직전 결과를 남기지 않는다
+  //  ★ 관리자 상태도 함께 비운다 — 낡은 __mbAdmin 이 남으면 회신이 오기 전 한 프레임 동안
+  //    편집 컨트롤이 번쩍인다(그리고 권한이 회수된 사람에게는 그 프레임이 거짓말이다).
+  __mbAdmin = false; __mbTitles = []; __mbInactive = false;
+  mbOrderReset();
+  mbAdminBar();
   const q = document.getElementById('mbSearch'); if(q) q.value = '';      // 지난 검색어가 남으면 목록이 잘린 채 열린다
   renderUnitTree([], '');
   renderMembers([]);
@@ -4820,16 +5223,10 @@ async function openMembers(){
   openModal('#membersModal');
   if(!HOST){ __mbBusy = false; mbFail('데스크톱 위젯에서만 동작합니다.'); return; }
   let r = null;
-  try{ r = await hostRequest('membersGet', {}, 12000); }catch(_){ r = null; }
+  try{ r = await hostRequest('membersGet', { includeInactive: false }, 12000); }catch(_){ r = null; }
   __mbBusy = false;
   if(!(r && r.ok && r.data)){ mbFail((r && r.msg) || '구성원 목록을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
-  const d = r.data;
-  __mbUnits = Array.isArray(d.units) ? d.units : [];
-  __mbMembers = Array.isArray(d.members) ? d.members : [];
-  __mbScopeText = usRoleText(US_VIEW_SCOPE, d.scope);   // 「열람 범위」와 같은 매핑표 — 같은 규칙을 두 벌로 만들지 않는다
-  __mbSel = mbDefaultSel(__mbUnits);
-  renderUnitTree(__mbUnits, d.myUnit);
-  mbApply();
+  mbApplyData(r.data);   // 첫 조회·재조회·쓰기 뒤 푸시가 같은 함수를 지난다(경로가 갈라지지 않게)
 }
 // 이름·직급·소속 부분일치. 대상 집합은 '현재 선택된 서브트리'다. 대소문자 무시(영문 팀명 대비).
 function filterMembers(){ mbApply(); }
@@ -10661,6 +11058,9 @@ function bind(){
   { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
   { const b = $('#usMembers'); if(b) b.addEventListener('click', openMembers); }       // #userModal 위에 겹쳐 연다(닫으면 되돌아온다)
   { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
+  //  직원 편집 폼의 [저장] — 명부의 관리자 컨트롤은 mbAdminBar·mbRowActions 가 만들면서 그 자리에서 배선한다
+  //  (동적 생성이라 여기서 배선할 수 없다. 이 버튼만 마크업에 상주하므로 여기서 묶는다).
+  { const b = $('#userEdSave'); if(b) b.addEventListener('click', userEdSaveNow); }
   { const _pb = $('#ncProbe'); if(_pb) _pb.addEventListener('click', () => { hpost({ cmd: 'netcusProbe' }); const m = $('#ncProbeMsg'); if(m){ m.textContent = '창 여는 중…'; m.style.color = ''; } }); }
   // ── 자동 업데이트: 설정 필드(저장/지금 확인) + 상단 배너 버튼 ──
   { const b = $('#updSrcSave'); if(b) b.addEventListener('click', () => {

@@ -228,6 +228,66 @@ const findRow = (snap, table, name) => listOf(snap, table).find((x) => x.name ==
 /** 앱의 드롭다운 소스와 같은 순서(활성만, sort_order·name) */
 const activeNames = (snap, table) => listOf(snap, table).filter((x) => x.active).map((x) => x.name);
 
+/* ── 직원 명부 스냅샷(USER-ADMIN §8-8) ────────────────────────────────────────
+ *  ★ 위 snapshot() 에 합치지 않는다. 그 해시는 오프라인 구간의 '비트 단위 불변' 비교에 쓰이는데,
+ *    거기에 app_user 를 끼워 넣으면 이 판에서 새로 생긴 조작이 옛 시나리오 A/B/C 의 판정을
+ *    바꿔 버린다(무엇이 왜 깨졌는지 알 수 없게 된다). 관심사가 다르면 스냅샷도 따로 둔다.
+ *  ★ ORDER BY 는 **앱의 명부 조회와 글자까지 같다**(ProjectDb.LoadMembersJsonAsync · §5.3).
+ *    다르면 '화면 순서 = DB 순서' 불변식이 JS 콜레이션 차이로 가짜 실패를 낸다.                */
+const USER_SNAP_SQL = `
+SELECT u.user_id, u.login_id, u.name, IFNULL(o.name,'') AS org, CAST(u.is_active AS CHAR),
+       IFNULL(CAST(u.sort_order AS CHAR),''), u.edit_role
+  FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id
+ ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name;
+`;
+function userSnapshot() {
+  const rs = mustQuery(USER_SNAP_SQL, 'user snapshot');
+  return rs.map((c) => ({
+    uid: Number(c[0]), loginId: c[1], name: c[2], org: c[3],
+    active: c[4] === '1', sort: c[5] === '' ? null : Number(c[5]), role: c[6],
+  }));
+}
+const isTempUser = (s) => /^zzU\d+_/.test(s || '');
+
+/** 불변식 U1~U4 — 매 조작 뒤에 돈다(USER-ADMIN §8-8).
+ *  U1 활성 관리자 ≥ 1  — 이게 0 이 되는 순간 "앱에서만 관리한다"는 요구가 깨진다(DB 로 가야 푼다).
+ *  U2 sort_order 가 소속 안에서 단조 — 앱이 전량 재작성하므로 겹치거나 뒤집히면 재작성이 샌 것이다.
+ *  U3 퇴사자가 명부 화면에 없다(「퇴사자 보기」가 꺼져 있을 때).
+ *  U4 화면 순서 = DB 순서 — 화면이 다시 정렬하지 않는다는 계약의 실측판(§5.3).                */
+function invUsers(users, screenRows, opts = {}) {
+  const admins = users.filter((u) => u.role === 'admin' && u.active);
+  if (admins.length < 1) violate('U1', '활성 관리자가 0명이다 — 앱에서 권한을 되돌릴 길이 사라졌다(DB 직접 조작 필요)');
+
+  const byOrg = new Map();
+  for (const u of users) {
+    if (!byOrg.has(u.org)) byOrg.set(u.org, []);
+    byOrg.get(u.org).push(u);
+  }
+  for (const [org, list] of byOrg) {
+    let prev = -1, seenNull = false;
+    for (const u of list) {
+      if (u.sort === null) { seenNull = true; continue; }
+      if (seenNull) { violate('U2', `소속 '${org}': NULL 뒤에 값이 있는 사람이 나왔다(NULL 은 맨 뒤여야 한다)`, u.loginId); break; }
+      if (u.sort <= prev) { violate('U2', `소속 '${org}': sort_order 가 단조가 아니다(${prev} → ${u.sort})`, u.loginId); break; }
+      prev = u.sort;
+    }
+  }
+
+  if (!screenRows) return;
+  const shown = screenRows.map((r) => r.uid).filter((n) => n > 0);
+  if (!opts.includeInactive) {
+    const offOnScreen = users.filter((u) => !u.active && shown.includes(u.uid));
+    if (offOnScreen.length) violate('U3', `퇴사자가 명부에 남아 있다 ${offOnScreen.length}명`, offOnScreen.map((u) => u.loginId));
+  }
+  if (shown.length) {
+    const expect = users.filter((u) => (opts.includeInactive ? true : u.active)).map((u) => u.uid);
+    if (JSON.stringify(shown) !== JSON.stringify(expect)) {
+      violate('U4', '화면 명부 순서가 DB 순서와 다르다 — 화면이 다시 정렬하고 있다(§5.3)',
+        { screen: shown.slice(0, 12), db: expect.slice(0, 12) });
+    }
+  }
+}
+
 /* ────────────────────────────── 4. 오프라인 제어 ────────────────────────────── */
 // LOCK → (있으면) KILL → 앱 계정 접속 시도로 **실제 차단 확인**. 풀은 Pooling=false지만
 // 조작 직전에 새 커넥션이 열려 있을 수 있으므로 KILL은 방어적으로(0개여도 정상 진행).
@@ -308,6 +368,18 @@ function sweepTemp(reason) {
       else report.failed.push(`${table} ${nm} (errno ${d.errno})`);
     }
   }
+  // 3) 직원 명부의 임시 계정(USER-ADMIN §8-8) — zzU<seed>_* 만. 실명은 절대 건드리지 않는다.
+  //    ★ app_user 는 cal_* 11개 표가 RESTRICT 로 붙들고 있다. 시험이 만든 계정은 로그인한 적이
+  //      없어 참조가 없지만, 혹시 생겼다면(1451) 지우지 않고 **보고**한다 — 조용히 남기면
+  //      다음 실행의 U1/U4 가 이유 없이 흔들린다.
+  const uq = mysqlRun(`SELECT login_id FROM app_user WHERE login_id LIKE 'zzU${seed}\\_%';`);
+  if (uq.ok) for (const lid of uq.out.split(/\r?\n/).filter(Boolean)) {
+    const d = mysqlRun(`DELETE FROM app_user WHERE login_id=${esc(lid)};`);
+    if (d.ok) report.deleted++;
+    else if (d.errno === 1451) report.kept.push(`app_user ${lid}`);
+    else report.failed.push(`app_user ${lid} (errno ${d.errno})`);
+  }
+
   const any = report.renamed || report.deleted || report.kept.length || report.failed.length;
   if (any) console.error(`[cleanup] 임시값 정리(${reason}): 개명 복원 ${report.renamed} · 삭제 ${report.deleted}`
     + (report.kept.length ? ` · 참조 중이라 남김 ${report.kept.length}: ${report.kept.join(', ')}` : '')
@@ -480,6 +552,49 @@ const INSTALL_JS = `(function(){
     inp.dispatchEvent(new Event('change', { bubbles:true }));
     return { ok:true };
   };
+  /* 구성원 명부 행 — **화면에 그려진 순서 그대로** 돌려준다(USER-ADMIN §8-8).
+     ★ 관리자 모드에서는 행이 .mba-line 으로 묶이고 조작 버튼에 data-uid 가 붙는다.
+       비관리자 모드에는 그 래퍼도 버튼도 **없다**(숨김이 아니라 부재) — 그래서 분기가 둘이다.
+     ★ 이름이 아니라 번호(user_id)를 손잡이로 쓴다: 동명이인이 있고, 한글 셀렉터 이스케이프도 피한다. */
+  L.uRows = function(){
+    var box = document.getElementById('mbList'); if(!box) return [];
+    var out = [], i;
+    var lines = box.querySelectorAll('.mba-line');
+    if (lines.length){
+      for (i=0;i<lines.length;i++){
+        var b = lines[i].querySelector('[data-uid]');
+        var nm = lines[i].querySelector('.mb-row b');
+        out.push({ uid: b ? Number(b.getAttribute('data-uid')) : 0,
+                   name: nm ? String(nm.textContent||'') : '',
+                   off: lines[i].classList.contains('is-off') });
+      }
+      return out;
+    }
+    var rows = box.querySelectorAll('.mb-row');
+    for (i=0;i<rows.length;i++){
+      var n2 = rows[i].querySelector('b');
+      out.push({ uid: 0, name: n2 ? String(n2.textContent||'') : '', off: false });
+    }
+    return out;
+  };
+  /* 드롭다운의 n 번째 옵션 고르기 — 직급·소속은 DB 마스터라 값 목록을 시험이 알 수 없다. */
+  L.pickOption = function(sel, idx){
+    var e = document.querySelector(sel);
+    if(!e) return { ok:false, err:'드롭다운 없음: '+sel };
+    var opts = Array.prototype.filter.call(e.options, function(o){ return o.value !== ''; });
+    if(!opts.length) return { ok:false, err:'고를 옵션이 없음: '+sel };
+    e.value = opts[Math.min(idx, opts.length-1)].value;
+    e.dispatchEvent(new Event('change', { bubbles:true }));
+    return { ok:true, value: e.value };
+  };
+  /* 라디오 고르기(name 으로) */
+  L.pickRadio = function(name, value){
+    var r = document.querySelector('input[name="'+name+'"][value="'+value+'"]');
+    if(!r) return { ok:false, err:'라디오 없음: '+name+'='+value };
+    r.checked = true;
+    r.dispatchEvent(new Event('change', { bubbles:true }));
+    return { ok:true };
+  };
   L.rowNames = function(boxSel){
     var box = document.querySelector(boxSel); if(!box) return [];
     return Array.prototype.slice.call(box.querySelectorAll('.cust-row')).map(function(r){ return r.getAttribute('data-name'); });
@@ -524,6 +639,15 @@ const INSTALL_JS = `(function(){
     s.codeOpen = L.isOpen('#codeModal'); s.custOpen = L.isOpen('#customerModal');
     s.confirmOpen = L.isOpen('#confirmModal');
     s.cfTitle = L.txt('#cfTitle'); s.cfMsg = L.txt('#cfMsg');
+    /* 구성원 명부·직원 관리(USER-ADMIN §8-8) — 없는 페이지(구버전)에서는 전부 null 이다. */
+    s.mbOpen   = L.isOpen('#membersModal');
+    s.ueOpen   = L.isOpen('#userEditModal');
+    s.mbAdmin  = (typeof __mbAdmin  !== 'undefined') ? !!__mbAdmin  : null;
+    s.mbOrder  = (typeof __mbOrder  !== 'undefined') ? !!__mbOrder  : null;
+    s.mbSaving = (typeof __mbSaving !== 'undefined') ? !!__mbSaving : null;
+    s.mbBusy   = (typeof __mbBusy   !== 'undefined') ? !!__mbBusy   : null;
+    s.mbRows   = L.uRows();
+    s.ueMsg    = L.txt('#userEdMsg');
     s.toastN = L.seq; s.errN = L.errors.length;
     s.lastToasts = L.toasts.slice(-5);
     return s;
@@ -554,8 +678,10 @@ async function waitFor(pred, { timeout = 25000, interval = 120, desc = '' } = {}
 }
 
 /** 조작 후 '정지' 판정: 확인창 없음 + busy 아님 + 목록이 로딩중 아님 */
+//  ★ mbSaving 은 직원 쓰기 왕복 중이라는 뜻이다(USER-ADMIN §8-8). 구버전 페이지에서는 null 이고,
+//    !null === true 라 옛 동작이 그대로 유지된다 — 새 플래그가 옛 조작을 막지 않는다.
 const isIdle = (s) =>
-  !s.confirmOpen && !s.codeBusy && !s.custBusy &&
+  !s.confirmOpen && !s.codeBusy && !s.custBusy && !s.mbSaving && !s.mbBusy &&
   !/불러오는 중/.test(s.codeListText || '') && !/불러오는 중/.test(s.custListText || '');
 
 /**
@@ -1424,6 +1550,158 @@ async function phaseHardDelete(snap) {
   return after;
 }
 
+/* ───────────────── 15.5 직원 관리 5종(USER-ADMIN §8-8) ─────────────────
+ *  등록 → 편집 → 순서 → 퇴사 → 복구 를 **실제 클릭**으로 왕복하고, 매 조작 뒤 U1~U4 를 본다.
+ *
+ *  ★ 이 구간은 로그인 계정이 **admin** 일 때만 의미가 있다. editor 로 돌면 첫 조작에서
+ *    "직원 정보는 관리자만 고칠 수 있습니다"가 돌아오는데, 그건 결함이 아니라 사전조건 미충족이다 —
+ *    그래서 위반이 아니라 **건너뜀**으로 기록한다(없는 실패를 만들어 내지 않는다).
+ *  ★ 만드는 계정은 전부 zzU<seed>_* 다. 실명을 새로 넣지 않고, 정리는 sweepTemp 가 시작·종료 양쪽에서 한다.
+ *  ★ 마지막 관리자 규칙 때문에 **자기 계정과 실명 계정에는 손대지 않는다** — 조작 대상은 자기가 만든 zzU 뿐이다. */
+const tmpUser = () => `zzU${OPT.seed}_${++tempSeq}`;   // login_id 형식 ^[A-Za-z0-9._-]{1,50}$ 를 지킨다
+
+async function openMembersModal() {
+  const s0 = await state();
+  if (s0.mbOpen) return s0;
+  await ev(`__lt.click('#btnUser')`);
+  await sleep(150);
+  await ev(`__lt.click('#usMembers')`);
+  const s = await waitFor((x) => x.mbOpen && !x.mbBusy, { timeout: 20000, desc: '구성원 명부 열림' });
+  return s || (await state());
+}
+
+/** 조작 뒤 공통 검증 — DB 와 화면을 같은 시점에 본다. */
+async function verifyUserOp(desc, rec, opts = {}) {
+  const users = userSnapshot();
+  const s = await waitConverge((x) => !x.mbBusy && !x.mbSaving, 4000);
+  invUsers(users, s.mbRows, opts);
+  if (rec.outcome === 'success') ok(`직원 조작 성공: ${desc}`);
+  else if (rec.denied || /관리자만 고칠 수 있습니다/.test((rec.toasts || []).map((t) => t.msg).join(' '))) {
+    log(`   [건너뜀] ${desc} — 권한 거부(로그인 계정이 admin 이 아니다)`);
+  } else {
+    violate('U0', `직원 조작이 성공하지 않았다: ${desc}`, { outcome: rec.outcome, toasts: rec.toasts });
+  }
+  return { users, s };
+}
+
+async function phaseUserAdmin() {
+  curPhase = 'U-user-admin';
+  log('── U: 직원 관리 5종(등록·편집·순서·퇴사·복구) ──');
+
+  let s = await openMembersModal();
+  if (!s.mbOpen) { violate('U0', '구성원 명부를 열지 못했다 — 이 구간을 판정할 수 없다'); return; }
+  invUsers(userSnapshot(), s.mbRows);
+  if (s.mbAdmin !== true) {
+    log('   [건너뜀] 로그인 계정이 관리자가 아니다(회신에 admin 없음) — 직원 관리 구간은 admin 계정으로만 판정된다.');
+    await closeIfOpen('#membersModal');
+    return;
+  }
+
+  const lid = tmpUser();
+  let uid = 0;
+
+  /* (1) 등록 — 「＋ 직원 등록」 → 폼 채우기 → 저장 */
+  {
+    const t = await ev(`__lt.click('#mbaNew')`);
+    if (!t || t.ok === false) { violate('U0', '「직원 등록」 버튼을 누르지 못했다', t); return; }
+    await waitFor((x) => x.ueOpen, { timeout: 8000, desc: '편집 폼 열림' });
+    await ev(`__lt.setVal('#userEdLogin', ${jstr(lid)})`);
+    await ev(`__lt.setVal('#userEdName', ${jstr(lid)})`);
+    await ev(`__lt.pickOption('#userEdTitle', 0)`);
+    await ev(`__lt.pickOption('#userEdOrg', 0)`);
+    await ev(`__lt.pickRadio('ueScope', 'self')`);
+    await ev(`__lt.pickRadio('ueRole', 'viewer')`);
+    const rec = await doWrite(`직원 등록 ${lid}`, `__lt.click('#userEdSave')`);
+    const { users } = await verifyUserOp(`등록 ${lid}`, rec);
+    const made = users.find((u) => u.loginId === lid);
+    if (rec.outcome === 'success' && !made) violate('U0', `등록이 성공이라 했는데 DB 에 ${lid} 가 없다`);
+    if (made) {
+      uid = made.uid;
+      // 신규는 sort_order 가 NULL 이어야 한다(= 그 소속의 맨 뒤). 관리자가 끌어올리기 전 상태다(§3.1).
+      if (made.sort !== null) violate('U0', `신규 등록에 sort_order 가 매겨졌다(${made.sort}) — 신규는 NULL(맨 뒤)이어야 한다`);
+    }
+  }
+  if (!uid) { await closeIfOpen('#userEditModal'); await closeIfOpen('#membersModal'); return; }
+
+  /* (2) 편집 — 이름만 바꾼다(권한은 건드리지 않는다: 자기 권한 규칙과 무관한 계정이라도 범위를 좁힌다) */
+  {
+    const t = await ev(`__lt.click('#mbList [data-uop="edit"][data-uid="${uid}"]')`);
+    if (!t || t.ok === false) violate('U0', `편집 버튼을 누르지 못했다(uid=${uid})`, t);
+    else {
+      await waitFor((x) => x.ueOpen, { timeout: 8000, desc: '편집 폼 열림' });
+      await ev(`__lt.setVal('#userEdName', ${jstr(lid + '_r')})`);
+      const rec = await doWrite(`직원 수정 ${lid}`, `__lt.click('#userEdSave')`);
+      const { users } = await verifyUserOp(`수정 ${lid}`, rec);
+      const row = users.find((u) => u.uid === uid);
+      if (rec.outcome === 'success' && row && row.name !== lid + '_r') violate('U0', `수정이 성공이라 했는데 이름이 그대로다: ${row.name}`);
+      // 로그인 ID 는 넷커스 소유라 바뀌지 않아야 한다(§6).
+      if (row && row.loginId !== lid) violate('U0', `수정으로 login_id 가 바뀌었다: ${lid} → ${row.loginId}`);
+    }
+  }
+
+  /* (3) 순서 — 「순서 편집」 → ▲ 한 번 → 「순서 저장」. 전량 재작성이라 전원이 10 간격이 된다. */
+  {
+    const t = await ev(`__lt.click('#mbaOrder')`);
+    if (!t || t.ok === false) violate('U0', '「순서 편집」을 켜지 못했다', t);
+    else {
+      const s1 = await waitConverge((x) => x.mbOrder === true, 4000);
+      const idx = (s1.mbRows || []).findIndex((r) => r.uid === uid);
+      if (idx <= 0) log(`   순서: uid=${uid} 가 이미 맨 위이거나 화면에 없다(idx=${idx}) — ▲ 를 건너뛴다`);
+      else await ev(`__lt.click('#mbList [data-uop="up"][data-uid="${uid}"]')`);
+      const before = (await state()).mbRows.map((r) => r.uid);
+      const rec = await doWrite('명부 순서 저장', `__lt.click('#mbaOrderSave')`);
+      const { users } = await verifyUserOp('순서 저장', rec);
+      if (rec.outcome === 'success') {
+        const after = users.filter((u) => u.active).map((u) => u.uid);
+        if (JSON.stringify(before) !== JSON.stringify(after)) {
+          violate('U0', '저장한 순서와 DB 순서가 다르다 — 전량 재작성이 화면 순서를 그대로 옮기지 않았다',
+            { screen: before.slice(0, 12), db: after.slice(0, 12) });
+        }
+        const gaps = users.filter((u) => u.active && u.sort !== null).map((u) => u.sort);
+        if (gaps.some((v, i) => v !== (i + 1) * 10)) {
+          violate('U0', '순서 저장 뒤 sort_order 가 10·20·30… 이 아니다(전량 재작성 계약)', gaps.slice(0, 12));
+        }
+      }
+      if ((await state()).mbOrder === true) await ev(`__lt.click('#mbaOrderCancel')`);
+    }
+  }
+
+  /* (4) 퇴사 — 확인창 한 번. 행은 남고 명부에서만 사라진다. */
+  {
+    const rec = await doWrite(`퇴사 처리 ${lid}`, `__lt.click('#mbList [data-uop="off"][data-uid="${uid}"]')`);
+    const { users, s: sc } = await verifyUserOp(`퇴사 ${lid}`, rec);
+    const row = users.find((u) => u.uid === uid);
+    if (!row) violate('U0', `퇴사 처리로 행이 사라졌다(uid=${uid}) — 퇴사는 is_active=0 이고 행은 남는다(§3.3)`);
+    else if (rec.outcome === 'success' && row.active) violate('U0', `퇴사가 성공이라 했는데 is_active 가 1 이다(uid=${uid})`);
+    if ((sc.mbRows || []).some((r) => r.uid === uid)) violate('U3', `퇴사 처리했는데 명부에 그대로 보인다(uid=${uid})`);
+  }
+
+  /* (5) 복구 — 「퇴사자 보기」를 켜야 대상이 보인다. */
+  {
+    const t = await ev(`__lt.click('#mbaInactive')`);
+    if (!t || t.ok === false) violate('U0', '「퇴사자 보기」를 켜지 못했다', t);
+    else {
+      const s1 = await waitFor((x) => (x.mbRows || []).some((r) => r.uid === uid), { timeout: 12000, desc: '퇴사자 표시' });
+      if (!s1) violate('U0', `「퇴사자 보기」를 켰는데 대상이 나타나지 않는다(uid=${uid})`);
+      else {
+        const rec = await doWrite(`복구 ${lid}`, `__lt.click('#mbList [data-uop="on"][data-uid="${uid}"]')`);
+        const { users } = await verifyUserOp(`복구 ${lid}`, rec, { includeInactive: true });
+        const row = users.find((u) => u.uid === uid);
+        if (rec.outcome === 'success' && row && !row.active) violate('U0', `복구가 성공이라 했는데 is_active 가 0 이다(uid=${uid})`);
+      }
+    }
+  }
+
+  await closeIfOpen('#userEditModal');
+  await closeIfOpen('#membersModal');
+
+  /* 잔재 0 — 정리는 sweepTemp 가 하지만, **이 구간이 스스로도 확인한다**(09-07 잔재 사고의 교훈). */
+  sweepTemp('직원 관리 구간 종료');
+  const left = userSnapshot().filter((u) => isTempUser(u.loginId));
+  if (left.length) violate('U5', `직원 관리 시험 잔재 ${left.length}건 — 정리가 새고 있다`, left.map((u) => u.loginId));
+  else ok('직원 관리 임시 계정 잔재 0');
+}
+
 /* ────────────────────────────── 16. 요약 ────────────────────────────── */
 
 function printSummary(finalSnap) {
@@ -1601,6 +1879,12 @@ async function main() {
   curOp = OPT.ops;
   try { snap = await phaseHardDelete(snap); }
   catch (e) { violate('I7', `하드삭제 검사 중 예외: ${e.message}`); snap = snapshot(); }
+
+  /* ── U 직원 관리 5종(USER-ADMIN §8-8) ── */
+  //  ★ 코드값·발주처 구간 **뒤에** 둔다: 이 구간은 모달을 갈아타므로 앞 구간의 화면 상태를 흔든다.
+  //    그리고 실패해도 앞 구간의 판정이 이미 끝나 있어야 원인이 섞이지 않는다.
+  try { await phaseUserAdmin(); }
+  catch (e) { violate('U0', `직원 관리 검사 중 예외: ${e.message}`); }
 
   /* ── 최종 재수렴 ── */
   curPhase = 'final';

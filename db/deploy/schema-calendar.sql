@@ -1962,11 +1962,19 @@ CREATE TABLE cal_schema_meta (
 --   컬럼 추가라 구버전 SELECT 가 깨지지는 않지만, **위젯이 새 컬럼을 SELECT 한다** — 구버전 DB 에
 --   새 위젯이 붙으면 1054 로 죽는다. 그 짝 어긋남을 게이트가 먼저 잡으라고 올린다
 --   (widget/CalendarDb.cs 의 ExpectedSchemaVersion 도 같은 배포에서 10 이다).
+-- ★ 2026-09-10: 10 → 11. app_user 에 sort_order(전 직원 명부 서열) 신설
+--   (migrate-2026-09-10-user-sort-order.sql · docs/USER-ADMIN.md §3).
+--   같은 날 두 번째 판이다 — dev-end-date(9→10) 를 **먼저** 적용해야 한다(10→11 가드가 그 순서를 강제한다).
+--   컬럼 추가라 구버전 SELECT 가 깨지지는 않지만, **새 위젯의 명부 조회가 그 컬럼을 SELECT·ORDER BY 한다** —
+--   v10 DB 에 새 위젯이 붙으면 구성원 명부가 1054 로 통째로 비고, 직원 관리 화면의 저장이 전부 죽는다.
+--   그 짝 어긋남을 게이트가 먼저 잡으라고 올린다(widget/CalendarDb.cs 의 ExpectedSchemaVersion 도 11).
+--   ※ 이 컬럼은 db/deploy 가 만드는 표가 아니다(app_user 는 taskmgr-company-data/01-schema-users.sql
+--     소관). 그래도 판번호는 여기가 정본이라 이 줄이 여기 있다 — 두 저장소가 같은 창에 나가야 한다.
 --   ※ 이 아래 시딩값을 고칠 때는 이 목록도 함께 늘릴 것. 2026-08-31 에 값만 8 로 오르고
 --     이 목록이 5 에서 멈춰 있어, 파일 안에서 '무엇이 8 을 만들었는지'를 읽을 수 없었다.
 --   ※ 이 값과 db/deploy 의 최신 migrate-*.sql 이 올리는 값이 어긋나면
 --     tests/schema-integrity.test.mjs 의 '계약⑥: 버전 정합' 이 실패한다(둘이 갈라지지 않게).
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '10', UTC_TIMESTAMP(3));
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '11', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

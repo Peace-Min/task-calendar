@@ -106,7 +106,10 @@ namespace TaskCalendarWidget
         //   ★ 2026-09-10: 9 → 10(migrate-2026-09-10-dev-end-date.sql — project.dev_end_date 개발종료일 신설).
         //     이번 판은 짝이 특히 중요하다 — ProjectDb.LoadProjectsJsonAsync 가 **그 새 컬럼을 SELECT 한다.**
         //     v9 DB 에 이 위젯이 붙으면 그 질의가 1054 로 죽어 과제 목록이 통째로 빈다(DB 를 먼저 올릴 것).
-        internal const string ExpectedSchemaVersion = "10";
+        //   ★ 2026-09-10: 10 → 11(migrate-2026-09-10-user-sort-order.sql — app_user.sort_order 명부 서열 신설).
+        //     같은 날 두 번째 판이다. 이번에도 짝이 중요하다 — ProjectDb.LoadMembersJsonAsync 가 그 컬럼을
+        //     SELECT·ORDER BY 하고 직원 관리 쓰기가 그 컬럼에 UPDATE 를 건다(DB 를 먼저 올릴 것).
+        internal const string ExpectedSchemaVersion = "11";
 
         private readonly Action<string> _log;
 
