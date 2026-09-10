@@ -577,3 +577,30 @@ if (!jsdom) {
     assert.ok(r.uops.length > 0, '변이 전제: 분기를 지우면 비관리자에게도 조작 버튼이 그려져야 한다');
   });
 }
+
+// ── 계약⑧: 호스트 정수 파서·메시지 분기의 무음 실패 봉인 (2026-09-10 실측에서 발견) ───────
+//   saveUser 에 orgId:null 을 보내자 회신도 로그도 없이 사라지고 화면이 저장 중으로 굳었다.
+//   원인 둘: GetInt 가 TryGetInt32 를 ValueKind 검사 없이 불러 숫자 아닌 값에서 예외 · 바깥 catch 가 Debug 출력에만 남김.
+const getIntSrc = (src) => { const m = /private static int GetInt\(JsonDocument d, string key\) =>\r*\n([^\n]*)/.exec(src); return m ? m[1] : ""; };
+const outerCatch = (src) => { const m = /catch \(Exception ex\) \{ Debug\.WriteLine\("웹 메시지 처리 오류: " \+ ex\);([^\n]*)\}/.exec(src); return m ? m[1] : null; };
+
+test("계약⑧: GetInt 는 ValueKind==Number 를 먼저 보고, 웹 메시지 바깥 catch 는 위젯 로그에 남긴다", () => {
+  const body = getIntSrc(main);
+  assert.ok(body.length > 0, "MainWindow.xaml.cs 에서 GetInt 정의를 찾지 못했다 — 측정 못 함");
+  assert.ok(/ValueKind == JsonValueKind\.Number && v\.TryGetInt32/.test(body), "GetInt 가 TryGetInt32 앞에서 ValueKind 를 검사하지 않는다 — null 정수 필드가 메시지를 통째로 죽인다");
+  const c = outerCatch(main);
+  assert.ok(c !== null, "OnWebMessage 의 바깥 catch 를 찾지 못했다 — 측정 못 함");
+  assert.ok(/\bLog\(/.test(c), "바깥 catch 가 위젯 로그(Log)에 남기지 않는다 — 배포본에서는 Debug 출력이 아무 데도 안 남는다");
+});
+test("변이⑧: ValueKind 검사를 지우면 계약⑧ 이 실패한다 + 원본은 통과한다(통제군)", () => {
+  const bad = main.replace("v.ValueKind == JsonValueKind.Number && v.TryGetInt32", "v.TryGetInt32");
+  assert.notStrictEqual(bad, main, "변이가 적용되지 않았다");
+  assert.ok(!/ValueKind == JsonValueKind\.Number && v\.TryGetInt32/.test(getIntSrc(bad)), "변이본이 계약⑧ 을 통과한다 — 검사가 무효");
+  assert.ok(/ValueKind == JsonValueKind\.Number && v\.TryGetInt32/.test(getIntSrc(main)), "통제군: 원본이 통과해야 한다");
+});
+test("변이⑧-b: 바깥 catch 의 Log 를 지우면 계약⑧ 이 실패한다", () => {
+  const c = outerCatch(main); assert.ok(c !== null);
+  const bad = main.replace(c, " ");
+  assert.notStrictEqual(bad, main, "변이가 적용되지 않았다");
+  assert.ok(!/\bLog\(/.test(outerCatch(bad) ?? ""), "변이본이 계약⑧ 을 통과한다 — 검사가 무효");
+});

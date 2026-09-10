@@ -391,8 +391,12 @@ namespace TaskCalendarWidget
             catch (Exception ex) { Log("MoveToNextMonitor 오류: " + ex.Message); }
         }
 
+        // ★ ValueKind 를 먼저 본다 — TryGetInt32 는 숫자가 아닌 값(null·문자열)에서 false 가 아니라
+        //   InvalidOperationException 을 던진다. 그러면 OnWebMessage 의 바깥 catch 가 메시지를 통째로 삼켜
+        //   회신도 로그도 없이 사라진다(2026-09-10 실측: saveUser 에 orgId:null → 화면이 저장 중으로 굳음).
+        //   GetIntArray 는 처음부터 ValueKind 를 봤는데 이쪽만 빠져 있었다.
         private static int GetInt(JsonDocument d, string key) =>
-            d.RootElement.TryGetProperty(key, out var v) && v.TryGetInt32(out var n) ? n : 0;
+            d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : 0;
 
         private static string GetStr(JsonDocument d, string key) =>
             d.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
@@ -769,7 +773,8 @@ namespace TaskCalendarWidget
                         break;
                 }
             }
-            catch (Exception ex) { Debug.WriteLine("웹 메시지 처리 오류: " + ex); }
+            // ★ Debug 출력만이면 배포본에서는 아무 데도 안 남는다 — 위젯 로그에도 적는다(2026-09-10).
+            catch (Exception ex) { Debug.WriteLine("웹 메시지 처리 오류: " + ex); Log("웹 메시지 처리 오류: " + ex.GetType().Name + " " + ex.Message); }
         }
 
         private void SendPinState()
