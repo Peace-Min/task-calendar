@@ -221,8 +221,18 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 | `migrate-2026-08-31-report-daily.sql` | **`cal_report_daily`·`cal_report_hours`** 신설 — 일간보고 사본 2표 | 5 → 6 |
 | `migrate-2026-08-31-report-weekly.sql` | **`cal_report_weekly`** 신설 — 주간보고 사본 1표. 일간과 달리 `content_from` 이 없습니다(위젯이 주간은 폼만 채우고 전송하지 않아 **전송 시점 자체를 모릅니다**) | 6 → 7 |
 | `migrate-2026-08-31-sent-only.sql` | 위 세 표를 **「캘린더가 만든 것만」** 으로 좁힘 — 사이트는 우리에게 무효화 신호를 주지 않으므로 "지금 사이트에 뭐가 있나"는 물어보기 전엔 알 수 없고 물어본 뒤에도 그 순간의 사진일 뿐입니다(2026-08-31 사용자 결정) | 7 → 8 |
+| `migrate-2026-09-09-integrity.sql` | 무결성 규칙 통일 한 판 — ① 소유자 FK 통일(`cal_report_daily`·`cal_report_weekly` 의 `app_user` FK 를 `CASCADE` → **`RESTRICT`**. GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었습니다) ② `cal_report_hours` 의 **과제 FK 신설**(쌍둥이 `cal_task_hours` 만 잠겨 있었습니다) ③ `cal_report_daily` **CHECK 2종**(근태 코드·초과시간 — 쌍둥이 `cal_attendance` 만 잠겨 있었습니다) ④ `hours` 를 **`DECIMAL(4,2)`** 로 ⑤ **감사 시각 KST → UTC 1회 정규화**(`ProjectDb` 가 프리앰블 없이 써 온 표들) ⑥ 표 주석 드리프트 복구 | 8 → 9 |
 
 > **각 파일의 머리말이 그 마이그레이션의 정본**입니다 — 왜 필요한지·무엇을 깨뜨리는지·되돌릴 수 있는지가 거기 적혀 있습니다. 이 표는 색인일 뿐입니다.
+
+> ### ⚠️ `migrate-2026-09-09-integrity.sql` 만 성질이 다릅니다 — 적용 전에 이 상자를 읽으세요
+>
+> 위의 다른 파일들은 `CREATE TABLE IF NOT EXISTS`·`ALTER … IF NOT EXISTS` 계열이라 몇 번을 돌려도 무해했습니다. **이 파일은 아닙니다.**
+>
+> - **재실행 안전이 아닙니다.** ⑤가 **데이터 시프트**입니다 — 두 번 돌면 시각이 **18시간** 어긋나고, `DATETIME` 은 '한 번 밀렸는지 두 번 밀렸는지'를 값만 보고 구분할 수단이 없어 **복구가 불가능**합니다. 그래서 파일 맨 앞 가드가 **`schema_version` 이 정확히 8 이 아니면 중단**시킵니다(멱등을 흉내내는 대신 두 번째 실행 자체를 막습니다).
+> - **적용 전 백업은 선택이 아닙니다** — `db\deploy\backup-taskmgr.ps1`(=`backup-taskmgr.cmd`)로 먼저 받으세요. 구조만 바꾸는 다른 마이그레이션과 달리 이 파일은 **값을 바꿉니다.**
+> - **`widget/ProjectDb.cs` 의 접속 프리앰블과 반드시 같은 배포에 실어야 합니다.** 한쪽만 나가면 한 컬럼에 **KST 와 UTC 가 섞입니다** — SQL 만 나가면 정규화 뒤에 앱이 다시 KST 로 쓰고, 코드만 나가면 옛 행은 KST 인 채로 새 행만 UTC 가 됩니다. 어느 쪽이든 사후 구분이 안 됩니다.
+> - 적용 뒤에는 **표 주석이 바뀌므로**(⑥) `tools/schema-report/` 의 재생성까지 한 라운드입니다. 절차는 파일 머리말에 있습니다.
 
 ---
 

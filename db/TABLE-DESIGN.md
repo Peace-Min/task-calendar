@@ -31,6 +31,15 @@
 - **개명**: `name`을 바꾸면 FK `ON UPDATE CASCADE`로 `project.customer`가 자동 반영된다.
 - **삭제**: 앱은 소프트 삭제만. 실제 DELETE는 DB에서 직접(과제가 참조 중이면 FK RESTRICT로 막힘).
 
+> **감사 컬럼(`created_at`/`updated_at`)의 값은 UTC다.** 서버 기본값 `CURRENT_TIMESTAMP(3)`는 세션 `time_zone`으로
+> 평가되고 이 서버의 `time_zone`은 `SYSTEM`(KST)이므로, 그것이 UTC로 평가되는 근거는 **접속 프리앰블의
+> `SET SESSION time_zone='+00:00'` 하나뿐이다**(`ProjectDb`의 읽기/쓰기 양쪽, 2026-09-09 신설).
+> **프리앰블 없는 쓰기 주체를 새로 만들면 한 컬럼에 KST와 UTC가 섞이고 되돌릴 수 없다** —
+> `DATETIME`에는 '한 번 밀렸는지'를 사후에 가릴 수단이 없다. 2026-09-09 이전 행은 실제로 KST로 적혀 있었고
+> [`deploy/migrate-2026-09-09-integrity.sql`](deploy/migrate-2026-09-09-integrity.sql)이 **-9h 1회 정규화**로
+> 되돌렸다(그래서 그 파일은 재실행 안전이 아니다). 이 표뿐 아니라 `project`·`section_code`·`status_code`·
+> `app_user` 계열의 감사 컬럼이 전부 같은 근거 위에 있다.
+
 ---
 
 ## 2.5 테이블: `section_code` / `status_code` (구분·상태 코드 — 발주처와 대칭)
@@ -68,13 +77,13 @@
 | `status` | VARCHAR(50) | NULL, **FK→status_code.name** | 상태(선진행=NULL이면 FK 스킵). CASCADE / RESTRICT |
 | `note` | VARCHAR(500) | NOT NULL, 기본 `''` | **비고** — 관리 화면 전용 내부메모. **캘린더·보고서엔 미노출** |
 | `is_active` | TINYINT(1) | NOT NULL, 기본 1 | 소프트 삭제(0=숨김) |
-| `created_at` / `updated_at` | DATETIME(3) | NOT NULL, 자동 | 감사 |
+| `created_at` / `updated_at` | DATETIME(3) | NOT NULL, 자동 | 감사. **값은 UTC** — 그 근거는 접속 프리앰블의 `SET SESSION time_zone='+00:00'` 하나뿐이다(2026-09-09 신설. §2 발주처 표 아래 주 참조) |
 
 **인덱스·FK**
 - `PRIMARY KEY (id)`
 - `UNIQUE KEY (uid)` — 외부 참조 무결성(assign-once)
 - `KEY (customer)` · `KEY (section)` · `KEY (is_active)` — 조회 보조
-- `FK fk_project_customer` → customer.name (CASCADE)
+- `FK fk_project_customer` → customer.name (ON UPDATE CASCADE / DELETE **RESTRICT** — DDL에는 `NO ACTION`으로 남아 있고 InnoDB에서 동작은 RESTRICT와 같다. 실측 2026-09-09)
 - `FK fk_project_section` → section_code.name (CASCADE / DELETE RESTRICT)
 - `FK fk_project_status` → status_code.name (CASCADE / DELETE RESTRICT; NULL이면 스킵)
 - ~~`UNIQUE KEY (customer, project_name)`~~ — **제거**(§4 참조)
@@ -82,7 +91,7 @@
 > **note**: 관리 화면(편집 폼)에서만 읽고 쓰는 내부 메모다. 편입분(앱 XML `state.categories`)에도, 캘린더·보고서 전시에도
 > 절대 노출하지 않는다(라벨 최소 메타 = `name`/`color`만, ADR-18과 같은 원칙).
 
-> ¹ **적용 상태**: `contract_name`/`common_name`의 `NOT NULL DEFAULT ''`와 `uq_project` 제거는 **2026-07-24 확정된 목표 설계**다. project 테이블이 비어 있는 지금 반영하면 무비용(이관 불필요). 코드 반영 전이면 현재 `schema.sql`은 이전 정의일 수 있다 — **이 문서가 기준**이며 반영은 별도 작업으로 추적한다.
+> ¹ **2026-07-24 목표 설계 — 반영 완료(실측 2026-09-09).** `contract_name`/`common_name`의 `NOT NULL DEFAULT ''`와 `uq_project` 제거는 실 `taskmgr`에 들어가 있다(`information_schema` 직접 조회: 두 컬럼 `IS_NULLABLE=NO` · 기본값 `''`, `project`의 유니크 인덱스는 `PRIMARY`와 `uq_project_uid` 뿐). 원문은 *"코드 반영 전이면 현재 `schema.sql`은 이전 정의일 수 있다 — 이 문서가 기준이며 반영은 별도 작업으로 추적한다"*였다. 그 추적은 끝났다.
 
 ---
 

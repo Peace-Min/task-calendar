@@ -1,13 +1,15 @@
 # DEPLOY.md — 수행과제 캘린더 배포 매뉴얼 (사내 관리자용)
 
 > 대상 독자: **폐쇄망에서 저장소를 받아 새 버전을 빌드하고, 공유폴더(FTP)로 배포하는 사람**
-> 기준 버전: **0.9.0** (버전 단일 소스 = `widget/TaskCalendarWidget.csproj`의 `<Version>`)
+> 기준 버전: **`<버전>`** — 버전 단일 소스는 `widget/TaskCalendarWidget.csproj`의 `<Version>` 한 곳이다(이 문서엔 버전을 박지 않는다).
 
 ---
 
 ## 1. 한 줄 요약 + 준비물
 
 **한 줄 요약**: `installer\배포-빌드.cmd` **더블클릭** → 결과물 2개(`TaskCalendarWidget-Setup-v<버전>.exe` + `latest.json`)가 `dist\installer\`에 생성됨 → **그 2개를 공유폴더(FTP)에 함께 업로드**하면 배포 끝.
+
+> **단, 그 앞에 §0(서버 DB 선행 작업)이 있다.** 캘린더 데이터가 서버 MySQL에 있으므로 **빌드보다 서버가 먼저**다 — 접속값을 채워 빌드하고, 스키마가 바뀌는 버전이면 서버에 먼저 적용한다.
 
 ### 준비물
 
@@ -17,10 +19,54 @@
 | **빌드 PC (관리자)** | Inno Setup 6 (`ISCC.exe`) | 설치기(.exe) 컴파일. 스크립트가 경로 자동 탐색 |
 | **빌드 PC (관리자)** | 저장소(`task-calendar/`) 사본 | 클론 또는 폐쇄망 반입본 |
 | **공유폴더** | FTP 루트(예: `ftp://192.168.1.175/`) 또는 UNC(`\\서버\TaskCalendar`) | 쓰기 권한은 **관리자 전용 권장**(§8) |
-| **동료(테스트) PC** | **없음** | 자체포함 단일 exe라 .NET 런타임 불필요 |
+| **동료(테스트) PC** | **설치 전제 없음** | 자체포함 단일 exe라 .NET 런타임 불필요 |
+| **동료(테스트) PC** | **사내망에서 서버 MySQL 도달 + `app_user` 등록** | 캘린더 데이터가 서버에 있다. 망이 안 닿거나 그 계정이 `app_user`에 없으면 위젯이 캘린더를 못 읽는다(로컬 캐시 없음) |
 
 > **핵심**: 빌드 도구(.NET 9 SDK + Inno Setup 6)는 **빌드 PC에만** 필요. 동료 PC엔 아무것도 미리 깔 필요 없다.
 > 참고: `csproj`는 프레임워크 종속(`<SelfContained>false</SelfContained>`)으로 설정돼 있지만, 실제 배포 빌드는 `build-installer.ps1`이 `dotnet publish … --self-contained true -p:PublishSingleFile=true`로 **강제 자체포함 단일 exe**를 만든다. 따라서 배포되는 설치기는 자체포함이며 동료 PC에 .NET 런타임이 필요 없다. (WebView2 런타임은 별개 — Win11은 내장이라 대개 불필요.)
+
+---
+
+## 0. 서버 DB 선행 작업 (§2~§3보다 **먼저**)
+
+캘린더 데이터는 서버 MySQL(`taskmgr`)에 있다(v0.18.0~). 그래서 **빌드보다 서버가 먼저**다 — 아래 넷을 끝내지 않으면 잘 만들어진 인스톨러를 배포해도 동료 PC에서 캘린더가 열리지 않는다.
+
+### 0-1. 배포 구성 채우기 — `widget/DeployConfig.cs` (빌드 **전**)
+
+배포값은 이 파일 한 곳에만 있다. 빌드하기 전에 실서버 값으로 바꾼다.
+
+| 상수 | 저장소 값 | 배포 시 채울 값 |
+|---|---|---|
+| `DbHost` | `localhost` | **서버 PC의 고정 IP** |
+| `DbPassword` | 저장소용 값 | `init-db` 실행 시 정한 **앱 계정(`taskmgr_app`) 비밀번호** — 어긋나면 접속이 안 된다 |
+| `UpdateSourceUrl` | `""`(비움) | 공유폴더/FTP 경로(§5 방법 B). 비워 두면 각 PC 설정에서 넣어야 켜진다 |
+
+> ⚠️ **`localhost`인 채로 빌드하면 안 된다** — 배포된 PC들이 각자 *자기 PC*의 MySQL을 찾아 아무도 서버에 붙지 않는다. [CHANGELOG.md](CHANGELOG.md)의 v0.18.0 항목 끝이 같은 경고를 한다(로컬 빌드는 게이트용이지 배포 산출물이 아니다).
+
+### 0-2. 백업 — 손대기 전에 받는다
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1   # =backup-taskmgr.cmd
+```
+
+마이그레이션 중에는 구조만이 아니라 **기존 행의 값을 바꾸는 것**도 있다(그건 되돌릴 수 없다). 백업은 선택이 아니다.
+
+### 0-3. 미적용 `migrate-*.sql` 적용
+
+[`db/deploy/README.md`](db/deploy/README.md)의 **「캘린더 표 마이그레이션 — `cal_*` · `schema_version`」** 절이 정본이다. 그 절의 표 순서대로 **번호 오름차순으로, 건너뛰지 말고** 적용한다. 왜 필요한지·무엇을 깨뜨리는지·되돌릴 수 있는지는 각 파일의 머리말에 적혀 있다.
+
+> **판번호를 이 문서에 적지 않는다.** 값의 정본은 `db/deploy/schema-calendar.sql` 끝의 `INSERT INTO cal_schema_meta … VALUES ('schema_version', …)` 한 줄이고, 지금 서버 값은 아래로 읽는다:
+>
+> ```sql
+> SELECT v FROM cal_schema_meta WHERE k = 'schema_version';
+> ```
+
+### 0-4. 대조 — `latest.json`을 올리기 **전에**
+
+위 쿼리로 읽은 **서버 `schema_version`** 과 배포할 위젯의 **`widget/CalendarDb.cs`의 `ExpectedSchemaVersion` 상수**가 같은지 맞춰 본다.
+
+- 다르면 **올리지 않는다.** 어느 한쪽만 앞서면 위젯 배지가 경고로 바뀌고 **전량 교체(가져오기·전체 초기화)가 거부**된다(조회·통상 저장은 계속된다).
+- 즉 **서버 적용과 위젯 배포는 같은 창에서** 한다. 순서는 서버가 먼저다.
 
 ---
 
@@ -85,7 +131,7 @@ task-calendar\installer\배포-빌드.cmd
 2. ISCC로 인스톨러 컴파일 → `dist\installer\TaskCalendarWidget-Setup-v<버전>.exe`
 3. 그 exe의 **SHA256** 계산 → `dist\installer\latest.json` 생성
 
-> 버전은 **자동**으로 `csproj <Version>`(현재 0.9.0)에서 읽는다. 어디에도 버전을 손으로 입력하지 않는다.
+> 버전은 **자동**으로 `csproj <Version>`에서 읽는다. 어디에도 버전을 손으로 입력하지 않는다.
 
 명령줄로 하고 싶으면(동일 결과):
 
@@ -100,21 +146,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "task-calendar\installer\pub
 "…\installer\배포-빌드.cmd" -Notes "리마인더 개선 및 버그 수정"
 ```
 
+> **`-Notes`를 안 주면 비는 게 아니라 자동 추출한다.** `publish-update.ps1`이 `RELEASE_NOTES.md`에서 `## v<버전>` 절의 **첫 비-불릿 문단**을 요약으로 읽어 쓴다. 그래서 인자 없는 원클릭도 배너 안내가 채워진다. **단, 그 버전 절이 없으면 notes가 빈 채로 나간다** — 콘솔에 `! RELEASE_NOTES.md에서 v<버전> 요약을 못 찾음` 경고가 뜨니, 그때는 `-Notes`로 직접 준다.
+
 ### 3-2. 결과물 확인
 
-빌드가 끝나면 `dist\installer\`에 **정확히 이 2개**가 있어야 한다(버전 0.9.0 기준):
+빌드가 끝나면 `dist\installer\`에 **정확히 이 2개**가 있어야 한다(`<버전>` = `csproj <Version>`):
 
 | 파일 | 내용 |
 |---|---|
-| `TaskCalendarWidget-Setup-v0.9.0.exe` | 무인 설치 가능한 인스톨러(자체포함) |
+| `TaskCalendarWidget-Setup-v<버전>.exe` | 무인 설치 가능한 인스톨러(자체포함) |
 | `latest.json` | 업데이트 매니페스트 `{ version, file, notes, sha256 }` |
 
 `latest.json` 예시(형식 확인용):
 
 ```json
 {
-  "version": "0.9.0",
-  "file": "TaskCalendarWidget-Setup-v0.9.0.exe",
+  "version": "<버전>",
+  "file": "TaskCalendarWidget-Setup-v<버전>.exe",
   "notes": "리마인더 개선 및 버그 수정",
   "sha256": "<소문자 hex 64자>"
 }
@@ -129,7 +177,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "task-calendar\installer\pub
 ```
 ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 주소)
 ├─ latest.json
-└─ TaskCalendarWidget-Setup-v0.9.0.exe
+└─ TaskCalendarWidget-Setup-v<버전>.exe
 ```
 
 지원 위치 형태(위젯이 모두 파싱 가능): `ftp://<서버IP>/…/` · `http(s)://…/` · UNC `\\서버\공유\…`
@@ -147,10 +195,10 @@ ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 �
 ### 배포 체크리스트
 
 - [ ] `배포-빌드.cmd` 더블클릭 → 오류 없이 완료
-- [ ] `dist\installer\`에 `TaskCalendarWidget-Setup-v0.9.0.exe` + `latest.json` 2개 존재
+- [ ] `dist\installer\`에 `TaskCalendarWidget-Setup-v<버전>.exe` + `latest.json` 2개 존재
 - [ ] `latest.json`의 `version`/`file`이 실제 exe와 일치 (파일명 변경 금지)
 - [ ] 공유폴더(FTP)에 **두 파일 모두** 업로드
-- [ ] (선택) `-Notes`로 배너 안내문 지정했는지
+- [ ] 배너 안내문 — `-Notes`를 줬거나, `RELEASE_NOTES.md`에 이번 버전 절이 있어 자동 추출됐는지(콘솔의 `* Notes(자동 …)` 줄로 확인. 둘 다 아니면 빈 채로 나간다)
 
 ---
 
@@ -158,7 +206,7 @@ ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 �
 
 자동 업데이트는 **그 기능이 이미 든 버전(v0.8.0+)이 깔려 있어야** 신호를 받을 수 있다. 따라서 **최초 1회는 수동 설치**가 필요하다.
 
-1. 공유폴더의 `TaskCalendarWidget-Setup-v0.9.0.exe`를 동료가 **1회 실행**해 설치한다.
+1. 공유폴더의 `TaskCalendarWidget-Setup-v<버전>.exe`를 동료가 **1회 실행**해 설치한다.
 2. 설치 후 위젯이 바탕화면에 상주하기 시작한다.
 3. 이후 **새 버전은 자동 업데이트로 전파**된다 — 단, **아래 §5에서 소스 URL이 설정돼 있을 때만.**
 
@@ -166,12 +214,11 @@ ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 �
 
 ---
 
-## 5. 자동 업데이트 소스 (이 릴리스는 사내 FTP 기본 지정)
+## 5. 자동 업데이트 소스 (기본값은 비어 있다 — 채워야 켜진다)
 
-**이 0.9.0 릴리스는 `DefaultUpdateSourceUrl = "ftp://192.168.1.175/"`로 나간다.** (`widget/MainWindow.xaml.cs:44`)
-즉 **신규 설치 시 각 위젯이 별도 설정 없이 그 FTP 루트를 자동 확인한다(zero-touch).** 설정의 소스 URL이 비어 있으면 이 상수로 시드된다(`MainWindow.xaml.cs:87`). → 그 FTP 루트에 `latest.json` + Setup exe를 올려두면 끝.
+**저장소의 `widget/DeployConfig.cs`는 `UpdateSourceUrl = ""`(비움)으로 나간다.** 설정에 저장된 소스 URL이 비어 있을 때 이 값으로 시드되므로(`widget/MainWindow.xaml.cs:95`), **비운 채 빌드하면 업데이트 확인 기능은 휴면**이다.
 
-주소를 바꾸거나(다른 IP/하위폴더) 끄려면 — 아래 참고.
+켜는 길은 둘이다 — 각 PC 설정에서 넣거나(방법 A), 배포 빌드 전에 `DeployConfig.UpdateSourceUrl`을 채우거나(방법 B).
 
 ### 방법 A) 각 PC에서 설정으로 지정 (재빌드 불필요, 지금 바로)
 
@@ -183,15 +230,15 @@ ftp://192.168.1.175/            ← FTP 루트에 올린 예(소스 URL도 이 �
    - 힌트: *비우면 업데이트 확인 안 함*
 3. **'지금 확인'** 버튼으로 즉시 연결 테스트
 
-> 설정 로직: 저장된 URL이 비어 있으면 컴파일타임 기본값(`DefaultUpdateSourceUrl`)으로 시드된다(`MainWindow.xaml.cs:87`). 이 릴리스는 기본값이 비어 있으므로 **설정에서 직접 넣어야** 켜진다.
+> 설정 로직: 저장된 URL이 비어 있으면 배포 구성 기본값(`DeployConfig.UpdateSourceUrl`)으로 시드된다(`widget/MainWindow.xaml.cs:95`). 저장소 기본값이 비어 있으므로 **설정에서 직접 넣어야** 켜진다.
 
-### 방법 B) 소스 URL을 상수에 박고 재빌드 (전 PC 공통 자동 적용)
+### 방법 B) 배포 구성에 채우고 재빌드 (전 PC 공통 자동 적용)
 
-최종 FTP 주소가 확정됐다면, 앞으로 배포되는 빌드가 **설치 즉시** 자동 업데이트를 켜도록 상수에 박는다.
+최종 공유폴더 주소가 확정됐다면, 앞으로 배포되는 빌드가 **설치 즉시** 자동 업데이트를 켜도록 배포 구성에 채운다 — §0-1에서 `DbHost`·`DbPassword`를 채우는 그 파일이다.
 
 ```csharp
-// widget/MainWindow.xaml.cs:44
-private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/";
+// widget/DeployConfig.cs
+public const string UpdateSourceUrl = "ftp://<서버IP>/TaskCalendar/";   // 또는 "\\\\서버\\TaskCalendar\\"
 ```
 
 수정 후 §3의 배포 절차를 다시 돌린다. 이렇게 나간 빌드는 동료가 설치만 하면 소스 URL이 이미 채워져 있어 별도 설정이 필요 없다.
@@ -203,7 +250,7 @@ private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/
 ```
 🆕 새 버전 X 있습니다   [변경내역]   [업데이트]
    └ [업데이트] → 인스톨러 임시복사 → sha256 검증 → 무인(/SILENT) 설치 → 재시작
-      (개인 데이터 data.xml·설정은 건드리지 않음, exe만 교체)
+      (설정·로컬 파일은 건드리지 않음, exe만 교체 — 캘린더 데이터는 서버 DB에 있다)
 ```
 
 > 30분 주기는 새 버전 발견뿐 아니라 '서버 오프 → 이미 열린 배너 자동 종료'의 반응성도 겸한다(폐쇄망 로컬 소스라 부담 없음). 코드 근거: `widget/Update.cs:31`(시작 지연 9초), `:35`(주기 `TimeSpan.FromMinutes(30)`).
@@ -212,16 +259,17 @@ private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/
 
 ## 6. 다음 버전 낼 때
 
-1. **버전 올림** — `widget/TaskCalendarWidget.csproj`의 `<Version>`을 올린다(예: `0.9.0` → `0.9.1`).
+1. **스키마 변경이 딸린 버전이면 서버 적용을 먼저** — 새 `migrate-*.sql`이 있는 릴리스는 §0(백업 → 적용 → `ExpectedSchemaVersion` 대조)을 끝낸 뒤에 아래로 간다. 위젯만 먼저 나가면 전량 교체가 막힌다.
+2. **버전 올림** — `widget/TaskCalendarWidget.csproj`의 `<Version>`을 올린다.
    - `<AssemblyVersion>`/`<FileVersion>`도 함께 맞춰 두면 깔끔하다(선택).
-2. **원클릭 빌드** — `installer\배포-빌드.cmd` 더블클릭 (필요 시 `-Notes "이번 버전 요약"`).
-3. **FTP 덮어쓰기** — 새 `TaskCalendarWidget-Setup-v<새버전>.exe` + `latest.json`을 공유폴더에 올린다.
+3. **원클릭 빌드** — `installer\배포-빌드.cmd` 더블클릭 (필요 시 `-Notes "이번 버전 요약"`).
+4. **FTP 덮어쓰기** — 새 `TaskCalendarWidget-Setup-v<새버전>.exe` + `latest.json`을 공유폴더에 올린다.
    - 이전 버전 Setup exe는 두어도 되고 지워도 된다. `latest.json`은 **항상 최신 것으로 덮어쓴다.**
-4. **자동 전파** — 소스 URL이 설정된 각 위젯이 다음 확인 주기(최대 30분 이내, 또는 '지금 확인')에 배너로 안내한다.
+5. **자동 전파** — 소스 URL이 설정된 각 위젯이 다음 확인 주기(최대 30분 이내, 또는 '지금 확인')에 배너로 안내한다.
 
 ```powershell
-# 예: 0.9.1 배포 (csproj <Version>을 0.9.1로 바꾼 뒤)
-"task-calendar\installer\배포-빌드.cmd" -Notes "0.9.1 변경 요약" -CopyTo "\\서버\TaskCalendar"
+# 예: csproj <Version>을 새 버전으로 바꾼 뒤
+"task-calendar\installer\배포-빌드.cmd" -Notes "이번 버전 변경 요약" -CopyTo "\\서버\TaskCalendar"
 ```
 
 > **버전만 올리고 exe를 안 바꾸면 안 된다**: `latest.json.file`이 가리키는 인스톨러가 그 폴더에 실제로 있어야 설치까지 완료된다. 버전만 올리고 file이 옛 설치본이면, 같은 버전이 다시 깔려 배너가 계속 뜬다.
@@ -249,8 +297,8 @@ private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/
 
 | 상황 | 로그 예시 |
 |---|---|
-| 새 버전 있음 | `업데이트 발견: 0.9.1 > 내 0.9.0` |
-| 최신 (변화 없음) | `업데이트 없음: 최신 0.9.0 ≤ 내 0.9.0` |
+| 새 버전 있음 | `업데이트 발견: <소스 버전> > 내 <설치 버전>` |
+| 최신 (변화 없음) | `업데이트 없음: 최신 <소스 버전> ≤ 내 <설치 버전>` |
 | 소스 접근 실패 | `업데이트 확인 실패(무음): <사유>` |
 | 소스 URL 저장 | `업데이트 소스 URL 저장: ftp://…` 또는 `(비움 — 휴면)` |
 
@@ -276,7 +324,7 @@ private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/
   1. **공유 위치(FTP)의 쓰기 권한을 관리자 전용으로 제한**한다(읽기=전체 허용 OK). 현재 FTP가 "누구나 쓰기"라면 **이것부터** 닫는다.
   2. 여건이 되면 **exe 코드 서명(Authenticode)** — 인증성의 정석.
 - 현재는 **소규모 신뢰 내부망** 전제. 규모가 커지거나 신뢰 경계가 넓어지면 위 통제를 먼저 적용한다.
-- 개인 데이터(`%APPDATA%\TaskCalendar\data.xml`)와 설정은 업데이트가 건드리지 않는다(exe만 교체).
+- 설정·로컬 파일(`%APPDATA%\TaskCalendar\`)은 업데이트가 건드리지 않는다(exe만 교체). **캘린더 데이터는 서버 DB**라 업데이트와 무관하다.
 
 ---
 
@@ -291,6 +339,7 @@ private const string DefaultUpdateSourceUrl = "ftp://192.168.1.175/TaskCalendar/
 | 설치기만 빌드 | `powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1` (내부: publish + ISCC) |
 | ISCC 경로 지정 | `build-installer.ps1 -Iscc "<ISCC.exe 경로>"` (배포-빌드.cmd에는 없음) |
 | 버전 단일 소스 | `widget\TaskCalendarWidget.csproj` `<Version>` |
-| 소스 URL 상수 | `widget\MainWindow.xaml.cs:44` `DefaultUpdateSourceUrl` |
+| 배포 구성(DB 접속 · 업데이트 소스) | `widget\DeployConfig.cs` (§0-1) |
+| 소스 URL 상수 | `widget\DeployConfig.cs`의 `UpdateSourceUrl` (시드 지점: `widget\MainWindow.xaml.cs:95`) |
 | 결과물 폴더 | `dist\installer\` (Setup exe + latest.json) |
 | 로그 | `%APPDATA%\TaskCalendar\widget.log` |

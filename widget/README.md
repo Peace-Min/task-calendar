@@ -49,7 +49,7 @@ dotnet build -c Release
 | **서버 MySQL (`taskmgr`)** | **캘린더 데이터** — 일정·할일·과제·공수·근태·커밋·보고기록. 각 PC 위젯이 직결(XML 은퇴, 2026-09-01) |
 | `%APPDATA%\TaskCalendar\data.xml` | **옛 로컬 데이터(0.17.1 이하)** — 「가져오기」로 DB에 1회 이관하는 입구. 이관에 성공하면 `.migrated-<날짜>`로 **개명**한다(삭제 아님 — 대조용 원본은 남는다. 같은 이름이 있으면 `-2`·`-3`) |
 | `%APPDATA%\TaskCalendar\repo-paths.json` | 과제별 Git/SVN 저장소 경로 — **PC마다 다른 값이라 DB에 올리지 않는다**(설계 §4) |
-| `%APPDATA%\TaskCalendar\user.session` | netcus 위임 로그인 세션(이름·직급·소속·권한) |
+| `%APPDATA%\TaskCalendar\user.session` | netcus 위임 로그인 세션(`loginId`·이름·직급·소속 **4필드** · **권한은 담지 않는다** — 권한은 쓰기 시점에 DB 관문이 판정) |
 | `%APPDATA%\TaskCalendar\reminders.json` | 미리알림 **확인(ack) 기록만** — 알림 일정 자체는 서버에서 읽은 데이터로 매번 계산 |
 | `%APPDATA%\TaskCalendar\netcus.cred` | 회사 보고 계정(DPAPI 암호화, 이 PC·이 사용자만 복호) |
 | `%APPDATA%\TaskCalendar\widget.settings.json` | 창 위치·크기·자동시작 상태 |

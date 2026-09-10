@@ -8,6 +8,18 @@ const IN = process.argv[2], OUT = process.argv[3];
 if (!IN || !OUT) { console.error('사용: node build-schema-html.mjs <schema.json> <out.html>'); process.exit(2); }
 const S = JSON.parse(readFileSync(IN, 'utf8'));
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// CHECK 식·기본값을 사람이 읽는 모양으로 되돌린다.
+//   dump-schema.mjs 는 mysql 을 -B(배치)로 부르는데, 그 모드는 값 안의 역슬래시를 한 번 더 부풀린다.
+//   information_schema 의 따옴표 이스케이프(역슬래시 1개)가 JSON 에는 2개로 담기고,
+//   그대로 찍으면 화면에 역슬래시 두 개짜리 이중 이스케이프가 나온다(2026-09-10 정정).
+//   ① 배치 이스케이프를 한 겹 벗기고 ② 남은 것은 SQL 문자열의 따옴표 이스케이프이므로 따옴표로 낮춘다.
+//   ②를 따옴표에만 한정하는 이유: 식 안에 진짜 역슬래시(정규식 등)가 오면 그건 살려 두어야 한다.
+const BS = String.fromCharCode(92);
+const RE_BATCH = new RegExp(BS + BS + '(.)', 'g');
+const RE_QUOTE = new RegExp(BS + BS + "'", 'g');
+const sqlText = (s) => String(s ?? '')
+  .replace(RE_BATCH, (_, c) => (c === 'n' ? '\n' : c === 't' ? '\t' : c === 'r' ? '\r' : c))
+  .replace(RE_QUOTE, "'");
 const num = (n) => Number(n).toLocaleString('ko-KR');
 const d = new Date(S.meta.dumpedAt);
 const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -38,6 +50,17 @@ const fksOf = (n) => edges.filter((e) => e.from === n);
 const ownerFks = edges.filter((e) => e.to === 'app_user' && e.cols === 'user_id');
 const ownerRestrict = ownerFks.filter((e) => e.del === 'RESTRICT' || e.del === 'NO ACTION');
 const ownerCascade = ownerFks.filter((e) => e.del === 'CASCADE');
+// 소유자 FK 의 참조동작은 실측(schema.json)에서 문장을 만든다.
+//   예전에는 "예외는 보고 기록 두 표" 라고 문장에 박아 두었는데, 2026-09-09 무결성 라운드가 그 둘을
+//   RESTRICT 로 바꾸자 같은 문서 안에서 "11개 중 11개가 RESTRICT" 와 "두 표만 CASCADE" 가 함께 찍혔다.
+//   숫자만 실측에서 뽑고 결론은 손으로 적으면 이렇게 갈린다 — 결론도 뽑는다(2026-09-10 정정).
+const ownerCascadeNames = ownerCascade.map((e) => e.from).join(' · ');
+const ownerRuleText = ownerCascade.length === 0
+  ? `소유자 FK <span class="hl">${ownerFks.length}개가 전부 RESTRICT</span> 다. 예외는 없다 — 사용자 행을 지우려면 그 사람의 캘린더를 먼저 정리해야 한다.`
+  : `소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 ${ownerCascadeNames} ${ownerCascade.length}표로, 소유자 FK 가 CASCADE 다 — 사용자를 지우면 함께 지워진다.`;
+const ownerRuleShort = ownerCascade.length === 0
+  ? '지금 CASCADE 인 소유자 FK 는 하나도 없다.'
+  : `지금 CASCADE 인 소유자 FK 는 ${ownerCascadeNames} ${ownerCascade.length}표다.`;
 const kidsOf = (n) => edges.filter((e) => e.to === n);
 const ruleWord = (e) => (e.del === 'CASCADE' ? '부모를 지우면 함께 지워진다' : e.del === 'RESTRICT' || e.del === 'NO ACTION' ? '참조 중이면 부모를 지울 수 없다' : e.del === 'SET NULL' ? '부모가 지워지면 비워진다' : e.del);
 
@@ -51,8 +74,9 @@ function colDesc(t, c) {
   const uq = t.indexes.filter((i) => i.unique && i.name !== 'PRIMARY' && i.cols.split(',').includes(c.name) && i.cols.includes(','));
   if (uq.length) parts.push('UNIQUE(' + esc(uq[0].cols) + ')');
   if (!c.nullable && c.key !== 'PRI') parts.push('필수');
-  if (c.def != null && c.def !== '' && c.extra !== 'DEFAULT_GENERATED') parts.push('기본 ' + esc(c.def));
-  if (c.extra === 'DEFAULT_GENERATED' && c.def) parts.push('기본 ' + esc(c.def) + '()');
+  // 기본값은 식이면 식 그대로 적는다. 예전에는 DEFAULT_GENERATED 에만 '()' 를 덧붙였는데
+  // COLUMN_DEFAULT 가 이미 완성된 식(CURRENT_TIMESTAMP(3) · uuid())이라 빈 괄호가 하나 더 붙었다(2026-09-10 정정).
+  if (c.def != null && c.def !== '') parts.push('기본 ' + esc(sqlText(c.def)));
   if (/auto_increment/i.test(c.extra)) parts.push('자동 증가');
   if (/on update/i.test(c.extra)) parts.push('수정 시 자동 갱신');
   const chk = t.checks.filter((k) => new RegExp('`' + c.name + '`').test(k.clause));
@@ -63,7 +87,7 @@ function colDesc(t, c) {
 function tableDetails(t) {
   const pk = t.indexes.find((i) => i.name === 'PRIMARY');
   const rows = t.columns.map((c) => `<tr><td><span class="col">${esc(c.name)}</span></td><td><span class="ty">${esc(c.type)}</span></td><td class="desc-td">${colDesc(t, c)}</td></tr>`).join('');
-  const chks = t.checks.length ? `<p class="note">CHECK ${t.checks.length}개: ${t.checks.map((k) => `<code>${esc(k.clause)}</code>`).join(' · ')}</p>` : '';
+  const chks = t.checks.length ? `<p class="note">CHECK ${t.checks.length}개: ${t.checks.map((k) => `<code>${esc(sqlText(k.clause))}</code>`).join(' · ')}</p>` : '';
   const idx = t.indexes.filter((i) => i.name !== 'PRIMARY');
   return `
       <details id="t-${t.name}">
@@ -91,6 +115,7 @@ const MIGRATIONS = [
   ['08-27', 'uses_repo', 'cal_category 에 저장소 사용 여부를 더했다.'],
   ['08-27', 'sort_order', 'cal_category · cal_entry · cal_todo · cal_room 에 순서 컬럼을 더해 부팅 조회의 순서를 앱의 문서 순서와 맞췄다.'],
   ['08-31', '보고 기록 3표', 'cal_report_daily · cal_report_hours(v6) · cal_report_weekly(v7) 를 만들고, 주간은 보낸 것만 담도록 다시 만들었다(v8). 캘린더가 만든 것만 담고 사이트의 현재 상태는 담지 않는다.'],
+  ['09-09', '무결성 규칙 통일', '같은 DB 안에서 장치끼리 반대로 말하던 다섯을 한 판으로 맞췄다 — 보고 표 두 개의 소유자 FK 를 CASCADE 에서 RESTRICT 로(GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었다), cal_report_hours 에 과제 FK 신설(쌍둥이 cal_task_hours 만 잠겨 있었다), cal_report_daily 에 근태·초과시간 CHECK(쌍둥이 cal_attendance 만 잠겨 있었다), hours 를 DECIMAL(4,2) 로, 감사 시각을 KST 에서 UTC 로 1회 정규화. 마지막 하나는 데이터를 바꾸므로 재실행 안전이 아니고 ProjectDb 의 접속 프리앰블과 같은 배포에 실려야 한다.'],
 ];
 
 const html = `<!DOCTYPE html>
@@ -237,7 +262,7 @@ const html = `<!DOCTYPE html>
 
 <div class="thesis">
   <div class="k">핵심 결정</div>
-  <p>사용자·조직 <span class="hl">${USERS.length}표</span>는 앱이 읽기만 한다(인증은 netcus 가 하고 여기서는 인가만 읽는다). 과제 <span class="hl">${PROJECT.length}표</span>는 이름을 자연키로 쓰고 앱이 추가·수정은 하되 삭제는 is_active 로만 한다. 캘린더 <span class="hl">${calendar.length}표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 자기 user_id 의 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 보고 기록 ${ownerCascade.length}표뿐이다. 사용자를 지우면 같이 지워도 되는 부속 테이블이라 CASCADE 로 두었다.</p>
+  <p>사용자·조직 <span class="hl">${USERS.length}표</span>는 앱이 읽기만 한다(인증은 netcus 가 하고 여기서는 인가만 읽는다). 과제 <span class="hl">${PROJECT.length}표</span>는 이름을 자연키로 쓰고 앱이 추가·수정은 하되 삭제는 is_active 로만 한다. 캘린더 <span class="hl">${calendar.length}표</span>는 전부 <span class="hl">user_id</span> 로 시작하는 복합 PK 를 쓰고, 앱은 자기 user_id 의 행만 쓴다. 사용자 한 명을 지워도 캘린더가 따라 사라지지 않도록 ${ownerRuleText}</p>
 </div>
 
 <div class="stats">
@@ -269,7 +294,7 @@ const html = `<!DOCTYPE html>
     ${ent('cal_entry', ['<span class="key">PK</span> user_id · entry_no', '<span class="key">UQ</span> user_id · uid', 'entry_date · recur_* · sort_order', 'updated_at = 낙관적 잠금'], '일정')}${rel('entry_no', 'CASCADE')}
     ${ent('cal_entry_except · cal_entry_commit', ['<span class="key">PK</span> user_id · entry_no · (날짜|seq)'], '부속')}
   </div>
-  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE) · cal_room · cal_task_hours(과제 FK RESTRICT) · cal_attendance · cal_user_pref · cal_user_rev · cal_migration_log · cal_report_daily(→ cal_report_hours CASCADE) · cal_report_weekly. 보고 기록 두 표만 소유자 FK 가 CASCADE 다.</p>
+  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE) · cal_room · cal_task_hours(과제 FK RESTRICT) · cal_attendance · cal_user_pref · cal_user_rev · cal_migration_log · cal_report_daily(→ cal_report_hours CASCADE) · cal_report_weekly. ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다 — 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
 </section>
 
 <section>
@@ -326,7 +351,7 @@ const html = `<!DOCTYPE html>
     </ul></div>
     <div class="panel dont"><h4><span class="bar"></span>하지 않는다</h4><ul class="lst">
       <li><b>cal_user_rev 를 지우지 않는다</b> <span class="why">단조증가가 동기화의 기준이다.</span></li>
-      <li><b>데이터 표의 소유자 FK 를 CASCADE 로 바꾸지 않는다</b> <span class="why">app_user 한 행 삭제가 캘린더 침묵 삭제가 된다. CASCADE 는 보고 기록 ${ownerCascade.map((e) => e.from).join(' · ')} 두 표에만 있다.</span></li>
+      <li><b>데이터 표의 소유자 FK 를 CASCADE 로 바꾸지 않는다</b> <span class="why">app_user 한 행 삭제가 캘린더 침묵 삭제가 된다. ${ownerRuleShort}</span></li>
       <li><b>login_id 를 키로 다시 쓰지 않는다</b> <span class="why">사내 사이트의 값이라 바뀔 수 있고, 그래서 user_id 를 두었다.</span></li>
       <li><b>이름에 하드 유니크를 걸지 않는다</b> <span class="why">발주처·사업명 중복은 정상 업무 패턴이다(07-24 판의 실데이터 검수).</span></li>
       <li><b>보고 기록 표를 사이트 상태의 거울로 보지 않는다</b> <span class="why">캘린더가 보낸 것만 담는다.</span></li>

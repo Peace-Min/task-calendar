@@ -32,7 +32,7 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 ### 축 B — 캘린더 데이터 (`data.xml` → DB) *(2026-08 신설)*
 
 ```
-[완료] C1 스키마(cal_* 16표·v8 + 보고기록 3표) ─▶ C2 이관 도구 ─▶ C3 앱 저장 경로 전환(읽기·쓰기·기본 DB·실이관)
+[완료] C1 스키마(cal_* 16표 + 보고기록 3표) ─▶ C2 이관 도구 ─▶ C3 앱 저장 경로 전환(읽기·쓰기·기본 DB·실이관)
                                                                           │
                                             ┌─────────────────────────────┼─────────────────────────┐
                                             ▼                             ▼                         ▼
@@ -185,8 +185,12 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 
 ## P6. 폐쇄망 임시 서버 구축 — **[M]**  *(폐쇄망 필요)*
 
+> **구축 절차의 정본은 [`deploy/README.md`](deploy/README.md) 「배포 순서」다.** 아래는 체크리스트일 뿐이고, 순서·선행조건·종료코드는 그 문서가 정한다(`app_user` 가 먼저 서 있어야 `cal_*` 의 FK 가 붙는다 — 뒤집으면 errno 1824).
+
 - [ ] 폐쇄망 PC에 MySQL **반입·설치**(반입 절차 확인)
 - [ ] `schema.sql` 적용 + P5 실데이터 이관
+- [ ] **캘린더 트랙 구축**: `deploy\init-calendar.cmd` — 표 명부·FK·권한·`schema_version` 행을 한 번에 대조하고 어긋나면 `exit 1`. **`cal_*` 를 DROP 하므로 빈 DB에서만**
+- [ ] **백업 등록**: `deploy\backup-taskmgr.cmd -Install`(관리자 콘솔) — 정기 덤프 작업 등록. 1회 수동 백업은 인수 없이. 확인은 `-Status`
 - [ ] **서버화**: `bind-address=0.0.0.0` · 방화벽 3306 · 원격 최소권한 계정
 - [ ] 고정 IP 확인(이미 설정됨) → `ProjectDb.cs` **★배포 구성 상수를 폐쇄망 IP로 교체 후 재빌드·자동업데이트 배포**
 - **게이트**: **다른 PC에서** 앱으로 접속·조회·편집 성공
@@ -216,13 +220,14 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 
 ## C1. 캘린더 스키마 — **[M]** ✅ **완료**
 
-- [x] `cal_*` **16표** · `schema_version = 8` *(실측 2026-09-01)* — 일정·반복예외·과제·커밋·할일·날짜메모·근태·설정·회의실·rev·이관로그
+- [x] `cal_*` **16표** *(실측 2026-09-01)* — 일정·반복예외·과제·커밋·할일·날짜메모·근태·설정·회의실·rev·이관로그. **`schema_version` 값은 여기 적지 않는다** — 정본은 `deploy/schema-calendar.sql` 끝의 `cal_schema_meta` 시딩 줄이고, 실 DB 값은 `SELECT v FROM cal_schema_meta WHERE k='schema_version'` 로 본다(판번호를 문서에 박으면 마이그레이션 한 판마다 뒤처진다)
 - [x] **대리키 전환**(§5.2): PK `(user_id, <표>_no)` — `login_id` 사슬 폐기. `org_unit` 도 완전 절단(이름 미러 없음)
 - [x] **보고 기록 3표**(§5.9): `cal_report_daily` · `cal_report_hours` · `cal_report_weekly` — **로드맵에 없던 항목**.
       「캘린더가 **보낸 것만** 담는다」 — 사이트 되읽기 동기화는 **버린 안**이다(사이트가 무효화 신호를 주지 않는다).
 - [x] `grants-calendar.sql` 로 `taskmgr_app` 최소권한 부여 — **새 표에 권한이 0 이면 배선이 `ERROR 1142` 로 죽는다**(실제로 그렇게 발견했다)
 - [x] 재구축 경로(`schema-calendar.sql`) ↔ 운영 DB **전수 대조 일치** · **재구축 2회차 오류 0**(DROP 3줄 누락을 그때 잡았다)
-- **게이트**: `information_schema` 전수 대조 ✅
+- [x] **무결성 규칙 통일 라운드**(2026-09-09, `deploy/migrate-2026-09-09-integrity.sql`) — 소유자 FK 를 전부 `RESTRICT` 로 통일 · `cal_report_hours` 에 과제 FK 신설 · `cal_report_daily` 에 근태·초과시간 CHECK · `hours` 를 `DECIMAL(4,2)` 로 · 감사 시각 KST→UTC **1회 정규화**(+ `widget/ProjectDb.cs` 접속 프리앰블 신설). ⚠️ **이 파일만 재실행 안전이 아니다** — 적용 전 백업 필수이고 코드와 **같은 배포**에 실어야 한다(절차 정본: [`deploy/README.md`](deploy/README.md) 「적용 순서」)
+- **게이트**: `information_schema` 전수 대조 ✅ · `TC_TEST_STRICT=1 node tests/run-tests.mjs` 의 `schema-integrity` 계약 7종 ✅
 
 ## C2. 이관 도구 — **[M]** ✅ **완료**
 
@@ -408,7 +413,7 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 | P7 | 배포·운영 | M | 폐쇄망 | P6 |
 | P8 | 전용 서버 이관 | S | 서버 | P7 |
 | — | **↓ 축 B — 캘린더 데이터(`data.xml` → DB)** | — | — | — |
-| C1 | 캘린더 스키마(`cal_*` 16표 · v8) + 보고 기록 3표 | M | localhost | ✅ 완료 |
+| C1 | 캘린더 스키마(`cal_*` 16표) + 보고 기록 3표 | M | localhost | ✅ 완료 |
 | C2 | 이관 도구(`xml-to-db`) | M | localhost | ✅ 완료 |
 | C3 | 앱 저장 경로 전환(읽기·쓰기·기본 DB·실이관) | L | localhost | ✅ 완료 |
 | C3.5 | XML 경로 폐기(`XmlRetired`) | S | localhost | ✅ 완료 |

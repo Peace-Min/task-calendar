@@ -59,9 +59,11 @@ flowchart TB
 | `widget/DeployConfig.cs` | 배포 구성 단일 소스 — DB 접속·업데이트 소스·`XmlRetired` 스위치 |
 | `widget/Svn.cs` | svn CLI 실행·XML 파싱·UTC→로컬 보정·작성자 필터·`ResolveVcs`(git/svn 분기 단일 소스) |
 | `widget/NetcusService.cs` | 회사 보고 자동화(보조 WebView2로 로그인→이동→채움→제출→되읽기 검증), euc-kr 폼 우회, DPAPI 자격증명, **로그인 인증 위임** |
+| `widget/NetcusText.cs` | netcus 페이지에서 **텍스트를 뽑아내는** 순수 파서 — 셀 라벨·표 읽기. `NetcusService`가 가져온 문서를 이 파일이 해석한다(통신 없음) |
 | `widget/Reminders.cs` | 일정 시작 알림 — 에스컬레이션 상태기계(60→30→10→5분)·Topmost 알림창·절전복귀 재평가·영속/GC |
 | `widget/Update.cs` | 자동 업데이트 — `latest.json` 확인·semver 비교·다운로드·**sha256 필수 검증**·무인 설치·자기교체 |
 | `widget/XlsxWriter.cs` | 의존성 0 xlsx 생성(과제 목록 Excel 추출) |
+| `widget/App.xaml.cs` | 부트스트랩 — 프로세스 진입점·단일 인스턴스·최초 창 띄우기 |
 
 > 파일 목록은 `widget/*.cs`가 정본이다. 여기 없는 파일이 보이면 이 표가 뒤처진 것이다.
 

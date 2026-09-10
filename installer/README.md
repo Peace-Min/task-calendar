@@ -9,7 +9,7 @@
 - **WebView2 런타임 자동설치** — `redist\MicrosoftEdgeWebView2RuntimeInstallerX64.exe`가 **있을 때만** 포함(없으면 자동 생략, Win11은 내장이라 대개 불필요)
 - 제거 프로그램 등록. **사용자 데이터(`%APPDATA%\TaskCalendar`)는 설치/제거가 건드리지 않음.**
 
-> 브라우저 HTML은 **위젯과 데이터가 분리**된 독립 사본이다(위젯=`data.xml`, 브라우저=localStorage). 둘 사이 이동은 앱의 **XML 내보내기/불러오기**로. (서버 페이즈에서 단일 소스로 합쳐질 예정 — `docs/ROADMAP.md`)
+> 브라우저 HTML은 **위젯과 데이터가 분리**된 독립 사본이다(위젯=서버 MySQL, 브라우저=localStorage). 둘 사이 이동은 앱의 **XML 내보내기/불러오기**로. (서버 페이즈에서 단일 소스로 합쳐질 예정 — `docs/ROADMAP.md`)
 
 ## 사전 요구 (빌드 PC, 한 번만)
 - **.NET 9 SDK** (위젯 publish용)

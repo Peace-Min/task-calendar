@@ -85,6 +85,7 @@ MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 | `DESIGN_NOTES.md` | 모델 B 근거·필드별 설계결정·Excel 추출 방향·초기이관/재구축 전략·향후 |
 | ~~`schema-overview.html`~~ | **2026-09-02 삭제** — 스스로 "대체됨"이라 적어 둔 07-21 ENUM 시절 스냅샷. 현행 구조는 아래 `DB-SCHEMA.html`·정본 MD |
 | [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) | **현행 테이블 구조 레퍼런스** — 과제 4표 + 사용자·조직 3표(2026-08-11 추가)의 컬럼·제약, DB가 강제하는 것 vs 앱이 지키는 것, 바꾸려면 어디를 여는가 |
+| `table-design-report.html` | **현재 DB 구조 한 장 보고서 — 생성물이다.** `information_schema` 실측에서 만든다(23표 전부의 컬럼·타입·제약·CHECK·권한 + 관계도 + '지킨다/하지 않는다' + 변경 이력). **손으로 고치지 마세요** — 재생성은 `TC_TEST_DB_ADMIN_PW=<root 비번> node tools/schema-report/dump-schema.mjs tools/schema-report/schema.json` 뒤에 `node tools/schema-report/build-schema-html.mjs tools/schema-report/schema.json db/table-design-report.html`. 숫자뿐 아니라 **결론 문장까지 실측에서 뽑으므로** 구조를 바꾼 라운드마다 다시 만듭니다(안 만들면 문서가 혼자 옛말을 합니다 — 2026-09-09 에 실제로 그랬습니다) |
 | `README.md` | (이 파일) 트랙 이어받기 진입점 |
 | `CALENDAR-TABLE-DESIGN.md` | **별도 트랙 — 캘린더(`cal_*`) 설계 근거·정본.** 온라인 전용 정책(§2)·동시성 규약·어댑터 계약 G·권한·로그/백업·`data.xml` 1회 이관(§8·3b) + **키 설계(§5.2 대리키 전환 · §5.6 자연키를 PK 로 써도 되는 조건)**. 컬럼 수준 DDL 의 정본은 이 문서가 아니라 `deploy/schema-calendar.sql` |
 | `../docs/USER-LOGIN.md` | **로그인·권한 관문 확정 설계** — netcus 인증 위임 · `app_user.edit_role` 요청 시점 판정 · 세션 4필드 · `view_scope`. 공용 관리자 비밀번호 폐지의 정본 |

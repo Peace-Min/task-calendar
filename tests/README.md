@@ -9,7 +9,7 @@
 node tests/run-tests.mjs
 ```
 
-프로젝트 루트(`task-calendar/`)에서 실행. 요약은 `N pass / M fail / K skip` 이고, skip이 있으면 **사유별 집계**가 한 줄 더 붙는다(예: `skip 4 — jsdom 미설치: 4`).
+저장소 루트에서 실행. 요약은 `N pass / M fail / K skip` 이고, skip이 있으면 **사유별 집계**가 한 줄 더 붙는다(예: `skip 4 — jsdom 미설치: 4`).
 
 ### 종료코드
 
@@ -62,12 +62,17 @@ tests/
 ├─ run-tests.mjs              러너 — tests/*.test.mjs 전부 import 후 run() 호출, 결과 요약·종료코드(0/1/2)·jsdom 부재 힌트
 ├─ harness.mjs                공용 하네스(test/skip/run, importOptional, loadAppSource, extractFunction, FakeDoc)
 ├─ harness-selftest.test.mjs  하네스 자체 검증 테스트
+├─ canon-schema.mjs           정본 파서 헬퍼 — `db/deploy/schema-calendar.sql` 에서 판번호·허용 코드 목록을 읽는다(러너 미수집)
+├─ ps-guard-lib.mjs           배포 스크립트(db/deploy/*.ps1) 소스 검사 공용 기계 — restore/backup-guards 가 공유(러너 미수집)
+├─ schema-integrity.test.mjs  접속 프리앰블·소유자 FK·보고 표 CHECK·공수 상한·cat_no FK·판본 정합 계약 + 변이
 ├─ *.test.mjs                 기본 스위트 — 러너가 이름순으로 자동 수집한다(목록은 파일 시스템이 정본)
 ├─ ── 아래는 ★ 별도 실행 전용(`.mjs`라 자동수집에서 빠진다. 개명 금지) ──
 ├─ loop-ui-integrity.mjs      라이브 위젯(CDP) + MySQL — 구분/상태·발주처 무작위 편집 + 매 조작 DB 불변식
 ├─ loop-ui-visual.mjs         라이브 위젯 · 읽기 전용 — 레이아웃 결함 검출
 ├─ loop-org-compat.mjs        MySQL(복제본) — org_unit 완전 절단 루프
 ├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
+├─ loop-conflict-ui.mjs       라이브 위젯(CDP) + MySQL — 충돌 안내의 실동작: 충돌이 화면에 뜨는가 ·
+│                            재시도하지 않는가 · DB 를 덮지 않는가 · 되돌릴 문이 있는가
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
 ├─ loop-peer-view.mjs        실 DB + 앱 계정 — **타인 일정 열람의 권한 경계**(허용/거부/최소 payload)
 ├─ loop-peer-frame.mjs       **실 위젯**(CDP) + 실 DB — 열람 **창**(iframe)의 실동작: 그 사람 것이 뜨나 ·
@@ -475,11 +480,11 @@ DB도 jsdom도 없이 `db/deploy/*.sql` **텍스트만** 읽어 재적용 가능
 | 체인 연속성 | `migrate-*.sql` 의 `schema_version` (N→M)이 구멍·중복 없이 정본 값까지 | 마이그레이션한 DB와 새로 구축한 DB의 버전이 어긋난다 |
 | 위젯 상수 일치 ⑨ | `widget/CalendarDb.cs` 의 `ExpectedSchemaVersion` == 정본이 심는 값 | 「낡은 클라이언트 차단」(설계 §5.5)이 **거꾸로** 터진다 — 새 서버에서 최신 위젯이 스스로를 낡았다고 판정해 가져오기·초기화가 막힌다 |
 
-실측 체인: `sort-order 3→4` → `repo-flag 4→5` → `report-daily 5→6` → `report-weekly 6→7` → `sent-only 7→8` = 정본 `'8'`.
+실측 체인: `sort-order 3→4` → `repo-flag 4→5` → `report-daily 5→6` → `report-weekly 6→7` → `sent-only 7→8` → `integrity 8→9` = 정본(`db/deploy/schema-calendar.sql` 끝의 `cal_schema_meta` 시딩 줄).
 `07-24-uniqueness` · `08-24-user-id` · `08-24-org-id` 3개는 **`cal_schema_meta` 를 아예 건드리지 않아** 제외 목록(`PRE_VERSION_FILES`)에 사유와 함께 있고,
 검사가 매번 "정말 안 건드리는가"를 되확인한다 — 나중에 버전 갱신이 들어가면 제외가 거짓이라고 실패한다.
 
-검출기 자신은 **변이 시험 10건**으로 증명한다(이 저장소 관례). 그중 하나는 실제로 났던 결함
+검출기 자신은 **변이 시험**으로 증명한다(이 저장소 관례 · 건수는 파일이 정본). 그중 하나는 실제로 났던 결함
 (`c4cf813` — 8-31 보고 기록 3표가 DROP 블록에서 빠져 있던 것)을 그대로 재현해 잡는지 본다.
 파싱은 SQL 전용 마스커로 `--`/`#`/`/* */` 주석과 문자열 리터럴을 지운 판에서 한다
 (harness의 `skipString` 은 JS용 — SQL의 `''` 이스케이프·백틱 식별자를 모른다).
@@ -540,7 +545,7 @@ DB도 jsdom도 없이 `db/deploy/*.sql` **텍스트만** 읽어 재적용 가능
 > 갱신: 2026-09-07. (앞선 갱신 2026-07-27 = v0.12.0 릴리스 직후)
 
 ### 지금 커버되는 것
-`run-tests.mjs`가 `*.test.mjs`를 자동 수집한다(현재 28개 파일) — 순수 로직·보고서 포맷·
+`run-tests.mjs`가 `*.test.mjs`를 자동 수집한다 — 순수 로직·보고서 포맷·
 netcus 병합·공휴일 표 정합성·토큰 드리프트·폰트 불변식·호스트(.cs) 배선 계약·배포 스크립트 가드.
 **jsdom 기반이라 계산과 계약은 잡지만 레이아웃은 원리적으로 못 잡는다**(`offsetHeight === 0`).
 
@@ -625,8 +630,8 @@ v0.12.0에서 나온 결함이 **대부분 레이아웃**이었고 전부 수작
 만들 때는 CDP로 실위젯 검증했지만 그 검증이 일회성이라, 부팅 경로·스키마 비교·배지처럼
 **실행돼야 드러나는** 것을 회귀로 못 박았다(계약 테스트·순수 로직 게이트가 못 보는 영역).
 
-- **P1-1** 서버 스키마를 잠깐 9로 올려(위젯은 8) 배지 경고·웹 게이트·호스트 게이트 삼중 확인,
-  통상 저장은 §5.5대로 허용됨을 확인, 8로 복구.
+- **P1-1** 정본 판번호 N을 읽어 서버 스키마를 잠깐 **N+1**로 올려(위젯은 N) 배지 경고·웹 게이트·호스트 게이트 삼중 확인,
+  통상 저장은 §5.5대로 허용됨을 확인, **시작할 때 읽은 값**으로 복구.
 - **P1-2** `__applyStateError`로 15·30·60초 백오프·수동 재시도·성공 시 해제·retryable=false 무재시도.
 - **P1-8** pick 없이 온 전량 교체는 개명하지 않음(`_lastImportPath` null 가드). 네이티브 파일창으로
   고른 원본의 실개명은 범위 밖(모달) — 계약 `data-source ⑨` + 2026-09-03 수기 로그로 증명됨.
@@ -638,8 +643,13 @@ v0.12.0에서 나온 결함이 **대부분 레이아웃**이었고 전부 수작
 node tests/loop-schema-gate.mjs
 ```
 
-**⚠️ 전역 행을 만진다.** 이 테스트는 `cal_schema_meta.schema_version`을 잠깐 9로 바꾼다 —
+**⚠️ 전역 행을 만진다.** 이 테스트는 `cal_schema_meta.schema_version`을 잠깐 **정본 판번호 + 1**로 바꾼다 —
 그 창 동안 이 DB를 보는 **모든** 위젯이 전량 교체를 거부하므로 **테스트 DB에서만** 돌린다.
-끝나면(중단돼도) `finally`가 8로 되돌리고, 되돌림 실패 시 마지막에 크게 경고한다.
+판번호는 시험 코드에 박아 두지 않는다 — 정본(`db/deploy/schema-calendar.sql` 끝의 `cal_schema_meta` 시딩 줄)을 읽어
+`CANON`으로 삼고, 불일치는 `CANON+1`로 만든다. 끝나면(중단돼도) `finally`가 **시작할 때 읽은 값**으로 되돌리고,
+되돌림 실패 시 마지막에 크게 경고한다. 한 번도 바꾸지 않았으면(`touched=false`) **아무것도 쓰지 않는다.**
+
+> **왜 이 두 규칙이 생겼나(2026-09-09).** 판번호를 박아 둔 옛 시험이 선행조건에서 아무것도 바꾸지 않은 채 중단했는데도
+> `finally`가 무조건 '8'을 써서 **실 DB를 강등**시켰다. 구조는 v9인데 판번호만 v8이 된 DB를 보는 위젯은 전량 교체를 전부 거부한다.
 
 **종료코드**: 통과=0, 실패 또는 schema_version 복구 실패=1, `TC_TEST_DB_ADMIN_PW` 없음=2.

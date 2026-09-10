@@ -39,7 +39,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-09T07:09:27.257Z",
+  "dumpedAt": "2026-09-10T01:25:00.432Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -215,7 +215,7 @@
   {
    "name": "cal_attendance",
    "engine": "InnoDB",
-   "rows": 5841,
+   "rows": 5837,
    "comment": "날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 5837,
@@ -1399,7 +1399,7 @@
   {
    "name": "cal_task_hours",
    "engine": "InnoDB",
-   "rows": 6570,
+   "rows": 6561,
    "comment": "(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 6561,
@@ -2475,7 +2475,7 @@
   {
    "name": "title_code",
    "engine": "InnoDB",
-   "rows": 10,
+   "rows": 11,
    "comment": "직급 코드. 표시·정렬 전용 — 권한 판정에 쓰지 않는다.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 11,

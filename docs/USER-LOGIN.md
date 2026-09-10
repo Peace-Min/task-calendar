@@ -230,21 +230,28 @@ C# HttpClient 는 origin 개념 자체가 없어 무관하다. **게이트의 `i
 
 ### 3.1 문제와 결정
 
-`ProjectDb` 는 메서드 18개가 **각자** `new MySqlConnection(BuildConnString())` 을 연다(19곳).
+`ProjectDb` 의 메서드들은 저마다 `new MySqlConnection(BuildConnString())` 을 열었다.
 쓰기 권한 검사를 "호출부마다 한 줄"로 넣는 설계는 **fail-open** — 새 API 에서 빠뜨리면
 조용히 뚫리고, 사람이든 LLM 이든 기억에 의존하는 규칙은 반드시 뚫린다.
 
 **결정: 관문을 연결 획득에 둔다.** SQL 모양은 제각각이어도(단문·트랜잭션·다중쿼리)
-연결을 여는 한 줄은 19곳이 동일하다.
+연결을 여는 한 줄은 어디서나 같다. **모든 연결 획득이 두 헬퍼를 지난다**(개수는 `tests/admin-auth.test.mjs` 가 하한으로 잠근다).
 
 ```csharp
-private async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)   // 지금과 동일
+private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)   // 읽기 관문(권한 검사 없음)
 private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)  // 관문(§3.3에서 활성화)
 ```
 
-- 읽기 7개(Load*)는 `OpenReadAsync`, 쓰기 11개(Upsert/Add/Rename/Set*/Reorder/Count 중 쓰기 계열)는
+- 읽기(`Load*`)는 `OpenReadAsync`, 쓰기(`Upsert`/`Add`/`Rename`/`Set*`/`Reorder` 등)는
   `OpenWriteAsync` 로 **기계적 치환**. 본문 로직은 손대지 않는다.
 - `OpenWriteAsync` 는 지금은 `OpenReadAsync` 와 동일 동작(관문 자리만 확보).
+- **연 연결마다 프리앰블 1회** — 읽기는 `time_zone='+00:00'`, 쓰기는 거기에
+  `innodb_lock_wait_timeout=5` · `transaction_isolation='READ-COMMITTED'` 를 더한다.
+  쓰기 관문에서는 **권한 판정보다 먼저** 건다(판정 쿼리도 그 연결로 돌고, 순서를 뒤집으면
+  "권한은 통과했는데 프리앰블에서 죽는" 창이 생겨 실패 원인이 흐려진다).
+  실패하면 **연결을 정리하고 원인을 그대로 전파** — 프리앰블이 안 걸린 연결로 진행하면
+  그 세션이 쓴 시각만 조용히 KST 가 된다(무음 오염). 근거는 `db/CALENDAR-TABLE-DESIGN.md` §3.6,
+  기계 강제는 `tests/schema-integrity.test.mjs` 계약①.
 
 ### 3.2 테스트 불변식 — 기억이 아니라 기계가 강제한다
 
@@ -253,8 +260,13 @@ private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)  // 관
 ```
 불변식 ①  ProjectDb 안에서 new MySqlConnection 을 직접 부르는 곳은
           OpenReadAsync·OpenWriteAsync 두 헬퍼 안뿐이다
-불변식 ②  반환형 (bool ok, …) 인 공개 메서드는 전부 OpenWriteAsync 를 쓴다
+불변식 ②  쓰기 SQL 을 가진 메서드는 반환형·이름과 무관하게 OpenWriteAsync 로 연다
+          (읽기 관문으로 열고 쓰기 SQL 을 실행하는 것도 금지)
 ```
+
+불변식 ② 의 기계 강제는 `tests/admin-auth.test.mjs` 의 `writeSqlGoesThroughGate` 다 —
+그 시험의 주석이 **`(bool ok, …)` 튜플 시그니처로 좁히지 않는 이유**를 적고 있다
+(`Task<bool>` 로 바꾸면 그대로 빠져나가기 때문이다).
 
 이러면 "새 API 를 추가할 때 LLM 이 관문을 기억할까?"라는 질문 자체가 사라진다 —
 빠뜨리면 `node tests/run-tests.mjs` 가 빨간불로 잡는다.
@@ -309,6 +321,9 @@ private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
     if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
     var conn = new MySqlConnection(BuildConnString());
     await conn.OpenAsync(ct);
+    // 프리앰블은 여기서 — 권한 판정보다 **먼저** 건다(판정 쿼리도 이 연결로 돈다).
+    //   SET SESSION innodb_lock_wait_timeout=5, time_zone='+00:00', transaction_isolation='READ-COMMITTED'
+    //   실패하면 연결을 정리하고 그대로 전파한다(§3.6).
     // 같은 연결로 지금 이 순간의 권한을 읽는다 — 세션 캐시를 믿지 않는다.
     //   SELECT edit_role, is_active FROM app_user WHERE login_id = @id
     //   is_active=0 → "비활성 처리된 계정입니다."      (퇴사·계정 회수가 즉시 반영 — 같은 쿼리라 공짜)
@@ -317,7 +332,7 @@ private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
 ```
 
 - 읽기(`OpenReadAsync`)는 막지 않는다 — 회수의 목적은 편집 차단이지 조회 차단이 아니다.
-- 쓰기 11곳은 이미 이 관문을 통과하므로 **호출부를 고치지 않아도 전부 적용된다.**
+- 쓰기 경로는 이미 전부 이 관문을 통과하므로 **호출부를 고치지 않아도 전부 적용된다.**
 
 > ### ⚠ 함정 — 권한 거부가 "오프라인"으로 표시된다
 > 쓰기 메서드들이 관문의 **모든 예외를 `OfflineMsg` 로 변환**한다:
@@ -326,7 +341,7 @@ private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
 > catch (Exception cex) { _log(…); return (false, OfflineMsg); }
 > ```
 > 그대로 두면 **"편집 권한이 없습니다"가 "서버 연결이 필요합니다"로 보인다.**
-> 전용 예외 타입을 만들고 **쓰기 11곳에 catch 를 한 줄씩** 앞에 넣어 구분할 것:
+> 전용 예외 타입을 만들고 **쓰기 메서드마다 catch 를 한 줄씩** 앞에 넣어 구분할 것:
 > ```csharp
 > catch (NotAuthorizedException nex) { return (false, nex.Message); }
 > catch (Exception cex) { … return (false, OfflineMsg); }
