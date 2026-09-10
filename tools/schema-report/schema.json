@@ -1,6 +1,6 @@
 {
  "meta": {
-  "schemaVersion": "10",
+  "schemaVersion": "11",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -11,7 +11,7 @@
   "views": 0,
   "grants": [
    "GRANT USAGE ON *.* TO `taskmgr_app`@`%`",
-   "GRANT SELECT ON `taskmgr`.`app_user` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`app_user` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_attendance` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_category` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_entry_commit` TO `taskmgr_app`@`%`",
@@ -39,7 +39,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-10T02:46:23.106Z",
+  "dumpedAt": "2026-09-10T05:50:26.752Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -98,6 +98,15 @@
      "nullable": true,
      "def": null,
      "key": "MUL",
+     "extra": "",
+     "comment": ""
+    },
+    {
+     "name": "sort_order",
+     "type": "smallint unsigned",
+     "nullable": true,
+     "def": null,
+     "key": "",
      "extra": "",
      "comment": ""
     },

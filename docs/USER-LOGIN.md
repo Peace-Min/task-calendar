@@ -235,13 +235,21 @@ C# HttpClient 는 origin 개념 자체가 없어 무관하다. **게이트의 `i
 조용히 뚫리고, 사람이든 LLM 이든 기억에 의존하는 규칙은 반드시 뚫린다.
 
 **결정: 관문을 연결 획득에 둔다.** SQL 모양은 제각각이어도(단문·트랜잭션·다중쿼리)
-연결을 여는 한 줄은 어디서나 같다. **모든 연결 획득이 두 헬퍼를 지난다**(개수는 `tests/admin-auth.test.mjs` 가 하한으로 잠근다).
+연결을 여는 한 줄은 어디서나 같다. **모든 연결 획득이 이 헬퍼들을 지난다**(개수는 `tests/admin-auth.test.mjs` 가 하한으로 잠근다).
 
 ```csharp
 private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)   // 읽기 관문(권한 검사 없음)
 private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)  // 관문(§3.3에서 활성화)
+private async Task<MySqlConnection> OpenAdminAsync(CancellationToken ct)  // 관리자 관문(2026-09-10 신설)
 ```
 
+| 관문 | 누가 통과하나 | 무엇을 여는가 |
+|---|---|---|
+| `OpenReadAsync` | 전원(로그인조차 안 본다) | 모든 조회. **회수의 목적은 편집 차단이지 조회 차단이 아니다** |
+| `OpenWriteAsync` | `editor` · `admin` (그리고 `is_active=1`) | 과제·코드값·발주처 등 **통상 쓰기** |
+| `OpenAdminAsync` | **`admin` 만** (그리고 `is_active=1`) | **`app_user` 쓰기 전용** — 직원 등록·수정·퇴사·명부 서열. 설계는 [USER-ADMIN §4.1](USER-ADMIN.md) |
+
+- `OpenAdminAsync` 는 `OpenWriteAsync` 와 **같은 순서**로 돈다(세션 → 연결 → 프리앰블 → 같은 연결로 권한 조회). 다른 것은 통과시키는 등급 하나와 거부 문구뿐이다 — 순서를 따로 짜면 프리앰블·판정의 선후가 두 벌이 되어 한쪽만 어긋난다.
 - 읽기(`Load*`)는 `OpenReadAsync`, 쓰기(`Upsert`/`Add`/`Rename`/`Set*`/`Reorder` 등)는
   `OpenWriteAsync` 로 **기계적 치환**. 본문 로직은 손대지 않는다.
 - `OpenWriteAsync` 는 지금은 `OpenReadAsync` 와 동일 동작(관문 자리만 확보).
@@ -259,14 +267,19 @@ private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)  // 관
 
 ```
 불변식 ①  ProjectDb 안에서 new MySqlConnection 을 직접 부르는 곳은
-          OpenReadAsync·OpenWriteAsync 두 헬퍼 안뿐이다
+          OpenReadAsync·OpenWriteAsync·OpenAdminAsync 세 헬퍼 안뿐이다
 불변식 ②  쓰기 SQL 을 가진 메서드는 반환형·이름과 무관하게 OpenWriteAsync 로 연다
           (읽기 관문으로 열고 쓰기 SQL 을 실행하는 것도 금지)
+불변식 ③  app_user 에 INSERT/UPDATE 하는 SQL 은 OpenAdminAsync 로만 연다
+          (2026-09-10. OpenWriteAsync 는 editor 를 통과시키므로 그것으로 열면
+           과제 편집자가 자기 권한을 admin 으로 올릴 수 있다)
 ```
 
 불변식 ② 의 기계 강제는 `tests/admin-auth.test.mjs` 의 `writeSqlGoesThroughGate` 다 —
 그 시험의 주석이 **`(bool ok, …)` 튜플 시그니처로 좁히지 않는 이유**를 적고 있다
 (`Task<bool>` 로 바꾸면 그대로 빠져나가기 때문이다).
+불변식 ③ 은 같은 파일을 **2026-09-10 에 확장**해 잠갔다 — `app_user` 쓰기 SQL 을 형태로 훑어
+그 메서드가 `OpenAdminAsync` 로 여는지 보고, 관문에서 `admin` 조건을 빼면 실패하는 변이를 짝으로 둔다.
 
 이러면 "새 API 를 추가할 때 LLM 이 관문을 기억할까?"라는 질문 자체가 사라진다 —
 빠뜨리면 `node tests/run-tests.mjs` 가 빨간불로 잡는다.
