@@ -1,6 +1,6 @@
 {
  "meta": {
-  "schemaVersion": "9",
+  "schemaVersion": "10",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -39,7 +39,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-10T01:25:00.432Z",
+  "dumpedAt": "2026-09-10T02:46:23.106Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -2231,6 +2231,15 @@
     },
     {
      "name": "end_date",
+     "type": "date",
+     "nullable": true,
+     "def": null,
+     "key": "",
+     "extra": "",
+     "comment": ""
+    },
+    {
+     "name": "dev_end_date",
      "type": "date",
      "nullable": true,
      "def": null,
