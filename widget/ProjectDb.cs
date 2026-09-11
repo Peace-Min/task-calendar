@@ -1004,9 +1004,10 @@ namespace TaskCalendarWidget
                         //    서열을 비우므로(sort_order=NULL), 낡은 화면이나 세워 둔 푸시가 멀쩡히 쓰이던 사람에게
                         //    복구를 한 번 더 걸면 그 사람의 **살아 있는 서열이 지워지고** 성공까지 돌려준다.
                         //    실패가 아니라 목록이 낡은 것이므로 문구가 새로고침을 시킨다 — 휴지통 복구와 **같은 판정·
-                        //    같은 문장**이다(TrashAlreadyActiveMsg 한 줄이 정본이고, 브리지는 실패 갈래로 이를 띄운다).
+                        //    같은 문장**이다(AlreadyActiveMsg 한 줄이 정본이고, 브리지는 실패 갈래로 이를 띄우면서
+                        //    **명부를 실제로 다시 민다** — 그 약속을 지키는 자리는 MainWindow 다 · R5).
                         await tx.RollbackAsync(cts.Token);
-                        return (false, TrashAlreadyActiveMsg);
+                        return (false, AlreadyActiveMsg);
                     }
 
                     //  ★ 2026-09-11 적대 검토(R3) — **복구는 서열을 비운다**(sort_order=NULL = 맨 뒤).
@@ -1887,8 +1888,12 @@ namespace TaskCalendarWidget
         private const string TrashDoneMsg   = "영구 삭제했습니다.";
         // 이미 활성인 항목의 복구 — 실패가 아니라 **목록이 낡은 것**이다. 그래서 문구가 새로고침을 시킨다(TrashGoneMsg 와 같은 성격).
         //   ★ 휴지통 복구와 명부 복구(SetUserActiveAsync)가 **이 한 줄을 같이 쓴다**(2026-09-11 R4) — 같은 판정에
-        //     같은 말을 두 벌 적으면 한쪽만 고쳐진다. 시험도 이 상수를 계약으로 붙잡는다.
-        private const string TrashAlreadyActiveMsg = "이미 복구된 항목입니다 — 목록을 새로고침합니다.";
+        //     같은 말을 두 벌 적으면 한쪽만 고쳐진다. 시험도 이 상수를 계약으로 붙잡는다. 그래서 이름에 '휴지통'이 없다.
+        //   ★ internal 인 이유(2026-09-11 R5): 이 문장은 **실패**로 나오면서 "목록을 새로고침합니다" 를 약속한다.
+        //     그 약속을 지키는 쪽은 브리지(MainWindow)이고, 브리지가 이 상수를 **직접** 봐야 한다 —
+        //     같은 문장을 거기 한 벌 더 적으면 한쪽만 고쳐지는 순간 그 새로고침이 조용히 멈춘다
+        //     (StaleRosterMsg 가 같은 이유로 internal 이다).
+        internal const string AlreadyActiveMsg = "이미 복구된 항목입니다 — 목록을 새로고침합니다.";
         // 조회·복구·삭제의 마지막 문장 셋 — ★ 예외 원문을 사용자 문장에 이어 붙이지 않는다(원문은 _log 의 몫이다).
         private const string TrashLoadFailMsg    = "휴지통을 불러오지 못했습니다.";
         private const string TrashRestoreFailMsg = "복구하지 못했습니다.";
@@ -2138,7 +2143,7 @@ namespace TaskCalendarWidget
                         if (await rd.ReadAsync(cts.Token)) { found = true; name = Str(rd, "nm"); wasActive = IntOrNull(rd, "act") ?? 0; }
                     }
                     if (!found) { await tx.RollbackAsync(cts.Token); return (false, TrashGoneMsg); }
-                    if (wasActive != 0) { await tx.RollbackAsync(cts.Token); return (false, TrashAlreadyActiveMsg); }
+                    if (wasActive != 0) { await tx.RollbackAsync(cts.Token); return (false, AlreadyActiveMsg); }
 
                     // ★ 다섯 종류를 **전부 이름으로** 적고, 모르는 종류는 거부한다 — 옛 `default:` 는 status_code 였고,
                     //   종류가 하나 늘고 여기만 안 고치면 **엉뚱한 표가 복구된다**(모르는 종류는 ResolveTrashKind 가

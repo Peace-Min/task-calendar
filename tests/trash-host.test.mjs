@@ -270,13 +270,13 @@ const checks = {
       '복구가 대상 행을 FOR UPDATE 로 잠그지 않는다 — 판정과 갱신 사이에 남이 복구할 수 있다');
     assert.ok(/if \(wasActive != 0\)/.test(re),
       '복구에 "이미 활성인가" 판정이 없다(값 비교가 아니다)');
-    const guard = re.indexOf('TrashAlreadyActiveMsg');
+    const guard = re.indexOf('AlreadyActiveMsg');
     const upd = re.search(/UPDATE\s+\w+\s+SET is_active=1/);
-    assert.ok(guard >= 0, '복구에 이미 활성 거부(TrashAlreadyActiveMsg)가 없다');
+    assert.ok(guard >= 0, '복구에 이미 활성 거부(AlreadyActiveMsg)가 없다');
     assert.ok(upd >= 0, '복구에 UPDATE 문이 없다(측정 불가 ≠ 통과)');
     assert.ok(guard < upd,
       '이미 활성 판정이 첫 UPDATE 보다 뒤에 있다 — 남이 이미 복구한 코드의 순번이 맨 뒤로 튄다');
-    assert.ok(/const string TrashAlreadyActiveMsg\s*=\s*"이미 복구된 항목입니다 — 목록을 새로고침합니다\."/.test(code),
+    assert.ok(/const string AlreadyActiveMsg\s*=\s*"이미 복구된 항목입니다 — 목록을 새로고침합니다\."/.test(code),
       '이미 복구됨 문구 상수가 설계 §4.3 과 다르다 — 실패가 아니라 "목록이 낡았다"고 말해야 한다');
   },
 
@@ -302,7 +302,7 @@ const checks = {
   },
 
   // ⑩ 결과 푸시가 **약속한 새로고침을 실제로 하고**, 자기 요청과 짝지어진다(2026-09-11 적대 검토 R2·R3).
-  //    (a) 거부 문구 둘이 "…목록을 새로고침합니다"라고 말한다(TrashGoneMsg · TrashAlreadyActiveMsg).
+  //    (a) 거부 문구 둘이 "…목록을 새로고침합니다"라고 말한다(TrashGoneMsg · AlreadyActiveMsg).
   //        그 둘은 정확히 **실패**할 때 나오는 문장인데 옛 판은 성공했을 때만 목록을 밀었다 —
   //        사용자는 "새로고침한다"를 읽으면서 사라진 항목이 그대로 있는 목록을 봤다. 이제 결과와 무관하게 민다.
   //        관련 목록(과제·명부·발주처·코드)은 그대로 **성공에만** — 실패했으면 그쪽은 바뀌지 않았다(계약② 가 본다).
@@ -514,9 +514,9 @@ test('변이⑦-b: 구분 복구에서 재매김을 빼면 계약⑦ 이 실패�
 
 test('변이⑧: 이미 활성 판정을 지우면 계약⑧ 이 실패한다(남이 복구한 코드의 순번이 맨 뒤로 튄다)', () => {
   const bad = mutate(pdb,
-    'if (wasActive != 0) { await tx.RollbackAsync(cts.Token); return (false, TrashAlreadyActiveMsg); }',
+    'if (wasActive != 0) { await tx.RollbackAsync(cts.Token); return (false, AlreadyActiveMsg); }',
     'if (false) { }');
-  assert.throws(() => checks.restoreChecksAlreadyActive(bad), /이미 활성 거부\(TrashAlreadyActiveMsg\)가 없다|값 비교가 아니다/);
+  assert.throws(() => checks.restoreChecksAlreadyActive(bad), /이미 활성 거부\(AlreadyActiveMsg\)가 없다|값 비교가 아니다/);
   assert.doesNotThrow(() => checks.restoreChecksAlreadyActive(pdb));   // 통제군
 });
 

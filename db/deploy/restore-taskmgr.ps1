@@ -275,7 +275,12 @@ if($DeployConfigPath){
   #    [IO.File]::ReadAllText 로 읽는데, .NET 의 상대경로 기준은 $PWD 가 아니라 **프로세스 CWD** 다
   #    (powershell.exe 가 다른 폴더에서 Set-Location 해 왔으면 둘은 다르다). 그러면 맨 앞 문을
   #    통과한 경로가 정작 읽을 때 FileNotFound 로 터지거나 **엉뚱한 파일**을 읽는다 — 그것도 복구 뒤에.
-  $DeployConfigPath = (Resolve-Path -LiteralPath $DeployConfigPath).Path
+  #  ★ 2026-09-11 적대 검토(R5) — .Path 가 아니라 **.ProviderPath** 다. PSDrive 가 없는 경로(UNC —
+  #    \\서버\공유\…)에서 .Path 는 공급자 한정 문자열(Microsoft.PowerShell.Core\FileSystem::\\서버\…)
+  #    을 돌려준다. 그 문자열은 PowerShell cmdlet 만 알아듣는다 — [IO.File]::ReadAllText 도, cmd /c 의
+  #    `< "경로"` 입력 리다이렉션도 열지 못한다. 곧 **경로를 굳히려던 한 줄이 그 경로를 못 여는 꼴로**
+  #    바꿔 놓고, 그 사실은 9-7 스모크(복구 뒤)에서야 드러난다. .ProviderPath 는 언제나 네이티브 경로다.
+  $DeployConfigPath = (Resolve-Path -LiteralPath $DeployConfigPath).ProviderPath
 }
 #   -Grants 가 쓸 두 SQL 은 스크립트 폴더에 있어야 한다. 8단계에서 죽으면 이미 DROP·복구 뒤다.
 #   (경로 자체는 -Grants 여부와 무관하게 여기서 한 번만 정한다 — 8단계와 -WhatIf 가 같은 값을 본다.)
@@ -626,7 +631,9 @@ function FindUserGrants(){
   #    이름으로 말하며 죽는다(설정 문제 = 코드 2). 절대 아래 경고 갈래로 떨어뜨리지 않는다.
   if($UserGrantsPath){
     RequireFile "-UserGrantsPath 로 지정한 05-grants.sql" $UserGrantsPath "(시작할 때는 있었습니다 — 실행 중에 옮겨지거나 지워졌습니다)"
-    return (Resolve-Path -LiteralPath $UserGrantsPath).Path
+    #  ★ .ProviderPath — UNC 경로에서 .Path 는 공급자 한정 문자열이라 mysql 입력(`cmd /c … < "경로"`)이
+    #    열지 못한다(2026-09-11 R5 · 위 -DeployConfigPath 와 같은 이유).
+    return (Resolve-Path -LiteralPath $UserGrantsPath).ProviderPath
   }
   $sd       = Split-Path -Parent $PSCommandPath                 # <저장소>\db\deploy
   $repoRoot = Split-Path (Split-Path $sd -Parent) -Parent       # <저장소>
@@ -637,7 +644,7 @@ function FindUserGrants(){
   #  ★ 기본 탐색(형제 폴더)에서 못 찾은 경우는 그대로 **경고**다 — 비공개 저장소가 없는 PC 에서도
   #    캘린더 복구 자체는 끝까지 돌아야 하기 때문이다(직원 관리만 1142 로 죽는다는 사실을 아래 경고가 말한다).
   #    '직접 지정했는데 없다'(위 Die)와 '원래 없는 환경이다'(이 경고)는 서로 다른 사건이다.
-  foreach($c in $cands){ if(Test-Path -LiteralPath $c -PathType Leaf){ return (Resolve-Path -LiteralPath $c).Path } }
+  foreach($c in $cands){ if(Test-Path -LiteralPath $c -PathType Leaf){ return (Resolve-Path -LiteralPath $c).ProviderPath } }
   return $null
 }
 

@@ -1917,11 +1917,18 @@ namespace TaskCalendarWidget
             if (ok) await LoadMembersToWebAsync(includeInactive, reqId);
         }
 
+        //  ★ 2026-09-11 적대 검토(R5) — 퇴사/복구도 **성공만으로는 모자라다**. 복구가 "이미 복구된 항목입니다 —
+        //    목록을 새로고침합니다."(ProjectDb.AlreadyActiveMsg)로 거부할 때, 그 문장은 정확히 **실패**로 나오면서
+        //    새로고침을 약속한다. 성공(ok)에만 명부를 밀면 관리자는 그 약속을 읽으면서 퇴사자가 그대로 남아 있는
+        //    낡은 명부를 보고 같은 [복구] 를 다시 눌러 같은 거부만 반복한다 — 휴지통이 R2 에서 닫은 그 구멍이다.
+        //    그 문장 대조의 정본은 ProjectDb.AlreadyActiveMsg **한 줄**이다(여기 한 벌 더 적지 않는다 · 순서
+        //    저장의 StaleRosterMsg 와 같은 규율). 나머지 실패(권한·연결·DB)는 명부가 바뀌지 않았으므로 안 민다.
         private async Task SetUserActiveAsync(string reqId, int userId, bool active, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SetUserActiveAsync(userId, active);
             UserSaved(ok, msg, reqId);
-            if (ok) await LoadMembersToWebAsync(includeInactive, reqId);
+            if (ok || string.Equals(msg, ProjectDb.AlreadyActiveMsg, StringComparison.Ordinal))
+                await LoadMembersToWebAsync(includeInactive, reqId);
         }
 
         //  ★ 순서 저장만은 **실패해도** 명부를 다시 밀어 준다(2026-09-11 적대 검토 R2).
@@ -2007,7 +2014,7 @@ namespace TaskCalendarWidget
         }
 
         // ★ 2026-09-11 적대 검토(R2) — 실패해도 **휴지통 목록은 반드시 다시 민다**.
-        //   거부 문구 둘이 "…목록을 새로고침합니다"(TrashGoneMsg · TrashAlreadyActiveMsg)라고 약속하는데,
+        //   거부 문구 둘이 "…목록을 새로고침합니다"(TrashGoneMsg · AlreadyActiveMsg)라고 약속하는데,
         //   옛 판은 성공했을 때만 갱신했다 — 그 두 문장은 정확히 **실패**할 때 나오는 말이라,
         //   사용자는 "새로고침한다"는 문장을 읽으면서 사라진 항목이 그대로 남아 있는 목록을 봤다.
         //   (그 둘은 '실패'라기보다 목록이 낡았다는 신호다. 낡은 것을 고치는 것이 곧 새로고침이다.)

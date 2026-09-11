@@ -245,6 +245,15 @@ const checks = {
       '맡아 둔 표를 되돌릴 때 **그 행인지** 대조하지 않는다 — 관리자가 잠금 중에 옮겨 둔 포커스를 엉뚱한 행으로 끌고 간다(R4-W4)');
     assert.ok(!/line\.dataset\.top/.test(r),
       "행에 data-top 을 달았다 — 버튼을 찾는 셀렉터('[data-top][data-tkey]')에 행이 끼어든다");
+    //  ★ 되돌리기를 **거절한 자리**에 뒷일이 없었다(2026-09-11 적대 검토 R5-W1). 관리자가 잠금 중에 다른
+    //    행으로 옮겨 둔 포커스는 뺏지 않는 것이 옳지만(R4-W4), 그 뒤 아무도 앉히지 않아 목록을 다시
+    //    만드는 순간 포커스가 body 로 떨어졌다 — 행은 다시 만들어지므로 **열쇠로 새 행을 찾아** 앉힌다.
+    assert.ok(/const keepRow = \(af && af\.classList && af\.classList\.contains\('mba-line'\) && list\.contains\(af\)/.test(r),
+      'trRender 가 행에 머물던 포커스를 찍어 두지 않는다 — 되돌릴 버튼이 없으면 그 포커스가 body 로 떨어진다(R5-W1)');
+    assert.ok(/if\(!restored && sameView && keepRow\)\{/.test(r),
+      'trRender 가 "버튼으로 되돌렸나(restored)"를 재지 않는다 — 되돌린 자리를 또 덮거나, 아무 데도 앉히지 않는다(R5-W1)');
+    assert.ok(/String\(ln\.dataset\.tkey \|\| ''\) === keepRow/.test(r),
+      '찍어 둔 행을 **열쇠로** 다시 찾지 않는다 — 옛 노드는 이미 버려졌고 자리(index)는 목록이 바뀌면 어긋난다(R5-W1)');
     const s = extractFunction(web, 'trSetSaving');
     assert.ok(/const changed = \(__trSaving !== !!on\);/.test(s),
       'trSetSaving 이 "잠금이 실제로 바뀌었나"를 재지 않는다 — 쓰기 한 번에 목록이 세 번 다시 만들어진다(R2-W4)');
@@ -347,9 +356,16 @@ test('변이⑦-d2: trSetSaving 이 무조건 다시 그리게 되돌리면 계�
   assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
+test('변이⑦-d6: 행 포커스 되돌리기를 지우면 계약⑦-d 가 실패한다(옮겨 둔 포커스가 body 로 떨어진다 · R5-W1)', () => {
+  const bad = mutate(app, "      if(ln.dataset && String(ln.dataset.tkey || '') === keepRow){ try{ ln.focus(); }catch(_){} break; }",
+    '      if(ln) break;');
+  assert.throws(() => checks.renderKeepsPlace(bad), /열쇠로\*\* 다시 찾지 않는다|찍어 둔 행을/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+});
+
 test('변이⑦-d3: 꺼진 버튼에도 포커스를 주게 바꾸면 계약⑦-d 가 실패한다(포커스가 body 로 떨어진다)', () => {
-  const bad = mutate(app, '    if(kb && !kb.disabled){ try{ kb.focus(); }catch(_){} }',
-    '    if(kb){ try{ kb.focus(); }catch(_){} }');
+  const bad = mutate(app, '    if(kb && !kb.disabled){ try{ kb.focus(); restored = true; }catch(_){} }',
+    '    if(kb){ try{ kb.focus(); restored = true; }catch(_){} }');
   assert.throws(() => checks.renderKeepsPlace(bad), /꺼진 버튼에도 포커스를 준다/);
   assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
@@ -602,6 +618,9 @@ function busyHarnessJs(src) {
     '  return { found: true, twoRows: true, key: key, otherKey: otherKey, moved: moved,',
     '           op: (a && a.dataset) ? String(a.dataset.top || "") : "",',
     '           actKey: (a && a.dataset) ? String(a.dataset.tkey || "") : "",',
+    //  ★ '뺏지 않았다'로는 부족하다(R5-W1) — 아무도 앉히지 않으면 포커스는 body 다. 어디에 앉았는지까지 본다.
+    '           isBody: a === document.body,',
+    '           line: !!(a && a.classList && a.classList.contains("mba-line")),',
     '           kept: !!__trKeepBtn };',
     '};',
     //  잠금이 **바뀔 때만** 그리는가 — 같은 값을 다시 넣는 호출은 목록을 건드리지 않아야 한다.
@@ -1058,6 +1077,29 @@ if (!jsdom) {
     assert.notStrictEqual(r.op, 'restore',
       `옮겨 둔 포커스를 맡아 둔 버튼으로 끌고 갔다: ${JSON.stringify(r)}`);
     assert.strictEqual(r.kept, false, '되돌리지 않았는데 맡아 둔 표가 남아 있다 — 다음 렌더가 또 끌고 간다');
+    //  ★ '뺏지 않았다'로 끝내면 절반이다(2026-09-11 적대 검토 R5-W1): 목록은 통째로 다시 만들어지므로,
+    //    아무도 앉히지 않으면 관리자가 옮겨 둔 그 자리마저 사라져 포커스가 body 로 떨어진다.
+    //    옮겨 둔 **그 행**(열쇠가 같은 새 행)에 그대로 있어야 한다.
+    assert.strictEqual(r.isBody, false,
+      `잠금이 풀리자 포커스가 body 로 떨어졌다: ${JSON.stringify(r)} — 옮겨 둔 자리도 함께 사라졌다(R5-W1)`);
+    assert.strictEqual(r.line, true,
+      `포커스가 옮겨 둔 행(.mba-line)에 있지 않다: ${JSON.stringify(r)}`);
+    assert.strictEqual(r.actKey, r.otherKey,
+      `포커스가 옮겨 둔 그 행이 아니다: ${JSON.stringify(r)} — 열쇠로 새 행을 찾아 앉혀야 한다(R5-W1)`);
+  });
+
+  //  ★ 행 되돌리기가 없으면 바로 위 계약의 '뺏지 않는다'는 통과하면서도 포커스가 body 로 떨어진다 —
+  //    그래서 그 자리를 함께 재는 계약이 필요하다(R5-W1).
+  test('변이⑦-DOM(l): 행 포커스 되돌리기를 지우면 옮겨 둔 자리도 함께 사라진다(body 로 떨어진다)', () => {
+    const bad = mutate(app,
+      '  if(!restored && sameView && keepRow){\n' +
+      "    for(const ln of list.querySelectorAll('.mba-line')){\n" +
+      "      if(ln.dataset && String(ln.dataset.tkey || '') === keepRow){ try{ ln.focus(); }catch(_){} break; }\n" +
+      '    }\n  }\n', '');
+    const r = probeFocusMoved(PAYLOAD, 'user', bad);
+    assert.strictEqual(r.isBody, true,
+      `변이 전제: 행 되돌리기를 지우면 포커스가 body 로 떨어져야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeFocusMoved(PAYLOAD, 'user').isBody, false);   // 통제군
   });
 
   test('변이⑦-DOM(k): 행을 가리지 않고 되돌리면 옮겨 둔 포커스가 엉뚱한 행으로 끌려간다', () => {
@@ -1087,8 +1129,8 @@ if (!jsdom) {
 
   test('변이⑦-DOM(g): 포커스 복원을 지우면 다시 그린 순간 포커스가 body 로 떨어진다(그래서 이 계약이 필요하다)', () => {
     //  ★ 두 갈래(버튼 · 물러설 행)를 **함께** 끈다 — 버튼 갈래만 끄면 행으로 물러나 body 로 떨어지지 않는다.
-    const bad = mutate(app, '    if(kb && !kb.disabled){ try{ kb.focus(); }catch(_){} }\n    else if(kb){',
-      '    if(false){ try{ kb.focus(); }catch(_){} }\n    else if(false){');
+    const bad = mutate(app, '    if(kb && !kb.disabled){ try{ kb.focus(); restored = true; }catch(_){} }\n    else if(kb){',
+      '    if(false){ try{ kb.focus(); restored = true; }catch(_){} }\n    else if(false){');
     const r = probeFocusKeep(PAYLOAD, 'user', bad);
     assert.strictEqual(r.started, true, '변이 전제: 처음 포커스는 잡혔어야 한다');
     assert.strictEqual(r.isBody, true,

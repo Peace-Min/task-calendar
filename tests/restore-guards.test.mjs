@@ -148,7 +148,13 @@ const checks = {
   grantsPathHandlesPrivateUserGrants(ps) {
     const body = grantsBranchBody(ps);
     // 1) 찾는 자리 — 형제 폴더 후보 + 직접 지정 매개변수.
-    assert.ok(/function FindUserGrants\(\)\{[\s\S]{0,1200}?taskmgr-company-data\\05-grants\.sql/.test(ps),
+    //  ★ 2026-09-11(R5) — 옛 판은 `function FindUserGrants(){[\s\S]{0,1200}?…` 로 **창 길이**를 박아 두어,
+    //    함수 안에 주석 두 줄이 붙는 것만으로 계약이 무너졌다(창 길이가 판정을 정하는 것은 계약이 아니다).
+    //    이제 함수 **본문**을 오려 내어 그 안을 본다 — 아래 재확인 검사도 같은 슬라이스를 쓴다.
+    const fug = /function FindUserGrants\(\)\{([\s\S]*?)\n\}/.exec(ps);
+    assert.ok(fug, 'FindUserGrants 본문을 찾지 못했다 — 판정 불가');
+    const fugBody = fug[1];
+    assert.ok(/taskmgr-company-data\\05-grants\.sql/.test(fugBody),
       '05-grants.sql 을 찾는 자리(FindUserGrants)가 없다 — app_user 권한의 정본은 이 저장소에 없다');
     assert.ok(/\[string\]\$UserGrantsPath\s*=\s*""/.test(ps),
       '-UserGrantsPath 매개변수가 없다 — 형제 폴더가 아닌 곳에 둔 사람이 지정할 길이 사라졌다');
@@ -215,17 +221,44 @@ const checks = {
       const iChk = ps.indexOf(needle);
       assert.ok(iChk >= 0,
         `${label} 존재 확인이 맨 앞 인자 검증 구역에 없다 — 오타가 DB 를 갈아엎은 뒤에야 드러난다(R2 → R3)`);
-      //  그 자리는 **RequireFile 한 벌**이어야 한다(위에서 그 함수가 -PathType Leaf · Die + 코드 2 임을
-      //  이미 잠갔다). 제 손으로 Test-Path 를 다시 적으면 그 한 벌이 다시 갈라진다 — 갈라진 순간
-      //  -PathType Leaf 가 빠진 벌이 생기고, 폴더를 준 실수가 드롭·복구 뒤에야 터진다(R4).
-      assert.ok(ps.slice(iChk).startsWith('RequireFile '),
-        `${label} 의 확인이 RequireFile 을 지나지 않는다 — 확인 형태가 갈라졌다(R4)`);
+      //  ★ 2026-09-11 적대 검토(R5) — 옛 판은 여기서 `ps.slice(iChk).startsWith('RequireFile ')` 를
+      //    봤는데, iChk 는 바로 그 `RequireFile …` 문자열을 찾은 자리다: **항상 참인 검사**였다
+      //    (아무것도 못 잡는 검사는 초록 한 줄을 거짓으로 늘릴 뿐이다). 실제로 지켜야 하는 것은
+      //    '이 자리가 RequireFile 이다' 가 아니라 **'확인이 한 벌뿐이다'** 이므로, 아래에서
+      //    손으로 적은 Test-Path 갈래가 스크립트 어디에도 없음을 본다.
       for (const [marker, what] of landmarks) {
         const i = ps.indexOf(marker);
         assert.ok(i >= 0, `기준점을 못 찾았다(측정 불가 ≠ 통과): ${what}`);
         assert.ok(iChk < i,
           `${label} 존재 확인이 '${what}' 보다 뒤에 있다 — 경로 오타가 그 단계를 지나고 나서야 터진다(R2 → R3)`);
       }
+    }
+    //  ★ 2026-09-11 적대 검토(R5) — 확인의 **형태가 한 벌**인지는 '그 자리' 가 아니라 **스크립트 전체**에서
+    //    본다: 파일 인자 어디에도 손으로 적은 `if($X -and -not (Test-Path …)){ Die … }` 갈래가 없어야 한다.
+    //    그 꼴이 하나라도 살아나면 -PathType Leaf 가 빠진 벌이 생기고(폴더를 준 실수가 드롭·복구 뒤에야
+    //    터진다 · R4), 문구도 Die + 코드 2 에서 갈린다. 확인은 RequireFile 한 벌뿐이다.
+    //    (맨 Test-Path 자체는 금지가 아니다 — 9-7 의 '기본 위치가 없을 수도 있다' 처럼 **확인이 아닌**
+    //     갈래가 따로 있다. 잡는 것은 '있는지 보고 죽는' 그 모양 하나다.)
+    for (const v of ['UserGrantsPath', 'AppCnfPath', 'DeployConfigPath', 'appUserSql', 'grantsSql',
+                     'DumpPath', 'CnfPath']) {
+      const handRolled = new RegExp(
+        `if\\(\\s*\\$${v}\\b[^\\n]*-not\\s*\\(Test-Path` +
+        `|-not\\s*\\(Test-Path[^\\n]*\\$${v}\\b`);
+      assert.ok(!handRolled.test(ps),
+        `$${v} 의 존재 확인을 손으로 적은 Test-Path 갈래가 있다 — 확인 형태가 RequireFile 한 벌에서 갈라졌다(R5). ` +
+        '갈라진 벌에는 -PathType Leaf 가 빠지고(폴더가 파일로 통과한다), 그 실수는 드롭·복구 뒤에야 터진다(R4)');
+    }
+    //  ★ 2026-09-11 적대 검토(R5) — Resolve-Path 의 결과는 **.ProviderPath** 로 받는다. PSDrive 가 없는
+    //    경로(UNC)에서 .Path 는 공급자 한정 문자열(Microsoft.PowerShell.Core\FileSystem::…)이라
+    //    [IO.File]::ReadAllText 도 `cmd /c … < "경로"` 도 열지 못한다 — '경로를 굳히는' 한 줄이 정작
+    //    그 경로를 **못 여는 꼴**로 바꿔 놓고, 그 사실은 복구 뒤(9-7 스모크 · 8단계 권한 적용)에 드러난다.
+    const resolved = [...ps.matchAll(/\(Resolve-Path[^()]*\)\.(\w+)/g)];
+    assert.ok(resolved.length >= 3,
+      `Resolve-Path 결과를 쓰는 자리를 ${resolved.length} 개만 찾았다 — 셋(-DeployConfigPath · 지정 05-grants · 형제 폴더)이어야 한다(측정 불가 ≠ 통과)`);
+    for (const m of resolved) {
+      assert.strictEqual(m[1], 'ProviderPath',
+        `Resolve-Path 결과를 .${m[1]} 로 받는다 — UNC 경로에서 그 값은 공급자 한정 문자열이라 ` +
+        '.NET 도 cmd 리다이렉션도 열지 못한다(.ProviderPath 는 언제나 네이티브 경로다 · R5)');
     }
     //  ★ 2026-09-11 적대 검토(R3) — 경로는 **글자 그대로** 본다(-LiteralPath). `[`·`]`·`*` 가 든 경로를
     //    와일드카드로 읽으면 있는 파일을 "없다" 고 하거나(맨 앞에서 헛되이 죽는다) 엉뚱한 파일을 고른다.
@@ -247,9 +280,6 @@ const checks = {
     //    (덤프 주입)이고, 그 사이에 파일이 사라지면 Resolve-Path 가 아무것도 못 돌려줘 FindUserGrants 가
     //    $null 이 된다 — 호출부는 그것을 '형제 폴더에 없음' 경고로 읽는다. 정확히 R6 이 막으려던 거짓말이
     //    맨 앞 검증을 통과한 경로로 되살아난다. 그래서 지정 경로는 여기서도 Die 로 끝난다.
-    const fug = /function FindUserGrants\(\)\{([\s\S]*?)\n\}/.exec(ps);
-    assert.ok(fug, 'FindUserGrants 본문을 찾지 못했다 — 판정 불가');
-    const fugBody = fug[1];
     //    ★ 재확인도 맨 앞 검증과 **같은 한 벌**(RequireFile)이다(R4) — 여기만 맨 Test-Path 로 남으면
     //      대괄호·폴더 갈래가 이 자리에서만 다시 열린다.
     const iRecheck = fugBody.indexOf('RequireFile "-UserGrantsPath 로 지정한 05-grants.sql" $UserGrantsPath "(시작할 때는');
@@ -737,8 +767,8 @@ test('변이④-g: 그 검증을 8단계(FindUserGrants 안)로 되돌리면 가
 
 test('변이④-h: -LiteralPath 를 빼면 가드 ④-b 가 실패한다(대괄호가 든 경로를 와일드카드로 읽는다 · R3)', () => {
   const bad = mutate(psSrc,
-    'return (Resolve-Path -LiteralPath $UserGrantsPath).Path',
-    'return (Resolve-Path $UserGrantsPath).Path');
+    'return (Resolve-Path -LiteralPath $UserGrantsPath).ProviderPath',
+    'return (Resolve-Path $UserGrantsPath).ProviderPath');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /-LiteralPath 없이 본다/);
   assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });
@@ -785,4 +815,30 @@ test('변이④-n: -AppCnfPath 의 AssertNoSwallow 를 지우면 가드 ④-b �
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad),
     /-AppCnfPath 가 AssertNoSwallow 를 지나지 않는다/);
   assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-o: 파일 확인을 손으로 적은 Test-Path 로 한 벌 더 만들면 가드 ④-b 가 실패한다(형태가 갈라진다 · R5)', () => {
+  //  R4 가 걷어 낸 그 모양이다 — -PathType Leaf 가 빠진 벌이 생기면 폴더를 준 실수가 맨 앞 문을
+  //  그냥 통과해 드롭·복구 뒤(mysql 입력 · ReadAllText)에 터진다. 옛 판의 검사는 이 변이를 못 잡았다
+  //  (`ps.slice(iChk).startsWith('RequireFile ')` — iChk 가 바로 그 문자열의 자리라 항상 참이었다).
+  const hand = 'if($AppCnfPath -and -not (Test-Path -LiteralPath $AppCnfPath)){ Die "-AppCnfPath 가 없습니다: $AppCnfPath" $EXIT_CONFIG }\n';
+  const anchor = 'AssertNoSwallow "-AppCnfPath" $AppCnfPath\n';
+  const bad = mutate(psSrc, anchor, anchor + hand);
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /손으로 적은 Test-Path 갈래가 있다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-p: Resolve-Path 결과를 .Path 로 되돌리면 가드 ④-b 가 실패한다(UNC 에서 못 여는 경로가 된다 · R5)', () => {
+  const bad = mutate(psSrc,
+    '$DeployConfigPath = (Resolve-Path -LiteralPath $DeployConfigPath).ProviderPath',
+    '$DeployConfigPath = (Resolve-Path -LiteralPath $DeployConfigPath).Path');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /Resolve-Path 결과를 \.Path 로 받는다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-q: 형제 폴더 갈래만 .Path 로 되돌려도 가드 ④-b 가 실패한다(세 자리 전부를 본다 · R5)', () => {
+  const bad = mutate(psSrc,
+    'return (Resolve-Path -LiteralPath $c).ProviderPath',
+    'return (Resolve-Path -LiteralPath $c).Path');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /Resolve-Path 결과를 \.Path 로 받는다/);
 });
