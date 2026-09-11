@@ -163,12 +163,12 @@ const checks = {
     assert.ok(/window\.__applyTrash && window\.__applyTrash\(/.test(mainCs), '호스트가 __applyTrash 로 휴지통을 다시 밀지 않는다');
     for (const fn of ['TrashRestoreAsync', 'TrashDeleteAsync']) {
       const b = csMember(mainCs, 'private async Task ' + fn + '(');
-      assert.ok(/TrashDone\(ok, msg\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다`);
-      assert.ok(/if \(ok\) await TrashRefreshAsync\(kind, includeInactive\);/.test(b),
-        `${fn} 이 성공 뒤 목록을 다시 밀지 않는다`);
+      assert.ok(/TrashDone\(ok, msg, reqId\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다`);
+      assert.ok(/if \(ok\) await TrashRefreshRelatedAsync\(kind, includeInactive\);/.test(b),
+        `${fn} 이 성공 뒤 관련 목록(과제·명부·발주처·코드)을 다시 밀지 않는다`);
     }
-    const refresh = csMember(mainCs, 'private async Task TrashRefreshAsync(');
-    assert.ok(/LoadTrashToWebAsync\(\)/.test(refresh), 'TrashRefreshAsync 가 휴지통을 다시 그리지 않는다');
+    //  휴지통 목록 자체는 **성공·실패 모두** 밀어야 하므로 부르는 쪽에 있다 — 계약⑩ 이 그 자리를 본다(R2).
+    const refresh = csMember(mainCs, 'private async Task TrashRefreshRelatedAsync(');
     assert.ok(/LoadMembersToWebAsync\(includeInactive\)/.test(refresh), '인력 조작 뒤 명부를 다시 밀지 않는다');
     assert.ok(/LoadProjectsToWebAsync\(\)/.test(refresh), '과제·코드 조작 뒤 카탈로그를 다시 밀지 않는다(dbGone 재판정이 걸려 있다)');
   },
@@ -317,12 +317,44 @@ const checks = {
       for (const d of defaults) {
         assert.ok(!/status_code/.test(d[1]),
           `${nm} 의 default: 가 status_code 를 고른다 — 종류가 늘고 이 switch 만 안 고치면 상태 코드가 대신 바뀐다`);
-        assert.ok(/TrashKindMsg/.test(d[1]),
-          `${nm} 의 default: 가 TrashKindMsg 로 거부하지 않는다 — 되돌릴 수 없는 조작에 '기본값으로 아무거나'는 없다`);
+        //  거부 문장(TrashKindMsg)이든 예외든 좋다 — 금지되는 것은 '기본값으로 아무 표나 고르는 것' 하나다.
+        //  2026-09-11(R5) 이후 실물은 throw 다: ResolveTrashKind 가 이미 걸러 여기 닿지 않으므로,
+        //  닿았다면 종류가 늘고 이 switch 만 안 고친 것이라 거부 문장을 한 벌 더 적어 덮을 일이 아니다.
+        assert.ok(/TrashKindMsg|throw new InvalidOperationException/.test(d[1]),
+          `${nm} 의 default: 가 거부도 예외도 아니다 — 되돌릴 수 없는 조작에 '기본값으로 아무거나'는 없다`);
       }
       assert.ok(/case "status":/.test(b),
         `${nm} 가 status 를 이름으로 적지 않는다 — default: 에 기대는 순간 위 계약이 지킬 것을 잃는다`);
     }
+  },
+
+  // ⑩ 결과 푸시가 **약속한 새로고침을 실제로 하고**, 자기 요청과 짝지어진다(2026-09-11 적대 검토 R2·R3).
+  //    (a) 거부 문구 둘이 "…목록을 새로고침합니다"라고 말한다(TrashGoneMsg · TrashAlreadyActiveMsg).
+  //        그 둘은 정확히 **실패**할 때 나오는 문장인데 옛 판은 성공했을 때만 목록을 밀었다 —
+  //        사용자는 "새로고침한다"를 읽으면서 사라진 항목이 그대로 있는 목록을 봤다. 이제 결과와 무관하게 민다.
+  //        관련 목록(과제·명부·발주처·코드)은 그대로 **성공에만** — 실패했으면 그쪽은 바뀌지 않았다(계약② 가 본다).
+  //    (b) __trashDone 은 왕복이 아니라 푸시다. 세 번째 인자 reqId 가 없으면 늦게 온 회신이 이미 다른 일을
+  //        하고 있는 화면을 건드린다. 요청에 없었으면 "" 다(옛 웹과 호환).
+  trashPushRefreshesAlwaysAndCorrelates(mainCs) {
+    const code = stripCs(mainCs);
+    for (const [cmd, fn] of [['trashRestore', 'TrashRestoreAsync'], ['trashDelete', 'TrashDeleteAsync']]) {
+      assert.ok(new RegExp('case "' + cmd + '":[\\s\\S]{0,300}?' + fn + '\\(GetStr\\(doc, "reqId"\\)').test(code),
+        `브리지 case "${cmd}" 가 reqId 를 넘기지 않는다 — 화면이 회신을 자기 요청과 짝지을 수 없다(R3)`);
+      const b = csMember(mainCs, 'private async Task ' + fn + '(');
+      assert.ok(/^private async Task \w+\(string reqId, /.test(b), `${fn} 이 reqId 를 받지 않는다(R3)`);
+      assert.ok(/await LoadTrashToWebAsync\(\);/.test(b),
+        `${fn} 이 휴지통 목록을 다시 밀지 않는다 — 거부 문구가 약속한 "목록을 새로고침합니다"가 거짓말이 된다(R2)`);
+      assert.ok(!/if \(ok\)[^\n]*LoadTrashToWebAsync/.test(b),
+        `${fn} 이 휴지통 목록 갱신을 성공(ok)에만 건다 — 그 문구는 정확히 **실패**할 때 나오는 말이다(R2)`);
+    }
+    //  푸시 문장 자체에 세 번째 인자가 실린다(기본값 "" — 옛 웹과 호환).
+    //  ★ 식(=>) 본문이라 중괄호가 없다 — csMember 가 아니라 머리에서 창을 떼어 본다.
+    const i = code.indexOf('private void TrashDone(');
+    assert.ok(i >= 0, 'TrashDone 을 찾지 못했다(측정 불가 ≠ 통과)');
+    const done = code.slice(i, i + 400);
+    assert.ok(/string reqId = ""/.test(done), 'TrashDone 이 reqId 를 받지 않는다(R3)');
+    assert.ok(/window\.__trashDone\(/.test(done) && /Serialize\(reqId \?\? ""\)/.test(done),
+      '__trashDone 호출에 세 번째 인자(reqId)가 없다 — 웹이 늦은 회신을 가려낼 수 없다(R3)');
   },
 };
 
@@ -370,6 +402,10 @@ test('계약⑧: 복구는 is_active 를 잠근 채 읽고 UPDATE 보다 먼저 
 
 test("계약⑨: 복구·삭제의 종류 switch 에 '기본값으로 status_code' 가 없다", () => {
   checks.kindSwitchHasNoSilentDefault(pdb);
+});
+
+test('계약⑩: 복구·삭제는 결과와 무관하게 휴지통을 다시 밀고, 회신에 reqId 를 싣는다(R2·R3)', () => {
+  checks.trashPushRefreshesAlwaysAndCorrelates(main);
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -505,8 +541,7 @@ test('변이⑧-b: 잠근 SELECT 에서 is_active 를 빼면 계약⑧ 이 실�
 
 test('변이⑨: 복구의 default: 를 옛 status_code 로 되돌리면 계약⑨ 가 실패한다', () => {
   const bad = mutate(pdb,
-    '                        case "status":   sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;\n' +
-    '                        default:         await tx.RollbackAsync(cts.Token); return (false, TrashKindMsg);',
+    '                        default:         throw new InvalidOperationException("알 수 없는 휴지통 종류(복구): " + kd);',
     '                        default:         sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;');
   assert.throws(() => checks.kindSwitchHasNoSilentDefault(bad), /default: 가 status_code 를 고른다|status 를 이름으로 적지 않는다/);
   assert.doesNotThrow(() => checks.kindSwitchHasNoSilentDefault(pdb));   // 통제군
@@ -514,8 +549,27 @@ test('변이⑨: 복구의 default: 를 옛 status_code 로 되돌리면 계약�
 
 test('변이⑨-b: 영구 삭제의 default: 를 옛 status_code 로 되돌리면 계약⑨ 가 실패한다', () => {
   const bad = mutate(pdb,
-    '                        case "status":   delSql = "DELETE FROM status_code WHERE name=@k"; break;\n' +
-    '                        default:         await tx.RollbackAsync(cts.Token); return (false, TrashKindMsg);',
+    '                        default:         throw new InvalidOperationException("알 수 없는 휴지통 종류(영구 삭제): " + kd);',
     '                        default:         delSql = "DELETE FROM status_code WHERE name=@k"; break;');
   assert.throws(() => checks.kindSwitchHasNoSilentDefault(bad), /default: 가 status_code 를 고른다|status 를 이름으로 적지 않는다/);
+});
+
+test('변이⑩: 휴지통 갱신을 성공(ok)에만 걸면 계약⑩ 이 실패한다("새로고침합니다"가 거짓말이 된다)', () => {
+  const bad = mutate(main, 'await LoadTrashToWebAsync();', 'if (ok) await LoadTrashToWebAsync();');
+  assert.throws(() => checks.trashPushRefreshesAlwaysAndCorrelates(bad), /성공\(ok\)에만 건다/);
+  assert.doesNotThrow(() => checks.trashPushRefreshesAlwaysAndCorrelates(main));   // 통제군
+});
+
+test('변이⑩-b: __trashDone 에서 reqId 를 빼면 계약⑩ 이 실패한다(늦은 회신이 남의 화면을 건드린다)', () => {
+  const bad = mutate(main,
+    /window\.__trashDone\(" \+ \(ok \? "true" : "false"\) \+ ","\s*\+ JsonSerializer\.Serialize\(msg \?\? ""\) \+ "," \+ JsonSerializer\.Serialize\(reqId \?\? ""\)/,
+    'window.__trashDone(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg ?? "")');
+  assert.throws(() => checks.trashPushRefreshesAlwaysAndCorrelates(bad), /세 번째 인자\(reqId\)가 없다/);
+});
+
+test('변이⑩-c: 브리지가 reqId 를 안 넘기면 계약⑩ 이 실패한다', () => {
+  const bad = mutate(main,
+    '_ = TrashRestoreAsync(GetStr(doc, "reqId"), GetStr(doc, "kind")',
+    '_ = TrashRestoreAsync(GetStr(doc, "kind")');
+  assert.throws(() => checks.trashPushRefreshesAlwaysAndCorrelates(bad), /reqId 를 넘기지 않는다/);
 });

@@ -152,6 +152,18 @@ const checks = {
       '05-grants.sql 이 없을 때 경고를 남기지 않는다 — 조용히 넘어가면 복구가 "성공" 으로 끝난다');
     assert.ok(/ERROR 1142/.test(ps) && /직원 등록/.test(ps) && /영구 삭제/.test(ps),
       '경고문이 무엇이 죽는지(직원 관리·인력 영구 삭제 = ERROR 1142) 말하지 않는다');
+    //  ★ 2026-09-11 적대 검토(R6) — **직접 지정한 경로가 없으면 그 자리에서 죽는다**(EXIT_CONFIG).
+    //    옛 판은 $null 을 돌려 '형제 폴더에 없음' 경고로 떨어졌다. 사람은 형제 폴더가 아니라 자기가 준
+    //    경로를 찾게 했으므로 그 경고는 사실이 아니고, 오타 하나가 "권한 파일이 원래 없는 환경" 으로
+    //    둔갑해 복구가 경고만 남긴 채 '성공' 으로 끝났다. 기본 탐색(형제 폴더)의 부재는 그대로 경고다.
+    const fug = /function FindUserGrants\(\)\{([\s\S]*?)\n\}/.exec(ps);
+    assert.ok(fug, 'FindUserGrants 본문을 읽지 못했다(측정 불가 ≠ 통과)');
+    assert.ok(/if\(\$UserGrantsPath\)\{[\s\S]{0,600}?Die "[^"]*-UserGrantsPath[^"]*\$UserGrantsPath[^"]*" \$EXIT_CONFIG/.test(fug[1]),
+      '-UserGrantsPath 로 지정한 경로가 없을 때 그 경로를 이름으로 말하며 죽지 않는다 — ' +
+      "'형제 폴더에 없음' 경고로 떨어지면 오타 하나가 \"원래 없는 환경\" 으로 둔갑하고 복구가 '성공' 으로 끝난다(R6)");
+    assert.ok(/\n  return \$null\n\}/.test(ps),
+      '기본 탐색(형제 폴더)의 부재까지 죽이면 비공개 저장소가 없는 PC 에서 캘린더 복구 자체가 막힌다 — 그쪽은 경고여야 한다');
+
     assert.ok(/function WriteUserGrantsHowto\(\)\{[\s\S]{0,800}?복구방법\.txt/.test(ps),
       '같은 경고를 복구방법.txt 에 남기는 자리가 없다 — 화면은 스크롤로 사라진다');
   },
@@ -601,4 +613,13 @@ test('변이⑨-e: 머리말에서 환경변수 이름을 지우면 가드 ⑨ �
   assert.notStrictEqual(bad, psSrc, '변이 준비 실패: 머리말에서 이름을 못 찾았다');
   assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
     /머리말이 환경변수 이름/);
+});
+
+test('변이④-f: 지정한 -UserGrantsPath 가 없을 때 죽지 않고 경고로 떨어지면 가드 ④-b 가 실패한다(R6)', () => {
+  const bad = mutate(psSrc,
+    'Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath ' +
+    '(경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG',
+    'return $null');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /그 경로를 이름으로 말하며 죽지 않는다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });

@@ -14,7 +14,7 @@
 //   ★ 앱 전체를 부팅하지 않는다 — 그리는 함수만 떼어 내 빈 문서에 심는다. 부팅하면 호스트 브리지·
 //     세션·타이머가 딸려 와 이 계약과 무관한 이유로 깨진다.
 //   ★ 검사와 변이가 **같은 함수**를 쓴다. 변이로 안 깨지는 검사는 장식이다.
-import { test, assert, loadAppSource, extractFunction, importOptional, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -145,6 +145,11 @@ const checks = {
   // ⑦-b 쓰기 왕복 한 곳 — 가드·워치독·includeInactive, 그리고 호스트 문장을 다시 쓰지 않는다.
   //   ★ 2026-09-10: 가드가 두 번째 클릭을 **조용히** 버리던 것을 고쳤다. 잠금·워치독은 trSetSaving 한 곳으로
   //     모였으므로(uaSetSaving·offEdSetBusy 와 같은 장치) 여기서 보는 자리도 함께 옮긴다.
+  //   ★ 2026-09-11(적대 검토 R3): 셋이 더 붙었다.
+  //     · 요청·회신을 **reqId 로 짝짓는다** — 늦게 온 회신이 지금 기다리는 다른 항목의 결과로 먹히던 자리다.
+  //     · 워치독은 **요청 표를 지우지 않는다** — 지우면 12초를 넘겨 도착한 성공 회신이 버려져
+  //       "지워졌는데 실패로 안내"가 된다. 그래서 문구도 '없다'가 아니라 '늦다'다.
+  //     · 잠금은 **렌더가 진다**(trRender) — 노드를 걸어 다니며 끄면 왕복 중 재렌더가 잠금을 지운다.
   writeRoundTrip(web) {
     const s = extractFunction(web, 'trSend');
     assert.ok(/if\(__trSaving\)\{[^}]*return;/.test(s), 'trSend 에 중복 전송 가드가 없다 — 연타하면 같은 삭제가 두 번 나간다');
@@ -153,21 +158,49 @@ const checks = {
     assert.ok(/trSetSaving\(true\)/.test(s), 'trSend 가 trSetSaving 으로 잠그지 않는다 — 진행 중임이 화면에 드러나지 않는다');
     assert.ok(/includeInactive: __uaInactive/.test(s),
       'trSend 가 includeInactive 를 함께 보내지 않는다 — 인력 삭제 뒤 밀려오는 명부가 「퇴사자 보기」 상태를 잃는다');
+    //  ★ reqId 발번 + 요청 표. 발번기는 hostRequest 와 같은 것(__reqSeq)이어야 페이지 안에서 겹치지 않는다.
+    assert.ok(/\+\+__reqSeq/.test(s),
+      'trSend 가 reqId 를 발번하지 않는다 — 회신이 어느 요청의 것인지 짐작할 수밖에 없다(2026-09-11)');
+    assert.ok(/__trReq = \{ id: reqId/.test(s),
+      'trSend 가 요청 표(__trReq)를 세우지 않는다 — 대조할 기준이 없으면 늦은 회신을 구별할 수 없다');
+    assert.ok(/reqId: reqId/.test(s),
+      'trSend 가 payload 에 reqId 를 싣지 않는다 — 호스트가 되돌려줄 것이 없다');
     const b = extractFunction(web, 'trSetSaving');
-    assert.ok(/setTimeout/.test(b) && /응답이 없습니다/.test(b),
-      'trSetSaving 에 무응답 워치독이 없다 — 회신이 영영 안 오면 화면이 잠긴 채로 남는다');
+    assert.ok(/setTimeout/.test(b) && /응답이 늦습니다 — 회신이 오면 반영됩니다\./.test(b),
+      'trSetSaving 의 워치독이 "늦다"고 말하지 않는다 — 회신은 아직 살아 있는데 실패로 안내하면 관리자가 다시 지운다');
     assert.ok(/dataset\.busy = '1'/.test(b) && /delete ov\.dataset\.busy/.test(b),
       'trSetSaving 이 overlay dataset.busy 를 세우고 지우지 않는다 — 전송 중에 창을 닫으면 결과를 알릴 곳이 사라진다');
-    assert.ok(/data-top/.test(b) && /trwas/.test(b),
-      'trSetSaving 이 행 버튼을 잠그며 원래 상태(data-trwas)를 기억하지 않는다 — 풀 때 꺼져 있던 [영구 삭제]까지 켜진다');
+    assert.ok(/trRender\(\)/.test(b),
+      'trSetSaving 이 잠금을 렌더로 반영하지 않는다 — 왕복 중 푸시가 목록을 다시 그리면 잠금이 증발한다(2026-09-11)');
+    assert.ok(!/trwas/.test(b) && !/querySelectorAll\('\[data-top\]'\)/.test(b),
+      'trSetSaving 이 아직 행 버튼을 걸어 다니며 끈다 — 다시 그린 버튼에는 그 표가 없어 되돌리기가 헛돈다');
+    //  ★ 워치독은 **요청 표를 지우지 않는다**. 지우면 늦게 온 성공 회신이 통째로 버려진다.
+    assert.ok(!/__trReq = null/.test(b),
+      'trSetSaving(워치독)이 __trReq 를 지운다 — 12초를 넘겨 도착한 성공 회신이 버려져 "지워졌는데 실패로 안내"가 된다');
     const dn = windowFn(web, '__trashDone');
     assert.ok(/msg \|\|/.test(dn),
       '__trashDone 이 호스트 문구를 쓰지 않는다 — 거부 사유가 "처리하지 못했습니다"로 뭉개지면 무엇을 고칠지 알 수 없다');
     assert.ok(/trSetSaving\(false\)/.test(dn), '__trashDone 이 잠금을 trSetSaving 으로 풀지 않는다 — 푸는 곳이 둘이면 한쪽이 낡는다');
+    assert.ok(/function\(ok, msg, reqId\)/.test(dn),
+      '__trashDone 이 reqId 를 받지 않는다 — 호스트가 실어 보낸 짝을 화면이 읽지 않으면 있으나 마나다');
+    assert.ok(/rid !== rq\.id/.test(dn),
+      '__trashDone 이 회신의 reqId 를 기다리는 요청과 대조하지 않는다 — 지난 요청의 늦은 회신이 지금 대상의 결과로 먹힌다');
+    assert.ok(/__trReq = null;/.test(dn), '__trashDone 이 처리한 요청 표를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
     //  ★ (재)오픈은 낡은 잠금을 남기지 않는다. 다만 **도는 중이면 풀지 말고 워치독만 다시 건다**.
     const o = extractFunction(web, 'openTrash');
     assert.ok(/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);/.test(o),
       'openTrash 가 낡은 잠금을 정리하지 않는다 — 회신 없이 닫았다 다시 열면 화면이 잠긴 채로 선다(2026-09-10)');
+  },
+
+  // ⑦-c 잠금은 **데이터가 아니라 렌더**가 진다(2026-09-11 적대 검토 R3-W2).
+  //   trRender 가 deletable 만 보고 그리면, 왕복 중에 도착한 푸시가 버튼을 새로 만드는 순간
+  //   잠금이 사라진다 — 되돌릴 수 없는 [영구 삭제]를 두 번 누를 수 있게 된다.
+  lockIsDerivedAtRender(web) {
+    const r = extractFunction(web, 'trRender');
+    assert.ok(/rb\.disabled = __trSaving;/.test(r),
+      'trRender 가 [복구]를 그릴 때 __trSaving 을 보지 않는다 — 재렌더가 잠금을 지운다');
+    assert.ok(/db\.disabled = !deletable \|\| __trSaving;/.test(r),
+      'trRender 가 [영구 삭제]의 잠금을 데이터와 왕복 상태로 함께 정하지 않는다 — 둘 중 하나만 보면 나머지가 샌다');
   },
 
   // ⑧ 빈 탭 문구의 조사는 **받침이 정한다**(2026-09-10). 「이(가)」 병기는 다섯 탭 어디서도 맞지 않는 타협이다.
@@ -201,7 +234,8 @@ test('계약⑥-c: 휴지통 렌더는 목록을 다시 정렬하지 않는다(�
 test('계약⑥-d: 관리자 여부는 호스트 회신이 정하고, 열 때 낡은 값을 비운다', () => checks.adminFlagComesFromHost(app));
 test('계약⑥-e: 숨김 확인창이 「휴지통」을 가리킨다(설계 §5.4)', () => checks.hideConfirmPointsToTrash(app));
 test('계약⑦: 입력한 이름은 가공 없이 호스트로 가고, 대조는 엄격 일치다', () => checks.confirmIsSentRaw(app));
-test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 호스트 문장을 다시 쓰지 않는다', () => checks.writeRoundTrip(app));
+test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 회신은 reqId 로 짝지어진다', () => checks.writeRoundTrip(app));
+test('계약⑦-c: 행 버튼의 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
 test('계약⑧: 빈 탭 문구는 탭 표가 지고 조사는 받침이 정한다(「이(가)」 병기 없음)', () => checks.emptyTextJosa(app));
 
 test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약⑦-b 가 실패한다', () => {
@@ -209,6 +243,26 @@ test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약�
     '  if(__trSaving) return;');
   assert.throws(() => checks.writeRoundTrip(bad), /중복 전송 가드가 없다|조용히 버린다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑦-b2: __trashDone 의 reqId 대조를 지우면 계약⑦-b 가 실패한다(늦은 회신이 남의 결과가 된다)', () => {
+  const bad = mutate(app, "  if(rid && rid !== rq.id){\n    try{ console.warn('[__trashDone] 지난 요청의 회신을 버린다:', rid, '≠', rq.id); }catch(_){}\n    return;\n  }",
+    '  ');
+  assert.throws(() => checks.writeRoundTrip(bad), /reqId 를 기다리는 요청과 대조하지 않는다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑦-b3: 워치독이 요청 표를 지우게 되돌리면 계약⑦-b 가 실패한다(늦은 성공이 버려진다)', () => {
+  const bad = mutate(app, '  __trSaveWatchdog = setTimeout(() => {\n    trSetSaving(false);',
+    '  __trSaveWatchdog = setTimeout(() => {\n    __trReq = null;\n    trSetSaving(false);');
+  assert.throws(() => checks.writeRoundTrip(bad), /__trReq 를 지운다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑦-c: 잠금을 렌더에서 빼면 계약⑦-c 가 실패한다', () => {
+  const bad = mutate(app, '    rb.disabled = __trSaving;', '    rb.disabled = false;');
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /\[복구\]를 그릴 때 __trSaving 을 보지 않는다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
 test('변이⑧: 조사를 「이(가)」 병기로 되돌리면 계약⑧ 이 실패한다', () => {
@@ -250,7 +304,7 @@ test('변이⑦: 대조에 trim 을 끼우면 계약⑦ 이 실패한다', () =>
 //  DOM 계약 — 실제로 그려 보고 센다(jsdom)
 // ══════════════════════════════════════════════════════════════════════
 
-const jsdom = await importOptional('jsdom');
+const jsdom = useJsdom(await importOptional('jsdom'));   // 부팅 다섯 줄은 harness(runInJsdom) 한 곳에 있다
 
 const SNAP_JS = [
   'function __snap(){',
@@ -286,7 +340,9 @@ const SNAP_JS = [
 // 그리는 데 실제로 필요한 것만 원본에서 떼어 낸다(사본은 반드시 낡는다).
 function renderHarnessJs(src) {
   return [
-    'var __trData = null, __trTab = "project", __trAdmin = false;',
+    //  __trSaving 은 **꺼진 채**로 둔다 — 여기서 보는 것은 '무엇이 그려지는가' 하나다.
+    //  잠금이 걸린 화면은 busyHarnessJs 가 본다(계약⑦-DOM).
+    'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false;',
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function trRestore(){} function trDelete(){} function toast(){} function hostRequest(){}',
     constLine(src, 'josa'),
@@ -320,9 +376,11 @@ function renderHarnessJs(src) {
 }
 
 // 쓰기 잠금(진행 중 표시) — trSend·trSetSaving·__trashDone 이 실제로 행 버튼과 overlay 를 잠그고 푸는지 본다.
+//   ★ __reqSeq·__trReq 도 함께 심는다 — 2026-09-11 부터 이 왕복은 reqId 로 요청·회신을 짝짓는다.
 function busyHarnessJs(src) {
   return [
     'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false, __trSaveWatchdog = 0;',
+    'var __trReq = null, __reqSeq = 0;',
     'var __uaInactive = false, HOST = true, __posts = [], __toasts = [];',
     'function hpost(p){ __posts.push(p); }',
     'function toast(m, k){ __toasts.push({ msg: String(m), kind: String(k || "") }); }',
@@ -344,16 +402,45 @@ function busyHarnessJs(src) {
     '      return { op: b.dataset.top, key: b.dataset.tkey, disabled: !!b.disabled }; }),',
     '    posts: __posts.length, toasts: __toasts.slice() };',
     '}',
-    'window.__probe = function(payload, clickTab){',
-    '  __trData = null; __trAdmin = false; __trTab = "project"; __trSaving = false;',
+    'function __reset(payload, clickTab){',
+    '  __trData = null; __trAdmin = false; __trTab = "project"; __trSaving = false; __trReq = null;',
+    '  __posts.length = 0; __toasts.length = 0;',
     '  trApplyData(payload);',
     '  if(clickTab){ var tb = document.querySelector("[data-trtab=\'" + clickTab + "\']"); if(tb) tb.click(); }',
+    '}',
+    'function __rid(){ return __trReq ? __trReq.id : ""; }',
+    'window.__probe = function(payload, clickTab){',
+    '  __reset(payload, clickTab);',
     '  var out = { idle: __state() };',
     '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
     '  out.sending = __state();',
     '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
     '  out.second = __state();',
-    '  window.__trashDone(true, "지웠습니다");',
+    '  window.__trashDone(true, "지웠습니다", __rid());',
+    '  out.done = __state();',
+    '  return out;',
+    '};',
+    //  왕복 **중에** 호스트 푸시가 도착한다 — 목록이 통째로 다시 그려져도 잠금이 남아 있어야 한다.
+    //  (잠금을 노드에 칠해 두던 옛 판은 바로 여기서 증발했다 · 2026-09-11)
+    'window.__probeRerender = function(payload, clickTab){',
+    '  __reset(payload, clickTab);',
+    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  var out = { sending: __state() };',
+    '  window.__applyTrashLike();',   // 푸시와 같은 경로(trApplyData)로 목록을 다시 그린다
+    '  out.afterPush = __state();',
+    '  window.__trashDone(true, "지웠습니다", __rid());',
+    '  out.done = __state();',
+    '  return out;',
+    '};',
+    'window.__applyTrashLike = function(){ trApplyData(JSON.parse(JSON.stringify(__trData))); };',
+    //  지난 요청의 늦은 회신 — id 가 어긋나면 아무것도 하지 않는다(잠금도 그대로, 토스트도 없다).
+    'window.__probeStale = function(payload, clickTab){',
+    '  __reset(payload, clickTab);',
+    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  var id = __rid();',
+    '  window.__trashDone(true, "지웠습니다", id + "-STALE");',
+    '  var out = { id: id, stale: __state() };',
+    '  window.__trashDone(true, "지웠습니다", id);',
     '  out.done = __state();',
     '  return out;',
     '};',
@@ -433,25 +520,15 @@ const PAYLOAD = {
 };
 const TOTAL = 6;   // 2 + 2 + 1 + 0 + 1
 
-//  ★ JSON 왕복으로 **이쪽 realm 의 값**으로 바꾼다 — jsdom 의 Array 는 다른 realm 이라
-//    deepStrictEqual 이 프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
-function runIn(fixture, js, ...args) {
-  const { JSDOM } = jsdom;
-  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
-  dom.window.eval(js);
-  return JSON.parse(JSON.stringify(dom.window.__probe(...args)));
-}
-//  __probe 말고 다른 이름의 창구를 부를 때(한 하네스가 여러 각도를 재는 경우).
-function runNamed(fixture, js, name, ...args) {
-  const { JSDOM } = jsdom;
-  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
-  dom.window.eval(js);
-  return JSON.parse(JSON.stringify(dom.window[name](...args)));
-}
-const probeRender = (payload, clickTab, src = app) => runIn(RENDER_FIXTURE, renderHarnessJs(src), payload, clickTab);
-const probeFocus = (payload, clickTab, src = app) => runNamed(RENDER_FIXTURE, renderHarnessJs(src), '__probeFocus', payload, clickTab);
-const probeBusy = (payload, clickTab, src = app) => runIn(RENDER_FIXTURE, busyHarnessJs(src), payload, clickTab);
-const probeTyped = (mustType, typings, src = app) => runIn(ctFixture(src), ctHarnessJs(src), mustType, typings);
+//  ★ jsdom 부팅·JSON 왕복은 harness 의 runInJsdom 한 곳에 있다(사본은 반드시 낡는다).
+//    JSON 왕복이 필요한 이유: jsdom 의 Array 는 다른 realm 이라 deepStrictEqual 이
+//    프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
+const probeRender = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, renderHarnessJs(src), '__probe', payload, clickTab);
+const probeFocus = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, renderHarnessJs(src), '__probeFocus', payload, clickTab);
+const probeBusy = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probe', payload, clickTab);
+const probeRerender = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeRerender', payload, clickTab);
+const probeStale = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeStale', payload, clickTab);
+const probeTyped = (mustType, typings, src = app) => runInJsdom(ctFixture(src), ctHarnessJs(src), '__probe', mustType, typings);
 //  ★ [취소]는 **진짜 클릭**으로 본다(closeModal 직접 호출이 아니라). confirmTyped 의 해소는 MutationObserver 라
 //    비동기다 — 그래서 이 한 건만 Promise 를 기다린다.
 async function probeTypedCancel(src = app) {
@@ -478,7 +555,7 @@ function entryHarnessJs(src) {
 }
 const ENTRY_FIXTURE = '<!doctype html><html><body><div class="us-mem-row" id="usMemberBtns">' +
   '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div></body></html>';
-const probeEntry = (role, src = app) => runIn(ENTRY_FIXTURE, entryHarnessJs(src), role);
+const probeEntry = (role, src = app) => runInJsdom(ENTRY_FIXTURE, entryHarnessJs(src), '__probe', role);
 //  진짜 관문은 '한 번 만든 뒤 내려갔을 때'다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
 function probeEntrySeq(roles, src = app) {
   const { JSDOM } = jsdom;
@@ -498,6 +575,9 @@ if (!jsdom) {
   skip('계약⑥-DOM(g): 탭 줄은 tablist 이고 전환해도 포커스가 남는다', SKIP_NO_JSDOM);
   skip('계약⑥-DOM(h): 비관리자 안내는 호스트가 준 사유를 그대로 쓴다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(c): 전송 중에는 행 버튼이 잠기고 두 번째 클릭은 사유가 뜬다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(e): 왕복 중 푸시가 목록을 다시 그려도 잠금이 남는다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(f): 지난 요청의 늦은 회신은 아무것도 하지 않는다(reqId 대조)', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다', SKIP_NO_JSDOM);
   skip('변이⑥-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
   skip('변이⑥-DOM(f): 사유 줄을 지우면 계약⑥-DOM(f) 가 실패한다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(c): 잠금 복구를 무조건 켜기로 바꾸면 계약⑦-DOM(c) 가 실패한다', SKIP_NO_JSDOM);
@@ -666,11 +746,50 @@ if (!jsdom) {
   });
 
   test('변이⑦-DOM(c): 잠금 복구를 "무조건 켜기"로 바꾸면 계약⑦-DOM(c) 가 실패한다', () => {
-    const bad = mutate(app, "        b.disabled = b.dataset.trwas === '1';", '        b.disabled = false;');
+    const bad = mutate(app, '    db.disabled = !deletable || __trSaving;', '    db.disabled = __trSaving;');
     const r = probeBusy(PAYLOAD, 'user', bad);
     assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, false],
-      '변이 전제: 복구를 무조건 켜기로 바꾸면 지울 수 없는 계정의 [영구 삭제]도 켜져야 한다');
+      '변이 전제: 데이터 쪽 잠금을 빼면 지울 수 없는 계정의 [영구 삭제]도 켜져야 한다');
     assert.strictEqual(probeBusy(PAYLOAD, 'user').done.ops[3].disabled, true);   // 통제군
+  });
+
+  //  ★ 진짜 관문은 '왕복 **중에** 목록이 다시 그려졌을 때'다(2026-09-11 적대 검토 R3-W2).
+  //    잠금을 노드에 칠해 두던 옛 판은 여기서만 드러난다 — 평범한 왕복은 그 판에서도 멀쩡히 통과했다.
+  test('계약⑦-DOM(e): 왕복 중에 푸시가 목록을 다시 그려도 잠금이 남는다', () => {
+    const r = probeRerender(PAYLOAD, 'user');
+    assert.deepStrictEqual(r.sending.ops.map((o) => o.disabled), [true, true, true, true],
+      `전제 붕괴: 보내는 순간 행 버튼이 잠기지 않았다 — ${JSON.stringify(r.sending.ops)}`);
+    assert.deepStrictEqual(r.afterPush.ops.map((o) => o.disabled), [true, true, true, true],
+      `왕복 중에 목록이 다시 그려지자 잠금이 증발했다: ${JSON.stringify(r.afterPush.ops)} — 되돌릴 수 없는 삭제를 두 번 누를 수 있다`);
+    assert.strictEqual(r.afterPush.busy, '1', '푸시 뒤 overlay 의 busy 가 사라졌다 — 결과를 알리기 전에 창이 닫힌다');
+    //  회신이 오면 원래 상태로 돌아온다(꺼져 있던 [영구 삭제]는 꺼진 채로).
+    assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, true],
+      `회신 뒤 버튼 상태가 원래대로 돌아오지 않았다: ${JSON.stringify(r.done.ops)}`);
+    assert.strictEqual(r.done.busy, '', '회신이 왔는데 overlay 가 busy 인 채로 남았다');
+  });
+
+  test('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다(그래서 이 계약이 필요하다)', () => {
+    const bad = mutate(app, '    rb.disabled = __trSaving;', '    rb.disabled = false;');
+    const r = probeRerender(PAYLOAD, 'user', bad);
+    assert.strictEqual(r.afterPush.ops[0].disabled, false,
+      '변이 전제: 렌더가 잠금을 보지 않으면 푸시 뒤 [복구]가 켜져 있어야 한다');
+    assert.strictEqual(probeRerender(PAYLOAD, 'user').afterPush.ops[0].disabled, true);   // 통제군
+  });
+
+  //  ★ 늦은 회신 — 호스트가 우리가 보낸 reqId 를 그대로 실어 준다. 어긋나면 지난 요청의 것이다.
+  test('계약⑦-DOM(f): 지난 요청의 늦은 회신은 아무것도 하지 않는다(reqId 대조)', () => {
+    const r = probeStale(PAYLOAD, 'user');
+    assert.ok(r.id, '전제 붕괴: trSend 가 reqId 를 발번하지 않았다');
+    //  ① 어긋난 id — 잠금도 그대로, 토스트도 없다.
+    assert.strictEqual(r.stale.busy, '1', '지난 요청의 회신이 overlay 의 busy 를 풀었다 — 아직 기다리는 요청이 있다');
+    assert.deepStrictEqual(r.stale.ops.map((o) => o.disabled), [true, true, true, true],
+      `지난 요청의 회신이 행 버튼을 풀었다: ${JSON.stringify(r.stale.ops)}`);
+    assert.deepStrictEqual(r.stale.toasts, [],
+      `지난 요청의 회신이 토스트를 띄웠다: ${JSON.stringify(r.stale.toasts)} — 지금 대상의 결과인 양 말하면 화면이 거짓말을 한다`);
+    //  ② 맞는 id — 그때 처리된다.
+    assert.strictEqual(r.done.busy, '', '맞는 회신이 왔는데 잠금이 풀리지 않았다');
+    assert.strictEqual(r.done.toasts.length, 1, `맞는 회신의 안내가 ${r.done.toasts.length}건이다(1건이어야 한다)`);
+    assert.strictEqual(r.done.toasts[0].kind, 'success', `결과 안내의 종류가 다르다: ${JSON.stringify(r.done.toasts[0])}`);
   });
 
   test('변이⑥-DOM: 세 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
@@ -680,9 +799,8 @@ if (!jsdom) {
     assert.ok(rb.tabs.length > 0 || rb.ops.length > 0,
       '변이 전제: 분기를 지우면 admin:false 에도 탭·조작 버튼이 그려져야 한다');
 
-    // (d) 잠금 한 줄을 지우면 지울 수 없는 계정의 버튼이 켜진다
-    const badD = mutate(app, "if(!(it && it.deletable === true)){ db.disabled = true; db.title = (it && it.why) ? String(it.why) : ''; }",
-      "if(!(it && it.deletable === true)){ db.title = (it && it.why) ? String(it.why) : ''; }");
+    // (d) 삭제 가능 판정을 무조건 참으로 바꾸면 지울 수 없는 계정의 버튼이 켜진다
+    const badD = mutate(app, '    const deletable = !!(it && it.deletable === true);', '    const deletable = true;');
     const rd = probeRender(PAYLOAD, 'user', badD);
     assert.deepStrictEqual(rd.ops.filter((o) => o.op === 'delete').map((o) => o.disabled), [false, false],
       '변이 전제: 잠금을 지우면 기록이 있는 계정의 [영구 삭제]도 켜져야 한다');

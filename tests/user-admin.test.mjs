@@ -22,7 +22,10 @@
 //     잠금 방지 문구는 ProjectDb 의 상수 선언에서 읽어 **그 상수가 실제로 쓰이는지**를 본다.
 //     못 읽으면 통과가 아니라 실패다(판정 불가 ≠ 통과).
 import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction, importOptional, SKIP_NO_JSDOM } from './harness.mjs';
+import {
+  test, assert, loadAppSource, extractFunction, importOptional, SKIP_NO_JSDOM,
+  stripCsComments, extractCsMember, useJsdom, runInJsdom,
+} from './harness.mjs';
 import { canonSchemaVersion, stripSqlComments } from './canon-schema.mjs';
 
 const app = loadAppSource();
@@ -47,43 +50,10 @@ const userGrants = readOr(new URL('../../taskmgr-company-data/05-grants.sql', im
   'taskmgr-company-data/05-grants.sql');
 const calGrants = readOr(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'db/deploy/grants-calendar.sql');
 
-// C# 주석 제거(문자열 리터럴은 보존) — "왜 안 하는지"를 적어 둔 주석이 계약을 통과시키면 안 된다.
-const BS = String.fromCharCode(92);
-function stripCs(s) {
-  let out = '', i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < s.length) { if (s[j] === BS) { j += 2; continue; } if (s[j] === c) { j++; break; } j++; }
-      out += s.slice(i, j); i = j; continue;
-    }
-    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
-    if (c === '/' && s[i + 1] === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
-    out += c; i++;
-  }
-  return out;
-}
-// C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
-function csMember(source, sig) {
-  const code = stripCs(source);
-  const s = code.indexOf(sig);
-  assert.ok(s >= 0, `C# 멤버를 찾지 못함: ${sig}`);
-  const open = code.indexOf('{', s);
-  assert.ok(open > s, `${sig} 의 여는 중괄호를 찾지 못함`);
-  let depth = 0;
-  for (let k = open; k < code.length; k++) {
-    const c = code[k];
-    if (c === '"' || c === "'") {
-      let j = k + 1;
-      while (j < code.length) { if (code[j] === BS) { j += 2; continue; } if (code[j] === c) break; j++; }
-      k = j; continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return code.slice(s, k + 1); }
-  }
-  assert.fail(`${sig} 의 중괄호 짝이 맞지 않는다`);
-}
+// C# 주석 제거·멤버 슬라이스는 harness 한 곳에 있다(다섯 시험 파일이 같은 사본을 안고 있던 것을 걷었다).
+//   ★ 주석을 지우는 이유: "왜 안 하는지"를 적어 둔 **문장이** 계약을 통과시키면 안 된다.
+const stripCs = stripCsComments;
+const csMember = extractCsMember;
 // app_user 블록만 잘라낸다 — is_active·created_at 같은 이름은 이 파일의 다른 표에도 있다.
 function appUserBlock(sql) {
   const m = /CREATE TABLE\s+`?app_user`?\s*\(([\s\S]*?)\n\)\s*ENGINE/i.exec(stripSqlComments(sql));
@@ -282,35 +252,65 @@ const checks = {
     //    폐지된 직급·조직을 단 사람의 이름 한 글자를 고치려는데 "등록되지 않은 직급입니다"로 막히면,
     //    관리자는 그 사람의 직급부터 바꿔야 한다. 화면은 저장된 값을 드롭다운에 그대로 남기므로
     //    '보이는 값'과 '되는 값'이 갈린다. 판정의 근거는 **잠근 행**(LockedUserAsync 의 FOR UPDATE)이다.
-    assert.ok(/!titleSet\.Contains\(ti\) && !string\.Equals\(ti, target\.Value\.title, StringComparison\.Ordinal\)/.test(up),
-      '수정의 직급 검사가 "활성이거나 현재 저장된 값"이 아니다 — 폐지된 직급을 단 사람은 이름 한 글자도 못 고친다(§4.3)');
-    assert.ok(/orgId\.HasValue && orgId\.Value != \(target\.Value\.orgId \?\? -1\)/.test(up),
-      '수정의 소속 검사가 "활성이거나 현재 저장된 값"이 아니다 — 값이 그대로면 조회조차 하지 않아야 한다(§4.3)');
-    //    완화는 **수정에만**이다. 신규 등록은 활성만 — 폐지된 값으로 새 사람을 배정하지 않는다.
-    assert.ok(/else\s*\{[\s\S]{0,120}?if \(!titleSet\.Contains\(ti\)\)[\s\S]{0,160}?등록되지 않은 직급입니다/.test(up),
-      '신규 등록 분기에 활성 직급 검사가 없다 — 완화가 등록까지 번지면 폐지된 직급으로 새 사람이 들어온다');
+    //  ★ 2026-09-11 적대 검토(R7) — 그 검사는 이제 분기마다가 아니라 **한 벌**이다. 전에는 수정용과
+    //    등록용이 같은 말(문구까지 같다)을 두 벌 적고 있어 한쪽만 고치면 조용히 갈렸다. 지금은
+    //    '지금 저장된 값'을 curTitle·curOrg 로 받고, 신규는 그 둘이 null 이라 갈래가 저절로 닫힌다
+    //    — 곧 **활성만**이다. 그래서 계약도 한 벌을 본다(두 벌을 강제하면 중복을 계약으로 굳히는 셈이다).
+    assert.ok(/!titleSet\.Contains\(ti\) && !string\.Equals\(ti, curTitle, StringComparison\.Ordinal\)/.test(up),
+      '직급 검사가 "활성이거나 현재 저장된 값"이 아니다 — 폐지된 직급을 단 사람은 이름 한 글자도 못 고친다(§4.3)');
+    assert.ok(/orgId\.HasValue && orgId\.Value != \(curOrg \?\? -1\)/.test(up),
+      '소속 검사가 "활성이거나 현재 저장된 값"이 아니다 — 값이 그대로면 조회조차 하지 않아야 한다(§4.3)');
+    //    완화가 **신규 등록까지 번지지 않는다**는 것은 '지금 저장된 값'의 출처로 못박는다: 그 둘은
+    //    잠근 대상 행(target)에서만 오고, 신규면 target 이 null 이라 함께 null 이다. 입력값이나 상수에서
+    //    오면 등록도 통과해 폐지된 직급으로 새 사람이 들어온다.
+    assert.ok(/string\? curTitle = target\?\.title;/.test(up) && /int\? curOrg = target\?\.orgId;/.test(up),
+      "'지금 저장된 값'이 잠근 대상 행(target)에서 오지 않는다 — 신규 등록까지 완화가 번지면 폐지된 직급으로 새 사람이 들어온다");
+    assert.ok(/target = await LockedUserAsync\(conn, tx, userId\.Value, cts\.Token\);/.test(up),
+      '대상 행을 FOR UPDATE 로 잠근 뒤 읽지 않는다 — 완화의 근거가 잠기지 않은 값이 된다(§4.4)');
   },
 
-  // ⑥-f 순서 저장은 목록 **밖** 사람의 서열도 비운다(USER-ADMIN §7-1a 를 닫는다 · 2026-09-10).
-  //    「퇴사자 보기」를 끈 채 저장하면 퇴사자는 목록에 없어 옛 숫자를 그대로 들고 남았고, 복구하면
-  //    그 숫자가 새 서열 **사이에 끼어들었다**. NULL 은 명부 ORDER BY 에서 맨 뒤다(§5.3).
+  // ⑥-f 순서 저장은 목록 **밖** 사람을 어떻게 다루는가(USER-ADMIN §7-1a · 2026-09-10 → 2026-09-11 R1).
+  //    옛 판: 목록 밖이면 활성이든 아니든 sort_order 를 NULL 로 밀었다. 「퇴사자 보기」를 끈 채 저장하면
+  //    퇴사자가 옛 숫자를 들고 남아 복구했을 때 새 서열 사이에 끼어들던 문제는 그것으로 닫혔지만,
+  //    **활성 직원까지 쓸어 갔다** — 다른 관리자가 그 사이에 등록한 사람이나 화면이 걸러 낸 사람은
+  //    목록에 없을 뿐 멀쩡히 활성인데 서열이 소리 없이 사라졌다(2026-09-11 적대 검토 R1).
+  //    지금은 두 겹이다: ① 목록 밖에 활성이 있으면 **아무것도 쓰지 않고** 거부(낡은 명부) ·
+  //    ② 그래도 비우는 쪽에는 is_active=0 을 건다(닫힌 쪽으로 실패). 둘 다 한 문장·한 트랜잭션 안이다.
   orderClearsOutsiders(cs) {
     const so = csMember(cs, 'SaveUserOrderAsync(');
-    assert.ok(/UPDATE app_user SET sort_order=@s WHERE user_id=@uid/.test(so),
+    //  (a) 전량 재작성 — 받은 순서대로 10·20·30…. 이제 N 번의 UPDATE 가 아니라 CASE 한 문장이다.
+    assert.ok(/UPDATE app_user SET sort_order = CASE user_id /.test(so),
       '순서 저장이 받은 순서대로 sort_order 를 전량 재작성하지 않는다(측정 불가 ≠ 통과)');
-    assert.ok(/UPDATE app_user SET sort_order=NULL WHERE[^"]*user_id NOT IN \(/.test(so),
-      '목록 밖 사람의 sort_order 를 비우지 않는다 — 숨긴 채 저장하면 그 사람은 옛 서열을 들고 남고, ' +
-      '복구했을 때 새 서열 사이에 끼어든다(§7-1a)');
-    //  재작성 → 비우기 → 커밋. 셋이 **한 트랜잭션**이어야 중간 상태(서열 중복)가 남지 않는다.
-    const renum = so.indexOf('sort_order=@s');
-    const clear = so.indexOf('sort_order=NULL');
+    assert.ok(/WHEN " \+ keyPn\[i\] \+ " THEN "/.test(so) || /"WHEN " \+ keyPn\[i\]/.test(so),
+      '재작성의 WHEN 갈래가 파라미터로 묶이지 않는다 — 값은 언제나 @파라미터 바인딩이다(규약 ①)');
+    //  (b) 비우기는 **숨김(퇴사)에만**. is_active=0 이 빠지면 목록 밖 활성 직원의 서열이 날아간다.
+    assert.ok(/ELSE \(CASE WHEN is_active=0 THEN NULL ELSE sort_order END\) END/.test(so),
+      '목록 밖 사람의 서열을 비우는 갈래에 is_active=0 이 없다 — 목록에 없을 뿐 활성인 직원의 서열까지 ' +
+      'NULL 이 된다(R1). 숨긴 사람만 비워야 복구했을 때 끼어들지 않고 맨 뒤에 선다(§7-1a).');
+    //  (c) 낡은 명부 거부 — 목록 밖에 활성이 하나라도 있으면 저장을 통째로 거부한다.
+    //      세는 문장은 **잠근 채**(FOR UPDATE)여야 판정과 갱신 사이에 새 사람이 끼어들지 못한다.
+    assert.ok(/SELECT COUNT\(\*\) FROM app_user WHERE is_active=1 AND user_id NOT IN \(/.test(so),
+      '목록 밖 **활성** 직원을 세지 않는다 — 낡은 명부로 저장해도 그대로 진행돼 그 사람의 서열이 사라진다(R1)');
+    assert.ok(/FOR UPDATE/.test(so),
+      '목록 밖 활성 직원을 잠그지 않고 센다 — 판정과 갱신 사이에 등록된 사람이 그 틈으로 빠진다(§4.4)');
+    assert.ok(/StaleRosterMsg/.test(so),
+      '낡은 명부를 거부하는 문장(StaleRosterMsg)이 없다 — 사용자가 무엇을 해야 하는지 알 수 없다');
+    assert.ok(/const string StaleRosterMsg\s*=\s*"명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요\."/.test(cs),
+      '낡은 명부 거부 문구 상수가 설계와 다르다 — 할 일(새로고침 뒤 재저장)을 말해 주는 한 문장이어야 한다');
+    //      거부 판정은 **쓰기보다 앞**이어야 한다. 뒤면 이미 갈아엎은 뒤에 거부하는 셈이다.
+    const count = so.indexOf('SELECT COUNT(*) FROM app_user WHERE is_active=1');
+    const write = so.indexOf('UPDATE app_user SET sort_order = CASE user_id');
     const commit = so.indexOf('CommitAsync');
-    assert.ok(renum >= 0 && clear > renum && commit > clear,
-      '서열 비우기가 재작성보다 앞이거나 커밋 뒤에 있다 — 한 트랜잭션 안에서 재작성 → 비우기 → 커밋 순이어야 한다');
-    //  받은 목록이 통째로 쓸모없으면(전부 0 이하) 거부한다 — 안 그러면 전원의 서열이 NULL 이 된다.
+    assert.ok(count >= 0 && write > count && commit > write,
+      '낡은 명부 판정이 재작성보다 뒤이거나 커밋 뒤에 있다 — 한 트랜잭션 안에서 판정 → 재작성 → 커밋 순이어야 한다');
+    //  (d) 받은 목록이 통째로 쓸모없으면(전부 0 이하) **어떤 문장을 내기도 전에** 거부한다.
+    //      안 그러면 NOT IN () 가 전원을 목록 밖으로 만든다.
     assert.ok(/kept\.Count == 0/.test(so) && /정렬할 명부가 비어 있습니다/.test(so),
-      '목록이 통째로 비었을 때 거부하지 않는다 — NOT IN () 로 전원의 서열을 지우는 사고가 남는다');
-    //  updated_at 은 두 UPDATE 모두 손대지 않는다(§4.5 — 서버 ON UPDATE 의 몫).
+      '목록이 통째로 비었을 때 거부하지 않는다 — 전원의 서열을 지우는 사고가 남는다');
+    const refuse = so.indexOf('kept.Count == 0');
+    assert.ok(refuse >= 0 && refuse < count,
+      '빈 목록 거부가 첫 SQL 보다 뒤에 있다 — 거부 전에 이미 문장이 나간다');
+    //  (e) updated_at 은 손대지 않는다(§4.5 — 서버 ON UPDATE 의 몫).
     assert.ok(!/updated_at/.test(so),
       '순서 저장이 updated_at 을 직접 쓴다 — 이 표의 감사 시각은 서버 ON UPDATE 가 정한다(§4.5)');
   },
@@ -566,8 +566,10 @@ const checks = {
     const b = extractFunction(web, 'uaMove');
     assert.ok(/getElementById\('uaList'\)/.test(b) && /scrollTop/.test(b),
       'uaMove 가 #uaList 의 스크롤 자리를 기억·복원하지 않는다 — 한 칸 옮길 때마다 목록이 맨 위로 튄다');
-    assert.ok(/activeElement/.test(b),
-      'uaMove 가 누르고 있던 화살표(activeElement)를 기억하지 않는다 — 어디로 포커스를 되돌릴지 알 수 없다');
+    //  ★ 되돌릴 화살표는 **방향**이 정한다(2026-09-11). 예전에는 포커스를 쥔 요소를 읽어 같은 답을
+    //    더 먼 길로 구했다 — 그 길은 '그 버튼이 정말 이 행의 것인가'를 한 번 더 따지느라 길기만 했다.
+    assert.ok(/const uop = delta < 0 \? 'up' : 'down';/.test(b),
+      'uaMove 가 방향으로 화살표를 정하지 않는다 — 어디로 포커스를 되돌릴지 두 갈래로 갈린다');
     assert.ok(/uaFocusMoved\(/.test(b),
       'uaMove 가 포커스를 되돌리지 않는다 — 한 번 누르면 포커스가 사라져 두 번째를 누를 수 없다');
     const f = extractFunction(web, 'uaFocusMoved');
@@ -578,24 +580,68 @@ const checks = {
     assert.ok(/scrollIntoView/.test(f), 'uaFocusMoved 가 옮긴 행을 보이는 자리로 끌어오지 않는다');
   },
 
-  // ⑭ 요청 상관관계(세대) — A 의 늦은 회신이 지금 열려 있는 **B 의 폼**을 닫고 '저장했습니다'를 띄우던 자리다.
-  //    과제 쪽 규약(projBeginRequest/__projGen)과 같은 모양이되, '어느 폼인가'를 알아야 해서 대상까지 기억한다.
+  // ⑭ 요청 상관관계(reqId) — A 의 늦은 회신이 지금 열려 있는 **B 의 폼**을 닫고 '저장했습니다'를 띄우던 자리다.
+  //    2026-09-11 적대 검토(R3-W1): 세대 카운터는 '몇 번째 요청인가'만 알 뿐 '이 회신이 어느 요청의
+  //    것인가'는 끝내 알 수 없었다. 호스트가 우리가 보낸 reqId 를 3번째 인자로 되돌려주므로, 이제는 짐작하지
+  //    않고 대조한다. '어느 폼인가'를 알아야 해서 대상(uid·cmd)도 함께 진다.
+  //    ★ 그리고 워치독은 이 표를 **지우지 않는다** — 지우면 12초를 넘겨 도착한 성공 회신이 버려져
+  //      "저장은 됐는데 실패로 안내"가 된다(호스트 왕복은 15초까지 걸린다).
   requestGeneration(web) {
     const s = extractFunction(web, 'uaSend');
-    assert.ok(/__uaGen = \+\+__uaSeq;/.test(s), 'uaSend 가 요청 세대를 올리지 않는다 — 늦은 회신을 구별할 길이 없다');
-    assert.ok(/__uaTarget = \{/.test(s), 'uaSend 가 요청 대상(__uaTarget)을 기억하지 않는다 — 어느 폼을 닫아도 되는지 알 수 없다');
+    assert.ok(/\+\+__reqSeq/.test(s),
+      'uaSend 가 reqId 를 발번하지 않는다 — 회신이 어느 요청의 것인지 짐작할 수밖에 없다');
+    assert.ok(/__uaReq = \{ id: reqId, uid:/.test(s),
+      'uaSend 가 요청 표(__uaReq: id·uid·cmd)를 세우지 않는다 — 대조할 기준도, 어느 폼인지도 알 수 없다');
+    assert.ok(/reqId: reqId/.test(s), 'uaSend 가 payload 에 reqId 를 싣지 않는다 — 호스트가 되돌려줄 것이 없다');
     const w = windowFn(web, '__userSaved');
-    assert.ok(/if\(__uaGen === 0\) return;/.test(w),
-      '__userSaved 가 이월 회신을 걸러내지 않는다 — 워치독이 푼 뒤 도착한 회신이 다른 폼을 닫는다');
-    assert.ok(/Number\(tg\.uid \|\| 0\) === Number\(__ueId \|\| 0\)/.test(w),
-      '__userSaved 가 회신 대상과 **지금 폼이 연 사람**을 대조하지 않는다 — 세대만으로는 어느 폼인지 알 수 없다');
-    assert.ok(/__uaGen = 0;/.test(w), '__userSaved 가 세대를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
-    //  워치독도 세대를 무효화해야 한다(그러지 않으면 12초 뒤 도착한 회신이 그대로 먹힌다).
+    assert.ok(/function\(ok, msg, reqId\)/.test(w),
+      '__userSaved 가 reqId 를 받지 않는다 — 호스트가 실어 보낸 짝을 화면이 읽지 않으면 있으나 마나다');
+    assert.ok(/if\(!rq\) return;/.test(w),
+      '__userSaved 가 이월 회신을 걸러내지 않는다 — 기다리는 요청이 없는데 도착한 회신이 폼을 닫는다');
+    assert.ok(/rid !== rq\.id/.test(w),
+      '__userSaved 가 회신의 reqId 를 기다리는 요청과 대조하지 않는다 — 지난 요청의 늦은 회신이 지금 폼의 결과로 먹힌다');
+    assert.ok(/Number\(rq\.uid \|\| 0\) === Number\(__ueId \|\| 0\)/.test(w),
+      '__userSaved 가 회신 대상과 **지금 폼이 연 사람**을 대조하지 않는다 — id 만으로는 어느 폼인지 알 수 없다');
+    assert.ok(/__uaReq = null;/.test(w), '__userSaved 가 처리한 요청 표를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
     const ss = extractFunction(web, 'uaSetSaving');
-    assert.ok(/__uaGen = 0;/.test(ss), 'uaSetSaving 의 워치독이 세대를 무효화하지 않는다');
+    //  ★ 워치독은 **잠금만** 푼다. 요청 표를 지우면 늦은 성공 회신이 통째로 버려진다(2026-09-11).
+    assert.ok(!/__uaReq = null/.test(ss),
+      'uaSetSaving(워치독)이 __uaReq 를 지운다 — 12초를 넘겨 도착한 성공 회신이 버려져 "저장은 됐는데 실패로 안내"가 된다');
+    assert.ok(/응답이 늦습니다 — 회신이 오면 반영됩니다\./.test(ss),
+      '워치독이 "늦다"고 말하지 않는다 — 회신은 아직 살아 있는데 실패로 안내하면 관리자가 같은 저장을 한 번 더 한다');
     //  전송 중에는 폼 자체가 닫히지 않는다(offEdSetBusy 와 같은 장치).
     assert.ok(/dataset\.busy = '1'/.test(ss) && /delete ov\.dataset\.busy/.test(ss),
       'uaSetSaving 이 #userEditModal 의 dataset.busy 를 세우고 지우지 않는다 — 저장 중에 창을 닫으면 결과를 알릴 곳이 사라진다');
+  },
+
+  // ⑭-b 명부 쪽 잠금은 **렌더가 진다**(2026-09-11 적대 검토 R3-W2).
+  //     노드를 걸어 다니며 끄면, 왕복 중에 도착한 명부 푸시가 목록을 새로 만드는 순간 잠금이 증발한다.
+  //     ★ 폼 하단의 [저장]·[퇴사 처리]는 예외다 — 그 둘은 마크업에 박힌 붙박이라 다시 그려지지 않는다.
+  lockIsDerivedAtRender(web) {
+    const ra = extractFunction(web, 'uaRowActions');
+    assert.ok(/b\.disabled = __uaSaving;/.test(ra),
+      'uaRowActions 가 행 버튼을 그릴 때 __uaSaving 을 보지 않는다 — 재렌더가 잠금을 지운다');
+    const bar = extractFunction(web, 'uaAdminBar');
+    assert.ok(/mk\('순서 저장', 'uaOrderSave', 'btn sm primary', uaOrderSave\)\.disabled = __uaSaving;/.test(bar),
+      '「순서 저장」이 왕복 중에도 켜져 있다 — 같은 순서를 두 번 보낼 수 있다');
+    assert.ok(/mk\('순서 편집', 'uaOrderEdit', 'btn sm', \(\) => uaOrderToggle\(true\)\)\.disabled = __uaSaving;/.test(bar),
+      '「순서 편집」이 왕복 중에도 켜져 있다 — 저장 중인 명부를 다시 흔들 수 있다');
+    assert.ok(/nb\.disabled = __uaSaving;/.test(bar),
+      '「＋ 직원 등록」이 왕복 중에도 켜져 있다 — 결과를 기다리는 폼 위에 새 폼이 겹친다');
+    const ss = extractFunction(web, 'uaSetSaving');
+    assert.ok(/uaAdminBar\(\);\s*\n\s*uaApply\(\);/.test(ss),
+      'uaSetSaving 이 잠금을 렌더로 반영하지 않는다 — 잠금이 화면에 닿는 길이 없다');
+    assert.ok(/getElementById\('userEdSave'\)/.test(ss) && /getElementById\('userEdActive'\)/.test(ss),
+      'uaSetSaving 이 폼 하단의 붙박이 두 버튼을 직접 잠그지 않는다 — 그 둘은 다시 그려지지 않는다');
+  },
+
+  // ⑭-c 「순서 저장」 성공은 **그 자리에서** 막대·목록을 다시 그린다(2026-09-11 적대 검토 R3-W3).
+  //     뒤따르는 명부 푸시에 기대면, 그 푸시가 오지 않는 순간 ▲▼·[취소]·[순서 저장]이 그대로 남아
+  //     이미 끝난 편집을 계속하는 화면이 된다.
+  orderSaveRedrawsItself(web) {
+    const w = windowFn(web, '__userSaved');
+    assert.ok(/if\(wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; uaAdminBar\(\); uaApply\(\); \}/.test(w),
+      '__userSaved 가 순서 저장 성공 뒤 스스로 다시 그리지 않는다 — 푸시가 오지 않으면 끝난 편집 막대가 그대로 남는다');
   },
 
   // ⑮ 여는 순간 낡은 잠금을 정리한다 — 다만 **도는 중이면 풀지 않는다**(가드와 워치독이 함께 사라진다).
@@ -613,14 +659,16 @@ const checks = {
   // ⑯ 순서 편집 중에 오는 **관계없는 명부 푸시**가 편집 중인 순서를 지우지 않는다(2026-09-10).
   orderSurvivesPush(web) {
     const ap = windowFn(web, '__applyMembers');
-    assert.ok(/if\(__uaOrder && !__uaOrderSaving\)\{ __uaPendingData = d;/.test(ap),
+    //  ★ '내 순서 저장인가' 는 지금 기다리는 요청 하나가 진다(__uaReq · 2026-09-11).
+    //    별도 깃발을 따로 두면 두 값이 갈리고, 갈리는 순간 어느 쪽이 참인지 아무도 모른다.
+    assert.ok(/const orderSaving = !!\(__uaReq && __uaReq\.cmd === 'saveUserOrder'\);/.test(ap),
+      "__applyMembers 가 '내 순서 저장인가'를 요청 표에서 읽지 않는다 — 깃발을 따로 두면 두 값이 갈린다");
+    assert.ok(/if\(__uaOrder && !orderSaving\)\{ __uaPendingData = d;/.test(ap),
       '__applyMembers 가 순서 편집 중의 관계없는 푸시를 미뤄 두지 않는다 — 남의 저장 한 번에 편집 중인 순서가 날아간다');
-    const s = extractFunction(web, 'uaSend');
-    assert.ok(/__uaOrderSaving = \(__uaTarget\.cmd === 'saveUserOrder'\)/.test(s),
-      "uaSend 가 '이 왕복이 순서 저장인가'를 표시하지 않는다 — 내 저장의 결과까지 미뤄지면 순서가 영영 반영되지 않는다");
     const us = windowFn(web, '__userSaved');
-    assert.ok(/__uaOrderSaving = false;/.test(us), '__userSaved 가 순서 저장 표시를 닫지 않는다');
-    assert.ok(/if\(wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(us),
+    assert.ok(/const wasOrder = rq\.cmd === 'saveUserOrder';/.test(us),
+      "__userSaved 가 '이 회신이 순서 저장의 것인가'를 요청 표에서 읽지 않는다");
+    assert.ok(/if\(wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null;/.test(us),
       '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다 — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
     const tog = extractFunction(web, 'uaOrderToggle');
     assert.ok(/__uaPendingData/.test(tog) && /uaFlushPending\(\)/.test(tog),
@@ -631,16 +679,23 @@ const checks = {
   },
 
   // ⑰ 「퇴사자 보기」는 **조회가 실제로 시작됐을 때만** 켜진 채로 남는다(2026-09-10).
+  //    ★ 2026-09-11: '시작 못 했다'를 한 false 로 뭉치지 않는다. '다른 조회가 도는 중'과 '호스트가 아니다'는
+  //      관리자가 할 일이 다르다 — 뭉치면 브라우저에서 '불러오는 중입니다' 라는 **틀린 이유**가 뜬다.
   inactiveToggleIsHonest(web) {
     const r = extractFunction(web, 'uaReload');
-    assert.ok(/return false;/.test(r) && /return true;/.test(r),
-      'uaReload 가 시작 여부를 불린으로 돌려주지 않는다 — 호출부가 "시작조차 못 했다"를 알 수 없다');
+    assert.ok(/if\(!HOST\) return 'nohost';/.test(r) && /if\(__uaBusy\) return 'busy';/.test(r),
+      "uaReload 가 '못 시작한 이유'를 갈라 돌려주지 않는다 — 브라우저에서 '불러오는 중'이라는 틀린 안내가 뜬다");
+    assert.ok(/return true;/.test(r), 'uaReload 가 "시작했다"를 돌려주지 않는다 — 호출부가 판정할 근거가 없다');
     assert.ok(!/^async function uaReload/m.test(web),
       'uaReload 가 async 다 — 그러면 반환값이 언제나 Promise(늘 참)라 재진입 판정이 무의미해진다');
     const bar = extractFunction(web, 'uaAdminBar');
-    assert.ok(/if\(uaReload\(\)\) return;/.test(bar),
-      '「퇴사자 보기」가 uaReload 의 반환값을 보지 않는다 — 체크만 켜지고 목록은 그대로인 화면이 된다');
+    assert.ok(/const r = uaReload\(\);/.test(bar) && /if\(r !== 'busy'\) return;/.test(bar),
+      "「퇴사자 보기」가 uaReload 의 사유를 보지 않는다 — 체크만 켜지고 목록은 그대로인 화면이 되거나, 틀린 이유를 말한다");
     assert.ok(/cb\.checked = prev;/.test(bar), '조회를 시작하지 못했는데 체크를 되돌리지 않는다');
+    //  ★ 2026-09-11 교차 추적 — 시작은 했는데 **회신이 실패**한 경우도 같다: 값을 요청 전으로 되돌리지 않으면
+    //    체크·__uaInactive 는 새 값, 명부는 옛 것이 되어 다음 쓰기가 includeInactive 를 화면과 다르게 보낸다.
+    assert.ok(/const prevInactive = __uaInactive;/.test(r) && /__uaInactive = prevInactive;/.test(r) && /cb\.checked = prevInactive;/.test(r),
+      '조회가 실패했는데 「퇴사자 보기」를 요청 전 값으로 되돌리지 않는다 — 체크와 명부가 어긋난 채 남는다');
     assert.ok(/불러오는 중입니다 — 잠시 후 다시 시도하세요/.test(bar), '되돌린 이유를 말하지 않는다 — 조용한 무시는 고장으로 읽힌다');
   },
 
@@ -668,10 +723,17 @@ const checks = {
       '퇴사 확인창이 "저장하지 않은 변경은 버려집니다."를 말하지 않는다 — 성공하면 폼이 닫히며 편집이 사라진다');
     assert.ok(/uaMemberName\(__ueId\)/.test(web),
       '#userEdActive 배선이 저장된 이름(uaMemberName)을 쓰지 않는다 — 고쳐 놓은 이름으로 확인창이 말한다');
+    //  ★ dirty 판정은 **한 벌**이다(2026-09-11 적대 검토 R3-W4). 예전에는 여기만 칸 값을 __uaMembers 와
+    //    하나씩 견주고, Esc·배경 클릭은 formSnapshot 을 썼다 — 같은 폼을 두고 한쪽은 "버려질 게 있다"
+    //    하고 다른 쪽은 조용히 닫는 어긋남이 생겼다. 기준이 둘이면 한쪽은 반드시 낡는다.
     const d = extractFunction(web, 'userEdIsDirty');
-    for (const id of ['userEdName', 'userEdTitle', 'userEdOrg', 'userEdScope', 'userEdRole']) {
-      assert.ok(new RegExp("'" + id + "'").test(d), `userEdIsDirty 가 #${id} 를 견주지 않는다 — 그 칸의 편집은 조용히 버려진다`);
-    }
+    assert.ok(/formSnapshot\(ov\) !== \(ov\.__openSnap \|\| ''\)/.test(d),
+      'userEdIsDirty 가 formSnapshot 한 벌을 쓰지 않는다 — Esc·배경 클릭(confirmDiscardIfDirty)과 기준이 갈린다');
+    assert.ok(!/__uaMembers|uaMemberOf/.test(d),
+      'userEdIsDirty 가 아직 저장된 값과 칸을 하나씩 견준다 — 칸이 하나 늘면 그 칸만 조용히 빠진다');
+    //  같은 스냅샷을 Esc·배경 클릭도 쓴다 — 두 경로가 같은 식을 보는지 여기서 함께 본다.
+    assert.ok(/formSnapshot\(ov\) === \(ov\.__openSnap\|\|''\)/.test(extractFunction(web, 'confirmDiscardIfDirty')),
+      'confirmDiscardIfDirty 가 __openSnap 스냅샷을 보지 않는다 — dirty 기준이 두 벌로 갈린다');
     //  Esc·배경 클릭도 같은 규칙을 받는다(#officialEditModal 과 같은 자리).
     assert.ok(/ov\.id==='userEditModal'/.test(extractFunction(web, 'isGuardedModal')),
       '#userEditModal 이 우발적 닫기 가드에 들어 있지 않다 — Esc 한 번에 남의 권한 편집이 사라진다');
@@ -729,7 +791,7 @@ test('계약⑤: 권한 파일이 app_user 에 SELECT·INSERT·UPDATE·DELETE �
 test('계약⑥: 명부 순서는 호스트가 정하고 화면은 다시 정렬하지 않는다(순번 숫자 비노출)', () => {
   checks.orderIsHostOnly(pdb, app);
 });
-test('계약⑥-f: 순서 저장이 목록 밖 사람의 서열을 비운다(§7-1a — 복구했을 때 끼어들지 않게)', () => {
+test('계약⑥-f: 순서 저장은 숨긴 사람의 서열만 비우고, 낡은 명부는 통째로 거부한다(§7-1a · R1)', () => {
   checks.orderClearsOutsiders(pdb);
 });
 test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 두 모달 마크업에는 편집 컨트롤이 없다', () => {
@@ -751,7 +813,9 @@ test('계약⑪: 모달 폼의 세로 리듬은 토큰 한 곳에서 정한다(.
 });
 test('계약⑫: 파괴 테두리·읽기전용 wash 는 다섯 테마 전부가 자기 토큰을 갖는다', () => checks.themeTokens(app));
 test('계약⑬: 순서 편집 ▲▼ 는 스크롤 자리와 포커스를 지킨다(89행에서 연속 조작이 된다)', () => checks.moveKeepsPlace(app));
-test('계약⑭: 직원 쓰기는 세대·대상으로 상관된다(늦은 회신이 다른 폼을 닫지 않는다)', () => checks.requestGeneration(app));
+test('계약⑭: 직원 쓰기는 reqId·대상으로 상관된다(늦은 회신이 다른 폼을 닫지 않는다)', () => checks.requestGeneration(app));
+test('계약⑭-b: 명부 쪽 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
+test('계약⑭-c: 「순서 저장」 성공은 그 자리에서 막대·목록을 다시 그린다', () => checks.orderSaveRedrawsItself(app));
 test('계약⑮: 화면을 (다시) 열 때 낡은 잠금은 풀되, 도는 중이면 워치독만 다시 건다', () => checks.openKeepsGuard(app));
 test('계약⑯: 순서 편집 중의 관계없는 명부 푸시는 미뤄 두고 편집을 마칠 때 반영한다', () => checks.orderSurvivesPush(app));
 test('계약⑰: 「퇴사자 보기」는 조회가 실제로 시작됐을 때만 켜진 채로 남는다', () => checks.inactiveToggleIsHonest(app));
@@ -774,9 +838,36 @@ test('변이⑬: uaMove 에서 포커스 복원을 빼면 계약⑬ 이 실패�
 });
 
 test('변이⑭: __userSaved 의 이월 회신 가드를 지우면 계약⑭ 가 실패한다', () => {
-  const bad = mutate(app, '  if(__uaGen === 0) return;   // 기다리는 요청이 없다 = 이 회신은 이월분이다', '  ');
+  const bad = mutate(app, '  if(!rq) return;   // 기다리는 요청이 없다 = 이 회신은 이월분이다', '  ');
   assert.throws(() => checks.requestGeneration(bad), /이월 회신을 걸러내지 않는다/);
   assert.doesNotThrow(() => checks.requestGeneration(app));   // 통제군
+});
+
+test('변이⑭-b: __userSaved 의 reqId 대조를 지우면 계약⑭ 가 실패한다(늦은 회신이 남의 폼을 닫는다)', () => {
+  const bad = mutate(app, "  if(rid && rid !== rq.id){\n    try{ console.warn('[__userSaved] 지난 요청의 회신을 버린다:', rid, '≠', rq.id); }catch(_){}\n    return;\n  }",
+    '  ');
+  assert.throws(() => checks.requestGeneration(bad), /reqId 를 기다리는 요청과 대조하지 않는다/);
+  assert.doesNotThrow(() => checks.requestGeneration(app));   // 통제군
+});
+
+test('변이⑭-c: 워치독이 요청 표를 지우게 되돌리면 계약⑭ 가 실패한다(늦은 성공이 버려진다)', () => {
+  const bad = mutate(app, '  __uaSaveWatchdog = setTimeout(() => {\n    uaSetSaving(false);',
+    '  __uaSaveWatchdog = setTimeout(() => {\n    __uaReq = null;\n    uaSetSaving(false);');
+  assert.throws(() => checks.requestGeneration(bad), /__uaReq 를 지운다/);
+  assert.doesNotThrow(() => checks.requestGeneration(app));   // 통제군
+});
+
+test('변이⑭-d: 행 버튼의 렌더 시 잠금을 빼면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, '    b.disabled = __uaSaving;', '    b.disabled = false;');
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /__uaSaving 을 보지 않는다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+test('변이⑭-e: 순서 저장 성공의 재렌더를 지우면 계약⑭-c 가 실패한다(끝난 편집 막대가 남는다)', () => {
+  const bad = mutate(app, '    if(wasOrder){ uaOrderReset(); __uaPendingData = null; uaAdminBar(); uaApply(); }',
+    '    if(wasOrder){ uaOrderReset(); __uaPendingData = null; }');
+  assert.throws(() => checks.orderSaveRedrawsItself(bad), /스스로 다시 그리지 않는다/);
+  assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
 });
 
 test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패한다(전송 중 가드가 사라진다)', () => {
@@ -787,15 +878,27 @@ test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패�
 });
 
 test('변이⑯: 관계없는 푸시를 그대로 반영하게 되돌리면 계약⑯ 이 실패한다', () => {
-  const bad = mutate(app, '  if(__uaOrder && !__uaOrderSaving){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
+  const bad = mutate(app, '  if(__uaOrder && !orderSaving){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
   assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 두지 않는다/);
   assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
 });
 
 test('변이⑰: uaReload 를 async 로 되돌리면 계약⑰ 이 실패한다(반환값이 늘 참이 된다)', () => {
-  const bad = mutate(app, 'function uaReload(){\n  if(!HOST || __uaBusy) return false;',
-    'async function uaReload(){\n  if(!HOST || __uaBusy) return false;');
+  const bad = mutate(app, "function uaReload(){\n  if(!HOST) return 'nohost';",
+    "async function uaReload(){\n  if(!HOST) return 'nohost';");
   assert.throws(() => checks.inactiveToggleIsHonest(bad), /uaReload 가 async 다/);
+  assert.doesNotThrow(() => checks.inactiveToggleIsHonest(app));   // 통제군
+});
+
+test('변이⑰-c: 조회 실패 시 「퇴사자 보기」 되돌리기를 지우면 계약⑰ 이 실패한다', () => {
+  const bad = mutate(app, '      __uaInactive = prevInactive;\n', '');
+  assert.throws(() => checks.inactiveToggleIsHonest(bad), /요청 전 값으로 되돌리지 않는다/);
+  assert.doesNotThrow(() => checks.inactiveToggleIsHonest(app));   // 통제군
+});
+
+test("변이⑰-b: 못 시작한 두 사유를 한 false 로 뭉치면 계약⑰ 이 실패한다(틀린 이유를 말한다)", () => {
+  const bad = mutate(app, "  if(!HOST) return 'nohost';\n  if(__uaBusy) return 'busy';", '  if(!HOST || __uaBusy) return false;');
+  assert.throws(() => checks.inactiveToggleIsHonest(bad), /못 시작한 이유.*갈라 돌려주지 않는다/);
   assert.doesNotThrow(() => checks.inactiveToggleIsHonest(app));   // 통제군
 });
 
@@ -806,6 +909,13 @@ test('변이⑱: 끼워 넣은 옵션의 라벨을 지우면 계약⑱ 이 실�
     '    o.value = want; o.textContent = want;');
   assert.throws(() => checks.unknownValueIsKept(bad), /끼워 넣지 않는다/);
   assert.doesNotThrow(() => checks.unknownValueIsKept(app));   // 통제군
+});
+
+test('변이⑲-b: userEdIsDirty 를 옛 칸별 대조로 되돌리면 계약⑲ 가 실패한다(기준이 두 벌이 된다)', () => {
+  const bad = mutate(app, '  const ov = document.getElementById(\'userEditModal\');\n  return !!ov && formSnapshot(ov) !== (ov.__openSnap || \'\');',
+    "  const m = uaMemberOf(__ueId);\n  return !!m && String(m.name || '') !== '';");
+  assert.throws(() => checks.retireConfirmIsHonest(bad), /formSnapshot 한 벌을 쓰지 않는다|칸을 하나씩 견준다/);
+  assert.doesNotThrow(() => checks.retireConfirmIsHonest(app));   // 통제군
 });
 
 test('변이⑲: 퇴사 확인창이 입력칸의 이름을 쓰게 되돌리면 계약⑲ 가 실패한다', () => {
@@ -833,13 +943,26 @@ test('계약②-b: 브리지 3종(saveUser·setUserActive·saveUserOrder)이 배
   const code = stripCs(main);
   for (const [cmd, fn] of [['saveUser', 'SaveUserAsync'], ['setUserActive', 'SetUserActiveAsync'], ['saveUserOrder', 'SaveUserOrderAsync']]) {
     assert.ok(new RegExp('case "' + cmd + '":').test(code), `브리지 case "${cmd}" 가 없다 — 화면이 눌러도 아무 일도 안 난다`);
+    //  ★ 2026-09-11 적대 검토(R3) — 세 명령이 reqId 를 함께 나른다. 회신은 왕복이 아니라 **푸시**라,
+    //    reqId 가 없으면 늦게 온 회신이 이미 다른 일을 하고 있는 폼을 건드린다. 없으면 "" 다(옛 웹과 호환).
+    assert.ok(new RegExp('case "' + cmd + '":[\\s\\S]{0,300}?' + fn + '\\(GetStr\\(doc, "reqId"\\)').test(code),
+      `브리지 case "${cmd}" 가 reqId 를 넘기지 않는다 — 화면이 회신을 자기 요청과 짝지을 수 없다(R3)`);
     const b = csMember(main, 'private async Task ' + fn + '(');
-    assert.ok(/UserSaved\(ok, msg\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다(__userSaved)`);
+    assert.ok(/^private async Task \w+\(string reqId, /.test(b), `${fn} 이 reqId 를 받지 않는다(R3)`);
+    assert.ok(/UserSaved\(ok, msg, reqId\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다(__userSaved)`);
     assert.ok(/if \(ok\) await LoadMembersToWebAsync\(includeInactive\);/.test(b),
       `${fn} 이 성공 뒤 명부를 재조회하지 않는다 — "저장은 됐는데 목록은 그대로"인 창이 생긴다`);
   }
   assert.ok(/window\.__userSaved && window\.__userSaved\(/.test(main),
     '호스트가 __userSaved 를 부르지 않는다(과제의 __projectSaved 와 같은 패턴이어야 한다)');
+  //  푸시 문장 자체에 세 번째 인자(reqId)가 실린다. ★ 식(=>) 본문이라 중괄호가 없어 csMember 를 못 쓴다 —
+  //  머리에서 창을 떼어 본다.
+  const usIdx = code.indexOf('private void UserSaved(');
+  assert.ok(usIdx >= 0, 'UserSaved 를 찾지 못했다(측정 불가 ≠ 통과)');
+  const saved = code.slice(usIdx, usIdx + 400);
+  assert.ok(/string reqId = ""/.test(saved), 'UserSaved 가 reqId 를 받지 않는다(R3)');
+  assert.ok(/Serialize\(reqId \?\? ""\)/.test(saved),
+    '__userSaved 호출에 세 번째 인자(reqId)가 없다 — 웹이 늦은 회신을 가려낼 수 없다(R3)');
   assert.ok(/window\.__applyMembers && window\.__applyMembers\(/.test(main),
     '호스트가 갱신 명부를 __applyMembers 로 밀어 주지 않는다');
   assert.ok(/typeof window\.__userSaved|window\.__userSaved = function/.test(app),
@@ -920,25 +1043,36 @@ test('변이④-b: 직급 검증을 숨김 포함으로 바꾸면 계약④ 가 
 
 test('변이④-c: 수정에서 "현재 저장된 값 허용"을 지우면 계약④ 가 실패한다(폐지 직급인 사람을 못 고친다)', () => {
   const bad = mutate(pdb,
-    'if (!titleSet.Contains(ti) && !string.Equals(ti, target.Value.title, StringComparison.Ordinal))',
+    'if (!titleSet.Contains(ti) && !string.Equals(ti, curTitle, StringComparison.Ordinal))',
     'if (!titleSet.Contains(ti))');
-  assert.throws(() => checks.inputValidation(bad), /수정의 직급 검사가/);
+  assert.throws(() => checks.inputValidation(bad), /직급 검사가/);
   assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
 });
 
-test('변이④-d: 신규 등록의 활성 직급 검사를 지우면 계약④ 가 실패한다(폐지된 직급으로 새 사람이 들어온다)', () => {
-  const bad = mutate(pdb,
-    '                        if (!titleSet.Contains(ti)) { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 직급입니다."); }\n',
-    '');
-  assert.throws(() => checks.inputValidation(bad), /신규 등록 분기에 활성 직급 검사가 없다/);
+test("변이④-d: '지금 저장된 값'을 잠근 행이 아니라 입력값에서 받으면 계약④ 가 실패한다(완화가 신규 등록까지 번진다)", () => {
+  const bad = mutate(pdb, 'string? curTitle = target?.title;', 'string? curTitle = ti;');
+  assert.throws(() => checks.inputValidation(bad), /잠근 대상 행\(target\)에서 오지 않는다/);
+  assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
 });
 
-test('변이⑥-f: 목록 밖 서열 비우기를 지우면 계약⑥-f 가 실패한다(§7-1a 가 되살아난다)', () => {
+test('변이⑥-f: 비우기에서 is_active=0 을 빼면 계약⑥-f 가 실패한다(목록 밖 활성 직원의 서열이 날아간다)', () => {
   const bad = mutate(pdb,
-    '"UPDATE app_user SET sort_order=NULL WHERE sort_order IS NOT NULL AND user_id NOT IN ("',
-    '"UPDATE app_user SET sort_order=sort_order WHERE user_id IN ("');
-  assert.throws(() => checks.orderClearsOutsiders(bad), /목록 밖 사람의 sort_order 를 비우지 않는다/);
+    '" ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END"',
+    '" ELSE NULL END"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /is_active=0 이 없다/);
   assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
+});
+
+test('변이⑥-h: 낡은 명부 거부(목록 밖 활성 세기)를 지우면 계약⑥-f 가 실패한다(R1)', () => {
+  const bad = mutate(pdb,
+    '"SELECT COUNT(*) FROM app_user WHERE is_active=1 AND user_id NOT IN (" +',
+    '"SELECT 0 FROM DUAL WHERE 0=1 AND 0 IN (" +');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /목록 밖 \*\*활성\*\* 직원을 세지 않는다/);
+});
+
+test('변이⑥-i: 낡은 명부를 세면서 FOR UPDATE 를 빼면 계약⑥-f 가 실패한다(판정과 갱신 사이가 열린다)', () => {
+  const bad = mutate(pdb, '") FOR UPDATE"', '")"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /잠그지 않고 센다/);
 });
 
 test('변이⑥-g: 빈 목록 거부를 지우면 계약⑥-f 가 실패한다(전원의 서열이 NULL 이 된다)', () => {
@@ -1071,7 +1205,7 @@ test('변이⑦-e: 진입 버튼을 마크업에 적으면 계약⑦-c 가 실�
 //    부팅하면 호스트 브리지·세션·타이머가 딸려 와 이 계약과 무관한 이유로 깨진다.
 // ══════════════════════════════════════════════════════════════════════
 
-const jsdom = await importOptional('jsdom');
+const jsdom = useJsdom(await importOptional('jsdom'));   // 부팅 다섯 줄은 harness(runInJsdom) 한 곳에 있다
 
 const COUNT_JS = [
   'function __count(boxId, barId){',
@@ -1117,6 +1251,7 @@ function adminHarnessJs(src) {
   return [
     "var currentUser = { loginId: 'zzUme' };",
     'var __uaAdmin = false, __uaOrder = false, __uaInactive = false;',
+    'var __uaSaving = false;   // 쓰기 왕복 중인가 — 2026-09-11 부터 잠금은 **렌더가** 이 값을 보고 그린다',
     'var __uaPendingData = null;   // 미뤄 둔 명부 푸시(uaAdminBar 가 안내 줄을 낼지 판단한다)',
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function userEdOpen(){} function uaSetActive(){} function uaMove(){}',
@@ -1124,9 +1259,22 @@ function adminHarnessJs(src) {
     ...fns,
     COUNT_JS,
     'window.__probe = function(rows, admin, order){',
-    '  __uaAdmin = !!admin; __uaOrder = !!order; __uaPendingData = null;',
+    '  __uaAdmin = !!admin; __uaOrder = !!order; __uaPendingData = null; __uaSaving = false;',
     '  uaAdminBar(); uaRender(rows);',
     '  return __count("uaList", "uaAdmin");',
+    '};',
+    //  쓰기 왕복 중에 다시 그려도 잠금이 남는가(계약⑭-b 의 DOM 쪽).
+    //  ★ 여기서 재는 것은 **렌더 결과** 하나다 — uaSetSaving 은 붙박이 버튼·워치독까지 끌고 오므로 넣지 않는다.
+    'window.__probeSaving = function(rows, order, saving){',
+    '  __uaAdmin = true; __uaOrder = !!order; __uaPendingData = null; __uaSaving = !!saving;',
+    '  uaAdminBar(); uaRender(rows);',
+    '  var bar = document.getElementById("uaAdmin"), foot = document.getElementById("uaFoot");',
+    '  var pick = function(box){ return Array.prototype.map.call(box.querySelectorAll("button"), function(b){',
+    '    return { id: String(b.id || ""), text: String(b.textContent || ""), disabled: !!b.disabled }; }); };',
+    '  return {',
+    '    rowOps: Array.prototype.map.call(document.querySelectorAll("#uaList [data-uop]"), function(b){',
+    '      return { uop: b.dataset.uop, uid: b.dataset.uid, disabled: !!b.disabled }; }),',
+    '    bar: pick(bar), foot: pick(foot) };',
     '};',
     //  미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말해야 한다(계약⑯의 DOM 쪽).
     'window.__probePending = function(rows, pending){',
@@ -1146,7 +1294,7 @@ function moveHarnessJs(src) {
     .map((n) => extractFunction(src, n));
   return [
     "var currentUser = { loginId: 'zzUme' };",
-    'var __uaAdmin = true, __uaOrder = true, __uaInactive = false, __uaMembers = [];',
+    'var __uaAdmin = true, __uaOrder = true, __uaInactive = false, __uaMembers = [], __uaSaving = false;',
     'function userEdOpen(){} function uaSetActive(){} function toast(){}',
     ...fns,
     'function __focused(){',
@@ -1186,7 +1334,7 @@ function scopeHarnessJs(src) {
   const fns = ['uaVisible', 'uaEmptyText', 'uaRowActions', 'uaRender', 'uaApply'].map((n) => extractFunction(src, n));
   return [
     "var currentUser = { loginId: 'zzUme' };",
-    'var __uaAdmin = true, __uaOrder = false, __uaInactive = false, __uaMembers = [];',
+    'var __uaAdmin = true, __uaOrder = false, __uaInactive = false, __uaMembers = [], __uaSaving = false;',
     'function userEdOpen(){} function uaSetActive(){} function uaMove(){} function toast(){}',
     ...fns,
     'window.__probe = function(rows, search, inactive, admin){',
@@ -1228,30 +1376,18 @@ const ROWS = [
   { userId: 13, loginId: 'zzUb', name: 'zzU_b', title: 'zzU-T2', orgUnit: 'zzU-조직', canViewSchedule: false, isActive: false },
 ];
 
-//  ★ JSON 왕복으로 **이쪽 realm 의 값**으로 바꾼다. jsdom 의 Array 는 다른 realm 이라
-//    deepStrictEqual 이 프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
-function run(fixture, js, ...args) {
-  const { JSDOM } = jsdom;
-  //  runScripts: outside-only — window 가 실제 realm 으로 선다(없으면 eval 안에서 window 가 미정의다).
-  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
-  dom.window.eval(js);
-  return JSON.parse(JSON.stringify(dom.window.__probe(...args)));
-}
-//  __probe 말고 다른 이름의 창구를 부를 때(한 하네스가 여러 각도를 재는 경우).
-function runNamed(fixture, js, name, ...args) {
-  const { JSDOM } = jsdom;
-  const dom = new JSDOM(fixture, { runScripts: 'outside-only' });
-  dom.window.eval(js);
-  return JSON.parse(JSON.stringify(dom.window[name](...args)));
-}
+//  ★ jsdom 부팅·JSON 왕복은 harness 의 runInJsdom 한 곳에 있다(사본은 반드시 낡는다).
+//    JSON 왕복이 필요한 이유: jsdom 의 Array 는 다른 realm 이라 deepStrictEqual 이
+//    프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
 const FILL_FIXTURE = '<!doctype html><html><body><select id="sel"></select></body></html>';
-const probeView = (src = app) => run(VIEW_FIXTURE, viewHarnessJs(src), ROWS);
-const probeAdmin = (admin, order, src = app) => run(ADMIN_FIXTURE, adminHarnessJs(src), ROWS, admin, order);
-const probePending = (pending, src = app) => runNamed(ADMIN_FIXTURE, adminHarnessJs(src), '__probePending', ROWS, pending);
-const probeMove = (uid, delta, pressUop, src = app) => run(ADMIN_FIXTURE, moveHarnessJs(src), ROWS, uid, delta, pressUop);
-const probeFill = (items, cur, blank, src = app) => run(FILL_FIXTURE, fillHarnessJs(src), items, cur, blank);
-const probeScope = (search, inactive, admin, src = app) => run(ADMIN_FIXTURE, scopeHarnessJs(src), ROWS, search, inactive, admin);
-const probeEntry = (role, src = app) => run(ENTRY_FIXTURE, entryHarnessJs(src), role);
+const probeView = (src = app) => runInJsdom(VIEW_FIXTURE, viewHarnessJs(src), '__probe', ROWS);
+const probeAdmin = (admin, order, src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probe', ROWS, admin, order);
+const probePending = (pending, src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probePending', ROWS, pending);
+const probeSaving = (order, saving, src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeSaving', ROWS, order, saving);
+const probeMove = (uid, delta, pressUop, src = app) => runInJsdom(ADMIN_FIXTURE, moveHarnessJs(src), '__probe', ROWS, uid, delta, pressUop);
+const probeFill = (items, cur, blank, src = app) => runInJsdom(FILL_FIXTURE, fillHarnessJs(src), '__probe', items, cur, blank);
+const probeScope = (search, inactive, admin, src = app) => runInJsdom(ADMIN_FIXTURE, scopeHarnessJs(src), '__probe', ROWS, search, inactive, admin);
+const probeEntry = (role, src = app) => runInJsdom(ENTRY_FIXTURE, entryHarnessJs(src), '__probe', role);
 //  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
 function probeEntrySeq(roles, src = app) {
   const { JSDOM } = jsdom;
@@ -1272,6 +1408,8 @@ if (!jsdom) {
   skip('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 반대쪽 화살표를 잡는다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM: 포커스 복원을 지우면 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', SKIP_NO_JSDOM);
+  skip('계약⑭-DOM(b): 쓰기 왕복 중에 그리면 명부 쪽 버튼이 전부 잠긴 채로 나온다', SKIP_NO_JSDOM);
+  skip('변이⑭-DOM(b): 렌더에서 잠금을 빼면 다시 그린 버튼이 켜진 채로 나온다', SKIP_NO_JSDOM);
   skip('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 그대로 선택된다', SKIP_NO_JSDOM);
   skip('변이⑱-DOM: 옛 동작(첫 항목으로 갈아치우기)이면 값이 조용히 바뀐다', SKIP_NO_JSDOM);
   skip('계약⑳-DOM: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', SKIP_NO_JSDOM);
@@ -1394,6 +1532,43 @@ if (!jsdom) {
     const r = probeMove(11, +1, 'down', bad);
     assert.strictEqual(r.focus.isBody, true, '변이 전제: 복원을 지우면 포커스가 body 로 떨어져야 한다');
     assert.strictEqual(probeMove(11, +1, 'down').focus.isBody, false);   // 통제군
+  });
+
+  //  ★ 잠금이 **데이터가 아니라 렌더**에서 나오는지 본다(2026-09-11 적대 검토 R3-W2).
+  //    옛 판은 uaSetSaving 이 노드를 걸어 다니며 껐다 — 그래서 왕복 중에 명부 푸시가 오면
+  //    새로 만든 버튼이 멀쩡히 켜진 채로 섰고, 그 틈에 같은 쓰기가 두 번 나갔다.
+  //    여기서는 '__uaSaving 을 켜 놓고 그냥 그린다' — 그것만으로 잠겨야 한다.
+  test('계약⑭-DOM(b): 쓰기 왕복 중에 그리면 명부 쪽 버튼이 전부 잠긴 채로 나온다', () => {
+    //  ① 평소(왕복 없음) — 전부 눌린다.
+    const idle = probeSaving(false, false);
+    assert.deepStrictEqual(idle.rowOps.map((b) => b.disabled), [false, false, false],
+      `전제 붕괴: 평소에도 행 [편집]이 잠겨 있다 — ${JSON.stringify(idle.rowOps)}`);
+    assert.deepStrictEqual(idle.bar.map((b) => b.disabled), [false], `평소 막대 버튼이 잠겨 있다: ${JSON.stringify(idle.bar)}`);
+    assert.deepStrictEqual(idle.foot.map((b) => b.disabled), [false], `평소 [＋ 직원 등록]이 잠겨 있다: ${JSON.stringify(idle.foot)}`);
+    //  ② 왕복 중 — 다시 그려도 전부 잠긴 채다.
+    const busy = probeSaving(false, true);
+    assert.deepStrictEqual(busy.rowOps.map((b) => b.disabled), [true, true, true],
+      `왕복 중에 다시 그렸더니 행 [편집]이 켜져 있다: ${JSON.stringify(busy.rowOps)} — 결과를 기다리는 중에 다른 사람의 폼이 열린다`);
+    assert.deepStrictEqual(busy.bar.map((b) => b.disabled), [true],
+      `왕복 중인데 「순서 편집」이 켜져 있다: ${JSON.stringify(busy.bar)}`);
+    assert.deepStrictEqual(busy.foot.map((b) => b.disabled), [true],
+      `왕복 중인데 [＋ 직원 등록]이 켜져 있다: ${JSON.stringify(busy.foot)}`);
+    //  ③ 순서 편집 중 — ▲▼ 와 [순서 저장]도 같은 규칙. [취소]는 화면 안의 일이라 열려 있어야 한다.
+    const ord = probeSaving(true, true);
+    assert.ok(ord.rowOps.length === 6 && ord.rowOps.every((b) => b.disabled),
+      `순서 편집 왕복 중인데 ▲▼ 가 켜져 있다: ${JSON.stringify(ord.rowOps)} — 저장 중인 순서를 더 흔들 수 있다`);
+    const save = ord.bar.find((b) => b.id === 'uaOrderSave');
+    const cancel = ord.bar.find((b) => b.id === 'uaOrderCancel');
+    assert.ok(save && save.disabled, `왕복 중인데 [순서 저장]이 켜져 있다: ${JSON.stringify(ord.bar)}`);
+    assert.ok(cancel && !cancel.disabled, `[취소]까지 잠겼다: ${JSON.stringify(ord.bar)} — 되돌리기는 호스트 왕복과 겹치지 않는다`);
+  });
+
+  test('변이⑭-DOM(b): 렌더에서 잠금을 빼면 다시 그린 버튼이 켜진 채로 나온다(그래서 이 계약이 필요하다)', () => {
+    const bad = mutate(app, '    b.disabled = __uaSaving;', '    b.disabled = false;');
+    const r = probeSaving(false, true, bad);
+    assert.deepStrictEqual(r.rowOps.map((b) => b.disabled), [false, false, false],
+      '변이 전제: 렌더가 잠금을 보지 않으면 왕복 중에도 행 [편집]이 켜져 있어야 한다');
+    assert.deepStrictEqual(probeSaving(false, true).rowOps.map((b) => b.disabled), [true, true, true]);   // 통제군
   });
 
   test('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', () => {

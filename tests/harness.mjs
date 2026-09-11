@@ -132,6 +132,28 @@ export async function importOptional(spec) {
   }
 }
 
+// ── jsdom 부팅 한 곳 ────────────────────────────────────────────────
+// 여러 시험 파일이 같은 다섯 줄(JSDOM 만들기 → eval → 창구 호출 → JSON 왕복)을 각자 적어 두고 있었다.
+// 사본은 반드시 낡는다 — 한쪽만 runScripts 옵션이 바뀌면 그 파일만 다른 realm 에서 돌게 된다.
+//   ★ JSON 왕복이 핵심이다: jsdom 의 Array 는 **다른 realm** 이라, 그대로 돌려주면
+//     deepStrictEqual 이 프로토타입 불일치로 늘 실패한다(값은 같은데 판정이 거짓말을 한다).
+//   ★ jsdom 은 선택 의존성이라 harness 가 최상위에서 부르지 않는다. 쓰는 파일이
+//     useJsdom(await importOptional('jsdom')) 으로 한 번 등록하고 쓴다 —
+//     harness 가 스스로 import 하면, jsdom 을 쓰지 않는 시험 파일까지 그 비용을 문다.
+let _jsdom = null;
+export function useJsdom(mod) { _jsdom = mod || null; return mod; }
+
+// fixture HTML 로 창을 세우고 js 를 심은 뒤, 창구(window[name])를 args 로 부른 결과를 돌려준다.
+export function runInJsdom(fixture, js, name = '__probe', ...args) {
+  if (!_jsdom) throw new Error('runInJsdom: jsdom 이 등록되지 않았다 — useJsdom(await importOptional("jsdom")) 을 먼저 부른다');
+  //  runScripts: outside-only — window 가 실제 realm 으로 선다(없으면 eval 안에서 window 가 미정의다).
+  const dom = new _jsdom.JSDOM(fixture, { runScripts: 'outside-only' });
+  dom.window.eval(js);
+  const fn = dom.window[name];
+  if (typeof fn !== 'function') throw new Error(`runInJsdom: window.${name} 창구가 없다 — 판정 불가`);
+  return JSON.parse(JSON.stringify(fn(...args)));
+}
+
 // 파일 안에서 marker 뒤에 있는 test( 호출 '자리 수'를 정적으로 센다.
 // skip 줄에 "얼마나 사라졌는가"의 규모를 붙이기 위한 것 — 정확한 건수가 아니다.
 //   · 루프 안에서 등록하는 자리는 1로 세지만 실제로는 여러 건이다(실측: app-context 는
@@ -238,6 +260,52 @@ export function extractFunction(source, fnName) {
 
 function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ── C# 소스 오려내기 ────────────────────────────────────────────────
+// 호스트(widget/*.cs)의 계약을 형태로 보는 시험이 다섯 파일인데, 다섯 벌이 같은 슬라이서를
+// 각자 안고 있었다. 사본은 반드시 낡는다 — 한쪽만 문자열 이스케이프를 고치면 나머지 넷은
+// 그대로 오탐을 안고 통과한다. 한 곳에 둔다.
+//
+// 주석 제거(문자열 리터럴은 보존) — "왜 안 하는지"를 적어 둔 **주석이** 계약을 통과시키면 안 된다.
+const _CS_BS = String.fromCharCode(92);
+export function stripCsComments(s) {
+  const src = String(s == null ? '' : s);
+  let out = '', i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < src.length) { if (src[j] === _CS_BS) { j += 2; continue; } if (src[j] === c) { j++; break; } j++; }
+      out += src.slice(i, j); i = j; continue;
+    }
+    if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && src[i + 1] === '*') { i += 2; while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++; i += 2; continue; }
+    out += c; i++;
+  }
+  return out;
+}
+
+// C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
+//   ★ 못 찾으면 던진다. '판정 불가'는 통과가 아니다.
+export function extractCsMember(source, sig) {
+  const code = stripCsComments(source);
+  const s = code.indexOf(sig);
+  if (s < 0) throw new Error(`extractCsMember: C# 멤버를 찾지 못함: ${sig}`);
+  const open = code.indexOf('{', s);
+  if (open <= s) throw new Error(`extractCsMember: ${sig} 의 여는 중괄호를 찾지 못함`);
+  let depth = 0;
+  for (let k = open; k < code.length; k++) {
+    const c = code[k];
+    if (c === '"' || c === "'") {
+      let j = k + 1;
+      while (j < code.length) { if (code[j] === _CS_BS) { j += 2; continue; } if (code[j] === c) break; j++; }
+      k = j; continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}') { depth -= 1; if (depth === 0) return code.slice(s, k + 1); }
+  }
+  throw new Error(`extractCsMember: ${sig} 의 중괄호 짝이 맞지 않는다`);
 }
 
 // 문자열 리터럴 시작 위치 i(따옴표)에서 닫는 따옴표 다음 인덱스를 반환.

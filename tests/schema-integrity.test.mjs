@@ -181,10 +181,15 @@ function checkHoursPair(sql, cs) {
   assert.ok(/hours\s*<=\s*24/i.test(body),
     "chk_crh_hours 가 'hours <= 24' 를 담지 않는다 — 상한이 없으면 파서가 잘못 읽은 240 이 회사 보고 집계로 나간다");
 
-  assert.ok(/if\s*\(\s*h\.Hours\s*<=\s*0\s*\)\s*continue\s*;/.test(cs),
-    'ReportDb 의 0시간 줄 필터가 `h.Hours <= 0` 이 아니다 — CHECK 가 0 초과로 좁아졌으므로 ' +
-    '0시간 줄이 통과하면 그 한 줄이 3819 를 내고 **그 날 보고 저장 트랜잭션 전체가 죽는다** ' +
+  //  ★ 2026-09-11 적대 검토(R5) — 앱 쪽 필터는 ReportDb.HoursInDomain **한 줄**이다. 전에는
+  //    `h.Hours <= 0` 과 `h.Hours > 24` 가 여기에, 그리고 MainWindow.ParseHoursJson 에 또 한 벌
+  //    적혀 있어 한쪽만 고치면 두 관문이 갈렸다. 그래서 정본과 짝지어 볼 대상도 그 한 줄이다.
+  assert.ok(/internal static bool HoursInDomain\(decimal h\) => h > 0m && h <= 24m;/.test(cs),
+    'ReportDb 의 공수 도메인 판정(HoursInDomain)이 정본 CHECK(`hours > 0 AND hours <= 24`)와 다르다 — ' +
+    '범위 밖 줄이 통과하면 그 한 줄이 3819 를 내고 **그 날 보고 저장 트랜잭션 전체가 죽는다** ' +
     '(전송은 이미 나간 뒤라 가장 나쁜 실패다).');
+  assert.ok(/if \(!HoursInDomain\(h\.Hours\)\) continue;/.test(cs),
+    'ReportDb 의 저장 직전 관문이 HoursInDomain 으로 거르지 않는다 — 판정이 있어도 부르지 않으면 장식이다.');
 }
 
 //  계약⑤ — cat_no 가드. 번호 재사용(MAX()+1 발번) 때문에 참조가 없으면 과거 공수가
@@ -305,10 +310,10 @@ test('변이③b: chk_crd_status 를 통째로 지우면 계약③ 이 실패한
   assert.throws(() => checkReportChecks(bad), /chk_crd_status 가 없다/);
 });
 
-test('변이④: 0시간 필터를 `< 0` 으로 되돌리면 계약④ 가 실패한다', () => {
-  const bad = reportCode.replace('h.Hours <= 0', 'h.Hours < 0');
-  assert.notStrictEqual(bad, reportCode, '변이가 원본을 바꾸지 못했다 — 필터 표현이 바뀌었다');
-  assert.throws(() => checkHoursPair(canonSql, bad), /0시간 줄 필터가/);
+test('변이④: 공수 도메인을 `>= 0` 으로 되돌리면 계약④ 가 실패한다(0시간 줄이 통과한다)', () => {
+  const bad = reportCode.replace('h > 0m && h <= 24m', 'h >= 0m');
+  assert.notStrictEqual(bad, reportCode, '변이가 원본을 바꾸지 못했다 — 도메인 판정의 표현이 바뀌었다');
+  assert.throws(() => checkHoursPair(canonSql, bad), /공수 도메인 판정\(HoursInDomain\)이 정본 CHECK/);
 });
 
 test('변이④b: chk_crh_hours 의 상한(<= 24)을 지우면 계약④ 가 실패한다', () => {

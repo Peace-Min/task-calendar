@@ -55,6 +55,14 @@ namespace TaskCalendarWidget
     {
         private readonly Action<string> _log;
 
+        // 공수 한 줄이 DB 에 들어갈 수 있는 값인가 — 정본 제약 `chk_crh_hours CHECK (hours > 0 AND hours <= 24)`
+        //   와 같은 판정이다. 범위 밖 줄 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체**가 롤백되고,
+        //   전송은 이미 나간 뒤라 가장 나쁜 실패가 된다 — 그래서 줄 하나를 버린다.
+        //   ★ 2026-09-11 적대 검토(R5) — 같은 판정이 두 곳(들어오는 자리 MainWindow.ParseHoursJson,
+        //     저장 직전의 마지막 관문)에 **숫자까지 두 벌** 적혀 있었다. 한쪽만 고치면 두 관문이 갈린다.
+        //     판정은 여기 한 줄이고, 두 곳은 이것을 부른다(문구·로그는 각자 자기 자리의 말로 남긴다).
+        internal static bool HoursInDomain(decimal h) => h > 0m && h <= 24m;
+
         public ReportDb(Action<string> log)
         {
             _log = log ?? (_ => { });
@@ -160,17 +168,11 @@ namespace TaskCalendarWidget
                         string name = (h.TaskName ?? "").Trim();
                         if (name.Length == 0) continue;                 // 이름 없는 줄은 기록할 대상이 아니다
                         if (name.Length > 200) name = name.Substring(0, 200);   // 컬럼 폭에 맞춰 자른다(예외로 전송을 깨지 않는다)
-                        // ★ 2026-09-09 `< 0` → `<= 0`. chk_crh_hours 가 `hours >= 0` 에서
-                        //   `hours > 0 AND hours <= 24` 로 좁아졌으므로(cal_task_hours 와 같은 규율)
-                        //   0시간 줄도 여기서 미리 걸러야 한다. 안 그러면 그 한 줄이 3819 를 내고
-                        //   **그 날 보고 저장 트랜잭션 전체가 죽는다** — 전송은 이미 나간 뒤라 가장 나쁜 실패다.
+                        // ★ 저장 직전의 **마지막 관문**. 들어오는 자리(MainWindow.ParseHoursJson)가 이미 걸렀지만,
+                        //   여기서도 같은 판정을 한 번 더 한다 — 다만 판정 자체는 HoursInDomain 한 곳에만 있다
+                        //   (2026-09-11 R5. 전에는 `<= 0` 과 `> 24` 가 여기에도 숫자로 두 줄 적혀 있었다).
                         //   의미상으로도 0 은 '기록할 것이 없다' 이지 '0시간을 일했다' 가 아니다.
-                        if (h.Hours <= 0) continue;                     // CHECK 위반을 미리 거른다 — 트랜잭션 전체를 죽이지 않게
-                        //   ★ 2026-09-10 위쪽 절반(> 24)도 함께 건다. CHECK 는 `hours > 0 AND hours <= 24` 인데
-                        //     여기서는 아래쪽만 보고 있었다 — 24 를 넘는 값 하나가 그대로 3819 를 내고 같은 사고가 난다.
-                        //     들어오는 자리(MainWindow.ParseHoursJson)에서 이미 거르지만, 마지막 관문도 같은 판정을 한다.
-                        //     (두 문장으로 나눠 둔다 — 아래쪽 필터의 **글자**를 정본 CHECK 와 짝지어 보는 계약이 있다.)
-                        if (h.Hours > 24) continue;
+                        if (!HoursInDomain(h.Hours)) continue;          // CHECK 위반을 미리 거른다 — 트랜잭션 전체를 죽이지 않게
 
                         if (lineNo > 0) sb.Append(',');
                         sb.Append("(@u, @dt, @l").Append(lineNo)

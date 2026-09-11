@@ -549,9 +549,15 @@ if($liveExists){
 #     **접속한 DB** 를 쓴다. 그래서 위 두 파일과 달리 임시 사본을 만들지 않고 그대로 돌린다.
 # ============================================================================
 function FindUserGrants(){
+  #  ★ 2026-09-11 적대 검토(R6) — **직접 지정한 경로가 없으면 그 자리에서 멈춘다.**
+  #    옛 판은 $null 을 돌려줘 아래 '형제 폴더에서 못 찾았다' 경고로 떨어졌다. 그 경고는
+  #    "taskmgr-company-data\05-grants.sql 을 찾지 못했습니다(형제 폴더에 없음)" 이라고 말하는데,
+  #    사람은 형제 폴더가 아니라 **자기가 준 경로**를 찾게 했으므로 그 문장은 사실이 아니다 —
+  #    오타 하나가 "권한 파일이 원래 없는 환경" 으로 둔갑하고, 복구는 경고만 남긴 채 '성공' 으로 끝났다.
+  #    지정한 경로는 곧 의도다. 없으면 복구를 진행하지 않고 그 경로를 이름으로 말하며 끝낸다.
   if($UserGrantsPath){
     if(Test-Path $UserGrantsPath){ return (Resolve-Path $UserGrantsPath).Path }
-    return $null
+    Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath (경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG
   }
   $sd       = Split-Path -Parent $PSCommandPath                 # <저장소>\db\deploy
   $repoRoot = Split-Path (Split-Path $sd -Parent) -Parent       # <저장소>
@@ -559,6 +565,9 @@ function FindUserGrants(){
     (Join-Path (Split-Path $repoRoot -Parent) "taskmgr-company-data\05-grants.sql"),  # 형제 폴더(정본 배치)
     (Join-Path $repoRoot "taskmgr-company-data\05-grants.sql")                        # 저장소 안에 반입해 둔 경우
   )
+  #  ★ 기본 탐색(형제 폴더)에서 못 찾은 경우는 그대로 **경고**다 — 비공개 저장소가 없는 PC 에서도
+  #    캘린더 복구 자체는 끝까지 돌아야 하기 때문이다(직원 관리만 1142 로 죽는다는 사실을 아래 경고가 말한다).
+  #    '직접 지정했는데 없다'(위 Die)와 '원래 없는 환경이다'(이 경고)는 서로 다른 사건이다.
   foreach($c in $cands){ if(Test-Path $c){ return (Resolve-Path $c).Path } }
   return $null
 }

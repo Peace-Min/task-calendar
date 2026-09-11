@@ -172,12 +172,25 @@ const checks = {
       '재검증한 값(st·ot)이 아니라 원본을 저장한다 — 검증이 장식이 된다');
 
     // (d) 공수 줄은 CHECK 범위 밖이면 **버린다**(줄 하나 때문에 그 날 기록 전체를 잃지 않게).
+    //     ★ 2026-09-11 적대 검토(R5) — 그 판정은 ReportDb.HoursInDomain **한 줄**에만 산다. 전에는
+    //       들어오는 자리(MainWindow.ParseHoursJson)와 저장 직전(ReportDb)에 숫자가 두 벌 적혀 있어
+    //       한쪽만 고치면 두 관문이 조용히 갈렸다. 그래서 여기서 보는 것은 셋이다:
+    //         ① 그 한 줄이 정본 범위와 글자까지 같은가 · ② 두 자리가 그것을 부르는가 ·
+    //         ③ 범위 숫자를 **다시 적어 둔 자리**가 없는가(있으면 그곳이 곧 갈라질 자리다).
     const h = /CONSTRAINT\s+chk_crh_hours\s+CHECK\s*\(\s*hours\s*>\s*(\d+)\s+AND\s+hours\s*<=\s*(\d+)\s*\)/i.exec(canonText);
     assert.ok(h, '정본에서 chk_crh_hours 의 범위를 읽지 못했다(판정 불가 ≠ 통과)');
-    assert.ok(new RegExp('h <= ' + h[1] + ' \\|\\| h > ' + h[2]).test(mainCs),
-      `ParseHoursJson 이 정본 범위(${h[1]} 초과 ~ ${h[2]} 이하) 밖 줄을 버리지 않는다 — 그 한 줄이 그 날 저장 전체를 롤백시킨다`);
-    assert.ok(new RegExp('h\\.Hours > ' + h[2]).test(rdb),
-      `ReportDb 의 마지막 관문이 상한(${h[2]})을 보지 않는다 — 들어오는 자리와 저장하는 자리가 같은 판정을 해야 한다`);
+    assert.ok(new RegExp('internal static bool HoursInDomain\\(decimal h\\) => h > ' + h[1] + 'm && h <= ' + h[2] + 'm;').test(rdb),
+      `공수 도메인 판정(ReportDb.HoursInDomain)이 정본 범위(${h[1]} 초과 ~ ${h[2]} 이하)와 글자까지 같지 않다 — 범위 밖 줄 하나가 그 날 저장 전체를 롤백시킨다`);
+    assert.ok(/if \(!ReportDb\.HoursInDomain\(h\)\)/.test(mainCs),
+      'ParseHoursJson 이 정본 범위 밖 줄을 버리지 않는다(HoursInDomain 을 부르지 않는다) — 그 한 줄이 그 날 저장 전체를 롤백시킨다');
+    assert.ok(/if \(!HoursInDomain\(h\.Hours\)\) continue;/.test(rdb),
+      'ReportDb 의 마지막 관문이 HoursInDomain 을 부르지 않는다 — 들어오는 자리와 저장하는 자리가 같은 판정을 해야 한다');
+    //     ③ 은 'HoursInDomain 선언 줄을 걷어 내고 나면 범위 숫자가 한 자리도 안 남는가' 로 본다.
+    const rdbElse = rdb.replace(/\n[^\n]*HoursInDomain\(decimal h\)[^\n]*/, '');
+    assert.strictEqual([...rdbElse.matchAll(/\bh(?:\.Hours)?\s*(?:<=|>=|<|>)\s*\d/g)].length, 0,
+      '공수 범위 숫자가 HoursInDomain 선언 밖에 또 적혀 있다(ReportDb) — 판정은 그 한 줄뿐이어야 한다(R5)');
+    assert.strictEqual([...mainCs.matchAll(/\bh(?:\.Hours)?\s*(?:<=|>=|<|>)\s*\d/g)].length, 0,
+      '공수 범위 숫자가 MainWindow 에 다시 적혀 있다 — 판정은 ReportDb.HoursInDomain 한 줄뿐이어야 한다(R5)');
   },
 };
 
@@ -300,10 +313,17 @@ test('변이⑨: 재검증한 값 대신 원본을 저장하면 배선⑨ 가 �
     /재검증한 값\(st·ot\)이 아니라 원본을 저장한다/);
 });
 
-test('변이⑩: 공수 줄 필터를 옛 `h < 0` 으로 되돌리면 배선⑨ 가 실패한다(0·24 초과가 통과한다)', () => {
-  const bad = mutate('if (h <= 0 || h > 24)', 'if (h < 0)', mainwin);
+test('변이⑩: 공수 도메인을 옛 `h >= 0` 으로 되돌리면 배선⑨ 가 실패한다(0·24 초과가 통과한다)', () => {
+  const bad = mutate('h > 0m && h <= 24m', 'h >= 0m', reportdb);
+  assert.throws(() => checks.revalidatesCheckDomains(mainwin, bad, canonSql(), canonStatusCodes('chk_crd_status')),
+    /정본 범위[\s\S]*글자까지 같지 않다/);
+  assert.doesNotThrow(() => checks.revalidatesCheckDomains(mainwin, reportdb, canonSql(), canonStatusCodes('chk_crd_status')));
+});
+
+test('변이⑩-b: ParseHoursJson 이 범위를 자기 숫자로 다시 적으면 배선⑨ 가 실패한다(두 관문이 갈릴 자리)', () => {
+  const bad = mutate('if (!ReportDb.HoursInDomain(h))', 'if (h <= 0 || h > 24)', mainwin);
   assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
-    /정본 범위[\s\S]*밖 줄을 버리지 않는다/);
+    /HoursInDomain 을 부르지 않는다|다시 적혀 있다/);
 });
 
 test('변이⑪: 잔업 상한을 정본과 다르게 넓히면 배선⑨ 가 실패한다', () => {

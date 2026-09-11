@@ -611,20 +611,23 @@ namespace TaskCalendarWidget
                         _ = RunMembersGetAsync(GetStr(doc, "reqId"), GetBool(doc, "includeInactive"), GetBool(doc, "flat"));   // flat = 「구성원 편집」(전사 서열 순)
                         break;
 
-                    // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 결과는 __userSaved(ok,msg) + 성공 시 명부 재조회 -----
+                    // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 결과는 __userSaved(ok,msg,reqId) + 성공 시 명부 재조회 -----
                     //   ★ 과제 쓰기(saveProject → __projectSaved → loadProjects)와 **같은 모양**이다.
                     //     관리자가 두 화면에서 같은 절차를 밟게 하려고 일부러 복제했다.
                     //   ★ 권한은 여기서 보지 않는다. 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
+                    //   ★ 2026-09-11 적대 검토(R3) — 다섯 쓰기 명령이 reqId 를 함께 나른다. 회신은 여전히
+                    //     **푸시**(__userSaved · __trashDone)지만, 세 번째 인자로 그 reqId 를 돌려주므로 웹이
+                    //     "이 회신이 내 요청의 것인가"를 판정할 수 있다. 없으면 빈 문자열이다 — 옛 웹과도 호환된다.
                     case "saveUser":         // userId 없으면 신규 INSERT, 있으면 그 user_id UPDATE
-                        _ = SaveUserAsync(GetInt(doc, "userId"), GetStr(doc, "loginId"), GetStr(doc, "name"),
+                        _ = SaveUserAsync(GetStr(doc, "reqId"), GetInt(doc, "userId"), GetStr(doc, "loginId"), GetStr(doc, "name"),
                             GetStr(doc, "title"), GetInt(doc, "orgId"), GetStr(doc, "viewScope"), GetStr(doc, "editRole"),
                             GetBool(doc, "includeInactive"));
                         break;
                     case "setUserActive":    // 퇴사 처리(active=false) / 복구(true) — 행은 남는다
-                        _ = SetUserActiveAsync(GetInt(doc, "userId"), GetBool(doc, "active"), GetBool(doc, "includeInactive"));
+                        _ = SetUserActiveAsync(GetStr(doc, "reqId"), GetInt(doc, "userId"), GetBool(doc, "active"), GetBool(doc, "includeInactive"));
                         break;
                     case "saveUserOrder":    // 화면에 보이는 순서 그대로 → 호스트가 10·20·30… 전량 재작성
-                        _ = SaveUserOrderAsync(GetIntArray(doc, "userIds"), GetBool(doc, "includeInactive"));
+                        _ = SaveUserOrderAsync(GetStr(doc, "reqId"), GetIntArray(doc, "userIds"), GetBool(doc, "includeInactive"));
                         break;
 
                     // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용. 숨긴 항목만 모아 복구/영구 삭제한다 -----
@@ -635,10 +638,10 @@ namespace TaskCalendarWidget
                         _ = RunTrashGetAsync(GetStr(doc, "reqId"));
                         break;
                     case "trashRestore":
-                        _ = TrashRestoreAsync(GetStr(doc, "kind"), GetStr(doc, "key"), GetBool(doc, "includeInactive"));
+                        _ = TrashRestoreAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "key"), GetBool(doc, "includeInactive"));
                         break;
                     case "trashDelete":      // confirm = 사용자가 입력한 이름. 가공 없이 그대로 넘긴다(TRIM 금지 · §5.2)
-                        _ = TrashDeleteAsync(GetStr(doc, "kind"), GetStr(doc, "key"), GetStr(doc, "confirm"), GetBool(doc, "includeInactive"));
+                        _ = TrashDeleteAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "key"), GetStr(doc, "confirm"), GetBool(doc, "includeInactive"));
                         break;
 
                     case "peerSchedule":     // 타인 일정 열람(C4) — 읽기 전용.
@@ -1871,12 +1874,15 @@ namespace TaskCalendarWidget
         }
 
         // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용 -----
-        // 쓰기 결과 통지. 웹 __userSaved(ok, msg) — 과제의 __projectSaved 와 같은 JsCall 패턴이다.
+        // 쓰기 결과 통지. 웹 __userSaved(ok, msg, reqId) — 과제의 __projectSaved 와 같은 JsCall 패턴이다.
         //   ★ needConfirm 짝이 없다: 직원 등록에는 「비슷한 사람」 같은 소프트 경고가 없다
         //     (login_id 가 UNIQUE 라 중복은 소프트 경고가 아니라 그냥 실패다).
-        private void UserSaved(bool ok, string msg) =>
+        //   ★ 세 번째 인자 reqId 는 **요청과 회신을 짝지으라고** 있다(2026-09-11 R3). 이 통지는 왕복이 아니라
+        //     푸시라, 늦게 온 회신이 이미 다른 일을 하고 있는 폼을 건드릴 수 있었다. 웹이 자기 요청의
+        //     reqId 와 대조하면 남의 회신을 무시할 수 있다. 요청에 없었으면 "" — 옛 웹과도 호환된다.
+        private void UserSaved(bool ok, string msg, string reqId = "") =>
             JsCall("window.__userSaved && window.__userSaved(" + (ok ? "true" : "false") + ","
-                + JsonSerializer.Serialize(msg ?? "") + ")");
+                + JsonSerializer.Serialize(msg ?? "") + "," + JsonSerializer.Serialize(reqId ?? "") + ")");
 
         // 명부를 다시 읽어 웹으로 밀어 넣는다(__applyMembers). 쓰기 성공 뒤 화면 갱신 경로다 —
         //   과제의 SaveProjectAsync → LoadProjectsToWebAsync 와 같은 모양. 웹이 스스로 재조회하게 두면
@@ -1897,26 +1903,26 @@ namespace TaskCalendarWidget
 
         // 직원 등록/수정 — userId 0 은 '없음'(신규)이다. orgId 0 도 마찬가지로 '소속 없음'(NULL)이다
         //   — org_unit.org_id 는 AUTO_INCREMENT 라 0 인 조직이 존재할 수 없다.
-        private async Task SaveUserAsync(int userId, string loginId, string name, string title,
+        private async Task SaveUserAsync(string reqId, int userId, string loginId, string name, string title,
             int orgId, string viewScope, string editRole, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.UpsertUserAsync(userId > 0 ? userId : (int?)null, loginId, name,
                 title, orgId > 0 ? orgId : (int?)null, viewScope, editRole);
-            UserSaved(ok, msg);
+            UserSaved(ok, msg, reqId);
             if (ok) await LoadMembersToWebAsync(includeInactive);
         }
 
-        private async Task SetUserActiveAsync(int userId, bool active, bool includeInactive)
+        private async Task SetUserActiveAsync(string reqId, int userId, bool active, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SetUserActiveAsync(userId, active);
-            UserSaved(ok, msg);
+            UserSaved(ok, msg, reqId);
             if (ok) await LoadMembersToWebAsync(includeInactive);
         }
 
-        private async Task SaveUserOrderAsync(List<int> userIds, bool includeInactive)
+        private async Task SaveUserOrderAsync(string reqId, List<int> userIds, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SaveUserOrderAsync(userIds);
-            UserSaved(ok, msg);
+            UserSaved(ok, msg, reqId);
             if (ok) await LoadMembersToWebAsync(includeInactive);
         }
 
@@ -1949,10 +1955,11 @@ namespace TaskCalendarWidget
             }
         }
 
-        // 복구·삭제 결과 통지. 웹 __trashDone(ok, msg) — 직원의 __userSaved 와 같은 JsCall 패턴이다.
-        private void TrashDone(bool ok, string msg) =>
+        // 복구·삭제 결과 통지. 웹 __trashDone(ok, msg, reqId) — 직원의 __userSaved 와 같은 JsCall 패턴이다.
+        //   ★ 세 번째 인자 reqId 의 뜻은 __userSaved 와 같다(2026-09-11 R3) — 없으면 "".
+        private void TrashDone(bool ok, string msg, string reqId = "") =>
             JsCall("window.__trashDone && window.__trashDone(" + (ok ? "true" : "false") + ","
-                + JsonSerializer.Serialize(msg ?? "") + ")");
+                + JsonSerializer.Serialize(msg ?? "") + "," + JsonSerializer.Serialize(reqId ?? "") + ")");
 
         // 휴지통을 다시 읽어 웹으로 민다(__applyTrash). 실패(null)면 아무것도 밀지 않는다 —
         //   빈 휴지통을 밀면 "내가 뭘 지웠나"로 읽힌다(명부 푸시와 같은 규칙).
@@ -1969,27 +1976,36 @@ namespace TaskCalendarWidget
         //   ★ 과제·코드 3종은 카탈로그(dbGone 재판정)가 걸려 있어 LoadProjectsToWebAsync 가 필수고,
         //     발주처·구분·상태는 **복구**로 드롭다운 소스(활성 목록)가 바뀌므로 그 소스도 함께 민다
         //     (설계 §5.3 이 "실제 페이로드 구성은 구현 때 확인"으로 남겨 둔 자리 — §11 정정).
-        private async Task TrashRefreshAsync(string kind, bool includeInactive)
+        //   ★ 2026-09-11(R2) — 휴지통 자체를 미는 일은 부르는 쪽으로 옮겼다(성공·실패 모두 밀어야 하므로).
+        //     여기 남은 것은 **성공했을 때만** 미는 관련 목록이다.
+        private async Task TrashRefreshRelatedAsync(string kind, bool includeInactive)
         {
-            await LoadTrashToWebAsync();
             if (kind == "user") { await LoadMembersToWebAsync(includeInactive); return; }
             await LoadProjectsToWebAsync();
             if (kind == "customer") await LoadCustomersToWebAsync();
             else if (kind == "section" || kind == "status") await LoadCodesToWebAsync();
         }
 
-        private async Task TrashRestoreAsync(string kind, string key, bool includeInactive)
+        // ★ 2026-09-11 적대 검토(R2) — 실패해도 **휴지통 목록은 반드시 다시 민다**.
+        //   거부 문구 둘이 "…목록을 새로고침합니다"(TrashGoneMsg · TrashAlreadyActiveMsg)라고 약속하는데,
+        //   옛 판은 성공했을 때만 갱신했다 — 그 두 문장은 정확히 **실패**할 때 나오는 말이라,
+        //   사용자는 "새로고침한다"는 문장을 읽으면서 사라진 항목이 그대로 남아 있는 목록을 봤다.
+        //   (그 둘은 '실패'라기보다 목록이 낡았다는 신호다. 낡은 것을 고치는 것이 곧 새로고침이다.)
+        //   관련 목록(과제·명부·발주처·코드)은 그대로 **성공했을 때만** 민다 — 실패했으면 그쪽은 안 바뀌었다.
+        private async Task TrashRestoreAsync(string reqId, string kind, string key, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.RestoreTrashAsync(kind, key);
-            TrashDone(ok, msg);
-            if (ok) await TrashRefreshAsync(kind, includeInactive);
+            TrashDone(ok, msg, reqId);
+            await LoadTrashToWebAsync();
+            if (ok) await TrashRefreshRelatedAsync(kind, includeInactive);
         }
 
-        private async Task TrashDeleteAsync(string kind, string key, string confirm, bool includeInactive)
+        private async Task TrashDeleteAsync(string reqId, string kind, string key, string confirm, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.DeleteTrashAsync(kind, key, confirm);
-            TrashDone(ok, msg);
-            if (ok) await TrashRefreshAsync(kind, includeInactive);
+            TrashDone(ok, msg, reqId);
+            await LoadTrashToWebAsync();
+            if (ok) await TrashRefreshRelatedAsync(kind, includeInactive);
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----
@@ -2256,7 +2272,9 @@ namespace TaskCalendarWidget
                     //  ★ chk_crh_hours 는 `hours > 0 AND hours <= 24` 다. 범위 밖 줄이 하나라도 섞이면 3819 로
                     //    **그 날 보고 저장 트랜잭션 전체**가 롤백된다(전송은 이미 나간 뒤다). 줄 하나를 버리는 쪽이 낫다 —
                     //    ReportDb 가 저장 직전에 같은 판정을 한 번 더 하지만, 걸러야 할 자리는 값이 들어오는 여기다.
-                    if (h <= 0 || h > 24)
+                    //  ★ 그 '같은 판정'을 **글자까지 같게** 하려고 판정 자체는 ReportDb.HoursInDomain 한 곳에만 둔다
+                    //    (2026-09-11 R5 — 전에는 `0`·`24` 가 두 파일에 두 벌 적혀 있어 한쪽만 고치면 갈렸다).
+                    if (!ReportDb.HoursInDomain(h))
                     {
                         Log("보고 시간줄 제외(허용 범위 0 초과 ~ 24 이하 밖): " + name.Trim() + " " +
                             h.ToString(System.Globalization.CultureInfo.InvariantCulture) + "시간");
