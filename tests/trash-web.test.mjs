@@ -236,6 +236,15 @@ const checks = {
       '잠금 동안 되돌릴 버튼을 맡아 두지 않는다 — 잠금이 풀려도 포커스가 행에 남아 다음 항목을 이어서 못 누른다(R3-W2)');
     assert.ok(/if\(!keepBtn && __trKeepBtn && af && af\.classList && af\.classList\.contains\('mba-line'\)/.test(r),
       '맡아 둔 버튼을 되돌리지 않는다(또는 포커스가 그 행을 떠났는데도 도로 뺏는다) — 되돌리는 조건은 "아직 그 행에 있을 때"다(R3-W2)');
+    //  ★ '아직 그 행에 있을 때' 는 **어느 행인지까지** 본다(2026-09-11 적대 검토 R4-W4). 목록 안의 아무
+    //    행이나로 보면, 잠금 중에 관리자가 다른 행으로 옮겨 둔 포커스를 다음 렌더가 도로 뺏어 엉뚱한
+    //    줄로 끌고 간다(#trList 안이기만 하면 참이던 옛 판의 구멍이다). 그래서 행에도 열쇠를 단다.
+    assert.ok(/line\.dataset\.tkey = key;/.test(r),
+      '행(.mba-line)에 data-tkey 가 없다 — 물러난 포커스가 어느 행인지 다음 렌더가 알 길이 없다(R4-W4)');
+    assert.ok(/String\(af\.dataset\.tkey \|\| ''\) === __trKeepBtn\.key/.test(r),
+      '맡아 둔 표를 되돌릴 때 **그 행인지** 대조하지 않는다 — 관리자가 잠금 중에 옮겨 둔 포커스를 엉뚱한 행으로 끌고 간다(R4-W4)');
+    assert.ok(!/line\.dataset\.top/.test(r),
+      "행에 data-top 을 달았다 — 버튼을 찾는 셀렉터('[data-top][data-tkey]')에 행이 끼어든다");
     const s = extractFunction(web, 'trSetSaving');
     assert.ok(/const changed = \(__trSaving !== !!on\);/.test(s),
       'trSetSaving 이 "잠금이 실제로 바뀌었나"를 재지 않는다 — 쓰기 한 번에 목록이 세 번 다시 만들어진다(R2-W4)');
@@ -573,6 +582,28 @@ function busyHarnessJs(src) {
     '                   disabled: !!(a2 && a2.disabled) };',
     '  return { found: true, started: started, key: key, locked: locked, unlocked: unlocked };',
     '};',
+    //  잠금 중에 관리자가 **다른 행**으로 포커스를 옮겼다면, 다음 렌더는 그것을 도로 뺏지 않는다(R4-W4).
+    //   ★ 맡아 둔 표(__trKeepBtn)가 가리키는 행과 지금 포커스가 있는 행을 열쇠(data-tkey)로 대조한다.
+    'window.__probeFocusMoved = function(payload, clickTab){',
+    '  __reset(payload, clickTab);',
+    '  var b = document.querySelector("#trList [data-top=\'restore\']");',
+    '  if(!b) return { found: false };',
+    '  b.focus();',
+    '  var key = String(b.dataset.tkey || "");',
+    '  trSetSaving(true);',   // 잠금 렌더 — 포커스가 그 행으로 물러나고, 되돌릴 버튼을 맡아 둔다
+    '  var lines = document.querySelectorAll("#trList .mba-line");',
+    '  var other = lines.length > 1 ? lines[1] : null;',
+    '  if(!other) return { found: true, twoRows: false };',
+    '  var otherKey = String(other.dataset.tkey || "");',
+    '  other.focus();',      // 관리자가 다른 행으로 옮겼다
+    '  var moved = document.activeElement === other;',
+    '  trSetSaving(false);', // 잠금 해제 렌더 — 여기서 도로 뺏으면 결함이다
+    '  var a = document.activeElement;',
+    '  return { found: true, twoRows: true, key: key, otherKey: otherKey, moved: moved,',
+    '           op: (a && a.dataset) ? String(a.dataset.top || "") : "",',
+    '           actKey: (a && a.dataset) ? String(a.dataset.tkey || "") : "",',
+    '           kept: !!__trKeepBtn };',
+    '};',
     //  잠금이 **바뀔 때만** 그리는가 — 같은 값을 다시 넣는 호출은 목록을 건드리지 않아야 한다.
     'window.__probeRenderCount = function(payload, clickTab){',
     '  __reset(payload, clickTab);',
@@ -686,6 +717,7 @@ const probeFocusKeep = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTU
 const probeRenderCount = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeRenderCount', payload, clickTab);
 const probeScrollKeep = (payload, toTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeScrollKeep', payload, toTab);
 const probeLockFocus = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeLockFocus', payload, clickTab);
+const probeFocusMoved = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeFocusMoved', payload, clickTab);
 const probeTyped = (mustType, typings, src = app) => runInJsdom(ctFixture(src), ctHarnessJs(src), '__probe', mustType, typings);
 //  ★ [취소]는 **진짜 클릭**으로 본다(closeModal 직접 호출이 아니라). confirmTyped 의 해소는 MutationObserver 라
 //    비동기다 — 그래서 이 한 건만 Promise 를 기다린다.
@@ -741,6 +773,8 @@ if (!jsdom) {
   skip('계약⑦-DOM(j): 잠기면 포커스가 행으로 물러나고, 풀리면 그 버튼으로 돌아온다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(i): 화면이 바뀌어도 옛 자리를 앉히면 관리자가 고른 적 없는 중간에서 시작한다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(j): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 다음 렌더가 도로 뺏지 않는다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(k): 행을 가리지 않고 되돌리면 옮겨 둔 포커스가 엉뚱한 행으로 끌려간다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(g): 포커스 복원을 지우면 다시 그린 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(h): trSetSaving 이 무조건 그리게 되돌리면 계약⑦-DOM(h) 가 실패한다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다', SKIP_NO_JSDOM);
@@ -1008,6 +1042,30 @@ if (!jsdom) {
     assert.strictEqual(r.switched, 120,
       `변이 전제: 같은 화면 판정을 지우면 탭을 바꿔도 옛 자리가 앉아야 한다(실제: ${JSON.stringify(r)})`);
     assert.strictEqual(probeScrollKeep(PAYLOAD, 'customer').switched, 0);   // 통제군
+  });
+
+  //  ★ 되돌리는 조건은 "포커스가 아직 **물러났던 그 행**에 있을 때"다(2026-09-11 적대 검토 R4-W4).
+  //    목록 안의 아무 행이나로 보던 옛 판은, 잠금 중에 관리자가 다른 행으로 옮겨 둔 포커스를 다음
+  //    렌더가 도로 뺏어 엉뚱한 줄로 끌고 갔다(연달아 지우는 중에 커서가 제멋대로 뛴다).
+  test('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 다음 렌더가 도로 뺏지 않는다', () => {
+    const r = probeFocusMoved(PAYLOAD, 'user');
+    assert.strictEqual(r.found, true, '전제 붕괴: [복구] 버튼을 찾지 못했다');
+    assert.strictEqual(r.twoRows, true, '전제 붕괴: 두 행이 필요하다(옮겨 갈 다른 행이 없다)');
+    assert.strictEqual(r.moved, true, '전제 붕괴: 다른 행으로 포커스를 옮기지 못했다');
+    assert.notStrictEqual(r.otherKey, r.key, `전제 붕괴: 옮겨 간 행이 같은 행이다(${r.otherKey})`);
+    assert.notStrictEqual(r.actKey, r.key,
+      `잠금이 풀리자 포커스를 원래 행으로 도로 뺏었다: ${JSON.stringify(r)} — 관리자가 옮겨 둔 자리가 옳다(R4-W4)`);
+    assert.notStrictEqual(r.op, 'restore',
+      `옮겨 둔 포커스를 맡아 둔 버튼으로 끌고 갔다: ${JSON.stringify(r)}`);
+    assert.strictEqual(r.kept, false, '되돌리지 않았는데 맡아 둔 표가 남아 있다 — 다음 렌더가 또 끌고 간다');
+  });
+
+  test('변이⑦-DOM(k): 행을 가리지 않고 되돌리면 옮겨 둔 포커스가 엉뚱한 행으로 끌려간다', () => {
+    const bad = mutate(app, "     && af.dataset && String(af.dataset.tkey || '') === __trKeepBtn.key){", '     ){');
+    const r = probeFocusMoved(PAYLOAD, 'user', bad);
+    assert.strictEqual(r.actKey, r.key,
+      `변이 전제: 행을 가리지 않으면 옮겨 둔 포커스가 맡아 둔 행으로 끌려가야 한다(실제: ${JSON.stringify(r)})`);
+    assert.notStrictEqual(probeFocusMoved(PAYLOAD, 'user').actKey, r.key);   // 통제군
   });
 
   test('변이⑦-DOM(j): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', () => {

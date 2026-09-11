@@ -206,9 +206,23 @@ const checks = {
     assert.ok(/BeginTransactionAsync/.test(sa), 'SetUserActiveAsync 가 트랜잭션 안에서 판정하지 않는다');
     assert.ok(sa.includes('SelfDeactivateMsg'), 'SetUserActiveAsync 에 자기 퇴사 금지(§4.4-1)가 없다');
     assert.ok(sa.includes('LastAdminMsg'), 'SetUserActiveAsync 에 마지막 관리자 퇴사 금지(§4.4-3)가 없다');
-    // 복구(active=true)에는 걸지 않는다 — 막을 것이 없다(사람을 되살리는 조작이다).
+    // 잠금 방지 3규칙은 복구(active=true)에 걸지 않는다 — 막을 것이 없다(사람을 되살리는 조작이다).
     assert.ok(/if \(!active\)\s*\{/.test(sa),
       '퇴사/복구가 같은 규칙을 받는다 — 잠금 방지는 퇴사(!active)에만 걸어야 한다');
+    //  ★ 2026-09-11 적대 검토(R4) — 다만 복구에는 **다른** 문이 하나 필요하다: 이미 활성인 사람을
+    //    한 번 더 복구하면 아래 UPDATE 가 sort_order 를 비워 **살아 있는 서열이 지워지고** 성공까지
+    //    돌려줬다(낡은 화면·세워 둔 푸시면 충분히 일어난다). 실패가 아니라 목록이 낡은 것이므로
+    //    휴지통 복구와 **같은 판정·같은 문장**이다(TrashAlreadyActiveMsg 한 줄이 정본).
+    const already = sa.indexOf('TrashAlreadyActiveMsg');
+    assert.ok(already >= 0,
+      '복구(SetUserActiveAsync 의 active=true)에 이미 활성 거부가 없다 — 이미 복구된 사람을 다시 복구하면 ' +
+      '그 사람의 살아 있는 서열(sort_order)이 지워지고 성공으로 끝난다(R4)');
+    assert.ok(/else if \(target\.Value\.isActive != 0\)/.test(sa),
+      '이미 활성 판정이 **잠근 행의 값**(target.Value.isActive)으로 오지 않는다 — 판정과 갱신이 갈린다(R4)');
+    assert.ok(already < sa.indexOf('string setActiveSql'),
+      '이미 활성 거부가 UPDATE 문장을 만드는 자리보다 뒤에 있다 — 서열이 먼저 지워진다(R4)');
+    assert.ok(/RollbackAsync\(cts\.Token\); *\n? *return \(false, TrashAlreadyActiveMsg\);|RollbackAsync\(cts\.Token\);[\s\S]{0,80}?return \(false, TrashAlreadyActiveMsg\);/.test(sa),
+      '이미 활성 거부가 롤백 + 실패 회신으로 끝나지 않는다 — 브리지의 실패 갈래가 그 문장을 띄운다(R4)');
 
     // 하드삭제 경로는 **휴지통 한 곳뿐**이다(2026-09-10 개정 · TRASH-DELETE §3.3).
     //   옛 계약은 "어디에도 없다"였다. 휴지통이 생기며 그 문장은 거짓이 됐지만, 느슨해진 것이 아니라
@@ -284,9 +298,12 @@ const checks = {
     const so = csMember(cs, 'SaveUserOrderAsync(');
     //  (0) 비우는 자리는 **복구 쪽 두 곳**이다. 한쪽만 고치면 그 경로로 돌아온 사람이 옛 숫자를 들고 온다.
     const act = csMember(cs, 'SetUserActiveAsync(');
-    assert.ok(/UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid/.test(act),
-      '복구(SetUserActiveAsync 의 active=true)가 sort_order 를 비우지 않는다 — 퇴사자가 옛 순번을 들고 ' +
-      '돌아와 활성 서열(10·20·30…) 사이에 끼어든다(§7-1a · R3)');
+    //      ★ 2026-09-11 적대 검토(R4) — 그 비우기는 **숨김에서 돌아오는 사람에게만** 걸려야 한다.
+    //        문장의 AND is_active=0 이 그 이중 잠금이다(판정은 위 잠근 행에서 이미 끝났다).
+    assert.ok(/UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid AND is_active=0/.test(act),
+      '복구(SetUserActiveAsync 의 active=true)가 sort_order 를 비우지 않거나, 이미 활성인 행까지 비운다 — ' +
+      '전자는 퇴사자가 옛 순번을 들고 돌아와 활성 서열(10·20·30…) 사이에 끼어들고(§7-1a · R3), ' +
+      '후자는 멀쩡히 쓰이던 사람의 서열을 지운다(R4)');
     assert.ok(/UPDATE app_user SET is_active=0 WHERE user_id=@uid/.test(act),
       '퇴사(active=false)가 서열까지 손댄다 — 그 값은 돌아올 때 어차피 비워지고, 지금 지우면 ' +
       "'퇴사 → 곧바로 복구' 가 멀쩡하던 자리를 잃는다(R3)");
@@ -732,14 +749,20 @@ const checks = {
   //       그릴 때 이미 최종형이다), uaSetSaving 이 그리지 않았을 때만(워치독이 이미 풀어 둔 경우) 여기서 그린다.
   orderSaveRedrawsItself(web) {
     const w = windowFn(web, '__userSaved');
-    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); if\(__uaPendingData\) uaFlushPending\(\); \}/.test(w),
-      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다(또는 미뤄 둔 갱신을 버린다 — 그 자리에 담긴 것은 남의 진짜 변경이다 · R3-W1)');
+    //  ★ 미뤄 둔 갱신은 **버린다**(2026-09-11 적대 검토 R4-W1) — 그 스냅샷은 내 저장이 서버에 닿기
+    //    **전**의 명부라, 앉히면 방금 저장한 순서가 옛 순서로 되돌아간다. 확정 명부는 뒤따르는 내 푸시가 앉힌다.
+    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(w),
+      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다(또는 미뤄 둔 옛 스냅샷을 버리지 않는다 — 앉히면 저장한 순서가 옛 순서로 되돌아간다 · R4-W1)');
     const resetAt = w.indexOf('if(ok && wasOrder){ uaOrderReset();');
     const unlockAt = w.indexOf('uaSetSaving(false)');
     assert.ok(resetAt >= 0 && unlockAt > resetAt,
       '편집 모드를 끝내는 자리가 잠금 해제보다 뒤다 — uaSetSaving 이 순서 편집 중인 옛 화면을 그리고, 최종형이 또 한 번 그려진다(R2-W3)');
-    assert.ok(/if\(!uaSetSaving\(false\) && ok && wasOrder\)\{ uaAdminBar\(\); uaApply\(\); \}/.test(w),
-      '__userSaved 가 순서 저장 성공 뒤 스스로 다시 그리지 않는다 — 푸시가 오지 않으면 끝난 편집 막대가 그대로 남는다');
+    //  ★ 되그리기의 조건에 「낡은 명부」 거부도 든다(R4-W3) — 그 거부도 편집 모드를 끝내므로, 워치독이
+    //    이미 잠금을 풀어 둔 뒤 늦게 도착하면 아무도 다시 그리지 않아 ▲▼·[취소]·[순서 저장]이 그대로 남는다.
+    assert.ok(/const redrew = uaSetSaving\(false\);/.test(w),
+      "__userSaved 가 '다시 그렸나'를 받아 두지 않는다 — 되그리기 판단의 근거가 사라진다(R2-W3)");
+    assert.ok(/if\(!redrew && !painted && wasOrder && \(ok \|\| staleRoster\)\)\{ uaAdminBar\(\); uaApply\(\); \}/.test(w),
+      '__userSaved 가 순서 저장 회신 뒤 스스로 다시 그리지 않는다(또는 성공만 그린다) — 푸시가 오지 않거나 거부가 늦게 오면 끝난 편집 막대가 그대로 남는다(R4-W3)');
   },
 
   // ⑭-d 잠금 표시는 **바뀔 때만** 다시 그린다(2026-09-11 적대 검토 R2-W3).
@@ -780,8 +803,16 @@ const checks = {
     //    시험·다른 경로로 온 '내' 이름 변경 푸시가 편집 중인 순서를 덮어서는 안 된다(loop-user-admin C20 실측 2026-09-11).
     assert.ok(/const mine = !!\(reqId && __uaReq && reqId === __uaReq\.id && __uaReq\.cmd === 'saveUserOrder'\);/.test(ap),
       "__applyMembers 가 '내 순서 저장의 결과인가'를 reqId 대조 + 명령으로 정하지 않는다 — 짐작으로 파생하면 잠금이 풀린 뒤 도착한 내 푸시가 남의 것이 되고, 명령을 안 보면 내 이름 변경 푸시가 편집 중인 순서를 덮는다(R3-W1)");
-    assert.ok(/if\(mine\)\{\s*\n\s*uaOrderReset\(\);/.test(ap),
+    //  ★ mine 갈래의 본문만 떼어 본다(주석은 뺀다 — 적어 둔 문장이 계약을 대신 통과시키면 안 된다).
+    const mineAt = ap.indexOf('if(mine){');
+    const mineEnd = ap.indexOf('uaApplyData(d);', mineAt);
+    const mineBlk = (mineAt >= 0 && mineEnd > mineAt) ? ap.slice(mineAt, mineEnd).replace(/\/\/[^\n]*/g, '') : '';
+    assert.ok(/uaOrderReset\(\);/.test(mineBlk),
       '내 reqId 를 달고 온 푸시가 순서 편집을 끝내지 않는다 — 서버에 저장된 명부가 왔는데도 되돌릴 것이 남은 것처럼 군다');
+    //  ★ 확정 명부를 앉히기 **전에** 미뤄 둔 옛 스냅샷을 버린다(2026-09-11 적대 검토 R4-W2). 남겨 두면
+    //    나중에 순서 편집을 켰다 끄는 것만으로 그 옛 명부가 확정 명부를 덮어쓴다(uaOrderToggle 의 길).
+    assert.ok(/__uaPendingData = null;/.test(mineBlk),
+      '확정 명부를 앉히면서 미뤄 둔 옛 푸시를 버리지 않는다 — 뒤에 순서 편집을 켰다 끄면 옛 명부가 새 명부를 덮는다(R4-W2)');
     //  ★ 주석은 빼고 본다 — '왜 __uaSaving 을 더는 보지 않는가'를 **적어 둔 문장**이 계약을 깨뜨리면 안 된다.
     assert.ok(!/__uaSaving/.test(ap.replace(/\/\/[^\n]*/g, '')),
       "__applyMembers 가 아직 '도는 중인가'를 본다 — id 가 있는데 제 손에 닿지 않는 값으로 다시 짐작하는 것이다(R3-W1)");
@@ -790,8 +821,8 @@ const checks = {
     const us = windowFn(web, '__userSaved');
     assert.ok(/const wasOrder = rq\.cmd === 'saveUserOrder';/.test(us),
       "__userSaved 가 '이 회신이 순서 저장의 것인가'를 요청 표에서 읽지 않는다");
-    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); if\(__uaPendingData\) uaFlushPending\(\); \}/.test(us),
-      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다(또는 미뤄 둔 갱신을 버린다) — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
+    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(us),
+      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다(또는 미뤄 둔 옛 스냅샷을 남긴다 · R4-W1) — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
     //  ★ 「낡은 명부」 거부도 편집 모드를 끝낸다(R3-W1) — 그 거부는 "네 화면이 낡았다"는 뜻이라 호스트가
     //    거부와 함께 갱신 명부를 민다. 편집 모드를 그대로 두면 그 푸시가 미뤄지고, 관리자는 같은 낡은
     //    명부로 같은 거부만 되풀이한다(빠져나갈 길이 화면에 없다).
@@ -800,8 +831,10 @@ const checks = {
     assert.ok(staleMsg, 'ProjectDb 에 StaleRosterMsg 상수 선언이 없다 — 맞댈 정본이 없다(판정 불가)');
     assert.ok(us.includes("msg === '" + staleMsg[1] + "'"),
       `__userSaved 가 「낡은 명부」 거부를 호스트 문구 그대로 알아보지 못한다(정본: ${JSON.stringify(staleMsg[1])}) — 한 글자만 갈려도 편집 모드가 영영 안 끝난다`);
-    assert.ok(/if\(!ok && wasOrder && msg === '[^']+'\)\{\s*\n\s*uaOrderReset\(\);\s*\n\s*if\(__uaPendingData\) uaFlushPending\(\);/.test(us),
-      '__userSaved 가 「낡은 명부」 거부에서 편집 모드를 끝내고 미뤄 둔 갱신을 앉히지 않는다 — 같은 거부가 되풀이된다(R3-W1)');
+    assert.ok(/const staleRoster = \(!ok && wasOrder && msg === '[^']+'\);/.test(us),
+      "__userSaved 가 「낡은 명부」 거부를 이름 붙여 두지 않는다 — 그 조건을 되그리기 판단에서 다시 쓸 수 없다(R4-W3)");
+    assert.ok(/if\(staleRoster\)\{\s*\n\s*uaOrderReset\(\);\s*\n\s*if\(__uaPendingData\)\{ uaFlushPending\(\); painted = true; \}/.test(us),
+      '__userSaved 가 「낡은 명부」 거부에서 편집 모드를 끝내고 미뤄 둔 갱신을 앉히지 않는다(또는 앉히고도 그 사실을 남기지 않아 화면을 한 번 더 그린다) — 같은 거부가 되풀이된다(R3-W1·R4-W3)');
     const tog = extractFunction(web, 'uaOrderToggle');
     assert.ok(/__uaPendingData/.test(tog) && /uaFlushPending\(\)/.test(tog),
       'uaOrderToggle 이 미뤄 둔 갱신을 반영하지 않는다 — 편집을 끄면 그 사이의 진짜 변경이 사라진다');
@@ -996,19 +1029,28 @@ test('변이⑭-d: 행 버튼의 렌더 시 잠금을 빼면 계약⑭-b 가 실
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
-test('변이⑭-e: 순서 저장 성공의 재렌더를 지우면 계약⑭-c 가 실패한다(끝난 편집 막대가 남는다)', () => {
-  const bad = mutate(app, '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }',
+test('변이⑭-e: 순서 저장 회신의 재렌더를 지우면 계약⑭-c 가 실패한다(끝난 편집 막대가 남는다)', () => {
+  const bad = mutate(app, '  const redrew = uaSetSaving(false);\n  if(!redrew && !painted && wasOrder && (ok || staleRoster)){ uaAdminBar(); uaApply(); }',
     '  uaSetSaving(false);');
+  assert.throws(() => checks.orderSaveRedrawsItself(bad), /스스로 다시 그리지 않는다|'다시 그렸나'를 받아 두지 않는다/);
+  assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
+});
+
+//  ★ 되그리기를 **성공에만** 걸어 두면(R4-W3 이전 판) 「낡은 명부」 거부가 워치독 뒤에 늦게 도착할 때
+//    아무도 다시 그리지 않는다 — ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에 그대로 남는다.
+test('변이⑭-e3: 되그리기를 성공에만 걸면 계약⑭-c 가 실패한다(늦은 거부 뒤 순서 컨트롤이 남는다)', () => {
+  const bad = mutate(app, '  if(!redrew && !painted && wasOrder && (ok || staleRoster)){ uaAdminBar(); uaApply(); }',
+    '  if(!redrew && ok && wasOrder){ uaAdminBar(); uaApply(); }');
   assert.throws(() => checks.orderSaveRedrawsItself(bad), /스스로 다시 그리지 않는다/);
   assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
 });
 
 test('변이⑭-e2: 편집 모드 종료를 잠금 해제 뒤로 되돌리면 계약⑭-c 가 실패한다(같은 목록을 두 번 그린다)', () => {
   //  옛 순서 — 먼저 풀고(그때 순서 편집 중인 화면이 그려진다) 그다음에 끝낸다(최종형을 또 그린다).
-  const ORDER_OK = '  if(ok && wasOrder){ uaOrderReset(); if(__uaPendingData) uaFlushPending(); }\n';
+  const ORDER_OK = '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }\n';
   const removed = mutate(app, ORDER_OK, '');
-  const bad = mutate(removed, '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n',
-    '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n' + ORDER_OK);
+  const bad = mutate(removed, '  const redrew = uaSetSaving(false);\n',
+    '  const redrew = uaSetSaving(false);\n' + ORDER_OK);
   assert.throws(() => checks.orderSaveRedrawsItself(bad), /잠금 해제보다 뒤다/);
   assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
 });
@@ -1046,8 +1088,14 @@ test("변이⑯-b: '내 것인가'를 id 대신 짐작(도는 중 + 명령)으�
   assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
 });
 
+test('변이⑯-b2: 확정 명부가 옛 스냅샷을 남기게 되돌리면 계약⑯ 이 실패한다(뒤에 켰다 끄면 옛 명부가 이긴다)', () => {
+  const bad = mutate(app, '    __uaPendingData = null;\n    uaOrderReset();   // 서버에 저장된 명부가 도착했다', '    uaOrderReset();   // 서버에 저장된 명부가 도착했다');
+  assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 둔 옛 푸시를 버리지 않는다/);
+  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
+});
+
 test('변이⑯-c: 「낡은 명부」 거부에서 편집 모드를 끝내지 않게 되돌리면 계약⑯ 이 실패한다(같은 거부가 되풀이된다)', () => {
-  const from = "  if(!ok && wasOrder && msg === '명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.'){\n    uaOrderReset();\n    if(__uaPendingData) uaFlushPending();\n  }\n";
+  const from = "  if(staleRoster){\n    uaOrderReset();\n    if(__uaPendingData){ uaFlushPending(); painted = true; }\n  }\n";
   const bad = mutate(app, from, '');
   assert.throws(() => checks.orderSurvivesPush(bad), /「낡은 명부」 거부를 호스트 문구 그대로 알아보지 못한다|편집 모드를 끝내고 미뤄 둔 갱신을 앉히지 않는다/);
   assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
@@ -1283,10 +1331,27 @@ test("변이④-d: '지금 저장된 값'을 잠근 행이 아니라 입력값�
 
 test('변이⑥-f: 복구가 sort_order 를 비우지 않게 되돌리면 계약⑥-f 가 실패한다(옛 순번을 들고 돌아온다 · R3)', () => {
   const bad = mutate(pdb,
-    '"UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid"',
+    '"UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid AND is_active=0"',
     '"UPDATE app_user SET is_active=1 WHERE user_id=@uid"');
   assert.throws(() => checks.orderClearsOutsiders(bad), /복구\(SetUserActiveAsync/);
   assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
+});
+
+test('변이⑥-f5: 이미 활성인 사람의 복구를 막는 문을 지우면 계약④(잠금 방지)가 실패한다(살아 있는 서열이 지워진다 · R4)', () => {
+  //  세워 둔 푸시·낡은 화면이 멀쩡히 쓰이던 사람에게 복구를 한 번 더 걸면, 옛 판은 sort_order 를
+  //  비우고 **성공**을 돌려줬다. 그 문이 사라졌는지 본다.
+  const bad = mutate(pdb,
+    'else if (target.Value.isActive != 0)',
+    'else if (false)');
+  assert.throws(() => checks.lockoutGuards(bad), /이미 활성 판정이 \*\*잠근 행의 값\*\*/);
+  assert.doesNotThrow(() => checks.lockoutGuards(pdb));   // 통제군
+});
+
+test('변이⑥-f6: 그 거부를 다른 문구로 갈라놓으면 계약④ 가 실패한다(정본은 TrashAlreadyActiveMsg 한 줄 · R4)', () => {
+  //  휴지통 복구와 명부 복구는 **같은 사건**이다. 문장을 두 벌로 적는 순간 한쪽만 고쳐진다 —
+  //  그 갈라짐 자체를 잡는다(첫 번째 등장 = SetUserActiveAsync 의 복구 갈래).
+  const bad = mutate(pdb, 'return (false, TrashAlreadyActiveMsg);', 'return (false, "이미 복구됐습니다.");');
+  assert.throws(() => checks.lockoutGuards(bad), /이미 활성 거부가 없다/);
 });
 
 test('변이⑥-f2: 휴지통 복구 갈래에서 sort_order=NULL 을 빼면 계약⑥-f 가 실패한다(복구 경로는 둘이다 · R3)', () => {
@@ -1600,6 +1665,8 @@ function pushHarnessJs(src) {
     'function userEdMsgSet(){} function closeModal(){} function esc(s){ return String(s); }',
     extractFunction(src, 'uaOrderReset'),
     extractFunction(src, 'uaFlushPending'),
+    //  ★ 순서 편집 켜기/끄기도 떼어 온다(R4-W2) — '미뤄 둔 갱신이 남으면 언제 터지는가'가 바로 이 길이다.
+    extractFunction(src, 'uaOrderToggle'),
     extractFunction(src, 'uaApplyData'),
     extractFunction(src, 'uaSend'),
     windowFn(src, '__userSaved'),
@@ -1639,14 +1706,39 @@ function pushHarnessJs(src) {
     '  if(!pushFirst) window.__applyMembers(JSON.stringify(pushed), id);',
     '  return { afterReply: afterReply, end: __state() };',
     '};',
-    //  ④ 늦은 성공 — 미뤄 둔 갱신(남의 진짜 변경)을 **버리지 않고** 앉힌다.
-    'window.__probeLateOk = function(rows, pushed){',
+    //  ④ 성공 회신 — 미뤄 둔 **옛 스냅샷**(내 저장이 서버에 닿기 전의 명부)은 버린다(R4-W1).
+    //     확정 명부는 곧바로 뒤따르는 **내 푸시**가 앉힌다. 그 푸시가 늦거나 오지 않는 구간도 함께 잰다.
+    'window.__probeSaveOk = function(rows, parkedRoster, confirmed, mineComes){',
     '  __armOrder(rows);',
     '  var id = __uaReq.id;',
-    '  window.__applyMembers(JSON.stringify(pushed), "saveUserOrder-999");',
+    '  window.__applyMembers(JSON.stringify(parkedRoster), "saveUserOrder-999");',
     '  var parked = __state();',
     '  window.__userSaved(true, "저장했습니다", id);',
-    '  return { parked: parked, end: __state() };',
+    '  var afterReply = __state();',
+    '  if(mineComes) window.__applyMembers(JSON.stringify(confirmed), id);',
+    '  return { parked: parked, afterReply: afterReply, end: __state() };',
+    '};',
+    //  ⑤ 확정 명부가 앉을 때 미뤄 둔 옛 스냅샷을 버리는가(R4-W2). 남겨 두면 **순서 편집을 켰다 끄는 것만으로**
+    //     그 옛 명부가 확정 명부를 덮어쓴다(uaOrderToggle 이 미뤄 둔 갱신을 앉히는 길로 들어간다).
+    'window.__probeMineAfterParked = function(rows, parkedRoster, confirmed){',
+    '  __armOrder(rows);',
+    '  var id = __uaReq.id;',
+    '  window.__applyMembers(JSON.stringify(parkedRoster), "saveUserOrder-999");',
+    '  var parked = __state();',
+    '  window.__applyMembers(JSON.stringify(confirmed), id);',
+    '  var seated = __state();',
+    '  uaOrderToggle(true); uaOrderToggle(false);',   // 나중에 순서 편집을 켰다 껐다 — 남은 스냅샷이 있으면 여기서 앉는다
+    '  return { parked: parked, seated: seated, end: __state() };',
+    '};',
+    //  ⑥ 워치독이 잠금을 먼저 푼 뒤에 늦게 도착한 회신 — 그래도 **누군가는** 다시 그려야 한다(R4-W3).
+    //     안 그리면 ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에 그대로 남는다(눌러도 아무 일이 없다).
+    'window.__probeLateAfterWatchdog = function(rows, ok, msg){',
+    '  __armOrder(rows);',
+    '  var id = __uaReq.id;',
+    '  uaSetSaving(false);',   // 워치독 — 잠금만 푼다(요청 표는 살려 둔다)
+    '  __bars = 0;',
+    '  window.__userSaved(!!ok, msg, id);',
+    '  return { order: !!__uaOrder, pending: !!__uaPendingData, bars: __bars };',
     '};',
   ].join('\n');
 }
@@ -1729,10 +1821,16 @@ const PUSH_FIXTURE = '<!doctype html><html><body><input id="uaSearch">' +
   '<div class="overlay hidden" id="userEditModal"></div></body></html>';
 const PUSHED = { found: true, admin: true, includeInactive: false, units: [], titles: [],
   members: [{ userId: 91, loginId: 'zzUnew', name: 'zzU_새사람', title: 'zzU-T1', orgUnit: 'zzU-조직', isActive: true }] };
+//  ★ '미뤄 둔 옛 스냅샷' 과 '확정 명부' 는 **서로 다른 명부**여야 한다(R4-W1·W2) — 같은 것을 쓰면
+//    어느 쪽이 앉았는지 구별되지 않아, 옛 것이 새 것을 덮어써도 초록이 뜬다.
+const PARKED = { found: true, admin: true, includeInactive: false, units: [], titles: [],
+  members: [{ userId: 92, loginId: 'zzUold', name: 'zzU_옛명부', title: 'zzU-T1', orgUnit: 'zzU-조직', isActive: true }] };
 const probeMine = (replyFirst, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeMine', ROWS, PUSHED, replyFirst);
 const probeOther = (reqId, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeOther', ROWS, PUSHED, reqId);
 const probeStaleReply = (msg, pushFirst, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeStaleReply', ROWS, PUSHED, msg, pushFirst);
-const probeLateOk = (src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeLateOk', ROWS, PUSHED);
+const probeSaveOk = (mineComes, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeSaveOk', ROWS, PARKED, PUSHED, mineComes);
+const probeMineAfterParked = (src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeMineAfterParked', ROWS, PARKED, PUSHED);
+const probeLateAfterWatchdog = (ok, msg, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeLateAfterWatchdog', ROWS, ok, msg);
 //  ★ 문구의 정본은 호스트 상수 하나다 — 시험이 사본을 적으면 둘이 갈려도 초록이 뜬다.
 const STALE_MSG = (/internal const string StaleRosterMsg\s*=\s*"([^"]+)"/.exec(pdb) || [])[1];
 //  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
@@ -1758,9 +1856,13 @@ if (!jsdom) {
   skip('계약⑯-DOM(b): 내 reqId 를 단 푸시는 회신 순서와 무관하게 그 자리에서 앉는다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(c): 남의 푸시(또는 id 없는 푸시)는 편집 중이면 미뤄 둔다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(d): 「낡은 명부」 거부는 편집 모드를 끝내고 갱신 명부를 앉힌다', SKIP_NO_JSDOM);
-  skip('계약⑯-DOM(e): 늦은 성공은 미뤄 둔 갱신을 버리지 않는다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(e): 순서 저장 성공은 미뤄 둔 옛 스냅샷을 버리고, 확정 명부는 내 푸시가 앉힌다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(f): 확정 명부가 앉으면 미뤄 둔 옛 스냅샷도 함께 사라진다', SKIP_NO_JSDOM);
+  skip('계약⑭-DOM(c): 워치독이 잠금을 푼 뒤 늦게 온 회신도 화면을 다시 그린다', SKIP_NO_JSDOM);
   skip('변이⑯-DOM(b): id 대조 갈래를 지우면 내 푸시가 남의 것으로 미뤄진다', SKIP_NO_JSDOM);
-  skip('변이⑯-DOM(e): 늦은 성공이 미뤄 둔 갱신을 버리면 남의 변경이 화면에서 사라진다', SKIP_NO_JSDOM);
+  skip('변이⑯-DOM(e): 성공 회신이 옛 스냅샷을 앉히면 저장한 순서가 옛 명부로 되돌아간다', SKIP_NO_JSDOM);
+  skip('변이⑯-DOM(f): 확정 명부가 옛 스냅샷을 남기면 편집을 켰다 끄는 것만으로 덮인다', SKIP_NO_JSDOM);
+  skip('변이⑭-DOM(c): 되그리기를 성공에만 걸면 늦은 거부 뒤 순서 컨트롤이 남는다', SKIP_NO_JSDOM);
   skip('계약⑭-DOM(b): 쓰기 왕복 중에 그리면 명부 쪽 버튼이 전부 잠긴 채로 나온다', SKIP_NO_JSDOM);
   skip('변이⑭-DOM(b): 렌더에서 잠금을 빼면 다시 그린 버튼이 켜진 채로 나온다', SKIP_NO_JSDOM);
   skip('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 그대로 선택된다', SKIP_NO_JSDOM);
@@ -1981,14 +2083,55 @@ if (!jsdom) {
       '「낡은 명부」가 아닌 실패에도 편집 모드를 끝낸다 — 잡고 있던 순서가 사라진다');
   });
 
-  test('계약⑯-DOM(e): 늦은 성공은 미뤄 둔 갱신을 버리지 않는다', () => {
-    const r = probeLateOk();
+  //  ★ 2026-09-11 적대 검토 R4-W1 — 미뤄 둔 스냅샷은 **내 저장이 서버에 닿기 전**의 명부다.
+  //    성공 회신에서 그것을 앉히면 방금 저장한 순서가 화면에서 옛 순서로 되돌아간다(그 뒤에 호스트
+  //    푸시가 와야만 고쳐지고, 안 오면 영영 옛 순서다). 확정 명부는 뒤따르는 **내 푸시**가 앉힌다.
+  test('계약⑯-DOM(e): 순서 저장 성공은 미뤄 둔 옛 스냅샷을 버리고, 확정 명부는 내 푸시가 앉힌다', () => {
+    //  ① 확정 푸시가 뒤따르는 보통 길
+    const r = probeSaveOk(true);
     assert.strictEqual(r.parked.pending, true, '전제 붕괴: 남의 푸시가 미뤄 두지 않았다');
     assert.deepStrictEqual(r.parked.names, OLD_NAMES, '전제 붕괴: 남의 푸시가 그대로 앉았다');
-    assert.strictEqual(r.end.order, false, '순서 저장 성공인데 편집 모드가 끝나지 않았다');
+    assert.strictEqual(r.afterReply.order, false, '순서 저장 성공인데 편집 모드가 끝나지 않았다');
+    assert.strictEqual(r.afterReply.pending, false,
+      '성공 회신이 미뤄 둔 옛 스냅샷을 남겼다 — 나중에 편집을 켰다 끄면 그 옛 명부가 확정 명부를 덮는다(R4-W2)');
+    assert.deepStrictEqual(r.afterReply.names, OLD_NAMES,
+      `성공 회신이 옛 스냅샷을 앉혔다(${JSON.stringify(r.afterReply.names)}) — 방금 저장한 순서가 화면에서 저장 전 명부로 되돌아간다(R4-W1)`);
     assert.deepStrictEqual(r.end.names, [NEW_NAME],
-      `성공 회신이 미뤄 둔 갱신을 버렸다(${JSON.stringify(r.end.names)}) — 그 자리에 담긴 남의 진짜 변경(신규 등록·퇴사)이 화면에서 사라진다`);
-    assert.strictEqual(r.end.pending, false, '앉힌 갱신이 미뤄 둔 자리에 그대로 남아 있다');
+      `뒤따르는 내 푸시(확정 명부)가 앉지 않았다: ${JSON.stringify(r.end.names)}`);
+    //  ② 확정 푸시가 끝내 오지 않아도 화면에는 **내가 저장한 순서**가 남는다(▲▼ 가 제자리에서 고쳤다).
+    const q = probeSaveOk(false);
+    assert.deepStrictEqual(q.end.names, OLD_NAMES,
+      `푸시가 오지 않았는데 명부가 바뀌었다: ${JSON.stringify(q.end.names)} — 저장한 순서가 남아야 한다`);
+    assert.strictEqual(q.end.order, false, '푸시가 오지 않아도 편집 모드는 회신에서 끝나야 한다');
+  });
+
+  //  ★ R4-W2 — 확정 명부가 앉는 자리에서 미뤄 둔 옛 스냅샷을 버리지 않으면, 나중에 순서 편집을
+  //    켰다 끄는 것만으로 그 옛 명부가 확정 명부를 덮어쓴다(uaOrderToggle 이 미뤄 둔 갱신을 앉힌다).
+  test('계약⑯-DOM(f): 확정 명부가 앉으면 미뤄 둔 옛 스냅샷도 함께 사라진다', () => {
+    const r = probeMineAfterParked();
+    assert.strictEqual(r.parked.pending, true, '전제 붕괴: 남의 푸시가 미뤄 두지 않았다');
+    assert.deepStrictEqual(r.seated.names, [NEW_NAME], `전제 붕괴: 확정 명부가 앉지 않았다: ${JSON.stringify(r.seated)}`);
+    assert.strictEqual(r.seated.pending, false,
+      '확정 명부를 앉히고도 옛 스냅샷이 미뤄 둔 자리에 남아 있다 — 편집을 켰다 끄면 그것이 이긴다(R4-W2)');
+    assert.deepStrictEqual(r.end.names, [NEW_NAME],
+      `순서 편집을 켰다 끄자 옛 명부가 확정 명부를 덮었다: ${JSON.stringify(r.end.names)}`);
+  });
+
+  //  ★ R4-W3 — 워치독이 잠금을 먼저 푼 뒤 회신이 늦게 도착하면 uaSetSaving 은 아무것도 그리지 않는다.
+  //    그때 __userSaved 가 스스로 그리지 않으면 ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에 남는다.
+  test('계약⑭-DOM(c): 워치독이 잠금을 푼 뒤 늦게 온 회신도 화면을 다시 그린다', () => {
+    assert.ok(STALE_MSG, 'ProjectDb 의 StaleRosterMsg 를 읽지 못했다 — 판정 불가');
+    const okLate = probeLateAfterWatchdog(true, '저장했습니다');
+    assert.strictEqual(okLate.order, false, '늦은 성공 회신이 편집 모드를 끝내지 않았다');
+    assert.ok(okLate.bars > 0,
+      '워치독 뒤 늦게 온 성공 회신이 화면을 다시 그리지 않았다 — 끝난 편집의 ▲▼·[순서 저장]이 그대로 남는다');
+    const staleLate = probeLateAfterWatchdog(false, STALE_MSG);
+    assert.strictEqual(staleLate.order, false, '늦은 「낡은 명부」 거부가 편집 모드를 끝내지 않았다');
+    assert.ok(staleLate.bars > 0,
+      '워치독 뒤 늦게 온 「낡은 명부」 거부가 화면을 다시 그리지 않았다 — ▲▼·[취소]·[순서 저장]이 남아 눌러도 아무 일이 없다(R4-W3)');
+    //  다른 문구의 실패는 편집 모드를 끝내지 않으므로 되그릴 것도 없다(잡고 있던 순서가 그대로다).
+    const other = probeLateAfterWatchdog(false, '관리자만 사용할 수 있습니다.');
+    assert.strictEqual(other.order, true, '「낡은 명부」가 아닌 실패에도 편집 모드를 끝낸다 — 잡고 있던 순서가 사라진다');
   });
 
   test('변이⑯-DOM(b): id 대조 갈래를 지우면 내 푸시가 남의 것으로 미뤄진다', () => {
@@ -2001,13 +2144,35 @@ if (!jsdom) {
     assert.strictEqual(probeMine(false).pending, false);   // 통제군
   });
 
-  test('변이⑯-DOM(e): 늦은 성공이 미뤄 둔 갱신을 버리면 남의 변경이 화면에서 사라진다', () => {
-    const bad = mutate(app, '  if(ok && wasOrder){ uaOrderReset(); if(__uaPendingData) uaFlushPending(); }',
-      '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }');
-    const r = probeLateOk(bad);
-    assert.deepStrictEqual(r.end.names, OLD_NAMES,
-      `변이 전제: 미뤄 둔 갱신을 버리면 옛 명부가 그대로 남아야 한다(실제: ${JSON.stringify(r.end)})`);
-    assert.deepStrictEqual(probeLateOk().end.names, [NEW_NAME]);   // 통제군
+  //  ★ 옛 판(R3-W1)으로 되돌린다 — 성공 회신이 미뤄 둔 스냅샷을 앉힌다. 그 스냅샷은 내 저장이 서버에
+  //    닿기 **전**의 명부라, 방금 저장한 순서가 화면에서 저장 전 명부로 되돌아간다(R4-W1).
+  test('변이⑯-DOM(e): 성공 회신이 옛 스냅샷을 앉히면 저장한 순서가 옛 명부로 되돌아간다', () => {
+    const bad = mutate(app, '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }',
+      '  if(ok && wasOrder){ uaOrderReset(); if(__uaPendingData) uaFlushPending(); }');
+    const r = probeSaveOk(false, bad);
+    assert.deepStrictEqual(r.afterReply.names, [PARKED.members[0].name],
+      `변이 전제: 옛 판이면 미뤄 둔 스냅샷이 그 자리에서 앉아야 한다(실제: ${JSON.stringify(r.afterReply)})`);
+    assert.deepStrictEqual(probeSaveOk(false).afterReply.names, OLD_NAMES);   // 통제군
+  });
+
+  test('변이⑯-DOM(f): 확정 명부가 옛 스냅샷을 남기면 편집을 켰다 끄는 것만으로 덮인다', () => {
+    const bad = mutate(app, '    __uaPendingData = null;\n    uaOrderReset();   // 서버에 저장된 명부가 도착했다', '    uaOrderReset();   // 서버에 저장된 명부가 도착했다');
+    const r = probeMineAfterParked(bad);
+    assert.strictEqual(r.seated.pending, true,
+      `변이 전제: 옛 스냅샷을 버리지 않으면 미뤄 둔 자리에 남아야 한다(실제: ${JSON.stringify(r.seated)})`);
+    assert.deepStrictEqual(r.end.names, [PARKED.members[0].name],
+      `변이 전제: 남은 스냅샷은 편집을 켰다 끄면 확정 명부를 덮어야 한다(실제: ${JSON.stringify(r.end)})`);
+    assert.deepStrictEqual(probeMineAfterParked().end.names, [NEW_NAME]);   // 통제군
+  });
+
+  test('변이⑭-DOM(c): 되그리기를 성공에만 걸면 늦은 거부 뒤 순서 컨트롤이 남는다', () => {
+    const bad = mutate(app, '  if(!redrew && !painted && wasOrder && (ok || staleRoster)){ uaAdminBar(); uaApply(); }',
+      '  if(!redrew && ok && wasOrder){ uaAdminBar(); uaApply(); }');
+    const r = probeLateAfterWatchdog(false, STALE_MSG, bad);
+    assert.strictEqual(r.order, false, '변이 전제: 편집 모드는 그대로 끝나야 한다(그래서 컨트롤만 남는 것이 결함이다)');
+    assert.strictEqual(r.bars, 0,
+      `변이 전제: 성공에만 걸면 늦은 거부에서 아무도 다시 그리지 않아야 한다(실제: ${JSON.stringify(r)})`);
+    assert.ok(probeLateAfterWatchdog(false, STALE_MSG).bars > 0);   // 통제군
   });
 
   test('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 **그대로 선택**된다(조용히 안 바뀐다)', () => {

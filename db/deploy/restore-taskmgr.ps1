@@ -216,6 +216,11 @@ AssertNoSwallow "-CnfPath"   $CnfPath
 AssertNoSwallow "-TargetDb"  $TargetDb
 AssertNoSwallow "-LiveDb"    $LiveDb
 AssertNoSwallow "-UserGrantsPath" $UserGrantsPath
+#  ★ 2026-09-11 적대 검토(R4) — 경로 인자는 **빠짐없이** 본다. 위 정규식은 이 둘의 이름도 이미 알고
+#    있는데 정작 호출이 없어, 삼켜진 값(`-AppCnfPath "...\ -DeployConfigPath ..."`)이 그대로 아래
+#    존재 확인까지 내려가 '경로가 없다' 는 엉뚱한 이유로 죽었다(사람은 오타를 찾다 시간을 버린다).
+AssertNoSwallow "-AppCnfPath" $AppCnfPath
+AssertNoSwallow "-DeployConfigPath" $DeployConfigPath
 
 function TrimSlash($p){
   $t = "$p"
@@ -232,34 +237,55 @@ function AssertIdent($label, $val){
 AssertIdent "-TargetDb" $TargetDb
 AssertIdent "-LiveDb"   $LiveDb
 
+# 사람이 준 경로가 **파일로 성립하는가** — 이 한 벌이 모든 파일 인자의 확인 형태다(2026-09-11 적대 검토 R4).
+#   ★ -LiteralPath: 경로에 `[`·`]`·`*` 가 있으면 Test-Path/Resolve-Path 는 그것을 **와일드카드**로 읽어
+#     있는 파일을 "없다" 고 하거나 엉뚱한 파일을 고른다. 사람이 준 경로는 글자 그대로가 정답이다(R3).
+#   ★ -PathType Leaf: **폴더는 파일이 아니다.** 맨 그냥 Test-Path 는 폴더에도 참이라, 폴더를 준 실수가
+#     이 문을 통과해 한참 뒤(mysql 입력 · [IO.File]::ReadAllText) **드롭·복구 뒤**에 터졌다 — 맨 앞에서
+#     막으려고 세운 문이 정작 그 갈래를 열어 두고 있었다.
+#   ★ 문장은 한 자리에만 적는다(Die + 설정 문제 = 코드 2). 같은 모양을 여섯 벌 베껴 두면 한 벌만 고쳐진다.
+function RequireFile($label, $path, $hint){
+  if("$path" -and (Test-Path -LiteralPath "$path" -PathType Leaf)){ return }
+  $tail = ""
+  if($hint){ $tail = " $hint" }
+  Die "$label 이 없거나 파일이 아닙니다: $path$tail" $EXIT_CONFIG
+}
+
 # 직접 지정한 경로 인자는 **여기서** 본다 — 어떤 파괴적 단계보다 앞이다(2026-09-11 적대 검토 R2 → R3).
 #   옛 판은 이 확인들이 저마다 쓰이는 자리(8단계 권한 적용 · 9-7 스모크)에 흩어져 있었다. 그 자리는
 #   전부 **대상 DB 를 이미 드롭·복구한 뒤**다 — 사람은 "설정 문제(코드 2)" 를 읽으면서 갈아엎힌 DB 를
 #   받는다. 지정한 경로는 곧 의도다. 성립하지 않으면 아무것도 건드리기 전에 끝낸다(-WhatIf 도 같다 —
 #   계획을 찍기 전에 죽는다. 위 종료코드 표의 ★ 참조).
-#   ★ -LiteralPath 로 본다. 경로에 `[`·`]`·`*` 가 있으면 Test-Path/Resolve-Path 는 그것을 **와일드카드**
-#     로 읽어 있는 파일을 "없다" 고 하거나 엉뚱한 파일을 고른다. 이 파일은 덤프 쪽에서 이미
-#     Get-Item -LiteralPath 로 같은 규약을 쓰고 있다 — 사람이 준 경로는 글자 그대로가 정답이다.
-if($UserGrantsPath -and -not (Test-Path -LiteralPath $UserGrantsPath)){
-  Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath (경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG
+#   ★ 확인의 **형태**는 위 RequireFile 한 벌이다(-LiteralPath · -PathType Leaf · Die + 코드 2). 여기 다섯과
+#     아래 -DumpPath·-CnfPath 까지 **파일 인자 일곱이 전부** 그 함수를 지난다 — 곧 대괄호가 든 경로도,
+#     폴더를 준 실수도 같은 자리에서 같은 말로 걸린다(폴더 확인 -BackupDir·-BaseDir 은 그 대상이 아니다).
+if($UserGrantsPath){
+  RequireFile "-UserGrantsPath 로 지정한 05-grants.sql" $UserGrantsPath "(경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)"
 }
-if($AppCnfPath -and -not (Test-Path -LiteralPath $AppCnfPath)){
-  Die "앱 자격 파일이 없습니다: $AppCnfPath" $EXIT_CONFIG
+if($AppCnfPath){
+  RequireFile "-AppCnfPath 로 지정한 앱 자격 파일" $AppCnfPath ""
 }
 #   ★ -DeployConfigPath 는 **직접 준 경우에만** 본다. 비우면 9-7 이 <저장소>\widget\DeployConfig.cs 를
 #     기본으로 채우고, 그 기본이 없는 것은 '검증 못 함' 이지 설정 오류가 아니다(비공개 파일이 없는
 #     PC 도 있다). 반대로 직접 준 경로가 없을 때 옛 판은 `if(Test-Path …)` 로 **말없이 건너뛰어**
 #     스모크를 '검증 못 함' 으로 끝냈다 — 사람은 자기가 준 경로가 무시된 줄 모른다.
-if($DeployConfigPath -and -not (Test-Path -LiteralPath $DeployConfigPath)){
-  Die "-DeployConfigPath 로 지정한 DeployConfig.cs 가 없습니다: $DeployConfigPath (경로를 확인하거나, 기본 위치(<저장소>\widget\DeployConfig.cs)를 쓰려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG
+if($DeployConfigPath){
+  RequireFile "-DeployConfigPath 로 지정한 DeployConfig.cs" $DeployConfigPath "(경로를 확인하거나, 기본 위치(<저장소>\widget\DeployConfig.cs)를 쓰려면 이 인자를 빼고 실행하세요)"
+  #  ★ 2026-09-11 적대 검토(R4) — 통과했으면 **절대경로로 굳힌다**. 9-7 스모크는 이 값을
+  #    [IO.File]::ReadAllText 로 읽는데, .NET 의 상대경로 기준은 $PWD 가 아니라 **프로세스 CWD** 다
+  #    (powershell.exe 가 다른 폴더에서 Set-Location 해 왔으면 둘은 다르다). 그러면 맨 앞 문을
+  #    통과한 경로가 정작 읽을 때 FileNotFound 로 터지거나 **엉뚱한 파일**을 읽는다 — 그것도 복구 뒤에.
+  $DeployConfigPath = (Resolve-Path -LiteralPath $DeployConfigPath).Path
 }
 #   -Grants 가 쓸 두 SQL 은 스크립트 폴더에 있어야 한다. 8단계에서 죽으면 이미 DROP·복구 뒤다.
 #   (경로 자체는 -Grants 여부와 무관하게 여기서 한 번만 정한다 — 8단계와 -WhatIf 가 같은 값을 본다.)
 $scriptDir  = Split-Path -Parent $PSCommandPath
 $appUserSql = Join-Path $scriptDir "create-app-user.sql"
 $grantsSql  = Join-Path $scriptDir "grants-calendar.sql"
-if($Grants -and -not (Test-Path -LiteralPath $appUserSql)){ Die "create-app-user.sql 이 스크립트 폴더에 없습니다: $scriptDir" $EXIT_CONFIG }
-if($Grants -and -not (Test-Path -LiteralPath $grantsSql)){  Die "grants-calendar.sql 이 스크립트 폴더에 없습니다: $scriptDir" $EXIT_CONFIG }
+if($Grants){
+  RequireFile "create-app-user.sql" $appUserSql "(스크립트 폴더: $scriptDir)"
+  RequireFile "grants-calendar.sql" $grantsSql  "(스크립트 폴더: $scriptDir)"
+}
 
 Write-Host "============================================"
 Write-Host "   taskmgr 복구 / 복구 리허설"
@@ -396,8 +422,10 @@ if(-not $CnfPath -and (Test-Path $defaultCnf)){
 }
 
 if($CnfPath){
-  if(-not (Test-Path $CnfPath)){ Die "자격 파일이 없습니다: $CnfPath" $EXIT_CONFIG }
-  try { $null = Get-Content $CnfPath -TotalCount 1 -ErrorAction Stop }
+  #  ★ 2026-09-11 적대 검토(R4) — 여기도 같은 한 벌을 쓴다(RequireFile). 옛 판은 맨 Test-Path 라
+  #    대괄호가 든 경로를 와일드카드로 읽었고, 폴더를 줘도 통과해 아래 Get-Content 에서야 터졌다.
+  RequireFile "자격 파일(-CnfPath)" $CnfPath ""
+  try { $null = Get-Content -LiteralPath $CnfPath -TotalCount 1 -ErrorAction Stop }
   catch { Die "자격 파일을 읽을 수 없습니다: $CnfPath ($($_.Exception.Message))" $EXIT_CONFIG }
   $adminCnf = $CnfPath
   Info "관리 자격: $CnfPath (stdin 을 읽지 않습니다)"
@@ -469,7 +497,9 @@ if(-not $DumpPath){
   $DumpPath = $cands[0].FullName
   Info "덤프 자동 선택(최신): $($cands[0].Name)  [$($cands[0].Length) 바이트, $($cands[0].LastWriteTime.ToString('yyyy-MM-dd HH:mm'))]"
 }
-if(-not (Test-Path $DumpPath)){ Die "덤프 파일이 없습니다: $DumpPath" $EXIT_CONFIG }
+#  ★ 2026-09-11 적대 검토(R4) — 같은 한 벌(RequireFile). 자동 선택이면 이미 파일이지만, 사람이 준
+#    -DumpPath 는 대괄호가 든 경로일 수도 폴더일 수도 있다. 둘 다 여기서(= DROP 앞에서) 끝난다.
+RequireFile "덤프 파일(-DumpPath)" $DumpPath ""
 if($DumpPath -like "*.partial"){ Die "이 파일은 검증에 실패한 반쪽 백업입니다(.partial). 복구에 쓸 수 없습니다: $DumpPath" $EXIT_CONFIG }
 $dumpItem = Get-Item -LiteralPath $DumpPath
 if($dumpItem.Length -le 0){ Die "덤프 파일이 0 바이트입니다: $DumpPath" $EXIT_CONFIG }
@@ -595,9 +625,7 @@ function FindUserGrants(){
   #    읽는다 — 정확히 R6 이 막으려던 그 거짓말이다. 지정 경로가 없으면 여기서도 그 경로를
   #    이름으로 말하며 죽는다(설정 문제 = 코드 2). 절대 아래 경고 갈래로 떨어뜨리지 않는다.
   if($UserGrantsPath){
-    if(-not (Test-Path -LiteralPath $UserGrantsPath)){
-      Die "-UserGrantsPath 로 지정한 05-grants.sql 이 사라졌습니다: $UserGrantsPath (시작할 때는 있었습니다 — 실행 중에 옮겨지거나 지워졌습니다)" $EXIT_CONFIG
-    }
+    RequireFile "-UserGrantsPath 로 지정한 05-grants.sql" $UserGrantsPath "(시작할 때는 있었습니다 — 실행 중에 옮겨지거나 지워졌습니다)"
     return (Resolve-Path -LiteralPath $UserGrantsPath).Path
   }
   $sd       = Split-Path -Parent $PSCommandPath                 # <저장소>\db\deploy
@@ -609,7 +637,7 @@ function FindUserGrants(){
   #  ★ 기본 탐색(형제 폴더)에서 못 찾은 경우는 그대로 **경고**다 — 비공개 저장소가 없는 PC 에서도
   #    캘린더 복구 자체는 끝까지 돌아야 하기 때문이다(직원 관리만 1142 로 죽는다는 사실을 아래 경고가 말한다).
   #    '직접 지정했는데 없다'(위 Die)와 '원래 없는 환경이다'(이 경고)는 서로 다른 사건이다.
-  foreach($c in $cands){ if(Test-Path -LiteralPath $c){ return (Resolve-Path -LiteralPath $c).Path } }
+  foreach($c in $cands){ if(Test-Path -LiteralPath $c -PathType Leaf){ return (Resolve-Path -LiteralPath $c).Path } }
   return $null
 }
 
@@ -972,7 +1000,7 @@ if($NoSmoke){
     #  ★ 직접 준 -DeployConfigPath 는 맨 앞에서 이미 확인됐다. 여기 Test-Path 가 걸러 내는 것은
     #    **기본 위치에 파일이 없는 PC** 뿐이고, 그건 설정 오류가 아니라 '검증 못 함' 이다(아래 Row "unk").
     if(-not $DeployConfigPath){ $DeployConfigPath = Join-Path (Split-Path -Parent (Split-Path -Parent $scriptDir)) "widget\DeployConfig.cs" }
-    if(Test-Path -LiteralPath $DeployConfigPath){
+    if(Test-Path -LiteralPath $DeployConfigPath -PathType Leaf){
       $dc = [IO.File]::ReadAllText($DeployConfigPath)
       $mu = [regex]::Match($dc, 'const\s+string\s+DbUser\s*=\s*"([^"]*)"')
       $mp = [regex]::Match($dc, 'const\s+string\s+DbPassword\s*=\s*"([^"]*)"')

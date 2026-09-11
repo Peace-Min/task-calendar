@@ -998,6 +998,16 @@ namespace TaskCalendarWidget
                             await LockedActiveAdminCountAsync(conn, tx, cts.Token) <= 1)
                         { await tx.RollbackAsync(cts.Token); return (false, LastAdminMsg); }
                     }
+                    else if (target.Value.isActive != 0)
+                    {
+                        //  ★ 2026-09-11 적대 검토(R4) — **이미 활성인 사람의 복구는 거부한다**. 아래 UPDATE 는
+                        //    서열을 비우므로(sort_order=NULL), 낡은 화면이나 세워 둔 푸시가 멀쩡히 쓰이던 사람에게
+                        //    복구를 한 번 더 걸면 그 사람의 **살아 있는 서열이 지워지고** 성공까지 돌려준다.
+                        //    실패가 아니라 목록이 낡은 것이므로 문구가 새로고침을 시킨다 — 휴지통 복구와 **같은 판정·
+                        //    같은 문장**이다(TrashAlreadyActiveMsg 한 줄이 정본이고, 브리지는 실패 갈래로 이를 띄운다).
+                        await tx.RollbackAsync(cts.Token);
+                        return (false, TrashAlreadyActiveMsg);
+                    }
 
                     //  ★ 2026-09-11 적대 검토(R3) — **복구는 서열을 비운다**(sort_order=NULL = 맨 뒤).
                     //    §7-1a(퇴사자의 옛 순번이 복구 때 새 서열 사이에 끼어든다)를 옛 판은 **순서 저장 쪽**에서
@@ -1009,8 +1019,11 @@ namespace TaskCalendarWidget
                     //    한 번 끌어올리면 끝난다(구분·상태 코드의 '복구 = MAX+10' 과 같은 판단).
                     //    ★ 퇴사(active=false)는 서열을 손대지 않는다 — 그 값은 돌아올 때 어차피 비워지고,
                     //      지금 지우면 '퇴사 → 곧바로 복구' 가 멀쩡하던 자리를 잃는다.
+                    //    ★ 그래서 **비우기는 숨김에서 돌아오는 사람에게만** 걸려야 한다 — 이미 활성인 사람은 위에서
+                    //      이미 돌아섰고(R4), 문장의 `AND is_active=0` 은 그 판정이 새 갈래로 새지 않게 하는 이중 잠금이다
+                    //      (0행이면 이 갈래는 애초에 닿지 않는다 — 판정과 갱신이 같은 트랜잭션·같은 잠근 행이다).
                     string setActiveSql = active
-                        ? "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid"
+                        ? "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid AND is_active=0"
                         : "UPDATE app_user SET is_active=0 WHERE user_id=@uid";
                     await using (var cmd = new MySqlCommand(setActiveSql, conn, tx))
                     {
@@ -1873,6 +1886,8 @@ namespace TaskCalendarWidget
         private const string TrashNoTarget  = "대상이 지정되지 않았습니다.";
         private const string TrashDoneMsg   = "영구 삭제했습니다.";
         // 이미 활성인 항목의 복구 — 실패가 아니라 **목록이 낡은 것**이다. 그래서 문구가 새로고침을 시킨다(TrashGoneMsg 와 같은 성격).
+        //   ★ 휴지통 복구와 명부 복구(SetUserActiveAsync)가 **이 한 줄을 같이 쓴다**(2026-09-11 R4) — 같은 판정에
+        //     같은 말을 두 벌 적으면 한쪽만 고쳐진다. 시험도 이 상수를 계약으로 붙잡는다.
         private const string TrashAlreadyActiveMsg = "이미 복구된 항목입니다 — 목록을 새로고침합니다.";
         // 조회·복구·삭제의 마지막 문장 셋 — ★ 예외 원문을 사용자 문장에 이어 붙이지 않는다(원문은 _log 의 몫이다).
         private const string TrashLoadFailMsg    = "휴지통을 불러오지 못했습니다.";
