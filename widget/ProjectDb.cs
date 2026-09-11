@@ -759,7 +759,10 @@ namespace TaskCalendarWidget
         private const string UserGoneMsg       = "대상 직원을 찾을 수 없습니다 — 명부를 새로고침해 주세요.";
         // 순서 저장이 **낡은 명부**로 왔을 때(목록 밖에 활성 직원이 남아 있다). 저장을 통째로 거부한다 —
         //   반만 반영하면 그 사람의 서열이 소리 없이 사라진다(2026-09-11 적대 검토 R1 · §7-1a).
-        private const string StaleRosterMsg    = "명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.";
+        //   ★ internal 인 이유는 하나다(2026-09-11 R3-H2): 브리지(MainWindow)가 "이 거부는 낡은 명부다"
+        //     를 **문장 대조**로 알아야 그때만 명부를 다시 밀어 준다. 같은 문장을 저쪽에 한 벌 더 적으면
+        //     한쪽만 고쳐지는 순간 그 푸시가 조용히 멈춘다 — 정본은 이 한 줄이다.
+        internal const string StaleRosterMsg    = "명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.";
 
         // 잠금 경합(1205 잠금 대기 초과 · 1213 교착) — 사람에게는 한 문장이다. 둘 다 "지금은 남이 잡고 있다"이고
         //   할 일도 같다(잠시 뒤 다시). 번호를 문장에 섞지 않는다 — 번호는 로그의 몫이다.
@@ -996,9 +999,21 @@ namespace TaskCalendarWidget
                         { await tx.RollbackAsync(cts.Token); return (false, LastAdminMsg); }
                     }
 
-                    await using (var cmd = new MySqlCommand("UPDATE app_user SET is_active=@a WHERE user_id=@uid", conn, tx))
+                    //  ★ 2026-09-11 적대 검토(R3) — **복구는 서열을 비운다**(sort_order=NULL = 맨 뒤).
+                    //    §7-1a(퇴사자의 옛 순번이 복구 때 새 서열 사이에 끼어든다)를 옛 판은 **순서 저장 쪽**에서
+                    //    닫았다 — 저장할 때 목록 밖 숨김의 서열을 비웠다. 그 비우기와 복구 사이는 열려 있었다:
+                    //    낡은 명부 판정(COUNT)과 재작성(CASE) 사이에 남이 복구하면 그 사람은 그 순간 **활성**이라
+                    //    비우기 갈래(is_active=0)에 걸리지 않고 옛 숫자를 그대로 들고 새 서열(10·20·30…) 사이에
+                    //    끼어들었다. 비우는 시점을 '저장할 때'가 아니라 **'돌아올 때'**로 옮기면 그 틈이 없다.
+                    //    NULL 은 명부 ORDER BY 에서 맨 뒤라(§5.3) 복구한 사람은 맨 뒤에 서고, 관리자가 그때
+                    //    한 번 끌어올리면 끝난다(구분·상태 코드의 '복구 = MAX+10' 과 같은 판단).
+                    //    ★ 퇴사(active=false)는 서열을 손대지 않는다 — 그 값은 돌아올 때 어차피 비워지고,
+                    //      지금 지우면 '퇴사 → 곧바로 복구' 가 멀쩡하던 자리를 잃는다.
+                    string setActiveSql = active
+                        ? "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid"
+                        : "UPDATE app_user SET is_active=0 WHERE user_id=@uid";
+                    await using (var cmd = new MySqlCommand(setActiveSql, conn, tx))
                     {
-                        cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
                         cmd.Parameters.AddWithValue("@uid", userId);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -1017,22 +1032,17 @@ namespace TaskCalendarWidget
         //     그 순서가 곧 서열이다. 전량 재작성이면 규칙이 하나도 없어 어긋날 자리가 없다
         //     (구분·상태 코드값의 순서 재배치와 같은 방식 — 이 파일 아래쪽).
         //   ★ 잠금 방지 3규칙은 여기 없다 — 순서는 권한도 활성 상태도 건드리지 않는다.
-        //   ★ 2026-09-10 — 목록 **밖**의 사람은 sort_order 를 NULL 로 민다(USER-ADMIN §7-1a 를 닫는다).
-        //     「퇴사자 보기」를 끈 채 순서를 저장하면 퇴사자는 목록에 없어 옛 숫자를 그대로 들고 남았고,
-        //     그 사람을 복구하면 그 숫자가 새 서열 **사이에 끼어들었다**. NULL 은 명부 ORDER BY 에서
-        //     맨 뒤다(`u.sort_order IS NULL, u.sort_order`) — 복구한 사람은 맨 뒤에 서고, 관리자가 그때
-        //     한 번 끌어올리면 끝난다. "보이는 순서 = 저장되는 순서" 계약은 그대로다(보이는 사람의 서열은
-        //     받은 순서 그대로고, 안 보이던 사람은 서열을 '가진 척'하지 않게 된다).
-        //   ★ 2026-09-11 적대 검토(R1) — 위 한 줄이 **활성 직원까지** 쓸어 갔다. 옛 비우기 문장에는
-        //     `is_active=0` 이 없어, 다른 관리자가 그 사이에 등록한 사람이나 화면이 걸러 낸 사람처럼
-        //     **목록에 없을 뿐 멀쩡히 활성인 직원의 서열이 소리 없이 NULL 이 됐다**. 두 겹으로 막는다:
-        //       ① 낡은 명부면 **아무것도 쓰지 않고 거부**한다 — 목록 밖 활성 직원을 트랜잭션 안에서
-        //          `FOR UPDATE` 로 세고, 한 명이라도 있으면 롤백하고 StaleRosterMsg 를 돌려준다.
-        //          (사용자가 할 일은 새로고침 한 번이다. 반만 반영된 서열보다 낫다.)
-        //       ② 그래도 비우기 문장에는 `is_active=0` 을 건다 — ① 을 빠져나가는 경로가 생겨도
-        //          활성 직원의 서열은 지우지 않는다(닫힌 쪽으로 실패).
-        //     그리고 N 번의 UPDATE + 비우기 한 번을 **한 문장**(CASE user_id WHEN …)으로 합쳤다.
-        //     왕복이 1회로 줄고, '재작성은 됐는데 비우기가 아직'인 중간 상태가 아예 존재하지 않는다.
+        //   ★ 2026-09-11 적대 검토(R3) — §7-1a 는 이제 **복구 쪽**에서 닫힌다. 돌아오는 사람은 서열이
+        //     비워진 채(sort_order=NULL = 맨 뒤) 돌아온다(SetUserActiveAsync · RestoreTrashAsync).
+        //     그래서 이 함수는 목록 **밖**을 아예 건드리지 않는다 — 쓰는 자리는 받은 목록 하나다.
+        //     옛 판(2026-09-10 → R1)은 저장할 때 숨긴 사람의 서열을 비웠는데, 그 비우기와 복구 사이가
+        //     열려 있었다: 낡은 명부 판정(COUNT)과 재작성(CASE) 사이에 남이 복구하면 그 사람은 그 순간
+        //     **활성**이라 비우기 갈래(`is_active=0`)에 걸리지 않고 옛 숫자를 그대로 들고 새 서열
+        //     (10·20·30…) 사이에 끼어들었다. 비우는 시점을 '저장할 때' 에서 '돌아올 때' 로 옮기면
+        //     그 틈 자체가 없다 — 그리고 이 문장은 받은 PK 들만 잠근다(표 전체도, 숨긴 사람도 아니다).
+        //   ★ 낡은 명부 거부(①)는 그대로 남는다 — 그건 서열 비우기가 아니라 **낡은 목록**에 대한 가드다.
+        //     목록 밖에 활성 직원이 있으면 화면이 낡았다는 뜻이고, 그대로 절반만 재작성하면 그 사람의
+        //     서열이 소리 없이 어긋난다. 아무것도 쓰지 않고 StaleRosterMsg 로 거부한다(할 일은 새로고침 한 번).
         public async Task<(bool ok, string msg)> SaveUserOrderAsync(IReadOnlyList<int>? userIds)
         {
             if (userIds == null || userIds.Count == 0) return (false, "정렬할 명부가 비어 있습니다.");
@@ -1084,14 +1094,14 @@ namespace TaskCalendarWidget
                         return (false, StaleRosterMsg);
                     }
 
-                    // ② 재작성 + 비우기를 **한 문장**으로. 목록 안은 받은 순서대로 10·20·30…,
-                    //    목록 밖은 숨김(퇴사)일 때만 NULL 이고 활성이면 제 값을 지킨다.
-                    //    ★ ELSE 의 활성 갈래는 ① 덕분에 닿지 않는다 — 그래도 남겨 둔다(방어).
+                    // ② 받은 순서대로 10·20·30… **전량 재작성**. 쓰는 자리는 받은 목록 하나뿐이다.
+                    //    ★ 목록 밖은 손대지 않는다 — 숨긴 사람의 서열은 **복구될 때** NULL 이 된다(위 ★ R3).
+                    //      여기서 비우면 '저장 사이에 남이 복구한 사람' 이 그 갈래를 빠져나간다(그게 R3 의 결함이다).
                     //    ★ updated_at 은 손대지 않는다 — 이 표의 감사 시각은 서버 ON UPDATE 의 몫이다(§4.5).
-                    //    ★ 2026-09-11 적대 검토(R2) — **WHERE 가 없었다.** CASE 의 ELSE 가 '제 값을 다시 쓴다'
-                    //      여도 그건 값 이야기일 뿐, 문장의 대상은 여전히 **app_user 전 행**이다. 전원에 X 잠금이
-                    //      걸리고(한 사람의 순서 저장이 표 전체를 잠근다), 드라이버가 돌려주는 영향 행 수도
-                    //      표 크기가 된다. 쓸 자리는 둘뿐이다 — 받은 목록 안(재작성) · 숨긴 사람(비우기).
+                    //    ★ 2026-09-11 적대 검토(R2) — **WHERE 가 없었다.** 문장의 대상이 app_user **전 행**이면
+                    //      전원에 X 잠금이 걸리고(한 사람의 순서 저장이 표 전체를 잠근다), 드라이버가 돌려주는
+                    //      영향 행 수도 표 크기가 된다. WHERE 는 받은 PK 들(IN)로 정확히 좁힌다.
+                    int matched;
                     await using (var cmd = new MySqlCommand())
                     {
                         cmd.Connection = conn;
@@ -1105,16 +1115,21 @@ namespace TaskCalendarWidget
                             cmd.Parameters.AddWithValue(op, (i + 1) * 10);
                         }
                         cmd.CommandText = "UPDATE app_user SET sort_order = CASE user_id " + string.Join(" ", whens) +
-                                          " ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END" +
-                                          " WHERE user_id IN (" + inList + ") OR is_active=0";
-                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                                          " END WHERE user_id IN (" + inList + ")";
+                        matched = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
 
                     await tx.CommitAsync(cts.Token);
-                    //  ★ 영향 행 수는 싣지 않는다(2026-09-11 R2) — MySqlConnector 는 CLIENT_FOUND_ROWS 로
-                    //    **조건에 맞은 행**을 돌려주므로 그 수는 '바뀐 행' 이 아니다(CALENDAR-TABLE-DESIGN
-                    //    "'영향 행 0' 은 한 가지 뜻이 아니다"). 여기서 뜻이 있는 숫자는 재작성 대상 인원 하나다.
-                    _log("명부 순서 저장: 대상 " + kept.Count + "명 전량 재작성");
+                    //  ★ 2026-09-11 적대 검토(R3) — 두 숫자를 **함께** 남긴다. WHERE 가 받은 PK 로 좁혀진
+                    //    지금(R2), 이 숫자는 '표 크기' 가 아니라 **받은 목록 중 실제로 있는 사람 수**다.
+                    //    둘이 다르면 뜻이 하나뿐이다: 목록에 **이미 없는 id** 가 섞여 있었다(남이 그 사이에
+                    //    지웠다). 낡은 명부 거부(①)는 '목록 밖 활성' 만 보므로 이 경우를 못 잡는다 —
+                    //    로그의 이 한 줄이 유일한 단서다.
+                    //    ★ 이 수는 MySqlConnector 의 CLIENT_FOUND_ROWS 규약상 '바뀐 행' 이 아니라
+                    //      **조건에 맞은 행**이다(CALENDAR-TABLE-DESIGN "'영향 행 0' 은 한 가지 뜻이
+                    //      아니다"). 그래서 '존재 확인' 으로는 읽어도 '몇 명의 서열이 실제로 달라졌나'
+                    //      로는 읽지 않는다 — 같은 값을 다시 쓴 사람도 여기 포함된다.
+                    _log("명부 순서 저장: 일치 행 " + matched + " / 대상 " + kept.Count + "명 전량 재작성");
                     return (true, "명부 순서를 저장했습니다.");
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
@@ -2118,7 +2133,10 @@ namespace TaskCalendarWidget
                     switch (kd)
                     {
                         case "project":  sql = "UPDATE project SET is_active=1 WHERE uid=@k"; break;
-                        case "user":     sql = "UPDATE app_user SET is_active=1 WHERE user_id=@k"; break;
+                        //  ★ 인력의 복구는 sort_order 를 **비운다**(NULL = 명부 맨 뒤) — 코드 2종의 MAX+10 과
+                        //    같은 이유이고, SetUserActiveAsync 의 복구와 **같은 규칙**이다(2026-09-11 R3).
+                        //    옛 순번을 들고 돌아오면 그 숫자가 활성 서열(10·20·30…) 사이에 끼어든다(USER-ADMIN §7-1a).
+                        case "user":     sql = "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k"; break;
                         case "customer": sql = "UPDATE customer SET is_active=1 WHERE name=@k"; break;
                         case "section":  sql = "UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE name=@k"; break;
                         case "status":   sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;

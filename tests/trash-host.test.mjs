@@ -245,6 +245,16 @@ const checks = {
         ? `${tbl} 복구에 sort_order 재매김(MAX+10)이 없다 — 옛 순번이 활성 목록 사이에 끼어든다(§11-1)`
         : `${tbl} 복구가 sort_order 를 다시 매긴다 — 재매김은 구분·상태 코드에만 있는 규칙이다`);
     }
+    //  ★ 2026-09-11 적대 검토(R3) — 인력만은 **비운다**(sort_order=NULL). 뜻은 코드 2종의 MAX+10 과
+    //    같다(돌아온 사람은 맨 뒤에 선다) — 셈이 다를 뿐이다. 명부 ORDER BY 가 NULL 을 맨 뒤로 보내므로
+    //    (USER-ADMIN §5.3) 최댓값을 셀 필요가 없고, 값이 없다는 사실 자체가 '아직 자리를 안 정했다' 다.
+    //    이 한 줄이 빠지면 퇴사자가 옛 순번을 들고 돌아와 활성 서열(10·20·30…) 사이에 끼어든다(§7-1a).
+    //    ★ 같은 규칙이 SetUserActiveAsync(편집 폼의 [복구])에도 있다 — 복구 경로는 둘이고, 한쪽만
+    //      고치면 그쪽으로 돌아온 사람이 결함을 그대로 재현한다(그 축은 user-admin 게이트 ⑥-f 가 진다).
+    const userLine = lines.find((l) => /UPDATE app_user SET/.test(l));
+    assert.ok(userLine && /UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k/.test(userLine),
+      '인력 복구가 sort_order 를 비우지 않는다(NULL = 명부 맨 뒤) — 퇴사자가 옛 순번을 들고 돌아와 ' +
+      '활성 서열 사이에 끼어든다(USER-ADMIN §7-1a · R3)');
   },
 
   // ⑧ 복구는 is_active 를 **잠근 채** 읽고 UPDATE 보다 먼저 판정한다(2026-09-10 검토 지적).
@@ -479,6 +489,20 @@ test('변이⑦: 과제 복구에까지 sort_order 재매김을 번지게 하면
     '"UPDATE project SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM project) x) WHERE uid=@k"');
   assert.throws(() => checks.restoreReordersOnlyCodes(bad), /project 복구가 sort_order 를 다시 매긴다/);
   assert.doesNotThrow(() => checks.restoreReordersOnlyCodes(pdb));   // 통제군
+});
+
+test('변이⑦-a2: 인력 복구에서 sort_order=NULL 을 빼면 계약⑦ 이 실패한다(옛 순번을 들고 돌아온다 · R3)', () => {
+  const bad = mutate(pdb,
+    'sql = "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k"',
+    'sql = "UPDATE app_user SET is_active=1 WHERE user_id=@k"');
+  assert.throws(() => checks.restoreReordersOnlyCodes(bad), /인력 복구가 sort_order 를 비우지 않는다/);
+});
+
+test('변이⑦-a3: 인력 복구를 코드 2종처럼 MAX\\+10 으로 바꾸면 계약⑦ 이 실패한다(재매김은 코드만의 규칙이다)', () => {
+  const bad = mutate(pdb,
+    'sql = "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k"',
+    'sql = "UPDATE app_user SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM app_user) x) WHERE user_id=@k"');
+  assert.throws(() => checks.restoreReordersOnlyCodes(bad), /app_user 복구가 sort_order 를 다시 매긴다/);
 });
 
 test('변이⑦-b: 구분 복구에서 재매김을 빼면 계약⑦ 이 실패한다(옛 순번이 활성 사이에 끼어든다)', () => {

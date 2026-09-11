@@ -118,6 +118,77 @@ test('extractCsMember(실물): UserSaved 슬라이스에 옆 멤버(LoadMembersT
   assert.ok(b.length < 600, '슬라이스가 지나치게 길다(다음 멤버까지 삼켰을 때의 증상): ' + b.length);
 });
 
+// 8) extractCsMember: 식(=>) 본문 안의 **문(statement) 람다**와 C# 축자 문자열(@"...").
+//    ★ 2026-09-11 적대 검토(R3-W3): 옛 판은 식 본문을 '문자열 밖 첫 ;' 에서 끊었다. 그 자리에
+//      `=> Dispatcher.Invoke(() => { a; b; });` 같은 문 람다가 오면 **람다 안의 첫 ;** 에서 잘려,
+//      뒤를 보는 계약이 "이 멤버는 그 호출을 안 한다"고 읽는다 — 조용한 거짓말이라 더 나쁘다.
+//    ★ 축자 문자열은 규칙이 다르다: 백슬래시가 평범한 글자이고 따옴표는 "" 로 겹쳐 적는다.
+//      @"C:\dir\" 의 마지막 \" 를 이스케이프로 읽으면 문자열이 끝난 줄 모르고 **뒤 코드를 삼킨다**
+//      (호스트의 경로 상수가 실제로 그 모양이다: Svn.cs · MainWindow.xaml.cs 의 RunKeyPath).
+const CS_VERBATIM_PROBE = [
+  'public class Q {',
+  '    private void Push(string msg) =>',
+  '        Dispatcher.Invoke(() => { Log(msg); JsCall("window.__push(" + msg + ");"); });',
+  '',
+  '    private string Root() {',
+  '        string p = @"C:\\dir\\";',
+  '        string q = @"} 이 중괄호는 코드가 아니다";',
+  '        return p + q + Tail();',
+  '    }',
+  '',
+  '    private string Quoted() {',
+  '        string s = @"a\\""}";',
+  '        return s + Tail();',
+  '    }',
+  '',
+  '    private string Tail() { return "끝"; }',
+  '}',
+].join('\n');
+
+test('extractCsMember: 식(=>) 본문은 문 람다 안의 ; 에서 잘리지 않는다(깊이를 센다)', () => {
+  const one = extractCsMember(CS_VERBATIM_PROBE, 'private void Push(');
+  assert.ok(one.trim().endsWith(';'), '식 본문은 ; 로 닫혀야 한다: ' + JSON.stringify(one.slice(-20)));
+  assert.ok(one.includes('JsCall'),
+    '문 람다 안의 첫 ; 에서 잘렸다 — 뒤를 보는 계약이 "그 호출이 없다"고 읽는다: ' + JSON.stringify(one));
+  assert.ok(!one.includes('Root'), '다음 멤버까지 삼켰다 — 옆 멤버가 판정에 섞인다');
+});
+
+test('extractCsMember: 축자 문자열(@"...\\")이 뒤 코드를 삼키지 않는다', () => {
+  const two = extractCsMember(CS_VERBATIM_PROBE, 'private string Root(');
+  assert.ok(two.includes('return p + q + Tail();'),
+    '경로 끝의 \\ 를 이스케이프로 읽어 본문이 잘렸다(문자열이 끝난 줄 모른다): ' + JSON.stringify(two));
+  assert.ok(two.trim().endsWith('}'), '중괄호 본문은 } 로 닫혀야 한다: ' + JSON.stringify(two.slice(-20)));
+  assert.ok(!two.includes('Quoted'), '다음 멤버까지 삼켰다');
+});
+
+test('extractCsMember: 겹따옴표 축자 문자열("" = 따옴표 한 글자)을 코드로 읽지 않는다', () => {
+  const three = extractCsMember(CS_VERBATIM_PROBE, 'private string Quoted(');
+  assert.ok(three.includes('return s + Tail();'),
+    '"" 를 문자열의 끝으로 읽어 그 뒤의 } 를 닫는 중괄호로 오인했다: ' + JSON.stringify(three));
+  assert.ok(three.trim().endsWith('}'), '중괄호 본문은 } 로 닫혀야 한다: ' + JSON.stringify(three.slice(-20)));
+});
+
+test("extractCsMember: 호출 자리에 걸린 sig 는 '판정 불가'로 던진다(남의 본문을 내놓지 않는다)", () => {
+  //  ★ 2026-09-11 적대 검토(R3-W3): indexOf 는 **선언과 호출을 구별하지 못한다.** 같은 이름이 본문에서
+  //    먼저 불리면 그 호출 자리부터 잘라 **옆 멤버의 본문**을 이 멤버의 것으로 내놓는다 — 계약은 엉뚱한
+  //    코드를 보고 초록(또는 빨강)을 낸다. 조용히 틀린 답보다 '판정 불가'로 죽는 편이 낫다.
+  const src = [
+    'public class Q {',
+    '    private void Caller() {',
+    '        Tail();',
+    '        if (Tail()) { Log(); }',
+    '    }',
+    '    private string Tail() { return "끝"; }',
+    '}',
+  ].join('\n');
+  //  'Tail(' 의 첫 자리는 호출이다(선언은 그 뒤에 있다) — 옛 판은 여기서부터 잘라 Caller 의 꼬리를 내놨다.
+  assert.throws(() => extractCsMember(src, 'Tail('), /판정 불가/,
+    "호출 자리에 걸렸는데도 무언가를 돌려준다 — 그 슬라이스는 이 멤버의 것이 아니다");
+  //  통제군: 선언 모양을 함께 적어 주면 그 자리를 제대로 찾는다(가드가 정상 추출까지 막지는 않는다).
+  const ok = extractCsMember(src, 'private string Tail(');
+  assert.ok(ok.includes('return "끝";'), '선언까지 막아 버렸다 — 가드가 과하다: ' + JSON.stringify(ok));
+});
+
 // ══ 변이 시험(mutation test) — 하네스 자신을 망가뜨려도 위 4건이 초록인가 ══
 // 위 4건은 "지금 통과한다"만 말한다. 여기서 겨냥하는 건 앱 소스가 아니라 **하네스 자신**
 // (tests/harness.mjs)이다 — 이 파일의 존재 이유가 '하네스를 믿고 쓰기 위한 안전망'이니,
@@ -243,6 +314,58 @@ test('변이⑤: extractCsMember 가 식(=>) 본문을 모르면 다음 멤버�
     const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
     assert.ok(/LoadMembersToWebAsync/.test(m.extractCsMember(main, 'private void UserSaved(')),
       '실물 UserSaved 에서도 옆 멤버가 섞이지 않는다 — 변이가 겨냥을 빗나갔다(앵커를 갱신할 것)');
+  });
+});
+
+// ── 변이⑥ 식(=>) 본문의 **깊이 세기**를 없앤다 → 문 람다 안의 ; 에서 멤버가 잘린다 ──
+// (깨져야 할 계약: 'extractCsMember: 식(=>) 본문은 문 람다 안의 ; 에서 잘리지 않는다…')
+test('변이⑥: 깊이를 세지 않으면 문 람다 안의 첫 ; 에서 멤버가 잘린다', async () => {
+  const ok = extractCsMember(CS_VERBATIM_PROBE, 'private void Push(');
+  assert.ok(ok.includes('JsCall'), '사전조건: 정상 하네스는 문 람다를 통째로 담는다');
+
+  await withMutatedHarness("      if (c === ';' && depth === 0) {", "      if (c === ';') {", (m) => {
+      const bad = m.extractCsMember(CS_VERBATIM_PROBE, 'private void Push(');
+      assert.notStrictEqual(bad, ok, '깊이를 안 세도 같은 슬라이스가 나온다 — 계약이 깊이를 안 본다');
+      assert.ok(!bad.includes('JsCall'), '깊이 없이도 멤버가 온전하다 — 이 계약이 겨냥한 자리가 아니다');
+      assert.ok(bad.trim().endsWith('Log(msg);'),
+        '람다 안의 첫 ; 에서 잘려야 한다: ' + JSON.stringify(bad.slice(-30)));
+    });
+});
+
+// ── 변이⑦ 축자 문자열(@"...") 갈래를 없앤다 → 경로 끝의 \ 가 뒤 코드를 삼킨다 ──
+// (깨져야 할 계약: 'extractCsMember: 축자 문자열(@"...\\")이 뒤 코드를 삼키지 않는다')
+test('변이⑦: 축자 문자열 갈래가 없으면 @"C:\\dir\\" 뒤의 코드가 문자열로 먹힌다', async () => {
+  const ok = extractCsMember(CS_VERBATIM_PROBE, 'private string Root(');
+  assert.ok(ok.includes('return p + q + Tail();'), '사전조건: 정상 하네스는 본문을 온전히 담는다');
+
+  await withMutatedHarness("  if (q === '\"' && code[i - 1] === '@') {", '  if (false) {', (m) => {
+    const bad = m.extractCsMember(CS_VERBATIM_PROBE, 'private string Root(');
+    assert.notStrictEqual(bad, ok, '축자 갈래를 껐는데 같은 슬라이스가 나온다 — 계약이 그 갈래를 안 본다');
+    assert.ok(!bad.includes('return p + q + Tail();'),
+      '축자 갈래 없이도 본문이 온전하다 — 이 계약이 겨냥한 자리가 아니다');
+  });
+});
+
+// ── 변이⑧ 선언 머리 검사를 꺼 버린다 → 호출 자리에 걸린 sig 가 남의 본문을 내놓는다 ──
+// (깨져야 할 계약: "extractCsMember: 호출 자리에 걸린 sig 는 '판정 불가'로 던진다…")
+test('변이⑧: 선언 머리 검사를 끄면 호출 자리에 걸린 sig 가 조용히 무언가를 내놓는다', async () => {
+  const src = [
+    'public class Q {',
+    '    private void Caller() {',
+    '        Tail();',
+    '        if (Tail()) { Log(); }',
+    '    }',
+    '    private string Tail() { return "끝"; }',
+    '}',
+  ].join('\n');
+  assert.throws(() => extractCsMember(src, 'Tail('), /판정 불가/, '사전조건: 정상 하네스는 던진다');
+
+  await withMutatedHarness('  if (!_csIsDeclHead(code, s, delim)) {', '  if (false) {', (m) => {
+    const bad = m.extractCsMember(src, 'Tail(');
+    assert.ok(typeof bad === 'string' && bad.length > 0,
+      '선언 머리 검사를 껐는데도 던진다 — 이 계약이 겨냥한 자리가 아니다');
+    assert.ok(!/private string Tail\(\) \{ return/.test(bad),
+      '검사를 꺼도 선언을 찾아온다 — 그러면 가드가 없어도 되는 셈이다(계약이 장식이다)');
   });
 });
 

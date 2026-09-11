@@ -13,8 +13,10 @@
  *   한 라운드(C01~C21)를 왕복하고, **매 케이스 뒤에 MySQL 을 직접 읽어 불변식 다섯**을 본다.
  *
  *   ★ 2026-09-10(3차) 호스트·화면이 셋 바뀌어 케이스가 다섯 늘었다:
- *     · `SaveUserOrderAsync` 가 **목록 밖 사람의 sort_order 를 NULL 로 민다**(§7-1a 닫힘) → C15 가
- *       '보고만' 하던 자리에서 **진짜 판정**으로 올라섰다(퇴사자 서열 NULL · NULL 은 명부 맨 뒤).
+ *     · `SaveUserOrderAsync` 가 §7-1a 를 닫았다 → C15 가 '보고만' 하던 자리에서 **진짜 판정**으로 올라섰다.
+ *       ★ 2026-09-11 적대 검토(R3) 로 **닫는 자리가 옮겨졌다**: 비우기는 저장이 아니라 **복구**가 한다
+ *         (USER-ADMIN §11-29). 그래서 C15 는 '목록 밖은 그대로다' 를, C07 은 '복구가 NULL 로 비우고
+ *         그 사람이 명부 맨 뒤에 선다' 를 판정한다.
  *     · 순서 편집 중 도착한 **무관한 명부 푸시**를 미뤄 둔다(`__uaPendingData` · `uaFlushPending`) → C20.
  *     · ▲▼ 가 스크롤 자리와 포커스를 지킨다(`uaMove`) → C21. 검색칸 잠금은 C18, 닫기 되돌리기는 C19.
  *     · 마지막 관리자 규칙(§4.4-3)이 앱 경로로 어디까지 닿는지 → C17(결론은 그 케이스 머리말에).
@@ -32,7 +34,8 @@
  *
  * 불변식(케이스마다):
  *   I1 활성 admin ≥ 1                       — 0 이 되는 순간 "앱에서만 관리한다"가 깨진다(DB 로 가야 푼다)
- *   I2 활성 사용자 중 sort_order NULL 은 **이번 라운드에서 새로 등록해 아직 순서 저장 전인 계정**뿐
+ *   I2 활성 사용자 중 sort_order NULL 은 **아직 순서 저장을 안 거친 계정**뿐 — 새로 등록한 zzU,
+ *      그리고 **막 복구된 계정**(복구가 서열을 비운다 · §11-29). 둘 다 다음 순서 저장이 숫자를 준다.
  *   I3 app_user 총원 = 시작 총원 + 이번 라운드 zzU 수
  *   I4 zzU 외 행은 **기대값과 글자까지 같다**(login_id·name·title·org_id·view_scope·edit_role·is_active·sort_order)
  *      ★ '기대값' 은 시작 스냅샷에서 출발해, **정당한 변경을 낸 케이스가 스스로 갱신**한다
@@ -338,7 +341,7 @@ let BASE_TOTAL = 0;
 let SCHEMA_V = null;
 /** 기대값 — zzU 가 아닌 행이 지금 어떤 모습이어야 하는가. 정당한 변경은 케이스가 스스로 갱신한다. */
 let expect = new Map();       // uid → identity 배열
-/** 새로 등록했지만 아직 순서 저장을 거치지 않은 zzU 들(I2 의 예외 집합) */
+/** 아직 순서 저장을 거치지 않은 계정들(I2 의 예외 집합) — 새로 등록한 zzU + **막 복구된 계정**(§11-29) */
 const pendingOrder = new Set();
 const madeUids = new Set();   // 이번 라운드가 만든 zzU
 
@@ -359,7 +362,7 @@ function invariants(caseId) {
   // I2
   const nulls = snap.users.filter((u) => u.active && u.sort === null);
   const bad2 = nulls.filter((u) => !pendingOrder.has(u.uid));
-  ok(`${caseId} I2 활성 sort_order NULL 은 순서 저장 전 신규뿐`, bad2.length === 0,
+  ok(`${caseId} I2 활성 sort_order NULL 은 순서 저장 전(신규·복구 직후)뿐`, bad2.length === 0,
     bad2.map((u) => `${u.loginId}(uid=${u.uid})`).join(', '));
 
   // I3
@@ -1019,15 +1022,20 @@ async function main() {
     //  기대값 갱신은 없다 — B 는 zzU 라 I4 대상이 아니다.
   });
 
-  /* ── C15 §7-1a 가 닫혔다 — 목록 밖 사람의 서열은 비워진다 ────────────── */
-  //  ★★ 2026-09-10 이 케이스는 '보고만' 하던 자리에서 **판정**으로 올라섰다.
-  //    옛 동작: 「퇴사자 보기」를 끈 채 순서를 저장하면 퇴사자는 목록에 없어 **옛 숫자를 그대로 들고** 남았고,
-  //             복구하면 그 숫자가 새 서열 **사이에 끼어들었다**.
-  //    지금 동작(SaveUserOrderAsync 끝의 두 번째 UPDATE): 받은 목록 **밖**의 사람은 sort_order = NULL.
-  //             NULL 은 명부 ORDER BY 에서 맨 뒤다(`u.sort_order IS NULL, u.sort_order`) — 복구하면 맨 뒤에 서고
-  //             관리자가 그때 한 번 끌어올리면 끝난다. 그래서 이 케이스가 보는 것은 셋이다:
-  //             ① 퇴사자의 서열이 NULL 이다 ② 활성자 순번과 겹칠 수 없다 ③ 명부에서 NULL 은 **꼬리 뭉치**다.
-  await runCase('C15', '순서 저장이 목록 밖 사람의 서열을 비운다(§7-1a 닫힘)', async () => {
+  /* ── C15 순서 저장은 목록 **밖**을 건드리지 않는다(§7-1a 는 복구 쪽에서 닫힌다) ──── */
+  //  ★★ 2026-09-10 이 케이스는 '보고만' 하던 자리에서 **판정**으로 올라섰고,
+  //     2026-09-11 적대 검토(R3)에서 **판정의 방향이 뒤집혔다**.
+  //    옛 동작: 「퇴사자 보기」를 끈 채 순서를 저장하면 퇴사자는 목록에 없어 옛 숫자를 그대로 들고 남았고,
+  //             복구하면 그 숫자가 새 서열 사이에 끼어들었다(§7-1a).
+  //    2026-09-10~11(R1) 판: 그 비우기를 **저장 쪽**에 두었다 — 목록 밖이면 sort_order=NULL.
+  //             그런데 낡은 명부 판정(COUNT)과 재작성(CASE) 사이에 남이 그 퇴사자를 복구하면, 그 사람은
+  //             그 순간 **활성**이라 비우기 갈래(is_active=0)를 빠져나가 옛 숫자를 지켰다 — 구멍이 남았다.
+  //    지금(R3): 비우는 **시점**이 '저장할 때' 가 아니라 **'돌아올 때'** 다(USER-ADMIN §11-29).
+  //             그래서 이 케이스가 보는 것은 뒤집힌 셋이다:
+  //             ① 목록 밖 퇴사자의 서열은 **그대로다**(저장은 받은 목록만 쓴다)
+  //             ② 활성 서열은 받은 순서대로 10·20·30… 으로 다시 써졌다
+  //             ③ 그 옛 숫자가 활성 숫자와 **겹칠 수 있다** — 그래서 복구(C07)가 비워야 한다(그쪽이 판정한다).
+  await runCase('C15', '순서 저장은 목록 밖 사람의 서열을 건드리지 않는다(비우기는 복구의 몫 · §11-29)', async () => {
     const beforeRow = dbSnap('C15 전').byId.get(B.uid);
     await setInactiveView(false);   // 퇴사자를 감춘 채 저장하는 것이 바로 그 구멍의 조건이다
     await ev(`(function(){var b=document.getElementById('uaOrderEdit'); if(b) b.click(); return 1;})()`);
@@ -1046,32 +1054,28 @@ async function main() {
     const actives = snap.users.filter((u) => u.active && u.sort !== null).map((u) => u.sort);
     note(`C15 퇴사자(uid=${B.uid}) sort_order ${beforeRow ? beforeRow.sort : '?'} → ${after ? String(after.sort) : '?'} ` +
       `(활성 범위 ${Math.min(...actives)}~${Math.max(...actives)})`);
-    //  ① 목록 밖(퇴사자 보기 OFF 라 빠져 있었다)이므로 서열이 비워졌다.
-    okq('C15 퇴사자의 서열이 NULL 로 비워졌다(§7-1a 닫힘)', !!after && after.sort === null,
-      after ? String(after.sort) : '행 없음');
-    //  ② NULL 은 숫자와 겹칠 수 없다 — '옛 숫자가 새 서열 사이에 끼어든다'는 구멍이 형태로 사라졌다.
-    okq('C15 활성자 순번과 충돌하지 않는다', !(after && after.sort !== null && actives.includes(after.sort)),
-      after ? String(after.sort) : '');
-    //  ③ 그 NULL 이 명부에서 실제로 **맨 뒤**인가 — 복구했을 때 어디에 서는지가 이 판정이다.
-    //     ★ '마지막 한 명' 이 아니라 '꼬리 뭉치' 로 본다: 목록 밖이었던 사람이 여럿이면 전부 NULL 이고
-    //       그 안의 순서는 이름이 정한다(ORDER BY … , u.name). 계약은 "숫자 있는 사람보다 뒤"다.
-    await setInactiveView(true);
-    const ms = await members();
-    const firstNull = ms.findIndex((m) => m.sort == null);
-    const bIdx = ms.findIndex((m) => m.uid === B.uid);
-    okq('C15 「퇴사자 보기」 재조회에 퇴사자가 실렸다', bIdx >= 0, `명부 ${ms.length}명`);
-    okq('C15 서열 없는 사람은 숫자 있는 사람보다 **뒤**에 온다(NULL = 맨 뒤)',
-      firstNull < 0 || ms.slice(firstNull).every((m) => m.sort == null),
-      `첫 NULL 자리 ${firstNull} / 명부 ${ms.length}명`);
-    okq('C15 그 꼬리 뭉치 안에 퇴사자가 있다(복구하면 맨 뒤에 선다)',
-      bIdx >= 0 && firstNull >= 0 && bIdx >= firstNull, `퇴사자 자리 ${bIdx} / 첫 NULL ${firstNull}`);
+    //  ① 목록 밖(퇴사자 보기 OFF 라 빠져 있었다)이라 **아무도 건드리지 않았다**.
+    //     저장의 WHERE 는 받은 PK 들뿐이다 — 이 사람은 그 안에 없었다.
+    okq('C15 퇴사자의 서열이 그대로다(저장은 받은 목록만 쓴다 · §11-29)',
+      !!after && !!beforeRow && after.sort === beforeRow.sort,
+      `전 ${beforeRow ? String(beforeRow.sort) : '?'} / 후 ${after ? String(after.sort) : '행 없음'}`);
+    //  ② 활성 서열은 받은 순서대로 10·20·30… 으로 전량 재작성됐다(그 축이 이 저장의 계약이다).
+    const sortedActives = [...actives].sort((x, y) => x - y);
+    okq('C15 활성 서열이 10 간격으로 다시 써졌다',
+      sortedActives.length > 0 && sortedActives.every((v, i) => v === (i + 1) * 10),
+      `실제 [${sortedActives.join(',')}]`);
+    //  ③ 그 옛 숫자는 활성 숫자와 **겹칠 수 있다** — 이 판은 그것을 막지 않는다(막는 자리는 복구다).
+    //     겹쳤는지 여부는 판정이 아니라 기록이다: 겹쳤다면 C07 의 비우기가 정확히 그 사고를 막아 준다.
+    note(`C15 퇴사자의 옛 숫자 ${after ? String(after.sort) : '?'} 는 활성 서열과 ` +
+      `${after && after.sort !== null && actives.includes(after.sort) ? '겹친다' : '겹치지 않는다'} — ` +
+      '어느 쪽이든 복구(C07)가 비운다');
 
-    //  ★ I2 의 예외 집합을 다시 세운다: 이 사람은 지금 서열이 없고, C07 이 복구하면 **활성 + NULL** 이 된다.
-    //    그건 결함이 아니라 §7-1a 가 의도한 상태다 — 다음 순서 저장이 숫자를 준다.
+    //  ★ I2 의 예외 집합: 순서 저장이 **받은 목록 전원**에 숫자를 줬으므로 예외는 지금 0 이다.
+    //    퇴사자 B 는 여전히 숫자를 들고 있지만 **비활성**이라 I2(활성만 본다)의 대상이 아니다.
+    //    B 가 예외가 되는 시점은 C07 이 그를 **활성 + NULL** 로 되살리는 순간이다(거기서 다시 넣는다).
     pendingOrder.clear();
-    pendingOrder.add(B.uid);
     syncExpect(snap);
-    note('I4 기대값 재기준 · I2 예외 추가: 순서 저장이 전원을 다시 썼고, 목록 밖이던 퇴사자는 서열이 비었다');
+    note('I4 기대값 재기준: 순서 저장이 받은 목록 전원을 다시 썼다(목록 밖 퇴사자는 옛 숫자를 그대로 지녔다)');
   });
 
   /* ── C07 복구 ───────────────────────────────────────────────────────── */
@@ -1089,15 +1093,36 @@ async function main() {
     }
     await ev(`closeModal('#userEditModal')`);
     await sleep(80);
+    const beforeSort = dbSnap('C07 전').byId.get(B.uid);
     const rep = await send({ cmd: 'setUserActive', userId: B.uid, active: true });
     if (!okq('C07 복구 성공 회신', rep.ok, rep.msg)) return;
-    const db = dbSnap('C07 확인').byId.get(B.uid);
+    const snap = dbSnap('C07 확인');
+    const db = snap.byId.get(B.uid);
     okq('C07 DB is_active=1', !!db && db.active === true, db ? String(db.active) : '행 없음');
+    //  ★ 2026-09-11 적대 검토(R3) — **복구가 서열을 비운다**(USER-ADMIN §7-1a · §11-29).
+    //    C15 에서 이 사람은 옛 숫자를 그대로 들고 있었다. 그 숫자를 들고 돌아오면 활성 서열
+    //    (10·20·30…) 사이에 끼어든다 — 그래서 돌아오는 그 문장이 sort_order 를 NULL 로 만든다.
+    note(`C07 복구 전 sort_order ${beforeSort ? String(beforeSort.sort) : '?'} → 후 ${db ? String(db.sort) : '?'}`);
+    okq('C07 복구가 서열을 비웠다(sort_order = NULL · §11-29)', !!db && db.sort === null,
+      db ? String(db.sort) : '행 없음');
     const ms = await members();
     okq('C07 명부 복귀', ms.some((m) => m.uid === B.uid));
     await setInactiveView(false);
     const ms2 = await members();
     okq('C07 「퇴사자 보기」를 꺼도 보인다(다시 활성이므로)', ms2.some((m) => m.uid === B.uid));
+    //  ★ NULL 은 명부 ORDER BY 에서 맨 뒤다(§5.3) — 복구한 사람은 **끼어들지 않고 맨 뒤**에 선다.
+    //    '마지막 한 명' 이 아니라 '꼬리 뭉치(숫자 없는 사람들)' 로 본다 — 그 안의 순서는 이름이 정한다.
+    const firstNull = ms2.findIndex((m) => m.sort == null);
+    const bIdx = ms2.findIndex((m) => m.uid === B.uid);
+    okq('C07 서열 없는 사람은 숫자 있는 사람보다 **뒤**에 온다(NULL = 맨 뒤)',
+      firstNull < 0 || ms2.slice(firstNull).every((m) => m.sort == null),
+      `첫 NULL 자리 ${firstNull} / 명부 ${ms2.length}명`);
+    okq('C07 복구한 사람이 그 꼬리 뭉치 안에 있다(끼어들지 않았다)',
+      bIdx >= 0 && firstNull >= 0 && bIdx >= firstNull, `복구자 자리 ${bIdx} / 첫 NULL ${firstNull}`);
+    //  ★ I2 예외: 지금 이 사람은 **활성 + NULL** 이다. 결함이 아니라 §7-1a 가 의도한 상태이고,
+    //    다음 순서 저장이 숫자를 준다(관리자가 그때 한 번 끌어올리면 끝난다).
+    pendingOrder.add(B.uid);
+    note('I2 예외 추가: 복구한 사람은 서열이 비어 있다(다음 순서 저장이 숫자를 준다)');
   });
 
   /* ── C09 잠금 방지① 자기 퇴사 ───────────────────────────────────────── */

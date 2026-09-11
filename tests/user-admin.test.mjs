@@ -269,31 +269,56 @@ const checks = {
       '대상 행을 FOR UPDATE 로 잠근 뒤 읽지 않는다 — 완화의 근거가 잠기지 않은 값이 된다(§4.4)');
   },
 
-  // ⑥-f 순서 저장은 목록 **밖** 사람을 어떻게 다루는가(USER-ADMIN §7-1a · 2026-09-10 → 2026-09-11 R1).
-  //    옛 판: 목록 밖이면 활성이든 아니든 sort_order 를 NULL 로 밀었다. 「퇴사자 보기」를 끈 채 저장하면
-  //    퇴사자가 옛 숫자를 들고 남아 복구했을 때 새 서열 사이에 끼어들던 문제는 그것으로 닫혔지만,
-  //    **활성 직원까지 쓸어 갔다** — 다른 관리자가 그 사이에 등록한 사람이나 화면이 걸러 낸 사람은
-  //    목록에 없을 뿐 멀쩡히 활성인데 서열이 소리 없이 사라졌다(2026-09-11 적대 검토 R1).
-  //    지금은 두 겹이다: ① 목록 밖에 활성이 있으면 **아무것도 쓰지 않고** 거부(낡은 명부) ·
-  //    ② 그래도 비우는 쪽에는 is_active=0 을 건다(닫힌 쪽으로 실패). 둘 다 한 문장·한 트랜잭션 안이다.
+  // ⑥-f 퇴사자의 옛 순번은 **어디서** 비워지는가(USER-ADMIN §7-1a · 2026-09-10 → R1 → 2026-09-11 R3).
+  //    옛 판은 **순서 저장** 쪽에서 비웠다: 목록 밖이면 sort_order 를 NULL 로 밀었다(R1 에서 그 갈래에
+  //    is_active=0 을 걸어 활성 직원을 보호했다). 그래도 틈이 남았다 — 낡은 명부 판정(COUNT)과
+  //    재작성(CASE) 사이에 남이 그 퇴사자를 복구하면, 그 사람은 그 순간 **활성**이라 비우기 갈래에
+  //    걸리지 않고 옛 숫자를 그대로 들고 새 서열(10·20·30…) 사이에 끼어들었다(2026-09-11 적대 검토 R3).
+  //    지금은 비우는 시점이 '저장할 때' 가 아니라 **'돌아올 때'** 다: 복구하는 두 자리
+  //    (SetUserActiveAsync 의 active=true · RestoreTrashAsync 의 user 갈래)가 sort_order 를 NULL 로
+  //    비운다. NULL 은 명부 ORDER BY 에서 맨 뒤라(§5.3) 복구한 사람은 맨 뒤에 서고, 관리자가 그때 한 번
+  //    끌어올리면 끝난다 — 구분·상태 코드의 '복구 = MAX+10' 과 같은 판단이다.
+  //    그래서 순서 저장이 쓰는 자리는 **받은 목록 하나**뿐이고, 낡은 명부 거부(①)만 그대로 남는다
+  //    (그건 서열 비우기가 아니라 '화면이 낡았다' 에 대한 가드다).
   orderClearsOutsiders(cs) {
     const so = csMember(cs, 'SaveUserOrderAsync(');
+    //  (0) 비우는 자리는 **복구 쪽 두 곳**이다. 한쪽만 고치면 그 경로로 돌아온 사람이 옛 숫자를 들고 온다.
+    const act = csMember(cs, 'SetUserActiveAsync(');
+    assert.ok(/UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid/.test(act),
+      '복구(SetUserActiveAsync 의 active=true)가 sort_order 를 비우지 않는다 — 퇴사자가 옛 순번을 들고 ' +
+      '돌아와 활성 서열(10·20·30…) 사이에 끼어든다(§7-1a · R3)');
+    assert.ok(/UPDATE app_user SET is_active=0 WHERE user_id=@uid/.test(act),
+      '퇴사(active=false)가 서열까지 손댄다 — 그 값은 돌아올 때 어차피 비워지고, 지금 지우면 ' +
+      "'퇴사 → 곧바로 복구' 가 멀쩡하던 자리를 잃는다(R3)");
+    const rt = csMember(cs, 'RestoreTrashAsync(');
+    assert.ok(/case "user":\s*sql = "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k"/.test(rt),
+      '휴지통 복구(RestoreTrashAsync 의 user 갈래)가 sort_order 를 비우지 않는다 — 복구 경로가 두 개인데 ' +
+      '한쪽만 비우면 그쪽으로 돌아온 사람이 §7-1a 를 그대로 재현한다(R3)');
     //  (a) 전량 재작성 — 받은 순서대로 10·20·30…. 이제 N 번의 UPDATE 가 아니라 CASE 한 문장이다.
     assert.ok(/UPDATE app_user SET sort_order = CASE user_id /.test(so),
       '순서 저장이 받은 순서대로 sort_order 를 전량 재작성하지 않는다(측정 불가 ≠ 통과)');
     assert.ok(/WHEN " \+ keyPn\[i\] \+ " THEN "/.test(so) || /"WHEN " \+ keyPn\[i\]/.test(so),
       '재작성의 WHEN 갈래가 파라미터로 묶이지 않는다 — 값은 언제나 @파라미터 바인딩이다(규약 ①)');
-    //  (b) 비우기는 **숨김(퇴사)에만**. is_active=0 이 빠지면 목록 밖 활성 직원의 서열이 날아간다.
-    assert.ok(/ELSE \(CASE WHEN is_active=0 THEN NULL ELSE sort_order END\) END/.test(so),
-      '목록 밖 사람의 서열을 비우는 갈래에 is_active=0 이 없다 — 목록에 없을 뿐 활성인 직원의 서열까지 ' +
-      'NULL 이 된다(R1). 숨긴 사람만 비워야 복구했을 때 끼어들지 않고 맨 뒤에 선다(§7-1a).');
-    //  (b-2) 그 한 문장에는 **WHERE 가 있어야 한다**(2026-09-11 적대 검토 R2). ELSE 가 '제 값을 다시 쓴다'
-    //      여도 그건 값 이야기일 뿐, WHERE 가 없으면 문장의 대상은 app_user **전 행**이다 — 한 사람의
-    //      순서 저장이 표 전체에 X 잠금을 걸고, 드라이버가 돌려주는 영향 행 수도 표 크기가 된다.
-    //      쓸 자리는 둘뿐이다: 받은 목록 안(재작성) · 숨긴 사람(비우기).
-    assert.ok(/WHERE user_id IN \(" \+ inList \+ "\) OR is_active=0/.test(so),
-      '순서 저장의 한 문장에 WHERE 가 없다 — app_user 전 행이 UPDATE 대상이 되어 전원에 X 잠금이 걸리고, ' +
-      '로그가 말하는 영향 행 수도 표 크기가 된다(R2)');
+    //  (b) 이 함수는 목록 **밖**을 아예 건드리지 않는다(2026-09-11 R3). 비우기 갈래가 여기 남아 있으면
+    //      '판정과 재작성 사이에 남이 복구한 사람' 이 is_active=0 조건을 빠져나가 옛 숫자를 지킨다 —
+    //      그게 R3 이 찾아낸 구멍이다. 비우는 일은 위 (0) 의 복구 두 자리가 진다.
+    assert.ok(!/is_active=0/.test(so),
+      '순서 저장이 아직도 목록 밖의 서열을 비운다(is_active=0) — 비우기의 자리는 저장이 아니라 ' +
+      '**복구**다(R3). 여기 두면 저장 사이에 복구된 사람이 그 갈래를 빠져나간다.');
+    //  (b-2) 그 한 문장에는 **WHERE 가 있어야 한다**(2026-09-11 적대 검토 R2). 없으면 문장의 대상은
+    //      app_user **전 행**이다 — 한 사람의 순서 저장이 표 전체에 X 잠금을 걸고, 드라이버가 돌려주는
+    //      영향 행 수도 표 크기가 된다. 쓸 자리는 하나뿐이다: 받은 목록 안(재작성).
+    assert.ok(/END WHERE user_id IN \(" \+ inList \+ "\)/.test(so),
+      '순서 저장의 한 문장에 WHERE 가 없다(또는 받은 목록 밖까지 넓다) — app_user 전 행이 UPDATE 대상이 되어 ' +
+      '전원에 X 잠금이 걸린다(R2)');
+    //  (b-3) 그 문장이 **몇 행에 닿았는지**는 남긴다(2026-09-11 R3). WHERE 가 받은 PK 로 좁혀진 지금,
+    //      이 수는 표 크기가 아니라 '받은 목록 중 실제로 있는 사람 수' 다 — 대상 수와 다르면 뜻이 하나다:
+    //      목록에 **이미 없는 id** 가 섞여 있었다. 낡은 명부 거부(①)는 '목록 밖 활성' 만 보므로 그 경우를
+    //      못 잡는다. 로그의 이 한 줄이 유일한 단서다.
+    assert.ok(/int matched;/.test(so) && /matched = await cmd\.ExecuteNonQueryAsync/.test(so),
+      '재작성 문장의 일치 행 수를 받지 않는다 — 지워진 id 가 섞인 목록을 나중에 진단할 길이 없다(R3)');
+    assert.ok(/일치 행 " \+ matched \+ " \/ 대상 " \+ kept\.Count/.test(so),
+      "로그가 '일치 행 N / 대상 M' 으로 두 수를 함께 말하지 않는다 — 하나만으로는 어긋남이 안 보인다(R3)");
     //      그리고 로그는 '바뀐 행' 을 주장하지 않는다 — MySqlConnector 가 주는 수는 **조건에 맞은 행**이다.
     assert.ok(!/바뀐 행/.test(so),
       "순서 저장 로그가 '바뀐 행' 을 주장한다 — 드라이버가 주는 수는 맞은 행(CLIENT_FOUND_ROWS)이라 거짓말이다(R2)");
@@ -323,6 +348,41 @@ const checks = {
     //  (e) updated_at 은 손대지 않는다(§4.5 — 서버 ON UPDATE 의 몫).
     assert.ok(!/updated_at/.test(so),
       '순서 저장이 updated_at 을 직접 쓴다 — 이 표의 감사 시각은 서버 ON UPDATE 가 정한다(§4.5)');
+  },
+
+  // ⑭-h 명부 푸시(__applyMembers)는 **그 쓰기의 reqId 를 함께 싣는다**(2026-09-11 적대 검토 R3-H2).
+  //    회신(__userSaved)과 달리 이 푸시는 왕복이 아니다 — 웹이 "지금 내가 기다리던 그 요청의 결과인가"를
+  //    가릴 근거가 인자에 없으면, 버려진 요청의 늦은 푸시가 다른 조작에 잘못 귀속된다.
+  //    쓰기 뒤의 갱신이면 그 쓰기의 reqId 를, 그 밖의 갱신(휴지통 복구 등)은 "" 를 싣는다
+  //    (요청에 reqId 가 없던 옛 웹과도 호환된다).
+  membersPushCarriesReqId(mainCs) {
+    const fn = csMember(mainCs, 'private async Task LoadMembersToWebAsync(');
+    assert.ok(/private async Task LoadMembersToWebAsync\(bool includeInactive, string reqId = ""\)/.test(fn),
+      'LoadMembersToWebAsync 가 reqId 를 받지 않는다 — 푸시에 실을 근거 자체가 없다(R3-H2)');
+    assert.ok(/window\.__applyMembers\(" \+ JsonSerializer\.Serialize\(json\) \+ ","[\s\S]{0,200}?JsonSerializer\.Serialize\(reqId \?\? ""\)/.test(fn),
+      '__applyMembers 호출에 두 번째 인자(reqId)가 없다 — 웹이 늦은 푸시를 가려낼 수 없다(R3-H2). ' +
+      '문자열은 JSON 직렬화로 싣는다(따옴표를 손으로 붙이지 않는다).');
+  },
+
+  // ⑭-h2 순서 저장 뒤의 명부 푸시는 **두 경우뿐**이다(2026-09-11 적대 검토 R3-H2).
+  //    R2-H2 는 '실패해도 무조건 민다' 로 거부 루프를 닫았는데, 그게 너무 넓었다. 웹은 순서 편집 중에 온
+  //    갱신을 pending 으로 미뤄 두므로(편집 중이던 순서를 덮어쓰지 않게) 거부 뒤에도 순서 모드는 켜진
+  //    채고, 권한·연결·DB 실패처럼 **명부가 바뀌지 않은** 실패까지 밀면 그 푸시는 pending 에 쌓일 뿐이다.
+  //    밀어야 하는 것은 "지금 화면의 명부를 갈아 끼워야 한다" 는 둘 — 성공(ok) · 낡은 명부(StaleRosterMsg).
+  //    ★ 문장 대조의 정본은 ProjectDb.StaleRosterMsg 한 줄이다. 브리지가 그 상수를 **직접** 봐야 한다 —
+  //      같은 문장을 여기 한 벌 더 적으면 한쪽만 고쳐지는 순간 푸시가 조용히 멈춘다.
+  orderPushPolicy(mainCs, pdbCs) {
+    assert.ok(/internal const string StaleRosterMsg/.test(pdbCs),
+      'StaleRosterMsg 가 internal 이 아니다 — 브리지가 그 상수를 못 보면 문장을 한 벌 더 적게 되고 둘이 갈린다(R3-H2)');
+    const b = csMember(mainCs, 'private async Task SaveUserOrderAsync(');
+    assert.ok(/if \(ok \|\| string\.Equals\(msg, ProjectDb\.StaleRosterMsg, StringComparison\.Ordinal\)\)/.test(b),
+      '순서 저장의 명부 푸시가 "성공 또는 낡은 명부" 로 좁혀져 있지 않다 — 무조건 밀면 명부가 바뀌지도 ' +
+      '않은 실패(권한·연결·DB)까지 pending 에 쌓이고, 성공 때만 밀면 거부 루프가 돌아온다(R3-H2)');
+    assert.ok(!/"명부가 바뀌었습니다/.test(b),
+      '브리지가 낡은 명부 문구를 제 손으로 적는다 — 정본은 ProjectDb.StaleRosterMsg 한 줄이어야 한다(R3-H2)');
+    const iPush = b.indexOf('await LoadMembersToWebAsync(includeInactive, reqId);');
+    assert.ok(iPush >= 0,
+      '순서 저장의 푸시가 reqId 를 싣지 않는다 — 버려진 요청의 늦은 푸시가 다른 조작에 귀속된다(R3-H2)');
   },
 
   // ⑤ 권한 파일 — app_user 는 SELECT+INSERT+UPDATE+DELETE 넷(2026-09-10 개정 · TRASH-DELETE §3.3).
@@ -606,13 +666,19 @@ const checks = {
     const w = windowFn(web, '__userSaved');
     assert.ok(/function\(ok, msg, reqId\)/.test(w),
       '__userSaved 가 reqId 를 받지 않는다 — 호스트가 실어 보낸 짝을 화면이 읽지 않으면 있으나 마나다');
-    assert.ok(/if\(!rq\) return;/.test(w),
-      '__userSaved 가 이월 회신을 걸러내지 않는다 — 기다리는 요청이 없는데 도착한 회신이 폼을 닫는다');
+    assert.ok(/if\(!rq \|\| rq\.done\) return;/.test(w),
+      '__userSaved 가 이월 회신(또는 이미 처리한 회신)을 걸러내지 않는다 — 기다리는 요청이 없는데 도착한 회신이 폼을 닫는다');
     assert.ok(/rid !== rq\.id/.test(w),
       '__userSaved 가 회신의 reqId 를 기다리는 요청과 대조하지 않는다 — 지난 요청의 늦은 회신이 지금 폼의 결과로 먹힌다');
     assert.ok(/Number\(rq\.uid \|\| 0\) === Number\(__ueId \|\| 0\)/.test(w),
       '__userSaved 가 회신 대상과 **지금 폼이 연 사람**을 대조하지 않는다 — id 만으로는 어느 폼인지 알 수 없다');
-    assert.ok(/__uaReq = null;/.test(w), '__userSaved 가 처리한 요청 표를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
+    //  ★ 처리한 표는 **지우지 않고 done 을 세운다**(2026-09-11 적대 검토 R3-W1). 호스트는 회신을 먼저
+    //    보내고 갱신 명부(__applyMembers)를 그다음에 민다 — 표를 여기서 지우면 그 푸시가 '내 쓰기의
+    //    결과'임을 밝힐 근거(id)가 사라져, 순서 편집 중이면 내 저장의 결과까지 남의 것으로 미뤄진다.
+    assert.ok(/rq\.done = true;/.test(w),
+      '__userSaved 가 처리한 요청에 done 을 세우지 않는다 — 같은 회신이 두 번 처리될 수 있다');
+    assert.ok(!/__uaReq = null;/.test(w),
+      '__userSaved 가 요청 표를 지운다 — 뒤따르는 명부 푸시가 "내 쓰기의 결과"임을 밝힐 id 가 사라진다(R3-W1)');
     //  ★ 대상(uid)만으로는 **어느 폼인지** 끝내 알 수 없다(2026-09-11 적대 검토 R2-W1): 신규 등록은 언제나
     //    uid 0 이다. A(등록)를 보낸 뒤 워치독이 잠금을 풀면(요청 표는 남는다) 관리자가 [＋ 직원 등록]을
     //    다시 누를 수 있고, 그때 뒤늦게 온 A 의 성공 회신이 **그 새 폼**을 닫고 '저장했습니다'를 띄웠다.
@@ -666,8 +732,8 @@ const checks = {
   //       그릴 때 이미 최종형이다), uaSetSaving 이 그리지 않았을 때만(워치독이 이미 풀어 둔 경우) 여기서 그린다.
   orderSaveRedrawsItself(web) {
     const w = windowFn(web, '__userSaved');
-    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(w),
-      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다');
+    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); if\(__uaPendingData\) uaFlushPending\(\); \}/.test(w),
+      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다(또는 미뤄 둔 갱신을 버린다 — 그 자리에 담긴 것은 남의 진짜 변경이다 · R3-W1)');
     const resetAt = w.indexOf('if(ok && wasOrder){ uaOrderReset();');
     const unlockAt = w.indexOf('uaSetSaving(false)');
     assert.ok(resetAt >= 0 && unlockAt > resetAt,
@@ -705,20 +771,37 @@ const checks = {
   // ⑯ 순서 편집 중에 오는 **관계없는 명부 푸시**가 편집 중인 순서를 지우지 않는다(2026-09-10).
   orderSurvivesPush(web) {
     const ap = windowFn(web, '__applyMembers');
-    //  ★ '내 순서 저장인가' 는 지금 기다리는 요청 하나가 진다(__uaReq · 2026-09-11).
-    //    별도 깃발을 따로 두면 두 값이 갈리고, 갈리는 순간 어느 쪽이 참인지 아무도 모른다.
-    //  ★ **아직 도는 중인가(__uaSaving)까지** 본다(2026-09-11 R2-W2). 워치독은 잠금만 풀고 요청 표는
-    //    남기므로, 회신이 끝내 오지 않은 순서 저장의 표가 화면에 계속 남는다. 그 표만 보면 그 뒤의
-    //    **관계없는** 푸시가 전부 '내 순서 저장의 결과'로 통과해, 관리자가 다시 잡고 있는 순서를 덮어쓴다.
-    assert.ok(/const orderSaving = !!\(__uaSaving && __uaReq && __uaReq\.cmd === 'saveUserOrder'\);/.test(ap),
-      "__applyMembers 가 '내 순서 저장인가'를 (아직 도는 중인) 요청 표에서 읽지 않는다 — 깃발을 따로 두면 두 값이 갈리고, 워치독이 지나간 표만 보면 관계없는 푸시가 전부 통과한다(R2-W2)");
-    assert.ok(/if\(__uaOrder && !orderSaving\)\{ __uaPendingData = d;/.test(ap),
+    //  ★ '내 쓰기의 결과인가' 는 **id 하나가** 진다(2026-09-11 적대 검토 R3-W1). 호스트가 우리가 보낸
+    //    reqId 를 푸시에 그대로 실어 주므로 짐작할 이유가 없다 — 맞으면 내 것, 아니면 남의 것이다.
+    //    옛 판은 '아직 도는 중인가(__uaSaving) + 마지막 명령이 순서 저장인가' 로 **파생**했는데, 호스트가
+    //    회신을 먼저 보내고 푸시를 그다음에 미는 실제 순서에서는 그 사이에 잠금이 풀려 **내 푸시**가
+    //    남의 것으로 미뤄졌다(관리자는 저장한 순서가 화면에 안 보여 같은 저장을 되풀이한다).
+    //  ★ 그리고 **순서 저장의 결과**일 때만 편집 모드를 끝낸다 — 순서 편집 중에는 화면에서 다른 쓰기가 불가능하고,
+    //    시험·다른 경로로 온 '내' 이름 변경 푸시가 편집 중인 순서를 덮어서는 안 된다(loop-user-admin C20 실측 2026-09-11).
+    assert.ok(/const mine = !!\(reqId && __uaReq && reqId === __uaReq\.id && __uaReq\.cmd === 'saveUserOrder'\);/.test(ap),
+      "__applyMembers 가 '내 순서 저장의 결과인가'를 reqId 대조 + 명령으로 정하지 않는다 — 짐작으로 파생하면 잠금이 풀린 뒤 도착한 내 푸시가 남의 것이 되고, 명령을 안 보면 내 이름 변경 푸시가 편집 중인 순서를 덮는다(R3-W1)");
+    assert.ok(/if\(mine\)\{\s*\n\s*uaOrderReset\(\);/.test(ap),
+      '내 reqId 를 달고 온 푸시가 순서 편집을 끝내지 않는다 — 서버에 저장된 명부가 왔는데도 되돌릴 것이 남은 것처럼 군다');
+    //  ★ 주석은 빼고 본다 — '왜 __uaSaving 을 더는 보지 않는가'를 **적어 둔 문장**이 계약을 깨뜨리면 안 된다.
+    assert.ok(!/__uaSaving/.test(ap.replace(/\/\/[^\n]*/g, '')),
+      "__applyMembers 가 아직 '도는 중인가'를 본다 — id 가 있는데 제 손에 닿지 않는 값으로 다시 짐작하는 것이다(R3-W1)");
+    assert.ok(/if\(__uaOrder\)\{ __uaPendingData = d;/.test(ap),
       '__applyMembers 가 순서 편집 중의 관계없는 푸시를 미뤄 두지 않는다 — 남의 저장 한 번에 편집 중인 순서가 날아간다');
     const us = windowFn(web, '__userSaved');
     assert.ok(/const wasOrder = rq\.cmd === 'saveUserOrder';/.test(us),
       "__userSaved 가 '이 회신이 순서 저장의 것인가'를 요청 표에서 읽지 않는다");
-    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(us),
-      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다 — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
+    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); if\(__uaPendingData\) uaFlushPending\(\); \}/.test(us),
+      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다(또는 미뤄 둔 갱신을 버린다) — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
+    //  ★ 「낡은 명부」 거부도 편집 모드를 끝낸다(R3-W1) — 그 거부는 "네 화면이 낡았다"는 뜻이라 호스트가
+    //    거부와 함께 갱신 명부를 민다. 편집 모드를 그대로 두면 그 푸시가 미뤄지고, 관리자는 같은 낡은
+    //    명부로 같은 거부만 되풀이한다(빠져나갈 길이 화면에 없다).
+    //    ㆍ문구는 **호스트의 상수 한 벌**(ProjectDb.StaleRosterMsg)이 정본이다 — 여기서 둘을 맞댄다.
+    const staleMsg = /internal const string StaleRosterMsg\s*=\s*"([^"]+)"/.exec(pdb);
+    assert.ok(staleMsg, 'ProjectDb 에 StaleRosterMsg 상수 선언이 없다 — 맞댈 정본이 없다(판정 불가)');
+    assert.ok(us.includes("msg === '" + staleMsg[1] + "'"),
+      `__userSaved 가 「낡은 명부」 거부를 호스트 문구 그대로 알아보지 못한다(정본: ${JSON.stringify(staleMsg[1])}) — 한 글자만 갈려도 편집 모드가 영영 안 끝난다`);
+    assert.ok(/if\(!ok && wasOrder && msg === '[^']+'\)\{\s*\n\s*uaOrderReset\(\);\s*\n\s*if\(__uaPendingData\) uaFlushPending\(\);/.test(us),
+      '__userSaved 가 「낡은 명부」 거부에서 편집 모드를 끝내고 미뤄 둔 갱신을 앉히지 않는다 — 같은 거부가 되풀이된다(R3-W1)');
     const tog = extractFunction(web, 'uaOrderToggle');
     assert.ok(/__uaPendingData/.test(tog) && /uaFlushPending\(\)/.test(tog),
       'uaOrderToggle 이 미뤄 둔 갱신을 반영하지 않는다 — 편집을 끄면 그 사이의 진짜 변경이 사라진다');
@@ -888,8 +971,8 @@ test('변이⑬: uaMove 에서 포커스 복원을 빼면 계약⑬ 이 실패�
 });
 
 test('변이⑭: __userSaved 의 이월 회신 가드를 지우면 계약⑭ 가 실패한다', () => {
-  const bad = mutate(app, '  if(!rq) return;   // 기다리는 요청이 없다 = 이 회신은 이월분이다', '  ');
-  assert.throws(() => checks.requestGeneration(bad), /이월 회신을 걸러내지 않는다/);
+  const bad = mutate(app, '  if(!rq || rq.done) return;   // 기다리는 요청이 없다(또는 이미 처리했다) = 이 회신은 이월분이다', '  ');
+  assert.throws(() => checks.requestGeneration(bad), /이월 회신\(또는 이미 처리한 회신\)을 걸러내지 않는다/);
   assert.doesNotThrow(() => checks.requestGeneration(app));   // 통제군
 });
 
@@ -922,10 +1005,10 @@ test('변이⑭-e: 순서 저장 성공의 재렌더를 지우면 계약⑭-c �
 
 test('변이⑭-e2: 편집 모드 종료를 잠금 해제 뒤로 되돌리면 계약⑭-c 가 실패한다(같은 목록을 두 번 그린다)', () => {
   //  옛 순서 — 먼저 풀고(그때 순서 편집 중인 화면이 그려진다) 그다음에 끝낸다(최종형을 또 그린다).
-  const removed = mutate(app, '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }\n', '');
+  const ORDER_OK = '  if(ok && wasOrder){ uaOrderReset(); if(__uaPendingData) uaFlushPending(); }\n';
+  const removed = mutate(app, ORDER_OK, '');
   const bad = mutate(removed, '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n',
-    '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n' +
-    '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }\n');
+    '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n' + ORDER_OK);
   assert.throws(() => checks.orderSaveRedrawsItself(bad), /잠금 해제보다 뒤다/);
   assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
 });
@@ -951,15 +1034,22 @@ test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패�
 });
 
 test('변이⑯: 관계없는 푸시를 그대로 반영하게 되돌리면 계약⑯ 이 실패한다', () => {
-  const bad = mutate(app, '  if(__uaOrder && !orderSaving){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
+  const bad = mutate(app, '  if(__uaOrder){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
   assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 두지 않는다/);
   assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
 });
 
-test("변이⑯-b: '순서 저장 중'을 요청 표만으로 판정하게 되돌리면 계약⑯ 이 실패한다(워치독 뒤의 푸시가 전부 통과한다)", () => {
-  const bad = mutate(app, "  const orderSaving = !!(__uaSaving && __uaReq && __uaReq.cmd === 'saveUserOrder');",
-    "  const orderSaving = !!(__uaReq && __uaReq.cmd === 'saveUserOrder');");
-  assert.throws(() => checks.orderSurvivesPush(bad), /아직 도는 중인/);
+test("변이⑯-b: '내 것인가'를 id 대신 짐작(도는 중 + 명령)으로 되돌리면 계약⑯ 이 실패한다", () => {
+  const bad = mutate(app, "  const mine = !!(reqId && __uaReq && reqId === __uaReq.id && __uaReq.cmd === 'saveUserOrder');",
+    "  const mine = !!(__uaSaving && __uaReq && __uaReq.cmd === 'saveUserOrder');");
+  assert.throws(() => checks.orderSurvivesPush(bad), /reqId 대조 \+ 명령으로 정하지 않는다|'도는 중인가'를 본다/);
+  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
+});
+
+test('변이⑯-c: 「낡은 명부」 거부에서 편집 모드를 끝내지 않게 되돌리면 계약⑯ 이 실패한다(같은 거부가 되풀이된다)', () => {
+  const from = "  if(!ok && wasOrder && msg === '명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.'){\n    uaOrderReset();\n    if(__uaPendingData) uaFlushPending();\n  }\n";
+  const bad = mutate(app, from, '');
+  assert.throws(() => checks.orderSurvivesPush(bad), /「낡은 명부」 거부를 호스트 문구 그대로 알아보지 못한다|편집 모드를 끝내고 미뤄 둔 갱신을 앉히지 않는다/);
   assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
 });
 
@@ -1030,22 +1120,21 @@ test('계약②-b: 브리지 3종(saveUser·setUserActive·saveUserOrder)이 배
     const b = csMember(main, 'private async Task ' + fn + '(');
     assert.ok(/^private async Task \w+\(string reqId, /.test(b), `${fn} 이 reqId 를 받지 않는다(R3)`);
     assert.ok(/UserSaved\(ok, msg, reqId\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다(__userSaved)`);
-    //  ★ 2026-09-11 적대 검토(R2-H2) — 순서 저장만은 **실패해도** 명부를 다시 민다. 호스트가 거부하는
-    //    대표 경우가 「낡은 명부」(StaleRosterMsg)인데, 그건 "화면이 낡았다" 는 뜻이다. 아무것도 안
-    //    내려보내면 관리자는 같은 낡은 명부로 다시 눌러 같은 거부만 반복한다(거부 루프). 웹은 순서 편집
-    //    중에 온 갱신을 pending 으로 미루고 안내만 띄우므로 편집 중이던 순서를 이 푸시가 덮어쓰지 않는다.
+    //  ★ 2026-09-11 적대 검토(R2-H2 → R3-H2) — 순서 저장은 실패해도 명부를 다시 밀지만 **아무 실패나**
+    //    는 아니다. 자세한 계약은 아래 ⑭-h2(푸시 정책)가 진다. 여기서는 순서·인자만 본다.
     //    나머지 둘은 그대로 '성공 때만' 이다 — 실패는 폼 안의 문구로 끝나고 목록은 안 바뀐 채다.
     if (fn === 'SaveUserOrderAsync') {
       const iSaved = b.indexOf('UserSaved(ok, msg, reqId);');
-      const iPush = b.indexOf('await LoadMembersToWebAsync(includeInactive);');
+      const iPush = b.indexOf('await LoadMembersToWebAsync(includeInactive, reqId);');
       assert.ok(iSaved >= 0 && iPush > iSaved,
         `${fn} 이 회신(UserSaved)보다 먼저 명부를 민다 — 웹이 그 회신으로 편집 모드를 끝낸 뒤라야 푸시가 앉는다`);
       assert.ok(!/if \(ok\) await LoadMembersToWebAsync/.test(b),
         `${fn} 이 성공했을 때만 명부를 민다 — 낡은 명부 거부(StaleRosterMsg)를 받은 관리자가 같은 화면으로 ` +
         '다시 눌러 거부만 반복하는 루프에 갇힌다(R2-H2)');
     } else {
-      assert.ok(/if \(ok\) await LoadMembersToWebAsync\(includeInactive\);/.test(b),
-        `${fn} 이 성공 뒤 명부를 재조회하지 않는다 — "저장은 됐는데 목록은 그대로"인 창이 생긴다`);
+      assert.ok(/if \(ok\) await LoadMembersToWebAsync\(includeInactive, reqId\);/.test(b),
+        `${fn} 이 성공 뒤 명부를 재조회하지 않는다(또는 그 푸시에 reqId 를 싣지 않는다) — ` +
+        '"저장은 됐는데 목록은 그대로"인 창이 생기고, 늦은 푸시가 남의 조작에 귀속된다(R3-H2)');
     }
   }
   assert.ok(/window\.__userSaved && window\.__userSaved\(/.test(main),
@@ -1063,6 +1152,47 @@ test('계약②-b: 브리지 3종(saveUser·setUserActive·saveUserOrder)이 배
   assert.ok(/typeof window\.__userSaved|window\.__userSaved = function/.test(app),
     '웹에 __userSaved 수신부가 없다');
   assert.ok(/window\.__applyMembers = function/.test(app), '웹에 __applyMembers 수신부가 없다');
+});
+
+test('계약⑭-h: 호스트의 명부 푸시(__applyMembers)가 그 쓰기의 reqId 를 함께 싣는다', () =>
+  checks.membersPushCarriesReqId(main));
+
+test('계약⑭-h2: 순서 저장 뒤의 명부 푸시는 성공·낡은 명부 거부 둘뿐이다(정본은 ProjectDb 의 상수다)', () =>
+  checks.orderPushPolicy(main, pdb));
+
+test('변이⑭-h: __applyMembers 푸시에서 reqId 를 빼면 계약⑭-h 가 실패한다(늦은 푸시가 남의 조작에 붙는다)', () => {
+  const bad = mutate(main,
+    '+ JsonSerializer.Serialize(json) + ","',
+    '+ JsonSerializer.Serialize(json) + ")" + "');
+  assert.throws(() => checks.membersPushCarriesReqId(bad), /두 번째 인자\(reqId\)가 없다/);
+  assert.doesNotThrow(() => checks.membersPushCarriesReqId(main));   // 통제군
+});
+
+test('변이⑭-h1b: LoadMembersToWebAsync 가 reqId 를 안 받게 되돌리면 계약⑭-h 가 실패한다', () => {
+  const bad = mutate(main,
+    'private async Task LoadMembersToWebAsync(bool includeInactive, string reqId = "")',
+    'private async Task LoadMembersToWebAsync(bool includeInactive)');
+  assert.throws(() => checks.membersPushCarriesReqId(bad), /reqId 를 받지 않는다/);
+});
+
+test('변이⑭-h2: 순서 저장이 실패에도 무조건 명부를 밀게 되돌리면 계약⑭-h2 가 실패한다(R2-H2 의 과잉)', () => {
+  const bad = mutate(main,
+    'if (ok || string.Equals(msg, ProjectDb.StaleRosterMsg, StringComparison.Ordinal))',
+    'if (true)');
+  assert.throws(() => checks.orderPushPolicy(bad, pdb), /성공 또는 낡은 명부/);
+  assert.doesNotThrow(() => checks.orderPushPolicy(main, pdb));   // 통제군
+});
+
+test('변이⑭-h2b: 낡은 명부 판정을 브리지가 제 손으로 적으면 계약⑭-h2 가 실패한다(문장이 두 벌이 된다)', () => {
+  const bad = mutate(main,
+    'string.Equals(msg, ProjectDb.StaleRosterMsg, StringComparison.Ordinal)',
+    'string.Equals(msg, "명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.", StringComparison.Ordinal)');
+  assert.throws(() => checks.orderPushPolicy(bad, pdb), /성공 또는 낡은 명부/);
+});
+
+test('변이⑭-h2c: StaleRosterMsg 를 private 로 되돌리면 계약⑭-h2 가 실패한다(브리지가 그 상수를 못 본다)', () => {
+  const bad = mutate(pdb, 'internal const string StaleRosterMsg', 'private const string StaleRosterMsg');
+  assert.throws(() => checks.orderPushPolicy(main, bad), /internal 이 아니다/);
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1121,7 +1251,8 @@ test('변이③-b: 자기 퇴사 금지를 지우면 계약③ 이 실패한다'
 });
 
 test('변이③-c: app_user 하드삭제 경로가 생기면 계약③ 이 실패한다', () => {
-  const bad = mutate(pdb, 'UPDATE app_user SET is_active=@a WHERE user_id=@uid', 'DELETE FROM app_user WHERE user_id=@uid');
+  //  ★ 앵커는 퇴사 갈래다(2026-09-11 R3 부터 복구·퇴사가 두 문장으로 갈렸다 — 복구는 sort_order 를 비운다).
+  const bad = mutate(pdb, 'UPDATE app_user SET is_active=0 WHERE user_id=@uid', 'DELETE FROM app_user WHERE user_id=@uid');
   assert.throws(() => checks.lockoutGuards(bad), /DELETE 하는 SQL 이 생겼다/);
 });
 
@@ -1150,20 +1281,48 @@ test("변이④-d: '지금 저장된 값'을 잠근 행이 아니라 입력값�
   assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
 });
 
-test('변이⑥-f: 비우기에서 is_active=0 을 빼면 계약⑥-f 가 실패한다(목록 밖 활성 직원의 서열이 날아간다)', () => {
+test('변이⑥-f: 복구가 sort_order 를 비우지 않게 되돌리면 계약⑥-f 가 실패한다(옛 순번을 들고 돌아온다 · R3)', () => {
   const bad = mutate(pdb,
-    '" ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END"',
-    '" ELSE NULL END"');
-  assert.throws(() => checks.orderClearsOutsiders(bad), /is_active=0 이 없다/);
+    '"UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@uid"',
+    '"UPDATE app_user SET is_active=1 WHERE user_id=@uid"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /복구\(SetUserActiveAsync/);
   assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
+});
+
+test('변이⑥-f2: 휴지통 복구 갈래에서 sort_order=NULL 을 빼면 계약⑥-f 가 실패한다(복구 경로는 둘이다 · R3)', () => {
+  const bad = mutate(pdb,
+    'sql = "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k"',
+    'sql = "UPDATE app_user SET is_active=1 WHERE user_id=@k"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /휴지통 복구/);
+});
+
+test('변이⑥-f3: 퇴사까지 서열을 비우게 만들면 계약⑥-f 가 실패한다(곧바로 복구하면 자리를 잃는다 · R3)', () => {
+  const bad = mutate(pdb,
+    '"UPDATE app_user SET is_active=0 WHERE user_id=@uid"',
+    '"UPDATE app_user SET is_active=0, sort_order=NULL WHERE user_id=@uid"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /퇴사\(active=false\)가 서열까지 손댄다/);
+});
+
+test('변이⑥-f4: 순서 저장에 옛 비우기 갈래를 되살리면 계약⑥-f 가 실패한다(저장 사이의 복구가 빠져나간다 · R3)', () => {
+  const bad = mutate(pdb,
+    '" END WHERE user_id IN (" + inList + ")"',
+    '" ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END WHERE user_id IN (" + inList + ") OR is_active=0"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /비우기의 자리는 저장이 아니라/);
 });
 
 test('변이⑥-j: 한 문장에서 WHERE 를 빼면 계약⑥-f 가 실패한다(표 전체가 UPDATE 대상이 된다 · R2)', () => {
   const bad = mutate(pdb,
-    '" WHERE user_id IN (" + inList + ") OR is_active=0"',
-    '""');
+    '" END WHERE user_id IN (" + inList + ")"',
+    '" END"');
   assert.throws(() => checks.orderClearsOutsiders(bad), /WHERE 가 없다/);
   assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
+});
+
+test('변이⑥-k: 일치 행 수 로그를 지우면 계약⑥-f 가 실패한다(지워진 id 가 섞여도 안 보인다 · R3)', () => {
+  const bad = mutate(pdb,
+    '"명부 순서 저장: 일치 행 " + matched + " / 대상 " + kept.Count + "명 전량 재작성"',
+    '"명부 순서 저장: 대상 " + kept.Count + "명 전량 재작성"');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /두 수를 함께 말하지 않는다/);
 });
 
 test('변이⑥-h: 낡은 명부 거부(목록 밖 활성 세기)를 지우면 계약⑥-f 가 실패한다(R1)', () => {
@@ -1418,6 +1577,80 @@ function moveHarnessJs(src) {
   ].join('\n');
 }
 
+// (d2) 회신(__userSaved)과 명부 푸시(__applyMembers)의 **짝짓기** — 순서 편집 중에 무엇이 앉고 무엇이 미뤄지는가.
+//   ★ 2026-09-11 적대 검토(R3-W1). 호스트의 실제 순서는 **회신이 먼저, 푸시가 그다음**이다. 옛 판은
+//     '아직 도는 중인가(__uaSaving) + 마지막 명령' 으로 내 푸시를 짐작했는데, 회신이 잠금을 풀고 지나간
+//     뒤에 도착하는 내 푸시는 그 짐작에 걸리지 않아 **남의 것으로 미뤄졌다** — 관리자 화면에는 방금 저장한
+//     순서가 끝내 안 보이고, 같은 저장을 되풀이하게 된다. 그래서 여기서는 진짜 길(uaSend → 회신 → 푸시)로 몬다.
+//   ★ 그리는 일(uaAdminBar·uaApply)과 잠금(uaSetSaving)은 빈 함수로 둔다 — 여기서 재는 것은 **어느 명부가
+//     화면 상태에 앉는가** 하나다. 그리기까지 끌고 오면 이 계약과 무관한 이유로 빨개진다.
+function pushHarnessJs(src) {
+  return [
+    'var __uaAdmin = true, __uaOrder = false, __uaInactive = false;',
+    'var __uaMembers = [], __uaUnits = [], __uaTitles = [], __uaOrderBackup = null;',
+    'var __uaSaving = false, __uaReq = null, __uaPendingData = null;',
+    'var __reqSeq = 0, __ueTok = 0, __ueTokSeq = 0, __ueId = 0;',
+    'var __posts = [], __toasts = [], __bars = 0, HOST = true;',
+    'var ICON = { alert: "!" };',
+    'function hpost(p){ __posts.push(p); }',
+    'function toast(m, k){ __toasts.push({ msg: String(m), kind: String(k || "") }); }',
+    'function uaAdminBar(){ __bars++; }',
+    'function uaApply(){}',
+    'function uaSetSaving(on){ var changed = (__uaSaving !== !!on); __uaSaving = !!on; return changed; }',
+    'function userEdMsgSet(){} function closeModal(){} function esc(s){ return String(s); }',
+    extractFunction(src, 'uaOrderReset'),
+    extractFunction(src, 'uaFlushPending'),
+    extractFunction(src, 'uaApplyData'),
+    extractFunction(src, 'uaSend'),
+    windowFn(src, '__userSaved'),
+    windowFn(src, '__applyMembers'),
+    //  순서 편집을 켠 채로 「순서 저장」을 보낸 직후 상태를 만든다(모든 시나리오의 출발점).
+    'function __armOrder(rows){',
+    '  __uaAdmin = true; __uaMembers = rows.slice(); __uaUnits = []; __uaTitles = [];',
+    '  __uaOrder = true; __uaOrderBackup = rows.slice(); __uaPendingData = null;',
+    '  __uaReq = null; __uaSaving = false; __reqSeq = 0; __ueTok = 0; __ueId = 0;',
+    '  __posts.length = 0; __toasts.length = 0; __bars = 0;',
+    '  uaSend({ cmd: "saveUserOrder", order: rows.map(function(m){ return m.userId; }) });',
+    '}',
+    'function __names(){ return __uaMembers.map(function(m){ return String(m.name || ""); }); }',
+    'function __state(){ return { order: !!__uaOrder, pending: !!__uaPendingData, names: __names(), bars: __bars }; }',
+    //  ① 내 reqId 를 달고 온 푸시 — 회신보다 먼저 오든 나중에 오든 **그 자리에서 앉는다**.
+    'window.__probeMine = function(rows, pushed, replyFirst){',
+    '  __armOrder(rows);',
+    '  var id = __uaReq.id;',
+    '  if(replyFirst) window.__userSaved(true, "저장했습니다", id);',
+    '  window.__applyMembers(JSON.stringify(pushed), id);',
+    '  return __state();',
+    '};',
+    //  ② 남의 reqId(또는 id 없는 푸시) — 편집 중이면 미뤄 두고 그 사실을 막대에 알린다.
+    'window.__probeOther = function(rows, pushed, reqId){',
+    '  __armOrder(rows);',
+    '  __bars = 0;',
+    '  window.__applyMembers(JSON.stringify(pushed), reqId);',
+    '  return __state();',
+    '};',
+    //  ③ 「낡은 명부」 거부 — 편집 모드를 끝내고, 미뤄 둔 갱신이 있으면 그 자리에서 앉힌다.
+    'window.__probeStaleReply = function(rows, pushed, msg, pushFirst){',
+    '  __armOrder(rows);',
+    '  var id = __uaReq.id;',
+    '  if(pushFirst) window.__applyMembers(JSON.stringify(pushed), "saveUserOrder-999");',
+    '  window.__userSaved(false, msg, id);',
+    '  var afterReply = __state();',
+    '  if(!pushFirst) window.__applyMembers(JSON.stringify(pushed), id);',
+    '  return { afterReply: afterReply, end: __state() };',
+    '};',
+    //  ④ 늦은 성공 — 미뤄 둔 갱신(남의 진짜 변경)을 **버리지 않고** 앉힌다.
+    'window.__probeLateOk = function(rows, pushed){',
+    '  __armOrder(rows);',
+    '  var id = __uaReq.id;',
+    '  window.__applyMembers(JSON.stringify(pushed), "saveUserOrder-999");',
+    '  var parked = __state();',
+    '  window.__userSaved(true, "저장했습니다", id);',
+    '  return { parked: parked, end: __state() };',
+    '};',
+  ].join('\n');
+}
+
 // (e) 드롭다운 채우기 — '목록에 없는 값'을 만났을 때 무엇이 남는가(계약⑱의 DOM 쪽).
 function fillHarnessJs(src) {
   return [
@@ -1491,6 +1724,17 @@ const probeMove = (uid, delta, pressUop, src = app) => runInJsdom(ADMIN_FIXTURE,
 const probeFill = (items, cur, blank, src = app) => runInJsdom(FILL_FIXTURE, fillHarnessJs(src), '__probe', items, cur, blank);
 const probeScope = (search, inactive, admin, src = app) => runInJsdom(ADMIN_FIXTURE, scopeHarnessJs(src), '__probe', ROWS, search, inactive, admin);
 const probeEntry = (role, src = app) => runInJsdom(ENTRY_FIXTURE, entryHarnessJs(src), '__probe', role);
+//  회신·푸시 짝짓기(R3-W1) — 그리지 않으므로 자리만 있으면 된다(uaOrderReset 이 검색칸을 푼다).
+const PUSH_FIXTURE = '<!doctype html><html><body><input id="uaSearch">' +
+  '<div class="overlay hidden" id="userEditModal"></div></body></html>';
+const PUSHED = { found: true, admin: true, includeInactive: false, units: [], titles: [],
+  members: [{ userId: 91, loginId: 'zzUnew', name: 'zzU_새사람', title: 'zzU-T1', orgUnit: 'zzU-조직', isActive: true }] };
+const probeMine = (replyFirst, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeMine', ROWS, PUSHED, replyFirst);
+const probeOther = (reqId, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeOther', ROWS, PUSHED, reqId);
+const probeStaleReply = (msg, pushFirst, src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeStaleReply', ROWS, PUSHED, msg, pushFirst);
+const probeLateOk = (src = app) => runInJsdom(PUSH_FIXTURE, pushHarnessJs(src), '__probeLateOk', ROWS, PUSHED);
+//  ★ 문구의 정본은 호스트 상수 하나다 — 시험이 사본을 적으면 둘이 갈려도 초록이 뜬다.
+const STALE_MSG = (/internal const string StaleRosterMsg\s*=\s*"([^"]+)"/.exec(pdb) || [])[1];
 //  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
 function probeEntrySeq(roles, src = app) {
   const { JSDOM } = jsdom;
@@ -1511,6 +1755,12 @@ if (!jsdom) {
   skip('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 반대쪽 화살표를 잡는다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM: 포커스 복원을 지우면 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(b): 내 reqId 를 단 푸시는 회신 순서와 무관하게 그 자리에서 앉는다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(c): 남의 푸시(또는 id 없는 푸시)는 편집 중이면 미뤄 둔다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(d): 「낡은 명부」 거부는 편집 모드를 끝내고 갱신 명부를 앉힌다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(e): 늦은 성공은 미뤄 둔 갱신을 버리지 않는다', SKIP_NO_JSDOM);
+  skip('변이⑯-DOM(b): id 대조 갈래를 지우면 내 푸시가 남의 것으로 미뤄진다', SKIP_NO_JSDOM);
+  skip('변이⑯-DOM(e): 늦은 성공이 미뤄 둔 갱신을 버리면 남의 변경이 화면에서 사라진다', SKIP_NO_JSDOM);
   skip('계약⑭-DOM(b): 쓰기 왕복 중에 그리면 명부 쪽 버튼이 전부 잠긴 채로 나온다', SKIP_NO_JSDOM);
   skip('변이⑭-DOM(b): 렌더에서 잠금을 빼면 다시 그린 버튼이 켜진 채로 나온다', SKIP_NO_JSDOM);
   skip('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 그대로 선택된다', SKIP_NO_JSDOM);
@@ -1681,6 +1931,83 @@ if (!jsdom) {
     assert.strictEqual(on.hint, true, '미뤄 둔 갱신이 있는데 안내가 없다 — 관리자는 낡은 화면인 줄 모른다');
     assert.ok(/명부가 갱신되었습니다 — 순서 편집을 마치면 반영됩니다\./.test(on.text),
       `안내 문구가 계약과 다르다: ${JSON.stringify(on.text)}`);
+  });
+
+  //  ★ 회신·푸시 짝짓기(2026-09-11 적대 검토 R3-W1) — 호스트는 **회신을 먼저, 푸시를 그다음에** 보낸다.
+  //    '내 것인가'를 id 로 정하지 않으면, 회신이 잠금을 풀고 지나간 뒤 도착하는 내 푸시가 남의 것으로
+  //    미뤄져 저장한 순서가 화면에 끝내 안 보인다(관리자는 같은 저장을 되풀이한다).
+  const NEW_NAME = PUSHED.members[0].name;
+  const OLD_NAMES = ROWS.map((m) => m.name);
+
+  test('계약⑯-DOM(b): 내 reqId 를 단 푸시는 회신 순서와 무관하게 그 자리에서 앉는다', () => {
+    for (const replyFirst of [false, true]) {
+      const r = probeMine(replyFirst);
+      const when = replyFirst ? '회신이 먼저 온 경우(호스트의 실제 순서)' : '푸시가 먼저 온 경우';
+      assert.deepStrictEqual(r.names, [NEW_NAME],
+        `${when}: 내 푸시가 명부에 앉지 않았다(${JSON.stringify(r.names)}) — 저장한 순서가 화면에 안 보인다`);
+      assert.strictEqual(r.order, false, `${when}: 내 저장의 결과가 왔는데 순서 편집이 끝나지 않았다`);
+      assert.strictEqual(r.pending, false, `${when}: 내 푸시가 '미뤄 둔 갱신'으로 들어갔다 — 짝짓기가 어긋났다`);
+    }
+  });
+
+  test('계약⑯-DOM(c): 남의 푸시(또는 id 없는 푸시)는 편집 중이면 미뤄 둔다', () => {
+    for (const reqId of ['saveUserOrder-999', '', null]) {
+      const r = probeOther(reqId);
+      const when = `reqId=${JSON.stringify(reqId)}`;
+      assert.deepStrictEqual(r.names, OLD_NAMES,
+        `${when}: 관계없는 푸시가 편집 중인 명부를 덮어썼다 — 잡고 있던 순서가 통째로 날아간다`);
+      assert.strictEqual(r.order, true, `${when}: 관계없는 푸시가 순서 편집을 끝냈다`);
+      assert.strictEqual(r.pending, true, `${when}: 미뤄 두지 않았다 — 편집을 마쳐도 그 변경이 사라진다`);
+      assert.ok(r.bars > 0, `${when}: 막대를 다시 그리지 않았다 — '명부가 갱신되었다'는 안내가 화면에 닿지 않는다`);
+    }
+  });
+
+  test('계약⑯-DOM(d): 「낡은 명부」 거부는 편집 모드를 끝내고 갱신 명부를 앉힌다', () => {
+    assert.ok(STALE_MSG, 'ProjectDb 의 StaleRosterMsg 를 읽지 못했다 — 판정 불가');
+    //  ① 거부가 먼저, 갱신 푸시가 뒤(호스트의 보통 순서)
+    const a = probeStaleReply(STALE_MSG, false);
+    assert.strictEqual(a.afterReply.order, false,
+      '「낡은 명부」 거부를 받고도 순서 편집이 이어진다 — 뒤따르는 갱신이 미뤄지고 같은 거부만 되풀이된다');
+    assert.deepStrictEqual(a.end.names, [NEW_NAME], `거부 뒤의 갱신 명부가 앉지 않았다: ${JSON.stringify(a.end)}`);
+    //  ② 갱신 푸시가 거부보다 빨랐던 경우 — 미뤄 둔 것을 거부가 앉힌다.
+    const b = probeStaleReply(STALE_MSG, true);
+    assert.strictEqual(b.afterReply.order, false, '푸시가 먼저 온 경우에도 편집 모드는 끝나야 한다');
+    assert.deepStrictEqual(b.afterReply.names, [NEW_NAME],
+      `미뤄 둔 갱신을 거부 처리에서 앉히지 않았다: ${JSON.stringify(b.afterReply)} — 관리자는 낡은 명부로 같은 거부를 되풀이한다`);
+    assert.strictEqual(b.afterReply.pending, false, '앉힌 갱신이 미뤄 둔 자리에 그대로 남아 있다');
+    //  ③ 다른 문구의 실패는 편집 모드를 끝내지 않는다(권한 거부 등은 다시 시도할 여지가 있다).
+    const c = probeStaleReply('관리자만 사용할 수 있습니다.', false);
+    assert.strictEqual(c.afterReply.order, true,
+      '「낡은 명부」가 아닌 실패에도 편집 모드를 끝낸다 — 잡고 있던 순서가 사라진다');
+  });
+
+  test('계약⑯-DOM(e): 늦은 성공은 미뤄 둔 갱신을 버리지 않는다', () => {
+    const r = probeLateOk();
+    assert.strictEqual(r.parked.pending, true, '전제 붕괴: 남의 푸시가 미뤄 두지 않았다');
+    assert.deepStrictEqual(r.parked.names, OLD_NAMES, '전제 붕괴: 남의 푸시가 그대로 앉았다');
+    assert.strictEqual(r.end.order, false, '순서 저장 성공인데 편집 모드가 끝나지 않았다');
+    assert.deepStrictEqual(r.end.names, [NEW_NAME],
+      `성공 회신이 미뤄 둔 갱신을 버렸다(${JSON.stringify(r.end.names)}) — 그 자리에 담긴 남의 진짜 변경(신규 등록·퇴사)이 화면에서 사라진다`);
+    assert.strictEqual(r.end.pending, false, '앉힌 갱신이 미뤄 둔 자리에 그대로 남아 있다');
+  });
+
+  test('변이⑯-DOM(b): id 대조 갈래를 지우면 내 푸시가 남의 것으로 미뤄진다', () => {
+    const bad = mutate(app, "  const mine = !!(reqId && __uaReq && reqId === __uaReq.id && __uaReq.cmd === 'saveUserOrder');", '  const mine = false;');
+    //  ★ 푸시가 회신보다 먼저 온 자리로 잰다 — 그때는 편집 모드가 아직 켜져 있어, id 대조가 없으면
+    //    내 저장의 결과가 '관계없는 갱신'으로 미뤄진다(회신이 먼저 온 경우는 회신이 모드를 끄므로 안 보인다).
+    const r = probeMine(false, bad);
+    assert.strictEqual(r.pending, true,
+      `변이 전제: id 대조를 지우면 내 푸시가 미뤄져야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeMine(false).pending, false);   // 통제군
+  });
+
+  test('변이⑯-DOM(e): 늦은 성공이 미뤄 둔 갱신을 버리면 남의 변경이 화면에서 사라진다', () => {
+    const bad = mutate(app, '  if(ok && wasOrder){ uaOrderReset(); if(__uaPendingData) uaFlushPending(); }',
+      '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }');
+    const r = probeLateOk(bad);
+    assert.deepStrictEqual(r.end.names, OLD_NAMES,
+      `변이 전제: 미뤄 둔 갱신을 버리면 옛 명부가 그대로 남아야 한다(실제: ${JSON.stringify(r.end)})`);
+    assert.deepStrictEqual(probeLateOk().end.names, [NEW_NAME]);   // 통제군
   });
 
   test('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 **그대로 선택**된다(조용히 안 바뀐다)', () => {

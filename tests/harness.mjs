@@ -279,8 +279,7 @@ export function stripCsComments(s) {
   while (i < src.length) {
     const c = src[i];
     if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < src.length) { if (src[j] === _CS_BS) { j += 2; continue; } if (src[j] === c) { j++; break; } j++; }
+      const j = _csCloseQuote(src, i) + 1;   // 닫는 따옴표 **다음**까지 그대로 옮긴다(축자 문자열도 이 헬퍼가 안다)
       out += src.slice(i, j); i = j; continue;
     }
     if (c === '/' && src[i + 1] === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
@@ -291,9 +290,22 @@ export function stripCsComments(s) {
 }
 
 // 문자열 리터럴 시작 위치 i(따옴표)에서 **닫는 따옴표의 위치**를 돌려준다(백슬래시 이스케이프 처리).
-//   ★ C# 용이다 — 아래 두 곳이 같은 규칙을 쓴다(자바스크립트용 skipString 과 반환 규약이 다르니 섞지 말 것).
+//   ★ C# 용이다 — 이 파일의 **세 곳**이 같은 규칙을 쓴다(stripCsComments · 중괄호 본문 · 식(=>) 본문).
+//     자바스크립트용 skipString 과 반환 규약이 다르니 섞지 말 것.
+//   ★ 축자 문자열(@"...")은 규칙이 **다르다**(2026-09-11 적대 검토 R3-W3): 백슬래시는 평범한 글자이고,
+//     따옴표는 "" 로 겹쳐 적는다. 옛 판은 @"C:\" 같은 경로에서 마지막 \" 를 이스케이프로 읽어 문자열이
+//     끝난 줄 모르고 그 뒤를 통째로 삼켰다 — 주석 제거가 코드를 먹고, 멤버 슬라이스가 옆 멤버를 먹는다.
 function _csCloseQuote(code, i) {
   const q = code[i];
+  if (q === '"' && code[i - 1] === '@') {   // @"..." · $@"..." — 겹따옴표만이 이스케이프다
+    let j = i + 1;
+    while (j < code.length) {
+      if (code[j] !== '"') { j++; continue; }
+      if (code[j + 1] === '"') { j += 2; continue; }   // "" = 따옴표 한 글자(끝이 아니다)
+      break;
+    }
+    return j;
+  }
   let j = i + 1;
   while (j < code.length) {
     if (code[j] === _CS_BS) { j += 2; continue; }
@@ -301,6 +313,21 @@ function _csCloseQuote(code, i) {
     j++;
   }
   return j;
+}
+
+// 선언 머리인가 — sig 부터 본문 시작(delim: '{' 또는 '=>')까지가 **선언의 머리 모양**인지 본다.
+//   ★ 선언 머리는 본문 앞에서 괄호(파라미터 목록)가 닫히고, 문을 끝내는 ';' 가 없다.
+//     호출 자리(`await SaveUserAsync(id, x);` · `if (Foo(x)) {`)는 둘 중 하나를 어긴다.
+function _csIsDeclHead(code, s, delim) {
+  let depth = 0;
+  for (let k = s; k < delim; k++) {
+    const c = code[k];
+    if (c === '"' || c === "'") { k = _csCloseQuote(code, k); continue; }
+    if (c === '(' || c === '[') depth += 1;
+    else if (c === ')' || c === ']') { depth -= 1; if (depth < 0) return false; }
+    else if (c === ';' && depth === 0) return false;   // 문이 먼저 끝났다 = 선언이 아니다
+  }
+  return depth === 0;
 }
 
 // C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
@@ -314,12 +341,33 @@ export function extractCsMember(source, sig) {
   if (s < 0) throw new Error(`extractCsMember: C# 멤버를 찾지 못함: ${sig}`);
   const open = code.indexOf('{', s);
   const arrow = code.indexOf('=>', s);
+  //  ★ indexOf 는 **선언과 호출을 구별하지 못한다**(2026-09-11 적대 검토 R3-W3). 같은 이름이 본문에서
+  //    먼저 불리면 그 호출 자리부터 잘라 **남의 본문**을 이 멤버의 것으로 내놓는다 — 계약은 엉뚱한 코드를
+  //    보고 초록을 낸다. 선언이 아니면 던진다: '판정 불가'는 통과가 아니다.
+  const delim = (arrow >= 0 && (open < 0 || arrow < open)) ? arrow : open;
+  if (delim < 0) throw new Error(`extractCsMember: ${sig} 뒤에 본문('{' 도 '=>' 도)이 없다 — 판정 불가`);
+  if (!_csIsDeclHead(code, s, delim)) {
+    throw new Error(`extractCsMember: '${sig}' 가 선언이 아니라 호출 자리에 걸렸다 — 판정 불가`);
+  }
   if (arrow >= 0 && (open < 0 || arrow < open)) {
     //  식 본문의 끝은 문장의 ';' 다 — 문자열 리터럴 안의 ';' 는 세지 않는다.
+    //   ★ **깊이도 센다**(2026-09-11 적대 검토 R3-W3). 식 본문 안에 문(statement) 람다가 들어가면
+    //     (=> Dispatcher.Invoke(() => { a; b; });) 그 안의 ';' 가 먼저 걸려 멤버가 조용히 잘린다 —
+    //     잘린 뒤를 보는 계약은 '그 호출이 없다'고 읽어 거짓 초록(또는 거짓 실패)을 낸다.
+    let depth = 0;
     for (let k = arrow; k < code.length; k++) {
       const c = code[k];
       if (c === '"' || c === "'") { k = _csCloseQuote(code, k); continue; }
-      if (c === ';') return code.slice(s, k + 1);
+      if (c === '(' || c === '{' || c === '[') { depth++; continue; }
+      if (c === ')' || c === '}' || c === ']') { depth -= 1; continue; }
+      if (c === ';' && depth === 0) {
+        const body = code.slice(s, k + 1);
+        //  ★ 시그니처보다도 짧은 본문은 본문이 아니다 — 호출 자리에 걸렸을 때의 증상이다(판정 불가).
+        if (body.length < sig.length + 3) {
+          throw new Error(`extractCsMember: '${sig}' 의 식(=>) 본문이 시그니처보다도 짧다(호출 자리에 걸렸다) — 판정 불가`);
+        }
+        return body;
+      }
     }
     throw new Error(`extractCsMember: ${sig} 의 식(=>) 본문을 닫는 ';' 를 찾지 못했다`);
   }
@@ -327,11 +375,7 @@ export function extractCsMember(source, sig) {
   let depth = 0;
   for (let k = open; k < code.length; k++) {
     const c = code[k];
-    if (c === '"' || c === "'") {
-      let j = k + 1;
-      while (j < code.length) { if (code[j] === _CS_BS) { j += 2; continue; } if (code[j] === c) break; j++; }
-      k = j; continue;
-    }
+    if (c === '"' || c === "'") { k = _csCloseQuote(code, k); continue; }
     if (c === '{') depth++;
     else if (c === '}') { depth -= 1; if (depth === 0) return code.slice(s, k + 1); }
   }

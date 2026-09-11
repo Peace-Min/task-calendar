@@ -1891,14 +1891,19 @@ namespace TaskCalendarWidget
         //     퇴사자가 사라지면 화면이 제멋대로 움직인 것으로 보인다.
         //   ★ 실패(null)면 아무것도 밀지 않는다. 빈 명부를 밀면 저장 성공 직후 화면이 통째로 비어
         //     "내가 뭘 지웠나" 로 읽힌다 — 낡은 명부가 남아 있는 편이 낫다(다시 열면 갱신된다).
-        private async Task LoadMembersToWebAsync(bool includeInactive)
+        //   ★ 두 번째 인자 reqId 는 __userSaved 의 것과 같은 뜻이다(2026-09-11 R3-H2). 이 푸시도 왕복이
+        //     아니라 **푸시**라, 웹은 "지금 내가 기다리던 그 요청의 결과인가"를 가려야 한다. 쓰기 뒤의
+        //     갱신이면 그 쓰기의 reqId 를 싣고, 그 밖의 갱신(휴지통 복구 등)은 "" 다 — 웹은 ""를
+        //     '내 것이 아닌 일반 갱신'으로 읽는다(요청에 reqId 가 없던 옛 웹과도 호환된다).
+        private async Task LoadMembersToWebAsync(bool includeInactive, string reqId = "")
         {
             UserSession? s = UserSession.Load(_dataDir, Log);
             if (s == null || s.LoginId.Length == 0) return;
             // ★ 이 푸시는 「구성원 편집」 화면(__applyMembers)으로만 간다 — 그 화면의 순서는 전사 서열이다(flatOrder).
             string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive, flatOrder: true);
             if (json == null) { Log("명부 재조회 실패 — 화면은 직전 명부를 유지한다"); return; }
-            JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ")");
+            JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ","
+                + JsonSerializer.Serialize(reqId ?? "") + ")");
         }
 
         // 직원 등록/수정 — userId 0 은 '없음'(신규)이다. orgId 0 도 마찬가지로 '소속 없음'(NULL)이다
@@ -1909,28 +1914,36 @@ namespace TaskCalendarWidget
             var (ok, msg) = await _projectDb.UpsertUserAsync(userId > 0 ? userId : (int?)null, loginId, name,
                 title, orgId > 0 ? orgId : (int?)null, viewScope, editRole);
             UserSaved(ok, msg, reqId);
-            if (ok) await LoadMembersToWebAsync(includeInactive);
+            if (ok) await LoadMembersToWebAsync(includeInactive, reqId);
         }
 
         private async Task SetUserActiveAsync(string reqId, int userId, bool active, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SetUserActiveAsync(userId, active);
             UserSaved(ok, msg, reqId);
-            if (ok) await LoadMembersToWebAsync(includeInactive);
+            if (ok) await LoadMembersToWebAsync(includeInactive, reqId);
         }
 
         //  ★ 순서 저장만은 **실패해도** 명부를 다시 밀어 준다(2026-09-11 적대 검토 R2).
         //    호스트가 거부하는 대표 경우가 「낡은 명부」(StaleRosterMsg — 목록 밖에 활성 직원이 있다)인데,
         //    그건 "화면이 낡았다" 는 뜻이다. 아무것도 내려보내지 않으면 관리자는 **같은 낡은 명부로 다시**
         //    저장을 눌러 같은 거부만 반복한다 — 새로고침하라는 문구를 읽어도 그 자리에 새로고침이 없다.
-        //    웹은 순서 편집 중에 온 갱신을 통째로 반영하지 않고 pending 으로 미뤄 두고 안내 한 줄을 띄우므로
-        //    (__applyMembers), 편집 중이던 순서를 이 푸시가 덮어쓰지 않는다.
+        //  ★ 2026-09-11 적대 검토(R3-H2) — 그 '무조건 푸시' 가 **너무 넓었다**. 웹은 순서 편집 중에 온
+        //    갱신을 pending 으로 미뤄 두므로(편집 중이던 순서를 덮어쓰지 않게), 거부 뒤에도 순서 모드는
+        //    켜진 채다 — 곧 낡은 명부는 화면에 그대로 남고 거부 루프는 풀리지 않는다. 그래서 푸시는
+        //    **두 경우로만** 좁힌다: 성공(ok) · 낡은 명부 거부(StaleRosterMsg). 그 둘만이 "지금 화면의
+        //    명부를 갈아 끼워야 한다" 는 뜻이고, 나머지 실패(권한·연결·DB)는 명부가 바뀌지 않았으므로
+        //    푸시가 할 일이 없다(폼 안의 문구로 끝난다).
+        //    ★ 문장 대조의 정본은 ProjectDb.StaleRosterMsg 한 줄이다 — 여기 한 벌 더 적으면 갈린다.
+        //    ★ reqId 를 함께 싣는다: 웹은 자기 요청의 푸시만 '내 것'으로 받는다(버려진 요청의 늦은
+        //      푸시가 다른 조작에 잘못 귀속되지 않는다).
         //  ★ UserSaved 가 먼저다 — 웹이 그 회신으로 편집 모드를 끝낸 뒤라야 뒤따르는 푸시가 제대로 앉는다.
         private async Task SaveUserOrderAsync(string reqId, List<int> userIds, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SaveUserOrderAsync(userIds);
             UserSaved(ok, msg, reqId);
-            await LoadMembersToWebAsync(includeInactive);
+            if (ok || string.Equals(msg, ProjectDb.StaleRosterMsg, StringComparison.Ordinal))
+                await LoadMembersToWebAsync(includeInactive, reqId);
         }
 
         // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용 -----

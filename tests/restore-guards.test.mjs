@@ -160,24 +160,67 @@ const checks = {
     //    그 함수는 8단계(권한 적용)와 -WhatIf 계획 출력에서만 불린다 — 곧 오타 하나가 **대상 DB 를 이미
     //    드롭·복구한 뒤**에야 드러났다(사람은 "설정 문제(코드 2)" 를 읽으며 갈아엎힌 DB 를 받는다).
     //    지금은 맨 앞 인자 검증 구역이고, 아래에서 그 자리를 기준점 셋으로 못박는다.
-    assert.ok(/if\(\$UserGrantsPath -and -not \(Test-Path \$UserGrantsPath\)\)\{[\s\S]{0,600}?Die "[^"]*-UserGrantsPath[^"]*\$UserGrantsPath[^"]*" \$EXIT_CONFIG/.test(ps),
+    assert.ok(/if\(\$UserGrantsPath -and -not \(Test-Path -LiteralPath \$UserGrantsPath\)\)\{[\s\S]{0,600}?Die "[^"]*-UserGrantsPath[^"]*\$UserGrantsPath[^"]*" \$EXIT_CONFIG/.test(ps),
       '-UserGrantsPath 로 지정한 경로가 없을 때 그 경로를 이름으로 말하며 죽지 않는다 — ' +
       "'형제 폴더에 없음' 경고로 떨어지면 오타 하나가 \"원래 없는 환경\" 으로 둔갑하고 복구가 '성공' 으로 끝난다(R6)");
-    const iExplicit = ps.indexOf('if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){');
-    assert.ok(iExplicit >= 0,
-      '-UserGrantsPath 존재 확인이 맨 앞 인자 검증 구역에 없다 — 오타가 DB 를 갈아엎은 뒤에야 드러난다(R2)');
+    //  ★ 2026-09-11 적대 검토(R3) — 그 규율을 **직접 준 경로 인자 전부**로 넓힌다. 옛 판은
+    //    -UserGrantsPath 하나만 맨 앞에서 봤고, -AppCnfPath 는 9-7 스모크 자리에서, -Grants 의 두 SQL 은
+    //    8단계 자리에서 죽었다 — 둘 다 **드롭·복구 뒤**다. -DeployConfigPath 는 더 나빴다: 직접 준
+    //    경로가 없어도 `if(Test-Path …)` 로 말없이 건너뛰어 스모크가 '검증 못 함' 으로 끝났다(사람은
+    //    자기가 준 경로가 무시된 줄 모른다). 지금은 다섯이 한 구역에 모여 있고, 전부 Die + 코드 2 다.
+    const upfront = [
+      ['if($UserGrantsPath -and -not (Test-Path -LiteralPath $UserGrantsPath)){', '-UserGrantsPath'],
+      ['if($AppCnfPath -and -not (Test-Path -LiteralPath $AppCnfPath)){', '-AppCnfPath'],
+      ['if($DeployConfigPath -and -not (Test-Path -LiteralPath $DeployConfigPath)){', '-DeployConfigPath(직접 준 경우)'],
+      ['if($Grants -and -not (Test-Path -LiteralPath $appUserSql)){', '-Grants 의 create-app-user.sql'],
+      ['if($Grants -and -not (Test-Path -LiteralPath $grantsSql)){', '-Grants 의 grants-calendar.sql'],
+    ];
     //    기준점 셋: -WhatIf 계획 출력 · 복구 전 안전 덤프 · 대상 DB DROP. 검증은 셋보다 앞이어야 한다
     //    (리허설에서도 같은 오타가 같은 자리에서 걸려야 하므로 -WhatIf 도 기준점이다).
-    for (const [marker, what] of [
+    const landmarks = [
       ['---- 계획 (-WhatIf: 아무것도 바꾸지 않습니다) ----', '-WhatIf 계획 출력'],
       ['$prePath = Join-Path $BackupDir', '복구 전 안전 덤프'],
       ['DROP DATABASE IF EXISTS', '대상 DB DROP'],
-    ]) {
-      const i = ps.indexOf(marker);
-      assert.ok(i >= 0, `기준점을 못 찾았다(측정 불가 ≠ 통과): ${what}`);
-      assert.ok(iExplicit < i,
-        `-UserGrantsPath 존재 확인이 '${what}' 보다 뒤에 있다 — 경로 오타가 그 단계를 지나고 나서야 터진다(R2)`);
+    ];
+    for (const [needle, label] of upfront) {
+      const iChk = ps.indexOf(needle);
+      assert.ok(iChk >= 0,
+        `${label} 존재 확인이 맨 앞 인자 검증 구역에 없다 — 오타가 DB 를 갈아엎은 뒤에야 드러난다(R2 → R3)`);
+      //  그 자리는 **Die + 설정 문제(코드 2)** 여야 한다. 경고로 흘리면 사람은 자기가 준 경로가
+      //  무시된 줄 모른 채 '성공' 을 받는다.
+      const blk = ps.slice(iChk, iChk + 700);
+      assert.ok(/Die "[\s\S]{0,400}?" \$EXIT_CONFIG/.test(blk),
+        `${label} 의 부재가 Die … $EXIT_CONFIG 로 끝나지 않는다 — 조용히 건너뛰면 아무도 모른다(R3)`);
+      for (const [marker, what] of landmarks) {
+        const i = ps.indexOf(marker);
+        assert.ok(i >= 0, `기준점을 못 찾았다(측정 불가 ≠ 통과): ${what}`);
+        assert.ok(iChk < i,
+          `${label} 존재 확인이 '${what}' 보다 뒤에 있다 — 경로 오타가 그 단계를 지나고 나서야 터진다(R2 → R3)`);
+      }
     }
+    //  ★ 2026-09-11 적대 검토(R3) — 경로는 **글자 그대로** 본다(-LiteralPath). `[`·`]`·`*` 가 든 경로를
+    //    와일드카드로 읽으면 있는 파일을 "없다" 고 하거나(맨 앞에서 헛되이 죽는다) 엉뚱한 파일을 고른다.
+    for (const v of ['UserGrantsPath', 'AppCnfPath', 'DeployConfigPath', 'appUserSql', 'grantsSql', 'c']) {
+      assert.ok(!new RegExp(`(Test-Path|Resolve-Path) \\$${v}\\b`).test(ps),
+        `$${v} 를 -LiteralPath 없이 본다 — 대괄호·별표가 든 경로를 와일드카드로 읽는다(R3)`);
+    }
+    //  ★ 2026-09-11 적대 검토(R3) — **쓰는 자리에서도 한 번 더 본다.** 맨 앞 검증과 8단계 사이는 몇 분
+    //    (덤프 주입)이고, 그 사이에 파일이 사라지면 Resolve-Path 가 아무것도 못 돌려줘 FindUserGrants 가
+    //    $null 이 된다 — 호출부는 그것을 '형제 폴더에 없음' 경고로 읽는다. 정확히 R6 이 막으려던 거짓말이
+    //    맨 앞 검증을 통과한 경로로 되살아난다. 그래서 지정 경로는 여기서도 Die 로 끝난다.
+    const fug = /function FindUserGrants\(\)\{([\s\S]*?)\n\}/.exec(ps);
+    assert.ok(fug, 'FindUserGrants 본문을 찾지 못했다 — 판정 불가');
+    const fugBody = fug[1];
+    const iRecheck = fugBody.indexOf('if(-not (Test-Path -LiteralPath $UserGrantsPath)){');
+    assert.ok(iRecheck >= 0,
+      '쓰는 자리(FindUserGrants)에서 지정 경로의 존재를 다시 보지 않는다 — 그 사이에 사라지면 ' +
+      "'형제 폴더에 없음' 경고로 둔갑한다(R3)");
+    assert.ok(/if\(-not \(Test-Path -LiteralPath \$UserGrantsPath\)\)\{[\s\S]{0,400}?Die "[^"]*\$UserGrantsPath[^"]*" \$EXIT_CONFIG/.test(fugBody),
+      '그 재확인이 Die … $EXIT_CONFIG 로 끝나지 않는다 — 경고 갈래로 떨어지면 다시 조용한 실패다(R3)');
+    //    ★ 'return $null' 은 이 함수의 주석에도 적혀 있다(무엇이 경고 갈래인지 설명한다) —
+    //      자리를 재는 기준은 **코드 줄**이어야 한다(주석 줄은 '  #' 으로 시작한다).
+    assert.ok(iRecheck < fugBody.search(/\n  return \$null/),
+      '재확인이 경고 갈래(return $null)보다 뒤에 있다 — 지정 경로의 부재가 형제 폴더 경고로 새 나간다(R3)');
     assert.ok(/\n  return \$null\n\}/.test(ps),
       '기본 탐색(형제 폴더)의 부재까지 죽이면 비공개 저장소가 없는 PC 에서 캘린더 복구 자체가 막힌다 — 그쪽은 경고여야 한다');
 
@@ -646,10 +689,55 @@ test('변이④-g: 그 검증을 8단계(FindUserGrants 안)로 되돌리면 가
   //  문장은 글자 하나 안 바뀌므로 '그 문장이 있는가' 만 보는 검사는 통과한다 — 자리를 보는 검사만 잡는다.
   const DIE = 'Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath ' +
     '(경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG';
-  const block = 'if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){\n  ' + DIE + '\n}\n';
-  const late  = '  if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){\n    ' + DIE + '\n  }\n';
+  const block = 'if($UserGrantsPath -and -not (Test-Path -LiteralPath $UserGrantsPath)){\n  ' + DIE + '\n}\n';
+  const late  = '  if($UserGrantsPath -and -not (Test-Path -LiteralPath $UserGrantsPath)){\n    ' + DIE + '\n  }\n';
   const bad = mutate(mutate(psSrc, block, ''),
     '  $userGrants = FindUserGrants', late + '  $userGrants = FindUserGrants');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /보다 뒤에 있다/);
   assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-h: -LiteralPath 를 빼면 가드 ④-b 가 실패한다(대괄호가 든 경로를 와일드카드로 읽는다 · R3)', () => {
+  const bad = mutate(psSrc,
+    'return (Resolve-Path -LiteralPath $UserGrantsPath).Path',
+    'return (Resolve-Path $UserGrantsPath).Path');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /-LiteralPath 없이 본다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-i: -AppCnfPath 확인을 9-7 스모크 자리로 되돌리면 가드 ④-b 가 실패한다(드롭·복구 뒤에 죽는다 · R3)', () => {
+  const blk = 'if($AppCnfPath -and -not (Test-Path -LiteralPath $AppCnfPath)){\n' +
+              '  Die "앱 자격 파일이 없습니다: $AppCnfPath" $EXIT_CONFIG\n}\n';
+  const late = '    if($AppCnfPath -and -not (Test-Path -LiteralPath $AppCnfPath)){ ' +
+               'Die "앱 자격 파일이 없습니다: $AppCnfPath" $EXIT_CONFIG }\n';
+  const bad = mutate(mutate(psSrc, blk, ''), '    $smokeCnf = $AppCnfPath', late + '    $smokeCnf = $AppCnfPath');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /보다 뒤에 있다/);
+});
+
+test('변이④-j: 직접 준 -DeployConfigPath 를 말없이 건너뛰게 되돌리면 가드 ④-b 가 실패한다(무시된 줄 모른다 · R3)', () => {
+  const bad = mutate(psSrc, 'if($DeployConfigPath -and -not (Test-Path -LiteralPath $DeployConfigPath)){',
+                            'if($false){');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /-DeployConfigPath\(직접 준 경우\) 존재 확인이 맨 앞/);
+});
+
+test('변이④-k: -Grants 두 SQL 확인을 8단계로 되돌리면 가드 ④-b 가 실패한다(이미 DROP 뒤다 · R3)', () => {
+  const one = 'if($Grants -and -not (Test-Path -LiteralPath $appUserSql)){ ' +
+              'Die "create-app-user.sql 이 스크립트 폴더에 없습니다: $scriptDir" $EXIT_CONFIG }\n';
+  const bad = mutate(mutate(psSrc, one, ''),
+    '  $appUserText = [IO.File]::ReadAllText($appUserSql)', '  ' + one + '  $appUserText = [IO.File]::ReadAllText($appUserSql)');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /보다 뒤에 있다/);
+});
+
+test('변이④-l: 쓰는 자리의 재확인을 지우면 가드 ④-b 가 실패한다(실행 중에 사라지면 경고로 둔갑한다 · R3)', () => {
+  const bad = mutate(psSrc, '    if(-not (Test-Path -LiteralPath $UserGrantsPath)){', '    if($false){');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /다시 보지 않는다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-m: 그 재확인을 Die 대신 경고 갈래로 떨어뜨리면 가드 ④-b 가 실패한다(조용한 실패로 되돌아간다 · R3)', () => {
+  const bad = mutate(psSrc,
+    'Die "-UserGrantsPath 로 지정한 05-grants.sql 이 사라졌습니다: $UserGrantsPath ' +
+    '(시작할 때는 있었습니다 — 실행 중에 옮겨지거나 지워졌습니다)" $EXIT_CONFIG',
+    'return $null');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /Die … \$EXIT_CONFIG 로 끝나지 않는다/);
 });
