@@ -50,6 +50,9 @@
   └───────────────────────────────────────────────────────────────────────────────────┘
   무인 호출자는 0 만 성공으로 셀 것. 1 과 2·3·4 를 나눈 뜻은 backup-taskmgr.ps1 과 같다:
   1 은 '복구본이 반쪽이다', 2·3·4 는 '복구를 시작조차 못했다'.
+  ★ -WhatIf 가 0 으로 끝나는 것은 **인자가 성립할 때뿐**이다. 인자 검증(경로 오타 등)은 계획을 찍기
+    전에 코드 2 로 끝낸다 — '아무것도 바꾸지 않는다' 는 그대로지만 '언제나 0' 은 아니다.
+    그래야 같은 오타가 실제 실행에서 DB 를 갈아엎은 뒤에 터지지 않는다(파괴적 단계보다 앞에서 거른다).
   ★ 6 과 7 은 이 스크립트에만 있다. 새 뜻이라 새 값을 준다 — 기존 값의 뜻을 바꾸지 않는다
     (init-calendar.ps1 이 3·5 를 결번으로 남긴 것과 같은 이유. 종료코드는 호출자와의 계약이다).
   ★★ 7 이 왜 0 이 아닌가 — 판정 불가는 통과가 아니다. 라이브가 죽어 있는 진짜 재해 상황에서는
@@ -227,6 +230,15 @@ function AssertIdent($label, $val){
 }
 AssertIdent "-TargetDb" $TargetDb
 AssertIdent "-LiveDb"   $LiveDb
+
+# 직접 지정한 05-grants.sql 경로는 **여기서** 본다 — 어떤 파괴적 단계보다 앞이다(2026-09-11 적대 검토 R2).
+#   옛 판은 이 확인이 FindUserGrants 안에 있었고, 그 함수는 8단계(권한 적용)와 -WhatIf 계획 출력에서만
+#   불린다. 곧 오타 하나가 **대상 DB 를 이미 드롭·복구한 뒤**에야 드러났다 — 사람은 "설정 문제(코드 2)"
+#   를 읽으면서 갈아엎힌 DB 를 받는다. 지정한 경로는 곧 의도다. 성립하지 않으면 아무것도 건드리기 전에
+#   끝낸다(-WhatIf 도 같다 — 계획을 찍기 전에 죽는다. 위 종료코드 표의 ★ 참조).
+if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){
+  Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath (경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG
+}
 
 Write-Host "============================================"
 Write-Host "   taskmgr 복구 / 복구 리허설"
@@ -555,9 +567,11 @@ function FindUserGrants(){
   #    사람은 형제 폴더가 아니라 **자기가 준 경로**를 찾게 했으므로 그 문장은 사실이 아니다 —
   #    오타 하나가 "권한 파일이 원래 없는 환경" 으로 둔갑하고, 복구는 경고만 남긴 채 '성공' 으로 끝났다.
   #    지정한 경로는 곧 의도다. 없으면 복구를 진행하지 않고 그 경로를 이름으로 말하며 끝낸다.
+  #  ★ 2026-09-11 적대 검토(R2) — 그 확인은 이제 이 함수가 아니라 **맨 앞 인자 검증 구역**에 있다.
+  #    이 함수는 8단계(권한 적용)와 -WhatIf 계획 출력에서만 불리므로, 여기서 죽으면 이미 DB 를
+  #    갈아엎은 뒤였다. 여기서는 앞에서 확인된 경로를 확정하기만 한다.
   if($UserGrantsPath){
-    if(Test-Path $UserGrantsPath){ return (Resolve-Path $UserGrantsPath).Path }
-    Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath (경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG
+    return (Resolve-Path $UserGrantsPath).Path
   }
   $sd       = Split-Path -Parent $PSCommandPath                 # <저장소>\db\deploy
   $repoRoot = Split-Path (Split-Path $sd -Parent) -Parent       # <저장소>

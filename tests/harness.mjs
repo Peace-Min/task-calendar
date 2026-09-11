@@ -263,9 +263,13 @@ function escapeRe(s) {
 }
 
 // ── C# 소스 오려내기 ────────────────────────────────────────────────
-// 호스트(widget/*.cs)의 계약을 형태로 보는 시험이 다섯 파일인데, 다섯 벌이 같은 슬라이서를
-// 각자 안고 있었다. 사본은 반드시 낡는다 — 한쪽만 문자열 이스케이프를 고치면 나머지 넷은
-// 그대로 오탐을 안고 통과한다. 한 곳에 둔다.
+// 호스트(widget/*.cs)의 계약을 형태로 보는 시험들이 같은 슬라이서를 각자 안고 있었다. 사본은 반드시
+// 낡는다 — 한쪽만 문자열 이스케이프나 식(=>) 본문 처리를 고치면 나머지는 그대로 오탐을 안고 통과한다.
+// 그래서 정본을 여기 둔다.
+//   ★ **아직 옮기지 않은 파일이 있다**(2026-09-11 R2-W6 — "한 곳에 있다"는 서술은 그때까지 거짓이었다):
+//     admin-auth · code-tables · user-login · user-info · schema-integrity 다섯 파일은 여전히 자기 사본을
+//     쓴다. 옮긴 것은 user-admin · trash-host 둘뿐이다. 이 목록은 사본을 없앨 때 함께 줄여야 한다 —
+//     여기 적힌 것이 사실이 아니게 되는 순간, 이 주석도 사본과 똑같이 낡은 것이 된다.
 //
 // 주석 제거(문자열 리터럴은 보존) — "왜 안 하는지"를 적어 둔 **주석이** 계약을 통과시키면 안 된다.
 const _CS_BS = String.fromCharCode(92);
@@ -286,13 +290,39 @@ export function stripCsComments(s) {
   return out;
 }
 
+// 문자열 리터럴 시작 위치 i(따옴표)에서 **닫는 따옴표의 위치**를 돌려준다(백슬래시 이스케이프 처리).
+//   ★ C# 용이다 — 아래 두 곳이 같은 규칙을 쓴다(자바스크립트용 skipString 과 반환 규약이 다르니 섞지 말 것).
+function _csCloseQuote(code, i) {
+  const q = code[i];
+  let j = i + 1;
+  while (j < code.length) {
+    if (code[j] === _CS_BS) { j += 2; continue; }
+    if (code[j] === q) break;
+    j++;
+  }
+  return j;
+}
+
 // C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
 //   ★ 못 찾으면 던진다. '판정 불가'는 통과가 아니다.
+//   ★ 식(=>) 본문 멤버는 중괄호가 없다 — 옛 판은 그때 **다음 멤버의 여는 중괄호**를 자기 것으로 잡아
+//     남의 본문까지 통째로 삼켰다(2026-09-11 적대 검토 R2-W5). 그 슬라이스로 "이 멤버가 X 를 부른다"를
+//     보면, 실제로 부르는 것은 옆 멤버인데 초록이 뜬다. 그래서 '=>' 가 '{' 보다 먼저면 ';' 까지만 자른다.
 export function extractCsMember(source, sig) {
   const code = stripCsComments(source);
   const s = code.indexOf(sig);
   if (s < 0) throw new Error(`extractCsMember: C# 멤버를 찾지 못함: ${sig}`);
   const open = code.indexOf('{', s);
+  const arrow = code.indexOf('=>', s);
+  if (arrow >= 0 && (open < 0 || arrow < open)) {
+    //  식 본문의 끝은 문장의 ';' 다 — 문자열 리터럴 안의 ';' 는 세지 않는다.
+    for (let k = arrow; k < code.length; k++) {
+      const c = code[k];
+      if (c === '"' || c === "'") { k = _csCloseQuote(code, k); continue; }
+      if (c === ';') return code.slice(s, k + 1);
+    }
+    throw new Error(`extractCsMember: ${sig} 의 식(=>) 본문을 닫는 ';' 를 찾지 못했다`);
+  }
   if (open <= s) throw new Error(`extractCsMember: ${sig} 의 여는 중괄호를 찾지 못함`);
   let depth = 0;
   for (let k = open; k < code.length; k++) {

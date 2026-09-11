@@ -1919,11 +1919,18 @@ namespace TaskCalendarWidget
             if (ok) await LoadMembersToWebAsync(includeInactive);
         }
 
+        //  ★ 순서 저장만은 **실패해도** 명부를 다시 밀어 준다(2026-09-11 적대 검토 R2).
+        //    호스트가 거부하는 대표 경우가 「낡은 명부」(StaleRosterMsg — 목록 밖에 활성 직원이 있다)인데,
+        //    그건 "화면이 낡았다" 는 뜻이다. 아무것도 내려보내지 않으면 관리자는 **같은 낡은 명부로 다시**
+        //    저장을 눌러 같은 거부만 반복한다 — 새로고침하라는 문구를 읽어도 그 자리에 새로고침이 없다.
+        //    웹은 순서 편집 중에 온 갱신을 통째로 반영하지 않고 pending 으로 미뤄 두고 안내 한 줄을 띄우므로
+        //    (__applyMembers), 편집 중이던 순서를 이 푸시가 덮어쓰지 않는다.
+        //  ★ UserSaved 가 먼저다 — 웹이 그 회신으로 편집 모드를 끝낸 뒤라야 뒤따르는 푸시가 제대로 앉는다.
         private async Task SaveUserOrderAsync(string reqId, List<int> userIds, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SaveUserOrderAsync(userIds);
             UserSaved(ok, msg, reqId);
-            if (ok) await LoadMembersToWebAsync(includeInactive);
+            await LoadMembersToWebAsync(includeInactive);
         }
 
         // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용 -----

@@ -905,13 +905,17 @@ namespace TaskCalendarWidget
 
                     if (userId.HasValue)
                     {
+                        //  ★ 이 갈래는 위에서 target 을 채우고 null 이면 이미 돌아섰다 — 다만 컴파일러의 흐름
+                        //    분석은 두 분기를 건너오며 그 사실을 잃는다(CS8629). 한 번만 풀어 쓴다.
+                        var tgt = target!.Value;
+
                         // (2) 자기 편집 권한은 올리는 것도 내리는 것도 못 한다. 값이 그대로면 통과(수정 자체를 막지는 않는다).
-                        if (myId.HasValue && myId.Value == target.Value.userId &&
-                            !string.Equals(er, target.Value.editRole, StringComparison.Ordinal))
+                        if (myId.HasValue && myId.Value == tgt.userId &&
+                            !string.Equals(er, tgt.editRole, StringComparison.Ordinal))
                         { await tx.RollbackAsync(cts.Token); return (false, SelfRoleMsg); }
 
                         // (3) 마지막 활성 관리자를 강등할 수 없다.
-                        if (string.Equals(target.Value.editRole, "admin", StringComparison.Ordinal) && target.Value.isActive != 0 &&
+                        if (string.Equals(tgt.editRole, "admin", StringComparison.Ordinal) && tgt.isActive != 0 &&
                             !string.Equals(er, "admin", StringComparison.Ordinal) &&
                             await LockedActiveAdminCountAsync(conn, tx, cts.Token) <= 1)
                         { await tx.RollbackAsync(cts.Token); return (false, LastAdminMsg); }
@@ -1057,7 +1061,12 @@ namespace TaskCalendarWidget
                 try
                 {
                     // ① 낡은 명부 거부(R1-a). 목록 밖에 **활성** 직원이 있으면 이 저장은 화면이 낡은 것이다.
-                    //    FOR UPDATE 로 세어 판정과 갱신 사이에 다른 트랜잭션이 끼어들지 못하게 한다(§4.4 와 같은 규율).
+                    //    FOR UPDATE 는 **지금 있는 그 행들**을 잠근다 — 판정과 갱신 사이에 남이 그 사람들의
+                    //    is_active 나 서열을 바꾸지 못한다(§4.4 와 같은 규율).
+                    //    ★ 2026-09-11 적대 검토(R2) — 전에는 여기에 "다른 트랜잭션이 끼어들지 못한다" 고만 적혀
+                    //      있었다. 과장이다: 이 연결은 READ COMMITTED 라(§3.2) 갭 잠금이 없어 **새 INSERT 는
+                    //      막지 못한다**. 다만 해롭지 않다 — 그 틈에 등록된 사람은 아래 UPDATE 의 WHERE 에도
+                    //      걸리지 않아 sort_order 가 NULL 인 채 명부 맨 뒤에 서고, 다음 저장이 제자리를 준다.
                     long outsiders;
                     await using (var chk = new MySqlCommand())
                     {
@@ -1079,7 +1088,10 @@ namespace TaskCalendarWidget
                     //    목록 밖은 숨김(퇴사)일 때만 NULL 이고 활성이면 제 값을 지킨다.
                     //    ★ ELSE 의 활성 갈래는 ① 덕분에 닿지 않는다 — 그래도 남겨 둔다(방어).
                     //    ★ updated_at 은 손대지 않는다 — 이 표의 감사 시각은 서버 ON UPDATE 의 몫이다(§4.5).
-                    int changed;
+                    //    ★ 2026-09-11 적대 검토(R2) — **WHERE 가 없었다.** CASE 의 ELSE 가 '제 값을 다시 쓴다'
+                    //      여도 그건 값 이야기일 뿐, 문장의 대상은 여전히 **app_user 전 행**이다. 전원에 X 잠금이
+                    //      걸리고(한 사람의 순서 저장이 표 전체를 잠근다), 드라이버가 돌려주는 영향 행 수도
+                    //      표 크기가 된다. 쓸 자리는 둘뿐이다 — 받은 목록 안(재작성) · 숨긴 사람(비우기).
                     await using (var cmd = new MySqlCommand())
                     {
                         cmd.Connection = conn;
@@ -1093,12 +1105,16 @@ namespace TaskCalendarWidget
                             cmd.Parameters.AddWithValue(op, (i + 1) * 10);
                         }
                         cmd.CommandText = "UPDATE app_user SET sort_order = CASE user_id " + string.Join(" ", whens) +
-                                          " ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END";
-                        changed = await cmd.ExecuteNonQueryAsync(cts.Token);
+                                          " ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END" +
+                                          " WHERE user_id IN (" + inList + ") OR is_active=0";
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
 
                     await tx.CommitAsync(cts.Token);
-                    _log("명부 순서 저장: " + kept.Count + "명 전량 재작성(바뀐 행 " + changed + ")");
+                    //  ★ 영향 행 수는 싣지 않는다(2026-09-11 R2) — MySqlConnector 는 CLIENT_FOUND_ROWS 로
+                    //    **조건에 맞은 행**을 돌려주므로 그 수는 '바뀐 행' 이 아니다(CALENDAR-TABLE-DESIGN
+                    //    "'영향 행 0' 은 한 가지 뜻이 아니다"). 여기서 뜻이 있는 숫자는 재작성 대상 인원 하나다.
+                    _log("명부 순서 저장: 대상 " + kept.Count + "명 전량 재작성");
                     return (true, "명부 순서를 저장했습니다.");
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)

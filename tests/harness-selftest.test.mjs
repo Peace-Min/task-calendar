@@ -1,7 +1,7 @@
 // 하네스 자체 검증 — extractFunction / FakeDoc 동작 보장.
 // 이후 브리프(북마클릿 등)가 이 하네스를 믿고 쓰기 위한 안전망.
 import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction, FakeDoc, filesWithNoTests } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, FakeDoc, filesWithNoTests, extractCsMember } from './harness.mjs';
 
 // fixture 로더(tests/ 기준 상대 경로).
 function loadFixture(name) {
@@ -77,6 +77,45 @@ test('extractFunction: 리터럴·주석 안의 중괄호는 세지 않는다(�
   assert.ok(code.trim().endsWith('}'), 'body가 } 로 닫혀야 함');
   assert.ok(!code.includes('꼬리 텍스트'), '함수 뒤 텍스트까지 삼키면 안 됨');
   assert.strictEqual(eval('(' + code + ')')('x'), '}{{x }', '잘라낸 코드가 실제로 돌고 리터럴이 온전해야 함');
+});
+
+// 6) extractCsMember: 식(=>) 본문 멤버는 **자기 문장에서 끝난다** — 다음 멤버를 삼키지 않는다.
+//    ★ 2026-09-11 적대 검토(R2-W5): 옛 판은 '{' 만 찾았다. 중괄호가 없는 식 본문 멤버에서는 **다음 멤버의**
+//      여는 중괄호를 자기 것으로 잡고 그 본문까지 통째로 삼켰다. 그 슬라이스로 "이 멤버가 X 를 부른다"를
+//      보면 실제로 부르는 것은 옆 멤버인데 초록이 뜬다(반대로 "안 부른다" 계약은 거짓 실패가 난다).
+const CS_EXPR_PROBE = [
+  'public class P {',
+  '    private void Ping(bool ok, string msg = "") =>',
+  '        JsCall("window.__ping(" + (ok ? "true" : "false") + ";" + msg + ")");',
+  '',
+  '    private async Task ReloadAsync() {',
+  '        await LoadEverythingAsync();',
+  '    }',
+  '}',
+].join('\n');
+
+test('extractCsMember: 식(=>) 본문 멤버는 ; 에서 끝난다(다음 멤버를 삼키지 않는다)', () => {
+  const one = extractCsMember(CS_EXPR_PROBE, 'private void Ping(');
+  assert.ok(one.startsWith('private void Ping('), '시그니처부터 잘라야 한다: ' + JSON.stringify(one.slice(0, 40)));
+  assert.ok(one.trim().endsWith(';'), '식 본문은 ; 로 닫혀야 한다: ' + JSON.stringify(one.slice(-20)));
+  assert.ok(!one.includes('ReloadAsync'), '다음 멤버의 머리까지 삼켰다 — 옆 멤버가 판정에 섞인다');
+  assert.ok(!one.includes('LoadEverythingAsync'), '다음 멤버의 본문까지 삼켰다');
+  assert.ok(one.includes('window.__ping'), '자기 본문이 잘려 나갔다');
+  //  ★ 리터럴 안의 ';' 는 문장 끝이 아니다 — probe 의 + ";" + 가 그 덫이다.
+  assert.ok(one.includes('msg + ")")'), '리터럴 안의 ; 를 문장 끝으로 오인해 잘렸다: ' + JSON.stringify(one));
+  //  중괄호 본문 경로는 그대로여야 한다(겨냥 확인 — 식 본문 처리가 옆길을 건드리지 않았다).
+  const two = extractCsMember(CS_EXPR_PROBE, 'private async Task ReloadAsync(');
+  assert.ok(two.trim().endsWith('}') && two.includes('LoadEverythingAsync'), '중괄호 본문 경로가 깨졌다: ' + JSON.stringify(two));
+});
+
+// 7) 실물 — 호스트의 UserSaved 가 바로 그 모양이다(식 본문 + 곧바로 다음 멤버).
+test('extractCsMember(실물): UserSaved 슬라이스에 옆 멤버(LoadMembersToWebAsync)가 섞이지 않는다', () => {
+  const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+  const b = extractCsMember(main, 'private void UserSaved(');
+  assert.ok(/window\.__userSaved/.test(b), 'UserSaved 자기 본문이 없다 — 엉뚱한 곳을 잘랐다');
+  assert.ok(!/LoadMembersToWebAsync/.test(b),
+    '식 본문 멤버가 다음 멤버(LoadMembersToWebAsync)까지 삼켰다 — 이 슬라이스를 믿는 계약은 옆 멤버를 보고 초록이 된다');
+  assert.ok(b.length < 600, '슬라이스가 지나치게 길다(다음 멤버까지 삼켰을 때의 증상): ' + b.length);
 });
 
 // ══ 변이 시험(mutation test) — 하네스 자신을 망가뜨려도 위 4건이 초록인가 ══
@@ -187,6 +226,24 @@ test('변이④: FakeDoc 의 password 판별을 느슨하게 하면 "password �
       assert.notStrictEqual(got.type, 'password', '돌려준 요소는 사실 password 가 아니다');
       assert.strictEqual(doc.getElementsByName('nope').length, 0, '없는 name 경로는 사정권 밖(겨냥 확인)');
     });
+});
+
+// ── 변이⑤ extractCsMember 의 식(=>) 본문 갈래를 없앤다 → 다음 멤버를 다시 삼킨다 ──
+// (깨져야 할 계약: 'extractCsMember: 식(=>) 본문 멤버는 ; 에서 끝난다…' · 'extractCsMember(실물): …')
+test('변이⑤: extractCsMember 가 식(=>) 본문을 모르면 다음 멤버를 통째로 삼킨다', async () => {
+  const ok = extractCsMember(CS_EXPR_PROBE, 'private void Ping(');
+  assert.ok(!ok.includes('LoadEverythingAsync'), '사전조건: 정상 하네스는 옆 멤버를 삼키지 않는다');
+
+  await withMutatedHarness('if (arrow >= 0 && (open < 0 || arrow < open)) {', 'if (false) {', (m) => {
+    const bad = m.extractCsMember(CS_EXPR_PROBE, 'private void Ping(');
+    assert.notStrictEqual(bad, ok, '식 본문 갈래를 껐는데 같은 슬라이스가 나온다 — 계약이 그 갈래를 안 본다');
+    assert.ok(bad.includes('LoadEverythingAsync'),
+      '식 본문 갈래 없이도 옆 멤버를 안 삼킨다 — 이 계약이 겨냥한 것이 아니다');
+    //  실물에서도 같은 일이 난다(계약 7 이 겨냥한 그 자리다).
+    const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+    assert.ok(/LoadMembersToWebAsync/.test(m.extractCsMember(main, 'private void UserSaved(')),
+      '실물 UserSaved 에서도 옆 멤버가 섞이지 않는다 — 변이가 겨냥을 빗나갔다(앵커를 갱신할 것)');
+  });
 });
 
 // ── 등록 인구조사(census) — 게이트가 '조용히 줄어드는 것' 을 보는가 ─────────────────

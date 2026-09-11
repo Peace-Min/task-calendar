@@ -156,11 +156,28 @@ const checks = {
     //    옛 판은 $null 을 돌려 '형제 폴더에 없음' 경고로 떨어졌다. 사람은 형제 폴더가 아니라 자기가 준
     //    경로를 찾게 했으므로 그 경고는 사실이 아니고, 오타 하나가 "권한 파일이 원래 없는 환경" 으로
     //    둔갑해 복구가 경고만 남긴 채 '성공' 으로 끝났다. 기본 탐색(형제 폴더)의 부재는 그대로 경고다.
-    const fug = /function FindUserGrants\(\)\{([\s\S]*?)\n\}/.exec(ps);
-    assert.ok(fug, 'FindUserGrants 본문을 읽지 못했다(측정 불가 ≠ 통과)');
-    assert.ok(/if\(\$UserGrantsPath\)\{[\s\S]{0,600}?Die "[^"]*-UserGrantsPath[^"]*\$UserGrantsPath[^"]*" \$EXIT_CONFIG/.test(fug[1]),
+    //  ★ 2026-09-11 적대 검토(R2) — 그 죽음의 **자리**도 함께 잠근다. 옛 판은 FindUserGrants 안에 있었는데,
+    //    그 함수는 8단계(권한 적용)와 -WhatIf 계획 출력에서만 불린다 — 곧 오타 하나가 **대상 DB 를 이미
+    //    드롭·복구한 뒤**에야 드러났다(사람은 "설정 문제(코드 2)" 를 읽으며 갈아엎힌 DB 를 받는다).
+    //    지금은 맨 앞 인자 검증 구역이고, 아래에서 그 자리를 기준점 셋으로 못박는다.
+    assert.ok(/if\(\$UserGrantsPath -and -not \(Test-Path \$UserGrantsPath\)\)\{[\s\S]{0,600}?Die "[^"]*-UserGrantsPath[^"]*\$UserGrantsPath[^"]*" \$EXIT_CONFIG/.test(ps),
       '-UserGrantsPath 로 지정한 경로가 없을 때 그 경로를 이름으로 말하며 죽지 않는다 — ' +
       "'형제 폴더에 없음' 경고로 떨어지면 오타 하나가 \"원래 없는 환경\" 으로 둔갑하고 복구가 '성공' 으로 끝난다(R6)");
+    const iExplicit = ps.indexOf('if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){');
+    assert.ok(iExplicit >= 0,
+      '-UserGrantsPath 존재 확인이 맨 앞 인자 검증 구역에 없다 — 오타가 DB 를 갈아엎은 뒤에야 드러난다(R2)');
+    //    기준점 셋: -WhatIf 계획 출력 · 복구 전 안전 덤프 · 대상 DB DROP. 검증은 셋보다 앞이어야 한다
+    //    (리허설에서도 같은 오타가 같은 자리에서 걸려야 하므로 -WhatIf 도 기준점이다).
+    for (const [marker, what] of [
+      ['---- 계획 (-WhatIf: 아무것도 바꾸지 않습니다) ----', '-WhatIf 계획 출력'],
+      ['$prePath = Join-Path $BackupDir', '복구 전 안전 덤프'],
+      ['DROP DATABASE IF EXISTS', '대상 DB DROP'],
+    ]) {
+      const i = ps.indexOf(marker);
+      assert.ok(i >= 0, `기준점을 못 찾았다(측정 불가 ≠ 통과): ${what}`);
+      assert.ok(iExplicit < i,
+        `-UserGrantsPath 존재 확인이 '${what}' 보다 뒤에 있다 — 경로 오타가 그 단계를 지나고 나서야 터진다(R2)`);
+    }
     assert.ok(/\n  return \$null\n\}/.test(ps),
       '기본 탐색(형제 폴더)의 부재까지 죽이면 비공개 저장소가 없는 PC 에서 캘린더 복구 자체가 막힌다 — 그쪽은 경고여야 한다');
 
@@ -621,5 +638,18 @@ test('변이④-f: 지정한 -UserGrantsPath 가 없을 때 죽지 않고 경고
     '(경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG',
     'return $null');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /그 경로를 이름으로 말하며 죽지 않는다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
+});
+
+test('변이④-g: 그 검증을 8단계(FindUserGrants 안)로 되돌리면 가드 ④-b 가 실패한다(R2 — 갈아엎은 뒤에 죽는다)', () => {
+  //  옛 배치를 그대로 되살린다: 맨 앞 검증을 걷어 내고 같은 문장을 8단계의 호출부 앞에 넣는다.
+  //  문장은 글자 하나 안 바뀌므로 '그 문장이 있는가' 만 보는 검사는 통과한다 — 자리를 보는 검사만 잡는다.
+  const DIE = 'Die "-UserGrantsPath 로 지정한 05-grants.sql 이 없습니다: $UserGrantsPath ' +
+    '(경로를 확인하거나, 형제 폴더에서 찾게 하려면 이 인자를 빼고 실행하세요)" $EXIT_CONFIG';
+  const block = 'if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){\n  ' + DIE + '\n}\n';
+  const late  = '  if($UserGrantsPath -and -not (Test-Path $UserGrantsPath)){\n    ' + DIE + '\n  }\n';
+  const bad = mutate(mutate(psSrc, block, ''),
+    '  $userGrants = FindUserGrants', late + '  $userGrants = FindUserGrants');
+  assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /보다 뒤에 있다/);
   assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });

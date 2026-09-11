@@ -287,6 +287,16 @@ const checks = {
     assert.ok(/ELSE \(CASE WHEN is_active=0 THEN NULL ELSE sort_order END\) END/.test(so),
       '목록 밖 사람의 서열을 비우는 갈래에 is_active=0 이 없다 — 목록에 없을 뿐 활성인 직원의 서열까지 ' +
       'NULL 이 된다(R1). 숨긴 사람만 비워야 복구했을 때 끼어들지 않고 맨 뒤에 선다(§7-1a).');
+    //  (b-2) 그 한 문장에는 **WHERE 가 있어야 한다**(2026-09-11 적대 검토 R2). ELSE 가 '제 값을 다시 쓴다'
+    //      여도 그건 값 이야기일 뿐, WHERE 가 없으면 문장의 대상은 app_user **전 행**이다 — 한 사람의
+    //      순서 저장이 표 전체에 X 잠금을 걸고, 드라이버가 돌려주는 영향 행 수도 표 크기가 된다.
+    //      쓸 자리는 둘뿐이다: 받은 목록 안(재작성) · 숨긴 사람(비우기).
+    assert.ok(/WHERE user_id IN \(" \+ inList \+ "\) OR is_active=0/.test(so),
+      '순서 저장의 한 문장에 WHERE 가 없다 — app_user 전 행이 UPDATE 대상이 되어 전원에 X 잠금이 걸리고, ' +
+      '로그가 말하는 영향 행 수도 표 크기가 된다(R2)');
+    //      그리고 로그는 '바뀐 행' 을 주장하지 않는다 — MySqlConnector 가 주는 수는 **조건에 맞은 행**이다.
+    assert.ok(!/바뀐 행/.test(so),
+      "순서 저장 로그가 '바뀐 행' 을 주장한다 — 드라이버가 주는 수는 맞은 행(CLIENT_FOUND_ROWS)이라 거짓말이다(R2)");
     //  (c) 낡은 명부 거부 — 목록 밖에 활성이 하나라도 있으면 저장을 통째로 거부한다.
     //      세는 문장은 **잠근 채**(FOR UPDATE)여야 판정과 갱신 사이에 새 사람이 끼어들지 못한다.
     assert.ok(/SELECT COUNT\(\*\) FROM app_user WHERE is_active=1 AND user_id NOT IN \(/.test(so),
@@ -603,6 +613,20 @@ const checks = {
     assert.ok(/Number\(rq\.uid \|\| 0\) === Number\(__ueId \|\| 0\)/.test(w),
       '__userSaved 가 회신 대상과 **지금 폼이 연 사람**을 대조하지 않는다 — id 만으로는 어느 폼인지 알 수 없다');
     assert.ok(/__uaReq = null;/.test(w), '__userSaved 가 처리한 요청 표를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
+    //  ★ 대상(uid)만으로는 **어느 폼인지** 끝내 알 수 없다(2026-09-11 적대 검토 R2-W1): 신규 등록은 언제나
+    //    uid 0 이다. A(등록)를 보낸 뒤 워치독이 잠금을 풀면(요청 표는 남는다) 관리자가 [＋ 직원 등록]을
+    //    다시 누를 수 있고, 그때 뒤늦게 온 A 의 성공 회신이 **그 새 폼**을 닫고 '저장했습니다'를 띄웠다.
+    //    그래서 폼을 한 번 여는 것마다 표(__ueTok)를 붙이고, 회신은 그 표까지 맞아야 폼에 닿는다.
+    assert.ok(/__ueTok = \+\+__ueTokSeq;/.test(extractFunction(web, 'userEdOpen')),
+      'userEdOpen 이 이 열림의 표(__ueTok)를 새로 발번하지 않는다 — 같은 uid 의 다른 폼을 가릴 근거가 없다(R2-W1)');
+    assert.ok(/cmd: cmd, tok: __ueTok/.test(s),
+      'uaSend 가 요청 표에 폼 표(tok)를 싣지 않는다 — 회신이 "어느 폼에서 나갔는가"를 잃는다(R2-W1)');
+    assert.ok(/rq\.tok === __ueTok/.test(w),
+      '__userSaved 가 회신을 폼 표(__ueTok)와 대조하지 않는다 — 지난 등록의 늦은 회신이 지금 쓰고 있는 새 등록 폼을 닫는다(R2-W1)');
+    assert.ok(/const stale = rq\.cmd !== 'saveUserOrder' && !forForm;/.test(w) && /이전 요청이 처리됐습니다: /.test(w),
+      '__userSaved 가 닫힌(다른) 폼의 늦은 회신을 "지난 요청"이라 말하지 않는다 — 방금 누른 [저장]의 결과로 읽힌다(R2-W1)');
+    assert.ok(/if\(ov\.id === 'userEditModal'\) __ueTok = 0;/.test(web),
+      '폼을 닫을 때 폼 표를 비우지 않는다 — 닫힌 폼을 기다리던 회신이 여전히 "지금 폼의 것"으로 읽힌다(R2-W1)');
     const ss = extractFunction(web, 'uaSetSaving');
     //  ★ 워치독은 **잠금만** 푼다. 요청 표를 지우면 늦은 성공 회신이 통째로 버려진다(2026-09-11).
     assert.ok(!/__uaReq = null/.test(ss),
@@ -638,10 +662,32 @@ const checks = {
   // ⑭-c 「순서 저장」 성공은 **그 자리에서** 막대·목록을 다시 그린다(2026-09-11 적대 검토 R3-W3).
   //     뒤따르는 명부 푸시에 기대면, 그 푸시가 오지 않는 순간 ▲▼·[취소]·[순서 저장]이 그대로 남아
   //     이미 끝난 편집을 계속하는 화면이 된다.
+  //     ★ R2-W3 이후 **한 번만** 그린다: 편집 모드를 잠금 해제보다 먼저 끝내고(그래야 uaSetSaving 이
+  //       그릴 때 이미 최종형이다), uaSetSaving 이 그리지 않았을 때만(워치독이 이미 풀어 둔 경우) 여기서 그린다.
   orderSaveRedrawsItself(web) {
     const w = windowFn(web, '__userSaved');
-    assert.ok(/if\(wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; uaAdminBar\(\); uaApply\(\); \}/.test(w),
+    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(w),
+      '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다');
+    const resetAt = w.indexOf('if(ok && wasOrder){ uaOrderReset();');
+    const unlockAt = w.indexOf('uaSetSaving(false)');
+    assert.ok(resetAt >= 0 && unlockAt > resetAt,
+      '편집 모드를 끝내는 자리가 잠금 해제보다 뒤다 — uaSetSaving 이 순서 편집 중인 옛 화면을 그리고, 최종형이 또 한 번 그려진다(R2-W3)');
+    assert.ok(/if\(!uaSetSaving\(false\) && ok && wasOrder\)\{ uaAdminBar\(\); uaApply\(\); \}/.test(w),
       '__userSaved 가 순서 저장 성공 뒤 스스로 다시 그리지 않는다 — 푸시가 오지 않으면 끝난 편집 막대가 그대로 남는다');
+  },
+
+  // ⑭-d 잠금 표시는 **바뀔 때만** 다시 그린다(2026-09-11 적대 검토 R2-W3).
+  //     무조건 그리면 [편집]·[＋ 직원 등록]을 누르는 것만으로도 명부가 통째로 다시 만들어진다
+  //     (userEdOpen 이 uaSetSaving(false) 를 부른다) — 89행짜리 목록이 맨 위로 튀고, 방금 누른 그 버튼이
+  //     사라져 폼을 닫을 때 포커스를 되돌릴 자리도 함께 없어진다.
+  renderOnlyWhenLockChanges(web) {
+    const ss = extractFunction(web, 'uaSetSaving');
+    assert.ok(/const changed = \(__uaSaving !== !!on\);/.test(ss),
+      'uaSetSaving 이 "잠금이 실제로 바뀌었나"를 재지 않는다 — 안 바뀐 호출에도 명부가 통째로 다시 그려진다(R2-W3)');
+    assert.ok(/if\(changed\)\{\s*\n\s*uaAdminBar\(\);\s*\n\s*uaApply\(\);\s*\n\s*\}/.test(ss),
+      'uaSetSaving 의 재렌더가 changed 로 좁혀져 있지 않다 — [편집] 한 번에 스크롤과 누른 버튼이 사라진다');
+    assert.ok((ss.match(/return changed;/g) || []).length >= 2,
+      "uaSetSaving 이 두 갈래(잠금 해제·워치독 설치) 모두에서 '다시 그렸나'를 돌려주지 않는다 — 부르는 쪽이 판단할 근거가 한쪽에서 사라진다");
   },
 
   // ⑮ 여는 순간 낡은 잠금을 정리한다 — 다만 **도는 중이면 풀지 않는다**(가드와 워치독이 함께 사라진다).
@@ -661,14 +707,17 @@ const checks = {
     const ap = windowFn(web, '__applyMembers');
     //  ★ '내 순서 저장인가' 는 지금 기다리는 요청 하나가 진다(__uaReq · 2026-09-11).
     //    별도 깃발을 따로 두면 두 값이 갈리고, 갈리는 순간 어느 쪽이 참인지 아무도 모른다.
-    assert.ok(/const orderSaving = !!\(__uaReq && __uaReq\.cmd === 'saveUserOrder'\);/.test(ap),
-      "__applyMembers 가 '내 순서 저장인가'를 요청 표에서 읽지 않는다 — 깃발을 따로 두면 두 값이 갈린다");
+    //  ★ **아직 도는 중인가(__uaSaving)까지** 본다(2026-09-11 R2-W2). 워치독은 잠금만 풀고 요청 표는
+    //    남기므로, 회신이 끝내 오지 않은 순서 저장의 표가 화면에 계속 남는다. 그 표만 보면 그 뒤의
+    //    **관계없는** 푸시가 전부 '내 순서 저장의 결과'로 통과해, 관리자가 다시 잡고 있는 순서를 덮어쓴다.
+    assert.ok(/const orderSaving = !!\(__uaSaving && __uaReq && __uaReq\.cmd === 'saveUserOrder'\);/.test(ap),
+      "__applyMembers 가 '내 순서 저장인가'를 (아직 도는 중인) 요청 표에서 읽지 않는다 — 깃발을 따로 두면 두 값이 갈리고, 워치독이 지나간 표만 보면 관계없는 푸시가 전부 통과한다(R2-W2)");
     assert.ok(/if\(__uaOrder && !orderSaving\)\{ __uaPendingData = d;/.test(ap),
       '__applyMembers 가 순서 편집 중의 관계없는 푸시를 미뤄 두지 않는다 — 남의 저장 한 번에 편집 중인 순서가 날아간다');
     const us = windowFn(web, '__userSaved');
     assert.ok(/const wasOrder = rq\.cmd === 'saveUserOrder';/.test(us),
       "__userSaved 가 '이 회신이 순서 저장의 것인가'를 요청 표에서 읽지 않는다");
-    assert.ok(/if\(wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null;/.test(us),
+    assert.ok(/if\(ok && wasOrder\)\{ uaOrderReset\(\); __uaPendingData = null; \}/.test(us),
       '__userSaved 가 순서 저장 성공에서 편집 모드를 끝내지 않는다 — 호스트는 회신을 먼저 보내고 명부를 그다음에 민다');
     const tog = extractFunction(web, 'uaOrderToggle');
     assert.ok(/__uaPendingData/.test(tog) && /uaFlushPending\(\)/.test(tog),
@@ -816,6 +865,7 @@ test('계약⑬: 순서 편집 ▲▼ 는 스크롤 자리와 포커스를 지�
 test('계약⑭: 직원 쓰기는 reqId·대상으로 상관된다(늦은 회신이 다른 폼을 닫지 않는다)', () => checks.requestGeneration(app));
 test('계약⑭-b: 명부 쪽 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
 test('계약⑭-c: 「순서 저장」 성공은 그 자리에서 막대·목록을 다시 그린다', () => checks.orderSaveRedrawsItself(app));
+test('계약⑭-d: 잠금 표시는 바뀔 때만 다시 그린다([편집] 한 번에 명부가 맨 위로 튀지 않는다)', () => checks.renderOnlyWhenLockChanges(app));
 test('계약⑮: 화면을 (다시) 열 때 낡은 잠금은 풀되, 도는 중이면 워치독만 다시 건다', () => checks.openKeepsGuard(app));
 test('계약⑯: 순서 편집 중의 관계없는 명부 푸시는 미뤄 두고 편집을 마칠 때 반영한다', () => checks.orderSurvivesPush(app));
 test('계약⑰: 「퇴사자 보기」는 조회가 실제로 시작됐을 때만 켜진 채로 남는다', () => checks.inactiveToggleIsHonest(app));
@@ -864,10 +914,33 @@ test('변이⑭-d: 행 버튼의 렌더 시 잠금을 빼면 계약⑭-b 가 실
 });
 
 test('변이⑭-e: 순서 저장 성공의 재렌더를 지우면 계약⑭-c 가 실패한다(끝난 편집 막대가 남는다)', () => {
-  const bad = mutate(app, '    if(wasOrder){ uaOrderReset(); __uaPendingData = null; uaAdminBar(); uaApply(); }',
-    '    if(wasOrder){ uaOrderReset(); __uaPendingData = null; }');
+  const bad = mutate(app, '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }',
+    '  uaSetSaving(false);');
   assert.throws(() => checks.orderSaveRedrawsItself(bad), /스스로 다시 그리지 않는다/);
   assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
+});
+
+test('변이⑭-e2: 편집 모드 종료를 잠금 해제 뒤로 되돌리면 계약⑭-c 가 실패한다(같은 목록을 두 번 그린다)', () => {
+  //  옛 순서 — 먼저 풀고(그때 순서 편집 중인 화면이 그려진다) 그다음에 끝낸다(최종형을 또 그린다).
+  const removed = mutate(app, '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }\n', '');
+  const bad = mutate(removed, '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n',
+    '  if(!uaSetSaving(false) && ok && wasOrder){ uaAdminBar(); uaApply(); }\n' +
+    '  if(ok && wasOrder){ uaOrderReset(); __uaPendingData = null; }\n');
+  assert.throws(() => checks.orderSaveRedrawsItself(bad), /잠금 해제보다 뒤다/);
+  assert.doesNotThrow(() => checks.orderSaveRedrawsItself(app));   // 통제군
+});
+
+test('변이⑭-f: __userSaved 의 폼 표(__ueTok) 대조를 지우면 계약⑭ 가 실패한다(늦은 등록 회신이 새 등록 폼을 닫는다)', () => {
+  const bad = mutate(app, "rq.cmd !== 'saveUserOrder' && rq.tok === __ueTok && Number(rq.uid || 0)",
+    "rq.cmd !== 'saveUserOrder' && Number(rq.uid || 0)");
+  assert.throws(() => checks.requestGeneration(bad), /폼 표\(__ueTok\)와 대조하지 않는다/);
+  assert.doesNotThrow(() => checks.requestGeneration(app));   // 통제군
+});
+
+test('변이⑭-g: uaSetSaving 이 무조건 다시 그리게 되돌리면 계약⑭-d 가 실패한다', () => {
+  const bad = mutate(app, '  const changed = (__uaSaving !== !!on);', '  const changed = true;');
+  assert.throws(() => checks.renderOnlyWhenLockChanges(bad), /"잠금이 실제로 바뀌었나"를 재지 않는다/);
+  assert.doesNotThrow(() => checks.renderOnlyWhenLockChanges(app));   // 통제군
 });
 
 test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패한다(전송 중 가드가 사라진다)', () => {
@@ -880,6 +953,13 @@ test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패�
 test('변이⑯: 관계없는 푸시를 그대로 반영하게 되돌리면 계약⑯ 이 실패한다', () => {
   const bad = mutate(app, '  if(__uaOrder && !orderSaving){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
   assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 두지 않는다/);
+  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
+});
+
+test("변이⑯-b: '순서 저장 중'을 요청 표만으로 판정하게 되돌리면 계약⑯ 이 실패한다(워치독 뒤의 푸시가 전부 통과한다)", () => {
+  const bad = mutate(app, "  const orderSaving = !!(__uaSaving && __uaReq && __uaReq.cmd === 'saveUserOrder');",
+    "  const orderSaving = !!(__uaReq && __uaReq.cmd === 'saveUserOrder');");
+  assert.throws(() => checks.orderSurvivesPush(bad), /아직 도는 중인/);
   assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
 });
 
@@ -950,16 +1030,31 @@ test('계약②-b: 브리지 3종(saveUser·setUserActive·saveUserOrder)이 배
     const b = csMember(main, 'private async Task ' + fn + '(');
     assert.ok(/^private async Task \w+\(string reqId, /.test(b), `${fn} 이 reqId 를 받지 않는다(R3)`);
     assert.ok(/UserSaved\(ok, msg, reqId\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다(__userSaved)`);
-    assert.ok(/if \(ok\) await LoadMembersToWebAsync\(includeInactive\);/.test(b),
-      `${fn} 이 성공 뒤 명부를 재조회하지 않는다 — "저장은 됐는데 목록은 그대로"인 창이 생긴다`);
+    //  ★ 2026-09-11 적대 검토(R2-H2) — 순서 저장만은 **실패해도** 명부를 다시 민다. 호스트가 거부하는
+    //    대표 경우가 「낡은 명부」(StaleRosterMsg)인데, 그건 "화면이 낡았다" 는 뜻이다. 아무것도 안
+    //    내려보내면 관리자는 같은 낡은 명부로 다시 눌러 같은 거부만 반복한다(거부 루프). 웹은 순서 편집
+    //    중에 온 갱신을 pending 으로 미루고 안내만 띄우므로 편집 중이던 순서를 이 푸시가 덮어쓰지 않는다.
+    //    나머지 둘은 그대로 '성공 때만' 이다 — 실패는 폼 안의 문구로 끝나고 목록은 안 바뀐 채다.
+    if (fn === 'SaveUserOrderAsync') {
+      const iSaved = b.indexOf('UserSaved(ok, msg, reqId);');
+      const iPush = b.indexOf('await LoadMembersToWebAsync(includeInactive);');
+      assert.ok(iSaved >= 0 && iPush > iSaved,
+        `${fn} 이 회신(UserSaved)보다 먼저 명부를 민다 — 웹이 그 회신으로 편집 모드를 끝낸 뒤라야 푸시가 앉는다`);
+      assert.ok(!/if \(ok\) await LoadMembersToWebAsync/.test(b),
+        `${fn} 이 성공했을 때만 명부를 민다 — 낡은 명부 거부(StaleRosterMsg)를 받은 관리자가 같은 화면으로 ` +
+        '다시 눌러 거부만 반복하는 루프에 갇힌다(R2-H2)');
+    } else {
+      assert.ok(/if \(ok\) await LoadMembersToWebAsync\(includeInactive\);/.test(b),
+        `${fn} 이 성공 뒤 명부를 재조회하지 않는다 — "저장은 됐는데 목록은 그대로"인 창이 생긴다`);
+    }
   }
   assert.ok(/window\.__userSaved && window\.__userSaved\(/.test(main),
     '호스트가 __userSaved 를 부르지 않는다(과제의 __projectSaved 와 같은 패턴이어야 한다)');
-  //  푸시 문장 자체에 세 번째 인자(reqId)가 실린다. ★ 식(=>) 본문이라 중괄호가 없어 csMember 를 못 쓴다 —
-  //  머리에서 창을 떼어 본다.
-  const usIdx = code.indexOf('private void UserSaved(');
-  assert.ok(usIdx >= 0, 'UserSaved 를 찾지 못했다(측정 불가 ≠ 통과)');
-  const saved = code.slice(usIdx, usIdx + 400);
+  //  푸시 문장 자체에 세 번째 인자(reqId)가 실린다.
+  //   ★ 식(=>) 본문이라 중괄호가 없다 — 이제 csMember(하네스)가 그 모양을 알고 ';' 까지만 자른다(R2-W5).
+  //     예전에는 머리에서 400자를 떼어 봤는데, 그 창은 **다음 멤버**까지 덮는다: 옆 멤버의 문장이 이
+  //     계약을 통과시킬 수 있고, 창 길이가 판정을 정하는 것은 계약이 아니다.
+  const saved = csMember(main, 'private void UserSaved(');
   assert.ok(/string reqId = ""/.test(saved), 'UserSaved 가 reqId 를 받지 않는다(R3)');
   assert.ok(/Serialize\(reqId \?\? ""\)/.test(saved),
     '__userSaved 호출에 세 번째 인자(reqId)가 없다 — 웹이 늦은 회신을 가려낼 수 없다(R3)');
@@ -1060,6 +1155,14 @@ test('변이⑥-f: 비우기에서 is_active=0 을 빼면 계약⑥-f 가 실패
     '" ELSE (CASE WHEN is_active=0 THEN NULL ELSE sort_order END) END"',
     '" ELSE NULL END"');
   assert.throws(() => checks.orderClearsOutsiders(bad), /is_active=0 이 없다/);
+  assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
+});
+
+test('변이⑥-j: 한 문장에서 WHERE 를 빼면 계약⑥-f 가 실패한다(표 전체가 UPDATE 대상이 된다 · R2)', () => {
+  const bad = mutate(pdb,
+    '" WHERE user_id IN (" + inList + ") OR is_active=0"',
+    '""');
+  assert.throws(() => checks.orderClearsOutsiders(bad), /WHERE 가 없다/);
   assert.doesNotThrow(() => checks.orderClearsOutsiders(pdb));   // 통제군
 });
 

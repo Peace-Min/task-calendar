@@ -20,7 +20,9 @@
 //   ★ 값을 시험에 박지 않는다: 표 9개는 정본(db/deploy/schema-calendar.sql)에서 읽고, 못 읽으면
 //     통과가 아니라 실패다(판정 불가 ≠ 통과).
 import { readFileSync } from 'node:fs';
-import { test, assert } from './harness.mjs';
+//  ★ C# 슬라이서는 **하네스의 것을 쓴다**(2026-09-11 R2-W6). 이 파일에도 사본이 있었는데, 사본은 반드시
+//    낡는다 — 실제로 하네스만 식(=>) 본문을 배웠고 이 사본은 그대로 다음 멤버를 삼키고 있었다.
+import { test, assert, stripCsComments as stripCs, extractCsMember as csMember } from './harness.mjs';
 import { canonSql, stripSqlComments } from './canon-schema.mjs';
 
 const pdb  = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
@@ -37,45 +39,6 @@ const USER_GRANTS = 'taskmgr-company-data/05-grants.sql';
 const createUser  = readOr('../' + CREATE_USER, CREATE_USER);
 const calGrants   = readOr('../' + CAL_GRANTS, CAL_GRANTS);
 const userGrants  = readOr('../../' + USER_GRANTS, USER_GRANTS);
-
-// C# 주석 제거(문자열 리터럴은 보존) — "왜 안 하는지"를 적어 둔 주석이 계약을 통과시키면 안 된다.
-const BS = String.fromCharCode(92);
-function stripCs(s) {
-  let out = '', i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < s.length) { if (s[j] === BS) { j += 2; continue; } if (s[j] === c) { j++; break; } j++; }
-      out += s.slice(i, j); i = j; continue;
-    }
-    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
-    if (c === '/' && s[i + 1] === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
-    out += c; i++;
-  }
-  return out;
-}
-
-// C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
-function csMember(source, sig) {
-  const code = stripCs(source);
-  const s = code.indexOf(sig);
-  assert.ok(s >= 0, `C# 멤버를 찾지 못함: ${sig}(측정 불가 ≠ 통과)`);
-  const open = code.indexOf('{', s);
-  assert.ok(open > s, `${sig} 의 여는 중괄호를 찾지 못함`);
-  let depth = 0;
-  for (let k = open; k < code.length; k++) {
-    const c = code[k];
-    if (c === '"' || c === "'") {
-      let j = k + 1;
-      while (j < code.length) { if (code[j] === BS) { j += 2; continue; } if (code[j] === c) break; j++; }
-      k = j; continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return code.slice(s, k + 1); }
-  }
-  assert.fail(`${sig} 의 중괄호 짝이 맞지 않는다`);
-}
 
 function mutate(base, from, to) {
   const out = base.replace(from, to);
@@ -348,10 +311,9 @@ const checks = {
         `${fn} 이 휴지통 목록 갱신을 성공(ok)에만 건다 — 그 문구는 정확히 **실패**할 때 나오는 말이다(R2)`);
     }
     //  푸시 문장 자체에 세 번째 인자가 실린다(기본값 "" — 옛 웹과 호환).
-    //  ★ 식(=>) 본문이라 중괄호가 없다 — csMember 가 아니라 머리에서 창을 떼어 본다.
-    const i = code.indexOf('private void TrashDone(');
-    assert.ok(i >= 0, 'TrashDone 을 찾지 못했다(측정 불가 ≠ 통과)');
-    const done = code.slice(i, i + 400);
+    //  ★ 식(=>) 본문이라 중괄호가 없다 — 이제 csMember(하네스)가 그 모양을 알고 ';' 까지만 자른다(R2-W5).
+    //    예전에는 머리에서 400자를 떼어 봤고, 그 창은 **다음 멤버**까지 덮었다(옆 멤버가 계약을 통과시킨다).
+    const done = csMember(mainCs, 'private void TrashDone(');
     assert.ok(/string reqId = ""/.test(done), 'TrashDone 이 reqId 를 받지 않는다(R3)');
     assert.ok(/window\.__trashDone\(/.test(done) && /Serialize\(reqId \?\? ""\)/.test(done),
       '__trashDone 호출에 세 번째 인자(reqId)가 없다 — 웹이 늦은 회신을 가려낼 수 없다(R3)');
