@@ -202,7 +202,7 @@ if($Install -or $Uninstall){
   }
 
   # -Install : 지금 이 실행에 준 설정 그대로 등록한다(나중에 화면과 스케줄러가 어긋나지 않게).
-  if(-not (Test-Path $CnfPath)){
+  if(-not (Test-Path -LiteralPath $CnfPath)){
     Warn "자격 파일이 아직 없습니다: $CnfPath"
     Warn "이대로 등록하면 일요일마다 코드 2 로 실패만 쌓입니다. 등록 후 반드시 .cnf 를 만들 것."
   }
@@ -245,9 +245,9 @@ if(-not (Test-Path $mysql)){     Die "mysql.exe 를 못 찾았습니다(검증�
 # ============================================================================
 #  백업 폴더 + 로그 자리
 # ============================================================================
-if(-not (Test-Path $BackupDir)){
+if(-not (Test-Path -LiteralPath $BackupDir)){
   try { New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null } catch {}
-  if(-not (Test-Path $BackupDir)){ Die "백업 폴더를 만들 수 없습니다: $BackupDir (드라이브가 없거나 권한이 없습니다)" 2 }
+  if(-not (Test-Path -LiteralPath $BackupDir)){ Die "백업 폴더를 만들 수 없습니다: $BackupDir (드라이브가 없거나 권한이 없습니다)" 2 }
   Info "백업 폴더를 새로 만들었습니다: $BackupDir"
 }
 $script:logPath = Join-Path $BackupDir "backup-log.txt"
@@ -255,7 +255,7 @@ $script:logPath = Join-Path $BackupDir "backup-log.txt"
 # ============================================================================
 #  2) 자격 증명 — 보호된 .cnf 에서만 읽는다
 # ============================================================================
-if(-not (Test-Path $CnfPath)){
+if(-not (Test-Path -LiteralPath $CnfPath)){
   Bad "자격 파일이 없습니다: $CnfPath"
   Write-Host ""
   Write-Host "  비밀번호를 명령줄로 받지 않습니다. 같은 PC 의 다른 프로세스가 명령줄을 그대로"
@@ -391,7 +391,11 @@ if($isLocal -and $dataDir){
   # -B(배치) 모드의 mysql 은 역슬래시를 이스케이프해서 내보낸다("C:\\ProgramData\\..." — 실측).
   $dataDir = $dataDir -replace '\\\\','\'
   try{
-    $dstRoot = [IO.Path]::GetPathRoot((Resolve-Path $BackupDir).Path).ToUpper()
+    #  ★ 2026-09-11 적대 검토(R6) — -LiteralPath · .ProviderPath 둘 다 필요하다(restore-taskmgr.ps1 의 같은 한 벌).
+    #    대괄호가 든 폴더를 와일드카드로 읽으면 엉뚱한 폴더를 잡거나 아무것도 못 찾고, UNC(\\서버\공유)에서
+    #    .Path 는 공급자 한정 문자열(Microsoft.PowerShell.Core\FileSystem::\\…)이라 GetPathRoot 가 엉뚱한
+    #    뿌리를 돌려준다 — 같은 볼륨 경고가 조용히 죽어 백업과 원본이 한 디스크에 쌓인다.
+    $dstRoot = [IO.Path]::GetPathRoot((Resolve-Path -LiteralPath $BackupDir).ProviderPath).ToUpper()
     $srcRoot = [IO.Path]::GetPathRoot($dataDir).ToUpper()
     if($srcRoot -and $dstRoot -eq $srcRoot){
       Warn "백업 폴더가 DB 데이터 폴더와 같은 볼륨($dstRoot)에 있습니다."

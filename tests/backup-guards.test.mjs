@@ -17,6 +17,7 @@
 //     ⑤ mysqldump 인자 넷(--no-tablespaces · --single-transaction · --routines · --triggers)이 살아 있다
 //     ⑥ 덤프 검증이 '개수' 가 아니라 '이름 집합' 을 대조한다
 //     ⑦ 덤프 전에 SHOW GRANTS 로 TRIGGER 보유를 확인하는 **선검사**가 살아 있다
+//     ⑧ 사람이 준 경로를 -LiteralPath 로 보고, Resolve-Path 결과를 .ProviderPath 로 받는다
 //
 //   ⑤⑥⑦ 은 취향이 아니라 실측에서 나온 계약이다(backup-taskmgr.ps1 머리말):
 //     · --no-tablespaces 를 빼면 mysqldump 가 INFORMATION_SCHEMA.FILES 를 읽으려 하고,
@@ -204,6 +205,31 @@ const checks = {
     assert.ok(/information_schema\.TRIGGERS 는 TRIGGER 권한으로/.test(ps),
       "'대조만으로는 못 잡는다' 는 이유가 머리말에서 사라졌다 — 이유가 없으면 이 겹이 중복으로 보인다");
   },
+
+  // ⑧ 사람이 준 경로는 **글자 그대로** 보고(-LiteralPath), Resolve-Path 의 결과는 **.ProviderPath** 로 받는다
+  //    (2026-09-11 적대 검토 R6). restore-taskmgr.ps1 이 R3~R5 에서 닫은 그 구멍이 이 파일에는 그대로
+  //    남아 있었다 — 같은 부류의 결함은 같은 잣대로 잠근다.
+  //    · -LiteralPath 없이 보면 `[`·`]`·`*` 가 든 경로를 **와일드카드**로 읽어, 있는 폴더를 "없다" 고 하거나
+  //      엉뚱한 자리를 고른다. -BackupDir·-CnfPath 는 사람이 타이핑하는 값이고, 공유 폴더 이름에 대괄호가
+  //      들어가는 일은 드물지 않다. 백업은 무인으로 도는 경로라 그 오판이 조용히 반복된다.
+  //    · UNC 경로에는 PSDrive 가 없다. 그래서 (Resolve-Path …).Path 는 네이티브 경로가 아니라 공급자 한정
+  //      문자열(Microsoft.PowerShell.Core\FileSystem::\\서버\공유\…)을 돌려준다 — [IO.Path]::GetPathRoot 가
+  //      그 문자열의 뿌리를 엉뚱하게 읽어 '같은 볼륨' 경고가 조용히 죽고, 백업과 원본이 한 디스크에 쌓인다.
+  //      .ProviderPath 는 언제나 네이티브 경로다.
+  pathsAreLiteralAndNative(ps) {
+    const resolved = [...ps.matchAll(/\(Resolve-Path[^()]*\)\.(\w+)/g)];
+    assert.ok(resolved.length >= 1,
+      `Resolve-Path 결과를 쓰는 자리를 ${resolved.length} 개 찾았다 — 적어도 하나(-BackupDir 볼륨 대조)여야 한다(측정 불가 ≠ 통과)`);
+    for (const m of resolved) {
+      assert.strictEqual(m[1], 'ProviderPath',
+        `Resolve-Path 결과를 .${m[1]} 로 받는다 — UNC 경로에서 그 값은 공급자 한정 문자열이라 ` +
+        '.NET 이 뿌리를 읽지 못한다(.ProviderPath 는 언제나 네이티브 경로다 · R6)');
+    }
+    for (const v of ['BackupDir', 'CnfPath']) {
+      assert.ok(!new RegExp(`(Test-Path|Resolve-Path) \\$${v}\\b`).test(ps),
+        `$${v} 를 -LiteralPath 없이 본다 — 대괄호·별표가 든 경로를 와일드카드로 읽는다(R6)`);
+    }
+  },
 };
 
 export { checks, psSrc, cmdSrc };
@@ -245,6 +271,9 @@ test('백업 가드 ⑥: 덤프 검증이 개수가 아니라 이름 집합을 �
 
 test('백업 가드 ⑦: 덤프 전에 SHOW GRANTS 로 TRIGGER 보유를 확인한다', () =>
   checks.grantsPrecheckBeforeDump(psSrc));
+
+test('백업 가드 ⑧: 사람이 준 경로를 글자 그대로 보고(-LiteralPath) Resolve-Path 결과를 .ProviderPath 로 받는다', () =>
+  checks.pathsAreLiteralAndNative(psSrc));
 
 // ══ 변이 주입 — 위 계약이 '정말 우는지' 증명한다 ═══════════════════════
 // 주입기 mutate() 는 tests/ps-guard-lib.mjs 에 있다 — 접미사 변이 금지 · 앵커 유일성 단언 ·
@@ -417,4 +446,36 @@ test('변이⑦-d: 선검사를 mysqldump 뒤로 옮기면 가드 ⑦ 이 실패
   let bad = mutate(psSrc, line, '$grantLines = @("(뒤로 옮김)")\n');
   bad = mutate(bad, '$dumpRc = $LASTEXITCODE\n', '$dumpRc = $LASTEXITCODE\n' + line);
   assert.throws(() => checks.grantsPrecheckBeforeDump(bad), /선검사가 mysqldump 뒤로 밀렸다/);
+});
+
+test('변이⑧: Resolve-Path 결과를 .Path 로 되돌리면 가드 ⑧ 이 실패한다(UNC 에서 볼륨 경고가 조용히 죽는다 · R6)', () => {
+  const bad = mutate(psSrc,
+    '(Resolve-Path -LiteralPath $BackupDir).ProviderPath',
+    '(Resolve-Path -LiteralPath $BackupDir).Path');
+  assert.throws(() => checks.pathsAreLiteralAndNative(bad), /Resolve-Path 결과를 \.Path 로 받는다/);
+  assert.doesNotThrow(() => checks.pathsAreLiteralAndNative(psSrc));   // 통제군
+});
+
+test('변이⑧-b: -BackupDir 의 -LiteralPath 를 빼면 가드 ⑧ 이 실패한다(대괄호가 든 경로를 와일드카드로 읽는다 · R6)', () => {
+  const bad = mutate(psSrc,
+    '(Resolve-Path -LiteralPath $BackupDir).ProviderPath',
+    '(Resolve-Path $BackupDir).ProviderPath');
+  assert.throws(() => checks.pathsAreLiteralAndNative(bad), /\$BackupDir 를 -LiteralPath 없이 본다/);
+  assert.doesNotThrow(() => checks.pathsAreLiteralAndNative(psSrc));   // 통제군
+});
+
+test('변이⑧-c: -CnfPath 의 존재 확인에서 -LiteralPath 를 빼면 가드 ⑧ 이 실패한다(자격 파일을 "없다" 고 읽는다 · R6)', () => {
+  const bad = mutate(psSrc,
+    'if(-not (Test-Path -LiteralPath $CnfPath)){\n  Bad "자격 파일이 없습니다',
+    'if(-not (Test-Path $CnfPath)){\n  Bad "자격 파일이 없습니다');
+  assert.throws(() => checks.pathsAreLiteralAndNative(bad), /\$CnfPath 를 -LiteralPath 없이 본다/);
+  assert.doesNotThrow(() => checks.pathsAreLiteralAndNative(psSrc));   // 통제군
+});
+
+test('변이⑧-d: Resolve-Path 자리가 통째로 사라지면(검사 대상 소멸) 가드 ⑧ 이 실패한다(측정 불가 ≠ 통과)', () => {
+  const bad = mutate(psSrc,
+    '[IO.Path]::GetPathRoot((Resolve-Path -LiteralPath $BackupDir).ProviderPath).ToUpper()',
+    '[IO.Path]::GetPathRoot($BackupDir).ToUpper()');
+  assert.throws(() => checks.pathsAreLiteralAndNative(bad), /Resolve-Path 결과를 쓰는 자리를 0 개 찾았다/);
+  assert.doesNotThrow(() => checks.pathsAreLiteralAndNative(psSrc));   // 통제군
 });

@@ -485,11 +485,13 @@ test('변이①-b: 이름 타이핑 확인을 없애고 스위치만으로 열�
     '  $typed = ""\n  try { $typed = Read-Host "덮어쓸 DB 이름을 입력(\'$LiveDb\')" } catch { $typed = "" }',
     '  $typed = $LiveDb   # 확인 없이 통과');
   assert.throws(() => checks.liveOverwriteGuard(bad), /이름 타이핑 확인이 없다/);
+  assert.doesNotThrow(() => checks.liveOverwriteGuard(psSrc));   // 통제군
 });
 
 test('변이①-c: 타이핑 대조를 대소문자 무시(-cne → -ne)로 낮추면 가드 ① 이 실패한다', () => {
   const bad = mutate(psSrc, 'if("$typed" -cne "$LiveDb"){', 'if("$typed" -ne "$LiveDb"){');
   assert.throws(() => checks.liveOverwriteGuard(bad), /대소문자까지\(-cne\) 대조하지 않는다/);
+  assert.doesNotThrow(() => checks.liveOverwriteGuard(psSrc));   // 통제군
 });
 
 test('변이①-d: 비대화형 거부를 없애면(무인 실행에 문이 열리면) 가드 ① 이 실패한다', () => {
@@ -497,6 +499,7 @@ test('변이①-d: 비대화형 거부를 없애면(무인 실행에 문이 열�
     '  if([Console]::IsInputRedirected){\n    Write-Host "  -OverwriteLive 가 있지만 stdin 이 리다이렉트돼 있습니다(비대화형)."',
     '  if($false){\n    Write-Host "  (비대화형 거부를 없앤 변이)"');
   assert.throws(() => checks.liveOverwriteGuard(bad), /비대화형\(stdin 리다이렉트\)에서도 라이브 덮어쓰기가 열린다/);
+  assert.doesNotThrow(() => checks.liveOverwriteGuard(psSrc));   // 통제군
 });
 
 test('변이②: 비밀번호를 -p 로 넘기는 자리를 만들면 가드 ② 가 실패한다', () => {
@@ -513,12 +516,14 @@ test('변이②-b: --password= 꼴도 잡는다', () => {
     '"--defaults-extra-file=$adminCnf","--default-character-set=utf8mb4"',
     '"--user=$AdminUser","--password=$AdminPw"');
   assert.throws(() => checks.noPasswordOnCommandLine(bad), /비밀번호를 명령줄로 넘기는 자리가 생겼다/);
+  assert.doesNotThrow(() => checks.noPasswordOnCommandLine(psSrc));   // 통제군
 });
 
 test('변이②-c: .cnf 경로가 통째로 사라지면(검사 대상 소멸) 가드 ② 가 실패한다', () => {
   const bad = psSrc.split('--defaults-extra-file=$adminCnf').join('--defaults-file=NONE');
   assert.notStrictEqual(bad, psSrc, '변이 준비 실패: .cnf 인자를 못 찾았다');
   assert.throws(() => checks.noPasswordOnCommandLine(bad), /검사가 볼 대상 자체가 사라졌다/);
+  assert.doesNotThrow(() => checks.noPasswordOnCommandLine(psSrc));   // 통제군
 });
 
 test('변이③: 이름 집합 대조를 개수 비교로 바꾸면 가드 ③ 이 실패한다', () => {
@@ -535,12 +540,14 @@ test('변이③-b: 트리거를 이름 대조 대상에서 빼면 가드 ③ 이
     'CheckNames "트리거 이름"      $liveTrigs  $gotTrigs\n',
     '');
   assert.throws(() => checks.verifiesNameSetsNotCounts(bad), /이름 집합으로 대조하는 대상이 바뀌었다/);
+  assert.doesNotThrow(() => checks.verifiesNameSetsNotCounts(psSrc));   // 통제군
 });
 
 test('변이③-c: 행 수를 COUNT(*) 대신 추정치로 바꾸면 가드 ③ 이 실패한다', () => {
   // information_schema.TABLE_ROWS 는 InnoDB 에서 추정치다 — 대조에 쓰면 조용히 어긋난다.
   const bad = mutate(psSrc, "COUNT(*) AS n FROM", "TABLE_ROWS AS n FROM information_schema.TABLES t --");
   assert.throws(() => checks.verifiesNameSetsNotCounts(bad), /COUNT\(\*\) 로 세지 않는다/);
+  assert.doesNotThrow(() => checks.verifiesNameSetsNotCounts(psSrc));   // 통제군
 });
 
 test('변이④: -Grants 가 grants-calendar.sql 을 안 쓰면 가드 ④ 가 실패한다', () => {
@@ -561,6 +568,7 @@ test('변이④-b: 하드코딩된 DB 이름을 대상에 맞추는 자리를 �
     '  if($TargetDb -ne $grantSchema){\n    Warn "대상이',
     '  if($false){\n    Warn "대상이');
   assert.throws(() => checks.grantsPathUsesBothSqlFiles(bad), /리허설이 라이브 권한을 건드린다/);
+  assert.doesNotThrow(() => checks.grantsPathUsesBothSqlFiles(psSrc));   // 통제군
 });
 
 test('변이④-c: 세 번째 정본(05-grants.sql) 적용을 빼면 가드 ④-b 가 실패한다', () => {
@@ -576,11 +584,13 @@ test('변이④-d: 못 찾았을 때의 경고를 없애면 가드 ④-b 가 실
   // '조용한 실패' 가 가장 나쁘다 — 경고가 없으면 복구는 exit 0 으로 끝나고 아무도 모른다.
   const bad = mutate(psSrc, '\n    WriteUserGrantsHowto\n', '\n    # (경고를 남기지 않는다)\n');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /경고를 남기지 않는다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });
 
 test('변이④-e: -UserGrantsPath 매개변수를 없애면 가드 ④-b 가 실패한다', () => {
   const bad = mutate(psSrc, '[string]$UserGrantsPath = ""', '[string]$UnusedGrantsPath = ""');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /-UserGrantsPath 매개변수가 없다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });
 
 test('변이⑤: .cmd 의 종료코드 한 줄만 손대도 가드 ⑤ 가 실패한다', () => {
@@ -596,11 +606,13 @@ test('변이⑤-b: 한쪽에서 코드 한 줄을 지우면 줄 수 대조가 �
     'rem    7 cannot verify - no live baseline to compare against; this is NOT a pass\n',
     '');
   assert.throws(() => checks.exitCodeTablesMatch(psSrc, bad), /줄 수가 다르다/);
+  assert.doesNotThrow(() => checks.exitCodeTablesMatch(psSrc, cmdSrc));   // 통제군
 });
 
 test('변이⑤-c: 표는 그대로 두고 상수만 바꾸면(표가 거짓말하면) 가드 ⑤ 가 실패한다', () => {
   const bad = mutate(psSrc, '$EXIT_NOBASELINE = 7', '$EXIT_NOBASELINE = 9');
   assert.throws(() => checks.exitCodeTablesMatch(bad, cmdSrc), /표의 코드 목록과 \$EXIT_\* 상수 값이 다르다/);
+  assert.doesNotThrow(() => checks.exitCodeTablesMatch(psSrc, cmdSrc));   // 통제군
 });
 
 test('변이⑥: "검증 못 함"을 통과(0)로 바꾸면 가드 ⑥ 이 실패한다', () => {
@@ -616,11 +628,13 @@ test('변이⑥-b: 라이브 부재 분기를 없애면 가드 ⑥ 이 실패한
     '  if(-not $liveExists){\n    Row "unk" $label "검증 못 함 — 라이브',
     '  if($false){\n    Row "ok" $label "통과 — 라이브');
   assert.throws(() => checks.cannotVerifyIsNotAPass(bad), /'검증 못 함'으로 표시하는 분기가 없다/);
+  assert.doesNotThrow(() => checks.cannotVerifyIsNotAPass(psSrc));   // 통제군
 });
 
 test('변이⑥-c: "검증 못 함" 항목을 모으지 않으면(판정에 반영 안 되면) 가드 ⑥ 이 실패한다', () => {
   const bad = mutate(psSrc, '    $script:unknown += $label\n', '');
   assert.throws(() => checks.cannotVerifyIsNotAPass(bad), /따로 모으는 자리가 없다/);
+  assert.doesNotThrow(() => checks.cannotVerifyIsNotAPass(psSrc));   // 통제군
 });
 
 test('변이⑦: 주석 안의 -p 를 세면 안 된다(마스커 회귀)', () => {
@@ -677,6 +691,7 @@ test('변이⑧-b: 상한 있는 읽기를 옛 [Console]::In.ReadLine() 으로 �
     '    $r = @{ Line = [Console]::In.ReadLine(); TimedOut = $false }\n');
   assert.throws(() => checks.stdinReadIsBounded(bad),
     /\[Console\]::In\.ReadLine\(\) 이 코드에 남아 있다/);
+  assert.doesNotThrow(() => checks.stdinReadIsBounded(psSrc));   // 통제군
 });
 
 test('변이⑧-c: 상한 값을 0(또는 하루)으로 바꾸면 가드 ⑧ 이 실패한다', () => {
@@ -684,6 +699,7 @@ test('변이⑧-c: 상한 값을 0(또는 하루)으로 바꾸면 가드 ⑧ 이
   assert.throws(() => checks.stdinReadIsBounded(zero), /1~60초 사이여야 한다/);
   const day = mutate(psSrc, '$STDIN_WAIT_SEC = 10', '$STDIN_WAIT_SEC = 86400');
   assert.throws(() => checks.stdinReadIsBounded(day), /1~60초 사이여야 한다/);
+  assert.doesNotThrow(() => checks.stdinReadIsBounded(psSrc));   // 통제군
 });
 
 test('변이⑧-d: 상한을 넘겨도 Die 하지 않고 경고만 하면 가드 ⑧ 이 실패한다', () => {
@@ -692,6 +708,7 @@ test('변이⑧-d: 상한을 넘겨도 Die 하지 않고 경고만 하면 가드
     '      Die "stdin 첫 줄을 $STDIN_WAIT_SEC 초 안에 받지 못했습니다',
     '      Warn "stdin 첫 줄을 $STDIN_WAIT_SEC 초 안에 받지 못했습니다');
   assert.throws(() => checks.stdinReadIsBounded(bad), /Die 로 끝내지 않는다/);
+  assert.doesNotThrow(() => checks.stdinReadIsBounded(psSrc));   // 통제군
 });
 
 test('변이⑧-e: 상한 초과를 코드 2 가 아닌 값으로 끝내면 가드 ⑧ 이 실패한다', () => {
@@ -699,6 +716,7 @@ test('변이⑧-e: 상한 초과를 코드 2 가 아닌 값으로 끝내면 가�
     '(파이프가 열린 채 비어 있습니다). 무인 실행이면 -CnfPath 를 주거나 $ADMIN_PW_ENV 를 설정하세요." $EXIT_CONFIG',
     '(파이프가 열린 채 비어 있습니다). 무인 실행이면 -CnfPath 를 주거나 $ADMIN_PW_ENV 를 설정하세요." $EXIT_OK');
   assert.throws(() => checks.stdinReadIsBounded(bad), /설정 문제.*\$EXIT_CONFIG/s);
+  assert.doesNotThrow(() => checks.stdinReadIsBounded(psSrc));   // 통제군
 });
 
 test('변이⑨: 환경변수 조회를 stdin 읽기 뒤로 옮기면 가드 ⑨ 가 실패한다', () => {
@@ -716,6 +734,7 @@ test('변이⑨-b: 기본 .cnf 를 찾기만 하고 쓰지 않으면 가드 ⑨ 
     'if(-not $CnfPath -and (Test-Path $defaultCnf)){\n  $CnfPath = $defaultCnf',
     'if($false){\n  $unused = $defaultCnf');
   assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad), /기본 \.cnf 가 있어도 쓰지 않는다/);
+  assert.doesNotThrow(() => checks.credentialOrderPrefersCnfAndEnv(psSrc));   // 통제군
 });
 
 test('변이⑨-c: .cnf 가 있는데도 stdin 을 읽게 만들면 가드 ⑨ 가 실패한다', () => {
@@ -724,6 +743,7 @@ test('변이⑨-c: .cnf 가 있는데도 stdin 을 읽게 만들면 가드 ⑨ �
     '  $null = ReadStdinLineBounded $STDIN_WAIT_SEC\n  $adminCnf = $CnfPath\n');
   assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
     /\.cnf 가 있는데도 stdin 을 읽는다/);
+  assert.doesNotThrow(() => checks.credentialOrderPrefersCnfAndEnv(psSrc));   // 통제군
 });
 
 test('변이⑨-d: 환경변수 분기를 죽이면(if($false)) 가드 ⑨ 가 실패한다', () => {
@@ -732,6 +752,7 @@ test('변이⑨-d: 환경변수 분기를 죽이면(if($false)) 가드 ⑨ 가 �
     '  if($false){');
   assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
     /elseif 사슬이 아니다/);
+  assert.doesNotThrow(() => checks.credentialOrderPrefersCnfAndEnv(psSrc));   // 통제군
 });
 
 test('변이⑨-e: 머리말에서 환경변수 이름을 지우면 가드 ⑨ 가 실패한다', () => {
@@ -742,6 +763,7 @@ test('변이⑨-e: 머리말에서 환경변수 이름을 지우면 가드 ⑨ �
   assert.notStrictEqual(bad, psSrc, '변이 준비 실패: 머리말에서 이름을 못 찾았다');
   assert.throws(() => checks.credentialOrderPrefersCnfAndEnv(bad),
     /머리말이 환경변수 이름/);
+  assert.doesNotThrow(() => checks.credentialOrderPrefersCnfAndEnv(psSrc));   // 통제군
 });
 
 //  ★ 2026-09-11 적대 검토(R4) — 확인이 RequireFile 한 벌로 모였으므로 변이도 그 한 벌을 겨눈다.
@@ -779,12 +801,14 @@ test('변이④-i: -AppCnfPath 확인을 9-7 스모크 자리로 되돌리면 �
   const late = '    ' + call + '\n';
   const bad = mutate(mutate(psSrc, blk, ''), '    $smokeCnf = $AppCnfPath', late + '    $smokeCnf = $AppCnfPath');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /보다 뒤에 있다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });
 
 test('변이④-j: 직접 준 -DeployConfigPath 를 말없이 건너뛰게 되돌리면 가드 ④-b 가 실패한다(무시된 줄 모른다 · R3)', () => {
   const bad = mutate(psSrc,
     '  RequireFile "-DeployConfigPath 로 지정한 DeployConfig.cs" $DeployConfigPath "(경로를 확인하거나', '  # ');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /-DeployConfigPath\(직접 준 경우\) 존재 확인이 맨 앞/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });
 
 test('변이④-k: -Grants 두 SQL 확인을 8단계로 되돌리면 가드 ④-b 가 실패한다(이미 DROP 뒤다 · R3)', () => {
@@ -792,6 +816,7 @@ test('변이④-k: -Grants 두 SQL 확인을 8단계로 되돌리면 가드 ④-
   const bad = mutate(mutate(psSrc, '  ' + one, ''),
     '  $appUserText = [IO.File]::ReadAllText($appUserSql)', '  ' + one + '  $appUserText = [IO.File]::ReadAllText($appUserSql)');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /보다 뒤에 있다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });
 
 test('변이④-l: 쓰는 자리의 재확인을 지우면 가드 ④-b 가 실패한다(실행 중에 사라지면 경고로 둔갑한다 · R3)', () => {
@@ -841,4 +866,5 @@ test('변이④-q: 형제 폴더 갈래만 .Path 로 되돌려도 가드 ④-b �
     'return (Resolve-Path -LiteralPath $c).ProviderPath',
     'return (Resolve-Path -LiteralPath $c).Path');
   assert.throws(() => checks.grantsPathHandlesPrivateUserGrants(bad), /Resolve-Path 결과를 \.Path 로 받는다/);
+  assert.doesNotThrow(() => checks.grantsPathHandlesPrivateUserGrants(psSrc));   // 통제군
 });

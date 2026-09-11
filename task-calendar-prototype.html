@@ -5087,6 +5087,13 @@ let __uaSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주
 //    남이 바꾼 것(신규 등록·퇴사·복구)은 버린 그 자리에 함께 묻힌다 — 다음 조회 전까지 영영 안 보인다
 //    (2026-09-11 적대 검토 R5-W2). 그래서 짧게 기다렸다가 **스스로 다시 읽는다.**
 let __uaAwaitPush = 0;      // 순서 저장 성공 뒤 갱신 명부 푸시를 기다리는 타이머(0 = 기다리지 않는다)
+//  ★ 그 기다림은 **새 쓰기가 나가도 끝나지 않는다**(2026-09-11 적대 검토 R6-W2). 옛 판은 uaSend 가
+//    타이머를 껐다 — "이 왕복이 곧 새 명부를 데려온다"는 말은 그 왕복이 **성공했을 때만** 참이다
+//    (호스트의 SaveUserAsync 는 if (ok) 일 때만 명부를 민다). 그래서 "순서 저장 성공 → 3초 안에 다른
+//    쓰기 → 그 쓰기가 실패" 한 번이면 기다림만 사라지고 명부는 끝내 오지 않는다 — 버린 자리에 실려
+//    있던 남의 등록·퇴사·복구가 다음 조회 전까지 화면에 영영 닿지 않는다.
+//    이제 이 빚을 갚는 것은 **도착한 명부 하나**뿐이다(__applyMembers).
+let __uaAwaitSeen = false;  // 기다리기 시작한 뒤 명부 푸시가 실제로 왔나(왔으면 스스로 다시 읽지 않는다)
 let __ueId = 0;             // 편집 중인 대상 user_id(0 = 신규 등록)
 //  ★ 폼을 **한 번 여는 것**마다 붙는 표(2026-09-11 적대 검토 R2-W1). 대상(uid)만으로는 '어느 폼인가'를
 //    가릴 수 없다 — 신규 등록은 언제나 uid 0 이라, A(등록)를 보낸 뒤 워치독이 잠금을 풀고(요청 표는 남는다)
@@ -5178,8 +5185,15 @@ function uaRender(rows){
   const list = document.getElementById('uaList'); if(!list) return;
   //  ★ 되돌리는 것은 **같은 화면일 때만**이다: 순서 편집·「퇴사자 보기」가 바뀌면 목록의 내용이 통째로
   //    달라지므로 옛 자리는 의미가 없다(화면이 바뀌면 맨 위가 옳다 · trRender 의 sameView 와 같은 규칙).
-  const view = { order: __uaOrder, inactive: __uaInactive };
-  const sameView = !!__uaShown && __uaShown.order === view.order && __uaShown.inactive === view.inactive;
+  //  ★ **검색어와 관리자 여부도 그 화면의 일부다**(2026-09-11 적대 검토 R6-W1). 검색은 목록을 통째로
+  //    갈아치우는데 옛 열쇠는 순서 편집·「퇴사자 보기」 둘뿐이라 '같은 화면'으로 읽혔다 — 89행을 내려다
+  //    보던 중에 검색어를 치면 걸러진 결과가 목록 한가운데에서 열렸다(그 전에는 새로 그려 맨 위였다).
+  //    ㆍ정규화는 uaVisible 과 **같다**(trim·소문자). 거르는 규칙이 같아야 같은 목록이 같은 열쇠를 낸다.
+  const qv = document.getElementById('uaSearch');
+  const view = { order: __uaOrder, inactive: __uaInactive, admin: __uaAdmin,
+                 q: qv ? String(qv.value || '').trim().toLowerCase() : '' };
+  const sameView = !!__uaShown && __uaShown.order === view.order && __uaShown.inactive === view.inactive
+                   && __uaShown.admin === view.admin && __uaShown.q === view.q;
   const keepScroll = list.scrollTop;
   const af = document.activeElement;
   //  ★ **목록 안의** 버튼만 본다(list.contains) — 편집 폼에도 같은 손잡이(data-uop/data-uid)를 쥔 버튼이
@@ -5481,8 +5495,9 @@ function uaSend(payload){
   if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   if(__uaSaving) return;   // 연타·중복 전송 차단
   const cmd = String((payload && payload.cmd) || '');
-  //  ★ 새 쓰기가 나가면 '푸시를 기다리는 중'은 끝난다(R5-W2) — 이 왕복의 결과가 곧 새 명부를 데려온다.
-  clearTimeout(__uaAwaitPush); __uaAwaitPush = 0;
+  //  ★ 기다리던 명부 푸시(__uaAwaitPush)는 **여기서 끄지 않는다**(2026-09-11 적대 검토 R6-W2).
+  //    새 쓰기가 새 명부를 데려오는 것은 그 쓰기가 **성공했을 때뿐**이고, 실패하면 호스트는 아무것도
+  //    밀지 않는다 — 여기서 꺼 버리면 그 실패 한 번에 빚을 아무도 기억하지 못한다.
   const reqId = cmd + '-' + (++__reqSeq);
   //  ★ tok = 이 요청을 보낸 **그 폼**의 표(R2-W1). uid 는 '누구를' 만 말하고 '어느 폼에서' 는 말하지 않는다.
   __uaReq = { id: reqId, uid: Number((payload && payload.userId) || 0), cmd: cmd, tok: __ueTok, done: false };
@@ -5556,6 +5571,24 @@ function uaReload(){
   return true;
 }
 
+// 갱신 명부 푸시를 기다린다 — **한 번에 하나만** 건다(2026-09-11 적대 검토 R6-W2).
+//   ★ 겹쳐 걸지 않는다: 연달아 저장하면 타이머가 쌓이고 그만큼 헛왕복이 나간다. 이미 기다리는 중이면
+//     그대로 두고, '아직 못 받았다'는 사실만 부르는 쪽이 다시 세운다(__uaAwaitSeen = false).
+//   ★ 터질 때 **아직 손대는 중이면 다시 건다**(순서 편집 중 · 쓰기 왕복 중). 그 자리에서 그냥 끝내면,
+//     기다리는 3초 안에 시작한 쓰기가 실패하는 순간 아무도 명부를 다시 읽지 않는다 — 이 장치가 막으려던
+//     바로 그 구멍이다. 왕복은 워치독이 12초에 반드시 풀어 주므로 되걸기는 끝난다.
+function uaAwaitArm(){
+  if(__uaAwaitPush) return;
+  __uaAwaitPush = setTimeout(() => {
+    __uaAwaitPush = 0;
+    if(__uaAwaitSeen) return;                              // 기다리던 명부가 왔다 — 빚은 갚혔다
+    if(__uaOrder || __uaSaving){ uaAwaitArm(); return; }   // 아직 손대는 중 — 끝난 뒤에 읽는다
+    uaReload();
+  }, 3000);
+}
+// 기다림을 통째로 끝낸다 — 화면을 새로 열거나 닫으면 그 빚은 이 화면의 것이 아니다.
+function uaAwaitStop(){ clearTimeout(__uaAwaitPush); __uaAwaitPush = 0; __uaAwaitSeen = false; }
+
 // 회신 한 덩어리를 편집 화면의 상태로 옮긴다 — 첫 조회(openUserAdmin)·재조회(uaReload)·
 // 쓰기 뒤 푸시(__applyMembers)가 **같은 함수**를 쓴다. 세 경로가 갈라지면 한쪽만 낡는다.
 //   ★ 관리자 여부·퇴사자 포함 여부는 **호스트가 정한 값**을 그대로 받는다. 웹이 보낸 요청과 다를 수 있다
@@ -5597,6 +5630,7 @@ async function openUserAdmin(){
   __uaBusy = true;
   __uaAdmin = false; __uaMembers = []; __uaUnits = []; __uaTitles = []; __uaInactive = false;
   __uaPendingData = null;
+  uaAwaitStop();   // ★ 이 조회가 곧 새 명부를 가져온다 — 지난 화면이 기다리던 빚은 여기서 끝난다(R6-W2)
   uaOrderReset();
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(워치독이 아직 안 돌았거나,
   //    회신 없이 창을 닫은 경우). 왕복이 없으면 풀고, **아직 도는 중이면 풀지 말고 워치독만 다시 건다** —
@@ -5747,6 +5781,38 @@ function userEdOpen(userId){
   const ov = document.getElementById('userEditModal');
   if(ov) ov.__openSnap = formSnapshot(ov);
 }
+// 명부 푸시가 도착했을 때, **열려 있는 편집 폼**의 활성 상태 컨트롤을 새 명부에 다시 맞춘다.
+//   ★ 2026-09-11 적대 검토 R6-W3. #userEdActive 의 문구·data-uop 은 userEdOpen 이 폼을 **열 때 한 번**
+//     정한다. 그래서 "이미 복구된 항목입니다 — 목록을 새로고침합니다."(AlreadyActiveMsg) 로 거부당한 뒤
+//     호스트가 약속대로 갱신 명부를 밀어도(USER-ADMIN §11-32), 열려 있는 폼은 이미 재직 중인 사람에게
+//     여전히 [복구]를 내준다 — 다시 누르면 같은 거부만 되풀이된다. §11-32 가 닫았다고 적은 그 고리가
+//     폼 안에서 그대로 살아 있었다.
+//   ★ 손대는 것은 **관리자가 고칠 수 없는 칸뿐**이다(하단 버튼 · 읽기전용 서열 번호). 로그인 ID·이름·
+//     직급·소속·열람 범위·편집 권한은 건드리지 않는다 — 남의 쓰기가 내 편집을 조용히 지우면 안 된다.
+//   ★ 대상이 새 명부에 없으면(다른 관리자가 지웠다) **폼을 닫지 않고** 그 사실만 말한다. 닫으면 적어 둔
+//     편집이 통째로 사라지고, 관리자는 무엇이 왜 사라졌는지 알 길이 없다.
+//   ★ 문구·상태 규칙은 userEdOpen 의 #userEdActive 블록과 **글자 그대로 같아야 한다** — 두 곳이 갈리면
+//     '열었을 때'와 '푸시가 왔을 때'가 다른 말을 한다. 시험이 둘을 맞댄다(계약⑦-e2).
+function userEdSyncActive(){
+  const ed = document.getElementById('userEditModal');
+  if(!isOverlayOpen(ed)) return;   // 열려 있는 폼이 없다(닫히는 중도 '열린 폼'이 아니다)
+  if(!__ueId) return;              // 신규 등록(uid 0) — 명부에 맞출 대상이 없다
+  const m = __uaMembers.find(x => x && Number(x.userId) === Number(__ueId));
+  if(!m){
+    userEdMsgSet(ICON.alert + ' 대상 직원을 찾을 수 없습니다 — 새 명부에 없습니다(다른 관리자가 바꿨습니다).', 'err');
+    return;
+  }
+  const ab = document.getElementById('userEdActive');
+  if(ab){
+    const off = !(m && m.isActive === false);   // 재직 중 → 「퇴사 처리」, 퇴사자 → 「복구」
+    ab.textContent = off ? '퇴사 처리' : '복구';
+    ab.classList.toggle('danger', off);
+    ab.dataset.uop = off ? 'off' : 'on';
+  }
+  //  서열 번호도 명부에서 온다(읽기전용) — 남이 순서를 저장했으면 이 숫자가 바뀐다.
+  const so = document.getElementById('userEdSort');
+  if(so) so.value = (m.sortOrder != null) ? String(m.sortOrder) : '';
+}
 function userEdSaveNow(){
   if(__uaSaving) return;
   const val = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
@@ -5807,8 +5873,7 @@ window.__userSaved = function(ok, msg, reqId){
   //      **스스로 다시 읽는다**. 푸시가 먼저 오면(대개 그렇다) 그 타이머는 __applyMembers 가 지운다.
   if(ok && wasOrder){
     uaOrderReset(); __uaPendingData = null;
-    clearTimeout(__uaAwaitPush);
-    __uaAwaitPush = setTimeout(() => { __uaAwaitPush = 0; if(!__uaOrder && !__uaSaving) uaReload(); }, 3000);
+    __uaAwaitSeen = false; uaAwaitArm();
   }
   //  ★ 「낡은 명부」 거부(StaleRosterMsg)도 **편집 모드를 끝낸다**(2026-09-11 적대 검토 R3-W1).
   //    이 거부는 "네 화면이 낡았다"는 뜻이라, 호스트가 거부와 함께 갱신 명부를 밀어 준다. 편집 모드를
@@ -5861,6 +5926,10 @@ window.__applyMembers = function(json, reqId){
   let d = null;
   try{ d = JSON.parse(String(json || '')); }catch(_){ d = null; }
   if(!(d && d.found)) return;   // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  //  ★ 명부가 왔다 = 기다리던 빚이 갚혔다(R6-W2). 내 것이든 남의 것이든 화면은 서버가 방금 읽어 준
+  //    명부를 쥐었으므로 스스로 한 번 더 읽을 이유가 없다. 순서 편집 중이라 미뤄 두는 갈래도 같다 —
+  //    그 명부는 버려지지 않고 편집을 마칠 때 앉는다(uaOrderToggle).
+  __uaAwaitSeen = true;
   //  ★ 순서 편집 중에 **관계없는 푸시**(다른 관리자의 저장·휴지통 복구 등)가 오면 편집 중인 순서가 통째로
   //    날아간다(2026-09-10). 내 쓰기의 결과가 아니면 미뤄 두고, 편집을 마칠 때 반영한다.
   //  ★ '내 것인가' 는 **id 하나가** 진다(R3-W1). 예전에는 '아직 도는 중인가(__uaSaving) + 마지막 명령이
@@ -5880,10 +5949,12 @@ window.__applyMembers = function(json, reqId){
     clearTimeout(__uaAwaitPush); __uaAwaitPush = 0;
     uaOrderReset();   // 서버에 저장된 명부가 도착했다 — 편집 모드는 여기서 끝이다(되돌릴 것은 없다)
     uaApplyData(d);
+    userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)
     return;
   }
   if(__uaOrder){ __uaPendingData = d; uaAdminBar(); return; }
   uaApplyData(d);
+  userEdSyncActive();   // ★ 여기가 「이미 복구됨」 거부 뒤의 길이다 — 폼이 낡은 [복구]를 계속 내주면 안 된다(R6-W3)
 };
 
 /* ── 휴지통(#trashModal) — 숨긴 항목 복구 · 영구 삭제 (docs/TRASH-DELETE §5) ───────────────
@@ -7559,6 +7630,9 @@ function closeOverlay(ov){
   //  ★ 편집 폼이 닫혔다 = 그 폼을 기다리던 회신은 더 이상 **이 화면의 것이 아니다**(R2-W1).
   //    표를 여기서 비운다 — 닫기 경로가 하나이므로 Esc·배경·×·[취소] 어느 쪽으로 닫아도 같다.
   if(ov.id === 'userEditModal') __ueTok = 0;
+  //  ★ 「구성원 편집」 화면이 닫혔다 = 기다리던 명부 푸시도 이 화면의 빚이 아니다(R6-W2) —
+  //    닫힌 목록을 위해 3초 뒤에 왕복이 한 번 더 나가면 그건 아무도 보지 않는 조회다.
+  if(ov.id === 'userAdminModal') uaAwaitStop();
   const done = () => { ov.__closeTimer = null; ov.classList.remove('closing'); ov.classList.add('hidden'); };
   if(_reducedMotion()){ done(); return; }
   ov.classList.add('closing');
