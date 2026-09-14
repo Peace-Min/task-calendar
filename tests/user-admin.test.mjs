@@ -70,8 +70,14 @@ function mutate(base, from, to) {
 //  회신 명부의 **좌석 한 줄**(2026-09-14 좌석 일원화) — uaSend 안에 있다. trSend 에 글자가 똑같은 줄이
 //  하나 더 있으므로(같은 문을 쓰기 때문이다) 앞의 회신 객체까지 묶어 **그 한 곳만** 가리키게 한다.
 //  ★ String.replace 는 첫 일치만 바꾼다 — 유일하지 않은 변이는 어느 날 조용히 엉뚱한 함수를 친다.
-const SEAT_IN_SEND = "r.error)) || ''), roster: String((r && r.roster) || '') };\n  rep.painted = uaSeatReply(rep.roster, cmd);\n";
+const SEAT_IN_SEND = "r.error)) || ''), roster: String((r && r.roster) || '') };\n  uaSeatReply(rep.roster, cmd);\n";
 const SEAT_IN_SEND_GONE = "r.error)) || ''), roster: String((r && r.roster) || '') };\n";
+//  uaSetSaving 의 **마지막 줄** — 워치독을 되살려 보는 변이가 끼어드는 자리다(2026-09-14 부터 잠금은
+//  다시 그리지 않고 그 자리에서 건다: uaSyncControls). trSetSaving 의 끝줄과 글자가 다르므로 유일하다.
+const WATCHDOG_SLOT = '  uaSyncControls();\n}';
+//  같은 자리에 워치독을 **함수 안쪽으로** 되살려 본 모습(extractFunction 이 잘라 오는 범위 안이어야 한다 —
+//  닫는 중괄호 바깥에 두면 떼어 낸 함수에 그 줄이 들어오지 않아 변이가 아무것도 바꾸지 못한다).
+const WATCHDOG_BACK = '  uaSyncControls();\n  if(on) setTimeout(() => uaSetSaving(false), 12000);\n}';
 
 // window.__xxx = function(...){...} 형태의 호스트 콜백 — extractFunction 은 `function 이름(` 만 찾으므로
 // 여기서 따로 오려 낸다(선언 모양이 다르다고 계약을 못 보면 안 된다 · trash-web.test.mjs 와 같은 도구).
@@ -713,75 +719,56 @@ const checks = {
     }
   },
 
-  // ⑬ 순서 편집의 ▲▼ — 목록을 통째로 다시 그리므로 스크롤 자리와 포커스를 **손으로** 지켜야 한다.
-  //    89행에서 한 칸 옮길 때마다 맨 위로 튀고 포커스가 body 로 떨어지면 연속 조작이 불가능하다(2026-09-10).
-  moveKeepsPlace(web) {
+  // ⑬ 순서 편집의 ▲▼ — 목록을 **다시 그리지 않는다**(2026-09-14 군더더기 걷기 2단계).
+  //    한 칸 이동은 자리 바꿈이지 내용 변경이 아니다. 그런데 옛 판은 uaApply() 로 89행을 통째로 새로
+  //    만들고, 맨 위로 튄 스크롤을 도로 앉히고, 사라진 버튼을 손잡이로 다시 찾아 포커스를 옮겼다
+  //    (uaFocusMoved) — 뒤의 둘은 앞의 하나를 메우려던 장치다. 그리지 않으면 되돌릴 것도 없다.
+  moveDoesNotRedraw(web) {
     const b = extractFunction(web, 'uaMove');
-    assert.ok(/getElementById\('uaList'\)/.test(b) && /scrollTop/.test(b),
-      'uaMove 가 #uaList 의 스크롤 자리를 기억·복원하지 않는다 — 한 칸 옮길 때마다 목록이 맨 위로 튄다');
-    //  ★ 되돌릴 화살표는 **방향**이 정한다(2026-09-11). 예전에는 포커스를 쥔 요소를 읽어 같은 답을
-    //    더 먼 길로 구했다 — 그 길은 '그 버튼이 정말 이 행의 것인가'를 한 번 더 따지느라 길기만 했다.
-    assert.ok(/const uop = delta < 0 \? 'up' : 'down';/.test(b),
-      'uaMove 가 방향으로 화살표를 정하지 않는다 — 어디로 포커스를 되돌릴지 두 갈래로 갈린다');
-    assert.ok(/uaFocusMoved\(/.test(b),
-      'uaMove 가 포커스를 되돌리지 않는다 — 한 번 누르면 포커스가 사라져 두 번째를 누를 수 없다');
-    const f = extractFunction(web, 'uaFocusMoved');
-    assert.ok(/data-uop/.test(f) && /data-uid/.test(f),
-      'uaFocusMoved 가 data-uop/data-uid 손잡이로 버튼을 찾지 않는다 — 이름으로 찾으면 동명이인에서 갈린다');
-    assert.ok(/disabled/.test(f) && /'down' : 'up'/.test(f),
-      'uaFocusMoved 가 꺼진 화살표일 때 반대쪽을 잡지 않는다 — 끝(맨 위·맨 아래)에 닿는 순간 포커스가 사라진다');
-    assert.ok(/scrollIntoView/.test(f), 'uaFocusMoved 가 옮긴 행을 보이는 자리로 끌어오지 않는다');
-    //  ★ 2026-09-11(R5-W3)부터 **uaRender 도 같은 자리를 지킨다** — ▲▼ 말고도 목록을 다시 그리는 길이
-    //    여럿이기 때문이다(잠금·호스트 푸시). 여기 한 줄은 그것과 같은 값을 앉히므로 다투지 않는다.
-    //    ㆍ포커스는 **마지막에** uaFocusMoved 가 정한다 — 렌더가 앉힌 자리를 옮긴 행이 덮어써야 한다.
-    assert.ok(b.indexOf('uaFocusMoved(') > b.indexOf('uaApply()'),
-      'uaMove 가 다시 그리기 **전에** 포커스를 정한다 — 그 뒤의 렌더가 그 자리를 덮어쓴다');
+    assert.ok(!/uaApply\(\)|uaRender\(/.test(b),
+      'uaMove 가 아직 목록을 통째로 다시 그린다 — 스크롤과 포커스를 잃고, 그것을 되돌리는 장치가 다시 필요해진다');
+    assert.ok(!/scrollTop/.test(b),
+      'uaMove 가 아직 스크롤 자리를 손으로 되돌린다 — 다시 그리지 않으므로 되돌릴 자리가 없다');
+    //  ★ 옮기는 것은 **이웃 행**이다. 누른 행을 옮기면 그 안의 화살표가 DOM 에서 잠시 떨어져 나가
+    //    브라우저가 포커스를 body 로 떨어뜨린다(insertBefore 는 '떼었다 붙이기'다).
+    assert.ok(/list\.insertBefore\(near, mine\.nextSibling\);/.test(b) && /list\.insertBefore\(near, mine\);/.test(b),
+      'uaMove 가 이웃 행을 insertBefore 로 옮기지 않는다(또는 누른 행을 옮긴다) — 누른 행을 옮기면 그 안의 포커스가 사라진다');
+    //  ★ 옮길 행은 **행에 달린 열쇠(data-uid)**로 찾는다 — 이름으로 찾으면 동명이인에서 갈린다.
+    assert.ok(/ln\.dataset\.uid \|\| ''\) === String\(uid\)/.test(b),
+      'uaMove 가 옮길 행을 data-uid 로 찾지 않는다 — 자리(index)는 걸러진 목록에서 어긋난다');
+    //  ★ 남는 일은 끝(첫 행·마지막 행)에 닿은 화살표뿐 — 렌더와 **같은 한 벌**이 정한다.
+    assert.ok(/uaSyncControls\(\);/.test(b),
+      '한 칸 옮긴 뒤 끝에 닿은 화살표를 다시 정하지 않는다 — 맨 위 행의 ▲ 가 켜진 채로 남는다');
+    //  ★ 그 화살표가 꺼지면 포커스를 같은 행의 반대쪽으로 넘긴다 — 끄는 순간 브라우저가 body 로 떨어뜨린다.
+    assert.ok(/\[data-uop="up"\]/.test(b) && /\[data-uop="down"\]/.test(b) && /back\.focus\(\)/.test(b),
+      'uaMove 가 끝에 닿아 꺼진 화살표에서 반대쪽으로 포커스를 넘기지 않는다 — 맨 위에 닿는 순간 포커스가 사라진다');
+    assert.ok(!/uaFocusMoved/.test(web.replace(/\/\/[^\n]*/g, '')),
+      'uaFocusMoved 가 아직 살아 있다 — 사라진 버튼을 손잡이로 다시 찾던 장치다(이제 그 버튼은 사라지지 않는다)');
   },
 
-  // ⑬-b 목록을 **다시 그리는 쪽**이 보던 자리와 포커스를 지킨다(2026-09-11 적대 검토 R5-W3).
-  //     uaMove 만 제 손으로 지키던 옛 판은, 저장 한 번에 여러 번 도는 다른 렌더(uaSetSaving 의 잠금 ·
-  //     호스트 푸시)에서 그대로 맨 위로 튀었다 — 80번째 사람을 저장하면 다음 사람을 다시 찾아야 했다.
-  renderKeepsPlace(web) {
+  // ⑬-b 목록을 다시 그리는 것은 **내용이 실제로 달라졌을 때뿐**이다(2026-09-14) — 명부가 새로 앉았다 ·
+  //     검색어가 바뀌었다 · 순서 편집을 켜고 껐다 · 관리자 여부가 뒤집혔다. 그때는 **맨 위**가 옳다
+  //     (R6-W1 이 검색에 대해 요구한 것이 바로 그것이다). 잠금과 ▲▼ 는 이제 이 렌더를 돌리지 않으므로,
+  //     '보던 자리·누르던 버튼'을 되돌리던 한 벌(__uaShown·__uaKeepBtn)은 지킬 것이 없어 사라졌다.
+  renderStartsAtTop(web) {
     const r = extractFunction(web, 'uaRender');
-    assert.ok(/const keepScroll = list\.scrollTop;/.test(r) && /list\.scrollTop = sameView \? keepScroll : 0;/.test(r),
-      'uaRender 가 스크롤 자리를 찍어 두고 되돌리지 않는다 — 다시 그릴 때마다 목록이 맨 위로 튄다(R5-W3)');
-    //  ★ 되돌리는 것은 **같은 화면일 때만**이다 — 순서 편집을 켜거나 「퇴사자 보기」를 뒤집으면 목록의
-    //    내용이 통째로 달라진다(trRender 의 sameView 와 같은 규칙).
-    assert.ok(/const sameView = !!__uaShown && __uaShown\.order === view\.order && __uaShown\.inactive === view\.inactive/.test(r),
-      "uaRender 가 '지금 그리는 것이 직전과 같은 화면인가'를 재지 않는다 — 순서 편집을 켜도 옛 스크롤 자리가 그대로 앉는다(R5-W3)");
-    //  ★ 그 열쇠에는 **검색어와 관리자 여부**도 든다(2026-09-11 적대 검토 R6-W1). 검색은 목록을 통째로
-    //    갈아치우는데 옛 열쇠는 순서 편집·퇴사자 보기 둘뿐이라 '같은 화면'으로 읽혔다 — 89행을 내려다
-    //    보던 중에 검색어를 치면 걸러진 결과가 목록 한가운데에서 열렸다.
-    assert.ok(/q: qv \? String\(qv\.value \|\| ''\)\.trim\(\)\.toLowerCase\(\) : ''/.test(r),
-      'uaRender 의 화면 열쇠에 검색어가 없다 — 검색으로 목록이 통째로 갈려도 옛 스크롤 자리가 앉는다(R6-W1)');
-    assert.ok(/__uaShown\.q === view\.q/.test(r),
-      "uaRender 가 검색어를 열쇠에 **담기만 하고 대조하지 않는다** — 담아 두는 것만으로는 '같은 화면'이 갈리지 않는다(R6-W1)");
-    assert.ok(/admin: __uaAdmin/.test(r) && /__uaShown\.admin === view\.admin/.test(r),
-      'uaRender 의 화면 열쇠에 관리자 여부가 없다 — 관리자에서 내려갔다 올라오면 목록이 통째로 새로 서는데 옛 자리가 앉는다(R6-W1)');
-    //  ★ 거르는 규칙(uaVisible)과 **같은 정규화**여야 한다 — 한쪽만 trim·소문자를 하면 같은 목록이
-    //    다른 열쇠를 내고, 앞뒤 공백만 친 재렌더가 맨 위로 튄다.
-    assert.ok(/String\(q\.value \|\| ''\)\.trim\(\)\.toLowerCase\(\)/.test(extractFunction(web, 'uaVisible')),
-      '전제 붕괴: uaVisible 의 검색어 정규화가 바뀌었다 — 열쇠의 정규화를 맞댈 기준이 사라졌다');
-    assert.ok((r.match(/__uaShown = view;/g) || []).length >= 2,
-      'uaRender 가 그린 화면(__uaShown)을 갈래마다 남기지 않는다 — 안내 한 줄뿐인 화면에서 빠져나오면 판정이 낡는다');
-    //  ★ 포커스도 같은 규칙이다: 잠금이 걸린 렌더는 행 버튼을 전부 끄므로 되돌릴 곳이 없다 — 그때는
-    //    **그 행**으로 물러났다가, 잠금이 풀리면 맡아 둔 표(__uaKeepBtn)로 그 버튼에 돌아온다.
-    assert.ok(/let keepBtn = \(af && list\.contains\(af\) && af\.dataset && af\.dataset\.uop && af\.dataset\.uid\)/.test(r),
-      'uaRender 가 포커스를 쥔 행 버튼을 data-uop·data-uid 로 찍어 두지 않는다(또는 목록 밖 버튼까지 센다 — 편집 폼의 포커스를 목록이 빼앗는다)');
+    assert.ok(/list\.scrollTop = 0;/.test(r),
+      'uaRender 가 맨 위에서 시작하지 않는다 — 통째로 갈린 목록에 옛 자리가 남으면 관리자가 고른 적 없는 중간에서 열린다(R6-W1)');
+    assert.ok(!/sameView|keepScroll|keepBtn|keepUid|__uaShown|__uaKeepBtn/.test(r),
+      "uaRender 에 '보던 자리·누르던 버튼 되돌리기'가 남아 있다 — 그 장치는 잠금·▲▼ 가 목록을 다시 만들던 시절의 것이다");
+    const bare = web.replace(/\/\/[^\n]*/g, '');
+    for (const dead of ['__uaShown', '__uaKeepBtn']) {
+      assert.ok(!bare.includes(dead),
+        `모듈 전역 ${dead} 가 아직 살아 있다 — 다시 그릴 이유가 없는 재렌더를 메우려고 자란 장치다`);
+    }
+    //  ★ 행의 손잡이는 **그대로 남는다**(용도가 바뀌었을 뿐이다): data-uid 는 ▲▼ 가 옮길 행을 찾는 열쇠이고,
+    //    tabIndex=-1 은 잠금이 포커스를 물러 세울 자리다(lockLineBtn).
     assert.ok(/line\.dataset\.uid = String\(Number\(m && m\.userId != null \? m\.userId : 0\)\);/.test(r),
-      '행(.mba-line)에 data-uid 가 없다 — 물러난 포커스가 어느 행인지 다음 렌더가 알 길이 없다');
+      '행(.mba-line)에 data-uid 가 없다 — ▲▼ 가 옮길 행을 찾을 열쇠가 사라진다');
     assert.ok(/line\.tabIndex = -1;/.test(r),
-      '행(.mba-line)이 포커스를 받을 수 없다 — 꺼진 버튼에서 물러설 자리가 없어 포커스가 body 로 떨어진다');
-    assert.ok(/if\(ub && !ub\.disabled\)/.test(r),
-      'uaRender 가 꺼진 버튼에도 포커스를 준다 — 브라우저가 그 포커스를 body 로 떨어뜨려 결국 같은 문제로 돌아온다');
-    assert.ok(/if\(__uaSaving\) __uaKeepBtn = keepBtn;/.test(r),
-      '잠금 동안 되돌릴 버튼을 맡아 두지 않는다 — 잠금이 풀려도 포커스가 행에 남아 다음 사람을 이어서 못 누른다');
-    assert.ok(/String\(af\.dataset\.uid \|\| ''\) === __uaKeepBtn\.uid/.test(r),
-      '맡아 둔 표를 되돌릴 때 **그 행인지** 대조하지 않는다 — 관리자가 잠금 중에 옮겨 둔 포커스를 엉뚱한 행으로 끌고 간다');
-    assert.ok(/if\(!restored && sameView && keepUid\)\{/.test(r) && /String\(ln\.dataset\.uid \|\| ''\) === keepUid/.test(r),
-      '행에 머물던 포커스를 그 행으로 되돌리지 않는다 — 되돌릴 버튼이 없으면 포커스가 body 로 떨어진다');
+      '행(.mba-line)이 포커스를 받을 수 없다 — 잠금이 버튼을 끌 때 물러설 자리가 없어 포커스가 body 로 떨어진다');
     assert.ok(!/line\.dataset\.uop/.test(r),
-      "행에 data-uop 을 달았다 — 버튼을 찾는 셀렉터('[data-uop][data-uid]')에 행이 끼어든다");
+      "행에 data-uop 을 달았다 — 버튼을 찾는 셀렉터('[data-uop]')에 행이 끼어든다");
   },
 
   // ⑦-e2 갱신 명부가 앉으면 **열려 있는 편집 폼**의 퇴사/복구 상태도 그 명부에 맞춘다(R6-W3).
@@ -935,13 +922,17 @@ const checks = {
       '편집 모드를 끄기 **전에** 명부를 앉힌다 — 순서 편집 화면을 한 번 그리고 최종형을 또 그려야 한다(한 번에 그려야 한다)');
     //  ④ 두 왕복이 같은 문을 지난다 — 그리고 **잠금을 푼 뒤**에 앉힌다(그리는 목록이 꺼진 버튼으로 서지 않게).
     const s = extractFunction(web, 'uaSend').replace(/\/\/[^\n]*/g, '');
-    assert.ok(/rep\.painted = uaSeatReply\(rep\.roster, cmd\);/.test(s),
+    assert.ok(/\n  uaSeatReply\(rep\.roster, cmd\);/.test(s),
       'uaSend 가 회신의 명부를 그 자리에서 들여보내지 않는다 — 폼을 거치지 않는 쓰기가 명부를 영영 앉히지 못한다(C06·C08)');
+    //  ★ 그 결과를 **회신 객체에 싣지 않는다**(2026-09-14 군더더기 걷기 2단계). '누가 이미 그렸나'를
+    //    부르는 쪽이 되짚어 되그리기를 정하던 셈이 사라졌기 때문이다 — 되짚을 것이 없으면 틀릴 것도 없다.
+    assert.ok(!/painted/.test(s),
+      "uaSend 가 아직 '앉혔나'를 회신에 싣는다 — 부르는 쪽이 그 값으로 되그릴지 셈하기 시작하면 그 셈이 다시 틀린다");
     assert.ok(s.indexOf('uaSetSaving(false);') >= 0 && s.indexOf('uaSeatReply(') > s.indexOf('uaSetSaving(false);'),
       'uaSend 가 잠금을 풀기 전에 명부를 앉힌다 — 그때 그려지는 목록이 전부 꺼진 버튼으로 선다');
     const t = extractFunction(web, 'trSend').replace(/\/\/[^\n]*/g, '');
-    assert.ok(/rep\.painted = uaSeatReply\(rep\.roster, cmd\);/.test(t),
-      '휴지통 회신의 명부가 같은 문을 지나지 않는다 — 인력 복구·삭제가 순서 편집 중인 화면을 덮는다(규칙이 두 벌이 된다)');
+    assert.ok(/\n  uaSeatReply\(rep\.roster, cmd\);/.test(t) && !/painted/.test(t),
+      '휴지통 회신의 명부가 같은 문을 지나지 않는다(또는 아직 판정을 회신에 싣는다) — 인력 복구·삭제가 순서 편집 중인 화면을 덮는다(규칙이 두 벌이 된다)');
     assert.ok(t.indexOf('trSetSaving(false);') >= 0 && t.indexOf('uaSeatReply(') > t.indexOf('trSetSaving(false);'),
       'trSend 가 잠금을 풀기 전에 명부를 앉힌다 — uaSend 와 다른 차례를 쓰면 한쪽만 낡는다');
     //  ⑤ 부르는 쪽은 앉히지 않는다(회신이 '앉았나'를 실어 오므로 되물을 것도 없다).
@@ -950,12 +941,14 @@ const checks = {
       assert.ok(!/uaSeatRoster\(|uaSeatReply\(/.test(body),
         `${fn} 이 회신의 명부를 스스로 앉힌다 — 좌석이 둘이면 '순서 편집 중이면 미뤄 둔다'가 한쪽에서만 지켜진다`);
     }
-    assert.ok(/rep\.painted = /.test(s) && /let painted = r\.painted;/.test(extractFunction(web, 'uaOrderSave')),
-      "회신이 '앉았나'를 실어 오지 않는다(또는 「순서 저장」이 그것을 안 받는다) — 되그릴지 말지를 판단할 근거가 사라진다(R4-W3)");
   },
 
-  // ⑭-b 명부 쪽 잠금은 **렌더가 진다**(2026-09-11 적대 검토 R3-W2).
-  //     노드를 걸어 다니며 끄면, 왕복 중에 도착한 명부 푸시가 목록을 새로 만드는 순간 잠금이 증발한다.
+  // ⑭-b 잠금은 **두 겹**이다(2026-09-14 군더더기 걷기 2단계).
+  //     ⓐ 지금 서 있는 노드를 **그 자리에서** 끈다(uaSetSaving → uaSyncControls) — 잠금 하나 때문에
+  //        89행을 새로 만들면 스크롤과 포커스를 잃고, 그것을 되돌리는 장치가 또 필요해진다.
+  //     ⓑ 그리고 **렌더도 __uaSaving 을 보고 그린다**(2026-09-11 R3-W2 · uaRowActions·uaAdminBar) —
+  //        왕복 중에 도착한 명부 푸시가 목록을 새로 만들어도 잠금이 증발하지 않는다.
+  //     둘은 **같은 값을 보는 한 벌**이라 다투지 않는다. 어느 한쪽만 있으면 각각 R3-W2·R2-W3 로 되돌아간다.
   //     ★ 폼 하단의 [저장]·[퇴사 처리]는 예외다 — 그 둘은 마크업에 박힌 붙박이라 다시 그려지지 않는다.
   lockIsDerivedAtRender(web) {
     const ra = extractFunction(web, 'uaRowActions');
@@ -969,10 +962,46 @@ const checks = {
     assert.ok(/nb\.disabled = __uaSaving;/.test(bar),
       '「＋ 직원 등록」이 왕복 중에도 켜져 있다 — 결과를 기다리는 폼 위에 새 폼이 겹친다');
     const ss = extractFunction(web, 'uaSetSaving');
-    assert.ok(/uaAdminBar\(\);\s*\n\s*uaApply\(\);/.test(ss),
-      'uaSetSaving 이 잠금을 렌더로 반영하지 않는다 — 잠금이 화면에 닿는 길이 없다');
+    assert.ok(/uaSyncControls\(\);/.test(ss),
+      'uaSetSaving 이 지금 서 있는 컨트롤을 그 자리에서 잠그지 않는다 — 잠금이 화면에 닿는 길이 없다');
+    assert.ok(!/uaApply\(\)|uaRender\(/.test(ss),
+      'uaSetSaving 이 잠금 때문에 목록을 다시 그린다 — [편집] 한 번에 89행이 맨 위로 튀고 방금 누른 버튼이 사라진다(R2-W3)');
     assert.ok(/getElementById\('userEdSave'\)/.test(ss) && /getElementById\('userEdActive'\)/.test(ss),
       'uaSetSaving 이 폼 하단의 붙박이 두 버튼을 직접 잠그지 않는다 — 그 둘은 다시 그려지지 않는다');
+    //  ★ 그 자리에서 끄는 집합은 **렌더가 잠그는 집합과 같아야** 한다. 갈리면 재렌더가 잠금을 뒤집는다:
+    //    여기만 끄면 다시 그릴 때 켜지고, 렌더만 끄면 그 자리에서는 켜진 채로 남는다.
+    const sc = extractFunction(web, 'uaSyncControls');
+    assert.ok(/getElementById\('uaList'\)/.test(sc) && /querySelectorAll\('\[data-uop\]'\)/.test(sc),
+      'uaSyncControls 가 #uaList 의 행 컨트롤을 훑지 않는다 — 목록 쪽 잠금이 그 자리에서 걸리지 않는다');
+    assert.ok(/'uaNew', 'uaOrderEdit', 'uaOrderSave'/.test(sc),
+      '막대의 세 버튼(uaNew·uaOrderEdit·uaOrderSave)을 그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다');
+    assert.ok(!/uaOrderCancel|uaInactive/.test(sc),
+      '[취소]·「퇴사자 보기」까지 잠근다 — 렌더는 그 둘을 잠그지 않으므로, 다시 그리는 순간 잠금이 뒤집힌다');
+    //  ★ 끝(첫 행·마지막 행)에 닿은 화살표는 잠금과 **사유가 다르다** — 잠금이 풀려도 켜지면 안 된다.
+    assert.ok(/first/.test(sc) && /last/.test(sc) && /__uaSaving \|\| edge/.test(sc),
+      'uaSyncControls 가 끝에 닿은 화살표를 함께 보지 않는다 — 잠금을 푸는 순간 맨 위 행의 ▲ 가 켜진다');
+  },
+
+  // ⑭-b2 잠금이 **포커스를 쥔 컨트롤**을 끌 때 — 끄는 순간 브라우저가 포커스를 body 로 떨어뜨린다
+  //      (그 뒤 Tab 은 문서 처음부터 다시 시작한다). 그래서 끄기 전에 그 행으로 물러나고, 풀 때
+  //      **그 행에 포커스가 아직 그대로일 때만** 돌아온다(관리자가 옮겨 뒀다면 그 자리가 옳다).
+  //      ★ 기억하는 곳이 **행 노드 자신**(__backBtn)이라 모듈 전역의 표도, '어느 행이었나'를 열쇠로
+  //        대조하는 갈래도 없다 — 행도 버튼도 다시 만들어지지 않으므로 노드가 곧 그 답이다.
+  lockRetreatsFocusInPlace(web) {
+    const f = extractFunction(web, 'lockLineBtn');
+    assert.ok(/closest\('\.mba-line'\)/.test(f),
+      'lockLineBtn 이 물러설 행(.mba-line)을 찾지 않는다 — 꺼지는 순간 포커스가 body 로 떨어진다');
+    assert.ok(/document\.activeElement === b/.test(f) && /ln\.__backBtn = b;/.test(f),
+      '포커스를 쥔 버튼을 끄기 전에 그 행으로 물러나 두고 돌아올 자리를 적어 두지 않는다');
+    assert.ok(/if\(!off && ln && ln\.__backBtn === b\)/.test(f) && /document\.activeElement === ln/.test(f),
+      "풀 때 '그 행에 포커스가 아직 그대로인가'를 보지 않는다 — 관리자가 옮겨 둔 포커스를 도로 뺏는다");
+    assert.ok(/ln\.__backBtn = null;/.test(f),
+      '돌려준 뒤 적어 둔 자리를 비우지 않는다 — 다음 잠금에서 엉뚱한 버튼으로 끌고 간다');
+    //  ★ 두 화면이 **같은 함수**를 쓴다 — 규칙이 두 벌이면 한쪽은 반드시 낡는다(uaSeatReply 와 같은 이유).
+    for (const fn of ['uaSyncControls', 'trSyncControls']) {
+      assert.ok(/lockLineBtn\(/.test(extractFunction(web, fn)),
+        `${fn} 이 lockLineBtn 을 쓰지 않는다 — 잠금이 포커스를 다루는 규칙이 화면마다 갈린다`);
+    }
   },
 
   // ⑭-c 「순서 저장」은 **자기 회신을 자기가 받는다**(2026-09-14). 예전에는 공용 회신함이 요청 표에서
@@ -981,7 +1010,8 @@ const checks = {
   //       안 그리면 ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에 남아, 눌러도 아무 일이 없다(R4-W3).
   //       명부가 회신에 실려 오면 그것을 앉히면서 그려지고(uaSeatRoster → uaApplyData), 안 실려 오면 여기서 그린다.
   orderSaveHandlesItsOwnReply(web) {
-    const o = extractFunction(web, 'uaOrderSave');
+    //  ★ 주석은 지우고 본다 — "예전에는 painted 로 되짚었다"는 **설명**이 계약을 깨뜨리면 안 된다.
+    const o = extractFunction(web, 'uaOrderSave').replace(/\/\/[^\n]*/g, '');
     assert.ok(/^async function uaOrderSave\(\)\{/m.test(web),
       'uaOrderSave 가 async 가 아니다 — 자기 회신을 자기 자리에서 받을 수 없다');
     assert.ok(/const r = await uaSend\(\{ cmd: 'saveUserOrder', userIds: ids \}\);/.test(o),
@@ -1002,29 +1032,15 @@ const checks = {
     assert.ok(/if\(r\.ok\) __uaPendingData = null;/.test(o),
       'uaOrderSave 가 성공에서 미뤄 둔 옛 스냅샷을 버리지 않는다 — 나중에 편집을 켰다 끄면 그 옛 명부가 이긴다(R4-W1·R4-W2)');
     //  ★ 2026-09-14(좌석 일원화): 확정 명부는 **uaSend 안에서** 앉았다(uaSeatReply · 계약⑭-e).
-    //    여기서는 '앉았나'만 회신에서 받아 되그릴지 판단한다 — 앉히는 자리를 여기에 또 두면 좌석이 둘이 된다.
-    assert.ok(/let painted = r\.painted;/.test(o),
-      "uaOrderSave 가 '확정 명부가 앉았나'를 회신에서 받지 않는다(또는 스스로 앉힌다) — 좌석이 둘로 갈리거나 되그리기 판단의 근거가 사라진다");
-    assert.ok(/if\(!painted && staleRoster && __uaPendingData\)\{ uaFlushPending\(\); painted = true; \}/.test(o),
+    //  ★ 그리고 편집 모드를 끝냈으면 **여기서 한 번** 최종형을 그린다(2026-09-14 군더더기 걷기 2단계).
+    //    옛 판은 '누가 이미 그렸나'(painted)를 회신에서 받아 되짚고 안 그린 갈래에서만 그렸다 — 그 셈이
+    //    한 갈래라도 틀리면 아무도 안 그리거나 두 번 그렸고, 셈을 맞추려고 회신에 판정 필드를 실었다.
+    assert.ok(!/painted/.test(o),
+      "uaOrderSave 가 아직 '누가 이미 그렸나'를 되짚는다 — 그 셈이 틀리면 끝난 편집 막대가 화면에 남는다(R4-W3)");
+    assert.ok(/if\(staleRoster && __uaPendingData\) uaFlushPending\(\);/.test(o),
       '「낡은 명부」 거부에 명부가 안 실려 왔을 때 미뤄 둔 갱신을 앉히지 않는다 — 관리자는 낡은 명부로 같은 거부를 되풀이한다');
-    assert.ok(/if\(!painted && \(r\.ok \|\| staleRoster\)\)\{ uaAdminBar\(\); uaApply\(\); \}/.test(o),
+    assert.ok(/if\(r\.ok \|\| staleRoster\)\{ uaAdminBar\(\); uaApply\(\); \}/.test(o),
       'uaOrderSave 가 편집 모드를 끝내고도 다시 그리지 않는다(또는 성공만 그린다) — ▲▼·[취소]·[순서 저장]이 끝난 편집 화면에 그대로 남는다(R4-W3)');
-  },
-
-  // ⑭-d 잠금 표시는 **바뀔 때만** 다시 그린다(2026-09-11 적대 검토 R2-W3).
-  //     무조건 그리면 [편집]·[＋ 직원 등록]을 누르는 것만으로도 명부가 통째로 다시 만들어진다
-  //     (userEdOpen 이 uaSetSaving(false) 를 부른다) — 89행짜리 목록이 맨 위로 튀고, 방금 누른 그 버튼이
-  //     사라져 폼을 닫을 때 포커스를 되돌릴 자리도 함께 없어진다.
-  renderOnlyWhenLockChanges(web) {
-    const ss = extractFunction(web, 'uaSetSaving');
-    assert.ok(/const changed = \(__uaSaving !== !!on\);/.test(ss),
-      'uaSetSaving 이 "잠금이 실제로 바뀌었나"를 재지 않는다 — 안 바뀐 호출에도 명부가 통째로 다시 그려진다(R2-W3)');
-    assert.ok(/if\(changed\)\{\s*\n\s*uaAdminBar\(\);\s*\n\s*uaApply\(\);\s*\n\s*\}/.test(ss),
-      'uaSetSaving 의 재렌더가 changed 로 좁혀져 있지 않다 — [편집] 한 번에 스크롤과 누른 버튼이 사라진다');
-    //  ★ 2026-09-14: 돌아오는 자리가 **하나**다. 옛 판은 '잠금 해제'와 '워치독 설치' 두 갈래에서 각각
-    //    돌려줬는데, 워치독이 사라지면서 갈래도 하나가 됐다 — 둘을 요구하면 없는 갈래를 요구하는 것이다.
-    assert.ok((ss.match(/return changed;/g) || []).length === 1,
-      "uaSetSaving 이 '다시 그렸나'를 정확히 한 자리에서 돌려주지 않는다 — 갈래가 둘이면 워치독이 되살아난 것이고, 없으면 부르는 쪽이 판단할 근거가 없다");
   },
 
   // ⑮ 여는 순간 낡은 잠금을 정리한다 — 다만 **도는 중이면 풀지 않는다**(그 왕복이 끝나는 자리가 푼다).
@@ -1207,12 +1223,12 @@ test('계약⑪: 모달 폼의 세로 리듬은 토큰 한 곳에서 정한다(.
   checks.modalFormRhythm(app);
 });
 test('계약⑫: 파괴 테두리·읽기전용 wash 는 다섯 테마 전부가 자기 토큰을 갖는다', () => checks.themeTokens(app));
-test('계약⑬: 순서 편집 ▲▼ 는 스크롤 자리와 포커스를 지킨다(89행에서 연속 조작이 된다)', () => checks.moveKeepsPlace(app));
-test('계약⑬-b: 목록을 다시 그려도 보던 자리와 누르던 버튼의 포커스가 남는다', () => checks.renderKeepsPlace(app));
+test('계약⑬: 순서 편집 ▲▼ 는 목록을 다시 그리지 않고 행 노드를 옮긴다(되돌릴 자리가 없다)', () => checks.moveDoesNotRedraw(app));
+test('계약⑬-b: 목록을 다시 그리는 것은 내용이 달라졌을 때뿐이고, 그때는 맨 위에서 시작한다', () => checks.renderStartsAtTop(app));
 test('계약⑭: 쓰기 회신은 그 요청을 보낸 클로저가 받는다(손으로 만든 상관관계가 하나도 없다)', () => checks.replyGoesToItsCaller(app));
-test('계약⑭-b: 명부 쪽 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
+test('계약⑭-b: 잠금은 그 자리에서 걸고, 렌더도 같은 값을 보고 그린다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
+test('계약⑭-b2: 잠금이 포커스를 쥔 버튼을 끄면 그 행으로 물러났다가 풀릴 때 돌아온다', () => checks.lockRetreatsFocusInPlace(app));
 test('계약⑭-c: 「순서 저장」은 자기 회신을 자기가 받고, 편집 모드를 끝냈으면 반드시 다시 그린다', () => checks.orderSaveHandlesItsOwnReply(app));
-test('계약⑭-d: 잠금 표시는 바뀔 때만 다시 그린다([편집] 한 번에 명부가 맨 위로 튀지 않는다)', () => checks.renderOnlyWhenLockChanges(app));
 test('계약⑭-e: 회신 명부의 좌석은 한 곳(uaSeatReply)이고, 순서 편집 중이면 회신도 미뤄 둔다', () => checks.replySeatIsOnePlace(app));
 test('계약⑮: 화면을 (다시) 열 때 낡은 잠금은 풀되, 도는 중이면 그대로 둔다', () => checks.openKeepsGuard(app));
 test('계약⑯: 순서 편집 중의 부탁하지 않은 명부 푸시는 미뤄 두고 편집을 마칠 때 반영한다', () => checks.orderSurvivesPush(app));
@@ -1229,28 +1245,48 @@ test('변이⑫: 파괴 테두리를 하드코딩으로 되돌리면 계약⑫ �
   assert.doesNotThrow(() => checks.themeTokens(app));   // 통제군
 });
 
-test('변이⑬-b: uaRender 에서 자리 되돌리기를 빼면 계약⑬-b 가 실패한다(다시 그릴 때마다 맨 위로 튄다)', () => {
-  const bad = mutate(app, '  list.scrollTop = sameView ? keepScroll : 0;\n', '');
-  assert.throws(() => checks.renderKeepsPlace(bad), /스크롤 자리를 찍어 두고 되돌리지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+//  ★ 변이 대상은 **uaRender 의 그 한 줄**이어야 한다 — trRender 에도 글자가 같은 줄이 있으므로
+//    (두 화면이 같은 규칙을 쓴다) 앞의 안내 문구까지 묶어 그 한 곳만 가리킨다. String.replace 는
+//    첫 일치만 바꾼다: 유일하지 않은 변이는 어느 날 조용히 엉뚱한 함수를 친다.
+const TOP_IN_UA_RENDER = '때문이다(위 머리말). 한 줄로 적어 두는 이유는 노드를 비우면 브라우저가 알아서 0 으로 접는 것에\n' +
+  '  //    기대지 않기 위해서다(그 접힘은 레이아웃이 있어야 일어난다 — 계약이 될 수 없다).\n  list.scrollTop = 0;\n}';
+
+test('변이⑬-b: uaRender 가 맨 위에서 시작하지 않게 되돌리면 계약⑬-b 가 실패한다(고른 적 없는 중간에서 열린다)', () => {
+  const bad = mutate(app, TOP_IN_UA_RENDER, '때문이다.\n}');
+  assert.throws(() => checks.renderStartsAtTop(bad), /맨 위에서 시작하지 않는다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑬-b2: 같은 화면 판정을 지우면 계약⑬-b 가 실패한다(순서 편집으로 바뀌어도 옛 자리가 앉는다)', () => {
-  const bad = mutate(app, '  list.scrollTop = sameView ? keepScroll : 0;', '  list.scrollTop = keepScroll;');
-  assert.throws(() => checks.renderKeepsPlace(bad), /스크롤 자리를 찍어 두고 되돌리지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+test('변이⑬-b2: 렌더에 옛 되돌리기 장치를 되살리면 계약⑬-b 가 실패한다(다시 그릴 이유 없는 재렌더가 돌아온다)', () => {
+  //  ★ '맨 위에서 시작한다' 한 줄은 **남겨 둔 채** 되돌리기만 얹는다 — 그래야 이 변이가 무엇을 치는지가
+  //    분명해진다(맨 위 계약이 아니라 '되돌리는 장치가 없다' 계약을 친다).
+  const bad = mutate(app, TOP_IN_UA_RENDER, '때문이다.\n  list.scrollTop = 0;\n  if(sameView) list.scrollTop = keepScroll;\n}');
+  assert.throws(() => checks.renderStartsAtTop(bad), /되돌리기'가 남아 있다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑬-b3: 잠금 동안 맡아 둔 버튼을 지우면 계약⑬-b 가 실패한다(풀려도 포커스가 행에 남는다)', () => {
-  const bad = mutate(app, '      if(__uaSaving) __uaKeepBtn = keepBtn;\n', '');
-  assert.throws(() => checks.renderKeepsPlace(bad), /되돌릴 버튼을 맡아 두지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+test('변이⑬-b3: 행의 열쇠(data-uid)를 지우면 계약⑬-b 가 실패한다(▲▼ 가 옮길 행을 못 찾는다)', () => {
+  const bad = mutate(app, '    line.dataset.uid = String(Number(m && m.userId != null ? m.userId : 0));\n', '');
+  assert.throws(() => checks.renderStartsAtTop(bad), /data-uid 가 없다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑬: uaMove 에서 포커스 복원을 빼면 계약⑬ 이 실패한다', () => {
-  const bad = mutate(app, '  uaFocusMoved(userId, uop);', '  ');
-  assert.throws(() => checks.moveKeepsPlace(bad), /포커스를 되돌리지 않는다/);
-  assert.doesNotThrow(() => checks.moveKeepsPlace(app));   // 통제군
+test('변이⑬: uaMove 가 다시 목록을 그리게 되돌리면 계약⑬ 이 실패한다(되돌릴 장치가 셋 다시 필요해진다)', () => {
+  const bad = mutate(app, '  uaSyncControls();\n  //  ★ 끝에 닿아', '  uaApply();\n  //  ★ 끝에 닿아');
+  assert.throws(() => checks.moveDoesNotRedraw(bad), /통째로 다시 그린다|다시 정하지 않는다/);
+  assert.doesNotThrow(() => checks.moveDoesNotRedraw(app));   // 통제군
+});
+
+//  ★ '누른 행을 옮기는' 옛 방식 — 자리는 똑같이 바뀌지만 그 행이 DOM 에서 잠시 떨어져 나가므로
+//    안에 있던 포커스가 사라진다(insertBefore 는 '떼었다 붙이기'다).
+const MOVE_NEIGHBOUR = '  if(delta < 0) list.insertBefore(near, mine.nextSibling);   // 위로 — 이웃을 내 뒤로 보낸다\n' +
+  '  else list.insertBefore(near, mine);                        // 아래로 — 이웃을 내 앞으로 보낸다';
+const MOVE_PRESSED = '  if(delta < 0) list.insertBefore(mine, near);\n  else list.insertBefore(mine, near.nextSibling);';
+
+test('변이⑬-c: uaMove 가 누른 행을 옮기게 되돌리면 계약⑬ 이 실패한다(그 안의 포커스가 사라진다)', () => {
+  const bad = mutate(app, MOVE_NEIGHBOUR, MOVE_PRESSED);
+  assert.throws(() => checks.moveDoesNotRedraw(bad), /이웃 행을 insertBefore 로 옮기지 않는다/);
+  assert.doesNotThrow(() => checks.moveDoesNotRedraw(app));   // 통제군
 });
 
 test('변이⑭: 회신을 부르는 쪽이 안 받게 되돌리면 계약⑭ 가 실패한다(결과가 갈 곳이 없다)', () => {
@@ -1260,8 +1296,7 @@ test('변이⑭: 회신을 부르는 쪽이 안 받게 되돌리면 계약⑭ �
 });
 
 test('변이⑭-b: 워치독을 되살리면 계약⑭ 가 실패한다(왕복 도중에 잠금이 풀려 둘째 폼이 열린다 · R2-W1)', () => {
-  const bad = mutate(app, '  if(changed){\n    uaAdminBar();\n    uaApply();\n  }\n  return changed;\n}',
-    '  if(changed){\n    uaAdminBar();\n    uaApply();\n  }\n  if(on) setTimeout(() => uaSetSaving(false), 12000);\n  return changed;\n}');
+  const bad = mutate(app, WATCHDOG_SLOT, WATCHDOG_BACK);
   assert.throws(() => checks.replyGoesToItsCaller(bad), /워치독이 되살아났다/);
   assert.doesNotThrow(() => checks.replyGoesToItsCaller(app));   // 통제군
 });
@@ -1280,7 +1315,7 @@ test('변이⑭-d: 행 버튼의 렌더 시 잠금을 빼면 계약⑭-b 가 실
 });
 
 test('변이⑭-e: 순서 저장의 되그리기를 지우면 계약⑭-c 가 실패한다(끝난 편집 막대가 남는다)', () => {
-  const bad = mutate(app, '  if(!painted && (r.ok || staleRoster)){ uaAdminBar(); uaApply(); }\n', '');
+  const bad = mutate(app, '  if(r.ok || staleRoster){ uaAdminBar(); uaApply(); }\n', '');
   assert.throws(() => checks.orderSaveHandlesItsOwnReply(bad), /다시 그리지 않는다/);
   assert.doesNotThrow(() => checks.orderSaveHandlesItsOwnReply(app));   // 통제군
 });
@@ -1288,9 +1323,18 @@ test('변이⑭-e: 순서 저장의 되그리기를 지우면 계약⑭-c 가 �
 //  ★ 되그리기를 **성공에만** 걸어 두면(R4-W3 이전 판) 「낡은 명부」 거부 뒤에 아무도 다시 그리지 않는다
 //    — ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에 그대로 남는다(눌러도 아무 일이 없다).
 test('변이⑭-e3: 되그리기를 성공에만 걸면 계약⑭-c 가 실패한다(거부 뒤 순서 컨트롤이 남는다)', () => {
-  const bad = mutate(app, '  if(!painted && (r.ok || staleRoster)){ uaAdminBar(); uaApply(); }',
-    '  if(!painted && r.ok){ uaAdminBar(); uaApply(); }');
+  const bad = mutate(app, '  if(r.ok || staleRoster){ uaAdminBar(); uaApply(); }',
+    '  if(r.ok){ uaAdminBar(); uaApply(); }');
   assert.throws(() => checks.orderSaveHandlesItsOwnReply(bad), /다시 그리지 않는다/);
+  assert.doesNotThrow(() => checks.orderSaveHandlesItsOwnReply(app));   // 통제군
+});
+
+//  ★ 되그리기 판단을 **다시 회신에서 되짚게** 되돌리면(옛 painted) 계약이 실패한다 — 그 셈이 한 갈래라도
+//    틀리면 아무도 안 그리거나 두 번 그렸고, 그래서 회신에 판정 필드를 실어 나르게 됐다.
+test('변이⑭-e3b: 되그리기를 회신의 판정으로 되짚게 되돌리면 계약⑭-c 가 실패한다', () => {
+  const bad = mutate(app, '  if(r.ok || staleRoster){ uaAdminBar(); uaApply(); }',
+    '  if(!r.painted && (r.ok || staleRoster)){ uaAdminBar(); uaApply(); }');
+  assert.throws(() => checks.orderSaveHandlesItsOwnReply(bad), /되짚는다|다시 그리지 않는다/);
   assert.doesNotThrow(() => checks.orderSaveHandlesItsOwnReply(app));   // 통제군
 });
 
@@ -1306,10 +1350,37 @@ test("변이⑭-f: uaSend 의 중복 전송 가드를 지우면 계약⑭ 가 �
   assert.doesNotThrow(() => checks.replyGoesToItsCaller(app));   // 통제군
 });
 
-test('변이⑭-g: uaSetSaving 이 무조건 다시 그리게 되돌리면 계약⑭-d 가 실패한다', () => {
-  const bad = mutate(app, '  const changed = (__uaSaving !== !!on);', '  const changed = true;');
-  assert.throws(() => checks.renderOnlyWhenLockChanges(bad), /"잠금이 실제로 바뀌었나"를 재지 않는다/);
-  assert.doesNotThrow(() => checks.renderOnlyWhenLockChanges(app));   // 통제군
+//  ★ 잠금을 **다시 그려서** 반영하던 옛 판으로 되돌리면(R2-W3 이전·이후 모두) 계약⑭-b 가 실패한다.
+//    [편집]·[＋ 직원 등록]을 누르는 것만으로도 userEdOpen 이 uaSetSaving(false) 를 부르므로, 89행짜리
+//    목록이 통째로 다시 만들어져 맨 위로 튀고 방금 누른 그 버튼이 사라진다.
+test('변이⑭-g: 잠금을 렌더로 반영하게 되돌리면 계약⑭-b 가 실패한다(누를 때마다 명부가 맨 위로 튄다)', () => {
+  const bad = mutate(app, WATCHDOG_SLOT, '  uaAdminBar();\n  uaApply();\n}');
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /그 자리에서 잠그지 않는다|목록을 다시 그린다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 그 자리에서 끄는 집합과 렌더가 잠그는 집합이 **갈리면** 재렌더가 잠금을 뒤집는다 — [취소]까지
+//    끄면 다시 그리는 순간 켜지고, 그때 관리자는 왕복 중에 되돌리기를 눌러 화면과 요청을 어긋나게 한다.
+test('변이⑭-g2: 그 자리에서 끄는 집합을 넓히면 계약⑭-b 가 실패한다(렌더가 잠금을 뒤집는다)', () => {
+  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave']){",
+    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaOrderCancel']){");
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /렌더는 그 둘을 잠그지 않으므로/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 끝에 닿은 화살표를 잠금과 **한 식으로** 보지 않으면, 잠금을 푸는 순간 맨 위 행의 ▲ 가 켜진다.
+test('변이⑭-g3: 끝에 닿은 화살표를 잠금만으로 정하면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, '      lockLineBtn(b, __uaSaving || edge);', '      lockLineBtn(b, __uaSaving);');
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /끝에 닿은 화살표를 함께 보지 않는다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 포커스 물러서기·되돌아오기는 **노드 자신**이 기억한다 — 그 한 줄을 지우면 잠금이 풀려도 포커스가
+//    행에 남아, 연달아 누르던 손이 끊긴다(옛 __uaKeepBtn·__trKeepBtn 이 하던 일의 최소형이다).
+test('변이⑭-b2: 돌아올 자리를 적어 두지 않으면 계약⑭-b2 가 실패한다', () => {
+  const bad = mutate(app, ' ln.__backBtn = b; }', ' }');
+  assert.throws(() => checks.lockRetreatsFocusInPlace(bad), /돌아올 자리를 적어 두지 않는다/);
+  assert.doesNotThrow(() => checks.lockRetreatsFocusInPlace(app));   // 통제군
 });
 
 //  ★ 계약⑭-e 의 변이 넷 — 1단계(왕복 전환)가 실제로 남긴 구멍 넷을 각각 되돌려 본다.
@@ -1948,14 +2019,13 @@ function viewHarnessJs(src) {
 
 // (b) 편집 화면 — 관리 막대와 목록을 그리는 함수만.
 function adminHarnessJs(src) {
-  const fns = ['uaRender', 'uaRowActions', 'uaAdminBar', 'uaEmptyText'].map((n) => extractFunction(src, n));
+  const fns = ['uaRender', 'uaRowActions', 'uaAdminBar', 'uaEmptyText', 'lockLineBtn', 'uaSyncControls']
+    .map((n) => extractFunction(src, n));
   return [
     "var currentUser = { loginId: 'zzUme' };",
     'var __uaAdmin = false, __uaOrder = false, __uaInactive = false;',
-    'var __uaSaving = false;   // 쓰기 왕복 중인가 — 2026-09-11 부터 잠금은 **렌더가** 이 값을 보고 그린다',
+    'var __uaSaving = false;   // 쓰기 왕복 중인가 — 잠금은 **그 자리에서**(uaSyncControls) 걸고, 렌더도 같은 값을 본다',
     'var __uaPendingData = null;   // 미뤄 둔 명부 푸시(uaAdminBar 가 안내 줄을 낼지 판단한다)',
-    //  ★ 렌더가 기억하는 두 값 — 직전에 그린 화면(__uaShown)과 잠금 동안 맡아 둔 버튼(__uaKeepBtn · R5-W3).
-    'var __uaShown = null, __uaKeepBtn = null;',
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function userEdOpen(){} function uaSetActive(){} function uaMove(){}',
     'function uaOrderToggle(){} function uaOrderSave(){} function uaReload(){} function toast(){}',
@@ -1986,27 +2056,25 @@ function adminHarnessJs(src) {
     '  var bar = document.getElementById("uaAdmin");',
     '  return { hint: !!document.getElementById("uaPendHint"), text: String(bar.textContent || "") };',
     '};',
-    //  보던 자리(스크롤)는 **같은 화면일 때만** 남는다(R5-W3) — 순서 편집을 켜면 내용이 통째로 달라지므로 맨 위가 옳다.
+    //  목록을 다시 그리는 것은 **내용이 달라졌을 때뿐**이고, 그때는 맨 위다(2026-09-14). 옛 판은 잠금·▲▼ 도
+    //  이 렌더를 돌렸기에 '같은 화면이면 보던 자리를 되돌린다'가 필요했다 — 지금은 되돌릴 자리가 없다.
     'window.__probeScrollKeep = function(rows){',
     '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
-    '  __uaShown = null; __uaKeepBtn = null;',
     '  uaRender(rows);',
     '  var list = document.getElementById("uaList");',
     '  list.scrollTop = 120;',
     '  var set = list.scrollTop;',
-    '  uaRender(rows);',            // 같은 화면 — 보던 자리가 남아야 한다(잠금 렌더·호스트 푸시가 이 길이다)
-    '  var same = list.scrollTop;',
+    '  uaRender(rows);',            // 명부가 새로 앉았다(호스트 푸시가 이 길이다) — 내용이 갈렸으므로 맨 위
+    '  var seated = list.scrollTop;',
     '  list.scrollTop = 120;',
     '  __uaOrder = true;',
-    '  uaRender(rows);',            // 순서 편집으로 바뀌었다 — 다른 화면이므로 맨 위로
+    '  uaRender(rows);',            // 순서 편집으로 바뀌었다 — 역시 맨 위
     '  var switched = list.scrollTop;',
-    '  return { set: set, same: same, switched: switched };',
+    '  return { set: set, seated: seated, switched: switched };',
     '};',
-    //  검색은 목록을 통째로 갈아치운다 — 그것도 '다른 화면'이다(R6-W1). 앞뒤 공백만 다른 같은 검색은
-    //  같은 목록이므로 자리가 남아야 하고(정규화가 uaVisible 과 같다), 관리자 여부가 뒤집혀도 맨 위다.
+    //  검색도 목록을 통째로 갈아치운다 — R6-W1 이 "맨 위에서 열려야 한다"고 요구한 자리가 바로 여기다.
     'window.__probeScrollSearch = function(rows){',
     '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
-    '  __uaShown = null; __uaKeepBtn = null;',
     '  var q = document.getElementById("uaSearch"); q.value = "";',
     '  uaRender(rows);',
     '  var list = document.getElementById("uaList");',
@@ -2015,52 +2083,87 @@ function adminHarnessJs(src) {
     '  var set = list.scrollTop;',
     '  q.value = "zzU_a"; uaRender(one);',            // 검색어를 쳤다 — 보이는 목록이 통째로 달라진다
     '  var searched = list.scrollTop;',
-    '  list.scrollTop = 120;',
-    '  q.value = "zzU_a "; uaRender(one);',           // 같은 검색(뒤 공백만 다르다) — 같은 목록이니 자리가 남는다
-    '  var sameSearch = list.scrollTop;',
     '  __uaAdmin = false; uaRender(rows);',           // 관리자에서 내려갔다 — 안내 한 줄뿐인 화면
     '  list.scrollTop = 120;',
     '  __uaAdmin = true; uaRender(rows);',            // 다시 올라왔다 — 목록이 통째로 새로 선다
     '  var readmin = list.scrollTop;',
-    '  return { set: set, searched: searched, sameSearch: sameSearch, readmin: readmin };',
+    '  return { set: set, searched: searched, readmin: readmin };',
     '};',
-    //  잠금이 걸린 렌더는 행 버튼을 전부 끈다 — 그때 포커스는 **행**으로 물러나고, 풀리면 그 버튼으로 돌아온다(R5-W3).
+    //  잠금은 **목록을 다시 만들지 않고** 그 자리에서 걸린다(uaSyncControls). 포커스를 쥔 버튼이 꺼질 때는
+    //  그 행으로 물러났다가, 풀리면 그 버튼으로 돌아온다 — 행도 버튼도 같은 노드 그대로다.
     'window.__probeLockFocus = function(rows){',
     '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
-    '  __uaShown = null; __uaKeepBtn = null;',
     '  uaRender(rows);',
+    '  var list = document.getElementById("uaList");',
     '  var b = document.querySelector("#uaList [data-uop=\'edit\']");',
     '  if(!b) return { found: false };',
+    '  list.scrollTop = 120;',
     '  b.focus();',
     '  var started = document.activeElement === b;',
     '  var uid = String(b.dataset.uid || "");',
-    '  __uaSaving = true; uaRender(rows);',
+    '  __uaSaving = true; uaSyncControls();',
     '  var a1 = document.activeElement;',
     '  var locked = { isBody: a1 === document.body,',
     '                 line: !!(a1 && a1.classList && a1.classList.contains("mba-line")),',
     '                 uid: (a1 && a1.dataset) ? String(a1.dataset.uid || "") : "",',
-    '                 kept: !!__uaKeepBtn };',
-    '  __uaSaving = false; uaRender(rows);',
+    '                 off: !!b.disabled, top: list.scrollTop,',
+    //  ★ 노드가 그대로 살아 있는가 — 잠금이 목록을 다시 만들었다면 이 셋 중 하나는 거짓이 된다.
+    '                 sameNode: document.querySelector("#uaList [data-uop=\'edit\']") === b };',
+    '  __uaSaving = false; uaSyncControls();',
     '  var a2 = document.activeElement;',
     '  var unlocked = { isBody: a2 === document.body,',
     '                   uop: (a2 && a2.dataset) ? String(a2.dataset.uop || "") : "",',
     '                   uid: (a2 && a2.dataset) ? String(a2.dataset.uid || "") : "",',
-    '                   disabled: !!(a2 && a2.disabled) };',
+    '                   disabled: !!(a2 && a2.disabled), top: list.scrollTop };',
     '  return { found: true, started: started, uid: uid, locked: locked, unlocked: unlocked };',
+    '};',
+    //  잠금 중에 관리자가 **다른 행**으로 포커스를 옮겼다면, 풀 때 도로 뺏지 않는다(옛 R4-W4 와 같은 요구).
+    'window.__probeLockFocusMoved = function(rows){',
+    '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
+    '  uaRender(rows);',
+    '  var b = document.querySelector("#uaList [data-uop=\'edit\']");',
+    '  if(!b) return { found: false };',
+    '  b.focus();',
+    '  __uaSaving = true; uaSyncControls();',
+    '  var lines = document.querySelectorAll("#uaList .mba-line");',
+    '  if(lines.length < 2) return { found: true, twoRows: false };',
+    '  var other = lines[1];',
+    '  other.focus();',
+    '  var moved = document.activeElement === other;',
+    '  __uaSaving = false; uaSyncControls();',
+    '  var a = document.activeElement;',
+    '  return { found: true, twoRows: true, moved: moved, sameRow: a === other,',
+    '           uop: (a && a.dataset) ? String(a.dataset.uop || "") : "",',
+    '           isBody: a === document.body };',
+    '};',
+    //  잠금이 걸린 채로 **다시 그려도** 컨트롤이 전부 꺼진 채로 선다(렌더가 __uaSaving 을 보고 그린다).
+    //   ★ 그 자리에서 끄는 한 겹만으로는 왕복 중에 도착한 푸시가 잠금을 지운다 — 두 겹이 필요한 이유다.
+    'window.__probeLockSurvivesRerender = function(rows){',
+    '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
+    '  uaAdminBar(); uaRender(rows);',
+    '  __uaSaving = true; uaSyncControls();',
+    '  var pick = function(){ return Array.prototype.map.call(',
+    '    document.querySelectorAll("#uaList [data-uop]"), function(b){ return !!b.disabled; }); };',
+    '  var inPlace = pick();',
+    '  uaAdminBar(); uaRender(rows);',   // 왕복 중에 명부 푸시가 왔다 — 목록이 통째로 다시 만들어진다
+    '  var afterPush = pick();',
+    '  var bar = document.getElementById("uaAdmin");',
+    '  return { inPlace: inPlace, afterPush: afterPush,',
+    '           barOff: Array.prototype.map.call(bar.querySelectorAll("button"), function(b){',
+    '             return { id: String(b.id || ""), disabled: !!b.disabled }; }) };',
     '};',
   ].join('\n');
 }
 
-// (d) 순서 편집의 ▲▼ — 목록을 다시 그린 **뒤에도** 포커스가 같은 행의 화살표에 남는가.
-//     ★ jsdom 에는 레이아웃이 없어 scrollTop 은 늘 0 이다 — 그건 형태 계약(계약⑬)이 본다.
-//       여기서 보는 것은 레이아웃이 없어도 참·거짓이 갈리는 것 하나, **포커스**다.
+// (d) 순서 편집의 ▲▼ — 목록을 **다시 만들지 않고** 행 노드를 옮기는가, 그리고 포커스·자리가 그대로인가.
+//     ★ jsdom 에는 레이아웃이 없어 scrollTop 은 저절로 접히지 않는다 — 그래서 오히려 '아무도 건드리지
+//       않았다'를 여기서 잴 수 있다(누가 0 으로 되돌리면 그 값이 바뀐다).
 function moveHarnessJs(src) {
-  const fns = ['uaVisible', 'uaEmptyText', 'uaRowActions', 'uaRender', 'uaApply', 'uaMove', 'uaFocusMoved']
-    .map((n) => extractFunction(src, n));
+  const fns = ['uaVisible', 'uaEmptyText', 'uaRowActions', 'uaRender', 'uaApply', 'uaMove',
+    'lockLineBtn', 'uaSyncControls'].map((n) => extractFunction(src, n));
   return [
     "var currentUser = { loginId: 'zzUme' };",
     'var __uaAdmin = true, __uaOrder = true, __uaInactive = false, __uaMembers = [], __uaSaving = false;',
-    'var __uaShown = null, __uaKeepBtn = null;   // 렌더가 기억하는 화면·맡아 둔 버튼(R5-W3)',
     'function userEdOpen(){} function uaSetActive(){} function toast(){}',
     ...fns,
     'function __focused(){',
@@ -2069,14 +2172,25 @@ function moveHarnessJs(src) {
     '           uid: (a && a.dataset) ? String(a.dataset.uid || "") : "",',
     '           isBody: a === document.body };',
     '}',
+    'function __screen(){',
+    '  return Array.prototype.map.call(document.querySelectorAll("#uaList .mba-line"), function(ln){',
+    '    return String(ln.dataset.uid || ""); });',
+    '}',
     'window.__probe = function(rows, uid, delta, pressUop){',
     '  __uaMembers = rows.slice();',
     '  uaApply();',
+    '  var list = document.getElementById("uaList");',
+    '  list.scrollTop = 120;',
     '  var b = document.querySelector("[data-uop=\'" + pressUop + "\'][data-uid=\'" + uid + "\']");',
     '  var started = false;',
     '  if(b){ b.focus(); started = document.activeElement === b; }',
     '  uaMove(uid, delta);',
-    '  return { started: started, order: __uaMembers.map(function(m){ return m.userId; }), focus: __focused() };',
+    //  ★ sameNode — 옮긴 뒤에도 **누르던 그 버튼 노드**가 그대로 문서에 있는가. 목록을 다시 만들면 거짓이 된다.
+    '  return { started: started, order: __uaMembers.map(function(m){ return m.userId; }),',
+    '           screen: __screen(), focus: __focused(), top: list.scrollTop,',
+    '           sameNode: !!(b && document.getElementById("uaList").contains(b)),',
+    '           edges: Array.prototype.map.call(document.querySelectorAll("#uaList [data-uop]"), function(x){',
+    '             return { uop: x.dataset.uop, uid: x.dataset.uid, disabled: !!x.disabled }; }) };',
     '};',
   ].join('\n');
 }
@@ -2125,6 +2239,11 @@ function pushHarnessJs(src) {
     //  ★ 순서 편집 켜기/끄기도 떼어 온다(R4-W2) — '미뤄 둔 갱신이 남으면 언제 터지는가'가 바로 이 길이다.
     extractFunction(src, 'uaOrderToggle'),
     extractFunction(src, 'uaApplyData'),
+    //  ★ 잠금은 **그 자리에서** 걸린다(2026-09-14) — uaSetSaving 이 uaSyncControls 를 부르므로 함께 떼어 온다.
+    //    이 하네스의 자리(PUSH_FIXTURE)에는 #uaList 도 막대도 없어 그 함수는 조용히 아무 일도 하지 않는다:
+    //    여기서 재는 것은 **어느 명부가 화면 상태에 앉는가** 하나다.
+    extractFunction(src, 'lockLineBtn'),
+    extractFunction(src, 'uaSyncControls'),
     extractFunction(src, 'uaSetSaving'),
     extractFn(src, 'uaSend'),
     extractFunction(src, 'uaParseRoster'),
@@ -2223,7 +2342,7 @@ function pushHarnessJs(src) {
     '  __reset(rows); __openForm(uid);',
     '  __reply = reply;',
     '  return uaSend({ cmd: "setUserActive", userId: uid, active: true }).then(function(r){',
-    '    return { painted: !!(r && r.painted), names: __names(), pending: !!__uaPendingData,',
+    '    return { names: __names(), pending: !!__uaPendingData,',
     '             order: !!__uaOrder, act: __pickAct(), saving: !!__uaSaving };',
     '  });',
     '};',
@@ -2235,7 +2354,7 @@ function pushHarnessJs(src) {
     '  return uaSend({ cmd: "saveUser", userId: 13, name: "x" }).then(function(r){',
     '    var parked = __state();',
     '    uaOrderToggle(false);',   // 편집을 마치면 그때 앉는다(미뤄 둔 것이 이긴다)
-    '    return { painted: !!(r && r.painted), parked: parked, end: __state() };',
+    '    return { parked: parked, end: __state() };',
     '  });',
     '};',
     //  ⑤ 왕복이 도는 동안 두 번째 쓰기는 **나가지 못한다**(가드) — 겹치면 잠금 하나로 둘을 풀게 되고,
@@ -2272,7 +2391,6 @@ function scopeHarnessJs(src) {
   return [
     "var currentUser = { loginId: 'zzUme' };",
     'var __uaAdmin = true, __uaOrder = false, __uaInactive = false, __uaMembers = [], __uaSaving = false;',
-    'var __uaShown = null, __uaKeepBtn = null;   // 렌더가 기억하는 화면·맡아 둔 버튼(R5-W3)',
     'function userEdOpen(){} function uaSetActive(){} function uaMove(){} function toast(){}',
     ...fns,
     'window.__probe = function(rows, search, inactive, admin){',
@@ -2374,6 +2492,8 @@ const probeReplyDuringOrder = (rep, src = app) =>
 const probeUaScrollKeep = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeScrollKeep', ROWS);
 const probeUaScrollSearch = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeScrollSearch', ROWS);
 const probeUaLockFocus = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockFocus', ROWS);
+const probeUaLockFocusMoved = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockFocusMoved', ROWS);
+const probeUaLockRerender = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockSurvivesRerender', ROWS);
 //  ★ 문구의 정본은 호스트 상수 하나다 — 시험이 사본을 적으면 둘이 갈려도 초록이 뜬다.
 const STALE_MSG = (/internal const string StaleRosterMsg\s*=\s*"([^"]+)"/.exec(pdb) || [])[1];
 //  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
@@ -2392,9 +2512,13 @@ if (!jsdom) {
   skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집은 사라진다(하단 등록도 함께 사라진다)', SKIP_NO_JSDOM);
   skip("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다", SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
-  skip('계약⑬-DOM: ▲▼ 를 눌러도 포커스가 같은 행의 화살표에 남는다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM: ▲▼ 는 목록을 다시 만들지 않고 포커스·자리가 그대로다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 반대쪽 화살표를 잡는다', SKIP_NO_JSDOM);
-  skip('변이⑬-DOM: 포커스 복원을 지우면 꺼진 화살표 자리에서 버튼을 놓친다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM: 누른 행을 옮기게 되돌리면 그 안의 포커스가 사라진다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(d2): 잠금 중에 옮긴 포커스를 풀 때 도로 뺏지 않는다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(e): 그 자리에서 잠근 뒤 다시 그려도 컨트롤이 전부 잠긴 채로 선다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(d): 돌아올 자리를 안 적어 두면 잠금이 풀려도 포커스가 행에 남는다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(b): 회신에 실려 온 명부는 미뤄 두지 않고 그 자리에서 앉는다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(c): 부탁하지 않은 푸시는 편집 중이면 미뤄 두고, 편집을 마칠 때 앉는다', SKIP_NO_JSDOM);
@@ -2412,13 +2536,12 @@ if (!jsdom) {
   skip('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 그대로 선택된다', SKIP_NO_JSDOM);
   skip('변이⑱-DOM: 옛 동작(첫 항목으로 갈아치우기)이면 값이 조용히 바뀐다', SKIP_NO_JSDOM);
   skip('계약⑳-DOM: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', SKIP_NO_JSDOM);
-  skip('계약⑬-DOM(c): 같은 화면을 다시 그리면 보던 자리가 남고, 화면이 바뀌면 맨 위다', SKIP_NO_JSDOM);
-  skip('계약⑬-DOM(d): 잠기면 포커스가 행으로 물러나고, 풀리면 그 버튼으로 돌아온다', SKIP_NO_JSDOM);
-  skip('변이⑬-DOM(c): 같은 화면 판정을 지우면 순서 편집으로 바뀌어도 옛 자리가 앉는다', SKIP_NO_JSDOM);
-  skip('변이⑬-DOM(d): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(c): 목록을 다시 그리면 언제나 맨 위에서 시작한다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(d): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(d2): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e4): 회신에 실려 온 명부도 열려 있는 폼을 다시 맞춘다', SKIP_NO_JSDOM);
-  skip('계약⑬-DOM(c2): 검색어가 바뀌면 맨 위, 같은 검색이면 보던 자리가 남는다', SKIP_NO_JSDOM);
-  skip('변이⑬-DOM(c2): 검색어를 열쇠에서 빼면 걸러진 목록이 한가운데에서 열린다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(c2): 검색어를 쳐도, 관리자 여부가 뒤집혔다 돌아와도 맨 위다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(c2): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 검색이 한가운데에서 열린다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e2): 부탁하지 않은 명부 푸시가 오면 열려 있는 폼의 [복구]가 [퇴사 처리]로 바뀐다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e3): 대상이 새 명부에서 사라지면 폼을 닫지 않고 그 사실만 말한다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(e2): 푸시 뒤 폼 맞추기를 지우면 낡은 [복구]가 그대로 남는다', SKIP_NO_JSDOM);
@@ -2514,11 +2637,19 @@ if (!jsdom) {
     assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].present, false);
   });
 
-  test('계약⑬-DOM: ▲▼ 를 눌러도 포커스가 **같은 행의 같은 화살표**에 남는다(연속 조작이 된다)', () => {
+  test('계약⑬-DOM: ▲▼ 는 목록을 다시 만들지 않고, 포커스도 보던 자리도 그대로다(연속 조작이 된다)', () => {
     //  [11, 12, 13] 에서 11 을 ▼ 로 내린다 → [12, 11, 13]. 11 은 가운데라 ▼ 가 살아 있으니 그대로 잡혀 있어야 한다.
     const r = probeMove(11, +1, 'down');
     assert.strictEqual(r.started, true, '전제 붕괴: ▼ 버튼에 포커스가 가지 않았다');
     assert.deepStrictEqual(r.order, [12, 11, 13], `한 칸 이동이 반영되지 않았다: ${JSON.stringify(r.order)}`);
+    //  ★ 화면의 행 순서도 함께 바뀌어야 한다 — 배열만 바꾸고 DOM 을 안 옮기면 눈에는 그대로다.
+    assert.deepStrictEqual(r.screen, ['12', '11', '13'],
+      `화면의 행 순서가 따라오지 않았다: ${JSON.stringify(r.screen)} — 배열만 바뀌고 목록은 그대로다`);
+    //  ★ 누르던 **그 버튼 노드**가 살아 있다 = 목록을 다시 만들지 않았다는 뜻이다.
+    assert.strictEqual(r.sameNode, true,
+      '한 칸 옮기면서 목록을 통째로 다시 만들었다 — 누르던 버튼 노드가 버려졌다(그러면 되돌리는 장치가 다시 필요해진다)');
+    assert.strictEqual(r.top, 120,
+      `보던 자리가 ${r.top} 로 바뀌었다 — 다시 만들지 않았으므로 아무도 스크롤을 건드리지 않아야 한다`);
     assert.strictEqual(r.focus.isBody, false,
       '한 칸 옮기자 포커스가 body 로 떨어졌다 — 두 번째 ▼ 를 누르려면 마우스로 다시 찾아야 한다');
     assert.strictEqual(r.focus.uid, '11', `포커스가 옮긴 행이 아닌 곳에 있다: ${JSON.stringify(r.focus)}`);
@@ -2527,95 +2658,139 @@ if (!jsdom) {
 
   test('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 **반대쪽** 화살표를 잡는다(포커스가 사라지지 않는다)', () => {
     //  [11, 12, 13] 에서 12 를 ▲ 로 올리면 [12, 11, 13] — 12 가 맨 위라 그 행의 ▲ 는 꺼진다.
-    //  꺼진 버튼에 포커스를 주면 브라우저가 body 로 떨어뜨린다. 그래서 같은 행의 ▼ 를 잡아야 한다.
+    //  꺼진 버튼에 포커스가 남으면 브라우저가 body 로 떨어뜨린다. 그래서 같은 행의 ▼ 를 잡아야 한다.
     const r = probeMove(12, -1, 'up');
     assert.deepStrictEqual(r.order, [12, 11, 13], `전제 붕괴: ${JSON.stringify(r.order)}`);
+    assert.deepStrictEqual(r.screen, ['12', '11', '13'], `화면의 행 순서가 따라오지 않았다: ${JSON.stringify(r.screen)}`);
+    //  ★ 끝에 닿은 화살표가 실제로 꺼졌는가 — 이 판정이 없으면 아래 포커스 계약이 무엇을 재는지 흐려진다.
+    const up12 = r.edges.find((e) => e.uop === 'up' && e.uid === '12');
+    const up11 = r.edges.find((e) => e.uop === 'up' && e.uid === '11');
+    const dn13 = r.edges.find((e) => e.uop === 'down' && e.uid === '13');
+    assert.ok(up12 && up12.disabled, `맨 위로 올라간 행의 ▲ 가 켜져 있다: ${JSON.stringify(r.edges)}`);
+    assert.ok(up11 && !up11.disabled,
+      `끝에서 내려온 행의 ▲ 가 꺼진 채로 남았다: ${JSON.stringify(r.edges)} — 자리가 바뀌면 판정도 따라와야 한다`);
+    assert.ok(dn13 && dn13.disabled, `마지막 행의 ▼ 가 켜져 있다: ${JSON.stringify(r.edges)}`);
     assert.strictEqual(r.focus.isBody, false, '맨 위로 올린 뒤 포커스가 사라졌다 — 다음 조작을 마우스로 다시 찾아야 한다');
     assert.strictEqual(r.focus.uid, '12', `포커스가 옮긴 행에 없다: ${JSON.stringify(r.focus)}`);
     assert.strictEqual(r.focus.uop, 'down',
       `꺼진 ▲ 대신 ▼ 를 잡지 않았다: ${JSON.stringify(r.focus)} — 끝에 닿는 순간 포커스가 사라진다`);
   });
 
-  //  ★ 2026-09-11(R5-W3) 이후로는 **렌더도** 누르던 버튼으로 포커스를 되돌린다 — 그래서 '가운데 행'
-  //    에서는 uaFocusMoved 를 지워도 포커스가 남는다(렌더가 같은 답을 낸다). uaFocusMoved 가 혼자 지는
-  //    자리는 **끝에 닿아 그 화살표가 꺼진 경우**다: 렌더는 꺼진 버튼을 피해 행으로 물러나므로,
-  //    반대쪽 화살표를 잡아 주는 것은 여전히 uaFocusMoved 뿐이다. 변이는 그 자리를 친다.
-  test('변이⑬-DOM: 포커스 복원을 지우면 꺼진 화살표 자리에서 버튼을 놓친다(그래서 이 계약이 필요하다)', () => {
-    const bad = mutate(app, '  uaFocusMoved(userId, uop);', '  ');
-    const r = probeMove(12, -1, 'up', bad);
-    assert.strictEqual(r.focus.uop, '',
-      `변이 전제: 복원을 지우면 포커스가 버튼이 아니라 행에 남아야 한다(실제: ${JSON.stringify(r.focus)})`);
-    assert.strictEqual(probeMove(12, -1, 'up').focus.uop, 'down');   // 통제군
+  //  ★ 옛 판은 목록을 통째로 다시 만든 뒤 사라진 버튼을 손잡이로 다시 찾았다(uaFocusMoved). 지금은
+  //    **이웃 행만 옮기므로** 누른 버튼이 사라지지 않는다 — 누른 행을 옮기도록 되돌리면 그 차이가 드러난다.
+  test('변이⑬-DOM: 누른 행을 옮기게 되돌리면 그 안의 포커스가 사라진다(그래서 이웃을 옮긴다)', () => {
+    const bad = mutate(app, MOVE_NEIGHBOUR, MOVE_PRESSED);
+    const r = probeMove(11, +1, 'down', bad);
+    assert.deepStrictEqual(r.screen, ['12', '11', '13'], `변이 전제: 화면 순서는 그대로 바뀌어야 한다: ${JSON.stringify(r.screen)}`);
+    assert.strictEqual(r.focus.isBody, true,
+      `변이 전제: 누른 행을 옮기면 그 안의 포커스가 body 로 떨어져야 한다(실제: ${JSON.stringify(r.focus)})`);
+    assert.strictEqual(probeMove(11, +1, 'down').focus.uop, 'down');   // 통제군
   });
 
-  //  ★ ▲▼ 말고도 목록을 다시 그리는 길이 여럿이다(잠금 · 호스트 푸시 · 검색) — 그래서 **그리는 쪽**이
-  //    자리를 지켜야 한다(2026-09-11 적대 검토 R5-W3). 옛 판은 uaMove 만 지켜서, 80번째 사람을 저장하면
-  //    목록이 맨 위로 튀어 다음 사람을 다시 찾아야 했다.
-  test('계약⑬-DOM(c): 같은 화면을 다시 그리면 보던 자리가 남고, 화면이 바뀌면 맨 위다', () => {
+  //  ★ 목록을 다시 그리는 길은 이제 **내용이 달라지는** 것뿐이다(명부가 새로 앉았다 · 순서 편집을 켰다 ·
+  //    검색 · 관리자 여부). 그때는 맨 위가 옳다 — R6-W1 이 검색에 대해 요구한 것이 바로 그것이고,
+  //    잠금·▲▼ 가 이 길에서 빠진 지금은 나머지 경우에도 같은 답이 옳다.
+  test('계약⑬-DOM(c): 목록을 다시 그리면 언제나 맨 위에서 시작한다', () => {
     const r = probeUaScrollKeep();
     assert.strictEqual(r.set, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
-    assert.strictEqual(r.same, 120,
-      `같은 화면을 다시 그렸는데 보던 자리가 ${r.same} 로 튀었다 — 저장 한 번에 명부가 맨 위로 돌아간다(R5-W3)`);
+    assert.strictEqual(r.seated, 0,
+      `명부가 새로 앉았는데 옛 스크롤 자리(${r.seated})가 그대로 남았다 — 통째로 갈린 목록의 한가운데에서 시작한다`);
     assert.strictEqual(r.switched, 0,
       `순서 편집으로 바뀌었는데 옛 스크롤 자리(${r.switched})가 그대로 앉았다 — 고른 적 없는 중간에서 시작한다`);
   });
 
-  //  ★ R6-W1 — 검색도 목록을 통째로 갈아치운다. 옛 열쇠는 순서 편집·퇴사자 보기 둘뿐이라 검색 재렌더가
-  //    '같은 화면'으로 읽혀, 89행을 내려다 보던 중에 검색어를 치면 걸러진 결과가 한가운데에서 열렸다.
-  test('계약⑬-DOM(c2): 검색어가 바뀌면 맨 위, 같은 검색이면 보던 자리가 남는다(R6-W1)', () => {
+  //  ★ R6-W1 — 검색은 목록을 통째로 갈아치운다. 89행을 내려다 보던 중에 검색어를 치면 걸러진 결과가
+  //    목록 한가운데에서 열리던 결함이 여기 자리다.
+  test('계약⑬-DOM(c2): 검색어를 쳐도, 관리자 여부가 뒤집혔다 돌아와도 맨 위다(R6-W1)', () => {
     const r = probeUaScrollSearch();
     assert.strictEqual(r.set, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
     assert.strictEqual(r.searched, 0,
       `검색어를 쳤는데 옛 스크롤 자리(${r.searched})가 그대로 앉았다 — 걸러진 결과가 목록 한가운데에서 열린다(R6-W1)`);
-    assert.strictEqual(r.sameSearch, 120,
-      `같은 검색(앞뒤 공백만 다름)을 다시 그렸는데 자리가 ${r.sameSearch} 로 튀었다 — 열쇠의 정규화가 uaVisible 과 어긋났다`);
     assert.strictEqual(r.readmin, 0,
       `관리자 여부가 뒤집혔다 돌아왔는데 옛 자리(${r.readmin})가 앉았다 — 목록이 통째로 새로 서는 화면이다(R6-W1)`);
   });
 
-  test('변이⑬-DOM(c2): 검색어를 열쇠에서 빼면 걸러진 목록이 한가운데에서 열린다(R6-W1)', () => {
-    const bad = mutate(app, ' && __uaShown.admin === view.admin && __uaShown.q === view.q;',
-      ' && __uaShown.admin === view.admin;');
+  test('변이⑬-DOM(c2): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 검색이 한가운데에서 열린다(R6-W1)', () => {
+    const bad = mutate(app, TOP_IN_UA_RENDER, '때문이다.\n  list.scrollTop = 120;\n}');
     const r = probeUaScrollSearch(bad);
     assert.strictEqual(r.searched, 120,
-      `변이 전제: 검색어를 빼면 검색 재렌더가 옛 자리를 앉혀야 한다(실제: ${JSON.stringify(r)})`);
+      `변이 전제: 자리를 되돌리면 검색 재렌더가 옛 자리를 앉혀야 한다(실제: ${JSON.stringify(r)})`);
     assert.strictEqual(probeUaScrollSearch().searched, 0);   // 통제군
   });
 
-  test('계약⑬-DOM(d): 잠기면 포커스가 행으로 물러나고, 풀리면 그 버튼으로 돌아온다', () => {
+  //  ★ 잠금은 **목록을 다시 만들지 않고** 그 자리에서 걸린다(2026-09-14). 그래서 보던 자리도 노드도 그대로고,
+  //    포커스를 쥔 버튼이 꺼질 때만 그 행으로 물러났다가 풀리면 돌아온다.
+  test('계약⑬-DOM(d): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', () => {
     const r = probeUaLockFocus();
     assert.strictEqual(r.found, true, '전제 붕괴: [편집] 버튼을 찾지 못했다');
     assert.strictEqual(r.started, true, '전제 붕괴: 행 버튼에 포커스를 주지 못했다');
-    assert.strictEqual(r.locked.isBody, false,
-      `잠기는 순간 포커스가 body 로 떨어졌다: ${JSON.stringify(r.locked)} — 여기서 Tab 이 문서 처음으로 돌아간다`);
+    assert.strictEqual(r.locked.sameNode, true,
+      '잠그면서 목록을 통째로 다시 만들었다 — 89행이 맨 위로 튀고 방금 누른 버튼이 사라진다(R2-W3 이 고치려던 그 비용이다)');
+    assert.strictEqual(r.locked.top, 120,
+      `잠그자 보던 자리가 ${r.locked.top} 로 튀었다 — 잠금은 내용 변경이 아니다`);
+    assert.strictEqual(r.locked.off, true, '잠갔는데 행 버튼이 꺼지지 않았다');
+    //  ★ jsdom 은 '포커스를 쥔 컨트롤이 꺼지면 body 로 떨어뜨린다'는 브라우저 규칙(focus fixup)을 구현하지
+    //    않는다 — 그래서 여기서 isBody 를 재면 늘 거짓이라 아무것도 가리지 못한다. 대신 **물러섰는가**를
+    //    직접 잰다(포커스가 그 행에 있다): 실제 브라우저에서 body 로 떨어지지 않게 하는 것이 바로 그 동작이다.
     assert.strictEqual(r.locked.line, true,
       `잠금 중 포커스가 행(.mba-line)에 있지 않다: ${JSON.stringify(r.locked)} — 물러설 자리는 그 행이다`);
     assert.strictEqual(r.locked.uid, r.uid, `물러난 행이 누르던 그 행이 아니다: ${JSON.stringify(r.locked)}`);
-    assert.strictEqual(r.locked.kept, true, '잠금 동안 되돌릴 버튼을 맡아 두지 않았다 — 풀려도 행에 남는다');
-    assert.strictEqual(r.unlocked.isBody, false, '잠금이 풀리자 포커스가 body 로 떨어졌다');
     assert.strictEqual(r.unlocked.uop, 'edit',
       `잠금이 풀렸는데 누르던 버튼으로 돌아오지 않았다: ${JSON.stringify(r.unlocked)}`);
     assert.strictEqual(r.unlocked.uid, r.uid, `풀린 뒤 포커스가 다른 행으로 갔다: ${JSON.stringify(r.unlocked)}`);
     assert.strictEqual(r.unlocked.disabled, false, '되돌아온 버튼이 아직 꺼져 있다 — 잠금이 풀리지 않았다');
+    assert.strictEqual(r.unlocked.top, 120, `잠금을 푸는 것만으로 보던 자리가 ${r.unlocked.top} 로 튀었다`);
   });
 
-  //  ★ jsdom 에는 레이아웃이 없어 '되돌리기를 통째로 지우는' 변이는 잴 수 없다(노드를 다 지워도
-  //    scrollTop 값이 그대로 남는다). 그건 형태 계약(계약⑬-b)이 본다 — 여기서는 참·거짓이 실제로
-  //    갈리는 자리, **같은 화면 판정**을 친다.
-  test('변이⑬-DOM(c): 같은 화면 판정을 지우면 순서 편집으로 바뀌어도 옛 자리가 앉는다', () => {
-    const bad = mutate(app, '  list.scrollTop = sameView ? keepScroll : 0;', '  list.scrollTop = keepScroll;');
-    const r = probeUaScrollKeep(bad);
-    assert.strictEqual(r.switched, 120,
-      `변이 전제: 같은 화면 판정을 지우면 화면이 바뀌어도 옛 자리가 앉아야 한다(실제: ${JSON.stringify(r)})`);
-    assert.strictEqual(probeUaScrollKeep().switched, 0);   // 통제군
+  //  ★ 잠금 중에 관리자가 다른 행으로 포커스를 옮겨 뒀다면, 푸는 쪽이 그것을 **도로 뺏지 않는다**
+  //    (옛 R4-W4 가 열쇠 대조로 지키던 요구다 — 지금은 노드 그대로라 대조할 것이 없다).
+  test('계약⑬-DOM(d2): 잠금 중에 옮긴 포커스를 풀 때 도로 뺏지 않는다', () => {
+    const r = probeUaLockFocusMoved();
+    assert.strictEqual(r.found, true, '전제 붕괴: [편집] 버튼을 찾지 못했다');
+    assert.strictEqual(r.twoRows, true, '전제 붕괴: 옮겨 갈 다른 행이 없다');
+    assert.strictEqual(r.moved, true, '전제 붕괴: 다른 행으로 포커스를 옮기지 못했다');
+    assert.strictEqual(r.isBody, false, '잠금이 풀리자 포커스가 body 로 떨어졌다');
+    assert.strictEqual(r.sameRow, true,
+      `관리자가 옮겨 둔 행에서 포커스를 끌어냈다: ${JSON.stringify(r)} — 관리자가 둔 자리가 옳다(R4-W4)`);
+    assert.strictEqual(r.uop, '', `옮겨 둔 포커스를 원래 버튼으로 끌고 갔다: ${JSON.stringify(r)}`);
   });
 
-  test('변이⑬-DOM(d): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', () => {
+  test('변이⑬-DOM(d): 돌아올 자리를 안 적어 두면 잠금이 풀려도 포커스가 행에 남는다', () => {
+    const bad = mutate(app, ' ln.__backBtn = b; }', ' }');
+    const r = probeUaLockFocus(bad);
+    assert.strictEqual(r.locked.isBody, false, '변이 전제: 잠금 중에는 여전히 행으로 물러나야 한다');
+    assert.strictEqual(r.unlocked.uop, '',
+      `변이 전제: 돌아올 자리를 안 적어 두면 풀려도 버튼으로 못 돌아와야 한다(실제: ${JSON.stringify(r.unlocked)})`);
+    assert.strictEqual(probeUaLockFocus().unlocked.uop, 'edit');   // 통제군
+  });
+
+  test('변이⑬-DOM(d2): 행이 포커스를 못 받으면 물러설 자리가 없다(실제 브라우저에선 body 로 떨어진다)', () => {
     const bad = mutate(app, '    line.tabIndex = -1;   // 탭 순서에는 끼지 않는다(trRender 의 행과 같은 규칙)\n', '');
     const r = probeUaLockFocus(bad);
-    assert.strictEqual(r.locked.isBody, true,
-      `변이 전제: 행이 포커스를 못 받으면 잠금 렌더에서 body 로 떨어져야 한다(실제: ${JSON.stringify(r.locked)})`);
-    assert.strictEqual(probeUaLockFocus().locked.isBody, false);   // 통제군
+    assert.strictEqual(r.locked.line, false,
+      `변이 전제: 행이 포커스를 못 받으면 물러서기가 실패해야 한다(실제: ${JSON.stringify(r.locked)})`);
+    assert.strictEqual(probeUaLockFocus().locked.line, true);   // 통제군
+  });
+
+  //  ★ 두 겹 중 **렌더 쪽**을 재는 자리 — 왕복 중에 도착한 명부 푸시가 목록을 통째로 다시 만들어도
+  //    잠금이 남아야 한다(2026-09-11 R3-W2). 그 자리에서 끄는 한 겹만으로는 여기서 증발한다.
+  test('계약⑬-DOM(e): 그 자리에서 잠근 뒤 다시 그려도 컨트롤이 전부 잠긴 채로 선다', () => {
+    const r = probeUaLockRerender();
+    assert.deepStrictEqual(r.inPlace, [true, true, true],
+      `그 자리에서 잠갔는데 행 버튼이 켜져 있다: ${JSON.stringify(r.inPlace)}`);
+    assert.deepStrictEqual(r.afterPush, [true, true, true],
+      `왕복 중에 목록이 다시 그려지자 잠금이 증발했다: ${JSON.stringify(r.afterPush)} — 그 틈에 같은 쓰기가 두 번 나간다`);
+    const edit = r.barOff.find((b) => b.id === 'uaOrderEdit');
+    assert.ok(edit && edit.disabled, `다시 그린 막대의 「순서 편집」이 켜져 있다: ${JSON.stringify(r.barOff)}`);
+  });
+
+  test('변이⑬-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다(그래서 두 겹이 필요하다)', () => {
+    const bad = mutate(app, '    b.disabled = __uaSaving;', '    b.disabled = false;');
+    const r = probeUaLockRerender(bad);
+    assert.deepStrictEqual(r.inPlace, [true, true, true], '변이 전제: 그 자리에서 끄는 겹은 그대로 돌아야 한다');
+    assert.deepStrictEqual(r.afterPush, [false, false, false],
+      `변이 전제: 렌더가 잠금을 안 보면 푸시 뒤 버튼이 켜져야 한다(실제: ${JSON.stringify(r.afterPush)})`);
+    assert.deepStrictEqual(probeUaLockRerender().afterPush, [true, true, true]);   // 통제군
   });
 
   //  ★ 잠금이 **데이터가 아니라 렌더**에서 나오는지 본다(2026-09-11 적대 검토 R3-W2).
@@ -2698,8 +2873,6 @@ if (!jsdom) {
     //  「이미 복구됨」 거부 — 실패 회신인데도 명부가 실려 온다(§11-32). 뒤처리(userEdAfterWrite)는 부르지 않는다:
     //  그런데도 화면 명부와 열려 있는 폼이 최신이어야 한다. 앉히는 일이 부르는 쪽에 남아 있으면 여기서 갈린다.
     const r = await probeSendSeats(13, reply(false, '이미 복구된 항목입니다 — 목록을 새로고침합니다.', REACTIVATED));
-    assert.strictEqual(r.painted, true,
-      "회신이 '명부가 앉았다'를 실어 오지 않았다 — 부르는 쪽이 되그릴지 판단할 근거가 사라진다(R4-W3)");
     assert.deepStrictEqual(r.names, [REACTIVATED.members[0].name],
       `회신에 실려 온 명부가 앉지 않았다: ${JSON.stringify(r.names)} — 화면 명부가 낡은 채로 남고(C06), ` +
       '그 낡은 id 목록으로 「순서 저장」을 누르면 호스트가 「명부가 바뀌었습니다」로 되돌려준다(C08)');
@@ -2717,15 +2890,12 @@ if (!jsdom) {
     const r = await probeSendSeats(13, REP, bad);
     assert.deepStrictEqual(r.names, OLD_NAMES,
       `변이 전제: 좌석을 빼면 화면 명부가 옛것으로 남아야 한다(실제: ${JSON.stringify(r.names)})`);
-    assert.strictEqual(r.painted, false, '변이 전제: 앉힌 것이 없으므로 painted 도 거짓이어야 한다');
     const ctrl = await probeSendSeats(13, REP);
     assert.deepStrictEqual(ctrl.names, [REACTIVATED.members[0].name]);   // 통제군
   });
 
   test('계약⑭-e-DOM(b): 순서 편집 중에 온 **내 순서 저장이 아닌** 회신은 미뤄 둔다(C20)', async () => {
     const r = await probeReplyDuringOrder(reply(true, '저장했습니다', PUSHED));
-    assert.strictEqual(r.painted, false,
-      "미뤄 두고도 '앉혔다'고 답했다 — 부르는 쪽이 '이미 그렸다'로 읽어 끝난 편집 막대를 그대로 둔다");
     assert.deepStrictEqual(r.parked.names, OLD_NAMES,
       `회신에 실려 온 남의 갱신이 편집 중인 명부를 덮었다: ${JSON.stringify(r.parked.names)} — ` +
       '잡고 있던 순서가 통째로 날아간다(라운드 2·3 이 닫은 결함이 전달 방식이 바뀌었다는 이유만으로 되살아난 자리 · C20)');
@@ -2750,25 +2920,32 @@ if (!jsdom) {
     assert.deepStrictEqual(ctrl.parked.names, OLD_NAMES);   // 통제군
   });
 
-  test('계약⑭-e-DOM(c): 「순서 저장」 회신은 편집 모드를 끝낸 **뒤** 앉고, 최종형은 한 번만 그려진다', async () => {
+  //  ★ 「순서 저장」의 회신은 **편집 모드를 끝낸 뒤** 앉는다(uaSeatReply). 그래서 회신을 처리하는 동안
+  //    그려지는 화면은 전부 **최종형**이다 — 앉히고 나서 끄면 ▲▼·[취소]·[순서 저장]이 붙은 편집 화면이
+  //    한 프레임 그려지고, 그 위에 최종형을 또 그리게 된다.
+  //    ㆍ재는 법: 막대를 그린 총 횟수(bars)와 그중 **편집이 끝난 상태에서** 그린 횟수(barsFinal)가 같은가.
+  //      갈리면 편집 중인 화면을 한 번 그렸다는 뜻이다. '몇 번 그렸나'가 아니라 '무엇을 그렸나'를 잰다.
+  test('계약⑭-e-DOM(c): 「순서 저장」 회신은 편집 모드를 끝낸 **뒤** 앉는다(편집 중인 화면을 그리지 않는다)', async () => {
     const r = await probeOrderSave(null, reply(true, '저장했습니다', PUSHED));
     assert.strictEqual(r.end.order, false, '내 순서 저장의 확정 명부가 왔는데 편집 모드가 끝나지 않았다');
     assert.deepStrictEqual(r.end.names, [NEW_NAME], `확정 명부가 앉지 않았다: ${JSON.stringify(r.end.names)}`);
-    assert.strictEqual(r.end.barsFinal, 1,
-      `편집이 끝난 최종 화면을 ${r.end.barsFinal}번 그렸다(1번이어야 한다) — 0 이면 ▲▼·[취소]·[순서 저장]이 ` +
-      '끝난 편집 화면에 그대로 남고(R4-W3), 2 이상이면 편집 중인 화면을 한 번 그린 뒤 다시 그린 것이다');
+    assert.ok(r.end.barsFinal > 0,
+      '편집 모드를 끝내고도 최종형을 아무도 그리지 않았다 — ▲▼·[취소]·[순서 저장]이 그대로 남는다(R4-W3)');
+    assert.strictEqual(r.end.bars, r.end.barsFinal,
+      `회신을 처리하면서 **편집 중인 화면**을 ${r.end.bars - r.end.barsFinal}번 그렸다: ${JSON.stringify(r.end)} — ` +
+      '앉히기 전에 편집 모드를 끝내야 화면이 한 번에 최종형으로 선다');
   });
 
-  test('변이⑭-e-DOM(c): 앉힌 뒤에 편집 모드를 끄면 최종형을 아무도 그리지 않는다(끝난 편집 막대가 남는다)', async () => {
+  test('변이⑭-e-DOM(c): 앉힌 뒤에 편집 모드를 끄면 편집 중인 화면이 한 번 그려진다', async () => {
     const REP = reply(true, '저장했습니다', PUSHED);
     const bad = mutate(app, "  if(cmd === 'saveUserOrder') uaOrderReset();\n  return uaSeatRoster(json);",
       "  const seated = uaSeatRoster(json);\n  if(cmd === 'saveUserOrder') uaOrderReset();\n  return seated;");
     const r = await probeOrderSave(null, REP, bad);
-    assert.strictEqual(r.end.order, false, '변이 전제: 편집 모드는 그대로 끝나야 한다(그래서 막대만 남는 것이 결함이다)');
-    assert.strictEqual(r.end.barsFinal, 0,
-      `변이 전제: 앉힌 뒤에 끄면 최종형을 그린 사람이 없어야 한다(실제: ${JSON.stringify(r.end)})`);
+    assert.strictEqual(r.end.order, false, '변이 전제: 편집 모드는 그대로 끝나야 한다(그래서 화면 순서만 어긋나는 것이 결함이다)');
+    assert.ok(r.end.bars > r.end.barsFinal,
+      `변이 전제: 앉힌 뒤에 끄면 편집 중인 화면이 한 번 그려져야 한다(실제: ${JSON.stringify(r.end)})`);
     const ctrl = await probeOrderSave(null, REP);
-    assert.strictEqual(ctrl.end.barsFinal, 1);   // 통제군
+    assert.strictEqual(ctrl.end.bars, ctrl.end.barsFinal);   // 통제군
   });
 
   test('계약⑯-DOM(c): 부탁하지 않은 푸시는 편집 중이면 미뤄 두고, 편집을 마칠 때 앉는다', async () => {
@@ -2906,8 +3083,7 @@ if (!jsdom) {
   });
 
   test('변이⑭-DOM(c2): 워치독을 되살리면 왕복 도중에 타이머가 걸린다(그래서 이 계약이 필요하다)', async () => {
-    const bad = mutate(app, '  if(changed){\n    uaAdminBar();\n    uaApply();\n  }\n  return changed;\n}',
-      '  if(changed){\n    uaAdminBar();\n    uaApply();\n  }\n  if(on) setTimeout(() => uaSetSaving(false), 12000);\n  return changed;\n}');
+    const bad = mutate(app, WATCHDOG_SLOT, WATCHDOG_BACK);
     const r = await probeFormReply(13, reply(true, '저장했습니다', null), bad);
     assert.ok(r.inflight.timers > 0,
       `변이 전제: 워치독을 되살리면 왕복 중에 타이머가 걸려 있어야 한다(실제: ${JSON.stringify(r.inflight)})`);
@@ -2937,21 +3113,25 @@ if (!jsdom) {
     assert.deepStrictEqual(ctrl.afterToggle.names, OLD_NAMES);   // 통제군
   });
 
-  test('변이⑯-DOM(f): 확정 명부가 옛 스냅샷을 남기면 편집을 켰다 끄는 것만으로 덮인다', async () => {
+  //  ★ 2026-09-14(군더더기 걷기 2단계) 이후로는 **더 빨리** 드러난다: 「낡은 명부」 거부를 처리하는 자리가
+  //    '미뤄 둔 것이 남아 있으면 앉힌다'를 되짚기 없이 그대로 보므로, 옛 스냅샷이 안 지워지면 그 자리에서
+  //    확정 명부를 덮는다(편집을 켰다 끌 때까지 기다릴 것도 없다). 그 즉시성이 곧 이 변이의 증거다.
+  test('변이⑯-DOM(f): 확정 명부가 옛 스냅샷을 남기면 그 자리에서 옛 명부가 확정 명부를 덮는다', async () => {
     const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;',
       '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;');
     const r = await probeOrderSave(PARKED, reply(false, STALE_MSG, PUSHED), bad);
-    assert.strictEqual(r.end.pending, true,
-      `변이 전제: 옛 스냅샷을 안 버리면 미뤄 둔 자리에 남아야 한다(실제: ${JSON.stringify(r.end)})`);
+    assert.deepStrictEqual(r.end.names, [OLD_NAME],
+      `변이 전제: 옛 스냅샷을 안 버리면 그것이 확정 명부를 덮어야 한다(실제: ${JSON.stringify(r.end)})`);
     assert.deepStrictEqual(r.afterToggle.names, [OLD_NAME],
-      `변이 전제: 남은 스냅샷은 편집을 켰다 끄면 확정 명부를 덮어야 한다(실제: ${JSON.stringify(r.afterToggle)})`);
+      `변이 전제: 덮은 뒤에도 옛 명부가 남아야 한다(실제: ${JSON.stringify(r.afterToggle)})`);
     const ctrl = await probeOrderSave(PARKED, reply(false, STALE_MSG, PUSHED));
+    assert.deepStrictEqual(ctrl.end.names, [NEW_NAME]);          // 통제군
     assert.deepStrictEqual(ctrl.afterToggle.names, [NEW_NAME]);   // 통제군
   });
 
   test('변이⑭-DOM(c): 되그리기를 성공에만 걸면 거부 뒤 순서 컨트롤이 남는다', async () => {
-    const bad = mutate(app, '  if(!painted && (r.ok || staleRoster)){ uaAdminBar(); uaApply(); }',
-      '  if(!painted && r.ok){ uaAdminBar(); uaApply(); }');
+    const bad = mutate(app, '  if(r.ok || staleRoster){ uaAdminBar(); uaApply(); }',
+      '  if(r.ok){ uaAdminBar(); uaApply(); }');
     const r = await probeOrderSave(null, reply(false, STALE_MSG, null), bad);
     assert.strictEqual(r.end.order, false, '변이 전제: 편집 모드는 그대로 끝나야 한다(그래서 컨트롤만 남는 것이 결함이다)');
     assert.strictEqual(r.end.barsFinal, 0,

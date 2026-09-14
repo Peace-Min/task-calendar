@@ -5090,11 +5090,13 @@ let __ueId = 0;             // 편집 중인 대상 user_id(0 = 신규 등록)
 //      ㆍ버려진 왕복(창을 닫았다·다른 폼을 열었다)의 회신은 닿을 곳이 없다 — 가려낼 표가 필요 없다.
 //      ㆍ영영 안 오는 회신은 hostRequest 의 타임아웃(20초)이 실패 회신으로 바꿔 준다 — 워치독의 일이었다.
 let __uaPendingData = null; // 순서 편집 중에 도착한 **관계없는** 명부 푸시. 편집을 마칠 때 반영한다
-//  ★ 지금 #uaList 에 그려져 있는 것이 **어느 화면인가**(2026-09-11 적대 검토 R5-W3 · trRender 의 __trShown 과 같다).
-//    보던 자리(스크롤)는 같은 화면일 때만 되돌려야 한다 — 순서 편집을 켜거나 「퇴사자 보기」를 뒤집으면
-//    목록의 내용이 통째로 달라지므로, 옛 자리를 앉히면 관리자가 고른 적 없는 중간에서 시작한다.
-let __uaShown = null;       // { order, inactive } — 직전 렌더가 그린 화면(null = 아직 그린 적 없다)
-let __uaKeepBtn = null;     // 잠금 동안 행으로 물러난 포커스를 되돌릴 버튼 { op, uid }(__trKeepBtn 과 같은 장치)
+//  ★ '직전에 그린 화면'(__uaShown)도 '잠금 동안 맡아 둔 버튼'(__uaKeepBtn)도 **없다**(2026-09-14 군더더기 걷기 2단계).
+//    그 둘은 **다시 그릴 이유가 없는데도 다시 그리던** 두 자리(잠금 켜기·끄기 · ▲▼ 한 칸 이동)를 메우려고
+//    자란 장치였다 — 목록을 통째로 새로 만들면 스크롤과 포커스가 날아가니, 그것을 되돌릴 표가 필요했다.
+//    그 두 자리를 **그리지 않게** 고치고 나면(uaSyncControls · uaMove) 되돌릴 것이 남지 않는다.
+//    지금 남은 재렌더는 전부 **목록의 내용이 실제로 달라지는** 경우뿐이다: 명부가 새로 앉았다 ·
+//    검색어가 바뀌었다 · 순서 편집을 켜고 껐다 · 관리자 여부가 뒤집혔다. 그때는 맨 위가 옳다
+//    (R6-W1 이 검색에 대해 요구한 것이 바로 그것이다).
 
 // 지금 화면에 나갈 사람 = 검색어로 거른 명부. 순서 편집 중에는 검색칸이 잠겨 있어 전 명부가 곧 이 목록이다.
 //   ★ 화면은 **다시 정렬하지 않는다** — 순서는 호스트가 정한다(§5.3). 여기 있는 것은 거르기뿐이다.
@@ -5149,43 +5151,66 @@ function uaRowActions(m, rows){
   return box;
 }
 
+// 행(.mba-line) 안의 컨트롤 하나를 **그 자리에서** 끄고 켠다 — 「구성원 편집」과 휴지통이 같은 골격이라
+// 같은 함수를 쓴다(uaSeatReply 를 두 화면이 함께 쓰는 것과 같은 이유: 규칙이 두 벌이면 한쪽은 반드시 낡는다).
+//   ★ 포커스를 쥔 버튼을 끄면 브라우저가 포커스를 **body 로 떨어뜨린다**(그 뒤 Tab 은 문서 처음부터 다시
+//     시작한다). 그래서 끄기 **전에** 그 행으로 물러난다 — 행은 tabIndex=-1 로 그 자리를 받아 둔다.
+//   ★ 돌아올 자리는 **그 행 노드에** 적어 둔다(__backBtn). 모듈 전역에 표를 두던 옛 판(__uaKeepBtn·__trKeepBtn)은
+//     목록을 다시 만들고 나서 '어느 행이었나'를 열쇠로 대조해야 했는데, 이제 행도 버튼도 그대로 살아 있으므로
+//     **노드 자신이 그 답**이다 — 대조할 것이 없다.
+//   ★ 풀 때는 **물러나 있던 그 행에 포커스가 아직 그대로일 때만** 돌아온다. 잠금 중에 관리자가 다른 곳으로
+//     옮겨 뒀다면 그 자리가 옳다(화면이 도로 뺏지 않는다).
+function lockLineBtn(b, off){
+  const ln = b.closest ? b.closest('.mba-line') : null;
+  if(off && ln && document.activeElement === b){ try{ ln.focus(); }catch(_){} ln.__backBtn = b; }
+  b.disabled = off;
+  if(!off && ln && ln.__backBtn === b){
+    if(document.activeElement === ln) try{ b.focus(); }catch(_){}
+    ln.__backBtn = null;
+  }
+}
+
+// 명부 쪽 컨트롤의 상태를 **그 자리에서** 다시 정한다 — 목록을 다시 그리지 않는다(2026-09-14).
+//   ★ 규칙은 렌더(uaRowActions·uaAdminBar)와 **같은 한 벌**이다: 쓰기 왕복 중(__uaSaving)이면 전부 꺼지고,
+//     순서 편집의 ▲▼ 는 끝(첫 행·마지막 행)에 닿았을 때도 꺼진다. 두 곳이 같은 값을 보므로 다투지 않는다 —
+//     왕복 중에 명부 푸시가 목록을 통째로 다시 만들어도 잠금은 그대로 따라온다(렌더가 그렇게 그린다).
+//     ㆍ그래서 잠금 하나 때문에 89행을 새로 만들 이유가 없다. 새로 만들면 스크롤·포커스가 날아가고,
+//       그것을 되돌리는 장치가 또 필요해진다(실제로 그렇게 늘어났다) — 그리지 않으면 되돌릴 것도 없다.
+//   ★ 끝에 닿은 화살표는 **자리**가 정한다(첫 행의 ▲ · 마지막 행의 ▼). 어느 행이 끝에 들고 났는지를 따로
+//     셈하지 않고 자리 규칙을 그대로 다시 읽는다 — 셈을 따로 두면 그것이 렌더의 규칙과 갈릴 수 있다.
+//   ★ [취소](uaOrderCancel)와 「퇴사자 보기」(uaInactive)는 여기 없다 — 렌더도 그 둘은 잠그지 않는다
+//     (되돌리기·조회 조건은 진행 중인 쓰기와 겹치지 않는다). 집합이 갈리면 재렌더가 잠금을 뒤집는다.
+function uaSyncControls(){
+  const list = document.getElementById('uaList');
+  if(list){
+    const lines = list.querySelectorAll('.mba-line');
+    const first = lines.length ? lines[0] : null;
+    const last  = lines.length ? lines[lines.length - 1] : null;
+    for(const b of list.querySelectorAll('[data-uop]')){
+      const ln = b.closest ? b.closest('.mba-line') : null;
+      const edge = (b.dataset.uop === 'up' && ln === first) || (b.dataset.uop === 'down' && ln === last);
+      lockLineBtn(b, __uaSaving || edge);
+    }
+  }
+  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave']){
+    const b = document.getElementById(id);
+    if(b) b.disabled = __uaSaving;
+  }
+}
+
 // 목록 렌더 — innerHTML 금지(이름·소속은 DB 문자열이다. 명부 규칙 ㉑과 같다).
 //   ★ 관리자가 아니면 **행도 컨트롤도 만들지 않는다.** 안내 한 줄이 전부다:
 //     관리자에서 내려간 사람이 이 창을 열면 왜 아무것도 없는지 말해 줘야 한다(빈 화면은 고장처럼 보인다).
 //   ★ 여기 행은 눌리지 않는다(평범한 div). 남의 일정 열람은 「구성원 보기」의 일이다 — 이 화면은 고치는 화면이다.
-//   ★ 목록을 통째로 다시 만드므로 **보던 자리와 누르던 버튼**은 그리는 쪽이 지킨다(2026-09-11 적대 검토 R5-W3 ·
-//     trRender 와 같은 장치). 예전에는 uaMove 만 자기 손으로 지켰는데, 이 렌더는 한 번의 저장에도 여러 번
-//     돈다(잠금 · 호스트 푸시) — 그래서 80번째 사람을 저장하면 목록이 맨 위로 튀어 다음 사람을 다시 찾아야 했다.
+//   ★ 이 렌더가 도는 것은 **목록의 내용이 실제로 달라졌을 때뿐**이다(2026-09-14 군더더기 걷기 2단계):
+//     명부가 새로 앉았다 · 검색어가 바뀌었다 · 순서 편집을 켜고 껐다 · 관리자 여부가 뒤집혔다.
+//     그래서 **맨 위에서 시작한다** — 통째로 갈린 목록에 옛 스크롤 자리를 앉히면 관리자가 고른 적 없는
+//     중간에서 열린다(R6-W1 이 검색에 대해 요구한 것이 바로 그것이다).
+//   ★ 예전에는 잠금 켜기·끄기와 ▲▼ 한 칸 이동도 이 렌더를 돌렸고, 그 둘이 '보던 자리·누르던 버튼'을
+//     되돌리는 장치(__uaShown·__uaKeepBtn)를 불러왔다. 지금 그 둘은 목록을 다시 만들지 않는다
+//     (uaSyncControls · uaMove) — 되돌릴 것이 없으므로 되돌리는 장치도 없다.
 function uaRender(rows){
   const list = document.getElementById('uaList'); if(!list) return;
-  //  ★ 되돌리는 것은 **같은 화면일 때만**이다: 순서 편집·「퇴사자 보기」가 바뀌면 목록의 내용이 통째로
-  //    달라지므로 옛 자리는 의미가 없다(화면이 바뀌면 맨 위가 옳다 · trRender 의 sameView 와 같은 규칙).
-  //  ★ **검색어와 관리자 여부도 그 화면의 일부다**(2026-09-11 적대 검토 R6-W1). 검색은 목록을 통째로
-  //    갈아치우는데 옛 열쇠는 순서 편집·「퇴사자 보기」 둘뿐이라 '같은 화면'으로 읽혔다 — 89행을 내려다
-  //    보던 중에 검색어를 치면 걸러진 결과가 목록 한가운데에서 열렸다(그 전에는 새로 그려 맨 위였다).
-  //    ㆍ정규화는 uaVisible 과 **같다**(trim·소문자). 거르는 규칙이 같아야 같은 목록이 같은 열쇠를 낸다.
-  const qv = document.getElementById('uaSearch');
-  const view = { order: __uaOrder, inactive: __uaInactive, admin: __uaAdmin,
-                 q: qv ? String(qv.value || '').trim().toLowerCase() : '' };
-  const sameView = !!__uaShown && __uaShown.order === view.order && __uaShown.inactive === view.inactive
-                   && __uaShown.admin === view.admin && __uaShown.q === view.q;
-  const keepScroll = list.scrollTop;
-  const af = document.activeElement;
-  //  ★ **목록 안의** 버튼만 본다(list.contains) — 편집 폼에도 같은 손잡이(data-uop/data-uid)를 쥔 버튼이
-  //    있어([퇴사 처리]·[복구]), 그것까지 세면 폼에 있던 포커스를 목록이 빼앗아 온다.
-  let keepBtn = (af && list.contains(af) && af.dataset && af.dataset.uop && af.dataset.uid)
-    ? { op: String(af.dataset.uop), uid: String(af.dataset.uid) } : null;
-  //  ★ 잠금 동안 행으로 물러나 있던 포커스는 **맡아 둔 표**로 되돌린다. 되돌리는 조건은 "포커스가 아직
-  //    **물러났던 그 행**에 있을 때"다(trRender R4-W4 와 같은 규칙) — 아무 행이나로 보면 관리자가 잠금 중에
-  //    옮겨 둔 포커스를 도로 뺏어 엉뚱한 줄로 끌고 간다.
-  if(!keepBtn && __uaKeepBtn && af && af.classList && af.classList.contains('mba-line') && list.contains(af)
-     && af.dataset && String(af.dataset.uid || '') === __uaKeepBtn.uid){
-    keepBtn = __uaKeepBtn;
-  }
-  //  ★ 행에 머물던 포커스는 **그 행으로** 되돌린다 — 되돌릴 버튼이 없으면(잠금 중에 옮겨 둔 행 등)
-  //    아무도 앉히지 않아 포커스가 body 로 떨어졌다(trRender 와 같은 자리 · R5-W1).
-  const keepUid = (af && af.classList && af.classList.contains('mba-line') && list.contains(af)
-                   && af.dataset && af.dataset.uid) ? String(af.dataset.uid) : '';
   while(list.firstChild) list.removeChild(list.firstChild);
   const empty = document.getElementById('uaEmpty');
   if(!__uaAdmin){
@@ -5193,7 +5218,6 @@ function uaRender(rows){
     d.textContent = '관리자만 사용할 수 있습니다.';
     list.appendChild(d);
     if(empty) empty.classList.add('hidden');
-    __uaShown = view; __uaKeepBtn = null;   // 안내 한 줄뿐인 화면 — 되돌릴 자리도 버튼도 없다
     return;
   }
   const arr = Array.isArray(rows) ? rows : [];
@@ -5230,33 +5254,10 @@ function uaRender(rows){
     list.appendChild(line);
   }
   if(empty){ empty.textContent = uaEmptyText(); empty.classList.toggle('hidden', arr.length > 0); }
-  //  ★ 다시 그리기 전의 스크롤 자리와 행 버튼 포커스를 되돌린다(위 keepScroll·keepBtn·keepUid).
-  //    ㆍ이름이 아니라 data-uop/data-uid 로 찾는다(한글 이스케이프가 끼지 않는다).
-  //    ㆍ꺼진 버튼에는 주지 않는다 — 브라우저가 포커스를 body 로 떨어뜨려 결국 같은 문제로 되돌아간다.
-  list.scrollTop = sameView ? keepScroll : 0;
-  __uaKeepBtn = null;
-  let restored = false;
-  if(keepBtn){
-    let ub = null;
-    for(const x of list.querySelectorAll('[data-uop][data-uid]')){
-      if(x.dataset.uop === keepBtn.op && x.dataset.uid === keepBtn.uid){ ub = x; break; }
-    }
-    if(ub && !ub.disabled){ try{ ub.focus(); restored = true; }catch(_){} }
-    else if(ub){
-      //  ★ 잠금 때문에 꺼진 버튼이다 — body 로 떨어뜨리지 말고 **그 행**으로 물러난다.
-      //    그리고 잠금이 풀릴 때 되돌릴 수 있게 표를 맡아 둔다(다음 렌더가 쓴다).
-      const ln = ub.closest ? ub.closest('.mba-line') : null;
-      if(ln){ try{ ln.focus(); restored = true; }catch(_){} }
-      if(__uaSaving) __uaKeepBtn = keepBtn;
-    }
-  }
-  //  ★ 버튼으로 되돌리지 못했는데 포커스가 행에 있었다면 **그 행**에 앉힌다(R5-W1).
-  if(!restored && sameView && keepUid){
-    for(const ln of list.querySelectorAll('.mba-line')){
-      if(ln.dataset && String(ln.dataset.uid || '') === keepUid){ try{ ln.focus(); }catch(_){} break; }
-    }
-  }
-  __uaShown = view;
+  //  ★ **맨 위에서 시작한다.** 되돌릴 '보던 자리'는 없다 — 이 렌더는 목록의 내용이 달라졌을 때만 돌기
+  //    때문이다(위 머리말). 한 줄로 적어 두는 이유는 노드를 비우면 브라우저가 알아서 0 으로 접는 것에
+  //    기대지 않기 위해서다(그 접힘은 레이아웃이 있어야 일어난다 — 계약이 될 수 없다).
+  list.scrollTop = 0;
 }
 
 // 관리자 컨트롤 — 상단 막대(#uaAdmin)는 「순서 편집」 · 「퇴사자 보기」, 하단(#uaFoot)은 「＋ 직원 등록」.
@@ -5385,36 +5386,47 @@ function uaOrderReset(){
 }
 
 // 한 칸 이동 — 화면에 즉시 반영하고, 저장은 「순서 저장」이 한다(§5.1).
-//   ★ uaApply() 는 #uaList 를 **통째로 다시 만든다.** 그대로 두면 스크롤이 맨 위로 튀고 포커스가 body 로
-//     떨어져, 89행짜리 명부에서 ▲ 를 두 번 연달아 누르는 것이 불가능했다(2026-09-10).
-//     그래서 스크롤 자리와 포커스를 손으로 되돌린다 — 목록을 다시 그리는 쪽이 그 값을 지켜야 한다.
-//   ★ 2026-09-11(R5-W3)부터 **uaRender 도 같은 자리를 지킨다**(같은 화면이면 스크롤을 되돌린다).
-//     여기 한 줄은 그것과 같은 값을 앉히므로 다투지 않는다 — 남겨 두는 것은 '이 조작이 자리를 지킨다'는
-//     계약을 이 함수 안에서 읽히게 하기 위해서다. 포커스는 여전히 uaFocusMoved 가 마지막에 정한다.
+//   ★ 목록을 **다시 그리지 않는다**(2026-09-14 군더더기 걷기 2단계). 옛 판은 uaApply() 로 89행을 통째로
+//     새로 만든 다음, 맨 위로 튄 스크롤을 도로 앉히고 사라진 버튼을 손잡이로 다시 찾아 포커스를 옮겼다
+//     (uaFocusMoved) — 그 셋은 전부 **첫째(재렌더)를 메우려던 장치**다. 첫째를 그만두면 나머지가 사라진다.
+//     한 칸 이동은 자리 바꿈이지 내용 변경이 아니므로, 노드를 옮기는 것이 곧 그 조작이다.
+//   ★ 옮기는 것은 **이웃 행**이다(누른 행이 아니라). 이웃한 두 행을 맞바꾸는 일이라 어느 쪽을 옮겨도
+//     결과는 같은데, 누른 행을 옮기면 그 안의 화살표가 DOM 에서 잠시 떨어져 나가 브라우저가 포커스를
+//     body 로 떨어뜨린다(insertBefore 는 '떼었다 붙이기'다). 이웃을 옮기면 누른 버튼은 제자리 그대로다.
+//   ★ 남는 일은 **끝에 닿은 화살표**뿐이다(첫 행의 ▲ · 마지막 행의 ▼) — uaSyncControls 가 자리 규칙을
+//     그대로 다시 읽어 정한다(렌더와 같은 한 벌이다).
 function uaMove(userId, delta){
   const i = __uaMembers.findIndex(m => m && Number(m.userId) === Number(userId));
   const j = i + delta;
   if(i < 0 || j < 0 || j >= __uaMembers.length) return;
-  const list = document.getElementById('uaList');
-  const top = list ? list.scrollTop : 0;
-  //  ★ 되돌릴 화살표는 **방향이 정한다** — ▲ 를 눌렀으면 ▲ 다. 예전에는 지금 포커스를 쥔 요소를 읽어
-  //    확인했는데, 그 값은 언제나 방금 누른 그 버튼이라 같은 답을 더 먼 길로 구한 것뿐이었다(2026-09-11).
-  const uop = delta < 0 ? 'up' : 'down';
+  const list = document.getElementById('uaList'); if(!list) return;
+  const rowOf = uid => {
+    for(const ln of list.querySelectorAll('.mba-line')){
+      if(ln.dataset && String(ln.dataset.uid || '') === String(uid)) return ln;
+    }
+    return null;
+  };
+  const mate = __uaMembers[j];
+  const mine = rowOf(userId);
+  const near = rowOf(Number(mate && mate.userId != null ? mate.userId : 0));
+  //  ★ 두 행을 **먼저** 찾고 나서 명부를 바꾼다 — 화면에 그 행이 없으면(있을 수 없지만) 아무것도 하지
+  //    않는다. 순서를 뒤집으면 명부만 바뀌고 화면은 그대로인 어긋난 상태가 남는다.
+  if(!mine || !near || mine.parentNode !== list || near.parentNode !== list) return;
   const t = __uaMembers[i]; __uaMembers[i] = __uaMembers[j]; __uaMembers[j] = t;
-  uaApply();
-  if(list) list.scrollTop = top;
-  uaFocusMoved(userId, uop);
-}
-// 옮긴 행의 **같은 화살표**로 포커스를 되돌린다.
-//   ★ 그 화살표가 끝(맨 위·맨 아래)에 닿아 꺼졌으면 **반대쪽 화살표**를 잡는다 — 꺼진 버튼에 포커스를 주면
-//     브라우저가 포커스를 body 로 떨어뜨려, 결국 처음 문제로 되돌아간다.
-function uaFocusMoved(userId, uop){
-  const pick = op => document.querySelector('#uaList [data-uop="' + op + '"][data-uid="' + String(userId) + '"]');
-  let b = pick(uop);
-  if(!b || b.disabled) b = pick(uop === 'up' ? 'down' : 'up');
-  if(!b || b.disabled) return;
-  try{ b.focus(); }catch(_){}
-  try{ b.scrollIntoView({ block: 'nearest' }); }catch(_){}
+  const af = document.activeElement;
+  if(delta < 0) list.insertBefore(near, mine.nextSibling);   // 위로 — 이웃을 내 뒤로 보낸다
+  else list.insertBefore(near, mine);                        // 아래로 — 이웃을 내 앞으로 보낸다
+  uaSyncControls();
+  //  ★ 끝에 닿아 **방금 누른 화살표가 꺼졌다**면 포커스는 그 행으로 물러나 있다(lockLineBtn). 그때는
+  //    같은 행의 **반대쪽 화살표**를 잡는다 — 그래야 연달아 누르던 손이 끊기지 않는다.
+  if(af && af.disabled && mine.contains(af)){
+    const up = mine.querySelector('[data-uop="up"]'), dn = mine.querySelector('[data-uop="down"]');
+    const back = (up && !up.disabled) ? up : (dn && !dn.disabled) ? dn : null;
+    if(back) try{ back.focus(); }catch(_){}
+  }
+  //  ★ 한 칸 밀려난 행이 화면 밖으로 나가지만 않게 끌어온다(block:'nearest' — 온전히 보이면 아무 일도
+  //    하지 않는다). '스크롤을 되돌리는' 것이 아니다: 목록을 다시 만들지 않았으니 되돌릴 자리가 없다.
+  try{ mine.scrollIntoView({ block: 'nearest' }); }catch(_){}
 }
 
 // 순서 저장 — 화면에 보이는 순서 그대로 user_id 배열을 보낸다. 10·20·30… 재작성은 호스트가 한다(§2).
@@ -5437,14 +5449,17 @@ async function uaOrderSave(){
   //    서버에 닿기 **전**의 명부라, 앉히는 순간 방금 저장한 순서가 화면에서 옛 순서로 되돌아간다.
   //    남의 진짜 변경(신규 등록·퇴사)까지 함께 담은 확정 명부는 회신에 실려 온다(r.roster).
   if(r.ok) __uaPendingData = null;
-  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**(uaSeatReply · 2026-09-14 좌석 일원화). 여기서는
-  //    '앉았나'만 받아 쓴다 — 앉히는 자리를 여기에도 두면 그 둘 중 하나는 반드시 낡는다.
-  //  ★ 거부 쪽에서는 회신이 명부를 안 실어 왔을 때만 미뤄 둔 것을 앉힌다 — 실어 왔으면 그쪽이 더 새 것이다.
-  let painted = r.painted;
-  if(!painted && staleRoster && __uaPendingData){ uaFlushPending(); painted = true; }
-  //  ★ 편집 모드를 끝냈는데 아무도 다시 그리지 않으면 ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에
-  //    그대로 남는다(눌러도 아무 일이 없다). 명부가 앉지 않은 갈래에서는 여기가 그 자리다(R4-W3).
-  if(!painted && (r.ok || staleRoster)){ uaAdminBar(); uaApply(); }
+  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**(uaSeatReply · 2026-09-14 좌석 일원화) — 앉히는
+  //    자리를 여기에도 두면 그 둘 중 하나는 반드시 낡는다.
+  //  ★ 거부 쪽에서는 회신이 명부를 안 실어 왔을 때만 미뤄 둔 것을 앉힌다. 그 판정을 따로 받아 둘 필요가
+  //    없다: 명부가 실려 왔으면 앉으면서 미뤄 둔 자리를 비웠으므로(uaSeatRoster) 여기 조건이 이미 거짓이다.
+  if(staleRoster && __uaPendingData) uaFlushPending();
+  //  ★ 편집 모드를 끝냈으면 **여기서 한 번** 최종형을 그린다. 안 그리면 ▲▼·[취소]·[순서 저장]이
+  //    __uaOrder=false 인 화면에 그대로 남는다(눌러도 아무 일이 없다 · R4-W3).
+  //    ㆍ예전에는 '누가 이미 그렸나'(painted)를 회신에서 받아 되짚고 안 그린 갈래에서만 그렸다. 그 셈이
+  //      한 갈래라도 틀리면 아무도 안 그리거나 두 번 그렸고, 그 셈을 맞추려고 회신에 판정 필드를 실었다.
+  //      한 번 더 그리는 쪽이 싸다 — 그리고 무엇보다 되짚을 것이 없다.
+  if(r.ok || staleRoster){ uaAdminBar(); uaApply(); }
   toast(r.msg || (r.ok ? '저장했습니다' : '저장하지 못했습니다'), r.ok ? 'success' : 'error');
 }
 
@@ -5487,7 +5502,7 @@ function uaSetActive(userId, name, active){
 //     그때 「퇴사자 보기」 상태를 모르면 화면이 제멋대로 바뀐다(켜 뒀는데 퇴사자가 사라진다).
 //   ★ 여기에 __uaAdmin 가드를 **두지 않는다.** 권한 판정은 호스트가 요청 시점에 한다(USER-LOGIN §3.3) —
 //     화면이 미리 막으면 거부 사유가 화면 문장으로 바뀌어, 관문이 실제로 막는지 아무도 확인하지 못한다.
-//   ★ 이것은 **왕복**이다(2026-09-14) — 회신은 부르는 쪽의 Promise 로 돌아온다({ ok, msg, roster, painted }).
+//   ★ 이것은 **왕복**이다(2026-09-14) — 회신은 부르는 쪽의 Promise 로 돌아온다({ ok, msg, roster }).
 //     그래서 여기에는 '누구의 회신인가'를 가리는 장치가 하나도 없다: 이 함수를 부른 그 클로저가 곧 그 답이다.
 //     늦게 오는 회신도, 버려진 요청의 회신도 닿을 곳이 없고, 영영 안 오면 20초 타임아웃이 실패로 돌려준다.
 //   ★ 돌려주는 값이 null 이면 **보내지 못했다**(위젯이 아니거나 이미 다른 쓰기가 도는 중) — 부르는 쪽은
@@ -5502,7 +5517,7 @@ async function uaSend(payload){
   //  ★ 회신에 실려 온 명부는 **여기서** 앉는다(uaSeatReply) — 잠금을 푼 **뒤**라 그려지는 목록이 꺼진
   //    버튼으로 서지 않는다. 부르는 쪽은 앉히지 않는다(앉히는 자리가 둘이면 한쪽이 반드시 빠진다).
   const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''), roster: String((r && r.roster) || '') };
-  rep.painted = uaSeatReply(rep.roster, cmd);
+  uaSeatReply(rep.roster, cmd);
   return rep;
 }
 // 회신에 실려 온 갱신 명부 한 덩어리 — 못 읽으면 null 이다(빈 화면보다 낡은 화면이 낫다).
@@ -5537,7 +5552,8 @@ function uaSeatRoster(json){
 //     이유가 없다. 그리고 **앉히기 전에** 편집 모드를 끝낸다 — 앉히고 나서 끄면 ▲▼·[취소]·[순서 저장]이
 //     남은 화면을 한 번 더 그려야 한다. 여기서 끄면 화면은 **한 번에 최종형**으로 그려진다.
 //     (호스트는 saveUserOrder 의 명부를 성공과 「낡은 명부」 거부에만 싣는다 — MainWindow §saveUserOrder.)
-//   ★ 돌려주는 값 = '앉혔나'. 미뤄 뒀거나 명부가 안 실려 왔으면 false 다(부르는 쪽이 '이미 그렸다'를 아는 근거).
+//   ★ 돌려주는 값 = '앉혔나'. 미뤄 뒀거나 명부가 안 실려 왔으면 false 다. 회신 객체에는 싣지 않는다
+//     (2026-09-14): 부르는 쪽이 '누가 이미 그렸나'를 되짚어 되그리기를 정하던 셈이 사라졌기 때문이다.
 function uaSeatReply(roster, cmd){
   const json = String(roster == null ? '' : roster);
   if(!json) return false;   // 회신에 명부가 안 실려 왔다(호스트가 다시 읽지 못했거나 읽을 이유가 없었다)
@@ -5570,15 +5586,16 @@ function userEdAfterWrite(r){
     toast(r.msg || '저장하지 못했습니다', 'error');
   }
 }
-//   ★ **바뀔 때만** 다시 그린다(2026-09-11 R2-W3). 무조건 그리면 [편집]·[＋ 직원 등록]을 누를 때마다
-//     (userEdOpen 이 uaSetSaving(false) 를 부른다) 명부가 통째로 다시 만들어져, 89행짜리 목록이 맨 위로
-//     튀고 방금 누른 그 버튼이 사라진다 — 폼을 닫을 때 포커스를 되돌릴 곳도 함께 없어진다.
-//   ★ 돌려주는 값 = '다시 그렸나'. 부르는 쪽이 같은 화면을 두 번 그리지 않게 하는 근거다.
+//   ★ 잠금은 **다시 그리지 않고** 건다(2026-09-14 군더더기 걷기 2단계). 잠금은 데이터가 바뀐 것이 아니라
+//     같은 목록의 컨트롤이 잠시 꺼지는 것뿐인데, 그 때문에 89행을 새로 만들면 스크롤과 포커스를 잃고
+//     그것을 되돌리는 장치가 또 필요해진다. 그래서 지금 서 있는 노드를 그 자리에서 끈다(uaSyncControls).
+//     ㆍ옛 판은 '바뀔 때만 그린다'(changed)로 그 비용을 줄여 보려 했다(R2-W3). 줄일 것이 아니라 없앨 것이었다.
+//   ★ 그래도 **렌더는 여전히 __uaSaving 을 보고 그린다**(uaRowActions·uaAdminBar). 둘은 같은 값을 보는
+//     한 벌이라 다투지 않고, 왕복 중에 명부 푸시가 목록을 통째로 다시 만들어도 잠금이 증발하지 않는다.
 //   ★ 워치독은 **없다**(2026-09-14). 잠금을 푸는 것은 hostRequest 왕복이 끝나는 자리 하나뿐이고,
 //     회신이 영영 안 오는 경우는 그 왕복의 타임아웃(20초)이 실패 회신으로 바꿔 준다 — 화면을 풀어 줄
 //     두 번째 장치를 둘 이유가 사라졌다(둘이면 '어느 쪽이 풀었나'를 늘 되짚어야 한다).
 function uaSetSaving(on){
-  const changed = (__uaSaving !== !!on);
   __uaSaving = !!on;
   //  ★ 전송 중에는 폼 자체를 닫지 못하게 한다(offEdSetBusy 와 같은 장치) — 닫아도 호스트 작업은 계속되는데
   //    결과를 알릴 곳만 사라진다. closeOverlay 의 busy 가드가 Esc·배경·×·취소를 함께 막는다.
@@ -5591,14 +5608,11 @@ function uaSetSaving(on){
   if(s) s.disabled = !!on;
   const a = document.getElementById('userEdActive');
   if(a) a.disabled = !!on;
-  //  ★ 명부 쪽 버튼([편집]·▲▼·「순서 저장」·「＋ 직원 등록」)은 **렌더가 잡는다**(2026-09-11).
-  //    노드를 걸어 다니며 끄면, 왕복 중에 도착한 명부 푸시가 목록을 다시 그리는 순간 잠금이 통째로
-  //    증발한다 — 그 상태에서 한 번 더 누르면 같은 쓰기가 두 번 나간다.
-  if(changed){
-    uaAdminBar();
-    uaApply();
-  }
-  return changed;
+  //  ★ 명부 쪽 버튼([편집]·▲▼·「순서 저장」·「＋ 직원 등록」)은 **지금 서 있는 노드를 그 자리에서** 끈다.
+  //    이것만으로는 왕복 중에 도착한 명부 푸시가 목록을 새로 만드는 순간 잠금이 증발하지만(2026-09-11 에
+  //    실제로 그랬다), 그 자리는 **렌더가 __uaSaving 을 보고 그리는 것**이 막는다(uaRowActions·uaAdminBar).
+  //    두 겹이 같은 값을 보므로 어느 쪽도 남의 판단을 되짚지 않는다.
+  uaSyncControls();
 }
 
 // 목록만 다시 읽는다(「퇴사자 보기」 전환용). openUserAdmin 과 달리 모달을 새로 열지 않는다.
@@ -5901,13 +5915,11 @@ window.__applyMembers = function(json){
    ★ deletable/why 는 **화면용 힌트**다. 최종 판정은 삭제 시점에 호스트가 트랜잭션 안에서 다시 한다
      (설계 §4.2). 그래서 화면은 미리 막지 않고 '왜 안 되는지'만 말한다.                      */
 let __trData = null, __trTab = 'project', __trBusy = false, __trSaving = false;
-//  ★ 지금 #trList 에 그려져 있는 것이 **어느 화면인가**(2026-09-11 적대 검토 R3-W2). 스크롤 자리는
-//    같은 화면일 때만 되돌려야 한다 — 탭을 바꾸거나 관리자 여부가 뒤집히면 내용이 통째로 달라지므로,
-//    옛 자리를 되돌리면 관리자가 누른 적 없는 중간 어딘가에서 시작한다(짧은 탭이면 아예 빈 자리다).
-let __trShown = null;       // { tab, admin } — 직전 렌더가 그린 화면(null = 아직 그린 적 없다)
-//  ★ 잠금이 걸린 첫 렌더는 **행 버튼을 전부 끈 채로** 그린다 = 방금 누른 버튼이 꺼져 포커스를 줄 수 없다.
-//    그때는 행(.mba-line)으로 물러나고, 여기에 그 버튼을 적어 둔다 — 잠금이 풀린 다음 렌더가 되돌린다.
-let __trKeepBtn = null;     // { op, key } — 잠금 동안 잠시 맡아 둔 '되돌릴 버튼'
+//  ★ '직전에 그린 화면'(__trShown)도 '잠금 동안 맡아 둔 버튼'(__trKeepBtn)도 **없다**(2026-09-14 군더더기
+//    걷기 2단계 · 「구성원 편집」과 같은 이유·같은 날). 그 둘은 잠금 하나 때문에 목록을 통째로 다시 만들던
+//    자리를 메우려고 자란 장치였다 — 잠금을 그 자리에서 걸게 고치고 나면(trSyncControls) 되돌릴 것이 없다.
+//    지금 남은 재렌더는 **내용이 실제로 달라지는** 경우뿐이다(목록이 새로 앉았다 · 탭을 바꿨다 ·
+//    관리자 여부가 뒤집혔다). 그때는 맨 위가 옳다.
 let __trAdmin = false;      // 이번 조회에서 호스트가 인정한 관리자 여부(회신에 admin:true 가 있었나)
 //  ★ 요청 표(__trReq)도 워치독도 **없다**(2026-09-14 · 「구성원 편집」과 같은 이유). 복구·삭제가 왕복이 되면서
 //    회신은 그 버튼을 누른 클로저로 돌아온다 — 늦은 회신이 다른 항목의 결과로 먹힐 길이 사라졌고,
@@ -5942,33 +5954,11 @@ function trRender(){
   //  ★ 탭 줄을 통째로 다시 만든다 = 탭에 있던 포커스가 body 로 떨어진다(키보드로 탭을 옮기면 그다음
   //    화살표키가 먹지 않았다 · 2026-09-10). 다시 그린 뒤 같은 자리로 되돌린다.
   const hadFocus = tabs.contains(document.activeElement);
-  //  ★ 목록도 통째로 다시 만든다 — 스크롤이 맨 위로 튀고, 방금 누른 행 버튼이 사라져 포커스가 body 로
-  //    떨어진다(2026-09-11 R2-W4 · uaMove 와 같은 이유). 한 번의 쓰기에도 이 렌더는 여러 번 돈다
-  //    (잠금 · 호스트 푸시). 그래서 자리와 포커스를 손으로 되돌린다 — 다시 그리는 쪽이 그 값을 지켜야 한다.
-  const keepTop = list.scrollTop;
-  //  ★ 다만 **같은 화면일 때만** 되돌린다(2026-09-11 R3-W2): 탭을 바꾸거나 관리자 여부가 뒤집히면
-  //    목록의 내용이 통째로 달라진다. 그 자리에 옛 스크롤을 앉히면 관리자가 고른 적 없는 중간에서
-  //    시작하고, 새 탭이 더 짧으면 아무것도 없는 자리에 선다. 화면이 바뀌면 맨 위가 옳다.
-  const view = { tab: __trTab, admin: __trAdmin };
-  const sameView = !!__trShown && __trShown.tab === view.tab && __trShown.admin === view.admin;
-  const af = document.activeElement;
-  let keepBtn = (af && af.dataset && af.dataset.top && af.dataset.tkey)
-    ? { op: String(af.dataset.top), key: String(af.dataset.tkey) } : null;
-  //  ★ 잠금 동안 행으로 물러나 있던 포커스는 **맡아 둔 표**로 되돌린다(R3-W2). 되돌리는 조건은
-  //    "포커스가 아직 **물러났던 그 행**에 있을 때"다 — 목록 안의 아무 행이나로 보면(2026-09-11 적대 검토
-  //    R4-W4) 관리자가 잠금 중에 다른 행으로 옮겨 둔 포커스를 화면이 도로 뺏어 엉뚱한 줄로 끌고 간다.
-  //    그래서 행에도 data-tkey 를 달아 두고(아래) 맡아 둔 표의 key 와 여기서 대조한다. 어긋나면
-  //    되돌리지 않는다 — 관리자가 둔 자리가 옳다(맡아 둔 표는 아래에서 어차피 비운다).
-  if(!keepBtn && __trKeepBtn && af && af.classList && af.classList.contains('mba-line') && list.contains(af)
-     && af.dataset && String(af.dataset.tkey || '') === __trKeepBtn.key){
-    keepBtn = __trKeepBtn;
-  }
-  //  ★ 그리고 **그 행에 그대로 앉힌다**(2026-09-11 적대 검토 R5-W1). 위에서 되돌리기를 거절한 자리가
-  //    바로 여기다: 관리자가 잠금 중에 다른 행으로 옮겨 둔 포커스는 뺏지 않는 것이 옳지만, 그 뒤 아무도
-  //    앉히지 않아 목록을 다시 만드는 순간 포커스가 body 로 떨어졌다(Tab 이 문서 처음부터 다시 시작한다).
-  //    행은 다시 만들어지므로 **열쇠(data-tkey)로 새 행을 찾아** 앉힌다.
-  const keepRow = (af && af.classList && af.classList.contains('mba-line') && list.contains(af)
-                   && af.dataset && af.dataset.tkey != null) ? String(af.dataset.tkey) : '';
+  //  ★ 목록도 통째로 다시 만든다 — 그래서 **맨 위에서 시작한다**(아래 list.scrollTop = 0).
+  //    이 렌더가 도는 것은 내용이 실제로 달라졌을 때뿐이라(목록이 새로 앉았다 · 탭을 바꿨다 ·
+  //    관리자 여부가 뒤집혔다) 되돌릴 '보던 자리'가 없다. 잠금 켜기·끄기는 이제 여기를 돌리지 않는다
+  //    (trSyncControls 가 그 자리에서 끈다 · 2026-09-14) — 그래서 R2-W4·R3-W2·R4-W4·R5-W1 이 쌓아 올린
+  //    '보던 자리·누르던 버튼 되돌리기' 한 벌이 통째로 사라졌다.
   while(tabs.firstChild) tabs.removeChild(tabs.firstChild);
   while(list.firstChild) list.removeChild(list.firstChild);
   //  ★ 클래스도 관리자일 때만 붙인다(uaAdminBar 와 같은 관례) — 빈 자리에 탭 밑줄만 남는 꼴을 피한다.
@@ -5985,7 +5975,6 @@ function trRender(){
     list.appendChild(d);
     if(empty) empty.classList.add('hidden');
     if(sc) sc.textContent = why;
-    __trShown = view; __trKeepBtn = null;   // 안내 한 줄뿐인 화면 — 되돌릴 자리도 버튼도 없다
     return;
   }
   let total = 0;
@@ -6078,33 +6067,10 @@ function trRender(){
     list.appendChild(line);
   }
   if(empty){ empty.textContent = def.empty; empty.classList.toggle('hidden', arr.length > 0); }
-  //  ★ 다시 그리기 전의 스크롤 자리와 행 버튼 포커스를 되돌린다(위 keepTop·keepBtn).
-  //    ㆍ이름이 아니라 data-top/data-tkey 로 찾는다(한글 이스케이프가 끼지 않는다).
-  //    ㆍ꺼진 버튼에는 주지 않는다 — 브라우저가 포커스를 body 로 떨어뜨려 결국 같은 문제로 되돌아간다.
-  list.scrollTop = sameView ? keepTop : 0;
-  __trKeepBtn = null;
-  let restored = false;
-  if(keepBtn){
-    let kb = null;
-    for(const x of list.querySelectorAll('[data-top][data-tkey]')){
-      if(x.dataset.top === keepBtn.op && x.dataset.tkey === keepBtn.key){ kb = x; break; }
-    }
-    if(kb && !kb.disabled){ try{ kb.focus(); restored = true; }catch(_){} }
-    else if(kb){
-      //  ★ 잠금 때문에 꺼진 버튼이다 — body 로 떨어뜨리지 말고 **그 행**으로 물러난다(R3-W2).
-      //    그리고 잠금이 풀릴 때 되돌릴 수 있게 표를 맡아 둔다(다음 렌더가 쓴다).
-      const ln = kb.closest ? kb.closest('.mba-line') : null;
-      if(ln){ try{ ln.focus(); restored = true; }catch(_){} }
-      if(__trSaving) __trKeepBtn = keepBtn;
-    }
-  }
-  //  ★ 버튼으로 되돌리지 못했는데 포커스가 행에 있었다면 **그 행**에 앉힌다(R5-W1 · 위 keepRow).
-  if(!restored && sameView && keepRow){
-    for(const ln of list.querySelectorAll('.mba-line')){
-      if(ln.dataset && String(ln.dataset.tkey || '') === keepRow){ try{ ln.focus(); }catch(_){} break; }
-    }
-  }
-  __trShown = view;
+  //  ★ **맨 위에서 시작한다.** 되돌릴 '보던 자리'는 없다 — 이 렌더는 목록이 새로 앉거나 탭·관리자 여부가
+  //    바뀌었을 때만 돌기 때문이다(위 머리말). 한 줄로 적어 두는 이유는 노드를 비우면 브라우저가 알아서
+  //    0 으로 접는 것에 기대지 않기 위해서다(그 접힘은 레이아웃이 있어야 일어난다 — 계약이 될 수 없다).
+  list.scrollTop = 0;
 }
 
 // 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회(openTrash)와 쓰기 뒤 푸시(__applyTrash)가 **같은 함수**를 쓴다.
@@ -6140,9 +6106,9 @@ async function openTrash(){
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 닫은 경우).
   //    왕복이 없으면 풀고, **아직 도는 중이면 풀지 않는다** — 그 왕복이 끝나는 자리가 풀 것이다.
   if(__trSaving) trSetSaving(true); else trSetSaving(false);
-  //  ★ 이 한 줄이 **여는 순간의 유일한 렌더**다(2026-09-11 R2-W4). 바로 위 trSetSaving 은 지금 값을 그대로
-  //    다시 넣으므로 잠금이 바뀌지 않고, 바뀌지 않으면 그리지 않는다 — 여기서 지우면 방금 비운
-  //    __trData·__trAdmin 이 화면에 닿지 않아 **지난번에 열었던 목록**이 그대로 남는다(회신 전 한 프레임).
+  //  ★ 이 한 줄이 **여는 순간의 유일한 렌더**다. 바로 위 trSetSaving 은 잠금만 그 자리에서 다시 걸 뿐
+  //    목록을 그리지 않는다(2026-09-14) — 여기서 지우면 방금 비운 __trData·__trAdmin 이 화면에 닿지 않아
+  //    **지난번에 열었던 목록**이 그대로 남는다(회신 전 한 프레임).
   trRender();
   const sc = document.getElementById('trScope'); if(sc) sc.textContent = '불러오는 중…';
   const empty = document.getElementById('trEmpty'); if(empty) empty.classList.add('hidden');
@@ -6230,24 +6196,39 @@ async function trSend(payload){
   //    미뤄 두고 막대가 말한다. 휴지통이 자기 사본을 들면 그 규칙이 한쪽에서만 빠진다.
   const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''),
                 trash: String((r && r.trash) || ''), roster: String((r && r.roster) || '') };
-  rep.painted = uaSeatReply(rep.roster, cmd);
+  uaSeatReply(rep.roster, cmd);
   return rep;
 }
-// 휴지통 쓰기 잠금 한 곳 — overlay dataset.busy(닫기 차단) + 렌더(uaSetSaving·offEdSetBusy 와 같은 장치).
-//   ★ 행 버튼을 **걸어 다니며 끄지 않는다**(2026-09-11). 잠금은 trRender 가 __trSaving 을 보고 그린다 —
-//     노드에 칠해 두면 왕복 중에 도착한 푸시가 목록을 다시 만드는 순간 잠금이 증발했고, 원래 상태를
-//     원래 상태를 표시해 두는 되돌리기 장치도 그때 함께 사라졌다(다시 그린 버튼에는 그 표가 없다).
-//   ★ **바뀔 때만** 그린다(2026-09-11 R2-W4). 무조건 그리면 쓰기 한 번에 목록이 세 번 다시 만들어져
-//     (잠금 · 회신 · 호스트 푸시) 그때마다 스크롤과 포커스를 잃는다. 돌려주는 값은 '다시 그렸나' 다.
+// 휴지통 목록의 컨트롤 상태를 **그 자리에서** 다시 정한다 — 목록을 다시 그리지 않는다(uaSyncControls 와 같다).
+//   ★ 규칙은 렌더(trRender)와 **같은 한 벌**이다: 쓰기 왕복 중(__trSaving)이면 전부 꺼지고, [영구 삭제]는
+//     지울 수 없는 항목이면(deletable!==true) 잠금과 무관하게 꺼진 채다. 그 판정을 여기 따로 적어 두지 않고
+//     **목록 데이터에서 다시 읽는다** — 적어 두면 둘이 갈려, 잠금 한 번이 '지울 수 없음'을 뒤집는다.
+//   ★ 두 곳이 같은 값을 보므로 왕복 중에 도착한 푸시가 목록을 통째로 다시 만들어도 잠금이 증발하지 않는다.
+function trSyncControls(){
+  const list = document.getElementById('trList'); if(!list) return;
+  const rows = trRows(__trTab);
+  const deletable = key => {
+    const it = rows.find(x => x && String(x.key != null ? x.key : '') === String(key));
+    return !!(it && it.deletable === true);
+  };
+  for(const b of list.querySelectorAll('[data-top]')){
+    lockLineBtn(b, __trSaving || (b.dataset.top === 'delete' && !deletable(b.dataset.tkey)));
+  }
+}
+// 휴지통 쓰기 잠금 한 곳 — overlay dataset.busy(닫기 차단) + 컨트롤 잠금(uaSetSaving·offEdSetBusy 와 같은 장치).
+//   ★ 잠금 때문에 목록을 **다시 만들지 않는다**(2026-09-14 군더더기 걷기 2단계). 옛 판은 잠금을 렌더로만
+//     반영했고(2026-09-11), 그래서 쓰기 한 번에 목록이 여러 번 새로 만들어져 스크롤과 포커스를 잃었다 —
+//     '바뀔 때만 그린다'(changed)도, 자리·포커스를 되돌리는 한 벌도 전부 그 비용을 줄이려던 장치다.
+//     줄일 것이 아니라 없앨 것이었다: 지금 서 있는 노드를 그 자리에서 끈다(trSyncControls).
+//   ★ 그래도 **렌더는 여전히 __trSaving 을 보고 그린다** — 왕복 중에 푸시가 목록을 새로 만들어도 잠금이
+//     따라온다. 두 겹이 같은 값을 보므로 어느 쪽도 남의 판단을 되짚지 않는다.
 //   ★ 워치독은 **없다**(2026-09-14 · uaSetSaving 과 같은 이유). 잠금을 푸는 자리는 왕복이 끝나는 곳 하나뿐이고,
 //     회신이 영영 안 오는 경우는 hostRequest 의 타임아웃(20초)이 실패 회신으로 바꿔 풀어 준다.
 function trSetSaving(on){
-  const changed = (__trSaving !== !!on);
   __trSaving = !!on;
   const ov = document.getElementById('trashModal');
   if(ov){ if(on) ov.dataset.busy = '1'; else delete ov.dataset.busy; }
-  if(changed) trRender();   // 잠금을 화면에 반영하는 길은 이 한 줄뿐이다(그리는 곳이 곧 잠그는 곳이다)
-  return changed;
+  trSyncControls();
 }
 
 // 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다.

@@ -961,9 +961,11 @@ async function main() {
   });
 
   /* ── C21 ▲ 가 스크롤 자리와 포커스를 지킨다 ─────────────────────────── */
-  //  ★ uaApply() 는 #uaList 를 통째로 다시 만든다 — 그대로 두면 스크롤이 맨 위로 튀고 포커스가 body 로
-  //    떨어져, 89행 명부에서 ▲ 를 연달아 두 번 누르는 것이 불가능했다(2026-09-10). 그래서 uaMove 가
-  //    스크롤 자리와 포커스를 손으로 되돌린다. 이 케이스는 그 되돌림을 실제 클릭으로 본다.
+  //  ★ 예전에는 uaMove 가 uaApply() 로 #uaList 를 통째로 다시 만들고, 맨 위로 튄 스크롤과 사라진 버튼을
+  //    손으로 되돌렸다(2026-09-10). 2026-09-14 부터는 **다시 만들지 않는다** — 이웃 행 노드를 한 칸
+  //    옮길 뿐이라 스크롤도 포커스도 브라우저가 그대로 들고 있다(되돌릴 것이 없다).
+  //    이 케이스는 그 결과를 실제 클릭으로 본다: 자리가 그대로인가 · 포커스가 남았는가 ·
+  //    **누르던 버튼 노드가 그대로 살아 있는가**(살아 있지 않다면 목록을 다시 만든 것이다).
   await runCase('C21', '순서 편집 ▲ — 스크롤 자리와 포커스가 유지된다', async () => {
     if (!okq('C21 「순서 편집」 진입', !!(await orderOn()))) return;
     let measured = false;
@@ -990,20 +992,32 @@ async function main() {
       okq('C21 목록을 아래로 굴렸다', pick.top > 0, `scrollTop=${pick.top} / max=${pick.max} / 행 ${pick.rows}`);
       //  uid 는 숫자 문자열이라(data-uid) 셀렉터에 그대로 끼워도 이스케이프가 낄 자리가 없다.
       const tUid = String(pick.uid).replace(/[^0-9]/g, '');
+      //  ★ 누른 버튼에 표를 하나 붙여 둔다 — 목록을 다시 만들었다면 그 노드가 버려져 표도 함께 사라진다.
+      //    (data-* 이므로 시험이 붙였다는 사실이 화면 어디에도 드러나지 않는다)
+      //  ★ focus() 를 먼저 부르는 이유(2026-09-14): 사람이 마우스로 누르면 브라우저가 **누르는 순간
+      //    그 버튼에 포커스를 준다.** 그런데 JS 의 el.click() 은 이벤트만 쏘고 포커스는 옮기지 않는다.
+      //    옛 코드는 목록을 통째로 다시 그린 뒤 focus() 로 **되돌려** 놓았기에 이 차이가 가려졌고,
+      //    지금은 노드를 안 버리고 그대로 두므로 '지킬 포커스'가 애초에 없으면 지킬 것도 없다.
+      //    그래서 실제 클릭과 같은 순서(포커스 → 누름)로 맞춘다 — 그래야 이 케이스가 재는 것이
+      //    '코드가 포커스를 도로 넣어 주나' 가 아니라 '노드를 안 버려서 포커스가 그대로 남나' 가 된다.
+      //    위에서 **화면에 온전히 보이는 행**만 고르므로 focus() 가 스크롤을 옮기지 않는다.
       const clicked = await ev(`(function(){
         var b=document.querySelector('#uaList [data-uop="up"][data-uid="${tUid}"]');
-        if(!b || b.disabled) return false; b.click(); return true;})()`);
+        if(!b || b.disabled) return false; b.dataset.tcMark='1'; b.focus(); b.click(); return true;})()`);
       if (!okq('C21 보이는 아래쪽 행의 ▲ 를 눌렀다', clicked === true, `uid=${pick.uid}`)) return;
       await sleep(150);
       const st = await evj(`JSON.stringify((function(){
         var l = document.getElementById('uaList'), a = document.activeElement;
+        var b = document.querySelector('#uaList [data-uop="up"][data-uid="${tUid}"]');
         return { top: l ? l.scrollTop : -1,
                  uop: (a && a.dataset) ? String(a.dataset.uop || '') : '',
                  uid: (a && a.dataset) ? String(a.dataset.uid || '') : '',
+                 markKept: !!(b && b.dataset && b.dataset.tcMark === '1'),
                  inList: !!(l && a && l.contains(a)) };
       })())`);
       okq('C21 스크롤이 맨 위로 튀지 않았다', st.top > 0, `scrollTop=${st.top}`);
       okq('C21 스크롤 자리가 그대로다(±2px)', Math.abs(st.top - pick.top) <= 2, `${pick.top} → ${st.top}`);
+      okq('C21 목록을 다시 만들지 않았다(누르던 버튼 노드가 그대로다)', st.markKept === true, JSON.stringify(st));
       okq('C21 포커스가 옮긴 행의 ▲▼ 에 남는다(body 로 떨어지지 않는다)',
         st.inList === true && (st.uop === 'up' || st.uop === 'down') && st.uid === String(pick.uid),
         JSON.stringify(st));

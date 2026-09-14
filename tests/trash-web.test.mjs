@@ -57,6 +57,16 @@ function extractFn(web, name) {
   return (isAsync ? 'async ' : '') + extractFunction(web, name);
 }
 
+//  trSetSaving 의 **마지막 줄** — 워치독을 되살려 보거나 '잠금을 렌더로 반영하던' 옛 판으로 되돌려 보는
+//  변이가 끼어드는 자리다(2026-09-14 부터 잠금은 다시 그리지 않고 그 자리에서 건다: trSyncControls).
+//   ★ 되살린 워치독은 **함수 안쪽**에 둔다 — 닫는 중괄호 바깥에 두면 extractFunction 이 떼어 오는 범위에
+//     들어오지 않아 변이가 아무것도 바꾸지 못한다(초록이 그냥 뜬다).
+const TR_LOCK_TAIL = '  trSyncControls();\n}';
+const TR_LOCK_WATCHDOG = '  trSyncControls();\n  if(on) setTimeout(() => trSetSaving(false), 12000);\n}';
+//  trSend 안의 **좌석 한 줄** — uaSend 에 글자가 똑같은 줄이 하나 더 있으므로(두 화면이 같은 문을 쓴다)
+//  뒤따르는 주석 머리까지 묶어 그 한 곳만 가리킨다. String.replace 는 첫 일치만 바꾼다.
+const TR_SEAT_IN_SEND = '  uaSeatReply(rep.roster, cmd);\n  return rep;\n}\n// 휴지통 목록의 컨트롤';
+
 // 한 줄짜리 const 선언을 원본에서 그대로 떼어 낸다(사본은 반드시 낡는다).
 function constLine(web, name) {
   const m = new RegExp('^const ' + name + ' = .*$', 'm').exec(web);
@@ -183,8 +193,8 @@ const checks = {
     //  ★ 2026-09-14(좌석 일원화) — 인력 복구·삭제가 실어 오는 **명부**는 「구성원 편집」과 **같은 문**을
     //    지난다(uaSeatReply): 순서 편집 중이면 미뤄 두고, 아니면 앉힌다. 휴지통이 자기 사본을 들면
     //    그 규칙이 한쪽에서만 지켜지고, 관리자가 잡고 있던 순서가 남의 복구 한 번에 날아간다.
-    assert.ok(/rep\.painted = uaSeatReply\(rep\.roster, cmd\);/.test(s),
-      'trSend 가 회신의 명부를 공용 좌석(uaSeatReply)으로 들여보내지 않는다 — 규칙이 두 벌이 되면 한쪽은 반드시 낡는다');
+    assert.ok(/\n  uaSeatReply\(rep\.roster, cmd\);/.test(s) && !/painted/.test(s),
+      'trSend 가 회신의 명부를 공용 좌석(uaSeatReply)으로 들여보내지 않는다(또는 그 판정을 회신에 싣는다) — 규칙이 두 벌이 되면 한쪽은 반드시 낡는다');
     assert.ok(s.indexOf('trSetSaving(false);') >= 0 && s.indexOf('uaSeatReply(') > s.indexOf('trSetSaving(false);'),
       'trSend 가 잠금을 풀기 전에 명부를 앉힌다 — 그때 그려지는 명부 목록이 전부 꺼진 버튼으로 선다(uaSend 와 같은 차례여야 한다)');
     const b = extractFunction(web, 'trSetSaving');
@@ -192,10 +202,10 @@ const checks = {
       'trSetSaving 에 워치독이 되살아났다 — 왕복 도중에 잠금을 푸는 두 번째 장치가 생기면 그 틈으로 두 번째 삭제가 나간다');
     assert.ok(/dataset\.busy = '1'/.test(b) && /delete ov\.dataset\.busy/.test(b),
       'trSetSaving 이 overlay dataset.busy 를 세우고 지우지 않는다 — 전송 중에 창을 닫으면 결과를 알릴 곳이 사라진다');
-    assert.ok(/trRender\(\)/.test(b),
-      'trSetSaving 이 잠금을 렌더로 반영하지 않는다 — 왕복 중 푸시가 목록을 다시 그리면 잠금이 증발한다(2026-09-11)');
-    assert.ok(!/trwas/.test(b) && !/querySelectorAll\('\[data-top\]'\)/.test(b),
-      'trSetSaving 이 아직 행 버튼을 걸어 다니며 끈다 — 다시 그린 버튼에는 그 표가 없어 되돌리기가 헛돈다');
+    //  ★ 2026-09-14(군더더기 걷기 2단계): 잠금은 **그 자리에서** 건다(trSyncControls). 목록을 다시 만들면
+    //    스크롤과 포커스를 잃고, 그것을 되돌리는 한 벌이 또 필요해진다 — 줄일 것이 아니라 없앨 것이었다.
+    assert.ok(/trSyncControls\(\);/.test(b) && !/trRender\(\)/.test(b),
+      'trSetSaving 이 잠금 때문에 목록을 다시 그린다(또는 그 자리에서 잠그지 않는다) — 쓰기 한 번에 목록이 여러 번 새로 만들어진다(R2-W4)');
     //  ★ 손으로 만든 상관관계가 **하나도 남아 있지 않아야** 한다(주석은 빼고 본다).
     const bare = web.replace(/\/\/[^\n]*/g, '');
     for (const dead of ['__trReq', '__trSaveWatchdog', '__trashDone']) {
@@ -234,74 +244,52 @@ const checks = {
       'trRender 가 [복구]를 그릴 때 __trSaving 을 보지 않는다 — 재렌더가 잠금을 지운다');
     assert.ok(/db\.disabled = !deletable \|\| __trSaving;/.test(r),
       'trRender 가 [영구 삭제]의 잠금을 데이터와 왕복 상태로 함께 정하지 않는다 — 둘 중 하나만 보면 나머지가 샌다');
+    //  ★ 그리고 **그 자리에서 거는 겹**도 같은 한 식을 쓴다(2026-09-14). 집합이나 식이 갈리면
+    //    잠금 한 번이 '지울 수 없음'을 뒤집는다 — 되돌릴 수 없는 [영구 삭제]가 켜진다.
+    const s = extractFunction(web, 'trSyncControls');
+    assert.ok(/querySelectorAll\('\[data-top\]'\)/.test(s),
+      'trSyncControls 가 #trList 의 행 컨트롤을 훑지 않는다 — 잠금이 그 자리에서 걸리지 않는다');
+    assert.ok(/deletable\(b\.dataset\.tkey\)/.test(s) && /it\.deletable === true/.test(s),
+      "trSyncControls 가 '지울 수 있나'를 목록 데이터에서 다시 읽지 않는다 — 판정을 따로 적어 두면 렌더와 갈린다");
+    assert.ok(/__trSaving \|\| \(b\.dataset\.top === 'delete'/.test(s),
+      'trSyncControls 가 잠금과 삭제 가능 여부를 한 식으로 정하지 않는다 — 잠금을 푸는 순간 지울 수 없는 항목이 켜진다');
+    assert.ok(/lockLineBtn\(/.test(s),
+      'trSyncControls 가 lockLineBtn 을 쓰지 않는다 — 포커스를 쥔 버튼이 꺼지면 그대로 body 로 떨어진다');
   },
 
-  // ⑦-d 목록을 다시 그려도 **보던 자리와 누르던 버튼**을 잃지 않는다(2026-09-11 적대 검토 R2-W4).
-  //   trRender 는 #trList 를 통째로 다시 만든다. 옛 판은 쓰기 한 번에 그 일이 세 번 났고(잠금 · 회신 ·
-  //   호스트 푸시), 그때마다 스크롤이 맨 위로 튀고 방금 누른 버튼이 사라져 포커스가 body 로 떨어졌다 —
-  //   긴 휴지통에서 연달아 복구하는 것이 사실상 불가능했다(uaMove 가 명부에서 겪은 것과 같은 일이다).
-  //   그래서 둘을 함께 고친다: ⓐ 그리는 쪽이 자리·포커스를 되돌리고, ⓑ 잠금은 **바뀔 때만** 그린다.
-  renderKeepsPlace(web) {
+  // ⑦-d 목록을 다시 그리는 것은 **내용이 실제로 달라졌을 때뿐**이다(2026-09-14 군더더기 걷기 2단계) —
+  //   목록이 새로 앉았다 · 탭을 바꿨다 · 관리자 여부가 뒤집혔다. 그때는 **맨 위**가 옳다.
+  //   옛 판은 잠금 켜기·끄기도 이 렌더를 돌렸고(쓰기 한 번에 세 번), 그때마다 스크롤이 맨 위로 튀고
+  //   방금 누른 버튼이 사라져 포커스가 body 로 떨어졌다 — 그래서 R2-W4·R3-W2·R4-W4·R5-W1 이 '보던 자리·
+  //   누르던 버튼 되돌리기' 한 벌을 쌓았다. 잠금이 목록을 다시 만들지 않게 되자 그 한 벌이 통째로 사라졌다.
+  renderStartsAtTop(web) {
     const r = extractFunction(web, 'trRender');
-    assert.ok(/const keepTop = list\.scrollTop;/.test(r) && /list\.scrollTop = sameView \? keepTop : 0;/.test(r),
-      'trRender 가 스크롤 자리를 찍어 두고 되돌리지 않는다 — 다시 그릴 때마다 목록이 맨 위로 튄다(R2-W4)');
-    //  ★ 되돌리는 것은 **같은 화면일 때만**이다(2026-09-11 적대 검토 R3-W2). 탭을 바꾸거나 관리자 여부가
-    //    뒤집히면 목록의 내용이 통째로 달라진다 — 그 자리에 옛 스크롤을 앉히면 관리자가 고른 적 없는
-    //    중간에서 시작하고, 새 탭이 더 짧으면 아무것도 없는 자리에 선다. 화면이 바뀌면 맨 위가 옳다.
-    assert.ok(/const sameView = !!__trShown && __trShown\.tab === view\.tab && __trShown\.admin === view\.admin;/.test(r),
-      "trRender 가 '지금 그리는 것이 직전과 같은 화면인가'를 재지 않는다 — 탭을 바꿔도 옛 스크롤 자리가 그대로 앉는다(R3-W2)");
-    assert.ok((r.match(/__trShown = view;/g) || []).length >= 2,
-      'trRender 가 그린 화면(__trShown)을 갈래마다 남기지 않는다 — 안내 한 줄뿐인 화면에서 빠져나오면 판정이 낡는다');
-    assert.ok(/let keepBtn = \(af && af\.dataset && af\.dataset\.top && af\.dataset\.tkey\)/.test(r),
-      'trRender 가 포커스를 쥔 행 버튼을 data-top·data-tkey 로 찍어 두지 않는다 — 이름으로 잡으면 한글 이스케이프가 낀다');
-    assert.ok(/if\(keepBtn\)\{/.test(r) && /\.focus\(\);/.test(r),
-      'trRender 가 찍어 둔 행 버튼으로 포커스를 되돌리지 않는다 — 다시 그린 순간 포커스가 body 로 떨어진다');
-    assert.ok(/if\(kb && !kb\.disabled\)/.test(r),
-      'trRender 가 꺼진 버튼에도 포커스를 준다 — 브라우저가 그 포커스를 body 로 떨어뜨려 결국 같은 문제로 돌아온다');
-    //  ★ 꺼진 버튼일 때 **행으로 물러난다**(R3-W2). 잠금이 걸린 첫 렌더는 행 버튼을 전부 끈 채로 그리므로
-    //    되돌릴 곳이 없어 포커스가 body 로 떨어졌다 — 그러면 Tab 이 문서 처음부터 다시 시작한다.
-    //    그리고 잠금이 풀린 다음 렌더가 그 버튼으로 되돌릴 수 있게 표(__trKeepBtn)를 맡아 둔다.
+    assert.ok(/list\.scrollTop = 0;/.test(r),
+      'trRender 가 맨 위에서 시작하지 않는다 — 탭을 바꾸면 새 탭의 첫 줄이 화면 밖에서 시작한다');
+    assert.ok(!/sameView|keepTop|keepBtn|keepRow|__trShown|__trKeepBtn/.test(r),
+      "trRender 에 '보던 자리·누르던 버튼 되돌리기'가 남아 있다 — 그 장치는 잠금이 목록을 다시 만들던 시절의 것이다");
+    const bare = web.replace(/\/\/[^\n]*/g, '');
+    for (const dead of ['__trShown', '__trKeepBtn']) {
+      assert.ok(!bare.includes(dead),
+        `모듈 전역 ${dead} 가 아직 살아 있다 — 다시 그릴 이유가 없는 재렌더를 메우려고 자란 장치다`);
+    }
+    //  ★ 탭 줄은 **여전히 통째로 다시 만든다**(건수 배지가 바뀐다) — 그래서 탭에 있던 포커스는 지금도
+    //    그리는 쪽이 되돌려야 한다. 이건 '내용이 달라진 재렌더'라 되돌리는 것이 옳다(R2-W4 와 무관하다).
+    assert.ok(/const hadFocus = tabs\.contains\(document\.activeElement\);/.test(r) && /cur\.focus\(\)/.test(r),
+      '탭 줄을 다시 만들면서 그 안에 있던 포커스를 되돌리지 않는다 — 키보드로 탭을 옮기면 화살표키가 먹지 않는다');
+    //  ★ 행의 손잡이는 **그대로 남는다**: tabIndex=-1 은 잠금이 포커스를 물러 세울 자리다(lockLineBtn).
     assert.ok(/line\.tabIndex = -1;/.test(r),
-      '행(.mba-line)이 포커스를 받을 수 없다 — 꺼진 버튼에서 물러설 자리가 없어 포커스가 body 로 떨어진다(R3-W2)');
-    assert.ok(/closest\('\.mba-line'\)/.test(r) && /ln\.focus\(\)/.test(r),
-      'trRender 가 꺼진 버튼일 때 그 행으로 물러나지 않는다 — 잠기는 순간 키보드 조작이 끊긴다(R3-W2)');
-    assert.ok(/if\(__trSaving\) __trKeepBtn = keepBtn;/.test(r),
-      '잠금 동안 되돌릴 버튼을 맡아 두지 않는다 — 잠금이 풀려도 포커스가 행에 남아 다음 항목을 이어서 못 누른다(R3-W2)');
-    assert.ok(/if\(!keepBtn && __trKeepBtn && af && af\.classList && af\.classList\.contains\('mba-line'\)/.test(r),
-      '맡아 둔 버튼을 되돌리지 않는다(또는 포커스가 그 행을 떠났는데도 도로 뺏는다) — 되돌리는 조건은 "아직 그 행에 있을 때"다(R3-W2)');
-    //  ★ '아직 그 행에 있을 때' 는 **어느 행인지까지** 본다(2026-09-11 적대 검토 R4-W4). 목록 안의 아무
-    //    행이나로 보면, 잠금 중에 관리자가 다른 행으로 옮겨 둔 포커스를 다음 렌더가 도로 뺏어 엉뚱한
-    //    줄로 끌고 간다(#trList 안이기만 하면 참이던 옛 판의 구멍이다). 그래서 행에도 열쇠를 단다.
+      '행(.mba-line)이 포커스를 받을 수 없다 — 잠금이 버튼을 끌 때 물러설 자리가 없어 포커스가 body 로 떨어진다');
     assert.ok(/line\.dataset\.tkey = key;/.test(r),
-      '행(.mba-line)에 data-tkey 가 없다 — 물러난 포커스가 어느 행인지 다음 렌더가 알 길이 없다(R4-W4)');
-    assert.ok(/String\(af\.dataset\.tkey \|\| ''\) === __trKeepBtn\.key/.test(r),
-      '맡아 둔 표를 되돌릴 때 **그 행인지** 대조하지 않는다 — 관리자가 잠금 중에 옮겨 둔 포커스를 엉뚱한 행으로 끌고 간다(R4-W4)');
+      '행(.mba-line)에 data-tkey 가 없다 — 어느 행인지 가리킬 열쇠가 사라진다');
     assert.ok(!/line\.dataset\.top/.test(r),
-      "행에 data-top 을 달았다 — 버튼을 찾는 셀렉터('[data-top][data-tkey]')에 행이 끼어든다");
-    //  ★ 되돌리기를 **거절한 자리**에 뒷일이 없었다(2026-09-11 적대 검토 R5-W1). 관리자가 잠금 중에 다른
-    //    행으로 옮겨 둔 포커스는 뺏지 않는 것이 옳지만(R4-W4), 그 뒤 아무도 앉히지 않아 목록을 다시
-    //    만드는 순간 포커스가 body 로 떨어졌다 — 행은 다시 만들어지므로 **열쇠로 새 행을 찾아** 앉힌다.
-    assert.ok(/const keepRow = \(af && af\.classList && af\.classList\.contains\('mba-line'\) && list\.contains\(af\)/.test(r),
-      'trRender 가 행에 머물던 포커스를 찍어 두지 않는다 — 되돌릴 버튼이 없으면 그 포커스가 body 로 떨어진다(R5-W1)');
-    assert.ok(/if\(!restored && sameView && keepRow\)\{/.test(r),
-      'trRender 가 "버튼으로 되돌렸나(restored)"를 재지 않는다 — 되돌린 자리를 또 덮거나, 아무 데도 앉히지 않는다(R5-W1)');
-    assert.ok(/String\(ln\.dataset\.tkey \|\| ''\) === keepRow/.test(r),
-      '찍어 둔 행을 **열쇠로** 다시 찾지 않는다 — 옛 노드는 이미 버려졌고 자리(index)는 목록이 바뀌면 어긋난다(R5-W1)');
-    const s = extractFunction(web, 'trSetSaving');
-    assert.ok(/const changed = \(__trSaving !== !!on\);/.test(s),
-      'trSetSaving 이 "잠금이 실제로 바뀌었나"를 재지 않는다 — 쓰기 한 번에 목록이 세 번 다시 만들어진다(R2-W4)');
-    assert.ok(/if\(changed\) trRender\(\);/.test(s),
-      'trSetSaving 의 재렌더가 changed 로 좁혀져 있지 않다');
-    //  ★ 2026-09-14: 돌아오는 자리가 **하나**다. 옛 판은 '잠금 해제'와 '워치독 설치' 두 갈래에서 각각
-    //    돌려줬는데, 워치독이 사라지면서 갈래도 하나가 됐다 — 둘을 요구하면 없는 갈래를 요구하는 것이다.
-    assert.ok((s.match(/return changed;/g) || []).length === 1,
-      "trSetSaving 이 '다시 그렸나'를 정확히 한 자리에서 돌려주지 않는다 — 갈래가 둘이면 워치독이 되살아난 것이고, 없으면 부르는 쪽이 판단할 근거가 없다");
-    //  ★ 여는 순간의 렌더는 **남아 있어야 한다**: 바로 위 trSetSaving 은 지금 값을 그대로 다시 넣어
-    //    잠금이 바뀌지 않고, 바뀌지 않으면 그리지 않는다. 지우면 방금 비운 __trData·__trAdmin 이
-    //    화면에 닿지 않아 지난번에 열었던 목록이 그대로 남는다.
+      "행에 data-top 을 달았다 — 버튼을 찾는 셀렉터('[data-top]')에 행이 끼어든다");
+    //  ★ 여는 순간의 렌더는 **남아 있어야 한다**: 바로 위 trSetSaving 은 잠금만 그 자리에서 다시 걸 뿐
+    //    목록을 그리지 않는다. 지우면 방금 비운 __trData·__trAdmin 이 화면에 닿지 않아 지난번에 열었던
+    //    목록이 그대로 남는다(회신 전 한 프레임).
     const o = extractFunction(web, 'openTrash');
     assert.ok(/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);\s*\n[\s\S]{0,400}?\n  trRender\(\);/.test(o),
-      'openTrash 가 여는 순간 목록을 그리지 않는다 — 잠금이 바뀌지 않는 호출이라 trSetSaving 은 그리지 않는다(R2-W4)');
+      'openTrash 가 여는 순간 목록을 그리지 않는다 — trSetSaving 은 잠금만 걸 뿐 그리지 않는다');
   },
 
   // ⑧ 빈 탭 문구의 조사는 **받침이 정한다**(2026-09-10). 「이(가)」 병기는 다섯 탭 어디서도 맞지 않는 타협이다.
@@ -337,7 +325,7 @@ test('계약⑥-e: 숨김 확인창이 「휴지통」을 가리킨다(설계 §
 test('계약⑦: 입력한 이름은 가공 없이 호스트로 가고, 대조는 엄격 일치다', () => checks.confirmIsSentRaw(app));
 test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 회신은 그 버튼을 누른 클로저가 받는다', () => checks.writeRoundTrip(app));
 test('계약⑦-c: 행 버튼의 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
-test('계약⑦-d: 목록을 다시 그려도 스크롤 자리와 누른 버튼의 포커스가 남는다', () => checks.renderKeepsPlace(app));
+test('계약⑦-d: 목록을 다시 그리는 것은 내용이 달라졌을 때뿐이고, 그때는 맨 위에서 시작한다', () => checks.renderStartsAtTop(app));
 test('계약⑧: 빈 탭 문구는 탭 표가 지고 조사는 받침이 정한다(「이(가)」 병기 없음)', () => checks.emptyTextJosa(app));
 
 test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약⑦-b 가 실패한다', () => {
@@ -355,9 +343,14 @@ test('변이⑦-b2: 회신을 부르는 쪽이 안 받게 되돌리면 계약⑦
 });
 
 test('변이⑦-b3: 워치독을 되살리면 계약⑦-b 가 실패한다(왕복 도중에 잠금이 풀린다)', () => {
-  const bad = mutate(app, '  if(changed) trRender();   // 잠금을 화면에 반영하는 길은 이 한 줄뿐이다(그리는 곳이 곧 잠그는 곳이다)\n  return changed;',
-    '  if(changed) trRender();   // 잠금을 화면에 반영하는 길은 이 한 줄뿐이다(그리는 곳이 곧 잠그는 곳이다)\n  if(on) setTimeout(() => trSetSaving(false), 12000);\n  return changed;');
+  const bad = mutate(app, TR_LOCK_TAIL, TR_LOCK_WATCHDOG);
   assert.throws(() => checks.writeRoundTrip(bad), /워치독이 되살아났다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑦-b3b: 잠금을 렌더로 반영하게 되돌리면 계약⑦-b 가 실패한다(쓰기 한 번에 목록이 여러 번 새로 선다)', () => {
+  const bad = mutate(app, TR_LOCK_TAIL, '  trRender();\n}');
+  assert.throws(() => checks.writeRoundTrip(bad), /목록을 다시 그린다|그 자리에서 잠그지 않는다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
 });
 
@@ -368,8 +361,7 @@ test('변이⑦-b4: 회신의 갱신 목록을 안 앉히면 계약⑦-b 가 실
 });
 
 test('변이⑦-b5: 인력 쪽 명부를 안 들여보내면 계약⑦-b 가 실패한다(「구성원 편집」이 낡은 채로 남는다)', () => {
-  const bad = mutate(app, '  rep.painted = uaSeatReply(rep.roster, cmd);\n  return rep;\n}\n// 휴지통 쓰기 잠금',
-    '  return rep;\n}\n// 휴지통 쓰기 잠금');
+  const bad = mutate(app, TR_SEAT_IN_SEND, '  return rep;\n}\n// 휴지통 목록의 컨트롤');
   assert.throws(() => checks.writeRoundTrip(bad), /공용 좌석\(uaSeatReply\)으로 들여보내지 않는다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
 });
@@ -388,42 +380,41 @@ test('변이⑦-c: 잠금을 렌더에서 빼면 계약⑦-c 가 실패한다', 
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
-test('변이⑦-d: 스크롤 자리 복원을 지우면 계약⑦-d 가 실패한다(다시 그릴 때마다 맨 위로 튄다)', () => {
-  const bad = mutate(app, '  list.scrollTop = sameView ? keepTop : 0;\n', '');
-  assert.throws(() => checks.renderKeepsPlace(bad), /스크롤 자리를 찍어 두고 되돌리지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+//  ★ trRender 의 '맨 위에서 시작한다' 한 줄 — uaRender 에도 글자가 같은 줄이 있으므로 앞의 안내 문구까지
+//    묶어 그 한 곳만 가리킨다(두 화면이 같은 규칙을 쓴다는 뜻이기도 하다).
+const TOP_IN_TR_RENDER = '바뀌었을 때만 돌기 때문이다(위 머리말). 한 줄로 적어 두는 이유는 노드를 비우면 브라우저가 알아서\n' +
+  '  //    0 으로 접는 것에 기대지 않기 위해서다(그 접힘은 레이아웃이 있어야 일어난다 — 계약이 될 수 없다).\n  list.scrollTop = 0;\n}';
+
+test('변이⑦-d: trRender 가 맨 위에서 시작하지 않게 되돌리면 계약⑦-d 가 실패한다(새 탭이 화면 밖에서 시작한다)', () => {
+  const bad = mutate(app, TOP_IN_TR_RENDER, '바뀌었을 때만 돌기 때문이다.\n}');
+  assert.throws(() => checks.renderStartsAtTop(bad), /맨 위에서 시작하지 않는다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑦-d4: 화면이 바뀌어도 옛 스크롤 자리를 앉히게 되돌리면 계약⑦-d 가 실패한다(R3-W2)', () => {
-  const bad = mutate(app, '  list.scrollTop = sameView ? keepTop : 0;', '  list.scrollTop = keepTop;');
-  assert.throws(() => checks.renderKeepsPlace(bad), /스크롤 자리를 찍어 두고 되돌리지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+test('변이⑦-d4: 렌더에 옛 되돌리기 장치를 되살리면 계약⑦-d 가 실패한다(다시 그릴 이유 없는 재렌더가 돌아온다)', () => {
+  //  ★ '맨 위에서 시작한다' 한 줄은 **남겨 둔 채** 되돌리기만 얹는다 — 그래야 이 변이가 치는 자리가 분명해진다.
+  const bad = mutate(app, TOP_IN_TR_RENDER,
+    '바뀌었을 때만 돌기 때문이다.\n  list.scrollTop = 0;\n  if(sameView) list.scrollTop = keepTop;\n}');
+  assert.throws(() => checks.renderStartsAtTop(bad), /되돌리기'가 남아 있다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑦-d5: 잠금 동안 맡아 둔 버튼을 지우면 계약⑦-d 가 실패한다(잠금이 풀려도 포커스가 행에 남는다)', () => {
-  const bad = mutate(app, '      if(__trSaving) __trKeepBtn = keepBtn;\n', '');
-  assert.throws(() => checks.renderKeepsPlace(bad), /되돌릴 버튼을 맡아 두지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+test('변이⑦-d5: 모듈 전역의 맡아 둔 버튼 표를 되살리면 계약⑦-d 가 실패한다(노드가 그대로인데 표를 또 든다)', () => {
+  const bad = mutate(app, 'let __trAdmin = false;', 'let __trKeepBtn = null;\nlet __trAdmin = false;');
+  assert.throws(() => checks.renderStartsAtTop(bad), /__trKeepBtn 가 아직 살아 있다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑦-d2: trSetSaving 이 무조건 다시 그리게 되돌리면 계약⑦-d 가 실패한다(쓰기 한 번에 세 번 그린다)', () => {
-  const bad = mutate(app, '  const changed = (__trSaving !== !!on);', '  const changed = true;');
-  assert.throws(() => checks.renderKeepsPlace(bad), /"잠금이 실제로 바뀌었나"를 재지 않는다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+test('변이⑦-d2: 탭 줄의 포커스 되돌리기를 지우면 계약⑦-d 가 실패한다(화살표키가 먹지 않는다)', () => {
+  const bad = mutate(app, '  const hadFocus = tabs.contains(document.activeElement);\n', '  const hadFocus = false;\n');
+  assert.throws(() => checks.renderStartsAtTop(bad), /탭 줄을 다시 만들면서/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
-test('변이⑦-d6: 행 포커스 되돌리기를 지우면 계약⑦-d 가 실패한다(옮겨 둔 포커스가 body 로 떨어진다 · R5-W1)', () => {
-  const bad = mutate(app, "      if(ln.dataset && String(ln.dataset.tkey || '') === keepRow){ try{ ln.focus(); }catch(_){} break; }",
-    '      if(ln) break;');
-  assert.throws(() => checks.renderKeepsPlace(bad), /열쇠로\*\* 다시 찾지 않는다|찍어 둔 행을/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
-});
-
-test('변이⑦-d3: 꺼진 버튼에도 포커스를 주게 바꾸면 계약⑦-d 가 실패한다(포커스가 body 로 떨어진다)', () => {
-  const bad = mutate(app, '    if(kb && !kb.disabled){ try{ kb.focus(); restored = true; }catch(_){} }',
-    '    if(kb){ try{ kb.focus(); restored = true; }catch(_){} }');
-  assert.throws(() => checks.renderKeepsPlace(bad), /꺼진 버튼에도 포커스를 준다/);
-  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+test('변이⑦-d3: 행이 포커스를 못 받게 되돌리면 계약⑦-d 가 실패한다(잠금이 물러설 자리가 없다)', () => {
+  const bad = mutate(app, '    line.tabIndex = -1;\n', '');
+  assert.throws(() => checks.renderStartsAtTop(bad), /포커스를 받을 수 없다/);
+  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
 });
 
 test('변이⑧: 조사를 「이(가)」 병기로 되돌리면 계약⑧ 이 실패한다', () => {
@@ -504,8 +495,6 @@ function renderHarnessJs(src) {
     //  __trSaving 은 **꺼진 채**로 둔다 — 여기서 보는 것은 '무엇이 그려지는가' 하나다.
     //  잠금이 걸린 화면은 busyHarnessJs 가 본다(계약⑦-DOM).
     'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false;',
-    //  ★ 렌더가 기억하는 두 값 — 직전에 그린 화면(__trShown)과 잠금 동안 맡아 둔 버튼(__trKeepBtn · R3-W2).
-    'var __trShown = null, __trKeepBtn = null;',
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function trRestore(){} function trDelete(){} function toast(){} function hostRequest(){}',
     constLine(src, 'josa'),
@@ -517,14 +506,14 @@ function renderHarnessJs(src) {
     extractFunction(src, 'trRender'),
     SNAP_JS,
     'window.__probe = function(payload, clickTab){',
-    '  __trData = null; __trAdmin = false; __trTab = "project"; __trShown = null; __trKeepBtn = null;',
+    '  __trData = null; __trAdmin = false; __trTab = "project";',
     '  trApplyData(payload);',
     '  if(clickTab){ var tb = document.querySelector("[data-trtab=\'" + clickTab + "\']"); if(tb) tb.click(); }',
     '  return __snap();',
     '};',
     //  탭 전환은 탭 줄을 통째로 다시 만든다 — 그때 포커스가 body 로 떨어지지 않는지 본다(키보드 사용자에게 치명적).
     'window.__probeFocus = function(payload, clickTab){',
-    '  __trData = null; __trAdmin = false; __trTab = "project"; __trShown = null; __trKeepBtn = null;',
+    '  __trData = null; __trAdmin = false; __trTab = "project";',
     '  trApplyData(payload);',
     '  var first = document.querySelector("[data-trtab=\'project\']");',
     '  first.focus();',
@@ -545,7 +534,6 @@ function renderHarnessJs(src) {
 function busyHarnessJs(src) {
   return [
     'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false;',
-    'var __trShown = null, __trKeepBtn = null;   // 렌더가 기억하는 화면·맡아 둔 버튼(R3-W2)',
     'var __uaInactive = false, HOST = true, __toasts = [];',
     'var __sent = [], __reply = null, __timers = 0;',
     'var __realSetTimeout = window.setTimeout;',
@@ -569,6 +557,10 @@ function busyHarnessJs(src) {
     extractFunction(src, 'trRender'),
     extractFunction(src, 'trSeat'),
     extractFn(src, 'trSend'),
+    //  ★ 잠금은 **그 자리에서** 걸린다(2026-09-14) — trSetSaving 이 trSyncControls 를 부르고, 그것이
+    //    lockLineBtn 으로 한 버튼씩 끈다. 둘 다 떼어 오지 않으면 잠금 계약이 아예 돌지 못한다.
+    extractFunction(src, 'lockLineBtn'),
+    extractFunction(src, 'trSyncControls'),
     extractFunction(src, 'trSetSaving'),
     extractFunction(src, 'trAfterWrite'),
     'function __state(){',
@@ -580,7 +572,6 @@ function busyHarnessJs(src) {
     '}',
     'function __reset(payload, clickTab){',
     '  __trData = null; __trAdmin = false; __trTab = "project"; __trSaving = false;',
-    '  __trShown = null; __trKeepBtn = null;',
     '  __sent.length = 0; __toasts.length = 0; __reply = null; __timers = 0; __rosters = 0;',
     '  trApplyData(payload);',
     '  if(clickTab){ var tb = document.querySelector("[data-trtab=\'" + clickTab + "\']"); if(tb) tb.click(); }',
@@ -618,41 +609,28 @@ function busyHarnessJs(src) {
     'var __renders = 0;',
     'var __trRenderReal = trRender;',
     'trRender = function(){ __renders++; return __trRenderReal.apply(null, arguments); };',
-    //  목록이 다시 만들어져도 **누르고 있던 행 버튼**에 포커스가 남는가(긴 휴지통에서 연달아 복구하기).
-    'window.__probeFocusKeep = function(payload, clickTab){',
-    '  __reset(payload, clickTab);',
-    '  var b = document.querySelector("#trList [data-top=\'restore\']");',
-    '  if(!b) return { found: false };',
-    '  b.focus();',
-    '  var started = document.activeElement === b;',
-    '  var key = String(b.dataset.tkey || "");',
-    '  window.__applyTrashLike();',   // 호스트 푸시와 같은 경로 — #trList 를 통째로 다시 만든다
-    '  var act = document.activeElement;',
-    '  return { found: true, started: started, key: key, same: act === b,',
-    '           op: (act && act.dataset) ? String(act.dataset.top || "") : "",',
-    '           actKey: (act && act.dataset) ? String(act.dataset.tkey || "") : "",',
-    '           isBody: act === document.body };',
-    '};',
-    //  보던 자리(스크롤)는 **같은 화면일 때만** 남는다 — 탭을 바꾸면 내용이 통째로 달라지므로 맨 위가 옳다(R3-W2).
+    //  목록을 다시 그리면 **맨 위에서 시작한다** — 목록이 새로 앉거나 탭이 바뀐 것이 그 재렌더의 이유다.
     'window.__probeScrollKeep = function(payload, toTab){',
     '  __reset(payload, null);',
     '  var list = document.getElementById("trList");',
     '  list.scrollTop = 120;',
     '  var set = list.scrollTop;',
-    '  window.__applyTrashLike();',   // 같은 화면(같은 탭) — 보던 자리가 남아야 한다
-    '  var same = list.scrollTop;',
+    '  window.__applyTrashLike();',   // 목록이 새로 앉았다(호스트 푸시가 이 길이다)
+    '  var seated = list.scrollTop;',
     '  list.scrollTop = 120;',
     '  var tb = document.querySelector("[data-trtab=\'" + toTab + "\']");',
-    '  if(tb) tb.click();',           // 탭 전환 — 다른 화면이므로 맨 위로
+    '  if(tb) tb.click();',           // 탭 전환 — 역시 맨 위
     '  var switched = list.scrollTop;',
-    '  return { set: set, same: same, switched: switched, found: !!tb };',
+    '  return { set: set, seated: seated, switched: switched, found: !!tb };',
     '};',
-    //  잠금이 걸린 렌더는 행 버튼을 전부 끈다 — 그때 포커스는 **행**으로 물러나고, 풀리면 그 버튼으로 돌아온다(R3-W2).
-    //   ★ 진짜 길(trSetSaving → trRender)로 몬다: __applyTrashLike 로 바로 그리면 '잠기는 순간'이 재현되지 않는다.
+    //  잠금은 **목록을 다시 만들지 않고** 그 자리에서 걸린다. 포커스를 쥔 버튼이 꺼질 때만 그 행으로
+    //  물러났다가, 풀리면 그 버튼으로 돌아온다 — 행도 버튼도 같은 노드 그대로다.
     'window.__probeLockFocus = function(payload, clickTab){',
     '  __reset(payload, clickTab);',
+    '  var list = document.getElementById("trList");',
     '  var b = document.querySelector("#trList [data-top=\'restore\']");',
     '  if(!b) return { found: false };',
+    '  list.scrollTop = 120;',
     '  b.focus();',
     '  var started = document.activeElement === b;',
     '  var key = String(b.dataset.tkey || "");',
@@ -660,41 +638,45 @@ function busyHarnessJs(src) {
     '  var a1 = document.activeElement;',
     '  var locked = { isBody: a1 === document.body,',
     '                 line: !!(a1 && a1.classList && a1.classList.contains("mba-line")),',
-    '                 op: (a1 && a1.dataset) ? String(a1.dataset.top || "") : "" };',
+    '                 op: (a1 && a1.dataset) ? String(a1.dataset.top || "") : "",',
+    '                 off: !!b.disabled, top: list.scrollTop,',
+    //  ★ 노드가 그대로 살아 있는가 — 잠금이 목록을 다시 만들었다면 거짓이 된다.
+    '                 sameNode: document.querySelector("#trList [data-top=\'restore\']") === b };',
     '  trSetSaving(false);',
     '  var a2 = document.activeElement;',
     '  var unlocked = { isBody: a2 === document.body,',
     '                   op: (a2 && a2.dataset) ? String(a2.dataset.top || "") : "",',
     '                   key: (a2 && a2.dataset) ? String(a2.dataset.tkey || "") : "",',
-    '                   disabled: !!(a2 && a2.disabled) };',
+    '                   disabled: !!(a2 && a2.disabled), top: list.scrollTop };',
     '  return { found: true, started: started, key: key, locked: locked, unlocked: unlocked };',
     '};',
-    //  잠금 중에 관리자가 **다른 행**으로 포커스를 옮겼다면, 다음 렌더는 그것을 도로 뺏지 않는다(R4-W4).
-    //   ★ 맡아 둔 표(__trKeepBtn)가 가리키는 행과 지금 포커스가 있는 행을 열쇠(data-tkey)로 대조한다.
+    //  잠금 중에 관리자가 **다른 행**으로 포커스를 옮겼다면, 푸는 쪽은 그것을 도로 뺏지 않는다(옛 R4-W4 의 요구).
+    //   ★ 이제 행도 버튼도 다시 만들어지지 않으므로 '어느 행이었나'를 열쇠로 대조할 필요가 없다 —
+    //     돌아갈 자리를 적어 둔 그 행 노드에 포커스가 아직 있는지만 보면 된다.
     'window.__probeFocusMoved = function(payload, clickTab){',
     '  __reset(payload, clickTab);',
     '  var b = document.querySelector("#trList [data-top=\'restore\']");',
     '  if(!b) return { found: false };',
     '  b.focus();',
     '  var key = String(b.dataset.tkey || "");',
-    '  trSetSaving(true);',   // 잠금 렌더 — 포커스가 그 행으로 물러나고, 되돌릴 버튼을 맡아 둔다
+    '  trSetSaving(true);',   // 잠금 — 포커스가 그 행으로 물러나고, 돌아갈 자리를 그 행에 적어 둔다
     '  var lines = document.querySelectorAll("#trList .mba-line");',
     '  var other = lines.length > 1 ? lines[1] : null;',
     '  if(!other) return { found: true, twoRows: false };',
     '  var otherKey = String(other.dataset.tkey || "");',
     '  other.focus();',      // 관리자가 다른 행으로 옮겼다
     '  var moved = document.activeElement === other;',
-    '  trSetSaving(false);', // 잠금 해제 렌더 — 여기서 도로 뺏으면 결함이다
+    '  trSetSaving(false);', // 잠금 해제 — 여기서 도로 뺏으면 결함이다
     '  var a = document.activeElement;',
     '  return { found: true, twoRows: true, key: key, otherKey: otherKey, moved: moved,',
     '           op: (a && a.dataset) ? String(a.dataset.top || "") : "",',
     '           actKey: (a && a.dataset) ? String(a.dataset.tkey || "") : "",',
     //  ★ '뺏지 않았다'로는 부족하다(R5-W1) — 아무도 앉히지 않으면 포커스는 body 다. 어디에 앉았는지까지 본다.
     '           isBody: a === document.body,',
-    '           line: !!(a && a.classList && a.classList.contains("mba-line")),',
-    '           kept: !!__trKeepBtn };',
+    '           sameRow: a === other,',
+    '           line: !!(a && a.classList && a.classList.contains("mba-line")) };',
     '};',
-    //  잠금이 **바뀔 때만** 그리는가 — 같은 값을 다시 넣는 호출은 목록을 건드리지 않아야 한다.
+    //  잠금은 목록을 **한 번도** 다시 만들지 않는다 — 켜든 끄든, 같은 값을 다시 넣든 0 번이다(2026-09-14).
     'window.__probeRenderCount = function(payload, clickTab){',
     '  __reset(payload, clickTab);',
     '  __renders = 0;',
@@ -704,7 +686,7 @@ function busyHarnessJs(src) {
     '  var on = __renders;',
     '  trSetSaving(true);',    // 이미 켜져 있다
     '  var again = __renders;',
-    '  trSetSaving(false);',   // 켜짐 → 꺼짐(워치독도 함께 꺼진다)
+    '  trSetSaving(false);',   // 켜짐 → 꺼짐
     '  var off = __renders;',
     '  return { noop: noop, on: on - noop, again: again - on, off: off - again };',
     '};',
@@ -820,7 +802,6 @@ const probeRerender = (payload, clickTab, rep, src = app) =>
   runInJsdomAsync(RENDER_FIXTURE, busyHarnessJs(src), '__probeRerender', payload, clickTab, rep);
 const probeReplySeats = (payload, clickTab, rep, src = app) =>
   runInJsdomAsync(RENDER_FIXTURE, busyHarnessJs(src), '__probeReplySeats', payload, clickTab, rep);
-const probeFocusKeep = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeFocusKeep', payload, clickTab);
 const probeRenderCount = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeRenderCount', payload, clickTab);
 const probeScrollKeep = (payload, toTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeScrollKeep', payload, toTab);
 const probeLockFocus = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeLockFocus', payload, clickTab);
@@ -875,16 +856,14 @@ if (!jsdom) {
   skip('계약⑦-DOM(e): 왕복 중 푸시가 목록을 다시 그려도 잠금이 남는다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(f): 회신은 그 버튼을 누른 자리로 돌아오고, 실려 온 목록이 앉는다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(f): 회신의 목록을 안 앉히면 지운 항목이 화면에 그대로 남는다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(g): 목록을 다시 그려도 누르던 행 버튼에 포커스가 남는다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(h): 잠금은 바뀔 때만 그린다(같은 값을 다시 넣는 호출은 목록을 건드리지 않는다)', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(i): 탭을 바꾸면 보던 자리는 맨 위다(같은 화면일 때만 되돌린다)', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(j): 잠기면 포커스가 행으로 물러나고, 풀리면 그 버튼으로 돌아온다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(i): 화면이 바뀌어도 옛 자리를 앉히면 관리자가 고른 적 없는 중간에서 시작한다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(h): 잠금은 목록을 한 번도 다시 만들지 않는다(켜든 끄든 0 번)', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(i): 목록을 다시 그리면 언제나 맨 위에서 시작한다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(j): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(i): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 탭을 바꿔도 옛 자리가 앉는다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(j): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 다음 렌더가 도로 뺏지 않는다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(k): 행을 가리지 않고 되돌리면 옮겨 둔 포커스가 엉뚱한 행으로 끌려간다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(g): 포커스 복원을 지우면 다시 그린 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(h): trSetSaving 이 무조건 그리게 되돌리면 계약⑦-DOM(h) 가 실패한다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 풀 때 도로 뺏지 않는다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(k): 옮겨 갔는지 보지 않고 되돌리면 포커스가 원래 행으로 끌려간다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(h): 잠금을 렌더로 반영하게 되돌리면 계약⑦-DOM(h) 가 실패한다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다', SKIP_NO_JSDOM);
   skip('변이⑥-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
   skip('변이⑥-DOM(f): 사유 줄을 지우면 계약⑥-DOM(f) 가 실패한다', SKIP_NO_JSDOM);
@@ -1065,9 +1044,15 @@ if (!jsdom) {
     assert.strictEqual(probeRender(PAYLOAD, 'user').whys.length, 1);   // 통제군
   });
 
+  //  ★ '지울 수 있나'를 정하는 곳이 **둘**이다(렌더 · 그 자리에서 거는 잠금) — 둘 다 같은 답을 내야
+  //    한다. 그래서 변이도 둘을 함께 친다: 한쪽만 치면 나머지가 되살려 놓아 결함이 드러나지 않는다
+  //    (그 사실 자체가 '한 식으로 정해야 한다'는 계약의 근거다).
   test('변이⑦-DOM(c): 잠금 복구를 "무조건 켜기"로 바꾸면 계약⑦-DOM(c) 가 실패한다', async () => {
     const OK = trReply(true, '지웠습니다', null, null);
-    const bad = mutate(app, '    db.disabled = !deletable || __trSaving;', '    db.disabled = __trSaving;');
+    const bad = mutate(
+      mutate(app, '    db.disabled = !deletable || __trSaving;', '    db.disabled = __trSaving;'),
+      "    lockLineBtn(b, __trSaving || (b.dataset.top === 'delete' && !deletable(b.dataset.tkey)));",
+      '    lockLineBtn(b, __trSaving);');
     const r = await probeBusy(PAYLOAD, 'user', OK, bad);
     assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, false],
       '변이 전제: 데이터 쪽 잠금을 빼면 지울 수 없는 계정의 [영구 삭제]도 켜져야 한다');
@@ -1152,147 +1137,104 @@ if (!jsdom) {
     const AFTER = JSON.parse(JSON.stringify(PAYLOAD));
     AFTER.users = AFTER.users.filter((u) => u.key !== '31');
     const REP = trReply(true, '지웠습니다', AFTER, ROSTER);
-    const bad = mutate(app, '  rep.painted = uaSeatReply(rep.roster, cmd);\n  return rep;\n}\n// 휴지통 쓰기 잠금',
-      '  return rep;\n}\n// 휴지통 쓰기 잠금');
+    const bad = mutate(app, TR_SEAT_IN_SEND, '  return rep;\n}\n// 휴지통 목록의 컨트롤');
     const r = await probeReplySeats(PAYLOAD, 'user', REP, bad);
     assert.strictEqual(r.rosters, 0, `변이 전제: 좌석으로 안 보내면 0번이어야 한다(실제 ${r.rosters}번)`);
     const ctrl = await probeReplySeats(PAYLOAD, 'user', REP);
     assert.strictEqual(ctrl.rosters, 1);   // 통제군
   });
 
-  //  ★ 긴 휴지통에서 연달아 복구하기 — 목록은 쓰기마다 여러 번 다시 만들어진다(잠금·회신·푸시).
-  //    누르던 버튼이 그때마다 사라져 포커스가 body 로 떨어지면, 다음 항목을 키보드로 이어서 못 고른다
-  //    (명부의 ▲▼ 가 겪은 것과 같은 일이다 · 2026-09-11 적대 검토 R2-W4).
-  test('계약⑦-DOM(g): 목록을 다시 그려도 누르던 행 버튼에 포커스가 남는다', () => {
-    const r = probeFocusKeep(PAYLOAD, 'user');
-    assert.strictEqual(r.found, true, '전제 붕괴: [복구] 버튼을 찾지 못했다');
-    assert.strictEqual(r.started, true, '전제 붕괴: 행 버튼에 포커스를 주지 못했다');
-    assert.strictEqual(r.isBody, false, '다시 그리자 포커스가 body 로 떨어졌다 — 여기서 키보드 조작이 끊긴다');
-    assert.strictEqual(r.same, false, '전제 붕괴: 목록이 다시 만들어지지 않았다(같은 노드가 그대로 있다)');
-    assert.strictEqual(r.op, 'restore', `포커스가 다른 버튼으로 옮겨 갔다: ${JSON.stringify(r)}`);
-    assert.strictEqual(r.actKey, r.key, `포커스가 다른 행으로 옮겨 갔다: ${JSON.stringify(r)}`);
-  });
-
-  //  ★ 자리를 되돌리는 것은 **같은 화면일 때만**이다(2026-09-11 적대 검토 R3-W2). 탭을 바꾸면 목록의
-  //    내용이 통째로 달라진다 — 옛 자리를 그대로 앉히면 관리자가 고른 적 없는 중간에서 시작하고,
-  //    새 탭이 더 짧으면 아무것도 없는 자리에 선다(빈 화면처럼 보인다).
-  test('계약⑦-DOM(i): 탭을 바꾸면 보던 자리는 맨 위다(같은 화면일 때만 되돌린다)', () => {
+  //  ★ 목록을 다시 그리는 것은 **내용이 달라졌을 때뿐**이고(목록이 새로 앉았다 · 탭을 바꿨다), 그때는
+  //    맨 위가 옳다 — 옛 자리를 앉히면 관리자가 고른 적 없는 중간에서 시작하고, 새 탭이 더 짧으면
+  //    아무것도 없는 자리에 선다(빈 화면처럼 보인다).
+  test('계약⑦-DOM(i): 목록을 다시 그리면 언제나 맨 위에서 시작한다', () => {
     const r = probeScrollKeep(PAYLOAD, 'customer');
     assert.strictEqual(r.found, true, '전제 붕괴: 발주처 탭 버튼을 찾지 못했다');
     assert.strictEqual(r.set, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
-    assert.strictEqual(r.same, 120,
-      `같은 화면을 다시 그렸는데 보던 자리가 ${r.same} 로 튀었다 — 푸시 한 번에 목록이 맨 위로 돌아간다(R2-W4)`);
+    assert.strictEqual(r.seated, 0,
+      `목록이 새로 앉았는데 옛 스크롤 자리(${r.seated})가 그대로 남았다 — 지운 항목이 빠진 목록의 한가운데에서 시작한다`);
     assert.strictEqual(r.switched, 0,
-      `탭을 바꿨는데 옛 스크롤 자리(${r.switched})가 그대로 앉았다 — 새 탭의 첫 줄이 화면 밖에서 시작한다(R3-W2)`);
+      `탭을 바꿨는데 옛 스크롤 자리(${r.switched})가 그대로 앉았다 — 새 탭의 첫 줄이 화면 밖에서 시작한다`);
   });
 
-  //  ★ 잠금이 걸린 첫 렌더는 행 버튼을 **전부 끈 채로** 그린다 = 방금 누른 버튼이 꺼져 포커스를 줄 수 없다.
-  //    그때 body 로 떨어지면 Tab 이 문서 처음부터 다시 시작한다 — 행으로 물러났다가, 풀리면 돌아와야 한다.
-  //    ★ 진짜 길(trSetSaving → trRender)로 몬다: 렌더만 직접 부르면 '잠기는 순간'이 재현되지 않는다.
-  test('계약⑦-DOM(j): 잠기면 포커스가 행으로 물러나고, 풀리면 그 버튼으로 돌아온다', () => {
+  //  ★ 잠금은 **목록을 다시 만들지 않는다**(2026-09-14). 그래서 보던 자리도 노드도 그대로고, 포커스를 쥔
+  //    버튼이 꺼질 때만 그 행으로 물러났다가 풀리면 돌아온다 — 물러서기가 없으면 body 로 떨어져
+  //    Tab 이 문서 처음부터 다시 시작한다.
+  test('계약⑦-DOM(j): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', () => {
     const r = probeLockFocus(PAYLOAD, 'user');
     assert.strictEqual(r.found, true, '전제 붕괴: [복구] 버튼을 찾지 못했다');
     assert.strictEqual(r.started, true, '전제 붕괴: 행 버튼에 포커스를 주지 못했다');
-    assert.strictEqual(r.locked.isBody, false,
-      `잠기는 순간 포커스가 body 로 떨어졌다 — 여기서 Tab 이 문서 처음으로 돌아간다: ${JSON.stringify(r.locked)}`);
+    assert.strictEqual(r.locked.sameNode, true,
+      '잠그면서 목록을 통째로 다시 만들었다 — 스크롤과 누르던 버튼을 잃고, 그것을 되돌리는 한 벌이 다시 필요해진다');
+    assert.strictEqual(r.locked.top, 120, `잠그자 보던 자리가 ${r.locked.top} 로 튀었다 — 잠금은 내용 변경이 아니다`);
+    assert.strictEqual(r.locked.off, true, '잠갔는데 행 버튼이 꺼지지 않았다');
+    //  ★ jsdom 은 '포커스를 쥔 컨트롤이 꺼지면 body 로 떨어뜨린다'는 브라우저 규칙(focus fixup)을 구현하지
+    //    않는다 — isBody 를 재면 늘 거짓이라 아무것도 가리지 못한다. 대신 **물러섰는가**를 직접 잰다.
     assert.strictEqual(r.locked.line, true,
       `잠금 중 포커스가 행(.mba-line)에 있지 않다: ${JSON.stringify(r.locked)} — 물러설 자리는 그 행이다`);
-    assert.strictEqual(r.unlocked.isBody, false, '잠금이 풀리자 포커스가 body 로 떨어졌다');
     assert.strictEqual(r.unlocked.op, 'restore',
       `잠금이 풀렸는데 누르던 버튼으로 돌아오지 않았다: ${JSON.stringify(r.unlocked)} — 다음 항목을 이어서 누를 수 없다`);
     assert.strictEqual(r.unlocked.key, r.key, `풀린 뒤 포커스가 다른 행으로 갔다: ${JSON.stringify(r.unlocked)}`);
     assert.strictEqual(r.unlocked.disabled, false, '되돌아온 버튼이 아직 꺼져 있다 — 잠금이 풀리지 않았다');
+    assert.strictEqual(r.unlocked.top, 120, `잠금을 푸는 것만으로 보던 자리가 ${r.unlocked.top} 로 튀었다`);
   });
 
-  test('변이⑦-DOM(i): 화면이 바뀌어도 옛 자리를 앉히면 관리자가 고른 적 없는 중간에서 시작한다', () => {
-    const bad = mutate(app, '  list.scrollTop = sameView ? keepTop : 0;', '  list.scrollTop = keepTop;');
+  test('변이⑦-DOM(i): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 탭을 바꿔도 옛 자리가 앉는다', () => {
+    const bad = mutate(app, TOP_IN_TR_RENDER, '바뀌었을 때만 돌기 때문이다.\n  list.scrollTop = 120;\n}');
     const r = probeScrollKeep(PAYLOAD, 'customer', bad);
     assert.strictEqual(r.switched, 120,
-      `변이 전제: 같은 화면 판정을 지우면 탭을 바꿔도 옛 자리가 앉아야 한다(실제: ${JSON.stringify(r)})`);
+      `변이 전제: 자리를 되돌리면 탭을 바꿔도 옛 자리가 앉아야 한다(실제: ${JSON.stringify(r)})`);
     assert.strictEqual(probeScrollKeep(PAYLOAD, 'customer').switched, 0);   // 통제군
   });
 
-  //  ★ 되돌리는 조건은 "포커스가 아직 **물러났던 그 행**에 있을 때"다(2026-09-11 적대 검토 R4-W4).
-  //    목록 안의 아무 행이나로 보던 옛 판은, 잠금 중에 관리자가 다른 행으로 옮겨 둔 포커스를 다음
-  //    렌더가 도로 뺏어 엉뚱한 줄로 끌고 갔다(연달아 지우는 중에 커서가 제멋대로 뛴다).
-  test('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 다음 렌더가 도로 뺏지 않는다', () => {
+  //  ★ 잠금 중에 관리자가 다른 행으로 포커스를 옮겨 뒀다면, 푸는 쪽은 그것을 **도로 뺏지 않는다**
+  //    (옛 R4-W4 가 열쇠 대조로 지키던 요구다 — 지금은 그 행 노드가 그대로라 대조할 것이 없다).
+  test('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 풀 때 도로 뺏지 않는다', () => {
     const r = probeFocusMoved(PAYLOAD, 'user');
     assert.strictEqual(r.found, true, '전제 붕괴: [복구] 버튼을 찾지 못했다');
     assert.strictEqual(r.twoRows, true, '전제 붕괴: 두 행이 필요하다(옮겨 갈 다른 행이 없다)');
     assert.strictEqual(r.moved, true, '전제 붕괴: 다른 행으로 포커스를 옮기지 못했다');
     assert.notStrictEqual(r.otherKey, r.key, `전제 붕괴: 옮겨 간 행이 같은 행이다(${r.otherKey})`);
-    assert.notStrictEqual(r.actKey, r.key,
-      `잠금이 풀리자 포커스를 원래 행으로 도로 뺏었다: ${JSON.stringify(r)} — 관리자가 옮겨 둔 자리가 옳다(R4-W4)`);
-    assert.notStrictEqual(r.op, 'restore',
-      `옮겨 둔 포커스를 맡아 둔 버튼으로 끌고 갔다: ${JSON.stringify(r)}`);
-    assert.strictEqual(r.kept, false, '되돌리지 않았는데 맡아 둔 표가 남아 있다 — 다음 렌더가 또 끌고 간다');
-    //  ★ '뺏지 않았다'로 끝내면 절반이다(2026-09-11 적대 검토 R5-W1): 목록은 통째로 다시 만들어지므로,
-    //    아무도 앉히지 않으면 관리자가 옮겨 둔 그 자리마저 사라져 포커스가 body 로 떨어진다.
-    //    옮겨 둔 **그 행**(열쇠가 같은 새 행)에 그대로 있어야 한다.
     assert.strictEqual(r.isBody, false,
-      `잠금이 풀리자 포커스가 body 로 떨어졌다: ${JSON.stringify(r)} — 옮겨 둔 자리도 함께 사라졌다(R5-W1)`);
-    assert.strictEqual(r.line, true,
-      `포커스가 옮겨 둔 행(.mba-line)에 있지 않다: ${JSON.stringify(r)}`);
-    assert.strictEqual(r.actKey, r.otherKey,
-      `포커스가 옮겨 둔 그 행이 아니다: ${JSON.stringify(r)} — 열쇠로 새 행을 찾아 앉혀야 한다(R5-W1)`);
+      `잠금이 풀리자 포커스가 body 로 떨어졌다: ${JSON.stringify(r)} — 옮겨 둔 자리도 함께 사라졌다`);
+    assert.strictEqual(r.sameRow, true,
+      `관리자가 옮겨 둔 행에서 포커스를 끌어냈다: ${JSON.stringify(r)} — 관리자가 둔 자리가 옳다(R4-W4)`);
+    assert.strictEqual(r.op, '', `옮겨 둔 포커스를 원래 버튼으로 끌고 갔다: ${JSON.stringify(r)}`);
+    assert.strictEqual(r.actKey, r.otherKey, `포커스가 옮겨 둔 그 행이 아니다: ${JSON.stringify(r)}`);
   });
 
-  //  ★ 행 되돌리기가 없으면 바로 위 계약의 '뺏지 않는다'는 통과하면서도 포커스가 body 로 떨어진다 —
-  //    그래서 그 자리를 함께 재는 계약이 필요하다(R5-W1).
-  test('변이⑦-DOM(l): 행 포커스 되돌리기를 지우면 옮겨 둔 자리도 함께 사라진다(body 로 떨어진다)', () => {
-    const bad = mutate(app,
-      '  if(!restored && sameView && keepRow){\n' +
-      "    for(const ln of list.querySelectorAll('.mba-line')){\n" +
-      "      if(ln.dataset && String(ln.dataset.tkey || '') === keepRow){ try{ ln.focus(); }catch(_){} break; }\n" +
-      '    }\n  }\n', '');
-    const r = probeFocusMoved(PAYLOAD, 'user', bad);
-    assert.strictEqual(r.isBody, true,
-      `변이 전제: 행 되돌리기를 지우면 포커스가 body 로 떨어져야 한다(실제: ${JSON.stringify(r)})`);
-    assert.strictEqual(probeFocusMoved(PAYLOAD, 'user').isBody, false);   // 통제군
-  });
-
-  test('변이⑦-DOM(k): 행을 가리지 않고 되돌리면 옮겨 둔 포커스가 엉뚱한 행으로 끌려간다', () => {
-    const bad = mutate(app, "     && af.dataset && String(af.dataset.tkey || '') === __trKeepBtn.key){", '     ){');
+  test('변이⑦-DOM(k): 옮겨 갔는지 보지 않고 되돌리면 포커스가 원래 행으로 끌려간다', () => {
+    const bad = mutate(app, '    if(document.activeElement === ln) try{ b.focus(); }catch(_){}',
+      '    try{ b.focus(); }catch(_){}');
     const r = probeFocusMoved(PAYLOAD, 'user', bad);
     assert.strictEqual(r.actKey, r.key,
-      `변이 전제: 행을 가리지 않으면 옮겨 둔 포커스가 맡아 둔 행으로 끌려가야 한다(실제: ${JSON.stringify(r)})`);
-    assert.notStrictEqual(probeFocusMoved(PAYLOAD, 'user').actKey, r.key);   // 통제군
+      `변이 전제: 옮겨 갔는지 보지 않으면 포커스가 원래 행의 버튼으로 끌려가야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeFocusMoved(PAYLOAD, 'user').actKey, r.otherKey);   // 통제군
   });
 
-  test('변이⑦-DOM(j): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', () => {
+  test('변이⑦-DOM(j): 행이 포커스를 못 받으면 물러설 자리가 없다(실제 브라우저에선 body 로 떨어진다)', () => {
     const bad = mutate(app, '    line.tabIndex = -1;\n', '');
     const r = probeLockFocus(PAYLOAD, 'user', bad);
-    assert.strictEqual(r.locked.isBody, true,
-      `변이 전제: 행이 포커스를 못 받으면 잠금 렌더에서 body 로 떨어져야 한다(실제: ${JSON.stringify(r.locked)})`);
-    assert.strictEqual(probeLockFocus(PAYLOAD, 'user').locked.isBody, false);   // 통제군
+    assert.strictEqual(r.locked.line, false,
+      `변이 전제: 행이 포커스를 못 받으면 물러서기가 실패해야 한다(실제: ${JSON.stringify(r.locked)})`);
+    assert.strictEqual(probeLockFocus(PAYLOAD, 'user').locked.line, true);   // 통제군
   });
 
-  test('계약⑦-DOM(h): 잠금은 바뀔 때만 그린다(같은 값을 다시 넣는 호출은 목록을 건드리지 않는다)', () => {
+  test('계약⑦-DOM(h): 잠금은 목록을 **한 번도** 다시 만들지 않는다(켜든 끄든 0 번)', () => {
     const r = probeRenderCount(PAYLOAD, 'user');
-    assert.strictEqual(r.noop, 0,
-      `이미 꺼진 잠금을 다시 끄는데 목록을 ${r.noop}번 그렸다 — 그 호출 하나로 스크롤과 누른 버튼이 사라진다`);
-    assert.strictEqual(r.on, 1, `잠글 때 목록을 ${r.on}번 그렸다(1번이어야 한다)`);
+    assert.strictEqual(r.noop, 0, `이미 꺼진 잠금을 다시 끄는데 목록을 ${r.noop}번 그렸다`);
+    assert.strictEqual(r.on, 0,
+      `잠글 때 목록을 ${r.on}번 그렸다 — 그 한 번으로 스크롤과 누르던 버튼이 사라지고, 되돌리는 한 벌이 다시 필요해진다`);
     assert.strictEqual(r.again, 0, `이미 잠긴 상태를 다시 잠그는데 목록을 ${r.again}번 그렸다`);
-    assert.strictEqual(r.off, 1, `풀 때 목록을 ${r.off}번 그렸다(1번이어야 한다)`);
+    assert.strictEqual(r.off, 0, `풀 때 목록을 ${r.off}번 그렸다`);
   });
 
-  test('변이⑦-DOM(g): 포커스 복원을 지우면 다시 그린 순간 포커스가 body 로 떨어진다(그래서 이 계약이 필요하다)', () => {
-    //  ★ 두 갈래(버튼 · 물러설 행)를 **함께** 끈다 — 버튼 갈래만 끄면 행으로 물러나 body 로 떨어지지 않는다.
-    const bad = mutate(app, '    if(kb && !kb.disabled){ try{ kb.focus(); restored = true; }catch(_){} }\n    else if(kb){',
-      '    if(false){ try{ kb.focus(); restored = true; }catch(_){} }\n    else if(false){');
-    const r = probeFocusKeep(PAYLOAD, 'user', bad);
-    assert.strictEqual(r.started, true, '변이 전제: 처음 포커스는 잡혔어야 한다');
-    assert.strictEqual(r.isBody, true,
-      `변이 전제: 복원을 지우면 포커스가 body 로 떨어져야 한다(실제: ${JSON.stringify(r)})`);
-    assert.strictEqual(probeFocusKeep(PAYLOAD, 'user').isBody, false);   // 통제군
-  });
-
-  test('변이⑦-DOM(h): trSetSaving 이 무조건 그리게 되돌리면 계약⑦-DOM(h) 가 실패한다', () => {
-    const bad = mutate(app, '  const changed = (__trSaving !== !!on);', '  const changed = true;');
+  test('변이⑦-DOM(h): 잠금을 렌더로 반영하게 되돌리면 계약⑦-DOM(h) 가 실패한다', () => {
+    const bad = mutate(app, TR_LOCK_TAIL, '  trRender();\n}');
     const r = probeRenderCount(PAYLOAD, 'user', bad);
-    assert.strictEqual(r.noop, 1, `변이 전제: 무조건 그리면 헛호출도 1번 그려야 한다(실제: ${JSON.stringify(r)})`);
-    assert.strictEqual(r.again, 1, '변이 전제: 이미 잠긴 상태를 다시 잠글 때도 그려야 한다');
-    assert.strictEqual(probeRenderCount(PAYLOAD, 'user').noop, 0);   // 통제군
+    assert.strictEqual(r.noop, 1, `변이 전제: 렌더로 반영하면 헛호출도 1번 그려야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(r.on, 1, '변이 전제: 잠글 때도 그려야 한다');
+    assert.strictEqual(probeRenderCount(PAYLOAD, 'user').on, 0);   // 통제군
   });
 
   test('변이⑥-DOM: 세 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
