@@ -112,11 +112,12 @@ COMMIT
 
 | 메시지 | 방향 | 내용 |
 |---|---|---|
-| `trashGet` | 웹 → 호스트 | 인자 없음(`reqId` 왕복). **회신은 `{ ok, data, msg }` 로 감싼다**(`membersGet` 과 같은 요청/회신 배관) — 페이로드는 `data` 안이다. 호스트 **푸시**는 감싸지 않은 채 `__applyTrash(json)` 로 온다. 화면은 `r.data || r` 로 읽어 두 길을 한 함수로 그린다. 페이로드: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid` · 인력 `userId` · 나머지 `name`) · `name` · `sub`(부제: 발주처·구분 / 소속·직급·ID / 없음) · `refs`(참조 수, §3.1) · `deletable`(bool) · `why`(불가 사유 문장, 없으면 '') |
-| `trashRestore` | 웹 → 호스트 | `{ kind, key }`. `kind ∈ project / user / customer / section / status`. **`RestoreTrashAsync` 가 `OpenAdminAsync` 로 열고 `UPDATE … SET is_active=1` 을 직접 한다** — 기존 `Set*ActiveAsync` 를 재사용하지 않는다(그 길은 `OpenWriteAsync` 라 editor 가 통과해 "휴지통 세 함수는 관리자만" 계약이 깨진다). 구분·상태는 복구 시 `sort_order = MAX+10` 을 다시 매기고, **인력은 `sort_order = NULL` 로 비운다**(둘 다 활성 순번 충돌 방지 · §11-27). 회신 `__trashDone(ok, msg)` |
-| `trashDelete` | 웹 → 호스트 | `{ kind, key, confirm }`. `confirm` = 사용자가 입력한 이름. 회신 `__trashDone(ok, msg)` |
+| `trashGet` | 웹 → 호스트 | 인자 없음(`reqId` 왕복). **회신은 `{ ok, data, msg }` 로 감싼다**(`membersGet` 과 같은 요청/회신 배관) — 페이로드는 `data` 안이다. 복구·삭제 회신의 `trash` 는 감싸지 않은 그 페이로드 문자열이다(2026-09-14 이전에는 `__applyTrash(json)` 푸시였다 · §11-28). 화면은 `r.data || r` 로 읽어 두 길을 한 함수로 그린다. 페이로드: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid` · 인력 `userId` · 나머지 `name`) · `name` · `sub`(부제: 발주처·구분 / 소속·직급·ID / 없음) · `refs`(참조 수, §3.1) · `deletable`(bool) · `why`(불가 사유 문장, 없으면 '') |
+| `trashRestore` | 웹 → 호스트 | `{ kind, key }`. `kind ∈ project / user / customer / section / status`. **`RestoreTrashAsync` 가 `OpenAdminAsync` 로 열고 `UPDATE … SET is_active=1` 을 직접 한다** — 기존 `Set*ActiveAsync` 를 재사용하지 않는다(그 길은 `OpenWriteAsync` 라 editor 가 통과해 "휴지통 세 함수는 관리자만" 계약이 깨진다). 구분·상태는 복구 시 `sort_order = MAX+10` 을 다시 매기고, **인력은 `sort_order = NULL` 로 비운다**(둘 다 활성 순번 충돌 방지 · §11-27). **회신 `{ ok, msg, trash, roster }`**(`reqId` 왕복 · `ReplyOnUi` · §11-28) |
+| `trashDelete` | 웹 → 호스트 | `{ reqId, kind, key, confirm, includeInactive }`. `confirm` = 사용자가 입력한 이름. **회신 `{ ok, msg, trash, roster }`** |
 
-- 성공하면 호스트가 곧바로 `trashGet` 을 다시 돌려 휴지통을 다시 칠하고, **관련 목록도 다시 민다**: 과제·코드·발주처면 `LoadProjectsToWebAsync`(카탈로그 + 개인 카테고리의 `dbGone` 재판정), 인력이면 `LoadMembersToWebAsync`. 웹은 회신을 기다리지 않고 푸시로 그린다.
+- 복구·삭제의 회신에 실리는 둘: `trash` = 다시 읽은 휴지통 JSON **문자열**(`trashGet` 페이로드와 같은 모양) — **성공·실패를 가리지 않고 매번** 싣는다(거부 문구 둘이 새로고침을 약속한다 · §11-23). `roster` = 갱신된 명부 JSON 문자열 — **성공 + `kind=="user"`** 일 때만, 나머지는 `""`. 둘 다 못 읽었으면 `""` 다(빈 목록을 실어 보내면 "내가 뭘 지웠나"로 읽힌다).
+- 성공하면 **관련 목록은 그대로 푸시로** 민다: 과제·코드·발주처면 `LoadProjectsToWebAsync`(카탈로그 + 개인 카테고리의 `dbGone` 재판정) · 발주처면 `LoadCustomersToWebAsync` · 구분·상태면 `LoadCodesToWebAsync` · 인력이면 `LoadMembersToWebAsync`(인자 하나짜리 `__applyMembers(json)`). 그쪽은 **다른 화면**이라 이 요청의 회신으로는 닿을 수 없다.
 - `deletable`·`why` 는 **화면용 힌트**다. 최종 판정은 `trashDelete` 시점에 호스트가 같은 트랜잭션 안에서 다시 한다(§3.4). 힌트와 판정이 갈리면 판정이 이긴다.
 - ★ 위 표의 `trashGet` 회신 모양과 `trashRestore` 구현은 **설계와 다르게 간 곳**이다. 왜 그렇게 됐는지는 [§11-4](#11-정정-이력)(회신을 감싼 이유)와 [§11-1](#11-정정-이력)(복구를 재사용하지 않은 이유)에 남아 있다 — 표는 **지금의 사실**을 적고, 이력은 그 자리에 그대로 둔다.
 
@@ -139,7 +140,7 @@ COMMIT
 | 대상 미지정(`key` 가 비었거나 인력의 `userId` 가 정수가 아님) | "대상이 지정되지 않았습니다." (`TrashNoTarget`) |
 | **성공**(거부가 아니다 — 완료 문장) | "영구 삭제했습니다." (`TrashDoneMsg`) |
 
-> **"…목록을 새로고침합니다"는 약속이다(2026-09-11 · §11-23).** 그 두 문장(`TrashGoneMsg`·`AlreadyActiveMsg`)은 정확히 **실패**할 때 나오므로, 호스트는 복구·삭제의 결과와 **무관하게** 휴지통 목록을 다시 민다(`LoadTrashToWebAsync`). 관련 목록(과제·명부·발주처·구분·상태)은 그대로 성공에만 민다 — 실패했으면 그쪽은 바뀌지 않았다.
+> **"…목록을 새로고침합니다"는 약속이다(2026-09-11 · §11-23).** 그 두 문장(`TrashGoneMsg`·`AlreadyActiveMsg`)은 정확히 **실패**할 때 나오므로, 호스트는 복구·삭제의 결과와 **무관하게** 휴지통 목록을 다시 읽어 **회신에 실어 보낸다**(`trash` · 2026-09-14 이전에는 `LoadTrashToWebAsync` 푸시였다 · §11-28). 관련 목록(과제·명부·발주처·구분·상태)은 그대로 성공에만 민다 — 실패했으면 그쪽은 바뀌지 않았다.
 
 > 이 표의 문장은 `ProjectDb.cs` 의 상수 한 벌(`Trash*Msg`)이 정본이다 — 같은 말을 두 곳에 적으면 한쪽만 고쳐진다. 시험도 그 상수를 계약으로 붙잡는다(§8).
 
@@ -323,3 +324,5 @@ sha256 대조 · 루프 5회 연속)을 더했다.
 **26. 잠금 경합 판정과 종류 switch 의 `default:` 를 정리했다(2026-09-11 R5).** 1205·1213 이 세 곳에 번호로 적혀 있어 `IsLockContention(ex)` 한 줄로 모았다(§4.3 문구는 그대로). 복구·삭제의 `default:` 는 거부 문장을 한 벌 더 적는 대신 `InvalidOperationException` 을 던진다 — `ResolveTrashKind` 가 이미 걸러 여기 닿을 수 없고, 닿았다면 종류가 늘고 이 switch 만 안 고쳤다는 뜻이라 조용히 덮을 일이 아니다(계약⑨ 는 "거부든 예외든, 기본값으로 아무 표나는 안 된다"로 읽는다).
 
 **27. 인력 복구가 `sort_order` 를 비운다(2026-09-11 적대 검토 R3).** 옛 판은 `UPDATE app_user SET is_active=1 …` 하나였다 — 퇴사자가 **옛 순번을 들고** 돌아와 활성 서열(10·20·30…) 사이에 끼어들었다(USER-ADMIN §7-1a). 뜻은 구분·상태의 `MAX+10`(§11-1)과 같고 셈만 다르다: 명부 `ORDER BY` 가 NULL 을 맨 뒤로 보내므로(USER-ADMIN §5.3) 최댓값을 셀 것 없이 `sort_order=NULL` 이면 된다 — 값이 없다는 사실 자체가 '아직 자리를 안 정했다' 다. 그래서 계약⑦ 은 이제 셋을 함께 본다: 구분·상태는 `MAX+10` · **인력은 `NULL`** · 나머지(과제·발주처)는 손대지 않는다. 복구 경로는 둘이므로(휴지통 · 편집 폼의 [복구]) 편집 폼 쪽 `SetUserActiveAsync` 도 같은 규칙이고, 그 축은 USER-ADMIN 게이트 계약⑥-f 가 진다([USER-ADMIN §11-29](USER-ADMIN.md)). 변이 둘(인력의 `NULL` 삭제 · 인력을 `MAX+10` 으로 바꾸기).
+
+**28. 복구·삭제를 요청/회신 배관으로 옮겼다 — 갱신 목록이 그 회신을 타고 온다(2026-09-14).** §11-24 는 푸시(`__trashDone`)에 `reqId` 를 세 번째 인자로 실어 "이 회신이 내 요청의 것인가"를 웹이 가리게 했다. 그 인자가 필요했던 이유는 하나다 — 결과도 갱신도 **푸시**라서 배관이 짝을 지어 주지 않았기 때문이고, 그래서 웹은 배관이 이미 보장하는 상관관계를 손으로 한 벌 더 지어야 했다(요청 표 `__trReq` · 워치독). 이제 둘 다 `trashGet` 과 같은 왕복이다: `ReplyOnUi(reqId, new { ok, msg, trash, roster })`. 갱신된 휴지통은 **매번**(§11-23 의 규칙 그대로 — 거부 문구가 새로고침을 약속하므로 실패해도 싣는다), 명부는 **성공 + 인력**일 때만 실린다(옛 `TrashRefreshRelatedAsync` 의 명부 푸시와 같은 조건). **전송 방식만 바뀌었다** — 관문(`OpenAdminAsync`)·거부 문구·트랜잭션 규칙·이름 대조는 한 글자도 손대지 않았다. 지운 것: `TrashDone` 헬퍼와 `window.__trashDone` 방출, 휴지통 푸시 `LoadTrashToWebAsync`(그 갱신은 회신의 `trash` 하나로만 간다). 남긴 것: 성공 시의 관련 목록 푸시 넷(과제·발주처·코드·명부) — 그쪽은 이 요청을 보낸 적 없는 **다른 화면**이다. 계약⑩(회신 모양 · 매번 읽는 휴지통 · `ok && kind=="user"` 인 명부) + 변이 여섯. 직원 쪽 짝은 [USER-ADMIN §11-34](USER-ADMIN.md).

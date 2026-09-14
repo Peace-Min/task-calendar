@@ -5081,39 +5081,14 @@ let __uaOrder = false;      // 「순서 편집」 모드 — 켜면 행마다 �
 let __uaOrderBackup = null; // 순서 편집 시작 시점의 명부 스냅샷. 저장하지 않고 끄면 이걸로 되돌린다
 let __uaBusy = false;       // 조회 재진입 가드 — 연타로 조회가 겹치면 늦게 온 회신이 먼저 온 것을 덮는다
 let __uaSaving = false;     // 직원 쓰기 왕복 중(연타·중복 전송 차단)
-let __uaSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주는 타이머(offEd 의 워치독과 같은 이유)
-//  ★ 「순서 저장」이 성공하면 미뤄 둔 명부(__uaPendingData)를 버리고 **뒤따르는 호스트 푸시**에 맡긴다
-//    (__userSaved). 그 푸시가 오지 않으면(호스트가 명부를 다시 읽다 실패하면 밀지 않는다) 그 사이에
-//    남이 바꾼 것(신규 등록·퇴사·복구)은 버린 그 자리에 함께 묻힌다 — 다음 조회 전까지 영영 안 보인다
-//    (2026-09-11 적대 검토 R5-W2). 그래서 짧게 기다렸다가 **스스로 다시 읽는다.**
-let __uaAwaitPush = 0;      // 순서 저장 성공 뒤 갱신 명부 푸시를 기다리는 타이머(0 = 기다리지 않는다)
-//  ★ 그 기다림은 **새 쓰기가 나가도 끝나지 않는다**(2026-09-11 적대 검토 R6-W2). 옛 판은 uaSend 가
-//    타이머를 껐다 — "이 왕복이 곧 새 명부를 데려온다"는 말은 그 왕복이 **성공했을 때만** 참이다
-//    (호스트의 SaveUserAsync 는 if (ok) 일 때만 명부를 민다). 그래서 "순서 저장 성공 → 3초 안에 다른
-//    쓰기 → 그 쓰기가 실패" 한 번이면 기다림만 사라지고 명부는 끝내 오지 않는다 — 버린 자리에 실려
-//    있던 남의 등록·퇴사·복구가 다음 조회 전까지 화면에 영영 닿지 않는다.
-//    이제 이 빚을 갚는 것은 **도착한 명부 하나**뿐이다(__applyMembers).
-let __uaAwaitSeen = false;  // 기다리기 시작한 뒤 명부 푸시가 실제로 왔나(왔으면 스스로 다시 읽지 않는다)
 let __ueId = 0;             // 편집 중인 대상 user_id(0 = 신규 등록)
-//  ★ 폼을 **한 번 여는 것**마다 붙는 표(2026-09-11 적대 검토 R2-W1). 대상(uid)만으로는 '어느 폼인가'를
-//    가릴 수 없다 — 신규 등록은 언제나 uid 0 이라, A(등록)를 보낸 뒤 워치독이 잠금을 풀고(요청 표는 남는다)
-//    관리자가 [＋ 직원 등록]을 다시 누르면, 뒤늦게 도착한 A 의 성공 회신이 **그 새 폼**을 닫고
-//    '저장했습니다'를 띄웠다. 아직 저장하지 않은 입력이 그 자리에서 사라진다.
-let __ueTok = 0;            // 지금 열려 있는 폼의 표(0 = 열린 폼 없음). userEdOpen 이 발번, 닫히면 0
-let __ueTokSeq = 0;         // 폼 표 발번기(__reqSeq 와 같은 관례)
-//  ★ 요청 상관관계(reqId) — 호스트가 **우리가 보낸 reqId 를 회신에 그대로 실어 준다**(__userSaved 의 3번째 인자).
-//    예전에는 세대 카운터로 짐작했다. 세대는 '몇 번째 요청인가'만 알 뿐 '이 회신이 어느 요청의
-//    것인가'는 끝내 알 수 없어, A 의 늦은 회신이 B 의 것으로 먹혔다(2026-09-11).
-//    대상(uid·cmd)을 함께 지는 이유: A 를 저장하고 폼을 닫은 뒤 B 를 연 상태에서 A 의 늦은 회신이
-//    도착하면 id 만으로는 '어느 폼을 닫아도 되는가'를 알 수 없다(2026-09-10 발견).
-//  ★ 이 표는 **워치독이 지우지 않는다**(2026-09-11). 지우면 호스트 왕복이 15초까지 걸리는 경우 12초 뒤에
-//    도착한 **성공** 회신이 통째로 버려져 "저장은 됐는데 실패로 안내"가 된다. 늦어도 id 가 맞으면 반영한다.
-//    지우는 것은 **새 요청**뿐이다 — 새로 보내면 옛 회신은 id 가 어긋나 조용히 끊긴다.
-//  ★ 회신을 받아도 **지우지 않는다**(2026-09-11 적대 검토 R3-W1). 호스트는 회신(__userSaved)을 먼저 보내고
-//    갱신 명부(__applyMembers)를 그다음에 민다 — 회신에서 표를 지우면 그 푸시가 '내 쓰기의 결과'임을
-//    알 길이 사라져, 순서 편집 중이면 내 저장의 결과까지 '관계없는 갱신'으로 미뤄진다.
-//    그래서 지우는 대신 done 을 세운다: 같은 회신을 두 번 처리하지 않으면서도 뒤따르는 푸시를 짝지을 수 있다.
-let __uaReq = null;         // 마지막으로 보낸 요청 { id, uid, cmd, tok, done }(null = 보낸 적 없음 → 이월 회신 무시)
+//  ★ 요청 상관관계를 **전역으로 들고 다니지 않는다**(2026-09-14 · 손으로 만든 상관관계 걷어내기 1단계).
+//    세 쓰기(saveUser·setUserActive·saveUserOrder)는 이제 hostRequest 왕복이다 — 회신은 그 요청을 보낸
+//    **바로 그 클로저**로 돌아오므로 '이 회신이 어느 폼·어느 행의 것인가'를 자바스크립트의 스코프가 이미 안다.
+//    그래서 요청 표(__uaReq: id·uid·cmd·tok·done)도, 폼 표(__ueTok·__ueTokSeq)도, 워치독 타이머도 사라졌다:
+//      ㆍ늦은 회신이 **남의 폼을 닫는 일**이 구조적으로 불가능하다(Promise 는 자기 호출자에게만 한 번 풀린다).
+//      ㆍ버려진 왕복(창을 닫았다·다른 폼을 열었다)의 회신은 닿을 곳이 없다 — 가려낼 표가 필요 없다.
+//      ㆍ영영 안 오는 회신은 hostRequest 의 타임아웃(20초)이 실패 회신으로 바꿔 준다 — 워치독의 일이었다.
 let __uaPendingData = null; // 순서 편집 중에 도착한 **관계없는** 명부 푸시. 편집을 마칠 때 반영한다
 //  ★ 지금 #uaList 에 그려져 있는 것이 **어느 화면인가**(2026-09-11 적대 검토 R5-W3 · trRender 의 __trShown 과 같다).
 //    보던 자리(스크롤)는 같은 화면일 때만 되돌려야 한다 — 순서 편집을 켜거나 「퇴사자 보기」를 뒤집으면
@@ -5444,10 +5419,33 @@ function uaFocusMoved(userId, uop){
 
 // 순서 저장 — 화면에 보이는 순서 그대로 user_id 배열을 보낸다. 10·20·30… 재작성은 호스트가 한다(§2).
 //   ★ 순번 숫자는 화면 어디에도 표시하지 않는다. 관리자는 순서만 정하고 숫자는 앱의 사정이다.
-function uaOrderSave(){
+//   ★ 회신은 **이 함수가 직접 받는다**(2026-09-14). 예전에는 공용 회신함(__userSaved)이 '이 회신이 순서
+//     저장의 것인가'를 요청 표에서 되읽어 판단했다 — 그 표가 없으면 성립하지 않는 판단이었다. 지금은
+//     보낸 자리에서 그대로 받으므로 되읽을 것이 없다.
+async function uaOrderSave(){
   const ids = __uaMembers.map(m => Number(m && m.userId)).filter(n => n > 0);
   if(!ids.length){ toast('저장할 명부가 없습니다', 'warn'); return; }
-  uaSend({ cmd: 'saveUserOrder', userIds: ids });
+  const r = await uaSend({ cmd: 'saveUserOrder', userIds: ids });
+  if(!r) return;   // 보내지 못했다(위젯이 아니거나 이미 다른 쓰기가 도는 중) — 화면은 그대로다
+  //  ★ 「낡은 명부」 거부(ProjectDb.StaleRosterMsg)도 **편집 모드를 끝낸다**. 그 거부는 "네 화면이 낡았다"는
+  //    뜻이라 호스트가 거부와 함께 갱신 명부를 실어 보낸다 — 편집 모드를 그대로 두면 그 명부가 미뤄지고
+  //    (관계없는 갱신으로 오해받는다) 관리자는 같은 낡은 명부로 같은 거부만 되풀이한다.
+  //    ㆍ문구는 호스트의 상수와 **글자 그대로** 같아야 한다 — 시험이 둘을 맞댄다.
+  const staleRoster = (!r.ok && r.msg === '명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.');
+  if(r.ok || staleRoster) uaOrderReset();
+  //  ★ 미뤄 둔 갱신(__uaPendingData)은 **버린다**(2026-09-11 적대 검토 R4-W1). 그 자리에 담긴 것은 내 저장이
+  //    서버에 닿기 **전**의 명부라, 앉히는 순간 방금 저장한 순서가 화면에서 옛 순서로 되돌아간다.
+  //    남의 진짜 변경(신규 등록·퇴사)까지 함께 담은 확정 명부는 회신에 실려 온다(r.roster).
+  if(r.ok) __uaPendingData = null;
+  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**(uaSeatReply · 2026-09-14 좌석 일원화). 여기서는
+  //    '앉았나'만 받아 쓴다 — 앉히는 자리를 여기에도 두면 그 둘 중 하나는 반드시 낡는다.
+  //  ★ 거부 쪽에서는 회신이 명부를 안 실어 왔을 때만 미뤄 둔 것을 앉힌다 — 실어 왔으면 그쪽이 더 새 것이다.
+  let painted = r.painted;
+  if(!painted && staleRoster && __uaPendingData){ uaFlushPending(); painted = true; }
+  //  ★ 편집 모드를 끝냈는데 아무도 다시 그리지 않으면 ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에
+  //    그대로 남는다(눌러도 아무 일이 없다). 명부가 앉지 않은 갈래에서는 여기가 그 자리다(R4-W3).
+  if(!painted && (r.ok || staleRoster)){ uaAdminBar(); uaApply(); }
+  toast(r.msg || (r.ok ? '저장했습니다' : '저장하지 못했습니다'), r.ok ? 'success' : 'error');
 }
 
 // 저장된 명부에서 그 사람을 찾는다 — 확인창에 쓰는 이름은 **DB 가 아는 이름**이어야 한다(입력칸이 아니라).
@@ -5468,7 +5466,7 @@ function userEdIsDirty(){
 // 퇴사/복구 — 확인 한 번. '삭제'가 아니라는 사실을 문장에 담는다(기록은 남는다).
 //   ★ 이름은 호출부가 **명부에서** 읽어 넘긴다(uaMemberName). 입력칸의 값을 쓰면, 관리자가 이름을 고쳐 놓고
 //     [퇴사 처리]를 눌렀을 때 확인창이 아직 존재하지 않는 이름으로 말한다(2026-09-10).
-//   ★ 성공하면 __userSaved 가 폼을 닫는다 — 저장하지 않은 편집은 그 자리에서 사라진다. 미리 말한다.
+//   ★ 성공하면 이 자리에서 폼을 닫는다 — 저장하지 않은 편집은 그 자리에서 사라진다. 미리 말한다.
 function uaSetActive(userId, name, active){
   if(!userId){ toast('대상을 알 수 없습니다', 'error'); return; }
   const who = name || '이 직원';
@@ -5476,42 +5474,112 @@ function uaSetActive(userId, name, active){
   const ask = active
     ? { t: '직원 복구', m: "'" + who + "' 님을 명부에 다시 표시합니다. 계속할까요?" + dirty, ok: '복구' }
     : { t: '퇴사 처리', m: "'" + who + "' 님을 퇴사 처리합니다. 기록은 남고 명부에서만 사라집니다." + dirty, ok: '퇴사 처리' };
-  confirmBox(ask.t, ask.m, ask.ok, '취소').then(r => {
+  confirmBox(ask.t, ask.m, ask.ok, '취소').then(async r => {
     if(r !== 'ok') return;
-    uaSend({ cmd: 'setUserActive', userId: userId, active: active });
+    //  ★ 회신은 **이 클로저가** 받는다 — 이 폼에서 나간 요청이므로 '어느 폼의 결과인가'를 표로 가릴 이유가 없다.
+    const rep = await uaSend({ cmd: 'setUserActive', userId: userId, active: active });
+    if(rep) userEdAfterWrite(rep);
   });
 }
 
-// 호스트 왕복 한 곳 — 세 명령(saveUser·setUserActive·saveUserOrder)이 같은 가드·같은 워치독을 쓴다.
+// 호스트 왕복 한 곳 — 세 명령(saveUser·setUserActive·saveUserOrder)이 같은 가드·같은 잠금을 쓴다.
 //   ★ includeInactive 를 함께 보낸다: 성공하면 호스트가 곧바로 명부를 다시 읽어 밀어 주는데,
 //     그때 「퇴사자 보기」 상태를 모르면 화면이 제멋대로 바뀐다(켜 뒀는데 퇴사자가 사라진다).
 //   ★ 여기에 __uaAdmin 가드를 **두지 않는다.** 권한 판정은 호스트가 요청 시점에 한다(USER-LOGIN §3.3) —
 //     화면이 미리 막으면 거부 사유가 화면 문장으로 바뀌어, 관문이 실제로 막는지 아무도 확인하지 못한다.
-//   ★ 요청 표(__uaReq)를 여기서 세운다 — 늦은/이월 회신이 지금 열려 있는 **다른 사람의 폼**을
-//     닫고 '저장했습니다'를 띄우던 자리다(2026-09-10). 판정은 __userSaved 가 한다.
-//   ★ reqId 는 hostRequest 와 **같은 발번기**(__reqSeq)를 쓴다 — 한 페이지 안에서 번호가 겹치지 않는다.
-//     호스트가 이 문자열을 회신에 그대로 실어 주므로, 회신이 어느 요청의 것인지 짐작하지 않아도 된다.
-function uaSend(payload){
-  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
-  if(__uaSaving) return;   // 연타·중복 전송 차단
+//   ★ 이것은 **왕복**이다(2026-09-14) — 회신은 부르는 쪽의 Promise 로 돌아온다({ ok, msg, roster, painted }).
+//     그래서 여기에는 '누구의 회신인가'를 가리는 장치가 하나도 없다: 이 함수를 부른 그 클로저가 곧 그 답이다.
+//     늦게 오는 회신도, 버려진 요청의 회신도 닿을 곳이 없고, 영영 안 오면 20초 타임아웃이 실패로 돌려준다.
+//   ★ 돌려주는 값이 null 이면 **보내지 못했다**(위젯이 아니거나 이미 다른 쓰기가 도는 중) — 부르는 쪽은
+//     화면을 건드리지 말아야 한다. 회신이 온 것과 못 보낸 것을 한 모양으로 뭉치면 그 둘이 구별되지 않는다.
+async function uaSend(payload){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return null; }
+  if(__uaSaving) return null;   // 연타·중복 전송 차단
   const cmd = String((payload && payload.cmd) || '');
-  //  ★ 기다리던 명부 푸시(__uaAwaitPush)는 **여기서 끄지 않는다**(2026-09-11 적대 검토 R6-W2).
-  //    새 쓰기가 새 명부를 데려오는 것은 그 쓰기가 **성공했을 때뿐**이고, 실패하면 호스트는 아무것도
-  //    밀지 않는다 — 여기서 꺼 버리면 그 실패 한 번에 빚을 아무도 기억하지 못한다.
-  const reqId = cmd + '-' + (++__reqSeq);
-  //  ★ tok = 이 요청을 보낸 **그 폼**의 표(R2-W1). uid 는 '누구를' 만 말하고 '어느 폼에서' 는 말하지 않는다.
-  __uaReq = { id: reqId, uid: Number((payload && payload.userId) || 0), cmd: cmd, tok: __ueTok, done: false };
   uaSetSaving(true);
-  hpost(Object.assign({ includeInactive: __uaInactive, reqId: reqId }, payload));   // 결과는 __userSaved(ok, msg, reqId)
+  const r = await hostRequest(cmd, Object.assign({ includeInactive: __uaInactive }, payload), 20000);
+  uaSetSaving(false);
+  //  ★ 회신에 실려 온 명부는 **여기서** 앉는다(uaSeatReply) — 잠금을 푼 **뒤**라 그려지는 목록이 꺼진
+  //    버튼으로 서지 않는다. 부르는 쪽은 앉히지 않는다(앉히는 자리가 둘이면 한쪽이 반드시 빠진다).
+  const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''), roster: String((r && r.roster) || '') };
+  rep.painted = uaSeatReply(rep.roster, cmd);
+  return rep;
+}
+// 회신에 실려 온 갱신 명부 한 덩어리 — 못 읽으면 null 이다(빈 화면보다 낡은 화면이 낫다).
+//   ★ 푸시(__applyMembers)와 **같은 파서**를 쓴다. 두 길이 갈리면 한쪽만 낡는다.
+function uaParseRoster(json){
+  let d = null;
+  try{ d = JSON.parse(String(json == null ? '' : json)); }catch(_){ d = null; }
+  return (d && d.found) ? d : null;
+}
+// 회신에 실려 온 명부를 앉힌다 — 앉혔으면 true(부르는 쪽이 '이미 그렸다'를 아는 근거다).
+//   ★ 회신에 실려 온 명부는 **정의상 내 쓰기의 결과**다 — 그러니 미뤄 두지 않는다. 짝짓기(reqId 대조)가
+//     필요했던 이유가 바로 '이 푸시가 내 것인가'를 알 수 없었기 때문인데, 이제는 물을 필요가 없다.
+//   ★ 서버가 확정한 명부이므로 미뤄 둔 옛 스냅샷은 여기서 버린다(2026-09-11 적대 검토 R4-W2) —
+//     남겨 두면 나중에 순서 편집을 켰다 끄는 것만으로 그 옛 명부가 확정 명부를 덮어쓴다.
+function uaSeatRoster(json){
+  const d = uaParseRoster(json);
+  if(!d) return false;
+  __uaPendingData = null;
+  uaApplyData(d);
+  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)
+  return true;
+}
+// 회신에 실려 온 명부를 **앉힐지 미뤄 둘지** 정하는 한 곳 — 쓰기 회신의 명부는 전부 이 문을 지난다
+// (uaSend · trSend). 2026-09-14 좌석 일원화.
+//   ★ 자리가 하나여야 한다: 쓰기마다 부르는 쪽이 앉히면, 쓰기를 하나 늘릴 때 그 한 줄을 빠뜨리는 것만으로
+//     화면이 조용히 낡는다 — 그리고 그 낡은 명부로 「순서 저장」을 누르면 호스트가 「명부가 바뀌었습니다」로
+//     되돌려준다(실제로 그렇게 되튀었다 · 2026-09-14 루프 C06·C08).
+//   ★ 미뤄 두는 규칙은 **화면이 지금 무엇을 하고 있는가**의 문제다 — 명부가 어느 길로 왔는가가 아니다.
+//     순서 편집 중에 도착한 **내 순서 저장이 아닌** 명부는, 회신이든 푸시든 똑같이 미뤄 둔다(__applyMembers
+//     와 같은 규칙·같은 안내). 앉히는 순간 관리자가 잡고 있던 순서가 통째로 날아간다(2026-09-10).
+//   ★ 「순서 저장」의 회신만 예외다(cmd === 'saveUserOrder'): 그 명부는 **내 저장의 확정 결과**라 미룰
+//     이유가 없다. 그리고 **앉히기 전에** 편집 모드를 끝낸다 — 앉히고 나서 끄면 ▲▼·[취소]·[순서 저장]이
+//     남은 화면을 한 번 더 그려야 한다. 여기서 끄면 화면은 **한 번에 최종형**으로 그려진다.
+//     (호스트는 saveUserOrder 의 명부를 성공과 「낡은 명부」 거부에만 싣는다 — MainWindow §saveUserOrder.)
+//   ★ 돌려주는 값 = '앉혔나'. 미뤄 뒀거나 명부가 안 실려 왔으면 false 다(부르는 쪽이 '이미 그렸다'를 아는 근거).
+function uaSeatReply(roster, cmd){
+  const json = String(roster == null ? '' : roster);
+  if(!json) return false;   // 회신에 명부가 안 실려 왔다(호스트가 다시 읽지 못했거나 읽을 이유가 없었다)
+  if(__uaOrder && cmd !== 'saveUserOrder'){
+    const d = uaParseRoster(json);
+    if(!d) return false;    // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+    __uaPendingData = d;
+    uaAdminBar();           // 미뤄 뒀다는 사실은 막대가 말한다 — 낡은 줄 모르고 순서를 정하면 안 된다
+    return false;
+  }
+  if(cmd === 'saveUserOrder') uaOrderReset();
+  return uaSeatRoster(json);
+}
+// 폼에서 나간 쓰기의 뒤처리 한 곳 — [저장]과 [퇴사 처리]가 같은 길을 쓴다.
+//   ★ 성공=폼 닫고 토스트, 실패=폼 유지 + 호스트 문장 그대로. 권한 거부·잠금 방지 문구가 그대로 여기로 온다
+//     (호스트가 사용자 문장으로 만들었다) — 화면이 다시 쓰면 "관리자만 고칠 수 있다"가 "저장 실패"로 뭉개진다.
+//   ★ '지난 요청의 결과입니다' 같은 안내는 **사라졌다**. 늦은 회신이 남의 폼에 닿을 길이 없어졌으므로
+//     그런 안내가 필요한 상황 자체가 없다(2026-09-14).
+//   ★ 명부는 **여기서 앉히지 않는다**(2026-09-14 좌석 일원화). 회신이 실어 온 명부는 uaSend 가 그 자리에서
+//     앉혔고(uaSeatReply), 열려 있는 폼도 그때 함께 맞춰졌다(uaSeatRoster → userEdSyncActive · R6-W3).
+//     그래서 폼에 **마지막으로 남는 말**은 호스트의 거부 사유다 — 관리자가 고쳐야 할 것이 그 문장이다.
+//     (「이미 복구됨」 거부가 바로 그 길이다: 명부는 앉아 [복구]가 [퇴사 처리]로 바뀌고, 이유는 여기 적힌다.)
+function userEdAfterWrite(r){
+  if(r.ok){
+    userEdMsgSet('');
+    closeModal('#userEditModal');
+    toast(r.msg || '저장했습니다', 'success');
+  }else{
+    userEdMsgSet(ICON.alert + ' ' + esc(r.msg || '저장하지 못했습니다.'), 'err');
+    toast(r.msg || '저장하지 못했습니다', 'error');
+  }
 }
 //   ★ **바뀔 때만** 다시 그린다(2026-09-11 R2-W3). 무조건 그리면 [편집]·[＋ 직원 등록]을 누를 때마다
 //     (userEdOpen 이 uaSetSaving(false) 를 부른다) 명부가 통째로 다시 만들어져, 89행짜리 목록이 맨 위로
 //     튀고 방금 누른 그 버튼이 사라진다 — 폼을 닫을 때 포커스를 되돌릴 곳도 함께 없어진다.
-//   ★ 돌려주는 값 = '다시 그렸나'. 부르는 쪽(__userSaved)이 같은 화면을 두 번 그리지 않게 하는 근거다.
+//   ★ 돌려주는 값 = '다시 그렸나'. 부르는 쪽이 같은 화면을 두 번 그리지 않게 하는 근거다.
+//   ★ 워치독은 **없다**(2026-09-14). 잠금을 푸는 것은 hostRequest 왕복이 끝나는 자리 하나뿐이고,
+//     회신이 영영 안 오는 경우는 그 왕복의 타임아웃(20초)이 실패 회신으로 바꿔 준다 — 화면을 풀어 줄
+//     두 번째 장치를 둘 이유가 사라졌다(둘이면 '어느 쪽이 풀었나'를 늘 되짚어야 한다).
 function uaSetSaving(on){
   const changed = (__uaSaving !== !!on);
   __uaSaving = !!on;
-  clearTimeout(__uaSaveWatchdog);
   //  ★ 전송 중에는 폼 자체를 닫지 못하게 한다(offEdSetBusy 와 같은 장치) — 닫아도 호스트 작업은 계속되는데
   //    결과를 알릴 곳만 사라진다. closeOverlay 의 busy 가드가 Esc·배경·×·취소를 함께 막는다.
   const ov = document.getElementById('userEditModal');
@@ -5530,18 +5598,6 @@ function uaSetSaving(on){
     uaAdminBar();
     uaApply();
   }
-  if(!on) return changed;
-  //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
-  //  ★ 다만 여기서 푸는 것은 **화면 잠금뿐**이다. 요청 표(__uaReq)는 살려 둔다(2026-09-11) —
-  //    호스트 왕복은 15초까지 걸릴 수 있어, 지우면 늦게 온 **성공** 회신이 버려진다.
-  //    그래서 문구도 '실패'가 아니라 '늦다'여야 한다. 다시 누르면 진짜로 두 번 저장된다.
-  __uaSaveWatchdog = setTimeout(() => {
-    uaSetSaving(false);
-    const ed = document.getElementById('userEditModal');
-    const late = '응답이 늦습니다 — 회신이 오면 반영됩니다. 아직 다시 누르지 마세요.';
-    if(ed && !ed.classList.contains('hidden')) userEdMsgSet(ICON.alert + ' ' + late, 'err');
-    else toast(late, 'warn');
-  }, 12000);
   return changed;
 }
 
@@ -5570,24 +5626,6 @@ function uaReload(){
   })();
   return true;
 }
-
-// 갱신 명부 푸시를 기다린다 — **한 번에 하나만** 건다(2026-09-11 적대 검토 R6-W2).
-//   ★ 겹쳐 걸지 않는다: 연달아 저장하면 타이머가 쌓이고 그만큼 헛왕복이 나간다. 이미 기다리는 중이면
-//     그대로 두고, '아직 못 받았다'는 사실만 부르는 쪽이 다시 세운다(__uaAwaitSeen = false).
-//   ★ 터질 때 **아직 손대는 중이면 다시 건다**(순서 편집 중 · 쓰기 왕복 중). 그 자리에서 그냥 끝내면,
-//     기다리는 3초 안에 시작한 쓰기가 실패하는 순간 아무도 명부를 다시 읽지 않는다 — 이 장치가 막으려던
-//     바로 그 구멍이다. 왕복은 워치독이 12초에 반드시 풀어 주므로 되걸기는 끝난다.
-function uaAwaitArm(){
-  if(__uaAwaitPush) return;
-  __uaAwaitPush = setTimeout(() => {
-    __uaAwaitPush = 0;
-    if(__uaAwaitSeen) return;                              // 기다리던 명부가 왔다 — 빚은 갚혔다
-    if(__uaOrder || __uaSaving){ uaAwaitArm(); return; }   // 아직 손대는 중 — 끝난 뒤에 읽는다
-    uaReload();
-  }, 3000);
-}
-// 기다림을 통째로 끝낸다 — 화면을 새로 열거나 닫으면 그 빚은 이 화면의 것이 아니다.
-function uaAwaitStop(){ clearTimeout(__uaAwaitPush); __uaAwaitPush = 0; __uaAwaitSeen = false; }
 
 // 회신 한 덩어리를 편집 화면의 상태로 옮긴다 — 첫 조회(openUserAdmin)·재조회(uaReload)·
 // 쓰기 뒤 푸시(__applyMembers)가 **같은 함수**를 쓴다. 세 경로가 갈라지면 한쪽만 낡는다.
@@ -5630,11 +5668,9 @@ async function openUserAdmin(){
   __uaBusy = true;
   __uaAdmin = false; __uaMembers = []; __uaUnits = []; __uaTitles = []; __uaInactive = false;
   __uaPendingData = null;
-  uaAwaitStop();   // ★ 이 조회가 곧 새 명부를 가져온다 — 지난 화면이 기다리던 빚은 여기서 끝난다(R6-W2)
   uaOrderReset();
-  //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(워치독이 아직 안 돌았거나,
-  //    회신 없이 창을 닫은 경우). 왕복이 없으면 풀고, **아직 도는 중이면 풀지 말고 워치독만 다시 건다** —
-  //    그래야 12초 뒤 반드시 풀린다(2026-09-10).
+  //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 창을 닫은 경우).
+  //    왕복이 없으면 풀고, **아직 도는 중이면 풀지 않는다** — 그 왕복이 끝나는 자리가 풀 것이다.
   if(__uaSaving) uaSetSaving(true); else uaSetSaving(false);
   uaAdminBar();
   const q = document.getElementById('uaSearch'); if(q) q.value = '';
@@ -5702,7 +5738,6 @@ function userEdOpen(userId){
   const m = uid ? __uaMembers.find(x => x && Number(x.userId) === uid) : null;
   if(uid && !m){ toast('대상 직원을 찾을 수 없습니다 — 명부를 새로고침하세요', 'error'); return; }
   __ueId = uid;
-  __ueTok = ++__ueTokSeq;   // ★ 이 열림 한 번의 표 — 지난 폼의 늦은 회신이 이 폼을 닫지 못하게 한다(R2-W1)
   const set = (id, v) => { const e = document.getElementById(id); if(e) e.value = v == null ? '' : String(v); };
   const head = document.getElementById('userEdHead');
   if(head) head.textContent = m ? '직원 정보 수정' : '직원 등록';
@@ -5744,7 +5779,7 @@ function userEdOpen(userId){
     : '관리자만 직원 정보를 고칠 수 있습니다.';
   //  하단 왼쪽 버튼 — 퇴사 처리 / 복구. 신규 등록(uid 0)에는 퇴사시킬 대상이 없으니 감춘다.
   //   ★ 자기 자신이어도 **미리 막지 않는다**(isMe 를 보지 않는다). 자기 퇴사 거부는 호스트가 자기 문장으로
-  //     돌려주고(§4.4-1) __userSaved 가 그 문장을 폼 안에 띄운다 — 화면이 앞질러 막으면 관문이 실제로
+  //     돌려주고(§4.4-1) userEdAfterWrite 가 그 문장을 폼 안에 띄운다 — 화면이 앞질러 막으면 관문이 실제로
   //     막는지 아무도 확인하지 못한다(uaSend 에 __uaAdmin 가드를 두지 않는 것과 같은 이유).
   const ab = document.getElementById('userEdActive');
   if(ab){
@@ -5768,12 +5803,12 @@ function userEdOpen(userId){
     userEdMsgSet('');
   }
   //  ★ 진행 중인 왕복이 있으면 잠금을 **풀지 않는다**(openUserAdmin 과 같은 이유). 예전에는 무조건 풀어서
-  //    전송 중에 다른 사람을 열면 가드와 워치독이 함께 사라졌다(2026-09-10).
+  //    전송 중에 다른 사람을 열면 중복 전송 가드가 통째로 사라졌다(2026-09-10).
   if(__uaSaving){
     if(sv) sv.disabled = true;
     if(ab) ab.disabled = true;          // 같은 왕복을 쓰는 두 버튼은 언제나 함께 잠긴다(uaSetSaving 과 같은 규칙)
   }else{
-    uaSetSaving(false);                                    // 왕복이 없을 때만 잠금·워치독을 푼다
+    uaSetSaving(false);                                    // 왕복이 없을 때만 잠금을 푼다
     if(!__uaTitles.length && sv) sv.disabled = true;       // 직급이 없으면 저장 자체가 성립하지 않는다
   }
   openModal('#userEditModal');
@@ -5813,7 +5848,7 @@ function userEdSyncActive(){
   const so = document.getElementById('userEdSort');
   if(so) so.value = (m.sortOrder != null) ? String(m.sortOrder) : '';
 }
-function userEdSaveNow(){
+async function userEdSaveNow(){
   if(__uaSaving) return;
   const val = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
   const focus = id => { const e = document.getElementById(id); if(e){ try{ e.focus(); }catch(_){} } };
@@ -5833,128 +5868,27 @@ function userEdSaveNow(){
   if(!payload.title){ userEdMsgSet(ICON.alert + ' 직급을 고르세요.', 'err'); focus('userEdTitle'); return; }
   if(!payload.viewScope || !payload.editRole){ userEdMsgSet(ICON.alert + ' 열람 범위와 편집 권한을 고르세요.', 'err'); return; }
   userEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
-  uaSend(payload);
+  //  ★ 회신은 **이 폼의 클로저가** 받는다(2026-09-14) — 그래서 "이 회신이 지금 열려 있는 그 폼의 것인가"를
+  //    표(uid·tok)로 가릴 이유가 없다. 지난 폼의 늦은 회신은 이 자리에 닿지 않는다.
+  const r = await uaSend(payload);
+  if(r) userEdAfterWrite(r);
 }
-// 호스트 쓰기 결과(등록·수정·퇴사·복구·순서 공용). 성공=폼 닫고 토스트, 실패=폼 유지 + 사유 표시.
-//   ★ 목록 갱신은 여기서 하지 않는다 — 호스트가 곧바로 명부를 다시 읽어 __applyMembers 로 밀어 준다.
-//     웹이 스스로 다시 조회하면 '누가 갱신하는가'가 두 곳이 되고, 둘의 결과가 다를 때 어느 쪽이 참인지 알 수 없다.
-//   ★ 늦은/이월 회신은 여기서 **id 로** 끊는다(2026-09-11). 호스트가 우리가 보낸 reqId 를 그대로 실어 주므로
-//     '지금 기다리는 요청의 것인가'를 짐작하지 않고 대조한다. 어긋나면 지난 요청의 늦은 회신이니 조용히 버린다
-//     (토스트도, 폼 변경도 없다 — 화면은 지금 기다리는 요청의 결과만 말해야 한다).
-//   ★ 반대로 **id 가 맞으면 아무리 늦어도 반영한다.** 워치독은 잠금만 풀 뿐 요청 표를 지우지 않는다 —
-//     12초를 넘겨 도착한 성공 회신을 버리면 "저장은 됐는데 실패로 안내"가 된다(2026-09-11).
-//   ★ id(무시할까)와 대상(폼을 닫아도 되나)을 따로 본다 — id 만으로는 '어느 폼'인지 알 수 없다.
-//   ★ reqId 가 빈 문자열이면 **옛 호스트**다(회신에 id 를 싣지 않는 판). 그때는 예전처럼 처리한다.
-window.__userSaved = function(ok, msg, reqId){
-  const rq = __uaReq;
-  //  ★ done = 이미 처리한 요청의 표다(R3-W1). 표를 지우지 않고 남겨 두는 것은 **뒤따르는 명부 푸시를
-  //    짝지으려고** 이지, 같은 회신을 두 번 받으려는 것이 아니다.
-  if(!rq || rq.done) return;   // 기다리는 요청이 없다(또는 이미 처리했다) = 이 회신은 이월분이다
-  const rid = String(reqId == null ? '' : reqId);
-  if(rid && rid !== rq.id){
-    try{ console.warn('[__userSaved] 지난 요청의 회신을 버린다:', rid, '≠', rq.id); }catch(_){}
-    return;
-  }
-  rq.done = true;   // 표는 남긴다 — 곧 뒤따르는 명부 푸시가 이 id 로 '내 것'임을 밝힌다(R3-W1)
-  const wasOrder = rq.cmd === 'saveUserOrder';
-  //  ★ 「순서 저장」이 성공했다 — 이 회신이 먼저 오고 갱신 명부(__applyMembers)가 곧바로 뒤따른다(호스트 순서).
-  //    편집 모드를 여기서 끝내야 그 푸시가 '관계없는 갱신'으로 오해받아 미뤄지지 않는다(아래 가드).
-  //  ★ 끝내는 자리가 **잠금 해제보다 앞**이다(2026-09-11 R2-W3): uaSetSaving 이 다시 그릴 때 화면 상태가
-  //    이미 최종형(순서 편집 꺼짐)이어야 같은 목록을 두 번 그리지 않는다.
-  //    ㆍ미뤄 둔 갱신(__uaPendingData)은 **버린다**(2026-09-11 적대 검토 R4-W1). 그 자리에 담긴 것은
-  //      내 저장이 서버에 닿기 **전**의 명부라, 앉히는 순간 방금 저장한 순서가 화면에서 옛 순서로 되돌아간다
-  //      (그 뒤에 호스트 푸시가 와야만 고쳐지고, 안 오면 영영 옛 순서다 — R3-W1 이 이 값을 살려 두며 놓친 자리).
-  //      남의 진짜 변경(신규 등록·퇴사)까지 **함께** 담은 확정 명부는 곧바로 뒤따르는 내 푸시가 앉힌다
-  //      (__applyMembers 의 mine). 그 푸시가 오지 않아도 __uaMembers 에는 저장한 순서가 이미 있다 —
-  //      ▲▼ 가 제자리에서 고치므로, 잃는 것은 '남의 변경'뿐이고 그건 다음 조회가 가져온다.
-  //    ㆍ버린 자리를 **호스트 푸시에만 맡기지 않는다**(2026-09-11 적대 검토 R5-W2). 그 푸시는 호스트가
-  //      명부를 다시 읽어야 나가는데, 그 읽기가 실패하면 아무것도 밀지 않는다 — 그러면 미뤄 뒀다 버린
-  //      남의 변경(신규 등록·퇴사·복구)이 다음 조회 전까지 화면에 영영 닿지 않는다. 그래서 짧게 기다렸다가
-  //      **스스로 다시 읽는다**. 푸시가 먼저 오면(대개 그렇다) 그 타이머는 __applyMembers 가 지운다.
-  if(ok && wasOrder){
-    uaOrderReset(); __uaPendingData = null;
-    __uaAwaitSeen = false; uaAwaitArm();
-  }
-  //  ★ 「낡은 명부」 거부(StaleRosterMsg)도 **편집 모드를 끝낸다**(2026-09-11 적대 검토 R3-W1).
-  //    이 거부는 "네 화면이 낡았다"는 뜻이라, 호스트가 거부와 함께 갱신 명부를 밀어 준다. 편집 모드를
-  //    그대로 두면 그 푸시가 미뤄지고(__applyMembers), 관리자는 같은 낡은 명부로 같은 거부만 되풀이한다.
-  //    ㆍ문구는 호스트의 상수(ProjectDb.StaleRosterMsg)와 **글자 그대로** 같아야 한다 — 시험이 둘을 맞댄다.
-  //    ㆍ미뤄 둔 갱신이 이미 있으면(푸시가 회신보다 빨랐던 경우) 지금 앉힌다. 아직이면 뒤따르는 푸시가
-  //      내 reqId 를 달고 와 스스로 앉는다(__applyMembers 의 mine).
-  const staleRoster = (!ok && wasOrder && msg === '명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.');
-  let painted = false;   // 이 회신이 **이미** 화면을 다시 그렸나(미뤄 둔 갱신을 앉히면서)
-  if(staleRoster){
-    uaOrderReset();
-    if(__uaPendingData){ uaFlushPending(); painted = true; }
-  }
-  //  ★ uaSetSaving 은 **잠금이 실제로 바뀔 때만** 다시 그린다(R2-W3). 안 바뀌었다면(워치독이 이미 풀어 둔
-  //    경우) 순서 저장의 막대·목록을 여기서 한 번 그린다 — 뒤따르는 푸시에 기대면, 그 푸시가 오지
-  //    않는 순간 ▲▼·[취소]·[순서 저장]이 그대로 남아 이미 끝난 편집을 계속하는 화면이 된다.
-  //  ★ 성공만이 아니라 **「낡은 명부」 거부도** 여기에 든다(2026-09-11 적대 검토 R4-W3): 그 거부도 바로 위에서
-  //    편집 모드를 끝냈으므로, 워치독이 이미 잠금을 풀어 둔 뒤에 늦게 도착하면 아무도 다시 그리지 않아
-  //    ▲▼·[취소]·[순서 저장]이 __uaOrder=false 인 화면에 그대로 남는다(누르면 아무 일도 안 일어난다).
-  const redrew = uaSetSaving(false);
-  if(!redrew && !painted && wasOrder && (ok || staleRoster)){ uaAdminBar(); uaApply(); }
-  const ed = document.getElementById('userEditModal');
-  //  폼을 닫아도 되는 회신인가 = 그 요청이 **지금 열려 있는 그 폼**에서 나갔는가(순서 저장은 폼과 무관하다).
-  //   ★ 표(tok)를 함께 본다(R2-W1). uid 만 보면 신규 등록끼리(둘 다 uid 0) 구별되지 않아, 지난 등록의
-  //     늦은 회신이 지금 쓰고 있는 새 등록 폼을 닫아 버린다.
-  const forForm = rq.cmd !== 'saveUserOrder' && rq.tok === __ueTok && Number(rq.uid || 0) === Number(__ueId || 0);
-  const edOpen = !!ed && !ed.classList.contains('hidden') && forForm;
-  //  이 폼의 것이 아닌 폼 회신 = 이미 닫힌(또는 다른) 폼의 늦은 결과다. 결과는 **알리되** 지금 폼은
-  //  건드리지 않는다 — 그리고 문장으로 '지난 요청'임을 말한다(안 그러면 방금 누른 [저장]의 결과로 읽힌다).
-  const stale = rq.cmd !== 'saveUserOrder' && !forForm;
-  if(ok){
-    if(edOpen){ userEdMsgSet(''); closeModal('#userEditModal'); }
-    const done = msg || '저장했습니다';
-    toast(stale ? '이전 요청이 처리됐습니다: ' + done : done, 'success');
-    return;
-  }
-  //  ★ 권한 거부·잠금 방지 문구가 그대로 여기로 온다(호스트가 사용자 문장으로 만들었다).
-  //    화면이 다시 쓰지 않는다 — 다시 쓰면 "관리자만 고칠 수 있다"가 "저장 실패"로 뭉개진다.
-  if(edOpen) userEdMsgSet(ICON.alert + ' ' + esc(msg || '저장하지 못했습니다.'), 'err');
-  const bad = msg || '저장하지 못했습니다';
-  toast(stale ? '이전 요청이 실패했습니다: ' + bad : bad, 'error');
-};
-// 쓰기 성공 뒤 호스트가 밀어 주는 갱신 명부(문자열 JSON — __applyProjects 와 같은 전달 규약).
+// 호스트가 **부탁하지 않았는데** 밀어 주는 갱신 명부(문자열 JSON — __applyProjects 와 같은 전달 규약).
+//   ★ 2026-09-14: 인자가 하나다. 내 쓰기의 결과는 이제 그 쓰기의 **회신**에 실려 오므로(uaSeatRoster),
+//     여기 오는 것은 정의상 **내 것이 아닌 갱신**뿐이다 — '내 것인가'를 reqId 로 대조하던 갈래가 통째로
+//     사라졌다. 짝지을 것이 없으면 짝짓기도 필요 없다.
 //   ★ 이 푸시는 **「구성원 편집」 화면에만** 들어간다. 쓰기는 그 화면에서만 일어나므로 그 화면만 갱신하면 된다.
 //     「구성원 보기」는 열 때마다 스스로 다시 읽으므로(openMembers) 낡은 채로 남지 않는다 —
 //     한 회신으로 두 화면을 함께 칠하면 그 순간 두 화면의 상태가 다시 엉킨다(갈라 둔 이유가 사라진다).
-//   ★ 두 번째 인자 reqId = **이 푸시를 부른 쓰기의 요청 id** 다(2026-09-11 적대 검토 R3-W1 · 호스트가 싣는다).
-//     없으면 빈 문자열이다(옛 호스트·쓰기와 무관한 푸시).
-window.__applyMembers = function(json, reqId){
-  let d = null;
-  try{ d = JSON.parse(String(json || '')); }catch(_){ d = null; }
-  if(!(d && d.found)) return;   // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
-  //  ★ 명부가 왔다 = 기다리던 빚이 갚혔다(R6-W2). 내 것이든 남의 것이든 화면은 서버가 방금 읽어 준
-  //    명부를 쥐었으므로 스스로 한 번 더 읽을 이유가 없다. 순서 편집 중이라 미뤄 두는 갈래도 같다 —
-  //    그 명부는 버려지지 않고 편집을 마칠 때 앉는다(uaOrderToggle).
-  __uaAwaitSeen = true;
-  //  ★ 순서 편집 중에 **관계없는 푸시**(다른 관리자의 저장·휴지통 복구 등)가 오면 편집 중인 순서가 통째로
-  //    날아간다(2026-09-10). 내 쓰기의 결과가 아니면 미뤄 두고, 편집을 마칠 때 반영한다.
-  //  ★ '내 것인가' 는 **id 하나가** 진다(R3-W1). 예전에는 '아직 도는 중인가(__uaSaving) + 마지막 명령이
-  //    순서 저장인가' 로 **짐작**했는데, 그 파생은 제 손에 닿지 않는 두 값에 기대는 것이라
-  //    회신이 먼저 와 잠금이 풀린 뒤 도착하는 **내 푸시**를 남의 것으로 오해했다. 호스트가 id 를 실어
-  //    주는 지금은 짐작할 이유가 없다 — 맞으면 내 것, 아니면 남의 것이다.
-  //  ★ 그리고 **순서 저장의 결과일 때만** 편집 모드를 끝낸다. 순서 편집 중에는 화면에서 다른 쓰기를 할 수
-  //    없으므로(등록·퇴사자 보기·[편집]이 전부 사라진다) 그 밖의 '내 푸시'는 있을 수 없고, 있더라도(시험·
-  //    다른 경로) 편집 중인 순서를 덮을 이유가 없다 — 미뤄 둔다(loop-user-admin C20).
-  const mine = !!(reqId && __uaReq && reqId === __uaReq.id && __uaReq.cmd === 'saveUserOrder');
-  if(mine){
-    //  ★ 미뤄 둔 옛 푸시를 **먼저 버린다**(2026-09-11 적대 검토 R4-W2). 지금 도착한 것이 서버가 확정한
-    //    명부다 — 그보다 앞선 스냅샷을 남겨 두면, 나중에 순서 편집을 켰다 끄는 것만으로 그 옛 명부가
-    //    확정 명부를 덮어쓴다(uaOrderToggle 이 미뤄 둔 갱신을 앉히는 길로 들어간다).
-    __uaPendingData = null;
-    //  ★ 기다리던 그 푸시가 왔다 — 스스로 다시 읽으려던 타이머는 여기서 끝낸다(R5-W2).
-    clearTimeout(__uaAwaitPush); __uaAwaitPush = 0;
-    uaOrderReset();   // 서버에 저장된 명부가 도착했다 — 편집 모드는 여기서 끝이다(되돌릴 것은 없다)
-    uaApplyData(d);
-    userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)
-    return;
-  }
+window.__applyMembers = function(json){
+  const d = uaParseRoster(json);
+  if(!d) return;   // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  //  ★ 순서 편집 중에 관계없는 푸시(다른 관리자의 저장·휴지통 복구 등)가 그대로 앉으면 편집 중인 순서가
+  //    통째로 날아간다(2026-09-10). 미뤄 두고, 편집을 마칠 때 반영한다(uaOrderToggle → uaFlushPending).
+  //    미뤄 뒀다는 사실은 막대가 말한다 — 관리자가 자기 화면이 낡은 줄 모른 채 순서를 정하면 안 된다.
   if(__uaOrder){ __uaPendingData = d; uaAdminBar(); return; }
   uaApplyData(d);
-  userEdSyncActive();   // ★ 여기가 「이미 복구됨」 거부 뒤의 길이다 — 폼이 낡은 [복구]를 계속 내주면 안 된다(R6-W3)
+  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)
 };
 
 /* ── 휴지통(#trashModal) — 숨긴 항목 복구 · 영구 삭제 (docs/TRASH-DELETE §5) ───────────────
@@ -5975,10 +5909,9 @@ let __trShown = null;       // { tab, admin } — 직전 렌더가 그린 화면
 //    그때는 행(.mba-line)으로 물러나고, 여기에 그 버튼을 적어 둔다 — 잠금이 풀린 다음 렌더가 되돌린다.
 let __trKeepBtn = null;     // { op, key } — 잠금 동안 잠시 맡아 둔 '되돌릴 버튼'
 let __trAdmin = false;      // 이번 조회에서 호스트가 인정한 관리자 여부(회신에 admin:true 가 있었나)
-let __trSaveWatchdog = 0;   // 회신이 영영 안 올 때 화면을 풀어 주는 타이머(uaSetSaving 과 같은 이유)
-//  ★ 요청 상관관계 — 「구성원 편집」의 __uaReq 와 **같은 규약**이다(그쪽 주석이 이유를 진다).
-//    복구·삭제도 회신이 늦으면 다른 항목의 결과로 먹힐 수 있고, 워치독이 지우면 늦은 성공이 버려진다.
-let __trReq = null;         // 지금 회신을 기다리는 요청 { id, kind, key }(null = 대기 없음 → 이월 회신 무시)
+//  ★ 요청 표(__trReq)도 워치독도 **없다**(2026-09-14 · 「구성원 편집」과 같은 이유). 복구·삭제가 왕복이 되면서
+//    회신은 그 버튼을 누른 클로저로 돌아온다 — 늦은 회신이 다른 항목의 결과로 먹힐 길이 사라졌고,
+//    영영 안 오는 회신은 hostRequest 의 타임아웃(20초)이 실패 회신으로 바꿔 준다.
 //  탭 정의 한 벌 — 종류·라벨·회신의 목록 키·참조 문구가 **여기서만** 갈라진다.
 //  ★ 참조 문구가 종류마다 다른 이유: 과제는 사람이 편입하고, 인력은 기록을 남기고, 코드는 과제가 쓴다.
 //    같은 숫자라도 뜻이 달라서 한 문장으로 뭉치면 관리자가 무엇을 지우는지 모르게 된다.
@@ -6046,7 +5979,7 @@ function trRender(){
   if(!__trAdmin){
     const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
     //  ★ 호스트가 사유를 실어 보내면 그것을 쓴다(비활성·미등록 계정은 '관리자가 아니다'와 이유가 다르다).
-    //    화면이 다시 쓰지 않는다 — 다시 쓰면 무엇을 고쳐야 하는지가 사라진다(__trashDone 과 같은 규칙).
+    //    화면이 다시 쓰지 않는다 — 다시 쓰면 무엇을 고쳐야 하는지가 사라진다(trAfterWrite 와 같은 규칙).
     const why = (__trData && __trData.msg) ? String(__trData.msg) : '관리자만 사용할 수 있습니다.';
     d.textContent = why;
     list.appendChild(d);
@@ -6205,7 +6138,7 @@ async function openTrash(){
   __trBusy = true;
   __trData = null; __trAdmin = false; __trTab = 'project';
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 닫은 경우).
-  //    왕복이 없으면 풀고, **아직 도는 중이면 워치독만 다시 걸어** 12초 뒤 반드시 풀리게 한다(2026-09-10).
+  //    왕복이 없으면 풀고, **아직 도는 중이면 풀지 않는다** — 그 왕복이 끝나는 자리가 풀 것이다.
   if(__trSaving) trSetSaving(true); else trSetSaving(false);
   //  ★ 이 한 줄이 **여는 순간의 유일한 렌더**다(2026-09-11 R2-W4). 바로 위 trSetSaving 은 지금 값을 그대로
   //    다시 넣으므로 잠금이 바뀌지 않고, 바뀌지 않으면 그리지 않는다 — 여기서 지우면 방금 비운
@@ -6224,19 +6157,36 @@ async function openTrash(){
   trApplyData(d);
 }
 
-// 쓰기 성공 뒤 호스트가 밀어 주는 갱신 목록(문자열 JSON — __applyMembers 와 같은 전달 규약).
-window.__applyTrash = function(json){
+// 갱신 목록 한 덩어리를 앉힌다 — 회신(trSend)과 부탁하지 않은 푸시(__applyTrash)가 **같은 길**을 쓴다.
+//   ★ 돌려주는 값 = '앉혔나'. 회신에 목록이 실려 오지 않는 경우(호스트가 다시 읽지 못했다)를 부르는 쪽이 안다.
+function trSeat(json){
   let d = null;
-  try{ d = JSON.parse(String(json || '')); }catch(_){ d = null; }
-  if(!(d && d.found)) return;   // 못 읽으면 직전 화면을 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  try{ d = JSON.parse(String(json == null ? '' : json)); }catch(_){ d = null; }
+  if(!(d && d.found)) return false;   // 못 읽으면 직전 화면을 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
   trApplyData(d);
-};
+  return true;
+}
+// 호스트가 **부탁하지 않았는데** 밀어 주는 갱신 목록(문자열 JSON — __applyMembers 와 같은 전달 규약).
+window.__applyTrash = function(json){ trSeat(json); };
+
+// 복구·삭제 회신의 뒤처리 한 곳 — 두 조작이 같은 길을 쓴다.
+//   ★ 문장을 **다시 쓰지 않는다**: 거부 사유(기록 n건·사용 중·이름 불일치)는 호스트가 사용자 문장으로
+//     만들었다. 화면이 '처리하지 못했습니다'로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다.
+//   ★ 인력을 복구·삭제하면 **명부도 함께 바뀐다**(회신의 roster). 그 명부는 **여기서 앉히지 않는다** —
+//     trSend 가 「구성원 편집」과 **같은 문**(uaSeatReply)으로 들여보낸다(2026-09-14 좌석 일원화).
+//     규칙을 여기 한 벌 더 두면 '순서 편집 중에는 미뤄 둔다'가 휴지통 쪽에서만 빠지고, 관리자가 잡고 있던
+//     순서가 남의 복구 한 번에 날아간다 — 그 규칙은 명부가 어디서 왔는가가 아니라 화면의 상태가 정한다.
+function trAfterWrite(r){
+  trSeat(r.trash);
+  toast(r.msg || (r.ok ? '처리했습니다' : '처리하지 못했습니다'), r.ok ? 'success' : 'error');
+}
 
 // 복구 — 확인 한 번. 되돌릴 수 있는 조작이라 이름 입력까지 요구하지 않는다.
 function trRestore(kind, key, name){
-  confirmBox('복구', "'" + name + "' 을(를) 목록에 다시 표시합니다. 계속할까요?", '복구', '취소').then(r => {
+  confirmBox('복구', "'" + name + "' 을(를) 목록에 다시 표시합니다. 계속할까요?", '복구', '취소').then(async r => {
     if(r !== 'ok') return;
-    trSend({ cmd: 'trashRestore', kind: kind, key: key });
+    const rep = await trSend({ cmd: 'trashRestore', kind: kind, key: key });
+    if(rep) trAfterWrite(rep);
   });
 }
 
@@ -6251,72 +6201,54 @@ function trDelete(kind, key, name, refs){
     : kind === 'user'
       ? "'" + name + "' 계정을 DB 에서 영구 삭제합니다. 기록이 없는 계정입니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요."
       : "'" + name + "' 을(를) DB 에서 영구 삭제합니다. 쓰는 과제가 없습니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요.";
-  confirmTyped(trTabDef(kind).label + ' 영구 삭제', msg, name, '영구 삭제').then(r => {
+  confirmTyped(trTabDef(kind).label + ' 영구 삭제', msg, name, '영구 삭제').then(async r => {
     if(r !== 'ok') return;
     const inp = document.getElementById('ctInput');
-    trSend({ cmd: 'trashDelete', kind: kind, key: key, confirm: inp ? inp.value : '' });
+    const rep = await trSend({ cmd: 'trashDelete', kind: kind, key: key, confirm: inp ? inp.value : '' });
+    if(rep) trAfterWrite(rep);
   });
 }
 
-// 호스트 왕복 한 곳 — 복구·삭제가 같은 가드·같은 워치독을 쓴다(uaSend 와 같은 골격).
-//   ★ includeInactive 를 함께 보낸다: 인력을 지우면 호스트가 곧바로 명부를 다시 읽어 미는데,
+// 호스트 왕복 한 곳 — 복구·삭제가 같은 가드·같은 잠금을 쓴다(uaSend 와 같은 골격).
+//   ★ includeInactive 를 함께 보낸다: 인력을 지우면 호스트가 곧바로 명부를 다시 읽어 회신에 실어 주는데,
 //     그때 「퇴사자 보기」 상태를 모르면 「구성원 편집」 화면이 제멋대로 바뀐다.
 //   ★ 여기에 __trAdmin 가드를 **두지 않는다.** 권한 판정은 호스트가 요청 시점에 한다(USER-LOGIN §3.3) —
 //     화면이 미리 막으면 거부 사유가 화면 문장으로 바뀌어, 관문이 실제로 막는지 아무도 확인하지 못한다.
 //   ★ 진행 중임을 **화면이 보여 준다**(2026-09-10). 예전에는 가드가 두 번째 클릭을 조용히 버리고 첫 요청도
 //     아무 표시가 없어서, 관리자에게는 [영구 삭제]가 먹지 않는 것처럼 보였다.
-//   ★ reqId 를 함께 보낸다(uaSend 와 같은 규약) — 호스트가 회신에 그대로 실어 주므로 늦은 회신을 구별한다.
-function trSend(payload){
-  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
-  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 조용히 버리지 않는다
-  const reqId = String((payload && payload.cmd) || '') + '-' + (++__reqSeq);
-  __trReq = { id: reqId, kind: String((payload && payload.kind) || ''), key: String((payload && payload.key) || '') };
+//   ★ 이것은 **왕복**이다(2026-09-14 · uaSend 와 같은 규약) — 회신 { ok, msg, trash, roster } 가 부르는 쪽의
+//     Promise 로 돌아온다. 그래서 '어느 항목의 회신인가'를 표로 가릴 필요가 없다: 그 버튼의 클로저가 곧 답이다.
+//   ★ 돌려주는 값이 null 이면 **보내지 못했다**(위젯이 아니거나 이미 다른 쓰기가 도는 중).
+async function trSend(payload){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return null; }
+  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return null; }   // 조용히 버리지 않는다
+  const cmd = String((payload && payload.cmd) || '');
   trSetSaving(true);
-  hpost(Object.assign({ includeInactive: __uaInactive, reqId: reqId }, payload));   // 결과는 __trashDone(ok, msg, reqId)
+  const r = await hostRequest(cmd, Object.assign({ includeInactive: __uaInactive }, payload), 20000);
+  trSetSaving(false);   // 잠금을 푸는 곳은 여기 하나다(행 버튼은 그때 다시 그려진다)
+  //  ★ 인력 복구·삭제의 명부는 「구성원 편집」과 **같은 문**을 지난다(uaSeatReply) — 순서 편집 중이면
+  //    미뤄 두고 막대가 말한다. 휴지통이 자기 사본을 들면 그 규칙이 한쪽에서만 빠진다.
+  const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''),
+                trash: String((r && r.trash) || ''), roster: String((r && r.roster) || '') };
+  rep.painted = uaSeatReply(rep.roster, cmd);
+  return rep;
 }
-// 휴지통 쓰기 잠금 한 곳 — overlay dataset.busy(닫기 차단) + 워치독(uaSetSaving·offEdSetBusy 와 같은 장치).
+// 휴지통 쓰기 잠금 한 곳 — overlay dataset.busy(닫기 차단) + 렌더(uaSetSaving·offEdSetBusy 와 같은 장치).
 //   ★ 행 버튼을 **걸어 다니며 끄지 않는다**(2026-09-11). 잠금은 trRender 가 __trSaving 을 보고 그린다 —
 //     노드에 칠해 두면 왕복 중에 도착한 푸시가 목록을 다시 만드는 순간 잠금이 증발했고, 원래 상태를
 //     원래 상태를 표시해 두는 되돌리기 장치도 그때 함께 사라졌다(다시 그린 버튼에는 그 표가 없다).
 //   ★ **바뀔 때만** 그린다(2026-09-11 R2-W4). 무조건 그리면 쓰기 한 번에 목록이 세 번 다시 만들어져
 //     (잠금 · 회신 · 호스트 푸시) 그때마다 스크롤과 포커스를 잃는다. 돌려주는 값은 '다시 그렸나' 다.
+//   ★ 워치독은 **없다**(2026-09-14 · uaSetSaving 과 같은 이유). 잠금을 푸는 자리는 왕복이 끝나는 곳 하나뿐이고,
+//     회신이 영영 안 오는 경우는 hostRequest 의 타임아웃(20초)이 실패 회신으로 바꿔 풀어 준다.
 function trSetSaving(on){
   const changed = (__trSaving !== !!on);
   __trSaving = !!on;
-  clearTimeout(__trSaveWatchdog);
   const ov = document.getElementById('trashModal');
   if(ov){ if(on) ov.dataset.busy = '1'; else delete ov.dataset.busy; }
   if(changed) trRender();   // 잠금을 화면에 반영하는 길은 이 한 줄뿐이다(그리는 곳이 곧 잠그는 곳이다)
-  if(!on) return changed;
-  //  회신이 영영 안 오면 화면이 잠긴 채로 남는다 — 그건 '실패'조차 아니라서 더 나쁘다.
-  //  ★ 여기서 푸는 것은 **화면 잠금뿐**이다. 요청 표(__trReq)는 살려 둔다 — 늦게 온 성공 회신을 버리면
-  //    "지워졌는데 실패로 안내"가 된다. 그래서 문구도 '실패'가 아니라 '늦다'여야 한다(2026-09-11).
-  __trSaveWatchdog = setTimeout(() => {
-    trSetSaving(false);
-    toast('응답이 늦습니다 — 회신이 오면 반영됩니다. 아직 다시 누르지 마세요.', 'warn');
-  }, 12000);
   return changed;
 }
-
-// 호스트 쓰기 결과(복구·삭제 공용). 목록 갱신은 여기서 하지 않는다 — 호스트가 __applyTrash 로 밀어 준다.
-//   ★ 문장을 **다시 쓰지 않는다**: 거부 사유(기록 n건·사용 중·이름 불일치)는 호스트가 사용자 문장으로
-//     만들었다. 화면이 '처리하지 못했습니다'로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다.
-//   ★ 늦은/이월 회신은 **id 로** 끊는다(__userSaved 와 같은 규약 · 2026-09-11). 어긋나면 지난 요청의
-//     회신이니 조용히 버린다 — 지금 기다리는 대상의 결과인 양 토스트를 띄우면 화면이 거짓말을 한다.
-//     반대로 id 가 맞으면 **아무리 늦어도 반영한다**(워치독은 잠금만 풀고 요청 표를 남겼다).
-//   ★ reqId 가 빈 문자열이면 옛 호스트다 — 그때는 예전처럼 처리한다.
-window.__trashDone = function(ok, msg, reqId){
-  const rq = __trReq;
-  if(!rq) return;   // 기다리는 요청이 없다 = 이 회신은 이월분이다
-  const rid = String(reqId == null ? '' : reqId);
-  if(rid && rid !== rq.id){
-    try{ console.warn('[__trashDone] 지난 요청의 회신을 버린다:', rid, '≠', rq.id); }catch(_){}
-    return;
-  }
-  __trReq = null;
-  trSetSaving(false);   // 잠금·워치독을 한 곳에서 함께 푼다(행 버튼은 그때 다시 그려진다)
-  toast(msg || (ok ? '처리했습니다' : '처리하지 못했습니다'), ok ? 'success' : 'error');
-};
 
 // 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다.
 // ★ 추측한 명부를 그리지 않는다. 낡거나 지어낸 조직도는 '모른다'고 말하는 것보다 나쁘다.
@@ -7627,12 +7559,9 @@ function closeOverlay(ov){
   // (닫아도 호스트 작업은 계속되는데 결과를 알릴 곳만 사라지는 상황을 방지)
   if(ov.dataset.busy === '1') return;
   if(ov.id === 'reportModal') clearNetcusMerge();   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
-  //  ★ 편집 폼이 닫혔다 = 그 폼을 기다리던 회신은 더 이상 **이 화면의 것이 아니다**(R2-W1).
-  //    표를 여기서 비운다 — 닫기 경로가 하나이므로 Esc·배경·×·[취소] 어느 쪽으로 닫아도 같다.
-  if(ov.id === 'userEditModal') __ueTok = 0;
-  //  ★ 「구성원 편집」 화면이 닫혔다 = 기다리던 명부 푸시도 이 화면의 빚이 아니다(R6-W2) —
-  //    닫힌 목록을 위해 3초 뒤에 왕복이 한 번 더 나가면 그건 아무도 보지 않는 조회다.
-  if(ov.id === 'userAdminModal') uaAwaitStop();
+  //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
+  //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
+  //    그 회신에 실려 온다 — 닫힌 화면이 남길 '빚'이 없다. 게다가 왕복 중에는 dataset.busy 가 닫기를 막는다.
   const done = () => { ov.__closeTimer = null; ov.classList.remove('closing'); ov.classList.add('hidden'); };
   if(_reducedMotion()){ done(); return; }
   ov.classList.add('closing');

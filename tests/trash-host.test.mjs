@@ -121,19 +121,28 @@ const checks = {
       const b = csMember(mainCs, 'private async Task ' + fn + '(');
       assert.ok(new RegExp('_projectDb\\.' + host + '\\(').test(b), `${fn} 이 ${host} 를 부르지 않는다`);
     }
-    // 결과 통지·재조회 푸시(§4.2) — 없으면 "지웠는데 목록은 그대로"인 창이 생긴다.
-    assert.ok(/window\.__trashDone && window\.__trashDone\(/.test(mainCs), '호스트가 __trashDone 을 부르지 않는다');
-    assert.ok(/window\.__applyTrash && window\.__applyTrash\(/.test(mainCs), '호스트가 __applyTrash 로 휴지통을 다시 밀지 않는다');
+    // 결과 회신·재조회(§4.2) — 없으면 "지웠는데 목록은 그대로"인 창이 생긴다.
+    //  ★ 2026-09-14 — 그 결과는 이제 **푸시가 아니라 회신**이다(ReplyOnUi). 옛 판은 __trashDone 으로 밀었고,
+    //    푸시에는 상관관계가 없어 웹이 그것을 손으로 한 벌 더 지었다(__trReq · 워치독). 이 저장소가 이미
+    //    가진 요청/회신 배관으로 옮기면서 그 복제를 지웠다 — 그래서 여기서 보는 것은 "회신으로 돌려주는가"다.
+    assert.ok(!/__trashDone/.test(code),
+      '호스트에 아직 __trashDone 푸시가 남아 있다 — 결과는 회신(ReplyOnUi)으로만 간다(2026-09-14)');
     for (const fn of ['TrashRestoreAsync', 'TrashDeleteAsync']) {
       const b = csMember(mainCs, 'private async Task ' + fn + '(');
-      assert.ok(/TrashDone\(ok, msg, reqId\);/.test(b), `${fn} 이 결과를 웹으로 돌려주지 않는다`);
+      assert.ok(/ReplyOnUi\(reqId, new \{ ok, msg, trash, roster \}\);/.test(b),
+        `${fn} 이 결과를 회신(ReplyOnUi)으로 돌려주지 않는다 — 푸시로 되돌아가면 웹이 상관관계를 다시 손으로 짓는다`);
       assert.ok(/if \(ok\) await TrashRefreshRelatedAsync\(kind, includeInactive\);/.test(b),
         `${fn} 이 성공 뒤 관련 목록(과제·명부·발주처·코드)을 다시 밀지 않는다`);
     }
-    //  휴지통 목록 자체는 **성공·실패 모두** 밀어야 하므로 부르는 쪽에 있다 — 계약⑩ 이 그 자리를 본다(R2).
+    //  휴지통 목록 자체는 **성공·실패 모두** 회신에 실어야 하므로 부르는 쪽에 있다 — 계약⑩ 이 그 자리를 본다(R2).
     const refresh = csMember(mainCs, 'private async Task TrashRefreshRelatedAsync(');
     assert.ok(/LoadMembersToWebAsync\(includeInactive\)/.test(refresh), '인력 조작 뒤 명부를 다시 밀지 않는다');
     assert.ok(/LoadProjectsToWebAsync\(\)/.test(refresh), '과제·코드 조작 뒤 카탈로그를 다시 밀지 않는다(dbGone 재판정이 걸려 있다)');
+    //  그 명부 푸시는 **인자 하나**다(2026-09-14). 옛 판의 두 번째 인자 reqId 는 "이 푸시가 내 요청의 것인가"를
+    //  웹이 가리라고 있던 것인데, 이제 '내 것'은 회신을 타고 오므로 푸시는 언제나 남의 갱신이다 —
+    //  인자가 남아 있으면 웹이 그 낡은 짝짓기를 다시 지을 근거가 된다.
+    assert.ok(/window\.__applyMembers\(" \+ JsonSerializer\.Serialize\(json\) \+ "\)"\);/.test(code),
+      '__applyMembers 푸시가 인자 하나(json)가 아니다 — 푸시는 더 이상 누구의 것도 아니다(2026-09-14)');
   },
 
   // ③ '기록 0건'의 기준 표 = 정본의 REFERENCES app_user 에서 부속 2표를 뺀 것(§3.2).
@@ -301,32 +310,39 @@ const checks = {
     }
   },
 
-  // ⑩ 결과 푸시가 **약속한 새로고침을 실제로 하고**, 자기 요청과 짝지어진다(2026-09-11 적대 검토 R2·R3).
+  // ⑩ 결과 회신이 **약속한 새로고침을 실제로 나르고**, 자기 요청과 짝지어진다(2026-09-11 R2·R3 → 2026-09-14).
   //    (a) 거부 문구 둘이 "…목록을 새로고침합니다"라고 말한다(TrashGoneMsg · AlreadyActiveMsg).
   //        그 둘은 정확히 **실패**할 때 나오는 문장인데 옛 판은 성공했을 때만 목록을 밀었다 —
-  //        사용자는 "새로고침한다"를 읽으면서 사라진 항목이 그대로 있는 목록을 봤다. 이제 결과와 무관하게 민다.
-  //        관련 목록(과제·명부·발주처·코드)은 그대로 **성공에만** — 실패했으면 그쪽은 바뀌지 않았다(계약② 가 본다).
-  //    (b) __trashDone 은 왕복이 아니라 푸시다. 세 번째 인자 reqId 가 없으면 늦게 온 회신이 이미 다른 일을
-  //        하고 있는 화면을 건드린다. 요청에 없었으면 "" 다(옛 웹과 호환).
-  trashPushRefreshesAlwaysAndCorrelates(mainCs) {
+  //        사용자는 "새로고침한다"를 읽으면서 사라진 항목이 그대로 있는 목록을 봤다. R2 가 그것을 '결과와
+  //        무관하게 민다'로 닫았고, 지금은 그 갱신이 **회신에 실려**(trash) 간다 — 규칙은 그대로고 전송만 바뀌었다.
+  //        관련 목록(과제·발주처·코드)은 그대로 **성공에만** — 실패했으면 그쪽은 바뀌지 않았다(계약② 가 본다).
+  //    (b) 회신은 reqId 왕복(ReplyOnUi)이다. 옛 판은 푸시(__trashDone)였고 푸시에는 상관관계가 없어,
+  //        웹이 그 짝짓기를 손으로 한 벌 더 지어야 했다(__trReq · 워치독). 배관이 이미 보장하는 것을
+  //        복제한 자리라, 다섯 쓰기를 배관 위로 옮기면서 그 복제를 통째로 지웠다.
+  //    (c) 인력을 복구·삭제하면 명부도 같은 회신에 실린다(roster) — 조건은 옛 명부 푸시와 **같다**
+  //        (ok && kind=="user"). 나머지 종류·실패는 명부가 바뀌지 않았으므로 ""다.
+  trashReplyCarriesFreshLists(mainCs) {
     const code = stripCs(mainCs);
     for (const [cmd, fn] of [['trashRestore', 'TrashRestoreAsync'], ['trashDelete', 'TrashDeleteAsync']]) {
       assert.ok(new RegExp('case "' + cmd + '":[\\s\\S]{0,300}?' + fn + '\\(GetStr\\(doc, "reqId"\\)').test(code),
-        `브리지 case "${cmd}" 가 reqId 를 넘기지 않는다 — 화면이 회신을 자기 요청과 짝지을 수 없다(R3)`);
+        `브리지 case "${cmd}" 가 reqId 를 넘기지 않는다 — 회신이 어느 요청의 것인지 배관이 알 수 없다(R3)`);
       const b = csMember(mainCs, 'private async Task ' + fn + '(');
       assert.ok(/^private async Task \w+\(string reqId, /.test(b), `${fn} 이 reqId 를 받지 않는다(R3)`);
-      assert.ok(/await LoadTrashToWebAsync\(\);/.test(b),
-        `${fn} 이 휴지통 목록을 다시 밀지 않는다 — 거부 문구가 약속한 "목록을 새로고침합니다"가 거짓말이 된다(R2)`);
-      assert.ok(!/if \(ok\)[^\n]*LoadTrashToWebAsync/.test(b),
+      assert.ok(/ReplyOnUi\(reqId, new \{ ok, msg, trash, roster \}\);/.test(b),
+        `${fn} 의 회신이 {ok, msg, trash, roster} 가 아니다 — 결과와 갱신 목록이 **한 회신**으로 가야 ` +
+        '웹이 뒤따르는 푸시를 기다리지 않는다(기다림이 있었기 때문에 워치독이 필요했다 · 2026-09-14)');
+      assert.ok(/await ReadTrashJsonAsync\(\)/.test(b),
+        `${fn} 이 휴지통 목록을 다시 읽지 않는다 — 거부 문구가 약속한 "목록을 새로고침합니다"가 거짓말이 된다(R2)`);
+      assert.ok(!/\bok\b[^\n]*ReadTrashJsonAsync/.test(b),
         `${fn} 이 휴지통 목록 갱신을 성공(ok)에만 건다 — 그 문구는 정확히 **실패**할 때 나오는 말이다(R2)`);
+      //  명부는 반대다 — **성공 + 인력**일 때만. 옛 TrashRefreshRelatedAsync 의 푸시 조건 그대로다.
+      assert.ok(/string roster = ok && kind == "user" \? await ReadMembersJsonAsync\(includeInactive\) : "";/.test(b),
+        `${fn} 의 roster 조건이 'ok && kind=="user"' 가 아니다 — 옛 명부 푸시와 같은 조건이어야 한다(전송만 바뀐다)`);
     }
-    //  푸시 문장 자체에 세 번째 인자가 실린다(기본값 "" — 옛 웹과 호환).
-    //  ★ 식(=>) 본문이라 중괄호가 없다 — 이제 csMember(하네스)가 그 모양을 알고 ';' 까지만 자른다(R2-W5).
-    //    예전에는 머리에서 400자를 떼어 봤고, 그 창은 **다음 멤버**까지 덮었다(옆 멤버가 계약을 통과시킨다).
-    const done = csMember(mainCs, 'private void TrashDone(');
-    assert.ok(/string reqId = ""/.test(done), 'TrashDone 이 reqId 를 받지 않는다(R3)');
-    assert.ok(/window\.__trashDone\(/.test(done) && /Serialize\(reqId \?\? ""\)/.test(done),
-      '__trashDone 호출에 세 번째 인자(reqId)가 없다 — 웹이 늦은 회신을 가려낼 수 없다(R3)');
+    //  옛 푸시 배관은 **남아 있으면 안 된다**. 남겨 두면 웹이 그 위에 상관관계를 다시 손으로 짓는다.
+    assert.ok(!/__trashDone/.test(code), '호스트에 아직 __trashDone 푸시가 남아 있다(2026-09-14)');
+    assert.ok(!/LoadTrashToWebAsync/.test(code),
+      '휴지통 푸시(LoadTrashToWebAsync)가 아직 남아 있다 — 갱신은 회신의 trash 하나로만 간다(2026-09-14)');
   },
 };
 
@@ -376,8 +392,8 @@ test("계약⑨: 복구·삭제의 종류 switch 에 '기본값으로 status_cod
   checks.kindSwitchHasNoSilentDefault(pdb);
 });
 
-test('계약⑩: 복구·삭제는 결과와 무관하게 휴지통을 다시 밀고, 회신에 reqId 를 싣는다(R2·R3)', () => {
-  checks.trashPushRefreshesAlwaysAndCorrelates(main);
+test('계약⑩: 복구·삭제는 reqId 회신으로 답하고 그 회신이 휴지통(+인력이면 명부)을 나른다(R2·R3 · 2026-09-14)', () => {
+  checks.trashReplyCarriesFreshLists(main);
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -541,21 +557,48 @@ test('변이⑨-b: 영구 삭제의 default: 를 옛 status_code 로 되돌리�
 });
 
 test('변이⑩: 휴지통 갱신을 성공(ok)에만 걸면 계약⑩ 이 실패한다("새로고침합니다"가 거짓말이 된다)', () => {
-  const bad = mutate(main, 'await LoadTrashToWebAsync();', 'if (ok) await LoadTrashToWebAsync();');
-  assert.throws(() => checks.trashPushRefreshesAlwaysAndCorrelates(bad), /성공\(ok\)에만 건다/);
-  assert.doesNotThrow(() => checks.trashPushRefreshesAlwaysAndCorrelates(main));   // 통제군
+  const bad = mutate(main, 'string trash = await ReadTrashJsonAsync();', 'string trash = ok ? await ReadTrashJsonAsync() : "";');
+  assert.throws(() => checks.trashReplyCarriesFreshLists(bad), /성공\(ok\)에만 건다/);
+  assert.doesNotThrow(() => checks.trashReplyCarriesFreshLists(main));   // 통제군
 });
 
-test('변이⑩-b: __trashDone 에서 reqId 를 빼면 계약⑩ 이 실패한다(늦은 회신이 남의 화면을 건드린다)', () => {
+test('변이⑩-b: 회신에서 갱신 목록을 빼면 계약⑩ 이 실패한다(웹이 다시 푸시를 기다리게 된다)', () => {
   const bad = mutate(main,
-    /window\.__trashDone\(" \+ \(ok \? "true" : "false"\) \+ ","\s*\+ JsonSerializer\.Serialize\(msg \?\? ""\) \+ "," \+ JsonSerializer\.Serialize\(reqId \?\? ""\)/,
-    'window.__trashDone(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg ?? "")');
-  assert.throws(() => checks.trashPushRefreshesAlwaysAndCorrelates(bad), /세 번째 인자\(reqId\)가 없다/);
+    'ReplyOnUi(reqId, new { ok, msg, trash, roster });',
+    'ReplyOnUi(reqId, new { ok, msg });');
+  assert.throws(() => checks.trashReplyCarriesFreshLists(bad), /\{ok, msg, trash, roster\} 가 아니다/);
+  assert.doesNotThrow(() => checks.trashReplyCarriesFreshLists(main));   // 통제군
 });
 
 test('변이⑩-c: 브리지가 reqId 를 안 넘기면 계약⑩ 이 실패한다', () => {
   const bad = mutate(main,
     '_ = TrashRestoreAsync(GetStr(doc, "reqId"), GetStr(doc, "kind")',
     '_ = TrashRestoreAsync(GetStr(doc, "kind")');
-  assert.throws(() => checks.trashPushRefreshesAlwaysAndCorrelates(bad), /reqId 를 넘기지 않는다/);
+  assert.throws(() => checks.trashReplyCarriesFreshLists(bad), /reqId 를 넘기지 않는다/);
+  assert.doesNotThrow(() => checks.trashReplyCarriesFreshLists(main));   // 통제군
+});
+
+test('변이⑩-d: 명부를 조건 없이 실으면 계약⑩ 이 실패한다(옛 푸시 조건과 갈린다 · 2026-09-14)', () => {
+  const bad = mutate(main,
+    'string roster = ok && kind == "user" ? await ReadMembersJsonAsync(includeInactive) : "";',
+    'string roster = await ReadMembersJsonAsync(includeInactive);');
+  assert.throws(() => checks.trashReplyCarriesFreshLists(bad), /roster 조건이/);
+  assert.doesNotThrow(() => checks.trashReplyCarriesFreshLists(main));   // 통제군
+});
+
+test('변이⑩-e: 옛 푸시 배관(__trashDone)을 되살리면 계약⑩ 이 실패한다(웹이 상관관계를 다시 손으로 짓는다)', () => {
+  const bad = mutate(main, 'private async Task<string> ReadTrashJsonAsync()',
+    'private void TrashDone(bool ok, string msg, string reqId = "") =>\n'
+    + '            JsCall("window.__trashDone && window.__trashDone(" + JsonSerializer.Serialize(reqId ?? "") + ")");\n\n'
+    + '        private async Task<string> ReadTrashJsonAsync()');
+  assert.throws(() => checks.trashReplyCarriesFreshLists(bad), /__trashDone 푸시가 남아 있다/);
+  assert.doesNotThrow(() => checks.trashReplyCarriesFreshLists(main));   // 통제군
+});
+
+test('변이⑩-f: 옛 휴지통 푸시(LoadTrashToWebAsync)를 되살리면 계약⑩ 이 실패한다(갱신 경로가 둘로 갈린다)', () => {
+  const bad = mutate(main, 'private async Task<string> ReadTrashJsonAsync()',
+    'private async Task LoadTrashToWebAsync() { await Task.CompletedTask; }\n\n'
+    + '        private async Task<string> ReadTrashJsonAsync()');
+  assert.throws(() => checks.trashReplyCarriesFreshLists(bad), /LoadTrashToWebAsync\)가 아직 남아 있다/);
+  assert.doesNotThrow(() => checks.trashReplyCarriesFreshLists(main));   // 통제군
 });

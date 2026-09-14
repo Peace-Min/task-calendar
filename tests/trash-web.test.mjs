@@ -49,6 +49,14 @@ function windowFn(web, name) {
   return web.slice(s, e + 3);
 }
 
+//  ★ async 함수는 extractFunction 이 'function 이름(' 부터 오려 내므로 **async 가 떨어진다** — 그대로
+//    jsdom 에서 eval 하면 "await is only valid in async functions" 로 죽는다(2026-09-14, 쓰기가 왕복이 된 뒤).
+//    선언을 보고 다시 붙인다: 붙였는지 아닌지를 **원본이** 정하므로, 변이가 async 를 떼면 그대로 따라간다.
+function extractFn(web, name) {
+  const isAsync = new RegExp('async\\s+function\\s+' + name + '\\s*\\(').test(web);
+  return (isAsync ? 'async ' : '') + extractFunction(web, name);
+}
+
 // 한 줄짜리 const 선언을 원본에서 그대로 떼어 낸다(사본은 반드시 낡는다).
 function constLine(web, name) {
   const m = new RegExp('^const ' + name + ' = .*$', 'm').exec(web);
@@ -120,9 +128,16 @@ const checks = {
       'openTrash 가 __trAdmin 을 비우지 않는다 — 회신 전 한 프레임 동안 [영구 삭제]가 번쩍인다');
     assert.ok(/hostRequest\('trashGet'/.test(o), "openTrash 가 hostRequest('trashGet') 을 부르지 않는다");
     assert.ok(/openModal\('#trashModal'\)/.test(o), 'openTrash 가 모달을 열지 않는다');
+    //  ★ 2026-09-14: 파싱·앉히기는 trSeat 한 곳이다 — 회신(trSend)과 부탁하지 않은 푸시(__applyTrash)가
+    //    **같은 길**을 쓴다. 둘이 갈리면 한쪽만 낡는다.
+    const seat = extractFunction(web, 'trSeat');
+    assert.ok(/JSON\.parse/.test(seat) && /d\.found/.test(seat),
+      'trSeat 가 문자열 JSON 을 파싱해 found 를 확인하지 않는다(__applyMembers 와 같은 전달 규약이다)');
+    assert.ok(/return false;/.test(seat) && /return true;/.test(seat),
+      "trSeat 가 '앉혔나'를 돌려주지 않는다 — 회신에 목록이 안 실려 온 경우를 부르는 쪽이 알 길이 없다");
     const ap = windowFn(web, '__applyTrash');
-    assert.ok(/JSON\.parse/.test(ap) && /d\.found/.test(ap),
-      '__applyTrash 가 문자열 JSON 을 파싱해 found 를 확인하지 않는다(__applyMembers 와 같은 전달 규약이다)');
+    assert.ok(/trSeat\(json\)/.test(ap),
+      '__applyTrash 가 trSeat 를 쓰지 않는다 — 회신과 푸시가 서로 다른 파서를 갖게 된다');
   },
 
   // ⑦ 입력값은 **가공 없이** 호스트로 간다(TRIM 금지 · 설계 §5.2) + 확인창 대조도 엄격 일치다.
@@ -142,51 +157,69 @@ const checks = {
       'confirmBox 가 더 이상 #confirmModal/#cfOk 를 쓰지 않는다 — 이름 입력형은 형제 모달이어야 한다');
   },
 
-  // ⑦-b 쓰기 왕복 한 곳 — 가드·워치독·includeInactive, 그리고 호스트 문장을 다시 쓰지 않는다.
-  //   ★ 2026-09-10: 가드가 두 번째 클릭을 **조용히** 버리던 것을 고쳤다. 잠금·워치독은 trSetSaving 한 곳으로
-  //     모였으므로(uaSetSaving·offEdSetBusy 와 같은 장치) 여기서 보는 자리도 함께 옮긴다.
-  //   ★ 2026-09-11(적대 검토 R3): 셋이 더 붙었다.
-  //     · 요청·회신을 **reqId 로 짝짓는다** — 늦게 온 회신이 지금 기다리는 다른 항목의 결과로 먹히던 자리다.
-  //     · 워치독은 **요청 표를 지우지 않는다** — 지우면 12초를 넘겨 도착한 성공 회신이 버려져
-  //       "지워졌는데 실패로 안내"가 된다. 그래서 문구도 '없다'가 아니라 '늦다'다.
-  //     · 잠금은 **렌더가 진다**(trRender) — 노드를 걸어 다니며 끄면 왕복 중 재렌더가 잠금을 지운다.
+  // ⑦-b 쓰기 왕복 한 곳 — 회신은 **그 버튼을 누른 클로저**로 돌아온다(2026-09-14).
+  //   ★ 2026-09-10: 가드가 두 번째 클릭을 **조용히** 버리던 것을 고쳤다. 잠금은 trSetSaving 한 곳으로
+  //     모였으므로(uaSetSaving·offEdSetBusy 와 같은 장치) 여기서 보는 자리도 함께 옮겼다.
+  //   ★ 2026-09-14(손으로 만든 상관관계 걷어내기 1단계): 복구·삭제가 hostRequest 왕복이 되면서
+  //     요청 표(__trReq)와 워치독이 **함께 사라졌다**.
+  //     · 늦게 온 회신이 다른 항목의 결과로 먹히던 자리 → Promise 가 자기 호출자에게만 풀리므로 불가능하다.
+  //     · 회신이 영영 안 오는 경우 → hostRequest 의 타임아웃(20초)이 실패 회신으로 바꿔 준다(워치독의 일이었다).
+  //     · 잠금은 여전히 **렌더가 진다**(trRender) — 노드를 걸어 다니며 끄면 왕복 중 재렌더가 잠금을 지운다.
   writeRoundTrip(web) {
     const s = extractFunction(web, 'trSend');
-    assert.ok(/if\(__trSaving\)\{[^}]*return;/.test(s), 'trSend 에 중복 전송 가드가 없다 — 연타하면 같은 삭제가 두 번 나간다');
+    assert.ok(/^async function trSend\(payload\)\{/m.test(web),
+      'trSend 가 async 가 아니다 — 회신을 부르는 쪽에 돌려줄 수 없다(공용 회신함으로 되돌아간 것이다)');
+    assert.ok(/if\(__trSaving\)\{[^}]*return null;/.test(s),
+      'trSend 에 중복 전송 가드가 없다(또는 못 보냈음을 null 로 말하지 않는다) — 연타하면 같은 삭제가 두 번 나간다');
     assert.ok(/이전 요청을 처리 중입니다/.test(s),
       'trSend 가 가드에 걸린 클릭을 조용히 버린다 — 관리자에게는 버튼이 먹지 않는 것으로 보인다(2026-09-10)');
     assert.ok(/trSetSaving\(true\)/.test(s), 'trSend 가 trSetSaving 으로 잠그지 않는다 — 진행 중임이 화면에 드러나지 않는다');
-    assert.ok(/includeInactive: __uaInactive/.test(s),
-      'trSend 가 includeInactive 를 함께 보내지 않는다 — 인력 삭제 뒤 밀려오는 명부가 「퇴사자 보기」 상태를 잃는다');
-    //  ★ reqId 발번 + 요청 표. 발번기는 hostRequest 와 같은 것(__reqSeq)이어야 페이지 안에서 겹치지 않는다.
-    assert.ok(/\+\+__reqSeq/.test(s),
-      'trSend 가 reqId 를 발번하지 않는다 — 회신이 어느 요청의 것인지 짐작할 수밖에 없다(2026-09-11)');
-    assert.ok(/__trReq = \{ id: reqId/.test(s),
-      'trSend 가 요청 표(__trReq)를 세우지 않는다 — 대조할 기준이 없으면 늦은 회신을 구별할 수 없다');
-    assert.ok(/reqId: reqId/.test(s),
-      'trSend 가 payload 에 reqId 를 싣지 않는다 — 호스트가 되돌려줄 것이 없다');
+    assert.ok(/await hostRequest\(cmd, Object\.assign\(\{ includeInactive: __uaInactive \}, payload\), 20000\)/.test(s),
+      'trSend 가 hostRequest 왕복(includeInactive 동봉 · 20초)으로 보내지 않는다 — 회신을 짝지을 수단이 다시 손으로 만든 표가 된다');
+    assert.ok(/trSetSaving\(false\);/.test(s),
+      '왕복이 끝나는 자리에서 잠금을 풀지 않는다 — 푸는 곳이 둘이면 한쪽이 낡는다');
+    assert.ok(/const rep = \{ ok: [^\n]*\n?[^\n]*trash: [^\n]*roster: /.test(s) && /return rep;/.test(s),
+      'trSend 가 { ok, msg, trash, roster } 를 돌려주지 않는다 — 부르는 쪽이 판단할 재료가 없다');
+    //  ★ 2026-09-14(좌석 일원화) — 인력 복구·삭제가 실어 오는 **명부**는 「구성원 편집」과 **같은 문**을
+    //    지난다(uaSeatReply): 순서 편집 중이면 미뤄 두고, 아니면 앉힌다. 휴지통이 자기 사본을 들면
+    //    그 규칙이 한쪽에서만 지켜지고, 관리자가 잡고 있던 순서가 남의 복구 한 번에 날아간다.
+    assert.ok(/rep\.painted = uaSeatReply\(rep\.roster, cmd\);/.test(s),
+      'trSend 가 회신의 명부를 공용 좌석(uaSeatReply)으로 들여보내지 않는다 — 규칙이 두 벌이 되면 한쪽은 반드시 낡는다');
+    assert.ok(s.indexOf('trSetSaving(false);') >= 0 && s.indexOf('uaSeatReply(') > s.indexOf('trSetSaving(false);'),
+      'trSend 가 잠금을 풀기 전에 명부를 앉힌다 — 그때 그려지는 명부 목록이 전부 꺼진 버튼으로 선다(uaSend 와 같은 차례여야 한다)');
     const b = extractFunction(web, 'trSetSaving');
-    assert.ok(/setTimeout/.test(b) && /응답이 늦습니다 — 회신이 오면 반영됩니다\./.test(b),
-      'trSetSaving 의 워치독이 "늦다"고 말하지 않는다 — 회신은 아직 살아 있는데 실패로 안내하면 관리자가 다시 지운다');
+    assert.ok(!/setTimeout/.test(b),
+      'trSetSaving 에 워치독이 되살아났다 — 왕복 도중에 잠금을 푸는 두 번째 장치가 생기면 그 틈으로 두 번째 삭제가 나간다');
     assert.ok(/dataset\.busy = '1'/.test(b) && /delete ov\.dataset\.busy/.test(b),
       'trSetSaving 이 overlay dataset.busy 를 세우고 지우지 않는다 — 전송 중에 창을 닫으면 결과를 알릴 곳이 사라진다');
     assert.ok(/trRender\(\)/.test(b),
       'trSetSaving 이 잠금을 렌더로 반영하지 않는다 — 왕복 중 푸시가 목록을 다시 그리면 잠금이 증발한다(2026-09-11)');
     assert.ok(!/trwas/.test(b) && !/querySelectorAll\('\[data-top\]'\)/.test(b),
       'trSetSaving 이 아직 행 버튼을 걸어 다니며 끈다 — 다시 그린 버튼에는 그 표가 없어 되돌리기가 헛돈다');
-    //  ★ 워치독은 **요청 표를 지우지 않는다**. 지우면 늦게 온 성공 회신이 통째로 버려진다.
-    assert.ok(!/__trReq = null/.test(b),
-      'trSetSaving(워치독)이 __trReq 를 지운다 — 12초를 넘겨 도착한 성공 회신이 버려져 "지워졌는데 실패로 안내"가 된다');
-    const dn = windowFn(web, '__trashDone');
-    assert.ok(/msg \|\|/.test(dn),
-      '__trashDone 이 호스트 문구를 쓰지 않는다 — 거부 사유가 "처리하지 못했습니다"로 뭉개지면 무엇을 고칠지 알 수 없다');
-    assert.ok(/trSetSaving\(false\)/.test(dn), '__trashDone 이 잠금을 trSetSaving 으로 풀지 않는다 — 푸는 곳이 둘이면 한쪽이 낡는다');
-    assert.ok(/function\(ok, msg, reqId\)/.test(dn),
-      '__trashDone 이 reqId 를 받지 않는다 — 호스트가 실어 보낸 짝을 화면이 읽지 않으면 있으나 마나다');
-    assert.ok(/rid !== rq\.id/.test(dn),
-      '__trashDone 이 회신의 reqId 를 기다리는 요청과 대조하지 않는다 — 지난 요청의 늦은 회신이 지금 대상의 결과로 먹힌다');
-    assert.ok(/__trReq = null;/.test(dn), '__trashDone 이 처리한 요청 표를 닫지 않는다 — 같은 회신이 두 번 처리될 수 있다');
-    //  ★ (재)오픈은 낡은 잠금을 남기지 않는다. 다만 **도는 중이면 풀지 말고 워치독만 다시 건다**.
+    //  ★ 손으로 만든 상관관계가 **하나도 남아 있지 않아야** 한다(주석은 빼고 본다).
+    const bare = web.replace(/\/\/[^\n]*/g, '');
+    for (const dead of ['__trReq', '__trSaveWatchdog', '__trashDone']) {
+      assert.ok(!bare.includes(dead),
+        `손으로 만든 상관관계 ${dead} 가 아직 살아 있다 — 왕복이 이미 짝을 지어 주는데 표를 또 들고 다니면 둘 중 하나는 반드시 낡는다`);
+    }
+    //  ★ 뒤처리는 **그 버튼을 누른 클로저**가 한다. 두 조작이 같은 길(trAfterWrite)을 쓴다.
+    for (const [fn, cmd] of [['trRestore', 'trashRestore'], ['trDelete', 'trashDelete']]) {
+      const f = extractFunction(web, fn);
+      assert.ok(new RegExp("const rep = await trSend\\(\\{ cmd: '" + cmd + "'").test(f),
+        `${fn} 이 자기 왕복의 회신을 받지 않는다 — 결과가 다시 공용 회신함으로 흘러간다`);
+      assert.ok(/if\(rep\) trAfterWrite\(rep\);/.test(f),
+        `${fn} 이 회신을 trAfterWrite 로 넘기지 않는다(또는 '못 보냈다(null)'를 회신과 같이 다룬다)`);
+    }
+    const aw = extractFunction(web, 'trAfterWrite');
+    assert.ok(/r\.msg \|\|/.test(aw),
+      'trAfterWrite 가 호스트 문구를 쓰지 않는다 — 거부 사유가 "처리하지 못했습니다"로 뭉개지면 무엇을 고칠지 알 수 없다');
+    assert.ok(/trSeat\(r\.trash\);/.test(aw),
+      '회신에 실려 온 갱신 목록을 앉히지 않는다 — 지운 항목이 화면에 그대로 남는다');
+    //  ★ 명부는 **여기서 앉히지 않는다**(2026-09-14 좌석 일원화) — trSend 가 공용 좌석으로 이미 들여보냈다.
+    //    뒤처리가 한 번 더 앉히면 '순서 편집 중이면 미뤄 둔다'를 두 곳이 각자 판단하게 된다.
+    assert.ok(!/uaSeatRoster\(|uaSeatReply\(/.test(aw),
+      'trAfterWrite 가 명부를 스스로 앉힌다 — 좌석이 둘로 갈리면 순서 편집 보호가 한쪽에서만 지켜진다');
+    //  ★ (재)오픈은 낡은 잠금을 남기지 않는다. 다만 **도는 중이면 풀지 않는다**(그 왕복이 끝나는 자리가 푼다).
     const o = extractFunction(web, 'openTrash');
     assert.ok(/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);/.test(o),
       'openTrash 가 낡은 잠금을 정리하지 않는다 — 회신 없이 닫았다 다시 열면 화면이 잠긴 채로 선다(2026-09-10)');
@@ -259,8 +292,10 @@ const checks = {
       'trSetSaving 이 "잠금이 실제로 바뀌었나"를 재지 않는다 — 쓰기 한 번에 목록이 세 번 다시 만들어진다(R2-W4)');
     assert.ok(/if\(changed\) trRender\(\);/.test(s),
       'trSetSaving 의 재렌더가 changed 로 좁혀져 있지 않다');
-    assert.ok((s.match(/return changed;/g) || []).length >= 2,
-      "trSetSaving 이 두 갈래(잠금 해제·워치독 설치) 모두에서 '다시 그렸나'를 돌려주지 않는다");
+    //  ★ 2026-09-14: 돌아오는 자리가 **하나**다. 옛 판은 '잠금 해제'와 '워치독 설치' 두 갈래에서 각각
+    //    돌려줬는데, 워치독이 사라지면서 갈래도 하나가 됐다 — 둘을 요구하면 없는 갈래를 요구하는 것이다.
+    assert.ok((s.match(/return changed;/g) || []).length === 1,
+      "trSetSaving 이 '다시 그렸나'를 정확히 한 자리에서 돌려주지 않는다 — 갈래가 둘이면 워치독이 되살아난 것이고, 없으면 부르는 쪽이 판단할 근거가 없다");
     //  ★ 여는 순간의 렌더는 **남아 있어야 한다**: 바로 위 trSetSaving 은 지금 값을 그대로 다시 넣어
     //    잠금이 바뀌지 않고, 바뀌지 않으면 그리지 않는다. 지우면 방금 비운 __trData·__trAdmin 이
     //    화면에 닿지 않아 지난번에 열었던 목록이 그대로 남는다.
@@ -300,29 +335,50 @@ test('계약⑥-c: 휴지통 렌더는 목록을 다시 정렬하지 않는다(�
 test('계약⑥-d: 관리자 여부는 호스트 회신이 정하고, 열 때 낡은 값을 비운다', () => checks.adminFlagComesFromHost(app));
 test('계약⑥-e: 숨김 확인창이 「휴지통」을 가리킨다(설계 §5.4)', () => checks.hideConfirmPointsToTrash(app));
 test('계약⑦: 입력한 이름은 가공 없이 호스트로 가고, 대조는 엄격 일치다', () => checks.confirmIsSentRaw(app));
-test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 회신은 reqId 로 짝지어진다', () => checks.writeRoundTrip(app));
+test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 회신은 그 버튼을 누른 클로저가 받는다', () => checks.writeRoundTrip(app));
 test('계약⑦-c: 행 버튼의 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
 test('계약⑦-d: 목록을 다시 그려도 스크롤 자리와 누른 버튼의 포커스가 남는다', () => checks.renderKeepsPlace(app));
 test('계약⑧: 빈 탭 문구는 탭 표가 지고 조사는 받침이 정한다(「이(가)」 병기 없음)', () => checks.emptyTextJosa(app));
 
 test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약⑦-b 가 실패한다', () => {
-  const bad = mutate(app, "  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }",
-    '  if(__trSaving) return;');
+  const bad = mutate(app, "  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return null; }",
+    '  if(__trSaving) return null;');
   assert.throws(() => checks.writeRoundTrip(bad), /중복 전송 가드가 없다|조용히 버린다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
 });
 
-test('변이⑦-b2: __trashDone 의 reqId 대조를 지우면 계약⑦-b 가 실패한다(늦은 회신이 남의 결과가 된다)', () => {
-  const bad = mutate(app, "  if(rid && rid !== rq.id){\n    try{ console.warn('[__trashDone] 지난 요청의 회신을 버린다:', rid, '≠', rq.id); }catch(_){}\n    return;\n  }",
-    '  ');
-  assert.throws(() => checks.writeRoundTrip(bad), /reqId 를 기다리는 요청과 대조하지 않는다/);
+test('변이⑦-b2: 회신을 부르는 쪽이 안 받게 되돌리면 계약⑦-b 가 실패한다(결과가 갈 곳이 없다)', () => {
+  const bad = mutate(app, "    const rep = await trSend({ cmd: 'trashRestore', kind: kind, key: key });\n    if(rep) trAfterWrite(rep);\n",
+    "    trSend({ cmd: 'trashRestore', kind: kind, key: key });\n");
+  assert.throws(() => checks.writeRoundTrip(bad), /trRestore 이 자기 왕복의 회신을 받지 않는다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
 });
 
-test('변이⑦-b3: 워치독이 요청 표를 지우게 되돌리면 계약⑦-b 가 실패한다(늦은 성공이 버려진다)', () => {
-  const bad = mutate(app, '  __trSaveWatchdog = setTimeout(() => {\n    trSetSaving(false);',
-    '  __trSaveWatchdog = setTimeout(() => {\n    __trReq = null;\n    trSetSaving(false);');
-  assert.throws(() => checks.writeRoundTrip(bad), /__trReq 를 지운다/);
+test('변이⑦-b3: 워치독을 되살리면 계약⑦-b 가 실패한다(왕복 도중에 잠금이 풀린다)', () => {
+  const bad = mutate(app, '  if(changed) trRender();   // 잠금을 화면에 반영하는 길은 이 한 줄뿐이다(그리는 곳이 곧 잠그는 곳이다)\n  return changed;',
+    '  if(changed) trRender();   // 잠금을 화면에 반영하는 길은 이 한 줄뿐이다(그리는 곳이 곧 잠그는 곳이다)\n  if(on) setTimeout(() => trSetSaving(false), 12000);\n  return changed;');
+  assert.throws(() => checks.writeRoundTrip(bad), /워치독이 되살아났다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑦-b4: 회신의 갱신 목록을 안 앉히면 계약⑦-b 가 실패한다(지운 항목이 화면에 남는다)', () => {
+  const bad = mutate(app, '  trSeat(r.trash);\n', '');
+  assert.throws(() => checks.writeRoundTrip(bad), /갱신 목록을 앉히지 않는다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+test('변이⑦-b5: 인력 쪽 명부를 안 들여보내면 계약⑦-b 가 실패한다(「구성원 편집」이 낡은 채로 남는다)', () => {
+  const bad = mutate(app, '  rep.painted = uaSeatReply(rep.roster, cmd);\n  return rep;\n}\n// 휴지통 쓰기 잠금',
+    '  return rep;\n}\n// 휴지통 쓰기 잠금');
+  assert.throws(() => checks.writeRoundTrip(bad), /공용 좌석\(uaSeatReply\)으로 들여보내지 않는다/);
+  assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
+});
+
+//  ★ 좌석을 **휴지통이 자기 손으로** 다시 들면(옛 판) 규칙이 두 벌이 된다 — 그쪽에는 '순서 편집 중이면
+//    미뤄 둔다'가 없어, 인력 복구 한 번이 관리자가 잡고 있던 순서를 덮는다(user-admin 의 C20 과 같은 결함).
+test('변이⑦-b5b: 뒤처리가 명부를 다시 앉히면 계약⑦-b 가 실패한다(좌석이 둘로 갈린다)', () => {
+  const bad = mutate(app, '  trSeat(r.trash);\n  toast(r.msg', '  trSeat(r.trash);\n  uaSeatRoster(r.roster);\n  toast(r.msg');
+  assert.throws(() => checks.writeRoundTrip(bad), /trAfterWrite 가 명부를 스스로 앉힌다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
 });
 
@@ -482,17 +538,28 @@ function renderHarnessJs(src) {
   ].join('\n');
 }
 
-// 쓰기 잠금(진행 중 표시) — trSend·trSetSaving·__trashDone 이 실제로 행 버튼과 overlay 를 잠그고 푸는지 본다.
-//   ★ __reqSeq·__trReq 도 함께 심는다 — 2026-09-11 부터 이 왕복은 reqId 로 요청·회신을 짝짓는다.
+// 쓰기 잠금(진행 중 표시) — trSend·trSetSaving·trAfterWrite 가 실제로 행 버튼과 overlay 를 잠그고 푸는지 본다.
+//   ★ 2026-09-14: 왕복은 hostRequest 다 — 그것을 **우리 손에 둔다**(바꿔 끼운다). 회신을 무엇으로 돌려줄지
+//     시험이 정하고, 그 회신은 trSend 를 부른 **그 자리로** 돌아온다(요청 표도 워치독도 없다).
+//   ★ setTimeout 은 세기만 한다(바꿔치기가 아니다) — 워치독이 되살아나면 그 수가 0 이 아니게 된다.
 function busyHarnessJs(src) {
   return [
-    'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false, __trSaveWatchdog = 0;',
-    'var __trReq = null, __reqSeq = 0;',
+    'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false;',
     'var __trShown = null, __trKeepBtn = null;   // 렌더가 기억하는 화면·맡아 둔 버튼(R3-W2)',
-    'var __uaInactive = false, HOST = true, __posts = [], __toasts = [];',
-    'function hpost(p){ __posts.push(p); }',
+    'var __uaInactive = false, HOST = true, __toasts = [];',
+    'var __sent = [], __reply = null, __timers = 0;',
+    'var __realSetTimeout = window.setTimeout;',
+    'window.setTimeout = function(fn, ms){ __timers++; return __realSetTimeout(fn, ms); };',
+    'function hostRequest(cmd, params, timeoutMs){',
+    '  __sent.push({ cmd: String(cmd), timeoutMs: timeoutMs, params: JSON.parse(JSON.stringify(params || {})) });',
+    '  return Promise.resolve(__reply);',
+    '}',
     'function toast(m, k){ __toasts.push({ msg: String(m), kind: String(k || "") }); }',
-    'function trRestore(){} function trDelete(){} function hostRequest(){}',
+    'function trRestore(){} function trDelete(){}',
+    //  명부 쪽 좌석(uaSeatReply)의 **내용**은 이 계약과 무관하다 — 앉힐까 미룰까는 「구성원 편집」 시험이
+    //  진다(계약⑭-e). 여기서 재는 것은 하나다: **휴지통 회신이 그 문을 지나는가**(수를 센다).
+    'var __rosters = 0;',
+    'function uaSeatReply(json, cmd){ if(json) __rosters++; return false; }',
     constLine(src, 'josa'),
     constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
@@ -500,46 +567,50 @@ function busyHarnessJs(src) {
     constLine(src, 'trRows'),
     extractFunction(src, 'trApplyData'),
     extractFunction(src, 'trRender'),
-    extractFunction(src, 'trSend'),
+    extractFunction(src, 'trSeat'),
+    extractFn(src, 'trSend'),
     extractFunction(src, 'trSetSaving'),
-    windowFn(src, '__trashDone'),
+    extractFunction(src, 'trAfterWrite'),
     'function __state(){',
     '  var ov = document.getElementById("trashModal");',
     '  return { busy: ov ? String(ov.dataset.busy || "") : "",',
     '    ops: Array.prototype.map.call(document.querySelectorAll("#trList [data-top]"), function(b){',
     '      return { op: b.dataset.top, key: b.dataset.tkey, disabled: !!b.disabled }; }),',
-    '    posts: __posts.length, toasts: __toasts.slice() };',
+    '    posts: __sent.length, toasts: __toasts.slice() };',
     '}',
     'function __reset(payload, clickTab){',
-    '  __trData = null; __trAdmin = false; __trTab = "project"; __trSaving = false; __trReq = null;',
+    '  __trData = null; __trAdmin = false; __trTab = "project"; __trSaving = false;',
     '  __trShown = null; __trKeepBtn = null;',
-    '  __posts.length = 0; __toasts.length = 0;',
+    '  __sent.length = 0; __toasts.length = 0; __reply = null; __timers = 0; __rosters = 0;',
     '  trApplyData(payload);',
     '  if(clickTab){ var tb = document.querySelector("[data-trtab=\'" + clickTab + "\']"); if(tb) tb.click(); }',
     '}',
-    'function __rid(){ return __trReq ? __trReq.id : ""; }',
-    'window.__probe = function(payload, clickTab){',
+    'window.__probe = function(payload, clickTab, reply){',
     '  __reset(payload, clickTab);',
     '  var out = { idle: __state() };',
-    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  __reply = reply;',
+    '  var p1 = trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
     '  out.sending = __state();',
-    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  var p2 = trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
     '  out.second = __state();',
-    '  window.__trashDone(true, "지웠습니다", __rid());',
-    '  out.done = __state();',
-    '  return out;',
+    '  out.inflightTimers = __timers;',
+    '  return Promise.all([p1, p2]).then(function(rs){',
+    '    out.first = rs[0]; out.refused = rs[1];',
+    '    trAfterWrite(rs[0]);',
+    '    out.done = __state(); out.timers = __timers; out.sent = __sent.slice();',
+    '    return out;',
+    '  });',
     '};',
     //  왕복 **중에** 호스트 푸시가 도착한다 — 목록이 통째로 다시 그려져도 잠금이 남아 있어야 한다.
     //  (잠금을 노드에 칠해 두던 옛 판은 바로 여기서 증발했다 · 2026-09-11)
-    'window.__probeRerender = function(payload, clickTab){',
+    'window.__probeRerender = function(payload, clickTab, reply){',
     '  __reset(payload, clickTab);',
-    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
+    '  __reply = reply;',
+    '  var p = trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
     '  var out = { sending: __state() };',
     '  window.__applyTrashLike();',   // 푸시와 같은 경로(trApplyData)로 목록을 다시 그린다
     '  out.afterPush = __state();',
-    '  window.__trashDone(true, "지웠습니다", __rid());',
-    '  out.done = __state();',
-    '  return out;',
+    '  return p.then(function(r){ trAfterWrite(r); out.done = __state(); return out; });',
     '};',
     'window.__applyTrashLike = function(){ trApplyData(JSON.parse(JSON.stringify(__trData))); };',
     //  ★ 렌더 횟수를 센다(2026-09-11 R2-W4) — '몇 번 그리는가'는 화면 결과만 봐서는 보이지 않는다.
@@ -637,16 +708,16 @@ function busyHarnessJs(src) {
     '  var off = __renders;',
     '  return { noop: noop, on: on - noop, again: again - on, off: off - again };',
     '};',
-    //  지난 요청의 늦은 회신 — id 가 어긋나면 아무것도 하지 않는다(잠금도 그대로, 토스트도 없다).
-    'window.__probeStale = function(payload, clickTab){',
+    //  회신은 **그 버튼을 누른 자리로** 돌아온다(2026-09-14) — 지난 요청의 늦은 회신이 지금 대상의
+    //  결과로 먹히던 자리는 구조적으로 사라졌다(Promise 는 자기 호출자에게 한 번만 풀린다).
+    //  그래서 여기서 보는 것은 '내 회신이 내 자리로 왔는가'와 '그 회신의 목록이 앉는가' 다.
+    'window.__probeReplySeats = function(payload, clickTab, reply){',
     '  __reset(payload, clickTab);',
-    '  trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
-    '  var id = __rid();',
-    '  window.__trashDone(true, "지웠습니다", id + "-STALE");',
-    '  var out = { id: id, stale: __state() };',
-    '  window.__trashDone(true, "지웠습니다", id);',
-    '  out.done = __state();',
-    '  return out;',
+    '  __reply = reply;',
+    '  return trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" }).then(function(r){',
+    '    trAfterWrite(r);',
+    '    return { reply: r, state: __state(), sent: __sent.slice(), timers: __timers, rosters: __rosters };',
+    '  });',
     '};',
   ].join('\n');
 }
@@ -729,9 +800,26 @@ const TOTAL = 6;   // 2 + 2 + 1 + 0 + 1
 //    프로토타입 불일치로 항상 실패한다(값은 같은데 판정이 거짓말을 한다).
 const probeRender = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, renderHarnessJs(src), '__probe', payload, clickTab);
 const probeFocus = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, renderHarnessJs(src), '__probeFocus', payload, clickTab);
-const probeBusy = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probe', payload, clickTab);
-const probeRerender = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeRerender', payload, clickTab);
-const probeStale = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeStale', payload, clickTab);
+//  ★ 왕복이 된 뒤로 probe 도 Promise 를 돌려준다 — harness 의 runInJsdom 은 동기 창구 전용이라 여기서
+//    같은 일을 한 번 더 한다(그 파일은 이 작업의 소유가 아니다).
+async function runInJsdomAsync(fixture, js, name, ...args) {
+  const dom = new jsdom.JSDOM(fixture, { runScripts: 'outside-only' });
+  dom.window.eval(js);
+  const fn = dom.window[name];
+  assert.ok(typeof fn === 'function', `runInJsdomAsync: window.${name} 창구가 없다 — 판정 불가`);
+  return JSON.parse(JSON.stringify(await fn(...args)));
+}
+//  회신 하나를 만드는 손잡이 — 호스트가 돌려줄 모양 { ok, msg, trash, roster } 그대로다.
+const trReply = (ok, msg, trash, roster) => ({
+  ok: !!ok, msg: String(msg || ''),
+  trash: trash ? JSON.stringify(trash) : '', roster: roster ? JSON.stringify(roster) : '',
+});
+const probeBusy = (payload, clickTab, rep, src = app) =>
+  runInJsdomAsync(RENDER_FIXTURE, busyHarnessJs(src), '__probe', payload, clickTab, rep);
+const probeRerender = (payload, clickTab, rep, src = app) =>
+  runInJsdomAsync(RENDER_FIXTURE, busyHarnessJs(src), '__probeRerender', payload, clickTab, rep);
+const probeReplySeats = (payload, clickTab, rep, src = app) =>
+  runInJsdomAsync(RENDER_FIXTURE, busyHarnessJs(src), '__probeReplySeats', payload, clickTab, rep);
 const probeFocusKeep = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeFocusKeep', payload, clickTab);
 const probeRenderCount = (payload, clickTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeRenderCount', payload, clickTab);
 const probeScrollKeep = (payload, toTab, src = app) => runInJsdom(RENDER_FIXTURE, busyHarnessJs(src), '__probeScrollKeep', payload, toTab);
@@ -785,7 +873,8 @@ if (!jsdom) {
   skip('계약⑥-DOM(h): 비관리자 안내는 호스트가 준 사유를 그대로 쓴다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(c): 전송 중에는 행 버튼이 잠기고 두 번째 클릭은 사유가 뜬다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e): 왕복 중 푸시가 목록을 다시 그려도 잠금이 남는다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(f): 지난 요청의 늦은 회신은 아무것도 하지 않는다(reqId 대조)', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(f): 회신은 그 버튼을 누른 자리로 돌아오고, 실려 온 목록이 앉는다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(f): 회신의 목록을 안 앉히면 지운 항목이 화면에 그대로 남는다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(g): 목록을 다시 그려도 누르던 행 버튼에 포커스가 남는다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(h): 잠금은 바뀔 때만 그린다(같은 값을 다시 넣는 호출은 목록을 건드리지 않는다)', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(i): 탭을 바꾸면 보던 자리는 맨 위다(같은 화면일 때만 되돌린다)', SKIP_NO_JSDOM);
@@ -936,8 +1025,8 @@ if (!jsdom) {
     assert.ok(/관리자만 사용할 수 있습니다/.test(bare.text), '사유가 없을 때의 기본 안내가 사라졌다');
   });
 
-  test('계약⑦-DOM(c): 전송 중에는 행 버튼이 모두 잠기고, 두 번째 클릭은 사유를 말한다', () => {
-    const r = probeBusy(PAYLOAD, 'user');
+  test('계약⑦-DOM(c): 전송 중에는 행 버튼이 모두 잠기고, 두 번째 클릭은 사유를 말한다', async () => {
+    const r = await probeBusy(PAYLOAD, 'user', trReply(true, '지웠습니다', null, null));
     assert.deepStrictEqual(r.idle.ops.map((o) => o.disabled), [false, false, false, true],
       `전제 붕괴: 평소 상태의 버튼 구성이 다르다 — ${JSON.stringify(r.idle.ops)}`);
     assert.strictEqual(r.idle.busy, '', '아무것도 안 보냈는데 overlay 가 busy 다');
@@ -955,6 +1044,18 @@ if (!jsdom) {
     assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, true],
       `회신 뒤 버튼 상태가 원래대로 돌아오지 않았다: ${JSON.stringify(r.done.ops)}`);
     assert.strictEqual(r.done.busy, '', '회신이 왔는데 overlay 가 busy 인 채로 남았다 — 창을 닫을 길이 없다');
+    //  ④ 회신은 **이 자리로** 돌아오고, 가드에 걸린 두 번째 호출은 null 이다(못 보냈다 ≠ 회신이 왔다).
+    assert.ok(r.first && r.first.ok === true, `첫 왕복이 회신을 받지 못했다: ${JSON.stringify(r.first)}`);
+    assert.strictEqual(r.refused, null,
+      `가드에 걸린 호출이 회신처럼 생긴 값을 돌려줬다: ${JSON.stringify(r.refused)} — '못 보냈다'와 '회신이 왔다'가 구별되지 않는다`);
+    //  ⑤ 왕복 내내 잠긴 채로 있고, 그 잠금을 푸는 두 번째 장치(워치독)는 없다.
+    assert.strictEqual(r.inflightTimers, 0,
+      `왕복을 시작하면서 타이머를 걸었다(${r.inflightTimers}개) — 워치독이 되살아나면 잠금이 도중에 풀리고, 그 틈으로 두 번째 삭제가 나간다`);
+    assert.strictEqual(r.timers, 0, `회신 처리에서 타이머를 걸었다(${r.timers}개)`);
+    assert.strictEqual(r.sent[0].cmd, 'trashDelete', `보낸 명령이 다르다: ${JSON.stringify(r.sent[0])}`);
+    assert.strictEqual(r.sent[0].timeoutMs, 20000, `왕복 타임아웃이 20초가 아니다: ${JSON.stringify(r.sent[0])}`);
+    assert.ok('includeInactive' in r.sent[0].params,
+      `includeInactive 가 함께 나가지 않았다: ${JSON.stringify(r.sent[0].params)} — 인력을 지운 뒤 되읽을 명부가 「퇴사자 보기」 상태를 잃는다`);
   });
 
   test('변이⑥-DOM(f): 사유 줄을 지우면 계약⑥-DOM(f) 가 실패한다(title 만 남으면 아무도 못 본다)', () => {
@@ -964,18 +1065,20 @@ if (!jsdom) {
     assert.strictEqual(probeRender(PAYLOAD, 'user').whys.length, 1);   // 통제군
   });
 
-  test('변이⑦-DOM(c): 잠금 복구를 "무조건 켜기"로 바꾸면 계약⑦-DOM(c) 가 실패한다', () => {
+  test('변이⑦-DOM(c): 잠금 복구를 "무조건 켜기"로 바꾸면 계약⑦-DOM(c) 가 실패한다', async () => {
+    const OK = trReply(true, '지웠습니다', null, null);
     const bad = mutate(app, '    db.disabled = !deletable || __trSaving;', '    db.disabled = __trSaving;');
-    const r = probeBusy(PAYLOAD, 'user', bad);
+    const r = await probeBusy(PAYLOAD, 'user', OK, bad);
     assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, false],
       '변이 전제: 데이터 쪽 잠금을 빼면 지울 수 없는 계정의 [영구 삭제]도 켜져야 한다');
-    assert.strictEqual(probeBusy(PAYLOAD, 'user').done.ops[3].disabled, true);   // 통제군
+    const ctrl = await probeBusy(PAYLOAD, 'user', OK);
+    assert.strictEqual(ctrl.done.ops[3].disabled, true);   // 통제군
   });
 
   //  ★ 진짜 관문은 '왕복 **중에** 목록이 다시 그려졌을 때'다(2026-09-11 적대 검토 R3-W2).
   //    잠금을 노드에 칠해 두던 옛 판은 여기서만 드러난다 — 평범한 왕복은 그 판에서도 멀쩡히 통과했다.
-  test('계약⑦-DOM(e): 왕복 중에 푸시가 목록을 다시 그려도 잠금이 남는다', () => {
-    const r = probeRerender(PAYLOAD, 'user');
+  test('계약⑦-DOM(e): 왕복 중에 푸시가 목록을 다시 그려도 잠금이 남는다', async () => {
+    const r = await probeRerender(PAYLOAD, 'user', trReply(true, '지웠습니다', null, null));
     assert.deepStrictEqual(r.sending.ops.map((o) => o.disabled), [true, true, true, true],
       `전제 붕괴: 보내는 순간 행 버튼이 잠기지 않았다 — ${JSON.stringify(r.sending.ops)}`);
     assert.deepStrictEqual(r.afterPush.ops.map((o) => o.disabled), [true, true, true, true],
@@ -987,28 +1090,74 @@ if (!jsdom) {
     assert.strictEqual(r.done.busy, '', '회신이 왔는데 overlay 가 busy 인 채로 남았다');
   });
 
-  test('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다(그래서 이 계약이 필요하다)', () => {
+  test('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다(그래서 이 계약이 필요하다)', async () => {
+    const OK = trReply(true, '지웠습니다', null, null);
     const bad = mutate(app, '    rb.disabled = __trSaving;', '    rb.disabled = false;');
-    const r = probeRerender(PAYLOAD, 'user', bad);
+    const r = await probeRerender(PAYLOAD, 'user', OK, bad);
     assert.strictEqual(r.afterPush.ops[0].disabled, false,
       '변이 전제: 렌더가 잠금을 보지 않으면 푸시 뒤 [복구]가 켜져 있어야 한다');
-    assert.strictEqual(probeRerender(PAYLOAD, 'user').afterPush.ops[0].disabled, true);   // 통제군
+    const ctrl = await probeRerender(PAYLOAD, 'user', OK);
+    assert.strictEqual(ctrl.afterPush.ops[0].disabled, true);   // 통제군
   });
 
-  //  ★ 늦은 회신 — 호스트가 우리가 보낸 reqId 를 그대로 실어 준다. 어긋나면 지난 요청의 것이다.
-  test('계약⑦-DOM(f): 지난 요청의 늦은 회신은 아무것도 하지 않는다(reqId 대조)', () => {
-    const r = probeStale(PAYLOAD, 'user');
-    assert.ok(r.id, '전제 붕괴: trSend 가 reqId 를 발번하지 않았다');
-    //  ① 어긋난 id — 잠금도 그대로, 토스트도 없다.
-    assert.strictEqual(r.stale.busy, '1', '지난 요청의 회신이 overlay 의 busy 를 풀었다 — 아직 기다리는 요청이 있다');
-    assert.deepStrictEqual(r.stale.ops.map((o) => o.disabled), [true, true, true, true],
-      `지난 요청의 회신이 행 버튼을 풀었다: ${JSON.stringify(r.stale.ops)}`);
-    assert.deepStrictEqual(r.stale.toasts, [],
-      `지난 요청의 회신이 토스트를 띄웠다: ${JSON.stringify(r.stale.toasts)} — 지금 대상의 결과인 양 말하면 화면이 거짓말을 한다`);
-    //  ② 맞는 id — 그때 처리된다.
-    assert.strictEqual(r.done.busy, '', '맞는 회신이 왔는데 잠금이 풀리지 않았다');
-    assert.strictEqual(r.done.toasts.length, 1, `맞는 회신의 안내가 ${r.done.toasts.length}건이다(1건이어야 한다)`);
-    assert.strictEqual(r.done.toasts[0].kind, 'success', `결과 안내의 종류가 다르다: ${JSON.stringify(r.done.toasts[0])}`);
+  //  ★ 2026-09-14 — '지난 요청의 늦은 회신'을 reqId 로 가려내던 자리가 **구조적으로 사라졌다**:
+  //    회신은 그 버튼을 누른 클로저의 Promise 로 한 번만 풀리므로, 남의 결과로 먹힐 길이 없다.
+  //    그래서 여기서 보는 것은 '내 회신이 내 자리로 왔는가'와 '거기 실려 온 목록이 앉는가' 다.
+  test('계약⑦-DOM(f): 회신은 그 버튼을 누른 자리로 돌아오고, 실려 온 목록이 그 자리에서 앉는다', async () => {
+    //  지운 뒤의 목록 — 인력 탭에서 zzU_a(31)가 사라진 모양이다.
+    const AFTER = JSON.parse(JSON.stringify(PAYLOAD));
+    AFTER.users = AFTER.users.filter((u) => u.key !== '31');
+    const r = await probeReplySeats(PAYLOAD, 'user', trReply(true, '지웠습니다', AFTER, null));
+    assert.ok(r.reply && r.reply.ok === true, `회신이 부르는 자리로 돌아오지 않았다: ${JSON.stringify(r.reply)}`);
+    assert.strictEqual(r.state.busy, '', '회신이 왔는데 잠금이 풀리지 않았다');
+    assert.strictEqual(r.state.toasts.length, 1, `결과 안내가 ${r.state.toasts.length}건이다(1건이어야 한다)`);
+    assert.strictEqual(r.state.toasts[0].kind, 'success', `결과 안내의 종류가 다르다: ${JSON.stringify(r.state.toasts[0])}`);
+    assert.strictEqual(r.state.toasts[0].msg, '지웠습니다',
+      `호스트 문구를 화면이 다시 썼다: ${JSON.stringify(r.state.toasts[0])} — 거부 사유가 뭉개지면 무엇을 고칠지 알 수 없다`);
+    assert.deepStrictEqual([...new Set(r.state.ops.map((o) => o.key))], ['32'],
+      `회신에 실려 온 갱신 목록이 앉지 않았다: ${JSON.stringify(r.state.ops)} — 지운 항목이 화면에 그대로 남는다`);
+    assert.strictEqual(r.timers, 0, `왕복 어디에서도 타이머를 걸지 않아야 한다(실제 ${r.timers}개)`);
+  });
+
+  test('변이⑦-DOM(f): 회신의 목록을 안 앉히면 지운 항목이 화면에 그대로 남는다', async () => {
+    const AFTER = JSON.parse(JSON.stringify(PAYLOAD));
+    AFTER.users = AFTER.users.filter((u) => u.key !== '31');
+    const REP = trReply(true, '지웠습니다', AFTER, null);
+    const bad = mutate(app, '  trSeat(r.trash);\n', '');
+    const r = await probeReplySeats(PAYLOAD, 'user', REP, bad);
+    assert.deepStrictEqual([...new Set(r.state.ops.map((o) => o.key))], ['31', '32'],
+      `변이 전제: 목록을 안 앉히면 지운 항목이 남아야 한다(실제: ${JSON.stringify(r.state.ops)})`);
+    const ctrl = await probeReplySeats(PAYLOAD, 'user', REP);
+    assert.deepStrictEqual([...new Set(ctrl.state.ops.map((o) => o.key))], ['32']);   // 통제군
+  });
+
+  //  ★ 2026-09-14(좌석 일원화) — 인력을 복구·삭제하면 **명부도 함께** 회신에 실려 온다(kind==='user').
+  //    그 명부는 「구성원 편집」과 **같은 문**(uaSeatReply)을 지나야 한다 — 그래야 순서 편집 중이면
+  //    미뤄 두기가 여기에도 그대로 걸린다. 여기서 재는 것은 '지나갔는가' 하나다(앉힐까 미룰까는 그쪽 시험).
+  const ROSTER = { found: true, admin: true, includeInactive: false, units: [], titles: [], members: [] };
+  test('계약⑦-DOM(g): 인력 회신에 실려 온 명부는 공용 좌석(uaSeatReply)을 지난다', async () => {
+    const AFTER = JSON.parse(JSON.stringify(PAYLOAD));
+    AFTER.users = AFTER.users.filter((u) => u.key !== '31');
+    const r = await probeReplySeats(PAYLOAD, 'user', trReply(true, '지웠습니다', AFTER, ROSTER));
+    assert.strictEqual(r.rosters, 1,
+      `회신의 명부가 공용 좌석을 ${r.rosters}번 지났다(1번이어야 한다) — 안 지나면 「구성원 편집」이 낡은 채로 남고, ` +
+      '휴지통이 자기 손으로 앉히면 순서 편집 중 미뤄 두기가 그쪽에서만 빠진다');
+    //  명부가 안 실려 온 회신(과제·발주처 등)은 그 문을 두드리지도 않는다 — 헛돌면 명부가 괜히 다시 그려진다.
+    const none = await probeReplySeats(PAYLOAD, 'user', trReply(true, '지웠습니다', AFTER, null));
+    assert.strictEqual(none.rosters, 0,
+      `명부가 안 실려 온 회신인데 좌석을 ${none.rosters}번 두드렸다 — 빈 명부를 앉히려 들면 화면이 헛돈다`);
+  });
+
+  test('변이⑦-DOM(g): 회신의 명부를 좌석으로 안 보내면 「구성원 편집」이 낡은 채로 남는다', async () => {
+    const AFTER = JSON.parse(JSON.stringify(PAYLOAD));
+    AFTER.users = AFTER.users.filter((u) => u.key !== '31');
+    const REP = trReply(true, '지웠습니다', AFTER, ROSTER);
+    const bad = mutate(app, '  rep.painted = uaSeatReply(rep.roster, cmd);\n  return rep;\n}\n// 휴지통 쓰기 잠금',
+      '  return rep;\n}\n// 휴지통 쓰기 잠금');
+    const r = await probeReplySeats(PAYLOAD, 'user', REP, bad);
+    assert.strictEqual(r.rosters, 0, `변이 전제: 좌석으로 안 보내면 0번이어야 한다(실제 ${r.rosters}번)`);
+    const ctrl = await probeReplySeats(PAYLOAD, 'user', REP);
+    assert.strictEqual(ctrl.rosters, 1);   // 통제군
   });
 
   //  ★ 긴 휴지통에서 연달아 복구하기 — 목록은 쓰기마다 여러 번 다시 만들어진다(잠금·회신·푸시).

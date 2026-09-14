@@ -39,8 +39,10 @@
  *
  * 전제(이 스크립트가 하지 않는 것):
  *   · 위젯을 띄우거나 닫지 않는다. 9222 에 **admin 으로 로그인된 채** 떠 있어야 한다(아니면 판정 없음 = exit 2).
- *   · 앱 코드를 고치지 않는다. 가로채기는 회신 다섯(__userSaved · __projectSaved · __trashDone ·
+ *   · 앱 코드를 고치지 않는다. 가로채기는 호스트 왕복(hostRequest)과 푸시 셋(__projectSaved ·
  *     __applyTrash · __applyProjects)을 **감싸는** 것뿐이고 원본을 반드시 그대로 호출한다.
+ *     ★ 2026-09-14: 직원·휴지통 쓰기의 공용 회신함(__userSaved · __trashDone)이 사라지고 왕복이 됐다 —
+ *       그래서 그 둘을 감싸던 자리가 hostRequest 한 곳으로 모였다(u·t 갈래는 명령 이름으로 가른다).
  *   · 실행(zz 아닌 행)은 만들지도 고치지도 지우지도 않는다. TRUNCATE·스키마 변경 없음.
  *
  * 실행:
@@ -265,14 +267,22 @@ const J = (v) => JSON.stringify(v);
  *  ★ 이미 설치돼 있으면(같은 페이지 두 번째 실행) 감싸기를 겹치지 않고 계수기만 비운다.
  *    겹쳐 감으면 회신 하나가 두 번 세어져 '회신을 기다리는' 판정이 조용히 거짓말을 한다. */
 const INSTALL_JS = `(function(){
-  if (window.__tr && window.__tr.v === 1){ var A0=window.__tr; A0.u.length=0; A0.p.length=0; A0.t.length=0; A0.ta=0; A0.pa=0; return 'reset'; }
-  var oU=window.__userSaved, oP=window.__projectSaved, oT=window.__trashDone, oA=window.__applyTrash, oQ=window.__applyProjects;
-  if(typeof oU!=='function'||typeof oP!=='function'||typeof oT!=='function'||typeof oA!=='function'||typeof oQ!=='function') return 'missing';
-  var A={v:1,u:[],p:[],t:[],ta:0,pa:0};
+  if (window.__tr && window.__tr.v === 2){ var A0=window.__tr; A0.u.length=0; A0.p.length=0; A0.t.length=0; A0.ta=0; A0.pa=0; return 'reset'; }
+  var oH=window.hostRequest, oP=window.__projectSaved, oA=window.__applyTrash, oQ=window.__applyProjects;
+  if(typeof oH!=='function'||typeof oP!=='function'||typeof oA!=='function'||typeof oQ!=='function') return 'missing';
+  var A={v:2,u:[],p:[],t:[],ta:0,pa:0};
   window.__tr=A;
-  window.__userSaved    = function(ok,msg){ A.u.push({ok:!!ok,msg:String(msg==null?'':msg)}); return oU.apply(this,arguments); };
+  var CHAN = { saveUser:'u', setUserActive:'u', saveUserOrder:'u', trashRestore:'t', trashDelete:'t' };
+  window.hostRequest = function(cmd, params, timeoutMs){
+    var ch = CHAN[String(cmd)], p = oH.apply(this, arguments);
+    if(!ch) return p;
+    return p.then(function(r){
+      A[ch].push({ok:!!(r&&r.ok),msg:String((r&&r.msg)==null?'':r.msg)});
+      if(r && r.trash) A.ta++;
+      return r;
+    });
+  };
   window.__projectSaved = function(ok,msg,nc){ A.p.push({ok:!!ok,msg:String(msg==null?'':msg),needConfirm:!!nc}); return oP.apply(this,arguments); };
-  window.__trashDone    = function(ok,msg){ A.t.push({ok:!!ok,msg:String(msg==null?'':msg)}); return oT.apply(this,arguments); };
   window.__applyTrash   = function(j){ A.ta++; return oA.apply(this,arguments); };
   window.__applyProjects= function(j){ A.pa++; return oQ.apply(this,arguments); };
   return 'installed';
@@ -305,13 +315,24 @@ async function waitPage(pred, { timeout = 15000, interval = 80 } = {}) {
 }
 
 /* ── 호스트 왕복 세 모양 ──────────────────────────────────────────────────
- *  ① hsend  — hpost 로 보내고 **회신 계수기**가 오르기를 기다린다(__userSaved/__projectSaved/__trashDone).
+ *  ① hsend  — 호스트로 곧장 보내고 **회신 계수기**가 오르기를 기다린다(u/p/t 세 갈래).
  *             화면의 가드(uaSend·trSend)를 일부러 건너뛴다: 여기서 보는 것은 **호스트 계약**이다.
+ *             ★ 2026-09-14: 직원·휴지통 쓰기(u·t)는 **왕복**이 됐다 — 회신 없는 hpost 로 보내면
+ *               호스트가 돌려줄 곳이 없어 계수기가 영영 안 오른다. 그래서 그 둘은 hostRequest 로 보낸다
+ *               (가드를 건너뛴다는 뜻은 그대로다 — 화면의 trSend/uaSend 를 부르지 않는다).
+ *               과제 쓰기(p)는 아직 푸시형(__projectSaved)이라 예전처럼 hpost 다.
  *  ② hreq   — reqId 왕복(hostRequest). trashGet·발주처·코드 관리가 이 모양이다.
  *  ③ 화면   — 실제 버튼을 누른다(아래 uiTrashClick). 그건 케이스가 직접 한다.                       */
+const HSEND_ROUNDTRIP = { u: true, t: true };   // 회신이 Promise 로 돌아오는 갈래(p 는 아직 푸시형이다)
 async function hsend(payload, chan, { timeout = 20000, expectPush = null } = {}) {
   const b = await pstate();
-  await ev(`hpost(${J(payload)})`);
+  if (HSEND_ROUNDTRIP[chan]) {
+    const { cmd, ...rest } = payload;
+    //  회신의 명부·목록은 계수기가 이미 세었다 — CDP 로 되가져올 이유가 없어 '끝났다'만 받는다.
+    await ev(`hostRequest(${J(cmd)}, ${J(rest)}, ${timeout}).then(function(){ return 1; })`);
+  } else {
+    await ev(`hpost(${J(payload)})`);
+  }
   const s = await waitPage((x) => x[chan] > b[chan], { timeout });
   if (!s) throw new Error(`호스트 회신이 오지 않았다(${chan}): ${J(payload).slice(0, 160)}`);
   const rep = await evj(`JSON.stringify(__tr.${chan}[__tr.${chan}.length-1])`);

@@ -611,13 +611,13 @@ namespace TaskCalendarWidget
                         _ = RunMembersGetAsync(GetStr(doc, "reqId"), GetBool(doc, "includeInactive"), GetBool(doc, "flat"));   // flat = 「구성원 편집」(전사 서열 순)
                         break;
 
-                    // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 결과는 __userSaved(ok,msg,reqId) + 성공 시 명부 재조회 -----
-                    //   ★ 과제 쓰기(saveProject → __projectSaved → loadProjects)와 **같은 모양**이다.
-                    //     관리자가 두 화면에서 같은 절차를 밟게 하려고 일부러 복제했다.
+                    // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 회신은 ReplyOnUi(reqId)로 {ok,msg,roster} -----
                     //   ★ 권한은 여기서 보지 않는다. 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
-                    //   ★ 2026-09-11 적대 검토(R3) — 다섯 쓰기 명령이 reqId 를 함께 나른다. 회신은 여전히
-                    //     **푸시**(__userSaved · __trashDone)지만, 세 번째 인자로 그 reqId 를 돌려주므로 웹이
-                    //     "이 회신이 내 요청의 것인가"를 판정할 수 있다. 없으면 빈 문자열이다 — 옛 웹과도 호환된다.
+                    //   ★ 2026-09-14 — 옛 판은 결과를 **푸시**(__userSaved)로 내보내고 갱신된 명부를 또 다른
+                    //     푸시(__applyMembers)로 따로 밀었다. 푸시에는 상관관계가 없어 웹이 그것을 손으로 한 벌
+                    //     더 지었다(__uaReq · __ueTok · 워치독 · await/빚). 이 저장소에 이미 있는 요청/회신
+                    //     배관으로 옮겨 그 복제를 통째로 지운다 — 결과와 갱신 명부가 **한 회신**으로 온다
+                    //     (발주처·코드 브리지와 같은 모양이다).
                     case "saveUser":         // userId 없으면 신규 INSERT, 있으면 그 user_id UPDATE
                         _ = SaveUserAsync(GetStr(doc, "reqId"), GetInt(doc, "userId"), GetStr(doc, "loginId"), GetStr(doc, "name"),
                             GetStr(doc, "title"), GetInt(doc, "orgId"), GetStr(doc, "viewScope"), GetStr(doc, "editRole"),
@@ -631,8 +631,9 @@ namespace TaskCalendarWidget
                         break;
 
                     // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용. 숨긴 항목만 모아 복구/영구 삭제한다 -----
-                    //   ★ 조회는 reqId 왕복(membersGet 과 같은 모양), 복구·삭제는 결과를 __trashDone(ok,msg) 로 밀고
-                    //     성공하면 휴지통(__applyTrash)과 **관련 목록**을 함께 다시 민다(웹이 재조회를 챙기지 않아도 되게).
+                    //   ★ 조회도 복구·삭제도 reqId 왕복이다(membersGet 과 같은 모양). 2026-09-14 부터 복구·삭제의
+                    //     회신 {ok,msg,trash,roster} 가 결과와 갱신된 휴지통(인력이면 명부까지)을 **함께** 나른다.
+                    //     성공하면 **관련 목록**(과제·발주처·코드·명부)은 그대로 푸시로 민다 — 그쪽은 다른 화면이다.
                     //   ★ 권한은 여기서 보지 않는다 — 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
                     case "trashGet":
                         _ = RunTrashGetAsync(GetStr(doc, "reqId"));
@@ -1874,83 +1875,90 @@ namespace TaskCalendarWidget
         }
 
         // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용 -----
-        // 쓰기 결과 통지. 웹 __userSaved(ok, msg, reqId) — 과제의 __projectSaved 와 같은 JsCall 패턴이다.
-        //   ★ needConfirm 짝이 없다: 직원 등록에는 「비슷한 사람」 같은 소프트 경고가 없다
-        //     (login_id 가 UNIQUE 라 중복은 소프트 경고가 아니라 그냥 실패다).
-        //   ★ 세 번째 인자 reqId 는 **요청과 회신을 짝지으라고** 있다(2026-09-11 R3). 이 통지는 왕복이 아니라
-        //     푸시라, 늦게 온 회신이 이미 다른 일을 하고 있는 폼을 건드릴 수 있었다. 웹이 자기 요청의
-        //     reqId 와 대조하면 남의 회신을 무시할 수 있다. 요청에 없었으면 "" — 옛 웹과도 호환된다.
-        private void UserSaved(bool ok, string msg, string reqId = "") =>
-            JsCall("window.__userSaved && window.__userSaved(" + (ok ? "true" : "false") + ","
-                + JsonSerializer.Serialize(msg ?? "") + "," + JsonSerializer.Serialize(reqId ?? "") + ")");
+        //  ★ 2026-09-14 — 이 셋(saveUser · setUserActive · saveUserOrder)과 휴지통 둘(trashRestore ·
+        //    trashDelete)은 이 저장소의 관리자 쓰기 중 **유일하게** 요청/회신 배관(hostRequest ↔ ReplyOnUi)을
+        //    쓰지 않던 자리였다. 결과를 푸시(__userSaved · __trashDone)로 내보내면 그 회신에는 상관관계가
+        //    없다 — 그래서 웹이 배관이 이미 보장하는 것을 손으로 한 벌 더 지었다(__uaReq · __ueTok ·
+        //    __ueTokSeq · __trReq · 워치독 둘 · await/빚 한 쌍). 그 복제를 깁는 대신 다섯을 배관 위로
+        //    옮겨 통째로 지운다. 갱신된 명부도 별도 푸시가 아니라 **회신에 함께**(roster) 싣는다 —
+        //    회신 하나가 도착하면 결과와 화면이 같은 시점의 것이라, 웹이 뒤따르는 푸시를 기다릴 이유가
+        //    없다(그 기다림이 있었기 때문에 워치독이 필요했다).
+        //  ★ 이것은 **전송 방식만의 변경**이다: 거부 문구·관문(OpenAdminAsync)·트랜잭션 규칙은 한 글자도
+        //    바뀌지 않았고, 명부를 다시 읽는 **조건**도 옛 푸시의 조건 그대로다.
+        //  ★ needConfirm 짝이 없다: 직원 등록에는 「비슷한 사람」 같은 소프트 경고가 없다
+        //    (login_id 가 UNIQUE 라 중복은 소프트 경고가 아니라 그냥 실패다).
 
-        // 명부를 다시 읽어 웹으로 밀어 넣는다(__applyMembers). 쓰기 성공 뒤 화면 갱신 경로다 —
-        //   과제의 SaveProjectAsync → LoadProjectsToWebAsync 와 같은 모양. 웹이 스스로 재조회하게 두면
-        //   "저장은 됐는데 목록은 그대로" 인 창이 생기고, 그 창에서 관리자가 같은 조작을 한 번 더 한다.
-        //   ★ includeInactive 를 그대로 물려준다 — 「퇴사자 보기」를 켠 채 저장했는데 갱신된 명부에서
+        // 회신에 실을 명부 — 다시 읽어 그 JSON **문자열**을 돌려준다(옛 __applyMembers 푸시가 나르던 그 문자열).
+        //   ★ includeInactive 를 그대로 물려받는다 — 「퇴사자 보기」를 켠 채 저장했는데 갱신된 명부에서
         //     퇴사자가 사라지면 화면이 제멋대로 움직인 것으로 보인다.
-        //   ★ 실패(null)면 아무것도 밀지 않는다. 빈 명부를 밀면 저장 성공 직후 화면이 통째로 비어
-        //     "내가 뭘 지웠나" 로 읽힌다 — 낡은 명부가 남아 있는 편이 낫다(다시 열면 갱신된다).
-        //   ★ 두 번째 인자 reqId 는 __userSaved 의 것과 같은 뜻이다(2026-09-11 R3-H2). 이 푸시도 왕복이
-        //     아니라 **푸시**라, 웹은 "지금 내가 기다리던 그 요청의 결과인가"를 가려야 한다. 쓰기 뒤의
-        //     갱신이면 그 쓰기의 reqId 를 싣고, 그 밖의 갱신(휴지통 복구 등)은 "" 다 — 웹은 ""를
-        //     '내 것이 아닌 일반 갱신'으로 읽는다(요청에 reqId 가 없던 옛 웹과도 호환된다).
-        private async Task LoadMembersToWebAsync(bool includeInactive, string reqId = "")
+        //   ★ 못 읽었으면 ""(회신 자체는 그대로 나간다). 빈 명부를 실어 보내면 저장 성공 직후 화면이 통째로
+        //     비어 "내가 뭘 지웠나" 로 읽힌다 — 낡은 명부가 남아 있는 편이 낫다(다시 열면 갱신된다).
+        //   ★ 이 명부가 가는 곳은 「구성원 편집」 화면이다 — 그 화면의 순서는 전사 서열이다(flatOrder: true).
+        private async Task<string> ReadMembersJsonAsync(bool includeInactive)
         {
             UserSession? s = UserSession.Load(_dataDir, Log);
-            if (s == null || s.LoginId.Length == 0) return;
-            // ★ 이 푸시는 「구성원 편집」 화면(__applyMembers)으로만 간다 — 그 화면의 순서는 전사 서열이다(flatOrder).
+            if (s == null || s.LoginId.Length == 0) return "";
             string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive, flatOrder: true);
-            if (json == null) { Log("명부 재조회 실패 — 화면은 직전 명부를 유지한다"); return; }
-            JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ","
-                + JsonSerializer.Serialize(reqId ?? "") + ")");
+            if (json == null) { Log("명부 재조회 실패 — 화면은 직전 명부를 유지한다"); return ""; }
+            return json;
+        }
+
+        // 명부를 웹으로 **미는** 경로(__applyMembers). 2026-09-14 이후 남은 자리는 하나뿐이다 —
+        //   휴지통에서 인력을 복구·삭제한 뒤의 갱신(TrashRefreshRelatedAsync). 「구성원 편집」 화면은
+        //   그 요청을 보낸 적이 없으니 회신으로는 닿을 수 없다. 그래서 이 한 자리만 푸시로 남는다.
+        //   ★ 옛 두 번째 인자 reqId 는 없앴다: 푸시는 더 이상 '내 것'일 수 없다 — 내 것은 회신을 타고 온다.
+        private async Task LoadMembersToWebAsync(bool includeInactive)
+        {
+            string json = await ReadMembersJsonAsync(includeInactive);
+            if (json.Length == 0) return;
+            JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ")");
         }
 
         // 직원 등록/수정 — userId 0 은 '없음'(신규)이다. orgId 0 도 마찬가지로 '소속 없음'(NULL)이다
         //   — org_unit.org_id 는 AUTO_INCREMENT 라 0 인 조직이 존재할 수 없다.
+        //   ★ 회신에 갱신된 명부(roster)를 함께 싣는다 — **성공했을 때만**이다(옛 `if (ok)` 푸시의 조건
+        //     그대로). 실패면 명부가 바뀌지 않았으므로 실을 것이 없다("" — 웹은 목록을 그대로 둔다).
         private async Task SaveUserAsync(string reqId, int userId, string loginId, string name, string title,
             int orgId, string viewScope, string editRole, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.UpsertUserAsync(userId > 0 ? userId : (int?)null, loginId, name,
                 title, orgId > 0 ? orgId : (int?)null, viewScope, editRole);
-            UserSaved(ok, msg, reqId);
-            if (ok) await LoadMembersToWebAsync(includeInactive, reqId);
+            string roster = ok ? await ReadMembersJsonAsync(includeInactive) : "";
+            ReplyOnUi(reqId, new { ok, msg, roster });
         }
 
         //  ★ 2026-09-11 적대 검토(R5) — 퇴사/복구도 **성공만으로는 모자라다**. 복구가 "이미 복구된 항목입니다 —
         //    목록을 새로고침합니다."(ProjectDb.AlreadyActiveMsg)로 거부할 때, 그 문장은 정확히 **실패**로 나오면서
-        //    새로고침을 약속한다. 성공(ok)에만 명부를 밀면 관리자는 그 약속을 읽으면서 퇴사자가 그대로 남아 있는
+        //    새로고침을 약속한다. 성공(ok)에만 명부를 실으면 관리자는 그 약속을 읽으면서 퇴사자가 그대로 남아 있는
         //    낡은 명부를 보고 같은 [복구] 를 다시 눌러 같은 거부만 반복한다 — 휴지통이 R2 에서 닫은 그 구멍이다.
         //    그 문장 대조의 정본은 ProjectDb.AlreadyActiveMsg **한 줄**이다(여기 한 벌 더 적지 않는다 · 순서
-        //    저장의 StaleRosterMsg 와 같은 규율). 나머지 실패(권한·연결·DB)는 명부가 바뀌지 않았으므로 안 민다.
+        //    저장의 StaleRosterMsg 와 같은 규율). 나머지 실패(권한·연결·DB)는 명부가 바뀌지 않았으므로 안 싣는다.
+        //  ★ 2026-09-14 — 그 명부는 이제 푸시가 아니라 **회신의 roster** 로 간다. 조건은 한 글자도 안 바뀌었다.
         private async Task SetUserActiveAsync(string reqId, int userId, bool active, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SetUserActiveAsync(userId, active);
-            UserSaved(ok, msg, reqId);
-            if (ok || string.Equals(msg, ProjectDb.AlreadyActiveMsg, StringComparison.Ordinal))
-                await LoadMembersToWebAsync(includeInactive, reqId);
+            string roster = ok || string.Equals(msg, ProjectDb.AlreadyActiveMsg, StringComparison.Ordinal)
+                ? await ReadMembersJsonAsync(includeInactive) : "";
+            ReplyOnUi(reqId, new { ok, msg, roster });
         }
 
-        //  ★ 순서 저장만은 **실패해도** 명부를 다시 밀어 준다(2026-09-11 적대 검토 R2).
+        //  ★ 순서 저장만은 **실패해도** 명부를 다시 실어 준다(2026-09-11 적대 검토 R2).
         //    호스트가 거부하는 대표 경우가 「낡은 명부」(StaleRosterMsg — 목록 밖에 활성 직원이 있다)인데,
         //    그건 "화면이 낡았다" 는 뜻이다. 아무것도 내려보내지 않으면 관리자는 **같은 낡은 명부로 다시**
         //    저장을 눌러 같은 거부만 반복한다 — 새로고침하라는 문구를 읽어도 그 자리에 새로고침이 없다.
-        //  ★ 2026-09-11 적대 검토(R3-H2) — 그 '무조건 푸시' 가 **너무 넓었다**. 웹은 순서 편집 중에 온
-        //    갱신을 pending 으로 미뤄 두므로(편집 중이던 순서를 덮어쓰지 않게), 거부 뒤에도 순서 모드는
-        //    켜진 채다 — 곧 낡은 명부는 화면에 그대로 남고 거부 루프는 풀리지 않는다. 그래서 푸시는
-        //    **두 경우로만** 좁힌다: 성공(ok) · 낡은 명부 거부(StaleRosterMsg). 그 둘만이 "지금 화면의
-        //    명부를 갈아 끼워야 한다" 는 뜻이고, 나머지 실패(권한·연결·DB)는 명부가 바뀌지 않았으므로
-        //    푸시가 할 일이 없다(폼 안의 문구로 끝난다).
+        //  ★ 2026-09-11 적대 검토(R3-H2) — 그 '무조건' 이 **너무 넓었다**. 명부가 **바뀌지도 않은**
+        //    실패(권한·연결·DB)까지 실으면 화면은 같은 명부를 한 번 더 그릴 뿐이다. 그래서 둘로만 좁힌다:
+        //    성공(ok) · 낡은 명부 거부(StaleRosterMsg). 그 둘만이 "지금 화면의 명부를 갈아 끼워야 한다" 는 뜻이다.
         //    ★ 문장 대조의 정본은 ProjectDb.StaleRosterMsg 한 줄이다 — 여기 한 벌 더 적으면 갈린다.
-        //    ★ reqId 를 함께 싣는다: 웹은 자기 요청의 푸시만 '내 것'으로 받는다(버려진 요청의 늦은
-        //      푸시가 다른 조작에 잘못 귀속되지 않는다).
-        //  ★ UserSaved 가 먼저다 — 웹이 그 회신으로 편집 모드를 끝낸 뒤라야 뒤따르는 푸시가 제대로 앉는다.
+        //  ★ 2026-09-14 — 결과와 명부가 **한 회신**으로 같이 간다. 옛 판은 회신 푸시(__userSaved) 와 명부
+        //    푸시(__applyMembers) 둘이어서 "회신이 먼저여야 앉는다" 는 순서 규칙이 필요했다 — 하나가 되면
+        //    그 규칙도, 그 규칙을 지키려고 웹이 세워 둔 대기·워치독도 함께 사라진다.
         private async Task SaveUserOrderAsync(string reqId, List<int> userIds, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.SaveUserOrderAsync(userIds);
-            UserSaved(ok, msg, reqId);
-            if (ok || string.Equals(msg, ProjectDb.StaleRosterMsg, StringComparison.Ordinal))
-                await LoadMembersToWebAsync(includeInactive, reqId);
+            string roster = ok || string.Equals(msg, ProjectDb.StaleRosterMsg, StringComparison.Ordinal)
+                ? await ReadMembersJsonAsync(includeInactive) : "";
+            ReplyOnUi(reqId, new { ok, msg, roster });
         }
 
         // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용 -----
@@ -1982,21 +1990,16 @@ namespace TaskCalendarWidget
             }
         }
 
-        // 복구·삭제 결과 통지. 웹 __trashDone(ok, msg, reqId) — 직원의 __userSaved 와 같은 JsCall 패턴이다.
-        //   ★ 세 번째 인자 reqId 의 뜻은 __userSaved 와 같다(2026-09-11 R3) — 없으면 "".
-        private void TrashDone(bool ok, string msg, string reqId = "") =>
-            JsCall("window.__trashDone && window.__trashDone(" + (ok ? "true" : "false") + ","
-                + JsonSerializer.Serialize(msg ?? "") + "," + JsonSerializer.Serialize(reqId ?? "") + ")");
-
-        // 휴지통을 다시 읽어 웹으로 민다(__applyTrash). 실패(null)면 아무것도 밀지 않는다 —
-        //   빈 휴지통을 밀면 "내가 뭘 지웠나"로 읽힌다(명부 푸시와 같은 규칙).
-        private async Task LoadTrashToWebAsync()
+        // 회신에 실을 휴지통 — 다시 읽어 그 JSON **문자열**을 돌려준다(옛 __applyTrash 푸시가 나르던 그 문자열).
+        //   ★ 못 읽었으면 ""(회신 자체는 그대로 나간다). 빈 휴지통을 실어 보내면 "내가 뭘 지웠나"로 읽힌다
+        //     — 낡은 목록이 남아 있는 편이 낫다(명부와 같은 규칙).
+        private async Task<string> ReadTrashJsonAsync()
         {
             UserSession? s = UserSession.Load(_dataDir, Log);
-            if (s == null || s.LoginId.Length == 0) return;
+            if (s == null || s.LoginId.Length == 0) return "";
             string? json = await _projectDb.LoadTrashJsonAsync(s.LoginId);
-            if (json == null) { Log("휴지통 재조회 실패 — 화면은 직전 목록을 유지한다"); return; }
-            JsCall("window.__applyTrash && window.__applyTrash(" + JsonSerializer.Serialize(json) + ")");
+            if (json == null) { Log("휴지통 재조회 실패 — 화면은 직전 목록을 유지한다"); return ""; }
+            return json;
         }
 
         // 복구·삭제 뒤 화면 갱신 — 휴지통 + **그 종류의 목록**을 함께 민다(§5.3).
@@ -2013,25 +2016,30 @@ namespace TaskCalendarWidget
             else if (kind == "section" || kind == "status") await LoadCodesToWebAsync();
         }
 
-        // ★ 2026-09-11 적대 검토(R2) — 실패해도 **휴지통 목록은 반드시 다시 민다**.
+        // ★ 2026-09-11 적대 검토(R2) — 실패해도 **휴지통 목록은 반드시 다시 보낸다**.
         //   거부 문구 둘이 "…목록을 새로고침합니다"(TrashGoneMsg · AlreadyActiveMsg)라고 약속하는데,
         //   옛 판은 성공했을 때만 갱신했다 — 그 두 문장은 정확히 **실패**할 때 나오는 말이라,
         //   사용자는 "새로고침한다"는 문장을 읽으면서 사라진 항목이 그대로 남아 있는 목록을 봤다.
         //   (그 둘은 '실패'라기보다 목록이 낡았다는 신호다. 낡은 것을 고치는 것이 곧 새로고침이다.)
-        //   관련 목록(과제·명부·발주처·코드)은 그대로 **성공했을 때만** 민다 — 실패했으면 그쪽은 안 바뀌었다.
+        //   ★ 2026-09-14 — 그 갱신은 이제 푸시가 아니라 **회신에 실려**(trash) 간다. 그래서 ok 와 무관하게
+        //     매번 읽는다 — R2 의 규칙이 전송 방식만 바꾼 채 한 글자도 안 바뀌고 그대로 살아 있다.
+        //   관련 목록(과제·발주처·코드)은 그대로 **성공했을 때만** 민다 — 실패했으면 그쪽은 안 바뀌었다.
+        //   인력이면 명부도 회신에 함께 싣는다(roster) — 옛 명부 푸시와 **같은 조건**(ok && kind=="user")이다.
         private async Task TrashRestoreAsync(string reqId, string kind, string key, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.RestoreTrashAsync(kind, key);
-            TrashDone(ok, msg, reqId);
-            await LoadTrashToWebAsync();
+            string trash = await ReadTrashJsonAsync();
+            string roster = ok && kind == "user" ? await ReadMembersJsonAsync(includeInactive) : "";
+            ReplyOnUi(reqId, new { ok, msg, trash, roster });
             if (ok) await TrashRefreshRelatedAsync(kind, includeInactive);
         }
 
         private async Task TrashDeleteAsync(string reqId, string kind, string key, string confirm, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.DeleteTrashAsync(kind, key, confirm);
-            TrashDone(ok, msg, reqId);
-            await LoadTrashToWebAsync();
+            string trash = await ReadTrashJsonAsync();
+            string roster = ok && kind == "user" ? await ReadMembersJsonAsync(includeInactive) : "";
+            ReplyOnUi(reqId, new { ok, msg, trash, roster });
             if (ok) await TrashRefreshRelatedAsync(kind, includeInactive);
         }
 

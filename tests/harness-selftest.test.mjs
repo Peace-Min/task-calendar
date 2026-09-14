@@ -108,13 +108,16 @@ test('extractCsMember: 식(=>) 본문 멤버는 ; 에서 끝난다(다음 멤버
   assert.ok(two.trim().endsWith('}') && two.includes('LoadEverythingAsync'), '중괄호 본문 경로가 깨졌다: ' + JSON.stringify(two));
 });
 
-// 7) 실물 — 호스트의 UserSaved 가 바로 그 모양이다(식 본문 + 곧바로 다음 멤버).
-test('extractCsMember(실물): UserSaved 슬라이스에 옆 멤버(LoadMembersToWebAsync)가 섞이지 않는다', () => {
+// 7) 실물 — 호스트의 ProjectSaved 가 바로 그 모양이다(식 본문 + 곧바로 다음 멤버).
+//    ★ 2026-09-14 에 앵커를 UserSaved 에서 옮겼다. 직원 쓰기 다섯이 요청/회신 배관(ReplyOnUi)으로
+//      옮겨 가면서 UserSaved 푸시 자체가 사라졌다 — 없는 멤버를 앵커로 두면 이 계약은 '판정 불가'로
+//      죽는다. 같은 모양(식 본문 + 곧바로 다음 멤버)의 실물은 과제 쪽 ProjectSaved 다.
+test('extractCsMember(실물): ProjectSaved 슬라이스에 옆 멤버(SaveProjectAsync)가 섞이지 않는다', () => {
   const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-  const b = extractCsMember(main, 'private void UserSaved(');
-  assert.ok(/window\.__userSaved/.test(b), 'UserSaved 자기 본문이 없다 — 엉뚱한 곳을 잘랐다');
-  assert.ok(!/LoadMembersToWebAsync/.test(b),
-    '식 본문 멤버가 다음 멤버(LoadMembersToWebAsync)까지 삼켰다 — 이 슬라이스를 믿는 계약은 옆 멤버를 보고 초록이 된다');
+  const b = extractCsMember(main, 'private void ProjectSaved(');
+  assert.ok(/window\.__projectSaved/.test(b), 'ProjectSaved 자기 본문이 없다 — 엉뚱한 곳을 잘랐다');
+  assert.ok(!/SaveProjectAsync/.test(b),
+    '식 본문 멤버가 다음 멤버(SaveProjectAsync)까지 삼켰다 — 이 슬라이스를 믿는 계약은 옆 멤버를 보고 초록이 된다');
   assert.ok(b.length < 600, '슬라이스가 지나치게 길다(다음 멤버까지 삼켰을 때의 증상): ' + b.length);
 });
 
@@ -312,8 +315,8 @@ test('변이⑤: extractCsMember 가 식(=>) 본문을 모르면 다음 멤버�
       '식 본문 갈래 없이도 옆 멤버를 안 삼킨다 — 이 계약이 겨냥한 것이 아니다');
     //  실물에서도 같은 일이 난다(계약 7 이 겨냥한 그 자리다).
     const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-    assert.ok(/LoadMembersToWebAsync/.test(m.extractCsMember(main, 'private void UserSaved(')),
-      '실물 UserSaved 에서도 옆 멤버가 섞이지 않는다 — 변이가 겨냥을 빗나갔다(앵커를 갱신할 것)');
+    assert.ok(/SaveProjectAsync/.test(m.extractCsMember(main, 'private void ProjectSaved(')),
+      '실물 ProjectSaved 에서도 옆 멤버가 섞이지 않는다 — 변이가 겨냥을 빗나갔다(앵커를 갱신할 것)');
   });
 });
 

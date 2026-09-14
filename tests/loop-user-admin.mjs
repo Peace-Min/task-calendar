@@ -47,8 +47,8 @@
  * 전제(이 스크립트가 하지 않는 것):
  *   · 위젯을 띄우거나 닫지 않는다. 9222 에 이미 붙어 있어야 한다.
  *   · 로그인을 대신하지 않는다. **admin 계정으로 로그인된** 위젯이어야 한다(아니면 판정 없음 = exit 2).
- *   · 앱 코드를 고치지 않는다. 가로채기는 회신 두 개(__userSaved · __applyMembers)를 **감싸는** 것뿐이고
- *     원본을 반드시 그대로 호출한다 — 화면은 시험이 없을 때와 똑같이 움직인다.
+ *   · 앱 코드를 고치지 않는다. 가로채기는 호스트 왕복(hostRequest)과 명부 푸시(__applyMembers)를
+ *     **감싸는** 것뿐이고 원본을 반드시 그대로 호출한다 — 화면은 시험이 없을 때와 똑같이 움직인다.
  *
  * 실행:
  *   $env:TC_TEST_DB_ADMIN_PW='...'   (bash: export TC_TEST_DB_ADMIN_PW=...)
@@ -263,18 +263,37 @@ const ev = (e) => cdp.ev(e);
 const evj = async (e) => JSON.parse(await cdp.ev(e));
 
 /* ── 가로채기 설치 ─────────────────────────────────────────────────────────
- *  회신 둘(__userSaved · __applyMembers)을 **감싼다**. 원본을 반드시 호출하므로 화면 동작은 그대로다.
+ *  ★ 2026-09-14: 직원 쓰기 셋(saveUser·setUserActive·saveUserOrder)이 **왕복**이 되면서 공용 회신함
+ *    (window.__userSaved)이 사라졌다. 회신은 이제 hostRequest 의 Promise 로 돌아오므로, 감싸는 자리도
+ *    거기로 옮긴다 — 원본을 반드시 호출하고 결과도 그대로 흘려보내므로 화면 동작은 그대로다.
+ *  ★ 계수기 둘의 뜻은 그대로다:
+ *      replies — 쓰기 회신이 몇 번 왔나(화면 버튼을 눌러 시작한 왕복도 여기 잡힌다).
+ *      applies — 갱신 명부가 몇 번 **도착했나**. 회신에 실려서(r.roster) 오거나, 부탁하지 않은
+ *                푸시(__applyMembers)로 온다 — 두 길을 한 계수기로 센다.
+ *                ★ '도착했나'와 '앉았나'는 **다른 물음**이다(2026-09-14 좌석 일원화). 앉히는 일은
+ *                  uaSend/trSend 안에서 끝나고, 순서 편집 중에 온 무관한 명부는 도착해도 **미뤄진다**.
+ *                  그래서 이 계수기를 '앉았다'로 읽으면 안 된다 — 화면 반영을 기다리는 자리(send)는
+ *                  계수기가 아니라 **그 왕복의 Promise** 를 기다린다.
  *  ★ 페이지가 다시 뜨면 가로채기는 사라진다 — 그래서 **매 실행 시작에** 설치한다.
  *  ★ 이미 설치돼 있으면(같은 페이지에서 두 번째 실행) 감싸기를 겹치지 않고 계수기만 비운다.
  *    겹쳐 감으면 회신 하나가 두 번 세어져 C14(재진입 가드)가 조용히 거짓말을 한다.               */
 const INSTALL_JS = `(function(){
-  if (window.__ua && window.__ua.v === 1){ window.__ua.replies.length = 0; window.__ua.applies = 0; return 'reset'; }
-  var oS = window.__userSaved, oA = window.__applyMembers;
-  if (typeof oS !== 'function' || typeof oA !== 'function') return 'missing';
-  var A = { v:1, replies: [], applies: 0 };
+  if (window.__ua && window.__ua.v === 2){ window.__ua.replies.length = 0; window.__ua.applies = 0; return 'reset'; }
+  var oH = window.hostRequest, oA = window.__applyMembers;
+  if (typeof oH !== 'function' || typeof oA !== 'function') return 'missing';
+  var A = { v:2, replies: [], applies: 0 };
   window.__ua = A;
-  window.__userSaved   = function(ok,msg){ A.replies.push({ ok: !!ok, msg: String(msg==null?'':msg) }); return oS.apply(this, arguments); };
-  window.__applyMembers= function(json){ A.applies++; return oA.apply(this, arguments); };
+  var WRITES = { saveUser:1, setUserActive:1, saveUserOrder:1, trashRestore:1, trashDelete:1 };
+  window.hostRequest = function(cmd, params, timeoutMs){
+    var p = oH.apply(this, arguments);
+    if (!WRITES[String(cmd)]) return p;
+    return p.then(function(r){
+      A.replies.push({ ok: !!(r && r.ok), msg: String((r && r.msg) == null ? '' : r.msg) });
+      if (r && r.roster) A.applies++;
+      return r;
+    });
+  };
+  window.__applyMembers = function(json){ A.applies++; return oA.apply(this, arguments); };
   return 'installed';
 })()`;
 
@@ -318,18 +337,23 @@ async function waitPage(pred, { timeout = 15000, interval = 80, desc = '' } = {}
   }
 }
 
-/** 호스트 쓰기 1건 — uaSend 로 보내고 __userSaved 회신을 기다린다.
- *  성공이면 호스트가 곧바로 명부를 다시 읽어 __applyMembers 로 민다(§4.2) — 그것까지 기다린다. */
-async function send(payload, { expectApply = true, timeout = 15000 } = {}) {
-  const idle = await waitPage((s) => !s.saving && !s.busy, { timeout: 14000, desc: 'idle' });
-  if (!idle) throw new Error('직전 조작이 끝나지 않았다(__uaSaving/__uaBusy 가 안 내려간다)');
-  const b = idle;
-  await ev(`uaSend(${JSON.stringify(payload)})`);
-  const s = await waitPage((x) => x.r > b.r, { timeout, desc: '회신' });
-  if (!s) throw new Error(`호스트 회신이 오지 않았다: ${JSON.stringify(payload).slice(0, 160)}`);
+/** 호스트 쓰기 1건 — uaSend 로 보내고 **그 왕복이 끝날 때까지** 기다린다.
+ *  ★ 2026-09-14(좌석 일원화) — 기다릴 것이 **하나**로 줄었다. cdp.ev 는 awaitPromise 라 이 await 는
+ *    uaSend 의 Promise 가 풀릴 때까지 멈춰 있고, uaSend 는 회신의 명부를 **자기 안에서** 처리한다
+ *    (uaSeatReply: 앉히거나 · 순서 편집 중이면 미뤄 두거나). 그러니 '명부가 앉기를' 따로 기다릴 것이
+ *    없다 — 이 줄을 지나면 화면은 이미 그 회신을 반영한 상태다.
+ *    (예전에는 여기서 계수기 a 가 오르기를 기다렸는데, 그 계수기가 세는 것은 '명부가 **도착**했나'라
+ *     '앉았나'가 아니다. 그 둘을 같은 것으로 읽던 기다림은 1단계 전환 뒤 아무것도 보증하지 못했다.)
+ *  ★ 회신 안의 명부(89명짜리 문자열)는 CDP 로 되가져오지 않는다 — 결과는 계수기(__ua.replies)에서 읽는다. */
+async function send(payload) {
+  const b = await waitPage((s) => !s.saving && !s.busy, { timeout: 14000, desc: 'idle' });
+  if (!b) throw new Error('직전 조작이 끝나지 않았다(__uaSaving/__uaBusy 가 안 내려간다)');
+  await ev(`uaSend(${JSON.stringify(payload)}).then(function(){ return 1; })`);
+  const s = await pstate();
+  //  '못 보냈다(null)' 도 여기로 온다 — 회신이 하나도 안 쌓였으면 그것이다(가드에 걸렸거나 위젯이 아니다).
+  if (!(s.r > b.r)) throw new Error(`호스트 회신이 오지 않았다: ${JSON.stringify(payload).slice(0, 160)}`);
+  if (s.saving) throw new Error('회신이 왔는데 잠금이 풀리지 않았다 — 왕복 끝에서 푸는 자리가 하나뿐이어야 한다');
   const rep = await evj(`JSON.stringify(__ua.replies[__ua.replies.length-1])`);
-  if (rep.ok && expectApply) await waitPage((x) => x.a > b.a, { timeout: 10000, desc: '명부 재조회' });
-  await waitPage((x) => !x.saving, { timeout: 8000 });
   vlog(`send ${payload.cmd} → ok=${rep.ok} "${rep.msg}"`);
   return rep;
 }
@@ -577,7 +601,7 @@ async function main() {
 
   cdp = await Cdp.attach(OPT.port);
   const inst = await ev(INSTALL_JS);
-  if (inst === 'missing') { console.error('[판정 없음] 페이지에 __userSaved/__applyMembers 가 없다 — 구버전 위젯이다'); process.exit(2); }
+  if (inst === 'missing') { console.error('[판정 없음] 페이지에 hostRequest/__applyMembers 가 없다 — 구버전 위젯이다'); process.exit(2); }
   vlog(`가로채기: ${inst}`);
 
   const who = await evj(`JSON.stringify({host: !!HOST, id: (currentUser&&currentUser.loginId)||''})`);
@@ -735,7 +759,7 @@ async function main() {
       return;
     }
     okq('C17 활성 admin 이 로그인 계정 하나뿐이다(§4.4-3 의 수 조건이 참인 순간)', true);
-    const rep = await send({ cmd: 'setUserActive', userId: meRow.uid, active: false }, { expectApply: false });
+    const rep = await send({ cmd: 'setUserActive', userId: meRow.uid, active: false });
     okq('C17 거부됐다', rep.ok === false, `ok=${rep.ok}`);
     okq('C17 문구는 §4.4-1(자기 퇴사)이다 — 자기 규칙이 마지막 관리자 규칙보다 앞이다',
       rep.msg === '자기 계정은 퇴사 처리할 수 없습니다.', JSON.stringify(rep.msg));
@@ -885,10 +909,13 @@ async function main() {
     }
   });
 
-  /* ── C20 순서 편집 중 도착한 무관한 명부 푸시 ──────────────────────── */
-  //  ★ 다른 관리자의 저장·휴지통 복구가 그 순간 명부를 밀면, 예전에는 편집 중인 순서가 통째로 날아갔다.
+  /* ── C20 순서 편집 중 도착한 무관한 명부 ────────────────────────────── */
+  //  ★ 다른 관리자의 저장·휴지통 복구가 그 순간 명부를 바꾸면, 예전에는 편집 중인 순서가 통째로 날아갔다.
   //    지금은 미뤄 두고(__uaPendingData) 편집을 마칠 때 반영한다 — 그리고 **미뤄 뒀다고 말한다**.
   //    말하지 않으면 관리자는 자기 화면이 낡은 줄 모른 채 순서를 정한다.
+  //  ★ 2026-09-14 — 그 명부가 오는 **길이 바뀌었다**: 쓰기가 왕복이 되면서 이제 그 쓰기의 **회신**에
+  //    실려 온다(푸시가 아니다). 그래서 이 케이스는 지금 '회신으로 온 남의 갱신도 미뤄지는가'를 본다 —
+  //    미뤄 두기가 푸시 쪽에만 남아 있던 동안 여기 셋이 모두 무너졌다(좌석 일원화가 닫은 자리다).
   await runCase('C20', '순서 편집 중 무관한 푸시 — 미뤄 두고, 말하고, 마칠 때 반영', async () => {
     if (!okq('C20 「순서 편집」 진입', !!(await orderOn()))) return;
     const before = await screenIds();
@@ -908,7 +935,7 @@ async function main() {
       cmd: 'saveUser', userId: B.uid, loginId: cur.loginId, name: newName, title: cur.title,
       orgId: cur.orgId, viewScope: cur.viewScope, editRole: cur.editRole,
     });
-    if (!okq('C20 무관한 저장이 성공했다(호스트가 곧바로 명부를 민다)', rep.ok === true, rep.msg)) return;
+    if (!okq('C20 무관한 저장이 성공했다(회신에 갱신 명부가 실려 온다)', rep.ok === true, rep.msg)) return;
 
     const s = await pstate();
     okq('C20 순서 편집이 유지된다(푸시가 편집을 끝내지 않는다)', s.order === true, String(s.order));
@@ -1127,7 +1154,7 @@ async function main() {
 
   /* ── C09 잠금 방지① 자기 퇴사 ───────────────────────────────────────── */
   await runCase('C09', '잠금 방지① 자기 계정 퇴사 거부', async () => {
-    const rep = await send({ cmd: 'setUserActive', userId: meRow.uid, active: false }, { expectApply: false });
+    const rep = await send({ cmd: 'setUserActive', userId: meRow.uid, active: false });
     okq('C09 거부됐다', rep.ok === false, `ok=${rep.ok}`);
     okq('C09 거부 문구가 §4.4-1 그대로', rep.msg === '자기 계정은 퇴사 처리할 수 없습니다.', JSON.stringify(rep.msg));
     const db = dbSnap('C09 확인').byId.get(meRow.uid);
@@ -1141,7 +1168,7 @@ async function main() {
     const rep = await send({
       cmd: 'saveUser', userId: meRow.uid, loginId: me.loginId, name: me.name, title: me.title,
       orgId: me.orgId, viewScope: me.viewScope, editRole: 'editor',
-    }, { expectApply: false });
+    });
     okq('C10 거부됐다', rep.ok === false, `ok=${rep.ok}`);
     okq('C10 거부 문구가 §4.4-2 그대로',
       rep.msg === '자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.', JSON.stringify(rep.msg));
@@ -1161,7 +1188,7 @@ async function main() {
     ];
     const before = dbSnap('C11 전');
     for (const [label, payload, want] of cases) {
-      const rep = await send(payload, { expectApply: false });
+      const rep = await send(payload);
       okq(`C11 ${label} 거부`, rep.ok === false, `ok=${rep.ok} msg=${JSON.stringify(rep.msg)}`);
       okq(`C11 ${label} 문구 일치`, rep.msg === want, `기대 ${JSON.stringify(want)} / 실제 ${JSON.stringify(rep.msg)}`);
     }
@@ -1250,7 +1277,7 @@ async function main() {
       const rep = await send({
         cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: A.lid + '_nope', title: T1,
         orgId: null, viewScope: 'self', editRole: 'viewer',
-      }, { expectApply: false });
+      });
       okq('C13 쓰기 거부', rep.ok === false, `ok=${rep.ok}`);
       okq('C13 거부 문구가 관문 문장 그대로',
         rep.msg === '직원 정보는 관리자만 고칠 수 있습니다.', JSON.stringify(rep.msg));
