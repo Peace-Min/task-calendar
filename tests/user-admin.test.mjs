@@ -21,7 +21,7 @@
 //   ★ 판번호·문구 같은 값을 시험에 박지 않는다. 판번호는 정본(tests/canon-schema.mjs)에서 읽고,
 //     잠금 방지 문구는 ProjectDb 의 상수 선언에서 읽어 **그 상수가 실제로 쓰이는지**를 본다.
 //     못 읽으면 통과가 아니라 실패다(판정 불가 ≠ 통과).
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   test, assert, loadAppSource, extractFunction, importOptional, SKIP_NO_JSDOM,
   stripCsComments, extractCsMember, useJsdom, runInJsdom,
@@ -31,6 +31,12 @@ import { canonSchemaVersion, stripSqlComments } from './canon-schema.mjs';
 const app = loadAppSource();
 const pdb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+//  호스트 **전부**(widget/*.cs) — 사라진 이름을 볼 때는 한 파일만 보면 안 된다. 지운 방출부가 옆 파일로
+//  옮겨 앉으면 MainWindow 만 훑는 계약은 그것을 통과시킨다(xml-retirement 의 폐기⑤ 와 같은 규율).
+const widgetCs = readdirSync(new URL('../widget/', import.meta.url))
+  .filter((f) => f.endsWith('.cs'))
+  .map((f) => [f, readFileSync(new URL('../widget/' + f, import.meta.url), 'utf8')]);
+assert.ok(widgetCs.length >= 2, `widget/*.cs 를 ${widgetCs.length}개만 읽었다 — 판정 불가`);
 
 // ── 기준 파일 — 없으면 '한 건의 실패'로 강등한다 ────────────────────────────
 //  ★ 최상위에서 throw 하지 않는다: run-tests.mjs 의 import 루프에서 던지면 프로세스가 죽어
@@ -70,8 +76,8 @@ function mutate(base, from, to) {
 //  회신 명부의 **좌석 한 줄**(2026-09-14 좌석 일원화) — uaSend 안에 있다. trSend 에 글자가 똑같은 줄이
 //  하나 더 있으므로(같은 문을 쓰기 때문이다) 앞의 회신 객체까지 묶어 **그 한 곳만** 가리키게 한다.
 //  ★ String.replace 는 첫 일치만 바꾼다 — 유일하지 않은 변이는 어느 날 조용히 엉뚱한 함수를 친다.
-const SEAT_IN_SEND = "r.error)) || ''), roster: String((r && r.roster) || '') };\n  uaSeatReply(rep.roster, cmd);\n";
-const SEAT_IN_SEND_GONE = "r.error)) || ''), roster: String((r && r.roster) || '') };\n";
+const SEAT_IN_SEND = "msg: hostWriteMsg(r), roster: String((r && r.roster) || '') };\n  uaSeatReply(rep.roster, cmd);\n";
+const SEAT_IN_SEND_GONE = "msg: hostWriteMsg(r), roster: String((r && r.roster) || '') };\n";
 //  uaSetSaving 의 **마지막 줄** — 워치독을 되살려 보는 변이가 끼어드는 자리다(2026-09-14 부터 잠금은
 //  다시 그리지 않고 그 자리에서 건다: uaSyncControls). trSetSaving 의 끝줄과 글자가 다르므로 유일하다.
 const WATCHDOG_SLOT = '  uaSyncControls();\n}';
@@ -387,7 +393,7 @@ const checks = {
       '순서 저장이 updated_at 을 직접 쓴다 — 이 표의 감사 시각은 서버 ON UPDATE 가 정한다(§4.5)');
   },
 
-  // ⑭-h 갱신된 명부는 **회신을 타고** 온다 — 푸시는 인자 하나짜리 '남의 갱신' 뿐이다(2026-09-14).
+  // ⑭-h 갱신된 명부는 **회신을 타고** 온다 — 푸시는 남지 않았다(2026-09-14 · 부재는 ⑭-h4 가 본다).
   //    옛 판(R3-H2)은 그 푸시에 reqId 를 실어 "이게 내 쓰기의 결과인가"를 웹이 가리게 했다. 그 인자가
   //    필요했던 이유는 하나다 — 결과(__userSaved)도 갱신(__applyMembers)도 **푸시**라서 배관이 짝을
   //    지어 주지 않았기 때문이다. 그래서 웹은 배관이 이미 보장하는 상관관계를 손으로 한 벌 더 지어야
@@ -414,13 +420,31 @@ const checks = {
       '회신용 명부가 flat(전사 서열)이 아니다 — 저장 직후 편집 화면이 소속 순으로 튄다');
     assert.ok(/return "";/.test(rd),
       '재조회에 실패했을 때 ""를 돌려주지 않는다 — 빈 명부를 실어 보내면 저장 성공 직후 화면이 통째로 빈다');
-    //  (d) 남은 푸시(__applyMembers)는 **인자 하나**다. 그 자리는 휴지통에서 인력을 건드린 뒤의 갱신 하나뿐이고,
-    //      그 화면은 요청을 보낸 적이 없어 회신으로 닿을 수 없다 — 그래서 푸시로 남는다.
-    const fn = csMember(mainCs, 'private async Task LoadMembersToWebAsync(');
-    assert.ok(/private async Task LoadMembersToWebAsync\(bool includeInactive\)/.test(fn),
-      'LoadMembersToWebAsync 가 아직 reqId 를 받는다 — 푸시는 더 이상 누구의 것도 아니다(2026-09-14)');
-    assert.ok(/window\.__applyMembers\(" \+ JsonSerializer\.Serialize\(json\) \+ "\)"\);/.test(fn),
-      '__applyMembers 푸시가 인자 하나(json)가 아니다 — 두 번째 인자가 붙으면 웹이 옛 짝짓기를 다시 짓는다(2026-09-14)');
+  },
+
+  // ⑭-h4 명부 푸시(__applyMembers)는 **호스트에도 웹에도 없다**(2026-09-14 슬롭 제거 3단계).
+  //     ⑭-h 가 다섯 쓰기를 회신 배관으로 옮긴 뒤에도 방출부(LoadMembersToWebAsync)와 웹 수신부는
+  //     "언젠가 부탁하지 않은 갱신을 다시 밀 날" 을 위해 모양만 남아 있었다. 그 뒤 휴지통의 인력 갈래까지
+  //     회신으로 가면서 **부르는 곳이 한 곳도 없어졌고**, 그때부터 그 둘은 코드가 아니라 전시물이었다 —
+  //     아무도 실행하지 않으므로 낡아도 아무도 모르고, 남아 있다는 사실만으로 다음 사람에게 "여기로도
+  //     명부를 보낼 수 있다" 고 말한다. 배달은 한 길이어야 한다: 갱신 명부는 그 조작의 **회신**을 탄다.
+  //     ★ 한 파일만 보지 않는다 — 지운 방출부가 옆 .cs 로 옮겨 앉으면 MainWindow 만 훑는 계약은 통과시킨다.
+  //     ★ 통제군을 함께 본다: **살아 있는** 푸시(__applyProjects)는 그대로다. 이 계약이 '푸시가 하나도
+  //       없다' 를 보는 것이 아니라 '이 푸시만 없다' 를 보는 것임을 그 한 줄이 증명한다.
+  membersPushIsGone(csFiles, web) {
+    for (const [name, src] of csFiles) {
+      assert.ok(!stripCs(src).includes('__applyMembers'),
+        `${name} 에 명부 푸시(__applyMembers)가 되살아났다 — 갱신 명부가 가는 길이 둘이 되면 같은 명부를 ` +
+        'DB 에서 두 번 읽고 #uaList 를 두 번 칠한다(TRASH-DELETE §11-29). 명부는 회신의 roster 로만 간다');
+    }
+    assert.ok(!web.replace(/\/\/[^\n]*/g, '').includes('__applyMembers'),
+      '웹에 명부 수신부(__applyMembers)가 되살아났다 — 방출부가 없으면 영영 안 불리는 죽은 함수이고, ' +
+      '있으면 호스트 쪽에 푸시를 다시 만들 근거가 된다(둘 중 어느 쪽이든 배달이 다시 둘로 갈린다)');
+    //  통제군 — 부탁하지 않은 갱신이 **정말 필요한** 자리(과제 카탈로그)의 푸시는 그대로 살아 있다.
+    assert.ok(csFiles.some(([, s]) => stripCs(s).includes('window.__applyProjects')),
+      '호스트에서 __applyProjects 푸시까지 사라졌다 — 이 계약은 "푸시가 하나도 없다"가 아니라 "명부 푸시만 없다"다');
+    assert.ok(/window\.__applyProjects = function/.test(web),
+      '웹에서 __applyProjects 수신부까지 사라졌다 — 통제군이 없으면 위 두 줄은 아무것도 증명하지 못한다');
   },
 
   // ⑭-h2 순서 저장의 회신이 명부를 싣는 경우는 **둘뿐**이다(2026-09-11 적대 검토 R3-H2 · 전송은 2026-09-14).
@@ -747,15 +771,40 @@ const checks = {
   },
 
   // ⑬-b 목록을 다시 그리는 것은 **내용이 실제로 달라졌을 때뿐**이다(2026-09-14) — 명부가 새로 앉았다 ·
-  //     검색어가 바뀌었다 · 순서 편집을 켜고 껐다 · 관리자 여부가 뒤집혔다. 그때는 **맨 위**가 옳다
-  //     (R6-W1 이 검색에 대해 요구한 것이 바로 그것이다). 잠금과 ▲▼ 는 이제 이 렌더를 돌리지 않으므로,
-  //     '보던 자리·누르던 버튼'을 되돌리던 한 벌(__uaShown·__uaKeepBtn)은 지킬 것이 없어 사라졌다.
-  renderStartsAtTop(web) {
+  //     검색어가 바뀌었다 · 순서 편집을 켜고 껐다 · 관리자 여부가 뒤집혔다.
+  //     ★ 2026-09-14 적대 검토(W1) — 그 넷이 **같은 답을 갖지 않는다**. 뒤의 셋은 보이는 사람이 갈리니
+  //       맨 위가 옳지만(R6-W1), 첫째는 **내 쓰기의 회신**이 오는 길이기도 하다(uaSend → uaSeatReply →
+  //       uaApplyData → uaApply → uaRender). 89명 중 80번째를 고쳐 저장할 때마다 맨 위로 튀면 R5-W3 이
+  //       닫았던 결함이 그대로 돌아온다. 그래서 렌더는 **지역 변수로** 자리·포커스를 들었다 놓고,
+  //       '맨 위'는 그 이유를 아는 호출부가 uaListTop() 으로 말한다.
+  //     ★ 지역 변수는 옛 __uaShown·__uaKeepBtn 의 부활이 **아니다**: 한 번의 렌더 안에서 나고 죽으므로
+  //       '직전에 그린 화면'을 렌더와 렌더 사이에 보관하지 않는다(대조할 표가 없다는 성질은 그대로다).
+  renderKeepsPlace(web) {
     const r = extractFunction(web, 'uaRender');
-    assert.ok(/list\.scrollTop = 0;/.test(r),
-      'uaRender 가 맨 위에서 시작하지 않는다 — 통째로 갈린 목록에 옛 자리가 남으면 관리자가 고른 적 없는 중간에서 열린다(R6-W1)');
-    assert.ok(!/sameView|keepScroll|keepBtn|keepUid|__uaShown|__uaKeepBtn/.test(r),
-      "uaRender 에 '보던 자리·누르던 버튼 되돌리기'가 남아 있다 — 그 장치는 잠금·▲▼ 가 목록을 다시 만들던 시절의 것이다");
+    assert.ok(/const keepTop = list\.scrollTop;/.test(r) && /list\.scrollTop = keepTop;/.test(r),
+      'uaRender 가 보던 자리를 들었다 놓지 않는다 — 저장 회신이 명부를 앉힐 때마다 목록이 맨 위로 튄다(W1·R5-W3)');
+    assert.ok(!/list\.scrollTop = 0;/.test(r),
+      "uaRender 가 아직 스스로 맨 위로 보낸다 — 이 함수는 자기가 **왜** 불렸는지 모른다(검색인지 내 저장의 회신인지). 그 판단은 호출부의 uaListTop() 이 한다(W1)");
+    //  ★ 되돌릴 컨트롤은 **신원**(data-uop·data-uid)으로 찾는다 — 목록이 통째로 새로 만들어지므로 옛 노드는 버려진다.
+    assert.ok(/document\.activeElement/.test(r) && /dataset\.uop/.test(r) && /list\.contains\(act\)/.test(r),
+      'uaRender 가 쥐고 있던 컨트롤의 신원을 적어 두지 않는다 — 남의 갱신이 도착하면 포커스가 body 로 떨어져 Tab 이 문서 처음부터 다시 시작한다(W1)');
+    assert.ok(/if\(!b\.disabled\) try\{ b\.focus\(\); \}catch\(_\)\{\}/.test(r),
+      '되돌아온 컨트롤이 꺼져 있어도 포커스를 준다(또는 되돌리지 않는다) — 꺼진 버튼에 포커스를 주면 브라우저가 도로 body 로 떨어뜨린다');
+    //  ★ '맨 위'를 아는 쪽 — 검색·「퇴사자 보기」·순서 편집·관리자 뒤집힘. 넷 다 uaListTop 을 부른다.
+    const top = extractFunction(web, 'uaListTop');
+    assert.ok(/getElementById\('uaList'\)/.test(top) && /scrollTop = 0/.test(top),
+      'uaListTop 이 #uaList 를 맨 위로 보내지 않는다 — 맨 위가 옳은 자리들이 갈 곳을 잃는다');
+    assert.ok(/function uaFilter\(\)\{ uaApply\(\); uaListTop\(\); \}/.test(web),
+      '검색이 맨 위에서 열리지 않는다 — 걸러진 결과가 목록 한가운데에서 열린다(R6-W1)');
+    const bar = extractFunction(web, 'uaAdminBar').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/if\(r === true\) uaListTop\(\);/.test(bar),
+      '「퇴사자 보기」가 맨 위에서 열리지 않는다 — 보이는 사람이 통째로 갈리는 조회다(W1)');
+    const tog = extractFunction(web, 'uaOrderToggle').replace(/\/\/[^\n]*/g, '');
+    assert.ok((tog.match(/uaListTop\(\);/g) || []).length >= 2,
+      '순서 편집을 켜고 끄는 두 갈래가 모두 맨 위로 보내지 않는다 — 켤 때 검색어를 비우므로 보이는 사람이 갈린다(미뤄 둔 명부로 끝내는 갈래도 같다)');
+    const ap = extractFunction(web, 'uaApplyData').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/const wasAdmin = __uaAdmin;/.test(ap) && /if\(__uaAdmin !== wasAdmin\) uaListTop\(\);/.test(ap),
+      '관리자 여부가 뒤집혔는데 맨 위로 보내지 않는다(또는 명부가 앉을 때마다 보낸다) — 화면이 통째로 갈리는 것은 그 뒤집힘뿐이다(W1)');
     const bare = web.replace(/\/\/[^\n]*/g, '');
     for (const dead of ['__uaShown', '__uaKeepBtn']) {
       assert.ok(!bare.includes(dead),
@@ -776,18 +825,14 @@ const checks = {
   //      항목입니다 — 목록을 새로고침합니다."(AlreadyActiveMsg) 로 거부당한 뒤 호스트가 약속대로 갱신
   //      명부를 밀어도(§11-32), 폼은 이미 재직 중인 사람에게 여전히 [복구]를 내줬다 — 다시 누르면 같은
   //      거부만 되풀이된다(§11-32 가 닫았다고 적은 그 고리다).
-  //      ★ 2026-09-14 — 갱신 명부가 오는 길이 **둘**이다: 내 쓰기의 회신에 실려서(uaSeatRoster) ·
-  //        부탁하지 않은 푸시로(__applyMembers). 왕복이 됐다고 이 계약이 사라지지 않는다 — 「이미 복구됨」
-  //        거부는 폼을 **열어 둔 채** 갱신 명부를 실어 보내므로, 그 자리에서 폼을 다시 맞추지 않으면
-  //        관리자는 낡은 [복구]를 다시 눌러 같은 거부를 되풀이한다. 그래서 userEdSyncActive 는 살아 있고,
-  //        **두 길 모두** 그것을 부른다.
-  formResyncsOnPush(web) {
+  //      ★ 2026-09-14 — 갱신 명부는 **회신 하나**로만 온다(푸시 __applyMembers 는 그날 사라졌다).
+  //        왕복이 됐다고 이 계약이 사라지지 않는다 — 「이미 복구됨」 거부는 폼을 **열어 둔 채** 갱신 명부를
+  //        실어 보내므로, 그 자리에서 폼을 다시 맞추지 않으면 관리자는 낡은 [복구]를 다시 눌러 같은 거부를
+  //        되풀이한다. 그래서 userEdSyncActive 는 살아 있고, 앉히는 손(uaSeatRoster)이 그것을 부른다.
+  formResyncsOnSeat(web) {
     const seat = extractFunction(web, 'uaSeatRoster').replace(/\/\/[^\n]*/g, '');
     assert.ok(/uaApplyData\(d\);\s*\n\s*userEdSyncActive\(\);/.test(seat),
       '회신에 실려 온 명부를 앉히면서 열려 있는 편집 폼을 다시 맞추지 않는다 — 「이미 복구됨」 거부 뒤 낡은 [복구] 를 다시 눌러 같은 거부가 되풀이된다(R6-W3)');
-    const ap = windowFn(web, '__applyMembers').replace(/\/\/[^\n]*/g, '');
-    assert.ok(/uaApplyData\(d\);\s*\n\s*userEdSyncActive\(\);/.test(ap),
-      '부탁하지 않은 명부 푸시가 앉으면서 열려 있는 편집 폼을 다시 맞추지 않는다 — 남이 그 사람을 복구해도 폼은 낡은 [복구]를 계속 내준다(R6-W3)');
     const f = extractFunction(web, 'userEdSyncActive');
     assert.ok(/isOverlayOpen\(ed\)/.test(f),
       "userEdSyncActive 가 '폼이 열려 있는가'를 공용 판정(isOverlayOpen)으로 보지 않는다 — 닫히는 중인 폼까지 칠한다");
@@ -809,7 +854,7 @@ const checks = {
     //  ★ 관리자가 **고치던 칸**은 건드리지 않는다 — 남의 쓰기가 내 편집을 조용히 지우면 안 된다.
     for (const id of ['userEdLogin', 'userEdName', 'userEdTitle', 'userEdOrg', 'userEdScope', 'userEdRole']) {
       assert.ok(!new RegExp(id).test(f),
-        `userEdSyncActive 가 ${id} 를 손댄다 — 저장하지 않은 편집이 남의 푸시 한 번에 사라진다(R6-W3)`);
+        `userEdSyncActive 가 ${id} 를 손댄다 — 저장하지 않은 편집이 남의 갱신 한 번에 사라진다(R6-W3)`);
     }
     //  ★ 대상이 사라졌으면 **닫지 않고** 말한다 — 닫으면 적어 둔 편집이 통째로 사라지고 이유도 남지 않는다.
     assert.ok(!/closeModal|closeOverlay/.test(f),
@@ -832,8 +877,17 @@ const checks = {
     const s = extractFunction(web, 'uaSend');
     assert.ok(/^async function uaSend\(payload\)\{/m.test(web),
       'uaSend 가 async 가 아니다 — 회신을 부르는 쪽에 돌려줄 수 없다(공용 회신함으로 되돌아간 것이다)');
-    assert.ok(/await hostRequest\(cmd, Object\.assign\(\{ includeInactive: __uaInactive \}, payload\), 20000\)/.test(s),
-      'uaSend 가 hostRequest 왕복(includeInactive 동봉 · 20초)으로 보내지 않는다 — 회신을 짝지을 수단이 다시 손으로 만든 표가 된다');
+    //  ★ 기한 30초 — 호스트의 한 왕복이 DB 를 두 번 만지므로(쓰기 8초 + 명부 재조회 8초 + 접속 4초씩)
+    //    정상 동작으로도 24초에 닿는다. 옛 20초는 호스트가 **아직 일하는 중에** 끊겨, 이미 커밋된 쓰기를
+    //    실패로 보고했다(2026-09-14 적대 검토 W4).
+    assert.ok(/await hostRequest\(cmd, Object\.assign\(\{ includeInactive: __uaInactive \}, payload\), 30000\)/.test(s),
+      'uaSend 가 hostRequest 왕복(includeInactive 동봉 · 30초)으로 보내지 않는다 — 회신을 짝지을 수단이 다시 손으로 만든 표가 되거나, 호스트가 일하는 중에 기한이 먼저 끊긴다(W4)');
+    //  ★ 실패 문장은 **한 곳**(hostWriteMsg)에서 나온다 — 거부(호스트의 msg)와 회신 없음(hostRequest 의
+    //    error)은 관리자가 할 일이 다르다. `msg || error` 로 뭉치면 그 구별이 화면에 닿지 못한다(W4).
+    assert.ok(/msg: hostWriteMsg\(r\)/.test(s),
+      "uaSend 가 실패 문장을 hostWriteMsg 로 만들지 않는다 — 타임아웃(결과를 모른다)이 거부(결과를 안다)와 같은 말로 나간다(W4)");
+    assert.ok(!/r\.msg \|\| r\.error/.test(s),
+      "uaSend 가 아직 msg 와 error 를 한 덩어리로 뭉친다 — 커밋된 INSERT 가 '저장하지 못했습니다'로 보고되고, 다시 누르면 login_id UNIQUE 에 걸린다(W4)");
     assert.ok(/if\(__uaSaving\) return null;/.test(s),
       'uaSend 에 중복 전송 가드가 없다(또는 못 보냈음을 null 로 말하지 않는다) — 두 왕복이 겹치면 잠금 하나로 둘을 풀게 되고, 그 틈에서 회신이 다시 짝을 잃는다');
     assert.ok(/const rep = \{ ok: [^\n]*roster: /.test(s) && /return rep;/.test(s),
@@ -1027,10 +1081,19 @@ const checks = {
       "uaOrderSave 가 「낡은 명부」 거부를 이름 붙여 두지 않는다 — 그 조건을 되그리기 판단에서 다시 쓸 수 없다(R4-W3)");
     assert.ok(/if\(r\.ok \|\| staleRoster\) uaOrderReset\(\);/.test(o),
       'uaOrderSave 가 성공·「낡은 명부」 거부에서 편집 모드를 끝내지 않는다 — 그 거부는 "네 화면이 낡았다"는 뜻이라, 그대로 두면 같은 거부만 되풀이된다');
-    //  ★ 미뤄 둔 갱신은 성공에서 **버린다**(R4-W1) — 그 스냅샷은 내 저장이 서버에 닿기 전의 명부라,
-    //    앉히면 방금 저장한 순서가 옛 순서로 되돌아간다. 확정 명부는 회신(r.roster)이 싣고 온다.
-    assert.ok(/if\(r\.ok\) __uaPendingData = null;/.test(o),
-      'uaOrderSave 가 성공에서 미뤄 둔 옛 스냅샷을 버리지 않는다 — 나중에 편집을 켰다 끄면 그 옛 명부가 이긴다(R4-W1·R4-W2)');
+    //  ★ 미뤄 둔 갱신을 **버리는 일은 앉히는 자리(uaSeatRoster)만** 한다(2026-09-14 적대 검토 W3).
+    //    옛 판은 여기서 `if(r.ok) __uaPendingData = null;` 로 성공이면 무조건 비웠다. 그런데 회신에
+    //    명부가 실려 오는 것은 **호스트가 실제로 다시 읽었을 때뿐**이다(roster="" 이면 못 읽은 것이다) —
+    //    그때 이 한 줄은 남의 갱신(신규 등록·퇴사)을 **대체품 없이** 버렸다. R4-W1 이 막으려던 것은
+    //    '옛 명부가 앉아 방금 저장한 순서를 되돌리는 것'인데, 그 위험은 앉힐 때 생긴다 — 미뤄 둔 채로는
+    //    무해하고, 확정 명부가 오면 그때 앉으면서 함께 비워진다(R4-W2 는 그 자리에서 지켜진다).
+    assert.ok(!/__uaPendingData = null/.test(o),
+      'uaOrderSave 가 미뤄 둔 명부를 자기 손으로 비운다 — 회신에 명부가 안 실려 온 성공(roster="")에서 ' +
+      '남의 갱신이 대체품 없이 사라진다(W3). 비우는 일은 확정 명부를 앉히는 자리 하나여야 한다(uaSeatRoster)');
+    //  ★ 그 '한 자리'가 실제로 비우는지는 여기서 함께 본다 — 둘 다 없으면 미뤄 둔 명부가 영영 남는다.
+    const seat = extractFunction(web, 'uaSeatRoster').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/__uaPendingData = null;/.test(seat),
+      'uaSeatRoster 가 확정 명부를 앉히면서 미뤄 둔 옛 스냅샷을 비우지 않는다 — 나중에 편집을 켰다 끄면 그 옛 명부가 이긴다(R4-W2)');
     //  ★ 2026-09-14(좌석 일원화): 확정 명부는 **uaSend 안에서** 앉았다(uaSeatReply · 계약⑭-e).
     //  ★ 그리고 편집 모드를 끝냈으면 **여기서 한 번** 최종형을 그린다(2026-09-14 군더더기 걷기 2단계).
     //    옛 판은 '누가 이미 그렸나'(painted)를 회신에서 받아 되짚고 안 그린 갈래에서만 그렸다 — 그 셈이
@@ -1055,24 +1118,12 @@ const checks = {
       'userEdOpen 의 잠금 해제가 "왕복이 없을 때만"으로 좁혀져 있지 않다');
   },
 
-  // ⑯ 순서 편집 중에 오는 **부탁하지 않은 명부 푸시**가 편집 중인 순서를 지우지 않는다(2026-09-10).
+  // ⑯ 순서 편집 중에 도착한 **남의 갱신 명부**가 편집 중인 순서를 지우지 않는다(2026-09-10).
   //    ★ 2026-09-14: 이 자리에서 '내 쓰기의 결과인가'(reqId 대조)를 묻던 갈래가 통째로 사라졌다 —
-  //      내 쓰기의 결과는 이제 **그 쓰기의 회신**에 실려 오므로, 여기 닿는 것은 정의상 **남의 갱신**뿐이다.
-  //      짝지을 상대가 없으면 짝짓기도 필요 없다. 남는 물음은 하나다: "지금 순서를 만지는 중인가."
-  orderSurvivesPush(web) {
-    const ap = windowFn(web, '__applyMembers');
-    assert.ok(/window\.__applyMembers = function\(json\)\{/.test(ap),
-      '__applyMembers 가 아직 두 번째 인자(reqId)를 받는다 — 짝지을 상대가 사라진 자리에 표만 남았다');
-    //  ★ 주석은 빼고 본다 — '왜 더는 짐작하지 않는가'를 적어 둔 문장이 계약을 대신 통과시키면 안 된다.
-    const bare = ap.replace(/\/\/[^\n]*/g, '');
-    for (const dead of ['reqId', '__uaReq', '__uaSaving']) {
-      assert.ok(!bare.includes(dead),
-        `__applyMembers 가 아직 ${dead} 를 본다 — 부탁하지 않은 푸시에는 짝지을 요청이 없다(그 짐작이 바로 R3-W1 의 자리다)`);
-    }
-    assert.ok(/const d = uaParseRoster\(json\);/.test(ap) && /if\(!d\) return;/.test(ap),
-      '__applyMembers 가 회신 쪽과 같은 파서(uaParseRoster)를 쓰지 않는다 — 두 길이 갈리면 한쪽만 낡는다');
-    assert.ok(/if\(__uaOrder\)\{ __uaPendingData = d; uaAdminBar\(\); return; \}/.test(ap),
-      '__applyMembers 가 순서 편집 중의 푸시를 미뤄 두지 않는다(또는 미뤄 두고도 막대를 다시 그리지 않는다) — 남의 저장 한 번에 편집 중인 순서가 날아간다');
+  //      내 쓰기의 결과는 **그 쓰기의 회신**에 실려 오므로 짝지을 상대가 없으면 짝짓기도 필요 없다.
+  //      남는 물음은 하나다: "지금 순서를 만지는 중인가." 그 판정(미룰까 앉힐까) 자체는 **uaSeatReply**
+  //      한 문이 지고 계약⑭-e 가 그 문을 본다 — 여기서는 미뤄 둔 것이 **어떻게 되는가**를 본다.
+  orderSurvivesForeignRoster(web) {
     //  ★ 확정 명부(회신에 실려 온 것)가 앉으면 미뤄 둔 옛 스냅샷은 그 자리에서 버린다(R4-W2).
     //    남겨 두면 나중에 순서 편집을 켰다 끄는 것만으로 그 옛 명부가 확정 명부를 덮어쓴다(uaOrderToggle 의 길).
     const seat = extractFunction(web, 'uaSeatRoster').replace(/\/\/[^\n]*/g, '');
@@ -1213,8 +1264,8 @@ test("계약⑦-c: 「구성원 편집」 진입 버튼은 edit_role==='admin' �
 test('계약⑦-e: 퇴사·복구는 편집 폼 하단에만 있고 행에는 없다(2026-09-10 사용자 결정)', () => {
   checks.retireLivesInForm(app);
 });
-test('계약⑦-e2: 명부 푸시는 열려 있는 편집 폼의 퇴사/복구 상태도 맞춘다(입력칸은 건드리지 않는다 · R6)', () => {
-  checks.formResyncsOnPush(app);
+test('계약⑦-e2: 갱신 명부가 앉으면 열려 있는 편집 폼의 퇴사/복구 상태도 맞춘다(입력칸은 건드리지 않는다 · R6)', () => {
+  checks.formResyncsOnSeat(app);
 });
 test('계약⑩: 열람 범위·편집 권한은 드롭다운이고, 문구는 매핑표 한 벌에서만 나온다(2026-09-10)', () => {
   checks.formPickers(app);
@@ -1224,14 +1275,14 @@ test('계약⑪: 모달 폼의 세로 리듬은 토큰 한 곳에서 정한다(.
 });
 test('계약⑫: 파괴 테두리·읽기전용 wash 는 다섯 테마 전부가 자기 토큰을 갖는다', () => checks.themeTokens(app));
 test('계약⑬: 순서 편집 ▲▼ 는 목록을 다시 그리지 않고 행 노드를 옮긴다(되돌릴 자리가 없다)', () => checks.moveDoesNotRedraw(app));
-test('계약⑬-b: 목록을 다시 그리는 것은 내용이 달라졌을 때뿐이고, 그때는 맨 위에서 시작한다', () => checks.renderStartsAtTop(app));
+test('계약⑬-b: 렌더는 보던 자리·쥔 컨트롤을 지키고, 맨 위는 그 이유를 아는 호출부가 고른다', () => checks.renderKeepsPlace(app));
 test('계약⑭: 쓰기 회신은 그 요청을 보낸 클로저가 받는다(손으로 만든 상관관계가 하나도 없다)', () => checks.replyGoesToItsCaller(app));
 test('계약⑭-b: 잠금은 그 자리에서 걸고, 렌더도 같은 값을 보고 그린다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
 test('계약⑭-b2: 잠금이 포커스를 쥔 버튼을 끄면 그 행으로 물러났다가 풀릴 때 돌아온다', () => checks.lockRetreatsFocusInPlace(app));
 test('계약⑭-c: 「순서 저장」은 자기 회신을 자기가 받고, 편집 모드를 끝냈으면 반드시 다시 그린다', () => checks.orderSaveHandlesItsOwnReply(app));
 test('계약⑭-e: 회신 명부의 좌석은 한 곳(uaSeatReply)이고, 순서 편집 중이면 회신도 미뤄 둔다', () => checks.replySeatIsOnePlace(app));
 test('계약⑮: 화면을 (다시) 열 때 낡은 잠금은 풀되, 도는 중이면 그대로 둔다', () => checks.openKeepsGuard(app));
-test('계약⑯: 순서 편집 중의 부탁하지 않은 명부 푸시는 미뤄 두고 편집을 마칠 때 반영한다', () => checks.orderSurvivesPush(app));
+test('계약⑯: 순서 편집 중에 미뤄 둔 남의 갱신 명부는 편집을 마칠 때 반영되고, 확정 명부가 앉으면 사라진다', () => checks.orderSurvivesForeignRoster(app));
 test('계약⑰: 「퇴사자 보기」는 조회가 실제로 시작됐을 때만 켜진 채로 남는다', () => checks.inactiveToggleIsHonest(app));
 test('계약⑱: 목록에 없는 값을 말없이 갈아치우지 않는다(직급 목록이 비면 저장을 잠근다)', () => checks.unknownValueIsKept(app));
 test('계약⑲: 퇴사 확인창은 저장된 이름으로 말하고, 버려질 편집을 먼저 말한다', () => checks.retireConfirmIsHonest(app));
@@ -1248,27 +1299,42 @@ test('변이⑫: 파괴 테두리를 하드코딩으로 되돌리면 계약⑫ �
 //  ★ 변이 대상은 **uaRender 의 그 한 줄**이어야 한다 — trRender 에도 글자가 같은 줄이 있으므로
 //    (두 화면이 같은 규칙을 쓴다) 앞의 안내 문구까지 묶어 그 한 곳만 가리킨다. String.replace 는
 //    첫 일치만 바꾼다: 유일하지 않은 변이는 어느 날 조용히 엉뚱한 함수를 친다.
-const TOP_IN_UA_RENDER = '때문이다(위 머리말). 한 줄로 적어 두는 이유는 노드를 비우면 브라우저가 알아서 0 으로 접는 것에\n' +
-  '  //    기대지 않기 위해서다(그 접힘은 레이아웃이 있어야 일어난다 — 계약이 될 수 없다).\n  list.scrollTop = 0;\n}';
+const KEEP_IN_UA_RENDER = "  //    '맨 위'가 옳은 경우는 그것을 아는 호출부가 uaListTop() 으로 말한다(위 머리말 · W1).\n" +
+  '  list.scrollTop = keepTop;';
 
-test('변이⑬-b: uaRender 가 맨 위에서 시작하지 않게 되돌리면 계약⑬-b 가 실패한다(고른 적 없는 중간에서 열린다)', () => {
-  const bad = mutate(app, TOP_IN_UA_RENDER, '때문이다.\n}');
-  assert.throws(() => checks.renderStartsAtTop(bad), /맨 위에서 시작하지 않는다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+test('변이⑬-b: uaRender 가 다시 스스로 맨 위로 보내면 계약⑬-b 가 실패한다(저장할 때마다 목록이 튄다 · W1)', () => {
+  const bad = mutate(app, KEEP_IN_UA_RENDER, '  list.scrollTop = 0;');
+  assert.throws(() => checks.renderKeepsPlace(bad), /보던 자리를 들었다 놓지 않는다|아직 스스로 맨 위로 보낸다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
-test('변이⑬-b2: 렌더에 옛 되돌리기 장치를 되살리면 계약⑬-b 가 실패한다(다시 그릴 이유 없는 재렌더가 돌아온다)', () => {
-  //  ★ '맨 위에서 시작한다' 한 줄은 **남겨 둔 채** 되돌리기만 얹는다 — 그래야 이 변이가 무엇을 치는지가
-  //    분명해진다(맨 위 계약이 아니라 '되돌리는 장치가 없다' 계약을 친다).
-  const bad = mutate(app, TOP_IN_UA_RENDER, '때문이다.\n  list.scrollTop = 0;\n  if(sameView) list.scrollTop = keepScroll;\n}');
-  assert.throws(() => checks.renderStartsAtTop(bad), /되돌리기'가 남아 있다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+test('변이⑬-b2: 맨 위로 보내는 일을 호출부에서 지우면 계약⑬-b 가 실패한다(검색이 한가운데에서 열린다)', () => {
+  //  ★ 렌더의 되돌리기는 **남겨 둔 채** 호출부의 한 줄만 뗀다 — 이 변이가 치는 자리가 분명해진다
+  //    (되돌리기 계약이 아니라 '맨 위를 아는 쪽이 말한다' 계약을 친다).
+  const bad = mutate(app, 'function uaFilter(){ uaApply(); uaListTop(); }', 'function uaFilter(){ uaApply(); }');
+  assert.throws(() => checks.renderKeepsPlace(bad), /검색이 맨 위에서 열리지 않는다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+});
+
+test('변이⑬-b4: 명부가 앉을 때마다 맨 위로 보내면 계약⑬-b 가 실패한다(내 저장의 회신도 그 길이다 · W1)', () => {
+  const bad = mutate(app, '  if(__uaAdmin !== wasAdmin) uaListTop();', '  uaListTop();');
+  assert.throws(() => checks.renderKeepsPlace(bad), /관리자 여부가 뒤집혔는데 맨 위로 보내지 않는다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+});
+
+test('변이⑬-b5: 되돌아온 컨트롤의 꺼짐 여부를 안 보면 계약⑬-b 가 실패한다(꺼진 버튼에 포커스가 간다)', () => {
+  //  ★ 앞줄(uop·uid 대조)까지 묶어 **uaRender 한 곳만** 가리킨다 — trRender 에 글자가 같은 줄이 있다.
+  const bad = mutate(app,
+    "      if(b.dataset.uop !== keepUop || String(b.dataset.uid || '') !== keepUid) continue;\n      if(!b.disabled) try{ b.focus(); }catch(_){}",
+    "      if(b.dataset.uop !== keepUop || String(b.dataset.uid || '') !== keepUid) continue;\n      try{ b.focus(); }catch(_){}");
+  assert.throws(() => checks.renderKeepsPlace(bad), /꺼져 있어도 포커스를 준다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
 test('변이⑬-b3: 행의 열쇠(data-uid)를 지우면 계약⑬-b 가 실패한다(▲▼ 가 옮길 행을 못 찾는다)', () => {
   const bad = mutate(app, '    line.dataset.uid = String(Number(m && m.userId != null ? m.userId : 0));\n', '');
-  assert.throws(() => checks.renderStartsAtTop(bad), /data-uid 가 없다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+  assert.throws(() => checks.renderKeepsPlace(bad), /data-uid 가 없다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
 test('변이⑬: uaMove 가 다시 목록을 그리게 되돌리면 계약⑬ 이 실패한다(되돌릴 장치가 셋 다시 필요해진다)', () => {
@@ -1350,6 +1416,75 @@ test("변이⑭-f: uaSend 의 중복 전송 가드를 지우면 계약⑭ 가 �
   assert.doesNotThrow(() => checks.replyGoesToItsCaller(app));   // 통제군
 });
 
+//  ★ W3 — 성공에서 미뤄 둔 명부를 **무조건 버리던** 한 줄을 되살리면 계약⑭-c 가 실패한다.
+//    그 한 줄은 회신에 명부가 실려 왔을 때는 이미 끝난 일을 한 번 더 하고(uaSeatRoster 가 비웠다),
+//    안 실려 왔을 때는 남의 갱신을 대체품 없이 버렸다 — 하는 일이 '해로울 때만' 있는 줄이었다.
+test('변이⑭-h: 성공이면 미뤄 둔 명부를 무조건 버리게 되돌리면 계약⑭-c 가 실패한다(W3)', () => {
+  const bad = mutate(app, '  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**',
+    '  if(r.ok) __uaPendingData = null;\n  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**');
+  assert.throws(() => checks.orderSaveHandlesItsOwnReply(bad), /미뤄 둔 명부를 자기 손으로 비운다/);
+  assert.doesNotThrow(() => checks.orderSaveHandlesItsOwnReply(app));   // 통제군
+});
+
+//  ★ W3 의 반대쪽 울타리 — 비우는 **한 자리**(uaSeatRoster)를 지우면 같은 계약이 실패한다.
+//    둘 다 없으면 확정 명부가 앉은 뒤에도 옛 스냅샷이 남아, 편집을 켰다 끄는 것만으로 되살아난다(R4-W2).
+test('변이⑭-h2: 앉히는 자리에서 비우기를 지우면 계약⑭-c 가 실패한다(옛 명부가 되살아난다)', () => {
+  const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);', '  uaApplyData(d);');
+  assert.throws(() => checks.orderSaveHandlesItsOwnReply(bad), /미뤄 둔 옛 스냅샷을 비우지 않는다/);
+  assert.doesNotThrow(() => checks.orderSaveHandlesItsOwnReply(app));   // 통제군
+});
+
+//  ★ W4 — 타임아웃(회신 없음)과 호스트의 거부를 한 문장으로 뭉치면 계약⑭ 가 실패한다.
+test('변이⑭-i: 실패 문장을 다시 msg||error 로 뭉치면 계약⑭ 가 실패한다(W4)', () => {
+  const bad = mutate(app, "  const rep = { ok: !!(r && r.ok), msg: hostWriteMsg(r), roster:",
+    "  const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''), roster:");
+  assert.throws(() => checks.replyGoesToItsCaller(bad), /hostWriteMsg 로 만들지 않는다|한 덩어리로 뭉친다/);
+  assert.doesNotThrow(() => checks.replyGoesToItsCaller(app));   // 통제군
+});
+
+test('변이⑭-j: 왕복 기한을 옛 20초로 되돌리면 계약⑭ 가 실패한다(호스트가 일하는 중에 끊긴다)', () => {
+  const bad = mutate(app, '}, payload), 30000);\n  uaSetSaving(false);', '}, payload), 20000);\n  uaSetSaving(false);');
+  assert.throws(() => checks.replyGoesToItsCaller(bad), /30초\)으로 보내지 않는다/);
+  assert.doesNotThrow(() => checks.replyGoesToItsCaller(app));   // 통제군
+});
+
+/* ── W4 문장 자체 — 순수 함수라 DOM 없이 부른다(pure-logic 과 같은 되살리기) ─────────── */
+//  ★ 이 셋이 재는 것은 **관리자가 읽는 말**이다: 호스트가 거부한 것(결과를 안다)과 회신이 안 온 것
+//    (결과를 모른다)은 다음 행동이 다르다 — 앞은 고쳐서 다시, 뒤는 **확인하고 나서** 다시다.
+//    뭉쳐 놓으면 이미 커밋된 등록을 다시 눌러 login_id UNIQUE 거부를 읽는다(무엇을 고쳐야 하는지 모른 채).
+const hostWriteMsgFn = () => new Function(extractFn(app, 'hostWriteMsg') + '\nreturn hostWriteMsg;')();
+
+test('계약⑭-k: 호스트가 만든 거부 문장은 화면이 다시 쓰지 않는다(통제군)', () => {
+  const f = hostWriteMsgFn();
+  const reject = '관리자만 고칠 수 있습니다.';
+  assert.strictEqual(f({ ok: false, msg: reject }), reject,
+    '호스트의 거부 사유가 화면에서 덧칠됐다 — 관리자는 무엇을 고쳐야 하는지 그 문장에서 읽는다');
+  //  ok 회신에 문장이 없으면 빈 문자열 — 부르는 쪽의 기본 문구('저장했습니다')가 그 자리를 쓴다.
+  assert.strictEqual(f({ ok: true, msg: '' }), '', '문장이 없는 성공 회신에 없는 말을 지어냈다');
+});
+
+test('계약⑭-k2: 회신이 안 온 왕복은 실패가 아니라 **모른다**로 말한다(W4)', () => {
+  const f = hostWriteMsgFn();
+  const out = f({ ok: false, error: '호스트 응답 시간 초과' });
+  assert.ok(out.includes('호스트 응답 시간 초과'), `무엇이 일어났는지가 사라졌다: ${JSON.stringify(out)}`);
+  assert.ok(/결과를 알 수 없습니다/.test(out),
+    `타임아웃을 '결과를 모른다'로 말하지 않는다: ${JSON.stringify(out)} — 커밋된 INSERT 가 실패로 읽힌다(W4)`);
+  assert.ok(/확인한 뒤 다시 시도/.test(out),
+    `무엇을 해야 하는지 말하지 않는다: ${JSON.stringify(out)} — 관리자는 그대로 다시 눌러 UNIQUE 거부를 만난다`);
+  //  ★ 호스트의 사유가 함께 왔다면 **그쪽이 이긴다**(사유를 아는 쪽이 말한다).
+  assert.strictEqual(f({ ok: false, msg: '이름을 입력하세요.', error: '호스트 응답 시간 초과' }), '이름을 입력하세요.',
+    '호스트가 사유를 말했는데도 타임아웃 안내가 덮었다');
+});
+
+test('변이⑭-k: hostWriteMsg 를 옛 msg||error 로 되돌리면 계약⑭-k2 가 실패한다', () => {
+  const bad = mutate(app, "  const msg = String((r && r.msg) || '');\n  if(msg) return msg;",
+    "  const msg = String((r && (r.msg || r.error)) || '');\n  if(msg) return msg;");
+  const f = new Function(extractFn(bad, 'hostWriteMsg') + '\nreturn hostWriteMsg;')();
+  assert.strictEqual(f({ ok: false, error: '호스트 응답 시간 초과' }), '호스트 응답 시간 초과',
+    '변이 전제: 뭉치면 타임아웃이 맨 문장 그대로 나가야 한다');
+  assert.ok(/결과를 알 수 없습니다/.test(hostWriteMsgFn()({ ok: false, error: '호스트 응답 시간 초과' })));   // 통제군
+});
+
 //  ★ 잠금을 **다시 그려서** 반영하던 옛 판으로 되돌리면(R2-W3 이전·이후 모두) 계약⑭-b 가 실패한다.
 //    [편집]·[＋ 직원 등록]을 누르는 것만으로도 userEdOpen 이 uaSetSaving(false) 를 부르므로, 89행짜리
 //    목록이 통째로 다시 만들어져 맨 위로 튀고 방금 누른 그 버튼이 사라진다.
@@ -1416,30 +1551,11 @@ test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패�
   assert.doesNotThrow(() => checks.openKeepsGuard(app));   // 통제군
 });
 
-test('변이⑯: 관계없는 푸시를 그대로 반영하게 되돌리면 계약⑯ 이 실패한다', () => {
-  const bad = mutate(app, '  if(__uaOrder){ __uaPendingData = d; uaAdminBar(); return; }', '  ');
-  assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 두지 않는다/);
-  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
-});
-
-test("변이⑯-b: 푸시가 다시 '내 것인가'를 짐작하게 만들면 계약⑯ 이 실패한다(짝지을 상대가 없다)", () => {
-  const bad = mutate(app, '  if(__uaOrder){ __uaPendingData = d; uaAdminBar(); return; }',
-    '  if(__uaOrder && !__uaSaving){ __uaPendingData = d; uaAdminBar(); return; }');
-  assert.throws(() => checks.orderSurvivesPush(bad), /__applyMembers 가 아직 __uaSaving 를 본다/);
-  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
-});
-
 test('변이⑯-b2: 확정 명부가 옛 스냅샷을 남기게 되돌리면 계약⑯ 이 실패한다(뒤에 켰다 끄면 옛 명부가 이긴다)', () => {
   const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;',
     '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;');
-  assert.throws(() => checks.orderSurvivesPush(bad), /미뤄 둔 옛 스냅샷을 버리지 않는다/);
-  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
-});
-
-test('변이⑯-c: 푸시가 다시 reqId 를 받게 되돌리면 계약⑯ 이 실패한다(짝지을 상대가 없는 표다)', () => {
-  const bad = mutate(app, 'window.__applyMembers = function(json){', 'window.__applyMembers = function(json, reqId){');
-  assert.throws(() => checks.orderSurvivesPush(bad), /아직 두 번째 인자\(reqId\)를 받는다/);
-  assert.doesNotThrow(() => checks.orderSurvivesPush(app));   // 통제군
+  assert.throws(() => checks.orderSurvivesForeignRoster(bad), /미뤄 둔 옛 스냅샷을 버리지 않는다/);
+  assert.doesNotThrow(() => checks.orderSurvivesForeignRoster(app));   // 통제군
 });
 
 test('변이⑰: uaReload 를 async 로 되돌리면 계약⑰ 이 실패한다(반환값이 늘 참이 된다)', () => {
@@ -1535,32 +1651,31 @@ test('계약②-b: 브리지 3종(saveUser·setUserActive·saveUserOrder)이 배
   //  옛 푸시 배관은 남아 있으면 안 된다 — 남겨 두면 웹이 그 위에 상관관계를 다시 손으로 짓는다.
   assert.ok(!/__userSaved/.test(code),
     '호스트에 아직 __userSaved 푸시가 남아 있다 — 쓰기 결과는 회신(ReplyOnUi)으로만 간다(2026-09-14)');
-  //  남은 푸시(__applyMembers)는 인자 하나짜리 '남의 갱신' 하나뿐이다(⑭-h 가 그 모양을 본다).
-  assert.ok(/window\.__applyMembers && window\.__applyMembers\(/.test(code),
-    '호스트가 남의 갱신을 __applyMembers 로 밀어 주지 않는다(휴지통에서 인력을 건드린 뒤의 자리다)');
-  assert.ok(/window\.__applyMembers = function/.test(app), '웹에 __applyMembers 수신부가 없다');
 });
 
-test('계약⑭-h: 갱신 명부는 회신을 타고 오고, 남은 푸시(__applyMembers)는 인자 하나다(2026-09-14)', () =>
+test('계약⑭-h: 갱신 명부는 회신을 타고 온다 — 세 쓰기가 {ok, msg, roster} 한 벌로 돌려준다(2026-09-14)', () =>
   checks.membersRideInReply(main));
 
 test('계약⑭-h2: 순서 저장 회신의 명부는 성공·낡은 명부 거부 둘뿐이다(정본은 ProjectDb 의 상수다)', () =>
   checks.orderRosterPolicy(main, pdb));
 
-test('변이⑭-h: __applyMembers 푸시에 reqId 를 다시 붙이면 계약⑭-h 가 실패한다(옛 짝짓기가 되살아난다)', () => {
-  const bad = mutate(main,
-    'window.__applyMembers(" + JsonSerializer.Serialize(json) + ")");',
-    'window.__applyMembers(" + JsonSerializer.Serialize(json) + "," + JsonSerializer.Serialize(reqId ?? "") + ")");');
-  assert.throws(() => checks.membersRideInReply(bad), /인자 하나\(json\)가 아니다/);
-  assert.doesNotThrow(() => checks.membersRideInReply(main));   // 통제군
+test('계약⑭-h4: 명부 푸시(__applyMembers)는 호스트에도 웹에도 없다(부르는 곳이 없어진 길은 지운다)', () =>
+  checks.membersPushIsGone(widgetCs, app));
+
+test('변이⑭-h4: 호스트에 __applyMembers 방출부를 되살리면 계약⑭-h4 가 실패한다(배달이 다시 둘로 갈린다)', () => {
+  const bad = widgetCs.map(([n, s]) => (n !== 'MainWindow.xaml.cs' ? [n, s] : [n, mutate(s,
+    'JsCall("window.__applyProjects && window.__applyProjects(',
+    'JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize("") + ")");\n'
+    + '            JsCall("window.__applyProjects && window.__applyProjects(')]));
+  assert.throws(() => checks.membersPushIsGone(bad, app), /명부 푸시\(__applyMembers\)가 되살아났다/);
+  assert.doesNotThrow(() => checks.membersPushIsGone(widgetCs, app));   // 통제군
 });
 
-test('변이⑭-h1b: LoadMembersToWebAsync 가 reqId 를 다시 받게 되돌리면 계약⑭-h 가 실패한다', () => {
-  const bad = mutate(main,
-    'private async Task LoadMembersToWebAsync(bool includeInactive)',
-    'private async Task LoadMembersToWebAsync(bool includeInactive, string reqId = "")');
-  assert.throws(() => checks.membersRideInReply(bad), /아직 reqId 를 받는다/);
-  assert.doesNotThrow(() => checks.membersRideInReply(main));   // 통제군
+test('변이⑭-h4b: 웹에 __applyMembers 수신부를 되살리면 계약⑭-h4 가 실패한다(부를 사람 없는 죽은 함수다)', () => {
+  const bad = mutate(app, 'window.__applyTrash = function(json){',
+    'window.__applyMembers = function(json){ uaSeatRoster(json); };\nwindow.__applyTrash = function(json){');
+  assert.throws(() => checks.membersPushIsGone(widgetCs, bad), /명부 수신부\(__applyMembers\)가 되살아났다/);
+  assert.doesNotThrow(() => checks.membersPushIsGone(widgetCs, app));   // 통제군
 });
 
 test('변이⑭-h1c: 쓰기 결과를 옛 푸시(__userSaved)로 되돌리면 계약⑭-h 가 실패한다(상관관계가 사라진다)', () => {
@@ -2019,7 +2134,9 @@ function viewHarnessJs(src) {
 
 // (b) 편집 화면 — 관리 막대와 목록을 그리는 함수만.
 function adminHarnessJs(src) {
-  const fns = ['uaRender', 'uaRowActions', 'uaAdminBar', 'uaEmptyText', 'lockLineBtn', 'uaSyncControls']
+  //  ★ uaListTop 도 함께 떼어 온다 — '맨 위로'는 2026-09-14(W1)부터 렌더가 아니라 **호출부**의 일이라,
+  //    그 한 줄이 없으면 「퇴사자 보기」·검색이 무엇을 하는지 잴 수 없다(그리고 막대가 그것을 부른다).
+  const fns = ['uaRender', 'uaRowActions', 'uaAdminBar', 'uaEmptyText', 'lockLineBtn', 'uaSyncControls', 'uaListTop']
     .map((n) => extractFunction(src, n));
   return [
     "var currentUser = { loginId: 'zzUme' };",
@@ -2056,39 +2173,8 @@ function adminHarnessJs(src) {
     '  var bar = document.getElementById("uaAdmin");',
     '  return { hint: !!document.getElementById("uaPendHint"), text: String(bar.textContent || "") };',
     '};',
-    //  목록을 다시 그리는 것은 **내용이 달라졌을 때뿐**이고, 그때는 맨 위다(2026-09-14). 옛 판은 잠금·▲▼ 도
-    //  이 렌더를 돌렸기에 '같은 화면이면 보던 자리를 되돌린다'가 필요했다 — 지금은 되돌릴 자리가 없다.
-    'window.__probeScrollKeep = function(rows){',
-    '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
-    '  uaRender(rows);',
-    '  var list = document.getElementById("uaList");',
-    '  list.scrollTop = 120;',
-    '  var set = list.scrollTop;',
-    '  uaRender(rows);',            // 명부가 새로 앉았다(호스트 푸시가 이 길이다) — 내용이 갈렸으므로 맨 위
-    '  var seated = list.scrollTop;',
-    '  list.scrollTop = 120;',
-    '  __uaOrder = true;',
-    '  uaRender(rows);',            // 순서 편집으로 바뀌었다 — 역시 맨 위
-    '  var switched = list.scrollTop;',
-    '  return { set: set, seated: seated, switched: switched };',
-    '};',
-    //  검색도 목록을 통째로 갈아치운다 — R6-W1 이 "맨 위에서 열려야 한다"고 요구한 자리가 바로 여기다.
-    'window.__probeScrollSearch = function(rows){',
-    '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
-    '  var q = document.getElementById("uaSearch"); q.value = "";',
-    '  uaRender(rows);',
-    '  var list = document.getElementById("uaList");',
-    '  var one = rows.filter(function(m){ return m.name === "zzU_a"; });',
-    '  list.scrollTop = 120;',
-    '  var set = list.scrollTop;',
-    '  q.value = "zzU_a"; uaRender(one);',            // 검색어를 쳤다 — 보이는 목록이 통째로 달라진다
-    '  var searched = list.scrollTop;',
-    '  __uaAdmin = false; uaRender(rows);',           // 관리자에서 내려갔다 — 안내 한 줄뿐인 화면
-    '  list.scrollTop = 120;',
-    '  __uaAdmin = true; uaRender(rows);',            // 다시 올라왔다 — 목록이 통째로 새로 선다
-    '  var readmin = list.scrollTop;',
-    '  return { set: set, searched: searched, readmin: readmin };',
-    '};',
+    //  ★ '보던 자리·맨 위' 계약은 **호출부까지 함께** 돌려 봐야 재진다(2026-09-14 W1) — 렌더만 부르면
+    //    "누가 맨 위를 고르는가"를 물을 수 없다. 그 한 벌은 아래 placeHarnessJs 에 따로 있다.
     //  잠금은 **목록을 다시 만들지 않고** 그 자리에서 걸린다(uaSyncControls). 포커스를 쥔 버튼이 꺼질 때는
     //  그 행으로 물러났다가, 풀리면 그 버튼으로 돌아온다 — 행도 버튼도 같은 노드 그대로다.
     'window.__probeLockFocus = function(rows){',
@@ -2155,6 +2241,116 @@ function adminHarnessJs(src) {
   ].join('\n');
 }
 
+// (c2) **보던 자리와 쥐고 있던 컨트롤** — 2026-09-14 적대 검토 W1 의 자리.
+//   ★ 여기서는 렌더만이 아니라 **그 렌더를 부르는 길**을 통째로 심는다(uaApplyData·uaFilter·uaOrderToggle·
+//     「퇴사자 보기」). W1 의 물음이 "누가 맨 위를 고르는가" 이므로, 렌더만 불러서는 답을 잴 수 없다.
+//   ★ 회신 좌석(uaSeatRoster)이 아니라 uaApplyData 를 직접 부른다 — 좌석이 하는 일은 '누가 앉히나'이고,
+//     여기서 보는 것은 **앉는 순간 화면이 자리를 지키는가** 하나다(회신→좌석 배선은 계약⑭-e 가 본다).
+//   ★ jsdom 에는 레이아웃이 없어 scrollTop 이 저절로 접히지 않는다 — 그래서 '아무도 건드리지 않았다'를
+//     그대로 잴 수 있다(누가 0 으로 되돌리면 그 값이 바뀐다).
+function placeHarnessJs(src) {
+  const fns = ['uaVisible', 'uaEmptyText', 'uaRowActions', 'uaRender', 'uaApply', 'uaFilter', 'uaListTop',
+    'uaAdminBar', 'uaApplyData', 'uaOrderToggle', 'uaOrderReset', 'uaFlushPending',
+    'lockLineBtn', 'uaSyncControls'].map((n) => extractFunction(src, n));
+  return [
+    "var currentUser = { loginId: 'zzUme' };",
+    'var __uaAdmin = true, __uaOrder = false, __uaInactive = false, __uaSaving = false;',
+    'var __uaMembers = [], __uaUnits = [], __uaTitles = [], __uaOrderBackup = null, __uaPendingData = null;',
+    //  이 계약과 무관한 협력자는 빈 함수로 — 「퇴사자 보기」의 재조회는 '시작했다(true)'만 돌려주면 된다.
+    'function userEdOpen(){} function uaSetActive(){} function uaMove(){} function toast(){}',
+    'function userEdSyncActive(){} function uaOrderSave(){}',
+    'var __reloads = 0;',
+    'function uaReload(){ __reloads++; return true; }',
+    ...fns,
+    'function __seed(rows){',
+    '  __uaAdmin = true; __uaOrder = false; __uaInactive = false; __uaSaving = false;',
+    '  __uaPendingData = null; __uaOrderBackup = null; __reloads = 0;',
+    '  var q = document.getElementById("uaSearch"); q.value = ""; q.disabled = false;',
+    '  __uaMembers = rows.slice();',
+    '  uaAdminBar(); uaApply();',
+    '  return document.getElementById("uaList");',
+    '}',
+    'function __focus(){',
+    '  var a = document.activeElement;',
+    '  return { uop: (a && a.dataset) ? String(a.dataset.uop || "") : "",',
+    '           uid: (a && a.dataset) ? String(a.dataset.uid || "") : "",',
+    '           isBody: a === document.body };',
+    '}',
+    'function __data(rows, admin){',
+    '  return { admin: admin !== false, members: rows, units: [], titles: [], includeInactive: false };',
+    '}',
+    //  ① 내 쓰기의 회신이 확정 명부를 앉힌다(uaSend → uaSeatReply → uaApplyData) — 자리도 포커스도 그대로여야 한다.
+    'window.__probeSeatKeeps = function(rows, uid){',
+    '  var list = __seed(rows);',
+    '  var b = null, all = document.querySelectorAll("#uaList [data-uop]");',
+    '  for(var i=0;i<all.length;i++) if(all[i].dataset.uid === String(uid)) b = all[i];',
+    '  if(!b) return { found: false };',
+    '  list.scrollTop = 120; b.focus();',
+    '  var started = document.activeElement === b;',
+    //  회신이 싣고 온 명부 = 같은 사람들(이름 하나가 바뀌었다). 내용이 갈린 것이 아니라 **갱신**이다.
+    '  var next = rows.map(function(m){ return Object.assign({}, m, m.userId === uid ? { name: m.name + "*" } : {}); });',
+    '  uaApplyData(__data(next, true));',
+    '  return { found: true, started: started, top: list.scrollTop, focus: __focus(),',
+    '           sameNode: document.body.contains(b),',
+    '           names: Array.prototype.map.call(document.querySelectorAll("#uaList .mb-row b"), function(x){ return x.textContent; }) };',
+    '};',
+    //  ② 그 사람이 명부에서 빠진 채로 앉으면 — 억지로 다른 버튼에 포커스를 주지 않는다(통제군).
+    'window.__probeSeatGone = function(rows, uid){',
+    '  var list = __seed(rows);',
+    '  var b = null, all = document.querySelectorAll("#uaList [data-uop]");',
+    '  for(var i=0;i<all.length;i++) if(all[i].dataset.uid === String(uid)) b = all[i];',
+    '  if(!b) return { found: false };',
+    '  list.scrollTop = 120; b.focus();',
+    '  var next = rows.filter(function(m){ return m.userId !== uid; });',
+    '  uaApplyData(__data(next, true));',
+    '  return { found: true, top: list.scrollTop, focus: __focus(), rows: next.length,',
+    '           lines: document.querySelectorAll("#uaList .mba-line").length };',
+    '};',
+    //  ③ 검색 — 보이는 사람이 통째로 갈린다. 맨 위에서 열려야 한다(R6-W1).
+    'window.__probeSearchTop = function(rows){',
+    '  var list = __seed(rows);',
+    '  list.scrollTop = 120;',
+    '  var before = list.scrollTop;',
+    '  var q = document.getElementById("uaSearch"); q.value = "zzU_a";',
+    '  uaFilter();',
+    '  return { before: before, top: list.scrollTop,',
+    '           lines: document.querySelectorAll("#uaList .mba-line").length };',
+    '};',
+    //  ④ 순서 편집 켜기·끄기 — 켤 때 검색어를 비우므로 보이는 사람이 갈린다.
+    'window.__probeOrderTop = function(rows){',
+    '  var list = __seed(rows);',
+    '  list.scrollTop = 120;',
+    '  uaOrderToggle(true);',
+    '  var on = list.scrollTop;',
+    '  list.scrollTop = 120;',
+    '  uaOrderToggle(false);',
+    '  var off = list.scrollTop;',
+    '  return { on: on, off: off };',
+    '};',
+    //  ⑤ 「퇴사자 보기」 — 조회 조건이 바뀐다(재조회가 실제로 시작했을 때만 맨 위로).
+    'window.__probeInactiveTop = function(rows){',
+    '  var list = __seed(rows);',
+    '  list.scrollTop = 120;',
+    '  var cb = document.getElementById("uaInactive");',
+    '  if(!cb) return { found: false };',
+    '  cb.checked = true;',
+    '  cb.dispatchEvent(new window.Event("change"));',
+    '  return { found: true, top: list.scrollTop, reloads: __reloads };',
+    '};',
+    //  ⑥ 관리자 여부가 뒤집힌다 — 목록 ↔ 안내 한 줄. 화면이 통째로 갈리므로 맨 위다.
+    'window.__probeAdminFlipTop = function(rows){',
+    '  var list = __seed(rows);',
+    '  list.scrollTop = 120;',
+    '  uaApplyData(__data([], false));',      // 관리자에서 내려갔다
+    '  var down = list.scrollTop;',
+    '  list.scrollTop = 120;',
+    '  uaApplyData(__data(rows, true));',     // 다시 올라왔다
+    '  var up = list.scrollTop;',
+    '  return { down: down, up: up };',
+    '};',
+  ].join('\n');
+}
+
 // (d) 순서 편집의 ▲▼ — 목록을 **다시 만들지 않고** 행 노드를 옮기는가, 그리고 포커스·자리가 그대로인가.
 //     ★ jsdom 에는 레이아웃이 없어 scrollTop 은 저절로 접히지 않는다 — 그래서 오히려 '아무도 건드리지
 //       않았다'를 여기서 잴 수 있다(누가 0 으로 되돌리면 그 값이 바뀐다).
@@ -2195,12 +2391,12 @@ function moveHarnessJs(src) {
   ].join('\n');
 }
 
-// (d2) 회신(uaSend 가 돌려주는 Promise)과 **부탁하지 않은** 명부 푸시(__applyMembers) — 무엇이 앉고 무엇이 미뤄지는가.
-//   ★ 2026-09-14. 옛 판은 공용 회신함(__userSaved)과 푸시를 **손으로 짝지었다**(reqId 대조 · R3-W1).
-//     그 짝짓기가 사라진 지금 재야 할 것이 바뀐다:
+// (d2) 회신(uaSend 가 돌려주는 Promise)이 나르는 명부 — 무엇이 앉고 무엇이 미뤄지는가.
+//   ★ 2026-09-14. 옛 판은 공용 회신함(__userSaved)과 푸시(__applyMembers)를 **손으로 짝지었다**
+//     (reqId 대조 · R3-W1). 푸시도 그 짝짓기도 사라진 지금 재야 할 것이 바뀐다:
 //       · 회신은 그 왕복을 시작한 **그 자리로** 돌아온다(uaSend 가 Promise 를 돌려준다).
-//       · 회신에 실려 온 명부는 **정의상 내 쓰기의 결과**라, 미뤄 두지 않고 그 자리에서 앉는다.
-//       · __applyMembers 로 오는 것은 **정의상 남의 갱신**이라, 순서 편집 중이면 미뤄 둔다.
+//       · 내 쓰기의 회신이 나른 명부는 **정의상 내 결과**라, 미뤄 두지 않고 그 자리에서 앉는다.
+//       · 남의 왕복(휴지통 복구·삭제)이 나른 명부는 순서 편집 중이면 미뤄 둔다 — 같은 문(uaSeatReply)이다.
 //   ★ 호스트 왕복은 우리 손에 둔다(hostRequest 를 바꿔 끼운다) — 회신을 **무엇으로** 돌려줄지 시험이 정한다.
 //     그리는 일(uaAdminBar·uaApply)은 빈 함수다: 여기서 재는 것은 **어느 명부가 화면 상태에 앉는가** 하나다.
 //   ★ setTimeout 은 세기만 한다(바꿔치기가 아니다). 워치독이 되살아나면 그 수가 0 이 아니게 된다 —
@@ -2245,6 +2441,12 @@ function pushHarnessJs(src) {
     extractFunction(src, 'lockLineBtn'),
     extractFunction(src, 'uaSyncControls'),
     extractFunction(src, 'uaSetSaving'),
+    //  ★ 실패 문장의 한 곳(2026-09-14 W4) — uaSend 가 이것으로 회신의 말을 정한다. 떼어 오지 않으면
+    //    왕복 자체가 죽어 이 하네스가 재려는 것이 아예 돌지 않는다.
+    extractFunction(src, 'hostWriteMsg'),
+    //  ★ '맨 위로'(W1)는 호출부의 일이라 uaOrderToggle·uaApplyData 가 부른다 — 자리 계약은 여기서 재지
+    //    않지만(placeHarnessJs 가 잰다), 없으면 그 두 함수가 ReferenceError 로 죽는다.
+    extractFunction(src, 'uaListTop'),
     extractFn(src, 'uaSend'),
     extractFunction(src, 'uaParseRoster'),
     extractFunction(src, 'uaSeatRoster'),
@@ -2253,7 +2455,6 @@ function pushHarnessJs(src) {
     extractFunction(src, 'uaSeatReply'),
     extractFunction(src, 'userEdAfterWrite'),
     extractFn(src, 'uaOrderSave'),
-    windowFn(src, '__applyMembers'),
     'function __reset(rows){',
     '  __uaAdmin = true; __uaMembers = rows.slice(); __uaUnits = []; __uaTitles = [];',
     '  __uaOrder = false; __uaOrderBackup = null; __uaPendingData = null; __uaSaving = false; __ueId = 0;',
@@ -2291,7 +2492,8 @@ function pushHarnessJs(src) {
     //     끝에서 순서 편집을 켰다 끈다 — 미뤄 둔 옛 스냅샷이 남아 있으면 바로 여기서 확정 명부를 덮는다(R4-W2).
     'window.__probeOrderSave = function(rows, parked, reply){',
     '  __armOrder(rows);',
-    '  if(parked) window.__applyMembers(JSON.stringify(parked));',
+    //  ★ '남의 갱신' 은 남의 왕복이 나른 명부다(휴지통 복구·삭제) — 내 순서 저장이 아니므로 미뤄진다.
+    "  if(parked) uaSeatReply(JSON.stringify(parked), 'trashRestore');",
     '  var parkedState = __state();',
     '  __reply = reply;',
     '  return uaOrderSave().then(function(){',
@@ -2301,10 +2503,10 @@ function pushHarnessJs(src) {
     '             toasts: __toasts.slice(), sent: __sent.slice(), timers: __timers };',
     '  });',
     '};',
-    //  ② 부탁하지 않은 푸시 — 편집 중이면 미뤄 두고 막대가 그 사실을 말한다. 편집을 마치면 그때 앉는다.
+    //  ② 남의 갱신 — 편집 중이면 미뤄 두고 막대가 그 사실을 말한다. 편집을 마치면 그때 앉는다.
     'window.__probeUnsolicited = function(rows, pushed){',
     '  __armOrder(rows);',
-    '  window.__applyMembers(JSON.stringify(pushed));',
+    "  uaSeatReply(JSON.stringify(pushed), 'trashRestore');",
     '  var parked = __state();',
     '  uaOrderToggle(false);',
     '  return { parked: parked, end: __state() };',
@@ -2314,7 +2516,7 @@ function pushHarnessJs(src) {
     '  __reset(rows);',
     '  if(uid) __openForm(uid);',
     '  var before = __pickAct();',
-    '  window.__applyMembers(JSON.stringify(pushed));',
+    "  uaSeatReply(JSON.stringify(pushed), 'trashRestore');",
     '  return { before: before, after: __pickAct(), names: __names(),',
     '           msgs: __msgs.slice(), closes: __closes, pending: !!__uaPendingData };',
     '};',
@@ -2444,8 +2646,8 @@ const probeMove = (uid, delta, pressUop, src = app) => runInJsdom(ADMIN_FIXTURE,
 const probeFill = (items, cur, blank, src = app) => runInJsdom(FILL_FIXTURE, fillHarnessJs(src), '__probe', items, cur, blank);
 const probeScope = (search, inactive, admin, src = app) => runInJsdom(ADMIN_FIXTURE, scopeHarnessJs(src), '__probe', ROWS, search, inactive, admin);
 const probeEntry = (role, src = app) => runInJsdom(ENTRY_FIXTURE, entryHarnessJs(src), '__probe', role);
-//  회신·푸시 짝짓기(R3-W1) — 그리지 않으므로 자리만 있으면 된다(uaOrderReset 이 검색칸을 푼다).
-//   ★ 폼 하단의 [퇴사 처리]/[복구] 와 읽기전용 서열 칸도 둔다(R6-W3) — 명부 푸시가 그 둘을 다시 맞춘다.
+//  회신이 나른 명부의 좌석 — 그리지 않으므로 자리만 있으면 된다(uaOrderReset 이 검색칸을 푼다).
+//   ★ 폼 하단의 [퇴사 처리]/[복구] 와 읽기전용 서열 칸도 둔다(R6-W3) — 앉는 명부가 그 둘을 다시 맞춘다.
 const PUSH_FIXTURE = '<!doctype html><html><body><input id="uaSearch">' +
   '<div class="overlay hidden" id="userEditModal">' +
   '<div id="userEdMsg"></div><input type="text" id="userEdSort" readonly>' +
@@ -2489,8 +2691,13 @@ const probeSendSeats = (uid, rep, src = app) =>
   runInJsdomAsync(PUSH_FIXTURE, pushHarnessJs(src), '__probeSendSeats', ROWS, uid, rep);
 const probeReplyDuringOrder = (rep, src = app) =>
   runInJsdomAsync(PUSH_FIXTURE, pushHarnessJs(src), '__probeReplyDuringOrder', ROWS, rep);
-const probeUaScrollKeep = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeScrollKeep', ROWS);
-const probeUaScrollSearch = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeScrollSearch', ROWS);
+//  W1 — 보던 자리·쥔 컨트롤(렌더)과 '맨 위'(호출부)를 한 벌로 잰다.
+const probeSeatKeeps = (uid, src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeSeatKeeps', ROWS, uid);
+const probeSeatGone = (uid, src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeSeatGone', ROWS, uid);
+const probeSearchTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeSearchTop', ROWS);
+const probeOrderTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeOrderTop', ROWS);
+const probeInactiveTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeInactiveTop', ROWS);
+const probeAdminFlipTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeAdminFlipTop', ROWS);
 const probeUaLockFocus = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockFocus', ROWS);
 const probeUaLockFocusMoved = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockFocusMoved', ROWS);
 const probeUaLockRerender = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockSurvivesRerender', ROWS);
@@ -2517,11 +2724,11 @@ if (!jsdom) {
   skip('변이⑬-DOM: 누른 행을 옮기게 되돌리면 그 안의 포커스가 사라진다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(d2): 잠금 중에 옮긴 포커스를 풀 때 도로 뺏지 않는다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(e): 그 자리에서 잠근 뒤 다시 그려도 컨트롤이 전부 잠긴 채로 선다', SKIP_NO_JSDOM);
-  skip('변이⑬-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(e): 렌더에서 잠금을 빼면 갱신 명부 한 번에 잠금이 증발한다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM(d): 돌아올 자리를 안 적어 두면 잠금이 풀려도 포커스가 행에 남는다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM: 미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말한다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(b): 회신에 실려 온 명부는 미뤄 두지 않고 그 자리에서 앉는다', SKIP_NO_JSDOM);
-  skip('계약⑯-DOM(c): 부탁하지 않은 푸시는 편집 중이면 미뤄 두고, 편집을 마칠 때 앉는다', SKIP_NO_JSDOM);
+  skip('계약⑯-DOM(c): 남의 왕복이 나른 명부는 편집 중이면 미뤄 두고, 편집을 마칠 때 앉는다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(d): 「낡은 명부」 거부는 편집 모드를 끝내고 갱신 명부를 앉힌다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(e): 회신에 명부가 안 실려 와도 저장한 순서가 화면에 남는다', SKIP_NO_JSDOM);
   skip('계약⑯-DOM(f): 확정 명부가 앉으면 미뤄 둔 옛 스냅샷도 함께 사라진다', SKIP_NO_JSDOM);
@@ -2536,15 +2743,21 @@ if (!jsdom) {
   skip('계약⑱-DOM: 목록에 없는 값은 맨 위에 끼워 넣고 그대로 선택된다', SKIP_NO_JSDOM);
   skip('변이⑱-DOM: 옛 동작(첫 항목으로 갈아치우기)이면 값이 조용히 바뀐다', SKIP_NO_JSDOM);
   skip('계약⑳-DOM: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', SKIP_NO_JSDOM);
-  skip('계약⑬-DOM(c): 목록을 다시 그리면 언제나 맨 위에서 시작한다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(c): 쓰기 회신이 명부를 앉혀도 보던 자리와 쥔 컨트롤이 그대로다(W1)', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(c3): 그 사람이 명부에서 빠지면 다른 버튼에 포커스를 억지로 주지 않는다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(c3): 렌더가 스스로 맨 위로 보내면 저장할 때마다 목록이 튄다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(d): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM(d2): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e4): 회신에 실려 온 명부도 열려 있는 폼을 다시 맞춘다', SKIP_NO_JSDOM);
-  skip('계약⑬-DOM(c2): 검색어를 쳐도, 관리자 여부가 뒤집혔다 돌아와도 맨 위다', SKIP_NO_JSDOM);
-  skip('변이⑬-DOM(c2): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 검색이 한가운데에서 열린다', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(e2): 부탁하지 않은 명부 푸시가 오면 열려 있는 폼의 [복구]가 [퇴사 처리]로 바뀐다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(c2): 검색·순서 편집·「퇴사자 보기」·관리자 뒤집힘은 맨 위에서 연다(R6-W1)', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(c2): 검색의 맨 위 한 줄을 지우면 걸러진 결과가 한가운데에서 열린다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(c4): 「퇴사자 보기」의 맨 위 한 줄을 지우면 새 조회가 한가운데에서 열린다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(e2): 남의 왕복이 나른 명부가 앉으면 열려 있는 폼의 [복구]가 [퇴사 처리]로 바뀐다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(e5): 회신이 안 온 왕복은 폼과 토스트에 결과를 모른다고 말한다(W4)', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(e5): 실패 문장을 다시 msg||error 로 뭉치면 타임아웃이 맨 문장으로 나간다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(e6): 호스트가 사유를 말한 거부에는 타임아웃 안내가 붙지 않는다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e3): 대상이 새 명부에서 사라지면 폼을 닫지 않고 그 사실만 말한다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(e2): 푸시 뒤 폼 맞추기를 지우면 낡은 [복구]가 그대로 남는다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(e2): 명부가 앉은 뒤 폼 맞추기를 지우면 낡은 [복구]가 그대로 남는다', SKIP_NO_JSDOM);
 } else {
   test('계약⑦-DOM(a): 「구성원 보기」는 관리자에게도 편집 컨트롤이 0 이다(숨김이 아니라 부재)', () => {
     const r = probeView();
@@ -2687,35 +2900,77 @@ if (!jsdom) {
     assert.strictEqual(probeMove(11, +1, 'down').focus.uop, 'down');   // 통제군
   });
 
-  //  ★ 목록을 다시 그리는 길은 이제 **내용이 달라지는** 것뿐이다(명부가 새로 앉았다 · 순서 편집을 켰다 ·
-  //    검색 · 관리자 여부). 그때는 맨 위가 옳다 — R6-W1 이 검색에 대해 요구한 것이 바로 그것이고,
-  //    잠금·▲▼ 가 이 길에서 빠진 지금은 나머지 경우에도 같은 답이 옳다.
-  test('계약⑬-DOM(c): 목록을 다시 그리면 언제나 맨 위에서 시작한다', () => {
-    const r = probeUaScrollKeep();
-    assert.strictEqual(r.set, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
-    assert.strictEqual(r.seated, 0,
-      `명부가 새로 앉았는데 옛 스크롤 자리(${r.seated})가 그대로 남았다 — 통째로 갈린 목록의 한가운데에서 시작한다`);
-    assert.strictEqual(r.switched, 0,
-      `순서 편집으로 바뀌었는데 옛 스크롤 자리(${r.switched})가 그대로 앉았다 — 고른 적 없는 중간에서 시작한다`);
+  //  ★ W1 — 쓰기 회신이 확정 명부를 앉히는 길(uaSend → uaSeatReply → uaApplyData → uaApply → uaRender)은
+  //    **내용이 갈린 것이 아니라 갱신**이다. 89명 중 80번째를 고쳐 저장했는데 맨 위로 튀면 R5-W3 이 닫았던
+  //    결함이 그대로 돌아오고, 남의 갱신이 도착하면 포커스가 body 로 떨어져 Tab 이 문서 처음부터 다시 시작한다.
+  test('계약⑬-DOM(c): 쓰기 회신이 명부를 앉혀도 보던 자리와 쥔 컨트롤이 그대로다(W1)', () => {
+    const r = probeSeatKeeps(13);
+    assert.strictEqual(r.found, true, '전제 붕괴: 그 사람의 행 버튼을 찾지 못했다');
+    assert.strictEqual(r.started, true, '전제 붕괴: 행 버튼에 포커스를 주지 못했다');
+    assert.ok(r.names.some((n) => /\*$/.test(n)),
+      `전제 붕괴: 앉힌 명부가 화면에 닿지 않았다(${JSON.stringify(r.names)}) — 이 계약을 잴 수 없다`);
+    assert.strictEqual(r.sameNode, false,
+      '전제 붕괴: 목록을 다시 만들지 않았다 — 그러면 이 계약(신원으로 되찾기)이 재는 것이 없다');
+    assert.strictEqual(r.top, 120,
+      `저장 회신이 명부를 앉히자 보던 자리가 ${r.top} 로 튀었다 — 80번째 사람을 고칠 때마다 맨 위로 돌아간다(W1·R5-W3)`);
+    assert.strictEqual(r.focus.uop, 'edit',
+      `앉힌 뒤 쥐고 있던 컨트롤로 돌아오지 않았다: ${JSON.stringify(r.focus)} — 포커스가 body 로 떨어지면 Tab 이 문서 처음부터 다시 시작한다`);
+    assert.strictEqual(r.focus.uid, '13', `포커스가 다른 사람의 행으로 갔다: ${JSON.stringify(r.focus)}`);
   });
 
-  //  ★ R6-W1 — 검색은 목록을 통째로 갈아치운다. 89행을 내려다 보던 중에 검색어를 치면 걸러진 결과가
-  //    목록 한가운데에서 열리던 결함이 여기 자리다.
-  test('계약⑬-DOM(c2): 검색어를 쳐도, 관리자 여부가 뒤집혔다 돌아와도 맨 위다(R6-W1)', () => {
-    const r = probeUaScrollSearch();
-    assert.strictEqual(r.set, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
-    assert.strictEqual(r.searched, 0,
-      `검색어를 쳤는데 옛 스크롤 자리(${r.searched})가 그대로 앉았다 — 걸러진 결과가 목록 한가운데에서 열린다(R6-W1)`);
-    assert.strictEqual(r.readmin, 0,
-      `관리자 여부가 뒤집혔다 돌아왔는데 옛 자리(${r.readmin})가 앉았다 — 목록이 통째로 새로 서는 화면이다(R6-W1)`);
+  //  ★ 통제군 — 되돌리기는 **있던 자리에만** 돌아간다. 그 사람이 명부에서 빠졌으면(남이 퇴사시켰다)
+  //    엉뚱한 행의 버튼에 포커스를 주지 않는다: 그러면 다음 Enter 가 **다른 사람**의 폼을 연다.
+  test('계약⑬-DOM(c3): 그 사람이 명부에서 빠지면 다른 버튼에 포커스를 억지로 주지 않는다', () => {
+    const r = probeSeatGone(13);
+    assert.strictEqual(r.found, true, '전제 붕괴: 그 사람의 행 버튼을 찾지 못했다');
+    assert.strictEqual(r.lines, r.rows, `전제 붕괴: 빠진 명부가 화면에 닿지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(r.top, 120, `사람이 빠졌다고 보던 자리가 ${r.top} 로 튀었다 — 남의 퇴사가 내 화면을 옮긴다`);
+    assert.strictEqual(r.focus.uop, '',
+      `사라진 컨트롤 대신 다른 버튼이 포커스를 받았다: ${JSON.stringify(r.focus)} — 다음 Enter 가 엉뚱한 사람의 폼을 연다`);
   });
 
-  test('변이⑬-DOM(c2): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 검색이 한가운데에서 열린다(R6-W1)', () => {
-    const bad = mutate(app, TOP_IN_UA_RENDER, '때문이다.\n  list.scrollTop = 120;\n}');
-    const r = probeUaScrollSearch(bad);
-    assert.strictEqual(r.searched, 120,
-      `변이 전제: 자리를 되돌리면 검색 재렌더가 옛 자리를 앉혀야 한다(실제: ${JSON.stringify(r)})`);
-    assert.strictEqual(probeUaScrollSearch().searched, 0);   // 통제군
+  test('변이⑬-DOM(c3): 렌더가 스스로 맨 위로 보내면 저장할 때마다 목록이 튄다(W1 이 고친 그 결함)', () => {
+    const bad = mutate(app, KEEP_IN_UA_RENDER, '  list.scrollTop = 0;');
+    const r = probeSeatKeeps(13, bad);
+    assert.strictEqual(r.top, 0, `변이 전제: 렌더가 맨 위로 보내면 0 이어야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeSeatKeeps(13).top, 120);   // 통제군
+  });
+
+  //  ★ R6-W1 — 보이는 사람이 통째로 갈리는 넷(검색 · 순서 편집 · 「퇴사자 보기」 · 관리자 뒤집힘)은
+  //    여전히 맨 위에서 열려야 한다. 달라진 것은 **그 판단을 어디서 하는가**뿐이다(렌더 → 호출부).
+  test('계약⑬-DOM(c2): 검색·순서 편집·「퇴사자 보기」·관리자 뒤집힘은 맨 위에서 연다(R6-W1)', () => {
+    const s = probeSearchTop();
+    assert.strictEqual(s.before, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
+    assert.strictEqual(s.lines, 1, `전제 붕괴: 검색이 목록을 걸러 내지 않았다(행 ${s.lines}개)`);
+    assert.strictEqual(s.top, 0,
+      `검색어를 쳤는데 옛 스크롤 자리(${s.top})가 그대로 앉았다 — 걸러진 결과가 목록 한가운데에서 열린다(R6-W1)`);
+    const o = probeOrderTop();
+    assert.strictEqual(o.on, 0, `순서 편집을 켰는데 옛 자리(${o.on})가 남았다 — 검색어를 비우므로 보이는 사람이 갈린다`);
+    assert.strictEqual(o.off, 0, `순서 편집을 껐는데 옛 자리(${o.off})가 남았다`);
+    const i = probeInactiveTop();
+    assert.strictEqual(i.found, true, '전제 붕괴: 「퇴사자 보기」 체크박스를 찾지 못했다');
+    assert.strictEqual(i.reloads, 1, `전제 붕괴: 재조회가 시작되지 않았다(${i.reloads}번)`);
+    assert.strictEqual(i.top, 0, `「퇴사자 보기」를 켰는데 옛 자리(${i.top})가 남았다 — 보이는 사람이 통째로 갈리는 조회다`);
+    const a = probeAdminFlipTop();
+    assert.strictEqual(a.down, 0, `관리자에서 내려갔는데 옛 자리(${a.down})가 남았다 — 안내 한 줄뿐인 화면이다`);
+    assert.strictEqual(a.up, 0, `관리자로 돌아왔는데 옛 자리(${a.up})가 남았다 — 목록이 통째로 새로 선다`);
+  });
+
+  test('변이⑬-DOM(c2): 검색의 맨 위 한 줄을 지우면 걸러진 결과가 한가운데에서 열린다(R6-W1)', () => {
+    const bad = mutate(app, 'function uaFilter(){ uaApply(); uaListTop(); }', 'function uaFilter(){ uaApply(); }');
+    const r = probeSearchTop(bad);
+    assert.strictEqual(r.top, 120,
+      `변이 전제: 맨 위 한 줄을 지우면 옛 자리가 남아야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeSearchTop().top, 0);   // 통제군
+  });
+
+  test('변이⑬-DOM(c4): 「퇴사자 보기」의 맨 위 한 줄을 지우면 새 조회가 한가운데에서 열린다', () => {
+    const bad = mutate(app, '    if(r === true) uaListTop();\n', '');
+    const r = probeInactiveTop(bad);
+    assert.strictEqual(r.reloads, 1, '변이 전제: 재조회 자체는 그대로 시작해야 한다');
+    assert.strictEqual(r.top, 120,
+      `변이 전제: 맨 위 한 줄을 지우면 옛 자리가 남아야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeInactiveTop().top, 0);   // 통제군
   });
 
   //  ★ 잠금은 **목록을 다시 만들지 않고** 그 자리에서 걸린다(2026-09-14). 그래서 보던 자리도 노드도 그대로고,
@@ -2784,7 +3039,7 @@ if (!jsdom) {
     assert.ok(edit && edit.disabled, `다시 그린 막대의 「순서 편집」이 켜져 있다: ${JSON.stringify(r.barOff)}`);
   });
 
-  test('변이⑬-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다(그래서 두 겹이 필요하다)', () => {
+  test('변이⑬-DOM(e): 렌더에서 잠금을 빼면 갱신 명부 한 번에 잠금이 증발한다(그래서 두 겹이 필요하다)', () => {
     const bad = mutate(app, '    b.disabled = __uaSaving;', '    b.disabled = false;');
     const r = probeUaLockRerender(bad);
     assert.deepStrictEqual(r.inPlace, [true, true, true], '변이 전제: 그 자리에서 끄는 겹은 그대로 돌아야 한다');
@@ -2839,9 +3094,9 @@ if (!jsdom) {
       `안내 문구가 계약과 다르다: ${JSON.stringify(on.text)}`);
   });
 
-  //  ★ 회신과 푸시가 **갈라섰다**(2026-09-14). 옛 판은 둘 다 __applyMembers 로 들어와 reqId 로 짝지어야
-  //    했다 — 그 짝짓기가 어긋나면 저장한 순서가 화면에 끝내 안 보였다(R3-W1). 지금 회신은 uaSend 의
-  //    Promise 로, 푸시는 __applyMembers 로 들어온다: 어느 길로 왔는지가 곧 '누구 것인가'의 답이다.
+  //  ★ '누구 것인가'를 **묻지 않는다**(2026-09-14). 옛 판은 결과도 갱신도 푸시(__userSaved·__applyMembers)로
+  //    들어와 reqId 로 짝지어야 했고, 그 짝짓기가 어긋나면 저장한 순서가 화면에 끝내 안 보였다(R3-W1).
+  //    지금은 모든 명부가 **어떤 왕복의 회신**으로 들어온다 — 내 것인지는 그 왕복의 cmd 가 이미 말해 준다.
   const NEW_NAME = PUSHED.members[0].name;
   const OLD_NAME = PARKED.members[0].name;
   const OLD_NAMES = ROWS.map((m) => m.name);
@@ -2861,7 +3116,7 @@ if (!jsdom) {
     //  왕복은 정확히 한 번, 명령·타임아웃·「퇴사자 보기」가 함께 실려 나간다.
     assert.strictEqual(r.sent.length, 1, `요청이 ${r.sent.length}번 나갔다(1번이어야 한다)`);
     assert.strictEqual(r.sent[0].cmd, 'saveUserOrder', `보낸 명령이 다르다: ${JSON.stringify(r.sent[0])}`);
-    assert.strictEqual(r.sent[0].timeoutMs, 20000, `왕복 타임아웃이 20초가 아니다: ${JSON.stringify(r.sent[0])}`);
+    assert.strictEqual(r.sent[0].timeoutMs, 30000, `왕복 타임아웃이 30초가 아니다: ${JSON.stringify(r.sent[0])} — 호스트의 한 왕복은 DB 두 번이라 20초로는 일하는 중에 끊긴다(W4)`);
     assert.ok('includeInactive' in r.sent[0].params,
       `includeInactive 가 함께 나가지 않았다: ${JSON.stringify(r.sent[0].params)} — 호스트가 어떤 명부를 되읽을지 모른다`);
   });
@@ -2948,11 +3203,11 @@ if (!jsdom) {
     assert.strictEqual(ctrl.end.bars, ctrl.end.barsFinal);   // 통제군
   });
 
-  test('계약⑯-DOM(c): 부탁하지 않은 푸시는 편집 중이면 미뤄 두고, 편집을 마칠 때 앉는다', async () => {
+  test('계약⑯-DOM(c): 남의 왕복이 나른 명부는 편집 중이면 미뤄 두고, 편집을 마칠 때 앉는다', async () => {
     const r = await probeUnsolicited(PUSHED);
     assert.deepStrictEqual(r.parked.names, OLD_NAMES,
-      '부탁하지 않은 푸시가 편집 중인 명부를 덮어썼다 — 잡고 있던 순서가 통째로 날아간다');
-    assert.strictEqual(r.parked.order, true, '부탁하지 않은 푸시가 순서 편집을 끝냈다');
+      '남의 왕복이 나른 명부가 편집 중인 명부를 덮어썼다 — 잡고 있던 순서가 통째로 날아간다');
+    assert.strictEqual(r.parked.order, true, '남의 왕복이 나른 명부가 순서 편집을 끝냈다');
     assert.strictEqual(r.parked.pending, true, '미뤄 두지 않았다 — 편집을 마쳐도 그 변경이 사라진다');
     assert.ok(r.parked.bars > 0,
       "막대를 다시 그리지 않았다 — '명부가 갱신되었다'는 안내가 화면에 닿지 않는다");
@@ -2981,18 +3236,21 @@ if (!jsdom) {
     assert.deepStrictEqual(c.end.names, OLD_NAMES, '실패했는데 명부가 바뀌었다');
   });
 
-  //  ★ 2026-09-11 적대 검토 R4-W1 — 미뤄 둔 스냅샷은 **내 저장이 서버에 닿기 전**의 명부다.
-  //    성공에서 그것을 앉히면 방금 저장한 순서가 화면에서 옛 순서로 되돌아간다. 확정 명부는 회신이 싣고 온다.
-  test('계약⑯-DOM(e): 회신에 명부가 안 실려 와도 저장한 순서가 화면에 남는다', async () => {
+  //  ★ 2026-09-11 R4-W1 — 미뤄 둔 스냅샷은 **내 저장이 서버에 닿기 전**의 명부다. 성공에서 그것을
+  //    **앉히면** 방금 저장한 순서가 옛 순서로 되돌아간다. 그래서 앉히지 않는다.
+  //  ★ 2026-09-14 적대 검토 W3 — 그렇다고 **버리지도 않는다**. 회신에 명부가 실려 오는 것은 호스트가
+  //    실제로 다시 읽었을 때뿐이라(roster=""), 여기서 버리면 다른 관리자의 신규 등록·퇴사가 대체품 없이
+  //    사라진다. 미뤄 둔 채로는 무해하고(앉히지 않으므로), 다음에 편집을 마칠 때 반영된다.
+  test('계약⑯-DOM(e): 회신에 명부가 안 실려 오면 저장한 순서는 남고, 남의 갱신은 버려지지 않는다(W3)', async () => {
     const r = await probeOrderSave(PARKED, reply(true, '저장했습니다', null));
     assert.strictEqual(r.parked.pending, true, '전제 붕괴: 남의 푸시가 미뤄 두지 않았다');
     assert.strictEqual(r.end.order, false, '순서 저장 성공인데 편집 모드가 끝나지 않았다');
     assert.deepStrictEqual(r.end.names, OLD_NAMES,
       `성공 회신이 옛 스냅샷을 앉혔다(${JSON.stringify(r.end.names)}) — 방금 저장한 순서가 저장 전 명부로 되돌아간다(R4-W1)`);
-    assert.strictEqual(r.end.pending, false,
-      '성공 회신이 미뤄 둔 옛 스냅샷을 남겼다 — 나중에 편집을 켰다 끄면 그 옛 명부가 확정 명부를 덮는다(R4-W2)');
-    assert.deepStrictEqual(r.afterToggle.names, OLD_NAMES,
-      `순서 편집을 켰다 끄자 옛 명부가 되살아났다: ${JSON.stringify(r.afterToggle.names)}`);
+    assert.strictEqual(r.end.pending, true,
+      '회신이 명부를 안 실어 왔는데도 미뤄 둔 남의 갱신을 버렸다 — 그 신규 등록·퇴사는 새로고침 전까지 화면에서 사라진다(W3)');
+    assert.deepStrictEqual(r.afterToggle.names, [OLD_NAME],
+      `미뤄 둔 남의 갱신이 편집을 마칠 때에도 반영되지 않았다: ${JSON.stringify(r.afterToggle.names)} — 그러면 그 자리는 영영 열리지 않는다(W3)`);
     assert.ok(r.end.barsFinal > 0,
       '편집 모드를 끝내고도 아무도 최종형을 다시 그리지 않았다 — ▲▼·[취소]·[순서 저장]이 끝난 편집 화면에 그대로 남는다(R4-W3)');
   });
@@ -3020,17 +3278,17 @@ if (!jsdom) {
   //  ★ R6-W3 — "이미 복구된 항목입니다 — 목록을 새로고침합니다."(AlreadyActiveMsg) 로 거부당하면
   //    호스트가 약속대로 갱신 명부를 **그 거부와 함께** 돌려준다(§11-32). 그런데 열려 있는 폼의 [복구] 는
   //    userEdOpen 이 열 때 한 번 정한 그대로라, 다시 누르면 같은 거부만 되풀이됐다.
-  test('계약⑦-DOM(e2): 부탁하지 않은 명부 푸시가 오면 열려 있는 폼의 [복구]가 [퇴사 처리]로 바뀐다(R6-W3)', () => {
+  test('계약⑦-DOM(e2): 남의 왕복이 나른 명부가 앉으면 열려 있는 폼의 [복구]가 [퇴사 처리]로 바뀐다(R6-W3)', () => {
     const r = probeIdlePush(REACTIVATED, 13);
     assert.strictEqual(r.before.uop, 'on', `전제 붕괴: 퇴사자의 폼이 [복구]로 서지 않았다: ${JSON.stringify(r.before)}`);
     assert.strictEqual(r.before.text, '복구', `전제 붕괴: ${JSON.stringify(r.before)}`);
     assert.strictEqual(r.after.uop, 'off',
-      `푸시가 왔는데 폼이 아직 [복구]를 내준다: ${JSON.stringify(r.after)} — 다시 누르면 같은 거부만 되풀이된다(R6-W3)`);
+      `새 명부가 앉았는데 폼이 아직 [복구]를 내준다: ${JSON.stringify(r.after)} — 다시 누르면 같은 거부만 되풀이된다(R6-W3)`);
     assert.strictEqual(r.after.text, '퇴사 처리', `버튼 문구가 새 명부와 어긋난다: ${JSON.stringify(r.after)}`);
     assert.strictEqual(r.after.danger, true, '재직 중인데 파괴 표시(danger)가 붙지 않았다 — [퇴사 처리]는 파괴적 동작이다');
     assert.strictEqual(r.after.sort, '40',
       `읽기전용 서열 번호가 새 명부와 어긋난다: ${JSON.stringify(r.after)} — 남이 순서를 저장하면 그 숫자가 바뀐다`);
-    assert.strictEqual(r.closes, 0, '푸시 한 번에 폼이 닫혔다 — 적어 둔 편집이 말없이 사라진다');
+    assert.strictEqual(r.closes, 0, '갱신 명부 한 번에 폼이 닫혔다 — 적어 둔 편집이 말없이 사라진다');
   });
 
   //  ★ 그리고 **거부 회신에 실려 온 명부**도 같은 일을 해야 한다 — 그것이 AlreadyActiveMsg 의 진짜 길이다.
@@ -3047,6 +3305,46 @@ if (!jsdom) {
       `거부에 실려 온 명부가 앉지 않았다: ${JSON.stringify(r.names)}`);
   });
 
+  //  ★ W4 — 회신이 **안 온** 왕복. hostRequest 가 스스로 만든 실패({ok:false, error})가 폼과 토스트까지
+  //    어떤 말로 닿는지를 본다. 이 자리가 위험한 이유: 호스트는 한 왕복에서 DB 를 두 번 만지므로,
+  //    INSERT 가 **이미 커밋된 뒤** 명부 재조회가 늦어져도 웹에서는 같은 '시간 초과'로 보인다.
+  //    그것을 '저장하지 못했습니다'로 말하면 관리자는 그대로 다시 눌러 login_id UNIQUE 거부를 만난다.
+  test('계약⑦-DOM(e5): 회신이 안 온 왕복은 폼과 토스트에 **결과를 모른다**고 말한다(W4)', async () => {
+    const TIMEOUT = { ok: false, error: '호스트 응답 시간 초과' };
+    const r = await probeFormReply(13, TIMEOUT);
+    assert.strictEqual(r.closes, 0, '결과를 모르는데 폼을 닫았다 — 관리자가 무엇을 했는지 확인할 자리가 사라진다');
+    assert.strictEqual(r.saving, false, '회신이 없었는데 잠금이 풀리지 않았다 — 화면이 영영 잠긴다');
+    const shown = r.msgs.map((m) => m.html).join(' | ');
+    assert.ok(/결과를 알 수 없습니다/.test(shown),
+      `폼이 타임아웃을 '결과를 모른다'로 말하지 않는다: ${JSON.stringify(r.msgs)} — 커밋된 쓰기가 실패로 읽힌다(W4)`);
+    assert.ok(/확인한 뒤 다시 시도/.test(shown),
+      `무엇을 해야 하는지 말하지 않는다: ${JSON.stringify(r.msgs)} — 그대로 다시 누르면 UNIQUE 거부를 만난다`);
+    assert.ok(r.toasts.some((t) => /결과를 알 수 없습니다/.test(t.msg)),
+      `토스트는 아직 평범한 실패로 말한다: ${JSON.stringify(r.toasts)} — 폼과 토스트가 다른 말을 하면 안 된다`);
+    assert.ok(!r.toasts.some((t) => t.msg === '저장하지 못했습니다'),
+      `타임아웃이 '저장하지 못했습니다'로 나갔다: ${JSON.stringify(r.toasts)}`);
+  });
+
+  test('변이⑦-DOM(e5): 실패 문장을 다시 msg||error 로 뭉치면 타임아웃이 맨 문장으로 나간다(W4)', async () => {
+    const bad = mutate(app, "  const rep = { ok: !!(r && r.ok), msg: hostWriteMsg(r), roster:",
+      "  const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''), roster:");
+    const r = await probeFormReply(13, { ok: false, error: '호스트 응답 시간 초과' }, bad);
+    assert.ok(r.toasts.some((t) => t.msg === '호스트 응답 시간 초과'),
+      `변이 전제: 뭉치면 맨 문장이 그대로 나가야 한다(실제: ${JSON.stringify(r.toasts)})`);
+    const ctrl = await probeFormReply(13, { ok: false, error: '호스트 응답 시간 초과' });
+    assert.ok(ctrl.toasts.some((t) => /결과를 알 수 없습니다/.test(t.msg)));   // 통제군
+  });
+
+  //  ★ 통제군 — 호스트가 **사유를 말한** 거부는 한 글자도 덧칠되지 않는다(위 (e4)와 같은 규칙).
+  test('계약⑦-DOM(e6): 호스트가 사유를 말한 거부에는 타임아웃 안내가 붙지 않는다', async () => {
+    const MSG = '관리자만 고칠 수 있습니다.';
+    const r = await probeFormReply(13, reply(false, MSG, null));
+    assert.ok(r.toasts.some((t) => t.msg === MSG),
+      `호스트의 거부 사유가 그대로 나가지 않았다: ${JSON.stringify(r.toasts)}`);
+    assert.ok(!/결과를 알 수 없습니다/.test(r.msgs.map((m) => m.html).join(' ')),
+      `사유를 아는 거부에까지 '모른다' 안내가 붙었다: ${JSON.stringify(r.msgs)}`);
+  });
+
   test('계약⑦-DOM(e3): 대상이 새 명부에서 사라지면 폼을 닫지 않고 그 사실만 말한다(R6-W3)', () => {
     const r = probeIdlePush(WITHOUT_TARGET, 13);
     assert.strictEqual(r.closes, 0, '대상이 사라졌다고 폼을 닫았다 — 적어 둔 편집이 통째로 사라진다');
@@ -3056,9 +3354,9 @@ if (!jsdom) {
       `대상이 사라졌는데 폼이 아무 말도 하지 않는다: ${JSON.stringify(r.msgs)} — 관리자는 모른 채 [저장]을 누른다`);
   });
 
-  test('변이⑦-DOM(e2): 푸시 뒤 폼 맞추기를 지우면 낡은 [복구]가 그대로 남는다(R6-W3)', () => {
-    const bad = mutate(app, '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n};',
-      '  uaApplyData(d);\n};');
+  test('변이⑦-DOM(e2): 명부가 앉은 뒤 폼 맞추기를 지우면 낡은 [복구]가 그대로 남는다(R6-W3)', () => {
+    const bad = mutate(app, '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;',
+      '  uaApplyData(d);\n  return true;');
     const r = probeIdlePush(REACTIVATED, 13, bad);
     assert.strictEqual(r.after.uop, 'on',
       `변이 전제: 맞추기를 지우면 폼이 [복구]로 남아야 한다(실제: ${JSON.stringify(r.after)})`);
@@ -3102,15 +3400,19 @@ if (!jsdom) {
     assert.deepStrictEqual(ctrl.end.names, [NEW_NAME]);   // 통제군
   });
 
-  test('변이⑯-DOM(e): 성공에서 미뤄 둔 스냅샷을 안 버리면 편집을 켰다 끄는 것만으로 되살아난다', async () => {
-    const bad = mutate(app, '  if(r.ok) __uaPendingData = null;\n', '');
+  //  ★ W3 의 DOM 쪽 변이 — 옛 한 줄(`if(r.ok) __uaPendingData = null;`)을 되살리면, 명부가 안 실려 온
+  //    성공에서 남의 갱신이 **대체품 없이** 사라진다. 그 손실은 화면에서 조용하다(아무것도 안 바뀐다) —
+  //    그래서 '편집을 켰다 끌 때 무엇이 앉는가'로 잰다.
+  test('변이⑯-DOM(e): 성공에서 미뤄 둔 명부를 버리게 되돌리면 남의 갱신이 대체품 없이 사라진다(W3)', async () => {
+    const bad = mutate(app, '  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**',
+      '  if(r.ok) __uaPendingData = null;\n  //  ★ 회신의 확정 명부는 **uaSend 안에서 이미 앉았다**');
     const r = await probeOrderSave(PARKED, reply(true, '저장했습니다', null), bad);
-    assert.strictEqual(r.end.pending, true,
-      `변이 전제: 버리지 않으면 미뤄 둔 자리에 남아야 한다(실제: ${JSON.stringify(r.end)})`);
-    assert.deepStrictEqual(r.afterToggle.names, [OLD_NAME],
-      `변이 전제: 남은 스냅샷은 편집을 켰다 끄면 앉아야 한다(실제: ${JSON.stringify(r.afterToggle)})`);
+    assert.strictEqual(r.end.pending, false,
+      `변이 전제: 되살린 한 줄이 미뤄 둔 자리를 비워야 한다(실제: ${JSON.stringify(r.end)})`);
+    assert.deepStrictEqual(r.afterToggle.names, OLD_NAMES,
+      `변이 전제: 버려졌으면 편집을 켰다 꺼도 남의 갱신이 안 보여야 한다(실제: ${JSON.stringify(r.afterToggle)})`);
     const ctrl = await probeOrderSave(PARKED, reply(true, '저장했습니다', null));
-    assert.deepStrictEqual(ctrl.afterToggle.names, OLD_NAMES);   // 통제군
+    assert.deepStrictEqual(ctrl.afterToggle.names, [OLD_NAME]);   // 통제군 — 지금은 살아남아 반영된다
   });
 
   //  ★ 2026-09-14(군더더기 걷기 2단계) 이후로는 **더 빨리** 드러난다: 「낡은 명부」 거부를 처리하는 자리가

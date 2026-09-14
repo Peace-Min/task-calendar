@@ -633,7 +633,8 @@ namespace TaskCalendarWidget
                     // ----- 휴지통(TRASH-DELETE §4.2) — 관리자 전용. 숨긴 항목만 모아 복구/영구 삭제한다 -----
                     //   ★ 조회도 복구·삭제도 reqId 왕복이다(membersGet 과 같은 모양). 2026-09-14 부터 복구·삭제의
                     //     회신 {ok,msg,trash,roster} 가 결과와 갱신된 휴지통(인력이면 명부까지)을 **함께** 나른다.
-                    //     성공하면 **관련 목록**(과제·발주처·코드·명부)은 그대로 푸시로 민다 — 그쪽은 다른 화면이다.
+                    //     성공하면 **관련 목록**(과제·발주처·코드)만 푸시로 민다 — 그쪽은 다른 화면이다.
+                    //     명부는 아니다: 「구성원 편집」 은 그 회신의 roster 하나로 칠한다(겹쳐 밀면 두 번 그린다).
                     //   ★ 권한은 여기서 보지 않는다 — 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
                     case "trashGet":
                         _ = RunTrashGetAsync(GetStr(doc, "reqId"));
@@ -1903,16 +1904,11 @@ namespace TaskCalendarWidget
             return json;
         }
 
-        // 명부를 웹으로 **미는** 경로(__applyMembers). 2026-09-14 이후 남은 자리는 하나뿐이다 —
-        //   휴지통에서 인력을 복구·삭제한 뒤의 갱신(TrashRefreshRelatedAsync). 「구성원 편집」 화면은
-        //   그 요청을 보낸 적이 없으니 회신으로는 닿을 수 없다. 그래서 이 한 자리만 푸시로 남는다.
-        //   ★ 옛 두 번째 인자 reqId 는 없앴다: 푸시는 더 이상 '내 것'일 수 없다 — 내 것은 회신을 타고 온다.
-        private async Task LoadMembersToWebAsync(bool includeInactive)
-        {
-            string json = await ReadMembersJsonAsync(includeInactive);
-            if (json.Length == 0) return;
-            JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize(json) + ")");
-        }
+        // 명부를 웹으로 **미는** 경로는 없다(2026-09-14). 옛 LoadMembersToWebAsync 가 window.__applyMembers
+        //   로 밀었고, 푸시에는 상관관계가 없어 웹이 그것을 손으로 한 벌 더 지어야 했다(요청 표·폼 표·워치독).
+        //   다섯 쓰기가 요청/회신 배관으로 옮겨 가며 마지막 호출부(휴지통의 인력 복구·삭제)까지 사라졌고,
+        //   부르는 곳이 없는 방출부는 죽은 길이라 지웠다 — 갱신 명부는 언제나 그 조작의 **회신**(roster)을
+        //   타고 간다. 그 부재는 계약⑭-h4 가 지킨다(widget/*.cs 전부 + 웹).
 
         // 직원 등록/수정 — userId 0 은 '없음'(신규)이다. orgId 0 도 마찬가지로 '소속 없음'(NULL)이다
         //   — org_unit.org_id 는 AUTO_INCREMENT 라 0 인 조직이 존재할 수 없다.
@@ -2002,15 +1998,22 @@ namespace TaskCalendarWidget
             return json;
         }
 
-        // 복구·삭제 뒤 화면 갱신 — 휴지통 + **그 종류의 목록**을 함께 민다(§5.3).
+        // 복구·삭제 뒤 화면 갱신 — **그 종류의 목록**을 민다(§5.3). 휴지통도 명부도 여기 없다 — 회신이 나른다.
         //   ★ 과제·코드 3종은 카탈로그(dbGone 재판정)가 걸려 있어 LoadProjectsToWebAsync 가 필수고,
         //     발주처·구분·상태는 **복구**로 드롭다운 소스(활성 목록)가 바뀌므로 그 소스도 함께 민다
         //     (설계 §5.3 이 "실제 페이로드 구성은 구현 때 확인"으로 남겨 둔 자리 — §11 정정).
         //   ★ 2026-09-11(R2) — 휴지통 자체를 미는 일은 부르는 쪽으로 옮겼다(성공·실패 모두 밀어야 하므로).
         //     여기 남은 것은 **성공했을 때만** 미는 관련 목록이다.
-        private async Task TrashRefreshRelatedAsync(string kind, bool includeInactive)
+        //   ★ 2026-09-14 — 인력(kind=="user")은 여기서 **아무것도 밀지 않는다**. 갱신된 명부는 그 조작의
+        //     회신에 roster 로 실려 가고, 웹이 「구성원 편집」과 같은 문(uaSeatReply)으로 앉힌다
+        //     (task-calendar-prototype.html §trSend). 푸시를 겹치면 같은 명부를 DB 에서 두 번 읽고
+        //     #uaList 를 두 번 칠한다 — 배달은 한 번이어야 한다.
+        //     ★ 여기가 명부 푸시의 **마지막 호출부**였다 — 그래서 방출부(LoadMembersToWebAsync →
+        //       window.__applyMembers)도 웹 수신부도 함께 지웠다. 이 갈래는 이제 「퇴사자 보기」를
+        //       알 필요가 없다(그래서 includeInactive 를 받지 않는다).
+        private async Task TrashRefreshRelatedAsync(string kind)
         {
-            if (kind == "user") { await LoadMembersToWebAsync(includeInactive); return; }
+            if (kind == "user") return;   // 명부는 그 조작의 회신(roster)으로 이미 갔다 — 여기서 또 밀지 않는다
             await LoadProjectsToWebAsync();
             if (kind == "customer") await LoadCustomersToWebAsync();
             else if (kind == "section" || kind == "status") await LoadCodesToWebAsync();
@@ -2031,7 +2034,7 @@ namespace TaskCalendarWidget
             string trash = await ReadTrashJsonAsync();
             string roster = ok && kind == "user" ? await ReadMembersJsonAsync(includeInactive) : "";
             ReplyOnUi(reqId, new { ok, msg, trash, roster });
-            if (ok) await TrashRefreshRelatedAsync(kind, includeInactive);
+            if (ok) await TrashRefreshRelatedAsync(kind);
         }
 
         private async Task TrashDeleteAsync(string reqId, string kind, string key, string confirm, bool includeInactive)
@@ -2040,7 +2043,7 @@ namespace TaskCalendarWidget
             string trash = await ReadTrashJsonAsync();
             string roster = ok && kind == "user" ? await ReadMembersJsonAsync(includeInactive) : "";
             ReplyOnUi(reqId, new { ok, msg, trash, roster });
-            if (ok) await TrashRefreshRelatedAsync(kind, includeInactive);
+            if (ok) await TrashRefreshRelatedAsync(kind);
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

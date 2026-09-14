@@ -131,18 +131,22 @@ const checks = {
       const b = csMember(mainCs, 'private async Task ' + fn + '(');
       assert.ok(/ReplyOnUi\(reqId, new \{ ok, msg, trash, roster \}\);/.test(b),
         `${fn} 이 결과를 회신(ReplyOnUi)으로 돌려주지 않는다 — 푸시로 되돌아가면 웹이 상관관계를 다시 손으로 짓는다`);
-      assert.ok(/if \(ok\) await TrashRefreshRelatedAsync\(kind, includeInactive\);/.test(b),
-        `${fn} 이 성공 뒤 관련 목록(과제·명부·발주처·코드)을 다시 밀지 않는다`);
+      assert.ok(/if \(ok\) await TrashRefreshRelatedAsync\(kind\);/.test(b),
+        `${fn} 이 성공 뒤 관련 목록(과제·발주처·코드)을 다시 밀지 않는다 — 명부는 여기가 아니라 회신의 roster 로 간다`);
     }
     //  휴지통 목록 자체는 **성공·실패 모두** 회신에 실어야 하므로 부르는 쪽에 있다 — 계약⑩ 이 그 자리를 본다(R2).
     const refresh = csMember(mainCs, 'private async Task TrashRefreshRelatedAsync(');
-    assert.ok(/LoadMembersToWebAsync\(includeInactive\)/.test(refresh), '인력 조작 뒤 명부를 다시 밀지 않는다');
+    //  ★ 인력은 여기서 **아무것도 밀지 않는다**(2026-09-14). 갱신된 명부는 그 조작의 회신에 roster 로 실려
+    //    가고, 웹이 「구성원 편집」과 **같은 문**(uaSeatReply)으로 앉힌다(task-calendar-prototype.html §trSend).
+    //    "그 화면은 이 요청을 보낸 적이 없어 회신으로 닿을 수 없다" 는 서술은 사실이 아니었다 — 그래서 푸시까지
+    //    하면 같은 명부를 DB 에서 **두 번** 읽고 #uaList 를 **두 번** 칠했다. 배달은 한 번이어야 한다.
+    //    ★ 여기가 그 푸시의 **마지막 호출부**였으므로 방출부(LoadMembersToWebAsync)와 웹 수신부
+    //      (window.__applyMembers)도 함께 사라졌다. 그 **부재**는 widget/*.cs 와 웹을 함께 훑는
+    //      user-admin 계약⑭-h4 가 지킨다 — 여기서는 이 갈래가 일찍 돌아가는지만 본다.
+    assert.ok(/if \(kind == "user"\) return;/.test(refresh),
+      '인력 갈래가 일찍 돌아가지 않는다 — 갈래가 없어지면 과제·발주처·코드 푸시가 인력 조작에까지 번진다');
+    //  나머지 갱신은 **그대로**다 — 그쪽은 이 요청의 회신이 나르지 않는 **다른 화면**이다.
     assert.ok(/LoadProjectsToWebAsync\(\)/.test(refresh), '과제·코드 조작 뒤 카탈로그를 다시 밀지 않는다(dbGone 재판정이 걸려 있다)');
-    //  그 명부 푸시는 **인자 하나**다(2026-09-14). 옛 판의 두 번째 인자 reqId 는 "이 푸시가 내 요청의 것인가"를
-    //  웹이 가리라고 있던 것인데, 이제 '내 것'은 회신을 타고 오므로 푸시는 언제나 남의 갱신이다 —
-    //  인자가 남아 있으면 웹이 그 낡은 짝짓기를 다시 지을 근거가 된다.
-    assert.ok(/window\.__applyMembers\(" \+ JsonSerializer\.Serialize\(json\) \+ "\)"\);/.test(code),
-      '__applyMembers 푸시가 인자 하나(json)가 아니다 — 푸시는 더 이상 누구의 것도 아니다(2026-09-14)');
   },
 
   // ③ '기록 0건'의 기준 표 = 정본의 REFERENCES app_user 에서 부속 2표를 뺀 것(§3.2).
@@ -441,6 +445,12 @@ test('변이②-b: 휴지통 조회를 읽기 관문으로 내리면 계약② �
     'try { conn = await OpenAdminAsync(cts.Token); }\n                catch (NotAuthorizedException nex)\n                {',
     'try { conn = await OpenReadAsync(cts.Token); }\n                catch (NotAuthorizedException nex)\n                {');
   assert.throws(() => checks.gateIsAdminOnly(bad, main), /LoadTrashJsonAsync 가 (?:관리자 관문을 지나지 않는다|읽기 관문)/);
+});
+
+test('변이②-d: 인력 갈래를 통째로 지우면 계약② 가 실패한다(과제·발주처 푸시가 인력 조작에 번진다)', () => {
+  const bad = mutate(main, 'if (kind == "user") return;', '');
+  assert.throws(() => checks.gateIsAdminOnly(pdb, bad), /인력 갈래가 일찍 돌아가지 않는다/);
+  assert.doesNotThrow(() => checks.gateIsAdminOnly(pdb, main));   // 통제군
 });
 
 test('변이③: 기준 표 배열에서 한 표를 빼면 계약③ 이 실패한다(정본 파생이 아니면 통과할 변이)', () => {

@@ -117,7 +117,7 @@ COMMIT
 | `trashDelete` | 웹 → 호스트 | `{ reqId, kind, key, confirm, includeInactive }`. `confirm` = 사용자가 입력한 이름. **회신 `{ ok, msg, trash, roster }`** |
 
 - 복구·삭제의 회신에 실리는 둘: `trash` = 다시 읽은 휴지통 JSON **문자열**(`trashGet` 페이로드와 같은 모양) — **성공·실패를 가리지 않고 매번** 싣는다(거부 문구 둘이 새로고침을 약속한다 · §11-23). `roster` = 갱신된 명부 JSON 문자열 — **성공 + `kind=="user"`** 일 때만, 나머지는 `""`. 둘 다 못 읽었으면 `""` 다(빈 목록을 실어 보내면 "내가 뭘 지웠나"로 읽힌다).
-- 성공하면 **관련 목록은 그대로 푸시로** 민다: 과제·코드·발주처면 `LoadProjectsToWebAsync`(카탈로그 + 개인 카테고리의 `dbGone` 재판정) · 발주처면 `LoadCustomersToWebAsync` · 구분·상태면 `LoadCodesToWebAsync` · 인력이면 `LoadMembersToWebAsync`(인자 하나짜리 `__applyMembers(json)`). 그쪽은 **다른 화면**이라 이 요청의 회신으로는 닿을 수 없다.
+- 성공하면 **관련 목록은 그대로 푸시로** 민다: 과제·코드·발주처면 `LoadProjectsToWebAsync`(카탈로그 + 개인 카테고리의 `dbGone` 재판정) · 발주처면 `LoadCustomersToWebAsync` · 구분·상태면 `LoadCodesToWebAsync`. 그쪽은 **다른 화면**이라 이 요청의 회신으로는 닿을 수 없다. **인력은 여기 없다**(§11-29): 명부는 이 회신의 `roster` 하나로 가고, 웹이 「구성원 편집」과 같은 문(`uaSeatReply`)으로 앉힌다 — 푸시를 겹치면 같은 명부를 두 번 읽고 `#uaList` 를 두 번 칠한다.
 - `deletable`·`why` 는 **화면용 힌트**다. 최종 판정은 `trashDelete` 시점에 호스트가 같은 트랜잭션 안에서 다시 한다(§3.4). 힌트와 판정이 갈리면 판정이 이긴다.
 - ★ 위 표의 `trashGet` 회신 모양과 `trashRestore` 구현은 **설계와 다르게 간 곳**이다. 왜 그렇게 됐는지는 [§11-4](#11-정정-이력)(회신을 감싼 이유)와 [§11-1](#11-정정-이력)(복구를 재사용하지 않은 이유)에 남아 있다 — 표는 **지금의 사실**을 적고, 이력은 그 자리에 그대로 둔다.
 
@@ -179,7 +179,7 @@ COMMIT
 ### 5.3 삭제·복구 뒤
 
 - 과제: 호스트 푸시 `__applyProjects` 가 오면 기존 `dbGone` 재판정 로직이 개인 카테고리를 "삭제된 과제"로 바꾼다 — **새 코드 없음.** 복구하면 다시 살아난다.
-- 인력: `__applyMembers` 푸시(구성원 편집 화면이 열려 있으면 그것도 갱신).
+- 인력: 회신의 `roster`(구성원 편집 화면이 열려 있으면 그것도 갱신). 옛 푸시 `__applyMembers` 로 가던 길인데, 회신이 같은 것을 나르므로 그 푸시는 **지웠다**(§11-29 → §11-30).
 - 발주처·코드: 카탈로그 드롭다운 소스가 다시 온다(`LoadProjectsToWebAsync` 가 셋을 함께 싣는다 — 실제 페이로드 구성은 구현 때 확인, §11 에 적는다).
 - 휴지통은 `__applyTrash` 로 다시 칠한다. 탭 위치는 유지.
 
@@ -326,3 +326,7 @@ sha256 대조 · 루프 5회 연속)을 더했다.
 **27. 인력 복구가 `sort_order` 를 비운다(2026-09-11 적대 검토 R3).** 옛 판은 `UPDATE app_user SET is_active=1 …` 하나였다 — 퇴사자가 **옛 순번을 들고** 돌아와 활성 서열(10·20·30…) 사이에 끼어들었다(USER-ADMIN §7-1a). 뜻은 구분·상태의 `MAX+10`(§11-1)과 같고 셈만 다르다: 명부 `ORDER BY` 가 NULL 을 맨 뒤로 보내므로(USER-ADMIN §5.3) 최댓값을 셀 것 없이 `sort_order=NULL` 이면 된다 — 값이 없다는 사실 자체가 '아직 자리를 안 정했다' 다. 그래서 계약⑦ 은 이제 셋을 함께 본다: 구분·상태는 `MAX+10` · **인력은 `NULL`** · 나머지(과제·발주처)는 손대지 않는다. 복구 경로는 둘이므로(휴지통 · 편집 폼의 [복구]) 편집 폼 쪽 `SetUserActiveAsync` 도 같은 규칙이고, 그 축은 USER-ADMIN 게이트 계약⑥-f 가 진다([USER-ADMIN §11-29](USER-ADMIN.md)). 변이 둘(인력의 `NULL` 삭제 · 인력을 `MAX+10` 으로 바꾸기).
 
 **28. 복구·삭제를 요청/회신 배관으로 옮겼다 — 갱신 목록이 그 회신을 타고 온다(2026-09-14).** §11-24 는 푸시(`__trashDone`)에 `reqId` 를 세 번째 인자로 실어 "이 회신이 내 요청의 것인가"를 웹이 가리게 했다. 그 인자가 필요했던 이유는 하나다 — 결과도 갱신도 **푸시**라서 배관이 짝을 지어 주지 않았기 때문이고, 그래서 웹은 배관이 이미 보장하는 상관관계를 손으로 한 벌 더 지어야 했다(요청 표 `__trReq` · 워치독). 이제 둘 다 `trashGet` 과 같은 왕복이다: `ReplyOnUi(reqId, new { ok, msg, trash, roster })`. 갱신된 휴지통은 **매번**(§11-23 의 규칙 그대로 — 거부 문구가 새로고침을 약속하므로 실패해도 싣는다), 명부는 **성공 + 인력**일 때만 실린다(옛 `TrashRefreshRelatedAsync` 의 명부 푸시와 같은 조건). **전송 방식만 바뀌었다** — 관문(`OpenAdminAsync`)·거부 문구·트랜잭션 규칙·이름 대조는 한 글자도 손대지 않았다. 지운 것: `TrashDone` 헬퍼와 `window.__trashDone` 방출, 휴지통 푸시 `LoadTrashToWebAsync`(그 갱신은 회신의 `trash` 하나로만 간다). 남긴 것: 성공 시의 관련 목록 푸시 넷(과제·발주처·코드·명부) — 그쪽은 이 요청을 보낸 적 없는 **다른 화면**이다. 계약⑩(회신 모양 · 매번 읽는 휴지통 · `ok && kind=="user"` 인 명부) + 변이 여섯. 직원 쪽 짝은 [USER-ADMIN §11-34](USER-ADMIN.md).
+
+**29. 그 회신이 나르는 명부를 푸시가 한 번 더 밀고 있었다(2026-09-14 적대 검토).** §11-28 이 복구·삭제를 왕복으로 옮기며 갱신 명부를 회신의 `roster` 에 실었는데, `TrashRefreshRelatedAsync` 의 인력 갈래(`LoadMembersToWebAsync` → `__applyMembers`)를 **그대로 남겼다**. 남긴 근거는 "「구성원 편집」 화면은 이 요청을 보낸 적이 없으니 회신으로는 닿을 수 없다" 였는데 그것이 **사실이 아니었다** — 웹의 `trSend` 가 그 회신의 `roster` 를 「구성원 편집」과 **같은 문**(`uaSeatReply`)으로 들여보낸다([USER-ADMIN §11-34](USER-ADMIN.md) 의 좌석 일원화). 그래서 인력을 복구·영구 삭제할 때마다 같은 명부를 `LoadMembersJsonAsync` 로 **두 번** 읽고 `#uaList` 를 **두 번** 칠했다(회신이 한 번 · 뒤따르는 푸시가 한 번). 인력 갈래를 지워 배달을 하나로 되돌렸다(`if (kind == "user") return;`). 나머지 셋(`LoadProjectsToWebAsync`·`LoadCustomersToWebAsync`·`LoadCodesToWebAsync`)은 **한 글자도 손대지 않았다** — 그쪽은 이 회신이 나르지 않는 다른 화면이다. 그 결과 `__applyMembers` 를 **부르는 곳이 하나도 없다**: 방출부(`LoadMembersToWebAsync`)와 웹 수신부(`window.__applyMembers`)는 모양 그대로 남겨 둔다(부탁하지 않은 갱신을 다시 밀어야 할 날의 자리이고, 인자 하나짜리라는 모양은 [USER-ADMIN](USER-ADMIN.md) 계약⑭-h 가 계속 본다). 계약②(인력 갈래는 아무것도 밀지 않는다 · 나머지 셋은 그대로) + 변이 둘(②-c 옛 푸시 되살리기 · ②-d 갈래 통째 삭제).
+
+**30. 남겨 뒀던 그 푸시를 지우고, 이 갈래의 `includeInactive` 도 함께 걷었다(2026-09-14).** §11-29 는 인력 갈래(`if (kind == "user") return;`)만 지우고 방출부(`LoadMembersToWebAsync`)와 웹 수신부(`window.__applyMembers`)는 "다시 밀어야 할 날" 을 위해 모양 그대로 뒀는데, **여기가 그 마지막 호출부**였으므로 그 둘은 부르는 곳이 하나도 없는 길이 됐다 — 실행되지 않는 코드는 낡아도 아무도 모르고, 남아 있다는 사실만으로 다음 사람에게 "명부는 이 길로도 보낼 수 있다" 고 말한다(그 배달 이중화가 바로 §11-29 가 잡은 결함이다). 그래서 방출부·수신부와, 그 모양을 붙들고 있던 계약 조각(계약②의 `LoadMembersToWebAsync` 부재 줄과 `__applyMembers` JsCall 모양 줄 · 변이②-c)을 지웠다. 그 결과 `TrashRefreshRelatedAsync` 가 `includeInactive` 를 **어느 갈래에서도 읽지 않게** 되어 인자도 함께 걷었다(`TrashRestoreAsync`·`TrashDeleteAsync` 의 `includeInactive` 는 회신의 `roster` 를 읽는 데 그대로 쓰인다). **동작은 한 글자도 바뀌지 않는다** — 지운 길로는 이미 아무것도 흐르지 않았다. 남은 계약은 이 갈래가 **일찍 돌아가는가**(`if (kind == "user") return;` · 변이②-d)뿐이고, 푸시의 **부재**는 [USER-ADMIN 계약⑭-h4](USER-ADMIN.md) 한 곳이 진다(`widget/*.cs` 전부 + 웹 · 변이 둘 · 통제군 `__applyProjects`). 직원 쪽 짝은 [USER-ADMIN §11-35](USER-ADMIN.md).

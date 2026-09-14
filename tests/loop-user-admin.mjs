@@ -47,8 +47,8 @@
  * 전제(이 스크립트가 하지 않는 것):
  *   · 위젯을 띄우거나 닫지 않는다. 9222 에 이미 붙어 있어야 한다.
  *   · 로그인을 대신하지 않는다. **admin 계정으로 로그인된** 위젯이어야 한다(아니면 판정 없음 = exit 2).
- *   · 앱 코드를 고치지 않는다. 가로채기는 호스트 왕복(hostRequest)과 명부 푸시(__applyMembers)를
- *     **감싸는** 것뿐이고 원본을 반드시 그대로 호출한다 — 화면은 시험이 없을 때와 똑같이 움직인다.
+ *   · 앱 코드를 고치지 않는다. 가로채기는 호스트 왕복(hostRequest)을 **감싸는** 것뿐이고
+ *     원본을 반드시 그대로 호출한다 — 화면은 시험이 없을 때와 똑같이 움직인다.
  *
  * 실행:
  *   $env:TC_TEST_DB_ADMIN_PW='...'   (bash: export TC_TEST_DB_ADMIN_PW=...)
@@ -268,8 +268,8 @@ const evj = async (e) => JSON.parse(await cdp.ev(e));
  *    거기로 옮긴다 — 원본을 반드시 호출하고 결과도 그대로 흘려보내므로 화면 동작은 그대로다.
  *  ★ 계수기 둘의 뜻은 그대로다:
  *      replies — 쓰기 회신이 몇 번 왔나(화면 버튼을 눌러 시작한 왕복도 여기 잡힌다).
- *      applies — 갱신 명부가 몇 번 **도착했나**. 회신에 실려서(r.roster) 오거나, 부탁하지 않은
- *                푸시(__applyMembers)로 온다 — 두 길을 한 계수기로 센다.
+ *      applies — 갱신 명부가 몇 번 **도착했나**. 이제 길은 하나다 — 어떤 왕복의 회신에 실려서(r.roster)
+ *                온다(옛 푸시 __applyMembers 는 2026-09-14 에 사라졌고, 그래서 감쌀 자리도 하나다).
  *                ★ '도착했나'와 '앉았나'는 **다른 물음**이다(2026-09-14 좌석 일원화). 앉히는 일은
  *                  uaSend/trSend 안에서 끝나고, 순서 편집 중에 온 무관한 명부는 도착해도 **미뤄진다**.
  *                  그래서 이 계수기를 '앉았다'로 읽으면 안 된다 — 화면 반영을 기다리는 자리(send)는
@@ -279,8 +279,8 @@ const evj = async (e) => JSON.parse(await cdp.ev(e));
  *    겹쳐 감으면 회신 하나가 두 번 세어져 C14(재진입 가드)가 조용히 거짓말을 한다.               */
 const INSTALL_JS = `(function(){
   if (window.__ua && window.__ua.v === 2){ window.__ua.replies.length = 0; window.__ua.applies = 0; return 'reset'; }
-  var oH = window.hostRequest, oA = window.__applyMembers;
-  if (typeof oH !== 'function' || typeof oA !== 'function') return 'missing';
+  var oH = window.hostRequest;
+  if (typeof oH !== 'function') return 'missing';
   var A = { v:2, replies: [], applies: 0 };
   window.__ua = A;
   var WRITES = { saveUser:1, setUserActive:1, saveUserOrder:1, trashRestore:1, trashDelete:1 };
@@ -293,7 +293,6 @@ const INSTALL_JS = `(function(){
       return r;
     });
   };
-  window.__applyMembers = function(json){ A.applies++; return oA.apply(this, arguments); };
   return 'installed';
 })()`;
 
@@ -601,7 +600,7 @@ async function main() {
 
   cdp = await Cdp.attach(OPT.port);
   const inst = await ev(INSTALL_JS);
-  if (inst === 'missing') { console.error('[판정 없음] 페이지에 hostRequest/__applyMembers 가 없다 — 구버전 위젯이다'); process.exit(2); }
+  if (inst === 'missing') { console.error('[판정 없음] 페이지에 hostRequest 가 없다 — 구버전 위젯이다'); process.exit(2); }
   vlog(`가로채기: ${inst}`);
 
   const who = await evj(`JSON.stringify({host: !!HOST, id: (currentUser&&currentUser.loginId)||''})`);
@@ -966,6 +965,10 @@ async function main() {
   //    옮길 뿐이라 스크롤도 포커스도 브라우저가 그대로 들고 있다(되돌릴 것이 없다).
   //    이 케이스는 그 결과를 실제 클릭으로 본다: 자리가 그대로인가 · 포커스가 남았는가 ·
   //    **누르던 버튼 노드가 그대로 살아 있는가**(살아 있지 않다면 목록을 다시 만든 것이다).
+  //  ★ 2026-09-14(W1) 정정 — 이 넷 중 **판별력을 지는 것은 markKept 하나**다. 렌더가 보던 자리와 쥔
+  //    컨트롤을 되돌리게 된 지금(uaRender), uaMove 가 다시 uaApply() 를 부르더라도 스크롤과 포커스는
+  //    **되돌려져서** 그대로처럼 보이기 때문이다. 노드 자신에 붙인 표(tcMark)만이 '다시 만들었는가'를
+  //    가른다 — 앞의 셋은 그대로 두되(사용자가 보는 결과다) 이 한 줄이 계약의 뼈대라는 것을 적어 둔다.
   await runCase('C21', '순서 편집 ▲ — 스크롤 자리와 포커스가 유지된다', async () => {
     if (!okq('C21 「순서 편집」 진입', !!(await orderOn()))) return;
     let measured = false;

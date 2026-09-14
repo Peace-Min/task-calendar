@@ -142,7 +142,7 @@ const checks = {
     //    **같은 길**을 쓴다. 둘이 갈리면 한쪽만 낡는다.
     const seat = extractFunction(web, 'trSeat');
     assert.ok(/JSON\.parse/.test(seat) && /d\.found/.test(seat),
-      'trSeat 가 문자열 JSON 을 파싱해 found 를 확인하지 않는다(__applyMembers 와 같은 전달 규약이다)');
+      'trSeat 가 문자열 JSON 을 파싱해 found 를 확인하지 않는다(__applyProjects 와 같은 전달 규약이다)');
     assert.ok(/return false;/.test(seat) && /return true;/.test(seat),
       "trSeat 가 '앉혔나'를 돌려주지 않는다 — 회신에 목록이 안 실려 온 경우를 부르는 쪽이 알 길이 없다");
     const ap = windowFn(web, '__applyTrash');
@@ -184,8 +184,16 @@ const checks = {
     assert.ok(/이전 요청을 처리 중입니다/.test(s),
       'trSend 가 가드에 걸린 클릭을 조용히 버린다 — 관리자에게는 버튼이 먹지 않는 것으로 보인다(2026-09-10)');
     assert.ok(/trSetSaving\(true\)/.test(s), 'trSend 가 trSetSaving 으로 잠그지 않는다 — 진행 중임이 화면에 드러나지 않는다');
-    assert.ok(/await hostRequest\(cmd, Object\.assign\(\{ includeInactive: __uaInactive \}, payload\), 20000\)/.test(s),
-      'trSend 가 hostRequest 왕복(includeInactive 동봉 · 20초)으로 보내지 않는다 — 회신을 짝지을 수단이 다시 손으로 만든 표가 된다');
+    //  ★ 기한 30초 — uaSend 와 **같은 값**이어야 한다(같은 근거를 두 화면이 함께 쓴다). 휴지통 쪽은 한 왕복에
+    //    DB 를 한 번 더 만지므로(쓰기 → 휴지통 재조회 → 인력이면 명부까지) 오히려 여기가 더 늦다(2026-09-14 W4).
+    assert.ok(/await hostRequest\(cmd, Object\.assign\(\{ includeInactive: __uaInactive \}, payload\), 30000\)/.test(s),
+      'trSend 가 hostRequest 왕복(includeInactive 동봉 · 30초)으로 보내지 않는다 — 회신을 짝지을 수단이 다시 손으로 만든 표가 되거나, 호스트가 일하는 중에 기한이 먼저 끊긴다(W4)');
+    //  ★ 실패 문장은 「구성원 편집」과 **같은 곳**에서 나온다(hostWriteMsg) — 거부(사유를 안다)와
+    //    회신 없음(결과를 모른다)은 관리자가 할 일이 다르고, 영구 삭제는 되돌릴 수 없는 조작이다.
+    assert.ok(/msg: hostWriteMsg\(r\)/.test(s),
+      "trSend 가 실패 문장을 hostWriteMsg 로 만들지 않는다 — 타임아웃이 '처리하지 못했습니다'로 뭉개져, 실제로는 지워진 항목을 다시 지우려 든다(W4)");
+    assert.ok(!/r\.msg \|\| r\.error/.test(s),
+      'trSend 가 아직 msg 와 error 를 한 덩어리로 뭉친다 — 결과를 모르는 왕복이 평범한 실패로 보고된다(W4)');
     assert.ok(/trSetSaving\(false\);/.test(s),
       '왕복이 끝나는 자리에서 잠금을 풀지 않는다 — 푸는 곳이 둘이면 한쪽이 낡는다');
     assert.ok(/const rep = \{ ok: [^\n]*\n?[^\n]*trash: [^\n]*roster: /.test(s) && /return rep;/.test(s),
@@ -258,16 +266,35 @@ const checks = {
   },
 
   // ⑦-d 목록을 다시 그리는 것은 **내용이 실제로 달라졌을 때뿐**이다(2026-09-14 군더더기 걷기 2단계) —
-  //   목록이 새로 앉았다 · 탭을 바꿨다 · 관리자 여부가 뒤집혔다. 그때는 **맨 위**가 옳다.
-  //   옛 판은 잠금 켜기·끄기도 이 렌더를 돌렸고(쓰기 한 번에 세 번), 그때마다 스크롤이 맨 위로 튀고
-  //   방금 누른 버튼이 사라져 포커스가 body 로 떨어졌다 — 그래서 R2-W4·R3-W2·R4-W4·R5-W1 이 '보던 자리·
-  //   누르던 버튼 되돌리기' 한 벌을 쌓았다. 잠금이 목록을 다시 만들지 않게 되자 그 한 벌이 통째로 사라졌다.
-  renderStartsAtTop(web) {
+  //   목록이 새로 앉았다 · 탭을 바꿨다 · 관리자 여부가 뒤집혔다.
+  //   ★ 2026-09-14 적대 검토(W2) — 그 셋이 같은 답을 갖지 않는다. '탭을 바꿨다'와 '관리자 여부가 뒤집혔다'는
+  //     맨 위가 옳지만, '목록이 새로 앉았다'는 **복구·삭제 회신이 오는 길**이다(trAfterWrite → trSeat →
+  //     trRender). 한 건 복구할 때마다 맨 위로 튀면 관리자는 다음 대상을 매번 다시 찾아야 하고, 쥐고 있던
+  //     [복구] 버튼이 사라져 포커스가 body 로 떨어진다(R5-W1 이 닫았던 자리다).
+  //   ★ 그래서 렌더는 자리·포커스를 **지역 변수로** 들었다 놓고, 맨 위는 그 이유를 아는 쪽이 고른다
+  //     (탭 버튼·tablistRoving → trListTop). uaRender 와 **같은 한 벌**이다.
+  renderKeepsPlace(web) {
     const r = extractFunction(web, 'trRender');
-    assert.ok(/list\.scrollTop = 0;/.test(r),
-      'trRender 가 맨 위에서 시작하지 않는다 — 탭을 바꾸면 새 탭의 첫 줄이 화면 밖에서 시작한다');
-    assert.ok(!/sameView|keepTop|keepBtn|keepRow|__trShown|__trKeepBtn/.test(r),
-      "trRender 에 '보던 자리·누르던 버튼 되돌리기'가 남아 있다 — 그 장치는 잠금이 목록을 다시 만들던 시절의 것이다");
+    assert.ok(/const keepTop = list\.scrollTop;/.test(r) && /list\.scrollTop = keepTop;/.test(r),
+      'trRender 가 보던 자리를 들었다 놓지 않는다 — 한 건 복구할 때마다 목록이 맨 위로 튄다(W2)');
+    assert.ok(!/list\.scrollTop = 0;/.test(r),
+      "trRender 가 아직 스스로 맨 위로 보낸다 — 이 함수는 자기가 **왜** 불렸는지 모른다(탭 전환인지 복구 회신인지). 그 판단은 호출부의 trListTop() 이 한다(W2)");
+    assert.ok(/dataset\.top/.test(r) && /dataset\.tkey/.test(r) && /list\.contains\(act\)/.test(r),
+      'trRender 가 쥐고 있던 버튼의 신원을 적어 두지 않는다 — 복구 한 번에 포커스가 body 로 떨어져 Tab 이 문서 처음부터 다시 시작한다(W2)');
+    assert.ok(/if\(!b\.disabled\) try\{ b\.focus\(\); \}catch\(_\)\{\}/.test(r),
+      '되돌아온 버튼이 꺼져 있어도 포커스를 준다(또는 되돌리지 않는다) — 지울 수 없는 항목의 [영구 삭제]에 포커스가 앉으면 브라우저가 도로 body 로 떨어뜨린다');
+    //  ★ '맨 위'를 아는 쪽 — 탭 전환 둘(마우스·화살표키)과 관리자 뒤집힘, 그리고 화면을 여는 순간.
+    const top = extractFunction(web, 'trListTop');
+    assert.ok(/getElementById\('trList'\)/.test(top) && /scrollTop = 0/.test(top),
+      'trListTop 이 #trList 를 맨 위로 보내지 않는다 — 맨 위가 옳은 자리들이 갈 곳을 잃는다');
+    assert.ok(/b\.addEventListener\('click', \(\) => \{ __trTab = t\.kind; trRender\(\); trListTop\(\); \}\);/.test(r),
+      '탭 버튼이 새 탭을 맨 위에서 열지 않는다 — 새 탭의 첫 줄이 화면 밖에서 시작한다(W2)');
+    const bare0 = web.replace(/\/\/[^\n]*/g, '');
+    assert.ok(/tablistRoving\('#trTabs', '\.tab', b => \{ __trTab = b\.dataset\.trtab; trRender\(\); trListTop\(\); \}\);/.test(bare0),
+      '화살표키로 옮긴 탭은 맨 위에서 열리지 않는다 — 마우스와 키보드가 다른 화면을 낸다(W2)');
+    const ap = extractFunction(web, 'trApplyData').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/const wasAdmin = __trAdmin;/.test(ap) && /if\(__trAdmin !== wasAdmin\) trListTop\(\);/.test(ap),
+      '관리자 여부가 뒤집혔는데 맨 위로 보내지 않는다(또는 목록이 앉을 때마다 보낸다) — 복구 회신도 그 길로 온다(W2)');
     const bare = web.replace(/\/\/[^\n]*/g, '');
     for (const dead of ['__trShown', '__trKeepBtn']) {
       assert.ok(!bare.includes(dead),
@@ -325,7 +352,7 @@ test('계약⑥-e: 숨김 확인창이 「휴지통」을 가리킨다(설계 §
 test('계약⑦: 입력한 이름은 가공 없이 호스트로 가고, 대조는 엄격 일치다', () => checks.confirmIsSentRaw(app));
 test('계약⑦-b: 복구·삭제 왕복은 한 곳(trSend)이고 회신은 그 버튼을 누른 클로저가 받는다', () => checks.writeRoundTrip(app));
 test('계약⑦-c: 행 버튼의 잠금은 렌더가 진다(재렌더가 잠금을 지우지 않는다)', () => checks.lockIsDerivedAtRender(app));
-test('계약⑦-d: 목록을 다시 그리는 것은 내용이 달라졌을 때뿐이고, 그때는 맨 위에서 시작한다', () => checks.renderStartsAtTop(app));
+test('계약⑦-d: 렌더는 보던 자리·쥔 버튼을 지키고, 맨 위는 탭을 바꾼 쪽이 고른다', () => checks.renderKeepsPlace(app));
 test('계약⑧: 빈 탭 문구는 탭 표가 지고 조사는 받침이 정한다(「이(가)」 병기 없음)', () => checks.emptyTextJosa(app));
 
 test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약⑦-b 가 실패한다', () => {
@@ -380,41 +407,48 @@ test('변이⑦-c: 잠금을 렌더에서 빼면 계약⑦-c 가 실패한다', 
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
-//  ★ trRender 의 '맨 위에서 시작한다' 한 줄 — uaRender 에도 글자가 같은 줄이 있으므로 앞의 안내 문구까지
-//    묶어 그 한 곳만 가리킨다(두 화면이 같은 규칙을 쓴다는 뜻이기도 하다).
-const TOP_IN_TR_RENDER = '바뀌었을 때만 돌기 때문이다(위 머리말). 한 줄로 적어 두는 이유는 노드를 비우면 브라우저가 알아서\n' +
-  '  //    0 으로 접는 것에 기대지 않기 위해서다(그 접힘은 레이아웃이 있어야 일어난다 — 계약이 될 수 없다).\n  list.scrollTop = 0;\n}';
+//  ★ trRender 의 '보던 자리로 돌아온다' 한 줄 — uaRender 에도 같은 이름의 줄이 있으므로 바로 위 안내
+//    문구까지 묶어 그 한 곳만 가리킨다(두 화면이 같은 규칙을 쓴다는 뜻이기도 하다).
+const KEEP_IN_TR_RENDER = "  //    '맨 위'가 옳은 경우(탭 전환·관리자 뒤집힘)는 그것을 아는 쪽이 trListTop() 으로 말한다.\n" +
+  '  list.scrollTop = keepTop;';
 
-test('변이⑦-d: trRender 가 맨 위에서 시작하지 않게 되돌리면 계약⑦-d 가 실패한다(새 탭이 화면 밖에서 시작한다)', () => {
-  const bad = mutate(app, TOP_IN_TR_RENDER, '바뀌었을 때만 돌기 때문이다.\n}');
-  assert.throws(() => checks.renderStartsAtTop(bad), /맨 위에서 시작하지 않는다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+test('변이⑦-d: trRender 가 다시 스스로 맨 위로 보내면 계약⑦-d 가 실패한다(복구 한 번에 목록이 튄다 · W2)', () => {
+  const bad = mutate(app, KEEP_IN_TR_RENDER, '  list.scrollTop = 0;');
+  assert.throws(() => checks.renderKeepsPlace(bad), /보던 자리를 들었다 놓지 않는다|아직 스스로 맨 위로 보낸다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
-test('변이⑦-d4: 렌더에 옛 되돌리기 장치를 되살리면 계약⑦-d 가 실패한다(다시 그릴 이유 없는 재렌더가 돌아온다)', () => {
-  //  ★ '맨 위에서 시작한다' 한 줄은 **남겨 둔 채** 되돌리기만 얹는다 — 그래야 이 변이가 치는 자리가 분명해진다.
-  const bad = mutate(app, TOP_IN_TR_RENDER,
-    '바뀌었을 때만 돌기 때문이다.\n  list.scrollTop = 0;\n  if(sameView) list.scrollTop = keepTop;\n}');
-  assert.throws(() => checks.renderStartsAtTop(bad), /되돌리기'가 남아 있다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+test('변이⑦-d4: 탭 전환의 맨 위 한 줄을 지우면 계약⑦-d 가 실패한다(새 탭이 화면 밖에서 시작한다)', () => {
+  //  ★ 렌더의 되돌리기는 **남겨 둔 채** 호출부의 한 줄만 뗀다 — 이 변이가 치는 자리가 분명해진다.
+  const bad = mutate(app, 'b.addEventListener(\'click\', () => { __trTab = t.kind; trRender(); trListTop(); });',
+    'b.addEventListener(\'click\', () => { __trTab = t.kind; trRender(); });');
+  assert.throws(() => checks.renderKeepsPlace(bad), /탭 버튼이 새 탭을 맨 위에서 열지 않는다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
+});
+
+test('변이⑦-d6: 화살표키 탭 전환만 맨 위를 잃어도 계약⑦-d 가 실패한다(마우스와 다른 화면이 된다)', () => {
+  const bad = mutate(app, "tablistRoving('#trTabs', '.tab', b => { __trTab = b.dataset.trtab; trRender(); trListTop(); });",
+    "tablistRoving('#trTabs', '.tab', b => { __trTab = b.dataset.trtab; trRender(); });");
+  assert.throws(() => checks.renderKeepsPlace(bad), /화살표키로 옮긴 탭은 맨 위에서 열리지 않는다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
 test('변이⑦-d5: 모듈 전역의 맡아 둔 버튼 표를 되살리면 계약⑦-d 가 실패한다(노드가 그대로인데 표를 또 든다)', () => {
   const bad = mutate(app, 'let __trAdmin = false;', 'let __trKeepBtn = null;\nlet __trAdmin = false;');
-  assert.throws(() => checks.renderStartsAtTop(bad), /__trKeepBtn 가 아직 살아 있다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+  assert.throws(() => checks.renderKeepsPlace(bad), /__trKeepBtn 가 아직 살아 있다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
 test('변이⑦-d2: 탭 줄의 포커스 되돌리기를 지우면 계약⑦-d 가 실패한다(화살표키가 먹지 않는다)', () => {
   const bad = mutate(app, '  const hadFocus = tabs.contains(document.activeElement);\n', '  const hadFocus = false;\n');
-  assert.throws(() => checks.renderStartsAtTop(bad), /탭 줄을 다시 만들면서/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+  assert.throws(() => checks.renderKeepsPlace(bad), /탭 줄을 다시 만들면서/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
 test('변이⑦-d3: 행이 포커스를 못 받게 되돌리면 계약⑦-d 가 실패한다(잠금이 물러설 자리가 없다)', () => {
   const bad = mutate(app, '    line.tabIndex = -1;\n', '');
-  assert.throws(() => checks.renderStartsAtTop(bad), /포커스를 받을 수 없다/);
-  assert.doesNotThrow(() => checks.renderStartsAtTop(app));   // 통제군
+  assert.throws(() => checks.renderKeepsPlace(bad), /포커스를 받을 수 없다/);
+  assert.doesNotThrow(() => checks.renderKeepsPlace(app));   // 통제군
 });
 
 test('변이⑧: 조사를 「이(가)」 병기로 되돌리면 계약⑧ 이 실패한다', () => {
@@ -504,6 +538,9 @@ function renderHarnessJs(src) {
     constLine(src, 'trRows'),
     extractFunction(src, 'trApplyData'),
     extractFunction(src, 'trRender'),
+    //  ★ '맨 위로'는 2026-09-14(W2)부터 렌더가 아니라 **탭을 바꾼 쪽**의 일이다 — 탭 버튼이 그것을 부르므로
+    //    떼어 오지 않으면 탭 전환이 ReferenceError 로 죽는다.
+    extractFunction(src, 'trListTop'),
     SNAP_JS,
     'window.__probe = function(payload, clickTab){',
     '  __trData = null; __trAdmin = false; __trTab = "project";',
@@ -555,7 +592,10 @@ function busyHarnessJs(src) {
     constLine(src, 'trRows'),
     extractFunction(src, 'trApplyData'),
     extractFunction(src, 'trRender'),
+    extractFunction(src, 'trListTop'),
     extractFunction(src, 'trSeat'),
+    //  ★ 실패 문장의 한 곳(2026-09-14 W4) — trSend 가 이것으로 회신의 말을 정한다(uaSend 와 같은 함수다).
+    extractFunction(src, 'hostWriteMsg'),
     extractFn(src, 'trSend'),
     //  ★ 잠금은 **그 자리에서** 걸린다(2026-09-14) — trSetSaving 이 trSyncControls 를 부르고, 그것이
     //    lockLineBtn 으로 한 버튼씩 끈다. 둘 다 떼어 오지 않으면 잠금 계약이 아예 돌지 못한다.
@@ -609,20 +649,33 @@ function busyHarnessJs(src) {
     'var __renders = 0;',
     'var __trRenderReal = trRender;',
     'trRender = function(){ __renders++; return __trRenderReal.apply(null, arguments); };',
-    //  목록을 다시 그리면 **맨 위에서 시작한다** — 목록이 새로 앉거나 탭이 바뀐 것이 그 재렌더의 이유다.
+    //  목록이 새로 앉는 것은 **복구·삭제 회신**이 오는 길이다(trAfterWrite → trSeat) — 보던 자리와 쥐고
+    //  있던 버튼이 그대로여야 한다. 맨 위가 옳은 것은 **탭을 바꿨을 때**뿐이다(2026-09-14 W2).
     'window.__probeScrollKeep = function(payload, toTab){',
     '  __reset(payload, null);',
     '  var list = document.getElementById("trList");',
+    '  var b = document.querySelector("#trList [data-top=\'restore\']");',
+    '  var key = b ? String(b.dataset.tkey || "") : "";',
     '  list.scrollTop = 120;',
     '  var set = list.scrollTop;',
-    '  window.__applyTrashLike();',   // 목록이 새로 앉았다(호스트 푸시가 이 길이다)
+    '  if(b) b.focus();',
+    '  var started = !!(b && document.activeElement === b);',
+    '  window.__applyTrashLike();',   // 목록이 새로 앉았다(복구 회신·푸시가 이 길이다) — 자리는 그대로
     '  var seated = list.scrollTop;',
+    '  var a = document.activeElement;',
+    '  var kept = { op: (a && a.dataset) ? String(a.dataset.top || "") : "",',
+    '               key: (a && a.dataset) ? String(a.dataset.tkey || "") : "",',
+    '               isBody: a === document.body,',
+    '               sameNode: !!(b && document.body.contains(b)) };',
     '  list.scrollTop = 120;',
     '  var tb = document.querySelector("[data-trtab=\'" + toTab + "\']");',
-    '  if(tb) tb.click();',           // 탭 전환 — 역시 맨 위
+    '  if(tb) tb.click();',           // 탭 전환 — 보이는 목록이 통째로 다른 것이 된다 → 맨 위
     '  var switched = list.scrollTop;',
-    '  return { set: set, seated: seated, switched: switched, found: !!tb };',
+    '  return { set: set, started: started, key: key, seated: seated, kept: kept,',
+    '           switched: switched, found: !!tb };',
     '};',
+    //  ★ 화살표키 탭 전환(tablistRoving)의 배선은 bind() 안이라 떼어 올 수 없다 — 그 한 줄이 마우스와
+    //    같은 규칙인지는 형태 쪽 계약(renderKeepsPlace)이 본다.
     //  잠금은 **목록을 다시 만들지 않고** 그 자리에서 걸린다. 포커스를 쥔 버튼이 꺼질 때만 그 행으로
     //  물러났다가, 풀리면 그 버튼으로 돌아온다 — 행도 버튼도 같은 노드 그대로다.
     'window.__probeLockFocus = function(payload, clickTab){',
@@ -857,9 +910,12 @@ if (!jsdom) {
   skip('계약⑦-DOM(f): 회신은 그 버튼을 누른 자리로 돌아오고, 실려 온 목록이 앉는다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(f): 회신의 목록을 안 앉히면 지운 항목이 화면에 그대로 남는다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(h): 잠금은 목록을 한 번도 다시 만들지 않는다(켜든 끄든 0 번)', SKIP_NO_JSDOM);
-  skip('계약⑦-DOM(i): 목록을 다시 그리면 언제나 맨 위에서 시작한다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(i): 목록이 새로 앉아도 자리·포커스는 그대로, 탭을 바꾸면 맨 위다(W2)', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(i2): 탭 전환의 맨 위 한 줄을 지우면 새 탭이 옛 자리에서 열린다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(l): 회신이 안 온 왕복은 토스트에 결과를 모른다고 말한다(W4)', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(l): 실패 문장을 다시 msg||error 로 뭉치면 타임아웃이 맨 문장으로 나간다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(j): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(i): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 탭을 바꿔도 옛 자리가 앉는다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(i): 렌더가 스스로 맨 위로 보내면 복구 한 번에 자리와 포커스를 잃는다(W2)', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(j): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(k): 잠금 중에 옮긴 포커스를 풀 때 도로 뺏지 않는다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM(k): 옮겨 갔는지 보지 않고 되돌리면 포커스가 원래 행으로 끌려간다', SKIP_NO_JSDOM);
@@ -1032,9 +1088,35 @@ if (!jsdom) {
       `왕복을 시작하면서 타이머를 걸었다(${r.inflightTimers}개) — 워치독이 되살아나면 잠금이 도중에 풀리고, 그 틈으로 두 번째 삭제가 나간다`);
     assert.strictEqual(r.timers, 0, `회신 처리에서 타이머를 걸었다(${r.timers}개)`);
     assert.strictEqual(r.sent[0].cmd, 'trashDelete', `보낸 명령이 다르다: ${JSON.stringify(r.sent[0])}`);
-    assert.strictEqual(r.sent[0].timeoutMs, 20000, `왕복 타임아웃이 20초가 아니다: ${JSON.stringify(r.sent[0])}`);
+    assert.strictEqual(r.sent[0].timeoutMs, 30000, `왕복 타임아웃이 30초가 아니다: ${JSON.stringify(r.sent[0])} — 휴지통의 한 왕복은 DB 를 두세 번 만진다(W4)`);
     assert.ok('includeInactive' in r.sent[0].params,
       `includeInactive 가 함께 나가지 않았다: ${JSON.stringify(r.sent[0].params)} — 인력을 지운 뒤 되읽을 명부가 「퇴사자 보기」 상태를 잃는다`);
+  });
+
+  //  ★ W4 — 회신이 **안 온** 왕복. 영구 삭제는 되돌릴 수 없는 조작이라, '결과를 모른다'를 '처리하지
+  //    못했습니다'로 말하면 관리자는 **이미 지워진** 항목을 다시 지우려 들거나(그 거부가 또 혼란이다)
+  //    지워지지 않은 줄 알고 넘어간다. 무엇을 해야 하는지까지 말해야 한다.
+  test('계약⑦-DOM(l): 회신이 안 온 왕복은 토스트에 결과를 모른다고 말한다(W4)', async () => {
+    const r = await probeBusy(PAYLOAD, 'user', { ok: false, error: '호스트 응답 시간 초과' });
+    assert.strictEqual(r.done.busy, '', '회신이 없었는데 overlay 가 busy 인 채로 남았다 — 창을 닫을 길이 없다');
+    const said = r.done.toasts.map((t) => t.msg).join(' | ');
+    assert.ok(/결과를 알 수 없습니다/.test(said),
+      `타임아웃을 '결과를 모른다'로 말하지 않는다: ${JSON.stringify(r.done.toasts)} — 이미 지워진 항목을 다시 지우려 든다(W4)`);
+    assert.ok(/확인한 뒤 다시 시도/.test(said),
+      `무엇을 해야 하는지 말하지 않는다: ${JSON.stringify(r.done.toasts)}`);
+    assert.ok(!r.done.toasts.some((t) => t.msg === '처리하지 못했습니다'),
+      `타임아웃이 평범한 실패로 나갔다: ${JSON.stringify(r.done.toasts)}`);
+  });
+
+  test('변이⑦-DOM(l): 실패 문장을 다시 msg||error 로 뭉치면 타임아웃이 맨 문장으로 나간다(W4)', async () => {
+    const TIMEOUT = { ok: false, error: '호스트 응답 시간 초과' };
+    const bad = mutate(app, '  const rep = { ok: !!(r && r.ok), msg: hostWriteMsg(r),\n',
+      "  const rep = { ok: !!(r && r.ok), msg: String((r && (r.msg || r.error)) || ''),\n");
+    const r = await probeBusy(PAYLOAD, 'user', TIMEOUT, bad);
+    assert.ok(r.done.toasts.some((t) => t.msg === '호스트 응답 시간 초과'),
+      `변이 전제: 뭉치면 맨 문장이 그대로 나가야 한다(실제: ${JSON.stringify(r.done.toasts)})`);
+    const ctrl = await probeBusy(PAYLOAD, 'user', TIMEOUT);
+    assert.ok(ctrl.done.toasts.some((t) => /결과를 알 수 없습니다/.test(t.msg)));   // 통제군
   });
 
   test('변이⑥-DOM(f): 사유 줄을 지우면 계약⑥-DOM(f) 가 실패한다(title 만 남으면 아무도 못 본다)', () => {
@@ -1144,15 +1226,22 @@ if (!jsdom) {
     assert.strictEqual(ctrl.rosters, 1);   // 통제군
   });
 
-  //  ★ 목록을 다시 그리는 것은 **내용이 달라졌을 때뿐**이고(목록이 새로 앉았다 · 탭을 바꿨다), 그때는
-  //    맨 위가 옳다 — 옛 자리를 앉히면 관리자가 고른 적 없는 중간에서 시작하고, 새 탭이 더 짧으면
-  //    아무것도 없는 자리에 선다(빈 화면처럼 보인다).
-  test('계약⑦-DOM(i): 목록을 다시 그리면 언제나 맨 위에서 시작한다', () => {
+  //  ★ 2026-09-14 적대 검토(W2) — 목록이 새로 앉는 길은 **복구·삭제 회신**이 오는 길이다
+  //    (trAfterWrite → trSeat → trApplyData → trRender). 한 건 복구할 때마다 맨 위로 튀면 관리자는 다음
+  //    대상을 매번 다시 찾아야 하고, 쥐고 있던 [복구]가 사라져 포커스가 body 로 떨어진다.
+  //    맨 위가 옳은 것은 **탭을 바꿨을 때**다(보이는 목록이 통째로 다른 것이 된다).
+  test('계약⑦-DOM(i): 목록이 새로 앉아도 자리·포커스는 그대로, 탭을 바꾸면 맨 위다(W2)', () => {
     const r = probeScrollKeep(PAYLOAD, 'customer');
     assert.strictEqual(r.found, true, '전제 붕괴: 발주처 탭 버튼을 찾지 못했다');
     assert.strictEqual(r.set, 120, '전제 붕괴: jsdom 이 scrollTop 을 기억하지 못한다 — 이 계약을 잴 수 없다');
-    assert.strictEqual(r.seated, 0,
-      `목록이 새로 앉았는데 옛 스크롤 자리(${r.seated})가 그대로 남았다 — 지운 항목이 빠진 목록의 한가운데에서 시작한다`);
+    assert.strictEqual(r.started, true, '전제 붕괴: [복구] 버튼에 포커스를 주지 못했다');
+    assert.strictEqual(r.kept.sameNode, false,
+      '전제 붕괴: 목록을 다시 만들지 않았다 — 그러면 이 계약(신원으로 되찾기)이 재는 것이 없다');
+    assert.strictEqual(r.seated, 120,
+      `목록이 새로 앉자 보던 자리가 ${r.seated} 로 튀었다 — 한 건 복구할 때마다 맨 위로 돌아간다(W2·R5-W1)`);
+    assert.strictEqual(r.kept.op, 'restore',
+      `새로 앉은 뒤 쥐고 있던 [복구]로 돌아오지 않았다: ${JSON.stringify(r.kept)} — 포커스가 body 로 떨어지면 Tab 이 문서 처음부터 다시 시작한다`);
+    assert.strictEqual(r.kept.key, r.key, `포커스가 다른 항목으로 갔다: ${JSON.stringify(r.kept)}`);
     assert.strictEqual(r.switched, 0,
       `탭을 바꿨는데 옛 스크롤 자리(${r.switched})가 그대로 앉았다 — 새 탭의 첫 줄이 화면 밖에서 시작한다`);
   });
@@ -1179,11 +1268,23 @@ if (!jsdom) {
     assert.strictEqual(r.unlocked.top, 120, `잠금을 푸는 것만으로 보던 자리가 ${r.unlocked.top} 로 튀었다`);
   });
 
-  test('변이⑦-DOM(i): 옛 「같은 화면이면 자리를 되돌린다」를 되살리면 탭을 바꿔도 옛 자리가 앉는다', () => {
-    const bad = mutate(app, TOP_IN_TR_RENDER, '바뀌었을 때만 돌기 때문이다.\n  list.scrollTop = 120;\n}');
+  test('변이⑦-DOM(i): 렌더가 스스로 맨 위로 보내면 복구 한 번에 자리와 포커스를 잃는다(W2)', () => {
+    const bad = mutate(app, KEEP_IN_TR_RENDER, '  list.scrollTop = 0;');
     const r = probeScrollKeep(PAYLOAD, 'customer', bad);
+    assert.strictEqual(r.seated, 0,
+      `변이 전제: 렌더가 맨 위로 보내면 새로 앉은 뒤 0 이어야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeScrollKeep(PAYLOAD, 'customer').seated, 120);   // 통제군
+  });
+
+  //  ★ 통제군의 반대쪽 — 탭 전환의 맨 위 한 줄을 지우면 **탭만** 옛 자리에 선다(자리 지키기는 그대로다).
+  //    두 변이가 서로 다른 자리를 치므로, 한 줄이 다른 한 줄을 대신해 주지 않는다는 것이 드러난다.
+  test('변이⑦-DOM(i2): 탭 전환의 맨 위 한 줄을 지우면 새 탭이 옛 자리에서 열린다', () => {
+    const bad = mutate(app, "b.addEventListener('click', () => { __trTab = t.kind; trRender(); trListTop(); });",
+      "b.addEventListener('click', () => { __trTab = t.kind; trRender(); });");
+    const r = probeScrollKeep(PAYLOAD, 'customer', bad);
+    assert.strictEqual(r.seated, 120, '변이 전제: 자리 지키기는 그대로여야 한다(치는 자리가 다르다)');
     assert.strictEqual(r.switched, 120,
-      `변이 전제: 자리를 되돌리면 탭을 바꿔도 옛 자리가 앉아야 한다(실제: ${JSON.stringify(r)})`);
+      `변이 전제: 맨 위 한 줄을 지우면 탭을 바꿔도 옛 자리가 남아야 한다(실제: ${JSON.stringify(r)})`);
     assert.strictEqual(probeScrollKeep(PAYLOAD, 'customer').switched, 0);   // 통제군
   });
 
