@@ -422,29 +422,53 @@ const checks = {
       '재조회에 실패했을 때 ""를 돌려주지 않는다 — 빈 명부를 실어 보내면 저장 성공 직후 화면이 통째로 빈다');
   },
 
-  // ⑭-h4 명부 푸시(__applyMembers)는 **호스트에도 웹에도 없다**(2026-09-14 슬롭 제거 3단계).
+  // ⑭-h4 죽은 푸시 이름들(__applyMembers · __applyTrash)은 **호스트에도 웹에도 없다**(2026-09-14 슬롭 제거).
   //     ⑭-h 가 다섯 쓰기를 회신 배관으로 옮긴 뒤에도 방출부(LoadMembersToWebAsync)와 웹 수신부는
   //     "언젠가 부탁하지 않은 갱신을 다시 밀 날" 을 위해 모양만 남아 있었다. 그 뒤 휴지통의 인력 갈래까지
   //     회신으로 가면서 **부르는 곳이 한 곳도 없어졌고**, 그때부터 그 둘은 코드가 아니라 전시물이었다 —
   //     아무도 실행하지 않으므로 낡아도 아무도 모르고, 남아 있다는 사실만으로 다음 사람에게 "여기로도
   //     명부를 보낼 수 있다" 고 말한다. 배달은 한 길이어야 한다: 갱신 명부는 그 조작의 **회신**을 탄다.
+  //     ★ 휴지통 목록(__applyTrash)이 **같은 병을 같은 순서로** 앓았다(TRASH-DELETE §11-31): 호스트 쪽
+  //       방출부는 복구·삭제가 왕복이 되면서 이미 사라졌는데(목록은 회신의 `trash` 를 탄다) 웹 수신부만
+  //       `window.__applyTrash = function(json){ trSeat(json); };` 로 남아 있었다 — 부를 사람이 없으니
+  //       영영 안 도는 줄이고, 남아 있다는 것만으로 "목록은 이 길로도 밀 수 있다" 고 말한다. 그래서 지웠다.
+  //       이름이 둘로 늘었으므로 계약도 **표 한 벌**로 돈다 — 셋째가 생기면 줄 하나만 더 는다.
   //     ★ 한 파일만 보지 않는다 — 지운 방출부가 옆 .cs 로 옮겨 앉으면 MainWindow 만 훑는 계약은 통과시킨다.
   //     ★ 통제군을 함께 본다: **살아 있는** 푸시(__applyProjects)는 그대로다. 이 계약이 '푸시가 하나도
-  //       없다' 를 보는 것이 아니라 '이 푸시만 없다' 를 보는 것임을 그 한 줄이 증명한다.
-  membersPushIsGone(csFiles, web) {
-    for (const [name, src] of csFiles) {
-      assert.ok(!stripCs(src).includes('__applyMembers'),
-        `${name} 에 명부 푸시(__applyMembers)가 되살아났다 — 갱신 명부가 가는 길이 둘이 되면 같은 명부를 ` +
-        'DB 에서 두 번 읽고 #uaList 를 두 번 칠한다(TRASH-DELETE §11-29). 명부는 회신의 roster 로만 간다');
+  //       없다' 를 보는 것이 아니라 '이 푸시들만 없다' 를 보는 것임을 그 한 줄이 증명한다.
+  deadPushesAreGone(csFiles, web) {
+    //  [이름, 호스트에서 되살아났을 때의 해악, 웹에서 되살아났을 때의 해악]
+    const DEAD = [
+      ['__applyMembers',
+        '갱신 명부가 가는 길이 둘이 되면 같은 명부를 DB 에서 두 번 읽고 #uaList 를 두 번 칠한다' +
+        '(TRASH-DELETE §11-29). 명부는 회신의 roster 로만 간다',
+        '명부 수신부다 — 방출부가 없으면 영영 안 불리는 죽은 함수이고, 있으면 호스트 쪽에 푸시를 다시 만들 근거가 된다'],
+      ['__applyTrash',
+        '휴지통 목록이 가는 길이 둘이 되면 회신(trash)과 푸시가 서로 다른 시점의 목록을 앉힌다' +
+        '(TRASH-DELETE §11-31). 목록은 회신의 trash 로만 간다',
+        '휴지통 목록 수신부다 — 방출부가 없으면 영영 안 불리는 죽은 함수이고, 있으면 호스트 쪽에 푸시를 다시 만들 근거가 된다'],
+    ];
+    //  ★ 주석은 지우고 본다(양쪽 다) — "이건 원래 푸시였다" 는 **역사 문장**이 계약을 깨뜨리면,
+    //    남겨야 할 설명을 지우는 쪽으로 사람을 민다. 지우는 것은 코드이지 기억이 아니다.
+    const webCode = web.replace(/\/\/[^\n]*/g, '');
+    for (const [dead, hostWhy, webWhy] of DEAD) {
+      for (const [name, src] of csFiles) {
+        assert.ok(!stripCs(src).includes(dead),
+          `${name} 에 죽은 푸시(${dead})가 되살아났다 — ${hostWhy}`);
+      }
+      assert.ok(!webCode.includes(dead),
+        `웹에 죽은 수신부(${dead})가 되살아났다 — ${webWhy}` +
+        '(둘 중 어느 쪽이든 배달이 다시 둘로 갈린다)');
     }
-    assert.ok(!web.replace(/\/\/[^\n]*/g, '').includes('__applyMembers'),
-      '웹에 명부 수신부(__applyMembers)가 되살아났다 — 방출부가 없으면 영영 안 불리는 죽은 함수이고, ' +
-      '있으면 호스트 쪽에 푸시를 다시 만들 근거가 된다(둘 중 어느 쪽이든 배달이 다시 둘로 갈린다)');
     //  통제군 — 부탁하지 않은 갱신이 **정말 필요한** 자리(과제 카탈로그)의 푸시는 그대로 살아 있다.
     assert.ok(csFiles.some(([, s]) => stripCs(s).includes('window.__applyProjects')),
-      '호스트에서 __applyProjects 푸시까지 사라졌다 — 이 계약은 "푸시가 하나도 없다"가 아니라 "명부 푸시만 없다"다');
+      '호스트에서 __applyProjects 푸시까지 사라졌다 — 이 계약은 "푸시가 하나도 없다"가 아니라 "이 푸시들만 없다"다');
     assert.ok(/window\.__applyProjects = function/.test(web),
-      '웹에서 __applyProjects 수신부까지 사라졌다 — 통제군이 없으면 위 두 줄은 아무것도 증명하지 못한다');
+      '웹에서 __applyProjects 수신부까지 사라졌다 — 통제군이 없으면 위 줄들은 아무것도 증명하지 못한다');
+    //  ★ 통제군 하나 더 — 휴지통 목록을 **앉히는** 살아 있는 문(trSeat)은 그대로다. 위 줄이 지우는 것은
+    //    '밀어 주는 길' 이지 '앉히는 길' 이 아니다. 이 줄이 없으면 trSeat 까지 통째로 지운 판이 초록으로 지난다.
+    assert.ok(/function\s+trSeat\s*\(\s*json\s*\)\s*\{/.test(web),
+      '웹에서 trSeat 까지 사라졌다 — 휴지통 목록을 앉히는 문은 회신 경로로 **살아 있어야** 한다');
   },
 
   // ⑭-h2 순서 저장의 회신이 명부를 싣는 경우는 **둘뿐**이다(2026-09-11 적대 검토 R3-H2 · 전송은 2026-09-14).
@@ -1659,23 +1683,42 @@ test('계약⑭-h: 갱신 명부는 회신을 타고 온다 — 세 쓰기가 {o
 test('계약⑭-h2: 순서 저장 회신의 명부는 성공·낡은 명부 거부 둘뿐이다(정본은 ProjectDb 의 상수다)', () =>
   checks.orderRosterPolicy(main, pdb));
 
-test('계약⑭-h4: 명부 푸시(__applyMembers)는 호스트에도 웹에도 없다(부르는 곳이 없어진 길은 지운다)', () =>
-  checks.membersPushIsGone(widgetCs, app));
+test('계약⑭-h4: 죽은 푸시(__applyMembers·__applyTrash)는 호스트에도 웹에도 없다(부르는 곳이 없어진 길은 지운다)', () =>
+  checks.deadPushesAreGone(widgetCs, app));
 
 test('변이⑭-h4: 호스트에 __applyMembers 방출부를 되살리면 계약⑭-h4 가 실패한다(배달이 다시 둘로 갈린다)', () => {
   const bad = widgetCs.map(([n, s]) => (n !== 'MainWindow.xaml.cs' ? [n, s] : [n, mutate(s,
     'JsCall("window.__applyProjects && window.__applyProjects(',
     'JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize("") + ")");\n'
     + '            JsCall("window.__applyProjects && window.__applyProjects(')]));
-  assert.throws(() => checks.membersPushIsGone(bad, app), /명부 푸시\(__applyMembers\)가 되살아났다/);
-  assert.doesNotThrow(() => checks.membersPushIsGone(widgetCs, app));   // 통제군
+  assert.throws(() => checks.deadPushesAreGone(bad, app), /죽은 푸시\(__applyMembers\)가 되살아났다/);
+  assert.doesNotThrow(() => checks.deadPushesAreGone(widgetCs, app));   // 통제군
+});
+
+//  ★ 휴지통 쪽 짝(2026-09-14 · TRASH-DELETE §11-31) — **웹 수신부만** 남아 있었으므로 그 쪽이 본진이다.
+//    호스트 twin 도 함께 둔다: 방출부가 다시 생기는 순간이 배달이 둘로 갈리는 순간이고, 웹만 보는 계약은
+//    "웹에는 수신부가 없으니 통과" 라고 말하면서 그 방출부를 통과시킨다(그건 없는 계약보다 나쁘다).
+test('변이⑭-h4c: 호스트에 __applyTrash 방출부를 되살리면 계약⑭-h4 가 실패한다(목록 배달이 둘로 갈린다)', () => {
+  const bad = widgetCs.map(([n, s]) => (n !== 'MainWindow.xaml.cs' ? [n, s] : [n, mutate(s,
+    'JsCall("window.__applyProjects && window.__applyProjects(',
+    'JsCall("window.__applyTrash && window.__applyTrash(" + JsonSerializer.Serialize("") + ")");\n'
+    + '            JsCall("window.__applyProjects && window.__applyProjects(')]));
+  assert.throws(() => checks.deadPushesAreGone(bad, app), /죽은 푸시\(__applyTrash\)가 되살아났다/);
+  assert.doesNotThrow(() => checks.deadPushesAreGone(widgetCs, app));   // 통제군
+});
+
+test('변이⑭-h4d: 웹에 __applyTrash 수신부를 되살리면 계약⑭-h4 가 실패한다(부를 사람 없는 죽은 함수다)', () => {
+  const bad = mutate(app, 'function trAfterWrite(r){',
+    'window.__applyTrash = function(json){ trSeat(json); };\nfunction trAfterWrite(r){');
+  assert.throws(() => checks.deadPushesAreGone(widgetCs, bad), /죽은 수신부\(__applyTrash\)가 되살아났다/);
+  assert.doesNotThrow(() => checks.deadPushesAreGone(widgetCs, app));   // 통제군
 });
 
 test('변이⑭-h4b: 웹에 __applyMembers 수신부를 되살리면 계약⑭-h4 가 실패한다(부를 사람 없는 죽은 함수다)', () => {
-  const bad = mutate(app, 'window.__applyTrash = function(json){',
-    'window.__applyMembers = function(json){ uaSeatRoster(json); };\nwindow.__applyTrash = function(json){');
-  assert.throws(() => checks.membersPushIsGone(widgetCs, bad), /명부 수신부\(__applyMembers\)가 되살아났다/);
-  assert.doesNotThrow(() => checks.membersPushIsGone(widgetCs, app));   // 통제군
+  const bad = mutate(app, 'function trAfterWrite(r){',
+    'window.__applyMembers = function(json){ uaSeatRoster(json); };\nfunction trAfterWrite(r){');
+  assert.throws(() => checks.deadPushesAreGone(widgetCs, bad), /죽은 수신부\(__applyMembers\)가 되살아났다/);
+  assert.doesNotThrow(() => checks.deadPushesAreGone(widgetCs, app));   // 통제군
 });
 
 test('변이⑭-h1c: 쓰기 결과를 옛 푸시(__userSaved)로 되돌리면 계약⑭-h 가 실패한다(상관관계가 사라진다)', () => {

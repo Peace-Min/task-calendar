@@ -39,16 +39,6 @@ const trashModalMarkup = (web) =>
 const confirmTypedMarkupRaw = (web) =>
   sliceMarkup(web, '<div class="overlay hidden" id="confirmTypedModal">', '<div id="toastWrap">', '#confirmTypedModal');
 
-// window.__xxx = function(...){...} 형태의 호스트 콜백 — extractFunction 은 `function 이름(` 만 찾으므로
-// 여기서 따로 오려 낸다(선언 모양이 다르다고 계약을 못 보면 안 된다).
-function windowFn(web, name) {
-  const s = web.indexOf('window.' + name + ' = function');
-  assert.ok(s >= 0, `window.${name} 선언을 찾지 못했다 — 판정 불가`);
-  const e = web.indexOf('\n};', s);
-  assert.ok(e > s, `window.${name} 의 끝(';};')을 찾지 못했다 — 판정 불가`);
-  return web.slice(s, e + 3);
-}
-
 //  ★ async 함수는 extractFunction 이 'function 이름(' 부터 오려 내므로 **async 가 떨어진다** — 그대로
 //    jsdom 에서 eval 하면 "await is only valid in async functions" 로 죽는다(2026-09-14, 쓰기가 왕복이 된 뒤).
 //    선언을 보고 다시 붙인다: 붙였는지 아닌지를 **원본이** 정하므로, 변이가 async 를 떼면 그대로 따라간다.
@@ -138,16 +128,14 @@ const checks = {
       'openTrash 가 __trAdmin 을 비우지 않는다 — 회신 전 한 프레임 동안 [영구 삭제]가 번쩍인다');
     assert.ok(/hostRequest\('trashGet'/.test(o), "openTrash 가 hostRequest('trashGet') 을 부르지 않는다");
     assert.ok(/openModal\('#trashModal'\)/.test(o), 'openTrash 가 모달을 열지 않는다');
-    //  ★ 2026-09-14: 파싱·앉히기는 trSeat 한 곳이다 — 회신(trSend)과 부탁하지 않은 푸시(__applyTrash)가
-    //    **같은 길**을 쓴다. 둘이 갈리면 한쪽만 낡는다.
+    //  ★ 2026-09-14: 파싱·앉히기는 trSeat 한 곳이다 — 쓰기 회신(trSend)의 `trash` 가 지나는 유일한 문이고,
+    //    사라진 푸시(__applyTrash)도 같은 문으로 들어왔었다. 문이 둘로 갈리면 한쪽만 낡는다.
+    //    그 푸시의 **부재**는 계약⑭-h4(user-admin.test.mjs)가 호스트·웹 양쪽을 훑어 지킨다(§11-30).
     const seat = extractFunction(web, 'trSeat');
     assert.ok(/JSON\.parse/.test(seat) && /d\.found/.test(seat),
       'trSeat 가 문자열 JSON 을 파싱해 found 를 확인하지 않는다(__applyProjects 와 같은 전달 규약이다)');
     assert.ok(/return false;/.test(seat) && /return true;/.test(seat),
       "trSeat 가 '앉혔나'를 돌려주지 않는다 — 회신에 목록이 안 실려 온 경우를 부르는 쪽이 알 길이 없다");
-    const ap = windowFn(web, '__applyTrash');
-    assert.ok(/trSeat\(json\)/.test(ap),
-      '__applyTrash 가 trSeat 를 쓰지 않는다 — 회신과 푸시가 서로 다른 파서를 갖게 된다');
   },
 
   // ⑦ 입력값은 **가공 없이** 호스트로 간다(TRIM 금지 · 설계 §5.2) + 확인창 대조도 엄격 일치다.
@@ -632,17 +620,19 @@ function busyHarnessJs(src) {
     '    return out;',
     '  });',
     '};',
-    //  왕복 **중에** 호스트 푸시가 도착한다 — 목록이 통째로 다시 그려져도 잠금이 남아 있어야 한다.
+    //  왕복 **중에** 목록이 통째로 다시 앉는다 — 그래도 잠금이 남아 있어야 한다.
     //  (잠금을 노드에 칠해 두던 옛 판은 바로 여기서 증발했다 · 2026-09-11)
     'window.__probeRerender = function(payload, clickTab, reply){',
     '  __reset(payload, clickTab);',
     '  __reply = reply;',
     '  var p = trSend({ cmd: "trashDelete", kind: "user", key: "31", confirm: "zzU_a" });',
     '  var out = { sending: __state() };',
-    '  window.__applyTrashLike();',   // 푸시와 같은 경로(trApplyData)로 목록을 다시 그린다
+    '  window.__applyTrashLike();',   // 목록이 앉는 경로(trApplyData)를 그대로 태워 다시 그린다
     '  out.afterPush = __state();',
     '  return p.then(function(r){ trAfterWrite(r); out.done = __state(); return out; });',
     '};',
+    //  ★ 시험 쪽 대역이다 — 앱의 수신부를 쓰지 않고 trApplyData 를 곧장 부른다. 그래서 2026-09-14 에
+    //    웹의 __applyTrash 수신부가 사라진 뒤에도 이 탐침은 그대로 선다(이름만 그 시절에서 왔다).
     'window.__applyTrashLike = function(){ trApplyData(JSON.parse(JSON.stringify(__trData))); };',
     //  ★ 렌더 횟수를 센다(2026-09-11 R2-W4) — '몇 번 그리는가'는 화면 결과만 봐서는 보이지 않는다.
     //    원본 함수를 감싸기만 한다(바꿔치기가 아니다): 세는 것 말고는 같은 함수가 돈다.
@@ -660,7 +650,7 @@ function busyHarnessJs(src) {
     '  var set = list.scrollTop;',
     '  if(b) b.focus();',
     '  var started = !!(b && document.activeElement === b);',
-    '  window.__applyTrashLike();',   // 목록이 새로 앉았다(복구 회신·푸시가 이 길이다) — 자리는 그대로
+    '  window.__applyTrashLike();',   // 목록이 새로 앉았다(복구·삭제 회신이 이 길이다) — 자리는 그대로
     '  var seated = list.scrollTop;',
     '  var a = document.activeElement;',
     '  var kept = { op: (a && a.dataset) ? String(a.dataset.top || "") : "",',

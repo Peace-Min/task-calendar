@@ -6151,7 +6151,9 @@ function trRender(){
 // 목록을 맨 위로 — '보이는 것이 갈렸다'를 **아는 쪽**이 부른다(탭 전환 · 관리자 뒤집힘 · 화면 열기).
 function trListTop(){ const l = document.getElementById('trList'); if(l) l.scrollTop = 0; }
 
-// 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회(openTrash)와 쓰기 뒤 푸시(__applyTrash)가 **같은 함수**를 쓴다.
+// 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회(openTrash)와 쓰기 회신(trSeat)이 **같은 함수**를 쓴다.
+//   ★ 2026-09-14 이전에는 쓰기 뒤에 호스트가 목록을 **밀었고**(__applyTrash), 그 푸시도 이 함수로 들어왔다.
+//     지금 목록이 화면에 닿는 길은 둘 다 회신이다(첫 조회의 data · 쓰기 회신의 trash · §11-30).
 //   ★ 탭 위치는 유지한다(설계 §5.3) — 지우자마자 보던 자리에서 튕겨 나가면 다음 대상을 다시 찾아야 한다.
 function trApplyData(d){
   //  ★ 관리자 여부가 **뒤집히면** 화면이 통째로 갈린다(목록 ↔ 안내 한 줄) — 그때만 맨 위다. 목록이 새로
@@ -6200,14 +6202,16 @@ async function openTrash(){
   let r = null;
   try{ r = await hostRequest('trashGet', {}, 12000); }catch(_){ r = null; }
   __trBusy = false;
-  //  회신 덩어리는 푸시(__applyTrash)와 **같은 모양**이다 — 호스트가 {ok,data} 로 감싸도 그대로 읽는다.
+  //  회신 덩어리는 쓰기 회신의 목록(trSeat)과 **같은 모양**이다 — 호스트가 {ok,data} 로 감싸도 그대로 읽는다.
   const d = (r && r.data) ? r.data : r;
   if(!(d && d.found)){ trFail((d && d.msg) || (r && r.msg) || '휴지통을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
   trApplyData(d);
 }
 
-// 갱신 목록 한 덩어리를 앉힌다 — 회신(trSend)과 부탁하지 않은 푸시(__applyTrash)가 **같은 길**을 쓴다.
+// 갱신 목록 한 덩어리를 앉힌다 — 쓰기 회신(trSend)의 `trash` 가 지나는 **한 길**이다.
 //   ★ 돌려주는 값 = '앉혔나'. 회신에 목록이 실려 오지 않는 경우(호스트가 다시 읽지 못했다)를 부르는 쪽이 안다.
+//   ★ 옛날에는 부탁하지 않은 푸시(__applyTrash)도 이 문으로 들어왔다 — 그 방출부가 사라지면서 수신부도
+//     함께 걷었다(2026-09-14 · §11-30). 앉히는 곳은 여전히 여기 하나다.
 function trSeat(json){
   let d = null;
   try{ d = JSON.parse(String(json == null ? '' : json)); }catch(_){ d = null; }
@@ -6215,9 +6219,6 @@ function trSeat(json){
   trApplyData(d);
   return true;
 }
-// 호스트가 **부탁하지 않았는데** 밀어 주는 갱신 목록(문자열 JSON — __applyProjects 와 같은 전달 규약).
-window.__applyTrash = function(json){ trSeat(json); };
-
 // 복구·삭제 회신의 뒤처리 한 곳 — 두 조작이 같은 길을 쓴다.
 //   ★ 문장을 **다시 쓰지 않는다**: 거부 사유(기록 n건·사용 중·이름 불일치)는 호스트가 사용자 문장으로
 //     만들었다. 화면이 '처리하지 못했습니다'로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다.

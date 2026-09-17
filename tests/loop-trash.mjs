@@ -39,10 +39,12 @@
  *
  * 전제(이 스크립트가 하지 않는 것):
  *   · 위젯을 띄우거나 닫지 않는다. 9222 에 **admin 으로 로그인된 채** 떠 있어야 한다(아니면 판정 없음 = exit 2).
- *   · 앱 코드를 고치지 않는다. 가로채기는 호스트 왕복(hostRequest)과 푸시 셋(__projectSaved ·
- *     __applyTrash · __applyProjects)을 **감싸는** 것뿐이고 원본을 반드시 그대로 호출한다.
+ *   · 앱 코드를 고치지 않는다. 가로채기는 호스트 왕복(hostRequest)과 푸시 둘(__projectSaved ·
+ *     __applyProjects)을 **감싸는** 것뿐이고 원본을 반드시 그대로 호출한다.
  *     ★ 2026-09-14: 직원·휴지통 쓰기의 공용 회신함(__userSaved · __trashDone)이 사라지고 왕복이 됐다 —
  *       그래서 그 둘을 감싸던 자리가 hostRequest 한 곳으로 모였다(u·t 갈래는 명령 이름으로 가른다).
+ *     ★ 휴지통 목록 계수기(ta)도 같은 자리에서 센다 — 회신에 `trash` 가 실려 오면 오른다. 옛 판은
+ *       푸시(__applyTrash)를 감싸 셌는데, 그 방출부도 수신부도 사라져 감쌀 것이 없다(§11-30).
  *   · 실행(zz 아닌 행)은 만들지도 고치지도 지우지도 않는다. TRUNCATE·스키마 변경 없음.
  *
  * 실행:
@@ -262,15 +264,18 @@ const evj = async (e) => JSON.parse(await cdp.ev(e));
 const J = (v) => JSON.stringify(v);
 
 /* ── 가로채기 설치 ─────────────────────────────────────────────────────────
- *  회신 다섯을 **감싼다**. 원본을 반드시 호출하므로 화면 동작은 시험이 없을 때와 같다.
+ *  회신 네 갈래를 **감싼다**. 원본을 반드시 호출하므로 화면 동작은 시험이 없을 때와 같다.
  *  ★ 페이지가 다시 뜨면 사라진다 — 그래서 매 실행 시작에 설치한다.
  *  ★ 이미 설치돼 있으면(같은 페이지 두 번째 실행) 감싸기를 겹치지 않고 계수기만 비운다.
- *    겹쳐 감으면 회신 하나가 두 번 세어져 '회신을 기다리는' 판정이 조용히 거짓말을 한다. */
+ *    겹쳐 감으면 회신 하나가 두 번 세어져 '회신을 기다리는' 판정이 조용히 거짓말을 한다.
+ *  ★ 판번호 v 는 **감싸는 모양이 바뀌면** 올린다(v3 = __applyTrash 감싸기가 빠진 판) — 옛 판이 심긴
+ *    페이지에 새 스크립트가 붙으면 계수기만 비우고 끝나 낡은 감싸기가 그대로 도는데, 그 계수기는
+ *    없어진 푸시를 기다린다. */
 const INSTALL_JS = `(function(){
-  if (window.__tr && window.__tr.v === 2){ var A0=window.__tr; A0.u.length=0; A0.p.length=0; A0.t.length=0; A0.ta=0; A0.pa=0; return 'reset'; }
-  var oH=window.hostRequest, oP=window.__projectSaved, oA=window.__applyTrash, oQ=window.__applyProjects;
-  if(typeof oH!=='function'||typeof oP!=='function'||typeof oA!=='function'||typeof oQ!=='function') return 'missing';
-  var A={v:2,u:[],p:[],t:[],ta:0,pa:0};
+  if (window.__tr && window.__tr.v === 3){ var A0=window.__tr; A0.u.length=0; A0.p.length=0; A0.t.length=0; A0.ta=0; A0.pa=0; return 'reset'; }
+  var oH=window.hostRequest, oP=window.__projectSaved, oQ=window.__applyProjects;
+  if(typeof oH!=='function'||typeof oP!=='function'||typeof oQ!=='function') return 'missing';
+  var A={v:3,u:[],p:[],t:[],ta:0,pa:0};
   window.__tr=A;
   var CHAN = { saveUser:'u', setUserActive:'u', saveUserOrder:'u', trashRestore:'t', trashDelete:'t' };
   window.hostRequest = function(cmd, params, timeoutMs){
@@ -278,12 +283,11 @@ const INSTALL_JS = `(function(){
     if(!ch) return p;
     return p.then(function(r){
       A[ch].push({ok:!!(r&&r.ok),msg:String((r&&r.msg)==null?'':r.msg)});
-      if(r && r.trash) A.ta++;
+      if(r && r.trash) A.ta++;   // 휴지통 목록이 회신에 실려 왔다 — ta 를 올리는 곳은 여기 하나다
       return r;
     });
   };
   window.__projectSaved = function(ok,msg,nc){ A.p.push({ok:!!ok,msg:String(msg==null?'':msg),needConfirm:!!nc}); return oP.apply(this,arguments); };
-  window.__applyTrash   = function(j){ A.ta++; return oA.apply(this,arguments); };
   window.__applyProjects= function(j){ A.pa++; return oQ.apply(this,arguments); };
   return 'installed';
 })()`;
@@ -336,7 +340,8 @@ async function hsend(payload, chan, { timeout = 20000, expectPush = null } = {})
   const s = await waitPage((x) => x[chan] > b[chan], { timeout });
   if (!s) throw new Error(`호스트 회신이 오지 않았다(${chan}): ${J(payload).slice(0, 160)}`);
   const rep = await evj(`JSON.stringify(__tr.${chan}[__tr.${chan}.length-1])`);
-  //  성공했으면 호스트가 곧바로 관련 목록을 다시 민다(§4.2·§5.3) — 그것까지 기다려야 다음 판정이 최신 화면을 본다.
+  //  성공했으면 갱신 목록이 따라온다(휴지통은 **회신의 trash** · 카탈로그는 푸시 __applyProjects · §4.2·§5.3)
+  //  — 그것까지 기다려야 다음 판정이 최신 화면을 본다.
   if (rep.ok && expectPush) await waitPage((x) => x[expectPush] > b[expectPush], { timeout: 12000 });
   vlog(`hsend ${payload.cmd} → ok=${rep.ok} "${rep.msg}"`);
   return rep;
@@ -748,7 +753,7 @@ async function main() {
       if (!okq('C01 복구 회신 도착', !!done)) return;
       const rep = await evj(`JSON.stringify(__tr.t[__tr.t.length-1])`);
       if (!okq('C01 복구 성공', rep.ok === true, rep.msg)) return;
-      //  ★ 푸시(__applyTrash·__applyProjects)는 **성공했을 때만** 온다 — 실패에도 기다리면
+      //  ★ 갱신 목록(회신의 trash · 푸시 __applyProjects)은 **성공했을 때만** 온다 — 실패에도 기다리면
       //    한 케이스가 타임아웃 12초를 헛되이 태우고, 그 지연이 원인처럼 보인다.
       await waitPage((x) => x.ta > b.ta && x.pa > b.pa, { timeout: 12000 });
     }
