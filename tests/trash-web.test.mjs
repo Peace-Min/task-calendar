@@ -111,23 +111,15 @@ const checks = {
   //     「퇴사자 휴지통」으로 오해됐고(TRASH-DELETE §11-32), 이제 그 이름의 문은 실제로 구성원 쪽에만 있다.
   trashEntryDoorsAreDomainScreens(web) {
     // ── ① 「사용자 정보」에는 없다(만드는 코드에도, 마크업에도)
-    const b = extractFunction(web, 'usAdminBtnSync');
-    assert.ok(!/usTrash/.test(b),
-      'usAdminBtnSync 가 아직 「휴지통」 버튼을 만든다 — 휴지통은 그 도메인의 화면이 연다(#offTrash · #uaTrash). 이 줄이 지는 것은 「구성원 편집」 하나다');
-    assert.ok(!/openTrash/.test(b),
-      'usAdminBtnSync 가 openTrash 에 묶인 것을 만든다 — 「사용자 정보」는 휴지통으로 가는 문이 아니다');
+    //  ★ 2026-09-18 사용자 결정으로 「구성원 편집」 버튼은 #usMemberBtns 줄에 상주하는 정적 공개 문이 됐고,
+    //    그 「관리」 줄을 짓던 usAdminBtnSync 는 사라졌다(USER-ADMIN §11-38). 그래서 볼 것은 둘이다 —
+    //    그 함수가 되살아나지 않았는가, 그리고 「사용자 정보」 마크업에 「휴지통」이 없는가.
+    assert.ok(!/usAdminBtnSync/.test(web),
+      'usAdminBtnSync 가 되살아났다 — 「사용자 정보」의 관리 줄을 JS 가 다시 지으면 휴지통도 그 줄로 돌아온다(USER-ADMIN §11-38)');
     const um = sliceMarkup(web, '<div class="overlay hidden" id="userModal">',
       '<div class="overlay hidden" id="membersModal">', '#userModal').replace(/<!--[\s\S]*?-->/g, '');
     assert.ok(!/휴지통/.test(um),
-      '「사용자 정보」 마크업에 「휴지통」이 들어왔다 — 그 자리는 구성원 안내문에 딸려 읽힌다(§11-32)');
-    //  ★ 관리자가 아니면 「관리」 줄(#usAdminBtns)을 **통째로** 비운다(2026-09-18 A15) — 캡션 「관리자」까지
-    //    JS 가 만들어 넣으므로, 버튼만 골라 지우면 아무것도 없는 줄에 라벨만 남아 없는 권한을 가리킨다.
-    assert.ok(/if\(!on\)\{ while\(box\.firstChild\) box\.removeChild\(box\.firstChild\); return; \}/.test(b),
-      'usAdminBtnSync 가 관리자가 아닐 때 「관리」 줄을 통째로 비우지 않는다 — 남겨 두면 관리자에서 내려가도 문이 남고, 캡션만 남아도 화면이 없는 권한을 가리킨다');
-    assert.ok(/getElementById\('usAdminBtns'\)/.test(b),
-      'usAdminBtnSync 가 관리 진입점을 「구성원 보기」 줄에 만든다 — 일상 동작 줄에 섞이면 층이 사라진다(A15)');
-    assert.ok(!/classList|\.hidden|style\.display/.test(b),
-      'usAdminBtnSync 가 숨김(classList/hidden/display)을 쓴다 — 부재여야 한다. 숨김은 클래스 하나로 풀린다');
+      '「사용자 정보」 마크업에 「휴지통」이 들어왔다 — 그 자리는 구성원 안내문에 딸려 읽힌다(§11-32). 휴지통은 그 도메인의 화면이 연다(#offTrash · #uaTrash)');
 
     // ── ② 과제 쪽 문 — 「공식 과제 (DB)」 하단 줄의 #offTrash(정적 · 위젯에서만 보인다 · 도구줄은 600px 에서 이미 꽉 차 두 줄로 접힌다)
     assert.ok(web.includes('<button type="button" class="btn" id="offTrash" style="display:none"'),
@@ -530,11 +522,9 @@ test('변이⑥-b2: 「퇴사자 휴지통」을 마크업에 적으면 계약�
 
 //  ★ 옛 자리(「사용자 정보」)로 문을 되돌리면 계약⑥-b 가 실패한다 — 그 자리가 곧 §11-32 의 오해다.
 test('변이⑥-b3: 「사용자 정보」에 휴지통을 되살리면 계약⑥-b 가 실패한다(§11-32 의 자리로 되돌아간다)', () => {
-  const bad = mutate(app, '  b.addEventListener(\'click\', openUserAdmin);\n  box.appendChild(b);',
-    "  b.addEventListener('click', openUserAdmin);\n  box.appendChild(b);\n" +
-    "  const t = document.createElement('button'); t.id = 'usTrash';\n" +
-    "  t.addEventListener('click', () => openTrash()); box.appendChild(t);");
-  assert.throws(() => checks.trashEntryDoorsAreDomainScreens(bad), /아직 「휴지통」 버튼을 만든다|openTrash 에 묶인 것을 만든다/);
+  const bad = mutate(app, '>구성원 편집</button>',
+    '>구성원 편집</button>\n          <button type="button" class="btn sm" id="usTrash">휴지통</button>');
+  assert.throws(() => checks.trashEntryDoorsAreDomainScreens(bad), /「휴지통」이 들어왔다/);
   assert.doesNotThrow(() => checks.trashEntryDoorsAreDomainScreens(app));   // 통제군
 });
 

@@ -2749,22 +2749,17 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <!-- 두 버튼은 **서로 다른 화면**이다(2026-09-10 사용자 결정).
              「구성원 보기」 = 전원이 쓰는 읽기 전용 명부. 관리자에게도 편집 컨트롤이 없다.
              「구성원 편집」 = 관리자에게만 존재하는 관리 화면(#userAdminModal).
-             ★ 「구성원 편집」 버튼은 **아래 「관리」 줄**에 서고, 그 줄에도 마크업에 적지 않는다: 호스트 회신의 edit_role 이 'admin'
-               일 때만 usAdminBtnSync 가 만들어 넣는다. 숨김이 아니라 **부재**여야 한다 —
-               숨김은 클래스 하나로 풀리고, 그러면 화면이 권한을 정하는 모양이 된다. -->
+             ★ 두 버튼 모두 **마크업에 상주한다 — 전원에게 같은 줄, 같은 자리다**(2026-09-18 사용자 결정).
+               관리자가 아닌 사람이 「구성원 편집」을 눌러도 화면에는 호스트의 거절 한 줄
+               (「관리자만 사용할 수 있습니다.」)뿐이고 컨트롤은 하나도 없다 — **문은 공개, 방은 호스트가 지킨다.**
+               권한은 언제나 호스트가 요청 시점에 판정한다(membersGet 회신의 admin · 모든 쓰기는 OpenAdminAsync).
+               버튼이 권한이었던 적은 없다 — 그러므로 숨기지도, 만들었다 없앴다 하지도 않는다.
+             ★ 예전에는 이 버튼이 관리자 회신일 때만 생기는 **별도의 「관리」 줄**에 앉았지만
+               (2026-09-18 UI 검토 A15 · USER-ADMIN §11-36), 위 사용자 결정이 그 두 줄 배치를 뒤집었다. -->
         <div class="us-mem-row" id="usMemberBtns">
           <button type="button" class="btn sm" id="usMembers">구성원 보기</button>
+          <button type="button" class="btn sm" id="usUserAdmin" title="직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)">구성원 편집</button>
         </div>
-        <!-- 관리 진입점은 **다른 줄**이다(2026-09-18 UI 검토 A15). 위 줄은 전원이 쓰는 일상 동작이고,
-             이 줄은 관리자에게만 생기는 문이다. 이 줄이 지는 것은 캡션 「관리자」 + 「구성원 편집」 **둘뿐**이다.
-             ★ 「휴지통」은 이 줄에 없다(2026-09-18 사용자 결정) — 휴지통은 그 도메인의 화면이 연다:
-               ㆍ과제·발주처·구분·상태 → 「공식 과제 (DB)」 화면 하단 줄의 #offTrash(숨기는 곳이 곧 되돌리는 곳이다).
-               ㆍ퇴사자 → 「구성원 편집」 안의 #uaTrash(사용자 정보 → 구성원 편집 이후에서 끝난다).
-               예전에 이 줄에 있던 「휴지통」은 바로 위 '구성원' 안내문에 딸린 것처럼 읽혀 '퇴사자 휴지통'으로
-               오해됐는데(TRASH-DELETE §11-32), 이제 그 이름의 문은 실제로 구성원 쪽에만 있다.
-             ★ 이 줄은 마크업에서 **비어 있다** — 캡션 「관리자」까지 usAdminBtnSync 가 만들어 넣는다.
-               위 줄과 같은 규칙이다: 관리자에게만 있는 것은 여기 한 글자도 적지 않는다(숨김 ≠ 부재). -->
-        <div class="us-mem-row" id="usAdminBtns"></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -2847,7 +2842,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
      ★★ 2026-09-10 사용자 결정: **「구성원 보기」와 완전히 독립이다.**
        보기(#membersModal)는 전원에게 같은 모습이고 관리자에게도 편집 컨트롤이 없다.
        편집은 이 화면 하나가 진다 — 진입은 「사용자 정보」의 「구성원 편집」 버튼(#usUserAdmin)이고,
-       그 버튼 자체가 edit_role='admin' 일 때만 DOM 에 생긴다.
+       그 버튼은 **전원에게 보인다**(2026-09-18 사용자 결정) — 관리자가 아니면 이 화면이 호스트의 거절 한 줄만 보여 준다.
      ★ 여기에 조직 트리를 두지 않는다. 트리는 '누구의 일정을 볼까'를 고르는 도구고,
        이 화면은 '누구를 고칠까'다. 그리고 순서 편집은 전 명부를 펼친 상태에서만 뜻이 있다(§5.1).
      ★ 상단 막대(#uaAdmin)는 **비어 있는 자리**다 — 컨트롤을 마크업에 적으면 호스트가 admin:false 로
@@ -4618,8 +4613,6 @@ function updateUserUi(){
     set('usTitle', currentUser.title ? '· ' + currentUser.title : '');
     set('usOrg', usOrgText(currentUser.orgUnit));
   } else set('usMsg', '');
-  //  로그인하지 않았으면 관리 진입점도 없다(권한을 확인할 길 자체가 없다).
-  if(!on) usAdminBtnSync('');
 }
 // 권한 코드 → 사람이 읽는 문장. 원시 코드값(admin/editor/viewer, all/unit_tree/self)을 그대로 노출하지 않는다 —
 // 화면은 '무엇을 할 수 있는가'를 말해야 하고, 코드값은 DB 스키마의 사정일 뿐이다.
@@ -4632,34 +4625,6 @@ const US_VIEW_SCOPE = { all:'전체 — 모든 구성원', unit_tree:'소속 조
 // 모르는 값은 숨기지 않고 그대로 보여준 뒤 '알 수 없는 값'을 덧붙인다 — DB에 새 코드가 생겼을 때
 // 화면이 조용히 틀린 설명을 하는 것보다 관리자에게 물어볼 단서를 남기는 편이 낫다(빈 값은 표시할 게 없어 —).
 function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return map[k] || (k ? k + ' — 알 수 없는 값' : '—'); }
-// 「구성원 편집」 진입 버튼 — **호스트 회신의 edit_role 이 'admin' 일 때만 DOM 에 만든다**(USER-ADMIN §5).
-//   ★ 숨김이 아니라 부재다. 숨김은 클래스 하나로 풀리고, 그러면 화면이 권한을 정하는 모양이 된다 —
-//     권한은 호스트가 요청 시점에 판정한다(ProjectDb.OpenAdminAsync). 그래서 만들거나, 없애거나 둘뿐이다.
-//   ★ 그러므로 이 함수에는 classList·hidden·style.display 가 없다. 하나라도 생기면 계약이 깨진 것이다.
-//   ★ 판정 문자열은 여기 한 곳에만 있다. 두 곳이면 한쪽이 반드시 낡는다.
-function usAdminBtnSync(editRole){
-  const box = document.getElementById('usAdminBtns'); if(!box) return;
-  const on = String(editRole == null ? '' : editRole).trim() === 'admin';
-  const cur = document.getElementById('usUserAdmin');
-  //  ★ 이 줄의 버튼은 「구성원 편집」 하나다(2026-09-18). 휴지통은 그 도메인의 화면이 연다 — 과제 쪽은 공식 과제 화면(#offTrash), 인력 쪽은 「구성원 편집」 안(#uaTrash). TRASH-DELETE §5.0.
-  //  ★ 관리자가 아니면 이 줄을 **통째로** 비운다(2026-09-18 A15). 버튼만 골라 지우면 캡션 「관리자」가
-  //    아무것도 없는 줄에 남아 "여기 뭔가 있었다"고 말한다 — 비어 있는 것이 곧 부재다. 그리고 이 줄에는
-  //    관리자 전용 말고 **아무것도 없으므로**(「구성원 보기」는 위 줄이다) 통째로 비워도 잃을 것이 없다.
-  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }
-  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다(캡션과 버튼은 늘 같이 생긴다)
-  //  캡션 — 아래 버튼이 '누구의 것인가'를 한 단어로 말한다. 이것도 마크업에 적지 않는다: 비관리자
-  //  DOM 에 「관리자」라는 라벨만 남으면 화면이 없는 권한을 가리키게 된다.
-  const cap = document.createElement('span');
-  cap.className = 'set-hint';
-  cap.textContent = '관리자';
-  box.appendChild(cap);
-  const b = document.createElement('button');
-  b.type = 'button'; b.className = 'btn sm'; b.id = 'usUserAdmin';
-  b.textContent = '구성원 편집';
-  b.title = '직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)';
-  b.addEventListener('click', openUserAdmin);
-  box.appendChild(b);
-}
 // 권한 조회 — 열 때마다 DB에서 새로 읽는다(세션에는 권한이 없다: 4필드뿐).
 // ★ 실패하면 추측하지 않는다. 낡거나 지어낸 권한을 보여주는 것이 '모른다'고 말하는 것보다 나쁘다.
 // ★ 신원(이름·직급·소속)도 같은 회신에 들어 있어 함께 칠한다. 예전엔 버렸는데, 그러면 위 두 줄은
@@ -4692,17 +4657,12 @@ async function loadUserPerm(){
     set('usViewScope', usRoleText(US_VIEW_SCOPE, inf.view_scope));
     set('usPermState', active ? '' : '· 비활성 계정');
     set('usPermMsg', '');
-    //  ★ 「구성원 편집」 버튼은 이 회신 하나로만 생기고 사라진다 — 세션에는 권한이 없다(4필드뿐).
-    //    관리자에서 내려간 사람은 이 모달을 다시 여는 순간 버튼이 DOM 에서 사라진다.
-    usAdminBtnSync(inf.edit_role);
     return;
   }
   // 실패 — 신원 3줄은 건드리지 않는다. 세션 값이 그대로 남는다(오프라인에서도 이름은 보여야 한다).
   // 「권한」 블록이 이미 '확인할 수 없음' + 사유를 말하고 있으므로, 신원에까지 경고를 겹치면 소음이다.
   set('usEditRole', '확인할 수 없음');
   set('usViewScope', '확인할 수 없음');
-  //  ★ 확인하지 못했으면 **없앤다**(추측하지 않는다) — 관리자였는지 모르는 채로 문을 열어 두지 않는다.
-  usAdminBtnSync('');
   set('usPermState', '');
   set('usPermMsg', (r && r.msg) || '권한을 확인하지 못했습니다 — 잠시 후 다시 시도하세요.');
 }
@@ -5082,7 +5042,8 @@ function mbApplyData(d){
 /* ══ 구성원 편집(관리자 전용) — USER-ADMIN §5 ═══════════════════════════════
    ★★ 2026-09-10 사용자 결정: **「구성원 보기」와 「구성원 편집」은 완전히 독립이다.**
       보기(#membersModal)는 전원에게 같은 모습으로 열리고 **관리자에게도 편집 컨트롤이 없다.**
-      편집은 관리자에게만 존재하는 별도 버튼(#usUserAdmin)과 별도 화면(#userAdminModal)이다.
+      편집은 별도 화면(#userAdminModal)이 진다 — 진입 버튼(#usUserAdmin)은 전원에게 보이지만(2026-09-18),
+      관리자가 아니면 그 화면에 거절 한 줄뿐이다(__uaAdmin 은 호스트 회신이 정한다).
       예전에는 명부 안에 '관리자 편집 모드'가 있었다. 그러면 한 화면이 두 일을 하고,
       한쪽 상태(순서 편집 중·퇴사자 보기)가 다른 쪽 화면을 물들인다 — 그래서 갈랐다.
    ★ 그래서 상태·렌더러·전역을 **ua* 로 통째로 분리한다. mb* 와 한 글자도 섞지 않는다.**
@@ -12274,9 +12235,8 @@ function bind(){
   { const b = $('#usLogout'); if(b) b.addEventListener('click', submitLogout); }
   { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
   { const b = $('#usMembers'); if(b) b.addEventListener('click', openMembers); }       // #userModal 위에 겹쳐 연다(닫으면 되돌아온다)
+  { const b = $('#usUserAdmin'); if(b) b.addEventListener('click', openUserAdmin); }   // 공개 문 — 관리자가 아니면 화면이 호스트의 거절 한 줄만 보인다(2026-09-18)
   { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
-  //  「구성원 편집」 진입 버튼(#usUserAdmin)은 여기서 배선하지 않는다 — 관리자 회신을 받은 뒤에야
-  //  usAdminBtnSync 가 만들면서 그 자리에서 묶는다(마크업에 없으므로 여기서는 잡히지 않는다).
   { const b = $('#uaSearch'); if(b) b.addEventListener('input', uaFilter); }
   //  직원 편집 폼의 [저장]·[퇴사 처리] — 편집 화면의 관리자 컨트롤은 uaAdminBar·uaRowActions 가 만들면서
   //  그 자리에서 배선한다(동적 생성이라 여기서 배선할 수 없다). 이 둘만 마크업에 상주하므로 여기서 한 번 묶는다.

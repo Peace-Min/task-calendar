@@ -25,7 +25,7 @@
  *     · 「구성원 보기」(#membersModal, openMembers) = **순수 보기**. 관리자에게도 편집 컨트롤이 없다.
  *     · 「구성원 편집」(#userAdminModal, openUserAdmin) = 관리자 전용 관리 화면. 조작은 전부 여기다.
  *     그래서 편집 케이스는 전부 openUserAdmin() 경로로 돌고(C16 이 보기 화면을 따로 본다),
- *     C13 은 「진입 버튼 부재 + 모달 진입 불가(컨트롤 0) + 관문 거부」 셋을 함께 본다.
+ *     C13 은 「진입 버튼은 그대로(2026-09-18 공개 문) + 모달은 열리되 컨트롤 0 + 관문 거부」 셋을 함께 본다.
  *
  *   ★ 2026-09-10(2차) 버튼 자리가 옮겨졌다: 행에는 [편집]뿐이고 퇴사·복구는 **편집 폼 하단 왼쪽**
  *     버튼(#userEdActive)이며, 「＋ 직원 등록」은 상단 막대가 아니라 하단(#uaFoot)의 주 버튼이다.
@@ -305,7 +305,7 @@ const PSTATE = `JSON.stringify({
   lines: document.querySelectorAll('#uaList .mba-line').length,
   barBtns: document.querySelectorAll('#uaAdmin button').length,
   entryBtn: !!document.getElementById('usUserAdmin'),
-  entryRowKids: (function(){ var e=document.getElementById('usAdminBtns'); return e ? e.children.length : -1; })(),
+  memberRowKids: (function(){ var e=document.getElementById('usMemberBtns'); return e ? e.children.length : -1; })(),
   ueOpen: (function(){ var e=document.getElementById('userEditModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbOpen: (function(){ var e=document.getElementById('membersModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbBusy: !!__mbBusy, mbN: __mbMembers.length,
@@ -640,12 +640,12 @@ async function main() {
     console.error('[판정 없음] 직급 또는 조직이 2개 미만이다 — 수정 케이스를 만들 수 없다');
     process.exit(2);
   }
-  //  「구성원 편집」 진입 버튼은 「사용자 정보」의 권한 조회(loadUserPerm)가 만든다 —
-  //  이 시험이 그 경로를 한 번 돌려 둔다. C13 이 '내려가면 사라진다'를 보려면 먼저 서 있어야 한다.
+  //  「구성원 편집」 진입 버튼은 **마크업에 상주하는 공개 문**이다(2026-09-18 사용자 결정) —
+  //  권한 조회(loadUserPerm)를 한 번 돌려 화면을 최신으로 맞춘 뒤, 그 문이 서 있는지만 확인한다.
   await ev(`loadUserPerm()`);
   const entry0 = await waitPage((x) => x.entryBtn === true, { timeout: 15000 });
-  if (!entry0) { console.error("[판정 없음] 관리자인데 「구성원 편집」 진입 버튼(#usUserAdmin)이 만들어지지 않았다"); process.exit(2); }
-  log('진입 버튼 #usUserAdmin 확인(관리자 회신으로 생성됨)');
+  if (!entry0) { console.error("[판정 없음] 「구성원 편집」 진입 버튼(#usUserAdmin)이 DOM 에 없다 — 마크업에 상주해야 한다"); process.exit(2); }
+  log('진입 버튼 #usUserAdmin 확인(전원에게 정적으로 서 있다)');
 
   const T1 = meta.titles[0], T2 = meta.titles[1];
   const O1 = meta.units[rint(0, meta.units.length - 1)];
@@ -1269,7 +1269,7 @@ async function main() {
   /* ── C13 비관리자 뷰 ────────────────────────────────────────────────── */
   //  ★★ 이 케이스만 **로그인 계정의 권한을 실제로 내린다.** 복원 실패는 사람이 DB 로 가야 푸는
   //    상태를 남기므로(판번호 사고와 같은 규율), finally 에서 반드시 되돌리고 **읽어서 확인**한다.
-  await runCase('C13', '비관리자 뷰(진입 버튼 부재 + 편집 화면 진입 불가 + 관문 거부)', async () => {
+  await runCase('C13', '비관리자 뷰(진입 버튼은 공개 문 + 편집 화면은 거절 한 줄 + 관문 거부)', async () => {
     const admins = Number(sql(`SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1`, { what: 'C13 전 admin 수' })[0][0]);
     if (admins < 2) {
       skip('C13', `활성 admin 이 ${admins}명뿐이라 ${ME} 를 내리면 관리자가 0이 된다 — 앞 케이스(C05/C07)가 깨졌다는 뜻`);
@@ -1282,18 +1282,17 @@ async function main() {
       //  I4 기대값도 함께 내린다 — 이건 **시험이 일부러 낸 변경**이라 불변식이 눈감을 자리가 아니다.
       const e = expect.get(meRow.uid); if (e) e[5] = 'editor';
 
-      //  ① 진입 버튼이 **DOM 에서 사라진다**(숨김이 아니라 부재). 권한 회신을 다시 받게 한다.
+      //  ① 진입 버튼은 **그대로 서 있다**(2026-09-18 사용자 결정 · 문은 공개, 방은 호스트가 지킨다).
+      //    권한 회신을 다시 받아도 문은 사라지지 않고, 그 줄의 자식도 보기+편집 둘 그대로다.
       await ev(`(typeof closeModal === 'function' && closeModal('#userAdminModal'), 1)`);
       await ev(`loadUserPerm()`);
-      const gone = await waitPage((x) => x.entryBtn === false, { timeout: 15000 });
-      okq('C13 「구성원 편집」 진입 버튼이 DOM 에서 사라졌다(숨김 아님)', !!gone,
-        gone ? '' : '#usUserAdmin 이 남아 있다 — 관리자에서 내려갔는데 문이 그대로다');
-      //  ★ 「관리」 줄은 **통째로** 빈다(2026-09-18 A15) — 캡션 「관리자」가 남으면 빈 줄이 없는 권한을 가리킨다.
-      const gs = gone || (await pstate());
-      okq('C13 「관리」 줄(#usAdminBtns)이 통째로 비었다', gs.entryRowKids === 0,
-        `자식 ${gs.entryRowKids}개 — 0 이어야 한다(-1 은 그 줄 자체가 없다는 뜻)`);
+      const gs = (await waitPage((x) => x.entryBtn === true, { timeout: 15000 })) || (await pstate());
+      okq('C13 「구성원 편집」 버튼은 비관리자에게도 그대로 있다(공개 문)', gs.entryBtn === true,
+        gs.entryBtn === true ? '' : '#usUserAdmin 이 사라졌다 — 문은 전원에게 같은 자리에 서 있어야 한다');
+      okq('C13 구성원 줄(#usMemberBtns)은 보기·편집 둘 그대로다', gs.memberRowKids === 2,
+        `자식 ${gs.memberRowKids}개 — 2 여야 한다(-1 은 그 줄 자체가 없다는 뜻)`);
 
-      //  ② 그래도 함수를 직접 불러 본다(버튼이 없다고 경로가 없는 것은 아니다).
+      //  ② 그 문을 실제로 드러간다(문이 공개라도 방은 호스트가 지킨다).
       //     호스트가 admin:false 로 답하므로 컨트롤이 하나도 만들어지지 않아야 한다.
       await ev(`openUserAdmin()`);
       const s2 = await waitPage((x) => x.uaOpen && !x.busy, { timeout: 20000 });

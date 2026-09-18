@@ -695,8 +695,8 @@ async function main() {
       '#uaTrash 가 없다 — uaAdminBar 가 admin 회신을 admin 으로 읽지 못했다');
     okq('C00 「사용자 정보」에는 휴지통이 없다(§11-32 의 자리로 되돌아가지 않았다)', usTrashGone === true,
       '#usTrash 가 살아 있다 — 휴지통은 그 도메인의 화면이 연다');
-    okq('C00 「구성원 편집」 진입 버튼이 관리자 회신으로 생성됐다', !!entry0,
-      '#usUserAdmin 이 없다 — usAdminBtnSync 가 admin 을 admin 으로 읽지 못했다');
+    okq('C00 「구성원 편집」 진입 버튼은 마크업에 상주한다(2026-09-18 공개 문)', !!entry0,
+      '#usUserAdmin 이 없다 — 그 버튼은 권한과 무관하게 「구성원 보기」 옆에 서 있어야 한다');
     const { reply, data } = await trashGet();
     if (!okq('C00 trashGet 회신 ok(found)', !!(reply && reply.ok), JSON.stringify(reply).slice(0, 200))) return;
     okq('C00 admin:true', !!(data && data.admin === true), JSON.stringify(data && data.admin));
@@ -1297,10 +1297,9 @@ async function main() {
       okq('C08 「퇴사자 휴지통」 문이 비관리자 DOM 에 없다', !stillThere,
         '#uaTrash 가 남아 있다 — 권한이 내려갔는데 문이 그대로다');
       await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
+      //  ★ 「구성원 편집」 진입 버튼은 권한과 무관하게 그대로 서 있다(2026-09-18 사용자 결정 · 공개 문) —
+      //    이 시험이 볼 것은 휴지통 쪽 문과 호스트의 거부다. 문의 유무는 USER-ADMIN 계약⑦-c 가 진다.
       await ev(`loadUserPerm()`);
-      const gone = await waitPage((x) => x.usAdmin === false, { timeout: 15000 });
-      okq('C08 「구성원 편집」 버튼도 DOM 에서 사라졌다(한 함수·한 판정 · §5.0)', !!gone,
-        '#usUserAdmin 이 남아 있다 — usAdminBtnSync 가 내려간 권한을 읽지 못했다');
 
       //  ② 버튼이 없다고 경로가 없는 것은 아니다 — 함수를 직접 불러 본다.
       const g = (await trashGet()).data;

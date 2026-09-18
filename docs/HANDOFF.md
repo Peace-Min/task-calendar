@@ -34,9 +34,10 @@
 1. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installer\publish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash). 패치노트에 사용자 관리·휴지통·개발종료일·정합 6종. **스키마 12 + GRANT 7표와 같은 창에 배포**(DEPLOY.md §0-5, §6-1 "권한 변경도 §0").
 2. **푸쉬** — 지시 시에만. 본·비공개 둘 다.
 3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).
-4. 2026-09-18 에 끝낸 잔여: 「관리자」 구획 분리(#usAdminBtns) · 시험 헬퍼 사본 5파일 → harness(listCsMembers 추가) · 안 읽히는 불리언 반환 제거 · §11 12·13 순서 · 세피아 --muted #75664f(4.75:1). loop-ui-visual 의 남은 V8 경고는 전부 `--accent-soft` 배경 위 기준선 근처(warn, rc 0)로 이전부터 있던 것.
+4. 2026-09-18 에 끝낸 잔여: 「관리자」 구획 분리(#usAdminBtns) · 시험 헬퍼 사본 5파일 → harness(listCsMembers 추가) · 안 읽히는 불리언 반환 제거 · §11 12·13 순서 · 세피아 --muted #75664f(4.75:1). loop-ui-visual 의 남은 V8 경고는 전부 `--accent-soft` 배경 위 기준선 근처(warn, rc 0)로 이전부터 있던 것. *(아래 7 로 뒤집혔다 — 그 구획과 함수는 없다.)*
 5. **크기 조절 상단 가장자리(2026-09-18)**: "좌상단 대각선이 안 된다" 보고 → 호스트·nw 핸들 자체는 정상(CDP 화면좌표 드래그 Δ 정확). 실제 원인은 `#dsBadge` 위 여백 12px 가 어느 핸들에도 안 걸리는 죽은 띠였던 것 → `.rsz-n` 추가·nw/sw 20px·ne 14px(✕ 보호). 개발기(DPI 100%)에선 재현 안 됐으므로 사용자 기기에서 계속되면 DPI 배율·작업표시줄 위치·커서 모양(↖↘)을 확인.
-6. **휴지통 진입점 이동(2026-09-18 사용자 결정)**: 휴지통은 그 도메인의 화면이 연다 — 과제·발주처·구분·상태는 공식 과제 화면의 `#offTrash`, 퇴사자는 「구성원 편집」의 `#uaTrash`(`openTrash(scope)` · `__trScope` 가 보이는 탭·머리말을 정한다). 「사용자 정보」에는 휴지통이 없고 `usAdminBtnSync` 는 「구성원 편집」 하나만 만든다. **호스트 불변**(`trashGet` 은 그대로 다섯 목록). 계약 ⑥-b/⑥-DOM(a)·`loop-trash` C00/C08 은 새 문을 보도록 옮긴다([TRASH-DELETE §11-33](TRASH-DELETE.md) · [USER-ADMIN §11-37](USER-ADMIN.md)).
+6. **휴지통 진입점 이동(2026-09-18 사용자 결정)**: 휴지통은 그 도메인의 화면이 연다 — 과제·발주처·구분·상태는 공식 과제 화면의 `#offTrash`, 퇴사자는 「구성원 편집」의 `#uaTrash`(`openTrash(scope)` · `__trScope` 가 보이는 탭·머리말을 정한다). 「사용자 정보」에는 휴지통이 없고 `usAdminBtnSync` 는 「구성원 편집」 하나만 만든다. **호스트 불변**(`trashGet` 은 그대로 다섯 목록). 계약 ⑥-b/⑥-DOM(a)·`loop-trash` C00/C08 은 새 문을 보도록 옮긴다([TRASH-DELETE §11-33](TRASH-DELETE.md) · [USER-ADMIN §11-37](USER-ADMIN.md)). *(아래 7: `usAdminBtnSync` 는 그 뒤 완전히 사라졌다.)*
+7. **「구성원 편집」 진입 버튼 = 정적 공개 문(2026-09-18 사용자 결정)**: 「구성원 보기」 옆 같은 줄(`#usMemberBtns`)에 마크업으로 상주하고, 관리자가 아니면 열린 화면이 호스트의 거절 한 줄(「관리자만 사용할 수 있습니다.」)만 보여 준다 — `usAdminBtnSync`·`#usAdminBtns`·진입 jsdom 하네스는 전부 제거, 부재 계약은 창 안의 컨트롤에만 적용된다([USER-ADMIN §11-38](USER-ADMIN.md) · [TRASH-DELETE §11-34](TRASH-DELETE.md)).
 
 ## 4. 이어서 작업하는 법
 

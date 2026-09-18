@@ -633,39 +633,39 @@ const checks = {
     }
   },
 
-  // ⑦-c 진입 버튼(#usUserAdmin)은 edit_role==='admin' 회신일 때만 만들어진다 — 숨김이 아니라 부재.
-  adminEntryButtonIsBuiltNotHidden(web) {
-    assert.ok(!/id="usUserAdmin"/.test(web),
-      '「구성원 편집」 버튼이 마크업에 있다 — 비관리자 DOM 에 남는다(숨김 ≠ 부재). JS 가 만들어야 한다');
-    assert.ok(/<div class="us-mem-row" id="usMemberBtns">/.test(web),
-      '#usMemberBtns(「구성원 보기」 줄)가 없다 — 전원이 쓰는 일상 동작의 자리가 사라졌다');
-    //  ★ 관리 진입점은 **다른 줄**이다(2026-09-18 A15). 그 줄은 마크업에서 **비어 있어야** 한다 —
-    //    캡션 「관리자」 한 글자라도 적어 두면 비관리자 DOM 에 없는 권한을 가리키는 라벨이 남는다.
-    assert.ok(/<div class="us-mem-row" id="usAdminBtns"><\/div>/.test(web),
-      '#usAdminBtns(관리 진입점 줄)가 없거나 비어 있지 않다 — 그 줄은 마크업에서 빈 자리여야 한다(숨김 ≠ 부재)');
-    const adminRow = (/id="usAdminBtns">([\s\S]*?)<\/div>/.exec(web) || ['', ''])[1];
-    for (const dead of ['휴지통', '구성원 편집', '관리자']) {
-      assert.ok(!adminRow.includes(dead),
-        `#usAdminBtns 안에 «${dead}» 이 마크업으로 적혀 있다 — 관리자에게만 있는 것은 JS 가 만들어야 한다`);
+  // ⑦-c 진입 버튼(#usUserAdmin)은 **전원의 마크업에 상주하는 공개 문**이다(2026-09-18 사용자 결정).
+  //    문은 공개, 방은 호스트가 지킨다 — 관리자가 아닌 사람이 눌러도 #userAdminModal 에는 호스트의
+  //    거절 한 줄(「관리자만 사용할 수 있습니다.」)뿐이고 컨트롤은 0 이다(그 판정은 ⑦-DOM(b) 가 센다).
+  //    ★ 예전에는 관리자 회신일 때만 버튼을 만들어 넣었지만(usAdminBtnSync · 「관리」 줄 #usAdminBtns),
+  //      그 함수도 그 줄도 사라졌다. 버튼이 권한이었던 적은 없다 — 판정은 membersGet 과 OpenAdminAsync 다.
+  adminEntryButtonIsPublicDoor(web) {
+    const m = /<div class="us-mem-row" id="usMemberBtns">([\s\S]*?)<\/div>/.exec(web);
+    assert.ok(m, '#usMemberBtns(구성원 줄)가 마크업에 없다 — 두 문이 나란히 서는 자리가 사라졌다');
+    const row = m[1];
+    assert.ok(/id="usMembers"/.test(row),
+      '「구성원 보기」(#usMembers)가 그 줄에 없다 — 전원이 쓰는 일상 동작의 자리다');
+    assert.ok(/id="usUserAdmin"/.test(row),
+      '「구성원 편집」(#usUserAdmin)이 #usMemberBtns 줄에 없다 — 문은 전원에게 같은 줄, 같은 자리다(2026-09-18)');
+    assert.ok(row.indexOf('id="usMembers"') < row.indexOf('id="usUserAdmin"'),
+      '「구성원 편집」이 「구성원 보기」보다 앞에 선다 — 일상 동작이 먼저다');
+    assert.ok(/id="usUserAdmin"[^>]*>구성원 편집</.test(row),
+      `진입 버튼의 문구가 「구성원 편집」이 아니다: ${JSON.stringify(row)}`);
+    //  ★ 옛 모양은 핝적도 남기지 않는다 — 그 줄도, 그 줄을 채우던 함수도 없다.
+    assert.ok(!/id="usAdminBtns"/.test(web),
+      '#usAdminBtns(옛 「관리」 줄)가 되살아났다 — 진입 버튼은 「구성원 보기」와 같은 줄에 선다(2026-09-18 사용자 결정)');
+    assert.ok(!/function usAdminBtnSync/.test(web),
+      'usAdminBtnSync 선언이 되살아났다 — 문을 만들었다 없앴다 하지 않는다');
+    assert.ok(!/usAdminBtnSync/.test(web),
+      'usAdminBtnSync 가 아직 앱에 있다(호출이든 주석이든) — 권한 판정은 화면의 일이 아니다');
+    //  ★ 정적 버튼이어야 한다 — JS 가 만들면 '언제 만드나'가 다시 권한 판정이 된다.
+    for (const line of web.split('\n').filter((l) => l.includes('usUserAdmin'))) {
+      assert.ok(!/createElement|\.id\s*=/.test(line),
+        `JS 가 「구성원 편집」 버튼을 만든다: ${line.trim()} — 그 버튼은 마크업에 상주해야 한다`);
     }
-    const b = extractFunction(web, 'usAdminBtnSync');
-    assert.ok(/getElementById\('usAdminBtns'\)/.test(b),
-      'usAdminBtnSync 가 관리 진입점을 #usAdminBtns 가 아닌 곳에 만든다 — 「구성원 보기」 줄에 섞이면 층이 사라지고 「휴지통」이 구성원 안내문에 딸린 것처럼 읽힌다(A15)');
-    assert.ok(/=== 'admin'/.test(b),
-      "usAdminBtnSync 가 edit_role 을 'admin' 과 대조하지 않는다 — 판정 기준이 사라졌다");
-    assert.ok(/removeChild/.test(b),
-      'usAdminBtnSync 가 버튼을 DOM 에서 제거하지 않는다 — 남겨 두면 관리자에서 내려가도 문이 남는다');
-    //  ★ 숨김으로 바꾸는 변이를 형태로도 막는다: 이 함수에 classList·hidden·display 가 있으면 안 된다.
-    assert.ok(!/classList|\.hidden|style\.display/.test(b),
-      'usAdminBtnSync 가 숨김(classList/hidden/display)을 쓴다 — 부재여야 한다. 숨김은 클래스 하나로 풀린다');
-    //  권한 회신을 읽는 곳에서 실제로 불린다(성공·실패 양쪽).
-    const lp = extractFunction(web, 'loadUserPerm');
-    assert.ok(/usAdminBtnSync\(inf\.edit_role\)/.test(lp),
-      'loadUserPerm 이 회신의 edit_role 로 진입 버튼을 동기화하지 않는다');
-    assert.ok(/usAdminBtnSync\(''\)/.test(lp),
-      '권한 조회 실패 경로가 진입 버튼을 없애지 않는다 — 확인하지 못한 채 문이 열려 있게 된다');
-    assert.ok(/usAdminBtnSync\(''\)/.test(extractFunction(web, 'updateUserUi')),
-      '미로그인 경로가 진입 버튼을 없애지 않는다');
+    //  ★ 문은 열려야 한다 — 마크업에 상주하므로 bind 에서 한 번 묶는다(만드는 자리가 없어졌다).
+    const b = extractFunction(web, 'bind');
+    assert.ok(/\$\('#usUserAdmin'\)/.test(b) && /openUserAdmin/.test(b),
+      'bind 가 #usUserAdmin 을 openUserAdmin 에 묶지 않는다 — 문이 있는데 열리지 않는다');
   },
 
   // ⑦-e 퇴사·복구는 **편집 폼 안에만** 산다(2026-09-10 사용자 결정).
@@ -1303,8 +1303,8 @@ test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 두 �
   checks.membersMarkupHasNoControls(app);
   checks.userAdminMarkupHasNoControls(app);
 });
-test("계약⑦-c: 「구성원 편집」 진입 버튼은 edit_role==='admin' 일 때만 만들어진다(숨김 ≠ 부재)", () => {
-  checks.adminEntryButtonIsBuiltNotHidden(app);
+test('계약⑦-c: 「구성원 편집」 진입 버튼은 전원의 마크업에 상주하는 공개 문이다(2026-09-18 사용자 결정)', () => {
+  checks.adminEntryButtonIsPublicDoor(app);
 });
 test('계약⑦-e: 퇴사·복구는 편집 폼 하단에만 있고 행에는 없다(2026-09-10 사용자 결정)', () => {
   checks.retireLivesInForm(app);
@@ -2146,27 +2146,32 @@ test('변이⑦-c: 보기 화면이 admin 을 다시 읽기 시작하면 계약�
   assert.doesNotThrow(() => checks.adminFlagComesFromHost(app));   // 통제군
 });
 
-test('변이⑦-d: 진입 버튼을 숨김으로 바꾸면 계약⑦-c 가 실패한다(숨김 ≠ 부재)', () => {
-  const bad = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
-                          "  if(!on){ if(cur) cur.classList.add('hidden'); return; }");
-  assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad), /제거하지 않는다|숨김\(classList/);
-  assert.doesNotThrow(() => checks.adminEntryButtonIsBuiltNotHidden(app));   // 통제군
+test('변이⑦-d: 마크업에서 「구성원 편집」 버튼을 지우면 계약⑦-c 가 실패한다(문이 사라진다)', () => {
+  const bad = mutate(app, '\n          <button type="button" class="btn sm" id="usUserAdmin" title="직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)">구성원 편집</button>', '');
+  assert.throws(() => checks.adminEntryButtonIsPublicDoor(bad), /#usMemberBtns 줄에 없다/);
+  assert.doesNotThrow(() => checks.adminEntryButtonIsPublicDoor(app));   // 통제군
 });
 
-test('변이⑦-e: 진입 버튼을 마크업에 적으면 계약⑦-c 가 실패한다', () => {
-  const bad = mutate(app, '          <button type="button" class="btn sm" id="usMembers">구성원 보기</button>',
-                          '          <button type="button" class="btn sm" id="usMembers">구성원 보기</button>\n' +
-                          '          <button type="button" class="btn sm" id="usUserAdmin">구성원 편집</button>');
-  assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad), /마크업에 있다/);
-  assert.doesNotThrow(() => checks.adminEntryButtonIsBuiltNotHidden(app));   // 통제군
+test('변이⑦-e: 옛 「관리」 줄(#usAdminBtns)을 도로 두면 계약⑦-c 가 실패한다(문은 전원의 줄에 선다)', () => {
+  const bad = mutate(app, '        <div class="us-mem-row" id="usMemberBtns">',
+                          '        <div class="us-mem-row" id="usAdminBtns"></div>\n        <div class="us-mem-row" id="usMemberBtns">');
+  assert.throws(() => checks.adminEntryButtonIsPublicDoor(bad), /되살아났다/);
+  assert.doesNotThrow(() => checks.adminEntryButtonIsPublicDoor(app));   // 통제군
+});
+
+test('변이⑦-e2: bind 의 배선 한 줄을 지우면 계약⑦-c 가 실패한다(문은 있는데 열리지 않는다)', () => {
+  const bad = mutate(app, "  { const b = $('#usUserAdmin'); if(b) b.addEventListener('click', openUserAdmin); }", '  //');
+  assert.throws(() => checks.adminEntryButtonIsPublicDoor(bad), /묶지 않는다/);
+  assert.doesNotThrow(() => checks.adminEntryButtonIsPublicDoor(app));   // 통제군
 });
 
 // ══════════════════════════════════════════════════════════════════════
 //  §8-7 — 편집 컨트롤은 **있어야 할 곳에만** 있다(숨김이 아니라 부재)
-//  ★ 2026-09-10 사용자 결정으로 볼 것이 셋이다:
+//  ★ 2026-09-10 사용자 결정으로 여기서 그려 볼 것이 둘이다:
 //      (a) 「구성원 보기」(#membersModal)는 **admin:true 회신에도** 편집 컨트롤이 0 이다.
 //      (b) 「구성원 편집」(#userAdminModal)의 컨트롤은 **admin:true 일 때만** DOM 에 있다.
-//      (c) 「구성원 편집」 진입 버튼은 edit_role!=='admin' 이면 DOM 에 **없다**(숨기지 않는다).
+//  ★ 진입 버튼(#usUserAdmin)은 2026-09-18 사용자 결정으로 **전원의 마크업에 상주하는 공개 문**이 됐다 —
+//    만들었다 없앤다 하는 코드가 없으니 그려 볼 것도 없다(계약⑦-c 가 마크업과 배선을 소스에서 센다).
 //  ★ 소스 문자열 검사로는 이 계약을 증명할 수 없다. 컨트롤을 만드는 코드는 어차피 파일 안에 있고,
 //    문제는 '그 코드가 언제 도는가'이기 때문이다. 그래서 실제로 그려 보고 DOM 을 센다.
 //  ★ 앱 전체를 부팅하지 않는다 — 그리는 함수만 떼어 내 빈 문서에 심는다.
@@ -2686,25 +2691,6 @@ function scopeHarnessJs(src) {
   ].join('\n');
 }
 
-// (c) 진입 버튼 — usAdminBtnSync 하나만 떼어 내 역할 문자열로 굴린다.
-function entryHarnessJs(src) {
-  return [
-    'function openUserAdmin(){}',
-    extractFunction(src, 'usAdminBtnSync'),
-    'window.__probe = function(role){',
-    '  usAdminBtnSync(role);',
-    '  var b = document.getElementById("usUserAdmin");',
-    '  var adm = document.getElementById("usAdminBtns");',
-    '  var mem = document.getElementById("usMemberBtns");',
-    //  ★ '어느 줄에 앉았나'를 함께 잰다(A15) — 부재만 재면 두 줄을 도로 합치는 변이가 그대로 통과한다.
-    '  return { present: !!b, text: b ? String(b.textContent || "") : "",',
-    '           inAdminRow: b ? b.parentNode === adm : null,',
-    '           admChildren: adm.children.length, admText: String(adm.textContent || ""),',
-    '           memChildren: mem.children.length, memText: String(mem.textContent || "") };',
-    '};',
-  ].join('\n');
-}
-
 const VIEW_FIXTURE = '<!doctype html><html><body>' +
   '<input type="text" id="mbSearch">' +
   '<div id="mbSoon"></div><div id="mbList"></div><div id="mbEmpty"></div></body></html>';
@@ -2712,10 +2698,6 @@ const ADMIN_FIXTURE = '<!doctype html><html><body>' +
   '<div id="uaAdmin"></div><input type="text" id="uaSearch">' +
   '<div id="uaScope"></div><div id="uaList"></div><div id="uaEmpty"></div>' +
   '<span id="uaFoot"></span></body></html>';   // 하단 자리 — 마크업에선 빈 채고 uaAdminBar 가 채운다
-//  ★ 마크업과 같은 모양이다 — 줄이 둘이고, 관리 줄은 **비어 있다**(A15).
-const ENTRY_FIXTURE = '<!doctype html><html><body><div class="us-mem-row" id="usMemberBtns">' +
-  '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div>' +
-  '<div class="us-mem-row" id="usAdminBtns"></div></body></html>';
 
 const ROWS = [
   { userId: 11, loginId: 'zzUa', name: 'zzU_a', title: 'zzU-T1', orgUnit: 'zzU-조직', canViewSchedule: true, isActive: true },
@@ -2734,7 +2716,6 @@ const probeSaving = (order, saving, src = app) => runInJsdom(ADMIN_FIXTURE, admi
 const probeMove = (uid, delta, pressUop, src = app) => runInJsdom(ADMIN_FIXTURE, moveHarnessJs(src), '__probe', ROWS, uid, delta, pressUop);
 const probeFill = (items, cur, blank, src = app) => runInJsdom(FILL_FIXTURE, fillHarnessJs(src), '__probe', items, cur, blank);
 const probeScope = (search, inactive, admin, src = app) => runInJsdom(ADMIN_FIXTURE, scopeHarnessJs(src), '__probe', ROWS, search, inactive, admin);
-const probeEntry = (role, src = app) => runInJsdom(ENTRY_FIXTURE, entryHarnessJs(src), '__probe', role);
 //  회신이 나른 명부의 좌석 — 그리지 않으므로 자리만 있으면 된다(uaOrderReset 이 검색칸을 푼다).
 //   ★ 폼 하단의 [퇴사 처리]/[복구] 와 읽기전용 서열 칸도 둔다(R6-W3) — 앉는 명부가 그 둘을 다시 맞춘다.
 const PUSH_FIXTURE = '<!doctype html><html><body><input id="uaSearch">' +
@@ -2792,23 +2773,13 @@ const probeUaLockFocusMoved = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarn
 const probeUaLockRerender = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockSurvivesRerender', ROWS);
 //  ★ 문구의 정본은 호스트 상수 하나다 — 시험이 사본을 적으면 둘이 갈려도 초록이 뜬다.
 const STALE_MSG = (/internal const string StaleRosterMsg\s*=\s*"([^"]+)"/.exec(pdb) || [])[1];
-//  (c) 는 '한 번 만든 뒤 내려갔을 때'가 진짜 관문이다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
-function probeEntrySeq(roles, src = app) {
-  const { JSDOM } = jsdom;
-  const dom = new JSDOM(ENTRY_FIXTURE, { runScripts: 'outside-only' });
-  dom.window.eval(entryHarnessJs(src));
-  return roles.map((r) => JSON.parse(JSON.stringify(dom.window.__probe(r))));
-}
-
 if (!jsdom) {
   // skip 은 통과가 아니다 — 러너가 exit 2(판정 없음)로 끝나고, 릴리스 게이트(TC_TEST_STRICT=1)는 실패로 승격한다.
   const { skip } = await import('./harness.mjs');
   skip('계약⑦-DOM(a): 「구성원 보기」는 관리자에게도 편집 컨트롤이 0', SKIP_NO_JSDOM, '이 파일의 DOM 계약 5건이 세어지지 않음');
   skip('계약⑦-DOM(b): 「구성원 편집」 컨트롤은 admin:true 일 때만 있다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집은 사라진다(하단 등록도 함께 사라진다)', SKIP_NO_JSDOM);
-  skip("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다", SKIP_NO_JSDOM);
-  skip('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
-  skip('변이⑦-DOM(A15): 「관리」 줄을 도로 합치거나·캡션을 남기거나·마크업에 적으면 계약이 깨진다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM: 두 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM: ▲▼ 는 목록을 다시 만들지 않고 포커스·자리가 그대로다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 반대쪽 화살표를 잡는다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM: 누른 행을 옮기게 되돌리면 그 안의 포커스가 사라진다', SKIP_NO_JSDOM);
@@ -2898,38 +2869,7 @@ if (!jsdom) {
       `순서 편집 중인데 #uaFoot 에 자식이 ${r.footChildren}개 있다 — 등록이 명부를 다시 읽어 편집 중인 순서를 날린다`);
   });
 
-  test("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다(숨김이 아니라 부재)", () => {
-    for (const role of ['viewer', 'editor', '', null, 'superuser', 'Admin']) {
-      const r = probeEntry(role);
-      assert.strictEqual(r.present, false,
-        `edit_role=${JSON.stringify(role)} 인데 「구성원 편집」 버튼이 DOM 에 있다 — 관리자만 이 문을 본다`);
-    }
-    const on = probeEntry('admin');
-    assert.strictEqual(on.present, true, "edit_role='admin' 인데 「구성원 편집」 버튼이 만들어지지 않았다");
-    assert.strictEqual(on.text, '구성원 편집', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
-    //  ★ **어느 줄에** 앉는가도 계약이다(2026-09-18 A15) — 관리 진입점은 「구성원 보기」와 다른 줄이다.
-    assert.strictEqual(on.inAdminRow, true,
-      '「구성원 편집」이 #usAdminBtns 가 아닌 곳에 앉았다 — 일상 동작 줄에 섞이면 층이 사라진다(A15)');
-    assert.strictEqual(on.memChildren, 1,
-      `「구성원 보기」 줄의 자식이 ${on.memChildren}개다 — 그 줄에는 #usMembers 하나뿐이어야 한다`);
-    //  ★ 2026-09-18 — 이 줄이 지는 것은 캡션 「관리자」 + 「구성원 편집」 **둘뿐**이다. 「휴지통」은
-    //    그 도메인의 화면으로 갔다(과제 쪽은 #offTrash, 퇴사자는 「구성원 편집」 안의 #uaTrash).
-    assert.strictEqual(on.admChildren, 2,
-      `관리 줄의 자식이 ${on.admChildren}개다 — 캡션 「관리자」 + 버튼 하나여야 한다`);
-    assert.ok(on.admText.startsWith('관리자'),
-      `관리 줄이 캡션으로 시작하지 않는다: ${JSON.stringify(on.admText)} — 그 버튼이 누구의 것인지 말하는 한 단어가 먼저 온다`);
-    //  ★ 진짜 관문: 관리자였다가 내려간 경우. 숨김으로 바꾸면 여기서만 드러난다.
-    const seq = probeEntrySeq(['admin', 'editor', 'admin', '']);
-    assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
-      `역할이 바뀔 때 버튼이 생겼다 사라지지 않는다: ${JSON.stringify(seq.map((x) => x.present))} — 남으면 내려간 사람에게 문이 남는다`);
-    //  ★ 내려가면 관리 줄은 **통째로** 빈다 — 캡션만 남아도 화면이 없는 권한을 가리킨다.
-    assert.deepStrictEqual(seq.map((x) => x.admChildren), [2, 0, 2, 0],
-      `관리 줄이 비었다 채워지지 않는다: ${JSON.stringify(seq.map((x) => x.admChildren))} — 캡션이 남으면 빈 줄에 「관리자」만 선다`);
-    assert.deepStrictEqual(seq.map((x) => x.memChildren), [1, 1, 1, 1],
-      `「구성원 보기」 줄이 역할에 따라 흔들린다: ${JSON.stringify(seq.map((x) => x.memChildren))} — 그 줄은 전원의 것이라 변하지 않는다`);
-  });
-
-  test('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
+  test('변이⑦-DOM: 두 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
     // (a) 보기 화면에 조작 버튼을 다는 한 줄
     const badA = mutate(app, '    list.appendChild(row);\n  }',
       '    var __l = document.createElement("div"); __l.className = "mba-line";' +
@@ -2943,51 +2883,9 @@ if (!jsdom) {
     const rb = probeAdmin(false, false, badB);
     assert.ok(rb.uops.length > 0 || rb.lines > 0,
       '변이 전제: 분기를 지우면 admin:false 에도 조작 버튼이 그려져야 한다');
-
-    // (c) 진입 버튼 제거를 숨김으로 바꾸는 한 줄
-    const badC = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
-      "  if(!on){ if(cur) cur.classList.add('hidden'); return; }");
-    const rc = probeEntrySeq(['admin', 'editor'], badC);
-    assert.strictEqual(rc[1].present, true,
-      '변이 전제: 숨김으로 바꾸면 내려간 뒤에도 버튼이 DOM 에 남아야 한다(그래서 부재 계약이 필요하다)');
-    // 통제군 — 원본은 셋 다 계약을 지킨다.
+    // 통제군 — 원본은 둘 다 계약을 지킨다.
     assert.strictEqual(probeView().lines, 0);
     assert.strictEqual(probeAdmin(false, false).uops.length, 0);
-    assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].present, false);
-  });
-
-  //  ★ A15(2026-09-18) — 「관리」 줄이 **따로** 있다는 것을 각각 한 줄 변이로 깨 본다.
-  //    셋 다 '버튼이 있다/없다'로는 드러나지 않는다: 도로 합쳐도, 캡션이 남아도, 캡션을 마크업에 적어도
-  //    버튼의 유무는 그대로다. 그래서 '어느 줄에 · 몇 개가 · 마크업에 무엇이' 를 재는 계약이 필요하다.
-  test('변이⑦-DOM(A15): 「관리」 줄을 도로 합치거나·캡션을 남기거나·마크업에 적으면 계약이 깨진다', () => {
-    // (1) 두 줄을 도로 한 줄로 — 관리 버튼이 「구성원 보기」 줄로 들어간다
-    const bad1 = mutate(app, "  const box = document.getElementById('usAdminBtns'); if(!box) return;",
-      "  const box = document.getElementById('usMemberBtns'); if(!box) return;");
-    const r1 = probeEntry('admin', bad1);
-    assert.strictEqual(r1.inAdminRow, false,
-      '변이 전제: 자리를 되돌리면 관리 버튼이 「구성원 보기」 줄에 앉아야 한다');
-    assert.ok(r1.memChildren > 1, `변이 전제: 그 줄의 자식이 늘어야 한다(실제 ${r1.memChildren})`);
-    assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad1), /#usAdminBtns 가 아닌 곳/);
-
-    // (2) 내려갈 때 캡션을 남기는 한 줄 — 빈 줄에 「관리자」만 선다
-    const bad2 = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
-      '  if(!on){ while(box.children.length > 1) box.removeChild(box.lastChild); return; }');
-    const r2 = probeEntrySeq(['admin', 'editor'], bad2);
-    assert.strictEqual(r2[1].present, false, '변이 전제: 버튼 둘은 그대로 사라져야 한다(캡션만 남는 것이 결함이다)');
-    assert.strictEqual(r2[1].admChildren, 1,
-      `변이 전제: 캡션 하나가 남아야 한다(실제 ${r2[1].admChildren}개)`);
-    assert.strictEqual(r2[1].admText, '관리자',
-      `변이 전제: 남는 것이 캡션 「관리자」여야 한다(실제 ${JSON.stringify(r2[1].admText)})`);
-
-    // (3) 캡션을 마크업에 적는 한 줄 — 비관리자 DOM 에 없는 권한의 라벨이 남는다
-    const bad3 = mutate(app, '<div class="us-mem-row" id="usAdminBtns"></div>',
-      '<div class="us-mem-row" id="usAdminBtns"><span class="set-hint">관리자</span></div>');
-    assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad3), /비어 있지 않다|마크업으로 적혀 있다/);
-
-    // 통제군 — 원본은 셋 다 계약을 지킨다.
-    assert.strictEqual(probeEntry('admin').inAdminRow, true);
-    assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].admChildren, 0);
-    assert.doesNotThrow(() => checks.adminEntryButtonIsBuiltNotHidden(app));
   });
 
   test('계약⑬-DOM: ▲▼ 는 목록을 다시 만들지 않고, 포커스도 보던 자리도 그대로다(연속 조작이 된다)', () => {
