@@ -522,7 +522,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
    (묶음의 여백이 '칸과 칸 사이의 숨'을 이미 내고 있으므로, 지워야 할 쪽은 라벨이다). */
 .fsect > label:first-child,.rem-block > label:first-child,.cat-form > label:first-child,.room-form > label:first-child{margin-top:0}
 /* ★ `.modal .check + .check{margin-top:…}` 같은 '묶음 간격' 규칙은 두지 않는다 — 모달 안의 체크박스 묶음은
-   전부 자기 간격을 이미 갖고 있고(.recur-end 3px · .rpt-srcs 인라인 0 · 일괄 커밋 모달 인라인),
+   전부 자기 간격을 이미 갖고 있고(.recur-end 3px · .rpt-checks 인라인 0 · 일괄 커밋 모달 인라인),
    그 규칙은 (0,3,0)이라 .recur-end .check(0,2,0)를 **덮어써서** 손대지 않기로 한 폼을 바꾼다. */
 /* 필터 막대의 체크박스는 '세로 가운데 정렬'이 곧 리듬이다 — 라벨 여백이 붙으면 옆 셀렉트와 어긋난다 */
 .modal .off-filters > .check{margin:0}
@@ -889,13 +889,25 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-attend .ra-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);flex:none}
 .rpt-attend .ra-sel{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text);flex:0 0 auto;width:auto;min-width:0}
 .rpt-attend .ra-hint{font-size:var(--fs-micro);color:var(--muted);margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rpt-srcs{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
 .rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
 /* 보고서 서식바 — 머리기호(index marker) + 들여쓰기(indent). 표시+복사 전용, 전역 1값(state에 영속). */
-/* 서식 카드 — 테두리는 카드(.rpt-fmt)에만. 안의 줄(.rpt-fmt-row)은 테두리 없이 구분선으로만 나뉜다. */
-.rpt-fmt{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);margin-top:var(--sp-3);background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-sm)}
-.rpt-fmt .rpt-fmt-row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
-.rpt-fmt .rpt-fmt-row + .rpt-fmt-row{border-top:1px solid var(--line);padding-top:var(--sp-2)}
+/* 서식 컨트롤 외형 — .rpt-fmt 는 이제 격자 안의 스코프 클래스일 뿐(카드 아님, 2026-09-18) */
+/* ⚙옵션 격자(2026-09-18) — 라벨 열(고정) + 컨트롤 열. 카드·구분선 없이 정렬만으로 묶는다(테두리 두 겹 방지). */
+.rpt-optgrid{display:grid;grid-template-columns:max-content minmax(0,1fr);align-items:center;column-gap:12px;row-gap:10px;margin-top:2px}
+.rpt-optgrid > .rpt-opt-lb{white-space:nowrap;align-self:start;padding-top:6px}   /* 두 줄 컨트롤(표시)에서도 라벨은 첫 줄 옆에 */
+.rpt-optgrid .rpt-ctl{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
+.rpt-optgrid .rpt-checks{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding-top:2px}   /* 표시 옵션 둘은 세로 목록 — 레일 폭(≈300px)에서 가로로 두면 어차피 접힌다 */
+.rpt-optgrid .rpt-fmt-sel{flex:1 1 90px;min-width:0;width:auto}   /* 셀렉트는 남는 폭, 「직접」은 고정 — 한 줄에 둘 */
+.rpt-optgrid .rpt-fmt-custom{flex:0 0 56px}
+/* 포함 항목 — 체크박스를 칩으로: 켜진 것만 채워진 알약(세그먼트 .seg-b.active 와 같은 외형). input 은 시각적으로만 숨긴다(포커스·시험·저장 계약 유지). */
+.rpt-chips{display:flex;gap:6px;flex-wrap:wrap}
+.rpt-chip{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}
+.rpt-chip input{position:absolute;opacity:0;width:1px;height:1px;margin:0;pointer-events:none}
+.rpt-chip span{display:inline-block;padding:4px 11px;border:1px solid var(--line-2);border-radius:999px;font-size:var(--fs-meta);line-height:1.3;color:var(--muted);background:var(--bg);transition:background .12s,color .12s,border-color .12s}
+.rpt-chip:hover span{border-color:var(--accent);color:var(--text)}
+.rpt-chip input:checked + span{background:var(--accent-soft);border-color:var(--accent);color:var(--text);font-weight:600}
+.rpt-chip input:focus-visible + span{outline:2px solid var(--accent);outline-offset:1px}
+.rpt-fmt{display:contents}   /* 옛 서식 카드 — 이제 셀렉트·스텝퍼 외형 규칙의 스코프로만 남는다 */
 /* 셀렉트 외형은 카드(.rpt-fmt) 안이든 레일 직속 글꼴 행이든 동일해야 한다 */
 .rpt-fmt .rpt-fmt-sel,.rpt-fontrow .rpt-fmt-sel{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
 .rpt-fmt .rpt-fmt-custom{width:56px;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 7px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
@@ -1006,11 +1018,9 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-optbtn::after{content:"⌄";color:var(--muted);flex:none;transition:transform .15s}
 .rpt-opt.open .rpt-optbtn::after{transform:rotate(180deg)}
 .rpt-optpanel{display:none;margin-top:8px}
+.rpt-opt-foot{display:block;margin-top:10px}
 .rpt-opt.open .rpt-optpanel{display:block}
-#reportModal .rpt-optpanel .rpt-srcs{margin-top:0}
 #reportModal .rpt-optpanel .rpt-fmt{margin-top:0}
-.rpt-fmt-wrap{margin-top:10px}
-.rpt-fmt-wrap > .rpt-opt-lb{display:block;margin-bottom:5px}
 /* 글꼴 행 — 레일 직속(⚙옵션 밖). 기간 취합에서만 보인다(setReportMode 가 display 를 정한다 · 2026-09-18).
    테두리·배경 없음: '서식' 카드와 같은 외형을 주면 둘째 카드로 읽혀 다른 설정처럼 보인다.
    좁은 레일(380px)에서 라벨과 셀렉트가 떨어져 잘리지 않게 근태 행과 같은 2열 그리드를 쓴다. */
@@ -2507,20 +2517,25 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               <span class="rpt-optbtn-ic">⚙</span> 옵션 <span class="rpt-optbtn-sum" id="rptOptSum"></span>
             </button>
             <div class="rpt-optpanel" id="rptOptPanel">
-              <div class="rpt-srcs">
+              <!-- 옵션 격자(2026-09-18 UI 정돈): 라벨 열 하나에 네 줄 — 포함 항목(칩) · 표시(체크) · 머리기호 · 들여쓰기.
+                   전에는 체크 다섯이 한 줄에 흘러 두 줄로 접히고(소스 셋과 표시 옵션 둘이 섞임), 서식은 별도 카드라
+                   같은 패널 안에서 두 겹의 테두리가 생겼다. 카드 대신 라벨 정렬로 묶는다. id·체크박스는 그대로(시험·저장 계약). -->
+              <div class="rpt-optgrid">
                 <span class="rpt-opt-lb">포함 항목</span>
-                <label class="check" style="margin:0"><input type="checkbox" id="rptSrcEvent" checked> 일정</label>
-                <label class="check" style="margin:0"><input type="checkbox" id="rptSrcTodo" checked> 할 일</label>
-                <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> 커밋 내역</label>
-                <label class="check" style="margin:0"><input type="checkbox" id="rptWithDesc" checked> 설명 포함</label>
-                <label class="check" style="margin:0" title="항목도 공수도 없는 과제를 보고서에서 뺍니다 (제목이 있는 일정·할 일·커밋은 남습니다)"><input type="checkbox" id="rptSkipEmpty"> 내용 없는 항목 제외</label>
-              </div>
-              <!-- 서식 = 캘린더 렌더러 입력(머리기호·들여쓰기)이라 netcus 본문에는 의미가 없다 → ⚙옵션 안에 남는다.
-                   글꼴은 출처와 무관한 표시 설정이라 레일 직속(#rptFontRow)으로 뺐다. -->
-              <div class="rpt-fmt-wrap"><span class="rpt-opt-lb">서식</span>
-                <div class="rpt-fmt">
-                <div class="rpt-fmt-row">
-                  <span class="rpt-opt-lb">머리기호</span>
+                <div class="rpt-chips" role="group" aria-label="포함 항목">
+                  <label class="rpt-chip"><input type="checkbox" id="rptSrcEvent" checked><span>일정</span></label>
+                  <label class="rpt-chip"><input type="checkbox" id="rptSrcTodo" checked><span>할 일</span></label>
+                  <label class="rpt-chip"><input type="checkbox" id="rptSrcGit" checked><span>커밋 내역</span></label>
+                </div>
+                <span class="rpt-opt-lb">표시</span>
+                <div class="rpt-checks">
+                  <label class="check" style="margin:0"><input type="checkbox" id="rptWithDesc" checked> 설명 포함</label>
+                  <label class="check" style="margin:0" title="항목도 공수도 없는 과제를 보고서에서 뺍니다 (제목이 있는 일정·할 일·커밋은 남습니다)"><input type="checkbox" id="rptSkipEmpty"> 내용 없는 항목 제외</label>
+                </div>
+                <!-- 서식 = 캘린더 렌더러 입력(머리기호·들여쓰기)이라 netcus 본문에는 의미가 없다 → ⚙옵션 안에 남는다.
+                     글꼴은 기간 취합 전용이라 레일 직속(#rptFontRow)이다. -->
+                <span class="rpt-opt-lb">머리기호</span>
+                <div class="rpt-ctl rpt-fmt">
                   <select id="rptMarker" class="rpt-fmt-sel" aria-label="머리기호">
                     <optgroup label="불릿">
                       <option value="-">- 하이픈</option>
@@ -2553,16 +2568,17 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                     </optgroup>
                   </select>
                   <input type="text" id="rptMarkerCustom" class="rpt-fmt-custom" maxlength="8" placeholder="직접" aria-label="머리기호 직접 입력">
-                  <span class="rpt-opt-lb">들여쓰기</span>
+                </div>
+                <span class="rpt-opt-lb">들여쓰기</span>
+                <div class="rpt-ctl rpt-fmt">
                   <span class="rpt-fmt-stepper">
                     <button type="button" id="rptIndMinus" class="rpt-fmt-step" aria-label="들여쓰기 줄이기">−</button>
                     <span id="rptIndVal" class="rpt-fmt-ind">2단</span>
                     <button type="button" id="rptIndPlus" class="rpt-fmt-step" aria-label="들여쓰기 늘리기">+</button>
                   </span>
                 </div>
-                </div>
               </div>
-              <span class="git-hint">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
+              <span class="git-hint rpt-opt-foot">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
             </div>
           </div>
         </div>
