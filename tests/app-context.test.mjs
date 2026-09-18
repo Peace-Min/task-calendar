@@ -1686,6 +1686,23 @@ if (!JSDOM) {
       assert.ok(/포함 2\/3/.test(ev("$('#rptOptSum').textContent")), '하나 해제 → 2/3');
     });
 
+    // 2026-09-18 사용자 지적: 포함 항목을 전부 끄면 근태·초과시간이 사라졌다 — 근태 슬롯이 본문 가드 뒤에 그려지던 연동(지시한 적 없음).
+    test('report UI: 근태·초과시간은 포함 항목 0개·과제 0행 가드와 무관하게 일간이면 항상 그린다', () => {
+      seed(reportState);
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; $('#rptSrcGit').checked=false; $('#rptSkipEmpty').checked=false; buildReport();");
+      assert.ok(/포함할 항목을 한 개 이상/.test(ev("$('#rptSummary').textContent")), '전제: 포함 항목 0개 가드가 켜져 있다');
+      assert.ok(ev("!!document.getElementById('raStatus') && !!document.getElementById('raOT')"), '가드 화면에서도 근태·초과시간 셀렉트는 남아야 한다');
+      // 과제 0행(전부 끄고 빈 과제 제외까지) — 역시 남는다
+      ev("$('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=true; state.categories=[]; state.entries=[]; state.todos=[]; buildReport();");   // 엔트리가 남으면 미분류 「기타」 행이 생겨 가드가 안 뜬다
+      assert.ok(/등록된 과제가 없습니다/.test(ev("$('#rptSummary').textContent")), '전제: 과제 0행 가드');
+      assert.ok(ev("!!document.getElementById('raStatus')"), '과제 0행 가드에서도 근태는 남는다');
+      // 주간에서는 없다(일간 전용 계약 그대로)
+      seed(reportState);
+      ev("reportMode='weekly'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
+      assert.ok(!ev("!!document.getElementById('raStatus')"), '주간에는 근태 슬롯이 없다');
+      ev("reportMode='daily'");
+    });
+
     test('report UI: ⚙옵션 토글 — #rptOpt .open 토글 + aria-expanded 플립(bind 배선)', () => {
       ev("$('#rptOpt').classList.remove('open'); $('#rptOptBtn').setAttribute('aria-expanded','false');");
       ev("$('#rptOptBtn').click()");
