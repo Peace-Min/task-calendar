@@ -70,6 +70,7 @@ export TC_TEST_DB_ADMIN_PW=taskmgr123; node tests/loop-user-admin.mjs --seed=N ;
 |---|---|
 | 사용자 관리 설계·계약·정정 이력 §11-1~37 | docs/USER-ADMIN.md |
 | 휴지통 설계·계약·정정 이력 §11-1~33 | docs/TRASH-DELETE.md |
+| 직급·소속 관리 설계(구현 전 · 사용자 확인 대기) | docs/ORG-TITLE-ADMIN.md |
 | 로그인·쓰기 관문 | docs/USER-LOGIN.md |
 | 배포 절차·GRANT 재적용·백업/복구 | DEPLOY.md (§0-5·§3 체크리스트·§9) |
 | 마이그레이션 순서표 | db/deploy/README.md |
