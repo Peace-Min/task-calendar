@@ -624,6 +624,17 @@ async function main() {
   //  ★ 여기서 한 번 본다: 자리가 틀리면 아래 케이스들이 셀렉터 실패로 뭉개져 원인이 보이지 않는다.
   const foot0 = await evj(`JSON.stringify({ foot: !!document.querySelector('#uaFoot #uaNew'), bar: !!document.querySelector('#uaAdmin #uaNew') })`);
   okq('「＋ 직원 등록」이 하단(#uaFoot)에 있고 상단 막대에는 없다', foot0.foot === true && foot0.bar === false, JSON.stringify(foot0));
+  //  자리 계약(2026-09-18) — 상단 막대는 「순서 편집」 · 「퇴사자 휴지통」 둘이고 그 뒤가 「퇴사자 보기」다.
+  //   ★ 퇴사자의 복구·영구 삭제는 **이 화면 안에서 끝난다**(TRASH-DELETE §5.0) — 「사용자 정보」에는 문이 없다.
+  const bar0 = await evj(`JSON.stringify({
+    ids: Array.prototype.map.call(document.querySelectorAll('#uaAdmin button'), function(b){ return String(b.id||''); }),
+    trashText: (function(){ var b=document.getElementById('uaTrash'); return b ? String(b.textContent||'') : ''; })(),
+    check: !!document.querySelector('#uaAdmin #uaInactive'),
+    usTrash: !!document.getElementById('usTrash') })`);
+  okq('상단 막대는 「순서 편집」 · 「퇴사자 휴지통」 둘이다', JSON.stringify(bar0.ids) === JSON.stringify(['uaOrderEdit', 'uaTrash']), JSON.stringify(bar0.ids));
+  okq('「퇴사자 휴지통」 문구가 계약대로다', bar0.trashText === '퇴사자 휴지통', JSON.stringify(bar0.trashText));
+  okq('「퇴사자 보기」 체크박스가 그 뒤에 남아 있다', bar0.check === true, String(bar0.check));
+  okq('「사용자 정보」에는 휴지통이 없다(문은 이 화면 안이다 · §11-32)', bar0.usTrash === false, String(bar0.usTrash));
   const meta = await evj(`JSON.stringify({titles: __uaTitles.slice(), units: __uaUnits.filter(function(u){return u&&u.orgId!=null;}).map(function(u){return {orgId:u.orgId,name:u.name};})})`);
   if (meta.titles.length < 2 || meta.units.length < 2) {
     console.error('[판정 없음] 직급 또는 조직이 2개 미만이다 — 수정 케이스를 만들 수 없다');

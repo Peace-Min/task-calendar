@@ -17,7 +17,7 @@
 | 버전 파일 | 전부 **0.18.1** 그대로(csproj·APP_VERSION·iss·RELEASE_NOTES·CHANGELOG·#patchModal). `tests/version-sync.test.mjs` 가 여덟 자리 정합을 잠근다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"` — **배포된 0.18.1 은 v9 짝**이다. 버전 승격 전엔 `배포-빌드.cmd` 를 돌리지 말 것(같은 번호로 계약이 다른 exe 가 나간다) |
 | 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
-| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1579 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 12종 통과 |
+| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1585 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 12종 통과 |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 — 전부 커밋됨
 
@@ -36,6 +36,7 @@
 3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).
 4. 2026-09-18 에 끝낸 잔여: 「관리자」 구획 분리(#usAdminBtns) · 시험 헬퍼 사본 5파일 → harness(listCsMembers 추가) · 안 읽히는 불리언 반환 제거 · §11 12·13 순서 · 세피아 --muted #75664f(4.75:1). loop-ui-visual 의 남은 V8 경고는 전부 `--accent-soft` 배경 위 기준선 근처(warn, rc 0)로 이전부터 있던 것.
 5. **크기 조절 상단 가장자리(2026-09-18)**: "좌상단 대각선이 안 된다" 보고 → 호스트·nw 핸들 자체는 정상(CDP 화면좌표 드래그 Δ 정확). 실제 원인은 `#dsBadge` 위 여백 12px 가 어느 핸들에도 안 걸리는 죽은 띠였던 것 → `.rsz-n` 추가·nw/sw 20px·ne 14px(✕ 보호). 개발기(DPI 100%)에선 재현 안 됐으므로 사용자 기기에서 계속되면 DPI 배율·작업표시줄 위치·커서 모양(↖↘)을 확인.
+6. **휴지통 진입점 이동(2026-09-18 사용자 결정)**: 휴지통은 그 도메인의 화면이 연다 — 과제·발주처·구분·상태는 공식 과제 화면의 `#offTrash`, 퇴사자는 「구성원 편집」의 `#uaTrash`(`openTrash(scope)` · `__trScope` 가 보이는 탭·머리말을 정한다). 「사용자 정보」에는 휴지통이 없고 `usAdminBtnSync` 는 「구성원 편집」 하나만 만든다. **호스트 불변**(`trashGet` 은 그대로 다섯 목록). 계약 ⑥-b/⑥-DOM(a)·`loop-trash` C00/C08 은 새 문을 보도록 옮긴다([TRASH-DELETE §11-33](TRASH-DELETE.md) · [USER-ADMIN §11-37](USER-ADMIN.md)).
 
 ## 4. 이어서 작업하는 법
 
@@ -66,8 +67,8 @@ export TC_TEST_DB_ADMIN_PW=taskmgr123; node tests/loop-user-admin.mjs --seed=N ;
 
 | 무엇 | 어디 |
 |---|---|
-| 사용자 관리 설계·계약·정정 이력 §11-1~35 | docs/USER-ADMIN.md |
-| 휴지통 설계·계약·정정 이력 §11-1~31 | docs/TRASH-DELETE.md |
+| 사용자 관리 설계·계약·정정 이력 §11-1~37 | docs/USER-ADMIN.md |
+| 휴지통 설계·계약·정정 이력 §11-1~33 | docs/TRASH-DELETE.md |
 | 로그인·쓰기 관문 | docs/USER-LOGIN.md |
 | 배포 절차·GRANT 재적용·백업/복구 | DEPLOY.md (§0-5·§3 체크리스트·§9) |
 | 마이그레이션 순서표 | db/deploy/README.md |

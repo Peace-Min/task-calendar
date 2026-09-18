@@ -28,7 +28,12 @@
  *   C10 확인창 취소    — confirmTyped 의 [data-close] **실클릭** → 호스트로 아무것도 나가지 않는다
  *   C11 사유 가시화    — 기록 있는 퇴사자의 why 가 **보이는 줄**(.set-hint[data-trwhy])로 그려진다(툴팁만으로는 안 보인다)
  *   C12 쓰기 중 잠금   — [복구] → [확인] 그 순간 #trList 의 버튼 전부 disabled + #trashModal[data-busy=1] → 회신 뒤 해제
- *   C08 비관리자       — 로그인 계정을 잠시 editor 로 내린다(**반드시 복원**): #usTrash 부재 · admin:false · 삭제 거부
+ *   C08 비관리자       — 로그인 계정을 잠시 editor 로 내린다(**반드시 복원**): #uaTrash 부재 · admin:false · 삭제 거부
+ *
+ * 진입 문은 **둘**이다(2026-09-18 사용자 결정 · §5.0) — 「사용자 정보」에는 휴지통이 없다:
+ *   · 과제·발주처·구분·상태 → 「공식 과제 (DB)」 하단 줄의 #offTrash(위젯에서만 보인다) → openTrash('project')
+ *   · 퇴사자             → 「구성원 편집」 상단 막대의 #uaTrash(관리자에게만 생긴다)   → openTrash('user')
+ *   들어온 문(__trScope)이 보이는 탭을 정한다: 과제 쪽 넷 · 퇴사자 쪽은 탭 줄 없이 목록만.
  *
  * 불변식(케이스마다):
  *   I1 다섯 표의 **실행(zz 아닌 행) 수**가 시작과 같다
@@ -299,7 +304,11 @@ const PSTATE = `JSON.stringify({
   trOpen: (function(){ var e=document.getElementById('trashModal'); return !!e && !e.classList.contains('hidden'); })(),
   lines: document.querySelectorAll('#trList .mba-line').length,
   tabs: document.querySelectorAll('#trTabs [data-trtab]').length,
-  usTrash: !!document.getElementById('usTrash'),
+  offTrash: (function(){ var b=document.getElementById('offTrash'); return !!b && b.style.display !== 'none'; })(),
+  uaTrash: !!document.getElementById('uaTrash'),
+  trScope: String(typeof __trScope==='undefined' ? '' : __trScope),
+  trTitle: (function(){ var h=document.getElementById('trTitle'); return h ? String(h.textContent||'') : ''; })(),
+  uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden'); })(),
   usAdmin: !!document.getElementById('usUserAdmin'),
   cfOpen: (function(){ var e=document.getElementById('confirmModal'); return !!e && !e.classList.contains('hidden'); })(),
   ctOpen: (function(){ var e=document.getElementById('confirmTypedModal'); return !!e && !e.classList.contains('hidden'); })(),
@@ -364,18 +373,26 @@ const trFind = (data, key, k) => {
 
 /* ── 화면 조작 ─────────────────────────────────────────────────────────── */
 
-/** 휴지통을 열고(또는 다시 열고) 회신이 도착할 때까지 기다린다. 탭은 캐시가 아니라 매번 새 조회다. */
+/** 휴지통을 열고(또는 다시 열고) 회신이 도착할 때까지 기다린다. 탭은 캐시가 아니라 매번 새 조회다.
+ *   ★ 2026-09-18 — 문이 둘이라 **어느 문으로 들어가는가**를 여기서 정한다(§5.0). 'user' 는 탭이 아니라
+ *     문이다: 퇴사자 쪽에는 탭 줄이 없으므로 눌러서 갈 수 없고, openTrash('user') 로 들어가야 한다.
+ *     들어간 뒤에는 화면이 말하는 __trScope 가 그 문과 같은지 대조한다 — 다르면 이 함수가 거짓말을 한 것이다. */
 async function openTrash({ tab = null } = {}) {
+  const scope = (tab === 'user') ? 'user' : 'project';
   await ev(`(typeof closeModal==='function' && closeModal('#trashModal'), 1)`);
-  await ev(`openTrash()`);
-  const s = await waitPage((x) => x.trOpen && !x.trBusy, { timeout: 20000 });
+  await ev(`openTrash(${scope === 'user' ? "'user'" : "'project'"})`);
+  let s = await waitPage((x) => x.trOpen && !x.trBusy, { timeout: 20000 });
   if (!s) throw new Error('휴지통이 열리지 않았다(회신이 오지 않음)');
-  if (tab && s.trTab !== tab) {
+  if (s.trScope !== scope) throw new Error(`휴지통이 다른 문으로 열렸다: 기대 ${scope} · 실제 ${s.trScope}`);
+  //  과제 쪽 문에서만 탭이 있다 — 퇴사자 쪽은 openTrash('user') 가 이미 그 탭에서 연다.
+  if (scope === 'project' && tab && s.trTab !== tab) {
     const clicked = await ev(`(function(){var b=document.querySelector('#trTabs [data-trtab=${J(tab)}]'); if(!b) return false; b.click(); return true;})()`);
     if (!clicked) throw new Error(`휴지통 탭 버튼이 없다: ${tab}`);
     await waitPage((x) => x.trTab === tab, { timeout: 5000 });
   }
-  return await pstate();
+  s = await pstate();
+  if (s.trTab !== (tab || 'project')) throw new Error(`휴지통 탭이 기대와 다르다: 기대 ${tab || 'project'} · 실제 ${s.trTab}`);
+  return s;
 }
 /** 한 행의 두 버튼 상태 — 있는가 · 꺼졌는가 · 사유(title)가 붙었는가. */
 const trRow = (key) => evj(`(function(){
@@ -656,14 +673,30 @@ async function main() {
   }
   vlog(`빌려 쓸 실 코드값: 구분=${REAL.section} 발주처=${REAL.customer} 상태=${REAL.status} 직급=${REAL.title}`);
 
-  //  진입 버튼(#usTrash)은 권한 회신이 만든다 — C08 이 '내려가면 사라진다'를 보려면 먼저 서 있어야 한다.
+  //  진입 문 둘을 각각 열어 확인해 둔다(§5.0) — C08 이 '내려가면 사라진다'를 보려면 먼저 서 있어야 한다.
+  //   ① 과제 쪽: 「공식 과제 (DB)」 하단 줄의 #offTrash — 정적 버튼이고 위젯이면 보인다(발주처 관리와 같은 규칙).
+  await ev(`openOfficialModal()`);
+  const door0 = await waitPage((x) => x.offTrash === true, { timeout: 15000 });
+  await ev(`(typeof closeModal==='function' && closeModal('#officialModal'), 1)`);
+  //   ② 퇴사자 쪽: 「구성원 편집」 상단 막대의 #uaTrash — 관리자 회신이 와야 **생긴다**(숨김이 아니라 부재).
+  await ev(`openUserAdmin()`);
+  const door1 = await waitPage((x) => x.uaTrash === true, { timeout: 15000 });
+  await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
+  //   ③ 「사용자 정보」에는 휴지통이 **없다**(2026-09-18) — 권한 회신 뒤에도 그 줄에 문이 나지 않아야 한다.
   await ev(`loadUserPerm()`);
-  const entry0 = await waitPage((x) => x.usTrash === true, { timeout: 15000 });
+  const entry0 = await waitPage((x) => x.usAdmin === true, { timeout: 15000 });
+  const usTrashGone = await ev(`(document.getElementById('usTrash') === null)`);
 
   /* ── C00 전제 · 회신 모양 ───────────────────────────────────────────── */
-  await runCase('C00', '전제 · 진입 버튼 · trashGet 회신 모양', async () => {
-    okq('C00 「휴지통」 진입 버튼(#usTrash)이 관리자 회신으로 생성됐다', !!entry0,
-      '#usTrash 가 없다 — usAdminBtnSync 가 admin 을 admin 으로 읽지 못했다');
+  await runCase('C00', '전제 · 진입 문 둘 · trashGet 회신 모양', async () => {
+    okq('C00 「🗑 휴지통」 문이 공식 과제 화면에 보인다(위젯)', !!door0,
+      '#offTrash 가 없거나 숨겨져 있다 — offSyncExportBtn 이 위젯 여부로 노출을 맞추지 못했다');
+    okq('C00 「퇴사자 휴지통」 문이 구성원 편집 상단 막대에 생겼다(관리자 회신)', !!door1,
+      '#uaTrash 가 없다 — uaAdminBar 가 admin 회신을 admin 으로 읽지 못했다');
+    okq('C00 「사용자 정보」에는 휴지통이 없다(§11-32 의 자리로 되돌아가지 않았다)', usTrashGone === true,
+      '#usTrash 가 살아 있다 — 휴지통은 그 도메인의 화면이 연다');
+    okq('C00 「구성원 편집」 진입 버튼이 관리자 회신으로 생성됐다', !!entry0,
+      '#usUserAdmin 이 없다 — usAdminBtnSync 가 admin 을 admin 으로 읽지 못했다');
     const { reply, data } = await trashGet();
     if (!okq('C00 trashGet 회신 ok(found)', !!(reply && reply.ok), JSON.stringify(reply).slice(0, 200))) return;
     okq('C00 admin:true', !!(data && data.admin === true), JSON.stringify(data && data.admin));
@@ -738,7 +771,9 @@ async function main() {
 
     //  ④ 화면 — 실제 DOM 의 버튼 둘.
     let s = await openTrash({ tab: 'project' });
-    okq('C01 휴지통이 관리자 모드로 열렸다(탭 5개)', s.trAdmin === true && s.tabs === 5, `admin=${s.trAdmin} tabs=${s.tabs}`);
+    //  ★ 과제 쪽 문은 탭 넷이다(과제·발주처·구분·상태) — 퇴사자는 「구성원 편집」의 다른 문이 연다(2026-09-18).
+    okq('C01 휴지통이 관리자 모드로 열렸다(과제 쪽 문 · 탭 4개)', s.trAdmin === true && s.tabs === 4, `admin=${s.trAdmin} tabs=${s.tabs}`);
+    okq('C01 머리말이 「휴지통」이다(과제 쪽 문)', s.trTitle === '휴지통', JSON.stringify(s.trTitle));
     const btn = await trRow(uid);
     okq('C01 화면에 [복구]가 있다', !!btn.restore && btn.restore.text === '복구', JSON.stringify(btn.restore));
     okq('C01 화면의 [영구 삭제]가 켜져 있다', !!btn.del && btn.del.disabled === false, JSON.stringify(btn.del));
@@ -897,7 +932,12 @@ async function main() {
     okq('C03 why 가 §4.3 문장 그대로', row.why === want, `기대 ${JSON.stringify(want)} / 실제 ${JSON.stringify(row.why)}`);
 
     //  화면: 버튼이 꺼지고 사유가 title 로 붙는다(§5.1 — 눌러 봐야 거부되는 버튼은 이유를 알려 주지 않는다).
-    await openTrash({ tab: 'user' });
+    //   ★ 퇴사자는 **다른 문**(「구성원 편집」의 #uaTrash)이 연다 — 탭 줄 없이 목록만이고 머리말도 다르다.
+    {
+      const su = await openTrash({ tab: 'user' });
+      okq('C03 퇴사자 쪽 문에는 탭 줄이 없다', su.tabs === 0, `tabs=${su.tabs}`);
+      okq('C03 머리말이 「퇴사자 휴지통」이다', su.trTitle === '퇴사자 휴지통', JSON.stringify(su.trTitle));
+    }
     const btn = await trRow(uid);
     okq('C03 화면의 [영구 삭제]가 꺼져 있다', !!btn.del && btn.del.disabled === true, JSON.stringify(btn.del));
     okq('C03 꺼진 버튼의 title 이 사유(why)와 같다', !!btn.del && btn.del.title === want, JSON.stringify(btn.del && btn.del.title));
@@ -1246,12 +1286,21 @@ async function main() {
         { readOnly: false, idempotent: true, what: 'C08 권한 강등' });
       rebase('C08 이 로그인 계정을 editor 로 내렸다 — 시험이 일부러 낸 변경이라 눈감는 대신 기준을 옮긴다');
 
-      //  ① 진입 버튼이 **DOM 에서 사라진다**(숨김이 아니라 부재 · §5.0).
+      //  ① 진입 문이 **DOM 에서 사라진다**(숨김이 아니라 부재 · §5.0).
+      //    ★ 퇴사자 쪽 문(#uaTrash)은 「구성원 편집」 안에 있으므로 그 화면을 열어야 볼 수 있다.
+      //      '아직 안 생겼을 뿐'과 '나지 않는다'를 가르려고 **기다려 본다** — 기다려도 안 나면 부재다.
       await ev(`(typeof closeModal==='function' && closeModal('#trashModal'), 1)`);
+      await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
+      await ev(`openUserAdmin()`);
+      await waitPage((x) => x.uaOpen === true, { timeout: 15000 });
+      const stillThere = await waitPage((x) => x.uaTrash === true, { timeout: 6000 });
+      okq('C08 「퇴사자 휴지통」 문이 비관리자 DOM 에 없다', !stillThere,
+        '#uaTrash 가 남아 있다 — 권한이 내려갔는데 문이 그대로다');
+      await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
       await ev(`loadUserPerm()`);
-      const gone = await waitPage((x) => x.usTrash === false, { timeout: 15000 });
-      okq('C08 「휴지통」 버튼이 DOM 에서 사라졌다', !!gone, '#usTrash 가 남아 있다 — 권한이 내려갔는데 문이 그대로다');
-      if (gone) okq('C08 「구성원 편집」 버튼도 함께 사라졌다(한 함수·한 판정 · §5.0)', gone.usAdmin === false, String(gone.usAdmin));
+      const gone = await waitPage((x) => x.usAdmin === false, { timeout: 15000 });
+      okq('C08 「구성원 편집」 버튼도 DOM 에서 사라졌다(한 함수·한 판정 · §5.0)', !!gone,
+        '#usUserAdmin 이 남아 있다 — usAdminBtnSync 가 내려간 권한을 읽지 못했다');
 
       //  ② 버튼이 없다고 경로가 없는 것은 아니다 — 함수를 직접 불러 본다.
       const g = (await trashGet()).data;
@@ -1296,7 +1345,11 @@ async function main() {
       try {
         await ev(`(typeof closeModal==='function' && closeModal('#trashModal'), 1)`);
         await ev(`loadUserPerm()`);
-        await waitPage((x) => x.usTrash === true, { timeout: 15000 });
+        await waitPage((x) => x.usAdmin === true, { timeout: 15000 });
+        //  퇴사자 쪽 문도 다시 서 있어야 한다 — 그래야 아래 대역 관리자 정리가 관리자 경로로 돈다.
+        await ev(`openUserAdmin()`);
+        await waitPage((x) => x.uaTrash === true, { timeout: 15000 });
+        await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
       } catch (_) { }
       //  대역 관리자 치우기 — 관리자로 돌아온 지금이라야 휴지통이 연다(퇴사 → 이름 대조 삭제).
       try {

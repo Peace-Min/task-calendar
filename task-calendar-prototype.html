@@ -2226,6 +2226,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
     <div class="modal-foot">
       <button type="button" class="btn" id="offRefresh">지금 새로고침</button>
+      <!-- 휴지통(숨긴 과제·발주처·구분·상태 복구/영구 삭제) — 이 화면이 숨기는 곳이므로 이 화면이 연다(2026-09-18).
+           위젯에서만 노출(발주처 관리와 같은 규칙) · 관리자 여부는 열 때 호스트가 판정하고, 아니면 안내 한 줄만 그린다.
+           ★ 도구줄이 아니라 **하단 줄**에 둔다: 도구줄은 600px 폭에서 이미 꽉 차 버튼 하나만 더 서도 두 줄로 접힌다
+             (loop-ui-visual V3). 하단 왼쪽은 「과제 관리」의 「🔗 기존 과제 재연결」과 같은 자리 — 부차 동작이 서는 줄이다. -->
+      <button type="button" class="btn" id="offTrash" style="display:none" title="숨긴 과제·발주처·구분·상태 복구 / 영구 삭제(관리자 전용)">🗑 휴지통</button>
       <span class="off-msg" id="offMsg"></span>
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
@@ -2751,9 +2756,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button type="button" class="btn sm" id="usMembers">구성원 보기</button>
         </div>
         <!-- 관리 진입점은 **다른 줄**이다(2026-09-18 UI 검토 A15). 위 줄은 전원이 쓰는 일상 동작이고,
-             이 줄은 관리자에게만 생기는 두 문이다. 한 줄에 셋을 붙여 두었을 때 생긴 일이 둘이다 —
-               ㆍ「휴지통」이 바로 위 '구성원' 안내문에 딸린 것처럼 읽혀 '퇴사자 휴지통'으로 오해됐다.
-               ㆍ같은 크기 버튼 셋이 나란히 서서 일상 동작과 관리자 전용 동작 사이에 층이 없었다.
+             이 줄은 관리자에게만 생기는 문이다. 이 줄이 지는 것은 캡션 「관리자」 + 「구성원 편집」 **둘뿐**이다.
+             ★ 「휴지통」은 이 줄에 없다(2026-09-18 사용자 결정) — 휴지통은 그 도메인의 화면이 연다:
+               ㆍ과제·발주처·구분·상태 → 「공식 과제 (DB)」 화면 하단 줄의 #offTrash(숨기는 곳이 곧 되돌리는 곳이다).
+               ㆍ퇴사자 → 「구성원 편집」 안의 #uaTrash(사용자 정보 → 구성원 편집 이후에서 끝난다).
+               예전에 이 줄에 있던 「휴지통」은 바로 위 '구성원' 안내문에 딸린 것처럼 읽혀 '퇴사자 휴지통'으로
+               오해됐는데(TRASH-DELETE §11-32), 이제 그 이름의 문은 실제로 구성원 쪽에만 있다.
              ★ 이 줄은 마크업에서 **비어 있다** — 캡션 「관리자」까지 usAdminBtnSync 가 만들어 넣는다.
                위 줄과 같은 규칙이다: 관리자에게만 있는 것은 여기 한 글자도 적지 않는다(숨김 ≠ 부재). -->
         <div class="us-mem-row" id="usAdminBtns"></div>
@@ -2919,14 +2927,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 </div>
 
 <!-- ===== 휴지통(TRASH-DELETE §5.1) ===== 관리자 전용 — 숨긴 항목만 모아 복구하거나 DB 행을 실제로 지운다.
-     ★ 진입은 「사용자 정보」의 #usTrash 하나뿐이고, 그 버튼 자체가 edit_role='admin' 회신일 때만 DOM 에 생긴다.
+     ★ 진입은 **둘**이고 둘 다 그 도메인의 화면에 있다(2026-09-18): 과제·발주처·구분·상태는 「공식 과제 (DB)」
+       화면의 #offTrash(위젯에서만 보인다), 퇴사자는 「구성원 편집」 상단 막대의 #uaTrash(관리자에게만 생긴다).
+       「사용자 정보」에는 휴지통이 없다. 관리자 여부는 어느 문으로 들어오든 trashGet 회신이 정한다.
      ★ 탭 자리(#trTabs)와 목록(#trList)은 **빈 자리**다 — 탭 버튼·[영구 삭제] 를 마크업에 적으면 호스트가
        admin:false 로 답해도 DOM 에 남는다. 숨김이 아니라 부재여야 한다(#uaAdmin·#uaFoot 과 같은 계약).
      ★ 검색칸이 없다(숨긴 항목은 적다) · 주 동작(primary)도 없다 — 휴지통이 권하는 일은 없다. 하단은 [닫기] 하나다.
      ★ #userEditModal 과 형제다. 어느 모달의 자식으로도 넣지 않는다(부모가 .hidden 이면 통째로 0×0 이 된다). -->
 <div class="overlay hidden" id="trashModal">
   <div class="modal wide">
-    <div class="modal-head"><h2>휴지통</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-head"><h2 id="trTitle">휴지통</h2><button class="x" data-close aria-label="닫기">×</button></div>
     <div class="modal-body">
       <div class="set-hint" id="trScope">—</div>
       <div id="trTabs"></div>
@@ -4631,14 +4641,13 @@ function usAdminBtnSync(editRole){
   const box = document.getElementById('usAdminBtns'); if(!box) return;
   const on = String(editRole == null ? '' : editRole).trim() === 'admin';
   const cur = document.getElementById('usUserAdmin');
-  //  ★ 「휴지통」(#usTrash)도 **같은 판정·같은 자리**에서 함께 나고 함께 진다(TRASH-DELETE §5.0).
-  //    두 버튼을 한 함수가 지는 이유는 판정 문자열이 한 곳이어야 하기 때문이다 — 두 곳이면 한쪽이 낡는다.
+  //  ★ 이 줄의 버튼은 「구성원 편집」 하나다(2026-09-18). 휴지통은 그 도메인의 화면이 연다 — 과제 쪽은 공식 과제 화면(#offTrash), 인력 쪽은 「구성원 편집」 안(#uaTrash). TRASH-DELETE §5.0.
   //  ★ 관리자가 아니면 이 줄을 **통째로** 비운다(2026-09-18 A15). 버튼만 골라 지우면 캡션 「관리자」가
   //    아무것도 없는 줄에 남아 "여기 뭔가 있었다"고 말한다 — 비어 있는 것이 곧 부재다. 그리고 이 줄에는
   //    관리자 전용 말고 **아무것도 없으므로**(「구성원 보기」는 위 줄이다) 통째로 비워도 잃을 것이 없다.
   if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }
-  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다(셋은 늘 같이 생긴다)
-  //  캡션 — 아래 두 버튼이 '누구의 것인가'를 한 단어로 말한다. 이것도 마크업에 적지 않는다: 비관리자
+  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다(캡션과 버튼은 늘 같이 생긴다)
+  //  캡션 — 아래 버튼이 '누구의 것인가'를 한 단어로 말한다. 이것도 마크업에 적지 않는다: 비관리자
   //  DOM 에 「관리자」라는 라벨만 남으면 화면이 없는 권한을 가리키게 된다.
   const cap = document.createElement('span');
   cap.className = 'set-hint';
@@ -4650,14 +4659,6 @@ function usAdminBtnSync(editRole){
   b.title = '직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)';
   b.addEventListener('click', openUserAdmin);
   box.appendChild(b);
-  const t = document.createElement('button');
-  t.type = 'button'; t.className = 'btn sm'; t.id = 'usTrash';
-  t.textContent = '휴지통';
-  t.title = '숨긴 과제·퇴사자·발주처·코드 복구 / 영구 삭제(관리자 전용)';
-  //  ★ 화살표로 감싼다 — 이 함수를 떼어 내 그려 보는 시험 하네스(user-admin.test.mjs)가 openTrash 를
-  //    모르기 때문이다. 값으로 넘기면 만들기만 해도 ReferenceError 가 나고, 하네스는 이 계약과 무관하다.
-  t.addEventListener('click', () => openTrash());
-  box.appendChild(t);
 }
 // 권한 조회 — 열 때마다 DB에서 새로 읽는다(세션에는 권한이 없다: 4필드뿐).
 // ★ 실패하면 추측하지 않는다. 낡거나 지어낸 권한을 보여주는 것이 '모른다'고 말하는 것보다 나쁘다.
@@ -5225,7 +5226,7 @@ function uaSyncControls(){
       lockLineBtn(b, __uaSaving || edge);
     }
   }
-  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave']){
+  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){
     const b = document.getElementById(id);
     if(b) b.disabled = __uaSaving;
   }
@@ -5314,7 +5315,7 @@ function uaRender(rows){
   }
 }
 
-// 관리자 컨트롤 — 상단 막대(#uaAdmin)는 「순서 편집」 · 「퇴사자 보기」, 하단(#uaFoot)은 「＋ 직원 등록」.
+// 관리자 컨트롤 — 상단 막대(#uaAdmin)는 「순서 편집」 · 「퇴사자 휴지통」 · 「퇴사자 보기」, 하단(#uaFoot)은 「＋ 직원 등록」.
 //   ★ 등록이 아래인 이유: 이 화면의 주 동작이라 [닫기] 옆 primary 자리가 맞고, 상단 막대에 두었을 때
 //     관리자가 실제로 찾지 못했다(2026-09-10 사용자 지적).
 //   ★ 순서 편집 중에 등록·퇴사자 토글을 함께 두면, 그 조작이 명부를 다시 읽어 와 **편집 중인 순서를 날린다.**
@@ -5363,6 +5364,10 @@ function uaAdminBar(){
     foot.appendChild(nb);
   }
   mk('순서 편집', 'uaOrderEdit', 'btn sm', () => uaOrderToggle(true)).disabled = __uaSaving;
+  //  퇴사자 휴지통 — 퇴사자의 복구·영구 삭제(기록 0건만)는 이 화면 안에서 끝난다(2026-09-18 사용자 결정).
+  //    관리자이고 순서 편집이 아닐 때만 생긴다(위 조기 return 이 비관리자를 거른다 — 숨김이 아니라 부재).
+  //    화살표로 감싼다: 이 함수를 떼어 그려 보는 시험 하네스가 openTrash 를 모른다.
+  mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;
   const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
   //  「퇴사자 보기」는 조회 조건이라 호스트 왕복이 필요하다(퇴사자는 애초에 회신에 없다).
   const lb = document.createElement('label');
@@ -5993,11 +5998,15 @@ async function userEdSaveNow(){
      회신(d.admin)이 정하며, 비관리자에게는 컨트롤이 아니라 안내 한 줄뿐이다. 새 규칙을 만들지 않는다.
    ★ 다섯 표(과제·인력·발주처·구분·상태)가 같은 틀이라 한 화면·한 렌더가 전부를 진다 — 표마다
      화면을 두면 다섯 벌이 되고, 그중 넷은 반드시 낡는다.
+   ★ 문은 둘이고 화면은 하나다(2026-09-18 사용자 결정 · §5.0): 공식 과제 화면의 #offTrash 가 openTrash('project'),
+     「구성원 편집」의 #uaTrash 가 openTrash('user'). 들어온 문(__trScope)이 **보이는 탭**을 고른다 —
+     과제 쪽 넷(과제·발주처·구분·상태) 또는 퇴사자 하나(탭 줄 없이 목록만). 호스트는 그대로다:
+     trashGet 회신에는 여전히 다섯 목록이 전부 실려 오고, 고르는 일만 화면이 한다.
    ★ 문자열은 전부 textContent 다(이름·부제는 DB 문자열이다 — 명부 규칙 ㉑과 같다).
    ★ 목록을 **다시 정렬하지 않는다** — 순서는 호스트가 정한다. 정하는 곳이 둘이면 반드시 갈린다.
    ★ deletable/why 는 **화면용 힌트**다. 최종 판정은 삭제 시점에 호스트가 트랜잭션 안에서 다시 한다
      (설계 §4.2). 그래서 화면은 미리 막지 않고 '왜 안 되는지'만 말한다.                      */
-let __trData = null, __trTab = 'project', __trBusy = false, __trSaving = false;
+let __trData = null, __trTab = 'project', __trBusy = false, __trSaving = false, __trScope = 'project';   // __trScope: 'project'(과제·발주처·구분·상태) | 'user'(퇴사자) — 어느 문으로 들어왔나가 보이는 탭을 정한다
 //  ★ '직전에 그린 화면'(__trShown)도 '잠금 동안 맡아 둔 버튼'(__trKeepBtn)도 **없다**(2026-09-14 군더더기
 //    걷기 2단계 · 「구성원 편집」과 같은 이유·같은 날). 그 둘은 잠금 하나 때문에 목록을 통째로 다시 만들던
 //    자리를 메우려고 자란 장치였다 — 잠금을 그 자리에서 걸게 고치고 나면(trSyncControls) 되돌릴 것이 없다.
@@ -6016,14 +6025,15 @@ let __trAdmin = false;      // 이번 조회에서 호스트가 인정한 관리
 const josa = (w, withBatchim, noBatchim) => { const c = String(w == null ? '' : w).slice(-1).charCodeAt(0) || 0; return (c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0) ? withBatchim : noBatchim; };
 const trEmptyLabel = label => '숨긴 ' + label + josa(label, '이', '가') + ' 없습니다.';
 const TR_TABS = [
-  { kind: 'project',  label: '과제',   key: 'projects',  refs: n => '편입 ' + n + '건', empty: trEmptyLabel('과제') },
-  { kind: 'user',     label: '인력',   key: 'users',     refs: n => '기록 ' + n + '건', empty: trEmptyLabel('인력') },
-  { kind: 'customer', label: '발주처', key: 'customers', refs: n => '과제 ' + n + '건', empty: trEmptyLabel('발주처') },
-  { kind: 'section',  label: '구분',   key: 'sections',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('구분') },
-  { kind: 'status',   label: '상태',   key: 'statuses',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('상태') },
+  { kind: 'project',  label: '과제',   key: 'projects',  refs: n => '편입 ' + n + '건', empty: trEmptyLabel('과제'),   scope: 'project' },
+  { kind: 'user',     label: '인력',   key: 'users',     refs: n => '기록 ' + n + '건', empty: trEmptyLabel('인력'),   scope: 'user' },
+  { kind: 'customer', label: '발주처', key: 'customers', refs: n => '과제 ' + n + '건', empty: trEmptyLabel('발주처'), scope: 'project' },
+  { kind: 'section',  label: '구분',   key: 'sections',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('구분'),   scope: 'project' },
+  { kind: 'status',   label: '상태',   key: 'statuses',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('상태'),   scope: 'project' },
 ];
 const trTabDef = kind => TR_TABS.find(t => t.kind === kind) || TR_TABS[0];
 const trRows = kind => { const a = __trData ? __trData[trTabDef(kind).key] : null; return Array.isArray(a) ? a : []; };
+const trTabs = () => TR_TABS.filter(t => t.scope === __trScope);   // 이번에 연 문의 탭들 — 과제 쪽 넷 또는 퇴사자 하나
 
 // 탭 + 목록 렌더 — innerHTML 금지. 관리자가 아니면 **행도 컨트롤도 탭도 만들지 않는다**(숨김이 아니라 부재).
 //   ★ 안내 한 줄은 남긴다: 관리자에서 내려간 사람에게 빈 화면은 '고장'으로 보인다(uaRender 와 같은 이유).
@@ -6050,10 +6060,13 @@ function trRender(){
   const keepKey = keepOp ? String(act.dataset.tkey || '') : '';
   while(tabs.firstChild) tabs.removeChild(tabs.firstChild);
   while(list.firstChild) list.removeChild(list.firstChild);
+  //  ★ 이번에 연 문이 보여 줄 탭들 — 과제 쪽은 넷, 퇴사자 쪽은 하나다(__trScope).
+  //    하나뿐이면 탭 줄 자체를 그리지 않는다: 고를 것이 없는데 탭을 그리면 화면이 없는 선택지를 가리킨다.
+  const tabDefs = trTabs(); const multi = tabDefs.length > 1;
   //  ★ 클래스도 관리자일 때만 붙인다(uaAdminBar 와 같은 관례) — 빈 자리에 탭 밑줄만 남는 꼴을 피한다.
   //    role 도 같다: 탭이 하나도 없는데 tablist 라고 하면 보조기술에 없는 구조를 알린다.
-  tabs.className = __trAdmin ? 'tabs' : '';
-  if(__trAdmin){ tabs.setAttribute('role', 'tablist'); list.setAttribute('role', 'tabpanel'); }
+  tabs.className = (__trAdmin && multi) ? 'tabs' : '';
+  if(__trAdmin && multi){ tabs.setAttribute('role', 'tablist'); list.setAttribute('role', 'tabpanel'); }
   else { tabs.removeAttribute('role'); list.removeAttribute('role'); }
   if(!__trAdmin){
     const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
@@ -6067,10 +6080,14 @@ function trRender(){
     return;
   }
   let total = 0;
-  for(const t of TR_TABS) total += trRows(t.kind).length;
-  if(sc) sc.textContent = '숨긴 항목 ' + total + '건 · 되돌릴 수 없는 삭제는 이름을 입력해야 합니다';
-  //  탭 다섯 — 건수 배지를 함께 낸다. '어느 표에 뭐가 남아 있나'를 탭을 눌러 보며 찾게 하지 않는다.
-  for(const t of TR_TABS){
+  for(const t of trTabs()) total += trRows(t.kind).length;
+  if(sc) sc.textContent = (__trScope === 'user')
+    ? ('퇴사자 ' + total + '명 · 기록이 0건인 계정만 영구 삭제할 수 있습니다')
+    : ('숨긴 항목 ' + total + '건 · 되돌릴 수 없는 삭제는 이름을 입력해야 합니다');
+  //  탭 — 과제 쪽은 넷(과제·발주처·구분·상태), 퇴사자 쪽은 하나라 탭 줄을 그리지 않는다. 건수 배지를 함께 낸다.
+  //  '어느 표에 뭐가 남아 있나'를 탭을 눌러 보며 찾게 하지 않는다.
+  if(multi){
+  for(const t of trTabs()){
     const b = document.createElement('button');
     b.type = 'button';
     b.className = (t.kind === __trTab) ? 'tab on' : 'tab';
@@ -6086,6 +6103,7 @@ function trRender(){
     //    렌더는 자기가 왜 불렸는지 모르므로 그 사실은 여기서 말한다(누른 손이 곧 그 답이다).
     b.addEventListener('click', () => { __trTab = t.kind; trRender(); trListTop(); });
     tabs.appendChild(b);
+  }
   }
   //  ★ 다시 그리기 전에 탭 줄 안에 있던 포커스를 **지금 선택된 탭**으로 되돌린다(위 hadFocus).
   if(hadFocus){
@@ -6205,12 +6223,18 @@ function trFail(msg){
 }
 
 // 진입점 — 열 때마다 trashGet 을 새로 부른다(캐시 금지: 낡은 목록은 이미 지운 것을 다시 지우게 한다).
+// ★ 문이 둘이다(2026-09-18 사용자 결정 · TRASH-DELETE §5.0): 공식 과제 화면의 #offTrash 가 scope='project' 로,
+//   「구성원 편집」의 #uaTrash 가 scope='user' 로 연다. 들어온 문이 **보이는 탭과 머리말**을 정한다(__trScope).
+//   호스트는 그대로다 — trashGet 회신에는 여전히 다섯 목록이 전부 실려 온다. 고르는 일은 화면이 한다.
 // ★ 모달은 회신을 기다리지 않고 먼저 연다(openUserAdmin 과 같은 이유) — 대신 '불러오는 중…'을 띄운다.
 // ★ __trAdmin 을 먼저 비운다: 낡은 값이 남으면 회신 전 한 프레임 동안 [영구 삭제]가 번쩍인다.
-async function openTrash(){
+async function openTrash(scope){
   if(__trBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
   __trBusy = true;
-  __trData = null; __trAdmin = false; __trTab = 'project';
+  __trScope = (scope === 'user') ? 'user' : 'project';
+  //  머리말도 문을 따라간다 — 「퇴사자 휴지통」에서 들어왔는데 머리가 「휴지통」이면 무엇을 보고 있는지 흐려진다.
+  { const h = document.getElementById('trTitle'); if(h) h.textContent = (__trScope === 'user') ? '퇴사자 휴지통' : '휴지통'; }
+  __trData = null; __trAdmin = false; __trTab = (__trScope === 'user') ? 'user' : 'project';
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 닫은 경우).
   //    왕복이 없으면 풀고, **아직 도는 중이면 풀지 않는다** — 그 왕복이 끝나는 자리가 풀 것이다.
   if(__trSaving) trSetSaving(true); else trSetSaving(false);
@@ -8668,6 +8692,7 @@ function offSyncExportBtn(n){
   b.style.display = HOST ? '' : 'none';
   // 발주처 관리 버튼도 위젯에서만 노출(실제 쓰기 권한은 호스트가 요청 시점에 판정) — 렌더마다 함께 동기화.
   const cm = document.getElementById('offCustMgr'); if(cm) cm.style.display = HOST ? '' : 'none';
+  const tr = document.getElementById('offTrash'); if(tr) tr.style.display = HOST ? '' : 'none';   // 휴지통도 같은 규칙(위젯에서만)
   if(__offExportBusy) return;
   const cnt = Number(n) || 0;
   b.disabled = !(cnt > 0);
@@ -8960,7 +8985,7 @@ window.__projectSaved = function(ok, msg, needConfirm){
 function offHideProject(id){
   const c = dbCatalogById(id); if(!c) return;
   confirmBox('공식 과제 숨김',
-    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요? 숨긴 과제는 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`,
+    `'${c.name}'을(를) 공식 과제 목록에서 숨깁니다. 이 과제로 태그된 일정·할일은 그대로 남습니다. 계속할까요? 숨긴 과제는 이 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`,
     '숨김', '취소')
     .then(r => {
       if(r !== 'ok') return;
@@ -9059,11 +9084,11 @@ function custDoHide(name){
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
       const r = await confirmBox('발주처 숨김',
-        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 발주처를 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     } else if(n > 0){
       const r = await confirmBox('발주처 숨김',
-        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
     custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다');
@@ -9206,11 +9231,11 @@ function codeDoHide(name){
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
-        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 ${codeKindLabel()}을(를) 쓰는 과제가 몇 건인지 확인하지 못했습니다(서버 응답 없음). 숨겨도 기존 과제 표기는 유지되고 언제든 복구할 수 있습니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     } else if(n > 0){
       const r = await confirmBox(codeKindLabel() + ' 숨김',
-        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 「휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
+        `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
     codeSend('codeSetActive', { name, active: false }, codeKindLabel() + '을(를) 숨겼습니다');
@@ -12703,6 +12728,8 @@ function bind(){
   { const b = $('#offCustMgr'); if(b) b.addEventListener('click', () => {
       offEditGuard(openCustomerModal);
     }); }
+  /* 휴지통(과제 쪽 네 종류) — 같은 관문(offEditGuard: 위젯·온라인)을 지난다. 관리자 판정은 openTrash 의 회신이 한다. */
+  { const b = $('#offTrash'); if(b) b.addEventListener('click', () => { offEditGuard(() => openTrash('project')); }); }
   { const b = $('#custAddBtn'); if(b) b.addEventListener('click', custDoAdd); }
   { const inp = $('#custNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); custDoAdd(); } }); }
   { const sh = $('#custShowHidden'); if(sh) sh.addEventListener('change', () => { custShowHidden = sh.checked; renderCustomerList(); }); }
@@ -12777,8 +12804,8 @@ function bind(){
   // ARIA 탭 roving — dpTabs와 같은 규약(←/→/Home/End 이동+자동 활성화)
   tablistRoving('#sTabs', '.tab', b => setSearchMode(b.id === 'tabKeyword' ? 'keyword' : 'category'));
   tablistRoving('#reportModal .rpt-presets[role=tablist]', '[data-rmode]', b => setReportMode(b.dataset.rmode));
-  //  휴지통 탭 다섯 — 검색 탭과 **같은 규약**을 쓴다(←/→/Home/End + 자동 활성화). 버튼은 trRender 가 매번
-  //  다시 만들지만 컨테이너(#trTabs)는 그대로라 여기 한 번의 배선으로 충분하다.
+  //  휴지통 탭(과제 쪽 넷 · 퇴사자 쪽은 탭 줄이 없다) — 검색 탭과 **같은 규약**을 쓴다(←/→/Home/End + 자동
+  //  활성화). 버튼은 trRender 가 매번 다시 만들지만 컨테이너(#trTabs)는 그대로라 여기 한 번의 배선으로 충분하다.
   //  ★ 화살표키로 옮기는 것도 **탭 전환**이다 — 마우스와 같은 규칙으로 맨 위에서 연다(2026-09-14 W2).
   tablistRoving('#trTabs', '.tab', b => { __trTab = b.dataset.trtab; trRender(); trListTop(); });
   let debounce = null;

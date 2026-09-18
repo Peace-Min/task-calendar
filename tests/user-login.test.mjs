@@ -545,8 +545,11 @@ test('offEditGuard: 인자는 fn 하나 — 폐지된 관리자 비밀번호를 
   assert.ok(!/관리자 비밀번호/.test(withoutPatchModal(src)),
     '폐지된 관리자 비밀번호를 언급하는 문자열이 남아 있다(패치노트 밖)');
   // 호출 지점 자체는 늘거나 줄지 않아야 한다(인자만 뺐지 편집 게이트를 옮긴 게 아니다).
+  //  ★ 2026-09-18 — 「공식 과제 (DB)」 하단 줄에 「🗑 휴지통」(#offTrash)이 생기면서 호출이 하나 늘었다.
+  //    그 버튼도 다른 관리 조작과 **같은 관문**(위젯·온라인)을 지난다 — 게이트가 늘어난 것이 아니라
+  //    그 관문을 지나는 문이 하나 더 생긴 것이다.
   const hits = [...src.matchAll(/offEditGuard\(/g)].length;
-  assert.strictEqual(hits, 18, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 13 + 주석 4 = 18이어야 한다)`);
+  assert.strictEqual(hits, 19, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 14 + 주석 4 = 19여야 한다)`);
 });
 
 test('호스트의 netcusSaveCreds/netcusCredsGet 처리부는 남아 있다(웹이 부르지 않을 뿐)', () => {

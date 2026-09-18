@@ -1055,6 +1055,9 @@ const checks = {
       '「순서 저장」이 왕복 중에도 켜져 있다 — 같은 순서를 두 번 보낼 수 있다');
     assert.ok(/mk\('순서 편집', 'uaOrderEdit', 'btn sm', \(\) => uaOrderToggle\(true\)\)\.disabled = __uaSaving;/.test(bar),
       '「순서 편집」이 왕복 중에도 켜져 있다 — 저장 중인 명부를 다시 흔들 수 있다');
+    //  ★ 2026-09-18 — 「퇴사자 휴지통」도 같은 막대·같은 규칙이다(휴지통을 열면 명부를 다시 읽는다).
+    assert.ok(/mk\('퇴사자 휴지통', 'uaTrash', 'btn sm', \(\) => openTrash\('user'\)\)\.disabled = __uaSaving;/.test(bar),
+      '「퇴사자 휴지통」이 왕복 중에도 켜져 있다 — 결과를 기다리는 중에 휴지통이 열려 명부를 다시 읽는다');
     assert.ok(/nb\.disabled = __uaSaving;/.test(bar),
       '「＋ 직원 등록」이 왕복 중에도 켜져 있다 — 결과를 기다리는 폼 위에 새 폼이 겹친다');
     const ss = extractFunction(web, 'uaSetSaving');
@@ -1069,8 +1072,8 @@ const checks = {
     const sc = extractFunction(web, 'uaSyncControls');
     assert.ok(/getElementById\('uaList'\)/.test(sc) && /querySelectorAll\('\[data-uop\]'\)/.test(sc),
       'uaSyncControls 가 #uaList 의 행 컨트롤을 훑지 않는다 — 목록 쪽 잠금이 그 자리에서 걸리지 않는다');
-    assert.ok(/'uaNew', 'uaOrderEdit', 'uaOrderSave'/.test(sc),
-      '막대의 세 버튼(uaNew·uaOrderEdit·uaOrderSave)을 그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다');
+    assert.ok(/'uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash'/.test(sc),
+      '막대의 네 버튼(uaNew·uaOrderEdit·uaOrderSave·uaTrash)을 그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다');
     assert.ok(!/uaOrderCancel|uaInactive/.test(sc),
       '[취소]·「퇴사자 보기」까지 잠근다 — 렌더는 그 둘을 잠그지 않으므로, 다시 그리는 순간 잠금이 뒤집힌다');
     //  ★ 끝(첫 행·마지막 행)에 닿은 화살표는 잠금과 **사유가 다르다** — 잠금이 풀려도 켜지면 안 된다.
@@ -1539,9 +1542,26 @@ test('변이⑭-g: 잠금을 렌더로 반영하게 되돌리면 계약⑭-b 가
 //  ★ 그 자리에서 끄는 집합과 렌더가 잠그는 집합이 **갈리면** 재렌더가 잠금을 뒤집는다 — [취소]까지
 //    끄면 다시 그리는 순간 켜지고, 그때 관리자는 왕복 중에 되돌리기를 눌러 화면과 요청을 어긋나게 한다.
 test('변이⑭-g2: 그 자리에서 끄는 집합을 넓히면 계약⑭-b 가 실패한다(렌더가 잠금을 뒤집는다)', () => {
-  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave']){",
-    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaOrderCancel']){");
+  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){",
+    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrderCancel']){");
   assert.throws(() => checks.lockIsDerivedAtRender(bad), /렌더는 그 둘을 잠그지 않으므로/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 반대쪽 — 그 자리에서 끄는 집합에서 「퇴사자 휴지통」을 빼면(2026-09-18 에 늘어난 버튼) 렌더만 잠그고
+//    그 자리에서는 켜진 채로 남는다. 두 집합이 갈리는 것은 어느 쪽으로 갈려도 결함이다.
+test('변이⑭-g2b: 그 자리에서 끄는 집합에서 「퇴사자 휴지통」을 빼면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){",
+    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave']){");
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 렌더 쪽에서 「퇴사자 휴지통」의 잠금을 빼면, 왕복 중에 도착한 명부 푸시가 그 문을 도로 켠다.
+test('변이⑭-g2c: 「퇴사자 휴지통」을 렌더에서 잠그지 않으면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, "  mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;",
+    "  mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user'));");
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /「퇴사자 휴지통」이 왕복 중에도 켜져 있다/);
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
@@ -2892,16 +2912,18 @@ if (!jsdom) {
       '「구성원 편집」이 #usAdminBtns 가 아닌 곳에 앉았다 — 일상 동작 줄에 섞이면 층이 사라진다(A15)');
     assert.strictEqual(on.memChildren, 1,
       `「구성원 보기」 줄의 자식이 ${on.memChildren}개다 — 그 줄에는 #usMembers 하나뿐이어야 한다`);
-    assert.strictEqual(on.admChildren, 3,
-      `관리 줄의 자식이 ${on.admChildren}개다 — 캡션 「관리자」 + 버튼 둘이어야 한다`);
+    //  ★ 2026-09-18 — 이 줄이 지는 것은 캡션 「관리자」 + 「구성원 편집」 **둘뿐**이다. 「휴지통」은
+    //    그 도메인의 화면으로 갔다(과제 쪽은 #offTrash, 퇴사자는 「구성원 편집」 안의 #uaTrash).
+    assert.strictEqual(on.admChildren, 2,
+      `관리 줄의 자식이 ${on.admChildren}개다 — 캡션 「관리자」 + 버튼 하나여야 한다`);
     assert.ok(on.admText.startsWith('관리자'),
-      `관리 줄이 캡션으로 시작하지 않는다: ${JSON.stringify(on.admText)} — 두 버튼이 누구의 것인지 말하는 한 단어가 먼저 온다`);
+      `관리 줄이 캡션으로 시작하지 않는다: ${JSON.stringify(on.admText)} — 그 버튼이 누구의 것인지 말하는 한 단어가 먼저 온다`);
     //  ★ 진짜 관문: 관리자였다가 내려간 경우. 숨김으로 바꾸면 여기서만 드러난다.
     const seq = probeEntrySeq(['admin', 'editor', 'admin', '']);
     assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
       `역할이 바뀔 때 버튼이 생겼다 사라지지 않는다: ${JSON.stringify(seq.map((x) => x.present))} — 남으면 내려간 사람에게 문이 남는다`);
     //  ★ 내려가면 관리 줄은 **통째로** 빈다 — 캡션만 남아도 화면이 없는 권한을 가리킨다.
-    assert.deepStrictEqual(seq.map((x) => x.admChildren), [3, 0, 3, 0],
+    assert.deepStrictEqual(seq.map((x) => x.admChildren), [2, 0, 2, 0],
       `관리 줄이 비었다 채워지지 않는다: ${JSON.stringify(seq.map((x) => x.admChildren))} — 캡션이 남으면 빈 줄에 「관리자」만 선다`);
     assert.deepStrictEqual(seq.map((x) => x.memChildren), [1, 1, 1, 1],
       `「구성원 보기」 줄이 역할에 따라 흔들린다: ${JSON.stringify(seq.map((x) => x.memChildren))} — 그 줄은 전원의 것이라 변하지 않는다`);
@@ -3175,14 +3197,17 @@ if (!jsdom) {
     const idle = probeSaving(false, false);
     assert.deepStrictEqual(idle.rowOps.map((b) => b.disabled), [false, false, false],
       `전제 붕괴: 평소에도 행 [편집]이 잠겨 있다 — ${JSON.stringify(idle.rowOps)}`);
-    assert.deepStrictEqual(idle.bar.map((b) => b.disabled), [false], `평소 막대 버튼이 잠겨 있다: ${JSON.stringify(idle.bar)}`);
+    //  ★ 2026-09-18 — 이 막대의 버튼은 **둘**이다: 「순서 편집」 · 「퇴사자 휴지통」(그 뒤는 체크박스 라벨).
+    assert.deepStrictEqual(idle.bar.map((b) => b.id), ['uaOrderEdit', 'uaTrash'],
+      `평소 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(idle.bar)}`);
+    assert.deepStrictEqual(idle.bar.map((b) => b.disabled), [false, false], `평소 막대 버튼이 잠겨 있다: ${JSON.stringify(idle.bar)}`);
     assert.deepStrictEqual(idle.foot.map((b) => b.disabled), [false], `평소 [＋ 직원 등록]이 잠겨 있다: ${JSON.stringify(idle.foot)}`);
     //  ② 왕복 중 — 다시 그려도 전부 잠긴 채다.
     const busy = probeSaving(false, true);
     assert.deepStrictEqual(busy.rowOps.map((b) => b.disabled), [true, true, true],
       `왕복 중에 다시 그렸더니 행 [편집]이 켜져 있다: ${JSON.stringify(busy.rowOps)} — 결과를 기다리는 중에 다른 사람의 폼이 열린다`);
-    assert.deepStrictEqual(busy.bar.map((b) => b.disabled), [true],
-      `왕복 중인데 「순서 편집」이 켜져 있다: ${JSON.stringify(busy.bar)}`);
+    assert.deepStrictEqual(busy.bar.map((b) => b.disabled), [true, true],
+      `왕복 중인데 「순서 편집」·「퇴사자 휴지통」이 켜져 있다: ${JSON.stringify(busy.bar)}`);
     assert.deepStrictEqual(busy.foot.map((b) => b.disabled), [true],
       `왕복 중인데 [＋ 직원 등록]이 켜져 있다: ${JSON.stringify(busy.foot)}`);
     //  ③ 순서 편집 중 — ▲▼ 와 [순서 저장]도 같은 규칙. [취소]는 화면 안의 일이라 열려 있어야 한다.
