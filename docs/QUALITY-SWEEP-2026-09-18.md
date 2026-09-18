@@ -45,7 +45,7 @@
 
 > 순서대로. 각 항목은 검토 보고에서 코드로 확인된 것이며, 줄 번호는 2026-09-18 기준(내용으로 다시 찾을 것). 구현은 dev-delegate(오퍼스), 게이트는 페이블: Debug 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 
-### 3.1 P1 — 구성원 편집·직급·소속 (`ua*`/`ot*`)
+### 3.1 P1 — 구성원 편집·직급·소속 (`ua*`/`ot*`) ✅ 완료
 - **`otRender` 포커스 미복원**: ▲▼·숨김·복구 회신마다 목록을 통째로 다시 만들며 포커스가 body 로 떨어진다. `uaRender`/`trRender` 의 keep/restore 블록(쥐고 있던 `data-otop`·`data-otkey` 저장 → 재생성 뒤 같은 신원에 포커스)을 ot 에도. `.cust-row` 에 `tabIndex=-1`.
 - **`otSyncControls` 가 `lockLineBtn` 을 안 씀**: 왕복 시작 순간 포커스를 쥔 버튼이 disabled 되며 포커스 유실. `lockLineBtn(b, …)` 재사용(행 열쇠 `data-otkey`). `<select>`(상위 변경)도 잠근다.
 - **`uaAdminBar()` 가 명부 안착마다 상단/하단 막대를 통째로 재생성**: 직급·소속 창을 닫으면(`otAfterClose`→`uaReload`) 또는 「퇴사자 보기」 토글 시 포커스가 body 로. 막대도 id 기준 포커스 복원, 또는 모드 전환·관리자 뒤집힘일 때만 재생성하고 나머지는 제자리 갱신.
