@@ -70,14 +70,19 @@ body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) �
 #hostbar .hb-btns button .ic{width:15px;height:15px;vertical-align:0}   /* SVG 글리프도 문자 글리프(⤢·☰·✕)와 같은 광학 크기로 */
 #hostbar .hb-btns button:hover{background:rgba(255,255,255,.2)}
 #hostbar .hb-btns button.pinon{background:rgba(255,255,255,.28)}
-/* 위젯 리사이즈 핸들 — 좌·우·하단 가장자리 + 하단 두 모서리(상단은 호스트바=타이틀바라 제외, 일반 창 규범) */
+/* 위젯 리사이즈 핸들 — 네 가장자리 + 네 모서리(8방향). 모두 투명(우하 그립만 보임), position:fixed 라 스크롤과 무관 */
 .rsz{position:fixed;z-index:200;touch-action:none}
-.rsz-w{left:0;top:14px;bottom:14px;width:8px;cursor:ew-resize}      /* 좌(모서리 사이) — 8px 그랩(투명, 시각 변화 0) */
-.rsz-e{right:0;top:14px;bottom:14px;width:8px;cursor:ew-resize}     /* 우 */
-.rsz-s{left:14px;right:14px;bottom:0;height:8px;cursor:ns-resize}   /* 하단(모서리 사이) */
-.rsz-nw{left:0;top:0;width:14px;height:14px;cursor:nwse-resize}     /* 좌상 모서리 */
+.rsz-w{left:0;top:20px;bottom:20px;width:8px;cursor:ew-resize}      /* 좌(모서리 사이) — 8px 그랩(투명, 시각 변화 0) */
+.rsz-e{right:0;top:14px;bottom:18px;width:8px;cursor:ew-resize}     /* 우 */
+.rsz-s{left:20px;right:18px;bottom:0;height:8px;cursor:ns-resize}   /* 하단(모서리 사이) */
+/* 상단 가장자리(2026-09-18): 창 맨 위는 배지 여백(12px)이라 제목줄 드래그도 닿지 않는 죽은 띠였다 — 여기서 끌면
+   아무 일도 없어 "모서리에서 대각선이 안 된다"로 보였다. 8px 띠를 두면 높이만 줄고, 모서리는 아래 것이 이긴다. */
+.rsz-n{left:20px;right:14px;top:0;height:8px;cursor:ns-resize}
+/* 좌상·좌하 모서리 20px: 보이지 않는 14px 는 마우스로 겨냥하기엔 작아 바로 옆 가장자리(폭만 바뀜)로 빗나갔다.
+   우상은 ✕ 버튼(36×32) 가운데를 덮지 않도록 14px 그대로. */
+.rsz-nw{left:0;top:0;width:20px;height:20px;cursor:nwse-resize}     /* 좌상 모서리 */
 .rsz-ne{right:0;top:0;width:14px;height:14px;cursor:nesw-resize}    /* 우상 모서리(✕ 중앙 클릭은 유지) */
-.rsz-sw{left:0;bottom:0;width:14px;height:14px;cursor:nesw-resize}  /* 좌하 모서리 */
+.rsz-sw{left:0;bottom:0;width:20px;height:20px;cursor:nesw-resize}  /* 좌하 모서리 */
 .rsz-se{right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize; /* 우하 모서리(눈에 보이는 그립) */
   background:repeating-linear-gradient(135deg, transparent 0 3px, rgba(110,120,140,.55) 3px 4px);border-bottom-right-radius:2px}
 /* 위젯 모드: body 스크롤바 제거(코너 그립 확보) + 좁은 폭에서도 날짜패널은 내부 스크롤 */
@@ -13578,8 +13583,10 @@ function buildHostBar(){
   bar.querySelector('.hb-btns').addEventListener('click', ev => {
     const b = ev.target.closest('button[data-host]'); if(b) hpost({cmd:b.dataset.host});
   });
-  // 리사이즈: 좌·우·하단 가장자리 + 하단 두 모서리(상단은 호스트바라 제외)
-  [['nw','rsz rsz-nw'], ['ne','rsz rsz-ne'], ['w','rsz rsz-w'], ['e','rsz rsz-e'], ['s','rsz rsz-s'], ['sw','rsz rsz-sw'], ['se','rsz rsz-se']].forEach(([edge, cls]) => {
+  // 리사이즈: 네 가장자리 + 네 모서리 = 8방향. 상단 가장자리(n)는 2026-09-18 추가 — 배지 여백 때문에 창 맨 위 띠가
+  //   어느 손잡이에도 안 걸려 "좌상단 대각선이 안 된다"로 보였다. 호스트는 처음부터 n 을 처리한다(edge.Contains("n")).
+  //   순서가 곧 z 순서(뒤가 위): 모서리를 가장자리 뒤에 두어 겹치는 자리에서 모서리가 이긴다.
+  [['n','rsz rsz-n'], ['w','rsz rsz-w'], ['e','rsz rsz-e'], ['s','rsz rsz-s'], ['nw','rsz rsz-nw'], ['ne','rsz rsz-ne'], ['sw','rsz rsz-sw'], ['se','rsz rsz-se']].forEach(([edge, cls]) => {
     const h = document.createElement('div');
     h.className = cls; h.title = '드래그하여 크기 조절';
     document.body.appendChild(h);
