@@ -40,6 +40,7 @@
 6. **휴지통 진입점 이동(2026-09-18 사용자 결정)**: 휴지통은 그 도메인의 화면이 연다 — 과제·발주처·구분·상태는 공식 과제 화면의 `#offTrash`, 퇴사자는 「구성원 편집」의 `#uaTrash`(`openTrash(scope)` · `__trScope` 가 보이는 탭·머리말을 정한다). 「사용자 정보」에는 휴지통이 없고 `usAdminBtnSync` 는 「구성원 편집」 하나만 만든다. **호스트 불변**(`trashGet` 은 그대로 다섯 목록). 계약 ⑥-b/⑥-DOM(a)·`loop-trash` C00/C08 은 새 문을 보도록 옮긴다([TRASH-DELETE §11-33](TRASH-DELETE.md) · [USER-ADMIN §11-37](USER-ADMIN.md)). *(아래 7: `usAdminBtnSync` 는 그 뒤 완전히 사라졌다.)*
 7. **「구성원 편집」 진입 버튼 = 정적 공개 문(2026-09-18 사용자 결정)**: 「구성원 보기」 옆 같은 줄(`#usMemberBtns`)에 마크업으로 상주하고, 관리자가 아니면 열린 화면이 호스트의 거절 한 줄(「관리자만 사용할 수 있습니다.」)만 보여 준다 — `usAdminBtnSync`·`#usAdminBtns`·진입 jsdom 하네스는 전부 제거, 부재 계약은 창 안의 컨트롤에만 적용된다([USER-ADMIN §11-38](USER-ADMIN.md) · [TRASH-DELETE §11-34](TRASH-DELETE.md)).
 8. **기준 정보 관리 문 = 공식 과제 화면 하단 줄(2026-09-18 사용자 결정)**: 발주처·구분·상태 마스터는 「공식 과제 (DB)」 하단 줄의 「발주처 관리」(`#offCustMgr`)·「구분·상태 관리」(`#offCodeMgr`)에서만 관리하고, 편집 폼(`#officialEditModal`)은 고르기만 한다(폼 안의 링크 둘 제거 · 직급·소속과 같은 방식). 둘 다 `offEditGuard` 를 지나므로 **오프라인에서는 관리 모달이 열리지 않는다** — `loop-ui-integrity` A는 '진입 차단 + 열어 둔 모달 안의 추가 차단', B는 '온라인에 열어 두고 끊은 뒤 목록 재왕복이 안내 문구로 폴백'을 본다([TRASH-DELETE §5.0](TRASH-DELETE.md)).
+9. **보고서 「내용 없는 항목 제외」 재정의(2026-09-18 사용자 결정)**: 이 옵션이 빼는 건 **항목도 공수도 없는 과제 행** 하나뿐이다 — 제목이 있는 일정·할 일·커밋은 그 자체가 내용이라 설명(메모/dayNote) 유무로 사라지지 않고, **공수(sumMin·grandMin·uninput·`[과제] : n`)는 옵션과 무관하게 불변**이다(`collectReportData` 의 항목 단위 `continue` 둘 제거 · 행 필터는 '제목 0개 AND 범위 내 공수 0'). 계약: app-context 「skipEmpty …」 4건 + 변이⑥/⑥-b, report-wiring 배선⑩ + 변이⑫/⑬.
 
 ## 4. 이어서 작업하는 법
 

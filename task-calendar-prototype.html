@@ -2512,7 +2512,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                 <label class="check" style="margin:0"><input type="checkbox" id="rptSrcTodo" checked> 할 일</label>
                 <label class="check" style="margin:0"><input type="checkbox" id="rptSrcGit" checked> 커밋 내역</label>
                 <label class="check" style="margin:0"><input type="checkbox" id="rptWithDesc" checked> 설명 포함</label>
-                <label class="check" style="margin:0"><input type="checkbox" id="rptSkipEmpty"> 내용 없는 항목 제외</label>
+                <label class="check" style="margin:0" title="항목도 공수도 없는 과제를 보고서에서 뺍니다 (제목이 있는 일정·할 일·커밋은 남습니다)"><input type="checkbox" id="rptSkipEmpty"> 내용 없는 항목 제외</label>
               </div>
               <!-- 서식 = 캘린더 렌더러 입력(머리기호·들여쓰기)이라 netcus 본문에는 의미가 없다 → ⚙옵션 안에 남는다.
                    글꼴은 출처와 무관한 표시 설정이라 레일 직속(#rptFontRow)으로 뺐다. -->
@@ -3295,7 +3295,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <ul class="patch-list">
         <li class="key"><span class="pv-key">핵심</span><b>🗓 기간 할일 날짜별 세부내용 (신규)</b> — 월~금 기간 할일에 <b>날짜마다 다른 세부내용</b>을 적으면 <b>주간보고에 날짜별로 병합</b>되어 나옵니다. 보고서에서 <b>그 자리에서 바로</b> 채우고 고칠 수 있습니다.</li>
         <li><b>🌗 위젯 투명도</b> — 테마(모양) 메뉴의 <b>투명도 슬라이더</b>로 바탕화면에 맞춰 반투명하게. (위젯 전용)</li>
-        <li><b>🧾 보고서 편의</b> — <b>항목 설명 포함</b>(일정 메모·할일 세부) 옵션, <b>내용 없는 항목 제외</b>(빈 과제까지 숨김), 서식·포함 항목을 <b>일간/주간 따로</b> 기억.</li>
+        <li><b>🧾 보고서 편의</b> — <b>항목 설명 포함</b>(일정 메모·할일 세부) 옵션, <b>내용 없는 항목 제외</b>(항목도 공수도 없는 과제를 숨김), 서식·포함 항목을 <b>일간/주간 따로</b> 기억.</li>
         <li><b>🔗 netcus 연동 안정화</b> — 회사 데이터 읽는 중 <b>다른 요청 차단 + 진행 표시</b>로 화면 꼬임 해소, 로그인·세션 판정 개선.</li>
         <li><b>🐛 버그 수정</b> — 커밋 본문 소실/줄바꿈 보존, 테마 메뉴 오닫힘, 보고서 설명 정렬 등.</li>
       </ul>
@@ -10298,7 +10298,8 @@ function collectReportData(from, to, sources){
     if(!hit) continue;
     const k = catKey(e);
     const entryDetails = isGit ? [] : memoBullets(e.memo);
-    if(!isGit && skipEmpty && entryDetails.length === 0) continue;
+    // '내용 없는 항목 제외'는 설명(메모) 유무를 보지 않는다 — 제목이 있는 일정은 그 자체가 보고 내용이다.
+    // (설명 포함 #rptWithDesc 만 details 를 좌우한다. 행 단위 판정은 아래 rows 필터 한 곳에서만 한다.)
     // 공수 누적 — 제목 중복제거 '앞'에서(동명 항목 공수 유실 차단). 항목당 1회만(반복/멀티데이 곱셈 안 함).
     if(e.hours != null) sumMin.set(k, (sumMin.get(k) || 0) + e.hours); else uninput++;
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
@@ -10311,7 +10312,8 @@ function collectReportData(from, to, sources){
   }
   // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
   // 설명 소스(이중 모델): 단일 할일=전역 note / 기간 할일=[from,to]∩[due,end] 각 날짜 dayNote(기간 보고=요일 접두, 일간=원문).
-  // skipEmpty·설명포함(#rptWithDesc)은 이 details 기준 → dayNotes 0개 기간할일은 skipEmpty에서 자동 제외.
+  // 이 details 는 설명포함(#rptWithDesc)만 좌우한다 — '내용 없는 항목 제외'는 보지 않는다.
+  // → dayNote 0개 기간할일·메모 없는 단일 할일도 제목이 있으면 보고서에 그대로 남는다.
   if(src.todo){
     for(const t of (state.todos || [])){
       const s = t.due; if(!/^\d{4}-\d{2}-\d{2}$/.test(s || '')) continue;
@@ -10330,7 +10332,6 @@ function collectReportData(from, to, sources){
       } else {
         details = reportDetailLines(t.note);
       }
-      if(skipEmpty && details.length === 0) continue;
       pushTitle(catKey(t), t.text, { kind:'todo', todoId:t.id, dayDetails: (includeDetails && isPeriod) ? dayDetails : null }, includeDetails ? details : []);
     }
   }
@@ -10341,8 +10342,14 @@ function collectReportData(from, to, sources){
   rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));
   if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
     minutes:sumMin.get('__uncat__')||0, titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
-  // '내용 없는 항목 제외': 항목뿐 아니라 내용(제목) 0개인 과제 행도 프리뷰·복사에서 제거 → 반영 가시화(빈 과제명 미표시)
-  if(skipEmpty) rows = rows.filter(r => Array.isArray(r.titles) && r.titles.length > 0);
+  // '내용 없는 항목 제외' = 보고서에 쓸 내용이 아예 없는 과제 행만 뺀다(사용자 정의, 2026-09-18).
+  //   · 제목이 있는 일정·할 일·커밋은 그 자체가 내용 → 설명(메모/dayNote) 유무와 무관하게 절대 빼지 않는다.
+  //   · 공수도 내용이다: 일간 헤더 '[과제] : n'·주간 content 줄이 바로 이 행에서 나오므로,
+  //     제목이 하나도 없어도 (날짜×과제) 공수가 있으면 그 과제는 보고할 것이 있는 행이다.
+  //   · 그래서 제외 조건은 '제목 0개 AND 공수 0' 하나뿐. 공수 집계(sumMin·grandMin·uninput)는 이 옵션에 영향받지 않는다.
+  const rangeTaskHours = key => { let h = 0; for(let d = from; d && d <= to; d = addDays(d, 1)){ const v = getTaskHours(d, key); if(v != null) h += v; } return h; };
+  const rowHasHours = r => (r.minutes || 0) > 0 || rangeTaskHours(r.key) > 0;
+  if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));
   let grand = 0; for(const v of sumMin.values()) grand += v;
   return { rows, grandMin:grand, uninput };
 }
@@ -10426,7 +10433,7 @@ function rptSources(){
   const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit'), ds = $('#rptWithDesc'), se = $('#rptSkipEmpty');
   return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true, desc: ds ? ds.checked : true, skipEmpty: se ? se.checked : false };
 }
-// 포함 항목(일정/할일/커밋/설명포함/내용없는항목제외)을 일간/주간 모드별로 캐싱(#7 reportFormatPrefs와 동일 패턴, custom=weekly 재사용). 저장은 localStorage tc_rptSources={daily,weekly}.
+// 포함 항목(일정/할일/커밋/설명포함/내용없는항목제외 = 항목도 공수도 없는 과제 행만 제외)을 일간/주간 모드별로 캐싱(#7 reportFormatPrefs와 동일 패턴, custom=weekly 재사용). 저장은 localStorage tc_rptSources={daily,weekly}.
 function normRptSrc(o){ o = o || {}; return { event: o.event !== false, todo: o.todo !== false, git: o.git !== false, desc: o.desc !== false, skipEmpty: !!o.skipEmpty }; }
 function loadRptSourcePrefs(){
   let raw = null; try{ raw = JSON.parse(localStorage.getItem('tc_rptSources') || 'null'); }catch(_){}

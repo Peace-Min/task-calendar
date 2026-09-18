@@ -482,7 +482,7 @@ if (!JSDOM) {
       todos: [
         // 기간 할일: 월~금, dayNotes는 월/수/금만(화·목 비어 있음)
         { id: 'tp', text: '보고서 준비', done: false, categoryId: 'cp', due: '2026-07-13', endDate: '2026-07-17', prio: 'normal', completedAt: '', note: '', dayNotes: { '2026-07-13': '초안 작성', '2026-07-15': '검토', '2026-07-17': '마무리' }, createdAt: CA, updatedAt: CA },
-        // 기간 할일이지만 범위 내 dayNote 0개 — skipEmpty 대상
+        // 기간 할일이지만 범위 내 dayNote 0개 — 제목만 있는 항목(2026-09-18 재정의 후엔 skipEmpty 대상 아님)
         { id: 'te', text: '빈 기간할일', done: false, categoryId: 'cp', due: '2026-07-13', endDate: '2026-07-17', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
         // 단일 할일: 전역 note 사용(날짜 무관)
         { id: 'ts', text: '단일 검토', done: false, categoryId: 'cp', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '단일 설명', dayNotes: {}, createdAt: CA, updatedAt: CA },
@@ -513,13 +513,20 @@ if (!JSDOM) {
       assert.deepStrictEqual(mp.details, ['검토'], '일간(from==to)은 그날 dayNote 원문만(접두 없음)');
     });
 
-    test('skipEmpty ON: dayNote 없는 기간할일 제외 / 있으면 유지', () => {
+    // 2026-09-18 옵션 재정의: '내용 없는 항목 제외'는 설명(dayNote/메모) 유무를 보지 않는다.
+    // 제목이 있는 할 일은 그 자체가 보고 내용 → skipEmpty ON/OFF 어느 쪽에서도 남는다.
+    test('skipEmpty ON: 기간 할일은 dayNote 가 없어도 남는다(제목 자체가 내용)', () => {
       seed(dnState());
-      let row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true }));
-      assert.ok(row.titles.includes('보고서 준비'), 'dayNote 있는 기간할일 유지');
-      assert.ok(!row.titles.includes('빈 기간할일'), 'dayNote 0개 기간할일 제외');
-      row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: false }));
-      assert.ok(row.titles.includes('빈 기간할일'), 'skipEmpty OFF면 제목만이라도 유지');
+      for (const skipEmpty of [true, false]) {
+        const row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty }));
+        assert.ok(row.titles.includes('보고서 준비'), 'dayNote 있는 기간할일 유지 (skipEmpty=' + skipEmpty + ')');
+        assert.ok(row.titles.includes('빈 기간할일'), 'dayNote 0개 기간할일도 제목이 있으면 유지 (skipEmpty=' + skipEmpty + ')');
+        assert.ok(row.titles.includes('단일 검토'), '단일 할일 유지 (skipEmpty=' + skipEmpty + ')');
+      }
+      // 설명은 그대로 details 에 붙고, 없는 항목은 빈 배열일 뿐 제거 사유가 아니다.
+      const row = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true }));
+      assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('빈 기간할일')].details, [], '설명 없는 항목의 details 는 빈 배열');
+      assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('보고서 준비')].details, ['초안 작성', '검토', '마무리'], '설명은 그대로 붙는다');
     });
 
     test('skipEmpty ON: 내용 없는 과제 행도 제외(빈 과제명 미표시)', () => {
@@ -540,7 +547,40 @@ if (!JSDOM) {
       assert.ok(off.includes('내용과제') && off.includes('빈과제'), 'skipEmpty OFF면 빈 과제 행도 표시(기존 동작 보존)');
       const on = names(true);
       assert.ok(on.includes('내용과제'), '내용 있는 과제는 유지');
-      assert.ok(!on.includes('빈과제'), 'skipEmpty ON이면 내용 없는 과제 행 제외');
+      assert.ok(!on.includes('빈과제'), 'skipEmpty ON이면 항목도 공수도 없는 과제 행 제외');
+    });
+
+    // 공수는 내용이다 — 일간 헤더 '[과제] : n'·주간 content 줄이 이 행에서 나오므로,
+    // 제목이 하나도 없어도 (날짜×과제) 공수가 있으면 그 과제는 skipEmpty ON 에서도 남아야 한다.
+    test('skipEmpty ON: 제목이 없어도 (날짜×과제) 공수가 있으면 과제 행 유지', () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [
+          { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        ],
+        entries: [],
+        todos: [
+          { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '설명있음', dayNotes: {}, createdAt: CA, updatedAt: CA },
+        ],
+        rooms: [],
+        // getTaskHours 가 읽는 저장소 그대로: state.taskHours[YYYY-MM-DD][catId] = 시간(소수 허용)
+        taskHours: { '2026-07-15': { 'c-hours': 3.5 } },
+      });
+      assert.strictEqual(evJSON("getTaskHours('2026-07-15','c-hours')"), 3.5, '사전조건: 시드한 (날짜×과제) 공수가 읽힌다');
+      const on = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows;
+      const names = on.map(r => r.name);
+      assert.ok(names.includes('공수만과제'), '공수만 있는 과제 행은 유지(보고할 공수가 있다)');
+      assert.ok(!names.includes('빈과제'), '항목도 공수도 없는 과제만 제외');
+      assert.deepStrictEqual(on.find(r => r.name === '공수만과제').titles, [], '공수만 있는 행의 제목은 비어 있다');
+      // 기간 보고에서도 같다 — 범위 안 어느 하루라도 공수가 있으면 남는다.
+      const wk = collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
+      assert.ok(wk.includes('공수만과제'), '주간 범위에서도 범위 내 공수가 있으면 유지');
+      assert.ok(!wk.includes('빈과제'), '주간 범위에서도 빈 과제는 제외');
+      // 범위 밖(공수 없는 주)이면 다시 빠진다 — 범위 합산이 실제로 from..to 만 본다는 뜻.
+      const other = collectDN('2026-07-20', '2026-07-26', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(r => r.name);
+      assert.ok(!other.includes('공수만과제'), '범위 밖 공수는 세지 않는다');
     });
 
     test('reportSubIndent: 설명 들여쓰기가 마커 표시폭만큼(한글=2칸) — 제목 텍스트 아래 정렬', () => {
@@ -730,11 +770,17 @@ if (!JSDOM) {
     test('collectReportData: 설명 포함과 내용 없는 항목 제외 옵션', () => {
       const st = {
         gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        categories: [
+          { id: 'cx', name: 'Alpha', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'cy', name: 'Empty', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },      // 항목도 공수도 없는 과제
+          { id: 'cz', name: 'HoursOnly', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },   // 제목 없는 일정의 공수만 있는 과제
+        ],
         entries: [
           { id: 'e-desc', date: '2026-07-09', title: 'Event with memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: 'memo one\n• memo two', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
           { id: 'e-empty', date: '2026-07-09', title: 'Event without memo', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 60, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
           { id: 'g-desc', date: '2026-07-09', title: 'Git entry', categoryId: 'cx', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: 'git', commits: [{ hash: 'g1', short: 'g1', time: '10:00', subject: 'Git subject' }], hours: 30, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          // 제목이 빈 문자열 → pushTitle 이 무시한다(titles 0개). 그래도 공수 45 는 집계되므로 행은 남아야 한다.
+          { id: 'z-hours', date: '2026-07-09', title: '', categoryId: 'cz', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: 45, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
         ],
         todos: [
           { id: 'td-desc', text: 'Todo with note', done: false, categoryId: 'cx', due: '2026-07-09', endDate: '', prio: 'normal', completedAt: '', note: 'todo detail', createdAt: CA, updatedAt: CA },
@@ -743,22 +789,39 @@ if (!JSDOM) {
         rooms: [],
       };
       seed(st);
-      let r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
+      const TITLES = ['Event with memo', 'Event without memo', 'Git subject', 'Todo with note', 'Todo without note'];
+      // 두 모드가 '완전히 같아야' 하는 것들 — 제목·공수·엔트리 버킷. skipEmpty 는 여기에 손대지 않는다.
+      for (const skipEmpty of [false, true]) {
+        const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty });
+        const row = rowOf(r, 'Alpha');
+        for (const t of TITLES) assert.ok(row.titles.includes(t), t + ' 유지 (skipEmpty=' + skipEmpty + ')');
+        assert.strictEqual(row.minutes, 150, '공수는 옵션과 무관하게 60+60+30 (skipEmpty=' + skipEmpty + ')');
+        assert.deepStrictEqual(row.entries.map(e => e.id).sort(), ['e-desc', 'e-empty', 'g-desc'],
+          '엔트리 버킷도 옵션과 무관 (skipEmpty=' + skipEmpty + ')');
+        // 설명은 있는 항목에만 붙고, 없는 항목은 빈 배열일 뿐(제거 사유 아님)
+        assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Event with memo')].details, ['memo one', 'memo two']);
+        assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Todo with note')].details, ['todo detail']);
+        assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Event without memo')].details, []);
+        assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Todo without note')].details, []);
+      }
+      // 설명 포함 OFF + 내용 없는 항목 제외 ON — 설명만 사라지고 항목은 하나도 사라지지 않는다.
+      let r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: false, skipEmpty: true });
       let row = rowOf(r, 'Alpha');
-      assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Event with memo')].details, ['memo one', 'memo two']);
-      assert.deepStrictEqual(row.titleMeta[row.titles.indexOf('Todo with note')].details, ['todo detail']);
-      assert.ok(row.titles.includes('Event without memo'));
-      assert.ok(row.titles.includes('Todo without note'));
+      for (const t of TITLES) assert.ok(row.titles.includes(t), 'desc:false 여도 ' + t + ' 유지');
+      assert.deepStrictEqual(row.titleMeta.map(m => m.details || []), row.titleMeta.map(() => []), 'desc:false 면 details 는 전부 비어 있다');
+      assert.strictEqual(row.minutes, 150, 'desc:false 도 공수 불변');
 
+      // 행 단위 판정 — 항목도 공수도 없는 과제(Empty)만 빠지고, 공수만 있는 과제(HoursOnly)는 남는다.
+      const namesOf = (skipEmpty) => collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty }).rows.map(x => x.name);
+      const off = namesOf(false);
+      assert.ok(off.includes('Empty') && off.includes('HoursOnly'), 'skipEmpty OFF 면 빈 과제도 표시');
+      const on = namesOf(true);
+      assert.ok(!on.includes('Empty'), '항목도 공수도 없는 과제 행만 제외');
+      assert.ok(on.includes('Alpha') && on.includes('HoursOnly'), '내용 있는 과제·공수만 있는 과제는 유지');
       r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: true });
-      row = rowOf(r, 'Alpha');
-      assert.ok(row.titles.includes('Event with memo'));
-      assert.ok(row.titles.includes('Todo with note'));
-      assert.ok(row.titles.includes('Git subject'), '커밋 제목은 자체가 내용이므로 유지');
-      assert.ok(!row.titles.includes('Event without memo'));
-      assert.ok(!row.titles.includes('Todo without note'));
-      assert.strictEqual(row.minutes, 90, '내용 없는 일정은 공수 집계에서도 제외');
-      assert.deepStrictEqual(row.entries.map(e => e.id).sort(), ['e-desc', 'g-desc'], '내용 없는 일정은 편집/표시용 엔트리 버킷에서도 제외');
+      row = rowOf(r, 'HoursOnly');
+      assert.deepStrictEqual(row.titles, [], '제목이 빈 문자열인 일정은 제목 목록에 안 들어간다(pushTitle 계약)');
+      assert.strictEqual(row.minutes, 45, '그래도 공수는 집계되고, 그 공수 때문에 행이 남는다');
     });
 
     test('collectReportData: 기간 필터 — 좁은 범위는 전부 제외(빈 결과, grandMin 0)', () => {
@@ -3099,24 +3162,70 @@ if (!JSDOM) {
         });
     });
 
-    // ── 변이⑥ collectReportData 의 skipEmpty 무력화 → 내용 없는 항목이 보고서에 빈 줄로 실린다 ──
-    test('변이⑥: collectReportData 가 skipEmpty 를 무시하면 빈 항목 제외 계약이 깨진다', () => {
-      seed(dnState());
-      const okTitles = rowCp(collectDN('2026-07-13', '2026-07-19', { event: true, todo: true, git: true, desc: true, skipEmpty: true })).titles;
-      assert.ok(!okTitles.includes('빈 기간할일'), '사전조건: 정상 앱은 skipEmpty ON 에서 빈 기간할일을 뺀다');
-      assert.ok(okTitles.includes('보고서 준비'), '사전조건: 내용 있는 항목은 남는다');
+    // ── 변이⑥ collectReportData 의 skipEmpty 무력화 → 항목도 공수도 없는 과제 행이 보고서에 빈 줄로 실린다 ──
+    // (2026-09-18 재정의) 옵션이 지우는 건 '항목도 공수도 없는 과제 행' 하나뿐이므로, 변이 관측점도 그 행이다.
+    const skipEmptyRowState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-empty', name: '빈과제', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      ],
+      entries: [],
+      todos: [
+        { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
+      ],
+      rooms: [],
+    });
+    test('변이⑥: collectReportData 가 skipEmpty 를 무시하면 빈 과제 행 제외 계약이 깨진다', () => {
+      seed(skipEmptyRowState());
+      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
+      assert.ok(!okNames.includes('빈과제'), '사전조건: 정상 앱은 skipEmpty ON 에서 항목도 공수도 없는 과제를 뺀다');
+      assert.ok(okNames.includes('내용과제'), '사전조건: 내용 있는 과제는 남는다');
 
       withMutatedApp(
         'const skipEmpty = !!src.skipEmpty;',
         'const skipEmpty = false;',
         (m) => {
-          m.seed(dnState());
-          const r = m.evJSON('collectReportData("2026-07-13","2026-07-19",' +
+          m.seed(skipEmptyRowState());
+          const r = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
             JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')');
-          const row = r.rows.filter(x => x.name === '기획')[0];
-          assert.ok(row, '변이 앱에서 기획 과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
-          assert.ok(row.titles.includes('빈 기간할일'),
-            '변이했는데도 빈 기간할일이 제외된다 — 계약이 skipEmpty 스위치를 안 본다');
+          const names = r.rows.map(x => x.name);
+          assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
+          assert.ok(names.includes('빈과제'),
+            '변이했는데도 빈 과제 행이 제외된다 — 계약이 skipEmpty 스위치를 안 본다');
+        });
+    });
+
+    // ── 변이⑥-b skipEmpty 가 공수를 내용으로 세지 않으면(옛 '제목만' 필터로 퇴행) 공수만 있는 과제가 사라진다 ──
+    const hoursOnlyState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-hours', name: '공수만과제', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      ],
+      entries: [],
+      todos: [
+        { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
+      ],
+      rooms: [],
+      taskHours: { '2026-07-15': { 'c-hours': 3.5 } },
+    });
+    test('변이⑥-b: skipEmpty 필터가 공수를 안 보면 공수만 있는 과제가 보고서에서 사라진다', () => {
+      seed(hoursOnlyState());
+      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
+      assert.ok(okNames.includes('공수만과제'), '사전조건: 정상 앱은 공수만 있는 과제를 남긴다');
+
+      withMutatedApp(
+        'if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));',
+        'if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0));',
+        (m) => {
+          m.seed(hoursOnlyState());
+          const r = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
+            JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')');
+          const names = r.rows.map(x => x.name);
+          assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
+          assert.ok(!names.includes('공수만과제'),
+            '변이했는데도 공수만 있는 과제가 남는다 — 계약이 공수를 내용으로 세는지 확인하지 못한다');
         });
     });
   }

@@ -331,3 +331,64 @@ test('변이⑪: 잔업 상한을 정본과 다르게 넓히면 배선⑨ 가 �
   assert.throws(() => checks.revalidatesCheckDomains(bad, reportdb, canonSql(), canonStatusCodes('chk_crd_status')),
     /잔업 검증이 정본 범위/);
 });
+
+// ── 계약⑩ (2026-09-18) — 「내용 없는 항목 제외」는 항목을 지우지 않는다 ────
+// 사용자 정의: 이 옵션이 빼는 건 '항목도 공수도 없는 과제 행' 하나뿐이다.
+//   · 제목이 있는 일정·할 일·커밋은 그 자체가 보고 내용 → 설명 유무로 사라지면 안 된다.
+//   · 공수(sumMin·grandMin·uninput)는 이 옵션에 절대 영향받지 않는다.
+// 옛 구현은 공수 누적 '앞'에서 항목을 continue 로 건너뛰어, 제목 있는 업무와 그 공수를 함께 날렸고
+// 그 손실이 buildWeeklyFields·buildReportText 를 타고 회사 일간/주간 전송 본문까지 번졌다.
+// 그래서 'skipEmpty 는 과제 행 필터 한 곳에서만 쓰인다'를 소스 구조로 못박는다(런타임 계약은 app-context 쪽).
+const COLLECT_HEAD = 'function collectReportData(from, to, sources){';
+const SKIP_DECL = 'const skipEmpty = !!src.skipEmpty;';
+const SUM_ACC = 'if(e.hours != null) sumMin.set(';
+const ROW_FILTER_RE = /if\(skipEmpty\) rows = rows\.filter/;
+const ITEM_CONTINUE_RE = /skipEmpty && (entryDetails|details)\.length === 0\) continue/;
+
+function collectBody(html) {
+  const i = html.indexOf(COLLECT_HEAD);
+  assert.ok(i > 0, 'collectReportData 를 찾지 못했다 — 보고서 수집 단일 소스가 사라졌다');
+  const j = html.indexOf('\nfunction ', i + 1);
+  assert.ok(j > i, 'collectReportData 의 끝(다음 최상위 function)을 찾지 못했다');
+  return html.slice(i, j);
+}
+
+function skipEmptyRowFilterOnly(html) {
+  const body = collectBody(html);
+  const decl = body.indexOf(SKIP_DECL);
+  assert.ok(decl >= 0, SKIP_DECL + ' 을 찾지 못했다 — 옵션 스위치가 사라졌다');
+  assert.ok(ROW_FILTER_RE.test(body),
+    'skipEmpty 과제 행 필터(if(skipEmpty) rows = rows.filter …)가 없다 — 옵션이 아무 일도 안 하거나 다른 곳으로 샜다');
+  assert.ok(!ITEM_CONTINUE_RE.test(body),
+    'skipEmpty 가 항목 단위 continue 로 쓰인다 — 제목 있는 업무와 그 공수가 보고서에서 통째로 사라진다');
+  // skipEmpty 는 '선언' 과 '행 필터' 사이 어디에도 나오면 안 된다(= 항목 루프·공수 누적에 손대지 않는다).
+  const declEnd = decl + SKIP_DECL.length;
+  const filterAt = body.search(ROW_FILTER_RE);
+  assert.ok(filterAt > declEnd, '과제 행 필터가 skipEmpty 선언보다 앞에 있다 — 소스 골격이 달라졌다');
+  const between = body.slice(declEnd, filterAt);
+  assert.ok(!between.includes('skipEmpty'),
+    'skipEmpty 가 과제 행 필터 말고 다른 곳에서도 쓰인다 — 항목·공수에 영향을 줄 수 있다: ' +
+    JSON.stringify(between.split('\n').filter((l) => l.includes('skipEmpty'))));
+  // 공수 누적은 옵션과 무관한 자리(= 행 필터보다 앞)에 있어야 한다.
+  const acc = body.indexOf(SUM_ACC);
+  assert.ok(acc > 0, '공수 누적 지점(' + SUM_ACC + ')을 찾지 못했다');
+  assert.ok(acc < filterAt, '공수 누적이 skipEmpty 행 필터 뒤로 갔다 — 옵션이 공수를 좌우할 수 있다');
+}
+
+test('배선⑩: collectReportData 에서 skipEmpty 는 과제 행 필터 한 곳에서만 쓰인다(항목·공수 불변)', () => {
+  skipEmptyRowFilterOnly(src);
+});
+
+test('변이⑫: 항목 단위 skipEmpty continue 를 되살리면 배선⑩ 이 실패한다(제목 있는 일정과 공수가 사라진 옛 버그)', () => {
+  const bad = mutate('const entryDetails = isGit ? [] : memoBullets(e.memo);',
+    'const entryDetails = isGit ? [] : memoBullets(e.memo);\n    if(!isGit && skipEmpty && entryDetails.length === 0) continue;', src);
+  assert.throws(() => skipEmptyRowFilterOnly(bad), /항목 단위 continue|다른 곳에서도 쓰인다/);
+  assert.doesNotThrow(() => skipEmptyRowFilterOnly(src), '대조군: 현재 소스는 그대로 통과해야 한다');
+});
+
+test('변이⑬: 과제 행 필터를 지우면 배선⑩ 이 실패한다(옵션이 아무 일도 안 한다)', () => {
+  const bad = mutate('if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));',
+    '/* 행 필터 삭제 */', src);
+  assert.throws(() => skipEmptyRowFilterOnly(bad), /행 필터/);
+  assert.doesNotThrow(() => skipEmptyRowFilterOnly(src), '대조군: 현재 소스는 그대로 통과해야 한다');
+});
