@@ -624,6 +624,9 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-filters .check{flex:none;margin:0;white-space:nowrap}
 .off-toolrow{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2)}
 .off-toolrow .spacer{flex:1}
+/* 400px 폭: [초기화][⬇ Excel 추출][＋ 새 공식 과제] 가 10px 여유를 두고도 둘째 줄로 접혔다(loop-ui-visual V3 · 2026-09-18 — 「＋ 발주처 관리」를
+   하단 줄로 옮기자 "크게 넘침" 경고가 "아슬아슬하게 접힘" 결함으로 바뀌었다). 좁은 폭에서는 버튼 패딩을 줄여 한 줄에 담는다. */
+@media (max-width:440px){ .off-toolrow .btn.sm{padding:4px 7px} .off-toolrow{gap:var(--sp-1)} }
 /* 편집폼 라벨 옆의 '관리 열기' 링크(.off-ed-lbrow/.off-ed-mgr)는 2026-09-18 사용자 결정으로 없어졌다 —
    발주처·구분·상태 마스터는 공식 과제 화면 하단 줄의 **별도 버튼**이 연다(직급·소속과 같은 방식).
    편집 폼은 과제만 고친다: 고르기만 하고 마스터를 늘리지 않는다. */
