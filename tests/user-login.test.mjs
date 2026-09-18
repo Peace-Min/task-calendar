@@ -548,8 +548,12 @@ test('offEditGuard: 인자는 fn 하나 — 폐지된 관리자 비밀번호를 
   //  ★ 2026-09-18 — 「공식 과제 (DB)」 하단 줄에 「🗑 휴지통」(#offTrash)이 생기면서 호출이 하나 늘었다.
   //    그 버튼도 다른 관리 조작과 **같은 관문**(위젯·온라인)을 지난다 — 게이트가 늘어난 것이 아니라
   //    그 관문을 지나는 문이 하나 더 생긴 것이다.
+  //  ★ 2026-09-18(같은 날, 뒤) — 편집 폼 안의 '구분·상태 관리…' 링크가 없어지고, 같은 하단 줄의
+  //    「구분·상태 관리」(#offCodeMgr)가 그 자리를 대신하면서 **호출이 하나 더** 늘었다(14 → 15).
+  //    게이트가 늘어난 게 아니다 — 관문 **밖**에 있던 문(폼 안 링크는 offEditGuard를 안 지났다)이
+  //    관문 안으로 들어온 것이다. 같은 변경에서 하단 줄을 설명하는 HTML 주석이 하나 늘어 주석 4 → 5.
   const hits = [...src.matchAll(/offEditGuard\(/g)].length;
-  assert.strictEqual(hits, 19, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 14 + 주석 4 = 19여야 한다)`);
+  assert.strictEqual(hits, 21, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 15 + 주석 5 = 21이어야 한다)`);
 });
 
 test('호스트의 netcusSaveCreds/netcusCredsGet 처리부는 남아 있다(웹이 부르지 않을 뿐)', () => {

@@ -978,12 +978,15 @@ async function closeIfOpen(modalSel) {
   await waitFor((x) => !(modalSel === '#codeModal' ? x.codeOpen : x.custOpen), { timeout: 4000 });
 }
 
-/** 구분·상태 관리 모달 진입 — 편집폼의 '구분·상태 관리…' 링크를 실제 클릭(offEditGuard 없는 경로) */
+/** 구분·상태 관리 모달 진입 — 공식 과제 화면 **하단 줄**의 「구분·상태 관리」(#offCodeMgr)를 실제 클릭.
+ *  ★ 2026-09-18 사용자 결정으로 편집 폼(#officialEditModal) 안의 '구분·상태 관리…' 링크는 없어졌다.
+ *    그 링크는 offEditGuard를 지나지 않는 유일한 문이었다 — 이제 문은 이 버튼 하나이고 **가드를 지난다**
+ *    (위젯·온라인). 그래서 오프라인에서는 이 헬퍼로 모달을 열 수 없다(그게 정상이다 · 시나리오 A). */
 async function openCodeModal(kind) {
   let s = await state();
   if (!s.codeOpen) {
     await closeIfOpen('#customerModal');
-    await ev("__lt.click('#offEdCodeMgr')");
+    await ev("__lt.click('#offCodeMgr')");
     s = await waitFor((x) => x.codeOpen && !/불러오는 중/.test(x.codeListText || ''), { timeout: 25000 }) || (await state());
   }
   if (kind && s.codeKind !== kind) {
@@ -993,12 +996,13 @@ async function openCodeModal(kind) {
   return s;
 }
 
-/** 발주처 관리 모달 진입 — 공식과제 화면의 '발주처 관리'(offEditGuard 경유)를 우선 사용 */
-async function openCustModal({ guarded = true } = {}) {
+/** 발주처 관리 모달 진입 — 공식 과제 화면 하단 줄의 「발주처 관리」(#offCustMgr) · offEditGuard 경유.
+ *  (편집 폼 안의 '발주처 관리…' 링크는 2026-09-18 에 없어졌다 — 문은 이 버튼 하나다.) */
+async function openCustModal() {
   let s = await state();
   if (!s.custOpen) {
     await closeIfOpen('#codeModal');
-    await ev(`__lt.click('${guarded ? '#offCustMgr' : '#offEdCustMgr'}')`);
+    await ev("__lt.click('#offCustMgr')");
     s = await waitFor((x) => x.custOpen && !/불러오는 중/.test(x.custListText || ''), { timeout: 25000 }) || (await state());
   }
   return s;
@@ -1337,6 +1341,21 @@ async function scenarioA() {
   log('── 시나리오 A: 알려진 오프라인 — offEditGuard가 편집을 막아야 한다 ──');
   // ★ 직전 조작이 열어 둔 모달을 반드시 닫는다 — 안 닫으면 '진입 차단' 판정이 오탐(이미 열려 있음)이 된다.
   await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal');
+
+  // ★ 2026-09-18 사용자 결정: 기준 정보 관리 문 둘이 공식 과제 화면 하단 줄로 모였고 **둘 다 offEditGuard**를
+  //   지난다(편집 폼 안의 가드 없는 링크는 없어졌다). 그래서 이 시나리오는 두 층을 나눠 본다:
+  //     · 진입 자체 — 오프라인에서 두 문이 모두 안 열려야 한다((1)·(3))
+  //     · 이미 열린 모달 안의 쓰기 — '추가'가 막혀야 한다((2))
+  //   (2)를 보려면 모달을 **온라인일 때 미리 열어 두고** 끊어야 한다. #dbReload 는 페이지 재로드가 아니라
+  //   재연결 시도라, 열어 둔 모달은 끊긴 뒤에도 그대로 남는다.
+  {
+    const pre0 = await state();
+    if (pre0.dbOnline !== true) await forceReload(true);
+    await ev("__lt.click('#offCodeMgr')");
+    const so = await waitFor((x) => x.codeOpen && !/불러오는 중/.test(x.codeListText || ''), { timeout: 30000 });
+    if (!so || !so.codeOpen) violate('A', '(하네스) 온라인인데 구분·상태 관리 모달이 열리지 않았다 — 추가 차단 판정 불가');
+  }
+
   goOffline();
   const s = await forceReload(false);
   if (!s) violate('A', '재로드해도 dbOnline이 false가 되지 않았다(오프라인 인지 실패)');
@@ -1355,9 +1374,7 @@ async function scenarioA() {
   else ok('발주처 관리 진입 차단 + 안내 토스트');
   opLog.push({ n: curOp, phase: curPhase, desc: r1.desc, outcome: r1.outcome, confirm: null });
 
-  // (2) 코드 추가 — 관리 모달 자체는 가드가 없어 열리지만 '추가'는 막혀야 한다
-  await ev("__lt.click('#offEdCodeMgr')");
-  await waitFor((x) => x.codeOpen && !/불러오는 중/.test(x.codeListText || ''), { timeout: 30000 });
+  // (2) 코드 추가 — 모달은 위에서 **온라인에 열어 뒀다**. 끊긴 지금 '추가'는 막혀야 한다.
   const nm = tmpCode();
   await ev(`__lt.setVal('#codeNewName', ${jstr(nm)})`);
   const r2 = await doWrite(`A:코드추가 '${nm}'`, "__lt.click('#codeAddBtn')", { timeout: 15000 });
@@ -1367,11 +1384,21 @@ async function scenarioA() {
   else ok('코드 추가 차단 + 안내 토스트');
   opLog.push({ n: curOp, phase: curPhase, desc: r2.desc, outcome: r2.outcome, confirm: null });
 
+  // (3) 그 모달을 닫고 나면 오프라인에서는 **다시 열리지 않아야** 한다 — 새 문도 발주처와 같은 관문이다.
+  await ev("__lt.click('#codeModal .modal-foot [data-close]')");
+  await waitFor((x) => !x.codeOpen, { timeout: 4000 });
+  const r3 = await doWrite('A:구분·상태 관리 진입(#offCodeMgr)', "__lt.click('#offCodeMgr')", { timeout: 10000 });
+  const s3 = await state();
+  if (s3.codeOpen) violate('A', '오프라인인데 구분·상태 관리 모달이 열렸다(offEditGuard 통과)');
+  else if (!r3.toasts.some((t) => t.kind === 'warn' && t.msg.includes(GUARD_MSG)))
+    violate('A', `가드 토스트('${GUARD_MSG}')가 뜨지 않았다 — 구분·상태 관리 진입`, r3.toasts);
+  else ok('구분·상태 관리 진입 차단 + 안내 토스트');
+  opLog.push({ n: curOp, phase: curPhase, desc: r3.desc, outcome: r3.outcome, confirm: null });
+
   const snap1 = snapshot();
   assertFrozen('시나리오 A', snap0, snap1);
   invCommon(snap1);
 
-  await ev("__lt.click('#codeModal .modal-foot [data-close]')");
   goOnline();
   const back = await forceReload(true);
   if (!back) violate('A', '언락 후 재로드해도 dbOnline이 true로 돌아오지 않았다');
@@ -1382,34 +1409,40 @@ async function scenarioA() {
 async function scenarioB() {
   curPhase = 'B-offline-browse'; scenariosRun.add('B');
   log('── 시나리오 B: 오프라인 중 조회·열람 — 우아한 실패인가 ──');
+  await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal');
+
+  // ★ 2026-09-18 사용자 결정으로 관리 모달의 문이 둘 다 offEditGuard 뒤로 들어갔다(편집 폼 안의
+  //   가드 없는 링크 제거). 그래서 **오프라인에서는 관리 모달이 아예 안 열린다** — 그 차단 자체는
+  //   시나리오 A가 본다. 여기서 볼 것은 그다음 층이다: 이미 열려 있던 목록이 끊긴 뒤 다시 왕복할 때
+  //   무한 로딩·예외로 죽지 않고 안내 문구로 떨어지는가. 그래서 **온라인에 열어 두고** 끊는다.
+  //   (#dbReload 는 페이지 재로드가 아니라 재연결 시도라, 열어 둔 모달은 그대로 남는다.)
+  {
+    const pre0 = await state();
+    if (pre0.dbOnline !== true) await forceReload(true);
+  }
+  await ev("__lt.click('#offCodeMgr')");
+  let s = await waitFor((x) => x.codeOpen && !/불러오는 중/.test(x.codeListText || ''), { timeout: 30000 });
+  if (!s || !s.codeOpen) violate('B', '(하네스) 온라인인데 구분·상태 관리 모달이 열리지 않았다 — 폴백 판정 불가', s);
+
   goOffline();
   await forceReload(false);
   const snap0 = snapshot();
   const e0 = (await state()).errN;
 
-  await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal');
-
-  // 코드 관리 모달(가드 없음) — 빈 목록 + 안내로 떨어져야 하고, 예외로 UI가 죽으면 안 된다
-  await ev("__lt.click('#offEdCodeMgr')");
-  let s = await waitFor((x) => x.codeOpen && !/불러오는 중/.test(x.codeListText || ''), { timeout: 30000 });
-  if (!s || !s.codeOpen) violate('B', '오프라인에서 구분·상태 관리 모달이 열리지 않았다', s);
-  else if (!/불러오지 못했습니다/.test(s.codeListText || '')) violate('B', '오프라인 코드 목록이 안내문구로 떨어지지 않았다', s.codeListText);
-  else ok('코드 관리 모달: 안내 문구로 우아하게 폴백');
-
-  // 탭 전환도 죽지 않아야 한다
+  // 탭 전환 = switchCodeKind → reloadCodeList 재왕복. 끊긴 뒤에도 빈 목록 + 안내로 떨어져야 하고,
+  // 예외로 UI가 죽거나 스피너에 멈춰 있으면 안 된다.
   await ev("__lt.click('#codeTabStatus')");
   s = await waitFor((x) => x.codeKind === 'status' && !/불러오는 중/.test(x.codeListText || ''), { timeout: 30000 });
   if (!s) violate('B', '오프라인에서 상태 탭 전환이 정지하지 않았다(무한 로딩?)');
-  else ok('탭 전환도 정상 폴백');
-  await ev("__lt.click('#codeModal .modal-foot [data-close]')");
-  await sleep(200);
+  else if (!/불러오지 못했습니다/.test(s.codeListText || '')) violate('B', '오프라인 코드 목록이 안내문구로 떨어지지 않았다', s.codeListText);
+  else ok('코드 관리 목록: 끊긴 뒤 재왕복도 안내 문구로 우아하게 폴백');
 
-  // 발주처 관리(가드 없는 진입 경로)
-  await ev("__lt.click('#offEdCustMgr')");
-  s = await waitFor((x) => x.custOpen && !/불러오는 중/.test(x.custListText || ''), { timeout: 30000 });
-  if (!s || !s.custOpen) violate('B', '오프라인에서 발주처 관리 모달이 열리지 않았다', s);
-  else if (!/불러오지 못했습니다/.test(s.custListText || '')) violate('B', '오프라인 발주처 목록이 안내문구로 떨어지지 않았다', s.custListText);
-  else ok('발주처 관리 모달: 안내 문구로 우아하게 폴백');
+  // 반대편 탭으로 돌아오는 길도 같은 경로를 탄다(한쪽만 고쳐 놓는 회귀를 막는다)
+  await ev("__lt.click('#codeTabSection')");
+  s = await waitFor((x) => x.codeKind === 'section' && !/불러오는 중/.test(x.codeListText || ''), { timeout: 30000 });
+  if (!s) violate('B', '오프라인에서 구분 탭 복귀가 정지하지 않았다(무한 로딩?)');
+  else if (!/불러오지 못했습니다/.test(s.codeListText || '')) violate('B', '오프라인 구분 목록이 안내문구로 떨어지지 않았다', s.codeListText);
+  else ok('탭 전환도 정상 폴백');
 
   // 페이지가 살아 있는지(스크립트 정지 여부)
   const alive = await ev('1+1');
@@ -1421,7 +1454,7 @@ async function scenarioB() {
   const snap1 = snapshot();
   assertFrozen('시나리오 B', snap0, snap1);
 
-  await ev("__lt.click('#customerModal .modal-foot [data-close]')");
+  await ev("__lt.click('#codeModal .modal-foot [data-close]')");
   goOnline();
   await forceReload(true);
   return await reconverge();
@@ -1472,7 +1505,9 @@ async function scenarioC(before) {
 
   // C-4) 발주처 추가(다른 모달 경로도 한 번)
   await ev("__lt.click('#codeModal .modal-foot [data-close]')"); await sleep(200);
-  await ev("__lt.click('#offEdCustMgr')");
+  // ★ 이 문도 이제 offEditGuard 를 지난다(2026-09-18). stale-online 창이 이미 닫혔다면(dbOnline=false)
+  //   모달이 안 열리는 것이 정상이고, 그때도 아래 추가 시도는 가드 토스트로 실패해야 한다(성공 위장 금지).
+  await ev("__lt.click('#offCustMgr')");
   await waitFor((x) => x.custOpen && !/불러오는 중/.test(x.custListText || ''), { timeout: 30000 });
   const cn = tmpCust();
   await ev(`__lt.setVal('#custNewName', ${jstr(cn)})`);

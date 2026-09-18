@@ -16,8 +16,8 @@
 | **미푸쉬** | 2026-09-18 에 두 저장소 모두 푸쉬함(그 뒤 커밋은 git log origin/feat/db-app..HEAD 로 확인). **"푸쉬" 라고 지시할 때만** 푸쉬한다 |
 | 버전 파일 | 전부 **0.18.1** 그대로(csproj·APP_VERSION·iss·RELEASE_NOTES·CHANGELOG·#patchModal). `tests/version-sync.test.mjs` 가 여덟 자리 정합을 잠근다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"` — **배포된 0.18.1 은 v9 짝**이다. 버전 승격 전엔 `배포-빌드.cmd` 를 돌리지 말 것(같은 번호로 계약이 다른 exe 가 나간다) |
-| 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
-| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1585 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 12종 통과 |
+| 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev), **2026-09-18 org_unit·title_code INSERT, UPDATE 적용됨**(직급·소속 관리 · 백업 taskmgr-20260918-141726.sql 뒤). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
+| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1652 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함) |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 — 전부 커밋됨
 
@@ -31,7 +31,7 @@
 
 ## 3. 다음 할 일 (우선순위순)
 
-0. **직급·소속 GRANT 를 개발 DB 에 적용(지시 시)** — 백업(`db/deploy/backup-taskmgr.ps1`, 복원 검증) → 비공개 `05-grants.sql` 의 두 GRANT(`org_unit`·`title_code` SELECT, INSERT, UPDATE) 적용 → `SHOW GRANTS` 대조 → `node tests/loop-org-title.mjs --seed=N` **5회 연속**. 적용 전에는 그 루프가 **판정 없음(exit 2)** 으로 끝난다(ORG-TITLE-ADMIN §6·§11-2). 위젯은 이미 1142 를 「DB 권한이 없습니다(1142) — …」로 보여 준다.
+0. ~~직급·소속 GRANT 개발 DB 적용~~ — **2026-09-18 완료**(ORG-TITLE-ADMIN §11-6 · loop-org-title 5회 연속 159/0). 운영 서버는 v0.19.0 배포 창에서 DEPLOY §0-5(이제 아홉 표).
 1. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installer\publish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash). 패치노트에 사용자 관리·휴지통·개발종료일·정합 6종. **스키마 12 + GRANT 7표와 같은 창에 배포**(DEPLOY.md §0-5, §6-1 "권한 변경도 §0").
 2. **푸쉬** — 지시 시에만. 본·비공개 둘 다.
 3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).
@@ -39,6 +39,7 @@
 5. **크기 조절 상단 가장자리(2026-09-18)**: "좌상단 대각선이 안 된다" 보고 → 호스트·nw 핸들 자체는 정상(CDP 화면좌표 드래그 Δ 정확). 실제 원인은 `#dsBadge` 위 여백 12px 가 어느 핸들에도 안 걸리는 죽은 띠였던 것 → `.rsz-n` 추가·nw/sw 20px·ne 14px(✕ 보호). 개발기(DPI 100%)에선 재현 안 됐으므로 사용자 기기에서 계속되면 DPI 배율·작업표시줄 위치·커서 모양(↖↘)을 확인.
 6. **휴지통 진입점 이동(2026-09-18 사용자 결정)**: 휴지통은 그 도메인의 화면이 연다 — 과제·발주처·구분·상태는 공식 과제 화면의 `#offTrash`, 퇴사자는 「구성원 편집」의 `#uaTrash`(`openTrash(scope)` · `__trScope` 가 보이는 탭·머리말을 정한다). 「사용자 정보」에는 휴지통이 없고 `usAdminBtnSync` 는 「구성원 편집」 하나만 만든다. **호스트 불변**(`trashGet` 은 그대로 다섯 목록). 계약 ⑥-b/⑥-DOM(a)·`loop-trash` C00/C08 은 새 문을 보도록 옮긴다([TRASH-DELETE §11-33](TRASH-DELETE.md) · [USER-ADMIN §11-37](USER-ADMIN.md)). *(아래 7: `usAdminBtnSync` 는 그 뒤 완전히 사라졌다.)*
 7. **「구성원 편집」 진입 버튼 = 정적 공개 문(2026-09-18 사용자 결정)**: 「구성원 보기」 옆 같은 줄(`#usMemberBtns`)에 마크업으로 상주하고, 관리자가 아니면 열린 화면이 호스트의 거절 한 줄(「관리자만 사용할 수 있습니다.」)만 보여 준다 — `usAdminBtnSync`·`#usAdminBtns`·진입 jsdom 하네스는 전부 제거, 부재 계약은 창 안의 컨트롤에만 적용된다([USER-ADMIN §11-38](USER-ADMIN.md) · [TRASH-DELETE §11-34](TRASH-DELETE.md)).
+8. **기준 정보 관리 문 = 공식 과제 화면 하단 줄(2026-09-18 사용자 결정)**: 발주처·구분·상태 마스터는 「공식 과제 (DB)」 하단 줄의 「발주처 관리」(`#offCustMgr`)·「구분·상태 관리」(`#offCodeMgr`)에서만 관리하고, 편집 폼(`#officialEditModal`)은 고르기만 한다(폼 안의 링크 둘 제거 · 직급·소속과 같은 방식). 둘 다 `offEditGuard` 를 지나므로 **오프라인에서는 관리 모달이 열리지 않는다** — `loop-ui-integrity` A는 '진입 차단 + 열어 둔 모달 안의 추가 차단', B는 '온라인에 열어 두고 끊은 뒤 목록 재왕복이 안내 문구로 폴백'을 본다([TRASH-DELETE §5.0](TRASH-DELETE.md)).
 
 ## 4. 이어서 작업하는 법
 

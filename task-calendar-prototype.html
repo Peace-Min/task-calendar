@@ -624,9 +624,9 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-filters .check{flex:none;margin:0;white-space:nowrap}
 .off-toolrow{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-2)}
 .off-toolrow .spacer{flex:1}
-/* 편집폼 — 라벨 옆 '관리 열기' 링크(발주처/구분·상태 추가는 관리 모달에서만) */
-.off-ed-lbrow{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
-.off-ed-mgr{flex:none;font-size:var(--fs-meta)}
+/* 편집폼 라벨 옆의 '관리 열기' 링크(.off-ed-lbrow/.off-ed-mgr)는 2026-09-18 사용자 결정으로 없어졌다 —
+   발주처·구분·상태 마스터는 공식 과제 화면 하단 줄의 **별도 버튼**이 연다(직급·소속과 같은 방식).
+   편집 폼은 과제만 고친다: 고르기만 하고 마스터를 늘리지 않는다. */
 #officialEditModal textarea{
   width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:8px 10px;
   font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text);resize:vertical;min-height:44px;
@@ -2213,6 +2213,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <select id="offStatus" aria-label="상태 필터"></select>
           <label class="check"><input type="checkbox" id="offActiveOnly" checked> 진행중만</label>
         </div>
+        <!-- 도구줄 = **조회·추가**만 선다(초기화·추출·새 과제). 기준 정보 관리·휴지통 같은
+             부차 동작은 아래 하단 줄(.modal-foot)로 모았다(2026-09-18) — 600px 폭에서 이 줄은
+             이미 꽉 차, 버튼이 하나만 더 서도 두 줄로 접힌다(loop-ui-visual V3). -->
         <div class="off-toolrow">
           <span class="off-count" id="offCount" role="status" aria-live="polite" aria-atomic="true"></span>
           <span class="spacer"></span>
@@ -2220,8 +2223,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button type="button" class="btn sm" id="offReset">초기화</button>
           <!-- 읽기 산출물이라 인증 없음(뷰어도 뽑는다). 위젯에서만 보이고, 결과 0건이면 비활성. -->
           <button type="button" class="btn sm" id="offExport" style="display:none">⬇ Excel 추출</button>
-          <!-- 발주처 마스터 관리(추가/이름변경/숨김) — 위젯에서만 노출, 쓰기 권한은 호스트가 판정 -->
-          <button type="button" class="btn sm" id="offCustMgr" style="display:none">＋ 발주처 관리</button>
           <!-- 추가는 온라인에서만 열리고, 권한 없는 계정은 호스트가 거절한다 -->
           <button type="button" class="btn sm primary" id="offNew">＋ 새 공식 과제</button>
         </div>
@@ -2231,12 +2232,17 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="off-detail" id="offDetail" aria-live="polite"></div>
       </div>
     </div>
+    <!-- 하단 줄 = **부차·관리 동작**이 서는 자리: 새로고침 · 기준 정보 관리(발주처 / 구분·상태) · 휴지통.
+         ★ 도구줄이 아니라 여기 둔다: 도구줄은 600px 폭에서 이미 꽉 차 버튼 하나만 더 서도 두 줄로 접힌다
+           (loop-ui-visual V3). 하단 왼쪽은 「과제 관리」의 「🔗 기존 과제 재연결」과 같은 자리다.
+         ★ 기준 정보(발주처·구분·상태)는 **이 화면에서만** 관리한다(2026-09-18 사용자 결정) — 편집 폼은 고르기만 한다.
+           직급·소속이 「구성원 편집」의 버튼에서 관리되고 직원 폼은 고르기만 하는 것과 같은 방식이다.
+         세 버튼 모두 **위젯에서만** 보인다(offSyncExportBtn 이 HOST 로 style.display 를 정한다) ·
+         누르면 offEditGuard(위젯·온라인)를 지나고, 권한은 호스트가 요청 시점에 판정한다. -->
     <div class="modal-foot">
       <button type="button" class="btn" id="offRefresh">지금 새로고침</button>
-      <!-- 휴지통(숨긴 과제·발주처·구분·상태 복구/영구 삭제) — 이 화면이 숨기는 곳이므로 이 화면이 연다(2026-09-18).
-           위젯에서만 노출(발주처 관리와 같은 규칙) · 관리자 여부는 열 때 호스트가 판정하고, 아니면 안내 한 줄만 그린다.
-           ★ 도구줄이 아니라 **하단 줄**에 둔다: 도구줄은 600px 폭에서 이미 꽉 차 버튼 하나만 더 서도 두 줄로 접힌다
-             (loop-ui-visual V3). 하단 왼쪽은 「과제 관리」의 「🔗 기존 과제 재연결」과 같은 자리 — 부차 동작이 서는 줄이다. -->
+      <button type="button" class="btn" id="offCustMgr" style="display:none" title="발주처 마스터 추가 / 이름변경 / 숨김">발주처 관리</button>
+      <button type="button" class="btn" id="offCodeMgr" style="display:none" title="구분·상태 코드값 추가 / 이름변경 / 숨김 / 순서">구분·상태 관리</button>
       <button type="button" class="btn" id="offTrash" style="display:none" title="숨긴 과제·발주처·구분·상태 복구 / 영구 삭제(관리자 전용)">🗑 휴지통</button>
       <span class="off-msg" id="offMsg"></span>
       <span class="spacer"></span>
@@ -2258,18 +2264,14 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <input type="text" id="offEdCommon" maxlength="200" autocomplete="off" placeholder="일정·목록에 표시할 짧은 이름 (비우면 사업명 사용)">
       <label for="offEdContract">계약명</label>
       <input type="text" id="offEdContract" maxlength="200" autocomplete="off" placeholder="예: 전쟁 여신 무기 개발 용역">
-      <div class="off-ed-lbrow">
-        <label for="offEdCustomer">발주처 <span class="off-ed-req" aria-hidden="true">*</span></label>
-        <!-- 새 발주처는 '발주처 관리'에서만 추가(인라인 추가 제거) -->
-        <button type="button" class="lnk off-ed-mgr" id="offEdCustMgr">발주처 관리…</button>
-      </div>
+      <!-- 이 폼은 **과제만** 고친다: 발주처·구분·상태는 고르기만 하고 마스터를 늘리지 않는다.
+           마스터 관리 문(「발주처 관리」·「구분·상태 관리」)은 공식 과제 화면(#officialModal) **하단 줄**에
+           따로 서 있다(2026-09-18 사용자 결정 · 직급·소속과 같은 방식). 폼 안의 링크는 그래서 없앴다. -->
+      <label for="offEdCustomer">발주처 <span class="off-ed-req" aria-hidden="true">*</span></label>
       <select id="offEdCustomer"></select>
       <div class="row2">
         <div>
-          <div class="off-ed-lbrow">
-            <label for="offEdSection">구분 <span class="off-ed-req" aria-hidden="true">*</span></label>
-            <button type="button" class="lnk off-ed-mgr" id="offEdCodeMgr">구분·상태 관리…</button>
-          </div>
+          <label for="offEdSection">구분 <span class="off-ed-req" aria-hidden="true">*</span></label>
           <select id="offEdSection"></select>
         </div>
         <div>
@@ -8693,8 +8695,9 @@ function offExportSubtitle(f, total, shown, dateStr){
 function offSyncExportBtn(n){
   const b = document.getElementById('offExport'); if(!b) return;
   b.style.display = HOST ? '' : 'none';
-  // 발주처 관리 버튼도 위젯에서만 노출(실제 쓰기 권한은 호스트가 요청 시점에 판정) — 렌더마다 함께 동기화.
+  // 하단 줄의 관리 버튼들도 위젯에서만 노출(실제 쓰기 권한은 호스트가 요청 시점에 판정) — 렌더마다 함께 동기화.
   const cm = document.getElementById('offCustMgr'); if(cm) cm.style.display = HOST ? '' : 'none';
+  const km = document.getElementById('offCodeMgr'); if(km) km.style.display = HOST ? '' : 'none'; // 구분·상태 관리도 같은 규칙
   const tr = document.getElementById('offTrash'); if(tr) tr.style.display = HOST ? '' : 'none';   // 휴지통도 같은 규칙(위젯에서만)
   if(__offExportBusy) return;
   const cnt = Number(n) || 0;
@@ -9000,6 +9003,8 @@ function offHideProject(id){
 }
 
 /* ---------- 발주처(customer) 마스터 관리 — 이름만(추가/이름변경/숨김). 카탈로그 책임 구역 ----------
+   ★ 문은 하나다: 공식 과제 화면(#officialModal) 하단 줄의 「발주처 관리」(#offCustMgr) — 2026-09-18 사용자 결정.
+     편집 폼(#officialEditModal)은 고르기만 하고 마스터를 늘리지 않는다(폼 안의 링크는 없앴다).
    ★ 조작은 전부 offEditGuard(위젯·온라인)를 통과하고, 편집 권한은 호스트가 요청 시점에 판정한다.
    호스트 왕복은 hostRequest(reqId 상관). 성공 시:
      · 발주처 드롭다운(dbCustomers)을 loadCustomers로 갱신
@@ -9126,6 +9131,8 @@ function custCommitRename(oldName, row){
   custSend('renameCustomer', { oldName, newName }, '발주처 이름을 변경했습니다');   // 이미 인증된 컨텍스트
 }
 /* ---------- 구분·상태 코드값 관리 — 발주처 관리(custSend/renderCustomerList)를 그대로 복제 ----------
+   ★ 문은 하나다: 공식 과제 화면(#officialModal) 하단 줄의 「구분·상태 관리」(#offCodeMgr) — 2026-09-18 사용자 결정.
+     편집 폼(#officialEditModal)은 고르기만 한다(폼 안의 링크는 없앴다).
    kind('section'|'status') 하나로 두 리스트를 한 모달에서 관리. 조작은 offEditGuard(위젯·온라인).
    호스트 왕복 = hostRequest. 성공 시 드롭다운(offSections/offStatuses)을 loadCodes로 갱신,
    개명은 과제 표기(section/status)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출. name이 자연키라 uid 없음. */
@@ -13138,13 +13145,14 @@ function bind(){
     }); }
   { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdApplySectionRule); }
   { const b = $('#offEdSave'); if(b) b.addEventListener('click', offEdSaveNow); }
-  // 편집 폼의 '발주처 관리…' / '구분·상태 관리…' — 추가는 각 관리 모달에서만(인라인 추가 제거).
-  { const b = $('#offEdCustMgr'); if(b) b.addEventListener('click', openCustomerModal); }
-  { const b = $('#offEdCodeMgr'); if(b) b.addEventListener('click', () => openCodeModal('section')); }
-
-  /* 발주처(customer) 마스터 관리 — 관리 조작은 전부 offEditGuard(위젯·온라인)를 거친다 */
+  /* 기준 정보(발주처 · 구분·상태) 마스터 관리 — 공식 과제 화면 하단 줄의 **별도 버튼**이 문이다.
+     (2026-09-18 사용자 결정: 편집 폼 안의 링크는 없앴다 — 폼은 과제만 고친다.)
+     둘 다 같은 관문 offEditGuard(위젯·온라인)를 지나고, 편집 권한은 호스트가 요청 시점에 판정한다. */
   { const b = $('#offCustMgr'); if(b) b.addEventListener('click', () => {
       offEditGuard(openCustomerModal);
+    }); }
+  { const b = $('#offCodeMgr'); if(b) b.addEventListener('click', () => {
+      offEditGuard(() => openCodeModal('section'));
     }); }
   /* 휴지통(과제 쪽 네 종류) — 같은 관문(offEditGuard: 위젯·온라인)을 지난다. 관리자 판정은 openTrash 의 회신이 한다. */
   { const b = $('#offTrash'); if(b) b.addEventListener('click', () => { offEditGuard(() => openTrash('project')); }); }

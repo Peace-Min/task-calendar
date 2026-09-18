@@ -834,20 +834,102 @@ test('숨김: 참조 수 조회 실패는 "모름"으로 알린다 — 0건으�
   }
 });
 
-test('발주처 관리 UI: 편집폼 인라인 추가(＋)는 제거되고 관리 모달 경로로 대체됐다', () => {
-  // 인라인 추가 함수·버튼·바인딩이 완전히 사라졌는지(계정 탈취 UI와 유사한 인라인 편집 표면 축소)
+// ══ 기준 정보 관리 문 — 편집 폼이 아니라 「공식 과제 (DB)」 하단 줄 (2026-09-18 사용자 결정) ══
+// 왜: 편집 폼(#officialEditModal)은 **과제만** 고친다. 발주처·구분·상태는 고르기만 하고
+//     마스터를 늘리지 않는다. 마스터 관리는 화면 하단 줄의 **별도 버튼** 둘이 연다 —
+//     직급·소속이 「구성원 편집」의 버튼에서 관리되고 직원 폼은 고르기만 하는 것과 같은 방식이다.
+// 폼 안에 링크가 되살아나면 문이 둘이 되고, 둘 중 하나(폼 안 링크)는 offEditGuard 밖에 선다.
+
+/** id로 지목한 오버레이 한 개의 마크업만 잘라낸다(다음 오버레이 직전까지). */
+function overlayMarkup(s, id) {
+  const i = s.indexOf(`<div class="overlay hidden" id="${id}">`);
+  assert.ok(i >= 0, `#${id} 마크업을 찾지 못했다`);
+  const k = s.indexOf('<div class="overlay', i + 20);
+  return s.slice(i, k < 0 ? s.length : k);
+}
+/** 편집 폼 안에 남아 있는 '관리 열기' 링크 id들(있으면 계약 위반) */
+function editFormMgrLinks(s) {
+  const m = overlayMarkup(s, 'officialEditModal');
+  return ['offEdCustMgr', 'offEdCodeMgr', 'offEdCustAdd'].filter((id) => m.includes(`id="${id}"`));
+}
+/** 공식 과제 화면 하단 줄(.modal-foot)에서 네 버튼이 나타나는 위치(없으면 -1) */
+function footButtonOrder(s) {
+  const m = overlayMarkup(s, 'officialModal');
+  const f = m.indexOf('<div class="modal-foot">');
+  assert.ok(f >= 0, '공식 과제 화면에 하단 줄(.modal-foot)이 없다');
+  const foot = m.slice(f);
+  return ['offRefresh', 'offCustMgr', 'offCodeMgr', 'offTrash'].map((id) => foot.indexOf(`id="${id}"`));
+}
+/** 하단 줄 버튼 둘의 배선 — 같은 관문(offEditGuard)을 지나는가 */
+const custMgrWired = (s) => /\$\('#offCustMgr'\);[\s\S]{0,160}?offEditGuard\(openCustomerModal\)/.test(s);
+const codeMgrWired = (s) => /\$\('#offCodeMgr'\);[\s\S]{0,160}?offEditGuard\(\(\) => openCodeModal\('section'\)\)/.test(s);
+
+test('기준 정보 관리: 편집 폼에는 관리 링크가 하나도 없다(폼은 과제만 고친다)', () => {
+  // 인라인 추가 함수·버튼·바인딩은 이미 사라졌고(계정 탈취 UI와 유사한 인라인 편집 표면 축소),
+  // 2026-09-18 결정으로 '…관리…' 링크 둘까지 폼 밖으로 나갔다.
   assert.ok(!/offEdInlineAddCustomer/.test(src), '인라인 추가 함수가 남아 있다');
-  assert.ok(!/id="offEdCustAdd"/.test(src), '편집폼 인라인 ＋ 버튼이 남아 있다');
-  // 대신 '발주처 관리…' 링크가 customerModal을 연다
-  assert.ok(/id="offEdCustMgr"/.test(src), "편집폼에 '발주처 관리' 링크가 없다");
-  assert.ok(/\$\('#offEdCustMgr'\); if\(b\) b\.addEventListener\('click', openCustomerModal\)/.test(src),
-    "'발주처 관리' 링크가 openCustomerModal을 열지 않는다");
+  assert.deepStrictEqual(editFormMgrLinks(src), [],
+    '편집 폼에 마스터 관리 링크가 남아 있다 — 문은 공식 과제 화면 하단 줄 하나뿐이어야 한다');
+  // 배선도 함께 사라져야 한다(마크업만 지우면 죽은 핸들러가 남는다).
+  assert.ok(!/#offEdCustMgr/.test(src) && !/#offEdCodeMgr/.test(src), '폼 링크 배선이 남아 있다');
 });
 
-test('발주처 관리 UI: 관리 버튼은 위젯에서만 노출(offSyncExportBtn이 함께 동기화)', () => {
+test('기준 정보 관리: 하단 줄에 새로고침·발주처·구분·상태·휴지통이 이 순서로 선다', () => {
+  const [ref, cust, code, trash] = footButtonOrder(src);
+  for (const [i, id] of [[ref, 'offRefresh'], [cust, 'offCustMgr'], [code, 'offCodeMgr'], [trash, 'offTrash']]) {
+    assert.ok(i >= 0, `하단 줄에 #${id}가 없다`);
+  }
+  assert.ok(ref < cust && cust < code && code < trash,
+    `하단 줄 순서가 어긋났다(새로고침 → 발주처 관리 → 구분·상태 관리 → 휴지통): ${[ref, cust, code, trash].join(',')}`);
+  // 도구줄(조회·추가)로 되돌아가면 600px 폭에서 두 줄로 접힌다(loop-ui-visual V3) — 도구줄에는 없어야 한다.
+  const tools = overlayMarkup(src, 'officialModal');
+  const toolrow = tools.slice(tools.indexOf('<div class="off-toolrow">'), tools.indexOf('<div class="off-split">'));
+  assert.ok(!/id="offCustMgr"/.test(toolrow) && !/id="offCodeMgr"/.test(toolrow),
+    '관리 버튼이 도구줄로 되돌아갔다 — 부차 동작은 하단 줄이다');
+});
+
+test('기준 정보 관리: 관리 버튼 셋은 위젯에서만 노출(offSyncExportBtn이 함께 동기화)', () => {
   const b = extractFunction(src, 'offSyncExportBtn');
   assert.ok(/getElementById\('offCustMgr'\)/.test(b), '발주처 관리 버튼 표시 동기화가 없다');
-  assert.ok(/cm\.style\.display = HOST \? '' : 'none'/.test(b), '관리 버튼이 위젯에서만 노출되지 않는다');
+  assert.ok(/getElementById\('offCodeMgr'\)/.test(b), '구분·상태 관리 버튼 표시 동기화가 없다');
+  assert.ok(/getElementById\('offTrash'\)/.test(b), '휴지통 버튼 표시 동기화가 없다');
+  assert.ok(/cm\.style\.display = HOST \? '' : 'none'/.test(b), '발주처 관리가 위젯에서만 노출되지 않는다');
+  assert.ok(/km\.style\.display = HOST \? '' : 'none'/.test(b), '구분·상태 관리가 위젯에서만 노출되지 않는다');
+});
+
+test('기준 정보 관리: 두 문 모두 같은 관문(offEditGuard)을 지난다', () => {
+  assert.ok(custMgrWired(src), '#offCustMgr가 offEditGuard(openCustomerModal)로 배선되지 않았다');
+  assert.ok(codeMgrWired(src), "#offCodeMgr가 offEditGuard(() => openCodeModal('section'))로 배선되지 않았다");
+});
+
+// ── 변이 주입: 위 두 계약이 실제로 회귀를 잡는지 증명한다 ────────────────
+// (mutate/`hostSource`는 아래 '변이 주입' 절에 있다 — 함수 선언이라 여기서 먼저 써도 된다.)
+
+test('변이㉖: 편집 폼에 구분·상태 관리 링크를 되살리면 계약이 실패한다', () => {
+  const ANCHOR = '          <label for="offEdSection">구분 <span class="off-ed-req" aria-hidden="true">*</span></label>';
+  const bad = mutate(src, ANCHOR,
+    ANCHOR + '\n          <button type="button" class="lnk off-ed-mgr" id="offEdCodeMgr">구분·상태 관리…</button>');
+  // 대조군 — 원본은 링크 0개여야 한다(변이가 아니라 계약이 이유로 실패하는 일을 막는다)
+  assert.deepStrictEqual(editFormMgrLinks(src), [], '대조군: 원본 편집 폼에 이미 관리 링크가 있다');
+  assert.deepStrictEqual(editFormMgrLinks(bad), ['offEdCodeMgr'],
+    '편집 폼에 관리 링크를 되살렸는데 계약이 못 잡는다 — 문이 둘이 되고 하나는 관문 밖에 선다');
+});
+
+test('변이㉗: #offCodeMgr 배선을 지우면 계약이 실패한다', () => {
+  const WIRE = "  { const b = $('#offCodeMgr'); if(b) b.addEventListener('click', () => {\n"
+             + "      offEditGuard(() => openCodeModal('section'));\n"
+             + "    }); }\n";
+  const bad = mutate(src, WIRE, '');
+  assert.ok(codeMgrWired(src), '대조군: 원본 배선이 이미 계약을 만족하지 않는다');
+  assert.ok(!codeMgrWired(bad), '배선을 통째로 지웠는데 계약이 통과한다 — 버튼만 있고 아무 일도 안 하는 문이 된다');
+  // 버튼 마크업만 남는 상태 — 하단 줄 순서 계약은 여전히 통과한다(둘은 서로 다른 것을 지킨다)
+  assert.ok(footButtonOrder(bad)[2] >= 0, '변이가 마크업까지 건드렸다 — 배선만 지우는 변이여야 한다');
+});
+
+test('변이㉘: 관리 버튼을 하단 줄에서 도구줄로 되돌리면 순서 계약이 실패한다', () => {
+  const FOOT = '      <button type="button" class="btn" id="offCodeMgr" style="display:none"';
+  const bad = mutate(src, FOOT, '      <button type="button" class="btn" id="offCodeMgrX" style="display:none"');
+  assert.strictEqual(footButtonOrder(bad)[2], -1, '하단 줄에서 #offCodeMgr를 없앴는데 순서 계약이 못 잡는다');
 });
 
 // ══ 변이 주입(열 너비 계약이 실효성이 있는지 증명) ══════════════════════
