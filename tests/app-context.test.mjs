@@ -1325,8 +1325,8 @@ if (!JSDOM) {
     });
 
     // 배율이 DOM까지 실제로 도달하는지 — syncReportFontUI가 #rptOut에 인라인으로 심고, 기본이면 지운다.
-    test('reportFont: syncReportFontUI가 #rptOut에 --m-scale을 심고 기본에서는 제거한다', () => {
-      ev("state.reportFont = {family:'', size:16}; syncReportFontUI();");
+    test('reportFont: syncReportFontUI가 #rptOut에 --m-scale을 심고 기본에서는 제거한다(기간 취합)', () => {
+      ev("reportMode = 'custom'; state.reportFont = {family:'', size:16}; syncReportFontUI();");
       assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(),
         evJSON("reportFontCss({family:'',size:16})").scale);
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt');
@@ -1334,6 +1334,26 @@ if (!JSDOM) {
       assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '',
         '기본으로 돌아오면 인라인 배율은 지워져야 한다(CSS 기본값 1로 복귀)');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
+    });
+
+    // 글꼴·크기는 기간 취합 전용(2026-09-18 사용자 결정) — 일간·주간에서는 저장값이 있어도 미리보기에 입히지 않고, 행 자체가 숨는다.
+    test('reportFont: 일간·주간에서는 저장값이 있어도 #rptOut 에 입히지 않는다(기간 취합 전용)', () => {
+      ev("reportMode = 'daily'; state.reportFont = {family:'Gulim', size:16}; syncReportFontUI();");
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '', '일간에서 글꼴 크기가 미리보기에 입혀졌다');
+      assert.strictEqual(ev("$('#rptOut').style.getPropertyValue('--m-scale')").trim(), '');
+      assert.strictEqual(ev("$('#rptFontSize').value"), '16', '콤보는 저장값을 그대로 보여야 한다(값이 사라지면 안 된다)');
+      ev("reportMode = 'weekly'; syncReportFontUI();");
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
+      ev("reportMode = 'custom'; syncReportFontUI();");
+      assert.strictEqual(ev("$('#rptOut').style.fontSize"), '16pt', '기간 취합에서는 입혀야 한다');
+      ev("state.reportFont = {family:'', size:0}; reportMode = 'daily'; syncReportFontUI();");
+    });
+    test('reportFont: #rptFontRow 는 setReportMode(custom) 에서만 보인다', () => {
+      const disp = (m) => ev("setReportMode(" + JSON.stringify(m) + "); $('#rptFontRow').style.display");
+      assert.strictEqual(disp('daily'), 'none');
+      assert.strictEqual(disp('weekly'), 'none');
+      assert.strictEqual(disp('custom'), '');
+      ev("setReportMode('daily')");
     });
 
     test('reportFont roundtrip: <prefs fontFamily/fontSize> 보존 + 기본이면 속성 미기록(기존 파일 byte 동일)', () => {
@@ -1400,32 +1420,32 @@ if (!JSDOM) {
         '서식을 입혀도 라인 수 불변');
     });
 
-    test('reportFont: 폰트 행·미리보기 서식은 일간/주간/기간 취합 전부에 적용된다', () => {
+    // 2026-09-18 사용자 결정: 글꼴·크기는 **기간 취합 전용** — 일간·주간 작성 단계에는 불필요. 옛 규칙(3모드 전부)을 뒤집는다.
+    test('reportFont: 폰트 행·미리보기 서식은 기간 취합에서만 — 일간·주간은 행이 숨고 기본 서식', () => {
       const st = fmtState('-', '', 2);
       st.reportFont = { family: 'Gulim', size: 13 };
       seed(st);
       for(const mode of ['custom', 'daily', 'weekly']){
         ev(`setReportMode(${JSON.stringify(mode)}); $('#rptFrom').value='2026-07-01'; $('#rptTo').value=${mode === 'daily' ? "'2026-07-01'" : "'2026-07-31'"}; buildReport();`);
-        assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${mode}에서 폰트 행 노출`);
-        assert.notStrictEqual(ev("$('#rptFontHint').style.display"), 'none', `${mode}에서 폰트 안내 노출`);
-        assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${mode} 미리보기에 폰트 적용`);
-        assert.strictEqual(ev("$('#rptOut').style.fontSize"), '13pt', `${mode} 미리보기 크기 적용`);
-        // 글꼴은 ⚙옵션이 아니라 레일에 상시 노출 → 접힘 요약에 나오면 '옵션 안 설정'으로 오인된다
+        const custom = (mode === 'custom');
+        assert.strictEqual(ev("$('#rptFontRow').style.display") === 'none', !custom, `${mode}: 폰트 행은 기간 취합에서만 보인다`);
+        assert.strictEqual(ev("$('#rptOut').style.fontFamily").includes('Gulim'), custom, `${mode}: 미리보기 폰트는 기간 취합에서만`);
+        assert.strictEqual(ev("$('#rptOut').style.fontSize"), custom ? '13pt' : '', `${mode}: 미리보기 크기는 기간 취합에서만`);
         assert.ok(!/폰트|글꼴/.test(ev("$('#rptOptSum').textContent")), `${mode} 옵션 요약에는 글꼴이 없다`);
-        // 셀렉트도 저장값과 동기(재오픈·모드 전환 후에도)
+        // 셀렉트는 어느 모드에서든 저장값과 동기(숨겨져 있어도 값이 사라지면 안 된다)
         assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${mode} 폰트 셀렉트 동기`);
         assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${mode} 크기 셀렉트 동기`);
       }
-      // 기본값이면 인라인 스타일을 걷어낸다(모드 무관) — '기본' 표기도 확인
-      ev("state.reportFont={family:'',size:0}; buildReport();");
+      // 기본값이면 인라인 스타일을 걷어낸다 — 기간 취합에서도
+      ev("setReportMode('custom'); state.reportFont={family:'',size:0}; buildReport();");
       assert.strictEqual(ev("$('#rptOut').style.fontFamily"), '', '기본 폰트면 인라인 스타일 해제');
       assert.strictEqual(ev("$('#rptOut').style.fontSize"), '');
       ev("reportMode='daily'");   // 상태 원복(다른 테스트 보호)
     });
 
     // 회귀 방지: 글꼴 행이 ⚙옵션(#rptOpt) 안으로 되돌아가면 netcus 출처에서 통째로 사라진다(옵션 패널이 숨겨지므로).
-    // 보고 유형 3 × 내용 출처 3 = 9조합 전부에서 레일에 남아 있어야 한다.
-    test('reportFont: 글꼴 행은 ⚙옵션 밖 레일에 있어 3모드 × 3출처 9조합 모두에서 노출된다', () => {
+    // 기간 취합 × 내용 출처 3 에서는 레일에 남아야 하고, 일간·주간에서는 출처와 무관하게 숨는다(2026-09-18 — 기간 취합 전용).
+    test('reportFont: 글꼴 행은 ⚙옵션 밖 레일에 있어 기간 취합 × 3출처에서 노출되고, 일간·주간 × 3출처에서는 숨는다', () => {
       const st = fmtState('-', '', 2);
       st.reportFont = { family: 'Gulim', size: 13 };
       seed(st);
@@ -1435,13 +1455,12 @@ if (!JSDOM) {
         for(const src of ['cal', 'net', 'week']){
           ev(`setReportMode(${JSON.stringify(mode)}); state.reportSource=${JSON.stringify(src)};`
             + `$('#rptFrom').value='2026-07-01'; $('#rptTo').value=${mode === 'daily' ? "'2026-07-01'" : "'2026-07-31'"}; buildReport();`);
-          const tag = `${mode}/${src}`;
-          assert.notStrictEqual(ev("$('#rptFontRow').style.display"), 'none', `${tag}: 글꼴 행 노출`);
-          assert.notStrictEqual(ev("$('#rptFontHint').style.display"), 'none', `${tag}: 안내 문구 노출`);
+          const tag = `${mode}/${src}`, custom = (mode === 'custom');
+          assert.strictEqual(ev("$('#rptFontRow').style.display") === 'none', !custom, `${tag}: 글꼴 행은 기간 취합에서만`);
           assert.strictEqual(ev("$('#rptFontFamily').value"), 'Gulim', `${tag}: 폰트 셀렉트 동기`);
           assert.strictEqual(ev("$('#rptFontSize').value"), '13', `${tag}: 크기 셀렉트 동기`);
-          assert.ok(ev("$('#rptOut').style.fontFamily").includes('Gulim'), `${tag}: 미리보기에 폰트 적용`);
-          // netcus 출처(주간/커스텀)에서는 ⚙옵션이 숨는다 — 그래도 글꼴은 남아야 한다는 것이 이 테스트의 요지
+          assert.strictEqual(ev("$('#rptOut').style.fontFamily").includes('Gulim'), custom, `${tag}: 미리보기 폰트는 기간 취합에서만`);
+          // netcus 출처(주간/커스텀)에서는 ⚙옵션이 숨는다 — 기간 취합이면 그래도 글꼴은 남아야 한다는 것이 이 테스트의 요지
           const optHidden = (ev("$('#rptOpt').style.display") === 'none');
           assert.strictEqual(optHidden, (src !== 'cal' && mode !== 'daily'), `${tag}: ⚙옵션 표시 규칙 유지`);
         }
