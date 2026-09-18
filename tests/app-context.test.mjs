@@ -1703,6 +1703,24 @@ if (!JSDOM) {
       ev("reportMode='daily'");
     });
 
+    // 2026-09-18 사용자 지적: 포함 항목 0개면 들여쓰기 ± 가 표시에 안 먹고, 다시 켜면 값이 튀었다 — 컨트롤 동기화가 본문 가드 뒤에 있던 결함.
+    test('report UI: 서식 컨트롤(들여쓰기·머리기호)은 포함 항목 0개 가드에서도 저장값을 즉시 반영한다', () => {
+      seed(reportState);
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); buildReport();");
+      assert.strictEqual(ev("$('#rptIndVal').textContent"), '2단', '전제');
+      ev("$('#rptSrcEvent').checked=false; $('#rptSrcTodo').checked=false; $('#rptSrcGit').checked=false; buildReport();");
+      assert.ok(/포함할 항목을 한 개 이상/.test(ev("$('#rptSummary').textContent")), '전제: 가드 화면');
+      ev("$('#rptIndPlus').click()");
+      assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '가드 화면에서 + 를 누르면 표시가 바로 3단이어야 한다');
+      assert.strictEqual(evJSON('currentReportFormatPref()').indent, 3, '저장값도 3');
+      ev("$('#rptMarker').value='1.'; $('#rptMarker').dispatchEvent(new Event('change',{bubbles:true}));");
+      assert.strictEqual(evJSON('currentReportFormatPref()').marker, '1.');
+      ev("$('#rptSrcGit').checked=true; buildReport();");
+      assert.strictEqual(ev("$('#rptIndVal').textContent"), '3단', '다시 켜도 값이 튀지 않는다(표시 = 저장값)');
+      assert.strictEqual(ev("$('#rptMarker').value"), '1.');
+      ev("updateCurrentReportFormatPref({ indent: 2, marker: '-', markerCustom: '' }); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; buildReport();");
+    });
+
     test('report UI: ⚙옵션 토글 — #rptOpt .open 토글 + aria-expanded 플립(bind 배선)', () => {
       ev("$('#rptOpt').classList.remove('open'); $('#rptOptBtn').setAttribute('aria-expanded','false');");
       ev("$('#rptOptBtn').click()");

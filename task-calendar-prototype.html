@@ -10875,11 +10875,24 @@ function syncReportFontUI(){
     out.style.fontFamily = css.family; out.style.fontSize = css.size;
     if(css.scale) out.style.setProperty('--m-scale', css.scale); else out.style.removeProperty('--m-scale'); }
 }
+// 서식 컨트롤(머리기호·직접·들여쓰기)을 저장값으로 맞춘다 — **본문 가드와 무관하게** buildReport 첫머리에서(syncReportFontUI 와 같은 자리).
+//   ★ 2026-09-18 사용자 지적: 포함 항목이 0개면 ± 를 눌러도 '2단' 표시가 안 바뀌고, 다시 켜면 그제야 값이 튀었다. 동기화가 본문
+//     렌더 안(가드 뒤)에 있어서였다 — 근태 슬롯이 사라지던 것과 같은 병(컨트롤 상태 ↔ 저장값 동기화가 렌더 순서에 묶임).
+//     규칙: 저장값 → 컨트롤 표시는 렌더가 아니라 이 함수의 일이고, 렌더는 저장값을 읽기만 한다.
+function syncReportFormatUI(){
+  const f = currentReportFormatPref();
+  const indent = Math.max(0, Math.min(6, f.indent != null ? f.indent : 2));
+  const sel = $('#rptMarker'), cin = $('#rptMarkerCustom'), iv = $('#rptIndVal');
+  if(sel) sel.value = f.marker || '-';
+  if(cin) cin.value = f.markerCustom || '';
+  if(iv) iv.textContent = indent + '단';
+}
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
   syncReportFontUI();   // 조기 반환 경로들보다 앞 — netcus 미리보기·가드 화면에서도 미리보기 서식이 설정과 일치하게
+  syncReportFormatUI();   // 서식 컨트롤도 같은 이유로 가드 앞(2026-09-18)
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
   const _isNet = (state.reportSource === 'net'), _isWeek = (state.reportSource === 'week');
@@ -10933,15 +10946,11 @@ function buildReport(){
   if(!rows.length){
     sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
   }
-  // 표시 설정(머리기호/들여쓰기) — 표시+복사 전용. 데이터 불변. 서식바 컨트롤도 저장값으로 세팅(재오픈 시 반영).
+  // 표시 설정(머리기호/들여쓰기) — 표시+복사 전용. 데이터 불변. (컨트롤 표시는 syncReportFormatUI 가 가드 앞에서 맞춘다)
   const _mkSpec = reportMarkerSpec();
   const _fmt = currentReportFormatPref();
   const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _padL = 13 + _indent * 14;   // 기존 base 13px 유지
-  { const _sel = $('#rptMarker'), _cin = $('#rptMarkerCustom'), _iv = $('#rptIndVal');
-    if(_sel) _sel.value = _fmt.marker || '-';
-    if(_cin) _cin.value = _fmt.markerCustom || '';
-    if(_iv) _iv.textContent = _indent + '단'; }
   const spanMulti = (from !== to);   // 기간 보고(여러 날) 여부 — 기간 할일 dayNote 라인에 "요일 M/D" 접두 표시 결정(일간=원문)
   let html = '';
   for(const r of rows){
