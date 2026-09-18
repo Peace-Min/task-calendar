@@ -963,7 +963,7 @@ function doorHarnessJs(src) {
     'var __uaAdmin = false, __uaOrder = false, __uaSaving = false, __uaInactive = false, __uaPendingData = null;',
     '// 이 계약과 무관한 협력자는 빈 함수로.',
     'function openTrash(){} function uaOrderToggle(){} function uaOrderSave(){} function userEdOpen(){}',
-    'function uaReload(){} function uaListTop(){} function toast(){}',
+    'function uaReload(){} function uaListTop(){} function toast(){} function openOrgTitle(){}',
     extractFunction(src, 'uaAdminBar'),
     'window.__probe = function(admin, order, saving){',
     '  __uaAdmin = !!admin; __uaOrder = !!order; __uaSaving = !!saving;',
@@ -1037,8 +1037,11 @@ if (!jsdom) {
     assert.strictEqual(on.present, true, '관리자인데 「퇴사자 휴지통」이 만들어지지 않았다');
     assert.strictEqual(on.text, '퇴사자 휴지통', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
     assert.strictEqual(on.inBar, true, '「퇴사자 휴지통」이 상단 막대(#uaAdmin)가 아닌 곳에 앉았다');
-    assert.deepStrictEqual(on.ids, ['uaOrderEdit', 'uaTrash'],
-      `상단 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(on.ids)} — 「순서 편집」 다음이 「퇴사자 휴지통」이다`);
+    //  ★ 2026-09-18 — 막대에 「직급·소속 관리」(#uaOrgTitle)가 한 자리 늘었다(ORG-TITLE-ADMIN §5.0).
+    //    휴지통 **뒤**다: 이 파일이 보는 것은 여전히 '퇴사자 휴지통이 어디에 서는가' 하나이고,
+    //    구성을 통째로 적어 두는 이유는 옆자리가 조용히 늘거나 줄면 그것도 계약 변경이기 때문이다.
+    assert.deepStrictEqual(on.ids, ['uaOrderEdit', 'uaTrash', 'uaOrgTitle'],
+      `상단 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(on.ids)} — 「순서 편집」 다음이 「퇴사자 휴지통」이고 그다음이 「직급·소속 관리」다`);
     //  ③ 순서 편집 중 — 없다. 휴지통을 열면 명부를 다시 읽어 **편집 중인 순서를 날린다**(등록과 같은 이유).
     const ord = probeDoor(true, true, false);
     assert.strictEqual(ord.present, false,
@@ -1052,7 +1055,7 @@ if (!jsdom) {
     const seq = probeDoorSeq([[true, false, false], [false, false, false], [true, false, false], [true, true, false]]);
     assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
       `상태가 바뀔 때 문이 생겼다 사라지지 않는다: ${JSON.stringify(seq.map((x) => x.present))}`);
-    assert.deepStrictEqual(seq.map((x) => x.barBtns), [2, 0, 2, 2],
+    assert.deepStrictEqual(seq.map((x) => x.barBtns), [3, 0, 3, 2],
       `막대가 비었다 채워지지 않는다: ${JSON.stringify(seq.map((x) => x.barBtns))}`);
   });
 

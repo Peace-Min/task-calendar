@@ -180,6 +180,19 @@ const WRITE_SQL = /\b(?:INSERT\s+INTO|REPLACE\s+INTO|DELETE\s+FROM|TRUNCATE\s+TA
 //     같은 관문을 요구한다 — 빼 두면 '지우기'만 쓰기 관문으로 내려가도 침묵한다.
 const USER_WRITE_SQL = /\b(?:INSERT\s+INTO\s+app_user|UPDATE\s+app_user|DELETE\s+FROM\s+app_user)\b/;
 
+// 직급·소속 마스터(title_code · org_unit)를 쓰는 SQL 의 '모양'(2026-09-18 · ORG-TITLE-ADMIN §2 권한).
+//   ★ 이 둘도 app_user 와 같은 편이다: '사람의 직급·소속'은 관리자의 것이고, editor 에게 열린 발주처·
+//     코드값과 다르다. 이름 목록이 아니라 **대상 표**로 가르는 이유는 위와 같다 — 새 이름으로 들어온
+//     메서드(UnitSplitAsync 같은 것)가 그대로 빠져나가면 안 된다.
+//   ★ DELETE 도 모양에 넣어 둔다. 이 판에는 삭제가 없지만(숨김까지), 생기는 날 그 경로가 쓰기 관문으로
+//     내려가도 침묵하는 일을 미리 막는다(app_user 가 2026-09-10 에 겪은 그 자리와 같다).
+const ORG_WRITE_SQL = /\b(?:INSERT\s+INTO\s+(?:title_code|org_unit)|UPDATE\s+(?:title_code|org_unit)|DELETE\s+FROM\s+(?:title_code|org_unit))\b/;
+
+// 그 아홉(ORG-TITLE-ADMIN §4.2). 목록을 적어 두는 이유는 '늘어난 것'을 사람이 보게 하기 위해서다 —
+//   판정 자체는 위 모양(ORG_WRITE_SQL)이 하고, 이 목록은 그 판정이 무엇을 덮고 있는지의 증거다.
+const ORG_WRITERS = ['TitleAddAsync', 'TitleRenameAsync', 'TitleReorderAsync', 'TitleSetActiveAsync',
+                     'UnitAddAsync', 'UnitMoveAsync', 'UnitRenameAsync', 'UnitReorderAsync', 'UnitSetActiveAsync'];
+
 // 휴지통 세 함수(TRASH-DELETE §4.1) — 조회·복구·삭제 전부 관리자 관문이다.
 //   조회(LoadTrashJsonAsync)는 쓰기 SQL 이 없어 위 모양 검사에 걸리지 않는다. 그래서 여기 이름으로 적는다:
 //   '숨긴 항목 전량을 훑는 목록'은 읽기라도 관리자만 볼 것이라는 결정이 이 앱의 계약이기 때문이다.
@@ -217,7 +230,21 @@ const gate = {
     assert.ok(writers.length >= 12,
       `쓰기 SQL 을 가진 메서드가 ${writers.length}개뿐이다(12개 이상이어야 한다 — 탐지기가 헛돌고 있다)`);
     const userWriters = [];
+    const orgWriters = [];
     for (const w of writers) {
+      //  직급·소속 마스터도 관리자 관문이다(2026-09-18 · ORG-TITLE-ADMIN §2). app_user 분기보다 **앞에**
+      //  두지 않는다: 둘 다 관리자 관문을 요구하므로 순서가 판정을 바꾸지 않고, 한 메서드가 두 표를 함께
+      //  쓰면 app_user 쪽 문장이 더 정확하기 때문이다.
+      if (!USER_WRITE_SQL.test(w.body) && ORG_WRITE_SQL.test(w.body)) {
+        orgWriters.push(w.name);
+        assert.ok(!/OpenWriteAsync\(/.test(w.body),
+          `${w.name} 가 직급·소속 마스터를 쓰면서 쓰기 관문(editor 통과)으로 연결을 연다 — 관리자 전용이라는 계약이 깨진다`);
+        assert.ok(!/OpenReadAsync\(/.test(w.body),
+          `${w.name} 가 읽기 관문으로 연결을 열고 직급·소속 마스터를 쓴다(권한 검사 우회)`);
+        assert.ok(/OpenAdminAsync\(/.test(w.body),
+          `${w.name} 가 직급·소속 마스터를 쓰면서 관리자 관문을 지나지 않는다 — editor 가 조직·직급을 고칠 수 있다`);
+        continue;
+      }
       if (USER_WRITE_SQL.test(w.body)) {
         userWriters.push(w.name);
         //  단언 순서는 '원인을 정확히 말하는 쪽'이 앞이다 — 쓰기 관문으로 내려간 변이는
@@ -240,6 +267,9 @@ const gate = {
     assert.deepStrictEqual(userWriters.sort(),
       ['DeleteTrashAsync', 'RestoreTrashAsync', 'SaveUserOrderAsync', 'SetUserActiveAsync', 'UpsertUserAsync'],
       `app_user 를 쓰는 메서드가 [${userWriters.join(', ')}] 이다 — 늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
+    assert.deepStrictEqual(orgWriters.sort(), ORG_WRITERS,
+      `직급·소속 마스터를 쓰는 메서드가 [${orgWriters.join(', ')}] 이다 — 아홉이어야 한다(ORG-TITLE-ADMIN §4.2). ` +
+      `늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
   },
 
   // 휴지통 세 함수는 **관리자 관문만** 연다(TRASH-DELETE §4.1 · 시험 계약 ②).
@@ -500,6 +530,49 @@ test('변이A4: app_user 쓰기 메서드를 하나 더 달면(관문 밖) 대�
   const bad = mutate(projectDb, '        public async Task<(bool ok, string msg)> SetUserActiveAsync(int userId, bool active)', ELEVATE);
   assert.throws(() => gate.writeSqlGoesThroughGate(bad),
     /ElevateSelfAsync 가 app_user 를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
+});
+
+// ── 직급·소속 마스터(2026-09-18, ORG-TITLE-ADMIN §2) — 아홉이 관리자 관문을 지나는지 변이로 증명한다 ──
+//   통제군: 원본은 통과한다(아래 변이가 '원래 빨간 것'을 보고 있는 게 아니라는 증거).
+test('통제군A5: 원본에서는 직급·소속 아홉이 전부 관리자 관문을 지난다', () => {
+  gate.writeSqlGoesThroughGate(projectDb);
+});
+
+test('변이A5: 직급 숨김/복구를 쓰기 관문(editor 통과)으로 내리면 대상 표 검사가 실패한다', () => {
+  const bad = mutate(projectDb,
+    'try { conn = await OpenAdminAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(직급 숨김/복구): "',
+    'try { conn = await OpenWriteAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(직급 숨김/복구): "');
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad),
+    /TitleSetActiveAsync 가 직급·소속 마스터를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
+  // 관문 정의도, 연결 생성 지점 수도 그대로다 — '관문이 있다'만 보는 검사로는 절대 안 잡힌다.
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  gate.openersAreExactlyThree(bad);
+});
+
+test('변이A5-b: 조직 상위 변경을 쓰기 관문으로 내리면 대상 표 검사가 실패한다', () => {
+  const bad = mutate(projectDb,
+    'try { conn = await OpenAdminAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(조직 상위 변경): "',
+    'try { conn = await OpenWriteAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(조직 상위 변경): "');
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad),
+    /UnitMoveAsync 가 직급·소속 마스터를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
+});
+
+test('변이A6: 관문 밖에 조직 쓰기 API 를 하나 더 달면 대상 표 검사가 실패한다', () => {
+  const SPLIT = [
+    '        public async Task<bool> UnitSplitAsync(int orgId)',
+    '        {',
+    '            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));',
+    '            await using var conn = await OpenWriteAsync(cts.Token);',
+    '            await using var cmd = new MySqlCommand("UPDATE org_unit SET parent_id=NULL", conn);',
+    '            await cmd.ExecuteNonQueryAsync(cts.Token);',
+    '            return true;',
+    '        }',
+    '',
+    '        public async Task<(bool ok, string msg)> UnitReorderAsync(int parentId, IReadOnlyList<int>? orgIds)',
+  ].join('\n');
+  const bad = mutate(projectDb, '        public async Task<(bool ok, string msg)> UnitReorderAsync(int parentId, IReadOnlyList<int>? orgIds)', SPLIT);
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad),
+    /UnitSplitAsync 가 직급·소속 마스터를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
 });
 
 // [G2] 새 어휘로 부활 — 웹·브리지·ProjectDb 세 층. 옛 이름 금지 목록은 한 건도 울리지 않는다.

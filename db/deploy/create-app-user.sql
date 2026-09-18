@@ -26,6 +26,13 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.customer     TO 'taskmgr_app'@'%
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.section_code TO 'taskmgr_app'@'%';   -- 구분 코드값(위젯 관리)
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.status_code  TO 'taskmgr_app'@'%';   -- 상태 코드값(위젯 관리)
 
+-- 사용자·조직 도메인의 두 마스터 — 2026-09-18 직급·소속 관리(docs/ORG-TITLE-ADMIN.md §6).
+--   위 넷은 과제 도메인이고 이 둘은 아니지만, §0-5 가 세 파일을 **같은 목록**으로 다시 돌리게 해 두었다 —
+--   빠지면 「직급·소속 관리」의 첫 쓰기가 ERROR 1142 다. DELETE 는 주지 않는다(숨김까지 · 행은 남는다).
+--   ※ app_user 자체의 권한은 여기 없다 — 그 정본은 비공개 taskmgr-company-data/05-grants.sql 이다.
+GRANT SELECT, INSERT, UPDATE ON taskmgr.org_unit   TO 'taskmgr_app'@'%';   -- 조직 트리 조회 + 「직급·소속 관리」 쓰기
+GRANT SELECT, INSERT, UPDATE ON taskmgr.title_code TO 'taskmgr_app'@'%';   -- 직급 목록 조회 + 같은 화면의 쓰기
+
 FLUSH PRIVILEGES;
 
 -- 확인: SHOW GRANTS FOR 'taskmgr_app'@'%';

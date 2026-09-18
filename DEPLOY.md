@@ -75,6 +75,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1
 - `db/deploy/create-app-user.sql` — `project` · `customer` · `section_code` · `status_code`
 - `db/deploy/grants-calendar.sql` — `cal_user_pref` · `cal_user_rev`(계정 영구 삭제가 먼저 지우는 부속 2표) + 머리말 서술
 - `taskmgr-company-data/05-grants.sql` — `app_user`
+- **v0.19.0 은 하나 더 얹는다 — `org_unit`·`title_code` 의 `INSERT`·`UPDATE`**(직급·소속 관리 · [docs/ORG-TITLE-ADMIN.md](docs/ORG-TITLE-ADMIN.md) §6). 세 파일이 **같은 목록**이라 셋 다 다시 돌린다 — 빠지면 「직급·소속 관리」의 첫 쓰기가 ERROR 1142 로 죽는다. `DELETE` 는 주지 않는다(숨김까지 · 행은 남는다).
 
 확인(일곱 표에 DELETE 가 보여야 한다 — 2026-09-10 개발 DB 에서 부속 2표가 빠져 계정 삭제가 ERROR 1142 로 죽는 것을 루프 시험이 잡았다):
 

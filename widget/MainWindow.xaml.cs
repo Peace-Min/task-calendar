@@ -646,6 +646,41 @@ namespace TaskCalendarWidget
                         _ = TrashDeleteAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "key"), GetStr(doc, "confirm"), GetBool(doc, "includeInactive"));
                         break;
 
+                    // ----- 직급·소속 관리(ORG-TITLE-ADMIN §4.2) — 관리자 전용. 조회도 쓰기도 reqId 왕복이다 -----
+                    //   ★ 쓰기 회신 {ok,msg,orgTitle} 하나가 결과와 갱신 목록을 함께 나른다(휴지통·명부와 같은 모양).
+                    //     푸시는 없다 — 갱신된 목록을 따로 밀면 배달이 둘로 갈린다(USER-ADMIN §11-34 교훈).
+                    //   ★ 권한은 여기서 보지 않는다 — 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
+                    case "orgTitleGet":
+                        _ = RunOrgTitleGetAsync(GetStr(doc, "reqId"));
+                        break;
+                    case "titleAdd":
+                        _ = TitleAddAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
+                        break;
+                    case "titleRename":
+                        _ = TitleRenameAsync(GetStr(doc, "reqId"), GetStr(doc, "oldName"), GetStr(doc, "newName"));
+                        break;
+                    case "titleSetActive":
+                        _ = TitleSetActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "name"), GetBool(doc, "active"));
+                        break;
+                    case "titleReorder":
+                        _ = TitleReorderAsync(GetStr(doc, "reqId"), GetStrArray(doc, "names"));
+                        break;
+                    case "unitAdd":          // parentId 는 필수다(0 이면 호스트가 「상위 조직을 고르세요」로 거부한다)
+                        _ = UnitAddAsync(GetStr(doc, "reqId"), GetStr(doc, "name"), GetInt(doc, "parentId"));
+                        break;
+                    case "unitRename":
+                        _ = UnitRenameAsync(GetStr(doc, "reqId"), GetInt(doc, "orgId"), GetStr(doc, "newName"));
+                        break;
+                    case "unitSetActive":
+                        _ = UnitSetActiveAsync(GetStr(doc, "reqId"), GetInt(doc, "orgId"), GetBool(doc, "active"));
+                        break;
+                    case "unitMove":         // 상위 변경 — 순환·최상위(NULL)·자기 자신은 호스트가 거부한다
+                        _ = UnitMoveAsync(GetStr(doc, "reqId"), GetInt(doc, "orgId"), GetInt(doc, "parentId"));
+                        break;
+                    case "unitReorder":      // 형제 안 순서 — 그 상위의 활성 하위 전부가 와야 한다
+                        _ = UnitReorderAsync(GetStr(doc, "reqId"), GetInt(doc, "parentId"), GetIntArray(doc, "orgIds"));
+                        break;
+
                     case "peerSchedule":     // 타인 일정 열람(C4) — 읽기 전용.
                         //   ★ 대상만 받는다. **보는 사람은 웹이 정하지 않는다** — 호스트가 세션에서
                         //     읽는다. 웹이 viewer 를 실어 보내게 하면 그 값을 바꾸는 것만으로
@@ -2044,6 +2079,115 @@ namespace TaskCalendarWidget
             string roster = ok && kind == "user" ? await ReadMembersJsonAsync(includeInactive) : "";
             ReplyOnUi(reqId, new { ok, msg, trash, roster });
             if (ok) await TrashRefreshRelatedAsync(kind);
+        }
+
+        // ----- 직급·소속 관리(ORG-TITLE-ADMIN §4) — 관리자 전용 -----
+        // 조회는 휴지통과 같은 왕복이다(ReplyOnUi = UI 스레드 마샬). ok 를 found 로 싣는 이유도 같다 —
+        //   '볼 수 없는 사람'(admin:false)과 '서버가 안 된다'(found:false)를 화면이 갈라 보여 준다.
+        private async Task RunOrgTitleGetAsync(string reqId)
+        {
+            try
+            {
+                UserSession? s = UserSession.Load(_dataDir, Log);
+                if (s == null || s.LoginId.Length == 0)
+                { ReplyOnUi(reqId, new { ok = false, msg = "로그인이 필요합니다." }); return; }
+
+                string? json = await _projectDb.LoadOrgTitleJsonAsync(s.LoginId);
+                if (json == null)
+                { ReplyOnUi(reqId, new { ok = false, msg = "직급·소속을 불러오지 못했습니다." }); return; }
+
+                // Deserialize<JsonElement> 는 복제본을 돌려준다 — JsonDocument 수명에 묶이지 않아 회신에 그대로 실을 수 있다.
+                var data = JsonSerializer.Deserialize<JsonElement>(json);
+                bool found = data.TryGetProperty("found", out var f) && f.ValueKind == JsonValueKind.True;
+                string msg = data.TryGetProperty("msg", out var m) && m.ValueKind == JsonValueKind.String ? (m.GetString() ?? "") : "";
+                ReplyOnUi(reqId, new { ok = found, data, msg });
+            }
+            catch (Exception ex)
+            {
+                // 예외 원문(스택)은 로그에만 — 회신 문구는 고정이다. 내부 사정이 화면으로 새 나가면 안 된다.
+                Log("직급·소속 조회 예외: " + ex);
+                ReplyOnUi(reqId, new { ok = false, msg = "직급·소속을 불러오지 못했습니다." });
+            }
+        }
+
+        // 회신에 실을 직급·소속 — 다시 읽어 그 JSON **문자열**을 돌려준다(명부·휴지통의 roster/trash 와 같은 자리).
+        //   ★ 못 읽었으면 ""(회신 자체는 그대로 나간다). 빈 목록을 실어 보내면 "내가 뭘 지웠나"로 읽힌다 —
+        //     낡은 목록이 남아 있는 편이 낫다.
+        private async Task<string> ReadOrgTitleJsonAsync()
+        {
+            UserSession? s = UserSession.Load(_dataDir, Log);
+            if (s == null || s.LoginId.Length == 0) return "";
+            string? json = await _projectDb.LoadOrgTitleJsonAsync(s.LoginId);
+            if (json == null) { Log("직급·소속 재조회 실패 — 화면은 직전 목록을 유지한다"); return ""; }
+            return json;
+        }
+
+        // 아홉 쓰기의 공통 회신 — 성공이면 갱신 목록을 싣는다.
+        //   ★ 거부 둘은 **실패로 나오면서 새로고침을 약속한다**(OrgTitleStaleMsg「목록이 바뀌었습니다」·
+        //     OrgTitleAlreadyMsg「이미 그 상태입니다」). 그때 목록을 안 실으면 관리자는 그 약속을 읽으면서
+        //     낡은 화면으로 같은 버튼을 다시 눌러 같은 거부만 반복한다(SetUserActiveAsync·SaveUserOrderAsync 와 같은 규율).
+        //   ★ 문장 대조의 정본은 ProjectDb 의 두 상수다 — 여기 한 벌 더 적으면 한쪽만 고쳐지는 순간 그 새로고침이 멈춘다.
+        //   ★ 나머지 실패(권한·연결·DB·규칙 위반)는 목록이 바뀌지 않았으므로 싣지 않는다.
+        private async Task ReplyOrgTitleAsync(string reqId, bool ok, string msg)
+        {
+            bool stale = string.Equals(msg, ProjectDb.OrgTitleStaleMsg, StringComparison.Ordinal)
+                      || string.Equals(msg, ProjectDb.OrgTitleAlreadyMsg, StringComparison.Ordinal);
+            string orgTitle = ok || stale ? await ReadOrgTitleJsonAsync() : "";
+            ReplyOnUi(reqId, new { ok, msg, orgTitle });
+        }
+
+        private async Task TitleAddAsync(string reqId, string name)
+        {
+            var (ok, msg) = await _projectDb.TitleAddAsync(name);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task TitleRenameAsync(string reqId, string oldName, string newName)
+        {
+            var (ok, msg) = await _projectDb.TitleRenameAsync(oldName, newName);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task TitleSetActiveAsync(string reqId, string name, bool active)
+        {
+            var (ok, msg) = await _projectDb.TitleSetActiveAsync(name, active);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task TitleReorderAsync(string reqId, List<string> names)
+        {
+            var (ok, msg) = await _projectDb.TitleReorderAsync(names);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task UnitAddAsync(string reqId, string name, int parentId)
+        {
+            var (ok, msg) = await _projectDb.UnitAddAsync(name, parentId);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task UnitRenameAsync(string reqId, int orgId, string newName)
+        {
+            var (ok, msg) = await _projectDb.UnitRenameAsync(orgId, newName);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task UnitSetActiveAsync(string reqId, int orgId, bool active)
+        {
+            var (ok, msg) = await _projectDb.UnitSetActiveAsync(orgId, active);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task UnitMoveAsync(string reqId, int orgId, int parentId)
+        {
+            var (ok, msg) = await _projectDb.UnitMoveAsync(orgId, parentId);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
+        }
+
+        private async Task UnitReorderAsync(string reqId, int parentId, List<int> orgIds)
+        {
+            var (ok, msg) = await _projectDb.UnitReorderAsync(parentId, orgIds);
+            await ReplyOrgTitleAsync(reqId, ok, msg);
         }
 
         // ----- INetcusHost (NetcusService 호스트 어댑터) -----

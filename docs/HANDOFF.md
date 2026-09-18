@@ -31,6 +31,7 @@
 
 ## 3. 다음 할 일 (우선순위순)
 
+0. **직급·소속 GRANT 를 개발 DB 에 적용(지시 시)** — 백업(`db/deploy/backup-taskmgr.ps1`, 복원 검증) → 비공개 `05-grants.sql` 의 두 GRANT(`org_unit`·`title_code` SELECT, INSERT, UPDATE) 적용 → `SHOW GRANTS` 대조 → `node tests/loop-org-title.mjs --seed=N` **5회 연속**. 적용 전에는 그 루프가 **판정 없음(exit 2)** 으로 끝난다(ORG-TITLE-ADMIN §6·§11-2). 위젯은 이미 1142 를 「DB 권한이 없습니다(1142) — …」로 보여 준다.
 1. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installer\publish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash). 패치노트에 사용자 관리·휴지통·개발종료일·정합 6종. **스키마 12 + GRANT 7표와 같은 창에 배포**(DEPLOY.md §0-5, §6-1 "권한 변경도 §0").
 2. **푸쉬** — 지시 시에만. 본·비공개 둘 다.
 3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).
@@ -70,7 +71,7 @@ export TC_TEST_DB_ADMIN_PW=taskmgr123; node tests/loop-user-admin.mjs --seed=N ;
 |---|---|
 | 사용자 관리 설계·계약·정정 이력 §11-1~37 | docs/USER-ADMIN.md |
 | 휴지통 설계·계약·정정 이력 §11-1~33 | docs/TRASH-DELETE.md |
-| 직급·소속 관리 설계(구현 전 · 사용자 확인 대기) | docs/ORG-TITLE-ADMIN.md |
+| 직급·소속 관리 설계·정정 이력 §11-1~5 | docs/ORG-TITLE-ADMIN.md |
 | 로그인·쓰기 관문 | docs/USER-LOGIN.md |
 | 배포 절차·GRANT 재적용·백업/복구 | DEPLOY.md (§0-5·§3 체크리스트·§9) |
 | 마이그레이션 순서표 | db/deploy/README.md |

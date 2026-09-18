@@ -638,8 +638,15 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .code-tab.on{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
 .cust-row .code-ord{display:inline-flex;gap:2px;flex:none}
 .cust-row .code-ord .btn{padding:2px 7px;line-height:1.1}
+/* 직급·소속 관리 — 조직 트리는 들여쓰기만(깊이는 JS 가 인라인 padding 으로 준다), 건수 배지는 .badge-git 재사용 */
+.cust-row .ot-cnt{flex:none;font-size:var(--fs-micro)}
 /* 발주처 관리 모달 */
 .cust-add{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+/* 직급·소속 관리의 추가 입력줄 — 소속 탭은 상위 드롭다운이 먼저 서는데, select 가 폭을 다 먹어 이름 칸이 0 에 가깝게 눌렸다(2026-09-18 실화면). 둘이 나눠 갖는다 */
+#otNewParent{flex:0 1 42%;min-width:0}
+#otNewName{flex:1 1 0;min-width:0}
+/* 320px 폭(위젯 최소)에서 행의 다섯 버튼이 248px 를 14px 넘겨 가로 스크롤이 생겼다(loop-ui-visual V1). 좁으면 이름을 한 줄로 올리고 버튼 패딩을 줄인다 */
+@media (max-width:420px){ #otList .cust-row{flex-wrap:wrap;row-gap:4px} #otList .cust-row .cust-nm{flex:1 1 100%} #otList .cust-row .btn.sm{padding:3px 6px} }
 .cust-add input{flex:1;min-width:0}
 .cust-add .btn{flex:none}
 .cust-showhidden{margin:var(--sp-1) 0}
@@ -2921,6 +2928,37 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- ===== 직급·소속 관리 — title_code/org_unit 마스터(관리자 전용). 「구분·상태 관리」와 같은 골격 =====
+     ★ 행도 행 버튼도 여기 없다 — 목록은 전부 JS 가 만든다(이름이 DB 문자열이라 innerHTML 을 쓰지 않는다).
+     ★ 관리자가 아니면 목록 자리에 안내 한 줄만 선다(숨김이 아니라 부재). 설계: docs/ORG-TITLE-ADMIN.md §5
+     ★ #userAdminModal·#userEditModal 뒤에 둔다(2026-09-18 실화면): .overlay 는 DOM 순서가 곧 쌓임 순서라, 앞에 두면
+       「구성원 편집」에서 열었는데 그 창 **뒤**에 뜬다. 휴지통(#trashModal)과 같은 이유로 같은 자리다. -->
+<div class="overlay hidden" id="orgTitleModal">
+  <div class="modal wide">
+    <div class="modal-head"><h2>직급·소속 관리</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="code-tabs" role="tablist">
+        <button type="button" class="code-tab on" id="otTabTitle" role="tab" data-kind="title">직급</button>
+        <button type="button" class="code-tab" id="otTabUnit" role="tab" data-kind="unit">소속</button>
+      </div>
+      <div class="cust-add">
+        <select id="otNewParent" aria-label="상위 조직" class="hidden"></select>
+        <input type="text" id="otNewName" maxlength="50" autocomplete="off" spellcheck="false" placeholder="새 직급">
+        <button type="button" class="btn primary" id="otAddBtn">＋ 추가</button>
+      </div>
+      <label class="check cust-showhidden"><input type="checkbox" id="otShowHidden"> 숨긴 값도 표시</label>
+      <div class="set-hint" id="otScope">—</div>
+      <div class="cust-msg" id="otMsg" role="status" aria-live="polite"></div>
+      <div class="cust-list" id="otList" role="list" aria-label="직급·소속 목록"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="git-note">직급은 이름을 바꾸면 그 직급인 사람의 표기도 함께 바뀝니다. 조직은 번호로 연결돼 있어 이름·상위를 바꿔도 소속자는 그대로입니다. 숨긴 값은 드롭다운에서 빠지고, 지우지는 않습니다.</div>
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 휴지통(TRASH-DELETE §5.1) ===== 관리자 전용 — 숨긴 항목만 모아 복구하거나 DB 행을 실제로 지운다.
      ★ 진입은 **둘**이고 둘 다 그 도메인의 화면에 있다(2026-09-18): 과제·발주처·구분·상태는 「공식 과제 (DB)」
        화면의 #offTrash(위젯에서만 보인다), 퇴사자는 「구성원 편집」 상단 막대의 #uaTrash(관리자에게만 생긴다).
@@ -5187,7 +5225,7 @@ function uaSyncControls(){
       lockLineBtn(b, __uaSaving || edge);
     }
   }
-  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){
+  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle']){
     const b = document.getElementById(id);
     if(b) b.disabled = __uaSaving;
   }
@@ -5276,7 +5314,7 @@ function uaRender(rows){
   }
 }
 
-// 관리자 컨트롤 — 상단 막대(#uaAdmin)는 「순서 편집」 · 「퇴사자 휴지통」 · 「퇴사자 보기」, 하단(#uaFoot)은 「＋ 직원 등록」.
+// 관리자 컨트롤 — 상단 막대(#uaAdmin)는 「순서 편집」 · 「퇴사자 휴지통」 · 「직급·소속 관리」 · 「퇴사자 보기」, 하단(#uaFoot)은 「＋ 직원 등록」.
 //   ★ 등록이 아래인 이유: 이 화면의 주 동작이라 [닫기] 옆 primary 자리가 맞고, 상단 막대에 두었을 때
 //     관리자가 실제로 찾지 못했다(2026-09-10 사용자 지적).
 //   ★ 순서 편집 중에 등록·퇴사자 토글을 함께 두면, 그 조작이 명부를 다시 읽어 와 **편집 중인 순서를 날린다.**
@@ -5329,6 +5367,9 @@ function uaAdminBar(){
   //    관리자이고 순서 편집이 아닐 때만 생긴다(위 조기 return 이 비관리자를 거른다 — 숨김이 아니라 부재).
   //    화살표로 감싼다: 이 함수를 떼어 그려 보는 시험 하네스가 openTrash 를 모른다.
   mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;
+  //  직급·소속 관리 — 소속·직급 마스터는 **별도 관리창**에서 고친다(2026-09-18 사용자 결정 · ORG-TITLE-ADMIN §2).
+  //    직원 폼은 그 값을 고르기만 한다: 조직 개편을 직원 한 명씩 열어 소속을 바꾸는 일로 만들지 않는다.
+  mk('직급·소속 관리', 'uaOrgTitle', 'btn sm', () => openOrgTitle()).disabled = __uaSaving;
   const sp = document.createElement('span'); sp.className = 'mba-sp'; box.appendChild(sp);
   //  「퇴사자 보기」는 조회 조건이라 호스트 왕복이 필요하다(퇴사자는 애초에 회신에 없다).
   const lb = document.createElement('label');
@@ -7637,6 +7678,7 @@ function closeOverlay(ov){
   // (닫아도 호스트 작업은 계속되는데 결과를 알릴 곳만 사라지는 상황을 방지)
   if(ov.dataset.busy === '1') return;
   if(ov.id === 'reportModal') clearNetcusMerge();   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
+  if(ov.id === 'orgTitleModal') otAfterClose();     // 직급·소속을 고쳤으면 「구성원 편집」이 드롭다운·명부를 다시 받는다
   //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
   //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
   //    그 회신에 실려 온다 — 닫힌 화면이 남길 '빚'이 없다. 게다가 왕복 중에는 dataset.busy 가 닫기를 막는다.
@@ -9240,6 +9282,422 @@ function codeMove(name, dir){
     const tmp = active[i]; active[i] = active[j]; active[j] = tmp;
     codeSend('codeReorder', { names: active }, codeKindLabel() + ' 순서를 변경했습니다');
   }, codeKindLabel() + ' 순서를 변경하려면 관리자 인증이 필요합니다.');
+}
+
+/* ---------- 직급·소속 관리 — title_code/org_unit 마스터(관리자 전용 · 설계 docs/ORG-TITLE-ADMIN.md) ----------
+   「구분·상태 관리」의 골격에 소속 트리를 더한 한 화면. 조작은 전부 호스트 왕복 한 길(hostRequest)이고,
+   회신에 실려 온 갱신 목록(orgTitle)이 화면에 닿는 문은 **하나다**(otSeat) — 화면이 스스로 목록을 고치지 않는다.
+   ★ 화면은 정렬하지도 다시 묶지도 않는다: units 는 호스트가 깊이우선으로 준 그대로 그리고 depth 로만 들여쓴다.
+     순서를 정하는 곳이 둘이면 반드시 갈린다(명부 §5.3 과 같은 규칙).
+   ★ 닫을 때 「구성원 편집」을 다시 읽는다(otAfterClose) — 드롭다운 소스의 정본은 membersGet 이다. */
+// 모듈 상태는 이 다섯뿐이다(설계 §5.1) — 요청 표·워치독·보류 큐를 두지 않는다(그것들이 배달을 둘로 가른다).
+let __otData = null, __otTab = 'title', __otShowHidden = false, __otBusy = false, __otSaving = false;
+
+const otTitles = () => (__otData && Array.isArray(__otData.titles)) ? __otData.titles : [];
+const otUnits  = () => (__otData && Array.isArray(__otData.units))  ? __otData.units  : [];
+const otAdmin  = () => !!(__otData && __otData.admin === true);   // 관리자 여부는 **호스트가 정한 값**이다
+const otItem   = key => (__otTab === 'unit')
+  ? otUnits().find(u => u && String(u.orgId) === String(key))
+  : otTitles().find(t => t && String(t.name) === String(key));
+// [추가]가 꺼지는 규칙 한 곳 — 렌더(otSyncAdd)와 잠금(otSyncControls)이 같은 식을 본다.
+//   ★ 상위를 안 고르면 꺼진다: 상위 없는 조직은 새 최상위가 되는데 최상위는 하나뿐이다(설계 §3.2).
+const otAddDisabled = () => {
+  const sel = document.getElementById('otNewParent');
+  return !otAdmin() || __otSaving || (__otTab === 'unit' && !(sel && sel.value));
+};
+
+function otMsgSet(text, tone){
+  const m = document.getElementById('otMsg'); if(!m) return;
+  m.textContent = String(text == null ? '' : text);   // 이름은 사용자 데이터다 — textContent 로만
+  m.style.color = tone === 'err' ? 'var(--danger)' : '';
+}
+
+// 진입점 — 열 때마다 orgTitleGet 을 새로 부른다(캐시 금지: 낡은 목록은 이미 숨긴 것을 다시 숨기게 한다).
+//   ★ 모달은 회신을 기다리지 않고 먼저 연다(openTrash 와 같은 이유) — 대신 '불러오는 중…'을 띄운다.
+async function openOrgTitle(){
+  if(__otBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  __otBusy = true;
+  __otData = null; __otTab = 'title'; __otShowHidden = false;   // 지난번 화면을 한 조각도 남기지 않는다
+  const sh = document.getElementById('otShowHidden'); if(sh) sh.checked = false;
+  const inp = document.getElementById('otNewName'); if(inp) inp.value = '';
+  otMsgSet('');
+  otRender(); otSyncAdd();
+  const sc = document.getElementById('otScope'); if(sc) sc.textContent = '불러오는 중…';
+  openModal('#orgTitleModal');
+  if(!HOST){ __otBusy = false; otFail('데스크톱 위젯에서만 동작합니다.'); return; }
+  let r = null;
+  try{ r = await hostRequest('orgTitleGet', {}, 12000); }catch(_){ r = null; }
+  __otBusy = false;
+  //  회신 덩어리는 쓰기 회신의 목록(otSeat)과 **같은 모양**이다 — 호스트가 {ok,data} 로 감싸도 그대로 읽는다.
+  const d = (r && r.data) ? r.data : r;
+  if(!(d && d.found)){ otFail((d && d.msg) || (r && r.msg) || '직급·소속을 불러오지 못했습니다 — 잠시 후 다시 시도하세요.'); return; }
+  otApplyData(d);
+}
+
+// 회신 한 덩어리를 화면 상태로 옮긴다 — 첫 조회와 쓰기 회신(otSeat)이 **같은 함수**를 쓴다.
+function otApplyData(d){
+  __otData = d || null;
+  otRender();
+  otSyncAdd();
+}
+
+// 쓰기 회신의 갱신 목록이 화면에 닿는 **한 길**(문자열 JSON).
+//   ★ 못 읽으면 직전 화면을 그대로 둔다 — 빈 화면보다 낡은 화면이 낫다(추측한 목록은 그리지 않는다).
+function otSeat(json){
+  let d = null;
+  try{ d = JSON.parse(String(json == null ? '' : json)); }catch(_){ d = null; }
+  if(d && d.found) otApplyData(d);
+}
+
+// 추가 입력줄 + 「숨긴 값도 표시」의 상태 — 탭이 무엇을 받는지가 여기서 갈린다(직급은 이름만 · 소속은 상위가 먼저다).
+//   ★ 상위 드롭다운은 목록이 새로 앉을 때마다 다시 만든다. 고르던 상위는 그대로 되돌린다(그 조직이 남아 있으면).
+function otSyncAdd(){
+  const unit = __otTab === 'unit';
+  const sel = document.getElementById('otNewParent');
+  const inp = document.getElementById('otNewName');
+  const add = document.getElementById('otAddBtn');
+  const sh  = document.getElementById('otShowHidden');
+  if(inp){ inp.placeholder = unit ? '새 팀' : '새 직급'; inp.maxLength = unit ? 50 : 30; inp.disabled = !otAdmin(); }
+  if(sh) sh.disabled = !otAdmin() || __otSaving;
+  if(sel){
+    sel.classList.toggle('hidden', !unit);   // 직급 탭에는 상위가 없다(빈 칸만 두면 무엇을 고르는 자리인지 흐려진다)
+    const keep = String(sel.value || '');
+    while(sel.firstChild) sel.removeChild(sel.firstChild);
+    const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '상위 조직 선택'; sel.appendChild(o0);
+    for(const u of otUnits()){
+      if(!u || u.active === false) continue;
+      const o = document.createElement('option');
+      o.value = String(u.orgId);
+      //  들여쓰기는 공백으로 준다 — <option> 안에서는 padding 이 먹지 않는다(플랫폼 기본 목록).
+      o.textContent = ' '.repeat((Number(u.depth) || 0) * 2) + String(u.name || '');
+      sel.appendChild(o);
+    }
+    sel.value = keep;
+    sel.disabled = !otAdmin() || __otSaving;
+  }
+  if(add) add.disabled = otAddDisabled();
+}
+
+// 행 버튼 한 틀 — **구조적으로 꺼야 하는** 버튼은 data-otoff 를 달아 둔다(재직자가 있다 · 끝에 닿았다 · 상위가 숨김).
+//   ★ 잠금(otSyncControls)은 그 표식을 읽는다: 왕복 한 번이 '숨길 수 없음'을 뒤집지 않게 규칙을 한 벌로 둔다.
+//   ★ 사유는 title 에 붙인다(휴지통의 deletable/why 와 같은 손) — 눌러 봐야 거부되는 버튼은 이유를 알려 주지 않는다.
+function otBtn(op, key, label, cls, off, why){
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = cls; b.textContent = label;
+  b.dataset.otop = op; b.dataset.otkey = String(key);
+  if(off) b.dataset.otoff = '1';
+  if(why) b.title = why;
+  b.disabled = !!off || __otSaving;
+  return b;
+}
+
+// 탭 + 목록 렌더 — innerHTML 금지(이름은 DB 문자열이다).
+//   ★ 관리자가 아니면 행도 컨트롤도 만들지 않는다(숨김이 아니라 부재). 안내 한 줄은 남긴다: 빈 화면은 고장으로 보인다.
+//   ★ 쓰기 왕복 중(__otSaving)이면 **끈 채로 그린다** — 잠금을 나중에 칠하면 회신이 목록을 다시 만드는 순간 증발한다.
+//   ★ 보던 자리는 지역 변수로 들었다 놓는다(trRender 와 같은 한 벌). 한 건 고칠 때마다 맨 위로 튀면 다음 대상을 다시 찾아야 한다.
+function otRender(){
+  const list = document.getElementById('otList'); if(!list) return;
+  const sc = document.getElementById('otScope');
+  const unit = __otTab === 'unit';
+  for(const id of ['otTabTitle', 'otTabUnit']){
+    const t = document.getElementById(id); if(!t) continue;
+    const on = (String(t.dataset.kind || '') === __otTab);
+    t.classList.toggle('on', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  }
+  const keepTop = list.scrollTop;
+  while(list.firstChild) list.removeChild(list.firstChild);
+  if(!otAdmin()){
+    //  호스트가 사유를 실어 보내면 그것을 쓴다(비활성 계정은 '관리자가 아니다'와 이유가 다르다).
+    const why = (__otData && __otData.msg) ? String(__otData.msg)
+              : (__otData ? '관리자만 사용할 수 있습니다.' : '불러오는 중…');
+    const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
+    d.textContent = why;
+    list.appendChild(d);
+    if(sc) sc.textContent = why;
+    return;
+  }
+  const rows = (unit ? otUnits() : otTitles()).filter(x => x && (__otShowHidden || x.active !== false));
+  if(sc) sc.textContent = unit
+    ? ('조직 ' + rows.length + '개 · 재직자나 하위 조직이 있으면 숨길 수 없습니다')
+    : ('직급 ' + rows.length + '개 · 재직자가 있는 직급은 숨길 수 없습니다');
+  //  ▲▼ 는 **활성끼리**만 오간다(숨김은 순서 대상이 아니다). 소속은 그 위에 '같은 상위' 조건이 하나 더 붙는다.
+  const actTitles = otTitles().filter(t => t && t.active !== false);
+  const actUnits  = otUnits().filter(u => u && u.active !== false);
+  const pkey = v => String(v == null ? '' : v);
+  for(const it of rows){
+    const active = it.active !== false;
+    const nm = String(it.name || '');
+    const key = unit ? String(it.orgId) : nm;
+    const users = Number(it.users) || 0;
+    const kids = unit ? (Number(it.children) || 0) : 0;
+    const row = document.createElement('div');
+    row.className = active ? 'cust-row' : 'cust-row hidden-cust';
+    row.setAttribute('role', 'listitem');
+    row.dataset.otkey = key;
+    const nmEl = document.createElement('span');
+    nmEl.className = 'cust-nm';
+    nmEl.textContent = nm;
+    //  소속은 깊이만큼 들여쓴다(▸ 없이) — 트리 모양은 호스트가 준 depth 가 전부다.
+    if(unit) nmEl.style.paddingLeft = ((Number(it.depth) || 0) * 16) + 'px';
+    if(!active){ const bd = document.createElement('span'); bd.className = 'cust-badge'; bd.textContent = '숨김'; nmEl.appendChild(bd); }
+    row.appendChild(nmEl);
+    const cnt = document.createElement('span');
+    cnt.className = 'badge badge-git ot-cnt';
+    cnt.textContent = users + '명' + (kids > 0 ? ' · 하위 ' + kids + '개' : '');
+    row.appendChild(cnt);
+    if(active){
+      const arr = unit ? actUnits.filter(u => pkey(u.parentId) === pkey(it.parentId)) : actTitles;
+      const i = unit ? arr.findIndex(u => String(u.orgId) === key) : arr.findIndex(t => String(t.name) === key);
+      const ord = document.createElement('span'); ord.className = 'code-ord';
+      ord.appendChild(otBtn('up', key, '▲', 'btn sm', i <= 0, '위로'));
+      ord.appendChild(otBtn('down', key, '▼', 'btn sm', i < 0 || i >= arr.length - 1, '아래로'));
+      row.appendChild(ord);
+    }
+    if(active){
+      row.appendChild(otBtn('rename', key, '이름변경', 'btn sm', false, ''));
+      //  상위 변경은 **관리창의 일**이다(설계 §3.2) — 팀을 옮기면 그 팀 소속자 전원이 번호로 따라온다.
+      if(unit) row.appendChild(otBtn('move', key, '상위 변경', 'btn sm', false, ''));
+      //  숨길 수 없는 사유는 화면 힌트다 — 최종 판정은 호스트가 같은 트랜잭션에서 다시 센다.
+      let why = '';
+      if(unit && it.parentId == null) why = '최상위 조직은 숨길 수 없습니다';
+      else if(unit && (users > 0 || kids > 0)) why = '이 조직에 재직자 ' + users + '명 · 하위 조직 ' + kids + '개가 있습니다 — 먼저 옮기거나 숨기세요';
+      else if(!unit && users > 0) why = '이 직급인 재직자가 ' + users + '명 있습니다 — 먼저 직급을 바꾸세요';
+      row.appendChild(otBtn('hide', key, '숨김', 'btn sm danger', !!why, why));
+    }else{
+      //  복구는 위에서부터다 — 상위가 숨김인 채로 자식만 살리면 트리에서 갈 곳이 없다(호스트도 같은 검사를 한다).
+      let why = '';
+      if(unit && it.parentId != null){
+        const p = otUnits().find(u => u && String(u.orgId) === String(it.parentId));
+        if(p && p.active === false) why = '상위 조직을 먼저 복구하세요';
+      }
+      row.appendChild(otBtn('show', key, '복구', 'btn sm', !!why, why));
+    }
+    list.appendChild(row);
+  }
+  if(!rows.length){
+    const e = document.createElement('div'); e.className = 'cust-empty';
+    e.textContent = __otShowHidden ? '등록된 값이 없습니다.' : '활성 값이 없습니다.';
+    list.appendChild(e);
+  }
+  list.scrollTop = keepTop;
+}
+
+// 컨트롤 상태를 **그 자리에서** 다시 정한다 — 목록을 다시 그리지 않는다(trSyncControls 와 같은 규율).
+//   ★ 행 버튼은 렌더가 달아 둔 표식(data-otoff)과 __otSaving 둘만 본다. 사유를 여기 다시 적으면 둘이 갈린다.
+function otSyncControls(){
+  const list = document.getElementById('otList');
+  if(list) for(const b of list.querySelectorAll('button')) b.disabled = __otSaving || b.dataset.otoff === '1';
+  const add = document.getElementById('otAddBtn'); if(add) add.disabled = otAddDisabled();
+  const sh = document.getElementById('otShowHidden'); if(sh) sh.disabled = __otSaving || !otAdmin();
+  const sel = document.getElementById('otNewParent'); if(sel) sel.disabled = __otSaving || !otAdmin();
+  for(const id of ['otTabTitle', 'otTabUnit']){ const t = document.getElementById(id); if(t) t.disabled = __otSaving; }
+}
+
+// 쓰기 왕복 한 곳 — 여덟 명령이 같은 가드·같은 잠금·같은 좌석(otSeat)을 쓴다.
+//   ★ 화면이 권한을 미리 막지 않는다(USER-LOGIN §3.3) — 판정은 호스트가 요청 시점에 한다.
+//   ★ 거부 문장은 **다시 쓰지 않는다**: 호스트가 사용자 문장으로 만들었다(hostWriteMsg 가 '회신 없음'만 가른다).
+//   ★ 왕복 중에는 dataset.busy 가 닫기를 막는다(closeOverlay) — 결과를 알릴 곳이 사라지지 않게.
+async function otSend(cmd, params){
+  if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return null; }
+  if(__otSaving){ toast('처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return null; }   // 조용히 버리지 않는다
+  const ov = document.getElementById('orgTitleModal');
+  let rep = null;
+  __otSaving = true; otSyncControls(); if(ov) ov.dataset.busy = '1';
+  try{ rep = await hostRequest(cmd, params || {}, 20000); }
+  catch(_){ rep = null; }
+  finally{ __otSaving = false; otSyncControls(); if(ov) delete ov.dataset.busy; }
+  //  낡은 화면·'이미 그 상태' 거부에도 갱신 목록이 실려 온다 — 실려 왔으면 앉힌다(다음 시도가 옳은 값을 보게).
+  if(rep && rep.orgTitle) otSeat(rep.orgTitle);
+  if(rep && rep.ok) toast(rep.msg || '처리했습니다', 'success');
+  else toast(hostWriteMsg(rep) || '처리하지 못했습니다', 'error');
+  return rep;
+}
+
+function otDoAdd(){
+  const unit = __otTab === 'unit';
+  const inp = document.getElementById('otNewName');
+  const sel = document.getElementById('otNewParent');
+  const name = inp ? String(inp.value || '').trim() : '';
+  if(!name){ otMsgSet((unit ? '팀' : '직급') + ' 이름을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(unit && !(sel && sel.value)){ otMsgSet('상위 조직을 고르세요.', 'err'); if(sel) sel.focus(); return; }
+  otMsgSet('');
+  const p = unit ? { name: name, parentId: Number(sel.value) } : { name: name };
+  otSend(unit ? 'unitAdd' : 'titleAdd', p).then(rep => {
+    if(rep && rep.ok && inp){ inp.value = ''; try{ inp.focus(); }catch(_){} }
+  });
+}
+
+// 이름변경은 **행 안에서** 입력칸으로 바뀐다(codeBeginRename 골격) — 좁은 폭에 확인창을 하나 더 띄우지 않는다.
+function otRowOf(key){
+  const list = document.getElementById('otList'); if(!list) return null;
+  for(const r of list.querySelectorAll('.cust-row')) if(String(r.dataset.otkey || '') === String(key)) return r;
+  return null;
+}
+function otBeginRename(key){
+  const it = otItem(key); if(!it) return;
+  const row = otRowOf(key); if(!row) return;
+  const unit = __otTab === 'unit';
+  while(row.firstChild) row.removeChild(row.firstChild);
+  const wrap = document.createElement('span'); wrap.className = 'cust-nm cust-edit';
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.autocomplete = 'off'; inp.maxLength = unit ? 50 : 30; inp.value = String(it.name || '');
+  wrap.appendChild(inp); row.appendChild(wrap);
+  row.appendChild(otBtn('save', key, '저장', 'btn sm primary', false, ''));
+  row.appendChild(otBtn('cancel', key, '취소', 'btn sm', false, ''));
+  inp.addEventListener('keydown', ev => {
+    if(ev.key === 'Enter'){ ev.preventDefault(); otCommitRename(key); }
+    else if(ev.key === 'Escape'){ ev.preventDefault(); otRender(); }
+  });
+  try{ inp.focus(); inp.select(); }catch(_){}
+}
+function otCommitRename(key){
+  const it = otItem(key); if(!it) return;
+  const row = otRowOf(key);
+  const inp = row ? row.querySelector('input') : null;
+  const newName = inp ? String(inp.value || '').trim() : '';
+  const oldName = String(it.name || '');
+  if(!newName){ otMsgSet('새 이름을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(newName === oldName){ otRender(); return; }   // 변경 없음 → 원복(왕복을 만들지 않는다)
+  otMsgSet('');
+  if(__otTab === 'unit') otSend('unitRename', { orgId: Number(key), newName: newName });
+  else otSend('titleRename', { oldName: oldName, newName: newName });
+}
+
+// 숨김 — 확인 한 번(되돌릴 수 있는 조작이라 이름 입력까지 요구하지 않는다). 복구는 확인창이 없다.
+function otDoHide(key){
+  const it = otItem(key); if(!it) return;
+  const unit = __otTab === 'unit';
+  const nm = String(it.name || '');
+  confirmBox('숨김', "'" + nm + "' 을(를) 숨깁니다. 드롭다운에서 빠지고 기존 표기는 남습니다. 계속할까요?", '숨김', '취소').then(r => {
+    if(r !== 'ok') return;
+    if(unit) otSend('unitSetActive', { orgId: Number(key), active: false });
+    else otSend('titleSetActive', { name: nm, active: false });
+  });
+}
+function otDoShow(key){
+  const it = otItem(key); if(!it) return;
+  if(__otTab === 'unit') otSend('unitSetActive', { orgId: Number(key), active: true });
+  else otSend('titleSetActive', { name: String(it.name || ''), active: true });
+}
+
+// ▲▼ — 화면에서 한 칸 맞바꾼 **활성 배열 전체**를 보낸다. 새 순서는 호스트가 회신(orgTitle)으로 되돌려준다.
+//   ★ 화면이 자기 목록을 미리 고쳐 두지 않는다: 순서의 정본은 DB 다(빠진 값이 있으면 호스트가 '낡은 화면'으로 거부한다).
+function otMove(key, dir){
+  const it = otItem(key); if(!it) return;
+  const d = (dir === 'up') ? -1 : 1;
+  if(__otTab === 'unit'){
+    const pid = it.parentId;
+    const pk = v => String(v == null ? '' : v);
+    const arr = otUnits().filter(u => u && u.active !== false && pk(u.parentId) === pk(pid));
+    const i = arr.findIndex(u => String(u.orgId) === String(key)), j = i + d;
+    if(i < 0 || j < 0 || j >= arr.length) return;
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    otSend('unitReorder', { parentId: pid == null ? null : Number(pid), orgIds: arr.map(u => Number(u.orgId)) });
+  }else{
+    const arr = otTitles().filter(t => t && t.active !== false).map(t => String(t.name));
+    const i = arr.indexOf(String(key)), j = i + d;
+    if(i < 0 || j < 0 || j >= arr.length) return;
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    otSend('titleReorder', { names: arr });
+  }
+}
+
+// 상위 변경 — 후보에서 **자기 자신과 자기 자손**을 뺀다(자기 밑으로 옮기면 트리가 끊긴다. 호스트도 같은 검사를 한다).
+//   ★ 최상위(NULL)로의 이동은 후보에 아예 없다 — 루트는 하나뿐이다(설계 §3.2).
+function otDescendants(key){
+  const out = new Set([String(key)]);
+  const units = otUnits();
+  let grew = true;
+  while(grew){   // 12행짜리 표라 부모 사슬을 훑는 것으로 충분하다
+    grew = false;
+    for(const u of units){
+      if(!u || u.parentId == null) continue;
+      const id = String(u.orgId);
+      if(out.has(id) || !out.has(String(u.parentId))) continue;
+      out.add(id); grew = true;
+    }
+  }
+  return out;
+}
+function otBeginMove(key){
+  const it = otItem(key); if(!it) return;
+  const row = otRowOf(key); if(!row) return;
+  const banned = otDescendants(key);
+  while(row.firstChild) row.removeChild(row.firstChild);
+  const nmEl = document.createElement('span');
+  nmEl.className = 'cust-nm'; nmEl.textContent = String(it.name || '');
+  nmEl.style.paddingLeft = ((Number(it.depth) || 0) * 16) + 'px';
+  row.appendChild(nmEl);
+  const sel = document.createElement('select');
+  sel.setAttribute('aria-label', '새 상위 조직');
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '새 상위 조직 선택'; sel.appendChild(o0);
+  for(const u of otUnits()){
+    if(!u || u.active === false || banned.has(String(u.orgId))) continue;
+    const o = document.createElement('option');
+    o.value = String(u.orgId);
+    o.textContent = ' '.repeat((Number(u.depth) || 0) * 2) + String(u.name || '');
+    sel.appendChild(o);
+  }
+  row.appendChild(sel);
+  row.appendChild(otBtn('moveok', key, '적용', 'btn sm primary', false, ''));
+  row.appendChild(otBtn('cancel', key, '취소', 'btn sm', false, ''));
+  try{ sel.focus(); }catch(_){}
+}
+function otCommitMove(key){
+  const row = otRowOf(key);
+  const sel = row ? row.querySelector('select') : null;
+  const pid = sel ? String(sel.value || '') : '';
+  if(!pid){ otMsgSet('새 상위 조직을 고르세요.', 'err'); if(sel) sel.focus(); return; }
+  otMsgSet('');
+  otSend('unitMove', { orgId: Number(key), parentId: Number(pid) });
+}
+
+// 목록 버튼은 위임 하나로 받는다 — 행은 회신이 올 때마다 새로 만들어지므로 버튼마다 듣는 귀를 달지 않는다.
+function otListClick(ev){
+  const t = ev.target;
+  const b = (t && t.closest) ? t.closest('[data-otop]') : null;
+  if(!b || b.disabled) return;
+  const op = String(b.dataset.otop || ''), key = String(b.dataset.otkey || '');
+  if(op === 'up' || op === 'down') otMove(key, op);
+  else if(op === 'rename') otBeginRename(key);
+  else if(op === 'move') otBeginMove(key);
+  else if(op === 'hide') otDoHide(key);
+  else if(op === 'show') otDoShow(key);
+  else if(op === 'save') otCommitRename(key);
+  else if(op === 'moveok') otCommitMove(key);
+  else if(op === 'cancel') otRender();   // 인라인 편집 취소 = 그 행을 다시 그리는 일이다
+}
+
+// 탭을 바꾸면 **보이는 목록이 통째로 다른 것**이 된다 — 그래서 맨 위에서 연다(렌더는 자기가 왜 불렸는지 모른다).
+function otSwitchTab(kind){
+  __otTab = (kind === 'unit') ? 'unit' : 'title';
+  otMsgSet('');
+  otRender();
+  otSyncAdd();
+  const l = document.getElementById('otList'); if(l) l.scrollTop = 0;
+}
+
+// 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다(추측한 목록을 그리지 않는다 · trFail 과 같다).
+function otFail(msg){
+  const list = document.getElementById('otList');
+  if(list){
+    while(list.firstChild) list.removeChild(list.firstChild);
+    const d = document.createElement('div'); d.className = 'set-hint'; d.style.margin = '0';
+    d.textContent = String(msg == null ? '' : msg);   // 호스트 문구도 textContent 로만
+    list.appendChild(d);
+  }
+  const sc = document.getElementById('otScope'); if(sc) sc.textContent = '직급·소속을 확인할 수 없음';
+  otSyncAdd();   // __otData 가 없으니 추가줄이 전부 꺼진다
+}
+
+// 닫을 때 「구성원 편집」이 열려 있으면 다시 읽는다(closeOverlay 한 곳에서 부른다).
+//   ★ 드롭다운 소스(__uaTitles·__uaUnits)와 명부의 소속 표기의 **정본은 membersGet** 이다 — 여기서 앉히지 않는다.
+//     한 벌 더 두면 두 벌이 되고, 그때부터 어느 쪽이 맞는지 아무도 모른다.
+//   ★ uaReload 의 돌려주는 값(true/'busy'/'nohost')은 보지 않는다 — 못 시작했어도 다음에 열 때 다시 읽는다.
+function otAfterClose(){
+  const ua = document.getElementById('userAdminModal');
+  if(ua && !ua.classList.contains('hidden')) uaReload();
 }
 
 /* ---------- 기존 과제 재연결(P3.4) — 개인 과제 → 공식 과제 ----------
@@ -12718,6 +13176,16 @@ function bind(){
       const vb = t.closest('[data-codesave]'); if(vb){ const row = vb.closest('.cust-row'); if(row) codeCommitRename(vb.dataset.codesave, row); return; }
       const cb = t.closest('[data-codecancel]'); if(cb){ renderCodeList(); return; }
     }); }
+
+  /* 직급·소속 관리 — 목록 버튼은 위임 하나로 받는다(행은 회신마다 새로 만들어진다) */
+  { const t = $('#otTabTitle'); if(t) t.addEventListener('click', () => otSwitchTab('title')); }
+  { const t = $('#otTabUnit'); if(t) t.addEventListener('click', () => otSwitchTab('unit')); }
+  { const b = $('#otAddBtn'); if(b) b.addEventListener('click', otDoAdd); }
+  { const inp = $('#otNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); otDoAdd(); } }); }
+  { const sh = $('#otShowHidden'); if(sh) sh.addEventListener('change', () => { __otShowHidden = !!sh.checked; otRender(); }); }
+  //  상위를 고르는 순간 [추가]가 켜진다 — 목록을 다시 그리지 않는다(고르던 자리가 날아가지 않게)
+  { const sel = $('#otNewParent'); if(sel) sel.addEventListener('change', () => { const b = $('#otAddBtn'); if(b) b.disabled = otAddDisabled(); }); }
+  { const box = $('#otList'); if(box) box.addEventListener('click', otListClick); }
 
   /* 기존 과제 재연결(P3.4) — 로컬 전용(DB 쓰기 없음)이라 오프라인에서도 연다 */
   { const b = $('#btnRelinkOpen'); if(b) b.addEventListener('click', openRelinkModal); }

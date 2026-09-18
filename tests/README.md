@@ -70,13 +70,14 @@ console\                       ← 부모 폴더
 새 클론·폐쇄망 반입 PC라면 그 저장소도 형제 자리에 함께 받아야 한다.
 같은 이유로 `db/deploy/restore-taskmgr.ps1 -Grants` 도 그 자리에서 `05-grants.sql` 을 찾는다(DEPLOY.md §9-2).
 
-### 배포 전 게이트 — 이 셋을 다 통과해야 올린다
+### 배포 전 게이트 — 이 넷을 다 통과해야 올린다
 
 | 게이트 | 명령 | 통과 기준 |
 |---|---|---|
 | 상시 스위트(엄격) | `TC_TEST_STRICT=1 node tests/run-tests.mjs` | **exit 0**. skip 이 있으면 2(판정 없음)이고 strict 는 그것을 1 로 올린다 |
 | 사용자 관리 루프 | `node tests/loop-user-admin.mjs` | **무작위 시드로 5회 연속** 통과(한 번이라도 실패하면 1부터 다시 센다) |
 | 휴지통 루프 | `node tests/loop-trash.mjs` | 같은 규약. 앱 계정에 DELETE 권한이 **먼저** 적용돼 있어야 한다(DEPLOY.md §0-5) |
+| 직급·소속 관리 루프 | `node tests/loop-org-title.mjs` | 같은 규약. 앱 계정에 `org_unit`·`title_code` 의 **INSERT·UPDATE** 가 먼저 적용돼 있어야 한다(DEPLOY.md §0-5 · ORG-TITLE-ADMIN §6) — 없으면 **exit 2(판정 없음)** 로 끝난다. 실패가 아니다 |
 
 나머지 루프(`loop-ui-integrity` 등)의 규약은 아래 각 절에 있다.
 
@@ -102,6 +103,8 @@ tests/
 │                            잠금 방지·검증 5종·null 정수 내성·비관리자 뷰·재진입 가드 — 케이스마다 DB 불변식, zzU 잔재 0
 ├─ loop-trash.mjs             **실제 위젯**(CDP) + 실 DB — 휴지통(TRASH-DELETE) 실동작: 다섯 표(과제·인력·발주처·구분·상태) 숨김 → 복구 →
 │                            이름 대조 → 영구 삭제 · 기록 있는 계정/쓰는 코드값 거부 · 비관리자 부재 계약 — 케이스마다 DB 불변식, zz 잔재 0
+├─ loop-org-title.mjs         **실제 위젯**(CDP) + 실 DB — 「직급·소속 관리」(ORG-TITLE-ADMIN) 실동작: 직급·조직 추가 → 개명 → 순서 →
+│                            숨김 거부/숨김/복구 · 상위 변경·순환 거부 · 비관리자 부재 계약 — 케이스마다 DB 불변식, zz 잔재 0
 ├─ loop-report-wiring.mjs     라이브 위젯 + MySQL(복제본) — 보고 기록 배선("저장이 정말 불리는가")
 ├─ loop-peer-view.mjs        실 DB + 앱 계정 — **타인 일정 열람의 권한 경계**(허용/거부/최소 payload)
 ├─ loop-peer-frame.mjs       **실 위젯**(CDP) + 실 DB — 열람 **창**(iframe)의 실동작: 그 사람 것이 뜨나 ·
@@ -709,6 +712,7 @@ node tests/loop-user-admin.mjs --seed=66       # 재현
 
 실행 중인 위젯(CDP 9222, **관리자 계정으로 로그인**)과 실 DB 로 `docs/TRASH-DELETE.md` 의 휴지통 경로를 한 라운드 9 케이스로 돈다.
 시험 데이터는 접두 규약(**`zzP` 과제 · `zzU` 로그인 ID · `zzC` 발주처 · `zzT` 구분/상태**)으로만 만들고, 실행(zz 아닌 행)은 참조만 한다.
+(2026-09-18 에 둘이 늘었다 — **`zzJ` 직급(`title_code`) · `zzO` 조직(`org_unit`)**: `loop-org-title.mjs` 가 쓴다. 루프 접두는 이 여섯이 전부다.)
 C00 전제·`trashGet` 회신 모양 · C01 과제(등록 → 카탈로그 편입 → 숨김 → **화면으로 복구** → 다시 숨김 → 이름 오타 거부(화면 버튼 미점등 + 호스트 문장)
 → 이름 일치 삭제 → DB 0행·카탈로그 0·편입분 `dbGone`) · C02 인력 기록 0(삭제 성공 + `cal_user_pref`/`cal_user_rev` 0행) ·
 C03 인력 기록 있음(`deletable:false` · `why` 문장 그대로 · 화면 버튼 `disabled`+`title` · 호스트 우회도 같은 문장으로 거부) ·
@@ -738,3 +742,40 @@ node tests/loop-trash.mjs -v                   # 케이스별 상세
 지우면 앱 state 와 갈려 다음 저장이 지운 행을 되살린다.
 배포 전 게이트 규약: **무작위 시드로 5회 연속 통과**, 한 번이라도 실패하면 1부터 다시 센다.
 
+
+## loop-org-title.mjs — 「직급·소속 관리」 실동작 루프(ORG-TITLE-ADMIN §7)
+
+실행 중인 위젯(CDP 9222, **관리자 계정으로 로그인**)과 실 DB 로 `docs/ORG-TITLE-ADMIN.md` 의 편집 경로를 한 라운드 11 케이스로 돈다.
+시험 데이터는 접두 규약(**`zzJ` 직급 · `zzO` 조직 · `zzU` 로그인 ID**)으로만 만들고, 실행(zz 아닌 행)은 참조만 한다.
+C00 진입(「구성원 편집」 → `#uaOrgTitle` **실클릭** → `orgTitleGet` 이 `admin:true` · 직급 ≥ 11 · 조직이 깊이우선(부모가 먼저 · `depth` = 상위+1)) ·
+C01 직급 추가(`sort_order` = MAX+10 · 중복 거부) · C02 개명(`app_user.title` 은 FK CASCADE) · C03 직급 순서(실제 ▲ 클릭 → 두 값 교환 + 활성 전량 10 간격 ·
+하나 빠뜨린 목록은 거부) · C04 직급 숨김(재직자가 있으면 화면 `disabled`+`title` 과 호스트 문장 **둘 다** 거부 → 직원 직급 복구 → 숨김 → 복구 시 `MAX+10`) ·
+C05 조직 추가(상위 **필수** · 없는 상위 거부 · 형제 MAX+10 · 들여쓰기 깊이×16px) · C06 개명(번호·상위·순번 불변) · C07 형제 안 순서(그 집합만 10 간격) ·
+C08 상위 변경(최상위(NULL)·자기 자신·**자손 밑(순환)** 거부 · 실제 이동 뒤 `parent_id` 와 새 형제 맨 뒤 순번 · [상위 변경] 후보에 자기·자손 없음) ·
+C09 조직 숨김(활성 하위가 있으면 거부 · 최상위 거부 · 자식부터 숨김 → 부모 숨김 → 숨긴 상위 밑 복구 거부 → 부모부터 복구) ·
+C10 비관리자(로그인 계정을 잠시 `editor` 로 내려 **`#uaOrgTitle` 부재 + `admin:false` + 목록 미탑재 + 안내 한 줄 + 관문 거부** 확인 후 **반드시 복원**).
+케이스마다 불변식 I1~I4 — 세 표(`title_code`·`org_unit`·`app_user`)의 **실행 수** 불변 · 실행 **내용 해시** 불변 · `schema_version` 불변 ·
+로그인 계정이 활성 admin(C10 안에서만 예외 · 그 케이스가 스스로 기준을 옮기고 되돌린다).
+
+★ **순서 저장은 실 데이터의 `sort_order` 를 정당하게 바꾼다**(10 간격 전량 재작성이 이 기능의 계약이다 · §4.2). 그래서 그 케이스는 끝에서
+기대값을 재기준(rebase)하고, 종료 정리가 **시작 순번을 절대값 UPDATE 로 되돌린 뒤** 시작 해시와 대조한다 — 루프가 서열을 바꿔 놓고 끝나지 않는다.
+
+**선행 조건 · GRANT 미적용은 실패가 아니다**: 앱 계정(`taskmgr_app`)에 `org_unit`·`title_code` 의 **INSERT·UPDATE** 가 적용돼 있어야 한다
+(ORG-TITLE-ADMIN §6 — `db/deploy/create-app-user.sql` · `db/deploy/grants-calendar.sql` · `taskmgr-company-data/05-grants.sql` 재실행).
+개발 DB 적용은 **백업(복원 검증) 뒤·지시가 있을 때만** 한다(HANDOFF §5). 그 전까지 이 루프는 시작에 `SHOW GRANTS` 를 읽어 보고,
+그래도 모르겠으면 **첫 쓰기의 회신**으로 가른 뒤 `[판정 없음] GRANT 미적용 — ORG-TITLE-ADMIN §6` 을 찍고 정리 후 **exit 2** 로 끝난다.
+그것을 실패(exit 1)로 세면 "아직 안 한 일" 이 "고장" 으로 보인다. 확인: `SHOW GRANTS FOR 'taskmgr_app'@'%';` 에 두 표의 `INSERT`·`UPDATE` 가 보여야 한다
+(`DELETE` 는 **없어야** 한다 — 이 판은 숨김까지고 행은 남는다).
+
+```
+# 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 admin 계정으로 로그인 · $env:TC_TEST_DB_ADMIN_PW
+node tests/loop-org-title.mjs                  # 시각 기반 시드
+node tests/loop-org-title.mjs --seed=1001      # 재현(요약 줄이 이 명령을 그대로 찍어 준다)
+node tests/loop-org-title.mjs -v               # 케이스별 상세
+```
+
+**종료코드**: 통과=0 · 실패=1 · 판정 없음=2 — 전제 미충족(위젯 미기동·비로그인·admin 아님·시작 정리 실패·`otSend` 없는 옛 위젯),
+**GRANT 미적용**, 또는 건너뛴 케이스가 있을 때.
+정리는 시작(sweep)·종료(cleanupAll)·프로세스 exit 그물 세 겹이다 — zzU 계정과 그 캘린더 자식 표 → `org_unit`(zzO, **잎부터**) → `title_code`(zzJ) 삭제 ·
+시작 순번 복원 · 로그인 계정 권한 복원. 두 마스터의 zz 행은 **관리자 연결로만** 지운다 — 앱 계정에는 그 표의 DELETE 가 없다(§6).
+배포 전 게이트 규약: **무작위 시드로 5회 연속 통과**, 한 번이라도 실패하면 1부터 다시 센다.

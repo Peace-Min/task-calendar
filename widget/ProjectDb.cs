@@ -2336,5 +2336,735 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex) { _log("영구 삭제 실패: " + Short(ex)); return (false, TrashDeleteFailMsg); }
         }
+        // ================================================================================
+        // 직급·소속 관리(ORG-TITLE-ADMIN §4) — title_code · org_unit 마스터를 앱에서 고친다.
+        //   ★ 전부 OpenAdminAsync 다(§2 권한) — 사람의 직급·소속은 관리자의 것이다. editor 관문(OpenWriteAsync)을
+        //     쓰는 발주처·코드값과 다른 이유는 그 하나다.
+        //   ★ 삭제는 없다(이 판은 숨김까지 · §2). 이 구역에 DELETE 문이 한 줄도 없어야 한다(시험 계약).
+        //   ★ 숨김 가능 여부의 '판정'은 쓰기 함수가 **같은 트랜잭션에서** 다시 센다 — 조회가 실어 보내는
+        //     users·children 은 화면용 힌트다(휴지통의 deletable/why 와 같은 규율).
+        // ================================================================================
+
+        // 화면이 낡았다 — 목록에 없는 것을 고치려 했거나(0행) 순서 저장이 지금 목록과 집합이 다르다.
+        //   ★ internal 인 이유는 StaleRosterMsg 와 같다(2026-09-11 R3-H2): 브리지(MainWindow)가 이 거부를
+        //     **문장 대조**로 알아야 그때만 갱신 목록을 실어 준다. 정본은 이 한 줄이다.
+        // 1142 = 앱 계정에 이 표의 쓰기 권한이 없다 — 코드 결함이 아니라 서버에 GRANT(DEPLOY §0-5)가 빠진 판이다.
+        //   일반 "DB 오류"로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다(휴지통 §11-2 와 같은 사고).
+        internal const string GrantMissingMsg = "DB 권한이 없습니다(1142) — 서버에 직급·소속 GRANT 를 적용해야 합니다(DEPLOY §0-5).";
+        internal const string OrgTitleStaleMsg   = "목록이 바뀌었습니다 — 새로고침한 뒤 다시 시도하세요.";
+        // 이미 그 상태다(숨김→숨김 · 그 상위로의 이동) — 실패가 아니라 목록이 낡은 것이다(AlreadyActiveMsg 규율).
+        internal const string OrgTitleAlreadyMsg = "이미 그 상태입니다 — 목록을 새로고침합니다.";
+
+        private const string TitleDupMsg         = "이미 있는 직급입니다.";
+        private const string UnitDupMsg          = "이미 있는 조직입니다.";
+        private const string UnitParentPickMsg   = "상위 조직을 고르세요.";
+        private const string UnitParentGoneMsg   = "상위 조직이 없거나 숨겨져 있습니다.";
+        private const string UnitParentHiddenMsg = "상위 조직을 먼저 복구하세요";
+        private const string UnitRootHideMsg     = "최상위 조직은 숨길 수 없습니다";
+        private const string UnitRootMoveMsg     = "최상위로는 옮길 수 없습니다";
+        private const string UnitSelfMoveMsg     = "자기 자신을 상위로 삼을 수 없습니다";
+        private const string UnitCycleMsg        = "자기 하위 조직 아래로는 옮길 수 없습니다";
+        private const string OrgTitleLoadFailMsg = "직급·소속을 불러오지 못했습니다.";
+        private static string TitleInUseMsg(long n) => "이 직급인 재직자가 " + n + "명 있습니다 — 먼저 직급을 바꾸세요";
+        private static string UnitInUseMsg(long n, long m) =>
+            "이 조직에 재직자 " + n + "명 · 하위 조직 " + m + "개가 있습니다 — 먼저 옮기거나 숨기세요";
+
+        private static string OrgTitleFailJson(string msg) =>
+            JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = false, ["msg"] = msg });
+
+        private static async Task<long> ScalarLongAsync(MySqlCommand cmd, CancellationToken ct)
+        {
+            var o = await cmd.ExecuteScalarAsync(ct);
+            return o == null || o == DBNull.Value ? 0L : Convert.ToInt64(o);
+        }
+
+        // 관리 화면용 조직 한 행 — 트리 계산은 전부 메모리다(20행 남짓이라 왕복이 더 비싸다 · OrgUnitRow 와 같은 판단).
+        private sealed class OrgAdminUnit
+        {
+            public int OrgId;
+            public string Name = "";
+            public int? ParentId;
+            public int SortOrder;
+            public bool Active;
+            public long Users;
+            public long Children;
+        }
+
+        private static Dictionary<string, object?> OrgAdminUnitPayload(OrgAdminUnit u, int depth) =>
+            new Dictionary<string, object?>
+            {
+                ["orgId"]    = u.OrgId,
+                ["name"]     = u.Name,
+                ["parentId"] = u.ParentId,
+                ["depth"]    = depth,
+                ["sort"]     = u.SortOrder,
+                ["active"]   = u.Active,
+                ["users"]    = u.Users,
+                ["children"] = u.Children,
+            };
+
+        // 깊이 우선 정렬 — 부모가 자기 자식들보다 먼저, 형제는 받은 순서(sort_order, name) 그대로.
+        //   ★ 숨긴 조직도 형제 사이 제자리에 낀다(화면의 「숨긴 값도 표시」가 거른다 · §4.1).
+        //   ★ 루트에서 닿지 않는 행(있어서는 안 되는 상태)은 **버리지 않고** 맨 뒤에 depth 0 으로 붙인다 —
+        //     조용히 사라지면 관리자가 그 조직을 영영 고칠 수 없다. seen 이 순환(A→B→A)도 함께 막는다.
+        private static List<Dictionary<string, object?>> OrgAdminTree(List<OrgAdminUnit> rows)
+        {
+            var byParent = new Dictionary<int, List<OrgAdminUnit>>();
+            var roots = new List<OrgAdminUnit>();
+            foreach (var r in rows)
+            {
+                if (r.ParentId.HasValue)
+                {
+                    if (!byParent.TryGetValue(r.ParentId.Value, out var kids))
+                    { kids = new List<OrgAdminUnit>(); byParent[r.ParentId.Value] = kids; }
+                    kids.Add(r);
+                }
+                else roots.Add(r);
+            }
+
+            var outRows = new List<Dictionary<string, object?>>(rows.Count);
+            var seen = new HashSet<int>();
+            void Walk(OrgAdminUnit u, int depth)
+            {
+                if (!seen.Add(u.OrgId)) return;
+                outRows.Add(OrgAdminUnitPayload(u, depth));
+                if (byParent.TryGetValue(u.OrgId, out var kids))
+                    foreach (var k in kids) Walk(k, depth + 1);
+            }
+            foreach (var r in roots) Walk(r, 0);
+            foreach (var r in rows)
+                if (!seen.Contains(r.OrgId)) { seen.Add(r.OrgId); outRows.Add(OrgAdminUnitPayload(r, 0)); }
+            return outRows;
+        }
+
+        // 직급·소속 조회 — 회신 3분기는 휴지통과 같다(§4.1):
+        //   관리자면 {found:true, admin:true, titles, units} · 관리자가 아니면 {found:true, admin:false} ·
+        //   연결/질의 실패면 {found:false, msg}. '볼 수 없는 사람'과 '서버가 안 된다'를 화면이 갈라야 한다.
+        //   ★ users 는 **재직자**(is_active=1) 수, children 은 **활성** 하위 조직 수다. 둘 다 화면 힌트고
+        //     최종 판정은 쓰기 함수가 같은 트랜잭션에서 다시 센다.
+        //   ★ 직급의 재직자 수는 LEFT JOIN 으로 센다 — FK 컬럼과 **같은 콜레이션**으로 맞춰야 힌트와 판정이
+        //     갈리지 않는다(휴지통 TrashCodeListAsync 가 2026-09-11 R4 로 고친 그 자리와 같은 이유).
+        public async Task<string?> LoadOrgTitleJsonAsync(string loginId)
+        {
+            string me = (loginId ?? "").Trim();
+            if (me.Length == 0) me = SessionLoginId();
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex)
+                {
+                    // 미로그인·미등록·비활성은 관문만 아는 사유라 msg 로 실어 준다. '관리자가 아니다'(RoleOnly)는
+                    //   화면이 이미 자기 문장을 갖고 있다(휴지통과 같은 분기 · USER-LOGIN §3.3 함정).
+                    _log("직급·소속 조회 거부(" + me + "): " + nex.Message);
+                    var deny = new Dictionary<string, object?> { ["found"] = true, ["admin"] = false };
+                    if (!nex.RoleOnly) deny["msg"] = nex.Message ?? "";
+                    return JsonSerializer.Serialize(deny);
+                }
+                catch (Exception cex) { _log("DB 연결 실패(직급·소속 조회): " + Short(cex)); return OrgTitleFailJson(OfflineMsg); }
+                await using var connOwn = conn;
+
+                var titles = new List<Dictionary<string, object?>>();
+                await using (var cmd = new MySqlCommand(
+                    "SELECT t.name AS nm, t.sort_order AS so, t.is_active AS act, COUNT(u.user_id) AS cnt " +
+                    "FROM title_code t LEFT JOIN app_user u ON u.title = t.name AND u.is_active=1 " +
+                    "GROUP BY t.name, t.sort_order, t.is_active ORDER BY t.sort_order, t.name", conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        string n = Str(rd, "nm");
+                        if (n.Length == 0) continue;
+                        titles.Add(new Dictionary<string, object?>
+                        {
+                            ["name"]   = n,
+                            ["sort"]   = IntOrNull(rd, "so") ?? 0,
+                            ["active"] = (IntOrNull(rd, "act") ?? 0) != 0,
+                            ["users"]  = LongOrZero(rd, "cnt"),
+                        });
+                    }
+                }
+
+                var rows = new List<OrgAdminUnit>();
+                await using (var cmd = new MySqlCommand(
+                    "SELECT o.org_id AS oid, o.name AS nm, o.parent_id AS pid, o.sort_order AS so, o.is_active AS act, " +
+                    "(SELECT COUNT(*) FROM app_user u WHERE u.org_id = o.org_id AND u.is_active=1) AS users, " +
+                    "(SELECT COUNT(*) FROM org_unit c WHERE c.parent_id = o.org_id AND c.is_active=1) AS children " +
+                    "FROM org_unit o ORDER BY o.sort_order, o.name", conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        int oid = IntOrNull(rd, "oid") ?? 0;
+                        if (oid <= 0) continue;
+                        rows.Add(new OrgAdminUnit
+                        {
+                            OrgId = oid,
+                            Name = Str(rd, "nm"),
+                            ParentId = IntOrNull(rd, "pid"),
+                            SortOrder = IntOrNull(rd, "so") ?? 0,
+                            Active = (IntOrNull(rd, "act") ?? 0) != 0,
+                            Users = LongOrZero(rd, "users"),
+                            Children = LongOrZero(rd, "children"),
+                        });
+                    }
+                }
+                var units = OrgAdminTree(rows);
+
+                _log("직급·소속 조회: 직급 " + titles.Count + " · 조직 " + units.Count + "건");
+                return JsonSerializer.Serialize(new Dictionary<string, object?>
+                {
+                    ["found"]  = true,
+                    ["admin"]  = true,
+                    ["titles"] = titles,
+                    ["units"]  = units,
+                });
+            }
+            // ★ 실패 문구는 고정이다 — 예외 원문(SQL·컬럼·스택)은 _log 에만 남긴다(휴지통과 같은 규약).
+            catch (Exception ex) { _log("직급·소속 조회 실패: " + Short(ex)); return OrgTitleFailJson(OrgTitleLoadFailMsg); }
+        }
+
+        // ---------- 직급(title_code) ----------
+
+        // 직급 추가 — sort_order = MAX+10(맨 뒤). 중복은 PK(name)가 1062 로 잡는다(숨긴 동명도 같은 답이다 · §4.2).
+        public async Task<(bool ok, string msg)> TitleAddAsync(string? name)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, "직급명을 입력하세요.");
+            if (n.Length > 30) return (false, "직급명은 30자까지 입니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(직급 추가): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(직급 추가): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                int nextSort;
+                await using (var q = new MySqlCommand("SELECT COALESCE(MAX(sort_order),0)+10 FROM title_code", conn))
+                    nextSort = (int)await ScalarLongAsync(q, cts.Token);
+                await using (var cmd = new MySqlCommand("INSERT INTO title_code (name, sort_order) VALUES (@n, @s)", conn))
+                {
+                    cmd.Parameters.AddWithValue("@n", n);
+                    cmd.Parameters.AddWithValue("@s", nextSort);
+                    await cmd.ExecuteNonQueryAsync(cts.Token);
+                }
+                _log("직급 추가: " + n + " (sort " + nextSort + ")");
+                return (true, "직급을 추가했습니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, TitleDupMsg); }
+            catch (MySqlException mex) { _log("직급 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("직급 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 직급 개명 — fk_user_title 이 ON UPDATE CASCADE 라 app_user.title 이 **한 문장으로** 따라온다(§3.1).
+        //   0행이면 그 직급이 이미 없다 = 화면이 낡았다(OrgTitleStaleMsg — 브리지가 이 문장으로 목록을 다시 싣는다).
+        public async Task<(bool ok, string msg)> TitleRenameAsync(string? oldName, string? newName)
+        {
+            string o = (oldName ?? "").Trim(), nw = (newName ?? "").Trim();
+            if (o.Length == 0) return (false, "변경할 직급을 지정하세요.");
+            if (nw.Length == 0) return (false, "새 직급명을 입력하세요.");
+            if (nw.Length > 30) return (false, "직급명은 30자까지 입니다.");
+            if (string.Equals(o, nw, StringComparison.Ordinal)) return (true, "변경 사항이 없습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(직급 개명): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(직급 개명): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                int cnt;
+                await using (var cmd = new MySqlCommand("UPDATE title_code SET name=@new WHERE name=@old", conn))
+                {
+                    cmd.Parameters.AddWithValue("@new", nw);
+                    cmd.Parameters.AddWithValue("@old", o);
+                    cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
+                }
+                if (cnt == 0) return (false, OrgTitleStaleMsg);
+                _log("직급 개명: " + o + " → " + nw + " (app_user.title 은 FK CASCADE 로 자동 전파)");
+                return (true, "직급을 변경했습니다. 이 직급인 사람의 표기도 함께 바뀝니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, TitleDupMsg); }
+            catch (MySqlException mex) { _log("직급 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("직급 개명 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 직급 숨김/복구 — 판정과 갱신이 **한 트랜잭션**이다(§4.1 ★). 대상 행을 FOR UPDATE 로 잡은 채
+        //   재직자를 세므로, 세는 사이에 그 직급으로 옮겨 오는 사람이 판정을 빠져나갈 수 없다.
+        //   ★ 이미 그 상태면 거부한다(OrgTitleAlreadyMsg) — 아래 복구가 sort_order 를 맨 뒤로 새로 주기 때문에
+        //     낡은 화면이 [복구] 를 한 번 더 걸면 멀쩡히 서 있던 자리가 소리 없이 맨 뒤로 밀린다(R4 와 같은 판단).
+        //   ★ 복구는 sort_order = MAX+10 이다 — 순서 재배치가 **활성만** 10·20·30… 으로 다시 매기므로 옛 순번을
+        //     그대로 들고 오면 활성끼리 겹쳐 순서가 콜레이션에 좌우된다(SetCodeActiveAsync 가 루프 I5 로 실측한 결함).
+        public async Task<(bool ok, string msg)> TitleSetActiveAsync(string? name, bool active)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, "대상 직급이 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(직급 숨김/복구): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(직급 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    int? cur = null;
+                    await using (var q = new MySqlCommand("SELECT is_active FROM title_code WHERE name=@n FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@n", n);
+                        var o = await q.ExecuteScalarAsync(cts.Token);
+                        if (o != null && o != DBNull.Value) cur = Convert.ToInt32(o);
+                    }
+                    if (cur == null) { await SafeRollbackAsync(tx); return (false, OrgTitleStaleMsg); }
+                    if ((cur.Value != 0) == active) { await SafeRollbackAsync(tx); return (false, OrgTitleAlreadyMsg); }
+
+                    if (!active)
+                    {
+                        long users;
+                        await using (var q = new MySqlCommand(
+                            "SELECT COUNT(*) FROM app_user WHERE title=@n AND is_active=1 FOR UPDATE", conn, tx))
+                        {
+                            q.Parameters.AddWithValue("@n", n);
+                            users = await ScalarLongAsync(q, cts.Token);
+                        }
+                        if (users > 0)
+                        {
+                            await SafeRollbackAsync(tx);
+                            _log("직급 숨김 거부: " + n + " — 재직자 " + users + "명");
+                            return (false, TitleInUseMsg(users));
+                        }
+                    }
+
+                    int nextSort = 0;
+                    if (active)
+                    {
+                        await using var q = new MySqlCommand("SELECT COALESCE(MAX(sort_order),0)+10 FROM title_code", conn, tx);
+                        nextSort = (int)await ScalarLongAsync(q, cts.Token);
+                    }
+
+                    await using (var cmd = new MySqlCommand(active
+                        ? "UPDATE title_code SET is_active=1, sort_order=@s WHERE name=@n"
+                        : "UPDATE title_code SET is_active=0 WHERE name=@n", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@n", n);
+                        if (active) cmd.Parameters.AddWithValue("@s", nextSort);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("직급 " + (active ? "복구" : "숨김") + ": " + n);
+                    return (true, active ? "직급을 다시 표시합니다." : "직급을 숨겼습니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) { _log("직급 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("직급 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 직급 순서 — 받은 이름 순서대로 10·20·30… 전량 재작성(ReorderCodesAsync 와 같은 방식).
+        //   ★ 다만 **활성 전부가 와야 한다**(§4.2). 빠진 이름이 있으면 화면이 낡은 것이고, 그대로 절반만 다시
+        //     매기면 목록 밖 직급이 새 번호들 사이에 끼어든다 — 아무것도 쓰지 않고 거부한다(StaleRosterMsg 규율).
+        public async Task<(bool ok, string msg)> TitleReorderAsync(IReadOnlyList<string>? orderedNames)
+        {
+            if (orderedNames == null || orderedNames.Count == 0) return (false, "정렬할 직급 목록이 비어 있습니다.");
+            var kept = new List<string>(orderedNames.Count);
+            foreach (var raw in orderedNames)
+            {
+                string nm = (raw ?? "").Trim();
+                if (nm.Length > 0) kept.Add(nm);
+            }
+            if (kept.Count == 0) return (false, "정렬할 직급 목록이 비어 있습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(직급 순서): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(직급 순서): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    // ① 지금의 활성 직급 집합을 잠근 채 읽어 **받은 집합과 같은지** 본다(판정과 갱신 사이를 닫는다).
+                    var live = new HashSet<string>(StringComparer.Ordinal);
+                    await using (var q = new MySqlCommand("SELECT name FROM title_code WHERE is_active=1 FOR UPDATE", conn, tx))
+                    await using (var rd = await q.ExecuteReaderAsync(cts.Token))
+                        while (await rd.ReadAsync(cts.Token)) live.Add(Str(rd, "name"));
+
+                    var given = new HashSet<string>(kept, StringComparer.Ordinal);
+                    if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))
+                    {
+                        await SafeRollbackAsync(tx);
+                        _log("직급 순서 저장 거부: 받은 " + kept.Count + "개 / 활성 " + live.Count + "개 — 화면이 낡았다");
+                        return (false, OrgTitleStaleMsg);
+                    }
+
+                    // ② 받은 순서대로 10·20·30… 전량 재작성.
+                    int order = 0;
+                    foreach (var nm in kept)
+                    {
+                        order += 10;
+                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE name=@n", conn, tx);
+                        cmd.Parameters.AddWithValue("@s", order);
+                        cmd.Parameters.AddWithValue("@n", nm);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("직급 순서 저장: " + kept.Count + "건 전량 재작성");
+                    return (true, "직급 순서를 변경했습니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) { _log("직급 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("직급 순서 저장 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // ---------- 소속(org_unit) ----------
+
+        // 조직 추가 — 상위는 **필수**고 활성이어야 한다(최상위는 시드의 하나뿐 · §3.2).
+        //   ★ 부모 행을 FOR UPDATE 로 잡은 채 형제 최대 sort_order 를 읽고 INSERT 한다 — 그 사이에 부모가
+        //     숨겨지면 '숨긴 조직 밑의 활성 조직'이 생긴다(복구 규칙이 금지하는 상태다).
+        public async Task<(bool ok, string msg)> UnitAddAsync(string? name, int parentId)
+        {
+            string n = (name ?? "").Trim();
+            if (n.Length == 0) return (false, "조직명을 입력하세요.");
+            if (n.Length > 50) return (false, "조직명은 50자까지 입니다.");
+            if (parentId <= 0) return (false, UnitParentPickMsg);
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(조직 추가): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(조직 추가): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    int? pAct = null;
+                    await using (var q = new MySqlCommand("SELECT is_active FROM org_unit WHERE org_id=@p FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@p", parentId);
+                        var o = await q.ExecuteScalarAsync(cts.Token);
+                        if (o != null && o != DBNull.Value) pAct = Convert.ToInt32(o);
+                    }
+                    if (pAct == null || pAct.Value == 0) { await SafeRollbackAsync(tx); return (false, UnitParentGoneMsg); }
+
+                    int nextSort;
+                    await using (var q = new MySqlCommand("SELECT COALESCE(MAX(sort_order),0)+10 FROM org_unit WHERE parent_id=@p", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@p", parentId);
+                        nextSort = (int)await ScalarLongAsync(q, cts.Token);
+                    }
+                    await using (var cmd = new MySqlCommand(
+                        "INSERT INTO org_unit (name, parent_id, sort_order) VALUES (@n, @p, @s)", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@n", n);
+                        cmd.Parameters.AddWithValue("@p", parentId);
+                        cmd.Parameters.AddWithValue("@s", nextSort);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("조직 추가: " + n + " (상위 org_id=" + parentId + " · sort " + nextSort + ")");
+                    return (true, "조직을 추가했습니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, UnitDupMsg); }
+            catch (MySqlException mex) { _log("조직 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("조직 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 조직 개명 — 소속자는 번호(org_id)로 매달려 있어 아무것도 따라 고치지 않는다(§3.2).
+        //   0행이면 그 조직이 이미 없다 = 화면이 낡았다.
+        public async Task<(bool ok, string msg)> UnitRenameAsync(int orgId, string? newName)
+        {
+            if (orgId <= 0) return (false, "대상 조직이 지정되지 않았습니다.");
+            string nw = (newName ?? "").Trim();
+            if (nw.Length == 0) return (false, "새 조직명을 입력하세요.");
+            if (nw.Length > 50) return (false, "조직명은 50자까지 입니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(조직 개명): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(조직 개명): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                int cnt;
+                await using (var cmd = new MySqlCommand("UPDATE org_unit SET name=@n WHERE org_id=@o", conn))
+                {
+                    cmd.Parameters.AddWithValue("@n", nw);
+                    cmd.Parameters.AddWithValue("@o", orgId);
+                    cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
+                }
+                if (cnt == 0) return (false, OrgTitleStaleMsg);
+                _log("조직 개명: org_id=" + orgId + " → " + nw);
+                return (true, "조직명을 변경했습니다. 소속자는 그대로입니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, UnitDupMsg); }
+            catch (MySqlException mex) { _log("조직 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("조직 개명 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 조직 숨김/복구 — 판정과 갱신이 **한 트랜잭션**이다. 숨김은 재직자 0명 **그리고** 활성 하위 0개일 때만,
+        //   복구는 상위가 활성일 때만(숨긴 조직 밑에 활성 조직이 서면 트리에서 사라진 가지가 생긴다 · §2 숨김 조건).
+        //   ★ 최상위(parent_id NULL)는 숨길 수 없다 — 루트는 하나뿐이고(02-seed-org.sql 가드) 숨기면 추가할 상위가 없어진다.
+        //   ★ 이미 그 상태면 거부(OrgTitleAlreadyMsg) — 복구가 sort_order 를 맨 뒤로 새로 주기 때문이다(직급과 같은 이유).
+        public async Task<(bool ok, string msg)> UnitSetActiveAsync(int orgId, bool active)
+        {
+            if (orgId <= 0) return (false, "대상 조직이 지정되지 않았습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(조직 숨김/복구): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(조직 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    bool found = false, curActive = false;
+                    int? parentId = null;
+                    string nm = "";
+                    await using (var q = new MySqlCommand(
+                        "SELECT name, parent_id, is_active FROM org_unit WHERE org_id=@o FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@o", orgId);
+                        await using var rd = await q.ExecuteReaderAsync(cts.Token);
+                        if (await rd.ReadAsync(cts.Token))
+                        {
+                            found = true;
+                            nm = Str(rd, "name");
+                            parentId = IntOrNull(rd, "parent_id");
+                            curActive = (IntOrNull(rd, "is_active") ?? 0) != 0;
+                        }
+                    }
+                    if (!found) { await SafeRollbackAsync(tx); return (false, OrgTitleStaleMsg); }
+                    if (curActive == active) { await SafeRollbackAsync(tx); return (false, OrgTitleAlreadyMsg); }
+
+                    int nextSort = 0;
+                    if (!active)
+                    {
+                        if (!parentId.HasValue) { await SafeRollbackAsync(tx); return (false, UnitRootHideMsg); }
+
+                        long users, children;
+                        await using (var q = new MySqlCommand(
+                            "SELECT COUNT(*) FROM app_user WHERE org_id=@o AND is_active=1 FOR UPDATE", conn, tx))
+                        {
+                            q.Parameters.AddWithValue("@o", orgId);
+                            users = await ScalarLongAsync(q, cts.Token);
+                        }
+                        await using (var q = new MySqlCommand(
+                            "SELECT COUNT(*) FROM org_unit WHERE parent_id=@o AND is_active=1 FOR UPDATE", conn, tx))
+                        {
+                            q.Parameters.AddWithValue("@o", orgId);
+                            children = await ScalarLongAsync(q, cts.Token);
+                        }
+                        if (users > 0 || children > 0)
+                        {
+                            await SafeRollbackAsync(tx);
+                            _log("조직 숨김 거부: org_id=" + orgId + " — 재직자 " + users + "명 · 하위 " + children + "개");
+                            return (false, UnitInUseMsg(users, children));
+                        }
+                    }
+                    else
+                    {
+                        // 복구 — 상위가 숨겨져 있으면 받지 않는다(복구해도 트리에 서지 못한다).
+                        if (parentId.HasValue)
+                        {
+                            int? pAct = null;
+                            await using (var q = new MySqlCommand("SELECT is_active FROM org_unit WHERE org_id=@p FOR UPDATE", conn, tx))
+                            {
+                                q.Parameters.AddWithValue("@p", parentId.Value);
+                                var o = await q.ExecuteScalarAsync(cts.Token);
+                                if (o != null && o != DBNull.Value) pAct = Convert.ToInt32(o);
+                            }
+                            if (pAct == null || pAct.Value == 0) { await SafeRollbackAsync(tx); return (false, UnitParentHiddenMsg); }
+                        }
+                        // 형제 맨 뒤로 — 옛 순번을 들고 오면 활성 형제끼리 sort_order 가 겹친다(직급과 같은 이유).
+                        await using (var q = new MySqlCommand(parentId.HasValue
+                            ? "SELECT COALESCE(MAX(sort_order),0)+10 FROM org_unit WHERE parent_id=@p"
+                            : "SELECT COALESCE(MAX(sort_order),0)+10 FROM org_unit WHERE parent_id IS NULL", conn, tx))
+                        {
+                            if (parentId.HasValue) q.Parameters.AddWithValue("@p", parentId.Value);
+                            nextSort = (int)await ScalarLongAsync(q, cts.Token);
+                        }
+                    }
+
+                    await using (var cmd = new MySqlCommand(active
+                        ? "UPDATE org_unit SET is_active=1, sort_order=@s WHERE org_id=@o"
+                        : "UPDATE org_unit SET is_active=0 WHERE org_id=@o", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@o", orgId);
+                        if (active) cmd.Parameters.AddWithValue("@s", nextSort);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("조직 " + (active ? "복구" : "숨김") + ": org_id=" + orgId + " (" + nm + ")");
+                    return (true, active ? "조직을 다시 표시합니다." : "조직을 숨겼습니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) { _log("조직 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("조직 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 상위 변경 — parent_id 한 컬럼이다. 소속자는 번호로 매달려 있어 통째로 따라온다(§3.2 · 직원을 한 명씩 열 일이 없다).
+        //   ★ 순환 금지: 새 상위의 조상 사슬을 걸어 올라가 대상 자신이 나오면 거부한다(트리가 끊어져 통째로 사라진다).
+        //     사슬 순회는 같은 트랜잭션에서, 이미 본 노드를 만나면 멈춘다(DB 에 순환이 이미 있어도 무한 루프가 안 된다).
+        //   ★ 최상위(NULL)로는 못 옮긴다 — 루트는 하나뿐이다. 이미 그 상위면 거부(OrgTitleAlreadyMsg) — 아래가
+        //     sort_order 를 새 형제 맨 뒤로 주기 때문에 다시 걸면 제자리가 소리 없이 밀린다.
+        public async Task<(bool ok, string msg)> UnitMoveAsync(int orgId, int parentId)
+        {
+            if (orgId <= 0) return (false, "대상 조직이 지정되지 않았습니다.");
+            if (parentId <= 0) return (false, UnitRootMoveMsg);
+            if (parentId == orgId) return (false, UnitSelfMoveMsg);
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(조직 상위 변경): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(조직 상위 변경): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    bool found = false;
+                    int? curParent = null;
+                    await using (var q = new MySqlCommand("SELECT parent_id FROM org_unit WHERE org_id=@o FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@o", orgId);
+                        await using var rd = await q.ExecuteReaderAsync(cts.Token);
+                        if (await rd.ReadAsync(cts.Token)) { found = true; curParent = IntOrNull(rd, "parent_id"); }
+                    }
+                    if (!found) { await SafeRollbackAsync(tx); return (false, OrgTitleStaleMsg); }
+
+                    int? pAct = null;
+                    await using (var q = new MySqlCommand("SELECT is_active FROM org_unit WHERE org_id=@p FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@p", parentId);
+                        var o = await q.ExecuteScalarAsync(cts.Token);
+                        if (o != null && o != DBNull.Value) pAct = Convert.ToInt32(o);
+                    }
+                    if (pAct == null || pAct.Value == 0) { await SafeRollbackAsync(tx); return (false, UnitParentGoneMsg); }
+                    if (curParent.HasValue && curParent.Value == parentId) { await SafeRollbackAsync(tx); return (false, OrgTitleAlreadyMsg); }
+
+                    // 순환 검사 — 새 상위에서 위로 걸어 올라간다. 대상 자신이 나오면 자기 하위로 들어가는 이동이다.
+                    var walked = new HashSet<int>();
+                    int? cursor = parentId;
+                    while (cursor.HasValue)
+                    {
+                        if (cursor.Value == orgId)
+                        {
+                            await SafeRollbackAsync(tx);
+                            _log("조직 상위 변경 거부(순환): org_id=" + orgId + " → " + parentId);
+                            return (false, UnitCycleMsg);
+                        }
+                        if (!walked.Add(cursor.Value)) break;   // DB 에 이미 순환이 있어도 여기서 멈춘다
+                        int? up = null;
+                        await using (var q = new MySqlCommand("SELECT parent_id FROM org_unit WHERE org_id=@c", conn, tx))
+                        {
+                            q.Parameters.AddWithValue("@c", cursor.Value);
+                            await using var rd = await q.ExecuteReaderAsync(cts.Token);
+                            if (await rd.ReadAsync(cts.Token)) up = IntOrNull(rd, "parent_id");
+                        }
+                        cursor = up;
+                    }
+
+                    int nextSort;
+                    await using (var q = new MySqlCommand("SELECT COALESCE(MAX(sort_order),0)+10 FROM org_unit WHERE parent_id=@p", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@p", parentId);
+                        nextSort = (int)await ScalarLongAsync(q, cts.Token);
+                    }
+                    await using (var cmd = new MySqlCommand(
+                        "UPDATE org_unit SET parent_id=@p, sort_order=@s WHERE org_id=@o", conn, tx))
+                    {
+                        cmd.Parameters.AddWithValue("@p", parentId);
+                        cmd.Parameters.AddWithValue("@s", nextSort);
+                        cmd.Parameters.AddWithValue("@o", orgId);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("조직 상위 변경: org_id=" + orgId + " → 상위 " + parentId + " (sort " + nextSort + ")");
+                    return (true, "상위 조직을 변경했습니다. 소속자도 함께 옮겨집니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) { _log("조직 상위 변경 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("조직 상위 변경 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 형제 안 순서 — 그 상위의 **활성 하위 전부**가 와야 한다(직급 순서와 같은 판정).
+        //   빠진 형제가 있으면 화면이 낡은 것이고, 절반만 다시 매기면 목록 밖 형제가 새 번호들 사이에 끼어든다.
+        public async Task<(bool ok, string msg)> UnitReorderAsync(int parentId, IReadOnlyList<int>? orgIds)
+        {
+            if (parentId <= 0) return (false, UnitParentPickMsg);
+            if (orgIds == null || orgIds.Count == 0) return (false, "정렬할 조직 목록이 비어 있습니다.");
+            var kept = new List<int>(orgIds.Count);
+            foreach (int id in orgIds) { if (id > 0) kept.Add(id); }
+            if (kept.Count == 0) return (false, "정렬할 조직 목록이 비어 있습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(조직 순서): " + nex.Message); return (false, nex.Message); }
+                catch (Exception cex) { _log("DB 연결 실패(조직 순서): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    var live = new HashSet<int>();
+                    await using (var q = new MySqlCommand(
+                        "SELECT org_id FROM org_unit WHERE parent_id=@p AND is_active=1 FOR UPDATE", conn, tx))
+                    {
+                        q.Parameters.AddWithValue("@p", parentId);
+                        await using var rd = await q.ExecuteReaderAsync(cts.Token);
+                        while (await rd.ReadAsync(cts.Token)) live.Add(IntOrNull(rd, "org_id") ?? 0);
+                    }
+
+                    var given = new HashSet<int>(kept);
+                    if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))
+                    {
+                        await SafeRollbackAsync(tx);
+                        _log("조직 순서 저장 거부: 받은 " + kept.Count + "개 / 상위 " + parentId + " 의 활성 하위 " + live.Count + "개");
+                        return (false, OrgTitleStaleMsg);
+                    }
+
+                    int order = 0;
+                    foreach (int id in kept)
+                    {
+                        order += 10;
+                        await using var cmd = new MySqlCommand("UPDATE org_unit SET sort_order=@s WHERE org_id=@o", conn, tx);
+                        cmd.Parameters.AddWithValue("@s", order);
+                        cmd.Parameters.AddWithValue("@o", id);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("조직 순서 저장: 상위 " + parentId + " 아래 " + kept.Count + "건 전량 재작성");
+                    return (true, "조직 순서를 변경했습니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) { _log("조직 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { _log("조직 순서 저장 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
     }
 }

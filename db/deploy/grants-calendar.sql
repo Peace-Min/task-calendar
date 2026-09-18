@@ -235,8 +235,9 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 --                                                          휴지통에서 기록 0건 계정을 지운다
 --                                                          (docs/USER-ADMIN.md · docs/TRASH-DELETE.md ·
 --                                                           관문은 ProjectDb.OpenAdminAsync)
---     org_unit   SELECT                          ← 조직 편집은 이번 범위 밖
---     title_code SELECT                          ← 직급 코드 편집도 이번 범위 밖
+--     org_unit   SELECT + **INSERT · UPDATE**    ← 2026-09-18 직급·소속 관리(docs/ORG-TITLE-ADMIN.md §6):
+--     title_code SELECT + **INSERT · UPDATE**       관리자가 앱에서 직급·조직을 추가·개명·숨김/복구·재배치한다.
+--                                                   DELETE 는 **주지 않는다** — 숨김(is_active=0)까지고 행은 남는다.
 --     app_user 의 DELETE 는 휴지통 관문(ProjectDb.DeleteTrashAsync) 한 곳뿐이다 — 퇴사는 is_active=0 이고 행은 남으며, 기록 0건인 계정만 관리자가 지운다(TRASH-DELETE §3.2)
 --     (cal_* 11개 표가 RESTRICT 로 붙들고 있어 기록이 한 건이라도 있으면 DELETE 는 ERROR 1451 이다 —
 --      그래서 호스트가 미리 9개 표를 세어 거부하고, 최후 보증은 이 FK 다).
@@ -247,7 +248,12 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 --   ※ 그래서 db/deploy 만으로 세운 서버에서는 **직원 관리 화면이 ERROR 1142 로 실패한다.**
 --     그 경로로 서버를 세웠다면 05-grants.sql 을 함께 돌릴 것(없는 자족성을 있다고 적지 않는다).
 GRANT SELECT ON taskmgr.app_user TO 'taskmgr_app'@'%';   -- login_id → user_id 해석(cal_* 의 소유자 키)·view_scope/edit_role 판정·rev 시딩 대상
-GRANT SELECT ON taskmgr.org_unit TO 'taskmgr_app'@'%';   -- 조직 트리 조회(widget/ProjectDb.cs:364)
+-- ★ 2026-09-18 — 이 두 표는 **쓰기 동사까지** 여기서 함께 준다(app_user 와 다르다). 이유는 둘이다:
+--   이 파일이 이미 SELECT 를 주고 있던 표이고(바로 위 자족성 문단), DEPLOY.md §0-5 가 세 파일을
+--   **같은 목록**으로 다시 돌리게 해 두었다 — 목록이 갈리면 한쪽만 돌린 서버에서 「직급·소속 관리」의
+--   첫 쓰기가 ERROR 1142 로 죽는다(휴지통이 2026-09-10 에 겪은 그 사고와 같은 모양이다).
+GRANT SELECT, INSERT, UPDATE ON taskmgr.org_unit   TO 'taskmgr_app'@'%';   -- 조직 트리 조회(widget/ProjectDb.cs:364) + 「직급·소속 관리」 쓰기(DELETE 없음)
+GRANT SELECT, INSERT, UPDATE ON taskmgr.title_code TO 'taskmgr_app'@'%';   -- 직급 목록 조회 + 같은 화면의 쓰기(DELETE 없음)
 GRANT SELECT ON taskmgr.project  TO 'taskmgr_app'@'%';   -- §6 공식 과제 이름 해석 + db_gone 파생 LEFT JOIN
 
 FLUSH PRIVILEGES;

@@ -525,16 +525,27 @@ const checks = {
   // ⑤ 권한 파일 — app_user 는 SELECT+INSERT+UPDATE+DELETE 넷(2026-09-10 개정 · TRASH-DELETE §3.3).
   //    DELETE 가 늘어난 이유는 휴지통 하나다. 권한은 '가능하게'만 하고, 무엇을 지울 수 있는지는
   //    호스트 관문(DeleteTrashAsync)이 정한다 — 그래서 여기서는 **넷 정확히**를 본다(늘어도 줄어도 실패).
+  //    ★ org_unit·title_code 는 SELECT+INSERT+UPDATE 셋이다(2026-09-18 · ORG-TITLE-ADMIN §6) — DELETE 는 없다.
   grantFiles(userGrantsSql, calGrantsSql) {
     const m = /GRANT ([A-Z, ]+) ON [^\n]*app_user/.exec(userGrantsSql);
     assert.ok(m, '05-grants.sql 에 app_user GRANT 가 없다 — 관리 화면이 ERROR 1142 로 죽는다');
     assert.strictEqual(m[1].trim(), 'SELECT, INSERT, UPDATE, DELETE',
       `05-grants.sql 이 app_user 에 [${m[1].trim()}] 을 준다 — 넷이어야 한다(INSERT·UPDATE 는 직원 관리, DELETE 는 휴지통 §3.3)`);
+    //  ★ 2026-09-18(ORG-TITLE-ADMIN §6) — 이 둘은 더 이상 SELECT 전용이 아니다. 「직급·소속 관리」가
+    //    관리자에게 추가·개명·숨김/복구·재배치를 열어 주므로 INSERT·UPDATE 가 있어야 한다. 빠지면 그 화면의
+    //    첫 쓰기가 ERROR 1142 다.
+    //  ★ **DELETE 는 없어야 한다**: 이 판은 숨김(is_active=0)까지고 행은 남는다(§2 삭제 없음). 권한이 먼저
+    //    열려 있으면 다음 사람이 "지울 수 있으니 지워도 되는 것" 으로 읽는다 — 그래서 넣는 것만큼 **빠진 것도** 본다.
     for (const t of ['org_unit', 'title_code']) {
       const m = new RegExp("GRANT ([A-Z, ]+) ON [^\\n]*" + t).exec(userGrantsSql);
       assert.ok(m, `05-grants.sql 에 ${t} GRANT 가 없다`);
-      assert.strictEqual(m[1].trim(), 'SELECT',
-        `05-grants.sql 이 ${t} 에 ${m[1].trim()} 을 준다 — 조직·직급 코드 편집은 이번 범위 밖이다(§6)`);
+      const verbs = m[1].trim().split(',').map((s) => s.trim()).filter(Boolean);
+      for (const need of ['SELECT', 'INSERT', 'UPDATE']) {
+        assert.ok(verbs.includes(need),
+          `05-grants.sql 이 ${t} 에 [${verbs.join(', ')}] 을 준다 — ${need} 이 빠졌다(「직급·소속 관리」의 쓰기가 ERROR 1142 로 죽는다 · §6)`);
+      }
+      assert.ok(!verbs.includes('DELETE'),
+        `05-grants.sql 이 ${t} 에 DELETE 를 준다 — 이 판은 숨김까지고 행은 남는다(§2 삭제 없음)`);
     }
     // grants-calendar.sql 은 GRANT 를 늘리지 않는다(캘린더 표의 단일 소스다). 대신 **서술이 사실이어야** 한다.
     assert.ok(/app_user\s+SELECT \+ \*\*INSERT · UPDATE · DELETE\*\*/.test(calGrantsSql),
@@ -1072,8 +1083,12 @@ const checks = {
     const sc = extractFunction(web, 'uaSyncControls');
     assert.ok(/getElementById\('uaList'\)/.test(sc) && /querySelectorAll\('\[data-uop\]'\)/.test(sc),
       'uaSyncControls 가 #uaList 의 행 컨트롤을 훑지 않는다 — 목록 쪽 잠금이 그 자리에서 걸리지 않는다');
-    assert.ok(/'uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash'/.test(sc),
-      '막대의 네 버튼(uaNew·uaOrderEdit·uaOrderSave·uaTrash)을 그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다');
+    //  ★ 2026-09-18 — 다섯이 됐다(「직급·소속 관리」 · ORG-TITLE-ADMIN §5.0). 이 화면도 열면 마스터를
+    //    고치고 닫을 때 명부를 다시 읽으므로, 왕복 중에는 휴지통과 같은 이유로 꺼져 있어야 한다.
+    assert.ok(/'uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle'/.test(sc),
+      '막대의 다섯 버튼(uaNew·uaOrderEdit·uaOrderSave·uaTrash·uaOrgTitle)을 그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다');
+    assert.ok(/mk\('직급·소속 관리', 'uaOrgTitle', 'btn sm', \(\) => openOrgTitle\(\)\)\.disabled = __uaSaving;/.test(bar),
+      '「직급·소속 관리」가 왕복 중에도 켜져 있다 — 결과를 기다리는 중에 마스터를 고치고 닫아 명부를 다시 읽는다');
     assert.ok(!/uaOrderCancel|uaInactive/.test(sc),
       '[취소]·「퇴사자 보기」까지 잠근다 — 렌더는 그 둘을 잠그지 않으므로, 다시 그리는 순간 잠금이 뒤집힌다');
     //  ★ 끝(첫 행·마지막 행)에 닿은 화살표는 잠금과 **사유가 다르다** — 잠금이 풀려도 켜지면 안 된다.
@@ -1542,8 +1557,8 @@ test('변이⑭-g: 잠금을 렌더로 반영하게 되돌리면 계약⑭-b 가
 //  ★ 그 자리에서 끄는 집합과 렌더가 잠그는 집합이 **갈리면** 재렌더가 잠금을 뒤집는다 — [취소]까지
 //    끄면 다시 그리는 순간 켜지고, 그때 관리자는 왕복 중에 되돌리기를 눌러 화면과 요청을 어긋나게 한다.
 test('변이⑭-g2: 그 자리에서 끄는 집합을 넓히면 계약⑭-b 가 실패한다(렌더가 잠금을 뒤집는다)', () => {
-  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){",
-    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrderCancel']){");
+  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle']){",
+    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle', 'uaOrderCancel']){");
   assert.throws(() => checks.lockIsDerivedAtRender(bad), /렌더는 그 둘을 잠그지 않으므로/);
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
@@ -1551,9 +1566,26 @@ test('변이⑭-g2: 그 자리에서 끄는 집합을 넓히면 계약⑭-b 가 
 //  ★ 반대쪽 — 그 자리에서 끄는 집합에서 「퇴사자 휴지통」을 빼면(2026-09-18 에 늘어난 버튼) 렌더만 잠그고
 //    그 자리에서는 켜진 채로 남는다. 두 집합이 갈리는 것은 어느 쪽으로 갈려도 결함이다.
 test('변이⑭-g2b: 그 자리에서 끄는 집합에서 「퇴사자 휴지통」을 빼면 계약⑭-b 가 실패한다', () => {
-  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){",
-    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave']){");
+  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle']){",
+    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaOrgTitle']){");
   assert.throws(() => checks.lockIsDerivedAtRender(bad), /그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 같은 어긋남의 세 번째 얼굴(2026-09-18) — 그 자리에서 끄는 집합에서 「직급·소속 관리」만 빠지면,
+//    렌더는 끄는데 uaSyncControls 는 안 꺼서 왕복 중에 그 문이 켜진 채로 남는다.
+test('변이⑭-g2d: 그 자리에서 끄는 집합에서 「직급·소속 관리」를 빼면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle']){",
+    "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash']){");
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다/);
+  assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
+});
+
+//  ★ 반대쪽 — 렌더에서 「직급·소속 관리」의 잠금을 빼면, 왕복 중에 도착한 명부 푸시가 그 문을 도로 켠다.
+test('변이⑭-g2e: 「직급·소속 관리」를 렌더에서 잠그지 않으면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, "  mk('직급·소속 관리', 'uaOrgTitle', 'btn sm', () => openOrgTitle()).disabled = __uaSaving;",
+    "  mk('직급·소속 관리', 'uaOrgTitle', 'btn sm', () => openOrgTitle());");
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /「직급·소속 관리」가 왕복 중에도 켜져 있다/);
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
@@ -2058,9 +2090,26 @@ test('변이⑤-d: grants-calendar.sql 서술을 옛 "DELETE 없음"으로 되�
   assert.doesNotThrow(() => checks.grantFiles(userGrants, calGrants));   // 통제군
 });
 
-test('변이⑤-c: org_unit 에도 쓰기를 열면 계약⑤ 가 실패한다(이번 범위 밖)', () => {
-  const bad = mutate(userGrants, "GRANT SELECT ON `', DATABASE(), '`.org_unit", "GRANT SELECT, UPDATE ON `', DATABASE(), '`.org_unit");
-  assert.throws(() => checks.grantFiles(bad, calGrants), /org_unit 에 SELECT, UPDATE 을 준다/);
+//  ★ 2026-09-18 — 이 변이의 뜻이 뒤집혔다. 그전에는 "org_unit 에 쓰기를 열면 실패"(이번 범위 밖)였고,
+//    지금은 「직급·소속 관리」가 그 쓰기를 쓴다. 대신 **더 열면** 실패한다: DELETE 는 주지 않는다(§2).
+test('변이⑤-c: org_unit 에 DELETE 까지 열면 계약⑤ 가 실패한다(이 판은 숨김까지다)', () => {
+  const bad = mutate(userGrants, "GRANT SELECT, INSERT, UPDATE ON `', DATABASE(), '`.org_unit",
+                                 "GRANT SELECT, INSERT, UPDATE, DELETE ON `', DATABASE(), '`.org_unit");
+  assert.throws(() => checks.grantFiles(bad, calGrants), /org_unit 에 DELETE 를 준다/);
+  assert.doesNotThrow(() => checks.grantFiles(userGrants, calGrants));   // 통제군
+});
+
+test('변이⑤-e: title_code 에서 UPDATE 를 빼면 계약⑤ 가 실패한다(개명·순서가 ERROR 1142 로 죽는다)', () => {
+  const bad = mutate(userGrants, "GRANT SELECT, INSERT, UPDATE ON `', DATABASE(), '`.title_code",
+                                 "GRANT SELECT, INSERT ON `', DATABASE(), '`.title_code");
+  assert.throws(() => checks.grantFiles(bad, calGrants), /title_code 에 \[SELECT, INSERT\] 을 준다 — UPDATE 이 빠졌다/);
+  assert.doesNotThrow(() => checks.grantFiles(userGrants, calGrants));   // 통제군
+});
+
+test('변이⑤-f: org_unit 에서 INSERT 를 빼면 계약⑤ 가 실패한다(조직 추가가 ERROR 1142 로 죽는다)', () => {
+  const bad = mutate(userGrants, "GRANT SELECT, INSERT, UPDATE ON `', DATABASE(), '`.org_unit",
+                                 "GRANT SELECT, UPDATE ON `', DATABASE(), '`.org_unit");
+  assert.throws(() => checks.grantFiles(bad, calGrants), /org_unit 에 \[SELECT, UPDATE\] 을 준다 — INSERT 이 빠졌다/);
   assert.doesNotThrow(() => checks.grantFiles(userGrants, calGrants));   // 통제군
 });
 
@@ -3095,17 +3144,18 @@ if (!jsdom) {
     const idle = probeSaving(false, false);
     assert.deepStrictEqual(idle.rowOps.map((b) => b.disabled), [false, false, false],
       `전제 붕괴: 평소에도 행 [편집]이 잠겨 있다 — ${JSON.stringify(idle.rowOps)}`);
-    //  ★ 2026-09-18 — 이 막대의 버튼은 **둘**이다: 「순서 편집」 · 「퇴사자 휴지통」(그 뒤는 체크박스 라벨).
-    assert.deepStrictEqual(idle.bar.map((b) => b.id), ['uaOrderEdit', 'uaTrash'],
+    //  ★ 2026-09-18 — 이 막대의 버튼은 **셋**이다: 「순서 편집」 · 「퇴사자 휴지통」 · 「직급·소속 관리」
+    //    (그 뒤는 체크박스 라벨). 셋째는 같은 날 늦게 붙었다(ORG-TITLE-ADMIN §5.0).
+    assert.deepStrictEqual(idle.bar.map((b) => b.id), ['uaOrderEdit', 'uaTrash', 'uaOrgTitle'],
       `평소 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(idle.bar)}`);
-    assert.deepStrictEqual(idle.bar.map((b) => b.disabled), [false, false], `평소 막대 버튼이 잠겨 있다: ${JSON.stringify(idle.bar)}`);
+    assert.deepStrictEqual(idle.bar.map((b) => b.disabled), [false, false, false], `평소 막대 버튼이 잠겨 있다: ${JSON.stringify(idle.bar)}`);
     assert.deepStrictEqual(idle.foot.map((b) => b.disabled), [false], `평소 [＋ 직원 등록]이 잠겨 있다: ${JSON.stringify(idle.foot)}`);
     //  ② 왕복 중 — 다시 그려도 전부 잠긴 채다.
     const busy = probeSaving(false, true);
     assert.deepStrictEqual(busy.rowOps.map((b) => b.disabled), [true, true, true],
       `왕복 중에 다시 그렸더니 행 [편집]이 켜져 있다: ${JSON.stringify(busy.rowOps)} — 결과를 기다리는 중에 다른 사람의 폼이 열린다`);
-    assert.deepStrictEqual(busy.bar.map((b) => b.disabled), [true, true],
-      `왕복 중인데 「순서 편집」·「퇴사자 휴지통」이 켜져 있다: ${JSON.stringify(busy.bar)}`);
+    assert.deepStrictEqual(busy.bar.map((b) => b.disabled), [true, true, true],
+      `왕복 중인데 「순서 편집」·「퇴사자 휴지통」·「직급·소속 관리」가 켜져 있다: ${JSON.stringify(busy.bar)}`);
     assert.deepStrictEqual(busy.foot.map((b) => b.disabled), [true],
       `왕복 중인데 [＋ 직원 등록]이 켜져 있다: ${JSON.stringify(busy.foot)}`);
     //  ③ 순서 편집 중 — ▲▼ 와 [순서 저장]도 같은 규칙. [취소]는 화면 안의 일이라 열려 있어야 한다.

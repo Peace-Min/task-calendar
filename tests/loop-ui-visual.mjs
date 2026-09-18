@@ -82,6 +82,8 @@ const SCREENS = [
   { id: 'trashModal',              enter: '__vt.closeAll(); openTrash("project")' },
   // 같은 화면의 다른 문(2026-09-18) — 퇴사자 쪽은 탭 줄 없이 목록만이라 머리말·부제의 균형이 따로 봐야 할 자리다.
   { id: 'trashModal.user',         enter: '__vt.closeAll(); openTrash("user")' },
+  // 직급·소속 관리(ORG-TITLE-ADMIN §5) — 행마다 버튼 다섯(▲▼·이름변경·상위 변경·숨김)이라 좁은 폭에서 가장 먼저 접힌다. 조회만 한다(orgTitleGet).
+  { id: 'orgTitleModal',           enter: '__vt.closeAll(); openOrgTitle()' },
   // 이름 대조 확인창 — 긴 과제명이 들어간 안내문(pre-wrap)과 입력칸·[영구 삭제] 버튼이 좁은 폭에서 넘치지 않아야 한다.
   //   ★ confirmTyped 는 **닫힐 때 resolve 되는 Promise** 를 돌려준다 — 그대로 두면 evaluate 가 영영 기다린다.
   //     그래서 값을 버리고 true 를 낸다. 취소(=Promise 해소)는 다음 화면의 __vt.closeAll() 이 낸다.
