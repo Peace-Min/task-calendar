@@ -1,7 +1,7 @@
 // 하네스 자체 검증 — extractFunction / FakeDoc 동작 보장.
 // 이후 브리프(북마클릿 등)가 이 하네스를 믿고 쓰기 위한 안전망.
 import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction, FakeDoc, filesWithNoTests, extractCsMember } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, FakeDoc, filesWithNoTests, extractCsMember, listCsMembers } from './harness.mjs';
 
 // fixture 로더(tests/ 기준 상대 경로).
 function loadFixture(name) {
@@ -192,6 +192,72 @@ test("extractCsMember: 호출 자리에 걸린 sig 는 '판정 불가'로 던진
   assert.ok(ok.includes('return "끝";'), '선언까지 막아 버렸다 — 가드가 과하다: ' + JSON.stringify(ok));
 });
 
+// 9) listCsMembers: 이름을 **모르는 채** 클래스 멤버를 전부 훑는다.
+//    ★ 왜 필요한가 — '관문 밖에 새 쓰기 API 가 생기지 않았는가' 같은 감시는 이름 목록으로 고를 수 없다
+//      (새 이름이 그대로 빠져나간다). admin-auth 가 자기 사본으로 그 일을 하고 있었고, 그 사본은 축자
+//      문자열을 몰랐다 — 2026-09-18 에 여기로 옮기면서 extractCsMember 와 같은 기계를 쓰게 했다.
+const CS_LIST_PROBE = [
+  'namespace T {',
+  '    public class R {',
+  '        private const string Dir = @"C:\\log\\";',
+  '',
+  '        public async Task<bool> SaveAsync(string s) {',
+  '            await Db.WriteAsync(s);',
+  '            return true;',
+  '        }',
+  '',
+  '        private void Helper() { Log("}"); }',
+  '',
+  '        internal static bool InDomain(decimal h) => h > 0m && h <= 24m;',
+  '    }',
+  '}',
+].join('\n');
+
+test('listCsMembers: 8칸 들여쓰기 멤버를 하나도 빠짐없이, 서로 섞이지 않게 훑는다', () => {
+  const all = listCsMembers(CS_LIST_PROBE);
+  const names = all.map((x) => x.name);
+  assert.deepStrictEqual(names, ['(멤버)', 'SaveAsync', 'Helper', 'InDomain'],
+    '멤버 열거가 계약과 다르다 — 하나라도 빠지면 이름을 모르는 감시가 그만큼 눈을 감는다: ' + JSON.stringify(names));
+
+  //  본문이 없는 멤버(const 필드)는 ';' 까지만 — 다음 멤버를 끌어오지 않는다.
+  //  ★ @"C:\\log\\" 의 끝 백슬래시를 이스케이프로 읽으면 문자열이 끝난 줄 모르고 뒤를 삼킨다(사본들이 틀렸던 자리).
+  const dir = all[0];
+  assert.ok(dir.body.trim().endsWith(';'), '본문 없는 멤버가 문장에서 끝나지 않았다: ' + JSON.stringify(dir.body));
+  assert.ok(!dir.body.includes('SaveAsync'), '축자 문자열을 읽지 못해 다음 멤버를 삼켰다: ' + JSON.stringify(dir.body));
+
+  //  중괄호 본문 멤버는 자기 것만 — 옆 멤버가 판정에 섞이면 안 된다.
+  const save = all.find((x) => x.name === 'SaveAsync');
+  assert.ok(save.body.includes('Db.WriteAsync') && save.body.trim().endsWith('}'), '본문이 잘렸다: ' + JSON.stringify(save.body));
+  assert.ok(!save.body.includes('Helper'), '다음 멤버까지 삼켰다');
+
+  //  리터럴 안의 '}' 는 닫는 중괄호가 아니다.
+  const helper = all.find((x) => x.name === 'Helper');
+  assert.ok(helper.body.trim().endsWith('}') && !helper.body.includes('InDomain'),
+    '리터럴 안의 } 를 본문의 끝으로 읽었다(또는 다음 멤버를 삼켰다): ' + JSON.stringify(helper.body));
+
+  //  식(=>) 본문 멤버도 열거된다 — 중괄호가 없다고 빠지면 그 자리는 영영 안 보인다.
+  const dom = all.find((x) => x.name === 'InDomain');
+  assert.ok(dom.body.includes('h <= 24m') && dom.body.trim().endsWith(';'), '식 본문 멤버가 잘렸다: ' + JSON.stringify(dom.body));
+
+  //  주석은 지워진 뒤다 — 주석에 적힌 호출을 '코드가 그걸 한다' 로 읽으면 안 된다.
+  const commented = listCsMembers(CS_LIST_PROBE.replace('await Db.WriteAsync(s);', '// await Db.WriteAsync(s);'));
+  assert.ok(!commented.find((x) => x.name === 'SaveAsync').body.includes('WriteAsync'),
+    '주석 안의 호출이 본문에 남았다 — 주석이 계약을 통과시킨다');
+});
+
+test('listCsMembers(실물): ProjectDb 의 멤버를 훑고, 슬라이스가 서로를 겹쳐 삼키지 않는다', () => {
+  const pdb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+  const all = listCsMembers(pdb);
+  assert.ok(all.length >= 40,
+    'ProjectDb 에서 멤버를 ' + all.length + '개만 찾았다 — 열거가 빗나가면 이름을 모르는 감시(admin-auth 의 ' +
+    '관문 밖 쓰기 API 검사)는 아무것도 안 보고 통과한다');
+  assert.ok(all.some((x) => x.name === 'OpenWriteAsync') && all.some((x) => x.name === 'OpenAdminAsync'),
+    '알려진 관문 두 개조차 열거에 없다 — 멤버 머리 판별이 빗나갔다: ' + all.map((x) => x.name).join(','));
+  const total = all.reduce((n, x) => n + x.body.length, 0);
+  assert.ok(total < pdb.length,
+    '멤버 본문 총합(' + total + ')이 원본(' + pdb.length + ')보다 크다 — 슬라이스들이 서로의 본문을 겹쳐 삼키고 있다');
+});
+
 // ══ 변이 시험(mutation test) — 하네스 자신을 망가뜨려도 위 4건이 초록인가 ══
 // 위 4건은 "지금 통과한다"만 말한다. 여기서 겨냥하는 건 앱 소스가 아니라 **하네스 자신**
 // (tests/harness.mjs)이다 — 이 파일의 존재 이유가 '하네스를 믿고 쓰기 위한 안전망'이니,
@@ -372,6 +438,36 @@ test('변이⑧: 선언 머리 검사를 끄면 호출 자리에 걸린 sig 가 
   });
 });
 
+
+// 변이⑨ 의 앵커 — harness.mjs 의 listCsMembers 안, **여는 중괄호를 찾는 쪽** 한 곳(뒤의 `open = k` 로 유일해진다).
+const NAIVE_FIND = [
+  '      if (c === \'"\' || c === "\'") { k = _csCloseQuote(code, k); continue; }',
+  "      if (c === '{') { open = k; break; }",
+].join(String.fromCharCode(13, 10));
+const NAIVE_REPLACE = [
+  '      if (c === \'"\' || c === "\'") { let j = k + 1; while (j < code.length) { if (code[j] === _CS_BS) { j += 2; continue; } if (code[j] === c) break; j++; } k = j; continue; }',
+  "      if (c === '{') { open = k; break; }",
+].join(String.fromCharCode(13, 10));
+
+// ── 변이⑨ listCsMembers 의 문자열 판별을 사본 시절의 순진한 것으로 되돌린다 ──
+// (깨져야 할 계약: 'listCsMembers: 8칸 들여쓰기 멤버를 하나도 빠짐없이…')
+//   사본들(admin-auth 등)이 쓰던 skipLit 이 바로 이 모양이었다 — 축자 문자열을 모른다.
+test('변이⑨: listCsMembers 가 축자 문자열을 모르면 앞 멤버가 뒤 멤버를 삼킨다', async () => {
+  const ok = listCsMembers(CS_LIST_PROBE);
+  assert.ok(!ok[0].body.includes('SaveAsync'), '사전조건: 정상 하네스는 다음 멤버를 삼키지 않는다');
+  await withMutatedHarness(
+    NAIVE_FIND, NAIVE_REPLACE,
+    (m) => {
+      let bad;
+      try { bad = m.listCsMembers(CS_LIST_PROBE); } catch (_) { return; }   // 던져도 좋다(조용하지만 않으면 된다)
+      //  무너지는 모양은 입력에 따라 다르다(다음 멤버를 삼키거나, 닫는 따옴표를 영영 못 찾아 빈 본문이 되거나).
+      //  그래서 '무엇이 되는가' 가 아니라 '달라지는가' 를 본다 — 같으면 이 계약은 슬라이서를 보고 있지 않은 것이다.
+      assert.notStrictEqual(JSON.stringify(bad), JSON.stringify(ok),
+        '축자 문자열 갈래를 걷어냈는데도 결과가 같다 — 이 계약은 슬라이서를 실제로 보고 있지 않다');
+      assert.ok(bad[0].body.includes('SaveAsync') || bad[0].body === '',
+        "앞 멤버가 멀쩡하다 — 겨냥한 곳(@\"...\\\\\" 다음의 경계)이 아니라 엉뚱한 데가 바뀌었다: " + JSON.stringify(bad[0].body));
+    });
+});
 // ── 등록 인구조사(census) — 게이트가 '조용히 줄어드는 것' 을 보는가 ─────────────────
 //
 //  하네스 맨 위 주석이 이미 같은 사고를 적어 뒀다: jsdom 이 없을 때 218건이 **등록조차 되지

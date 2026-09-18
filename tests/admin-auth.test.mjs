@@ -22,7 +22,7 @@
 //   추가로 관문 '안에서' 우회하는 형태(if (MasterUnlocked) return conn;)와, 튜플이 아닌 반환형으로
 //   관문 밖에 새 쓰기 API 를 다는 형태(Task<bool> + OpenReadAsync + UPDATE)도 여기서 막는다 —
 //   앞의 것은 new MySqlConnection 개수를 늘리지 않고, 뒤의 것은 (bool ok, …) 시그니처를 피해 간다.
-import { test, assert, loadAppSource } from './harness.mjs';
+import { test, assert, loadAppSource, stripCsComments, listCsMembers } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src          = loadAppSource();
@@ -127,68 +127,14 @@ test('로그: 시작 시 비우지 않고 회전한다(크기 1MB·2세대·백�
 
 const BS = String.fromCharCode(92);
 
-// C# 주석 제거(문자열 리터럴은 보존). 폐지된 개념은 주석에 이름이 남아 있다 —
-// "코드가 실제로 그렇게 하는가"를 물어야 하므로 주석을 세면 안 된다.
-function stripCs(s) {
-  let out = '', i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < s.length) { if (s[j] === BS) { j += 2; continue; } if (s[j] === c) { j++; break; } j++; }
-      out += s.slice(i, j); i = j; continue;
-    }
-    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
-    if (c === '/' && s[i + 1] === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
-    out += c; i++;
-  }
-  return out;
-}
-
-// ProjectDb 의 클래스 멤버들을 {name, body}로 자른다(주석 제거본 기준, 중괄호 짝 맞춤).
-// ★ 이름으로 고르지 않는다 — '새 이름으로 들어온 쓰기 API'를 잡는 것이 목적이라
-//   선언을 전부 훑어야 한다(이름 목록을 쓰면 새 이름이 그대로 빠져나간다).
-function csMembers(source) {
-  const code = stripCs(source);
-  const re = /\n {8}(?:public|private|internal|protected)\b[^\n]*/g;
-  const starts = [];
-  let m;
-  while ((m = re.exec(code)) !== null) starts.push(m.index + 1);
-  const out = [];
-  const skipLit = (k) => {
-    const q = code[k];
-    let j = k + 1;
-    while (j < code.length) { if (code[j] === BS) { j += 2; continue; } if (code[j] === q) break; j++; }
-    return j;
-  };
-  for (const s of starts) {
-    const head = code.slice(s, code.indexOf('\n', s) + 1);
-    const nm = /(\w+)\s*\(/.exec(head);
-    const name = nm ? nm[1] : '(멤버)';
-    let open = -1, semi = -1;
-    for (let k = s; k < code.length; k++) {
-      const c = code[k];
-      if (c === '"' || c === "'") { k = skipLit(k); continue; }
-      if (c === '{') { open = k; break; }
-      if (c === ';') { semi = k; break; }
-    }
-    if (open < 0) { out.push({ name, body: code.slice(s, semi < 0 ? s : semi + 1) }); continue; }
-    let depth = 0, end = -1;
-    for (let k = open; k < code.length; k++) {
-      const c = code[k];
-      if (c === '"' || c === "'") { k = skipLit(k); continue; }
-      if (c === '{') depth++;
-      else if (c === '}') { depth--; if (depth === 0) { end = k; break; } }
-    }
-    assert.ok(end > open, `${name} 의 중괄호 짝이 맞지 않는다`);
-    out.push({ name, body: code.slice(s, end + 1) });
-  }
-  return out;
-}
+// 주석 제거(stripCsComments) · 멤버 전수 열거(listCsMembers) 는 **하네스의 정본**을 쓴다.
+//   ★ 2026-09-18 까지 이 파일은 자기 사본을 안고 있었다. 그 사본은 축자 문자열(@"C:\dir\")을 몰라
+//     마지막 백슬래시를 이스케이프로 읽었다 — 문자열이 끝난 줄 모르고 뒤를 삼키면, 그 슬라이스로 보는
+//     '관문 밖 쓰기 API' 감시가 조용히 옆 멤버를 보게 된다. 슬라이서는 한 곳에만 둔다(harness.mjs).
 
 // C# switch 의 한 case 블록 — `case "<name>":` 부터 그 뒤 첫 `break;` 까지(주석 제거본 기준).
 function csCase(source, name) {
-  const code = stripCs(source);
+  const code = stripCsComments(source);
   const s = code.indexOf('case "' + name + '":');
   assert.ok(s >= 0, `호스트 case "${name}" 을 찾지 못함`);
   const e = code.indexOf('break;', s);
@@ -242,7 +188,7 @@ const TRASH_MEMBERS = ['LoadTrashJsonAsync', 'RestoreTrashAsync', 'DeleteTrashAs
 const gate = {
   // 연결을 여는 헬퍼는 딱 셋이다(읽기·쓰기·관리자). 무검사 opener 를 하나 더 다는 순간 여기서 운다.
   openersAreExactlyThree(pdb) {
-    const decls = [...stripCs(pdb).matchAll(/Task<MySqlConnection>\s+(\w+)\s*\(/g)].map((m) => m[1]).sort();
+    const decls = [...stripCsComments(pdb).matchAll(/Task<MySqlConnection>\s+(\w+)\s*\(/g)].map((m) => m[1]).sort();
     assert.deepStrictEqual(decls, ['OpenAdminAsync', 'OpenReadAsync', 'OpenWriteAsync'],
       `연결 헬퍼가 [${decls.join(', ')}] 이다 — 관문 밖에 연결을 여는 통로가 생겼다`);
     const opens = (pdb.match(/new MySqlConnection\(/g) || []).length;
@@ -251,7 +197,7 @@ const gate = {
 
   // 모든 연결 개시 지점이 세 관문 중 하나를 지난다. 11곳을 전부 갈아끼운 변이가 여기서 죽는다.
   everyOpenGoesThroughAGate(pdb) {
-    const sites = [...stripCs(pdb).matchAll(/await\s+Open(\w+)Async\s*\(/g)].map((m) => m[1]);
+    const sites = [...stripCsComments(pdb).matchAll(/await\s+Open(\w+)Async\s*\(/g)].map((m) => m[1]);
     const stray = sites.filter((k) => k !== 'Read' && k !== 'Write' && k !== 'Admin');
     assert.deepStrictEqual(stray, [],
       `Open${stray[0]}Async 로 연결을 연다 — 관문은 남아 있지만 아무도 지나지 않는다(fail-open)`);
@@ -267,7 +213,7 @@ const gate = {
   // ★ **어느 관문인가는 '대상 표'가 정한다**(2026-09-10): app_user 를 쓰면 관리자 관문, 그 외는 쓰기 관문.
   //   이름 목록으로 가르지 않는 이유는 늘 같다 — 새 이름으로 들어온 메서드가 그대로 빠져나간다.
   writeSqlGoesThroughGate(pdb) {
-    const writers = csMembers(pdb).filter((x) => WRITE_SQL.test(x.body));
+    const writers = listCsMembers(pdb).filter((x) => WRITE_SQL.test(x.body));
     assert.ok(writers.length >= 12,
       `쓰기 SQL 을 가진 메서드가 ${writers.length}개뿐이다(12개 이상이어야 한다 — 탐지기가 헛돌고 있다)`);
     const userWriters = [];
@@ -300,7 +246,7 @@ const gate = {
   //   위 모양 검사가 복구·삭제는 잡지만 조회는 잡지 못한다(읽기라서). 되돌릴 수 없는 조작의 목록을
   //   editor 가 훑을 수 있으면 그건 이미 화면 계약이 깨진 것이라, 셋을 한 묶음으로 본다.
   trashGoesThroughAdminGate(pdb) {
-    const members = csMembers(pdb);
+    const members = listCsMembers(pdb);
     for (const nm of TRASH_MEMBERS) {
       const m = members.find((x) => x.name === nm);
       assert.ok(m, `휴지통 함수를 찾지 못했다: ${nm}(측정 불가 ≠ 통과)`);
@@ -309,7 +255,7 @@ const gate = {
       assert.ok(!/OpenReadAsync\(/.test(m.body), `${nm} 가 읽기 관문으로 연결을 연다 — 권한 검사를 통째로 건너뛴다`);
     }
     // 브리지 세 명령이 실제로 그 셋에 닿는다(관문이 있어도 아무도 안 지나면 소용없다 — G1 과 같은 이유).
-    const bridge = stripCs(mainWindow);
+    const bridge = stripCsComments(mainWindow);
     for (const [cmd, fn] of [['trashGet', 'LoadTrashJsonAsync'], ['trashRestore', 'RestoreTrashAsync'], ['trashDelete', 'DeleteTrashAsync']]) {
       assert.ok(new RegExp('case "' + cmd + '":').test(bridge), `브리지 case "${cmd}" 가 없다`);
       assert.ok(new RegExp('_projectDb\\.' + fn + '\\(').test(bridge), `브리지가 ${fn} 을 부르지 않는다`);
@@ -319,7 +265,7 @@ const gate = {
   // 관리자 관문 안에도 우회 출구가 없어야 한다(쓰기 관문과 같은 규칙 · 같은 이유).
   //   ★ 거부 문구 셋의 순서가 아니라 '유일한 출구보다 앞인가'를 본다 — 앞이어야 '지난다'고 말할 수 있다.
   adminGateHasNoEarlyExit(pdb) {
-    const oa = csMembers(pdb).find((x) => x.name === 'OpenAdminAsync');
+    const oa = listCsMembers(pdb).find((x) => x.name === 'OpenAdminAsync');
     assert.ok(oa, '관리자 관문(OpenAdminAsync)을 찾지 못했다');
     const rets = [...oa.body.matchAll(/\breturn\b[^;]*;/g)].map((m) => m[0].trim());
     assert.deepStrictEqual(rets, ['return conn;'],
@@ -342,7 +288,7 @@ const gate = {
   // 관문 '안에서'의 우회 — if (MasterUnlocked) return conn; 처럼 거부 3분기 앞으로 빠져나가는 출구.
   // 연결을 새로 만들지 않으므로 new MySqlConnection 개수는 2 그대로다. 개수만 세면 못 잡는다.
   gateHasNoEarlyExit(pdb) {
-    const ow = csMembers(pdb).find((x) => x.name === 'OpenWriteAsync');
+    const ow = listCsMembers(pdb).find((x) => x.name === 'OpenWriteAsync');
     assert.ok(ow, '쓰기 관문(OpenWriteAsync)을 찾지 못했다');
     const rets = [...ow.body.matchAll(/\breturn\b[^;]*;/g)].map((m) => m[0].trim());
     assert.deepStrictEqual(rets, ['return conn;'],
@@ -398,7 +344,7 @@ const revive = {
   // 호스트가 브리지에서 비밀번호를 읽는 자리는 둘뿐이다 — 회사 일간보고 자격 저장과 로그인.
   // 새 명령이 비밀번호를 받기 시작하면(이름이 무엇이든) 여기서 운다.
   hostPwReadsAreBounded(main) {
-    const reads = (stripCs(main).match(/GetStr\(doc,\s*"(?:pw|pwd|pass|password|passphrase|secret)"\)/g) || []);
+    const reads = (stripCsComments(main).match(/GetStr\(doc,\s*"(?:pw|pwd|pass|password|passphrase|secret)"\)/g) || []);
     assert.strictEqual(reads.length, 2,
       `호스트가 브리지에서 비밀번호를 ${reads.length}곳에서 읽는다(netcusSaveCreds·userLogin 둘뿐이어야 한다)`);
     assert.ok(/GetStr\(doc,\s*"pw"\)/.test(csCase(main, 'netcusSaveCreds')), 'netcusSaveCreds 가 비밀번호를 읽지 않는다');
@@ -420,7 +366,7 @@ const revive = {
   },
 };
 
-const hostCode = stripCs(projectDb) + '\n' + stripCs(mainWindow);
+const hostCode = stripCsComments(projectDb) + '\n' + stripCsComments(mainWindow);
 
 test('부활 금지(형태): 호스트에 평문 비밀문자열 비교가 없다', () => revive.noPlaintextSecretCompare(hostCode));
 test('부활 금지(형태): 문자열 검증으로 쓰기를 여는 함수가 없다', () => revive.noSecretGateFunction(hostCode));
@@ -572,7 +518,7 @@ const UNLOCK_CASE = [
 
 test('변이G2: ProjectDb 에 새 이름의 공용 통행구가 생기면 형태 검사가 실패한다', () => {
   const bad = mutate(projectDb, '        private static string BuildConnString() =>', CHECK_FN);
-  const host = stripCs(bad) + '\n' + stripCs(mainWindow);
+  const host = stripCsComments(bad) + '\n' + stripCsComments(mainWindow);
   assert.throws(() => revive.noPlaintextSecretCompare(host), /평문 비밀문자열 비교가 있다/);
   assert.throws(() => revive.noSecretGateFunction(host), /문자열 검증으로 여는 함수가 생겼다/);
   assert.throws(() => revive.noUnlockStateFlag(host), /잠금해제 개념의 식별자가 되살아났다/);
@@ -586,7 +532,7 @@ test('변이G2-b: 브리지에 새 잠금해제 명령이 생기면 상태 플�
   let bad = mutate(mainWindow, '                    case "userLogout":', UNLOCK_CASE);
   bad = mutate(bad, '        private bool _desktopApplied = false;', '        private bool _editingUnlocked = false;\n        private bool _desktopApplied = false;');
   assert.throws(() => revive.hostPwReadsAreBounded(bad), /비밀번호를 3곳에서 읽는다/);
-  assert.throws(() => revive.noUnlockStateFlag(stripCs(projectDb) + '\n' + stripCs(bad)), /잠금해제 개념의 식별자가 되살아났다/);
+  assert.throws(() => revive.noUnlockStateFlag(stripCsComments(projectDb) + '\n' + stripCsComments(bad)), /잠금해제 개념의 식별자가 되살아났다/);
   // 옛 이름 기준의 브리지 케이스 금지는 새 명령을 못 본다.
   for (const c of ['adminLogin', 'adminLogout', 'adminStateGet', 'saveAdminCred']) {
     assert.ok(!new RegExp(`case "${c}":`).test(bad), `변이 전제: 옛 브리지 이름은 쓰지 않는다(${c})`);

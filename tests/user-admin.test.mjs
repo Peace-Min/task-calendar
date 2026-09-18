@@ -638,8 +638,19 @@ const checks = {
     assert.ok(!/id="usUserAdmin"/.test(web),
       '「구성원 편집」 버튼이 마크업에 있다 — 비관리자 DOM 에 남는다(숨김 ≠ 부재). JS 가 만들어야 한다');
     assert.ok(/<div class="us-mem-row" id="usMemberBtns">/.test(web),
-      '#usMemberBtns(버튼이 들어갈 자리)가 없다 — 만들어 넣을 곳이 사라졌다');
+      '#usMemberBtns(「구성원 보기」 줄)가 없다 — 전원이 쓰는 일상 동작의 자리가 사라졌다');
+    //  ★ 관리 진입점은 **다른 줄**이다(2026-09-18 A15). 그 줄은 마크업에서 **비어 있어야** 한다 —
+    //    캡션 「관리자」 한 글자라도 적어 두면 비관리자 DOM 에 없는 권한을 가리키는 라벨이 남는다.
+    assert.ok(/<div class="us-mem-row" id="usAdminBtns"><\/div>/.test(web),
+      '#usAdminBtns(관리 진입점 줄)가 없거나 비어 있지 않다 — 그 줄은 마크업에서 빈 자리여야 한다(숨김 ≠ 부재)');
+    const adminRow = (/id="usAdminBtns">([\s\S]*?)<\/div>/.exec(web) || ['', ''])[1];
+    for (const dead of ['휴지통', '구성원 편집', '관리자']) {
+      assert.ok(!adminRow.includes(dead),
+        `#usAdminBtns 안에 «${dead}» 이 마크업으로 적혀 있다 — 관리자에게만 있는 것은 JS 가 만들어야 한다`);
+    }
     const b = extractFunction(web, 'usAdminBtnSync');
+    assert.ok(/getElementById\('usAdminBtns'\)/.test(b),
+      'usAdminBtnSync 가 관리 진입점을 #usAdminBtns 가 아닌 곳에 만든다 — 「구성원 보기」 줄에 섞이면 층이 사라지고 「휴지통」이 구성원 안내문에 딸린 것처럼 읽힌다(A15)');
     assert.ok(/=== 'admin'/.test(b),
       "usAdminBtnSync 가 edit_role 을 'admin' 과 대조하지 않는다 — 판정 기준이 사라졌다");
     assert.ok(/removeChild/.test(b),
@@ -979,12 +990,19 @@ const checks = {
       '하나 늘릴 때 그 한 줄을 빠뜨리는 것만으로 화면이 조용히 낡고, 그 낡은 명부가 「순서 저장」에서 되튄다(C06·C08)');
     //  ② 그 문의 규칙 — 순서 편집 중에 온 **내 순서 저장이 아닌** 명부는 미뤄 둔다(푸시와 같은 취급).
     const seat = extractFunction(web, 'uaSeatReply').replace(/\/\/[^\n]*/g, '');
-    assert.ok(/if\(!json\) return false;/.test(seat),
+    assert.ok(/if\(!json\) return;/.test(seat),
       "uaSeatReply 가 '명부가 안 실려 왔다'를 먼저 가려내지 않는다 — 빈 문자열을 앉히려 들면 화면이 비거나 헛돈다");
+    //  ★ 이 문은 **아무것도 돌려주지 않는다**(2026-09-18). 읽는 곳이 하나도 없는 값을 남겨 두면 다음 사람이
+    //    '누가 이미 그렸나'를 되짚는 셈을 다시 짓는다 — 그 셈이 틀렸던 자리가 바로 R3-W1 이다.
+    for (const fn of ['uaSeatReply', 'uaSeatRoster']) {
+      const body = extractFunction(web, fn).replace(/\/\/[^\n]*/g, '');
+      assert.ok(!/return (true|false)/.test(body),
+        `${fn} 이 아직 불리언을 돌려준다 — 읽는 곳이 없는 값은 "읽어도 되는 값"처럼 보여 되그리기 셈을 되살린다`);
+    }
     assert.ok(/if\(__uaOrder && cmd !== 'saveUserOrder'\)\{/.test(seat),
       "uaSeatReply 가 '순서 편집 중 · 내 순서 저장이 아닌 회신'을 가려내지 않는다 — 남의 갱신이 편집 중인 순서를 덮는다(C20)");
-    assert.ok(/__uaPendingData = d;\s*\n\s*uaAdminBar\(\);\s*\n\s*return false;/.test(seat),
-      '미뤄 두면서 막대를 다시 그리지 않는다(또는 미뤄 두고도 "앉혔다"고 답한다) — 관리자는 화면이 낡은 줄 모른 채 순서를 정한다');
+    assert.ok(/__uaPendingData = d;\s*\n\s*uaAdminBar\(\);\s*\n\s*return;/.test(seat),
+      '미뤄 두면서 막대를 다시 그리지 않는다(또는 미뤄 두고도 그대로 앉히러 내려간다) — 관리자는 화면이 낡은 줄 모른 채 순서를 정한다');
     //  ★ 미뤄 둘지 말지는 **화면 상태**만 본다. '내 쓰기인가'를 다시 짐작하기 시작하면 걷어낸 요청 표가
     //    이름만 바꿔 되살아난다(그 짐작이 바로 R3-W1 의 자리였다).
     for (const dead of ['__uaSaving', 'reqId', '__uaReq']) {
@@ -993,7 +1011,7 @@ const checks = {
     }
     //  ③ 「순서 저장」의 회신만 예외다 — 그리고 **앉히기 전에** 편집 모드를 끝낸다(화면은 한 번에 최종형).
     const resetAt = seat.indexOf("if(cmd === 'saveUserOrder') uaOrderReset();");
-    const seatAt = seat.indexOf('return uaSeatRoster(json);');
+    const seatAt = seat.indexOf('uaSeatRoster(json);');
     assert.ok(resetAt >= 0,
       "uaSeatReply 가 「순서 저장」 회신에서 편집 모드를 끝내지 않는다 — ▲▼·[취소]·[순서 저장]이 끝난 편집 화면에 남는다");
     assert.ok(seatAt > resetAt,
@@ -1562,8 +1580,8 @@ test('변이⑭-e6: 뒤처리가 한 번 더 앉히게 되돌리면 계약⑭-e 
 });
 
 test('변이⑭-e7: 「순서 저장」 회신에서 앉힌 뒤에 편집 모드를 끄면 계약⑭-e 가 실패한다(두 번 그려야 한다)', () => {
-  const bad = mutate(app, "  if(cmd === 'saveUserOrder') uaOrderReset();\n  return uaSeatRoster(json);",
-    "  const seated = uaSeatRoster(json);\n  if(cmd === 'saveUserOrder') uaOrderReset();\n  return seated;");
+  const bad = mutate(app, "  if(cmd === 'saveUserOrder') uaOrderReset();\n  uaSeatRoster(json);",
+    "  uaSeatRoster(json);\n  if(cmd === 'saveUserOrder') uaOrderReset();");
   assert.throws(() => checks.replySeatIsOnePlace(bad), /한 번에 그려야 한다/);
   assert.doesNotThrow(() => checks.replySeatIsOnePlace(app));   // 통제군
 });
@@ -1576,8 +1594,8 @@ test('변이⑮: userEdOpen 이 잠금을 무조건 풀면 계약⑮ 가 실패�
 });
 
 test('변이⑯-b2: 확정 명부가 옛 스냅샷을 남기게 되돌리면 계약⑯ 이 실패한다(뒤에 켰다 끄면 옛 명부가 이긴다)', () => {
-  const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;',
-    '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;');
+  const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n}',
+    '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n}');
   assert.throws(() => checks.orderSurvivesForeignRoster(bad), /미뤄 둔 옛 스냅샷을 버리지 않는다/);
   assert.doesNotThrow(() => checks.orderSurvivesForeignRoster(app));   // 통제군
 });
@@ -2109,7 +2127,7 @@ test('변이⑦-c: 보기 화면이 admin 을 다시 읽기 시작하면 계약�
 });
 
 test('변이⑦-d: 진입 버튼을 숨김으로 바꾸면 계약⑦-c 가 실패한다(숨김 ≠ 부재)', () => {
-  const bad = mutate(app, '  if(!on){ if(cur && cur.parentNode) cur.parentNode.removeChild(cur); return; }',
+  const bad = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
                           "  if(!on){ if(cur) cur.classList.add('hidden'); return; }");
   assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad), /제거하지 않는다|숨김\(classList/);
   assert.doesNotThrow(() => checks.adminEntryButtonIsBuiltNotHidden(app));   // 통제군
@@ -2656,7 +2674,13 @@ function entryHarnessJs(src) {
     'window.__probe = function(role){',
     '  usAdminBtnSync(role);',
     '  var b = document.getElementById("usUserAdmin");',
-    '  return { present: !!b, text: b ? String(b.textContent || "") : "" };',
+    '  var adm = document.getElementById("usAdminBtns");',
+    '  var mem = document.getElementById("usMemberBtns");',
+    //  ★ '어느 줄에 앉았나'를 함께 잰다(A15) — 부재만 재면 두 줄을 도로 합치는 변이가 그대로 통과한다.
+    '  return { present: !!b, text: b ? String(b.textContent || "") : "",',
+    '           inAdminRow: b ? b.parentNode === adm : null,',
+    '           admChildren: adm.children.length, admText: String(adm.textContent || ""),',
+    '           memChildren: mem.children.length, memText: String(mem.textContent || "") };',
     '};',
   ].join('\n');
 }
@@ -2668,8 +2692,10 @@ const ADMIN_FIXTURE = '<!doctype html><html><body>' +
   '<div id="uaAdmin"></div><input type="text" id="uaSearch">' +
   '<div id="uaScope"></div><div id="uaList"></div><div id="uaEmpty"></div>' +
   '<span id="uaFoot"></span></body></html>';   // 하단 자리 — 마크업에선 빈 채고 uaAdminBar 가 채운다
+//  ★ 마크업과 같은 모양이다 — 줄이 둘이고, 관리 줄은 **비어 있다**(A15).
 const ENTRY_FIXTURE = '<!doctype html><html><body><div class="us-mem-row" id="usMemberBtns">' +
-  '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div></body></html>';
+  '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div>' +
+  '<div class="us-mem-row" id="usAdminBtns"></div></body></html>';
 
 const ROWS = [
   { userId: 11, loginId: 'zzUa', name: 'zzU_a', title: 'zzU-T1', orgUnit: 'zzU-조직', canViewSchedule: true, isActive: true },
@@ -2762,6 +2788,7 @@ if (!jsdom) {
   skip('계약⑦-DOM(b): 순서 편집을 켜면 ▲▼ 로 바뀌고 편집은 사라진다(하단 등록도 함께 사라진다)', SKIP_NO_JSDOM);
   skip("계약⑦-DOM(c): 진입 버튼은 edit_role==='admin' 일 때만 DOM 에 있다", SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다', SKIP_NO_JSDOM);
+  skip('변이⑦-DOM(A15): 「관리」 줄을 도로 합치거나·캡션을 남기거나·마크업에 적으면 계약이 깨진다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM: ▲▼ 는 목록을 다시 만들지 않고 포커스·자리가 그대로다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(b): 끝에 닿아 화살표가 꺼지면 반대쪽 화살표를 잡는다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM: 누른 행을 옮기게 되돌리면 그 안의 포커스가 사라진다', SKIP_NO_JSDOM);
@@ -2860,10 +2887,24 @@ if (!jsdom) {
     const on = probeEntry('admin');
     assert.strictEqual(on.present, true, "edit_role='admin' 인데 「구성원 편집」 버튼이 만들어지지 않았다");
     assert.strictEqual(on.text, '구성원 편집', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
+    //  ★ **어느 줄에** 앉는가도 계약이다(2026-09-18 A15) — 관리 진입점은 「구성원 보기」와 다른 줄이다.
+    assert.strictEqual(on.inAdminRow, true,
+      '「구성원 편집」이 #usAdminBtns 가 아닌 곳에 앉았다 — 일상 동작 줄에 섞이면 층이 사라진다(A15)');
+    assert.strictEqual(on.memChildren, 1,
+      `「구성원 보기」 줄의 자식이 ${on.memChildren}개다 — 그 줄에는 #usMembers 하나뿐이어야 한다`);
+    assert.strictEqual(on.admChildren, 3,
+      `관리 줄의 자식이 ${on.admChildren}개다 — 캡션 「관리자」 + 버튼 둘이어야 한다`);
+    assert.ok(on.admText.startsWith('관리자'),
+      `관리 줄이 캡션으로 시작하지 않는다: ${JSON.stringify(on.admText)} — 두 버튼이 누구의 것인지 말하는 한 단어가 먼저 온다`);
     //  ★ 진짜 관문: 관리자였다가 내려간 경우. 숨김으로 바꾸면 여기서만 드러난다.
     const seq = probeEntrySeq(['admin', 'editor', 'admin', '']);
     assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
       `역할이 바뀔 때 버튼이 생겼다 사라지지 않는다: ${JSON.stringify(seq.map((x) => x.present))} — 남으면 내려간 사람에게 문이 남는다`);
+    //  ★ 내려가면 관리 줄은 **통째로** 빈다 — 캡션만 남아도 화면이 없는 권한을 가리킨다.
+    assert.deepStrictEqual(seq.map((x) => x.admChildren), [3, 0, 3, 0],
+      `관리 줄이 비었다 채워지지 않는다: ${JSON.stringify(seq.map((x) => x.admChildren))} — 캡션이 남으면 빈 줄에 「관리자」만 선다`);
+    assert.deepStrictEqual(seq.map((x) => x.memChildren), [1, 1, 1, 1],
+      `「구성원 보기」 줄이 역할에 따라 흔들린다: ${JSON.stringify(seq.map((x) => x.memChildren))} — 그 줄은 전원의 것이라 변하지 않는다`);
   });
 
   test('변이⑦-DOM: 세 계약이 각각 한 줄 변이로 깨진다(안 깨지면 그 검사는 장식이다)', () => {
@@ -2882,7 +2923,7 @@ if (!jsdom) {
       '변이 전제: 분기를 지우면 admin:false 에도 조작 버튼이 그려져야 한다');
 
     // (c) 진입 버튼 제거를 숨김으로 바꾸는 한 줄
-    const badC = mutate(app, '  if(!on){ if(cur && cur.parentNode) cur.parentNode.removeChild(cur); return; }',
+    const badC = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
       "  if(!on){ if(cur) cur.classList.add('hidden'); return; }");
     const rc = probeEntrySeq(['admin', 'editor'], badC);
     assert.strictEqual(rc[1].present, true,
@@ -2891,6 +2932,40 @@ if (!jsdom) {
     assert.strictEqual(probeView().lines, 0);
     assert.strictEqual(probeAdmin(false, false).uops.length, 0);
     assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].present, false);
+  });
+
+  //  ★ A15(2026-09-18) — 「관리」 줄이 **따로** 있다는 것을 각각 한 줄 변이로 깨 본다.
+  //    셋 다 '버튼이 있다/없다'로는 드러나지 않는다: 도로 합쳐도, 캡션이 남아도, 캡션을 마크업에 적어도
+  //    버튼의 유무는 그대로다. 그래서 '어느 줄에 · 몇 개가 · 마크업에 무엇이' 를 재는 계약이 필요하다.
+  test('변이⑦-DOM(A15): 「관리」 줄을 도로 합치거나·캡션을 남기거나·마크업에 적으면 계약이 깨진다', () => {
+    // (1) 두 줄을 도로 한 줄로 — 관리 버튼이 「구성원 보기」 줄로 들어간다
+    const bad1 = mutate(app, "  const box = document.getElementById('usAdminBtns'); if(!box) return;",
+      "  const box = document.getElementById('usMemberBtns'); if(!box) return;");
+    const r1 = probeEntry('admin', bad1);
+    assert.strictEqual(r1.inAdminRow, false,
+      '변이 전제: 자리를 되돌리면 관리 버튼이 「구성원 보기」 줄에 앉아야 한다');
+    assert.ok(r1.memChildren > 1, `변이 전제: 그 줄의 자식이 늘어야 한다(실제 ${r1.memChildren})`);
+    assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad1), /#usAdminBtns 가 아닌 곳/);
+
+    // (2) 내려갈 때 캡션을 남기는 한 줄 — 빈 줄에 「관리자」만 선다
+    const bad2 = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
+      '  if(!on){ while(box.children.length > 1) box.removeChild(box.lastChild); return; }');
+    const r2 = probeEntrySeq(['admin', 'editor'], bad2);
+    assert.strictEqual(r2[1].present, false, '변이 전제: 버튼 둘은 그대로 사라져야 한다(캡션만 남는 것이 결함이다)');
+    assert.strictEqual(r2[1].admChildren, 1,
+      `변이 전제: 캡션 하나가 남아야 한다(실제 ${r2[1].admChildren}개)`);
+    assert.strictEqual(r2[1].admText, '관리자',
+      `변이 전제: 남는 것이 캡션 「관리자」여야 한다(실제 ${JSON.stringify(r2[1].admText)})`);
+
+    // (3) 캡션을 마크업에 적는 한 줄 — 비관리자 DOM 에 없는 권한의 라벨이 남는다
+    const bad3 = mutate(app, '<div class="us-mem-row" id="usAdminBtns"></div>',
+      '<div class="us-mem-row" id="usAdminBtns"><span class="set-hint">관리자</span></div>');
+    assert.throws(() => checks.adminEntryButtonIsBuiltNotHidden(bad3), /비어 있지 않다|마크업으로 적혀 있다/);
+
+    // 통제군 — 원본은 셋 다 계약을 지킨다.
+    assert.strictEqual(probeEntry('admin').inAdminRow, true);
+    assert.strictEqual(probeEntrySeq(['admin', 'editor'])[1].admChildren, 0);
+    assert.doesNotThrow(() => checks.adminEntryButtonIsBuiltNotHidden(app));
   });
 
   test('계약⑬-DOM: ▲▼ 는 목록을 다시 만들지 않고, 포커스도 보던 자리도 그대로다(연속 조작이 된다)', () => {
@@ -3236,8 +3311,8 @@ if (!jsdom) {
 
   test('변이⑭-e-DOM(c): 앉힌 뒤에 편집 모드를 끄면 편집 중인 화면이 한 번 그려진다', async () => {
     const REP = reply(true, '저장했습니다', PUSHED);
-    const bad = mutate(app, "  if(cmd === 'saveUserOrder') uaOrderReset();\n  return uaSeatRoster(json);",
-      "  const seated = uaSeatRoster(json);\n  if(cmd === 'saveUserOrder') uaOrderReset();\n  return seated;");
+    const bad = mutate(app, "  if(cmd === 'saveUserOrder') uaOrderReset();\n  uaSeatRoster(json);",
+      "  uaSeatRoster(json);\n  if(cmd === 'saveUserOrder') uaOrderReset();");
     const r = await probeOrderSave(null, REP, bad);
     assert.strictEqual(r.end.order, false, '변이 전제: 편집 모드는 그대로 끝나야 한다(그래서 화면 순서만 어긋나는 것이 결함이다)');
     assert.ok(r.end.bars > r.end.barsFinal,
@@ -3398,8 +3473,8 @@ if (!jsdom) {
   });
 
   test('변이⑦-DOM(e2): 명부가 앉은 뒤 폼 맞추기를 지우면 낡은 [복구]가 그대로 남는다(R6-W3)', () => {
-    const bad = mutate(app, '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;',
-      '  uaApplyData(d);\n  return true;');
+    const bad = mutate(app, '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n}',
+      '  uaApplyData(d);\n}');
     const r = probeIdlePush(REACTIVATED, 13, bad);
     assert.strictEqual(r.after.uop, 'on',
       `변이 전제: 맞추기를 지우면 폼이 [복구]로 남아야 한다(실제: ${JSON.stringify(r.after)})`);
@@ -3462,8 +3537,8 @@ if (!jsdom) {
   //    '미뤄 둔 것이 남아 있으면 앉힌다'를 되짚기 없이 그대로 보므로, 옛 스냅샷이 안 지워지면 그 자리에서
   //    확정 명부를 덮는다(편집을 켰다 끌 때까지 기다릴 것도 없다). 그 즉시성이 곧 이 변이의 증거다.
   test('변이⑯-DOM(f): 확정 명부가 옛 스냅샷을 남기면 그 자리에서 옛 명부가 확정 명부를 덮는다', async () => {
-    const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;',
-      '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n  return true;');
+    const bad = mutate(app, '  __uaPendingData = null;\n  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n}',
+      '  uaApplyData(d);\n  userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)\n}');
     const r = await probeOrderSave(PARKED, reply(false, STALE_MSG, PUSHED), bad);
     assert.deepStrictEqual(r.end.names, [OLD_NAME],
       `변이 전제: 옛 스냅샷을 안 버리면 그것이 확정 명부를 덮어야 한다(실제: ${JSON.stringify(r.end)})`);

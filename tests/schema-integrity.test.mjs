@@ -15,7 +15,7 @@
 //     DB 를 읽는 검사는 개발 PC 에서만 돌고 폐쇄망·CI 에서는 조용히 자기 때문이다.
 //     "판정 못 함"을 통과로 만들지 않는 것이 이 저장소의 규칙이다(계약⑦ 참조).
 import { readFileSync, readdirSync } from 'node:fs';
-import { test, assert } from './harness.mjs';
+import { test, assert, stripCsComments } from './harness.mjs';
 //  ★ 정본 파싱은 tests/canon-schema.mjs 한 곳에만 둔다. 여기 있던 두 정규식을 루프 시험들이
 //    베껴 가면서 2026-09-09 사고 둘이 났다(판본·근태코드를 각자 박아 둔 결과). 파서를 나눠 쓰면
 //    정본의 문장 형태가 바뀌어도 고칠 곳이 하나다.
@@ -70,21 +70,27 @@ try {
 //  주석에 남긴 설명 문구가 검사 대상에 섞이면 계약이 거짓으로 만족된다 —
 //  이 저장소의 SQL 주석은 "CASCADE 였다", "FK 를 걸지 않았다" 같은 **옛 상태 서술**을
 //  일부러 남겨 두기 때문에 특히 그렇다(그 기록이 재론을 막는 장치다).
-//  ★ 줄을 \r*\n 으로 자른다 — widget/*.cs 중에는 줄끝이 \r\r\n 인 파일이 있다(MainWindow).
-//    \r?\n 으로 자르면 줄 끝에 \r 가 남고 줄 주석 정규식이 거기서 멈춰 **주석이 하나도 안 지워진다.**
+//
+//  ★ **SQL 과 C# 은 다른 기계로 지운다.** SQL 주석은 -- 이고 C# 주석은 // · /* */ 다 — 한 함수로
+//    묶을 수 없다. 그래서 여기 남는 것은 stripSql 하나뿐이고, C# 쪽은 하네스의 정본
+//    (stripCsComments)을 가져다 쓴다.
+//  ★ stripSql 은 줄을 \r*\n 으로 자른다 — 줄끝이 \r\r\n 인 파일이 섞이면 \r?\n 으로 자른 줄 끝에
+//    \r 가 남고, 줄 주석 정규식이 거기서 멈춰 **주석이 하나도 안 지워진다.**
+//  ★ 2026-09-18 — C# 쪽 사본(줄 단위 정규식)을 없앴다. 뜻이 **한 군데 달랐다**: 옛 사본은 문자열
+//    리터럴을 보존하지 않아 리터럴 안의 // 도 주석으로 지웠다(앞이 줄머리나 공백일 때). 정본은
+//    리터럴을 통째로 보존한다. 이 파일이 stripCs 로 보던 것 넷(접속 문자열 열거 · 시각 프리앰블 ·
+//    HoursInDomain 정의와 그 호출 관문)과 변이① · 변이④ 는 **양쪽이 같은 답**임을 widget/*.cs
+//    전수 대조로 확인하고 옮겼다. 게다가 이 파일의 계약은 프리앰블처럼 **문자열 리터럴 안에 있는
+//    것을 찾는** 쪽이라, 리터럴을 보존하는 정본이 오히려 안전하다.
 function stripSql(text) {
   return text
     .split(/\r*\n/)
     .map((l) => l.replace(/--.*$/, ''))
     .join('\n');
 }
-function stripCs(text) {
-  let t = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
-  return t.split(/\r*\n/).map((l) => l.replace(/(^|\s)\/\/[^\r\n]*$/, '')).join('\n');
-}
 
 const canonSql = stripSql(CANON);
-const reportCode = stripCs(REPORT_DB);
+const reportCode = stripCsComments(REPORT_DB);
 
 // ── 계약별 순수 검사 함수 ────────────────────────────────────────────
 //  변이 시험이 같은 함수를 '바꾼 사본'에 먹여야 하므로, 검사는 전부 인자로 소스를 받는다.
@@ -94,12 +100,12 @@ const PREAMBLE_TZ = "time_zone='+00:00'";
 
 //  계약① — DB 접속 문자열을 만드는 파일은 전부 시각 프리앰블을 갖는다.
 function checkPreamble(list) {
-  const conns = list.filter((w) => /MySqlConnectionStringBuilder/.test(stripCs(w.src)));
+  const conns = list.filter((w) => /MySqlConnectionStringBuilder/.test(stripCsComments(w.src)));
   assert.ok(conns.length >= 4,
     'DB 접속 문자열을 만드는 .cs 를 ' + conns.length + '개만 찾았다 — 열거가 빗나가면 이 계약은 ' +
     '아무것도 안 보고 통과한다(판정 불가는 통과가 아니다). 지금 알려진 것만 4개다: ' +
     'CalendarDb · CalendarWriteDb · ProjectDb · ReportDb');
-  const bad = conns.filter((w) => !stripCs(w.src).includes(PREAMBLE_TZ)).map((w) => w.name);
+  const bad = conns.filter((w) => !stripCsComments(w.src).includes(PREAMBLE_TZ)).map((w) => w.name);
   assert.deepStrictEqual(bad, [],
     "DB 에 접속하면서 SET SESSION " + PREAMBLE_TZ + " 을 걸지 않는 파일이 있다 — 그 세션이 쓰는 " +
     '서버 기본값(CURRENT_TIMESTAMP)은 SYSTEM=KST 로 평가되어 같은 컬럼에 KST 와 UTC 가 섞인다. ' +

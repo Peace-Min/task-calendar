@@ -6,7 +6,7 @@
 //          Shift+Tab으로 덮개 뒤 버튼이 눌림 / 자격 저장 실패를 삼키고 성공 회신 / 로그아웃과
 //          백그라운드 갱신이 경합해 삭제된 세션 부활 / 실패 code 7종인데 분기 0곳 / 자격 출처 2개.
 // 관례(기억)로는 반드시 다시 뚫린다. 아래 불변식은 전부 '실제로 났던 사고'를 기계가 잡게 한 것이다.
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src         = loadAppSource();
@@ -51,16 +51,13 @@ function codeOnly(s) {
   return stripComments(s).replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`/g, '""');
 }
 
-// C# 멤버 본문 슬라이스 — 시그니처 조각부터 '같은 들여쓰기(8칸)의 다음 멤버 선언' 직전까지.
-function csMember(source, sigSnippet) {
-  const s = source.indexOf(sigSnippet);
-  assert.ok(s >= 0, `C# 멤버를 찾지 못함: ${sigSnippet}`);
-  const re = /\n        (?:public|private|internal|protected|static|const|sealed)\b/g;
-  re.lastIndex = s + sigSnippet.length;
-  const m = re.exec(source);
-  return source.slice(s, m ? m.index : source.length);
-}
-const bare = (source, sig) => stripComments(csMember(source, sig));
+// C# 멤버 본문(주석 제거) — **하네스의 정본**(extractCsMember)을 쓴다.
+//   ★ 2026-09-18 까지 이 파일은 자기 사본을 안고 있었고, 그 사본은 '같은 들여쓰기(8칸)의 다음 멤버 선언'
+//     직전까지를 잘랐다. 그 방식은 멤버 하나가 아니라 **그 뒤의 빈 줄·닫는 괄호까지** 끌어오고, 다음
+//     선언이 그 모양이 아니면(식(=>) 본문·한정자 없는 멤버) 남의 본문을 통째로 삼킨다. 정본은 중괄호
+//     짝(또는 식 본문의 ;)으로 그 멤버 하나만 자르고, 시그니처가 선언이 아니라 호출 자리에 걸리면 던진다.
+//   ★ 주석 제거는 정본이 이미 한다(문자열 리터럴은 보존) — 여기서 stripComments 를 또 씌우지 않는다.
+const bare = (source, sig) => extractCsMember(source, sig);
 const jsBody = (name) => stripComments(extractFunction(src, name));
 
 // 게이트 마크업 슬라이스

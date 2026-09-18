@@ -305,6 +305,7 @@ const PSTATE = `JSON.stringify({
   lines: document.querySelectorAll('#uaList .mba-line').length,
   barBtns: document.querySelectorAll('#uaAdmin button').length,
   entryBtn: !!document.getElementById('usUserAdmin'),
+  entryRowKids: (function(){ var e=document.getElementById('usAdminBtns'); return e ? e.children.length : -1; })(),
   ueOpen: (function(){ var e=document.getElementById('userEditModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbOpen: (function(){ var e=document.getElementById('membersModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbBusy: !!__mbBusy, mbN: __mbMembers.length,
@@ -1276,6 +1277,10 @@ async function main() {
       const gone = await waitPage((x) => x.entryBtn === false, { timeout: 15000 });
       okq('C13 「구성원 편집」 진입 버튼이 DOM 에서 사라졌다(숨김 아님)', !!gone,
         gone ? '' : '#usUserAdmin 이 남아 있다 — 관리자에서 내려갔는데 문이 그대로다');
+      //  ★ 「관리」 줄은 **통째로** 빈다(2026-09-18 A15) — 캡션 「관리자」가 남으면 빈 줄이 없는 권한을 가리킨다.
+      const gs = gone || (await pstate());
+      okq('C13 「관리」 줄(#usAdminBtns)이 통째로 비었다', gs.entryRowKids === 0,
+        `자식 ${gs.entryRowKids}개 — 0 이어야 한다(-1 은 그 줄 자체가 없다는 뜻)`);
 
       //  ② 그래도 함수를 직접 불러 본다(버튼이 없다고 경로가 없는 것은 아니다).
       //     호스트가 admin:false 로 답하므로 컨트롤이 하나도 만들어지지 않아야 한다.

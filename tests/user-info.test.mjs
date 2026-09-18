@@ -11,7 +11,7 @@
 //      OpenReadAsync 여야 한다 — 쓰기 관문을 쓰면 viewer 가 자기 권한을 확인조차 못 한다.
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src  = loadAppSource();
@@ -49,28 +49,12 @@ function csCase(source, name) {
   return code.slice(s, e + 6);
 }
 
-// C# 멤버 본문 슬라이스 — 시그니처 조각부터 중괄호 짝이 맞는 곳까지(주석 제거본 기준).
-// ★ '다음 멤버 선언까지'로 자르지 않는다: 접근 한정자 없이 시작하는 멤버(명시적 인터페이스 구현 등)
-//   앞에서 멈추지 못해 남의 코드를 끌어온다 — 실제로 뒤에 있던 GitReply 호출이 이 메서드 것으로 오탐됐다.
-function csMember(source, sig) {
-  const code = stripComments(source);
-  const s = code.indexOf(sig);
-  assert.ok(s >= 0, `C# 멤버를 찾지 못함: ${sig}`);
-  const open = code.indexOf('{', s);
-  assert.ok(open > s, `${sig} 의 여는 중괄호를 찾지 못함`);
-  let depth = 0;
-  for (let k = open; k < code.length; k++) {
-    const c = code[k];
-    if (c === '"' || c === "'") {          // 문자열/문자 리터럴 안의 중괄호는 세지 않는다
-      let j = k + 1;
-      while (j < code.length) { if (code[j] === '\\') { j += 2; continue; } if (code[j] === c) break; j++; }
-      k = j; continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return code.slice(s, k + 1); }
-  }
-  assert.fail(`${sig} 의 중괄호 짝이 맞지 않는다`);
-}
+// C# 멤버 본문 슬라이스는 **하네스의 정본**(extractCsMember)을 쓴다.
+//   ★ '다음 멤버 선언까지' 로 자르지 않는다: 접근 한정자 없이 시작하는 멤버(명시적 인터페이스 구현 등)
+//     앞에서 멈추지 못해 남의 코드를 끌어온다 — 실제로 뒤에 있던 GitReply 호출이 이 메서드 것으로 오탐됐다.
+//   ★ 2026-09-18 까지 이 파일은 같은 기계의 사본을 안고 있었다. 사본은 정본이 뒤에 배운 것(식(=>) 본문 ·
+//     축자 문자열 · "선언이 아니라 호출 자리" 판별)을 모른 채 그대로 초록을 낸다. 슬라이서는 한 곳에만 둔다.
+//   ★ 부르는 이름도 정본 그대로 둔다(extractCsMember) — 지역 별칭을 두면 grep 이 사본을 다시 놓친다.
 
 // CSS 미디어쿼리 블록들 — 같은 헤더가 여러 번 나온다(모달 터치 하한 등)라 전부 돌려주고 호출측이 고른다.
 function mediaBlocks(css, header) {
@@ -283,7 +267,7 @@ const checks = {
   hostReadPath(csMain, csDb) {
     const c = csCase(csMain, 'userInfoGet');
     assert.ok(/RunUserInfoGetAsync/.test(c), 'case "userInfoGet" 이 RunUserInfoGetAsync 를 부르지 않는다');
-    const b = csMember(csMain, 'private async Task RunUserInfoGetAsync(string reqId)');
+    const b = extractCsMember(csMain, 'private async Task RunUserInfoGetAsync(string reqId)');
     assert.ok(/LoadUserInfoJsonAsync/.test(b), '호스트 핸들러가 권한 조회를 하지 않는다');
     assert.ok(/ReplyOnUi\(/.test(b) && !/GitReply\(/.test(b),
       'async 핸들러가 GitReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
@@ -291,7 +275,7 @@ const checks = {
       '세션 없음/미등록을 구분해 안내하지 않는다');
     assert.ok(!/ex\.Message/.test(b), '예외 원문을 사용자 회신에 실었다 — 내부 사정은 로그에만 남긴다');
 
-    const q = csMember(csDb, 'public async Task<string?> LoadUserInfoJsonAsync(string loginId)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadUserInfoJsonAsync(string loginId)');
     // 순서 주의 — 쓰기 관문으로 바뀌면 두 단언이 함께 깨진다. 원인을 정확히 말하는 쪽을 앞에 둔다.
     assert.ok(!/OpenWriteAsync/.test(q),
       '권한 조회가 쓰기 관문을 쓴다 — "권한을 보려면 먼저 권한이 있어야 한다"는 순환이라 viewer 는 자기 권한을 확인조차 못 한다');
@@ -451,7 +435,7 @@ const checks = {
   membersHostReadPath(csMain, csDb) {
     const c = csCase(csMain, 'membersGet');
     assert.ok(/RunMembersGetAsync/.test(c), 'case "membersGet" 이 RunMembersGetAsync 를 부르지 않는다');
-    const b = csMember(csMain, 'private async Task RunMembersGetAsync(string reqId, bool includeInactive, bool flatOrder = false)');
+    const b = extractCsMember(csMain, 'private async Task RunMembersGetAsync(string reqId, bool includeInactive, bool flatOrder = false)');
     assert.ok(/LoadMembersJsonAsync/.test(b), '호스트 핸들러가 구성원 조회를 하지 않는다');
     assert.ok(/ReplyOnUi\(/.test(b) && !/GitReply\(/.test(b),
       'async 핸들러가 GitReply 로 직접 회신한다 — CoreWebView2 는 스레드 친화적이라 ReplyOnUi(UI 마샬)여야 한다');
@@ -459,7 +443,7 @@ const checks = {
       '세션 없음 / 연결 실패 / 미등록을 구분해 안내하지 않는다 — 사유가 다르면 사용자의 대처도 다르다');
     assert.ok(!/ex\.Message/.test(b), '예외 원문을 사용자 회신에 실었다 — 내부 사정은 로그에만 남긴다');
 
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
     // 순서 주의 — 쓰기 관문으로 바뀌면 두 단언이 함께 깨진다. 원인을 정확히 말하는 쪽을 앞에 둔다.
     assert.ok(!/OpenWriteAsync/.test(q),
       '구성원 조회가 쓰기 관문을 쓴다 — unit_tree 를 가진 viewer 전원이 명부를 확인조차 못 한다');
@@ -473,7 +457,7 @@ const checks = {
   //      이름·직급·소속은 사내망 인트라넷에 이미 공개된 정보다 — 통제 대상은 '일정'이지 명부가 아니다.
   //      필터가 되살아나면 그 화면이 그대로 돌아온다.
   membersRosterIsEveryone(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
     // ★ 완전절단 후 소속 '이름'은 org_unit 에만 있다 — 명부 SQL 은 LEFT JOIN 으로 이름을 만들고,
     //   C# 소스에서 여러 문자열 리터럴로 쪼개져 있다. 이어붙인 뒤 한 문장으로 본다(qn).
     //   ★ 정렬은 옛 `ORDER BY org_unit, name` 과 같은 값을 보는 `ORDER BY o.name, u.name` 이어야 한다 —
@@ -504,7 +488,7 @@ const checks = {
   // ㉖ view_scope 는 '일정 열람 범위'다 — 명부에서 사람을 빼는 데 쓰지 않는다.
   //    self 특례(본인 1행만 담던 분기)는 통째로 사라졌다. 본인도 전원 조회에 들어 있다.
   membersScopeIsScheduleOnly(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
     assert.ok(!/isSelf/.test(q), 'self 특례 분기(isSelf)가 남아 있다 — self 도 전원 명부를 받아야 한다');
     assert.ok(!/\["loginId"\]\s*=\s*id\b/.test(q),
       '본인 행을 따로 만들어 담는다 — 본인도 전원 조회에 들어 있다(두 경로가 되면 한쪽이 낡는다)');
@@ -519,7 +503,7 @@ const checks = {
 
   // ㊷ 조직 트리 조회는 scope 와 무관하게 항상 돈다 — self 라고 건너뛰면 71명이 다시 트리 없는 화면을 본다.
   membersUnitsAlwaysQueried(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
     // ★ 완전절단 후 부모 '이름'은 자기 JOIN 으로 만든다(정본은 parent_id 뿐) — 리터럴이 쪼개져 있어 이어붙여 본다.
     assert.ok(/FROM org_unit t LEFT JOIN org_unit p ON p\.org_id = t\.parent_id WHERE t\.is_active=1/.test(q.replace(/"\s*\+\s*"/g, '')),
       '전제: 조직 트리 조회가 없다');
@@ -530,7 +514,7 @@ const checks = {
 
   // ㊸ units payload 에 allowed 를 싣지 않는다 — 트리는 전부 활성이라 노드에 붙일 범위 개념이 없다.
   membersUnitsHaveNoAllowed(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
     assert.ok(/\["sortOrder"\]\s*=\s*u\.SortOrder/.test(q), '전제: units payload 를 만들지 않는다');
     assert.ok(!/\["allowed"\]/.test(q),
       'units payload 에 allowed 가 실린다 — 화면이 그 값으로 노드를 다시 잠그게 된다');
@@ -539,7 +523,7 @@ const checks = {
   // ㊹ 열람 범위는 구성원 행의 canViewSchedule 하나로만 표현된다 = 허용 유닛 집합에 그 사람 소속이 있는가.
   //    ★ 상수로 굳으면(true) 권한이 통째로 사라지고, 계산 근거가 바뀌면 남의 일정이 열린다.
   membersCanViewScheduleFlag(csDb) {
-    const q = csMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
+    const q = extractCsMember(csDb, 'public async Task<string?> LoadMembersJsonAsync(string loginId, bool includeInactive = false, bool flatOrder = false)');
     assert.ok(/string ou = Str\(rd, "org_unit"\)/.test(q), '판정 근거가 그 사람의 org_unit 이 아니다');
     assert.ok(/\["canViewSchedule"\]\s*=\s*allowed\.Contains\(ou\)/.test(q),
       '구성원 행에 canViewSchedule 이 없다(또는 일정 열람 가능 유닛 집합으로 계산하지 않는다)');
@@ -549,7 +533,7 @@ const checks = {
 
   // ㉗ unit_tree 확장은 반복(BFS) + 방문 집합 가드. 재귀 CTE 금지(폐쇄망 MySQL 버전 가정을 늘리지 않는다).
   membersTreeExpansion(csDb) {
-    const ex = csMember(csDb, 'private static void ExpandUnitTree(List<OrgUnitRow> units, string myUnit, HashSet<string> allowed)');
+    const ex = extractCsMember(csDb, 'private static void ExpandUnitTree(List<OrgUnitRow> units, string myUnit, HashSet<string> allowed)');
     assert.ok(/Queue<string>/.test(ex), '부모→자식 반복 확장이 아니다(큐가 없다)');
     assert.ok(/if \(allowed\.Add\(/.test(ex),
       '방문 집합 가드가 없다 — org_unit.parent 에 순환(A→B→A)이 들어오면 무한 루프다');
@@ -1058,7 +1042,7 @@ test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않�
   for (const dead of ['EditRole', 'ViewScope', 'edit_role', 'view_scope']) {
     assert.ok(!us.includes(dead), `세션 파일에 권한(${dead})이 들어갔다 — 4필드 유지가 확정 설계다`);
   }
-  const payload = csMember(main, 'private static object UserPayload(UserSession s)');
+  const payload = extractCsMember(main, 'private static object UserPayload(UserSession s)');
   assert.ok(!/editRole|viewScope/.test(payload), '세션 payload 에 권한이 실렸다 — 권한은 userInfoGet 으로만 내려간다');
 });
 

@@ -104,8 +104,13 @@ const checks = {
     assert.ok(/usTrash/.test(b),
       'usAdminBtnSync 가 「휴지통」 버튼을 만들지 않는다 — 진입 판정이 두 곳으로 갈라지면 한쪽이 반드시 낡는다');
     assert.ok(/openTrash/.test(b), 'usAdminBtnSync 가 만든 버튼이 openTrash 에 묶이지 않는다 — 눌러도 아무 일이 없다');
-    assert.ok((b.match(/removeChild/g) || []).length >= 2,
-      'usAdminBtnSync 가 버튼 둘을 모두 DOM 에서 제거하지 않는다 — 남겨 두면 관리자에서 내려가도 문이 남는다');
+    //  ★ 관리자가 아니면 「관리」 줄(#usAdminBtns)을 **통째로** 비운다(2026-09-18 A15) — 버튼을 하나씩
+    //    골라 지우던 판은 셋째(캡션 「관리자」)가 생기면서 한 줄을 빠뜨리기 좋은 모양이 됐다. 그 줄에는
+    //    관리자 전용 말고 아무것도 없으므로(「구성원 보기」는 위 줄이다) 비우는 것이 곧 부재다.
+    assert.ok(/if\(!on\)\{ while\(box\.firstChild\) box\.removeChild\(box\.firstChild\); return; \}/.test(b),
+      'usAdminBtnSync 가 관리자가 아닐 때 「관리」 줄을 통째로 비우지 않는다 — 남겨 두면 관리자에서 내려가도 문이 남고, 캡션만 남아도 화면이 없는 권한을 가리킨다');
+    assert.ok(/getElementById\('usAdminBtns'\)/.test(b),
+      'usAdminBtnSync 가 「휴지통」을 「구성원 보기」 줄에 만든다 — 그러면 바로 위 구성원 안내문에 딸린 것처럼 읽혀 「퇴사자 휴지통」으로 오해된다(A15)');
     //  ★ 숨김으로 바꾸는 변이를 형태로도 막는다(user-admin 계약⑦-c 와 같은 규칙 — 이 함수에는 숨김이 없다).
     assert.ok(!/classList|\.hidden|style\.display/.test(b),
       'usAdminBtnSync 가 숨김(classList/hidden/display)을 쓴다 — 부재여야 한다. 숨김은 클래스 하나로 풀린다');
@@ -454,9 +459,9 @@ test('변이⑥-a: 마크업에 탭 버튼을 하나 적으면 계약⑥-a 가 �
 });
 
 test('변이⑥-b: 진입 버튼 제거를 숨김으로 바꾸면 계약⑥-b 가 실패한다(숨김 ≠ 부재)', () => {
-  const bad = mutate(app, '  if(!on && curT && curT.parentNode) curT.parentNode.removeChild(curT);',
-    "  if(!on && curT) curT.classList.add('hidden');");
-  assert.throws(() => checks.trashEntryButtonIsBuiltNotHidden(bad), /제거하지 않는다|숨김\(classList/);
+  const bad = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
+    "  if(!on){ const t0 = document.getElementById('usTrash'); if(t0) t0.classList.add('hidden'); return; }");
+  assert.throws(() => checks.trashEntryButtonIsBuiltNotHidden(bad), /통째로 비우지 않는다|숨김\(classList/);
   assert.doesNotThrow(() => checks.trashEntryButtonIsBuiltNotHidden(app));   // 통제군
 });
 
@@ -572,7 +577,7 @@ function busyHarnessJs(src) {
     //  명부 쪽 좌석(uaSeatReply)의 **내용**은 이 계약과 무관하다 — 앉힐까 미룰까는 「구성원 편집」 시험이
     //  진다(계약⑭-e). 여기서 재는 것은 하나다: **휴지통 회신이 그 문을 지나는가**(수를 센다).
     'var __rosters = 0;',
-    'function uaSeatReply(json, cmd){ if(json) __rosters++; return false; }',
+    'function uaSeatReply(json, cmd){ if(json) __rosters++; }',
     constLine(src, 'josa'),
     constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
@@ -869,13 +874,20 @@ function entryHarnessJs(src) {
     '  usAdminBtnSync(role);',
     '  var b = document.getElementById("usTrash");',
     '  var a = document.getElementById("usUserAdmin");',
+    '  var adm = document.getElementById("usAdminBtns");',
+    '  var mem = document.getElementById("usMemberBtns");',
     '  return { present: !!b, text: b ? String(b.textContent || "") : "", title: b ? String(b.title || "") : "",',
-    '           after: !!(a && b && a.nextElementSibling === b), adminPresent: !!a };',
+    '           after: !!(a && b && a.nextElementSibling === b), adminPresent: !!a,',
+    //  ★ '어느 줄에 앉았나'(A15) — 「휴지통」이 「구성원 보기」 줄에 서면 위 구성원 안내문에 딸려 읽힌다.
+    '           inAdminRow: b ? b.parentNode === adm : null,',
+    '           admChildren: adm.children.length, memChildren: mem.children.length };',
     '};',
   ].join('\n');
 }
+//  ★ 마크업과 같은 모양이다 — 줄이 둘이고, 관리 줄은 **비어 있다**(A15).
 const ENTRY_FIXTURE = '<!doctype html><html><body><div class="us-mem-row" id="usMemberBtns">' +
-  '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div></body></html>';
+  '<button type="button" class="btn sm" id="usMembers">구성원 보기</button></div>' +
+  '<div class="us-mem-row" id="usAdminBtns"></div></body></html>';
 const probeEntry = (role, src = app) => runInJsdom(ENTRY_FIXTURE, entryHarnessJs(src), '__probe', role);
 //  진짜 관문은 '한 번 만든 뒤 내려갔을 때'다 — 만들어 본 적이 없으면 숨김 변이도 통과한다.
 function probeEntrySeq(roles, src = app) {
@@ -929,12 +941,21 @@ if (!jsdom) {
     assert.strictEqual(on.text, '휴지통', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
     assert.ok(/관리자 전용/.test(on.title), `버튼 title 이 관리자 전용임을 말하지 않는다: ${JSON.stringify(on.title)}`);
     assert.strictEqual(on.after, true, '「휴지통」이 「구성원 편집」 바로 뒤가 아니다 — 관리 진입점 둘은 한 자리에 붙어 있어야 한다');
+    //  ★ 그 '한 자리'는 「구성원 보기」와 **다른 줄**이다(2026-09-18 A15).
+    assert.strictEqual(on.inAdminRow, true,
+      '「휴지통」이 #usAdminBtns 가 아닌 곳에 앉았다 — 「구성원 보기」 줄에 서면 바로 위 구성원 안내문에 딸린 것처럼 읽혀 「퇴사자 휴지통」으로 오해된다');
+    assert.strictEqual(on.memChildren, 1,
+      `「구성원 보기」 줄의 자식이 ${on.memChildren}개다 — 그 줄에는 #usMembers 하나뿐이어야 한다`);
+    assert.strictEqual(on.admChildren, 3,
+      `관리 줄의 자식이 ${on.admChildren}개다 — 캡션 「관리자」 + 버튼 둘이어야 한다`);
     //  ★ 진짜 관문: 관리자였다가 내려간 경우. 숨김으로 바꾸면 여기서만 드러난다.
     const seq = probeEntrySeq(['admin', 'editor', 'admin', '']);
     assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
       `역할이 바뀔 때 버튼이 생겼다 사라지지 않는다: ${JSON.stringify(seq.map((x) => x.present))}`);
     assert.deepStrictEqual(seq.map((x) => x.adminPresent), [true, false, true, false],
       '「구성원 편집」과 「휴지통」이 함께 나고 지지 않는다 — 한 함수·한 판정이어야 한다');
+    assert.deepStrictEqual(seq.map((x) => x.admChildren), [3, 0, 3, 0],
+      `관리 줄이 비었다 채워지지 않는다: ${JSON.stringify(seq.map((x) => x.admChildren))} — 캡션이 남으면 빈 줄에 「관리자」만 선다`);
   });
 
   test('계약⑥-DOM(b): admin:false 면 탭도 행도 그리지 않는다(안내 한 줄뿐)', () => {
@@ -1342,8 +1363,8 @@ if (!jsdom) {
       '변이 전제: 잠금을 지우면 기록이 있는 계정의 [영구 삭제]도 켜져야 한다');
 
     // (a) 진입 버튼 제거를 숨김으로 바꾸는 한 줄 → 내려간 뒤에도 DOM 에 남는다
-    const badA = mutate(app, '  if(!on && curT && curT.parentNode) curT.parentNode.removeChild(curT);',
-      "  if(!on && curT) curT.classList.add('hidden');");
+    const badA = mutate(app, '  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }',
+      "  if(!on){ const t0 = document.getElementById('usTrash'); if(t0) t0.classList.add('hidden'); return; }");
     const ra = probeEntrySeq(['admin', 'editor'], badA);
     assert.strictEqual(ra[1].present, true,
       '변이 전제: 숨김으로 바꾸면 내려간 뒤에도 버튼이 DOM 에 남아야 한다(그래서 부재 계약이 필요하다)');

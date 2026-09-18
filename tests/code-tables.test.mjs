@@ -1,7 +1,7 @@
 // 구분/상태 ENUM → 룩업 코드테이블(section_code/status_code) + FK 전환 + note 컬럼 (2026-07-24).
 // 발주처(customer) 패턴을 대칭 복제. 실 MySQL 검증은 코디네이터 게이트; 여기서는 스키마·마이그레이션·호스트·브리지·웹의
 // 계약을 소스에서 못박는다(회귀 방지). 순수 로직(코드목록 파싱·순서 스왑)은 JS로 포팅해 동작을 확인한다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, stripCsComments, extractCsMember } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src = loadAppSource();
@@ -45,47 +45,23 @@ function stripJsComments(text) {
 //   부터 EOF 까지가 그랬고, 그 뒤에 붙은 휴지통 블록을 통째로 삼키고 있었다).
 //   범위가 넓어진 슬라이스는 조용히 힘이 빠진다 — 검사가 '이 멤버가 하는가' 대신
 //   '아래 어딘가에 있는가' 를 재게 된다.
-//   그래서 **중괄호 짝**으로 그 멤버 하나만 자른다(admin-auth·user-info 와 같은 기계).
+//   그래서 **중괄호 짝**으로 그 멤버 하나만 자른다 — 그 기계는 harness.mjs 의 extractCsMember 다.
 
-// 주석 제거(문자열 리터럴은 보존) — 설명 주석에 적힌 단어를 '코드가 그걸 한다'로 읽으면 안 된다.
-function stripCsComments(s) {
-  let out = '', i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < s.length) { if (s[j] === '\\') { j += 2; continue; } if (s[j] === c) { j++; break; } j++; }
-      out += s.slice(i, j); i = j; continue;
-    }
-    if (c === '/' && s[i + 1] === '/') { while (i < s.length && s[i] !== '\n') i++; continue; }
-    if (c === '/' && s[i + 1] === '*') { i += 2; while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++; i += 2; continue; }
-    out += c; i++;
-  }
-  return out;
-}
+// 주석 제거(stripCsComments) · 멤버 슬라이스(extractCsMember) 는 **하네스의 정본**을 쓴다.
+//   ★ 2026-09-18 까지 이 파일은 자기 사본을 안고 있었다. 사본은 반드시 낡는다 — 정본이 뒤에 배운
+//     식(=>) 본문·축자 문자열(@"C:\dir\")·"선언이 아니라 호출 자리" 판별을 사본만 모른 채
+//     그대로 초록을 냈다. 슬라이서는 한 곳에만 둔다(harness.mjs).
 
-// 시그니처 조각부터 **중괄호 짝이 맞는 곳**까지(주석 제거본 기준).
-//   ★ '다음 선언까지'로 자르지 않는다: 접근 한정자 없이 시작하는 멤버 앞에서 멈추지 못해
-//     남의 코드를 끌어온다(user-info.test.mjs 의 csMember 머리말과 같은 이유).
+// 시그니처 조각부터 중괄호 짝이 맞는 곳까지 — 여기에 이 파일만의 조건을 하나 더 건다:
+//   ★ **시그니처가 유일해야 한다.** 하네스는 '첫 자리' 를 자르고 그 자리가 선언인지까지는 보지만,
+//     같은 시그니처가 두 번 있으면 어느 쪽을 본 것인지 말해 주지 않는다. 이 파일의 계약은 전부
+//     'CRUD 멤버 하나가 무엇을 하는가' 라서, 둘 중 하나만 본 초록은 판정이 아니다.
 function csMember(source, sig) {
   const code = stripCsComments(source);
   const s = code.indexOf(sig);
   assert.ok(s >= 0, `C# 멤버를 찾지 못했다: ${sig}`);
   assert.strictEqual(code.indexOf(sig, s + 1), -1, `C# 멤버 시그니처가 여러 번 나온다: ${sig}`);
-  const open = code.indexOf('{', s);
-  assert.ok(open > s, `${sig} 의 여는 중괄호를 찾지 못했다`);
-  let depth = 0;
-  for (let k = open; k < code.length; k++) {
-    const c = code[k];
-    if (c === '"' || c === "'") {          // 문자열/문자 리터럴 안의 중괄호는 세지 않는다
-      let j = k + 1;
-      while (j < code.length) { if (code[j] === '\\') { j += 2; continue; } if (code[j] === c) break; j++; }
-      k = j; continue;
-    }
-    if (c === '{') depth++;
-    else if (c === '}') { depth--; if (depth === 0) return code.slice(s, k + 1); }
-  }
-  assert.fail(`${sig} 의 중괄호 짝이 맞지 않는다`);
+  return extractCsMember(source, sig);
 }
 
 // 코드테이블 CRUD 멤버들의 시그니처 — 한곳에 모아 둔다(개명되면 여기 한 줄만 고친다).

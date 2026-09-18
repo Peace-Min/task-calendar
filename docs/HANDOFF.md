@@ -1,6 +1,6 @@
 # 인계 — 다음 세션이 처음 읽는 문서 (HANDOFF)
 
-> 기준 2026-09-18 · HEAD `d5258ab` (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
+> 기준 2026-09-18 · HEAD = git log 참조(마지막 커밋: 잔여 정리·「관리」 구획 분리) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
 > 상세 설계·이력은 각 문서의 §11 이 정본이다. 여기는 "지금 어디에 있고, 무엇부터 하며, 무엇을 밟으면 안 되는가" 만 적는다.
 > [ROADMAP.md](ROADMAP.md) §0 은 2026-09-02 기준이라 이 문서보다 낡았다 — 충돌하면 이 문서가 맞다.
 
@@ -13,11 +13,11 @@
 | 작업 트리 | `C:\Users\CEO\Desktop\console\task-calendar-db` (git worktree, 브랜치 `feat/db-app`). 메인 체크아웃은 `..\task-calendar`(만지지 않는다) |
 | 비공개 저장소 | `C:\Users\CEO\Desktop\console\taskmgr-company-data` (`master`) — 사용자 스키마·시드·권한. **형제 폴더여야** 상시 게이트가 돈다(tests/README) |
 | 원격 | `github.com/Peace-Min/task-calendar` · `github.com/Peace-Min/taskmgr-company-data` |
-| **미푸쉬** | 본 111개 · 비공개 6개. **"푸쉬" 라고 지시할 때만** 푸쉬한다 |
+| **미푸쉬** | 2026-09-18 에 두 저장소 모두 푸쉬함(그 뒤 커밋은 git log origin/feat/db-app..HEAD 로 확인). **"푸쉬" 라고 지시할 때만** 푸쉬한다 |
 | 버전 파일 | 전부 **0.18.1** 그대로(csproj·APP_VERSION·iss·RELEASE_NOTES·CHANGELOG·#patchModal). `tests/version-sync.test.mjs` 가 여덟 자리 정합을 잠근다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"` — **배포된 0.18.1 은 v9 짝**이다. 버전 승격 전엔 `배포-빌드.cmd` 를 돌리지 말 것(같은 번호로 계약이 다른 exe 가 나간다) |
 | 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
-| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1575 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 12종 통과 |
+| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1579 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 12종 통과 |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 — 전부 커밋됨
 
@@ -33,8 +33,8 @@
 
 1. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installer\publish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash). 패치노트에 사용자 관리·휴지통·개발종료일·정합 6종. **스키마 12 + GRANT 7표와 같은 창에 배포**(DEPLOY.md §0-5, §6-1 "권한 변경도 §0").
 2. **푸쉬** — 지시 시에만. 본·비공개 둘 다.
-3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요), 「휴지통」 버튼을 「관리」 구획으로 분리(UI 지적 보류분), 시험 헬퍼 사본 5파일 → harness 통합.
-4. 잔여(급하지 않음): `uaSeatReply`/`uaSeatRoster` 의 안 읽히는 불리언 반환 · USER-ADMIN §11 의 12·13 번호 순서 뒤바뀜(내용은 맞음) · loop-ui-visual 경고 1건(세피아 `span.rl-h` 4.46:1, 기준선 근처).
+3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).
+4. 2026-09-18 에 끝낸 잔여: 「관리자」 구획 분리(#usAdminBtns) · 시험 헬퍼 사본 5파일 → harness(listCsMembers 추가) · 안 읽히는 불리언 반환 제거 · §11 12·13 순서 · 세피아 --muted #75664f(4.75:1). loop-ui-visual 의 남은 V8 경고는 전부 `--accent-soft` 배경 위 기준선 근처(warn, rc 0)로 이전부터 있던 것.
 
 ## 4. 이어서 작업하는 법
 

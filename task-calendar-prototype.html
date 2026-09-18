@@ -1412,8 +1412,10 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 .mba-bar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)}
 .mba-bar .mba-sp{flex:1}
 .mba-hint{font-size:var(--fs-meta);color:var(--muted);margin:0}
-/* 「사용자 정보」의 구성원 버튼 줄 — 「구성원 보기」(전원) + 「구성원 편집」(관리자에게만 생긴다). */
+/* 「사용자 정보」의 버튼 줄 — 줄이 둘이다: 「구성원 보기」(전원) 줄과 「관리」(관리자에게만 생긴다) 줄. */
 .us-mem-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+/* 줄 안에 서는 캡션(「관리자」) — .set-hint 의 아래 여백은 가로 줄에서 군더더기다(줄 높이만 늘린다). */
+.us-mem-row .set-hint{margin:0}
 #uaList{overflow:auto;max-height:46vh}
 /* 휴지통 — 탭은 검색 모달의 .tabs/.tab 을 **그대로** 쓴다(세그먼트 문법을 새로 만들지 않는다).
    여기서 더하는 것은 둘뿐이다: 탭 안 건수 배지의 간격(.mba-line 밖이라 위 규칙이 닿지 않는다)과
@@ -1734,7 +1736,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
    "고칠 수 있는 칸"으로 보인다 — 테마마다 자기 패널보다 한 단계 어두운 값을 직접 준다(2026-09-10).
    --danger-line 도 같은 이유로 각 테마의 색조에 맞춘다(라이트 분홍 테두리가 초록·크림 위에서 튄다). */
 :root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
-:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#7a6a52; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+   --muted 재맵(2026-09-18): #7a6a52 는 --dim-bg(#f4ecdd) 위의 흐린 글자(.rl-hrow 의 span.rl-h)에서 4.46:1 로 AA(4.5) 를 아슬하게 밑돌았다 — loop-ui-visual V8 이 기준선 근처로 잡던 그 한 건이다. 색상각(R:G:B = 122:106:82)을 그대로 두고 밝기만 4% 낮춘 #75664f 로 옮겼다: --dim-bg 4.75:1 · --panel(#fbf6ec) 5.17:1 · --bg(#f3ead9) 4.66:1 — 세 바탕 모두 AA 충족이다. 찬 --faint-text 를 재활용하지 않은 이유는 그 색이 크림 위에서 회청색으로 떠 세피아의 온기를 깨기 때문이다.
    --faint-text 재맵(2026-09-10): --dim-bg 를 세피아 크림(#f4ecdd)으로 두자 :root 의 #6c7488 이 다른 달 날짜(.cell.dim .num)에서 3.98:1 로 AA 미달 → #5f6779 (4.83:1). loop-ui-visual 이 잡았다.
    --sun 재맵: 크림색 패널·배경에서 #c43a3f는 요일머리 4.37:1·주말 숫자 4.27:1로 AA 미달 → 같은 색상각을 유지한 채 한 단계만 어둡게(5.04:1·4.91:1). --sat(#4b62a0)는 4.87~4.95:1로 충족해 그대로 둔다.
    --wknd-*-bg: 세피아 패널(#fbf6ec) 기준으로 미리 합성한 값 */
@@ -2736,12 +2739,19 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <!-- 두 버튼은 **서로 다른 화면**이다(2026-09-10 사용자 결정).
              「구성원 보기」 = 전원이 쓰는 읽기 전용 명부. 관리자에게도 편집 컨트롤이 없다.
              「구성원 편집」 = 관리자에게만 존재하는 관리 화면(#userAdminModal).
-             ★ 「구성원 편집」 버튼을 여기 마크업에 적지 않는다: 호스트 회신의 edit_role 이 'admin'
+             ★ 「구성원 편집」 버튼은 **아래 「관리」 줄**에 서고, 그 줄에도 마크업에 적지 않는다: 호스트 회신의 edit_role 이 'admin'
                일 때만 usAdminBtnSync 가 만들어 넣는다. 숨김이 아니라 **부재**여야 한다 —
                숨김은 클래스 하나로 풀리고, 그러면 화면이 권한을 정하는 모양이 된다. -->
         <div class="us-mem-row" id="usMemberBtns">
           <button type="button" class="btn sm" id="usMembers">구성원 보기</button>
         </div>
+        <!-- 관리 진입점은 **다른 줄**이다(2026-09-18 UI 검토 A15). 위 줄은 전원이 쓰는 일상 동작이고,
+             이 줄은 관리자에게만 생기는 두 문이다. 한 줄에 셋을 붙여 두었을 때 생긴 일이 둘이다 —
+               ㆍ「휴지통」이 바로 위 '구성원' 안내문에 딸린 것처럼 읽혀 '퇴사자 휴지통'으로 오해됐다.
+               ㆍ같은 크기 버튼 셋이 나란히 서서 일상 동작과 관리자 전용 동작 사이에 층이 없었다.
+             ★ 이 줄은 마크업에서 **비어 있다** — 캡션 「관리자」까지 usAdminBtnSync 가 만들어 넣는다.
+               위 줄과 같은 규칙이다: 관리자에게만 있는 것은 여기 한 글자도 적지 않는다(숨김 ≠ 부재). -->
+        <div class="us-mem-row" id="usAdminBtns"></div>
       </div>
     </div>
     <div class="modal-foot">
@@ -4613,16 +4623,22 @@ function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return
 //   ★ 그러므로 이 함수에는 classList·hidden·style.display 가 없다. 하나라도 생기면 계약이 깨진 것이다.
 //   ★ 판정 문자열은 여기 한 곳에만 있다. 두 곳이면 한쪽이 반드시 낡는다.
 function usAdminBtnSync(editRole){
-  const box = document.getElementById('usMemberBtns'); if(!box) return;
+  const box = document.getElementById('usAdminBtns'); if(!box) return;
   const on = String(editRole == null ? '' : editRole).trim() === 'admin';
   const cur = document.getElementById('usUserAdmin');
   //  ★ 「휴지통」(#usTrash)도 **같은 판정·같은 자리**에서 함께 나고 함께 진다(TRASH-DELETE §5.0).
   //    두 버튼을 한 함수가 지는 이유는 판정 문자열이 한 곳이어야 하기 때문이다 — 두 곳이면 한쪽이 낡는다.
-  //    없애는 줄이 아래 한 줄보다 먼저 오는 이유: 그 줄은 이미 시험이 형태로 잡고 있는 계약이라 그대로 둔다.
-  const curT = document.getElementById('usTrash');
-  if(!on && curT && curT.parentNode) curT.parentNode.removeChild(curT);
-  if(!on){ if(cur && cur.parentNode) cur.parentNode.removeChild(cur); return; }
-  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다(둘은 늘 같이 생긴다)
+  //  ★ 관리자가 아니면 이 줄을 **통째로** 비운다(2026-09-18 A15). 버튼만 골라 지우면 캡션 「관리자」가
+  //    아무것도 없는 줄에 남아 "여기 뭔가 있었다"고 말한다 — 비어 있는 것이 곧 부재다. 그리고 이 줄에는
+  //    관리자 전용 말고 **아무것도 없으므로**(「구성원 보기」는 위 줄이다) 통째로 비워도 잃을 것이 없다.
+  if(!on){ while(box.firstChild) box.removeChild(box.firstChild); return; }
+  if(cur) return;   // 이미 있다 — 다시 만들면 방금 누른 버튼의 포커스가 날아간다(셋은 늘 같이 생긴다)
+  //  캡션 — 아래 두 버튼이 '누구의 것인가'를 한 단어로 말한다. 이것도 마크업에 적지 않는다: 비관리자
+  //  DOM 에 「관리자」라는 라벨만 남으면 화면이 없는 권한을 가리키게 된다.
+  const cap = document.createElement('span');
+  cap.className = 'set-hint';
+  cap.textContent = '관리자';
+  box.appendChild(cap);
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'btn sm'; b.id = 'usUserAdmin';
   b.textContent = '구성원 편집';
@@ -5596,18 +5612,20 @@ function uaParseRoster(json){
   try{ d = JSON.parse(String(json == null ? '' : json)); }catch(_){ d = null; }
   return (d && d.found) ? d : null;
 }
-// 회신에 실려 온 명부를 앉힌다 — 앉혔으면 true(부르는 쪽이 '이미 그렸다'를 아는 근거다).
+// 회신에 실려 온 명부를 앉힌다 — **돌려주는 값은 없다**(2026-09-18). 한때 '앉혔나'를 true/false 로
+//   돌려줬는데 그 값을 읽는 곳이 하나도 남지 않았다: 부르는 쪽이 '누가 이미 그렸나'를 되짚어 되그리기를
+//   정하던 셈이 2026-09-14 에 사라졌기 때문이다. 아무도 읽지 않는 반환값은 "읽어도 되는 값"처럼 보여서
+//   다음 사람이 그 셈을 다시 짓게 한다 — 되짚을 것이 없으면 틀릴 것도 없다.
 //   ★ 회신에 실려 온 명부는 **정의상 내 쓰기의 결과**다 — 그러니 미뤄 두지 않는다. 짝짓기(reqId 대조)가
 //     필요했던 이유가 바로 '이 푸시가 내 것인가'를 알 수 없었기 때문인데, 이제는 물을 필요가 없다.
 //   ★ 서버가 확정한 명부이므로 미뤄 둔 옛 스냅샷은 여기서 버린다(2026-09-11 적대 검토 R4-W2) —
 //     남겨 두면 나중에 순서 편집을 켰다 끄는 것만으로 그 옛 명부가 확정 명부를 덮어쓴다.
 function uaSeatRoster(json){
   const d = uaParseRoster(json);
-  if(!d) return false;
+  if(!d) return;
   __uaPendingData = null;
   uaApplyData(d);
   userEdSyncActive();   // ★ 열려 있는 편집 폼의 퇴사/복구 상태도 이 명부에 맞춘다(R6-W3)
-  return true;
 }
 // 회신에 실려 온 명부를 **앉힐지 미뤄 둘지** 정하는 한 곳 — 쓰기 회신의 명부는 전부 이 문을 지난다
 // (uaSend · trSend). 2026-09-14 좌석 일원화.
@@ -5622,20 +5640,21 @@ function uaSeatRoster(json){
 //     이유가 없다. 그리고 **앉히기 전에** 편집 모드를 끝낸다 — 앉히고 나서 끄면 ▲▼·[취소]·[순서 저장]이
 //     남은 화면을 한 번 더 그려야 한다. 여기서 끄면 화면은 **한 번에 최종형**으로 그려진다.
 //     (호스트는 saveUserOrder 의 명부를 성공과 「낡은 명부」 거부에만 싣는다 — MainWindow §saveUserOrder.)
-//   ★ 돌려주는 값 = '앉혔나'. 미뤄 뒀거나 명부가 안 실려 왔으면 false 다. 회신 객체에는 싣지 않는다
-//     (2026-09-14): 부르는 쪽이 '누가 이미 그렸나'를 되짚어 되그리기를 정하던 셈이 사라졌기 때문이다.
+//   ★ **돌려주는 값이 없다**(2026-09-18). 한때 '앉혔나'를 돌려줬지만 두 부르는 쪽(uaSend·trSend) 중
+//     어느 곳도 그 값을 읽지 않는다 — 회신 객체에 싣는 일도 2026-09-14 에 그만뒀다. 아무도 읽지 않는
+//     반환값을 남겨 두면 다음 사람이 '누가 이미 그렸나'를 되짚는 셈을 다시 짓는다(그 셈이 틀렸던 자리다).
 function uaSeatReply(roster, cmd){
   const json = String(roster == null ? '' : roster);
-  if(!json) return false;   // 회신에 명부가 안 실려 왔다(호스트가 다시 읽지 못했거나 읽을 이유가 없었다)
+  if(!json) return;   // 회신에 명부가 안 실려 왔다(호스트가 다시 읽지 못했거나 읽을 이유가 없었다)
   if(__uaOrder && cmd !== 'saveUserOrder'){
     const d = uaParseRoster(json);
-    if(!d) return false;    // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+    if(!d) return;          // 못 읽으면 직전 명부를 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
     __uaPendingData = d;
     uaAdminBar();           // 미뤄 뒀다는 사실은 막대가 말한다 — 낡은 줄 모르고 순서를 정하면 안 된다
-    return false;
+    return;
   }
   if(cmd === 'saveUserOrder') uaOrderReset();
-  return uaSeatRoster(json);
+  uaSeatRoster(json);
 }
 // 폼에서 나간 쓰기의 뒤처리 한 곳 — [저장]과 [퇴사 처리]가 같은 길을 쓴다.
 //   ★ 성공=폼 닫고 토스트, 실패=폼 유지 + 호스트 문장 그대로. 권한 거부·잠금 방지 문구가 그대로 여기로 온다

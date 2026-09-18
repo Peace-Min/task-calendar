@@ -266,10 +266,22 @@ function escapeRe(s) {
 // 호스트(widget/*.cs)의 계약을 형태로 보는 시험들이 같은 슬라이서를 각자 안고 있었다. 사본은 반드시
 // 낡는다 — 한쪽만 문자열 이스케이프나 식(=>) 본문 처리를 고치면 나머지는 그대로 오탐을 안고 통과한다.
 // 그래서 정본을 여기 둔다.
-//   ★ **아직 옮기지 않은 파일이 있다**(2026-09-11 R2-W6 — "한 곳에 있다"는 서술은 그때까지 거짓이었다):
-//     admin-auth · code-tables · user-login · user-info · schema-integrity 다섯 파일은 여전히 자기 사본을
-//     쓴다. 옮긴 것은 user-admin · trash-host 둘뿐이다. 이 목록은 사본을 없앨 때 함께 줄여야 한다 —
-//     여기 적힌 것이 사실이 아니게 되는 순간, 이 주석도 사본과 똑같이 낡은 것이 된다.
+//   ★ **C# 멤버 슬라이서(멤버를 자르는 기계)의 사본은 이제 없다**(2026-09-18). 그 전 목록은 admin-auth ·
+//     code-tables · user-login · user-info · schema-integrity 다섯이었고, 옮긴 것은 user-admin ·
+//     trash-host 둘뿐이었다. 지금은 C# 멤버를 잘라 보는 파일이 **전부** 여기 셋(stripCsComments ·
+//     extractCsMember · listCsMembers)을 가져다 쓴다.
+//
+//   ★ 그래도 **주석 제거기(stripComments)는 아직 몇 군데 자기 것을 쓴다.** 사실대로 적어 둔다 —
+//     여기 적힌 것이 사실이 아니게 되는 순간, 이 주석도 사본과 똑같이 낡은 것이 되기 때문이다:
+//       · user-info · user-login · db-conn-info — **백틱(`)까지 아는 JS 겸용**이다. 같은 파일이 앱의
+//         HTML/JS 소스(템플릿 리터럴이 있다)에도 그걸 쓰기 때문에, C# 전용인 여기 정본으로 그대로
+//         바꾸면 템플릿 리터럴 안의 // 를 주석으로 읽는다. 옮기려면 정본에 JS 갈래를 먼저 만들어야 한다.
+//       · netcus-dialog — C# 전용이라 정본과 사실상 같은 기계다. 옮길 수 있지만 그 파일은 이번
+//         정리(2026-09-18)의 범위 밖이었다. 다음에 그 파일을 손댈 때 함께 없앨 것.
+//       · xml-retirement — 줄 단위 정규식이고 HTML 주석(<!-- -->)까지 지운다. 다른 기계다.
+//       · schema-integrity 의 **stripSql** — C# 이 아니라 SQL 주석(--)을 걷는다. 뜻 자체가 다르다(옮기면 안 된다).
+//       · code-tables 의 **csMember** — 스캐너 사본이 아니라 얇은 감싸개다. 본체는 extractCsMember 에
+//         맡기고, 그 파일만의 조건(시그니처가 유일해야 한다)을 하나 더 얹는다.
 //
 // 주석 제거(문자열 리터럴은 보존) — "왜 안 하는지"를 적어 둔 **주석이** 계약을 통과시키면 안 된다.
 const _CS_BS = String.fromCharCode(92);
@@ -380,6 +392,47 @@ export function extractCsMember(source, sig) {
     else if (c === '}') { depth -= 1; if (depth === 0) return code.slice(s, k + 1); }
   }
   throw new Error(`extractCsMember: ${sig} 의 중괄호 짝이 맞지 않는다`);
+}
+
+// 클래스 멤버를 **전부** {name, body} 로 훑는다 — 이름을 미리 알 필요가 없다.
+//   ★ extractCsMember 가 '아는 이름 하나' 를 자르는 도구라면, 이쪽은 '새 이름으로 들어온 멤버' 를 잡기
+//     위한 도구다. 이름 목록으로 고르는 검사는 새 이름이 그대로 빠져나간다(admin-auth 의 '관문 밖 쓰기 API'
+//     감시가 그 자리다). 그래서 선언을 전부 훑고, 고르는 일은 부르는 쪽이 한다.
+//   ★ 멤버 머리의 정의: **8칸 들여쓰기 + 접근 한정자**로 시작하는 줄(이 저장소 widget/*.cs 의 관례).
+//     본문이 없는 멤버(필드·자동 프로퍼티처럼 ';' 로 끝나는 것)도 그 문장까지 담아 돌려준다.
+//   ★ 문자열 판별은 extractCsMember 와 **같은 기계**(_csCloseQuote)를 쓴다 — 축자 문자열(@"...\\")을
+//     모르는 사본이 여기 하나 더 생기면, 그 사본만 조용히 옆 멤버를 삼킨다.
+export function listCsMembers(source) {
+  const code = stripCsComments(source);
+  const re = /\n {8}(?:public|private|internal|protected)\b[^\n]*/g;
+  const starts = [];
+  let m;
+  while ((m = re.exec(code)) !== null) starts.push(m.index + 1);
+  const out = [];
+  for (const s of starts) {
+    const head = code.slice(s, code.indexOf('\n', s) + 1);
+    const nm = /(\w+)\s*\(/.exec(head);
+    const name = nm ? nm[1] : '(멤버)';
+    let open = -1, semi = -1;
+    for (let k = s; k < code.length; k++) {
+      const c = code[k];
+      if (c === '"' || c === "'") { k = _csCloseQuote(code, k); continue; }
+      if (c === '{') { open = k; break; }
+      if (c === ';') { semi = k; break; }
+    }
+    if (open < 0) { out.push({ name, body: code.slice(s, semi < 0 ? s : semi + 1) }); continue; }
+    let depth = 0, end = -1;
+    for (let k = open; k < code.length; k++) {
+      const c = code[k];
+      if (c === '"' || c === "'") { k = _csCloseQuote(code, k); continue; }
+      if (c === '{') depth++;
+      else if (c === '}') { depth -= 1; if (depth === 0) { end = k; break; } }
+    }
+    //  ★ 짝이 안 맞으면 던진다 — 반쪽 슬라이스를 돌려주면 그걸 보는 계약이 조용히 힘을 잃는다.
+    if (!(end > open)) throw new Error(`listCsMembers: '${name}' 의 중괄호 짝이 맞지 않는다 — 판정 불가`);
+    out.push({ name, body: code.slice(s, end + 1) });
+  }
+  return out;
 }
 
 // 문자열 리터럴 시작 위치 i(따옴표)에서 닫는 따옴표 다음 인덱스를 반환.
