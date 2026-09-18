@@ -183,8 +183,14 @@ const checks = {
     const seat = extractFunction(web, 'trSeat');
     assert.ok(/JSON\.parse/.test(seat) && /d\.found/.test(seat),
       'trSeat 가 문자열 JSON 을 파싱해 found 를 확인하지 않는다(__applyProjects 와 같은 전달 규약이다)');
-    assert.ok(/return false;/.test(seat) && /return true;/.test(seat),
-      "trSeat 가 '앉혔나'를 돌려주지 않는다 — 회신에 목록이 안 실려 온 경우를 부르는 쪽이 알 길이 없다");
+    //  ★ **돌려주는 값은 없다**(2026-09-18 · uaSeatRoster 와 같은 이유): 유일한 부르는 쪽(trAfterWrite)이
+    //    그 값을 읽지 않는다. 아무도 읽지 않는 반환값은 "읽어도 되는 값"처럼 보여서, 다음 사람이
+    //    '누가 이미 그렸나'를 되짚는 셈을 다시 짓게 한다 — 되짚을 것이 없으면 틀릴 것도 없다.
+    assert.ok(!/return (?:true|false);/.test(seat),
+      "trSeat 가 아무도 읽지 않는 '앉혔나' 값을 돌려준다 — 부르는 쪽(trAfterWrite)은 그 값을 보지 않는다");
+    const aw2 = extractFunction(web, 'trAfterWrite');
+    assert.ok(/^\s*trSeat\(r\.trash\);/m.test(aw2),
+      '대조군: 뒤처리는 trSeat 의 반환값을 받지 않고 그냥 부른다(그 값을 읽는 곳이 생기면 여기서 갈린다)');
   },
 
   // ⑦ 입력값은 **가공 없이** 호스트로 간다(TRIM 금지 · 설계 §5.2) + 확인창 대조도 엄격 일치다.
@@ -276,8 +282,11 @@ const checks = {
       'trAfterWrite 가 명부를 스스로 앉힌다 — 좌석이 둘로 갈리면 순서 편집 보호가 한쪽에서만 지켜진다');
     //  ★ (재)오픈은 낡은 잠금을 남기지 않는다. 다만 **도는 중이면 풀지 않는다**(그 왕복이 끝나는 자리가 푼다).
     const o = extractFunction(web, 'openTrash');
-    assert.ok(/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);/.test(o),
+    //  ★ 같은 값을 그대로 다시 건다 — if/else 두 갈래로 적으면 '무엇이 다른가'를 읽는 사람이 찾게 된다(2026-09-18).
+    assert.ok(/trSetSaving\(__trSaving\);/.test(o),
       'openTrash 가 낡은 잠금을 정리하지 않는다 — 회신 없이 닫았다 다시 열면 화면이 잠긴 채로 선다(2026-09-10)');
+    assert.ok(!/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);/.test(o),
+      'openTrash 가 같은 값을 if/else 로 다시 적는다 — trSetSaving(__trSaving) 한 줄이면 된다');
   },
 
   // ⑦-c 잠금은 **데이터가 아니라 렌더**가 진다(2026-09-11 적대 검토 R3-W2).
@@ -352,7 +361,7 @@ const checks = {
     //    목록을 그리지 않는다. 지우면 방금 비운 __trData·__trAdmin 이 화면에 닿지 않아 지난번에 열었던
     //    목록이 그대로 남는다(회신 전 한 프레임).
     const o = extractFunction(web, 'openTrash');
-    assert.ok(/if\(__trSaving\) trSetSaving\(true\); else trSetSaving\(false\);\s*\n[\s\S]{0,400}?\n  trRender\(\);/.test(o),
+    assert.ok(/trSetSaving\(__trSaving\);\s*\n[\s\S]{0,400}?\n  trRender\(\);/.test(o),
       'openTrash 가 여는 순간 목록을 그리지 않는다 — trSetSaving 은 잠금만 걸 뿐 그리지 않는다');
   },
 

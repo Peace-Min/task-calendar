@@ -211,6 +211,34 @@ const checks = {
 };
 
 // ── 계약 ─────────────────────────────────────────────────────────────
+//  ★ 닫기 부수효과는 **대칭**이다(2026-09-18 §3.3): netcus 병합 캐시는 일간·주간 두 벌인데 닫기에서
+//    일간만 비우면, 다시 열었을 때 주간 캐시가 **이전 기간의 것**으로 남아 그 내용이 복사된다
+//    (#rptFrom/#rptTo 변경은 이미 둘 다 비운다 — 그 짝이 여기서만 갈려 있었다).
+//  ★ 검사와 변이가 **같은 함수**를 쓴다 — 변이로 안 깨지는 검사는 장식이다.
+function closeClearsBothMerges(s) {
+  const co = s.slice(s.indexOf('function closeOverlay(ov){'));
+  const at = co.indexOf("ov.id === 'reportModal'");
+  assert.ok(at > 0, 'closeOverlay 의 reportModal 부수효과를 찾지 못했다 — 판정 불가');
+  const line = co.slice(at, co.indexOf('\n', at));
+  assert.ok(/clearNetcusMerge\(\)/.test(line), '닫기에서 일간 병합 캐시를 비우지 않는다');
+  assert.ok(/clearNetcusWeeklyMerge\(\)/.test(line),
+    '닫기에서 주간 병합 캐시를 비우지 않는다 — 다시 열면 이전 기간의 주간 취합이 그대로 복사된다');
+  const f = s.indexOf("$('#rptFrom').addEventListener('change'");
+  assert.ok(f > 0 && /clearNetcusMerge\(\); clearNetcusWeeklyMerge\(\);/.test(s.slice(f, f + 400)),
+    '대조군: 기간 변경은 두 캐시를 함께 비운다(닫기만 한쪽이면 그 짝이 갈린 것이다)');
+}
+
+test('배선⑫: 보고서 모달을 닫으면 netcus 병합 캐시를 일간·주간 **둘 다** 비운다', () => closeClearsBothMerges(src));
+
+test('변이⑭: 닫기에서 주간 캐시 비우기를 빼면 배선⑫ 가 실패한다(이전 기간의 주간 취합이 되살아난다)', () => {
+  const from = "if(ov.id === 'reportModal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }";
+  const i = src.indexOf(from);
+  assert.ok(i > 0, '변이 대상 문자열을 찾지 못했다 — 판정 불가');
+  const bad = src.slice(0, i) + "if(ov.id === 'reportModal') clearNetcusMerge();" + src.slice(i + from.length);
+  assert.throws(() => closeClearsBothMerges(bad), /주간 병합 캐시를 비우지 않는다/);
+  assert.doesNotThrow(() => closeClearsBothMerges(src));   // 통제군
+});
+
 test('배선①: 일간 저장은 vr==1(전송 성공+되읽어 검증) 분기 안에서만 불린다', () => {
   checks.dailySaveInsideVerified(netcus);
 });

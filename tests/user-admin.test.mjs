@@ -1169,8 +1169,11 @@ const checks = {
   // ⑮ 여는 순간 낡은 잠금을 정리한다 — 다만 **도는 중이면 풀지 않는다**(그 왕복이 끝나는 자리가 푼다).
   openKeepsGuard(web) {
     const oa = extractFunction(web, 'openUserAdmin');
-    assert.ok(/if\(__uaSaving\) uaSetSaving\(true\); else uaSetSaving\(false\);/.test(oa),
+    //  ★ 같은 값을 그대로 다시 건다 — if/else 두 갈래로 적으면 '무엇이 다른가'를 읽는 사람이 찾게 된다(2026-09-18).
+    assert.ok(/uaSetSaving\(__uaSaving\);/.test(oa),
       'openUserAdmin 이 낡은 잠금을 정리하지 않는다 — 회신 없이 닫았다 다시 열면 화면이 잠긴 채로 선다');
+    assert.ok(!/if\(__uaSaving\) uaSetSaving\(true\); else uaSetSaving\(false\);/.test(oa),
+      'openUserAdmin 이 같은 값을 if/else 로 다시 적는다 — uaSetSaving(__uaSaving) 한 줄이면 된다');
     const o = extractFunction(web, 'userEdOpen');
     assert.ok(/if\(__uaSaving\)\{/.test(o),
       'userEdOpen 이 진행 중 왕복을 무조건 풀어 버린다 — 전송 중에 다른 사람을 열면 중복 전송 가드가 통째로 사라진다');
@@ -1342,6 +1345,20 @@ test('계약⑭-b2: 잠금이 포커스를 쥔 버튼을 끄면 그 행으로 �
 test('계약⑭-c: 「순서 저장」은 자기 회신을 자기가 받고, 편집 모드를 끝냈으면 반드시 다시 그린다', () => checks.orderSaveHandlesItsOwnReply(app));
 test('계약⑭-e: 회신 명부의 좌석은 한 곳(uaSeatReply)이고, 순서 편집 중이면 회신도 미뤄 둔다', () => checks.replySeatIsOnePlace(app));
 test('계약⑮: 화면을 (다시) 열 때 낡은 잠금은 풀되, 도는 중이면 그대로 둔다', () => checks.openKeepsGuard(app));
+//  ★ 검색은 **디바운스**다(2026-09-18 §3.3 · 규칙⑦) — 한 글자마다 목록을 통째로 다시 만들면
+//    자리·포커스 되돌리기가 매 키마다 돌고, 89명 명부에서는 타이핑이 끊긴다. 기준은 #sInput 과 같은 180ms.
+test('계약⑮-b: #uaSearch 는 글자마다 목록을 다시 만들지 않는다(#sInput 과 같은 180ms 디바운스)', () => {
+  const at = app.indexOf("const b = $('#uaSearch');");
+  assert.ok(at > 0, '#uaSearch 배선을 찾지 못했다 — 판정 불가');
+  const line = app.slice(at, app.indexOf('\n', at));
+  assert.ok(!/addEventListener\('input', uaFilter\)/.test(line),
+    '#uaSearch 의 input 이 uaFilter 를 곧바로 부른다 — 글자마다 전체 재빌드다');
+  assert.ok(/setTimeout\(uaFilter, 180\)/.test(line) && /clearTimeout\(/.test(line),
+    '#uaSearch 가 180ms 디바운스로 미루지 않는다(#sInput 과 같은 기준)');
+  const s = app.indexOf("$('#sInput').addEventListener('input'");
+  assert.ok(s > 0 && /setTimeout\(runSearch, 180\)/.test(app.slice(s, s + 220)),
+    '대조군: 검색 모달(#sInput)도 180ms 디바운스다(기준이 두 벌이면 한쪽이 낡는다)');
+});
 test('계약⑯: 순서 편집 중에 미뤄 둔 남의 갱신 명부는 편집을 마칠 때 반영되고, 확정 명부가 앉으면 사라진다', () => checks.orderSurvivesForeignRoster(app));
 test('계약⑰: 「퇴사자 보기」는 조회가 실제로 시작됐을 때만 켜진 채로 남는다', () => checks.inactiveToggleIsHonest(app));
 test('계약⑱: 목록에 없는 값을 말없이 갈아치우지 않는다(직급 목록이 비면 저장을 잠근다)', () => checks.unknownValueIsKept(app));
@@ -2301,6 +2318,21 @@ function adminHarnessJs(src) {
     '      return { uop: b.dataset.uop, uid: b.dataset.uid, disabled: !!b.disabled }; }),',
     '    bar: pick(bar), foot: pick(foot) };',
     '};',
+    //  ★ 막대는 명부가 앉을 때마다 **통째로** 다시 만들어진다(uaApplyData → uaAdminBar) — 쥐고 있던
+    //    컨트롤의 id 로 포커스가 돌아와야 한다(2026-09-18 §3.1). 안 돌려주면 직급·소속 창을 닫거나
+    //    「퇴사자 보기」를 누르는 것만으로 포커스가 body 로 떨어진다.
+    'window.__probeBarFocus = function(rows, id, order){',
+    '  __uaAdmin = true; __uaOrder = !!order; __uaPendingData = null; __uaSaving = false;',
+    '  uaAdminBar(); uaRender(rows);',
+    '  var el = document.getElementById(id);',
+    '  if(!el) return { found: false };',
+    '  el.focus();',
+    '  var started = document.activeElement === el;',
+    '  uaAdminBar();',
+    '  var a = document.activeElement;',
+    '  return { found: true, started: started, isBody: a === document.body,',
+    '           id: (a && a.id) ? String(a.id) : "", sameNode: a === el };',
+    '};',
     //  미뤄 둔 갱신이 있으면 순서 편집 막대가 그 사실을 말해야 한다(계약⑯의 DOM 쪽).
     'window.__probePending = function(rows, pending){',
     '  __uaAdmin = true; __uaOrder = true; __uaPendingData = pending ? { found: true } : null;',
@@ -2817,6 +2849,7 @@ const probeSearchTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(s
 const probeOrderTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeOrderTop', ROWS);
 const probeInactiveTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeInactiveTop', ROWS);
 const probeAdminFlipTop = (src = app) => runInJsdom(ADMIN_FIXTURE, placeHarnessJs(src), '__probeAdminFlipTop', ROWS);
+const probeBarFocus = (id, order, src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeBarFocus', ROWS, id, order);
 const probeUaLockFocus = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockFocus', ROWS);
 const probeUaLockFocusMoved = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockFocusMoved', ROWS);
 const probeUaLockRerender = (src = app) => runInJsdom(ADMIN_FIXTURE, adminHarnessJs(src), '__probeLockSurvivesRerender', ROWS);
@@ -2857,6 +2890,9 @@ if (!jsdom) {
   skip('계약⑬-DOM(c3): 그 사람이 명부에서 빠지면 다른 버튼에 포커스를 억지로 주지 않는다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM(c3): 렌더가 스스로 맨 위로 보내면 저장할 때마다 목록이 튄다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(d): 잠금은 목록을 다시 만들지 않고, 포커스는 행으로 물러났다 돌아온다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(f): 관리 막대를 다시 만들어도 쥐고 있던 컨트롤(id)로 포커스가 돌아온다', SKIP_NO_JSDOM);
+  skip('계약⑬-DOM(f2): 순서 편집 막대도 같은 자리를 되돌린다', SKIP_NO_JSDOM);
+  skip('변이⑬-DOM(f): 막대의 포커스 되돌리기를 지우면 계약⑬-DOM(f) 가 실패한다', SKIP_NO_JSDOM);
   skip('변이⑬-DOM(d2): 행이 포커스를 못 받으면 잠기는 순간 포커스가 body 로 떨어진다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(e4): 회신에 실려 온 명부도 열려 있는 폼을 다시 맞춘다', SKIP_NO_JSDOM);
   skip('계약⑬-DOM(c2): 검색·순서 편집·「퇴사자 보기」·관리자 뒤집힘은 맨 위에서 연다(R6-W1)', SKIP_NO_JSDOM);
@@ -3082,6 +3118,39 @@ if (!jsdom) {
     assert.strictEqual(r.unlocked.uid, r.uid, `풀린 뒤 포커스가 다른 행으로 갔다: ${JSON.stringify(r.unlocked)}`);
     assert.strictEqual(r.unlocked.disabled, false, '되돌아온 버튼이 아직 꺼져 있다 — 잠금이 풀리지 않았다');
     assert.strictEqual(r.unlocked.top, 120, `잠금을 푸는 것만으로 보던 자리가 ${r.unlocked.top} 로 튀었다`);
+  });
+
+  //  ★ 상단/하단 막대는 명부가 앉을 때마다 **통째로** 다시 만들어진다(uaApplyData → uaAdminBar).
+  //    직급·소속 창을 닫으면(otAfterClose → uaReload) · 「퇴사자 보기」를 누르면 그 길로 들어오는데,
+  //    되돌리지 않으면 그 한 번으로 포커스가 body 로 떨어진다(그 뒤 Tab 은 문서 처음부터 다시 시작한다).
+  //    ★ 신원은 **id** 다 — 막대의 컨트롤은 전부 id 를 갖는다(행 버튼의 data-uop 과 같은 손).
+  test('계약⑬-DOM(f): 관리 막대를 다시 만들어도 쥐고 있던 컨트롤(id)로 포커스가 돌아온다', () => {
+    for (const id of ['uaOrderEdit', 'uaTrash', 'uaOrgTitle', 'uaInactive', 'uaNew']) {
+      const r = probeBarFocus(id, false);
+      assert.strictEqual(r.found, true, `전제 붕괴: #${id} 가 막대에 없다`);
+      assert.strictEqual(r.started, true, `전제 붕괴: #${id} 에 포커스를 주지 못했다`);
+      assert.strictEqual(r.sameNode, false, `전제 붕괴: #${id} 가 다시 만들어지지 않았다(같은 노드다)`);
+      assert.strictEqual(r.isBody, false,
+        `막대를 다시 만들자 포커스가 body 로 떨어졌다(#${id}) — 직급·소속 창을 닫는 것만으로 그렇게 된다`);
+      assert.strictEqual(r.id, id, `포커스가 다른 컨트롤로 갔다: ${JSON.stringify(r)}`);
+    }
+  });
+
+  test('계약⑬-DOM(f2): 순서 편집 막대도 같은 자리를 되돌린다', () => {
+    for (const id of ['uaOrderCancel', 'uaOrderSave']) {
+      const r = probeBarFocus(id, true);
+      assert.strictEqual(r.found, true, `전제 붕괴: 순서 편집 막대에 #${id} 가 없다`);
+      assert.strictEqual(r.isBody, false, `순서 편집 막대를 다시 만들자 포커스가 body 로 떨어졌다(#${id})`);
+      assert.strictEqual(r.id, id, `포커스가 다른 컨트롤로 갔다: ${JSON.stringify(r)}`);
+    }
+  });
+
+  test('변이⑬-DOM(f): 막대의 포커스 되돌리기를 지우면 계약⑬-DOM(f) 가 실패한다(닫기 한 번에 body 로)', () => {
+    const bad = mutate(app, '  backFocus();   // ★ 막대를 다 만든 뒤', '  ;   // ★ 막대를 다 만든 뒤');
+    const r = probeBarFocus('uaOrgTitle', false, bad);
+    assert.strictEqual(r.isBody, true,
+      `변이 전제: 되돌리기를 지우면 포커스가 body 로 떨어져야 한다(실제: ${JSON.stringify(r)})`);
+    assert.strictEqual(probeBarFocus('uaOrgTitle', false).id, 'uaOrgTitle');   // 통제군
   });
 
   //  ★ 잠금 중에 관리자가 다른 행으로 포커스를 옮겨 뒀다면, 푸는 쪽이 그것을 **도로 뺏지 않는다**

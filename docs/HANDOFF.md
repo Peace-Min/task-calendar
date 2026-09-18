@@ -17,7 +17,7 @@
 | 버전 파일 | 전부 **0.18.1** 그대로(csproj·APP_VERSION·iss·RELEASE_NOTES·CHANGELOG·#patchModal). `tests/version-sync.test.mjs` 가 여덟 자리 정합을 잠근다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"` — **배포된 0.18.1 은 v9 짝**이다. 버전 승격 전엔 `배포-빌드.cmd` 를 돌리지 말 것(같은 번호로 계약이 다른 exe 가 나간다) |
 | 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev), **2026-09-18 org_unit·title_code INSERT, UPDATE 적용됨**(직급·소속 관리 · 백업 taskmgr-20260918-141726.sql 뒤). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
-| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1675 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함) |
+| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1697 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함) |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 — 전부 커밋됨
 
@@ -33,7 +33,7 @@
 
 ## 3. 다음 할 일 (우선순위순)
 
-1. **코드 품질 전면 조사 2차** — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) **§3** 이 정본(P1: 직급·소속 창 포커스·잠금, 구성원 편집 막대 재생성, 공식 과제 화면 441~660px 접힘, 상세 패널 높이 · P2 목록). §0 의 규칙 8개를 새 코드에 적용. 구현은 dev-delegate, 게이트는 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
+1. **코드 품질 전면 조사 — 남은 P2(판단 필요)** — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) **§3.4** 이 정본(§3.1~3.3 은 2026-09-18 완료). 항목마다 사용자 확인 뒤 진행. §0 의 규칙 8개를 새 코드에 적용. 구현은 dev-delegate, 게이트는 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 2. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
 3. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-18 현재 본 저장소 미푸쉬 커밋 다수, 비공개 1건).
 4. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).

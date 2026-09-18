@@ -63,7 +63,8 @@ button{font-family:inherit}
 
 /* ---------- 데스크톱 위젯 호스트바 (WebView2 모드 전용) ---------- */
 #hostbar{display:flex;align-items:center;height:32px;background:var(--titlebar);color:#fff;flex:none;user-select:none;-webkit-user-select:none}
-#hostbar .hb-drag{flex:1;display:flex;align-items:center;gap:6px;padding-left:10px;font-size:var(--fs-meta);font-weight:600;cursor:default;height:100%}
+/* min-width:0 — flex 항목의 기본 최소폭(auto)은 '내용 폭'이라, 이 칸이 줄지 않고 오른쪽 버튼(✕)을 화면 밖으로 밀어낸다(2026-09-18) */
+#hostbar .hb-drag{flex:1;display:flex;align-items:center;gap:6px;padding-left:10px;font-size:var(--fs-meta);font-weight:600;cursor:default;height:100%;min-width:0;overflow:hidden;white-space:nowrap}
 body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) 시에만 이동 커서 */
 #hostbar .hb-btns{display:flex;height:100%}
 #hostbar .hb-btns button{border:none;background:transparent;color:#fff;width:36px;height:32px;cursor:pointer;font-size:var(--fs-body);line-height:1;display:flex;align-items:center;justify-content:center}
@@ -594,7 +595,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .swatch{
   width:24px;height:24px;border-radius:50%;cursor:pointer;border:2px solid transparent;flex:none;
 }
-.swatch.on{border-color:var(--text);box-shadow:0 0 0 2px #fff inset}
+.swatch.on{border-color:var(--text);box-shadow:0 0 0 2px var(--panel) inset}   /* 인셋 링은 패널색이다 — #fff 는 다크·contrast 에서 흰 테가 떠 보였다(2026-09-18) */
 .palette input[type=color]{
   width:30px;height:26px;border:1px solid var(--ctl-border);border-radius:6px;background:var(--panel);cursor:pointer;padding:1px 2px;
 }
@@ -626,7 +627,13 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-toolrow .spacer{flex:1}
 /* 400px 폭: [초기화][⬇ Excel 추출][＋ 새 공식 과제] 가 10px 여유를 두고도 둘째 줄로 접혔다(loop-ui-visual V3 · 2026-09-18 — 「＋ 발주처 관리」를
    하단 줄로 옮기자 "크게 넘침" 경고가 "아슬아슬하게 접힘" 결함으로 바뀌었다). 좁은 폭에서는 버튼 패딩을 줄여 한 줄에 담는다. */
-@media (max-width:440px){ .off-toolrow .btn.sm{padding:4px 7px} .off-toolrow{gap:var(--sp-1)} }
+/* ★ 임계는 440 이 아니라 ≈600px 이다(2026-09-18 전면 조사 §3.2): 이 줄은 버튼 셋 + 건수 둘이라
+   441~560px 에서 「＋ 새 공식 과제」만 둘째 줄로 떨어졌다. 같은 보정(좁은 패딩·좁은 간격)을 600 까지 넓힌다. */
+@media (max-width:600px){ .off-toolrow .btn.sm{padding:4px 7px} .off-toolrow{gap:var(--sp-1)} }
+/* 하단 줄은 관리자에게 버튼 다섯(새로고침·발주처 관리·구분·상태 관리·휴지통·닫기)이다 — 441~660px 에서
+   두 줄 경계에 걸려 한 버튼만 홀로 접혔다(2026-09-18 §3.2). 좁으면 전부 컴팩트로 내려 한 줄에 담고,
+   그래도 넘치면 .modal-foot 의 flex-wrap 이 **가지런히** 접는다(줄 간격은 이미 gap:8px 이 겸한다). */
+@media (max-width:660px){ #officialModal .modal-foot .btn{padding:6px 8px;font-size:var(--fs-meta)} }   /* 500px 에서 0.2px 부족으로 접혔다(V3) — 9→8 */
 /* 편집폼 라벨 옆의 '관리 열기' 링크(.off-ed-lbrow/.off-ed-mgr)는 2026-09-18 사용자 결정으로 없어졌다 —
    발주처·구분·상태 마스터는 공식 과제 화면 하단 줄의 **별도 버튼**이 연다(직급·소속과 같은 방식).
    편집 폼은 과제만 고친다: 고르기만 하고 마스터를 늘리지 않는다. */
@@ -648,8 +655,10 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* 직급·소속 관리의 추가 입력줄 — 소속 탭은 상위 드롭다운이 먼저 서는데, select 가 폭을 다 먹어 이름 칸이 0 에 가깝게 눌렸다(2026-09-18 실화면). 둘이 나눠 갖는다 */
 #otNewParent{flex:0 1 42%;min-width:0}
 #otNewName{flex:1 1 0;min-width:0}
-/* 320px 폭(위젯 최소)에서 행의 다섯 버튼이 248px 를 14px 넘겨 가로 스크롤이 생겼다(loop-ui-visual V1). 좁으면 이름을 한 줄로 올리고 버튼 패딩을 줄인다 */
-@media (max-width:420px){ #otList .cust-row{flex-wrap:wrap;row-gap:4px} #otList .cust-row .cust-nm{flex:1 1 100%} #otList .cust-row .btn.sm{padding:3px 6px} }
+/* 320px 폭(위젯 최소)에서 행의 다섯 버튼이 248px 를 14px 넘겨 가로 스크롤이 생겼다(loop-ui-visual V1). 좁으면 이름을 한 줄로 올리고 버튼 패딩을 줄인다.
+   ★ 임계는 420 이 아니라 ≈560px 이다(2026-09-18 §3.2) — 421px 부터 다시 가로 스크롤이 났다.
+   ★ 대상도 #otList 하나가 아니다: 발주처(#custList)·구분·상태(#codeList) 행도 버튼 넷이라 같은 폭에서 같은 일이 난다. */
+@media (max-width:560px){ .cust-list .cust-row{flex-wrap:wrap;row-gap:4px} .cust-list .cust-row .cust-nm{flex:1 1 100%} .cust-list .cust-row .btn.sm{padding:3px 6px} }
 .cust-add input{flex:1;min-width:0}
 .cust-add .btn{flex:none}
 .cust-showhidden{margin:var(--sp-1) 0}
@@ -707,8 +716,15 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-mut{color:var(--faint-text)}
 .off-empty{padding:var(--sp-5) var(--sp-4);text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:var(--lh-body)}
 .off-empty .lnk{margin-top:var(--sp-2);font-size:var(--fs-body)}
-.off-detail{border:1px solid var(--line);border-radius:var(--r-md);background:var(--dim-bg);padding:var(--sp-3)}
+/* ★ 상세 패널도 **height 고정 + 내부 스크롤**이다(2026-09-18 §3.2 · 규칙④와 같은 이유): 세로 스택(<900px)에서는
+   고른 행마다 내용 길이가 달라 모달 높이가 출렁였다. 상자는 그대로 두고 안에서 스크롤만 는다(빈 상태도 같은 높이).
+   넓은 폭(≥900px)은 좌우 2단이라 목록과 키를 맞춰야 한다 — 그 블록이 height 를 auto 로 되돌린다. */
+.off-detail{border:1px solid var(--line);border-radius:var(--r-md);background:var(--dim-bg);padding:var(--sp-3);height:min(30vh,240px);overflow:auto}
+/* 빈 안내는 고정 상자 **안에서** 가운데 — 위에 붙어 있으면 상자가 고장 난 것처럼 보인다(패딩은 가운데 정렬이 겸한다) */
+.off-detail .off-d-empty{min-height:100%;display:flex;align-items:center;justify-content:center;padding:0}
 .off-d-empty{padding:var(--sp-4) 0;text-align:center;color:var(--muted);font-size:var(--fs-body)}
+/* 세로 스택에서는 목록 42vh + 상세 30vh 가 헤더·도구줄·푸터와 함께 92vh 를 넘긴다 — 목록을 한 단계 줄인다(≥900px 2단에는 손대지 않는다) */
+@media (max-width:899px){ .off-list{height:36vh} }
 .off-d-title{font-size:var(--fs-title);font-weight:700;color:var(--text);line-height:var(--lh-tight);word-break:keep-all;overflow-wrap:anywhere}
 .off-dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:var(--sp-3) 0 0}
 .off-dl dt{font-size:var(--fs-meta);font-weight:600;color:var(--muted);white-space:nowrap}
@@ -823,7 +839,8 @@ main{flex:1;display:flex;min-height:0;position:relative}
   #officialModal .off-split{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0;align-items:start}
   #officialModal .off-list{max-height:min(56vh,520px);border-radius:var(--r-md) 0 0 var(--r-md);border-right:none}
   #officialModal .off-detail{
-    max-height:min(56vh,520px);overflow:auto;border-radius:0 var(--r-md) var(--r-md) 0;
+    /* 좁은 폭의 고정 높이(30vh)를 되돌린다 — 2단에서는 목록과 같은 키로 서고, 짧은 상세는 그만큼만 차지한다 */
+    height:auto;max-height:min(56vh,520px);overflow:auto;border-radius:0 var(--r-md) var(--r-md) 0;
     border:1px solid var(--line);background:var(--panel);
   }
   #officialModal .off-hrow{
@@ -5236,7 +5253,9 @@ function uaRowActions(m, rows){
 //   ★ 풀 때는 **물러나 있던 그 행에 포커스가 아직 그대로일 때만** 돌아온다. 잠금 중에 관리자가 다른 곳으로
 //     옮겨 뒀다면 그 자리가 옳다(화면이 도로 뺏지 않는다).
 function lockLineBtn(b, off){
-  const ln = b.closest ? b.closest('.mba-line') : null;
+  //  ★ 행의 이름은 화면마다 다르다 — 명부·휴지통은 .mba-line, 직급·소속은 .cust-row 다(2026-09-18).
+  //    함수를 두 벌로 나누지 않는다: 규칙이 두 벌이면 한쪽은 반드시 낡는다(uaSeatReply 와 같은 이유).
+  const ln = b.closest ? (b.closest('.mba-line') || b.closest('.cust-row')) : null;
   if(off && ln && document.activeElement === b){ try{ ln.focus(); }catch(_){} ln.__backBtn = b; }
   b.disabled = off;
   if(!off && ln && ln.__backBtn === b){
@@ -5364,6 +5383,19 @@ function uaRender(rows){
 function uaAdminBar(){
   const box = document.getElementById('uaAdmin'); if(!box) return;
   const foot = document.getElementById('uaFoot');
+  //  ★ 이 막대는 명부가 앉을 때마다 **통째로** 다시 만들어진다(uaApplyData → uaAdminBar) — 그래서
+  //    쥐고 있던 컨트롤의 신원을 적어 두고, 다시 만든 뒤 돌려준다(2026-09-18 · uaRender 와 같은 규율).
+  //    신원이 **id** 인 이유: 막대의 컨트롤은 전부 id 를 갖는다(행 버튼의 data-uop 과 같은 손).
+  //    ㆍ안 되돌리면 직급·소속 창을 닫거나(otAfterClose → uaReload) 「퇴사자 보기」를 누르는 것만으로
+  //      포커스가 body 로 떨어진다 — 그 뒤 Tab 은 문서 처음부터 다시 시작한다.
+  //    ㆍ꺼진 컨트롤에는 돌려주지 않는다(왕복 중이다) — uaRender 가 쥔 버튼을 대하는 규칙과 같다.
+  const act = document.activeElement;
+  const keepId = (act && act.id && (box.contains(act) || (foot && foot.contains(act)))) ? String(act.id) : '';
+  const backFocus = () => {
+    if(!keepId) return;
+    const el = document.getElementById(keepId);
+    if(el && !el.disabled) try{ el.focus(); }catch(_){}
+  };
   while(box.firstChild) box.removeChild(box.firstChild);
   if(foot) while(foot.firstChild) foot.removeChild(foot.firstChild);   // ★ 매번 비운다 — 모드 전환마다 다시 그린다
   box.className = __uaAdmin ? 'mba-bar' : '';
@@ -5394,6 +5426,7 @@ function uaAdminBar(){
     mk('취소', 'uaOrderCancel', 'btn sm', () => uaOrderToggle(false));
     //  ★ 쓰기 왕복 중이면 끈 채로 그린다(uaRowActions 와 같은 규칙) — 나중에 칠하면 재렌더가 지운다.
     mk('순서 저장', 'uaOrderSave', 'btn sm primary', uaOrderSave).disabled = __uaSaving;
+    backFocus();   // 순서 편집 막대도 같은 자리를 되돌린다([취소]·[순서 저장]도 id 를 갖는다)
     return;   // ★ 순서 편집 중에는 #uaFoot 도 빈 채로 둔다(등록이 명부를 다시 읽어 편집 중인 순서를 날린다)
   }
   //  하단 주 동작 — 관리자이고 순서 편집이 아닐 때만 생긴다.
@@ -5437,6 +5470,7 @@ function uaAdminBar(){
   lb.appendChild(cb);
   lb.appendChild(document.createTextNode(' 퇴사자 보기'));
   box.appendChild(lb);
+  backFocus();   // ★ 막대를 다 만든 뒤 — 쥐고 있던 컨트롤(#uaOrgTitle·#uaInactive 등)로 포커스를 되돌린다
 }
 
 // 머리줄 + 목록을 함께 갱신한다(인원 수가 목록과 어긋나면 안 된다).
@@ -5833,7 +5867,7 @@ async function openUserAdmin(){
   uaOrderReset();
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 창을 닫은 경우).
   //    왕복이 없으면 풀고, **아직 도는 중이면 풀지 않는다** — 그 왕복이 끝나는 자리가 풀 것이다.
-  if(__uaSaving) uaSetSaving(true); else uaSetSaving(false);
+  uaSetSaving(__uaSaving);
   uaAdminBar();
   const q = document.getElementById('uaSearch'); if(q) q.value = '';
   uaRender([]);
@@ -6281,7 +6315,7 @@ async function openTrash(scope){
   __trData = null; __trAdmin = false; __trTab = (__trScope === 'user') ? 'user' : 'project';
   //  ★ 지난번 왕복의 잠금이 남아 있으면 이 화면이 열자마자 잠긴 채로 선다(회신 없이 닫은 경우).
   //    왕복이 없으면 풀고, **아직 도는 중이면 풀지 않는다** — 그 왕복이 끝나는 자리가 풀 것이다.
-  if(__trSaving) trSetSaving(true); else trSetSaving(false);
+  trSetSaving(__trSaving);
   //  ★ 이 한 줄이 **여는 순간의 유일한 렌더**다. 바로 위 trSetSaving 은 잠금만 그 자리에서 다시 걸 뿐
   //    목록을 그리지 않는다(2026-09-14) — 여기서 지우면 방금 비운 __trData·__trAdmin 이 화면에 닿지 않아
   //    **지난번에 열었던 목록**이 그대로 남는다(회신 전 한 프레임).
@@ -6301,15 +6335,17 @@ async function openTrash(scope){
 }
 
 // 갱신 목록 한 덩어리를 앉힌다 — 쓰기 회신(trSend)의 `trash` 가 지나는 **한 길**이다.
-//   ★ 돌려주는 값 = '앉혔나'. 회신에 목록이 실려 오지 않는 경우(호스트가 다시 읽지 못했다)를 부르는 쪽이 안다.
+//   ★ **돌려주는 값은 없다**(2026-09-18 · uaSeatRoster 와 같은 이유). 한때 '앉혔나'를 true/false 로
+//     돌려줬는데 유일한 부르는 쪽(trAfterWrite)이 그 값을 읽지 않는다 — 문장은 호스트가 만들고,
+//     목록이 안 실려 온 회신은 직전 화면을 그대로 두는 것이 곧 답이다. 아무도 읽지 않는 반환값은
+//     "읽어도 되는 값"처럼 보여서 다음 사람이 '누가 이미 그렸나'를 되짚는 셈을 다시 짓게 한다.
 //   ★ 옛날에는 부탁하지 않은 푸시(__applyTrash)도 이 문으로 들어왔다 — 그 방출부가 사라지면서 수신부도
 //     함께 걷었다(2026-09-14 · §11-30). 앉히는 곳은 여전히 여기 하나다.
 function trSeat(json){
   let d = null;
   try{ d = JSON.parse(String(json == null ? '' : json)); }catch(_){ d = null; }
-  if(!(d && d.found)) return false;   // 못 읽으면 직전 화면을 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
+  if(!(d && d.found)) return;   // 못 읽으면 직전 화면을 그대로 둔다(빈 화면보다 낡은 화면이 낫다)
   trApplyData(d);
-  return true;
 }
 // 복구·삭제 회신의 뒤처리 한 곳 — 두 조작이 같은 길을 쓴다.
 //   ★ 문장을 **다시 쓰지 않는다**: 거부 사유(기록 n건·사용 중·이름 불일치)는 호스트가 사용자 문장으로
@@ -7719,7 +7755,8 @@ function closeOverlay(ov){
   // 실행 중 잠금 — 닫기 경로가 하나로 모였으므로 배경클릭·Esc·×·취소가 전부 여기서 함께 막힌다.
   // (닫아도 호스트 작업은 계속되는데 결과를 알릴 곳만 사라지는 상황을 방지)
   if(ov.dataset.busy === '1') return;
-  if(ov.id === 'reportModal') clearNetcusMerge();   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
+  //  ★ 일간·주간 **둘 다** 비운다(2026-09-18): 한쪽만 비우면 다시 열었을 때 주간 캐시가 이전 기간의 것으로 남는다(#rptFrom 과 같은 짝).
+  if(ov.id === 'reportModal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
   if(ov.id === 'orgTitleModal') otAfterClose();     // 직급·소속을 고쳤으면 「구성원 편집」이 드롭다운·명부를 다시 받는다
   //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
   //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
@@ -7808,6 +7845,10 @@ function _onModalClosed(ov){
   const aeOv = ae && ae.closest ? ae.closest('.overlay') : null;
   if(aeOv && aeOv !== ov && !aeOv.classList.contains('hidden')) return;
   // 닫힌 모달을 연 요소로 포커스 복원(아직 보이면) — 없으면 상위 모달로
+  //  ★ 연 요소가 그 사이 **다시 만들어졌으면** id 로 다시 찾는다(2026-09-18 실측): 직급·소속 창을 닫으면 uaReload 회신이
+  //    「구성원 편집」 막대를 재생성하는데, 회신이 이 콜백(닫힘 페이드 120ms 뒤)보다 먼저 오면 옛 #uaOrgTitle 은 떨어진
+  //    노드라 contains 가 false → 폴백(상위 모달 첫 포커스 = ×)으로 갔다. 같은 id 의 새 노드가 그 자리다.
+  if(opener && !document.body.contains(opener) && opener.id){ const again = document.getElementById(opener.id); if(again) opener = again; }
   if(opener && document.body.contains(opener) && opener.offsetParent !== null){ try{ opener.focus(); return; }catch(_){} }
   const top = _modalStack[_modalStack.length - 1];
   if(top){ const f = _focusables(top.ov); (f[0] || top.ov).focus?.(); }
@@ -9446,6 +9487,10 @@ function otBtn(op, key, label, cls, off, why){
   return b;
 }
 
+// 목록을 맨 위로 — '보이는 목록이 통째로 갈렸다'를 **아는 쪽**이 부른다(탭 전환·「숨긴 값도 표시」).
+//   ★ uaListTop 과 같은 규약이다: 렌더는 자기가 왜 불렸는지 모르므로 자리는 호출부가 정한다(2026-09-18).
+function otListTop(){ const l = document.getElementById('otList'); if(l) l.scrollTop = 0; }
+
 // 탭 + 목록 렌더 — innerHTML 금지(이름은 DB 문자열이다).
 //   ★ 관리자가 아니면 행도 컨트롤도 만들지 않는다(숨김이 아니라 부재). 안내 한 줄은 남긴다: 빈 화면은 고장으로 보인다.
 //   ★ 쓰기 왕복 중(__otSaving)이면 **끈 채로 그린다** — 잠금을 나중에 칠하면 회신이 목록을 다시 만드는 순간 증발한다.
@@ -9461,6 +9506,15 @@ function otRender(){
     t.setAttribute('aria-selected', on ? 'true' : 'false');
   }
   const keepTop = list.scrollTop;
+  //  ★ 되돌릴 것 둘을 **먼저** 적어 둔다(2026-09-18 · uaRender 와 같은 규율): 보던 자리(scrollTop)와
+  //    지금 쥐고 있는 컨트롤의 신원(행 열쇠 data-otkey + data-otop). 노드가 아니라 **신원**인 이유는
+  //    이 목록이 ▲▼·숨김·복구 회신마다 통째로 새로 만들어지기 때문이다 — 옛 노드는 버려진다.
+  //    목록 밖(탭·추가줄)의 포커스는 잡지 않는다: 남의 포커스를 뺏어 오면 안 된다.
+  const act = document.activeElement;
+  const inList = !!(act && list.contains(act));
+  const keepRow = (inList && act.closest) ? act.closest('[data-otkey]') : null;
+  const keepKey = keepRow ? String(keepRow.dataset.otkey || '') : '';
+  const keepOp = (inList && act.dataset) ? String(act.dataset.otop || '') : '';
   while(list.firstChild) list.removeChild(list.firstChild);
   if(!otAdmin()){
     //  호스트가 사유를 실어 보내면 그것을 쓴다(비활성 계정은 '관리자가 아니다'와 이유가 다르다).
@@ -9490,6 +9544,9 @@ function otRender(){
     row.className = active ? 'cust-row' : 'cust-row hidden-cust';
     row.setAttribute('role', 'listitem');
     row.dataset.otkey = key;
+    //  ★ 행 자체를 **포커스 받을 수 있게** 둔다(탭 순서에는 끼지 않는다 · uaRender 의 행과 같은 규칙):
+    //    잠금(lockLineBtn)이 물러설 자리이자, 쥐고 있던 버튼이 사라진 렌더에서 되돌아갈 자리다.
+    row.tabIndex = -1;
     const nmEl = document.createElement('span');
     nmEl.className = 'cust-nm';
     nmEl.textContent = nm;
@@ -9536,13 +9593,35 @@ function otRender(){
     list.appendChild(e);
   }
   list.scrollTop = keepTop;
+  //  ★ 쥐고 있던 컨트롤이 **같은 신원으로** 다시 서 있으면 포커스도 돌려준다. 그 버튼이 없어졌거나
+  //    꺼져 있으면(왕복 중이다) 그 행으로 물러난다 — 없는 자리를 억지로 만들지 않는다.
+  //    값으로 셀렉터를 짓지 않는 이유는 otRowOf 와 같다: 직급 열쇠는 한글 이름이라 이스케이프가 낀다.
+  if(keepKey){
+    const row = otRowOf(keepKey);
+    if(row){
+      let tgt = null;
+      if(keepOp) for(const b of row.querySelectorAll('[data-otop]')){
+        if(String(b.dataset.otop || '') === keepOp && !b.disabled){ tgt = b; break; }
+      }
+      try{ (tgt || row).focus(); }catch(_){}
+    }
+  }
 }
 
 // 컨트롤 상태를 **그 자리에서** 다시 정한다 — 목록을 다시 그리지 않는다(trSyncControls 와 같은 규율).
 //   ★ 행 버튼은 렌더가 달아 둔 표식(data-otoff)과 __otSaving 둘만 본다. 사유를 여기 다시 적으면 둘이 갈린다.
 function otSyncControls(){
   const list = document.getElementById('otList');
-  if(list) for(const b of list.querySelectorAll('button')) b.disabled = __otSaving || b.dataset.otoff === '1';
+  //  ★ 잠금은 **lockLineBtn 으로** 건다(2026-09-18): 포커스를 쥔 버튼을 그냥 끄면 브라우저가 포커스를
+  //    body 로 떨어뜨린다(그 뒤 Tab 은 문서 처음부터 다시 시작한다). 행(.cust-row · tabIndex=-1)이
+  //    물러설 자리를 받아 두고, 풀리면 그 버튼으로 돌아온다 — 명부·휴지통과 **같은 한 벌**이다.
+  //    ㆍ구조적으로 꺼야 하는 버튼(data-otoff)의 뜻은 그대로다: 왕복 한 번이 '숨길 수 없음'을 뒤집지 않는다.
+  if(list){
+    for(const b of list.querySelectorAll('button')) lockLineBtn(b, __otSaving || b.dataset.otoff === '1');
+    //  ★ 인라인 편집 줄의 <select>(상위 변경 후보)도 함께 잠근다 — 버튼만 끄면 왕복 중에 상위를 고를 수 있고,
+    //    그 값은 어디로도 가지 않는다([적용]이 꺼져 있다).
+    for(const s of list.querySelectorAll('select')) s.disabled = __otSaving;
+  }
   const add = document.getElementById('otAddBtn'); if(add) add.disabled = otAddDisabled();
   const sh = document.getElementById('otShowHidden'); if(sh) sh.disabled = __otSaving || !otAdmin();
   const sel = document.getElementById('otNewParent'); if(sel) sel.disabled = __otSaving || !otAdmin();
@@ -9730,7 +9809,7 @@ function otSwitchTab(kind){
   otMsgSet('');
   otRender();
   otSyncAdd();
-  const l = document.getElementById('otList'); if(l) l.scrollTop = 0;
+  otListTop();
 }
 
 // 조회 실패 — 목록 자리에 호스트가 준 사유를 그대로 놓는다(추측한 목록을 그리지 않는다 · trFail 과 같다).
@@ -9751,8 +9830,10 @@ function otFail(msg){
 //     한 벌 더 두면 두 벌이 되고, 그때부터 어느 쪽이 맞는지 아무도 모른다.
 //   ★ uaReload 의 돌려주는 값(true/'busy'/'nohost')은 보지 않는다 — 못 시작했어도 다음에 열 때 다시 읽는다.
 function otAfterClose(){
+  //  ★ 열림 판정은 isOverlayOpen 하나다(2026-09-18) — 닫히는 중(.closing)인 화면을 '열렸다'로 보면
+  //    아무도 안 보는 화면을 위해 호스트 왕복을 만든다(openOverlays 와 같은 규칙).
   const ua = document.getElementById('userAdminModal');
-  if(ua && !ua.classList.contains('hidden')) uaReload();
+  if(isOverlayOpen(ua)) uaReload();
 }
 
 /* ---------- 기존 과제 재연결(P3.4) — 개인 과제 → 공식 과제 ----------
@@ -12807,7 +12888,9 @@ function bind(){
   { const b = $('#usMembers'); if(b) b.addEventListener('click', openMembers); }       // #userModal 위에 겹쳐 연다(닫으면 되돌아온다)
   { const b = $('#usUserAdmin'); if(b) b.addEventListener('click', openUserAdmin); }   // 공개 문 — 관리자가 아니면 화면이 호스트의 거절 한 줄만 보인다(2026-09-18)
   { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
-  { const b = $('#uaSearch'); if(b) b.addEventListener('input', uaFilter); }
+  //  ★ 검색은 **디바운스**한다(#sInput 과 같은 180ms · 2026-09-18) — 한 글자마다 목록을 통째로 다시
+  //    만들면 빠른 타이핑에서 자리·포커스 되돌리기가 매 키마다 돈다(규칙⑦: 키 입력에서 전체 재빌드 금지).
+  { const b = $('#uaSearch'); if(b){ let t = null; b.addEventListener('input', () => { clearTimeout(t); t = setTimeout(uaFilter, 180); }); } }
   //  직원 편집 폼의 [저장]·[퇴사 처리] — 편집 화면의 관리자 컨트롤은 uaAdminBar·uaRowActions 가 만들면서
   //  그 자리에서 배선한다(동적 생성이라 여기서 배선할 수 없다). 이 둘만 마크업에 상주하므로 여기서 한 번 묶는다.
   { const b = $('#userEdSave'); if(b) b.addEventListener('click', userEdSaveNow); }
@@ -13298,7 +13381,8 @@ function bind(){
   { const t = $('#otTabUnit'); if(t) t.addEventListener('click', () => otSwitchTab('unit')); }
   { const b = $('#otAddBtn'); if(b) b.addEventListener('click', otDoAdd); }
   { const inp = $('#otNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); otDoAdd(); } }); }
-  { const sh = $('#otShowHidden'); if(sh) sh.addEventListener('change', () => { __otShowHidden = !!sh.checked; otRender(); }); }
+  //  ★ 「숨긴 값도 표시」도 **보이는 목록이 통째로 갈리는** 조회 조건이다 — 탭 전환과 같은 규칙으로 맨 위에서 연다(2026-09-18).
+  { const sh = $('#otShowHidden'); if(sh) sh.addEventListener('change', () => { __otShowHidden = !!sh.checked; otRender(); otListTop(); }); }
   //  상위를 고르는 순간 [추가]가 켜진다 — 목록을 다시 그리지 않는다(고르던 자리가 날아가지 않게)
   { const sel = $('#otNewParent'); if(sel) sel.addEventListener('change', () => { const b = $('#otAddBtn'); if(b) b.disabled = otAddDisabled(); }); }
   { const box = $('#otList'); if(box) box.addEventListener('click', otListClick); }

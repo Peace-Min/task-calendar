@@ -35,7 +35,7 @@ test('디자인 토큰: 참조된 --fs-/--sp-/--r-/--lh- 스케일 토큰은 전
 // 그래서 '토큰 정의처(:root / :root[data-theme] / html.dark) 밖의 hex 색 선언 수'에 상한을 건다.
 // 상한 = 현재 값 → 새 하드코딩은 즉시 실패, 정리하면 상한을 내려 되돌아오지 못하게 못박는 일방향 래칫.
 // (html.dark .foo{} 같은 '테마 스코프 개별 오버라이드'는 정의처가 아니라 사용처이므로 셈에 포함한다.)
-const HEX_DECL_CEILING = 50;   // 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체 · 51→50: .btn.danger 테두리(#efc7c9)를 --danger-line 토큰으로(2026-09-10 — 다크에서 형광 분홍선이던 자리)
+const HEX_DECL_CEILING = 49;   // 56→51: .git-badge.off / .cell.dim .num 하드코딩(+다크 개별 오버라이드 2종)을 토큰으로 대체 · 51→50: .btn.danger 테두리(#efc7c9)를 --danger-line 토큰으로(2026-09-10 — 다크에서 형광 분홍선이던 자리) · 50→49: .swatch.on 의 흰 인셋 링(#fff)을 var(--panel) 로(2026-09-18 — 다크·contrast 에서 흰 테가 떠 보였다)
 test(`디자인 토큰: 토큰 블록 밖 hex 색 선언은 ${HEX_DECL_CEILING}개 이하여야 한다(래칫 — 늘리지 말고 줄일 것)`, () => {
   const src = loadAppSource();
   const s = src.indexOf('<style>'), e = src.indexOf('</style>', s);
@@ -114,6 +114,58 @@ test('사용자 정보: 권한 두 줄 지우기는 재진입 가드보다 앞�
   assert.ok(clearAt > 0, "loadUserPerm 이 usEditRole 을 '확인 중…' 으로 지우지 않는다");
   assert.ok(guardAt > 0, '__usPermBusy 가드를 찾지 못했다');
   assert.ok(clearAt < guardAt, '가드 뒤에서 지운다 — 가드에 걸리면 직전 사용자의 권한이 그대로 남는다');
+});
+
+// ── 좁은 폭 레이아웃 못박기(2026-09-18 전면 조사 §3.2·§3.3) ──────────────
+// 이 넷은 전부 '한 화면에서만 고쳐 두면 다음 화면에서 같은 일이 난다'는 종류다. 임계 폭을 숫자로
+// 못박아 두는 이유: 실화면 캡처로 찾은 값이라, 다음 사람이 420·440 같은 옛 숫자로 되돌리면
+// 421~560px 구간에서 가로 스크롤·한 버튼만 접힘이 조용히 되살아난다.
+test('좁은 폭: 목록 행(.cust-list .cust-row)은 ≤560px 에서 접힌다(#otList 하나만이 아니다)', () => {
+  const css = loadAppSource().replace(/\/\*[\s\S]*?\*\//g, '');   // 주석의 설명 문구는 규칙이 아니다
+  assert.ok(/@media \(max-width:560px\)\{ \.cust-list \.cust-row\{flex-wrap:wrap;row-gap:4px\}/.test(css),
+    '행 접힘 보정이 ≤560px 의 .cust-list .cust-row 가 아니다 — 421px 부터 가로 스크롤이 난다(직급·소속·발주처·코드가 같은 골격이다)');
+  assert.ok(/\.cust-list \.cust-row \.cust-nm\{flex:1 1 100%\}/.test(css),
+    '접힐 때 이름이 한 줄을 차지하지 않는다 — 버튼 넷이 이름을 0 폭으로 누른다');
+  assert.ok(/\.cust-list \.cust-row \.btn\.sm\{padding:3px 6px\}/.test(css), '접힘 폭에서 버튼 패딩을 줄이지 않는다');
+  assert.ok(!/@media \(max-width:420px\)\{ #otList \.cust-row/.test(css),
+    '옛 규칙(#otList · ≤420px)이 남아 있다 — 발주처·코드 행은 여전히 보정을 받지 못한다');
+});
+
+test('좁은 폭: .off-toolrow 보정은 ≤600px 이다(441~560px 에서 한 버튼만 접히던 자리)', () => {
+  const css = loadAppSource().replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(/@media \(max-width:600px\)\{ \.off-toolrow \.btn\.sm\{padding:4px 7px\} \.off-toolrow\{gap:var\(--sp-1\)\} \}/.test(css),
+    '.off-toolrow 의 좁은 폭 보정이 ≤600px 이 아니다 — 441~560px 에서 「＋ 새 공식 과제」만 둘째 줄로 떨어진다');
+  assert.ok(!/@media \(max-width:440px\)\{ \.off-toolrow/.test(css), '옛 임계(≤440px)가 남아 있다');
+  //  같은 조사에서 하단 줄(버튼 다섯)도 함께 컴팩트로 내렸다 — 임계는 실화면으로 정한 660px 이다.
+  assert.ok(/@media \(max-width:660px\)\{ #officialModal \.modal-foot \.btn\{padding:6px 8px;font-size:var\(--fs-meta\)\} \}/.test(css),
+    '#officialModal 하단 줄(관리자 버튼 다섯)의 ≤660px 컴팩트 규칙이 없다 — 두 줄 경계에서 한 버튼만 홀로 접힌다');
+});
+
+test('상세 패널(.off-detail): 세로 스택에서는 height 고정 + 내부 스크롤이다(행을 골라도 모달이 튀지 않는다)', () => {
+  const src = loadAppSource();
+  const css = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const wideAt = css.indexOf('@media (min-width:900px){');
+  assert.ok(wideAt > 0, '≥900px 2단 블록을 찾지 못했다 — 판정 불가');
+  const base = css.slice(0, wideAt);
+  assert.ok(/\.off-detail\{[^}]*height:min\(30vh,240px\)[^}]*overflow:auto/.test(base),
+    '.off-detail 이 ≥900px 블록 **밖**에서 height 고정 + 내부 스크롤이 아니다 — 고른 행마다 모달 높이가 달라진다(규칙④)');
+  assert.ok(/\.off-detail \.off-d-empty\{min-height:100%/.test(base),
+    '고정 상자 안에서 빈 안내가 가운데로 서지 않는다 — 위에 붙어 있으면 상자가 고장 난 것처럼 보인다');
+  assert.ok(/@media \(max-width:899px\)\{ \.off-list\{height:36vh\} \}/.test(base),
+    '세로 스택에서 목록을 36vh 로 낮추지 않았다 — 목록 42vh + 상세 30vh 는 92vh 안에 들어가지 않는다');
+  const wide = css.slice(wideAt, css.indexOf('\n}', wideAt));
+  assert.ok(/#officialModal \.off-detail\{\s*height:auto;max-height:min\(56vh,520px\)/.test(wide),
+    '≥900px 2단에서 좁은 폭의 고정 높이를 height:auto 로 되돌리지 않았다 — 상세가 목록보다 짧게 얼어붙는다');
+});
+
+test('호스트바: .hb-drag 는 min-width:0 로 줄어든다(버튼 하나만 늘어도 ✕ 가 화면 밖으로)', () => {
+  const css = loadAppSource().replace(/\/\*[\s\S]*?\*\//g, '');
+  const m = /#hostbar \.hb-drag\{[^}]*\}/.exec(css);
+  assert.ok(m, '#hostbar .hb-drag 규칙을 찾지 못했다 — 판정 불가');
+  assert.ok(/min-width:0/.test(m[0]),
+    '.hb-drag 에 min-width:0 이 없다 — flex 기본 최소폭(내용 폭)이라 이 칸이 줄지 않고 ✕ 를 화면 밖으로 밀어낸다');
+  assert.ok(/overflow:hidden/.test(m[0]) && /white-space:nowrap/.test(m[0]),
+    '.hb-drag 가 넘치는 제목을 잘라 내지 않는다 — 줄어들 수는 있어도 두 줄이 되면 바 높이가 흔들린다');
 });
 
 test('검색 결과 상자: :empty 로 통째로 숨기지 않는다(0건에도 상자는 남는다)', () => {

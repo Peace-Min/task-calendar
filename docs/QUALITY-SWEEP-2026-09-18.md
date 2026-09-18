@@ -41,7 +41,7 @@
 - 글꼴(기간 취합 전용)·머리기호·들여쓰기는 미리보기·복사·전송 3자 일치. 근태·초과시간은 옵션과 결합 없음.
 - 중첩 모달 DOM 순서는 `#rptCatLink` 한 건 빼고 전부 정상. 푸터 도달성(320px 높이)은 `.modal-body{overflow:auto}` 로 보장.
 
-## 3. 남은 일 — 2차(다음 세션이 여기서 시작) 
+## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18 구현·커밋됨 ✅ / §3.4 는 남음(다음 세션이 여기서 시작)
 
 > 순서대로. 각 항목은 검토 보고에서 코드로 확인된 것이며, 줄 번호는 2026-09-18 기준(내용으로 다시 찾을 것). 구현은 dev-delegate(오퍼스), 게이트는 페이블: Debug 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 
@@ -50,13 +50,13 @@
 - **`otSyncControls` 가 `lockLineBtn` 을 안 씀**: 왕복 시작 순간 포커스를 쥔 버튼이 disabled 되며 포커스 유실. `lockLineBtn(b, …)` 재사용(행 열쇠 `data-otkey`). `<select>`(상위 변경)도 잠근다.
 - **`uaAdminBar()` 가 명부 안착마다 상단/하단 막대를 통째로 재생성**: 직급·소속 창을 닫으면(`otAfterClose`→`uaReload`) 또는 「퇴사자 보기」 토글 시 포커스가 body 로. 막대도 id 기준 포커스 복원, 또는 모드 전환·관리자 뒤집힘일 때만 재생성하고 나머지는 제자리 갱신.
 
-### 3.2 P1 — 레이아웃(공식 과제·직급·소속·검색·상세)
+### 3.2 P1 — 레이아웃(공식 과제·직급·소속·검색·상세) ✅ 완료(+ 500px 하단 줄 0.2px 부족 → 패딩 8px, _onModalClosed 가 재생성된 opener 를 id 로 다시 찾음)
 - **`#otList .cust-row` 421~500px**: 보정이 `@media (max-width:420px)` 뿐이라 421px 부터 가로 스크롤. 임계는 ≈560px → `max-width:560px` 로.
 - **`#officialModal .modal-foot` 5요소(관리자)**: 441~600px 에서 두 줄 경계. 「발주처 관리·구분·상태 관리」를 ≤660px 에서 `.btn.sm` 로 강등하거나 한 버튼(「기준 정보 관리」)으로 묶기. 600×700 실화면 캡처로 확정.
 - **`.off-toolrow` 441~560px**: `＋ 새 공식 과제` 만 둘째 줄로. ≤440 규칙을 ≤660 으로 넓히거나 `.off-fcount` 를 `#offCount` 에 합침.
 - **`.off-detail` (<900px 세로 스택)**: 행을 고를 때마다 상세 패널 높이가 달라져 모달이 튄다. 고정 높이 + 내부 스크롤(목록 42vh 와 합쳐 92vh 안에 들어가는지 380×600·600×700 에서 확인).
 
-### 3.3 P2 — 싸고 안전한 것(같은 커밋에 묶어도 됨)
+### 3.3 P2 — 싸고 안전한 것 ✅ 완료
 - `.cust-row` 접힘 보정 선택자를 `#otList` → `.cust-list .cust-row` 로(`#codeList` 도 4버튼).
 - `#hostbar .hb-drag{min-width:0;overflow:hidden;white-space:nowrap}` — 버튼 하나만 늘어도 ✕ 가 화면 밖으로.
 - `.swatch.on` 흰 인셋 링 → `var(--panel)`.
@@ -66,7 +66,7 @@
 - `#uaSearch` 디바운스(검색 `#sInput` 처럼 180ms).
 - `otAfterClose` 의 열림 판정을 `isOverlayOpen` 으로.
 
-### 3.4 P2 — 판단이 필요한 것(사용자 확인 후)
+### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) ← **남은 일은 여기부터**
 - `#categoryModal .modal-foot` 의 「수정 취소」 hidden 토글로 380px 에서 푸터가 한 줄↔두 줄.
 - `.rem-row` 「직접」 선택 시 320px 에서 2줄(잔여).
 - `#raHint`·`#qaRecurHint`·`#qaTodoNoteWrap` 의 흐름 이탈 토글(빠른등록 모달이 튐) — `#mbSoon` 패턴(visibility + min-height).

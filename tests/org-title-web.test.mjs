@@ -173,6 +173,51 @@ const checks = {
     assert.ok(!/__otData\.titles\s*=|__otData\.units\s*=/.test(mv),
       'otMove 가 화면의 목록을 미리 고친다 — 순서의 정본은 DB 이고, 새 순서는 회신(orgTitle)으로 온다');
   },
+
+  // ⑨ 잠금은 **lockLineBtn 한 벌**로 건다(2026-09-18 §3.1) — 목록 버튼에 disabled 를 직접 칠하면
+  //    포커스를 쥔 버튼이 꺼지는 순간 포커스가 body 로 떨어진다(그 뒤 Tab 은 문서 처음부터 다시 시작한다).
+  //    그리고 잠금은 **다시 그리지 않는다**(규칙⑧) · 인라인 편집 줄의 <select> 도 함께 잠근다.
+  syncUsesLockLine(web) {
+    const s = extractFunction(web, 'otSyncControls');
+    assert.ok(/lockLineBtn\(/.test(s),
+      'otSyncControls 가 lockLineBtn 을 쓰지 않는다 — 잠금이 포커스를 다루는 규칙이 화면마다 갈린다');
+    assert.ok(!/\bb\.disabled\s*=/.test(s),
+      'otSyncControls 가 목록 버튼에 disabled 를 직접 칠한다 — 쥐고 있던 버튼이 꺼지며 포커스가 body 로 떨어진다');
+    assert.ok(/data-otoff|otoff/.test(s),
+      "otSyncControls 가 구조적 잠금 표식(data-otoff)을 안 본다 — 왕복 한 번이 '숨길 수 없음'을 뒤집는다");
+    assert.ok(/querySelectorAll\('select'\)/.test(s),
+      'otSyncControls 가 목록의 <select>(상위 변경 후보)를 잠그지 않는다 — 왕복 중에 상위를 고를 수 있다');
+    assert.ok(!/otRender\(\)/.test(s),
+      'otSyncControls 가 목록을 다시 그린다 — 잠금은 지금 서 있는 노드를 그 자리에서 끄는 일이다(규칙⑧)');
+    //  두 화면이 같은 함수를 쓰는지도 함께 본다 — 규칙이 두 벌이면 한쪽은 반드시 낡는다.
+    const f = extractFunction(web, 'lockLineBtn');
+    assert.ok(/\.cust-row/.test(f),
+      'lockLineBtn 이 직급·소속의 행(.cust-row)을 물러설 자리로 인정하지 않는다 — ot 쪽만 포커스를 잃는다');
+  },
+
+  // ⑩ '맨 위로'는 렌더가 아니라 **호출부**의 일이다(uaListTop 과 같은 규약) — 렌더는 자기가 왜 불렸는지 모른다.
+  topIsCallersJob(web) {
+    assert.ok(/function otListTop\(\)/.test(web),
+      'otListTop 헬퍼가 없다 — 맨 위로 보내는 한 줄이 호출부마다 인라인으로 흩어진다');
+    assert.ok(/getElementById\('otList'\)/.test(extractFunction(web, 'otListTop')),
+      'otListTop 이 #otList 를 잡지 않는다 — 판정 불가');
+    const s = extractFunction(web, 'otSwitchTab');
+    assert.ok(/otListTop\(\)/.test(s), 'otSwitchTab 이 otListTop() 을 부르지 않는다');
+    assert.ok(!/scrollTop/.test(s), 'otSwitchTab 이 자리를 인라인으로 만진다 — 헬퍼 한 곳으로 모은 이유가 사라진다');
+    const m = /#otShowHidden'\); if\(sh\) sh\.addEventListener\('change'[^\n]*/.exec(web);
+    assert.ok(m, '「숨긴 값도 표시」 배선을 찾지 못했다 — 판정 불가');
+    assert.ok(/otListTop\(\)/.test(m[0]),
+      '「숨긴 값도 표시」가 목록을 맨 위로 보내지 않는다 — 보이는 목록이 통째로 갈리는데 화면 밖에서 시작한다');
+  },
+
+  // ⑪ 열림 판정은 **isOverlayOpen 하나**다 — 닫히는 중(.closing)을 '열렸다'로 보면 아무도 안 보는 화면을
+  //    위해 호스트 왕복을 만든다(openOverlays 와 같은 규칙).
+  afterCloseUsesIsOverlayOpen(web) {
+    const ac = extractFunction(web, 'otAfterClose');
+    assert.ok(/isOverlayOpen\(/.test(ac), 'otAfterClose 가 isOverlayOpen 으로 판정하지 않는다');
+    assert.ok(!/classList/.test(ac),
+      'otAfterClose 가 classList 를 직접 읽는다 — 열림 판정이 두 벌이 되고 .closing 을 놓친다');
+  },
 };
 
 test('계약①: #orgTitleModal 마크업에 행도 행 버튼도 없다(목록은 JS 가 만든다)', () => checks.markupHasNoRows(app));
@@ -182,6 +227,9 @@ test('계약⑤-소스: 회신 목록이 화면에 닿는 문은 otSeat 하나�
 test('계약⑥: 닫을 때 「구성원 편집」이 열려 있으면 uaReload 한다(드롭다운 소스는 membersGet 이 정본)', () => checks.closeReloadsMembers(app));
 test('계약⑦: ot* 모듈 상태는 다섯뿐이다(요청 표·워치독·보류 큐 금지)', () => checks.moduleStateIsFive(app));
 test('계약⑧-소스: ▲▼ 는 활성 집합 전체를 보내고 화면 목록을 미리 고치지 않는다', () => checks.moveSendsWholeSet(app));
+test('계약⑨: 목록 잠금은 lockLineBtn 한 벌로 걸고 <select> 도 함께 잠근다(다시 그리지 않는다)', () => checks.syncUsesLockLine(app));
+test("계약⑩: '맨 위로'는 otListTop() 헬퍼를 부르는 호출부의 일이다(탭 전환·「숨긴 값도 표시」)", () => checks.topIsCallersJob(app));
+test('계약⑪: 닫기 뒤처리의 열림 판정은 isOverlayOpen 하나다(.closing 은 열린 것이 아니다)', () => checks.afterCloseUsesIsOverlayOpen(app));
 
 // ══════════════════════════════════════════════════════════════════════
 //  DOM 계약 — 실제로 그려 보고 센다
@@ -202,6 +250,10 @@ function otHarnessJs(src) {
     'function confirmBox(){ return Promise.resolve("ok"); }',
     'function uaReload(){ __uaReloads++; return true; }',
     extractFunction(src, 'hostWriteMsg'),
+    //  ★ 잠금은 명부·휴지통과 **같은 함수**(lockLineBtn)로 걸고, 열림 판정도 공용(isOverlayOpen)이다 —
+    //    대역으로 베끼면 그 사본이 낡는다(이 파일이 ot 구역을 통째로 싣는 것과 같은 이유).
+    extractFunction(src, 'lockLineBtn'),
+    extractFunction(src, 'isOverlayOpen'),
     extractFunction(src, 'otAfterClose'),
     otRegion(src),
     //  ── 탐침 ──
@@ -315,6 +367,58 @@ function otHarnessJs(src) {
     '  otAfterClose();',
     '  return { reloads: __uaReloads };',
     '};',
+    //  닫히는 중(.closing)은 '열렸다'가 아니다 — 아무도 안 보는 화면을 위해 왕복을 만들지 않는다.
+    'window.__probeAfterCloseClosing = function(){',
+    '  __uaReloads = 0;',
+    '  var ua = document.getElementById("userAdminModal");',
+    '  ua.classList.remove("hidden"); ua.classList.add("closing");',
+    '  otAfterClose();',
+    '  ua.classList.remove("closing");',
+    '  return { reloads: __uaReloads };',
+    '};',
+    //  ★ 회신이 같은 목록을 다시 앉힌다 — 쥐고 있던 컨트롤의 **신원**으로 포커스가 돌아와야 한다.
+    //    saving=true 면 새 버튼이 전부 꺼진 채로 서므로 그 행으로 물러난다(행은 tabIndex=-1).
+    'window.__probeFocusKeep = function(payload, key, op, saving){',
+    '  __reset(payload, "title", false);',
+    '  var row = otRowOf(String(key));',
+    '  var b = null;',
+    '  if(row){ var bs = row.querySelectorAll("[data-otop]");',
+    '    for(var i = 0; i < bs.length; i++) if(String(bs[i].dataset.otop || "") === String(op)) b = bs[i]; }',
+    '  if(!b) return { found: false };',
+    '  b.focus();',
+    '  var started = document.activeElement === b;',
+    '  var tabs = Array.prototype.map.call(document.querySelectorAll("#otList .cust-row"), function(r){ return r.tabIndex; });',
+    '  if(saving) __otSaving = true;',
+    '  otApplyData(JSON.parse(JSON.stringify(payload)));',
+    '  var a = document.activeElement;',
+    '  var arow = (a && a.closest) ? a.closest("[data-otkey]") : null;',
+    '  return { found: true, started: started, tabs: tabs,',
+    '    isBody: a === document.body, sameNode: a === b,',
+    '    isRow: !!(a && a.classList && a.classList.contains("cust-row")),',
+    '    op: (a && a.dataset) ? String(a.dataset.otop || "") : "",',
+    '    key: arow ? String(arow.dataset.otkey || "") : "" };',
+    '};',
+    //  ★ 왕복이 시작되는 순간 — 포커스를 쥔 버튼이 꺼지면 그 행으로 물러나고, 풀리면 그 버튼으로 돌아온다.
+    //    인라인 편집 줄의 <select>(상위 변경 후보)도 함께 잠겨야 한다.
+    'window.__probeLock = function(payload, key){',
+    '  __reset(payload, "unit", false);',
+    '  otBeginMove(String(key));',
+    '  var row = otRowOf(String(key));',
+    '  var sel = row ? row.querySelector("select") : null;',
+    '  var bs = row ? row.querySelectorAll("[data-otop]") : [];',
+    '  var b = bs.length ? bs[0] : null;',
+    '  if(!b || !sel) return { found: false };',
+    '  b.focus();',
+    '  var started = document.activeElement === b;',
+    '  __otSaving = true; otSyncControls();',
+    '  var a = document.activeElement;',
+    '  var locked = { isBody: a === document.body, isRow: a === row, off: !!b.disabled,',
+    '                 sel: !!sel.disabled, sameNode: otRowOf(String(key)) === row };',
+    '  __otSaving = false; otSyncControls();',
+    '  var a2 = document.activeElement;',
+    '  return { found: true, started: started, locked: locked,',
+    '           back: { isBtn: a2 === b, isBody: a2 === document.body }, selAfter: !!sel.disabled };',
+    '};',
   ].join('\n');
 }
 
@@ -344,6 +448,9 @@ const probeAddGate = (payload, src = app) => call('__probeAddGate', src, payload
 const probeMoveSend = (payload, tab, key, dir, src = app) => call('__probeMoveSend', src, payload, tab, key, dir);
 const probeBusy = (payload, reply, src = app) => callAsync('__probeBusy', src, payload, reply);
 const probeAfterClose = (openMembers, src = app) => call('__probeAfterClose', src, openMembers);
+const probeAfterCloseClosing = (src = app) => call('__probeAfterCloseClosing', src);
+const probeFocusKeep = (key, op, saving, src = app) => call('__probeFocusKeep', src, PAYLOAD, key, op, saving);
+const probeLock = (key, src = app) => call('__probeLock', src, PAYLOAD, key);
 
 //  DOM 계약을 **검사 함수로** 묶는다 — 변이가 같은 함수를 다시 부를 수 있어야 '잡았다'고 말할 수 있다.
 const dom = {
@@ -503,6 +610,42 @@ const dom = {
       '「구성원 편집」이 열려 있는데 닫기 뒤처리가 uaReload 를 부르지 않는다 — 드롭다운이 옛 값을 계속 보여 준다');
     assert.strictEqual(probeAfterClose(false, src).reloads, 0,
       '「구성원 편집」이 닫혀 있는데도 uaReload 를 부른다 — 아무도 안 보는 화면을 위해 호스트 왕복을 만든다');
+    //  ★ 닫히는 중(.closing)도 '열렸다'가 아니다(2026-09-18 · isOverlayOpen 한 벌).
+    assert.strictEqual(probeAfterCloseClosing(src).reloads, 0,
+      '닫히는 중인 「구성원 편집」을 열린 것으로 보고 uaReload 를 부른다 — 곧 사라지는 화면을 위한 왕복이다');
+  },
+
+  // ⑨-DOM 회신마다 목록을 통째로 다시 만들어도 **쥐고 있던 컨트롤의 신원**으로 포커스가 돌아온다.
+  //   ★ 안 돌려주면 ▲▼ 한 번에 포커스가 body 로 떨어져, 다음 ▲▼ 를 누르려면 Tab 을 처음부터 굴려야 한다.
+  focusKeep(src) {
+    const r = probeFocusKeep('전무', 'rename', false, src);
+    assert.strictEqual(r.found, true, "전제 붕괴: '전무' 행의 [이름변경] 을 찾지 못했다");
+    assert.strictEqual(r.started, true, '전제 붕괴: 시험이 그 버튼에 포커스를 주지 못했다');
+    assert.deepStrictEqual(r.tabs, [-1, -1],
+      `행이 포커스를 받을 수 없다(tabIndex ${JSON.stringify(r.tabs)}) — 잠금·재렌더가 물러설 자리가 없다`);
+    assert.strictEqual(r.sameNode, false, '전제 붕괴: 목록이 다시 만들어지지 않았다(같은 노드다)');
+    assert.strictEqual(r.isBody, false, '회신이 목록을 다시 만들자 포커스가 body 로 떨어졌다 — Tab 이 문서 처음부터 다시 시작한다');
+    assert.strictEqual(r.key, '전무', `포커스가 다른 행으로 갔다: ${JSON.stringify(r.key)}`);
+    assert.strictEqual(r.op, 'rename', `포커스가 다른 버튼으로 갔다: ${JSON.stringify(r.op)}`);
+    //  왕복 중이면 새 버튼이 전부 꺼진 채로 서므로 **그 행**으로 물러난다(없는 자리를 억지로 만들지 않는다).
+    const s = probeFocusKeep('전무', 'rename', true, src);
+    assert.strictEqual(s.isBody, false, '잠긴 렌더에서 포커스가 body 로 떨어졌다 — 행이 받아 줘야 한다');
+    assert.strictEqual(s.isRow, true, `잠긴 렌더에서 포커스가 행으로 물러나지 않았다(op=${JSON.stringify(s.op)})`);
+    assert.strictEqual(s.key, '전무', '물러난 행이 쥐고 있던 그 행이 아니다');
+  },
+
+  // ⑨-DOM(b) 왕복이 시작되는 순간의 잠금 — 쥔 버튼이 꺼지면 행으로 물러나고, 풀리면 그 버튼으로 돌아온다.
+  lockFocus(src) {
+    const r = probeLock('2', src);
+    assert.strictEqual(r.found, true, '전제 붕괴: [상위 변경] 줄의 <select> 와 버튼을 찾지 못했다');
+    assert.strictEqual(r.started, true, '전제 붕괴: 시험이 그 버튼에 포커스를 주지 못했다');
+    assert.strictEqual(r.locked.sameNode, true, '잠금이 목록을 다시 만들었다 — 잠금은 제자리에서 걸어야 한다(규칙⑧)');
+    assert.strictEqual(r.locked.off, true, '왕복 중인데 그 버튼이 켜져 있다');
+    assert.strictEqual(r.locked.isBody, false, '잠금이 포커스를 body 로 떨어뜨렸다 — lockLineBtn 을 쓰지 않는 자리다');
+    assert.strictEqual(r.locked.isRow, true, '포커스가 그 행으로 물러나지 않았다(행은 tabIndex=-1 로 자리를 받아 둔다)');
+    assert.strictEqual(r.locked.sel, true, '왕복 중인데 상위 변경 <select> 가 켜져 있다 — 고른 값이 어디로도 가지 않는다');
+    assert.strictEqual(r.back.isBtn, true, '잠금이 풀렸는데 그 버튼으로 포커스가 돌아오지 않았다');
+    assert.strictEqual(r.selAfter, false, '잠금이 풀렸는데 <select> 가 꺼진 채다');
   },
 };
 
@@ -517,6 +660,13 @@ if (!jsdom) {
   skip('계약⑤-DOM: 왕복 중에는 잠기고, 회신의 갱신 목록이 otSeat 한 곳으로 앉는다', SKIP_NO_JSDOM);
   skip('계약⑤-DOM(b): 목록이 안 실려 온 회신은 화면을 건드리지 않는다', SKIP_NO_JSDOM);
   skip('계약⑥-DOM: 닫기 뒤처리는 「구성원 편집」이 열려 있을 때만 uaReload 한다', SKIP_NO_JSDOM);
+  skip('계약⑨-DOM: 목록을 다시 만들어도 쥐고 있던 컨트롤로 포커스가 돌아온다(행은 tabIndex=-1)', SKIP_NO_JSDOM);
+  skip('계약⑨-DOM(b): 잠금은 제자리에서 걸리고 포커스는 그 행으로 물러난다(<select> 도 잠긴다)', SKIP_NO_JSDOM);
+  skip('변이⑨: 포커스 되돌리기를 지우면 계약⑨-DOM 이 실패한다', SKIP_NO_JSDOM);
+  skip('변이⑨-b: 행이 포커스를 못 받게 되돌리면 계약⑨-DOM 이 실패한다', SKIP_NO_JSDOM);
+  skip('변이⑨-c: 잠금을 disabled 직접 칠하기로 되돌리면 계약⑨-DOM(b) 가 실패한다', SKIP_NO_JSDOM);
+  skip('변이⑨-d: <select> 잠금을 빼면 계약⑨-DOM(b) 가 실패한다', SKIP_NO_JSDOM);
+  skip('변이⑪: 열림 판정을 classList 로 되돌리면 계약⑥-DOM 이 .closing 을 놓친다', SKIP_NO_JSDOM);
   skip('변이②: 진입 문을 비관리자 조기 return 앞으로 올리면 계약② 가 실패한다', SKIP_NO_JSDOM);
   skip('변이③: otRender 에 .sort( 를 넣으면 계약③ 이 실패한다', SKIP_NO_JSDOM);
   skip('변이④: 재직자 사유를 지우면 계약④-DOM(a) 가 실패한다', SKIP_NO_JSDOM);
@@ -537,6 +687,56 @@ if (!jsdom) {
   test('계약⑤-DOM: 왕복 중에는 잠기고, 회신의 갱신 목록이 otSeat 한 곳으로 앉는다', async () => { await dom.writeRoundTrip(app); });
   test('계약⑤-DOM(b): 목록이 안 실려 온 회신은 화면을 건드리지 않는다', async () => { await dom.replyWithoutList(app); });
   test('계약⑥-DOM: 닫기 뒤처리는 「구성원 편집」이 열려 있을 때만 uaReload 한다', () => dom.afterClose(app));
+  test('계약⑨-DOM: 목록을 다시 만들어도 쥐고 있던 컨트롤로 포커스가 돌아온다(행은 tabIndex=-1)', () => dom.focusKeep(app));
+  test('계약⑨-DOM(b): 잠금은 제자리에서 걸리고 포커스는 그 행으로 물러난다(<select> 도 잠긴다)', () => dom.lockFocus(app));
+
+  test('변이⑨: 포커스 되돌리기를 지우면 계약⑨-DOM 이 실패한다(▲▼ 한 번에 포커스가 body 로)', () => {
+    const bad = mutate(app, '  if(keepKey){\n    const row = otRowOf(keepKey);', '  if(false){\n    const row = otRowOf(keepKey);');
+    assert.throws(() => dom.focusKeep(bad), /포커스가 body 로 떨어졌다/);
+    assert.doesNotThrow(() => dom.focusKeep(app));   // 통제군
+  });
+
+  test('변이⑨-b: 행이 포커스를 못 받게 되돌리면 계약⑨-DOM 이 실패한다(물러설 자리가 없다)', () => {
+    const bad = mutate(app, '    row.tabIndex = -1;', '    row.tabIndex = 0;');
+    assert.throws(() => dom.focusKeep(bad), /행이 포커스를 받을 수 없다/);
+    assert.doesNotThrow(() => dom.focusKeep(app));   // 통제군
+  });
+
+  test('변이⑨-c: 잠금을 disabled 직접 칠하기로 되돌리면 계약⑨-DOM(b) 가 실패한다', () => {
+    const bad = mutate(app, "    for(const b of list.querySelectorAll('button')) lockLineBtn(b, __otSaving || b.dataset.otoff === '1');",
+      "    for(const b of list.querySelectorAll('button')) b.disabled = __otSaving || b.dataset.otoff === '1';");
+    //  ★ jsdom 은 꺼진 버튼에서 포커스를 body 로 떨어뜨리지 않는다(실제 브라우저와 다르다) — 그래서
+    //    '물러났는가'(행으로 갔는가)가 이 변이를 잡는 자리다. 둘 중 무엇이 울어도 같은 결함이다.
+    assert.throws(() => dom.lockFocus(bad), /포커스를 body 로 떨어뜨렸다|그 행으로 물러나지 않았다/);
+    assert.throws(() => checks.syncUsesLockLine(bad), /disabled 를 직접 칠한다|lockLineBtn 을 쓰지 않는다/);
+    assert.doesNotThrow(() => dom.lockFocus(app));   // 통제군
+  });
+
+  test('변이⑨-d: <select> 잠금을 빼면 계약⑨-DOM(b) 가 실패한다(왕복 중에 상위를 고를 수 있다)', () => {
+    const bad = mutate(app, "    for(const s of list.querySelectorAll('select')) s.disabled = __otSaving;", '');
+    assert.throws(() => dom.lockFocus(bad), /상위 변경 <select> 가 켜져 있다/);
+    assert.doesNotThrow(() => dom.lockFocus(app));   // 통제군
+  });
+
+  test('변이⑪: 열림 판정을 classList 로 되돌리면 계약⑥-DOM 이 .closing 을 놓친다', () => {
+    const bad = mutate(app, '  if(isOverlayOpen(ua)) uaReload();', "  if(ua && !ua.classList.contains('hidden')) uaReload();");
+    assert.throws(() => dom.afterClose(bad), /닫히는 중인 「구성원 편집」을 열린 것으로 보고/);
+    assert.throws(() => checks.afterCloseUsesIsOverlayOpen(bad), /isOverlayOpen 으로 판정하지 않는다|classList 를 직접 읽는다/);
+    assert.doesNotThrow(() => dom.afterClose(app));   // 통제군
+  });
+
+  test('변이⑩: 탭 전환의 맨 위를 인라인으로 되돌리면 계약⑩ 이 실패한다(헬퍼가 장식이 된다)', () => {
+    const bad = mutate(app, '  otRender();\n  otSyncAdd();\n  otListTop();\n}',
+      "  otRender();\n  otSyncAdd();\n  const l = document.getElementById('otList'); if(l) l.scrollTop = 0;\n}");
+    assert.throws(() => checks.topIsCallersJob(bad), /자리를 인라인으로 만진다|otListTop\(\) 을 부르지 않는다/);
+    assert.doesNotThrow(() => checks.topIsCallersJob(app));   // 통제군
+  });
+
+  test('변이⑩-b: 「숨긴 값도 표시」의 맨 위 한 줄을 지우면 계약⑩ 이 실패한다(새 목록이 화면 밖에서 열린다)', () => {
+    const bad = mutate(app, "__otShowHidden = !!sh.checked; otRender(); otListTop(); }", "__otShowHidden = !!sh.checked; otRender(); }");
+    assert.throws(() => checks.topIsCallersJob(bad), /목록을 맨 위로 보내지 않는다/);
+    assert.doesNotThrow(() => checks.topIsCallersJob(app));   // 통제군
+  });
 
   // ══════════════════════════════════════════════════════════════════
   //  변이 주입 — 위 계약이 실효성이 있는지 증명한다(안 잡으면 그 계약은 장식이다).
