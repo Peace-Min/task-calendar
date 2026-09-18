@@ -651,7 +651,9 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .cust-add .btn{flex:none}
 .cust-showhidden{margin:var(--sp-1) 0}
 .cust-msg{font-size:var(--fs-meta);min-height:1.2em;margin:var(--sp-1) 0}
-.cust-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:auto;max-height:44vh;min-height:100px}
+/* ★ 모달 안 목록 상자는 max-height 가 아니라 **height** 다(2026-09-18 사용자): 검색·탭·「숨긴 값도 표시」로 행 수가 바뀔 때마다
+   창 높이가 늘었다 줄었다 하면 어지럽다. 상자는 그대로 두고 안에서 스크롤만 는다. 빈 결과도 같은 높이다. */
+.cust-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:auto;height:44vh;min-height:100px}
 .cust-row{display:flex;align-items:center;gap:var(--sp-2);padding:6px 10px;border-bottom:1px solid var(--line)}
 .cust-row:last-child{border-bottom:none}
 .cust-row.hidden-cust{opacity:.55}
@@ -662,7 +664,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .off-count{font-size:var(--fs-meta);color:var(--muted);font-variant-numeric:tabular-nums}
 .off-fcount{font-size:var(--fs-micro);color:var(--faint-text)}
 .off-split{display:flex;flex-direction:column;gap:var(--sp-3)}
-.off-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:auto;max-height:42vh;min-height:110px}
+.off-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:auto;height:42vh;min-height:110px}   /* 검색으로 행이 줄어도 같은 높이(위 .cust-list 와 같은 이유) */
 .off-hrow{display:none}                     /* 좁은 폭엔 컬럼 헤더가 없다(행이 2줄 카드) */
 .off-grp{
   position:sticky;top:0;z-index:2;display:block;width:100%;
@@ -847,7 +849,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* ---------- search modal ---------- */
 .tabs{display:flex;gap:2px;align-items:flex-end;border-bottom:1px solid var(--line);margin-bottom:13px}
 .s-summary{font-size:var(--fs-body);color:var(--muted);margin:10px 1px 7px;min-height:17px}
-.s-results{display:flex;flex-direction:column;max-height:48vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-md)}
+.s-results{display:flex;flex-direction:column;height:48vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-md)}   /* 검색 결과 수와 무관하게 같은 높이(.cust-list 참조) */
 .s-results:empty{display:none}
 .s-date{
   font-size:var(--fs-meta);font-weight:700;color:var(--accent-2);background:#f5f7fd;
@@ -1428,7 +1430,7 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 .us-mem-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
 /* 줄 안에 서는 캡션(「관리자」) — .set-hint 의 아래 여백은 가로 줄에서 군더더기다(줄 높이만 늘린다). */
 .us-mem-row .set-hint{margin:0}
-#uaList{overflow:auto;max-height:46vh}
+#uaList{overflow:auto;height:46vh}   /* 검색으로 줄어도 같은 높이(.cust-list 참조) */
 /* 휴지통 — 탭은 검색 모달의 .tabs/.tab 을 **그대로** 쓴다(세그먼트 문법을 새로 만들지 않는다).
    여기서 더하는 것은 둘뿐이다: 탭 안 건수 배지의 간격(.mba-line 밖이라 위 규칙이 닿지 않는다)과
    긴 목록의 스크롤 상한(#uaList 와 같은 값 — 두 관리 화면의 세로 크기가 같아야 창이 튀지 않는다). */
@@ -1436,15 +1438,25 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 /* ★ .tabs 는 nowrap 이다(검색 모달은 탭이 둘이라 문제가 없었다). 휴지통은 다섯이고 배지까지 달려
    위젯 실폭(≈390px)에서 마지막 탭이 잘려 나갔다 — 잘린 탭은 없는 탭이다. 여기서만 접히게 한다. */
 #trTabs{flex-wrap:wrap;row-gap:var(--sp-1)}
-#trList{overflow:auto;max-height:46vh}
+#trList{overflow:auto;height:46vh}   /* 탭을 바꿔도 같은 높이(.cust-list 참조) */
 /* 좌 트리 · 우 목록. 위젯 실폭(≈380px)에서도 2단을 유지한다 — 세로로 쌓으면
    트리를 지나야 목록에 닿아 '조직 고르기'가 매번 스크롤 작업이 된다.
    ★ self(그릴 노드 없음)일 때만 JS가 인라인으로 1열로 바꾼다: display:none 인 그리드 자식은
      열을 차지하지 않아, 열 정의를 그대로 두면 목록이 좁은 첫 칸으로 끌려간다. */
 .mb-split{display:grid;grid-template-columns:minmax(112px,36%) 1fr;gap:12px;min-height:0}
-.mb-tree{overflow:auto;max-height:46vh;border-right:1px solid var(--line);padding-right:8px}
+.mb-tree{overflow:auto;height:46vh;border-right:1px solid var(--line);padding-right:8px}   /* 검색으로 오른쪽이 줄어도 두 칸 높이가 같다 */
 .mb-pane{min-width:0;display:flex;flex-direction:column;gap:8px}
-#mbList{overflow:auto;max-height:42vh}
+#mbList{overflow:auto;height:42vh}   /* 검색으로 줄어도 같은 높이(.cust-list 참조) */
+/* ★ 빈 결과 안내(#uaEmpty·#trEmpty·#mbEmpty)는 목록 상자 **안에 겹쳐** 그린다(2026-09-18 사용자: 창 높이 고정).
+   상자 아래 한 줄로 두면 결과가 0 이 되는 순간 창이 그 줄만큼 자란다(실측 +28px). 요소와 hidden 토글은 그대로다(계약이 본다) —
+   자리만 상자 위로 끌어올린다: 블록 흐름(ua·tr)은 음수 margin, flex 열(.mb-pane 은 gap 이 있어 높이 0 도 자리를 먹는다)은 absolute. */
+/* 음수 margin 은 안 된다 — 흐름 높이를 그만큼 깎아 창이 오히려 46vh 줄어든다(실측 638→279). 셋 다 absolute 로, 목록의 아래 끝을 기준으로 잡는다. */
+#userAdminModal .modal-body,#trashModal .modal-body{position:relative}
+#uaEmpty:not(.hidden),#trEmpty:not(.hidden){position:absolute;left:30px;bottom:calc(var(--sp-5) + 46vh - 30px);margin:0;pointer-events:none}
+.mb-pane{position:relative}
+#mbEmpty:not(.hidden){position:absolute;left:10px;bottom:calc(42vh - 28px);margin:0;pointer-events:none}
+/* 「사람을 누르면…」 안내(#mbSoon)는 결과가 0 이면 숨는데, display:none 이면 그 줄(18px)+margin(10px)+gap(8px)만큼 창이 준다(실측 603→567). 자리는 남기고 글만 지운다. */
+#mbSoon.hidden{display:block !important;visibility:hidden;min-height:1.5em}   /* .hidden 이 !important 라 여기도 !important · 숨길 때 글도 비우므로 한 줄 높이(line-height 1.5)를 min-height 로 남긴다 */
 /* 조직 노드 — 범위 밖은 숨기지 않고 disabled 로 둔다(구조는 보이되 누를 수 없다). */
 .mb-node{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;
          padding:5px 6px;font-size:var(--fs-meta);color:var(--text);cursor:pointer}
