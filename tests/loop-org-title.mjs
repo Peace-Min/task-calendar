@@ -336,7 +336,8 @@ const PSTATE = `JSON.stringify({
   hints: document.querySelectorAll('#otList .set-hint').length,
   scope: (function(){ var e=document.getElementById('otScope'); return e ? String(e.textContent||'') : ''; })(),
   uaOrgTitle: !!document.getElementById('uaOrgTitle'),
-  uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden'); })(),
+  uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden') && !e.classList.contains('closing'); })(),
+  uaBusy: !!__uaBusy,
   online: !!dbOnline
 })`;
 const pstate = () => evj(PSTATE);
@@ -383,12 +384,18 @@ const unitOf = (data, key) => ((data && data.units) || []).find((u) => u && (Str
 
 /* ── 화면 조작 ─────────────────────────────────────────────────────────── */
 
-/** 「구성원 편집」을 열고 관리자 막대가 설 때까지 기다린다. */
+/** 「구성원 편집」을 열고 관리자 막대가 설 때까지 기다린다.
+ *  ★ 관리창(#orgTitleModal)을 닫으면 otAfterClose 가 uaReload() 를 띄운다 — 그 조회가 도는 동안 openUserAdmin() 은
+ *    재진입 가드(__uaBusy)에 막혀 **아무 일도 하지 않고**, 닫히는 중(.closing)인 옛 창은 아직 hidden 이 아니라
+ *    '열렸다'로 읽힌다. 그래서 첫 5회 게이트에서 C10 이 옛 막대의 #uaOrgTitle 을 보고 실패했다(2026-09-18).
+ *    조회가 끝나기를 먼저 기다리고, 연 뒤에도 조회가 끝난 상태(!uaBusy)까지 기다린다. */
 async function openMembers() {
+  await waitPage((x) => !x.uaBusy, { timeout: 20000 });
   await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
+  await waitPage((x) => x.uaOpen === false, { timeout: 5000 });
   await ev(`openUserAdmin()`);
-  const s = await waitPage((x) => x.uaOpen === true, { timeout: 20000 });
-  if (!s) throw new Error('「구성원 편집」이 열리지 않았다');
+  const s = await waitPage((x) => x.uaOpen === true && !x.uaBusy, { timeout: 20000 });
+  if (!s) throw new Error('「구성원 편집」이 열리지 않았다(또는 조회가 끝나지 않았다)');
   return s;
 }
 /** #uaOrgTitle 을 **실제로 누른다**. 반환: 'clicked' | 'disabled' | 'notfound' */

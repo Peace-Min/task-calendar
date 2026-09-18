@@ -89,7 +89,7 @@
 ## 6. 권한·배포
 
 - 비공개 `05-grants.sql` 40·44행: `GRANT SELECT` → `GRANT SELECT, INSERT, UPDATE` (두 표). `db/deploy/grants-calendar.sql` 238~239 주석과 250행 근처 GRANT, `db/deploy/create-app-user.sql` 같은 자리. DEPLOY.md §0-5 "권한 변경도 §0" 에 한 줄.
-- **개발 DB 적용은 이 문서로 하지 않는다.** 백업(복원 검증) 뒤, 지시가 있을 때 `GRANT` 두 문장을 적용하고 `SHOW GRANTS` 로 대조한다. 그 전까지 실 위젯 루프(`loop-org-title.mjs`)는 **판정 없음**(exit 2)으로 끝나야 한다 — 권한이 없으면 첫 쓰기가 1142 로 거부되는데 그것을 실패로 세면 안 된다.
+- **개발 DB 에는 2026-09-18 적용됐다**(사용자 지시 "권한 적용" · §11-6). 운영 서버는 v0.19.0 배포 창에서 DEPLOY §0-5 로 다시 준다. 적용 절차는 언제나 백업(복원 검증) → `05-grants.sql` 실행 → `SHOW GRANTS` 대조다. 그 전까지 실 위젯 루프(`loop-org-title.mjs`)는 **판정 없음**(exit 2)으로 끝나야 한다 — 권한이 없으면 첫 쓰기가 1142 로 거부되는데 그것을 실패로 세면 안 된다.
 
 ## 7. 시험
 
@@ -123,3 +123,5 @@
 **4. 상위 변경은 확인창이 아니라 행 안에서(2026-09-18 구현).** §5.1 은 작은 확인창에 `<select>` 를 두라고 했지만, 이름변경이 이미 행 안 입력칸이라 같은 손으로 맞췄다 — [상위 변경] 을 누르면 그 행의 동작 자리가 후보 `<select>` + [적용][취소] 로 바뀐다. 후보에서 자기 자신·자기 자손을 빼는 규칙은 그대로다.
 
 **5. 비관리자 줄의 한 프레임(2026-09-18 구현).** `otRender` 는 `__otData` 가 아직 null 이면 「불러오는 중…」을 내고, `admin:false` 회신이 실제로 앉은 뒤에만 호스트 `msg` 또는 「관리자만 사용할 수 있습니다.」를 낸다 — 회신 전 한 프레임에 관리자에게 거절 문구가 번쩍이지 않게(휴지통 `openTrash` 와 같은 이유). 행 버튼의 구조적 비활성(사유 있음)은 `data-otoff` 로 표시하고 `otSyncControls` 는 `__otSaving || data-otoff` 만 본다 — 사유 판정을 두 곳에 적지 않는다.
+
+**6. 개발 DB GRANT 적용 + 첫 5회 게이트(2026-09-18 · 사용자 지시 "권한 적용").** 순서: `backup-taskmgr.ps1`(D:	askmgr-backup	askmgr-20260918-141726.sql · 표 23/23 검증 통과) → `restore-taskmgr.ps1 -TargetDb taskmgr_restore -DropTarget -NoSmoke` 리허설(표·뷰·트리거·루틴 이름 집합 동일 · 23표 행 수 전수 일치 18,731행 · 마감 표시 있음 · 별도 DB 는 지우고 잔여 권한 0행 확인 — 앱 스모크만 건너뛰어 코드 7 「검증 못 함」인데, 그 항목은 별도 DB 에 앱 계정 권한을 주어야만 통과라 일부러 뺐다) → 비공개 `05-grants.sql` 을 root 로 실행(idempotent) → `SHOW GRANTS` 에 `org_unit`·`title_code` SELECT, INSERT, UPDATE 확인. 그다음 `loop-org-title` 첫 회차가 **C10 에서 한 번 실패**했다 — 제품이 아니라 루프의 경쟁이었다: 관리창을 닫으면 `otAfterClose` 가 `uaReload()` 를 띄우고(§5.1), 그 조회가 도는 동안 `openUserAdmin()` 은 재진입 가드(`__uaBusy`)에 막혀 아무 일도 하지 않으며, 닫히는 중(`.closing`)인 옛 창은 아직 `hidden` 이 아니라 '열렸다'로 읽혀 옛 막대의 `#uaOrgTitle` 을 보고 "문이 남아 있다"고 판정했다. 루프의 `openMembers()` 가 조회가 끝나기를(`!uaBusy`) 먼저 기다리고 `.closing` 을 열림으로 세지 않게 고친 뒤 **무작위 시드 5회 연속 159/0**, zzJ·zzO·zzU 잔여 0, 로그인 계정 admin 복원 확인. 같은 가드가 실제 관리자에게도 닿을 수 있다(관리창을 닫고 곧바로 「구성원 편집」을 닫았다 다시 열면 조회가 끝날 때까지 한 번 안 열린다) — 드물고 다음 클릭에 열리므로 그대로 둔다.
