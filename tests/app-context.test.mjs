@@ -83,6 +83,45 @@ test('보고서 미리보기: REPORT_MIRROR_BASE_PX는 --fs-emph 픽셀값과 �
   assert.strictEqual(js[1], tok[1], 'JS 기준 픽셀과 --fs-emph가 어긋남 — 배율이 통째로 틀어진다');
 });
 
+// ── 2026-09-18 4축 리뷰: 소스 계약 핀(jsdom 불필요) ─────────────────────
+// 아래 넷은 '어디서 무엇을 부르는가'가 곧 계약이라 실행으로 관측하기 어렵다(모달 z-order·타이핑 빈도·가드 순서).
+// 그래서 배선 자체를 못박는다 — 리팩터로 되돌아가면 즉시 빨개진다.
+test('보고서 → 「과제 관리」 링크는 보고서를 먼저 닫는다(중첩하면 뒤에서 열린다)', () => {
+  const s = loadAppSource();
+  assert.ok(s.includes("$('#rptCatLink').addEventListener('click', () => { closeModal('#reportModal'); openCatModal(); })"),
+    '#rptCatLink 가 openCatModal 만 부른다 — netcus 가드의 toSettings 와 같이 closeModal(#reportModal) 을 먼저 해야 한다');
+  assert.ok(s.includes("closeModal('#reportModal'); openSettings();"),
+    '대조군: 설정으로 가는 길도 보고서를 먼저 닫는다(이 파일의 관례)');
+});
+
+test("머리기호 '직접': 입력(input)은 저장을 부르지 않는다 — 저장은 change 에서 한 번만", () => {
+  const s = loadAppSource();
+  const at = s.indexOf("$('#rptMarkerCustom').addEventListener('input'");
+  assert.ok(at > 0, '#rptMarkerCustom 의 input 배선을 찾지 못했다');
+  const inputLine = s.slice(at, s.indexOf('\n', at));
+  assert.ok(!/\bsave\(\)/.test(inputLine), '글자마다 save() — 타이핑이 그대로 저장 왕복 폭주가 된다');
+  assert.ok(/setTimeout\(/.test(inputLine), '미리보기 재빌드는 디바운스로 미뤄야 한다(글자마다 전체 재빌드 금지)');
+  const at2 = s.indexOf("$('#rptMarkerCustom').addEventListener('change'");
+  assert.ok(at2 > 0, '저장 지점(change 배선)이 없다 — 입력한 값이 영영 저장되지 않는다');
+  assert.ok(/\bsave\(\)/.test(s.slice(at2, s.indexOf('\n', at2))), '대조군: change 에서는 저장한다');
+});
+
+test('사용자 정보: 권한 두 줄 지우기는 재진입 가드보다 앞에 있다(직전 권한 노출 방지)', () => {
+  const s = loadAppSource();
+  const fn = s.slice(s.indexOf('async function loadUserPerm(){'));
+  const clearAt = fn.indexOf("set('usEditRole', '확인 중…')");
+  const guardAt = fn.indexOf('__usPermBusy) return;');
+  assert.ok(clearAt > 0, "loadUserPerm 이 usEditRole 을 '확인 중…' 으로 지우지 않는다");
+  assert.ok(guardAt > 0, '__usPermBusy 가드를 찾지 못했다');
+  assert.ok(clearAt < guardAt, '가드 뒤에서 지운다 — 가드에 걸리면 직전 사용자의 권한이 그대로 남는다');
+});
+
+test('검색 결과 상자: :empty 로 통째로 숨기지 않는다(0건에도 상자는 남는다)', () => {
+  const s = loadAppSource();
+  assert.ok(!s.includes('.s-results:empty'), '.s-results:empty 규칙이 남아 있다 — 0건이면 상자가 통째로 사라진다');
+  assert.ok(s.includes('.s-empty{'), '0건 안내(.s-empty) 스타일이 없다');
+});
+
 // ── jsdom 로드(없으면 생략) ─────────────────────────────────────────────
 const JSDOM = (await importOptional('jsdom'))?.JSDOM || null;
 
@@ -811,17 +850,25 @@ if (!JSDOM) {
       assert.deepStrictEqual(row.titleMeta.map(m => m.details || []), row.titleMeta.map(() => []), 'desc:false 면 details 는 전부 비어 있다');
       assert.strictEqual(row.minutes, 150, 'desc:false 도 공수 불변');
 
-      // 행 단위 판정 — 항목도 공수도 없는 과제(Empty)만 빠지고, 공수만 있는 과제(HoursOnly)는 남는다.
+      // 행 단위 판정(2026-09-18 재정의) — 보고서에 나가는 시간은 (날짜×과제) 공수표뿐이다.
+      //   일정의 hours(r.minutes)는 보고서 어디에도 실리지 않으므로, 그것만 있는 과제(HoursOnly)는
+      //   화면에 '빈 과제명' 한 줄일 뿐이라 skipEmpty ON 에서 빠진다.
       const namesOf = (skipEmpty) => collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty }).rows.map(x => x.name);
       const off = namesOf(false);
       assert.ok(off.includes('Empty') && off.includes('HoursOnly'), 'skipEmpty OFF 면 빈 과제도 표시');
       const on = namesOf(true);
-      assert.ok(!on.includes('Empty'), '항목도 공수도 없는 과제 행만 제외');
-      assert.ok(on.includes('Alpha') && on.includes('HoursOnly'), '내용 있는 과제·공수만 있는 과제는 유지');
-      r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: true });
+      assert.ok(!on.includes('Empty'), '항목도 공수도 없는 과제 행 제외');
+      assert.ok(!on.includes('HoursOnly'), '일정 공수만 있는 과제도 제외 — 그 시간은 보고서에 나가지 않는다');
+      assert.ok(on.includes('Alpha'), '내용 있는 과제는 유지');
+      // 대조군 — 같은 행이라도 (날짜×과제) 공수표에 값이 있으면 남는다(그 값은 '[과제] : n' 으로 실제 나간다).
+      ev("setTaskHours('2026-07-09','cz',2);");
+      assert.ok(namesOf(true).includes('HoursOnly'), '공수표에 값이 있으면 유지');
+      ev("setTaskHours('2026-07-09','cz',0);");
+      assert.ok(!namesOf(true).includes('HoursOnly'), '공수표를 비우면 다시 빠진다');
+      r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true, desc: true, skipEmpty: false });
       row = rowOf(r, 'HoursOnly');
       assert.deepStrictEqual(row.titles, [], '제목이 빈 문자열인 일정은 제목 목록에 안 들어간다(pushTitle 계약)');
-      assert.strictEqual(row.minutes, 45, '그래도 공수는 집계되고, 그 공수 때문에 행이 남는다');
+      assert.strictEqual(row.minutes, 45, '공수 집계(minutes)는 그대로 — skipEmpty 판정에만 쓰지 않을 뿐이다');
     });
 
     test('collectReportData: 기간 필터 — 좁은 범위는 전부 제외(빈 결과, grandMin 0)', () => {
@@ -1684,6 +1731,117 @@ if (!JSDOM) {
       assert.ok(/포함 3\/3/.test(ev("$('#rptOptSum').textContent")), '3개 체크 → 3/3');
       ev("$('#rptSrcGit').checked=false; buildReport();");
       assert.ok(/포함 2\/3/.test(ev("$('#rptOptSum').textContent")), '하나 해제 → 2/3');
+      ev("$('#rptSrcGit').checked=true; buildReport();");   // 원복(포함 항목은 localStorage 로 새는 상태다)
+    });
+
+    // ══ 2026-09-18 4축 리뷰 반영 계약 ═══════════════════════════════════
+    // 규칙: 저장값 → 컨트롤 표시, 저장, 요약줄, 독립 슬롯(근태)은 본문 가드와 무관하게 buildReport 첫머리에서.
+    //      렌더는 저장값을 읽기만 한다. 미리보기·복사·전송(일간·주간)은 같은 rows/flags 에서 나온다(WYSIWYG).
+    test('report UI: 기간이 잘못돼도 포함 항목은 저장되고 ⚙요약은 갱신된다(가드 앞 첫머리 계약)', () => {
+      seed(reportState);
+      ev("setReportMode('daily'); $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      assert.ok(/포함 3\/3/.test(ev("$('#rptOptSum').textContent")), '사전조건: 정상 기간에서 3/3');
+      ev("$('#rptFrom').value=''; $('#rptTo').value=''; $('#rptSrcGit').checked=false; buildReport();");
+      assert.ok(/기간을 선택하세요/.test(ev("$('#rptSummary').textContent")), '전제: 날짜 가드가 켜져 있다');
+      assert.ok(/포함 2\/3/.test(ev("$('#rptOptSum').textContent")), '가드 화면에서도 ⚙요약이 지금 선택을 말한다');
+      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.git"), false, '가드 화면에서도 선택이 저장된다');
+      ev("$('#rptSrcGit').checked=true; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; buildReport();");
+      assert.strictEqual(evJSON("loadRptSourcePrefs().daily.git"), true, '원복 확인(다음 테스트로 새지 않게)');
+      ev("setReportMode('daily')");
+    });
+
+    // 출처 'week'(netcus 주간보고 병합)는 기간 취합 전용 — 세그 칸이 숨는 모드로 나가면 출처도 돌아와야 한다.
+    test("report UI: 출처 'week' 는 기간 취합 전용 — 일간·주간으로 나가면 cal 로 되돌아온다", () => {
+      seed(reportState);
+      ev("setReportMode('custom'); state.reportSource='week'; syncReportSourceSeg();");
+      assert.strictEqual(ev('state.reportSource'), 'week', '사전조건: 기간 취합에서는 week 를 가질 수 있다');
+      ev("setReportMode('weekly')");
+      assert.strictEqual(ev('state.reportSource'), 'cal', '주간으로 나가면 캘린더 기록으로 되돌아온다');
+      assert.strictEqual(ev("$('#rptSourceRow').getAttribute('data-src')"), 'cal', '설명 강조(data-src)도 함께 따라온다');
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"cal\"]').classList.contains('active')"), true, 'cal 칸이 켜진다');
+      ev("setReportMode('custom'); state.reportSource='week'; setReportMode('daily');");
+      assert.strictEqual(ev('state.reportSource'), 'cal', '일간으로 나가도 마찬가지');
+      ev("setReportMode('daily')");
+    });
+
+    // 세그 활성 표시는 '지금 출처'만 말한다 — disabled(읽기 잠금)와 AND 하면 켜진 칸이 하나도 없는 화면이 된다.
+    test('report UI: 출처 세그 활성 표시는 잠금(disabled) 여부와 무관하다', () => {
+      seed(reportState);
+      ev("setReportMode('weekly'); state.reportSource='net'; syncReportSourceSeg();");
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').classList.contains('active')"), true, '사전조건: net 칸이 켜진다');
+      ev("setNetcusLocked(true); syncReportSourceSeg();");
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').disabled"), true, '전제: 읽기 잠금이 걸렸다');
+      assert.strictEqual(ev("$('#rptSrcSeg [data-rsrc=\"net\"]').classList.contains('active')"), true, '잠겨 있어도 현재 출처 표시는 남는다');
+      ev("setNetcusLocked(false); state.reportSource='cal'; setReportMode('daily');");
+    });
+
+    // ── 커밋 본문(gitCommitBody) — 「설명 포함」이 함께 좌우하고, 복사와 주간 전송이 같은 함수를 쓴다 ──
+    const cmtBodyState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+      entries: [{ id: 'ge', date: '2026-07-08', title: '작업일지', categoryId: 'cg', allDay: true, startTime: '', endTime: '', location: '', memo: '',
+        source: 'git', commits: [{ hash: 'hb', short: 'hb', time: '10:00', subject: '커밋 제목', body: '본문 한 줄' }],
+        hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }],
+      todos: [], rooms: [], gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    });
+
+    test('커밋 본문: 「설명 포함」 OFF 면 본문도 함께 빠진다(메모·노트와 같은 스위치)', () => {
+      seed(cmtBodyState());
+      const bodyOf = (desc) => collect('2026-07-08', '2026-07-08', { event: true, todo: true, git: true, desc, skipEmpty: false })
+        .rows.find(r => r.name === '깃과제').titleMeta[0].body;
+      assert.strictEqual(bodyOf(true), '본문 한 줄', '대조군: 설명 포함 ON → 본문 유지');
+      assert.strictEqual(bodyOf(false), '', '설명 포함 OFF → 본문도 빠진다');
+    });
+
+    test('커밋 본문: 복사(buildReportText)와 주간 전송(buildWeeklyFields)이 같은 본문을 싣는다(WYSIWYG)', () => {
+      seed(cmtBodyState());
+      ev("reportMode='weekly'; state.reportSource='cal'; $('#rptFrom').value='2026-07-06'; $('#rptTo').value='2026-07-12';"
+        + "$('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false;");
+      const SRC_ON = '{event:true,todo:true,git:true,desc:true,skipEmpty:false}';
+      const SRC_OFF = '{event:true,todo:true,git:true,desc:false,skipEmpty:false}';
+      const wf = evJSON("buildWeeklyFields('2026-07-06','2026-07-12'," + SRC_ON + ")");
+      assert.ok(wf.endwork.includes('본문 한 줄'), '주간 전송 endwork 에 커밋 본문이 실린다(전에는 복사에만 있었다)');
+      assert.ok(ev('buildReportText()').includes('본문 한 줄'), '대조군: 복사 텍스트에도 실린다');
+      const wfOff = evJSON("buildWeeklyFields('2026-07-06','2026-07-12'," + SRC_OFF + ")");
+      assert.ok(!wfOff.endwork.includes('본문 한 줄'), '설명 포함 OFF → 주간 전송에서도 빠진다');
+      ev("reportMode='daily'");
+    });
+
+    // 미분류 '기타' 행 — 실재하는 과제가 아니라 (날짜×과제) 공수를 저장할 곳이 없다(DB 쓰기에서 FK 로 버려진다).
+    test("report UI: 미분류 '기타' 행에는 시간 입력칸 대신 안내가 선다", () => {
+      seed({
+        gitAuthor: '', svnAuthor: '',
+        categories: [{ id: 'ca', name: '정상과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        entries: [
+          { id: 'n1', date: '2026-07-08', title: '정상 일정', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+          { id: 'u1', date: '2026-07-08', title: '미분류 일정', categoryId: null, allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+        ],
+        todos: [], rooms: [],
+      });
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
+      const html = ev("$('#rptOut').innerHTML");
+      assert.ok(/data-hcat="ca"/.test(html), '대조군: 실재 과제 행에는 입력칸이 있다');
+      assert.ok(!/data-hcat="__uncat__"/.test(html), '미분류 행에는 입력칸이 없다 — 적어도 저장되지 않는다');
+      assert.ok(/rcard-hnote/.test(html), '대신 왜 아직 못 적는지 한 줄로 말한다');
+      ev("reportMode='daily'");
+    });
+
+    test('검색: 결과 0건이어도 상자가 남고 안내 줄(.s-empty)이 선다', () => {
+      seed(reportState);
+      ev("setSearchMode('keyword'); $('#sInput').value='있을리없는검색어zzq'; runSearch();");
+      assert.ok(/s-empty/.test(ev("$('#sResults').innerHTML")), '0건 → .s-empty 안내');
+      assert.ok(/일치하는 기록이 없습니다/.test(ev("$('#sSummary').textContent")), '대조군: 요약도 0건을 말한다');
+      ev("$('#sInput').value='요구사항'; runSearch();");
+      assert.ok(/s-row/.test(ev("$('#sResults').innerHTML")), '대조군: 결과가 있으면 행이 렌더된다');
+      assert.ok(!/s-empty/.test(ev("$('#sResults').innerHTML")), '결과가 있으면 안내 줄은 없다');
+      ev("$('#sInput').value=''; runSearch();");
+    });
+
+    test('사용자 정보: 권한 조회가 시작되면 직전 값 대신 "확인 중…" 이 먼저 보인다', () => {
+      ev("document.getElementById('usEditRole').textContent='관리자'; document.getElementById('usViewScope').textContent='전사';");
+      ev("loadUserPerm()");   // HOST=false → 가드에서 곧장 돌아오지만, 지우기는 가드 '앞'에서 이미 끝났다
+      assert.strictEqual(ev("document.getElementById('usEditRole').textContent"), '확인 중…', '편집 권한 줄');
+      assert.strictEqual(ev("document.getElementById('usViewScope').textContent"), '확인 중…', '열람 범위 줄');
     });
 
     // 2026-09-18 사용자 지적: 포함 항목을 전부 끄면 근태·초과시간이 사라졌다 — 근태 슬롯이 본문 가드 뒤에 그려지던 연동(지시한 적 없음).
@@ -3280,6 +3438,42 @@ if (!JSDOM) {
           assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
           assert.ok(!names.includes('공수만과제'),
             '변이했는데도 공수만 있는 과제가 남는다 — 계약이 공수를 내용으로 세는지 확인하지 못한다');
+        });
+    });
+
+    // ── 변이⑥-c skipEmpty 가 '보고에 안 나가는' 일정 공수를 다시 보면 '빈 과제명' 행이 되살아난다 ──
+    const eventHoursOnlyState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'c-full', name: '내용과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-evh', name: '일정공수과제', color: '#c2703a', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      ],
+      // 제목이 빈 문자열 → titles 0개. hours(45)는 sumMin 에만 쌓이고 보고서 본문·헤더에는 한 글자도 안 나간다.
+      entries: [
+        { id: 'eh', date: '2026-07-15', title: '', categoryId: 'c-evh', allDay: true, startTime: '', endTime: '', location: '', memo: '',
+          source: '', commits: [], hours: 45, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
+      ],
+      todos: [
+        { id: 't1', text: '작업', done: false, categoryId: 'c-full', due: '2026-07-15', endDate: '', prio: 'normal', completedAt: '', note: '', dayNotes: {}, createdAt: CA, updatedAt: CA },
+      ],
+      rooms: [],
+    });
+    test("변이⑥-c: skipEmpty 가 일정 공수(r.minutes)를 내용으로 세면 '빈 과제명' 행이 보고서에 되살아난다", () => {
+      seed(eventHoursOnlyState());
+      const okNames = collectDN('2026-07-15', '2026-07-15', { event: true, todo: true, git: true, desc: true, skipEmpty: true }).rows.map(x => x.name);
+      assert.ok(!okNames.includes('일정공수과제'), '사전조건: 정상 앱은 보고에 안 나가는 일정 공수만 있는 행을 뺀다');
+      assert.ok(okNames.includes('내용과제'), '사전조건: 내용 있는 과제는 남는다');
+
+      withMutatedApp(
+        'const rowHasHours = r => rangeTaskHours(r.key) > 0;',
+        'const rowHasHours = r => (r.minutes || 0) > 0 || rangeTaskHours(r.key) > 0;',
+        (m) => {
+          m.seed(eventHoursOnlyState());
+          const names = m.evJSON('collectReportData("2026-07-15","2026-07-15",' +
+            JSON.stringify({ event: true, todo: true, git: true, desc: true, skipEmpty: true }) + ')').rows.map(x => x.name);
+          assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
+          assert.ok(names.includes('일정공수과제'),
+            '변이했는데도 그 행이 빠진다 — 계약이 「어떤 공수를 세는가」를 확인하지 못한다');
         });
     });
   }

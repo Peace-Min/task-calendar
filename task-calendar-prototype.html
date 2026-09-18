@@ -509,7 +509,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .modal-foot > .git-note ~ .spacer,.modal-foot > .off-msg ~ .spacer,
 .modal-foot > .rl-sum ~ .spacer,.modal-foot > .rpt-send-status ~ .spacer{flex:none}
 /* 내용이 빈 상태문은 flex 항목으로 남아 gap 8px만 먹는다 — 320px에서 그 8px 때문에 버튼 한 개가 접혔다 */
-.modal-foot > .off-msg:empty,.modal-foot > .rl-sum:empty,.modal-foot > .rpt-send-status:empty{display:none}
+.modal-foot > .off-msg:empty,.modal-foot > .rl-sum:empty,.modal-foot > .rpt-send-status:empty,.modal-foot > .rpt-send-hint:empty{display:none}
 /* 폼 세로 리듬 — 라벨 위 16px(=칸과 칸 사이의 숨) · 라벨→입력 6px(라벨은 자기 입력칸에 붙는다).
    ★ 옛 규칙은 `.modal label:first-child{margin-top:0}` 이었다. 그런데 .row2 셀은 <div><label>…</label><select>…
      구조라 **셀의 첫 라벨도 :first-child** 다 → 윗여백이 0 이 되어 2열 행이 바로 위 입력칸에 들러붙었다
@@ -853,7 +853,8 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .tabs{display:flex;gap:2px;align-items:flex-end;border-bottom:1px solid var(--line);margin-bottom:13px}
 .s-summary{font-size:var(--fs-body);color:var(--muted);margin:10px 1px 7px;min-height:17px}
 .s-results{display:flex;flex-direction:column;height:48vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r-md)}   /* 검색 결과 수와 무관하게 같은 높이(.cust-list 참조) */
-.s-results:empty{display:none}
+/* 결과 0건에도 상자는 남긴다 — 통째로 숨기면 '아직 안 찾아봤다'와 '찾았는데 없다'가 같은 화면이 된다. 안내는 .s-empty 한 줄로. */
+.s-empty{padding:var(--sp-3);text-align:center;color:var(--muted);font-size:var(--fs-body)}
 .s-date{
   font-size:var(--fs-meta);font-weight:700;color:var(--accent-2);background:#f5f7fd;
   padding:8px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;
@@ -938,6 +939,7 @@ mark{background:#ffe27a;color:inherit;border-radius:2px;padding:0 1px}
 .rpt-mirror .rcard-h-in{width:calc(var(--m-scale) * 54px);text-align:right;border:1px solid var(--ctl-border);border-radius:6px;padding:3px 6px;font-size:calc(var(--m-scale) * var(--fs-body));font-weight:600;font-family:inherit;background:var(--panel);color:var(--text);font-variant-numeric:tabular-nums}
 .rpt-mirror .rcard-h-in:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .rpt-mirror .rcard-hu{font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--muted)}
+.rpt-mirror .rcard-hnote{margin-left:auto;font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--muted)}   /* 미분류 '기타' 행 — 저장할 곳이 없어 입력칸 대신 안내(.git-hint 와 같은 결) */
 .rpt-mirror .rcard-tasks{font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
 /* 일간 보고서 커밋 라인 편집(✎) — 조밀 라인 위에 확장형 편집기(Part B와 동일 톤) */
 .rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
@@ -1557,9 +1559,10 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 .set-od{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
 .set-sec-top{border-top:1px solid var(--line);margin-top:14px;padding-top:14px}
 .set-in{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
-.rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4}
+/* 모달 바닥 한 줄에 사는 글이다 — 길면 세로로 쏟아져 버튼을 밀어낸다. 한 줄로 자르고 전문은 title 로(setRptSendText). */
+.rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rpt-send-status.busy{color:var(--accent-2)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger-text)}
-.rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px}
+.rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qa-detail{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
 /* 라벨행과 컨트롤행을 '두 칼럼이 공유하는 그리드 행'으로 묶는다.
    칼럼별 flex였을 땐 '회의실 관리' 링크(SVG 아이콘)가 장소 라벨행만 높여, 옆 칼럼(반복)의
@@ -2518,6 +2521,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
               <span class="rpt-optbtn-ic">⚙</span> 옵션 <span class="rpt-optbtn-sum" id="rptOptSum"></span>
             </button>
             <div class="rpt-optpanel" id="rptOptPanel">
+              <span class="git-hint rpt-opt-share hidden" id="rptOptShare">이 옵션은 주간 작성과 같은 저장값을 씁니다</span>
               <!-- 옵션 격자(2026-09-18 UI 정돈): 라벨 열 하나에 네 줄 — 포함 항목(칩) · 표시(체크) · 머리기호 · 들여쓰기.
                    전에는 체크 다섯이 한 줄에 흘러 두 줄로 접히고(소스 셋과 표시 옵션 둘이 섞임), 서식은 별도 카드라
                    같은 패널 안에서 두 겹의 테두리가 생겼다. 카드 대신 라벨 정렬로 묶는다. id·체크박스는 그대로(시험·저장 계약). -->
@@ -4709,9 +4713,12 @@ function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return
 //   쓰인다(loginId 만 로그인 판정에 더 쓰이는데 그건 PK 라 낡지 않는다). 낡은 값이 샐 다른 경로가 없다.
 let __usPermBusy = false;   // 재진입 가드 — 모달 오픈과 [지금 새로고침]이 겹치면 늦게 온 회신이 먼저 온 것을 덮는다
 async function loadUserPerm(){
+  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
+  //  ★ 가드보다 **앞**에서 권한 두 줄을 지운다 — 다시 열면 직전 사용자의 역할·열람범위가 그대로 남아,
+  //    조회가 끝나기 전까지 그게 '지금 내 권한'처럼 읽힌다(가드에 걸려 곧장 돌아가는 경우도 마찬가지).
+  set('usEditRole', '확인 중…'); set('usViewScope', '확인 중…');
   if(!HOST || !currentUser || __usPermBusy) return;
   __usPermBusy = true;
-  const set = (id, t) => { const e = document.getElementById(id); if(e) e.textContent = t; };
   set('usPermState', '· 확인 중…');
   set('usPermMsg', '');
   let r = null;
@@ -5819,7 +5826,7 @@ function uaFail(msg){
 //  ★ flat:true — 「구성원 편집」은 팀과 무관하게 전사 서열(sort_order)순이다(사용자 결정 2026-09-10).
 //    정렬은 호스트가 한다(ProjectDb flatOrder). 보기 화면(openMembers)은 flat 을 보내지 않아 소속 → 순번 → 이름 그대로다.
 async function openUserAdmin(){
-  if(__uaBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  if(__uaBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게. 조용히 삼키면 '버튼이 고장났다'가 된다(trSend/otSend 와 같은 문구).
   __uaBusy = true;
   __uaAdmin = false; __uaMembers = []; __uaUnits = []; __uaTitles = []; __uaInactive = false;
   __uaPendingData = null;
@@ -6266,7 +6273,7 @@ function trFail(msg){
 // ★ 모달은 회신을 기다리지 않고 먼저 연다(openUserAdmin 과 같은 이유) — 대신 '불러오는 중…'을 띄운다.
 // ★ __trAdmin 을 먼저 비운다: 낡은 값이 남으면 회신 전 한 프레임 동안 [영구 삭제]가 번쩍인다.
 async function openTrash(scope){
-  if(__trBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  if(__trBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게. 조용히 삼키면 '버튼이 고장났다'가 된다(trSend/otSend 와 같은 문구).
   __trBusy = true;
   __trScope = (scope === 'user') ? 'user' : 'project';
   //  머리말도 문을 따라간다 — 「퇴사자 휴지통」에서 들어왔는데 머리가 「휴지통」이면 무엇을 보고 있는지 흐려진다.
@@ -6420,7 +6427,7 @@ function mbFail(msg){
 // 진입점 — 열 때마다 membersGet 을 새로 부른다(캐시 금지: 인사이동·권한변경이 낡은 채 남으면 화면이 거짓말을 한다).
 // ★ 모달은 회신을 기다리지 않고 먼저 연다(openUserInfo 와 같은 이유) — 대신 '불러오는 중…'을 띄운다.
 async function openMembers(){
-  if(__mbBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  if(__mbBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게. 조용히 삼키면 '버튼이 고장났다'가 된다(trSend/otSend 와 같은 문구).
   __mbBusy = true;
   __mbUnits = []; __mbMembers = []; __mbSel = null; __mbScopeText = '';   // 직전 결과를 남기지 않는다
   const q = document.getElementById('mbSearch'); if(q) q.value = '';      // 지난 검색어가 남으면 목록이 잘린 채 열린다
@@ -8257,15 +8264,23 @@ function updateDbStatusLine(){
   else st = '<b>연결 안 됨</b> — 서버에 연결되어야 공식 과제를 볼 수 있습니다';
   line.innerHTML = '공식 과제 DB: ' + st;
 }
+// 모달 바닥 한 줄에 사는 전송 안내(#rptSendHint)·상태(#rptSendStatus) — CSS 가 한 줄로 자르므로(말줄임)
+// 잘린 원문을 title 로 남긴다. 비우면 title 도 지운다 — 낡은 툴팁이 남으면 지금 상태를 거짓으로 말한다.
+function setRptSendText(el, html){
+  if(!el) return;
+  el.innerHTML = (html == null) ? '' : html;
+  const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+  if(t) el.title = t; else el.removeAttribute('title');
+}
 // 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
 function ncMode(){ try{ return localStorage.getItem('tc_netcusMode') === 'real' ? 'real' : 'dry'; }catch(_){ return 'dry'; } }
 // (netcus 자격증명 표시·저장 콜백은 제거됐다 — 자격의 출처가 로그인 하나가 되면서 설정창에 표시할 상태가 없다.)
 window.__netcusProgress = function(msg){
-  const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' ' + esc(msg); s.className = 'rpt-send-status busy'; }
+  const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' ' + esc(msg)); s.className = 'rpt-send-status busy'; }
 };
 window.__netcusResult = function(ok, msg){
   clearTimeout(Netcus.watchdog);   // 결과 도착 → 전송 워치독 해제(영구잠김 방지)
-  const s = $('#rptSendStatus'); if(s){ s.innerHTML = (ok ? ICON.check : ICON.alert) + ' ' + esc(msg); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
+  const s = $('#rptSendStatus'); if(s){ setRptSendText(s, (ok ? ICON.check : ICON.alert) + ' ' + esc(msg)); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'error');   // netcus 전송 실패 = 회사 보고가 안 올라간 것 → 경고가 아니라 오류
 };
@@ -8297,7 +8312,7 @@ window.__netcusStatus = function(s){
 // 전송 워치독 — fire-and-forget 전송이 결과(__netcusResult) 없이 끝나면(호스트 크래시 등) 100초 뒤 버튼 복구 + 안내(영구잠김 방지).
 function armRptSendWatchdog(){
   clearTimeout(Netcus.watchdog);
-  Netcus.watchdog = setTimeout(function(){ const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ st.innerHTML = ICON.alert + ' 전송 결과를 받지 못했습니다 — 다시 시도하세요'; st.className = 'rpt-send-status err'; } }, 100000);
+  Netcus.watchdog = setTimeout(function(){ const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ICON.alert + ' 전송 결과를 받지 못했습니다 — 다시 시도하세요'); st.className = 'rpt-send-status err'; } }, 100000);
 }
 
 /* ===== 자동 업데이트 — 호스트(WPF)가 확인/다운로드/설치 담당. JS는 배너 + 설정 필드만 ===== */
@@ -8376,9 +8391,9 @@ function netcusManualGuide(){
   try{ window.open('https://www.netcus.com/pjm/login.htm', '_blank', 'noopener'); }catch(_){}
   const s = $('#rptSendStatus');
   if(s){
-    s.innerHTML = ICON.alert + ' <b>브라우저에서는 회사 보고 자동 작성이 안 됩니다</b> (보안 제약).'
+    setRptSendText(s, ICON.alert + ' <b>브라우저에서는 회사 보고 자동 작성이 안 됩니다</b> (보안 제약).'
       + '<br>① 열린 <b>netcus</b> 창에 직접 입력 — <b>' + ICON.copy + ' 복사</b>로 내용 붙여넣기, 근태·초과는 직접 선택'
-      + '<br>② 자동 작성이 필요하면 <b>⋯ → XML 내보내기</b>로 위젯에 데이터를 옮겨 작성';
+      + '<br>② 자동 작성이 필요하면 <b>⋯ → XML 내보내기</b>로 위젯에 데이터를 옮겨 작성');
     s.className = 'rpt-send-status';
   }
   toast('netcus 창을 열었습니다 — 직접 입력하거나 위젯으로 옮겨 작성하세요', 'warn');
@@ -9355,7 +9370,7 @@ function otMsgSet(text, tone){
 // 진입점 — 열 때마다 orgTitleGet 을 새로 부른다(캐시 금지: 낡은 목록은 이미 숨긴 것을 다시 숨기게 한다).
 //   ★ 모달은 회신을 기다리지 않고 먼저 연다(openTrash 와 같은 이유) — 대신 '불러오는 중…'을 띄운다.
 async function openOrgTitle(){
-  if(__otBusy) return;   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게
+  if(__otBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게. 조용히 삼키면 '버튼이 고장났다'가 된다(trSend/otSend 와 같은 문구).
   __otBusy = true;
   __otData = null; __otTab = 'title'; __otShowHidden = false;   // 지난번 화면을 한 조각도 남기지 않는다
   const sh = document.getElementById('otShowHidden'); if(sh) sh.checked = false;
@@ -10058,23 +10073,23 @@ function runSearch(){
   const sum = $('#sSummary'), res = $('#sResults');
   if(searchMode === 'keyword'){
     const q = $('#sInput').value.trim();
-    if(!q){ sum.textContent = '검색어를 입력하면 제목·메모·과제명에서 찾아 날짜별로 보여줍니다.'; res.innerHTML=''; return; }
+    if(!q){ sum.textContent = '검색어를 입력하면 제목·메모·과제명에서 찾아 날짜별로 보여줍니다.'; res.innerHTML = '<div class="s-empty">검색어를 입력하세요.</div>'; return; }
     const ql = q.toLowerCase();
     const hits = state.entries.filter(e =>
       e.title.toLowerCase().includes(ql) ||
       (e.memo||'').toLowerCase().includes(ql) ||
       (e.commits||[]).some(c => (c.subject||'').toLowerCase().includes(ql)) ||
       (catById(e.categoryId)?.name || '').toLowerCase().includes(ql));
-    if(!hits.length){ sum.innerHTML = `‘<b>${esc(q)}</b>’ — 일치하는 기록이 없습니다.`; res.innerHTML=''; return; }
+    if(!hits.length){ sum.innerHTML = `‘<b>${esc(q)}</b>’ — 일치하는 기록이 없습니다.`; res.innerHTML = '<div class="s-empty">검색 결과가 없습니다.</div>'; return; }
     const days = new Set(hits.map(e => e.date)).size;
     sum.innerHTML = `‘<b>${esc(q)}</b>’ — <b>${hits.length}개</b> 기록 · <b>${days}일</b>에서 발견 (최신순, 클릭하면 해당 날짜로 이동)`;
     res.innerHTML = groupByDateHtml(hits, q, false);
   }else{
     const catId = $('#sCatSelect').value;
-    if(!catId){ sum.textContent = '과제를 선택하면 해당 과제의 전체 기록을 시간순으로 보여줍니다.'; res.innerHTML=''; return; }
+    if(!catId){ sum.textContent = '과제를 선택하면 해당 과제의 전체 기록을 시간순으로 보여줍니다.'; res.innerHTML = '<div class="s-empty">과제를 선택하세요.</div>'; return; }
     const c = catById(catId);
     const list = state.entries.filter(e => e.categoryId === catId);
-    if(!list.length){ sum.innerHTML = `<b>${esc(c?.name||'')}</b> — 기록이 없습니다.`; res.innerHTML=''; return; }
+    if(!list.length){ sum.innerHTML = `<b>${esc(c?.name||'')}</b> — 기록이 없습니다.`; res.innerHTML = '<div class="s-empty">검색 결과가 없습니다.</div>'; return; }
     const dates = list.map(e => e.date).sort();
     const upper = list.map(e => (e.recur && e.recur.until) ? e.recur.until : (e.endDate || e.date))
       .reduce((a,b) => maxStr(a,b), dates[dates.length-1]);   // 기간/반복 종료까지 반영한 상한
@@ -10260,6 +10275,12 @@ function reportTextDetails(meta, pad){
   const lines = reportMetaDetails(meta);
   return lines.length ? lines.map(d => '\n' + pad + d).join('') : '';
 }
+// 커밋 전체 본문(옵션 ON 일 때만 meta.body 가 채워진다). 복사(buildReportText)와 주간 전송(buildWeeklyFields)이
+// **같은 함수**를 쓴다 — 미리보기에 보이는 것이 전송에도 그대로 가야 한다(WYSIWYG). 없으면 빈 문자열.
+function reportTextBody(meta, pad){
+  const body = (meta && meta.body) ? String(meta.body) : '';
+  return body ? body.split('\n').map(bl => '\n' + pad + bl).join('') : '';
+}
 // 설명·본문 하위 라인 들여쓰기 — 제목 텍스트(마커 뒤) 아래 정렬되도록 마커 프리픽스의 '표시폭'(한글·자모·원문자·전각=2칸, 그 외 1칸)만큼 unit 반복. 마커 없으면 최소 2칸(중첩 표시).
 function reportSubIndent(prefix, unit){
   let w = 0;
@@ -10323,7 +10344,8 @@ function collectReportData(from, to, sources){
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     // git 작업일지는 커밋 제목 전부를 업무로(요약 'N건'이 아니라 실제 커밋들 — git 로그 가져오는 핵심), 그 외는 엔트리 제목
     if(isGit && Array.isArray(e.commits) && e.commits.length){
-      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { kind:'git', entryId:e.id, hash:c.hash || '', cidx:ci, body: (state.gitCommitBody && c.body) ? String(c.body) : '' }); }
+      // 커밋 본문도 '설명'이다 — 「설명 포함」을 끄면 메모·노트와 함께 빠져야 한다(한 스위치가 두 가지를 다르게 말하면 안 된다).
+      for(let ci = 0; ci < e.commits.length; ci++){ const c = e.commits[ci]; pushTitle(k, c.subject, { kind:'git', entryId:e.id, hash:c.hash || '', cidx:ci, body: (includeDetails && state.gitCommitBody && c.body) ? String(c.body) : '' }); }
     } else {
       pushTitle(k, e.title, { kind:'event', entryId:e.id }, includeDetails ? entryDetails : []);
     }   // 비-git 엔트리 제목 → 편집 가능(일정 라우팅)
@@ -10364,9 +10386,11 @@ function collectReportData(from, to, sources){
   //   · 제목이 있는 일정·할 일·커밋은 그 자체가 내용 → 설명(메모/dayNote) 유무와 무관하게 절대 빼지 않는다.
   //   · 공수도 내용이다: 일간 헤더 '[과제] : n'·주간 content 줄이 바로 이 행에서 나오므로,
   //     제목이 하나도 없어도 (날짜×과제) 공수가 있으면 그 과제는 보고할 것이 있는 행이다.
-  //   · 그래서 제외 조건은 '제목 0개 AND 공수 0' 하나뿐. 공수 집계(sumMin·grandMin·uninput)는 이 옵션에 영향받지 않는다.
+  //   · 여기서 세는 공수는 **(날짜×과제) 공수표뿐이다** — 보고에 나가는 시간이 그것 하나이기 때문이다.
+  //     일정의 hours(r.minutes)는 보고서 어디에도 실리지 않으므로, 그걸 근거로 남기면 화면에 '빈 과제명' 한 줄만 나간다.
+  //   · 그래서 제외 조건은 '제목 0개 AND 공수표 0' 하나뿐. 공수 집계(sumMin·grandMin·uninput)는 이 옵션에 영향받지 않는다.
   const rangeTaskHours = key => { let h = 0; for(let d = from; d && d <= to; d = addDays(d, 1)){ const v = getTaskHours(d, key); if(v != null) h += v; } return h; };
-  const rowHasHours = r => (r.minutes || 0) > 0 || rangeTaskHours(r.key) > 0;
+  const rowHasHours = r => rangeTaskHours(r.key) > 0;
   if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));
   let grand = 0; for(const v of sumMin.values()) grand += v;
   return { rows, grandMin:grand, uninput };
@@ -10475,6 +10499,7 @@ function setReportMode(mode){
   editingReportKey = null; editingDayNoteKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지)
   $$('#reportModal [data-rmode]').forEach(b => { const on = b.dataset.rmode === mode; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; });   // role=tab 선택상태 announce + roving tabindex
   const from = $('#rptFrom'), to = $('#rptTo');
+  const _pf = from.value, _pt = to.value;   // 전환 전 기간 — 아래 분기가 프로그램적으로 바꾼다
   if(mode === 'daily'){
     // 단일일 UI — 과거 선택 가능(미래 불가), 두 번째 날짜·구분자는 숨김
     const t = todayYmd(); from.value = t; to.value = t;
@@ -10490,11 +10515,18 @@ function setReportMode(mode){
     if(!to.value) to.value = from.value;
     from.removeAttribute('max'); { const sep = $('#rptDateSep'); if(sep) sep.style.display = ''; to.style.display = ''; }
   }
+  // 기간이 실제로 바뀌었으면 netcus 병합 캐시는 그 순간 낡은 값이다 — 캐시는 '그 기간의 것'일 때만 참이다.
+  if(from.value !== _pf || to.value !== _pt){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }
   const sr = $('#rptSourceRow'); if(sr) sr.style.display = (mode === 'daily') ? 'none' : 'flex';   // 내용 출처 = 주간·커스텀만
   //  글꼴·크기는 **기간 취합에서만**(2026-09-18 사용자 결정 — 일간·주간 작성 단계에는 불필요. 원래 설계(REPORT_FONTS 주석)로 복귀).
   //    일간에서 옵션을 토글하면 레일이 다시 그려지며 이 행이 밀려 '사라지는' 것처럼 보이던 문제도 함께 없어진다.
   { const fr = $('#rptFontRow'); if(fr) fr.style.display = (mode === 'custom') ? '' : 'none'; }
   { const _wk = $('#rptSrcSeg [data-rsrc="week"]'); if(_wk) _wk.style.display = (mode === 'custom') ? '' : 'none'; }   // netcus 주간보고(월간·연간용)는 기간 취합에서만
+  // 그 칸을 숨기면 출처도 함께 떠나야 한다 — 고를 수 없게 된 출처가 state 에 남으면 미리보기·복사·전송이 서로 다른 것을 말한다.
+  if(mode !== 'custom' && state.reportSource === 'week'){ state.reportSource = 'cal'; clearNetcusWeeklyMerge(); }
+  syncReportSourceSeg();   // 세그 활성 표시를 state.reportSource 에 다시 맞춘다(위 되돌림 포함)
+  // 기간 취합의 ⚙옵션은 주간 작성과 **같은 저장값**을 쓴다(reportFormatKeyForMode) — 말하지 않으면 '내 선택이 멋대로 바뀌었다'가 된다.
+  { const _sh = $('#rptOptShare'); if(_sh) _sh.classList.toggle('hidden', mode !== 'custom'); }
   applyRptSourcePrefs();   // 이 보고 유형(일간/주간)에 저장된 포함 항목 선택 복원 후 렌더
   buildReport();
 }
@@ -10503,17 +10535,19 @@ function updateRptSendVis(){
   const b = $('#btnRptSend'), h = $('#rptSendHint');
   // 보고 유형/구성이 바뀌면 직전 전송 안내(브라우저 netcus 안내 등)를 지운다 — 탭 전환 시 stale·모순 문구 방지.
   // (위젯 전송 흐름은 이 경로를 타지 않아 __netcusResult 결과 메시지는 보존됨)
-  const st = $('#rptSendStatus'); if(st){ st.innerHTML = ''; st.className = 'rpt-send-status'; }
+  const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ''); st.className = 'rpt-send-status'; }
   if(!b) return;
   b.style.display = '';
   if(reportMode === 'weekly'){
+    // 버튼은 '보고 유형'만 본다 — 내용 출처(cal/net/week)는 여기서 보지 않는다. 'week' 출처는 기간 취합 전용이라
+    // 주간에 남아 있을 수 없고(setReportMode 가 되돌린다), 그래도 남는 경우는 #btnRptSend 핸들러의 가드가 막는다.
     b.disabled = false; b.dataset.mode = 'weekly'; b.innerHTML = ICON.send + ' 주간보고 작성';
     b.title = '선택한 주의 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
     if(h) h.style.display = 'none';
   } else if(reportMode === 'custom'){
     b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
     b.title = '기간 취합은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
-    if(h){ h.style.display = ''; h.textContent = '기간 취합은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'; }
+    if(h){ h.style.display = ''; setRptSendText(h, '기간 취합은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'); }
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '선택한 날짜의 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
@@ -10544,7 +10578,8 @@ function buildWeeklyFields(from, to, sources){
   const endwork = rows.map(r => `[${r.name}]\n` + (r.titles.length ? r.titles.map((t, i) => {
     const _mk = reportMarkerAt(_mkSpec, i); const _pfx = _mk ? (_mk + ' ') : '';
     const m = (r.titleMeta && r.titleMeta[i]) || null;
-    return _pad + _pfx + t + reportTextDetails(m, _pad + reportSubIndent(_pfx, '&nbsp;'));
+    const _sub = _pad + reportSubIndent(_pfx, '&nbsp;');
+    return _pad + _pfx + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);   // 본문도 복사와 같은 함수로 — 미리보기에 있는 것이 전송에도 간다
   }).join('\n') : '-')).join('\n\n');
   const planwork = rows.map(r => `[${r.name}]`).join('\n');
   return { content, endwork, planwork, subject: weekSubjectGuess(from) };
@@ -10893,6 +10928,19 @@ function buildReport(){
   const out = $('#rptOut'), sum = $('#rptSummary');
   syncReportFontUI();   // 조기 반환 경로들보다 앞 — netcus 미리보기·가드 화면에서도 미리보기 서식이 설정과 일치하게
   syncReportFormatUI();   // 서식 컨트롤도 같은 이유로 가드 앞(2026-09-18)
+  // ★ 규칙(2026-09-18 리뷰): 저장값 → 컨트롤 표시, 저장, 요약줄, 독립 슬롯(근태)은 본문 가드와 무관하게
+  //   buildReport 첫머리에서 한다. 렌더는 저장값을 읽기만 한다. 미리보기·복사·전송(일간·주간)은 같은
+  //   rows/flags 에서 나온다(WYSIWYG). — 전에는 이 두 줄이 날짜 가드·netcus 조기반환 **뒤**에 있어,
+  //   잘못된 기간이나 netcus 출처에서 체크를 바꾸면 그 선택이 저장되지 않고 ⚙요약도 낡은 값을 말했다.
+  const src = rptSources();
+  saveRptSourcePrefs();   // 포함 항목 선택을 현재 보고 유형(일간/주간)별로 영속
+  { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
+    if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
+      const fmt = currentReportFormatPref();
+      const mk = fmt.markerCustom ? '직접' : (fmt.marker === 'none' ? '무번호' : (fmt.marker || '-'));
+      // 글꼴은 여기 넣지 않는다 — 이제 ⚙옵션이 아니라 레일에 상시 노출되므로(#rptFontRow),
+      // 접힘 요약에 적으면 '옵션 안에 있는 설정'으로 오인된다(380px 발견성 근거도 함께 사라짐).
+      os.textContent = `· 포함 ${pc}/3 · 설명 ${src.desc ? '포함' : '제외'}${src.skipEmpty ? ' · 빈항목 제외' : ''} · 머리기호 ${mk}`; } }
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
   const _isNet = (state.reportSource === 'net'), _isWeek = (state.reportSource === 'week');
@@ -10928,15 +10976,6 @@ function buildReport(){
   }
   // 내용 출처 = netcus 일간보고/주간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
   if(_netMode){ if(_isWeek) renderNetcusWeeklyInto(from, to); else renderNetcusInto(from, to); return; }
-  const src = rptSources();
-  saveRptSourcePrefs();   // 포함 항목 선택을 현재 보고 유형(일간/주간)별로 영속(미리보기 갱신 시점에만)
-  { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
-    if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
-      const fmt = currentReportFormatPref();
-      const mk = fmt.markerCustom ? '직접' : (fmt.marker === 'none' ? '무번호' : (fmt.marker || '-'));
-      // 글꼴은 여기 넣지 않는다 — 이제 ⚙옵션이 아니라 레일에 상시 노출되므로(#rptFontRow),
-      // 접힘 요약에 적으면 '옵션 안에 있는 설정'으로 오인된다(380px 발견성 근거도 함께 사라짐).
-      os.textContent = `· 포함 ${pc}/3 · 설명 ${src.desc ? '포함' : '제외'}${src.skipEmpty ? ' · 빈항목 제외' : ''} · 머리기호 ${mk}`; } }
   if(!src.event && !src.todo && !src.git){
     sum.textContent = '포함할 항목을 한 개 이상 선택하세요 (일정·할 일·커밋).';
     out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정·할 일·커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
@@ -10960,8 +10999,11 @@ function buildReport(){
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
     // 일간만 — 과제별 시간 입력('[과제] : n' 계약). 값은 setTaskHours로 (date×catId) 저장. 주간/커스텀은 없음(읽기전용).
-    if(daily){ const _th = getTaskHours(from, r.key);
+    // ★ 미분류 '기타'(__uncat__)에는 입력칸을 주지 않는다 — 실재하는 과제가 아니라서 DB 저장에서 통째로 버려진다
+    //   (CalendarWriteDb: 없는 과제의 공수는 FK 때문에 버린다). 적을 자리를 주고 조용히 버리느니 왜 못 적는지 말한다.
+    if(daily && r.key !== '__uncat__'){ const _th = getTaskHours(from, r.key);
       html += `<span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.5" inputmode="decimal" value="${_th != null ? _th : ''}" data-hcat="${esc(r.key)}" aria-label="${esc(r.name)} 시간(회사 일간보고용)" placeholder="0"><span class="rcard-hu">h</span></span>`; }
+    else if(daily){ html += `<span class="rcard-hnote" title="미분류 항목은 과제별 시간을 저장할 수 없습니다 — 항목에 과제를 지정하면 입력칸이 생깁니다">시간은 과제를 지정한 뒤</span>`; }
     html += `</div>`;
     if(r.titles.length){
       if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
@@ -11271,6 +11313,15 @@ function renderNetcusWeeklyPreview(parsed, at){
   if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개 · ' + (parsed.weekCount || 0) + '주 병합';
   updateRptSendVis();   // 읽기 잠금(__netcusBusy)으로 비활성됐던 전송 버튼을 현재 모드 기준으로 복원
 }
+// 내용 출처 세그의 표시를 state.reportSource 에 맞춘다 — openReport(재오픈)와 setReportMode(모드 전환)가 공유한다.
+// ★ 활성 표시는 '지금 출처가 무엇인가'만 말한다. disabled(읽기 잠금·모드별 숨김) 여부와 AND 하면
+//   출처는 그대로인데 켜진 칸이 하나도 없는 상태가 생겨, 사용자가 자기 출처를 화면에서 읽을 수 없다.
+function syncReportSourceSeg(){
+  const src = (state.reportSource === 'net' || state.reportSource === 'week') ? state.reportSource : 'cal';
+  const sr = $('#rptSourceRow'); if(sr) sr.setAttribute('data-src', src);   // 설명 강조 연동
+  const seg = $('#rptSrcSeg'); if(seg) seg.querySelectorAll('[data-rsrc]').forEach(x => {
+    const on = x.dataset.rsrc === src; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+}
 function openReport(){
   clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
   openModal('#reportModal');
@@ -11278,10 +11329,7 @@ function openReport(){
   // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
   const _opt = $('#rptOpt'); if(_opt) _opt.classList.remove('open');
   const _ob = $('#rptOptBtn'); if(_ob) _ob.setAttribute('aria-expanded', 'false');
-  const _src = (state.reportSource === 'net' || state.reportSource === 'week') ? state.reportSource : 'cal';   // week도 방어적으로 반영
-  const _sr = $('#rptSourceRow'); if(_sr) _sr.setAttribute('data-src', _src);   // 설명 강조 연동
-  const _seg = $('#rptSrcSeg'); if(_seg) _seg.querySelectorAll('[data-rsrc]').forEach(x => {
-    const on = x.dataset.rsrc === _src && !x.disabled; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  syncReportSourceSeg();   // 세그 활성 표시 = state.reportSource(단일 소스)
 }
 // 분기 = 오늘이 속한 3개월(1-3/4-6/7-9/10-12). monthRange를 재사용해 말일 계산을 한 곳에 둔다.
 function quarterRange(base){
@@ -11436,11 +11484,16 @@ function buildReportText(indentUnit){
   // indentUnit: 들여쓰기 문자 — 복사(기본 U+00A0 비분리공백: HTML·평문 붙여넣기 양쪽 안전) / netcus 전송은 '&nbsp;'(euc-kr HTML 렌더에서 collapse 방지). HTML esc 대상 아님.
   indentUnit = indentUnit || ' ';
   // netcus 출처(주간/커스텀) → 화면 미리보기와 동일한 병합 텍스트를 복사(캘린더 재계산 금지, WYSIWYG 일치)
+  // ★ 캐시는 '그 기간의 것'일 때만 쓴다 — 전송 경로(#btnRptSend)가 이미 같은 대조를 한다(netcusMerge.key === ncMergeKey).
+  //   복사만 대조를 빼면 기간을 바꾼 직후 복사한 내용이 화면과 다른 주(직전 기간)가 된다.
+  const _ncF = $('#rptFrom').value, _ncT = $('#rptTo').value;
   if(state.reportSource === 'week' && reportMode !== 'daily'){
-    return (netcusWeeklyMerge && netcusWeeklyMerge.parsed) ? buildNetcusWeeklyText(netcusWeeklyMerge.parsed, weeklyFlat) : '';
+    const _wp = (netcusWeeklyMerge && netcusWeeklyMerge.parsed && netcusWeeklyMerge.key === ncMergeKey(_ncF, _ncT)) ? netcusWeeklyMerge.parsed : null;
+    return _wp ? buildNetcusWeeklyText(_wp, weeklyFlat) : '';
   }
   if(state.reportSource === 'net' && reportMode !== 'daily'){
-    return (netcusMerge && netcusMerge.parsed) ? buildNetcusSendText(netcusMerge.parsed) : '';
+    const _np = (netcusMerge && netcusMerge.parsed && netcusMerge.key === ncMergeKey(_ncF, _ncT)) ? netcusMerge.parsed : null;
+    return _np ? buildNetcusSendText(_np) : '';
   }
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
@@ -11459,12 +11512,7 @@ function buildReportText(indentUnit){
       const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
       const m = (r.titleMeta && r.titleMeta[i]) || null;
       const _sub = _pad + reportSubIndent(_prefix, indentUnit);   // 설명·본문은 마커 폭만큼 들여쓰기 → 제목 텍스트 아래 정렬(마커보다 왼쪽으로 튀어나오지 않게)
-      let line = '\n' + _pad + _prefix + t + reportTextDetails(m, _sub);   // 일정 메모/할일 노트(설명 포함)
-      if(m && m.body){   // 커밋 전체 본문 옵션 ON일 때만(OFF면 이 블록 미실행 → 기존과 동일)
-        const _bpad = _sub;
-        line += m.body.split('\n').map(bl => '\n' + _bpad + bl).join('');
-      }
-      return line;
+      return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);   // 일정 메모/할일 노트(설명) + 커밋 전체 본문 — 주간 전송과 같은 함수
     }).join('');
   });
   return blocks.join('\n\n') + '\n';
@@ -12255,7 +12303,7 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnPatch', ICON.sparkle + ' 변경사항 · v<span id="appVerLabel">' + esc(APP_VERSION) + '</span>');
   const oi = document.querySelector('.rpt-optbtn-ic'); if(oi) oi.innerHTML = ICON.gear;
   const ui = document.querySelector('.upd-ico'); if(ui) ui.innerHTML = ICON.sparkle;
-  const sh = $('#rptSendHint'); if(sh) sh.innerHTML = ICON.send + ' <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)';
+  const sh = $('#rptSendHint'); if(sh) setRptSendText(sh, ICON.send + ' <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)');
 }
 
 /* ---------- 테마 (전체 캘린더 템플릿) ---------- */
@@ -12836,7 +12884,7 @@ function bind(){
       // 버튼 disable+스피너는 위젯 모드에서만(호스트 회신 __netcusResult가 다시 활성화) — 브라우저는 회신이 없어 영구 잠김 방지
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;
-        const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 전송 시작…'; s.className = 'rpt-send-status busy'; }
+        const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' 전송 시작…'); s.className = 'rpt-send-status busy'; }
         armRptSendWatchdog();
       }
       Platform.report.submitDaily(payload);
@@ -12844,6 +12892,9 @@ function bind(){
       // 주간보고 — 채우고 열어두기(직접 제출). 기간/제목/과제투입시간/진행사항 자동 채움.
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){ toast('기간을 선택하세요 (시작 ≤ 종료)', 'warn'); return; }
       // 내용 출처 = netcus 일간보고 → endwork는 병합 파서 결과의 '깨끗한' 텍스트(// 사유·통계 없음). 과제투입시간은 기본 비움.
+      // netcus 주간보고 출처는 '이미 낸 주간보고들'을 기간 단위로 합쳐 보는 용도다 — 그걸 다시 주간보고로 내보내면
+      // 자기 보고를 자기가 덮어쓴다. 버튼은 보고 유형만 보므로(updateRptSendVis) 전송 경로를 여기서 끊는다.
+      if(state.reportSource === 'week'){ toast('netcus 주간보고 출처는 기간 취합 전용입니다 — 전송할 수 없습니다', 'warn'); return; }
       if(state.reportSource === 'net'){
         const parsed = (netcusMerge.key === ncMergeKey(from, to)) ? netcusMerge.parsed : null;
         if(!parsed){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
@@ -12852,7 +12903,7 @@ function bind(){
         const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: buildNetcusHoursText(parsed), endwork, planwork: buildNetcusPlanText(parsed) } };
         if(Platform.caps.reportAuto){
           const b = $('#btnRptSend'); if(b) b.disabled = true;
-          const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+          const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' 주간보고 폼 여는 중…'); s.className = 'rpt-send-status busy'; }
           armRptSendWatchdog();
         }
         Platform.report.submitWeekly(payload);
@@ -12864,7 +12915,7 @@ function bind(){
       const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork, planwork: wf.planwork } };
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;
-        const s = $('#rptSendStatus'); if(s){ s.innerHTML = ICON.spinner + ' 주간보고 폼 여는 중…'; s.className = 'rpt-send-status busy'; }
+        const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' 주간보고 폼 여는 중…'); s.className = 'rpt-send-status busy'; }
         armRptSendWatchdog();
       }
       Platform.report.submitWeekly(payload);
@@ -13317,18 +13368,24 @@ function bind(){
     const b = ev.target.closest('[data-rmode]'); if(b) setReportMode(b.dataset.rmode);
   });
   $('#rptFrom').addEventListener('change', () => {
-    clearNetcusMerge();   // 기간 변경 → netcus 병합 캐시 무효화(그 주만 보유)
+    clearNetcusMerge(); clearNetcusWeeklyMerge();   // 기간 변경 → netcus 병합 캐시(일간·주간 둘 다) 무효화 — 캐시는 그 기간의 것일 때만 참이다
     if(reportMode === 'daily'){ $('#rptTo').value = $('#rptFrom').value; }
     else if(reportMode === 'weekly'){ const v = $('#rptFrom').value; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if(m){ const r = weekRange(new Date(+m[1], +m[2]-1, +m[3]), 0); $('#rptFrom').value = r[0]; $('#rptTo').value = r[1]; } }   // 주간: 고른 날짜를 그 주(월~일)로 스냅
     buildReport();
   });
-  $('#rptTo').addEventListener('change', () => { clearNetcusMerge(); buildReport(); });
+  $('#rptTo').addEventListener('change', () => { clearNetcusMerge(); clearNetcusWeeklyMerge(); buildReport(); });
   ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc','#rptSkipEmpty'].forEach(s => { const el = $(s); if(el) el.addEventListener('change', buildReport); });
   $('#btnRptCopy').addEventListener('click', copyReport);
-  $('#rptCatLink').addEventListener('click', openCatModal);   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
+  // 중첩해서 열면 「과제 관리」가 보고서 **뒤에** 뜬다 — netcus 가드의 toSettings 와 같은 처리(보고서를 먼저 닫는다).
+  $('#rptCatLink').addEventListener('click', () => { closeModal('#reportModal'); openCatModal(); });   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
   // 서식바(머리기호+들여쓰기) — 일간/주간 계열별 표시 설정 갱신 → save() → buildReport() 재빌드. 1회만 배선.
   $('#rptMarker').addEventListener('change', () => { updateCurrentReportFormatPref({ marker: $('#rptMarker').value }); save(); buildReport(); });
-  $('#rptMarkerCustom').addEventListener('input', () => { updateCurrentReportFormatPref({ markerCustom: String($('#rptMarkerCustom').value || '').slice(0,8) }); save(); buildReport(); });
+  //  '직접' 머리기호는 한 글자마다 save()(저장 왕복)와 전체 재빌드를 부르던 자리다 — 타이핑이 그대로 저장 폭주가 된다.
+  //  입력 중에는 미리보기만 250ms 뒤에 따라오고, 저장은 입력이 끝났을 때(change) 한 번만 한다.
+  { let _mkT = null;
+    const _mkPref = () => updateCurrentReportFormatPref({ markerCustom: String($('#rptMarkerCustom').value || '').slice(0,8) });
+    $('#rptMarkerCustom').addEventListener('input', () => { _mkPref(); clearTimeout(_mkT); _mkT = setTimeout(buildReport, 250); });
+    $('#rptMarkerCustom').addEventListener('change', () => { clearTimeout(_mkT); _mkPref(); save(); buildReport(); }); }
   const _setRptInd = d => { const cur = currentReportFormatPref().indent; updateCurrentReportFormatPref({ indent: Math.max(0, Math.min(6, cur + d)) }); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));

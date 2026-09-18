@@ -19,6 +19,7 @@
 //   ⑨ (2026-09-10) 쓰기 직전에 09-09 CHECK 도메인 셋(근태코드·잔업·공수)을 호스트가 한 번 더 거른다.
 //     값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**되는데, 전송은 이미 성공한 뒤다
 //     (ReportDb 가 "가장 나쁜 실패"라고 적어 둔 자리). 그래서 도메인 밖 값은 기록 직전에 안전한 값으로 내린다.
+//   ⑪ (2026-09-18) 주간 전송은 내용 출처 'week'(netcus 주간보고 병합)를 거부한다 — 그건 읽기 전용 취합이다.
 import { readFileSync } from 'node:fs';
 import { test, assert, loadAppSource } from './harness.mjs';
 import { canonSql, canonStatusCodes } from './canon-schema.mjs';
@@ -28,6 +29,21 @@ const netcus = readFileSync(new URL('../widget/NetcusService.cs', import.meta.ur
 const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
 const reportdb = readFileSync(new URL('../widget/ReportDb.cs', import.meta.url), 'utf8');
 const grants = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
+
+// ⑪ netcus 주간보고 출처('week')는 기간 취합 전용 — 주간 전송 경로가 거부한다.
+//   버튼(updateRptSendVis)은 보고 유형만 보므로 출처를 막지 못한다. 가드는 전송 핸들러 안에 있어야 한다.
+//   이건 실행으로 관측할 수 없다(누르면 회사 시스템에 실제 주간보고가 나간다) → 구조로 못박는다.
+test("배선⑪: 주간 전송은 출처 'week' 를 거부한다(기간 취합 전용 — 자기 보고를 자기가 덮어쓰는 길 차단)", () => {
+  const i = src.indexOf("$('#btnRptSend').addEventListener('click'");
+  assert.ok(i > 0, '#btnRptSend 배선을 찾지 못했다');
+  const body = src.slice(i, i + 8000);
+  const guard = body.indexOf("if(state.reportSource === 'week')");
+  const netBranch = body.indexOf("if(state.reportSource === 'net')");
+  assert.ok(guard > 0, "주간 전송 경로에 'week' 출처 가드가 없다 — netcus 주간 병합본이 그대로 주간보고로 나간다");
+  assert.ok(netBranch > 0, "'net' 분기를 찾지 못했다(경계 없음 — 앵커 재검토)");
+  assert.ok(guard < netBranch, "'week' 가드가 'net' 분기보다 뒤에 있다 — 순서가 뒤집혔다");
+  assert.ok(/전송할 수 없습니다/.test(body.slice(guard, netBranch)), '가드가 막기만 하고 이유를 말하지 않는다');
+});
 
 function mutate(from, to, base) {
   const out = base.replace(from, to);

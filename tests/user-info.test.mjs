@@ -1314,8 +1314,8 @@ test('변이㊺-b: 기본 선택을 옛 허용 집합 규칙으로 되돌리면 
 });
 
 test('변이㉚: openMembers 가 받아 둔 명부를 재사용하면 membersRefetchOnOpen 이 실패한다', () => {
-  const bad = mutate(src, '  if(__mbBusy) return;   // 재진입 가드',
-                          "  if(__mbMembers.length){ openModal('#membersModal'); return; }\n  if(__mbBusy) return;   // 재진입 가드");
+  const guard = "  if(__mbBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드";
+  const bad = mutate(src, guard, "  if(__mbMembers.length){ openModal('#membersModal'); return; }\n" + guard);
   assert.throws(() => checks.membersRefetchOnOpen(bad), /캐시\) — 인사이동이 반영되지 않는다/);
 });
 

@@ -17,7 +17,7 @@
 | 버전 파일 | 전부 **0.18.1** 그대로(csproj·APP_VERSION·iss·RELEASE_NOTES·CHANGELOG·#patchModal). `tests/version-sync.test.mjs` 가 여덟 자리 정합을 잠근다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"` — **배포된 0.18.1 은 v9 짝**이다. 버전 승격 전엔 `배포-빌드.cmd` 를 돌리지 말 것(같은 번호로 계약이 다른 exe 가 나간다) |
 | 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev), **2026-09-18 org_unit·title_code INSERT, UPDATE 적용됨**(직급·소속 관리 · 백업 taskmgr-20260918-141726.sql 뒤). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
-| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1652 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함) |
+| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1675 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함) |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 — 전부 커밋됨
 
@@ -29,7 +29,7 @@
 6. **전면 재검토 + 적대 리뷰 6회차**: 결함 60여 건 수정, 계약 대폭 추가(1277 → 1575). 복구 스크립트 사전 검증·UNC 경로·백업 절 등 DEPLOY.md 갱신.
 7. **슬롭 제거 2단계 + 사후 리뷰**(`bf0a75e`·`479fceb`·`5d4940b`·`d5258ab`): 다섯 관리자 쓰기를 기존 `hostRequest ↔ ReplyOnUi` 배관으로, 갱신 데이터는 회신에 싣고 푸시 삭제. 목록은 데이터가 바뀔 때만 다시 그리고 잠금은 속성 토글, ▲▼는 행 노드 이동. 웹 모듈 상태 변수 29 → **16**(리뷰 전 18).
 
-8. **2026-09-18 하루 작업(전부 커밋됨)**: 리사이즈 상단 가장자리 핸들(e22cdfb) · 휴지통 진입점을 도메인 화면으로(공식 과제 하단 줄 `#offTrash` · 구성원 편집 `#uaTrash`, f7fe8e8) · 「구성원 편집」 정적 공개 문(3398c7a) · **직급·소속 관리**(`docs/ORG-TITLE-ADMIN.md`, ddeafdf) + 개발 DB GRANT 적용(f567bc1) · 기준 정보 관리 문을 편집 폼 밖 하단 줄로(dc7c38f) · 팝업 목록 상자 높이 고정(f86ed35) · 보고서 「내용 없는 항목 제외」 재정의(d20ffd2) · 글꼴은 기간 취합 전용(c2ced7c) · ⚙옵션 패널 격자(111ca04) · 근태 슬롯·서식 컨트롤 동기화를 가드 앞으로(7cc8916·91a2998) · **코드 품질 전면 조사 1차**(`docs/QUALITY-SWEEP-2026-09-18.md` §1).
+8. **2026-09-18 하루 작업(전부 커밋됨)**: 리사이즈 상단 가장자리 핸들(e22cdfb) · 휴지통 진입점을 도메인 화면으로(공식 과제 하단 줄 `#offTrash` · 구성원 편집 `#uaTrash`, f7fe8e8) · 「구성원 편집」 정적 공개 문(3398c7a) · **직급·소속 관리**(`docs/ORG-TITLE-ADMIN.md`, ddeafdf) + 개발 DB GRANT 적용(f567bc1) · 기준 정보 관리 문을 편집 폼 밖 하단 줄로(dc7c38f) · 팝업 목록 상자 높이 고정(f86ed35) · 보고서 「내용 없는 항목 제외」 재정의(d20ffd2) · 글꼴은 기간 취합 전용(c2ced7c) · ⚙옵션 패널 격자(111ca04) · 근태 슬롯·서식 컨트롤 동기화를 가드 앞으로(7cc8916·91a2998) · **코드 품질 전면 조사 1차 15건 구현·커밋**(`docs/QUALITY-SWEEP-2026-09-18.md` §1).
 
 ## 3. 다음 할 일 (우선순위순)
 
