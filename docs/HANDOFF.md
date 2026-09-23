@@ -1,6 +1,6 @@
 # 인계 — 다음 세션이 처음 읽는 문서 (HANDOFF)
 
-> 기준 2026-09-23 · HEAD = git log 참조(마지막 커밋: 코드 품질 전면 조사 §3.4-C 1차) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
+> 기준 2026-09-23 · HEAD = git log 참조(마지막 커밋: §3.4-C 보류 문서) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
 > 상세 설계·이력은 각 문서의 §11 이 정본이다. 여기는 "지금 어디에 있고, 무엇부터 하며, 무엇을 밟으면 안 되는가" 만 적는다.
 > [ROADMAP.md](ROADMAP.md) §0 은 2026-09-02 기준이라 이 문서보다 낡았다 — 충돌하면 이 문서가 맞다.
 
@@ -35,14 +35,13 @@
 
 10. **2026-09-23 — 코드 품질 전면 조사 §3.4-B(경합·상태 3건) 구현·커밋**: `confirmTyped` 가 확인 순간의 값을 `{ ok, typed }` 로 돌려주고 `trDelete` 는 그것만 보냄(닫힌 `#ctInput` 되읽기 제거) · `reloadCodeList/reloadCustomerList` 목록 상자 `dataset.gen` 세대 표식(늦은 옛 회신 폐기) · 공용 `guardInlineEdit`(DOM 판정)로 발주처·구분/상태·직급/소속의 탭 전환·「숨김 표시」가 저장 안 한 인라인 편집을 말없이 버리지 않음(바뀌었을 때만 「버리고 계속 / 계속 편집」). 모듈 상태 0 증가. 게이트 = CDP 실화면 시나리오 + loop-trash·loop-org-title 실 DB + 새 계약 `tests/inline-edit-guard.test.mjs` 9건 + trash-web ⑦ 갱신.
 
-11. **2026-09-23 — 코드 품질 전면 조사 §3.4-C 1차(사용자 「바로 진행」 승인 6건) 구현·커밋**: C-4 중복 제목 강등 시 커밋 본문·날짜별 설명 보존(버그 — 전송 본문에 본문이 다시 실림) · C-2 일간 payload `hours` 를 본문 헤더와 같은 `reportDailyHours(rows)` 에서 · C-10 죽은 공수 합계(`sumMin·grandMin·uninput·minutes`) 제거 · C-9 내보내기 md 에 커밋 본문 · C-11 `load()` reportSource 항상 cal · C-7 보고서 푸터 dry/real 배지(`#rptSendMode`). 남은 C 는 결정 필요 5건(1·8·3·6·5) — QUALITY-SWEEP §3.4-C 하단 표.
+11. **2026-09-23 — 코드 품질 전면 조사 §3.4-C 1차(사용자 「바로 진행」 승인 6건) 구현·커밋**: C-4 중복 제목 강등 시 커밋 본문·날짜별 설명 보존(버그 — 전송 본문에 본문이 다시 실림) · C-2 일간 payload `hours` 를 본문 헤더와 같은 `reportDailyHours(rows)` 에서 · C-10 죽은 공수 합계(`sumMin·grandMin·uninput·minutes`) 제거 · C-9 내보내기 md 에 커밋 본문 · C-11 `load()` reportSource 항상 cal · C-7 보고서 푸터 dry/real 배지(`#rptSendMode`). 남은 C 5건(1·8·3·6·5)은 **사용자 결정으로 보류**(같은 날) — 조사 종료.
 
 ## 3. 다음 할 일 (우선순위순)
 
-1. **코드 품질 전면 조사 — 남은 P2(판단 필요)** — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) **§3.4-C 남은 5건(1 주간 복사본 시간 블록 · 8 gitCommitBody 분리 · 3 「기타」 정규화 · 6 포함 항목 DB 이관(v13) · 5 레거시 필드)** 이 정본 — 각각 권장안/대안 중 사용자 선택 뒤 진행(§3.1~3.3 은 09-18, §3.4-A·B·C-1차는 09-23 완료). 항목마다 사용자 확인 뒤 진행. §0 의 규칙 8개를 새 코드에 적용. 구현은 dev-delegate, 게이트는 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
-2. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
-3. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-18 현재 본 저장소 미푸쉬 커밋 다수, 비공개 1건).
-4. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).
+1. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
+2. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-23 현재 본 저장소 미푸쉬 커밋 5건: §3.4-A·B·C-1차 + 문서 2건).
+3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요) · **코드 품질 조사 §3.4-C 보류 5건**(1 주간 복사본 시간 블록 · 8 gitCommitBody 분리 · 3 「기타」 정규화 · 6 포함 항목 DB 이관(v13) · 5 레거시 필드 — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) §3.4-C 하단). 2026-09-23 사용자가 "지금 불필요, 필요할 때 요청"으로 보류. 6 은 스키마 v13 이라 요청 시 릴리스 창과 묶는다.
 
 ## 4. 이어서 작업하는 법
 
