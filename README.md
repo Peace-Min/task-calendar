@@ -14,7 +14,7 @@
 [![License](https://img.shields.io/badge/License-MIT-555)](LICENSE)
 [![Issues](https://img.shields.io/badge/버그·개선-Issues로_제보-d6494e?logo=github)](https://github.com/Peace-Min/task-calendar/issues/new)
 
-<img src="assets/screenshot.png" alt="수행과제 캘린더 — 월 그리드, 멀티데이 막대, 우측 일정/할 일/작업일지 패널" width="860">
+<img src="assets/readme-demo.gif" alt="수행과제 캘린더 데모 — 한 달 그리드에서 일정 등록, 공식 과제(DB) 연결·색상 지정, 테마 전환" width="900">
 
 </div>
 
