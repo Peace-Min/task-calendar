@@ -41,7 +41,7 @@
 - 글꼴(기간 취합 전용)·머리기호·들여쓰기는 미리보기·복사·전송 3자 일치. 근태·초과시간은 옵션과 결합 없음.
 - 중첩 모달 DOM 순서는 `#rptCatLink` 한 건 빼고 전부 정상. 푸터 도달성(320px 높이)은 `.modal-body{overflow:auto}` 로 보장.
 
-## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18 구현·커밋됨 ✅ / §3.4 는 남음(다음 세션이 여기서 시작)
+## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18, §3.4-A 는 2026-09-23 구현·커밋됨 ✅ / §3.4-B·C 는 남음(다음 세션이 여기서 시작)
 
 > 순서대로. 각 항목은 검토 보고에서 코드로 확인된 것이며, 줄 번호는 2026-09-18 기준(내용으로 다시 찾을 것). 구현은 dev-delegate(오퍼스), 게이트는 페이블: Debug 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 
@@ -66,16 +66,27 @@
 - `#uaSearch` 디바운스(검색 `#sInput` 처럼 180ms).
 - `otAfterClose` 의 열림 판정을 `isOverlayOpen` 으로.
 
-### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) ← **남은 일은 여기부터**
-- `#categoryModal .modal-foot` 의 「수정 취소」 hidden 토글로 380px 에서 푸터가 한 줄↔두 줄.
-- `.rem-row` 「직접」 선택 시 320px 에서 2줄(잔여).
-- `#raHint`·`#qaRecurHint`·`#qaTodoNoteWrap` 의 흐름 이탈 토글(빠른등록 모달이 튐) — `#mbSoon` 패턴(visibility + min-height).
-- `.pv-frame{min-height:420px}` → `min(420px,60vh)`.
-- 주간 복사본에 과제투입시간 블록이 없음(전송본과 불일치) · 일간 payload `hours` 를 `rows` 에서 만들기 · 「기타」 병합 정확일치 vs 정규화 · 중복 제목 강등 시 `body`/`dayDetails` 유실 · `currentReportFormatPref()` 의 레거시 필드 부수효과 · 포함 항목 5개만 localStorage(나머지는 XML) · 전송 dry/real 이 보고서 화면에 안 보임 · `gitCommitBody` 한 체크박스 두 뜻 · 내보내기가 커밋 본문 미포함 · 반복 일정 공수 전액 산입(합계를 되살리면 과대) · `reportSource` 정규화가 'week' 누락.
+### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) — A 완료 ✅ · **남은 일은 B·C**
+
+#### 3.4-A 레이아웃 튐·하드코딩 색 ✅ 2026-09-23 구현·커밋(실화면 CDP 측정 전후 + loop-ui-visual 0건 + 계약 `tests/layout-stability.test.mjs` 10건)
+| 자리 | 전(측정) | 후 | 수정 |
+|---|---|---|---|
+| `#categoryModal .modal-foot` 편집 모드 | 380px 62→107px(두 줄) · 320px 6.9px 부족 | 62 / 55px 한 줄 | `#btnRelinkOpen` 글자를 `.btn-label` 로 감싸 ≤440px 아이콘만(title·aria-label 유지) + ≤360px 컴팩트 버튼(#officialModal 선례) |
+| `.rem-row` 「직접」 320px | 44→96px(둘째 줄) | 44px | ≤360px 에서 gap·세그 패딩·숫자칸·단위 패딩만 줄여 42px 회수(높이 규칙 `--rem-ctl-h` 불변) |
+| `#qaRecurHint` | 반복 선택 시 +38px | 불변 | `.hidden{display:block!important;visibility:hidden}` + 문구를 켜짐·꺼짐 모두 채움 |
+| `#qaTodoNoteWrap` | 종료일 입력 시 −95px(칸을 안내문으로 교체) | 불변 | 칸은 그대로, 라벨 「시작일 설명 (나머지는 추가 후 날짜별로)」·placeholder 로 뜻 전달(addTodo isPeriod 가 이 값을 시작일 dayNote 로 넣는다 — 진실 그대로) · `#qaTodoPeriodHint` 삭제 |
+| `#raHint` | 근태 선택 시 레일 −39px(좁은 폭 −23px) | 불변 | `#raHint.hidden` visibility 규칙(JS 불변) |
+| `.pv-frame`·`.pv-skeleton` | `min-height:420px` | `min(420px,60vh)` | 낮은 창 비례 |
+| `.s-date`·`mark` | `#f5f7fd`·`#ffe27a` 하드코딩 + `html.dark` 개별 재정의 | `var(--dim-bg)` · `--mark-bg/--mark-ink` 토큰(contrast `--mark-ink:#000`) | hex 래칫 49→45(app-context) |
+| `#reportModal` ≥900px 격자 | 1000×420 에서 `.rpt-body` 277px > 본문 269px → overflow:hidden 에 잘림 | 253px(본문 안) | 본문 flex 열 + `.rpt-body{flex:0 1 min(66vh,600px);min-height:0}` — 평소 600px 그대로 |
+
+#### 3.4-B 경합·상태 정확성(남음)
 - ot 인라인 편집(이름변경·상위 변경)이 탭 전환·숨김 토글로 말없이 버려짐(cust/code 도 동일).
 - `trDelete` 가 닫힌 확인창의 `#ctInput` 을 되읽음 — `confirmTyped` 가 값을 resolve 로 돌려주게.
 - `reloadCodeList/reloadCustomerList` 탭 연타 시 늦은 회신이 덮음 — 세대 토큰.
-- `.s-date`·`mark` 하드코딩 색(forest/sepia/contrast 미보정) · `#reportModal .modal-body{overflow:hidden}` 넓고 낮은 창.
+
+#### 3.4-C 보고서 의미 변경(숫자·전송 내용이 바뀌므로 항목별 확정 필요 — §0-2 WYSIWYG · §0-3 표시 옵션은 숫자를 바꾸지 않는다)
+- 주간 복사본에 과제투입시간 블록이 없음(전송본과 불일치) · 일간 payload `hours` 를 `rows` 에서 만들기 · 「기타」 병합 정확일치 vs 정규화 · 중복 제목 강등 시 `body`/`dayDetails` 유실 · `currentReportFormatPref()` 의 레거시 필드 부수효과 · 포함 항목 5개만 localStorage(나머지는 XML) · 전송 dry/real 이 보고서 화면에 안 보임 · `gitCommitBody` 한 체크박스 두 뜻 · 내보내기가 커밋 본문 미포함 · 반복 일정 공수 전액 산입(합계를 되살리면 과대) · `reportSource` 정규화가 'week' 누락.
 
 ## 4. 검토 원문
 
