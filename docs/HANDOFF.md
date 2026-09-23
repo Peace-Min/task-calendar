@@ -1,6 +1,6 @@
 # 인계 — 다음 세션이 처음 읽는 문서 (HANDOFF)
 
-> 기준 2026-09-23 · HEAD = git log 참조(마지막 커밋: 코드 품질 전면 조사 §3.4-A) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
+> 기준 2026-09-23 · HEAD = git log 참조(마지막 커밋: 코드 품질 전면 조사 §3.4-B) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
 > 상세 설계·이력은 각 문서의 §11 이 정본이다. 여기는 "지금 어디에 있고, 무엇부터 하며, 무엇을 밟으면 안 되는가" 만 적는다.
 > [ROADMAP.md](ROADMAP.md) §0 은 2026-09-02 기준이라 이 문서보다 낡았다 — 충돌하면 이 문서가 맞다.
 
@@ -13,11 +13,11 @@
 | 작업 트리 | `C:\Users\CEO\Desktop\console\task-calendar-db` (git worktree, 브랜치 `feat/db-app`). 메인 체크아웃은 `..\task-calendar`(만지지 않는다) |
 | 비공개 저장소 | `C:\Users\CEO\Desktop\console\taskmgr-company-data` (`master`) — 사용자 스키마·시드·권한. **형제 폴더여야** 상시 게이트가 돈다(tests/README) |
 | 원격 | `github.com/Peace-Min/task-calendar` · `github.com/Peace-Min/taskmgr-company-data` |
-| **미푸쉬** | 2026-09-18 에 두 저장소 모두 푸쉬함. 그 뒤 본 저장소 커밋(2026-09-23 §3.4-A)은 `git log origin/feat/db-app..HEAD` 로 확인. **"푸쉬" 라고 지시할 때만** 푸쉬한다 |
+| **미푸쉬** | 2026-09-18 에 두 저장소 모두 푸쉬함. 그 뒤 본 저장소 커밋(2026-09-23 §3.4-A·B)은 `git log origin/feat/db-app..HEAD` 로 확인. **"푸쉬" 라고 지시할 때만** 푸쉬한다 |
 | 버전 파일 | 전부 **0.18.1** 그대로(csproj·APP_VERSION·iss·RELEASE_NOTES·CHANGELOG·#patchModal). `tests/version-sync.test.mjs` 가 여덟 자리 정합을 잠근다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"` — **배포된 0.18.1 은 v9 짝**이다. 버전 승격 전엔 `배포-빌드.cmd` 를 돌리지 말 것(같은 번호로 계약이 다른 exe 가 나간다) |
 | 개발 DB | `taskmgr`(MySQL 8.4.9, root/taskmgr123, 앱 계정 taskmgr_app/taskmgr1234). 마이그레이션 **9→10→11→12 적용됨**, 앱 계정 **DELETE 일곱 표 적용됨**(project·customer·section_code·status_code·app_user·cal_user_pref·cal_user_rev), **2026-09-18 org_unit·title_code INSERT, UPDATE 적용됨**(직급·소속 관리 · 백업 taskmgr-20260918-141726.sql 뒤). 운영에 준함 — 실험은 별도 DB, 시험 데이터는 zzU/zzP/zzC/zzT 접두만 |
-| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1707 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함) · loop-ui-visual(categoryModal·editMine·reportModal·relinkModal 전 폭×테마) 위반 0 |
+| 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1717 pass / 0 fail / 0 skip** · CS 경고 0 · 루프 13종 통과(org-title 포함 · 2026-09-23 loop-trash·loop-org-title seed 23 재통과) · loop-ui-visual(categoryModal·editMine·reportModal·relinkModal 전 폭×테마) 위반 0 |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 — 전부 커밋됨
 
@@ -33,9 +33,11 @@
 
 9. **2026-09-23 — 코드 품질 전면 조사 §3.4-A(레이아웃 튐·하드코딩 색 8건) 구현·커밋**: 과제 모달 푸터 한 줄 유지(≤440 아이콘만·≤360 컴팩트) · 미리알림 「직접」 320px 한 줄 · 빠른등록 `#qaRecurHint`/할 일 설명칸/보고서 `#raHint` 높이 불변 · `.pv-frame` 하한 비례 · `.s-date`/`mark` 토큰화(hex 래칫 49→45) · 보고서 ≥900px 격자 flex-basis(넓고 낮은 창 잘림 해소). 게이트 = CDP 실측 전후 8건 + `loop-ui-visual` 0건 + 새 계약 `tests/layout-stability.test.mjs` 10건. 진행 방식: 페이블 스카우트·측정·설계·게이트, 오퍼스 구현(dev-delegate).
 
+10. **2026-09-23 — 코드 품질 전면 조사 §3.4-B(경합·상태 3건) 구현·커밋**: `confirmTyped` 가 확인 순간의 값을 `{ ok, typed }` 로 돌려주고 `trDelete` 는 그것만 보냄(닫힌 `#ctInput` 되읽기 제거) · `reloadCodeList/reloadCustomerList` 목록 상자 `dataset.gen` 세대 표식(늦은 옛 회신 폐기) · 공용 `guardInlineEdit`(DOM 판정)로 발주처·구분/상태·직급/소속의 탭 전환·「숨김 표시」가 저장 안 한 인라인 편집을 말없이 버리지 않음(바뀌었을 때만 「버리고 계속 / 계속 편집」). 모듈 상태 0 증가. 게이트 = CDP 실화면 시나리오 + loop-trash·loop-org-title 실 DB + 새 계약 `tests/inline-edit-guard.test.mjs` 9건 + trash-web ⑦ 갱신.
+
 ## 3. 다음 할 일 (우선순위순)
 
-1. **코드 품질 전면 조사 — 남은 P2(판단 필요)** — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) **§3.4-B(경합·상태 3건) → §3.4-C(보고서 의미 변경 — 항목별 확정)** 이 정본(§3.1~3.3 은 09-18, §3.4-A 는 09-23 완료). 항목마다 사용자 확인 뒤 진행. §0 의 규칙 8개를 새 코드에 적용. 구현은 dev-delegate, 게이트는 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
+1. **코드 품질 전면 조사 — 남은 P2(판단 필요)** — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) **§3.4-C(보고서 의미 변경 — 항목별 확정)** 이 정본(§3.1~3.3 은 09-18, §3.4-A·B 는 09-23 완료). 항목마다 사용자 확인 뒤 진행. §0 의 규칙 8개를 새 코드에 적용. 구현은 dev-delegate, 게이트는 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 2. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
 3. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-18 현재 본 저장소 미푸쉬 커밋 다수, 비공개 1건).
 4. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요).

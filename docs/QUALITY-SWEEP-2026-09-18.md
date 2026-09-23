@@ -41,7 +41,7 @@
 - 글꼴(기간 취합 전용)·머리기호·들여쓰기는 미리보기·복사·전송 3자 일치. 근태·초과시간은 옵션과 결합 없음.
 - 중첩 모달 DOM 순서는 `#rptCatLink` 한 건 빼고 전부 정상. 푸터 도달성(320px 높이)은 `.modal-body{overflow:auto}` 로 보장.
 
-## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18, §3.4-A 는 2026-09-23 구현·커밋됨 ✅ / §3.4-B·C 는 남음(다음 세션이 여기서 시작)
+## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18, §3.4-A·B 는 2026-09-23 구현·커밋됨 ✅ / §3.4-C 만 남음(다음 세션이 여기서 시작)
 
 > 순서대로. 각 항목은 검토 보고에서 코드로 확인된 것이며, 줄 번호는 2026-09-18 기준(내용으로 다시 찾을 것). 구현은 dev-delegate(오퍼스), 게이트는 페이블: Debug 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 
@@ -66,7 +66,7 @@
 - `#uaSearch` 디바운스(검색 `#sInput` 처럼 180ms).
 - `otAfterClose` 의 열림 판정을 `isOverlayOpen` 으로.
 
-### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) — A 완료 ✅ · **남은 일은 B·C**
+### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) — A·B 완료 ✅ · **남은 일은 C**
 
 #### 3.4-A 레이아웃 튐·하드코딩 색 ✅ 2026-09-23 구현·커밋(실화면 CDP 측정 전후 + loop-ui-visual 0건 + 계약 `tests/layout-stability.test.mjs` 10건)
 | 자리 | 전(측정) | 후 | 수정 |
@@ -80,10 +80,12 @@
 | `.s-date`·`mark` | `#f5f7fd`·`#ffe27a` 하드코딩 + `html.dark` 개별 재정의 | `var(--dim-bg)` · `--mark-bg/--mark-ink` 토큰(contrast `--mark-ink:#000`) | hex 래칫 49→45(app-context) |
 | `#reportModal` ≥900px 격자 | 1000×420 에서 `.rpt-body` 277px > 본문 269px → overflow:hidden 에 잘림 | 253px(본문 안) | 본문 flex 열 + `.rpt-body{flex:0 1 min(66vh,600px);min-height:0}` — 평소 600px 그대로 |
 
-#### 3.4-B 경합·상태 정확성(남음)
-- ot 인라인 편집(이름변경·상위 변경)이 탭 전환·숨김 토글로 말없이 버려짐(cust/code 도 동일).
-- `trDelete` 가 닫힌 확인창의 `#ctInput` 을 되읽음 — `confirmTyped` 가 값을 resolve 로 돌려주게.
-- `reloadCodeList/reloadCustomerList` 탭 연타 시 늦은 회신이 덮음 — 세대 토큰.
+#### 3.4-B 경합·상태 정확성 ✅ 2026-09-23 구현·커밋(실화면 CDP 시나리오 + loop-trash·loop-org-title 실 DB 루프 + 계약 `tests/inline-edit-guard.test.mjs` 9건 · trash-web ⑦ 갱신)
+| 자리 | 증상 | 수정 |
+|---|---|---|
+| `trDelete` ↔ `confirmTyped` | 확인창이 닫힌 뒤 `#ctInput` 을 되읽어 보냄 — 그 사이 다른 확인창이 열리면 칸이 비워진다 | `confirmTyped` 가 [영구 삭제] 순간의 값을 `{ ok:true, typed }` 로 resolve(취소는 `'cancel'` 그대로) · `trDelete` 는 `r.typed` 만 보낸다(가공 없음 · `ctInput` 참조 0) |
+| `reloadCodeList` · `reloadCustomerList` | 탭 연타·재조회 시 먼저 보낸 요청의 늦은 회신이 새 목록을 덮음(구분 회신이 상태 탭에 앉음) | 목록 상자 `dataset.gen` 세대 표식(모듈 상태 0 증가): await 앞에서 찍고 회신 직후 낡았으면 return — 목록 변수 대입 전에 |
+| 인라인 편집 × 탭 전환·「숨김 표시」 (cust · code · ot) | 이름변경 입력칸·상위 변경 select 가 재렌더로 말없이 버려짐 | 공용 `inlineEditDirty/guardInlineEdit`(DOM 만 판정 · ot 모듈 상태 5개 불변): 값이 그대로면 조용히 진행(Esc 와 같음), 바뀌었으면 `confirmBox` 「저장하지 않은 변경이 있습니다 — 버리고 계속 / 계속 편집」. 체크박스는 「계속 편집」 시 되돌림. 일곱 배선(`#custShowHidden`·`#codeTabSection/Status`·`#codeShowHidden`·`#otTabTitle/Unit`·`#otShowHidden`)만 감싸고 `otSwitchTab`·`switchCodeKind` 본문 불변 |
 
 #### 3.4-C 보고서 의미 변경(숫자·전송 내용이 바뀌므로 항목별 확정 필요 — §0-2 WYSIWYG · §0-3 표시 옵션은 숫자를 바꾸지 않는다)
 - 주간 복사본에 과제투입시간 블록이 없음(전송본과 불일치) · 일간 payload `hours` 를 `rows` 에서 만들기 · 「기타」 병합 정확일치 vs 정규화 · 중복 제목 강등 시 `body`/`dayDetails` 유실 · `currentReportFormatPref()` 의 레거시 필드 부수효과 · 포함 항목 5개만 localStorage(나머지는 XML) · 전송 dry/real 이 보고서 화면에 안 보임 · `gitCommitBody` 한 체크박스 두 뜻 · 내보내기가 커밋 본문 미포함 · 반복 일정 공수 전액 산입(합계를 되살리면 과대) · `reportSource` 정규화가 'week' 누락.

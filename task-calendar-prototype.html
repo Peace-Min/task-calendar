@@ -6401,9 +6401,10 @@ function trDelete(kind, key, name, refs){
       ? "'" + name + "' 계정을 DB 에서 영구 삭제합니다. 기록이 없는 계정입니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요."
       : "'" + name + "' 을(를) DB 에서 영구 삭제합니다. 쓰는 과제가 없습니다. 되돌릴 수 없습니다. 이름을 그대로 입력하세요.";
   confirmTyped(trTabDef(kind).label + ' 영구 삭제', msg, name, '영구 삭제').then(async r => {
-    if(r !== 'ok') return;
-    const inp = document.getElementById('ctInput');
-    const rep = await trSend({ cmd: 'trashDelete', kind: kind, key: key, confirm: inp ? inp.value : '' });
+    if(!r || r.ok !== true) return;
+    //  ★ 입력값은 확인창이 **돌려준 것**(r.typed)을 그대로 보낸다 — 닫힌 창의 입력칸을 되읽으면 그 사이 다른 확인창이
+    //    열려 칸이 비워졌을 수 있다(2026-09-23 §3.4-B). 가공(trim) 없음 — 호스트 대조(§3.4)와 글자까지 같아야 한다.
+    const rep = await trSend({ cmd: 'trashDelete', kind: kind, key: key, confirm: r.typed });
     if(rep) trAfterWrite(rep);
   });
 }
@@ -9130,6 +9131,24 @@ function custMsgSet(html, tone){
   m.innerHTML = html || '';
   m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
 }
+/* ---------- 인라인 편집 가드 — 발주처·구분·상태·직급·소속 목록 공용 ----------
+   목록 안에 저장하지 않은 이름변경(입력칸)·상위 변경(select)이 있는데 탭 전환·「숨김 표시」 토글이 목록을 다시 그리면
+   그 편집은 말없이 사라졌다(2026-09-23 §3.4-B). 값이 그대로면 묻지 않고 진행하고(Esc 와 같다), 바뀌었으면 한 번 묻는다.
+   ★ 판정은 DOM 만 본다 — 모듈 상태를 늘리지 않는다(ot 는 설계 §5.1 이 다섯 개로 고정). origOf(row) 가 그 행의 원래 이름. */
+function inlineEditDirty(listId, origOf){
+  const box = document.getElementById(listId); if(!box) return false;
+  const inp = box.querySelector('.cust-row input[type=text]');
+  if(inp){ const row = inp.closest('.cust-row'); return String(inp.value || '').trim() !== String((row && origOf(row)) || ''); }
+  const sel = box.querySelector('.cust-row select');
+  return !!(sel && sel.value);   // 상위 변경 후보를 골라 둔 상태
+}
+function guardInlineEdit(listId, origOf, proceed, revert){
+  if(!inlineEditDirty(listId, origOf)){ proceed(); return; }
+  confirmBox('편집 중인 항목', '저장하지 않은 변경이 있습니다. 버리고 계속할까요?', '버리고 계속', '계속 편집', { ok: 'danger', alt: 'safe' }).then(r => {
+    if(r === 'ok') proceed();
+    else if(typeof revert === 'function') revert();
+  });
+}
 function openCustomerModal(){
   if(!HOST){ toast('발주처 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
   const inp = document.getElementById('custNewName'); if(inp) inp.value = '';
@@ -9142,8 +9161,11 @@ function openCustomerModal(){
 }
 async function reloadCustomerList(){
   const box = document.getElementById('custList'); if(!box) return;
+  //  ★ 세대 표식은 목록 상자(dataset.gen)에 둔다 — 모듈 상태를 늘리지 않는다. 늦게 온 옛 회신은 새 목록을 덮지 않는다(2026-09-23 §3.4-B).
+  const gen = String((Number(box.dataset.gen) || 0) + 1); box.dataset.gen = gen;
   box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
   const res = await hostRequest('loadCustomersFull', {}, 20000);
+  if(box.dataset.gen !== gen) return;   // 그 사이 다시 불렀다 — 이 회신은 낡았다
   if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">발주처 목록을 불러오지 못했습니다.</div>`; return; }
   let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
   custList = Array.isArray(arr)
@@ -9281,8 +9303,11 @@ function switchCodeKind(kind){
 }
 async function reloadCodeList(){
   const box = document.getElementById('codeList'); if(!box) return;
+  //  ★ 세대 표식은 목록 상자(dataset.gen)에 둔다 — 모듈 상태를 늘리지 않는다(2026-09-23 §3.4-B).
+  const gen = String((Number(box.dataset.gen) || 0) + 1); box.dataset.gen = gen;
   box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
   const res = await hostRequest('getCodesFull', { kind: codeKind }, 20000);
+  if(box.dataset.gen !== gen) return;   // 탭을 바꿨거나 다시 불렀다 — 이 회신은 낡았다(구분 회신이 상태 탭을 덮지 않게)
   if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">목록을 불러오지 못했습니다.</div>`; return; }
   let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
   codeList = Array.isArray(arr)
@@ -9689,6 +9714,8 @@ function otRowOf(key){
   for(const r of list.querySelectorAll('.cust-row')) if(String(r.dataset.otkey || '') === String(key)) return r;
   return null;
 }
+//  가드(guardInlineEdit)용 — 편집 중인 행의 원래 이름. 행은 data-otkey 만 알고 이름은 회신 덩어리(__otData)에 있다.
+function otRowOrig(row){ const it = otItem(row.dataset.otkey); return it ? String(it.name || '') : ''; }
 function otBeginRename(key){
   const it = otItem(key); if(!it) return;
   const row = otRowOf(key); if(!row) return;
@@ -11685,7 +11712,7 @@ function confirmBox(title, msg, okLabel, altLabel, tone){
 }
 
 /* ---------- 이름 입력형 확인 모달 (되돌릴 수 없는 삭제 전용 — TRASH-DELETE §5.2) ----------
-   반환: 'ok' | 'cancel'. 취소·배경클릭·Esc 는 confirmBox 와 같은 MutationObserver 로 'cancel'.
+   반환: { ok:true, typed } | 'cancel'. typed 는 [영구 삭제]를 누른 **그 순간의** 입력값이다 — 호출부가 닫힌 창의 #ctInput 을 되읽지 않는다(2026-09-23 §3.4-B: 다음 확인창이 열리면 그 칸은 비워진다). 취소·배경클릭·Esc 는 confirmBox 와 같은 MutationObserver 로 'cancel'.
    ★ confirmBox 를 고쳐 쓰지 않는다: #confirmModal 은 앱 전체의 삭제 확인 경로(#cfOk)라 입력칸이 끼면
      모든 확인이 한 칸씩 밀리고, 그 경로를 잡고 있는 루프 시험도 함께 어긋난다. 형제 모달로 둔다.
    ★ 대조는 **엄격 일치**다 — trim 도, 대소문자 접기도 없다(설계 §5.2). 이름에 공백이 있으면 공백까지
@@ -11709,9 +11736,9 @@ function confirmTyped(title, msg, mustType, okLabel){
       if(ev.key !== 'Enter') return;
       ev.preventDefault();
       sync();
-      if(!ok.disabled){ result = 'ok'; closeOverlay(ov); }
+      if(!ok.disabled){ result = { ok: true, typed: inp.value }; closeOverlay(ov); }
     };
-    ok.onclick = () => { result = 'ok'; closeOverlay(ov); };
+    ok.onclick = () => { result = { ok: true, typed: inp.value }; closeOverlay(ov); };
     const mo = new MutationObserver(() => {
       if(ov.classList.contains('hidden')){
         mo.disconnect(); ok.onclick = null; inp.oninput = null; inp.onkeydown = null;
@@ -13373,7 +13400,7 @@ function bind(){
   { const b = $('#offTrash'); if(b) b.addEventListener('click', () => { offEditGuard(() => openTrash('project')); }); }
   { const b = $('#custAddBtn'); if(b) b.addEventListener('click', custDoAdd); }
   { const inp = $('#custNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); custDoAdd(); } }); }
-  { const sh = $('#custShowHidden'); if(sh) sh.addEventListener('change', () => { custShowHidden = sh.checked; renderCustomerList(); }); }
+  { const sh = $('#custShowHidden'); if(sh) sh.addEventListener('change', () => guardInlineEdit('custList', r => r.dataset.name, () => { custShowHidden = sh.checked; renderCustomerList(); }, () => { sh.checked = !sh.checked; })); }
   { const box = $('#custList'); if(box) box.addEventListener('click', ev => {
       const t = ev.target;
       const eb = t.closest('[data-custedit]'); if(eb){ custBeginRename(eb.dataset.custedit); return; }
@@ -13384,11 +13411,11 @@ function bind(){
     }); }
 
   /* 구분·상태 코드값 관리 — 발주처 관리와 같은 패턴(offEditGuard 게이트) */
-  { const t = $('#codeTabSection'); if(t) t.addEventListener('click', () => switchCodeKind('section')); }
-  { const t = $('#codeTabStatus'); if(t) t.addEventListener('click', () => switchCodeKind('status')); }
+  { const t = $('#codeTabSection'); if(t) t.addEventListener('click', () => guardInlineEdit('codeList', r => r.dataset.name, () => switchCodeKind('section'))); }
+  { const t = $('#codeTabStatus'); if(t) t.addEventListener('click', () => guardInlineEdit('codeList', r => r.dataset.name, () => switchCodeKind('status'))); }
   { const b = $('#codeAddBtn'); if(b) b.addEventListener('click', codeDoAdd); }
   { const inp = $('#codeNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); codeDoAdd(); } }); }
-  { const sh = $('#codeShowHidden'); if(sh) sh.addEventListener('change', () => { codeShowHidden = sh.checked; renderCodeList(); }); }
+  { const sh = $('#codeShowHidden'); if(sh) sh.addEventListener('change', () => guardInlineEdit('codeList', r => r.dataset.name, () => { codeShowHidden = sh.checked; renderCodeList(); }, () => { sh.checked = !sh.checked; })); }
   { const box = $('#codeList'); if(box) box.addEventListener('click', ev => {
       const t = ev.target;
       const up = t.closest('[data-codeup]'); if(up){ codeMove(up.dataset.codeup, 'up'); return; }
@@ -13401,12 +13428,12 @@ function bind(){
     }); }
 
   /* 직급·소속 관리 — 목록 버튼은 위임 하나로 받는다(행은 회신마다 새로 만들어진다) */
-  { const t = $('#otTabTitle'); if(t) t.addEventListener('click', () => otSwitchTab('title')); }
-  { const t = $('#otTabUnit'); if(t) t.addEventListener('click', () => otSwitchTab('unit')); }
+  { const t = $('#otTabTitle'); if(t) t.addEventListener('click', () => guardInlineEdit('otList', otRowOrig, () => otSwitchTab('title'))); }
+  { const t = $('#otTabUnit'); if(t) t.addEventListener('click', () => guardInlineEdit('otList', otRowOrig, () => otSwitchTab('unit'))); }
   { const b = $('#otAddBtn'); if(b) b.addEventListener('click', otDoAdd); }
   { const inp = $('#otNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); otDoAdd(); } }); }
   //  ★ 「숨긴 값도 표시」도 **보이는 목록이 통째로 갈리는** 조회 조건이다 — 탭 전환과 같은 규칙으로 맨 위에서 연다(2026-09-18).
-  { const sh = $('#otShowHidden'); if(sh) sh.addEventListener('change', () => { __otShowHidden = !!sh.checked; otRender(); otListTop(); }); }
+  { const sh = $('#otShowHidden'); if(sh) sh.addEventListener('change', () => guardInlineEdit('otList', otRowOrig, () => { __otShowHidden = !!sh.checked; otRender(); otListTop(); }, () => { sh.checked = !sh.checked; })); }
   //  상위를 고르는 순간 [추가]가 켜진다 — 목록을 다시 그리지 않는다(고르던 자리가 날아가지 않게)
   { const sel = $('#otNewParent'); if(sel) sel.addEventListener('change', () => { const b = $('#otAddBtn'); if(b) b.disabled = otAddDisabled(); }); }
   { const box = $('#otList'); if(box) box.addEventListener('click', otListClick); }

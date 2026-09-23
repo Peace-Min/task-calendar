@@ -196,13 +196,17 @@ const checks = {
   // ⑦ 입력값은 **가공 없이** 호스트로 간다(TRIM 금지 · 설계 §5.2) + 확인창 대조도 엄격 일치다.
   confirmIsSentRaw(web) {
     const d = extractFunction(web, 'trDelete');
-    assert.ok(/confirm:\s*inp\s*\?\s*inp\.value\s*:/.test(d),
-      "trDelete 가 #ctInput 의 값을 그대로 confirm 으로 보내지 않는다 — 가공하면 호스트 대조(§3.4)와 기준이 갈린다");
+    assert.ok(/confirm:\s*r\.typed\b/.test(d),
+      "trDelete 가 확인창이 돌려준 값(r.typed)을 그대로 confirm 으로 보내지 않는다 — 가공하면 호스트 대조(§3.4)와 기준이 갈린다");
+    assert.ok(!/ctInput/.test(d),
+      'trDelete 가 닫힌 확인창의 #ctInput 을 되읽는다 — 그 사이 다른 확인창이 열리면 빈 값이 호스트로 간다(2026-09-23 §3.4-B)');
     assert.ok(!/trim\(\)/.test(d), 'trDelete 가 입력값을 trim 한다 — 이름에 공백이 있으면 공백까지 같아야 한다');
     assert.ok(/confirmTyped\(/.test(d), 'trDelete 가 이름 입력형 확인창을 거치지 않는다 — 확인 한 번으로 DB 행이 사라진다');
     const c = extractFunction(web, 'confirmTyped');
     assert.ok(/ok\.disabled = inp\.value !== want;/.test(c),
       'confirmTyped 의 대조가 엄격 일치(inp.value !== want)가 아니다 — trim·대소문자 접기가 끼면 화면만 통과시킨다');
+    assert.ok(/result = \{ ok: true, typed: inp\.value \}/.test(c),
+      'confirmTyped 가 확인 순간의 입력값을 함께 돌려주지 않는다 — 호출부가 닫힌 창을 되읽게 된다');
     assert.ok(!/trim\(\)|toLowerCase\(\)|toUpperCase\(\)/.test(c),
       'confirmTyped 가 입력을 가공한다 — 설계 §5.2 는 글자까지 같기를 요구한다');
     //  ★ 기존 확인창(#confirmModal/#cfOk)은 건드리지 않는다 — 앱 전체의 삭제 확인 경로이고 루프 시험이 그 버튼을 누른다.
@@ -887,6 +891,17 @@ function ctHarnessJs(src) {
     '             hidden: document.getElementById("confirmTypedModal").classList.contains("hidden") };',
     '  });',
     '};',
+    'window.__probeOk = function(){',
+    '  var p = confirmTyped("과제 영구 삭제", "본문", "zzP 과제 A", "영구 삭제");',
+    '  var inp = document.getElementById("ctInput");',
+    '  inp.value = "zzP 과제 A"; inp.dispatchEvent(new window.Event("input"));',
+    '  document.getElementById("ctOk").click();',
+    '  return p.then(function(v){',
+    '    // 해소 뒤 **다음** 확인창이 열려 칸을 비운다 — 돌려받은 typed 는 그래도 남아 있어야 한다',
+    '    confirmTyped("다른 삭제", "본문", "zzP 과제 B", "영구 삭제");',
+    '    return { ok: v && v.ok === true, typed: v ? String(v.typed) : null, inputNow: String(document.getElementById("ctInput").value) };',
+    '  });',
+    '};',
   ].join('\n');
 }
 
@@ -1033,6 +1048,7 @@ if (!jsdom) {
   skip('변이⑦-DOM(c): 잠금 복구를 무조건 켜기로 바꾸면 계약⑦-DOM(c) 가 실패한다', SKIP_NO_JSDOM);
   skip('계약⑦-DOM: 이름이 글자까지 같을 때만 [영구 삭제]가 켜진다(trim 없음)', SKIP_NO_JSDOM);
   skip('계약⑦-DOM(d): [취소]를 실제로 누르면 확인창이 cancel 로 해소된다', SKIP_NO_JSDOM);
+  skip('계약⑦-DOM(m): [영구 삭제]를 누르면 { ok:true, typed } 로 해소되고 typed 는 그 순간의 값이다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 대조에 trim 을 끼우면 앞뒤 공백이 통과한다', SKIP_NO_JSDOM);
 } else {
   test('계약⑥-DOM(a): 「퇴사자 휴지통」 문은 관리자·비순서편집일 때만 DOM 에 있다(숨김이 아니라 부재)', () => {
@@ -1546,8 +1562,18 @@ if (!jsdom) {
     assert.strictEqual(r.armed, true, '전제 붕괴: 이름을 다 쳤는데 [영구 삭제]가 켜지지 않았다');
     //  ★ 켜진 상태에서 [취소]를 눌러도 **삭제가 아니다.** 여기서 'ok' 가 나오면 취소가 삭제를 부른다.
     assert.strictEqual(r.result, 'cancel',
-      `[취소] 클릭이 ${JSON.stringify(r.result)} 로 해소됐다 — 'cancel' 이어야 한다(호출부는 r !== 'ok' 로만 판단한다)`);
+      `[취소] 클릭이 ${JSON.stringify(r.result)} 로 해소됐다 — 'cancel' 이어야 한다(호출부는 r.ok === true 일 때만 진행한다)`);
     assert.strictEqual(r.hidden, true, '[취소]를 눌렀는데 확인창이 닫히지 않았다');
+  });
+
+  test('계약⑦-DOM(m): [영구 삭제]를 누르면 { ok:true, typed } 로 해소되고 typed 는 그 순간의 값이다(닫힌 칸을 되읽지 않는다)', async () => {
+    const { JSDOM } = jsdom;
+    const dom = new JSDOM(ctFixture(), { runScripts: 'outside-only' });
+    dom.window.eval(ctHarnessJs(app));
+    const r = JSON.parse(JSON.stringify(await dom.window.__probeOk()));
+    assert.strictEqual(r.ok, true, '확인이 { ok:true } 로 해소되지 않았다 — trDelete 가 진행하지 못한다');
+    assert.strictEqual(r.typed, 'zzP 과제 A', `typed 가 ${JSON.stringify(r.typed)} 이다 — 확인 순간의 입력값이어야 한다`);
+    assert.strictEqual(r.inputNow, '', '전제 붕괴: 다음 확인창이 #ctInput 을 비우지 않았다(되읽기 결함을 재현할 수 없다)');
   });
 
   test('변이⑦-DOM: 대조에 trim 을 끼우면 앞뒤 공백이 통과한다(그래서 이 계약이 필요하다)', () => {
