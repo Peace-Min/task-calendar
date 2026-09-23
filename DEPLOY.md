@@ -38,6 +38,7 @@
 | 상수 | 저장소 값 | 배포 시 채울 값 |
 |---|---|---|
 | `DbHost` | `localhost` | **서버 PC의 고정 IP** |
+| `DbName` | `taskmgr` | **`taskcalendar`**(0.19~ 신버전의 주 DB · §0-6). `taskmgr` 는 0.16 전용으로 남는다 |
 | `DbPassword` | 저장소용 값 | `init-db` 실행 시 정한 **앱 계정(`taskmgr_app`) 비밀번호** — 어긋나면 접속이 안 된다 |
 | `UpdateSourceUrl` | `""`(비움) | 공유폴더/FTP 경로(§5 방법 B). 비워 두면 각 PC 설정에서 넣어야 켜진다 |
 
@@ -86,6 +87,26 @@ SHOW GRANTS FOR 'taskmgr_app'@'%';
 > 이 권한은 '가능하게'만 한다. 무엇을 지울 수 있는지는 호스트 관문이 정한다 — 숨긴 항목만, 관리자만, 이름을 그대로 입력해야 지워진다(docs/TRASH-DELETE.md §3.3).
 
 ---
+
+### 0-6. 두 DB 운영 기간 — `taskmgr`(0.16 전용) 옆에 새 주 DB `taskcalendar` 세우기 (2026-09-23)
+
+> 상황: 마지막 배포판 **0.16**(2026-07-30)은 캘린더가 아직 XML 이고 DB 에서는 **과제 표 4개**만 쓴다. 그 사용자들이 붙는 MySQL(폐쇄망 개인 PC)의 `taskmgr` 에는 과제 표 + 사용자 표만 있고 `cal_*` 는 없다.
+> 결정: `taskmgr` 는 **손대지 않고**(0.16 이 계속 쓴다) 같은 서버에 새 주 DB **`taskcalendar`** 를 세워 신버전(0.19~)이 그쪽에 붙는다. 실서버에는 나중에 `taskcalendar` 만 올린다(덤프 복원). 전환 기간에 과제 카탈로그가 두 벌로 갈리는 것은 알고 감수한 대가다.
+
+**왜 "표 복사"가 아니라 "구조 새로 + 데이터만" 인가** — 옛 `project` 에는 `dev_end_date` 가 없고 시각이 KST 다. 표를 통째로 옮기면 마이그레이션 체인(v9 는 `cal_*` 가 있어야 돈다)을 다시 타야 한다. 정본 DDL 3개(`schema-structure.sql` → 비공개 `01-schema-users.sql` → `schema-calendar.sql`)로 v12 구조를 세우고 데이터만 `INSERT … SELECT` 하면 그 문제가 없다. 리허설에서 **정본 DDL 로 세운 DB 와 마이그레이션을 누적한 v12 DB 의 컬럼(175)·인덱스·FK 시그니처 차이 0건**을 실측했다.
+
+**실행 — 더블클릭 한 번** (`db/deploy/setup-taskcalendar.cmd`, 상세는 `setup-taskcalendar.ps1` 머리말):
+
+```
+setup-taskcalendar.cmd                                              # 같은 PC 의 MySQL, taskmgr → taskcalendar
+setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:	askmgr-company-data"
+```
+
+하는 일(첫 실패에서 멈춤 · 원본에는 SELECT·mysqldump 만): ① 사전 점검(도구·접속·DDL 6파일·원본 7표·대상 부재·앱 계정) → 요약 후 `Y` ② 원본 덤프(안전망) ③ 구조: CREATE DATABASE → DDL 3개 → 표 23·`schema_version` 대조(값은 `schema-calendar.sql` 에서 읽음) ④ 데이터: FK 순서로 7표 `INSERT … SELECT`(**id·uid 보존**, 컬럼은 원본∩대상 교집합, 과제 트랙 4표 시각 **KST→UTC −9h**, `cal_user_rev` 사용자별 시딩) → 고아 0·행 수 일치·AUTO_INCREMENT 확인 ⑤ 권한 3파일(`taskmgr.` → 대상 스키마 치환 · `05-grants.sql` 은 DATABASE()) → SHOW GRANTS 표 23개 대조 ⑥ 보고서 파일. 종료코드 0/1/2/3(성공/실패/취소/사전점검). 대상이 이미 있으면 멈추고, `-Force` 면 백업 뒤 DROP·재구축(운영 전환 뒤에는 금지).
+
+**그 다음** — `widget/DeployConfig.cs` 의 `DbName` 을 `taskcalendar` 로(§0-1 표의 `DbHost` 와 같은 자리에서) 바꿔 빌드한다. 본인 캘린더 기록은 다른 사용자와 같은 길(새 위젯 「XML 가져오기」)로 넣는다 — 파일럿 리허설이 된다.
+
+**리허설 기록(2026-09-23, 개발 PC)**: 폐쇄망 상태를 흉내낸 `taskmgr_legacy_sim`(7표 · `dev_end_date` 제거 · 시각 +9h) → `taskcalendar_test` 구축 종료코드 0 · 시각이 v12 원본과 같은 값으로 복귀 · id/uid 불일치 0 · 구조 시그니처 차이 0 · 재실행 가드(3)·`-Force` 재구축(0) 확인 · 새 위젯 접속 확인.
 
 ## 2. 처음 한 번만 (클론 · 전제 점검)
 

@@ -1,6 +1,6 @@
 # 인계 — 다음 세션이 처음 읽는 문서 (HANDOFF)
 
-> 기준 2026-09-23 · HEAD = git log 참조(마지막 커밋: §3.4-C 보류 문서) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
+> 기준 2026-09-23 · HEAD = git log 참조(마지막 커밋: setup-taskcalendar 원큐 구축 스크립트) (`feat/db-app`) · 이 문서는 **세션이 바뀔 때마다 이 자리에서 갱신**한다.
 > 상세 설계·이력은 각 문서의 §11 이 정본이다. 여기는 "지금 어디에 있고, 무엇부터 하며, 무엇을 밟으면 안 되는가" 만 적는다.
 > [ROADMAP.md](ROADMAP.md) §0 은 2026-09-02 기준이라 이 문서보다 낡았다 — 충돌하면 이 문서가 맞다.
 
@@ -37,11 +37,14 @@
 
 11. **2026-09-23 — 코드 품질 전면 조사 §3.4-C 1차(사용자 「바로 진행」 승인 6건) 구현·커밋**: C-4 중복 제목 강등 시 커밋 본문·날짜별 설명 보존(버그 — 전송 본문에 본문이 다시 실림) · C-2 일간 payload `hours` 를 본문 헤더와 같은 `reportDailyHours(rows)` 에서 · C-10 죽은 공수 합계(`sumMin·grandMin·uninput·minutes`) 제거 · C-9 내보내기 md 에 커밋 본문 · C-11 `load()` reportSource 항상 cal · C-7 보고서 푸터 dry/real 배지(`#rptSendMode`). 남은 C 5건(1·8·3·6·5)은 **사용자 결정으로 보류**(같은 날) — 조사 종료.
 
+12. **2026-09-23 — 두 DB 운영 결정 + `setup-taskcalendar` 원큐 스크립트**: 마지막 배포판은 0.16(캘린더 XML · DB 는 과제 표 4개만). 폐쇄망 개인 PC 의 `taskmgr` 는 과제+사용자 표만(v10~ 미적용 · `cal_*` 없음). 결정: `taskmgr` 는 0.16 전용으로 두고 같은 서버에 새 주 DB **`taskcalendar`** 를 세워 신버전이 붙는다(DEPLOY §0-6). `db/deploy/setup-taskcalendar.cmd`(+.ps1, 시험 `tests/setup-taskcalendar.test.mjs` 17건) — 정본 DDL 3개로 v12 구조 → 7표 데이터 id/uid 보존 복사(과제 트랙 시각 KST→UTC) → 권한 3파일 → 검증. 개발 PC 리허설(`taskmgr_legacy_sim` → `taskcalendar_test`) 통과: 시각 복귀 일치 · 구조 시그니처(175컬럼·인덱스·FK) 차이 0 · 가드/-Force 확인 · 위젯 접속 확인. 실행은 사용자가 폐쇄망 PC 에서. 이 PC 의 `DeployConfig.DbName` 은 아직 `taskmgr`(변경 여부는 사용자 결정 대기).
+
 ## 3. 다음 할 일 (우선순위순)
 
-1. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
-2. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-23 현재 본 저장소 미푸쉬 커밋 5건: §3.4-A·B·C-1차 + 문서 2건).
-3. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요) · **코드 품질 조사 §3.4-C 보류 5건**(1 주간 복사본 시간 블록 · 8 gitCommitBody 분리 · 3 「기타」 정규화 · 6 포함 항목 DB 이관(v13) · 5 레거시 필드 — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) §3.4-C 하단). 2026-09-23 사용자가 "지금 불필요, 필요할 때 요청"으로 보류. 6 은 스키마 v13 이라 요청 시 릴리스 창과 묶는다.
+1. **폐쇄망 PC 에서 `setup-taskcalendar.cmd` 실행**(사용자) → 결과 보고서 확인 → `DeployConfig.DbName=taskcalendar` 로 빌드 → 본인 XML 가져오기(파일럿 리허설). 저장소 기본 `DbName` 을 바꿀지는 사용자 결정 대기.
+2. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
+3. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-23 현재 본 저장소 미푸쉬 커밋 5건: §3.4-A·B·C-1차 + 문서 2건).
+4. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요) · **코드 품질 조사 §3.4-C 보류 5건**(1 주간 복사본 시간 블록 · 8 gitCommitBody 분리 · 3 「기타」 정규화 · 6 포함 항목 DB 이관(v13) · 5 레거시 필드 — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) §3.4-C 하단). 2026-09-23 사용자가 "지금 불필요, 필요할 때 요청"으로 보류. 6 은 스키마 v13 이라 요청 시 릴리스 창과 묶는다.
 
 ## 4. 이어서 작업하는 법
 
