@@ -21,7 +21,7 @@
 //     (ReportDb 가 "가장 나쁜 실패"라고 적어 둔 자리). 그래서 도메인 밖 값은 기록 직전에 안전한 값으로 내린다.
 //   ⑪ (2026-09-18) 주간 전송은 내용 출처 'week'(netcus 주간보고 병합)를 거부한다 — 그건 읽기 전용 취합이다.
 import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
 import { canonSql, canonStatusCodes } from './canon-schema.mjs';
 
 const src = loadAppSource();
@@ -130,10 +130,12 @@ const checks = {
   // ⑤ 웹→호스트 경계가 hours 를 실어 나른다
   hoursCrossesBoundary(app, cs) {
     // 웹: 페이로드를 만들 때 getTaskHours 로 구조화한다(본문 되파싱이 아니다)
-    assert.ok(/const rptHours = \(state\.categories \|\| \[\]\)/.test(app),
-      '웹이 hours 를 만들지 않는다 — 호스트가 본문을 되파싱하게 되어 전각 콜론·&nbsp; 문제를 다시 만난다');
-    assert.ok(/getTaskHours\(from, c && c\.id\)/.test(app),
-      'hours 를 getTaskHours 에서 가져오지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다');
+    assert.ok(/const rptHours = reportDailyHours\(collectReportData\(from, to, rptSources\(\)\)\.rows, from\)/.test(app),
+      '웹이 hours 를 본문과 같은 rows 에서 만들지 않는다 — 호스트가 본문을 되파싱하게 되거나(전각 콜론·&nbsp;), 본문과 순서가 갈린다');
+    assert.ok(/getTaskHours\(date, r\.key\)/.test(extractFunction(app, 'reportDailyHours')),
+      'reportDailyHours 가 getTaskHours 에서 값을 가져오지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다');
+    assert.ok(/reportDailyHours\(rows, from\)/.test(extractFunction(app, 'buildReportText')),
+      '본문 헤더가 reportDailyHours 를 쓰지 않는다 — payload 와 헤더가 다른 함수에서 나와 갈릴 수 있다(§0-2)');
     assert.ok(/hours: p\.hours \|\| \[\]/.test(app),
       '어댑터가 hours 를 호스트로 넘기지 않는다');
     // 호스트: 받아서 SubmitDaily 로 넘긴다
@@ -379,13 +381,12 @@ test('변이⑪: 잔업 상한을 정본과 다르게 넓히면 배선⑨ 가 �
 // ── 계약⑩ (2026-09-18) — 「내용 없는 항목 제외」는 항목을 지우지 않는다 ────
 // 사용자 정의: 이 옵션이 빼는 건 '항목도 공수도 없는 과제 행' 하나뿐이다.
 //   · 제목이 있는 일정·할 일·커밋은 그 자체가 보고 내용 → 설명 유무로 사라지면 안 된다.
-//   · 공수(sumMin·grandMin·uninput)는 이 옵션에 절대 영향받지 않는다.
-// 옛 구현은 공수 누적 '앞'에서 항목을 continue 로 건너뛰어, 제목 있는 업무와 그 공수를 함께 날렸고
+//   · 보고에 나가는 시간은 (날짜×과제) 공수표(getTaskHours) 하나다 — 항목당 합산은 2026-09-23 에 제거됐다.
+// 옛 구현은 항목을 continue 로 건너뛰어 제목 있는 업무를 날렸고
 // 그 손실이 buildWeeklyFields·buildReportText 를 타고 회사 일간/주간 전송 본문까지 번졌다.
 // 그래서 'skipEmpty 는 과제 행 필터 한 곳에서만 쓰인다'를 소스 구조로 못박는다(런타임 계약은 app-context 쪽).
 const COLLECT_HEAD = 'function collectReportData(from, to, sources){';
 const SKIP_DECL = 'const skipEmpty = !!src.skipEmpty;';
-const SUM_ACC = 'if(e.hours != null) sumMin.set(';
 const ROW_FILTER_RE = /if\(skipEmpty\) rows = rows\.filter/;
 const ITEM_CONTINUE_RE = /skipEmpty && (entryDetails|details)\.length === 0\) continue/;
 
@@ -413,10 +414,8 @@ function skipEmptyRowFilterOnly(html) {
   assert.ok(!between.includes('skipEmpty'),
     'skipEmpty 가 과제 행 필터 말고 다른 곳에서도 쓰인다 — 항목·공수에 영향을 줄 수 있다: ' +
     JSON.stringify(between.split('\n').filter((l) => l.includes('skipEmpty'))));
-  // 공수 누적은 옵션과 무관한 자리(= 행 필터보다 앞)에 있어야 한다.
-  const acc = body.indexOf(SUM_ACC);
-  assert.ok(acc > 0, '공수 누적 지점(' + SUM_ACC + ')을 찾지 못했다');
-  assert.ok(acc < filterAt, '공수 누적이 skipEmpty 행 필터 뒤로 갔다 — 옵션이 공수를 좌우할 수 있다');
+  assert.ok(!/sumMin|grandMin|uninput/.test(body),
+    '항목당 전액 합산(sumMin·grandMin·uninput)이 되살아났다 — 반복·여러 날 일정에서 틀린 숫자이고 보고 어디에도 실리지 않는다(2026-09-23 §3.4-C-10 제거)');
 }
 
 test('배선⑩: collectReportData 에서 skipEmpty 는 과제 행 필터 한 곳에서만 쓰인다(항목·공수 불변)', () => {

@@ -41,7 +41,7 @@
 - 글꼴(기간 취합 전용)·머리기호·들여쓰기는 미리보기·복사·전송 3자 일치. 근태·초과시간은 옵션과 결합 없음.
 - 중첩 모달 DOM 순서는 `#rptCatLink` 한 건 빼고 전부 정상. 푸터 도달성(320px 높이)은 `.modal-body{overflow:auto}` 로 보장.
 
-## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18, §3.4-A·B 는 2026-09-23 구현·커밋됨 ✅ / §3.4-C 만 남음(다음 세션이 여기서 시작)
+## 3. 2차 — §3.1·§3.2·§3.3 은 2026-09-18, §3.4-A·B·C(1차 6건) 는 2026-09-23 구현·커밋됨 ✅ / §3.4-C 결정 필요 5건만 남음(다음 세션이 여기서 시작)
 
 > 순서대로. 각 항목은 검토 보고에서 코드로 확인된 것이며, 줄 번호는 2026-09-18 기준(내용으로 다시 찾을 것). 구현은 dev-delegate(오퍼스), 게이트는 페이블: Debug 재빌드 → CDP 실화면 → `loop-ui-visual`(해당 화면) → 엄격 게이트.
 
@@ -66,7 +66,7 @@
 - `#uaSearch` 디바운스(검색 `#sInput` 처럼 180ms).
 - `otAfterClose` 의 열림 판정을 `isOverlayOpen` 으로.
 
-### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) — A·B 완료 ✅ · **남은 일은 C**
+### 3.4 P2 — 판단이 필요한 것(사용자 확인 후) — A·B·C-1차 완료 ✅ · **남은 일은 C 의 결정 필요 5건(1·8·3·6·5)**
 
 #### 3.4-A 레이아웃 튐·하드코딩 색 ✅ 2026-09-23 구현·커밋(실화면 CDP 측정 전후 + loop-ui-visual 0건 + 계약 `tests/layout-stability.test.mjs` 10건)
 | 자리 | 전(측정) | 후 | 수정 |
@@ -87,8 +87,23 @@
 | `reloadCodeList` · `reloadCustomerList` | 탭 연타·재조회 시 먼저 보낸 요청의 늦은 회신이 새 목록을 덮음(구분 회신이 상태 탭에 앉음) | 목록 상자 `dataset.gen` 세대 표식(모듈 상태 0 증가): await 앞에서 찍고 회신 직후 낡았으면 return — 목록 변수 대입 전에 |
 | 인라인 편집 × 탭 전환·「숨김 표시」 (cust · code · ot) | 이름변경 입력칸·상위 변경 select 가 재렌더로 말없이 버려짐 | 공용 `inlineEditDirty/guardInlineEdit`(DOM 만 판정 · ot 모듈 상태 5개 불변): 값이 그대로면 조용히 진행(Esc 와 같음), 바뀌었으면 `confirmBox` 「저장하지 않은 변경이 있습니다 — 버리고 계속 / 계속 편집」. 체크박스는 「계속 편집」 시 되돌림. 일곱 배선(`#custShowHidden`·`#codeTabSection/Status`·`#codeShowHidden`·`#otTabTitle/Unit`·`#otShowHidden`)만 감싸고 `otSwitchTab`·`switchCodeKind` 본문 불변 |
 
-#### 3.4-C 보고서 의미 변경(숫자·전송 내용이 바뀌므로 항목별 확정 필요 — §0-2 WYSIWYG · §0-3 표시 옵션은 숫자를 바꾸지 않는다)
-- 주간 복사본에 과제투입시간 블록이 없음(전송본과 불일치) · 일간 payload `hours` 를 `rows` 에서 만들기 · 「기타」 병합 정확일치 vs 정규화 · 중복 제목 강등 시 `body`/`dayDetails` 유실 · `currentReportFormatPref()` 의 레거시 필드 부수효과 · 포함 항목 5개만 localStorage(나머지는 XML) · 전송 dry/real 이 보고서 화면에 안 보임 · `gitCommitBody` 한 체크박스 두 뜻 · 내보내기가 커밋 본문 미포함 · 반복 일정 공수 전액 산입(합계를 되살리면 과대) · `reportSource` 정규화가 'week' 누락.
+#### 3.4-C 보고서 의미 변경 — 1차(사용자 「바로 진행」 승인 6건) ✅ 2026-09-23 구현·커밋(엄격 1724/0/0 · CDP 실화면 · loop-ui-visual reportModal 위반 0 · app-context 새 시험 7건 · report-wiring ⑤·⑩ 갱신)
+| # | 자리 | 증상 | 수정 | 변화 |
+|---|---|---|---|---|
+| C-4 | `pushTitle` 강등 | 같은 제목이 다시 오면 메타를 새로 만들며 `body`·`dayDetails` 를 버림 → 제목이 같은 커밋 두 건이면 본문이 미리보기·복사·주간 전송에서 전부 사라짐 | `mergeReportBody`(같으면 1회·다르면 줄바꿈 연결)·`mergeReportDayDetails`(date+text 중복 제거·날짜순) 로 보존. 강등 메타(kind:null)의 날짜별 줄은 `reportDayLinesHtml` 이 읽기전용으로 그림(`canEdit` = todo+todoId 일 때만) | **전송 본문에 본문이 다시 실림**(버그 수정) |
+| C-2 | 일간 payload `hours` | `state.categories` 등록 순서·`!= null` 조건으로 따로 만듦(본문 헤더는 rows·`>0`) | 공용 `reportDailyHours(rows, date)` — 본문 헤더(`_hmap`)와 payload 가 같은 rows·같은 함수. payload 는 `collectReportData(from,to,rptSources()).rows` 에서 | 숫자 불변 · payload 순서가 본문과 같아짐(기타 마지막) |
+| C-10 | `collectReportData` 죽은 합계 | 항목당 `e.hours` 전액 합산(`sumMin·grandMin·uninput·rows[].minutes`) — 반복·여러 날 일정에서 틀린 숫자이고 어디에도 표시 안 됨 | 전부 제거, `return { rows }`. 시간의 단일 출처 = `getTaskHours`(날짜×과제) | 표시·전송 불변(죽은 코드 제거) · app-context 4개 시험·변이⑥-c·report-wiring ⑩ 갱신 |
+| C-9 | `buildCalendarExportMd` | 커밋을 `- subject (hash)` 한 줄로만 — 앱에서 편집한 본문·수기 커밋 본문이 어디에도 남지 않음 | body 줄을 불릿 아래 2칸 들여쓰기로(빈 줄 제외) | export md 만 바뀜 · 회사 전송 불변 |
+| C-11 | `load()` `reportSource` | `'net'` 만 살리고 나머지 cal — 브라우저 새로고침 뒤 주간 탭이 「위젯에서만」 안내로 열림 | 항상 `'cal'`(buildStateFrom 과 같게, "인메모리 전용" 주석과 일치) | 표시만 |
+| C-7 | 보고서 푸터 | dry/real 이 설정 모달에만 있어 누르기 전 이번 전송이 실제 제출인지 알 수 없음 | `#rptSendMode` 배지(「미제출 테스트 모드 / ⚠ 실제 제출 모드」, real 은 danger 톤) — 일간·위젯(reportAuto)에서만, 누르면 보고서를 닫고 설정을 연다(§0-5), 설정 라디오 변경이 배지도 갱신. **≤440px(위젯 실폭)에서는 배지가 푸터를 두 줄로 밀어(측정 380px 62→107px) CSS 로 숨기고 전송 버튼이 `.real` danger 톤 + title 로 모드를 입는다**(loop-ui-visual V3·V7 로 잡은 뒤 정정) | 표시만 · 전송 불변 |
+
+#### 3.4-C 남은 5건 — 결정 필요(사용자 확인 뒤)
+- **1 주간 복사본에 과제투입시간 블록**(권장: 복사본 끝에 전송과 같은 함수로 시간 블록 추가 — 복사 텍스트 바뀜 · app-context 1708 계약 갱신) vs 안내만.
+- **8 `gitCommitBody` 한 체크박스 두 뜻**(권장: 보고서는 저장된 `c.body` 유무+「설명 포함」만으로 판정, 체크박스는 수집 전용 — 전송 내용 바뀜 · app-context 1300·1308·1316 계약 뒤집힘) vs ⚙ 별도 「커밋 본문」 항목.
+- **3 「기타」 병합 정규화 통일**(권장: 공용 `isEtcName()` NFC+공백 제거를 병합·정렬·두 파서에 — 행 수·배치 바뀔 수 있음 · netcus-weekly 153 등 갱신) vs 정확일치 통일+저장 시 trim.
+- **6 포함 항목 저장 위치**(권장: `cal_user_pref` 칼럼/JSON + XML prefs 로 이관 — 스키마 v13, v0.19 릴리스 창과 함께) vs ⚙에 「이 PC 에만 저장」 표기.
+- **5 `currentReportFormatPref()` 레거시 필드 부수효과**(권장: 읽기 순수화 + 동기화를 update/쓰기 시점으로 — 불변) — 후순위.
+- (참고, 원문) 주간 복사본에 과제투입시간 블록이 없음(전송본과 불일치) · 일간 payload `hours` 를 `rows` 에서 만들기 · 「기타」 병합 정확일치 vs 정규화 · 중복 제목 강등 시 `body`/`dayDetails` 유실 · `currentReportFormatPref()` 의 레거시 필드 부수효과 · 포함 항목 5개만 localStorage(나머지는 XML) · 전송 dry/real 이 보고서 화면에 안 보임 · `gitCommitBody` 한 체크박스 두 뜻 · 내보내기가 커밋 본문 미포함 · 반복 일정 공수 전액 산입(합계를 되살리면 과대) · `reportSource` 정규화가 'week' 누락.
 
 ## 4. 검토 원문
 

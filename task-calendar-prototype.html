@@ -1591,6 +1591,13 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 .rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rpt-send-status.busy{color:var(--accent-2)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger-text)}
 .rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 전송 모드 배지 — 누르기 전에 이번 전송이 미제출 테스트인지 실제 제출인지 보여 준다(설정 모달에만 있던 값 · 2026-09-23 §3.4-C-7). 누르면 설정으로. */
+.rpt-send-mode{flex:none;align-self:center;font:inherit;font-size:var(--fs-micro);line-height:1.3;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--muted);cursor:pointer;white-space:nowrap}
+.rpt-send-mode:hover{border-color:var(--ctl-border)}
+.rpt-send-mode.real{border-color:var(--danger-line);background:var(--danger-soft);color:var(--danger-text);font-weight:600}
+/* ≤440px(위젯 실폭)에서는 배지가 푸터를 두 줄로 밀었다(측정 380px 62→107px) — 배지는 숨기고 **전송 버튼이 모드를 입는다**: 실제 제출이면 danger 톤, 제목(title)에 설명. 미제출 테스트(기본)는 평소 모양. */
+@media (max-width:440px){ .rpt-send-mode{display:none !important} }
+#btnRptSend.real{border-color:var(--danger-line);background:var(--danger-soft);color:var(--danger-text)}
 .qa-detail{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
 /* 라벨행과 컨트롤행을 '두 칼럼이 공유하는 그리드 행'으로 묶는다.
    칼럼별 flex였을 땐 '회의실 관리' 링크(SVG 아이콘)가 장소 라벨행만 높여, 옆 칼럼(반복)의
@@ -1746,6 +1753,7 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
      (38로 맞추면 세그 버튼 히트가 32로 줄어 위 터치 규칙을 되돌리는 셈이 된다) */
   .rem-row{--rem-ctl-h:44px}
   .x{min-width:32px;min-height:32px;padding:2px 7px}
+  .rpt-send-mode{min-height:32px;padding:4px 10px}   /* 전송 모드 배지도 같은 터치 하한(loop-ui-visual V7 이 320·400px 에서 잡았다 · 2026-09-23) */
   /* 체크 아이콘의 '보이는 크기'는 그대로 두고 패딩으로만 히트영역 확보 → 음수 마진으로 행 레이아웃은 불변 */
   .todo-check{padding:8px;margin:-8px}   /* 16+8·2=32 히트, 사방 -8로 마진박스는 다시 16 → 행 배치·간격 불변 */
   .rpt-fmt .rpt-fmt-step{width:32px;height:32px}
@@ -2634,6 +2642,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-foot">
       <span class="rpt-send-status" id="rptSendStatus"></span>
       <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)</span>
+      <button type="button" class="rpt-send-mode" id="rptSendMode" style="display:none" title="회사 전송 모드 — 설정에서 바꿉니다"></button>
       <button class="btn" data-close>닫기</button>
       <button class="btn" id="btnRptSend" title="이 날짜 보고서를 회사 일간보고(netcus)에 작성·전송합니다">📤 일간보고 전송</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
@@ -4133,7 +4142,7 @@ function load(){
         s.reportFormatPrefs = normalizeReportFormatPrefs(s);
         syncLegacyReportFormatFields(s, s.reportFormatPrefs.daily);
         s.gitCommitBody = (s.gitCommitBody === true);   // 부재/구버전 = false(하위호환)
-        s.reportSource = (s.reportSource === 'net') ? 'net' : 'cal';   // 내용 출처 — 항상 존재 보장(기본 cal). 인메모리성 값.
+        s.reportSource = 'cal';   // 내용 출처 — 인메모리 전용. 브라우저 모드는 save() 가 state 통째로 남기므로 여기서 항상 cal 로 되돌린다(buildStateFrom 과 같다 · 'net' 만 살리던 예외가 새로고침 뒤 주간 탭을 「위젯에서만」 안내로 열었다 · 2026-09-23 §3.4-C-11).
         // 과제별 시간·근태 — 구버전 저장분엔 없음(별도 localStorage였음) → 빈 맵 + 미이관 마커로 시작
         s.taskHours = (s.taskHours && typeof s.taskHours === 'object') ? s.taskHours : {};
         s.attendance = (s.attendance && typeof s.attendance === 'object') ? s.attendance : {};
@@ -10378,7 +10387,7 @@ function reportMetaDetails(meta){
   return Array.isArray(meta && meta.details) ? meta.details.filter(Boolean) : [];
 }
 function reportDetailsHtml(meta){
-  if(meta && meta.kind === 'todo' && Array.isArray(meta.dayDetails)) return '';   // 기간 할일 설명은 날짜별 라인(.rdn)이 담당 — 이중 렌더 방지
+  if(Array.isArray(meta && meta.dayDetails) && meta.dayDetails.length) return '';   // 날짜별 설명을 가진 메타(기간 할일·그 강등본)는 날짜별 라인(.rdn)이 담당 — 이중 렌더 방지
   const lines = reportMetaDetails(meta);
   return lines.length ? `<div class="rtask-desc">${lines.map(esc).join('<br>')}</div>` : '';
 }
@@ -10387,14 +10396,15 @@ function reportDayPrefix(dateYmd){ const d = parseYmd(dateYmd); return `${WEEKDA
 // 보고서 — 기간 할일 날짜별 dayNote 라인 HTML(주간/일간 공통). editable=true면 클릭 편집 개방(주간 제목은 여전히 읽기전용).
 // showPrefix=true(기간 보고)면 "요일 M/D" 접두, false(일간·from==to)면 원문만. editingDayNoteKey===todoId|date면 textarea.
 function reportDayLinesHtml(m, editable, showPrefix){
-  if(!(m && m.kind === 'todo' && Array.isArray(m.dayDetails) && m.dayDetails.length)) return '';
+  if(!(m && Array.isArray(m.dayDetails) && m.dayDetails.length)) return '';
+  const canEdit = !!(editable && m.kind === 'todo' && m.todoId);   // 중복 제목으로 강등된 메타(kind:null)는 날짜 라인을 읽기전용으로만
   return m.dayDetails.map(dd => {
     const key = m.todoId + '|' + dd.date;
-    if(editable && editingDayNoteKey === key){
+    if(canEdit && editingDayNoteKey === key){
       return `<div class="rdn editing" data-dnid="${esc(m.todoId)}" data-dndate="${esc(dd.date)}"><div class="nd-cedit-wrap"><textarea class="rdn-edit" maxlength="500" rows="2" aria-label="${esc(reportDayPrefix(dd.date))} 설명 수정">${esc(dd.text)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rdn-cancel" data-dnact="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rdn-save" data-dnact="save" aria-label="설명 저장">저장</button></div></div></div>`;
     }
     const pfx = showPrefix ? `<span class="rdn-date">${esc(reportDayPrefix(dd.date))}</span> ` : '';
-    if(editable){
+    if(canEdit){
       return `<div class="rdn" data-dnid="${esc(m.todoId)}" data-dndate="${esc(dd.date)}"><span class="rdn-main">${pfx}${esc(dd.text)}</span><button type="button" class="rdn-edit-btn" data-dnact="edit" title="설명 수정" aria-label="${esc(reportDayPrefix(dd.date))} 설명 수정">${ICON.wrench}</button></div>`;
     }
     return `<div class="rdn ro">${pfx}${esc(dd.text)}</div>`;
@@ -10418,7 +10428,29 @@ function reportSubIndent(prefix, unit){
 }
 // 분→시간 표시(정수면 정수, 아니면 소수 둘째자리). buildReport(렌더)·buildReportText(복사) 공유.
 function fmtH(min){ const h = min / 60; return Number.isInteger(h) ? String(h) : String(Math.round(h * 100) / 100); }
-// 보고서 데이터 수집(렌더·직렬화 공유 단일 소스) — 과제별 제목/공수합/항목. 출력·제목·공수 단일 버킷키(catKey).
+// 일간 보고의 과제별 시간 — 본문 헤더 '[과제] : n' 과 전송 payload.hours 가 **같은 rows·같은 함수**에서 나온다(WYSIWYG · 2026-09-23 §3.4-C-2).
+//   예전엔 payload 가 state.categories 등록 순서를 따로 돌아 '기타' 위치·조건식이 본문과 갈릴 수 있었다.
+function reportDailyHours(rows, date){
+  return (rows || []).map(r => ({ key: r.key, name: String(r.name || ''), hours: getTaskHours(date, r.key) }))
+    .filter(x => x.name && x.hours != null);
+}
+// 중복 제목 강등 시 본문·날짜별 설명 병합(순수 함수). 같은 본문은 한 번만, 다르면 줄바꿈으로 잇는다.
+function mergeReportBody(a, b){
+  const x = a ? String(a) : '', y = b ? String(b) : '';
+  if(!x) return y; if(!y || x === y) return x;
+  return x + '\n' + y;
+}
+// dayDetails: [{date,text}] 둘을 날짜순으로 합친다(같은 date+text 는 한 번). 둘 다 없으면 null.
+function mergeReportDayDetails(a, b){
+  const out = [];
+  for(const arr of [a, b]) if(Array.isArray(arr)) for(const dd of arr){
+    if(!dd || !dd.date) continue;
+    if(!out.some(o => o.date === dd.date && o.text === dd.text)) out.push({ date: dd.date, text: dd.text });
+  }
+  out.sort((p, q) => p.date < q.date ? -1 : p.date > q.date ? 1 : 0);
+  return out.length ? out : null;
+}
+// 보고서 데이터 수집(렌더·직렬화 공유 단일 소스) — 과제별 제목/항목(공수는 getTaskHours 가 단일 출처). 출력·제목·공수 단일 버킷키(catKey).
 // sources = {event,todo,git} — 보고서에 포함할 소스 선택. 미지정 시 전체 포함(방어).
 function collectReportData(from, to, sources){
   const src = sources || {event:true, todo:true, git:true};
@@ -10426,10 +10458,9 @@ function collectReportData(from, to, sources){
   const skipEmpty = !!src.skipEmpty;
   const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 만든 경우 미분류를 그쪽으로 병합
   const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
-  const items = new Map(), seen = new Map(), sumMin = new Map(), bucket = new Map();
+  const items = new Map(), seen = new Map(), bucket = new Map();
   const meta = new Map(), pos = new Map();   // meta: k -> [{text,editable,entryId,hash,cidx}] (titles와 1:1 정렬), pos: k -> Map(title -> index)
   const uncat = [], uncatMeta = [];
-  let uninput = 0;
   // 업무 제목 추가(과제 버킷별 동일 제목 1회). git은 커밋 제목 '전부'를 펼치고, 그 외는 엔트리 제목.
   // gitMeta({entryId,hash,cidx})가 있으면 그 제목은 '단일 git 커밋' 출처 → 편집 가능. 같은 제목이 다시 오면(중복/타출처)
   // 단일 출처가 아니게 되므로 편집 불가로 강등. 비-git(일정/할일) 제목은 항상 편집 불가. titles(문자열) 출력·dedup은 불변.
@@ -10442,9 +10473,15 @@ function collectReportData(from, to, sources){
     if(seen.get(k).has(t)){   // 중복 재등장 → 단일 출처 아님 → 편집 불가로 강등(문자열은 이미 있으니 추가 안 함)
       const pm = pos.get(k); const idx = pm ? pm.get(t) : undefined;
       if(idx != null && marr[idx]){
-        const oldDetails = reportMetaDetails(marr[idx]);
+        const old = marr[idx];
+        const oldDetails = reportMetaDetails(old);
         const merged = oldDetails.concat(detailLines.filter(d => !oldDetails.includes(d)));
-        marr[idx] = { text:t, editable:false, kind:null, entryId:null, hash:null, cidx:-1, todoId:null, details:merged };
+        //  ★ 본문·날짜별 설명은 버리지 않는다 — 제목이 같다고 내용이 같은 것은 아니다(2026-09-23 §3.4-C-4).
+        //    예전엔 details 만 합치고 body·dayDetails 를 새 메타에서 빠뜨려, 제목이 같은 커밋 두 건이면
+        //    「설명 포함」이 켜져 있어도 미리보기·복사·주간 전송 모두에서 본문이 사라졌다.
+        marr[idx] = { text:t, editable:false, kind:null, entryId:null, hash:null, cidx:-1, todoId:null, details:merged,
+                      body: mergeReportBody(old.body, srcMeta && srcMeta.body),
+                      dayDetails: mergeReportDayDetails(old.dayDetails, srcMeta && srcMeta.dayDetails) };
       }
       return;
     }
@@ -10468,8 +10505,7 @@ function collectReportData(from, to, sources){
     const entryDetails = isGit ? [] : memoBullets(e.memo);
     // '내용 없는 항목 제외'는 설명(메모) 유무를 보지 않는다 — 제목이 있는 일정은 그 자체가 보고 내용이다.
     // (설명 포함 #rptWithDesc 만 details 를 좌우한다. 행 단위 판정은 아래 rows 필터 한 곳에서만 한다.)
-    // 공수 누적 — 제목 중복제거 '앞'에서(동명 항목 공수 유실 차단). 항목당 1회만(반복/멀티데이 곱셈 안 함).
-    if(e.hours != null) sumMin.set(k, (sumMin.get(k) || 0) + e.hours); else uninput++;
+    // 일정의 hours 는 여기서 더하지 않는다 — 보고에 나가는 시간은 (날짜×과제) 공수표(getTaskHours) 하나다. 항목당 전액 합산은 반복·여러 날 일정에서 틀린 숫자였고 어디에도 표시되지 않았다(2026-09-23 §3.4-C-10 제거).
     if(!bucket.has(k)) bucket.set(k, []); bucket.get(k).push(e);   // 단일일 편집용 발생 항목
     // git 작업일지는 커밋 제목 전부를 업무로(요약 'N건'이 아니라 실제 커밋들 — git 로그 가져오는 핵심), 그 외는 엔트리 제목
     if(isGit && Array.isArray(e.commits) && e.commits.length){
@@ -10479,7 +10515,7 @@ function collectReportData(from, to, sources){
       pushTitle(k, e.title, { kind:'event', entryId:e.id }, includeDetails ? entryDetails : []);
     }   // 비-git 엔트리 제목 → 편집 가능(일정 라우팅)
   }
-  // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → sumMin·bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
+  // 할 일 — 기한(due~endDate)이 기간과 겹치는 항목의 제목만 편입(공수/시간 없음 → bucket 미반영). 기한없음은 기간 귀속 불가 → 제외.
   // 설명 소스(이중 모델): 단일 할일=전역 note / 기간 할일=[from,to]∩[due,end] 각 날짜 dayNote(기간 보고=요일 접두, 일간=원문).
   // 이 details 는 설명포함(#rptWithDesc)만 좌우한다 — '내용 없는 항목 제외'는 보지 않는다.
   // → dayNote 0개 기간할일·메모 없는 단일 할일도 제목이 있으면 보고서에 그대로 남는다.
@@ -10506,23 +10542,22 @@ function collectReportData(from, to, sources){
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
   let rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
-    minutes:sumMin.get(c.id)||0, titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));
+    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));
   // '기타'는 등록 순서와 관계없이 일반 과제 뒤에 둔다. 미분류가 실제 '기타' 과제로 병합돼도 같은 규칙을 유지한다.
   rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));
   if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
-    minutes:sumMin.get('__uncat__')||0, titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
+    titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
   // '내용 없는 항목 제외' = 보고서에 쓸 내용이 아예 없는 과제 행만 뺀다(사용자 정의, 2026-09-18).
   //   · 제목이 있는 일정·할 일·커밋은 그 자체가 내용 → 설명(메모/dayNote) 유무와 무관하게 절대 빼지 않는다.
   //   · 공수도 내용이다: 일간 헤더 '[과제] : n'·주간 content 줄이 바로 이 행에서 나오므로,
   //     제목이 하나도 없어도 (날짜×과제) 공수가 있으면 그 과제는 보고할 것이 있는 행이다.
   //   · 여기서 세는 공수는 **(날짜×과제) 공수표뿐이다** — 보고에 나가는 시간이 그것 하나이기 때문이다.
-  //     일정의 hours(r.minutes)는 보고서 어디에도 실리지 않으므로, 그걸 근거로 남기면 화면에 '빈 과제명' 한 줄만 나간다.
-  //   · 그래서 제외 조건은 '제목 0개 AND 공수표 0' 하나뿐. 공수 집계(sumMin·grandMin·uninput)는 이 옵션에 영향받지 않는다.
+  //     일정의 hours(e.hours)는 보고서 어디에도 실리지 않으므로, 그걸 근거로 남기면 화면에 '빈 과제명' 한 줄만 나간다.
+  //   · 그래서 제외 조건은 '제목 0개 AND 공수표 0' 하나뿐.
   const rangeTaskHours = key => { let h = 0; for(let d = from; d && d <= to; d = addDays(d, 1)){ const v = getTaskHours(d, key); if(v != null) h += v; } return h; };
   const rowHasHours = r => rangeTaskHours(r.key) > 0;
   if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));
-  let grand = 0; for(const v of sumMin.values()) grand += v;
-  return { rows, grandMin:grand, uninput };
+  return { rows };
 }
 // 과제 데이터 내보내기 — 선택 과제 1개 + 기간의 캘린더 기록을 날짜별 Markdown 문자열로 직렬화.
 // 순수 함수(state만 읽고 DOM·부수효과 없음 → 단위테스트 가능). git/svn patch는 호스트가 별도 파일로 만든다.
@@ -10593,7 +10628,10 @@ function buildCalendarExportMd(cat, from, to){
       // 식별자(short/hash)는 patch.txt의 커밋과 짝짓는 열쇠 — 있을 때만 괄호로 붙인다.
       // (수기 등록분은 식별자가 없어 '()' 빈 괄호가 나가면 LLM이 매칭 키로 오인한다)
       for(const c of commits){ const id = String(c.short || c.hash || '').trim();
-        out.push('- ' + c.subject + (id ? ' (' + id + ')' : '')); }
+        out.push('- ' + c.subject + (id ? ' (' + id + ')' : ''));
+        // 커밋 본문(앱에서 편집한 것·수기 커밋 포함)은 patch 에 없다 — 불릿 아래 2칸 들여쓰기 줄로 남긴다(2026-09-23 §3.4-C-9)
+        for(const bl of String(c.body || '').split('\n')){ const s = bl.trim(); if(s) out.push('  ' + s); }
+      }
       out.push('');
     }
   }
@@ -10662,6 +10700,7 @@ function setReportMode(mode){
 // 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
 function updateRptSendVis(){
   const b = $('#btnRptSend'), h = $('#rptSendHint');
+  const m = $('#rptSendMode');
   // 보고 유형/구성이 바뀌면 직전 전송 안내(브라우저 netcus 안내 등)를 지운다 — 탭 전환 시 stale·모순 문구 방지.
   // (위젯 전송 흐름은 이 경로를 타지 않아 __netcusResult 결과 메시지는 보존됨)
   const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ''); st.className = 'rpt-send-status'; }
@@ -10673,14 +10712,31 @@ function updateRptSendVis(){
     b.disabled = false; b.dataset.mode = 'weekly'; b.innerHTML = ICON.send + ' 주간보고 작성';
     b.title = '선택한 주의 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
     if(h) h.style.display = 'none';
+    if(m) m.style.display = 'none';
+    b.classList.remove('real');
   } else if(reportMode === 'custom'){
     b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
     b.title = '기간 취합은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
     if(h){ h.style.display = ''; setRptSendText(h, '기간 취합은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'); }
+    if(m) m.style.display = 'none';
+    b.classList.remove('real');
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '선택한 날짜의 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
     if(h) h.style.display = 'none';
+    //  전송 모드(dry/real)는 배지(#rptSendMode)와 버튼 톤 둘로 보인다 — ≤440px 에서는 배지가 CSS 로 숨고 버튼 톤만 남는다.
+    const _real = !!(Platform.caps.reportAuto && ncMode() === 'real');
+    b.classList.toggle('real', _real);
+    if(_real) b.title += ' — ⚠ 실제 제출 모드: 서버에 바로 저장됩니다(설정에서 변경)';
+    if(m){   // 배지는 자동 전송이 되는 환경(위젯)에서만 — 브라우저는 창만 열어 주므로 모드가 없다
+      if(Platform.caps.reportAuto){
+        const real = _real;
+        m.style.display = '';
+        m.textContent = real ? '⚠ 실제 제출 모드' : '미제출 테스트 모드';
+        m.classList.toggle('real', real);
+        m.title = real ? '전송하면 회사 시스템에 바로 저장됩니다(POST) — 설정에서 「미제출 테스트」로 바꿀 수 있습니다' : '자동 로그인·작성까지만 하고 열린 창에서 직접 제출합니다 — 설정에서 「실제 제출」로 바꿀 수 있습니다';
+      } else m.style.display = 'none';
+    }
   }
 }
 // 주간보고용 필드 — content(과제투입시간: [과제명]:시간), endwork(진행사항: 과제별 업무 불릿), subject(제목 추정)
@@ -11110,7 +11166,7 @@ function buildReport(){
     out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정·할 일·커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
     return;
   }
-  const { rows, grandMin, uninput } = collectReportData(from, to, src);
+  const { rows } = collectReportData(from, to, src);
   if(!rows.length){
     sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
   }
@@ -11634,9 +11690,10 @@ function buildReportText(indentUnit){
   const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _pad = indentUnit.repeat(_indent * 2);   // 복사=U+00A0 / netcus=&nbsp; (호출부가 지정)
   const _daily = (reportMode === 'daily');   // 일간만 '[과제] : n'(회사 일간보고 계약). from==to==그날.
+  const _hmap = _daily ? new Map(reportDailyHours(rows, from).map(x => [x.key, x.hours])) : null;   // payload.hours 와 같은 함수
   const blocks = rows.map(r => {
     let _head = `[${r.name}]`;
-    if(_daily){ const _h = getTaskHours(from, r.key); if(_h != null && _h > 0) _head += ` : ${_h}`; }   // 시간 있으면 헤더에, 없으면 과제명만
+    if(_hmap){ const _h = _hmap.get(r.key); if(_h != null) _head += ` : ${_h}`; }   // 시간 있으면 헤더에, 없으면 과제명만(getTaskHours 는 0·미입력을 null 로 준다)
     return _head + r.titles.map((t, i) => {
       const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
       const m = (r.titleMeta && r.titleMeta[i]) || null;
@@ -12922,7 +12979,7 @@ function bind(){
   });
   if(!HOST){ const _uc = $('#btnUpdateCheck'); if(_uc) _uc.style.display = 'none'; }   // 업데이트=위젯 전용 → 브라우저 메뉴에선 숨김
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
-  $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} } }));
+  $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} updateRptSendVis();   /* 보고서 배지도 같은 값을 본다 */ } }));
   { const bb = $('#bgBodyChk'); if(bb) bb.addEventListener('change', () => setGitCommitBody(bb.checked)); }   // 일괄 불러오기 모달 토글 — 동일 단일 소스
   { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
   // ── 로그인 게이트 · 사용자 정보 ── (로그인 진입점은 게이트 하나 — 사용자 정보 모달에도 입력칸은 없다)
@@ -13011,9 +13068,8 @@ function bind(){
       //   ★ 파싱이 아니라 전달이다(설계 §5.9.3) — 본문을 만들 때 이미 갖고 있던 값을 그대로 보낸다.
       //     호스트가 본문을 되파싱하면 전각 콜론·&nbsp; 들여쓰기 같은 표기 문제를 다시 만난다.
       //   ★ 실는 건 과제 **이름**이다. cat_no 는 싣지 않는다 — 앱이 아직 XML 을 써 DB 번호를 모른다.
-      const rptHours = (state.categories || [])
-        .map(c => ({ name: (c && c.name) || '', hours: getTaskHours(from, c && c.id) }))
-        .filter(x => x.name && x.hours != null);
+      const rptHours = reportDailyHours(collectReportData(from, to, rptSources()).rows, from)
+        .map(x => ({ name: x.name, hours: x.hours }));   // 본문 헤더와 같은 rows·같은 함수(reportDailyHours) — 이름·값·순서가 본문과 같다
       const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, hours: rptHours, dryRun: dry };
       // 버튼 disable+스피너는 위젯 모드에서만(호스트 회신 __netcusResult가 다시 활성화) — 브라우저는 회신이 없어 영구 잠김 방지
       if(Platform.caps.reportAuto){
@@ -13513,6 +13569,7 @@ function bind(){
   $('#btnRptCopy').addEventListener('click', copyReport);
   // 중첩해서 열면 「과제 관리」가 보고서 **뒤에** 뜬다 — netcus 가드의 toSettings 와 같은 처리(보고서를 먼저 닫는다).
   $('#rptCatLink').addEventListener('click', () => { closeModal('#reportModal'); openCatModal(); });   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
+  $('#rptSendMode').addEventListener('click', () => { closeModal('#reportModal'); openSettings(); });   // 설정 모달은 DOM 상 보고서 앞이라 먼저 닫고 연다(§0-5)
   // 서식바(머리기호+들여쓰기) — 일간/주간 계열별 표시 설정 갱신 → save() → buildReport() 재빌드. 1회만 배선.
   $('#rptMarker').addEventListener('change', () => { updateCurrentReportFormatPref({ marker: $('#rptMarker').value }); save(); buildReport(); });
   //  '직접' 머리기호는 한 글자마다 save()(저장 왕복)와 전체 재빌드를 부르던 자리다 — 타이핑이 그대로 저장 폭주가 된다.
