@@ -130,12 +130,12 @@
 <header class="report">
   <div class="eyebrow">과제관리 시스템 · 데이터 설계 보고</div>
   <h1>taskmgr 스키마 v12</h1>
-  <div class="scope"><b>범위·시점</b> 2026-09-10 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 사용자·조직 표와 캘린더 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
+  <div class="scope"><b>범위·시점</b> 2026-09-28 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 사용자·조직 표와 캘린더 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
   <p class="lede">테이블은 과제, 사용자·조직, 캘린더 세 그룹으로 나뉜다. 과제와 사용자·조직은 회사가 관리하는 마스터이고, 캘린더는 사용자별 데이터라 user_id 로 시작하는 복합 키를 쓴다. 앱 계정 권한도 이 구분을 따른다.</p>
   <div class="meta">
     <span class="m"><span class="dot"></span>DB <b>taskmgr</b> · MySQL <b>8.4.9</b> · utf8mb4</span>
     <span class="m">스키마 버전 <b>12</b></span>
-    <span class="m">캡처 <b>2026-09-10</b></span>
+    <span class="m">캡처 <b>2026-09-28</b></span>
     <span class="m">트리거 <b>0</b> · 루틴 <b>0</b> · 뷰 <b>0</b></span>
   </div>
 </header>
@@ -184,7 +184,7 @@
     <div class="r"><div class="when">접속 범위</div><div class="what"><b>taskmgr_app@% · taskmgr_backup@localhost</b><p>taskmgr_app@% 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</p></div></div>
     <div class="r"><div class="when">버전</div><div class="what"><b>cal_schema_meta.schema_version = 12</b><p>위젯 빌드 상수와 같아야 부팅한다. 다르면 파괴적 연산만 막고 읽기는 한다.</p></div></div>
     <div class="r"><div class="when">트리거</div><div class="what"><b>0개</b><p>감사 트리거는 8월 11일에 없앴다. 서버에 트리거가 하나라도 있으면 폐기 전 DB 를 쓰고 있다는 뜻이다.</p></div></div>
-    <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 18,590행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 삭제한다. 03 절의 행 수도 같은 기준으로 볼 것.</p></div></div>
+    <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 18,591행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 삭제한다. 03 절의 행 수도 같은 기준으로 볼 것.</p></div></div>
     <div class="r"><div class="when">구축</div><div class="what"><b>schema-calendar.sql 한 번</b><p>서버는 처음 세우므로 마이그레이션 파일은 쓰지 않는다. migrate-*.sql 은 이미 선 DB 를 옮길 때만 쓴다.</p></div></div>
     <div class="r"><div class="when">백업</div><div class="what"><b>backup-taskmgr -Install · restore-taskmgr</b><p>주 1회 백업을 등록하고 첫 회차를 복구해 확인한다. 절차는 deploy/README.md 의 복구 절.</p></div></div>
   </div>
@@ -197,7 +197,7 @@
   <h3>과제 4</h3>
   
       <details id="t-project">
-        <summary><span class="mono name">project</span><span class="pk">PK id</span><span class="cnt">14행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">project</span><span class="pk">PK id</span><span class="cnt">14행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">과제 마스터. DB 원본. section/status=코드테이블+FK, is_active=소프트삭제.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">id</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · 자동 증가</td></tr><tr><td><span class="col">uid</span></td><td><span class="ty">char(36)</span></td><td class="desc-td"><span class="chip uq">UNIQUE</span> · 필수 · 기본 uuid()</td></tr><tr><td><span class="col">section</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip fk">FK</span> section_code.name · 참조 중이면 부모를 지울 수 없다 · 필수</td></tr><tr><td><span class="col">customer</span></td><td><span class="ty">varchar(100)</span></td><td class="desc-td"><span class="chip fk">FK</span> customer.name · 참조 중이면 부모를 지울 수 없다 · 필수</td></tr><tr><td><span class="col">project_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">contract_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">common_name</span></td><td><span class="ty">varchar(200)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">start_date</span></td><td><span class="ty">date</span></td><td class="desc-td"></td></tr><tr><td><span class="col">end_date</span></td><td><span class="ty">date</span></td><td class="desc-td"></td></tr><tr><td><span class="col">dev_end_date</span></td><td><span class="ty">date</span></td><td class="desc-td"></td></tr><tr><td><span class="col">status</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip fk">FK</span> status_code.name · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">note</span></td><td><span class="ty">varchar(500)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -207,7 +207,7 @@
         </div>
       </details>
       <details id="t-customer">
-        <summary><span class="mono name">customer</span><span class="pk">PK name</span><span class="cnt">8행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">customer</span><span class="pk">PK name</span><span class="cnt">8행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">발주처 마스터. name=자연키. Admin 관리.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(100)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -217,7 +217,7 @@
         </div>
       </details>
       <details id="t-section_code">
-        <summary><span class="mono name">section_code</span><span class="pk">PK name</span><span class="cnt">3행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">section_code</span><span class="pk">PK name</span><span class="cnt">3행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">구분 코드. name=자연키. 개명=FK CASCADE. Admin 관리.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -227,7 +227,7 @@
         </div>
       </details>
       <details id="t-status_code">
-        <summary><span class="mono name">status_code</span><span class="pk">PK name</span><span class="cnt">4행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">status_code</span><span class="pk">PK name</span><span class="cnt">4행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">상태 코드. name=자연키. 개명=FK CASCADE. Admin 관리.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -239,7 +239,7 @@
   <h3>사용자·조직 3</h3>
   
       <details id="t-app_user">
-        <summary><span class="mono name">app_user</span><span class="pk">PK user_id</span><span class="cnt">89행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">app_user</span><span class="pk">PK user_id</span><span class="cnt">89행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">사용자. 인증은 netcus, 여기는 인가만. 비밀번호 컬럼 없음. 소속 정본은 org_id 하나 — 이름 미러 없음.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · 자동 증가</td></tr><tr><td><span class="col">login_id</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip uq">UNIQUE</span> · 필수</td></tr><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">title</span></td><td><span class="ty">varchar(30)</span></td><td class="desc-td"><span class="chip fk">FK</span> title_code.name · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int unsigned</span></td><td class="desc-td"></td></tr><tr><td><span class="col">org_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip fk">FK</span> org_unit.org_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">view_scope</span></td><td><span class="ty">varchar(20)</span></td><td class="desc-td">필수 · 기본 self · CHECK 1개</td></tr><tr><td><span class="col">edit_role</span></td><td><span class="ty">varchar(20)</span></td><td class="desc-td">필수 · 기본 viewer · CHECK 1개</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -249,7 +249,7 @@
         </div>
       </details>
       <details id="t-org_unit">
-        <summary><span class="mono name">org_unit</span><span class="pk">PK org_id</span><span class="cnt">12행</span><span class="pv">읽기</span></summary>
+        <summary><span class="mono name">org_unit</span><span class="pk">PK org_id</span><span class="cnt">12행</span><span class="pv">읽기·추가·수정</span></summary>
         <div class="body">
           <p class="purpose">조직 트리. PK=org_id(내부 정체성) · name=UNIQUE. 계층 정본은 parent_id 하나 — 이름 미러 없음.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">org_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · 자동 증가</td></tr><tr><td><span class="col">name</span></td><td><span class="ty">varchar(50)</span></td><td class="desc-td"><span class="chip uq">UNIQUE</span> · 필수</td></tr><tr><td><span class="col">parent_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip fk">FK</span> org_unit.org_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -259,7 +259,7 @@
         </div>
       </details>
       <details id="t-title_code">
-        <summary><span class="mono name">title_code</span><span class="pk">PK name</span><span class="cnt">11행</span><span class="pv">읽기</span></summary>
+        <summary><span class="mono name">title_code</span><span class="pk">PK name</span><span class="cnt">11행</span><span class="pv">읽기·추가·수정</span></summary>
         <div class="body">
           <p class="purpose">직급 코드. 표시·정렬 전용 — 권한 판정에 쓰지 않는다.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">name</span></td><td><span class="ty">varchar(30)</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">sort_order</span></td><td><span class="ty">int</span></td><td class="desc-td">필수 · 기본 0</td></tr><tr><td><span class="col">is_active</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 1</td></tr><tr><td><span class="col">created_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3)</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수 · 기본 CURRENT_TIMESTAMP(3) · 수정 시 자동 갱신</td></tr></tbody></table></div>
@@ -271,7 +271,7 @@
   <h3>캘린더 16</h3>
   
       <details id="t-cal_attendance">
-        <summary><span class="mono name">cal_attendance</span><span class="pk">PK user_id,work_date</span><span class="cnt">5,837행</span><span class="pv">전부</span></summary>
+        <summary><span class="mono name">cal_attendance</span><span class="pk">PK user_id,work_date</span><span class="cnt">5,838행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">work_date</span></td><td><span class="ty">date</span></td><td class="desc-td"><span class="chip pk">PK</span></td></tr><tr><td><span class="col">status</span></td><td><span class="ty">varchar(2)</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">overtime</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
@@ -411,7 +411,7 @@
         </div>
       </details>
       <details id="t-cal_user_pref">
-        <summary><span class="mono name">cal_user_pref</span><span class="pk">PK user_id</span><span class="cnt">1행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">cal_user_pref</span><span class="pk">PK user_id</span><span class="cnt">1행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">사용자당 1행 설정 — 커밋 수집 작성자(git/svn) + 보고서 서식. PK=(user_id). 삭제 경로 없음.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">git_author</span></td><td><span class="ty">varchar(120)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">svn_author</span></td><td><span class="ty">varchar(120)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_marker</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 - · CHECK 1개</td></tr><tr><td><span class="col">report_marker_custom</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_indent</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 2 · CHECK 1개</td></tr><tr><td><span class="col">git_commit_body</span></td><td><span class="ty">tinyint(1)</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">report_marker_daily</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 - · CHECK 1개</td></tr><tr><td><span class="col">report_marker_custom_daily</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_indent_daily</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 2 · CHECK 1개</td></tr><tr><td><span class="col">report_marker_weekly</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수 · 기본 - · CHECK 1개</td></tr><tr><td><span class="col">report_marker_custom_weekly</span></td><td><span class="ty">varchar(8)</span></td><td class="desc-td">필수</td></tr><tr><td><span class="col">report_indent_weekly</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 2 · CHECK 1개</td></tr><tr><td><span class="col">report_font_family</span></td><td><span class="ty">varchar(20)</span></td><td class="desc-td">필수 · CHECK 1개</td></tr><tr><td><span class="col">report_font_size</span></td><td><span class="ty">tinyint</span></td><td class="desc-td">필수 · 기본 0 · CHECK 1개</td></tr><tr><td><span class="col">updated_at</span></td><td><span class="ty">datetime(3)</span></td><td class="desc-td">필수</td></tr></tbody></table></div>
@@ -421,7 +421,7 @@
         </div>
       </details>
       <details id="t-cal_user_rev">
-        <summary><span class="mono name">cal_user_rev</span><span class="pk">PK user_id</span><span class="cnt">89행</span><span class="pv">읽기·추가·수정</span></summary>
+        <summary><span class="mono name">cal_user_rev</span><span class="pk">PK user_id</span><span class="cnt">89행</span><span class="pv">전부</span></summary>
         <div class="body">
           <p class="purpose">사용자별 동시성 감시점. 쓰기 첫 문장이 ODKU 로 잡는 행 — 번호 발급도 이 락에 기댄다(H-1). DELETE 금지.</p>
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody><tr><td><span class="col">user_id</span></td><td><span class="ty">smallint unsigned</span></td><td class="desc-td"><span class="chip pk">PK</span> · <span class="chip fk">FK</span> app_user.user_id · 참조 중이면 부모를 지울 수 없다</td></tr><tr><td><span class="col">rev</span></td><td><span class="ty">bigint unsigned</span></td><td class="desc-td">필수 · 기본 0</td></tr></tbody></table></div>
@@ -438,10 +438,10 @@
   <div class="tbl-wrap"><table>
     <thead><tr><th>권한</th><th>표</th></tr></thead>
     <tbody>
-      <tr><td><b>전부</b></td><td class="desc-td"><code>cal_attendance</code> · <code>cal_category</code> · <code>cal_entry</code> · <code>cal_entry_commit</code> · <code>cal_entry_except</code> · <code>cal_report_hours</code> · <code>cal_room</code> · <code>cal_task_hours</code> · <code>cal_todo</code> · <code>cal_todo_day_note</code></td></tr>
-      <tr><td><b>읽기·추가·수정</b></td><td class="desc-td"><code>app_user</code> · <code>cal_report_daily</code> · <code>cal_report_weekly</code> · <code>cal_user_pref</code> · <code>cal_user_rev</code> · <code>customer</code> · <code>project</code> · <code>section_code</code> · <code>status_code</code><br><span class="note">cal_user_rev 는 단조증가 카운터라 지우면 안 되고, 보고 기록은 보낸 사실이라 지우지 않는다.</span></td></tr>
+      <tr><td><b>전부</b></td><td class="desc-td"><code>app_user</code> · <code>cal_attendance</code> · <code>cal_category</code> · <code>cal_entry</code> · <code>cal_entry_commit</code> · <code>cal_entry_except</code> · <code>cal_report_hours</code> · <code>cal_room</code> · <code>cal_task_hours</code> · <code>cal_todo</code> · <code>cal_todo_day_note</code> · <code>cal_user_pref</code> · <code>cal_user_rev</code> · <code>customer</code> · <code>project</code> · <code>section_code</code> · <code>status_code</code></td></tr>
+      <tr><td><b>읽기·추가·수정</b></td><td class="desc-td"><code>cal_report_daily</code> · <code>cal_report_weekly</code> · <code>org_unit</code> · <code>title_code</code><br><span class="note">cal_user_rev 는 단조증가 카운터라 지우면 안 되고, 보고 기록은 보낸 사실이라 지우지 않는다.</span></td></tr>
       <tr><td><b>읽기·추가</b></td><td class="desc-td"><code>cal_migration_log</code></td></tr>
-      <tr><td><b>읽기</b></td><td class="desc-td"><code>cal_schema_meta</code> · <code>org_unit</code> · <code>title_code</code></td></tr>
+      <tr><td><b>읽기</b></td><td class="desc-td"><code>cal_schema_meta</code></td></tr>
       
     </tbody>
   </table></div>

@@ -11,7 +11,7 @@
   "views": 0,
   "grants": [
    "GRANT USAGE ON *.* TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`app_user` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`app_user` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_attendance` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_category` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_entry_commit` TO `taskmgr_app`@`%`",
@@ -26,20 +26,20 @@
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_task_hours` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_todo_day_note` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_todo` TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`cal_user_pref` TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`cal_user_rev` TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`customer` TO `taskmgr_app`@`%`",
-   "GRANT SELECT ON `taskmgr`.`org_unit` TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`project` TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`section_code` TO `taskmgr_app`@`%`",
-   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`status_code` TO `taskmgr_app`@`%`",
-   "GRANT SELECT ON `taskmgr`.`title_code` TO `taskmgr_app`@`%`"
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_user_pref` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_user_rev` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`customer` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`org_unit` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`project` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`section_code` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`status_code` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskmgr`.`title_code` TO `taskmgr_app`@`%`"
   ],
   "users": [
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-10T07:31:45.589Z",
+  "dumpedAt": "2026-09-28T00:34:32.031Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -227,7 +227,7 @@
    "rows": 5837,
    "comment": "날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.",
    "coll": "utf8mb4_0900_ai_ci",
-   "exact": 5837,
+   "exact": 5838,
    "columns": [
     {
      "name": "user_id",
@@ -965,7 +965,7 @@
   {
    "name": "cal_report_daily",
    "engine": "InnoDB",
-   "rows": 0,
+   "rows": 1,
    "comment": "캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 0,
