@@ -264,6 +264,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:customer.intro -->
 <p>과제가 참조하는 발주처 목록입니다. 앱의 <b>발주처 관리</b> 화면에서 추가·이름변경·숨김을 합니다.</p>
+<p class="sub"><b>왜 번호(id)가 아니라 이름(<code>name</code>)이 기본키인가.</b> 세 조건을 다 만족하기 때문입니다 — ① 값을 <b>우리 관리 화면에서</b> 정합니다(남이 발급하는 값이 아닙니다) ② 참조하는 표가 <code>project</code> <b>하나뿐</b>이라 전파 범위가 좁습니다 ③ 개명이 <code>ON UPDATE CASCADE</code> 로 <b>실제 전파됩니다</b>(격리 DB 실측: 발주처 개명 → 참조 과제 5건 전량 자동 갱신). 그래서 발주처 이름을 고치면 과제 표기가 한 번에 따라오는데, 이것은 결함이 아니라 <b>기능</b>입니다 — 번호 키로 바꾸면 그 동작을 앱 코드로 다시 만들어야 합니다. "외래키 대상은 id 로" 라는 일반 규칙의 근거(보조 인덱스에 기본키가 복제됨)는 이 표 규모(8행·자식 14행)에서 1.4 KB 입니다. 같은 규칙을 적용해 <b>번호로 바꾼 표</b>는 <code>app_user</code>·<code>org_unit</code> 입니다 — 그 둘은 조건이 깨졌기 때문이고, 이유는 각 표 설명과 <a href="#key-policy">키 정책 요약</a>에 있습니다.</p>
 <!-- /PROSE:customer.intro -->
 
 <div class="tw">
@@ -286,6 +287,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:codes.intro -->
 <p>두 표는 <b>구조가 완전히 같습니다.</b> 구분(일반계약·선진행·사업부관리)과 상태(진행중·종료·1차 납품완료·미정)를 담고, 앱의 <b>구분·상태 관리</b> 화면에서 다룹니다.</p>
+<p class="sub"><b>기본키가 이름(<code>name</code>)인 이유</b>는 <code>customer</code> 와 같습니다 — 우리가 정하는 값이고, 참조는 <code>project.section</code>/<code>project.status</code> 한 곳이며, 개명이 <code>ON UPDATE CASCADE</code> 로 실제 전파됩니다(실측: 구분 개명 → 참조 과제 9건 전량 갱신). 값이 3~4개뿐인 표라 번호 키를 두면 조인만 하나 늘고 얻는 것이 없습니다. 예전 <code>ENUM</code> 시절에는 값 하나를 바꾸려면 스키마를 고쳐 앱을 다시 배포해야 했는데, 행이 되면서 개명이 앱 화면의 일이 됐습니다.</p>
 <!-- /PROSE:codes.intro -->
 
 <h3><span class="tname">section_code</span> <span class="ko">구분 코드</span></h3>
@@ -319,6 +321,18 @@ footer p{margin:0 0 4px; max-width:none}
 </div>
 
 <!-- PROSE:codes.after -->
+<div class="callout" id="key-policy">
+<h4>키 정책 요약 — 왜 어떤 표는 이름이 기본키이고 어떤 표는 번호인가</h4>
+<p>"외래키 대상 기본키는 varchar 가 아니라 id 로" 라는 검토 지적(2026-08-23)은 옳고 근거도 사실입니다. 그래서 일반론으로 정하지 않고 <b>표마다 개명을 실제로 실행해 보고</b> 판정했습니다. 구분선은 타입이 아니라 셋입니다 — <b>값이 바뀔 때 전파되는가</b>(CASCADE 가 실제로 도는가) · <b>우리가 값을 소유하는가</b> · <b>자식 전파 범위가 좁은가</b>.</p>
+<table class="tw"><thead><tr><th>표</th><th>기본키</th><th>판정</th><th>근거(실측)</th></tr></thead><tbody>
+<tr><td class="col">customer · section_code · status_code · title_code</td><td class="type">이름(name)</td><td><b>자연키 유지</b></td><td class="note">세 조건 통과. 개명 → 참조 행 전량 자동 갱신(발주처 5건·구분 9건·직급 41명). 키 복제 비용 넷 합쳐 최대 약 16 KB(InnoDB 페이지 한 장)</td></tr>
+<tr><td class="col">org_unit</td><td class="type">번호(org_id)</td><td><b>번호로 전환</b>(08-24)</td><td class="note">자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 하위 조직 있는 본부 개명이 ERROR 1451</td></tr>
+<tr><td class="col">app_user</td><td class="type">번호(user_id)</td><td><b>번호로 전환</b>(08-24)</td><td class="note">login_id 는 netcus 발급(소유 아님) · cal_* 13표가 참조(범위 넓음) · 다중경로라 RESTRICT(전파 없음). 인덱스 실측 +69%</td></tr>
+<tr><td class="col">project</td><td class="type">번호(id) + uid</td><td>대리키</td><td class="note">같은 이름의 과제가 정당하게 반복되므로 이름은 키가 될 수 없음. uid 는 캘린더가 과제를 가리키는 외부 안정 참조키</td></tr>
+<tr><td class="col">cal_room · cal_schema_meta</td><td class="type">값(name / k)</td><td>자연키 유지</td><td class="note">값으로 주소지정되는 표. 참조하는 표가 없어 전파 문제 없음</td></tr>
+</tbody></table>
+<p class="sub">유일성·폭은 구분선이 아닙니다 — <code>customer.name</code>(100자)이 <code>app_user.login_id</code>(50자)보다 넓은데 자연키로 남았고, login_id 는 유일한데도 번호로 갔습니다. 조건표·실측·전문가 근거(양쪽 모두) 원문: <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> §5.6.</p>
+</div>
 <p class="sub">예전에는 이 값들을 컬럼 정의(<code>ENUM</code>) 안에 박아 두어 바꾸려면 스키마를 고치고 앱을 다시 배포해야 했습니다. 지금은 표의 <b>행</b>이라 발주처와 똑같이 앱에서 다룹니다.</p>
 <!-- /PROSE:codes.after -->
 </section>
@@ -383,6 +397,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:app_user.intro -->
 <p>사내 임직원 한 명이 한 행입니다. 위젯은 로그인 성공 직후 이 표를 한 번 읽고, 그 결과로 화면과 편집 가능 여부를 정합니다.</p>
+<p class="sub"><b>왜 로그인 ID 가 아니라 번호(<code>user_id</code>)가 기본키인가.</b> 코드표들이 이름을 키로 남긴 세 조건이 여기서는 전부 깨집니다 — <code>login_id</code> 는 <b>netcus 가 발급</b>하는 값이라 우리가 소유하지 않고, 개인 일정 표 <code>cal_*</code> 13개가 참조해 <b>전파 범위가 넓으며</b>, 참조가 다중경로라 CASCADE 를 걸 수 없어 RESTRICT 만 남아 <b>개명이 ERROR 1451</b> 이었습니다. 게다가 규모가 달라 합성 데이터 실측으로 login_id 를 키로 쓰면 인덱스가 <b>+69%</b>(43.23 MB vs 25.59 MB)였습니다. "외래키 대상은 id 로" 라는 지적이 <b>실제로 무는 표</b>가 바로 이 표라 여기를 번호 키로 바꿨고(2026-08-24), login_id 는 UNIQUE 컬럼으로 남아 로그인 입구 역할만 합니다. <a href="#key-policy">키 정책 요약</a>.</p>
 <!-- /PROSE:app_user.intro -->
 
 <div class="tw">
@@ -437,6 +452,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:org_unit.intro -->
 <p>본부·팀 하나가 한 행이고, <code>parent_id</code>로 계층을 만듭니다. 조회 범위 계산이 이 트리를 타고 내려갑니다.</p>
+<p class="sub"><b>왜 이 표만 번호(<code>org_id</code>)가 기본키인가.</b> 코드표들과 달리 이 표는 <b>자기 자신을 참조</b>합니다(<code>parent_id</code>). InnoDB 는 자기참조 외래키에 <code>ON UPDATE CASCADE</code> 를 <b>수행하지 않아서</b>, 이름이 기본키이던 때 하위 조직이 있는 본부를 개명하면 <code>ERROR 1451</code> 로 막혔습니다(리프 조직 개명은 됐습니다 — 실측). "값이 바뀔 때 전파되는가" 조건이 깨진 것이라 번호 키로 옮겼고, 이제 계층은 <code>parent_id</code> 가 잡고 개명은 <code>name</code> 한 컬럼 갱신으로 끝납니다. <a href="#key-policy">키 정책 요약</a>.</p>
 <p class="sub"><b>2026-08-24에 이 표의 키가 <code>name</code>에서 번호(<code>org_id</code>)로 바뀌었습니다.</b> 같은 마이그레이션이 <b>구 컬럼 <code>parent</code>(상위 조직 이름)를 지웠습니다</b> — 자기참조 외래키 <code>fk_org_parent</code>와 인덱스 <code>ix_org_parent</code>도 함께 사라졌습니다. <b>계층을 가리키는 길은 <code>parent_id</code> 하나뿐이고, 조직 이름을 담은 곳은 <code>org_unit.name</code> 한 곳뿐입니다.</b></p>
 <!-- /PROSE:org_unit.intro -->
 
@@ -475,6 +491,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:title_code.intro -->
 <p>구조가 <code>section_code</code>·<code>status_code</code>와 사실상 같습니다. <b>권한 판정에는 절대 쓰이지 않습니다.</b></p>
+<p class="sub"><b>기본키가 이름(<code>name</code>)인 이유</b>도 코드표와 같습니다 — 우리가 정하는 값, 참조는 <code>app_user.title</code> 한 곳, 개명은 CASCADE 로 실제 전파(실측: 직급 개명 → 사용자 41명 전량 갱신). 권한에 쓰이지 않으므로 값이 바뀌어도 인가에는 영향이 없습니다. <a href="#key-policy">키 정책 요약</a>.</p>
 <!-- /PROSE:title_code.intro -->
 
 <div class="tw">

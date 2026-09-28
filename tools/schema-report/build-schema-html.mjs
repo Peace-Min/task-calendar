@@ -33,6 +33,43 @@ const PURPOSE_FALLBACK = {
   status_code: '과제 상태 코드값. name 이 자연키이고 project.status 가 참조한다.',
 };
 const purpose = (t) => t.comment || PURPOSE_FALLBACK[t.name] || '';
+// 표별 「키」 한 줄 — 왜 이 표는 이름이 PK 이고 저 표는 번호인가. 근거·실측은 db/CALENDAR-TABLE-DESIGN.md §5.6.
+//   구분선은 타입(varchar/int)이 아니라 ② 값이 바뀔 때 전파되는가(FK ON UPDATE CASCADE 가 실제로 도는가)
+//   ③ 우리가 값을 소유하는가 ⑤ 자식 전파 범위가 좁은가 — 셋이다. 유일성·폭은 구분선이 아니다(customer 가 login_id 보다 두 배 넓은데 자연키로 남았다).
+const KEY_NOTE = {
+  customer:     '이름(name)이 기본키인 이유 — 값을 우리 관리 화면에서 정하고(③), 참조하는 표가 project 하나뿐이며(⑤), 개명이 FK ON UPDATE CASCADE 로 실제 전파된다(② · 실측: 참조 과제 5건 전량 자동 갱신). 개명 전파는 결함이 아니라 기능이다 — 번호 키로 바꾸면 그 동작을 코드로 다시 만들어야 한다. 보조 인덱스에 키가 복제되는 비용은 이 표 규모에서 1.4 KB.',
+  section_code: '이름(name)이 기본키인 이유 — customer 와 같다: 우리가 정하는 값(③) · 참조는 project.section 한 곳(⑤) · 개명 CASCADE 실측 성공(② · 참조 과제 9건). 예전 ENUM 시절엔 값을 바꾸려면 스키마를 고쳐야 했는데, 행이 되면서 개명이 앱 화면의 일이 됐다.',
+  status_code:  '이름(name)이 기본키인 이유 — section_code 와 같다(③⑤ 충족 · 개명 CASCADE 실측 성공). 규모 4행·자식 14행이라 키 복제 비용은 0.7 KB.',
+  title_code:   '이름(name)이 기본키인 이유 — 코드표 규칙과 같다: 우리가 정하는 값(③) · 참조는 app_user.title 한 곳(⑤) · 개명 CASCADE 실측 성공(② · 사용자 41명 전량 갱신). 권한 판정에는 쓰지 않으므로 값이 바뀌어도 인가에 영향이 없다.',
+  org_unit:     '번호(org_id)가 기본키인 이유 — 이름(name)이 PK 이던 때 실측: 하위 조직이 있는 본부를 개명하면 ERROR 1451. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 조건 ②가 깨진다. 2026-08-24 에 번호 키로 옮기고 계층은 parent_id 만 잡는다 — 개명은 name 한 컬럼 갱신으로 끝난다.',
+  app_user:     '번호(user_id)가 기본키인 이유 — login_id 는 netcus 가 발급하는 값이라 우리가 소유하지 않고(③ 실패), cal_* 13표·FK 9개가 참조해 전파 범위가 넓으며(⑤ 실패), 다중경로라 RESTRICT 만 걸려 개명이 ERROR 1451(② 실패). 합성 데이터 실측으로 login_id PK 는 user_id PK 보다 인덱스가 +69%(43.23 MB vs 25.59 MB). 검토자 지적(대리키 선호)이 실제로 무는 표라 여기만 전환했다.',
+  project:      '번호(id)가 기본키이고 uid 가 외부 안정 참조키인 이유 — 같은 발주처·같은 사업명이 정당하게 반복되므로 이름은 키가 될 수 없다. id 는 내부용, uid 는 캘린더가 과제를 가리킬 때 쓰는 값이라 한 번 발급하면 바뀌지 않는다.',
+  cal_room:     '(user_id, name) 복합키인 이유 — 값으로 주소지정되는 표다. 다른 표가 이 표를 참조하지 않으므로 개명 전파 문제 자체가 없다(§5.6.7).',
+  cal_schema_meta: '문자열 k 가 키인 이유 — 설정 행 몇 개짜리 키·값 표다. 참조하는 표가 없고 값이 바뀌지 않는다(§5.6.7).',
+};
+const KEY_POLICY_HTML = `
+  <details class="policy" id="key-policy">
+    <summary><span class="ptitle">키 정책 — 왜 어떤 표는 <b>이름</b>이 기본키이고 어떤 표는 <b>번호</b>인가</span></summary>
+    <div class="body">
+      <p>"외래키 대상 기본키는 varchar 가 아니라 id 로" 라는 지적(2026-08-23)은 옳고, 그 근거(InnoDB 는 보조 인덱스마다 기본키를 복제한다)도 사실이다. 그래서 <b>일반론으로 판단하지 않고 표마다 개명을 실제로 실행해 보고</b> 판정했다. 결과: 구분선은 타입이 아니라 아래 셋이다.</p>
+      <ol>
+        <li><b>② 값이 바뀔 때 전파되는가</b> — FK <code>ON UPDATE CASCADE</code> 가 <i>실제로</i> 도는가. 전파가 없으면 그 값은 영원히 못 바꾼다.</li>
+        <li><b>③ 우리가 값을 소유하는가</b> — 남(netcus)이 발급하는 값이면 ②를 우리가 통제하지 못한다.</li>
+        <li><b>⑤ 자식 전파 범위가 좁은가</b> — 넓으면 ②가 성립해도 개명 1회의 비용과 위험이 커진다.</li>
+      </ol>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>표</th><th>기본키</th><th>판정</th><th>근거(실측)</th></tr></thead>
+        <tbody>
+          <tr><td><code>customer</code> · <code>section_code</code> · <code>status_code</code> · <code>title_code</code></td><td>이름(name)</td><td><b>자연키 유지</b></td><td>②③⑤ 전부 통과. 격리 DB 에서 개명 실행 → 참조 행 전량 자동 갱신(발주처 5건 · 구분 9건 · 직급 41명). 키 복제 비용은 넷을 합쳐 최대 약 16 KB = InnoDB 페이지 한 장.</td></tr>
+          <tr><td><code>org_unit</code></td><td>번호(org_id)</td><td><b>대리키 전환</b>(2026-08-24)</td><td>② 실패 — 자기참조 FK 에 InnoDB 가 CASCADE 를 수행하지 않아 하위 조직이 있는 본부 개명이 ERROR 1451.</td></tr>
+          <tr><td><code>app_user</code></td><td>번호(user_id)</td><td><b>대리키 전환</b>(2026-08-24)</td><td>②③⑤ 전부 실패 — login_id 는 netcus 발급 · cal_* 13표가 참조 · 다중경로라 RESTRICT. 인덱스 실측 +69%(43.23 MB vs 25.59 MB). 지적이 실제로 무는 표.</td></tr>
+          <tr><td><code>project</code></td><td>번호(id) + uid</td><td>대리키</td><td>같은 이름의 과제가 정당하게 반복된다(TABLE-DESIGN §4). uid 는 캘린더가 과제를 가리키는 외부 안정 참조키.</td></tr>
+          <tr><td><code>cal_room</code> · <code>cal_schema_meta</code></td><td>값(name / k)</td><td>자연키 유지</td><td>값으로 주소지정되는 표. 참조하는 표가 없어 전파 문제가 없다.</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">유일성과 폭은 구분선이 아니다 — <code>customer.name</code>(100자)은 <code>app_user.login_id</code>(50자)보다 두 배 넓은데 자연키로 남았고, login_id 는 유일성이 완벽한데도 강등됐다. 조건표·실측·전문가 근거(양쪽) 원문: <a href="CALENDAR-TABLE-DESIGN.md">db/CALENDAR-TABLE-DESIGN.md</a> §5.6.</p>
+    </div>
+  </details>`;
 // 표 주석의 첫 문장만 — 목록에서는 한 줄이면 된다
 const firstSentence = (s) => { const m = /^(.+?[.。])\s/.exec(s + ' '); return (m ? m[1] : s).replace(/\s*[.。]$/, ''); };
 
@@ -94,6 +131,7 @@ function tableDetails(t) {
         <summary><span class="mono name">${esc(t.name)}</span><span class="pk">PK ${esc(pk ? pk.cols : '없음')}</span><span class="cnt">${num(t.exact)}행</span><span class="pv">${esc(privWord(t.name))}</span></summary>
         <div class="body">
           ${purpose(t) ? `<p class="purpose">${esc(purpose(t))}</p>` : ''}
+          ${KEY_NOTE[t.name] ? `<p class="keynote"><b>키</b> ${esc(KEY_NOTE[t.name])} <a href="#key-policy">키 정책 ↗</a></p>` : ''}
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody>${rows}</tbody></table></div>
           ${idx.length ? `<p class="note">인덱스: ${idx.map((i) => (i.unique ? 'UNIQUE ' : '') + '<code>' + esc(i.cols) + '</code>').join(' · ')}</p>` : ''}
           ${chks}
@@ -216,6 +254,14 @@ const html = `<!DOCTYPE html>
   details .body .tbl-wrap{box-shadow:none}
   details .body table{min-width:0}
   .note{font-size:12.5px; color:var(--faint); margin:10px 0 0; font-style:italic}
+  .keynote{font-size:13px; color:var(--ink); margin:0 0 12px; padding:8px 10px; border-left:3px solid var(--faint); background:rgba(127,127,127,.06)}
+  .keynote b{margin-right:6px}
+  details.policy{margin:8px 0 14px; border:1px solid var(--line, #ddd); border-radius:8px}
+  details.policy > summary{display:block; padding:10px 14px; cursor:pointer; font-size:14.5px}
+  details.policy > summary .ptitle{display:inline; white-space:normal}
+  details.policy > summary .ptitle b{display:inline; margin:0; padding:0}
+  details.policy .body{padding:6px 16px 14px}
+  details.policy ol{margin:6px 0 10px 18px} details.policy li{margin:3px 0}
   .toolbar{display:flex; gap:8px; justify-content:flex-end; margin:0 0 6px}
   .toolbar button{font:600 12px/1 var(--sans); color:var(--accent); background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:6px 12px; cursor:pointer}
   .toolbar button:hover{background:var(--accent-soft)}
@@ -313,6 +359,7 @@ const html = `<!DOCTYPE html>
 <section>
   <h2><span class="idx">03</span>테이블 상세</h2>
   <p class="sub">이름 · PK · 개발 DB 행 수 · 앱 계정 권한 순이다. 항목을 누르면 컬럼과 제약이 펼쳐진다. 테이블 설명은 DB 의 테이블 주석 그대로다.</p>
+  ${KEY_POLICY_HTML}
   <div class="toolbar"><button type="button" data-open="1">모두 펼치기</button><button type="button" data-open="0">모두 접기</button></div>
   <h3>과제 ${PROJECT.length}</h3>
   ${PROJECT.map((n) => tableDetails(byName[n])).join('')}
