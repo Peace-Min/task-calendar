@@ -249,6 +249,23 @@ const checks = {
     assert.ok(/if\(\$actVersion -ne \$expVersion\)\{ Die /.test(maskPs(ps)),
       '실제 schema_version 을 파일 값과 대조해 멈추는 자리가 사라졌다');
   },
+  // ⑪ 어떤 종료코드로 끝나든 보고서가 남는다. 2026-09-29 실측: 사전 점검 실패(3)는 [1] 백업 단계에 못 미쳐 보고서
+  // 폴더가 비어 있었고, 사용자에게는 "아무것도 결과물이 안 나오는" 것으로 보였다. 그래서 (a) -BackupDir 확정 직후 폴더를
+  // 만들고 reportDir 로 잡는다 (b) 그래도 없으면 SaveReport 가 스크립트 폴더로 떨어진다 (c) Finish 는 실패에 -FAILED 를 붙인다.
+  reportAlways(ps) {
+    const m = maskPs(ps);
+    const iResolve = m.indexOf('$BackupDir      = FullPath $BackupDir');
+    const iEarly = m.indexOf('if(Test-Path -LiteralPath $BackupDir){ $script:reportDir = $BackupDir }');
+    const iStep1 = m.indexOf('Step 1 ');
+    assert.ok(iResolve > 0 && iEarly > iResolve && iStep1 > iEarly,
+      '보고서 폴더(reportDir)를 -BackupDir 확정 직후·[1] 백업 전에 잡는 줄이 없다 — 사전 점검 실패(3)·취소(2)가 보고서 없이 끝난다');
+    assert.ok(/\$dir = \$script:reportDir\s*\n\s*if\(-not \$dir\)\{ \$dir = Split-Path -Parent \$PSCommandPath \}/.test(m),
+      'SaveReport 의 스크립트 폴더 대체가 사라졌다 — 백업 폴더를 못 만들면 보고서가 없다');
+    assert.ok(!/if\(-not \$script:reportDir\)\{ return \}/.test(m),
+      'SaveReport 가 reportDir 이 비면 조용히 돌아간다 — 그 경로가 바로 "결과물이 안 나오는" 경로다');
+    assert.ok(/if\(\$code -eq \$EXIT_OK\)\{ SaveReport "" \} else \{ SaveReport "-FAILED" \}/.test(m),
+      'Finish 가 실패·취소 종료에 -FAILED 보고서를 남기지 않는다');
+  },
 };
 
 // ══ ① .cmd ══════════════════════════════════════════════════════════════
@@ -302,6 +319,7 @@ test('setup-taskcalendar ⑥ FK 검사 끄고 넣고 다시 켬 · 고아 행 6�
 test('setup-taskcalendar ⑦ 스키마 치환 \\btaskmgr\\. — 두 파일만 · 05-grants 는 대상 DB 선택', () => checks.schemaSubst(psSrc));
 test('setup-taskcalendar ⑧ 대상 DB 가 있으면 -Force 없이는 멈춤 · DROP DATABASE 는 -Force 가지 안', () => checks.targetGuard(psSrc));
 test('setup-taskcalendar ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다', () => checks.versionFromFile(psSrc));
+test('setup-taskcalendar ⑪ 어떤 종료코드로 끝나든 보고서가 남는다(사전 점검 실패·취소 포함)', () => checks.reportAlways(psSrc));
 
 // ══ 실물 대조 — 스크립트가 기대는 파일 형식이 실제 파일과 맞는가 ═════════
 test('setup-taskcalendar ⑦ 실물: \\btaskmgr\\. 치환이 두 권한 파일의 스키마만 바꾸고 계정 이름은 남긴다', () => {
@@ -334,6 +352,13 @@ test('setup-taskcalendar ⑩ 변이: 01-schema-users.sql 과 schema-calendar.sql
   const m = lines.join('\n');
   assert.notStrictEqual(m, psSrc);
   assert.throws(() => checks.order(m), /단계 순서가 틀렸다/);
+});
+
+test('setup-taskcalendar ⑩ 변이: 이른 reportDir 잡기를 지우거나 SaveReport 가 빈 reportDir 에 돌아가면 ⑪ 이 잡는다', () => {
+  assert.throws(() => checks.reportAlways(mutate(psSrc,
+    'if(Test-Path -LiteralPath $BackupDir){ $script:reportDir = $BackupDir }\n', '')), /사전 점검 실패\(3\)/);
+  assert.throws(() => checks.reportAlways(mutate(psSrc,
+    '  $dir = $script:reportDir\n', '  if(-not $script:reportDir){ return }\n  $dir = $script:reportDir\n')), /조용히 돌아간다/);
 });
 
 test('setup-taskcalendar ⑩ 변이: 명령줄 비번 · 이동 표 확대 · 05 치환 · Force 밖 DROP · 박힌 버전을 각각 잡는다', () => {

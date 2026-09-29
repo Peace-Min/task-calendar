@@ -41,7 +41,7 @@
 
 ## 3. 다음 할 일 (우선순위순)
 
-1. **폐쇄망 PC 에서 `setup-taskcalendar.cmd` 실행**(사용자) → 결과 보고서 확인 → `DeployConfig.DbName=taskcalendar` 로 빌드 → 본인 XML 가져오기(파일럿 리허설). 저장소 기본 `DbName` 을 바꿀지는 사용자 결정 대기.
+1. **폐쇄망 PC 에서 `setup-taskcalendar.cmd` 실행**(사용자) → 결과 보고서 확인(2026-09-29: 사전 점검 실패(3)·취소(2)도 `-FAILED` 보고서를 남기도록 고침 — 그 전엔 [1] 단계 전 종료는 파일이 하나도 없었다. 파일은 `distsetup-taskcalendarackup`; 이 워크트리는 아직 미푸시라 폐쇄망에 가려면 푸시 또는 수동 복사가 필요) → `DeployConfig.DbName=taskcalendar` 로 빌드 → 본인 XML 가져오기(파일럿 리허설). 저장소 기본 `DbName` 을 바꿀지는 사용자 결정 대기.
 2. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
 3. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-23 현재 본 저장소 미푸쉬 커밋 5건: §3.4-A·B·C-1차 + 문서 2건).
 4. 릴리스 뒤 여지: 서열을 숫자로 직접 입력해 옮기는 방식(호스트 계약 변경 필요) · **코드 품질 조사 §3.4-C 보류 5건**(1 주간 복사본 시간 블록 · 8 gitCommitBody 분리 · 3 「기타」 정규화 · 6 포함 항목 DB 이관(v13) · 5 레거시 필드 — [QUALITY-SWEEP-2026-09-18.md](QUALITY-SWEEP-2026-09-18.md) §3.4-C 하단). 2026-09-23 사용자가 "지금 불필요, 필요할 때 요청"으로 보류. 6 은 스키마 v13 이라 요청 시 릴리스 창과 묶는다.

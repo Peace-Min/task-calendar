@@ -23,6 +23,7 @@
     [4] 권한 — create-app-user.sql · grants-calendar.sql(두 파일의 `taskmgr.` 를 대상 DB 로 바꾼 임시 사본) ·
         05-grants.sql(DATABASE() 를 쓰므로 원본 그대로, 대상 DB 를 선택한 채 실행) → SHOW GRANTS 대조
     [5] 보고서 — 화면에 찍힌 모든 줄을 <BackupDir>\setup-taskcalendar-<시각>.txt 로 남긴다.
+        (실패·취소·사전 점검 중단도 남긴다 — 이름 끝에 -FAILED. 백업 폴더를 못 만들면 이 스크립트 옆에 쓴다.)
 
   --- EXITCODES (ASCII; this block must match line-for-line in .ps1 and .cmd) ---
     0 ok - taskcalendar built and every verification passed
@@ -142,8 +143,12 @@ function Cleanup(){
   $script:tempFiles.Clear()
 }
 function SaveReport([string]$suffix){
-  if(-not $script:reportDir){ return }
-  $p = Join-Path $script:reportDir ("setup-taskcalendar-" + $script:ts + $suffix + ".txt")
+  # 보고서 폴더는 -BackupDir 가 확정되는 즉시 잡는다(아래 참조). 그 전에(인자 검증에서) 죽으면 스크립트 폴더에 남긴다 —
+  # 어떤 종료코드로 끝나든 "화면에 찍힌 것" 이 파일로 남아야 폐쇄망에서 결과를 가져올 수 있다(2026-09-29 실측: 사전 점검
+  # 실패 = 3 은 [1] 백업 단계에 못 미쳐 보고서 폴더가 비어 있었고, 그래서 파일이 하나도 안 남았다).
+  $dir = $script:reportDir
+  if(-not $dir){ $dir = Split-Path -Parent $PSCommandPath }
+  $p = Join-Path $dir ("setup-taskcalendar-" + $script:ts + $suffix + ".txt")
   try {
     Write-Host "[*] 보고서: $p"
     $script:logLines.Add("[*] 보고서: $p")
@@ -222,6 +227,9 @@ if(-not $CompanyDataDir){ $CompanyDataDir = Join-Path $scriptDir "..\..\..\taskm
 if(-not $BackupDir){      $BackupDir      = Join-Path $scriptDir "..\..\dist\setup-taskcalendar\backup" }
 $CompanyDataDir = FullPath $CompanyDataDir
 $BackupDir      = FullPath $BackupDir
+# 보고서 폴더를 지금 잡는다 — 사전 점검(종료코드 3)·취소(2)로 끝나도 보고서가 남도록. 못 만들면 SaveReport 가 스크립트 폴더로 떨어진다.
+if(-not (Test-Path -LiteralPath $BackupDir)){ try { New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null } catch {} }
+if(Test-Path -LiteralPath $BackupDir){ $script:reportDir = $BackupDir }
 
 # --- 도구: mysql.exe / mysqldump.exe (init-calendar.ps1 · backup-taskmgr.ps1 과 같은 방식) ---
 $mysql     = Join-Path $BaseDir "bin\mysql.exe"
@@ -446,7 +454,7 @@ try {
     try { New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null } catch {}
   }
   if(-not (Test-Path -LiteralPath $BackupDir)){ Die "백업 폴더를 만들 수 없습니다: $BackupDir" }
-  $script:reportDir = $BackupDir
+  $script:reportDir = $BackupDir   # (위에서 이미 잡았지만, 여기서 만든 경우를 위해 한 번 더)
   $srcDump = Join-Path $BackupDir ("$SourceDb-" + $script:ts + ".sql")
   DumpDb $SourceDb $srcDump
   $tgtDump = $null

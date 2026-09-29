@@ -102,7 +102,7 @@ setup-taskcalendar.cmd                                              # 같은 PC 
 setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:	askmgr-company-data"
 ```
 
-하는 일(첫 실패에서 멈춤 · 원본에는 SELECT·mysqldump 만): ① 사전 점검(도구·접속·DDL 6파일·원본 7표·대상 부재·앱 계정) → 요약 후 `Y` ② 원본 덤프(안전망) ③ 구조: CREATE DATABASE → DDL 3개 → 표 23·`schema_version` 대조(값은 `schema-calendar.sql` 에서 읽음) ④ 데이터: FK 순서로 7표 `INSERT … SELECT`(**id·uid 보존**, 컬럼은 원본∩대상 교집합, 과제 트랙 4표 시각 **KST→UTC −9h**, `cal_user_rev` 사용자별 시딩) → 고아 0·행 수 일치·AUTO_INCREMENT 확인 ⑤ 권한 3파일(`taskmgr.` → 대상 스키마 치환 · `05-grants.sql` 은 DATABASE()) → SHOW GRANTS 표 23개 대조 ⑥ 보고서 파일. 종료코드 0/1/2/3(성공/실패/취소/사전점검). 대상이 이미 있으면 멈추고, `-Force` 면 백업 뒤 DROP·재구축(운영 전환 뒤에는 금지).
+하는 일(첫 실패에서 멈춤 · 원본에는 SELECT·mysqldump 만): ① 사전 점검(도구·접속·DDL 6파일·원본 7표·대상 부재·앱 계정) → 요약 후 `Y` ② 원본 덤프(안전망) ③ 구조: CREATE DATABASE → DDL 3개 → 표 23·`schema_version` 대조(값은 `schema-calendar.sql` 에서 읽음) ④ 데이터: FK 순서로 7표 `INSERT … SELECT`(**id·uid 보존**, 컬럼은 원본∩대상 교집합, 과제 트랙 4표 시각 **KST→UTC −9h**, `cal_user_rev` 사용자별 시딩) → 고아 0·행 수 일치·AUTO_INCREMENT 확인 ⑤ 권한 3파일(`taskmgr.` → 대상 스키마 치환 · `05-grants.sql` 은 DATABASE()) → SHOW GRANTS 표 23개 대조 ⑥ 보고서 파일 — **어떻게 끝나든** `distsetup-taskcalendarackupsetup-taskcalendar-<시각>[-FAILED].txt` 로 남는다(사전 점검 실패·취소 포함 · 폴더를 못 만들면 스크립트 옆). 종료코드 0/1/2/3(성공/실패/취소/사전점검). 결과를 넘길 때는 이 파일을 보낸다. 대상이 이미 있으면 멈추고, `-Force` 면 백업 뒤 DROP·재구축(운영 전환 뒤에는 금지).
 
 **그 다음** — `widget/DeployConfig.cs` 의 `DbName` 을 `taskcalendar` 로(§0-1 표의 `DbHost` 와 같은 자리에서) 바꿔 빌드한다. 본인 캘린더 기록은 다른 사용자와 같은 길(새 위젯 「XML 가져오기」)로 넣는다 — 파일럿 리허설이 된다.
 
