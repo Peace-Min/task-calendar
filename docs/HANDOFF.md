@@ -41,7 +41,7 @@
 
 ## 3. 다음 할 일 (우선순위순)
 
-0. **(2026-09-29) 폐쇄망 1차 실행 결과 = 사전 점검 실패 "org_unit 에 정체성 컬럼 org_id 없음"** — 폐쇄망 사용자 표는 08-24 이전 모양(개발 PC 와 다름). setup 에 옛 모양 경로를 넣었다(스테이징 `<대상>_legacy_stage` → 08-24 user-id·org-id 원본 파일 → 복사원 · 사용자 3표 −9h · sort_order 백필 · .ps1 직접 실행 시 창 멈춤). 실DB 리허설은 root 비번이 필요해 사용자 몫: `dist\rehearsal\rehearse-legacy.cmd`(gitignore, 개발 PC 전용 — 흉내 원본 `taskmgr_legacy_sim2` 를 a7983f9 사용자 표로 세우고 결과 번호를 개발 `taskmgr` 와 대조).
+0. **(2026-09-29) 폐쇄망 1차 실행 결과 = 사전 점검 실패 "org_unit 에 정체성 컬럼 org_id 없음"** — 폐쇄망 사용자 표는 08-24 이전 모양. 사용자 결정: 사용자 표는 원본에서 옮기지 않는다(보고 사이트 명부 = 회사 시드와 동일) → setup 은 **사용자 3표 = 회사 시드 02·03·04 · 과제 4표만 원본에서 복사** · 원본 login_id 대조는 경고만 · mysql 세션 UTC · .ps1 직접 실행 시 창 멈춤. (eeda5fc 의 스테이징+08-24 마이그레이션 경로는 이 결정으로 걷어냈다.) 실DB 리허설은 root 비번이 필요해 사용자 몫: `dist\rehearsal\rehearse-legacy.cmd`(gitignore, 개발 PC 전용 — 흉내 원본 `taskmgr_legacy_sim2` 로 돌리고 결과 번호를 개발 `taskmgr` 와 대조).
 1. **폐쇄망 PC 에서 `setup-taskcalendar.cmd` 실행**(사용자) → 결과 보고서 확인(2026-09-29: 사전 점검 실패(3)·취소(2)도 `-FAILED` 보고서를 남기도록 고침 — 그 전엔 [1] 단계 전 종료는 파일이 하나도 없었다. 파일은 `distsetup-taskcalendarackup`; 이 워크트리는 아직 미푸시라 폐쇄망에 가려면 푸시 또는 수동 복사가 필요) → `DeployConfig.DbName=taskcalendar` 로 빌드 → 본인 XML 가져오기(파일럿 리허설). 저장소 기본 `DbName` 을 바꿀지는 사용자 결정 대기.
 2. **v0.19.0 릴리스** — CLAUDE.md 의 "버전 갱신 = 전체 릴리스" 체크리스트 전부: csproj 3곳·APP_VERSION+변경이력 줄·#patchModal(0.18.1 `pv-tag old` 강등)·RELEASE_NOTES·CHANGELOG·iss → `installerpublish-update.ps1 -Build` → 엄격 게이트 exit 0 · latest.json sha256 대조 · 루프 5회 연속(loop-user-admin·loop-trash·loop-org-title). 패치노트: 사용자 관리·휴지통·직급·소속 관리·개발종료일·정합 6종·보고서 옵션 재정의·팝업 높이 고정. **스키마 12 + GRANT 아홉 표와 같은 창에 배포**(DEPLOY.md §0-5).
 3. **푸쉬** — 지시 시에만. 본·비공개 둘 다(2026-09-23 현재 본 저장소 미푸쉬 커밋 5건: §3.4-A·B·C-1차 + 문서 2건).

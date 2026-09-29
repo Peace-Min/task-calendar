@@ -2,7 +2,8 @@
 rem ===========================================================================
 rem  setup-taskcalendar.cmd - launcher for setup-taskcalendar.ps1
 rem  (build the new main DB 'taskcalendar' next to the legacy 'taskmgr':
-rem   structure from the DDL files -> data copied from taskmgr -> app grants
+rem   structure from the DDL files -> user tables from the company seed files
+rem   -> the 4 project-track tables copied from taskmgr -> app grants
 rem   -> verification report. The legacy DB is only read, never modified.)
 rem
 rem  ASCII ONLY. Do not put Korean (or any non-ASCII) text in this file.

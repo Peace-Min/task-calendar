@@ -7,21 +7,24 @@
 //   '무엇이 반드시 이 순서로, 이 조건으로 일어나야 하는가' 를 여기서 못 박는다:
 //     ① .cmd 는 ASCII 만 · ps1 을 -ExecutionPolicy Bypass 로 · 인자를 %* 로 넘긴다
 //     ② 비밀번호가 명령줄에 실리지 않는다(.cnf 로만) · .cnf 는 finally 에서 지워진다
-//     ③ 단계 순서: 백업 → CREATE DATABASE → 과제 DDL → 사용자 DDL → 캘린더 DDL → 복사 → 권한
-//     ④ 복사 순서 7표(FK 부모 → 자식)
+//     ③ 단계 순서: 백업 → CREATE DATABASE → 과제 DDL → 사용자 DDL → 캘린더 DDL → 회사 시드 02 → 03 → 04 →
+//        sort_order 백필 → 과제 4표 복사 → 권한
+//     ④ 복사 대상 = 과제 트랙 4표(FK 부모 → 자식) · 교집합 컬럼
 //     ⑤ KST→UTC 이동은 과제 트랙 4표의 created_at/updated_at 에만 · -NoShift 로 끈다
 //     ⑥ FK 검사를 끄고 넣은 뒤 다시 켠다 · 고아 행 검사 6관계
 //     ⑦ 스키마 치환은 낱말 경계 `\btaskmgr\.` · 두 파일에만 · 05-grants.sql 은 대상 DB 선택 후 원본 그대로
-//     ⑧ 대상 DB 가 있으면 -Force 없이는 멈춘다 · DROP DATABASE 는 -Force 가지 안에만
+//     ⑧ 대상 DB 가 있으면 -Force 없이는 멈춘다 · DROP DATABASE 는 전부 -Force 가지 안에만
 //     ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다(숫자를 박지 않는다)
 //     ⑩ 변이 주입 — 위 검사가 실제로 잡는지 증명
 //     ⑪ 어떤 종료코드로 끝나든 보고서가 남는다
-//     ⑫ 옛 사용자 표(2026-08-24 이전 모양)는 멈추지 않고 스테이징 DB 에서 08-24 마이그레이션 두 파일
-//        (user-id → org-id)을 돌린 사본을 복사원으로 쓴다 · 대상에 마이그레이션을 돌리지 않는다 ·
-//        스테이징 DROP 은 이름 가드(<TargetDb>_legacy_stage) 뒤 · 성공 종료 직전에만
-//     ⑬ 옛 사용자 표일 때만 사용자 3표도 -9h($SHIFT_TABLES 줄은 그대로, 별도 상수)
-//     ⑭ 복사원에 sort_order 가 없으면 migrate-2026-09-10 2단계와 같은 백필(시각 이동 뒤)
+//     ⑫ 사용자 3표는 원본에서 옮기지 않고 회사 시드(02 → 03 → 04, 대상 DB)로 채운다 · 원본 사용자 표는
+//        요구하지 않는다 · login_id 명부 대조는 정보용(경고만, 멈추지 않음) · 시딩 검사(번호 NULL·중복 0 ·
+//        행 수 > 0 · AUTO_INCREMENT > MAX)
+//     ⑬ mysql 세션 UTC — .cnf 의 [mysql] 그룹에 init-command SET time_zone='+00:00'
+//        ([client] 아님: mysqldump 도 [client] 를 읽고 모르는 옵션에서 멈춘다)
+//     ⑭ project.contract_name/common_name 의 NULL 은 복사 SELECT 의 IFNULL(<col>, '') 로(대상 NOT NULL)
 //     ⑮ 창 멈춤 규칙: 리다이렉트면 안 멈춤 · ps1 직접 실행이면 늘 멈춤 · .cmd 가 TC_SETUP_LAUNCHER=cmd
+//     ⑯ app_user.sort_order 백필 — migrate-2026-09-10 2단계와 같은 문장 · 04 뒤 · 과제 복사 앞
 //
 // 공용 기계(주석 마스커·비번 검사·종료코드 표·변이 주입기)는 tests/ps-guard-lib.mjs 의 것을 쓴다 —
 // backup/restore 계약과 같은 잣대를 대기 위해서다.
@@ -43,6 +46,7 @@ const appUserSqlSrc = readFileSync(new URL('../db/deploy/create-app-user.sql', i
 const calGrantsSqlSrc = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
 const calSchemaSrc = readFileSync(new URL('../db/deploy/schema-calendar.sql', import.meta.url), 'utf8');
 const sortOrderMigSrc = readFileSync(new URL('../db/deploy/migrate-2026-09-10-user-sort-order.sql', import.meta.url), 'utf8');
+const structSqlSrc = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
 
 // 문자열 '내용' 까지 공백으로 지운 사본(길이 동일). 중괄호 짝 맞추기에만 쓴다 —
 // 서식 문자열("{0,-13}")이나 메시지 속 괄호가 블록 경계를 흐리지 않게.
@@ -121,15 +125,20 @@ const checks = {
       ['schema-structure.sql 적용', /ApplySqlFile\s+\$structFile\b/],
       ['01-schema-users.sql 적용', /ApplySqlFile\s+\$usersFile\b/],
       ['schema-calendar.sql 적용', /ApplySqlFile\s+\$calFile\b/],
-      ['INSERT 복사 적용', /ApplySqlFile\s+\$copyFile\b/],
+      ['02-seed-org.sql 적용', /ApplySqlFile\s+\$seedOrgFile\b/],
+      ['03-seed-users.sql 적용', /ApplySqlFile\s+\$seedUsersFile\b/],
+      ['04-permissions.sql 적용', /ApplySqlFile\s+\$permsFile\b/],
+      ['sort_order 백필', /\$sortFilled = \[long\]\(Q \$sortSql\b/],
+      ['과제 4표 복사 적용', /ApplySqlFile\s+\$copyFile\b/],
       ['권한 적용(create-app-user)', /ApplySqlFile\s+\$appUserTmp\b/],
     ];
     const at = steps.map(([label, re]) => [label, onlyOnce(code, re, label)]);
     for (let i = 1; i < at.length; i++) {
       assert.ok(at[i - 1][1] < at[i][1],
         `단계 순서가 틀렸다: '${at[i - 1][0]}' 가 '${at[i][0]}' 보다 뒤에 있다. ` +
-        '백업 → 구조(과제 → 사용자 → 캘린더) → 복사 → 권한 순서여야 한다. 특히 사용자 DDL 이 캘린더보다 ' +
-        '늦으면 schema-calendar.sql 머리의 가드(app_user.user_id 필요)가 구축을 막는다');
+        '백업 → 구조(과제 → 사용자 → 캘린더) → 회사 시드(02 → 03 → 04) → sort_order 백필 → 과제 4표 복사 → 권한 ' +
+        '순서여야 한다. 특히 사용자 DDL 이 캘린더보다 늦으면 schema-calendar.sql 머리의 가드(app_user.user_id 필요)가 ' +
+        '구축을 막고, 시드가 구조보다 앞이면 넣을 표가 없다');
     }
     // 적용 경로 자체: 파일 바이트를 그대로 흘리고, 실패하면 죽는다.
     const fn = /function ApplySqlFile\([^)]*\)\{([\s\S]*?)\n  \}/.exec(code);
@@ -152,8 +161,8 @@ const checks = {
   copyOrder(ps) {
     const code = maskPs(ps);
     assert.deepStrictEqual(listLiteral(code, 'COPY_ORDER'),
-      ['section_code', 'status_code', 'customer', 'title_code', 'org_unit', 'app_user', 'project'],
-      '복사 순서(FK 부모 → 자식)가 바뀌었다');
+      ['section_code', 'status_code', 'customer', 'project'],
+      '복사 대상·순서가 바뀌었다 — 원본에서 옮기는 것은 과제 트랙 4표(FK 부모 → 자식)뿐이다(사용자 3표는 회사 시드, ⑫)');
     assert.ok(/foreach\(\$t in \$COPY_ORDER\)\{\s*\n\s*\$colSql/.test(code),
       '복사 루프가 $COPY_ORDER 를 돌지 않는다');
     // 교집합 컬럼 — 원본에만 있는 컬럼은 이름을 보고서에 남긴다(조용히 버리지 않는다).
@@ -168,14 +177,17 @@ const checks = {
     const code = maskPs(ps);
     assert.deepStrictEqual(listLiteral(code, 'SHIFT_TABLES').sort(),
       ['customer', 'project', 'section_code', 'status_code'],
-      'KST→UTC 이동 대상 표는 과제 트랙 4표뿐이어야 한다(사용자 3표는 이미 UTC 사본과 같다)');
+      'KST→UTC 이동 대상 표는 과제 트랙 4표뿐이어야 한다(사용자 3표는 원본에서 옮기지 않는다 — 회사 시드)');
     assert.deepStrictEqual(listLiteral(code, 'SHIFT_COLS').sort(), ['created_at', 'updated_at'],
       'KST→UTC 이동 대상 컬럼은 created_at/updated_at 뿐이어야 한다');
     assert.ok(/'DATE_SUB\(' \+ \(BQ \$c\) \+ ', INTERVAL 9 HOUR\)'/.test(code),
       'DATE_SUB(<col>, INTERVAL 9 HOUR) 이동식이 사라졌거나 바뀌었다');
-    // 조건은 '유효 목록'($shiftTablesEff = $SHIFT_TABLES [+ 옛 사용자 표면 $SHIFT_TABLES_LEGACY], ⑬)을 본다.
-    assert.ok(/if\(\$doShift -and \(\$shiftTablesEff -contains \$t\) -and \(\$SHIFT_COLS -contains \$c\)\)/.test(code),
-      '이동 조건이 ($doShift · $shiftTablesEff · $SHIFT_COLS) 셋을 모두 보지 않는다 — 엉뚱한 표/컬럼이 밀린다');
+    assert.ok(code.includes("\n$SHIFT_TABLES = @('section_code','status_code','customer','project')\n"),
+      '$SHIFT_TABLES 줄이 바뀌었다 — KST→UTC 이동 대상은 과제 트랙 4표 그대로여야 한다');
+    assert.ok(/if\(\$doShift -and \(\$SHIFT_TABLES -contains \$t\) -and \(\$SHIFT_COLS -contains \$c\)\)/.test(code),
+      '이동 조건이 ($doShift · $SHIFT_TABLES · $SHIFT_COLS) 셋을 모두 보지 않는다 — 엉뚱한 표/컬럼이 밀린다');
+    assert.ok(!/shiftTablesEff|SHIFT_TABLES_LEGACY/.test(code),
+      '옛 사용자 표용 이동 목록($shiftTablesEff · $SHIFT_TABLES_LEGACY)이 남아 있다 — 사용자 표는 시드라 밀 것이 없다');
     assert.ok(/\[switch\]\$NoShift/.test(code), '-NoShift 스위치가 사라졌다');
     assert.ok(/\$doShift = -not \$NoShift/.test(code), '-NoShift 가 이동을 끄지 않는다');
   },
@@ -239,19 +251,10 @@ const checks = {
     assert.ok(blocks.length >= 1, 'if($Force){ … } 가지를 찾지 못했다');
     const drops = [...code.matchAll(/DROP DATABASE/g)].map((m) => m.index);
     assert.ok(drops.length >= 1, 'DROP DATABASE 자리를 찾지 못했다(검사가 헛돈다)');
-    // 예외는 하나 — 스테이징 전용 DropStageDb 함수 몸통(그 안의 DROP 은 $StageDb 만, 이름 가드는 ⑫ 가 본다).
-    const dsf = /function DropStageDb\([^)]*\)\{/.exec(code);
-    const ds = dsf ? [dsf.index + dsf[0].length - 1, matchBrace(bare, dsf.index + dsf[0].length - 1)] : null;
+    // 예외 없음 — 이 스크립트가 지우는 DB 는 -Force 의 기존 대상 하나뿐이다(스테이징 경로는 없앴다).
     for (const d of drops) {
-      const inForce = blocks.some(([o, c]) => c > 0 && d > o && d < c);
-      const inStage = !!ds && ds[1] > 0 && d > ds[0] && d < ds[1];
-      assert.ok(inForce || inStage,
-        'DROP DATABASE 가 if($Force){ } 가지 밖(그리고 스테이징 전용 DropStageDb 밖)에 있다 — -Force 없이도 기존 대상 DB 가 지워질 수 있다');
-      if (inStage) {
-        const line = code.slice(d, code.indexOf('\n', d));
-        assert.ok(/\(BQ \$StageDb\)/.test(line) && !/\$(TargetDb|SourceDb)\b/.test(line),
-          `DropStageDb 안의 DROP DATABASE 가 스테이징이 아닌 DB 를 지운다: ${line.trim()}`);
-      }
+      assert.ok(blocks.some(([o, c]) => c > 0 && d > o && d < c),
+        'DROP DATABASE 가 if($Force){ } 가지 밖에 있다 — -Force 없이도 기존 대상 DB(또는 다른 DB)가 지워질 수 있다');
     }
     // 지우기 전에 대상도 한 벌 백업한다.
     const drop = onlyOnce(code, /Q \("DROP DATABASE "/, 'DROP DATABASE 실행');
@@ -286,128 +289,161 @@ const checks = {
       'Finish 가 실패·취소 종료에 -FAILED 보고서를 남기지 않는다');
   },
 
-  // ⑫ 옛 사용자 표 → 스테이징 → 08-24 마이그레이션 → 스테이징을 복사원으로. 2026-09-29 실측: 폐쇄망의 taskmgr 가
-  // 08-24 이전 모양(org_unit name PK · app_user login_id PK)이라 사전 점검이 "정체성 컬럼 org_id 가 없습니다" 로 죽었다.
-  legacyStage(ps) {
+  // ⑫ 사용자 3표 = 회사 시드. 2026-09-29 결정: 폐쇄망 taskmgr 의 사용자 표는 0.16 모양(org_unit 이름 PK ·
+  // app_user login_id PK)이라 번호가 없고, 회사 보고 사이트의 명부(= 폐쇄망 명부)는 이미 회사 시드에 번호까지
+  // 담겨 있다. 그래서 명부는 시드가 정본이고, 원본 사용자 표는 login_id 대조(정보용)에만 읽는다.
+  seedUsers(ps) {
     const code = maskPs(ps);
     const bare = blankStrings(code);
-    // (a) 사전 점검 — 사용자 두 표는 옛 모양 감지로 빠지고, 나머지(와 두 모양 어느 쪽도 아닌 표)는 원래대로 멈춘다.
-    const loop = /foreach\(\$t in \$KEY_COLS\.Keys\)\{([\s\S]*?)\n  \}/.exec(code);
-    assert.ok(loop, '정체성 컬럼 검사 루프(foreach($t in $KEY_COLS.Keys))를 찾지 못했다');
-    const body = loop[1];
-    const iOrg = body.indexOf("if($t -eq 'org_unit' -and ($sc -notcontains 'org_id') -and ($sc -contains 'name') -and ($sc -contains 'parent')){ $legacyOrg = $true; continue }");
-    const iApp = body.indexOf("if($t -eq 'app_user' -and ($sc -notcontains 'user_id') -and ($sc -contains 'login_id') -and ($sc -contains 'org_unit')){ $legacyApp = $true; continue }");
-    const iDie = body.indexOf('Die "원본 $SourceDb.$t 에 정체성 컬럼');
-    assert.ok(iOrg >= 0, "org_unit 옛 모양 감지(org_id 없음 + name·parent 있음)가 없다 — 08-24 이전 원본이 사전 점검에서 죽는다");
-    assert.ok(iApp >= 0, "app_user 옛 모양 감지(user_id 없음 + login_id·org_unit 있음)가 없다 — 08-24 이전 원본이 사전 점검에서 죽는다");
-    assert.ok(iDie > iOrg && iDie > iApp,
-      '정체성 컬럼이 없을 때의 Die 가 사라졌거나 옛 모양 감지보다 앞에 있다 — 두 모양 어느 쪽도 아닌 표가 조용히 새 번호를 받는다');
-    assert.ok(/\$legacyUsers = \(\$legacyOrg -or \$legacyApp\)/.test(code), '$legacyUsers 가 두 표의 감지를 합치지 않는다');
-    // (b) 마이그레이션 파일 두 개 — 스크립트 옆, 옛 모양일 때 사전 점검에서 확인.
-    assert.ok(/\$migUserIdFile\s*=\s*Join-Path \$scriptDir "migrate-2026-08-24-user-id\.sql"/.test(code) &&
-      /\$migOrgIdFile\s*=\s*Join-Path \$scriptDir "migrate-2026-08-24-org-id\.sql"/.test(code),
-      '08-24 마이그레이션 두 파일(user-id · org-id)을 스크립트 옆에서 찾지 않는다');
-    const fileChk = onlyOnce(code, /foreach\(\$f in @\(\$migUserIdFile, \$migOrgIdFile\)\)\{\s*\n\s*if\(-not \(Test-Path -LiteralPath \$f -PathType Leaf\)\)\{ Die /, '마이그레이션 파일 확인');
+    // (a) 세 파일 = 회사 데이터 폴더의 02 · 03 · 04.
+    for (const [v, f] of [['seedOrgFile', '02-seed-org.sql'], ['seedUsersFile', '03-seed-users.sql']]) {
+      assert.ok(new RegExp(`\\$${v}\\s*=\\s*Join-Path \\$CompanyDataDir "${f.replace(/\./g, '\\.')}"`).test(code),
+        `$${v} 가 회사 데이터 폴더(-CompanyDataDir)의 ${f} 가 아니다`);
+    }
+    // 04 는 이름을 쪼개 적는다(② 의 '-p…' 검사를 피하려고 — ps1 의 ※).
+    assert.ok(/\$permsName\s*=\s*"04-" \+ "permissions\.sql"/.test(code) && /\$permsFile\s*=\s*Join-Path \$CompanyDataDir \$permsName\b/.test(code),
+      '$permsFile 가 회사 데이터 폴더(-CompanyDataDir)의 04-permissions.sql 이 아니다');
+    // (b) 사전 점검이 필요 파일 9개를 확인 질문 전에 본다(없으면 종료코드 3).
+    const fc = /foreach\(\$f in @\(([^)]*)\)\)\{\s*\n\s*if\(-not \(Test-Path -LiteralPath \$f -PathType Leaf\)\)\{ Die /.exec(code);
+    assert.ok(fc, '필요 파일 확인 루프(foreach($f in @(…)){ Test-Path … Die })를 찾지 못했다');
+    assert.deepStrictEqual(fc[1].split(',').map((s) => s.trim()).sort(),
+      ['$appUserFile', '$calFile', '$calGrantsFile', '$companyGrantsFile', '$permsFile', '$seedOrgFile', '$seedUsersFile', '$structFile', '$usersFile'].sort(),
+      '사전 점검의 필요 파일 목록이 DDL 3 · 권한 3 · 회사 시드 3(02 · 03 · 04) 이 아니다');
     const confirm = onlyOnce(code, /Read-Host "계속하려면 Y"/, '확인 질문');
-    assert.ok(fileChk < confirm, '마이그레이션 파일 확인이 확인 질문보다 뒤다 — 사전 점검(종료코드 3)이 아니게 된다');
-    assert.ok(/Ok "필요 파일 8개 확인/.test(code), '옛 모양일 때 필요 파일 수(8개) 메시지가 없다');
-    // (c) 스테이징 이름 — 대상 이름에서만 만든다 · 식별자 검사.
-    onlyOnce(code, /\$StageDb = \$TargetDb \+ "_legacy_stage"/, '스테이징 이름');
-    assert.ok(/if\(\$StageDb -notmatch '\^\[A-Za-z0-9_\]\+\$'/.test(code), '스테이징 이름의 식별자 검사가 없다');
-    // (d) 마이그레이션은 스테이징에만, user-id → org-id 순서.
-    const wrong = [...code.matchAll(/ApplySqlFile \$mig\w+ (\S+)/g)].filter((m) => m[1] !== '$StageDb');
-    assert.deepStrictEqual(wrong.map((m) => m[0]), [],
-      '08-24 마이그레이션을 스테이징이 아닌 DB 에 적용한다 — 대상은 정본 DDL 로 이미 새 모양이고, 원본은 읽기만 해야 한다');
-    const ua = onlyOnce(code, /ApplySqlFile \$migUserIdFile \$StageDb\b/, 'user-id 마이그레이션 적용');
-    const oa = onlyOnce(code, /ApplySqlFile \$migOrgIdFile \$StageDb\b/, 'org-id 마이그레이션 적용');
-    assert.ok(ua < oa, '마이그레이션 순서가 틀렸다: user-id 가 org-id 보다 먼저여야 한다(운영 DB 가 거친 역사 순서)');
-    const fn = /function ApplySqlFile\([^)]*\)\{([\s\S]*?)\n  \}/.exec(code);
-    assert.ok(fn && !/--force/.test(fn[1]), 'ApplySqlFile 에 --force 가 붙었다 — 08-24 파일은 에러로 멈춤으로 자신을 지킨다');
-    // (e) 위치: 원본 덤프 뒤 · -Force 대상 삭제/[2] 앞. 전부 if($legacyUsers){ } 안.
-    const dump = onlyOnce(code, /\bDumpDb\s+\$SourceDb\b/, '원본 mysqldump');
-    const stageCreate = onlyOnce(code, /"CREATE DATABASE " \+ \(BQ \$StageDb\)/, '스테이징 CREATE DATABASE');
-    const load = onlyOnce(code, /ApplySqlFile \$srcDump \$StageDb\b/, '원본 덤프 → 스테이징 적재');
-    const tgtDump = onlyOnce(code, /DumpDb \$TargetDb \$tgtDump/, '삭제 전 대상 백업');
-    const step2 = onlyOnce(code, /Step 2 "/, 'Step 2');
-    const seq = [['원본 덤프', dump], ['스테이징 생성', stageCreate], ['덤프 적재', load], ['user-id', ua], ['org-id', oa],
-      ['-Force 대상 백업/삭제', tgtDump], ['Step 2', step2]];
-    for (let i = 1; i < seq.length; i++) {
-      assert.ok(seq[i - 1][1] < seq[i][1], `스테이징 순서가 틀렸다: '${seq[i - 1][0]}' 가 '${seq[i][0]}' 보다 뒤에 있다`);
-    }
-    const lb = [...code.matchAll(/if\(\$legacyUsers\)\{/g)].map((m) => [m.index + m[0].length - 1, matchBrace(bare, m.index + m[0].length - 1)]);
-    const inLegacy = (i) => lb.some(([o, c]) => c > 0 && i > o && i < c);
-    for (const [label, i] of [['스테이징 생성', stageCreate], ['덤프 적재', load], ['user-id', ua], ['org-id', oa]]) {
-      assert.ok(inLegacy(i), `${label} 이(가) if($legacyUsers){ } 밖에 있다 — 새 모양 원본에도 스테이징을 돈다`);
-    }
-    // 마이그레이션 뒤 모양 재확인 · 행 수 원본과 같음 · 그 뒤에야 복사원을 바꾼다.
-    assert.ok(/foreach\(\$k in @\('org_id','parent_id'\)\)\{ if\(\$stOrg -notcontains \$k\)\{ Die /.test(code) &&
-      /foreach\(\$k in @\('user_id','org_id'\)\)\{ if\(\$stApp -notcontains \$k\)\{ Die /.test(code),
-      '마이그레이션 뒤 스테이징 모양(org_unit.org_id/parent_id · app_user.user_id/org_id) 재확인이 없다');
-    assert.ok(/if\(\$copyCounts\[\$t\] -ne \$srcCounts\[\$t\]\)\{ \$stBad \+= /.test(code) && /if\(\$stBad\.Count -gt 0\)\{ Die /.test(code),
-      '스테이징 7표 행 수를 원본과 대조해 멈추는 자리가 없다');
-    onlyOnce(code, /\$CopySrcDb  = \$SourceDb\b/, '복사원 기본값(원본)');
-    const swap = onlyOnce(code, /\$CopySrcDb = \$StageDb\b/, '복사원 = 스테이징');
-    assert.ok(swap > oa && inLegacy(swap), '복사원을 스테이징으로 바꾸는 자리가 마이그레이션 뒤·if($legacyUsers) 안이 아니다');
-    // (f) [3] 복사는 복사원 변수만 읽는다 — Step 3 ~ Step 4 사이에 $SourceDb 가 없어야 한다.
-    const s3 = onlyOnce(code, /Step 3 "/, 'Step 3');
-    const s4 = onlyOnce(code, /Step 4 "/, 'Step 4');
-    const sec = code.slice(s3, s4);
-    assert.ok(!/\$SourceDb\b/.test(sec),
-      '[3] 복사 단계가 $SourceDb 를 직접 읽는다 — 옛 모양이면 마이그레이션 안 된 원본(user_id·org_id 없음)을 복사한다. $CopySrcDb 를 쓸 것');
-    assert.ok(/' FROM ' \+ \(TQ \$CopySrcDb \$t\) \+ ';'/.test(sec), '7표 INSERT … SELECT 가 $CopySrcDb 에서 읽지 않는다');
-    assert.ok(/\$srcCols = @\(QRows \(\$colSql -f \$CopySrcDb\)/.test(sec), '교집합 컬럼을 $CopySrcDb 에서 읽지 않는다');
-    assert.ok(/if\(\$tgtCounts\[\$t\] -ne \$copyCounts\[\$t\]\)/.test(sec), '행 수 대조가 복사원 행 수($copyCounts)를 기준으로 하지 않는다');
-    // (g) 스테이징 DROP — 이름 가드가 DROP 앞 · 부르는 곳은 [1b] 재구축 직전과 성공 종료 직전 둘뿐.
-    const dsm = /function DropStageDb\([^)]*\)\{([\s\S]*?)\n  \}/.exec(code);
-    assert.ok(dsm, 'DropStageDb 함수를 찾지 못했다');
-    const g = dsm[1].indexOf('if($StageDb -cne ($TargetDb + "_legacy_stage")){ Die ');
-    const d = dsm[1].indexOf('Q ("DROP DATABASE IF EXISTS " + (BQ $StageDb) + ";")');
-    assert.ok(g >= 0, "DropStageDb 에 이름 가드(<TargetDb>_legacy_stage 와 정확히 같지 않으면 Die)가 없다 — 이름이 꼬이면 운영 DB 가 지워진다");
-    assert.ok(d > g, 'DropStageDb 의 DROP 이 없거나 이름 가드보다 앞에 있다');
-    const calls = [...code.matchAll(/\bDropStageDb "/g)].map((m) => m.index);
-    assert.strictEqual(calls.length, 2, `DropStageDb 호출이 ${calls.length}곳이다(2곳: [1b] 재구축 직전 · 성공 종료 직전)`);
-    assert.ok(calls[0] < stageCreate && calls[0] > dump && inLegacy(calls[0]), '첫 DropStageDb 가 [1b] 스테이징 생성 직전이 아니다');
-    const okFin = onlyOnce(code, /Finish \$EXIT_OK "/, '성공 종료');
+    assert.ok(fc.index < confirm, '필요 파일 확인이 확인 질문보다 뒤다 — 사전 점검(종료코드 3)이 아니게 된다');
+    assert.ok(/Ok "필요 파일 9개 확인/.test(code), '필요 파일 수(9개) 메시지가 없다');
+    // (c) 대상 DB 에 02 → 03 → 04 — 구조([2]) 뒤 · 과제 복사 앞.
+    const a02 = onlyOnce(code, /ApplySqlFile\s+\$seedOrgFile\s+\$TargetDb\b/, '02-seed-org.sql 적용(대상 DB)');
+    const a03 = onlyOnce(code, /ApplySqlFile\s+\$seedUsersFile\s+\$TargetDb\b/, '03-seed-users.sql 적용(대상 DB)');
+    const a04 = onlyOnce(code, /ApplySqlFile\s+\$permsFile\s+\$TargetDb\b/, '04-permissions.sql 적용(대상 DB)');
+    assert.ok(a02 < a03 && a03 < a04,
+      '회사 시드 순서가 틀렸다: 02-seed-org.sql → 03-seed-users.sql → 04-permissions.sql 이어야 한다 ' +
+      '(03 의 app_user 가 02 의 org_unit · title_code 를 FK 로 가리키고, 04 는 03 의 사람에게 UPDATE 한다)');
+    const calApply = onlyOnce(code, /ApplySqlFile\s+\$calFile\b/, 'schema-calendar.sql 적용');
+    const copyApply = onlyOnce(code, /ApplySqlFile\s+\$copyFile\b/, '과제 복사 적용');
+    assert.ok(calApply < a02 && a04 < copyApply, '회사 시드가 구조([2]) 뒤 · 과제 4표 복사 앞이 아니다');
+    // (d) 원본 사용자 표를 대상에 붓지 않는다.
+    const USER = /^(title_code|org_unit|app_user)$/;
+    assert.deepStrictEqual(listLiteral(code, 'COPY_ORDER').filter((t) => USER.test(t)), [],
+      '복사 목록($COPY_ORDER)에 사용자 표가 있다 — 회사 시드로 채운 명부를 DELETE 로 지우고 원본(0.16 모양 · 번호 없음)의 옛 행을 붓는다');
+    const ins = [...code.matchAll(/INSERT\s+(?:IGNORE\s+)?INTO\b[^\n]*\b(?:title_code|org_unit|app_user)\b[^\n]*\bSELECT\b[^\n]*\$SourceDb\b/g)].map((m) => m[0].trim());
+    assert.deepStrictEqual(ins, [], `원본의 사용자 표를 대상에 INSERT … SELECT 로 붓는 자리가 있다: ${ins.join(' | ')}`);
+    assert.ok(/foreach\(\$t in \$COPY_ORDER\)\{ \$copy\.Add\('DELETE FROM ' \+ \(TQ \$TargetDb \$t\) \+ ';'\) \}/.test(code) &&
+      [...code.matchAll(/DELETE FROM/g)].length === 1,
+      "시드 행 비우기(DELETE FROM)가 $COPY_ORDER 한 곳이 아니다 — 방금 채운 사용자 표를 지울 수 있다");
+    // (e) 사전 점검은 원본 사용자 표를 요구하지 않는다.
+    const kc = /\$KEY_COLS = \[ordered\]@\{([\s\S]*?)\n\}/.exec(code);
+    assert.ok(kc, '$KEY_COLS 선언을 찾지 못했다');
+    assert.ok(!/title_code|org_unit|app_user/.test(kc[1]),
+      '$KEY_COLS 에 사용자 표가 있다 — 원본 사용자 표(0.16 모양 = 번호 없음)의 정체성 컬럼을 요구해 사전 점검에서 멈춘다');
+    assert.ok(/\$lack = @\(\$COPY_ORDER \| Where-Object \{ \$srcTables -notcontains \$_ \}\)/.test(code),
+      '원본에 요구하는 표 목록이 $COPY_ORDER(과제 4표)가 아니다');
+    assert.ok(!/\$(legacyOrg|legacyApp|legacyUsers|StageDb|CopySrcDb|copyCounts)\b|DropStageDb|_legacy_stage/.test(code),
+      '스테이징 경로(옛 사용자 표 마이그레이션)의 잔재가 남아 있다');
+    // (f) 명부 대조 — 시드 뒤 · 정보용(Die 없음 · 실패하면 죽는 Q/QRows 없음).
+    const xAt = onlyOnce(code, /\n  if\(\$srcLoginCheck\)\{\n/, '명부 대조 블록');
+    const xOpen = code.indexOf('{', xAt);
+    const xClose = matchBrace(bare, xOpen);
+    assert.ok(xClose > xOpen, '명부 대조 블록의 끝을 찾지 못했다');
+    const xBlk = code.slice(xOpen, xClose);
+    assert.ok(xAt > a04, '명부 대조가 회사 시드 적용 뒤가 아니다');
+    assert.ok(!/\bDie\b/.test(xBlk), '명부 대조 블록 안에 Die 가 있다 — 정보용 대조가 구축을 멈춘다');
+    assert.ok(!/\bQ\s*[("]|\bQRows\b(?!Try)/.test(xBlk),
+      '명부 대조 블록이 실패하면 죽는 Q/QRows 를 쓴다 — 콜레이션 차이 하나로 구축이 멈춘다. QRowsTry 를 쓸 것');
+    assert.ok(/QRowsTry/.test(xBlk) && /login_id/.test(xBlk) && /\bWarn\b/.test(xBlk) && /\bOk "명부 대조/.test(xBlk),
+      '명부 대조(login_id · QRowsTry · 다르면 Warn · 같으면 Ok)의 모양이 바뀌었다');
+    const srcUserReads = [...code.matchAll(/TQ \$SourceDb '(?:title_code|org_unit|app_user)'/g)].map((m) => m.index);
+    assert.ok(srcUserReads.length >= 1 && srcUserReads.every((i) => i > xOpen && i < xClose),
+      '원본 사용자 표를 명부 대조 블록 밖에서 읽는다');
+    const qt = /function QRowsTry\([^)]*\)\{([\s\S]*?)\n  \}/.exec(code);
+    assert.ok(qt && !/\bDie\b/.test(qt[1]) && /\$LASTEXITCODE -ne 0\)\{ return @\{ ok = \$false/.test(qt[1]),
+      'QRowsTry 가 실패에서 Die 하거나 ok=$false 를 돌려주지 않는다');
+    assert.ok(/if\(\$srcTables -contains 'app_user'\)\{/.test(code) && /\$srcLoginCheck = \(\$srcAppCols -contains 'login_id'\)/.test(code),
+      '명부 대조 조건(원본에 app_user 가 있고 login_id 컬럼이 있을 때)이 바뀌었다');
     const s5 = onlyOnce(code, /Step 5 "/, 'Step 5');
-    assert.ok(calls[1] > s5 && calls[1] < okFin && !code.slice(calls[1], okFin).includes('\n  Log') && inLegacy(calls[1]),
-      '두 번째 DropStageDb 가 성공 종료(Finish $EXIT_OK) 바로 앞이 아니다 — 실패 경로에서 조사용 스테이징이 지워지거나, 성공해도 남는다');
-    const die = /function Die\([^)]*\)\{([\s\S]*?)\n\}/.exec(code);
-    assert.ok(die && /if\(\$script:stageKept\)\{ Log /.test(die[1]), '실패 시 남겨 둔 스테이징 DB 이름을 알리는 줄이 Die 에 없다');
+    assert.ok(/명부 대조[^\n]*\$xSrcOnly[^\n]*\$xSeedOnly/.test(code.slice(s5)), '보고서에 명부 대조 두 수(원본에만 · 시드에만)가 없다');
+    // (g) 시딩 검사 — 번호 NULL·중복 0 · 3표 행 수 > 0 · AUTO_INCREMENT > MAX (시드 직후 · 과제 복사 앞).
+    assert.deepStrictEqual(listLiteral(code, 'SEED_TABLES'), ['title_code', 'org_unit', 'app_user'], '$SEED_TABLES 가 사용자 3표가 아니다');
+    assert.ok(/\$SEED_AUTOINC_KEYS\s*=\s*\[ordered\]@\{ org_unit = 'org_id'; app_user = 'user_id' \}/.test(code) &&
+      /\$AUTOINC_KEYS\s*=\s*\[ordered\]@\{ project = 'id' \}/.test(code),
+      'AUTO_INCREMENT 확인 대상이 (시드: org_unit · app_user / 복사: project) 가 아니다');
+    const seedAi = onlyOnce(code, /foreach\(\$t in \$SEED_AUTOINC_KEYS\.Keys\)\{ CheckAutoInc /, '시드 AUTO_INCREMENT 확인');
+    const copyAi = onlyOnce(code, /foreach\(\$t in \$AUTOINC_KEYS\.Keys\)\{ CheckAutoInc /, '복사 AUTO_INCREMENT 확인');
+    assert.ok(seedAi > a04 && seedAi < copyApply && copyAi > copyApply, 'AUTO_INCREMENT 확인 위치가 (시드 직후 · 복사 직후) 가 아니다');
+    const ai = /function CheckAutoInc\([^)]*\)\{([\s\S]*?)\n  \}/.exec(code);
+    assert.ok(ai && /information_schema_stats_expiry=0/.test(ai[1]) && /if\(\$ai -le \$mx\)\{ Die /.test(ai[1]),
+      'CheckAutoInc 가 (stats_expiry=0 으로) AUTO_INCREMENT > MAX 를 확인해 멈추지 않는다');
+    assert.ok(/if\(\$nNull -ne 0 -or \$nDup -ne 0\)\{ Die /.test(code), '시드의 org_id/user_id NULL·중복 검사가 없다');
+    assert.ok(/if\(\$seedCounts\[\$t\] -lt 1\)\{ Die /.test(code), '시딩 뒤 사용자 3표 행 수 > 0 검사가 없다');
+    // (h) cal_user_rev 재시딩은 사람이 들어온 뒤.
+    const rev = onlyOnce(code, /"INSERT IGNORE INTO " \+ \(TQ \$TargetDb 'cal_user_rev'\)/, 'cal_user_rev 재시딩');
+    assert.ok(rev > a03, 'cal_user_rev 재시딩이 03-seed-users.sql 보다 앞이다 — 사용자별 rev 0 행이 하나도 안 생긴다');
   },
 
-  // ⑬ 시각 이동 — 옛 사용자 표일 때만 사용자 3표를 더한다.
-  legacyShift(ps) {
+  // ⑬ mysql 세션 UTC. 시드 행의 created_at/updated_at 은 CURRENT_TIMESTAMP(세션 time_zone 을 따른다)이고 앱은
+  // UTC 로 쓴다. init-command 는 [mysql] 그룹(= mysql.exe 만 읽음)에 둔다 — [client] 는 mysqldump 도 읽는다.
+  cnfUtc(ps) {
     const code = maskPs(ps);
-    assert.ok(code.includes("\n$SHIFT_TABLES = @('section_code','status_code','customer','project')\n"),
-      '$SHIFT_TABLES 줄이 바뀌었다 — 과제 트랙 4표 목록은 그대로 두고 옛 사용자 표는 별도 상수로 더할 것');
-    assert.deepStrictEqual(listLiteral(code, 'SHIFT_TABLES_LEGACY'), ['title_code', 'org_unit', 'app_user'],
-      '$SHIFT_TABLES_LEGACY 는 사용자 3표(title_code · org_unit · app_user)여야 한다');
-    assert.ok(/\$shiftTablesEff = @\(\$SHIFT_TABLES\)\s*\n\s*if\(\$legacyUsers\)\{ \$shiftTablesEff = @\(\$SHIFT_TABLES \+ \$SHIFT_TABLES_LEGACY\) \}/.test(code),
-      '유효 이동 목록이 "기본 4표, $legacyUsers 일 때만 + 사용자 3표" 가 아니다 — 새 모양 사용자 표(이미 UTC)를 두 번 민다');
-    assert.strictEqual([...code.matchAll(/\$SHIFT_TABLES_LEGACY\b/g)].length, 2,
-      '$SHIFT_TABLES_LEGACY 가 선언과 $legacyUsers 가지 한 곳 외에서도 쓰인다');
-    assert.ok(!/\$SHIFT_TABLES -join/.test(code), '요약/보고서가 유효 목록이 아닌 $SHIFT_TABLES 를 찍는다 — 실제로 민 표와 다르게 적힌다');
-    assert.ok([...code.matchAll(/\$\(\$shiftTablesEff -join ','\)/g)].length >= 2, '요약과 보고서가 유효 이동 목록을 찍지 않는다');
+    const a = onlyOnce(code, /\$cnfText = "/, '.cnf 본문 조립');
+    const b = code.indexOf('[IO.File]::WriteAllText($script:cnfPath', a);
+    assert.ok(b > a, '.cnf 를 쓰는 자리를 찾지 못했다');
+    let group = null;
+    const groups = [];
+    const inits = [];
+    for (const p of code.slice(a, b).split(/`r`n|\n/)) {
+      const g = /\[(\w+)\]/.exec(p);
+      if (g) { group = g[1]; groups.push(group); }
+      if (/init-command/.test(p)) inits.push([group, p.trim()]);
+    }
+    assert.deepStrictEqual(groups, ['client', 'mysql'], `.cnf 그룹이 [client] → [mysql] 이 아니다: ${groups.join(',')}`);
+    assert.strictEqual(inits.length, 1, `.cnf 의 init-command 가 ${inits.length}개다(1개여야 한다)`);
+    assert.strictEqual(inits[0][0], 'mysql',
+      'init-command 가 [mysql] 그룹 밖에 있다 — [client] 면 mysqldump 도 읽어 모르는 옵션에서 멈춘다(원본 백업이 죽는다)');
+    assert.ok(inits[0][1].includes(`init-command=""SET time_zone='+00:00'""`),
+      `init-command 가 SET time_zone='+00:00' 이 아니다: ${inits[0][1]}`);
   },
 
-  // ⑭ app_user.sort_order 백필 — migrate-2026-09-10-user-sort-order.sql 2단계와 같은 순서식 · 복사(시각 이동) 뒤.
+  // ⑭ project.contract_name/common_name 의 NULL → ''. 0.16 원본은 NULL 을 허용했고 대상은 NOT NULL DEFAULT '' 다.
+  // 원본은 읽기만 하므로 UPDATE 로 고칠 수 없다 — 복사 SELECT 에서 IFNULL 로 바꾼다.
+  nullToEmpty(ps) {
+    const code = maskPs(ps);
+    assert.ok(/\$NULL_TO_EMPTY = \[ordered\]@\{ project = @\('contract_name','common_name'\) \}/.test(code),
+      "$NULL_TO_EMPTY 가 project 의 contract_name · common_name 이 아니다");
+    const br = /\} elseif\(\$NULL_TO_EMPTY\.Contains\(\$t\) -and \(\$NULL_TO_EMPTY\[\$t\] -contains \$c\)\)\{\n([\s\S]*?)\n      \} else \{/.exec(code);
+    assert.ok(br, "NULL→'' 가지(elseif($NULL_TO_EMPTY …))를 찾지 못했다");
+    assert.ok(br[1].includes(`$sel += ('IFNULL(' + (BQ $c) + ", '')")`),
+      "복사 SELECT 가 contract_name/common_name 을 IFNULL(<col>, '') 로 감싸지 않는다 — 원본의 NULL 이 NOT NULL 대상에서 INSERT 를 막는다");
+    assert.ok(/'\) SELECT ' \+ \(\$sel -join ','\) \+ ' FROM ' \+ \(TQ \$SourceDb \$t\)/.test(code),
+      '복사 INSERT 가 $sel(IFNULL · -9h 식)로 원본에서 SELECT 하지 않는다');
+    for (const c of ['contract_name', 'common_name']) {
+      assert.ok(new RegExp(`\\n\\s*${c}\\s+VARCHAR\\(\\d+\\)\\s+NOT NULL DEFAULT ''`).test(structSqlSrc),
+        `실물: schema-structure.sql 의 project.${c} 가 NOT NULL DEFAULT '' 가 아니다 — IFNULL 의 근거가 바뀌었다`);
+    }
+    assert.ok(!/"UPDATE " \+ \(TQ \$SourceDb\b/.test(code), '원본에 UPDATE 를 낸다 — 원본은 읽기만 한다');
+  },
+
+  // ⑯ app_user.sort_order 백필 — 03 은 sort_order 를 적지 않는다. migrate-2026-09-10-user-sort-order.sql 2단계와
+  // 같은 순서식 · 04 뒤(사람이 다 들어온 뒤) · 과제 복사 앞.
   sortBackfill(ps) {
     const code = maskPs(ps);
     const ORDER = 'ROW_NUMBER() OVER (ORDER BY (t.sort_order IS NULL), t.sort_order, u2.name, u2.user_id) * 10';
     assert.ok(sortOrderMigSrc.includes(ORDER), '실물: migrate-2026-09-10-user-sort-order.sql 의 순서식이 바뀌었다 — 스크립트의 백필도 함께 고칠 것');
-    assert.ok(/if\(\$t -eq 'app_user'\)\{ \$userSortFill = \(\$srcCols -notcontains 'sort_order'\) \}/.test(code),
-      '백필 조건이 "복사원 app_user 에 sort_order 가 없을 때" 가 아니다');
-    const blk = /\n  if\(\$userSortFill\)\{\n([\s\S]*?)\n  \}/.exec(code);
-    assert.ok(blk, 'if($userSortFill){ … } 백필 가지를 찾지 못했다');
+    assert.ok(/\$sortNullBefore = \[long\]\(Q \("SELECT COUNT\(\*\) FROM " \+ \(TQ \$TargetDb 'app_user'\) \+ " WHERE sort_order IS NULL;"\)/.test(code),
+      '백필 조건이 "시드 뒤 대상 app_user 에 sort_order NULL 이 있음" 이 아니다');
+    const blk = /\n  if\(\$sortNullBefore -gt 0\)\{\n([\s\S]*?)\n  \}/.exec(code);
+    assert.ok(blk, 'if($sortNullBefore -gt 0){ … } 백필 가지를 찾지 못했다 — 03-seed-users.sql 은 sort_order 를 적지 않으므로 백필이 늘 필요하다');
     const b = blk[1];
     assert.ok(b.includes(ORDER), 'sort_order 백필의 순서식이 마이그레이션(직급 서열 NULL 뒤 → 서열 → 이름 → user_id, ×10)과 다르다');
     assert.ok(/LEFT JOIN " \+ \(TQ \$TargetDb 'title_code'\) \+ " t ON t\.name = u2\.title/.test(b), '백필이 title_code 를 LEFT JOIN 하지 않는다');
     assert.ok(b.includes('SET u.sort_order = r.n, u.updated_at = u.updated_at'),
       '백필이 updated_at 을 자기 값으로 대입하지 않는다 — ON UPDATE 가 전원의 갱신 시각을 지금으로 덮는다');
     assert.ok(/\$sortFilled = \[long\]\(Q \$sortSql /.test(b), '백필 문장을 실행하는 자리가 없다');
-    assert.ok(/if\(\$sortNull -ne 0\)\{ Die /.test(b), '백필 뒤 NULL 0 검사가 없다');
-    const apply = onlyOnce(code, /ApplySqlFile\s+\$copyFile\b/, '복사 적용');
-    assert.ok(blk.index > apply, '백필이 복사(= 시각 이동)보다 앞이다 — updated_at 이 민 값이 아니게 된다');
+    assert.ok(/if\(\$sortNull -ne 0\)\{ Die /.test(code.slice(blk.index)), '백필 뒤 NULL 0 검사가 없다');
+    const a04 = onlyOnce(code, /ApplySqlFile\s+\$permsFile\b/, '04-permissions.sql 적용');
+    const apply = onlyOnce(code, /ApplySqlFile\s+\$copyFile\b/, '과제 복사 적용');
+    assert.ok(blk.index > a04 && blk.index < apply,
+      '백필이 04-permissions.sql 뒤 · 과제 복사 앞이 아니다 — 사람이 다 들어오기 전에 번호를 매기거나, 복사 뒤로 밀린다');
+    assert.ok(!/userSortFill/.test(code), '백필이 원본 모양 조건($userSortFill)에 묶여 있다 — 원본 사용자 표는 이제 보지 않는다');
   },
 
   // ⑮ 창 멈춤 규칙(2026-09-29 사용자 실측: ps1 을 직접 실행하면 결과를 읽기 전에 창이 꺼졌다).
@@ -473,25 +509,19 @@ test('setup-taskcalendar ① 인자 삼킴 가드: 모든 문자열 인자에 As
 
 // ══ ②〜⑨ ═══════════════════════════════════════════════════════════════
 test('setup-taskcalendar ② 비밀번호는 .cnf 로만 · .cnf 는 finally 에서 삭제', () => checks.secrets(psSrc));
-test('setup-taskcalendar ③ 단계 순서: 백업 → CREATE DATABASE → 과제 → 사용자 → 캘린더 DDL → 복사 → 권한', () => checks.order(psSrc));
-test('setup-taskcalendar ④ 복사 순서 7표(FK 부모 → 자식) · 교집합 컬럼', () => checks.copyOrder(psSrc));
+test('setup-taskcalendar ③ 단계 순서: 백업 → CREATE DATABASE → 과제·사용자·캘린더 DDL → 시드 02 → 03 → 04 → sort_order 백필 → 과제 4표 복사 → 권한', () => checks.order(psSrc));
+test('setup-taskcalendar ④ 복사 대상 = 과제 트랙 4표(FK 부모 → 자식) · 교집합 컬럼', () => checks.copyOrder(psSrc));
 test('setup-taskcalendar ⑤ KST→UTC(-9h)는 과제 트랙 4표의 created_at/updated_at 에만 · -NoShift', () => checks.shift(psSrc));
 test('setup-taskcalendar ⑥ FK 검사 끄고 넣고 다시 켬 · 고아 행 6관계', () => checks.fkAndOrphans(psSrc));
 test('setup-taskcalendar ⑦ 스키마 치환 \\btaskmgr\\. — 두 파일만 · 05-grants 는 대상 DB 선택', () => checks.schemaSubst(psSrc));
-test('setup-taskcalendar ⑧ 대상 DB 가 있으면 -Force 없이는 멈춤 · DROP DATABASE 는 -Force 가지 안', () => checks.targetGuard(psSrc));
+test('setup-taskcalendar ⑧ 대상 DB 가 있으면 -Force 없이는 멈춤 · DROP DATABASE 는 전부 -Force 가지 안', () => checks.targetGuard(psSrc));
 test('setup-taskcalendar ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다', () => checks.versionFromFile(psSrc));
 test('setup-taskcalendar ⑪ 어떤 종료코드로 끝나든 보고서가 남는다(사전 점검 실패·취소 포함)', () => checks.reportAlways(psSrc));
-test('setup-taskcalendar ⑫ 옛 사용자 표 → 스테이징에서 08-24 마이그레이션(user-id → org-id) → 스테이징을 복사원으로 · DROP 은 이름 가드 뒤 성공 시만', () => checks.legacyStage(psSrc));
-test('setup-taskcalendar ⑫-b 덤프를 스테이징에 풀기 전에 USE/CREATE DATABASE 줄이 없는지 본다(원본 오염 차단)', () => {
-  const m = maskPs(psSrc);
-  const iGuard = m.indexOf(String.raw`-Pattern '^\s*(USE\s|CREATE\s+DATABASE\b)'`);
-  const iLoad = m.indexOf('ApplySqlFile $srcDump $StageDb');
-  assert.ok(iGuard > 0 && iLoad > iGuard, '스테이징 적재 앞의 USE/CREATE DATABASE 검사가 없다 — --databases 로 뜬 덤프는 원본에 풀린다');
-  assert.ok(!/"--databases"/.test(m), 'DumpDb 가 --databases 로 뜬다 — 덤프에 USE 가 들어가 스테이징이 아니라 원본에 풀린다');
-});
-test('setup-taskcalendar ⑬ 옛 사용자 표일 때만 사용자 3표도 -9h · $SHIFT_TABLES 줄은 그대로', () => checks.legacyShift(psSrc));
-test('setup-taskcalendar ⑭ 복사원에 sort_order 가 없으면 migrate-2026-09-10 2단계와 같은 백필(복사 뒤)', () => checks.sortBackfill(psSrc));
+test('setup-taskcalendar ⑫ 사용자 3표는 회사 시드(02 → 03 → 04, 대상 DB) · 원본 사용자 표는 복사·요구하지 않음 · login_id 명부 대조는 경고만', () => checks.seedUsers(psSrc));
+test("setup-taskcalendar ⑬ mysql 세션 UTC: .cnf 의 [mysql] 그룹에 init-command SET time_zone='+00:00' ([client] 아님)", () => checks.cnfUtc(psSrc));
+test("setup-taskcalendar ⑭ project.contract_name/common_name 은 복사 SELECT 에서 IFNULL(<col>, '')", () => checks.nullToEmpty(psSrc));
 test('setup-taskcalendar ⑮ 창 멈춤: 리다이렉트면 안 멈춤 · 직접 실행이면 늘 멈춤 · .cmd 가 TC_SETUP_LAUNCHER=cmd', () => checks.pauseRule(psSrc, cmdSrc));
+test('setup-taskcalendar ⑯ app_user.sort_order 백필: migrate-2026-09-10 2단계와 같은 문장 · 04 뒤 · 과제 복사 앞', () => checks.sortBackfill(psSrc));
 
 // ══ 실물 대조 — 스크립트가 기대는 파일 형식이 실제 파일과 맞는가 ═════════
 test('setup-taskcalendar ⑦ 실물: \\btaskmgr\\. 치환이 두 권한 파일의 스키마만 바꾸고 계정 이름은 남긴다', () => {
@@ -551,46 +581,58 @@ test('setup-taskcalendar ⑩ 변이: 명령줄 비번 · 이동 표 확대 · 05
     "$expVersion = '12'")), /'12'/);
 });
 
-test('setup-taskcalendar ⑩ 변이: 08-24 마이그레이션 두 파일의 적용 순서를 바꾸면 ⑫ 가 잡는다', () => {
+test('setup-taskcalendar ⑩ 변이: 02-seed-org.sql 과 03-seed-users.sql 적용 순서를 바꾸면 ⑫ · ③ 이 잡는다', () => {
   const lines = psSrc.split('\n');
-  const u = lines.findIndex((l) => /ApplySqlFile \$migUserIdFile\b/.test(l));
-  const o = lines.findIndex((l) => /ApplySqlFile \$migOrgIdFile\b/.test(l));
-  assert.ok(u >= 0 && o >= 0 && u < o, '변이 준비 실패: 두 마이그레이션 적용 줄을 찾지 못했다');
-  [lines[u], lines[o]] = [lines[o], lines[u]];
+  const o = lines.findIndex((l) => /ApplySqlFile \$seedOrgFile\b/.test(l));
+  const u = lines.findIndex((l) => /ApplySqlFile \$seedUsersFile\b/.test(l));
+  assert.ok(o >= 0 && u >= 0 && o < u, '변이 준비 실패: 두 시드 적용 줄을 찾지 못했다');
+  [lines[o], lines[u]] = [lines[u], lines[o]];
   const m = lines.join('\n');
   assert.notStrictEqual(m, psSrc);
-  assert.throws(() => checks.legacyStage(m), /user-id 가 org-id 보다 먼저/);
+  assert.throws(() => checks.seedUsers(m), /회사 시드 순서가 틀렸다/);
+  assert.throws(() => checks.order(m), /단계 순서가 틀렸다/);
 });
 
-test('setup-taskcalendar ⑩ 변이: 마이그레이션을 $TargetDb 에 돌리거나 복사가 $SourceDb 를 읽으면 ⑫ 가 잡는다', () => {
-  assert.throws(() => checks.legacyStage(mutate(psSrc,
-    'ApplySqlFile $migOrgIdFile $StageDb ', 'ApplySqlFile $migOrgIdFile $TargetDb ')), /스테이징이 아닌 DB/);
-  assert.throws(() => checks.legacyStage(mutate(psSrc,
-    'ApplySqlFile $migUserIdFile $StageDb ', 'ApplySqlFile $migUserIdFile $TargetDb ')), /스테이징이 아닌 DB/);
-  assert.throws(() => checks.legacyStage(mutate(psSrc,
-    "' FROM ' + (TQ $CopySrcDb $t) + ';'", "' FROM ' + (TQ $SourceDb $t) + ';'")), /\$SourceDb 를 직접 읽는다/);
+test('setup-taskcalendar ⑩ 변이: 원본에서 app_user 를 복사하면(복사 목록에 넣거나 INSERT … SELECT FROM 원본) ⑫ · ④ 가 잡는다', () => {
+  const inList = mutate(psSrc,
+    "$COPY_ORDER   = @('section_code','status_code','customer','project')",
+    "$COPY_ORDER   = @('section_code','status_code','customer','app_user','project')");
+  assert.throws(() => checks.seedUsers(inList), /복사 목록\(\$COPY_ORDER\)에 사용자 표/);
+  assert.throws(() => checks.copyOrder(inList), /과제 트랙 4표/);
+  assert.throws(() => checks.seedUsers(mutate(psSrc,
+    "  $copy.Add('SET FOREIGN_KEY_CHECKS=1;')\n",
+    "  $copy.Add('INSERT INTO ' + (TQ $TargetDb 'app_user') + ' SELECT * FROM ' + (TQ $SourceDb 'app_user') + ';')\n  $copy.Add('SET FOREIGN_KEY_CHECKS=1;')\n")),
+    /INSERT … SELECT/);
 });
 
-test('setup-taskcalendar ⑩ 변이: 스테이징 DROP 의 _legacy_stage 이름 가드를 지우거나 실패 경로에서 지우면 ⑫ 가 잡는다', () => {
-  assert.throws(() => checks.legacyStage(mutate(psSrc,
-    '    if($StageDb -cne ($TargetDb + "_legacy_stage")){ Die ', '    if($false){ Die ')), /이름 가드/);
-  // Die 안에서 스테이징을 지우면(실패 경로) 호출이 3곳이 된다.
-  assert.throws(() => checks.legacyStage(mutate(psSrc,
-    "  Log \"[오류] $m\" 'Red'\n", "  Log \"[오류] $m\" 'Red'\n  DropStageDb \"실패\"\n")), /DropStageDb 호출이 3곳/);
-  // 스테이징 DROP 이 대상 이름을 지우면 ⑧ 이 잡는다.
-  assert.throws(() => checks.targetGuard(mutate(psSrc,
-    'Q ("DROP DATABASE IF EXISTS " + (BQ $StageDb) + ";")', 'Q ("DROP DATABASE IF EXISTS " + (BQ $TargetDb) + ";")')), /스테이징이 아닌 DB/);
+test('setup-taskcalendar ⑩ 변이: 명부 대조가 다르면 멈추게 하거나 죽는 QRows 로 바꾸면 ⑫ 가 잡는다', () => {
+  assert.throws(() => checks.seedUsers(mutate(psSrc,
+    '        if($xSrcOnly -gt 0){  Warn ',
+    '        if($xSrcOnly -gt 0){ Die "명부가 다릅니다" }\n        if($xSrcOnly -gt 0){  Warn ')), /Die 가 있다/);
+  assert.throws(() => checks.seedUsers(mutate(psSrc,
+    '    $rSrc  = QRowsTry (', '    $rSrc  = QRows (')), /Q\/QRows/);
 });
 
-test('setup-taskcalendar ⑩ 변이: sort_order 백필을 지우거나 조건을 끄면 ⑭ 가 잡는다 · 사용자 3표를 늘 밀면 ⑬ 이 잡는다', () => {
+test('setup-taskcalendar ⑩ 변이: init-command 를 [client] 로 옮기거나 [mysql] 그룹을 지우면 ⑬ 이 잡는다', () => {
+  const INIT = "init-command=\"\"SET time_zone='+00:00'\"\"`r`n";
+  let m = mutate(psSrc, '"[mysql]`r`n' + INIT + '"', '"[mysql]`r`n"');
+  m = mutate(m, '"[client]`r`nuser=$DbUser', '"[client]`r`n' + INIT + 'user=$DbUser');
+  assert.throws(() => checks.cnfUtc(m), /\[mysql\] 그룹 밖/);
+  assert.throws(() => checks.cnfUtc(mutate(psSrc, '"[mysql]`r`n' + INIT + '"', '""')), /\[client\] → \[mysql\]/);
+});
+
+test("setup-taskcalendar ⑩ 변이: contract_name/common_name 의 IFNULL 을 빼면 ⑭ 가 잡는다", () => {
+  assert.throws(() => checks.nullToEmpty(mutate(psSrc,
+    "        $sel += ('IFNULL(' + (BQ $c) + \", '')\")\n", '        $sel += (BQ $c)\n')), /IFNULL/);
+});
+
+test('setup-taskcalendar ⑩ 변이: sort_order 백필을 지우거나 조건을 끄거나 updated_at 대입을 빼면 ⑯ 이 잡는다', () => {
   assert.throws(() => checks.sortBackfill(mutate(psSrc,
     '    $sortFilled = [long](Q $sortSql "app_user.sort_order 백필")\n', '')), /실행하는 자리가 없다/);
   assert.throws(() => checks.sortBackfill(mutate(psSrc,
-    "$userSortFill = ($srcCols -notcontains 'sort_order')", '$userSortFill = $false')), /백필 조건/);
+    '  if($sortNullBefore -gt 0){\n', '  if($false){\n')), /백필 가지를 찾지 못했다/);
   assert.throws(() => checks.sortBackfill(mutate(psSrc,
     'SET u.sort_order = r.n, u.updated_at = u.updated_at;', 'SET u.sort_order = r.n;')), /updated_at/);
-  assert.throws(() => checks.legacyShift(mutate(psSrc,
-    '  $shiftTablesEff = @($SHIFT_TABLES)\n', '  $shiftTablesEff = @($SHIFT_TABLES + $SHIFT_TABLES_LEGACY)\n')), /두 번 민다/);
 });
 
 test('setup-taskcalendar ⑩ 변이: 리다이렉트 검사를 빼거나 .cmd 의 set 줄을 지우면 ⑮ 가 잡는다', () => {
