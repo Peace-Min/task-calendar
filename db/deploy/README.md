@@ -33,7 +33,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `grants-calendar.sql` | 앱 계정(`taskmgr_app`) 권한 **단일 소스**. 표마다 '왜 그 동사를 주는지 / 왜 안 주는지'가 주석으로 붙어 있다 |
 | `backup-taskmgr.cmd` / `backup-taskmgr.ps1` | **주간 mysqldump 백업 + '온전한 덤프인지' 대조.** 구축이 아니라 **운영** 도구라 `init-calendar` 와 별개로 돈다. `-Install` 로 작업 스케줄러에 등록. 아래 '백업' 절 |
 | `create-backup-user.sql` | 백업 전용 최소권한 계정(`taskmgr_backup`). **주는 권한과 안 주는 권한의 근거가 주석에 붙어 있다** — 특히 `TRIGGER` 를 왜 함께 줘야 하는지 |
-| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **새 주 DB `taskcalendar` 원큐 구축(2026-09-23).** 기존 `taskmgr`(0.16 전용 · 읽기만) 옆에 정본 DDL 3개로 v12 구조를 세우고 과제 4표·사용자 3표 데이터를 id/uid 보존으로 복사(과제 트랙 시각 KST→UTC), 앱 권한 3파일 적용, 검증 보고서. 종료코드 0/1/2/3. 왜·언제는 DEPLOY.md §0-6 |
+| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **새 주 DB `taskcalendar` 원큐 구축(2026-09-23).** 기존 `taskmgr`(0.16 전용 · 읽기만) 옆에 정본 DDL 3개로 v12 구조를 세우고 과제 4표·사용자 3표 데이터를 id/uid 보존으로 복사(과제 트랙 시각 KST→UTC), 앱 권한 3파일 적용, 검증 보고서. 원본 사용자 표가 08-24 이전 모양이면 스테이징 `<대상>_legacy_stage` 에서 08-24 마이그레이션 2파일을 돌린 사본을 복사원으로 쓴다(2026-09-29). 어떻게 끝나든 보고서(`-FAILED`)가 남는다. 종료코드 0/1/2/3. 왜·언제는 DEPLOY.md §0-6 |
 | `restore-taskmgr.cmd` / `restore-taskmgr.ps1` | **덤프 되살리기 + '정말 되살아났는지' 대조.** `backup-taskmgr` 의 짝이다. 기본은 라이브가 아닌 **별도 DB** 로 복구하고, 라이브 덮어쓰기는 스위치+**이름 타이핑**이 있어야만 열린다. `-Grants` 가 `복구방법.txt` 4번(계정·권한은 덤프에 없다)을 대신한다. 아래 '복구' 절 |
 
 > 두 `.sql` 은 `init-calendar` 없이 `mysql` 로 직접 돌려도 되지만, **순서와 게이트를 사람이 대신 지켜야 한다.** 아래 두 절이 그 내용이다.

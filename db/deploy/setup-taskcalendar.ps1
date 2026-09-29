@@ -11,15 +11,33 @@
   단계(화면에 [n/5] 로 찍힌다. 첫 실패에서 멈춘다):
     [0] 사전 점검 — mysql.exe/mysqldump.exe · 접속 · DDL/권한 파일 6개 · 원본 7표 · 대상 DB 부재 ·
         앱 계정 → 요약을 보여 주고 'Y' 를 받는다(-Yes 면 묻지 않는다)
+        ★ 옛 사용자 표 감지: 원본 org_unit 이 name PK(+parent 이름 참조, org_id 없음)이거나 app_user 가
+          login_id PK(+org_unit 이름 참조, user_id 없음)이면 2026-08-24 이전 모양이다. 그때는 멈추지 않고
+          migrate-2026-08-24-user-id.sql · migrate-2026-08-24-org-id.sql 두 파일(이 스크립트 옆)을 더 요구한다
+          (필요 파일 8개). 표마다 '옛 모양' 이거나 '새 모양' 이면 되고(섞여도 된다), 둘 다 아니면 멈춘다.
     [1] 원본 백업 — mysqldump(--single-transaction --no-tablespaces --routines --triggers).
         '-- Dump completed' 마감 줄과 1KB 초과를 확인한다. (-Force 로 기존 대상을 지울 때는
         지우기 전에 대상도 한 벌 뜬다.)
+        ★ [1b] 옛 사용자 표일 때만: 방금 뜬 원본 덤프를 스테이징 DB <TargetDb>_legacy_stage 에 풀고(있으면
+          지우고 다시 만든다 — 이 스크립트의 작업장이다) 거기서 07-24 정규화(project.contract_name ·
+          common_name 의 NULL → '') → 08-24 마이그레이션 두 파일(user-id → org-id. 손대지 않은 원본 파일,
+          --force 없음)을 돌린다. 두 파일의 명부 가드(02-seed-org.sql · 03-seed-users.sql 해시 대조)가 곧
+          '매겨진 user_id · org_id 가 회사 시드의 번호와 같다' 는 보증이다. 이후 [3] 의 복사원은 이 스테이징이다.
+          성공하면 끝에서 지우고, 실패하면 조사용으로 남긴다(이름을 화면과 보고서에 적는다).
+          ※ 역사 전체(v8 → 최신)를 재생하지 않는 이유: 뒤 마이그레이션들은 cal_schema_meta 의 버전으로 문이
+            잠겨 있고, 대상 구조는 어차피 정본 DDL 로 세운다. 스테이징은 '데이터의 번호' 만 맞춘다.
+          ※ 대상 DB 는 [1b] 가 끝난 뒤에야 건드린다(-Force 삭제가 그 뒤다) — [1b] 에서 멈추면 대상은 그대로다.
     [2] 구조 — CREATE DATABASE → schema-structure.sql → 01-schema-users.sql → schema-calendar.sql
         (사용자 표가 캘린더보다 먼저여야 한다: schema-calendar.sql 머리의 가드가 app_user.user_id 를 요구한다)
         → 표 개수 · schema_version(= schema-calendar.sql 이 시딩하는 값, 파일에서 읽는다) 대조
     [3] 데이터 복사 — FK 순서로 7표. 컬럼은 원본∩대상 교집합(빠진 컬럼은 대상 기본값, 원본에만 있는
         컬럼은 보고서에 이름을 적는다). 과제 트랙 4표의 created_at/updated_at 은 KST→UTC(-9h) 로 민다
         (-NoShift 로 끈다). 이후 고아 행 0 · 행 수 일치 · AUTO_INCREMENT > MAX(id) 를 확인한다.
+        ★ 옛 사용자 표였으면 사용자 3표(title_code/org_unit/app_user)도 함께 민다 — 그 표들은
+          migrate-2026-09-09 (5) 를 거치지 않아 아직 KST 다(새 모양 사용자 표는 이미 UTC 라 밀지 않는다).
+        ★ 복사원 app_user 에 sort_order 가 없으면(옛 모양) migrate-2026-09-10-user-sort-order.sql 2단계와
+          같은 백필(직급 서열 → 이름 → user_id 순, 10 간격)을 대상에 돌린다. 시각 이동(= 복사) 뒤에 돌므로
+          updated_at 은 민 값 그대로 남는다(명시 대입으로 ON UPDATE 차단).
     [4] 권한 — create-app-user.sql · grants-calendar.sql(두 파일의 `taskmgr.` 를 대상 DB 로 바꾼 임시 사본) ·
         05-grants.sql(DATABASE() 를 쓰므로 원본 그대로, 대상 DB 를 선택한 채 실행) → SHOW GRANTS 대조
     [5] 보고서 — 화면에 찍힌 모든 줄을 <BackupDir>\setup-taskcalendar-<시각>.txt 로 남긴다.
@@ -45,6 +63,10 @@
   ⚠️ 인자 값을 역슬래시로 끝내지 말 것(-BackupDir "D:\x\" 등). powershell.exe 가 \" 를 이스케이프된
      따옴표로 읽어 뒤따르는 인자를 통째로 삼키고, -TargetDb 같은 값이 조용히 기본값으로 돌아간다.
      아래 AssertNoSwallow 가 그 상태를 감지하면 멈춘다(init-calendar.ps1 과 같은 가드).
+
+  창 닫힘: .cmd 로 띄우면(TC_SETUP_LAUNCHER=cmd) 실패는 .cmd 가, 성공은 이 스크립트가 멈춰 준다(-Yes 면 성공은 안 멈춤).
+     ps1 을 직접 실행하면(우클릭 'PowerShell로 실행' 등) 종료코드와 무관하게 늘 엔터를 기다린다 — 마지막 줄을
+     읽기 전에 창이 꺼지지 않게. stdin 이 리다이렉트된 무인 실행은 어느 경우에도 멈추지 않는다.
 
   예)  setup-taskcalendar.cmd
        setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:\taskmgr-company-data"
@@ -83,10 +105,15 @@ $EXIT_PREFLIGHT = 3
 $COPY_ORDER   = @('section_code','status_code','customer','title_code','org_unit','app_user','project')
 
 # KST→UTC 이동 대상. 옛 DB 는 0.16 클라이언트가 KST 로 썼고, 지금 코드는 UTC 로 쓴다
-# (마이그레이션 v9 가 바로 이 표들에 같은 -9h 이동을 했다). 사용자 3표(title_code/org_unit/app_user)는
-# 옮기지 않는다 — 따로 시딩·이관된 표이고, 이미 UTC 인 사본과 같다는 것을 사용자가 확인했다.
+# (마이그레이션 v9 가 바로 이 표들에 같은 -9h 이동을 했다). 원본 사용자 표가 새 모양이면 사용자 3표
+# (title_code/org_unit/app_user)는 옮기지 않는다 — 따로 시딩·이관된 표이고, 이미 UTC 인 사본과 같다는 것을
+# 사용자가 확인했다.
 $SHIFT_TABLES = @('section_code','status_code','customer','project')
 $SHIFT_COLS   = @('created_at','updated_at')
+# 옛 사용자 표(2026-08-24 이전 모양 — 아래 [0] 에서 감지)일 때만 위 목록에 더하는 이동 대상.
+# 그 표들은 migrate-2026-09-09 (5)(전 7표 -9h)를 거친 적이 없어 아직 KST 다. 반대로 새 모양 사용자 표는
+# 이미 UTC 라, 이 목록을 늘 더하면 두 번 민다 — 그래서 $legacyUsers 일 때만 더한다(아래 $shiftTablesEff).
+$SHIFT_TABLES_LEGACY = @('title_code','org_unit','app_user')
 
 # 구조 단계 후 대상 DB 의 표 개수(과제 4 + 사용자 3 + 캘린더 16). 아래 사전 점검이 세 DDL 파일의
 # CREATE TABLE 수와도 맞춰 본다 — 파일에 표가 늘면 여기서 먼저 멈추고 이 값을 함께 고치라고 말한다.
@@ -94,6 +121,9 @@ $EXPECTED_TABLE_COUNT = 23
 
 # 정체성 컬럼. 원본에 이 컬럼이 없으면 교집합 복사가 조용히 새 번호를 매긴다 — 그러면 cal_* 가
 # 가리킬 사람·과제의 번호가 옛 DB 와 달라진다. 그래서 사전 점검에서 원본에 있는지부터 본다.
+# ※ 예외 둘 — org_unit.org_id · app_user.user_id 가 없고 대신 옛 키(org_unit: name+parent · app_user:
+#   login_id+org_unit)가 있으면 2026-08-24 이전 모양으로 보고 멈추지 않는다. 그 번호는 스테이징에서
+#   migrate-2026-08-24-*.sql 이 명부 가드를 통과한 채 매긴다(머리말 [1b]).
 $KEY_COLS = [ordered]@{
   section_code = @('name');   status_code = @('name');  customer = @('name')
   title_code   = @('name');   org_unit    = @('org_id'); app_user = @('user_id')
@@ -121,6 +151,7 @@ $script:cnfPath    = $null
 $script:preflight  = $true     # 확인 전 실패 = 3(아무것도 안 바꿈) · 확인 후 실패 = 1
 $script:reportDir  = $null     # 백업 폴더가 준비된 뒤에만 보고서를 쓴다
 $script:ts         = Get-Date -Format 'yyyyMMdd-HHmmss'
+$script:stageKept  = $null     # 만들어 둔 스테이징 DB 이름. 실패로 끝나면 조사용으로 남기고 이름을 알린다
 
 function Log([string]$m, [string]$color){
   if($color){ Write-Host $m -ForegroundColor $color } else { Write-Host $m }
@@ -161,7 +192,16 @@ function Finish($code, [string]$lastLine, [string]$color){
   Log $lastLine $color
   if($code -eq $EXIT_OK){ SaveReport "" } else { SaveReport "-FAILED" }
   Cleanup
-  if($code -eq $EXIT_OK -and -not $Yes -and -not [Console]::IsInputRedirected){
+  # 창을 멈추나 — 마지막 줄을 읽기 전에 창이 닫히면 안 된다(2026-09-29 사용자 실측: ps1 을 직접 실행하면
+  # 실패 줄을 볼 새도 없이 창이 꺼졌다. 그 경로에는 .cmd 의 'if errorlevel 1 pause' 가 없다).
+  #   · stdin 이 리다이렉트됨(무인·파이프) → 절대 멈추지 않는다(Read-Host 가 오지 않을 입력을 기다린다).
+  #   · .cmd 를 거치지 않음(우클릭 'PowerShell로 실행' 등) → 종료코드와 무관하게 늘 엔터를 기다린다.
+  #   · .cmd 가 띄움(TC_SETUP_LAUNCHER=cmd) → 실패는 .cmd 가 멈추므로 여기서는 성공만(-Yes 면 그것도 안 멈춤).
+  $pause = $false
+  if([Console]::IsInputRedirected){ $pause = $false }
+  elseif($env:TC_SETUP_LAUNCHER -ne 'cmd'){ $pause = $true }
+  elseif($code -eq $EXIT_OK -and -not $Yes){ $pause = $true }
+  if($pause){
     try { Read-Host "엔터를 누르면 종료" | Out-Null } catch {}
   }
   exit $code
@@ -173,6 +213,7 @@ function Die([string]$m){
     Finish $EXIT_PREFLIGHT "중단: 사전 점검 실패(종료코드 $EXIT_PREFLIGHT). 아무것도 바꾸지 않았습니다." 'Red'
   }
   Log "[오류] $m" 'Red'
+  if($script:stageKept){ Log "[!] 스테이징 DB '$($script:stageKept)' 는 조사용으로 남겨 두었습니다(원본 덤프에 08-24 마이그레이션을 돌린 작업장 — 원본·대상과 별개). 다음 실행이 지우고 다시 만듭니다." 'Yellow' }
   Finish $EXIT_FAIL "중단: 실패(종료코드 $EXIT_FAIL). 원본 '$SourceDb' 는 그대로입니다. 원인을 고친 뒤 -Force 로 다시 실행하세요." 'Red'
 }
 
@@ -213,6 +254,11 @@ AssertNoSwallowSecret "-AppPassword"  $AppPassword
 if($SourceDb -notmatch '^[A-Za-z0-9_]+$'){ Die "-SourceDb 가 식별자 형식이 아닙니다: [$SourceDb]" }
 if($TargetDb -notmatch '^[A-Za-z0-9_]+$'){ Die "-TargetDb 가 식별자 형식이 아닙니다: [$TargetDb]" }
 if($SourceDb -eq $TargetDb){ Die "-SourceDb 와 -TargetDb 가 같습니다([$SourceDb]). 원본 위에 새 DB 를 만들 수는 없습니다." }
+# 옛 사용자 표일 때 쓰는 작업장 DB(머리말 [1b]). 이름은 대상 이름에서만 만든다 — 인자로 받지 않는다
+# (원본·대상 이름이 작업장 이름으로 들어올 길을 없앤다. 지우는 쪽 가드는 DropStageDb 에 한 번 더 있다).
+$StageDb = $TargetDb + "_legacy_stage"
+if($StageDb -notmatch '^[A-Za-z0-9_]+$' -or $StageDb.Length -gt 64){ Die "스테이징 DB 이름 [$StageDb] 이 식별자 형식이 아니거나 64자를 넘습니다 — -TargetDb 를 더 짧게 주세요." }
+if($StageDb -eq $SourceDb){ Die "스테이징 DB 이름 [$StageDb] 이 -SourceDb 와 같습니다. 원본을 작업장으로 쓸 수는 없습니다." }
 if($AppUser -notmatch '^[A-Za-z0-9_]+$'){ Die "-AppUser 가 식별자 형식이 아닙니다: [$AppUser]" }
 if($DbUser -notmatch '^[A-Za-z0-9_.$-]+$'){ Die "-DbUser 가 식별자 형식이 아닙니다: [$DbUser]" }
 if($DbHost -notmatch '^[A-Za-z0-9_.:-]+$'){ Die "-DbHost 형식이 이상합니다: [$DbHost]" }
@@ -253,6 +299,9 @@ $structFile        = Join-Path $scriptDir "schema-structure.sql"
 $calFile           = Join-Path $scriptDir "schema-calendar.sql"
 $appUserFile       = Join-Path $scriptDir "create-app-user.sql"
 $calGrantsFile     = Join-Path $scriptDir "grants-calendar.sql"
+# 옛 사용자 표일 때만 필요한 두 파일 — 원본 모양을 본 뒤(접속 후 '정체성 컬럼')에 있는지 확인한다.
+$migUserIdFile     = Join-Path $scriptDir "migrate-2026-08-24-user-id.sql"
+$migOrgIdFile      = Join-Path $scriptDir "migrate-2026-08-24-org-id.sql"
 if(-not (Test-Path -LiteralPath $CompanyDataDir -PathType Container)){
   Die "회사 데이터 폴더가 없습니다: $CompanyDataDir — 01-schema-users.sql · 05-grants.sql 이 든 taskmgr-company-data 폴더를 -CompanyDataDir 로 지정하세요."
 }
@@ -344,7 +393,8 @@ try {
   }
   # .sql 파일을 바이트 그대로 mysql 에 흘려 넣는다(Get-Content → -e 로 넘기면 인코딩·따옴표가 두 번 해석된다).
   # 2>&1 은 cmd 안에서 처리되므로 PowerShell 5.1 의 NativeCommandError 포장이 생기지 않는다.
-  function ApplySqlFile([string]$file, [string]$db, [string]$label){
+  # $failHint: 실패 메시지 뒤에 붙일 원인 설명(08-24 마이그레이션처럼 '왜 멈췄나' 를 알려야 하는 파일용. 비워도 된다).
+  function ApplySqlFile([string]$file, [string]$db, [string]$label, [string]$failHint){
     Info "적용: $label"
     if($db){
       $out = cmd /c "`"$mysql`" --defaults-extra-file=`"$($script:cnfPath)`" --default-character-set=utf8mb4 `"$db`" 2>&1 < `"$file`""
@@ -353,7 +403,7 @@ try {
     }
     $rc = $LASTEXITCODE
     foreach($l in @($out)){ if("$l".Trim() -ne ""){ Log "      $l" } }
-    if($rc -ne 0){ Die "$label 적용 실패(mysql 종료코드 $rc). 위 mysql 오류 줄을 확인하세요." }
+    if($rc -ne 0){ Die ("$label 적용 실패(mysql 종료코드 $rc). 위 mysql 오류 줄을 확인하세요." + $failHint) }
     Ok "$label 적용 완료"
   }
   # 백업. --result-file 을 쓰는 이유: PowerShell 의 '>' 는 5.1 에서 UTF-16/BOM 으로 써서 되먹일 수 없는 파일이 된다.
@@ -381,6 +431,16 @@ try {
     if(-not $out.Contains($TargetDb + '.')){ Die "$label 에 바꿀 'taskmgr.' 가 하나도 없습니다 — 파일 형식이 바뀌었습니다." }
     return $out
   }
+  # 스테이징 DB 지우기(머리말 [1b]). 이 스크립트가 DROP 하는 것은 -Force 가지의 대상 DB 와 이것 둘뿐이다.
+  # ★ 이름이 정확히 <TargetDb>_legacy_stage 가 아니면 지우지 않는다 — $StageDb 가 어디선가 바뀌어 원본·대상
+  #   이름이 들어오는 사고(= 운영 DB 삭제)를 여기서 끊는다. 부르는 곳은 둘: [1b] 재구축 직전 · 성공 종료 직전.
+  function DropStageDb([string]$why){
+    if($StageDb -cne ($TargetDb + "_legacy_stage")){ Die "스테이징 DB 이름이 [$StageDb] 입니다(기대 [$($TargetDb)_legacy_stage]) — 지우지 않고 멈춥니다." }
+    if($StageDb -eq $SourceDb -or $StageDb -eq $TargetDb){ Die "스테이징 DB 이름 [$StageDb] 이 원본/대상 이름과 같습니다 — 지우지 않고 멈춥니다." }
+    Q ("DROP DATABASE IF EXISTS " + (BQ $StageDb) + ";") "스테이징 DB 삭제" | Out-Null
+    $script:stageKept = $null
+    Info "스테이징 DB '$StageDb' 삭제 ($why)"
+  }
 
   # --- 접속 ---
   $ping = & $mysql "--defaults-extra-file=$($script:cnfPath)" "-N" "-B" "-e" "SELECT 1;"
@@ -394,11 +454,28 @@ try {
   $srcTables = @(QRows "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$SourceDb' AND TABLE_TYPE='BASE TABLE';" "원본 표 목록")
   $lack = @($COPY_ORDER | Where-Object { $srcTables -notcontains $_ })
   if($lack.Count -gt 0){ Die "원본 '$SourceDb' 에 다음 표가 없습니다: $($lack -join ', ')" }
+  # 사용자 두 표는 '옛 모양(2026-08-24 이전)' 이면 여기서 멈추지 않는다. 표마다 옛 모양이거나 새 모양이면 되고
+  # (섞여도 된다 — 08-24 두 파일은 이미 옮긴 표에서 no-op 이다), 둘 다 아니면(옛 키도 새 키도 없음) 아래 원래 메시지로 멈춘다.
+  $legacyOrg = $false     # org_unit: name PK + parent(이름 참조), org_id 없음
+  $legacyApp = $false     # app_user: login_id PK + org_unit(이름 참조), user_id 없음
   foreach($t in $KEY_COLS.Keys){
     $sc = @(QRows "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$SourceDb' AND TABLE_NAME='$t';" "원본 $t 컬럼")
+    if($t -eq 'org_unit' -and ($sc -notcontains 'org_id') -and ($sc -contains 'name') -and ($sc -contains 'parent')){ $legacyOrg = $true; continue }
+    if($t -eq 'app_user' -and ($sc -notcontains 'user_id') -and ($sc -contains 'login_id') -and ($sc -contains 'org_unit')){ $legacyApp = $true; continue }
     foreach($k in $KEY_COLS[$t]){
       if($sc -notcontains $k){ Die "원본 $SourceDb.$t 에 정체성 컬럼 '$k' 가 없습니다. 이대로 복사하면 새 번호가 매겨져 옛 번호와 어긋납니다 — 원본을 먼저 최신 스키마로 마이그레이션하세요." }
     }
+  }
+  $legacyUsers = ($legacyOrg -or $legacyApp)
+  $stageExists = $false
+  if($legacyUsers){
+    foreach($f in @($migUserIdFile, $migOrgIdFile)){
+      if(-not (Test-Path -LiteralPath $f -PathType Leaf)){ Die "원본 사용자 표가 2026-08-24 이전 모양인데, 그것을 옮길 마이그레이션 파일이 없습니다: $f" }
+    }
+    Ok "필요 파일 8개 확인 (DDL·권한 6개 + 08-24 마이그레이션 2개: user-id · org-id)"
+    # 있어도 된다 — 지난 실행이 남긴 우리 작업장이다([1b] 가 지우고 다시 만든다). 사전 점검은 만들지도 지우지도 않는다.
+    $stageExists = ([int](Q "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$StageDb';" "스테이징 DB 확인") -gt 0)
+    Warn "원본 사용자 표가 2026-08-24 이전 모양입니다 — 스테이징 '$StageDb' 에서 08-24 마이그레이션 두 파일을 돌린 사본을 복사원으로 씁니다(원본은 그대로)."
   }
   $srcCounts = [ordered]@{}
   foreach($t in $COPY_ORDER){ $srcCounts[$t] = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + ";") "원본 $t 행 수") }
@@ -423,6 +500,9 @@ try {
   }
 
   $doShift = -not $NoShift
+  # 실제로 미는 표 = 과제 트랙 4표(+ 옛 사용자 표면 사용자 3표). 요약·복사·보고서가 모두 이 목록을 쓴다.
+  $shiftTablesEff = @($SHIFT_TABLES)
+  if($legacyUsers){ $shiftTablesEff = @($SHIFT_TABLES + $SHIFT_TABLES_LEGACY) }
   Log ""
   Log "  ---- 요약 ----"
   Log "  서버          : $DbHost`:$Port (MySQL $serverVer)"
@@ -432,7 +512,16 @@ try {
   Log "  schema_version: $expVersion (schema-calendar.sql)"
   Log "  백업 폴더     : $BackupDir"
   Log "  회사 데이터   : $CompanyDataDir"
-  if($doShift){ Log "  시각 이동     : 켬 — $($SHIFT_TABLES -join ',') 의 $($SHIFT_COLS -join '/') 를 -9시간(KST→UTC)" }
+  if($legacyUsers){
+    $lg = @()
+    if($legacyOrg){ $lg += 'org_unit(name PK)' }
+    if($legacyApp){ $lg += 'app_user(login_id PK)' }
+    Log "  옛 사용자 표  : 감지 — $($lg -join '·') → 스테이징 $StageDb 에서 08-24 마이그레이션 2파일 적용 후 복사" 'Yellow'
+    if($stageExists){ Log "  스테이징      : '$StageDb' 가 이미 있음(지난 실행의 작업장) → 지우고 다시 만듦" 'Yellow' }
+  } else {
+    Log "  옛 사용자 표  : 아님(v12 모양)"
+  }
+  if($doShift){ Log "  시각 이동     : 켬 — $($shiftTablesEff -join ',') 의 $($SHIFT_COLS -join '/') 를 -9시간(KST→UTC)" }
   else        { Log "  시각 이동     : 끔 (-NoShift)" }
   if($appExists){ Log "  앱 계정       : '$AppUser'@'%' 있음 (권한만 추가)" }
   else          { Log "  앱 계정       : '$AppUser'@'%' 없음 → -AppPassword 로 새로 만듦" }
@@ -457,6 +546,64 @@ try {
   $script:reportDir = $BackupDir   # (위에서 이미 잡았지만, 여기서 만든 경우를 위해 한 번 더)
   $srcDump = Join-Path $BackupDir ("$SourceDb-" + $script:ts + ".sql")
   DumpDb $SourceDb $srcDump
+
+  # --------------------------------------------------------------------------
+  #  [1b] 옛 사용자 표 → 스테이징에서 08-24 마이그레이션 (옛 모양일 때만. 단계 번호는 늘리지 않는다)
+  # --------------------------------------------------------------------------
+  # 왜 스테이징인가: 원본은 읽기만 한다(0.16 클라이언트가 계속 쓴다). 그래서 방금 뜬 원본 덤프를 작업장 DB 에
+  #   풀고, 검토를 마친 08-24 마이그레이션 두 파일을 **손대지 않은 채** 거기서 돌린다. 두 파일의 명부 가드가
+  #   회사 시드(02-seed-org.sql · 03-seed-users.sql)와 해시를 대조하므로, 통과했다면 매겨진 user_id · org_id 가
+  #   곧 정본 번호다(cal_* 가 가리킬 번호). 역사 전체를 재생하지 않는 이유는 머리말 [1b] 의 ※.
+  # 대상 DB 는 아직 건드리지 않는다(아래 -Force 삭제보다 앞) — 여기서 멈추면 대상은 그대로다.
+  $CopySrcDb  = $SourceDb      # [3] 이 읽는 복사원. 옛 모양이면 아래에서 스테이징으로 바뀐다
+  $copyCounts = $srcCounts     # [3] 행 수 대조의 기준(= 복사원의 행 수)
+  if($legacyUsers){
+    Log ""
+    Log "  ---- [1b] 옛 사용자 표 → 스테이징 '$StageDb' 에서 08-24 마이그레이션 ----" 'Cyan'
+    DropStageDb "지난 실행의 작업장이 있으면 정리"
+    Q ("CREATE DATABASE " + (BQ $StageDb) + " DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;") "스테이징 DB 생성" | Out-Null
+    $script:stageKept = $StageDb
+    Ok "스테이징 DATABASE '$StageDb' 생성 (utf8mb4 / utf8mb4_0900_ai_ci)"
+    # ★ 덤프에 USE/CREATE DATABASE 줄이 있으면 스테이징이 아니라 **원본**에 풀린다. DumpDb 는 --databases 없이
+    #   DB 하나만 뜨므로 그런 줄이 없어야 정상이다 — 누가 옵션을 바꿔도 여기서 멈춘다.
+    $useHit = @(Select-String -LiteralPath $srcDump -Pattern '^\s*(USE\s|CREATE\s+DATABASE\b)' -Encoding UTF8 | Select-Object -First 1)
+    if($useHit.Count -gt 0){ Die "원본 덤프에 DB 를 고르는 줄이 있습니다(줄 $($useHit[0].LineNumber)) — 스테이징이 아니라 원본에 풀릴 수 있어 멈춥니다." }
+    ApplySqlFile $srcDump $StageDb "원본 덤프 → 스테이징 '$StageDb'"
+    # 07-24 정규화(migrate-2026-07-24-uniqueness.sql 의 두 UPDATE). 대상 project 의 두 컬럼은 NOT NULL DEFAULT '' 라
+    # NULL 이 남아 있으면 [3] 의 INSERT … SELECT 가 막힌다. updated_at = updated_at 은 ON UPDATE 발화 차단
+    # (08-24 · 09-10 마이그레이션과 같은 이유 — 컬럼 하나 정리한 일로 갱신 시각을 지울 수는 없다).
+    $stProjCols = @(QRows "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$StageDb' AND TABLE_NAME='project';" "스테이징 project 컬럼")
+    foreach($c in @('contract_name','common_name')){
+      if($stProjCols -notcontains $c){ continue }
+      $keepTs = ""
+      if($stProjCols -contains 'updated_at'){ $keepTs = ", updated_at = updated_at" }
+      $nNorm = [long](Q ("UPDATE " + (TQ $StageDb 'project') + " SET " + (BQ $c) + " = ''" + $keepTs + " WHERE " + (BQ $c) + " IS NULL; SELECT ROW_COUNT();") "스테이징 project.$c 정규화")
+      Info "  project.$c NULL → '' : $nNorm 행"
+    }
+    $migHint = " ★ 스테이징 '$StageDb' 에서 08-24 마이그레이션이 멈췄습니다. 위에 '명부가 02-seed-org.sql 과 다르다' · '명부가 03-seed-users.sql 과 다르다' 가 찍혔다면 " +
+               "폐쇄망의 명부(조직·사람)가 회사 시드 파일과 달라, 이대로 번호를 매기면 user_id/org_id 가 밀린다는 뜻입니다 — 사람이 명부 차이부터 확인해야 합니다(가드를 끄지 말 것). " +
+               "대상 '$TargetDb' 는 아직 건드리지 않았고 원본 '$SourceDb' 는 그대로이며, 스테이징 DB 는 조사용으로 남겨 둡니다."
+    # 역사 순서대로 user-id → org-id(두 파일은 서로 독립이지만 운영 DB 가 거친 순서를 그대로 밟는다).
+    # --force 금지 — 두 파일은 '에러로 멈춤' 으로 자신을 지킨다(각 파일 머리말).
+    ApplySqlFile $migUserIdFile $StageDb "migrate-2026-08-24-user-id.sql (스테이징 '$StageDb')" $migHint
+    ApplySqlFile $migOrgIdFile $StageDb "migrate-2026-08-24-org-id.sql (스테이징 '$StageDb')" $migHint
+    # 마이그레이션 뒤 모양 — 두 파일이 종료코드 0 으로 끝났어도 결과를 직접 본다.
+    $stOrg = @(QRows "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$StageDb' AND TABLE_NAME='org_unit';" "스테이징 org_unit 컬럼")
+    $stApp = @(QRows "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$StageDb' AND TABLE_NAME='app_user';" "스테이징 app_user 컬럼")
+    foreach($k in @('org_id','parent_id')){ if($stOrg -notcontains $k){ Die "08-24 마이그레이션 뒤에도 스테이징 $StageDb.org_unit 에 '$k' 가 없습니다 — 위 마이그레이션 출력을 확인하세요." } }
+    foreach($k in @('user_id','org_id')){ if($stApp -notcontains $k){ Die "08-24 마이그레이션 뒤에도 스테이징 $StageDb.app_user 에 '$k' 가 없습니다 — 위 마이그레이션 출력을 확인하세요." } }
+    # 행 수 — 스테이징 7표가 원본과 같아야 한다(덤프 적재가 온전했고, 마이그레이션이 행을 지우거나 늘리지 않았다).
+    $copyCounts = [ordered]@{}
+    $stBad = @()
+    foreach($t in $COPY_ORDER){
+      $copyCounts[$t] = [long](Q ("SELECT COUNT(*) FROM " + (TQ $StageDb $t) + ";") "스테이징 $t 행 수")
+      if($copyCounts[$t] -ne $srcCounts[$t]){ $stBad += ("{0}(원본 {1} · 스테이징 {2})" -f $t, $srcCounts[$t], $copyCounts[$t]) }
+    }
+    if($stBad.Count -gt 0){ Die "스테이징의 행 수가 원본과 다릅니다: $($stBad -join ', ') — 사전 점검 뒤 원본에 쓰기가 있었거나 덤프 적재가 온전하지 않습니다. 다시 실행하세요." }
+    $CopySrcDb = $StageDb
+    Ok "스테이징 준비: '$StageDb' (org_unit.org_id/parent_id · app_user.user_id/org_id · 7표 행 수 원본과 일치) → 이후 복사원 = 원본 '$SourceDb' 덤프에 08-24 마이그레이션을 돌린 사본"
+  }
+
   $tgtDump = $null
   if($targetExists){
     if($Force){
@@ -489,7 +636,8 @@ try {
   # ==========================================================================
   #  [3/5] 데이터 복사 (id/uid 보존)
   # ==========================================================================
-  Step 3 "데이터 복사 ($SourceDb → $TargetDb)"
+  Step 3 "데이터 복사 ($CopySrcDb → $TargetDb)"
+  $userSortFill = $false      # 복사원 app_user 에 sort_order 가 없으면 참 → 복사 뒤 백필(아래)
   $copy = New-Object System.Collections.Generic.List[string]
   $copy.Add('SET NAMES utf8mb4;')
   # FK 검사를 끄는 이유: org_unit 은 parent_id 로 자기 자신을 가리키는데 원본 행이 부모→자식 순으로
@@ -502,7 +650,8 @@ try {
   foreach($t in $COPY_ORDER){
     $colSql = "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='{0}' AND TABLE_NAME='$t' AND EXTRA NOT LIKE '%VIRTUAL GENERATED%' AND EXTRA NOT LIKE '%STORED GENERATED%' ORDER BY ORDINAL_POSITION;"
     $tgtCols = @(QRows ($colSql -f $TargetDb) "대상 $t 컬럼")
-    $srcCols = @(QRows ($colSql -f $SourceDb) "원본 $t 컬럼")
+    $srcCols = @(QRows ($colSql -f $CopySrcDb) "복사원 $t 컬럼")
+    if($t -eq 'app_user'){ $userSortFill = ($srcCols -notcontains 'sort_order') }
     $cols    = @($tgtCols | Where-Object { $srcCols -contains $_ })      # 대상의 ORDINAL_POSITION 순서를 따른다
     $srcOnly = @($srcCols | Where-Object { $tgtCols -notcontains $_ })
     $tgtOnly = @($tgtCols | Where-Object { $srcCols -notcontains $_ })
@@ -511,14 +660,14 @@ try {
     $sel = @()
     $shifted = @()
     foreach($c in $cols){
-      if($doShift -and ($SHIFT_TABLES -contains $t) -and ($SHIFT_COLS -contains $c)){
+      if($doShift -and ($shiftTablesEff -contains $t) -and ($SHIFT_COLS -contains $c)){
         $sel += ('DATE_SUB(' + (BQ $c) + ', INTERVAL 9 HOUR)')
         $shifted += $c
       } else {
         $sel += (BQ $c)
       }
     }
-    $copy.Add('INSERT INTO ' + (TQ $TargetDb $t) + ' (' + (($cols | ForEach-Object { BQ $_ }) -join ',') + ') SELECT ' + ($sel -join ',') + ' FROM ' + (TQ $SourceDb $t) + ';')
+    $copy.Add('INSERT INTO ' + (TQ $TargetDb $t) + ' (' + (($cols | ForEach-Object { BQ $_ }) -join ',') + ') SELECT ' + ($sel -join ',') + ' FROM ' + (TQ $CopySrcDb $t) + ';')
     $line = "  {0,-13} 컬럼 {1,2}개" -f $t, $cols.Count
     if($shifted.Count -gt 0){ $line += " · -9h: " + ($shifted -join ',') }
     if($tgtOnly.Count -gt 0){ $line += " · 원본에 없음(대상 기본값): " + ($tgtOnly -join ',') }
@@ -531,6 +680,24 @@ try {
   $copyFile = NewTemp "setup_copy_" ".sql"
   [IO.File]::WriteAllText($copyFile, (($copy.ToArray()) -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
   ApplySqlFile $copyFile "" "7표 복사(한 세션)"
+
+  # app_user.sort_order 백필 — 복사원 app_user 에 sort_order 가 없었을 때만(옛 모양: 교집합에서 빠져 전원 NULL).
+  # migrate-2026-09-10-user-sort-order.sql 2단계와 **같은 문장**(표 이름만 대상 DB 로 한정):
+  #   · 순서 = 직급 서열(title_code.sort_order, 없으면 맨 뒤) → 이름 → user_id, 10 간격.
+  #   · 다중 표 UPDATE 에는 ORDER BY 를 못 쓰므로 ROW_NUMBER() 창 함수로 번호를 만든다(그 파일의 ★).
+  #   · u.updated_at = u.updated_at — 명시 대입으로 ON UPDATE 를 막는다. 복사 때 이미 -9h 민 값이 그대로 남는다
+  #     (그래서 이 백필은 시각 이동 = 복사 **뒤**에 돈다).
+  $sortFilled = 0
+  if($userSortFill){
+    $sortSql = "UPDATE " + (TQ $TargetDb 'app_user') + " u JOIN (SELECT u2.user_id, " +
+               "ROW_NUMBER() OVER (ORDER BY (t.sort_order IS NULL), t.sort_order, u2.name, u2.user_id) * 10 AS n " +
+               "FROM " + (TQ $TargetDb 'app_user') + " u2 LEFT JOIN " + (TQ $TargetDb 'title_code') + " t ON t.name = u2.title" +
+               ") r ON r.user_id = u.user_id SET u.sort_order = r.n, u.updated_at = u.updated_at; SELECT ROW_COUNT();"
+    $sortFilled = [long](Q $sortSql "app_user.sort_order 백필")
+    $sortNull = [long](Q ("SELECT COUNT(*) FROM " + (TQ $TargetDb 'app_user') + " WHERE sort_order IS NULL;") "app_user.sort_order NULL 수")
+    if($sortNull -ne 0){ Die "app_user.sort_order 백필 뒤에도 NULL 이 $sortNull 행 남았습니다." }
+    Ok "app_user.sort_order 백필: $sortFilled 행 채움 (NULL 0 · 직급 서열 → 이름 → user_id 순 ×10)"
+  }
 
   # cal_user_rev — schema-calendar.sql 이 'app_user 전원에게 rev 0 행' 을 시딩하지만, 그 시점의 app_user 는
   # 비어 있었다. 사람이 방금 들어왔으므로 같은 시딩을 다시 한다(그 파일 끝 '릴리스 게이트' 가 누락 0 을 요구한다).
@@ -548,20 +715,20 @@ try {
     $orphanTotal += $n
     if($n -ne 0){ Log ("  고아 행 {0,-24} {1}" -f $oc.name, $n) 'Red' } else { Log ("  고아 행 {0,-24} 0" -f $oc.name) }
   }
-  if($orphanTotal -ne 0){ Die "고아 행이 $orphanTotal 개 있습니다(위 목록). 원본 '$SourceDb' 의 참조가 깨져 있습니다 — 원본을 고친 뒤 -Force 로 다시 실행하세요." }
+  if($orphanTotal -ne 0){ Die "고아 행이 $orphanTotal 개 있습니다(위 목록). 복사원 '$CopySrcDb' 의 참조가 깨져 있습니다 — 원본을 고친 뒤 -Force 로 다시 실행하세요." }
   Ok "고아 행 0 ($($ORPHAN_CHECKS.Count)개 관계)"
 
   # 행 수 대조
   $tgtCounts = [ordered]@{}
   $countBad = @()
-  Log ("  {0,-13} {1,8} {2,8}" -f "표", "원본", "대상")
+  Log ("  {0,-13} {1,8} {2,8}" -f "표", "복사원", "대상")
   foreach($t in $COPY_ORDER){
     $tgtCounts[$t] = [long](Q ("SELECT COUNT(*) FROM " + (TQ $TargetDb $t) + ";") "대상 $t 행 수")
     $mark = "OK"
-    if($tgtCounts[$t] -ne $srcCounts[$t]){ $mark = "불일치"; $countBad += $t }
-    Log ("  {0,-13} {1,8} {2,8}  {3}" -f $t, $srcCounts[$t], $tgtCounts[$t], $mark)
+    if($tgtCounts[$t] -ne $copyCounts[$t]){ $mark = "불일치"; $countBad += $t }
+    Log ("  {0,-13} {1,8} {2,8}  {3}" -f $t, $copyCounts[$t], $tgtCounts[$t], $mark)
   }
-  if($countBad.Count -gt 0){ Die "행 수가 원본과 다릅니다: $($countBad -join ', ')" }
+  if($countBad.Count -gt 0){ Die "행 수가 복사원과 다릅니다: $($countBad -join ', ')" }
   Ok "행 수 7표 일치"
 
   # AUTO_INCREMENT > MAX(id). 명시 id 로 넣으면 MySQL 이 카운터를 올린다 — 그것을 확인만 한다.
@@ -627,19 +794,25 @@ try {
   #  [5/5] 보고서
   # ==========================================================================
   Step 5 "보고서"
+  Log "  원본(읽기만)   : $SourceDb"
+  if($legacyUsers){ Log "  복사 경로      : $SourceDb → 덤프 → 스테이징 $StageDb (08-24 마이그레이션 user-id · org-id) → $TargetDb" }
+  else            { Log "  복사 경로      : $SourceDb → $TargetDb (직접)" }
   Log "  대상 DB        : $TargetDb"
   Log "  schema_version : $actVersion"
   Log "  표 수          : $tblCount"
   foreach($t in $COPY_ORDER){ Log ("  행 수 {0,-13}: {1}" -f $t, $tgtCounts[$t]) }
   Log "  고아 행        : 0 ($($ORPHAN_CHECKS.Count)개 관계)"
-  if($doShift){ Log "  시각 이동      : $($SHIFT_TABLES -join ',') 의 $($SHIFT_COLS -join '/') -9시간" }
+  if($doShift){ Log "  시각 이동      : $($shiftTablesEff -join ',') 의 $($SHIFT_COLS -join '/') -9시간" }
   else        { Log "  시각 이동      : 안 함(-NoShift)" }
+  if($userSortFill){ Log "  sort_order     : app_user $sortFilled 행 백필(migrate-2026-09-10 2단계와 같은 순서 · NULL 0)" }
   Log "  권한           : OK ('$AppUser'@'%' · 표 $($expGrantTables.Count)개)"
   Log "  원본 백업      : $srcDump"
   if($tgtDump){ Log "  삭제 전 대상   : $tgtDump" }
   Log ""
   Log "  다음 단계: widget/DeployConfig.cs → DbName = `"$TargetDb`" 로 바꾼 뒤 다시 빌드하세요." 'Cyan'
   Log "            (원본 '$SourceDb' 는 그대로라 0.16 클라이언트는 계속 그쪽을 씁니다.)" 'Cyan'
+  # 스테이징은 성공했을 때만 지운다(실패면 Die 가 이름을 알리고 남긴다). 이름 가드는 DropStageDb 안에 있다.
+  if($legacyUsers){ DropStageDb "성공 — 작업장 정리" }
   Finish $EXIT_OK "완료: '$TargetDb' 구축·검증 통과(종료코드 $EXIT_OK)." 'Green'
 } finally {
   # exit(Finish/Die) 로 끝나도 finally 는 돈다. Cleanup 은 두 번 불려도 안전하다.

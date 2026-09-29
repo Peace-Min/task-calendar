@@ -29,6 +29,10 @@ rem  Do NOT end an argument value with a backslash - powershell.exe reads \"
 rem  as an escaped quote and swallows the following argument.
 rem ===========================================================================
 cd /d "%~dp0"
+rem  TC_SETUP_LAUNCHER=cmd tells the .ps1 it was started by this launcher:
+rem  this file pauses on failure (below), so the .ps1 pauses only on success.
+rem  Without it (the .ps1 run directly) the .ps1 always waits for Enter.
+set "TC_SETUP_LAUNCHER=cmd"
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup-taskcalendar.ps1" %*
 set "RC=%ERRORLEVEL%"
 if errorlevel 1 pause
