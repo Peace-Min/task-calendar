@@ -7,6 +7,22 @@
 
 ---
 
+## 🆕 2026-09-30 — v0.19.0: 새 주 DB `taskcalendar` · 구성원·직급·소속 관리 · 휴지통 · 스키마 v12 (breaking · 릴리스 커밋 전)
+
+0.18.1 이후 배포 대기 중에 들어온 기능(개발종료일 · 사용자 관리 · 휴지통 · 직급·소속 관리)과 코드 품질 전면 조사 수정분을 묶고, **위젯의 접속 기본 DB 를 `taskmgr` → `taskcalendar` 로 바꾼** 릴리스다. 마지막 실배포판이 0.16 이라 폐쇄망의 `taskmgr` 는 0.16·0.17.1 이 계속 쓰고, 0.19 는 그 옆에 세운 새 DB 에 붙는다(두 DB 운영 — DEPLOY.md §0-6).
+
+- **`DeployConfig.DbName` = `"taskcalendar"`** — 저장소 기본값 자체를 바꿨다(이전엔 "빌드 전에 손으로 바꾼다"였다). `taskmgr` 를 가리키는 운영 스크립트(`backup-taskmgr`·`restore-taskmgr`·`migrate-*`·`setup-taskcalendar` 의 원본 DB)는 그대로다 — 그쪽은 정말로 옛 DB 를 뜻한다.
+- **`schema_version` 9 → 12** — v10 `project.dev_end_date`(`23d5fa3` · `migrate-2026-09-10-dev-end-date.sql`) · v11 `app_user.sort_order`(`4d22981` · `migrate-2026-09-10-user-sort-order.sql`) · v12 `sort_order` 를 `INT UNSIGNED` 로(`1690718` · `migrate-2026-09-10-user-sort-order-int.sql`). `CalendarDb.ExpectedSchemaVersion = "12"`.
+- **새 DB 구축 = `db/deploy/setup-taskcalendar.cmd`**(`8c6baee` → `afe5f1e`) — 구조는 정본 DDL, 과제 4표만 원본 `taskmgr` 에서 id/uid 보존 복사, 사용자 3표는 회사 시드(`taskmgr-company-data` 02·03·04 · 폐쇄망 사용자 표가 08-24 이전 모양이라 옮기지 않는다), 원본 login_id 대조는 경고만. 실행할 때마다 기존 대상을 `<대상>-before-drop-<시각>.sql` 로 덤프한 뒤 지우고 처음부터 만든다(`-Force` 는 호환용 무동작) — **운영 전환 뒤엔 다시 돌리지 말 것**.
+- **사용자 관리**(`4d22981`…`3741af0` · [docs/USER-ADMIN.md](docs/USER-ADMIN.md)) — 관리자가 직원 등록·수정·퇴사·복구·전사 서열(`flatOrder`). 「구성원 보기」/「구성원 편집」 독립 화면.
+- **휴지통**(`0330914` · [docs/TRASH-DELETE.md](docs/TRASH-DELETE.md)) — 숨긴 과제·퇴사자·발주처·구분·상태 복구/영구 삭제(관리자 · 기록 0건만 · 이름 입력 확인). 앱 계정에 일곱 표 `DELETE` 가 필요하다(DEPLOY.md §0-5).
+- **직급·소속 관리**(`ddeafdf` · [docs/ORG-TITLE-ADMIN.md](docs/ORG-TITLE-ADMIN.md)) — `org_unit`·`title_code` 의 `INSERT`·`UPDATE` GRANT 가 세 파일에 함께 들어간다.
+- **보고서** — ⚙옵션 격자·포함 항목 칩(`111ca04`) · 「내용 없는 항목 제외」 = 쓸 내용 없는 과제 행만(`d20ffd2`) · 근태·초과시간 상시(`7cc8916`) · 글꼴·크기는 기간 취합 전용(`c2ced7c`) · 품질 조사 §3.4-C 1차 6건(`1ba8c0d`: 중복 제목 본문 보존 · hours 단일 출처 · 전송 모드 배지 등).
+- **화면·경합** — 팝업 목록 높이 고정(`f86ed35`) · 공식 과제 도구줄 400px(`7a00fe3`) · 상단 가장자리 크기 조절(`e22cdfb`) · 품질 조사 1·2차와 §3.4-A·B(`7ef63a5`·`925962d`·`60083f2`·`aa9a3fb`: 확인창 값 반환 · 목록 재조회 세대 표식 · 인라인 편집 가드). 전체 목록은 [docs/QUALITY-SWEEP-2026-09-18.md](docs/QUALITY-SWEEP-2026-09-18.md).
+- 게이트: `TC_TEST_STRICT=1 node tests/run-tests.mjs` 0 fail / 0 skip · exit 0 · 버전 단일 소스 정합(`tests/version-sync.test.mjs`). 인스톨러 빌드·`latest.json` sha256 대조는 릴리스 빌드 때.
+
+---
+
 ## 🆕 2026-09-09 — v0.18.1: 배포 전 무결성 정비 · 스키마 v9 짝맞춤 (`73958fb`)
 
 스키마 전면 재검토에서 나온 **배포 전 필수** 항목을 고치고, 위젯을 그 서버와 짝맞춰 올린 릴리스다. **사용자 화면에서 달라지는 것은 없다** — 대신 서버와 위젯 중 어느 한쪽만 나가면 전량 교체(가져오기·전체 초기화)가 거부된다. 고친 것들은 종류가 같다: *"장치 A 는 이렇게 지키자고 하는데 장치 B 가 반대로 하고 있다."*

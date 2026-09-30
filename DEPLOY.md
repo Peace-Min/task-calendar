@@ -29,7 +29,7 @@
 
 ## 0. 서버 DB 선행 작업 (§2~§3보다 **먼저**)
 
-캘린더 데이터는 서버 MySQL(`taskmgr`)에 있다(v0.18.0~). 그래서 **빌드보다 서버가 먼저**다 — 아래 다섯을 끝내지 않으면 잘 만들어진 인스톨러를 배포해도 동료 PC에서 캘린더가 열리지 않는다.
+캘린더 데이터는 서버 MySQL(`taskcalendar` · v0.19.0~ 의 주 DB. 0.16·0.17.1 은 `taskmgr`)에 있다(v0.18.0~). 그래서 **빌드보다 서버가 먼저**다 — 아래 다섯을 끝내지 않으면 잘 만들어진 인스톨러를 배포해도 동료 PC에서 캘린더가 열리지 않는다.
 
 ### 0-1. 배포 구성 채우기 — `widget/DeployConfig.cs` (빌드 **전**)
 
@@ -38,7 +38,7 @@
 | 상수 | 저장소 값 | 배포 시 채울 값 |
 |---|---|---|
 | `DbHost` | `localhost` | **서버 PC의 고정 IP** |
-| `DbName` | `taskmgr` | **`taskcalendar`**(0.19~ 신버전의 주 DB · §0-6). `taskmgr` 는 0.16 전용으로 남는다 |
+| `DbName` | `taskcalendar` | 그대로(0.19~ 신버전의 주 DB · §0-6 — v0.19.0 부터 저장소 기본값). `taskmgr` 는 0.16·0.17.1 이 계속 쓴다 |
 | `DbPassword` | 저장소용 값 | `init-db` 실행 시 정한 **앱 계정(`taskmgr_app`) 비밀번호** — 어긋나면 접속이 안 된다 |
 | `UpdateSourceUrl` | `""`(비움) | 공유폴더/FTP 경로(§5 방법 B). 비워 두면 각 PC 설정에서 넣어야 켜진다 |
 
@@ -110,7 +110,7 @@ setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:\taskmgr-company-
 
 **사용자 표를 원본에서 옮기지 않는 이유(2026-09-29 결정)**: 폐쇄망 `taskmgr` 의 사용자 표는 2026-08-24 이전 모양(org_unit name PK · app_user login_id PK)이고, 명부 자체는 보고 사이트 = 회사 시드(`taskmgr-company-data`)와 같다. 그래서 새 DB 의 사용자·조직 번호는 시드의 명시값(정본)으로 세우고, 원본 사용자 표는 **login_id 대조(경고만)** 에만 읽는다 — 차이가 있으면 보고서에 이름이 찍힌다. 시드 행의 시각은 mysql 세션을 UTC 로 열어(임시 .cnf 의 `[mysql] init-command`) 앱과 같은 기준으로 적힌다.
 
-**그 다음** — `widget/DeployConfig.cs` 의 `DbName` 을 `taskcalendar` 로(§0-1 표의 `DbHost` 와 같은 자리에서) 바꿔 빌드한다. 본인 캘린더 기록은 다른 사용자와 같은 길(새 위젯 「XML 가져오기」)로 넣는다 — 파일럿 리허설이 된다.
+**그 다음** — `widget/DeployConfig.cs` 의 `DbName` 은 v0.19.0 부터 저장소 기본값이 이미 `taskcalendar` 다 — §0-1 표의 `DbHost` 만 채워 빌드한다. 본인 캘린더 기록은 다른 사용자와 같은 길(새 위젯 「XML 가져오기」)로 넣는다 — 파일럿 리허설이 된다.
 
 **리허설 기록(2026-09-23, 개발 PC)**: 폐쇄망 상태를 흉내낸 `taskmgr_legacy_sim`(7표 · `dev_end_date` 제거 · 시각 +9h) → `taskcalendar_test` 구축 종료코드 0 · 시각이 v12 원본과 같은 값으로 복귀 · id/uid 불일치 0 · 구조 시그니처 차이 0 · 재실행 가드(3)·`-Force` 재구축(0) 확인 · 새 위젯 접속 확인. (당시 판 기준 — 2026-09-30 부터는 가드·`-Force` 없이 재실행 = 늘 백업 후 재구축.)
 

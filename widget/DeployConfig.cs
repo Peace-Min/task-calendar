@@ -19,7 +19,7 @@ namespace TaskCalendarWidget
         // ── DB 연결 (앱이 붙을 중앙 MySQL) ──────────────────────────────────────
         public const string DbHost     = "localhost";       // 서버 주소 — 폐쇄망 서버 PC의 고정 IP로 교체 (localhost = 이 PC 전용)
         public const int    DbPort     = 3306;              // MySQL 포트 (기본 그대로면 유지)
-        public const string DbName     = "taskmgr";         // 데이터베이스명
+        public const string DbName     = "taskcalendar";    // 데이터베이스명 — 0.19~ 새 주 DB(구버전 0.16·0.17.1 은 기존 taskmgr 를 계속 쓴다)
         // 앱 계정 = 최소권한(project·customer 두 테이블 SELECT/INSERT/UPDATE만). db/deploy/create-app-user.sql 로 생성.
         // 접속정보는 전 사용자에게 배포되므로 root 금지 — 노출돼도 피해가 '앱이 허용하는 것'까지로 제한된다.
         public const string DbUser     = "taskmgr_app";     // DB 계정 (최소권한)

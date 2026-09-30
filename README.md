@@ -4,7 +4,7 @@
 
 **바탕화면에 상주하는 폐쇄망 데스크톱 캘린더 위젯 — 과제별 git/svn 커밋으로 일/주 보고서를 만들고, 사내 보고 시스템 자동 작성과 일정 시작 알림까지**
 
-[![Version](https://img.shields.io/badge/Version-v0.18.1-3e5be0)](#-릴리스-내역)
+[![Version](https://img.shields.io/badge/Version-v0.19.0-3e5be0)](#-릴리스-내역)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078D6?logo=windows&logoColor=white)](#)
 [![.NET](https://img.shields.io/badge/.NET-9.0%20WPF-512BD4?logo=dotnet&logoColor=white)](#)
 [![WebView2](https://img.shields.io/badge/UI-WebView2%20%2B%20HTML-1E9BF0)](#)
@@ -185,7 +185,7 @@ flowchart TB
   hostfn --> db
   hostfn --> sess
   hostfn --> rem
-  db -.TCP 3306.-> mysql[("중앙 MySQL · taskmgr<br/>과제: project·customer·코드테이블<br/>사용자: app_user·org_unit·title_code<br/>캘린더 본체: cal_*")]
+  db -.TCP 3306.-> mysql[("중앙 MySQL · taskcalendar<br/>과제: project·customer·코드테이블<br/>사용자: app_user·org_unit·title_code<br/>캘린더 본체: cal_*")]
   caldb -.TCP 3306.-> mysql
   hostfn --> git["git/svn CLI → 작업일지(source=git)"]
 ```
@@ -271,6 +271,7 @@ flowchart TB
 
 | 버전 | 날짜 | 핵심 변경 |
 |---|---|---|
+| **v0.19.0** | 2026-09-30 | **새 주 DB `taskcalendar`**(구버전 0.16·0.17.1 은 `taskmgr` 유지 · 기존 기록은 「XML 가져오기」 1회) · **구성원 관리**(등록·수정·퇴사·복구·전사 서열) · **직급·소속 관리** · **휴지통**(복구·영구 삭제) · **개발종료일** · 보고서 옵션 정돈 · 팝업 높이 고정·편집 보호 · 서버 스키마 **v12** |
 | **v0.18.1** | 2026-09-09 | **서버 데이터 규칙 정비 · 스키마 짝맞춤**(화면 변화 없음) — 소유자 계정을 지워도 보고 이력이 함께 사라지지 않게 하고, 보고 표에 근태·시간 검사와 과제 참조를 넣고, 회사 자료의 감사 시각을 캘린더와 같은 기준으로 일원화. 서버 스키마가 함께 올라가므로 **이 버전으로 올려야 짝이 맞는다**(옛 버전은 가져오기·초기화가 막힌다). 사용자용 설명은 [RELEASE_NOTES.md](RELEASE_NOTES.md)의 v0.18.1 절 |
 | **v0.18.0** | 2026-09-02 | **서버 DB 저장 전환**(breaking) — 일정·할 일·과제·공수·근태가 XML 파일에서 **사내 서버 MySQL(`cal_*`)** 로. 어느 PC에서든 같은 캘린더 · **온라인 전용**(로컬 캐시 없음) · 기존 기록은 **1회 「가져오기」**(자동 이관 안 함, 미이관 표시등) · **커밋 쓰기 배선** · **보고 기록 DB**(`cal_report_daily/hours/weekly`) · 서버 연결 실패 시 그날 미리알림 없음(결정) · 근태 정정 2건 |
 | **v0.17.1** | 2026-08-04 | **구성원 명부를 전 직원 공개로 정정** — 「열람 범위」는 명부가 아니라 **그 사람 일정**을 볼 수 있는 범위(범위 밖은 명부에 나오되 눌리지 않음) · **로그인 화면이 「주간보고 계정」을 지목**하고 **회사 이메일 입력을 차단**(쓸 ID를 직접 표시) |
