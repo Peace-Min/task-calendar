@@ -340,6 +340,24 @@ foreach($t in @($COPY_ORDER + $SEED_TABLES)){
   if($ddlTables -notcontains $t){ Die "DDL 파일에 복사·시딩 대상 표 '$t' 의 CREATE TABLE 이 없습니다." }
 }
 
+# 회사 데이터 폴더의 판 확인 — 2026-09-30 폐쇄망 실측: 회사 데이터 폴더가 2026-08-24 이전 사본이라
+# 01-schema-users.sql 이 user_id 없는 app_user 를 만들었고, [2] 에서 schema-calendar.sql 의 가드
+# ("app_user.user_id 없음")에 걸려 대상 DB 가 반쯤 선 채로 멈췄다. 여기서(접속 전 · 아무것도 만들기 전) 막는다.
+#   · 01: app_user.user_id · org_unit.org_id 대리키 컬럼이 있어야 한다(없으면 08-24 이전 판)
+#   · 02/03: 시드가 org_id · user_id 를 명시해야 한다(번호를 명시하지 않는 시드는 정본 번호를 보장하지 못한다)
+$seedOrgText   = Get-Content -LiteralPath $seedOrgFile   -Raw -Encoding UTF8
+$seedUsersText = Get-Content -LiteralPath $seedUsersFile -Raw -Encoding UTF8
+$oldCompany = @()
+if($usersText -notmatch '(?im)^\s*user_id\s+SMALLINT\b'){ $oldCompany += "01-schema-users.sql 에 app_user.user_id 가 없음" }
+if($usersText -notmatch '(?im)^\s*org_id\s+SMALLINT\b'){  $oldCompany += "01-schema-users.sql 에 org_unit.org_id 가 없음" }
+if($seedOrgText -notmatch '\borg_id\b'){                   $oldCompany += "02-seed-org.sql 이 org_id 를 명시하지 않음" }
+if($seedUsersText -notmatch '\buser_id\b'){                $oldCompany += "03-seed-users.sql 이 user_id 를 명시하지 않음" }
+if($oldCompany.Count -gt 0){
+  Die ("회사 데이터 폴더가 옛 판(2026-08-24 이전)입니다: $CompanyDataDir — " + ($oldCompany -join ' · ') +
+       ". 그 폴더(taskmgr-company-data)를 최신으로 받은 뒤(git pull) 다시 실행하세요.")
+}
+Ok "회사 데이터 판 확인 (app_user.user_id · org_unit.org_id · 시드 번호 명시)"
+
 # 권한 파일 3개는 계정 이름을 글자로 박아 두었다. -AppUser 가 다르면 엉뚱한 계정에 권한이 붙는다.
 if(-not $appUserText.Contains("'" + $AppUser + "'@'%'")){   Die "create-app-user.sql 에 '$AppUser'@'%' 가 없습니다 — 이 파일이 만드는 계정과 -AppUser 가 다릅니다." }
 if(-not $calGrantsText.Contains("'" + $AppUser + "'@'%'")){ Die "grants-calendar.sql 에 '$AppUser'@'%' 가 없습니다 — 이 파일이 권한을 주는 계정과 -AppUser 가 다릅니다." }
@@ -401,12 +419,20 @@ try {
   # $failHint: 실패 메시지 뒤에 붙일 원인 설명(회사 시드처럼 '무엇이 남았나 · 어떻게 다시 하나' 를 알려야 하는 파일용. 비워도 된다).
   function ApplySqlFile([string]$file, [string]$db, [string]$label, [string]$failHint){
     Info "적용: $label"
-    if($db){
-      $out = cmd /c "`"$mysql`" --defaults-extra-file=`"$($script:cnfPath)`" --default-character-set=utf8mb4 `"$db`" 2>&1 < `"$file`""
-    } else {
-      $out = cmd /c "`"$mysql`" --defaults-extra-file=`"$($script:cnfPath)`" --default-character-set=utf8mb4 2>&1 < `"$file`""
+    # mysql 은 오류 메시지를 UTF-8 로 낸다. PowerShell 5.1 은 네이티브 출력을 [Console]::OutputEncoding(한국어 Windows = CP949)
+    # 로 읽으므로, 가드가 내는 한국어 메시지("중단: …")가 깨져 원인을 못 읽는다(2026-09-30 폐쇄망 실측). 이 호출 동안만 UTF-8 로 읽는다.
+    $prevEnc = $null
+    try { $prevEnc = [Console]::OutputEncoding; [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false) } catch { $prevEnc = $null }
+    try {
+      if($db){
+        $out = cmd /c "`"$mysql`" --defaults-extra-file=`"$($script:cnfPath)`" --default-character-set=utf8mb4 `"$db`" 2>&1 < `"$file`""
+      } else {
+        $out = cmd /c "`"$mysql`" --defaults-extra-file=`"$($script:cnfPath)`" --default-character-set=utf8mb4 2>&1 < `"$file`""
+      }
+      $rc = $LASTEXITCODE
+    } finally {
+      if($prevEnc){ try { [Console]::OutputEncoding = $prevEnc } catch {} }
     }
-    $rc = $LASTEXITCODE
     foreach($l in @($out)){ if("$l".Trim() -ne ""){ Log "      $l" } }
     if($rc -ne 0){ Die ("$label 적용 실패(mysql 종료코드 $rc). 위 mysql 오류 줄을 확인하세요." + $failHint) }
     Ok "$label 적용 완료"

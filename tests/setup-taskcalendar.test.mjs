@@ -640,3 +640,32 @@ test('setup-taskcalendar ⑩ 변이: 리다이렉트 검사를 빼거나 .cmd �
     '  if([Console]::IsInputRedirected){ $pause = $false }\n  elseif(', '  if('), cmdSrc), /멈춤 규칙/);
   assert.throws(() => checks.pauseRule(psSrc, cmdSrc.replace('set "TC_SETUP_LAUNCHER=cmd"\n', '')), /TC_SETUP_LAUNCHER=cmd/);
 });
+
+// ⑰ 회사 데이터 폴더가 옛 판이면 사전 점검(접속 전)에서 멈춘다 — 2026-09-30 폐쇄망 실측:
+//    옛 01-schema-users.sql(user_id 없음)로 [2] 가 schema-calendar.sql 가드에 걸려 대상이 반쯤 선 채 멈췄다.
+function checkOldCompany(src) {
+  const m = maskPs(src);
+  const iGuard = m.indexOf('$oldCompany.Count -gt 0');
+  const iCreate = m.indexOf('"CREATE DATABASE " + (BQ $TargetDb)');
+  assert.ok(iGuard > 0, '회사 데이터 판 확인(옛 01/02/03 감지)이 사라졌다');
+  assert.ok(iCreate > iGuard, '회사 데이터 판 확인이 CREATE DATABASE 뒤에 있다 — 대상이 반쯤 선 채 멈춘다');
+  for (const re of [/user_id\\s\+SMALLINT/, /org_id\\s\+SMALLINT/, /\\borg_id\\b/, /\\buser_id\\b/]) {
+    assert.ok(re.test(src), '판 확인 정규식이 빠졌다: ' + re);
+  }
+  // 실물: 지금 회사 데이터(있으면)는 새 판이어야 하고, a7983f9 판 01 은 걸려야 한다 — 정규식이 실제 파일 모양과 맞는지.
+  const usersNew = "CREATE TABLE app_user (\n  user_id     SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT,\n";
+  const usersOld = "CREATE TABLE app_user (\n  login_id    VARCHAR(50)  NOT NULL,\n";
+  assert.ok(/^\s*user_id\s+SMALLINT\b/im.test(usersNew) && !/^\s*user_id\s+SMALLINT\b/im.test(usersOld), '판 확인 정규식이 새/옛 모양을 가르지 못한다');
+}
+test('setup-taskcalendar ⑰ 회사 데이터 옛 판(08-24 이전) 감지 → 사전 점검에서 멈춤 · CREATE DATABASE 보다 앞', () => checkOldCompany(psSrc));
+test('setup-taskcalendar ⑰ 변이: 판 확인을 지우면 ⑰ 이 잡는다', () => {
+  assert.throws(() => checkOldCompany(mutate(psSrc, 'if($oldCompany.Count -gt 0){', 'if($false){')), /판 확인/);
+  assert.throws(() => checkOldCompany(mutate(psSrc, 'user_id\\s+SMALLINT', 'user_id\\s+INT')), /정규식/);
+});
+test('setup-taskcalendar ⑱ ApplySqlFile 은 mysql 출력을 UTF-8 로 읽고 원래 인코딩으로 되돌린다', () => {
+  const m = maskPs(psSrc);
+  const i = m.indexOf('function ApplySqlFile');
+  const body = m.slice(i, m.indexOf('function DumpDb'));
+  assert.ok(/\[Console\]::OutputEncoding = New-Object System\.Text\.UTF8Encoding/.test(body), 'ApplySqlFile 이 UTF-8 로 읽지 않는다 — 한국어 가드 메시지가 깨진다');
+  assert.ok(/finally \{[\s\S]*\[Console\]::OutputEncoding = \$prevEnc/.test(body), 'ApplySqlFile 이 인코딩을 finally 에서 되돌리지 않는다');
+});
