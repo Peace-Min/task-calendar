@@ -2820,6 +2820,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <div style="margin:2px 0 2px"><b id="usName">—</b> <span id="usTitle" class="git-opt"></span></div>
           <div class="set-hint" id="usOrg" style="margin:0"></div>
         </div>
+        <!-- 캘린더 DB 연결 정보 — 상단 배지를 정상일 때 숨기면서(2026-09-30) 옮겨 온 자리. 부팅 meta 가 있을 때만 보인다. -->
+        <div class="set-hint hidden" id="usDbLine" style="margin:4px 0 0"></div>
       </div>
       <div class="set-sec set-sec-top hidden" id="usPermSec">
         <div class="set-lb">권한 <span id="usPermState" class="git-opt"></span></div>
@@ -3275,6 +3277,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <li><b>보고서 정돈</b> — ⚙옵션 패널을 가지런히 하고 <b>포함 항목을 칩으로 켜고 끕니다</b>. 「내용 없는 항목 제외」는 <b>쓸 내용이 없는 과제 행만</b> 빼고, 근태·초과시간은 <b>늘 표시</b>합니다. 글꼴·크기는 기간 취합에서만 바꾸고, 전송 방식 배지가 붙으며, 같은 제목 기록의 본문도 보존됩니다.</li>
         <li><b>화면이 출렁이지 않습니다</b> — 팝업 목록 상자 높이를 고정해 <b>검색·탭 전환 때 창 크기가 변하지 않습니다</b>. 좁은 창에서도 공식 과제 도구줄·미리알림 줄이 넘치지 않고, 위젯 <b>상단 가장자리로도 크기</b>를 조절합니다.</li>
         <li><b>입력한 내용을 잃지 않습니다</b> — 인라인 편집 중에 다른 곳을 눌러도 <b>말없이 사라지지 않습니다</b>. 확인창·목록 재조회의 순서가 꼬이던 문제도 고쳤습니다.</li>
+        <li><b>이전 기록 자동 감지</b> — 캘린더가 비어 있고 <b>이 PC에 이전 버전의 기록 파일</b>이 있으면 <b>가져올지 묻는 창</b>이 뜹니다. 「가져오기」를 누르면 늘 보던 미리보기에서 병합/교체를 고릅니다 — 묻기만 하고 저절로 옮기지는 않습니다.</li>
+        <li><b>상단 DB 표시 정리</b> — 정상일 때는 상단 「DB 연결됨」 줄을 <b>숨기고</b>, 스키마가 맞지 않거나 저장이 안 되는 <b>문제가 있을 때만 경고</b>합니다. 연결 정보는 <b>「사용자 정보」</b>에서 볼 수 있습니다.</li>
       </ul>
       <div class="patch-ver"><span class="pv-tag old">v0.18.1</span><span class="pv-date">2026-09-09</span></div>
       <p class="patch-intro">서버에 쌓이는 기록을 지키는 규칙을 손봤습니다. <b>화면에서 달라지는 것은 없지만</b>, 서버가 함께 바뀌었으니 <b>이 버전으로 올려야 짝이 맞습니다</b>.</p>
@@ -3562,6 +3566,25 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <button class="btn" data-close>취소</button>
       <button class="btn primary" id="btnImpMerge">병합</button>
       <button class="btn danger" id="btnImpReplace">교체</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 이전 버전 기록 감지 ===== 빈 캘린더 + 이 PC 에 옛 XML 이 있을 때 **묻기만** 한다(maybeAskLegacyImport).
+     ★ 이 창의 어느 버튼도 데이터를 바꾸지 않는다 — 「가져오기」는 읽어서 위 「XML 가져오기」 미리보기로 넘길 뿐이고,
+       병합/교체는 거기서 사용자가 고른다. 「나중에」·×·Esc 는 그냥 닫는다(다음 실행 때 다시 묻는다). -->
+<div class="overlay hidden" id="legacyModal">
+  <div class="modal" style="width:min(420px,100%)">
+    <div class="modal-head"><h2>이전 버전 기록을 찾았습니다</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <div class="imp-box" id="legacyInfo"></div>
+      <p style="font-size:var(--fs-body);color:var(--muted);margin-top:11px;line-height:1.7">이 PC에 이전 버전(XML 저장)에서 쓰던 기록 파일이 있습니다. 가져오면 서버 캘린더로 옮겨지고, 원본 파일은 지우지 않습니다(「교체」로 옮기면 이름 끝에 「.migrated-날짜」가 붙어 보관됩니다).</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn sm" id="btnLegacyNever" type="button" style="border-color:transparent;background:transparent;color:var(--muted)">다시 묻지 않기</button>
+      <span class="spacer"></span>
+      <button class="btn" data-close>나중에</button>
+      <button class="btn primary" id="btnLegacyImport" type="button">가져오기</button>
     </div>
   </div>
 </div>
@@ -4285,6 +4308,8 @@ window.__applyState = function(json, meta){
     //    · 미이관 안내: 남의 캘린더가 비었을 때 **내** 이관을 권하는 「XML 가져오기」 버튼이 떴다
     //      (2026-09-03 사용자 스크린샷). 남의 빈 달력에 내 이관 안내가 뜰 이유가 없다.
     if(!PEER){ renderDataSourceBadge(meta); renderEmptyHint(); }
+    //  ★ 이전 버전 기록 감지 — 빈 캘린더 + 이 PC 에 옛 XML 이 있으면 **묻기만** 한다(페이지당 한 번).
+    if(!PEER) maybeAskLegacyImport();
     //  ★ 부팅이 **성공했다** — 빨간 상자와 자동 재시도 타이머를 함께 걷는다.
     //    안 걷으면 재시도로 살아난 화면 위에 "읽지 못했습니다" 가 그대로 남아, 사용자는
     //    지금 보고 있는 데이터를 믿지 못한다(그리고 타이머는 계속 서버를 두드린다).
@@ -4388,7 +4413,6 @@ function clearBootError(){
 function ensureBootErrorBox(){
   let box = document.getElementById('dsError');
   if(box) return box;
-  const host = document.querySelector('.wrap') || document.body;
   box = document.createElement('div');
   box.id = 'dsError';
   box.style.cssText = 'margin:16px;padding:14px 16px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;line-height:1.6;display:flex;gap:12px;align-items:center;justify-content:space-between';
@@ -4398,7 +4422,7 @@ function ensureBootErrorBox(){
   btn.style.cssText = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer;white-space:nowrap';
   btn.addEventListener('click', () => bootRetry().manual());
   box.appendChild(t); box.appendChild(btn);
-  host.insertBefore(box, host.firstChild);
+  insertBelowTitleBar(box);                         // 제목줄 아래(insertBelowTitleBar 머리말)
   return box;
 }
 function renderBootErrorBox(st){
@@ -4426,6 +4450,23 @@ window.__applyStateError = function(msg, opt){
   if(fresh) toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
 };
 
+//  빈 캘린더 판정 — 「빈 캘린더 안내」와 「이전 버전 기록 감지」가 **같은 정의**를 쓴다.
+//  ★ 둘로 적으면 한쪽만 고쳐진다: 안내는 떴는데 물음은 안 뜨거나(또는 그 반대) 하게 된다.
+function calendarIsEmpty(){
+  return !(state.categories || []).length && !(state.entries || []).length && !(state.todos || []).length;
+}
+//  상단 안내 상자(빈 캘린더 안내·DB 경고 배지·부팅 실패 상자 #dsError·충돌 안내 #dbConflict)의 자리 — **앱 제목줄 아래**(2026-09-30).
+//  ★ 예전에는 `.wrap` 의 맨 앞에 넣었는데 이 앱에는 `.wrap` 이 없다 — 그래서 body 맨 앞,
+//    즉 위젯 제목줄(#hostbar)·상단바보다 **위**에 떴다(스크린샷 확인). 제목줄 위의 상자는 창의 일부가 아니라
+//    창 밖에서 끼어든 것처럼 보이고, 드래그 손잡이 자리까지 밀어낸다.
+//  ★ 기준은 상단바(header.topbar)다 — 위젯에서는 그 위에 #hostbar 가 있으므로 둘 다의 아래가 된다.
+//    상단바가 없으면 #hostbar 아래, 그것도 없으면 예전처럼 body 맨 앞(최후의 폴백).
+function insertBelowTitleBar(el){
+  const bar = document.querySelector('header.topbar') || document.getElementById('hostbar');
+  if(bar && bar.parentNode){ bar.parentNode.insertBefore(el, bar.nextSibling); return; }
+  document.body.insertBefore(el, document.body.firstChild);
+}
+
 //  빈 캘린더 안내 — **미이관 표시등**이다.
 //    ★ 왜 필요한가: 이관하지 않은 사용자가 새 버전을 켜면 로그인도 되고 오류도 없이
 //      **빈 캘린더가 정상처럼** 뜬다. 부팅 실패 안내 셋(로그인 없음·미등록·연결 실패)
@@ -4437,10 +4478,8 @@ window.__applyStateError = function(msg, opt){
 //      그래서 "옮기세요" 가 아니라 "기존 기록이 있다면" 으로 쓴다.
 function renderEmptyHint(){
   const box = document.getElementById('emptyHint');
-  const empty = !(state.categories || []).length && !(state.entries || []).length && !(state.todos || []).length;
-  if(!empty || !HOST){ if(box) box.remove(); return; }
+  if(!calendarIsEmpty() || !HOST){ if(box) box.remove(); return; }
   if(box) return;                                   // 이미 떠 있다
-  const host = document.querySelector('.wrap') || document.body;
   const b = document.createElement('div');
   b.id = 'emptyHint';
   b.style.cssText = 'margin:12px 16px 0;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--muted);font-size:13px;line-height:1.7;display:flex;gap:10px;align-items:center;justify-content:space-between';
@@ -4451,27 +4490,33 @@ function renderEmptyHint(){
   btn.style.cssText = 'padding:5px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--fg);cursor:pointer;white-space:nowrap';
   btn.addEventListener('click', () => startImport());
   b.appendChild(t); b.appendChild(btn);
-  host.insertBefore(b, host.firstChild);
+  insertBelowTitleBar(b);                           // 제목줄 아래(위가 아니다 — insertBelowTitleBar 머리말)
 }
 
 //  부팅이 준 meta(schemaVersion·expectedSchema·schemaMismatch·rev·userId). 배지와 스키마 게이트가 읽는다.
 let __bootMeta = null;
 
-// 출처 배지 — '지금 무엇을 보고 있는가'를 화면에 드러낸다(읽기 전용도 함께 알린다).
-//   스키마가 어긋나면 **경고 톤**으로 바뀐다 — 그 상태에서 막히는 것이 무엇인지 미리 알려야
-//   사용자가 「가져오기」를 눌러 보고 나서야 거부당하지 않는다.
+// 출처 배지 — **문제가 있을 때만** 뜬다(2026-09-30 사용자 결정).
+//   · 스키마 불일치 → **경고 톤**(빨강). 그 상태에서 막히는 것이 무엇인지 미리 알려야
+//     사용자가 「가져오기」를 눌러 보고 나서야 거부당하지 않는다.
+//   · 읽기 전용(canWrite === false) → 변경이 저장되지 않는다는 사실을 알린다.
+//   ★ 정상(연결됨·쓰기 가능)이면 **띄우지 않는다**(있으면 걷는다). 늘 떠 있는 "DB 연결됨" 한 줄은
+//     매일 보는 사람에게 정보가 아니라 자리만 먹는 소음이었다. 정상 상태의 연결 정보(스키마·rev)는
+//     「사용자 정보」 모달의 한 줄(#usDbLine)로 옮겼다 — 궁금한 사람이 찾아볼 자리다.
+//   ★ 자리는 제목줄 아래다(insertBelowTitleBar) — 예전에는 제목줄 위에 떴다.
 function renderDataSourceBadge(meta){
   if(!isDbHost()) return;
-  const host = document.querySelector('.wrap') || document.body;
+  const m = meta || {};
+  const mismatch = !!m.schemaMismatch;
+  const readOnly = m.canWrite === false;
   let b = document.getElementById('dsBadge');
+  if(!mismatch && !readOnly){ if(b) b.remove(); return; }   // 정상 — 배지 없음
   if(!b){
     b = document.createElement('div');
     b.id = 'dsBadge';
     b.style.cssText = 'margin:12px 16px 0;padding:8px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--accent-soft);color:var(--text);font-size:12px';
-    host.insertBefore(b, host.firstChild);
+    insertBelowTitleBar(b);
   }
-  const m = meta || {};
-  const mismatch = !!m.schemaMismatch;
   b.style.borderColor = mismatch ? 'var(--danger)' : 'var(--line-2)';
   b.style.background  = mismatch ? 'var(--danger-soft)' : 'var(--accent-soft)';
   b.style.color       = mismatch ? 'var(--danger-text)' : 'var(--text)';
@@ -4481,8 +4526,7 @@ function renderDataSourceBadge(meta){
       (m.rev != null ? ' · rev ' + m.rev : '');
     return;
   }
-  b.textContent = (m.canWrite ? 'DB 연결됨 — 변경은 서버에 저장됩니다'
-                             : 'DB 읽기 전용 — 변경은 저장되지 않습니다') +
+  b.textContent = 'DB 읽기 전용 — 변경은 저장되지 않습니다' +
     (m.schemaVersion ? ' · 스키마 v' + m.schemaVersion : '') +
     (m.rev != null ? ' · rev ' + m.rev : '');
 }
@@ -4496,6 +4540,85 @@ function schemaBlocked(){
   toast('서버 스키마 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') +
         ' — 위젯을 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다', 'error');
   return true;
+}
+
+/* ---------- 이전 버전 기록 감지 (2026-09-30 사용자 결정 · 설계 §3b 부기) ----------
+ *  빈 캘린더인데 이 PC 의 데이터 폴더에 옛 버전(XML 저장)의 기록 파일이 있으면 「가져올까요?」를 묻는다.
+ *  ★ **묻기만 한다.** 여기서는 아무것도 읽어 들이거나 저장하지 않는다 — 「가져오기」를 눌러야 호스트가
+ *    파일을 읽고(readLegacyXml), 그 내용은 늘 쓰던 미리보기(showImportPreview)로 가서 사용자가
+ *    병합/교체를 고른다. 그래서 2026-09-01 의 「자동이관 폐기, 명시적 가져오기」와 부딪치지 않는다.
+ *  ★ 조건: 빈 캘린더(calendarIsEmpty — 빈 캘린더 안내와 같은 정의) · 위젯(HOST) · 내 창(!PEER) ·
+ *    스키마 불일치 아님(__bootMeta.schemaMismatch 를 **조용히** 본다 — 부팅 때 토스트를 띄우지 않는다).
+ *    「가져오기」를 누른 뒤에는 schemaBlocked() 가 사유를 토스트로 알린다(사용자가 누른 동작이므로).
+ *  ★ 페이지당 한 번 — 재시도·[새로고침] 으로 주입이 다시 와도 두 번 묻지 않는다.
+ *  ★ 「다시 묻지 않기」는 **그 파일**(이름|수정시각)에만 건다 — 다른 파일이거나 그 뒤에 고쳐졌으면 다시 묻는다.
+ *    저장소가 막힌 환경(시크릿·정책)에서도 동작해야 하므로 읽기·쓰기를 모두 try 로 감싼다.
+ *  ★ 「나중에」·×·Esc 는 그냥 닫는다(다음 실행 때 다시 묻는다). 그 사이에도 빈 캘린더 안내의
+ *    「XML 가져오기…」가 같은 문으로 이어진다. */
+let __legacyPromptTried = false;   // 페이지당 한 번
+let __legacyProbe = null;          // 지금 떠 있는 물음의 대상 {name,size,mtime}
+function legacyPromptKey(){
+  const m = __bootMeta || {};
+  const who = (m.userId != null && String(m.userId) !== '') ? String(m.userId)
+            : ((currentUser && currentUser.loginId) ? String(currentUser.loginId) : 'me');
+  return 'tc.legacyPrompt.dismissed.' + who;
+}
+function legacyPromptSig(p){ return String((p && p.name) || '') + '|' + String((p && p.mtime) || ''); }
+function legacyPromptDismissed(p){
+  try{ return localStorage.getItem(legacyPromptKey()) === legacyPromptSig(p); }catch(_){ return false; }
+}
+function legacyTimeText(iso){
+  const d = new Date(String(iso || ''));
+  if(!isFinite(d.getTime())) return '—';
+  const z = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes());
+}
+function legacySizeText(n){
+  const b = Number(n);
+  if(!isFinite(b) || b < 0) return '—';
+  return Math.max(1, Math.round(b / 1024)).toLocaleString('ko-KR') + ' KB';
+}
+async function maybeAskLegacyImport(){
+  if(__legacyPromptTried) return;
+  __legacyPromptTried = true;
+  //  ★ 스키마 게이트는 **조용히** 본다 — schemaBlocked() 는 막힐 때 토스트를 띄운다. 부팅 때 아무도 누르지
+  //    않았는데 토스트가 뜨면 안 된다(불일치는 상단 빨간 배지가 이미 말한다). 사용자가 누르는 「가져오기」 쪽은
+  //    schemaBlocked() 로 사유를 알린다(legacyPromptImport).
+  if(!(calendarIsEmpty() && HOST && !PEER && !(__bootMeta && __bootMeta.schemaMismatch))) return;
+  let p = null;
+  try{ p = await hostRequest('legacyXmlProbe', {}, 10000); }catch(_){ p = null; }
+  if(!p || !p.ok || !p.found || !p.name) return;
+  if(legacyPromptDismissed(p)) return;
+  if(!calendarIsEmpty()) return;   // 묻는 사이 무언가를 적었다 — 빈 캘린더일 때만 묻는다
+  showLegacyPrompt(p);
+}
+function showLegacyPrompt(p){
+  __legacyProbe = p;
+  const info = $('#legacyInfo');
+  if(info) info.innerHTML =
+    `${ICON.file} <b>${esc(p.name)}</b><br>` +
+    `마지막 저장 시각: <b>${esc(legacyTimeText(p.mtime))}</b> · 크기: <b>${esc(legacySizeText(p.size))}</b>`;
+  openModal('#legacyModal');
+}
+//  「가져오기」 — 읽어서 **미리보기로만** 넘긴다. 병합/교체는 거기서 사용자가 고른다.
+function legacyPromptImport(){
+  const p = __legacyProbe;
+  closeModal('#legacyModal');
+  if(!p || schemaBlocked()) return;
+  hostRequest('readLegacyXml', { name: p.name }, 60000).then(res => {
+    if(!res || !res.ok){
+      toast('파일을 열지 못했습니다' + ((res && res.error) ? ' — ' + res.error : ''), 'error');
+      return;
+    }
+    showImportPreview(res.name || p.name, String(res.text || ''));
+  });
+}
+//  「다시 묻지 않기」 — 이 파일(이름|수정시각)에 대해서만. 저장이 막혀도 창은 닫힌다(다음 실행 때 다시 물을 뿐이다).
+function legacyPromptNever(){
+  const p = __legacyProbe;
+  closeModal('#legacyModal');
+  if(!p) return;
+  try{ localStorage.setItem(legacyPromptKey(), legacyPromptSig(p)); }catch(_){}
 }
 
 /* ---------- DB 저장(2단계) ----------
@@ -4542,7 +4665,6 @@ function dbSave(opt){
 //  충돌 안내 — 토스트로 흘리지 않는다. 이 상태에서 계속 편집하면 그 편집도 전부 거부되므로
 //  사용자가 '새로고침'을 누를 때까지 화면에 남아 있어야 한다.
 function showDbConflict(msg){
-  const host = document.querySelector('.wrap') || document.body;
   let b = document.getElementById('dbConflict');
   if(!b){
     b = document.createElement('div');
@@ -4556,7 +4678,7 @@ function showDbConflict(msg){
     //    보내면 성공해도 25초 뒤 '응답 시간 초과'로 끝난다(결과는 __applyState 로 따로 온다).
     btn.addEventListener('click', () => { hpost({ cmd:'reloadState' }); });
     b.appendChild(t); b.appendChild(btn);
-    host.insertBefore(b, host.firstChild);
+    insertBelowTitleBar(b);                         // 제목줄 아래(insertBelowTitleBar 머리말)
   }
   document.getElementById('dbConflictText').textContent = msg + ' — 새로고침하면 서버의 최신 내용을 불러옵니다(지금 화면의 변경은 사라집니다).';
 }
@@ -4730,6 +4852,14 @@ function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateUse
 // ★ 세션 경로(updateUserUi)와 실시간 경로(loadUserPerm)가 이 한 함수를 같이 쓴다 —
 //   문구를 두 벌로 두면 모달을 연 직후와 조회가 끝난 뒤가 서로 다른 말을 해 화면이 깜빡인다.
 function usOrgText(v){ const s = String(v == null ? '' : v).trim(); return s || '소속 미등록'; }
+// 「사용자 정보」의 캘린더 DB 한 줄 — 상단 배지가 정상일 때 숨으면서 옮겨 온 정보(스키마·rev, 부팅 시점 값).
+// 부팅 meta 가 없으면(브라우저·부팅 전) 빈 문자열 → 줄이 숨는다.
+function usDbLineText(m){
+  if(!HOST || !m) return '';
+  return '캘린더 DB 연결됨' + (m.canWrite === false ? '(읽기 전용)' : '') +
+    (m.schemaVersion ? ' · 스키마 v' + m.schemaVersion : '') +
+    (m.rev != null ? ' · rev ' + m.rev : '');
+}
 // 「사용자 정보」 모달의 신원 표기 — 이름+직급 · 소속 · (로그인돼 있을 때만) 로그아웃, 그게 전부다.
 // ★ 값은 전부 textContent — DB에서 온 이름·소속이 마크업으로 해석되면 안 된다.
 // ★ 권한은 여기서 그리지 않는다(loadUserPerm 담당). 신원은 세션에 있어 오프라인에서도 즉시 뜨지만
@@ -4744,6 +4874,9 @@ function updateUserUi(){
   const sec = document.getElementById('usPermSec');   if(sec) sec.classList.toggle('hidden', !on);   // 권한 구획은 로그인 상태에서만
   const mem = document.getElementById('usMembersSec');if(mem) mem.classList.toggle('hidden', !on);   // 구성원도 같은 조건 — 볼 범위를 정하는 게 그 권한이다
   const out = document.getElementById('usLogout');    if(out) out.classList.toggle('hidden', !on);   // 로그아웃할 대상이 없으면 버튼도 없다
+  let dbl = ''; try{ dbl = usDbLineText(__bootMeta); }catch(_){ dbl = ''; }
+  set('usDbLine', dbl);
+  const dle = document.getElementById('usDbLine');    if(dle) dle.classList.toggle('hidden', !dbl);
   if(on){
     set('usName', currentUser.name || currentUser.loginId || '—');
     set('usTitle', currentUser.title ? '· ' + currentUser.title : '');
@@ -13140,6 +13273,9 @@ function bind(){
   $('#btnImpReplace').addEventListener('click', async () => {
     if(await confirmBox('전체 교체', `현재 데이터(과제 ${state.categories.length}개 · 기록 ${state.entries.length}개)가 모두 삭제되고 파일 내용으로 대체됩니다.`, '교체') === 'ok') applyImport('replace');
   });
+
+  $('#btnLegacyImport').addEventListener('click', () => legacyPromptImport());   // 이전 버전 기록 — 읽어서 미리보기로만
+  $('#btnLegacyNever').addEventListener('click', () => legacyPromptNever());
 
   /* 과제 필터 칩 */
   $('#filterbar').addEventListener('click', ev => {

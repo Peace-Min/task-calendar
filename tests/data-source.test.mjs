@@ -202,8 +202,13 @@ test('출처⑤c: 열람 창은 부팅 때 호스트에 아무것도 요구하�
 
 test('출처⑥: 지금 어느 저장소를 쓰는지 화면에 드러낸다', () => {
   assert.ok(/renderDataSourceBadge/.test(src), '출처 배지 함수가 없다');
-  assert.ok(/DB 연결됨/.test(src) && /DB 읽기 전용/.test(src),
-    '배지가 쓰기 가능/읽기 전용 두 상태를 구분하지 않는다 — 사용자가 저장되는지 알 수 없다');
+  //  ★ 2026-09-30 — 배지는 **문제가 있을 때만** 뜬다(읽기 전용·스키마 불일치). 정상 상태의 「연결됨」은
+  //    「사용자 정보」의 한 줄(usDbLineText)로 옮겼다. 두 상태가 여전히 **구분돼 드러나는지**를 본다.
+  const badge = bodyOf(src, 'function renderDataSourceBadge(meta){');
+  assert.ok(/DB 읽기 전용/.test(badge),
+    '배지가 읽기 전용을 알리지 않는다 — 사용자가 저장되지 않는다는 사실을 모른다');
+  assert.ok(/DB 연결됨/.test(bodyOf(src, 'function usDbLineText(m){')),
+    '정상 연결 상태를 어디에서도 볼 수 없다 — 「사용자 정보」의 DB 한 줄이 사라졌다');
 });
 
 test('출처⑦: DB 저장은 직렬화된다(앞 저장 중이면 겹쳐 보내지 않는다)', () => {
@@ -445,7 +450,10 @@ const c7 = {
   //  ⑦-1 빈 캘린더면 안내가 뜬다. 그리고 그것은 **안내일 뿐** 아무것도 하지 않는다.
   emptyHintGuidesOnly(app) {
     const b = bodyOf(app, 'function renderEmptyHint(){');
-    assert.ok(/categories.*length.*entries.*length/s.test(b), '빈 상태 판정이 없다');
+    //  ★ 2026-09-30 — 빈 판정을 calendarIsEmpty() 한 곳으로 뽑았다(「이전 버전 기록 감지」가 같은 정의를 쓴다).
+    //    안내가 그 함수를 부르면 판정은 그 함수의 본문에서 본다. 인라인으로 되돌려도 이 검사는 통과한다.
+    const emptyDef = /calendarIsEmpty\(\)/.test(b) ? bodyOf(app, 'function calendarIsEmpty(){') : b;
+    assert.ok(/categories.*length.*entries.*length/s.test(emptyDef), '빈 상태 판정이 없다');
     assert.ok(/startImport\(\)/.test(b), '안내가 가져오기로 이어지지 않는다 — 길을 알려 주지 않으면 안내가 아니다');
     //  ★ 표시등이지 트리거가 아니다 — 여기서 데이터를 옮기면 그것이 자동이관이다.
     for (const f of ['applyImport', 'saveFull', 'dbSave', 'fromXML'])

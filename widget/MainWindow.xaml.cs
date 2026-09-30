@@ -773,6 +773,12 @@ namespace TaskCalendarWidget
                         PickImportXml(reqId);   // UI 스레드에서 모달 다이얼로그
                         break;
                     }
+                    case "legacyXmlProbe":   // 이전 버전 기록 감지 — 데이터 폴더 *.xml 의 이름·크기·시각만(내용은 안 읽는다 · LegacyXmlProbe.cs)
+                        ProbeLegacyXml(GetStr(doc, "reqId"));
+                        break;
+                    case "readLegacyXml":    // 감지한 파일 읽기 — 사용자가 「가져오기」를 누른 뒤에만 온다(회신은 pickImportXml 과 같다)
+                        ReadLegacyXml(GetStr(doc, "reqId"), GetStr(doc, "name"));
+                        break;
                     case "pickfolder":   // 네이티브 폴더 선택 다이얼로그(텍스트 입력 대체)
                     {
                         string reqId = GetStr(doc, "reqId"), start = GetStr(doc, "start");

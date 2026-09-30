@@ -219,7 +219,8 @@ try {
   setSchemaVer(startVer); restored = (schemaVer() === startVer);
   await cdp.ev(`hpost({cmd:'reloadState'}); 1`); await waitBootSchema(cdp, startVer);
   ok('되돌리면 불일치 해제', (await cdp.ev(`!!__bootMeta.schemaMismatch`)) === false);
-  ok('배지가 정상 문구로 복귀', /DB 연결됨/.test(await cdp.ev(`(document.getElementById('dsBadge')||{}).textContent||''`)));
+  //  ★ 2026-09-30 — 배지는 문제가 있을 때만 뜬다. 정상으로 돌아오면 「연결됨」 문구가 아니라 **배지가 없어야** 한다.
+  ok('정상으로 돌아오면 배지가 사라진다(문제 있을 때만 뜬다)', (await cdp.ev(`!document.getElementById('dsBadge')`)) === true);
   const repOk = await cdp.ev(`hostRequest('replaceAllState',{state:JSON.parse(JSON.stringify(state))},25000).then(r=>r.ok)`);
   ok(`v${startVer} 에서는 전량 교체가 다시 통과한다`, repOk === true);
 
