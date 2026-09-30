@@ -20,11 +20,13 @@
 
   단계(화면에 [n/5] 로 찍힌다. 첫 실패에서 멈춘다):
     [0] 사전 점검 — mysql.exe/mysqldump.exe · 접속 · 필요 파일 9개(DDL 3 · 권한 3 · 회사 시드 3) · 원본 과제 4표 ·
-        대상 DB 부재 · 앱 계정 → 요약을 보여 주고 'Y' 를 받는다(-Yes 면 묻지 않는다)
+        대상 DB 유무(있으면 표 수 · 캘린더 기록 행 수 — 읽기만, 있어도 멈추지 않는다) · 옛 판 작업장
+        (<대상>_legacy_stage) 유무 · 앱 계정 → 요약을 보여 주고 'Y' 를 받는다(-Yes 면 묻지 않는다)
         (원본의 사용자 표는 요구하지 않는다. app_user 에 login_id 가 있으면 [3] 의 명부 대조에만 쓴다.)
     [1] 원본 백업 — mysqldump(--single-transaction --no-tablespaces --routines --triggers).
-        '-- Dump completed' 마감 줄과 1KB 초과를 확인한다. (-Force 로 기존 대상을 지울 때는
-        지우기 전에 대상도 한 벌 뜬다.)
+        '-- Dump completed' 마감 줄과 1KB 초과를 확인한다. 대상 DB 가 이미 있으면 **늘** 대상도 같은 검증으로
+        한 벌 뜬 뒤(<대상>-before-drop-<시각>.sql) DROP DATABASE 하고 처음부터 다시 만든다(아래 ⚠️ 재구축).
+        옛 판이 남긴 작업장(<대상>_legacy_stage)이 있으면 함께 지운다(원본 덤프를 부은 작업용 사본이라 백업 없음).
     [2] 구조 — CREATE DATABASE → schema-structure.sql → 01-schema-users.sql → schema-calendar.sql
         (사용자 표가 캘린더보다 먼저여야 한다: schema-calendar.sql 머리의 가드가 app_user.user_id 를 요구한다)
         → 표 개수 · schema_version(= schema-calendar.sql 이 시딩하는 값, 파일에서 읽는다) 대조
@@ -46,7 +48,7 @@
     0 ok - taskcalendar built and every verification passed
     1 failed - a step after the confirmation failed; see the last red line and the report file
     2 cancelled - the confirmation was not Y; nothing was changed
-    3 preflight failed - tools, files, connection, source tables, target exists or app account; nothing was changed
+    3 preflight failed - tools, files, company data version, connection, source tables or app account; nothing was changed
   --- END EXITCODES ---
 
   ⚠️ 비밀번호: 관리자 비번(-RootPassword)·앱 비번(-AppPassword)은 mysql 명령줄에 절대 싣지 않는다.
@@ -55,9 +57,14 @@
      있으니(init-calendar.ps1 머리말의 실측) 대화형이면 비워 두고 물어보게 둘 것. 무인이면 stdin 첫 줄로:
        "비번" | powershell -NoProfile -ExecutionPolicy Bypass -File setup-taskcalendar.ps1 -Yes
 
-  ⚠️ -Force: 대상 DB(-TargetDb)가 이미 있으면 기본은 멈춘다(종료코드 3). -Force 를 주면 그 DB 를
-     한 벌 백업한 뒤 DROP DATABASE 하고 처음부터 다시 만든다. 운영이 이미 새 DB 로 넘어간 뒤에는
-     쓰지 말 것 — 그 사이 쌓인 캘린더 데이터가 사라진다(백업 파일에서만 되살릴 수 있다).
+  ⚠️ 재구축(2026-09-30 사용자 결정): 대상 DB(-TargetDb)가 이미 있으면 **실행할 때마다** 확인(Y) 뒤 그 DB 를
+     한 벌 백업하고(<BackupDir>\<대상>-before-drop-<시각>.sql) DROP DATABASE 한 다음 처음부터 다시 만든다.
+     멈추지 않는다 — 요약에 노란 줄로(대상에 캘린더 기록이 있으면 빨간 줄로 표별 행 수와 함께) 알릴 뿐이다.
+     파일럿 동안 대상은 언제든 다시 만들 수 있는 사본이라 이렇게 정했다(원본 taskmgr 는 여전히 읽기만 한다).
+     ★ 운영이 새 DB 로 넘어간 뒤에는 위험하다: 지난 실행 이후 대상에 쓰인 캘린더 데이터(일정 · 할 일 · 공수 ·
+       근태 · 보고서)는 다시 실행하는 순간 지워지고, 되살릴 곳은 그 before-drop 덤프 하나뿐이다. 그때부터는
+       이 스크립트를 다시 돌리지 말 것.
+     -Force 는 옛 명령줄이 오류 나지 않게 이름만 남겨 둔 스위치다 — 줘도 안 줘도 동작이 같다.
 
   ⚠️ 인자 값을 역슬래시로 끝내지 말 것(-BackupDir "D:\x\" 등). powershell.exe 가 \" 를 이스케이프된
      따옴표로 읽어 뒤따르는 인자를 통째로 삼키고, -TargetDb 같은 값이 조용히 기본값으로 돌아간다.
@@ -69,7 +76,7 @@
 
   예)  setup-taskcalendar.cmd
        setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:\taskmgr-company-data"
-       setup-taskcalendar.cmd -Force -Yes          (리허설: 있으면 지우고 다시, 묻지 않음)
+       setup-taskcalendar.cmd -Yes                 (리허설: 묻지 않음 — 대상이 있으면 늘 백업 후 지우고 다시)
 #>
 [CmdletBinding()]
 param(
@@ -85,7 +92,7 @@ param(
   [string]$AppPassword = "",            # 앱 계정이 아직 없을 때만 필요
   [string]$CompanyDataDir = "",         # 비우면 <스크립트>\..\..\..\taskmgr-company-data
   [string]$BackupDir = "",              # 비우면 <스크립트>\..\..\dist\setup-taskcalendar\backup
-  [switch]$Force,                       # 대상 DB 가 이미 있으면 백업 후 DROP 하고 다시 만든다
+  [switch]$Force,                       # 호환용(옛 명령줄이 오류 나지 않게)일 뿐 아무 일도 안 한다 — 재구축은 이제 늘 한다(머리말 ⚠️ 재구축)
   [switch]$NoShift,                     # 과제 트랙 created_at/updated_at 의 KST→UTC 이동을 끈다
   [switch]$Yes                          # 확인 질문을 건너뛴다(무인 리허설)
 )
@@ -113,6 +120,10 @@ $SHIFT_COLS   = @('created_at','updated_at')
 
 # 회사 시드로 채우는 사용자 3표(시딩 뒤 행 수 > 0 을 본다).
 $SEED_TABLES  = @('title_code','org_unit','app_user')
+
+# 대상 DB 가 이미 있을 때 행 수를 세어 요약에 크게 알리는 캘린더 기록 표(사전 점검 · 정보용 — 세지 못해도 멈추지 않는다).
+# 재구축은 늘 한다(머리말 ⚠️ 재구축) — 이 수가 0 이 아니면 '계속하면 지워지는 사람의 기록' 이다.
+$CAL_DATA_TABLES = @('cal_entry','cal_todo','cal_task_hours','cal_attendance','cal_report_daily','cal_report_weekly')
 
 # 복사 SELECT 에서 NULL 을 '' 로 바꿔 넣는 컬럼(migrate-2026-07-24-uniqueness.sql 의 정규화와 같은 뜻).
 # 0.16 원본은 NULL 을 허용했지만 대상은 NOT NULL DEFAULT '' 라, 그대로 SELECT 하면 INSERT … SELECT 가 NULL 에서
@@ -215,7 +226,7 @@ function Die([string]$m){
     Finish $EXIT_PREFLIGHT "중단: 사전 점검 실패(종료코드 $EXIT_PREFLIGHT). 아무것도 바꾸지 않았습니다." 'Red'
   }
   Log "[오류] $m" 'Red'
-  Finish $EXIT_FAIL "중단: 실패(종료코드 $EXIT_FAIL). 원본 '$SourceDb' 는 그대로입니다. 원인을 고친 뒤 -Force 로 다시 실행하세요." 'Red'
+  Finish $EXIT_FAIL "중단: 실패(종료코드 $EXIT_FAIL). 원본 '$SourceDb' 는 그대로입니다. 원인을 고친 뒤 다시 실행하세요." 'Red'
 }
 
 # ============================================================================
@@ -223,7 +234,7 @@ function Die([string]$m){
 # ============================================================================
 # 왜: .cmd 가 %* 로 넘기는 인자 중 값이 역슬래시로 끝나는 따옴표 인자(-BackupDir "C:\x\")가 있으면
 #   powershell.exe 가 \" 를 이스케이프된 따옴표로 읽어 뒤 인자를 그 값 안으로 삼킨다(init-calendar.ps1 실측).
-#   그러면 -TargetDb 가 기본값으로 돌아가고 -Force 가 사라지는 식으로 대상이 바뀐다. 값은 고치지 않고 멈춘다.
+#   그러면 -TargetDb 가 기본값으로 돌아가는 식으로 대상이 바뀐다(엉뚱한 DB 를 백업 후 지우고 다시 만든다). 값은 고치지 않고 멈춘다.
 $SWALLOW_FLAGS = '\s-(DbHost|Port|SourceDb|TargetDb|BaseDir|ServiceName|DbUser|RootPassword|AppUser|AppPassword|CompanyDataDir|BackupDir|Force|NoShift|Yes)\b'
 function AssertNoSwallow($label, $val){
   if("$val" -match '"'){ Die "$label 값에 따옴표가 들어 있습니다: [$val]. 인자가 뒤엉킨 상태입니다 — 경로 끝의 역슬래시를 빼고 다시 실행하세요(예: -BackupDir `"D:\backup`")." }
@@ -471,7 +482,8 @@ try {
     if($ai -le $mx){ Die "$t 의 AUTO_INCREMENT($ai) 가 MAX($k)=$mx 이하입니다 — 다음 신규 행이 기존 번호와 부딪힙니다." }
     Log ("  {0,-13} MAX({1})={2} · AUTO_INCREMENT={3}" -f $t, $k, $mx, $ai)
   }
-  # 실패해도 죽지 않는 여러 줄 질의 — 정보용 명부 대조([3])에만 쓴다. 나머지 질의는 전부 필수라 Q/QRows(실패 = Die)다.
+  # 실패해도 죽지 않는 여러 줄 질의 — 정보용 질의(사전 점검의 캘린더 기록 행 수 · [3] 명부 대조)에만 쓴다.
+  # 나머지 질의는 전부 필수라 Q/QRows(실패 = Die)다.
   function QRowsTry([string]$sql){
     $o = & $mysql "--defaults-extra-file=$($script:cnfPath)" "--default-character-set=utf8mb4" "-N" "-B" "-e" $sql
     if($LASTEXITCODE -ne 0){ return @{ ok = $false; rows = @() } }
@@ -509,16 +521,54 @@ try {
   foreach($t in $COPY_ORDER){ $srcCounts[$t] = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + ";") "원본 $t 행 수") }
   Ok ("원본 '$SourceDb' 과제 4표 확인: " + (($COPY_ORDER | ForEach-Object { "$_=" + $srcCounts[$_] }) -join ' '))
 
-  # --- 대상 DB 가 이미 있는가 ---
+  # --- 대상 DB 가 이미 있는가 — 있어도 멈추지 않는다: [1] 에서 늘 백업한 뒤 DROP 하고 처음부터 다시 만든다 ---
+  #     (2026-09-30 사용자 결정 · 머리말 ⚠️ 재구축.) 여기서는 읽기만 한다 — 표 수와 캘린더 기록 행 수를 요약에 알린다.
   $hasTgt = [int](Q "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$TargetDb';" "대상 DB 확인")
   $targetExists = ($hasTgt -gt 0)
   $tgtTableCount = 0
   if($targetExists){
     $tgtTableCount = [int](Q "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$TargetDb';" "대상 표 수")
-    if(-not $Force){
-      Die "대상 DB '$TargetDb' 가 이미 있습니다(표 $tgtTableCount 개). 지우고 다시 만들려면 -Force 를 붙여 실행하세요(지우기 전에 한 벌 백업합니다)."
+    Warn "대상 DB '$TargetDb' 가 이미 있습니다(표 $tgtTableCount 개) — 확인하면 백업한 뒤 지우고 처음부터 다시 만듭니다."
+  }
+  # 캘린더 기록 행 수(정보용 — 이 블록은 절대 멈추지 않는다: Die 도, 실패하면 죽는 Q/QRows 도 쓰지 않는다).
+  # $CAL_DATA_TABLES 중 대상에 실제로 있는 표만 센다(없는 표는 건너뛴다). 못 센 표는 '?' 로 적고 경고만 한다.
+  $calCounts = [ordered]@{}
+  $calTotal = 0
+  $calCountFailed = $false
+  if($targetExists -and $tgtTableCount -gt 0){
+    $inList = (($CAL_DATA_TABLES | ForEach-Object { "'" + $_ + "'" }) -join ',')
+    $rPresent = QRowsTry ("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$TargetDb' AND TABLE_NAME IN ($inList);")
+    if(-not $rPresent.ok){
+      $calCountFailed = $true
+    } else {
+      foreach($t in $CAL_DATA_TABLES){
+        if(@($rPresent.rows) -notcontains $t){ continue }
+        $rCnt = QRowsTry ("SELECT COUNT(*) FROM " + (TQ $TargetDb $t) + ";")
+        $first = $null
+        if($rCnt.ok -and @($rCnt.rows).Count -ge 1){ $first = "" + @($rCnt.rows)[0] }
+        if($first -match '^\d+$'){
+          $calCounts[$t] = [long]$first
+          $calTotal += [long]$first
+        } else {
+          $calCounts[$t] = '?'
+          $calCountFailed = $true
+        }
+      }
     }
-    Warn "대상 DB '$TargetDb' 가 이미 있습니다(표 $tgtTableCount 개) — -Force: 백업한 뒤 DROP 하고 다시 만듭니다."
+    if($calCountFailed){ Warn "대상 '$TargetDb' 의 캘린더 기록 행 수를 다 세지 못했습니다(위 mysql 오류) — 못 센 표는 '?' 로 적습니다. 계속하면 그 표도 지워집니다." }
+  }
+  $calCountText = (@($calCounts.Keys) | ForEach-Object { "$_=" + $calCounts[$_] }) -join ' '
+  if($targetExists -and -not $calCountText){
+    if($calCountFailed){ $calCountText = '(세지 못함)' } else { $calCountText = '(캘린더 기록 표 없음)' }
+  }
+
+  # --- 옛 판이 남긴 작업장 — 옛 판(eeda5fc: 08-24 이전 사용자 표를 스테이징에서 마이그레이션하던 판)이 만든
+  #     '<대상>_legacy_stage' 가 사용자 PC 에 남아 있을 수 있다(그 판은 도중에 멈추면 작업장을 남겼다). 지금 판은
+  #     그 DB 를 쓰지 않는다. 여기서는 있는지만 본다(읽기) — 지우는 것은 [1](확인 뒤)이고, 이름 가드는 거기서 한 번 더 본다.
+  $legacyStageDb = $TargetDb + "_legacy_stage"
+  $legacyStageExists = $false
+  if($legacyStageDb -match '^[A-Za-z0-9_]+$' -and $legacyStageDb -ne $SourceDb -and $legacyStageDb -ne $TargetDb){
+    $legacyStageExists = ([int](Q "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$legacyStageDb';" "옛 판 작업장 확인") -gt 0)
   }
 
   # --- 앱 계정 ---
@@ -532,8 +582,15 @@ try {
   Log "  ---- 요약 ----"
   Log "  서버          : $DbHost`:$Port (MySQL $serverVer)"
   Log "  원본(읽기만)  : $SourceDb"
-  if($targetExists){ Log "  대상(새로)    : $TargetDb  ★ 이미 있음 → 백업 후 DROP 하고 다시 만듦(-Force)" 'Yellow' }
-  else             { Log "  대상(새로)    : $TargetDb" }
+  if($targetExists){
+    Log "  대상 DB       : '$TargetDb' 이미 있음(표 $tgtTableCount 개) → 백업 후 삭제하고 처음부터 다시 만듦" 'Yellow'
+    if($calTotal -gt 0){ Log "  ★ 대상에 캘린더 기록이 있습니다: $calCountText — 계속하면 지워집니다(백업 파일에만 남음)" 'Red' }
+    elseif($calCountFailed){ Log "  ★ 대상의 캘린더 기록을 다 세지 못했습니다: $calCountText — 기록이 있다면 계속하면 지워집니다(백업 파일에만 남음)" 'Red' }
+    else { Log "  캘린더 기록   : $calCountText — 지워질 기록 없음" }
+  } else {
+    Log "  대상(새로)    : $TargetDb"
+  }
+  if($legacyStageExists){ Log "  옛 판이 남긴 작업장: '$legacyStageDb' 있음 → 삭제" 'Yellow' }
   Log "  schema_version: $expVersion (schema-calendar.sql)"
   Log "  백업 폴더     : $BackupDir"
   Log "  회사 데이터   : $CompanyDataDir"
@@ -567,13 +624,32 @@ try {
   $srcDump = Join-Path $BackupDir ("$SourceDb-" + $script:ts + ".sql")
   DumpDb $SourceDb $srcDump
 
+  # 대상 DB 가 이미 있으면 — **늘** 백업한 뒤 DROP 하고 처음부터 다시 만든다(2026-09-30 사용자 결정 · -Force 불필요).
+  #   순서가 곧 안전 조건이다: (1) 확인(Y) 뒤 — 위 $script:preflight = $false 보다 아래 (2) 원본 덤프 뒤
+  #   (3) 대상 덤프가 검증(마감 줄 · 1KB)까지 통과한 뒤 — DumpDb 는 실패하면 Die 하므로 덤프가 온전하지 않으면
+  #   아래 DROP 줄에 닿지 않는다. 이 순서를 바꾸지 말 것(시험 ⑧).
   $tgtDump = $null
   if($targetExists){
-    if($Force){
-      $tgtDump = Join-Path $BackupDir ("$TargetDb-before-drop-" + $script:ts + ".sql")
-      DumpDb $TargetDb $tgtDump
-      Warn "DROP DATABASE $TargetDb (백업: $tgtDump)"
-      Q ("DROP DATABASE " + (BQ $TargetDb) + ";") "대상 DB 삭제" | Out-Null
+    $tgtDump = Join-Path $BackupDir ("$TargetDb-before-drop-" + $script:ts + ".sql")
+    DumpDb $TargetDb $tgtDump
+    Warn "대상 DB '$TargetDb' 삭제 — 삭제 전 백업: $tgtDump"
+    Q ("DROP DATABASE " + (BQ $TargetDb) + ";") "대상 DB 삭제" | Out-Null
+    Ok "대상 DB '$TargetDb' 삭제 완료 — [2] 에서 처음부터 다시 만듭니다."
+  }
+
+  # 옛 판이 남긴 작업장 치우기(옛 판 eeda5fc 의 스테이징 DB). 원본 덤프를 부어 마이그레이션하던 작업용 사본이라
+  # 백업하지 않는다(그 원본은 위에서 방금 떴다). 이름 가드: 정확히 <대상>_legacy_stage(대소문자까지) · 원본/대상과
+  # 다름 · 식별자 형식 — 하나라도 어긋나면 건드리지 않고 경고만 한다.
+  $legacyStageDropped = $false
+  if($legacyStageExists){
+    $stageOk = ($legacyStageDb -ceq ($TargetDb + "_legacy_stage")) -and ($legacyStageDb -ne $SourceDb) -and ($legacyStageDb -ne $TargetDb) -and ($legacyStageDb -match '^[A-Za-z0-9_]+$')
+    if($stageOk){
+      Warn "옛 판이 남긴 작업장 '$legacyStageDb' 삭제(백업 없음 — 원본 덤프로 만든 작업용 사본)"
+      Q ("DROP DATABASE IF EXISTS " + (BQ $legacyStageDb) + ";") "옛 판 작업장 삭제" | Out-Null
+      $legacyStageDropped = $true
+      Ok "옛 판 작업장 '$legacyStageDb' 삭제 완료"
+    } else {
+      Warn "옛 판 작업장 이름이 예상과 다릅니다: [$legacyStageDb] — 지우지 않고 계속합니다."
     }
   }
 
@@ -606,7 +682,7 @@ try {
   # 보고 사이트 명부 = 폐쇄망 명부다. 순서: 02(직급·조직 — FK 부모) → 03(사람) → 04(권한 — 03 의 사람에게 UPDATE).
   # 세 파일은 DATABASE() 로 표를 찾으므로 대상 DB 를 선택한 채 원본 파일 그대로 돌린다(apply.ps1 과 같은 방식).
   # 시각: 시드 행의 created_at/updated_at 은 CURRENT_TIMESTAMP 다 — .cnf 의 [mysql] init-command 가 세션을 UTC 로 연다.
-  $seedHint = " ★ 회사 시드에서 멈췄습니다 — '$TargetDb' 는 사용자 표가 비었거나 반쯤 찬 채로 남습니다(원본 '$SourceDb' 는 그대로). 위 출력과 시드 파일을 확인한 뒤 -Force 로 다시 실행하세요."
+  $seedHint = " ★ 회사 시드에서 멈췄습니다 — '$TargetDb' 는 사용자 표가 비었거나 반쯤 찬 채로 남습니다(원본 '$SourceDb' 는 그대로). 위 출력과 시드 파일을 확인한 뒤 다시 실행하세요(다음 실행이 '$TargetDb' 를 백업 후 지우고 다시 만듭니다)."
   ApplySqlFile $seedOrgFile   $TargetDb "02-seed-org.sql (직급·조직)" $seedHint
   ApplySqlFile $seedUsersFile $TargetDb "03-seed-users.sql (사용자)" $seedHint
   ApplySqlFile $permsFile     $TargetDb "$permsName (권한)" $seedHint
@@ -743,7 +819,7 @@ try {
     $orphanTotal += $n
     if($n -ne 0){ Log ("  고아 행 {0,-24} {1}" -f $oc.name, $n) 'Red' } else { Log ("  고아 행 {0,-24} 0" -f $oc.name) }
   }
-  if($orphanTotal -ne 0){ Die "고아 행이 $orphanTotal 개 있습니다(위 목록). project 관계면 원본 '$SourceDb' 의 참조가, 사용자 관계면 회사 시드(02·03)의 참조가 깨져 있습니다 — 고친 뒤 -Force 로 다시 실행하세요." }
+  if($orphanTotal -ne 0){ Die "고아 행이 $orphanTotal 개 있습니다(위 목록). project 관계면 원본 '$SourceDb' 의 참조가, 사용자 관계면 회사 시드(02·03)의 참조가 깨져 있습니다 — 고친 뒤 다시 실행하세요." }
   Ok "고아 행 0 ($($ORPHAN_CHECKS.Count)개 관계)"
 
   # 행 수 대조 — 복사한 과제 4표만(사용자 표는 원본과 비교하지 않는다 — 시드가 정본이다).
@@ -831,6 +907,8 @@ try {
   Log "  권한           : OK ('$AppUser'@'%' · 표 $($expGrantTables.Count)개)"
   Log "  원본 백업      : $srcDump"
   if($tgtDump){ Log "  삭제 전 대상   : $tgtDump" }
+  if($targetExists){ Log "  삭제 전 캘린더 : $calCountText (지운 대상에 있던 행 — 삭제 전 대상 백업에만 남음)" }
+  if($legacyStageDropped){ Log "  옛 판 작업장   : '$legacyStageDb' 삭제" }
   Log ""
   Log "  다음 단계: widget/DeployConfig.cs → DbName = `"$TargetDb`" 로 바꾼 뒤 다시 빌드하세요." 'Cyan'
   Log "            (원본 '$SourceDb' 는 그대로라 0.16 클라이언트는 계속 그쪽을 씁니다.)" 'Cyan'

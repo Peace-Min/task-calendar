@@ -99,16 +99,20 @@ SHOW GRANTS FOR 'taskmgr_app'@'%';
 
 ```
 setup-taskcalendar.cmd                                              # 같은 PC 의 MySQL, taskmgr → taskcalendar
-setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:	askmgr-company-data"
+setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:\taskmgr-company-data"
 ```
 
-하는 일(첫 실패에서 멈춤 · 원본에는 SELECT·mysqldump 만): ① 사전 점검(도구·접속·필요 파일 9개·원본 과제 4표·대상 부재·앱 계정) → 요약 후 `Y` ② 원본 덤프(안전망) ③ 구조: CREATE DATABASE → DDL 3개 → 표 23·`schema_version` 대조(값은 `schema-calendar.sql` 에서 읽음) ④ 데이터: **사용자 3표는 회사 시드**(`02-seed-org` → `03-seed-users` → `04-permissions`, 명부 서열은 09-10 규칙으로 백필) · **과제 4표만 원본에서** `INSERT … SELECT`(**id·uid 보존**, 컬럼은 원본∩대상 교집합, 계약명·통상명칭 NULL→'', 시각 **KST→UTC −9h**) → `cal_user_rev` 사용자별 시딩 → 고아 0·행 수 일치·AUTO_INCREMENT 확인 ⑤ 권한 3파일(`taskmgr.` → 대상 스키마 치환 · `05-grants.sql` 은 DATABASE()) → SHOW GRANTS 표 23개 대조 ⑥ 보고서 파일 — **어떻게 끝나든** `dist\setup-taskcalendar\backup\setup-taskcalendar-<시각>[-FAILED].txt` 로 남는다(사전 점검 실패·취소 포함 · 폴더를 못 만들면 스크립트 옆). 종료코드 0/1/2/3(성공/실패/취소/사전점검). 결과를 넘길 때는 이 파일을 보낸다.
+하는 일(첫 실패에서 멈춤 · 원본에는 SELECT·mysqldump 만): ① 사전 점검(도구·접속·필요 파일 9개·원본 과제 4표·대상 유무(+캘린더 기록 행 수)·옛 판 작업장 유무·앱 계정 — 대상이 있어도 멈추지 않음) → 요약 후 `Y` ② 원본 덤프(안전망) · 대상이 이미 있으면 **늘** 대상도 덤프(`<대상>-before-drop-<시각>.sql`)한 뒤 DROP · 옛 판이 남긴 작업장 `<대상>_legacy_stage` 가 있으면 삭제 ③ 구조: CREATE DATABASE → DDL 3개 → 표 23·`schema_version` 대조(값은 `schema-calendar.sql` 에서 읽음) ④ 데이터: **사용자 3표는 회사 시드**(`02-seed-org` → `03-seed-users` → `04-permissions`, 명부 서열은 09-10 규칙으로 백필) · **과제 4표만 원본에서** `INSERT … SELECT`(**id·uid 보존**, 컬럼은 원본∩대상 교집합, 계약명·통상명칭 NULL→'', 시각 **KST→UTC −9h**) → `cal_user_rev` 사용자별 시딩 → 고아 0·행 수 일치·AUTO_INCREMENT 확인 ⑤ 권한 3파일(`taskmgr.` → 대상 스키마 치환 · `05-grants.sql` 은 DATABASE()) → SHOW GRANTS 표 23개 대조 ⑥ 보고서 파일 — **어떻게 끝나든** `dist\setup-taskcalendar\backup\setup-taskcalendar-<시각>[-FAILED].txt` 로 남는다(사전 점검 실패·취소 포함 · 폴더를 못 만들면 스크립트 옆). 종료코드 0/1/2/3(성공/실패/취소/사전점검). 결과를 넘길 때는 이 파일을 보낸다.
+
+**다시 실행하면 = 늘 처음부터(2026-09-30 사용자 결정 · `-Force` 없음)**: 대상 DB(`-TargetDb`, 기본 `taskcalendar`)가 이미 있으면 확인(`Y`) 뒤 **실행할 때마다** 한 벌 덤프하고(`dist\setup-taskcalendar\backup\<대상>-before-drop-<시각>.sql`) DROP 한 다음 처음부터 다시 세운다. 따로 줄 스위치는 없다 — `-Force` 는 옛 명령줄 호환으로 받기만 하고 아무 일도 하지 않는다. 요약에 노란 줄로 알리고, 대상에 캘린더 기록(`cal_entry`·`cal_todo`·`cal_task_hours`·`cal_attendance`·`cal_report_daily`·`cal_report_weekly`)이 있으면 빨간 줄로 표별 행 수를 보여 준다(보고서에도 남는다). 파일럿 동안 대상은 언제든 다시 만들 수 있는 사본이라 이렇게 정했다(원본 `taskmgr` 는 여전히 읽기만).
+
+> ⚠️ **운영이 `taskcalendar` 로 넘어간 뒤에는 다시 돌리지 말 것.** 지난 실행 이후 대상에 쓰인 캘린더 데이터가 지워지고, 남는 사본은 그 before-drop 덤프 하나뿐이다.
 
 **사용자 표를 원본에서 옮기지 않는 이유(2026-09-29 결정)**: 폐쇄망 `taskmgr` 의 사용자 표는 2026-08-24 이전 모양(org_unit name PK · app_user login_id PK)이고, 명부 자체는 보고 사이트 = 회사 시드(`taskmgr-company-data`)와 같다. 그래서 새 DB 의 사용자·조직 번호는 시드의 명시값(정본)으로 세우고, 원본 사용자 표는 **login_id 대조(경고만)** 에만 읽는다 — 차이가 있으면 보고서에 이름이 찍힌다. 시드 행의 시각은 mysql 세션을 UTC 로 열어(임시 .cnf 의 `[mysql] init-command`) 앱과 같은 기준으로 적힌다.
 
 **그 다음** — `widget/DeployConfig.cs` 의 `DbName` 을 `taskcalendar` 로(§0-1 표의 `DbHost` 와 같은 자리에서) 바꿔 빌드한다. 본인 캘린더 기록은 다른 사용자와 같은 길(새 위젯 「XML 가져오기」)로 넣는다 — 파일럿 리허설이 된다.
 
-**리허설 기록(2026-09-23, 개발 PC)**: 폐쇄망 상태를 흉내낸 `taskmgr_legacy_sim`(7표 · `dev_end_date` 제거 · 시각 +9h) → `taskcalendar_test` 구축 종료코드 0 · 시각이 v12 원본과 같은 값으로 복귀 · id/uid 불일치 0 · 구조 시그니처 차이 0 · 재실행 가드(3)·`-Force` 재구축(0) 확인 · 새 위젯 접속 확인.
+**리허설 기록(2026-09-23, 개발 PC)**: 폐쇄망 상태를 흉내낸 `taskmgr_legacy_sim`(7표 · `dev_end_date` 제거 · 시각 +9h) → `taskcalendar_test` 구축 종료코드 0 · 시각이 v12 원본과 같은 값으로 복귀 · id/uid 불일치 0 · 구조 시그니처 차이 0 · 재실행 가드(3)·`-Force` 재구축(0) 확인 · 새 위젯 접속 확인. (당시 판 기준 — 2026-09-30 부터는 가드·`-Force` 없이 재실행 = 늘 백업 후 재구축.)
 
 ## 2. 처음 한 번만 (클론 · 전제 점검)
 

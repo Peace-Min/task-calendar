@@ -17,14 +17,21 @@ rem  --- EXITCODES (ASCII; this block must match line-for-line in .ps1 and .cmd)
 rem    0 ok - taskcalendar built and every verification passed
 rem    1 failed - a step after the confirmation failed; see the last red line and the report file
 rem    2 cancelled - the confirmation was not Y; nothing was changed
-rem    3 preflight failed - tools, files, connection, source tables, target exists or app account; nothing was changed
+rem    3 preflight failed - tools, files, company data version, connection, source tables or app account; nothing was changed
 rem  --- END EXITCODES ---
 rem
 rem  Usage:
 rem    setup-taskcalendar.cmd
 rem    setup-taskcalendar.cmd -DbHost 192.168.0.50 -CompanyDataDir "D:\taskmgr-company-data"
-rem    setup-taskcalendar.cmd -Force -Yes      (rehearsal: drop an existing target, no prompt)
+rem    setup-taskcalendar.cmd -Yes             (rehearsal: no prompt)
 rem    setup-taskcalendar.cmd -NoShift         (do not shift project-track timestamps KST to UTC)
+rem
+rem  Every run rebuilds the target (decision 2026-09-30): if the target DB
+rem  already exists it is dumped to BackupDir\TargetDb-before-drop-TIME.sql,
+rem  dropped and built again. No switch is needed; -Force is still accepted
+rem  for old command lines but does nothing. After go-live a re-run wipes the
+rem  calendar data written to the target since the last run (the before-drop
+rem  dump is then the only copy) - do not re-run it then.
 rem
 rem  Do NOT end an argument value with a backslash - powershell.exe reads \"
 rem  as an escaped quote and swallows the following argument.

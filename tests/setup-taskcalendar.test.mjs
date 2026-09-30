@@ -13,7 +13,8 @@
 //     ⑤ KST→UTC 이동은 과제 트랙 4표의 created_at/updated_at 에만 · -NoShift 로 끈다
 //     ⑥ FK 검사를 끄고 넣은 뒤 다시 켠다 · 고아 행 검사 6관계
 //     ⑦ 스키마 치환은 낱말 경계 `\btaskmgr\.` · 두 파일에만 · 05-grants.sql 은 대상 DB 선택 후 원본 그대로
-//     ⑧ 대상 DB 가 있으면 -Force 없이는 멈춘다 · DROP DATABASE 는 전부 -Force 가지 안에만
+//     ⑧ 대상 DROP 은 확인 뒤 · 원본 덤프 뒤 · 대상 덤프(DumpDb $TargetDb) 뒤 · DROP 은 대상 하나와 옛 판 작업장
+//        (_legacy_stage, 이름 가드 안) 하나뿐 · $Force 는 어떤 조건에도 안 쓰인다(2026-09-30: 재구축은 늘 한다)
 //     ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다(숫자를 박지 않는다)
 //     ⑩ 변이 주입 — 위 검사가 실제로 잡는지 증명
 //     ⑪ 어떤 종료코드로 끝나든 보고서가 남는다
@@ -25,6 +26,12 @@
 //     ⑭ project.contract_name/common_name 의 NULL 은 복사 SELECT 의 IFNULL(<col>, '') 로(대상 NOT NULL)
 //     ⑮ 창 멈춤 규칙: 리다이렉트면 안 멈춤 · ps1 직접 실행이면 늘 멈춤 · .cmd 가 TC_SETUP_LAUNCHER=cmd
 //     ⑯ app_user.sort_order 백필 — migrate-2026-09-10 2단계와 같은 문장 · 04 뒤 · 과제 복사 앞
+//     ⑰ 회사 데이터 폴더가 옛 판(08-24 이전)이면 사전 점검에서 멈춘다 · CREATE DATABASE 보다 앞
+//     ⑱ ApplySqlFile 은 mysql 출력을 UTF-8 로 읽고 원래 인코딩으로 되돌린다
+//     ⑲ 대상 DB 가 있어도 사전 점검은 멈추지 않는다 · 확인 전 요약에 재구축(노랑)·캘린더 기록(빨강) · 보고서에 남김
+//     ⑳ 옛 판 작업장 <대상>_legacy_stage — 사전 점검은 읽기만 · 삭제는 확인 뒤 · 정확한 이름 가드 안
+//     ㉑ 대상의 캘린더 기록 행 수 — QRowsTry(죽지 않음)로만 · 없는 표는 건너뜀 · Die 없음
+//     ㉒ -Force 는 호환용 무동작 — "-Force 로/를" 안내 문장이 없다
 //
 // 공용 기계(주석 마스커·비번 검사·종료코드 표·변이 주입기)는 tests/ps-guard-lib.mjs 의 것을 쓴다 —
 // backup/restore 계약과 같은 잣대를 대기 위해서다.
@@ -236,30 +243,125 @@ const checks = {
       '-AppPassword 를 자리표에 문자 그대로(정규식 아님) 넣는 자리가 바뀌었다');
   },
 
-  // ⑧ 대상 DB 가드.
+  // ⑧ 대상 DB 재구축의 순서 · DROP 의 자리. 2026-09-30 사용자 결정: 대상이 이미 있으면 -Force 없이 **늘**
+  // 백업한 뒤 DROP 하고 다시 만든다. 그래서 안전은 '스위치' 가 아니라 '순서' 가 지킨다:
+  //   (a) 대상 DROP 은 확인 뒤($script:preflight = $false) · 원본 덤프 뒤 · DumpDb $TargetDb(검증 실패 = Die) 뒤
+  //   (b) DROP 은 둘뿐 — 대상 DROP 하나와 이름 가드를 지난 옛 판 작업장(_legacy_stage) DROP IF EXISTS 하나
+  //   (c) $Force 는 param 선언에만 — 어떤 조건에도 쓰이지 않는다(문서화된 무동작)
   targetGuard(ps) {
     const code = maskPs(ps);
-    const bare = blankStrings(code);
-    const stop = /if\(-not \$Force\)\{\s*\n\s*Die "[^"\n]*-Force[^"\n]*"/.exec(code);
-    assert.ok(stop, '대상 DB 가 이미 있을 때 -Force 없이 멈추는(메시지에 -Force 를 알리는) 자리가 사라졌다');
     const confirm = onlyOnce(code, /Read-Host "계속하려면 Y"/, '확인 질문');
-    assert.ok(stop.index < confirm, '-Force 없는 대상 존재 검사가 확인 질문보다 뒤에 있다 — 사전 점검(종료코드 3)이 아니게 된다');
-    const blocks = [...code.matchAll(/if\(\$Force\)\{/g)].map((m) => {
-      const open = m.index + m[0].length - 1;
-      return [open, matchBrace(bare, open)];
-    });
-    assert.ok(blocks.length >= 1, 'if($Force){ … } 가지를 찾지 못했다');
-    const drops = [...code.matchAll(/DROP DATABASE/g)].map((m) => m.index);
-    assert.ok(drops.length >= 1, 'DROP DATABASE 자리를 찾지 못했다(검사가 헛돈다)');
-    // 예외 없음 — 이 스크립트가 지우는 DB 는 -Force 의 기존 대상 하나뿐이다(스테이징 경로는 없앴다).
-    for (const d of drops) {
-      assert.ok(blocks.some(([o, c]) => c > 0 && d > o && d < c),
-        'DROP DATABASE 가 if($Force){ } 가지 밖에 있다 — -Force 없이도 기존 대상 DB(또는 다른 DB)가 지워질 수 있다');
+    const pf = onlyOnce(code, /\n  \$script:preflight = \$false\n/, '확인 뒤 표식($script:preflight = $false)');
+    assert.ok(confirm < pf, '$script:preflight = $false 가 확인 질문보다 앞이다');
+    const srcDump = onlyOnce(code, /\bDumpDb \$SourceDb \$srcDump\b/, '원본 덤프');
+    const bk = onlyOnce(code, /\bDumpDb \$TargetDb \$tgtDump\b/, '삭제 전 대상 백업(DumpDb $TargetDb)');
+    const drop = onlyOnce(code, /Q \("DROP DATABASE " \+ \(BQ \$TargetDb\) \+ ";"\)/, '대상 DROP DATABASE 실행');
+    const stage = onlyOnce(code, /Q \("DROP DATABASE IF EXISTS " \+ \(BQ \$legacyStageDb\) \+ ";"\)/, '옛 판 작업장 DROP DATABASE IF EXISTS 실행');
+    assert.ok(pf < bk, '삭제 전 대상 백업이 확인(Y) 앞이다 — 확인 전에는 아무것도 바꾸지 않는다');
+    assert.ok(srcDump < bk, '삭제 전 대상 백업이 원본 덤프보다 앞이다');
+    assert.ok(bk < drop, '대상 DB 를 백업하기 전에 DROP 한다 — 덤프 검증(DumpDb 의 Die)이 DROP 을 막지 못한다');
+    assert.ok(pf < drop && pf < stage, 'DROP DATABASE 가 확인(Y) 앞에 있다');
+    const drops = [...code.matchAll(/\bDROP\s+(?:DATABASE|SCHEMA)\b/gi)].map((m) => m.index);
+    const allowed = [drop + 'Q ("'.length, stage + 'Q ("'.length].sort((x, y) => x - y);
+    assert.deepStrictEqual(drops, allowed,
+      'DROP DATABASE 가 (대상 DROP · 옛 판 작업장 DROP IF EXISTS) 두 자리 밖에도 있다 — 다른 DB 가 지워질 수 있다');
+    const force = [...code.matchAll(/\$Force\b/gi)];
+    assert.ok(/\[switch\]\$Force,/.test(code), '-Force 스위치 선언이 사라졌다 — 옛 명령줄(-Force -Yes)이 매개변수 오류로 죽는다');
+    assert.strictEqual(force.length, 1,
+      `$Force 를 param 선언 밖에서 ${force.length - 1}번 쓴다 — -Force 는 문서화된 무동작이어야 한다(재구축은 늘 한다)`);
+    assert.ok(!/\b(?:if|elseif|while)\s*\([^\n]*\$Force\b/i.test(code), '$Force 가 조건에 쓰인다 — -Force 가 동작을 바꾼다');
+  },
+
+  // ⑲ 대상이 이미 있어도 사전 점검은 멈추지 않는다 · 확인 전 요약이 크게 알린다 · 보고서에 남는다.
+  targetRebuild(ps) {
+    const code = maskPs(ps);
+    const bare = blankStrings(code);
+    const confirm = onlyOnce(code, /Read-Host "계속하려면 Y"/, '확인 질문');
+    const te = onlyOnce(code, /\$targetExists = \(\$hasTgt -gt 0\)/, '대상 존재 판정');
+    assert.ok(te < confirm, '대상 존재 판정이 확인 질문보다 뒤다');
+    const first = code.indexOf('if($targetExists){', te);
+    assert.ok(first > te && first < confirm, '사전 점검의 if($targetExists){ … } 가지를 찾지 못했다');
+    const open = first + 'if($targetExists){'.length - 1;
+    const close = matchBrace(bare, open);
+    assert.ok(close > open, '사전 점검의 대상 존재 가지 끝을 찾지 못했다');
+    assert.ok(!/\bDie\b/.test(code.slice(open, close)),
+      '대상 DB 가 이미 있을 때 사전 점검이 멈춘다 — 2026-09-30 결정: 늘 백업 후 지우고 다시 만든다');
+    assert.ok(!/Die "[^"\n]*이미 있습니다/.test(code), '대상이 이미 있다고 Die 하는 자리가 남아 있다');
+    const sum = onlyOnce(code,
+      /Log "  대상 DB       : '\$TargetDb' 이미 있음[^"\n]*→ 백업 후 삭제하고 처음부터 다시 만듦" '(?:Yellow|Red)'/,
+      '요약의 재구축 경고 줄(노랑/빨강)');
+    const red = onlyOnce(code,
+      /if\(\$calTotal -gt 0\)\{ Log "  ★ 대상에 캘린더 기록이 있습니다: \$calCountText[^"\n]*지워집니다\(백업 파일에만 남음\)" 'Red' \}/,
+      '요약의 캘린더 기록 경고 줄(빨강 · 행 수 > 0 일 때)');
+    assert.ok(te < sum && sum < confirm && red < confirm, '재구축 · 캘린더 기록 경고가 확인 질문 앞 요약에 없다');
+    const s5 = onlyOnce(code, /Step 5 "/, 'Step 5');
+    assert.ok(/if\(\$targetExists\)\{ Log "  삭제 전 캘린더 : \$calCountText/.test(code.slice(s5)),
+      '보고서에 지운 대상의 캘린더 기록 행 수가 없다');
+    assert.ok(/if\(\$tgtDump\)\{ Log "  삭제 전 대상   : \$tgtDump" \}/.test(code.slice(s5)), '보고서에 삭제 전 대상 백업 경로가 없다');
+  },
+
+  // ⑳ 옛 판(eeda5fc)이 남긴 작업장 <대상>_legacy_stage — 사전 점검은 읽기만, 지우기는 확인 뒤 · 정확한 이름 가드 안.
+  legacyStage(ps) {
+    const code = maskPs(ps);
+    const bare = blankStrings(code);
+    const confirm = onlyOnce(code, /Read-Host "계속하려면 Y"/, '확인 질문');
+    const pf = onlyOnce(code, /\n  \$script:preflight = \$false\n/, '확인 뒤 표식');
+    const name = onlyOnce(code, /\$legacyStageDb = \$TargetDb \+ "_legacy_stage"\n/, '옛 판 작업장 이름');
+    const det = onlyOnce(code, /information_schema\.SCHEMATA WHERE SCHEMA_NAME='\$legacyStageDb';/, '옛 판 작업장 존재 확인(읽기)');
+    const sum = onlyOnce(code, /Log "  옛 판이 남긴 작업장: '\$legacyStageDb' 있음 → 삭제"/, '요약의 옛 판 작업장 줄');
+    assert.ok(name < det && det < confirm && sum < confirm, '옛 판 작업장 감지 · 요약이 확인 질문 앞(사전 점검)이 아니다');
+    const g = /\n    \$stageOk = ([^\n]*)\n/.exec(code);
+    assert.ok(g, '옛 판 작업장 삭제 가드($stageOk = …)를 찾지 못했다');
+    for (const [re, why] of [
+      [/\(\$legacyStageDb -ceq \(\$TargetDb \+ "_legacy_stage"\)\)/, '정확한 이름(<대상>_legacy_stage, 대소문자까지)'],
+      [/\(\$legacyStageDb -ne \$SourceDb\)/, '원본과 다름'],
+      [/\(\$legacyStageDb -ne \$TargetDb\)/, '대상과 다름'],
+      [/\(\$legacyStageDb -match '\^\[A-Za-z0-9_\]\+\$'\)/, '식별자 형식'],
+    ]) assert.ok(re.test(g[1]), `옛 판 작업장 삭제 가드에 '${why}' 조건이 없다 — 엉뚱한 DB 가 지워질 수 있다`);
+    const so = onlyOnce(code, /if\(\$stageOk\)\{/, 'if($stageOk){');
+    const open = code.indexOf('{', so);
+    const close = matchBrace(bare, open);
+    const drop = onlyOnce(code, /Q \("DROP DATABASE IF EXISTS " \+ \(BQ \$legacyStageDb\) \+ ";"\)/, '옛 판 작업장 DROP');
+    assert.ok(pf < g.index && g.index < so && open < drop && drop < close,
+      '옛 판 작업장 DROP 이 확인 뒤 · if($stageOk){ } 가지 안이 아니다');
+    assert.strictEqual([...code.matchAll(/_legacy_stage/g)].length, 2,
+      "'_legacy_stage' 가 (이름 조립 · 삭제 가드) 두 자리 밖에도 나온다 — 옛 스테이징 경로가 되살아났거나 이름이 따로 논다");
+    assert.ok(!/"CREATE DATABASE " \+ \(BQ \$legacyStageDb\)/.test(code), '옛 판 작업장을 다시 만든다');
+    const s5 = onlyOnce(code, /Step 5 "/, 'Step 5');
+    assert.ok(/if\(\$legacyStageDropped\)\{ Log "  옛 판 작업장   : /.test(code.slice(s5)), '보고서에 옛 판 작업장 삭제가 없다');
+  },
+
+  // ㉑ 캘린더 기록 행 수(사전 점검 · 정보용) — 죽지 않는 QRowsTry 로만, 없는 표는 건너뛰고, 절대 Die 하지 않는다.
+  calCount(ps) {
+    const code = maskPs(ps);
+    const bare = blankStrings(code);
+    const T = ['cal_entry', 'cal_todo', 'cal_task_hours', 'cal_attendance', 'cal_report_daily', 'cal_report_weekly'];
+    assert.deepStrictEqual(listLiteral(code, 'CAL_DATA_TABLES'), T, '$CAL_DATA_TABLES 가 캘린더 기록 6표가 아니다');
+    for (const t of T) {
+      assert.ok(new RegExp(`\\nCREATE TABLE ${t} \\(`).test(calSchemaSrc), `실물: schema-calendar.sql 에 ${t} 가 없다 — 목록을 함께 고칠 것`);
     }
-    // 지우기 전에 대상도 한 벌 백업한다.
-    const drop = onlyOnce(code, /Q \("DROP DATABASE "/, 'DROP DATABASE 실행');
-    const bk = onlyOnce(code, /DumpDb \$TargetDb \$tgtDump/, '삭제 전 대상 백업');
-    assert.ok(bk < drop, '대상 DB 를 백업하기 전에 DROP 한다');
+    const confirm = onlyOnce(code, /Read-Host "계속하려면 Y"/, '확인 질문');
+    const at = onlyOnce(code, /\n  if\(\$targetExists -and \$tgtTableCount -gt 0\)\{\n/, '캘린더 기록 행 수 블록');
+    const open = code.indexOf('{', at);
+    const close = matchBrace(bare, open);
+    assert.ok(close > open && close < confirm, '캘린더 기록 행 수 블록이 확인 질문 앞(사전 점검)에서 끝나지 않는다');
+    const blk = code.slice(open, close);
+    assert.ok(!/\bDie\b/.test(blk), '캘린더 기록 행 수 블록 안에 Die 가 있다 — 정보용 집계가 사전 점검을 멈춘다');
+    assert.ok(!/\bQ\s*[("]|\bQRows\b(?!Try)/.test(blk),
+      '캘린더 기록 행 수 블록이 실패하면 죽는 Q/QRows 를 쓴다 — 표 하나 못 세서 사전 점검이 멈춘다. QRowsTry 를 쓸 것');
+    assert.ok(/QRowsTry/.test(blk) && /\$CAL_DATA_TABLES/.test(blk) && /information_schema\.TABLES/.test(blk),
+      '캘린더 기록 행 수가 (information_schema 로 있는 표만 · QRowsTry) 로 세지 않는다');
+    assert.ok(/-notcontains \$t\)\{ continue \}/.test(blk), '대상에 없는 캘린더 표를 건너뛰지 않는다');
+    assert.ok(/\$calTotal \+= /.test(blk) && /\$calCountFailed = \$true/.test(blk), '합계 · 못 셈 표식이 없다');
+  },
+
+  // ㉒ 사용자에게 '-Force 를 붙여라' 고 말하는 문장이 없다(-Force 는 무동작이다).
+  noForceHint(ps, cmd) {
+    const hits = [...ps.matchAll(/-Force\s*(?:로|를)[^\n]*/g)].map((m) => m[0]);
+    assert.deepStrictEqual(hits, [], `ps1 이 아직 -Force 를 쓰라고 안내한다: ${hits.join(' | ')}`);
+    assert.ok(/\[switch\]\$Force,\s*#[^\n]*호환[^\n]*아무 일도 안 한다/.test(ps), '-Force 선언 옆에 "호환용 · 무동작" 설명이 없다');
+    assert.ok(!/-Force -Yes/.test(ps) && !/-Force -Yes/.test(cmd), '사용 예에 -Force -Yes 가 남아 있다');
+    assert.ok(/-Force is still accepted[\s\S]*?does nothing/.test(cmd), '.cmd 머리말이 -Force 가 무동작임을 적지 않는다');
   },
 
   // ⑨ schema_version 은 파일에서 읽는다.
@@ -338,7 +440,8 @@ const checks = {
       '$KEY_COLS 에 사용자 표가 있다 — 원본 사용자 표(0.16 모양 = 번호 없음)의 정체성 컬럼을 요구해 사전 점검에서 멈춘다');
     assert.ok(/\$lack = @\(\$COPY_ORDER \| Where-Object \{ \$srcTables -notcontains \$_ \}\)/.test(code),
       '원본에 요구하는 표 목록이 $COPY_ORDER(과제 4표)가 아니다');
-    assert.ok(!/\$(legacyOrg|legacyApp|legacyUsers|StageDb|CopySrcDb|copyCounts)\b|DropStageDb|_legacy_stage/.test(code),
+    // (_legacy_stage 는 옛 판 작업장 치우기에만 나온다 — 그 자리와 이름 가드는 ⑳ 이 못 박는다.)
+    assert.ok(!/\$(legacyOrg|legacyApp|legacyUsers|StageDb|CopySrcDb|copyCounts)\b|DropStageDb/.test(code),
       '스테이징 경로(옛 사용자 표 마이그레이션)의 잔재가 남아 있다');
     // (f) 명부 대조 — 시드 뒤 · 정보용(Die 없음 · 실패하면 죽는 Q/QRows 없음).
     const xAt = onlyOnce(code, /\n  if\(\$srcLoginCheck\)\{\n/, '명부 대조 블록');
@@ -514,7 +617,7 @@ test('setup-taskcalendar ④ 복사 대상 = 과제 트랙 4표(FK 부모 → �
 test('setup-taskcalendar ⑤ KST→UTC(-9h)는 과제 트랙 4표의 created_at/updated_at 에만 · -NoShift', () => checks.shift(psSrc));
 test('setup-taskcalendar ⑥ FK 검사 끄고 넣고 다시 켬 · 고아 행 6관계', () => checks.fkAndOrphans(psSrc));
 test('setup-taskcalendar ⑦ 스키마 치환 \\btaskmgr\\. — 두 파일만 · 05-grants 는 대상 DB 선택', () => checks.schemaSubst(psSrc));
-test('setup-taskcalendar ⑧ 대상 DB 가 있으면 -Force 없이는 멈춤 · DROP DATABASE 는 전부 -Force 가지 안', () => checks.targetGuard(psSrc));
+test('setup-taskcalendar ⑧ 대상 DROP 은 확인 뒤 · 대상 덤프 뒤 · DROP 은 대상과 옛 판 작업장 둘뿐 · $Force 는 조건에 없음', () => checks.targetGuard(psSrc));
 test('setup-taskcalendar ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다', () => checks.versionFromFile(psSrc));
 test('setup-taskcalendar ⑪ 어떤 종료코드로 끝나든 보고서가 남는다(사전 점검 실패·취소 포함)', () => checks.reportAlways(psSrc));
 test('setup-taskcalendar ⑫ 사용자 3표는 회사 시드(02 → 03 → 04, 대상 DB) · 원본 사용자 표는 복사·요구하지 않음 · login_id 명부 대조는 경고만', () => checks.seedUsers(psSrc));
@@ -563,7 +666,7 @@ test('setup-taskcalendar ⑩ 변이: 이른 reportDir 잡기를 지우거나 Sav
     '  $dir = $script:reportDir\n', '  if(-not $script:reportDir){ return }\n  $dir = $script:reportDir\n')), /조용히 돌아간다/);
 });
 
-test('setup-taskcalendar ⑩ 변이: 명령줄 비번 · 이동 표 확대 · 05 치환 · Force 밖 DROP · 박힌 버전을 각각 잡는다', () => {
+test('setup-taskcalendar ⑩ 변이: 명령줄 비번 · 이동 표 확대 · 05 치환 · 여분의 DROP · 박힌 버전을 각각 잡는다', () => {
   assert.throws(() => checks.secrets(mutate(psSrc,
     '"--defaults-extra-file=$($script:cnfPath)" "-N" "-B" "-e" "SELECT 1;"',
     '"-u$DbUser" "-p$RootPassword" "-N" "-B" "-e" "SELECT 1;"')), /명령줄/);
@@ -668,4 +771,55 @@ test('setup-taskcalendar ⑱ ApplySqlFile 은 mysql 출력을 UTF-8 로 읽고 �
   const body = m.slice(i, m.indexOf('function DumpDb'));
   assert.ok(/\[Console\]::OutputEncoding = New-Object System\.Text\.UTF8Encoding/.test(body), 'ApplySqlFile 이 UTF-8 로 읽지 않는다 — 한국어 가드 메시지가 깨진다');
   assert.ok(/finally \{[\s\S]*\[Console\]::OutputEncoding = \$prevEnc/.test(body), 'ApplySqlFile 이 인코딩을 finally 에서 되돌리지 않는다');
+});
+
+// ⑲〜㉒ 2026-09-30 사용자 결정 — "-Force 키워드가 아니라, cmd 를 돌릴 때마다 전에 만든 DB·표가 있으면 늘 지우고 처음부터".
+test('setup-taskcalendar ⑲ 대상 DB 가 있어도 사전 점검은 멈추지 않는다 · 확인 전 요약이 재구축(노랑)·캘린더 기록(빨강)을 알린다 · 보고서에 남는다', () => checks.targetRebuild(psSrc));
+test('setup-taskcalendar ⑳ 옛 판 작업장 <대상>_legacy_stage — 사전 점검은 읽기만 · 삭제는 확인 뒤 · 정확한 이름 가드 안에서만', () => checks.legacyStage(psSrc));
+test('setup-taskcalendar ㉑ 대상의 캘린더 기록 행 수 — 죽지 않는 QRowsTry 로만 · 없는 표는 건너뜀 · 절대 Die 하지 않음', () => checks.calCount(psSrc));
+test('setup-taskcalendar ㉒ -Force 는 호환용 무동작 — 사용자에게 "-Force 로/를" 안내하는 문장이 없다', () => checks.noForceHint(psSrc, cmdSrc));
+
+test('setup-taskcalendar ⑩ 변이: 대상 DROP 을 대상 덤프 앞으로 옮기면 ⑧ 이 잡는다', () => {
+  const lines = psSrc.split('\n');
+  const d = lines.findIndex((l) => /^\s*DumpDb \$TargetDb \$tgtDump\s*$/.test(l));
+  const x = lines.findIndex((l) => /^\s*Q \("DROP DATABASE " \+ \(BQ \$TargetDb\)/.test(l));
+  assert.ok(d >= 0 && x > d, '변이 준비 실패: 대상 덤프 · DROP 줄을 찾지 못했다');
+  [lines[d], lines[x]] = [lines[x], lines[d]];
+  const m = lines.join('\n');
+  assert.notStrictEqual(m, psSrc);
+  assert.throws(() => checks.targetGuard(m), /백업하기 전에 DROP/);
+});
+
+test('setup-taskcalendar ⑩ 변이: if($Force) 를 DROP 이나 재구축 가지에 다시 걸면 ⑧ 이 잡는다', () => {
+  assert.throws(() => checks.targetGuard(mutate(psSrc,
+    '    Q ("DROP DATABASE " + (BQ $TargetDb) + ";") "대상 DB 삭제" | Out-Null\n',
+    '    if($Force){ Q ("DROP DATABASE " + (BQ $TargetDb) + ";") "대상 DB 삭제" | Out-Null }\n')), /\$Force/);
+  assert.throws(() => checks.targetGuard(mutate(psSrc,
+    '  if($targetExists){\n    $tgtDump = Join-Path',
+    '  if($targetExists -and $Force){\n    $tgtDump = Join-Path')), /\$Force/);
+});
+
+test('setup-taskcalendar ⑩ 변이: 옛 판 작업장의 정확한 이름·식별자 가드를 빼거나 가드 가지를 풀면 ⑳ 이 잡는다', () => {
+  assert.throws(() => checks.legacyStage(mutate(psSrc,
+    '($legacyStageDb -ceq ($TargetDb + "_legacy_stage")) -and ', '')), /정확한 이름/);
+  assert.throws(() => checks.legacyStage(mutate(psSrc,
+    "($legacyStageDb -match '^[A-Za-z0-9_]+$')\n    if($stageOk){", "$true\n    if($stageOk){")), /식별자 형식/);
+  assert.throws(() => checks.legacyStage(mutate(psSrc,
+    '    if($stageOk){\n', '    if($true){\n')), /if\(\$stageOk\)/);
+});
+
+test('setup-taskcalendar ⑩ 변이: 대상 존재로 다시 멈추게 하면 ⑲ 가, 캘린더 행 수 블록이 Die 하거나 죽는 질의를 쓰면 ㉑ 이 잡는다', () => {
+  assert.throws(() => checks.targetRebuild(mutate(psSrc,
+    '    Warn "대상 DB \'$TargetDb\' 가 이미 있습니다',
+    '    Die "대상 DB \'$TargetDb\' 가 이미 있습니다."\n    Warn "대상 DB \'$TargetDb\' 가 이미 있습니다')), /멈춘다|이미 있다고/);
+  assert.throws(() => checks.calCount(mutate(psSrc,
+    '    if($calCountFailed){ Warn ',
+    '    if($calCountFailed){ Die "캘린더 기록 행 수를 못 셌습니다" }\n    if($calCountFailed){ Warn ')), /Die 가 있다/);
+  assert.throws(() => checks.calCount(mutate(psSrc,
+    '        $rCnt = QRowsTry (', '        $rCnt = QRows (')), /Q\/QRows/);
+});
+
+test('setup-taskcalendar ⑩ 변이: "-Force 로 다시 실행하세요" 안내를 되살리면 ㉒ 가 잡는다', () => {
+  assert.throws(() => checks.noForceHint(mutate(psSrc,
+    '깨져 있습니다 — 고친 뒤 다시 실행하세요." }', '깨져 있습니다 — 고친 뒤 -Force 로 다시 실행하세요." }'), cmdSrc), /-Force 를 쓰라고/);
 });
