@@ -13809,16 +13809,23 @@ function bind(){
     const chip = ev.target.closest('.chip');
     if(chip){
       // 통일 규칙: 칩 클릭 = 드러내기(reveal). 편집은 드러난 항목에서 한 번 더(일정=카드 [수정] / 할 일=행 텍스트).
+      //  ★ 선택 날짜 = **누른 칸의 날짜**(docs/BUG-RANGE-CHIP-CLICK.md B1). data-occ 는 그 발생의 **시작일**이라,
+      //    9/29~10/2 막대를 10월 달력의 10/1 칸에서 누르면 9/29 가 골라져 9월로 넘어갔다(달이 번갈아 바뀌는 버그).
+      //    상세 탭(entriesOn)·할 일 탭(covers)은 그날에 걸친 기간 항목을 모두 보이므로 누른 날짜에서도 카드·행이 보인다(B2).
+      //    칸 밖에 그려진 칩만 data-occ 로 대체(B4). 끌어 옮기기는 계속 data-occ(시작일) 기준이다(B5).
+      const cellDs = (chip.closest('.cell') || {}).dataset?.date;
+      const chipDs = cellDs || chip.dataset.occ || selectedDate;
       if(chip.dataset.todo){            // 할 일 칩 → 그 날짜 + 할 일 탭 + 행 강조(접힌 섹션 자동 펼침)
-        selectDate(chip.dataset.occ || selectedDate);
+        selectDate(chipDs);
         noteTab = 'todo';
         flashTodoId = chip.dataset.todo;
         noteCollapsed.delete('nodate');
-        const td = todoById(chip.dataset.todo); if(td && td.done) noteCollapsed.delete('done');
+        //  미완료 할 일은 「이 날」 섹션에 있다 — 사용자가 접어 두었으면 행이 안 보이므로 함께 편다(B2).
+        const td = todoById(chip.dataset.todo); if(td && td.done) noteCollapsed.delete('done'); else noteCollapsed.delete('onday');
         renderPanel(); openSheetIfNarrow();
         return;
       }
-      selectDate(chip.dataset.occ || selectedDate);   // 일정 칩 → 그 날짜 + 일정 상세 탭 + 카드 강조
+      selectDate(chipDs);   // 일정 칩 → 그 날짜 + 일정 상세 탭 + 카드 강조
       noteTab = 'detail';
       flashTargetId = chip.dataset.id;
       renderPanel(); openSheetIfNarrow();
