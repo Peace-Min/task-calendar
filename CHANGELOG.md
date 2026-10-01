@@ -7,6 +7,19 @@
 
 ---
 
+## 🆕 2026-10-01 — v0.19.1: 과제 순서 · 기간 칩 클릭 · 타인 일정 전체 보기 · 창 버튼·보고서 전송 정리 (스키마 변경 없음)
+
+0.19.0 빌드 뒤 미배포 동안 들어온 사용자 제보·요구(2026-10-01)를 묶은 패치 릴리스다. **서버 스키마·GRANT 변경 없음**(v12 · `CalendarDb.ExpectedSchemaVersion = "12"` 그대로) — 0.19.0 과 같은 서버에 그대로 올린다.
+
+- **과제 순서**(`9133ae8` · `fca2526` · 기획 [docs/CATEGORY-ORDER.md](docs/CATEGORY-ORDER.md)) — `renderCatModal` 이 개인/공식 재묶음 없이 `state.categories` 실제 순서를 보이고, 행마다 ▲▼(`moveCategory` = `guardEdit` → 이웃과 교환 → `save()` 1회 · `catMoveRow` 로 포커스·스크롤 유지). `fillCatSelect`(새 기록·빠른 추가·검색)의 optgroup 을 걷어 순서대로 한 목록. 보고서는 「기타」 맨 뒤·미분류 그 뒤 규칙 유지. 저장은 원래 `cal_category.sort_order` = 배열 순서라 호스트·DB 변경 없음. QA 가 찾은 좁은 폭 결함(≤440px ▲▼ 터치 하한 · 320px 행 링크 쪼개짐) 수정. 시험 `tests/category-order.test.mjs` · 실 위젯 루프 `tests/loop-category-order.mjs`.
+- **기간 칩 클릭**(`ee83d77` · `592b5ca` · 기획 [docs/BUG-RANGE-CHIP-CLICK.md](docs/BUG-RANGE-CHIP-CLICK.md)) — 칩 클릭 날짜를 `chip.closest('.cell').dataset.date`(칸이 없을 때만 `data-occ`)로. 전에는 발생 **시작일**(`data-occ`)을 골라 시작일 달로 넘어갔다. 접힌 「이 날」 섹션도 펼친다 · 드래그는 `data-occ` 기준 그대로. 시험 `tests/range-chip-click.test.mjs` · 루프 `tests/loop-range-chip.mjs`.
+- **타인 일정 보기 확장**(`c4f1e66` · `256420e` · 기획 [docs/PEER-VIEW-FULL.md](docs/PEER-VIEW-FULL.md)) — 호스트 `CalendarDb.LoadPeerScheduleJsonAsync` 가 부팅 스냅샷과 같은 행→state 매퍼(`EntryRowToState`·`TodoRowToState`·`CommitRow`)를 공유한다. 보냄: 과제(이름·색) · 일정(시간·장소·메모·반복·예외·작업일지 커밋) · 할 일. 안 보냄(P3): 알림 · 과제별 시간 · 근태 · 회의실 · 보고서 서식 · 저장소 경로·작성자 · 과제 설명. view_scope 확인이 먼저 · 일관 스냅샷 트랜잭션. 웹: PEER 에서 「할 일」·「커밋 내역」 탭 · 편집 수단 숨김 + 함수 PEER 조기 반환 · 기본 밀도 「펼침」 + 열람 밀도 `tc_peerDensity` 분리(내 화면 `tc_calDensity` 불변) · 열람 모달 ≤1400px·98vh. QA 결함: `hpost` 의 PEER 봉인이 열람 창 부팅의 자동 전송에도 「읽기 전용」 토스트를 냈다 → 자동 전송 목록 `PEER_SILENT_CMD` 는 조용히 버린다(목록 밖 기본 = 안내). 시험 `tests/peer-view-full.test.mjs` · `tests/peer-quiet-boot.test.mjs`.
+- **UI 정리**(`148554e` · 기획 [docs/UI-CLARITY-2026-10-01.md](docs/UI-CLARITY-2026-10-01.md)) — 「넓게 보기」 → 「맨 앞에 띄우기」(제목줄 툴팁 `HB_TIP` · 아이콘 `ICON.front` · ☰ 메뉴·안내 문구 · 과거 패치노트는 그대로) · 회사 전송 모드(설정 라디오 `tc_netcusMode` · 보고서 배지) 제거 → 늘 `dryRun:false` + 실제 제출 전 확인 1회(주간은 폼만 채우는 그대로) · 트레이 사용 시 ✕ 가 이미 숨기므로 제목줄 「_」 버튼 제거(✕ 툴팁을 트레이 상태별로 · 호스트 동작 불변). 함께: `PEER_SILENT_CMD` 를 첫 `hpost(` 호출보다 앞에 선언(TDZ — 열람 창 부팅에서 `hpost` 가 던졌다). 시험 `tests/ui-clarity.test.mjs`.
+- **위키**(`cdc0e98` · `6b7a97f` · `794a672` · `1a2c4dd`) — `docs/wiki/` 에 「과제 순서 바꾸기」·「날짜 누르기와 기간 일정」·「다른 사람 일정 보기」·「창 버튼과 트레이」·「보고서 회사 전송」 + 홈·사이드바.
+- 게이트: `TC_TEST_STRICT=1 node tests/run-tests.mjs` 0 fail / 0 skip · exit 0 · 버전 단일 소스 정합(`tests/version-sync.test.mjs`). 인스톨러 빌드·`latest.json` sha256 대조는 릴리스 빌드 때.
+
+---
+
 ## 🆕 2026-09-30 — v0.19.0: 새 주 DB `taskcalendar` · 구성원·직급·소속 관리 · 휴지통 · 스키마 v12 (breaking · 릴리스 커밋 전)
 
 0.18.1 이후 배포 대기 중에 들어온 기능(개발종료일 · 사용자 관리 · 휴지통 · 직급·소속 관리)과 코드 품질 전면 조사 수정분을 묶고, **위젯의 접속 기본 DB 를 `taskmgr` → `taskcalendar` 로 바꾼** 릴리스다. 마지막 실배포판이 0.16 이라 폐쇄망의 `taskmgr` 는 0.16·0.17.1 이 계속 쓰고, 0.19 는 그 옆에 세운 새 DB 에 붙는다(두 DB 운영 — DEPLOY.md §0-6).

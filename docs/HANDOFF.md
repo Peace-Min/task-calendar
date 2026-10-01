@@ -14,7 +14,7 @@
 | 비공개 저장소 | `C:\Users\CEO\Desktop\console\taskmgr-company-data` (`master`) — 사용자 스키마·시드·권한. **형제 폴더여야** 상시 게이트가 돈다(tests/README) |
 | 원격 | `github.com/Peace-Min/task-calendar` · `github.com/Peace-Min/taskmgr-company-data` |
 | **미푸쉬** | 없음(2026-10-01 `2ee3956` 까지 본 저장소 푸쉬 · 비공개 저장소는 2026-09-18 이후 변경 없음). **"푸쉬" 라고 지시할 때만** 푸쉬한다 |
-| 버전 | **v0.19.0 빌드 완료·미배포** — `dist/installer/TaskCalendarWidget-Setup-v0.19.0.exe` sha256 `0ad02b32…3df8` = `latest.json`. 버전 파일 여덟 자리 정합(`tests/version-sync.test.mjs`). 위젯 기본 `DbName` = **`taskcalendar`**(0.16·0.17.1 은 `taskmgr`). **미배포 판이라 같은 번호로 여러 번 다시 빌드했다**(사용자 결정) — 마지막 빌드 = 위 해시 |
+| 버전 | **v0.19.1 소스 갱신(빌드·게이트는 이어서)**(2026-10-01 · 과제 순서·기간 칩 클릭·타인 일정 전체 보기·창 버튼/보고서 전송 정리 · 스키마 변경 없음). 직전 **v0.19.0 빌드 완료·미배포** — `dist/installer/TaskCalendarWidget-Setup-v0.19.0.exe` sha256 `0ad02b32…3df8` = `latest.json`. 버전 파일 여덟 자리 정합(`tests/version-sync.test.mjs`). 위젯 기본 `DbName` = **`taskcalendar`**(0.16·0.17.1 은 `taskmgr`). **미배포 판이라 같은 번호로 여러 번 다시 빌드했다**(사용자 결정) — 마지막 빌드 = 위 해시 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"`. 배포돼 있는 것은 0.16(사용자 대부분)·0.17.1(사용자 본인 PC) — 둘 다 `taskmgr` 를 쓴다 |
 | 개발 DB | 이 PC MySQL 8.4.9 에 **`taskmgr`(v12 · 원본)** 와 **`taskcalendar`(v12 · 개발용 사본)**. `taskcalendar` 는 `run-loops` 가 매번 `setup-taskcalendar` 로 다시 만들고 `taskmgr` 의 `cal_*` 를 복사해 채운다(개발 전용). root 비밀번호는 사용자가 채팅으로 준다 — 파일·메모리에 적지 않는다 |
 | 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` → **1894 pass / 0 fail / 0 skip** · CS 경고 0 · **실 DB 루프 27/27 통과**(2026-10-01 15:27 · `dist/rehearsal/loops-20261001-152731.txt`: 새 기능 실화면 + 루프 14종 1회 + 관리자 3종×5) · 두 DB schema_version 시작·끝 12 |
