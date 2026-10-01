@@ -94,12 +94,12 @@ test('보고서 → 「과제 관리」 링크는 보고서를 먼저 닫는다(
     '대조군: 설정으로 가는 길도 보고서를 먼저 닫는다(이 파일의 관례)');
 });
 
-test('보고서 전송 모드 배지: 누르면 보고서를 닫고 설정을 연다 + 설정의 모드 라디오가 배지를 갱신한다(2026-09-23 §3.4-C-7)', () => {
+//  2026-10-01 UI-CLARITY U3 — 전송 모드(미제출 테스트/실제 제출)와 그 배지는 없앴다(늘 실제 제출).
+//  예전 시험(배지 → 설정 이동 · 라디오 → 배지 갱신)은 대상이 사라져 「흔적 없음」 시험으로 바뀌었다(정밀 계약은 tests/ui-clarity.test.mjs).
+test('보고서 전송 모드 배지·설정 라디오가 흔적 없이 사라졌다(2026-10-01 UI-CLARITY U3 — 늘 실제 제출)', () => {
   const s = loadAppSource();
-  assert.ok(s.includes("$('#rptSendMode').addEventListener('click', () => { closeModal('#reportModal'); openSettings(); })"),
-    '#rptSendMode 가 보고서를 닫지 않고 설정을 연다 — 설정 모달이 DOM 상 보고서 앞이라 뒤에 깔려 안 보인다');
-  assert.ok(/input\[name="ncMode"\]'\)\.forEach\(r => r\.addEventListener\('change', \(\) => \{ if\(r\.checked\)\{[^\n]*updateRptSendVis\(\);/.test(s),
-    '설정에서 전송 모드를 바꿔도 보고서 배지가 갱신되지 않는다 — 배지가 옛 모드를 말한다');
+  assert.ok(!s.includes('rptSendMode'), '#rptSendMode(전송 모드 배지) 배선이 남아 있다');
+  assert.ok(!/input\[name="ncMode"\]/.test(s) && !/name="ncMode"/.test(s), '설정의 전송 모드 라디오(또는 그 배선)가 남아 있다');
 });
 
 test("머리기호 '직접': 입력(input)은 저장을 부르지 않는다 — 저장은 change 에서 한 번만", () => {
@@ -2571,30 +2571,25 @@ if (!JSDOM) {
       }
     });
 
-    // 2026-09-23 §3.4-C-7 — 보고서 푸터의 전송 모드 배지(미제출 테스트 / 실제 제출)
-    test('보고서 전송 모드 배지: 위젯 일간에서만 보이고 dry/real 을 그대로 말한다', () => {
+    // 2026-10-01 UI-CLARITY U3 — 전송 모드(배지·버튼 톤)는 없앴다. 예전 저장값이 무엇이든 전송 버튼은 같은 모양이다.
+    //  (옛 시험 「보고서 전송 모드 배지: 위젯 일간에서만 보이고 dry/real 을 그대로 말한다」를 대체 — 정밀 계약은 tests/ui-clarity.test.mjs)
+    test('보고서 전송 버튼: 모드 톤·배지 없음 — 예전 저장값(real/dry)과 무관 · 위젯 일간 툴팁은 「실제로 제출」을 말한다', () => {
       const origMode = ev("(function(){ try{ return localStorage.getItem('tc_netcusMode'); }catch(_){ return null; } })()");
       const origAuto = ev('Platform.caps.reportAuto');
       const origRM = ev('reportMode');
-      const badge = () => evJSON("(function(){ var m=$('#rptSendMode'); return { disp: m.style.display, text: m.textContent, real: m.classList.contains('real'), btnReal: $('#btnRptSend').classList.contains('real') }; })()");
+      const look = () => evJSON("(function(){ var b=$('#btnRptSend'); return { badge: !!document.getElementById('rptSendMode'), real: b.classList.contains('real'), title: b.title, mode: b.dataset.mode }; })()");
       try {
         ev("try{localStorage.setItem('tc_netcusMode','real')}catch(_){}; reportMode='daily'; Platform.caps.reportAuto=true; updateRptSendVis();");
-        let b = badge();
-        assert.strictEqual(b.disp, '', '위젯 일간에서 배지가 안 보인다 — 실제 제출인지 모르고 누른다');
-        assert.ok(b.text.includes('실제 제출') && b.real, '실제 제출 모드인데 배지가 경고로 보이지 않는다');
-        //  ≤440px(위젯 실폭)에서는 배지가 CSS 로 숨고 전송 버튼 톤만 남는다 — 버튼도 같은 값을 입어야 좁은 폭에서 모드를 잃지 않는다
-        assert.strictEqual(b.btnReal, true, '실제 제출 모드인데 전송 버튼이 danger 톤(.real)이 아니다 — 좁은 폭에서는 배지가 숨어 모드가 보이지 않게 된다');
+        const realLook = look();
+        assert.strictEqual(realLook.badge, false, '전송 모드 배지가 있다');
+        assert.strictEqual(realLook.real, false, '전송 버튼이 「실제 제출」 톤(.real)을 입었다 — 모드 분기가 남았다');
+        assert.ok(realLook.title.includes('실제로 제출됩니다'), '위젯 일간 전송 버튼 툴팁이 「실제로 제출」을 말하지 않는다');
         ev("try{localStorage.setItem('tc_netcusMode','dry')}catch(_){}; updateRptSendVis();");
-        b = badge();
-        assert.ok(b.text.includes('미제출 테스트') && !b.real, '미제출 테스트 모드인데 배지가 그렇게 말하지 않는다');
-        assert.strictEqual(b.btnReal, false, '미제출 테스트인데 전송 버튼에 danger 톤이 남아 있다 — 늘 경고면 경고가 아니다');
+        assert.deepStrictEqual(look(), realLook, '예전 저장값(dry/real)에 따라 전송 버튼 모양이 달라진다 — 그 값은 읽지 않아야 한다');
         ev("reportMode='weekly'; updateRptSendVis();");
-        assert.strictEqual(badge().disp, 'none', '주간(창만 여는 전송)에 일간 전송 모드 배지가 남는다');
-        ev("try{localStorage.setItem('tc_netcusMode','real')}catch(_){}; reportMode='weekly'; updateRptSendVis();");
-        assert.strictEqual(badge().btnReal, false, '주간 작성 버튼에 일간 실제 제출 톤이 남는다 — 주간은 폼만 채우고 직접 제출한다');
+        assert.ok(!look().real && !look().title.includes('실제로 제출됩니다'), '주간(폼만 채우고 직접 제출)에 일간 실제 제출 안내가 남는다');
         ev("reportMode='daily'; Platform.caps.reportAuto=false; updateRptSendVis();");
-        assert.strictEqual(badge().disp, 'none', '브라우저(자동 전송 없음)에서 전송 모드 배지가 보인다');
-        assert.strictEqual(badge().btnReal, false, '브라우저(자동 전송 없음)에서 전송 버튼이 실제 제출 톤이다 — 브라우저는 창만 연다');
+        assert.ok(!look().real && !look().title.includes('실제로 제출됩니다'), '브라우저(자동 전송 없음)에서 실제 제출을 말한다 — 브라우저는 창만 연다');
       } finally {
         ev('Platform.caps.reportAuto = ' + JSON.stringify(origAuto) + '; reportMode = ' + JSON.stringify(origRM) + ';');
         ev(origMode == null ? "try{localStorage.removeItem('tc_netcusMode')}catch(_){}" : "try{localStorage.setItem('tc_netcusMode'," + JSON.stringify(origMode) + ")}catch(_){}");

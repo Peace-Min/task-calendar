@@ -26,3 +26,17 @@ test('변이: 토스트를 조건 밖으로 되돌리면(모든 전송에 안내
   const bad = app.replace("if(!PEER_SILENT_CMD.has(cmd)){", "if(true){");
   assert.notStrictEqual(bad, app); assert.throws(() => check(bad), /자동 전송 목록 조건/);
 });
+
+test('열람 창 hpost: PEER_SILENT_CMD 는 파일에서 첫 hpost( 호출보다 앞에 선언된다(TDZ 방지 · 2026-10-01 실측 결함)', () => {
+  const iDecl = app.indexOf('const PEER_SILENT_CMD');
+  const firstCall = app.search(/[^a-zA-Z_]hpost\(\{/);
+  assert.ok(iDecl > 0 && firstCall > 0, '선언 또는 hpost 호출을 못 찾았다');
+  assert.ok(iDecl < firstCall, 'PEER_SILENT_CMD 가 첫 hpost 호출보다 뒤에 선언됐다 — 부팅 중 hpost 가 TDZ 로 던진다');
+  assert.ok(Math.abs(iDecl - app.indexOf('let __peerToldAt = 0;')) < 800, 'hpost 가 읽는 전역(__peerToldAt)과 떨어져 있다');
+});
+test('변이: PEER_SILENT_CMD 를 hpost 바로 위로 되돌리면 잡는다', () => {
+  const decl = app.slice(app.indexOf('const PEER_SILENT_CMD'), app.indexOf('\n', app.indexOf('const PEER_SILENT_CMD')) + 1);
+  const bad = app.replace(decl, '').replace('function hpost(o){', decl + 'function hpost(o){');
+  const iDecl = bad.indexOf('const PEER_SILENT_CMD'), firstCall = bad.search(/[^a-zA-Z_]hpost\(\{/);
+  assert.ok(iDecl > firstCall, '변이가 선언을 뒤로 옮기지 못했다');
+});

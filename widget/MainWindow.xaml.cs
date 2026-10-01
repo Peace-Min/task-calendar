@@ -2559,7 +2559,7 @@ namespace TaskCalendarWidget
             var tray = new MenuItem { Header = "트레이 아이콘 사용 (작업표시줄·Alt+Tab에 표시, 닫기→트레이)", IsCheckable = true, IsChecked = _settings.TrayEnabled };
             tray.Click += (_, _) => SetTrayEnabled(!_settings.TrayEnabled);
 
-            var focus = new MenuItem { Header = _focusMode ? "넓게 보기 닫기" : "넓게 보기" };
+            var focus = new MenuItem { Header = _focusMode ? "맨 앞 해제 (Esc)" : "맨 앞에 띄우기" };
             focus.Click += (_, _) => ToggleFocusMode();
 
             var auto = new MenuItem { Header = "Windows 시작 시 자동 실행", IsCheckable = true, IsChecked = IsAutoStart() };

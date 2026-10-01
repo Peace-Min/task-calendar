@@ -489,9 +489,10 @@ test('설정창: netcus 자격증명 UI가 흔적 없이 제거됐다', () => {
                       'netcusSaveCreds', 'netcusCredsGet', '__netcusCreds']) {
     assert.ok(!src.includes(dead), `자격증명 UI 잔재가 남아 있다: ${dead}`);
   }
-  // 「회사 일간보고」 섹션 자체는 남는다(전송 모드·구조 캡처가 거기 있다).
-  assert.ok(/회사 일간보고 \(netcus\)/.test(src), 'netcus 섹션이 통째로 사라졌다(전송 모드까지 잃었다)');
-  assert.ok(/name="ncMode"/.test(src), '전송 모드 라디오가 사라졌다');
+  // 「회사 일간보고」 섹션 자체는 남는다(안내·구조 캡처가 거기 있다). 전송 모드 라디오는 없앴다(UI-CLARITY U3).
+  assert.ok(/회사 일간보고 \(netcus\)/.test(src), 'netcus 섹션이 통째로 사라졌다');
+  assert.ok(/id="ncProbeRow"/.test(src), 'netcus 섹션의 구조 캡처 행이 사라졌다');
+  assert.ok(!/name="ncMode"/.test(src), '전송 모드 라디오가 남아 있다(2026-10-01 UI-CLARITY U3 — 늘 실제 제출)');
 });
 
 // ★ 이 검사는 설정창 「계정」 섹션을 보던 것이다. 그 섹션은 2026-08-03에 상단바 👤 「사용자 정보」

@@ -69,7 +69,7 @@ button{font-family:inherit}
 body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) 시에만 이동 커서 */
 #hostbar .hb-btns{display:flex;height:100%}
 #hostbar .hb-btns button{border:none;background:transparent;color:#fff;width:36px;height:32px;cursor:pointer;font-size:var(--fs-body);line-height:1;display:flex;align-items:center;justify-content:center}
-#hostbar .hb-btns button .ic{width:15px;height:15px;vertical-align:0}   /* SVG 글리프도 문자 글리프(⤢·☰·✕)와 같은 광학 크기로 */
+#hostbar .hb-btns button .ic{width:15px;height:15px;vertical-align:0}   /* SVG 글리프도 문자 글리프(☰·✕)와 같은 광학 크기로 */
 #hostbar .hb-btns button:hover{background:rgba(255,255,255,.2)}
 #hostbar .hb-btns button.pinon{background:rgba(255,255,255,.28)}
 /* 위젯 리사이즈 핸들 — 네 가장자리 + 네 모서리(8방향). 모두 투명(우하 그립만 보임), position:fixed 라 스크롤과 무관 */
@@ -1631,13 +1631,7 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
 .rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rpt-send-status.busy{color:var(--accent-2)} .rpt-send-status.ok{color:var(--accent-2)} .rpt-send-status.err{color:var(--danger-text)}
 .rpt-send-hint{font-size:var(--fs-meta);color:var(--muted);align-self:center;line-height:1.4;margin-right:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 전송 모드 배지 — 누르기 전에 이번 전송이 미제출 테스트인지 실제 제출인지 보여 준다(설정 모달에만 있던 값 · 2026-09-23 §3.4-C-7). 누르면 설정으로. */
-.rpt-send-mode{flex:none;align-self:center;font:inherit;font-size:var(--fs-micro);line-height:1.3;padding:3px 9px;border-radius:999px;border:1px solid var(--line-2);background:var(--panel);color:var(--muted);cursor:pointer;white-space:nowrap}
-.rpt-send-mode:hover{border-color:var(--ctl-border)}
-.rpt-send-mode.real{border-color:var(--danger-line);background:var(--danger-soft);color:var(--danger-text);font-weight:600}
-/* ≤440px(위젯 실폭)에서는 배지가 푸터를 두 줄로 밀었다(측정 380px 62→107px) — 배지는 숨기고 **전송 버튼이 모드를 입는다**: 실제 제출이면 danger 톤, 제목(title)에 설명. 미제출 테스트(기본)는 평소 모양. */
-@media (max-width:440px){ .rpt-send-mode{display:none !important} }
-#btnRptSend.real{border-color:var(--danger-line);background:var(--danger-soft);color:var(--danger-text)}
+/* 전송 모드 배지와 전송 버튼의 「실제 제출」 톤은 없앴다 — 회사 전송은 늘 실제 제출이다(UI-CLARITY U3 · 2026-10-01). */
 .qa-detail{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
 /* 라벨행과 컨트롤행을 '두 칼럼이 공유하는 그리드 행'으로 묶는다.
    칼럼별 flex였을 땐 '회의실 관리' 링크(SVG 아이콘)가 장소 라벨행만 높여, 옆 칼럼(반복)의
@@ -1793,7 +1787,6 @@ body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
      (38로 맞추면 세그 버튼 히트가 32로 줄어 위 터치 규칙을 되돌리는 셈이 된다) */
   .rem-row{--rem-ctl-h:44px}
   .x{min-width:32px;min-height:32px;padding:2px 7px}
-  .rpt-send-mode{min-height:32px;padding:4px 10px}   /* 전송 모드 배지도 같은 터치 하한(loop-ui-visual V7 이 320·400px 에서 잡았다 · 2026-09-23) */
   /* 체크 아이콘의 '보이는 크기'는 그대로 두고 패딩으로만 히트영역 확보 → 음수 마진으로 행 레이아웃은 불변 */
   .todo-check{padding:8px;margin:-8px}   /* 16+8·2=32 히트, 사방 -8로 마진박스는 다시 16 → 행 배치·간격 불변 */
   .rpt-fmt .rpt-fmt-step{width:32px;height:32px}
@@ -2167,7 +2160,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-body">
       <div class="set-sec">
         <div class="set-lb">월 보기 밀도 <span class="set-badge auto">자동 저장</span></div>
-        <div class="set-hint">달력 칸이 넘칠 때 표시 방식. 넓게 보기에서 가장 잘 보입니다.</div>
+        <div class="set-hint">달력 칸이 넘칠 때 표시 방식. 「맨 앞에 띄우기」로 창을 크게 펼치면 가장 잘 보입니다.</div>
         <label class="set-opt"><input type="radio" name="calDensity" value="fixed"><span><b>고정 (+N 더보기)</b><br><span class="set-od">한 달 전체가 한 화면. 바쁜 날은 +N으로 접고 클릭 시 펼침. (기본·표준)</span></span></label>
         <label class="set-opt"><input type="radio" name="calDensity" value="dense"><span><b>촘촘히</b><br><span class="set-od">칸을 키워 더 많이 표시. 길어지면 세로 스크롤.</span></span></label>
         <label class="set-opt"><input type="radio" name="calDensity" value="expand"><span><b>펼침 (스크롤)</b><br><span class="set-od">칸이 내용만큼 늘어나 전부 표시(잘림 없음). 회사 캘린더식 — 월 전체 한눈에는 사라짐.</span></span></label>
@@ -2180,10 +2173,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="set-lb">회사 일간보고 (netcus)</div>
         <!-- ★ 자격증명 입력란은 없다 — 자격의 단일 출처는 시작 게이트의 로그인이다(USER-LOGIN §2.4).
              상태 표시조차 두지 않는다: 「계정」 섹션이 곧 그 상태이고, 두 섹션이 같은 사실을 말하면 어긋날 여지만 생긴다. -->
-        <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성합니다. 전송에는 <b>로그인한 계정</b>을 그대로 사용합니다(따로 묻지 않습니다). 데스크톱 위젯에서만 동작합니다.</div>
-        <label class="qa-lb">전송 모드 <span class="set-badge auto">자동 저장</span></label>
-        <label class="set-opt" style="margin-bottom:6px"><input type="radio" name="ncMode" value="dry"><span><b>미제출 테스트</b><br><span class="set-od">자동 로그인·작성까지만 → 열린 창에서 확인 후 직접 제출. (권장)</span></span></label>
-        <label class="set-opt"><input type="radio" name="ncMode" value="real"><span><b>실제 제출</b><br><span class="set-od">작성 후 서버에 바로 저장(POST). 검증 끝난 뒤 사용 권장.</span></span></label>
+        <div class="set-hint">일간 보고서를 회사 시스템에 자동 작성해 <b>실제로 제출</b>합니다(제출 직전에 한 번 확인합니다). 전송에는 <b>로그인한 계정</b>을 그대로 사용합니다(따로 묻지 않습니다). 데스크톱 위젯에서만 동작합니다.</div>
+        <!-- 「전송 모드」(미제출 테스트 / 실제 제출) 선택은 없앴다 — 회사 전송은 늘 실제 제출이다(UI-CLARITY U3 · 2026-10-01).
+             예전에 저장된 모드 값은 읽지 않는다. 제출 전 확인은 보고서 창의 전송 버튼이 한 번 묻는다(U4). -->
         <div id="ncProbeRow" style="margin:12px 0 2px;display:none">
           <label class="qa-lb">주간보고 구조 캡처 (개발용)</label>
           <div class="set-hint" style="margin-bottom:6px">netcus를 열어 <b>주간보고 목록/조회</b> 페이지 HTML을 로컬에 저장합니다(읽기 전용·제출 없음). 저장 위치: <b>%APPDATA%\TaskCalendar\netcus-probe</b>.</div>
@@ -2683,7 +2675,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-foot">
       <span class="rpt-send-status" id="rptSendStatus"></span>
       <span class="rpt-send-hint" id="rptSendHint" style="display:none">📤 <b>일간보고</b> 전송은 ‘오늘’ 등 하루 단위에서만 (주간보고는 별도)</span>
-      <button type="button" class="rpt-send-mode" id="rptSendMode" style="display:none" title="회사 전송 모드 — 설정에서 바꿉니다"></button>
       <button class="btn" data-close>닫기</button>
       <button class="btn" id="btnRptSend" title="이 날짜 보고서를 회사 일간보고(netcus)에 작성·전송합니다">📤 일간보고 전송</button>
       <button class="btn primary" id="btnRptCopy">📋 복사</button>
@@ -2772,7 +2763,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <h3>과제 관리 · 창 · 데이터</h3>
         <ul>
           <li><b>과제 관리</b>(헤더): 과제 추가·이름·색상·Git 경로 설정</li>
-          <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, ‘넓게 보기’ 지원</li>
+          <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, ‘맨 앞에 띄우기’(다른 창 위에 크게) 지원</li>
           <li>데이터는 <b>자동 저장</b>. 백업·이전은 ⋯ 메뉴의 <b>XML 내보내기/가져오기</b></li>
         </ul>
       </section>
@@ -3253,7 +3244,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <ul>
           <li><b>트레이 켬</b> = 일반 앱 창(작업표시줄·Alt+Tab에 나타남). <b>끔</b> = 바탕화면 위젯(다른 창 뒤 바탕화면에 상주).</li>
           <li>창 <b>가장자리를 드래그</b>해 크기를 조절하고, 좌우 사이 <b>구분선</b>으로 달력/패널 너비를 바꿉니다.</li>
-          <li><b>넓게 보기</b>로 큰 화면에서 집중해 작업할 수 있습니다.</li>
+          <li><b>맨 앞에 띄우기</b>(제목줄 버튼 · ☰ 메뉴)로 다른 창 위에 크게 띄워 집중해 작업할 수 있습니다. <b>Esc</b> 로 해제합니다.</li>
           <li>오른쪽 위 패널은 <b>위아래로 높이 조절</b>이 가능합니다.</li>
         </ul>
       </section>
@@ -3880,6 +3871,10 @@ const HOST = !!(window.chrome && window.chrome.webview); // 데스크톱 위젯(
 //    부팅이 hpost() 를 먼저 부르면서 TDZ 로 터졌다(함수 선언은 끌어올려지지만 let 은 아니다).
 //    2026-09-03 실측: iframe 부팅이 "Cannot access '__peerToldAt' before initialization" 으로 끊겼다.
 let __peerToldAt = 0;
+//  ★ 열람 창 hpost 봉인의 「자동 전송 목록」 — 여기(파일 앞)에 둔다. 처음엔 hpost 바로 위(파일 끝)에 const 로 두었다가
+//    열람 창 부팅이 그 줄보다 먼저 hpost 를 불러 TDZ(초기화 전 접근)로 hpost 가 통째로 던졌다(2026-10-01 loop-peer-frame 실측 —
+//    __peerToldAt 이 2026-09-03 에 겪은 것과 같은 사고). hpost 가 읽는 전역은 모두 이 근처에 둔다.
+const PEER_SILENT_CMD = new Set(['ready','reminderSync','unsavedState','loadProjects','loadCodes','loadCustomers','reloadState','updateCheck','updateSourceGet','dbInfoGet','focus']);
 //  열람 창이 받은 **원본** 데이터. save() 가 여기로 되돌린다 — 아래 peerRevert 참조.
 let __peerPristine = null;
 let __peerReverting = false;   // 되돌리는 중의 재렌더가 다시 save() 를 부르면 무한루프가 된다
@@ -9013,7 +9008,6 @@ function openSettings(){
   $$('#settingsModal input[name="calDensity"]').forEach(r => { r.checked = (r.value === cur); });
   syncGitBodyChecks();   // 커밋 전체 본문 포함 토글 3곳(설정·일괄·작업일지) 동기화
   // 회사 일간보고(netcus) 설정 초기화 — 자격증명 UI는 없다(로그인이 단일 출처)
-  $$('#settingsModal input[name="ncMode"]').forEach(r => { r.checked = (r.value === ncMode()); });
   { const _pr = document.getElementById('ncProbeRow'); if(_pr) _pr.style.display = HOST ? '' : 'none'; }   // 구조 캡처는 위젯 전용
   { const _pm = $('#ncProbeMsg'); if(_pm){ _pm.textContent = ''; _pm.style.color = ''; } }
   // 계정 표기는 여기 없다 — 상단바 👤 「사용자 정보」 모달로 옮겼다(openUserInfo).
@@ -9052,8 +9046,9 @@ function setRptSendText(el, html){
   const t = String(el.textContent || '').replace(/\s+/g, ' ').trim();
   if(t) el.title = t; else el.removeAttribute('title');
 }
-// 회사 일간보고(netcus) — 전송 모드 / 호스트 콜백
-function ncMode(){ try{ return localStorage.getItem('tc_netcusMode') === 'real' ? 'real' : 'dry'; }catch(_){ return 'dry'; } }
+// 회사 일간보고(netcus) — 호스트 콜백
+//  전송 모드(미제출 테스트 / 실제 제출)는 없앴다 — 회사 전송은 늘 실제 제출이다(UI-CLARITY U3 · 2026-10-01).
+//  예전에 저장된 모드 값은 읽지 않는다(남아 있어도 아무 데도 쓰이지 않는다).
 // (netcus 자격증명 표시·저장 콜백은 제거됐다 — 자격의 출처가 로그인 하나가 되면서 설정창에 표시할 상태가 없다.)
 window.__netcusProgress = function(msg){
   const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' ' + esc(msg)); s.className = 'rpt-send-status busy'; }
@@ -11420,7 +11415,6 @@ function setReportMode(mode){
 // 전송 버튼은 보고 유형(reportMode)으로 결정 — 일간/주간만 전송 가능, 커스텀은 비활성(복사만).
 function updateRptSendVis(){
   const b = $('#btnRptSend'), h = $('#rptSendHint');
-  const m = $('#rptSendMode');
   // 보고 유형/구성이 바뀌면 직전 전송 안내(브라우저 netcus 안내 등)를 지운다 — 탭 전환 시 stale·모순 문구 방지.
   // (위젯 전송 흐름은 이 경로를 타지 않아 __netcusResult 결과 메시지는 보존됨)
   const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ''); st.className = 'rpt-send-status'; }
@@ -11432,31 +11426,16 @@ function updateRptSendVis(){
     b.disabled = false; b.dataset.mode = 'weekly'; b.innerHTML = ICON.send + ' 주간보고 작성';
     b.title = '선택한 주의 보고서를 회사 주간보고(netcus) 작성 폼에 채워 띄웁니다 (검토·보완 후 직접 제출)';
     if(h) h.style.display = 'none';
-    if(m) m.style.display = 'none';
-    b.classList.remove('real');
   } else if(reportMode === 'custom'){
     b.disabled = true; b.dataset.mode = 'custom'; b.innerHTML = ICON.send + ' 회사 전송';
     b.title = '기간 취합은 회사 보고(일간/주간) 전송 대상이 아닙니다 — 복사만 가능';
     if(h){ h.style.display = ''; setRptSendText(h, '기간 취합은 전송 불가 — 일간/주간 탭에서 전송하세요 (복사는 가능)'); }
-    if(m) m.style.display = 'none';
-    b.classList.remove('real');
   } else { // daily
     b.disabled = false; b.dataset.mode = 'daily'; b.innerHTML = ICON.send + ' 일간보고 전송';
     b.title = '선택한 날짜의 일간 보고서를 회사 일간보고(netcus)에 작성·전송합니다';
     if(h) h.style.display = 'none';
-    //  전송 모드(dry/real)는 배지(#rptSendMode)와 버튼 톤 둘로 보인다 — ≤440px 에서는 배지가 CSS 로 숨고 버튼 톤만 남는다.
-    const _real = !!(Platform.caps.reportAuto && ncMode() === 'real');
-    b.classList.toggle('real', _real);
-    if(_real) b.title += ' — ⚠ 실제 제출 모드: 서버에 바로 저장됩니다(설정에서 변경)';
-    if(m){   // 배지는 자동 전송이 되는 환경(위젯)에서만 — 브라우저는 창만 열어 주므로 모드가 없다
-      if(Platform.caps.reportAuto){
-        const real = _real;
-        m.style.display = '';
-        m.textContent = real ? '⚠ 실제 제출 모드' : '미제출 테스트 모드';
-        m.classList.toggle('real', real);
-        m.title = real ? '전송하면 회사 시스템에 바로 저장됩니다(POST) — 설정에서 「미제출 테스트」로 바꿀 수 있습니다' : '자동 로그인·작성까지만 하고 열린 창에서 직접 제출합니다 — 설정에서 「실제 제출」로 바꿀 수 있습니다';
-      } else m.style.display = 'none';
-    }
+    //  전송 모드는 없다 — 위젯의 일간 전송은 늘 실제 제출이다(UI-CLARITY U3). 누르면 한 번 묻는다(#btnRptSend 핸들러 · U4).
+    if(Platform.caps.reportAuto) b.title += ' — 회사 시스템에 실제로 제출됩니다(제출 전에 한 번 확인합니다)';
   }
 }
 // 주간보고용 필드 — content(과제투입시간: [과제명]:시간), endwork(진행사항: 과제별 업무 불릿), subject(제목 추정)
@@ -13206,9 +13185,18 @@ const ICON = {
   refresh:  svgIc('<path d="M20.5 11a8.5 8.5 0 0 0-14.6-4.4L3.5 9"/><path d="M3.5 11a8.5 8.5 0 0 0 14.6 4.4l2.4-2.4"/><path d="M3.5 4.5V9H8M20.5 19.5V15H16"/>'),
   gear:     svgIc('<circle cx="12" cy="12" r="3.1"/><path d="M12 2.8l1.3 2.2 2.5-.4.5 2.5 2.3 1.1-1.2 2.2 1.2 2.2-2.3 1.1-.5 2.5-2.5-.4L12 21.2l-1.3-2.2-2.5.4-.5-2.5-2.3-1.1 1.2-2.2-1.2-2.2 2.3-1.1.5-2.5 2.5.4z"/>'),
   file:     svgIc('<path d="M13.5 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"/><path d="M13.5 3v5.5H19"/>'),
-  minimize: svgIc('<path d="M6 18h12"/>', 2.2),
+  // 맨 앞에 띄우기(제목줄 #hbFocus) — 겹친 두 창 중 **앞 창**이 채워져 있다 = '앞으로 가져오기'. 예전 확대 화살표 글리프는 '창을 넓히는 기능'으로 읽혀 혼란을 줬다(UI-CLARITY U1).
+  front:    svgIc('<rect x="3" y="3.5" width="12.5" height="10" rx="1.8"/><rect x="8.5" y="10.5" width="12.5" height="10" rx="1.8" fill="currentColor"/>'),
 };
 const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info:ICON.dot };
+// 위젯 제목줄 툴팁 — 마크업(buildHostBar)과 상태 갱신(__setFocus · __setTray)이 **같은 문구**를 쓰게 한 곳에 둔다(UI-CLARITY U1·U5).
+//  ★ 여기(부팅 호출보다 앞)에 둔다 — buildHostBar() 는 아래 「시작」에서 동기로 불리므로 그 뒤에 const 를 두면 TDZ 다.
+const HB_TIP = {
+  focusOff:  '맨 앞에 띄우기 — 다른 창 위에 크게 띄워 작업합니다 (Esc 로 해제)',
+  focusOn:   '맨 앞 해제 (Esc)',
+  closeTray: '트레이로 숨기기 (종료는 ☰ 메뉴)',
+  closeQuit: '닫기(종료)',
+};
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
   const set = (id, html) => { const el = $('#'+id); if(el) el.innerHTML = html; };
   const label = (icon, text) => icon + '<span class="btn-label">' + text + '</span>';
@@ -13734,7 +13722,6 @@ function bind(){
   });
   if(!HOST){ const _uc = $('#btnUpdateCheck'); if(_uc) _uc.style.display = 'none'; }   // 업데이트=위젯 전용 → 브라우저 메뉴에선 숨김
   $$('#settingsModal input[name="calDensity"]').forEach(r => r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
-  $$('#settingsModal input[name="ncMode"]').forEach(r => r.addEventListener('change', () => { if(r.checked){ try{ localStorage.setItem('tc_netcusMode', r.value === 'real' ? 'real' : 'dry'); }catch(_){} updateRptSendVis();   /* 보고서 배지도 같은 값을 본다 */ } }));
   { const bb = $('#bgBodyChk'); if(bb) bb.addEventListener('change', () => setGitCommitBody(bb.checked)); }   // 일괄 불러오기 모달 토글 — 동일 단일 소스
   { const db = $('#dgBodyChk'); if(db) db.addEventListener('change', () => setGitCommitBody(db.checked)); }   // 이 날 커밋 컴팩트 모달 토글 — 동일 단일 소스
   // ── 로그인 게이트 · 사용자 정보 ── (로그인 진입점은 게이트 하나 — 사용자 정보 모달에도 입력칸은 없다)
@@ -13806,7 +13793,7 @@ function bind(){
       try{ localStorage.setItem('tc_opacity', String(v)); }catch(e){}
       document.documentElement.style.setProperty('--wo', String(v/100));   // 즉시 반영(창·WebView2 투명 → 반투명)
     }); }
-  $('#btnRptSend').addEventListener('click', () => {
+  $('#btnRptSend').addEventListener('click', async () => {
     const from = $('#rptFrom').value, to = $('#rptTo').value;
     const mode = $('#btnRptSend').dataset.mode || (from === to ? 'daily' : 'weekly');
     if(mode === 'custom'){ toast('기간 취합은 회사 전송 대상이 아닙니다 — 복사만 가능합니다', 'warn'); return; }
@@ -13815,7 +13802,6 @@ function bind(){
       const content = buildReportText('&nbsp;');   // 단일일 netcus 전송 — 들여쓰기 &nbsp;(euc-kr HTML collapse 방지)
       if(!content){ toast('보낼 내용이 없습니다', 'warn'); return; }
       const at = getAttendance(from), p = from.split('-').map(Number);
-      const dry = ncMode() !== 'real';
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
       // ★ status는 null(미기록)을 그대로 싣는다 — 여기서 '1'로 폴백하면 netcus에 직접 적어둔 휴가·병가가 정근으로 덮인다.
       //   호스트는 빈 값(웹의 null이 JSON→GetStr에서 "")을 '미기록'으로 읽어 사이트의 기존 근태를 유지한다.
@@ -13825,7 +13811,9 @@ function bind(){
       //   ★ 실는 건 과제 **이름**이다. cat_no 는 싣지 않는다 — 앱이 아직 XML 을 써 DB 번호를 모른다.
       const rptHours = reportDailyHours(collectReportData(from, to, rptSources()).rows, from)
         .map(x => ({ name: x.name, hours: x.hours }));   // 본문 헤더와 같은 rows·같은 함수(reportDailyHours) — 이름·값·순서가 본문과 같다
-      const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, hours: rptHours, dryRun: dry };
+      const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, hours: rptHours, dryRun: false };   // 늘 실제 제출(UI-CLARITY U3) — 호스트의 미제출(DryRun) 갈래는 남아 있지만 웹은 고르지 않는다
+      //  ★ 실제 제출 전 확인은 한 번(UI-CLARITY U4) — 위젯(자동 전송)에서만 묻는다. 브라우저는 netcus 창만 열어 주고 제출하지 않는다.
+      if(Platform.caps.reportAuto && await confirmBox('일간보고 제출', '회사 보고 시스템에 실제로 제출합니다. 계속할까요?', '제출', null, { ok: 'primary' }) !== 'ok') return;
       // 버튼 disable+스피너는 위젯 모드에서만(호스트 회신 __netcusResult가 다시 활성화) — 브라우저는 회신이 없어 영구 잠김 방지
       if(Platform.caps.reportAuto){
         const b = $('#btnRptSend'); if(b) b.disabled = true;
@@ -14342,7 +14330,6 @@ function bind(){
   $('#btnRptCopy').addEventListener('click', copyReport);
   // 중첩해서 열면 「과제 관리」가 보고서 **뒤에** 뜬다 — netcus 가드의 toSettings 와 같은 처리(보고서를 먼저 닫는다).
   $('#rptCatLink').addEventListener('click', () => { closeModal('#reportModal'); openCatModal(); });   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
-  $('#rptSendMode').addEventListener('click', () => { closeModal('#reportModal'); openSettings(); });   // 설정 모달은 DOM 상 보고서 앞이라 먼저 닫고 연다(§0-5)
   // 서식바(머리기호+들여쓰기) — 일간/주간 계열별 표시 설정 갱신 → save() → buildReport() 재빌드. 1회만 배선.
   $('#rptMarker').addEventListener('change', () => { if(guardEdit()){ buildReport(); return; } updateCurrentReportFormatPref({ marker: $('#rptMarker').value }); save(); buildReport(); });
   //  '직접' 머리기호는 한 글자마다 save()(저장 왕복)와 전체 재빌드를 부르던 자리다 — 타이핑이 그대로 저장 폭주가 된다.
@@ -14497,14 +14484,14 @@ function bind(){
       if(closeTopModal()) return;                          // 인앱 모달(일정/카테고리/검색/보고서) 우선
       let closedMenu = false;
       // 열려 있을 수 있는 비-오버레이 팝업 전부. 하나라도 빠지면 Esc가 그 팝업을 통과해
-      // 뒤의 시트/넓게 보기를 닫아버린다(사용자가 의도한 대상이 아님).
+      // 뒤의 시트/맨 앞에 띄우기를 닫아버린다(사용자가 의도한 대상이 아님).
       for(const sel of ['#moreMenu','#themeMenu','#jumpMonth']){
         const el = $(sel);
         if(el && !el.classList.contains('hidden')){ el.classList.add('hidden'); closedMenu = true; }
       }
       if(closedMenu) return;
       if(panelSheetOpen){ closeSheet(); ev.preventDefault(); return; }          // 좁은 폭 하단 시트 먼저
-      if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 넓게 보기 닫기
+      if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 맨 앞에 띄우기 해제
       return;
     }
     const modalOpen = $$('.overlay').some(o => !o.classList.contains('hidden'));
@@ -15045,7 +15032,6 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
 //    그래서 **자동 전송 목록**(부팅·동기화·조회처럼 사람이 누르지 않아도 나가는 것)은 조용히 버리고, 그 밖은 말한다.
 //    목록 밖이 기본으로 '말한다' 인 이유: 새 쓰기 명령이 생겨도 안내가 빠지지 않게(조용히 묻히는 쪽이 더 나쁘다).
 //    편집 함수들은 앞에서 peerReadOnly()/peerRevert() 가 먼저 막고 말하므로 여기는 마지막 그물이다.
-const PEER_SILENT_CMD = new Set(['ready','reminderSync','unsavedState','loadProjects','loadCodes','loadCustomers','reloadState','updateCheck','updateSourceGet','dbInfoGet','focus']);
 function hpost(o){
   if(PEER){
     const cmd = String((o && o.cmd) || '');
@@ -15121,11 +15107,10 @@ function buildHostBar(){
   bar.id = 'hostbar';
   bar.innerHTML = `<div class="hb-drag" id="hbDrag">⠿ 수행과제 캘린더</div>
     <div class="hb-btns">
-      <button data-host="focus" id="hbFocus" title="넓게 보기 — 크게 펼쳐서 작업">⤢</button>
-      <button data-host="hide" id="hbHide" title="트레이로 숨기기" style="display:none">${ICON.minimize}</button>
+      <button data-host="focus" id="hbFocus" title="${HB_TIP.focusOff}" aria-label="${HB_TIP.focusOff}">${ICON.front}</button>
       <button data-host="pin" id="hbPin" title="바탕화면 부착/해제">${ICON.pin}</button>
       <button data-host="menu" title="위젯 메뉴">☰</button>
-      <button data-host="close" title="닫기">✕</button>
+      <button data-host="close" id="hbClose" title="${HB_TIP.closeQuit}" aria-label="${HB_TIP.closeQuit}">✕</button>
     </div>`;
   const surf = document.getElementById('appSurface') || document.body;   // 호스트바도 반투명 표면 안(=--wo 적용 대상)
   surf.insertBefore(bar, surf.firstChild);
@@ -15163,18 +15148,19 @@ window.__setPinned = function(p){
   const drag = document.getElementById('hbDrag');
   if(drag) drag.title = __pinned ? '부착 중 — 이동하려면 부착 버튼을 눌러 해제' : '드래그하여 이동';   // 아이콘이 SVG가 되어 툴팁에서 이모지로 가리킬 수 없다
 };
-// 넓게 보기 표시(⤢↔✕) — 호스트가 진입/해제 시 호출
+// 맨 앞에 띄우기 표시(겹친 창 아이콘 ↔ ✕) — 호스트가 진입/해제 시 호출(호스트 내부 이름은 OpenBig/CloseBig · _focusMode)
 window.__big = false;
 window.__setFocus = function(f){
   window.__big = !!f;
   const b = document.getElementById('hbFocus');
-  if(b){ b.classList.toggle('pinon', !!f); b.textContent = f ? '✕' : '⤢';
-    b.title = f ? '넓게 보기 닫기 (Esc)' : '넓게 보기 — 크게 펼쳐서 작업'; }
+  if(b){ b.classList.toggle('pinon', !!f); b.innerHTML = f ? '✕' : ICON.front;
+    const t = f ? HB_TIP.focusOn : HB_TIP.focusOff; b.title = t; b.setAttribute('aria-label', t); }
 };
-// 트레이 사용 시에만 '숨기기' 버튼 노출 (트레이 꺼짐이면 ✕가 종료라 숨길 곳이 없음)
+// 트레이 상태 → ✕ 툴팁(UI-CLARITY U5). 트레이 사용 시 ✕ 는 트레이로 숨기고(호스트 case "close"), 끄면 종료한다.
+//  「_」(트레이로 숨기기) 버튼은 없앴다 — ✕ 와 똑같은 일을 하는 버튼이 둘이면 둘 다 의심하게 된다.
 window.__setTray = function(on){
-  const h = document.getElementById('hbHide');
-  if(h) h.style.display = on ? '' : 'none';
+  const c = document.getElementById('hbClose');
+  if(c){ const t = on ? HB_TIP.closeTray : HB_TIP.closeQuit; c.title = t; c.setAttribute('aria-label', t); }
 };
 </script>
 </body>
