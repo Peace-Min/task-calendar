@@ -70,7 +70,7 @@ const PROMPT_FNS = ['maybeAskLegacyImport', 'showLegacyPrompt', 'legacyPromptImp
 const SANDBOX_FNS = ['calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
   'legacyPromptDismissed', 'legacyTimeText', 'legacySizeText', 'maybeAskLegacyImport', 'showLegacyPrompt',
   'legacyPromptImport', 'legacyPromptNever', 'renderEmptyHint', 'renderDataSourceBadge', 'usDbLineText',
-  'ensureBootErrorBox', 'showDbConflict'];
+  'ensureBootErrorBox', 'showDbConflict', 'schemaServerOlder'];   // schemaServerOlder — 불일치 배지의 방향 판정(S7, 2026-10-01)
 
 // ── 가짜 전역(node:vm) ───────────────────────────────────────────────
 //  제목줄(header.topbar) 하나와 그 다음 형제(filterbar)가 있는 최소 DOM. 삽입은 전부 기록한다.

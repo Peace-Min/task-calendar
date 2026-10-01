@@ -19,6 +19,11 @@ namespace TaskCalendarWidget
         //    위젯을 업데이트하기 전에는 몇 번을 눌러도 풀리지 않는다. 같은 상자에 담으면
         //    사용자가 새로고침만 반복하다 데이터를 잃는다(그 사이 편집은 저장된다).
         public bool SchemaMismatch { get; init; }
+        //  실패의 원인 종류(DbErrorKind — OFFLINE-RESILIENCE §3)와 원문 한 줄. 충돌은 DB 오류가 아니라 "" 다.
+        public string Kind { get; init; } = "";
+        public string Detail { get; init; } = "";
+        //  1062(중복 키) — 응답만 끊긴 저장(S9) 뒤의 재시도가 '이미 들어간 새 행'을 또 넣으려 할 때 난다.
+        public bool DuplicateKey { get; init; }
         public long Rev { get; init; }
         public IReadOnlyDictionary<string, string> Tokens { get; init; } = new Dictionary<string, string>();
         public IReadOnlyDictionary<string, uint> CategoryNoByUid { get; init; } = new Dictionary<string, uint>();
@@ -118,7 +123,7 @@ namespace TaskCalendarWidget
                 string m = "서버 스키마 v" + sv + " · 위젯은 v" + CalendarDb.ExpectedSchemaVersion +
                            " — 전량 교체(가져오기·초기화)는 위젯을 업데이트한 뒤 하세요";
                 _log("전량 교체 거부(스키마 불일치): " + m);
-                return new CalendarSaveResult { Ok = false, SchemaMismatch = true, Message = m };
+                return new CalendarSaveResult { Ok = false, SchemaMismatch = true, Message = m, Kind = DbErrorKind.Schema };
             }
 
             //  이 저장 전체가 쓰는 단 하나의 시각. §3.3 의 포맷 계약(소수 정확히 3자리)을 지킨다 —
@@ -139,6 +144,7 @@ namespace TaskCalendarWidget
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 var ct = cts.Token;
+                DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
                 await using var conn = new MySqlConnection(BuildConnString());
                 await conn.OpenAsync(ct);
                 await Exec(conn, null, WritePreambleSql, ct);
@@ -195,14 +201,7 @@ namespace TaskCalendarWidget
                     if (uid.Length == 0) continue;
                     seenCat.Add(uid);
                     bool isDb = string.Equals(S(c, "source"), "db", StringComparison.Ordinal);
-                    var p = new List<(string, object?)>
-                    {
-                        ("@n",  S(c, "name")),
-                        ("@col", S(c, "color")),
-                        ("@d",  S(c, "desc")),
-                        ("@ur", B(c, "usesRepo") ? 1 : 0),
-                        ("@so", i),
-                    };
+                    var p = CategoryParams(c, i);
                     uint no;
                     if (catNo.TryGetValue(uid, out no))
                     {
@@ -244,26 +243,7 @@ namespace TaskCalendarWidget
                     seenEnt.Add(uid);
                     string? cuid = NS(e, "categoryId");
                     object? cno = (cuid != null && catNo.TryGetValue(cuid, out uint cn)) ? cn : (object?)null;
-                    var rec = Obj(e, "recur");
-                    var p = new List<(string, object?)>
-                    {
-                        ("@c",  cno),
-                        ("@dt", DateOrNull(S(e, "date"))),
-                        ("@ed", DateOrNull(S(e, "endDate"))),
-                        ("@ad", B(e, "allDay") ? 1 : 0),
-                        ("@stt", TimeOrNull(S(e, "startTime"))),
-                        ("@ett", TimeOrNull(S(e, "endTime"))),
-                        ("@t",  S(e, "title")),
-                        ("@m",  S(e, "memo")),
-                        ("@src", S(e, "source")),
-                        ("@loc", S(e, "location")),
-                        ("@rm", IntOrNull(e, "remind")),
-                        ("@rf", rec == null ? null : S(rec.Value, "freq")),
-                        ("@ri", rec == null ? (object?)null : (IntOrNull(rec.Value, "interval") ?? 1)),
-                        ("@ru", rec == null ? null : DateOrNull(S(rec.Value, "until"))),
-                        ("@rc", rec == null ? (object?)null : (IntOrNull(rec.Value, "count") ?? 0)),
-                        ("@so", i),
-                    };
+                    var p = EntryParams(e, i, cno);
                     uint no;
                     if (entNo.TryGetValue(uid, out no))
                     {
@@ -348,18 +328,7 @@ namespace TaskCalendarWidget
                     seenTod.Add(uid);
                     string? cuid = NS(t, "categoryId");
                     object? cno = (cuid != null && catNo.TryGetValue(cuid, out uint cn2)) ? cn2 : (object?)null;
-                    var p = new List<(string, object?)>
-                    {
-                        ("@c",  cno),
-                        ("@tx", S(t, "text")),
-                        ("@nt", S(t, "note")),
-                        ("@du", DateOrNull(S(t, "due"))),
-                        ("@ed", DateOrNull(S(t, "endDate"))),
-                        ("@dn", B(t, "done") ? 1 : 0),
-                        ("@pr", S(t, "prio").Length > 0 ? S(t, "prio") : "normal"),
-                        ("@ca2", IsoToDbOrNull(S(t, "completedAt"))),
-                        ("@so", i),
-                    };
+                    var p = TodoParams(t, i, cno);
                     uint no;
                     if (todNo.TryGetValue(uid, out no))
                     {
@@ -468,30 +437,7 @@ namespace TaskCalendarWidget
                 }
 
                 // ── 9. 설정(사용자당 1행) ─────────────────────────────────────────────
-                var rfp = Obj(st, "reportFormatPrefs");
-                var dly = rfp == null ? (JsonElement?)null : Obj(rfp.Value, "daily");
-                var wky = rfp == null ? (JsonElement?)null : Obj(rfp.Value, "weekly");
-                var fnt = Obj(st, "reportFont");
-                //  ★ 마커는 **빈 문자열이면 안 된다**(chk_cal_user_pref_marker). state 에 서식이
-                //    통째로 없을 수 있으므로(구버전·초기 상태) 빈 값을 그대로 흘리면 저장이 통째로
-                //    거부된다 — 설정 하나 때문에 일정·할 일까지 못 쓰게 된다. 그래서 여기서 메운다.
-                //    메우는 값은 상위 reportMarker → 없으면 '-'(앱의 기본값과 같은 값)다.
-                string topMarker = S(st, "reportMarker"); if (topMarker.Length == 0) topMarker = "-";
-                string dMarker = dly == null ? "" : S(dly.Value, "marker"); if (dMarker.Length == 0) dMarker = topMarker;
-                string wMarker = wky == null ? "" : S(wky.Value, "marker"); if (wMarker.Length == 0) wMarker = topMarker;
-                var pp = new List<(string, object?)>
-                {
-                    ("@ga", S(st, "gitAuthor")), ("@sa", S(st, "svnAuthor")),
-                    ("@rm", topMarker), ("@rmc", S(st, "reportMarkerCustom")),
-                    ("@ri", IntOrNull(st, "reportIndent") ?? 2),
-                    ("@gcb", B(st, "gitCommitBody") ? 1 : 0),
-                    ("@dm", dMarker), ("@dmc", dly == null ? "" : S(dly.Value, "markerCustom")),
-                    ("@di", dly == null ? 2 : (IntOrNull(dly.Value, "indent") ?? 2)),
-                    ("@wm", wMarker), ("@wmc", wky == null ? "" : S(wky.Value, "markerCustom")),
-                    ("@wi", wky == null ? 2 : (IntOrNull(wky.Value, "indent") ?? 2)),
-                    ("@ff", fnt == null ? "" : S(fnt.Value, "family")),
-                    ("@fs", fnt == null ? (object?)null : IntOrNull(fnt.Value, "size")),
-                };
+                var pp = PrefParams(st);
                 await Exec(conn, tx,
                     "INSERT INTO cal_user_pref (user_id,git_author,svn_author,report_marker,report_marker_custom,report_indent," +
                     "git_commit_body,report_marker_daily,report_marker_custom_daily,report_indent_daily," +
@@ -528,6 +474,14 @@ namespace TaskCalendarWidget
 
                 await tx.CommitAsync(ct);
                 _log($"캘린더 저장{(replaceAll ? "(전량 교체)" : "")}: user_id={u} rev={newRev} · 추가 {ins} · 수정 {upd} · 삭제 {del}");
+
+                //  장애 주입 commit-lost(§7 · S9 재현) — COMMIT 은 **이미 됐다.** 응답만 잃은 것처럼
+                //  네트워크 종류 예외를 던진다. 한 발짜리(ConsumeCommitLost 가 off 로 되돌린다).
+                if (DbFault.ConsumeCommitLost())
+                {
+                    _log("장애 주입(commit-lost): COMMIT 뒤 응답 직전에 끊는다 — rev=" + newRev);
+                    throw DbFault.CommitLostException();
+                }
             }
             catch (ConflictException ex)
             {
@@ -537,7 +491,12 @@ namespace TaskCalendarWidget
             catch (Exception ex)
             {
                 _log("캘린더 저장 실패: " + ex);
-                return Fail("저장하지 못했습니다: " + ex.Message);
+                var (kind, detail) = DbErrors.Observe(ex, _log);
+                return new CalendarSaveResult
+                {
+                    Ok = false, Message = "저장하지 못했습니다: " + detail,
+                    Kind = kind, Detail = detail, DuplicateKey = DbErrors.Number(ex) == 1062,
+                };
             }
 
             return new CalendarSaveResult
@@ -550,6 +509,225 @@ namespace TaskCalendarWidget
 
         // ── 쓰기 헬퍼 ────────────────────────────────────────────────────────────
         private static CalendarSaveResult Fail(string m) => new CalendarSaveResult { Ok = false, Message = m };
+
+        // ================================================================================
+        //  행 투영 — state 원소 하나가 **DB 에 무엇으로 적히는가**(위 SaveAsync 가 쓰는 바로 그 값)
+        // ================================================================================
+        //  ★ SaveAsync 의 3·4·5·9 번이 이 함수들로 파라미터를 만든다. 아래 DiffIsEmpty 도 같은 함수를 쓴다 —
+        //    그래서 '이 state 를 저장하면 무엇이 바뀌나'의 판정이 저장 경로와 **한 벌**이다(갈라질 자리가 없다).
+        private static List<(string, object?)> CategoryParams(JsonElement c, int i) => new()
+        {
+            ("@n",  S(c, "name")),
+            ("@col", S(c, "color")),
+            ("@d",  S(c, "desc")),
+            ("@ur", B(c, "usesRepo") ? 1 : 0),
+            ("@so", i),
+        };
+
+        private static List<(string, object?)> EntryParams(JsonElement e, int i, object? cno)
+        {
+            var rec = Obj(e, "recur");
+            return new List<(string, object?)>
+            {
+                ("@c",  cno),
+                ("@dt", DateOrNull(S(e, "date"))),
+                ("@ed", DateOrNull(S(e, "endDate"))),
+                ("@ad", B(e, "allDay") ? 1 : 0),
+                ("@stt", TimeOrNull(S(e, "startTime"))),
+                ("@ett", TimeOrNull(S(e, "endTime"))),
+                ("@t",  S(e, "title")),
+                ("@m",  S(e, "memo")),
+                ("@src", S(e, "source")),
+                ("@loc", S(e, "location")),
+                ("@rm", IntOrNull(e, "remind")),
+                ("@rf", rec == null ? null : S(rec.Value, "freq")),
+                ("@ri", rec == null ? (object?)null : (IntOrNull(rec.Value, "interval") ?? 1)),
+                ("@ru", rec == null ? null : DateOrNull(S(rec.Value, "until"))),
+                ("@rc", rec == null ? (object?)null : (IntOrNull(rec.Value, "count") ?? 0)),
+                ("@so", i),
+            };
+        }
+
+        private static List<(string, object?)> TodoParams(JsonElement t, int i, object? cno) => new()
+        {
+            ("@c",  cno),
+            ("@tx", S(t, "text")),
+            ("@nt", S(t, "note")),
+            ("@du", DateOrNull(S(t, "due"))),
+            ("@ed", DateOrNull(S(t, "endDate"))),
+            ("@dn", B(t, "done") ? 1 : 0),
+            ("@pr", S(t, "prio").Length > 0 ? S(t, "prio") : "normal"),
+            ("@ca2", IsoToDbOrNull(S(t, "completedAt"))),
+            ("@so", i),
+        };
+
+        private static List<(string, object?)> PrefParams(JsonElement st)
+        {
+            var rfp = Obj(st, "reportFormatPrefs");
+            var dly = rfp == null ? (JsonElement?)null : Obj(rfp.Value, "daily");
+            var wky = rfp == null ? (JsonElement?)null : Obj(rfp.Value, "weekly");
+            var fnt = Obj(st, "reportFont");
+            //  ★ 마커는 **빈 문자열이면 안 된다**(chk_cal_user_pref_marker). state 에 서식이
+            //    통째로 없을 수 있으므로(구버전·초기 상태) 빈 값을 그대로 흘리면 저장이 통째로
+            //    거부된다 — 설정 하나 때문에 일정·할 일까지 못 쓰게 된다. 그래서 여기서 메운다.
+            //    메우는 값은 상위 reportMarker → 없으면 '-'(앱의 기본값과 같은 값)다.
+            string topMarker = S(st, "reportMarker"); if (topMarker.Length == 0) topMarker = "-";
+            string dMarker = dly == null ? "" : S(dly.Value, "marker"); if (dMarker.Length == 0) dMarker = topMarker;
+            string wMarker = wky == null ? "" : S(wky.Value, "marker"); if (wMarker.Length == 0) wMarker = topMarker;
+            return new List<(string, object?)>
+            {
+                ("@ga", S(st, "gitAuthor")), ("@sa", S(st, "svnAuthor")),
+                ("@rm", topMarker), ("@rmc", S(st, "reportMarkerCustom")),
+                ("@ri", IntOrNull(st, "reportIndent") ?? 2),
+                ("@gcb", B(st, "gitCommitBody") ? 1 : 0),
+                ("@dm", dMarker), ("@dmc", dly == null ? "" : S(dly.Value, "markerCustom")),
+                ("@di", dly == null ? 2 : (IntOrNull(dly.Value, "indent") ?? 2)),
+                ("@wm", wMarker), ("@wmc", wky == null ? "" : S(wky.Value, "markerCustom")),
+                ("@wi", wky == null ? 2 : (IntOrNull(wky.Value, "indent") ?? 2)),
+                ("@ff", fnt == null ? "" : S(fnt.Value, "family")),
+                ("@fs", fnt == null ? (object?)null : IntOrNull(fnt.Value, "size")),
+            };
+        }
+
+        // ================================================================================
+        //  차이 없음 판정 — 응답만 끊긴 저장(S9 · OFFLINE-RESILIENCE §2)
+        // ================================================================================
+        //  clientState 를 serverState(방금 다시 읽은 스냅샷의 state) 위에 저장하면 **바뀌는 행이 하나도 없는가.**
+        //  양쪽을 위 행 투영(저장 경로와 같은 함수)으로 DB 모양으로 바꿔 대조한다. 같으면 앞선 저장의 COMMIT 이
+        //  이미 들어갔다는 뜻이고, 그 충돌은 가짜다 — 호스트가 새 스냅샷을 채택하고 성공으로 돌려준다.
+        //  ★ 다르면(또는 읽지 못하면) false — 호출자는 지금처럼 충돌 상자로 간다. 판정이 애매하면 늘 이쪽이다.
+        //  ★ 넣을 때만 쓰는 값(createdAt·source·project_uid)과 DB 에 없는 값(gitRepo·svnRepo·updatedAt·hours)은
+        //    대조하지 않는다 — 기존 행에서는 SaveAsync 도 그 값을 쓰지 않는다.
+        internal static bool DiffIsEmpty(string clientStateJson, string serverStateJson)
+        {
+            try
+            {
+                string a = Canon(clientStateJson), b = Canon(serverStateJson);
+                return string.Equals(a, b, StringComparison.Ordinal);
+            }
+            catch { return false; }
+        }
+
+        private static string Canon(string stateJson)
+        {
+            using var doc = JsonDocument.Parse(stateJson);
+            var st = doc.RootElement;
+            var rows = new List<object?>();
+            static List<object?> Vals(List<(string, object?)> ps)
+            {
+                var l = new List<object?>(ps.Count);
+                foreach (var (k, v) in ps) l.Add(k + "=" + Convert.ToString(v, CultureInfo.InvariantCulture));
+                return l;
+            }
+
+            //  과제 — 순서(sort_order = 인덱스)까지 대조한다. 빈 id 는 SaveAsync 가 건너뛴다.
+            var catUids = new HashSet<string>(StringComparer.Ordinal);
+            int i = 0;
+            foreach (var c in Arr(st, "categories"))
+            {
+                string uid = S(c, "id");
+                if (uid.Length == 0) continue;
+                catUids.Add(uid);
+                rows.Add(new object?[] { "cat", uid, Vals(CategoryParams(c, i)) });
+                i++;
+            }
+            object? CatRef(JsonElement o)
+            {
+                string? cu = NS(o, "categoryId");
+                return cu != null && catUids.Contains(cu) ? cu : null;   // 저장은 모르는 과제를 NULL 로 쓴다
+            }
+
+            //  일정 + 예외일(반복일 때만 읽기가 돌려준다 · 날짜순 · 중복 제거) + 커밋(순서 그대로)
+            i = 0;
+            foreach (var e in Arr(st, "entries"))
+            {
+                string uid = S(e, "id");
+                if (uid.Length == 0) continue;
+                var ex = new SortedSet<string>(StringComparer.Ordinal);
+                if (Obj(e, "recur") != null)
+                    foreach (var x in Arr(e, "recurExcept"))
+                    {
+                        string d = x.ValueKind == JsonValueKind.String ? (x.GetString() ?? "") : "";
+                        if (DateOrNull(d) != null) ex.Add(d);
+                    }
+                var commits = new List<object?>();
+                foreach (var c in Arr(e, "commits"))
+                {
+                    if (c.ValueKind != JsonValueKind.Object) continue;
+                    string tm = S(c, "time");
+                    commits.Add(new object?[] { S(c, "hash"), S(c, "short"), tm.Length == 0 ? null : tm, S(c, "subject"), S(c, "body") });
+                }
+                rows.Add(new object?[] { "entry", uid, Vals(EntryParams(e, i, CatRef(e))), new List<string>(ex), commits });
+                i++;
+            }
+
+            //  할 일 + 날짜별 메모(날짜순 맵)
+            i = 0;
+            foreach (var t in Arr(st, "todos"))
+            {
+                string uid = S(t, "id");
+                if (uid.Length == 0) continue;
+                var notes = new SortedDictionary<string, string>(StringComparer.Ordinal);
+                var dn = Obj(t, "dayNotes");
+                if (dn != null)
+                    foreach (var kv in dn.Value.EnumerateObject())
+                    {
+                        if (DateOrNull(kv.Name) == null) continue;
+                        notes[kv.Name] = kv.Value.ValueKind == JsonValueKind.String ? kv.Value.GetString() ?? "" : "";
+                    }
+                rows.Add(new object?[] { "todo", uid, Vals(TodoParams(t, i, CatRef(t))), notes });
+                i++;
+            }
+
+            //  공수 — 있는 과제 · 0 초과 · 소수 2자리(저장과 같은 거름)
+            var hours = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var th = Obj(st, "taskHours");
+            if (th != null)
+                foreach (var day in th.Value.EnumerateObject())
+                {
+                    if (DateOrNull(day.Name) == null || day.Value.ValueKind != JsonValueKind.Object) continue;
+                    foreach (var kv in day.Value.EnumerateObject())
+                    {
+                        if (!catUids.Contains(kv.Name)) continue;
+                        double h = kv.Value.ValueKind == JsonValueKind.Number ? kv.Value.GetDouble() : 0;
+                        if (!(h > 0)) continue;
+                        hours[day.Name + "|" + kv.Name] = Math.Round(h, 2).ToString("0.##", CultureInfo.InvariantCulture);
+                    }
+                }
+            rows.Add(new object?[] { "hours", hours });
+
+            //  근태 — '' 는 행이 없다(미기록)
+            var att = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            var at = Obj(st, "attendance");
+            if (at != null)
+                foreach (var day in at.Value.EnumerateObject())
+                {
+                    if (DateOrNull(day.Name) == null || day.Value.ValueKind != JsonValueKind.Object) continue;
+                    string status = S(day.Value, "status");
+                    if (status.Length == 0) continue;
+                    att[day.Name] = status + "|" + (IntOrNull(day.Value, "overtime") ?? 0).ToString(CultureInfo.InvariantCulture);
+                }
+            rows.Add(new object?[] { "attendance", att });
+
+            //  회의실 — 앞뒤 공백 제거 · 빈 이름 제외 · 같은 이름은 처음 것만(INSERT IGNORE)
+            var rooms = new List<string>();
+            var seenRoom = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var r in Arr(st, "rooms"))
+            {
+                string nm = r.ValueKind == JsonValueKind.String ? (r.GetString() ?? "").Trim() : "";
+                if (nm.Length == 0 || !seenRoom.Add(nm)) continue;
+                rooms.Add(nm);
+            }
+            rows.Add(new object?[] { "rooms", rooms });
+
+            //  설정 — 글꼴 크기는 읽기가 NULL 을 0 으로 돌려주므로 같은 규칙으로 맞춘다
+            var pref = Vals(PrefParams(st));
+            for (int k = 0; k < pref.Count; k++)
+                if (pref[k] is string s0 && s0 == "@fs=") pref[k] = "@fs=0";
+            rows.Add(new object?[] { "pref", pref });
+
+            return JsonSerializer.Serialize(rows);
+        }
 
         //  토큰을 건 UPDATE. 영향 행 0 이면 충돌이다(§3.3).
         private async Task Upd(MySqlConnection conn, MySqlTransaction tx, string table, string setWhere,

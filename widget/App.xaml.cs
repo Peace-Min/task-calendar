@@ -52,7 +52,8 @@ namespace TaskCalendarWidget
             {
                 _quitEvent = new EventWaitHandle(false, EventResetMode.AutoReset, QuitEventName);
                 // 새 인스턴스가 신호하면: 트레이 정리 후 깨끗이 종료(자동 저장 완료 상태) → 새 인스턴스가 인계
-                StartPump(_quitEvent, () => { CleanupTray(); Current?.Shutdown(); }, "QuitPump");
+                //  ★ 시스템 종료로 표시한다 — 닫기 경고(OFFLINE-RESILIENCE §6)가 인계를 막지 않게.
+                StartPump(_quitEvent, () => { (Current?.MainWindow as MainWindow)?.MarkSystemExit("새 인스턴스 인계"); CleanupTray(); Current?.Shutdown(); }, "QuitPump");
             }
             catch { }
 
@@ -97,6 +98,13 @@ namespace TaskCalendarWidget
                 }
             }
             catch { }
+        }
+
+        // Windows 세션 종료(로그오프·재부팅) — 막지 않는다(OFFLINE-RESILIENCE §6). 미저장 변경이 있으면 로그만 남긴다.
+        protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+        {
+            try { (Current?.MainWindow as MainWindow)?.MarkSessionEnding(e.ReasonSessionEnding.ToString()); } catch { }
+            base.OnSessionEnding(e);
         }
 
         protected override void OnExit(ExitEventArgs e)

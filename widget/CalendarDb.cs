@@ -141,7 +141,15 @@ namespace TaskCalendarWidget
                 UseAffectedRows = false,      // §3.3 — 낙관적 잠금 '영향 행 0 = 충돌' 계약의 전제
             }.ConnectionString;
 
-        // ── 접속 프리앰블(읽기 전용) — 설계 §3.6 ───────────────────────────────
+        // 재연결 확인(dbPing · OFFLINE-RESILIENCE §5) 전용 — 캘린더와 **같은 접속 대상**이되 연결 대기만 3초.
+        //   끊긴 동안 15·30·60·300초마다 도는 확인이라, 4초를 다 기다릴 이유가 없다.
+        internal static string BuildPingConnString() =>
+            new MySqlConnectionStringBuilder(BuildConnString())
+            {
+                ConnectionTimeout = 3,
+            }.ConnectionString;
+
+        // ── 접속 프리앰블(읽기 전용) — 설계 §3.6───────────────────────────────
         //   ★ 쓰기 프리앰블과 **한 함수로 합치지 말 것**(§3.2 의 ★ 절). 격리수준이 반대다:
         //     읽기 REPEATABLE-READ / 쓰기 READ-COMMITTED. 합치는 순간 둘 중 하나가 반드시 틀리고,
         //     틀린 쪽은 START TRANSACTION WITH CONSISTENT SNAPSHOT 이 Warning 138 하나만 남기고
@@ -260,6 +268,9 @@ namespace TaskCalendarWidget
             catch (Exception ex)
             {
                 _log("캘린더 부팅 조회 실패(데이터 없음): " + Short(ex));
+                //  ★ null 은 그대로 둔다(호출자·게이트 계약). 원인 종류는 DbErrors 캡처로 호출자에게 간다 —
+                //    호스트가 그 kind 로 문구·재시도 여부를 가른다(OFFLINE-RESILIENCE §3).
+                DbErrors.Observe(ex, _log);
                 return null;   // 로컬 캐시 없음(§2) — 화면은 '데이터 없음 + 다시 시도'로 간다
             }
         }
@@ -402,7 +413,7 @@ namespace TaskCalendarWidget
                     ["allowed"] = true, ["categories"] = cats, ["entries"] = entries,
                 });
             }
-            catch (Exception ex) { _log("타인 일정 조회 실패: " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("타인 일정 조회 실패: " + Short(ex)); return null; }
         }
 
         // ================================================================================
@@ -422,6 +433,7 @@ namespace TaskCalendarWidget
         // ★ 읽기에는 권한 검사를 두지 않는다(USER-LOGIN §3.3) — 회수의 목적은 편집 차단이지 조회 차단이 아니다.
         private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
         {
+            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }   // 못 연 연결을 새지 않게 정리하고 원인은 그대로 전파

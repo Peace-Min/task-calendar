@@ -7,7 +7,10 @@
 //
 // 두 층을 나눠 본다:
 //   ① **순수** — 스케줄러(createBootRetry)에 타이머를 주입해 실제 시간을 기다리지 않고
-//      지연 순서(15·30·60)·3회 상한·성공 시 해제·수동 즉시 1회를 그대로 실행해 본다.
+//      지연 순서(15·30·60)·그 뒤 5분 꼬리·성공 시 해제·수동 즉시 1회를 그대로 실행해 본다.
+//      ★ 2026-10-01 — 예전 규칙은 "3회 뒤 멈춘다"였다. docs/OFFLINE-RESILIENCE.md §5(S1·S11)가 그것을
+//        "빠른 3회 뒤 300초 꼬리"로 바꿨다(서버가 몇 분 늦게 뜬 아침에 전부 수동으로 남던 것). 재시도③·변이①·
+//        변이⑦ 이 새 규칙을 지킨다. 재시도 불가(retryable=false)는 그대로 0회다(재시도⑥).
 //      정규식으로 '15000 이 소스에 있다'만 보면, 그 숫자를 **쓰지 않는** 코드와 구분되지 않는다.
 //   ② **배선** — 순수 로직이 맞아도 배선이 틀리면 화면에서는 아무 일도 안 일어난다.
 //      특히 재시도가 hostRequest 로 가면 **성공해도 25초 뒤 '응답 시간 초과'** 로 끝난다
@@ -44,12 +47,19 @@ function delaysLiteral(app) {
   assert.ok(m, 'BOOT_RETRY_DELAYS 선언을 찾지 못했다');
   return m[1];
 }
+//  꼬리 간격도 소스에서 그대로 읽는다(2026-10-01).
+function tailLiteral(app) {
+  const m = /const\s+BOOT_RETRY_TAIL\s*=\s*(\d+)\s*;/.exec(app);
+  assert.ok(m, 'BOOT_RETRY_TAIL 선언을 찾지 못했다');
+  return m[1];
+}
 
 const mod = new Function(
   'const BOOT_RETRY_DELAYS = ' + delaysLiteral(src) + ';\n' +
+  'const BOOT_RETRY_TAIL = ' + tailLiteral(src) + ';\n' +
   extractFunction(src, 'nextRetryDelay') + '\n' +
   extractFunction(src, 'createBootRetry') + '\n' +
-  'return { BOOT_RETRY_DELAYS, nextRetryDelay, createBootRetry };'
+  'return { BOOT_RETRY_DELAYS, BOOT_RETRY_TAIL, nextRetryDelay, createBootRetry };'
 )();
 
 // 가짜 시계 — setTimeout/clearTimeout 을 대신한다. 시간은 advance() 로만 흐른다.
@@ -74,16 +84,16 @@ function fakeClock() {
 }
 
 // 스케줄러 + 발사 기록 + 마지막 render 상태.
-function harness(delays) {
+function harness(delays, extra) {
   const clock = fakeClock();
   const posts = [];        // 발사된 시각(ms)
   const renders = [];
-  const r = mod.createBootRetry({
+  const r = mod.createBootRetry(Object.assign({
     post: () => posts.push(clock.at()),
     setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
     render: (st) => renders.push(st),
     delays: delays,
-  });
+  }, extra || {}));
   return { clock, posts, renders, r, last: () => renders[renders.length - 1] };
 }
 
@@ -92,7 +102,8 @@ test('재시도①: nextRetryDelay 가 15·30·60 을 차례로 주고 그 뒤�
   assert.strictEqual(mod.nextRetryDelay(0), 15000);
   assert.strictEqual(mod.nextRetryDelay(1), 30000);
   assert.strictEqual(mod.nextRetryDelay(2), 60000);
-  assert.strictEqual(mod.nextRetryDelay(3), null, '3회를 넘겨도 지연을 주면 무한 재시도가 된다');
+  //  빠른 회차는 3번뿐이다 — 그 뒤(null)는 스케줄러가 꼬리(BOOT_RETRY_TAIL)로 바꾼다(재시도③).
+  assert.strictEqual(mod.nextRetryDelay(3), null, '빠른 회차가 3번을 넘는다 — 15초 간격으로 계속 두드린다');
   assert.strictEqual(mod.nextRetryDelay(-1), null);
 });
 
@@ -113,11 +124,29 @@ test('재시도②: 실패가 이어지면 15초 → 30초 → 60초 뒤에 정�
   assert.deepStrictEqual(h.posts, [15000, 45000, 105000]);
 });
 
-test('재시도③: 3회를 쓰면 멈춘다(무한 재시도 금지) — 상태는 exhausted', () => {
+test('재시도③: 빠른 3회를 쓰면 멈추지 않고 5분 꼬리로 넘어간다(OFFLINE-RESILIENCE §5)', () => {
+  assert.strictEqual(mod.BOOT_RETRY_TAIL, 300000, '꼬리 간격이 300초가 아니다');
   const h = harness();
   for (let i = 0; i < 3; i++) { h.r.onError(true); h.clock.advance(60000); }
   assert.strictEqual(h.posts.length, 3);
-  h.r.onError(true);                        // 네 번째 실패
+  h.r.onError(true);                        // 네 번째 실패 — 빠른 회차는 끝났다
+  assert.strictEqual(h.last().phase, 'tail', '빠른 3회 뒤가 꼬리(tail)가 아니다 — 서버가 늦게 뜬 아침에 수동으로 남는다');
+  assert.strictEqual(h.last().secondsLeft, 300);
+  assert.strictEqual(h.clock.pending(), 1, '꼬리 회차가 예약되지 않았다');
+  h.clock.advance(299000);
+  assert.strictEqual(h.posts.length, 3, '꼬리가 300초보다 빨리 보냈다');
+  h.clock.advance(1000);
+  assert.strictEqual(h.posts.length, 4, '300초 꼬리에 보내지 않았다');
+  //  꼬리는 계속된다 — 다섯 번째도 300초 뒤
+  h.r.onError(true);
+  h.clock.advance(300000);
+  assert.strictEqual(h.posts.length, 5, '꼬리가 한 번으로 끝났다 — 5분마다 계속이어야 한다');
+});
+
+test('재시도③b: 꼬리를 끄면(tail:0) 옛 동작 그대로 멈춘다 — 상태는 exhausted', () => {
+  const h = harness(undefined, { tail: 0 });
+  for (let i = 0; i < 3; i++) { h.r.onError(true); h.clock.advance(60000); }
+  h.r.onError(true);
   assert.strictEqual(h.last().phase, 'exhausted');
   assert.strictEqual(h.clock.pending(), 0, '중단인데 타이머가 남아 있다 — 언젠가 혼자 한 번 더 보낸다');
   h.clock.advance(600000);
@@ -183,18 +212,28 @@ test('재시도⑦: 카운트다운이 1초마다 남은 초와 회차를 알린
 function rebuild(app) {
   return new Function(
     'const BOOT_RETRY_DELAYS = ' + delaysLiteral(app) + ';\n' +
+    'const BOOT_RETRY_TAIL = ' + tailLiteral(app) + ';\n' +
     extractFunction(app, 'nextRetryDelay') + '\n' +
     extractFunction(app, 'createBootRetry') + '\n' +
     'return { BOOT_RETRY_DELAYS, nextRetryDelay, createBootRetry };'
   )();
 }
 
-test('변이①: 상한을 없애면(무한 재시도) 재시도③ 이 잡는다', () => {
+test('변이①: 빠른 회차를 끝없이 늘리면(60초 무한) 재시도③ 이 잡는다', () => {
   const bad = rebuild(mutate('      const d = nextRetryDelay(attempt, delays);', '      const d = nextRetryDelay(attempt, delays) || 60000;', src));
   const clock = fakeClock(); const posts = [];
   const r = bad.createBootRetry({ post: () => posts.push(clock.at()), setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout });
   for (let i = 0; i < 4; i++) { r.onError(true); clock.advance(60000); }
-  assert.strictEqual(posts.length, 4, '변이가 무한 재시도를 만들지 못했다');   // 원본이면 3
+  assert.strictEqual(posts.length, 4, '변이가 무한 재시도를 만들지 못했다');   // 원본이면 3(네 번째는 300초 꼬리라 60초 안에 안 간다)
+});
+
+test('변이⑦: 꼬리를 떼면(빠른 3회 뒤 멈춤) 재시도③ 이 잡는다', () => {
+  const bad = rebuild(mutate('      const wait = (d == null) ? tail : d;', '      const wait = d;', src));
+  const clock = fakeClock(); const posts = []; const renders = [];
+  const r = bad.createBootRetry({ post: () => posts.push(clock.at()), setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, render: (st) => renders.push(st) });
+  for (let i = 0; i < 4; i++) { r.onError(true); clock.advance(300000); }
+  assert.strictEqual(posts.length, 3, '변이가 꼬리를 없애지 못했다');   // 원본이면 4
+  assert.strictEqual(renders[renders.length - 1].phase, 'exhausted');
 });
 
 test('변이②: 성공 시 타이머를 안 걷으면 재시도④ 가 잡는다', () => {

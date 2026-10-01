@@ -125,6 +125,7 @@ namespace TaskCalendarWidget
         //   "권한을 알려면 먼저 권한이 있어야 한다"는 순환이 생겨 아무도 로그인하지 못한다.
         private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
         {
+            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }   // 못 연 연결을 새지 않게 정리하고 원인은 그대로 전파
@@ -145,6 +146,7 @@ namespace TaskCalendarWidget
             var s = UserSession.Load(_dataDir, _log);
             if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
 
+            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
@@ -196,6 +198,7 @@ namespace TaskCalendarWidget
             var s = UserSession.Load(_dataDir, _log);
             if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
 
+            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
             var conn = new MySqlConnection(BuildConnString());
             try { await conn.OpenAsync(ct); }
             catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
@@ -270,7 +273,7 @@ namespace TaskCalendarWidget
                 _log("DB 과제 로드: " + rows.Count + "건");
                 return JsonSerializer.Serialize(rows);
             }
-            catch (Exception ex) { _log("DB 과제 로드 실패(목록 비움): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 과제 로드 실패(목록 비움): " + Short(ex)); return null; }
         }
 
         // 발주처 마스터(customer, is_active=1)를 이름 배열 JSON으로. 편집 폼의 발주처 드롭다운 소스.
@@ -292,7 +295,7 @@ namespace TaskCalendarWidget
                 _log("DB 발주처 로드: " + names.Count + "건");
                 return JsonSerializer.Serialize(names);
             }
-            catch (Exception ex) { _log("DB 발주처 로드 실패: " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 발주처 로드 실패: " + Short(ex)); return null; }
         }
 
         // 발주처 전체(숨김 포함) — 관리 화면 전용. [{name, active}] JSON. 활성 먼저, 그 안에서 이름순.
@@ -316,7 +319,7 @@ namespace TaskCalendarWidget
                 _log("DB 발주처(전체) 로드: " + rows.Count + "건");
                 return JsonSerializer.Serialize(rows);
             }
-            catch (Exception ex) { _log("DB 발주처(전체) 로드 실패: " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 발주처(전체) 로드 실패: " + Short(ex)); return null; }
         }
 
         // ================================================================================
@@ -366,7 +369,7 @@ namespace TaskCalendarWidget
                 _log("DB 사용자 조회: " + id + " (" + Str(rd, "name") + ")");
                 return JsonSerializer.Serialize(row);
             }
-            catch (Exception ex) { _log("DB 사용자 조회 실패(" + id + "): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 사용자 조회 실패(" + id + "): " + Short(ex)); return null; }
         }
 
         // 로그인한 사람의 현재 권한을 DB에서 그대로 읽어 온다(표시 전용 — 상단바 「사용자 정보」 모달).
@@ -415,7 +418,7 @@ namespace TaskCalendarWidget
                 _log("DB 사용자 권한 조회: " + id + " (" + Str(rd, "edit_role") + "/" + Str(rd, "view_scope") + ")");
                 return JsonSerializer.Serialize(row);
             }
-            catch (Exception ex) { _log("DB 사용자 권한 조회 실패(" + id + "): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 사용자 권한 조회 실패(" + id + "): " + Short(ex)); return null; }
         }
         private static string NotFoundJson() =>
             JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = false });
@@ -629,7 +632,7 @@ namespace TaskCalendarWidget
                 }
                 return JsonSerializer.Serialize(payload);
             }
-            catch (Exception ex) { _log("DB 구성원 조회 실패(" + id + "): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 구성원 조회 실패(" + id + "): " + Short(ex)); return null; }
         }
 
         // unit_tree 확장 — 내 소속 + 그 하위 전부. 부모→자식 반복 확장(BFS)이다.
@@ -863,7 +866,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(직원 저장): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(직원 저장): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직원 저장): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
                 string me = SessionLoginId();
 
@@ -963,8 +966,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("직원 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
-            catch (Exception ex) { _log("직원 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("직원 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직원 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
         }
 
         // 퇴사 처리(active=false) / 복구(true). 행은 지우지 않는다 — 과거 데이터 참조를 지킨다(§3.3).
@@ -977,7 +980,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(직원 퇴사/복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(직원 퇴사/복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직원 퇴사/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
                 string me = SessionLoginId();
 
@@ -1037,8 +1040,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("직원 퇴사/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
-            catch (Exception ex) { _log("직원 퇴사/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("직원 퇴사/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직원 퇴사/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
         // 명부 서열 저장 — 받은 순서대로 sort_order = (index+1)*10 **전량 재작성**(§2).
@@ -1073,7 +1076,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(명부 순서): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(명부 순서): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(명부 순서): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 //  ★ user_id 는 위에서 걸러진 정수뿐이지만 그래도 파라미터로 묶는다 — 이 파일의 규약 ①.
@@ -1148,8 +1151,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("명부 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
-            catch (Exception ex) { _log("명부 순서 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("명부 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlUserMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("명부 순서 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex)); }
         }
 
         // ================================================================================
@@ -1183,7 +1186,7 @@ namespace TaskCalendarWidget
                 _log("DB 코드 로드(" + table + "): " + names.Count + "건");
                 return JsonSerializer.Serialize(names);
             }
-            catch (Exception ex) { _log("DB 코드 로드 실패(" + table + "): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 코드 로드 실패(" + table + "): " + Short(ex)); return null; }
         }
 
         // 코드값 전체(숨김 포함) — 관리 화면 전용. [{name, active, sort}] JSON. 활성 먼저, 그 안에서 sort_order·name.
@@ -1210,7 +1213,7 @@ namespace TaskCalendarWidget
                 }
                 return JsonSerializer.Serialize(rows);
             }
-            catch (Exception ex) { _log("DB 코드(전체) 로드 실패(" + table + "): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 코드(전체) 로드 실패(" + table + "): " + Short(ex)); return null; }
         }
 
         // 같은 연결로 코드 이름 집합 로드(UpsertProjectAsync 선검증용 — 좋은 에러문구). activeOnly=false면 숨김 포함.
@@ -1318,7 +1321,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(과제 저장): " + nex.Message); return (false, nex.Message, false); }
-                catch (Exception cex) { _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg, false); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(과제 저장): " + Short(cex)); return (false, OfflineMsg, false); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 // 구분/상태 존재 검증(코드테이블 로드) — 좋은 에러문구용. 최종 보증은 FK. 숨김 포함 전체로 검사해
@@ -1387,10 +1390,11 @@ namespace TaskCalendarWidget
             }
             catch (MySqlException mex)
             {
+                DbErrors.Observe(mex, _log);
                 _log("공식 과제 저장 실패(" + mex.Number + "): " + Short(mex));
                 return (false, MySqlMsg(mex), false);
             }
-            catch (Exception ex) { _log("공식 과제 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex), false); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("공식 과제 저장 실패: " + Short(ex)); return (false, "저장하지 못했습니다: " + Short(ex), false); }
         }
 
         // 소프트 경고 후보 조회 — 같은 발주처의 활성 과제 중 (사업명, 계약명)이 '정규화 기준'으로 같은 첫 행의 표시값을 돌려준다(없으면 null).
@@ -1439,7 +1443,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(과제 숨김/복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(과제 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(과제 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("UPDATE project SET is_active=@a WHERE uid=@uid", conn);
@@ -1456,8 +1460,8 @@ namespace TaskCalendarWidget
                 _log("공식 과제 " + (active ? "복구" : "숨김") + ": uid=" + u);
                 return (true, active ? "공식 과제를 목록에 다시 표시합니다." : "공식 과제를 목록에서 숨겼습니다.");
             }
-            catch (MySqlException mex) { _log("공식 과제 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlMsg(mex)); }
-            catch (Exception ex) { _log("공식 과제 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("공식 과제 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, MySqlMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("공식 과제 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
         // ================================================================================
@@ -1480,7 +1484,7 @@ namespace TaskCalendarWidget
                 if (o == null || o == DBNull.Value) return null;
                 return Convert.ToInt32(o) != 0;
             }
-            catch (Exception ex) { _log("발주처 상태 조회 실패: " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 상태 조회 실패: " + Short(ex)); return null; }
         }
 
         // 발주처 추가. name은 자연키 PK라 중복(1062)이면 이미 존재 — 활성/숨김을 구분해 안내(숨김이면 복구 필요).
@@ -1494,7 +1498,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(발주처 추가): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(발주처 추가): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 추가): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("INSERT INTO customer (name) VALUES (@n)", conn);
@@ -1509,8 +1513,8 @@ namespace TaskCalendarWidget
                 if (active == false) return (false, "숨김 처리된 동일 발주처가 있습니다(복구 필요).");
                 return (false, "이미 등록된 발주처입니다.");
             }
-            catch (MySqlException mex) { _log("발주처 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, "추가하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log("발주처 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("발주처 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, "추가하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
         }
 
         // 발주처 개명. FK가 ON UPDATE CASCADE라 project.customer는 자동 반영된다(따로 갱신 불필요).
@@ -1527,7 +1531,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(발주처 개명): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(발주처 개명): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("UPDATE customer SET name=@new WHERE name=@old", conn);
@@ -1542,8 +1546,8 @@ namespace TaskCalendarWidget
             {
                 return (false, "그 이름의 발주처가 이미 있습니다.");
             }
-            catch (MySqlException mex) { _log("발주처 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log("발주처 개명 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("발주처 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 개명 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
         }
 
         // 발주처 소프트삭제(숨김)/복구. 하드삭제는 하지 않는다(FK RESTRICT라 참조 중이면 DELETE도 막힌다).
@@ -1557,7 +1561,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(발주처 숨김/복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(발주처 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("UPDATE customer SET is_active=@a WHERE name=@n", conn);
@@ -1568,8 +1572,8 @@ namespace TaskCalendarWidget
                 _log("발주처 " + (active ? "복구" : "숨김") + ": " + n);
                 return (true, active ? "발주처를 다시 표시합니다." : "발주처를 숨겼습니다.");
             }
-            catch (MySqlException mex) { _log("발주처 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log("발주처 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("발주처 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
         // 이 발주처를 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다). 오프라인/실패면 ok=false.
@@ -1583,7 +1587,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(발주처 참조수): " + nex.Message); return (false, 0, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(발주처 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project WHERE customer=@c AND is_active=1", conn);
@@ -1591,7 +1595,7 @@ namespace TaskCalendarWidget
                 int count = (int)Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
                 return (true, count, "");
             }
-            catch (Exception ex) { _log("발주처 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
         }
 
         // ================================================================================
@@ -1613,7 +1617,7 @@ namespace TaskCalendarWidget
                 if (o == null || o == DBNull.Value) return null;
                 return Convert.ToInt32(o) != 0;
             }
-            catch (Exception ex) { _log("코드 상태 조회 실패(" + table + "): " + Short(ex)); return null; }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("코드 상태 조회 실패(" + table + "): " + Short(ex)); return null; }
         }
 
         private static string KindLabel(string kind) => kind == "status" ? "상태" : "구분";
@@ -1631,7 +1635,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 추가): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(" + table + " 추가): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(" + table + " 추가): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 // 다음 sort_order = MAX+10(끝에 붙임). INSERT와 같은 테이블 SELECT를 한 문장에 섞지 않게 두 단계로.
@@ -1651,8 +1655,8 @@ namespace TaskCalendarWidget
                 if (active == false) return (false, "숨김 처리된 동일 " + lbl + "이(가) 있습니다(복구 필요).");
                 return (false, "이미 등록된 " + lbl + "입니다.");
             }
-            catch (MySqlException mex) { _log(lbl + " 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, "추가하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log(lbl + " 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log(lbl + " 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, "추가하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
         }
 
         // 코드값 개명 — FK ON UPDATE CASCADE라 project.section/status가 자동 반영된다. no-op/0행/1062 처리.
@@ -1670,7 +1674,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 개명): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(" + table + " 개명): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(" + table + " 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand($"UPDATE {table} SET name=@new WHERE name=@old", conn);
@@ -1682,8 +1686,8 @@ namespace TaskCalendarWidget
                 return (true, lbl + "을(를) 변경했습니다. 이 " + lbl + "의 과제 표기도 함께 바뀝니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, "그 이름의 " + lbl + "이(가) 이미 있습니다."); }
-            catch (MySqlException mex) { _log(lbl + " 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log(lbl + " 개명 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log(lbl + " 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 개명 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
         }
 
         // 코드값 소프트삭제(숨김)/복구. 하드삭제 안 함(FK RESTRICT).
@@ -1699,7 +1703,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 숨김/복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(" + table + " 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(" + table + " 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 // 복구(active=true)는 sort_order를 '맨 뒤(MAX+10)'로 새로 부여한다.
@@ -1718,8 +1722,8 @@ namespace TaskCalendarWidget
                 _log(lbl + " " + (active ? "복구" : "숨김") + ": " + n);
                 return (true, active ? lbl + "을(를) 다시 표시합니다." : lbl + "을(를) 숨겼습니다.");
             }
-            catch (MySqlException mex) { _log(lbl + " 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log(lbl + " 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log(lbl + " 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
         // 코드값 순서 재배치 — 받은 이름 순서대로 sort_order = (index+1)*10 재부여(트랜잭션). 존재하는 이름만 갱신.
@@ -1734,7 +1738,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(" + table + " 순서변경): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(" + table + " 순서변경): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(" + table + " 순서변경): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var tx = await conn.BeginTransactionAsync(cts.Token);
@@ -1757,8 +1761,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log(lbl + " 순서변경 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
-            catch (Exception ex) { _log(lbl + " 순서변경 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log(lbl + " 순서변경 실패(" + mex.Number + "): " + Short(mex)); return (false, "변경하지 못했습니다: " + Short(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 순서변경 실패: " + Short(ex)); return (false, "변경하지 못했습니다: " + Short(ex)); }
         }
 
         // 이 코드값을 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다).
@@ -1773,7 +1777,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenWriteAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(코드 참조수): " + nex.Message); return (false, 0, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(코드 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(코드 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
                 await using var cmd = new MySqlCommand($"SELECT COUNT(*) FROM project WHERE {projCol}=@n AND is_active=1", conn);
@@ -1781,7 +1785,7 @@ namespace TaskCalendarWidget
                 int count = (int)Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
                 return (true, count, "");
             }
-            catch (Exception ex) { _log("코드 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("코드 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
         }
 
         private static string Str(DbDataReader rd, string col)
@@ -2001,7 +2005,7 @@ namespace TaskCalendarWidget
                     if (!nex.RoleOnly) deny["msg"] = nex.Message ?? "";
                     return JsonSerializer.Serialize(deny);
                 }
-                catch (Exception cex) { _log("DB 연결 실패(휴지통 조회): " + Short(cex)); return TrashFailJson(OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(휴지통 조회): " + Short(cex)); return TrashFailJson(OfflineMsg); }
                 await using var connOwn = conn;
 
                 // 나 자신 — '자기 계정은 지울 수 없다' 힌트의 근거(판정은 삭제 트랜잭션이 잠근 채 다시 한다).
@@ -2091,7 +2095,7 @@ namespace TaskCalendarWidget
                 });
             }
             // ★ 실패 문구는 **고정**이다 — 예외 원문(SQL·컬럼·스택)은 _log 에만 남긴다(§4.3, 2026-09-10 검토 지적).
-            catch (Exception ex) { _log("휴지통 조회 실패: " + Short(ex)); return TrashFailJson(TrashLoadFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("휴지통 조회 실패: " + Short(ex)); return TrashFailJson(TrashLoadFailMsg); }
         }
 
         // 복구 — 숨긴 항목을 목록으로 되돌린다(is_active=1).
@@ -2121,7 +2125,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(휴지통 복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(휴지통 복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(휴지통 복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -2182,10 +2186,11 @@ namespace TaskCalendarWidget
             //   잠금 경합(1205·1213)만 따로 말해 준다 — 두 관리자가 같은 항목을 만지는 상황이라 '다시 하면 된다'가 안내다.
             catch (MySqlException mex)
             {
+                DbErrors.Observe(mex, _log);
                 _log("휴지통 복구 실패(" + mex.Number + "): " + Short(mex));
                 return (false, IsLockContention(mex) ? DbBusyMsg : TrashRestoreFailMsg);
             }
-            catch (Exception ex) { _log("휴지통 복구 실패: " + Short(ex)); return (false, TrashRestoreFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("휴지통 복구 실패: " + Short(ex)); return (false, TrashRestoreFailMsg); }
         }
 
         // 영구 삭제 — 되돌릴 수 없다. 다섯 표의 뼈대가 같다(§3.4):
@@ -2215,7 +2220,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(영구 삭제): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(영구 삭제): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(영구 삭제): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
                 string me = SessionLoginId();
 
@@ -2331,10 +2336,11 @@ namespace TaskCalendarWidget
             //   잠금 경합(1205·1213)만 따로 말해 준다 — 두 관리자가 같은 항목을 만지는 상황이라 '다시 하면 된다'가 안내다.
             catch (MySqlException mex)
             {
+                DbErrors.Observe(mex, _log);
                 _log("영구 삭제 실패(" + mex.Number + "): " + Short(mex));
                 return (false, IsLockContention(mex) ? DbBusyMsg : TrashDeleteFailMsg);
             }
-            catch (Exception ex) { _log("영구 삭제 실패: " + Short(ex)); return (false, TrashDeleteFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("영구 삭제 실패: " + Short(ex)); return (false, TrashDeleteFailMsg); }
         }
         // ================================================================================
         // 직급·소속 관리(ORG-TITLE-ADMIN §4) — title_code · org_unit 마스터를 앱에서 고친다.
@@ -2462,7 +2468,7 @@ namespace TaskCalendarWidget
                     if (!nex.RoleOnly) deny["msg"] = nex.Message ?? "";
                     return JsonSerializer.Serialize(deny);
                 }
-                catch (Exception cex) { _log("DB 연결 실패(직급·소속 조회): " + Short(cex)); return OrgTitleFailJson(OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직급·소속 조회): " + Short(cex)); return OrgTitleFailJson(OfflineMsg); }
                 await using var connOwn = conn;
 
                 var titles = new List<Dictionary<string, object?>>();
@@ -2522,7 +2528,7 @@ namespace TaskCalendarWidget
                 });
             }
             // ★ 실패 문구는 고정이다 — 예외 원문(SQL·컬럼·스택)은 _log 에만 남긴다(휴지통과 같은 규약).
-            catch (Exception ex) { _log("직급·소속 조회 실패: " + Short(ex)); return OrgTitleFailJson(OrgTitleLoadFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급·소속 조회 실패: " + Short(ex)); return OrgTitleFailJson(OrgTitleLoadFailMsg); }
         }
 
         // ---------- 직급(title_code) ----------
@@ -2539,7 +2545,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(직급 추가): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(직급 추가): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직급 추가): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 int nextSort;
@@ -2555,8 +2561,8 @@ namespace TaskCalendarWidget
                 return (true, "직급을 추가했습니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, TitleDupMsg); }
-            catch (MySqlException mex) { _log("직급 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("직급 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("직급 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 직급 개명 — fk_user_title 이 ON UPDATE CASCADE 라 app_user.title 이 **한 문장으로** 따라온다(§3.1).
@@ -2574,7 +2580,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(직급 개명): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(직급 개명): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직급 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 int cnt;
@@ -2589,8 +2595,8 @@ namespace TaskCalendarWidget
                 return (true, "직급을 변경했습니다. 이 직급인 사람의 표기도 함께 바뀝니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, TitleDupMsg); }
-            catch (MySqlException mex) { _log("직급 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("직급 개명 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("직급 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급 개명 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 직급 숨김/복구 — 판정과 갱신이 **한 트랜잭션**이다(§4.1 ★). 대상 행을 FOR UPDATE 로 잡은 채
@@ -2609,7 +2615,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(직급 숨김/복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(직급 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직급 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -2663,8 +2669,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("직급 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("직급 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("직급 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 직급 순서 — 받은 이름 순서대로 10·20·30… 전량 재작성(ReorderCodesAsync 와 같은 방식).
@@ -2686,7 +2692,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(직급 순서): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(직급 순서): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(직급 순서): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -2722,8 +2728,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("직급 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("직급 순서 저장 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("직급 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급 순서 저장 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // ---------- 소속(org_unit) ----------
@@ -2743,7 +2749,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(조직 추가): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(조직 추가): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(조직 추가): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -2779,8 +2785,8 @@ namespace TaskCalendarWidget
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, UnitDupMsg); }
-            catch (MySqlException mex) { _log("조직 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("조직 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("조직 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("조직 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 조직 개명 — 소속자는 번호(org_id)로 매달려 있어 아무것도 따라 고치지 않는다(§3.2).
@@ -2797,7 +2803,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(조직 개명): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(조직 개명): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(조직 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 int cnt;
@@ -2812,8 +2818,8 @@ namespace TaskCalendarWidget
                 return (true, "조직명을 변경했습니다. 소속자는 그대로입니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, UnitDupMsg); }
-            catch (MySqlException mex) { _log("조직 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("조직 개명 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("조직 개명 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("조직 개명 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 조직 숨김/복구 — 판정과 갱신이 **한 트랜잭션**이다. 숨김은 재직자 0명 **그리고** 활성 하위 0개일 때만,
@@ -2829,7 +2835,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(조직 숨김/복구): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(조직 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(조직 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -2917,8 +2923,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("조직 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("조직 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("조직 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("조직 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 상위 변경 — parent_id 한 컬럼이다. 소속자는 번호로 매달려 있어 통째로 따라온다(§3.2 · 직원을 한 명씩 열 일이 없다).
@@ -2937,7 +2943,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(조직 상위 변경): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(조직 상위 변경): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(조직 상위 변경): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -3005,8 +3011,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("조직 상위 변경 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("조직 상위 변경 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("조직 상위 변경 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("조직 상위 변경 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
         // 형제 안 순서 — 그 상위의 **활성 하위 전부**가 와야 한다(직급 순서와 같은 판정).
@@ -3024,7 +3030,7 @@ namespace TaskCalendarWidget
                 MySqlConnection conn;
                 try { conn = await OpenAdminAsync(cts.Token); }
                 catch (NotAuthorizedException nex) { _log("권한 거부(조직 순서): " + nex.Message); return (false, nex.Message); }
-                catch (Exception cex) { _log("DB 연결 실패(조직 순서): " + Short(cex)); return (false, OfflineMsg); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(조직 순서): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;
 
                 await using var tx = (MySqlTransaction)await conn.BeginTransactionAsync(cts.Token);
@@ -3062,8 +3068,8 @@ namespace TaskCalendarWidget
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
             }
-            catch (MySqlException mex) { _log("조직 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
-            catch (Exception ex) { _log("조직 순서 저장 실패: " + Short(ex)); return (false, DbFailMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("조직 순서 저장 실패(" + mex.Number + "): " + Short(mex)); return (false, mex.Number == 1142 ? GrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("조직 순서 저장 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
     }

@@ -63,6 +63,10 @@ namespace TaskCalendarWidget
         //     판정은 여기 한 줄이고, 두 곳은 이것을 부른다(문구·로그는 각자 자기 자리의 말로 남긴다).
         internal static bool HoursInDomain(decimal h) => h > 0m && h <= 24m;
 
+        //  마지막 저장이 **예외로** 실패했으면 그 원문 한 줄(DbErrors.Detail), 성공·건너뜀이면 null.
+        //  ★ false 하나로는 '실패'와 '건너뜀(로그인 없음·빈 본문)'을 못 가른다 — 재시도(S10)는 앞쪽만 한다.
+        public string? LastFailure { get; private set; }
+
         public ReportDb(Action<string> log)
         {
             _log = log ?? (_ => { });
@@ -106,6 +110,7 @@ namespace TaskCalendarWidget
             string? status, int overtime, string? content,
             IReadOnlyList<ReportHourLine>? hours)
         {
+            LastFailure = null;
             var date = SafeDate(y, m, d);
             if (date == null) { _log("보고 기록 저장 건너뜀 — 날짜가 올바르지 않다: " + y + "-" + m + "-" + d); return false; }
 
@@ -204,6 +209,7 @@ namespace TaskCalendarWidget
             {
                 // 전송은 이미 성공했다. 여기서 던지면 사용자가 재전송하게 되고 그게 더 큰 사고다(클래스 주석).
                 _log("보고 기록 저장 실패(전송은 성공했다) — 일간 " + ds + ": " + ex.Message);
+                LastFailure = DbErrors.Observe(ex, _log).detail;   // 재시도 대상 표시(S10) — 건너뜀과 구분한다
                 return false;
             }
         }
@@ -219,6 +225,7 @@ namespace TaskCalendarWidget
             string? loginId, string? sdate, string? edate,
             string? subject, string? content, string? endwork, string? plan)
         {
+            LastFailure = null;
             var ps = ParseDate(sdate);
             var pe = ParseDate(edate);
             if (ps == null || pe == null) { _log("보고 기록 저장 건너뜀 — 주간 기간을 읽지 못했다: '" + sdate + "' ~ '" + edate + "'"); return false; }
@@ -255,6 +262,7 @@ namespace TaskCalendarWidget
             catch (Exception ex)
             {
                 _log("보고 기록 저장 실패 — 주간 " + sdate + " ~ " + edate + ": " + ex.Message);
+                LastFailure = DbErrors.Observe(ex, _log).detail;   // 재시도 대상 표시(S10) — 건너뜀과 구분한다
                 return false;
             }
         }
@@ -262,6 +270,7 @@ namespace TaskCalendarWidget
         // ── 내부 ─────────────────────────────────────────────────────────────────
         private static async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
         {
+            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
             var conn = new MySqlConnection(BuildConnString());
             await conn.OpenAsync(ct);
             await using (var pre = conn.CreateCommand())

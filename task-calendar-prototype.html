@@ -461,6 +461,9 @@ main{flex:1;display:flex;min-height:0;position:relative}
 #hostbar button:focus-visible{outline-color:#fff;outline-offset:-3px}
 .btn:disabled,button:disabled{opacity:.5;cursor:not-allowed}
 .btn.primary:disabled{background:var(--line-2);border-color:var(--line-2)}
+/* 서버 연결 잠금(docs/OFFLINE-RESILIENCE.md §4) — 만들기 버튼만 흐리게 보인다. disabled 가 아니다:
+   누르면 토스트가 이유(「서버에 연결되지 않아…」)를 말해야 하므로 클릭은 그대로 받는다. */
+body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opacity:.5}
 .btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
 .btn.danger-solid:hover{background:#b93a3f;border-color:#b93a3f}
 @keyframes ovIn{from{opacity:0}to{opacity:1}}
@@ -4198,6 +4201,7 @@ function load(){
 //  전량 교체 저장 — 「가져오기」·「전체 초기화」처럼 state 를 **통째로 갈아끼운 뒤**에 쓴다.
 //  파일 모드에서는 어차피 파일 한 번 쓰기라 save() 와 같다(구분이 DB 에서만 의미가 있다).
 function saveFull(){
+  if(editLocked()){ lockedSaveRefused(); return; }   // 마지막 방어(§4) — save() 와 같은 문(위젯에서만 참)
   if(isDbHost()){ dbSave({ replaceAll: true }); return; }
   save();
 }
@@ -4228,6 +4232,9 @@ function save(){
   if(PEER){ peerRevert(); return; }
   //  ★ DB 모드는 파일이 아니라 DB 로 간다. 갈래를 save() 에 두는 이유:
   //    위젯·브라우저·모든 편집 경로가 여기 한 곳으로 모인다(막을 때도 보낼 때도 같은 자리).
+  //  ★ 연결 잠금의 **마지막 방어**(§4) — 진입점 관문(guardEdit)을 빠져나온 경로가 있어도 여기서 보내지 않는다.
+  //    부팅 스냅샷이 없으면 빈 상태로 되돌리고, 끊김·미저장이면 메모리에 남긴다(lockedSaveRefused).
+  if(editLocked()){ lockedSaveRefused(); return; }   // editLocked 는 위젯(HOST)에서만 참이다 — 브라우저 저장은 그대로
   if(isDbHost()){ dbSave(); return; }
   try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
   catch(e){ toast('저장 실패: 브라우저 저장소를 사용할 수 없습니다', 'error'); }
@@ -4323,6 +4330,9 @@ window.__applyState = function(json, meta){
     //    (2026-09-07 실측: 회복 뒤에도 배너가 남았다. hideDbConflict 가 **저장 성공** 경로에만 있었다.)
     //    ★ 여기가 맞는 자리다 — 주입은 부팅·재시도·[새로고침] 이 모두 지나는 한 곳이다.
     hideDbConflict();
+    //  ★ 연결 상태도 여기서 세운다(bootOk·conn) — 실패 뒤의 주입이면 과제 목록·코드도 다시 읽는다
+    //    (부팅 재시도가 성공해도 과제 목록은 빈 채로 남던 구멍, 기획 §1-4).
+    if(!PEER) connOnBootApplied();
   }catch(e){
     console.warn('DB 상태 적용 실패', e);
     window.__applyStateError('받은 데이터를 해석하지 못했습니다: ' + (e && e.message || e));
@@ -4331,18 +4341,21 @@ window.__applyState = function(json, meta){
   hideBootSkeleton();
 };
 
-/* ---------- 부팅 실패 재시도(P1-2) ----------
+/* ---------- 부팅 실패 재시도(P1-2) · 꼬리 재시도(OFFLINE-RESILIENCE §5) ----------
  *  왜 필요한가: 아침에 PC 가 켜지는 순서가 서버보다 빠르면 부팅 조회가 그냥 실패한다.
  *    그 상태의 유일한 탈출구가 "위젯을 다시 켜세요" 였다 — 89명 중 상당수가 그걸 장애로 신고한다.
  *    기다리면 풀리는 실패이므로 **위젯이 스스로 다시 걸어 본다.**
- *  왜 15·30·60 인가: 첫 번째는 사람이 눈치채기 전에 끝나야 하고(15s), 마지막까지 합쳐도
- *    1분 45초라 "켜 두면 알아서 붙는다" 가 성립한다. 그 뒤로는 **멈춘다** — 무한 재시도는
- *    서버가 죽은 아침에 89대가 영원히 두드리는 것이고, 화면에도 '실패'가 안 남는다.
+ *  왜 15·30·60 인가: 첫 번째는 사람이 눈치채기 전에 끝나야 하고(15s), 셋을 합쳐도 1분 45초다.
+ *  ★ 그 뒤로는 **멈추지 않고 5분마다** 건다(2026-10-01 기획 S1·S11). 예전에는 3회 뒤 멈췄는데,
+ *    서버(MySQL)가 PC 보다 몇 분 늦게 뜬 아침엔 전부 '수동'으로 남았다 — 사람이 눌러야 풀리는 실패가
+ *    그대로 장애 신고가 된다. 5분 간격이면 89대가 함께 두드려도 분당 18건 남짓이다.
+ *    권한 거부·구조 불일치·미등록은 여전히 자동으로 걸지 않는다(몇 번을 걸어도 같은 답이 온다).
  *  ★ 재시도는 hostRequest 가 아니라 hpost 다 — reloadState 는 **회신이 없는 명령**이라
  *    hostRequest 로 보내면 25초 뒤 타임아웃으로 조용히 끝난다(성공해도 실패로 보인다).
  *    결과는 호스트가 __applyState / __applyStateError 로 따로 알려 준다. */
 const BOOT_RETRY_DELAYS = [15000, 30000, 60000];
-//  attempt(지금까지 보낸 자동 재시도 횟수) → 다음 지연(ms). 상한을 넘으면 null = 중단.
+const BOOT_RETRY_TAIL = 300000;   // 빠른 회차 뒤의 꼬리 간격(5분) — 네트워크·unknown 종류만
+//  attempt(지금까지 보낸 자동 재시도 횟수) → 다음 지연(ms). 빠른 회차를 넘으면 null(= 꼬리 회차).
 //  ★ 아래 createBootRetry 가 **이 함수를 쓴다.** 규칙을 두 벌로 두지 않기 위해서다 —
 //    스케줄러가 배열을 직접 인덱싱하면, 테스트는 이 함수를 보고 화면은 저쪽을 보게 된다.
 function nextRetryDelay(attempt, delays){
@@ -4350,7 +4363,10 @@ function nextRetryDelay(attempt, delays){
   return (Number.isInteger(attempt) && attempt >= 0 && attempt < d.length) ? d[attempt] : null;
 }
 //  스케줄러 — 타이머·DOM 을 **주입**받는다(io). 그래야 Layer 1 에서 실제 시간을 기다리지 않고
-//  '지연 순서·3회 상한·성공 시 해제·수동 즉시 1회'를 그대로 검증할 수 있다(tests/boot-retry.test.mjs).
+//  '지연 순서·꼬리·성공 시 해제·수동 즉시 1회'를 그대로 검증할 수 있다(tests/boot-retry.test.mjs · offline-web).
+//  io.tail = 빠른 회차 뒤의 간격(기본 BOOT_RETRY_TAIL). 0 이면 꼬리 없음 → 'exhausted'(옛 동작).
+//  ★ 같은 스케줄러를 두 군데서 쓴다: 부팅 재시도(bootRetry → reloadState)와 재연결 확인(pingRetry → dbPing).
+//    박자(15·30·60 → 300)가 한 벌이라 두 경로가 서로 다른 간격으로 서버를 두드리는 일이 없다.
 //  ★ 타이머를 하나만 둔다(1초 틱이 카운트다운과 발사를 겸한다) — 둘로 나누면 해제를 한쪽만
 //    빠뜨리는 사고가 나고, 그 증상은 '가끔 두 번 보낸다' 라 재현이 안 된다.
 function createBootRetry(io){
@@ -4358,10 +4374,13 @@ function createBootRetry(io){
   const setT = io.setTimeout, clearT = io.clearTimeout;
   const render = io.render || function(){};
   const delays = io.delays || BOOT_RETRY_DELAYS;
-  let attempt = 0;       // 보낸 자동 재시도 횟수(0..delays.length)
+  const tail = ('tail' in io) ? io.tail : BOOT_RETRY_TAIL;
+  let attempt = 0;       // 보낸 자동 재시도 횟수(빠른 회차 + 꼬리 회차)
   let timer = null;      // 1초 틱 핸들. null = 대기 중 아님
   let left = 0;          // 남은 초
+  let inTail = false;    // 지금 대기가 꼬리(5분) 회차인가 — 화면 문구가 달라진다
   function stopTimer(){ if(timer !== null){ clearT(timer); timer = null; } }
+  function phase(){ return inTail ? 'tail' : 'waiting'; }
   function fire(){
     stopTimer();
     render({ phase:'sending', attempt: attempt, total: delays.length, secondsLeft: 0 });
@@ -4370,35 +4389,38 @@ function createBootRetry(io){
   function tick(){
     left--;
     if(left > 0){
-      render({ phase:'waiting', attempt: attempt, total: delays.length, secondsLeft: left });
+      render({ phase: phase(), attempt: attempt, total: delays.length, secondsLeft: left });
       timer = setT(tick, 1000);
       return;
     }
     fire();
   }
   return {
-    //  부팅 실패 도착. retryable=false 면 자동 재시도를 하지 않는다 —
-    //  로그인 없음·미등록은 몇 번을 다시 걸어도 같은 답이 온다(서버만 두드린다).
+    //  실패 도착. retryable=false 면 자동 재시도를 하지 않는다 —
+    //  로그인 없음·미등록·권한 거부·구조 불일치는 몇 번을 다시 걸어도 같은 답이 온다(서버만 두드린다).
     onError(retryable){
       stopTimer();
       if(retryable === false){ render({ phase:'manual', attempt: attempt, total: delays.length, secondsLeft: 0 }); return; }
       const d = nextRetryDelay(attempt, delays);
-      if(d == null){ render({ phase:'exhausted', attempt: attempt, total: delays.length, secondsLeft: 0 }); return; }
+      const wait = (d == null) ? tail : d;       // 빠른 회차를 다 썼으면 꼬리(5분)
+      if(!wait){ render({ phase:'exhausted', attempt: attempt, total: delays.length, secondsLeft: 0 }); return; }
+      inTail = (d == null);
       attempt++;
-      left = Math.round(d / 1000);
-      render({ phase:'waiting', attempt: attempt, total: delays.length, secondsLeft: left });
+      left = Math.round(wait / 1000);
+      render({ phase: phase(), attempt: attempt, total: delays.length, secondsLeft: left });
       timer = setT(tick, 1000);
     },
-    //  부팅 성공 — 타이머를 걷고 카운터를 리셋한다(다음 실패는 다시 15초부터).
+    //  성공 — 타이머를 걷고 카운터를 리셋한다(다음 실패는 다시 15초부터).
     onSuccess(){ stopTimer(); attempt = 0; left = 0; },
     //  수동 [다시 시도] — **자동 시리즈를 리셋하지 않고** 즉시 한 번 보낸다.
-    //  ★ 리셋하면 사람이 버튼을 누를 때마다 상한 3회가 처음부터 다시 생겨 '중단'이 영영 안 온다.
+    //  ★ 리셋하면 사람이 버튼을 누를 때마다 빠른 3회가 처음부터 다시 생겨 15초 간격으로 계속 두드린다.
     manual(){ fire(); },
-    state(){ return { attempt: attempt, secondsLeft: left, pending: timer !== null }; },
+    state(){ return { attempt: attempt, secondsLeft: left, pending: timer !== null, tail: inTail }; },
   };
 }
 
 let __bootRetry = null, __bootLastError = '';
+let __connBoxSt = null;   // 연결 상자의 마지막 진행 상태 — 상자를 새로 세울 때 그대로 다시 그린다
 function bootRetry(){
   if(!__bootRetry) __bootRetry = createBootRetry({
     post: () => hpost({ cmd:'reloadState' }),
@@ -4413,41 +4435,77 @@ function clearBootError(){
   if(__bootRetry) __bootRetry.onSuccess();
   const b = document.getElementById('dsError'); if(b) b.remove();
 }
+//  연결 상자(#dsError) — 부팅 실패와 사용 중 끊김이 **같은 상자**를 쓴다(기획 S1·S6·S12).
+//  왼쪽: 원인 종류별 문구 + 진행(카운트다운) · 「자세히」를 누르면 원문 한 줄(detail).
+//  오른쪽: [자세히](원문이 있을 때만) · [다시 시도].
 function ensureBootErrorBox(){
   let box = document.getElementById('dsError');
   if(box) return box;
   box = document.createElement('div');
   box.id = 'dsError';
   box.style.cssText = 'margin:16px;padding:14px 16px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;line-height:1.6;display:flex;gap:12px;align-items:center;justify-content:space-between';
+  const col = document.createElement('div');
+  col.style.cssText = 'min-width:0;flex:1';
   const t = document.createElement('span'); t.id = 'dsErrorText';
+  //  원문 한 줄 — 사람이 신고할 때 쓰는 값이라 평소엔 접어 둔다(§3). 복사할 수 있게 선택을 연다.
+  const dt = document.createElement('div'); dt.id = 'dsErrorDetail'; dt.hidden = true;
+  dt.style.cssText = 'margin-top:4px;font-size:12px;opacity:.85;word-break:break-all;user-select:text';
+  col.appendChild(t); col.appendChild(dt);
+  const btns = document.createElement('div');
+  btns.style.cssText = 'display:flex;gap:6px;flex-shrink:0';
+  const BTN_CSS = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer;white-space:nowrap';
+  const more = document.createElement('button');
+  more.type = 'button'; more.id = 'dsErrorMore'; more.textContent = '자세히'; more.hidden = true;
+  more.style.cssText = BTN_CSS;
+  more.addEventListener('click', () => { const d = document.getElementById('dsErrorDetail'); if(d) d.hidden = !d.hidden; });
   const btn = document.createElement('button');
   btn.type = 'button'; btn.id = 'dsErrorRetry'; btn.textContent = '다시 시도';
-  btn.style.cssText = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer;white-space:nowrap';
-  btn.addEventListener('click', () => bootRetry().manual());
-  box.appendChild(t); box.appendChild(btn);
+  btn.style.cssText = BTN_CSS;
+  //  부팅 전(스냅샷 없음)이면 부팅 재시도(reloadState), 부팅 뒤의 끊김이면 재연결 확인(dbPing) — 루프는 그때그때 하나다.
+  btn.addEventListener('click', () => { if(__connLoop === 'ping' && !PEER) pingRetry().manual(); else bootRetry().manual(); });
+  btns.appendChild(more); btns.appendChild(btn);
+  box.appendChild(col); box.appendChild(btns);
   insertBelowTitleBar(box);                         // 제목줄 아래(insertBelowTitleBar 머리말)
   return box;
 }
 function renderBootErrorBox(st){
+  if(st) __connBoxSt = st;
   const t = document.getElementById('dsErrorText');
   if(!t) return;
-  const head = 'DB 에서 캘린더를 읽지 못했습니다 — ' + __bootLastError;
+  const head = connBoxHead();
+  st = __connBoxSt;
+  if(!st)                      { t.textContent = head; return; }
   if(st.phase === 'sending')   { t.textContent = head + ' · 서버에 연결 중…'; return; }
   if(st.phase === 'waiting')   { t.textContent = head + ' · ' + st.secondsLeft + '초 후 자동 재시도 (' + st.attempt + '/' + st.total + ')'; return; }
+  if(st.phase === 'tail')      { t.textContent = head + ' · 다음 재시도 ' + retryLeftText(st.secondsLeft) + ' 후'; return; }
   if(st.phase === 'exhausted') { t.textContent = head + ' · 자동 재시도 중단 — [다시 시도]를 누르세요.'; return; }
   t.textContent = head + ' · 확인한 뒤 [다시 시도]를 누르세요.';
 }
 
 // DB 읽기 실패 — **XML 로 조용히 되돌아가지 않는다.** 되돌아가면 사용자는 DB 를 보고 있다고
 //   믿으면서 파일을 보게 되고, 그 상태로 편집하면 어느 쪽이 진실인지 아무도 모른다.
-//   opt.retryable=false 면 자동 재시도를 걸지 않는다(로그인 없음·미등록 — 기다려도 안 풀린다).
+//   opt = { retryable, kind, detail, db, host } (§3). kind 로 문구와 재시도 정책을 가른다 —
+//   network·unknown(·종류 없음 = 옛 호스트) 은 15·30·60 뒤 5분 꼬리, auth·schema·unregistered 와
+//   opt.retryable=false(로그인 없음 등) 는 자동 재시도를 걸지 않는다(기다려도 안 풀린다).
 window.__applyStateError = function(msg, opt){
   __xmlApplied = true;
   hideBootSkeleton();
-  __bootLastError = String(msg || '');
+  const kind = connKindOf(opt);
+  connNoteFailure(kind, opt, msg);                  // 문구(__bootLastError)·원문·db/host
+  const retryable = !(opt && opt.retryable === false) && !connIsDenied(kind);
+  if(HOST && !PEER){
+    conn = connIsDenied(kind) ? 'denied' : 'offline';
+    //  ★ 부팅 뒤(정상 스냅샷이 화면에 있다) + 미저장분 → reloadState 재시도는 그 편집을 덮어쓴다.
+    //    이때는 부팅 재시도가 아니라 재연결 확인(dbPing → 미저장분 저장이 먼저)으로 넘긴다(S5 순서).
+    if(bootOk && unsaved){ connLost(kind || 'network', opt); return; }
+    if(__pingRetry) __pingRetry.onSuccess();       // 루프는 하나 — 이 단계는 부팅 재시도가 맡는다
+    __connLoop = 'boot';
+  }
   const fresh = !document.getElementById('dsError');
   ensureBootErrorBox();
-  bootRetry().onError(!(opt && opt.retryable === false));
+  connRenderDetail();
+  bootRetry().onError(retryable);
+  connSyncUi();
   //  ★ 토스트는 **시리즈의 첫 실패에만** 띄운다. 재시도마다 띄우면 사용자가 아무것도 하지
   //    않았는데 토스트가 네 번 뜬다 — 상자가 이미 그 사실을 계속 보여 주고 있다.
   if(fresh) toast('DB 읽기 실패 — 화면 상단 안내를 확인하세요', 'error');
@@ -4524,8 +4582,11 @@ function renderDataSourceBadge(meta){
   b.style.background  = mismatch ? 'var(--danger-soft)' : 'var(--accent-soft)';
   b.style.color       = mismatch ? 'var(--danger-text)' : 'var(--text)';
   if(mismatch){
-    b.textContent = '서버 스키마 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') +
-      ' — 위젯 업데이트 필요 · 가져오기/초기화 차단' +
+    //  ★ 어느 쪽이 낡았는지에 따라 할 일이 다르다(S7). 서버가 낮으면 위젯을 올려 봐야 소용없다 —
+    //    관리자가 서버 DB 를 올려야 한다. 그걸 "위젯 업데이트 필요" 라고 하면 사용자는 엉뚱한 일을 한다.
+    b.textContent = (schemaServerOlder(m)
+        ? '서버 DB 업데이트 필요(관리자) · 서버 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') + ' · 가져오기/초기화 차단'
+        : '서버 스키마 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') + ' — 위젯 업데이트 필요 · 가져오기/초기화 차단') +
       (m.rev != null ? ' · rev ' + m.rev : '');
     return;
   }
@@ -4534,6 +4595,11 @@ function renderDataSourceBadge(meta){
     (m.rev != null ? ' · rev ' + m.rev : '');
 }
 
+//  스키마 불일치의 방향 — 서버 판본이 위젯이 기대하는 판본보다 **낮은가**. 숫자로 못 읽으면 false(옛 문구 = 위젯 쪽).
+function schemaServerOlder(m){
+  const sv = Number(m && m.schemaVersion), wv = Number(m && m.expectedSchema);
+  return isFinite(sv) && isFinite(wv) && sv > 0 && wv > 0 && sv < wv;
+}
 //  낡은 위젯 게이트의 **웹쪽 안내**(§5.5, P1-1). true 면 호출부가 그 자리에서 멈춘다.
 //  ★ 이것은 방어가 아니라 UX 다 — 진짜 차단은 호스트(CalendarWriteDb.SaveAsync)가 한다.
 //    여기만 있으면 콘솔 한 줄로 우회되고, 여기가 없으면 사용자가 눌러 본 뒤에야 거부당한다.
@@ -4541,7 +4607,8 @@ function schemaBlocked(){
   const m = __bootMeta;
   if(!m || !m.schemaMismatch) return false;
   toast('서버 스키마 v' + (m.schemaVersion || '?') + ' · 위젯 v' + (m.expectedSchema || '?') +
-        ' — 위젯을 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다', 'error');
+        (schemaServerOlder(m) ? ' — 관리자가 서버 DB 를 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다'
+                              : ' — 위젯을 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다'), 'error');
   return true;
 }
 
@@ -4630,21 +4697,27 @@ function legacyPromptNever(){
  *       멀쩡한 저장이 '충돌'로 거부된다. 진행 중이면 dirty 만 세워 두고 끝나고 한 번 더 보낸다.
  *    ② 충돌은 **재시도하지 않는다** — 토큰이 낡은 것이라 같은 내용을 다시 보내도 또 거부된다.
  *       사용자가 새로고침해서 남의 변경을 본 뒤 다시 편집하는 것이 유일하게 맞는 경로다. */
-let __dbSaving = false, __dbDirty = false;
+let __dbSaving = false, __dbDirty = false, __dbSaveP = null;
 //  replaceAll=true 는 「XML 가져오기」·「전체 초기화」 전용 — 이 사용자의 캘린더를 통째로 바꾼다.
 //  ★ 차분 저장으로도 같은 결과가 나오지만(state 에 없는 uid 는 지워지므로) 일부러 명령을 나눈다:
 //    되돌릴 수 없는 조작이 '평범한 저장'과 같은 문으로 들어오면 호출부를 눈으로 셀 수 없다.
 //    호스트 로그에도 '(전량 교체)'로 남아 사후에 무엇이 일어났는지 읽을 수 있다.
+//  돌려주는 값 = Promise<boolean>(이번 저장이 서버에 들어갔나). 재연결 회복(connRecover)이 이걸 기다린 뒤에
+//  다음 단계(과제 목록·알림)로 간다 — 기다리지 않으면 "다시 연결되었습니다" 가 저장 결과보다 먼저 뜬다.
 function dbSave(opt){
   const replaceAll = !!(opt && opt.replaceAll);
-  if(__dbSaving){ __dbDirty = true; return; }
+  if(__dbSaving){ __dbDirty = true; return __dbSaveP; }
   __dbSaving = true;
   //  보내는 순간의 상태를 고정한다 — 왕복 중에 state 가 또 바뀌면 무엇을 저장했는지 알 수 없다.
   const payload = JSON.parse(JSON.stringify(state));
-  hostRequest(replaceAll ? 'replaceAllState' : 'saveState', { state: payload }, 25000).then(res => {
+  __dbSaveP = hostRequest(replaceAll ? 'replaceAllState' : 'saveState', { state: payload }, 25000).then(res => {
     __dbSaving = false;
     if(res && res.ok){
       hideDbConflict();
+      setUnsaved(false);                     // 메모리와 서버가 다시 같다
+      //  S9 — 응답만 끊겼던 앞 저장이 이미 들어가 있었다(호스트가 스냅샷을 다시 읽어 내용이 같음을 확인).
+      //    사용자에게는 그냥 성공이다. 기록만 남긴다.
+      if(res.resolvedConflict){ try{ console.info('저장: 앞 저장이 이미 반영돼 있었다(가짜 충돌 해소)'); }catch(_){} }
       pushReminders();                       // 파일 경로가 save() 끝에 하던 것과 같은 자리
       //  P1-8 — 호스트가 가져오기 원본을 개명했으면 그 사실을 알린다. 말없이 이름이 바뀌면
       //    다음에 그 파일을 찾는 사람이 "없어졌다" 로 읽는다.
@@ -4654,15 +4727,32 @@ function dbSave(opt){
       //    편집은 차분으로 충분하다). replaceAll 을 물려줘도 결과는 같지만 낭비이고, 무엇보다
       //    '전량 교체가 몇 번 일어났는가'가 로그에서 흐려진다.
       if(__dbDirty){ __dbDirty = false; dbSave(); }   // 저장 중에 또 고쳤다 → 한 번 더
-      return;
+      return true;
     }
     __dbDirty = false;                       // 실패했으면 자동 재시도하지 않는다(위 ②)
+    const kind = connKindOf(res);
+    //  ★ 네트워크(·unknown·응답 시간 초과)는 **편집을 화면에 남기고** 막대를 세운다(S3·S8). 충돌·스키마와 달리
+    //    기다리면 풀리는 실패라, 재연결 확인이 돌다가 붙으면 그 편집을 자동으로 다시 보낸다(connRecover).
+    //    그 사이 새 편집은 잠근다 — 쌓일수록 충돌·유실 위험만 커진다. 권한 거부도 편집은 남긴다(수동 재시도).
+    //    막대는 이 회신과 **같은 틱**에 선다(setUnsaved → connSyncUi 가 동기로 그린다).
+    let keep = false;                        // 편집을 메모리에 남겨 다시 보낼 실패인가(막대·닫기 경고)
     //  ★ 스키마 불일치는 **충돌 상자에 담지 않는다**(P1-1). 그 상자는 '새로고침하면 풀린다'고
     //    말하는데, 이건 위젯을 업데이트하기 전에는 몇 번을 눌러도 풀리지 않는다.
     if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');
     else if(res && res.conflict) showDbConflict(res.error || '다른 곳에서 먼저 수정되었습니다');
+    else if(saveFailIsNetwork(res)){ keep = true; setUnsaved(true); connLost(kind || 'network', res); }
+    else if(connIsDenied(kind)){ keep = true; setUnsaved(true); connLost(kind, res); toast('저장 실패 — ' + (res.error || connKindText(kind, '')), 'error'); }
     else toast('저장 실패 — ' + ((res && res.error) || '알 수 없는 오류'), 'error');
+    if(!keep) setUnsaved(false);             // 충돌·스키마·그 밖 — 예전처럼 끝낸다(자동으로 다시 보내지 않는다)
+    return false;
   });
+  return __dbSaveP;
+}
+//  저장 실패가 '기다리면 풀리는' 종류인가. 종류 없는 실패(옛 호스트의 권한 거절 등)는 예전처럼 토스트로 끝낸다 —
+//  그걸 끊김으로 올리면 핑은 성공하고 저장은 또 거절당하는 헛바퀴(15초마다)가 된다. 웹쪽 시간 초과(timeout)는 S8 이다.
+function saveFailIsNetwork(res){
+  const k = connKindOf(res);
+  return !res || k === 'network' || k === 'unknown' || (!k && !!res.timeout);
 }
 
 //  충돌 안내 — 토스트로 흘리지 않는다. 이 상태에서 계속 편집하면 그 편집도 전부 거부되므로
@@ -4686,6 +4776,294 @@ function showDbConflict(msg){
   document.getElementById('dbConflictText').textContent = msg + ' — 새로고침하면 서버의 최신 내용을 불러옵니다(지금 화면의 변경은 사라집니다).';
 }
 function hideDbConflict(){ const b = document.getElementById('dbConflict'); if(b) b.remove(); }
+
+/* ---------- 서버 연결 상태 · 편집 잠금 · 재연결 확인 (docs/OFFLINE-RESILIENCE.md §2·§4·§5) ----------
+ *  왜 필요한가(2026-10-01 조사):
+ *    · 부팅이 실패한 빈 캘린더에서 편집이 **됐다** — 저장은 거부되고, 재시도가 성공하면 그 편집이 말없이 사라졌다.
+ *    · 사용 중 저장이 실패하면 2.6초 토스트뿐이었다 — 편집은 화면에 남는데 표시·재시도·닫기 경고가 없었다.
+ *  상태 셋(이 셋이 전부다 — 다른 곳에서 '연결됐나' 를 따로 들고 있지 않는다):
+ *    conn    'ok' | 'offline'(기다리면 풀린다) | 'denied'(권한·구조·미등록 — 기다려도 안 풀린다)
+ *    bootOk  부팅 스냅샷을 받았다(__applyState 성공). false 면 화면의 빈 캘린더는 서버의 것이 아니다
+ *    unsaved 서버에 못 간 편집이 메모리에 있다(S3). 호스트의 닫기 경고가 이 값을 본다(unsavedState)
+ *  ★ 메모리에만 둔다 — 못 보낸 편집을 로컬 저장소·파일에 쌓지 않는다(ADR-18 · 기획 §9 오프라인 대기열 금지).
+ *  ★ 정상(ok)일 때는 **아무 타이머도 돌지 않는다**(폴링 없음 원칙, A11). 루프는 끊겼다고 안 뒤에만 선다.
+ *  ★ 루프는 언제나 **하나**다: 부팅 전·부팅 실패 단계는 부팅 재시도(bootRetry → reloadState)가,
+ *    부팅 뒤의 끊김은 재연결 확인(pingRetry → dbPing)이 맡는다. 같은 스케줄러라 박자도 같다(15·30·60 → 300).
+ *  ★ 열람 창(PEER)·브라우저(!HOST)에서는 전부 꺼진다 — 거기에는 지킬 '내' 저장이 없다. */
+let conn = 'ok';
+let bootOk = false;
+let unsaved = false;
+let __connKind = '', __connDetail = '', __connDb = '', __connHost = '';
+let __connNeedCatalog = false;   // 실패 뒤 — 과제 목록·코드도 다시 읽어야 한다(부팅 재시도 성공 때 빠지던 것)
+let __connHadFailure = false;    // 「다시 연결되었습니다」는 실패 뒤의 회복에만 한 번
+let __lockToldAt = 0;
+let __pingRetry = null, __pingBusy = false, __recovering = false, __visPingAt = 0;
+let __connLoop = '';             // 지금 연결 상자를 맡은 루프 — 'boot'(reloadState) | 'ping'(dbPing) | ''
+let __unsavedSt = '';            // 막대 꼬리 문구(저장 중… · N초 후 다시 연결 확인)
+const CONN_LOCK_MSG = '서버에 연결되지 않아 지금은 편집할 수 없습니다';
+const CONN_UNSAVED_MSG = '저장되지 않은 변경이 있습니다 — 서버 연결이 끊겼습니다 · 다시 연결되면 자동으로 저장합니다';
+//  원인 종류별 문구(§3 표). unregistered·종류 없음(옛 호스트)은 호스트가 준 문구를 그대로 쓴다.
+const CONN_KIND_TEXT = {
+  network: '서버에 연결할 수 없습니다(꺼져 있거나 네트워크 문제)',
+  auth:    'DB 접근이 거부되었습니다 — 위젯 설정(DB 이름·계정)과 서버 권한을 확인하세요(관리자)',
+  schema:  'DB 구조가 이 버전과 맞지 않습니다',
+  unknown: '서버 오류 — 잠시 뒤 다시 시도합니다',
+};
+//  편집 잠금(§4) — 이 한 줄이 정의다. 진입점 관문(guardEdit)과 save() 의 마지막 방어가 같은 값을 본다.
+function editLocked(){
+  if(!HOST || PEER) return false;
+  return !bootOk || unsaved || conn !== 'ok';
+}
+//  진입점 관문 — 잠겼으면 토스트 한 줄로 끝낸다(true = 막혔다). 한 동작이 관문 둘을 지나도 토스트는 한 번.
+//  ★ 화면은 읽을 수 있다 — 막는 것은 '바꾸는' 진입점뿐이다(있는 기록 열기·보고서 보기는 그대로).
+function guardEdit(){
+  if(!editLocked()) return false;
+  const now = Date.now();
+  if(now - __lockToldAt > 1500){ __lockToldAt = now; try{ toast(CONN_LOCK_MSG, 'warn'); }catch(_){} }
+  return true;
+}
+function connKindOf(o){
+  const k = (o && typeof o.kind === 'string') ? o.kind : '';
+  if(!k) return '';
+  return (k === 'network' || k === 'auth' || k === 'schema' || k === 'unregistered' || k === 'unknown') ? k : 'unknown';
+}
+function connIsDenied(kind){ return kind === 'auth' || kind === 'schema' || kind === 'unregistered'; }
+function connKindText(kind, msg){ return CONN_KIND_TEXT[kind] || String(msg || ''); }
+//  실패를 적어 둔다 — 문구(__bootLastError)·원문(detail)·db/host. 비밀번호는 호스트가 애초에 싣지 않는다(§3).
+function connNoteFailure(kind, o, msg){
+  __connKind = kind || '';
+  const m = String(msg != null ? msg : ((o && (o.error || o.message)) || ''));
+  __bootLastError = connKindText(__connKind, m);
+  const det = (o && o.detail != null) ? String(o.detail) : '';
+  //  옛 호스트(detail 없음)는 문구 자체가 원문이다 — 종류 문구로 바꿔 보여 줄 때만 원문을 「자세히」로 접는다.
+  __connDetail = det || ((m && m !== __bootLastError) ? m : '');
+  if(o && o.db) __connDb = String(o.db);
+  if(o && o.host) __connHost = String(o.host);
+  //  종류 없는 재시도 불가(로그인 없음 등 — 옛 호스트 문구)는 '연결' 실패가 아니다 — 로그인 뒤의 첫 주입에
+  //  「다시 연결되었습니다」를 띄우면 사실과 다르다.
+  if(kind || !(o && o.retryable === false)) __connHadFailure = true;
+  __connNeedCatalog = true;
+}
+//  어디에 붙으려 했나 — 「db@host」. 부팅 meta 에 있으면 그것, 없으면 마지막 실패가 알려 준 값.
+function connWhereText(){
+  const m = __bootMeta || {};
+  const db = String(m.db || __connDb || ''), host = String(m.host || __connHost || '');
+  return db ? db + (host ? '@' + host : '') : host;
+}
+function connBoxHead(){
+  const where = connWhereText();
+  const lead = !bootOk ? 'DB 에서 캘린더를 읽지 못했습니다 — ' : (conn === 'denied' ? '' : '서버 연결이 끊겼습니다 — ');
+  return lead + __bootLastError + ((where && conn === 'denied') ? ' · ' + where : '');
+}
+function connRenderDetail(){
+  const d = document.getElementById('dsErrorDetail'), b = document.getElementById('dsErrorMore');
+  if(d){ d.textContent = __connDetail; if(!__connDetail) d.hidden = true; }
+  if(b) b.hidden = !__connDetail;
+}
+function retryLeftText(sec){
+  const v = Math.max(0, Math.round(Number(sec) || 0)), mm = Math.floor(v / 60), ss = v % 60;
+  return mm ? (mm + '분 ' + ss + '초') : (ss + '초');
+}
+//  미저장 표시 — 바뀔 때마다 호스트에 알린다(§6 닫기 경고). 회신 없는 알림이다(hpost).
+function setUnsaved(v){
+  v = !!v;
+  if(!HOST || PEER || unsaved === v) return;
+  unsaved = v;
+  hpost({ cmd:'unsavedState', on: v });
+  connSyncUi();
+}
+//  화면을 상태에 맞춘다 — body.db-locked · 연결 상자(부팅 뒤) · 미저장 막대 · 「사용자 정보」의 DB 한 줄.
+//  ★ 부팅 전·부팅 실패 단계의 상자는 __applyStateError/clearBootError 가 그대로 맡는다(여기서 걷지 않는다).
+function connSyncUi(){
+  if(!HOST || PEER) return;
+  try{ document.body.classList.toggle('db-locked', editLocked()); }catch(_){}
+  if(bootOk){
+    //  미저장분이 있으면 막대가 사정을 말한다 — 상자까지 띄우면 같은 말을 두 번 한다(접근 거부만 예외).
+    const wantBox = conn === 'denied' || (conn === 'offline' && !unsaved);
+    if(wantBox){ ensureBootErrorBox(); connRenderDetail(); renderBootErrorBox(); }
+    else { const b = document.getElementById('dsError'); if(b) b.remove(); }
+  }
+  if(unsaved) renderUnsavedBar();
+  else { const u = document.getElementById('dbUnsaved'); if(u) u.remove(); }
+  try{ updateUserUi(); }catch(_){}
+}
+//  「저장되지 않은 변경」 막대(S3) — 닫을 수 없다(닫기 단추 없음). 회복하면 connSyncUi 가 걷는다.
+function renderUnsavedBar(){
+  let b = document.getElementById('dbUnsaved');
+  if(!b){
+    b = document.createElement('div');
+    b.id = 'dbUnsaved';
+    b.style.cssText = 'margin:12px 16px 0;padding:10px 14px;border:1px solid var(--danger);border-radius:8px;background:var(--danger-soft);color:var(--danger-text);font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between';
+    const t = document.createElement('span'); t.id = 'dbUnsavedText';
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.id = 'dbUnsavedRetry'; btn.textContent = '지금 다시 시도';
+    btn.style.cssText = 'padding:4px 12px;border:1px solid var(--danger);border-radius:6px;background:transparent;color:var(--danger-text);cursor:pointer;white-space:nowrap';
+    btn.addEventListener('click', () => pingRetry().manual());
+    b.appendChild(t); b.appendChild(btn);
+    insertBelowTitleBar(b);                         // 제목줄 아래(insertBelowTitleBar 머리말)
+  }
+  const t = document.getElementById('dbUnsavedText');
+  if(t) t.textContent = CONN_UNSAVED_MSG + (__unsavedSt ? ' · ' + __unsavedSt : '');
+}
+function renderPingStatus(st){
+  renderBootErrorBox(st);
+  __unsavedSt = !st ? '' : (st.phase === 'sending' ? '서버에 연결 중…'
+    : ((st.phase === 'waiting' || st.phase === 'tail') ? retryLeftText(st.secondsLeft) + ' 후 다시 연결 확인' : ''));
+  if(document.getElementById('dbUnsaved')) renderUnsavedBar();
+}
+//  재연결 확인 루프(§5) — 부팅 뒤의 끊김 전용. 보내는 것은 dbPing(연결 + SELECT 1) 하나뿐이다.
+function pingRetry(){
+  if(!__pingRetry) __pingRetry = createBootRetry({
+    post: () => { connPing(); },
+    setTimeout: (f, d) => setTimeout(f, d),
+    clearTimeout: (t) => clearTimeout(t),
+    render: renderPingStatus,
+  });
+  return __pingRetry;
+}
+async function connPing(){
+  if(!HOST || PEER || __pingBusy || __recovering) return;
+  __pingBusy = true;
+  let r = null;
+  try{ r = await hostRequest('dbPing', {}, 6000); }catch(_){ r = null; }
+  __pingBusy = false;
+  if(conn === 'ok') return;                         // 그 사이 다른 길(부팅 주입 등)이 이미 회복시켰다
+  if(r && r.ok){ await connRecover(); return; }
+  const kind = connKindOf(r) || 'network';          // 답이 없거나(시간 초과) 종류가 없으면 네트워크로 본다(S8)
+  connNoteFailure(kind, r, r && r.error);
+  conn = connIsDenied(kind) ? 'denied' : 'offline';
+  connSyncUi();
+  pingRetry().onError(!connIsDenied(kind));         // 권한·구조 → 멈춤(수동만) · 그 밖 → 다음 회차
+}
+//  회복 순서(S5) — 미저장 저장 → (부팅 실패였다면) reloadState → 과제 목록·코드 → 알림 → 상자·막대 → 토스트 1회.
+async function connRecover(){
+  if(__recovering) return;
+  __recovering = true;
+  try{
+    conn = 'ok';
+    if(__pingRetry) __pingRetry.onSuccess();
+    __connBoxSt = null; __connLoop = '';
+    if(unsaved){
+      __unsavedSt = '저장 중…'; renderUnsavedBar();
+      const ok = await dbSave();
+      __unsavedSt = '';
+      if(!ok){ connSyncUi(); return; }              // 실패 경로(dbSave)가 끊김·충돌을 이미 다시 세웠다
+    }
+    //  부팅 스냅샷이 없던 경우 — 주입(__applyState)이 bootOk 를 세우고 상자를 걷는다(여기서 걷지 않는다).
+    if(!bootOk) hpost({ cmd:'reloadState' });
+    connReloadCatalog();
+    pushReminders();                                // 서버 실패일엔 알림이 없었다(①) — 붙은 그 자리에서 다시 건다
+    if(bootOk){
+      clearBootError();
+      connSyncUi();
+      __connHadFailure = false;
+      toast('서버에 다시 연결되었습니다', 'success');
+    }
+  } finally { __recovering = false; }
+}
+function connReloadCatalog(){
+  //  부팅이 보내는 것과 같은 두 명령 — 회신은 __applyProjects / __applyCodes. (loadCodes 의 네 번째 호출부 —
+  //  tests/code-tables.test.mjs 가 이 함수 안에서 따로 본다.)
+  __connNeedCatalog = false; hpost({ cmd:'loadProjects' }); hpost({ cmd:'loadCodes' });
+}
+function connLoopRunning(){
+  return __pingBusy || !!(__pingRetry && __pingRetry.state().pending) || !!(__bootRetry && __bootRetry.state().pending);
+}
+function connStartLoop(){
+  if(__bootRetry && __bootRetry.state().pending) return;   // 부팅 재시도가 돌고 있다 — 두 번째 루프를 세우지 않는다
+  __connLoop = 'ping';
+  const r = pingRetry();
+  r.onSuccess();                                    // 카운터를 처음(15초)부터
+  r.onError(true);
+}
+//  끊김 진입 — 저장 실패(network)·호스트 통지(__dbConnLost)·핑 실패가 여기로 모인다(S12: 한 곳의 실패가 전역 상태).
+function connLost(kind, info){
+  if(!HOST || PEER) return;
+  kind = connKindOf({ kind: kind }) || 'network';
+  connNoteFailure(kind, info, info && (info.error || info.message));
+  if(!bootOk){ connSyncUi(); return; }              // 부팅 전·부팅 실패 — 그 단계의 루프는 부팅 재시도다(하나만)
+  const was = conn;
+  conn = connIsDenied(kind) ? 'denied' : 'offline';
+  connSyncUi();
+  if(conn === 'denied'){ __connLoop = 'ping'; pingRetry().onError(false); return; }
+  if(was !== 'offline' || !connLoopRunning()) connStartLoop();
+}
+//  과제 목록 실패 — 연결 문제인지 **한 번만** 확인한다. 목록 조회만 깨진 것(연결은 멀쩡)을 전역 끊김으로 올리면
+//  핑 성공 → 목록 재조회 실패 → 다시 끊김 … 의 헛바퀴가 된다.
+async function connSuspect(){
+  if(!HOST || PEER || !bootOk || conn !== 'ok' || __pingBusy) return;
+  __pingBusy = true;
+  let r = null;
+  try{ r = await hostRequest('dbPing', {}, 6000); }catch(_){ r = null; }
+  __pingBusy = false;
+  if(r && r.ok) return;
+  if(conn === 'ok') connLost(connKindOf(r) || 'network', r);
+}
+function connNoteCatalog(ok){
+  if(!HOST || PEER) return;
+  if(ok){ __connNeedCatalog = false; return; }
+  __connNeedCatalog = true;
+  if(bootOk && conn === 'ok') connSuspect();
+}
+//  부팅 성공(__applyState) — 연결 회복의 다른 이름이다. 주입된 것은 서버의 최신이라 메모리의 미저장분도 이제 없다.
+function connOnBootApplied(){
+  if(!HOST || PEER) return;
+  const recovered = __connHadFailure;
+  bootOk = true;
+  conn = 'ok';
+  __connKind = ''; __connDetail = ''; __connHadFailure = false; __connBoxSt = null; __connLoop = '';
+  if(__pingRetry) __pingRetry.onSuccess();
+  setUnsaved(false);
+  if(__connNeedCatalog) connReloadCatalog();
+  connSyncUi();
+  if(recovered) toast('서버에 다시 연결되었습니다', 'success');
+}
+//  로그인 성공(S2) — 서버가 꺼진 채 시작해 로그인 화면을 거친 경우, 부팅 조회는 로그인 **전에** 이미 실패했다.
+//  로그인한 그 계정으로 캘린더·과제 목록을 지금 다시 읽는다(회신은 __applyState / __applyProjects 로 온다).
+//  ★ 미저장분이 있으면 reloadState 로 덮지 않는다 — 재연결 확인이 그걸 먼저 저장한다(S5).
+function connAfterLogin(){
+  if(!HOST || PEER) return;
+  if(!unsaved) hpost({ cmd:'reloadState' });
+  connReloadCatalog();
+}
+//  save()/saveFull() 의 마지막 방어(§4). 진입점 관문을 빠져나온 편집이 여기까지 왔다.
+function lockedSaveRefused(){
+  if(!bootOk){
+    //  부팅 스냅샷이 없다 — 그 편집은 원래 서버에 갈 길이 없었다. 마지막 정상 상태(빈 상태)로 되돌린다.
+    //  표시 설정(보고서 서식·작성자 등)은 남긴다 — 데이터가 아니고, 부팅이 붙으면 어차피 서버 값으로 바뀐다.
+    const k = state || {};
+    state = buildStateFrom({ categories: [], entries: [], gitAuthor: k.gitAuthor, svnAuthor: k.svnAuthor,
+      reportMarker: k.reportMarker, reportMarkerCustom: k.reportMarkerCustom, reportIndent: k.reportIndent,
+      reportFormatPrefs: k.reportFormatPrefs, gitCommitBody: k.gitCommitBody, reportFont: k.reportFont });
+    try{ renderAll(); }catch(_){}
+  } else setUnsaved(true);                          // 끊김 중 — 차이는 메모리에 남아 다시 연결되면 함께 간다(S3)
+  guardEdit();
+}
+//  창이 다시 보이거나 절전에서 깨면 기다리지 않고 한 번 확인한다(§5). 10초 안의 반복은 무시한다.
+function connOnVisible(){
+  if(!HOST || PEER || (bootOk && conn === 'ok')) return;
+  if(document.visibilityState && document.visibilityState !== 'visible') return;
+  const now = Date.now();
+  if(now - __visPingAt < 10000) return;
+  __visPingAt = now;
+  //  기다리는 중(pending)일 때만 — 보내는 중이면 겹쳐 보내지 않는다. 권한 거부(수동 단계)도 건드리지 않는다.
+  if(__connLoop === 'ping'){ if(__pingRetry && __pingRetry.state().pending) __pingRetry.manual(); return; }
+  if(__bootRetry && __bootRetry.state().pending) __bootRetry.manual();
+}
+if(HOST && !PEER){ try{ document.addEventListener('visibilitychange', connOnVisible); }catch(_){} }
+//  호스트 통지 — 어느 DB 작업이든 네트워크로 실패했다(과제·구성원·휴지통 화면 포함, 호스트가 묶어서 보낸다).
+window.__dbConnLost = function(info){
+  if(!HOST || PEER) return;
+  connLost(connKindOf(info) || 'network', info);
+};
+//  호스트 통지(S10) — 보고 전송은 성공했고, 호스트가 10·30·60초로 다시 써 봐도 보고 기록 저장이 실패했다.
+//  ★ 웹은 다시 시도하지 않는다(호스트가 이미 했다). 다시 보내라고도 하지 않는다 — 전송은 됐다(두 번 올라간다).
+window.__reportRecordFailed = function(info){
+  if(!HOST || PEER) return;
+  const d = (info && info.date) ? ' (' + String(info.date) + ')' : '';
+  try{ console.warn('보고 기록 저장 실패', info); }catch(_){}
+  try{ toast('보고는 전송됐지만 기록 저장에 실패했습니다' + d + ' — 전송은 정상이라 다시 보낼 필요는 없습니다', 'error', null, 12000); }catch(_){}
+};
 
 //  ★ #peerModal 이 어떤 경로로 닫히든(× · 닫기 버튼 · Esc · 배경 클릭) iframe 을 없앤다.
 //    닫기 경로가 여럿이라 한 곳에 걸어야 한다 — 버튼마다 붙이면 새 경로가 생길 때 샌다.
@@ -4751,8 +5129,10 @@ window.__applyProjects = function(jsonStr){
       __pendingAutoSub = null;
     }
   }catch(_){}
-  try{ if(changed && __xmlApplied) save(); }catch(_){}
+  //  ★ 잠겨 있으면 저장하지 않는다 — 부팅 실패 중의 동기화는 사용자의 편집이 아니다(마지막 방어가 토스트를 띄운다).
+  try{ if(changed && __xmlApplied && !editLocked()) save(); }catch(_){}
   refreshDbUi();
+  try{ connNoteCatalog(dbOnline); }catch(_){}   // 목록 실패 → 연결 문제인지 한 번 확인(§5)
 };
 // 카탈로그/구독 변경 후 화면 반영 — 데이터가 이미 적용된 뒤면 재렌더(공식 과제 색/이름 반영) + 열린 선택기·설정·과제관리 상태 갱신
 function refreshDbUi(){
@@ -4857,9 +5237,16 @@ function applyUser(u){ currentUser = (u && u.loginId) ? u : null; try{ updateUse
 function usOrgText(v){ const s = String(v == null ? '' : v).trim(); return s || '소속 미등록'; }
 // 「사용자 정보」의 캘린더 DB 한 줄 — 상단 배지가 정상일 때 숨으면서 옮겨 온 정보(스키마·rev, 부팅 시점 값).
 // 부팅 meta 가 없으면(브라우저·부팅 전) 빈 문자열 → 줄이 숨는다.
+//  ★ 연결 상태는 실시간 값(conn)을 본다 — 부팅 meta 는 '그때' 의 값이라 끊긴 뒤에도 "연결됨" 이라고 말했다.
+//    (typeof 로 읽는 이유: 이 함수만 떼어 돌리는 시험 상자에는 conn 이 없다 — 없으면 정상으로 본다.)
 function usDbLineText(m){
-  if(!HOST || !m) return '';
-  return '캘린더 DB 연결됨' + (m.canWrite === false ? '(읽기 전용)' : '') +
+  if(!HOST) return '';
+  const c = (typeof conn === 'string') ? conn : 'ok';
+  if(c === 'offline') return '캘린더 DB 연결 끊김 — 다시 연결을 시도하는 중';
+  if(c === 'denied') return '캘린더 DB 접근 거부';
+  if(!m) return '';
+  const where = (typeof connWhereText === 'function') ? connWhereText() : '';
+  return (where ? '캘린더 DB(' + where + ') 연결됨' : '캘린더 DB 연결됨') + (m.canWrite === false ? '(읽기 전용)' : '') +
     (m.schemaVersion ? ' · 스키마 v' + m.schemaVersion : '') +
     (m.rev != null ? ' · rev ' + m.rev : '');
 }
@@ -6724,7 +7111,7 @@ async function submitLogin(){
   try{ r = await hostRequest('userLogin', {id, pw}, 90000); }catch(_){ r = null; }
   __loginBusy = false;
   if(btn){ btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = '로그인'; }
-  if(r && r.ok && r.user){ applyUser(r.user); hideLoginGate(); return; }
+  if(r && r.ok && r.user){ applyUser(r.user); hideLoginGate(); connAfterLogin(); return; }   // S2 — 로그인한 계정으로 다시 읽는다
   // 실패 — 게이트는 그대로 두고 호스트가 준 사유(msg)를 그대로 보여준다(실패 code는 없다: 분기할 곳이 없다).
   say((r && r.msg) || '로그인하지 못했습니다 — 잠시 후 다시 시도하세요.');
   if(pwEl){ pwEl.value = ''; try{ pwEl.focus(); }catch(_){} }   // 비번은 화면에도 남기지 않는다
@@ -8143,6 +8530,8 @@ function openEntryModal(mode, ref){
   //  ★ 열람 창에서는 아예 열지 않는다. CSS 로 버튼을 감춰도 **날짜 더블클릭**은 남아 있고,
   //    열리면 사용자가 다 채운 뒤에야 "읽기 전용" 을 만난다 — 그게 감추는 것보다 나쁘다.
   if(PEER){ try{ toast('읽기 전용 보기입니다 — 여기서는 기록을 만들 수 없습니다', 'info'); }catch(_){} return; }
+  //  서버 연결 잠금(§4) — 새 기록만 막는다. 있는 기록을 여는 것(edit)은 읽기라 그대로 둔다(저장에서 막는다).
+  if(mode !== 'edit' && guardEdit()) return;
   fillCatSelect($('#fCat'));
   fillTimeSelects($('#fStartH'), $('#fStartM')); fillTimeSelects($('#fEndH'), $('#fEndM'));
   $('#fTimeHint').textContent = '';
@@ -8201,6 +8590,7 @@ function openEntryModal(mode, ref){
   setTimeout(() => $('#fTitle').focus(), 30);
 }
 function saveEntryFromForm(){
+  if(guardEdit()) return;
   const title = $('#fTitle').value.trim();
   if(!title){ toast('제목을 입력하세요', 'warn'); $('#fTitle').focus(); return; }
   const date = $('#fDate').value;
@@ -8423,6 +8813,7 @@ function renderRoomMgr(){
   </div>`).join('');
 }
 function addRoom(name){
+  if(guardEdit()) return;
   const s = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
   if(!s){ toast('회의실 이름을 입력하세요', 'warn'); $('#roomName').focus(); return; }
   if(!Array.isArray(state.rooms)) state.rooms = [];
@@ -8433,6 +8824,7 @@ function addRoom(name){
   toast(`‘${s}’ 회의실을 추가했습니다`, 'success');
 }
 function deleteRoom(name){
+  if(guardEdit()) return;
   if(!Array.isArray(state.rooms)) return;
   const i = state.rooms.indexOf(name); if(i < 0) return;
   state.rooms.splice(i, 1); save(); renderRoomMgr(); refreshOpenRoomSelects();
@@ -8625,6 +9017,7 @@ function openCatModal(){
   openModal('#categoryModal');
 }
 function saveCatFromForm(){
+  if(guardEdit()) return;
   // 공식(DB) 과제 편집이면 이름 입력을 아예 '읽지 않는다' — 폼이 잠겨 있어도 저장 경로가 값을 집어가면
   // 잠금이 UI 장식으로 전락한다(DOM은 언제든 조작될 수 있다). 소유권 분리는 저장 계약에서 지킨다.
   // (색상은 2026-07-30부터 로컬 소유 → 공식 과제도 selColor를 그대로 반영한다.)
@@ -8823,6 +9216,7 @@ function offSubHtml(c){
 }
 // 카탈로그 → 단일 목록 편입/해제(로컬 데이터만 — 인증·DB쓰기 없음). 편입되면 필터·피커·보고서에 자동 등장.
 function offSubscribeFromCatalog(id){
+  if(guardEdit()) return;
   const src = dbCatalogById(id); if(!src){ toast('대상 과제를 찾을 수 없습니다', 'error'); return; }
   subscribeDbCat(src); save();
   renderAll(); try{ renderCatModal(); }catch(_){}
@@ -8830,6 +9224,7 @@ function offSubscribeFromCatalog(id){
   toast(`'${src.name}'을(를) 캘린더에 추가했습니다`, 'success');
 }
 function offUnsubscribeFromCatalog(id){
+  if(guardEdit()) return;
   const src = dbCatalogById(id), nm = src ? src.name : '공식 과제';
   if(!catRemovable(catById(id))){ toast('사용 중인 과제는 제거할 수 없습니다 — 일정 정리/재연결 후 시도하세요', 'warn'); return; }
   if(unsubscribeDbCat(id)){ save(); renderAll(); try{ renderCatModal(); }catch(_){} renderOfficial(); toast(`'${nm}'을(를) 캘린더에서 제거했습니다`, 'success'); }
@@ -10404,6 +10799,7 @@ function exportXML(){
 //  파일 내용 → 미리보기 모달. 두 진입점(호스트 파일창·<input type=file>)이 이 하나를 공유한다 —
 //  갈라 두면 한쪽만 고쳐져 "어느 문으로 들어왔느냐에 따라 다르게 동작" 한다.
 function showImportPreview(name, text){
+  if(guardEdit()) return;   // 연결 잠금(§4) — 미리보기부터 막는다(적용은 applyImport 가 한 번 더 막는다)
   try{
     pendingImport = fromXML(text);
   }catch(err){ toast('가져오기 실패: ' + err.message, 'error'); return; }
@@ -10415,6 +10811,7 @@ function showImportPreview(name, text){
 }
 
 function startImport(){
+  if(guardEdit()) return;
   if(schemaBlocked()) return;   // P1-1 — 낡은 위젯의 전량 교체는 호스트가 거부한다. 여기서 사유를 먼저 알린다
   if(!HOST){ $('#importFile').click(); return; }
   hostRequest('pickImportXml', {}, 120000).then(res => {
@@ -10439,6 +10836,7 @@ function onImportFile(file){
 }
 function applyImport(mode){
   if(!pendingImport) return;
+  if(guardEdit()) return;
   if(mode === 'replace'){
     // 파일 내부 중복 ID도 제거 (첫 항목만 유지) — 중복 ID는 수정/삭제 오동작을 유발
     const cseen = new Set(), eseen = new Set(), tseen = new Set();
@@ -10487,6 +10885,7 @@ function applyImport(mode){
   saveFull(); closeModal('#importModal'); renderAll(); renderEmptyHint();
 }
 async function clearAll(){
+  if(guardEdit()) return;
   if(schemaBlocked()) return;   // P1-1 — 초기화도 전량 교체다. 지운 뒤에 거부당하면 화면만 비고 DB 는 그대로다
   if(await confirmBox('전체 데이터 초기화',
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
@@ -11302,9 +11701,11 @@ function buildReport(){
     const syncHint = () => { const h = attHost.querySelector('#raHint'), s = attHost.querySelector('#raStatus');
                              if(h) h.classList.toggle('hidden', !!(s && s.value)); };
     const sv = () => { setAttendance(from, $('#raStatus').value, $('#raOT').value); syncHint(); };   // per-day 저장(동작 동일)
+    //  연결 잠금(§4) — 막히면 buildReport 가 셀렉트를 저장값으로 되돌린다
+    const svGuarded = () => { if(guardEdit()){ buildReport(); return; } sv(); };
     const a = attHost.querySelector('#raStatus'), b = attHost.querySelector('#raOT');
-    if(a) a.addEventListener('change', sv);
-    if(b) b.addEventListener('change', sv);
+    if(a) a.addEventListener('change', svGuarded);
+    if(b) b.addEventListener('change', svGuarded);
     syncHint();
   }
   // 내용 출처 = netcus 일간보고/주간보고 (주간/커스텀만) → 캘린더 렌더 대신 netcus 병합 미리보기(읽기전용). 일간은 항상 캘린더.
@@ -11959,7 +12360,7 @@ function confirmTyped(title, msg, mustType, okLabel){
 /* ---------- 토스트 (카드 스택) ---------- */
 // kind: undefined/'success'(✓ 녹) | 'warn'(⚠ 앰버) | 'error'(✕ 적) | 'info'(중립). action: {label, fn} = 되돌리기 등.
 // 카드마다 독립 타이머·Undo로 연속 동작 시 직전 Undo가 사라지지 않음(최대 3개 누적). 컨테이너가 live region.
-function toast(msg, kind, action){
+function toast(msg, kind, action, ms){
   const k = kind === 'warn' ? 'warn' : kind === 'error' ? 'error' : kind === 'info' ? 'info' : 'success';
   const stack = $(k === 'error' ? '#toastStackErr' : '#toastStack'); if(!stack) return;   // 오류=assertive 영역으로 분리(polite 컨테이너+alert 자식 중첩 이중낭독 방지)
   const glyph = k === 'warn' ? '⚠' : k === 'error' ? '✕' : k === 'info' ? '•' : '✓';
@@ -11982,7 +12383,7 @@ function toast(msg, kind, action){
     if(!victim) break; victim._dismiss();
   }
   requestAnimationFrame(() => el.classList.add('show'));
-  timer = setTimeout(dismiss, action ? 5000 : 2600);
+  timer = setTimeout(dismiss, (ms > 0) ? ms : (action ? 5000 : 2600));   // ms: 오래 남겨야 하는 경고(보고 기록 실패 등)
 }
 
 /* ---------- 노트(멀티노트): 깃로그 · TODO · 메일 ---------- */
@@ -12135,6 +12536,7 @@ function notifyDataChanged(){
 }
 // 커밋 subject 변경 — 유일한 subject 쓰기 경로. 정규화·무변경/빈값 차단. 실제 변경 시 true.
 function setCommitSubject(entryId, hash, cidx, text){
+  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
   const e = entryById(entryId); if(!e) return false;
   const c = findCommitInEntry(e, hash, cidx); if(!c) return false;
   const v = String(text || '').replace(/\s+/g, ' ').trim();
@@ -12144,6 +12546,7 @@ function setCommitSubject(entryId, hash, cidx, text){
 }
 // 커밋 전체 메시지(제목+본문) 변경 — 커밋 내역 탭 편집 전용 단일 변이 경로(결정6). 첫 비어있지 않은 줄=제목(정규화), 나머지=본문(원문 줄바꿈 보존·끝 공백만 정리).
 function setCommitMessage(entryId, hash, cidx, fullText){
+  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
   const e = entryById(entryId); if(!e) return false;
   const c = findCommitInEntry(e, hash, cidx); if(!c) return false;
   const lines = String(fullText || '').split(/\r\n|\r|\n/);
@@ -12157,6 +12560,7 @@ function setCommitMessage(entryId, hash, cidx, fullText){
 }
 // 일정 제목 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
 function setEntryTitle(entryId, text){
+  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
   const e = entryById(entryId); if(!e) return false;
   const v = String(text || '').replace(/\s+/g, ' ').trim();
   if(!v || v === e.title) return false;
@@ -12164,6 +12568,7 @@ function setEntryTitle(entryId, text){
 }
 // 할 일 텍스트 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
 function setTodoText(todoId, text){
+  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
   const t = (state.todos || []).find(x => x.id === todoId); if(!t) return false;
   const v = String(text || '').replace(/\s+/g, ' ').trim();
   if(!v || v === t.text) return false;
@@ -12171,6 +12576,7 @@ function setTodoText(todoId, text){
 }
 // 커밋 삭제 — hash(있으면) 아니면 인덱스로 제거. 마지막 커밋이면 git 기록 자체를 제거. 유일한 삭제 경로.
 function deleteCommitRow(eid, chash, cidx){
+  if(guardEdit()) return;
   const entry = entryById(eid);
   if(!entry || !Array.isArray(entry.commits)) return;
   const before = entry.commits.length;
@@ -12215,6 +12621,7 @@ function commitDayNoteEdit(ta){
   const t = (state.todos || []).find(x => x.id === id);
   const cur = (t && t.dayNotes) ? String(t.dayNotes[date] || '') : '';
   if(!t || String(ta.value).trim() === cur.trim()){ buildReport(); return; }   // 무변경 → 편집기만 걷어냄(1회 렌더)
+  if(guardEdit()){ buildReport(); return; }
   updateTodo(id, { dayNotes: { [date]: ta.value } });   // 저장(빈 값이면 normalizeTodoDayNotes가 그 날짜 제거)
   notifyDataChanged();   // 열린 뷰 일괄 재반영(패널·그리드·보고서)
 }
@@ -12411,6 +12818,7 @@ function openQuickAdd(date, type, entryId){
   //  ★ 열람 창에서는 열지 않는다. 빈 칸 **더블클릭**으로 여기 닿는다(grid 의 dblclick 핸들러) —
   //    ＋추가 버튼을 감춰도 그 길은 남아 있었다. openEntryModal 과 같은 이유·같은 방식이다.
   if(PEER){ try{ toast('읽기 전용 보기입니다 — 여기서는 기록을 만들 수 없습니다', 'info'); }catch(_){} return; }
+  if(!entryId && guardEdit()) return;   // 연결 잠금(§4) — 편집 열기(entryId)는 읽기라 그대로
   qaEditId = entryId || null;
   const e = qaEditId ? entryById(qaEditId) : null;
   qaType = e ? 'event' : ((type === 'todo') ? 'todo' : 'event');   // 편집은 일정만(할일은 패널 인라인 편집)
@@ -12532,6 +12940,7 @@ function qaEventFormData(){
   return d;
 }
 function qaSave(){
+  if(guardEdit()) return;
   const title = $('#qaTitle').value.trim();
   if(!title){ toast('제목을 입력하세요', 'warn'); $('#qaTitle').focus(); return; }
   const date = $('#qaDate').value;
@@ -12888,6 +13297,7 @@ function bind(){
     const id = qaEditId; if(!id) return;
     const d = qaEventFormData();
     if(!d.title){ toast('제목을 입력하세요', 'warn'); $('#qaTitle').focus(); return; }   // 무음 유실 방지 — 공란이면 진행 막음
+    if(guardEdit()) return;
     if(/^\d{4}-\d{2}-\d{2}$/.test(d.date)) updateEntry(id, d);
     closeModal('#quickAdd'); openEntryModal('edit', id);
   });
@@ -12983,6 +13393,7 @@ function bind(){
     const box = ev.target.closest('.todo-edit');
     if(box){
       const id = box.dataset.id, act = ev.target.dataset.act;
+      if((act === 'save' || act === 'del') && guardEdit()) return;
       if(act === 'save'){
         const dn = box.querySelector('.te-daynote');
         const dayNotes = {};
@@ -13002,6 +13413,7 @@ function bind(){
     // TODO 행 액션 (일정 상세 카드 액션은 아래 #dayPanel 핸들러가 처리)
     const row = ev.target.closest('.todo-row'); if(!row) return;
     const act = ev.target.dataset.act; if(!act) return;
+    if((act === 'toggle' || act === 'del' || act === 'star') && guardEdit()){ renderPanel(); return; }   // 체크 표시도 되돌린다
     if(act === 'toggle'){ toggleTodo(row.dataset.id); renderPanel(); renderGrid(); }
     else if(act === 'del'){ const rm = todoById(row.dataset.id); deleteTodo(row.dataset.id); renderPanel(); renderGrid(); if(rm) toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ state.todos.push(rm); save(); renderPanel(); renderGrid(); }}); }
     else if(act === 'star'){ const t = todoById(row.dataset.id); if(t){ updateTodo(row.dataset.id, {prio: t.prio==='high'?'normal':'high'}); renderPanel(); renderGrid(); } }
@@ -13361,6 +13773,7 @@ function bind(){
   grid.addEventListener('drop', ev => {
     ev.preventDefault();
     $$('.cell.drop').forEach(c => c.classList.remove('drop'));
+    if(guardEdit()) return;   // 연결 잠금(§4) — 옮기지 않는다(칩은 제자리)
     const cell = ev.target.closest('.cell');
     let p; try{ p = JSON.parse(ev.dataTransfer.getData('text/plain')); }
     catch(_){ p = {id:ev.dataTransfer.getData('text/plain'), kind:'simple'}; }   // 옛 형식 호환
@@ -13410,6 +13823,7 @@ function bind(){
     }
     if(act === 'edit') editEntry(card.dataset.id);
     else if(act === 'del'){
+      if(guardEdit()) return;
       const e = entryById(card.dataset.id);
       if(!e) return;
       if(e.recur){   // 반복: 한 모달에서 '이 날짜만' / '전체 삭제' 선택
@@ -13451,6 +13865,7 @@ function bind(){
   $('#btnEntrySave').addEventListener('click', saveEntryFromForm);
   $('#fTitle').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter') saveEntryFromForm(); });
   $('#btnEntryDelete').addEventListener('click', async () => {
+    if(guardEdit()) return;
     const e = entryById(editingId);
     if(e && await confirmBox(e.recur ? '반복 일정 삭제' : '기록 삭제',
         `'${e.title}'${e.recur ? ' 반복 전체를' : ' 기록을'} 삭제할까요?`, '삭제') === 'ok'){
@@ -13495,6 +13910,7 @@ function bind(){
     const row = ev.target.closest('.cat-row');
     const c = catById(row?.dataset.id);
     if(!c) return;
+    if((act === 'unsub' || act === 'del') && guardEdit()) return;
     if(act === 'unsub'){   // 공식(DB) 과제 구독 해제 — 사용 0건일 때만(엔트리는 안 건드림)
       if(!catRemovable(c)){ toast(`사용 중인 과제는 제거할 수 없습니다 — 일정 정리/재연결 후 시도하세요`, 'warn'); return; }
       if(await confirmBox('공식 과제 제거',
@@ -13722,14 +14138,14 @@ function bind(){
   $('#rptCatLink').addEventListener('click', () => { closeModal('#reportModal'); openCatModal(); });   // 과제명은 과제 관리에서만 변경(보고서에선 잠금)
   $('#rptSendMode').addEventListener('click', () => { closeModal('#reportModal'); openSettings(); });   // 설정 모달은 DOM 상 보고서 앞이라 먼저 닫고 연다(§0-5)
   // 서식바(머리기호+들여쓰기) — 일간/주간 계열별 표시 설정 갱신 → save() → buildReport() 재빌드. 1회만 배선.
-  $('#rptMarker').addEventListener('change', () => { updateCurrentReportFormatPref({ marker: $('#rptMarker').value }); save(); buildReport(); });
+  $('#rptMarker').addEventListener('change', () => { if(guardEdit()){ buildReport(); return; } updateCurrentReportFormatPref({ marker: $('#rptMarker').value }); save(); buildReport(); });
   //  '직접' 머리기호는 한 글자마다 save()(저장 왕복)와 전체 재빌드를 부르던 자리다 — 타이핑이 그대로 저장 폭주가 된다.
   //  입력 중에는 미리보기만 250ms 뒤에 따라오고, 저장은 입력이 끝났을 때(change) 한 번만 한다.
   { let _mkT = null;
     const _mkPref = () => updateCurrentReportFormatPref({ markerCustom: String($('#rptMarkerCustom').value || '').slice(0,8) });
-    $('#rptMarkerCustom').addEventListener('input', () => { _mkPref(); clearTimeout(_mkT); _mkT = setTimeout(buildReport, 250); });
-    $('#rptMarkerCustom').addEventListener('change', () => { clearTimeout(_mkT); _mkPref(); save(); buildReport(); }); }
-  const _setRptInd = d => { const cur = currentReportFormatPref().indent; updateCurrentReportFormatPref({ indent: Math.max(0, Math.min(6, cur + d)) }); save(); buildReport(); };
+    $('#rptMarkerCustom').addEventListener('input', () => { if(editLocked()) return; _mkPref(); clearTimeout(_mkT); _mkT = setTimeout(buildReport, 250); });
+    $('#rptMarkerCustom').addEventListener('change', () => { clearTimeout(_mkT); if(guardEdit()){ buildReport(); return; } _mkPref(); save(); buildReport(); }); }
+  const _setRptInd = d => { if(guardEdit()){ buildReport(); return; } const cur = currentReportFormatPref().indent; updateCurrentReportFormatPref({ indent: Math.max(0, Math.min(6, cur + d)) }); save(); buildReport(); };
   $('#rptIndMinus').addEventListener('click', () => _setRptInd(-1));
   $('#rptIndPlus').addEventListener('click', () => _setRptInd(1));
   // 폰트 행(전 모드 공통 전역 설정) — 옵션 1회 채우기 + 변경 시 state.reportFont 갱신 → save() → buildReport() 재빌드.
@@ -13737,9 +14153,11 @@ function bind(){
     if(_ff) _ff.innerHTML = REPORT_FONTS.map(f => `<option value="${esc(f.v)}">${esc(f.label)}</option>`).join('');
     if(_fs) _fs.innerHTML = REPORT_FONT_SIZES.map(n => `<option value="${n}">${n ? n + 'pt' : '기본'}</option>`).join('');
     if(_ff) _ff.addEventListener('change', () => {
+      if(guardEdit()){ buildReport(); return; }
       state.reportFont = normalizeReportFont({ family: _ff.value, size: normalizeReportFont(state.reportFont).size });
       save(); buildReport(); });
     if(_fs) _fs.addEventListener('change', () => {
+      if(guardEdit()){ buildReport(); return; }
       state.reportFont = normalizeReportFont({ family: normalizeReportFont(state.reportFont).family, size: parseInt(_fs.value, 10) });
       save(); buildReport(); }); }
   // ⚙옵션 접기/펼치기 — 좁은 폭 컴팩트(넓은 폭은 CSS가 토글 숨김·패널 강제 노출 → .open 무관)
@@ -13761,6 +14179,7 @@ function bind(){
   $('#rptOut').addEventListener('change', ev => {
     const inp = ev.target.closest && ev.target.closest('.rcard-h-in'); if(!inp) return;
     const from = $('#rptFrom').value; const cat = inp.dataset.hcat;
+    if(guardEdit()){ const v0 = getTaskHours(from, cat); inp.value = (v0 != null ? v0 : ''); return; }
     setTaskHours(from, cat, inp.value);
     const v = getTaskHours(from, cat); inp.value = (v != null ? v : '');   // 6.50→6.5·음수/과대 클램프 표시 정리
   });
@@ -13774,6 +14193,7 @@ function bind(){
       const ta = $('#rptOut .rtask-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
     } else if(b.dataset.ract === 'del'){   // 원본 삭제 — git=커밋내역 / event=일정 / todo=할 일. 일간만(편집가능 라인에만 버튼).
       const kind = rowEl.dataset.rkind, rid = rowEl.dataset.reid;
+      if(guardEdit()) return;
       if(kind === 'git'){
         const rhash = rowEl.dataset.rhash, rcidx = parseInt(rowEl.dataset.rcidx, 10);
         confirmBox('커밋 삭제', '이 커밋 내역을 삭제할까요?', '삭제').then(r => {
@@ -14165,6 +14585,7 @@ async function runBulkGitFetch(){
 // 단일 날짜는 from==to로 호출(days.size=1 → 문구 "1일" 자연 처리). body: !!state.gitCommitBody 그대로 적용.
 async function runGitImport(from, to, selId, statusSel, btnSel, replace){
   if(!HOST){ toast('데스크톱 위젯에서만 동작합니다', 'warn'); return; }
+  if(guardEdit()) return;
   const cats = gitEnabledCats().filter(c => !selId || c.id === selId);
   if(!cats.length){ toast('대상 과제가 없습니다', 'warn'); return; }
   const btn = $(btnSel); if(btn) btn.disabled = true;
@@ -14350,7 +14771,7 @@ function hostRequest(cmd, params, timeoutMs){
   return new Promise(resolve => {
     if(!HOST){ resolve({ok:false, error:'호스트(위젯)가 아닙니다'}); return; }
     const reqId = cmd + '-' + (++__reqSeq);
-    const to = setTimeout(() => { if(__hostPending[reqId]){ delete __hostPending[reqId]; resolve({ok:false, error:'호스트 응답 시간 초과'}); } }, timeoutMs || 20000);
+    const to = setTimeout(() => { if(__hostPending[reqId]){ delete __hostPending[reqId]; resolve({ok:false, error:'호스트 응답 시간 초과', timeout:true}); } }, timeoutMs || 20000);
     __hostPending[reqId] = res => { clearTimeout(to); resolve(res); };
     hpost(Object.assign({cmd, reqId}, params || {}));
   });

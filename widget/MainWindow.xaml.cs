@@ -447,6 +447,7 @@ namespace TaskCalendarWidget
                         //    **정의상 낡은 데이터**라 읽는 것 자체가 버그다 — 사용자에게는 "내 최신 편집이
                         //    사라졌다" 로 보이고, 거기서 편집하면 되돌릴 경로도 없다.
                         //    옛 파일을 되살릴 일이 생기면 그건 부팅이 아니라 「XML 가져오기」로 한다.
+                        OfflineHostInit();       // DB 실패 분류·연결 끊김 통지 구독(1회 · OFFLINE-RESILIENCE §3/S12)
                         _ = BootFromDbAsync();   // async — 실패도 웹에 명시적으로 알린다(조용한 XML 폴백 없음)
                         SendPinState();
                         SendTrayState();
@@ -456,6 +457,15 @@ namespace TaskCalendarWidget
                     case "reloadState":   // 충돌 뒤 '새로고침' — 부팅 조회를 다시 돌려 스냅샷과 화면을 함께 갱신한다.
                         _ = BootFromDbAsync();
                         break;
+                    case "dbPing":       // 재연결 확인(OFFLINE-RESILIENCE §5) — 끊긴 뒤에만 웹이 부른다(정상일 때 폴링 없음)
+                        _ = RunDbPingAsync(GetStr(doc, "reqId"));
+                        break;
+                    case "unsavedState":  // §6 닫기 경고 — 웹의 「저장되지 않은 변경」 표시를 받아 둔다(회신 없음)
+                        SetWebUnsaved(GetBool(doc, "on"));
+                        break;
+                    case "__dbFault":     // §7 장애 주입 — TC_DEBUG_PORT 실행에서만 받는다(RunDbFault 가 거부한다)
+                        RunDbFault(GetStr(doc, "reqId"), GetStr(doc, "mode"));
+                        break;
                     case "saveState":   // DB 모드 저장(§3.1~3.4). 파일 모드의 "save" 와 별개다 —
                                         //   섞지 않는다. 한 곳이 둘을 다 하면 어느 저장소로 갔는지 호출층이 모른다.
                     {
@@ -1777,8 +1787,21 @@ namespace TaskCalendarWidget
                 if (!await _netcus.LoginVerify(id, pw)) { Fail("로그인하지 못했습니다 — ID/비밀번호 또는 사내망 연결을 확인하세요."); return; }
 
                 // ② 인가 — app_user 조회. null=연결 실패 / "{}"=미등록 / is_active=0 → 비활성.
-                string? json = await _projectDb.LoadAppUserJsonAsync(id);
-                if (json == null) { Fail("DB에 연결하지 못했습니다."); return; }
+                string? json;
+                using (var cap = DbErrors.Capture())   // 원인 종류(kind)를 서명 변경 없이 받아 온다(DbErrors.Capture)
+                {
+                    json = await _projectDb.LoadAppUserJsonAsync(id);
+                    if (json == null)
+                    {
+                        //  OFFLINE-RESILIENCE S2 — 「DB에 연결하지 못했습니다」를 원인 종류별로 가른다. 회신에 kind·detail.
+                        string k = cap.HasError ? cap.Kind : DbErrorKind.Unknown;
+                        string dm = k == DbErrorKind.Network ? "DB에 연결하지 못했습니다 — 서버가 꺼져 있거나 네트워크 문제입니다."
+                                  : k == DbErrorKind.Auth ? "DB 접근이 거부되었습니다 — 관리자에게 문의하세요."
+                                  : "DB에 연결하지 못했습니다.";
+                        ReplyOnUi(reqId, new { ok = false, msg = dm, kind = k, detail = cap.Detail });
+                        return;
+                    }
+                }
                 var u = ParseAppUser(json);
                 if (json.Trim() == "{}" || (u.name.Length == 0 && u.orgUnit.Length == 0))
                 { Fail("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요."); return; }
@@ -2219,22 +2242,17 @@ namespace TaskCalendarWidget
             string st = SafeReportStatus(status);
             int ot = SafeOvertime(overtime);
             var db = new ReportDb(Log);
-            _ = Task.Run(async () =>
-            {
-                try { await db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours); }
-                catch (Exception ex) { Log("보고 기록 저장 예외(일간): " + ex.Message); }
-            });
+            string ymd = $"{y:D4}-{m:D2}-{d:D2}";   // 재시도 실패 알림(__reportRecordFailed)에 실을 날짜
+            _ = Task.Run(() => SaveReportRecordWithRetryAsync("daily", ymd, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
+                () => db.SaveDailyAsync(loginId, y, m, d, st, ot, content, hours)));
         }
 
         void INetcusHost.SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork)
         {
             string? loginId = CurrentLoginId();
             var db = new ReportDb(Log);
-            _ = Task.Run(async () =>
-            {
-                try { await db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork); }
-                catch (Exception ex) { Log("보고 기록 저장 예외(주간): " + ex.Message); }
-            });
+            _ = Task.Run(() => SaveReportRecordWithRetryAsync("weekly", sdate, db,   // 실패 시 10·30·60초 재시도(OfflineHost.cs · S10)
+                () => db.SaveWeeklyAsync(loginId, sdate, edate, subject, content, endwork, planwork)));
         }
 
         // ================================================================================
@@ -2268,7 +2286,12 @@ namespace TaskCalendarWidget
 
                 //  저장소 경로는 로컬 파일에만 있다(§4) — DB 에는 '쓰는가' 비트만 있고 경로는 없다.
                 var rp = RepoPaths.Load(_dataDir, Log);
-                var snap = await new CalendarDb(Log).LoadSnapshotAsync(loginId, rp.Map);
+                CalendarSnapshot? snap;
+                using (var cap = DbErrors.Capture())   // 조회 실패의 원인 종류(network·auth·schema·unknown) — OFFLINE-RESILIENCE §3
+                {
+                    snap = await new CalendarDb(Log).LoadSnapshotAsync(loginId, rp.Map);
+                    if (snap == null && cap.HasError) { ApplyBootDbError(cap); return; }
+                }
                 if (snap == null) { ApplyStateError("서버에서 캘린더를 받지 못했습니다"); return; }
 
                 _calSnap = snap;   // 쓰기가 쓸 토큰·번호 맵. 세션 동안 유지한다(계약 H-2)
@@ -2276,7 +2299,7 @@ namespace TaskCalendarWidget
                 //    쓰기 계층(CalendarWriteDb)이 하고, 웹은 이 값으로 배지를 경고 톤으로 바꾸고
                 //    가져오기·초기화를 미리 막는다(눌러 본 뒤 거부당하는 것보다 낫다).
                 bool schemaMismatch = !string.Equals(snap.SchemaVersion, CalendarDb.ExpectedSchemaVersion, StringComparison.Ordinal);
-                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema = CalendarDb.ExpectedSchemaVersion, schemaMismatch, rev = snap.Rev, userId = snap.UserId, canWrite = true });
+                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema = CalendarDb.ExpectedSchemaVersion, schemaMismatch, rev = snap.Rev, userId = snap.UserId, canWrite = true, db = DeployConfig.DbName, host = DeployConfig.DbHost });
                 js = "window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ")";
                 Log($"DB 부팅 조회: user_id={snap.UserId} rev={snap.Rev} schema=v{snap.SchemaVersion}");
             }
@@ -2310,14 +2333,17 @@ namespace TaskCalendarWidget
             var snap = _calSnap;
             if (snap == null)
             {
-                GitReply(reqId, new { ok = false, conflict = false, error = "부팅 스냅샷이 없습니다 — 위젯을 다시 시작하세요" });
+                GitReply(reqId, new { ok = false, conflict = false, error = "부팅 스냅샷이 없습니다 — 위젯을 다시 시작하세요", kind = "", detail = "" });
                 return;
             }
             try
             {
                 var r = await new CalendarWriteDb(Log).SaveAsync(snap, stateJson, replaceAll);
+                //  S9 — 앞선 저장이 network 로 끊겼고 이번이 충돌이면, 서버가 이미 같은 내용인지 본다(OfflineHost.cs).
+                if (!r.Ok && !replaceAll && await TryResolveAmbiguousSaveAsync(reqId, r, stateJson, snap)) return;
                 if (r.Ok)
                 {
+                    _lastSaveNetworkFail = false;   // S9 — 성공한 저장 뒤에는 '앞선 저장이 애매하다'가 사라진다
                     _calSnap = new CalendarSnapshot(stateJson, r.Tokens, r.Rev, snap.SchemaVersion, snap.UserId,
                                                     r.CategoryNoByUid, r.EntryNoByUid, r.TodoNoByUid);
                     //  P1-8 — 이관이 **실제로 DB 에 들어간 뒤에만** 원본을 개명한다.
@@ -2330,13 +2356,16 @@ namespace TaskCalendarWidget
                 {
                     //  ★ 실패했으면 스냅샷을 **건드리지 않는다.** 트랜잭션이 통째로 롤백됐으므로
                     //    DB 는 저장 전 상태이고, 우리 토큰도 그때 것이 맞다.
-                    GitReply(reqId, new { ok = false, conflict = r.Conflict, schemaMismatch = r.SchemaMismatch, error = r.Message ?? "저장하지 못했습니다" });
+                    if (r.Kind == DbErrorKind.Network) _lastSaveNetworkFail = true;   // S9 — COMMIT 이 들어갔는지 모른다
+                    GitReply(reqId, new { ok = false, conflict = r.Conflict, schemaMismatch = r.SchemaMismatch, error = r.Message ?? "저장하지 못했습니다", kind = r.Kind, detail = r.Detail });
                 }
             }
             catch (Exception ex)
             {
                 Log("DB 저장 예외: " + ex);
-                GitReply(reqId, new { ok = false, conflict = false, error = ex.Message });
+                var (ek, ed) = DbErrors.Observe(ex, Log);
+                if (ek == DbErrorKind.Network) _lastSaveNetworkFail = true;
+                GitReply(reqId, new { ok = false, conflict = false, error = DbErrors.Sanitize(ex.Message), kind = ek, detail = ed });
             }
         }
 
@@ -2390,9 +2419,14 @@ namespace TaskCalendarWidget
         //              자동 재시도는 서버만 두드리고 사용자에게는 "계속 실패 중"으로만 보인다.
         //  ★ [다시 시도] 버튼은 두 경우 모두 남는다 — 로그인·등록은 이 창 밖에서 해결되고,
         //    해결한 사람이 위젯을 재시작하지 않고 이어 갈 유일한 문이 그 버튼이다.
-        private void ApplyStateError(string msg, bool retryable = true)
+        //  ★ OFFLINE-RESILIENCE §3 — 옵션은 {retryable, kind, detail, db, host}. 아래 두 줄 오버로드는 분류 없는 자리
+        //    (로그인 없음·미등록 = unregistered / 그 밖 = unknown)이고, 분류된 DB 실패는 ApplyBootDbError 가 4인자로 부른다.
+        private void ApplyStateError(string msg, bool retryable = true) =>
+            ApplyStateError(msg, retryable, retryable ? DbErrorKind.Unknown : DbErrorKind.Unregistered, "");
+
+        private void ApplyStateError(string msg, bool retryable, string kind, string detail)
         {
-            string opt = "{\"retryable\":" + (retryable ? "true" : "false") + "}";
+            string opt = StateErrorOpt(retryable, kind, detail);
             try { _ = web.CoreWebView2.ExecuteScriptAsync("window.__applyStateError(" + JsonSerializer.Serialize(msg) + "," + opt + ")"); }
             catch (Exception ex) { Log("오류 통지 실패: " + ex.Message); }
         }
@@ -2683,6 +2717,7 @@ namespace TaskCalendarWidget
 
         private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
+            if (!ConfirmCloseIfUnsaved("창 닫기")) { e.Cancel = true; return; }   // §6 — 세션·시스템 종료는 묻지 않는다
             SaveSettings();
             CleanupScrim();  // 넓게 보기 중 종료 시 딤 배경 고스트 방지
             CleanupTray();   // 창이 실제로 닫히면 트레이 정리(잔상 방지)
@@ -2837,6 +2872,7 @@ namespace TaskCalendarWidget
 
         private void ExitApp()
         {
+            if (!ConfirmCloseIfUnsaved("종료")) return;   // §6 — 저장되지 않은 변경이 있으면 묻는다(「아니오」= 닫지 않음)
             CleanupScrim();
             DisposeTray();
             Application.Current.Shutdown();

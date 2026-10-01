@@ -161,7 +161,7 @@ namespace TaskCalendarWidget
                 await Task.Delay(700);   // 진행 메시지 전달 + 설치기 기동 여유
                 Dispatcher.Invoke(() =>
                 {
-                    try { ExitApp(); }
+                    try { MarkSystemExit("업데이트 설치"); ExitApp(); }   // 설치기가 이미 돌고 있다 — 닫기 경고로 막지 않는다
                     catch { try { Application.Current.Shutdown(); } catch { } }
                 });
             }
