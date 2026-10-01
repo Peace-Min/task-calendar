@@ -4,6 +4,8 @@
 
 ## 사용자
 
+- [창 버튼과 트레이](창-버튼과-트레이) — 맨 앞에 띄우기 · 부착 · ☰ · ✕(트레이면 숨기기)
+- [보고서 회사 전송](보고서-회사-전송) — 늘 실제 제출 · 제출 전 확인 한 번
 - [다른 사람 일정 보기](다른-사람-일정-보기) — 열람 창에서 보이는 것·안 보이는 것 · 밀도 · 내 일정 겹쳐 보기
 - [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정) — 무엇을 누르면 어느 날짜가 선택되는지 · 기간 막대 클릭 수정(2026-10-01)
 - [과제 순서 바꾸기](과제-순서-바꾸기) — 「과제 관리」의 ▲▼ 로 순서를 정하면 보고서 순서가 따라간다
@@ -20,3 +22,4 @@
 - 과제 순서 기획서: [`docs/CATEGORY-ORDER.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/CATEGORY-ORDER.md) · 실 위젯 루프 `tests/loop-category-order.mjs`
 - 기간 칩 클릭 버그 기획서: [`docs/BUG-RANGE-CHIP-CLICK.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/BUG-RANGE-CHIP-CLICK.md) · 실 위젯 루프 `tests/loop-range-chip.mjs`
 - 타인 일정 보기 기획서: [`docs/PEER-VIEW-FULL.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PEER-VIEW-FULL.md) · 루프 `tests/loop-peer-view.mjs` · `tests/loop-peer-frame.mjs`
+- 화면 혼란 3건 기획서: [`docs/UI-CLARITY-2026-10-01.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/UI-CLARITY-2026-10-01.md)
