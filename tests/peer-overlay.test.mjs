@@ -341,13 +341,17 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('document.querySelector("#dpBody .card.card-mine .card-title").textContent'), '나: 회의 준비');
     });
 
-    test('P 배너: 이름 · 읽기 전용 · 겹 토글 · 범례가 함께 뜬다(체크 초기값 = 저장값)', () => {
+    //  ★ 2026-10-01(docs/PEER-OVERLAY-REDESIGN.md O1) — 체크박스 + 「점선 = 내 일정」 글자 범례는 **범례 칩 두 개**로 바뀌었다.
+    //    [▮ 그 사람] · [☑ 내 일정](토글 버튼, aria-pressed). 세부 계약은 tests/peer-overlay-redesign.test.mjs.
+    test('P 배너: 이름 · 읽기 전용 · 겹 토글(범례 칩)이 함께 뜬다(토글 초기값 = 저장값)', () => {
       const b = P.ev('document.getElementById("peerBanner").textContent');
       assert.ok(b.includes('홍길동 님의 일정'), '배너에 이름이 없다: ' + b);
       assert.ok(b.includes('읽기 전용'), '배너에 읽기 전용 표시가 없다: ' + b);
-      assert.ok(b.includes('내 일정 겹쳐보기'), '배너에 겹 토글이 없다: ' + b);
-      assert.ok(b.includes('점선 = 내 일정'), '배너에 범례가 없다 — 점선이 무엇인지 알 방법이 없다: ' + b);
-      assert.strictEqual(P.ev('document.getElementById("peerOverlayToggle").checked'), true);
+      assert.strictEqual(P.ev('document.getElementById("peerOverlayToggle").getAttribute("aria-label")'), '내 일정 겹쳐보기',
+        '겹 토글의 접근성 이름이 없다');
+      assert.ok(P.ev('document.querySelector("#peerBanner .peer-legend").textContent').includes('내 일정'),
+        '배너에 「내 일정」 범례 칩이 없다 — 겹이 무엇인지 알 방법이 없다: ' + b);
+      assert.strictEqual(P.ev('document.getElementById("peerOverlayToggle").getAttribute("aria-pressed")'), 'true');
       assert.strictEqual(P.ev('String(document.body.dataset.peerOverlay)'), '1');
     });
 
@@ -400,12 +404,12 @@ if (!JSDOM) {
       assert.strictEqual(P.ev('localStorage.getItem("tc_peerOverlay")'), '1');
     });
 
-    test('P 토글: 배너 체크박스를 조작하면 그대로 반영된다(핸들러가 붙어 있다)', () => {
+    test('P 토글: 배너의 「내 일정」 범례 칩을 누르면 그대로 반영된다(핸들러가 붙어 있다)', () => {
       const t = 'document.getElementById("peerOverlayToggle")';
-      P.ev(t + '.checked = false; ' + t + '.dispatchEvent(new Event("change"));');
+      P.ev(t + '.click();');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), 0,
-        '체크박스 change 가 겹을 안 끈다 — 토글이 배선되지 않았다');
-      P.ev(t + '.checked = true; ' + t + '.dispatchEvent(new Event("change"));');
+        '범례 칩 click 이 겹을 안 끈다 — 토글이 배선되지 않았다');
+      P.ev(t + '.click();');
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS);
     });
 
@@ -417,8 +421,8 @@ if (!JSDOM) {
         inject(P2);
         await settle();
         assert.strictEqual(P2.ev('__peerOverlay'), false, '저장된 "0" 을 안 읽었다');
-        assert.strictEqual(P2.ev('document.getElementById("peerOverlayToggle").checked'), false,
-          '체크박스가 저장값과 어긋난다 — 화면과 상태가 다른 말을 한다');
+        assert.strictEqual(P2.ev('document.getElementById("peerOverlayToggle").getAttribute("aria-pressed")'), 'false',
+          '토글 칩이 저장값과 어긋난다 — 화면과 상태가 다른 말을 한다');
         assert.strictEqual(P2.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), 0);
         assert.strictEqual(P2.ev('document.querySelectorAll("#grid .chip").length'), PEER_CHIPS,
           '상대 일정은 저장값과 무관하게 그대로 떠야 한다');
@@ -518,7 +522,7 @@ if (!JSDOM) {
     });
 
     // ── 변이② chipHtml 이 chip-mine 을 안 붙인다 → 내 겹이 상대 칩과 구분되지 않는다 ──
-    test('변이②: chipHtml 이 chip-mine 을 안 붙이면 「내 칩은 점선으로 구분된다」 계약이 깨진다', async () => {
+    test('변이②: chipHtml 이 chip-mine 을 안 붙이면 「내 칩은 내 색(연한 채움 + 왼쪽 막대)으로 구분된다」 계약이 깨진다', async () => {
       assert.strictEqual(P.ev('document.querySelectorAll("#grid .chip.chip-mine").length'), MINE_CHIPS,
         '사전조건: 정상 앱은 내 칩에 chip-mine 을 붙인다');
 

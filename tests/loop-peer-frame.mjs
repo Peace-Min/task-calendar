@@ -5,7 +5,7 @@
  *  증명하는 명제 넷:
  *    ① 「내 일정 겹쳐보기」를 **끄면** 열람 창에는 **그 사람의** 일정만 뜬다
  *    ①' 「내 일정 겹쳐보기」를 **켜면**(C4.1 · 기본값) 내 일정이 한 겹 함께 뜨되,
- *        내 것은 점선 칩(chip-mine)에 draggable=false 이고 **고칠 수 없다**(save 가 되돌린다)
+ *        내 것은 내 색 칩(chip-mine · 연한 채움 + 왼쪽 막대)에 draggable=false 이고 **고칠 수 없다**(save 가 되돌린다)
  *    ② 그 창은 호스트로 **아무것도 내보내지 못한다** — 봉인
  *    ③ 몇 번을 열고 닫아도 **내 데이터도 DB 도 변하지 않고**, 프레임이 쌓이지 않는다
  *
@@ -169,7 +169,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * ══════════════════════════════════════════════════════════════════════ */
 const FRAME_W = 'document.querySelector("#pvHost iframe").contentWindow';
 
-//  겹 토글을 **앱이 사람에게 준 그 경로로** 누른다 — 배너의 체크박스다(click → change → setPeerOverlay).
+//  겹 토글을 **앱이 사람에게 준 그 경로로** 누른다 — 배너 범례의 「내 일정」 칩이다(click → setPeerOverlay).
+//  ★ 2026-10-01(docs/PEER-OVERLAY-REDESIGN.md O1·O6) — 체크박스가 토글 버튼(aria-pressed)으로 바뀌었다.
+//    켜짐/꺼짐은 checked 가 아니라 aria-pressed 로 읽는다(상태의 단일 출처 __peerOverlay 가 그 속성을 세운다).
 //  ★ 상태를 만드는 것은 시험의 일이다. 앱을 고치거나 내부 변수에 직접 대입하면
 //    "사용자가 껐을 때 정말 이렇게 되는가" 를 증명하지 못한다.
 //  ★ 설정은 localStorage(tc_peerOverlay) 라 **라운드를 넘어 남는다.** 그래서 라운드마다
@@ -178,8 +180,8 @@ async function setOverlay(cdp, on) {
   const r = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
     const t=w.document.getElementById("peerOverlayToggle");
     if(!t) return JSON.stringify({err:"배너에 #peerOverlayToggle 이 없다 — 겹 토글이 사라졌거나 배너가 안 그려졌다"});
-    if(t.checked !== ${on ? 'true' : 'false'}) t.click();
-    return JSON.stringify({checked:!!t.checked,
+    if((t.getAttribute("aria-pressed") === "true") !== ${on ? 'true' : 'false'}) t.click();
+    return JSON.stringify({pressed:(t.getAttribute("aria-pressed") === "true"),
       attr:(w.document.body.dataset.peerOverlay || null),
       ls:(()=>{try{ return w.localStorage.getItem("tc_peerOverlay"); }catch(_){ return "(못 읽음)"; }})()});})()`));
   if (r.err) throw new Error('겹 토글 조작 실패: ' + r.err);
@@ -309,9 +311,9 @@ try {
     //  기본값이 켬이므로 끄지 않으면 내 겹까지 세어 대상 3건과 어긋난다(2026-09-09 실패 원인).
     //  ★ 끄고 켜는 것은 그 다음 ①' 에서 왕복으로 다시 본다.
     const offSt = await setOverlay(cdp, false);
-    ok(`R${r} 겹 토글을 끄면 체크가 풀리고 body 의 스위치도 내려간다`,
-       offSt.checked === false && offSt.attr === null && offSt.ls === '0',
-       `checked=${offSt.checked} data-peer-overlay=${offSt.attr} tc_peerOverlay=${offSt.ls}`);
+    ok(`R${r} 겹 토글을 끄면 「내 일정」 칩이 꺼짐(aria-pressed=false)이 되고 body 의 스위치도 내려간다`,
+       offSt.pressed === false && offSt.attr === null && offSt.ls === '0',
+       `aria-pressed=${offSt.pressed} data-peer-overlay=${offSt.attr} tc_peerOverlay=${offSt.ls}`);
 
     //  ①b **부모 문서에서 실제로 보이는가.** 프레임 안이 아무리 잘 그려져도, 부모 쪽에서
     //  모달이 0×0 이면 사용자에게는 아무것도 안 보인다.
@@ -494,9 +496,9 @@ try {
     //  ★ 여기가 이번(2026-09-09) 보완의 실질이다. 그전까지 이 파일에는 peerOverlay·_mine 이
     //    한 글자도 없었다 — 기능이 들어온 지 이틀이 지나도록 아무도 이 창에서 그것을 보지 않았다.
     const onSt = await setOverlay(cdp, true);
-    ok(`R${r} 겹 토글을 켜면 body 의 스위치가 선다`,
-       onSt.checked === true && onSt.attr === '1' && onSt.ls === '1',
-       `checked=${onSt.checked} data-peer-overlay=${onSt.attr} tc_peerOverlay=${onSt.ls}`);
+    ok(`R${r} 겹 토글을 켜면 「내 일정」 칩이 켜짐(aria-pressed=true)이 되고 body 의 스위치가 선다`,
+       onSt.pressed === true && onSt.attr === '1' && onSt.ls === '1',
+       `aria-pressed=${onSt.pressed} data-peer-overlay=${onSt.attr} tc_peerOverlay=${onSt.ls}`);
 
     const on = await visible(cdp);
     //  통제군 — 부모가 실제로 겹을 만들어 보냈는가. 부모의 비-git 일정 수와 맞아야 한다.
@@ -513,7 +515,7 @@ try {
     const mc = await mineChipProbe(cdp);
     ok(`R${r} 내 겹 칩을 격자에서 찾았다`, !mc.err, mc.err || `${mc.id}@${mc.date}`);
     if (!mc.err) {
-      ok(`R${r} 내 겹 칩이 chip-mine 이다(점선·무채색)`, mc.chipMine === true, `class 에 chip-mine 없음`);
+      ok(`R${r} 내 겹 칩이 chip-mine 이다(내 색 — 연한 채움 + 왼쪽 막대)`, mc.chipMine === true, `class 에 chip-mine 없음`);
       ok(`R${r} 내 겹 칩은 draggable="false" 다`, mc.draggable === 'false', `draggable=${mc.draggable}`);
       ok(`R${r} 일자 패널의 내 겹 카드가 card-mine 이다`, mc.card === true && mc.cardMine === true,
          `card=${mc.card} card-mine=${mc.cardMine}`);

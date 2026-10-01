@@ -15,7 +15,11 @@
   --faint:#9aa2b3;        /* 1px 테두리·비활성 전용(본문 금지, 약 2.6:1) */
   --faint-text:#6c7488;   /* 약화된 '본문' 텍스트용(완료·힌트) — #fff에서 4.68:1로 AA(일반 4.5:1) 충족 */
   --chip-outline:#818a9e; /* hollow 할 일 칩 경계 — #fff에서 3.38:1로 비텍스트 3:1 충족(모양 신호 강화) */
-  --mine-ink:#4b5563;     /* C4.1 '내 일정 겹'(열람 창) 전용 중립 잉크 — 과제 색과 절대 안 겹치게 무채색. #fff에서 7.6:1 */
+  /* 열람 창 「내 일정 겹」(docs/PEER-OVERLAY-REDESIGN.md O2·O7) — 연한 채움 + 진한 왼쪽 막대. 과제 색과 안 겹치는 중립 남색(슬레이트) 한 벌.
+     대비: 글자(--mine-text) / 채움(--mine-bg) 8.62:1 · 막대 / 패널 5.59:1 · 막대 / 채움 4.85:1 · 채움 / 패널 1.15:1(옅은 층) */
+  --mine-bar:#5a6886; --mine-bg:#eceff5; --mine-text:#394357; --mine-sep:#cfd5e1;
+  /* 시간 겹침(O5) — 앰버. 배지 글자 / 배지 바탕 5.81:1 · 칸 점 / 패널 3.50:1 · 일요일 칸 3.07:1(비텍스트 3:1) */
+  --ovl-bg:#fbefd0; --ovl-ink:#7a5600; --ovl-dot:#b97d00;
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --accent-fill:var(--accent);    /* 흰 글자를 얹는 accent '채움' 전용 — 테마의 --accent가 흰 글자에서 AA 미달이면 여기만 어둡게 리맵 */
@@ -1449,25 +1453,60 @@ body[data-peer] #peerBanner{
     띠 글자 크기(12px)에 맞추는 것만 여기서 덮는다. */
 body[data-peer] #peerBanner .check{ font-size:12px !important; color:var(--muted) !important; gap:5px }
 body[data-peer] #peerBanner .check input{ width:13px; height:13px }
-.peer-legend{ display:inline-flex; align-items:center; gap:5px }
-.peer-legend i{ display:inline-block; width:16px; height:0; border-top:1.5px dashed var(--mine-ink) }
+/*  O1 — 범례 칩 두 개(상용 캘린더의 「이름 + 색 견본」 목록). [▮ 그 사람](끄지 않음) · [☑ 내 일정](누르면 켜고 끔, aria-pressed).
+    켜짐 = 견본이 막대 색으로 차고 체크가 선다 · 꺼짐 = 빈 견본 + 흐린 글자. 상태는 __peerOverlay 하나에서만 나온다(O6). */
+.peer-legend{ display:inline-flex; align-items:center; gap:6px }
+.pl-chip{ display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px 0 8px; border:1px solid var(--line-2);
+          border-radius:999px; background:var(--panel); color:var(--text); font:inherit; font-size:var(--fs-meta); font-weight:600; line-height:1; white-space:nowrap }
+.pl-chip.pl-peer{ cursor:default }
+button.pl-chip.pl-mine{ cursor:pointer }
+button.pl-chip.pl-mine:hover{ background:var(--hover-bg) }
+button.pl-chip.pl-mine:focus-visible{ outline:2px solid var(--accent); outline-offset:1px }
+button.pl-chip.pl-mine[aria-pressed="false"]{ color:var(--muted); font-weight:500 }
+.pl-sw{ display:inline-flex; flex:none; align-items:stretch }
+.pl-sw-peer{ gap:2px; height:12px }
+.pl-sw-peer b{ display:block; width:4px; border-radius:2px; background:var(--chip-outline) }
+.pl-sw-peer b.m{ background:var(--mine-bar) }
+.pl-sw-mine{ position:relative; width:14px; height:14px; border-radius:4px; border:1.5px solid var(--mine-bar); background:transparent }
+.pl-mine[aria-pressed="true"] .pl-sw-mine{ background:var(--mine-bar) }
+.pl-mine[aria-pressed="true"] .pl-sw-mine::after{ content:""; position:absolute; left:3.5px; top:0.5px; width:3.5px; height:7px;
+          border:solid var(--panel); border-width:0 2px 2px 0; transform:rotate(45deg) }
 /*  P4 — 열람 창 전용 밀도 전환(고정 / 촘촘히 / 펼침). 겹 토글과 같은 .check 관례 — 새 컴포넌트를 만들지 않는다.  */
 .peer-dens{ display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap }
 
-/* ── C4.1 내 일정 겹(열람 창 전용) ─────────────────────────────────────────
-   ★ **과제 색을 쓰지 않는다.** 내 겹에 과제 색을 주면 상대의 어떤 과제 색과도 부딪힐 수 있고,
-     그 순간 "이건 누구 것인가"가 색으로는 안 읽힌다. 그래서 모양으로 가른다:
-     점선 · 채움 없음 · 중립 잉크(--mine-ink) 하나. 상대 칩은 지금 그대로 두는 게 요점이다.
-   ★ catById(null) → validColor 기본색이 style 로 들어오는 건 정상이다(칩 생성 경로가 하나다).
-     그 인라인 style 을 이기려면 !important 가 필요하다 — 여기서만 쓴다.
+/* ── 내 일정 겹(열람 창 전용) — docs/PEER-OVERLAY-REDESIGN.md O2·O3·O5 ─────────────
+   ★ **색 = 누구 것.** 상용 캘린더(Apple·Google)처럼 **연한 채움 + 진한 왼쪽 막대** — 남의 칩과 **같은 틀**이고
+     색(--mine-*)과 진하기로만 나눈다. 점선(옛 C4.1)은 끌기 잔상·빈 자리처럼 보여 미완성으로 읽혔다(2026-10-01 사용자).
+   ★ 과제 색은 여전히 쓰지 않는다 — 내 겹의 색은 과제 색과 안 부딪히는 중립 남색 한 벌이다.
+   ★ 칩·카드에 색을 박는 인라인 style 은 내 겹에는 **안 붙인다**(chipHtml). 다만 시간 칩(.chip-timed)의 기본 규칙이
+     !important 로 바탕을 비우므로 그 한 자리만 !important 로 되받는다.
    ★ 토글이 꺼지면 body 의 data-peer-overlay 가 사라지고 겹이 통째로 안 보인다.
      :not() 로 '끈 상태'를 겨냥해야 렌더 없이도 즉시 반응한다(렌더는 「+N」 때문에 따로 돈다). */
-body[data-peer] .chip.chip-mine{ background:transparent !important; border:1.5px dashed var(--mine-ink) !important; border-left-width:1.5px !important; color:inherit }
-body[data-peer] .chip.chip-mine .cdot{ background:var(--mine-ink) !important }
-body[data-peer] .card.card-mine{ outline:1.5px dashed var(--mine-ink); outline-offset:-2px; background:transparent }
+body[data-peer] .chip.chip-mine{ background:var(--mine-bg); border-left-color:var(--mine-bar); color:var(--mine-text) }
+body[data-peer] .chip.chip-mine.chip-timed{ background:var(--mine-bg) !important; border-left-color:var(--mine-bar) !important; padding-left:6px }
+body[data-peer] .chip.chip-mine .chip-t{ color:var(--mine-text) }
+body[data-peer] .chip.chip-mine .cdot{ display:none }
+/*  O3 — 한 칸 안에서 그 사람 일정 → 내 일정. 두 묶음이 다 있을 때만 사이에 아주 옅은 줄(.mine-sep)이 선다.
+    .blank 는 내 기간 막대를 주 안에서 같은 줄에 세우려고 상대 묶음을 빈 칸으로 채운 날의 자리(줄은 안 그린다). */
+.mine-sep{ height:1px; flex:none; margin:1px 4px; background:var(--mine-sep); pointer-events:none }
+.mine-sep.blank{ background:transparent }
+body[data-peer] .card.card-mine{ background:var(--mine-bg); border-left-color:var(--mine-bar) }
+body[data-peer] .card.card-mine .card-title{ color:var(--mine-text) }
 body[data-peer] .card.card-mine .card-actions{ display:none !important }
 body[data-peer]:not([data-peer-overlay]) .chip-mine,
-body[data-peer]:not([data-peer-overlay]) .card-mine{ display:none }
+body[data-peer]:not([data-peer-overlay]) .card-mine,
+body[data-peer]:not([data-peer-overlay]) .mine-sep,
+body[data-peer]:not([data-peer-overlay]) .ovl-dot{ display:none }
+/*  O5 — 시간 겹침. 카드 배지(겹친 상대 시간 함께) + 격자 날짜 옆 작은 점. 앰버 한 벌(--ovl-*). */
+.badge.ovl-badge{ background:var(--ovl-bg); color:var(--ovl-ink); max-width:none; display:inline-flex; align-items:center; gap:4px }
+.badge.ovl-badge .ic{ width:12px; height:12px }
+.ovl-dot{ width:7px; height:7px; border-radius:50%; background:var(--ovl-dot); flex:none }
+/*  O4 — 상세 패널의 사람별 묶음. 머리말 = 견본 + 이름 + (개수). */
+.dp-sec + .dp-sec{ border-top:1px solid var(--line) }
+.dp-sec-h{ display:flex; align-items:center; gap:7px; padding:12px 16px 0; font-size:var(--fs-meta); font-weight:700; color:var(--muted) }
+.dp-sec-n{ font-weight:600; color:var(--faint-text) }
+.dp-sec .dp-list{ padding-top:8px }
+.dp-sec-empty{ padding:8px 16px 14px; font-size:var(--fs-meta); color:var(--faint-text) }
 /* 타인 일정 열람(C4) — **읽기 전용**이다. 편집 어포던스를 하나도 주지 않는다:
    커서는 기본값, hover 강조 없음, 누를 수 있는 것은 월 이동과 닫기뿐. */
 .pv-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
@@ -1837,7 +1876,9 @@ html.dark{
   --shadow:0 12px 34px rgba(0,0,0,.55);
   --seg-sh:rgba(0,0,0,.55);   /* 다크는 패널이 트랙보다 '밝아' 떠오르므로 그림자를 더 진하게 */
   --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27; --chip-outline:#6b7588;
-  --mine-ink:#cbd5e1;     /* C4.1 '내 일정 겹' — 다크 패널(#1a2031)에서 9.9:1(라이트 --mine-ink 를 그대로 두면 1.9:1로 안 보인다) */
+  /* 내 일정 겹 — 다크: 글자/채움 8.72:1 · 막대/패널 5.90:1 · 막대/채움 4.92:1 · 겹침 배지 8.09:1 · 겹침 점/패널 8.67:1 */
+  --mine-bar:#8e9cbd; --mine-bg:#262e43; --mine-text:#c9d0de; --mine-sep:#3a4459;
+  --ovl-bg:#3a2f12; --ovl-ink:#f0c56b; --ovl-dot:#e3b766;
   --wknd-sun-bg:#2f2838; --wknd-sat-bg:#252c41;   /* = --sun/--sat 9% + --panel(#1a2031) — .num.sun 5.74:1 · .num.sat 5.72:1 */
 }
 /* 남은 건 라이트 전용 '틴트' surface 둘뿐 — 나머지는 베이스가 var(--panel)이라 리맵만으로 따라온다(열거 목록 삭제) */
@@ -1855,13 +1896,13 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 /* ★ --dim-bg 는 읽기전용·disabled 칸의 wash 다. 라이트(#fafbfd)를 물려받으면 이 테마들의 --panel 과 구분이 안 가
    "고칠 수 있는 칸"으로 보인다 — 테마마다 자기 패널보다 한 단계 어두운 값을 직접 준다(2026-09-10).
    --danger-line 도 같은 이유로 각 테마의 색조에 맞춘다(라이트 분홍 테두리가 초록·크림 위에서 튄다). */
-:root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
-:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
+:root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; --mine-bar:#5a6886; --mine-bg:#eceff5; --mine-text:#394357; --mine-sep:#cfd8d2; --ovl-bg:#fbefd0; --ovl-ink:#7a5600; --ovl-dot:#b97d00; }   /* --accent는 흰 글자에서 3.38:1(AA 미달) → 채움만 --accent-2급으로(5.31:1). 컨트롤 경계 3.16:1 */
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --sun:#b3353a; --wknd-sun-bg:#f5e5dc; --wknd-sat-bg:#ebe9e5; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; --mine-bar:#5f6a84; --mine-bg:#e9e8e8; --mine-text:#3a4254; --mine-sep:#d8ccb6; --ovl-bg:#f5e4bd; --ovl-ink:#6e4c05; --ovl-dot:#a8720a; }   /* accent는 흰 글자 4.52:1로 AA 충족 → 채움 리맵 불필요. 컨트롤 경계는 세피아 패널 대비 3.08:1.
    --muted 재맵(2026-09-18): #7a6a52 는 --dim-bg(#f4ecdd) 위의 흐린 글자(.rl-hrow 의 span.rl-h)에서 4.46:1 로 AA(4.5) 를 아슬하게 밑돌았다 — loop-ui-visual V8 이 기준선 근처로 잡던 그 한 건이다. 색상각(R:G:B = 122:106:82)을 그대로 두고 밝기만 4% 낮춘 #75664f 로 옮겼다: --dim-bg 4.75:1 · --panel(#fbf6ec) 5.17:1 · --bg(#f3ead9) 4.66:1 — 세 바탕 모두 AA 충족이다. 찬 --faint-text 를 재활용하지 않은 이유는 그 색이 크림 위에서 회청색으로 떠 세피아의 온기를 깨기 때문이다.
    --faint-text 재맵(2026-09-10): --dim-bg 를 세피아 크림(#f4ecdd)으로 두자 :root 의 #6c7488 이 다른 달 날짜(.cell.dim .num)에서 3.98:1 로 AA 미달 → #5f6779 (4.83:1). loop-ui-visual 이 잡았다.
    --sun 재맵: 크림색 패널·배경에서 #c43a3f는 요일머리 4.37:1·주말 숫자 4.27:1로 AA 미달 → 같은 색상각을 유지한 채 한 단계만 어둡게(5.04:1·4.91:1). --sat(#4b62a0)는 4.87~4.95:1로 충족해 그대로 둔다.
    --wknd-*-bg: 세피아 패널(#fbf6ec) 기준으로 미리 합성한 값 */
-:root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --danger-line:#a3000a; --ctl-border:#111; --dim-bg:#ededed; --star:#8a5a00; --mark-ink:#000; /* 고대비 — 골드도 흰 배경 5.93:1까지 낮춰 별표가 텍스트급 대비. --dim-bg 는 흰 패널과 확실히 갈리는 회색(읽기전용 칸이 흰칸으로 보이면 안 된다) */ }
+:root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --danger-line:#a3000a; --ctl-border:#111; --dim-bg:#ededed; --star:#8a5a00; --mark-ink:#000; --mine-bar:#26304a; --mine-bg:#e9ecf2; --mine-text:#000; --mine-sep:#444; --ovl-bg:#fff0c2; --ovl-ink:#4d3300; --ovl-dot:#8a5a00; /* 고대비 — 골드도 흰 배경 5.93:1까지 낮춰 별표가 텍스트급 대비. --dim-bg 는 흰 패널과 확실히 갈리는 회색(읽기전용 칸이 흰칸으로 보이면 안 된다) */ }
 /* 테마 선택 메뉴 */
 .thm-sw{display:inline-block;width:13px;height:13px;border-radius:4px;border:1px solid var(--line-2);flex:none;margin-right:7px}
 #themeMenu button{display:flex;align-items:center}
@@ -3899,6 +3940,8 @@ const PEER = (() => { try { return new URLSearchParams(location.search).get('pee
  *  ★ __peerOverlay 는 let 이다 — hpost() 앞의 __peerToldAt 이 TDZ 로 부팅을 끊었던 것과 같은
  *    자리이므로(2026-09-03), 선언을 쓰는 곳(passFilter)보다 **위에** 둔다. */
 let __peerOverlay = true;
+//  열람 대상의 이름(배너·상세 패널 머리말) — __bootMeta 는 파일 아래쪽 let 이라 렌더가 먼저 돌면 TDZ 다. 그래서 여기에 따로 둔다.
+let __peerWho = '';
 function peerOverlayOn(){ try{ return localStorage.getItem('tc_peerOverlay') !== '0'; }catch(_){ return true; } }
 //  data-peer-overlay 는 CSS 가 즉시 반응하는 스위치이고, renderAll() 은 격자의 「+N」 계산을
 //  다시 시키기 위한 것이다(감추기만 하면 넘침 개수가 겹을 센 채로 남는다).
@@ -3913,6 +3956,36 @@ function syncPeerOverlayAttr(){
     if(__peerOverlay) document.body.dataset.peerOverlay = '1';
     else delete document.body.dataset.peerOverlay;
   }catch(_){}
+  syncPeerOverlayToggle();
+}
+//  O6 — 범례의 「내 일정」 칩(#peerOverlayToggle)은 **__peerOverlay 에서만** 모양을 받는다.
+//    클릭·프로그램 호출(setPeerOverlay)·저장값 읽기(__applyState) 어느 길도 이 함수를 지난다 —
+//    예전 체크박스는 프로그램 호출이 checked 를 안 고쳐 「겹은 켜졌는데 체크는 꺼진」 화면이 나왔다(2026-10-01 캡처).
+function syncPeerOverlayToggle(){
+  try{
+    const t = document.getElementById('peerOverlayToggle');
+    if(!t) return;
+    t.setAttribute('aria-pressed', __peerOverlay ? 'true' : 'false');
+    t.classList.toggle('on', !!__peerOverlay);
+  }catch(_){}
+}
+//  O1 — 열람 띠의 범례 칩 두 개. 이름은 남의 DB 문자열이라 esc() 한다. 견본 색은 데이터가 온 뒤 paintPeerLegend 가 칠한다.
+function peerLegendHtml(who){
+  const nm = who || '상대';
+  const on = !!__peerOverlay;
+  return '<span class="peer-legend" role="group" aria-label="보이는 일정">'
+    + `<span class="pl-chip pl-peer" title="${esc(nm)} 님 일정 — 과제 색으로 칠합니다"><span class="pl-sw pl-sw-peer" aria-hidden="true"><b></b><b></b><b></b></span>${esc(nm)}</span>`
+    + `<button type="button" class="pl-chip pl-mine${on ? ' on' : ''}" id="peerOverlayToggle" aria-pressed="${on ? 'true' : 'false'}" aria-label="내 일정 겹쳐보기" title="내 일정 겹쳐보기 — 누르면 켜고 끕니다"><span class="pl-sw pl-sw-mine" aria-hidden="true"></span>내 일정</button>`
+    + '</span>';
+}
+//  그 사람 견본 = 그 사람 과제 색 막대 세 개(과제가 적으면 되풀이 · 없으면 중립색). validColor 를 지나므로 style 주입이 없다.
+function peerSwatchBars(){
+  const cols = ((state && state.categories) || []).map(c => validColor(c && c.color));
+  if(!cols.length) cols.push(validColor(''));
+  return [0, 1, 2].map(i => `<b style="background:${cols[i % cols.length]}"></b>`).join('');
+}
+function paintPeerLegend(){
+  try{ const sw = document.querySelector('#peerBanner .pl-sw-peer'); if(sw) sw.innerHTML = peerSwatchBars(); }catch(_){}
 }
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
@@ -4332,6 +4405,7 @@ window.__applyState = function(json, meta){
     try{
       document.body.dataset.peer = '1';
       const who = (meta && meta.peerName) ? String(meta.peerName) : '';
+      __peerWho = who;
       //  ★ C4.1 — 저장된 겹 설정을 여기서 읽는다. 주입은 열람 창이 반드시 지나는 한 곳이고,
       //    body[data-peer] 가 막 세워진 자리라 CSS 스위치도 같이 세우기에 맞다.
       __peerOverlay = peerOverlayOn();
@@ -4341,11 +4415,12 @@ window.__applyState = function(json, meta){
         //  이름은 남의 DB 문자열이다 — esc() 로 이스케이프한다(innerHTML 을 쓰는 유일한 이유는 토글·범례).
         b.innerHTML =
           `<span class="pb-who">${esc((who ? who + ' 님의 일정' : '다른 사람의 일정') + ' · 읽기 전용')}</span>`
-          + `<label class="check"><input type="checkbox" id="peerOverlayToggle"${__peerOverlay ? ' checked' : ''}> 내 일정 겹쳐보기</label>`
-          + `<span class="peer-legend"><i></i>점선 = 내 일정</span>`
+          + peerLegendHtml(who)  // O1 — [▮ 그 사람] · [☑ 내 일정](토글)
           + peerDensityHtml();   // P4 — 열람 창 전용 밀도(기본 펼침 · 내 화면 밀도와 따로 기억)
         const t = b.querySelector('#peerOverlayToggle');
-        if(t) t.addEventListener('change', () => setPeerOverlay(t.checked));
+        //  ★ 뒤집을 값은 버튼 모양이 아니라 **상태(__peerOverlay)** 에서 읽는다(O6 — 단일 출처).
+        if(t) t.addEventListener('click', () => setPeerOverlay(!__peerOverlay));
+        syncPeerOverlayToggle();
         b.querySelectorAll('input[name="peerDensity"]').forEach(r =>
           r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
       }
@@ -4357,6 +4432,7 @@ window.__applyState = function(json, meta){
     //  ★ 원본을 붙잡아 둔다 — save() 가 이걸로 되돌린다(peerRevert). 여기서 떠야 그 사람의
     //    데이터가 들어온 **직후**의 모습이 기준이 된다.
     if(PEER) __peerPristine = JSON.stringify(data);
+    if(PEER) paintPeerLegend();   // 범례 견본 = 그 사람 과제 색(데이터가 들어온 뒤라야 안다)
     filterCatId = null; filterSource = null; noteFilterCat = null;
     __bootMeta = meta || null;            // 스키마 게이트(가져오기·초기화)가 읽는 값 — 배지보다 먼저 세운다
     renderAll();
@@ -7490,6 +7566,41 @@ function entrySort(a,b){
   return (a.startTime||'99:99').localeCompare(b.startTime||'99:99')
       || String(a.createdAt).localeCompare(String(b.createdAt));
 }
+/*  O5 — 「시간 겹침」 판정(순수 함수 · 전역·DOM 을 안 쓴다 → 시험이 잘라서 단독으로 돌린다).
+ *  입력: 한 날짜의 occurrence 목록(상대 것과 내 것(_mine) 섞임).
+ *  출력: { 'p:<id>' | 'm:<id>' : [겹친 상대편 {id,title,startTime,endTime,mine}] } — **상대 ↔ 나** 사이의 겹침만.
+ *    · 종일(allDay)·시작 시각 없음·여러 날 일정·커밋 기록은 겹침 대상이 아니다(종일 막대는 시간 칸을 차지하지 않는다).
+ *    · 끝 시각이 없거나 시작보다 이르면 30분짜리로 본다. 맞닿기(10:00 끝 · 10:00 시작)는 겹침이 아니다.
+ *    · 키에 p:/m: 를 붙이는 이유 — 내 DB 와 상대 DB 의 id 가 우연히 같을 수 있다. */
+function peerTimeOverlaps(list){
+  const toMin = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '')); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+  const timed = [];
+  for(const e of (Array.isArray(list) ? list : [])){
+    if(!e || e.allDay || e.source === 'git') continue;
+    const os = e._occStart || e.date;
+    const oe = e._occEnd || ((e.endDate && e.endDate > e.date) ? e.endDate : e.date);
+    if(os !== oe) continue;
+    const s = toMin(e.startTime);
+    if(s === null) continue;
+    let en = toMin(e.endTime);
+    if(en === null || en <= s) en = s + 30;
+    timed.push({ e, s, en, mine: !!e._mine });
+  }
+  const out = {};
+  const info = (x) => ({ id: x.e.id, title: String(x.e.title || ''), startTime: x.e.startTime || '', endTime: x.e.endTime || '', mine: x.mine });
+  for(const a of timed){
+    if(a.mine) continue;
+    for(const b of timed){
+      if(!b.mine) continue;
+      if(a.s < b.en && b.s < a.en){
+        (out['p:' + a.e.id] = out['p:' + a.e.id] || []).push(info(b));
+        (out['m:' + b.e.id] = out['m:' + b.e.id] || []).push(info(a));
+      }
+    }
+  }
+  return out;
+}
+function ovlKey(e){ return (e && e._mine ? 'm:' : 'p:') + (e ? e.id : ''); }
 function passFilter(e){
   //  ★ C4.1 — 내 일정 겹은 **과제 축을 타지 않는다.** 열람 창 필터바에 있는 칩은 전부 상대 과제고,
   //    내 겹은 과제 구분이 없는 한 겹이다(categoryId=null). 그래서 상대 과제를 켜고 꺼도 내 겹은
@@ -8038,17 +8149,17 @@ function chipHtml(item){
   const span = (e.endDate && e.endDate > e.date) ? ` · ${e.date}~${e.endDate}` : '';
   // A. 단일일 시간 일정 = 선행 색점 + 굵은 시각(종일 막대와 한눈에 구분). 기간/반복/작업일지는 기존 막대 유지.
   const timed = (!git && !!time && seg === 'single');
-  const dot = timed ? `<span class="cdot" style="background:${col}"></span>` : '';
+  const mine = !!e._mine;
+  const dot = (timed && !mine) ? `<span class="cdot" style="background:${col}"></span>` : '';   // 내 시간 칩은 점 대신 왼쪽 막대(O2)
   const tdisp = timed ? chipTimeShort(e) : time;   // 시간 칩은 축약 시각(9시), 그 외는 기존
-  //  ★ C4.1 — 내 겹은 chip-mine 으로만 구분한다(색은 CSS 가 점선·무채색으로 덮는다).
-  //    과제 색을 쓰지 않는 이유: 어떤 상대 과제 색과도 부딪히면 안 되기 때문이다.
+  //  ★ 내 겹은 chip-mine 으로 구분한다 — 색은 CSS 의 --mine-* 토큰(연한 채움 + 진한 왼쪽 막대, O2).
+  //    과제 색을 쓰지 않는 이유: 어떤 상대 과제 색과도 부딪히면 안 되기 때문이다. 그래서 과제 색 인라인 style 도 안 붙인다.
   //    draggable=false — 끌어도 되돌아가지만(peerRevert), 끌리는 것처럼 보이는 것 자체가 거짓말이다.
   //    ★ P2 — 열람 창(PEER)의 칩은 **전부** draggable=false 다(남의 일정·할 일을 옮기는 척하지 않는다).
-  const mine = !!e._mine;
+  const colorStyle = mine ? '' : ` style="border-left-color:${col};background:${tint(col, seg !== 'single' ? 0.2 : undefined)}"`;
   return `<div class="chip${git?' chip-git':''}${timed?' chip-timed':''}${mine?' chip-mine':''}${rangeCls}" draggable="${(PEER||mine||kind==='recur')?'false':'true'}"
-    data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"
-    style="border-left-color:${col};background:${tint(col, seg !== 'single' ? 0.2 : undefined)}"
-    title="${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${tdisp?`<span class="chip-t">${esc(tdisp)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
+    data-id="${esc(e.id)}" data-occ="${esc(occDate)}" data-kind="${kind}"${colorStyle}
+    title="${mine?'내 일정 · ':''}${git?'🔧 작업일지 · ':''}${time?esc(time)+' ':''}${esc(e.title)}${c?' · '+esc(c.name):''}${span}${e.recur?' · '+esc(recurLabel(e)):''}">${aL}${dot}${tdisp?`<span class="chip-t">${esc(tdisp)}</span>`:''}${timed?`<span class="ctitle">${label}</span>`:label}${aR}</div>`;
 }
 // 할 일 칩(그리드) — 일정 막대와 구분: 초록 계열 + 체크 글리프, 제목
 function todoChipHtml(item){
@@ -8120,7 +8231,7 @@ function renderGrid(){
       const a = maxStr(occ._occStart, startDs), b = minStr(occ._occEnd, endDs);
       const single = (occ._occStart === occ._occEnd);
       const key = 'e:' + e.id + '|' + occ._occStart;
-      if(!single) ranges.push({ key, start:a, end:b });
+      if(!single) ranges.push({ key, start:a, end:b, mine: !!e._mine });
       for(let d = a; d <= b; d = addDays(d, 1)){
         const seg = single ? 'single' : (d === occ._occStart ? 'start' : (d === occ._occEnd ? 'end' : 'mid'));
         (byDate[d] = byDate[d] || []).push({ occ, seg, _key:key,
@@ -8154,19 +8265,57 @@ function renderGrid(){
 
   // 멀티데이 레인 배치 — 주(week)별 greedy 구간 채색으로 각 기간 막대에 고정 레인을 부여.
   // 같은 레인은 겹치지 않는 기간끼리만 재사용 → 겹치는 막대는 서로 다른 행, 한 막대는 주 내내 같은 행(연속). (Google Calendar식)
+  //  ★ O3(열람 창 겹) — 상대 막대와 내 막대는 **레인을 따로** 매긴다. 칸 안에서 내 묶음은 상대 묶음 **아래**에 서므로
+  //    레인 번호도 각 묶음 안에서 0부터다. 내 겹이 없으면(내 창 · 겹 끔) 묶음이 하나뿐이라 예전과 똑같이 배치된다.
   const laneMap = {};
   const weeks = totalCells / 7;
   for(let w = 0; w < weeks; w++){
     const wS = addDays(startDs, w*7), wE = addDays(startDs, w*7 + 6);
-    const inWk = ranges.filter(r => !(r.end < wS || r.start > wE))
-      .map(r => ({ key:r.key, s: maxStr(r.start, wS), e: minStr(r.end, wE) }))
-      .sort((x,y) => x.s < y.s ? -1 : x.s > y.s ? 1 : (x.key < y.key ? -1 : 1));
-    const laneEnds = [];   // laneEnds[l] = 그 레인이 점유 중인 마지막 날짜
-    for(const r of inWk){
-      let l = 0; while(l < laneEnds.length && laneEnds[l] >= r.s) l++;
-      laneEnds[l] = r.e;
-      laneMap[r.key + '@' + w] = l;
+    for(const grp of [false, true]){
+      const inWk = ranges.filter(r => !!r.mine === grp && !(r.end < wS || r.start > wE))
+        .map(r => ({ key:r.key, s: maxStr(r.start, wS), e: minStr(r.end, wE) }))
+        .sort((x,y) => x.s < y.s ? -1 : x.s > y.s ? 1 : (x.key < y.key ? -1 : 1));
+      const laneEnds = [];   // laneEnds[l] = 그 레인이 점유 중인 마지막 날짜
+      for(const r of inWk){
+        let l = 0; while(l < laneEnds.length && laneEnds[l] >= r.s) l++;
+        laneEnds[l] = r.e;
+        laneMap[r.key + '@' + w] = l;
+      }
     }
+  }
+  // 레인 배치: 기간 막대는 배정 레인 위치에 고정. 그 날 비어있는 레인(spacer 예정)은 단일 칩으로 backfill해
+  // 세로 낭비를 줄인다(그 날 해당 레인엔 막대가 없으므로 막대 연속성과 무관). 남은 단일은 아래로.
+  const laneOrder = (items, wk) => {
+    const rangeItems = [], singleItems = [];
+    for(const it of items){ (it.seg && it.seg !== 'single' ? rangeItems : singleItems).push(it); }
+    let slots = [];
+    if(rangeItems.length){
+      const laneOf = it => (laneMap[it._key + '@' + wk] || 0);
+      const maxLane = Math.max(...rangeItems.map(laneOf));
+      slots = new Array(maxLane + 1).fill(null);
+      for(const it of rangeItems) slots[laneOf(it)] = it;   // 주별 레인 보장 → 한 셀 안 레인 충돌 없음
+    }
+    let si = 0;
+    for(let l = 0; l < slots.length && si < singleItems.length; l++){ if(slots[l] === null) slots[l] = singleItems[si++]; }
+    return { ordered: slots.concat(singleItems.slice(si)), hasRange: rangeItems.length > 0 };   // 레인영역(backfill 포함) + 남은 단일
+  };
+  //  O3 — 칸마다 [상대 묶음] · [내 묶음] 을 먼저 짓는다. 각 묶음 안의 순서(segSort = 막대 → 시간순)는 그대로다.
+  const isMineIt = it => !!(it && it.occ && it.occ._mine);
+  const cellLay = {};
+  for(let i = 0; i < totalCells; i++){
+    const ds = addDays(startDs, i), wk = Math.floor(i / 7);
+    const list = byDate[ds] || [];
+    const mineItems = list.filter(isMineIt);
+    if(!mineItems.length){ cellLay[ds] = { theirs: laneOrder(list, wk).ordered, mine: null, theirN: list.length }; continue; }
+    const theirItems = list.filter(it => !isMineIt(it));
+    const b = laneOrder(mineItems, wk);
+    cellLay[ds] = { theirs: laneOrder(theirItems, wk).ordered, mine: b.ordered, mineRange: b.hasRange, theirN: theirItems.length };
+  }
+  //  내 기간 막대가 한 주 안에서 **같은 줄**에 이어지도록 — 내 막대가 지나는 칸들의 상대 묶음을 같은 높이(빈 칸)로 맞춘다.
+  for(let w = 0; w < weeks; w++){
+    const lays = [0,1,2,3,4,5,6].map(j => cellLay[addDays(startDs, w*7 + j)]).filter(L => L && L.mine && L.mineRange);
+    const pad = Math.max(0, ...lays.map(L => L.theirs.length));
+    for(const L of lays) while(L.theirs.length < pad) L.theirs.push(null);
   }
 
   // 키보드 포커스(roving tabindex) 대상 셀 — focusDs 우선, 범위 밖이면 오늘/첫 셀로 보정(항상 정확히 1개 보장)
@@ -8193,30 +8342,25 @@ function renderGrid(){
     const list = byDate[ds] || [];
     // C. 칩을 (성능상 최대 12개까지) 렌더 → fitChips가 셀 높이에 맞춰 들어갈 만큼만 표시하고 나머지는 +N으로 접음
     const RENDER_CAP = dens === 'expand' ? 60 : 12;
-    const wk = Math.floor(i / 7);
-    // 레인 배치: 기간 막대는 배정 레인 위치에 고정. 그 날 비어있는 레인(spacer 예정)은 단일 칩으로 backfill해
-    // 세로 낭비를 줄인다(그 날 해당 레인엔 막대가 없으므로 막대 연속성과 무관). 남은 단일은 아래로.
-    const rangeItems = [], singleItems = [];
-    for(const it of list){ (it.seg && it.seg !== 'single' ? rangeItems : singleItems).push(it); }
-    let slots = [];
-    if(rangeItems.length){
-      const laneOf = it => (laneMap[it._key + '@' + wk] || 0);
-      const maxLane = Math.max(...rangeItems.map(laneOf));
-      slots = new Array(maxLane + 1).fill(null);
-      for(const it of rangeItems) slots[laneOf(it)] = it;   // 주별 레인 보장 → 한 셀 안 레인 충돌 없음
-    }
-    let si = 0;
-    for(let l = 0; l < slots.length && si < singleItems.length; l++){ if(slots[l] === null) slots[l] = singleItems[si++]; }
-    const ordered = slots.concat(singleItems.slice(si));   // 레인영역(backfill 포함) + 남은 단일
+    //  O3 — [상대 묶음] + (둘 다 있으면 옅은 구분줄) + [내 묶음]. 구분줄은 기록이 아니다(+N 셈에서 뺀다).
+    const L = cellLay[ds];
+    const SEP = { sep: true, blank: L.theirN === 0 };
+    const ordered = L.mine ? (L.theirs.length ? L.theirs.concat([SEP], L.mine) : L.mine) : L.theirs;
     const shown = ordered.slice(0, RENDER_CAP);
-    const chips = shown.map(it => it === null ? '<div class="chip-spacer"></div>' : chipHtml(it)).join('');
-    const realShown = shown.filter(it => it !== null).length;
-    const extra = Math.max(0, (rangeItems.length + singleItems.length) - realShown);   // 미렌더 실 기록 수(+N)
+    const chips = shown.map(it => it === null ? '<div class="chip-spacer"></div>'
+      : it.sep ? `<div class="mine-sep${it.blank ? ' blank' : ''}" aria-hidden="true"></div>` : chipHtml(it)).join('');
+    const realShown = shown.filter(it => it !== null && !it.sep).length;
+    const extra = Math.max(0, list.length - realShown);   // 미렌더 실 기록 수(+N)
+    //  O5 — 그날 상대 ↔ 내 시간 일정이 겹치면 날짜 옆에 작은 점(겹이 켜져 있고 내 일정이 있는 날만 따진다).
+    const ovl = !!(PEER && __peerOverlay && L.mine)
+      && Object.keys(peerTimeOverlaps(list.filter(it => it.occ).map(it => it.occ))).length > 0;
     const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일`
       + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
-      + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음');
+      + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음')
+      + (ovl ? ', 시간이 겹치는 일정 있음' : '');
+    const ovlDot = ovl ? '<span class="ovl-dot" role="img" aria-label="시간이 겹치는 일정이 있습니다" title="시간이 겹치는 일정이 있습니다"></span>' : '';
     html += `<div class="${cls}" data-date="${ds}" role="gridcell" tabindex="${ds===tabDs?0:-1}" aria-selected="${ds===selectedDate}" aria-label="${esc(aria)}">
-      <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${hol?`<span class="hol">${esc(hol)}</span>`:''}</div>
+      <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${ovlDot}${hol?`<span class="hol">${esc(hol)}</span>`:''}</div>
       <div class="chips" data-extra="${extra}">${chips}</div></div>`;
     if(i % 7 === 6) html += '</div>';
   }
@@ -8261,7 +8405,7 @@ function fitChips(){
     // (조건부로 바꿔봐도 '들어갈 때만 올린다' = '이미 fit에 반영돼 있다'라 발동 자체가 불가능한 죽은 코드가 된다.)
     // 원래 의도인 '너무 적게 보이지 않게'는 루프가 이미 최대치를 뽑아내는 것으로 달성된다.
     if(fit > chips.length) fit = chips.length;
-    const hidden = chips.slice(fit).filter(c => !c.classList.contains('chip-spacer')).length + extra;  // spacer는 '기록' 아님 → +N 제외
+    const hidden = chips.slice(fit).filter(c => !c.classList.contains('chip-spacer') && !c.classList.contains('mine-sep')).length + extra;  // spacer·겹 구분줄은 '기록' 아님 → +N 제외
     chips.forEach((c, i) => { c.style.display = i >= fit ? 'none' : ''; });
     if(hidden > 0){                                   // 숨긴 게 있을 때만 더보기(‘+0개’ 방지)
       // '개 더보기'는 좁은 셀에서 CSS(@container)가 접는다 → 보조기술용 전체 문구는 aria-label로 보존.
@@ -8276,7 +8420,8 @@ function fitChips(){
 }
 window.addEventListener('resize', () => { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(fitChips); });
 
-function cardHtml(e){
+//  overlaps — O5 「시간 겹침」(peerTimeOverlaps 의 한 항목: 겹친 상대편 목록). 열람 창 겹에서만 들어온다.
+function cardHtml(e, overlaps){
   const c = catById(e.categoryId);
   const col = validColor(c && c.color);
   const time = timeLabel(e);
@@ -8301,10 +8446,18 @@ function cardHtml(e){
   const whenRow = (time || loc) ? `<div class="card-when">${time?`<span class="cw-time">${ICON.clock} ${esc(time)}</span>`:''}${loc?`<span class="cw-loc">${ICON.pin} ${esc(loc)}</span>`:''}</div>` : '';
   //  ★ C4.1 — 내 겹 카드. 편집 어포던스는 body[data-peer] .card-actions allowlist 가 이미 감추지만,
   //    거기 기대는 것만으로는 "이 카드가 내 것이라서 못 고친다"가 안 보인다 — CSS 에서 한 번 더 준다.
-  return `<div class="card${flashTargetId===e.id?' flash':''}${e._mine?' card-mine':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
+  //  ★ O5 — 겹친 상대의 시간을 배지에 함께 적는다(여럿이면 첫 건 + 「외 N」, 전부는 툴팁).
+  const ovl = (Array.isArray(overlaps) && overlaps.length) ? overlaps : null;
+  const ovRange = o => o.startTime + (o.endTime ? '–' + o.endTime : '');
+  const ovWho = o => o.mine ? '내 일정' : ((__peerWho ? __peerWho + ' 님' : '상대') + ' 일정');
+  const ovlBadge = ovl
+    ? `<span class="badge ovl-badge" title="${esc(ovWho(ovl[0]) + '과 시간이 겹칩니다 — ' + ovl.map(o => ovRange(o) + ' ' + o.title).join(' · '))}">${ICON.clock} 시간 겹침 · ${esc(ovRange(ovl[0]))}${ovl.length > 1 ? ` 외 ${ovl.length - 1}` : ''}</span>`
+    : '';
+  return `<div class="card${flashTargetId===e.id?' flash':''}${e._mine?' card-mine':''}${ovl?' card-ovl':''}" data-id="${esc(e.id)}" data-occ="${esc(occS)}" style="--c:${col}">
     <div class="card-top">
       ${git?`<span class="badge badge-git" title="커밋에서 가져온 기록(Git·SVN)">${ICON.git} 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
+      ${ovlBadge}
     </div>
     <div class="card-title">${esc(e.title)}</div>
     ${whenRow}
@@ -8335,8 +8488,21 @@ function dayDetailHtml(){
       <button class="btn primary sm" id="btnAddHere">${ICON.plus} 추가</button>
     </div>
   </div>`;
+  //  O4 — 열람 창 겹이 켜져 있으면 **사람별 두 묶음**(머리말 + 개수). 시간 겹침(O5)은 이 날 목록으로 한 번 계산한다.
+  if(PEER && __peerOverlay && list.length){
+    const ov = peerTimeOverlaps(list);
+    const card = e => cardHtml(e, ov[ovlKey(e)]);
+    const theirs = list.filter(e => !e._mine), mineL = list.filter(e => e._mine);
+    const sec = (cls, title, items, sw) => `<section class="dp-sec dp-sec-${cls}" aria-label="${esc(title)} ${items.length}건">`
+      + `<h3 class="dp-sec-h">${sw}<span class="dp-sec-t">${esc(title)}</span> <span class="dp-sec-n">(${items.length})</span></h3>`
+      + (items.length ? `<div class="dp-list">${items.map(card).join('')}</div>` : '<div class="dp-sec-empty">이 날짜에는 없습니다</div>')
+      + '</section>';
+    return html
+      + sec('peer', (__peerWho ? __peerWho + ' 님' : '상대') + ' 일정', theirs, `<span class="pl-sw pl-sw-peer" aria-hidden="true">${peerSwatchBars()}</span>`)
+      + sec('mine', '내 일정', mineL, '<span class="pl-sw pl-sw-peer" aria-hidden="true"><b class="m"></b></span>');
+  }
   html += list.length
-    ? `<div class="dp-list">${list.map(cardHtml).join('')}</div>`
+    ? `<div class="dp-list">${list.map(e => cardHtml(e)).join('')}</div>`
     //  ★ 열람 창에서는 **만드는 법을 알려 주지 않는다.** 거기서는 더블클릭도 ＋ 추가도 막혀 있어
     //    (openEntryModal 이 PEER 에서 되돌아간다) 시키는 대로 해 봐야 아무 일도 안 일어난다.
     //    없는 문을 가리키는 안내는 안내가 아니라 함정이다. 2026-09-03 캡처에서 발견.
