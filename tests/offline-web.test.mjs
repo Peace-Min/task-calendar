@@ -338,6 +338,28 @@ if (!JSDOM) {
         assert.strictEqual(W.posts('unsavedState').length, 0, '충돌인데 미저장 알림을 보냈다');
       });
     },
+    //  부팅 뒤 + 부팅 재시도(reloadState) 대기 중에 잠긴 save() 가 남긴 미저장분 — 재시도가 붙어도 **덮이지 않는다**.
+    //  루프를 재연결 확인(dbPing)으로 넘겨, 붙으면 그 편집을 먼저 저장한다(S5). 2026-10-01 loop-offline O1s 가 잡은 구멍.
+    async unsavedSurvivesBootRetry(source) {
+      await withBoot(source, async (W) => {
+        W.applyState();
+        W.applyError('서버에 연결하지 못했습니다', { retryable: true, kind: 'network' });   // 사용 중 reloadState 실패 → 부팅 재시도 루프
+        assert.strictEqual(W.ev('bootOk'), true, '전제: 부팅 스냅샷은 화면에 남는다');
+        W.clear();
+        W.ev("state.entries.push({ id:'x9', date:'2026-10-01', title:'재시도 사이 편집' }); save();");
+        await settle();
+        assert.strictEqual(W.reqs('saveState').length, 0, '잠긴 save() 가 저장을 보냈다');
+        assert.strictEqual(W.ev('unsaved'), true, '편집이 남았는데 미저장 표시가 없다');
+        W.handlers.dbPing = { ok: true };
+        W.handlers.saveState = { ok: true };
+        await W.run(20000);
+        assert.strictEqual(W.posts('reloadState').length, 0, '미저장분이 있는데 부팅 재시도가 reloadState 를 보냈다 — 붙으면 그 편집을 덮는다');
+        const sv = W.reqs('saveState');
+        assert.ok(sv.length === 1 && sv[0].params.state.entries.some((e) => e.id === 'x9'), '재연결이 미저장분을 저장하지 않았다: ' + sv.length);
+        assert.strictEqual(W.ev('unsaved'), false);
+        assert.ok(W.ev("state.entries.some(function(e){ return e.id === 'x9'; })"), '편집이 메모리에서 사라졌다');
+      });
+    },
   };
 
   // ── 잠금 진리표 ──
@@ -371,6 +393,7 @@ if (!JSDOM) {
     assert.ok(W.w.document.body.classList.contains('db-locked'), 'body.db-locked 가 없다 — 주 버튼이 흐려지지 않는다');
   }));
   test('잠금④: save()·saveFull() 마지막 방어 — 부팅 실패면 빈 상태로, 끊김이면 메모리에 남기고 보내지 않는다', () => checks.saveRefusedWhileLocked(src));
+  test('잠금⑤: 부팅 재시도 대기 중(부팅 뒤) 잠긴 save() 의 미저장분은 reloadState 로 덮이지 않고 재연결 저장으로 간다(S5)', () => checks.unsavedSurvivesBootRetry(src));
 
   // ── 연결 상자 — 종류별 문구·재시도 정책 ──
   test('상자①: network — 문구 · 15·30·60 뒤 300초 꼬리 · 꼬리 문구 「다음 재시도 N분 N초 후」(A3)', () => withBoot(src, async (W) => {
@@ -650,6 +673,8 @@ if (!JSDOM) {
     rejects(checks.pingSchedule(mutate('      const wait = (d == null) ? tail : d;', '      const wait = d;', src)), '변이를 잡지 못했다'));
   test('변이⑥: unsavedState 를 보내지 않으면 막대③ 이 실패한다', () =>
     rejects(checks.unsavedPosted(mutate("  hpost({ cmd:'unsavedState', on: v });", '', src)), '변이를 잡지 못했다'));
+  test('변이⑧: 미저장 때 부팅 재시도를 재연결 확인으로 넘기지 않으면 잠금⑤ 가 실패한다', () =>
+    rejects(checks.unsavedSurvivesBootRetry(mutate("  if(v && bootOk && __connLoop === 'boot') connHandOffToPing();\n", '', src)), '변이를 잡지 못했다'));
   test('변이⑦: 네트워크 저장 실패를 옛 토스트로 되돌리면 막대① 이 실패한다', () =>
     rejects(checks.barOnNetworkNotConflict(mutate("    else if(saveFailIsNetwork(res)){ keep = true; setUnsaved(true); connLost(kind || 'network', res); }\n", '', src)), '변이를 잡지 못했다'));
 }

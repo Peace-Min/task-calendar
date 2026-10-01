@@ -4870,7 +4870,16 @@ function setUnsaved(v){
   if(!HOST || PEER || unsaved === v) return;
   unsaved = v;
   hpost({ cmd:'unsavedState', on: v });
+  //  ★ 부팅 뒤(정상 스냅샷이 화면에 있다) + 미저장인데 부팅 재시도(reloadState)가 루프를 맡고 있으면, 그 재시도가
+  //    **붙는 순간** 주입이 메모리의 미저장분을 말없이 덮는다(2026-10-01 loop-offline O1s 실측). 재연결 확인
+  //    (dbPing → 미저장 저장이 먼저, S5)으로 넘긴다. __applyStateError 의 같은 갈래는 '다음 실패' 때만 넘겼다.
+  if(v && bootOk && __connLoop === 'boot') connHandOffToPing();
   connSyncUi();
+}
+function connHandOffToPing(){
+  if(__bootRetry) __bootRetry.onSuccess();
+  if(conn === 'denied'){ __connLoop = 'ping'; pingRetry().onError(false); return; }   // 권한·구조 — 수동만([다시 시도] = 핑)
+  connStartLoop();
 }
 //  화면을 상태에 맞춘다 — body.db-locked · 연결 상자(부팅 뒤) · 미저장 막대 · 「사용자 정보」의 DB 한 줄.
 //  ★ 부팅 전·부팅 실패 단계의 상자는 __applyStateError/clearBootError 가 그대로 맡는다(여기서 걷지 않는다).
