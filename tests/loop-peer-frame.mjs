@@ -353,7 +353,9 @@ try {
     ok(`R${r} 읽기 전용 표시가 있다`, shown.peerAttr === '1' && /읽기 전용/.test(shown.banner), shown.banner);
     ok(`R${r} 같은 캘린더 UI 가 그대로 뜬다(격자·과제 필터)`, shown.grid === 35 && shown.chips >= 1,
        `격자 ${shown.grid} · 필터칩 ${shown.chips}`);
-    ok(`R${r} 메모가 새지 않는다`, shown.memoLeak === false);
+    //  ★ 2026-10-01 PEER-VIEW-FULL P2 — 열람 창은 메인 화면에 보이는 것을 다 보인다. 대상의 메모는 이제 **보여야** 한다
+    //    (예전 「메모가 새지 않는다」는 최소 payload 시절의 기대였다). 내 겹(P6)은 여전히 일정 한 겹뿐이다.
+    ok(`R${r} 대상 일정의 메모가 열람 창에 온다(P2)`, shown.memoLeak === true);
 
     //  ②b 호스트가 부모에 채워 준 것이 **프레임으로 넘어오지 않는가.**
     //  ★ 호스트는 web.CoreWebView2.ExecuteScriptAsync 만 쓴다 — 최상위 문서 전용이고

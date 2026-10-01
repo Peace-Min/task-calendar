@@ -1389,7 +1389,7 @@ test('변이㉟-g: iframe 에서 ?peer=1 을 빼면 ㉟b 가 실패한다(내 �
 });
 
 test('변이㉟-h: hpost 의 PEER 봉인을 풀면 ㉟d 가 실패한다', () => {
-  const bad = mutate(src, '  if(PEER){\n    const now = Date.now();', '  if(false){\n    const now = Date.now();');
+  const bad = mutate(src, "  if(PEER){\n    const cmd = String((o && o.cmd) || '');", "  if(false){\n    const cmd = String((o && o.cmd) || '');");
   assert.throws(() => checks.peerBridgeSealed(bad), /PEER 를 막지 않는다/);
 });
 

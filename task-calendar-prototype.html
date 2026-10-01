@@ -15039,10 +15039,20 @@ if(HOST){ // 데스크톱 위젯 모드: 상단 호스트바(이동/설정/닫�
 //    **앞으로 생길 명령도** 자동으로. 그게 이 방식이 유지보수를 안 늘리는 이유다.
 //  ★ 조용히 버리지 않고 **말한다.** 봉인 뒤에 새 편집 버튼이 생기면 그건 '눌리는데 아무 일도
 //    안 나는 고장'으로 보이는데, 안내가 있으면 '읽기 전용이구나'가 된다.
+//  열람 창(PEER)에서 부모·호스트로 가는 전송은 **전부 버린다**(봉인). 안내는 **쓰기 요청일 때만** 한다 —
+//  ★ 2026-10-01 QA 실측: 열람 창이 뜰 때마다 부팅의 자동 전송(ready · 알림 동기화 등)이 봉인에 걸려,
+//    아무것도 누르지 않았는데 「읽기 전용 보기입니다」 토스트가 2초쯤 떴다. 사용자는 뭘 잘못 눌렀나 의심한다.
+//    그래서 **자동 전송 목록**(부팅·동기화·조회처럼 사람이 누르지 않아도 나가는 것)은 조용히 버리고, 그 밖은 말한다.
+//    목록 밖이 기본으로 '말한다' 인 이유: 새 쓰기 명령이 생겨도 안내가 빠지지 않게(조용히 묻히는 쪽이 더 나쁘다).
+//    편집 함수들은 앞에서 peerReadOnly()/peerRevert() 가 먼저 막고 말하므로 여기는 마지막 그물이다.
+const PEER_SILENT_CMD = new Set(['ready','reminderSync','unsavedState','loadProjects','loadCodes','loadCustomers','reloadState','updateCheck','updateSourceGet','dbInfoGet','focus']);
 function hpost(o){
   if(PEER){
-    const now = Date.now();
-    if(now - __peerToldAt > 1500){ __peerToldAt = now; try{ toast('읽기 전용 보기입니다 — 여기서는 바꿀 수 없습니다', 'info'); }catch(_){} }
+    const cmd = String((o && o.cmd) || '');
+    if(!PEER_SILENT_CMD.has(cmd)){
+      const now = Date.now();
+      if(now - __peerToldAt > 1500){ __peerToldAt = now; try{ toast('읽기 전용 보기입니다 — 여기서는 바꿀 수 없습니다', 'info'); }catch(_){} }
+    }
     return;
   }
   try{ window.chrome.webview.postMessage(JSON.stringify(o)); }catch(e){}
