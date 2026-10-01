@@ -38,7 +38,7 @@ const ok = (n, c, d = '') => {
   else { fail++; F.push(n + (d ? ' — ' + d : '')); console.log(`  ✗ ${n}${d ? ' — ' + d : ''}`); }
 };
 function sql(q, { readOnly = true, what = 'SQL' } = {}) {
-  const r = spawnSync(MYSQL, [`-u${USER}`, `-p${PW}`, 'taskmgr', '-N', '-B', '-e', q], { encoding: 'utf8' });
+  const r = spawnSync(MYSQL, [`-u${USER}`, `-p${PW}`, (process.env.TC_TEST_DB_NAME || 'taskmgr'), '-N', '-B', '-e', q], { encoding: 'utf8' });
   //  ★ stderr 첫 줄은 거의 항상 '비번을 명령줄에' 경고다 — 그걸 오류로 보고하면 진짜 원인이 가려진다.
   if (r.status !== 0) {
     const lines = (r.stderr || '').split('\n').filter((l) => l.trim() && !/Using a password/.test(l));

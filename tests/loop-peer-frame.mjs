@@ -64,7 +64,7 @@ const ok = (n, c, d = '') => {
   if (c) { pass++; } else { fail++; F.push(n + (d ? ' — ' + d : '')); console.log(`  ✗ ${n}${d ? ' — ' + d : ''}`); }
 };
 function sql(q, what = 'SQL') {
-  const r = spawnSync(MYSQL, [`-u${USER}`, `-p${PW}`, 'taskmgr', '-N', '-B', '-e', q], { encoding: 'utf8' });
+  const r = spawnSync(MYSQL, [`-u${USER}`, `-p${PW}`, (process.env.TC_TEST_DB_NAME || 'taskmgr'), '-N', '-B', '-e', q], { encoding: 'utf8' });
   if (r.status !== 0) {
     const lines = (r.stderr || '').split('\n').filter((l) => l.trim() && !/Using a password/.test(l));
     throw new Error(`${what} 실패: ${lines[0] || '(stderr 없음)'}`);

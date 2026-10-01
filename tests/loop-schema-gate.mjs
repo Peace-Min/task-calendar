@@ -79,7 +79,7 @@ const ok = (n, c, d = '') => {
 };
 
 function q(sql) {
-  const r = spawnSync(MYSQL, [`-u${USER}`, `-p${PW}`, 'taskmgr', '-N', '-B', '-e', sql], { encoding: 'utf8' });
+  const r = spawnSync(MYSQL, [`-u${USER}`, `-p${PW}`, (process.env.TC_TEST_DB_NAME || 'taskmgr'), '-N', '-B', '-e', sql], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error('SQL 실패: ' + (r.stderr || '').split('\n')[0]);
   return (r.stdout || '').trim();
 }
