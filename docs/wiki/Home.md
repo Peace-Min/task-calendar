@@ -4,6 +4,7 @@
 
 ## 사용자
 
+- [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정) — 무엇을 누르면 어느 날짜가 선택되는지 · 기간 막대 클릭 수정(2026-10-01)
 - [과제 순서 바꾸기](과제-순서-바꾸기) — 「과제 관리」의 ▲▼ 로 순서를 정하면 보고서 순서가 따라간다
 - [서버 연결이 끊겼을 때](서버-연결이-끊겼을-때) — 화면에 무엇이 뜨고, 무엇을 하면 되는지
 
@@ -16,3 +17,4 @@
 - 기획서: [`docs/OFFLINE-RESILIENCE.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/OFFLINE-RESILIENCE.md)
 - 실 위젯 장애 주입 루프: `tests/loop-offline.mjs` (디버그 실행에서만 동작)
 - 과제 순서 기획서: [`docs/CATEGORY-ORDER.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/CATEGORY-ORDER.md) · 실 위젯 루프 `tests/loop-category-order.mjs`
+- 기간 칩 클릭 버그 기획서: [`docs/BUG-RANGE-CHIP-CLICK.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/BUG-RANGE-CHIP-CLICK.md) · 실 위젯 루프 `tests/loop-range-chip.mjs`
