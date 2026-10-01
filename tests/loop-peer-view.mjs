@@ -165,20 +165,28 @@ function setup() {
   sql(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,sort_order,created_at,updated_at) ` +
       `VALUES (${t},1,'c-pv-1','local','열람시험과제','#3e5be0',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 과제' });
-  sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,start_time,end_time,title,memo,source,location,sort_order,created_at,updated_at) ` +
-      `VALUES (${t},1,'e-pv-1',1,'2026-09-10',0,'09:00','10:00','열람시험 단발','비밀메모','','',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
+  //  ★ remind=45 · location 을 심는다 — 장소는 와야 하고(P2) 알림 설정은 안 와야 한다(P3).
+  sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,start_time,end_time,title,memo,source,location,remind,sort_order,created_at,updated_at) ` +
+      `VALUES (${t},1,'e-pv-1',1,'2026-09-10',0,'09:00','10:00','열람시험 단발','비밀메모','','3층 열람회의실',45,0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 일정1' });
   sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,source,location,recur_freq,recur_interval,recur_count,sort_order,created_at,updated_at) ` +
       `VALUES (${t},2,'e-pv-2',1,'2026-09-01',1,'열람시험 반복','','','','weekly',1,0,1,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 일정2' });
   sql(`INSERT INTO cal_entry_except (user_id,entry_no,except_date) VALUES (${t},2,'2026-09-08')`,
       { readOnly: false, what: '대상 예외일' });
-  //  ★ 새어 나오면 안 되는 것들도 심는다 — '안 준다'를 증명하려면 있어야 한다.
+  //  ★ 2026-10-01(docs/PEER-VIEW-FULL.md P2) — 커밋·할 일은 이제 **와야 하는** 것이다(내 화면이 그린다).
+  //    '안 준다'를 증명할 것(P3: 과제별 시간·근태·회의실)은 아래에 따로 심는다.
   sql(`INSERT INTO cal_entry_commit (user_id,entry_no,seq,hash,short_hash,subject,body) ` +
       `VALUES (${t},1,0,'deadbeef','deadbee','비밀 커밋 제목','비밀 본문')`, { readOnly: false, what: '대상 커밋' });
   sql(`INSERT INTO cal_todo (user_id,todo_no,uid,todo_text,note,done,prio,sort_order,created_at,updated_at) ` +
       `VALUES (${t},1,'t-pv-1','비밀 할일','비밀 비고',0,'normal',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 할일' });
+  //  ★ 새어 나오면 안 되는 것들(P3) — '안 준다'를 증명하려면 있어야 한다.
+  sql(`INSERT INTO cal_room (user_id,name,sort_order) VALUES (${t},'비밀회의실',0)`, { readOnly: false, what: '대상 회의실' });
+  sql(`INSERT INTO cal_task_hours (user_id,work_date,cat_no,hours,updated_at) VALUES (${t},'2026-09-10',1,7.25,'2026-01-01 00:00:00.000')`,
+      { readOnly: false, what: '대상 과제별 시간' });
+  sql(`INSERT INTO cal_attendance (user_id,work_date,status,overtime,updated_at) VALUES (${t},'2026-09-10','2',3,'2026-01-01 00:00:00.000')`,
+      { readOnly: false, what: '대상 근태' });
 }
 function cleanup() {
   for (const u of ALL_USERS) {
@@ -226,14 +234,28 @@ try {
   ok('미등록 요청자는 못 본다', peek('__없는사람__', U_IN).allowed === false);
   ok('빈 대상은 못 본다', peek(U_ALL, '').allowed === false);
 
-  console.log('\n[3] 최소 payload — 목적에 없는 것은 아예 안 온다');
+  //  ★ 2026-10-01 개정(docs/PEER-VIEW-FULL.md P2/P3). 옛 [3] 은 「최소 payload」(메모·커밋·할 일이 안 온다)였다.
+  console.log('\n[3] 화면 범위 payload — 내 화면이 그리는 것은 오고(P2), 보고서·알림 값은 안 온다(P3)');
+  const e1 = (a.entries || []).find((e) => e.id === 'e-pv-1') || {};
+  ok('일정 메모가 온다', e1.memo === '비밀메모', JSON.stringify(e1.memo));
+  ok('일정 장소가 온다', e1.location === '3층 열람회의실', JSON.stringify(e1.location));
+  ok('일정에 커밋이 붙어 온다(제목·본문)',
+     Array.isArray(e1.commits) && e1.commits.length === 1 && e1.commits[0].subject === '비밀 커밋 제목' && e1.commits[0].body === '비밀 본문',
+     JSON.stringify(e1.commits));
+  ok('모든 일정의 commits 는 배열이다(G-7)', (a.entries || []).every((e) => Array.isArray(e.commits)));
+  const td = (a.todos || [])[0] || {};
+  ok('할 일이 온다(본문·비고)', (a.todos || []).length === 1 && td.text === '비밀 할일' && td.note === '비밀 비고',
+     JSON.stringify(a.todos));
+  ok('할 일의 dayNotes 는 맵이다', td.dayNotes && typeof td.dayNotes === 'object' && !Array.isArray(td.dayNotes));
+  ok('최상위 키는 allowed·categories·entries·todos 뿐이다',
+     Object.keys(a).sort().join(',') === 'allowed,categories,entries,todos', Object.keys(a).join(','));
+  ok('일정에 remind 키 자체가 없다(알림 설정)', (a.entries || []).every((e) => !('remind' in e)));
+  const c1 = (a.categories || [])[0] || {};
+  for (const k of ['desc', 'gitRepo', 'svnRepo', 'usesRepo'])
+    ok(`과제에 ${k} 키가 없다(설정·저장소 경로)`, !(k in c1));
   const blob = JSON.stringify(a);
-  for (const [needle, why] of [
-    ['비밀메모', '메모'], ['비밀 커밋', '커밋 제목'], ['비밀 본문', '커밋 본문'],
-    ['비밀 할일', '할 일'], ['비밀 비고', '할 일 비고'],
-  ]) ok(`${why} 가 새지 않는다`, !blob.includes(needle));
-  ok('일정에 memo 키 자체가 없다', (a.entries || []).every((e) => !('memo' in e)));
-  ok('일정에 commits 키 자체가 없다', (a.entries || []).every((e) => !('commits' in e)));
+  ok('회의실 목록이 새지 않는다', !blob.includes('비밀회의실'));
+  ok('과제별 시간·근태가 새지 않는다', !/taskHours|attendance|7\.25/.test(blob));
   ok('거부 응답에는 데이터가 없다',
      Object.keys(peek(U_SELF, U_IN)).join(',') === 'allowed');
 

@@ -409,7 +409,9 @@ try {
     //  달력 이동 · 연월 · 검색 · 과제 필터칩 · 일자 패널의 **읽기** 컨트롤만 허용한다.
     //  ★ 여기에 무언가를 더할 때는 "그게 읽기인가" 를 먼저 물을 것. 편집이면 CSS 에서 감춰야 한다.
     const ALLOW = new Set(["btnPrev","btnToday","btnNext","btnTitle","jumpMonth","btnSearch",
-                           "fchip","dpSheetClose","dptab-detail"]);
+                           "fchip","dpSheetClose","dptab-detail",
+                           //  ★ 2026-10-01(PEER-VIEW-FULL P2) — 「할 일」·「커밋 내역」 탭을 연다(읽기). 탭 안의 편집 수단은 여전히 감춘다.
+                           "dptab-todo","dptab-git"]);
     const extra = (vis.seen || []).filter((k) => !ALLOW.has(k));
     //  ★ 한계를 적어 둔다: 위젯 창이 화면에 안 그려지면 iframe 뷰포트가 0폭이 되고,
     //    그러면 **좁은 화면용 반응형 규칙**이 켜져 일부 버튼이 저절로 숨는다 — 이 검사가 그만큼 약해진다.

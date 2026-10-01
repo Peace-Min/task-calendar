@@ -290,25 +290,39 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  공개 API 3 — 타인 일정 조회 (C4 · 읽기 전용)
         // ================================================================================
-        //   「구성원」에서 사람을 눌렀을 때 그 사람의 일정을 읽는다.
+        //   「구성원」에서 사람을 눌렀을 때 그 사람의 캘린더를 읽는다.
         //
         //   ★★ 권한을 **여기서 다시 판정한다**(ProjectDb.CanViewScheduleAsync).
         //     명부가 이미 canViewSchedule 을 붙여 보내지만 그건 **화면을 그리기 위한 것**이고,
         //     웹은 신뢰 경계 밖이다. 여기서 안 막으면 화면을 우회한 요청 하나로 아무나
         //     남의 일정을 가져간다. 판정 규칙이 한 벌인 이유도 같다 — 두 벌이면 갈라진다.
+        //     ★ 누구를 볼 수 있는가(view_scope)는 바뀌지 않았다 — 볼 수 있는 사람에 대해 **보이는 항목이
+        //       늘었을 뿐**이다(docs/PEER-VIEW-FULL.md P7).
         //
-        //   ★ 무엇을 주고 무엇을 안 주나 — **일정만** 준다.
-        //     주는 것: 날짜·시간·제목·과제(이름/색)·반복·예외일.
-        //     안 주는 것: **메모 · 커밋 · 할 일 · 공수 · 근태 · 설정.**
-        //     열람의 목적은 "그 사람이 언제 무엇을 하는가"(회의 잡기·부하 파악)이고,
-        //     메모와 커밋은 개인 작업 노트다. 목적에 필요 없는 것을 주면 그때부터
-        //     '열람 권한'이 '개인 기록 열람'이 된다. 필요해지면 그때 근거를 적고 늘린다.
+        //   ★ 무엇을 주고 무엇을 안 주나 — **내 메인 화면이 그리는 것은 다 준다**(PEER-VIEW-FULL P2, 2026-10-01).
+        //     예전엔 「최소 payload」(일정의 날짜·시간·제목·반복만)였다. 그 결과 열람 창이 「할 일」·「커밋 내역」
+        //     탭을 감추고 일정 카드에서도 장소·메모가 빠져, "그 사람이 무엇을 하는가" 를 보려고 연 창이
+        //     정작 그 답의 절반을 못 보여 줬다(사용자 요구 2). 그래서 범위를 '화면'에 맞춘다:
+        //       주는 것: 과제(이름·색·출처) · 일정 전 필드(장소·메모·출처·반복·예외일·**커밋**) ·
+        //                **할 일**(마감·기간·완료·중요·메모·날짜별 메모).
+        //       안 주는 것(P3): **과제별 시간 · 근태 · 보고서 서식 · 회의실 목록 · 알림 설정 · 저장소 경로**
+        //                — 내 화면에서도 보고서·알림 안에서만 쓰는 값이고, 캘린더를 그리는 데는 안 쓴다.
+        //                과제의 설명·uses_repo 도 같은 이유로 안 준다(설정 화면의 값이다).
+        //
+        //   ★ 행 → state 변환은 부팅 조회와 **같은 함수**를 쓴다(EntryRowToState · TodoRowToState · CommitRow ·
+        //     AddDbSourceFlags). 따로 조립하면 키 이름·NULL 규약(G-1/G-2)이 한쪽만 고쳐져 조용히 갈라지고,
+        //     열람 창은 주인 화면과 다른 모양을 받는다 — 같은 앱(iframe)이 그리므로 그 차이가 곧 화면 차이다.
+        //     ★ 다른 점은 단 하나 — 일정의 remind(알림 설정)를 **읽지도 싣지도 않는다**(withRemind:false).
         //
         //   ★ 날짜로 거르지 않고 **전부** 준다. 반복 일정은 종료일이 없을 수 있어
         //     범위로 거를 수 없다(2020년 시작이 2026년에도 떠야 한다). 전개는 웹의
         //     expandOccurrences 하나가 단일 진실이므로 그쪽에 맡긴다 — 내 일정과 같은 규칙이 된다.
         //
-        //   반환: {"allowed":true,"entries":[…],"categories":[…]} / 권한 없음 {"allowed":false}
+        //   ★ 표가 여섯으로 늘어서 **한 스냅샷**에서 읽는다(부팅 §3.5 와 같은 문장). 커밋·예외일·날짜별 메모는
+        //     부모를 entry_no/todo_no 로 접는데, 그 번호는 재사용된다(G-5 ★) — 문장마다 다른 read view 면
+        //     그 사이 지워지고 다시 쓰인 번호에 남의 커밋이 붙을 수 있다.
+        //
+        //   반환: {"allowed":true,"categories":[…],"entries":[…],"todos":[…]} / 권한 없음 {"allowed":false}
         //         / 실패는 null(호출측이 화면에 알린다)
         public async Task<string?> LoadPeerScheduleJsonAsync(string viewerLoginId, string targetLoginId)
         {
@@ -334,83 +348,142 @@ namespace TaskCalendarWidget
                     uid = Convert.ToInt32(v, CultureInfo.InvariantCulture);
                 }
 
-                //  과제 — 이름·색만. uses_repo·저장소 경로·설명은 남의 화면에 필요 없다.
+                int badTime = 0;
+                string Iso(string raw) => IsoFromDb(raw, ref badTime);
+
                 var cats = new List<Dictionary<string, object?>>();
-                await using (var cmd = new MySqlCommand(
-                    "SELECT uid, name, color FROM cal_category WHERE user_id=@u ORDER BY sort_order", conn))
-                {
-                    cmd.Parameters.AddWithValue("@u", uid);
-                    await using var rd = await cmd.ExecuteReaderAsync(ct);
-                    while (await rd.ReadAsync(ct))
-                        cats.Add(new Dictionary<string, object?>
-                        {
-                            ["id"] = Str(rd, "uid"), ["name"] = Str(rd, "name"), ["color"] = Str(rd, "color"),
-                        });
-                }
-
-                //  일정 — 부팅 조회(2/10)와 **같은 정렬**이어야 한다. 화면 순서가 사람마다 달라지면 안 된다.
-                //  ★ 처음엔 여기에 entry_date 를 앞세워 놓고 주석만 '같은 정렬'이라고 적어 뒀다 — 거짓이었다.
-                //    부팅(:587)은 `ORDER BY e.sort_order, e.uid` 로 **날짜가 없다.** sort_order 는 이 앱에서
-                //    state.entries **배열 전체**의 순서이기 때문이다(실앱 데이터 확인: 한 사람의 값이
-                //    날짜를 가로질러 0,1,2…21 로 이어진다). 날짜를 앞세우면 배열 순서가 달라져,
-                //    달력 칸 안은 같아 보여도 전역으로 훑는 자리(검색 결과 순서 등)에서 주인이 보는 것과
-                //    열람자가 보는 것이 어긋난다. 2026-09-03 더미 데이터를 넣다가 드러났다.
                 var entries = new List<Dictionary<string, object?>>();
-                var exceptByNo = new Dictionary<uint, List<object?>>();
-                await using (var cmd = new MySqlCommand(
-                    "SELECT e.entry_no, e.uid, cc.uid AS cat_uid, DATE_FORMAT(e.entry_date,'%Y-%m-%d') AS entry_date, " +
-                    "DATE_FORMAT(e.end_date,'%Y-%m-%d') AS end_date, e.all_day, " +
-                    "DATE_FORMAT(e.start_time,'%H:%i') AS start_time, DATE_FORMAT(e.end_time,'%H:%i') AS end_time, " +
-                    "e.title, e.recur_freq, e.recur_interval, DATE_FORMAT(e.recur_until,'%Y-%m-%d') AS recur_until, e.recur_count " +
-                    "FROM cal_entry e LEFT JOIN cal_category cc ON cc.user_id = e.user_id AND cc.cat_no = e.cat_no " +
-                    "WHERE e.user_id=@u ORDER BY e.sort_order, e.uid", conn))
+                var todos = new List<Dictionary<string, object?>>();
+
+                await ExecAsync(conn, "START TRANSACTION WITH CONSISTENT SNAPSHOT", ct);
+                try
                 {
-                    cmd.Parameters.AddWithValue("@u", uid);
-                    await using var rd = await cmd.ExecuteReaderAsync(ct);
-                    while (await rd.ReadAsync(ct))
+                    //  과제 — 이름·색 + 출처(source·dbGone). 출처는 화면이 그린다(공식 과제 표시·사라진 과제 표시).
+                    //  ★ description · uses_repo · 저장소 경로는 싣지 않는다(P3) — 설정 화면의 값이다.
+                    //  ★ 정렬은 부팅(1/10)과 같다 — sort_order, 동률은 uid.
+                    await using (var cmd = new MySqlCommand(
+                        "SELECT c.uid, c.name, c.color, c.source, " +
+                        "(c.source='db' AND (p.uid IS NULL OR p.is_active=0)) AS db_gone " +
+                        "FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid " +
+                        "WHERE c.user_id=@u ORDER BY c.sort_order, c.uid", conn))
                     {
-                        uint no = UInt(rd, "entry_no");
-                        string freq = Str(rd, "recur_freq");
-                        Dictionary<string, object?>? recur = freq.Length == 0 ? null : new Dictionary<string, object?>
+                        cmd.Parameters.AddWithValue("@u", uid);
+                        await using var rd = await cmd.ExecuteReaderAsync(ct);
+                        while (await rd.ReadAsync(ct))
                         {
-                            ["freq"] = freq,
-                            ["interval"] = IntOrNull(rd, "recur_interval") ?? 1,
-                            ["until"] = Str(rd, "recur_until"),
-                            ["count"] = IntOrNull(rd, "recur_count") ?? 0,
-                        };
-                        var e = new Dictionary<string, object?>
-                        {
-                            ["id"] = Str(rd, "uid"),
-                            ["date"] = Str(rd, "entry_date"),
-                            ["title"] = Str(rd, "title"),
-                            ["categoryId"] = NullableStr(rd, "cat_uid"),
-                            ["allDay"] = (IntOrNull(rd, "all_day") ?? 0) != 0,
-                            ["startTime"] = Str(rd, "start_time"),
-                            ["endTime"] = Str(rd, "end_time"),
-                            ["endDate"] = Str(rd, "end_date"),
-                            ["recur"] = recur,
-                            ["recurExcept"] = new List<object?>(),
-                        };
-                        entries.Add(e);
-                        if (recur != null) exceptByNo[no] = (List<object?>)e["recurExcept"]!;
+                            var c = new Dictionary<string, object?>
+                            {
+                                ["id"] = Str(rd, "uid"), ["name"] = Str(rd, "name"), ["color"] = Str(rd, "color"),
+                            };
+                            AddDbSourceFlags(c, rd);
+                            cats.Add(c);
+                        }
                     }
-                }
 
-                //  예외일 — 반복 일정에만 붙인다(부팅 조회 3/10 과 같은 규약).
-                await using (var cmd = new MySqlCommand(
-                    "SELECT entry_no, DATE_FORMAT(except_date,'%Y-%m-%d') AS d " +
-                    "FROM cal_entry_except WHERE user_id=@u ORDER BY except_date", conn))
+                    //  일정 — 부팅 조회(2/10)와 **같은 정렬**이어야 한다. 화면 순서가 사람마다 달라지면 안 된다.
+                    //  ★ 처음엔 여기에 entry_date 를 앞세워 놓고 주석만 '같은 정렬'이라고 적어 뒀다 — 거짓이었다.
+                    //    부팅은 `ORDER BY e.sort_order, e.uid` 로 **날짜가 없다.** sort_order 는 이 앱에서
+                    //    state.entries **배열 전체**의 순서이기 때문이다(실앱 데이터 확인: 한 사람의 값이
+                    //    날짜를 가로질러 0,1,2…21 로 이어진다). 날짜를 앞세우면 배열 순서가 달라져,
+                    //    달력 칸 안은 같아 보여도 전역으로 훑는 자리(검색 결과 순서 등)에서 주인이 보는 것과
+                    //    열람자가 보는 것이 어긋난다. 2026-09-03 더미 데이터를 넣다가 드러났다.
+                    //  ★ 컬럼 목록은 부팅과 같고 **e.remind 만 없다**(P3 알림 설정) — 매퍼도 withRemind:false 로 읽는다.
+                    var exceptByNo = new Dictionary<uint, List<object?>>();
+                    var commitsByNo = new Dictionary<uint, List<object?>>();
+                    await using (var cmd = new MySqlCommand(
+                        "SELECT e.entry_no, e.uid, cc.uid AS cat_uid, " +
+                        "DATE_FORMAT(e.entry_date,'%Y-%m-%d') AS entry_date, " +
+                        "DATE_FORMAT(e.end_date,'%Y-%m-%d')   AS end_date, " +
+                        "e.all_day, DATE_FORMAT(e.start_time,'%H:%i') AS start_time, " +
+                        "DATE_FORMAT(e.end_time,'%H:%i') AS end_time, " +
+                        "e.title, e.memo, e.source, e.location, " +
+                        "e.recur_freq, e.recur_interval, e.recur_until, e.recur_count, " +
+                        "CAST(e.created_at AS CHAR) AS created_at, CAST(e.updated_at AS CHAR) AS updated_at " +
+                        "FROM cal_entry e LEFT JOIN cal_category cc ON cc.user_id = e.user_id AND cc.cat_no = e.cat_no " +
+                        "WHERE e.user_id=@u ORDER BY e.sort_order, e.uid", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@u", uid);
+                        await using var rd = await cmd.ExecuteReaderAsync(ct);
+                        while (await rd.ReadAsync(ct))
+                        {
+                            uint no = UInt(rd, "entry_no");
+                            var e = EntryRowToState(rd, Iso, withRemind: false);
+                            entries.Add(e);
+                            commitsByNo[no] = (List<object?>)e["commits"]!;
+                            if (e["recur"] != null) exceptByNo[no] = (List<object?>)e["recurExcept"]!;
+                        }
+                    }
+
+                    //  예외일 — 반복 일정에만 붙인다(부팅 조회 3/10 과 같은 규약).
+                    await using (var cmd = new MySqlCommand(
+                        "SELECT entry_no, DATE_FORMAT(except_date,'%Y-%m-%d') AS d " +
+                        "FROM cal_entry_except WHERE user_id=@u ORDER BY except_date", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@u", uid);
+                        await using var rd = await cmd.ExecuteReaderAsync(ct);
+                        while (await rd.ReadAsync(ct))
+                            if (exceptByNo.TryGetValue(UInt(rd, "entry_no"), out var lst)) lst.Add(Str(rd, "d"));
+                    }
+
+                    //  커밋 — 「커밋 내역」 탭과 일정 카드의 커밋 목록(P2). 부팅 4/10 과 같은 순서·같은 변환(CommitRow).
+                    await using (var cmd = new MySqlCommand(
+                        "SELECT entry_no, hash, short_hash, DATE_FORMAT(commit_time,'%H:%i') AS commit_time, subject, body " +
+                        "FROM cal_entry_commit WHERE user_id=@u ORDER BY entry_no, seq", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@u", uid);
+                        await using var rd = await cmd.ExecuteReaderAsync(ct);
+                        while (await rd.ReadAsync(ct))
+                            if (commitsByNo.TryGetValue(UInt(rd, "entry_no"), out var lst)) lst.Add(CommitRow(rd));
+                    }
+
+                    //  할 일 — 「할 일」 탭과 격자의 할 일 칩(P2). 부팅 5/10 과 같은 순서·같은 변환(TodoRowToState).
+                    var dayNotesByNo = new Dictionary<uint, Dictionary<string, object?>>();
+                    await using (var cmd = new MySqlCommand(
+                        "SELECT t.todo_no, t.uid, cc.uid AS cat_uid, t.todo_text, t.note, " +
+                        "DATE_FORMAT(t.due,'%Y-%m-%d') AS due, DATE_FORMAT(t.end_date,'%Y-%m-%d') AS end_date, " +
+                        "t.done, t.prio, CAST(t.completed_at AS CHAR) AS completed_at, " +
+                        "CAST(t.created_at AS CHAR) AS created_at, CAST(t.updated_at AS CHAR) AS updated_at " +
+                        "FROM cal_todo t LEFT JOIN cal_category cc ON cc.user_id = t.user_id AND cc.cat_no = t.cat_no " +
+                        "WHERE t.user_id=@u ORDER BY t.sort_order, t.uid", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@u", uid);
+                        await using var rd = await cmd.ExecuteReaderAsync(ct);
+                        while (await rd.ReadAsync(ct))
+                        {
+                            var dayNotes = new Dictionary<string, object?>(StringComparer.Ordinal);
+                            dayNotesByNo[UInt(rd, "todo_no")] = dayNotes;
+                            todos.Add(TodoRowToState(rd, Iso, dayNotes));
+                        }
+                    }
+
+                    //  할 일의 날짜별 메모 — 부팅 6/10 과 같은 접기.
+                    await using (var cmd = new MySqlCommand(
+                        "SELECT todo_no, DATE_FORMAT(note_date,'%Y-%m-%d') AS note_date, note_text " +
+                        "FROM cal_todo_day_note WHERE user_id=@u ORDER BY note_date", conn))
+                    {
+                        cmd.Parameters.AddWithValue("@u", uid);
+                        await using var rd = await cmd.ExecuteReaderAsync(ct);
+                        while (await rd.ReadAsync(ct))
+                            if (dayNotesByNo.TryGetValue(UInt(rd, "todo_no"), out var map))
+                                map[Str(rd, "note_date")] = Str(rd, "note_text");
+                    }
+
+                    await ExecAsync(conn, "COMMIT", ct);
+                }
+                catch
                 {
-                    cmd.Parameters.AddWithValue("@u", uid);
-                    await using var rd = await cmd.ExecuteReaderAsync(ct);
-                    while (await rd.ReadAsync(ct))
-                        if (exceptByNo.TryGetValue(UInt(rd, "entry_no"), out var lst)) lst.Add(Str(rd, "d"));
+                    //  부팅과 같다 — read view 를 붙잡은 채 연결을 놓지 않는다. 원인 예외는 덮지 않는다.
+                    try { await ExecAsync(conn, "ROLLBACK", CancellationToken.None); } catch { /* 이미 끊긴 연결 */ }
+                    throw;
                 }
 
-                _log($"타인 일정 조회: {viewerLoginId} → {targetLoginId} · 과제 {cats.Count} · 일정 {entries.Count}");
+                if (badTime > 0) _log("타인 일정 조회: DATETIME 문자열이 'yyyy-MM-dd HH:mm:ss.fff' 가 아닌 행 " + badTime + "건");
+                _log($"타인 일정 조회: {viewerLoginId} → {targetLoginId} · 과제 {cats.Count} · 일정 {entries.Count} · 할 일 {todos.Count}");
+                //  ★ 키는 이 넷뿐이다. 과제별 시간·근태·보고서 서식·회의실·저자명은 **키조차 만들지 않는다**(P3) —
+                //    웹 쪽 mountPeerFrame 이 빈 값으로 채워 넣는다(buildStateFrom 이 요구하는 모양).
                 return JsonSerializer.Serialize(new Dictionary<string, object?>
                 {
-                    ["allowed"] = true, ["categories"] = cats, ["entries"] = entries,
+                    ["allowed"] = true, ["categories"] = cats, ["entries"] = entries, ["todos"] = todos,
                 });
             }
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("타인 일정 조회 실패: " + Short(ex)); return null; }
@@ -488,12 +561,7 @@ namespace TaskCalendarWidget
             // DATETIME(3) → 'yyyy-MM-dd HH:mm:ss.fff' 이 아닌 값이 나오면 세어 둔다.
             //   조용히 고쳐 넘기면 토큰(§3.3)이 어긋나는데 증상은 '가끔 저장이 충돌한다'로만 보인다.
             int badTimeFmt = 0;
-            string Iso(string raw)
-            {
-                if (raw.Length == 0) return "";
-                if (raw.Length != 23 || raw[10] != ' ') { badTimeFmt++; return raw; }
-                return string.Concat(raw.Substring(0, 10), "T", raw.Substring(11), "Z");
-            }
+            string Iso(string raw) => IsoFromDb(raw, ref badTimeFmt);   // 변환 규칙은 IsoFromDb 한 곳(타인 열람과 공유)
 
             // ── 0. rev — 이 스냅샷의 판본 ──────────────────────────────────────────
             //   ★ §3.5 의 '대상 9' 에는 cal_user_rev 가 없다. 그 목록은 **state 를 이루는 표**를 센
@@ -563,11 +631,7 @@ namespace TaskCalendarWidget
                         ["usesRepo"]  = (IntOrNull(rd, "uses_repo") ?? 0) != 0,   // G-4 — 0/1 을 그대로 넘기지 않는다
                         ["createdAt"] = Iso(Str(rd, "created_at")), // G-3
                     };
-                    if (string.Equals(Str(rd, "source"), "db", StringComparison.Ordinal))
-                    {
-                        c["source"] = "db";
-                        c["dbGone"] = (IntOrNull(rd, "db_gone") ?? 0) != 0;
-                    }
+                    AddDbSourceFlags(c, rd);   // source='db' 일 때만 source·dbGone(타인 열람과 같은 함수)
                     categories.Add(c);
                     // ※ cal_category.updated_at 은 state 에 대응 키가 없다(fromXML 확인) —
                     //   위 토큰 맵이 유일한 보관처다(G-6).
@@ -622,46 +686,11 @@ namespace TaskCalendarWidget
                     entryNoByUid[uid] = entryNo;
                     tokens["entry:" + entryNo.ToString(CultureInfo.InvariantCulture)] = Str(rd, "updated_at");
 
-                    // recur — 네 컬럼이 통째로 NULL 이면 반복 없음(chk_cal_entry_recur 가 반쪽 상태를 막는다).
-                    //   그래서 여기서 normRecur() 의 기본값 보정을 다시 하지 않는다: interval>=1·count>=0 은
-                    //   이미 CHECK 가 판정한 값이고, until 은 형식만 검사된 문자열이라 원문 그대로 돌려준다.
-                    string freq = Str(rd, "recur_freq");
-                    Dictionary<string, object?>? recur = null;
-                    if (freq.Length > 0)
-                    {
-                        recur = new Dictionary<string, object?>
-                        {
-                            ["freq"]     = freq,
-                            ["interval"] = IntOrNull(rd, "recur_interval") ?? 1,
-                            ["until"]    = Str(rd, "recur_until"),   // G-2: NULL → ''
-                            ["count"]    = IntOrNull(rd, "recur_count") ?? 0,
-                        };
-                    }
-
-                    var e = new Dictionary<string, object?>
-                    {
-                        ["id"]         = uid,
-                        ["date"]       = Str(rd, "entry_date"),      // G-1 ★ entryDate 아님
-                        ["title"]      = Str(rd, "title"),
-                        ["categoryId"] = NullableStr(rd, "cat_uid"), // G-2 ★ 여기만은 NULL 을 유지한다('' 아님)
-                        ["allDay"]     = (IntOrNull(rd, "all_day") ?? 0) != 0,   // G-4: TINYINT → boolean
-                        ["startTime"]  = Str(rd, "start_time"),      // G-2: NULL → ''
-                        ["endTime"]    = Str(rd, "end_time"),
-                        ["hours"]      = null,                       // G-6: 컬럼을 폐지했다. undefined 로 두지 않는다
-                        ["location"]   = Str(rd, "location"),
-                        ["remind"]     = IntOrNull(rd, "remind"),    // G-2 ★ NULL 유지. null=기본 사다리 / 0=알림 없음
-                        ["memo"]       = Str(rd, "memo"),
-                        ["source"]     = Str(rd, "source"),          // '' 또는 'git' 두 값뿐(CHECK)
-                        ["commits"]    = new List<object?>(),        // G-7: 항상 배열. 아래 4/10 에서 채운다
-                        ["endDate"]    = Str(rd, "end_date"),        // G-2: NULL → ''
-                        ["recur"]      = recur,
-                        ["recurExcept"] = new List<object?>(),       // 아래 3/10 에서 채운다
-                        ["createdAt"]  = Iso(Str(rd, "created_at")),
-                        ["updatedAt"]  = Iso(Str(rd, "updated_at")),
-                    };
+                    //  행 → entry 는 EntryRowToState 한 곳이다(타인 열람과 공유 · 키 순서·NULL 규약이 거기 있다).
+                    var e = EntryRowToState(rd, Iso, withRemind: true);
                     entries.Add(e);
                     commitsByNo[entryNo] = (List<object?>)e["commits"]!;
-                    if (recur != null) recurExceptByNo[entryNo] = (List<object?>)e["recurExcept"]!;
+                    if (e["recur"] != null) recurExceptByNo[entryNo] = (List<object?>)e["recurExcept"]!;
                 }
             }
 
@@ -748,21 +777,7 @@ namespace TaskCalendarWidget
                     var dayNotes = new Dictionary<string, object?>(StringComparer.Ordinal);
                     dayNotesByNo[todoNo] = dayNotes;
 
-                    todos.Add(new Dictionary<string, object?>
-                    {
-                        ["id"]          = uid,
-                        ["text"]        = Str(rd, "todo_text"),      // G-1 ★ todoText 아님
-                        ["done"]        = (IntOrNull(rd, "done") ?? 0) != 0,      // G-4
-                        ["categoryId"]  = NullableStr(rd, "cat_uid"),             // G-2 ★ NULL 유지
-                        ["due"]         = Str(rd, "due"),            // G-2: NULL → ''
-                        ["endDate"]     = Str(rd, "end_date"),
-                        ["prio"]        = Str(rd, "prio"),           // 'normal'|'high' 두 값뿐(CHECK)
-                        ["completedAt"] = Iso(Str(rd, "completed_at")), // G-2+G-3: NULL 이면 '', 값이 있을 때만 ISO
-                        ["note"]        = Str(rd, "note"),
-                        ["dayNotes"]    = dayNotes,                  // 배열이 아니라 맵(G-5). 없으면 {}
-                        ["createdAt"]   = Iso(Str(rd, "created_at")),
-                        ["updatedAt"]   = Iso(Str(rd, "updated_at")),
-                    });
+                    todos.Add(TodoRowToState(rd, Iso, dayNotes));   // 타인 열람과 같은 변환
                 }
             }
 
@@ -937,7 +952,101 @@ namespace TaskCalendarWidget
                 catNoByUid, entryNoByUid, todoNoByUid);
         }
 
-        // 커밋 한 행 → 앱의 commit 객체(계약 G-1·G-2). 키 5개가 전부다.
+        // ================================================================================
+        //  내부 — 행 → state 변환(부팅 조회와 타인 열람이 **함께** 쓴다)
+        // ================================================================================
+        //   ★ 이 변환이 한 벌인 이유: 열람 창은 **같은 앱**(iframe)이 그린다. 두 조회가 따로 조립하면
+        //     키 이름·NULL 규약(G-1/G-2)이 한쪽만 고쳐져, 주인이 보는 화면과 열람자가 보는 화면이
+        //     조용히 갈라진다(PEER-VIEW-FULL P2). 키 순서도 여기서 정해진다 — 부팅 게이트가 대조하는 그 순서다.
+
+        // DATETIME(3) 원문 'yyyy-MM-dd HH:mm:ss.fff' → ISO 'yyyy-MM-ddTHH:mm:ss.fffZ'. 빈 값은 ''.
+        //   모양이 아니면 원문을 그대로 돌려주고 bad 를 올린다 — 조용히 고쳐 넘기면 토큰(§3.3)이 어긋나는데
+        //   증상은 '가끔 저장이 충돌한다'로만 보인다. 세는 것은 호출자의 몫(로그 문맥이 다르다).
+        private static string IsoFromDb(string raw, ref int bad)
+        {
+            if (raw.Length == 0) return "";
+            if (raw.Length != 23 || raw[10] != ' ') { bad++; return raw; }
+            return string.Concat(raw.Substring(0, 10), "T", raw.Substring(11), "Z");
+        }
+
+        // 과제의 출처 키 — source='db' 일 때만 source·dbGone 두 개가 **뒤에** 붙는다(개인 과제는 키 자체가 없다 — G-6).
+        //   db_gone 은 컬럼이 아니라 조회 시 파생이다(§6) — SELECT 가 그 별칭을 만들어 와야 한다.
+        private static void AddDbSourceFlags(Dictionary<string, object?> c, DbDataReader rd)
+        {
+            if (string.Equals(Str(rd, "source"), "db", StringComparison.Ordinal))
+            {
+                c["source"] = "db";
+                c["dbGone"] = (IntOrNull(rd, "db_gone") ?? 0) != 0;
+            }
+        }
+
+        // 일정 한 행 → 앱의 entry 객체. commits·recurExcept 는 **빈 배열**로 만들어 두고 호출자가 채운다
+        //   (G-7: commits 는 항상 배열 — undefined 면 커밋 편집 경로가 TypeError 로 죽는다).
+        //   withRemind:false — 타인 열람(P3 알림 설정 제외). 그때는 remind 컬럼을 **읽지 않고** 키도 없다.
+        //   ★ 키를 빼는 방식이 Remove 인 이유: 부팅의 키 순서(remind 가 location 과 memo 사이)를 그대로 두려면
+        //     초기화식이 하나여야 한다. Remove 뒤에는 키를 더하지 않으므로 나머지 순서는 그대로다.
+        private static Dictionary<string, object?> EntryRowToState(DbDataReader rd, Func<string, string> iso, bool withRemind)
+        {
+            // recur — 네 컬럼이 통째로 NULL 이면 반복 없음(chk_cal_entry_recur 가 반쪽 상태를 막는다).
+            //   그래서 여기서 normRecur() 의 기본값 보정을 다시 하지 않는다: interval>=1·count>=0 은
+            //   이미 CHECK 가 판정한 값이고, until 은 형식만 검사된 문자열이라 원문 그대로 돌려준다.
+            string freq = Str(rd, "recur_freq");
+            Dictionary<string, object?>? recur = null;
+            if (freq.Length > 0)
+            {
+                recur = new Dictionary<string, object?>
+                {
+                    ["freq"]     = freq,
+                    ["interval"] = IntOrNull(rd, "recur_interval") ?? 1,
+                    ["until"]    = Str(rd, "recur_until"),   // G-2: NULL → ''
+                    ["count"]    = IntOrNull(rd, "recur_count") ?? 0,
+                };
+            }
+
+            var e = new Dictionary<string, object?>
+            {
+                ["id"]         = Str(rd, "uid"),
+                ["date"]       = Str(rd, "entry_date"),      // G-1 ★ entryDate 아님
+                ["title"]      = Str(rd, "title"),
+                ["categoryId"] = NullableStr(rd, "cat_uid"), // G-2 ★ 여기만은 NULL 을 유지한다('' 아님)
+                ["allDay"]     = (IntOrNull(rd, "all_day") ?? 0) != 0,   // G-4: TINYINT → boolean
+                ["startTime"]  = Str(rd, "start_time"),      // G-2: NULL → ''
+                ["endTime"]    = Str(rd, "end_time"),
+                ["hours"]      = null,                       // G-6: 컬럼을 폐지했다. undefined 로 두지 않는다
+                ["location"]   = Str(rd, "location"),
+                ["remind"]     = withRemind ? IntOrNull(rd, "remind") : null,   // G-2 ★ NULL 유지. null=기본 사다리 / 0=알림 없음
+                ["memo"]       = Str(rd, "memo"),
+                ["source"]     = Str(rd, "source"),          // '' 또는 'git' 두 값뿐(CHECK)
+                ["commits"]    = new List<object?>(),        // G-7: 항상 배열. 호출자가 커밋 행으로 채운다
+                ["endDate"]    = Str(rd, "end_date"),        // G-2: NULL → ''
+                ["recur"]      = recur,
+                ["recurExcept"] = new List<object?>(),       // 호출자가 예외일 행으로 채운다
+                ["createdAt"]  = iso(Str(rd, "created_at")),
+                ["updatedAt"]  = iso(Str(rd, "updated_at")),
+            };
+            if (!withRemind) e.Remove("remind");
+            return e;
+        }
+
+        // 할 일 한 행 → 앱의 todo 객체. dayNotes 는 호출자가 만든 맵을 그대로 물린다(뒤의 6/10 이 채운다).
+        private static Dictionary<string, object?> TodoRowToState(DbDataReader rd, Func<string, string> iso, Dictionary<string, object?> dayNotes) =>
+            new Dictionary<string, object?>
+            {
+                ["id"]          = Str(rd, "uid"),
+                ["text"]        = Str(rd, "todo_text"),      // G-1 ★ todoText 아님
+                ["done"]        = (IntOrNull(rd, "done") ?? 0) != 0,      // G-4
+                ["categoryId"]  = NullableStr(rd, "cat_uid"),             // G-2 ★ NULL 유지
+                ["due"]         = Str(rd, "due"),            // G-2: NULL → ''
+                ["endDate"]     = Str(rd, "end_date"),
+                ["prio"]        = Str(rd, "prio"),           // 'normal'|'high' 두 값뿐(CHECK)
+                ["completedAt"] = iso(Str(rd, "completed_at")), // G-2+G-3: NULL 이면 '', 값이 있을 때만 ISO
+                ["note"]        = Str(rd, "note"),
+                ["dayNotes"]    = dayNotes,                  // 배열이 아니라 맵(G-5). 없으면 {}
+                ["createdAt"]   = iso(Str(rd, "created_at")),
+                ["updatedAt"]   = iso(Str(rd, "updated_at")),
+            };
+
+        // 커밋 한 행 → 앱의 commit 객체(계약 G-1·G-2). 키 5개가 전부다. 부팅·타인 열람 공용.
         private static Dictionary<string, object?> CommitRow(DbDataReader rd) =>
             new Dictionary<string, object?>
             {

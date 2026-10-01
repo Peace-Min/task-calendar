@@ -813,12 +813,15 @@ const checks = {
     //  ★ 판정 규칙은 **한 벌**이다. 두 벌이면 화면과 조회가 갈라진다.
     assert.ok(/internal static async Task<bool> CanViewScheduleAsync\(/.test(pdb),
       '공유 인가 판정이 ProjectDb 에 없다 — 명부와 조회가 다른 규칙을 쓰게 된다');
-    //  ★ 최소 payload — 메모·커밋·할 일·공수·근태는 보내지 않는다.
-    const q = caldb.slice(caldb.indexOf('LoadPeerScheduleJsonAsync'));
-    const sql = q.slice(0, q.indexOf('catch (Exception'));
-    for (const leak of ['e.memo', 'cal_entry_commit', 'cal_todo', 'cal_task_hours', 'cal_attendance', 'cal_user_pref']) {
+    //  ★ payload 범위 — 2026-10-01 개정(docs/PEER-VIEW-FULL.md P2/P3). 옛 계약은 「최소 payload」
+    //    (메모·커밋·할 일 금지)였고, 그 탓에 열람 창이 「할 일」·「커밋 내역」 탭을 감춰야 했다.
+    //    이제 **내 메인 화면이 그리는 것은 다 준다**(할 일·커밋·메모 — '주는 쪽' 계약은 peer-view-full.test.mjs).
+    //    여기서 지키는 것은 여전히 **안 주는 쪽**이다: 보고서·알림·설정 안에서만 쓰는 값.
+    //  ★ 주석을 걷어낸 본문으로 본다(extractCsMember) — "이건 안 읽는다" 고 적은 주석이 걸리면 안 된다.
+    const sql = extractCsMember(caldb, 'public async Task<string?> LoadPeerScheduleJsonAsync(');
+    for (const leak of ['cal_task_hours', 'cal_attendance', 'cal_user_pref', 'cal_room', 'e.remind', 'description', 'uses_repo']) {
       assert.ok(!sql.includes(leak),
-        `타인 일정 조회가 ${leak} 을(를) 읽는다 — 목적은 '언제 무엇을 하는가' 이지 개인 기록 열람이 아니다`);
+        `타인 일정 조회가 ${leak} 을(를) 읽는다 — 과제별 시간·근태·서식·회의실·알림·과제 설정은 보고서·설정의 값이다(P3)`);
     }
   },
 
@@ -1412,10 +1415,15 @@ test('변이㉟-e: 조회가 권한 재판정을 빼면 ㉟c 가 실패한다', 
   assert.throws(() => checks.peerHostReauthorizes(main, bad, pdb), /권한을 다시 판정하지 않는다/);
 });
 
-test('변이㉟-f: 조회가 메모를 함께 읽으면 ㉟c 가 실패한다(최소 payload)', () => {
-  const bad = caldb.replace('"e.title, e.recur_freq,', '"e.title, e.memo, e.recur_freq,');
+//  ★ 2026-10-01 — 옛 변이(메모를 읽으면 실패)는 계약이 뒤집혀(P2: 메모를 준다) 뜻을 잃었다.
+//    같은 자리를 지금도 유효한 금지(P3: 알림 설정)로 바꿔 둔다 — 열람 일정 SELECT 에 e.remind 를 끼운다.
+test('변이㉟-f: 조회가 알림 설정(e.remind)을 함께 읽으면 ㉟c 가 실패한다(P3)', () => {
+  const at = caldb.indexOf('"e.title, e.memo, e.source, e.location, " +\n                        "e.recur_freq,');
+  assert.ok(at >= 0, '변이 앵커(열람 조회의 일정 컬럼 줄)를 찾지 못했다');
+  const bad = caldb.slice(0, at) + '"e.title, e.memo, e.source, e.location, e.remind, " +\n                        "e.recur_freq,'
+    + caldb.slice(at + '"e.title, e.memo, e.source, e.location, " +\n                        "e.recur_freq,'.length);
   assert.notStrictEqual(bad, caldb, '변이가 원본을 바꾸지 못했다');
-  assert.throws(() => checks.peerHostReauthorizes(main, bad, pdb), /e\.memo 을\(를\) 읽는다/);
+  assert.throws(() => checks.peerHostReauthorizes(main, bad, pdb), /e\.remind 을\(를\) 읽는다/);
 });
 
 test('변이㊱: 누를 행이 0개일 때 #mbSoon 을 감추면(옛 규칙) membersSoonHint 가 실패한다', () => {
