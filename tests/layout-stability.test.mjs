@@ -126,3 +126,12 @@ test('미리알림 행은 ≤360px 에서 한 줄에 들어간다', () => {
   assert.ok(block.includes('.rem-row .seg-b{padding-left:7px;padding-right:7px}'),
     '≤360px 세그 패딩 축소가 없다 — 320px 위젯에서 미리알림 행이 두 줄로 접힌다');
 });
+
+// 공식 과제 도구줄 — 320px 에서 「＋ 새 공식 과제」가 둘째 줄로 접히지 않게 360px 이하 보정이 있다(loop-ui-visual V3 · 2026-10-01)
+test('레이아웃: 공식 과제 도구줄 360px 이하 보정(패딩 4px·간격 2px)이 600px 보정 뒤에 있다', () => {
+  const src = loadAppSource();
+  const i600 = src.indexOf('@media (max-width:600px){ .off-toolrow .btn.sm{padding:4px 7px}');
+  const i360 = src.indexOf('@media (max-width:360px){ .off-toolrow .btn.sm{padding:4px 4px} .off-toolrow{gap:2px} }');
+  assert.ok(i600 > 0, '600px 도구줄 보정이 사라졌다');
+  assert.ok(i360 > i600, '360px 도구줄 보정이 없거나 600px 보정보다 앞에 있다(뒤에 있어야 덮어쓴다)');
+});

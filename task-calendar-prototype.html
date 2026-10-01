@@ -631,6 +631,9 @@ main{flex:1;display:flex;min-height:0;position:relative}
 /* ★ 임계는 440 이 아니라 ≈600px 이다(2026-09-18 전면 조사 §3.2): 이 줄은 버튼 셋 + 건수 둘이라
    441~560px 에서 「＋ 새 공식 과제」만 둘째 줄로 떨어졌다. 같은 보정(좁은 패딩·좁은 간격)을 600 까지 넓힌다. */
 @media (max-width:600px){ .off-toolrow .btn.sm{padding:4px 7px} .off-toolrow{gap:var(--sp-1)} }
+/* 320px 폭: 600px 보정을 받고도 [0건][초기화][⬇ Excel 추출][＋ 새 공식 과제] 가 15.8px 모자라 「＋ 새 공식 과제」만 둘째 줄로 접혔다
+   (loop-ui-visual V3-BTNROW-WRAP · 빈 목록·오프라인 상태 · 2026-10-01). 360px 이하에서 패딩·간격을 한 번 더 줄여 한 줄에 담는다. */
+@media (max-width:360px){ .off-toolrow .btn.sm{padding:4px 4px} .off-toolrow{gap:2px} }
 /* 하단 줄은 관리자에게 버튼 다섯(새로고침·발주처 관리·구분·상태 관리·휴지통·닫기)이다 — 441~660px 에서
    두 줄 경계에 걸려 한 버튼만 홀로 접혔다(2026-09-18 §3.2). 좁으면 전부 컴팩트로 내려 한 줄에 담고,
    그래도 넘치면 .modal-foot 의 flex-wrap 이 **가지런히** 접는다(줄 간격은 이미 gap:8px 이 겸한다). */
