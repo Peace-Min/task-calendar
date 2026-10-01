@@ -573,6 +573,11 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .cat-mv{display:inline-flex;flex-direction:column;gap:2px;flex:none}
 .cat-mv .btn{padding:0 6px;line-height:1.2;font-size:var(--fs-micro);justify-content:center}
 .cat-order-hint{font-size:var(--fs-micro);color:var(--faint-text);margin:0 0 var(--sp-2) 2px}
+/* 좁은 폭(≤440px · 터치 위젯) — ▲▼ 히트 영역 하한 24px(--sp-5 · WCAG 2.2 목표 크기 최소). 기본 .btn.sm 줄 높이로는 15px 이라
+   손가락으로 이웃 버튼을 잘못 누른다(loop-ui-visual V7). 위아래로 쌓는 배치는 그대로 — 폭을 늘리지 않는다.
+   ▲▼ 열이 폭을 먹으므로 행 간격을 한 단계 줄이고, 「수정」·「삭제/제거」·건수는 줄지 않게 둔다 — 320px 에서 긴 이름(배지 포함)이면
+   링크가 한 글자씩 접혀「수/정」으로 세로로 쪼개졌다(2026-10-01 실측). 줄어드는 쪽은 이름 칸(min-width:0)이다. */
+@media (max-width:440px){ .cat-mv{gap:var(--sp-1)} .cat-mv .btn{min-height:var(--sp-5);min-width:var(--sp-5)} .cat-row{gap:var(--sp-2)} .cat-row > .link{flex:none;white-space:nowrap} }
 .cat-sec-hint{font-weight:400;color:var(--faint-text);font-size:var(--fs-micro);margin-left:6px}
 /* 출처 배지 — 공식(DB) 과제 구분. DB=강조 소프트, 삭제됨(DB)=경고. 개인 과제엔 배지 없음(무배지=개인). */
 .cat-badge{display:inline-block;vertical-align:middle;margin-left:6px;font-size:var(--fs-micro);font-weight:700;line-height:1.5;padding:0 6px;border-radius:var(--r-sm);white-space:nowrap}

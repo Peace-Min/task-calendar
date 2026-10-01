@@ -53,6 +53,11 @@ const MUT = {
     '  const t = state.categories[i]; state.categories[i] = state.categories[j]; state.categories[j] = t;\n  save();\n',
     '  const t = state.categories[i]; state.categories[i] = state.categories[j]; state.categories[j] = t;\n  save(); save();\n',
     s),
+  //  좁은 폭 ▲▼ 히트 영역 하한을 지운다(R3 — 터치 위젯에서 15px 버튼)
+  noTouchFloor: (s) => mutate(
+    '.cat-mv .btn{min-height:var(--sp-5);min-width:var(--sp-5)}',
+    '.cat-mv .btn{}',
+    s),
   //  보고서 행을 이름순으로 정렬한다(R4 위반)
   sortReport: (s) => mutate(
     "  rows = rows.filter(r => String(r.name || '').trim() !== '기타')",
@@ -112,6 +117,18 @@ const statics = {
     assert.ok(/rows\.push\(\{ key:'__uncat__'/.test(b), '미분류 행을 맨 뒤에 붙이지 않는다(R5)');
     assert.ok(!/rows\s*(=\s*rows\s*)?\.(slice\(\)\.)?sort\(/.test(b), '보고서 행을 정렬한다 — 목록 순서와 갈린다(R4)');
   },
+  //  좁은 폭(≤440px · 터치 위젯) ▲▼ 히트 영역 — 높이·폭 하한 24px(--sp-5). jsdom 은 레이아웃을 재지 못하므로 규칙을 잠근다.
+  //  (2026-10-01 loop-ui-visual V7: 320·400px 에서 ▲▼ 가 15.2×23.5px 였다 — 기본 .btn.sm 줄 높이 그대로.)
+  touchFloor(app) {
+    const css = app.slice(0, app.indexOf('</style>'));
+    const blocks = [...css.matchAll(/@media\s*\(max-width:\s*(\d+)px\)\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}/g)];
+    const hit = blocks.filter((m) => Number(m[1]) >= 440 && /\.cat-mv \.btn\{[^}]*min-height:var\(--sp-5\)/.test(m[2]));
+    assert.ok(hit.length >= 1, '≤440px 에서 .cat-mv .btn 에 min-height:var(--sp-5)(24px) 하한이 없다 — 터치 위젯에서 ▲▼ 가 15px 로 줄어든다(R3·V7)');
+    assert.ok(hit.some((m) => /\.cat-mv \.btn\{[^}]*min-width:var\(--sp-5\)/.test(m[2])), '≤440px 에서 .cat-mv .btn 에 min-width:var(--sp-5) 하한이 없다');
+    assert.ok(/\.cat-mv\{display:inline-flex;flex-direction:column;/.test(css), '▲▼ 를 위아래로 쌓는 배치가 사라졌다 — 좁은 폭에서 이름이 밀린다');
+    //  ▲▼ 열이 폭을 먹는 만큼 행 링크(수정·삭제/제거)가 한 글자씩 접히지 않게(320px 실측: 「수/정」 세로 쪼개짐)
+    assert.ok(hit.some((m) => /\.cat-row > \.link\{[^}]*flex:none[^}]*white-space:nowrap/.test(m[2])), '≤440px 에서 .cat-row > .link 가 줄어든다 — 긴 이름 행에서 「수정」이 「수/정」으로 접힌다');
+  },
   //  필터 막대·과제 선택 상자·할 일 필터·할 일 편집·내보내기 — state.categories 를 정렬 없이 돈다
   pickersInOrder(app) {
     const fb = fnBody(app, 'renderFilterbar');
@@ -137,6 +154,7 @@ test('정적②: ▲▼ 는 진짜 버튼 · aria-label · 끝 비활성 — 개
 test('정적③: 이동은 guardEdit → 맞바꿈 → save() 1회 · 위임이 ▲▼ 를 catMoveRow 로 보낸다', () => statics.handlerOrder(src));
 test('정적④: 보고서 행 = state.categories 순서(「기타」·미분류 맨 뒤) · 정렬 없음', () => statics.reportOrder(src));
 test('정적⑤: 필터 막대·과제 선택 상자·할 일 필터·내보내기가 state.categories 를 정렬 없이 돈다', () => statics.pickersInOrder(src));
+test('정적⑥: 좁은 폭(≤440px) ▲▼ 히트 영역 하한 24px(--sp-5) — 터치 위젯(R3)', () => statics.touchFloor(src));
 test('변이①s: 개인 먼저 재묶음을 되살리면 정적① 이 실패한다', () => {
   assert.throws(() => statics.listInRealOrder(MUT.regroup(src)), /그대로 그리지 않는다|isOfficialCat|재배열/);
 });
@@ -148,6 +166,9 @@ test('변이③s: 저장을 두 번 하면 정적③ 이 실패한다', () => {
 });
 test('변이④s: 보고서 행을 이름순으로 정렬하면 정적④ 가 실패한다', () => {
   assert.throws(() => statics.reportOrder(MUT.sortReport(src)), /정렬/);
+});
+test('변이⑤s: 좁은 폭 ▲▼ 하한을 지우면 정적⑥ 이 실패한다', () => {
+  assert.throws(() => statics.touchFloor(MUT.noTouchFloor(src)), /min-height:var\(--sp-5\)/);
 });
 
 /* ── 행동 — jsdom 위젯 모드 ──────────────────────────────────────────── */
