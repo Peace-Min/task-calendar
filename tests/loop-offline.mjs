@@ -247,7 +247,14 @@ async function main() {
   ok('O0 __dbFault{off} → ok:true', true, JSON.stringify(f0));
   const user = await cdp.ev("(typeof currentUser !== 'undefined' && currentUser && currentUser.loginId) || ''");
   if (!user) { undecide('O0 로그인', '위젯이 로그인 상태가 아니다'); return; }
-  if (!(await waitFor(isHealthy, 20000))) {
+  //  ★ 앞 루프가 남긴 상태 치유(2026-10-01 run-loops 3차 실측): loop-ui-integrity 의 오프라인 시나리오가 앱 계정을 잠갔다
+  //    푸는 동안 위젯이 auth(3118) 를 받아 conn='denied' 로 남는다 — 접근 거부는 설계상 자동 재시도하지 않는다(OFFLINE-RESILIENCE S6).
+  //    그래서 판정 전에 사람이 [다시 시도] 를 누르는 것과 같은 일을 한 번 한다. 이것은 시험 대상이 아니라 시작 조건 맞추기다.
+  if (!(await waitFor(isHealthy, 5000))) {
+    vlog('시작 상태 치유: 다시 시도 1회');
+    await cdp.ev("(() => { const b = document.getElementById('dsErrorRetry'); if (b) { b.click(); return 'click'; } hpost({ cmd: 'reloadState' }); return 'reload'; })()");
+  }
+  if (!(await waitFor(isHealthy, 30000))) {
     const s = await snapConn();
     undecide('O0 정상 연결', '시작 상태가 정상이 아니다: ' + JSON.stringify({ conn: s.conn, bootOk: s.bootOk, unsaved: s.unsaved, box: s.box, bar: s.bar }));
     return;

@@ -170,7 +170,11 @@ class R {
     Console.Out.Write(JsonSerializer.Serialize(new { ok = okr, logs }));
     return 0;
   }
-}`;
+}
+
+// 시험 전용 스텁 — widget/DbErrors.cs 가 이 예외 형식을 분류에 쓴다(진짜 정의는 CalendarDb.cs).
+// 이 러너는 ReportDb 만 링크하므로 CalendarDb.cs(→ ProjectDb …)를 끌어오지 않고 형식 하나만 둔다.
+namespace TaskCalendarWidget { internal sealed class CalendarUserNotFoundException : Exception { public CalendarUserNotFoundException(string m) : base(m) { } } }`;
 
 const PROJ = (root) => `<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -183,7 +187,7 @@ const PROJ = (root) => `<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <Compile Include="R.cs" />
     <Compile Include="${root}/widget/ReportDb.cs" />
-    <Compile Include="${root}/widget/DeployConfig.cs" />
+    <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" />
   </ItemGroup>
   <ItemGroup><PackageReference Include="MySqlConnector" Version="2.3.7" /></ItemGroup>
 </Project>`;

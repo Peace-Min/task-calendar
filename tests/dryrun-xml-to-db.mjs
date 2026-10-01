@@ -128,7 +128,7 @@ const PROJ = root => `<Project Sdk="Microsoft.NET.Sdk">
     <Compile Include="${root}/widget/ProjectDb.cs" />
     <Compile Include="${root}/widget/RepoPaths.cs" />
     <Compile Include="${root}/widget/UserSession.cs" />
-    <Compile Include="${root}/widget/DeployConfig.cs" /></ItemGroup>
+    <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" /></ItemGroup>
   <ItemGroup><PackageReference Include="MySqlConnector" Version="2.3.7" /></ItemGroup>
 </Project>`;
 let WORK = null;
