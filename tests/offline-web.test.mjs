@@ -35,6 +35,7 @@ const GATED_FUNCTIONS = [
   'addRoom', 'deleteRoom', 'startImport', 'showImportPreview', 'applyImport', 'clearAll',
   'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog', 'runGitImport',
   'setCommitSubject', 'setCommitMessage', 'setEntryTitle', 'setTodoText', 'commitDayNoteEdit',
+  'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다
 ];
 const WRITE_TOKENS = ['save()', 'saveFull()', 'dbSave(', 'addEntry(', 'updateEntry(', 'deleteEntry(', 'addTodo(',
   'updateTodo(', 'addCategory(', 'updateCategory(', 'deleteCategory(', 'subscribeDbCat(', 'unsubscribeDbCat(',
@@ -92,7 +93,7 @@ const statics = {
   },
 };
 
-test('정적①: 편집 진입점 함수 20곳이 첫 쓰기 전에 guardEdit() 을 지난다', () => statics.functionsGated(src));
+test('정적①: 편집 진입점 함수 21곳이 첫 쓰기 전에 guardEdit() 을 지난다', () => statics.functionsGated(src));
 test('정적②: 배선 진입점 16곳(끌어 옮기기·할 일·과제·보고서 서식·근태·시간·삭제)이 guardEdit() 을 지난다', () => statics.handlersGated(src));
 test('정적③: 연결 상태 경로는 메모리 전용이다(로컬 저장소 대기열 없음)', () => statics.memoryOnly(src));
 test('정적④: 브라우저(!HOST)·열람 창(PEER)에서는 잠금이 늘 false 다', () => {

@@ -416,7 +416,7 @@ test('교체⑤: 전량 삭제가 발번보다 먼저 온다', () => c6.wipeBefo
 test('교체⑥: 전량 삭제 순서가 FK 를 지킨다(과제가 마지막)', () => c6.wipeOrderRespectsFk(writedb));
 
 test('변이⑲: 가져오기를 통상 저장으로 되돌리면 교체① 이 실패한다', () => {
-  const bad = mutate("  saveFull(); closeModal('#importModal')", "  save(); closeModal('#importModal')", src);
+  const bad = mutate("  const saved = saveFull(); closeModal('#importModal')", "  const saved = save(); closeModal('#importModal')", src);
   assert.throws(() => c6.importUsesReplaceAll(bad), /saveFull\(\) 로 저장하지 않는다/);
 });
 

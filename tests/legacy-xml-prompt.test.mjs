@@ -2,9 +2,13 @@
 //
 // 이 파일이 지키는 것:
 //   A. 빈 캘린더 + 이 PC 데이터 폴더에 옛 XML → 「가져올까요?」를 **한 번 묻는다**.
-//      ★ 묻기만 한다. 물음 창의 어느 경로도 데이터를 적용·저장하지 않는다 — 「가져오기」는 호스트가
-//        읽은 내용을 늘 쓰던 미리보기(showImportPreview)로 넘길 뿐이고, 병합/교체는 거기서 사용자가 고른다.
+//      ★ 묻는 단계는 읽지도 적용하지도 않는다. 「가져오기」를 **눌러야** 호스트가 읽는다(readLegacyXml).
 //        그래서 2026-09-01 의 「자동이관 폐기, 명시적 가져오기」(설계 §3b)와 부딪치지 않는다.
+//      ★ 「가져오기」 = **바로 교체**(2026-10-01 사용자 결정) — 두 번째 미리보기(#importModal)는 없다.
+//        applyImport('replace') → saveFull → replaceAllState. 병합은 이 경로에서 절대 부르지 않는다.
+//        누른 순간 캘린더가 비어 있지 않으면(그새 무언가를 적었다) 말없이 지우지 않고 미리보기(병합/교체)로 간다.
+//        성공 토스트는 저장이 들어간 뒤 한 번: 「이전 기록을 가져왔습니다 — 과제 N개 · 기록 M개 · 할 일 K개」.
+//      ★ ⋯ 메뉴 「XML 가져오기」(startImport → pickImportXml → showImportPreview)는 그대로다(data-source 표시등③).
 //      호스트 두 명령:
 //        · legacyXmlProbe — 데이터 폴더 최상위 *.xml 의 **이름·크기·시각만**(내용은 읽지 않는다)
 //        · readLegacyXml  — 이름만 받아 데이터 폴더 안으로만 푼다(구분자·「..」 거절 · .xml · 64MB)
@@ -17,7 +21,8 @@
 // 행동 검사는 앱 소스에서 함수를 잘라 node:vm 에서 가짜 전역으로 돌린다(jsdom 불필요).
 import { readFileSync, readdirSync } from 'node:fs';
 import vm from 'node:vm';
-import { test, assert, loadAppSource, extractFunction, stripCsComments, extractCsMember } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, stripCsComments, extractCsMember,
+  importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
 import { mutate } from './ps-guard-lib.mjs';
 
 const app = loadAppSource();
@@ -64,9 +69,14 @@ function markupBlock(src, open, endMarker) {
   return src.slice(s, e);
 }
 
-//  물음 경로의 함수 전부 — 이 안에서는 적용·저장이 **한 글자도** 없어야 한다.
+//  물음 경로의 함수 전부(저장소 접근 검사 대상).
 const PROMPT_FNS = ['maybeAskLegacyImport', 'showLegacyPrompt', 'legacyPromptImport', 'legacyPromptNever',
   'legacyPromptKey', 'legacyPromptSig', 'legacyPromptDismissed'];
+//  그중 **묻기만 하는** 함수 — 이 안에서는 읽기·적용·저장이 **한 글자도** 없어야 한다.
+//  (적용은 사용자가 누르는 legacyPromptImport 한 곳뿐이다 — 2026-10-01 바로 교체)
+const ASK_ONLY_FNS = PROMPT_FNS.filter((f) => f !== 'legacyPromptImport');
+//  성공 토스트 — 결정 문구(2026-10-01)
+const OK_TOAST = (c, e, t) => `이전 기록을 가져왔습니다 — 과제 ${c}개 · 기록 ${e}개 · 할 일 ${t}개`;
 const SANDBOX_FNS = ['calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
   'legacyPromptDismissed', 'legacyTimeText', 'legacySizeText', 'maybeAskLegacyImport', 'showLegacyPrompt',
   'legacyPromptImport', 'legacyPromptNever', 'renderEmptyHint', 'renderDataSourceBadge', 'usDbLineText',
@@ -101,7 +111,8 @@ function fakeDom() {
 }
 
 function sandbox(src, over = {}) {
-  const calls = { host: [], preview: [], open: [], close: [], toast: [], applyImport: 0, save: 0, blocked: 0 };
+  //  apply — applyImport 호출마다 [mode, quiet, 그 순간의 pendingImport]
+  const calls = { host: [], preview: [], open: [], close: [], toast: [], apply: [], save: 0, blocked: 0, guard: 0 };
   const store = new Map();
   const dom = fakeDom();
   const ctx = {
@@ -117,13 +128,35 @@ function sandbox(src, over = {}) {
     //  진짜 schemaBlocked() 처럼 **부를 때마다 센다** — 막힐 때는 토스트까지 흉내 낸다.
     __blocked: false,
     schemaBlocked: () => { calls.blocked++; if (ctx.__blocked) calls.toast.push(['스키마 불일치', 'error']); return ctx.__blocked; },
+    //  연결 잠금 관문 — 진짜처럼 막힐 때 토스트를 띄운다.
+    __locked: false,
+    guardEdit: () => { calls.guard++; if (ctx.__locked) calls.toast.push(['서버에 연결되지 않아 지금은 편집할 수 없습니다', 'warn']); return ctx.__locked; },
+    //  XML 해석 — 'BAD' 로 시작하면 진짜 fromXML 처럼 던진다. 그 밖에는 과제 1 · 기록 2 · 할 일 1.
+    pendingImport: null,
+    fromXML: (t) => {
+      if (/^BAD/.test(String(t))) throw new Error('XML 파싱 오류 — 올바른 XML 파일이 아닙니다.');
+      return { categories: [{ id: 'c1' }], entries: [{ id: 'e1' }, { id: 'e2' }], todos: [{ id: 't1' }] };
+    },
+    //  적용 — 진짜 applyImport('replace') 처럼 state 를 갈아끼우고 saveFull() 의 Promise<boolean> 을 돌려준다.
+    //  __applyResult: 'ok' | 'fail'(저장 실패) | 'blocked'(관문에 막혀 undefined)
+    __applyResult: 'ok',
+    applyImport: (mode, opt) => {
+      calls.apply.push([mode, !!(opt && opt.quiet), ctx.pendingImport]);
+      if (ctx.__applyResult === 'blocked') return undefined;
+      if (mode === 'replace' && ctx.pendingImport) {
+        const p = ctx.pendingImport;
+        ctx.state = { categories: p.categories.slice(), entries: p.entries.slice(), todos: (p.todos || []).slice() };
+      }
+      ctx.pendingImport = null;
+      return Promise.resolve(ctx.__applyResult === 'ok');
+    },
     isDbHost: () => true,
     bootRetry: () => ({ manual() {} }),
     hpost: () => {},
     hostRequest: async (cmd, params) => { calls.host.push([cmd, params || {}]); return ctx.__replies[cmd]; },
     showImportPreview: (n, t) => { calls.preview.push([n, t]); },
-    applyImport: () => { calls.applyImport++; },
     save: () => { calls.save++; },
+    saveFull: () => { calls.save++; },
     dbSave: () => { calls.save++; },
     startImport: () => {},
     openModal: (s) => { calls.open.push(s); },
@@ -293,54 +326,130 @@ const checks = {
     assert.strictEqual(none.calls.open.length, 0, '파일이 없는데 물음 창이 떴다');
   },
 
-  //  W2 물음 경로는 적용·저장을 **직접 부르지 않는다** — 미리보기로만 넘긴다
-  noAutoApply(src) {
-    for (const fn of PROMPT_FNS) {
+  //  W2 묻는 단계는 읽기·적용·저장을 하지 않는다. 「가져오기」(legacyPromptImport)는 **바로 교체**한다:
+  //     관문(guardEdit·schemaBlocked) → readLegacyXml → fromXML → 누른 순간 빈 캘린더인가(아니면 미리보기)
+  //     → pendingImport → applyImport('replace', {quiet}) → 저장이 들어간 뒤 성공 토스트 한 번.
+  promptPathContract(src) {
+    for (const fn of ASK_ONLY_FNS) {
       const b = fnBody(src, fn);
-      for (const bad of ['applyImport', 'save(', 'replaceAll', 'dbSave', 'saveFull', 'fromXML', 'pendingImport']) {
+      for (const bad of ['applyImport', 'save(', 'replaceAll', 'dbSave', 'saveFull', 'fromXML', 'pendingImport', 'readLegacyXml']) {
         assert.ok(!b.includes(bad),
-          `${fn}() 가 ${bad} 를 부른다 — 물음 창이 스스로 적용·저장하면 그것이 자동이관이다(설계 §3b)`);
+          `${fn}() 가 ${bad} 를 부른다 — 묻는 단계가 스스로 읽거나 적용·저장하면 그것이 자동이관이다(설계 §3b)`);
       }
     }
     const imp = fnBody(src, 'legacyPromptImport');
-    assert.ok(imp.includes("hostRequest('readLegacyXml', { name: p.name }"), '「가져오기」가 readLegacyXml 로 이름만 보내지 않는다');
-    assert.ok(imp.includes('showImportPreview('), '「가져오기」가 미리보기(showImportPreview)로 넘기지 않는다');
-    const g = imp.indexOf('schemaBlocked()');
-    assert.ok(g >= 0 && g < imp.indexOf("hostRequest('readLegacyXml'"),
-      '「가져오기」가 읽기 전에 스키마 게이트(schemaBlocked)를 거치지 않는다 — 낡은 위젯이 전량 교체까지 가서야 거부당한다');
+    const read = imp.indexOf("hostRequest('readLegacyXml', { name: p.name }");
+    assert.ok(read > 0, '「가져오기」가 readLegacyXml 로 이름만 보내지 않는다');
+    for (const [gate, why] of [['guardEdit()', '연결 잠금(guardEdit)'], ['schemaBlocked()', '스키마 게이트(schemaBlocked)']]) {
+      const g = imp.indexOf(gate);
+      assert.ok(g >= 0 && g < read, `「가져오기」가 읽기 전에 ${why}를 거치지 않는다 — 막혀야 할 때 파일을 읽고 전량 교체까지 간다`);
+    }
+    //  병합·직접 저장·두 번째 미리보기 창은 이 경로에 없다
+    assert.ok(!/'merge'|"merge"/.test(imp), '「가져오기」가 병합을 부른다 — 이 경로는 교체 하나다(2026-10-01)');
+    for (const bad of ['save(', 'saveFull', 'dbSave', 'replaceAll', 'openModal(', '#importModal']) {
+      assert.ok(!imp.includes(bad), `「가져오기」가 ${bad} 를 직접 쓴다 — 적용·저장은 applyImport('replace') 한 문으로, 미리보기 창은 열지 않는다`);
+    }
+    const parse = imp.indexOf('fromXML(text)');
+    const recheck = imp.indexOf('if(!calendarIsEmpty()){ showImportPreview(name, text); return; }');
+    const pend = imp.indexOf('pendingImport = data;');
+    const apply = imp.indexOf("applyImport('replace', { quiet: true })");
+    assert.ok(parse > read, '「가져오기」가 읽은 내용을 fromXML 로 해석하지 않는다');
+    assert.ok(/try\{ data = fromXML\(text\); \}catch\(err\)\{ toast\('가져오기 실패: ' \+ err\.message, 'error'\); return; \}/.test(imp),
+      '해석 실패를 「가져오기 실패: …」 토스트로 알리고 멈추지 않는다');
+    assert.ok(recheck > read,
+      '「가져오기」가 누른 순간 빈 캘린더인지 다시 보지 않는다 — 물음이 떠 있는 사이 적은 기록을 교체가 말없이 지운다');
+    assert.ok(apply > 0, "「가져오기」가 applyImport('replace', { quiet: true }) 로 바로 교체하지 않는다");
+    assert.ok(parse < apply && recheck < apply && pend > recheck && pend < apply,
+      '순서가 어긋났다 — 해석 → 빈 캘린더 재확인 → pendingImport → 교체 여야 한다');
+    assert.strictEqual((imp.match(/showImportPreview\(/g) || []).length, 1,
+      '미리보기는 「비어 있지 않을 때」 한 곳에서만 연다 — 빈 캘린더 경로에서 두 번째 창을 띄우지 않는다');
+    assert.ok(imp.includes('saved.then(ok => { if(ok) toast(`이전 기록을 가져왔습니다 — 과제 ${nc}개 · 기록 ${ne}개 · 할 일 ${nt}개`); });'),
+      '성공 토스트가 저장이 들어간 뒤(ok) 한 번이 아니거나 문구가 결정과 다르다');
+    //  applyImport 쪽: quiet 이면 자기 토스트를 끄고, 저장 결과를 돌려준다
+    const ap = fnBody(src, 'applyImport');
+    assert.ok(/function applyImport\(mode, opt\)\{/.test(ap), 'applyImport 가 opt 를 받지 않는다');
+    assert.ok(ap.includes('if(!quiet) toast(`데이터를 교체했습니다') && ap.includes('if(!quiet) toast(`데이터를 병합했습니다'),
+      'applyImport 가 quiet 일 때도 자기 토스트를 띄운다 — 이전 기록 가져오기에 성공 토스트가 둘 뜬다');
+    assert.ok(/const saved = saveFull\(\);[^\n]*\n\s*return saved;/.test(ap), 'applyImport 가 saveFull() 의 결과를 돌려주지 않는다');
+    const sf = fnBody(src, 'saveFull');
+    assert.ok(/return dbSave\(\{ replaceAll: true \}\);/.test(sf), 'saveFull 이 dbSave 의 Promise<boolean> 을 돌려주지 않는다');
+    //  배선
     assert.ok(/\$\('#btnLegacyImport'\)\.addEventListener\('click', \(\) => legacyPromptImport\(\)\);/.test(src),
       '「가져오기」 버튼 배선이 끊겼다');
     assert.ok(/\$\('#btnLegacyNever'\)\.addEventListener\('click', \(\) => legacyPromptNever\(\)\);/.test(src),
       '「다시 묻지 않기」 버튼 배선이 끊겼다');
   },
 
-  //  W2' 행동: 가져오기 → readLegacyXml → 미리보기. 적용·저장은 0회. 실패는 토스트.
+  //  W2' 행동(node:vm): 빈 캘린더 → 읽기 → 바로 교체(병합 0 · 미리보기 0) → 저장 뒤 토스트 한 번.
+  //     비어 있지 않으면 미리보기 · 해석 실패는 토스트 · 관문이 막으면 읽지도 않는다 · 저장 실패면 성공 토스트 없음.
   async importBehaves(src) {
+    const readCalls = (s) => s.calls.host.filter(([c]) => c === 'readLegacyXml');
     const s = sandbox(src);
     await s.ctx.maybeAskLegacyImport();
+    s.calls.toast.length = 0;
     s.ctx.legacyPromptImport();
-    await flush();
+    await flush(); await flush();
     //  ★ JSON 으로 비교한다 — 인자 객체는 vm 영역에서 만들어져 프로토타입이 달라 deepStrictEqual 이 늘 실패한다.
-    assert.strictEqual(JSON.stringify(s.calls.host.filter(([c]) => c === 'readLegacyXml')),
-      JSON.stringify([['readLegacyXml', { name: 'old.xml' }]]),
+    assert.strictEqual(JSON.stringify(readCalls(s)), JSON.stringify([['readLegacyXml', { name: 'old.xml' }]]),
       '「가져오기」가 감지한 그 이름으로 읽기를 요청하지 않았다');
-    assert.deepStrictEqual(s.calls.preview, [['old.xml', '<taskCalendar/>']], '읽은 내용이 미리보기로 가지 않았다');
-    assert.strictEqual(s.calls.applyImport + s.calls.save, 0, '물음 경로가 적용·저장을 직접 불렀다');
-    const blk = sandbox(src);
-    await blk.ctx.maybeAskLegacyImport();
-    blk.ctx.__blocked = true;
-    blk.ctx.legacyPromptImport();
-    await flush();
-    assert.strictEqual(blk.calls.host.filter(([c]) => c === 'readLegacyXml').length, 0,
-      '스키마가 막혔는데 「가져오기」가 파일을 읽었다');
-    assert.ok(blk.calls.toast.length > 0, '스키마가 막혔는데 「가져오기」가 사유를 알리지 않았다');
+    assert.ok(s.calls.apply.every(([m]) => m === 'replace'), '「가져오기」가 병합을 불렀다 — 이 경로는 교체 하나다');
+    assert.strictEqual(s.calls.apply.length, 1, '빈 캘린더인데 바로 교체(applyImport)하지 않았다');
+    assert.strictEqual(s.calls.apply[0][1], true, '교체를 quiet 로 부르지 않았다 — 「데이터를 교체했습니다」 토스트가 하나 더 뜬다');
+    assert.strictEqual(JSON.stringify(s.calls.apply[0][2] && s.calls.apply[0][2].entries), JSON.stringify([{ id: 'e1' }, { id: 'e2' }]),
+      'pendingImport 가 해석한 파일 내용이 아니다');
+    assert.strictEqual(s.calls.preview.length, 0, '빈 캘린더인데 미리보기(두 번째 창)를 띄웠다');
+    assert.ok(!s.calls.open.includes('#importModal'), '빈 캘린더인데 #importModal 을 열었다');
+    assert.strictEqual(s.calls.save, 0, '「가져오기」가 applyImport 를 건너뛰고 직접 저장했다');
+    assert.ok(s.calls.close.includes('#legacyModal'), '「가져오기」가 물음 창을 닫지 않았다');
+    assert.strictEqual(JSON.stringify(s.calls.toast), JSON.stringify([[OK_TOAST(1, 2, 1), undefined]]),
+      '성공 토스트가 정확히 한 번(과제 1 · 기록 2 · 할 일 1)이 아니다: ' + JSON.stringify(s.calls.toast));
+    //  누른 순간 비어 있지 않다 — 지우지 않고 미리보기로
+    const busy = sandbox(src);
+    await busy.ctx.maybeAskLegacyImport();
+    busy.ctx.state = { categories: [{ id: 'mine' }], entries: [], todos: [] };
+    busy.ctx.legacyPromptImport();
+    await flush(); await flush();
+    assert.strictEqual(busy.calls.apply.length, 0, '물음이 떠 있는 사이 기록을 적었는데(비어 있지 않은데) 바로 교체했다 — 말없이 지운다');
+    assert.deepStrictEqual(busy.calls.preview, [['old.xml', '<taskCalendar/>']], '비어 있지 않은데 미리보기(병합/교체 고르기)로 넘기지 않았다');
+    //  해석 실패
+    const bad = sandbox(src);
+    bad.ctx.__replies.readLegacyXml = { ok: true, name: 'old.xml', text: 'BAD<' };
+    await bad.ctx.maybeAskLegacyImport();
+    bad.ctx.legacyPromptImport();
+    await flush(); await flush();
+    assert.strictEqual(bad.calls.apply.length + bad.calls.preview.length, 0, '해석이 실패했는데 적용하거나 미리보기를 띄웠다');
+    assert.ok(bad.calls.toast.some(([m, k]) => k === 'error' && /^가져오기 실패: XML 파싱 오류/.test(m)), '해석 실패를 「가져오기 실패: …」로 알리지 않는다');
+    assert.ok(!bad.calls.open.includes('#legacyModal') || bad.calls.close.includes('#legacyModal'), '해석 실패 뒤 물음 창이 열린 채다');
+    //  스키마 게이트 · 연결 잠금 — 읽기 전에 막는다
+    for (const [why, key] of [['스키마가 막혔는데', '__blocked'], ['연결이 잠겼는데', '__locked']]) {
+      const blk = sandbox(src);
+      await blk.ctx.maybeAskLegacyImport();
+      blk.calls.toast.length = 0;
+      blk.ctx[key] = true;
+      blk.ctx.legacyPromptImport();
+      await flush(); await flush();
+      assert.strictEqual(readCalls(blk).length, 0, `${why} 「가져오기」가 파일을 읽었다`);
+      assert.strictEqual(blk.calls.apply.length, 0, `${why} 「가져오기」가 교체했다`);
+      assert.ok(blk.calls.toast.length > 0, `${why} 「가져오기」가 사유를 알리지 않았다`);
+    }
+    //  읽기 실패
     const f = sandbox(src);
     f.ctx.__replies.readLegacyXml = { ok: false, error: '파일이 없습니다' };
     await f.ctx.maybeAskLegacyImport();
     f.ctx.legacyPromptImport();
-    await flush();
-    assert.strictEqual(f.calls.preview.length, 0, '읽기가 실패했는데 미리보기가 떴다');
+    await flush(); await flush();
+    assert.strictEqual(f.calls.preview.length + f.calls.apply.length, 0, '읽기가 실패했는데 미리보기나 교체가 일어났다');
     assert.ok(f.calls.toast.some(([m, k]) => k === 'error' && /파일이 없습니다/.test(m)), '읽기 실패를 토스트로 알리지 않는다');
+    //  저장 실패 · 관문에 막힘 — 성공 토스트 없음(실패는 dbSave·관문이 이미 말한다)
+    for (const [why, r] of [['저장이 실패했는데', 'fail'], ['적용이 관문에 막혔는데', 'blocked']]) {
+      const x = sandbox(src);
+      await x.ctx.maybeAskLegacyImport();
+      x.ctx.__applyResult = r;
+      x.ctx.legacyPromptImport();
+      await flush(); await flush();
+      assert.strictEqual(x.calls.apply.length, 1, `${why} — 교체가 불리지 않았다(시험 전제)`);
+      assert.ok(!x.calls.toast.some(([m]) => /이전 기록을 가져왔습니다/.test(m)), `${why} 성공 토스트가 떴다`);
+    }
   },
 
   //  W3 「다시 묻지 않기」 = 키 tc.legacyPrompt.dismissed.<userId|loginId|me> · 값 name|mtime · 저장소가 던져도 동작
@@ -453,8 +562,12 @@ const checks = {
   modalMarkup(src) {
     const md = markupBlock(src, '<div class="overlay hidden" id="legacyModal">', '<!-- ===== 확인 모달');
     assert.ok(md.includes('<h2>이전 버전 기록을 찾았습니다</h2>'), '제목이 다르다');
-    assert.ok(md.includes('이 PC에 이전 버전(XML 저장)에서 쓰던 기록 파일이 있습니다. 가져오면 서버 캘린더로 옮겨지고, 원본 파일은 지우지 않습니다(「교체」로 옮기면 이름 끝에 「.migrated-날짜」가 붙어 보관됩니다).'),
-      '안내 문장이 결정 문구와 다르다');
+    assert.ok(md.includes('이 PC에 이전 버전(XML 저장)에서 쓰던 기록 파일이 있습니다. 「가져오기」를 누르면 이 파일의 기록으로 캘린더를 채우고, 원본 파일은 이름 끝에 「.migrated-날짜」가 붙어 그대로 보관됩니다.'),
+      '안내 문장이 결정 문구(2026-10-01)와 다르다');
+    assert.ok(!/「교체」|병합/.test(md), '물음 창이 아직 병합/교체 고르기를 말한다 — 이 창의 「가져오기」는 바로 교체다');
+    //  세 버튼의 순서: 다시 묻지 않기 · 나중에 · 가져오기
+    const iN = md.indexOf('id="btnLegacyNever"'), iL = md.indexOf('data-close>나중에<'), iI = md.indexOf('id="btnLegacyImport"');
+    assert.ok(iN > 0 && iN < iL && iL < iI, '버튼 순서가 다시 묻지 않기 · 나중에 · 가져오기 가 아니다');
     assert.ok(/id="btnLegacyNever"[^>]*>다시 묻지 않기</.test(md), '「다시 묻지 않기」 버튼이 없다');
     assert.ok(/<button class="btn" data-close>나중에<\/button>/.test(md), '「나중에」가 그냥 닫기가 아니다');
     assert.ok(/<button class="btn primary" id="btnLegacyImport"[^>]*>가져오기</.test(md), '「가져오기」(주 버튼)가 없다');
@@ -483,8 +596,8 @@ test('감지④(호스트): 개명 대상(_lastImportPath)을 세우는 곳은 �
   checks.lastImportPathOwners(hostAll));
 test('감지⑤(웹): 조건 = 빈 캘린더 && HOST && !PEER && 스키마 불일치 아님(조용히 — schemaBlocked() 미호출) · 페이지당 한 번 · 부팅 성공 뒤', () => checks.triggerGuards(app));
 test('감지⑥(웹·행동): 조건을 어기면 묻지도 않고(불일치 포함 · 토스트 0), 두 번 불러도 한 번만 묻는다', () => checks.triggerBehaves(app));
-test('감지⑦(웹): 물음 경로는 적용·저장을 직접 부르지 않는다 — 미리보기로만 넘긴다', () => checks.noAutoApply(app));
-test('감지⑧(웹·행동): 「가져오기」 → readLegacyXml → 미리보기, 적용·저장 0회 · 실패는 토스트', () => checks.importBehaves(app));
+test('감지⑦(웹): 묻는 단계는 읽기·적용·저장 0 · 「가져오기」는 관문 → readLegacyXml → 해석 → 빈 캘린더 재확인 → 교체(병합·미리보기 창 없음)', () => checks.promptPathContract(app));
+test('감지⑧(웹·행동): 「가져오기」 빈 캘린더 → 바로 교체 + 토스트 1회 · 비어 있지 않으면 미리보기 · 해석/읽기 실패·관문은 교체 0', () => checks.importBehaves(app));
 test('감지⑨(웹·행동): 「다시 묻지 않기」는 name|mtime 으로 그 파일에만 · 저장소가 던져도 동작', () => checks.dismissBehaves(app));
 test('감지⑩(웹): 물음 경로의 저장소 접근은 전부 try 안이다', () => checks.storageGuarded(app));
 test('감지⑪(웹): 물음 창 마크업 — 결정 문구·세 버튼·닫기 경로·토큰만', () => checks.modalMarkup(app));
@@ -499,11 +612,43 @@ test('변이⑩a: 감지 조건에서 !PEER 를 빼면 감지⑤·⑥ 이 실패
   await assert.rejects(() => checks.triggerBehaves(bad), /남의 일정 창\(PEER\) 인데/);
 });
 
-test('변이⑩b: 물음 창이 applyImport 를 부르면 감지⑦·⑧ 이 실패한다(자동이관 부활)', async () => {
-  const bad = mutate(app, "    showImportPreview(res.name || p.name, String(res.text || ''));\n",
-    "    showImportPreview(res.name || p.name, String(res.text || '')); applyImport('replace');\n");
-  assert.throws(() => checks.noAutoApply(bad), /legacyPromptImport\(\) 가 applyImport 를 부른다/);
-  await assert.rejects(() => checks.importBehaves(bad), /적용·저장을 직접 불렀다/);
+test('변이⑩b: 「가져오기」가 병합을 부르면 감지⑦·⑧ 이 실패한다', async () => {
+  const bad = mutate(app, "applyImport('replace', { quiet: true })", "applyImport('merge', { quiet: true })");
+  assert.throws(() => checks.promptPathContract(bad), /병합을 부른다/);
+  await assert.rejects(() => checks.importBehaves(bad), /병합을 불렀다/);
+});
+
+test('변이⑩b2: 누른 순간의 빈 캘린더 재확인을 빼면 감지⑦·⑧ 이 실패한다(그새 적은 기록을 말없이 지운다)', async () => {
+  const bad = mutate(app, '    if(!calendarIsEmpty()){ showImportPreview(name, text); return; }   // 그새 무언가를 적었다', '    //');
+  assert.throws(() => checks.promptPathContract(bad), /빈 캘린더인지 다시 보지 않는다/);
+  await assert.rejects(() => checks.importBehaves(bad), /비어 있지 않은데\) 바로 교체했다/);
+});
+
+test('변이⑩b3: 빈 캘린더 경로에서 미리보기를 띄우면 감지⑦·⑧ 이 실패한다(두 번째 창 부활)', async () => {
+  const bad = mutate(app, "    pendingImport = data;                                              // showImportPreview",
+    "    showImportPreview(name, text); pendingImport = data;               // showImportPreview");
+  assert.throws(() => checks.promptPathContract(bad), /두 번째 창을 띄우지 않는다/);
+  await assert.rejects(() => checks.importBehaves(bad), /빈 캘린더인데 미리보기/);
+});
+
+test('변이⑩b4: 옛 동작(늘 미리보기로만)으로 되돌리면 감지⑦·⑧ 이 실패한다', async () => {
+  const bad = mutate(app, '    if(!calendarIsEmpty()){ showImportPreview(name, text); return; }',
+    '    if(true){ showImportPreview(name, text); return; }');
+  assert.throws(() => checks.promptPathContract(bad), /빈 캘린더인지 다시 보지 않는다/);
+  await assert.rejects(() => checks.importBehaves(bad), /바로 교체\(applyImport\)하지 않았다/);
+});
+
+test('변이⑩b5: 성공 토스트를 저장 결과와 무관하게 띄우면 감지⑦·⑧ 이 실패한다', async () => {
+  const bad = mutate(app, 'saved.then(ok => { if(ok) toast(`이전 기록을', 'saved.then(ok => { toast(`이전 기록을');
+  assert.throws(() => checks.promptPathContract(bad), /저장이 들어간 뒤\(ok\) 한 번이 아니거나/);
+  await assert.rejects(() => checks.importBehaves(bad), /저장이 실패했는데 성공 토스트가 떴다/);
+});
+
+test('변이⑩b6: 해석 실패를 삼키고 진행하면 감지⑦·⑧ 이 실패한다', async () => {
+  const bad = mutate(app, "    try{ data = fromXML(text); }catch(err){ toast('가져오기 실패: ' + err.message, 'error'); return; }",
+    '    try{ data = fromXML(text); }catch(err){ data = { categories:[], entries:[], todos:[] }; }');
+  assert.throws(() => checks.promptPathContract(bad), /해석 실패를/);
+  await assert.rejects(() => checks.importBehaves(bad), /해석이 실패했는데 적용하거나/);
 });
 
 test('변이⑩c: readLegacyXml 이 경로 구분자·「..」 를 받아들이면 감지③ 이 실패한다', () => {
@@ -566,9 +711,15 @@ test('변이⑩l: 감지 조건에서 스키마 불일치를 빼면 감지⑤·�
 });
 
 test('변이⑩m: 「가져오기」의 스키마 게이트를 빼면 감지⑦·⑧ 이 실패한다', async () => {
-  const bad = mutate(app, '  if(!p || schemaBlocked()) return;\n', '  if(!p) return;\n');
-  assert.throws(() => checks.noAutoApply(bad), /스키마 게이트\(schemaBlocked\)를 거치지 않는다/);
+  const bad = mutate(app, '  if(!p || guardEdit() || schemaBlocked()) return;\n', '  if(!p || guardEdit()) return;\n');
+  assert.throws(() => checks.promptPathContract(bad), /스키마 게이트\(schemaBlocked\)를 거치지 않는다/);
   await assert.rejects(() => checks.importBehaves(bad), /스키마가 막혔는데 「가져오기」가 파일을 읽었다/);
+});
+
+test('변이⑩m2: 「가져오기」의 연결 잠금 관문을 빼면 감지⑦·⑧ 이 실패한다', async () => {
+  const bad = mutate(app, '  if(!p || guardEdit() || schemaBlocked()) return;\n', '  if(!p || schemaBlocked()) return;\n');
+  assert.throws(() => checks.promptPathContract(bad), /연결 잠금\(guardEdit\)를 거치지 않는다/);
+  await assert.rejects(() => checks.importBehaves(bad), /연결이 잠겼는데 「가져오기」가 파일을 읽었다/);
 });
 
 test('변이⑩n: 부팅 실패 상자·충돌 안내를 다시 맨 앞(제목줄 위)에 넣으면 상단① 이 실패한다', () => {
@@ -579,3 +730,169 @@ test('변이⑩n: 부팅 실패 상자·충돌 안내를 다시 맨 앞(제목�
     '    document.body.insertBefore(b, document.body.firstChild);\n  }\n  document.getElementById(\'dbConflictText\')');
   assert.throws(() => checks.placementBelowTitleBar(bad2), /showDbConflict\(\) 가 제목줄 아래에 넣지 않는다/);
 });
+
+// ── 실행(jsdom 위젯 모드) — 진짜 앱 전체로 「가져오기」 = 바로 교체를 끝까지 돌린다 ──────────
+//  node:vm 검사는 함수를 잘라 가짜 applyImport 로 돈다. 여기서는 진짜 fromXML·applyImport·saveFull·dbSave 가
+//  돌고, 호스트로 나간 replaceAllState 의 내용과 실제 토스트를 본다(offline-web 과 같은 부팅 방식).
+const jsdomMod = await importOptional('jsdom');
+const JSDOM = jsdomMod?.JSDOM || null;
+
+if (!JSDOM) {
+  skip('legacy-xml-prompt: jsdom 미설치 — 실행 시험을 돌리지 못했다', SKIP_NO_JSDOM,
+       `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수)`);
+} else {
+  const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setImmediate(r)); };
+  const META = { schemaVersion: '12', expectedSchema: '12', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
+  const EMPTY = { categories: [], entries: [], todos: [], rooms: ['201호'] };
+  //  과제 1 · 기록 2 · 할 일 1 짜리 옛 XML(taskCalendar v1)
+  const LEGACY_XML = '<?xml version="1.0" encoding="UTF-8"?>\n<taskCalendar version="1">' +
+    '<categories><category id="c1" createdAt="2026-08-01T00:00:00Z"><name>옛 과제</name></category></categories>' +
+    '<entries>' +
+    '<entry id="e1" date="2026-08-03" categoryId="c1" allDay="true"><title>옛 기록 1</title></entry>' +
+    '<entry id="e2" date="2026-08-04" categoryId="c1" allDay="true"><title>옛 기록 2</title></entry>' +
+    '</entries>' +
+    '<todos><todo id="t1" due="2026-08-05"><text>옛 할 일</text></todo></todos>' +
+    '</taskCalendar>';
+
+  function boot(source) {
+    const log = [];
+    const handlers = {};
+    const dom = new JSDOM(source, {
+      runScripts: 'dangerously',
+      pretendToBeVisual: true,
+      url: 'https://tcapp.local/',
+      virtualConsole: jsdomMod.VirtualConsole ? new jsdomMod.VirtualConsole() : undefined,
+      beforeParse(win) {
+        win.chrome = { webview: {
+          postMessage(m) { let o = null; try { o = JSON.parse(m); } catch (_) {} log.push({ post: o && o.cmd, msg: o }); },
+          addEventListener() {}, removeEventListener() {},
+        } };
+        if (typeof win.crypto === 'undefined') {
+          win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
+        }
+        win.scrollTo = () => {};
+        //  타이머는 흐르지 않는다(토스트 자동 닫힘·재시도 타이머가 시험 밖으로 새지 않게)
+        win.setTimeout = () => 0;
+        win.clearTimeout = () => {};
+      },
+    });
+    const w = dom.window;
+    w.__fakeReply = (cmd, params) => {
+      log.push({ req: cmd, params });
+      const h = handlers[cmd];
+      const r = typeof h === 'function' ? h(params) : h;
+      return Promise.resolve(r === undefined ? { ok: false, error: 'no handler' } : r);
+    };
+    w.eval('hostRequest = function(cmd, params){ return window.__fakeReply(cmd, params || {}); };');
+    w.eval('(function(){ var t = toast; toast = function(m, k, a, ms){ window.__fakeToast(String(m), k); return t(m, k, a, ms); }; })();');
+    w.eval('(function(){ var o = openModal; openModal = function(sel){ window.__fakeOpen(typeof sel === "string" ? sel : (sel && sel.id)); return o(sel); }; })();');
+    w.__fakeToast = (m, k) => log.push({ toast: m, kind: k === undefined ? 'success' : k });
+    w.__fakeOpen = (sel) => log.push({ open: sel });
+    const sess = log.find((x) => x.post === 'userSessionGet');
+    if (sess) w.eval('__hostReply(' + JSON.stringify(sess.msg.reqId) + ', ' + JSON.stringify({ ok: true, user: { loginId: 'hjlee', name: '이현진' } }) + ')');
+    return {
+      w, log, handlers,
+      ev: (code) => w.eval(code),
+      reqs: (cmd) => log.filter((x) => x.req === cmd),
+      toasts: () => log.filter((x) => x.toast),
+      opened: () => log.filter((x) => x.open).map((x) => x.open),
+      el: (id) => w.document.getElementById(id),
+      isOpen: (id) => { const e = w.document.getElementById(id); return !!e && !e.classList.contains('hidden') && !e.classList.contains('closing'); },
+      applyState: (data, meta = META) => w.eval('__applyState(' + JSON.stringify(JSON.stringify(data)) + ',' + JSON.stringify(meta) + ')'),
+      clear: () => { log.length = 0; },
+      close: () => { try { w.close(); } catch (_) {} },
+    };
+  }
+  //  빈 캘린더로 부팅 → 물음 창이 뜬 상태까지. replaceAll = replaceAllState 회신.
+  async function bootToPrompt(source, replaceAll) {
+    const W = boot(source);
+    W.handlers.legacyXmlProbe = { ok: true, found: true, name: 'old.xml', size: 4096, mtime: '2026-09-01T00:00:00Z' };
+    W.handlers.readLegacyXml = { ok: true, name: 'old.xml', text: LEGACY_XML };
+    W.handlers.replaceAllState = replaceAll;
+    W.applyState(EMPTY);
+    await settle();
+    assert.ok(W.isOpen('legacyModal'), '빈 캘린더 + 옛 XML 인데 물음 창이 뜨지 않았다(시험 전제)');
+    W.clear();
+    return W;
+  }
+
+  const runtime = {
+    //  성공: 읽기 → 진짜 교체 → replaceAllState 한 번(내용 = 파일) → 성공 토스트 정확히 한 번 · 미리보기 창 없음
+    async replacesDirectly(source) {
+      const W = await bootToPrompt(source, { ok: true });
+      try {
+        W.el('btnLegacyImport').click();
+        await settle();
+        const order = W.log.filter((x) => x.req).map((x) => x.req);
+        assert.ok(order.indexOf('readLegacyXml') >= 0 && order.indexOf('readLegacyXml') < order.indexOf('replaceAllState'),
+          '읽기(readLegacyXml) 뒤에 전량 교체(replaceAllState)가 나가지 않았다: ' + order.join(','));
+        assert.strictEqual(W.reqs('readLegacyXml')[0].params.name, 'old.xml', '감지한 그 이름으로 읽지 않았다');
+        assert.strictEqual(W.reqs('replaceAllState').length, 1, '전량 교체가 정확히 한 번 나가지 않았다');
+        assert.strictEqual(W.reqs('saveState').length, 0, '교체가 통상(차분) 저장으로 나갔다');
+        const sent = W.reqs('replaceAllState')[0].params.state;
+        assert.deepStrictEqual(JSON.parse(JSON.stringify([sent.categories.map((c) => c.id), sent.entries.map((e) => e.id), sent.todos.map((t) => t.id)])),
+          [['c1'], ['e1', 'e2'], ['t1']], '호스트로 보낸 상태가 파일 내용(과제 1 · 기록 2 · 할 일 1)이 아니다');
+        assert.strictEqual(W.ev('JSON.stringify([state.categories.length, state.entries.length, state.todos.length])'), '[1,2,1]',
+          '화면 상태가 파일 내용으로 바뀌지 않았다');
+        assert.ok(!W.opened().includes('#importModal') && !W.isOpen('importModal'), '바로 교체 경로인데 미리보기(#importModal)가 열렸다');
+        assert.ok(!W.isOpen('legacyModal'), '물음 창이 닫히지 않았다');
+        const ok = W.toasts().filter((x) => x.kind === 'success').map((x) => x.toast);
+        assert.deepStrictEqual(ok, [OK_TOAST(1, 2, 1)], '성공 토스트가 정확히 한 번(과제 1 · 기록 2 · 할 일 1)이 아니다: ' + JSON.stringify(ok));
+        assert.ok(!W.toasts().some((x) => /데이터를 (교체|병합)했습니다/.test(x.toast)), 'applyImport 의 교체/병합 토스트가 함께 떴다');
+        assert.ok(!W.el('emptyHint'), '교체 뒤에도 빈 캘린더 안내가 남았다');
+      } finally { W.close(); }
+    },
+    //  저장 실패: 성공 토스트 없음 — 실패 처리(저장 실패 토스트)만
+    async failSaysNothingMore(source) {
+      const W = await bootToPrompt(source, { ok: false, error: '쓰기 거부' });
+      try {
+        W.el('btnLegacyImport').click();
+        await settle();
+        assert.strictEqual(W.reqs('replaceAllState').length, 1, '교체 저장이 나가지 않았다(시험 전제)');
+        assert.ok(!W.toasts().some((x) => /이전 기록을 가져왔습니다/.test(x.toast)), '저장이 실패했는데 성공 토스트가 떴다');
+        assert.ok(W.toasts().some((x) => x.kind === 'error' && /저장 실패 — 쓰기 거부/.test(x.toast)), '저장 실패를 기존 실패 처리가 알리지 않았다');
+      } finally { W.close(); }
+    },
+    //  누른 순간 비어 있지 않다 → 지우지 않고 늘 쓰던 미리보기(병합/교체)로
+    async nonEmptyGoesToPreview(source) {
+      const W = await bootToPrompt(source, { ok: true });
+      try {
+        W.ev("state.categories.push({ id: 'mine', name: '방금 만든 과제', color: '', desc: '', gitRepo: '', svnRepo: '', createdAt: '' })");
+        W.el('btnLegacyImport').click();
+        await settle();
+        assert.strictEqual(W.reqs('replaceAllState').length, 0, '비어 있지 않은데 바로 교체했다 — 방금 만든 과제를 말없이 지운다');
+        assert.ok(W.opened().includes('#importModal') && W.isOpen('importModal'), '비어 있지 않은데 미리보기(병합/교체)를 열지 않았다');
+        assert.strictEqual(W.ev("state.categories.map(c => c.id).join(',')"), 'mine', '미리보기 전에 상태가 바뀌었다');
+      } finally { W.close(); }
+    },
+  };
+
+  test('실행①(jsdom): 빈 캘린더 「가져오기」 → readLegacyXml → 진짜 교체(replaceAllState 1회, 내용=파일) · 성공 토스트 1회 · 미리보기 창 없음',
+    () => runtime.replacesDirectly(app));
+  test('실행②(jsdom): 교체 저장이 실패하면 성공 토스트 없이 기존 실패 처리만', () => runtime.failSaysNothingMore(app));
+  test('실행③(jsdom): 누른 순간 비어 있지 않으면 교체하지 않고 미리보기(병합/교체)로', () => runtime.nonEmptyGoesToPreview(app));
+  test('실행④(jsdom): ⋯ 메뉴 「XML 가져오기」는 그대로 미리보기(병합/교체)를 연다', async () => {
+    const W = boot(app);
+    try {
+      W.handlers.legacyXmlProbe = { ok: true, found: false };
+      W.handlers.pickImportXml = { ok: true, name: 'pick.xml', text: LEGACY_XML };
+      W.applyState(EMPTY);
+      await settle();
+      W.clear();
+      W.ev('startImport()');
+      await settle();
+      assert.strictEqual(W.reqs('pickImportXml').length, 1, '⋯ 메뉴 가져오기가 호스트 파일창을 열지 않았다');
+      assert.ok(W.isOpen('importModal'), '⋯ 메뉴 가져오기가 미리보기(병합/교체)를 열지 않았다');
+      assert.strictEqual(W.reqs('replaceAllState').length, 0, '⋯ 메뉴 가져오기가 고르기 전에 저장했다');
+    } finally { W.close(); }
+  });
+
+  test('변이⑩r(jsdom): applyImport 의 quiet 를 빼면 실행① 이 실패한다(토스트 둘)', async () => {
+    const bad = mutate(app, "applyImport('replace', { quiet: true })", "applyImport('replace')");
+    await assert.rejects(() => runtime.replacesDirectly(bad), /성공 토스트가 정확히 한 번|교체\/병합 토스트가 함께 떴다/);
+  });
+  test('변이⑩s(jsdom): 재확인을 빼면 실행③ 이 실패한다', async () => {
+    const bad = mutate(app, '    if(!calendarIsEmpty()){ showImportPreview(name, text); return; }   // 그새 무언가를 적었다', '    //');
+    await assert.rejects(() => runtime.nonEmptyGoesToPreview(bad), /비어 있지 않은데 바로 교체했다/);
+  });
+}
