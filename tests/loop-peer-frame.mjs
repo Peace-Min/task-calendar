@@ -917,7 +917,9 @@ try {
   console.log('\n[사람 고르기 · 조직도] 툴바 → 조직도 탭 → 대상의 조직 → 대상 행 → 열람 (PEER-PICKER-ORG R10)');
   {
     const TU_ORG = num(`SELECT org_id FROM app_user WHERE login_id='${TU}'`);
-    const TU_UNIT = String(one(`SELECT name FROM org_unit WHERE org_id=${TU_ORG}`) || '');
+    //  ★ 한글 이름은 HEX 로 받아 UTF-8 로 푼다 — mysql.exe 가 콘솔 코드페이지(cp949)로 내보내 그대로 읽으면 깨진다
+    //    (2026-10-02 첫 실행: 깨진 이름이 트리에서 안 찾아져 이 라운드가 통째로 실패했다).
+    const TU_UNIT = Buffer.from(String(one(`SELECT HEX(name) FROM org_unit WHERE org_id=${TU_ORG}`) || ''), 'hex').toString('utf8');
     const meQ = me.replace(/'/g, "''");
     const dbDirect = num(`SELECT COUNT(*) FROM app_user WHERE org_id=${TU_ORG} AND is_active=1 AND login_id<>'${meQ}'`);
     ok('R10(조직도) 대상의 조직을 DB 에서 읽었다', !!TU_UNIT && TU_ORG > 0, `org_id=${TU_ORG} name=${TU_UNIT}`);
