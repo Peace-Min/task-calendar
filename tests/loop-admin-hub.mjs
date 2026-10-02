@@ -7,11 +7,9 @@
  *
  * 무엇을 하나(한 라운드 H0~H7):
  *   H0 전제 — 9222 위젯 · 로그인 · 관리자(사용자 정보의 권한 회신 edit_role=admin). 아니면 판정 없음(exit 2).
- *   H1 입구 ② 「사용자 정보」 → 「⚙ 관리」 카드가 선다 → 「⚙ 관리 열기」 → 사용자 정보는 닫히고 관리 화면 하나(겹침 없음).
- *   H2 입구 ① ☰ — 관리자면 ☰ 메시지가 {cmd:'menu', admin:true} 다(호스트가 네이티브 메뉴 맨 위에 「⚙ 관리」를 넣는다).
- *      ★ 네이티브 메뉴는 CDP 로 누를 수 없다 — 그래서 ☰ 를 누르는 동안만 'menu' 메시지를 가로채(삼켜) 실린 값을 보고,
- *        메뉴 항목이 부르는 호스트→웹 창구(window.__openAdminHub)를 그대로 불러 관리 화면이 마지막 항목으로 열리는지 본다.
- *        네이티브 항목 자체(문구 · 위치 · 클릭)는 사람이 실 위젯에서 확인한다.
+ *   H1 「사용자 정보」 = 계정 · 권한 · 로그아웃뿐(docs/ADMIN-HUB-2.md J5) — 구성원 줄·「⚙ 관리」 카드가 없다. 권한 회신이 관리자인지 본다.
+ *   H2 입구 ① ⋯ 메뉴(J1) — 실제로 ⋯ 를 눌러 「⚙ 관리 · 관리자」(「설정」 바로 위)를 누른다 → ⋯ 가 닫히고 관리 화면(마지막 항목) ·
+ *      닫으면 ⋯ 로 돌아갈 자리. ☰ 는 원래대로(J2) — 누르는 동안만 'menu' 메시지를 가로채(삼켜) {cmd:'menu'} 하나인지 본다.
  *   H3 👥 사람 › 👤 구성원 — 실제 명부(#uaList)가 **관리 화면 오른쪽 칸 안에** 그려진다 · 보이는 오버레이는 관리 화면 + 도킹 창뿐 ·
  *      도킹 창의 사각형이 오른쪽 칸 안에 있다 · inert 가 칸 안에 번지지 않았다.
  *   H4 📁 회사 과제 › 🏭 발주처 — zz 발주처 하나를 **화면으로** 추가(＋ 추가) → 목록·DB(선택)에 생긴다.
@@ -143,7 +141,10 @@ const PSTATE = `JSON.stringify({
   docked: (function(){ var d = document.querySelector('#ahSlot > .overlay.docked'); return d ? d.id : ''; })(),
   stack: _modalStack.map(function(s){ return s.ov.id; }),
   visible: [].filter.call(document.querySelectorAll('.overlay'), function(o){ return getComputedStyle(o).display !== 'none'; }).map(function(o){ return o.id; }),
-  hubCard: (function(){ var e = document.getElementById('usHubSec'); return !!e && !e.classList.contains('hidden'); })(),
+  role: (document.getElementById('usEditRole') || {}).textContent || '',
+  usNoMembers: !document.getElementById('usMembersSec') && !document.getElementById('usUserAdmin') && !document.getElementById('usMembers') && !document.getElementById('usHubSec'),
+  moreOpen: !document.getElementById('moreMenu').classList.contains('hidden'),
+  mmAdmin: (function(){ var e = document.getElementById('mmAdmin'); return !!e && !e.classList.contains('hidden'); })(),
   userOpen: isOverlayOpen(document.getElementById('userModal')),
   uaLines: document.querySelectorAll('#ahSlot #userAdminModal #uaList .mba-line').length,
   uaBusy: !!__uaBusy,
@@ -216,35 +217,32 @@ async function main() {
   await ev(`(function(){ document.querySelectorAll('.overlay').forEach(function(o){ if(isOverlayOpen(o)) closeOverlay(o); }); return 1; })()`);
   await sleep(400);
 
-  //  H1 — 입구 ② 사용자 정보 카드
-  log('H1 입구 ② 「사용자 정보」 → 「⚙ 관리」 카드');
+  //  H1 — 사용자 정보(J5)
+  log('H1 「사용자 정보」 — 계정 · 권한 · 로그아웃뿐');
   await ev(`openUserInfo(), 1`);
-  const s1 = await waitPage((x) => x.userOpen && x.hubCard, { timeout: 15000 });
-  if (!s1) notDecided('「⚙ 관리」 카드가 서지 않았다 — 관리자(edit_role=admin) 계정이 아니거나 권한 조회가 실패했다');
-  ok('H1 관리자 회신 → 「⚙ 관리」 카드가 보인다', !!s1);
-  ok('H1 줄의 「구성원 편집」(#usUserAdmin)은 마크업에 상주(공개 문)', await ev(`!!document.querySelector('#usMemberBtns #usUserAdmin')`));
-  await click('#usHubOpen');
-  const s1b = await waitPage((x) => x.hub && !x.userOpen && !!x.docked, { timeout: 15000 });
-  ok('H1 「⚙ 관리 열기」 → 사용자 정보는 닫히고 관리 화면 하나 + 도킹 창', !!s1b && noStack(s1b, s1b.docked), s1b && J({ stack: s1b.stack, visible: s1b.visible }));
-  await ev(`closeOverlay(document.getElementById('adminHub')), 1`);
-  await waitPage((x) => !x.hub && !x.docked, { timeout: 5000 });
+  const s1 = await waitPage((x) => x.userOpen && /관리자/.test(x.role), { timeout: 15000 });
+  if (!s1) notDecided('권한 회신이 관리자가 아니다 — 관리자(edit_role=admin) 계정으로 돌린다');
+  ok('H1 사용자 정보에 구성원 줄·「⚙ 관리」 카드가 없다(J5)', s1.usNoMembers === true);
+  await ev(`closeOverlay(document.getElementById('userModal')), 1`);
+  await waitPage((x) => !x.userOpen, { timeout: 5000 });
 
-  //  H2 — 입구 ① ☰
-  log('H2 입구 ① ☰ → 「⚙ 관리」');
-  //   ☰ 메시지 — 누르는 동안만 'menu' 를 삼킨다(네이티브 메뉴가 떠서 루프를 막지 않게) · 나머지 메시지는 그대로 통과 · 반드시 되돌린다.
+  //  H2 — 입구 ① ⋯ 메뉴(J1) · ☰ 원복(J2)
+  log('H2 입구 ① ⋯ → 「⚙ 관리」 · ☰ 는 원래대로');
   const sent = await evj(`JSON.stringify((function(){
     var wv = window.chrome && window.chrome.webview; if(!wv) return null;
     var orig = wv.postMessage, got = [];
     wv.postMessage = function(m){ try{ var o = typeof m === 'string' ? JSON.parse(m) : m; if(o && o.cmd === 'menu'){ got.push(o); return; } }catch(_){} return orig.apply(this, arguments); };
     try{ document.querySelector('#hostbar button[data-host="menu"]').click(); } finally { wv.postMessage = orig; }
     return got; })())`);
-  ok('H2 관리자의 ☰ = {cmd:"menu", admin:true} (호스트 메뉴 맨 위 「⚙ 관리」)', J(sent) === J([{ cmd: 'menu', admin: true }]), J(sent));
-  ok('H2 웹 쪽에 따로 메뉴가 생기지 않았다', await ev(`document.querySelector('[role="menu"]') === null`));
+  ok('H2 ☰ = {cmd:"menu"} 하나(J2 — admin 필드 없음)', J(sent) === J([{ cmd: 'menu' }]), J(sent));
+  await ev(`(document.getElementById('btnMore').focus(), document.getElementById('btnMore').click(), 1)`);
+  const s2 = await waitPage((x) => x.moreOpen && x.mmAdmin, { timeout: 8000 });
+  ok('H2 ⋯ 메뉴에 「⚙ 관리 · 관리자」(관리자) · 「설정」 바로 위', !!s2 && await ev(`/⚙ 관리\\s*관리자/.test(document.getElementById('btnAdminHub').textContent) && document.getElementById('mmAdmin').nextElementSibling.id === 'btnSettings'`));
   const last = await ev(`localStorage.getItem('tc_adminLast:' + currentUser.loginId) || 'members'`);
-  await ev(`window.__openAdminHub && window.__openAdminHub(), 1`);   // 네이티브 「⚙ 관리」가 부르는 식 그대로(MainWindow.ShowSettingsMenu)
-  const s2b = await waitPage((x) => x.hub && !!x.docked, { timeout: 15000 });
-  ok('H2 호스트→웹 창구(__openAdminHub)가 관리 화면을 마지막 항목으로 연다', !!s2b && s2b.item === last, s2b && J({ item: s2b.item, last }));
-  ok('H2 닫으면 ☰ 로 돌아갈 자리', await ev(`(function(){ var s = _modalStack.find(function(x){ return x.ov.id === 'adminHub'; }); return !!(s && s.opener && s.opener.dataset && s.opener.dataset.host === 'menu'); })()`));
+  await click('#btnAdminHub');
+  const s2b = await waitPage((x) => x.hub && !!x.docked && !x.moreOpen, { timeout: 15000 });
+  ok('H2 ⋯ 가 닫히고 관리 화면이 마지막 항목으로 열린다', !!s2b && s2b.item === last, s2b && J({ item: s2b.item, last, more: s2b.moreOpen }));
+  ok('H2 닫으면 ⋯ 로 돌아갈 자리', await ev(`(function(){ var s = _modalStack.find(function(x){ return x.ov.id === 'adminHub'; }); return !!(s && s.opener && s.opener.id === 'btnMore'); })()`));
 
   //  H3 — 구성원
   log('H3 👥 사람 › 👤 구성원 — 명부가 관리 화면 안에');

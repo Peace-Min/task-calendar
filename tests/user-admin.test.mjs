@@ -644,39 +644,25 @@ const checks = {
     }
   },
 
-  // ⑦-c 진입 버튼(#usUserAdmin)은 **전원의 마크업에 상주하는 공개 문**이다(2026-09-18 사용자 결정).
-  //    문은 공개, 방은 호스트가 지킨다 — 관리자가 아닌 사람이 눌러도 #userAdminModal 에는 호스트의
-  //    거절 한 줄(「관리자만 사용할 수 있습니다.」)뿐이고 컨트롤은 0 이다(그 판정은 ⑦-DOM(b) 가 센다).
-  //    ★ 예전에는 관리자 회신일 때만 버튼을 만들어 넣었지만(usAdminBtnSync · 「관리」 줄 #usAdminBtns),
-  //      그 함수도 그 줄도 사라졌다. 버튼이 권한이었던 적은 없다 — 판정은 membersGet 과 OpenAdminAsync 다.
-  adminEntryButtonIsPublicDoor(web) {
-    const m = /<div class="us-mem-row" id="usMemberBtns">([\s\S]*?)<\/div>/.exec(web);
-    assert.ok(m, '#usMemberBtns(구성원 줄)가 마크업에 없다 — 두 문이 나란히 서는 자리가 사라졌다');
-    const row = m[1];
-    assert.ok(/id="usMembers"/.test(row),
-      '「구성원 보기」(#usMembers)가 그 줄에 없다 — 전원이 쓰는 일상 동작의 자리다');
-    assert.ok(/id="usUserAdmin"/.test(row),
-      '「구성원 편집」(#usUserAdmin)이 #usMemberBtns 줄에 없다 — 문은 전원에게 같은 줄, 같은 자리다(2026-09-18)');
-    assert.ok(row.indexOf('id="usMembers"') < row.indexOf('id="usUserAdmin"'),
-      '「구성원 편집」이 「구성원 보기」보다 앞에 선다 — 일상 동작이 먼저다');
-    assert.ok(/id="usUserAdmin"[^>]*>구성원 편집</.test(row),
-      `진입 버튼의 문구가 「구성원 편집」이 아니다: ${JSON.stringify(row)}`);
-    //  ★ 옛 모양은 핝적도 남기지 않는다 — 그 줄도, 그 줄을 채우던 함수도 없다.
-    assert.ok(!/id="usAdminBtns"/.test(web),
-      '#usAdminBtns(옛 「관리」 줄)가 되살아났다 — 진입 버튼은 「구성원 보기」와 같은 줄에 선다(2026-09-18 사용자 결정)');
-    assert.ok(!/function usAdminBtnSync/.test(web),
-      'usAdminBtnSync 선언이 되살아났다 — 문을 만들었다 없앴다 하지 않는다');
-    assert.ok(!/usAdminBtnSync/.test(web),
-      'usAdminBtnSync 가 아직 앱에 있다(호출이든 주석이든) — 권한 판정은 화면의 일이 아니다');
-    //  ★ 정적 버튼이어야 한다 — JS 가 만들면 '언제 만드나'가 다시 권한 판정이 된다.
-    for (const line of web.split('\n').filter((l) => l.includes('usUserAdmin'))) {
-      assert.ok(!/createElement|\.id\s*=/.test(line),
-        `JS 가 「구성원 편집」 버튼을 만든다: ${line.trim()} — 그 버튼은 마크업에 상주해야 한다`);
+  // ⑦-c 「구성원 편집」의 입구는 **「⚙ 관리」의 구성원 항목**이다(2026-10-02 사용자 결정 · docs/ADMIN-HUB-2.md J5).
+  //    ★ 2026-09-18 의 「사용자 정보」 공개 문(#usUserAdmin · #usMemberBtns 줄)은 없앴다 — 사용자 정보는 계정·권한·로그아웃만이다.
+  //      그 문이 하던 일(누구나 눌러 보고, 관리자가 아니면 호스트의 거절 한 줄)은 화면(#userAdminModal · openUserAdmin)이 그대로 한다 —
+  //      입구는 관리 화면(⋯ 메뉴 · 관리자) 하나다. 권한은 여전히 호스트가 판정한다(membersGet 회신의 admin · 모든 쓰기는 OpenAdminAsync).
+  //    ★ 옛 「관리」 줄(#usAdminBtns · usAdminBtnSync)도 되살아나지 않는다.
+  adminEntryLivesInHub(web) {
+    const s = web.indexOf('<div class="overlay hidden" id="userModal">'), e = web.indexOf('<!-- ===== 구성원 =====', s);
+    assert.ok(s >= 0 && e > s, '#userModal 마크업 경계를 찾지 못했다');
+    const um = web.slice(s, e).replace(/<!--[\s\S]*?-->/g, '');
+    for (const id of ['usUserAdmin', 'usMembers', 'usMemberBtns', 'usMembersSec', 'usHubSec']) {
+      assert.ok(!new RegExp('id="' + id + '"').test(um), `「사용자 정보」에 #${id} 가 남았다 — 구성원 입구는 J5 로 없앴다(사용자 정보 = 계정·권한·로그아웃)`);
     }
-    //  ★ 문은 열려야 한다 — 마크업에 상주하므로 bind 에서 한 번 묶는다(만드는 자리가 없어졌다).
-    const b = extractFunction(web, 'bind');
-    assert.ok(/\$\('#usUserAdmin'\)/.test(b) && /openUserAdmin/.test(b),
-      'bind 가 #usUserAdmin 을 openUserAdmin 에 묶지 않는다 — 문이 있는데 열리지 않는다');
+    assert.ok(!/id="usAdminBtns"/.test(web), '#usAdminBtns(옛 「관리」 줄)가 되살아났다');
+    assert.ok(!/usAdminBtnSync/.test(web), 'usAdminBtnSync 가 되살아났다 — 문을 만들었다 없앴다 하지 않는다');
+    assert.ok(!/\$\('#usUserAdmin'\)/.test(extractFunction(web, 'bind')), 'bind 가 없앤 #usUserAdmin 을 아직 묶는다');
+    //  ★ 입구는 「⚙ 관리」의 구성원 항목 — 같은 화면(openUserAdmin)을 그대로 부른다.
+    assert.ok(/function openUserAdmin\(/.test(web), 'openUserAdmin 이 사라졌다 — 「구성원 편집」 화면은 남는다');
+    assert.ok(/members:\s*\{[^}]*ov: 'userAdminModal', open: \(\) => openUserAdmin\(\)/.test(web),
+      '「⚙ 관리」의 구성원 항목이 openUserAdmin 을 부르지 않는다 — 「구성원 편집」으로 가는 입구가 없다');
   },
 
   // ⑦-e 퇴사·복구는 **편집 폼 안에만** 산다(2026-09-10 사용자 결정).
@@ -1321,8 +1307,8 @@ test('계약⑦: 관리자 여부는 호스트 회신으로만 켜지고, 두 �
   checks.membersMarkupHasNoControls(app);
   checks.userAdminMarkupHasNoControls(app);
 });
-test('계약⑦-c: 「구성원 편집」 진입 버튼은 전원의 마크업에 상주하는 공개 문이다(2026-09-18 사용자 결정)', () => {
-  checks.adminEntryButtonIsPublicDoor(app);
+test('계약⑦-c: 「구성원 편집」의 입구는 「⚙ 관리」의 구성원 항목이다 — 「사용자 정보」에는 없다(2026-10-02 J5)', () => {
+  checks.adminEntryLivesInHub(app);
 });
 test('계약⑦-e: 퇴사·복구는 편집 폼 하단에만 있고 행에는 없다(2026-09-10 사용자 결정)', () => {
   checks.retireLivesInForm(app);
@@ -2212,23 +2198,24 @@ test('변이⑦-c: 보기 화면이 admin 을 다시 읽기 시작하면 계약�
   assert.doesNotThrow(() => checks.adminFlagComesFromHost(app));   // 통제군
 });
 
-test('변이⑦-d: 마크업에서 「구성원 편집」 버튼을 지우면 계약⑦-c 가 실패한다(문이 사라진다)', () => {
-  const bad = mutate(app, '\n          <button type="button" class="btn sm" id="usUserAdmin" title="직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)">구성원 편집</button>', '');
-  assert.throws(() => checks.adminEntryButtonIsPublicDoor(bad), /#usMemberBtns 줄에 없다/);
-  assert.doesNotThrow(() => checks.adminEntryButtonIsPublicDoor(app));   // 통제군
+test('변이⑦-d: 「사용자 정보」에 「구성원 편집」 버튼을 되살리면 계약⑦-c 가 실패한다(J5 로 없앤 입구)', () => {
+  const bad = mutate(app, '<button type="button" class="btn sm" id="usPermReload">지금 새로고침</button>',
+    '<button type="button" class="btn sm" id="usPermReload">지금 새로고침</button><button type="button" class="btn sm" id="usUserAdmin">구성원 편집</button>');
+  assert.throws(() => checks.adminEntryLivesInHub(bad), /#usUserAdmin 가 남았다/);
+  assert.doesNotThrow(() => checks.adminEntryLivesInHub(app));   // 통제군
 });
 
-test('변이⑦-e: 옛 「관리」 줄(#usAdminBtns)을 도로 두면 계약⑦-c 가 실패한다(문은 전원의 줄에 선다)', () => {
-  const bad = mutate(app, '        <div class="us-mem-row" id="usMemberBtns">',
-                          '        <div class="us-mem-row" id="usAdminBtns"></div>\n        <div class="us-mem-row" id="usMemberBtns">');
-  assert.throws(() => checks.adminEntryButtonIsPublicDoor(bad), /되살아났다/);
-  assert.doesNotThrow(() => checks.adminEntryButtonIsPublicDoor(app));   // 통제군
+test('변이⑦-e: 옛 「관리」 줄(#usAdminBtns)을 도로 두면 계약⑦-c 가 실패한다', () => {
+  const bad = mutate(app, '      <div class="set-sec set-sec-top hidden" id="usPermSec">',
+                          '      <div class="us-mem-row" id="usAdminBtns"></div>\n      <div class="set-sec set-sec-top hidden" id="usPermSec">');
+  assert.throws(() => checks.adminEntryLivesInHub(bad), /되살아났다/);
+  assert.doesNotThrow(() => checks.adminEntryLivesInHub(app));   // 통제군
 });
 
-test('변이⑦-e2: bind 의 배선 한 줄을 지우면 계약⑦-c 가 실패한다(문은 있는데 열리지 않는다)', () => {
-  const bad = mutate(app, "  { const b = $('#usUserAdmin'); if(b) b.addEventListener('click', openUserAdmin); }", '  //');
-  assert.throws(() => checks.adminEntryButtonIsPublicDoor(bad), /묶지 않는다/);
-  assert.doesNotThrow(() => checks.adminEntryButtonIsPublicDoor(app));   // 통제군
+test('변이⑦-e2: 「⚙ 관리」의 구성원 항목이 openUserAdmin 을 부르지 않으면 계약⑦-c 가 실패한다(입구가 사라진다)', () => {
+  const bad = mutate(app, "ov: 'userAdminModal', open: () => openUserAdmin() },", "ov: 'userAdminModal', open: () => {} },");
+  assert.throws(() => checks.adminEntryLivesInHub(bad), /구성원 항목이 openUserAdmin 을 부르지 않는다/);
+  assert.doesNotThrow(() => checks.adminEntryLivesInHub(app));   // 통제군
 });
 
 // ══════════════════════════════════════════════════════════════════════

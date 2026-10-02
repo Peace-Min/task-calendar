@@ -54,7 +54,14 @@ body{
   background:transparent; color:var(--text); font-size:var(--fs-emph);
   display:flex; flex-direction:column; overflow:hidden;
   font-variant-numeric:tabular-nums;   /* 날짜·시각 숫자 열 정렬(D) */
+  /* J6(docs/ADMIN-HUB-2.md · 2026-10-02 사용자 지적 「최근 본 사|람」) — 한국어는 **단어(띄어쓰기) 단위**로 줄을 바꾼다.
+     keep-all 만 두면 칸보다 긴 한 덩어리(경로·ID·긴 영문)가 넘치므로 overflow-wrap:anywhere 를 짝으로 둔다 — 넘칠 때만 글자 단위.
+     ★ anywhere(≠ break-word)를 고른 이유: 최소 내용 폭(min-content)이 지금과 같게 남는다(한글은 원래 글자마다 끊을 수 있었다) —
+       keep-all 이 단어 폭을 최소 폭으로 키우면 좁은 창의 flex·grid 칸이 밀려 넘친다. 국소 예외가 필요하면 그 요소에서만 되돌린다. */
+  word-break:keep-all; overflow-wrap:anywhere;
 }
+/* J7 — 화면 문구 속 「…」 인용은 한 덩어리(줄 끝에서 갈라지지 않게). 짧은 안내문에서만 쓴다(quoteKeep) — 전역 치환은 하지 않는다. */
+.q-nw{white-space:nowrap}
 /* --wo(위젯 반투명)는 '캘린더 표면'(#appSurface)에만 건다.
    body에 걸면 자식이 되돌릴 수 없어 모달·토스트까지 같이 흐려지고, 30%에서는 이 앱의 모든 대비(AA) 주장이 거짓이 된다.
    → 배경(--bg)도 body가 아니라 #appSurface가 칠한다: 표면 전체가 '한 겹'으로 합성돼 기존 반투명 결과와 픽셀 동일.
@@ -2136,8 +2143,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 #adminHub .ah-slot > .overlay.docked .off-split{flex:1 1 0;min-height:160px;min-width:0;align-items:stretch}
 #adminHub .ah-slot > .overlay.docked .off-list{height:auto;max-height:none;flex:1 1 0;min-height:110px}
 #adminHub .ah-slot > .overlay.docked .off-detail{max-height:none}
-/* 사용자 정보 — 관리자로 확인되면 「구성원」 줄의 「구성원 편집」은 「⚙ 관리」 카드로 간다(H7 · 버튼은 마크업에 그대로 상주) */
-#usMembersSec.ah-admin #usUserAdmin{display:none}
+/* ⋯ 메뉴의 「⚙ 관리」(J1) — 꼬리표는 오른쪽 끝 */
+#mmAdmin #btnAdminHub{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--accent-2)}
+#mmAdmin #btnAdminHub .ah-pill{margin-left:auto}
+/* J3(docs/ADMIN-HUB-2.md) — 「공식 과제」는 **단독으로 열면(찾아보기) 모두에게 읽기 전용**이다: 「＋ 새 공식 과제」·상세의 편집/숨김이 서지 않는다
+   (남는 것: 검색·필터 · 목록 · 상세 · 「캘린더에 추가/제거」 · 지금 새로고침 · 닫기 · Excel 추출). 편집은 「⚙ 관리」에 도킹됐을 때만.
+   아래 줄의 「발주처 관리 · 구분·상태 관리 · 🗑 휴지통」은 **어느 쪽에서도** 서지 않는다 — 관리 화면에서는 왼쪽 목록이 그 문이다.
+   ★ 버튼 노드·배선은 그대로 둔다(시험·루프가 id 로 누른다 · 「⚙ 관리」의 발주처/구분·상태/삭제된 항목이 그 버튼을 눌러 같은 관문을 지난다).
+   ★ offSyncExportBtn 이 이 셋에 style.display 를 '' 로 비워 두므로(위젯) 이 CSS 가 이긴다 — 브라우저에서는 그 함수가 'none' 으로 둔다. */
+#officialModal:not(.docked) #offNew,#officialModal:not(.docked) .off-d-act{display:none}
+#officialModal #offCustMgr,#officialModal #offCodeMgr,#officialModal #offTrash{display:none}
 /* 「🏷️ 내 과제」 머리 — 제목 + 부제(H10) · 공식 과제 편집 지름길(H8 · 관리자) */
 .cat-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-width:0}
 .cat-sub{font-size:var(--fs-meta);color:var(--muted)}
@@ -2238,6 +2253,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button id="btnCatsFold">내 과제</button>
           <button id="btnFeedbackFold">문의</button>
           <button id="btnUserFold">사용자 정보</button>
+          <hr>
+        </div>
+        <!-- J1(docs/ADMIN-HUB-2.md) — 「⚙ 관리」: 관리자로 확인된 때만 보인다(ahSyncEntries). 앱 기능 묶음의 맨 앞 · 구분선으로 나눈다. -->
+        <div class="mm-admin hidden" id="mmAdmin">
+          <button id="btnAdminHub">⚙ 관리<span class="ah-pill">관리자</span></button>
           <hr>
         </div>
         <button id="btnSettings">설정</button>
@@ -3207,39 +3227,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <span id="usPermMsg" class="git-opt"></span>
         </div>
       </div>
-      <!-- 구성원 진입점 — 볼 수 있는 사람의 범위는 위 「열람 범위」가 이미 정해 놨다.
-           그래서 여기서 범위를 다시 고르게 하지 않는다(같은 규칙을 두 곳에서 말하면 하나는 반드시 낡는다). -->
-      <div class="set-sec set-sec-top hidden" id="usMembersSec">
-        <div class="set-lb">구성원</div>
-        <!-- 범위를 다시 설명하지 않는다 — 바로 위 줄이 「열람 범위」다. 되풀이하면 한 줄을 더 먹는다. -->
-        <div class="set-hint">위 열람 범위에 속한 사람들입니다.</div>
-        <!-- 두 버튼은 **서로 다른 화면**이다(2026-09-10 사용자 결정).
-             「구성원 보기」 = 전원이 쓰는 읽기 전용 명부. 관리자에게도 편집 컨트롤이 없다.
-             「구성원 편집」 = 관리자에게만 존재하는 관리 화면(#userAdminModal).
-             ★ 두 버튼 모두 **마크업에 상주한다 — 전원에게 같은 줄, 같은 자리다**(2026-09-18 사용자 결정).
-               관리자가 아닌 사람이 「구성원 편집」을 눌러도 화면에는 호스트의 거절 한 줄
-               (「관리자만 사용할 수 있습니다.」)뿐이고 컨트롤은 하나도 없다 — **문은 공개, 방은 호스트가 지킨다.**
-               권한은 언제나 호스트가 요청 시점에 판정한다(membersGet 회신의 admin · 모든 쓰기는 OpenAdminAsync).
-               버튼이 권한이었던 적은 없다 — 그러므로 숨기지도, 만들었다 없앴다 하지도 않는다.
-             ★ 예전에는 이 버튼이 관리자 회신일 때만 생기는 **별도의 「관리」 줄**에 앉았지만
-               (2026-09-18 UI 검토 A15 · USER-ADMIN §11-36), 위 사용자 결정이 그 두 줄 배치를 뒤집었다. -->
-        <div class="us-mem-row" id="usMemberBtns">
-          <button type="button" class="btn sm" id="usMembers">구성원 보기</button>
-          <button type="button" class="btn sm" id="usUserAdmin" title="직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)">구성원 편집</button>
-        </div>
-      </div>
-      <!-- H7 — 입구 ②「⚙ 관리」 카드. **관리자로 확인된 때만** 보인다(ahSyncEntries · 권한 회신 edit_role=admin).
-           그때 위 줄의 「구성원 편집」(#usUserAdmin)은 이 카드로 옮겨 온 것처럼 숨는다(CSS #usMembersSec.ah-admin) —
-           버튼은 마크업에 그대로 상주하고 배선도 그대로다(공개 문 규칙 · 관리자가 아니면 지금처럼 호스트의 거절 한 줄).
-           「⚙ 관리 열기」 = 마지막 항목 · 「구성원 편집」 = 관리 화면의 구성원 항목(지름길). 둘 다 이 창을 닫고 연다(겹치지 않는다). -->
-      <div class="set-sec set-sec-top hidden" id="usHubSec">
-        <div class="set-lb">관리 <span class="ah-pill">관리자</span></div>
-        <div class="set-hint">👥 사람(구성원 · 직급/소속 · 퇴사자) · 📁 회사 과제(공식 과제 · 발주처 · 구분/상태 · 삭제된 항목)</div>
-        <div class="us-mem-row">
-          <button type="button" class="btn sm primary" id="usHubOpen">⚙ 관리 열기</button>
-          <button type="button" class="btn sm" id="usHubMembers" title="관리 화면의 구성원 항목으로 엽니다">구성원 편집</button>
-        </div>
-      </div>
+      <!-- 구성원 진입점 — 없앴다. J5(docs/ADMIN-HUB-2.md · 2026-10-02 사용자 결정): 이 창은 **계정 · 권한 · 로그아웃**만 보인다.
+           여기 있던 「구성원」 줄(구성원 보기 · 구성원 편집)과 「⚙ 관리」 카드는 화면에서 없앴다:
+           사람 찾기는 툴바 👥 사람 고르기가, 구성원 편집·직급·퇴사자는 「⚙ 관리」(⋯ 메뉴 · 관리자)가 맡는다.
+           ★ 「구성원 보기」 창(#membersModal · openMembers)은 코드로 남는다(입구 없음) — 시험 다수가 쓰므로 다음 정리 때 시험과 함께 걷는다. -->
     </div>
     <div class="modal-foot">
       <button type="button" class="btn sm" id="usLogout">로그아웃</button>
@@ -5807,7 +5798,6 @@ function updateUserUi(){
   const on = !!(HOST && currentUser);
   const blk = document.getElementById('usInfoBlock'); if(blk) blk.classList.toggle('hidden', !on);
   const sec = document.getElementById('usPermSec');   if(sec) sec.classList.toggle('hidden', !on);   // 권한 구획은 로그인 상태에서만
-  const mem = document.getElementById('usMembersSec');if(mem) mem.classList.toggle('hidden', !on);   // 구성원도 같은 조건 — 볼 범위를 정하는 게 그 권한이다
   const out = document.getElementById('usLogout');    if(out) out.classList.toggle('hidden', !on);   // 로그아웃할 대상이 없으면 버튼도 없다
   let dbl = ''; try{ dbl = usDbLineText(__bootMeta); }catch(_){ dbl = ''; }
   set('usDbLine', dbl);
@@ -5881,7 +5871,6 @@ function openUserInfo(){
   updateUserUi();
   openModal('#userModal');
   if(HOST && currentUser) loadUserPerm();
-  ahSyncEntries();   // H7 — 이미 관리자로 확인돼 있으면 「⚙ 관리」 카드부터 보인다(권한 회신이 오면 ahNoteRole 이 다시 맞춘다)
 }
 /* ---------- 구성원 ----------
    전 직원 명부 — 실제 app_user 조회다(호스트 membersGet).
@@ -6453,8 +6442,23 @@ function pkRowEl(r, kind){
 function pkNote(text, status){
   const d = document.createElement('div'); d.className = 'pk-note';
   if(status) d.setAttribute('role', 'status');
-  d.textContent = text;
+  quoteKeep(d, text);   // J7 — 「…」 인용은 한 덩어리(글은 여전히 textContent 로만 — 호스트 문구일 수도 있다)
   return d;
+}
+//  J7(docs/ADMIN-HUB-2.md) — 짧은 안내문의 「…」 인용을 줄 끝에서 가르지 않는다: 인용 조각만 <span class="q-nw">(nowrap)로 감싼다.
+//   ★ innerHTML 을 쓰지 않는다 — 조각마다 텍스트 노드/textContent 다(문구가 호스트·DB 에서 올 수 있다).
+function quoteKeep(el, text){
+  const t = String(text == null ? '' : text);
+  const re = /「[^」\n]{1,24}」/g;
+  let at = 0, m;
+  while((m = re.exec(t))){
+    if(m.index > at) el.appendChild(document.createTextNode(t.slice(at, m.index)));
+    const q = document.createElement('span'); q.className = 'q-nw'; q.textContent = m[0];
+    el.appendChild(q);
+    at = m.index + m[0].length;
+  }
+  if(at < t.length) el.appendChild(document.createTextNode(t.slice(at)));
+  return el;
 }
 function pkSection(body, title, rows, kind){
   if(!rows.length) return;
@@ -6653,7 +6657,8 @@ function pkRender(){
     else if(__pk.status === 'fail') body.appendChild(pkFailNote());   // K3 — 실패해도 즐겨찾기·최근은 아래에 그대로 보이고 누를 수 있다
     const fresh = view === 'people' && __pk.status === 'ok' && !md.fav.length && !md.recent.length;
     //  G3 — 처음 쓰는 사람: 맨 위 안내 한 줄 + 그 아래 바로 내 부서(빈 화면 금지).
-    if(fresh) body.appendChild(pkNote('☆ 를 누르면 즐겨찾기에 남고, 한 번 본 사람은 「최근 본 사람」에 쌓입니다.'));
+    //  J8 — 두 문장 · 인용 없음(2026-10-02 사용자 지적: 「최근 본 사|람」처럼 인용 중간에서 끊겨 읽혔다)
+    if(fresh) body.appendChild(pkNote('☆ 를 누르면 즐겨찾기에 남습니다. 한 번 연 사람은 최근 목록에 쌓입니다.'));
     pkSection(body, '★ 즐겨찾기', md.fav, 'Fav');
     pkSection(body, '최근 본 사람', md.recent, 'Recent');
     if(view === 'search'){
@@ -9883,8 +9888,9 @@ function goto(ds, entryId){
 }
 
 /* ---------- 「⚙ 관리」 화면(관리자 허브) — docs/ADMIN-HUB.md H1–H13 ----------
-   관리 기능(구성원 · 직급·소속 · 퇴사자 · 공식 과제 · 발주처 · 구분·상태 · 삭제된 항목)을 한 화면으로 모은다. 입구는 셋 —
-   ① ☰ 위젯 메뉴(관리자) ② 「사용자 정보」의 「⚙ 관리」 카드(관리자) ③ 「🏷️ 내 과제」의 「⚙ 공식 과제 편집은 관리에서 ›」(관리자).
+   관리 기능(구성원 · 직급·소속 · 퇴사자 · 공식 과제 · 발주처 · 구분·상태 · 삭제된 항목)을 한 화면으로 모은다. 입구는 둘 —
+   ① ⋯ 메뉴의 「⚙ 관리」(관리자 · ADMIN-HUB-2 J1) ③ 「🏷️ 내 과제」의 「⚙ 공식 과제 편집은 관리에서 ›」(관리자).
+   (② 사용자 정보의 「⚙ 관리」 카드는 J5 로 없앴고, ☰(위젯 창 설정)에는 두지 않는다 — J2.)
    툴바에는 두지 않는다(2026-10-02 결정 — 관리자 1~2명이 가끔 쓴다).
    ★★ H4 — **도킹**: 오른쪽 내용은 새로 만든 화면이 아니라 **지금 있는 모달 그 자체**다. 항목을 고르면 그 모달의 열기 함수
      (openUserAdmin · openOrgTitle · openTrash · openOfficialModal · openCustomerModal · openCodeModal)를 그대로 부르고,
@@ -9898,10 +9904,10 @@ function goto(ds, entryId){
      관리 화면 닫기로 간다(closeOverlay). 관리 화면을 닫으면 도킹 창은 원래 자리(주석 표지)로 돌아가 단독 모달로 되돌아온다.
    ★ inert(H12 — 2026-10-02 사람 고르기에서 실측한 함정: 옮긴 요소가 새 부모의 inert 를 물려받았다): _updateInert 는 body 의
      직계 자식 중 .overlay 가 **아닌** 것만 잠근다. 도킹 창의 새 부모는 관리 화면(.overlay)이라 잠기지 않고, 되돌아가는
-     자리도 body 직계 .overlay 다 — 어느 쪽에서도 inert 를 물려받지 않는다(☰ 메뉴는 호스트의 네이티브 메뉴라 DOM 밖이다).
+     자리도 body 직계 .overlay 다 — 어느 쪽에서도 inert 를 물려받지 않는다. ⋯ 메뉴(#moreMenu · #appSurface 안)는 관리 화면을 열기 **전에** 닫는다(ahOpenFromMore).
    ★ 권한은 여기서 판정하지 않는다(H13). ahIsAdmin 은 **입구를 보일지**만 정한다(edit_role=admin 으로 확인된 때만 — 모르면 숨김).
      각 화면의 조회·쓰기는 지금처럼 호스트가 요청 시점에 판정하고, 관리자가 아니면 그 화면이 호스트의 거절 한 줄을 보인다.
-     확인 출처는 기존 읽기 명령 userInfoGet 하나다(「사용자 정보」를 열 때 · ☰ 에 손이 갈 때 · 관리 화면을 열 때) + 그 결과를
+     확인 출처는 기존 읽기 명령 userInfoGet 하나다(「사용자 정보」를 열 때 · ⋯ 에 손이 갈 때·열 때 · 관리 화면을 열 때) + 그 결과를
      이 PC·계정별로 기억(tc_adminSeen:<login> — 다음 실행의 ☰ 를 위해서. 회신이 관리자 아님이면 지운다).
    ★ 개수(H2)는 이미 알고 있을 때만 — 이번 실행에서 그 화면이 받아 온 회신·부팅 때 받은 카탈로그. 개수를 얻으려고 묻지 않는다. */
 const AH_GROUPS = [
@@ -9968,12 +9974,11 @@ function ahProbe(){
   }, () => { __ahProbing = false; });
 }
 function ahProbeIfUnknown(){ const me = ahMe(); if(me && __ahRole.login !== me) ahProbe(); }
-//  입구 ②③의 표시를 지금 값에 맞춘다(① ☰ 는 누를 때 판정해 admin:true 를 싣는다 — buildHostBar).
+//  입구 ①③의 표시를 지금 값에 맞춘다(① ⋯ 메뉴 · ③ 내 과제 — ② 사용자 정보 카드는 J5 로 없앴다).
 function ahSyncEntries(){
   const on = ahIsAdmin();
-  const sec = document.getElementById('usHubSec'); if(sec) sec.classList.toggle('hidden', !on);
-  const ms = document.getElementById('usMembersSec'); if(ms) ms.classList.toggle('ah-admin', on);
-  const row = document.getElementById('catAdminRow'); if(row) row.classList.toggle('hidden', !on);
+  const mm = document.getElementById('mmAdmin'); if(mm) mm.classList.toggle('hidden', !on);          // ① ⋯ 메뉴(J1)
+  const row = document.getElementById('catAdminRow'); if(row) row.classList.toggle('hidden', !on);   // ③ 내 과제(H8·J4)
 }
 function ahPaintWho(){
   const w = document.getElementById('ahWho'); if(!w) return;
@@ -10076,13 +10081,8 @@ function ahRouteOpen(ov){
   if(isOverlayOpen(hub)){ ahDock(ov); return true; }
   //  관리 화면이 닫혔는데 아직 칸 안에 남은 창(닫기 길을 거치지 않고 .hidden 만 붙인 경우 — 루프의 closeAll 등)은 먼저 제자리로.
   if(__ah.docked === ov) ahUndock();
-  //  H9 — 찾아보기로 연 공식 과제 창(단독)의 아래 줄 관리 버튼(발주처 관리 · 구분·상태 관리 · 🗑 휴지통)은 관리 화면의 그 항목으로.
-  //   ★ 버튼 배선(offEditGuard → openX)은 그대로다 — 관문을 지난 뒤 열리는 순간 여기서 받는다. 관리자로 확인된 때만
-  //     (모르면 지금처럼 그 위에 뜬다 — 일반 사용자 화면은 바뀌지 않는다 · H13).
-  if(ov.id === 'customerModal' || ov.id === 'codeModal' || (ov.id === 'trashModal' && item === 'trash')){
-    const off = document.getElementById('officialModal');
-    if(isOverlayOpen(off) && !off.classList.contains('docked') && ahIsAdmin()){ openAdminHub(null, { dock: ov }); return true; }
-  }
+  //  ★ (H9 의 「찾아보기 창 하단 관리 버튼 → 관리 화면」 경로는 없앴다 — J3: 찾아보기 창에는 그 버튼이 서지 않는다.
+  //    관리 화면 안의 공식 과제(도킹)에서는 위 isOverlayOpen(hub) 갈래가 도킹으로 받는다.)
   return false;
 }
 function ahDock(ov){
@@ -10173,19 +10173,17 @@ function ahSelect(item){
   ahCounts();
 }
 
-/* ── ☰ 위젯 메뉴의 「⚙ 관리」(H6) ──
-   ★ ☰ 메뉴는 호스트(WPF)의 네이티브 메뉴다(MainWindow.ShowSettingsMenu). 웹은 ☰ 를 누를 때 지금의 {cmd:'menu'} 에
-     **관리자로 확인된 때만** admin:true 를 실어 보낸다(buildHostBar) — 그러면 호스트가 메뉴 맨 위에 「⚙ 관리 · 관리자」 +
-     구분선을 넣는다. 모르거나 관리자가 아니면 보내는 값이 지금과 똑같다({cmd:'menu'} — 일반 사용자 화면 불변).
-   ★ 그 항목을 누르면 호스트가 이 창구를 부른다(ExecuteScriptAsync — __setFocus·__setTray 와 같은 호스트→웹 길).
-     지름길일 뿐이다 — 쓰기 권한은 여전히 호스트의 DB 관문이 판정한다. 열람 창(PEER) 안에서는 열지 않는다.
-     닫으면 ☰ 로 포커스가 돌아간다(H12). */
-window.__openAdminHub = function(){
-  if(PEER || !HOST) return false;
-  const b = document.querySelector('#hostbar button[data-host="menu"]');
-  openAdminHub(null, { returnTo: b || null });
-  return true;
-};
+/* ── ⋯ 메뉴의 「⚙ 관리」(ADMIN-HUB-2 J1) ──
+   ★ 입구는 ⋯ 메뉴(설정·회의실 관리·데이터 — 앱 기능이 있는 곳)다. ☰ 는 위젯 창 설정(부착·크기·트레이·종료)이라 레벨이 맞지 않는다
+     (2026-10-02 사용자 지적) — ☰ 는 원래대로 호스트 메뉴 그대로다.
+   ★ 항목(#mmAdmin)은 **관리자로 확인된 때만** 보인다(ahSyncEntries · 모르면 숨김). ⋯ 에 손이 가면(가리킴·포커스·열기) 아직 모르는
+     권한을 조용히 한 번 묻는다(ahProbeIfUnknown — 기존 읽기 명령 userInfoGet) — 회신이 오면 열린 메뉴에서도 곧바로 선다.
+   ★ 누르면 ⋯ 를 닫고(body 아래 #appSurface 안이라 관리 화면이 열리면 inert 가 된다 — 먼저 닫는다) 마지막 항목으로 연다.
+     닫으면 ⋯ 버튼으로 포커스가 돌아간다(H12). */
+function ahOpenFromMore(){
+  const mm = document.getElementById('moreMenu'); if(mm) mm.classList.add('hidden');
+  openAdminHub(null, { returnTo: document.getElementById('btnMore') });
+}
 
 /* ── 배선 — bind() 가 한 번 부른다 ── */
 function setupAdminHub(){
@@ -15480,7 +15478,10 @@ function bind(){
 
   /* 더보기(⋯) 오버플로 메뉴 + 테마 메뉴 */
   const closeMore = () => { $('#moreMenu').classList.add('hidden'); $('#themeMenu').classList.add('hidden'); };
-  $('#btnMore').addEventListener('click', ev => { ev.stopPropagation(); $('#themeMenu').classList.add('hidden'); $('#moreMenu').classList.toggle('hidden'); });
+  $('#btnMore').addEventListener('click', ev => { ev.stopPropagation(); $('#themeMenu').classList.add('hidden'); $('#moreMenu').classList.toggle('hidden');
+    if(!$('#moreMenu').classList.contains('hidden')){ ahSyncEntries(); ahProbeIfUnknown(); } });   // J1 — 열 때 「⚙ 관리」 표시를 맞추고, 모르면 조용히 묻는다
+  { const m = $('#btnMore'); if(m){ m.addEventListener('pointerenter', ahProbeIfUnknown); m.addEventListener('focus', ahProbeIfUnknown); } }
+  { const b = $('#btnAdminHub'); if(b) b.addEventListener('click', ahOpenFromMore); }
   $('#btnTheme').addEventListener('click', ev => { ev.stopPropagation(); $('#moreMenu').classList.add('hidden'); $('#themeMenu').classList.toggle('hidden'); });
   // 테마 버튼만 선택으로 처리 — [data-theme]는 <html> 루트에도 붙으므로(applyTheme), 슬라이더/라벨 클릭이 조상 html에 매칭돼 오닫힘하지 않게 button으로 한정
   $('#themeMenu').addEventListener('click', ev => { const b = ev.target.closest('button[data-theme]'); if(!b || !$('#themeMenu').contains(b)) return; applyTheme(b.dataset.theme); $('#themeMenu').classList.add('hidden'); });
@@ -15582,12 +15583,9 @@ function bind(){
   { const q = $('#lgQuit'); if(q) q.addEventListener('click', () => hpost({ cmd: 'close' })); }
   { const b = $('#usLogout'); if(b) b.addEventListener('click', submitLogout); }
   { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
-  { const b = $('#usMembers'); if(b) b.addEventListener('click', openMembers); }       // #userModal 위에 겹쳐 연다(닫으면 되돌아온다)
-  { const b = $('#usUserAdmin'); if(b) b.addEventListener('click', openUserAdmin); }   // 공개 문 — 관리자가 아니면 화면이 호스트의 거절 한 줄만 보인다(2026-09-18)
-  //  「⚙ 관리」(docs/ADMIN-HUB.md) — 입구 ② 사용자 정보 카드(마지막 항목 · 구성원 지름길) · ③ 내 과제의 공식 과제 편집 지름길.
-  //   셋 다 입구 창을 닫고 연다(openAdminHub — 겹치지 않는다). ① ☰ 는 buildHostBar 가 묶는다.
-  { const b = $('#usHubOpen'); if(b) b.addEventListener('click', () => openAdminHub(null)); }
-  { const b = $('#usHubMembers'); if(b) b.addEventListener('click', () => openAdminHub('members')); }
+  //  ★ 「구성원 보기」(openMembers)·「구성원 편집」(openUserAdmin)의 사용자 정보 입구는 없앴다(J5 · docs/ADMIN-HUB-2.md) — 두 함수는 남는다:
+  //    구성원 편집은 「⚙ 관리」의 구성원 항목이 부르고, 구성원 보기 창은 다음 정리 때 시험과 함께 걷는다.
+  //  「⚙ 관리」 — 입구 ③ 내 과제의 공식 과제 편집 지름길(입구 창을 닫고 연다 — 겹치지 않는다). ① ⋯ 메뉴는 위 ⋯ 배선이 묶는다.
   { const b = $('#btnCatAdmin'); if(b) b.addEventListener('click', () => openAdminHub('projects')); }
   setupAdminHub();
   { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
@@ -17008,15 +17006,8 @@ function buildHostBar(){
   drag.addEventListener('pointercancel', e => __gEnd(e, drag));
   // 버튼
   bar.querySelector('.hb-btns').addEventListener('click', ev => {
-    const b = ev.target.closest('button[data-host]'); if(!b) return;
-    //  ★ H6 — ☰ 는 **관리자로 확인된 때만** admin:true 를 함께 보낸다 → 호스트 메뉴 맨 위에 「⚙ 관리」(window.__openAdminHub 주석).
-    //    그 밖에는 지금과 똑같이 {cmd:'menu'} 다(일반 사용자 화면 불변).
-    hpost((b.dataset.host === 'menu' && ahIsAdmin()) ? { cmd: 'menu', admin: true } : { cmd: b.dataset.host });
+    const b = ev.target.closest('button[data-host]'); if(b) hpost({cmd:b.dataset.host});
   });
-  //  ☰ 에 손이 가면(가리킴·포커스) 아직 모르는 권한을 조용히 한 번 묻는다(ahProbeIfUnknown — 기존 읽기 명령 userInfoGet).
-  //   누르는 순간에는 물을 수 없다(호스트 메뉴는 기다리지 않고 떠야 한다) — 그래서 그 직전에 묻는다.
-  { const mb = bar.querySelector('button[data-host="menu"]');
-    if(mb){ mb.addEventListener('pointerenter', ahProbeIfUnknown); mb.addEventListener('focus', ahProbeIfUnknown); } }
   // 리사이즈: 네 가장자리 + 네 모서리 = 8방향. 상단 가장자리(n)는 2026-09-18 추가 — 배지 여백 때문에 창 맨 위 띠가
   //   어느 손잡이에도 안 걸려 "좌상단 대각선이 안 된다"로 보였다. 호스트는 처음부터 n 을 처리한다(edge.Contains("n")).
   //   순서가 곧 z 순서(뒤가 위): 모서리를 가장자리 뒤에 두어 겹치는 자리에서 모서리가 이긴다.

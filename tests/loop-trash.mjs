@@ -309,7 +309,9 @@ const PSTATE = `JSON.stringify({
   trScope: String(typeof __trScope==='undefined' ? '' : __trScope),
   trTitle: (function(){ var h=document.getElementById('trTitle'); return h ? String(h.textContent||'') : ''; })(),
   uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden'); })(),
-  usAdmin: !!document.getElementById('usUserAdmin'),
+  //  ★ 2026-10-02(docs/ADMIN-HUB-2.md J5) — 「사용자 정보」의 「구성원 편집」 입구는 없어졌다. usAdmin 은 이제 **그 입구가 없다** 를 본다
+  //    (퇴사자 휴지통은 「구성원 편집」(openUserAdmin) 상단 막대의 #uaTrash · 「⚙ 관리」의 퇴사자 항목이 연다).
+  usAdmin: !document.getElementById('usUserAdmin'),
   cfOpen: (function(){ var e=document.getElementById('confirmModal'); return !!e && !e.classList.contains('hidden'); })(),
   ctOpen: (function(){ var e=document.getElementById('confirmTypedModal'); return !!e && !e.classList.contains('hidden'); })(),
   ctDisabled: (function(){ var b=document.getElementById('ctOk'); return b ? !!b.disabled : null; })(),
@@ -695,8 +697,8 @@ async function main() {
       '#uaTrash 가 없다 — uaAdminBar 가 admin 회신을 admin 으로 읽지 못했다');
     okq('C00 「사용자 정보」에는 휴지통이 없다(§11-32 의 자리로 되돌아가지 않았다)', usTrashGone === true,
       '#usTrash 가 살아 있다 — 휴지통은 그 도메인의 화면이 연다');
-    okq('C00 「구성원 편집」 진입 버튼은 마크업에 상주한다(2026-09-18 공개 문)', !!entry0,
-      '#usUserAdmin 이 없다 — 그 버튼은 권한과 무관하게 「구성원 보기」 옆에 서 있어야 한다');
+    okq('C00 「사용자 정보」에 구성원 입구가 없다(J5 · 2026-10-02)', !!entry0,
+      '#usUserAdmin 이 남아 있다 — J5 로 없앤 입구다(편집 화면은 openUserAdmin · 「⚙ 관리」)');
     const { reply, data } = await trashGet();
     if (!okq('C00 trashGet 회신 ok(found)', !!(reply && reply.ok), JSON.stringify(reply).slice(0, 200))) return;
     okq('C00 admin:true', !!(data && data.admin === true), JSON.stringify(data && data.admin));

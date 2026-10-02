@@ -402,7 +402,9 @@ const checks = {
       '옛 #usPermForm 이 남아 있다 — 박스를 버렸으면 그 id 도 함께 사라져야 한다(죽은 참조 방지)');
   },
 
-  // ⑲ 구성원 모달은 닫을 수 있는 .overlay 이고, 진입점(#usMembers)·검색이 실제로 배선돼 있다.
+  // ⑲ 구성원 모달은 닫을 수 있는 .overlay 이고, 검색이 실제로 배선돼 있다.
+  //    ★ 2026-10-02(docs/ADMIN-HUB-2.md J5) — 「사용자 정보」의 입구(#usMembers 「구성원 보기」)는 없앴다(사람 찾기는 툴바 👥 사람 고르기).
+  //      창과 openMembers 는 다음 정리 때 이 시험들과 함께 걷는다 — 그때까지 창이 망가지지 않았는지는 여기서 계속 본다.
   membersModalClosable(source) {
     assert.ok(/<div class="overlay hidden" id="membersModal">/.test(source),
       '#membersModal 이 .overlay 가 아니다 — Esc·배경클릭·모달스택이 이 모달을 모른다');
@@ -411,9 +413,9 @@ const checks = {
     assert.ok(closers >= 2, `data-close 닫기 경로가 ${closers}개다(× 와 [닫기] 둘이어야 한다)`);
     assert.ok(/<button class="x" data-close aria-label="닫기">×<\/button>/.test(md), '헤더 × 닫기 버튼이 없다');
     assert.ok(/aria-label="구성원 검색"/.test(md), '#mbSearch 에 aria-label 이 없다 — 이름 없는 입력칸이 된다');
-    // 배선 — 버튼이 있어도 열리지 않으면 아무 의미가 없다.
-    assert.ok(/id="usMembers"/.test(source), '#usMembers(구성원 보기) 버튼이 없다');
-    assert.ok(/\$\('#usMembers'\)[\s\S]{0,140}openMembers/.test(source), '#usMembers 가 openMembers 에 배선되지 않았다');
+    // 입구는 없다(J5) — 「사용자 정보」에 되살아나지 않는다. 창 자체는 함수로 열린다(openMembers).
+    assert.ok(!/id="usMembers"/.test(source), '#usMembers(구성원 보기) 입구가 되살아났다 — J5 로 없앴다');
+    assert.ok(/function openMembers\(/.test(source), 'openMembers 가 사라졌다 — 창 코드는 이번엔 남긴다(J5)');
     assert.ok(/\$\('#mbSearch'\)[\s\S]{0,140}filterMembers/.test(source), '#mbSearch 검색 배선이 끊겼다');
   },
 
@@ -624,15 +626,15 @@ const checks = {
       'renderMembers 가 HTML 주입 API 를 쓴다 — 이름·소속이 마크업으로 해석된다(XSS)');
   },
 
-  // ㉒ 구성원 진입점은 권한 구획과 같은 조건(HOST && currentUser)으로 뜬다 — 볼 범위를 정하는 게 그 권한이다.
+  // ㉒ 「사용자 정보」 = 계정 · 권한 · 로그아웃뿐이다(2026-10-02 J5) — 구성원 구획(#usMembersSec)이 없고, 그 토글 줄도 없다.
+  //    ★ 예전 계약은 「구성원 진입점은 권한 구획과 같은 조건으로 뜬다」였다 — 진입점 자체를 없앴으므로 '없다' 를 본다.
   membersSecToggle(source) {
     const b = jsBody(source, 'updateUserUi');
     assert.ok(/getElementById\('usPermSec'\)[^\n]*classList\.toggle\('hidden',\s*!on\)/.test(b),
       '전제: #usPermSec 가 !on 으로 토글되지 않는다');
-    assert.ok(/getElementById\('usMembersSec'\)[^\n]*classList\.toggle\('hidden',\s*!on\)/.test(b),
-      '#usMembersSec 가 #usPermSec 와 같은 조건(!on)으로 토글되지 않는다 — 미로그인에 구성원 진입점이 남는다');
-    assert.ok(/<div class="set-sec set-sec-top hidden" id="usMembersSec">/.test(source),
-      '#usMembersSec 의 초기 상태가 hidden 이 아니다 — 부팅 첫 프레임에 진입점이 번쩍인다');
+    assert.ok(!/usMembersSec/.test(b), 'updateUserUi 가 없앤 #usMembersSec 를 아직 토글한다');
+    assert.ok(!/id="usMembersSec"/.test(source), '#usMembersSec(구성원 구획)가 되살아났다 — J5 로 없앴다');
+    assert.ok(!/id="usHubSec"/.test(source), '「⚙ 관리」 카드(#usHubSec)가 되살아났다 — 입구는 ⋯ 메뉴다(J1·J5)');
   },
 
   // ㉓ 계약이 한 번 뒤집혔다. 예전엔 "모달에 「일정」이라는 낱말이 있으면 실패"였다 —
@@ -1012,10 +1014,10 @@ test('사용자정보 ⑮: 권한은 .us-kv 2열 그리드다(라벨:값 한 줄
 test('사용자정보 ⑯: .us-kv 자식은 전부 dt/dd 요소다(맨 텍스트 0)', () => checks.permKvElementsOnly(src));
 test('사용자정보 ⑰: 권한 문구 6종이 단축형이다(옛 긴 문구 0건)', () => checks.permShortLabels(src));
 test('사용자정보 ⑱: #usPermSec 에 .set-form 카드가 없다(#usPermForm 폐지)', () => checks.permNoCard(src));
-test('구성원 ⑲: #membersModal 은 닫을 수 있는 .overlay 이고 진입점이 배선돼 있다', () => checks.membersModalClosable(src));
+test('구성원 ⑲: #membersModal 은 닫을 수 있는 .overlay 이고 검색이 배선돼 있다 · 사용자 정보 입구는 없다(J5)', () => checks.membersModalClosable(src));
 test('구성원 ⑳: 미리보기 표본(US_MEMBERS_PREVIEW·#mbPreview)이 0건이다', () => checks.noPreviewSample(src));
 test('구성원 ㉑: renderMembers 는 DOM API 로만 그린다(HTML 주입 API 부재)', () => checks.membersNoHtmlInjection(src));
-test('구성원 ㉒: #usMembersSec 는 #usPermSec 와 같은 조건으로 토글된다', () => checks.membersSecToggle(src));
+test('구성원 ㉒: 「사용자 정보」에 구성원 구획·관리 카드가 없다(J5 — 계정·권한·로그아웃뿐)', () => checks.membersSecToggle(src));
 test('구성원 ㉓: 행 진입점만 있고 실제 열람 UI(그리드·일자패널·편집)는 없다', () => checks.membersEntryOnlyNoRealUi(src));
 test('구성원 ㉔: 호스트 membersGet 은 읽기 경로다(OpenWriteAsync 금지)', () => checks.membersHostReadPath(main, pdb));
 test('구성원 ㉕: 명부는 IN 절 없이 전원(is_active=1)이다', () => checks.membersRosterIsEveryone(pdb));
@@ -1201,9 +1203,10 @@ test('변이㉑: renderMembers 가 이름을 innerHTML 로 넣으면 membersNoHt
   assert.throws(() => checks.membersNoHtmlInjection(bad), /HTML 주입 API/);
 });
 
-test('변이㉒: updateUserUi 에서 #usMembersSec 토글을 빼면 membersSecToggle 이 실패한다', () => {
-  const bad = mutate(src, "  const mem = document.getElementById('usMembersSec');if(mem) mem.classList.toggle('hidden', !on);   // 구성원도 같은 조건 — 볼 범위를 정하는 게 그 권한이다\n", '');
-  assert.throws(() => checks.membersSecToggle(bad), /같은 조건\(!on\)으로 토글되지 않는다/);
+test('변이㉒: 「사용자 정보」에 구성원 구획을 되살리면 membersSecToggle 이 실패한다(J5)', () => {
+  const bad = mutate(src, '      <div class="set-sec set-sec-top hidden" id="usPermSec">',
+    '      <div class="set-sec set-sec-top hidden" id="usMembersSec"></div>\n      <div class="set-sec set-sec-top hidden" id="usPermSec">');
+  assert.throws(() => checks.membersSecToggle(bad), /되살아났다/);
 });
 
 test('변이㉓: 구성원 모달에 실제 열람 UI(일자 패널)를 넣으면 membersEntryOnlyNoRealUi 가 실패한다', () => {
@@ -1942,13 +1945,14 @@ if (!JSDOM) {
         '사용자 정보가 함께 닫히는 중이다(페이드아웃) — 중첩이 깨졌다');
     });
 
-    test('구성원(jsdom) ㉒: 미로그인이면 구성원 진입점도 권한 구획과 함께 감춰진다', () => {
+    test('구성원(jsdom) ㉒: 「사용자 정보」에는 로그인·미로그인 어느 쪽에서도 구성원 입구가 없다(J5) · 권한 구획은 그대로 토글된다', () => {
       w.eval('currentUser = null; updateUserUi();');
-      assert.ok(w.document.getElementById('usMembersSec').classList.contains('hidden'),
-        '미로그인인데 #usMembersSec 가 남았다 — 볼 범위를 정하는 권한이 없는 상태다');
+      assert.strictEqual(w.document.getElementById('usMembersSec'), null, '#usMembersSec 가 DOM 에 있다 — J5 로 없앴다');
+      assert.ok(w.document.getElementById('usPermSec').classList.contains('hidden'), '미로그인인데 권한 구획이 보인다');
       login();
       w.eval('updateUserUi();');
-      assert.ok(!w.document.getElementById('usMembersSec').classList.contains('hidden'), '로그인했는데 구성원 진입점이 뜨지 않는다');
+      assert.ok(!w.document.getElementById('usPermSec').classList.contains('hidden'), '로그인했는데 권한 구획이 뜨지 않는다');
+      for (const id of ['usMembers', 'usUserAdmin', 'usMemberBtns', 'usHubSec']) assert.strictEqual(w.document.getElementById(id), null, '#' + id + ' 가 남았다(J5)');
     });
 
     // ── 행 클릭 진입점(읽기 전용 열람) ────────────────────────────────

@@ -42,7 +42,7 @@ const ruleOf = (src, sel) => {
 };
 const AH_FNS = ['ahPress', 'ahMe', 'ahItemOfOv', 'ahIsAdmin', 'ahNoteRole', 'ahProbe', 'ahProbeIfUnknown', 'ahSyncEntries', 'ahPaintWho',
   'ahKey', 'ahLast', 'ahLastIn', 'ahRemember', 'ahCount', 'ahSyncFoot', 'ahCounts', 'ahFillSel', 'ahMark', 'ahSyncEmpty', 'ahFocusTarget', 'ahFocusNav',
-  'ahRouteOpen', 'ahDock', 'ahUndock', 'ahAfterClose', 'ahCloseNow', 'openAdminHub', 'ahSelect', 'setupAdminHub'];
+  'ahRouteOpen', 'ahDock', 'ahUndock', 'ahAfterClose', 'ahCloseNow', 'openAdminHub', 'ahSelect', 'ahOpenFromMore', 'setupAdminHub'];
 const ITEMS = ['members', 'orgtitle', 'gone', 'projects', 'cust', 'codes', 'trash'];
 const OV_OF = { members: 'userAdminModal', orgtitle: 'orgTitleModal', gone: 'trashModal', projects: 'officialModal', cust: 'customerModal', codes: 'codeModal', trash: 'trashModal' };
 
@@ -139,10 +139,10 @@ const S = {
     assert.deepStrictEqual([...new Set(calls)], ['userInfoGet'], '관리 화면 구역의 호스트 요청은 기존 읽기 명령 userInfoGet 뿐이어야 한다(H13)');
     const posts = AH_FNS.flatMap((fn) => [...body(src, fn).matchAll(/hpost\(([^)]*)\)/g)].map((m) => m[1].replace(/\s+/g, '')));
     assert.deepStrictEqual(posts, [], '관리 화면 구역이 호스트로 직접 보낸다');
-    //  ☰ 는 지금의 메시지에 admin:true 만 덧붙인다 — 관리자로 확인된 때만(H6)
-    assert.ok(/hpost\(\(b\.dataset\.host === 'menu' && ahIsAdmin\(\)\) \? \{ cmd: 'menu', admin: true \} : \{ cmd: b\.dataset\.host \}\);/.test(extractFunction(src, 'buildHostBar')),
-      '☰ 메시지 규칙(관리자만 admin:true · 그 밖은 지금과 같은 {cmd})이 아니다');
-    assert.ok(!/hbMenu|hbAdminMenu/.test(src), '없앤 웹 사전 메뉴가 남아 있다');
+    //  ☰ 는 원래대로(J2 · ADMIN-HUB-2) — 위젯 창 설정 메뉴(호스트)를 열 뿐이다. 관리 입구는 ⋯ 메뉴(J1).
+    assert.ok(/const b = ev\.target\.closest\('button\[data-host\]'\); if\(b\) hpost\(\{cmd:b\.dataset\.host\}\);/.test(extractFunction(src, 'buildHostBar')),
+      '☰ 메시지가 원래({cmd:b.dataset.host})가 아니다');
+    assert.ok(!/admin: true \}|__openAdminHub|hbAdminMenu/.test(src), '☰ 관리 입구(admin 플래그 · 호스트→웹 창구 · 웹 사전 메뉴)의 흔적이 남았다');
     for (const fn of AH_FNS) {
       const b = body(src, fn);
       assert.ok(!/innerHTML|outerHTML|insertAdjacentHTML/.test(b), `${fn} 가 HTML 주입 API 를 쓴다 — 이름은 DB 문자열이다(H13)`);
@@ -475,115 +475,94 @@ if (!JSDOM) {
   });
 
   // ── R5 ──
-  test('(R5) 입구: 관리자 확인 전에는 ☰ = 호스트 메뉴 그대로 · 사용자 정보 카드·내 과제 버튼 없음(공개 문 「구성원 편집」은 그대로)', async () => {
+  //  ☰ 이 보낸 'menu' 메시지들(그 시점 이후) — ☰ 는 위젯 창 설정(호스트 네이티브 메뉴)이다. J2: 언제나 {cmd:'menu'} 하나.
+  const menuMsgs = (B, from) => B.posted.slice(from).map((s) => JSON.parse(s)).filter((m) => m.cmd === 'menu');
+  const shown = (B, sel) => { const e = $(B, sel); return !!e && B.w.getComputedStyle(e).display !== 'none' && !e.closest('.hidden'); };
+  async function openMore(B) { const b = $(B, '#btnMore'); b.focus(); b.click(); await settle(); }
+
+  test('(R1·J1) 입구: 관리자 확인 전에는 ⋯ 메뉴에 「⚙ 관리」가 없다 · 내 과제 버튼 없음 · ☰ 는 {cmd:"menu"} 그대로', async () => {
     await reset(B, { admin: false });
-    const menuBtn = $(B, '#hostbar button[data-host="menu"]');
-    assert.ok(menuBtn, '전제: 제목줄 ☰');
+    await openMore(B);
+    assert.ok(!$(B, '#moreMenu').classList.contains('hidden'), '전제: ⋯ 메뉴가 열렸다');
+    assert.ok($(B, '#mmAdmin').classList.contains('hidden'), '모르는데 ⋯ 메뉴에 「⚙ 관리」가 보인다');
+    B.ev("document.getElementById('moreMenu').classList.add('hidden')");
     const before = B.posted.length;
-    menuBtn.click(); await settle();
-    const sent = B.posted.slice(before).map((s) => JSON.parse(s)).filter((m) => m.cmd === 'menu');
-    assert.deepStrictEqual(sent, [{ cmd: 'menu' }], '모르는데 ☰ 메시지가 지금과 다르다(admin 이 실렸다)');
-    B.ev('openUserInfo()'); await settle(40);
-    assert.ok($(B, '#usHubSec').classList.contains('hidden'), '관리자 확인 전에 「⚙ 관리」 카드가 보인다');
-    assert.ok(!$(B, '#usMembersSec').classList.contains('ah-admin'));
-    assert.ok($(B, '#usUserAdmin'), '공개 문 #usUserAdmin 이 사라졌다');
-    B.ev("closeModal('#userModal')"); await settle(FADE);
+    $(B, '#hostbar button[data-host="menu"]').click(); await settle();
+    assert.deepStrictEqual(menuMsgs(B, before), [{ cmd: 'menu' }], '☰ 메시지가 지금과 다르다');
     B.ev('openCatModal()'); await settle(40);
     assert.ok($(B, '#catAdminRow').classList.contains('hidden'), '관리자 확인 전에 내 과제의 관리 버튼이 보인다');
     assert.ok(!$(B, '#btnOfficialOpen').classList.contains('hidden'), '「공식 과제 찾아보기」는 모두에게 그대로');
     B.ev("closeModal('#categoryModal')"); await settle(FADE);
   });
 
-  test('(R5) 입구 ②: 권한 회신 edit_role=admin → 「⚙ 관리」 카드(관리 열기 · 구성원 편집) · 줄의 「구성원 편집」은 숨는다(마크업엔 그대로) · 누르면 사용자 정보를 닫고 연다', async () => {
-    await reset(B, { admin: false });
-    B.ev(`__rep.userInfoGet = ${JSON.stringify(INFO('admin'))}`);
-    $(B, '#btnUser').focus(); $(B, '#btnUser').click(); await settle(60);   // 사람이 누를 때처럼 포커스 → 클릭(jsdom 의 click 은 포커스를 옮기지 않는다)
-    assert.strictEqual(isOpen(B, 'userModal'), true);
-    assert.ok(!$(B, '#usHubSec').classList.contains('hidden'), '관리자 회신인데 카드가 없다');
-    assert.ok($(B, '#usMembersSec').classList.contains('ah-admin'));
-    assert.strictEqual(B.w.getComputedStyle($(B, '#usUserAdmin')).display, 'none', '카드로 옮긴 「구성원 편집」이 줄에 남았다');
-    assert.ok($(B, '#usMemberBtns #usUserAdmin'), '#usUserAdmin 은 마크업 자리에 상주해야 한다(공개 문)');
-    assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), '1', '확인 결과를 이 PC·계정에 기억하지 않는다');
-    $(B, '#usHubMembers').click(); await settle(60);
-    assert.strictEqual(isOpen(B, 'userModal'), false, '사용자 정보가 관리 화면 밑에 남았다(겹침)');
-    assert.strictEqual(isOpen(B, 'adminHub'), true);
-    assert.strictEqual(navOn(B), 'members', '「구성원 편집」 지름길은 구성원 항목');
-    assert.deepStrictEqual(stack(B), ['adminHub']);
-    assert.strictEqual(backTo(B), 'btnUser', '닫으면 연 입구(사용자 정보를 연 👤)로 돌아가야 한다(H12) — 닫힌 창 안의 버튼이 아니라');
-    B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE);
-    //  관리 열기 = 마지막 항목
-    B.w.localStorage.setItem('tc_adminLast:phmin', 'trash');
-    $(B, '#btnUser').click(); await settle(60);
-    $(B, '#usHubOpen').click(); await settle(60);
-    assert.strictEqual(navOn(B), 'trash', '「⚙ 관리 열기」는 마지막 항목');
-  });
-
-  test('(R5) 입구 ②: 관리자가 아니라는 회신 → 카드 사라짐 · 기억 지움 · 「구성원 편집」은 공개 문 그대로(호스트가 거절)', async () => {
-    await reset(B);   // 관리자로 기억된 상태에서
-    B.ev(`__rep.userInfoGet = ${JSON.stringify(INFO('editor'))}`);
-    B.ev('openUserInfo()'); await settle(60);
-    assert.ok($(B, '#usHubSec').classList.contains('hidden'), '편집자 회신인데 카드가 남았다');
-    assert.ok(!$(B, '#usMembersSec').classList.contains('ah-admin'));
-    assert.notStrictEqual(B.w.getComputedStyle($(B, '#usUserAdmin')).display, 'none', '비관리자에게 공개 문이 숨었다');
-    assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), null);
-    //  비활성 관리자도 관리자가 아니다
-    B.ev("closeModal('#userModal')"); await settle(FADE);
-    B.ev(`__rep.userInfoGet = ${JSON.stringify(INFO('admin', 0))}`);
-    B.ev('openUserInfo()'); await settle(60);
-    assert.ok($(B, '#usHubSec').classList.contains('hidden'), '비활성 계정인데 카드가 보인다');
-  });
-
-  //  ☰ 이 보낸 메시지들(그 시점 이후) — 네이티브 메뉴는 호스트(WPF)가 그린다. 웹이 지키는 것은 '무엇을 실어 보내나' 하나다.
-  const menuMsgs = (B, from) => B.posted.slice(from).map((s) => JSON.parse(s)).filter((m) => m.cmd === 'menu');
-  test('(R5) 입구 ①: 관리자로 확인되면 ☰ = {cmd:"menu", admin:true}(호스트가 맨 위에 「⚙ 관리」) · 웹 메뉴는 만들지 않는다', async () => {
-    await reset(B);
-    const menuBtn = $(B, '#hostbar button[data-host="menu"]');
-    const before = B.posted.length;
-    menuBtn.click(); await settle();
-    assert.deepStrictEqual(menuMsgs(B, before), [{ cmd: 'menu', admin: true }], '관리자인데 admin:true 가 실리지 않았다');
-    assert.strictEqual(B.doc.querySelector('[role="menu"]'), null, '웹 쪽에 따로 메뉴가 생겼다(☰ 는 호스트 메뉴 하나다)');
-    assert.strictEqual(isOpen(B, 'adminHub'), false, '☰ 누르기만으로 관리 화면이 열렸다');
-    //  관리자가 아니라는 회신이 오면 다음 ☰ 부터는 지금과 똑같은 {cmd:'menu'}
-    B.ev('ahNoteRole(false)');
-    const b2 = B.posted.length;
-    menuBtn.click(); await settle();
-    assert.deepStrictEqual(menuMsgs(B, b2), [{ cmd: 'menu' }], '관리자가 아닌데 admin 이 실렸다(일반 사용자 메시지가 바뀌었다)');
-  });
-
-  test('(R5) 입구 ①: 호스트 메뉴의 「⚙ 관리」 → window.__openAdminHub() → 마지막 항목으로 연다 · 닫으면 ☰ 로 포커스 · 열람 창(PEER)에서는 열지 않는다', async () => {
+  test('(R1·J1) ⋯ 메뉴: 관리자면 「⚙ 관리 · 관리자」가 「설정」 바로 위(구분선) · 누르면 ⋯ 를 닫고 마지막 항목 · 닫으면 ⋯ 로 포커스', async () => {
     await reset(B);
     B.w.localStorage.setItem('tc_adminLast:phmin', 'orgtitle');
-    assert.strictEqual(B.ev('typeof window.__openAdminHub'), 'function', '호스트→웹 창구가 없다');
-    assert.strictEqual(B.ev('window.__openAdminHub && window.__openAdminHub()'), true);   // MainWindow.ShowSettingsMenu 가 부르는 식 그대로
-    await settle(60);
+    await openMore(B);
+    assert.ok(shown(B, '#btnAdminHub'), '관리자인데 ⋯ 메뉴에 「⚙ 관리」가 없다');
+    assert.ok(/^⚙ 관리\s*관리자$/.test($(B, '#btnAdminHub').textContent.trim()), '문구: ' + $(B, '#btnAdminHub').textContent);
+    const mm = $(B, '#mmAdmin');
+    assert.strictEqual(mm.nextElementSibling && mm.nextElementSibling.id, 'btnSettings', '「⚙ 관리」가 「설정」 바로 위가 아니다');
+    assert.ok(mm.querySelector('hr'), '「⚙ 관리」와 앱 기능 사이 구분선이 없다');
+    $(B, '#btnAdminHub').click(); await settle(60);
+    assert.ok($(B, '#moreMenu').classList.contains('hidden'), '관리 화면이 열렸는데 ⋯ 메뉴가 남았다(#appSurface 안이라 inert 를 물려받는다)');
     assert.strictEqual(isOpen(B, 'adminHub'), true);
-    assert.strictEqual(navOn(B), 'orgtitle', '☰ 입구는 마지막 항목');
+    assert.strictEqual(navOn(B), 'orgtitle', '⋯ 입구는 마지막 항목');
     assert.strictEqual(active(B), 'orgtitle', '열면 고른 항목 버튼에 포커스(H12)');
-    assert.strictEqual(backTo(B), 'menu', '닫으면 ☰ 로 돌아가야 한다');
+    assert.strictEqual(backTo(B), 'btnMore', '닫으면 ⋯ 버튼으로 돌아가야 한다');
     assert.deepStrictEqual(stack(B), ['adminHub']);
+    //  관리자가 아니라는 회신 → 다음 ⋯ 부터 없다 · 기억도 지운다
     B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE);
-    //  열람 창 — 같은 문서를 ?peer=1 로 띄운 iframe. 호스트가 그 창을 부를 일은 없지만, 불려도 열지 않는다.
-    const P = new JSDOM(app, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://tcapp.local/?peer=1',
-      beforeParse(win) { win.chrome = { webview: { postMessage() {}, addEventListener() {}, removeEventListener() {} } }; win.scrollTo = () => {}; win.HTMLElement.prototype.scrollIntoView = function () {}; } });
-    try {
-      assert.strictEqual(P.window.eval('PEER'), true);
-      assert.strictEqual(P.window.eval('window.__openAdminHub && window.__openAdminHub()'), false);
-      assert.strictEqual(P.window.eval("isOverlayOpen(document.getElementById('adminHub'))"), false, '열람 창 안에서 관리 화면이 열렸다');
-    } finally { P.window.close(); }
+    B.ev('ahNoteRole(false)');
+    await openMore(B);
+    assert.ok($(B, '#mmAdmin').classList.contains('hidden'), '관리자 아님 회신 뒤에도 ⋯ 에 「⚙ 관리」가 남았다');
+    assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), null);
+    B.ev("document.getElementById('moreMenu').classList.add('hidden')");
   });
 
-  test('(정적) H6: 호스트 — case "menu" 가 선택 bool admin 을 읽어 ShowSettingsMenu(admin) · 맨 위 「⚙ 관리」 + 구분선 · 누르면 __openAdminHub', () => {
+  test('(R1·J1) ⋯ 를 열 때 권한을 모르면 조용히 묻고(userInfoGet), 관리자 회신이면 열린 메뉴에 곧바로 「⚙ 관리」가 선다', async () => {
+    await reset(B, { admin: false });
+    B.ev(`__rep.userInfoGet = ${JSON.stringify(INFO('admin'))}`);
+    await openMore(B); await settle(40);
+    assert.ok(calls(B, 'userInfoGet').length >= 1, '⋯ 를 열었는데 권한을 묻지 않았다');
+    assert.ok(shown(B, '#btnAdminHub'), '관리자 회신 뒤 열린 ⋯ 메뉴에 「⚙ 관리」가 서지 않았다');
+    assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), '1');
+    B.ev("document.getElementById('moreMenu').classList.add('hidden')");
+  });
+
+  test('(R2·J2) ☰ 원복: 관리자여도 ☰ = {cmd:"menu"} 만(admin 필드 없음) · 웹 쪽 메뉴·호스트→웹 창구(__openAdminHub) 없음 · C# 메뉴는 그대로', async () => {
+    await reset(B);
+    const before = B.posted.length;
+    $(B, '#hostbar button[data-host="menu"]').click(); await settle();
+    assert.deepStrictEqual(menuMsgs(B, before), [{ cmd: 'menu' }], '관리자인데 ☰ 메시지에 무엇이 더 실렸다');
+    assert.strictEqual(B.doc.querySelector('[role="menu"]'), null);
+    assert.strictEqual(B.ev('typeof window.__openAdminHub'), 'undefined', '쓰는 곳이 없는 호스트→웹 창구가 남았다');
+    assert.strictEqual(isOpen(B, 'adminHub'), false);
     const cs = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-    assert.match(cs, /case "menu": ShowSettingsMenu\(GetBool\(doc, "admin"\)\); break;/, 'menu 메시지의 admin 을 읽지 않는다');
-    const i = cs.indexOf('private void ShowSettingsMenu(bool admin = false)');
-    assert.ok(i > 0, 'ShowSettingsMenu(bool admin = false) 시그니처가 아니다(기본값 false — 모르면 지금 메뉴 그대로)');
-    const body = cs.slice(i, cs.indexOf('menu.IsOpen = true;', i));
-    const h = body.indexOf('if (admin)'), first = body.indexOf('menu.Items.Add(');
-    assert.ok(h > 0 && h < first, '「⚙ 관리」가 메뉴 맨 위가 아니다');
-    assert.match(body.slice(h), /^if \(admin\)\s*\{\s*var hub = new MenuItem \{ Header = "⚙ 관리", InputGestureText = "관리자" \};/, '항목 문구');
-    assert.match(body, /ExecuteScriptAsync\("window\.__openAdminHub && window\.__openAdminHub\(\)"\)/, '누르면 웹의 __openAdminHub 를 부르지 않는다');
-    assert.match(body, /menu\.Items\.Add\(hub\);\s*menu\.Items\.Add\(new Separator\(\)\);/, '「⚙ 관리」 뒤 구분선');
-    assert.ok(!/OpenAdmin|edit_role|ProjectDb/.test(body.slice(h, body.indexOf('menu.Items.Add(new Separator());', h))), '호스트가 메뉴에서 권한을 다시 판정한다(지름길일 뿐이다)');
+    assert.match(cs, /case "menu": ShowSettingsMenu\(\); break;/, '호스트의 menu 처리가 원래대로가 아니다');
+    assert.ok(/private void ShowSettingsMenu\(\)/.test(cs) && !/__openAdminHub|"⚙ 관리"/.test(cs), 'C# 에 「⚙ 관리」 메뉴 흔적이 남았다(J2 — 727f27b 이전과 바이트 동일해야 한다)');
+  });
+
+  test('(R4·J5) 사용자 정보 = 계정 · 권한 · 로그아웃뿐 — 구성원 줄(보기·편집)·「⚙ 관리」 카드 없음(관리자 회신이어도) · 권한 회신은 ⋯ 입구에 반영', async () => {
+    await reset(B, { admin: false });
+    B.ev(`__rep.userInfoGet = ${JSON.stringify(INFO('admin'))}`);
+    $(B, '#btnUser').focus(); $(B, '#btnUser').click(); await settle(60);
+    assert.strictEqual(isOpen(B, 'userModal'), true);
+    for (const id of ['usMembersSec', 'usMembers', 'usUserAdmin', 'usMemberBtns', 'usHubSec', 'usHubOpen', 'usHubMembers']) {
+      assert.strictEqual(B.doc.getElementById(id), null, `사용자 정보에 #${id} 가 남았다(J5)`);
+    }
+    for (const id of ['usInfoBlock', 'usPermSec', 'usEditRole', 'usViewScope', 'usPermReload', 'usLogout']) assert.ok(B.doc.getElementById(id), `#${id} 가 사라졌다 — 계정·권한·로그아웃은 그대로`);
+    assert.strictEqual(B.doc.getElementById('usEditRole').textContent, '관리자 — 추가·수정·삭제');
+    assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), '1', '권한 회신이 입구 판정에 반영되지 않았다');
+    B.ev("closeModal('#userModal')"); await settle(FADE);
+    await openMore(B);
+    assert.ok(shown(B, '#btnAdminHub'), '사용자 정보의 관리자 회신이 ⋯ 입구에 반영되지 않았다');
+    B.ev("document.getElementById('moreMenu').classList.add('hidden')");
+    //  비활성 관리자는 관리자가 아니다
+    B.ev(`__rep.userInfoGet = ${JSON.stringify(INFO('admin', 0))}`);
+    B.ev('openUserInfo()'); await settle(60);
+    assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), null, '비활성 계정을 관리자로 기억했다');
+    B.ev("closeModal('#userModal')"); await settle(FADE);
   });
 
   test('(R5) 입구 ③: 내 과제 — 관리자만 「⚙ 공식 과제 편집은 관리에서 ›」(관리자 꼬리표) · 누르면 내 과제를 닫고 공식 과제 항목', async () => {
@@ -600,24 +579,37 @@ if (!JSDOM) {
     assert.strictEqual(backTo(B), 'btnCatsTop', '닫으면 「내 과제」 버튼으로');
   });
 
-  // ── R6 ──
-  test('(R6) 공식 과제 창(찾아보기 · 단독)의 하단 관리 버튼 → 관리 화면의 그 항목 · 공식 과제·내 과제 창은 닫힌다(겹침 없음)', async () => {
-    for (const [btn, item, ov] of [['offCustMgr', 'cust', 'customerModal'], ['offCodeMgr', 'codes', 'codeModal'], ['offTrash', 'trash', 'trashModal']]) {
-      await reset(B);
-      $(B, '#btnCatsTop').focus(); $(B, '#btnCatsTop').click(); await settle(40);
-      $(B, '#btnOfficialOpen').focus(); $(B, '#btnOfficialOpen').click(); await settle(40);
-      assert.deepStrictEqual(stack(B), ['categoryModal', 'officialModal'], '전제: 내 과제 위에 공식 과제');
-      $(B, '#' + btn).click(); await settle(60);
-      assert.strictEqual(isOpen(B, 'adminHub'), true, `${btn}: 관리 화면이 열리지 않았다`);
-      assert.strictEqual(navOn(B), item); assert.strictEqual(docked(B), ov);
-      assert.strictEqual(isOpen(B, 'officialModal'), false, `${btn}: 공식 과제 창이 밑에 남았다`);
-      assert.strictEqual(isOpen(B, 'categoryModal'), false, `${btn}: 내 과제 창이 밑에 남았다`);
-      assert.deepStrictEqual(stack(B), ['adminHub'], `${btn}: 창 위에 창`);
-      assert.strictEqual(backTo(B), 'btnCatsTop', `${btn}: 닫으면 맨 처음 입구(내 과제 버튼)로`);
+  // ── R3(ADMIN-HUB-2) · J3 — 찾아보기(단독 공식 과제)는 모두에게 읽기 전용 · 도킹은 편집 가능 ──
+  const ZZCAT = { id: 'db-zz1', name: 'zz과제', color: '#3e5be0', source: 'db', customer: 'zzC', section: '일반계약', status: '진행중',
+    startDate: '2026-01-01', endDate: '2026-12-31', devEndDate: '', projectName: 'zz과제', contractName: '', commonName: 'zz과제' };
+  test('(R3·J3) 찾아보기(내 과제 → 공식 과제 · 단독)는 관리자여도 읽기 전용 — 새 공식 과제·편집/숨김·하단 관리 버튼 없음 · 「캘린더에 추가」·새로고침·닫기는 그대로', async () => {
+    await reset(B);
+    B.ev(`dbCatalog = [${JSON.stringify(ZZCAT)}];`);
+    $(B, '#btnCatsTop').focus(); $(B, '#btnCatsTop').click(); await settle(40);
+    $(B, '#btnOfficialOpen').focus(); $(B, '#btnOfficialOpen').click(); await settle(40);
+    B.ev("offSelect('db-zz1')"); await settle();
+    assert.deepStrictEqual(stack(B), ['categoryModal', 'officialModal'], '전제: 내 과제 위에 공식 과제(단독)');
+    for (const sel of ['#offNew', '#officialModal .off-d-act', '#offCustMgr', '#offCodeMgr', '#offTrash']) {
+      assert.ok($(B, sel), `전제: ${sel} 노드는 남아 있다(배선·시험 호환)`);
+      assert.strictEqual(B.w.getComputedStyle($(B, sel)).display, 'none', `찾아보기에 쓰기 컨트롤 ${sel} 가 보인다(J3)`);
     }
-    //  관리 화면 안의 공식 과제(도킹)에서 누르면 → 항목만 바뀐다
-    await reset(B); await openHub(B, 'projects');
-    $(B, '#offCodeMgr').click(); await settle(60);
+    assert.ok($(B, '#offDetail [data-offedit]') && $(B, '#offDetail [data-offhide]'), '전제: 상세의 편집/숨김 버튼 노드');
+    assert.ok($(B, '#offDetail [data-offadd]'), '「캘린더에 추가」가 사라졌다');
+    assert.notStrictEqual(B.w.getComputedStyle($(B, '#offDetail [data-offadd]')).display, 'none', '「캘린더에 추가」가 숨었다');
+    for (const sel of ['#offRefresh', '#officialModal .modal-foot [data-close]', '#offSearch', '#offReset']) assert.notStrictEqual(B.w.getComputedStyle($(B, sel)).display, 'none', `${sel} 가 숨었다`);
+    B.ev("$('#offDetail [data-offadd]').click()"); await settle();
+    assert.ok(B.ev("catIsSubscribed('db-zz1')"), '「캘린더에 추가」가 동작하지 않는다');
+  });
+
+  test('(R3·J3) 「⚙ 관리」에 도킹된 공식 과제는 편집 가능 — 새 공식 과제·편집/숨김 보임 · 하단 관리 버튼은 왼쪽 목록이 대신(숨김) · 그 버튼을 눌러도 항목만 바뀐다', async () => {
+    await reset(B);
+    B.ev(`dbCatalog = [${JSON.stringify(ZZCAT)}];`);
+    await openHub(B, 'projects');
+    B.ev("offSelect('db-zz1')"); await settle();
+    assert.strictEqual(docked(B), 'officialModal');
+    for (const sel of ['#offNew', '#officialModal .off-d-act']) assert.notStrictEqual(B.w.getComputedStyle($(B, sel)).display, 'none', `도킹된 공식 과제에 ${sel} 가 없다 — 편집은 여기서 한다`);
+    for (const sel of ['#offCustMgr', '#offCodeMgr', '#offTrash']) assert.strictEqual(B.w.getComputedStyle($(B, sel)).display, 'none', `도킹 화면에 ${sel} 가 보인다 — 왼쪽 목록이 그 문이다`);
+    $(B, '#offCodeMgr').click(); await settle(60);   // 프로그램으로 눌러도(시험·루프) 같은 관문 → 항목만 바뀐다
     assert.strictEqual(navOn(B), 'codes'); assert.strictEqual(docked(B), 'codeModal'); assert.deepStrictEqual(stack(B), ['adminHub']);
   });
 
@@ -764,14 +756,13 @@ if (!JSDOM) {
       assert.deepStrictEqual(stack(M), ['adminHub', 'customerModal'], '변이 앱에서 겹침이 재현되지 않았다');
     } finally { M.close(); }
   });
-  test('(M) 변이: ☰ 의 관리자 판정을 빼면 일반 사용자의 메시지에 admin:true 가 실린다(R5 가 잡는다)', async () => {
-    const bad = mutate(app, "(b.dataset.host === 'menu' && ahIsAdmin())", "(b.dataset.host === 'menu')");
+  test('(M) 변이: ⋯ 메뉴 「⚙ 관리」의 관리자 판정을 빼면 일반 사용자에게 보인다(R1 이 잡는다)', async () => {
+    const bad = mutate(app, "if(mm) mm.classList.toggle('hidden', !on);", "if(mm) mm.classList.toggle('hidden', false);");
     const M = boot(bad);
     try {
       await reset(M, { admin: false });
-      const before = M.posted.length;
-      $(M, '#hostbar button[data-host="menu"]').click(); await settle();
-      assert.deepStrictEqual(M.posted.slice(before).map((s) => JSON.parse(s)).filter((m) => m.cmd === 'menu'), [{ cmd: 'menu', admin: true }], '변이가 ☰ 에 닿지 않았다');
+      await openMore(M);
+      assert.ok(!$(M, '#mmAdmin').classList.contains('hidden'), '변이가 ⋯ 메뉴에 닿지 않았다');
     } finally { M.close(); }
   });
 

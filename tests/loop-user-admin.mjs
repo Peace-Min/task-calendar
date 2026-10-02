@@ -304,8 +304,10 @@ const PSTATE = `JSON.stringify({
   uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden'); })(),
   lines: document.querySelectorAll('#uaList .mba-line').length,
   barBtns: document.querySelectorAll('#uaAdmin button').length,
-  entryBtn: !!document.getElementById('usUserAdmin'),
-  memberRowKids: (function(){ var e=document.getElementById('usMemberBtns'); return e ? e.children.length : -1; })(),
+  //  ★ 2026-10-02(docs/ADMIN-HUB-2.md J5) — 「사용자 정보」의 구성원 줄(#usMemberBtns · #usMembers · #usUserAdmin)은 없어졌다.
+  //    entryBtn 은 이제 '그 입구가 **없다**' 를 본다(있으면 J5 회귀) · 편집 화면은 openUserAdmin() 으로 연다(「⚙ 관리」의 구성원 항목과 같은 함수).
+  entryBtn: !document.getElementById('usUserAdmin') && !document.getElementById('usMembers'),
+  memberRowKids: (function(){ var e=document.getElementById('usMemberBtns'); return e ? e.children.length : 0; })(),
   ueOpen: (function(){ var e=document.getElementById('userEditModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbOpen: (function(){ var e=document.getElementById('membersModal'); return !!e && !e.classList.contains('hidden'); })(),
   mbBusy: !!__mbBusy, mbN: __mbMembers.length,
@@ -640,12 +642,12 @@ async function main() {
     console.error('[판정 없음] 직급 또는 조직이 2개 미만이다 — 수정 케이스를 만들 수 없다');
     process.exit(2);
   }
-  //  「구성원 편집」 진입 버튼은 **마크업에 상주하는 공개 문**이다(2026-09-18 사용자 결정) —
-  //  권한 조회(loadUserPerm)를 한 번 돌려 화면을 최신으로 맞춘 뒤, 그 문이 서 있는지만 확인한다.
+  //  ★ 2026-10-02(docs/ADMIN-HUB-2.md J5) — 「사용자 정보」의 「구성원 편집」 입구(#usUserAdmin)는 없어졌다. 편집 화면은
+  //    openUserAdmin() 으로 연다(「⚙ 관리」의 구성원 항목이 부르는 그 함수). 여기서는 그 입구가 **없는지**만 본다(되살아나면 J5 회귀).
   await ev(`loadUserPerm()`);
   const entry0 = await waitPage((x) => x.entryBtn === true, { timeout: 15000 });
-  if (!entry0) { console.error("[판정 없음] 「구성원 편집」 진입 버튼(#usUserAdmin)이 DOM 에 없다 — 마크업에 상주해야 한다"); process.exit(2); }
-  log('진입 버튼 #usUserAdmin 확인(전원에게 정적으로 서 있다)');
+  if (!entry0) { console.error("[위반] 「사용자 정보」에 구성원 입구(#usUserAdmin/#usMembers)가 남아 있다 — J5 로 없앴다"); process.exit(1); }
+  log('「사용자 정보」에 구성원 입구 없음 확인(J5) — 편집 화면은 openUserAdmin() 으로 연다');
 
   const T1 = meta.titles[0], T2 = meta.titles[1];
   const O1 = meta.units[rint(0, meta.units.length - 1)];
@@ -1287,10 +1289,10 @@ async function main() {
       await ev(`(typeof closeModal === 'function' && closeModal('#userAdminModal'), 1)`);
       await ev(`loadUserPerm()`);
       const gs = (await waitPage((x) => x.entryBtn === true, { timeout: 15000 })) || (await pstate());
-      okq('C13 「구성원 편집」 버튼은 비관리자에게도 그대로 있다(공개 문)', gs.entryBtn === true,
-        gs.entryBtn === true ? '' : '#usUserAdmin 이 사라졌다 — 문은 전원에게 같은 자리에 서 있어야 한다');
-      okq('C13 구성원 줄(#usMemberBtns)은 보기·편집 둘 그대로다', gs.memberRowKids === 2,
-        `자식 ${gs.memberRowKids}개 — 2 여야 한다(-1 은 그 줄 자체가 없다는 뜻)`);
+      //  ★ J5(2026-10-02) — 사용자 정보의 구성원 줄은 없다(관리자든 아니든). 그 사실이 권한 회신 뒤에도 그대로인지 본다.
+      okq('C13 「사용자 정보」에 구성원 입구가 없다(J5 — 비관리자 회신 뒤에도)', gs.entryBtn === true,
+        gs.entryBtn === true ? '' : '#usUserAdmin/#usMembers 가 되살아났다 — J5 로 없앤 입구다');
+      okq('C13 구성원 줄(#usMemberBtns)이 없다(J5)', gs.memberRowKids === 0, `자식 ${gs.memberRowKids}개 — 0 이어야 한다`);
 
       //  ② 그 문을 실제로 드러간다(문이 공개라도 방은 호스트가 지킨다).
       //     호스트가 admin:false 로 답하므로 컨트롤이 하나도 만들어지지 않아야 한다.

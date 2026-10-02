@@ -535,8 +535,9 @@ test('변이⑥-b2: 「퇴사자 휴지통」을 마크업에 적으면 계약�
 
 //  ★ 옛 자리(「사용자 정보」)로 문을 되돌리면 계약⑥-b 가 실패한다 — 그 자리가 곧 §11-32 의 오해다.
 test('변이⑥-b3: 「사용자 정보」에 휴지통을 되살리면 계약⑥-b 가 실패한다(§11-32 의 자리로 되돌아간다)', () => {
-  const bad = mutate(app, '>구성원 편집</button>',
-    '>구성원 편집</button>\n          <button type="button" class="btn sm" id="usTrash">휴지통</button>');
+  //  ★ 앵커 갱신(2026-10-02 · ADMIN-HUB-2 J5) — 「구성원 편집」 버튼이 사용자 정보에서 사라져, 남은 「지금 새로고침」 옆에 끼운다.
+  const bad = mutate(app, '>지금 새로고침</button>\n          <span id="usPermMsg"',
+    '>지금 새로고침</button>\n          <button type="button" class="btn sm" id="usTrash">휴지통</button>\n          <span id="usPermMsg"');
   assert.throws(() => checks.trashEntryDoorsAreDomainScreens(bad), /「휴지통」이 들어왔다/);
   assert.doesNotThrow(() => checks.trashEntryDoorsAreDomainScreens(app));   // 통제군
 });

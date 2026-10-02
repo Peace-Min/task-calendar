@@ -673,7 +673,9 @@ const INSTALL_JS = `(function(){
     s.mbOpen   = L.isOpen('#membersModal');
     s.uaOpen   = L.isOpen('#userAdminModal');
     s.ueOpen   = L.isOpen('#userEditModal');
-    s.entryBtn = !!document.getElementById('usUserAdmin');
+    //  ★ 2026-10-02(docs/ADMIN-HUB-2.md J5) — 「사용자 정보」의 입구(#usUserAdmin · #usMembers)는 없어졌다. 같은 화면을 **함수로** 연다
+    //    (openUserAdmin = 「⚙ 관리」의 구성원 항목이 부르는 그 함수 · openMembers = 남겨 둔 구성원 보기). 관리자 여부는 회신(uaAdmin)이 정한다.
+    s.entryBtn = (typeof openUserAdmin === 'function');
     s.mbBusy   = (typeof __mbBusy   !== 'undefined') ? !!__mbBusy   : null;
     s.mbEdit   = L.mbEditControls();
     s.uaAdmin  = (typeof __uaAdmin  !== 'undefined') ? !!__uaAdmin  : null;
@@ -1643,11 +1645,9 @@ const tmpUser = () => `zzU${OPT.seed}_${++tempSeq}`;   // login_id 형식 ^[A-Za
 async function openUserAdminModal() {
   const s0 = await state();
   if (s0.uaOpen) return s0;
-  await ev(`__lt.click('#btnUser')`);
-  await sleep(150);
-  const s1 = await waitFor((x) => x.entryBtn === true, { timeout: 15000, desc: '「구성원 편집」 진입 버튼' });
-  if (!s1) return await state();   // 버튼이 없다 = 관리자가 아니다(호출한 쪽이 건너뛴다)
-  await ev(`__lt.click('#usUserAdmin')`);
+  const s1 = await state();
+  if (s1.entryBtn !== true) return s1;   // 구버전 페이지(함수 없음) — 호출한 쪽이 건너뛴다
+  await ev(`(openUserAdmin(), 1)`);   // J5 — 사용자 정보 입구 대신 같은 함수(관리자 판정은 회신 uaAdmin)
   const s = await waitFor((x) => x.uaOpen && !x.uaBusy, { timeout: 20000, desc: '구성원 편집 열림' });
   return s || (await state());
 }
@@ -1656,9 +1656,7 @@ async function openUserAdminModal() {
 async function openMembersModal() {
   const s0 = await state();
   if (s0.mbOpen) return s0;
-  await ev(`__lt.click('#btnUser')`);
-  await sleep(150);
-  await ev(`__lt.click('#usMembers')`);
+  await ev(`(openMembers(), 1)`);   // J5 — 「구성원 보기」 입구는 없어졌다(창·함수는 남음)
   const s = await waitFor((x) => x.mbOpen && !x.mbBusy, { timeout: 20000, desc: '구성원 명부 열림' });
   return s || (await state());
 }

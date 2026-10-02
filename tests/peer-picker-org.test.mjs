@@ -330,7 +330,8 @@ if (!JSDOM) {
     await openTop(B);
     const bd = B.doc.getElementById('pkBody');
     assert.strictEqual(bd.firstElementChild.className, 'pk-note', '맨 위가 안내가 아니다');
-    assert.strictEqual(bd.firstElementChild.textContent, '☆ 를 누르면 즐겨찾기에 남고, 한 번 본 사람은 「최근 본 사람」에 쌓입니다.');
+    //  J8(2026-10-02 · ADMIN-HUB-2) — 두 문장 · 인용 없음(「최근 본 사|람」 처럼 인용 중간에서 끊겨 읽혔다)
+    assert.strictEqual(bd.firstElementChild.textContent, '☆ 를 누르면 즐겨찾기에 남습니다. 한 번 연 사람은 최근 목록에 쌓입니다.');
     assert.deepStrictEqual(secOrder(B), ['Mine']);
     assert.deepStrictEqual(rows(B, 'Mine').map((r) => r.id), ['wblee', 's21', 's22']);
     //  검색 칸 ↓ → 내 부서 첫 행(K11 — 지금 보이는 본문의 첫 행)
