@@ -11,6 +11,9 @@
  *    ④ 「나란히 보기」(2026-10-02 · docs/PEER-SIDE-BY-SIDE.md R2·R3·R4·R8·R9)에서도 같다 — 왼쪽 = 그 사람 · 오른쪽 = 나로
  *        섞이지 않고, 같은 주 줄 높이가 맞고(±1px), 좁으면 쌓이고, 전환·클릭·시트 내내 postMessage 0회.
  *        실행이 끝나면 보기 방식(tc_peerLayout)은 시작 전 값으로 되돌린다.
+ *    ⑤ 「사람 고르기」(2026-10-02 · docs/PEER-PICKER.md R10) — 툴바 👥 → 검색 → 열람 → 최근 → ☆ 즐겨찾기(팝오버 = 열람 창) →
+ *        열람 창 ▾ 사람 바꾸기(두 번째 대상 __pf_target2__ 로 · 보는 중 · 보던 달 잇기) → 바뀐 창도 postMessage 0 · DB 무변화.
+ *        실행이 끝나면 내 계정의 tc_peerFav:<me> · tc_peerRecent:<me> 는 시작 전 값으로 되돌린다.
  *
  *  ★★ 2026-09-09 — 이 시험이 낡아서 실패했던 자리(고친 경위):
  *    2026-09-07 에 C4.1 「내 일정 겹쳐보기」가 들어왔고 **기본값이 켬**이다. 그래서 열람 창에는
@@ -334,13 +337,71 @@ function seedTarget() {
   });
   return u;
 }
-function wipeTarget() {
-  const u = tid(); if (!u) return;
+function wipeTarget() { wipeUser(TU); }
+function wipeUser(login) {
+  const u = one(`SELECT user_id FROM app_user WHERE login_id='${login}'`); if (!u) return;
   for (const t of ['cal_entry_commit', 'cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
                    'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_room', 'cal_user_pref'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, `정리(${t})`);
   sql(`DELETE FROM cal_user_rev WHERE user_id=${u}`, 'rev 정리');
   sql(`DELETE FROM app_user WHERE user_id=${u}`, '대상 삭제');
+}
+
+/* ── 두 번째 시험 대상 — 「사람 고르기」(docs/PEER-PICKER.md R10) 의 ▾ 사람 바꾸기를 **진짜로** 바꾸려면 둘이어야 한다 ──
+ *   첫 대상과 같은 방식·같은 정리(wipeUser)로 심는다. 일정도 다르게 심는다(바꾼 뒤 「그 사람 것」이 떴는지 가르려고).
+ *   ★ 같은 6월에 심는다 — 바꾸기가 **보던 달(6월)** 을 잇는지 보려면 거기에 그 사람 일정이 있어야 한다. */
+const TU2 = '__pf_target2__';
+const TITLES2 = ['열람대상둘 델타'];
+function seedTarget2() {
+  wipeUser(TU2);
+  const org = one(`SELECT org_id FROM org_unit WHERE is_active=1 ORDER BY sort_order LIMIT 1`);
+  sql(`INSERT INTO app_user (login_id, name, org_id, view_scope, edit_role, is_active) ` +
+      `VALUES ('${TU2}', '열람대상둘', ${org}, 'self', 'viewer', 1)`, '대상2 생성');
+  const u = one(`SELECT user_id FROM app_user WHERE login_id='${TU2}'`);
+  sql(`INSERT IGNORE INTO cal_user_rev (user_id, rev) VALUES (${u}, 0)`, '대상2 rev 시딩');
+  sql(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,sort_order,created_at,updated_at) ` +
+      `VALUES (${u},1,'c-pf2-1','local','열람시험과제2','#2e9e6b',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`, '대상2 과제');
+  TITLES2.forEach((t, i) => {
+    sql(`INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,all_day,title,memo,source,location,sort_order,created_at,updated_at) ` +
+        `VALUES (${u},${i + 1},'e-pf2-${i}',1,'2026-06-1${i + 5}',1,'${t}','','','',${i},` +
+        `'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`, '대상2 일정' + i);
+  });
+  return Number(u);
+}
+
+/* ── 「사람 고르기」 도구 — 사람이 누르는 그 자리(툴바 👥 · 검색 칸 · 행 · ☆ · ▾)로만 조작한다 ─────────── */
+//  팝오버 상태·행을 읽는다(행은 data-login 으로 가린다 — 이름은 동명이인이 있다).
+async function pkState(cdp) {
+  return JSON.parse(await cdp.ev(`(()=>{const p=document.getElementById("peerPicker");
+    const rows=[...document.querySelectorAll("#pkBody [data-sec] .pk-row")].map((r)=>{const o=r.querySelector(".pk-open"), s=r.querySelector(".pk-star");
+      return {sec:r.closest("[data-sec]").dataset.sec, id:o.dataset.login, text:o.textContent.replace(/\\s+/g," ").trim(),
+              off:o.getAttribute("aria-disabled")==="true", star:s ? s.getAttribute("aria-pressed") : null};});
+    return JSON.stringify({open:!!p && !p.classList.contains("hidden"), inModal:!!(p && p.closest("#peerModal")),
+      status:(typeof __pk!=="undefined" && __pk) ? __pk.status : null, focus:(document.activeElement||{}).id||"", rows});})()`));
+}
+async function pkWait(cdp) {
+  for (let i = 0; i < 60; i++) { const s = await pkState(cdp); if (s.status && s.status !== 'loading') return s; await sleep(200); }
+  return pkState(cdp);
+}
+async function pkType(cdp, v) {
+  await cdp.ev(`(()=>{const i=document.getElementById("pkSearch"); i.value=${JSON.stringify(v)}; i.dispatchEvent(new Event("input",{bubbles:true})); return 1;})()`);
+  await sleep(120);
+  return pkState(cdp);
+}
+async function pkClickRow(cdp, login, act = 'open') {
+  return cdp.ev(`(()=>{const b=[...document.querySelectorAll('#pkBody [data-act="${act}"]')].find((x)=>x.dataset.login===${JSON.stringify(login)});
+    if(!b) return false; b.click(); return true;})()`);
+}
+//  열람 프레임이 그 사람 데이터로 떴나 — 조회·주입이 끝날 때까지 기다린다(프레임 교체 중이면 옛 것을 읽지 않게 제목도 함께 본다).
+async function waitPeerFrame(cdp, title) {
+  for (let i = 0; i < 60; i++) {
+    await sleep(200);
+    const r = JSON.parse(await cdp.ev(`(()=>{const f=document.querySelector("#pvHost iframe");
+      let n=-1; try{ n = f && f.contentWindow && f.contentWindow.__test ? f.contentWindow.__test.counts().entries : -1; }catch(_){}
+      return JSON.stringify({n, title:(document.getElementById("pvTitle")||{}).textContent||"", frames:document.querySelectorAll("#pvHost iframe").length});})()`));
+    if (r.n >= 0 && r.title === title + ' 님의 일정') return r;
+  }
+  return { n: -1, title: '', frames: -1 };
 }
 
 /* ── main ──────────────────────────────────────────────────────────────── */
@@ -349,17 +410,23 @@ console.log('═'.repeat(72));
 console.log(`타인 일정 열람 창 — 실동작 루프 (라운드 ${ROUNDS} · 실 위젯 · 실 DB)`);
 console.log('═'.repeat(72));
 
-let cdp, TUID = 0;
+let cdp, TUID = 0, TU2ID = 0;
 //  사람이 골라 둔 보기 방식(tc_peerLayout) — 시험이 라운드마다 겹쳐 보기·나란히 보기를 오가므로 끝나면 이 값으로 되돌린다.
 //  undefined = 아직 못 읽음(되돌리지 않는다) · null = 저장값 없음(지운다).
 let LAYOUT0;
+//  사람 고르기(R10)가 쓰는 내 계정별 키 — 즐겨찾기·최근(tc_peerFav:<me> · tc_peerRecent:<me>). 시작 전 값을 떠 두고 끝나면 되돌린다.
+//  undefined = 아직 못 읽음(되돌리지 않는다).
+let PK0, PK_KEYS = null;
 try {
   TUID = seedTarget();
+  TU2ID = seedTarget2();
   cdp = await Cdp.attach(PORT);
   //  ★ 부모와 열람 프레임은 같은 출처라 localStorage 가 같다 — 부모에서 읽고 되돌린다.
   LAYOUT0 = await cdp.ev("(()=>{ try{ return localStorage.getItem('tc_peerLayout'); }catch(_){ return null; } })()");
 
   const me = String(await cdp.ev("(typeof currentUser!=='undefined' && currentUser && currentUser.loginId) || ''")).trim();
+  PK_KEYS = { fav: 'tc_peerFav:' + me, recent: 'tc_peerRecent:' + me };
+  PK0 = JSON.parse(await cdp.ev(`JSON.stringify({ fav: localStorage.getItem(${JSON.stringify(PK_KEYS.fav)}), recent: localStorage.getItem(${JSON.stringify(PK_KEYS.recent)}) })`));
   const MYID = num(`SELECT user_id FROM app_user WHERE login_id='${me.replace(/'/g, "''")}'`);
   if (!MYID) throw new Error(`로그인 사용자를 찾지 못했다(login='${me}')`);
   console.log(`\n로그인 ${me}(user_id=${MYID}) · 대상 ${TU}(user_id=${TUID}) · 일정 ${TITLES.length}건 심음\n`);
@@ -371,6 +438,8 @@ try {
     myRev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${MYID}`),
     tgtEnt: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${TUID}`),
     tgtRev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${TUID}`),
+    tgt2Ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${TU2ID}`),
+    tgt2Rev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${TU2ID}`),
   };
   const myStateBase = String(await cdp.ev('state.entries.length + "/" + state.categories.length'));
   const logBase = logLines().length;
@@ -753,6 +822,90 @@ try {
     if (r % 3 === 0) process.stdout.write(`  … ${r}/${ROUNDS} (실패 ${fail})\n`);
   }
 
+  /* ── ⑥ 「사람 고르기」(docs/PEER-PICKER.md R10) — 툴바 👥 → 검색 → 열람 → 최근에 남음 → ☆ 즐겨찾기(팝오버 = 열람 창) →
+   *      열람 창 ▾ 사람 바꾸기(보는 중 표시 · 보던 달 잇기) → 바뀐 창도 봉인(postMessage 0) · DB 무변화(아래 누적 검증이 같이 본다).
+   *  ★ 저장 키(tc_peerFav/Recent:<me>)는 비운 채로 시작해 판정을 결정적으로 하고, 끝나면(finally) 시작 전 값으로 되돌린다.
+   *  ★ 조작은 사람이 누르는 자리로만 한다 — 툴바 버튼 · 검색 칸 · 행 · ☆ · ▾. 내부 함수(pkOpen 등)를 직접 부르지 않는다. */
+  console.log('\n[사람 고르기] 툴바 → 검색 → 열람 → 최근 → 즐겨찾기 → ▾ 바꾸기 (R10)');
+  await cdp.ev(`(()=>{ localStorage.removeItem(${JSON.stringify(PK_KEYS.fav)}); localStorage.removeItem(${JSON.stringify(PK_KEYS.recent)}); return 1; })()`);
+  const lsPk = async () => JSON.parse(await cdp.ev(`JSON.stringify({
+    fav: JSON.parse(localStorage.getItem(${JSON.stringify(PK_KEYS.fav)}) || "[]").map((x)=>x.loginId),
+    recent: JSON.parse(localStorage.getItem(${JSON.stringify(PK_KEYS.recent)}) || "[]").map((x)=>x.loginId) })`));
+  {
+    //  (a) 툴바 입구 — 내 창에 있다 · 누르면 팝오버 · 검색 칸 포커스
+    const has = await cdp.ev(`!!document.getElementById("btnPeerPick")`);
+    ok('R10 툴바에 「다른 사람 일정」 입구가 있다', has === true);
+    await cdp.ev(`document.getElementById("btnPeerPick").click()`);
+    let s = await pkWait(cdp);
+    ok('R10 팝오버가 열리고 검색 칸에 포커스 · 명부를 읽었다', s.open && !s.inModal && s.focus === 'pkSearch' && s.status === 'ok',
+       `open=${s.open} inModal=${s.inModal} focus=${s.focus} status=${s.status}`);
+    //  (b) 검색 — 심은 두 사람이 결과에 · 열 수 있다(회색 아님)
+    s = await pkType(cdp, '열람대상');
+    const r1 = s.rows.find((x) => x.id === TU), r2 = s.rows.find((x) => x.id === TU2);
+    ok('R10 검색 「열람대상」 → 두 대상이 결과에 · 열 수 있다', !!r1 && !!r2 && !r1.off && !r2.off && r1.sec === 'Result',
+       JSON.stringify(s.rows.slice(0, 5)));
+    //  (c) 열기 — 팝오버가 닫히고 지금의 열람 창이 그 사람으로
+    await pkClickRow(cdp, TU);
+    const f1 = await waitPeerFrame(cdp, '열람대상');
+    s = await pkState(cdp);
+    ok('R10 행을 누르면 팝오버가 닫히고 열람 창이 그 사람으로 뜬다', f1.n >= 0 && f1.frames === 1 && !s.open, JSON.stringify(f1));
+    await sleep(300);
+    let st = await lsPk();
+    ok('R10 열린 사람이 「최근 본 사람」 맨 앞에 남는다', JSON.stringify(st.recent) === JSON.stringify([TU]), JSON.stringify(st));
+    //  (d) 열람 창 ☆ → ★ — 저장이 바뀐다
+    const fv = JSON.parse(await cdp.ev(`(()=>{const b=document.getElementById("pvFav"); b.click();
+      return JSON.stringify({p:b.getAttribute("aria-pressed"), t:b.textContent});})()`));
+    st = await lsPk();
+    ok('R10 열람 창 ☆ → ★ · 즐겨찾기에 저장', fv.p === 'true' && fv.t === '★' && st.fav.includes(TU), JSON.stringify({ fv, st }));
+    //  (e) ▾ 사람 바꾸기 — 같은 팝오버가 열람 창 안에 · 보는 사람은 「보는 중」 · 즐겨찾기 ★ 가 열람 창과 같다
+    //      먼저 열람 프레임을 6월로 옮겨 둔다(사람이 ◀ 를 누르는 것과 같다 — 보던 달 잇기를 보려고).
+    await cdp.ev(`(()=>{const w=${FRAME_W}; w.eval("view={y:2026,m:5}; selectedDate='2026-06-11'; renderAll();"); return 1;})()`);
+    await cdp.ev(`document.getElementById("pvSwitch").click()`);
+    s = await pkWait(cdp);
+    const cur = s.rows.find((x) => x.id === TU);
+    ok('R10 ▾ → 팝오버가 열람 창 머리 아래에 뜬다', s.open && s.inModal && s.focus === 'pkSearch', `open=${s.open} inModal=${s.inModal} focus=${s.focus}`);
+    ok('R10 지금 보는 사람은 즐겨찾기 묶음에 「· 보는 중」 · 누를 수 없음 · ★ 가 열람 창과 같다',
+       !!cur && cur.sec === 'Fav' && cur.off && /보는 중/.test(cur.text) && cur.star === 'true', JSON.stringify(cur || s.rows));
+    ok('R10 즐겨찾기에 있는 사람은 「최근」에 두 줄로 안 나온다', s.rows.filter((x) => x.id === TU).length === 1, JSON.stringify(s.rows));
+    //  팝오버 ☆ ↔ 열람 창 ☆ 양방향(R8) — 팝오버에서 빼면 제목 옆도 ☆, 다시 넣으면 ★
+    await pkClickRow(cdp, TU, 'star');
+    const off1 = await cdp.ev(`document.getElementById("pvFav").getAttribute("aria-pressed")`);
+    await pkClickRow(cdp, TU, 'star');
+    const on1 = await cdp.ev(`document.getElementById("pvFav").getAttribute("aria-pressed")`);
+    ok('R10 팝오버 ☆/★ 를 누르면 열람 창 ☆/★ 가 같이 바뀐다', off1 === 'false' && on1 === 'true', `뺀 뒤 ${off1} · 넣은 뒤 ${on1}`);
+    //  (f) 다른 사람으로 바꾼다 — 창은 그대로 · 새 프레임 · 6월 그대로 · 그 사람 것 · 최근 앞으로
+    s = await pkType(cdp, '열람대상둘');
+    await pkClickRow(cdp, TU2);
+    const f2 = await waitPeerFrame(cdp, '열람대상둘');
+    const sw = JSON.parse(await cdp.ev(`(()=>{const m=document.getElementById("peerModal"), w=${FRAME_W};
+      const st=w.__test.state();
+      return JSON.stringify({modal: !m.classList.contains("hidden") && !m.classList.contains("closing"),
+        view: w.peerViewNow(), titles: st.entries.filter((e)=>!e._mine).map((e)=>e.title).sort(),
+        frames: document.querySelectorAll("iframe[src*='peer=1']").length});})()`));
+    ok('R10 바꾸기: 열람 창을 닫지 않고 그 자리에서 다른 사람으로(새 프레임 하나)', f2.n >= 0 && sw.modal && sw.frames === 1,
+       JSON.stringify({ f2, modal: sw.modal, frames: sw.frames }));
+    ok('R10 바꾸기: 바뀐 사람의 일정이 뜬다(앞 사람 것 없음)', JSON.stringify(sw.titles) === JSON.stringify([...TITLES2].sort()), sw.titles.join(','));
+    ok('R10 바꾸기: 보던 달(6월)이 이어진다', !!sw.view && sw.view.y === 2026 && sw.view.m === 5, JSON.stringify(sw.view));
+    st = await lsPk();
+    ok('R10 바꾼 사람이 최근 맨 앞 · 앞 사람이 그 뒤', JSON.stringify(st.recent) === JSON.stringify([TU2, TU]), JSON.stringify(st));
+    //  (g) 바뀐 창도 봉인 — 쓰기 명령·save() 를 쏴도 postMessage 0
+    const sealed2 = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+      let n=0; const orig=w.chrome.webview.postMessage.bind(w.chrome.webview);
+      w.chrome.webview.postMessage=function(m){ n++; return orig(m); };
+      let err=null;
+      try{ for(const c of [{cmd:"saveState",state:{}},{cmd:"replaceAllState",state:{}},{cmd:"membersGet"},{cmd:"peerSchedule",loginId:"x"}]) w.hpost(c); }catch(e){ err=e.message; }
+      try{ w.eval("save()"); }catch(e){ err=err||e.message; }
+      w.chrome.webview.postMessage=orig;
+      return JSON.stringify({posted:n, err, picker: !!w.document.getElementById("btnPeerPick") || !!w.document.getElementById("peerPicker")});})()`));
+    ok('R10 **봉인(바꾼 창)**: postMessage 0회', sealed2.posted === 0 && !sealed2.err, JSON.stringify(sealed2));
+    ok('R10 열람 창 안에는 👥 입구·팝오버가 없다', sealed2.picker === false, '프레임 안에 #btnPeerPick/#peerPicker 가 있다');
+    //  (h) 닫기 — 프레임이 사라진다
+    await cdp.ev('closeModal("#peerModal")');
+    await sleep(400);
+    const gone = Number(await cdp.ev(`document.querySelectorAll("iframe[src*='peer=1']").length`));
+    ok('R10 닫으면 프레임이 사라진다', gone === 0, `프레임 ${gone}`);
+  }
+
   //  R3 — 좌우 줄 맞춤을 한 번이라도 실제로 쟀는가(창이 안 그려지면 모두 건너뛰어 아무것도 증명하지 않는다).
   ok('나란히 보기 줄 맞춤(R3)을 실제로 쟀다(판정 불가 ≠ 통과)', R3_MEASURED > 0,
      '한 번도 못 쟀다 — 위젯 창을 화면에 띄운 채로 돌릴 것(최소화·가림이면 칸 높이가 0 이다)');
@@ -765,6 +918,8 @@ try {
     myRev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${MYID}`),
     tgtEnt: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${TUID}`),
     tgtRev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${TUID}`),
+    tgt2Ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${TU2ID}`),
+    tgt2Rev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${TU2ID}`),
   };
   for (const k of Object.keys(base))
     ok(`${k} 가 변하지 않았다`, end[k] === base[k], `${base[k]} → ${end[k]}`);
@@ -804,8 +959,19 @@ try {
       console.log(`  · 보기 방식 되돌림: tc_peerLayout = ${JSON.stringify(back)}(시작 전 ${JSON.stringify(LAYOUT0)})`);
     }
   } catch (e) { console.log('  ! 보기 방식 되돌리기 실패: ' + e.message); }
+  //  사람 고르기 저장 키 원상 복구(R10) — 시작 전 값으로(없었으면 지운다). 시험 대상이 내 즐겨찾기·최근에 남지 않게.
+  try {
+    if (cdp && PK0 !== undefined && PK_KEYS) {
+      const back = await cdp.ev(`(()=>{ const o=${JSON.stringify(PK0)}, k=${JSON.stringify(PK_KEYS)};
+        if(o.fav===null) localStorage.removeItem(k.fav); else localStorage.setItem(k.fav, o.fav);
+        if(o.recent===null) localStorage.removeItem(k.recent); else localStorage.setItem(k.recent, o.recent);
+        return JSON.stringify({fav:localStorage.getItem(k.fav), recent:localStorage.getItem(k.recent)}); })()`);
+      console.log(`  · 사람 고르기 키 되돌림: ${back}(시작 전 ${JSON.stringify(PK0)})`);
+    }
+  } catch (e) { console.log('  ! 사람 고르기 키 되돌리기 실패: ' + e.message); }
   try { if (cdp) cdp.close(); } catch { }
   try { wipeTarget(); } catch (e) { console.log('  ! 정리 실패: ' + e.message); }
+  try { wipeUser(TU2); } catch (e) { console.log('  ! 정리 실패(대상2): ' + e.message); }
 }
 
 console.log('\n' + '═'.repeat(72));

@@ -559,7 +559,11 @@ const checks = {
     const b = jsBody(source, 'renderUnitTree');
     assert.ok(!/\.disabled\s*=/.test(b),
       '트리 노드에 disabled 를 설정한다 — 조직도는 전부 탐색할 수 있어야 한다');
-    assert.ok(!/열람 범위 밖입니다/.test(source),
+    //  ★ 2026-10-02(docs/PEER-PICKER.md K4) — 「일정 열람 범위 밖입니다」는 이제 **사람 고르기 팝오버의 사람 행** 툴팁으로
+    //    정당하게 쓰인다(사람 = 일정 열람의 단위다). 이 검사가 막는 것은 **조직 트리**(구성원 보기)의 범위 밖 노드 안내이므로
+    //    구성원 보기 쪽 함수들 안에서만 찾는다(파일 전체로 찾으면 새 기능의 정당한 문구에 걸린다).
+    const treeSide = ['renderUnitTree', 'mbSelect', 'mbApply', 'renderMembers'].map((n) => jsBody(source, n)).join('\n');
+    assert.ok(!/열람 범위 밖입니다/.test(treeSide),
       "옛 '열람 범위 밖입니다' 안내가 남아 있다 — 이제 트리에 범위 밖 노드가 없다");
     assert.ok(!/u\.allowed/.test(b), 'renderUnitTree 가 아직 u.allowed 를 읽는다 — 호스트는 그 키를 보내지 않는다');
     // 내 소속 표시는 유지 — 트리에서 나를 못 찾으면 탐색의 기준점이 사라진다.
