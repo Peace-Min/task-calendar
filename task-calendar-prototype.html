@@ -1788,6 +1788,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .set-opt b{font-weight:600}
 .set-od{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
 .set-sec-top{border-top:1px solid var(--line);margin-top:14px;padding-top:14px}
+.modal-body > .set-sec-top:first-child{border-top:0;margin-top:0;padding-top:0}   /* 창의 첫 구역은 머리 줄이 이미 나눈다 — 빈 띠 + 이중 선 방지(2026-10-02 사용자 정보) */
 .set-in{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 9px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
 /* 모달 바닥 한 줄에 사는 글이다 — 길면 세로로 쏟아져 버튼을 밀어낸다. 한 줄로 자르고 전문은 title 로(setRptSendText). */
 .rpt-send-status{font-size:var(--fs-meta);margin-right:auto;align-self:center;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
