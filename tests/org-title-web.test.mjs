@@ -10,7 +10,7 @@
 //     ④ 숨길 수 없는 행은 [숨김] 이 꺼지고 **사유가 title 에** 붙는다(휴지통의 deletable/why 와 같은 손).
 //     ⑤ 쓰기 왕복은 hostRequest 한 길이고, 회신의 갱신 목록이 화면에 닿는 문은 **하나**(otSeat)다.
 //     ⑥ 닫을 때 「구성원 편집」이 드롭다운 소스와 명부를 다시 받는다(otAfterClose → uaReload).
-//     ⑦ 모듈 상태는 다섯을 넘지 않는다 — 요청 표·워치독·보류 큐가 배달을 둘로 가른다(USER-ADMIN §11-34).
+//     ⑦ 모듈 상태는 넷을 넘지 않는다(2026-10-02 ADMIN-HUB-3 M4 — 「숨긴 값도 표시」 상태가 빠져 다섯 → 넷) — 요청 표·워치독·보류 큐가 배달을 둘로 가른다(USER-ADMIN §11-34).
 //     ⑧ ▲▼ 는 화면이 맞바꾼 **활성 배열 전체**를 보낸다(호스트가 집합을 대조해 낡은 화면을 거부한다).
 //
 //   ★ 소스 문자열 검사만으로는 ④⑤ 를 증명할 수 없다 — 그리는 코드는 어차피 파일 안에 있고, 문제는
@@ -151,13 +151,14 @@ const checks = {
       'otAfterClose 가 드롭다운 소스를 직접 앉힌다 — 정본은 membersGet 회신 하나다(한 벌 더 두면 두 벌이 된다)');
   },
 
-  // ⑦ 모듈 상태는 다섯뿐이다(설계 §5.1). 요청 표·워치독·보류 큐가 생기면 여기서 운다.
+  // ⑦ 모듈 상태는 넷뿐이다(설계 §5.1). 요청 표·워치독·보류 큐가 생기면 여기서 운다.
+  //    ★ 2026-10-02(ADMIN-HUB-3 M4) — 「숨긴 값도 표시」(__otShowHidden)가 없어져 다섯 → 넷. 숨긴 값은 이 화면에 서지 않는다.
   moduleStateIsFive(web) {
     const m = /^let __ot.*$/m.exec(web);
     assert.ok(m, 'ot* 모듈 상태 선언(let __ot…)을 찾지 못했다 — 판정 불가');
     const names = (m[0].match(/__ot\w+/g) || []);
-    assert.deepStrictEqual(names, ['__otData', '__otTab', '__otShowHidden', '__otBusy', '__otSaving'],
-      `모듈 상태가 [${names.join(', ')}] 이다 — 다섯(회신 덩어리·탭·숨김표시·조회 재진입·쓰기 왕복)을 넘기지 않는다(§5.1)`);
+    assert.deepStrictEqual(names, ['__otData', '__otTab', '__otBusy', '__otSaving'],
+      `모듈 상태가 [${names.join(', ')}] 이다 — 넷(회신 덩어리·탭·조회 재진입·쓰기 왕복)을 넘기지 않는다(§5.1 · M4)`);
     const decls = (web.match(/\b(?:let|var)\s+__ot\w+/g) || []);
     assert.strictEqual(decls.length, 1,
       `__ot 상태 선언이 ${decls.length}곳이다(${decls.join(', ')}) — 한 줄이어야 한다`);
@@ -204,10 +205,11 @@ const checks = {
     const s = extractFunction(web, 'otSwitchTab');
     assert.ok(/otListTop\(\)/.test(s), 'otSwitchTab 이 otListTop() 을 부르지 않는다');
     assert.ok(!/scrollTop/.test(s), 'otSwitchTab 이 자리를 인라인으로 만진다 — 헬퍼 한 곳으로 모은 이유가 사라진다');
-    const m = /#otShowHidden'\); if\(sh\) sh\.addEventListener\('change'[^\n]*/.exec(web);
-    assert.ok(m, '「숨긴 값도 표시」 배선을 찾지 못했다 — 판정 불가');
-    assert.ok(/otListTop\(\)/.test(m[0]),
-      '「숨긴 값도 표시」가 목록을 맨 위로 보내지 않는다 — 보이는 목록이 통째로 갈리는데 화면 밖에서 시작한다');
+    //  ★ 2026-10-02(ADMIN-HUB-3 M4) — 두 번째 호출부였던 「숨긴 값도 표시」는 없어졌다(숨긴 값은 이 화면에 서지 않는다 ·
+    //    복구는 사람 휴지통). 그 자리를 '되살아나지 않았다'로 잠근다 — 되살아나면 맨 위 규칙도 다시 물어야 한다.
+    const code = web.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/id="otShowHidden"|\$\('#otShowHidden'\)|__otShowHidden\s*=/.test(code),
+      '「숨긴 값도 표시」가 직급·소속 화면에 되살아났다 — 이 화면은 쓰는 항목과 [숨김] 뿐이다(복구는 🗑 휴지통 · M4)');
   },
 
   // ⑪ 열림 판정은 **isOverlayOpen 하나**다 — 닫히는 중(.closing)을 '열렸다'로 보면 아무도 안 보는 화면을
@@ -225,10 +227,10 @@ test('계약②: 「직급·소속 관리」 문은 비관리자·순서편집 �
 test('계약③: 렌더·적용·추가줄·재정렬 어디에도 .sort( 가 없다(정렬은 호스트가 한다)', () => checks.noSortInWeb(app));
 test('계약⑤-소스: 회신 목록이 화면에 닿는 문은 otSeat 하나다(JSON.parse 가 한 곳)', () => checks.seatIsOneDoor(app));
 test('계약⑥: 닫을 때 「구성원 편집」이 열려 있으면 uaReload 한다(드롭다운 소스는 membersGet 이 정본)', () => checks.closeReloadsMembers(app));
-test('계약⑦: ot* 모듈 상태는 다섯뿐이다(요청 표·워치독·보류 큐 금지)', () => checks.moduleStateIsFive(app));
+test('계약⑦: ot* 모듈 상태는 넷뿐이다(요청 표·워치독·보류 큐 금지 · 숨김표시 없음)', () => checks.moduleStateIsFive(app));
 test('계약⑧-소스: ▲▼ 는 활성 집합 전체를 보내고 화면 목록을 미리 고치지 않는다', () => checks.moveSendsWholeSet(app));
 test('계약⑨: 목록 잠금은 lockLineBtn 한 벌로 걸고 <select> 도 함께 잠근다(다시 그리지 않는다)', () => checks.syncUsesLockLine(app));
-test("계약⑩: '맨 위로'는 otListTop() 헬퍼를 부르는 호출부의 일이다(탭 전환·「숨긴 값도 표시」)", () => checks.topIsCallersJob(app));
+test("계약⑩: '맨 위로'는 otListTop() 헬퍼를 부르는 호출부의 일이다(탭 전환 · 「숨긴 값도 표시」는 없다)", () => checks.topIsCallersJob(app));
 test('계약⑪: 닫기 뒤처리의 열림 판정은 isOverlayOpen 하나다(.closing 은 열린 것이 아니다)', () => checks.afterCloseUsesIsOverlayOpen(app));
 
 // ══════════════════════════════════════════════════════════════════════
@@ -296,9 +298,7 @@ function otHarnessJs(src) {
     '}',
     'function __reset(payload, tab, showHidden){',
     '  __otData = null; __otTab = "title"; __otBusy = false; __otSaving = false;',
-    '  __otShowHidden = !!showHidden;',
     '  __sent.length = 0; __toasts.length = 0; __resolve = null; __uaReloads = 0;',
-    '  var sh = document.getElementById("otShowHidden"); if(sh) sh.checked = !!showHidden;',
     '  otApplyData(payload ? JSON.parse(JSON.stringify(payload)) : null);',
     '  if(tab === "unit") otSwitchTab("unit");',
     '}',
@@ -470,15 +470,10 @@ const dom = {
                                               x.btns.find((b) => b.op === 'down').disabled]),
       [[true, false], [false, true]],
       `▲▼ 의 끝 처리가 계약과 다르다: ${JSON.stringify(r.rows.map((x) => x.btns))}`);
-    //  숨긴 값도 표시 — 셋이 되고, 숨긴 행에는 [복구] 가 선다([숨김] 이 아니다).
-    const h = probe(PAYLOAD, 'title', true, src);
-    assert.deepStrictEqual(h.rows.map((x) => x.key), ['전무', '수석', '옛직급'],
-      `「숨긴 값도 표시」가 숨긴 직급을 그리지 않는다: ${JSON.stringify(h.rows.map((x) => x.key))}`);
-    const old = h.rows[2];
-    assert.strictEqual(old.badge, true, '숨긴 직급에 [숨김] 배지가 없다');
-    assert.deepStrictEqual(old.btns.map((b) => b.op), ['show'],
-      `숨긴 직급의 버튼이 [복구] 하나가 아니다: ${JSON.stringify(old.btns)}`);
-    assert.strictEqual(old.btns[0].label, '복구', '숨긴 행의 버튼 문구가 [복구] 가 아니다');
+    //  ★ 2026-10-02(ADMIN-HUB-3 M4) — 숨긴 직급(옛직급)은 **이 화면에 서지 않는다**(예전: 「숨긴 값도 표시」로 [숨김] 배지 + [복구]).
+    //    복구는 사람 휴지통의 직급 탭이 한다(admin-hub-3.test.mjs). 배지도 [복구](show)도 이 목록 어디에도 없다.
+    assert.ok(!r.rows.some((x) => x.key === '옛직급' || x.badge || x.btns.some((b) => b.op === 'show')),
+      `직급·소속 화면에 숨긴 직급·[숨김] 배지·[복구]가 섰다: ${JSON.stringify(r.rows)} — 편집 화면은 숨김만, 복구는 휴지통(M4)`);
   },
 
   // ④-소속 들여쓰기 = 깊이 · 최상위는 숨길 수 없다 · 활성 하위가 있으면 숨길 수 없다 · ▲▼ 는 형제끼리.
@@ -505,13 +500,10 @@ const dom = {
     assert.deepStrictEqual(ord('1'), [true, true], '최상위는 형제가 없으므로 ▲▼ 둘 다 꺼져 있어야 한다');
     //  소속 행에는 [상위 변경] 이 있다(직급에는 없다).
     assert.ok(r.rows.every((x) => x.btns.some((b) => b.op === 'move')), '소속 행에 [상위 변경] 이 없다');
-    //  숨긴 조직 — 상위가 활성이면 [복구] 가 켜진다.
-    const h = probe(PAYLOAD, 'unit', true, src);
-    const old = h.rows.find((x) => x.key === '9');
-    assert.ok(old, '「숨긴 값도 표시」가 숨긴 조직을 그리지 않는다');
-    assert.deepStrictEqual(old.btns.map((b) => b.op), ['show'], `숨긴 조직의 버튼이 [복구] 하나가 아니다: ${JSON.stringify(old.btns)}`);
-    assert.strictEqual(old.btns[0].disabled, false, '상위가 활성인데 숨긴 조직의 [복구] 가 꺼져 있다');
-    assert.strictEqual(old.pad, '32px', '숨긴 조직의 들여쓰기가 깊이를 따르지 않는다');
+    //  ★ 2026-10-02(M4) — 숨긴 조직(9)도 이 화면에 서지 않는다. '상위가 활성이면 [복구] 가 켜진다'는 계약은
+    //    사람 휴지통의 소속 탭으로 옮겼다(admin-hub-3.test.mjs — 같은 규칙 · 같은 명령 unitSetActive).
+    assert.ok(!r.rows.some((x) => x.key === '9' || x.badge || x.btns.some((b) => b.op === 'show')),
+      `직급·소속 화면에 숨긴 조직·[숨김] 배지·[복구]가 섰다: ${JSON.stringify(r.rows.map((x) => x.key))}(M4)`);
   },
 
   // ④-추가줄 상위 드롭다운은 **활성 조직만** 들여쓰기와 함께 싣는다. 직급 탭에서는 숨는다.
@@ -732,9 +724,11 @@ if (!jsdom) {
     assert.doesNotThrow(() => checks.topIsCallersJob(app));   // 통제군
   });
 
-  test('변이⑩-b: 「숨긴 값도 표시」의 맨 위 한 줄을 지우면 계약⑩ 이 실패한다(새 목록이 화면 밖에서 열린다)', () => {
-    const bad = mutate(app, "__otShowHidden = !!sh.checked; otRender(); otListTop(); }", "__otShowHidden = !!sh.checked; otRender(); }");
-    assert.throws(() => checks.topIsCallersJob(bad), /목록을 맨 위로 보내지 않는다/);
+  //  ★ 2026-10-02(M4) — 옛 변이(맨 위 한 줄 지우기)는 대상이 사라졌다. 같은 계약⑩ 을 '체크박스를 되살리면 운다'로 다시 건다.
+  test('변이⑩-b: 「숨긴 값도 표시」 체크박스를 되살리면 계약⑩ 이 실패한다(숨긴 값이 다시 이 화면에 선다 · M4)', () => {
+    const bad = mutate(app, '      <div class="set-hint" id="otScope">—</div>',
+      '      <label class="check cust-showhidden"><input type="checkbox" id="otShowHidden"> 숨긴 값도 표시</label>\n      <div class="set-hint" id="otScope">—</div>');
+    assert.throws(() => checks.topIsCallersJob(bad), /되살아났다/);
     assert.doesNotThrow(() => checks.topIsCallersJob(app));   // 통제군
   });
 

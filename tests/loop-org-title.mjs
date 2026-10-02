@@ -21,12 +21,17 @@
  *   C02 직급 개명(zzJ→zzJ2)— DB 이름이 바뀐다(app_user.title 은 FK CASCADE 라 따라온다)
  *   C03 직급 순서(zzJ2 ▲)  — 두 값의 sort_order 가 맞바뀌고 나머지도 10 간격으로 다시 매겨진다
  *   C04 직급 숨김 거부     — zzU 직원을 잠시 zzJ2 로 둔다 → '재직자' 문장으로 거부 → 직원 직급 복구 →
- *                            숨김 성공 → 복구 성공(복구 뒤 sort_order = MAX+10)
+ *                            숨김 성공 → 목록에서 빠짐 → **사람 휴지통 직급 탭**에서 복구(복구 뒤 sort_order = MAX+10)
  *   C05 조직 추가(zzO)     — 상위 필수(0 이면 거부) · 형제 MAX+10
  *   C06 조직 개명          — 이름만 바뀌고 parent_id·소속자는 그대로
  *   C07 조직 순서(형제 안) — 그 상위의 활성 하위만 10 간격으로 다시 매겨진다
  *   C08 상위 변경          — 다른 본부로 이동(DB parent_id) · 자손 밑으로는 순환 거부 · 최상위(NULL) 거부
- *   C09 조직 숨김          — 활성 하위가 있으면 거부 → 자식부터 숨김 → 부모 숨김 → 복구
+ *   C09 조직 숨김          — 활성 하위가 있으면 거부 → 자식부터 숨김 → 부모 숨김 → **사람 휴지통 소속 탭**:
+ *                            자식 [복구] 꺼짐 + 보이는 이유 「상위 조직을 먼저 복구하세요」 · 영구 삭제 없음 → 부모 복구 → 자식 복구
+ *   C09b 화면 왕복         — zz 잎 조직을 직급·소속의 [숨김](실클릭)으로 숨김 → 목록에서 빠짐 · 토스트 「휴지통으로 옮겼습니다 ·
+ *                            복구는 🗑 휴지통에서」 → 사람 휴지통 소속 탭에 나타남 → [복구](실클릭) → 목록에 돌아옴(ADMIN-HUB-3 R3·R4)
+ *   ★ 2026-10-02(ADMIN-HUB-3 M3·M4) — 직급·소속 화면의 「숨긴 값도 표시」·[복구]가 없어졌다. 복구는 사람 휴지통(「구성원 편집」의
+ *     #uaTrash → 소속 · 직급 탭)이 같은 명령(unitSetActive · titleSetActive · active:true)으로 한다 — 새 호스트 명령 없음.
  *   C10 비관리자           — 로그인 계정을 잠시 editor 로 내린다(**반드시 복원**):
  *                            #uaOrgTitle 부재 · orgTitleGet admin:false · titleAdd 거부
  *
@@ -328,7 +333,12 @@ const J = (v) => JSON.stringify(v);
 /** 페이지 상태 한 덩어리 — 폴링은 전부 이걸로 한다(왕복 수를 줄인다). */
 const PSTATE = `JSON.stringify({
   otOpen: (function(){ var e=document.getElementById('orgTitleModal'); return !!e && !e.classList.contains('hidden'); })(),
-  otBusy: !!__otBusy, otSaving: !!__otSaving, otTab: String(__otTab||''), otHidden: !!__otShowHidden,
+  otBusy: !!__otBusy, otSaving: !!__otSaving, otTab: String(__otTab||''),
+  //  사람 휴지통(ADMIN-HUB-3 M3) — 숨긴 소속·직급의 복구는 이제 여기서 한다(직급·소속 화면은 쓰는 항목과 [숨김] 뿐 · M4).
+  trOpen: (function(){ var e=document.getElementById('trashModal'); return !!e && !e.classList.contains('hidden') && !e.classList.contains('closing'); })(),
+  trBusy: !!__trBusy, trSaving: !!__trSaving, trTab: String(__trTab||''), trScope: String(__trScope||''),
+  trReady: !!(__trData && __trAdmin), trOrgReady: !!(__trOrg && __trOrg.found && __trOrg.admin === true),
+  cfOpen: (function(){ var e=document.getElementById('confirmModal'); return !!e && !e.classList.contains('hidden') && !e.classList.contains('closing'); })(),
   otAdmin: (function(){ try { return !!otAdmin(); } catch(_){ return false; } })(),
   otBusyAttr: (function(){ var e=document.getElementById('orgTitleModal'); return e ? String(e.getAttribute('data-busy')||'') : ''; })(),
   rows: document.querySelectorAll('#otList .cust-row').length,
@@ -422,15 +432,56 @@ async function otTab(kind) {
   if (!s) throw new Error(`탭 전환에 실패했다: ${kind}`);
   return s;
 }
-/** 「숨긴 값도 표시」 토글 — 실제 체크박스를 누른다. */
-async function otShowHidden(on) {
-  await ev(`(function(){
-    var c=document.getElementById('otShowHidden'); if(!c) return 0;
-    if(!!c.checked !== ${on ? 'true' : 'false'}){ c.checked = ${on ? 'true' : 'false'}; c.dispatchEvent(new Event('change',{bubbles:true})); }
-    return 1;
-  })()`);
-  await waitPage((x) => x.otHidden === !!on, { timeout: 5000 });
+/* ── 사람 휴지통(ADMIN-HUB-3 M3) — 숨긴 소속·직급의 복구 자리 ──────────────────────────────
+ *  ★ 2026-10-02 「숨긴 값도 표시」(#otShowHidden)와 직급·소속 화면의 [복구]가 없어졌다(M4 — 편집 화면은 숨김만, 복구는 휴지통).
+ *    숨긴 소속·직급은 「구성원 편집」 상단 막대의 「휴지통」(#uaTrash) → 소속 · 직급 탭에서 [복구]한다. 명령은 그대로다
+ *    (unitSetActive · titleSetActive · active:true — 새 호스트 명령 없음 · M10). 이 헬퍼들은 그 길을 **실클릭**으로 지난다. */
+/** 사람 휴지통을 실클릭(#uaTrash)으로 열고 휴지통 조회 + 소속·직급 조회(orgTitleGet)가 모두 앉을 때까지 기다린다. */
+async function openPeopleTrash() {
+  await ev(`(function(){ ['#confirmModal','#trashModal','#orgTitleModal'].forEach(function(s){ try{ var m=document.querySelector(s); if(m && !m.classList.contains('hidden')) closeModal(s); }catch(_){} }); return 1; })()`);
+  await waitPage((x) => !x.otOpen && !x.trOpen && !x.uaBusy, { timeout: 20000 });
+  if (!(await pstate()).uaOpen) await openMembers();
+  const c = await ev(`(function(){ var b=document.getElementById('uaTrash'); if(!b) return 'notfound'; if(b.disabled) return 'disabled'; b.click(); return 'clicked'; })()`);
+  if (c !== 'clicked') throw new Error(`「휴지통」(#uaTrash) 버튼을 누르지 못했다: ${c}`);
+  const s = await waitPage((x) => x.trOpen && !x.trBusy && x.trScope === 'user' && x.trReady && x.trOrgReady, { timeout: 25000 });
+  if (!s) throw new Error('사람 휴지통이 열리지 않았다(휴지통 조회 또는 소속·직급 조회가 앉지 않았다)');
+  return s;
 }
+/** 휴지통 탭 전환 — 실제 탭 버튼을 누른다(구성원 user · 소속 unit · 직급 title). */
+async function trTab(kind) {
+  await ev(`(function(){ var b=document.querySelector('#trTabs [data-trtab="${kind}"]'); if(b) b.click(); return 1; })()`);
+  const s = await waitPage((x) => x.trTab === kind, { timeout: 8000 });
+  if (!s) throw new Error(`휴지통 탭 전환에 실패했다: ${kind}`);
+  return s;
+}
+/** 휴지통 목록의 그 줄 — 이름 · 보이는 이유 줄(data-trwhy) · [복구] 상태 · [영구 삭제]가 있는가(소속·직급에는 없어야 한다). */
+const trRow = (key) => evj(`(function(){
+  var lines = document.querySelectorAll('#trList .mba-line'), out = null;
+  for(var i=0;i<lines.length;i++){
+    var l = lines[i]; if(String(l.dataset.tkey||'') !== ${J(String(key))}) continue;
+    var rb = l.querySelector('[data-top="restore"]'), db = l.querySelector('[data-top="delete"]'), wy = l.querySelector('[data-trwhy]'), b = l.querySelector('.mb-row b');
+    out = { key: String(l.dataset.tkey||''), name: b ? String(b.textContent||'') : '', why: wy ? String(wy.textContent||'') : '',
+            restore: rb ? { disabled: !!rb.disabled, title: String(rb.title||'') } : null, del: !!db };
+  }
+  var note = document.getElementById('trNote');
+  return JSON.stringify(out ? Object.assign(out, { note: note && !note.classList.contains('hidden') ? String(note.textContent||'') : '' }) : null);
+})()`);
+/** 휴지통 [복구] 실클릭 → 확인창 [복구](#cfOk) → 왕복이 끝날 때까지. 반환: 'ok' | 사유 */
+async function trRestoreClick(key) {
+  const c = await ev(`(function(){ var ls=document.querySelectorAll('#trList .mba-line');
+    for(var i=0;i<ls.length;i++){ if(String(ls[i].dataset.tkey||'') !== ${J(String(key))}) continue;
+      var b=ls[i].querySelector('[data-top="restore"]'); if(!b) return 'nobtn'; if(b.disabled) return 'disabled'; b.click(); return 'clicked'; }
+    return 'norow'; })()`);
+  if (c !== 'clicked') return c;
+  if (!(await waitPage((x) => x.cfOpen, { timeout: 5000 }))) return 'noconfirm';
+  await ev(`(document.getElementById('cfOk').click(), 1)`);
+  const s = await waitPage((x) => !x.cfOpen && !x.trSaving, { timeout: 30000 });
+  return s ? 'ok' : 'timeout';
+}
+/** 토스트 기록 — 감싸기만 한다(원본을 그대로 부른다) · 반드시 끈다(stop). */
+const toastRecStart = () => ev(`(function(){ if(window.__otlToast) return 'already'; var o = toast; window.__otlToast = { orig: o, log: [] };
+  toast = function(m, k, a, ms){ window.__otlToast.log.push([String(m), String(k||'')]); return o(m, k, a, ms); }; return 'ok'; })()`);
+const toastRecStop = () => evj(`(function(){ var R = window.__otlToast; if(!R) return '[]'; toast = R.orig; delete window.__otlToast; return JSON.stringify(R.log); })()`);
 /** 화면에 그 행이 서 있는가 — 버튼 상태까지(있는가 · 꺼졌는가 · 사유(title)가 붙었는가). */
 const otRow = (key) => evj(`(function(){
   var out = null;
@@ -835,19 +886,29 @@ async function main() {
     const again = await hsend('titleSetActive', { name: T.two, active: false });
     okq('C04 이미 숨김인데 또 숨기면 거부', again.ok === false && MSG.already.test(String(again.msg)), JSON.stringify(again.msg));
 
-    //  ⑤ 화면: 「숨긴 값도 표시」를 켜면 [복구] 로 선다.
-    await otShowHidden(true);
+    //  ⑤ 화면: 숨긴 직급은 직급·소속 목록에서 **빠진다**(ADMIN-HUB-3 M4 — 예전: 「숨긴 값도 표시」를 켜면 [복구]로 섰다).
     const hrow = await otRow(T.two);
-    okq('C04 숨긴 직급이 [복구] 버튼으로 선다', !!hrow && hrow.hidden === true && !!otBtn(hrow, 'show'),
-      JSON.stringify(hrow && hrow.btns));
+    okq('C04 숨긴 직급이 직급·소속 목록에서 빠졌다(M4)', hrow === null, JSON.stringify(hrow));
+    okq('C04 직급·소속 화면에 「숨긴 값도 표시」가 없다(M4)', (await ev(`!document.getElementById('otShowHidden')`)) === true);
 
-    //  ⑥ 복구 — sort_order 는 맨 뒤(MAX+10)로 새로 준다(활성끼리 겹치지 않게 · §4.2).
+    //  ⑥ 복구는 사람 휴지통의 직급 탭에서 — sort_order 는 맨 뒤(MAX+10)로 새로 준다(활성끼리 겹치지 않게 · §4.2).
+    await openPeopleTrash();
+    await trTab('title');
+    const trow = await trRow(T.two);
+    okq('C04 숨긴 직급이 사람 휴지통 직급 탭에 섰다(M3)', !!trow && trow.name === T.two, JSON.stringify(trow));
+    okq('C04 그 줄에 [복구]가 켜져 있고 [영구 삭제]는 없다(M3)', !!trow && !!trow.restore && trow.restore.disabled === false && trow.del === false, JSON.stringify(trow));
+    okq('C04 직급 탭 안내 「영구 삭제하지 않습니다」', !!trow && /영구 삭제하지 않습니다/.test(trow.note), JSON.stringify(trow && trow.note));
     const max0 = titleMax();
-    const on = await otsend('titleSetActive', { name: T.two, active: true });
-    okq('C04 복구 성공', on.ok === true, on.msg);
+    const on = await trRestoreClick(T.two);
+    okq('C04 휴지통 [복구] → 확인 → 왕복 끝', on === 'ok', on);
     okq('C04 DB is_active=1', titleActive(T.two) === '1', String(titleActive(T.two)));
     okq(`C04 복구 뒤 sort_order = MAX+10 (${max0}+10)`, titleSort(T.two) === max0 + 10, `실제 ${titleSort(T.two)}`);
-    await otShowHidden(false);
+    okq('C04 복구한 직급이 휴지통에서 빠졌다(회신의 목록이 앉았다)', (await trRow(T.two)) === null);
+    await ev(`(closeModal('#trashModal'), 1)`);
+    await waitPage((x) => !x.trOpen && !x.uaBusy && x.uaOrgTitle, { timeout: 20000 });   // 복구 뒤 「구성원 편집」이 명부를 다시 받는다(otAfterClose)
+    await openOrgTitleByClick();
+    await otTab('title');
+    okq('C04 복구한 직급이 직급·소속 목록에 돌아왔다', !!(await otRow(T.two)));
 
     rebase('C04 복구가 MAX+10 을 새로 주었다(실행 행은 그대로) — 기준을 다시 뜬다');
   });
@@ -1041,18 +1102,72 @@ async function main() {
     okq('C09 상위가 숨김인 채로 자식만 복구하면 거부',
       early.ok === false && /상위 조직을 먼저 복구하세요/.test(String(early.msg)), JSON.stringify(early.msg));
 
-    //  ⑤ 부모부터 복구 — 상위(TARGET)가 활성이라 받아 준다. sort 는 새 형제 맨 뒤.
+    //  ④-b 화면: 숨긴 둘은 직급·소속 목록에서 빠진다(M4).
+    okq('C09 숨긴 부모·자식이 직급·소속 목록에서 빠졌다(M4)', (await otRow(String(O.oneId))) === null && (await otRow(String(O.twoId))) === null);
+
+    //  ⑤ 복구는 사람 휴지통의 소속 탭에서(ADMIN-HUB-3 M3 — 같은 명령 unitSetActive · 같은 규칙).
+    //    상위가 숨김인 자식은 [복구]가 꺼지고 이유가 **보이는 줄**로 선다 · 영구 삭제는 없다.
+    await openPeopleTrash();
+    await trTab('unit');
+    const pr = await trRow(String(O.oneId)), ch = await trRow(String(O.twoId));
+    okq('C09 숨긴 부모·자식이 사람 휴지통 소속 탭에 섰다(M3)', !!pr && !!ch, JSON.stringify({ pr, ch }));
+    okq('C09 자식(상위가 숨김)의 [복구]가 꺼지고 이유가 보이는 줄로 선다', !!ch && !!ch.restore && ch.restore.disabled === true && ch.why === '상위 조직을 먼저 복구하세요',
+      JSON.stringify(ch));
+    okq('C09 부모의 [복구]는 켜져 있다(상위 TARGET 이 활성)', !!pr && !!pr.restore && pr.restore.disabled === false, JSON.stringify(pr));
+    okq('C09 소속 탭에 [영구 삭제]가 없다 + 안내 한 줄(M3)', !!pr && !pr.del && !ch.del && /영구 삭제하지 않습니다/.test(pr.note), JSON.stringify(pr && pr.note));
+    //  부모부터 복구 — 상위(TARGET)가 활성이라 받아 준다. sort 는 새 형제 맨 뒤.
     const tmax = siblingMax(TARGET ? TARGET.orgId : unitParent(O.oneId));
-    const up = await otsend('unitSetActive', { orgId: O.oneId, active: true });
-    okq('C09 부모 복구 성공', up.ok === true, up.msg);
-    okq('C09 부모 DB is_active=1', unitActive(O.oneId) === '1', String(unitActive(O.oneId)));
+    const up = await trRestoreClick(String(O.oneId));
+    okq('C09 휴지통에서 부모 복구 성공', up === 'ok' && unitActive(O.oneId) === '1', `${up} · is_active=${unitActive(O.oneId)}`);
     okq(`C09 복구 뒤 sort_order = 형제 MAX+10 (${tmax}+10)`, unitSort(O.oneId) === tmax + 10, `실제 ${unitSort(O.oneId)}`);
-    //  자식도 이제 복구된다.
-    const up2 = await otsend('unitSetActive', { orgId: O.twoId, active: true });
-    okq('C09 상위가 살아난 뒤 자식 복구 성공', up2.ok === true, up2.msg);
-    okq('C09 자식 DB is_active=1', unitActive(O.twoId) === '1', String(unitActive(O.twoId)));
+    //  자식도 이제 복구된다 — 회신의 목록이 앉아 그 줄의 [복구]가 켜졌다(상위가 살아났다).
+    const ch2 = await trRow(String(O.twoId));
+    okq('C09 상위가 살아나자 자식의 [복구]가 켜졌다(회신의 목록이 그 자리에서 앉았다)', !!ch2 && !!ch2.restore && ch2.restore.disabled === false && !ch2.why, JSON.stringify(ch2));
+    const up2 = await trRestoreClick(String(O.twoId));
+    okq('C09 상위가 살아난 뒤 자식 복구 성공', up2 === 'ok' && unitActive(O.twoId) === '1', `${up2} · is_active=${unitActive(O.twoId)}`);
+    okq('C09 복구한 둘이 휴지통에서 빠졌다', (await trRow(String(O.oneId))) === null && (await trRow(String(O.twoId))) === null);
+    await ev(`(closeModal('#trashModal'), 1)`);
+    await waitPage((x) => !x.trOpen && !x.uaBusy && x.uaOrgTitle, { timeout: 20000 });
 
     rebase('C09 숨김·복구가 형제 순번을 새로 주었다 — 기준을 다시 뜬다');
+  });
+
+  /* ── C09b 화면 왕복 — 직급·소속 [숨김] → 휴지통 토스트 → 사람 휴지통 소속 탭 → [복구] → 제자리(ADMIN-HUB-3 R3·R4) ── */
+  //  ★ 되돌릴 수 있는 한 바퀴다: zz 잎 조직(O.two · 재직자 0 · 하위 0)을 **화면의 [숨김]**으로 숨기고, 휴지통에서 **화면의 [복구]**로 되살린다.
+  await runCase('C09b', `화면 왕복 — ${O.two} [숨김] → 목록에서 빠짐 · 토스트 → 사람 휴지통 소속 탭 → [복구] → 목록에 돌아옴`, async () => {
+    if (!O.twoId || unitActive(O.twoId) !== '1') { skip('C09b', 'C09 가 zz 잎 조직을 활성으로 남기지 못했다'); return; }
+    await openOrgTitleByClick();
+    await otTab('unit');
+    const row = await otRow(String(O.twoId));
+    const hide = otBtn(row, 'hide');
+    if (!okq('C09b 잎 조직의 [숨김]이 켜져 있다(재직자 0 · 하위 0)', !!hide && hide.disabled === false, JSON.stringify(hide))) return;
+    await toastRecStart();
+    let T9 = [];
+    try {
+      await ev(`(function(){ var ls=document.querySelectorAll('#otList .cust-row'); for(var i=0;i<ls.length;i++){ if(String(ls[i].dataset.otkey||'')===${J(String(O.twoId))}){ ls[i].querySelector('[data-otop="hide"]').click(); return 1; } } return 0; })()`);
+      if (!okq('C09b 숨김 확인창이 떴다', !!(await waitPage((x) => x.cfOpen, { timeout: 5000 })))) return;
+      await ev(`(document.getElementById('cfOk').click(), 1)`);
+      await waitPage((x) => !x.cfOpen && !x.otSaving, { timeout: 30000 });
+      await sleep(200);
+    } finally { T9 = await toastRecStop(); }
+    okq('C09b DB is_active=0', unitActive(O.twoId) === '0', String(unitActive(O.twoId)));
+    okq('C09b 숨긴 조직이 직급·소속 목록에서 빠졌다(M4)', (await otRow(String(O.twoId))) === null);
+    okq('C09b 토스트 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(M4)', T9.some((t) => t[0] === '휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서' && t[1] === 'success'), JSON.stringify(T9));
+    await openPeopleTrash();
+    await trTab('unit');
+    const tr9 = await trRow(String(O.twoId));
+    okq('C09b 사람 휴지통 소속 탭에 나타났다(R3·R4)', !!tr9 && tr9.name === O.two && !!tr9.restore && tr9.restore.disabled === false && !tr9.del, JSON.stringify(tr9));
+    const tmax = siblingMax(unitParent(O.twoId));
+    const r9 = await trRestoreClick(String(O.twoId));
+    okq('C09b 휴지통 [복구] → DB is_active=1', r9 === 'ok' && unitActive(O.twoId) === '1', `${r9} · is_active=${unitActive(O.twoId)}`);
+    okq(`C09b 복구 뒤 sort_order = 형제 MAX+10 (${tmax}+10)`, unitSort(O.twoId) === tmax + 10, `실제 ${unitSort(O.twoId)}`);
+    okq('C09b 휴지통에서 빠졌다', (await trRow(String(O.twoId))) === null);
+    await ev(`(closeModal('#trashModal'), 1)`);
+    await waitPage((x) => !x.trOpen && !x.uaBusy && x.uaOrgTitle, { timeout: 20000 });
+    await openOrgTitleByClick();
+    await otTab('unit');
+    okq('C09b 직급·소속 목록에 돌아왔다', !!(await otRow(String(O.twoId))));
+    rebase('C09b 숨김·복구가 형제 순번을 새로 주었다(zz 행) — 기준을 다시 뜬다');
   });
 
   /* ── C10 비관리자 ──────────────────────────────────────────────────── */

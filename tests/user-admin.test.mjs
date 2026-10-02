@@ -1052,9 +1052,10 @@ const checks = {
       '「순서 저장」이 왕복 중에도 켜져 있다 — 같은 순서를 두 번 보낼 수 있다');
     assert.ok(/mk\('순서 편집', 'uaOrderEdit', 'btn sm', \(\) => uaOrderToggle\(true\)\)\.disabled = __uaSaving;/.test(bar),
       '「순서 편집」이 왕복 중에도 켜져 있다 — 저장 중인 명부를 다시 흔들 수 있다');
-    //  ★ 2026-09-18 — 「퇴사자 휴지통」도 같은 막대·같은 규칙이다(휴지통을 열면 명부를 다시 읽는다).
-    assert.ok(/mk\('퇴사자 휴지통', 'uaTrash', 'btn sm', \(\) => openTrash\('user'\)\)\.disabled = __uaSaving;/.test(bar),
-      '「퇴사자 휴지통」이 왕복 중에도 켜져 있다 — 결과를 기다리는 중에 휴지통이 열려 명부를 다시 읽는다');
+    //  ★ 2026-09-18 — 「휴지통」(#uaTrash)도 같은 막대·같은 규칙이다(휴지통을 열면 명부를 다시 읽는다).
+    //    (2026-10-02 ADMIN-HUB-3 M5 — 버튼 이름이 「퇴사자 휴지통」에서 「휴지통」으로: 안에 구성원·소속·직급 탭이 있다.)
+    assert.ok(/mk\('휴지통', 'uaTrash', 'btn sm', \(\) => openTrash\('user'\)\)\.disabled = __uaSaving;/.test(bar),
+      '「휴지통」이 왕복 중에도 켜져 있다 — 결과를 기다리는 중에 휴지통이 열려 명부를 다시 읽는다');
     assert.ok(/nb\.disabled = __uaSaving;/.test(bar),
       '「＋ 직원 등록」이 왕복 중에도 켜져 있다 — 결과를 기다리는 폼 위에 새 폼이 겹친다');
     const ss = extractFunction(web, 'uaSetSaving');
@@ -1566,9 +1567,9 @@ test('변이⑭-g2: 그 자리에서 끄는 집합을 넓히면 계약⑭-b 가 
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
-//  ★ 반대쪽 — 그 자리에서 끄는 집합에서 「퇴사자 휴지통」을 빼면(2026-09-18 에 늘어난 버튼) 렌더만 잠그고
+//  ★ 반대쪽 — 그 자리에서 끄는 집합에서 「휴지통」을 빼면(2026-09-18 에 늘어난 버튼) 렌더만 잠그고
 //    그 자리에서는 켜진 채로 남는다. 두 집합이 갈리는 것은 어느 쪽으로 갈려도 결함이다.
-test('변이⑭-g2b: 그 자리에서 끄는 집합에서 「퇴사자 휴지통」을 빼면 계약⑭-b 가 실패한다', () => {
+test('변이⑭-g2b: 그 자리에서 끄는 집합에서 「휴지통」을 빼면 계약⑭-b 가 실패한다', () => {
   const bad = mutate(app, "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash', 'uaOrgTitle']){",
     "  for(const id of ['uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaOrgTitle']){");
   assert.throws(() => checks.lockIsDerivedAtRender(bad), /그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈린다/);
@@ -1592,11 +1593,11 @@ test('변이⑭-g2e: 「직급·소속 관리」를 렌더에서 잠그지 않�
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
-//  ★ 렌더 쪽에서 「퇴사자 휴지통」의 잠금을 빼면, 왕복 중에 도착한 명부 푸시가 그 문을 도로 켠다.
-test('변이⑭-g2c: 「퇴사자 휴지통」을 렌더에서 잠그지 않으면 계약⑭-b 가 실패한다', () => {
-  const bad = mutate(app, "  mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;",
-    "  mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user'));");
-  assert.throws(() => checks.lockIsDerivedAtRender(bad), /「퇴사자 휴지통」이 왕복 중에도 켜져 있다/);
+//  ★ 렌더 쪽에서 「휴지통」의 잠금을 빼면, 왕복 중에 도착한 명부 푸시가 그 문을 도로 켠다.
+test('변이⑭-g2c: 「휴지통」을 렌더에서 잠그지 않으면 계약⑭-b 가 실패한다', () => {
+  const bad = mutate(app, "  mk('휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;",
+    "  mk('휴지통', 'uaTrash', 'btn sm', () => openTrash('user'));");
+  assert.throws(() => checks.lockIsDerivedAtRender(bad), /「휴지통」이 왕복 중에도 켜져 있다/);
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
 
@@ -3200,7 +3201,7 @@ if (!jsdom) {
     const idle = probeSaving(false, false);
     assert.deepStrictEqual(idle.rowOps.map((b) => b.disabled), [false, false, false],
       `전제 붕괴: 평소에도 행 [편집]이 잠겨 있다 — ${JSON.stringify(idle.rowOps)}`);
-    //  ★ 2026-09-18 — 이 막대의 버튼은 **셋**이다: 「순서 편집」 · 「퇴사자 휴지통」 · 「직급·소속 관리」
+    //  ★ 2026-09-18 — 이 막대의 버튼은 **셋**이다: 「순서 편집」 · 「휴지통」 · 「직급·소속 관리」
     //    (그 뒤는 체크박스 라벨). 셋째는 같은 날 늦게 붙었다(ORG-TITLE-ADMIN §5.0).
     assert.deepStrictEqual(idle.bar.map((b) => b.id), ['uaOrderEdit', 'uaTrash', 'uaOrgTitle'],
       `평소 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(idle.bar)}`);
@@ -3211,7 +3212,7 @@ if (!jsdom) {
     assert.deepStrictEqual(busy.rowOps.map((b) => b.disabled), [true, true, true],
       `왕복 중에 다시 그렸더니 행 [편집]이 켜져 있다: ${JSON.stringify(busy.rowOps)} — 결과를 기다리는 중에 다른 사람의 폼이 열린다`);
     assert.deepStrictEqual(busy.bar.map((b) => b.disabled), [true, true, true],
-      `왕복 중인데 「순서 편집」·「퇴사자 휴지통」·「직급·소속 관리」가 켜져 있다: ${JSON.stringify(busy.bar)}`);
+      `왕복 중인데 「순서 편집」·「휴지통」·「직급·소속 관리」가 켜져 있다: ${JSON.stringify(busy.bar)}`);
     assert.deepStrictEqual(busy.foot.map((b) => b.disabled), [true],
       `왕복 중인데 [＋ 직원 등록]이 켜져 있다: ${JSON.stringify(busy.foot)}`);
     //  ③ 순서 편집 중 — ▲▼ 와 [순서 저장]도 같은 규칙. [취소]는 화면 안의 일이라 열려 있어야 한다.

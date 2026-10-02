@@ -80,7 +80,7 @@ const SCREENS = [
   //   ★ openTrash() 는 async 다 — evaluate 가 awaitPromise 로 기다리므로 목록이 그려진 뒤에 감사한다.
   //     DB 를 읽지만 **쓰지 않는다**(trashGet 은 조회다). 이 하네스의 '쓰지 않는다' 규약은 그대로다.
   { id: 'trashModal',              enter: '__vt.closeAll(); openTrash("project")' },
-  // 같은 화면의 다른 문(2026-09-18) — 퇴사자 쪽은 탭 줄 없이 목록만이라 머리말·부제의 균형이 따로 봐야 할 자리다.
+  // 같은 화면의 다른 문(2026-09-18) — 사람 쪽은 탭 셋(구성원 · 소속 · 직급 · ADMIN-HUB-3 M3)과 안내 한 줄(#trNote)이 서는 자리라 따로 본다.
   { id: 'trashModal.user',         enter: '__vt.closeAll(); openTrash("user")' },
   // 직급·소속 관리(ORG-TITLE-ADMIN §5) — 행마다 버튼 다섯(▲▼·이름변경·상위 변경·숨김)이라 좁은 폭에서 가장 먼저 접힌다. 조회만 한다(orgTitleGet).
   { id: 'orgTitleModal',           enter: '__vt.closeAll(); openOrgTitle()' },

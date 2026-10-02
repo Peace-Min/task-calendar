@@ -68,8 +68,10 @@ const S = {
     assert.ok(/📁[\s\S]*회사 과제[\s\S]*공식 과제 원본\(DB\) · 기준 정보/.test(tabs[1][3]), '📁 회사 과제(공식 과제 원본(DB) · 기준 정보)');
     const items = [...m.matchAll(/data-ahitem="(\w+)"[^>]*><span class="ah-ic" aria-hidden="true">([^<]+)<\/span>([^<]+)<span class="ah-n" id="ahN\1"><\/span>/g)]
       .map((x) => [x[1], x[2], x[3]]);
-    assert.deepStrictEqual(items, [['members', '👤', '구성원'], ['orgtitle', '🏢', '직급·소속'], ['gone', '🚪', '퇴사자'],
-      ['projects', '📁', '공식 과제'], ['cust', '🏭', '발주처'], ['codes', '🏷️', '구분·상태'], ['trash', '🗑', '삭제된 항목']], '항목 7개와 순서(H2)');
+    //  ★ 2026-10-02(ADMIN-HUB-3 M2·M3) — 두 휴지통의 이름은 「🗑 휴지통」 하나다(예전: 「🚪 퇴사자」 · 「🗑 삭제된 항목」).
+    //    묶음(👥 사람 / 📁 회사 과제)이 가른다 · 항목 id(gone · trash)는 그대로(기억·루프가 그 id 로 고른다).
+    assert.deepStrictEqual(items, [['members', '👤', '구성원'], ['orgtitle', '🏢', '직급·소속'], ['gone', '🗑', '휴지통'],
+      ['projects', '📁', '공식 과제'], ['cust', '🏭', '발주처'], ['codes', '🏷️', '구분·상태'], ['trash', '🗑', '휴지통']], '항목 7개와 순서(H2)');
     assert.ok(/<div class="ah-navgrp hidden" data-ahnavgrp="proj">/.test(m), '처음엔 사람 묶음의 항목만 보인다');
     assert.match(m, /<select id="ahSel" aria-label="관리 항목"><\/select>/, '좁은 창 고르기 상자(H11)');
     assert.match(m, /<div class="ah-where" id="ahWhere"/, '위치 줄(H3)');
@@ -395,7 +397,8 @@ if (!JSDOM) {
     assert.ok(/zzA_가/.test($(B, '#uaList').textContent), '구성원 목록이 칸 안에 그려지지 않았다');
     assert.ok($(B, '#uaFoot #uaNew') || /직원 등록/.test($(B, '#userAdminModal').textContent), '구성원 편집의 등록 버튼이 없다(관리자 회신)');
     assert.deepStrictEqual(calls(B).map((c) => c[0]).filter((c) => c !== 'userInfoGet'),
-      ['membersGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'trashGet', 'membersGet'], '각 항목이 자기 화면의 조회를 그대로 한다(새 명령 없음)');
+      //  사람 휴지통(gone)은 trashGet 과 함께 직급·소속 화면의 조회(orgTitleGet)를 그대로 한 번 더 한다 — 소속·직급 탭(ADMIN-HUB-3 M3 · 새 명령 없음).
+      ['membersGet', 'orgTitleGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'trashGet', 'membersGet'], '각 항목이 자기 화면의 조회를 그대로 한다(새 명령 없음)');
   });
 
   test('(R3) 제자리: 관리 화면을 닫으면 도킹 창은 원래 형제 순서로 돌아가고, 단독 호출(openUserAdmin)은 지금처럼 단독으로 뜬다', async () => {
@@ -689,8 +692,10 @@ if (!JSDOM) {
     assert.strictEqual(active(B), 'orgtitle');
     await pick(B, 'members'); await settle(40);
     $(B, '#uaTrash').click(); await settle(60);
-    assert.strictEqual(navOn(B), 'gone', '「퇴사자 휴지통」이 퇴사자 항목이 아니다'); assert.strictEqual(docked(B), 'trashModal');
-    assert.strictEqual($(B, '#trTitle').textContent, '퇴사자 휴지통');
+    assert.strictEqual(navOn(B), 'gone', '「휴지통」(#uaTrash)이 사람 휴지통 항목이 아니다'); assert.strictEqual(docked(B), 'trashModal');
+    //  머리말은 두 문 모두 「휴지통」(ADMIN-HUB-3 M5 — 예전: 「퇴사자 휴지통」). 어느 쪽인지는 위치 줄·탭이 말한다.
+    assert.strictEqual($(B, '#trTitle').textContent, '휴지통');
+    assert.ok(/👥 사람/.test($(B, '#ahWhere').textContent) && /휴지통/.test($(B, '#ahWhere').textContent), `위치 줄이 「👥 사람 › 🗑 휴지통」이 아니다: ${JSON.stringify($(B, '#ahWhere').textContent)}`);
   });
 
   test('(R9) Esc: 관리 화면을 닫는다(안에 뜬 확인창이 있으면 그것부터) · 닫는 동안 inert 가 풀리고 칸 안 요소는 inert 를 물려받지 않는다', async () => {
@@ -720,7 +725,7 @@ if (!JSDOM) {
       '왼쪽 목록과 오른쪽 칸이 한 트랩(관리 화면) 안에 있지 않다');
   });
 
-  test('(R2·H2) 개수: 이미 받은 회신만(구성원 n명 · 직급·소속 u · t · 퇴사자 n명) — 개수를 얻으려고 묻지 않는다', async () => {
+  test('(R2·H2) 개수: 이미 받은 회신만(구성원 n명 · 직급·소속 u · t · 사람 휴지통 n) — 개수를 얻으려고 묻지 않는다', async () => {
     await reset(B);
     B.ev('dbOnline = false;');
     await openHub(B, 'members'); await settle(120);
@@ -733,8 +738,9 @@ if (!JSDOM) {
     await pick(B, 'orgtitle'); await settle(120);
     assert.strictEqual($(B, '#ahNorgtitle').textContent, '2 · 2');
     await pick(B, 'gone'); await settle(120);
-    assert.strictEqual($(B, '#ahNgone').textContent, '1명');
-    assert.ok(/퇴사자 \(1명\)/.test(B.evJSON("[].map.call(document.querySelectorAll('#ahSel option'), function(o){ return o.textContent; })").join('|')), '고르기 상자에 개수가 없다');
+    //  사람 휴지통 = 구성원 · 소속 · 직급 세 탭의 합(ADMIN-HUB-3 M3 — 회사 과제 휴지통과 같은 꼴: 숫자만). 이 본보기는 퇴사 1 · 숨긴 소속·직급 0.
+    assert.strictEqual($(B, '#ahNgone').textContent, '1');
+    assert.ok(/🗑 휴지통 \(1\)/.test(B.evJSON("[].map.call(document.querySelectorAll('#ahSel option'), function(o){ return o.textContent; })").join('|')), '고르기 상자에 개수가 없다');
     B.ev('dbOnline = true;');
   });
 

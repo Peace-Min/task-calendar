@@ -32,8 +32,9 @@
  *
  * 진입 문은 **둘**이다(2026-09-18 사용자 결정 · §5.0) — 「사용자 정보」에는 휴지통이 없다:
  *   · 과제·발주처·구분·상태 → 「공식 과제 (DB)」 하단 줄의 #offTrash(위젯에서만 보인다) → openTrash('project')
- *   · 퇴사자             → 「구성원 편집」 상단 막대의 #uaTrash(관리자에게만 생긴다)   → openTrash('user')
- *   들어온 문(__trScope)이 보이는 탭을 정한다: 과제 쪽 넷 · 퇴사자 쪽은 탭 줄 없이 목록만.
+ *   · 퇴사자·숨긴 소속·직급 → 「구성원 편집」 상단 막대의 「휴지통」(#uaTrash · 관리자에게만 생긴다) → openTrash('user')
+ *   들어온 문(__trScope)이 보이는 탭을 정한다: 과제 쪽 넷 · 사람 쪽 셋(구성원 · 소속 · 직급 — 2026-10-02 ADMIN-HUB-3 M3).
+ *   ★ 머리말은 두 문 모두 「휴지통」이다(M5 — 예전: 사람 쪽 「퇴사자 휴지통」). 소속·직급 탭의 복구 실동작은 loop-org-title(C04 · C09 · C09b)이 본다.
  *
  * 불변식(케이스마다):
  *   I1 다섯 표의 **실행(zz 아닌 행) 수**가 시작과 같다
@@ -310,7 +311,7 @@ const PSTATE = `JSON.stringify({
   trTitle: (function(){ var h=document.getElementById('trTitle'); return h ? String(h.textContent||'') : ''; })(),
   uaOpen: (function(){ var e=document.getElementById('userAdminModal'); return !!e && !e.classList.contains('hidden'); })(),
   //  ★ 2026-10-02(docs/ADMIN-HUB-2.md J5) — 「사용자 정보」의 「구성원 편집」 입구는 없어졌다. usAdmin 은 이제 **그 입구가 없다** 를 본다
-  //    (퇴사자 휴지통은 「구성원 편집」(openUserAdmin) 상단 막대의 #uaTrash · 「⚙ 관리」의 퇴사자 항목이 연다).
+  //    (사람 휴지통은 「구성원 편집」(openUserAdmin) 상단 막대의 #uaTrash · 「⚙ 관리」의 👥 사람 › 🗑 휴지통 항목이 연다).
   usAdmin: !document.getElementById('usUserAdmin'),
   cfOpen: (function(){ var e=document.getElementById('confirmModal'); return !!e && !e.classList.contains('hidden'); })(),
   ctOpen: (function(){ var e=document.getElementById('confirmTypedModal'); return !!e && !e.classList.contains('hidden'); })(),
@@ -377,7 +378,7 @@ const trFind = (data, key, k) => {
 
 /** 휴지통을 열고(또는 다시 열고) 회신이 도착할 때까지 기다린다. 탭은 캐시가 아니라 매번 새 조회다.
  *   ★ 2026-09-18 — 문이 둘이라 **어느 문으로 들어가는가**를 여기서 정한다(§5.0). 'user' 는 탭이 아니라
- *     문이다: 퇴사자 쪽에는 탭 줄이 없으므로 눌러서 갈 수 없고, openTrash('user') 로 들어가야 한다.
+ *     문이다: 사람 쪽 탭(구성원 · 소속 · 직급)은 과제 쪽 탭과 섞이지 않으므로 openTrash('user') 로 들어가야 한다(첫 탭 = 구성원).
  *     들어간 뒤에는 화면이 말하는 __trScope 가 그 문과 같은지 대조한다 — 다르면 이 함수가 거짓말을 한 것이다. */
 async function openTrash({ tab = null } = {}) {
   const scope = (tab === 'user') ? 'user' : 'project';
@@ -386,7 +387,7 @@ async function openTrash({ tab = null } = {}) {
   let s = await waitPage((x) => x.trOpen && !x.trBusy, { timeout: 20000 });
   if (!s) throw new Error('휴지통이 열리지 않았다(회신이 오지 않음)');
   if (s.trScope !== scope) throw new Error(`휴지통이 다른 문으로 열렸다: 기대 ${scope} · 실제 ${s.trScope}`);
-  //  과제 쪽 문에서만 탭이 있다 — 퇴사자 쪽은 openTrash('user') 가 이미 그 탭에서 연다.
+  //  과제 쪽 탭만 눌러 고른다 — 사람 쪽은 openTrash('user') 가 이미 구성원 탭에서 연다(이 루프가 보는 퇴사자는 그 탭이다).
   if (scope === 'project' && tab && s.trTab !== tab) {
     const clicked = await ev(`(function(){var b=document.querySelector('#trTabs [data-trtab=${J(tab)}]'); if(!b) return false; b.click(); return true;})()`);
     if (!clicked) throw new Error(`휴지통 탭 버튼이 없다: ${tab}`);
@@ -693,7 +694,7 @@ async function main() {
   await runCase('C00', '전제 · 진입 문 둘 · trashGet 회신 모양', async () => {
     okq('C00 「🗑 휴지통」 문이 공식 과제 화면에 보인다(위젯)', !!door0,
       '#offTrash 가 없거나 숨겨져 있다 — offSyncExportBtn 이 위젯 여부로 노출을 맞추지 못했다');
-    okq('C00 「퇴사자 휴지통」 문이 구성원 편집 상단 막대에 생겼다(관리자 회신)', !!door1,
+    okq('C00 「휴지통」(#uaTrash) 문이 구성원 편집 상단 막대에 생겼다(관리자 회신)', !!door1,
       '#uaTrash 가 없다 — uaAdminBar 가 admin 회신을 admin 으로 읽지 못했다');
     okq('C00 「사용자 정보」에는 휴지통이 없다(§11-32 의 자리로 되돌아가지 않았다)', usTrashGone === true,
       '#usTrash 가 살아 있다 — 휴지통은 그 도메인의 화면이 연다');
@@ -928,17 +929,20 @@ async function main() {
 
     const g = (await trashGet()).data;
     const row = trFind(g, 'users', uid);
-    if (!okq('C03 휴지통 「인력」 탭에 보인다', !!row)) return;
+    if (!okq('C03 휴지통 「구성원」 탭(trashGet users)에 보인다', !!row)) return;
     okq('C03 refs = 기록 수(2)', Number(row.refs) === seeded, `실제 ${row.refs}`);
     okq('C03 deletable:false', row.deletable === false, JSON.stringify(row.deletable));
     okq('C03 why 가 §4.3 문장 그대로', row.why === want, `기대 ${JSON.stringify(want)} / 실제 ${JSON.stringify(row.why)}`);
 
     //  화면: 버튼이 꺼지고 사유가 title 로 붙는다(§5.1 — 눌러 봐야 거부되는 버튼은 이유를 알려 주지 않는다).
-    //   ★ 퇴사자는 **다른 문**(「구성원 편집」의 #uaTrash)이 연다 — 탭 줄 없이 목록만이고 머리말도 다르다.
+    //   ★ 퇴사자는 **다른 문**(「구성원 편집」의 #uaTrash)이 연다 — 사람 쪽 탭 셋(구성원 · 소속 · 직급)이고 첫 탭이 구성원이다
+    //     (2026-10-02 ADMIN-HUB-3 M3 · 예전: 탭 줄 없이 목록만 · 머리말 「퇴사자 휴지통」 → 이제 두 문 모두 「휴지통」 · M5).
     {
       const su = await openTrash({ tab: 'user' });
-      okq('C03 퇴사자 쪽 문에는 탭 줄이 없다', su.tabs === 0, `tabs=${su.tabs}`);
-      okq('C03 머리말이 「퇴사자 휴지통」이다', su.trTitle === '퇴사자 휴지통', JSON.stringify(su.trTitle));
+      const kinds = await evj(`JSON.stringify([].map.call(document.querySelectorAll('#trTabs [data-trtab]'), function(b){ return b.dataset.trtab; }))`);
+      okq('C03 사람 쪽 문의 탭 = 구성원 · 소속 · 직급(M3)', JSON.stringify(kinds) === JSON.stringify(['user', 'unit', 'title']), JSON.stringify(kinds));
+      okq('C03 사람 쪽 문은 구성원 탭에서 연다', su.trTab === 'user', su.trTab);
+      okq('C03 머리말이 「휴지통」이다(M5)', su.trTitle === '휴지통', JSON.stringify(su.trTitle));
     }
     const btn = await trRow(uid);
     okq('C03 화면의 [영구 삭제]가 꺼져 있다', !!btn.del && btn.del.disabled === true, JSON.stringify(btn.del));
@@ -1296,7 +1300,7 @@ async function main() {
       await ev(`openUserAdmin()`);
       await waitPage((x) => x.uaOpen === true, { timeout: 15000 });
       const stillThere = await waitPage((x) => x.uaTrash === true, { timeout: 6000 });
-      okq('C08 「퇴사자 휴지통」 문이 비관리자 DOM 에 없다', !stillThere,
+      okq('C08 「휴지통」(#uaTrash) 문이 비관리자 DOM 에 없다', !stillThere,
         '#uaTrash 가 남아 있다 — 권한이 내려갔는데 문이 그대로다');
       await ev(`(typeof closeModal==='function' && closeModal('#userAdminModal'), 1)`);
       //  ★ 「구성원 편집」 진입 버튼은 권한과 무관하게 그대로 서 있다(2026-09-18 사용자 결정 · 공개 문) —

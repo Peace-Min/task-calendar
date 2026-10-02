@@ -3,20 +3,27 @@
  *  tests/loop-category-order.mjs — 과제 순서 설정 **실동작** 루프(docs/CATEGORY-ORDER.md §3 C1~C7)
  * -------------------------------------------------------------------------------------
  *  계약 시험(category-order.test.mjs)은 jsdom·소스 대조로 **규칙**을 잠근다. 이 루프는 실제 위젯(Debug ·
- *  TC_DEBUG_PORT)에 붙어 로그인한 사용자 **자신의** 캘린더에서 진짜 ▲▼ 버튼을 누르고, 그 순서가
- *  실 호스트·실 DB 를 지나 다시 읽혀도 그대로인지 본다. 영속은 DB 를 직접 보지 않고 **앱을 통해** 확인한다 —
- *  reloadState 를 보내 호스트가 다시 읽어 준 state(__applyState)에서 센다(호스트 → DB → 호스트 → 웹 왕복).
+ *  TC_DEBUG_PORT)에 붙어 로그인한 사용자 **자신의** 캘린더에서 진짜 ✥ 손잡이를 키보드(↑/↓ — CDP Input.dispatchKeyEvent)와
+ *  진짜 마우스 끌기(CDP Input.dispatchMouseEvent)로 움직이고, 그 순서가 실 호스트·실 DB 를 지나 다시 읽혀도 그대로인지 본다.
+ *  영속은 DB 를 직접 보지 않고 **앱을 통해** 확인한다 — reloadState 를 보내 호스트가 다시 읽어 준 state(__applyState)에서
+ *  센다(호스트 → DB → 호스트 → 웹 왕복).
+ *  ★ 2026-10-02(docs/ADMIN-HUB-3.md M6–M9) — ▲▼ 버튼이 ✥ 손잡이(끌기 + ↑/↓)로 바뀌었다. 이 루프의 판정(한 칸 · 저장 1회 ·
+ *    포커스 · 스크롤 · 잠금 C6 · 정리 복원)은 그대로이고, 누르는 손만 키보드/마우스로 바꿨다. 끝 비활성(▲▼ disabled)은
+ *    '끝에서 더 누르면 변화 0 · 저장 0' 으로 옮겼다.
  *
  *  케이스 ↔ 수용 기준(§3):
  *    O0        전제 — 로그인 · conn ok · bootOk · 과제 ≥ 3(모자라면 zz 개인 과제를 폼으로 만든다) · 원래 순서 스냅샷
- *    C1        「과제 관리」(헤더 버튼) 목록 순서 = state.categories · 공식이 개인 사이에 끼어도 다시 열면 그대로(R1)
- *    C2        마지막 행 ▲(focus → click) — 한 칸 이동 · saveState 1회 · 첫 행 ▲ · 마지막 행 ▼ 비활성
- *    C7        옮긴 뒤 포커스 = 옮겨진 행의 같은 ▲ · 모달 스크롤 자리 유지 · 맨 위에 닿으면 포커스가 ▼ 로
+ *    C1        「내 과제」(헤더 버튼) 목록 순서 = state.categories · ✥ 손잡이(SVG 버튼 · aria-label) · 공식이 개인 사이에 끼어도 다시 열면 그대로(R1)
+ *    C2        마지막 행 손잡이 ↑(focus → 진짜 키) — 한 칸 이동 · saveState 1회 · aria-live · 맨 위에서 ↑ / 맨 아래에서 ↓ = 변화 0 · 저장 0
+ *    C7        옮긴 뒤 포커스 = 옮겨진 행의 같은 손잡이(같은 노드) · 모달 스크롤 자리 유지
+ *    C8        진짜 마우스 끌기 한 번(두 칸) — 끄는 중 뜬 줄 · 다른 줄이 미끄러져 빈 칸(.cat-drop-slot) **하나**가 목표 자리에 · 놓일 선 요소 없음
+ *              → 놓기 = 그 자리 · transform 전부 걷힘 · saveState 1회 · drop flash · aria-live · 포커스(링은 키보드에만) · 스크롤
+ *              (2026-10-02 PM 검토 — 「sortable」 패턴: 따로 긋는 선 대신 빈 칸 하나가 유일한 표시)
  *    C3        reloadState → 다시 읽힌 state.categories 순서 = 옮긴 직후 순서(서버 저장)
  *    C4        collectReportData(이번 달, rptSources()) 행 = 목록 순서(「기타」·미분류 맨 뒤) + 보고서 미리보기 카드 순서
  *    C5        필터 막대 칩 · 새 기록 #fCat · 빠른 추가 #qaCat 옵션 순서 = state.categories
- *    C6        __dbFault{network} → 끊김 → ▼ → 순서·화면 변화 0 · saveState 0 · 잠금 토스트 → 해제 → 복구
- *    정리      장애 off · 원래 순서로 되돌린다(진짜 ▲ 로) · zz 과제 삭제 · reloadState → 원래 순서 확인 · 모달 닫기
+ *    C6        __dbFault{network} → 끊김 → 손잡이 aria-disabled · ↓ 키 · 마우스 끌기 → 순서·화면 변화 0 · saveState 0 · 잠금 토스트 · 줄이 뜨지 않는다 → 해제 → 복구
+ *    정리      장애 off · 원래 순서로 되돌린다(진짜 ↑ 키로) · zz 과제 삭제 · reloadState → 원래 순서 확인 · 모달 닫기
  *
  *  ★ 남기지 않는다: finally 에서 장애를 끄고, 순서를 원래대로 되돌리고, 만든 zz 과제(`zzORD-<seed>-<n>`)를 지운다.
  *    되돌리지 못하면 원래 순서를 크게 찍는다(손으로 되돌릴 수 있게).
@@ -194,30 +201,79 @@ async function openCat() {
   await sleep(350);
   return opened;
 }
-//  누른다 = 그 행의 진짜 버튼에 focus() → click()(사람이 누를 때와 같은 순서). 그다음 저장 회신까지 기다린다.
-async function press(id, act, { idle = true } = {}) {
+//  누른다 = 그 행의 ✥ 손잡이에 focus() → **진짜 키**(CDP Input.dispatchKeyEvent · rawKeyDown/keyUp — 사람이 키보드로 옮길 때와 같은 길).
+//   그다음 저장 회신까지 기다린다. key: 'ArrowUp' · 'ArrowDown' · 'Home' · 'End'(ADMIN-HUB-3 M8).
+const VK = { ArrowUp: 38, ArrowDown: 40, Home: 36, End: 35 };
+async function press(id, key, { idle = true } = {}) {
   if (idle) await saveIdle();
   const m = await mark();
   const r = await cdp.ev(`(function(){
     const row = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
     if (!row) return 'norow';
-    const b = row.querySelector('[data-act="${act}"]');
-    if (!b) return 'nobtn';
-    if (b.disabled) return 'disabled';
-    window.__ordBtn = b; b.focus(); b.click(); return 'ok';
+    const g = row.querySelector('[data-act="grip"]');
+    if (!g) return 'nogrip';
+    window.__ordBtn = g; g.focus();
+    return document.activeElement === g ? 'ok' : 'nofocus';
   })()`);
+  if (r === 'ok') {
+    const k = { key, code: key, windowsVirtualKeyCode: VK[key], nativeVirtualKeyCode: VK[key] };
+    await cdp.send('Input.dispatchKeyEvent', Object.assign({ type: 'rawKeyDown' }, k));
+    await cdp.send('Input.dispatchKeyEvent', Object.assign({ type: 'keyUp' }, k));
+  }
   await sleep(120);
   if (idle) await saveIdle();
   const L = await since(m);
   return { r, L, saves: reqs(L, 'saveState') };
 }
+//  끈다 = **진짜 마우스**(CDP Input.dispatchMouseEvent) — 손잡이 가운데에서 누르고, 목표 자리 쪽으로 여러 걸음 옮긴 뒤 놓는다.
+//   toIdx = 놓은 뒤 그 과제가 설 자리. 아래로 갈 때는 목표 줄의 아래쪽(75%), 위로 갈 때는 위쪽(25%)에 놓는다(catDragTarget 의
+//   가운데 선 규칙 — 끄는 줄을 뺀 나머지 줄들의 가운데). 놓기 직전에 화면을 한 번 잰다(뜬 줄 · 빈 칸 · 다른 줄의 transform · 커서).
+async function drag(id, toIdx, { idle = true } = {}) {
+  if (idle) await saveIdle();
+  const m = await mark();
+  const g = await J(`(function(){
+    const rows = [].slice.call(document.querySelectorAll('#catList .cat-row'));
+    const row = rows.find(function(x){ return x.dataset.id === ${JSON.stringify(id)}; });
+    const to = rows[${Number(toIdx)}];
+    if (!row || !to) return null;
+    window.__ordBtn = row.querySelector('[data-act="grip"]');   // 놓은 뒤 포커스가 이 노드(같은 손잡이)에 있어야 한다(M8)
+    const gr = row.querySelector('[data-act="grip"]').getBoundingClientRect(), tr = to.getBoundingClientRect();
+    const from = rows.indexOf(row);
+    return { x: gr.left + gr.width / 2, y: gr.top + gr.height / 2, from: from,
+      ty: ${Number(toIdx)} > from ? tr.top + tr.height * 0.75 : tr.top + tr.height * 0.25,
+      vh: window.innerHeight, rowTop: tr.top, rowBottom: tr.bottom }; })()`);
+  if (!g) return { r: 'norow', L: [], saves: [], mid: null };
+  const mouse = (type, x, y, extra) => cdp.send('Input.dispatchMouseEvent', Object.assign({ type, x: Math.round(x), y: Math.round(y), button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, pointerType: 'mouse' }, extra || {}));
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(g.x), y: Math.round(g.y), button: 'none', buttons: 0, pointerType: 'mouse' });
+  await mouse('mousePressed', g.x, g.y, { clickCount: 1 });
+  const N = 10;
+  for (let s = 1; s <= N; s++) { await mouse('mouseMoved', g.x + 2, g.y + (g.ty - g.y) * (s / N)); await sleep(25); }
+  await sleep(120);
+  const mid = await J(`(function(){ const d = document.querySelector('#catList .cat-dragging');
+    const sl = [].filter.call(document.querySelectorAll('#catList .cat-drop-slot'), function(x){ return x.style.display !== 'none'; });
+    const others = [].filter.call(document.querySelectorAll('#catList .cat-row'), function(r){ return r !== d; });
+    return { dragging: d ? d.dataset.id : null, slots: sl.length, slot: sl[0] ? Number(sl[0].dataset.slot) : null,
+      slotStyle: sl[0] ? { border: getComputedStyle(sl[0]).borderTopStyle, h: Math.round(sl[0].getBoundingClientRect().height) } : null,
+      lines: document.querySelectorAll('.cat-drop-line').length,
+      shifted: others.filter(function(r){ return !!r.style.transform; }).map(function(r){ return r.dataset.id; }),
+      dragH: d ? Math.round(d.getBoundingClientRect().height / 1.015) : 0,
+      cursor: document.body.classList.contains('cat-drag-on'), transform: d ? String(d.style.transform || '') : '' }; })()`);
+  await mouse('mouseReleased', g.x + 2, g.ty, { clickCount: 1 });
+  await sleep(150);
+  if (idle) await saveIdle();
+  const L = await since(m);
+  return { r: 'ok', L, saves: reqs(L, 'saveState'), mid, geo: g };
+}
 const swapped = (arr, i, j) => { const a = arr.slice(); const t = a[i]; a[i] = a[j]; a[j] = t; return a; };
-const endsDisabled = () => J(`(function(){ const rows = document.querySelectorAll('#catList .cat-row'); if (!rows.length) return null;
-  const u = rows[0].querySelector('[data-act="up"]'), d = rows[rows.length - 1].querySelector('[data-act="down"]');
-  let midOk = true;
-  for (let i = 0; i < rows.length; i++) { const uu = rows[i].querySelector('[data-act="up"]'), dd = rows[i].querySelector('[data-act="down"]');
-    if (i > 0 && uu.disabled) midOk = false; if (i < rows.length - 1 && dd.disabled) midOk = false; }
-  return { firstUp: !!(u && u.disabled), lastDown: !!(d && d.disabled), midOk: midOk }; })()`);
+const movedTo = (arr, from, to) => { const a = arr.slice(); const t = a.splice(from, 1)[0]; a.splice(to, 0, t); return a; };
+//  손잡이 — 진짜 버튼 · SVG(글자 기호 금지) · aria-label 「<과제명> 순서 — N번째. 위/아래 화살표로 옮깁니다」 · ▲▼ 없음
+const gripsOk = () => J(`(function(){ const rows = document.querySelectorAll('#catList .cat-row'); if (!rows.length) return { ok: false, why: 'norows' };
+  if (document.querySelectorAll('#catList [data-act="up"],#catList [data-act="down"]').length) return { ok: false, why: '▲▼ 가 남았다' };
+  const bad = [].filter.call(rows, function(r, i){ const c = catById(r.dataset.id); const g = r.querySelector('[data-act="grip"]');
+    return !(c && g && g.tagName === 'BUTTON' && g.querySelector('svg') && g.getAttribute('aria-label') === c.name + ' 순서 — ' + (i + 1) + '번째. 위/아래 화살표로 옮깁니다'
+      && g.getAttribute('title') === '끌어서 순서 바꾸기' && getComputedStyle(g).cursor === 'grab'); });
+  return { ok: !bad.length, bad: bad.map(function(r){ return r.dataset.id; }) }; })()`);
+const live = () => cdp.ev("String((document.getElementById('catLive') || {}).textContent || '')");
 const focusInfo = () => J(`(function(){ const a = document.activeElement; const b = window.__ordBtn;
   const row = a && a.closest ? a.closest('#catList .cat-row') : null;
   return { same: !!b && a === b, act: a && a.dataset ? (a.dataset.act || '') : '', row: row ? row.dataset.id : null,
@@ -329,15 +385,15 @@ async function main() {
   ok(`O0 과제 ≥ 3(${cs0.length}건 · 개인 ${cs0.filter((c) => !c.off).length} · 공식 ${cs0.filter((c) => c.off).length})`, cs0.length >= 3);
 
   /* ── C1 목록 = 실제 순서 · 섞임 ── */
-  head('C1 「과제 관리」 목록 = state.categories 순서(개인·공식 섞임 그대로)');
-  ok('C1 헤더 [과제 관리] 로 모달이 열린다', await openCat());
+  head('C1 「내 과제」 목록 = state.categories 순서(개인·공식 섞임 그대로) · ✥ 손잡이');
+  ok('C1 헤더 [내 과제] 로 모달이 열린다', await openCat());
   ok('C1 목록 행 순서 = state.categories', same(await domOrder(), await order()), JSON.stringify({ dom: await domOrder(), state: await order() }));
   ok('C1 안내 한 줄 「순서는 보고서·필터에 그대로 반영됩니다」가 보인다(R8)',
     await cdp.ev("(function(){ const h = document.getElementById('catOrderHint'); return !!h && !h.classList.contains('hidden') && /순서는 보고서·필터에 그대로 반영됩니다/.test(h.textContent) && h.offsetHeight > 0; })()"));
-  ok('C1 각 행 ▲▼ 는 진짜 버튼 + aria-label「위로 이동: 과제명」/「아래로 이동: 과제명」', await cdp.ev(`(function(){
-    const rows = document.querySelectorAll('#catList .cat-row'); if (!rows.length) return false;
-    return [].every.call(rows, function(r){ const c = catById(r.dataset.id); const u = r.querySelector('[data-act="up"]'), d = r.querySelector('[data-act="down"]');
-      return !!c && u && d && u.tagName === 'BUTTON' && d.tagName === 'BUTTON' && u.getAttribute('aria-label') === '위로 이동: ' + c.name && d.getAttribute('aria-label') === '아래로 이동: ' + c.name; }); })()`));
+  {
+    const gk = await gripsOk();
+    ok('C1 각 행 = ✥ 손잡이(진짜 버튼 · SVG · cursor:grab · 툴팁 · aria-label「<과제명> 순서 — N번째. 위/아래 화살표로 옮깁니다」) · ▲▼ 없음(M6·M8)', gk && gk.ok, JSON.stringify(gk));
+  }
   let C1moves = 0;
   {
     const cs = await cats();
@@ -345,13 +401,13 @@ async function main() {
     const interleaved = (list) => list.some((c, i) => c.off && list.slice(0, i).some((x) => !x.off) && list.slice(i + 1).some((x) => !x.off));
     if (nP >= 2 && nO >= 1) {
       if (!interleaved(cs)) {
-        //  공식 하나를 개인 사이로 — 진짜 ▲/▼ 로 한 칸씩(개인을 하나 지나칠 때까지).
+        //  공식 하나를 개인 사이로 — 손잡이에서 진짜 ↑/↓ 키로 한 칸씩(개인을 하나 지나칠 때까지).
         const o = cs.find((c) => c.off);
-        const dir = cs.slice(0, cs.indexOf(o)).some((x) => !x.off) ? 'up' : 'down';
+        const dir = cs.slice(0, cs.indexOf(o)).some((x) => !x.off) ? 'ArrowUp' : 'ArrowDown';
         for (let k = 0; k < cs.length && !interleaved(await cats()); k++) {
           const p = await press(o.id, dir);
           C1moves++;
-          if (p.r !== 'ok' || p.saves.length !== 1) { ok(`C1 배치용 ${dir === 'up' ? '▲' : '▼'} (${o.name})`, false, JSON.stringify({ r: p.r, saves: p.saves.length })); break; }
+          if (p.r !== 'ok' || p.saves.length !== 1) { ok(`C1 배치용 ${dir === 'ArrowUp' ? '↑' : '↓'} (${o.name})`, false, JSON.stringify({ r: p.r, saves: p.saves.length })); break; }
         }
         note(`공식 과제 하나를 개인 과제 사이로 옮겼다(${C1moves}칸)`);
       }
@@ -368,8 +424,8 @@ async function main() {
     }
   }
 
-  /* ── C2 · C7 마지막 행 ▲ ── */
-  head('C2 · C7 마지막 행 ▲(focus → click) — 한 칸 · 저장 1회 · 끝 버튼 비활성 · 포커스·스크롤 유지');
+  /* ── C2 · C7 마지막 행 손잡이 ↑ ── */
+  head('C2 · C7 마지막 행 손잡이 ↑(focus → 진짜 키) — 한 칸 · 저장 1회 · aria-live · 끝에서 변화 0 · 포커스·스크롤 유지');
   let EXPECT = await order();
   const n = EXPECT.length;
   const lastId = EXPECT[n - 1];
@@ -383,36 +439,77 @@ async function main() {
   vlog('스크롤:', JSON.stringify(geo));
   await sleep(150);
   const st0 = await cdp.ev(`${BODY}.scrollTop`);
-  const p1 = await press(lastId, 'up');
+  const p1 = await press(lastId, 'ArrowUp');
   EXPECT = swapped(EXPECT, n - 1, n - 2);
-  ok(`C2 마지막 행(${lastName}) ▲ 를 눌렀다`, p1.r === 'ok', p1.r);
+  ok(`C2 마지막 행(${lastName}) 손잡이에서 ↑ 를 눌렀다`, p1.r === 'ok', p1.r);
   ok('C2 한 번 = saveState 1회', p1.saves.length === 1, `${p1.saves.length}회`);
   ok('C2 그 저장이 성공했고 payload 순서 = 옮긴 순서', !!(p1.saves[0] && p1.saves[0].res && p1.saves[0].res.ok) && same(p1.saves[0] && p1.saves[0].order, EXPECT),
     JSON.stringify(p1.saves.map((x) => ({ res: x.res, order: x.order }))));
   ok('C2 한 칸 위로(state.categories)', same(await order(), EXPECT), JSON.stringify(await order()));
   ok('C2 목록 행 순서 = state.categories', same(await domOrder(), EXPECT));
-  const e1 = await endsDisabled();
-  ok('C2 첫 행 ▲ · 마지막 행 ▼ 비활성 · 그 밖은 켜짐', !!e1 && e1.firstUp && e1.lastDown && e1.midOk, JSON.stringify(e1));
+  ok('C2 aria-live 낭독 「<과제명> — N번째에서 N-1번째로 옮겼습니다」(M8)', (await live()) === `${lastName} — ${n}번째에서 ${n - 1}번째로 옮겼습니다`, await live());
+  ok('C2 손잡이 aria-label 의 자리가 따라왔다(N-1번째)', (await cdp.ev(`(function(){ const r = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(lastId)}; });
+    return r ? r.querySelector('[data-act="grip"]').getAttribute('aria-label') : ''; })()`)) === `${lastName} 순서 — ${n - 1}번째. 위/아래 화살표로 옮깁니다`);
   const f1 = await focusInfo();
-  ok('C7 포커스 = 옮겨진 행의 같은 ▲(같은 노드)', f1.same && f1.row === lastId && f1.act === 'up', JSON.stringify(f1));
+  ok('C7 포커스 = 옮겨진 행의 같은 손잡이(같은 노드)', f1.same && f1.row === lastId && f1.act === 'grip', JSON.stringify(f1));
   if (geo && geo.scrollable) {
     const st1 = await cdp.ev(`${BODY}.scrollTop`);
     ok('C7 모달 스크롤 자리 유지(.modal-body scrollTop)', Math.abs(st1 - st0) < 1, `${st0} → ${st1}`);
   } else na('C7 스크롤 자리', `모달 본문이 스크롤되지 않는다(${JSON.stringify(geo)})`);
-  //  맨 위까지 — 한 번에 한 칸 · 매번 저장 1회. 맨 위에 닿아 ▲ 가 꺼지면 포커스는 같은 행의 ▼ 로.
+  //  맨 위까지 — 한 번에 한 칸 · 매번 저장 1회. 맨 위에서 한 번 더 ↑ 는 변화 0 · 저장 0(끝 막기 — 예전 ▲ 비활성의 자리).
   let perPress = true, steps = 0;
   for (let i = n - 2; i > 0; i--) {
-    const p = await press(lastId, 'up');
+    const p = await press(lastId, 'ArrowUp');
     steps++;
     EXPECT = swapped(EXPECT, i, i - 1);
     if (p.r !== 'ok' || p.saves.length !== 1 || !same(await order(), EXPECT)) { perPress = false; vlog('맨 위로 가는 중 어긋남:', JSON.stringify({ r: p.r, saves: p.saves.length })); break; }
   }
   ok(`C2 맨 위까지 ${steps}번 더 — 매번 한 칸 · 저장 1회`, perPress);
   ok('C2 맨 위에 닿았다(state · 목록)', (await order())[0] === lastId && same(await domOrder(), await order()));
+  const pTop = await press(lastId, 'ArrowUp');
+  ok('C2 맨 위에서 ↑ 한 번 더 = 변화 0 · 저장 0(끝 막기)', pTop.r === 'ok' && pTop.saves.length === 0 && same(await order(), EXPECT), JSON.stringify({ r: pTop.r, saves: pTop.saves.length }));
+  const bottomId = EXPECT[EXPECT.length - 1];
+  const pBot = await press(bottomId, 'ArrowDown');
+  ok('C2 맨 아래에서 ↓ = 변화 0 · 저장 0(끝 막기)', pBot.r === 'ok' && pBot.saves.length === 0 && same(await order(), EXPECT), JSON.stringify({ r: pBot.r, saves: pBot.saves.length }));
+  await press(lastId, 'ArrowUp');   // 포커스를 맨 위 행 손잡이로 되돌린다(변화 0)
   const f2 = await focusInfo();
-  ok('C7 맨 위에 닿으면 포커스가 같은 행의 ▼ 로 넘어간다(body 로 떨어지지 않는다)', f2.row === lastId && f2.act === 'down', JSON.stringify(f2));
-  const e2 = await endsDisabled();
-  ok('C2 맨 위로 온 행의 ▲ 비활성 · 마지막 행 ▼ 비활성', !!e2 && e2.firstUp && e2.lastDown && e2.midOk, JSON.stringify(e2));
+  ok('C7 맨 위에 닿은 뒤에도 포커스 = 같은 손잡이(body 로 떨어지지 않는다 · 꺼지는 버튼이 없다)', f2.same && f2.row === lastId && f2.act === 'grip', JSON.stringify(f2));
+
+  /* ── C8 진짜 마우스 끌기 ── */
+  head('C8 진짜 마우스 끌기(CDP Input.dispatchMouseEvent) — 두 칸 아래로 · 뜬 줄 · 빈 칸 하나 · 저장 1회 · flash · 낭독 · 포커스 · 스크롤');
+  {
+    const st8 = await cdp.ev(`${BODY}.scrollTop`);
+    const name8 = (await cats()).find((c) => c.id === lastId).name;
+    const to8 = Math.min(2, EXPECT.length - 1);
+    const d8 = await drag(lastId, to8);
+    vlog('끌기:', JSON.stringify({ geo: d8.geo, mid: d8.mid }));
+    ok('C8 끌기를 시작했다(손잡이를 찾았다)', d8.r === 'ok', d8.r);
+    ok('C8 끄는 중 그 줄이 떠서 따라온다(.cat-dragging · transform · grabbing 커서)', !!d8.mid && d8.mid.dragging === lastId && /translateY/.test(d8.mid.transform) && d8.mid.cursor, JSON.stringify(d8.mid));
+    //  빈 칸 — 목표 자리(to8)에 정확히 하나 · 놓일 선 요소는 없다 · 사이에 낀 줄(원래 1..to8)만 한 칸 위로 비켜섰다
+    ok('C8 끄는 중 빈 칸(.cat-drop-slot)이 정확히 하나 · 목표 자리에 · 점선 · 끄는 줄 높이', !!d8.mid && d8.mid.slots === 1 && d8.mid.slot === to8 && d8.mid.slotStyle.border === 'dashed'
+      && Math.abs(d8.mid.slotStyle.h - d8.mid.dragH) <= 2, JSON.stringify(d8.mid));
+    ok('C8 따로 긋는 놓일 선 요소가 없다(표시는 빈 칸 하나뿐)', !!d8.mid && d8.mid.lines === 0, JSON.stringify(d8.mid));
+    ok('C8 사이에 낀 줄들만 미끄러졌다(transform 이 걸렸다)', !!d8.mid && same(d8.mid.shifted.slice().sort(), EXPECT.slice(1, to8 + 1).sort()), JSON.stringify(d8.mid && d8.mid.shifted));
+    EXPECT = movedTo(EXPECT, 0, to8);
+    ok(`C8 놓은 자리로 옮겼다(${to8}칸 · state.categories · 목록)`, same(await order(), EXPECT) && same(await domOrder(), EXPECT), JSON.stringify({ got: await order(), want: EXPECT }));
+    ok(`C8 ${to8}칸을 한 번에 옮겨도 saveState 1회 · payload = 옮긴 순서(M9)`, d8.saves.length === 1 && !!(d8.saves[0].res && d8.saves[0].res.ok) && same(d8.saves[0].order, EXPECT),
+      JSON.stringify(d8.saves.map((x) => ({ res: x.res, order: x.order }))));
+    ok('C8 놓은 뒤 빈 칸·뜬 줄·커서·transform 이 남지 않는다', await cdp.ev("!document.querySelector('#catList .cat-drop-slot,.cat-drop-line,#catList .cat-dragging') && !document.body.classList.contains('cat-drag-on') && ![].some.call(document.querySelectorAll('#catList .cat-row'), function(r){ return !!r.style.transform; })"));
+    ok('C8 마우스로 놓은 뒤 손잡이 포커스에 링이 없다(링은 키보드에만)', await cdp.ev(`(function(){ const g = document.activeElement; return !!g && g.dataset.act === 'grip' && getComputedStyle(g).outlineStyle === 'none'; })()`));
+    ok('C8 놓은 줄이 잠깐 강조된다(drop flash)', await cdp.ev(`(function(){ const r = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(lastId)}; }); return !!r && r.classList.contains('cat-flash'); })()`));
+    await sleep(1100);
+    ok('C8 강조는 잠깐이다(1초 뒤 원래 색)', await cdp.ev(`(function(){ const r = [].find.call(document.querySelectorAll('#catList .cat-row'), function(x){ return x.dataset.id === ${JSON.stringify(lastId)}; }); return !!r && !r.classList.contains('cat-flash'); })()`));
+    ok('C8 aria-live 낭독(M8)', (await live()) === `${name8} — 1번째에서 ${to8 + 1}번째로 옮겼습니다`, await live());
+    const f8 = await focusInfo();
+    ok('C8 놓은 뒤 포커스 = 옮겨진 행의 손잡이(키보드로 이어 쓸 수 있다)', f8.same && f8.row === lastId && f8.act === 'grip', JSON.stringify(f8));
+    if (geo && geo.scrollable) {
+      const st9 = await cdp.ev(`${BODY}.scrollTop`);
+      ok('C8 끌어 놓아도 모달 스크롤 자리 유지(자동 스크롤이 필요 없는 거리)', Math.abs(st9 - st8) < 2, `${st8} → ${st9}`);
+    } else na('C8 스크롤 자리', '모달 본문이 스크롤되지 않는다');
+    //  같은 자리에 놓기 = 변화 0 · 저장 0
+    const d8b = await drag(lastId, to8);
+    ok('C8 같은 자리에 놓으면 변화 0 · 저장 0', d8b.r === 'ok' && d8b.saves.length === 0 && same(await order(), EXPECT) && !!d8b.mid && d8b.mid.slots === 1 && d8b.mid.slot === to8 && d8b.mid.shifted.length === 0, JSON.stringify({ saves: d8b.saves.length, mid: d8b.mid }));
+  }
 
   /* ── C3 서버에서 다시 읽기 ── */
   head('C3 reloadState → 서버에서 다시 읽은 순서 = 옮긴 직후 순서');
@@ -510,7 +607,7 @@ async function main() {
   }
 
   /* ── C6 연결 끊김 중 이동 불가 ── */
-  head('C6 (live) network 장애 → 끊김 → ▼ → 순서·화면·저장 변화 0 → 해제 → 복구');
+  head('C6 (live) network 장애 → 끊김 → 손잡이 ↓ 키 · 마우스 끌기 → 순서·화면·저장 변화 0 → 해제 → 복구');
   if (!faultOk) undecide('C6 연결 끊김 중 이동', '__dbFault 를 쓸 수 없다(디버그 실행이 아니다)');
   else {
     await openCat();
@@ -521,16 +618,25 @@ async function main() {
     ok('C6 reloadState 가 실패로 끝난다(__applyStateError)', r6 === 'error', r6);
     ok("C6 conn ≠ 'ok' · editLocked() = true", await waitFor("conn !== 'ok' && editLocked()", 8000), JSON.stringify(await J('({ conn: conn, locked: editLocked() })')));
     await sleep(1600);   // 잠금 토스트는 1.5초에 한 번 — 앞선 토스트와 겹치지 않게
+    ok('C6 잠금 중 손잡이는 aria-disabled(흐린 채 not-allowed · disabled 가 아니다 — 눌러야 토스트가 말한다)', await cdp.ev(`(function(){ const gs = document.querySelectorAll('#catList [data-act="grip"]');
+      return gs.length > 0 && [].every.call(gs, function(g){ return g.getAttribute('aria-disabled') === 'true' && !g.disabled && getComputedStyle(g).cursor === 'not-allowed'; }); })()`));
     const m6 = await mark();
-    const p6 = await press(firstId, 'down', { idle: false });
+    const p6 = await press(firstId, 'ArrowDown', { idle: false });
     await sleep(500);
     const L6 = await since(m6);
-    ok('C6 첫 행 ▼ 를 눌렀다(버튼은 켜져 있다)', p6.r === 'ok', p6.r);
+    ok('C6 첫 행 손잡이에서 ↓ 를 눌렀다(포커스는 받는다)', p6.r === 'ok', p6.r);
     ok('C6 state.categories 순서 변화 0', same(await order(), before), JSON.stringify(await order()));
     ok('C6 목록 화면 순서 변화 0', same(await domOrder(), before), JSON.stringify(await domOrder()));
     ok('C6 saveState 0건', reqs(L6, 'saveState').length === 0, `${reqs(L6, 'saveState').length}건`);
     ok(`C6 잠금 토스트 「${LOCK_MSG}」`, toasts(L6).includes(LOCK_MSG), JSON.stringify(toasts(L6)));
     ok('C6 미저장 표시가 서지 않았다(바뀐 것이 없다)', (await cdp.ev('unsaved')) === false);
+    //  진짜 마우스 끌기도 — 누르는 순간 관문이 막는다(줄이 뜨지 않는다 · 선이 서지 않는다)
+    await sleep(1600);   // 잠금 토스트는 1.5초에 한 번
+    const d6 = await drag(firstId, Math.min(2, before.length - 1), { idle: false });
+    await sleep(400);
+    ok('C6 잠긴 채 끌면 줄이 뜨지 않고 빈 칸이 열리지 않는다(다른 줄도 그대로)', !!d6.mid && !d6.mid.dragging && d6.mid.slots === 0 && d6.mid.shifted.length === 0 && !d6.mid.cursor, JSON.stringify(d6.mid));
+    ok('C6 끌기 뒤 순서·화면·저장 변화 0', same(await order(), before) && same(await domOrder(), before) && d6.saves.length === 0, JSON.stringify({ order: await order(), saves: d6.saves.length }));
+    ok(`C6 끌기도 잠금 토스트 「${LOCK_MSG}」`, toasts(d6.L).includes(LOCK_MSG), JSON.stringify(toasts(d6.L)));
     ok('C6 __dbFault{off} → ok', (await fault('off'))?.ok === true);
     const t6 = Date.now();
     const rec6 = await waitFor(isHealthy, 30000, 300);
@@ -571,7 +677,7 @@ try {
         //  zz 과제 — 이 실행이 만든 것 + 이름이 zzORD- 로 시작하는 것(중단 잔재)
         const zz = await zzCats();
         for (const c of zz) ok(`정리: zz 과제 ${c.name} 삭제`, await deleteCatViaUi(c.id));
-        //  원래 순서로 — 진짜 ▲ 를 눌러 한 칸씩(moveCategory 경로). 각 목표 자리에 올 과제를 위로 끌어올린다.
+        //  원래 순서로 — 손잡이에서 진짜 ↑ 키로 한 칸씩(moveCategory 경로). 각 목표 자리에 올 과제를 위로 끌어올린다.
         const target = ORIG.slice();
         let stuck = false, moves = 0;
         for (let k = 0; k < target.length && !stuck; k++) {
@@ -580,8 +686,8 @@ try {
             const i = cur.indexOf(target[k]);
             if (i < 0) { stuck = true; note(`정리: 원래 과제 ${target[k]} 가 목록에 없다`); break; }
             if (i <= k) break;
-            let p = await press(target[k], 'up');
-            if (p.r !== 'ok') {   // 버튼을 못 찾으면(목록이 어긋났으면) 같은 함수를 직접 부른다
+            let p = await press(target[k], 'ArrowUp');
+            if (p.r !== 'ok') {   // 손잡이를 못 찾으면(목록이 어긋났으면) 같은 함수를 직접 부른다
               await cdp.ev(`moveCategory(${JSON.stringify(target[k])}, -1)`); await saveIdle();
             }
             moves++;
@@ -593,7 +699,7 @@ try {
         restored = r === 'applied' && same(fin, ORIG);
         if (!restored) {
           //  마지막 수단 — 원래 순서로 배열을 놓고 save() 한 번.
-          console.log(`${el()}   · 정리: ▲ 복원이 어긋났다(${r}) — 배열을 원래 순서로 놓고 save() 1회`);
+          console.log(`${el()}   · 정리: ↑ 복원이 어긋났다(${r}) — 배열을 원래 순서로 놓고 save() 1회`);
           await cdp.ev(`(function(){ const want = ${JSON.stringify(ORIG)}; const by = new Map(state.categories.map(function(c){ return [c.id, c]; }));
             const rest = state.categories.filter(function(c){ return want.indexOf(c.id) < 0; });
             state.categories = want.filter(function(id){ return by.has(id); }).map(function(id){ return by.get(id); }).concat(rest); save(); return 1; })()`);
@@ -601,7 +707,7 @@ try {
           const r2 = await reload();
           restored = r2 === 'applied' && same(await order(), ORIG);
         }
-        ok(`정리: 원래 순서 복원(▲ ${moves}번) — reloadState 뒤 서버 순서 = 원래 순서`, restored, JSON.stringify({ got: await order(), want: ORIG }));
+        ok(`정리: 원래 순서 복원(↑ ${moves}번) — reloadState 뒤 서버 순서 = 원래 순서`, restored, JSON.stringify({ got: await order(), want: ORIG }));
         ok('정리: zz 과제 잔재 0', (await zzCats()).length === 0);
         await closeAll();
         healthyAtEnd = await waitFor(isHealthy, 5000);

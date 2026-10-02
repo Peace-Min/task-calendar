@@ -136,17 +136,18 @@ const checks = {
 
     // ── ③ 인력 쪽 문 — 「구성원 편집」 상단 막대의 #uaTrash(관리자에게만 **생긴다**)
     assert.ok(!/id="uaTrash"/.test(web),
-      '「퇴사자 휴지통」 버튼이 마크업에 있다 — 비관리자 DOM 에 남는다(숨김 ≠ 부재). uaAdminBar 가 만들어야 한다');
+      '「휴지통」(사람 쪽 · #uaTrash) 버튼이 마크업에 있다 — 비관리자 DOM 에 남는다(숨김 ≠ 부재). uaAdminBar 가 만들어야 한다');
     const bar = extractFunction(web, 'uaAdminBar');
-    assert.ok(/mk\('퇴사자 휴지통', 'uaTrash'/.test(bar),
-      'uaAdminBar 가 「퇴사자 휴지통」을 만들지 않는다 — 퇴사자의 복구·영구 삭제로 가는 문이 사라진다');
+    //  ★ 문구는 「휴지통」이다(ADMIN-HUB-3 M5 · 2026-10-02 — 「퇴사자 휴지통」→「휴지통」: 안에 소속·직급 탭도 있다).
+    assert.ok(/mk\('휴지통', 'uaTrash'/.test(bar),
+      'uaAdminBar 가 「휴지통」(#uaTrash)을 만들지 않는다 — 퇴사자·숨긴 소속·직급의 복구로 가는 문이 사라진다');
     assert.ok(/openTrash\('user'\)/.test(bar),
       "uaAdminBar 가 만든 버튼이 openTrash('user') 에 묶이지 않는다 — 들어간 문이 보이는 탭을 정하는데 그 문이 자기 이름을 말하지 않는다");
     //  ★ **어디에서** 만드는가가 계약이다: 비관리자 조기 return 뒤 · 순서 편집 return 뒤.
     //    앞에 두면 숨김이 아니라 부재여야 할 것이 비관리자 DOM 에 남고, 순서 편집 중에 명부를 다시 읽는다.
     const iAdmin = bar.indexOf('if(!__uaAdmin) return;');
     const iOrder = bar.indexOf('    return;   // ★ 순서 편집 중에는');
-    const iTrash = bar.indexOf("mk('퇴사자 휴지통', 'uaTrash'");
+    const iTrash = bar.indexOf("mk('휴지통', 'uaTrash'");
     assert.ok(iAdmin >= 0, 'uaAdminBar 의 비관리자 조기 return 을 찾지 못했다 — 판정 불가');
     assert.ok(iOrder >= 0, 'uaAdminBar 의 순서 편집 return 을 찾지 못했다 — 판정 불가');
     assert.ok(iTrash > iAdmin,
@@ -154,7 +155,7 @@ const checks = {
     assert.ok(iTrash > iOrder,
       '「퇴사자 휴지통」이 순서 편집 return 앞에서 만들어진다 — 편집 중에 휴지통을 열면 명부를 다시 읽어 편집 중인 순서를 날린다');
     //  ★ 그 자리에서 끄는 집합에도 함께 들어가야 한다 — 렌더가 잠그는 집합과 갈리면 재렌더가 잠금을 뒤집는다.
-    assert.ok(/mk\('퇴사자 휴지통', 'uaTrash', 'btn sm', \(\) => openTrash\('user'\)\)\.disabled = __uaSaving;/.test(bar),
+    assert.ok(/mk\('휴지통', 'uaTrash', 'btn sm', \(\) => openTrash\('user'\)\)\.disabled = __uaSaving;/.test(bar),
       '「퇴사자 휴지통」이 왕복 중에도 켜져 있다 — 결과를 기다리는 중에 휴지통이 열려 명부를 다시 읽는다');
     assert.ok(/'uaNew', 'uaOrderEdit', 'uaOrderSave', 'uaTrash'/.test(extractFunction(web, 'uaSyncControls')),
       "uaSyncControls 가 #uaTrash 를 그 자리에서 잠그지 않는다 — 렌더가 잠그는 집합과 갈려, 다시 그리는 순간 잠금이 뒤집힌다");
@@ -298,7 +299,7 @@ const checks = {
   //   잠금이 사라진다 — 되돌릴 수 없는 [영구 삭제]를 두 번 누를 수 있게 된다.
   lockIsDerivedAtRender(web) {
     const r = extractFunction(web, 'trRender');
-    assert.ok(/rb\.disabled = __trSaving;/.test(r),
+    assert.ok(/rb\.disabled = blocked \|\| __trSaving;/.test(r),
       'trRender 가 [복구]를 그릴 때 __trSaving 을 보지 않는다 — 재렌더가 잠금을 지운다');
     assert.ok(/db\.disabled = !deletable \|\| __trSaving;/.test(r),
       'trRender 가 [영구 삭제]의 잠금을 데이터와 왕복 상태로 함께 정하지 않는다 — 둘 중 하나만 보면 나머지가 샌다');
@@ -309,7 +310,8 @@ const checks = {
       'trSyncControls 가 #trList 의 행 컨트롤을 훑지 않는다 — 잠금이 그 자리에서 걸리지 않는다');
     assert.ok(/deletable\(b\.dataset\.tkey\)/.test(s) && /it\.deletable === true/.test(s),
       "trSyncControls 가 '지울 수 있나'를 목록 데이터에서 다시 읽지 않는다 — 판정을 따로 적어 두면 렌더와 갈린다");
-    assert.ok(/__trSaving \|\| \(b\.dataset\.top === 'delete'/.test(s),
+    //  data-troff — 소속·직급의 구조적 잠금(상위가 숨김 · ADMIN-HUB-3 M3)도 같은 한 식에 든다(잠금을 풀어도 꺼진 채).
+    assert.ok(/__trSaving \|\| b\.dataset\.troff === '1' \|\| \(b\.dataset\.top === 'delete'/.test(s),
       'trSyncControls 가 잠금과 삭제 가능 여부를 한 식으로 정하지 않는다 — 잠금을 푸는 순간 지울 수 없는 항목이 켜진다');
     assert.ok(/lockLineBtn\(/.test(s),
       'trSyncControls 가 lockLineBtn 을 쓰지 않는다 — 포커스를 쥔 버튼이 꺼지면 그대로 body 로 떨어진다');
@@ -374,9 +376,9 @@ const checks = {
     const blk = constBlock(web, 'const TR_TABS = [');
     assert.ok(!/이\(가\)/.test(web.slice(web.indexOf('function trRender'), web.indexOf('function trApplyData'))),
       "trRender 가 아직 '이(가)' 병기를 쓴다 — 문구는 탭 표(TR_TABS)가 진다");
-    for (const label of ['과제', '인력', '발주처', '구분', '상태']) {
+    for (const label of ['과제', '구성원', '발주처', '구분', '상태', '소속', '직급']) {
       assert.ok(new RegExp("empty: trEmptyLabel\\('" + label + "'\\)").test(blk),
-        `TR_TABS 의 ${label} 탭에 빈 탭 문구(empty)가 없다 — 문구가 렌더로 흩어지면 다섯 벌이 된다`);
+        `TR_TABS 의 ${label} 탭에 빈 탭 문구(empty)가 없다 — 문구가 렌더로 흩어지면 탭 수만큼 벌이 된다`);
     }
     assert.ok(/josa\(label, '이', '가'\)/.test(constLine(web, 'trEmptyLabel')),
       'trEmptyLabel 이 josa 로 조사를 고르지 않는다 — 라벨마다 손으로 적으면 다음 탭에서 반드시 틀린다');
@@ -455,7 +457,7 @@ test('변이⑦-b5b: 뒤처리가 명부를 다시 앉히면 계약⑦-b 가 실
 });
 
 test('변이⑦-c: 잠금을 렌더에서 빼면 계약⑦-c 가 실패한다', () => {
-  const bad = mutate(app, '    rb.disabled = __trSaving;', '    rb.disabled = false;');
+  const bad = mutate(app, '    rb.disabled = blocked || __trSaving;', '    rb.disabled = false;');
   assert.throws(() => checks.lockIsDerivedAtRender(bad), /\[복구\]를 그릴 때 __trSaving 을 보지 않는다/);
   assert.doesNotThrow(() => checks.lockIsDerivedAtRender(app));   // 통제군
 });
@@ -521,14 +523,14 @@ test('변이⑥-a: 마크업에 탭 버튼을 하나 적으면 계약⑥-a 가 �
 //  ★ 퇴사자 쪽 문을 **비관리자 조기 return 앞**으로 올리면 숨김이 아니라 부재여야 할 것이 DOM 에 남는다.
 test('변이⑥-b: 「퇴사자 휴지통」을 비관리자 분기 앞에서 만들면 계약⑥-b 가 실패한다(숨김 ≠ 부재)', () => {
   const bad = mutate(app, "  if(!__uaAdmin) return;   // ★ 비관리자",
-    "  mk('퇴사자 휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;\n  if(!__uaAdmin) return;   // ★ 비관리자");
+    "  mk('휴지통', 'uaTrash', 'btn sm', () => openTrash('user')).disabled = __uaSaving;\n  if(!__uaAdmin) return;   // ★ 비관리자");
   assert.throws(() => checks.trashEntryDoorsAreDomainScreens(bad), /비관리자 조기 return \*\*앞\*\*에서 만들어진다/);
   assert.doesNotThrow(() => checks.trashEntryDoorsAreDomainScreens(app));   // 통제군
 });
 
 test('변이⑥-b2: 「퇴사자 휴지통」을 마크업에 적으면 계약⑥-b 가 실패한다', () => {
   const bad = mutate(app, '      <div id="uaAdmin"></div>',
-    '      <div id="uaAdmin"><button type="button" class="btn sm" id="uaTrash">퇴사자 휴지통</button></div>');
+    '      <div id="uaAdmin"><button type="button" class="btn sm" id="uaTrash">휴지통</button></div>');
   assert.throws(() => checks.trashEntryDoorsAreDomainScreens(bad), /마크업에 있다/);
   assert.doesNotThrow(() => checks.trashEntryDoorsAreDomainScreens(app));   // 통제군
 });
@@ -568,6 +570,7 @@ const SNAP_JS = [
   '  var list = document.getElementById("trList");',
   '  var empty = document.getElementById("trEmpty");',
   '  var scope = document.getElementById("trScope");',
+  '  var note = document.getElementById("trNote");',   // 탭 안내 한 줄(ADMIN-HUB-3 M3) — 사람 휴지통에서만 선다
   '  return {',
   '    tabs: Array.prototype.map.call(tabs.querySelectorAll("[data-trtab]"), function(b){',
   '      return { kind: b.dataset.trtab, text: String(b.textContent || ""),',
@@ -589,6 +592,8 @@ const SNAP_JS = [
   '    scope: scope ? String(scope.textContent || "") : "",',
   '    emptyText: empty ? String(empty.textContent || "") : "",',
   '    emptyHidden: empty ? empty.classList.contains("hidden") : true,',
+  '    note: note ? String(note.textContent || "") : "",',
+  '    noteHidden: note ? note.classList.contains("hidden") : true,',
   '  };',
   '}',
 ].join('\n');
@@ -602,12 +607,16 @@ function renderHarnessJs(src) {
     //    앱과 같은 초기값(과제 쪽)에서 시작한다. 퇴사자 쪽은 탐침이 스스로 바꿔 놓는다.
     'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false;',
     'var __trScope = "project";',
+    'var __trOrg = null;',   // 사람 휴지통 소속·직급 탭의 회신 덩어리(ADMIN-HUB-3 M3) — null = 아직 모른다
     '// 이 계약과 무관한 협력자는 빈 함수로 — 여기서 보는 것은 "무엇이 그려지는가" 하나다.',
     'function trRestore(){} function trDelete(){} function toast(){} function hostRequest(){}',
     constLine(src, 'josa'),
     constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
     constLine(src, 'trTabDef'),
+    //  사람 휴지통의 소속·직급 탭(ADMIN-HUB-3 M3) — trRows 가 그 탭이면 trOrgRows 로 간다(__trOrg 는 하네스가 정한다 · null = 불러오는 중).
+    constLine(src, 'trOrgReady'),
+    extractFunction(src, 'trOrgRows'),
     constLine(src, 'trRows'),
     constLine(src, 'trTabs'),
     extractFunction(src, 'trApplyData'),
@@ -660,6 +669,7 @@ function busyHarnessJs(src) {
   return [
     'var __trData = null, __trTab = "project", __trAdmin = false, __trSaving = false;',
     'var __trScope = "project";',   // 어느 문으로 들어왔나 — 보이는 탭을 정한다(2026-09-18)
+    'var __trOrg = null;',   // 사람 휴지통 소속·직급 탭의 회신 덩어리(ADMIN-HUB-3 M3) — null = 아직 모른다
     'var __uaInactive = false, HOST = true, __toasts = [];',
     'var __sent = [], __reply = null, __timers = 0;',
     'var __realSetTimeout = window.setTimeout;',
@@ -678,6 +688,9 @@ function busyHarnessJs(src) {
     constLine(src, 'trEmptyLabel'),
     constBlock(src, 'const TR_TABS = ['),
     constLine(src, 'trTabDef'),
+    //  사람 휴지통의 소속·직급 탭(ADMIN-HUB-3 M3) — trRows 가 그 탭이면 trOrgRows 로 간다(__trOrg 는 하네스가 정한다 · null = 불러오는 중).
+    constLine(src, 'trOrgReady'),
+    extractFunction(src, 'trOrgRows'),
     constLine(src, 'trRows'),
     constLine(src, 'trTabs'),
     extractFunction(src, 'trApplyData'),
@@ -908,7 +921,7 @@ function ctHarnessJs(src) {
 
 //  ★ overlay(#trashModal)까지 감싼다 — 쓰기 잠금이 dataset.busy 를 그 요소에 세운다(closeOverlay 의 busy 가드).
 const RENDER_FIXTURE = '<!doctype html><html><body><div class="overlay" id="trashModal">' +
-  '<div class="set-hint" id="trScope">—</div><div id="trTabs"></div><div id="trList"></div>' +
+  '<div class="set-hint" id="trScope">—</div><div id="trTabs"></div><div class="set-hint hidden" id="trNote"></div><div id="trList"></div>' +
   '<div class="set-hint hidden" id="trEmpty"></div></div></body></html>';
 //  ★ 마크업을 **원본에서** 실어 온다(사본을 적으면 마크업이 바뀌어도 시험은 옛 모양을 계속 통과시킨다).
 //    최상위에서 오려 내지 않는 이유: import 루프에서 던지면 전 스위트 판정이 증발한다(러너 규약).
@@ -1052,31 +1065,32 @@ if (!jsdom) {
   skip('계약⑦-DOM(m): [영구 삭제]를 누르면 { ok:true, typed } 로 해소되고 typed 는 그 순간의 값이다', SKIP_NO_JSDOM);
   skip('변이⑦-DOM: 대조에 trim 을 끼우면 앞뒤 공백이 통과한다', SKIP_NO_JSDOM);
 } else {
-  test('계약⑥-DOM(a): 「퇴사자 휴지통」 문은 관리자·비순서편집일 때만 DOM 에 있다(숨김이 아니라 부재)', () => {
+  test('계약⑥-DOM(a): 사람 쪽 「휴지통」 문은 관리자·비순서편집일 때만 DOM 에 있다(숨김이 아니라 부재)', () => {
     //  ① 비관리자 — 막대 자체가 비어 있다(위도 아래도 컨트롤이 하나도 없다).
     const off = probeDoor(false, false, false);
     assert.strictEqual(off.present, false,
-      '관리자가 아닌데 「퇴사자 휴지통」이 DOM 에 있다 — 영구 삭제의 문은 관리자만 본다');
+      '관리자가 아닌데 「휴지통」(#uaTrash)이 DOM 에 있다 — 영구 삭제의 문은 관리자만 본다');
     assert.strictEqual(off.barBtns, 0, `비관리자 막대에 버튼이 ${off.barBtns}개 있다: ${JSON.stringify(off.ids)}`);
     //  ② 관리자 · 평소 — 「순서 편집」 **뒤에** 선다(관리 동작끼리 붙어 있고, 조회 조건은 그 뒤다).
     const on = probeDoor(true, false, false);
-    assert.strictEqual(on.present, true, '관리자인데 「퇴사자 휴지통」이 만들어지지 않았다');
-    assert.strictEqual(on.text, '퇴사자 휴지통', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
-    assert.strictEqual(on.inBar, true, '「퇴사자 휴지통」이 상단 막대(#uaAdmin)가 아닌 곳에 앉았다');
+    assert.strictEqual(on.present, true, '관리자인데 「휴지통」(#uaTrash)이 만들어지지 않았다');
+    //  ★ 문구는 「휴지통」이다(ADMIN-HUB-3 M5 · 2026-10-02 — 「퇴사자 휴지통」→「휴지통」: 안에 구성원·소속·직급 탭이 있다).
+    assert.strictEqual(on.text, '휴지통', `버튼 문구가 다르다: ${JSON.stringify(on.text)}`);
+    assert.strictEqual(on.inBar, true, '「휴지통」(#uaTrash)이 상단 막대(#uaAdmin)가 아닌 곳에 앉았다');
     //  ★ 2026-09-18 — 막대에 「직급·소속 관리」(#uaOrgTitle)가 한 자리 늘었다(ORG-TITLE-ADMIN §5.0).
     //    휴지통 **뒤**다: 이 파일이 보는 것은 여전히 '퇴사자 휴지통이 어디에 서는가' 하나이고,
     //    구성을 통째로 적어 두는 이유는 옆자리가 조용히 늘거나 줄면 그것도 계약 변경이기 때문이다.
     assert.deepStrictEqual(on.ids, ['uaOrderEdit', 'uaTrash', 'uaOrgTitle'],
-      `상단 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(on.ids)} — 「순서 편집」 다음이 「퇴사자 휴지통」이고 그다음이 「직급·소속 관리」다`);
+      `상단 막대의 버튼 구성이 계약과 다르다: ${JSON.stringify(on.ids)} — 「순서 편집」 다음이 「휴지통」이고 그다음이 「직급·소속 관리」다`);
     //  ③ 순서 편집 중 — 없다. 휴지통을 열면 명부를 다시 읽어 **편집 중인 순서를 날린다**(등록과 같은 이유).
     const ord = probeDoor(true, true, false);
     assert.strictEqual(ord.present, false,
-      '순서 편집 중인데 「퇴사자 휴지통」이 서 있다 — 열면 명부를 다시 읽어 편집 중인 순서가 날아간다');
+      '순서 편집 중인데 「휴지통」(#uaTrash)이 서 있다 — 열면 명부를 다시 읽어 편집 중인 순서가 날아간다');
     //  ④ 쓰기 왕복 중 — 서 있되 꺼진 채다(렌더가 __uaSaving 을 보고 그린다).
     const busy = probeDoor(true, false, true);
     assert.strictEqual(busy.present, true, '왕복 중이라고 문이 사라졌다 — 잠금은 부재가 아니다');
     assert.strictEqual(busy.disabled, true,
-      '왕복 중인데 「퇴사자 휴지통」이 켜져 있다 — 결과를 기다리는 중에 휴지통이 열려 명부를 다시 읽는다');
+      '왕복 중인데 「휴지통」(#uaTrash)이 켜져 있다 — 결과를 기다리는 중에 휴지통이 열려 명부를 다시 읽는다');
     //  ★ 진짜 관문: 관리자였다가 내려간 경우. 숨김으로 바꾸면 여기서만 드러난다.
     const seq = probeDoorSeq([[true, false, false], [false, false, false], [true, false, false], [true, true, false]]);
     assert.deepStrictEqual(seq.map((x) => x.present), [true, false, true, false],
@@ -1086,9 +1100,10 @@ if (!jsdom) {
   });
 
   //  ★ 문이 둘인데 화면은 하나다(2026-09-18) — 들어온 문(__trScope)이 **보이는 탭과 부제**를 정한다.
-  //    퇴사자 쪽은 고를 것이 하나라 탭 줄 자체를 그리지 않는다: 없는 선택지를 가리키는 탭은 거짓말이고,
-  //    탭이 하나도 없는데 role=tablist 라고 하면 보조기술에 없는 구조를 알린다.
-  test('계약⑥-DOM(scope): 들어온 문이 보이는 탭과 부제를 정한다(과제 넷 · 퇴사자 탭 줄 없음)', () => {
+  //    ★ 2026-10-02(ADMIN-HUB-3 M3) — 사람 쪽 문도 탭 줄을 그린다: 구성원 · 소속 · 직급 셋이다(예전엔 「인력」 하나라
+  //      탭 줄이 없었다). 소속·직급은 직급·소속 화면의 조회(orgTitleGet)에서 오고, 받기 전에는 건수 대신 '—' 다
+  //      (0 은 '없다'로 읽힌다). 탭 안내 한 줄(#trNote)이 그 탭의 규칙을 말한다(구성원: 기록 0건만 영구 삭제).
+  test('계약⑥-DOM(scope): 들어온 문이 보이는 탭과 부제를 정한다(과제 넷 · 사람 셋 = 구성원·소속·직급)', () => {
     const p = probeScopeDoor(PAYLOAD, 'project');
     assert.deepStrictEqual(p.tabs.map((t) => t.kind), ['project', 'customer', 'section', 'status'],
       `과제 쪽 문의 탭 구성이 계약과 다르다: ${JSON.stringify(p.tabs.map((t) => t.kind))} — 퇴사자는 여기 없다`);
@@ -1099,25 +1114,33 @@ if (!jsdom) {
     assert.ok(p.scope.startsWith('숨긴 항목 '), `과제 쪽 부제가 계약과 다르다: ${JSON.stringify(p.scope)}`);
 
     const u = probeScopeDoor(PAYLOAD, 'user');
-    assert.strictEqual(u.tabs.length, 0,
-      `퇴사자 쪽 문에 탭이 ${u.tabs.length}개 그려졌다 — 고를 것이 하나인데 탭을 그리면 없는 선택지를 가리킨다`);
-    assert.strictEqual(u.tabsRole, '', '탭이 하나도 없는데 #trTabs 에 role 이 남아 있다 — 보조기술에 없는 구조를 알린다');
-    assert.strictEqual(u.listRole, '', '탭 줄이 없는데 #trList 가 tabpanel 이다 — 가리킬 탭이 없다');
-    assert.strictEqual(u.tabsClass, '', '탭이 없는데 탭 줄 클래스가 남았다 — 빈 자리에 밑줄만 선다');
+    assert.deepStrictEqual(u.tabs.map((t) => t.kind), ['user', 'unit', 'title'],
+      `사람 쪽 문의 탭 구성이 계약과 다르다: ${JSON.stringify(u.tabs.map((t) => t.kind))} — 구성원 · 소속 · 직급(M3)`);
+    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/[0-9—]+$/, '')), ['구성원', '소속', '직급'],
+      `사람 쪽 탭 이름이 다르다: ${JSON.stringify(u.tabs.map((t) => t.text))}`);
+    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/^\D+/, '') || t.text.slice(-1)), [String(PAYLOAD.users.length), '—', '—'],
+      `받기 전의 소속·직급 건수가 '—' 가 아니다(0 은 '없다'로 읽힌다): ${JSON.stringify(u.tabs.map((t) => t.text))}`);
+    assert.strictEqual(u.tabsRole, 'tablist', '탭이 셋인데 #trTabs 가 tablist 가 아니다');
+    assert.strictEqual(u.listRole, 'tabpanel', '탭이 셋인데 #trList 가 tabpanel 이 아니다');
+    assert.strictEqual(u.tabsClass, 'tabs', '사람 쪽 탭 줄이 기존 탭 컨트롤(.tabs)을 쓰지 않는다');
+    assert.ok(!p.note && p.noteHidden, `과제 쪽 탭에 안내 한 줄이 섰다: ${JSON.stringify(p.note)} — 그 줄은 사람 휴지통의 것이다`);
+    assert.ok(!u.noteHidden && /퇴사 처리한 구성원 — 복구하면 다시 로그인·명부 대상이 됩니다/.test(u.note),
+      `구성원 탭 안내 한 줄이 계약과 다르다: ${JSON.stringify(u.note)}(M3)`);
     assert.strictEqual(u.lines, PAYLOAD.users.length,
       `퇴사자 쪽 문에 행이 ${u.lines}개다(${PAYLOAD.users.length}개여야 한다) — 목록은 그대로 그린다`);
-    assert.ok(u.scope.startsWith('퇴사자 ') && /명/.test(u.scope),
-      `퇴사자 쪽 부제가 '퇴사자 N명 …' 이 아니다: ${JSON.stringify(u.scope)} — 무엇을 보고 있는지 화면이 말해야 한다`);
-    assert.ok(/기록이 0건인 계정만 영구 삭제할 수 있습니다/.test(u.scope),
-      `퇴사자 쪽 부제가 '무엇을 지울 수 있는가'를 말하지 않는다: ${JSON.stringify(u.scope)}`);
+    assert.ok(u.scope.startsWith('퇴사 처리한 구성원 ' + PAYLOAD.users.length + '명 · 숨긴 소속 …개 · 숨긴 직급 …개'),
+      `사람 쪽 부제가 '퇴사 처리한 구성원 N명 · 숨긴 소속 …개 · 숨긴 직급 …개' 가 아니다: ${JSON.stringify(u.scope)} — 무엇을 보고 있는지 화면이 말해야 한다`);
+    //  '무엇을 지울 수 있는가'는 부제에서 구성원 탭의 안내 한 줄로 옮겼다(M3 — 소속·직급 탭에는 영구 삭제가 없다).
+    assert.ok(/기록이 0건인 계정만 영구 삭제할 수 있습니다/.test(u.note),
+      `구성원 탭 안내가 '무엇을 지울 수 있는가'를 말하지 않는다: ${JSON.stringify(u.note)}`);
   });
 
   test('변이⑥-DOM(scope): 탭을 거르지 않으면 과제 쪽 문에 퇴사자 탭이 선다', () => {
     const bad = mutate(app, 'const trTabs = () => TR_TABS.filter(t => t.scope === __trScope);',
       'const trTabs = () => TR_TABS;');
     const r = probeScopeDoor(PAYLOAD, 'project', bad);
-    assert.strictEqual(r.tabs.length, 5,
-      `변이 전제: 거르지 않으면 탭이 다섯이어야 한다(실제: ${JSON.stringify(r.tabs.map((t) => t.kind))})`);
+    assert.strictEqual(r.tabs.length, 7,
+      `변이 전제: 거르지 않으면 탭이 일곱이어야 한다(실제: ${JSON.stringify(r.tabs.map((t) => t.kind))})`);
     assert.strictEqual(probeScopeDoor(PAYLOAD, 'project').tabs.length, 4);   // 통제군
   });
 
@@ -1190,7 +1213,7 @@ if (!jsdom) {
     //  받침 없는 라벨은 '가' 다 — 한 탭만 맞춰 놓고 나머지를 놓치는 것을 막는다.
     const only = (kind) => probeRender({ found: true, admin: true, projects: [], users: [], customers: [], sections: [], statuses: [] }, kind).emptyText;
     assert.strictEqual(only('project'), '숨긴 과제가 없습니다.', `과제 탭 문구가 다르다: ${JSON.stringify(only('project'))}`);
-    assert.strictEqual(only('user'), '숨긴 인력이 없습니다.', `인력 탭 문구가 다르다: ${JSON.stringify(only('user'))}`);
+    assert.strictEqual(only('user'), '숨긴 구성원이 없습니다.', `구성원 탭 문구가 다르다: ${JSON.stringify(only('user'))}`);
     assert.strictEqual(only('customer'), '숨긴 발주처가 없습니다.', `발주처 탭 문구가 다르다: ${JSON.stringify(only('customer'))}`);
     assert.strictEqual(only('status'), '숨긴 상태가 없습니다.', `상태 탭 문구가 다르다: ${JSON.stringify(only('status'))}`);
   });
@@ -1308,7 +1331,7 @@ if (!jsdom) {
     const OK = trReply(true, '지웠습니다', null, null);
     const bad = mutate(
       mutate(app, '    db.disabled = !deletable || __trSaving;', '    db.disabled = __trSaving;'),
-      "    lockLineBtn(b, __trSaving || (b.dataset.top === 'delete' && !deletable(b.dataset.tkey)));",
+      "    lockLineBtn(b, __trSaving || b.dataset.troff === '1' || (b.dataset.top === 'delete' && !deletable(b.dataset.tkey)));",
       '    lockLineBtn(b, __trSaving);');
     const r = await probeBusy(PAYLOAD, 'user', OK, bad);
     assert.deepStrictEqual(r.done.ops.map((o) => o.disabled), [false, false, false, false],
@@ -1334,7 +1357,7 @@ if (!jsdom) {
 
   test('변이⑦-DOM(e): 렌더에서 잠금을 빼면 푸시 한 번에 잠금이 증발한다(그래서 이 계약이 필요하다)', async () => {
     const OK = trReply(true, '지웠습니다', null, null);
-    const bad = mutate(app, '    rb.disabled = __trSaving;', '    rb.disabled = false;');
+    const bad = mutate(app, '    rb.disabled = blocked || __trSaving;', '    rb.disabled = false;');
     const r = await probeRerender(PAYLOAD, 'user', OK, bad);
     assert.strictEqual(r.afterPush.ops[0].disabled, false,
       '변이 전제: 렌더가 잠금을 보지 않으면 푸시 뒤 [복구]가 켜져 있어야 한다');
@@ -1531,7 +1554,7 @@ if (!jsdom) {
     //     만들고 클래스로만 가려야 한다 — 실제로 옛 판이 그랬던 모양이다(숨김은 클래스 하나로 풀린다).
     const badA = mutate(app, "  if(!__uaAdmin) return;   // ★ 비관리자",
       "  { const t0 = document.createElement('button'); t0.id = 'uaTrash'; t0.className = 'hidden';" +
-      " t0.textContent = '퇴사자 휴지통'; box.appendChild(t0); }\n  if(!__uaAdmin) return;   // ★ 비관리자");
+      " t0.textContent = '휴지통'; box.appendChild(t0); }\n  if(!__uaAdmin) return;   // ★ 비관리자");
     const ra = probeDoorSeq([[true, false, false], [false, false, false]], badA);
     assert.strictEqual(ra[1].present, true,
       '변이 전제: 숨김으로 바꾸면 내려간 뒤에도 버튼이 DOM 에 남아야 한다(그래서 부재 계약이 필요하다)');

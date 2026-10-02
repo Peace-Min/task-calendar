@@ -219,7 +219,8 @@ if (!jsdom) {
 }
 
 // ── C. 정적 계약 — 배선·보존 ────────────────────────────────────────
-test('계약③: 탭 전환·「숨김 표시」 일곱 배선이 모두 guardInlineEdit 를 지난다(체크박스는 되돌리기 포함)', () => {
+//  ★ 2026-10-02(ADMIN-HUB-3 M4) — 직급·소속의 「숨긴 값도 표시」(#otShowHidden)가 없어져 일곱 → 여섯.
+test('계약③: 탭 전환·「숨김 표시」 여섯 배선이 모두 guardInlineEdit 를 지난다(체크박스는 되돌리기 포함)', () => {
   const cases = [
     ["{ const sh = $('#custShowHidden');", 'custList', /r => r\.dataset\.name, \(\) => \{ custShowHidden = sh\.checked; renderCustomerList\(\); \}, \(\) => \{ sh\.checked = !sh\.checked; \}\)/],
     ["{ const t = $('#codeTabSection');", 'codeList', /r => r\.dataset\.name, \(\) => switchCodeKind\('section'\)\)/],
@@ -227,7 +228,6 @@ test('계약③: 탭 전환·「숨김 표시」 일곱 배선이 모두 guardIn
     ["{ const sh = $('#codeShowHidden');", 'codeList', /r => r\.dataset\.name, \(\) => \{ codeShowHidden = sh\.checked; renderCodeList\(\); \}, \(\) => \{ sh\.checked = !sh\.checked; \}\)/],
     ["{ const t = $('#otTabTitle');", 'otList', /otRowOrig, \(\) => otSwitchTab\('title'\)\)/],
     ["{ const t = $('#otTabUnit');", 'otList', /otRowOrig, \(\) => otSwitchTab\('unit'\)\)/],
-    ["{ const sh = $('#otShowHidden');", 'otList', /otRowOrig, \(\) => \{ __otShowHidden = !!sh\.checked; otRender\(\); otListTop\(\); \}, \(\) => \{ sh\.checked = !sh\.checked; \}\)/],
   ];
   for (const [anchor, listId, tail] of cases) {
     const line = bindLine(app, anchor);
@@ -235,10 +235,8 @@ test('계약③: 탭 전환·「숨김 표시」 일곱 배선이 모두 guardIn
       `${anchor} 배선이 guardInlineEdit('${listId}') 를 지나지 않는다 — 저장하지 않은 편집이 재렌더에 말없이 사라진다: ${line.trim()}`);
     assert.ok(tail.test(line), `${anchor} 배선의 진행·되돌리기 모양이 다르다: ${line.trim()}`);
   }
-  //  ot 숨김 토글 줄은 다른 시험(org-title-web)이 이 부분 문자열로 잡는다 — 한 줄·그 글자 그대로여야 한다.
-  const ot = bindLine(app, "{ const sh = $('#otShowHidden');");
-  assert.ok(ot.startsWith("  { const sh = $('#otShowHidden'); if(sh) sh.addEventListener('change'"), 'ot 숨김 토글 줄의 머리가 바뀌었다');
-  assert.ok(ot.includes('__otShowHidden = !!sh.checked; otRender(); otListTop(); }'), 'ot 숨김 토글의 본문 문자열이 바뀌었다 — 그것을 잡는 시험이 판정을 잃는다');
+  //  ot 숨김 토글은 없다(M4) — 되살아나면 이 표에 다시 넣어야 한다(가드 없이 되살아나는 것을 막는다).
+  assert.ok(!app.includes("$('#otShowHidden')"), '직급·소속의 「숨긴 값도 표시」 배선이 되살아났다 — 이 표(가드)에 없이 서면 편집 중인 행이 말없이 버려진다');
 });
 
 test('계약③: 가드는 DOM 만 본다 — otSwitchTab 은 그대로, otRowOrig 는 data-otkey 로 원래 이름을 찾는다', () => {

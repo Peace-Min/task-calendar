@@ -12,8 +12,11 @@
  *      닫으면 ⋯ 로 돌아갈 자리. ☰ 는 원래대로(J2) — 누르는 동안만 'menu' 메시지를 가로채(삼켜) {cmd:'menu'} 하나인지 본다.
  *   H3 👥 사람 › 👤 구성원 — 실제 명부(#uaList)가 **관리 화면 오른쪽 칸 안에** 그려진다 · 보이는 오버레이는 관리 화면 + 도킹 창뿐 ·
  *      도킹 창의 사각형이 오른쪽 칸 안에 있다 · inert 가 칸 안에 번지지 않았다.
+ *   H3b 이름·편집만(docs/ADMIN-HUB-3.md R1·R2 · 보기만 한다) — 왼쪽 두 휴지통 항목 = 「🗑 휴지통」(id gone · trash) · 위치 줄 ·
+ *      📁 회사 과제 › 📁 공식 과제(도킹)의 상세·목록에 「캘린더에 추가 · ✓ 추가됨 · 제거」 · ✓ · 왼쪽 막대가 보이지 않는다(편집·숨김은 보인다).
  *   H4 📁 회사 과제 › 🏭 발주처 — zz 발주처 하나를 **화면으로** 추가(＋ 추가) → 목록·DB(선택)에 생긴다.
- *   H5 같은 발주처를 **화면으로** 숨김 → 🗑 삭제된 항목 › 발주처 탭 → 영구 삭제(이름 입력) → 목록·휴지통·DB(선택)에서 사라진다.
+ *   H5 같은 발주처를 **화면으로** 숨김 → 📁 회사 과제 › 🗑 휴지통 › 발주처 탭 → 영구 삭제(이름 입력) → 목록·휴지통·DB(선택)에서 사라진다.
+ *      (2026-10-02 ADMIN-HUB-3 M2 — 항목 이름 「삭제된 항목」→「🗑 휴지통」 · 항목 id 는 그대로 trash.)
  *      ★ 가역 — 이 시험은 데이터를 남기지 않는다. 중간에 실패해도 마지막 정리(H7)가 같은 화면 길(숨김 → 영구 삭제)로 지운다.
  *   H6 Esc — 관리 화면이 닫히고 도킹 창은 제자리(body)로 돌아간다 · inert 가 남지 않는다.
  *   H7 복원 — 이 시험이 건드린 localStorage(tc_adminLast:*)를 시작 값으로 되돌린다 · 남은 zz 발주처 정리.
@@ -259,6 +262,39 @@ async function main() {
     ok('H3 inert 가 관리 화면 안으로 번지지 않았다', !s3.inertInHub);
   }
 
+  //  H3b — 이름(R2) · 관리 화면의 공식 과제 = 편집만(R1) — **보기만 한다**(아무것도 누르지 않는다: 캘린더 추가·편집·숨김 없음)
+  log('H3b 두 휴지통 이름 · 위치 줄 · 공식 과제(도킹)에 내 캘린더 표시 없음');
+  {
+    const names = await evj(`JSON.stringify(['gone','trash'].map(function(k){ var b = document.querySelector('#ahNav [data-ahitem="' + k + '"]'); return b ? b.textContent.replace(/\\d+$/, '').trim() : null; }))`);
+    ok('H3b 왼쪽 두 휴지통 항목 = 「🗑휴지통」(사람 · 회사 과제)', names.every((t) => t && /^🗑\s*휴지통$/.test(t)), J(names));
+    await click('#ahNav [data-ahitem="gone"]');
+    const sg = await waitPage((x) => x.docked === 'trashModal' && !x.trBusy, { timeout: 20000 });
+    const wg = await ev(`(document.getElementById('ahWhere').textContent || '').replace(/\\s+/g, ' ').trim()`);
+    ok('H3b 사람 휴지통 위치 줄 「👥 사람 › 🗑 휴지통」 · 탭 구성원 · 소속 · 직급', !!sg && /👥 사람 ›\s*🗑 휴지통/.test(wg)
+      && J(await evj(`JSON.stringify([].map.call(document.querySelectorAll('#trTabs [data-trtab]'), function(b){ return b.dataset.trtab; }))`)) === J(['user', 'unit', 'title']), wg);
+    await click('#ahGrpProj');
+    await click('#ahNav [data-ahitem="projects"]');
+    const sp = await waitPage((x) => x.docked === 'officialModal', { timeout: 15000 });
+    //  내 캘린더에 든 공식 과제가 있으면 그것을, 없으면 첫 행을 고른다(offSelect — 선택은 쓰기가 아니다)
+    const m1 = sp && await evj(`JSON.stringify((function(){
+      var rows = [].slice.call(document.querySelectorAll('#offList .off-row')); if(!rows.length) return { rows: 0 };
+      var r = rows.find(function(x){ return x.classList.contains('subbed'); }) || rows[0];
+      offSelect(r.dataset.id);
+      var vis = function(el){ return !!el && getComputedStyle(el).display !== 'none'; };
+      var sub = document.querySelector('#offDetail .off-d-sub'), act = document.querySelector('#offDetail .off-d-act');
+      var subbed = document.querySelectorAll('#offList .off-row.subbed');
+      return { rows: rows.length, subbedRows: subbed.length,
+        sub: vis(sub), act: vis(act), tick: [].some.call(document.querySelectorAll('#offList .off-subtick'), vis),
+        bar: [].some.call(subbed, function(x){ return getComputedStyle(x).boxShadow !== 'none'; }) }; })())`);
+    if (!m1 || !m1.rows) log('H3b 공식 과제 목록이 비어 있다(오프라인?) — 표시 판정 생략');
+    else {
+      ok('H3b 관리 화면 공식 과제 상세에 「캘린더에 추가 · ✓ 추가됨 · 제거」가 보이지 않는다(R1)', m1.sub === false, J(m1));
+      ok('H3b 관리 화면 공식 과제 상세에 편집 · 숨김은 보인다(R1)', m1.act === true, J(m1));
+      if (m1.subbedRows) ok('H3b 관리 화면 공식 과제 목록에 ✓ · 왼쪽 막대가 없다(R1)', m1.tick === false && m1.bar === false, J(m1));
+      else log('H3b 내 캘린더에 든 공식 과제가 없다 — ✓ · 왼쪽 막대 판정 생략');
+    }
+  }
+
   //  H4 — 발주처 추가(화면)
   log(`H4 📁 회사 과제 › 🏭 발주처 — '${ZZ}' 추가`);
   await click('#ahGrpProj');
@@ -276,11 +312,11 @@ async function main() {
   if (db1 !== null) ok('H4 DB 대조 — customer 에 1행', db0 === 0 && db1 === 1, `전 ${db0} · 후 ${db1}`);
 
   //  H5 — 숨김 → 영구 삭제(화면) = 원복
-  log(`H5 '${ZZ}' 숨김 → 🗑 삭제된 항목 › 발주처 → 영구 삭제`);
+  log(`H5 '${ZZ}' 숨김 → 📁 회사 과제 › 🗑 휴지통 › 발주처 → 영구 삭제`);
   const hidden = await hideViaHub(ZZ);
   ok('H5 화면으로 숨김 → 활성 목록에서 빠졌다', hidden === true, String(hidden));
   const purged = await purgeViaHub(ZZ);
-  ok('H5 삭제된 항목에서 영구 삭제 → 휴지통에서도 사라졌다', purged === true, String(purged));
+  ok('H5 회사 과제 휴지통에서 영구 삭제 → 휴지통에서도 사라졌다', purged === true, String(purged));
   const s5 = await pstate();
   ok('H5 겹침 없음(관리 화면 + 휴지통)', noStack(s5, 'trashModal'), J({ stack: s5.stack, visible: s5.visible }));
   const db2 = dbCust();
