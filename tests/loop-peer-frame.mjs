@@ -14,6 +14,9 @@
  *    ⑤ 「사람 고르기」(2026-10-02 · docs/PEER-PICKER.md R10) — 툴바 👥 → 검색 → 열람 → 최근 → ☆ 즐겨찾기(팝오버 = 열람 창) →
  *        열람 창 ▾ 사람 바꾸기(두 번째 대상 __pf_target2__ 로 · 보는 중 · 보던 달 잇기) → 바뀐 창도 postMessage 0 · DB 무변화.
  *        실행이 끝나면 내 계정의 tc_peerFav:<me> · tc_peerRecent:<me> 는 시작 전 값으로 되돌린다.
+ *    ⑥ 「사람 고르기 · 조직도」(2026-10-02 · docs/PEER-PICKER-ORG.md R10) — 툴바 👥(늘 「사람」 탭) → 「조직도」 탭 →
+ *        대상이 든 조직(seedTarget 의 org_id)을 트리(넓음)·경로(좁음)로 고른다 → 대상 행(직속 행 수 = DB 활성 인원 · 나 제외) →
+ *        열람 → 그 사람 일정 · postMessage 0 · DB 무변화(누적 검증). 저장 키는 ⑤ 와 같은 finally 가 되돌린다.
  *
  *  ★★ 2026-09-09 — 이 시험이 낡아서 실패했던 자리(고친 경위):
  *    2026-09-07 에 C4.1 「내 일정 겹쳐보기」가 들어왔고 **기본값이 켬**이다. 그래서 열람 창에는
@@ -904,6 +907,73 @@ try {
     await sleep(400);
     const gone = Number(await cdp.ev(`document.querySelectorAll("iframe[src*='peer=1']").length`));
     ok('R10 닫으면 프레임이 사라진다', gone === 0, `프레임 ${gone}`);
+  }
+
+  /* ── ⑦ 「사람 고르기 · 조직도」(docs/PEER-PICKER-ORG.md R10) — 툴바 👥 → (열 때 늘 「사람」 탭) → 「조직도」 탭 →
+   *      트리(넓음) 또는 경로·하위 조직 줄(좁음)로 **대상이 든 조직**을 고른다 → 대상 행 → 열람 → 봉인 · DB 무변화(누적 검증).
+   *  ★ 대상(__pf_target__)은 seedTarget 이 「활성 조직 중 sort_order 첫 번째」에 심었다 — 그 조직 이름을 DB 에서 읽어 거기로 간다.
+   *  ★ 조작은 사람이 누르는 자리로만(탭 · ▸ · 트리 노드 · 경로 · 하위 조직 줄 · 행). 경로(루트 → 그 조직)만 앱의 pkOrgPath 로 **읽는다**.
+   *  ★ 저장 키는 위 ⑥ 과 같은 finally 가 시작 전 값으로 되돌린다(이 라운드도 최근에 대상을 남기므로). */
+  console.log('\n[사람 고르기 · 조직도] 툴바 → 조직도 탭 → 대상의 조직 → 대상 행 → 열람 (PEER-PICKER-ORG R10)');
+  {
+    const TU_ORG = num(`SELECT org_id FROM app_user WHERE login_id='${TU}'`);
+    const TU_UNIT = String(one(`SELECT name FROM org_unit WHERE org_id=${TU_ORG}`) || '');
+    const meQ = me.replace(/'/g, "''");
+    const dbDirect = num(`SELECT COUNT(*) FROM app_user WHERE org_id=${TU_ORG} AND is_active=1 AND login_id<>'${meQ}'`);
+    ok('R10(조직도) 대상의 조직을 DB 에서 읽었다', !!TU_UNIT && TU_ORG > 0, `org_id=${TU_ORG} name=${TU_UNIT}`);
+    await cdp.ev(`document.getElementById("btnPeerPick").click()`);
+    let s = await pkWait(cdp);
+    const t0 = JSON.parse(await cdp.ev(`JSON.stringify({people:(document.getElementById("pkTabPeople")||{}).getAttribute?.("aria-selected"),
+      view:(document.getElementById("peerPicker")||{dataset:{}}).dataset.view})`));
+    ok('R10(조직도) 팝오버는 「사람」 탭으로 열린다', s.open && s.status === 'ok' && t0.people === 'true' && t0.view === 'people', JSON.stringify(t0));
+    await cdp.ev(`document.getElementById("pkTabOrg").click()`);
+    await sleep(150);
+    const view = String(await cdp.ev(`document.getElementById("peerPicker").dataset.view`));
+    ok('R10(조직도) 「조직도」 탭 → 조직도 본문(두 칸 또는 한 칸)', view === 'org-wide' || view === 'org-narrow', view);
+    //  루트 → 대상 조직 경로를 따라 사람이 누르는 대로 — 넓으면 ▸ 펼치고 노드, 좁으면 경로의 루트 → 하위 조직 줄을 차례로.
+    const path = JSON.parse(await cdp.ev(`JSON.stringify((typeof __pk!=="undefined" && __pk && __pk.org) ? pkOrgPath(__pk.org, ${JSON.stringify(TU_UNIT)}) : [])`));
+    ok('R10(조직도) 대상 조직이 조직도 트리에 있다', path.length > 0 && path[path.length - 1] === TU_UNIT, JSON.stringify(path));
+    const nav = JSON.parse(await cdp.ev(`(async()=>{const P=${JSON.stringify(path)}, wide=${JSON.stringify(view === 'org-wide')};
+      const wait=(ms)=>new Promise((r)=>setTimeout(r,ms)); const steps=[];
+      const q=(sel,u)=>[...document.querySelectorAll(sel)].find((b)=>b.dataset.unit===u);
+      if(wide){
+        for(const a of P.slice(0,-1)){ const n=q("#pkBody .pk-tree .pk-node",a); if(!n){ steps.push("노드 없음:"+a); break; }
+          if(n.getAttribute("aria-expanded")==="false"){ n.querySelector('[data-act="twist"]').click(); steps.push("펼침:"+a); await wait(60); } }
+        const t=q("#pkBody .pk-tree .pk-node",P[P.length-1]); if(t){ t.click(); steps.push("고름:"+P[P.length-1]); }
+      }else{
+        const root=q("#pkBody .pk-crumb button",P[0]); if(root){ root.click(); steps.push("경로:"+P[0]); await wait(60); }
+        for(const a of P.slice(1)){ const b=q("#pkBody .pk-olist .pk-sub",a); if(!b){ steps.push("줄 없음:"+a); break; } b.click(); steps.push("내려감:"+a); await wait(60); }
+      }
+      await wait(120);
+      const sel=wide ? (document.querySelector('#pkBody .pk-tree .pk-node[aria-selected="true"]')||{dataset:{}}).dataset.unit
+                     : (document.querySelector("#pkBody .pk-crumb b")||{}).textContent;
+      return JSON.stringify({steps, sel, unitRows:document.querySelectorAll('#pkBody [data-sec="Unit"] .pk-row').length});})()`));
+    ok('R10(조직도) 대상의 조직이 골라졌다(트리 선택 · 또는 경로 끝)', nav.sel === TU_UNIT, JSON.stringify(nav));
+    s = await pkState(cdp);
+    const tr = s.rows.find((x) => x.id === TU);
+    ok('R10(조직도) 오른쪽 목록에 대상 행이 있다 · 열 수 있다(회색 아님)', !!tr && tr.sec === 'Unit' && !tr.off, JSON.stringify(tr || s.rows.slice(0, 5)));
+    ok('R10(조직도) 직속 사람 행 수 = DB 의 그 조직 활성 인원(나 제외)', nav.unitRows === dbDirect, `화면 ${nav.unitRows} · DB ${dbDirect}`);
+    ok('R10(조직도) 나 자신은 조직도 목록에 없다', !s.rows.some((x) => x.id === me), JSON.stringify(s.rows.filter((x) => x.id === me)));
+    //  열기 — 팝오버가 닫히고 그 사람 열람 창
+    await pkClickRow(cdp, TU);
+    const f3 = await waitPeerFrame(cdp, '열람대상');
+    s = await pkState(cdp);
+    ok('R10(조직도) 대상 행을 누르면 팝오버가 닫히고 열람 창이 그 사람으로 뜬다', f3.n >= 0 && f3.frames === 1 && !s.open, JSON.stringify(f3));
+    const titles3 = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W}; return JSON.stringify(w.__test.state().entries.filter((e)=>!e._mine).map((e)=>e.title).sort());})()`));
+    ok('R10(조직도) 그 사람 일정이 뜬다', JSON.stringify(titles3) === JSON.stringify([...TITLES].sort()), titles3.join(','));
+    const sealed3 = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+      let n=0; const orig=w.chrome.webview.postMessage.bind(w.chrome.webview);
+      w.chrome.webview.postMessage=function(m){ n++; return orig(m); };
+      let err=null;
+      try{ for(const c of [{cmd:"saveState",state:{}},{cmd:"replaceAllState",state:{}},{cmd:"membersGet"},{cmd:"peerSchedule",loginId:"x"}]) w.hpost(c); }catch(e){ err=e.message; }
+      try{ w.eval("save()"); }catch(e){ err=err||e.message; }
+      w.chrome.webview.postMessage=orig;
+      return JSON.stringify({posted:n, err});})()`));
+    ok('R10(조직도) **봉인**: 조직도에서 연 창도 postMessage 0회', sealed3.posted === 0 && !sealed3.err, JSON.stringify(sealed3));
+    await cdp.ev('closeModal("#peerModal")');
+    await sleep(400);
+    const gone3 = Number(await cdp.ev(`document.querySelectorAll("iframe[src*='peer=1']").length`));
+    ok('R10(조직도) 닫으면 프레임이 사라진다', gone3 === 0, `프레임 ${gone3}`);
   }
 
   //  R3 — 좌우 줄 맞춤을 한 번이라도 실제로 쟀는가(창이 안 그려지면 모두 건너뛰어 아무것도 증명하지 않는다).

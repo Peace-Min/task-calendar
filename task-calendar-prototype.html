@@ -1478,6 +1478,44 @@ body[data-peer] .todo-daymemo{ cursor:default }
 .pk-note{ font-size:var(--fs-meta); color:var(--muted); padding:6px 4px; line-height:1.5 }
 .pk-note .btn{ margin-left:6px }
 #peerModal .pk-star#pvFav{ font-size:19px }
+/* ── 사람 고르기 — [사람 | 조직도] 탭 · 내 부서 · 조직도(docs/PEER-PICKER-ORG.md G1–G8) ─────────────
+   ★ 색은 기존 토큰만(테마 5종 대비는 토큰이 지킨다 · G10). 고른 조직 = --accent-soft 바탕 + --accent-2 글자(.btn.on 과 같은 짝).
+   ★ 넓을 때(.pk-wide) 팝오버 폭은 JS(pkPlace)가 정한다 — 두 칸(트리 | 목록)은 본문 안에서 각자 스크롤한다.  */
+.pk-tabs{ display:flex; gap:2px; flex:none; margin-top:6px; border-bottom:1px solid var(--line) }
+.pk-tab{ border:0; background:none; font:inherit; font-size:var(--fs-body); font-weight:600; color:var(--muted); cursor:pointer;
+         padding:6px 12px; margin-bottom:-1px; border-bottom:2px solid transparent; border-radius:var(--r-sm) var(--r-sm) 0 0 }
+.pk-tab:hover{ color:var(--text); background:var(--hover-bg) }
+.pk-tab[aria-selected="true"]{ color:var(--accent-2); border-bottom-color:var(--accent) }
+.pk-tab:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px }
+.pk-tabs.pk-dim .pk-tab{ opacity:.55 }   /* G1 — 검색어가 있으면 흐리게(눌러도 된다 — 누르면 검색어를 지우고 그 탭으로) */
+.pk-sec-h.pk-sec-x{ display:flex; align-items:center; gap:6px }
+.pk-sec-h .pk-cnt{ font-weight:500 }
+.pk-more{ margin-left:auto; border:0; background:none; font:inherit; font-size:var(--fs-meta); font-weight:600; color:var(--accent-2);
+          cursor:pointer; padding:2px 4px; border-radius:var(--r-sm) }
+.pk-more:hover{ background:var(--hover-bg) }
+.pk-more:focus-visible, .pk-sub:focus-visible, .pk-node:focus-visible, .pk-crumb button:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px }
+.pk-pop.pk-wide .pk-body{ display:flex; flex-direction:column; overflow:hidden }
+.pk-org2{ display:grid; grid-template-columns:minmax(180px, 230px) minmax(0, 1fr); height:420px; flex:0 1 auto; min-height:0;
+          border:1px solid var(--line); border-radius:var(--r-sm); overflow:hidden }
+.pk-tree{ position:relative; overflow-y:auto; min-height:0; border-right:1px solid var(--line); padding:4px; background:var(--bg) }
+.pk-node{ display:flex; align-items:center; gap:4px; width:100%; text-align:left; font:inherit; font-size:var(--fs-body); color:var(--text);
+          background:none; border:0; border-radius:var(--r-sm); padding:5px 6px; cursor:pointer }
+.pk-node:hover{ background:var(--hover-bg) }
+.pk-node[aria-selected="true"]{ background:var(--accent-soft); color:var(--accent-2); font-weight:700 }
+.pk-tw{ flex:none; width:14px; text-align:center; font-size:var(--fs-micro); color:var(--muted) }
+.pk-nm{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.pk-mine{ flex:none; font-size:var(--fs-micro); font-weight:600; color:var(--accent-2) }
+.pk-nc{ flex:none; margin-left:auto; padding-left:6px; font-size:var(--fs-meta); font-weight:400; color:var(--muted) }
+.pk-olist{ overflow-y:auto; min-height:0; padding:4px 6px }
+.pk-crumb{ display:flex; flex-wrap:wrap; align-items:center; gap:2px; font-size:var(--fs-meta); color:var(--muted); padding:4px 4px 6px }
+.pk-crumb button{ border:0; background:none; font:inherit; color:var(--accent-2); cursor:pointer; padding:0 2px; border-radius:var(--r-sm) }
+.pk-crumb button:hover{ text-decoration:underline }
+.pk-crumb b{ color:var(--text) }
+.pk-sub{ display:flex; align-items:center; width:100%; text-align:left; font:inherit; font-size:var(--fs-emph); font-weight:600; color:var(--text);
+         background:none; border:0; border-radius:var(--r-sm); padding:7px 6px; cursor:pointer }
+.pk-sub:hover{ background:var(--hover-bg) }
+.pk-sub .pk-gt{ flex:none; margin-left:8px; color:var(--muted) }
+.pk-subsep{ border-top:1px solid var(--line); margin:6px 0 }
 /* 좁은 폭 — 팝오버가 화면 폭을 넘지 않게(좌우 8px). 자리는 JS 가 잰다. */
 @media (max-width:440px){ .pk-pop{ width:calc(100vw - 16px) } }
 #peerBanner{ display:none }
@@ -5997,11 +6035,22 @@ function closePeerFrame(){
  *    name 은 표시용 캐시다(명부를 못 읽어도 이름이 보이게). 깨진 값·형식 이상은 빈 목록으로 읽는다(pkParse).
  *  ★ 열람 창(PEER) 안에는 이 구역이 **없다** — 버튼은 bind() 가 지우고, 팝오버는 PEER 면 만들지도 열지도 않는다(K1).
  *  ★ DB 문자열(이름·직급·조직)은 전부 textContent 로만 넣는다 — innerHTML 금지(renderMembers 와 같은 규칙 · K12).
- *  ★ 이 구역은 쓰기 명령을 보내지 않는다 — 호스트로 가는 것은 membersGet(읽기) 하나뿐이다. */
+ *  ★ 이 구역은 쓰기 명령을 보내지 않는다 — 호스트로 가는 것은 membersGet(읽기) 하나뿐이다.
+ *  ★ 2026-10-02 [사람 | 조직도] 탭(docs/PEER-PICKER-ORG.md G1–G10) — 「사람」 = ★ 즐겨찾기 → 최근 → **내 부서**(myUnit 직속),
+ *    「조직도」 = 넓으면 트리 | 목록 두 칸 · 좁으면 한 칸 내려가기. 같은 membersGet 회신의 units·myUnit 만 더 읽는다(새 명령 없음).
+ *    조직 순서·루트·순환 가드는 「구성원 보기」(mbCmp · mbChildMap · renderUnitTree)와 같은 규칙이고, 그 화면은 건드리지 않는다. */
 const PK_RECENT_MAX = 5;     // K6 — 최근 본 사람
 const PK_FAV_MAX = 20;       // K7 — 즐겨찾기
 const PK_RESULT_MAX = 20;    // K3 — 검색 결과 행
-let __pk = null;   // { mode:'top'|'modal', opener, status:'loading'|'ok'|'fail', msg, members } | null — 열려 있을 때만 산다
+//  ★ [사람 | 조직도] 탭(docs/PEER-PICKER-ORG.md G1–G10) — 조직도 탭이 두 칸(트리 | 목록)일 때 팝오버 폭과, 두 칸을 포기하는 경계.
+//    경계는 「쓸 수 있는 폭」(툴바 = 창 폭 − 16 · 열람 창 = 머리 폭 − 16) 기준이다. 트리 칸 180–230px + 목록 칸 ≥ 340px 가 들어가는 폭.
+const PK_ORG_W = 660;        // G4 — 넓을 때 팝오버 폭(화면·열람 창 머리 안으로 당긴다)
+const PK_ORG_MIN_W = 600;    // G6 — 쓸 수 있는 폭이 이보다 좁으면 한 칸(경로 + 하위 조직 + 직속 사람 · 한 단계씩 내려가기)
+//  __pk = { mode:'top'|'modal', opener, status:'loading'|'ok'|'fail', msg, members,
+//           tab:'people'|'org'(G1 — 열 때마다 'people'), org(pkOrgIndex 결과 | null), myUnit(트리에 있는 내 조직 | ''),
+//           unit(조직도에서 고른 조직), open(펼친 조직 Set), focus(다시 그린 뒤 포커스 힌트 | null) } | null — 열려 있을 때만 산다.
+//  ★ 트리 펼침·고른 조직은 **이번에 연 동안만** 산다(__pk 와 함께 죽는다 · 저장 안 함) — 다시 열면 늘 「사람」 탭 · 내 부서부터(G1·G4).
+let __pk = null;
 let __pkSeq = 0;   // 명부 조회 차례표 — 닫았다 다시 열었거나 다시 불렀으면 늦게 온 옛 회신을 버린다
 
 function pkMe(){ return (currentUser && currentUser.loginId != null) ? String(currentUser.loginId) : ''; }
@@ -6129,7 +6178,78 @@ function pkModel(o){
     all.sort((a, b) => Number(b.canView) - Number(a.canView));  // 열 수 있는 사람 먼저(안정 정렬 — 명부 순서는 그대로)
     results = all.slice(0, PK_RESULT_MAX); more = all.length - results.length;
   }
-  return { fav, recent, results, more };
+  //  G2 — 「내 부서」(검색어가 없을 때만): o.myUnit 에 **직속**한 사람 · 명부 순서 그대로.
+  //    mineCount = 나를 뺀 그 조직 직속 인원(머리말 「N명」 — 위에 이미 나온 사람도 센다) · mine = 그중 즐겨찾기/최근에 아직 안 나온 사람.
+  //    ★ o.myUnit 은 부르는 쪽이 「트리에 있는 조직」일 때만 준다(G9 — 없거나 모르는 조직이면 '' → 묶음 자체가 없다).
+  let mine = [], mineCount = 0;
+  const myUnit = String(o.myUnit || '');
+  if(!q && dir && myUnit){
+    for(const [id, m] of byId){
+      if(String(m.orgUnit || '') !== myUnit) continue;
+      if(id === me) continue;          // G2 — 나는 내 부서 목록에 없다
+      mineCount++;
+      if(shown.has(id)) continue;      // G2 — 즐겨찾기·최근에 이미 나온 사람은 다시 안 그린다(같은 사람 두 줄 금지)
+      mine.push(row(id, ''));
+    }
+  }
+  return { fav, recent, results, more, mine, mineCount };
+}
+//  순수 — 조직도 색인(G4·G5·G9). 「구성원 보기」와 같은 규칙: 순서 mbCmp(sortOrder → 이름) · 부모가 없거나 목록에 없으면 루트 ·
+//    parent 순환은 방문 가드로 멈춘다(루트에서 닿지 않는 조직은 트리에 없다 = renderUnitTree 와 같다).
+//    반환 { roots:[이름], kids:Map(이름→[하위 이름, 정렬됨]), parent:Map(이름→부모), direct:Map(이름→[명부 행 · 나 제외 · 명부 순서]),
+//           count:Map(이름→그 조직 + 하위 전체 인원 · 나 제외), has(이름) }
+//  ★ 같은 login_id 가 두 번 와도 한 번만 센다(pkModel 의 byId 와 같은 규칙).
+function pkOrgIndex(units, members, me){
+  const meId = String(me || '');
+  const byName = new Map();
+  for(const u of (Array.isArray(units) ? units : [])){
+    const n = (u && u.name != null) ? String(u.name) : '';
+    if(n && !byName.has(n)) byName.set(n, u);
+  }
+  const list = [...byName.values()];
+  const kidsRaw = mbChildMap(list);
+  const roots = list.filter(u => { const p = (u.parent != null) ? String(u.parent) : ''; return !p || !byName.has(p); })
+                    .sort(mbCmp).map(u => String(u.name));
+  const reach = new Set(), kids = new Map(), parent = new Map();
+  const visit = (n) => {
+    reach.add(n);
+    const ks = [];
+    for(const u of (kidsRaw.get(n) || []).slice().sort(mbCmp)){
+      const k = String(u.name);
+      if(reach.has(k)) continue;       // 순환·중복 가드
+      parent.set(k, n); ks.push(k); visit(k);
+    }
+    kids.set(n, ks);
+  };
+  for(const r of roots) if(!reach.has(r)) visit(r);
+  const direct = new Map(), seen = new Set();
+  for(const m of (Array.isArray(members) ? members : [])){
+    const id = (m && m.loginId != null) ? String(m.loginId) : '';
+    if(!id || seen.has(id)) continue;
+    seen.add(id);
+    if(id === meId) continue;          // G4 — 인원 수·목록에서 나를 뺀다
+    const ou = String(m.orgUnit || '');
+    if(!reach.has(ou)) continue;
+    if(!direct.has(ou)) direct.set(ou, []);
+    direct.get(ou).push(m);
+  }
+  const count = new Map();
+  const tally = (n) => { let c = (direct.get(n) || []).length; for(const k of (kids.get(n) || [])) c += tally(k); count.set(n, c); return c; };
+  for(const r of roots) tally(r);
+  return { roots, kids, parent, direct, count, has:(n) => reach.has(String(n == null ? '' : n)) };
+}
+//  순수 — 루트 → 그 조직까지의 경로(이름 배열). 트리에 없으면 []. 순환 가드.
+function pkOrgPath(ix, name){
+  const out = [], seen = new Set();
+  let c = String(name == null ? '' : name);
+  while(c && ix && ix.has(c) && !seen.has(c)){ seen.add(c); out.unshift(c); c = ix.parent.get(c) || ''; }
+  return out;
+}
+//  명부 한 사람 → 행 모델(pkModel 의 행과 같은 모양 — pkRowEl 이 그린다). 조직도 목록에서 쓴다.
+function pkDirRow(m, favIds, viewing){
+  const id = String(m.loginId);
+  return { loginId:id, name:String(m.name || id), title:String(m.title || ''), org:String(m.orgUnit || ''),
+           gone:false, canView:!!m.canViewSchedule, viewing:id === viewing, fav:favIds.has(id) };
 }
 
 //  한 행 — [이름 · 직급 / 조직 (꼬리표)] + 오른쪽 ☆/★(aria-pressed) 또는 ✕(명부에 없음).
@@ -6189,51 +6309,273 @@ function pkSection(body, title, rows, kind){
   for(const r of rows) g.appendChild(pkRowEl(r, kind));
   body.appendChild(h); body.appendChild(g);
 }
+//  K3 — 「명부를 불러오지 못했습니다 · 다시 시도」 한 줄(「사람」 탭 · 「조직도」 탭이 같은 문구·버튼을 쓴다 — G9).
+function pkFailNote(){
+  const n = pkNote(__pk.msg || '명부를 불러오지 못했습니다', true);
+  const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'btn sm'; rb.dataset.act = 'retry'; rb.textContent = '다시 시도';
+  n.appendChild(rb);
+  return n;
+}
+//  G1 — 지금 무엇을 보여 주나: 검색어가 있으면 어느 탭이든 'search'(K3 그대로) · 아니면 탭대로.
+function pkView(){
+  const inp = document.getElementById('pkSearch');
+  if(inp && pkNorm(inp.value)) return 'search';
+  return (__pk && __pk.tab === 'org') ? 'org' : 'people';
+}
+//  G4·G6·G7 — 조직도 두 칸이 들어갈 폭인가. 툴바 = 창 폭 − 16 · 열람 창 = 머리 폭 − 16(잴 수 없으면 0 → 한 칸).
+function pkAvailW(){
+  if(!__pk) return 0;
+  if(__pk.mode === 'modal'){
+    const pop = document.getElementById('peerPicker'), head = pop ? pop.parentElement : null;
+    const hw = head ? head.clientWidth : 0;
+    return hw ? hw - 16 : 0;
+  }
+  return (window.innerWidth || document.documentElement.clientWidth || 0) - 16;
+}
+function pkWantWide(){ return !!__pk && pkView() === 'org' && pkAvailW() >= PK_ORG_MIN_W; }
+//  G1 — 탭 상태(aria-selected · 로빙 tabindex · 검색 중이면 흐리게)만 갈아끼운다(탭 버튼은 다시 만들지 않는다 → 누른 탭의 포커스가 산다).
+function pkSyncTabs(pop, searching){
+  const tl = pop.querySelector('.pk-tabs'); if(!tl) return;
+  tl.classList.toggle('pk-dim', !!searching);
+  for(const t of tl.querySelectorAll('[role="tab"]')){
+    const on = t.dataset.tab === __pk.tab;
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;
+  }
+  const body = pop.querySelector('.pk-body');
+  if(body) body.setAttribute('aria-labelledby', __pk.tab === 'org' ? 'pkTabOrg' : 'pkTabPeople');
+}
+//  G2 — 「내 부서 · <조직명> N명 ····· 조직도에서 다른 부서 ›」 + 직속 사람(즐겨찾기·최근에 이미 나온 사람 제외).
+function pkMineSection(body, md, unit){
+  const h = document.createElement('div'); h.className = 'pk-sec-h pk-sec-x';
+  const t = document.createElement('span'); t.textContent = '내 부서 · ' + unit; h.appendChild(t);
+  const c = document.createElement('span'); c.className = 'pk-cnt'; c.textContent = md.mineCount + '명'; h.appendChild(c);
+  const more = document.createElement('button');
+  more.type = 'button'; more.className = 'pk-more'; more.dataset.act = 'goorg'; more.textContent = '조직도에서 다른 부서 ›';
+  more.title = '조직도 탭에서 내 부서부터 보기';
+  h.appendChild(more);
+  body.appendChild(h);
+  if(md.mine.length){
+    const g = document.createElement('div'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', '내 부서 · ' + unit);
+    g.dataset.sec = 'Mine';
+    for(const r of md.mine) g.appendChild(pkRowEl(r, null));
+    body.appendChild(g);
+  }else if(!md.mineCount){
+    body.appendChild(pkNote('내 부서에 다른 사람이 없습니다'));
+  }
+}
+//  G4 — 왼쪽 트리. 펼친 조직(__pk.open)의 하위만 그린다 · 고른 조직 = aria-selected · 로빙 tabindex(고른 조직 하나만 0).
+//  ★ 트리 노드는 <button role="treeitem"> 이다(평평한 목록 + aria-level). ▸/▾ 는 그 안의 표시(data-act="twist" — 누르면 펼침만 바꾼다).
+function pkTreeEl(ix){
+  const nav = document.createElement('div');
+  nav.className = 'pk-tree'; nav.setAttribute('role', 'tree'); nav.setAttribute('aria-label', '조직도');
+  const sel = __pk.unit, mine = __pk.myUnit;
+  const walk = (names, depth) => {
+    for(const n of names){
+      const ks = ix.kids.get(n) || [], open = __pk.open.has(n);
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'pk-node'; b.setAttribute('role', 'treeitem');
+      b.dataset.act = 'unit'; b.dataset.unit = n; b.dataset.where = 'tree';
+      b.setAttribute('aria-level', String(depth + 1));
+      b.setAttribute('aria-selected', n === sel ? 'true' : 'false');
+      if(ks.length) b.setAttribute('aria-expanded', open ? 'true' : 'false');
+      b.tabIndex = -1;
+      b.style.paddingLeft = (6 + depth * 14) + 'px';
+      const tw = document.createElement('span'); tw.className = 'pk-tw'; tw.setAttribute('aria-hidden', 'true');
+      if(ks.length){ tw.dataset.act = 'twist'; tw.dataset.unit = n; tw.textContent = open ? '▾' : '▸'; }
+      b.appendChild(tw);
+      const nm = document.createElement('span'); nm.className = 'pk-nm'; nm.textContent = n; b.appendChild(nm);
+      if(mine && n === mine){ const s = document.createElement('span'); s.className = 'pk-mine'; s.textContent = '내 소속'; b.appendChild(s); }
+      const nc = document.createElement('span'); nc.className = 'pk-nc'; nc.textContent = String(ix.count.get(n) || 0);
+      const sr = document.createElement('span'); sr.className = 'sr-only'; sr.textContent = '명'; nc.appendChild(sr);
+      b.appendChild(nc);
+      nav.appendChild(b);
+      if(open && ks.length) walk(ks, depth + 1);
+    }
+  };
+  walk(ix.roots, 0);
+  const nodes = [...nav.querySelectorAll('.pk-node')];
+  const cur = nodes.find(b => b.dataset.unit === sel) || nodes[0];
+  if(cur) cur.tabIndex = 0;
+  return nav;
+}
+//  G5·G6 — 오른쪽(좁으면 유일한) 목록: 경로(조상은 눌러서 이동) · 하위 조직 줄(이름 · N명 · ›) · 구분선 · 직속 사람 행(K4 와 같은 행).
+function pkUnitListEl(ix, unit){
+  const box = document.createElement('div'); box.className = 'pk-olist';
+  const path = pkOrgPath(ix, unit);
+  const cr = document.createElement('nav'); cr.className = 'pk-crumb'; cr.setAttribute('aria-label', '조직 경로');
+  path.forEach((n, i) => {
+    if(i){ const s = document.createElement('span'); s.setAttribute('aria-hidden', 'true'); s.textContent = '›'; cr.appendChild(s); }
+    if(i === path.length - 1){ const b = document.createElement('b'); b.setAttribute('aria-current', 'location'); b.textContent = n; cr.appendChild(b); }
+    else {
+      const b = document.createElement('button'); b.type = 'button';
+      b.dataset.act = 'unit'; b.dataset.unit = n; b.dataset.where = 'crumb'; b.textContent = n; b.title = n + '(으)로 올라가기';
+      cr.appendChild(b);
+    }
+  });
+  box.appendChild(cr);
+  const ks = ix.kids.get(unit) || [];
+  for(const k of ks){
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'pk-sub'; b.dataset.act = 'unit'; b.dataset.unit = k; b.dataset.where = 'sub';
+    const nm = document.createElement('span'); nm.className = 'pk-nm'; nm.textContent = k; b.appendChild(nm);
+    const nc = document.createElement('span'); nc.className = 'pk-nc'; nc.textContent = (ix.count.get(k) || 0) + '명'; b.appendChild(nc);
+    const gt = document.createElement('span'); gt.className = 'pk-gt'; gt.setAttribute('aria-hidden', 'true'); gt.textContent = '›'; b.appendChild(gt);
+    box.appendChild(b);
+  }
+  const ms = ix.direct.get(unit) || [];
+  if(ks.length && ms.length){ const sep = document.createElement('div'); sep.className = 'pk-subsep'; sep.setAttribute('role', 'separator'); box.appendChild(sep); }
+  if(ms.length){
+    const favIds = new Set(pkList('Fav').map(x => x.loginId));
+    const viewing = (__pk.mode === 'modal' && __pv) ? String(__pv.loginId) : '';   // K9 — 조직도 목록에서도 「보는 중」 회색(G7)
+    const g = document.createElement('div'); g.setAttribute('role', 'group'); g.setAttribute('aria-label', unit + ' 사람');
+    g.dataset.sec = 'Unit';
+    for(const m of ms) g.appendChild(pkRowEl(pkDirRow(m, favIds, viewing), null));
+    box.appendChild(g);
+  }else if(!ks.length){
+    box.appendChild(pkNote('이 조직에는 사람이 없습니다'));
+  }
+  return box;
+}
+//  G4–G6·G9 — 「조직도」 탭 본문. 넓으면 트리 | 목록 두 칸, 좁으면 목록 한 칸(경로를 따라 한 단계씩).
+function pkRenderOrg(body, wide){
+  if(__pk.status === 'loading'){ body.appendChild(pkNote('불러오는 중…', true)); return; }
+  if(__pk.status === 'fail' || !__pk.org){ body.appendChild(pkFailNote()); return; }   // G9 — K3 와 같은 문구·버튼
+  const ix = __pk.org;
+  if(!ix.roots.length || !ix.has(__pk.unit)){ body.appendChild(pkNote('조직 정보가 없습니다')); return; }
+  const list = pkUnitListEl(ix, __pk.unit);
+  if(!wide){ body.appendChild(list); return; }
+  const g = document.createElement('div'); g.className = 'pk-org2';
+  g.appendChild(pkTreeEl(ix)); g.appendChild(list);
+  body.appendChild(g);
+}
+//  다시 그린 뒤 포커스를 둘 곳(힌트). kind: 'tree'(그 조직 노드 · 없으면 목록) · 'list'(목록 첫 줄) · 'org'(넓으면 트리의 고른 조직, 좁으면 목록) · 'tab'.
+function pkFocusTarget(pop, hint){
+  const inp = pop.querySelector('.pk-search');
+  const tree = pop.querySelector('.pk-tree');
+  const node = (u) => tree ? [...tree.querySelectorAll('.pk-node')].find(b => b.dataset.unit === u) || null : null;
+  const listFirst = () => pop.querySelector('.pk-olist .pk-sub, .pk-olist .pk-open')
+                       || [...pop.querySelectorAll('.pk-crumb button')].pop() || inp;
+  if(hint.kind === 'tab') return pop.querySelector('.pk-tab[data-tab="' + (__pk.tab === 'org' ? 'org' : 'people') + '"]') || inp;
+  if(hint.kind === 'tree') return node(hint.unit) || listFirst();
+  if(hint.kind === 'org') return node(__pk.unit) || listFirst();
+  return listFirst();
+}
 function pkRender(){
   const pop = document.getElementById('peerPicker'); if(!pop || !__pk) return;
   const body = pop.querySelector('.pk-body'), inp = pop.querySelector('.pk-search');
   //  다시 그려도 포커스는 **같은 사람의 같은 버튼**으로 돌려준다(☆ 를 누르면 그 사람이 「최근」에서 「즐겨찾기」로 옮겨 간다).
+  //  ★ 조직 버튼(트리 · 경로 · 하위 조직)은 data-unit + data-where 로 가린다(같은 조직이 트리와 목록에 둘 다 있다).
   const ae = document.activeElement;
-  const keep = (ae && body.contains(ae) && ae.dataset) ? { act:ae.dataset.act || '', id:ae.dataset.login || '' } : null;
+  const keep = (ae && body.contains(ae) && ae.dataset)
+    ? { act:ae.dataset.act || '', id:ae.dataset.login || ae.dataset.unit || '', where:ae.dataset.where || '' } : null;
+  //  트리 스크롤은 다시 그려도 그 자리(긴 조직도에서 아래 노드를 고르면 맨 위로 튀지 않게). 목록은 같은 조직일 때만 잇는다.
+  const ot = pop.querySelector('.pk-tree'), ol = pop.querySelector('.pk-olist');
+  const scroll = { tree:ot ? ot.scrollTop : null, list:ol ? ol.scrollTop : null, unit:__pk.unit };
   while(body.firstChild) body.removeChild(body.firstChild);
   const q = inp ? inp.value : '';
-  const md = pkModel({ favs:pkList('Fav'), recents:pkList('Recent'),
-    members:(__pk.status === 'ok') ? __pk.members : null, q, me:pkMe(),
-    viewing:(__pk.mode === 'modal' && __pv) ? String(__pv.loginId) : '' });
-  if(__pk.status === 'loading') body.appendChild(pkNote('불러오는 중…', true));
-  else if(__pk.status === 'fail'){
-    //  K3 — 실패해도 즐겨찾기·최근은 아래에 그대로 보이고 누를 수 있다(열기는 호스트가 권한을 다시 따진다).
-    const n = pkNote(__pk.msg || '명부를 불러오지 못했습니다', true);
-    const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'btn sm'; rb.dataset.act = 'retry'; rb.textContent = '다시 시도';
-    n.appendChild(rb); body.appendChild(n);
-  }
-  pkSection(body, '★ 즐겨찾기', md.fav, 'Fav');
-  pkSection(body, '최근 본 사람', md.recent, 'Recent');
-  if(pkNorm(q)){
-    if(__pk.status === 'ok'){
-      pkSection(body, '검색 결과', md.results, null);
-      if(md.more > 0) body.appendChild(pkNote(md.more + '명 더 — 이름을 더 입력하세요'));
-      if(!md.results.length && !md.fav.length && !md.recent.length) body.appendChild(pkNote('검색 결과가 없습니다'));
+  const view = pkView(), wide = pkWantWide();
+  pkSyncTabs(pop, view === 'search');
+  pop.classList.toggle('pk-wide', wide);
+  pop.dataset.view = view === 'org' ? (wide ? 'org-wide' : 'org-narrow') : view;
+  pkPlace();
+  if(view === 'org'){
+    pkRenderOrg(body, wide);
+    const t = pop.querySelector('.pk-tree'), l = pop.querySelector('.pk-olist');
+    if(t){
+      if(scroll.tree != null) t.scrollTop = scroll.tree;
+      //  고른 조직이 트리 창 밖이면 보이게(처음 열 때 · 목록에서 하위 조직을 눌러 트리가 따라갈 때). scrollIntoView 는 쓰지 않는다 —
+      //  overflow:hidden 인 본문까지 밀어 버린다.
+      const s = t.querySelector('.pk-node[aria-selected="true"]');
+      if(s && (s.offsetTop < t.scrollTop || s.offsetTop + s.offsetHeight > t.scrollTop + t.clientHeight)) t.scrollTop = Math.max(0, s.offsetTop - 8);
     }
-  }else if(!md.fav.length && !md.recent.length && __pk.status === 'ok'){
-    body.appendChild(pkNote('이름 · 직급 · 조직으로 찾으세요. ☆ 를 누르면 즐겨찾기에 남습니다.'));
+    if(l && scroll.list != null && scroll.unit === __pk.unit) l.scrollTop = scroll.list;
+  }else{
+    const md = pkModel({ favs:pkList('Fav'), recents:pkList('Recent'),
+      members:(__pk.status === 'ok') ? __pk.members : null, q, me:pkMe(),
+      viewing:(__pk.mode === 'modal' && __pv) ? String(__pv.loginId) : '', myUnit:__pk.myUnit });
+    if(__pk.status === 'loading') body.appendChild(pkNote('불러오는 중…', true));
+    else if(__pk.status === 'fail') body.appendChild(pkFailNote());   // K3 — 실패해도 즐겨찾기·최근은 아래에 그대로 보이고 누를 수 있다
+    const fresh = view === 'people' && __pk.status === 'ok' && !md.fav.length && !md.recent.length;
+    //  G3 — 처음 쓰는 사람: 맨 위 안내 한 줄 + 그 아래 바로 내 부서(빈 화면 금지).
+    if(fresh) body.appendChild(pkNote('☆ 를 누르면 즐겨찾기에 남고, 한 번 본 사람은 「최근 본 사람」에 쌓입니다.'));
+    pkSection(body, '★ 즐겨찾기', md.fav, 'Fav');
+    pkSection(body, '최근 본 사람', md.recent, 'Recent');
+    if(view === 'search'){
+      if(__pk.status === 'ok'){
+        pkSection(body, '검색 결과', md.results, null);
+        if(md.more > 0) body.appendChild(pkNote(md.more + '명 더 — 이름을 더 입력하세요'));
+        if(!md.results.length && !md.fav.length && !md.recent.length) body.appendChild(pkNote('검색 결과가 없습니다'));
+      }
+    }else if(__pk.status === 'ok'){
+      if(__pk.myUnit) pkMineSection(body, md, __pk.myUnit);
+      else if(fresh) body.appendChild(pkNote('이름 · 직급 · 조직으로 찾거나 「조직도」 탭에서 고르세요.'));   // G9 — 내 조직을 모르면 묶음 없이
+    }
   }
-  if(keep){
-    const hit = [...body.querySelectorAll('[data-act]')].find(el => el.dataset.act === keep.act && (el.dataset.login || '') === keep.id);
-    try{ (hit || inp).focus(); }catch(_){}
+  const hint = __pk.focus; __pk.focus = null;
+  let target = null;
+  if(hint) target = pkFocusTarget(pop, hint);
+  else if(keep) target = [...body.querySelectorAll('[data-act]')].find(el => el.dataset.act === keep.act &&
+      (el.dataset.login || el.dataset.unit || '') === keep.id && (el.dataset.where || '') === keep.where) || inp;
+  if(target){
+    if(target.classList && target.classList.contains('pk-node')){
+      for(const b of target.parentElement.querySelectorAll('.pk-node')) b.tabIndex = (b === target) ? 0 : -1;
+    }
+    try{ target.focus(); }catch(_){}
   }
+}
+//  G1 — 탭 바꾸기. 검색어가 있으면 지우고 그 탭으로(누른 탭이 지금 탭이어도 — 「흐린 탭을 누르면 검색 결과에서 빠져나온다」).
+function pkSetTab(tab){
+  if(!__pk || (tab !== 'people' && tab !== 'org')) return;
+  const inp = document.getElementById('pkSearch');
+  if(inp && inp.value) inp.value = '';
+  __pk.tab = tab;
+  __pk.focus = { kind:'tab' };
+  pkRender();
+}
+//  G4·G5 — 조직 고르기(트리 · 경로 · 하위 조직 줄 · 「조직도에서 다른 부서 ›」). 고른 조직까지(자신 포함) 펼친다.
+function pkSelectUnit(name, focusKind){
+  if(!__pk || !__pk.org || !__pk.org.has(name)) return;
+  __pk.unit = String(name);
+  for(const a of pkOrgPath(__pk.org, __pk.unit)) __pk.open.add(a);
+  __pk.focus = (focusKind === 'tree') ? { kind:'tree', unit:__pk.unit } : { kind:focusKind || 'list' };
+  pkRender();
+}
+//  G4 — ▸/▾ 펼침만 바꾼다(고른 조직은 그대로). 포커스는 그 노드에 남는다.
+function pkToggleOpen(name){
+  if(!__pk || !__pk.org || !__pk.org.has(name)) return;
+  const n = String(name);
+  if(__pk.open.has(n)) __pk.open.delete(n); else __pk.open.add(n);
+  __pk.focus = { kind:'tree', unit:n };
+  pkRender();
+}
+//  G4·G9 — 명부를 새로 읽은 뒤 조직도의 처음 자리: 고른 조직이 아직 있으면 그대로(다시 시도), 없으면 내 부서(모르면 첫 루트) ·
+//    펼침 = 루트 전부 + 그 조직까지의 경로.
+function pkOrgInit(){
+  const ix = __pk && __pk.org; if(!ix) return;
+  if(__pk.unit && ix.has(__pk.unit)) return;
+  __pk.unit = __pk.myUnit || ix.roots[0] || '';
+  for(const r of ix.roots) __pk.open.add(r);
+  for(const a of pkOrgPath(ix, __pk.unit)) __pk.open.add(a);
 }
 //  명부 — 열 때마다 새로 읽는다(K3 · 「구성원 보기」와 같은 규칙: 캐시 안 함). 같은 명령·같은 인자.
 async function pkLoad(){
   if(!__pk) return;
   const my = ++__pkSeq;
-  __pk.status = 'loading'; __pk.msg = ''; __pk.members = null;
+  __pk.status = 'loading'; __pk.msg = ''; __pk.members = null; __pk.org = null; __pk.myUnit = '';
   pkRender();
   if(!HOST){ __pk.status = 'fail'; __pk.msg = '명부는 데스크톱 위젯에서만 불러올 수 있습니다'; pkRender(); return; }
   let r = null;
   try{ r = await hostRequest('membersGet', { includeInactive: false }, 12000); }catch(_){ r = null; }
   if(!__pk || my !== __pkSeq) return;   // 그 사이 닫았거나 다시 불렀다 — 늦게 온 회신이 새 화면을 덮지 않게
-  if(r && r.ok && r.data && Array.isArray(r.data.members)){ __pk.status = 'ok'; __pk.members = r.data.members; }
+  if(r && r.ok && r.data && Array.isArray(r.data.members)){
+    __pk.status = 'ok'; __pk.members = r.data.members;
+    //  G9 — 같은 회신의 units · myUnit 만 쓴다(새 명령 없음). myUnit 이 없거나 트리에 없으면 '' → 내 부서 묶음을 빼고 조직도는 첫 루트.
+    __pk.org = pkOrgIndex(r.data.units, r.data.members, pkMe());
+    const mu = (r.data.myUnit != null) ? String(r.data.myUnit) : '';
+    __pk.myUnit = (mu && __pk.org.has(mu)) ? mu : '';
+    pkOrgInit();
+  }
   else { __pk.status = 'fail'; __pk.msg = '명부를 불러오지 못했습니다'; }
   pkRender();
 }
@@ -6248,8 +6590,20 @@ function pkEnsure(){
   inp.type = 'search'; inp.id = 'pkSearch'; inp.className = 'pk-search'; inp.autocomplete = 'off'; inp.spellcheck = false;
   inp.placeholder = '이름 · 직급 · 조직으로 찾기';
   inp.setAttribute('aria-label', '사람 찾기 — 이름 · 직급 · 조직');
+  //  G1 — [사람 | 조직도] 탭(role=tablist · 로빙 tabindex · ←/→ 로 옮기며 바로 연다). 본문(#pkBody)이 그 탭의 tabpanel 이다.
+  const tabs = document.createElement('div');
+  tabs.className = 'pk-tabs'; tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', '사람 고르기 방식');
+  for(const [k, id, label] of [['people', 'pkTabPeople', '사람'], ['org', 'pkTabOrg', '조직도']]){
+    const t = document.createElement('button');
+    t.type = 'button'; t.id = id; t.className = 'pk-tab'; t.setAttribute('role', 'tab');
+    t.setAttribute('aria-controls', 'pkBody'); t.setAttribute('aria-selected', k === 'people' ? 'true' : 'false');
+    t.tabIndex = k === 'people' ? 0 : -1;
+    t.dataset.act = 'tab'; t.dataset.tab = k; t.textContent = label;
+    tabs.appendChild(t);
+  }
   const body = document.createElement('div'); body.id = 'pkBody'; body.className = 'pk-body';
-  pop.appendChild(inp); pop.appendChild(body);
+  body.setAttribute('role', 'tabpanel'); body.setAttribute('aria-labelledby', 'pkTabPeople');
+  pop.appendChild(inp); pop.appendChild(tabs); pop.appendChild(body);
   inp.addEventListener('input', pkRender);
   pop.addEventListener('click', pkOnClick);
   pop.addEventListener('keydown', pkOnKey);
@@ -6277,7 +6631,11 @@ function pkEnsure(){
     const a = document.activeElement;
     if(__pk && a && a.tagName === 'IFRAME') pkClose(false);
   }, 0); });
-  window.addEventListener('resize', () => { if(__pk) pkPlace(); });
+  //  창 폭이 바뀌면 자리를 다시 잰다 — 조직도 두 칸 ↔ 한 칸 경계(PK_ORG_MIN_W)를 넘었으면 본문도 다시 그린다(G6).
+  window.addEventListener('resize', () => {
+    if(!__pk) return;
+    if(pop.classList.contains('pk-wide') !== pkWantWide()) pkRender(); else pkPlace();
+  });
   document.body.appendChild(pop);
   return pop;
 }
@@ -6285,10 +6643,12 @@ function pkEnsure(){
 function pkPlace(){
   const pop = document.getElementById('peerPicker'); if(!pop || !__pk) return;
   const vw = window.innerWidth || document.documentElement.clientWidth || 0, vh = window.innerHeight || 0;
+  //  G4·G7 — 조직도 두 칸(.pk-wide)이면 PK_ORG_W 까지 넓힌다. 그래도 쓸 수 있는 폭(화면 · 열람 창 머리 − 16) 안으로 당긴다.
+  const want = pop.classList.contains('pk-wide') ? PK_ORG_W : 360;
   if(__pk.mode === 'modal'){
     const head = pop.parentElement, sw = document.getElementById('pvSwitch');
     const hw = head ? head.clientWidth : 0;
-    const pw = hw ? Math.min(360, Math.max(200, hw - 16)) : 360;
+    const pw = hw ? Math.min(want, Math.max(200, hw - 16)) : 360;
     pop.style.width = pw + 'px';
     const left = Math.max(8, Math.min(sw ? sw.offsetLeft : 8, (hw || pw + 16) - pw - 8));
     pop.style.left = Math.round(left) + 'px'; pop.style.top = '';
@@ -6297,7 +6657,7 @@ function pkPlace(){
   }
   const a = __pk.opener;
   const r = (a && a.getBoundingClientRect) ? a.getBoundingClientRect() : { right:0, bottom:0 };
-  const pw = Math.min(360, Math.max(200, vw - 16));
+  const pw = Math.min(want, Math.max(200, vw - 16));
   pop.style.width = pw + 'px';
   const left = Math.max(8, Math.min(r.right - pw, vw - pw - 8));
   const top = Math.round(r.bottom + 6);
@@ -6316,7 +6676,9 @@ function pkOpen(mode, opener){
   //    그 속성이 따라와 검색 칸이 포커스를 못 받고 보조기술에도 숨는다(2026-10-02 실 위젯 실측 — jsdom 은 inert 를 안 따른다).
   if(mode === 'modal'){ pop.removeAttribute('inert'); pop.removeAttribute('aria-hidden'); }
   pop.classList.toggle('pk-in', mode === 'modal');
-  __pk = { mode, opener, status:'loading', msg:'', members:null };
+  pop.classList.remove('pk-wide');
+  //  G1 — 열 때마다 「사람」 탭부터(저장 안 함 · 예측 가능). 조직도 상태(고른 조직 · 펼침)도 새로 시작한다.
+  __pk = { mode, opener, status:'loading', msg:'', members:null, tab:'people', org:null, myUnit:'', unit:'', open:new Set(), focus:null };
   const inp = pop.querySelector('.pk-search'); inp.value = '';
   pop.classList.remove('hidden');
   opener.setAttribute('aria-expanded', 'true');
@@ -6368,30 +6730,84 @@ function pkOnClick(ev){
   }else if(act === 'retry'){
     const s = document.getElementById('pkSearch'); if(s) try{ s.focus(); }catch(_){}
     pkLoad();
+  }else if(act === 'tab'){
+    pkSetTab(b.dataset.tab);                                  // G1
+  }else if(act === 'goorg'){
+    //  G2 — 「조직도에서 다른 부서 ›」 = 조직도 탭 + 내 부서 선택(펼침 = 그 경로). 포커스는 넓으면 트리의 내 부서, 좁으면 목록 첫 줄.
+    __pk.tab = 'org';
+    if(__pk.myUnit) pkSelectUnit(__pk.myUnit, 'org'); else { __pk.focus = { kind:'org' }; pkRender(); }
+  }else if(act === 'unit'){
+    pkSelectUnit(b.dataset.unit, b.dataset.where === 'tree' ? 'tree' : 'list');   // G4 트리 · G5 경로/하위 조직 줄
+  }else if(act === 'twist'){
+    pkToggleOpen(b.dataset.unit);                             // G4 — ▸/▾ 는 펼침만
   }
+}
+//  G8 — 트리 키보드(WAI-ARIA tree 관례): ↓/↑ 이동 · → 펼치기(펼쳐져 있으면 첫 하위로) · ← 접기(접혀 있으면 부모로) ·
+//    Home/End · Enter/Space 고르기. 이동만 할 때는 다시 그리지 않고 로빙 tabindex 만 옮긴다. 맨 위에서 ↑ 는 검색 칸으로(K11 과 같은 출구).
+//    반환 true = 처리했다.
+function pkTreeKey(ev, node, inp){
+  const k = ev.key;
+  if(!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End', 'Enter', ' '].includes(k)) return false;
+  ev.preventDefault(); ev.stopPropagation();
+  const ix = __pk.org; if(!ix) return true;
+  const nodes = [...node.parentElement.querySelectorAll('.pk-node')], i = nodes.indexOf(node);
+  const n = node.dataset.unit, ks = ix.kids.get(n) || [], open = __pk.open.has(n);
+  const move = (el) => { if(!el) return; for(const b of nodes) b.tabIndex = (b === el) ? 0 : -1; try{ el.focus(); }catch(_){} };
+  if(k === 'ArrowDown') move(nodes[i + 1]);
+  else if(k === 'ArrowUp'){ if(i > 0) move(nodes[i - 1]); else try{ inp.focus(); }catch(_){} }
+  else if(k === 'Home') move(nodes[0]);
+  else if(k === 'End') move(nodes[nodes.length - 1]);
+  else if(k === 'ArrowRight'){ if(ks.length && !open) pkToggleOpen(n); else if(ks.length) move(nodes[i + 1]); }
+  else if(k === 'ArrowLeft'){
+    if(ks.length && open) pkToggleOpen(n);
+    else { const p = ix.parent.get(n); if(p) move(nodes.find(b => b.dataset.unit === p)); }
+  }
+  else pkSelectUnit(n, 'tree');                               // Enter / Space
+  return true;
 }
 //  K11 — 검색 칸에서 ↓/↑ 로 행(여는 버튼)을 오가고 끝에서는 검색 칸으로 돌아온다 · 검색 칸 Enter = 첫 「열 수 있는」 행.
 //    행 버튼의 Enter/Space 는 버튼 기본 동작(click)이다. Esc 는 위 캡처 핸들러가 맡는다.
 function pkOnKey(ev){
   if(!__pk) return;
   const pop = ev.currentTarget, inp = pop.querySelector('.pk-search');
-  const items = [...pop.querySelectorAll('.pk-open')];
   const ae = document.activeElement;
+  //  G8 — 탭: ←/→(·Home/End) 로 옮기며 바로 연다(탭이 둘이라 어느 쪽이든 다른 탭으로).
+  if(ae && ae.getAttribute && ae.getAttribute('role') === 'tab' && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)){
+    ev.preventDefault(); ev.stopPropagation();
+    const to = ev.key === 'Home' ? 'people' : ev.key === 'End' ? 'org' : (ae.dataset.tab === 'org' ? 'people' : 'org');
+    pkSetTab(to);
+    return;
+  }
+  if(ae && ae.classList && ae.classList.contains('pk-node') && pkTreeKey(ev, ae, inp)) return;
+  //  K11 · G8 — ↓/↑ 줄 이동은 **지금 보이는 본문**의 줄이다: 사람 탭·검색 = 여는 버튼 · 조직도 = 목록 칸의 하위 조직 줄 + 여는 버튼.
+  //    조직도 두 칸이면 검색 칸(·탭)의 ↓ 는 트리의 고른 조직으로 간다(트리는 위 pkTreeKey 가 맡는다 · Tab 으로 목록 칸).
+  const orgView = /^org/.test(pop.dataset.view || '');
+  const items = orgView ? [...pop.querySelectorAll('.pk-olist .pk-sub, .pk-olist .pk-open')] : [...pop.querySelectorAll('.pk-body .pk-open')];
   if(ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
     ev.preventDefault(); ev.stopPropagation();
-    if(!items.length) return;
     const down = ev.key === 'ArrowDown';
+    const fromTop = ae === inp || (ae && ae.getAttribute && ae.getAttribute('role') === 'tab');
+    if(fromTop && down && pop.dataset.view === 'org-wide'){
+      const t = pop.querySelector('.pk-tree .pk-node[aria-selected="true"]') || pop.querySelector('.pk-tree .pk-node[tabindex="0"]');
+      if(t){
+        for(const b of t.parentElement.querySelectorAll('.pk-node')) b.tabIndex = (b === t) ? 0 : -1;
+        try{ t.focus(); }catch(_){}
+        return;
+      }
+    }
+    if(!items.length) return;
     let at = items.indexOf(ae);
-    if(at < 0 && ae !== inp){ const row = ae && ae.closest ? ae.closest('.pk-row') : null; at = row ? items.indexOf(row.querySelector('.pk-open')) : -1; }
+    if(at < 0 && !fromTop){ const row = ae && ae.closest ? ae.closest('.pk-row') : null; at = row ? items.indexOf(row.querySelector('.pk-open')) : -1; }
     let next;
-    if(ae === inp || at < 0) next = down ? items[0] : items[items.length - 1];
+    if(at < 0 && !fromTop && ae && ae.closest && ae.closest('.pk-crumb')) next = down ? items[0] : inp;   // 경로 줄은 목록 위에 있다
+    else if(fromTop || at < 0) next = down ? items[0] : items[items.length - 1];
     else { const j = at + (down ? 1 : -1); next = (j < 0 || j >= items.length) ? inp : items[j]; }
     try{ next.focus(); }catch(_){}
     return;
   }
   if(ev.key === 'Enter' && ae === inp){
     ev.preventDefault(); ev.stopPropagation();
-    const first = items.find(b => b.getAttribute('aria-disabled') !== 'true');
+    const first = items.find(b => b.classList.contains('pk-open') && b.getAttribute('aria-disabled') !== 'true');   // 사람 행만(하위 조직 줄 아님)
     if(first) first.click();
     return;
   }
