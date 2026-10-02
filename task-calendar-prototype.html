@@ -1493,10 +1493,12 @@ body[data-peer] .chip.chip-mine .cdot{ display:none }
 body[data-peer] .card.card-mine{ background:var(--mine-bg); border-left-color:var(--mine-bar) }
 body[data-peer] .card.card-mine .card-title{ color:var(--mine-text) }
 body[data-peer] .card.card-mine .card-actions{ display:none !important }
-body[data-peer]:not([data-peer-overlay]) .chip-mine,
-body[data-peer]:not([data-peer-overlay]) .card-mine,
-body[data-peer]:not([data-peer-overlay]) .mine-sep,
-body[data-peer]:not([data-peer-overlay]) .ovl-dot{ display:none }
+/*  ★ S9 — 나란히 보기에서는 겹 토글이 뜻이 없다(오른쪽 달력이 곧 내 일정). 그래서 「끈 상태」 규칙에서 빼낸다 —
+      안 빼면 겹을 꺼 둔 사람이 나란히 보기로 바꿨을 때 오른쪽 달력·상세 시트의 내 것이 통째로 안 보인다. */
+body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .chip-mine,
+body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .card-mine,
+body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .mine-sep,
+body[data-peer]:not([data-peer-overlay]):not([data-peer-layout="side"]) .ovl-dot{ display:none }
 /*  O5 — 시간 겹침. 카드 배지(겹친 상대 시간 함께) + 격자 날짜 옆 작은 점. 앰버 한 벌(--ovl-*). */
 .badge.ovl-badge{ background:var(--ovl-bg); color:var(--ovl-ink); max-width:none; display:inline-flex; align-items:center; gap:4px }
 .badge.ovl-badge .ic{ width:12px; height:12px }
@@ -1507,6 +1509,45 @@ body[data-peer]:not([data-peer-overlay]) .ovl-dot{ display:none }
 .dp-sec-n{ font-weight:600; color:var(--faint-text) }
 .dp-sec .dp-list{ padding-top:8px }
 .dp-sec-empty{ padding:8px 16px 14px; font-size:var(--fs-meta); color:var(--faint-text) }
+
+/* ── 나란히 보기(열람 창 전용) — docs/PEER-SIDE-BY-SIDE.md S1·S2·S5·S9·S10 ─────────────
+   ★ 새 색은 없다 — 기존 토큰(--line·--line-2·--panel·--text·--chip-outline·--mine-bar)만 쓴다(S12: 테마 5종 대비는 그 토큰들이 이미 지킨다).
+   ★ 겹쳐 보기(기본)·내 창에서는 .cal-tab·.cal-mine 이 display:none 이라 화면이 예전과 같다(S11).
+   ★ 두 달력은 같은 .cal 규칙(flex:1)이라 폭을 반씩 나눈다. 같은 주 줄 높이는 CSS 로는 못 맞춘다(격자가 둘이다) → peerSyncRows(S4). */
+#peerBanner .peer-layout .seg-b{ padding:2px 10px }
+.cal-tab{ display:none }
+.cal-mine{ display:none }
+body[data-peer][data-peer-layout="side"] .cal-mine{ display:flex; border-left:1px solid var(--line) }
+body[data-peer][data-peer-layout="side"] .cal-tab{ display:flex; align-items:center; gap:7px; flex:none; align-self:flex-start; max-width:100%;
+  height:26px; margin:0 0 6px; padding:0 12px 0 10px; border:1px solid var(--line-2); border-bottom:2px solid var(--chip-outline);
+  border-radius:var(--r-md) var(--r-md) 0 0; background:var(--panel); color:var(--text);
+  font-size:var(--fs-meta); font-weight:700; white-space:nowrap; overflow:hidden }
+body[data-peer][data-peer-layout="side"] .cal-tab-mine{ border-bottom-color:var(--mine-bar) }
+/*  S4 — 펼침 + 나란히 보기: 주 줄이 **내용만큼** 늘게 한다(minmax(min-content,auto) · 칸 최소 74px — 최소 크기 함수가 고정값(74px)이면 격자가 남는 높이만 나눠 준다). 기본 규칙 minmax(74px,auto) 는 격자 높이가
+    정해져 있으면 남는 높이까지만 늘어서, 칩이 많은 칸은 다음 주 줄 위로 넘친다(2026-10-02 실측 6/19: 내용 206px · 줄 118px).
+    줄 맞춤(peerSyncRows)은 「제 높이」 를 재서 큰 쪽에 맞추므로, 제 높이가 내용보다 작으면 맞춰도 겹친다 — 그래서 여기서 고친다.
+    ★ 겹쳐 보기·내 창의 펼침은 S11(화면 그대로)이라 손대지 않는다(같은 넘침이 있다 — 따로 고칠 거리). */
+body[data-peer][data-peer-layout="side"] .grid.expand{ grid-auto-rows:minmax(min-content, auto) }
+body[data-peer][data-peer-layout="side"] .grid.expand .cell{ min-height:74px }
+.cal-tab-t{ overflow:hidden; text-overflow:ellipsis }
+/*  S9 — 「내 일정」 겹 토글 칩은 감춘다(오른쪽 달력이 곧 내 일정). tc_peerOverlay 값은 그대로라 겹쳐 보기로 돌아오면 원래대로다. */
+body[data-peer][data-peer-layout="side"] #peerOverlayToggle{ display:none }
+/*  S5 — 상세 패널은 접어 두고, 날짜를 누르면 아래에서 올라오는 시트(좁은 폭 ≤760 시트와 같은 모양 · openSheetIfNarrow/closeSheet/#dpSheetClose 를 같이 쓴다). */
+body[data-peer][data-peer-layout="side"] .splitter{ display:none }
+body[data-peer][data-peer-layout="side"] .day-panel{ position:fixed; left:0; right:0; bottom:0; top:auto; width:auto; height:62%;
+  border-left:none; border-top:1px solid var(--line-2); border-radius:14px 14px 0 0;
+  box-shadow:0 -6px 22px rgba(20,28,55,.20); z-index:30; transform:translateY(100%); transition:transform .26s ease }
+body[data-peer][data-peer-layout="side"].sheet-open .day-panel{ transform:translateY(0) }
+body[data-peer][data-peer-layout="side"] .dp-sheet-handle{ display:flex; justify-content:center; align-items:center; padding:8px 0 2px; flex:none;
+  border:none; background:none; cursor:pointer; width:100% }
+body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; height:4px; border-radius:2px; background:var(--line-2) }
+/*  S10 — 달력 하나가 420px 아래로 좁아지면(열람 창 폭 ≤860px = 반쪽 430px 언저리) 위아래로 쌓는다(위 = 그 사람 · 아래 = 나).
+    flex-basis 0 으로 높이를 반씩 — ≤760 의 .cal{flex:1 1 auto} 를 그대로 두면 내용 많은 쪽이 높이를 다 가져간다. 줄 맞춤은 좌우일 때만(peerSideByRow). */
+@media (max-width:860px){
+  body[data-peer][data-peer-layout="side"] main{ flex-direction:column }
+  body[data-peer][data-peer-layout="side"] .cal{ flex:1 1 0; min-height:0 }
+  body[data-peer][data-peer-layout="side"] .cal-mine{ border-left:none; border-top:1px solid var(--line) }
+}
 /* 타인 일정 열람(C4) — **읽기 전용**이다. 편집 어포던스를 하나도 주지 않는다:
    커서는 기본값, hover 강조 없음, 누를 수 있는 것은 월 이동과 닫기뿐. */
 .pv-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
@@ -2032,8 +2073,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
   </div>
   <section class="cal">
+    <!-- 나란히 보기(열람 창 전용)의 이름 탭 — 평소엔 감춰진다(body[data-peer-layout="side"] 에서만 보인다 · PEER-SIDE-BY-SIDE S2) -->
+    <div class="cal-tab cal-tab-peer" id="calTabPeer"></div>
     <div class="weekdays" id="weekdays" role="presentation"></div>
     <div class="grid" id="grid" role="grid" aria-label="월 달력 — 방향키로 날짜 이동, Enter로 선택"></div>
+  </section>
+  <!-- 나란히 보기의 오른쪽 달력 = 내 일정(읽기 전용 · 클릭은 날짜 선택뿐). 겹쳐 보기·내 창에서는 비어 있고 감춰진다. -->
+  <section class="cal cal-mine" id="calMine" aria-label="내 일정 달력">
+    <div class="cal-tab cal-tab-mine" id="calTabMine"></div>
+    <div class="weekdays" id="weekdaysMine" role="presentation"></div>
+    <div class="grid" id="gridMine" role="grid" aria-readonly="true" aria-label="내 일정 월 달력 — 읽기 전용, 날짜를 누르면 선택"></div>
   </section>
   <div class="splitter" id="splitter" title="드래그 또는 ←/→ 키로 좌/우 너비 조절" tabindex="0" role="separator"
        aria-orientation="vertical" aria-label="좌우 패널 너비 조절" aria-valuenow="0" aria-valuemin="240" aria-valuemax="0"></div>
@@ -3986,6 +4035,59 @@ function peerSwatchBars(){
 }
 function paintPeerLegend(){
   try{ const sw = document.querySelector('#peerBanner .pl-sw-peer'); if(sw) sw.innerHTML = peerSwatchBars(); }catch(_){}
+  paintPeerTabs();
+}
+/*  docs/PEER-SIDE-BY-SIDE.md — 열람 창의 「보기 방식」 [겹쳐 보기 | 나란히 보기].
+ *  ★ __peerLayout 도 **여기서** 선언한다 — 렌더(renderGrid·passFilter·openSheetIfNarrow)가 읽는 let 이라
+ *    파일 아래쪽에 두면 열람 창 부팅이 먼저 렌더를 돌려 TDZ 로 끊긴다(__peerToldAt 2026-09-03 · 자동 전송 목록 2026-10-01 과 같은 자리).
+ *  ★ 저장 키는 tc_peerLayout(열람 창 전용) — 내 화면에는 이 모드가 없다(S1 · 범위 밖). 값이 이상하면 'overlay'.
+ *  ★ 겹 토글(tc_peerOverlay)과는 **따로** 기억한다(S9) — 나란히 보기에서는 오른쪽 달력이 곧 내 일정이라 겹 토글이 뜻이 없다.
+ *    그래서 나란히 보기 동안 __peerOverlay 는 건드리지 않고, 겹쳐 보기로 돌아오면 원래 값 그대로 그린다. */
+let __peerLayout = 'overlay';
+let __peerScrollLock = false;   // S4 — 두 격자 스크롤 잇기의 되먹임 막이(peerScrollLink). 같은 TDZ 이유로 여기 둔다
+function peerLayoutRead(){
+  try{ return localStorage.getItem('tc_peerLayout') === 'side' ? 'side' : 'overlay'; }catch(_){ return 'overlay'; }
+}
+function peerSide(){ return PEER && __peerLayout === 'side'; }
+//  내 겹이 「보이는」 상태 — 겹쳐 보기에서 겹을 켰거나, 나란히 보기(오른쪽 달력 · 상세 시트 두 묶음, S7).
+function peerMineShown(){ return PEER && (__peerOverlay || __peerLayout === 'side'); }
+function setPeerLayout(v){
+  __peerLayout = (v === 'side') ? 'side' : 'overlay';
+  try{ localStorage.setItem('tc_peerLayout', __peerLayout); }catch(_){}
+  //  S5 — 모드가 바뀌면 상세 시트는 접힌 채로 시작한다(나란히 보기의 시트 · 좁은 폭 시트 모두).
+  try{ closeSheet(); }catch(_){}
+  syncPeerLayoutAttr();
+  renderAll();
+}
+//  data-peer-layout 은 CSS 스위치(두 달력 · 접힌 상세 패널 · 겹 토글 칩 감춤)이고, 버튼 모양(aria-pressed)은 상태에서만 받는다(O6 와 같은 규칙).
+function syncPeerLayoutAttr(){
+  try{
+    if(PEER && __peerLayout === 'side') document.body.dataset.peerLayout = 'side';
+    else delete document.body.dataset.peerLayout;
+    document.querySelectorAll('#peerBanner .peer-layout [data-layout]').forEach(b => {
+      const on = b.dataset.layout === __peerLayout;
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.classList.toggle('active', on);
+    });
+  }catch(_){}
+}
+//  S1 — 분할 버튼. 앱의 값 고르기 관례(.seg/.seg-b · aria-pressed)를 그대로 쓴다(새 컴포넌트를 만들지 않는다). 문구는 상수뿐이다.
+function peerLayoutHtml(){
+  const cur = __peerLayout;
+  const opts = [['overlay', '겹쳐 보기', '그 사람 달력에 내 일정을 한 겹 얹어 봅니다'], ['side', '나란히 보기', '그 사람 달력과 내 달력을 좌우로 나란히 봅니다']];
+  return '<span class="seg seg-auto peer-layout" role="group" aria-label="보기 방식(이 창에만 적용)">'
+    + opts.map(([v, t, tip]) => `<button type="button" class="seg-b${cur === v ? ' active' : ''}" data-layout="${v}" aria-pressed="${cur === v ? 'true' : 'false'}" title="${tip}">${t}</button>`).join('')
+    + '</span>';
+}
+//  S2 — 두 달력 위의 이름 탭. 왼쪽 = 그 사람(과제 색 견본) · 오른쪽 = 내 일정(--mine-* 견본). 이름은 남의 DB 문자열이라 esc().
+function paintPeerTabs(){
+  if(!PEER) return;
+  try{
+    const a = document.getElementById('calTabPeer');
+    if(a) a.innerHTML = `<span class="pl-sw pl-sw-peer" aria-hidden="true">${peerSwatchBars()}</span><span class="cal-tab-t">${esc((__peerWho || '상대') + ' 님')}</span>`;
+    const b = document.getElementById('calTabMine');
+    if(b) b.innerHTML = '<span class="pl-sw pl-sw-peer" aria-hidden="true"><b class="m"></b></span><span class="cal-tab-t">내 일정</span>';
+  }catch(_){}
 }
 /* ---------- Platform 어댑터 (능력 포트) ----------
    환경별 '어떻게'는 어댑터 객체가 책임지고, 기능 코드는 환경을 모른 채
@@ -4410,20 +4512,25 @@ window.__applyState = function(json, meta){
       //    body[data-peer] 가 막 세워진 자리라 CSS 스위치도 같이 세우기에 맞다.
       __peerOverlay = peerOverlayOn();
       syncPeerOverlayAttr();
+      __peerLayout = peerLayoutRead();   // S1 — 보기 방식도 같은 자리에서 읽는다(다시 열어도 유지 · 이상값 → 겹쳐 보기)
       const b = document.getElementById('peerBanner');
       if(b){
         //  이름은 남의 DB 문자열이다 — esc() 로 이스케이프한다(innerHTML 을 쓰는 유일한 이유는 토글·범례).
         b.innerHTML =
           `<span class="pb-who">${esc((who ? who + ' 님의 일정' : '다른 사람의 일정') + ' · 읽기 전용')}</span>`
-          + peerLegendHtml(who)  // O1 — [▮ 그 사람] · [☑ 내 일정](토글)
+          + peerLayoutHtml()     // S1 — [겹쳐 보기 | 나란히 보기](이 창에만 · tc_peerLayout)
+          + peerLegendHtml(who)  // O1 — [▮ 그 사람] · [☑ 내 일정](토글 — 나란히 보기에서는 감춘다, S9)
           + peerDensityHtml();   // P4 — 열람 창 전용 밀도(기본 펼침 · 내 화면 밀도와 따로 기억)
         const t = b.querySelector('#peerOverlayToggle');
         //  ★ 뒤집을 값은 버튼 모양이 아니라 **상태(__peerOverlay)** 에서 읽는다(O6 — 단일 출처).
         if(t) t.addEventListener('click', () => setPeerOverlay(!__peerOverlay));
         syncPeerOverlayToggle();
+        b.querySelectorAll('.peer-layout [data-layout]').forEach(x =>
+          x.addEventListener('click', () => { if(x.dataset.layout !== __peerLayout) setPeerLayout(x.dataset.layout); }));
         b.querySelectorAll('input[name="peerDensity"]').forEach(r =>
           r.addEventListener('change', () => { if(r.checked) setCalDensity(r.value); }));
       }
+      syncPeerLayoutAttr();   // body[data-peer-layout] + 버튼 aria-pressed — 아래 renderAll() 이 두 달력을 그리기 전에 세운다
     }catch(_){}
   }
   try{
@@ -7607,6 +7714,9 @@ function passFilter(e){
   //    그대로 남는다 — 여기서 categoryId 비교를 태우면 상대 과제를 고르는 순간 내 겹이 통째로
   //    사라져 "내 일정이 없는 날"처럼 보인다.
   //  ★ PEER && — 열람 창이 아닌 창에 _mine 이 들어올 리는 없지만, 들어와도 안 그린다.
+  //  ★ S9 — 나란히 보기에서는 겹 토글과 무관하게 통과시킨다(오른쪽 달력 · 상세 시트의 「내 일정」 묶음이 쓴다).
+  //    왼쪽 달력에서 내 것을 빼는 일은 renderGrid 가 달력마다 고르는 술어(pick)가 맡는다 — 여기는 「보이는가」 만 판정한다.
+  if(e && e._mine && PEER && __peerLayout === 'side') return true;
   if(e && e._mine) return PEER && __peerOverlay;
   return (!filterCatId || e.categoryId === filterCatId) && (!filterSource || e.source === filterSource);
 }
@@ -8094,6 +8204,9 @@ function renderAll(){ renderFilterbar(); renderGrid(); renderDayPanel(); }
 function renderWeekdays(){
   $('#weekdays').innerHTML = WEEKDAYS.map((w,i) =>
     `<div class="${i===0?'sun':i===6?'sat':''}" aria-hidden="true">${w}</div>`).join('');
+  //  S2 — 나란히 보기의 오른쪽 달력도 제 요일 머리줄을 가진다(평소엔 감춰진 자리 · 같은 마크업).
+  const wm = document.getElementById('weekdaysMine');
+  if(wm) wm.innerHTML = $('#weekdays').innerHTML;
 }
 
 function renderFilterbar(){
@@ -8212,6 +8325,22 @@ function renderGrid(){
   const dens = calDensity();
   $('#btnTitle').textContent = `${view.y}년 ${view.m+1}월`;
   document.title = `수행과제 캘린더 — ${view.y}년 ${view.m+1}월`;
+  //  S2/S3 — 나란히 보기: 왼쪽(#grid) = 그 사람 기록만(일정·기간·반복·할 일) · 오른쪽(#gridMine) = 내 겹 일정만(할 일·커밋 없음).
+  //    ★ 같은 그리기 함수를 달력마다 한 번씩 부른다 — 칸·칩·레인·「+N」 규칙이 두 달력에서 갈라질 수 없게(코드가 하나다).
+  //    ★ 겹쳐 보기(기본)는 예전과 같은 호출 하나(pick 없음 · 할 일 · roving)라 #grid 출력이 바이트 단위로 같다(S11).
+  const side = peerSide();
+  renderMonthGrid($('#grid'), dens, side ? (e => !e._mine) : null, { todos: true, roving: true, sideOvl: side });
+  const gm = document.getElementById('gridMine');
+  if(gm){
+    if(side) renderMonthGrid(gm, dens, e => !!e._mine, { todos: false, roving: false, sideOvl: true });
+    else if(gm.firstChild) gm.innerHTML = '';   // 겹쳐 보기로 돌아오면 오른쪽 달력은 비운다(감춰진 채 남은 칩이 없게)
+  }
+  peerSyncRows();                      // S4 — 같은 주 줄 높이 맞춤(나란히 보기 · 좌우일 때만, 아니면 인라인 높이를 걷는다)
+  if(dens !== 'expand') fitChips();   // 펼침은 전부 표시(캡 없음) → fitChips 생략
+}
+//  달력 하나를 g 에 그린다. pick(e) = 이 달력에 실을 일정(없으면 전부) · opts.todos = 할 일 칩 · opts.roving = 키보드 roving tabindex(왼쪽 달력만, S11)
+//  · opts.sideOvl = 시간 겹침 점을 **두 달력의 기록을 합쳐** 판정한다(나란히 보기 S8 — 한 달력에는 한 사람 것뿐이라 칸 안 목록으로는 못 센다).
+function renderMonthGrid(g, dens, pick, opts){
   const first = new Date(view.y, view.m, 1);
   const start = new Date(view.y, view.m, 1 - first.getDay());
   const tY = todayYmd();
@@ -8225,6 +8354,7 @@ function renderGrid(){
   const ranges = [];   // 멀티데이 막대 {key,start,end} — 레인 배치용(겹치는 기간을 셀 간 같은 행에 고정)
   for(const e of state.entries){
     if(!passFilter(e)) continue;
+    if(pick && !pick(e)) continue;   // 나란히 보기 — 이 달력에 실을 사람의 것만(S3)
     // 작업일지는 셀에 표시하지 않음(캘린더=일정, 작업일지=기록·보고서 재료) — '🔧 작업일지' 필터를 켰을 때만 셀에 보임
     if(e.source === 'git' && filterSource !== 'git') continue;
     for(const occ of expandOccurrences(e, startDs, endDs)){
@@ -8242,7 +8372,7 @@ function renderGrid(){
     }
   }
   // 할 일(기한 있는)을 그리드에 체크칩으로 — git 필터 중엔 숨김, 과제 필터는 따름. 여러 날(기간)은 막대.
-  if(filterSource !== 'git'){
+  if(opts.todos && filterSource !== 'git'){
     for(const t of (state.todos || [])){
       if(!t.due) continue;
       if(filterCatId && t.categoryId !== filterCatId) continue;
@@ -8321,8 +8451,10 @@ function renderGrid(){
   // 키보드 포커스(roving tabindex) 대상 셀 — focusDs 우선, 범위 밖이면 오늘/첫 셀로 보정(항상 정확히 1개 보장)
   let tabDs = focusDs || selectedDate;
   if(tabDs < startDs || tabDs > endDs) tabDs = (tY >= startDs && tY <= endDs) ? tY : startDs;
-  focusDs = tabDs;
+  if(opts.roving) focusDs = tabDs;
   const DOW_K = ['일','월','화','수','목','금','토'];
+  //  S8 — 나란히 보기: 그날 그 사람 ↔ 내 시간 일정이 겹치면 **두 달력의 그 칸 모두**에 점.
+  const ovlDays = opts.sideOvl ? peerOverlapDays(startDs, endDs) : null;
 
   let html = '';
   for(let i=0;i<totalCells;i++){
@@ -8352,29 +8484,47 @@ function renderGrid(){
     const realShown = shown.filter(it => it !== null && !it.sep).length;
     const extra = Math.max(0, list.length - realShown);   // 미렌더 실 기록 수(+N)
     //  O5 — 그날 상대 ↔ 내 시간 일정이 겹치면 날짜 옆에 작은 점(겹이 켜져 있고 내 일정이 있는 날만 따진다).
-    const ovl = !!(PEER && __peerOverlay && L.mine)
-      && Object.keys(peerTimeOverlaps(list.filter(it => it.occ).map(it => it.occ))).length > 0;
+    const ovl = ovlDays ? ovlDays.has(ds) : (!!(PEER && __peerOverlay && L.mine)
+      && Object.keys(peerTimeOverlaps(list.filter(it => it.occ).map(it => it.occ))).length > 0);
     const aria = `${d.getMonth()+1}월 ${d.getDate()}일 ${DOW_K[dow]}요일`
       + (hol ? `, ${hol}` : '') + (ds === tY ? ', 오늘' : '')
       + (list.length ? `, 기록 ${list.length}건` : ', 기록 없음')
       + (ovl ? ', 시간이 겹치는 일정 있음' : '');
     const ovlDot = ovl ? '<span class="ovl-dot" role="img" aria-label="시간이 겹치는 일정이 있습니다" title="시간이 겹치는 일정이 있습니다"></span>' : '';
-    html += `<div class="${cls}" data-date="${ds}" role="gridcell" tabindex="${ds===tabDs?0:-1}" aria-selected="${ds===selectedDate}" aria-label="${esc(aria)}">
+    html += `<div class="${cls}" data-date="${ds}" role="gridcell"${opts.roving ? ` tabindex="${ds===tabDs?0:-1}"` : ''} aria-selected="${ds===selectedDate}" aria-label="${esc(aria)}">
       <div class="cell-top"><span class="${numCls}">${d.getDate()}</span>${ovlDot}${hol?`<span class="hol">${esc(hol)}</span>`:''}</div>
       <div class="chips" data-extra="${extra}">${chips}</div></div>`;
     if(i % 7 === 6) html += '</div>';
   }
-  const g = $('#grid'); g.innerHTML = html;
+  g.innerHTML = html;
   g.classList.toggle('dense', dens === 'dense');
   g.classList.toggle('expand', dens === 'expand');
-  if(dens !== 'expand') fitChips();   // 펼침은 전부 표시(캡 없음) → fitChips 생략
+}
+//  S8 — 나란히 보기의 시간 겹침 날짜(Set). 판정은 겹쳐 보기와 같은 peerTimeOverlaps(그 사람 ↔ 나 · 종일·여러 날·커밋 제외)이고,
+//    입력만 「두 달력의 기록을 합친 그날 목록」 이다. passFilter 를 지나므로 과제 필터는 그 사람 쪽에만 걸린다(S11).
+function peerOverlapDays(startDs, endDs){
+  const byDay = {};
+  for(const e of state.entries){
+    if(!passFilter(e) || e.source === 'git') continue;
+    for(const occ of expandOccurrences(e, startDs, endDs)){
+      if(occ._occStart !== occ._occEnd || occ._occStart < startDs || occ._occStart > endDs) continue;   // 여러 날은 대상이 아니다
+      (byDay[occ._occStart] = byDay[occ._occStart] || []).push(occ);
+    }
+  }
+  const out = new Set();
+  for(const d in byDay){
+    const L = byDay[d];
+    if(L.some(x => x._mine) && L.some(x => !x._mine) && Object.keys(peerTimeOverlaps(L)).length) out.add(d);
+  }
+  return out;
 }
 
 // C. 셀 높이에 맞춰 칩을 들어갈 만큼만 보이고 나머지는 '+N개 더보기'로 접는다(고정 3개 대신 동적).
 let _fitRaf = 0;
 function fitChips(){
   const grid = document.getElementById('grid'); if(!grid) return;
-  grid.querySelectorAll('.cell').forEach(cell => {
+  //  나란히 보기의 오른쪽 달력(#gridMine)도 같은 규칙으로 접는다 — 평소엔 비어 있어 아무것도 안 돈다.
+  document.querySelectorAll('#grid .cell, #gridMine .cell').forEach(cell => {
     const box = cell.querySelector('.chips'); if(!box) return;
     const oldMore = box.querySelector('.more'); if(oldMore) oldMore.remove();
     const chips = [...box.children];
@@ -8418,7 +8568,47 @@ function fitChips(){
     }
   });
 }
-window.addEventListener('resize', () => { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(fitChips); });
+//  S4 — 창 크기가 바뀌면 줄 맞춤을 **먼저** 다시 하고(인라인 높이를 걷고 다시 잰다) 그 높이로 「+N」 을 다시 접는다.
+//  ★ 펼침은 여기서도 접지 않는다(renderGrid 와 같은 규칙) — 예전엔 resize 가 펼침에도 fitChips 를 불러, 칩 사이 간격(GAP)을
+//    마지막 칩에도 더하는 셈 때문에 칸마다 마지막 칩이 「+1개 더보기」 로 접혔다(2026-10-02 열람 창 폭 변경 실측).
+window.addEventListener('resize', () => { cancelAnimationFrame(_fitRaf); _fitRaf = requestAnimationFrame(() => { peerSyncRows(); if(calDensity() !== 'expand') fitChips(); }); });
+
+/*  S4 — 나란히 보기의 줄 맞춤: 두 달력의 **같은 주 줄은 같은 높이**(높은 쪽에 맞춤).
+ *  ★ 방법: 두 격자의 인라인 grid-template-rows 를 걷어 **제 높이**로 한 번 그리게 한 뒤, 주(週)마다 두 쪽 칸 높이를 재서
+ *    큰 값으로 두 격자에 같은 grid-template-rows 를 박는다. 밀도와 무관하게 같은 길이다 —
+ *    고정(1fr)·촘촘히(176px)는 원래 같아서 그대로 다시 박히고, 펼침(minmax(74px,auto))만 실제로 늘어난다.
+ *  ★ 좌우로 놓였을 때만 한다(S10) — 위아래로 쌓이면 줄을 맞출 이유가 없다(인라인 값을 걷기만 한다).
+ *  ★ 펼침·촘촘히는 두 격자가 따로 세로 스크롤된다 — 줄 높이가 같아도 스크롤이 어긋나면 주가 어긋나 보이므로 스크롤도 함께 움직인다(peerScrollLink).
+ *  ★ 레이아웃이 없으면(jsdom · 감춰진 창) 잰 값이 0 이라 아무것도 박지 않는다(0px 로 줄을 접지 않는다). */
+function peerSideByRow(){
+  if(!peerSide()) return false;
+  const a = document.querySelector('main > section.cal'), b = document.getElementById('calMine');
+  if(!a || !b) return false;
+  try{ return getComputedStyle(a.parentElement).flexDirection !== 'column'; }catch(_){ return true; }
+}
+function peerSyncRows(){
+  const g1 = document.getElementById('grid'), g2 = document.getElementById('gridMine');
+  if(!g1 || !g2) return;
+  //  걷을 때는 style 속성까지 지운다 — 빈 style="" 이 남으면 겹쳐 보기·내 창의 #grid 가 예전과 바이트 단위로 달라진다(S11).
+  const clear = (g) => { if(g.getAttribute('style') === null) return; g.style.removeProperty('grid-template-rows'); if(!g.getAttribute('style')) g.removeAttribute('style'); };
+  clear(g1); clear(g2);
+  if(!peerSideByRow() || !g2.firstChild) return;
+  const rowH = (g) => [...g.querySelectorAll('.gridrow')].map(r => { const c = r.querySelector('.cell'); return c ? c.getBoundingClientRect().height : 0; });
+  const h1 = rowH(g1), h2 = rowH(g2);
+  if(!h1.length || h1.length !== h2.length) return;
+  const rows = h1.map((h, i) => Math.max(h, h2[i]));
+  if(rows.some(h => !(h > 0))) return;
+  const tpl = rows.map(h => (Math.ceil(h * 100) / 100) + 'px').join(' ');
+  g1.style.gridTemplateRows = tpl; g2.style.gridTemplateRows = tpl;
+}
+//  두 격자의 세로 스크롤을 잇는다(나란히 보기 · 좌우일 때만). 되먹임(A→B→A…)은 「지금 맞추는 중」 표시(__peerScrollLock · 파일 앞 선언)로 끊는다.
+function peerScrollLink(from, to){
+  if(__peerScrollLock || !peerSideByRow()) return;
+  if(Math.abs(to.scrollTop - from.scrollTop) < 1) return;
+  __peerScrollLock = true;
+  to.scrollTop = from.scrollTop;
+  requestAnimationFrame(() => { __peerScrollLock = false; });
+}
 
 //  overlaps — O5 「시간 겹침」(peerTimeOverlaps 의 한 항목: 겹친 상대편 목록). 열람 창 겹에서만 들어온다.
 function cardHtml(e, overlaps){
@@ -8489,7 +8679,8 @@ function dayDetailHtml(){
     </div>
   </div>`;
   //  O4 — 열람 창 겹이 켜져 있으면 **사람별 두 묶음**(머리말 + 개수). 시간 겹침(O5)은 이 날 목록으로 한 번 계산한다.
-  if(PEER && __peerOverlay && list.length){
+  //  S7 — 나란히 보기의 상세 시트도 같은 두 묶음이다(겹 토글이 꺼져 있어도 — 오른쪽 달력이 곧 내 일정이다).
+  if(peerMineShown() && list.length){
     const ov = peerTimeOverlaps(list);
     const card = e => cardHtml(e, ov[ovlKey(e)]);
     const theirs = list.filter(e => !e._mine), mineL = list.filter(e => e._mine);
@@ -8567,10 +8758,13 @@ function selectDate(ds){
     // 같은 달이면 그리드를 다시 그리지 않고 선택 표시(.sel)만 갱신한다.
     // (단일 클릭이 매번 그리드를 재생성하면, 더블클릭의 첫 클릭에서 셀이 교체돼
     //  더블클릭이 안 잡히고 '새 기록' 창이 안 열린다 — 그 버그 방지)
-    $$('#grid .cell.sel').forEach(c => { c.classList.remove('sel'); c.setAttribute('aria-selected','false'); });
+    //  S6 — 나란히 보기면 오른쪽 달력(#gridMine)의 선택 테두리도 함께 옮긴다(roving tabindex 는 왼쪽 달력만 — S11).
+    $$('#grid .cell.sel, #gridMine .cell.sel').forEach(c => { c.classList.remove('sel'); c.setAttribute('aria-selected','false'); });
     $$('#grid .cell[tabindex="0"]').forEach(c => c.setAttribute('tabindex','-1'));
     const cell = document.querySelector('#grid .cell[data-date="' + ds + '"]');
     if(cell){ cell.classList.add('sel'); cell.setAttribute('aria-selected','true'); cell.setAttribute('tabindex','0'); }
+    const cm = document.querySelector('#gridMine .cell[data-date="' + ds + '"]');
+    if(cm){ cm.classList.add('sel'); cm.setAttribute('aria-selected','true'); }
   }
   editingTodoId = null; editingCommitKey = null;
   renderPanel();             // 현재 탭 유지 — 선택 날짜로 내용만 갱신(일정/할일/작업일지 모두 그 날 기준)
@@ -12800,7 +12994,8 @@ function gitFeed(){
 
 function setPanelTab(tab){ noteTab = tab; editingTodoId = null; editingCommitKey = null; renderPanel(); }
 // 좁은 폭(<=760)에서만 하단 시트를 올림(넓은 폭은 우측 패널이 상시 노출이라 무동작)
-function openSheetIfNarrow(){ if(window.innerWidth <= 760){ panelSheetOpen = true; document.body.classList.add('sheet-open'); } }
+//  S5 — 나란히 보기(열람 창)에서는 폭과 무관하게 상세 패널이 접혀 있고, 날짜를 누르면 이 시트로 올라온다(좁은 폭 시트와 같은 길).
+function openSheetIfNarrow(){ if(window.innerWidth <= 760 || peerSide()){ panelSheetOpen = true; document.body.classList.add('sheet-open'); } }
 function closeSheet(){ panelSheetOpen = false; document.body.classList.remove('sheet-open'); }
 // 할 일/작업일지 탭의 과제 필터 바(전역 filterCatId와 분리). 과제 없으면 빈 문자열
 /* 과제 필터 영역 — 과제 수에 따라 자동 확장(max-height 캡), 중앙 핸들 드래그로 캡 조절 + 영속 */
@@ -14174,6 +14369,35 @@ function bind(){
     renderGrid();    // 같은 달 안에서 드롭해도 칩 위치가 갱신되도록
     toast(p.kind === 'range' ? '기간 일정을 이동했습니다' : `기록을 ${fmtDateK(target)}로 이동했습니다`);
   });
+
+  /* 나란히 보기의 오른쪽 달력(#gridMine · 열람 창 전용 — docs/PEER-SIDE-BY-SIDE.md S6·S11)
+     ★ **누르면 그 날짜 선택뿐**이다(왼쪽과 같은 selectDate — 선택 테두리·시트가 양쪽에 함께). 끌기·더블클릭 새 기록·
+       키보드 roving 은 달지 않는다(읽기 전용 · 방향키는 왼쪽 달력 기준). 칩을 누르면 왼쪽처럼 상세 탭 + 그 카드 강조까지만.
+     ★ 스크롤 잇기 — 펼침·촘촘히에서 두 격자가 따로 스크롤되면 같은 높이로 맞춘 주(S4)가 다시 어긋나 보인다. */
+  const gm = $('#gridMine');
+  if(gm){
+    gm.addEventListener('click', ev => {
+      const cell = ev.target.closest('.cell');
+      if(!cell) return;
+      const chip = ev.target.closest('.chip');
+      selectDate(cell.dataset.date);
+      if(chip && chip.dataset.id){ noteTab = 'detail'; flashTargetId = chip.dataset.id; renderPanel(); }
+    });
+    gm.addEventListener('dragstart', ev => ev.preventDefault());   // 칩은 이미 draggable=false — 그래도 끌기 시작 자체를 막는다
+    gm.addEventListener('scroll', () => peerScrollLink(gm, grid), { passive: true });
+    grid.addEventListener('scroll', () => peerScrollLink(grid, gm), { passive: true });
+    //  S4 — 창 resize 말고도 달력 칸 크기가 바뀌는 때가 있다(열람 프레임이 늦게 보임 · 좌우 ↔ 위아래 전환 · 모드 전환).
+    //    두 달력 상자를 지켜보다가 나란히 보기일 때만 줄 맞춤 → 「+N」 을 다시 한다. 줄 높이를 박아도 상자 크기(flex)는 안 바뀌어 되먹임이 없다.
+    if(PEER && typeof ResizeObserver === 'function'){
+      let raf = 0;
+      const ro = new ResizeObserver(() => {
+        if(!peerSide()) return;
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => { peerSyncRows(); if(calDensity() !== 'expand') fitChips(); });
+      });
+      try{ ro.observe(grid.parentElement); ro.observe(gm.parentElement); }catch(_){}
+    }
+  }
 
   /* 날짜 패널 */
   $('#dayPanel').addEventListener('click', async ev => {

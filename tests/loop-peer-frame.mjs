@@ -8,6 +8,9 @@
  *        내 것은 내 색 칩(chip-mine · 연한 채움 + 왼쪽 막대)에 draggable=false 이고 **고칠 수 없다**(save 가 되돌린다)
  *    ② 그 창은 호스트로 **아무것도 내보내지 못한다** — 봉인
  *    ③ 몇 번을 열고 닫아도 **내 데이터도 DB 도 변하지 않고**, 프레임이 쌓이지 않는다
+ *    ④ 「나란히 보기」(2026-10-02 · docs/PEER-SIDE-BY-SIDE.md R2·R3·R4·R8·R9)에서도 같다 — 왼쪽 = 그 사람 · 오른쪽 = 나로
+ *        섞이지 않고, 같은 주 줄 높이가 맞고(±1px), 좁으면 쌓이고, 전환·클릭·시트 내내 postMessage 0회.
+ *        실행이 끝나면 보기 방식(tc_peerLayout)은 시작 전 값으로 되돌린다.
  *
  *  ★★ 2026-09-09 — 이 시험이 낡아서 실패했던 자리(고친 경위):
  *    2026-09-07 에 C4.1 「내 일정 겹쳐보기」가 들어왔고 **기본값이 켬**이다. 그래서 열람 창에는
@@ -189,6 +192,81 @@ async function setOverlay(cdp, on) {
   return r;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+ *  「나란히 보기」(docs/PEER-SIDE-BY-SIDE.md · R2·R3·R4·R8·R9)를 다루는 도구들
+ * ══════════════════════════════════════════════════════════════════════ */
+//  보기 방식도 **사람이 누르는 그 버튼**으로 바꾼다 — 배너의 분할 버튼 [겹쳐 보기 | 나란히 보기](click → setPeerLayout).
+//  ★ 설정은 localStorage(tc_peerLayout)라 라운드·실행을 넘어 남는다 — 그래서 라운드 첫머리에 겹쳐 보기를 명시적으로 세우고,
+//    실행이 끝나면(finally) 시작 전 값으로 되돌린다(사람이 고른 보기 방식을 이 시험이 바꿔 놓지 않는다).
+async function setLayout(cdp, v) {
+  const r = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W};
+    const b=w.document.querySelector('#peerBanner .peer-layout [data-layout="${v}"]');
+    if(!b) return JSON.stringify({err:"배너에 보기 방식 버튼(${v})이 없다 — 분할 버튼이 사라졌거나 배너가 안 그려졌다"});
+    if(b.getAttribute("aria-pressed") !== "true") b.click();
+    return JSON.stringify({pressed:(b.getAttribute("aria-pressed") === "true"),
+      attr:(w.document.body.dataset.peerLayout || null),
+      ls:(()=>{try{ return w.localStorage.getItem("tc_peerLayout"); }catch(_){ return "(못 읽음)"; }})()});})()`));
+  if (r.err) throw new Error('보기 방식 조작 실패: ' + r.err);
+  await sleep(200);   // renderAll() 이 돌 틈
+  return r;
+}
+//  두 달력의 내용 나누기(R2) — 그 사람 일정이 있는 달(6월)에서 센다. 내 칩은 오른쪽에 **실제로 그려진** 달을 찾아서 본다.
+async function sideProbe(cdp) {
+  return JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W}, d=w.document;
+    w.eval("view={y:2026,m:5}; selectedDate='2026-06-11'; renderAll();");
+    const ids=["e-pf-0","e-pf-1","e-pf-2"];
+    const r={
+      cellsL:d.querySelectorAll("#grid .cell").length, cellsR:d.querySelectorAll("#gridMine .cell").length,
+      wkR:d.querySelectorAll("#weekdaysMine > div").length,
+      tabL:(d.getElementById("calTabPeer")||{}).textContent||"", tabR:(d.getElementById("calTabMine")||{}).textContent||"",
+      theirsL:ids.filter((id)=>d.querySelector('#grid .chip[data-id="'+id+'"]')).length,
+      theirsR:ids.filter((id)=>d.querySelector('#gridMine .chip[data-id="'+id+'"]')).length,
+      toggleShown:(()=>{const t=d.getElementById("peerOverlayToggle"); return !!t && w.getComputedStyle(t).display!=="none";})(),
+      mineL:0, otherR:0, mineR:-1, mineAt:"" };
+    const st=w.__test.state();
+    const mine=st.entries.filter((e)=>e&&e._mine).slice(0,12);
+    for(const e of mine){
+      const ds=String(e.date||""); const y=Number(ds.slice(0,4)), mo=Number(ds.slice(5,7)); if(!y||!mo) continue;
+      w.eval("view.y="+y+"; view.m="+(mo-1)+"; renderGrid();");
+      r.mineL=Math.max(r.mineL, d.querySelectorAll("#grid .chip.chip-mine").length);
+      r.otherR=Math.max(r.otherR, d.querySelectorAll("#gridMine .chip:not(.chip-mine)").length);
+      if(d.querySelector('#gridMine .chip[data-id="'+e.id+'"]')){
+        r.mineR=d.querySelectorAll("#gridMine .chip.chip-mine").length; r.mineAt=ds;
+        r.mineInL=!!d.querySelector('#grid .chip[data-id="'+e.id+'"]'); break; }
+    }
+    w.eval("view={y:2026,m:5}; selectedDate='2026-06-11'; renderAll();");
+    return JSON.stringify(r);})()`));
+}
+//  줄 맞춤(R3)·좁은 창 쌓기(R8)를 **잰다.** 열람 프레임의 폭을 부모 쪽에서 잠시 정해(wpx) 레이아웃을 확정한 뒤 두 달력의 주 줄 높이를 비교한다.
+//  ★ 위젯 창이 좁거나(≤860 이면 늘 쌓인다) 안 그려지면(0×0) 좌우 줄 맞춤을 잴 수 없다 — 그래서 폭·높이를 CSS 로 박아 둔다.
+//    박은 값은 sideRowsReset 으로 걷는다(라운드 끝에 프레임을 닫기도 한다).
+async function sideRows(cdp, wpx) {
+  await cdp.ev(`(()=>{const f=document.querySelector("#pvHost iframe"); if(!f) return 0;
+    f.style.width="${wpx}px"; f.style.maxWidth="none"; f.style.height="800px"; f.style.flex="none"; return 1;})()`);
+  await sleep(450);   // 프레임 resize → ResizeObserver/rAF 줄 맞춤 · 「+N」
+  return JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W}, d=w.document;
+    const a=d.querySelector("main > section.cal").getBoundingClientRect(), b=d.getElementById("calMine").getBoundingClientRect();
+    const rows=(g)=>Array.prototype.map.call(d.querySelectorAll("#"+g+" .gridrow"), (x)=>{ const c=x.querySelector(".cell"); return c ? c.getBoundingClientRect().height : 0; });
+    const L=rows("grid"), R=rows("gridMine");
+    return JSON.stringify({vw:w.innerWidth, dir:w.getComputedStyle(d.querySelector("main")).flexDirection,
+      stacked:(b.top >= a.bottom - 1), sideBySide:(b.left >= a.right - 1 && Math.abs(b.top - a.top) < 2),
+      rowsN:[L.length, R.length], zero:L.concat(R).some((h)=>!(h > 0)),
+      maxDiff:(L.length === R.length && L.length) ? Math.max(...L.map((h,i)=>Math.abs(h - R[i]))) : -1,
+      L:L.map((h)=>Math.round(h)), R:R.map((h)=>Math.round(h))});})()`));
+}
+async function sideRowsReset(cdp) {
+  await cdp.ev(`(()=>{const f=document.querySelector("#pvHost iframe"); if(f){ f.style.width=""; f.style.maxWidth=""; f.style.height=""; f.style.flex=""; } return 1;})()`);
+  await sleep(250);
+}
+async function setDensity(cdp, v) {
+  const r = await cdp.ev(`(()=>{const w=${FRAME_W};
+    const x=w.document.querySelector('#peerBanner input[name="peerDensity"][value="${v}"]');
+    if(!x) return "없음"; if(!x.checked) x.click(); return w.calDensity();})()`);
+  await sleep(200);
+  return r;
+}
+let R3_MEASURED = 0;   // 좌우 줄 맞춤을 실제로 잰 횟수 — 0 이면 끝에서 실패시킨다(판정 불가 ≠ 통과)
+
 //  지금 **보이는 것**을 앱 자신의 판정 함수(passFilter)로 센다 — 데이터 개수가 아니다.
 //  ★ passFilter 가 없으면 세지 않고 실패시킨다(판정 불가 ≠ 통과).
 async function visible(cdp) {
@@ -272,9 +350,14 @@ console.log(`타인 일정 열람 창 — 실동작 루프 (라운드 ${ROUNDS} 
 console.log('═'.repeat(72));
 
 let cdp, TUID = 0;
+//  사람이 골라 둔 보기 방식(tc_peerLayout) — 시험이 라운드마다 겹쳐 보기·나란히 보기를 오가므로 끝나면 이 값으로 되돌린다.
+//  undefined = 아직 못 읽음(되돌리지 않는다) · null = 저장값 없음(지운다).
+let LAYOUT0;
 try {
   TUID = seedTarget();
   cdp = await Cdp.attach(PORT);
+  //  ★ 부모와 열람 프레임은 같은 출처라 localStorage 가 같다 — 부모에서 읽고 되돌린다.
+  LAYOUT0 = await cdp.ev("(()=>{ try{ return localStorage.getItem('tc_peerLayout'); }catch(_){ return null; } })()");
 
   const me = String(await cdp.ev("(typeof currentUser!=='undefined' && currentUser && currentUser.loginId) || ''")).trim();
   const MYID = num(`SELECT user_id FROM app_user WHERE login_id='${me.replace(/'/g, "''")}'`);
@@ -306,6 +389,14 @@ try {
     }
     ok(`R${r} 열람 창이 뜨고 데이터가 들어온다`, loaded);
     if (!loaded) { await cdp.ev('closeModal("#peerModal")'); continue; }
+
+    //  ①-00 보기 방식을 **겹쳐 보기**로 먼저 세운다 — 아래 ①~①' 은 겹쳐 보기의 명제다.
+    //  ★ 나란히 보기에서는 내 겹이 토글과 무관하게 통과하므로(S9) 「겹을 끄면 대상 것만」 이 원리적으로 성립하지 않는다.
+    //    사람이 마지막에 나란히 보기를 골라 두었으면 그 값이 저장돼 있다 — 그래서 명시적으로 세운다(끝나면 되돌린다).
+    const ovLay = await setLayout(cdp, 'overlay');
+    ok(`R${r} 보기 방식을 겹쳐 보기로 세웠다(분할 버튼 · body 스위치 없음 · tc_peerLayout=overlay 또는 미저장)`,
+       ovLay.pressed === true && ovLay.attr === null && (ovLay.ls === 'overlay' || ovLay.ls === null),   // null = 한 번도 안 골랐다(기본값 겹쳐 보기)
+       `aria-pressed=${ovLay.pressed} data-peer-layout=${ovLay.attr} tc_peerLayout=${ovLay.ls}`);
 
     //  ①-0 **겹쳐보기를 끈 상태를 먼저 만든다.** 아래 ② 는 "대상의 것만 보인다" 를 보는데,
     //  기본값이 켬이므로 끄지 않으면 내 겹까지 세어 대상 3건과 어긋난다(2026-09-09 실패 원인).
@@ -551,6 +642,102 @@ try {
     //  남기면, 다음에 사람이 열람 창을 열었을 때 겹이 꺼져 있다(localStorage 는 창을 넘어 남는다).
     await setOverlay(cdp, true);
 
+    //  ⑤ 「나란히 보기」(docs/PEER-SIDE-BY-SIDE.md · R2·R3·R4·R8·R9) — 같은 열람 창에서 보기 방식만 바꿔 같은 명제를 다시 본다.
+    //  ★ 겹을 **끈 채로** 들어간다 — 나란히 보기는 겹 토글과 무관하게 오른쪽에 내 일정을 보여야 한다(S9).
+    //    켠 채로만 보면 「토글 값 덕에 보인 것」 과 구별할 수 없다.
+    //  ★ 이 블록 전체를 postMessage 계기로 감싼다 — 보기 전환·칸 클릭·시트 열고 닫기·밀도 전환·창 폭 변경 어디서도 문이 열리면 안 된다(R9).
+    await setOverlay(cdp, false);
+    await cdp.ev(`(()=>{const w=${FRAME_W}; const orig=w.chrome.webview.postMessage.bind(w.chrome.webview);
+      w.__sideTap={n:0, orig}; w.chrome.webview.postMessage=function(m){ w.__sideTap.n++; return orig(m); }; return 1;})()`);
+    let sideTap = { n: -1 };
+    const dens0 = await cdp.ev(`${FRAME_W}.calDensity()`);
+    try {
+      const sd = await setLayout(cdp, 'side');
+      ok(`R${r} 「나란히 보기」 버튼 → 눌림(aria-pressed) · body 스위치 · tc_peerLayout=side`,
+         sd.pressed === true && sd.attr === 'side' && sd.ls === 'side',
+         `aria-pressed=${sd.pressed} data-peer-layout=${sd.attr} tc_peerLayout=${sd.ls}`);
+
+      //  R2 — 두 달력 · 이름 탭 · 내용 나누기
+      const sp = await sideProbe(cdp);
+      ok(`R${r} 나란히 보기: 달력 두 개(칸 수 같음 · 오른쪽에도 요일 머리줄)`, sp.cellsL === 35 && sp.cellsR === 35 && sp.wkR === 7,
+         `왼쪽 ${sp.cellsL}칸 · 오른쪽 ${sp.cellsR}칸 · 오른쪽 요일 ${sp.wkR}`);
+      ok(`R${r} 나란히 보기: 이름 탭 두 개(「열람대상 님」 · 「내 일정」)`, /열람대상 님/.test(sp.tabL) && /내 일정/.test(sp.tabR),
+         `왼쪽 「${sp.tabL.trim()}」 · 오른쪽 「${sp.tabR.trim()}」`);
+      ok(`R${r} 나란히 보기: 대상 일정 ${TITLES.length}건은 왼쪽에만`, sp.theirsL === TITLES.length && sp.theirsR === 0,
+         `왼쪽 ${sp.theirsL}건 · 오른쪽 ${sp.theirsR}건`);
+      ok(`R${r} 나란히 보기: 왼쪽에 내 칩 0 · 오른쪽에 내 것 아닌 칩 0`, sp.mineL === 0 && sp.otherR === 0,
+         `왼쪽 chip-mine ${sp.mineL} · 오른쪽 비-mine ${sp.otherR}`);
+      ok(`R${r} 나란히 보기: 겹을 꺼 두었어도 오른쪽 달력에 내 일정이 그려진다(S9)`, sp.mineR > 0 && sp.mineInL === false,
+         `오른쪽 chip-mine ${sp.mineR}개(${sp.mineAt || '찾지 못함'}) · 같은 일정이 왼쪽에도 있음=${sp.mineInL}`);
+      ok(`R${r} 나란히 보기: 「내 일정」 겹 토글 칩이 감춰진다(S9)`, sp.toggleShown === false, '겹 토글 칩이 보인다');
+
+      //  R4·R5 — 오른쪽 칸 클릭 → 양쪽 선택 · 시트(두 묶음) · 닫기 손잡이
+      const tap = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W}, d=w.document;
+        const c=d.querySelector('#gridMine .cell[data-date="2026-06-12"]');
+        if(!c) return JSON.stringify({err:"오른쪽 달력에 6/12 칸이 없다"});
+        const sheet0=d.body.classList.contains("sheet-open");
+        c.click();
+        const r={ sheet0, sel:Array.prototype.map.call(d.querySelectorAll("#grid .cell.sel, #gridMine .cell.sel"), (x)=>x.closest(".grid").id+":"+x.dataset.date),
+          sheet:d.body.classList.contains("sheet-open"),
+          secs:Array.prototype.map.call(d.querySelectorAll("#dpBody .dp-sec-h"), (h)=>h.textContent.replace(/\\s+/g," ").trim()) };
+        d.getElementById("dpSheetClose").click();
+        r.closed=!d.body.classList.contains("sheet-open");
+        return JSON.stringify(r);})()`));
+      ok(`R${r} 나란히 보기: 상세 패널은 접혀 있다가 오른쪽 칸 클릭으로 시트가 열리고 손잡이로 닫힌다(R4)`,
+         !tap.err && tap.sheet0 === false && tap.sheet === true && tap.closed === true,
+         tap.err || `처음 열림=${tap.sheet0} · 클릭 뒤=${tap.sheet} · 닫기 뒤 닫힘=${tap.closed}`);
+      ok(`R${r} 나란히 보기: 오른쪽 칸 클릭 → 두 달력 모두 같은 날짜 선택(R5)`,
+         !tap.err && JSON.stringify((tap.sel || []).sort()) === JSON.stringify(['grid:2026-06-12', 'gridMine:2026-06-12']),
+         tap.err || (tap.sel || []).join(','));
+      ok(`R${r} 나란히 보기: 시트 상세 = 두 묶음(「열람대상 님 일정」 · 「내 일정」)(S7)`,
+         !tap.err && tap.secs.length === 2 && /^열람대상 님 일정 \(1\)$/.test(tap.secs[0]) && /^내 일정 \(\d+\)$/.test(tap.secs[1]),
+         tap.err || JSON.stringify(tap.secs));
+
+      //  R3 — 같은 주 줄 높이(±1px) · 고정·촘촘히·펼침 각각 · 폭을 바꾼 뒤에도.  R8 — 좁은 폭에서 위아래로 쌓기.
+      for (const dv of ['fixed', 'dense', 'expand']) {
+        const got = await setDensity(cdp, dv);
+        for (const wpx of [1280, 1000]) {
+          const m = await sideRows(cdp, wpx);
+          if (m.zero || !m.vw) {
+            console.log(`  · 참고: R${r} ${dv}/${wpx}px — 칸 높이를 재지 못했다(창이 안 그려짐 · vw=${m.vw}) — 줄 맞춤 판정을 건너뛴다`);
+            continue;
+          }
+          R3_MEASURED++;
+          ok(`R${r} 줄 맞춤(R3) ${dv}·${wpx}px: 좌우로 놓이고 같은 주 줄 높이가 ±1px`,
+             got === dv && m.sideBySide && m.dir !== 'column' && m.rowsN[0] === m.rowsN[1] && m.maxDiff >= 0 && m.maxDiff <= 1,
+             `밀도=${got} · vw=${m.vw} · 방향=${m.dir} · 좌우=${m.sideBySide} · 줄 ${m.rowsN.join('/')} · 최대 차 ${m.maxDiff}px · L=${m.L.join(',')} R=${m.R.join(',')}`);
+        }
+      }
+      const nar = await sideRows(cdp, 700);
+      ok(`R${r} 좁은 폭(700px)에서 위아래로 쌓인다(위 = 그 사람 · 아래 = 나)(R8)`, nar.dir === 'column' && nar.stacked === true,
+         `vw=${nar.vw} · 방향=${nar.dir} · 쌓임=${nar.stacked}`);
+      const wide = await sideRows(cdp, 1280);
+      ok(`R${r} 다시 넓히면 좌우로 돌아온다`, wide.dir !== 'column' && (wide.zero || wide.sideBySide),
+         `vw=${wide.vw} · 방향=${wide.dir} · 좌우=${wide.sideBySide}`);
+      await sideRowsReset(cdp);
+      await setDensity(cdp, dens0);
+
+      //  R9 — 보기 방식을 여러 번 오가도 잔재가 없다(겹쳐 보기면 오른쪽 달력이 비고 스위치가 내려간다)
+      let flipBad = '';
+      for (let k = 0; k < 3; k++) {
+        const o = await setLayout(cdp, 'overlay');
+        const oN = await cdp.ev(`${FRAME_W}.document.getElementById("gridMine").children.length`);
+        const s2 = await setLayout(cdp, 'side');
+        const sN = await cdp.ev(`${FRAME_W}.document.querySelectorAll("#gridMine .cell").length`);
+        if (o.attr !== null || oN !== 0 || s2.attr !== 'side' || sN !== 35) { flipBad = `${k}: overlay attr=${o.attr} 오른쪽 ${oN} · side attr=${s2.attr} 오른쪽 ${sN}칸`; break; }
+      }
+      ok(`R${r} 보기 방식을 세 번 오가도 잔재가 없다`, !flipBad, flipBad);
+    } finally {
+      try { await sideRowsReset(cdp); } catch { }
+      sideTap = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W}; const t=w.__sideTap; if(!t) return JSON.stringify({n:-1});
+        w.chrome.webview.postMessage=t.orig; delete w.__sideTap; return JSON.stringify({n:t.n});})()`));
+    }
+    ok(`R${r} **봉인(나란히 보기)**: 보기 전환·클릭·시트·밀도·폭 변경 내내 postMessage 0회`, sideTap.n === 0,
+       `postMessage ${sideTap.n}회`);
+    //  다음 라운드·사람을 위해 겹쳐 보기 · 겹 켬으로 되돌린다(실행이 끝나면 finally 가 시작 전 tc_peerLayout 으로 다시 되돌린다).
+    await setLayout(cdp, 'overlay');
+    await setOverlay(cdp, true);
+
     //  ④ 닫기 — 프레임이 사라져야 한다
     await cdp.ev('closeModal("#peerModal")');
     await sleep(400);
@@ -565,6 +752,10 @@ try {
     ok(`R${r} 내 화면 state 가 그대로다`, after.myState === myStateBase, `${myStateBase} → ${after.myState}`);
     if (r % 3 === 0) process.stdout.write(`  … ${r}/${ROUNDS} (실패 ${fail})\n`);
   }
+
+  //  R3 — 좌우 줄 맞춤을 한 번이라도 실제로 쟀는가(창이 안 그려지면 모두 건너뛰어 아무것도 증명하지 않는다).
+  ok('나란히 보기 줄 맞춤(R3)을 실제로 쟀다(판정 불가 ≠ 통과)', R3_MEASURED > 0,
+     '한 번도 못 쟀다 — 위젯 창을 화면에 띄운 채로 돌릴 것(최소화·가림이면 칸 높이가 0 이다)');
 
   /* ── 누적 검증 — 여기가 루프의 값이다 ──────────────────────────── */
   console.log('\n[누적] 몇 번을 열고 닫아도 아무것도 안 변했는가');
@@ -603,7 +794,17 @@ try {
   fail++; F.push('중단: ' + e.message);
   console.log('\n[중단] ' + e.message);
 } finally {
-  try { if (cdp) { await cdp.ev('closeModal("#peerModal")').catch(() => {}); cdp.close(); } } catch { }
+  try { if (cdp) { await cdp.ev('closeModal("#peerModal")').catch(() => {}); } } catch { }
+  //  보기 방식 원상 복구 — 시작 전 값으로(없었으면 지운다). 프레임은 닫혔으니 부모의 같은 저장소에 쓴다.
+  try {
+    if (cdp && LAYOUT0 !== undefined) {
+      const back = await cdp.ev(LAYOUT0 === null
+        ? "(()=>{ localStorage.removeItem('tc_peerLayout'); return localStorage.getItem('tc_peerLayout'); })()"
+        : `(()=>{ localStorage.setItem('tc_peerLayout', ${JSON.stringify(String(LAYOUT0))}); return localStorage.getItem('tc_peerLayout'); })()`);
+      console.log(`  · 보기 방식 되돌림: tc_peerLayout = ${JSON.stringify(back)}(시작 전 ${JSON.stringify(LAYOUT0)})`);
+    }
+  } catch (e) { console.log('  ! 보기 방식 되돌리기 실패: ' + e.message); }
+  try { if (cdp) cdp.close(); } catch { }
   try { wipeTarget(); } catch (e) { console.log('  ! 정리 실패: ' + e.message); }
 }
 
