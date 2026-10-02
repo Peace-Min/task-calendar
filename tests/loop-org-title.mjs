@@ -476,7 +476,17 @@ async function trRestoreClick(key) {
   if (!(await waitPage((x) => x.cfOpen, { timeout: 5000 }))) return 'noconfirm';
   await ev(`(document.getElementById('cfOk').click(), 1)`);
   const s = await waitPage((x) => !x.cfOpen && !x.trSaving, { timeout: 30000 });
-  return s ? 'ok' : 'timeout';
+  if (!s) return 'timeout';
+  //  ★ 소속·직급 탭의 복구는 휴지통의 trSaving 이 아니라 직급·소속 쪽 왕복(unitSetActive/titleSetActive)을 탄다 —
+  //    위 조건만 보면 확인창이 닫히자마자(요청이 나가기도 전에) 'ok' 가 되어 DB 판정이 앞질렀다(2026-10-02 run-loops 실측:
+  //    「is_active=1 — 1」처럼 판정 직후엔 이미 1). 그래서 **그 줄이 휴지통 목록에서 빠질 때까지** 기다린다(성공의 화면 증거).
+  for (let i = 0; i < 150; i++) {
+    const left = await ev(`(function(){ var ls=document.querySelectorAll('#trList .mba-line');
+      for(var i=0;i<ls.length;i++){ if(String(ls[i].dataset.tkey||'') === ${J(String(key))}) return 1; } return 0; })()`);
+    if (left === 0) return 'ok';
+    await sleep(200);
+  }
+  return 'stuck';
 }
 /** 토스트 기록 — 감싸기만 한다(원본을 그대로 부른다) · 반드시 끈다(stop). */
 const toastRecStart = () => ev(`(function(){ if(window.__otlToast) return 'already'; var o = toast; window.__otlToast = { orig: o, log: [] };
