@@ -6312,6 +6312,9 @@ function pkOpen(mode, opener){
   const host = (mode === 'modal') ? document.querySelector('#peerModal .modal-head') : document.body;
   if(!host) return;
   host.appendChild(pop);
+  //  ★ 팝오버는 평소 body 의 자식이라, 열람 창이 열릴 때 _updateInert 가 inert + aria-hidden 을 붙인다. 모달 머리로 옮겨도
+  //    그 속성이 따라와 검색 칸이 포커스를 못 받고 보조기술에도 숨는다(2026-10-02 실 위젯 실측 — jsdom 은 inert 를 안 따른다).
+  if(mode === 'modal'){ pop.removeAttribute('inert'); pop.removeAttribute('aria-hidden'); }
   pop.classList.toggle('pk-in', mode === 'modal');
   __pk = { mode, opener, status:'loading', msg:'', members:null };
   const inp = pop.querySelector('.pk-search'); inp.value = '';
@@ -6328,7 +6331,7 @@ function pkOpen(mode, opener){
 function pkClose(focusBack){
   const k = __pk; __pk = null; __pkSeq++;
   const pop = document.getElementById('peerPicker');
-  if(pop){ pop.classList.add('hidden'); if(pop.parentElement !== document.body) document.body.appendChild(pop); }
+  if(pop){ pop.classList.add('hidden'); if(pop.parentElement !== document.body){ document.body.appendChild(pop); _updateInert(); } }   // body 로 돌아오면 모달 상태에 맞춰 inert 를 다시 매긴다
   if(k && k.opener){
     k.opener.setAttribute('aria-expanded', 'false');
     if(focusBack){ try{ k.opener.focus(); }catch(_){} }

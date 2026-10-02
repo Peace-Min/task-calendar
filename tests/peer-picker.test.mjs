@@ -549,6 +549,9 @@ if (!JSDOM) {
     assert.ok(pop(B).classList.contains('pk-in'));
     assert.strictEqual(B.doc.getElementById('pvSwitch').getAttribute('aria-expanded'), 'true');
     assert.strictEqual(active(B), 'pkSearch');
+    //  ★ 2026-10-02 실 위젯 실측 — 열람 창이 열릴 때 body 자식이던 팝오버에 붙은 inert·aria-hidden 이 모달 머리로 옮겨도 남아
+    //    검색 칸이 포커스를 못 받았다(jsdom 은 inert 를 따르지 않아 위 active 판정만으로는 못 잡는다 → 속성을 직접 본다).
+    assert.ok(!pop(B).hasAttribute('inert') && !pop(B).hasAttribute('aria-hidden'), '모달 안 팝오버에 inert/aria-hidden 이 남았다 — 실 위젯에서 검색 칸이 포커스를 못 받는다');
     const rec = sec(B, 'Recent');
     assert.deepStrictEqual(rec.map((x) => x.id), ['wblee', 'ihyoon'], '최근 목록(방금 연 이웅빈 + 윤인환)');
     assert.ok(rec[0].off && /· 보는 중/.test(rec[0].text) && rec[0].tip === '지금 보고 있는 사람입니다', JSON.stringify(rec[0]));
@@ -561,6 +564,7 @@ if (!JSDOM) {
     assert.ok(pvOpen(B), 'Esc 가 열람 창까지 닫았다 — 팝오버만 닫아야 한다');
     assert.strictEqual(active(B), 'pvSwitch');
     assert.strictEqual(pop(B).parentElement, B.doc.body, '닫힌 팝오버가 열람 창 안에 남았다(다음에 열 때 숨은 검색 칸이 포커스를 집는다)');
+    assert.ok(pop(B).hasAttribute('inert'), '열람 창이 열린 채 body 로 돌아온 팝오버가 inert 가 아니다(모달 뒤에서 포커스를 받는다)');
   });
 
   test('(R7) 바꾸기: 창을 닫지 않고 그 자리에서 다른 사람으로 — 새 프레임 · 보던 달(meta.view) 잇기 · 최근 앞으로', async () => {
