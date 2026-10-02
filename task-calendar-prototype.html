@@ -2062,6 +2062,99 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 .help-card .hc-h .ic{width:19px;height:19px;color:var(--accent);flex:none}
 .help-card .hc-h b{font-size:var(--fs-emph);font-weight:700;color:var(--text)}
 .help-card .hc-d{font-size:var(--fs-meta);color:var(--muted);line-height:1.6;word-break:keep-all;overflow-wrap:anywhere}
+/* ── 「⚙ 관리」 화면(관리자 허브 · docs/ADMIN-HUB.md H1–H13 · B′ 수정안) ─────────────────────────────
+   ★ 선택 표시는 **accent 한 가지**다(H3 · 2026-10-02 사용자 지적 — 이전 B안의 회색 채움이 '안 고른 것'과 헷갈렸다):
+     고른 묶음/항목 = --accent-soft 채움 + --accent 테두리·막대 + accent 글자 · 안 고른 쪽 = 채움 없음 + 흐린 글자 + 흑백 아이콘.
+     **회색 채움을 선택·비선택 상태에 쓰지 않는다**(hover 의 --hover-bg 는 상태가 아니라 손 아래 표시다).
+   ★ 글자는 --accent-2 다(.dp-tab.on 과 같은 규칙) — 포레스트의 --accent(#2e9e6b)는 연한 채움 위 글자로 AA 에 못 미친다.
+     테두리·막대(비텍스트 3:1)는 --accent 그대로. 다크의 --accent-2 는 밝은 쪽이라 어두운 채움 위에서 오히려 또렷하다.
+   ★ 왼쪽 목록 바탕 = 오른쪽 내용과 **같은 --panel**(구분은 선 하나) · 맨 위에 지금 묶음 이름(accent).
+   ★ 색은 토큰만(hex 금지) · 색 속성은 **longhand**(background-color)로 쓴다 — jsdom 계산 스타일 시험(R2)이 토큰을 읽을 수 있게.
+   ★ 오른쪽 칸(#ahSlot)은 빈 자리다 — 지금 있는 모달이 그 안에 **도킹**된다(H4 · JS 의 ahDock). 아래 .docked 규칙이
+     그 모달의 배경막·그림자·둥근 테두리·× ·[닫기] 를 걷어 「창 위의 창」이 보이지 않게 한다. */
+#adminHub .ah-modal{width:min(1120px,100%);height:min(680px,calc(100vh - 40px));max-height:none}
+.ah-title{display:flex;align-items:baseline;gap:10px;min-width:0}
+.ah-who{font-size:var(--fs-meta);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ah-seg{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);flex:none}
+.ah-seg button{display:flex;gap:10px;align-items:center;border:1.5px solid var(--line-2);background-color:transparent;border-radius:12px;
+  padding:8px 16px 8px 10px;cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:0}
+.ah-seg button:hover{border-color:var(--accent)}
+.ah-gic{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;
+  background-color:transparent;filter:grayscale(1);opacity:.65}
+.ah-gtx{display:flex;flex-direction:column;min-width:0}
+.ah-gt{font-weight:700;font-size:var(--fs-emph);color:var(--muted);white-space:nowrap}
+.ah-gd{font-size:var(--fs-micro);color:var(--faint-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ah-seg button.on{background-color:var(--accent-soft);border-color:var(--accent)}
+.ah-seg button.on .ah-gt{color:var(--accent-2)}
+.ah-seg button.on .ah-gd{color:var(--muted)}
+.ah-seg button.on .ah-gic{filter:none;opacity:1;background-color:var(--panel)}
+.ah-body{display:grid;grid-template-columns:200px minmax(0,1fr);flex:1;min-height:0}
+.ah-nav{background-color:var(--panel);border-right:1px solid var(--line);padding:12px 8px;overflow:auto;min-height:0}
+.ah-navlbl{font-size:var(--fs-meta);font-weight:700;color:var(--accent-2);padding:2px 10px 8px;display:flex;gap:6px;align-items:center}
+.ah-nav button{display:flex;width:100%;align-items:center;gap:8px;border:0;background-color:transparent;text-align:left;padding:8px 10px;
+  border-radius:8px;cursor:pointer;font:inherit;font-size:var(--fs-emph);color:var(--text);margin-bottom:2px}
+.ah-nav button:hover{background-color:var(--hover-bg)}
+.ah-nav button .ah-ic{width:20px;text-align:center;flex:none}
+.ah-nav button .ah-n{margin-left:auto;font-size:var(--fs-meta);color:var(--muted);font-weight:500;white-space:nowrap}
+.ah-nav button.on{background-color:var(--accent-soft);color:var(--accent-2);font-weight:700;box-shadow:inset 3px 0 0 var(--accent)}
+.ah-nav button.on .ah-n{color:var(--accent-2)}
+.ah-sel{display:none}
+.ah-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background-color:var(--panel)}
+.ah-where{font-size:var(--fs-meta);color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:12px 20px 0;flex:none}
+.ah-where b{color:var(--text)}
+.ah-slot{position:relative;flex:1;min-height:0}
+.ah-empty{padding:16px 20px;margin:0}
+/* 「관리자」 꼬리표 — 사용자 정보 카드 · 내 과제 버튼이 같은 알약을 쓴다(☰ 는 호스트 네이티브 메뉴라 글자 「관리자」) */
+.ah-pill{display:inline-block;font-size:var(--fs-micro);font-weight:600;border-radius:999px;padding:1px 8px;
+  background-color:var(--accent-soft);color:var(--accent-2);vertical-align:1px;white-space:nowrap}
+/* 도킹 — 오버레이를 칸 크기 그대로(좌표 계산 없음 · 창 크기를 CSS 가 따라간다). 명시도 (1,4,0) 이상이라
+   #officialModal .modal.wide(넓은 폭) · 좁은 폭 시트(.modal 88vh · 둥근 위 모서리 · 그립)를 모두 이긴다. */
+#adminHub .ah-slot > .overlay.docked{position:absolute;inset:0;background-color:transparent;padding:0;z-index:auto;
+  display:flex;align-items:stretch;justify-content:stretch;animation:none}
+#adminHub .ah-slot > .overlay.docked > .modal{width:100%;max-width:none;height:100%;max-height:none;border-radius:0;
+  box-shadow:none;background-color:transparent;animation:none}
+#adminHub .ah-slot > .overlay.docked > .modal::before{display:none}
+#adminHub .ah-slot > .overlay.docked .modal-head{border-bottom:0;padding:6px 20px 2px}
+/* 머리 × 와 아래 [닫기] 는 관리 화면의 ✕ 하나가 대신한다 — 둘이 서면 '창 안의 창'으로 읽힌다 */
+#adminHub .ah-slot > .overlay.docked .modal-head > .x,#adminHub .ah-slot > .overlay.docked .modal-foot [data-close]{display:none}
+/* ★ 왼쪽 목록과 같은 곳으로 가는 버튼은 관리 화면 안에서 감춘다(같은 문이 두 개면 어느 쪽을 눌러야 하는지 헷갈린다 — 2026-10-02 PM 검토).
+     단독 모달에서는 그대로 보인다 · 요소·배선은 그대로(관리 화면의 항목 전환이 이 버튼들의 .click() 을 쓴다). */
+#adminHub .ah-slot > .overlay.docked #uaTrash,#adminHub .ah-slot > .overlay.docked #uaOrgTitle,
+#adminHub .ah-slot > .overlay.docked #offCustMgr,#adminHub .ah-slot > .overlay.docked #offCodeMgr,
+#adminHub .ah-slot > .overlay.docked #offTrash{display:none !important}
+#adminHub .ah-slot > .overlay.docked .modal-foot.ah-foot-empty{display:none}   /* 숨긴 [닫기] 하나뿐인 아래 줄(JS ahSyncFoot) */
+#adminHub .ah-slot > .overlay.docked .modal-body{flex:1;min-height:0;display:flex;flex-direction:column}
+#adminHub .ah-slot > .overlay.docked .modal-body > *{flex:none}
+/* 칸 높이가 고정이다(관리 화면) — 목록 상자의 vh 고정 높이(46vh·44vh·42vh)를 걷고 **남은 높이를 채운다**.
+   그대로 두면 본문과 목록이 따로 굴러 스크롤바가 둘이 된다(2026-10-02 실 위젯 확인). 단독 모달은 그대로다(이 규칙은 .docked 만). */
+#adminHub .ah-slot > .overlay.docked #uaList,#adminHub .ah-slot > .overlay.docked #trList,
+#adminHub .ah-slot > .overlay.docked .cust-list{flex:1 1 0;height:auto;min-height:120px}
+/* 빈 결과 안내는 단독 모달에서 목록 위에 겹쳐 그린다(창 높이 고정용 · 46vh 기준 absolute). 칸 안에서는 그 기준이 없다 —
+   흐름으로 되돌린다: 목록이 그 한 줄만큼 줄 뿐 창은 자라지 않는다(칸 높이가 고정이므로). */
+#adminHub .ah-slot > .overlay.docked #uaEmpty:not(.hidden),#adminHub .ah-slot > .overlay.docked #trEmpty:not(.hidden){position:static;margin:6px 0;order:1}
+#adminHub .ah-slot > .overlay.docked #uaList,#adminHub .ah-slot > .overlay.docked #trList{order:2}   /* 안내는 목록 **위**(단독 모달과 같은 자리) — 목록 뒤 형제라 순서로 올린다 */
+#adminHub .ah-slot > .overlay.docked .off-split{flex:1 1 0;min-height:160px;min-width:0;align-items:stretch}
+#adminHub .ah-slot > .overlay.docked .off-list{height:auto;max-height:none;flex:1 1 0;min-height:110px}
+#adminHub .ah-slot > .overlay.docked .off-detail{max-height:none}
+/* 사용자 정보 — 관리자로 확인되면 「구성원」 줄의 「구성원 편집」은 「⚙ 관리」 카드로 간다(H7 · 버튼은 마크업에 그대로 상주) */
+#usMembersSec.ah-admin #usUserAdmin{display:none}
+/* 「🏷️ 내 과제」 머리 — 제목 + 부제(H10) · 공식 과제 편집 지름길(H8 · 관리자) */
+.cat-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px;min-width:0}
+.cat-sub{font-size:var(--fs-meta);color:var(--muted)}
+.cat-admin-row{display:flex;justify-content:flex-end;margin:-4px 0 10px}
+.cat-admin-row .btn{gap:6px}
+/* 좁은 창(H11) — 왼쪽 목록 → 묶음 버튼 아래 고르기 상자(그 묶음 항목만) · 묶음 버튼은 둘 다 한 줄(설명 줄 숨김 · 이름 줄바꿈 금지) */
+@media (max-width:720px){
+  .ah-seg{padding:10px 12px}
+  .ah-seg button{flex:1 1 0;padding:8px 10px;justify-content:center}
+  .ah-gd{display:none}
+  .ah-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  .ah-nav{display:none}
+  .ah-sel{display:block;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .ah-where{padding:10px 14px 0}
+  #adminHub .ah-slot > .overlay.docked .modal-head{padding:6px 14px 2px}
+}
+@media (max-width:440px){ #adminHub .ah-modal{height:88vh} }
 </style>
 </head>
 <body>
@@ -2105,7 +2198,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
          ★ 좁은 폭 규칙은 다른 보조 버튼과 같다: 라벨은 따로 일찍 접고(≤1199px 아이콘만) ≤549px 에서는 ⋯ 로 접힌다 — 실측 경계는 CSS 주석.
          ★ 열람 창(PEER) 안에는 없다 — bind() 가 PEER 면 이 버튼과 ⋯ 접기 항목을 DOM 에서 지운다. -->
     <button class="btn icon has-label" id="btnPeerPick" title="다른 사람 일정 — 사람을 골라 그 사람 일정 보기(읽기 전용)" aria-label="다른 사람 일정" aria-haspopup="dialog" aria-expanded="false">👥</button>
-    <button class="btn icon has-label" id="btnCatsTop" title="과제 관리 — 과제 추가·수정·삭제·색상" aria-label="과제 관리">🏷️</button>
+    <button class="btn icon has-label" id="btnCatsTop" title="내 과제 — 내 캘린더의 과제 추가·수정·삭제·색상·순서" aria-label="내 과제">🏷️</button>
     <button class="btn icon has-label" id="btnFeedback" title="버그 리포트 · 개선사항 문의 — phmin@netcus.com 또는 랜메신저 민평화" aria-label="버그 리포트 및 개선사항 문의">🐞</button>
     <!-- 사용자 정보 — 설정창 깊숙이 묻혀 있던 「계정」의 승격 자리. 아이콘 전용이다(has-label 없음):
          라벨을 붙이면 액션 줄의 폭 예산이 깨져 690px 부근에서 헤더가 한 줄 더 접힌다(아래 ≤739px 주석 참고). -->
@@ -2127,7 +2220,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     </div>
     <button class="btn icon" id="btnHelp" title="도움말 — 사용법" aria-label="도움말">?</button>
     <div class="menu-wrap">
-      <button class="btn icon" id="btnMore" title="더보기 — 과제 관리·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
+      <button class="btn icon" id="btnMore" title="더보기 — 내 과제·데이터·도움말" aria-label="더보기 메뉴" aria-haspopup="true">⋯</button>
       <div class="menu hidden" id="moreMenu" style="min-width:232px;cursor:default">
         <!-- 아주 좁은 폭(≤380px)에서 헤더가 감당 못 하는 보조 동작을 접어 받는 자리.
              .actions에 가로 스크롤을 걸면 이 메뉴(absolute)가 스크롤 컨테이너에 잘리므로 접기로 간다. -->
@@ -2142,7 +2235,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <div class="mm-fold">
           <button id="btnSearchFold">검색</button>
-          <button id="btnCatsFold">과제 관리</button>
+          <button id="btnCatsFold">내 과제</button>
           <button id="btnFeedbackFold">문의</button>
           <button id="btnUserFold">사용자 정보</button>
           <hr>
@@ -2434,15 +2527,62 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- ===== 「⚙ 관리」 화면(관리자 허브 · docs/ADMIN-HUB.md H1–H13) =====
+     머리(⚙ 관리 · 관리자 · 내 이름 · ✕) → 묶음 선택 버튼 둘(role=tablist · 👥 사람 / 📁 회사 과제) → 왼쪽 그 묶음 항목 + 오른쪽 내용.
+     ★★ 오른쪽 내용(#ahSlot)은 **비어 있는 자리**다 — 화면을 새로 만들지 않는다(H4). 항목을 고르면 지금 있는 모달
+       (#userAdminModal · #orgTitleModal · #trashModal · #officialModal · #customerModal · #codeModal)의 열기 함수를 그대로 부르고,
+       openModal 이 그 오버레이를 이 칸 안으로 옮겨 **도킹**한다(같은 DOM · 같은 id · 같은 핸들러 — 시험·루프 선택자가 그대로 산다).
+       관리 화면을 닫으면 원래 자리(body 의 형제 순서)로 되돌린다. 자세한 이유는 JS 의 ahDock 주석.
+     ★ 이 오버레이는 도킹 대상 모달들보다 **앞**에 둔다: 도킹된 창 안에서 뜨는 확인창·편집 폼(#confirmModal · #userEditModal ·
+       #officialEditModal)은 body 의 뒤쪽 형제라 지금처럼 이 화면 **위**에 쌓인다(.overlay 는 DOM 순서가 쌓임 순서다).
+     ★ 항목 버튼은 정적이다(DB 문자열이 없다) · 개수(.ah-n)는 이미 알고 있을 때만 JS 가 채운다(H2 — 개수를 얻으려고 조회하지 않는다).
+     ★ 권한은 여기서 판정하지 않는다(H13) — 각 화면의 조회·쓰기를 지금처럼 호스트가 판정한다. -->
+<div class="overlay hidden" id="adminHub">
+  <div class="modal ah-modal">
+    <div class="modal-head"><div class="ah-title"><h2>⚙ 관리</h2><span class="ah-who" id="ahWho"></span></div><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="ah-seg" id="ahSeg" role="tablist" aria-label="관리 묶음">
+      <button type="button" role="tab" id="ahGrpPeople" data-ahgrp="people" aria-selected="true" aria-controls="ahBody"><span class="ah-gic" aria-hidden="true">👥</span><span class="ah-gtx"><span class="ah-gt">사람</span><span class="ah-gd">직원 · 조직 · 직급</span></span></button>
+      <button type="button" role="tab" id="ahGrpProj" data-ahgrp="proj" aria-selected="false" aria-controls="ahBody" tabindex="-1"><span class="ah-gic" aria-hidden="true">📁</span><span class="ah-gtx"><span class="ah-gt">회사 과제</span><span class="ah-gd">공식 과제 원본(DB) · 기준 정보</span></span></button>
+    </div>
+    <div class="ah-body" id="ahBody" role="tabpanel" aria-labelledby="ahGrpPeople">
+      <nav class="ah-nav" id="ahNav" aria-label="관리 항목">
+        <div class="ah-navgrp" data-ahnavgrp="people">
+          <div class="ah-navlbl" aria-hidden="true">👥 사람</div>
+          <button type="button" data-ahitem="members"><span class="ah-ic" aria-hidden="true">👤</span>구성원<span class="ah-n" id="ahNmembers"></span></button>
+          <button type="button" data-ahitem="orgtitle" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏢</span>직급·소속<span class="ah-n" id="ahNorgtitle"></span></button>
+          <button type="button" data-ahitem="gone" tabindex="-1"><span class="ah-ic" aria-hidden="true">🚪</span>퇴사자<span class="ah-n" id="ahNgone"></span></button>
+        </div>
+        <div class="ah-navgrp hidden" data-ahnavgrp="proj">
+          <div class="ah-navlbl" aria-hidden="true">📁 회사 과제</div>
+          <button type="button" data-ahitem="projects" tabindex="-1"><span class="ah-ic" aria-hidden="true">📁</span>공식 과제<span class="ah-n" id="ahNprojects"></span></button>
+          <button type="button" data-ahitem="cust" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏭</span>발주처<span class="ah-n" id="ahNcust"></span></button>
+          <button type="button" data-ahitem="codes" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏷️</span>구분·상태<span class="ah-n" id="ahNcodes"></span></button>
+          <button type="button" data-ahitem="trash" tabindex="-1"><span class="ah-ic" aria-hidden="true">🗑</span>삭제된 항목<span class="ah-n" id="ahNtrash"></span></button>
+        </div>
+      </nav>
+      <!-- 좁은 창(H11)에서만 보인다 — 왼쪽 목록 대신 지금 묶음의 항목만 고르는 상자. 선택지는 JS 가 묶음마다 다시 만든다. -->
+      <div class="ah-sel"><select id="ahSel" aria-label="관리 항목"></select></div>
+      <div class="ah-pane">
+        <div class="ah-where" id="ahWhere" aria-live="polite"></div>
+        <div class="ah-slot" id="ahSlot"><div class="set-hint ah-empty hidden" id="ahEmpty">이 항목을 열지 못했습니다 — 안내를 확인한 뒤 왼쪽에서 다시 고르세요.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="categoryModal">
   <div class="modal">
-    <div class="modal-head"><h2>과제 관리</h2><button class="x" data-close>×</button></div>
+    <!-- H10 — 툴바 「과제 관리」 → 「내 과제」: 이 창은 **내 캘린더의 과제 목록**이다(회사 과제 편집은 「⚙ 관리」). 기능 변화 없음. -->
+    <div class="modal-head"><div class="cat-title"><h2>🏷️ 내 과제</h2><span class="cat-sub">내 캘린더에서 쓰는 과제 — 색 · 순서 · 버전관리 연동</span></div><button class="x" data-close>×</button></div>
     <div class="modal-body">
       <!-- 공식 과제(DB) 카탈로그 진입 — 여기서 '캘린더에 추가'로 편입하면 아래 단일 목록에 나타난다 -->
       <button type="button" class="off-entry" id="btnOfficialOpen">
         <span class="off-entry-t">📁 공식 과제(DB) 찾아보기</span>
         <span class="off-entry-m" id="offEntryMeta">—</span>
       </button>
+      <!-- H8 — 입구 ③: 관리자로 확인된 때만 보인다(ahSyncEntries). 위 「찾아보기」 카드는 모든 사용자 그대로다.
+           누르면 이 창을 닫고 「⚙ 관리」의 공식 과제 항목을 연다(겹쳐 띄우지 않는다). -->
+      <div class="cat-admin-row hidden" id="catAdminRow"><button type="button" class="btn sm" id="btnCatAdmin">⚙ 공식 과제 편집은 관리에서 › <span class="ah-pill">관리자</span></button></div>
       <div class="cat-sec-lb">등록된 과제 <span class="cat-sec-hint">개인 · 공식(DB) 통합 목록</span></div>
       <div class="cat-order-hint" id="catOrderHint">순서는 보고서·필터에 그대로 반영됩니다</div>
       <div id="catList"></div>
@@ -2862,7 +3002,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
                   </span>
                 </div>
               </div>
-              <span class="git-hint rpt-opt-foot">과제명은 <button type="button" class="lnk" id="rptCatLink">과제 관리</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
+              <span class="git-hint rpt-opt-foot">과제명은 <button type="button" class="lnk" id="rptCatLink">내 과제</button>에서 · 시간은 하루 보고서·커밋 내역에서 변경</span>
             </div>
           </div>
         </div>
@@ -2946,7 +3086,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <section class="help-sec">
         <h3>커밋 내역</h3>
         <ul>
-          <li><b>과제 관리</b>에서 과제에 <b>Git 저장소 경로</b>를 지정하면, 그 날 내 커밋을 가져옵니다</li>
+          <li><b>내 과제</b>에서 과제에 <b>Git 저장소 경로</b>를 지정하면, 그 날 내 커밋을 가져옵니다</li>
           <li><b>이 날 커밋</b>(단건) · <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록)</li>
           <li>가져온 <b>커밋 제목</b>이 보고서의 업무 목록이 됩니다</li>
         </ul>
@@ -2960,9 +3100,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </ul>
       </section>
       <section class="help-sec">
-        <h3>과제 관리 · 창 · 데이터</h3>
+        <h3>내 과제 · 창 · 데이터</h3>
         <ul>
-          <li><b>과제 관리</b>(헤더): 과제 추가·이름·색상·Git 경로 설정</li>
+          <li><b>내 과제</b>(헤더): 과제 추가·이름·색상·Git 경로 설정</li>
           <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, ‘맨 앞에 띄우기’(다른 창 위에 크게) 지원</li>
           <li>데이터는 <b>자동 저장</b>. 백업·이전은 ⋯ 메뉴의 <b>XML 내보내기/가져오기</b></li>
         </ul>
@@ -3086,6 +3226,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="us-mem-row" id="usMemberBtns">
           <button type="button" class="btn sm" id="usMembers">구성원 보기</button>
           <button type="button" class="btn sm" id="usUserAdmin" title="직원 등록 · 수정 · 퇴사 처리 · 순서(관리자 전용)">구성원 편집</button>
+        </div>
+      </div>
+      <!-- H7 — 입구 ②「⚙ 관리」 카드. **관리자로 확인된 때만** 보인다(ahSyncEntries · 권한 회신 edit_role=admin).
+           그때 위 줄의 「구성원 편집」(#usUserAdmin)은 이 카드로 옮겨 온 것처럼 숨는다(CSS #usMembersSec.ah-admin) —
+           버튼은 마크업에 그대로 상주하고 배선도 그대로다(공개 문 규칙 · 관리자가 아니면 지금처럼 호스트의 거절 한 줄).
+           「⚙ 관리 열기」 = 마지막 항목 · 「구성원 편집」 = 관리 화면의 구성원 항목(지름길). 둘 다 이 창을 닫고 연다(겹치지 않는다). -->
+      <div class="set-sec set-sec-top hidden" id="usHubSec">
+        <div class="set-lb">관리 <span class="ah-pill">관리자</span></div>
+        <div class="set-hint">👥 사람(구성원 · 직급/소속 · 퇴사자) · 📁 회사 과제(공식 과제 · 발주처 · 구분/상태 · 삭제된 항목)</div>
+        <div class="us-mem-row">
+          <button type="button" class="btn sm primary" id="usHubOpen">⚙ 관리 열기</button>
+          <button type="button" class="btn sm" id="usHubMembers" title="관리 화면의 구성원 항목으로 엽니다">구성원 편집</button>
         </div>
       </div>
     </div>
@@ -3320,7 +3472,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <button type="button" data-goto="g-room">장소·회의실</button>
         <button type="button" data-goto="g-edit">편집·이동·삭제</button>
         <button type="button" data-goto="g-todo">할 일</button>
-        <button type="button" data-goto="g-cat">과제 관리</button>
+        <button type="button" data-goto="g-cat">내 과제</button>
         <button type="button" data-goto="g-git">커밋 내역</button>
         <button type="button" data-goto="g-report">보고서</button>
         <button type="button" data-goto="g-hours">시간(공수)</button>
@@ -3337,7 +3489,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <li><b>왼쪽 — 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
           <li><b>오른쪽 패널 — 탭 3개</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>, <b>커밋 내역</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
           <li><b>과제 필터 줄</b>(달력 위): <b>전체</b> 또는 특정 과제만 눌러 그 과제 기록만 볼 수 있습니다.</li>
-          <li><b>헤더 버튼</b>: 검색 · 과제 관리 · 문의 · 모양 · ? 도움말 · ⋯ 더보기(<b>설정</b>·회의실 관리·데이터) · 보고서 · <b>＋ 새 기록</b>.</li>
+          <li><b>헤더 버튼</b>: 검색 · 내 과제 · 문의 · 모양 · ? 도움말 · ⋯ 더보기(<b>설정</b>·회의실 관리·데이터) · 보고서 · <b>＋ 새 기록</b>.</li>
           <li><b>보고서</b>는 헤더에 있습니다. 창이 <b>아주 좁을 때</b>만 헤더에서 숨겨지고, <b>⋯ 더보기 → 보고서 초안</b>으로 엽니다.</li>
           <li><b>⋯ 더보기 → 설정</b>: <b>월 보기 밀도</b>(고정 / 촘촘히 / 펼침·스크롤)를 고를 수 있습니다 — 칸이 넘칠 때 잘림 대신 펼쳐 보고 싶으면 ‘펼침’.</li>
         </ul>
@@ -3397,18 +3549,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
 
       <section class="guide-sec" id="g-cat">
-        <h3>7. 과제 관리</h3>
+        <h3>7. 내 과제</h3>
         <ul>
-          <li>헤더 <b>과제 관리</b>에서 과제를 <b>추가·이름 변경·색상·설명</b> 설정합니다.</li>
+          <li>헤더 <b>내 과제</b>에서 과제를 <b>추가·이름 변경·색상·설명</b> 설정합니다.</li>
           <li>모든 일정·할 일·커밋은 과제로 분류되고, 색상으로 한눈에 구분됩니다.</li>
-          <li>보고서의 과제명은 <b>과제 관리에서만</b> 바뀝니다(보고서에서는 잠금).</li>
+          <li>보고서의 과제명은 <b>내 과제에서만</b> 바뀝니다(보고서에서는 잠금).</li>
         </ul>
       </section>
 
       <section class="guide-sec" id="g-git">
         <h3>8. 커밋 내역 <span class="g-note">(데스크톱 위젯 전용)</span></h3>
         <ul>
-          <li><b>과제 관리</b>에서 과제마다 <b>버전관리 종류(Git/SVN)</b>를 고르고 <b>저장소(작업복사본) 폴더</b>를 지정합니다. <b>내 작성자</b>는 <b>Git/SVN 각각 따로</b> 저장됩니다 — Git=이메일(자동 감지), SVN=계정명(직접 입력). 과제는 자기 종류의 작성자로 커밋을 거릅니다.</li>
+          <li><b>내 과제</b>에서 과제마다 <b>버전관리 종류(Git/SVN)</b>를 고르고 <b>저장소(작업복사본) 폴더</b>를 지정합니다. <b>내 작성자</b>는 <b>Git/SVN 각각 따로</b> 저장됩니다 — Git=이메일(자동 감지), SVN=계정명(직접 입력). 과제는 자기 종류의 작성자로 커밋을 거릅니다.</li>
           <li>오른쪽 <b>커밋 내역</b> 탭에서 <b>이 날 커밋</b>(단건) 또는 <b>기간 일괄 불러오기</b>(범위 → 날짜별 자동 등록).</li>
           <li>가져온 <b>커밋 제목</b>이 그날의 업무로 등록되어 보고서의 업무 목록이 됩니다.</li>
           <li>커밋 가져오기는 실제 git/svn이 동작하는 <b>데스크톱 위젯</b>에서만 됩니다. (SVN은 TortoiseSVN/SlikSVN의 svn.exe 필요)</li>
@@ -5710,6 +5862,8 @@ async function loadUserPerm(){
     const active = Number(inf.is_active == null ? 1 : inf.is_active) !== 0;
     set('usEditRole', usRoleText(US_EDIT_ROLE, inf.edit_role) + (active ? '' : ' (계정 비활성 — 편집 불가)'));
     set('usViewScope', usRoleText(US_VIEW_SCOPE, inf.view_scope));
+    //  「⚙ 관리」 입구(H6·H7·H8)를 보일지만 정한다 — 표시용이다(쓰기 판정은 언제나 호스트). 비활성 계정은 관리자가 아니다.
+    ahNoteRole(String(inf.edit_role == null ? '' : inf.edit_role).trim() === 'admin' && active);
     set('usPermState', active ? '' : '· 비활성 계정');
     set('usPermMsg', '');
     return;
@@ -5727,6 +5881,7 @@ function openUserInfo(){
   updateUserUi();
   openModal('#userModal');
   if(HOST && currentUser) loadUserPerm();
+  ahSyncEntries();   // H7 — 이미 관리자로 확인돼 있으면 「⚙ 관리」 카드부터 보인다(권한 회신이 오면 ahNoteRole 이 다시 맞춘다)
 }
 /* ---------- 구성원 ----------
    전 직원 명부 — 실제 app_user 조회다(호스트 membersGet).
@@ -9145,7 +9300,7 @@ function renderWeekdays(){
 function renderFilterbar(){
   const bar = $('#filterbar');
   if(!state.categories.length){
-    bar.innerHTML = `<span class="lbl">등록된 수행 과제가 없습니다 — [과제 관리]에서 추가하세요.</span>`;
+    bar.innerHTML = `<span class="lbl">등록된 수행 과제가 없습니다 — [내 과제]에서 추가하세요.</span>`;
     return;
   }
   let html = `<span class="lbl">과제 필터:</span>`;
@@ -9727,6 +9882,360 @@ function goto(ds, entryId){
   selectDate(ds);
 }
 
+/* ---------- 「⚙ 관리」 화면(관리자 허브) — docs/ADMIN-HUB.md H1–H13 ----------
+   관리 기능(구성원 · 직급·소속 · 퇴사자 · 공식 과제 · 발주처 · 구분·상태 · 삭제된 항목)을 한 화면으로 모은다. 입구는 셋 —
+   ① ☰ 위젯 메뉴(관리자) ② 「사용자 정보」의 「⚙ 관리」 카드(관리자) ③ 「🏷️ 내 과제」의 「⚙ 공식 과제 편집은 관리에서 ›」(관리자).
+   툴바에는 두지 않는다(2026-10-02 결정 — 관리자 1~2명이 가끔 쓴다).
+   ★★ H4 — **도킹**: 오른쪽 내용은 새로 만든 화면이 아니라 **지금 있는 모달 그 자체**다. 항목을 고르면 그 모달의 열기 함수
+     (openUserAdmin · openOrgTitle · openTrash · openOfficialModal · openCustomerModal · openCodeModal)를 그대로 부르고,
+     openModal 이 ahRouteOpen 으로 받아 그 오버레이 노드를 #ahSlot 안으로 **옮긴다**(.docked). 기능·문구·검사·호스트 명령이
+     한 글자도 갈라지지 않고(같은 함수 · 같은 DOM · 같은 id), 시험·루프의 선택자(#userAdminModal #uaList …)가 그대로 산다.
+     ✗ 위치만 칸 위에 맞춰 띄우는 방식은 버렸다 — 창 크기 조절·좁은 창·스크롤마다 좌표를 다시 재야 하고, 그 창은 여전히
+       body 의 형제라 Tab 순서·포커스 트랩이 관리 화면과 갈린다. 옮기면 칸 크기를 CSS 가 그대로 따라간다.
+     ✗ 내용을 복제해 다시 그리는 방식도 버렸다 — 같은 화면이 두 벌이면 한쪽이 반드시 낡는다(이 저장소의 일관된 규칙).
+   ★ 도킹된 창은 모달 스택(_modalStack)에 오르지 않는다(setupModalA11y 의 감시가 .docked 를 건너뛴다) — 스택 맨 위는 관리
+     화면 하나라 Tab 트랩·Esc·포커스 복귀가 관리 화면 기준으로 돈다. 그 창의 닫기 길(×·[닫기]·Esc·closeModal)은 전부
+     관리 화면 닫기로 간다(closeOverlay). 관리 화면을 닫으면 도킹 창은 원래 자리(주석 표지)로 돌아가 단독 모달로 되돌아온다.
+   ★ inert(H12 — 2026-10-02 사람 고르기에서 실측한 함정: 옮긴 요소가 새 부모의 inert 를 물려받았다): _updateInert 는 body 의
+     직계 자식 중 .overlay 가 **아닌** 것만 잠근다. 도킹 창의 새 부모는 관리 화면(.overlay)이라 잠기지 않고, 되돌아가는
+     자리도 body 직계 .overlay 다 — 어느 쪽에서도 inert 를 물려받지 않는다(☰ 메뉴는 호스트의 네이티브 메뉴라 DOM 밖이다).
+   ★ 권한은 여기서 판정하지 않는다(H13). ahIsAdmin 은 **입구를 보일지**만 정한다(edit_role=admin 으로 확인된 때만 — 모르면 숨김).
+     각 화면의 조회·쓰기는 지금처럼 호스트가 요청 시점에 판정하고, 관리자가 아니면 그 화면이 호스트의 거절 한 줄을 보인다.
+     확인 출처는 기존 읽기 명령 userInfoGet 하나다(「사용자 정보」를 열 때 · ☰ 에 손이 갈 때 · 관리 화면을 열 때) + 그 결과를
+     이 PC·계정별로 기억(tc_adminSeen:<login> — 다음 실행의 ☰ 를 위해서. 회신이 관리자 아님이면 지운다).
+   ★ 개수(H2)는 이미 알고 있을 때만 — 이번 실행에서 그 화면이 받아 온 회신·부팅 때 받은 카탈로그. 개수를 얻으려고 묻지 않는다. */
+const AH_GROUPS = [
+  { id: 'people', ic: '👥', t: '사람',      items: ['members', 'orgtitle', 'gone'] },
+  { id: 'proj',   ic: '📁', t: '회사 과제', items: ['projects', 'cust', 'codes', 'trash'] },
+];
+//  항목 → 도킹할 오버레이 · 여는 길. 여는 길은 **지금 그 화면으로 가는 문 그대로**다 — 발주처·구분·상태·삭제된 항목은
+//  공식 과제 화면 하단 줄의 버튼(#offCustMgr · #offCodeMgr · #offTrash)을 **누른다**(위젯에서만 보이는 버튼이라 숨어 있어도
+//  click() 은 같은 배선을 탄다). 그래서 관문(위젯·온라인)·인자·뒤처리가 한 벌이다 — 관문 호출을 새로 늘리지 않는다.
+const AH_ITEMS = {
+  members:  { ic: '👤', t: '구성원',      ov: 'userAdminModal', open: () => openUserAdmin() },
+  orgtitle: { ic: '🏢', t: '직급·소속',   ov: 'orgTitleModal',  open: () => openOrgTitle() },
+  gone:     { ic: '🚪', t: '퇴사자',      ov: 'trashModal',     open: () => openTrash('user') },
+  projects: { ic: '📁', t: '공식 과제',   ov: 'officialModal',  open: () => openOfficialModal() },
+  cust:     { ic: '🏭', t: '발주처',      ov: 'customerModal',  open: () => ahPress('offCustMgr') },
+  codes:    { ic: '🏷️', t: '구분·상태',  ov: 'codeModal',      open: () => ahPress('offCodeMgr') },
+  trash:    { ic: '🗑', t: '삭제된 항목', ov: 'trashModal',     open: () => ahPress('offTrash') },
+};
+const AH_DOCK_OV  = new Set(['userAdminModal', 'orgTitleModal', 'trashModal', 'officialModal', 'customerModal', 'codeModal']);
+const AH_ENTRY_OV = new Set(['userModal', 'categoryModal', 'officialModal']);   // 관리 화면을 열면 닫히는 입구 창(겹치지 않는다)
+const __ah = { item: null, docked: null };       // 지금 고른 항목 · 지금 오른쪽 칸에 도킹된 오버레이(언제나 하나 이하)
+let __ahRole = { login: '', admin: null };       // userInfoGet 회신이 알려 준 값(이번 실행 · 그 계정) — null = 모른다
+let __ahProbing = false, __ahCountT = 0;
+
+const ahHub = () => document.getElementById('adminHub');
+function ahPress(id){ const b = document.getElementById(id); if(b) b.click(); }
+const ahGroupOf = item => AH_GROUPS.find(g => g.items.includes(item)) || AH_GROUPS[0];
+function ahMe(){ return (currentUser && currentUser.loginId) ? String(currentUser.loginId) : ''; }
+//  오버레이 → 항목. 휴지통은 한 창이 두 항목이다 — 들어온 문(__trScope)이 정한다(퇴사자 = 'user').
+function ahItemOfOv(ov){
+  const id = ov && ov.id;
+  if(!id || !AH_DOCK_OV.has(id)) return null;
+  if(id === 'trashModal') return (__trScope === 'user') ? 'gone' : 'trash';
+  return Object.keys(AH_ITEMS).find(k => AH_ITEMS[k].ov === id) || null;
+}
+
+/* ── 관리자 확인(입구 표시용 · H6·H7·H8) ── */
+const AH_SEEN = id => 'tc_adminSeen:' + id;
+function ahIsAdmin(){
+  if(!HOST || PEER) return false;
+  const me = ahMe(); if(!me) return false;
+  if(__ahRole.login === me && __ahRole.admin !== null) return __ahRole.admin === true;
+  try{ return localStorage.getItem(AH_SEEN(me)) === '1'; }catch(_){ return false; }
+}
+function ahNoteRole(isAdmin){
+  const me = ahMe(); if(!me) return;
+  __ahRole = { login: me, admin: !!isAdmin };
+  try{ if(isAdmin) localStorage.setItem(AH_SEEN(me), '1'); else localStorage.removeItem(AH_SEEN(me)); }catch(_){}
+  ahSyncEntries();
+  ahPaintWho();
+}
+//  조용한 확인 — 기존 읽기 명령(userInfoGet) 하나. 실패하면 아무것도 바꾸지 않는다(모르면 모르는 채로).
+function ahProbe(){
+  if(!HOST || PEER || !currentUser || __ahProbing) return;
+  __ahProbing = true;
+  const me = ahMe();
+  hostRequest('userInfoGet', {}, 10000).then(r => {
+    __ahProbing = false;
+    if(ahMe() !== me) return;   // 그 사이 계정이 바뀌었다 — 남의 회신을 내 것으로 적지 않는다
+    if(r && r.ok && r.info){
+      const inf = r.info, active = Number(inf.is_active == null ? 1 : inf.is_active) !== 0;
+      ahNoteRole(String(inf.edit_role == null ? '' : inf.edit_role).trim() === 'admin' && active);
+    }
+  }, () => { __ahProbing = false; });
+}
+function ahProbeIfUnknown(){ const me = ahMe(); if(me && __ahRole.login !== me) ahProbe(); }
+//  입구 ②③의 표시를 지금 값에 맞춘다(① ☰ 는 누를 때 판정해 admin:true 를 싣는다 — buildHostBar).
+function ahSyncEntries(){
+  const on = ahIsAdmin();
+  const sec = document.getElementById('usHubSec'); if(sec) sec.classList.toggle('hidden', !on);
+  const ms = document.getElementById('usMembersSec'); if(ms) ms.classList.toggle('ah-admin', on);
+  const row = document.getElementById('catAdminRow'); if(row) row.classList.toggle('hidden', !on);
+}
+function ahPaintWho(){
+  const w = document.getElementById('ahWho'); if(!w) return;
+  const nm = currentUser ? String(currentUser.name || currentUser.loginId || '') : '';
+  w.textContent = (ahIsAdmin() ? '관리자' + (nm ? ' · ' : '') : '') + nm;   // DB 문자열 — textContent 로만
+}
+
+/* ── 기억(H5) — 이 PC · 계정별. 이상값은 구성원 ── */
+function ahKey(sfx){ return 'tc_adminLast:' + (ahMe() || '-') + (sfx ? ':' + sfx : ''); }
+function ahLast(){ let v = null; try{ v = localStorage.getItem(ahKey()); }catch(_){} return Object.prototype.hasOwnProperty.call(AH_ITEMS, v) ? v : 'members'; }
+function ahLastIn(gid){
+  const g = AH_GROUPS.find(x => x.id === gid) || AH_GROUPS[0];
+  let v = null; try{ v = localStorage.getItem(ahKey(g.id)); }catch(_){}
+  return g.items.includes(v) ? v : g.items[0];
+}
+function ahRemember(item){ try{ localStorage.setItem(ahKey(), item); localStorage.setItem(ahKey(ahGroupOf(item).id), item); }catch(_){} }
+
+/* ── 개수(H2) — 이미 아는 값만. 모르면 빈칸 ── */
+function ahCount(item){
+  switch(item){
+    case 'members':  return (__uaAdmin && __uaMembers.length) ? __uaMembers.filter(m => !(m && m.isActive === false)).length + '명' : '';
+    case 'orgtitle': return otAdmin() ? otUnits().filter(u => u && u.active !== false).length + ' · ' + otTitles().filter(t => t && t.active !== false).length : '';
+    case 'gone':     return (__trAdmin && __trData) ? trRows('user').length + '명' : '';
+    case 'projects': return (HOST && dbOnline) ? dbCatalog.length + '건' : '';
+    case 'cust':     return (HOST && dbOnline && dbCustomers.length) ? String(dbCustomers.length) : '';
+    case 'codes':    return (HOST && dbOnline && (offSections.length || offStatuses.length)) ? offSections.length + ' · ' + offStatuses.length : '';
+    case 'trash':    return (__trAdmin && __trData) ? String(['project', 'customer', 'section', 'status'].reduce((a, k) => a + trRows(k).length, 0)) : '';
+  }
+  return '';
+}
+//  도킹 창의 아래 줄이 [닫기] 하나뿐이면(휴지통 · 비관리자 구성원 편집) 그 줄을 접는다 — 숨긴 [닫기] 만 남은 빈 띠가 된다.
+//   내용(버튼·안내문)이 회신 뒤에 생기기도 하므로(#uaFoot 의 「＋ 직원 등록」) 칸 감시가 다시 부른다.
+function ahSyncFoot(){
+  const ov = __ah.docked; if(!ov) return;
+  const f = ov.querySelector('.modal-foot'); if(!f) return;
+  const has = [...f.children].some(ch => !ch.classList.contains('spacer') && !ch.hasAttribute('data-close')
+    && (String(ch.textContent || '').trim() || ch.querySelector('button,input,select')));
+  f.classList.toggle('ah-foot-empty', !has);
+}
+function ahCounts(){
+  __ahCountT = 0;
+  ahSyncFoot();
+  for(const k of Object.keys(AH_ITEMS)){ const n = document.getElementById('ahN' + k); if(n) n.textContent = ahCount(k); }
+  ahFillSel();
+}
+//  좁은 창의 고르기 상자 — 지금 묶음의 항목만(H11). 이름은 정적 문자열 · 개수는 숫자 — 그래도 textContent 로.
+function ahFillSel(){
+  const sel = document.getElementById('ahSel'); if(!sel) return;
+  const g = ahGroupOf(__ah.item);
+  while(sel.firstChild) sel.removeChild(sel.firstChild);
+  for(const k of g.items){
+    const o = document.createElement('option'); const it = AH_ITEMS[k], n = ahCount(k);
+    o.value = k; o.textContent = it.ic + ' ' + it.t + (n ? ' (' + n + ')' : '');
+    if(k === __ah.item) o.selected = true;
+    sel.appendChild(o);
+  }
+}
+
+/* ── 선택 표시(H1·H3) — 묶음 버튼 · 왼쪽 목록 · 위치 줄 · 기억 ── */
+function ahMark(item){
+  if(!AH_ITEMS[item]) return;
+  __ah.item = item;
+  const g = ahGroupOf(item), it = AH_ITEMS[item];
+  document.querySelectorAll('#ahSeg [data-ahgrp]').forEach(b => {
+    const on = b.dataset.ahgrp === g.id;
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+  });
+  const body = document.getElementById('ahBody'); if(body) body.setAttribute('aria-labelledby', g.id === 'proj' ? 'ahGrpProj' : 'ahGrpPeople');
+  document.querySelectorAll('#ahNav [data-ahnavgrp]').forEach(d => d.classList.toggle('hidden', d.dataset.ahnavgrp !== g.id));
+  document.querySelectorAll('#ahNav [data-ahitem]').forEach(b => {
+    const on = b.dataset.ahitem === item;
+    b.classList.toggle('on', on); b.tabIndex = on ? 0 : -1;
+    if(on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+  });
+  const w = document.getElementById('ahWhere');
+  if(w){
+    while(w.firstChild) w.removeChild(w.firstChild);
+    w.appendChild(document.createTextNode(g.ic + ' ' + g.t + ' ›'));
+    const b = document.createElement('b'); b.textContent = it.ic + ' ' + it.t; w.appendChild(b);
+  }
+  ahFillSel();
+  ahRemember(item);
+}
+function ahSyncEmpty(){ const e = document.getElementById('ahEmpty'); if(e) e.classList.toggle('hidden', !!__ah.docked); }
+//  열 때·옮길 때의 포커스 자리(H12) — 넓은 창 = 고른 항목 버튼 · 좁은 창(목록이 숨었다) = 고르기 상자.
+function ahFocusTarget(){
+  const nav = document.getElementById('ahNav');
+  let narrow = false; try{ narrow = !!nav && window.getComputedStyle(nav).display === 'none'; }catch(_){ narrow = false; }
+  const on = document.querySelector('#ahNav .ah-navgrp:not(.hidden) [data-ahitem].on');
+  return (!narrow && on) ? on : document.getElementById('ahSel');
+}
+function ahFocusNav(){ const t = ahFocusTarget(); if(t){ try{ t.focus({ preventScroll: true }); }catch(_){ try{ t.focus(); }catch(__){} } } }
+
+/* ── 도킹(H4) ── */
+//  openModal 의 첫 판정. true = 여기서 처리했다(도킹했다 / 관리 화면으로 돌렸다) · false = 지금처럼 단독으로 연다.
+function ahRouteOpen(ov){
+  if(!ov || ov.id === 'adminHub' || PEER) return false;
+  const item = ahItemOfOv(ov); if(!item) return false;
+  const hub = ahHub(); if(!hub) return false;
+  if(isOverlayOpen(hub)){ ahDock(ov); return true; }
+  //  관리 화면이 닫혔는데 아직 칸 안에 남은 창(닫기 길을 거치지 않고 .hidden 만 붙인 경우 — 루프의 closeAll 등)은 먼저 제자리로.
+  if(__ah.docked === ov) ahUndock();
+  //  H9 — 찾아보기로 연 공식 과제 창(단독)의 아래 줄 관리 버튼(발주처 관리 · 구분·상태 관리 · 🗑 휴지통)은 관리 화면의 그 항목으로.
+  //   ★ 버튼 배선(offEditGuard → openX)은 그대로다 — 관문을 지난 뒤 열리는 순간 여기서 받는다. 관리자로 확인된 때만
+  //     (모르면 지금처럼 그 위에 뜬다 — 일반 사용자 화면은 바뀌지 않는다 · H13).
+  if(ov.id === 'customerModal' || ov.id === 'codeModal' || (ov.id === 'trashModal' && item === 'trash')){
+    const off = document.getElementById('officialModal');
+    if(isOverlayOpen(off) && !off.classList.contains('docked') && ahIsAdmin()){ openAdminHub(null, { dock: ov }); return true; }
+  }
+  return false;
+}
+function ahDock(ov){
+  const slot = document.getElementById('ahSlot'); if(!slot || !ov) return;
+  const item = ahItemOfOv(ov) || __ah.item;
+  const old = __ah.docked, ae = document.activeElement;
+  const focusWasIn = !!(old && old !== ov && ae && old.contains(ae));   // 도킹 창 안의 버튼(#uaOrgTitle 등)이 항목을 바꿨다
+  if(old && old !== ov) ahUndock();
+  //  단독으로 떠 있던 창이면 스택에서 조용히 뺀다 — 도킹 창은 스택에 없다(감시가 .docked 를 건너뛰므로 여기서 직접).
+  const si = _modalStack.findIndex(s => s.ov === ov);
+  if(si >= 0){ _modalStack.splice(si, 1); _updateInert(); }
+  if(__ah.docked !== ov){
+    const home = document.createComment(' ah-home:' + ov.id + ' ');   // 돌아갈 자리 — 형제 순서가 곧 쌓임 순서다
+    ov.parentNode.insertBefore(home, ov);
+    ov.__ahHome = home;
+    ov.classList.add('docked');   // ★ hidden 을 떼기 **전에** — 감시(MutationObserver)가 이 열림을 스택에 올리지 않게
+    const m = ov.querySelector('.modal'); if(m){ m.setAttribute('role', 'region'); m.removeAttribute('aria-modal'); }   // 대화상자 안의 대화상자가 아니다
+    slot.appendChild(ov);
+    __ah.docked = ov;
+  }
+  if(ov.__closeTimer){ clearTimeout(ov.__closeTimer); ov.__closeTimer = null; }
+  ov.classList.remove('closing'); ov.classList.remove('hidden');
+  ahMark(item);
+  ahSyncEmpty();
+  if(focusWasIn) ahFocusNav();
+  ahCounts();
+}
+function ahUndock(){
+  const ov = __ah.docked; if(!ov) return;
+  __ah.docked = null;
+  if(ov.__closeTimer){ clearTimeout(ov.__closeTimer); ov.__closeTimer = null; }
+  ov.classList.remove('closing');
+  ov.classList.add('hidden');      // ★ docked 를 떼기 **전에** 숨긴다 — 감시가 '열린 단독 창'으로 읽어 스택에 올리지 않게
+  ov.classList.remove('docked');
+  const m = ov.querySelector('.modal'); if(m){ m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true'); }
+  const ft = ov.querySelector('.modal-foot.ah-foot-empty'); if(ft) ft.classList.remove('ah-foot-empty');   // 단독 모달은 [닫기] 줄이 그대로 선다
+  const home = ov.__ahHome; ov.__ahHome = null;
+  if(home && home.parentNode){ home.parentNode.insertBefore(ov, home); home.parentNode.removeChild(home); }
+  else document.body.appendChild(ov);
+  if(ov.id === 'orgTitleModal'){ otAfterClose(); }   // 닫기 뒤처리(closeOverlay)와 같은 부수효과 — 「구성원 편집」이 열려 있으면 다시 읽는다
+}
+function ahAfterClose(){ ahUndock(); ahSyncEmpty(); }   // closeOverlay 의 페이드가 끝난 뒤(관리 화면이 다 사라진 뒤) — 내용이 먼저 빠지지 않게
+//  입구 창을 페이드 없이 닫는다 — 관리 화면이 그 위에 한 프레임도 겹치지 않게(H4). 닫기 뒤처리는 closeOverlay 와 같다.
+function ahCloseNow(ov){
+  if(ov.__closeTimer){ clearTimeout(ov.__closeTimer); ov.__closeTimer = null; }
+  ov.classList.remove('closing'); ov.classList.add('hidden');
+  if(ov.id === 'orgTitleModal'){ otAfterClose(); }
+}
+
+/* ── 열기 · 항목 고르기 ── */
+//  item: 열 항목(없거나 이상하면 마지막 항목 · H5) · opt.returnTo: 닫으면 돌아갈 입구(H12) · opt.dock: 이미 준비된 오버레이를 바로 도킹(H9)
+function openAdminHub(item, opt){
+  if(PEER) return;
+  const hub = ahHub(); if(!hub) return;
+  const o = opt || {};
+  const target = o.dock ? ahItemOfOv(o.dock) : (Object.prototype.hasOwnProperty.call(AH_ITEMS, item) ? item : ahLast());
+  if(isOverlayOpen(hub)){ if(o.dock) ahDock(o.dock); else ahSelect(target); return; }
+  //  입구 창(사용자 정보 · 내 과제 · 단독 공식 과제)과 단독으로 떠 있던 관리 창은 닫는다 — 관리 화면을 그 위에 겹쳐 띄우지 않는다.
+  //   돌아갈 자리는 **맨 아래 창을 연 요소**다(예: 내 과제 → 공식 과제 → 발주처 관리 = 툴바 「내 과제」 버튼).
+  let back = o.returnTo || null;
+  for(const s of _modalStack.slice()){
+    const ov = s.ov;
+    if(!(AH_ENTRY_OV.has(ov.id) || AH_DOCK_OV.has(ov.id)) || ov === o.dock || !isOverlayOpen(ov) || ov.dataset.busy === '1') continue;
+    if(!back) back = s.opener;
+    ahCloseNow(ov);
+  }
+  hub.__returnTo = (back && back.isConnected) ? back : document.activeElement;
+  ahPaintWho();
+  openModal(hub);
+  if(o.dock) ahDock(o.dock); else ahSelect(target);
+  ahSyncEmpty();
+  ahCounts();
+  ahProbe();   // 열 때마다 조용히 다시 확인 — 입구 표시 · 머리의 「관리자」. 화면 내용은 각 화면의 회신이 정한다.
+}
+function ahSelect(item){
+  if(!Object.prototype.hasOwnProperty.call(AH_ITEMS, item)) item = 'members';
+  if(!isOverlayOpen(ahHub())) return;
+  //  왕복 중인 창은 내리지 않는다 — 결과를 알릴 곳이 사라진다(closeOverlay 의 busy 가드와 같은 이유).
+  if(__ah.docked && __ah.docked.dataset.busy === '1'){ toast('저장하는 중입니다 — 끝난 뒤에 다른 항목으로 옮기세요', 'warn'); return; }
+  if(__ah.docked && __ah.item === item && ahItemOfOv(__ah.docked) === item){ ahMark(item); return; }   // 지금 보는 항목 — 다시 읽지 않는다
+  const ae = document.activeElement;
+  const focusWasIn = !!(__ah.docked && ae && __ah.docked.contains(ae));
+  ahUndock();
+  ahMark(item);
+  try{ AH_ITEMS[item].open(); }catch(_){}   // 여는 길이 관문·재진입 가드에서 멈추면(안내 토스트) 칸이 비고 #ahEmpty 가 그 자리를 말한다
+  ahSyncEmpty();
+  if(focusWasIn) ahFocusNav();
+  ahCounts();
+}
+
+/* ── ☰ 위젯 메뉴의 「⚙ 관리」(H6) ──
+   ★ ☰ 메뉴는 호스트(WPF)의 네이티브 메뉴다(MainWindow.ShowSettingsMenu). 웹은 ☰ 를 누를 때 지금의 {cmd:'menu'} 에
+     **관리자로 확인된 때만** admin:true 를 실어 보낸다(buildHostBar) — 그러면 호스트가 메뉴 맨 위에 「⚙ 관리 · 관리자」 +
+     구분선을 넣는다. 모르거나 관리자가 아니면 보내는 값이 지금과 똑같다({cmd:'menu'} — 일반 사용자 화면 불변).
+   ★ 그 항목을 누르면 호스트가 이 창구를 부른다(ExecuteScriptAsync — __setFocus·__setTray 와 같은 호스트→웹 길).
+     지름길일 뿐이다 — 쓰기 권한은 여전히 호스트의 DB 관문이 판정한다. 열람 창(PEER) 안에서는 열지 않는다.
+     닫으면 ☰ 로 포커스가 돌아간다(H12). */
+window.__openAdminHub = function(){
+  if(PEER || !HOST) return false;
+  const b = document.querySelector('#hostbar button[data-host="menu"]');
+  openAdminHub(null, { returnTo: b || null });
+  return true;
+};
+
+/* ── 배선 — bind() 가 한 번 부른다 ── */
+function setupAdminHub(){
+  const hub = ahHub(); if(!hub) return;
+  hub.__focusFirst = ahFocusTarget;   // _onModalOpened 가 묻는 첫 포커스 — 고른 항목 버튼(H12)
+  const seg = document.getElementById('ahSeg');
+  if(seg){
+    seg.addEventListener('click', ev => { const b = ev.target.closest('[data-ahgrp]'); if(b) ahSelect(ahLastIn(b.dataset.ahgrp)); });
+    //  ←/→ · Home/End — 포커스만 옮긴다(수동 활성화: 묶음을 바꾸면 그 화면이 호스트에 묻는다 · Enter/Space 로 고른다).
+    seg.addEventListener('keydown', ev => {
+      const tabs = [...seg.querySelectorAll('[data-ahgrp]')];
+      const i = tabs.indexOf(document.activeElement); if(i < 0) return;
+      let j = -1;
+      if(ev.key === 'ArrowRight') j = (i + 1) % tabs.length;
+      else if(ev.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+      else if(ev.key === 'Home') j = 0;
+      else if(ev.key === 'End') j = tabs.length - 1;
+      if(j < 0) return;
+      ev.preventDefault(); ev.stopPropagation();
+      tabs.forEach((t, k) => { t.tabIndex = (k === j) ? 0 : -1; });
+      tabs[j].focus();
+    });
+  }
+  const nav = document.getElementById('ahNav');
+  if(nav){
+    nav.addEventListener('click', ev => { const b = ev.target.closest('[data-ahitem]'); if(b) ahSelect(b.dataset.ahitem); });
+    //  ↓/↑ · Home/End — 지금 묶음의 항목 사이로 포커스만(같은 이유로 수동 활성화 · Enter/Space 가 고른다).
+    nav.addEventListener('keydown', ev => {
+      const btns = [...nav.querySelectorAll('.ah-navgrp:not(.hidden) [data-ahitem]')];
+      const i = btns.indexOf(document.activeElement); if(i < 0) return;
+      let j = -1;
+      if(ev.key === 'ArrowDown') j = (i + 1) % btns.length;
+      else if(ev.key === 'ArrowUp') j = (i - 1 + btns.length) % btns.length;
+      else if(ev.key === 'Home') j = 0;
+      else if(ev.key === 'End') j = btns.length - 1;
+      if(j < 0) return;
+      ev.preventDefault(); ev.stopPropagation();
+      btns.forEach((b, k) => { b.tabIndex = (k === j) ? 0 : -1; });
+      btns[j].focus();
+    });
+  }
+  const sel = document.getElementById('ahSel');
+  if(sel) sel.addEventListener('change', () => ahSelect(sel.value));
+  //  개수는 오른쪽 칸의 목록이 다시 그려질 때 함께 맞춘다(그 화면의 회신이 왔다는 뜻) — 그 화면 함수들은 건드리지 않는다.
+  const slot = document.getElementById('ahSlot');
+  if(slot && typeof MutationObserver === 'function'){
+    new MutationObserver(() => { if(!__ahCountT) __ahCountT = setTimeout(ahCounts, 60); }).observe(slot, { childList: true, subtree: true });
+  }
+}
+
 /* ---------- 모달 공통 ----------
    닫기는 반드시 closeOverlay()를 거친다. 예전엔 배경클릭·Esc·×·confirmBox 등 6곳이 각자
    classList.add('hidden')을 직접 불러, 한 곳에만 전환을 붙이면 나머지는 계속 뚝 끊겼다.
@@ -9742,19 +10251,27 @@ function closeOverlay(ov){
   // 실행 중 잠금 — 닫기 경로가 하나로 모였으므로 배경클릭·Esc·×·취소가 전부 여기서 함께 막힌다.
   // (닫아도 호스트 작업은 계속되는데 결과를 알릴 곳만 사라지는 상황을 방지)
   if(ov.dataset.busy === '1') return;
+  //  ★ 「⚙ 관리」 안에 도킹된 창을 닫는 길(그 창의 [닫기]·× · 배경 · Esc · closeModal)은 전부 **관리 화면 닫기**로 간다(H4·H12) —
+  //    도킹 창만 닫히면 오른쪽 칸이 빈 채로 남는다. 관리 화면은 도킹 창이 왕복 중(busy)이면 닫히지 않는다(같은 이유 · 아래 줄).
+  if(ov.classList.contains('docked')){ const hub = document.getElementById('adminHub'); if(hub && hub.contains(ov)){ closeOverlay(hub); return; } }
+  if(ov.id === 'adminHub' && __ah.docked && __ah.docked.dataset.busy === '1') return;
   //  ★ 일간·주간 **둘 다** 비운다(2026-09-18): 한쪽만 비우면 다시 열었을 때 주간 캐시가 이전 기간의 것으로 남는다(#rptFrom 과 같은 짝).
   if(ov.id === 'reportModal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
   if(ov.id === 'orgTitleModal') otAfterClose();     // 직급·소속을 고쳤으면 「구성원 편집」이 드롭다운·명부를 다시 받는다
   //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
   //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
   //    그 회신에 실려 온다 — 닫힌 화면이 남길 '빚'이 없다. 게다가 왕복 중에는 dataset.busy 가 닫기를 막는다.
-  const done = () => { ov.__closeTimer = null; ov.classList.remove('closing'); ov.classList.add('hidden'); };
+  const done = () => { ov.__closeTimer = null; ov.classList.remove('closing'); ov.classList.add('hidden'); if(ov.id === 'adminHub') ahAfterClose(); };
   if(_reducedMotion()){ done(); return; }
   ov.classList.add('closing');
   ov.__closeTimer = setTimeout(done, MD_OUT);
 }
 function openModal(sel){
   const ov = typeof sel === 'string' ? $(sel) : sel; if(!ov) return;
+  //  ★ 「⚙ 관리」(H4) — 관리 화면이 열려 있으면 그 항목의 모달은 **오른쪽 칸에 도킹**된다(창 위에 창을 띄우지 않는다).
+  //    열기 함수(openUserAdmin · openOrgTitle · openTrash · openOfficialModal · openCustomerModal · openCodeModal)는 그대로다 —
+  //    판정은 여기 한 곳이다(ahRouteOpen). 관리 화면이 닫혀 있으면 지금처럼 단독으로 뜬다(시험·루프의 직접 호출 호환).
+  if(ahRouteOpen(ov)) return;
   if(ov.__closeTimer){ clearTimeout(ov.__closeTimer); ov.__closeTimer = null; }   // 닫는 중 재오픈 → 페이드아웃 취소
   ov.classList.remove('closing');
   ov.classList.remove('hidden');
@@ -9813,18 +10330,24 @@ function _updateInert(){
   });
 }
 function _onModalOpened(ov){
-  _modalStack.push({ ov, opener: document.activeElement });
+  //  ★ 연 요소를 열기 쪽이 **미리 정해 둘 수 있다**(ov.__returnTo) — 「⚙ 관리」는 입구 창(사용자 정보·내 과제)을 닫고 열리므로
+  //    이 콜백이 돌 때의 activeElement 는 이미 닫힌 창 안의 버튼이다. 닫으면 그 입구를 연 자리로 돌아가야 한다(H12).
+  _modalStack.push({ ov, opener: ov.__returnTo || document.activeElement });
+  ov.__returnTo = null;
   _updateInert();
-  // 첫 가시 입력 우선, 없으면 첫 포커스 가능 요소
+  // 첫 가시 입력 우선, 없으면 첫 포커스 가능 요소 — 단 모달이 자기 첫 포커스를 정하면(ov.__focusFirst · 「⚙ 관리」 = 고른 항목 버튼) 그것.
+  const own = (typeof ov.__focusFirst === 'function') ? ov.__focusFirst() : null;
   const firstInput = ov.querySelector('input:not([type=hidden]):not([disabled]):not(.hidden), textarea:not([disabled]), select:not([disabled])');
   const f = _focusables(ov);
-  const tgt = firstInput || f[0] || ov;
+  const tgt = own || firstInput || f[0] || ov;
   try{ tgt.focus({preventScroll:true}); }catch(_){ try{ tgt.focus(); }catch(__){} }
 }
 function _onModalClosed(ov){
   const idx = _modalStack.findIndex(s => s.ov === ov);
   let opener = null;
   if(idx >= 0){ opener = _modalStack[idx].opener; _modalStack.splice(idx, 1); }
+  //  「⚙ 관리」가 어떤 길로 닫혔든(closeOverlay 가 아니라 .hidden 만 붙여도) 도킹 창은 제자리로 — closeOverlay 의 뒤처리와 같은 함수(멱등).
+  if(ov.id === 'adminHub') ahAfterClose();
   _updateInert();
   // 닫기에 페이드(MD_OUT)가 생기면서 '닫고 곧바로 다른 모달 열기'(보고서 → 설정 등)의 순서가 뒤집힌다:
   // 새 모달이 먼저 포커스를 잡은 뒤에 이 콜백이 도착한다. 이미 다른 열린 모달이 포커스를 쥐고 있으면 빼앗지 않는다.
@@ -9852,6 +10375,9 @@ function setupModalA11y(){
       m.setAttribute('aria-label', FALLBACK[ov.id] || '대화상자');
     }
     new MutationObserver(() => {
+      //  ★ 「⚙ 관리」 안에 도킹된 창은 스택에 올리지 않는다(H12) — 스택 맨 위는 관리 화면 하나다: Tab 트랩·포커스 복귀·Esc 가
+      //    관리 화면 기준으로 돈다(도킹 창을 올리면 Tab 이 오른쪽 칸에 갇혀 왼쪽 목록으로 못 간다).
+      if(ov.classList.contains('docked')) return;
       const open = !ov.classList.contains('hidden');
       const tracked = _modalStack.some(s => s.ov === ov);
       if(open && !tracked) _onModalOpened(ov);
@@ -10480,6 +11006,7 @@ function openCatModal(){
   resetCatForm();   // 작성자 입력칸(Git·SVN)도 전역값으로 복원
   renderCatModal();   // renderGitCard() 포함
   updateOfficialEntry();   // 공식 과제 진입 카드 요약(N건 · 연결됨/오프라인) — 열 때마다 갱신
+  ahSyncEntries();         // H8 — 「⚙ 공식 과제 편집은 관리에서 ›」는 관리자로 확인된 때만
   openModal('#categoryModal');
 }
 function saveCatFromForm(){
@@ -11175,7 +11702,8 @@ function openCustomerModal(){
   custMsgSet('');
   openModal('#customerModal');
   reloadCustomerList();
-  setTimeout(() => { const e = document.getElementById('custNewName'); if(e){ try{ e.focus(); }catch(_){} } }, 30);
+  //  ★ 「⚙ 관리」에 도킹돼 열렸으면 포커스를 옮기지 않는다(H12) — 왼쪽 목록에서 ↑/↓ 로 고르던 손을 뺏지 않는다.
+  setTimeout(() => { const e = document.getElementById('custNewName'); if(e && !e.closest('.docked')){ try{ e.focus(); }catch(_){} } }, 30);
 }
 async function reloadCustomerList(){
   const box = document.getElementById('custList'); if(!box) return;
@@ -11307,7 +11835,7 @@ function openCodeModal(kind){
   codeSyncTabs();
   openModal('#codeModal');
   reloadCodeList();
-  setTimeout(() => { const e = document.getElementById('codeNewName'); if(e){ try{ e.focus(); }catch(_){} } }, 30);
+  setTimeout(() => { const e = document.getElementById('codeNewName'); if(e && !e.closest('.docked')){ try{ e.focus(); }catch(_){} } }, 30);   // 도킹이면 그대로(H12 · 발주처와 같다)
 }
 function codeSyncTabs(){
   const ts = document.getElementById('codeTabSection'), tt = document.getElementById('codeTabStatus');
@@ -13172,7 +13700,7 @@ function buildReport(){
   }
   const { rows } = collectReportData(from, to, src);
   if(!rows.length){
-    sum.textContent = '등록된 과제가 없습니다 — [과제 관리]에서 추가하세요.'; out.innerHTML = ''; return;
+    sum.textContent = '등록된 과제가 없습니다 — [내 과제]에서 추가하세요.'; out.innerHTML = ''; return;
   }
   // 표시 설정(머리기호/들여쓰기) — 표시+복사 전용. 데이터 불변. (컨트롤 표시는 syncReportFormatUI 가 가드 앞에서 맞춘다)
   const _mkSpec = reportMarkerSpec();
@@ -14509,7 +15037,7 @@ function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 �
   set('btnNext', ICON.next);
   set('btnSearch', label(ICON.search, '검색'));
   set('btnPeerPick', label(ICON.users, '다른 사람 일정'));   // K1 — 라벨은 넓을 때만(좁으면 아이콘 + aria-label · ≤549px 은 ⋯ 로)
-  set('btnCatsTop', label(ICON.tag, '과제 관리'));       // 헤더 직접 노출(⋯ 안에 묻히지 않게)
+  set('btnCatsTop', label(ICON.tag, '내 과제'));       // 헤더 직접 노출(⋯ 안에 묻히지 않게)
   set('btnFeedback', label(ICON.bug, '문의'));           // 버그 리포트·개선사항 문의
   set('btnUser', ICON.user);                             // 라벨 없음 — 상단바 폭 예산(≤739px 미디어쿼리 주석 참고)
   set('btnTheme', ICON.palette);               // 모양: 전체 테마 선택 + 위젯 투명도(HOST)
@@ -14571,9 +15099,9 @@ function openHelp(){
   if(body) body.innerHTML = `<div class="help-grid">`
     + card(ICON.plus, '빠른 시작', '＋ 새 기록 또는 날짜 더블클릭으로 추가. 기록을 드래그해 다른 날짜로 이동.')
     + card(ICON.calendar, '일정 · 할 일', '일정은 시간/종일·반복·기간. 할 일은 체크·중요(★)·기한. ‘옵션 더보기’에서 세부 설정.')
-    + card(ICON.git, '커밋 내역', '과제에 Git 저장소 경로를 지정하면(과제 관리), 그 날 내 커밋을 자동 수집합니다.')
+    + card(ICON.git, '커밋 내역', '과제에 Git 저장소 경로를 지정하면(내 과제), 그 날 내 커밋을 자동 수집합니다.')
     + card(ICON.doc, '보고서', '기간을 고르면 과제별 [제목] : 시간으로 자동 정리. 하루 보고서에서 시간 수정, 복사해 붙여넣기.')
-    + card(ICON.tag, '과제 관리', '헤더의 과제 관리 버튼에서 과제 추가·이름·색상·버전관리(Git/SVN) 경로를 설정합니다.')
+    + card(ICON.tag, '내 과제', '헤더의 내 과제 버튼에서 과제 추가·이름·색상·버전관리(Git/SVN) 경로를 설정합니다.')
     + card(ICON.palette, '테마', '헤더의 모양 버튼에서 라이트·다크·포레스트·세피아·고대비 등 전체 테마를 고릅니다.')
     + card(ICON.keyboard, '단축키', '← → 월 이동 · Home 오늘 · Esc 닫기 · 날짜 더블클릭 새 기록.')
     + card(ICON.download, '데이터 · 백업', '데이터는 자동 저장. 백업·이전은 ⋯ 메뉴의 XML 내보내기/가져오기.')
@@ -14640,25 +15168,25 @@ function guideShot(kind, step){
   const base = (title, buttons='', extra='') => `<div class="guide-shot">${top(title, buttons)}<div class="shot-body">${cal}${panel}</div>${extra}</div>`;
   const call = (n, text, pos) => (step === n ? `<span class="shot-call" data-n="${n}" style="${pos}">${text}</span>` : '');
   if(kind === 'overview') return base('수행과제 캘린더',
-    `<span class="shot-btn">검색</span><span class="shot-btn">과제 관리</span><span class="shot-btn">문의</span><span class="shot-btn primary">＋ 새 기록</span>`,
+    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn">문의</span><span class="shot-btn primary">＋ 새 기록</span>`,
     call(1, '월 달력', 'left:18px;top:48px') + call(2, '날짜 패널', 'right:32px;top:76px') + call(3, '주요 버튼', 'right:16px;top:10px'));
-  if(kind === 'category') return base('과제 관리',
-    `<span class="shot-btn">검색</span><span class="shot-btn primary">과제 관리</span><span class="shot-btn">문의</span>`,
-    `<div class="shot-modal"><h4>과제 관리</h4><div class="shot-field"></div><div class="shot-row"><span class="shot-tab on">Git</span><span class="shot-tab">SVN</span></div><div class="shot-field"></div><div class="shot-field"></div></div>`
-    + call(1, '과제 관리', 'right:118px;top:10px') + call(2, '이름·색상', 'left:148px;top:80px') + call(3, 'Git/SVN 선택', 'left:128px;bottom:42px'));
+  if(kind === 'category') return base('내 과제',
+    `<span class="shot-btn">검색</span><span class="shot-btn primary">내 과제</span><span class="shot-btn">문의</span>`,
+    `<div class="shot-modal"><h4>내 과제</h4><div class="shot-field"></div><div class="shot-row"><span class="shot-tab on">Git</span><span class="shot-tab">SVN</span></div><div class="shot-field"></div><div class="shot-field"></div></div>`
+    + call(1, '내 과제', 'right:118px;top:10px') + call(2, '이름·색상', 'left:148px;top:80px') + call(3, 'Git/SVN 선택', 'left:128px;bottom:42px'));
   if(kind === 'add') return base('새 기록',
-    `<span class="shot-btn">검색</span><span class="shot-btn">과제 관리</span><span class="shot-btn primary">＋ 새 기록</span>`,
+    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
     `<div class="shot-modal"><div class="shot-row"><span class="shot-tab on">일정</span><span class="shot-tab">할 일</span></div><div class="shot-field"></div><div class="shot-row"><div class="shot-field" style="flex:1"></div><div class="shot-field" style="flex:1"></div></div><div class="shot-field"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">옵션 더보기</span><span class="shot-btn primary">저장</span></div></div>`
     + call(1, '새 기록', 'right:12px;top:10px') + call(2, '일정/할 일', 'left:140px;top:64px') + call(3, '저장', 'right:84px;bottom:52px'));
   if(kind === 'detail') return base('날짜 상세',
-    `<span class="shot-btn">검색</span><span class="shot-btn">과제 관리</span><span class="shot-btn primary">＋ 새 기록</span>`,
+    `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
     call(1, '날짜 클릭', 'left:128px;top:122px') + call(2, '상세 확인', 'right:20px;top:70px') + call(3, '수정·삭제', 'right:24px;bottom:58px'));
   if(kind === 'room') return base('장소 · 회의실',
     `<span class="shot-btn">⋯</span><span class="shot-btn primary">＋ 새 기록</span>`,
     `<div class="shot-modal"><h4>회의실 관리</h4><div class="shot-field"></div><div class="shot-row"><div class="shot-field" style="flex:1"></div><span class="shot-btn primary">＋ 추가</span></div></div>`
     + call(1, '더보기', 'right:70px;top:10px') + call(2, '회의실 추가', 'left:132px;top:82px') + call(3, '일정 장소에서 선택', 'right:54px;bottom:54px'));
   if(kind === 'commit') return base('커밋 내역',
-    `<span class="shot-btn">과제 관리</span><span class="shot-btn primary">＋ 새 기록</span>`,
+    `<span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
     `<div class="shot-modal"><h4>커밋 내역</h4><div class="shot-row"><span class="shot-btn primary">이 날 커밋</span><span class="shot-btn">기간 일괄 불러오기</span></div><div class="shot-line"></div><div class="shot-line mid"></div></div>`
     + call(1, '저장소 연결', 'left:96px;top:10px') + call(2, '불러오기', 'left:152px;top:86px') + call(3, '보고서 반영', 'right:42px;bottom:54px'));
   if(kind === 'report') return base('보고서',
@@ -14666,7 +15194,7 @@ function guideShot(kind, step){
     `<div class="shot-modal"><h4>보고서 초안</h4><div class="shot-row"><span class="shot-tab on">일간</span><span class="shot-tab">주간</span><span class="shot-tab">기간</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-row" style="justify-content:flex-end"><span class="shot-btn">전송</span><span class="shot-btn primary">복사</span></div></div>`
     + call(1, '보고서', 'right:34px;top:10px') + call(2, '기간 선택', 'left:126px;top:84px') + call(3, '복사/전송', 'right:70px;bottom:46px'));
   if(kind === 'search') return base('검색',
-    `<span class="shot-btn primary">검색</span><span class="shot-btn">과제 관리</span>`,
+    `<span class="shot-btn primary">검색</span><span class="shot-btn">내 과제</span>`,
     `<div class="shot-modal"><h4>검색</h4><div class="shot-row"><span class="shot-tab on">키워드 검색</span><span class="shot-tab">과제별 모아보기</span></div><div class="shot-field"></div><div class="shot-line"></div><div class="shot-line mid"></div></div>`
     + call(1, '검색', 'left:122px;top:10px') + call(2, '키워드 입력', 'left:132px;top:86px') + call(3, '과제별 보기', 'right:64px;top:88px'));
   if(kind === 'theme') return base('테마',
@@ -14694,10 +15222,10 @@ function renderVisualGuide(){
     ['overview','전체 화면 구조','처음 화면에서 달력, 날짜 패널, 상단 주요 버튼 위치를 확인합니다.',[
       ['overview_1','달력에서 날짜와 등록된 칩을 확인합니다.'],
       ['overview_1','오른쪽 패널에서 선택한 날짜의 일정 상세, 할 일, 커밋 내역을 전환합니다.'],
-      ['overview_1','상단의 검색, 과제 관리, 문의, 새 기록 버튼으로 주요 기능을 시작합니다.']
-    ],'처음 사용자는 과제 관리 -> 새 기록 순서로 시작하면 됩니다.'],
-    ['category','과제 관리','실제 과제 관리 창에서 과제를 만들고, 색상과 Git/SVN 연결 정보를 설정합니다.',[
-      ['category_1','상단 과제 관리 버튼을 눌러 과제 관리 창을 엽니다.'],
+      ['overview_1','상단의 검색, 내 과제, 문의, 새 기록 버튼으로 주요 기능을 시작합니다.']
+    ],'처음 사용자는 내 과제 -> 새 기록 순서로 시작하면 됩니다.'],
+    ['category','내 과제','실제 내 과제 창에서 과제를 만들고, 색상과 Git/SVN 연결 정보를 설정합니다.',[
+      ['category_1','상단 내 과제 버튼을 눌러 내 과제 창을 엽니다.'],
       ['category_2','새 과제 이름을 입력하고 구분할 색상을 선택합니다.'],
       ['category_3','필요하면 Git/SVN 저장소 경로와 내 작성자를 연결합니다.']
     ],'과제명은 보고서의 묶음 제목으로도 쓰이므로 실제 보고 단위와 맞추는 편이 좋습니다.'],
@@ -14712,7 +15240,7 @@ function renderVisualGuide(){
       ['todo_3','오른쪽 할 일 탭에서 체크, 중요 표시, 삭제를 관리합니다.']
     ],'기한 없는 할 일은 오른쪽 할 일 탭의 기한 없음 섹션에서 확인합니다.'],
     ['git','Git/SVN 커밋 가져오기','과제에 저장소를 연결한 뒤 커밋 내역 탭에서 날짜별 커밋을 가져옵니다.',[
-      ['git_1','과제 관리에서 버전관리 연동 영역을 확인합니다.'],
+      ['git_1','내 과제에서 버전관리 연동 영역을 확인합니다.'],
       ['git_2','저장소 폴더와 작성자를 연결해 연결됨 상태를 확인합니다.'],
       ['git_3','오른쪽 커밋 내역 탭에서 이 날 커밋 또는 기간 일괄 불러오기를 사용합니다.']
     ],'실제 커밋 조회는 데스크톱 위젯에서 Git/SVN 실행 파일과 저장소 경로가 정상일 때 동작합니다.'],
@@ -15056,6 +15584,12 @@ function bind(){
   { const b = $('#usPermReload'); if(b) b.addEventListener('click', loadUserPerm); }   // 관리자가 방금 역할을 바꿨을 때의 재조회 경로
   { const b = $('#usMembers'); if(b) b.addEventListener('click', openMembers); }       // #userModal 위에 겹쳐 연다(닫으면 되돌아온다)
   { const b = $('#usUserAdmin'); if(b) b.addEventListener('click', openUserAdmin); }   // 공개 문 — 관리자가 아니면 화면이 호스트의 거절 한 줄만 보인다(2026-09-18)
+  //  「⚙ 관리」(docs/ADMIN-HUB.md) — 입구 ② 사용자 정보 카드(마지막 항목 · 구성원 지름길) · ③ 내 과제의 공식 과제 편집 지름길.
+  //   셋 다 입구 창을 닫고 연다(openAdminHub — 겹치지 않는다). ① ☰ 는 buildHostBar 가 묶는다.
+  { const b = $('#usHubOpen'); if(b) b.addEventListener('click', () => openAdminHub(null)); }
+  { const b = $('#usHubMembers'); if(b) b.addEventListener('click', () => openAdminHub('members')); }
+  { const b = $('#btnCatAdmin'); if(b) b.addEventListener('click', () => openAdminHub('projects')); }
+  setupAdminHub();
   { const b = $('#mbSearch'); if(b) b.addEventListener('input', filterMembers); }
   //  ★ 검색은 **디바운스**한다(#sInput 과 같은 180ms · 2026-09-18) — 한 글자마다 목록을 통째로 다시
   //    만들면 빠른 타이핑에서 자리·포커스 되돌리기가 매 키마다 돈다(규칙⑦: 키 입력에서 전체 재빌드 금지).
@@ -15806,7 +16340,7 @@ function bind(){
   /* 모달 공통: × / 취소 / 배경 클릭 */
   $$('.overlay').forEach(ov => {
     ov.addEventListener('click', ev => {
-      if(ev.target === ov){                                   // 배경 클릭 = 우발적 → dirty면 확인
+      if(ev.target === ov && !ov.classList.contains('docked')){   // 배경 클릭 = 우발적 → dirty면 확인 (도킹된 창은 배경이 없다 — 관리 화면의 배경이 그 몫이다)
         confirmDiscardIfDirty(ov).then(ok => { if(ok) closeOverlay(ov); });
       } else if(ev.target.closest('[data-close]')){
         // 설정의 푸터는 '닫기' 하나뿐이라 사용자는 그걸 '완료'로 읽는다 — 명시적 클릭이어도
@@ -15824,6 +16358,9 @@ function bind(){
     if(__gateOn) return;
     if(ev.key === 'Escape'){
       const _top = openOverlays().pop();
+      //  ★ 맨 위가 「⚙ 관리」에 도킹된 창이면 관리 화면을 닫는다(H12 · closeOverlay 가 관리 화면으로 돌린다).
+      //    안에서 뜬 확인창·편집 폼은 body 의 뒤쪽 형제라 openOverlays 의 맨 끝 = 그것부터 닫힌다.
+      if(_top && _top.classList.contains('docked')){ ev.preventDefault(); closeOverlay(_top); return; }
       if(_top && isGuardedModal(_top)){                    // 일정/빠른추가 = 우발적 닫기 방지
         ev.preventDefault();
         confirmDiscardIfDirty(_top).then(ok => { if(ok) closeOverlay(_top); });
@@ -16056,7 +16593,7 @@ function applyCommitsToForm(commits, cat, date){
 async function fetchCommitsIntoModal(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cat = catById($('#fCat').value);
-  if(!cat || (!cat.gitRepo && !cat.svnRepo)){ toast('이 과제에 Git·SVN 저장소가 설정되어 있지 않습니다 — [과제 관리]에서 경로를 입력하세요', 'warn'); return; }
+  if(!cat || (!cat.gitRepo && !cat.svnRepo)){ toast('이 과제에 Git·SVN 저장소가 설정되어 있지 않습니다 — [내 과제]에서 경로를 입력하세요', 'warn'); return; }
   const date = $('#fDate').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ toast('날짜를 먼저 선택하세요', 'warn'); $('#fDate').focus(); return; }
   const fbtn = $('#btnGitFetch');
@@ -16078,7 +16615,7 @@ let dayGitDate = '';
 function openDayGitFetch(date){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats();
-  if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
+  if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [내 과제]에서 설정하세요', 'warn'); openCatModal(); return; }
   dayGitDate = date;
   const dd = $('#dgDate'); if(dd) dd.textContent = date;
   const sel = $('#dgCat');
@@ -16100,7 +16637,7 @@ function syncGitBodyChecks(){ ['#bgBodyChk','#dgBodyChk'].forEach(function(s){ v
 function openBulkGitFetch(){
   if(!HOST){ toast('커밋 가져오기는 데스크톱 위젯에서만 동작합니다', 'warn'); return; }
   const cats = gitEnabledCats();
-  if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [과제 관리]에서 설정하세요', 'warn'); openCatModal(); return; }
+  if(!cats.length){ toast('버전관리(Git·SVN)가 연결된 과제가 없습니다 — [내 과제]에서 설정하세요', 'warn'); openCatModal(); return; }
   const sel = $('#bgCat');
   sel.innerHTML = `<option value="">전체 과제 (${cats.length}개)</option>` + cats.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   const r = weekRange(new Date(), 0);
@@ -16471,8 +17008,15 @@ function buildHostBar(){
   drag.addEventListener('pointercancel', e => __gEnd(e, drag));
   // 버튼
   bar.querySelector('.hb-btns').addEventListener('click', ev => {
-    const b = ev.target.closest('button[data-host]'); if(b) hpost({cmd:b.dataset.host});
+    const b = ev.target.closest('button[data-host]'); if(!b) return;
+    //  ★ H6 — ☰ 는 **관리자로 확인된 때만** admin:true 를 함께 보낸다 → 호스트 메뉴 맨 위에 「⚙ 관리」(window.__openAdminHub 주석).
+    //    그 밖에는 지금과 똑같이 {cmd:'menu'} 다(일반 사용자 화면 불변).
+    hpost((b.dataset.host === 'menu' && ahIsAdmin()) ? { cmd: 'menu', admin: true } : { cmd: b.dataset.host });
   });
+  //  ☰ 에 손이 가면(가리킴·포커스) 아직 모르는 권한을 조용히 한 번 묻는다(ahProbeIfUnknown — 기존 읽기 명령 userInfoGet).
+  //   누르는 순간에는 물을 수 없다(호스트 메뉴는 기다리지 않고 떠야 한다) — 그래서 그 직전에 묻는다.
+  { const mb = bar.querySelector('button[data-host="menu"]');
+    if(mb){ mb.addEventListener('pointerenter', ahProbeIfUnknown); mb.addEventListener('focus', ahProbeIfUnknown); } }
   // 리사이즈: 네 가장자리 + 네 모서리 = 8방향. 상단 가장자리(n)는 2026-09-18 추가 — 배지 여백 때문에 창 맨 위 띠가
   //   어느 손잡이에도 안 걸려 "좌상단 대각선이 안 된다"로 보였다. 호스트는 처음부터 n 을 처리한다(edge.Contains("n")).
   //   순서가 곧 z 순서(뒤가 위): 모서리를 가장자리 뒤에 두어 겹치는 자리에서 모서리가 이긴다.

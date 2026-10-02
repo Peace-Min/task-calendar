@@ -833,7 +833,7 @@ namespace TaskCalendarWidget
                         break;
                     }
 
-                    case "menu": ShowSettingsMenu(); break;
+                    case "menu": ShowSettingsMenu(GetBool(doc, "admin")); break;   // admin = 웹이 관리자로 확인했을 때만 true(「⚙ 관리」 지름길 표시용 · docs/ADMIN-HUB.md H6)
                     case "pin": TogglePin(); break;
                     case "focus": ToggleFocusMode(); break;
                     case "hide": HideToTray(); break;   // 트레이 켜졌을 때만 HTML이 버튼 노출
@@ -2534,9 +2534,23 @@ namespace TaskCalendarWidget
             SendPinState();
         }
 
-        private void ShowSettingsMenu()
+        private void ShowSettingsMenu(bool admin = false)
         {
             var menu = new ContextMenu();
+
+            // ★ 「⚙ 관리」(docs/ADMIN-HUB.md H6) — 웹이 관리자(edit_role=admin)로 확인했을 때만 admin=true 로 온다. 맨 위 + 구분선.
+            //   지름길일 뿐이다: 누르면 웹의 관리 화면을 연다(window.__openAdminHub · __setFocus 와 같은 호스트→웹 길).
+            //   쓰기 권한은 여전히 DB 관문(OpenAdminAsync 등)이 요청 시점에 판정하므로 여기서 따로 검사하지 않는다.
+            if (admin)
+            {
+                var hub = new MenuItem { Header = "⚙ 관리", InputGestureText = "관리자" };
+                hub.Click += (_, _) =>
+                {
+                    try { web.Focus(); _ = web.CoreWebView2?.ExecuteScriptAsync("window.__openAdminHub && window.__openAdminHub()"); } catch { }
+                };
+                menu.Items.Add(hub);
+                menu.Items.Add(new Separator());
+            }
 
             var pin = new MenuItem { Header = "바탕화면에 부착", IsCheckable = true, IsChecked = _settings.Pinned };
             pin.Click += (_, _) => TogglePin();
