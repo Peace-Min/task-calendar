@@ -525,6 +525,10 @@ V.audit = function(opt){
     var t = ownText(R.e);
     if (t.length < 2) continue;                             // 래퍼(자식만 있는 박스)는 대상 아님
     if ((R.s.textOverflow||'').indexOf('ellipsis') >= 0) continue;
+    //  ★ sr-only 관용구(화면낭독기 전용 글 — 1px·clip 으로 일부러 감춘다)는 '잘린 글'이 아니다. V6 와 같은 예외.
+    //    2026-10-06: 직급·소속의 꺼진 [숨김] 이유(aria-describedby 대상 #otWhy-N)가 여기 걸렸다 — 보이는 글이 아니다.
+    if (R.e.classList && R.e.classList.contains('sr-only')) continue;
+    if (R.s.position === 'absolute' && R.r.width <= 1 && R.r.height <= 1 && (R.s.clip||'').indexOf('rect') === 0) continue;
     var hasTitle = false;
     for (var n = R.e; n && n !== scopeEl.parentElement; n = n.parentElement){
       if (n.getAttribute && (n.getAttribute('title')||'').trim()){ hasTitle = true; break; }
