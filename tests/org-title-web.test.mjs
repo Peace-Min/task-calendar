@@ -76,8 +76,10 @@ const SEATED = {
   titles: TITLES.concat([{ name: 'zzJ신규', sort: 100, active: true, users: 0 }]),
   units: UNITS,
 };
-const TITLE_WHY = '이 직급인 재직자가 3명 있습니다 — 먼저 직급을 바꾸세요';
-const UNIT_WHY = '이 조직에 재직자 0명 · 하위 조직 2개가 있습니다 — 먼저 옮기거나 숨기세요';
+//  ★ 2026-10-06(docs/ADMIN-HUB-4.md N2) — 사유 문장은 지금 숫자로 짓되 0 인 숫자는 빼고(「재직자 0명」은 이유가 아니다),
+//    「…가 있어 숨길 수 없습니다」 꼴이다. 줄 끝의 사용 개수 배지(N1)가 하던 일을 이 문장이 꺼진 [숨김]에서 한다.
+const TITLE_WHY = '재직자 3명이 있어 숨길 수 없습니다 — 먼저 직급을 바꾸세요';
+const UNIT_WHY = '하위 조직 2개가 있어 숨길 수 없습니다 — 먼저 옮기거나 숨기세요';
 //  ★ <option> 안의 들여쓰기는 **줄바꿈 없는 공백**(U+00A0)이다 — 보통 공백은 목록에서 접혀 사라진다.
 const NB2 = '  ', NB4 = '    ';
 const ROOT_WHY = '최상위 조직은 숨길 수 없습니다';
@@ -262,7 +264,7 @@ function otHarnessJs(src) {
     'function __rows(){',
     '  return Array.prototype.map.call(document.querySelectorAll("#otList .cust-row"), function(r){',
     '    var nm = r.querySelector(".cust-nm");',
-    '    var cnt = r.querySelector(".ot-cnt");',
+    '    var cnt = r.querySelector(".ot-cnt,.badge");',   // 사용 개수 배지(N1 — 없어야 한다)
     '    return { key: String(r.dataset.otkey || ""),',
     '      name: (nm && nm.childNodes[0]) ? String(nm.childNodes[0].nodeValue || "") : "",',
     '      pad: nm ? String(nm.style.paddingLeft || "") : "",',
@@ -270,7 +272,8 @@ function otHarnessJs(src) {
     '      cnt: cnt ? String(cnt.textContent || "") : "",',
     '      btns: Array.prototype.map.call(r.querySelectorAll("button"), function(b){',
     '        return { op: String(b.dataset.otop || ""), label: String(b.textContent || ""),',
-    '                 disabled: !!b.disabled, title: String(b.title || "") }; }) };',
+    '                 disabled: !!b.disabled, title: String(b.title || ""), aria: String(b.getAttribute("aria-disabled") || ""),',
+    '                 desc: (function(id){ var d = id ? document.getElementById(id) : null; return d ? String(d.textContent || "") : ""; })(b.getAttribute("aria-describedby")) }; }) };',
     '  });',
     '}',
     'function __btn(rows, key, op){',
@@ -461,10 +464,14 @@ const dom = {
       `직급 탭이 회신 순서대로 활성 둘을 그리지 않는다: ${JSON.stringify(r.rows.map((x) => x.key))}`);
     const hideJ = r.rows[0].btns.find((b) => b.op === 'hide');
     assert.ok(hideJ, '재직자 3명인 직급에 [숨김] 버튼 자체가 없다 — 부재는 사유를 알려 주지 않는다');
-    assert.strictEqual(hideJ.disabled, true, '재직자 3명인 직급의 [숨김] 이 켜져 있다 — 눌러 봐야 호스트가 거부한다');
+    assert.strictEqual(hideJ.aria, 'true', '재직자 3명인 직급의 [숨김] 이 켜져 있다 — 눌러 봐야 호스트가 거부한다(N2: aria-disabled)');
+    assert.strictEqual(hideJ.disabled, false, '꺼진 [숨김] 을 disabled 로 껐다 — 포커스가 닿지 않아 키보드로는 이유를 못 듣는다(N2)');
     assert.strictEqual(hideJ.title, TITLE_WHY, `[숨김] 의 사유가 다르다: ${JSON.stringify(hideJ.title)}`);
+    assert.strictEqual(hideJ.desc, TITLE_WHY, `[숨김] 의 aria-describedby 문장이 title 과 다르다: ${JSON.stringify(hideJ.desc)}(N2)`);
+    assert.ok(r.rows.every((x) => !x.cnt), `줄에 사용 개수 배지가 남았다: ${JSON.stringify(r.rows.map((x) => x.cnt))}(N1)`);
     const hideS = r.rows[1].btns.find((b) => b.op === 'hide');
-    assert.strictEqual(hideS.disabled, false, '재직자 0명인 직급의 [숨김] 이 꺼져 있다');
+    assert.strictEqual(hideS.disabled || hideS.aria === 'true', false, '재직자 0명인 직급의 [숨김] 이 꺼져 있다');
+    assert.strictEqual(hideS.desc, '', '숨길 수 있는 [숨김] 에 사유 문장이 붙었다');
     //  ▲▼ 는 활성끼리 — 첫 행의 ▲ 와 마지막 행의 ▼ 만 꺼진다.
     assert.deepStrictEqual(r.rows.map((x) => [x.btns.find((b) => b.op === 'up').disabled,
                                               x.btns.find((b) => b.op === 'down').disabled]),
@@ -484,11 +491,14 @@ const dom = {
     assert.deepStrictEqual(r.rows.map((x) => x.pad), ['0px', '16px', '32px', '32px', '16px'],
       `들여쓰기가 깊이×16px 이 아니다: ${JSON.stringify(r.rows.map((x) => x.pad))}`);
     const hide = (key) => r.rows.find((x) => x.key === key).btns.find((b) => b.op === 'hide');
-    assert.strictEqual(hide('1').disabled, true, '최상위 조직의 [숨김] 이 켜져 있다 — 루트는 하나뿐이다');
+    assert.strictEqual(hide('1').aria, 'true', '최상위 조직의 [숨김] 이 켜져 있다 — 루트는 하나뿐이다');
     assert.strictEqual(hide('1').title, ROOT_WHY, `최상위의 [숨김] 사유가 다르다: ${JSON.stringify(hide('1').title)}`);
-    assert.strictEqual(hide('2').disabled, true, '활성 하위 2개인 조직의 [숨김] 이 켜져 있다');
+    assert.strictEqual(hide('1').desc, ROOT_WHY, '최상위의 [숨김] aria-describedby 문장이 title 과 다르다(N2)');
+    assert.strictEqual(hide('2').aria, 'true', '활성 하위 2개인 조직의 [숨김] 이 켜져 있다');
     assert.strictEqual(hide('2').title, UNIT_WHY, `하위가 있는 조직의 [숨김] 사유가 다르다: ${JSON.stringify(hide('2').title)}`);
-    assert.strictEqual(hide('7').disabled, false, '재직자 0명·하위 0개인 조직의 [숨김] 이 꺼져 있다');
+    assert.strictEqual(hide('2').desc, UNIT_WHY, '하위가 있는 조직의 [숨김] aria-describedby 문장이 title 과 다르다(N2)');
+    assert.ok(r.rows.every((x) => !x.cnt), `소속 줄에 사용 개수 배지가 남았다: ${JSON.stringify(r.rows.map((x) => x.cnt))}(N1)`);
+    assert.strictEqual(hide('7').disabled || hide('7').aria === 'true', false, '재직자 0명·하위 0개인 조직의 [숨김] 이 꺼져 있다');
     //  ▲▼ 는 **같은 부모의 활성 형제끼리**만 오간다.
     const ord = (key) => {
       const row = r.rows.find((x) => x.key === key);
@@ -752,8 +762,8 @@ if (!jsdom) {
   });
 
   test('변이④: 재직자 사유를 지우면 계약④-DOM(a) 가 실패한다(눌러 봐야 거부되는 버튼이 된다)', () => {
-    const bad = mutate(app, "      else if(!unit && users > 0) why = '이 직급인 재직자가 ' + users + '명 있습니다 — 먼저 직급을 바꾸세요';",
-      "      else if(false) why = '';");
+    const bad = mutate(app, "        if(users > 0) parts.push('재직자 ' + users + '명');",
+      "        if(false) parts.push('');");
     assert.throws(() => dom.titleRows(bad), /재직자 3명인 직급의 \[숨김\] 이 켜져 있다/);
     assert.doesNotThrow(() => dom.titleRows(app));   // 통제군
   });

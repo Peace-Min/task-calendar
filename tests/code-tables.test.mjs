@@ -347,7 +347,8 @@ test('웹: 코드 관리 codeSend — 성공 시 loadCodes, 개명은 loadProjec
   assert.ok(/cmd === 'codeRename'[\s\S]{0,60}loadProjects/.test(b), '개명 후 과제 표기 갱신(loadProjects)이 없다');
 });
 test('웹: 코드 관리 조작은 offEditGuard 게이트', () => {
-  for (const fn of ['codeDoAdd', 'codeDoHide', 'codeDoShow', 'codeBeginRename', 'codeMove']) {
+  //  ★ 2026-10-06(ADMIN-HUB-4 후속) — 제자리 복구(codeDoShow)는 없어졌다: 숨긴 구분·상태의 복구는 회사 과제 휴지통이 한다.
+  for (const fn of ['codeDoAdd', 'codeDoHide', 'codeBeginRename', 'codeMove']) {
     assert.ok(/offEditGuard\(/.test(extractFunction(src, fn)), `${fn}가 offEditGuard를 거치지 않는다`);
   }
 });

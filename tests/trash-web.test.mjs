@@ -1103,7 +1103,8 @@ if (!jsdom) {
   //    ★ 2026-10-02(ADMIN-HUB-3 M3) — 사람 쪽 문도 탭 줄을 그린다: 구성원 · 소속 · 직급 셋이다(예전엔 「인력」 하나라
   //      탭 줄이 없었다). 소속·직급은 직급·소속 화면의 조회(orgTitleGet)에서 오고, 받기 전에는 건수 대신 '—' 다
   //      (0 은 '없다'로 읽힌다). 탭 안내 한 줄(#trNote)이 그 탭의 규칙을 말한다(구성원: 기록 0건만 영구 삭제).
-  test('계약⑥-DOM(scope): 들어온 문이 보이는 탭과 부제를 정한다(과제 넷 · 사람 셋 = 구성원·소속·직급)', () => {
+  //    ★ 2026-10-06(ADMIN-HUB-4 N6) — 탭 순서는 왼쪽 항목 순서(구성원 · 직급 · 소속)와 맞춰 [구성원 · 직급 · 소속] · 부제도 같은 순서.
+  test('계약⑥-DOM(scope): 들어온 문이 보이는 탭과 부제를 정한다(과제 넷 · 사람 셋 = 구성원·직급·소속)', () => {
     const p = probeScopeDoor(PAYLOAD, 'project');
     assert.deepStrictEqual(p.tabs.map((t) => t.kind), ['project', 'customer', 'section', 'status'],
       `과제 쪽 문의 탭 구성이 계약과 다르다: ${JSON.stringify(p.tabs.map((t) => t.kind))} — 퇴사자는 여기 없다`);
@@ -1114,9 +1115,9 @@ if (!jsdom) {
     assert.ok(p.scope.startsWith('숨긴 항목 '), `과제 쪽 부제가 계약과 다르다: ${JSON.stringify(p.scope)}`);
 
     const u = probeScopeDoor(PAYLOAD, 'user');
-    assert.deepStrictEqual(u.tabs.map((t) => t.kind), ['user', 'unit', 'title'],
-      `사람 쪽 문의 탭 구성이 계약과 다르다: ${JSON.stringify(u.tabs.map((t) => t.kind))} — 구성원 · 소속 · 직급(M3)`);
-    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/[0-9—]+$/, '')), ['구성원', '소속', '직급'],
+    assert.deepStrictEqual(u.tabs.map((t) => t.kind), ['user', 'title', 'unit'],
+      `사람 쪽 문의 탭 구성이 계약과 다르다: ${JSON.stringify(u.tabs.map((t) => t.kind))} — 구성원 · 직급 · 소속(M3 · N6)`);
+    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/[0-9—]+$/, '')), ['구성원', '직급', '소속'],
       `사람 쪽 탭 이름이 다르다: ${JSON.stringify(u.tabs.map((t) => t.text))}`);
     assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/^\D+/, '') || t.text.slice(-1)), [String(PAYLOAD.users.length), '—', '—'],
       `받기 전의 소속·직급 건수가 '—' 가 아니다(0 은 '없다'로 읽힌다): ${JSON.stringify(u.tabs.map((t) => t.text))}`);
@@ -1128,8 +1129,8 @@ if (!jsdom) {
       `구성원 탭 안내 한 줄이 계약과 다르다: ${JSON.stringify(u.note)}(M3)`);
     assert.strictEqual(u.lines, PAYLOAD.users.length,
       `퇴사자 쪽 문에 행이 ${u.lines}개다(${PAYLOAD.users.length}개여야 한다) — 목록은 그대로 그린다`);
-    assert.ok(u.scope.startsWith('퇴사 처리한 구성원 ' + PAYLOAD.users.length + '명 · 숨긴 소속 …개 · 숨긴 직급 …개'),
-      `사람 쪽 부제가 '퇴사 처리한 구성원 N명 · 숨긴 소속 …개 · 숨긴 직급 …개' 가 아니다: ${JSON.stringify(u.scope)} — 무엇을 보고 있는지 화면이 말해야 한다`);
+    assert.ok(u.scope.startsWith('퇴사 처리한 구성원 ' + PAYLOAD.users.length + '명 · 숨긴 직급 …개 · 숨긴 소속 …개'),
+      `사람 쪽 부제가 '퇴사 처리한 구성원 N명 · 숨긴 직급 …개 · 숨긴 소속 …개' 가 아니다: ${JSON.stringify(u.scope)} — 무엇을 보고 있는지 화면이 말해야 한다`);
     //  '무엇을 지울 수 있는가'는 부제에서 구성원 탭의 안내 한 줄로 옮겼다(M3 — 소속·직급 탭에는 영구 삭제가 없다).
     assert.ok(/기록이 0건인 계정만 영구 삭제할 수 있습니다/.test(u.note),
       `구성원 탭 안내가 '무엇을 지울 수 있는가'를 말하지 않는다: ${JSON.stringify(u.note)}`);

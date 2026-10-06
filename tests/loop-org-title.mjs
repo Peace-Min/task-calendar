@@ -447,7 +447,7 @@ async function openPeopleTrash() {
   if (!s) throw new Error('사람 휴지통이 열리지 않았다(휴지통 조회 또는 소속·직급 조회가 앉지 않았다)');
   return s;
 }
-/** 휴지통 탭 전환 — 실제 탭 버튼을 누른다(구성원 user · 소속 unit · 직급 title). */
+/** 휴지통 탭 전환 — 실제 탭 버튼을 누른다(구성원 user · 직급 title · 소속 unit — ADMIN-HUB-4 N6 순서). */
 async function trTab(kind) {
   await ev(`(function(){ var b=document.querySelector('#trTabs [data-trtab="${kind}"]'); if(b) b.click(); return 1; })()`);
   const s = await waitPage((x) => x.trTab === kind, { timeout: 8000 });
@@ -505,9 +505,12 @@ const otRow = (key) => evj(`(function(){
       name: (nm && nm.childNodes[0]) ? String(nm.childNodes[0].nodeValue||'') : '',
       pad: nm ? String(nm.style.paddingLeft||'') : '',
       hidden: r.classList.contains('hidden-cust'),
+      cnt: !!r.querySelector('.ot-cnt,.badge'),   // 사용 개수 배지(ADMIN-HUB-4 N1 — 없어야 한다)
       btns: Array.prototype.map.call(r.querySelectorAll('button'), function(b){
+        //  aria — 꺼진 [숨김]은 disabled 가 아니라 aria-disabled 다(ADMIN-HUB-4 N2 · 포커스가 남아 이유를 듣는다) · desc = aria-describedby 문장
+        var dd = b.getAttribute('aria-describedby') ? document.getElementById(b.getAttribute('aria-describedby')) : null;
         return { op: String(b.dataset.otop||''), label: String(b.textContent||''),
-                 disabled: !!b.disabled, title: String(b.title||'') }; })
+                 disabled: !!b.disabled, aria: b.getAttribute('aria-disabled') === 'true', title: String(b.title||''), desc: dd ? String(dd.textContent||'') : '' }; })
     };
   }
   return JSON.stringify(out);
@@ -871,8 +874,10 @@ async function main() {
     await otTab('title');
     const row = await otRow(T.two);
     const hide = otBtn(row, 'hide');
-    okq('C04 화면의 [숨김] 이 꺼져 있다', !!hide && hide.disabled === true, JSON.stringify(hide));
+    okq('C04 화면의 [숨김] 이 꺼져 있다(aria-disabled · 포커스 가능 · N2)', !!hide && hide.aria === true && hide.disabled === false, JSON.stringify(hide));
     okq('C04 꺼진 이유가 title 에 붙어 있다', !!hide && MSG.titleInUse.test(String(hide.title)), JSON.stringify(hide && hide.title));
+    okq('C04 같은 이유가 aria-describedby 로도 읽힌다(N2)', !!hide && hide.desc === hide.title, JSON.stringify(hide));
+    okq('C04 줄에 사용 개수 배지가 없다(N1)', !!row && row.cnt === false, JSON.stringify(row && row.cnt));
 
     //  ③ 호스트 판정: 화면을 우회해도 같은 문장으로 거부한다(힌트와 판정이 갈리면 판정이 이긴다 · §4.1).
     const deny = await hsend('titleSetActive', { name: T.two, active: false });
@@ -1083,7 +1088,8 @@ async function main() {
     await otTab('unit');
     const row = await otRow(String(O.oneId));
     const hide = otBtn(row, 'hide');
-    okq('C09 화면의 [숨김] 이 꺼져 있다(하위 1개)', !!hide && hide.disabled === true, JSON.stringify(hide));
+    okq('C09 화면의 [숨김] 이 꺼져 있다(하위 1개 · aria-disabled · N2)', !!hide && hide.aria === true && hide.disabled === false, JSON.stringify(hide));
+    okq('C09 이유 문장이 하위 조직 수를 말하고 aria-describedby 와 같다(N2)', !!hide && /하위 조직 1개가 있어 숨길 수 없습니다/.test(hide.title) && hide.desc === hide.title, JSON.stringify(hide));
     okq('C09 꺼진 이유가 title 에 붙어 있다', !!hide && MSG.unitInUse.test(String(hide.title)), JSON.stringify(hide && hide.title));
     const deny = await hsend('unitSetActive', { orgId: O.oneId, active: false });
     okq('C09 활성 하위가 있는 조직 숨김은 호스트가 거부', deny.ok === false && MSG.unitInUse.test(String(deny.msg)), JSON.stringify(deny.msg));
@@ -1150,7 +1156,7 @@ async function main() {
     await otTab('unit');
     const row = await otRow(String(O.twoId));
     const hide = otBtn(row, 'hide');
-    if (!okq('C09b 잎 조직의 [숨김]이 켜져 있다(재직자 0 · 하위 0)', !!hide && hide.disabled === false, JSON.stringify(hide))) return;
+    if (!okq('C09b 잎 조직의 [숨김]이 켜져 있다(재직자 0 · 하위 0)', !!hide && hide.disabled === false && hide.aria === false, JSON.stringify(hide))) return;
     await toastRecStart();
     let T9 = [];
     try {

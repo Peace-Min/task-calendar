@@ -33,7 +33,7 @@
  * 진입 문은 **둘**이다(2026-09-18 사용자 결정 · §5.0) — 「사용자 정보」에는 휴지통이 없다:
  *   · 과제·발주처·구분·상태 → 「공식 과제 (DB)」 하단 줄의 #offTrash(위젯에서만 보인다) → openTrash('project')
  *   · 퇴사자·숨긴 소속·직급 → 「구성원 편집」 상단 막대의 「휴지통」(#uaTrash · 관리자에게만 생긴다) → openTrash('user')
- *   들어온 문(__trScope)이 보이는 탭을 정한다: 과제 쪽 넷 · 사람 쪽 셋(구성원 · 소속 · 직급 — 2026-10-02 ADMIN-HUB-3 M3).
+ *   들어온 문(__trScope)이 보이는 탭을 정한다: 과제 쪽 넷 · 사람 쪽 셋(구성원 · 직급 · 소속 — ADMIN-HUB-3 M3 · 순서 ADMIN-HUB-4 N6).
  *   ★ 머리말은 두 문 모두 「휴지통」이다(M5 — 예전: 사람 쪽 「퇴사자 휴지통」). 소속·직급 탭의 복구 실동작은 loop-org-title(C04 · C09 · C09b)이 본다.
  *
  * 불변식(케이스마다):
@@ -378,7 +378,7 @@ const trFind = (data, key, k) => {
 
 /** 휴지통을 열고(또는 다시 열고) 회신이 도착할 때까지 기다린다. 탭은 캐시가 아니라 매번 새 조회다.
  *   ★ 2026-09-18 — 문이 둘이라 **어느 문으로 들어가는가**를 여기서 정한다(§5.0). 'user' 는 탭이 아니라
- *     문이다: 사람 쪽 탭(구성원 · 소속 · 직급)은 과제 쪽 탭과 섞이지 않으므로 openTrash('user') 로 들어가야 한다(첫 탭 = 구성원).
+ *     문이다: 사람 쪽 탭(구성원 · 직급 · 소속)은 과제 쪽 탭과 섞이지 않으므로 openTrash('user') 로 들어가야 한다(첫 탭 = 구성원).
  *     들어간 뒤에는 화면이 말하는 __trScope 가 그 문과 같은지 대조한다 — 다르면 이 함수가 거짓말을 한 것이다. */
 async function openTrash({ tab = null } = {}) {
   const scope = (tab === 'user') ? 'user' : 'project';
@@ -935,12 +935,12 @@ async function main() {
     okq('C03 why 가 §4.3 문장 그대로', row.why === want, `기대 ${JSON.stringify(want)} / 실제 ${JSON.stringify(row.why)}`);
 
     //  화면: 버튼이 꺼지고 사유가 title 로 붙는다(§5.1 — 눌러 봐야 거부되는 버튼은 이유를 알려 주지 않는다).
-    //   ★ 퇴사자는 **다른 문**(「구성원 편집」의 #uaTrash)이 연다 — 사람 쪽 탭 셋(구성원 · 소속 · 직급)이고 첫 탭이 구성원이다
+    //   ★ 퇴사자는 **다른 문**(「구성원 편집」의 #uaTrash)이 연다 — 사람 쪽 탭 셋(구성원 · 직급 · 소속)이고 첫 탭이 구성원이다
     //     (2026-10-02 ADMIN-HUB-3 M3 · 예전: 탭 줄 없이 목록만 · 머리말 「퇴사자 휴지통」 → 이제 두 문 모두 「휴지통」 · M5).
     {
       const su = await openTrash({ tab: 'user' });
       const kinds = await evj(`JSON.stringify([].map.call(document.querySelectorAll('#trTabs [data-trtab]'), function(b){ return b.dataset.trtab; }))`);
-      okq('C03 사람 쪽 문의 탭 = 구성원 · 소속 · 직급(M3)', JSON.stringify(kinds) === JSON.stringify(['user', 'unit', 'title']), JSON.stringify(kinds));
+      okq('C03 사람 쪽 문의 탭 = 구성원 · 직급 · 소속(M3 · ADMIN-HUB-4 N6)', JSON.stringify(kinds) === JSON.stringify(['user', 'title', 'unit']), JSON.stringify(kinds));
       okq('C03 사람 쪽 문은 구성원 탭에서 연다', su.trTab === 'user', su.trTab);
       okq('C03 머리말이 「휴지통」이다(M5)', su.trTitle === '휴지통', JSON.stringify(su.trTitle));
     }

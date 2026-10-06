@@ -14,6 +14,8 @@
  *      도킹 창의 사각형이 오른쪽 칸 안에 있다 · inert 가 칸 안에 번지지 않았다.
  *   H3b 이름·편집만(docs/ADMIN-HUB-3.md R1·R2 · 보기만 한다) — 왼쪽 두 휴지통 항목 = 「🗑 휴지통」(id gone · trash) · 위치 줄 ·
  *      📁 회사 과제 › 📁 공식 과제(도킹)의 상세·목록에 「캘린더에 추가 · ✓ 추가됨 · 제거」 · ✓ · 왼쪽 막대가 보이지 않는다(편집·숨김은 보인다).
+ *   H3c 항목 분리(docs/ADMIN-HUB-4.md N4 · 보기만 한다) — 왼쪽 9개(사람 4 · 회사 과제 5) · 직급/소속/구분/상태가 그 탭으로 도킹 ·
+ *      머리 제목 = 그 이름 · 화면 안 탭 전환 숨김 · 위치 줄 · 직급·소속 줄에 사용 개수 배지 없음(N1) · 꺼진 [숨김] = aria-disabled + 이유(N2).
  *   H4 📁 회사 과제 › 🏭 발주처 — zz 발주처 하나를 **화면으로** 추가(＋ 추가) → 목록·DB(선택)에 생긴다.
  *   H5 같은 발주처를 **화면으로** 숨김 → 📁 회사 과제 › 🗑 휴지통 › 발주처 탭 → 영구 삭제(이름 입력) → 목록·휴지통·DB(선택)에서 사라진다.
  *      (2026-10-02 ADMIN-HUB-3 M2 — 항목 이름 「삭제된 항목」→「🗑 휴지통」 · 항목 id 는 그대로 trash.)
@@ -241,7 +243,8 @@ async function main() {
   await ev(`(document.getElementById('btnMore').focus(), document.getElementById('btnMore').click(), 1)`);
   const s2 = await waitPage((x) => x.moreOpen && x.mmAdmin, { timeout: 8000 });
   ok('H2 ⋯ 메뉴에 「⚙ 관리 · 관리자」(관리자) · 「설정」 바로 위', !!s2 && await ev(`/⚙ 관리\\s*관리자/.test(document.getElementById('btnAdminHub').textContent) && document.getElementById('mmAdmin').nextElementSibling.id === 'btnSettings'`));
-  const last = await ev(`localStorage.getItem('tc_adminLast:' + currentUser.loginId) || 'members'`);
+  const last0 = await ev(`localStorage.getItem('tc_adminLast:' + currentUser.loginId) || 'members'`);
+  const last = ({ orgtitle: 'title', codes: 'section' })[last0] || last0;   // 옛 기억값은 별칭으로 연다(ADMIN-HUB-4 N5)
   await click('#btnAdminHub');
   const s2b = await waitPage((x) => x.hub && !!x.docked && !x.moreOpen, { timeout: 15000 });
   ok('H2 ⋯ 가 닫히고 관리 화면이 마지막 항목으로 열린다', !!s2b && s2b.item === last, s2b && J({ item: s2b.item, last, more: s2b.moreOpen }));
@@ -270,8 +273,8 @@ async function main() {
     await click('#ahNav [data-ahitem="gone"]');
     const sg = await waitPage((x) => x.docked === 'trashModal' && !x.trBusy, { timeout: 20000 });
     const wg = await ev(`(document.getElementById('ahWhere').textContent || '').replace(/\\s+/g, ' ').trim()`);
-    ok('H3b 사람 휴지통 위치 줄 「👥 사람 › 🗑 휴지통」 · 탭 구성원 · 소속 · 직급', !!sg && /👥 사람 ›\s*🗑 휴지통/.test(wg)
-      && J(await evj(`JSON.stringify([].map.call(document.querySelectorAll('#trTabs [data-trtab]'), function(b){ return b.dataset.trtab; }))`)) === J(['user', 'unit', 'title']), wg);
+    ok('H3b 사람 휴지통 위치 줄 「👥 사람 › 🗑 휴지통」 · 탭 구성원 · 직급 · 소속(ADMIN-HUB-4 N6)', !!sg && /👥 사람 ›\s*🗑 휴지통/.test(wg)
+      && J(await evj(`JSON.stringify([].map.call(document.querySelectorAll('#trTabs [data-trtab]'), function(b){ return b.dataset.trtab; }))`)) === J(['user', 'title', 'unit']), wg);
     await click('#ahGrpProj');
     await click('#ahNav [data-ahitem="projects"]');
     const sp = await waitPage((x) => x.docked === 'officialModal', { timeout: 15000 });
@@ -292,6 +295,35 @@ async function main() {
       ok('H3b 관리 화면 공식 과제 상세에 편집 · 숨김은 보인다(R1)', m1.act === true, J(m1));
       if (m1.subbedRows) ok('H3b 관리 화면 공식 과제 목록에 ✓ · 왼쪽 막대가 없다(R1)', m1.tick === false && m1.bar === false, J(m1));
       else log('H3b 내 캘린더에 든 공식 과제가 없다 — ✓ · 왼쪽 막대 판정 생략');
+    }
+  }
+
+  //  H3c — 항목 분리(N4) · 배지 없음(N1) · 꺼진 숨김의 이유(N2) — 보기만 한다(아무것도 누르지 않는다: 숨김·순서 없음)
+  log('H3c 항목 9개 · 직급/소속/구분/상태 = 그 탭으로 도킹 · 제목 · 탭 전환 숨김 · 배지 없음 · 꺼진 숨김 이유');
+  {
+    const items = await evj(`JSON.stringify([].map.call(document.querySelectorAll('#ahNav [data-ahitem]'), function(b){ return b.dataset.ahitem; }))`);
+    ok('H3c 왼쪽 항목 9개 = 사람 4 · 회사 과제 5', J(items) === J(['members', 'title', 'unit', 'gone', 'projects', 'cust', 'section', 'status', 'trash']), J(items));
+    const SPEC = [['title', 'orgTitleModal', '직급', 'people'], ['unit', 'orgTitleModal', '소속', 'people'], ['section', 'codeModal', '구분', 'proj'], ['status', 'codeModal', '상태', 'proj']];
+    for (const [it, ov, nm, grp] of SPEC) {
+      await click(grp === 'proj' ? '#ahGrpProj' : '#ahGrpPeople');
+      await click(`#ahNav [data-ahitem="${it}"]`);
+      const s = await waitPage((x) => x.docked === ov && x.item === it, { timeout: 20000 });
+      await sleep(400);
+      const v = await evj(`JSON.stringify((function(){ var o = document.getElementById(${J(ov)});
+        var tabs = o.querySelector('.code-tabs');
+        return { head: o.querySelector('.modal-head h2').textContent, tabs: !!tabs && getComputedStyle(tabs).display !== 'none',
+          where: (document.getElementById('ahWhere').textContent || '').replace(/\\s+/g, ' ').trim(),
+          kind: ${J(ov)} === 'orgTitleModal' ? __otTab : codeKind,
+          badges: o.querySelectorAll('#otList .ot-cnt, #otList .badge').length,
+          hides: [].map.call(o.querySelectorAll('#otList [data-otop="hide"][aria-disabled="true"]'), function(b){
+            var d = document.getElementById(b.getAttribute('aria-describedby') || ''); return { t: b.title, d: d ? d.textContent : null, dis: b.disabled }; }) }; })())`);
+      ok(`H3c ${nm}: 그 탭으로 도킹 · 제목 「${nm}」 · 화면 안 탭 전환 숨김 · 위치 줄`, !!s && v.kind === it && v.head === nm && v.tabs === false && v.where.endsWith(nm), J(v));
+      if (ov === 'orgTitleModal') {
+        ok(`H3c ${nm}: 줄에 사용 개수 배지가 없다(N1)`, v.badges === 0, String(v.badges));
+        if (v.hides.length) ok(`H3c ${nm}: 꺼진 [숨김] = aria-disabled(포커스 가능) + title = aria-describedby 문장 「…있어 숨길 수 없습니다」(N2)`,
+          v.hides.every((h) => !h.dis && h.t && h.t === h.d && /숨길 수 없습니다/.test(h.t)), J(v.hides.slice(0, 3)));
+        else log(`H3c ${nm}: 숨길 수 없는 줄이 없다 — N2 판정 생략`);
+      }
     }
   }
 

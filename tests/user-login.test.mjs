@@ -553,8 +553,12 @@ test('offEditGuard: 인자는 fn 하나 — 폐지된 관리자 비밀번호를 
   //    「구분·상태 관리」(#offCodeMgr)가 그 자리를 대신하면서 **호출이 하나 더** 늘었다(14 → 15).
   //    게이트가 늘어난 게 아니다 — 관문 **밖**에 있던 문(폼 안 링크는 offEditGuard를 안 지났다)이
   //    관문 안으로 들어온 것이다. 같은 변경에서 하단 줄을 설명하는 HTML 주석이 하나 늘어 주석 4 → 5.
+  //  ★ 2026-10-06(docs/ADMIN-HUB-4.md N4) — 「⚙ 관리」의 구분·상태가 두 항목으로 갈리며 「상태」 항목이 **같은 관문**을 지나
+  //    상태 탭으로 연다(구분은 지금 문 #offCodeMgr 그대로) — 게이트가 는 것이 아니라 그 관문을 지나는 문이 하나 더 생겼다(15 → 16).
+  //  ★ 2026-10-06(ADMIN-HUB-4 후속) — 발주처·구분·상태의 제자리 [복구](custDoShow · codeDoShow)가 없어져 호출이 둘 줄었다(16 → 14):
+  //    복구는 회사 과제 휴지통(#offTrash — 이미 이 관문을 지난다)이 한다. 게이트를 비운 것이 아니라 그 문이 휴지통 하나로 모였다.
   const hits = [...src.matchAll(/offEditGuard\(/g)].length;
-  assert.strictEqual(hits, 21, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 15 + 주석 5 = 21이어야 한다)`);
+  assert.strictEqual(hits, 20, `offEditGuard 등장이 ${hits}곳이다(정의 1 + 호출 14 + 주석 5 = 20이어야 한다)`);
 });
 
 test('호스트의 netcusSaveCreds/netcusCredsGet 처리부는 남아 있다(웹이 부르지 않을 뿐)', () => {

@@ -1,7 +1,7 @@
 // 「⚙ 관리」 화면(관리자 허브) · 「내 과제」 이름 정정 — docs/ADMIN-HUB.md H1–H13 · 수용 R1–R9.
 //
 // 지키는 것:
-//   (S) 정적 — 관리 화면 마크업(H1·H2: 머리 · 묶음 버튼 둘 role=tablist · 왼쪽 항목 3+4 · 고르기 상자 · 위치 줄 · 빈 칸)과
+//   (S) 정적 — 관리 화면 마크업(H1·H2: 머리 · 묶음 버튼 둘 role=tablist · 왼쪽 항목 4+5(ADMIN-HUB-4 N4) · 고르기 상자 · 위치 줄 · 빈 칸)과
 //       자리(도킹 대상 모달들보다 **앞** — 안에서 뜨는 확인창·편집 폼이 그 위에 쌓인다) · B′ CSS(선택 = accent 한 가지 ·
 //       안 고른 쪽 채움 없음 · 왼쪽 목록 바탕 = --panel · hex 없음) · 테마 5종 토큰 대비 · 「내 과제」 이름(H10 · 사용자에게
 //       보이는 문자열에 「과제 관리」가 남지 않는다 — 패치노트·주석 제외) · 새 호스트 명령 없음(H13).
@@ -43,8 +43,10 @@ const ruleOf = (src, sel) => {
 const AH_FNS = ['ahPress', 'ahMe', 'ahItemOfOv', 'ahIsAdmin', 'ahNoteRole', 'ahProbe', 'ahProbeIfUnknown', 'ahSyncEntries', 'ahPaintWho',
   'ahKey', 'ahLast', 'ahLastIn', 'ahRemember', 'ahCount', 'ahSyncFoot', 'ahCounts', 'ahFillSel', 'ahMark', 'ahSyncEmpty', 'ahFocusTarget', 'ahFocusNav',
   'ahRouteOpen', 'ahDock', 'ahUndock', 'ahAfterClose', 'ahCloseNow', 'openAdminHub', 'ahSelect', 'ahOpenFromMore', 'setupAdminHub'];
-const ITEMS = ['members', 'orgtitle', 'gone', 'projects', 'cust', 'codes', 'trash'];
-const OV_OF = { members: 'userAdminModal', orgtitle: 'orgTitleModal', gone: 'trashModal', projects: 'officialModal', cust: 'customerModal', codes: 'codeModal', trash: 'trashModal' };
+//  ★ 2026-10-06(docs/ADMIN-HUB-4.md N4) — 직급·소속 · 구분·상태를 각각의 항목으로 갈랐다(7 → 9). 두 항목이 같은 모달을 도킹한다.
+const ITEMS = ['members', 'title', 'unit', 'gone', 'projects', 'cust', 'section', 'status', 'trash'];
+const OV_OF = { members: 'userAdminModal', title: 'orgTitleModal', unit: 'orgTitleModal', gone: 'trashModal', projects: 'officialModal', cust: 'customerModal',
+  section: 'codeModal', status: 'codeModal', trash: 'trashModal' };
 
 // ══════════════════════════════════════════════════════════════════════
 // (S) 정적 계약
@@ -70,8 +72,8 @@ const S = {
       .map((x) => [x[1], x[2], x[3]]);
     //  ★ 2026-10-02(ADMIN-HUB-3 M2·M3) — 두 휴지통의 이름은 「🗑 휴지통」 하나다(예전: 「🚪 퇴사자」 · 「🗑 삭제된 항목」).
     //    묶음(👥 사람 / 📁 회사 과제)이 가른다 · 항목 id(gone · trash)는 그대로(기억·루프가 그 id 로 고른다).
-    assert.deepStrictEqual(items, [['members', '👤', '구성원'], ['orgtitle', '🏢', '직급·소속'], ['gone', '🗑', '휴지통'],
-      ['projects', '📁', '공식 과제'], ['cust', '🏭', '발주처'], ['codes', '🏷️', '구분·상태'], ['trash', '🗑', '휴지통']], '항목 7개와 순서(H2)');
+    assert.deepStrictEqual(items, [['members', '👤', '구성원'], ['title', '🏷', '직급'], ['unit', '🏢', '소속'], ['gone', '🗑', '휴지통'],
+      ['projects', '📁', '공식 과제'], ['cust', '🏭', '발주처'], ['section', '🗂️', '구분'], ['status', '🔖', '상태'], ['trash', '🗑', '휴지통']], '항목 9개와 순서(H2 · ADMIN-HUB-4 N4)');
     assert.ok(/<div class="ah-navgrp hidden" data-ahnavgrp="proj">/.test(m), '처음엔 사람 묶음의 항목만 보인다');
     assert.match(m, /<select id="ahSel" aria-label="관리 항목"><\/select>/, '좁은 창 고르기 상자(H11)');
     assert.match(m, /<div class="ah-where" id="ahWhere"/, '위치 줄(H3)');
@@ -155,7 +157,7 @@ const S = {
     assert.ok(/if\(ahRouteOpen\(ov\)\) return;/.test(extractFunction(src, 'openModal')), 'openModal 이 도킹 판정을 하지 않는다(H4)');
   },
 };
-test('(정적) H1·H2: 관리 화면 마크업 — 머리 · 묶음 버튼 둘(tablist) · 항목 3+4 · 고르기 상자 · 위치 줄 · 빈 오른쪽 칸', () => S.structure(app));
+test('(정적) H1·H2: 관리 화면 마크업 — 머리 · 묶음 버튼 둘(tablist) · 항목 4+5 · 고르기 상자 · 위치 줄 · 빈 오른쪽 칸', () => S.structure(app));
 test('(정적) H4: 관리 화면은 도킹 대상 모달·확인창보다 앞에 선다(안에서 연 창이 위에 쌓인다)', () => S.position(app));
 test('(정적) H3·R2: B′ CSS — 선택은 accent 한 가지 · 안 고른 쪽 채움 없음 · 왼쪽 바탕 = 패널 · 회색 상태 없음 · hex 없음', () => S.bPrimeCss(app));
 test('(정적) H4: 도킹 CSS — 자기 배경막·그림자·둥근 테두리·× ·[닫기] 를 걷는다', () => S.dockCss(app));
@@ -325,17 +327,17 @@ if (!JSDOM) {
     assert.strictEqual($(B, '#ahNav [data-ahitem="members"]').getAttribute('aria-current'), 'true');
     assert.strictEqual(where(B), '👥 사람 ›👤 구성원');
     assert.ok(!$(B, '[data-ahnavgrp="people"]').classList.contains('hidden') && $(B, '[data-ahnavgrp="proj"]').classList.contains('hidden'), '지금 묶음 항목만 보인다');
-    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#ahSel option'), function(o){ return o.value; })"), ['members', 'orgtitle', 'gone'], '고르기 상자 = 지금 묶음 항목만(H11)');
+    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#ahSel option'), function(o){ return o.value; })"), ['members', 'title', 'unit', 'gone'], '고르기 상자 = 지금 묶음 항목만(H11)');
   });
 
   test('(R1) 전환: 묶음 버튼 → 그 묶음 첫(마지막) 항목 · 항목 버튼 → 그 항목 · 위치 줄·고르기 상자가 따라온다', async () => {
     $(B, '#ahGrpProj').click(); await settle(60);
     assert.strictEqual(segOn(B), 'proj'); assert.strictEqual(navOn(B), 'projects');
     assert.strictEqual(where(B), '📁 회사 과제 ›📁 공식 과제');
-    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#ahSel option'), function(o){ return o.value; })"), ['projects', 'cust', 'codes', 'trash']);
-    await pick(B, 'codes');
-    assert.strictEqual(navOn(B), 'codes'); assert.strictEqual(where(B), '📁 회사 과제 ›🏷️ 구분·상태');
-    assert.strictEqual($(B, '#ahSel').value, 'codes');
+    assert.deepStrictEqual(B.evJSON("[].map.call(document.querySelectorAll('#ahSel option'), function(o){ return o.value; })"), ['projects', 'cust', 'section', 'status', 'trash']);
+    await pick(B, 'status');
+    assert.strictEqual(navOn(B), 'status'); assert.strictEqual(where(B), '📁 회사 과제 ›🔖 상태');
+    assert.strictEqual($(B, '#ahSel').value, 'status');
     //  고르기 상자로도 바꾼다(좁은 창의 길)
     const sel = $(B, '#ahSel'); sel.value = 'cust'; sel.dispatchEvent(new B.w.Event('change', { bubbles: true })); await settle(60);
     assert.strictEqual(navOn(B), 'cust'); assert.strictEqual(docked(B), 'customerModal');
@@ -343,7 +345,7 @@ if (!JSDOM) {
 
   // ── R2 ──
   test('(R2) 계산 스타일(B′): 고른 묶음·항목만 accent-soft/accent · 안 고른 쪽 채움 없음 · 왼쪽 목록 바탕 = 패널', async () => {
-    await reset(B); await openHub(B, 'orgtitle');
+    await reset(B); await openHub(B, 'title');
     assert.strictEqual(cs(B, '#ahGrpPeople', 'backgroundColor'), 'var(--accent-soft)');
     assert.match(cs(B, '#ahGrpPeople', 'borderColor') || cs(B, '#ahGrpPeople', 'borderTopColor'), /var\(--accent\)/);
     assert.match(cs(B, '#ahGrpProj', 'backgroundColor'), /^(transparent|rgba\(0, 0, 0, 0\))$/, '안 고른 묶음에 채움이 있다');
@@ -352,9 +354,9 @@ if (!JSDOM) {
     assert.strictEqual(cs(B, '#ahGrpProj .ah-gt', 'color'), 'var(--muted)');
     assert.strictEqual(cs(B, '#ahNav', 'backgroundColor'), 'var(--panel)', '왼쪽 목록 바탕이 패널색이 아니다');
     assert.strictEqual(cs(B, '#ahNav', 'backgroundColor'), cs(B, '.ah-pane', 'backgroundColor'), '왼쪽 목록 바탕 ≠ 오른쪽 내용 바탕');
-    assert.strictEqual(cs(B, '#ahNav [data-ahitem="orgtitle"]', 'backgroundColor'), 'var(--accent-soft)');
-    assert.match(cs(B, '#ahNav [data-ahitem="orgtitle"]', 'boxShadow'), /var\(--accent\)/, '고른 항목의 왼쪽 막대');
-    assert.strictEqual(cs(B, '#ahNav [data-ahitem="orgtitle"]', 'color'), 'var(--accent-2)');
+    assert.strictEqual(cs(B, '#ahNav [data-ahitem="title"]', 'backgroundColor'), 'var(--accent-soft)');
+    assert.match(cs(B, '#ahNav [data-ahitem="title"]', 'boxShadow'), /var\(--accent\)/, '고른 항목의 왼쪽 막대');
+    assert.strictEqual(cs(B, '#ahNav [data-ahitem="title"]', 'color'), 'var(--accent-2)');
     for (const it of ['members', 'gone']) {
       assert.match(cs(B, `#ahNav [data-ahitem="${it}"]`, 'backgroundColor'), /^(transparent|rgba\(0, 0, 0, 0\))$/, `안 고른 항목 ${it} 에 채움이 있다`);
       assert.ok(!/accent/.test(cs(B, `#ahNav [data-ahitem="${it}"]`, 'boxShadow') || ''), `안 고른 항목 ${it} 에 막대가 있다`);
@@ -363,10 +365,10 @@ if (!JSDOM) {
   });
 
   // ── R3 ──
-  test('(R3) 일곱 항목 = 기존 모달 그 자체(같은 id · 같은 목록) · 오른쪽 칸에 도킹 · 스택엔 관리 화면 하나(겹침 없음)', async () => {
+  test('(R3) 아홉 항목 = 기존 모달 그 자체(같은 id · 같은 목록) · 오른쪽 칸에 도킹 · 스택엔 관리 화면 하나(겹침 없음)', async () => {
     await reset(B); await openHub(B, 'members');
-    const LIST = { members: '#userAdminModal #uaList', orgtitle: '#orgTitleModal #otList', gone: '#trashModal #trList', projects: '#officialModal #offList',
-      cust: '#customerModal #custList', codes: '#codeModal #codeList', trash: '#trashModal #trList' };
+    const LIST = { members: '#userAdminModal #uaList', title: '#orgTitleModal #otList', unit: '#orgTitleModal #otList', gone: '#trashModal #trList', projects: '#officialModal #offList',
+      cust: '#customerModal #custList', section: '#codeModal #codeList', status: '#codeModal #codeList', trash: '#trashModal #trList' };
     for (const it of ITEMS) {
       await pick(B, it);
       await settle(40);
@@ -398,7 +400,8 @@ if (!JSDOM) {
     assert.ok($(B, '#uaFoot #uaNew') || /직원 등록/.test($(B, '#userAdminModal').textContent), '구성원 편집의 등록 버튼이 없다(관리자 회신)');
     assert.deepStrictEqual(calls(B).map((c) => c[0]).filter((c) => c !== 'userInfoGet'),
       //  사람 휴지통(gone)은 trashGet 과 함께 직급·소속 화면의 조회(orgTitleGet)를 그대로 한 번 더 한다 — 소속·직급 탭(ADMIN-HUB-3 M3 · 새 명령 없음).
-      ['membersGet', 'orgTitleGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'trashGet', 'membersGet'], '각 항목이 자기 화면의 조회를 그대로 한다(새 명령 없음)');
+      //  직급 · 소속 · 구분 · 상태는 각각 그 탭으로 같은 화면의 조회를 한다(ADMIN-HUB-4 N4 — 새 명령 없음).
+      ['membersGet', 'orgTitleGet', 'orgTitleGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'getCodesFull', 'trashGet', 'membersGet'], '각 항목이 자기 화면의 조회를 그대로 한다(새 명령 없음)');
   });
 
   test('(R3) 제자리: 관리 화면을 닫으면 도킹 창은 원래 형제 순서로 돌아가고, 단독 호출(openUserAdmin)은 지금처럼 단독으로 뜬다', async () => {
@@ -450,17 +453,17 @@ if (!JSDOM) {
     assert.strictEqual(navOn(B), 'members', '처음은 구성원');
     await pick(B, 'gone');
     $(B, '#ahGrpProj').click(); await settle(60);
-    await pick(B, 'codes');
-    assert.strictEqual(LS(B, 'tc_adminLast:phmin'), 'codes');
+    await pick(B, 'section');
+    assert.strictEqual(LS(B, 'tc_adminLast:phmin'), 'section');
     assert.strictEqual(LS(B, 'tc_adminLast:phmin:people'), 'gone');
-    assert.strictEqual(LS(B, 'tc_adminLast:phmin:proj'), 'codes');
+    assert.strictEqual(LS(B, 'tc_adminLast:phmin:proj'), 'section');
     $(B, '#ahGrpPeople').click(); await settle(60);
     assert.strictEqual(navOn(B), 'gone', '사람 묶음으로 돌아오면 그 묶음에서 마지막 항목(퇴사자)');
     $(B, '#ahGrpProj').click(); await settle(60);
-    assert.strictEqual(navOn(B), 'codes');
+    assert.strictEqual(navOn(B), 'section');
     B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE);
     await openHub(B, null);
-    assert.strictEqual(navOn(B), 'codes', '다시 열면 마지막 항목');
+    assert.strictEqual(navOn(B), 'section', '다시 열면 마지막 항목');
     B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE);
     //  계정별 — 다른 계정은 자기 기억(없으면 구성원)
     B.ev("currentUser = { loginId:'other', name:'다른이' }; ahNoteRole(true);");
@@ -500,6 +503,7 @@ if (!JSDOM) {
 
   test('(R1·J1) ⋯ 메뉴: 관리자면 「⚙ 관리 · 관리자」가 「설정」 바로 위(구분선) · 누르면 ⋯ 를 닫고 마지막 항목 · 닫으면 ⋯ 로 포커스', async () => {
     await reset(B);
+    //  ★ 옛 기억값(orgtitle)을 그대로 둔다 — 별칭으로 「직급」을 연다(ADMIN-HUB-4 N5).
     B.w.localStorage.setItem('tc_adminLast:phmin', 'orgtitle');
     await openMore(B);
     assert.ok(shown(B, '#btnAdminHub'), '관리자인데 ⋯ 메뉴에 「⚙ 관리」가 없다');
@@ -510,8 +514,8 @@ if (!JSDOM) {
     $(B, '#btnAdminHub').click(); await settle(60);
     assert.ok($(B, '#moreMenu').classList.contains('hidden'), '관리 화면이 열렸는데 ⋯ 메뉴가 남았다(#appSurface 안이라 inert 를 물려받는다)');
     assert.strictEqual(isOpen(B, 'adminHub'), true);
-    assert.strictEqual(navOn(B), 'orgtitle', '⋯ 입구는 마지막 항목');
-    assert.strictEqual(active(B), 'orgtitle', '열면 고른 항목 버튼에 포커스(H12)');
+    assert.strictEqual(navOn(B), 'title', '⋯ 입구는 마지막 항목(옛 값 orgtitle → 직급 · N5)');
+    assert.strictEqual(active(B), 'title', '열면 고른 항목 버튼에 포커스(H12)');
     assert.strictEqual(backTo(B), 'btnMore', '닫으면 ⋯ 버튼으로 돌아가야 한다');
     assert.deepStrictEqual(stack(B), ['adminHub']);
     //  관리자가 아니라는 회신 → 다음 ⋯ 부터 없다 · 기억도 지운다
@@ -613,7 +617,7 @@ if (!JSDOM) {
     for (const sel of ['#offNew', '#officialModal .off-d-act']) assert.notStrictEqual(B.w.getComputedStyle($(B, sel)).display, 'none', `도킹된 공식 과제에 ${sel} 가 없다 — 편집은 여기서 한다`);
     for (const sel of ['#offCustMgr', '#offCodeMgr', '#offTrash']) assert.strictEqual(B.w.getComputedStyle($(B, sel)).display, 'none', `도킹 화면에 ${sel} 가 보인다 — 왼쪽 목록이 그 문이다`);
     $(B, '#offCodeMgr').click(); await settle(60);   // 프로그램으로 눌러도(시험·루프) 같은 관문 → 항목만 바뀐다
-    assert.strictEqual(navOn(B), 'codes'); assert.strictEqual(docked(B), 'codeModal'); assert.deepStrictEqual(stack(B), ['adminHub']);
+    assert.strictEqual(navOn(B), 'section'); assert.strictEqual(docked(B), 'codeModal'); assert.deepStrictEqual(stack(B), ['adminHub']);
   });
 
   test('(R6·H13) 관리자 확인 전에는 공식 과제 창 하단 버튼이 지금처럼 그 위에 뜬다(일반 사용자 화면 불변) · 관문(오프라인)은 그대로', async () => {
@@ -657,8 +661,8 @@ if (!JSDOM) {
     await reset(B); await openHub(B, 'members');
     assert.strictEqual(active(B), 'members', '열면 고른 항목 버튼에 포커스');
     key(B, B.doc.activeElement, 'ArrowDown');
-    assert.strictEqual(active(B), 'orgtitle'); assert.strictEqual(navOn(B), 'members', '↓ 가 곧바로 골랐다(조회가 연달아 나간다)');
-    key(B, B.doc.activeElement, 'ArrowDown'); key(B, B.doc.activeElement, 'ArrowDown');
+    assert.strictEqual(active(B), 'title'); assert.strictEqual(navOn(B), 'members', '↓ 가 곧바로 골랐다(조회가 연달아 나간다)');
+    key(B, B.doc.activeElement, 'ArrowDown'); key(B, B.doc.activeElement, 'ArrowDown'); key(B, B.doc.activeElement, 'ArrowDown');
     assert.strictEqual(active(B), 'members', '↓ 는 묶음 안에서 돈다');
     key(B, B.doc.activeElement, 'ArrowUp');
     assert.strictEqual(active(B), 'gone');
@@ -666,9 +670,9 @@ if (!JSDOM) {
     key(B, B.doc.activeElement, 'Home'); assert.strictEqual(active(B), 'members');
     key(B, B.doc.activeElement, 'ArrowDown');
     B.doc.activeElement.click(); await settle(60);   // Enter/Space = 버튼 누르기
-    assert.strictEqual(navOn(B), 'orgtitle'); assert.strictEqual(active(B), 'orgtitle', '고른 뒤 포커스가 목록에서 빠졌다');
+    assert.strictEqual(navOn(B), 'title'); assert.strictEqual(active(B), 'title', '고른 뒤 포커스가 목록에서 빠졌다');
     await settle(60);
-    assert.strictEqual(active(B), 'orgtitle', '도킹 창이 포커스를 가져갔다(왼쪽 목록에서 고르던 손을 뺏는다)');
+    assert.strictEqual(active(B), 'title', '도킹 창이 포커스를 가져갔다(왼쪽 목록에서 고르던 손을 뺏는다)');
     $(B, '#ahGrpPeople').focus();
     key(B, B.doc.activeElement, 'ArrowRight');
     assert.strictEqual(active(B), 'ahGrpProj'); assert.strictEqual(segOn(B), 'people', '→ 가 곧바로 골랐다');
@@ -687,9 +691,9 @@ if (!JSDOM) {
     const ot = $(B, '#uaOrgTitle');
     assert.ok(ot, '전제: 관리자 회신의 「직급·소속 관리」');
     ot.focus(); ot.click(); await settle(60);
-    assert.strictEqual(navOn(B), 'orgtitle'); assert.strictEqual(docked(B), 'orgTitleModal');
+    assert.strictEqual(navOn(B), 'title', '「직급·소속 관리」(#uaOrgTitle)가 직급 항목으로 열리지 않았다(N4 — 그 문은 직급 탭으로 연다)'); assert.strictEqual(docked(B), 'orgTitleModal');
     assert.deepStrictEqual(stack(B), ['adminHub'], '「직급·소속 관리」가 그 위에 겹쳐 떴다');
-    assert.strictEqual(active(B), 'orgtitle');
+    assert.strictEqual(active(B), 'title');
     await pick(B, 'members'); await settle(40);
     $(B, '#uaTrash').click(); await settle(60);
     assert.strictEqual(navOn(B), 'gone', '「휴지통」(#uaTrash)이 사람 휴지통 항목이 아니다'); assert.strictEqual(docked(B), 'trashModal');
@@ -725,18 +729,21 @@ if (!JSDOM) {
       '왼쪽 목록과 오른쪽 칸이 한 트랩(관리 화면) 안에 있지 않다');
   });
 
-  test('(R2·H2) 개수: 이미 받은 회신만(구성원 n명 · 직급·소속 u · t · 사람 휴지통 n) — 개수를 얻으려고 묻지 않는다', async () => {
+  test('(R2·H2) 개수: 이미 받은 회신만(구성원 n명 · 직급 t · 소속 u · 사람 휴지통 n) — 개수를 얻으려고 묻지 않는다', async () => {
     await reset(B);
     B.ev('dbOnline = false;');
     await openHub(B, 'members'); await settle(120);
     assert.strictEqual($(B, '#ahNmembers').textContent, '2명');
-    assert.strictEqual($(B, '#ahNorgtitle').textContent, '', '아직 안 연 직급·소속의 개수를 지어냈다');
+    assert.strictEqual($(B, '#ahNtitle').textContent, '', '아직 안 연 직급의 개수를 지어냈다');
+    assert.strictEqual($(B, '#ahNunit').textContent, '', '아직 안 연 소속의 개수를 지어냈다');
     assert.strictEqual($(B, '#ahNprojects').textContent, '', '오프라인인데 공식 과제 개수가 있다');
     const n0 = calls(B).length;
     await settle(150);
     assert.strictEqual(calls(B).length, n0, '개수를 얻으려고 조회가 나갔다');
-    await pick(B, 'orgtitle'); await settle(120);
-    assert.strictEqual($(B, '#ahNorgtitle').textContent, '2 · 2');
+    await pick(B, 'title'); await settle(120);
+    //  직급 · 소속 — 같은 회신 하나에서 둘 다 센다(N4 · 소속을 열지 않아도 이미 받은 데이터다)
+    assert.strictEqual($(B, '#ahNtitle').textContent, '2');
+    assert.strictEqual($(B, '#ahNunit').textContent, '2');
     await pick(B, 'gone'); await settle(120);
     //  사람 휴지통 = 구성원 · 소속 · 직급 세 탭의 합(ADMIN-HUB-3 M3 — 회사 과제 휴지통과 같은 꼴: 숫자만). 이 본보기는 퇴사 1 · 숨긴 소속·직급 0.
     assert.strictEqual($(B, '#ahNgone').textContent, '1');

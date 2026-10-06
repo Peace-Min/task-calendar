@@ -220,12 +220,11 @@ if (!jsdom) {
 
 // ── C. 정적 계약 — 배선·보존 ────────────────────────────────────────
 //  ★ 2026-10-02(ADMIN-HUB-3 M4) — 직급·소속의 「숨긴 값도 표시」(#otShowHidden)가 없어져 일곱 → 여섯.
-test('계약③: 탭 전환·「숨김 표시」 여섯 배선이 모두 guardInlineEdit 를 지난다(체크박스는 되돌리기 포함)', () => {
+//  ★ 2026-10-06(ADMIN-HUB-4 후속) — 발주처·구분·상태의 「숨긴 값도 표시」(#custShowHidden · #codeShowHidden)도 없어져 여섯 → 넷(탭 전환만).
+test('계약③: 탭 전환 네 배선이 모두 guardInlineEdit 를 지난다 · 「숨김 표시」 토글은 어디에도 없다', () => {
   const cases = [
-    ["{ const sh = $('#custShowHidden');", 'custList', /r => r\.dataset\.name, \(\) => \{ custShowHidden = sh\.checked; renderCustomerList\(\); \}, \(\) => \{ sh\.checked = !sh\.checked; \}\)/],
     ["{ const t = $('#codeTabSection');", 'codeList', /r => r\.dataset\.name, \(\) => switchCodeKind\('section'\)\)/],
     ["{ const t = $('#codeTabStatus');", 'codeList', /r => r\.dataset\.name, \(\) => switchCodeKind\('status'\)\)/],
-    ["{ const sh = $('#codeShowHidden');", 'codeList', /r => r\.dataset\.name, \(\) => \{ codeShowHidden = sh\.checked; renderCodeList\(\); \}, \(\) => \{ sh\.checked = !sh\.checked; \}\)/],
     ["{ const t = $('#otTabTitle');", 'otList', /otRowOrig, \(\) => otSwitchTab\('title'\)\)/],
     ["{ const t = $('#otTabUnit');", 'otList', /otRowOrig, \(\) => otSwitchTab\('unit'\)\)/],
   ];
@@ -236,7 +235,9 @@ test('계약③: 탭 전환·「숨김 표시」 여섯 배선이 모두 guardIn
     assert.ok(tail.test(line), `${anchor} 배선의 진행·되돌리기 모양이 다르다: ${line.trim()}`);
   }
   //  ot 숨김 토글은 없다(M4) — 되살아나면 이 표에 다시 넣어야 한다(가드 없이 되살아나는 것을 막는다).
-  assert.ok(!app.includes("$('#otShowHidden')"), '직급·소속의 「숨긴 값도 표시」 배선이 되살아났다 — 이 표(가드)에 없이 서면 편집 중인 행이 말없이 버려진다');
+  for (const id of ['otShowHidden', 'custShowHidden', 'codeShowHidden']) {
+    assert.ok(!app.includes("$('#" + id + "')"), `「숨긴 값도 표시」(#${id}) 배선이 되살아났다 — 이 표(가드)에 없이 서면 편집 중인 행이 말없이 버려진다 · 복구는 🗑 휴지통이다`);
+  }
 });
 
 test('계약③: 가드는 DOM 만 본다 — otSwitchTab 은 그대로, otRowOrig 는 data-otkey 로 원래 이름을 찾는다', () => {

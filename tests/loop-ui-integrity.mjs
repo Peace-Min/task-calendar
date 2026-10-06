@@ -1022,14 +1022,30 @@ const TABLE_OF = (kind) => (kind === 'status' ? 'status_code' : 'section_code');
 async function codeCaps() { return ev(`__lt.rowCaps(${jstr(CODE_BOX)})`); }
 async function custCaps() { return ev(`__lt.rowCaps(${jstr(CUST_BOX)})`); }
 
-/** 숨김표시 체크박스를 원하는 상태로(실제 클릭 → change 이벤트) */
-async function setShowHidden(which, want) {
-  const sel = which === 'code' ? '#codeShowHidden' : '#custShowHidden';
-  const s = await state();
-  const cur = which === 'code' ? s.codeShowHidden : s.custShowHidden;
-  if (!!cur === !!want) return s;
-  await ev(`__lt.click('${sel}')`);
-  return (await waitFor((x) => !!(which === 'code' ? x.codeShowHidden : x.custShowHidden) === !!want, { timeout: 4000 })) || (await state());
+/** 숨김표시 체크박스 — ★ 2026-10-06(docs/ADMIN-HUB-4.md 후속) 발주처·구분·상태 편집 화면에서 「숨긴 값도 표시」가 없어졌다
+ *  (편집 화면은 쓰는 항목과 [숨김]뿐 · 복구는 회사 과제 휴지통). 호출부를 그대로 두려고 이름만 남긴 무동작이다 — 목록은 늘 활성만 그린다. */
+async function setShowHidden(_which, _want) { return state(); }
+
+/** 숨긴 코드값·발주처 복구 — 편집 화면에는 [복구]가 없다(ADMIN-HUB-4 후속). 공식 과제 화면 하단 줄의 「🗑 휴지통」(#offTrash)을
+ *  **실클릭** → 그 탭(section · status · customer) → 그 줄의 [복구] → 확인 [복구]. doWrite 가 확인창·토스트·회신을 본다.
+ *  끝나면 휴지통을 닫는다(검증은 DB·드롭다운 소스를 본다 — 편집 모달은 닫힌 채로 ctx 에 알린다). */
+async function untilEv(expr, timeout = 20000) {
+  const t = Date.now();
+  for (;;) { if (await ev(`!!(${expr})`)) return true; if (Date.now() - t > timeout) return false; await sleep(150); }
+}
+async function opTrashRestore(tab, name, desc) {
+  await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal');
+  await ev("__lt.click('#offTrash')");
+  if (!(await untilEv("isOverlayOpen(document.getElementById('trashModal')) && !__trBusy && __trData && __trAdmin"))) {
+    return { desc, outcome: 'trigger-failed', toasts: [], trigger: { ok: false, err: '휴지통이 열리지 않았다' } };
+  }
+  await ev(`__lt.click('#trTabs [data-trtab="${tab}"]')`);
+  await untilEv(`__trTab === ${jstr(tab)}`, 5000);
+  const rec = await doWrite(desc, `(function(){ var b = [].find.call(document.querySelectorAll('#trList [data-top="restore"]'), function(x){ return x.dataset.tkey === ${jstr(name)}; });
+    if(!b) return { ok:false, err:'복구 버튼 없음: ' + ${jstr(name)} }; if(b.disabled) return { ok:false, err:'복구 버튼 비활성' }; b.click(); return { ok:true }; })()`);
+  await ev(`(function(){ var m = document.getElementById('trashModal'); if(m && isOverlayOpen(m)) closeModal('#trashModal'); return 1; })()`);
+  await untilEv("!isOverlayOpen(document.getElementById('trashModal'))", 5000);
+  return rec;
 }
 
 /* ── 코드값 조작 ── */
@@ -1062,10 +1078,8 @@ async function opCodeHide(kind, name, confirmChoice = 'ok') {
 }
 
 async function opCodeShow(kind, name) {
-  await openCodeModal(kind);
-  await setShowHidden('code', true);
-  const rec = await doWrite(`코드복구(${kind}) '${name}'`,
-    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codeshow', ${jstr(name)})`);
+  //  복구는 휴지통에서(ADMIN-HUB-4 후속 — 편집 화면의 제자리 [복구]는 없어졌다)
+  const rec = await opTrashRestore(kind === 'status' ? 'status' : 'section', name, `코드복구(${kind}) '${name}' — 🗑 휴지통`);
   return { rec, plan: { table: TABLE_OF(kind), kind: 'show', name } };
 }
 
@@ -1112,10 +1126,8 @@ async function opCustHide(name, confirmChoice = 'ok') {
 }
 
 async function opCustShow(name) {
-  await openCustModal();
-  await setShowHidden('cust', true);
-  const rec = await doWrite(`발주처복구 '${name}'`,
-    `__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custshow', ${jstr(name)})`);
+  //  복구는 휴지통에서(ADMIN-HUB-4 후속 — 편집 화면의 제자리 [복구]는 없어졌다)
+  const rec = await opTrashRestore('customer', name, `발주처복구 '${name}' — 🗑 휴지통`);
   return { rec, plan: { table: 'customer', kind: 'show', name } };
 }
 
@@ -1192,7 +1204,7 @@ async function runRandomOp(before) {
     const renamable = caps.filter((c) => c.edit).map((c) => c.name);
     const movable = caps.filter((c) => c.up || c.down);
 
-    const opts = [[3, 'add'], [1, 'addDup'], [1, 'toggleHidden']];
+    const opts = [[3, 'add'], [1, 'addDup']];   // 「숨김표시 토글」은 없다(ADMIN-HUB-4 후속 — 편집 화면은 활성만)
     if (renamable.some(isTemp)) opts.push([2, 'renameTemp']);
     if (renamable.some((n) => !isTemp(n))) opts.push([2, 'renameRound']);
     if (act.length > 2 && caps.some((c) => c.hide)) opts.push([2, 'hide']);
@@ -1270,7 +1282,7 @@ async function runRandomOp(before) {
   const renamable = caps.filter((c) => c.edit).map((c) => c.name);
   const ctx = { codeOpen: false, custOpen: true };
 
-  const opts = [[3, 'add'], [1, 'addDup'], [1, 'toggleHidden']];
+  const opts = [[3, 'add'], [1, 'addDup']];   // 「숨김표시 토글」은 없다(ADMIN-HUB-4 후속 — 편집 화면은 활성만)
   if (renamable.some(isTemp)) opts.push([2, 'renameTemp']);
   if (renamable.some((n) => !isTemp(n))) opts.push([2, 'renameRound']);
   if (act.length > 2 && caps.some((c) => c.hide)) opts.push([3, 'hide']);

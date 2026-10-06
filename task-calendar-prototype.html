@@ -580,43 +580,21 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .cat-desc{font-size:var(--fs-meta);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cat-count{font-size:var(--fs-meta);color:var(--muted);margin-left:auto;flex:none}
 .cat-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
-/* 순서 = 끌어 옮기기(docs/ADMIN-HUB-3.md M6–M9) — 줄 왼쪽 ✥ 손잡이(네 방향 화살표 SVG · 글자 기호 금지).
-   ★ 늘 흐리게 보이고 줄에 올리면 진하게(버튼·모드 없음 — 사용자가 고른 프로토타입 A안). 손잡이는 진짜 <button> 이라
-     포커스 후 ↑/↓ 로도 옮긴다(M8). touch-action:none — 터치로 끌 때 브라우저가 스크롤로 가로채지 않게.
-   ★ 잠금(오프라인 · body.db-locked)이면 흐린 채 not-allowed — 누르면 지금과 같은 잠금 토스트(guardEdit) 한 줄(M9). */
-.cat-grip{flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--sp-5);height:28px;padding:0;
-  border:0;border-radius:var(--r-sm);background-color:transparent;color:var(--faint-text);cursor:grab;touch-action:none}
-.cat-grip .ic{width:16px;height:16px}
-.cat-row:hover .cat-grip,.cat-grip:focus-visible{color:var(--text);background-color:var(--hover-bg)}
-.cat-grip:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-/* 마우스로 끌어 놓은 뒤의 포커스(키보드로 이어 쓰라고 손잡이에 준다)에는 링을 그리지 않는다 — 링은 **키보드로 왔을 때만**.
-   ★ 누르는 순간 preventDefault 한 뒤 focus() 를 부르면 WebView2 가 그것을 :focus-visible 로 친다(2026-10-02 실측 — 놓은 뒤 링이 섰다).
-     그래서 catDragDown 이 data-pointer-focus 를 달고, 다음 키 입력(catGripKey)·blur 가 뗀다 — 그때부터 링이 다시 선다. */
-.cat-grip[data-pointer-focus]:focus-visible{outline:none}
-.cat-row:not(:hover) .cat-grip[data-pointer-focus]:focus-visible{color:var(--faint-text);background-color:transparent}
-.cat-grip[aria-disabled="true"],body.db-locked .cat-grip{cursor:not-allowed;opacity:.5}
-.cat-row:hover .cat-grip[aria-disabled="true"]{color:var(--faint-text);background-color:transparent}
+/* 순서 ▲▼(docs/ADMIN-HUB-4.md N3 — 2026-10-06 ✥ 끌기를 걷고 관리 화면 직급·소속 줄과 같은 컴포넌트로 통일).
+   .code-ord 의 크기·간격은 .cust-row 와 **한 규칙**이다(아래 .cust-row .code-ord 줄에 .cat-row 를 함께 걸었다 — 두 벌이면 갈린다).
+   끝(첫 줄 ▲ · 마지막 줄 ▼)은 aria-disabled — disabled 와 같은 흐림 · not-allowed(포커스는 남는다). */
+.code-ord .btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+/* ▲▼ 가 줄 오른쪽 폭을 먹으니 행 링크(수정·삭제/제거)는 **어느 폭에서도** 줄지 않는다 — 긴 설명·Git 경로가 있는 줄에서
+   「수/정」「삭/제」로 세로로 쪼개졌다(2026-10-06 실 위젯 540px 실측). 줄어드는 쪽은 이름 칸(min-width:0 · 말줄임)이다. */
+.cat-row > .link{flex:none;white-space:nowrap}
 .cat-order-hint{font-size:var(--fs-micro);color:var(--faint-text);margin:0 0 var(--sp-2) 2px}
-/* 끄는 중(M7 · 2026-10-02 PM 검토로 「정렬 목록(sortable)」 패턴) — 그 줄이 떠서 포인터를 따라오고(그림자 · 살짝 확대),
-   **다른 줄들이 미끄러져** 지금 놓일 자리에 빈 칸(.cat-drop-slot) 하나를 연다. 표시는 그 칸 하나뿐이다(따로 긋는 선 없음 ·
-   원래 자리에 구멍이 남지 않는다 — 원래 자리 아래 줄들이 한 칸 올라와 메운다). 놓으면 그 칸에 앉고 잠깐 accent 강조.
-   ★ 미끄러짐은 transform 만 쓴다(흐름은 그대로) — 놓일 자리 판정이 '움직이는 줄'을 재지 않아 흔들리지 않는다(catDragDown 이
-     시작 때 잰 자리로 계산한다). 모션 줄이기(prefers-reduced-motion)면 전역 규칙이 transition 을 끈다(즉시 이동).
-   ★ 빈 칸은 #catList 안의 절대 위치 상자다 — 흐름에 끼지 않으니 목록 높이도 다른 줄의 자리도 바꾸지 않는다. */
-#catList{position:relative}
-.cat-row.cat-dragging{position:relative;z-index:3;background-color:var(--panel);border-color:var(--accent);box-shadow:var(--shadow);cursor:grabbing}
-.cat-row.cat-dragging .cat-grip{cursor:grabbing;color:var(--text)}
-.cat-row.cat-shift{transition:transform .14s ease}
-.cat-row.cat-settle{transition:transform .14s ease}
-body.cat-drag-on,body.cat-drag-on *{cursor:grabbing !important;user-select:none}
-.cat-drop-slot{position:absolute;left:0;right:0;z-index:1;box-sizing:border-box;border:2px dashed var(--accent);border-radius:var(--r-md);
-  background-color:var(--accent-soft);pointer-events:none;transition:top .14s ease}
+/* 옮긴 뒤 잠깐 accent 강조(catFlash) */
 @keyframes catDropFlash{from{background-color:var(--accent-soft);border-color:var(--accent)}to{background-color:transparent}}
 .cat-row.cat-flash{animation:catDropFlash .9s ease-out}
-/* 좁은 폭(≤440px · 터치 위젯) — 손잡이 히트 영역 하한 24px(--sp-5 · WCAG 2.2 목표 크기 최소 · loop-ui-visual V7).
+/* 좁은 폭(≤440px · 터치 위젯) — ▲▼ 히트 영역 하한 32px(높이 · 직급·소속 줄 .cust-row .code-ord 와 같은 값) · 폭 24px(--sp-5 · loop-ui-visual V7).
    행 간격을 한 단계 줄이고, 「수정」·「삭제/제거」·건수는 줄지 않게 둔다 — 320px 에서 긴 이름(배지 포함)이면
    링크가 한 글자씩 접혀「수/정」으로 세로로 쪼개졌다(2026-10-01 실측). 줄어드는 쪽은 이름 칸(min-width:0)이다. */
-@media (max-width:440px){ .cat-grip{min-height:var(--sp-5);min-width:var(--sp-5)} .cat-row{gap:var(--sp-2)} .cat-row > .link{flex:none;white-space:nowrap} }
+@media (max-width:440px){ .cat-row{gap:var(--sp-2)} .cat-row .code-ord .btn{min-height:32px;min-width:var(--sp-5)} .cat-row > .link{flex:none;white-space:nowrap} }
 .cat-sec-hint{font-weight:400;color:var(--faint-text);font-size:var(--fs-micro);margin-left:6px}
 /* 출처 배지 — 공식(DB) 과제 구분. DB=강조 소프트, 삭제됨(DB)=경고. 개인 과제엔 배지 없음(무배지=개인). */
 .cat-badge{display:inline-block;vertical-align:middle;margin-left:6px;font-size:var(--fs-micro);font-weight:700;line-height:1.5;padding:0 6px;border-radius:var(--r-sm);white-space:nowrap}
@@ -706,10 +684,12 @@ body.cat-drag-on,body.cat-drag-on *{cursor:grabbing !important;user-select:none}
 .code-tabs{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
 .code-tab{flex:1;padding:7px 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);color:var(--muted);font-weight:700;cursor:pointer}
 .code-tab.on{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
-.cust-row .code-ord{display:inline-flex;gap:2px;flex:none}
-.cust-row .code-ord .btn{padding:2px 7px;line-height:1.1}
-/* 직급·소속 관리 — 조직 트리는 들여쓰기만(깊이는 JS 가 인라인 padding 으로 준다), 건수 배지는 .badge-git 재사용 */
-.cust-row .ot-cnt{flex:none;font-size:var(--fs-micro)}
+.cust-row .code-ord,.cat-row .code-ord{display:inline-flex;gap:2px;flex:none}
+.cust-row .code-ord .btn,.cat-row .code-ord .btn{padding:2px 7px;line-height:1.1}
+/* 직급·소속 관리 — 조직 트리는 들여쓰기만(깊이는 JS 가 인라인 padding 으로 준다).
+   ★ 줄 끝의 사용 개수 배지(「0명」「1명 · 하위 4개」)는 없앴다(ADMIN-HUB-4 N1 · 2026-10-06 — 의미 없고 난잡하다는 지적).
+     그 숫자가 하던 일(숨김이 왜 꺼졌나)은 꺼진 [숨김]의 툴팁 · aria-describedby 문장이 한다(N2). */
+.cust-row .btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
 /* 발주처 관리 모달 */
 .cust-add{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
 /* 직급·소속 관리의 추가 입력줄 — 소속 탭은 상위 드롭다운이 먼저 서는데, select 가 폭을 다 먹어 이름 칸이 0 에 가깝게 눌렸다(2026-09-18 실화면). 둘이 나눠 갖는다 */
@@ -2178,6 +2158,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 #adminHub .ah-slot > .overlay.docked .off-d-sub,#adminHub .ah-slot > .overlay.docked .off-subtick{display:none !important}
 #adminHub .ah-slot > .overlay.docked .off-row.subbed{box-shadow:none}
 #adminHub .ah-slot > .overlay.docked .off-d-act{margin-left:0;padding-left:0;border-left:0}   /* 왼쪽 편입 묶음이 없으니 구분선도 없다 */
+/* N4(docs/ADMIN-HUB-4.md) — 직급/소속 · 구분/상태는 왼쪽 **항목이 따로**다. 도킹된 창 안의 [직급 | 소속] · [구분 | 상태] 전환은 숨긴다
+   (왼쪽 목록이 그 일을 한다 — 두 곳에서 탭을 바꾸면 위치 줄과 화면이 갈린다). 단독으로 연 창은 그대로 전환을 보인다. */
+#adminHub .ah-slot > #orgTitleModal.docked .code-tabs,#adminHub .ah-slot > #codeModal.docked .code-tabs{display:none}
+/* 아랫줄 안내 = 지금 칸의 문장만(ADMIN-HUB-4 후속) — 직급 칸엔 직급 · 소속 칸엔 소속 · 구분/상태도 같다. 단독 창은 탭을 바꾸면 따라 바뀐다. */
+#orgTitleModal[data-note-tab="title"] [data-note="unit"],#orgTitleModal[data-note-tab="unit"] [data-note="title"],
+#codeModal[data-note-tab="section"] [data-note="status"],#codeModal[data-note-tab="status"] [data-note="section"]{display:none}
 /* ⋯ 메뉴의 「⚙ 관리」(J1) — 꼬리표는 오른쪽 끝 */
 #mmAdmin #btnAdminHub{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--accent-2)}
 #mmAdmin #btnAdminHub .ah-pill{margin-left:auto}
@@ -2604,14 +2590,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div class="ah-navgrp" data-ahnavgrp="people">
           <div class="ah-navlbl" aria-hidden="true">👥 사람</div>
           <button type="button" data-ahitem="members"><span class="ah-ic" aria-hidden="true">👤</span>구성원<span class="ah-n" id="ahNmembers"></span></button>
-          <button type="button" data-ahitem="orgtitle" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏢</span>직급·소속<span class="ah-n" id="ahNorgtitle"></span></button>
+          <button type="button" data-ahitem="title" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏷</span>직급<span class="ah-n" id="ahNtitle"></span></button>
+          <button type="button" data-ahitem="unit" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏢</span>소속<span class="ah-n" id="ahNunit"></span></button>
           <button type="button" data-ahitem="gone" tabindex="-1"><span class="ah-ic" aria-hidden="true">🗑</span>휴지통<span class="ah-n" id="ahNgone"></span></button>
         </div>
         <div class="ah-navgrp hidden" data-ahnavgrp="proj">
           <div class="ah-navlbl" aria-hidden="true">📁 회사 과제</div>
           <button type="button" data-ahitem="projects" tabindex="-1"><span class="ah-ic" aria-hidden="true">📁</span>공식 과제<span class="ah-n" id="ahNprojects"></span></button>
           <button type="button" data-ahitem="cust" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏭</span>발주처<span class="ah-n" id="ahNcust"></span></button>
-          <button type="button" data-ahitem="codes" tabindex="-1"><span class="ah-ic" aria-hidden="true">🏷️</span>구분·상태<span class="ah-n" id="ahNcodes"></span></button>
+          <button type="button" data-ahitem="section" tabindex="-1"><span class="ah-ic" aria-hidden="true">🗂️</span>구분<span class="ah-n" id="ahNsection"></span></button>
+          <button type="button" data-ahitem="status" tabindex="-1"><span class="ah-ic" aria-hidden="true">🔖</span>상태<span class="ah-n" id="ahNstatus"></span></button>
           <button type="button" data-ahitem="trash" tabindex="-1"><span class="ah-ic" aria-hidden="true">🗑</span>휴지통<span class="ah-n" id="ahNtrash"></span></button>
         </div>
       </nav>
@@ -2641,7 +2629,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="cat-sec-lb">등록된 과제 <span class="cat-sec-hint">개인 · 공식(DB) 통합 목록</span></div>
       <div class="cat-order-hint" id="catOrderHint">순서는 보고서·필터에 그대로 반영됩니다</div>
       <div id="catList"></div>
-      <!-- 순서 이동 낭독(ADMIN-HUB-3 M8) — 「<과제명> — 3번째에서 2번째로 옮겼습니다」. 끌기·키보드가 같은 줄을 쓴다(catAnnounce). -->
+      <!-- 순서 이동 낭독 — 「<과제명> — 3번째에서 2번째로 옮겼습니다」(catAnnounce · ▲▼ 한 번마다). -->
       <div class="sr-only" id="catLive" aria-live="polite"></div>
       <div class="cat-form">
         <label for="cName" id="catFormTitle">새 과제 추가</label>
@@ -2816,12 +2804,13 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <input type="text" id="custNewName" maxlength="100" autocomplete="off" spellcheck="false" placeholder="새 발주처명">
         <button type="button" class="btn primary" id="custAddBtn">＋ 추가</button>
       </div>
-      <label class="check cust-showhidden"><input type="checkbox" id="custShowHidden"> 숨긴 발주처도 표시</label>
+      <!-- ★ 「숨긴 값도 표시」·제자리 [복구]는 없다(ADMIN-HUB-4 후속 · 2026-10-06 PM): 편집 화면은 **쓰는 항목과 [숨김]** 만이다 —
+             숨긴 값의 복구·영구 삭제는 회사 과제 휴지통(🗑 휴지통 › 구분 · 상태 · 발주처 탭)이 한다(ADMIN-HUB-3 의 원칙 그대로). -->
       <div class="cust-msg" id="custMsg" role="status" aria-live="polite"></div>
       <div class="cust-list" id="custList" role="list" aria-label="발주처 목록"></div>
     </div>
     <div class="modal-foot">
-      <div class="git-note">발주처는 <b>이름만</b> 관리합니다. 이름을 바꾸면 그 발주처의 과제 표기도 함께 바뀝니다. 숨긴 발주처는 새 과제의 발주처 선택에서 빠지지만, 기존 과제 표기는 유지됩니다.</div>
+      <div class="git-note">발주처는 <b>이름만</b> 관리합니다. 이름을 바꾸면 그 발주처의 과제 표기도 함께 바뀝니다. 숨긴 발주처는 새 과제의 발주처 선택과 이 목록에서 빠지지만, 기존 과제 표기는 유지됩니다(복구는 🗑 휴지통).</div>
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
     </div>
@@ -2841,12 +2830,15 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <input type="text" id="codeNewName" maxlength="50" autocomplete="off" spellcheck="false" placeholder="새 값">
         <button type="button" class="btn primary" id="codeAddBtn">＋ 추가</button>
       </div>
-      <label class="check cust-showhidden"><input type="checkbox" id="codeShowHidden"> 숨긴 값도 표시</label>
+      <!-- ★ 「숨긴 값도 표시」·제자리 [복구]는 없다(ADMIN-HUB-4 후속 · 2026-10-06 PM): 편집 화면은 **쓰는 항목과 [숨김]** 만이다 —
+             숨긴 값의 복구·영구 삭제는 회사 과제 휴지통(🗑 휴지통 › 구분 · 상태 · 발주처 탭)이 한다(ADMIN-HUB-3 의 원칙 그대로). -->
       <div class="cust-msg" id="codeMsg" role="status" aria-live="polite"></div>
       <div class="cust-list" id="codeList" role="list" aria-label="코드 목록"></div>
     </div>
     <div class="modal-foot">
-      <div class="git-note">구분/상태는 <b>코드값</b>입니다. 이름을 바꾸면 그 값으로 저장된 과제 표기도 함께 바뀝니다(FK 전파). 숨긴 값은 새 과제 선택에서 빠지지만, 기존 과제 표기는 유지됩니다. ▲▼로 드롭다운 순서를 바꿉니다.</div>
+      <!-- 아랫줄 안내는 **지금 칸의 것만** 선다(ADMIN-HUB-4 후속) — 구분 칸엔 구분 문장 · 상태 칸엔 상태 문장. 고르는 일은 #codeModal[data-note-tab]
+           (codeSyncTabs 가 codeKind 로 단다)과 CSS 한 줄이 한다 — 관리 화면(항목이 따로)·단독 창(탭 전환) 어디서나 같은 규칙. -->
+      <div class="git-note"><span data-note="section">구분은 <b>코드값</b>입니다 — 이름을 바꾸면 그 구분으로 저장된 과제 표기도 함께 바뀝니다(FK 전파). 숨긴 구분은 새 과제 선택과 이 목록에서 빠지지만 기존 과제 표기는 유지됩니다(복구는 🗑 휴지통). ▲▼로 드롭다운 순서를 바꿉니다.</span><span data-note="status">상태는 <b>코드값</b>입니다 — 이름을 바꾸면 그 상태로 저장된 과제 표기도 함께 바뀝니다(FK 전파). 숨긴 상태는 새 과제 선택과 이 목록에서 빠지지만 기존 과제 표기는 유지됩니다(복구는 🗑 휴지통). ▲▼로 드롭다운 순서를 바꿉니다.</span></div>
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
     </div>
@@ -3458,7 +3450,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <div class="cust-list" id="otList" role="list" aria-label="직급·소속 목록"></div>
     </div>
     <div class="modal-foot">
-      <div class="git-note">직급은 이름을 바꾸면 그 직급인 사람의 표기도 함께 바뀝니다. 조직은 번호로 연결돼 있어 이름·상위를 바꿔도 소속자는 그대로입니다. 숨긴 값은 드롭다운과 이 목록에서 빠지고(복구는 🗑 휴지통), 지우지는 않습니다.</div>
+      <!-- 아랫줄 안내는 지금 칸의 것만(ADMIN-HUB-4 후속) — #orgTitleModal[data-note-tab](otRender 가 __otTab 으로 단다) + CSS 한 줄. -->
+      <div class="git-note"><span data-note="title">직급은 이름을 바꾸면 그 직급인 사람의 표기도 함께 바뀝니다. ▲▼로 드롭다운 순서를 바꿉니다. 숨긴 직급은 드롭다운과 이 목록에서 빠지고 지우지는 않습니다(복구는 🗑 휴지통).</span><span data-note="unit">조직은 번호로 연결돼 있어 이름·상위를 바꿔도 소속자는 그대로입니다. ▲▼로 같은 상위 안의 순서를 바꿉니다. 숨긴 조직은 드롭다운과 이 목록에서 빠지고 지우지는 않습니다(복구는 🗑 휴지통).</span></div>
       <span class="spacer"></span>
       <button class="btn" data-close>닫기</button>
     </div>
@@ -5453,7 +5446,6 @@ function connHandOffToPing(){
 function connSyncUi(){
   if(!HOST || PEER) return;
   try{ document.body.classList.toggle('db-locked', editLocked()); }catch(_){}
-  try{ catSyncGrips(); }catch(_){}   // 「내 과제」 순서 손잡이의 aria-disabled(M9) — 잠금이 켜지고 꺼질 때 그 자리에서
   if(bootOk){
     //  미저장분이 있으면 막대가 사정을 말한다 — 상자까지 띄우면 같은 말을 두 번 한다(접근 거부만 예외).
     const wantBox = conn === 'denied' || (conn === 'offline' && !unsaved);
@@ -8078,10 +8070,10 @@ const TR_TABS = [
   { kind: 'customer', label: '발주처', key: 'customers', refs: n => '과제 ' + n + '건', empty: trEmptyLabel('발주처'), scope: 'project' },
   { kind: 'section',  label: '구분',   key: 'sections',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('구분'),   scope: 'project' },
   { kind: 'status',   label: '상태',   key: 'statuses',  refs: n => '과제 ' + n + '건', empty: trEmptyLabel('상태'),   scope: 'project' },
-  { kind: 'unit',     label: '소속',   key: 'units',     refs: n => '재직 ' + n + '명', empty: trEmptyLabel('소속'),   scope: 'user', org: true,
-    note: '소속·직급은 지난 기록이 이름을 가리키므로 영구 삭제하지 않습니다 · 상위 조직이 숨김이면 상위부터 복구합니다' },
   { kind: 'title',    label: '직급',   key: 'titles',    refs: n => '재직 ' + n + '명', empty: trEmptyLabel('직급'),   scope: 'user', org: true,
     note: '소속·직급은 지난 기록이 이름을 가리키므로 영구 삭제하지 않습니다' },
+  { kind: 'unit',     label: '소속',   key: 'units',     refs: n => '재직 ' + n + '명', empty: trEmptyLabel('소속'),   scope: 'user', org: true,
+    note: '소속·직급은 지난 기록이 이름을 가리키므로 영구 삭제하지 않습니다 · 상위 조직이 숨김이면 상위부터 복구합니다' },
 ];
 const trTabDef = kind => TR_TABS.find(t => t.kind === kind) || TR_TABS[0];
 const trOrgReady = () => !!(__trOrg && __trOrg.found && __trOrg.admin === true);   // 소속·직급을 받아 왔고 호스트가 관리자로 인정했다
@@ -8155,8 +8147,8 @@ function trRender(){
   for(const t of trTabs()) total += trRows(t.kind).length;
   //  사람 쪽 부제는 세 탭을 한 줄로 센다(M3) — 소속·직급은 받아 온 뒤에만 숫자다(그 전에는 '…').
   if(sc) sc.textContent = (__trScope === 'user')
-    ? ('퇴사 처리한 구성원 ' + trRows('user').length + '명 · 숨긴 소속 ' + (trOrgReady() ? trRows('unit').length : '…') + '개 · 숨긴 직급 '
-       + (trOrgReady() ? trRows('title').length : '…') + '개')
+    ? ('퇴사 처리한 구성원 ' + trRows('user').length + '명 · 숨긴 직급 ' + (trOrgReady() ? trRows('title').length : '…') + '개 · 숨긴 소속 '
+       + (trOrgReady() ? trRows('unit').length : '…') + '개')
     : ('숨긴 항목 ' + total + '건 · 되돌릴 수 없는 삭제는 이름을 입력해야 합니다');
   //  탭 — 과제 쪽은 넷(과제·발주처·구분·상태), 퇴사자 쪽은 하나라 탭 줄을 그리지 않는다. 건수 배지를 함께 낸다.
   //  '어느 표에 뭐가 남아 있나'를 탭을 눌러 보며 찾게 하지 않는다.
@@ -8396,7 +8388,7 @@ function trRestore(kind, key, name){
      권한 판정도 그대로 호스트가 요청 시점에 한다(회신 admin) — 화면은 미리 막지 않는다.
    ★ 쓰기 회신 { ok, msg, orgTitle } 의 갱신 목록이 이 탭에 닿는 길은 trSeatOrg 하나다(otSeat 와 같은 모양 · 같은 규칙:
      못 읽으면 직전 화면을 그대로 둔다). 직급·소속 화면을 이번 실행에 열었으면 그 화면의 덩어리도 같은 회신으로 맞춘다
-     — 관리 화면의 개수(ahCount 'orgtitle')가 그것을 읽는다. */
+     — 관리 화면의 개수(ahCount 'title'·'unit')가 그것을 읽는다. */
 async function trLoadOrg(){
   let r = null;
   try{ r = await hostRequest('orgTitleGet', {}, 12000); }catch(_){ r = null; }
@@ -8990,7 +8982,7 @@ function deleteCategory(id){
   save();
 }
 // 과제 순서 이동(docs/CATEGORY-ORDER.md R2·R7 · ADMIN-HUB-3 M9) — 관문(guardEdit) → 그 자리로 옮김 → save() **1회**.
-//   ★ delta 칸만큼 옮긴다(끌기는 여러 칸 · ↑/↓ 는 한 칸 — 한 칸이면 이웃과 맞바꿈과 같다). 여러 칸이어도 저장은 한 번이다.
+//   ★ delta 칸만큼 옮긴다(▲▼ 는 한 칸 — 이웃과 맞바꿈과 같다). 여러 칸이어도 저장은 한 번이다(이동 한 번 = 저장 한 번).
 //   ★ 순서의 정본은 배열 자리 하나다: 저장(sort_order = 자리)·XML·보고서 행·필터 막대·선택 상자가 모두 이 배열을
 //     그대로 돈다. 순번 숫자를 따로 두지 않는다 — 두 벌이면 한쪽은 반드시 낡는다.
 //   ★ 잠겨 있으면(오프라인) 아무것도 바꾸지 않는다 — 토스트는 관문이 한 번 띄운다. 제자리(delta 0)도 저장하지 않는다.
@@ -10055,24 +10047,34 @@ function goto(ds, entryId){
      확인 출처는 기존 읽기 명령 userInfoGet 하나다(「사용자 정보」를 열 때 · ⋯ 에 손이 갈 때·열 때 · 관리 화면을 열 때) + 그 결과를
      이 PC·계정별로 기억(tc_adminSeen:<login> — 다음 실행의 ☰ 를 위해서. 회신이 관리자 아님이면 지운다).
    ★ 개수(H2)는 이미 알고 있을 때만 — 이번 실행에서 그 화면이 받아 온 회신·부팅 때 받은 카탈로그. 개수를 얻으려고 묻지 않는다. */
+//  ★ ADMIN-HUB-4 N4(2026-10-06) — 직급·소속 · 구분·상태를 한 항목(탭)으로 합치지 않고 **각각** 왼쪽 항목으로 둔다:
+//    👥 사람 = 구성원 · 직급 · 소속 · 휴지통 / 📁 회사 과제 = 공식 과제 · 발주처 · 구분 · 상태 · 휴지통.
+//    두 항목이 같은 모달을 도킹한다(직급·소속 = #orgTitleModal · 구분·상태 = #codeModal) — 그 탭으로 열고, 도킹 중엔 모달 안 전환을 숨긴다.
 const AH_GROUPS = [
-  { id: 'people', ic: '👥', t: '사람',      items: ['members', 'orgtitle', 'gone'] },
-  { id: 'proj',   ic: '📁', t: '회사 과제', items: ['projects', 'cust', 'codes', 'trash'] },
+  { id: 'people', ic: '👥', t: '사람',      items: ['members', 'title', 'unit', 'gone'] },
+  { id: 'proj',   ic: '📁', t: '회사 과제', items: ['projects', 'cust', 'section', 'status', 'trash'] },
 ];
 //  항목 → 도킹할 오버레이 · 여는 길. 여는 길은 **지금 그 화면으로 가는 문 그대로**다 — 발주처·구분·상태·휴지통(회사 과제)은
 //  공식 과제 화면 하단 줄의 버튼(#offCustMgr · #offCodeMgr · #offTrash)을 **누른다**(위젯에서만 보이는 버튼이라 숨어 있어도
 //  click() 은 같은 배선을 탄다). 그래서 관문(위젯·온라인)·인자·뒤처리가 한 벌이다 — 관문 호출을 새로 늘리지 않는다.
 const AH_ITEMS = {
   members:  { ic: '👤', t: '구성원',      ov: 'userAdminModal', open: () => openUserAdmin() },
-  orgtitle: { ic: '🏢', t: '직급·소속',   ov: 'orgTitleModal',  open: () => openOrgTitle() },
+  title:    { ic: '🏷', t: '직급',        ov: 'orgTitleModal',  open: () => openOrgTitle('title'), tab: 'title' },
+  unit:     { ic: '🏢', t: '소속',        ov: 'orgTitleModal',  open: () => openOrgTitle('unit'),  tab: 'unit' },
   //  ★ 두 휴지통은 이름이 같다(ADMIN-HUB-3 M2·M3 — 「퇴사자」·「삭제된 항목」→「🗑 휴지통」). 위치 줄의 묶음(👥 사람 › / 📁 회사 과제 ›)이 가른다.
   //    항목 id(gone · trash)는 그대로 둔다 — 기억(tc_adminLast)·시험·루프가 그 id 로 고른다.
   gone:     { ic: '🗑', t: '휴지통',      ov: 'trashModal',     open: () => openTrash('user') },
   projects: { ic: '📁', t: '공식 과제',   ov: 'officialModal',  open: () => openOfficialModal() },
   cust:     { ic: '🏭', t: '발주처',      ov: 'customerModal',  open: () => ahPress('offCustMgr') },
-  codes:    { ic: '🏷️', t: '구분·상태',  ov: 'codeModal',      open: () => ahPress('offCodeMgr') },
+  //  구분 = 지금 문(#offCodeMgr · 구분 탭으로 연다) 그대로 · 상태 = 같은 관문(offEditGuard: 위젯·온라인)을 지나 상태 탭으로 연다.
+  section:  { ic: '🗂️', t: '구분',        ov: 'codeModal',      open: () => ahPress('offCodeMgr'), tab: 'section' },
+  status:   { ic: '🔖', t: '상태',        ov: 'codeModal',      open: () => offEditGuard(() => openCodeModal('status')), tab: 'status' },
   trash:    { ic: '🗑', t: '휴지통',      ov: 'trashModal',     open: () => ahPress('offTrash') },
 };
+//  옛 항목 id 별칭(N5) — 기억(tc_adminLast)에 남은 값 · 루프·시험의 openAdminHub('orgtitle'|'codes') 를 새 항목으로 읽는다.
+const AH_ALIAS = { orgtitle: 'title', codes: 'section' };
+const ahItemId = v => (v != null && Object.prototype.hasOwnProperty.call(AH_ALIAS, v)) ? AH_ALIAS[v] : v;
+const ahHasItem = v => Object.prototype.hasOwnProperty.call(AH_ITEMS, ahItemId(v));
 const AH_DOCK_OV  = new Set(['userAdminModal', 'orgTitleModal', 'trashModal', 'officialModal', 'customerModal', 'codeModal']);
 const AH_ENTRY_OV = new Set(['userModal', 'categoryModal', 'officialModal']);   // 관리 화면을 열면 닫히는 입구 창(겹치지 않는다)
 const __ah = { item: null, docked: null };       // 지금 고른 항목 · 지금 오른쪽 칸에 도킹된 오버레이(언제나 하나 이하)
@@ -10088,6 +10090,8 @@ function ahItemOfOv(ov){
   const id = ov && ov.id;
   if(!id || !AH_DOCK_OV.has(id)) return null;
   if(id === 'trashModal') return (__trScope === 'user') ? 'gone' : 'trash';
+  if(id === 'orgTitleModal') return (__otTab === 'unit') ? 'unit' : 'title';     // 한 창이 두 항목(N4) — 열린 탭이 정한다
+  if(id === 'codeModal') return (codeKind === 'status') ? 'status' : 'section';
   return Object.keys(AH_ITEMS).find(k => AH_ITEMS[k].ov === id) || null;
 }
 
@@ -10135,10 +10139,11 @@ function ahPaintWho(){
 
 /* ── 기억(H5) — 이 PC · 계정별. 이상값은 구성원 ── */
 function ahKey(sfx){ return 'tc_adminLast:' + (ahMe() || '-') + (sfx ? ':' + sfx : ''); }
-function ahLast(){ let v = null; try{ v = localStorage.getItem(ahKey()); }catch(_){} return Object.prototype.hasOwnProperty.call(AH_ITEMS, v) ? v : 'members'; }
+function ahLast(){ let v = null; try{ v = localStorage.getItem(ahKey()); }catch(_){} return ahHasItem(v) ? ahItemId(v) : 'members'; }   // 옛 값(orgtitle·codes)은 별칭으로(N5)
 function ahLastIn(gid){
   const g = AH_GROUPS.find(x => x.id === gid) || AH_GROUPS[0];
   let v = null; try{ v = localStorage.getItem(ahKey(g.id)); }catch(_){}
+  v = ahItemId(v);
   return g.items.includes(v) ? v : g.items[0];
 }
 function ahRemember(item){ try{ localStorage.setItem(ahKey(), item); localStorage.setItem(ahKey(ahGroupOf(item).id), item); }catch(_){} }
@@ -10147,12 +10152,15 @@ function ahRemember(item){ try{ localStorage.setItem(ahKey(), item); localStorag
 function ahCount(item){
   switch(item){
     case 'members':  return (__uaAdmin && __uaMembers.length) ? __uaMembers.filter(m => !(m && m.isActive === false)).length + '명' : '';
-    case 'orgtitle': return otAdmin() ? otUnits().filter(u => u && u.active !== false).length + ' · ' + otTitles().filter(t => t && t.active !== false).length : '';
+    //  직급 · 소속 — 이번 실행에서 직급·소속 화면이 받아 온 회신(__otData)이 있을 때만(N4 · 새 조회 금지)
+    case 'title':    return otAdmin() ? String(otTitles().filter(t => t && t.active !== false).length) : '';
+    case 'unit':     return otAdmin() ? String(otUnits().filter(u => u && u.active !== false).length) : '';
     //  사람 휴지통 = 구성원 · 소속 · 직급 세 탭의 합(M3) — 회사 과제 휴지통과 같은 꼴(숫자만). 소속·직급은 받아 온 때만 더한다.
     case 'gone':     return (__trAdmin && __trData) ? String(['user', 'unit', 'title'].reduce((a, k) => a + trRows(k).length, 0)) : '';
     case 'projects': return (HOST && dbOnline) ? dbCatalog.length + '건' : '';
     case 'cust':     return (HOST && dbOnline && dbCustomers.length) ? String(dbCustomers.length) : '';
-    case 'codes':    return (HOST && dbOnline && (offSections.length || offStatuses.length)) ? offSections.length + ' · ' + offStatuses.length : '';
+    case 'section':  return (HOST && dbOnline && offSections.length) ? String(offSections.length) : '';   // 부팅 때 받은 코드 목록(loadCodes)
+    case 'status':   return (HOST && dbOnline && offStatuses.length) ? String(offStatuses.length) : '';
     case 'trash':    return (__trAdmin && __trData) ? String(['project', 'customer', 'section', 'status'].reduce((a, k) => a + trRows(k).length, 0)) : '';
   }
   return '';
@@ -10254,13 +10262,22 @@ function ahDock(ov){
   if(ov.__closeTimer){ clearTimeout(ov.__closeTimer); ov.__closeTimer = null; }
   ov.classList.remove('closing'); ov.classList.remove('hidden');
   ahMark(item);
+  ahHead(ov, item);
   ahSyncEmpty();
   if(focusWasIn) ahFocusNav();
   ahCounts();
 }
+//  도킹 중 머리 제목(N4) — 한 창이 두 항목인 창(직급·소속 · 구분·상태)은 머리를 그 항목 이름 하나로(「직급」…). 원문은 되돌린다.
+function ahHead(ov, item){
+  const h = ov && ov.querySelector('.modal-head h2'); if(!h) return;
+  if(ov.__ahHead == null) ov.__ahHead = h.textContent;
+  const it = AH_ITEMS[item];
+  h.textContent = (it && it.tab) ? it.t : ov.__ahHead;
+}
 function ahUndock(){
   const ov = __ah.docked; if(!ov) return;
   __ah.docked = null;
+  { const h = ov.querySelector('.modal-head h2'); if(h && ov.__ahHead != null){ h.textContent = ov.__ahHead; ov.__ahHead = null; } }   // 단독 모달은 원래 제목(「직급·소속 관리」 …)
   if(ov.__closeTimer){ clearTimeout(ov.__closeTimer); ov.__closeTimer = null; }
   ov.classList.remove('closing');
   ov.classList.add('hidden');      // ★ docked 를 떼기 **전에** 숨긴다 — 감시가 '열린 단독 창'으로 읽어 스택에 올리지 않게
@@ -10286,7 +10303,7 @@ function openAdminHub(item, opt){
   if(PEER) return;
   const hub = ahHub(); if(!hub) return;
   const o = opt || {};
-  const target = o.dock ? ahItemOfOv(o.dock) : (Object.prototype.hasOwnProperty.call(AH_ITEMS, item) ? item : ahLast());
+  const target = o.dock ? ahItemOfOv(o.dock) : (ahHasItem(item) ? ahItemId(item) : ahLast());   // 옛 id(orgtitle·codes)도 받는다(N5)
   if(isOverlayOpen(hub)){ if(o.dock) ahDock(o.dock); else ahSelect(target); return; }
   //  입구 창(사용자 정보 · 내 과제 · 단독 공식 과제)과 단독으로 떠 있던 관리 창은 닫는다 — 관리 화면을 그 위에 겹쳐 띄우지 않는다.
   //   돌아갈 자리는 **맨 아래 창을 연 요소**다(예: 내 과제 → 공식 과제 → 발주처 관리 = 툴바 「내 과제」 버튼).
@@ -10306,7 +10323,7 @@ function openAdminHub(item, opt){
   ahProbe();   // 열 때마다 조용히 다시 확인 — 입구 표시 · 머리의 「관리자」. 화면 내용은 각 화면의 회신이 정한다.
 }
 function ahSelect(item){
-  if(!Object.prototype.hasOwnProperty.call(AH_ITEMS, item)) item = 'members';
+  item = ahHasItem(item) ? ahItemId(item) : 'members';
   if(!isOverlayOpen(ahHub())) return;
   //  왕복 중인 창은 내리지 않는다 — 결과를 알릴 곳이 사라진다(closeOverlay 의 busy 가드와 같은 이유).
   if(__ah.docked && __ah.docked.dataset.busy === '1'){ toast('저장하는 중입니다 — 끝난 뒤에 다른 항목으로 옮기세요', 'warn'); return; }
@@ -10738,17 +10755,22 @@ function renderPalette(){
     `<span class="swatch ${selColor===c?'on':''}" data-color="${c}" style="background:${c}" title="${c}"></span>`
   ).join('') + `<input type="color" id="cColor" value="${selColor}" title="직접 선택">`;
 }
-// 순서 손잡이 ✥(docs/ADMIN-HUB-3.md M6·M8 — ▲▼ 를 대신한다 · 순서 계약은 CATEGORY-ORDER.md 그대로).
-//   ★ 진짜 <button> 하나 — 끌기(포인터)와 ↑/↓(키보드)가 같은 손잡이다. aria-label 이 과제명과 **지금 자리**를 말한다
-//     (「<과제명> 순서 — N번째. 위/아래 화살표로 옮깁니다」) — 자리는 옮길 때마다 catSyncGrips 가 그 자리에서 고친다.
-//   ★ 잠금(오프라인)이면 aria-disabled 로 끈다(disabled 가 아니다): 눌렀을 때 지금과 같은 잠금 토스트를 말해야 하고,
-//     disabled 버튼은 포인터·키 이벤트를 아예 받지 않아 '왜 안 되지'만 남는다(M9).
+// 순서 ▲▼(docs/ADMIN-HUB-4.md N3 · 순서 계약은 CATEGORY-ORDER.md 그대로) — 2026-10-06 사용자 결정으로 ✥ 끌기(ADMIN-HUB-3 M6–M9)를 걷고
+//   관리 화면 직급·소속 줄과 **같은 컴포넌트·같은 자리**로 통일했다: 줄 오른쪽 건수 뒤 · [수정] 앞의 <span class="code-ord"> 안
+//   .btn.sm 두 개(▲ · ▼). 끌기가 더 난잡하다는 지적 — 버튼 둘은 무엇을 하는지 보이고, 한 번 = 한 칸이라 결과가 예측된다.
+//   ★ 끝(첫 줄 ▲ · 마지막 줄 ▼)은 aria-disabled + 이유 툴팁(「맨 위입니다」/「맨 아래입니다」) — disabled 가 아니다: 포커스가 남아
+//     키보드 사용자가 '왜 안 되지'를 읽을 수 있다. 누르면 아무것도 바꾸지 않는다(위임이 aria-disabled 를 거른다).
+//   ★ 진짜 버튼 + aria-label(「위로 이동: 과제명」) — 화살표 글자만으로는 낭독기가 무엇을 옮기는지 말하지 못한다.
 //   ★ 목록이 state.categories 를 그대로 그리므로(renderCatModal) 배열의 자리가 곧 화면의 자리다.
-const catGripLabel = (c, i) => String(c && c.name || '') + ' 순서 — ' + (i + 1) + '번째. 위/아래 화살표로 옮깁니다';
-function catGripHtml(c){
-  const i = state.categories.indexOf(c);
-  return `<button type="button" class="cat-grip" data-act="grip" aria-label="${esc(catGripLabel(c, i))}" title="끌어서 순서 바꾸기"`
-    + `${editLocked() ? ' aria-disabled="true"' : ''}>${ICON.move}</button>`;
+const CAT_END_TIP = { up: '맨 위입니다', down: '맨 아래입니다' };
+function catMoveBtnsHtml(c){
+  const i = state.categories.indexOf(c), n = state.categories.length;
+  const nm = esc(c.name);
+  const upEnd = i <= 0, dnEnd = (i < 0 || i >= n - 1);
+  return `<span class="code-ord">`
+    + `<button type="button" class="btn sm" data-act="up" aria-label="위로 이동: ${nm}" title="${upEnd ? CAT_END_TIP.up : '위로'}"${upEnd ? ' aria-disabled="true"' : ''}>▲</button>`
+    + `<button type="button" class="btn sm" data-act="down" aria-label="아래로 이동: ${nm}" title="${dnEnd ? CAT_END_TIP.down : '아래로'}"${dnEnd ? ' aria-disabled="true"' : ''}>▼</button>`
+    + `</span>`;
 }
 // 단일 목록 렌더 — 개인/공식(DB)을 한 목록에 출처 배지와 함께. 개인=수정/삭제, 공식=제거(사용 0건일 때만)·수정불가(원본은 카탈로그 Admin).
 function catRowHtml(c){
@@ -10759,7 +10781,6 @@ function catRowHtml(c){
     const removable = catRemovable(c);
     const rmTip = removable ? '캘린더 목록에서 제거(구독 해제)' : `일정·할일 ${use}건에서 사용 중 — 정리/재연결 후 제거할 수 있습니다`;
     return `<div class="cat-row" data-id="${esc(c.id)}">
-      ${catGripHtml(c)}
       <span class="cat-dot" style="background:${validColor(c.color)}"></span>
       <div style="min-width:0">
         <div class="cat-name">${esc(c.name)} <span class="cat-badge db">DB</span>${c.dbGone?`<span class="cat-badge gone" title="DB에서 삭제/숨김됨 — 라벨 유지용으로만 남아 있습니다">삭제됨(DB)</span>`:''}${(c.gitRepo||c.svnRepo)?`<span class="cat-git" title="${esc([c.gitRepo?('Git: '+c.gitRepo):'', c.svnRepo?('SVN: '+c.svnRepo):''].filter(Boolean).join('\n'))}">${ICON.wrench}</span>`:''}</div>
@@ -10768,13 +10789,13 @@ function catRowHtml(c){
         ${c.svnRepo?`<div class="cat-desc" title="${esc(c.svnRepo)}">${ICON.wrench} SVN · ${esc(c.svnRepo)}</div>`:''}
       </div>
       <span class="cat-count">${use}건</span>
+      ${catMoveBtnsHtml(c)}
       <button class="link" data-act="edit" title="색상·설명·Git·SVN을 수정합니다 (과제명만 DB 원본으로 잠깁니다)">수정</button>
       <button class="link danger" data-act="unsub"${removable?'':' disabled'} title="${esc(rmTip)}">제거</button>
     </div>`;
   }
   const n = state.entries.filter(e => e.categoryId === c.id).length;   // 개인 행은 기존과 동일(일정 건수 — 필터바와 같은 계산)
   return `<div class="cat-row" data-id="${esc(c.id)}">
-    ${catGripHtml(c)}
     <span class="cat-dot" style="background:${validColor(c.color)}"></span>
     <div style="min-width:0">
       <div class="cat-name">${esc(c.name)}${(c.gitRepo||c.svnRepo)?`<span class="cat-git" title="${esc([c.gitRepo?('Git: '+c.gitRepo):'', c.svnRepo?('SVN: '+c.svnRepo):''].filter(Boolean).join('\n'))}">${ICON.wrench}</span>`:''}</div>
@@ -10783,6 +10804,7 @@ function catRowHtml(c){
       ${c.svnRepo?`<div class="cat-desc" title="${esc(c.svnRepo)}">${ICON.wrench} SVN · ${esc(c.svnRepo)}</div>`:''}
     </div>
     <span class="cat-count">${n}건</span>
+    ${catMoveBtnsHtml(c)}
     <button class="link" data-act="edit">수정</button>
     <button class="link danger" data-act="del">삭제</button>
   </div>`;
@@ -10809,23 +10831,31 @@ function renderCatModal(){
   applyCatFormLock(lock);
   renderGitCard();   // 폼의 Git 카드를 catFormRepo에 맞춰 항상 동기화(저장/취소 후 잔상 방지)
 }
-// 손잡이의 자리 문구·잠금 표시를 **그 자리에서** 다시 정한다 — 목록을 다시 그리지 않는다(uaSyncControls 와 같은 원리).
-//   ★ 옮길 때마다 부른다(aria-label 의 'N번째'가 낡지 않게) · 잠금이 켜지고 꺼질 때도 부른다(connSyncUi → aria-disabled).
-function catSyncGrips(){
+// ▲▼ 의 끝 표시(aria-disabled · 이유 툴팁)를 **그 자리에서** 다시 정한다 — 목록을 다시 그리지 않는다(uaSyncControls 와 같은 원리).
+//   ★ 포커스를 쥔 화살표가 끝에 닿으면 같은 행의 **반대쪽** 화살표로 옮긴다(N3 · uaMove 와 같은 손): 끝 버튼은 눌러도 아무 일이
+//     없으니, 연달아 누르던 손이 다음 동작(반대 방향)으로 바로 이어지게. aria-disabled 라 포커스가 body 로 떨어지지는 않는다.
+function catSyncMoveBtns(){
   const list = document.getElementById('catList'); if(!list) return;
-  const off = editLocked();
-  list.querySelectorAll('.cat-row').forEach((r, i) => {
-    const g = r.querySelector('[data-act="grip"]'); if(!g) return;
-    g.setAttribute('aria-label', catGripLabel(catById(r.dataset.id), i));
-    if(off) g.setAttribute('aria-disabled', 'true'); else g.removeAttribute('aria-disabled');
+  const rows = list.querySelectorAll('.cat-row');
+  rows.forEach((r, i) => {
+    const up = r.querySelector('[data-act="up"]'), dn = r.querySelector('[data-act="down"]');
+    const upEnd = (i === 0), dnEnd = (i === rows.length - 1);
+    const af = document.activeElement;
+    if(up && upEnd && af === up && dn && !dnEnd) try{ dn.focus(); }catch(_){}
+    if(dn && dnEnd && af === dn && up && !upEnd) try{ up.focus(); }catch(_){}
+    for(const [b, end, k] of [[up, upEnd, 'up'], [dn, dnEnd, 'down']]){
+      if(!b) continue;
+      if(end) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+      b.title = end ? CAT_END_TIP[k] : (k === 'up' ? '위로' : '아래로');
+    }
   });
 }
-// 낭독(M8) — 「<과제명> — 3번째에서 2번째로 옮겼습니다」. 끌기·키보드가 같은 한 줄을 쓴다(#catLive · aria-live=polite).
+// 낭독 — 「<과제명> — 3번째에서 2번째로 옮겼습니다」(#catLive · aria-live=polite · ADMIN-HUB-3 M8 에서 이어 쓴다).
 function catAnnounce(c, from, to){
   const live = document.getElementById('catLive'); if(!live || !c) return;
   live.textContent = String(c.name || '') + ' — ' + (from + 1) + '번째에서 ' + (to + 1) + '번째로 옮겼습니다';
 }
-// 놓은 뒤 잠깐 accent 강조(M7 drop flash) — 같은 줄을 연달아 옮겨도 다시 깜빡이게 클래스를 떼었다 붙인다.
+// 옮긴 뒤 잠깐 accent 강조 — 같은 줄을 연달아 옮겨도 다시 깜빡이게 클래스를 떼었다 붙인다.
 function catFlash(row){
   if(!row) return;
   row.classList.remove('cat-flash');
@@ -10834,10 +10864,9 @@ function catFlash(row){
   clearTimeout(row.__catFlashT);
   row.__catFlashT = setTimeout(() => row.classList.remove('cat-flash'), 950);
 }
-// 과제 이동(R2 · M9) — 바꾸기는 moveCategory(관문 → 자리 옮김 → 저장 **1회**), 화면은 **사이에 낀 행들만 옮긴다**.
-//   ★ delta 는 여러 칸일 수 있다(끌기 · Home/End) — 그래도 저장은 한 번이다: 한 칸씩 moveCategory 를 여러 번 부르지 않는다.
-//   ★ 옮기는 행이 아니라 이웃을 옮긴다(uaMove 와 같은 이유): 그 행을 떼었다 붙이면 안의 손잡이가 DOM 에서
-//     잠시 떨어져 포커스가 body 로 떨어진다. 이웃을 옮기면 손잡이는 제자리 그대로 포커스를 쥐고 있다(M8).
+// 과제 한 칸 이동(R2) — 바꾸기는 moveCategory(관문 → 자리 옮김 → 저장 **1회**), 화면은 **이웃 행만 옮긴다**.
+//   ★ 누른 행이 아니라 이웃을 옮긴다(uaMove 와 같은 이유): 누른 행을 떼었다 붙이면 그 안의 버튼이 DOM 에서
+//     잠시 떨어져 포커스가 body 로 떨어진다. 이웃을 옮기면 누른 버튼은 제자리 그대로 포커스를 쥐고 있다.
 //   ★ 목록을 통째로 새로 만들지 않으므로 모달의 스크롤 자리도 그대로다(R3). 옮긴 행만 nearest 로 끌어온다.
 //   ★ 같은 순서를 쓰는 화면(필터 막대·할 일 필터·열린 보고서)을 다시 그린다(R4). 과제 선택 상자는 열 때 채운다.
 function catMoveRow(id, delta){
@@ -10849,185 +10878,18 @@ function catMoveRow(id, delta){
   const mine = (i >= 0) ? rows[i] : null;
   if(!moveCategory(id, delta)) return false;
   if(inSync && mine && mine.parentNode === list){
-    if(delta < 0){ for(let k = 1; k <= -delta; k++) list.insertBefore(rows[i - k], mine.nextSibling); }   // 위로 — 넘은 이웃들을 내 뒤로
-    else { for(let k = 1; k <= delta; k++) list.insertBefore(rows[i + k], mine); }                        // 아래로 — 넘은 이웃들을 내 앞으로
-    catSyncGrips();
+    if(delta < 0){ for(let k = 1; k <= -delta; k++) list.insertBefore(rows[i - k], mine.nextSibling); }   // 위로 — 넘은 이웃을 내 뒤로
+    else { for(let k = 1; k <= delta; k++) list.insertBefore(rows[i + k], mine); }                        // 아래로 — 넘은 이웃을 내 앞으로
+    catSyncMoveBtns();
     try{ mine.scrollIntoView({ block: 'nearest' }); }catch(_){}
   }else{
     renderCatModal();
   }
-  const moved = catById(id);
-  catAnnounce(moved, i, i + delta);
+  catAnnounce(catById(id), i, i + delta);
   { const r = [...list.querySelectorAll('.cat-row')].find(x => x.dataset && x.dataset.id === id); catFlash(r); }
   renderAll();
   try{ const rm = document.getElementById('reportModal'); if(rm && !rm.classList.contains('hidden')) buildReport(); }catch(_){}
   return true;
-}
-// 키보드(M8) — 손잡이에서 ↑/↓ 한 칸 · Home/End 맨 위/맨 아래. 옮긴 뒤 포커스는 옮겨진 줄의 손잡이(제자리 그대로).
-//   ★ 끝에서 더 누르면 아무것도 바꾸지 않는다(저장 0) · 잠금이면 moveCategory 의 관문이 토스트 한 줄로 막는다.
-function catGripKey(ev, grip){
-  const k = ev.key;
-  delete grip.dataset.pointerFocus;   // 키보드로 쓰기 시작했다 — 이제부터 포커스 링을 보인다(포인터로 준 포커스의 링 감춤을 푼다)
-  if(k !== 'ArrowUp' && k !== 'ArrowDown' && k !== 'Home' && k !== 'End') return;
-  ev.preventDefault();
-  if(__catDrag) return;
-  const row = grip.closest('.cat-row'); const id = row && row.dataset.id;
-  const i = state.categories.findIndex(c => c.id === id); if(i < 0) return;
-  const n = state.categories.length;
-  const to = k === 'ArrowUp' ? i - 1 : k === 'ArrowDown' ? i + 1 : k === 'Home' ? 0 : n - 1;
-  if(to < 0 || to >= n || to === i) return;
-  catMoveRow(id, to - i);
-  if(document.activeElement !== grip && grip.isConnected) try{ grip.focus(); }catch(_){}
-}
-
-/* ── 끌어 옮기기(포인터 · M7 — 「정렬 목록(sortable)」 패턴 · 2026-10-02 PM 검토) ─────────────────────
-   누르기 → 4px 넘게 움직이면 끌기 시작(그 전에 놓으면 누르기일 뿐 · 바뀌는 것 0) → 그 줄이 떠서 포인터를 따라오고(그림자 · 살짝 확대)
-   **다른 줄들이 미끄러져** 지금 놓일 자리에 빈 칸(.cat-drop-slot) 하나를 연다 — 표시는 그 칸 하나뿐이다(따로 긋는 선 없음 ·
-   원래 자리 아래 줄들이 한 칸 올라와 구멍을 메운다). 놓으면 그 칸에 앉히고(catMoveRow — 여러 칸이어도 저장 1회) 잠깐 강조.
-   목록 밖 · 같은 자리 · Esc · pointercancel → 줄들이 제자리로 미끄러져 돌아간다(변화 0 · 저장 0).
-   끄는 중 목록 상자 위/아래 끝에 닿으면 자동 스크롤.
-   ★ 놓일 자리는 **시작 때 잰 자리**로 정한다 — 끄는 줄의 가운데(잡은 높이를 뺀 포인터)가 다른 줄의 **원래** 가운데(d.omids)를 넘었는가.
-     미끄러지는 줄을 다시 재면 줄이 움직일 때마다 판정이 따라 흔들린다. 스크롤은 목록 기준 좌표라 그대로 맞는다(목록 상자가 같이 움직인다).
-   ★ 상태는 끄는 동안의 이 한 덩어리뿐이다(__catDrag) — 끝나면(놓기·취소) 언제나 null 로 돌아온다.
-   ★ 잠금(오프라인)이면 누르는 순간 관문(guardEdit)이 토스트 한 줄로 막는다 — 줄이 뜨지도 않는다(M9). */
-let __catDrag = null;
-const CAT_DRAG_SLOP = 4, CAT_DRAG_EDGE = 36, CAT_DRAG_OUT = 24, CAT_DRAG_SETTLE = 160;
-function catScroller(el){
-  for(let p = el && el.parentElement; p && p !== document.body; p = p.parentElement){
-    let oy = ''; try{ oy = getComputedStyle(p).overflowY; }catch(_){}
-    if(oy === 'auto' || oy === 'scroll') return p;
-  }
-  return null;
-}
-//  끌기 시작 — 지금 배치를 한 번 잰다(목록 기준 좌표). 끄는 줄을 뺀 나머지의 '접힌' 자리 = 원래 자리에서, 끄는 줄 아래에 있던 줄은 한 칸(pitch) 위.
-function catDragMeasure(d){
-  const lr = d.list.getBoundingClientRect();
-  const rows = [...d.list.querySelectorAll('.cat-row')];
-  const fromDom = rows.indexOf(d.row);
-  const rr = d.row.getBoundingClientRect();
-  let mb = 0; try{ mb = parseFloat(getComputedStyle(d.row).marginBottom) || 0; }catch(_){}
-  d.h = rr.height; d.pitch = rr.height + mb; d.rowTop = rr.top - lr.top;
-  d.others = rows.filter(r => r !== d.row);
-  d.after = d.others.map(r => rows.indexOf(r) > fromDom);
-  d.ctops = d.others.map((r, k) => (r.getBoundingClientRect().top - lr.top) - (d.after[k] ? d.pitch : 0));
-  d.omids = d.others.map(r => { const b = r.getBoundingClientRect(); return (b.top - lr.top) + b.height / 2; });
-  d.grabOff = d.y0 - (rr.top + rr.height / 2);   // 잡은 높이 — 줄 가운데에서 포인터까지(손잡이는 줄 가운데라 보통 0 에 가깝다)
-  d.others.forEach(r => { r.classList.remove('cat-settle'); r.classList.add('cat-shift'); });
-  const slot = document.createElement('div');
-  slot.className = 'cat-drop-slot'; slot.setAttribute('aria-hidden', 'true');
-  slot.style.height = d.h + 'px';
-  d.list.appendChild(slot);
-  d.slot = slot;
-}
-//  놓일 자리 — 0..others.length(끄는 줄을 뺀 목록에서의 자리 = 놓은 뒤 그 줄의 자리) · -1 = 목록 밖.
-function catDragTarget(d){
-  const lr = d.list.getBoundingClientRect();
-  if(d.x < lr.left || d.x > lr.right || d.y < lr.top - CAT_DRAG_OUT || d.y > lr.bottom + CAT_DRAG_OUT) return -1;
-  const y = (d.y - lr.top) - d.grabOff;   // 끄는 줄의 가운데(목록 기준)
-  let k = 0;
-  while(k < d.omids.length && y >= d.omids[k]) k++;
-  return k;
-}
-function catDragPaint(){
-  const d = __catDrag; if(!d || !d.started) return;
-  const dy = (d.y - d.y0) + (d.scroller ? d.scroller.scrollTop - d.top0 : 0);
-  d.row.style.transform = 'translateY(' + dy + 'px) scale(1.015)';
-  const to = catDragTarget(d);
-  d.to = to;
-  //  다른 줄의 미끄러짐 — 접힌 자리(아래였으면 -pitch) + 빈 칸 뒤면 +pitch. 목록 밖이면 모두 원래 자리(빈 칸 없음 = 놓아도 그대로).
-  d.others.forEach((r, k) => {
-    const sh = (to < 0) ? 0 : ((d.after[k] ? -d.pitch : 0) + (k >= to ? d.pitch : 0));
-    const v = sh ? 'translateY(' + sh + 'px)' : '';
-    if(r.style.transform !== v) r.style.transform = v;
-  });
-  if(to < 0){ d.slot.style.display = 'none'; d.slot.dataset.slot = ''; return; }
-  const n = d.others.length;
-  const top = (to < n) ? d.ctops[to] : (n ? d.ctops[n - 1] + d.pitch : d.rowTop);
-  d.slot.style.display = ''; d.slot.style.top = top + 'px'; d.slot.dataset.slot = String(to);
-}
-//  자동 스크롤 — 목록 상자(가장 가까운 스크롤 조상)의 위/아래 끝 CAT_DRAG_EDGE px 안이면 프레임마다 조금씩. 끝에서 벗어나면 멈춘다.
-function catDragAutoScroll(){
-  const d = __catDrag; if(!d || !d.started || !d.scroller || d.raf) return;
-  const sc = d.scroller;
-  if(!(sc.clientHeight > 0 && sc.scrollHeight > sc.clientHeight)) return;   // 굴릴 것이 없다(레이아웃 없는 환경 포함)
-  const step = () => {
-    const dd = __catDrag; if(!dd || dd !== d){ return; }
-    d.raf = 0;
-    const r = sc.getBoundingClientRect();
-    const v = d.y < r.top + CAT_DRAG_EDGE ? -Math.ceil((r.top + CAT_DRAG_EDGE - d.y) / 4)
-            : d.y > r.bottom - CAT_DRAG_EDGE ? Math.ceil((d.y - (r.bottom - CAT_DRAG_EDGE)) / 4) : 0;
-    if(!v) return;
-    const before = sc.scrollTop;
-    sc.scrollTop = before + Math.max(-16, Math.min(16, v));
-    if(sc.scrollTop === before) return;   // 끝까지 굴렀다
-    catDragPaint();
-    d.raf = requestAnimationFrame(step);
-  };
-  d.raf = requestAnimationFrame(step);
-}
-function catDragDown(ev, grip){
-  if(__catDrag) return;
-  if(ev.pointerType === 'mouse' && ev.button !== 0) return;
-  if(guardEdit()){ ev.preventDefault(); return; }   // 잠금 — 토스트 한 줄 · 줄은 뜨지 않는다(M9)
-  const row = grip.closest('.cat-row'), list = document.getElementById('catList');
-  const id = row && row.dataset.id;
-  const from = state.categories.findIndex(c => c.id === id);
-  if(!list || from < 0) return;
-  ev.preventDefault();   // 글자 선택·네이티브 끌기를 막는다 — 대신 포커스는 손잡이로 직접 준다(키보드로 이어 쓸 수 있게)
-  //  ★ 포인터로 준 포커스엔 링을 그리지 않는다(CSS .cat-grip[data-pointer-focus]) — 다음 키 입력·blur 가 뗀다.
-  grip.dataset.pointerFocus = '1';
-  try{ grip.focus({ preventScroll: true }); }catch(_){ try{ grip.focus(); }catch(__){} }
-  try{ if(ev.pointerId != null && grip.setPointerCapture) grip.setPointerCapture(ev.pointerId); }catch(_){}
-  __catDrag = { id, from, to: from, row, grip, list, slot: null, others: [], after: [], ctops: [], omids: [], grabOff: 0, h: 0, pitch: 0, rowTop: 0,
-                scroller: catScroller(list), pid: ev.pointerId,
-                x0: ev.clientX, y0: ev.clientY, x: ev.clientX, y: ev.clientY, top0: 0, started: false, raf: 0 };
-}
-function catDragMove(ev){
-  const d = __catDrag; if(!d) return;
-  if(d.pid != null && ev.pointerId != null && ev.pointerId !== d.pid) return;
-  d.x = ev.clientX; d.y = ev.clientY;
-  if(!d.started){
-    if(Math.abs(d.y - d.y0) < CAT_DRAG_SLOP && Math.abs(d.x - d.x0) < CAT_DRAG_SLOP) return;   // 손 떨림 — 아직 누르기다
-    d.started = true;
-    d.top0 = d.scroller ? d.scroller.scrollTop : 0;
-    catDragMeasure(d);
-    d.row.classList.add('cat-dragging');
-    document.body.classList.add('cat-drag-on');
-  }
-  ev.preventDefault();
-  catDragPaint();
-  catDragAutoScroll();
-}
-//  줄들을 원래 자리로 — animate 면 미끄러져 돌아간다(취소 · 같은 자리 · 밖), 아니면 즉시(놓기: 이미 놓일 배치로 서 있으니
-//  transform 을 지우고 DOM 을 옮기면 화면은 그대로다 — 그때 transition 이 살아 있으면 한 번 튄다).
-function catDragSettle(d, animate){
-  const all = d.others.concat([d.row]);
-  for(const r of all){
-    r.classList.remove('cat-shift');
-    if(animate){ r.classList.add('cat-settle'); }
-    r.style.transform = '';
-  }
-  d.row.classList.remove('cat-dragging');
-  if(animate) setTimeout(() => { for(const r of all) r.classList.remove('cat-settle'); }, CAT_DRAG_SETTLE);
-}
-//  끝 — 놓기(drop) 또는 취소(cancel). 어느 쪽이든 빈 칸·커서를 걷고, 놓기만 옮긴다.
-function catDragEnd(ev, cancel){
-  const d = __catDrag; if(!d) return;
-  if(ev && d.pid != null && ev.pointerId != null && ev.pointerId !== d.pid) return;
-  __catDrag = null;
-  if(d.raf){ try{ cancelAnimationFrame(d.raf); }catch(_){} }
-  if(d.slot && d.slot.parentNode) d.slot.remove();
-  document.body.classList.remove('cat-drag-on');
-  try{ if(d.pid != null && d.grip.releasePointerCapture) d.grip.releasePointerCapture(d.pid); }catch(_){}
-  if(!d.started){ d.row.classList.remove('cat-dragging'); return; }   // 누르기만 했다 — 바뀌는 것 0
-  if(cancel){ catDragSettle(d, true); return; }                      // Esc · pointercancel — 제자리로 미끄러져 돌아간다
-  if(ev && ev.clientX != null){ d.x = ev.clientX; d.y = ev.clientY; }
-  if(!d.row.isConnected || d.row.parentNode !== d.list){ catDragSettle(d, false); return; }   // 끄는 사이 목록이 새로 그려졌다 — 옛 줄로 옮기지 않는다
-  const to = catDragTarget(d);
-  const from = state.categories.findIndex(c => c.id === d.id);
-  if(to < 0 || from < 0 || to === from){ catDragSettle(d, true); return; }   // 목록 밖 · 같은 자리 — 그대로
-  catDragSettle(d, false);
-  catMoveRow(d.id, to - from);
 }
 // 소유권 분리를 폼에 반영 — 과제명만 잠그고(readonly + 이유 안내), 색상·설명·Git·SVN은 그대로 연다.
 // 잠금은 렌더 시점마다 다시 칠한다(편집 이탈·취소·저장 후 잔상 방지).
@@ -11994,7 +11856,6 @@ function offHideProject(id){
      · 이름변경은 과제 표기(project.customer)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출
      · 관리 목록(custList)은 loadCustomersFull로 다시 읽어 그린다
    name이 자연키라 uid 없이 이름으로 참조한다. */
-let custShowHidden = false;   // 관리 목록에 숨김 발주처도 표시
 let custList = [];            // [{name, active}] — 관리 모달이 마지막으로 읽은 전체 목록
 let custBusy = false;         // 관리 왕복 중(중복 조작 방지)
 
@@ -12024,8 +11885,6 @@ function guardInlineEdit(listId, origOf, proceed, revert){
 function openCustomerModal(){
   if(!HOST){ toast('발주처 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
   const inp = document.getElementById('custNewName'); if(inp) inp.value = '';
-  const sh = document.getElementById('custShowHidden'); if(sh) sh.checked = false;
-  custShowHidden = false;
   custMsgSet('');
   openModal('#customerModal');
   reloadCustomerList();
@@ -12046,26 +11905,25 @@ async function reloadCustomerList(){
     : [];
   renderCustomerList();
 }
+//  ★ 쓰는 발주처만 그린다(ADMIN-HUB-4 후속 · 2026-10-06 PM) — 숨긴 발주처의 복구·영구 삭제는 회사 과제 휴지통(발주처 탭)이 한다.
+//    편집 화면은 숨김만(ADMIN-HUB-3 의 원칙 · 직급·소속과 같다). 목록 데이터(custList)는 전부 들고 있다 — 그리는 것만 거른다.
 function renderCustomerList(){
   const box = document.getElementById('custList'); if(!box) return;
-  const rows = custList.filter(c => custShowHidden || c.active);
+  const rows = custList.filter(c => c.active);
   if(!rows.length){
-    box.innerHTML = `<div class="cust-empty">${custShowHidden ? '등록된 발주처가 없습니다.' : '활성 발주처가 없습니다.'}</div>`;
+    box.innerHTML = `<div class="cust-empty">활성 발주처가 없습니다.</div>`;
     return;
   }
   box.innerHTML = rows.map(c => {
     const nm = esc(c.name);
-    const badge = c.active ? '' : `<span class="cust-badge">숨김</span>`;
-    const act = c.active
-      ? `<button type="button" class="btn sm" data-custedit="${nm}">이름변경</button>`
-        + `<button type="button" class="btn sm danger" data-custhide="${nm}">숨김</button>`
-      : `<button type="button" class="btn sm" data-custshow="${nm}">복구</button>`;
-    return `<div class="cust-row${c.active ? '' : ' hidden-cust'}" role="listitem" data-name="${nm}">`
-      + `<span class="cust-nm">${nm}${badge}</span>${act}</div>`;
+    const act = `<button type="button" class="btn sm" data-custedit="${nm}">이름변경</button>`
+      + `<button type="button" class="btn sm danger" data-custhide="${nm}">숨김</button>`;
+    return `<div class="cust-row" role="listitem" data-name="${nm}"><span class="cust-nm">${nm}</span>${act}</div>`;
   }).join('');
 }
 // 관리 조작 공통 왕복 — 성공 시 드롭다운·목록 갱신(이름변경은 과제 표기까지 → loadProjects).
-async function custSend(cmd, params, okToast, onOk){
+//  forceToast — 성공 토스트를 화면이 정할 때만(숨김: 어디로 갔는지 말한다 · ADMIN-HUB-4 후속). 없으면 호스트 문장 그대로다.
+async function custSend(cmd, params, okToast, onOk, forceToast){
   if(custBusy) return;
   custBusy = true; custMsgSet(ICON.spinner + ' 처리 중…', 'busy');
   let res;
@@ -12074,7 +11932,7 @@ async function custSend(cmd, params, okToast, onOk){
   if(res && res.ok){
     custMsgSet('');
     if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
-    toast(res.msg || okToast, 'success');
+    toast(forceToast || res.msg || okToast, 'success');
     hpost({ cmd: 'loadCustomers' });                                  // 편집 폼 드롭다운 최신화(dbCustomers)
     if(cmd === 'renameCustomer') hpost({ cmd: 'loadProjects' });      // 과제의 발주처 표기 갱신(FK CASCADE 반영)
     reloadCustomerList();
@@ -12104,11 +11962,8 @@ function custDoHide(name){
         `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
-    custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다');
+    custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다', null, OT_HIDDEN_MSG);   // 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(직급·소속과 같은 말)
   });
-}
-function custDoShow(name){
-  offEditGuard(() => custSend('setCustomerActive', { name, active: true }, '발주처를 복구했습니다'));
 }
 // 인라인 이름변경 — 해당 행을 입력+저장/취소로 바꾼다(게이트 통과 후).
 function custBeginRename(name){
@@ -12142,7 +11997,6 @@ function custCommitRename(oldName, row){
    호스트 왕복 = hostRequest. 성공 시 드롭다운(offSections/offStatuses)을 loadCodes로 갱신,
    개명은 과제 표기(section/status)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출. name이 자연키라 uid 없음. */
 let codeKind = 'section';    // 현재 탭
-let codeShowHidden = false;
 let codeList = [];           // [{name, active, sort}] — 현재 탭의 마지막 로드 목록
 let codeBusy = false;
 
@@ -12155,8 +12009,6 @@ function codeKindLabel(){ return codeKind === 'status' ? '상태' : '구분'; }
 function openCodeModal(kind){
   if(!HOST){ toast('구분·상태 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
   codeKind = (kind === 'status') ? 'status' : 'section';
-  codeShowHidden = false;
-  const sh = document.getElementById('codeShowHidden'); if(sh) sh.checked = false;
   const inp = document.getElementById('codeNewName'); if(inp){ inp.value = ''; inp.placeholder = '새 ' + codeKindLabel() + '값'; }
   codeMsgSet('');
   codeSyncTabs();
@@ -12169,6 +12021,7 @@ function codeSyncTabs(){
   if(ts) ts.classList.toggle('on', codeKind === 'section');
   if(tt) tt.classList.toggle('on', codeKind === 'status');
   const inp = document.getElementById('codeNewName'); if(inp) inp.placeholder = '새 ' + codeKindLabel() + '값';
+  const ov = document.getElementById('codeModal'); if(ov) ov.dataset.noteTab = codeKind;   // 아랫줄 안내 = 지금 칸의 문장만(ADMIN-HUB-4 후속)
 }
 function switchCodeKind(kind){
   codeKind = (kind === 'status') ? 'status' : 'section';
@@ -12188,35 +12041,33 @@ async function reloadCodeList(){
     : [];
   renderCodeList();
 }
+//  ★ 쓰는 값만 그린다(ADMIN-HUB-4 후속) — 숨긴 구분·상태의 복구·영구 삭제는 회사 과제 휴지통(구분 · 상태 탭)이 한다.
 function renderCodeList(){
   const box = document.getElementById('codeList'); if(!box) return;
-  const rows = codeList.filter(c => codeShowHidden || c.active);
+  const rows = codeList.filter(c => c.active);
   if(!rows.length){
-    box.innerHTML = `<div class="cust-empty">${codeShowHidden ? '등록된 값이 없습니다.' : '활성 값이 없습니다.'}</div>`;
+    box.innerHTML = `<div class="cust-empty">활성 값이 없습니다.</div>`;
     return;
   }
   // 활성 값끼리의 순서만 ▲▼ 노출(숨김은 순서 대상 아님). 첫/끝은 해당 방향 비활성.
   const active = rows.filter(c => c.active);
   box.innerHTML = rows.map(c => {
     const nm = esc(c.name);
-    const badge = c.active ? '' : `<span class="cust-badge">숨김</span>`;
     let ord = '';
-    if(c.active){
+    {
       const i = active.findIndex(a => a.name === c.name);
       ord = `<span class="code-ord">`
         + `<button type="button" class="btn sm" data-codeup="${nm}"${i <= 0 ? ' disabled' : ''} title="위로">▲</button>`
         + `<button type="button" class="btn sm" data-codedown="${nm}"${i >= active.length - 1 ? ' disabled' : ''} title="아래로">▼</button></span>`;
     }
-    const act = c.active
-      ? `<button type="button" class="btn sm" data-codeedit="${nm}">이름변경</button>`
-        + `<button type="button" class="btn sm danger" data-codehide="${nm}">숨김</button>`
-      : `<button type="button" class="btn sm" data-codeshow="${nm}">복구</button>`;
-    return `<div class="cust-row${c.active ? '' : ' hidden-cust'}" role="listitem" data-name="${nm}">`
-      + `<span class="cust-nm">${nm}${badge}</span>${ord}${act}</div>`;
+    const act = `<button type="button" class="btn sm" data-codeedit="${nm}">이름변경</button>`
+      + `<button type="button" class="btn sm danger" data-codehide="${nm}">숨김</button>`;
+    return `<div class="cust-row" role="listitem" data-name="${nm}"><span class="cust-nm">${nm}</span>${ord}${act}</div>`;
   }).join('');
 }
 // 공통 왕복 — 성공 시 드롭다운(loadCodes)·목록 갱신. 개명은 과제 표기까지(loadProjects).
-async function codeSend(cmd, params, okToast, onOk){
+//  forceToast — 성공 토스트를 화면이 정할 때만(숨김: 어디로 갔는지 말한다 · ADMIN-HUB-4 후속). 없으면 호스트 문장 그대로다.
+async function codeSend(cmd, params, okToast, onOk, forceToast){
   if(codeBusy) return;
   codeBusy = true; codeMsgSet(ICON.spinner + ' 처리 중…', 'busy');
   let res;
@@ -12225,7 +12076,7 @@ async function codeSend(cmd, params, okToast, onOk){
   if(res && res.ok){
     codeMsgSet('');
     if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
-    toast(res.msg || okToast, 'success');
+    toast(forceToast || res.msg || okToast, 'success');
     hpost({ cmd: 'loadCodes' });                            // 편집 폼·필터 드롭다운 최신화
     if(cmd === 'codeRename') hpost({ cmd: 'loadProjects' }); // 과제의 구분/상태 표기 갱신(FK CASCADE 반영)
     reloadCodeList();
@@ -12256,12 +12107,8 @@ function codeDoHide(name){
         `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
-    codeSend('codeSetActive', { name, active: false }, codeKindLabel() + '을(를) 숨겼습니다');
+    codeSend('codeSetActive', { name, active: false }, codeKindLabel() + '을(를) 숨겼습니다', null, OT_HIDDEN_MSG);   // 직급·소속과 같은 말(ADMIN-HUB-4 후속)
   }, codeKindLabel() + '을(를) 숨기려면 관리자 인증이 필요합니다.');
-}
-function codeDoShow(name){
-  offEditGuard(() => codeSend('codeSetActive', { name, active: true }, codeKindLabel() + '을(를) 복구했습니다'),
-    codeKindLabel() + '을(를) 복구하려면 관리자 인증이 필요합니다.');
 }
 function codeBeginRename(name){
   offEditGuard(() => {
@@ -12330,10 +12177,11 @@ function otMsgSet(text, tone){
 
 // 진입점 — 열 때마다 orgTitleGet 을 새로 부른다(캐시 금지: 낡은 목록은 이미 숨긴 것을 다시 숨기게 한다).
 //   ★ 모달은 회신을 기다리지 않고 먼저 연다(openTrash 와 같은 이유) — 대신 '불러오는 중…'을 띄운다.
-async function openOrgTitle(){
+//  tab — 'title' | 'unit'(ADMIN-HUB-4 N4: 관리 화면의 「직급」·「소속」 항목이 그 탭으로 연다 · 없으면 직급).
+async function openOrgTitle(tab){
   if(__otBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드 — 늦게 온 회신이 먼저 온 것을 덮지 않게. 조용히 삼키면 '버튼이 고장났다'가 된다(trSend/otSend 와 같은 문구).
   __otBusy = true;
-  __otData = null; __otTab = 'title';   // 지난번 화면을 한 조각도 남기지 않는다
+  __otData = null; __otTab = (tab === 'unit') ? 'unit' : 'title';   // 지난번 화면을 한 조각도 남기지 않는다
   const inp = document.getElementById('otNewName'); if(inp) inp.value = '';
   otMsgSet('');
   otRender(); otSyncAdd();
@@ -12416,6 +12264,7 @@ function otRender(){
   const list = document.getElementById('otList'); if(!list) return;
   const sc = document.getElementById('otScope');
   const unit = __otTab === 'unit';
+  { const ov = document.getElementById('orgTitleModal'); if(ov) ov.dataset.noteTab = __otTab; }   // 아랫줄 안내 = 지금 칸의 문장만(ADMIN-HUB-4 후속)
   for(const id of ['otTabTitle', 'otTabUnit']){
     const t = document.getElementById(id); if(!t) continue;
     const on = (String(t.dataset.kind || '') === __otTab);
@@ -12471,10 +12320,6 @@ function otRender(){
     //  소속은 깊이만큼 들여쓴다(▸ 없이) — 트리 모양은 호스트가 준 depth 가 전부다.
     if(unit) nmEl.style.paddingLeft = ((Number(it.depth) || 0) * 16) + 'px';
     row.appendChild(nmEl);
-    const cnt = document.createElement('span');
-    cnt.className = 'badge badge-git ot-cnt';
-    cnt.textContent = users + '명' + (kids > 0 ? ' · 하위 ' + kids + '개' : '');
-    row.appendChild(cnt);
     {
       const arr = unit ? actUnits.filter(u => pkey(u.parentId) === pkey(it.parentId)) : actTitles;
       const i = unit ? arr.findIndex(u => String(u.orgId) === key) : arr.findIndex(t => String(t.name) === key);
@@ -12488,11 +12333,32 @@ function otRender(){
       //  상위 변경은 **관리창의 일**이다(설계 §3.2) — 팀을 옮기면 그 팀 소속자 전원이 번호로 따라온다.
       if(unit) row.appendChild(otBtn('move', key, '상위 변경', 'btn sm', false, ''));
       //  숨길 수 없는 사유는 화면 힌트다 — 최종 판정은 호스트가 같은 트랜잭션에서 다시 센다.
+      //  ★ ADMIN-HUB-4 N2 — 사유는 **줄 배지가 아니라 꺼진 [숨김]이** 말한다: 지금 숫자로 지은 구체 문장
+      //    (「재직자 3명 · 하위 조직 2개가 있어 숨길 수 없습니다」)을 title(마우스)과 aria-describedby(낭독기)에 같이 단다.
+      //    disabled 가 아니라 aria-disabled 다 — 포커스가 닿아야 키보드 사용자도 그 문장을 듣는다. 누르면 아무것도 하지 않는다(otListClick).
+      //    0 인 숫자는 문장에 넣지 않는다(「재직자 0명」은 이유가 아니다). 조사는 마지막 낱말이 정한다(명 → 이 · 개 → 가).
       let why = '';
       if(unit && it.parentId == null) why = '최상위 조직은 숨길 수 없습니다';
-      else if(unit && (users > 0 || kids > 0)) why = '이 조직에 재직자 ' + users + '명 · 하위 조직 ' + kids + '개가 있습니다 — 먼저 옮기거나 숨기세요';
-      else if(!unit && users > 0) why = '이 직급인 재직자가 ' + users + '명 있습니다 — 먼저 직급을 바꾸세요';
-      row.appendChild(otBtn('hide', key, '숨김', 'btn sm danger', !!why, why));
+      else {
+        const parts = [];
+        if(users > 0) parts.push('재직자 ' + users + '명');
+        if(unit && kids > 0) parts.push('하위 조직 ' + kids + '개');
+        if(parts.length){
+          const last = parts[parts.length - 1];
+          why = parts.join(' · ') + (last.endsWith('명') ? '이' : '가') + ' 있어 숨길 수 없습니다'
+              + (unit ? ' — 먼저 옮기거나 숨기세요' : ' — 먼저 직급을 바꾸세요');
+        }
+      }
+      const hb = otBtn('hide', key, '숨김', 'btn sm danger', false, why);
+      if(why){
+        hb.dataset.otwhy = '1';
+        hb.setAttribute('aria-disabled', 'true');
+        const wd = document.createElement('span');
+        wd.className = 'sr-only'; wd.id = 'otWhy-' + list.children.length; wd.textContent = why;
+        hb.setAttribute('aria-describedby', wd.id);
+        row.appendChild(wd);
+      }
+      row.appendChild(hb);
     }
     list.appendChild(row);
   }
@@ -12700,7 +12566,7 @@ function otCommitMove(key){
 function otListClick(ev){
   const t = ev.target;
   const b = (t && t.closest) ? t.closest('[data-otop]') : null;
-  if(!b || b.disabled) return;
+  if(!b || b.disabled || b.getAttribute('aria-disabled') === 'true') return;   // 꺼진 [숨김](N2 · aria-disabled) — 이유는 툴팁·낭독이 말한다
   const op = String(b.dataset.otop || ''), key = String(b.dataset.otkey || '');
   if(op === 'up' || op === 'down') otMove(key, op);
   else if(op === 'rename') otBeginRename(key);
@@ -15324,8 +15190,6 @@ const ICON = {
   clock:    svgIc('<circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3.2 2"/>'),
   pin:      svgIc('<path d="M12 21s6.5-5.4 6.5-10.5a6.5 6.5 0 1 0-13 0C5.5 15.6 12 21 12 21z"/><circle cx="12" cy="10.5" r="2.4"/>'),
   lock:     svgIc('<rect x="4.5" y="10.5" width="15" height="9.5" rx="2"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/>'),
-  // 끌어 옮기기 손잡이(「내 과제」 순서 · ADMIN-HUB-3 M6) — 네 방향 화살표(✥ · Material open_with 계열). 글자 기호는 글꼴마다 모양이 달라 쓰지 않는다.
-  move:     svgIc('<path d="M12 3v18M3 12h18"/><path d="M9.2 5.8L12 3l2.8 2.8M9.2 18.2L12 21l2.8-2.8M5.8 9.2L3 12l2.8 2.8M18.2 9.2L21 12l-2.8 2.8"/>', 2),
   // 아래 6종은 E1에서 추가 — 남아 있던 이모지 크롬(📖 🆕 🎌 🔄 ⚙ 📂)의 대체. 이모지는 테마·OS마다
   // 색/굵기가 제각각이라 currentColor 글리프와 나란히 놓이면 한 화면에 두 아이콘 문법이 생긴다.
   book:     svgIc('<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2.5 2.5 0 0 1 2 1 2.5 2.5 0 0 1 2-1h4.5A1.5 1.5 0 0 1 20 5.5v12a1.5 1.5 0 0 1-1.5 1.5H14a2.5 2.5 0 0 0-2 1 2.5 2.5 0 0 0-2-1H5.5A1.5 1.5 0 0 1 4 17.5z"/><path d="M12 6.5v12"/>'),
@@ -15417,7 +15281,7 @@ function openHelp(){
     + card(ICON.calendar, '일정 · 할 일', '일정은 시간/종일·반복·기간. 할 일은 체크·중요(★)·기한. ‘옵션 더보기’에서 세부 설정.')
     + card(ICON.git, '커밋 내역', '과제에 Git 저장소 경로를 지정하면(내 과제), 그 날 내 커밋을 자동 수집합니다.')
     + card(ICON.doc, '보고서', '기간을 고르면 과제별 [제목] : 시간으로 자동 정리. 하루 보고서에서 시간 수정, 복사해 붙여넣기.')
-    + card(ICON.tag, '내 과제', '헤더의 내 과제 버튼에서 과제 추가·이름·색상·버전관리(Git/SVN) 경로를 설정합니다. 줄 왼쪽 손잡이(네 방향 화살표)를 끌면 순서가 바뀌고 보고서·필터가 그 순서를 따릅니다.')
+    + card(ICON.tag, '내 과제', '헤더의 내 과제 버튼에서 과제 추가·이름·색상·버전관리(Git/SVN) 경로를 설정합니다. 줄 오른쪽 ▲▼ 로 순서를 한 칸씩 바꾸면 보고서·필터가 그 순서를 따릅니다.')
     + card(ICON.palette, '테마', '헤더의 모양 버튼에서 라이트·다크·포레스트·세피아·고대비 등 전체 테마를 고릅니다.')
     + card(ICON.keyboard, '단축키', '← → 월 이동 · Home 오늘 · Esc 닫기 · 날짜 더블클릭 새 기록.')
     + card(ICON.download, '데이터 · 백업', '데이터는 자동 저장. 백업·이전은 ⋯ 메뉴의 XML 내보내기/가져오기.')
@@ -16301,7 +16165,11 @@ function bind(){
     const row = ev.target.closest('.cat-row');
     const c = catById(row?.dataset.id);
     if(!c) return;
-    if(act === 'grip') return;   // 손잡이는 누르기로는 아무것도 하지 않는다 — 끌기(pointer*)·↑/↓(keydown)만 옮긴다(관문은 moveCategory · R7)
+    if(act === 'up' || act === 'down'){   // 관문은 moveCategory 가 지난다(R7) · 끝 버튼(aria-disabled)은 아무것도 바꾸지 않는다(N3)
+      const b = ev.target.closest('[data-act]');
+      if(b && b.getAttribute('aria-disabled') === 'true') return;
+      catMoveRow(c.id, act === 'up' ? -1 : +1); return;
+    }
     if((act === 'unsub' || act === 'del') && guardEdit()) return;
     if(act === 'unsub'){   // 공식(DB) 과제 구독 해제 — 사용 0건일 때만(엔트리는 안 건드림)
       if(!catRemovable(c)){ toast(`사용 중인 과제는 제거할 수 없습니다 — 일정 정리/재연결 후 시도하세요`, 'warn'); return; }
@@ -16335,22 +16203,6 @@ function bind(){
       }
     }
   });
-  //  순서 손잡이 ✥(ADMIN-HUB-3 M7·M8) — 누르기는 #catList 위임으로 받고, 끄는 동안의 움직임·놓기·취소는 문서에서 받는다
-  //  (포인터 캡처가 손잡이로 모아 주지만, 캡처가 없는 환경에서도 목록 밖으로 나간 포인터를 놓치지 않게).
-  $('#catList').addEventListener('pointerdown', ev => { const g = ev.target.closest && ev.target.closest('[data-act="grip"]'); if(g) catDragDown(ev, g); });
-  $('#catList').addEventListener('keydown', ev => { const g = ev.target.closest && ev.target.closest('[data-act="grip"]'); if(g) catGripKey(ev, g); });
-  //  포인터로 준 포커스의 링 감춤(data-pointer-focus)은 포커스를 잃으면 푼다 — 다음에 Tab 으로 오면 링이 선다.
-  $('#catList').addEventListener('focusout', ev => { const g = ev.target.closest && ev.target.closest('[data-act="grip"]'); if(g) delete g.dataset.pointerFocus; });
-  document.addEventListener('pointermove', catDragMove);
-  document.addEventListener('pointerup', ev => catDragEnd(ev, false));
-  document.addEventListener('pointercancel', ev => catDragEnd(ev, true));
-  //  Esc = 끌기 취소 — 캡처 단계에서 먼저 받아 삼킨다(아래로 흘리면 모달 Esc 가 「내 과제」 창까지 닫는다). 끄는 중이 아니면 손대지 않는다.
-  document.addEventListener('keydown', ev => {
-    if(ev.key !== 'Escape' || !__catDrag || !__catDrag.started) return;
-    ev.preventDefault(); ev.stopImmediatePropagation();
-    catDragEnd(null, true);
-  }, true);
-
   /* 공식 과제(DB) 전용 화면 — 조회만(쓰기 없음) */
   { const b = $('#btnOfficialOpen'); if(b) b.addEventListener('click', openOfficialModal); }
   { const s = $('#offSearch'); if(s){
@@ -16430,12 +16282,10 @@ function bind(){
   { const b = $('#offTrash'); if(b) b.addEventListener('click', () => { offEditGuard(() => openTrash('project')); }); }
   { const b = $('#custAddBtn'); if(b) b.addEventListener('click', custDoAdd); }
   { const inp = $('#custNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); custDoAdd(); } }); }
-  { const sh = $('#custShowHidden'); if(sh) sh.addEventListener('change', () => guardInlineEdit('custList', r => r.dataset.name, () => { custShowHidden = sh.checked; renderCustomerList(); }, () => { sh.checked = !sh.checked; })); }
   { const box = $('#custList'); if(box) box.addEventListener('click', ev => {
       const t = ev.target;
       const eb = t.closest('[data-custedit]'); if(eb){ custBeginRename(eb.dataset.custedit); return; }
       const hb = t.closest('[data-custhide]'); if(hb){ custDoHide(hb.dataset.custhide); return; }
-      const sb = t.closest('[data-custshow]'); if(sb){ custDoShow(sb.dataset.custshow); return; }
       const vb = t.closest('[data-custsave]'); if(vb){ const row = vb.closest('.cust-row'); if(row) custCommitRename(vb.dataset.custsave, row); return; }
       const cb = t.closest('[data-custcancel]'); if(cb){ renderCustomerList(); return; }
     }); }
@@ -16445,14 +16295,12 @@ function bind(){
   { const t = $('#codeTabStatus'); if(t) t.addEventListener('click', () => guardInlineEdit('codeList', r => r.dataset.name, () => switchCodeKind('status'))); }
   { const b = $('#codeAddBtn'); if(b) b.addEventListener('click', codeDoAdd); }
   { const inp = $('#codeNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.key === 'Enter'){ ev.preventDefault(); codeDoAdd(); } }); }
-  { const sh = $('#codeShowHidden'); if(sh) sh.addEventListener('change', () => guardInlineEdit('codeList', r => r.dataset.name, () => { codeShowHidden = sh.checked; renderCodeList(); }, () => { sh.checked = !sh.checked; })); }
   { const box = $('#codeList'); if(box) box.addEventListener('click', ev => {
       const t = ev.target;
       const up = t.closest('[data-codeup]'); if(up){ codeMove(up.dataset.codeup, 'up'); return; }
       const dn = t.closest('[data-codedown]'); if(dn){ codeMove(dn.dataset.codedown, 'down'); return; }
       const eb = t.closest('[data-codeedit]'); if(eb){ codeBeginRename(eb.dataset.codeedit); return; }
       const hb = t.closest('[data-codehide]'); if(hb){ codeDoHide(hb.dataset.codehide); return; }
-      const sb = t.closest('[data-codeshow]'); if(sb){ codeDoShow(sb.dataset.codeshow); return; }
       const vb = t.closest('[data-codesave]'); if(vb){ const row = vb.closest('.cust-row'); if(row) codeCommitRename(vb.dataset.codesave, row); return; }
       const cb = t.closest('[data-codecancel]'); if(cb){ renderCodeList(); return; }
     }); }

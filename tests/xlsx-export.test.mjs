@@ -802,7 +802,8 @@ test('발주처 브리지: addCustomer/renameCustomer/setCustomerActive/customer
 
 // 웹 관리 UI — 조작은 offEditGuard, 이름변경 성공 시 loadProjects·loadCustomers 재호출, 인라인 추가 후 자동 선택.
 test('발주처 관리 UI: 조작은 offEditGuard 게이트를 통과한다(쓰기라 인증 필요)', () => {
-  for (const fn of ['custDoAdd', 'custDoHide', 'custDoShow', 'custBeginRename']) {
+  //  ★ 2026-10-06(ADMIN-HUB-4 후속) — 제자리 복구(custDoShow)는 없어졌다: 숨긴 발주처의 복구는 회사 과제 휴지통(발주처 탭)이 한다.
+  for (const fn of ['custDoAdd', 'custDoHide', 'custBeginRename']) {
     const b = extractFunction(src, fn);
     assert.ok(/offEditGuard\(/.test(b), `${fn}가 offEditGuard를 거치지 않는다`);
   }
