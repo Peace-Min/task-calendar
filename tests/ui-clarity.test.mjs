@@ -19,7 +19,7 @@ const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta
 
 const OLD = '넓게 보기';
 const TIP = {
-  focusOff:  '맨 앞에 띄우기 — 다른 창 위에 크게 띄워 작업합니다 (Esc 로 해제)',
+  focusOff:  '맨 앞에 띄우기: 다른 창 위에 크게 띄워 작업합니다 (Esc 로 해제)',
   focusOn:   '맨 앞 해제 (Esc)',
   closeTray: '트레이로 숨기기 (종료는 ☰ 메뉴)',
   closeQuit: '닫기(종료)',
@@ -172,9 +172,9 @@ test('S5 (U3·U4·V3): 일간 전송 payload 는 dryRun:false 상수 · 제출 �
 test('S6 (U5·V4): 제목줄에 「_」(#hbHide) 없음 · ✕ 툴팁은 __setTray 가 트레이 상태로 정한다', () => S.trayCloseOnly(app));
 test('S7 (U6): 호스트 ✕/숨기기/종료 동작은 그대로다', () => S.hostCloseUnchanged(mainwin));
 test('S8 (V2): 사용 안내·설정 안내가 새 이름을 말한다', () => {
-  assert.ok(app.includes('<li><b>맨 앞에 띄우기</b>(제목줄 버튼 · ☰ 메뉴)로 다른 창 위에 크게 띄워'), '사용 안내(창 모드·크기)가 새 이름이 아니다');
-  assert.ok(app.includes("‘맨 앞에 띄우기’(다른 창 위에 크게) 지원"), '도움말(창 모드)이 새 이름이 아니다');
-  assert.ok(app.includes('「맨 앞에 띄우기」로 창을 크게 펼치면 가장 잘 보입니다.'), '설정(월 보기 밀도) 안내가 새 이름이 아니다');
+  assert.ok(app.includes('<li><b>맨 앞에 띄우기</b>(제목줄 버튼이나 ☰ 메뉴)로 다른 창 위에 크게 띄워'), '사용 안내(창 모드·크기)가 새 이름이 아니다');
+  assert.ok(app.includes("'맨 앞에 띄우기'(다른 창 위에 크게) 지원"), '도움말(창 모드)이 새 이름이 아니다');
+  assert.ok(app.includes("'맨 앞에 띄우기'로 창을 크게 펼치면 가장 잘 보입니다."), '설정(월 보기 밀도) 안내가 새 이름이 아니다');
   assert.ok(app.includes('<b>실제로 제출</b>합니다(제출 직전에 한 번 확인합니다)'), '설정(회사 일간보고) 안내가 「늘 실제 제출」을 말하지 않는다');
 });
 

@@ -66,7 +66,7 @@ const statics = {
     assert.deepStrictEqual(rows, [['project', '과제', 'project', false], ['user', '구성원', 'user', false], ['customer', '발주처', 'project', false],
       ['section', '구분', 'project', false], ['status', '상태', 'project', false], ['title', '직급', 'user', true], ['unit', '소속', 'user', true]],   // ADMIN-HUB-4 N6 — [구성원 · 직급 · 소속]
       `휴지통 탭 표가 계약과 다르다: ${JSON.stringify(rows)} — 사람 쪽 = 구성원 · 소속 · 직급(M3)`);
-    assert.ok(blk.includes("note: '퇴사 처리한 구성원 — 복구하면 다시 로그인·명부 대상이 됩니다"), '구성원 탭 안내 한 줄이 계약과 다르다(M3)');
+    assert.ok(blk.includes("note: '퇴사 처리한 구성원입니다. 복구하면 다시 로그인·명부 대상이 됩니다"), '구성원 탭 안내 한 줄이 계약과 다르다(M3)');
     assert.strictEqual((blk.match(/note: '소속·직급은 지난 기록이 이름을 가리키므로 영구 삭제하지 않습니다/g) || []).length, 2, '소속·직급 탭의 「영구 삭제하지 않습니다」 안내가 둘 다 있지 않다(M3)');
   },
   //  M10 — 새 호스트 명령 없음: 소속·직급 조회 = orgTitleGet · 복구 = unitSetActive / titleSetActive(active:true) — 직급·소속 화면이 쓰던 그대로
@@ -98,7 +98,7 @@ const statics = {
     assert.ok(/const rows = \(unit \? otUnits\(\) : otTitles\(\)\)\.filter\(x => x && x\.active !== false\);/.test(r), '직급·소속 화면이 숨긴 항목을 그린다(M4)');
     assert.ok(!/otBtn\('show'/.test(r) && !/'숨김'; nmEl/.test(r), '직급·소속 화면에 [복구]·「숨김」 배지가 남았다(M4 — 복구는 휴지통)');
     assert.ok(!/id="otShowHidden"/.test(stripHtmlComments(src)), '「숨긴 값도 표시」 체크박스가 남았다(M4)');
-    assert.ok(src.includes("const OT_HIDDEN_MSG = '휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서';"), '숨김 토스트 문구가 계약과 다르다(M4)');
+    assert.ok(src.includes("const OT_HIDDEN_MSG = '휴지통으로 옮겼습니다. 복구는 🗑 휴지통에서 할 수 있습니다';"), '숨김 토스트 문구가 계약과 다르다(M4)');
     const h = body(src, 'otDoHide');
     assert.strictEqual((h.match(/, OT_HIDDEN_MSG\)/g) || []).length, 2, '소속·직급 숨김 둘 다 휴지통 토스트를 쓰지 않는다(M4)');
   },
@@ -318,11 +318,11 @@ if (!JSDOM) {
         assert.deepStrictEqual($$(B, '#trTabs [data-trtab]').map((b) => b.textContent), ['구성원1', '직급1', '소속3'], '탭 이름·건수가 다르다(R3)');
         assert.strictEqual($(B, '#trTabs').getAttribute('role'), 'tablist');
         assert.strictEqual($(B, '#ahNgone').textContent, '5', '관리 화면의 사람 휴지통 개수가 세 탭의 합이 아니다(1 + 3 + 1)');
-        assert.ok(/퇴사 처리한 구성원 1명 · 숨긴 직급 1개 · 숨긴 소속 3개/.test($(B, '#trScope').textContent), `부제가 다르다: ${$(B, '#trScope').textContent}`);
+        assert.ok(/퇴사 처리한 구성원 1명, 숨긴 직급 1개, 숨긴 소속 3개/.test($(B, '#trScope').textContent), `부제가 다르다: ${$(B, '#trScope').textContent}`);
         //  구성원 탭 = 지금의 퇴사자 휴지통 그대로(복구 · 영구 삭제) + 안내 한 줄
         assert.deepStrictEqual(rowNames(B), ['zzU_퇴사']);
         assert.deepStrictEqual(ops(B).map((o) => o.op), ['restore', 'delete'], '구성원 탭의 [복구][영구 삭제]가 사라졌다(R3 — 기존 동작)');
-        assert.ok(!$(B, '#trNote').classList.contains('hidden') && /퇴사 처리한 구성원 — 복구하면 다시 로그인·명부 대상이 됩니다/.test($(B, '#trNote').textContent), '구성원 탭 안내 한 줄이 없다(M3)');
+        assert.ok(!$(B, '#trNote').classList.contains('hidden') && /퇴사 처리한 구성원입니다\. 복구하면 다시 로그인·명부 대상이 됩니다/.test($(B, '#trNote').textContent), '구성원 탭 안내 한 줄이 없다(M3)');
         //  소속 탭 — 숨긴 셋 · 호스트가 준 순서 · 상위가 숨김인 11 은 복구가 꺼지고 이유가 보이는 줄로 · 영구 삭제 없음
         await tab(B, 'unit');
         assert.deepStrictEqual(rowNames(B), ['zz숨긴팀', 'zz숨긴본부', 'zz숨긴본부의팀'], `소속 탭 목록이 다르다: ${JSON.stringify(rowNames(B))}`);
@@ -364,7 +364,7 @@ if (!JSDOM) {
       try {
         await reset(B, Object.assign({}, REP, { orgTitleGet: 'pending' }));
         await openHub(B, 'gone'); await settle(60);
-        assert.deepStrictEqual($$(B, '#trTabs [data-trtab]').map((b) => b.textContent), ['구성원1', '직급—', '소속—'], '받기 전 소속·직급 건수가 — 가 아니다(0 은 없다로 읽힌다)');
+        assert.deepStrictEqual($$(B, '#trTabs [data-trtab]').map((b) => b.textContent), ['구성원1', '직급-', '소속-'], '받기 전 소속·직급 건수가 — 가 아니다(0 은 없다로 읽힌다)');
         await tab(B, 'unit');
         assert.strictEqual($(B, '#trList').textContent, '불러오는 중…', '받기 전 소속 탭이 「불러오는 중…」이 아니다');
         assert.ok($(B, '#trEmpty').classList.contains('hidden'), '받기 전인데 「숨긴 소속이 없습니다」를 말한다');
@@ -399,8 +399,8 @@ if (!JSDOM) {
         const sent = calls(B, 'titleSetActive');
         assert.strictEqual(sent.length, 1); assert.strictEqual(sent[0][1].name, 'zz빈직급'); assert.strictEqual(sent[0][1].active, false);
         assert.deepStrictEqual(names(), ['수석'], '숨긴 직급이 직급·소속 목록에 남았다(R4)');
-        assert.ok(toasts(B).some((t) => t[0] === '휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서' && t[1] === 'success'),
-          `숨김 토스트가 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」가 아니다: ${JSON.stringify(toasts(B))}(R4)`);
+        assert.ok(toasts(B).some((t) => t[0] === '휴지통으로 옮겼습니다. 복구는 🗑 휴지통에서 할 수 있습니다' && t[1] === 'success'),
+          `숨김 토스트가 「휴지통으로 옮겼습니다. 복구는 🗑 휴지통에서 할 수 있습니다」가 아니다: ${JSON.stringify(toasts(B))}(R4)`);
         //  사람 휴지통 직급 탭에 나타난다(그 사이 호스트 목록도 바뀌었다)
         B.ev(`__rep.orgTitleGet = { ok: true, data: ${JSON.stringify(ORG_HIDDEN)} }; 1`);
         await pick(B, 'gone'); await settle(60);
@@ -430,7 +430,7 @@ if (!JSDOM) {
     await assert.rejects(() => dom.orgTitleHide(bad), /숨긴 직급이 섰다/);
   });
   test('변이(R)④: 받기 전 건수를 0 으로 쓰면 (R3) 받기 전 계약이 실패한다', async () => {
-    const bad = mutate(app, "n.textContent = (t.org && !trOrgReady()) ? '—' : String(trRows(t.kind).length);", 'n.textContent = String(trRows(t.kind).length);');
+    const bad = mutate(app, "n.textContent = (t.org && !trOrgReady()) ? '-' : String(trRows(t.kind).length);", 'n.textContent = String(trRows(t.kind).length);');
     await assert.rejects(() => dom.orgPendingFail(bad), /받기 전 소속·직급 건수가 — 가 아니다/);
   });
 }

@@ -1717,7 +1717,7 @@ if (!JSDOM) {
       assert.ok(html.includes('할일 항목'), '할일 항목이 카드에 렌더됨');
       // 할일과제 카드가 rcard-empty(흐림)가 아니어야 (일정이 없어도 내용은 있음)
       assert.ok(!/class="rcard rcard-empty"/.test(html) && !/class="rcard [^"]*rcard-empty/.test(html), '할일-only 카드에 rcard-empty 미부여');
-      assert.ok(/오늘치 — 여기서 바로 수정/.test(html), '할일-only 카드에도 편집 힌트 노출');
+      assert.ok(/오늘치는 여기서 바로 수정/.test(html), '할일-only 카드에도 편집 힌트 노출');
     });
 
     // ── Item1 — 일간 과제별 시간 입력(tc_taskHours) → buildReportText 헤더 "[과제] : n" ──
@@ -2258,7 +2258,7 @@ if (!JSDOM) {
       ev("openEntryModal('new', '2026-07-08')");
       assert.strictEqual(ev("$('#fRemSeg [data-remmode=\"def\"]').classList.contains('active')"), true, '기본 놓침 방지 active');
       assert.strictEqual(ev("$('#fRemCust').classList.contains('hidden')"), true, '직접영역 숨김');
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', 'def 힌트');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60, 30, 10, 5분 전 재알림', 'def 힌트');
       assert.strictEqual(evJSON("remReadValue('f')"), null, '읽으면 null(=기본)');
     });
 
@@ -2301,7 +2301,7 @@ if (!JSDOM) {
     test('미리알림 힌트: 어떤 모드에서도 전역 경고를 덧대지 않는다', () => {
       uiSeed();
       ev("openEntryModal('new', '2026-07-08')");
-      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60·30·10·5분 전 재알림', 'def 힌트 그대로');
+      assert.strictEqual(ev("$('#fRemHint').textContent"), '확인할 때까지 60, 30, 10, 5분 전 재알림', 'def 힌트 그대로');
       assert.strictEqual(ev("!!$('#fRemHint [data-remenable]')"), false, '켜기 액션 없음');
       assert.strictEqual(ev("$('#fRemHint').querySelectorAll('*').length"), 0, '힌트는 순수 텍스트(경고 마크업 없음)');
     });
@@ -2883,7 +2883,7 @@ if (!JSDOM) {
                     "return JSON.stringify({nm:(r.querySelector('.rl-picked-nm')||{}).textContent, meta:(r.querySelector('.rl-picked-meta')||{}).textContent, clear:!!r.querySelector('[data-rlclear]')});})()");
       const b = JSON.parse(p1);
       assert.strictEqual(b.nm, '레이더 성능개량', '배지 주 라벨이 통상명칭이 아니다');
-      assert.strictEqual(b.meta, '방위사업청 · 처리장치', '배지 보조가 발주처·계약명이 아니다(=올바른 대상 u2 확인)');
+      assert.strictEqual(b.meta, '방위사업청, 처리장치', '배지 보조가 발주처·계약명이 아니다(=올바른 대상 u2 확인)');
       assert.ok(b.clear, '해제 버튼이 없다');
       assert.strictEqual(ev("document.getElementById('rlRun').disabled"), false, '선택 후 실행이 활성화되지 않는다');
     });
@@ -2924,7 +2924,7 @@ if (!JSDOM) {
         '대상에 값이 있으면 건너뛴다 — DB가 주지도 않는 값을 권위처럼 취급하는 옛 정책이다');
       assert.ok(/filledNow/.test(body), '한 실행 내 중복 대상 보호(먼저 온 값 유지)가 없다');
       assert.ok(/k === 'color' && !\/\^#\[0-9a-fA-F\]\{6\}\$\/\.test\(v\)/.test(body), '깨진 헥사 색을 걸러내지 않는다');
-      assert.ok(/설명·저장소·색상/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
+      assert.ok(/설명, 저장소, 색상/.test(body) && /먼저 옮긴 값을 유지/.test(body), '이관/유지 결과를 사용자에게 알리지 않는다');
       // 계약 재현 — 대상에 값이 있어도 개인 과제 값이 이긴다 / 같은 대상 두 번째는 먼저 온 것 유지
       const run = (froms, toCat) => {
         const to = { ...toCat }; const done = new Set();
@@ -2973,7 +2973,7 @@ if (!JSDOM) {
       assert.strictEqual(to.desc, '내 설명', '설명 이관이 회귀했다');
       assert.strictEqual(to.name, '레이더 성능개량', '이관이 공식 과제명을 덮었다(보고서 집계가 깨진다)');
       assert.ok(/색상/.test(msg), '토스트가 실제 이관 대상(색상)과 어긋난다: ' + msg);
-      assert.ok(/설명·저장소·색상/.test(msg), '이관 문구가 갱신되지 않았다: ' + msg);
+      assert.ok(/설명, 저장소, 색상/.test(msg), '이관 문구가 갱신되지 않았다: ' + msg);
     });
 
     test('재연결(실행): 여럿을 한 공식 과제로 합치면 먼저 온 색이 이기고 kept가 오른다', async () => {

@@ -1168,7 +1168,7 @@ async function main() {
     } finally { T9 = await toastRecStop(); }
     okq('C09b DB is_active=0', unitActive(O.twoId) === '0', String(unitActive(O.twoId)));
     okq('C09b 숨긴 조직이 직급·소속 목록에서 빠졌다(M4)', (await otRow(String(O.twoId))) === null);
-    okq('C09b 토스트 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(M4)', T9.some((t) => t[0] === '휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서' && t[1] === 'success'), JSON.stringify(T9));
+    okq('C09b 토스트 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(M4)', T9.some((t) => t[0] === '휴지통으로 옮겼습니다. 복구는 🗑 휴지통에서 할 수 있습니다' && t[1] === 'success'), JSON.stringify(T9));
     await openPeopleTrash();
     await trTab('unit');
     const tr9 = await trRow(String(O.twoId));

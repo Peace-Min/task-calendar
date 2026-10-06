@@ -78,8 +78,8 @@ const SEATED = {
 };
 //  ★ 2026-10-06(docs/ADMIN-HUB-4.md N2) — 사유 문장은 지금 숫자로 짓되 0 인 숫자는 빼고(「재직자 0명」은 이유가 아니다),
 //    「…가 있어 숨길 수 없습니다」 꼴이다. 줄 끝의 사용 개수 배지(N1)가 하던 일을 이 문장이 꺼진 [숨김]에서 한다.
-const TITLE_WHY = '재직자 3명이 있어 숨길 수 없습니다 — 먼저 직급을 바꾸세요';
-const UNIT_WHY = '하위 조직 2개가 있어 숨길 수 없습니다 — 먼저 옮기거나 숨기세요';
+const TITLE_WHY = '재직자 3명이 있어 숨길 수 없습니다. 먼저 직급을 바꾸세요';
+const UNIT_WHY = '하위 조직 2개가 있어 숨길 수 없습니다. 먼저 옮기거나 숨기세요';
 //  ★ <option> 안의 들여쓰기는 **줄바꿈 없는 공백**(U+00A0)이다 — 보통 공백은 목록에서 접혀 사라진다.
 const NB2 = '  ', NB4 = '    ';
 const ROOT_WHY = '최상위 조직은 숨길 수 없습니다';
@@ -736,8 +736,8 @@ if (!jsdom) {
 
   //  ★ 2026-10-02(M4) — 옛 변이(맨 위 한 줄 지우기)는 대상이 사라졌다. 같은 계약⑩ 을 '체크박스를 되살리면 운다'로 다시 건다.
   test('변이⑩-b: 「숨긴 값도 표시」 체크박스를 되살리면 계약⑩ 이 실패한다(숨긴 값이 다시 이 화면에 선다 · M4)', () => {
-    const bad = mutate(app, '      <div class="set-hint" id="otScope">—</div>',
-      '      <label class="check cust-showhidden"><input type="checkbox" id="otShowHidden"> 숨긴 값도 표시</label>\n      <div class="set-hint" id="otScope">—</div>');
+    const bad = mutate(app, '      <div class="set-hint" id="otScope">-</div>',
+      '      <label class="check cust-showhidden"><input type="checkbox" id="otShowHidden"> 숨긴 값도 표시</label>\n      <div class="set-hint" id="otScope">-</div>');
     assert.throws(() => checks.topIsCallersJob(bad), /되살아났다/);
     assert.doesNotThrow(() => checks.topIsCallersJob(app));   // 통제군
   });
@@ -789,7 +789,7 @@ if (!jsdom) {
   });
 
   test('변이⑤-b: 왕복 중 두 번째 클릭을 조용히 버리면 계약⑤-DOM 이 실패한다', async () => {
-    const bad = mutate(app, "  if(__otSaving){ toast('처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return null; }",
+    const bad = mutate(app, "  if(__otSaving){ toast('처리 중입니다. 잠시 후 다시 시도하세요', 'warn'); return null; }",
       '  if(__otSaving){ return null; }');
     await assert.rejects(() => dom.writeRoundTrip(bad), /두 번째 클릭이 조용히 버려졌다/);
     await dom.writeRoundTrip(app);   // 통제군

@@ -193,7 +193,7 @@ test('메일 복사: clipboard API 실패 시 execCommand 폴백이 있다(WebVi
 // ── ⑦ 도움말 정합(중복 제거) ───────────────────────────────────────────
 
 test('도움말 15번은 모달로 안내만 한다(메일·로그 문구를 복붙하지 않는다)', () => {
-  const s = src.indexOf('<h3>15. 문의 · 피드백</h3>');
+  const s = src.indexOf('<h3>15. 문의와 피드백</h3>');
   assert.ok(s >= 0, '도움말 15번 섹션을 찾지 못함');
   const sec = src.slice(s, src.indexOf('</section>', s));
   assert.ok(/문의<\/b>|<b>문의/.test(sec), '문의 버튼을 누르라는 안내가 없다');

@@ -304,7 +304,7 @@ if (!JSDOM) {
     assert.ok(!B.doc.querySelector('#pkBody .pk-open[data-login="phmin"]'), '나 자신이 목록에 있다');
     for (const id of ['s21', 'wblee']) assert.strictEqual(B.doc.querySelectorAll(`#pkBody .pk-open[data-login="${id}"]`).length, 1, '같은 사람 두 줄: ' + id);
     const h = [...B.doc.querySelectorAll('#pkBody .pk-sec-h')].pop();
-    assert.strictEqual(h.querySelector('span').textContent, '내 부서 · SW 2팀');
+    assert.strictEqual(h.querySelector('span').textContent, '내 부서: SW 2팀');
     assert.strictEqual(h.querySelector('.pk-cnt').textContent, '3명', 'N명 = 나를 뺀 직속 인원(위에 나온 사람 포함)');
     const more = h.querySelector('[data-act="goorg"]');
     assert.ok(more && more.textContent === '조직도에서 다른 부서 ›', '「조직도에서 다른 부서 ›」 링크가 없다');
@@ -487,7 +487,7 @@ if (!JSDOM) {
     assert.strictEqual(pw, 660);
     assert.ok(left >= 8 && left + pw <= hw - 8, `머리 폭(${hw}) 밖: left=${left} width=${pw}`);
     const me = rows(B, 'Unit').find((r) => r.id === 'wblee');
-    assert.ok(me && me.off && /· 보는 중/.test(me.text) && me.tip === '지금 보고 있는 사람입니다', JSON.stringify(me));
+    assert.ok(me && me.off && /이웅빈 선임 \(보는 중\)/.test(me.text) && me.tip === '지금 보고 있는 사람입니다', JSON.stringify(me));
     //  머리가 좁으면 그 폭 안으로 — 경계 밑이면 한 칸
     hw = 640; B.w.dispatchEvent(new B.w.Event('resize'));
     assert.strictEqual(viewOf(B), 'org-wide');

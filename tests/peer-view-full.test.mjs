@@ -181,7 +181,7 @@ const W = {
         assert.ok(at < 0 || g < at, `${fn} 의 PEER 관문이 ${touch} 보다 뒤에 있다 — 바꾼 뒤에 막으면 늦다`);
       }
     }
-    assert.ok(/if\(PEER\)\{ try\{ toast\('읽기 전용 보기입니다 — 여기서는 지울 수 없습니다'/.test(extractFunction(src, 'deleteEntry')),
+    assert.ok(/if\(PEER\)\{ try\{ toast\('읽기 전용 보기라 여기서는 지울 수 없습니다'/.test(extractFunction(src, 'deleteEntry')),
       'deleteEntry 의 PEER 관문이 사라졌다');
     const pro = extractFunction(src, 'peerReadOnly');
     assert.ok(/if\(!PEER\) return false;/.test(pro) && /return true;/.test(pro), 'peerReadOnly 가 PEER 에서만 참이 아니다');

@@ -1183,7 +1183,7 @@ const checks = {
     assert.ok(/__uaPendingData/.test(tog) && /uaFlushPending\(\)/.test(tog),
       'uaOrderToggle 이 미뤄 둔 갱신을 반영하지 않는다 — 편집을 끄면 그 사이의 진짜 변경이 사라진다');
     const bar = extractFunction(web, 'uaAdminBar');
-    assert.ok(/명부가 갱신되었습니다 — 순서 편집을 마치면 반영됩니다\./.test(bar),
+    assert.ok(/명부가 갱신되었습니다\. 순서 편집을 마치면 반영됩니다\./.test(bar),
       '미뤄 둔 갱신을 화면이 말하지 않는다 — 관리자는 자기 화면이 낡은 줄 모른 채 순서를 정한다');
   },
 
@@ -1205,7 +1205,7 @@ const checks = {
     //    체크·__uaInactive 는 새 값, 명부는 옛 것이 되어 다음 쓰기가 includeInactive 를 화면과 다르게 보낸다.
     assert.ok(/const prevInactive = __uaInactive;/.test(r) && /__uaInactive = prevInactive;/.test(r) && /cb\.checked = prevInactive;/.test(r),
       '조회가 실패했는데 「퇴사자 보기」를 요청 전 값으로 되돌리지 않는다 — 체크와 명부가 어긋난 채 남는다');
-    assert.ok(/불러오는 중입니다 — 잠시 후 다시 시도하세요/.test(bar), '되돌린 이유를 말하지 않는다 — 조용한 무시는 고장으로 읽힌다');
+    assert.ok(/불러오는 중입니다\. 잠시 후 다시 시도하세요/.test(bar), '되돌린 이유를 말하지 않는다 — 조용한 무시는 고장으로 읽힌다');
   },
 
   // ⑱ 폼의 드롭다운은 **모르는 값을 말없이 갈아치우지 않는다**(2026-09-10).
@@ -1218,7 +1218,7 @@ const checks = {
     const o = extractFunction(web, 'userEdOpen');
     assert.ok(/현재 값이 목록에 없습니다\(비활성 직급\/소속 등\)\. 그대로 두면 유지됩니다\./.test(o),
       'userEdOpen 이 "목록에 없는 값"을 안내하지 않는다 — 관리자는 왜 이상한 옵션이 있는지 모른다');
-    assert.ok(/직급 목록을 불러오지 못했습니다 — 명부를 새로고침하세요\./.test(o),
+    assert.ok(/직급 목록을 불러오지 못했습니다\. 명부를 새로고침하세요\./.test(o),
       '직급 목록이 비었을 때의 안내가 없다 — 다 채우고 [저장]에서야 막힌다');
     assert.ok(/if\(!__uaTitles\.length && sv\) sv\.disabled = true;/.test(o),
       '직급 목록이 비었는데 [저장]이 열려 있다 — 성립할 수 없는 저장을 권하는 셈이다');
@@ -1253,15 +1253,15 @@ const checks = {
   // ⑳ 머리줄의 인원 수는 **거짓말을 하지 않는다** — 검색 중이면 걸러진 수와 전체 수를 함께 낸다(2026-09-10).
   scopeCountIsHonest(web) {
     const a = extractFunction(web, 'uaApply');
-    assert.ok(/검색 결과 ' \+ rows\.length \+ '명 · 전체 ' \+ __uaMembers\.length \+ '명/.test(a),
+    assert.ok(/검색 결과 ' \+ rows\.length \+ '명, 전체 ' \+ __uaMembers\.length \+ '명/.test(a),
       "검색 중에도 '구성원 n명' 만 낸다 — 걸러진 수라서 명부가 줄어든 것처럼 읽힌다");
     assert.ok(/구성원 ' \+ rows\.length \+ '명/.test(a), "검색어가 없을 때의 문구('구성원 N명')가 사라졌다");
-    assert.ok(/퇴사자 포함/.test(a), "'· 퇴사자 포함' 꼬리가 사라졌다");
+    assert.ok(/', 퇴사자 포함'/.test(a), "', 퇴사자 포함' 꼬리가 사라졌다");
   },
 
   // ㉑ 열람 범위 문구는 **남의 폼에서도 맞아야** 한다 — 매핑표 한 벌을 두 화면이 함께 쓴다(2026-09-10).
   scopeTextIsNotFirstPerson(web) {
-    assert.ok(/unit_tree:'소속 조직 — 본인 부서와 하위'/.test(web),
+    assert.ok(/unit_tree:'소속 조직\(본인 부서와 하위\)'/.test(web),
       "US_VIEW_SCOPE 의 unit_tree 문구가 '본인 부서와 하위' 가 아니다");
     assert.ok(!/내 부서와 하위/.test(web),
       "1인칭 문구('내 부서와 하위')가 남아 있다 — 남의 권한을 고치는 폼에서 그 '나'는 누구인지 알 수 없다");
@@ -1678,7 +1678,7 @@ test("변이⑰-b: 못 시작한 두 사유를 한 false 로 뭉치면 계약⑰
 test('변이⑱: 끼워 넣은 옵션의 라벨을 지우면 계약⑱ 이 실패한다(무엇이 문제인지 화면이 말하지 않는다)', () => {
   //  ★ '갈아치우기'로 되돌리는 변이(const known = true)는 **형태로는 안 잡힌다** — 코드가 그대로 남고 안 돌 뿐이다.
   //    그건 DOM 쪽 변이(변이⑱-DOM)가 잡는다. 여기서는 형태가 실제로 잡는 자리를 흔든다.
-  const bad = mutate(app, "    o.value = want; o.textContent = want + ' — 목록에 없음';",
+  const bad = mutate(app, "    o.value = want; o.textContent = want + ' (목록에 없음)';",
     '    o.value = want; o.textContent = want;');
   assert.throws(() => checks.unknownValueIsKept(bad), /끼워 넣지 않는다/);
   assert.doesNotThrow(() => checks.unknownValueIsKept(app));   // 통제군
@@ -1699,14 +1699,14 @@ test('변이⑲: 퇴사 확인창이 입력칸의 이름을 쓰게 되돌리면 
 });
 
 test('변이⑳: 검색 중에도 걸러진 수만 내게 되돌리면 계약⑳ 이 실패한다', () => {
-  const bad = mutate(app, "  sc.textContent = (k ? ('검색 결과 ' + rows.length + '명 · 전체 ' + __uaMembers.length + '명')\n                      : ('구성원 ' + rows.length + '명'))",
+  const bad = mutate(app, "  sc.textContent = (k ? ('검색 결과 ' + rows.length + '명, 전체 ' + __uaMembers.length + '명')\n                      : ('구성원 ' + rows.length + '명'))",
     "  sc.textContent = ('구성원 ' + rows.length + '명')");
   assert.throws(() => checks.scopeCountIsHonest(bad), /'구성원 n명' 만 낸다/);
   assert.doesNotThrow(() => checks.scopeCountIsHonest(app));   // 통제군
 });
 
 test('변이㉑: 1인칭 문구로 되돌리면 계약㉑ 이 실패한다', () => {
-  const bad = mutate(app, "unit_tree:'소속 조직 — 본인 부서와 하위'", "unit_tree:'소속 조직 — 내 부서와 하위'");
+  const bad = mutate(app, "unit_tree:'소속 조직(본인 부서와 하위)'", "unit_tree:'소속 조직(내 부서와 하위)'");
   assert.throws(() => checks.scopeTextIsNotFirstPerson(bad), /'본인 부서와 하위' 가 아니다|1인칭 문구/);
   assert.doesNotThrow(() => checks.scopeTextIsNotFirstPerson(app));   // 통제군
 });
@@ -3238,7 +3238,7 @@ if (!jsdom) {
     assert.strictEqual(off.hint, false, '미뤄 둔 갱신이 없는데 안내가 떴다');
     const on = probePending(true);
     assert.strictEqual(on.hint, true, '미뤄 둔 갱신이 있는데 안내가 없다 — 관리자는 낡은 화면인 줄 모른다');
-    assert.ok(/명부가 갱신되었습니다 — 순서 편집을 마치면 반영됩니다\./.test(on.text),
+    assert.ok(/명부가 갱신되었습니다\. 순서 편집을 마치면 반영됩니다\./.test(on.text),
       `안내 문구가 계약과 다르다: ${JSON.stringify(on.text)}`);
   });
 
@@ -3603,7 +3603,7 @@ if (!jsdom) {
     assert.strictEqual(gone.value, '주임',
       `목록에 없는 값이 선택되지 않았다(실제: ${JSON.stringify(gone.value)}) — [저장]만 눌러도 직급이 바뀐다`);
     assert.strictEqual(gone.options[0].v, '주임', '끼워 넣은 옵션이 맨 위가 아니다');
-    assert.strictEqual(gone.options[0].t, '주임 — 목록에 없음', `끼워 넣은 옵션의 라벨이 다르다: ${JSON.stringify(gone.options[0].t)}`);
+    assert.strictEqual(gone.options[0].t, '주임 (목록에 없음)', `끼워 넣은 옵션의 라벨이 다르다: ${JSON.stringify(gone.options[0].t)}`);
     assert.strictEqual(gone.options[0].dis, false, '끼워 넣은 옵션이 disabled 다 — 그대로 두는 것이 기본값이라 고를 수 있어야 한다');
     //  ③ 빈 값 + 빈 옵션(소속 없음) — 끼워 넣지 않는다.
     const blank = probeFill([{ value: '3', label: 'SW 3팀' }], '', '(소속 없음)');
@@ -3623,10 +3623,10 @@ if (!jsdom) {
     const all = probeScope('', false);
     assert.strictEqual(all.scope, '구성원 3명', `검색어가 없을 때의 문구가 다르다: ${JSON.stringify(all.scope)}`);
     const inact = probeScope('', true);
-    assert.strictEqual(inact.scope, '구성원 3명 · 퇴사자 포함', `퇴사자 포함 꼬리가 다르다: ${JSON.stringify(inact.scope)}`);
+    assert.strictEqual(inact.scope, '구성원 3명, 퇴사자 포함', `퇴사자 포함 꼬리가 다르다: ${JSON.stringify(inact.scope)}`);
     const q = probeScope('zzU_a', false);
     assert.strictEqual(q.lines, 1, `검색이 1명으로 좁혀지지 않았다: ${q.lines}`);
-    assert.strictEqual(q.scope, '검색 결과 1명 · 전체 3명',
+    assert.strictEqual(q.scope, '검색 결과 1명, 전체 3명',
       `검색 중 머리줄이 계약과 다르다: ${JSON.stringify(q.scope)} — 걸러진 수만 내면 명부가 줄어든 것처럼 읽힌다`);
     //  비관리자에게는 인원 수 자체가 없다(그 화면에는 명부가 없다).
     assert.strictEqual(probeScope('', false, false).scope, '관리자만 사용할 수 있습니다.', '비관리자 머리줄이 안내가 아니다');

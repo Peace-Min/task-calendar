@@ -518,7 +518,7 @@ test('사용자 표기: DB에서 온 값은 textContent로만 넣는다(innerHTM
   const b = jsBody('updateUserUi');
   assert.ok(/textContent/.test(b), 'textContent를 쓰지 않는다');
   assert.ok(!/innerHTML/.test(b), 'DB 문자열을 innerHTML로 넣는다 — 이름·소속이 마크업으로 해석된다');
-  assert.ok(/'· 데스크톱 위젯 전용'/.test(b), '브라우저 단독 표기가 없다');
+  assert.ok(/'\(데스크톱 위젯 전용\)'/.test(b), '브라우저 단독 표기가 없다');
 });
 
 // ══ ⑪-B 편집 게이트는 '힌트'다 — 권한은 호스트가 판정한다 (§3.3) ══════
@@ -1075,7 +1075,7 @@ test('변이⑮②: #lgIdHint 를 지우면 idHint 가 실패한다', () => {
 });
 
 test('변이⑮②-b: 안내에서 「이메일」을 빼면 idHint 가 실패한다', () => {
-  const bad = lgMutate(src, '이메일 주소가 아닙니다 — 주간보고 로그인에 쓰는 <b>ID</b>를 입력하세요.',
+  const bad = lgMutate(src, '이메일 주소가 아닙니다. 주간보고 로그인에 쓰는 <b>ID</b>를 입력하세요.',
                             '주간보고 로그인에 쓰는 <b>ID</b>를 입력하세요.');
   assert.throws(() => lgChecks.idHint(bad), /'이메일'을 명시하지 않는다/);
 });

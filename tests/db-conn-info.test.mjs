@@ -223,7 +223,7 @@ test('변이②: 설정 오픈에서 dbInfoGet 요청을 지우면 webRequestsOn
 });
 
 test('변이③: __dbInfo 가 innerHTML 로 쓰면 textContentOnly 가 실패한다', () => {
-  const bad = mutate(src, "if(p) p.textContent = port || '—';", "if(p) p.innerHTML = port || '—';");
+  const bad = mutate(src, "if(p) p.textContent = port || '-';", "if(p) p.innerHTML = port || '-';");
   assert.throws(() => checks.textContentOnly(bad), /HTML 주입 API/);
 });
 
@@ -238,7 +238,7 @@ test('변이⑤: payload 에서 host 를 빼면 payloadHasHostPortOnly 가 실�
 });
 
 test('변이⑥: 표시 전용 박스에 입력칸이 생기면 readOnlyBox 가 실패한다', () => {
-  const bad = mutate(src, '<div class="set-hint" id="dbHost" style="margin:0">—</div>',
+  const bad = mutate(src, '<div class="set-hint" id="dbHost" style="margin:0">-</div>',
     '<input type="text" id="dbHost" class="set-in">');
   assert.throws(() => checks.readOnlyBox(bad), /<input> 이 생겼다/);
 });
@@ -303,7 +303,7 @@ if (!JSDOM) {
       w.eval('openSettings()');   // 던지면 여기서 실패한다(브라우저 단독 회귀 방지)
       assert.strictEqual(dbHost().textContent, '데스크톱 위젯 전용',
         'HOST=false 인데 서버 주소가 대체 표기로 바뀌지 않았다');
-      assert.strictEqual(dbPort().textContent, '—', 'HOST=false 인데 포트가 비워지지 않았다');
+      assert.strictEqual(dbPort().textContent, '-', 'HOST=false 인데 포트가 비워지지 않았다');
       // 섹션 자체는 위젯 전용이라 감춰지는 기존 관례도 그대로여야 한다.
       assert.strictEqual(w.document.getElementById('dbSection').style.display, 'none',
         '#dbSection 이 브라우저에서 감춰지지 않는다(기존 관례)');
@@ -337,11 +337,11 @@ if (!JSDOM) {
 
     test('DB접속정보(jsdom): 값이 비면 —(빈 표시)로 남는다', () => {
       w.eval('window.__dbInfo({})');
-      assert.strictEqual(dbHost().textContent, '—');
-      assert.strictEqual(dbPort().textContent, '—');
+      assert.strictEqual(dbHost().textContent, '-');
+      assert.strictEqual(dbPort().textContent, '-');
       w.eval('window.__dbInfo(null)');
-      assert.strictEqual(dbHost().textContent, '—', 'null 페이로드에서 던지거나 주소가 오염됐다');
-      assert.strictEqual(dbPort().textContent, '—', 'null 페이로드에서 던지거나 포트가 오염됐다');
+      assert.strictEqual(dbHost().textContent, '-', 'null 페이로드에서 던지거나 주소가 오염됐다');
+      assert.strictEqual(dbPort().textContent, '-', 'null 페이로드에서 던지거나 포트가 오염됐다');
     });
   }
 }

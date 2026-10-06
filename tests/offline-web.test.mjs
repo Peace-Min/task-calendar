@@ -621,9 +621,9 @@ if (!JSDOM) {
   // ── 「사용자 정보」 DB 한 줄 · 배지 방향 · 보고 기록 실패 ──
   test('표시①: 「사용자 정보」 DB 한 줄 — 연결됨(db@host) / 연결 끊김 / 접근 거부를 실시간으로', () => withBoot(src, async (W) => {
     W.applyState(DATA, { ...META, db: 'taskcalendar', host: '10.0.0.5' });
-    assert.strictEqual(W.ev('usDbLineText(__bootMeta)'), '캘린더 DB(taskcalendar@10.0.0.5) 연결됨 · 스키마 v12 · rev 1');
+    assert.strictEqual(W.ev('usDbLineText(__bootMeta)'), '캘린더 DB(taskcalendar@10.0.0.5) 연결됨, 스키마 v12, rev 1');
     W.ev("__dbConnLost({ kind:'network' })");
-    assert.strictEqual(W.text('usDbLine'), '캘린더 DB 연결 끊김 — 다시 연결을 시도하는 중', '끊겼는데 「사용자 정보」가 여전히 연결됨이라고 말한다');
+    assert.strictEqual(W.text('usDbLine'), '캘린더 DB 연결이 끊겨 다시 연결을 시도하는 중', '끊겼는데 「사용자 정보」가 여전히 연결됨이라고 말한다');
     W.ev("conn = 'denied';");
     assert.strictEqual(W.ev('usDbLineText(__bootMeta)'), '캘린더 DB 접근 거부');
     W.ev("conn = 'ok';");
@@ -631,7 +631,7 @@ if (!JSDOM) {
   }));
   test('표시②: 불일치 배지 방향 — 서버가 낮으면 「서버 DB 업데이트 필요(관리자)」, 높으면 「위젯 업데이트 필요」(S7)', () => withBoot(src, async (W) => {
     W.call('renderDataSourceBadge', { schemaMismatch: true, schemaVersion: '11', expectedSchema: '12', rev: 3 });
-    assert.ok(/^서버 DB 업데이트 필요\(관리자\) · 서버 v11 · 위젯 v12/.test(W.text('dsBadge')), W.text('dsBadge'));
+    assert.ok(/^서버 DB 업데이트 필요\(관리자\), 서버 v11, 위젯 v12/.test(W.text('dsBadge')), W.text('dsBadge'));
     assert.ok(!/위젯 업데이트 필요/.test(W.text('dsBadge')), '서버가 낮은데 위젯을 업데이트하라고 한다');
     W.call('renderDataSourceBadge', { schemaMismatch: true, schemaVersion: '13', expectedSchema: '12', rev: 3 });
     assert.ok(/위젯 업데이트 필요/.test(W.text('dsBadge')) && !/서버 DB 업데이트/.test(W.text('dsBadge')), W.text('dsBadge'));

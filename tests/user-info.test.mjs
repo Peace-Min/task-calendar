@@ -308,7 +308,7 @@ const checks = {
     assert.ok(/usRoleText\(US_EDIT_ROLE/.test(b) && /usRoleText\(US_VIEW_SCOPE/.test(b),
       '권한 렌더가 매핑을 거치지 않는다 — DB 코드값이 그대로 화면에 뜬다');
     assert.ok(/확인할 수 없음/.test(b), '조회 실패에 값을 남겨 둔다 — 낡거나 지어낸 권한을 보이면 안 된다');
-    assert.ok(/계정 비활성 — 편집 불가/.test(b), 'is_active=0 을 편집 가능처럼 보여준다');
+    assert.ok(/계정 비활성이라 편집 불가/.test(b), 'is_active=0 을 편집 가능처럼 보여준다');
     assert.ok(/__usPermBusy/.test(b), '재진입 가드가 없다 — 오픈과 [지금 새로고침]이 겹치면 늦은 회신이 이긴다');
   },
 
@@ -380,11 +380,11 @@ const checks = {
   // ⑰ 문구는 단축형이다 — 한 줄에 안 들어가면 되접혀서 2줄로 줄인 의미가 사라진다.
   permShortLabels(source) {
     const edit = constObj(source, 'US_EDIT_ROLE');
-    for (const [k, ko] of [['admin', '관리자 — 추가·수정·삭제'], ['editor', '편집자 — 추가·수정'], ['viewer', '열람자 — 조회만']]) {
+    for (const [k, ko] of [['admin', '관리자(추가, 수정, 삭제)'], ['editor', '편집자(추가, 수정)'], ['viewer', '열람자(조회만)']]) {
       assert.ok(edit.includes(k + ":'" + ko + "'"), `edit_role 의 ${k} 문구가 단축형이 아니다(기대: ${ko})`);
     }
     const view = constObj(source, 'US_VIEW_SCOPE');
-    for (const [k, ko] of [['all', '전체 — 모든 구성원'], ['unit_tree', '소속 조직 — 본인 부서와 하위'], ['self', '본인만']]) {
+    for (const [k, ko] of [['all', '전체(모든 구성원)'], ['unit_tree', '소속 조직(본인 부서와 하위)'], ['self', '본인만']]) {
       assert.ok(view.includes(k + ":'" + ko + "'"), `view_scope 의 ${k} 문구가 다르다(기대: ${ko})`);
     }
     for (const old of ['과제 추가·수정·삭제 가능', '과제 추가·수정 가능', '조회만 가능']) {
@@ -569,7 +569,7 @@ const checks = {
       "옛 '열람 범위 밖입니다' 안내가 남아 있다 — 이제 트리에 범위 밖 노드가 없다");
     assert.ok(!/u\.allowed/.test(b), 'renderUnitTree 가 아직 u.allowed 를 읽는다 — 호스트는 그 키를 보내지 않는다');
     // 내 소속 표시는 유지 — 트리에서 나를 못 찾으면 탐색의 기준점이 사라진다.
-    assert.ok(/classList\.add\('is-mine'\)/.test(b) && /· 내 소속/.test(b),
+    assert.ok(/classList\.add\('is-mine'\)/.test(b) && /' \(내 소속\)'/.test(b),
       '.is-mine(「· 내 소속」) 표시가 함께 사라졌다 — 그건 범위와 무관한 표시다');
     // 프로그램 호출로도 막지 않는다 — 막을 개념 자체가 없다.
     const s = jsBody(source, 'mbSelect');
@@ -685,12 +685,12 @@ const checks = {
       '누를 수 없는 행 판정이 「나 이거나 일정을 볼 수 없거나」가 아니다 — 하나만 보면 한쪽이 반드시 틀린다');
     assert.ok(/plain \?\s*'mb-row'\s*:\s*'mb-row is-link'/.test(b),
       '누를 수 없는 행에 is-link 가 붙는다(조건이 뒤집혔거나 전원 같은 클래스다)');
-    assert.ok(/if\(isMe\)\{[\s\S]{0,200}' · 나'/.test(b),
+    assert.ok(/if\(isMe\)\{[\s\S]{0,200}' \(나\)'/.test(b),
       "내 행에만 붙는 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다");
-    assert.ok(/s\.className = 'git-opt';\s*s\.textContent = ' · 나'/.test(b),
+    assert.ok(/s\.className = 'git-opt';\s*s\.textContent = ' \(나\)'/.test(b),
       '「· 나」가 별도 span.git-opt 가 아니다 — 맨 텍스트로 섞으면 이름과 한 덩어리가 돼 색·굵기를 나눌 수 없다');
     // 권한 없는 남의 행에는 꼬리표를 달지 않는다 — 그냥 안 눌리는 줄이다(꼬리표 자리는 「· 나」 하나뿐).
-    const tails = [...b.matchAll(/textContent = ' · ([^'+]+)';/g)].map((m) => m[1]);
+    const tails = [...b.matchAll(/textContent = ' \(([^'+)]+)\)';/g)].map((m) => m[1]);
     assert.deepStrictEqual(tails, ['나'], `행 꼬리표가 「· 나」 하나가 아니다: ${tails.join(',')}`);
   },
 
@@ -848,7 +848,7 @@ const checks = {
     const b = jsBody(source, 'renderMembers');
     assert.ok(/links\+\+/.test(b) && /links > 0/.test(b),
       "누를 수 있는 행 수(links)로 판단하지 않는다 — 전체 행 수로 세면 아무도 못 누를 때도 예고가 뜬다");
-    assert.ok(/명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다/.test(b),
+    assert.ok(/일정 열람 권한이 없어 명부만 볼 수 있습니다/.test(b),
       '누를 행이 0개일 때의 문구가 없다 — 「누르면 볼 수 있습니다」를 그대로 두면 거짓말이다');
     assert.ok(!/toggle\('hidden',\s*links === 0\)/.test(b),
       '누를 행이 0개라고 예고 줄을 감춘다 — 감추지 말고 왜 안 눌리는지 말해야 한다');
@@ -1139,12 +1139,12 @@ test('변이⑨-b: 호스트 case 를 지우면 hostReadPath 가 실패한다', 
 });
 
 test('변이⑩: 권한 매핑에서 viewer 를 빼면 permMapping 이 실패한다', () => {
-  const bad = mutate(src, ", viewer:'열람자 — 조회만' }", ' }');
+  const bad = mutate(src, ", viewer:'열람자(조회만)' }", ' }');
   assert.throws(() => checks.permMapping(bad), /viewer → 열람자 가 없다/);
 });
 
 test('변이⑩-b: usRoleText 가 원시 코드값을 그대로 돌려주면 permMapping 이 실패한다', () => {
-  const bad = mutate(src, "function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return map[k] || (k ? k + ' — 알 수 없는 값' : '—'); }",
+  const bad = mutate(src, "function usRoleText(map, v){ const k = String(v == null ? '' : v).trim(); return map[k] || (k ? k + ' (알 수 없는 값)' : '-'); }",
                           "function usRoleText(map, v){ return String(v == null ? '' : v).trim(); }");
   assert.throws(() => checks.permMapping(bad), /매핑표를 보지 않는다/);
 });
@@ -1171,13 +1171,13 @@ test('변이⑮: .us-kv 를 1열로 되돌리면 permTwoRows 가 실패한다', 
 });
 
 test('변이⑯: dl 안에 맨 텍스트를 섞으면 permKvElementsOnly 가 실패한다', () => {
-  const bad = mutate(src, '          <dt>열람 범위</dt><dd id="usViewScope">—</dd>\n',
-                          '          <dt>열람 범위</dt><dd id="usViewScope">—</dd>\n          (표시 전용)\n');
+  const bad = mutate(src, '          <dt>열람 범위</dt><dd id="usViewScope">-</dd>\n',
+                          '          <dt>열람 범위</dt><dd id="usViewScope">-</dd>\n          (표시 전용)\n');
   assert.throws(() => checks.permKvElementsOnly(bad), /dt\/dd 아닌 내용이 있다/);
 });
 
 test('변이⑰: 권한 문구를 옛 긴 문장으로 되돌리면 permShortLabels 가 실패한다', () => {
-  const bad = mutate(src, "viewer:'열람자 — 조회만' }", "viewer:'열람자 — 조회만 가능' }");
+  const bad = mutate(src, "viewer:'열람자(조회만)' }", "viewer:'열람자(조회만 가능)' }");
   assert.throws(() => checks.permShortLabels(bad), /단축형이 아니다|옛 긴 문구가 남아 있다/);
 });
 
@@ -1198,8 +1198,8 @@ test('변이⑳: 가짜 표본을 되살리면 noPreviewSample 이 실패한다'
 });
 
 test('변이㉑: renderMembers 가 이름을 innerHTML 로 넣으면 membersNoHtmlInjection 이 실패한다', () => {
-  const bad = mutate(src, "nm.textContent = (m && m.name) ? String(m.name) : '—';",
-                          "nm.innerHTML = (m && m.name) ? String(m.name) : '—';");
+  const bad = mutate(src, "nm.textContent = (m && m.name) ? String(m.name) : '-';",
+                          "nm.innerHTML = (m && m.name) ? String(m.name) : '-';");
   assert.throws(() => checks.membersNoHtmlInjection(bad), /HTML 주입 API/);
 });
 
@@ -1324,7 +1324,7 @@ test('변이㊺-b: 기본 선택을 옛 허용 집합 규칙으로 되돌리면 
 });
 
 test('변이㉚: openMembers 가 받아 둔 명부를 재사용하면 membersRefetchOnOpen 이 실패한다', () => {
-  const guard = "  if(__mbBusy){ toast('불러오는 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드";
+  const guard = "  if(__mbBusy){ toast('불러오는 중입니다. 잠시 후 다시 시도하세요', 'warn'); return; }   // 재진입 가드";
   const bad = mutate(src, guard, "  if(__mbMembers.length){ openModal('#membersModal'); return; }\n" + guard);
   assert.throws(() => checks.membersRefetchOnOpen(bad), /캐시\) — 인사이동이 반영되지 않는다/);
 });
@@ -1356,9 +1356,9 @@ test('변이㉜-d: 내 행 판정을 상수로 굳히면(isMe=false) membersRowL
 });
 
 test('변이㉜-e: 권한 없는 남의 행에 꼬리표를 달면 membersRowLinkRule 이 실패한다', () => {
-  const bad = mutate(src, "    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 나'; head.appendChild(s); }",
-                          "    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 나'; head.appendChild(s); }\n" +
-                          "    else if(!canView){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' · 권한 없음'; head.appendChild(s); }");
+  const bad = mutate(src, "    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' (나)'; head.appendChild(s); }",
+                          "    if(isMe){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' (나)'; head.appendChild(s); }\n" +
+                          "    else if(!canView){ const s = document.createElement('span'); s.className = 'git-opt'; s.textContent = ' (권한 없음)'; head.appendChild(s); }");
   assert.throws(() => checks.membersRowLinkRule(bad), /행 꼬리표가 「· 나」 하나가 아니다/);
 });
 
@@ -1440,7 +1440,7 @@ test('변이㊱: 누를 행이 0개일 때 #mbSoon 을 감추면(옛 규칙) mem
 });
 
 test('변이㊱-b: 권한 없음 문구를 빼면 membersSoonHint 가 실패한다', () => {
-  const bad = mutate(src, "        soon.textContent = '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다';",
+  const bad = mutate(src, "        soon.textContent = '일정 열람 권한이 없어 명부만 볼 수 있습니다';",
                           "        soon.textContent = '사람을 누르면 그 사람 일정을 볼 수 있습니다';");
   assert.throws(() => checks.membersSoonHint(bad), /누를 행이 0개일 때의 문구가 없다/);
 });
@@ -1465,8 +1465,8 @@ test('변이㊲-c: 실패 경로가 신원을 지우면 identityLiveFromInfo 가
 });
 
 test('변이㊲-d: 조회 결과를 currentUser 에 대입하면 identityLiveFromInfo 가 실패한다(§2.5)', () => {
-  const bad = mutate(src, "    set('usName', inf.name || (currentUser && currentUser.loginId) || '—');",
-                          "    currentUser.orgUnit = inf.org_unit;\n    set('usName', inf.name || (currentUser && currentUser.loginId) || '—');");
+  const bad = mutate(src, "    set('usName', inf.name || (currentUser && currentUser.loginId) || '-');",
+                          "    currentUser.orgUnit = inf.org_unit;\n    set('usName', inf.name || (currentUser && currentUser.loginId) || '-');");
   assert.throws(() => checks.identityLiveFromInfo(bad), /currentUser 에 대입한다/);
 });
 
@@ -1485,8 +1485,8 @@ test('변이㊲-f: 세션을 다시 쓰게 하는 호스트 요청을 붙이면 
 });
 
 test('변이㊲-g: 신원을 innerHTML 로 칠하면 identityLiveFromInfo 가 실패한다', () => {
-  const bad = mutate(src, "    set('usTitle', inf.title ? '· ' + inf.title : '');",
-                          "    document.getElementById('usTitle').innerHTML = inf.title ? '· ' + inf.title : '';");
+  const bad = mutate(src, "    set('usTitle', inf.title ? inf.title : '');",
+                          "    document.getElementById('usTitle').innerHTML = inf.title ? inf.title : '';");
   assert.throws(() => checks.identityLiveFromInfo(bad), /HTML 주입 API/);
 });
 
@@ -1545,8 +1545,8 @@ test('변이㊵-c: renderMembers 가 문구를 갈아끼우지 않으면 members
 });
 
 test('변이㊶: 범위 줄 앞머리를 「열람 범위:」로 되돌리면 membersScopeLineSchedulePrefix 가 실패한다', () => {
-  const bad = mutate(src, "  set('mbScope', '일정 열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');",
-                          "  set('mbScope', '열람 범위: ' + (__mbScopeText || '—') + where + rows.length + '명');");
+  const bad = mutate(src, "  set('mbScope', '일정 열람 범위: ' + (__mbScopeText || '-') + where + rows.length + '명');",
+                          "  set('mbScope', '열람 범위: ' + (__mbScopeText || '-') + where + rows.length + '명');");
   assert.throws(() => checks.membersScopeLineSchedulePrefix(bad), /「일정 열람 범위:」로 시작하지 않는다/);
 });
 
@@ -1603,9 +1603,9 @@ if (!JSDOM) {
       w.eval('openUserInfo()');   // 던지면 여기서 실패한다
       assert.ok(!w.document.getElementById('userModal').classList.contains('hidden'), '모달이 열리지 않았다');
       assert.strictEqual(txt('usName'), '이현진');
-      assert.strictEqual(txt('usTitle'), '· 책임연구원');
+      assert.strictEqual(txt('usTitle'), '책임연구원');
       assert.strictEqual(txt('usOrg'), '개발1팀');
-      assert.strictEqual(txt('usState'), '· 로그인됨');
+      assert.strictEqual(txt('usState'), '(로그인됨)');
       assert.ok(!w.document.getElementById('usLogout').classList.contains('hidden'), '로그인 상태인데 로그아웃 버튼이 감춰졌다');
     });
 
@@ -1626,16 +1626,16 @@ if (!JSDOM) {
       reply({ ok: true, info: { found: true, edit_role: 'admin', view_scope: 'all', is_active: 0 } });
       await w.eval('loadUserPerm()');
       assert.ok(/관리자/.test(txt('usEditRole')), '역할 문장이 사라졌다');
-      assert.ok(/계정 비활성 — 편집 불가/.test(txt('usEditRole')), '비활성인데 편집 가능한 것처럼 보인다');
-      assert.strictEqual(txt('usPermState'), '· 비활성 계정');
+      assert.ok(/계정 비활성이라 편집 불가/.test(txt('usEditRole')), '비활성인데 편집 가능한 것처럼 보인다');
+      assert.strictEqual(txt('usPermState'), '(비활성 계정)');
     });
 
     test('사용자정보(jsdom): 모르는 코드값은 감추지 않고 단서를 남긴다', async () => {
       login();
       reply({ ok: true, info: { found: true, edit_role: 'superuser', view_scope: 'team', is_active: 1 } });
       await w.eval('loadUserPerm()');
-      assert.ok(/superuser — 알 수 없는 값/.test(txt('usEditRole')), `모르는 역할을 조용히 삼켰다: ${txt('usEditRole')}`);
-      assert.ok(/team — 알 수 없는 값/.test(txt('usViewScope')), `모르는 범위를 조용히 삼켰다: ${txt('usViewScope')}`);
+      assert.ok(/superuser \(알 수 없는 값\)/.test(txt('usEditRole')), `모르는 역할을 조용히 삼켰다: ${txt('usEditRole')}`);
+      assert.ok(/team \(알 수 없는 값\)/.test(txt('usViewScope')), `모르는 범위를 조용히 삼켰다: ${txt('usViewScope')}`);
     });
 
     test('사용자정보(jsdom): 조회 실패는 「확인할 수 없음」 + 호스트 사유 — 추측하지 않는다', async () => {
@@ -1665,7 +1665,7 @@ if (!JSDOM) {
       await w.eval('loadUserPerm()');
       assert.strictEqual(txt('usOrg'), '기술개발총괄',
         '소속이 로그인 시점 값에 굳었다 — 바로 아래 「열람 범위」만 최신이라 한 모달이 두 시점을 말한다');
-      assert.strictEqual(txt('usTitle'), '· 수석연구원', '직급도 최신값이어야 한다(같은 회신에 들어 있다)');
+      assert.strictEqual(txt('usTitle'), '수석연구원', '직급도 최신값이어야 한다(같은 회신에 들어 있다)');
       assert.strictEqual(txt('usName'), '이현진');
       assert.ok(/소속 조직/.test(txt('usViewScope')), '전제: 권한도 같은 회신으로 함께 갱신된다');
       // ★ 화면만 최신이다. 세션을 여기서 갱신하면 로그아웃과 경합해 삭제된 세션이 되살아난다(USER-LOGIN §2.5).
@@ -1680,7 +1680,7 @@ if (!JSDOM) {
       reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
       await w.eval('loadUserPerm()');
       assert.strictEqual(txt('usName'), '이현진', '조회에 실패했다고 이름을 지웠다 — 오프라인에서도 이름은 보여야 한다');
-      assert.strictEqual(txt('usTitle'), '· 책임연구원', '조회 실패가 직급을 지웠다');
+      assert.strictEqual(txt('usTitle'), '책임연구원', '조회 실패가 직급을 지웠다');
       assert.strictEqual(txt('usOrg'), 'SW 3팀', '조회 실패가 소속을 지웠다');
       assert.strictEqual(txt('usEditRole'), '확인할 수 없음', '전제: 권한만 「모른다」고 말한다');
       assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.', '전제: 사유는 권한 블록에 있다');
@@ -1727,7 +1727,7 @@ if (!JSDOM) {
 
     test('사용자정보(jsdom): 미로그인이면 신원·권한 구획과 로그아웃이 모두 감춰진다', () => {
       w.eval('currentUser = null; updateUserUi();');
-      assert.strictEqual(txt('usState'), '· 로그인 필요');
+      assert.strictEqual(txt('usState'), '(로그인 필요)');
       for (const id of ['usInfoBlock', 'usPermSec', 'usLogout']) {
         assert.ok(w.document.getElementById(id).classList.contains('hidden'), `#${id} 가 미로그인 상태에서 노출된다`);
       }
@@ -1809,7 +1809,7 @@ if (!JSDOM) {
       assert.strictEqual(linkRows().length, 0, 'self 인데 누를 수 있는 행이 있다 — 일정 열람 범위가 비어 있다');
       assert.ok(!w.document.getElementById('mbSoon').classList.contains('hidden'),
         '누를 행이 0개라고 안내를 감췄다 — 왜 안 눌리는지 알 수 없다');
-      assert.strictEqual(soonText(), '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다',
+      assert.strictEqual(soonText(), '일정 열람 권한이 없어 명부만 볼 수 있습니다',
         `누를 행이 0개인데 「누르면 볼 수 있습니다」가 남았다(거짓말이다): ${soonText()}`);
       assert.ok(/^일정 열람 범위: 본인만/.test(txt('mbScope')), `범위 줄이 다르다: ${txt('mbScope')}`);
       assert.ok(/기술개발총괄 89명/.test(txt('mbScope')), `범위 줄에 선택 조직·인원이 없다: ${txt('mbScope')}`);
@@ -1828,7 +1828,7 @@ if (!JSDOM) {
       assert.ok(node('기술개발총괄').classList.contains('sel'), '루트가 기본 선택이 아니다');
       assert.strictEqual(node('기술개발총괄').getAttribute('aria-current'), 'true', '선택 노드에 aria-current 가 없다');
       assert.ok(node('SW개발본부').classList.contains('is-mine'), '내 소속에 .is-mine 이 없다');
-      assert.ok(/· 내 소속/.test(node('SW개발본부').textContent), '「· 내 소속」 꼬리표가 없다');
+      assert.ok(/ \(내 소속\)/.test(node('SW개발본부').textContent), '「· 내 소속」 꼬리표가 없다');
       assert.ok(node('SW개발본부').querySelector('span.git-opt'), '꼬리표가 별도 요소가 아니다 — 맨 텍스트로 섞였다');
       assert.strictEqual(rows(), 89, `명부 전원 89행이 아니다: ${rows()}`);
       assert.strictEqual(linkRows().length, 43, `SW 서브트리 43명만 눌려야 한다: ${linkRows().length}`);
@@ -1836,7 +1836,7 @@ if (!JSDOM) {
       const outside = [...w.document.querySelectorAll('#mbList .mb-row')].find((r) => /시스템 1팀/.test(r.textContent));
       assert.ok(outside, '일정 열람 범위 밖 사람이 명부에서 빠졌다 — 명부는 전원이다');
       assert.strictEqual(outside.tagName, 'DIV', '일정을 볼 수 없는 사람의 행이 눌린다');
-      assert.ok(!/· 나/.test(outside.textContent), '남의 행에 꼬리표가 붙었다 — 그냥 안 눌리는 줄이어야 한다');
+      assert.ok(!/\(나\)/.test(outside.textContent), '남의 행에 꼬리표가 붙었다 — 그냥 안 눌리는 줄이어야 한다');
       assert.ok(/읽기 전용/.test(soonText()), `누를 행이 43개인데 예고가 없다: ${soonText()}`);
       assert.ok(/^일정 열람 범위: 소속 조직/.test(txt('mbScope')), `범위 줄 앞머리가 다르다: ${txt('mbScope')}`);
     });
@@ -1848,7 +1848,7 @@ if (!JSDOM) {
       assert.ok(!node('기술개발총괄').classList.contains('sel'), '이전 선택이 남아 있다 — 선택이 둘로 보인다');
       assert.strictEqual(rows(), 24, `시스템개발본부 서브트리 24명이 아니다: ${rows()}`);
       assert.strictEqual(linkRows().length, 0, '일정 열람 범위 밖인데 눌리는 행이 있다');
-      assert.strictEqual(soonText(), '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다',
+      assert.strictEqual(soonText(), '일정 열람 권한이 없어 명부만 볼 수 있습니다',
         `아무도 못 누르는데 안내가 그대로다: ${soonText()}`);
       assert.ok(/시스템개발본부 24명/.test(txt('mbScope')), `범위 줄이 따라오지 않았다: ${txt('mbScope')}`);
       // 내 서브트리로 돌아오면 누를 수 있는 행도 예고 문구도 돌아온다.
@@ -1891,7 +1891,7 @@ if (!JSDOM) {
       assert.strictEqual(rows(), 89, `전원 89명이 보이지 않는다: ${rows()}`);
       assert.strictEqual(nodes().filter((b) => b.disabled).length, 0, 'all 인데 눌리지 않는 노드가 있다');
       assert.strictEqual(linkRows().length, 88, `본인 1행을 뺀 88명이 눌려야 한다: ${linkRows().length}`);
-      const mine = [...w.document.querySelectorAll('#mbList .mb-row')].find((r) => /· 나/.test(r.textContent));
+      const mine = [...w.document.querySelectorAll('#mbList .mb-row')].find((r) => / \(나\)/.test(r.textContent));
       assert.ok(mine, '내 행에 「· 나」 꼬리표가 없다');
       assert.strictEqual(mine.tagName, 'DIV',
         '내 행이 버튼이다 — canViewSchedule 이 true 여도 내 캘린더로 가는 링크는 의미가 없다');
@@ -1975,18 +1975,18 @@ if (!JSDOM) {
       assert.strictEqual(mine.tagName, 'DIV',
         '내 행이 버튼이다 — canViewSchedule 이 true 여도 이미 보고 있는 캘린더로 가는 링크는 의미가 없다');
       assert.ok(!mine.classList.contains('is-link'), '내 행에 is-link 가 붙었다');
-      assert.ok(/· 나/.test(mine.textContent), '내 행에 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다');
+      assert.ok(/ \(나\)/.test(mine.textContent), '내 행에 「· 나」 꼬리표가 없다 — 왜 이 행만 안 눌리는지 알 수 없다');
       assert.ok(mine.querySelector('span.git-opt'), '「· 나」가 별도 요소가 아니다 — 맨 텍스트로 섞였다');
       // ② 볼 수 있는 남 — 진짜 버튼이다.
       assert.strictEqual(viewable.tagName, 'BUTTON', '볼 수 있는 남의 행이 <button> 이 아니다 — 키보드로 닿지 않는다');
       assert.strictEqual(viewable.getAttribute('type'), 'button', 'type="button" 이 아니다');
       assert.ok(viewable.classList.contains('is-link'), '볼 수 있는 남의 행에 is-link 가 없다');
-      assert.ok(!/· 나/.test(viewable.textContent), '남의 행에 「· 나」가 붙었다');
+      assert.ok(!/\(나\)/.test(viewable.textContent), '남의 행에 「· 나」가 붙었다');
       // ③ 못 보는 남 — 명부엔 있되 꼬리표 없이 그냥 안 눌리는 줄이다.
       assert.strictEqual(hidden.tagName, 'DIV', '일정을 볼 수 없는 남의 행이 눌린다 — 눌러도 열 것이 없다');
       assert.ok(!hidden.classList.contains('is-link'), '일정을 볼 수 없는 행에 is-link 가 붙었다');
       assert.ok(/차은우/.test(hidden.textContent), '일정을 볼 수 없는 사람이 명부에서 빠졌다 — 명부는 전원이다');
-      assert.ok(!/· /.test(hidden.textContent.replace(' · 책임연구원', '')),
+      assert.ok(!/ \(/.test(hidden.textContent.replace(' 책임연구원', '')),
         '못 보는 행에 별도 꼬리표가 붙었다 — 꼬리표 자리는 「· 나」 하나뿐이다');
       assert.ok(!w.document.getElementById('mbSoon').classList.contains('hidden'),
         '누를 수 있는 행이 1개인데 열람 예고가 감춰졌다');
@@ -2029,7 +2029,7 @@ if (!JSDOM) {
         '소속이 없는데 「· 내 소속」이 붙은 노드가 있다');
       assert.strictEqual(rows(), 89, `명부 전원 89행이 아니다: ${rows()}`);
       assert.strictEqual(linkRows().length, 0, '일정 열람 가능 유닛이 없는데 눌리는 행이 있다');
-      assert.strictEqual(soonText(), '명부만 볼 수 있습니다 — 일정 열람 권한이 없습니다',
+      assert.strictEqual(soonText(), '일정 열람 권한이 없어 명부만 볼 수 있습니다',
         `왜 아무도 못 누르는지 말하지 않는다: ${soonText()}`);
       assert.ok(w.document.getElementById('mbEmpty').classList.contains('hidden'), '89행인데 빈 안내가 떴다');
       assert.ok(/^일정 열람 범위: 소속 조직/.test(txt('mbScope')), `범위 줄이 다르다: ${txt('mbScope')}`);

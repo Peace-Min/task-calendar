@@ -329,7 +329,7 @@ if (!JSDOM) {
     type(B, '이 웅');
     let r = sec(B, 'Result');
     assert.deepStrictEqual(r.map((x) => x.id), ['wblee']);
-    assert.ok(/이웅빈 · 선임/.test(r[0].text) && /SW 2팀/.test(r[0].text), r[0].text);
+    assert.ok(/이웅빈 선임/.test(r[0].text) && /SW 2팀/.test(r[0].text), r[0].text);
     assert.strictEqual(r[0].star, 'false:☆');
     type(B, 'sw 1');
     assert.deepStrictEqual(sec(B, 'Result').map((x) => x.id), ['ihyoon'], '조직으로 못 찾는다');
@@ -343,7 +343,7 @@ if (!JSDOM) {
   test('(R2) 20행 제한: 30명이 맞으면 20행 + 「10명 더 — 이름을 더 입력하세요」', () => {
     type(B, '시험팀');
     assert.strictEqual(sec(B, 'Result').length, 20);
-    assert.ok(notes(B).includes('10명 더 — 이름을 더 입력하세요'), notes(B).join('|'));
+    assert.ok(notes(B).includes('10명 더 있습니다. 이름을 더 입력하세요'), notes(B).join('|'));
   });
 
   test('(R2) 범위 밖: 회색(aria-disabled) · 툴팁 「일정 열람 범위 밖입니다」 · 눌러도 무반응(조회 0 · 팝오버 그대로)', async () => {
@@ -525,7 +525,7 @@ if (!JSDOM) {
     await openTop(B);
     const f = sec(B, 'Fav'), r = sec(B, 'Recent');
     assert.deepStrictEqual(f.map((x) => [x.id, x.off, x.del]), [['gone1', true, true], ['wblee', false, false]]);
-    assert.ok(/퇴사자 · 명부에 없음/.test(f[0].text), f[0].text);
+    assert.ok(/퇴사자 \(명부에 없음\)/.test(f[0].text), f[0].text);
     assert.deepStrictEqual(r.map((x) => [x.id, x.off, x.del]), [['gone2', true, true]]);
     B.ev('__calls.length = 0');
     openBtn(B, 'gone1').click();
@@ -554,7 +554,7 @@ if (!JSDOM) {
     assert.ok(!pop(B).hasAttribute('inert') && !pop(B).hasAttribute('aria-hidden'), '모달 안 팝오버에 inert/aria-hidden 이 남았다 — 실 위젯에서 검색 칸이 포커스를 못 받는다');
     const rec = sec(B, 'Recent');
     assert.deepStrictEqual(rec.map((x) => x.id), ['wblee', 'ihyoon'], '최근 목록(방금 연 이웅빈 + 윤인환)');
-    assert.ok(rec[0].off && /· 보는 중/.test(rec[0].text) && rec[0].tip === '지금 보고 있는 사람입니다', JSON.stringify(rec[0]));
+    assert.ok(rec[0].off && /이웅빈 선임 \(보는 중\)/.test(rec[0].text) && rec[0].tip === '지금 보고 있는 사람입니다', JSON.stringify(rec[0]));
     B.ev('__calls.length = 0');
     openBtn(B, 'wblee').click();
     assert.deepStrictEqual(calls(B), [], '보는 중인 사람을 다시 열었다');

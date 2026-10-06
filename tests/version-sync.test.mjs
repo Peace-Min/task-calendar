@@ -96,15 +96,15 @@ const checks = {
   //    안 하면 모달이 **두 버전을 동시에 '현재'** 라고 말한다 — 사용자가 어느 쪽을 믿나.
   currentMarkerIsUnique(s) {
     const block = patchModalBlock(s.html);
-    const nowCount = (block.match(/· 현재/g) || []).length;
+    const nowCount = (block.match(/ \(현재\)/g) || []).length;
     assert.strictEqual(nowCount, 1,
-      `#patchModal 의 '· 현재' 가 ${nowCount}개다 — 정확히 1개여야 한다(직전 버전에서 떼지 않았다)`);
+      `#patchModal 의 '(현재)' 가 ${nowCount}개다 — 정확히 1개여야 한다(직전 버전에서 떼지 않았다)`);
     const notOld = (block.match(/<span class="pv-tag">/g) || []).length;
     assert.strictEqual(notOld, 1,
       `#patchModal 에서 old 가 아닌 pv-tag 가 ${notOld}개다 — 정확히 1개여야 한다(직전 버전을 old 로 강등하지 않았다)`);
     // 그 하나가 같은 patch-ver 줄 안에 있어야 한다(최신 pv-tag 와 '· 현재' 가 다른 절로 흩어지면 안 된다).
-    const line = /<div class="patch-ver"><span class="pv-tag">v[^<]*<\/span><span class="pv-date">[^<]*· 현재<\/span><\/div>/.exec(block);
-    assert.ok(line, "최신 절의 pv-tag 와 '· 현재' 가 같은 patch-ver 줄에 있지 않다");
+    const line = /<div class="patch-ver"><span class="pv-tag">v[^<]*<\/span><span class="pv-date">[^<]* \(현재\)<\/span><\/div>/.exec(block);
+    assert.ok(line, "최신 절의 pv-tag 와 '(현재)' 가 같은 patch-ver 줄에 있지 않다");
   },
 };
 
@@ -178,9 +178,9 @@ test('변이①-g: 버전을 적는 자리 자체가 사라져도 운다(값 비
 test("변이②: 직전 버전에서 '· 현재' 를 떼지 않으면 계약② 가 실패한다", () => {
   const first = /<span class="pv-tag old">v[^<]*<\/span><span class="pv-date">([^<]*)<\/span>/.exec(html);
   assert.ok(first, '직전(old) 절을 찾지 못했다 — 변이 준비 실패');
-  const bad = mutate(html, first[0], first[0].replace(first[1], first[1] + ' · 현재'));
+  const bad = mutate(html, first[0], first[0].replace(first[1], first[1] + ' (현재)'));
   assert.doesNotThrow(() => checks.currentMarkerIsUnique(ALL), '원본은 통과해야 한다');
-  assert.throws(() => checks.currentMarkerIsUnique({ html: bad }), /'· 현재' 가 2개다/);
+  assert.throws(() => checks.currentMarkerIsUnique({ html: bad }), /'\(현재\)' 가 2개다/);
 });
 
 test('변이②-b: 직전 버전을 old 로 강등하지 않으면 계약② 가 실패한다', () => {

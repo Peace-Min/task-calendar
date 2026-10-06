@@ -389,10 +389,10 @@ const checks = {
     //  ★ 2026-09-18 — 문이 그 화면으로 옮겨 온 뒤로는 **어느 화면의 휴지통인지**까지 말한다.
     //    과제 숨김은 바로 그 화면에서 일어나므로 '이 화면의', 발주처·구분·상태는 다른 모달에서
     //    일어나므로 '공식 과제 화면의' 다 — 「휴지통」이라고만 하면 어디로 가야 하는지 다시 물어야 한다.
-    assert.ok(/숨긴 과제는 이 화면의 「🗑 휴지통」에서 복구하거나 영구 삭제할 수 있습니다/.test(extractFunction(web, 'offHideProject')),
+    assert.ok(/숨긴 과제는 이 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다/.test(extractFunction(web, 'offHideProject')),
       '과제 숨김 확인창이 **이 화면의** 「🗑 휴지통」을 가리키지 않는다 — 숨긴 과제를 다시 볼 곳이 화면 어디에도 안내되지 않는다');
     for (const fn of ['custDoHide', 'codeDoHide']) {
-      assert.ok(/숨긴 항목은 공식 과제 화면의 「🗑 휴지통」에서/.test(extractFunction(web, fn)),
+      assert.ok(/숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서/.test(extractFunction(web, fn)),
         `${fn} 의 확인창이 **공식 과제 화면의** 「🗑 휴지통」을 가리키지 않는다 — 발주처·구분·상태도 같은 곳에서 복구·삭제한다`);
     }
   },
@@ -411,7 +411,7 @@ test('계약⑦-d: 렌더는 보던 자리·쥔 버튼을 지키고, 맨 위는 
 test('계약⑧: 빈 탭 문구는 탭 표가 지고 조사는 받침이 정한다(「이(가)」 병기 없음)', () => checks.emptyTextJosa(app));
 
 test('변이⑦-b: 진행 중 클릭을 조용히 버리게 되돌리면 계약⑦-b 가 실패한다', () => {
-  const bad = mutate(app, "  if(__trSaving){ toast('이전 요청을 처리 중입니다 — 잠시 후 다시 시도하세요', 'warn'); return null; }",
+  const bad = mutate(app, "  if(__trSaving){ toast('이전 요청을 처리 중입니다. 잠시 후 다시 시도하세요', 'warn'); return null; }",
     '  if(__trSaving) return null;');
   assert.throws(() => checks.writeRoundTrip(bad), /중복 전송 가드가 없다|조용히 버린다/);
   assert.doesNotThrow(() => checks.writeRoundTrip(app));   // 통제군
@@ -1117,20 +1117,20 @@ if (!jsdom) {
     const u = probeScopeDoor(PAYLOAD, 'user');
     assert.deepStrictEqual(u.tabs.map((t) => t.kind), ['user', 'title', 'unit'],
       `사람 쪽 문의 탭 구성이 계약과 다르다: ${JSON.stringify(u.tabs.map((t) => t.kind))} — 구성원 · 직급 · 소속(M3 · N6)`);
-    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/[0-9—]+$/, '')), ['구성원', '직급', '소속'],
+    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/[0-9-]+$/, '')), ['구성원', '직급', '소속'],
       `사람 쪽 탭 이름이 다르다: ${JSON.stringify(u.tabs.map((t) => t.text))}`);
-    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/^\D+/, '') || t.text.slice(-1)), [String(PAYLOAD.users.length), '—', '—'],
+    assert.deepStrictEqual(u.tabs.map((t) => t.text.replace(/^\D+/, '') || t.text.slice(-1)), [String(PAYLOAD.users.length), '-', '-'],
       `받기 전의 소속·직급 건수가 '—' 가 아니다(0 은 '없다'로 읽힌다): ${JSON.stringify(u.tabs.map((t) => t.text))}`);
     assert.strictEqual(u.tabsRole, 'tablist', '탭이 셋인데 #trTabs 가 tablist 가 아니다');
     assert.strictEqual(u.listRole, 'tabpanel', '탭이 셋인데 #trList 가 tabpanel 이 아니다');
     assert.strictEqual(u.tabsClass, 'tabs', '사람 쪽 탭 줄이 기존 탭 컨트롤(.tabs)을 쓰지 않는다');
     assert.ok(!p.note && p.noteHidden, `과제 쪽 탭에 안내 한 줄이 섰다: ${JSON.stringify(p.note)} — 그 줄은 사람 휴지통의 것이다`);
-    assert.ok(!u.noteHidden && /퇴사 처리한 구성원 — 복구하면 다시 로그인·명부 대상이 됩니다/.test(u.note),
+    assert.ok(!u.noteHidden && /퇴사 처리한 구성원입니다\. 복구하면 다시 로그인·명부 대상이 됩니다/.test(u.note),
       `구성원 탭 안내 한 줄이 계약과 다르다: ${JSON.stringify(u.note)}(M3)`);
     assert.strictEqual(u.lines, PAYLOAD.users.length,
       `퇴사자 쪽 문에 행이 ${u.lines}개다(${PAYLOAD.users.length}개여야 한다) — 목록은 그대로 그린다`);
-    assert.ok(u.scope.startsWith('퇴사 처리한 구성원 ' + PAYLOAD.users.length + '명 · 숨긴 직급 …개 · 숨긴 소속 …개'),
-      `사람 쪽 부제가 '퇴사 처리한 구성원 N명 · 숨긴 직급 …개 · 숨긴 소속 …개' 가 아니다: ${JSON.stringify(u.scope)} — 무엇을 보고 있는지 화면이 말해야 한다`);
+    assert.ok(u.scope.startsWith('퇴사 처리한 구성원 ' + PAYLOAD.users.length + '명, 숨긴 직급 …개, 숨긴 소속 …개'),
+      `사람 쪽 부제가 '퇴사 처리한 구성원 N명, 숨긴 직급 …개, 숨긴 소속 …개' 가 아니다: ${JSON.stringify(u.scope)} — 무엇을 보고 있는지 화면이 말해야 한다`);
     //  '무엇을 지울 수 있는가'는 부제에서 구성원 탭의 안내 한 줄로 옮겼다(M3 — 소속·직급 탭에는 영구 삭제가 없다).
     assert.ok(/기록이 0건인 계정만 영구 삭제할 수 있습니다/.test(u.note),
       `구성원 탭 안내가 '무엇을 지울 수 있는가'를 말하지 않는다: ${JSON.stringify(u.note)}`);
@@ -1176,7 +1176,7 @@ if (!jsdom) {
       '버튼이 호스트가 준 key 를 그대로 달고 있지 않다 — 이름으로 잡으면 동명·한글 이스케이프에서 갈린다');
     assert.deepStrictEqual(r.ops.map((o) => o.disabled), [false, false, false, false],
       '과제는 참조가 있어도 지울 수 있다(설계 §2) — 그런데 버튼이 꺼져 있다');
-    assert.strictEqual(r.scope, '숨긴 항목 ' + TOTAL + '건 · 되돌릴 수 없는 삭제는 이름을 입력해야 합니다',
+    assert.strictEqual(r.scope, '숨긴 항목 ' + TOTAL + '건. 되돌릴 수 없는 삭제는 이름을 입력해야 합니다',
       `부제가 계약과 다르다: ${JSON.stringify(r.scope)}`);
     //  참조 요약은 종류마다 다른 문장이고, 0 이면 아예 내지 않는다.
     assert.ok(/편입 2건/.test(r.text), `과제 행에 '편입 2건' 이 없다: ${JSON.stringify(r.text.slice(0, 120))}`);

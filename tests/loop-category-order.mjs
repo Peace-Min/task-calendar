@@ -413,7 +413,7 @@ async function main() {
   ok('C2 목록 행 순서 = state.categories', same(await domOrder(), EXPECT));
   const e1 = await endsDisabled();
   ok('C2 첫 행 ▲ · 마지막 행 ▼ = aria-disabled + 이유 툴팁 · 그 밖은 켜짐(N3)', !!e1 && e1.firstUp && e1.lastDown && e1.midOk, JSON.stringify(e1));
-  ok('C2 aria-live 낭독 「<과제명> — N번째에서 N-1번째로 옮겼습니다」', (await live()) === `${lastName} — ${n}번째에서 ${n - 1}번째로 옮겼습니다`, await live());
+  ok('C2 aria-live 낭독 「<과제명> — N번째에서 N-1번째로 옮겼습니다」', (await live()) === `${lastName}: ${n}번째에서 ${n - 1}번째로 옮겼습니다`, await live());
   ok('C2 ▲▼ 가 줄 오른쪽(건수 뒤 · 수정 앞)의 .code-ord 다(직급·소속 줄과 같은 컴포넌트 · N3)', await cdp.ev(`(function(){ const r = document.querySelector('#catList .cat-row');
     const o = r && r.querySelector('.code-ord'), c = r && r.querySelector('.cat-count'), e = r && r.querySelector('[data-act="edit"]');
     return !!(o && c && e) && !!(c.compareDocumentPosition(o) & 4) && !!(o.compareDocumentPosition(e) & 4) && o.querySelectorAll('.btn.sm').length === 2; })()`));

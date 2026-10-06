@@ -381,10 +381,10 @@ if (!JSDOM) {
     test('(jsdom) R5: 「시간 겹침」 배지는 겹친 두 카드에만 — 상대 시간이 함께 · 종일/다른 시간은 없음', () => {
       const b = P.evJSON('Array.prototype.map.call(document.querySelectorAll("#dpBody .card"), function(c){ var x = c.querySelector(".ovl-badge"); return [c.dataset.id, x ? x.textContent.trim() : null, x ? x.getAttribute("title") : null]; })');
       const by = Object.fromEntries(b.map(([id, t, ti]) => [id, { t, ti }]));
-      assert.ok(by['p-10'].t && by['p-10'].t.includes('시간 겹침') && by['p-10'].t.includes('10:30–11:30'),
+      assert.ok(by['p-10'].t && by['p-10'].t.includes('시간 겹침') && by['p-10'].t.includes('10:30~11:30'),
         '상대 카드 배지에 겹친 내 시간이 없다: ' + by['p-10'].t);
       assert.ok(by['p-10'].ti.includes('내 일정과 시간이 겹칩니다') && by['p-10'].ti.includes('나: 회의 준비'), by['p-10'].ti);
-      assert.ok(by['m-1030'].t && by['m-1030'].t.includes('10:00–11:00'), '내 카드 배지에 겹친 상대 시간이 없다: ' + by['m-1030'].t);
+      assert.ok(by['m-1030'].t && by['m-1030'].t.includes('10:00~11:00'), '내 카드 배지에 겹친 상대 시간이 없다: ' + by['m-1030'].t);
       assert.ok(by['m-1030'].ti.includes('홍길동 님 일정과 시간이 겹칩니다'), by['m-1030'].ti);
       for (const id of ['p-all', 'p-14', 'm-all']) assert.strictEqual(by[id].t, null, `${id} 에 겹침 배지가 붙었다`);
       P.ev('selectedDate = "2026-09-09"; renderAll();');

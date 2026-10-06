@@ -173,7 +173,7 @@ const statics = {
     const ex = fnBody(app, 'openExportModal');
     assert.ok(/for\(const c of state\.categories\)/.test(ex) && !/\.sort\(/.test(ex), '내보내기 과제 선택이 state.categories 순서가 아니다');
     //  새 기록·빠른 추가·검색은 모두 fillCatSelect 를 쓴다(따로 만들면 그쪽이 낡는다)
-    for (const sel of ["fillCatSelect($('#fCat'))", "fillCatSelect($('#qaCat'), '과제 없음')", "fillCatSelect($('#sCatSelect'), '— 과제를 선택하세요 —')"]) {
+    for (const sel of ["fillCatSelect($('#fCat'))", "fillCatSelect($('#qaCat'), '과제 없음')", "fillCatSelect($('#sCatSelect'), '과제를 선택하세요')"]) {
       assert.ok(app.includes(sel), `${sel} 이 사라졌다 — 그 선택 상자가 따로 순서를 만든다`);
     }
   },
@@ -387,7 +387,7 @@ if (!JSDOM) {
         assert.strictEqual(W.w.document.activeElement, upNode, '한 칸 옮긴 뒤 포커스가 옮겨진 행의 ▲ 에 있지 않다(R3)');
         assert.strictEqual(W.row('c-c'), rowNode, '옮길 때 목록을 새로 만들었다 — 스크롤·포커스가 날아간다(R3)');
         assert.strictEqual(W.w.document.getElementById('catList'), listNode);
-        assert.strictEqual(W.w.document.getElementById('catLive').textContent, '감마 — 3번째에서 2번째로 옮겼습니다', 'aria-live 낭독이 없다(N3 — 유지)');
+        assert.strictEqual(W.w.document.getElementById('catLive').textContent, '감마: 3번째에서 2번째로 옮겼습니다', 'aria-live 낭독이 없다(N3 — 유지)');
         //  끝에 닿아 ▲ 가 꺼지면 같은 행의 ▼ 로 물러난다(body 로 떨어지지 않는다)
         await press(W, 'c-c', 'up');
         const af = W.w.document.activeElement;

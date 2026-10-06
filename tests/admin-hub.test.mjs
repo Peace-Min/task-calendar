@@ -66,8 +66,8 @@ const S = {
     assert.match(m, /<div class="ah-seg" id="ahSeg" role="tablist" aria-label="관리 묶음">/, '묶음 버튼 줄이 tablist 가 아니다(H1)');
     const tabs = [...m.matchAll(/<button type="button" role="tab" id="(\w+)" data-ahgrp="(\w+)"[^>]*>([\s\S]*?)<\/button>/g)];
     assert.deepStrictEqual(tabs.map((t) => t[2]), ['people', 'proj'], '묶음 버튼은 사람 · 회사 과제 둘이다');
-    assert.ok(/👥[\s\S]*사람[\s\S]*직원 · 조직 · 직급/.test(tabs[0][3]), '👥 사람(직원 · 조직 · 직급)');
-    assert.ok(/📁[\s\S]*회사 과제[\s\S]*공식 과제 원본\(DB\) · 기준 정보/.test(tabs[1][3]), '📁 회사 과제(공식 과제 원본(DB) · 기준 정보)');
+    assert.ok(/👥[\s\S]*사람[\s\S]*직원, 조직, 직급/.test(tabs[0][3]), '👥 사람(직원, 조직, 직급)');
+    assert.ok(/📁[\s\S]*회사 과제[\s\S]*공식 과제 원본\(DB\)과 기준 정보/.test(tabs[1][3]), '📁 회사 과제(공식 과제 원본(DB)과 기준 정보)');
     const items = [...m.matchAll(/data-ahitem="(\w+)"[^>]*><span class="ah-ic" aria-hidden="true">([^<]+)<\/span>([^<]+)<span class="ah-n" id="ahN\1"><\/span>/g)]
       .map((x) => [x[1], x[2], x[3]]);
     //  ★ 2026-10-02(ADMIN-HUB-3 M2·M3) — 두 휴지통의 이름은 「🗑 휴지통」 하나다(예전: 「🚪 퇴사자」 · 「🗑 삭제된 항목」).
@@ -126,10 +126,10 @@ const S = {
       '도킹 창의 × · [닫기] 가 남는다 — 관리 화면의 ✕ 하나가 대신한다');
   },
   rename(src) {
-    assert.match(src, /<button class="btn icon has-label" id="btnCatsTop" title="내 과제 — [^"]+" aria-label="내 과제">🏷️<\/button>/, '툴바 버튼(H10)');
+    assert.match(src, /<button class="btn icon has-label" id="btnCatsTop" title="내 과제: [^"]+" aria-label="내 과제">🏷️<\/button>/, '툴바 버튼(H10)');
     assert.match(src, /set\('btnCatsTop', label\(ICON\.tag, '내 과제'\)\);/, '툴바 라벨(applyIcons)');
     assert.match(src, /<button id="btnCatsFold">내 과제<\/button>/, '⋯ 접기 항목');
-    assert.match(src, /<h2>🏷️ 내 과제<\/h2><span class="cat-sub">내 캘린더에서 쓰는 과제 — 색 · 순서 · 버전관리 연동<\/span>/, '모달 제목 + 부제');
+    assert.match(src, /<h2>🏷️ 내 과제<\/h2><span class="cat-sub">내 캘린더에서 쓰는 과제\(색, 순서, 버전관리 연동\)<\/span>/, '모달 제목 + 부제');
     //  사용자에게 보이는 문자열에 옛 이름이 남지 않는다 — 패치노트(역사 기록)·주석은 제외.
     const ps = src.indexOf('<div class="overlay hidden" id="patchModal">'), pe = src.indexOf('<div class="overlay hidden" id="updNotesModal">');
     assert.ok(ps > 0 && pe > ps, '패치노트 경계');
@@ -319,7 +319,7 @@ if (!JSDOM) {
     await reset(B);
     await openHub(B, 'members');
     assert.strictEqual(isOpen(B, 'adminHub'), true);
-    assert.strictEqual($(B, '#ahWho').textContent, '관리자 · 박현민');
+    assert.strictEqual($(B, '#ahWho').textContent, '관리자 박현민');
     assert.strictEqual(segOn(B), 'people');
     assert.strictEqual($(B, '#ahGrpPeople').getAttribute('aria-selected'), 'true');
     assert.strictEqual($(B, '#ahGrpProj').getAttribute('aria-selected'), 'false');
@@ -560,7 +560,7 @@ if (!JSDOM) {
       assert.strictEqual(B.doc.getElementById(id), null, `사용자 정보에 #${id} 가 남았다(J5)`);
     }
     for (const id of ['usInfoBlock', 'usPermSec', 'usEditRole', 'usViewScope', 'usPermReload', 'usLogout']) assert.ok(B.doc.getElementById(id), `#${id} 가 사라졌다 — 계정·권한·로그아웃은 그대로`);
-    assert.strictEqual(B.doc.getElementById('usEditRole').textContent, '관리자 — 추가·수정·삭제');
+    assert.strictEqual(B.doc.getElementById('usEditRole').textContent, '관리자(추가, 수정, 삭제)');
     assert.strictEqual(LS(B, 'tc_adminSeen:phmin'), '1', '권한 회신이 입구 판정에 반영되지 않았다');
     B.ev("closeModal('#userModal')"); await settle(FADE);
     await openMore(B);

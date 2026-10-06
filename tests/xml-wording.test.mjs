@@ -24,5 +24,5 @@ test('XML 문구②: XML 을 저장 수단·백업처럼 말하는 문장이 없
   }
   assert.ok(visible.includes('<div class="help-row">데이터는 서버에 자동 저장됩니다</div>'), '⋯ 메뉴 끝 줄이 「데이터는 서버에 자동 저장됩니다」가 아니다');
   assert.ok(/데이터는 <b>서버에 자동 저장<\/b>됩니다/.test(visible) && /회사 서버에 자동 저장<\/b>됩니다/.test(visible), '도움말·사용설명서가 서버 자동 저장을 말하지 않는다');
-  assert.ok(/card\(ICON\.download, '데이터 · 사본', '데이터는 서버에 자동 저장됩니다\./.test(visible), '도움말 카드가 서버 자동 저장을 말하지 않는다');
+  assert.ok(/card\(ICON\.download, '데이터와 사본', '데이터는 서버에 자동 저장됩니다\./.test(visible), '도움말 카드가 서버 자동 저장을 말하지 않는다');
 });

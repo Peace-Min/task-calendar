@@ -76,7 +76,7 @@ const PROMPT_FNS = ['maybeAskLegacyImport', 'showLegacyPrompt', 'legacyPromptImp
 //  (적용은 사용자가 누르는 legacyPromptImport 한 곳뿐이다 — 2026-10-01 바로 교체)
 const ASK_ONLY_FNS = PROMPT_FNS.filter((f) => f !== 'legacyPromptImport');
 //  성공 토스트 — 결정 문구(2026-10-01)
-const OK_TOAST = (c, e, t) => `이전 기록을 가져왔습니다 — 과제 ${c}개 · 기록 ${e}개 · 할 일 ${t}개`;
+const OK_TOAST = (c, e, t) => `이전 기록을 가져왔습니다. 과제 ${c}개, 기록 ${e}개, 할 일 ${t}개`;
 const SANDBOX_FNS = ['calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
   'legacyPromptDismissed', 'legacyTimeText', 'legacySizeText', 'maybeAskLegacyImport', 'showLegacyPrompt',
   'legacyPromptImport', 'legacyPromptNever', 'renderEmptyHint', 'renderDataSourceBadge', 'usDbLineText',
@@ -363,7 +363,7 @@ const checks = {
       '순서가 어긋났다 — 해석 → 빈 캘린더 재확인 → pendingImport → 교체 여야 한다');
     assert.strictEqual((imp.match(/showImportPreview\(/g) || []).length, 1,
       '미리보기는 「비어 있지 않을 때」 한 곳에서만 연다 — 빈 캘린더 경로에서 두 번째 창을 띄우지 않는다');
-    assert.ok(imp.includes('saved.then(ok => { if(ok) toast(`이전 기록을 가져왔습니다 — 과제 ${nc}개 · 기록 ${ne}개 · 할 일 ${nt}개`); });'),
+    assert.ok(imp.includes('saved.then(ok => { if(ok) toast(`이전 기록을 가져왔습니다. 과제 ${nc}개, 기록 ${ne}개, 할 일 ${nt}개`); });'),
       '성공 토스트가 저장이 들어간 뒤(ok) 한 번이 아니거나 문구가 결정과 다르다');
     //  applyImport 쪽: quiet 이면 자기 토스트를 끄고, 저장 결과를 돌려준다
     const ap = fnBody(src, 'applyImport');
@@ -554,7 +554,7 @@ const checks = {
     assert.ok(/usDbLineText\(__bootMeta\)/.test(u) && /set\('usDbLine', dbl\)/.test(u),
       'updateUserUi 가 DB 한 줄을 채우지 않는다(값은 textContent 로)');
     const s = sandbox(src);
-    assert.strictEqual(s.ctx.usDbLineText({ schemaVersion: '12', rev: 5, canWrite: true }), '캘린더 DB 연결됨 · 스키마 v12 · rev 5');
+    assert.strictEqual(s.ctx.usDbLineText({ schemaVersion: '12', rev: 5, canWrite: true }), '캘린더 DB 연결됨, 스키마 v12, rev 5');
     assert.strictEqual(s.ctx.usDbLineText(null), '', '부팅 meta 가 없는데 연결됨이라고 말한다');
   },
 
@@ -562,9 +562,9 @@ const checks = {
   modalMarkup(src) {
     const md = markupBlock(src, '<div class="overlay hidden" id="legacyModal">', '<!-- ===== 확인 모달');
     assert.ok(md.includes('<h2>이전 버전 기록을 찾았습니다</h2>'), '제목이 다르다');
-    assert.ok(md.includes('이 PC에 이전 버전(XML 저장)에서 쓰던 기록 파일이 있습니다. 「가져오기」를 누르면 이 파일의 기록으로 캘린더를 채우고, 원본 파일은 이름 끝에 「.migrated-날짜」가 붙어 그대로 보관됩니다.'),
+    assert.ok(md.includes("이 PC에 이전 버전(XML 저장)에서 쓰던 기록 파일이 있습니다. '가져오기'를 누르면 이 파일의 기록으로 캘린더를 채우고, 원본 파일은 이름 끝에 '.migrated-날짜'가 붙어 그대로 보관됩니다."),
       '안내 문장이 결정 문구(2026-10-01)와 다르다');
-    assert.ok(!/「교체」|병합/.test(md), '물음 창이 아직 병합/교체 고르기를 말한다 — 이 창의 「가져오기」는 바로 교체다');
+    assert.ok(!/'교체'|「교체」|병합/.test(md), '물음 창이 아직 병합/교체 고르기를 말한다 — 이 창의 「가져오기」는 바로 교체다');
     //  세 버튼의 순서: 다시 묻지 않기 · 나중에 · 가져오기
     const iN = md.indexOf('id="btnLegacyNever"'), iL = md.indexOf('data-close>나중에<'), iI = md.indexOf('id="btnLegacyImport"');
     assert.ok(iN > 0 && iN < iL && iL < iI, '버튼 순서가 다시 묻지 않기 · 나중에 · 가져오기 가 아니다');
@@ -579,7 +579,7 @@ const checks = {
     assert.ok(/legacyTimeText\(p\.mtime\)/.test(show) && /legacySizeText\(p\.size\)/.test(show), '시각·크기를 보여 주지 않는다');
     const s = sandbox(src);
     assert.match(s.ctx.legacyTimeText('2026-09-01T00:00:00Z'), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, '시각이 YYYY-MM-DD HH:mm 이 아니다');
-    assert.strictEqual(s.ctx.legacyTimeText('nope'), '—');
+    assert.strictEqual(s.ctx.legacyTimeText('nope'), '-');
     assert.strictEqual(s.ctx.legacySizeText(2048), '2 KB');
   },
 };
@@ -850,7 +850,7 @@ if (!JSDOM) {
         await settle();
         assert.strictEqual(W.reqs('replaceAllState').length, 1, '교체 저장이 나가지 않았다(시험 전제)');
         assert.ok(!W.toasts().some((x) => /이전 기록을 가져왔습니다/.test(x.toast)), '저장이 실패했는데 성공 토스트가 떴다');
-        assert.ok(W.toasts().some((x) => x.kind === 'error' && /저장 실패 — 쓰기 거부/.test(x.toast)), '저장 실패를 기존 실패 처리가 알리지 않았다');
+        assert.ok(W.toasts().some((x) => x.kind === 'error' && /저장 실패: 쓰기 거부/.test(x.toast)), '저장 실패를 기존 실패 처리가 알리지 않았다');
       } finally { W.close(); }
     },
     //  누른 순간 비어 있지 않다 → 지우지 않고 늘 쓰던 미리보기(병합/교체)로
