@@ -470,7 +470,8 @@ if (!JSDOM) {
     await openHub(B, null);
     assert.strictEqual(navOn(B), 'members', '다른 계정이 phmin 의 기억을 이어받았다');
     B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE);
-    B.ev(`currentUser = ${JSON.stringify(ME)};`);
+    //  ★ 계정을 되돌리면 관리자 여부도 그 계정 것으로 다시 알린다 — 관리 화면은 이번 실행에서 관리자로 확인된 계정에만 열린다(2026-10-06 관문).
+    B.ev(`currentUser = ${JSON.stringify(ME)}; ahNoteRole(true);`);
     //  이상값 → 구성원 · 묶음 키 이상값 → 그 묶음 첫 항목
     B.w.localStorage.setItem('tc_adminLast:phmin', 'zz<script>');
     B.w.localStorage.setItem('tc_adminLast:phmin:proj', 'members');

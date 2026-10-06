@@ -2285,15 +2285,16 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <button id="btnUpdateCheck">업데이트 확인</button>
         <button id="btnRooms">회의실 관리</button>
         <hr>
-        <button id="btnExport">XML 내보내기</button>
-        <button id="btnImport">XML 가져오기…</button>
+        <!-- XML 은 저장소가 아니라 **사본**이다(2026-10-06) — 데이터는 서버 DB 에 자동 저장된다. 이름이 역할을 말하게 한다(id·배선은 그대로). -->
+        <button id="btnExport">XML로 내보내기 (내 PC 사본)</button>
+        <button id="btnImport">XML 가져오기… (이전 기록)</button>
         <button id="btnExportResearch">과제 데이터 내보내기…</button>
         <button id="btnClear" class="danger">전체 데이터 초기화</button>
         <hr>
         <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>날짜 더블클릭 — 새 기록</div>
         <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M8 9l-3 3 3 3M16 9l3 3-3 3"/></svg>기록 드래그 — 다른 날짜로 이동</div>
         <div class="help-row"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7.5 14h9"/></svg>←/→ 월 이동 · Home 오늘 · Esc 닫기</div>
-        <div class="help-row">데이터는 자동 저장 · 백업은 XML 내보내기</div>
+        <div class="help-row">데이터는 서버에 자동 저장됩니다</div>
       </div>
     </div>
 <!-- 앱의 1차 목적(일간/주간 보고 작성)의 단일 진입점. 전 폭에서 노출한다 —
@@ -3153,7 +3154,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <ul>
           <li><b>내 과제</b>(헤더): 과제 추가·이름·색상·Git 경로 설정</li>
           <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, ‘맨 앞에 띄우기’(다른 창 위에 크게) 지원</li>
-          <li>데이터는 <b>자동 저장</b>. 백업·이전은 ⋯ 메뉴의 <b>XML 내보내기/가져오기</b></li>
+          <li>데이터는 <b>서버에 자동 저장</b>됩니다. 내 PC에 사본을 남기거나 이전 버전 기록을 옮길 때는 ⋯ 메뉴의 <b>XML로 내보내기 / XML 가져오기</b></li>
         </ul>
       </section>
       <section class="help-sec">
@@ -3502,7 +3503,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <button type="button" data-goto="g-hours">시간(공수)</button>
         <button type="button" data-goto="g-theme">테마</button>
         <button type="button" data-goto="g-window">창 모드</button>
-        <button type="button" data-goto="g-data">데이터·백업</button>
+        <button type="button" data-goto="g-data">데이터·사본</button>
         <button type="button" data-goto="g-keys">단축키</button>
         <button type="button" data-goto="g-feedback">문의·피드백</button>
       </nav>
@@ -3631,12 +3632,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
 
       <section class="guide-sec" id="g-data">
-        <h3>13. 데이터 · 백업</h3>
+        <h3>13. 데이터 · 사본</h3>
         <ul>
-          <li>모든 변경은 <b>자동 저장</b>됩니다(별도 저장 버튼 없음).</li>
-          <li>⋯ 더보기 → <b>XML 내보내기</b>로 백업 파일을 만들고, <b>XML 가져오기</b>로 복원합니다.</li>
+          <li>모든 변경은 <b>회사 서버에 자동 저장</b>됩니다(별도 저장 버튼 없음) — 다른 PC에서 로그인해도 같은 기록이 보입니다.</li>
+          <li>⋯ 더보기 → <b>XML로 내보내기</b>는 내 PC에 <b>사본 파일</b>을 만듭니다. <b>XML 가져오기</b>는 이전 버전(XML 저장 시절)의 기록이나 그 사본을 들여옵니다.</li>
           <li>가져오기는 <b>병합</b>(현재 데이터 유지 + 파일에만 있는 항목 추가) 또는 <b>교체</b>(전부 파일 내용으로 대체)를 고릅니다.</li>
-          <li><b>전체 데이터 초기화</b>는 모든 기록을 지웁니다(초기화 전 내보내기로 백업 권장).</li>
+          <li><b>전체 데이터 초기화</b>는 모든 기록을 지웁니다(초기화 전 XML로 내보내기로 사본을 남기기를 권장).</li>
         </ul>
       </section>
 
@@ -5643,9 +5644,11 @@ window.__reportRecordFailed = function(info){
     .observe(m, { attributes:true, attributeFilter:['class'] });
 })();
 
-// 호스트가 디스크 쓰기 실패를 알릴 때 — 무음 데이터 손실 방지
+// 호스트가 저장 실패를 알릴 때 — 무음 데이터 손실 방지.
+//  ★ 2026-10-06 — 지금 호스트(서버 DB 저장)는 이 창구를 부르지 않는다(XML 파일 저장을 걷어낸 뒤 · 저장 실패는 연결 막대·미저장 표시가 말한다).
+//    남은 창구라도 '디스크'를 말하지 않는다 — 데이터의 자리는 서버다. 사본은 ⋯ → XML로 내보내기.
 window.__saveFailed = function(){
-  toast('저장 실패 — 디스크에 기록하지 못했습니다. [데이터 → XML 내보내기]로 백업하세요', 'error');
+  toast('저장 실패 — 기록을 저장하지 못했습니다. 연결을 확인한 뒤 다시 시도하세요(필요하면 ⋯ → XML로 내보내기로 내 PC에 사본을 남기세요)', 'error');
 };
 
 /* ---------- 과제 DB(공식 과제) READ 경로 — 온라인 전용(로컬 캐시 없음) ---------- */
@@ -10111,19 +10114,31 @@ function ahNoteRole(isAdmin){
   ahPaintWho();
 }
 //  조용한 확인 — 기존 읽기 명령(userInfoGet) 하나. 실패하면 아무것도 바꾸지 않는다(모르면 모르는 채로).
+//   ★ 결과를 Promise 로 돌려준다(true 관리자 · false 아님 · null 모름 — 실패·계정 바뀜) — 관리 화면을 열지 말지를 이 회신으로 정한다
+//     (openAdminHub 의 관문 · 2026-10-06). 이미 묻는 중이면 **같은 Promise** 를 준다(두 번 묻지 않는다 · 늦게 온 쪽이 덮지 않는다).
+let __ahProbeP = null;
 function ahProbe(){
-  if(!HOST || PEER || !currentUser || __ahProbing) return;
+  if(!HOST || PEER || !currentUser) return Promise.resolve(null);
+  if(__ahProbing && __ahProbeP) return __ahProbeP;
   __ahProbing = true;
   const me = ahMe();
-  hostRequest('userInfoGet', {}, 10000).then(r => {
-    __ahProbing = false;
-    if(ahMe() !== me) return;   // 그 사이 계정이 바뀌었다 — 남의 회신을 내 것으로 적지 않는다
+  __ahProbeP = hostRequest('userInfoGet', {}, 10000).then(r => {
+    __ahProbing = false; __ahProbeP = null;
+    if(ahMe() !== me) return null;   // 그 사이 계정이 바뀌었다 — 남의 회신을 내 것으로 적지 않는다
     if(r && r.ok && r.info){
       const inf = r.info, active = Number(inf.is_active == null ? 1 : inf.is_active) !== 0;
-      ahNoteRole(String(inf.edit_role == null ? '' : inf.edit_role).trim() === 'admin' && active);
+      const isAdmin = String(inf.edit_role == null ? '' : inf.edit_role).trim() === 'admin' && active;
+      ahNoteRole(isAdmin);
+      return isAdmin;
     }
-  }, () => { __ahProbing = false; });
+    return null;
+  }, () => { __ahProbing = false; __ahProbeP = null; return null; });
+  return __ahProbeP;
 }
+//  이번 실행에서 호스트가 알려 준 관리자 여부(true · false) — 모르면 null. ★ 기억(tc_adminSeen)은 입구를 **보일지**의 힌트일 뿐
+//    관리 화면을 열 근거가 아니다: 낡을 수 있다(권한이 내려간 뒤 첫 실행).
+function ahRoleNow(){ const me = ahMe(); return (me && __ahRole.login === me && __ahRole.admin !== null) ? (__ahRole.admin === true) : null; }
+const AH_DENY_MSG = '관리자만 사용할 수 있습니다';
 function ahProbeIfUnknown(){ const me = ahMe(); if(me && __ahRole.login !== me) ahProbe(); }
 //  입구 ①③의 표시를 지금 값에 맞춘다(① ⋯ 메뉴 · ③ 내 과제 — ② 사용자 정보 카드는 J5 로 없앴다).
 function ahSyncEntries(){
@@ -10302,6 +10317,20 @@ function ahCloseNow(ov){
 function openAdminHub(item, opt){
   if(PEER) return;
   const hub = ahHub(); if(!hub) return;
+  //  ★ 관문(2026-10-06 사용자 지적) — 관리자가 아니면 관리 화면의 **틀조차** 열지 않는다. 예전엔 관리자 판정을 입구(⋯ · 내 과제)의
+  //    표시에만 걸어, 함수를 직접 부르면 비관리자에게도 틀(왼쪽 목록 · 개수 · 검색칸)이 서고 칸 안에 「관리자만…」이 두 번 찍혔다.
+  //    · 이번 실행에서 관리자로 확인됨 → 지금처럼 연다 · 아님으로 확인됨 → 열지 않고 토스트 한 줄
+  //    · 모름 → 기존 확인(ahProbe · userInfoGet)을 기다려 관리자일 때만 연다(아니면 같은 토스트). 권한 판정의 정본은 그래도 호스트다 —
+  //      이 관문은 '틀을 보일지'만 정한다(각 화면의 조회·쓰기는 지금처럼 요청 시점에 호스트가 판정한다).
+  //    이미 열려 있는 관리 화면 안의 항목 바꾸기는 아래 갈래(ahSelect/ahDock)다 — 열린 것은 관리자로 확인된 뒤에만 열렸다.
+  if(!isOverlayOpen(hub)){
+    const role = ahRoleNow();
+    if(role === false){ toast(AH_DENY_MSG, 'warn'); return; }
+    if(role === null){
+      ahProbe().then(ok => { if(ok === true) openAdminHub(item, opt); else toast(AH_DENY_MSG, 'warn'); });
+      return;
+    }
+  }
   const o = opt || {};
   const target = o.dock ? ahItemOfOv(o.dock) : (ahHasItem(item) ? ahItemId(item) : ahLast());   // 옛 id(orgtitle·codes)도 받는다(N5)
   if(isOverlayOpen(hub)){ if(o.dock) ahDock(o.dock); else ahSelect(target); return; }
@@ -10320,7 +10349,8 @@ function openAdminHub(item, opt){
   if(o.dock) ahDock(o.dock); else ahSelect(target);
   ahSyncEmpty();
   ahCounts();
-  ahProbe();   // 열 때마다 조용히 다시 확인 — 입구 표시 · 머리의 「관리자」. 화면 내용은 각 화면의 회신이 정한다.
+  //  열 때마다 조용히 다시 확인 — 입구 표시 · 머리의 「관리자」. 그 사이 관리자가 아니게 됐으면(권한 회수) 열린 틀도 닫는다.
+  ahProbe().then(ok => { if(ok === false && isOverlayOpen(hub)){ closeOverlay(hub); toast(AH_DENY_MSG, 'warn'); } });
 }
 function ahSelect(item){
   item = ahHasItem(item) ? ahItemId(item) : 'members';
@@ -11186,7 +11216,7 @@ function netcusManualGuide(){
   if(s){
     setRptSendText(s, ICON.alert + ' <b>브라우저에서는 회사 보고 자동 작성이 안 됩니다</b> (보안 제약).'
       + '<br>① 열린 <b>netcus</b> 창에 직접 입력 — <b>' + ICON.copy + ' 복사</b>로 내용 붙여넣기, 근태·초과는 직접 선택'
-      + '<br>② 자동 작성이 필요하면 <b>⋯ → XML 내보내기</b>로 위젯에 데이터를 옮겨 작성');
+      + '<br>② 자동 작성이 필요하면 <b>데스크톱 위젯</b>에서 작성 — 이 브라우저의 기록은 <b>⋯ → XML로 내보내기</b>로 옮길 수 있습니다');
     s.className = 'rpt-send-status';
   }
   toast('netcus 창을 열었습니다 — 직접 입력하거나 위젯으로 옮겨 작성하세요', 'warn');
@@ -13067,7 +13097,7 @@ async function clearAll(){
   if(guardEdit()) return;
   if(schemaBlocked()) return;   // P1-1 — 초기화도 전량 교체다. 지운 뒤에 거부당하면 화면만 비고 DB 는 그대로다
   if(await confirmBox('전체 데이터 초기화',
-    `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다.\n삭제 전 [데이터 → XML 내보내기]로 백업을 권장합니다.`,
+    `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다${HOST ? '(서버에 저장된 내 기록 포함)' : ''}.\n삭제 전 [⋯ → XML로 내보내기]로 내 PC에 사본을 남기기를 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
   state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, reportFont:defaultReportFont()};
@@ -15284,7 +15314,7 @@ function openHelp(){
     + card(ICON.tag, '내 과제', '헤더의 내 과제 버튼에서 과제 추가·이름·색상·버전관리(Git/SVN) 경로를 설정합니다. 줄 오른쪽 ▲▼ 로 순서를 한 칸씩 바꾸면 보고서·필터가 그 순서를 따릅니다.')
     + card(ICON.palette, '테마', '헤더의 모양 버튼에서 라이트·다크·포레스트·세피아·고대비 등 전체 테마를 고릅니다.')
     + card(ICON.keyboard, '단축키', '← → 월 이동 · Home 오늘 · Esc 닫기 · 날짜 더블클릭 새 기록.')
-    + card(ICON.download, '데이터 · 백업', '데이터는 자동 저장. 백업·이전은 ⋯ 메뉴의 XML 내보내기/가져오기.')
+    + card(ICON.download, '데이터 · 사본', '데이터는 서버에 자동 저장됩니다. 내 PC 사본·이전 버전 기록 옮기기는 ⋯ 메뉴의 XML로 내보내기 / XML 가져오기.')
     + card(ICON.bug, '버그 · 개선사항', '상단 문의 버튼을 누르면 보낼 곳과 진단 기록(로그) 첨부 방법이 한 창에 나옵니다.')
     + `</div>`;
   openModal('#helpModal');
@@ -15385,9 +15415,9 @@ function guideShot(kind, step){
     `<span class="shot-btn primary">⋯</span>`,
     `<div class="shot-modal"><h4>설정</h4><div class="shot-line"></div><div class="shot-line mid"></div><div class="shot-field"></div><div class="shot-line short"></div></div>`
     + call(1, '더보기', 'right:18px;top:10px') + call(2, '월 보기 밀도', 'left:138px;top:84px') + call(3, '알림·일간보고', 'right:54px;bottom:52px'));
-  if(kind === 'backup') return base('데이터 · 백업',
+  if(kind === 'backup') return base('데이터 · 사본',
     `<span class="shot-btn primary">⋯</span>`,
-    `<div class="shot-menu"><div>설정</div><div>회의실 관리</div><div class="on">XML 내보내기</div><div>XML 가져오기</div><div>전체 데이터 초기화</div></div>`
+    `<div class="shot-menu"><div>설정</div><div>회의실 관리</div><div class="on">XML로 내보내기</div><div>XML 가져오기…</div><div>전체 데이터 초기화</div></div>`
     + call(1, '더보기', 'right:18px;top:10px') + call(2, '내보내기', 'right:34px;top:96px') + call(3, '가져오기', 'right:30px;top:122px'));
   if(kind === 'window') return base('창 모드 · 크기',
     `<span class="shot-btn">${ICON.pin}</span><span class="shot-btn">☰</span><span class="shot-btn">×</span>`,

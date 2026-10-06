@@ -140,6 +140,7 @@ if (!JSDOM) {
       hostRequest = function(cmd, p){ __calls.push([cmd, JSON.parse(JSON.stringify(p || {}))]);
         if(cmd === 'orgTitleGet') return Promise.resolve({ ok: true, data: ${JSON.stringify(ORG)} });
         if(cmd === 'getCodesFull') return Promise.resolve(window.__CODES(p && p.kind));
+        if(cmd === 'userInfoGet') return Promise.resolve(window.__INFO || { ok:false, msg:'시험: 회신 없음' });   // 관리자 확인(관문 · 2026-10-06)
         if(cmd === 'membersGet') return Promise.resolve({ ok: true, data: { found: true, admin: true, includeInactive: false, units: [], titles: [], members: [] } });
         return Promise.resolve({ ok:false, msg:'시험: 회신 없음' }); };`);
     const sess = posted.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).find((m) => m && m.cmd === 'userSessionGet');
@@ -147,6 +148,7 @@ if (!JSDOM) {
     w.eval('currentUser = ' + JSON.stringify(ME));
     w.__applyState(JSON.stringify(EMPTY), {});
     w.eval('dbOnline = true; offSections = ["zz일반계약", "zz연구과제"]; offStatuses = ["zz진행중", "zz종료", "zz보류"];');
+    w.eval('window.__toasts = []; (function(){ var t = toast; toast = function(m, k, a, ms){ __toasts.push(String(m)); return t(m, k, a, ms); }; })();');
     w.eval('ahNoteRole(true)');
     return B;
   }
@@ -247,6 +249,65 @@ if (!JSDOM) {
     const bad = mutate(app, "  { const h = ov.querySelector('.modal-head h2'); if(h && ov.__ahHead != null){ h.textContent = ov.__ahHead; ov.__ahHead = null; } }", '');
     await assert.rejects(() => dom.orgItems(bad), /원래대로 돌아오지 않았다/);
   });
+  //  ── 관문(2026-10-06 사용자 지적) — 관리자가 아니면 관리 화면의 틀조차 열리지 않는다 · 토스트 한 줄 ──
+  const INFO = (role) => ({ ok: true, info: { name: ME.name, title: ME.title, org_unit: ME.orgUnit, view_scope: 'all', edit_role: role, is_active: 1 } });
+  const hubShown = (B) => B.ev("(function(){ var h = document.getElementById('adminHub'); return !!h && !h.classList.contains('hidden'); })()");
+  const denyCount = (B) => B.evJSON('__toasts').filter((m) => m === '관리자만 사용할 수 있습니다').length;
+  const guard = {
+    //  역할을 정해 두고(known: 'viewer'|'editor'|null=모름) 확인 회신(probe)을 정한 뒤, 입구 여러 개로 열어 본다.
+    async denied(src, known, probe) {
+      const B = boot(src);
+      try {
+        await settle(60);
+        B.ev("__toasts.length = 0; __calls.length = 0; __ahRole = { login: '', admin: null };" + (known ? ' ahNoteRole(false);' : '') + (probe ? ` window.__INFO = ${JSON.stringify(probe)};` : ' window.__INFO = null;'));
+        B.ev("openAdminHub('members')"); await settle(120);
+        assert.strictEqual(hubShown(B), false, `관리자가 아닌데(${known || '모름'} · 확인 ${probe ? probe.info.edit_role : '실패'}) 관리 화면의 틀이 열렸다`);
+        assert.strictEqual(denyCount(B), 1, `거절 토스트가 한 번이 아니다: ${JSON.stringify(B.evJSON('__toasts'))}`);
+        assert.strictEqual(B.evJSON('__calls').filter((c) => c[0] === 'membersGet').length, 0, '열지 않았는데 구성원 조회가 나갔다');
+        if (!known) assert.strictEqual(B.evJSON('__calls').filter((c) => c[0] === 'userInfoGet').length, 1, '모를 때 기존 확인(userInfoGet)을 한 번 묻지 않았다');
+        //  다른 입구도 같은 관문을 지난다 — 옛 id 별칭 · ⋯ · 내 과제 링크 · 도킹 길(H9)
+        B.ev("__toasts.length = 0; ahNoteRole(false)");
+        B.ev("openAdminHub('orgtitle')"); await settle(60);
+        B.ev("ahOpenFromMore()"); await settle(60);
+        B.ev("(function(){ var b = document.getElementById('btnCatAdmin'); if(b) b.click(); return 1; })()"); await settle(60);
+        B.ev("openAdminHub(null, { dock: document.getElementById('customerModal') })"); await settle(60);
+        B.ev("ahSelect('members')"); await settle(60);
+        assert.strictEqual(hubShown(B), false, '다른 입구(별칭 · ⋯ · 내 과제 · 도킹 · ahSelect)로 관리 화면이 열렸다');
+        assert.strictEqual(denyCount(B), 4, `입구마다 토스트 한 줄이 아니다: ${JSON.stringify(B.evJSON('__toasts'))}`);
+        assert.deepStrictEqual(B.errors, [], '페이지 오류');
+      } finally { B.close(); }
+    },
+    async allowed(src) {
+      const B = boot(src);
+      try {
+        await settle(60);
+        B.ev(`__toasts.length = 0; __ahRole = { login: '', admin: null }; window.__INFO = ${JSON.stringify(INFO('admin'))};`);
+        B.ev("openAdminHub('members')"); await settle(150);
+        assert.strictEqual(hubShown(B), true, '모를 때 확인 회신이 관리자인데 관리 화면이 열리지 않았다');
+        assert.strictEqual(navOn(B), 'members');
+        assert.strictEqual(denyCount(B), 0, '관리자인데 거절 토스트가 떴다');
+        //  열린 뒤 권한이 회수되면(다음 확인이 관리자 아님) 틀을 닫는다
+        await closeHub(B);
+        B.ev(`window.__INFO = ${JSON.stringify(INFO('viewer'))}; openAdminHub('members')`); await settle(150);
+        assert.strictEqual(hubShown(B), false, '열 때 다시 확인한 권한이 관리자 아님인데 관리 화면이 남았다');
+        assert.strictEqual(denyCount(B), 1);
+      } finally { B.close(); }
+    },
+  };
+  test('(관문) 관리자 아님으로 확인된 viewer — 어떤 입구로도 틀이 열리지 않는다 · 입구마다 토스트 한 줄', () => guard.denied(app, 'viewer', null));
+  test('(관문) 모름 → 확인 회신 editor — 열리지 않는다 · 토스트 한 줄 · 확인은 한 번', () => guard.denied(app, null, INFO('editor')));
+  test('(관문) 모름 → 확인 회신 viewer — 열리지 않는다', () => guard.denied(app, null, INFO('viewer')));
+  test('(관문) 모름 → 확인 실패(회신 없음) — 열리지 않는다(모르면 열지 않는다)', () => guard.denied(app, null, null));
+  test('(관문) 모름 → 확인 회신 admin — 열린다 · 열 때 다시 확인해 회수됐으면 틀을 닫는다', () => guard.allowed(app));
+  test('변이(관문)①: 관리자 아님 갈래를 빼면 (관문) viewer 가 실패한다', async () => {
+    const bad = mutate(app, "    if(role === false){ toast(AH_DENY_MSG, 'warn'); return; }\n", '');
+    await assert.rejects(() => guard.denied(bad, 'viewer', null), /틀이 열렸다/);
+  });
+  test('변이(관문)②: 모름 갈래(확인 뒤 열기)를 빼면 (관문) 모름 → editor 가 실패한다', async () => {
+    const bad = mutate(app, "    if(role === null){\n      ahProbe().then(ok => { if(ok === true) openAdminHub(item, opt); else toast(AH_DENY_MSG, 'warn'); });\n      return;\n    }\n", '');
+    await assert.rejects(() => guard.denied(bad, null, INFO('editor')), /틀이 열렸다|토스트/);
+  });
+
   test('변이(R)③: 도킹 창 → 항목 판정이 열린 탭을 보지 않으면 「소속」 항목이 직급으로 칠해진다', async () => {
     const bad = mutate(app, "  if(id === 'orgTitleModal') return (__otTab === 'unit') ? 'unit' : 'title';", '');
     await assert.rejects(() => dom.orgItems(bad), /Expected|unit|title/);
