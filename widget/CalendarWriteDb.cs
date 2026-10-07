@@ -208,7 +208,7 @@ namespace TaskCalendarWidget
                         //  ★ project_uid 는 SET 목록에 없다 — uid 에서 파생되는 불변값이라
                         //    바뀔 일이 없고, state 에 대응 키도 없다(있지도 않은 값을 덮어쓰지 않는다).
                         await Upd(conn, tx, "cal_category",
-                            "SET name=@n, color=@col, description=@d, uses_repo=@ur, report_group=@rg, sort_order=@so, updated_at=@now " +
+                            "SET name=@n, color=@col, description=@d, uses_repo=@ur, sort_order=@so, updated_at=@now " +
                             $"WHERE user_id={u} AND cat_no={no}", tokens, "category:" + no, p, now, ct);
                         upd++;
                     }
@@ -219,8 +219,8 @@ namespace TaskCalendarWidget
                         p.Add(("@src", isDb ? "db" : "local"));
                         p.Add(("@pu", isDb && uid.Length > 3 ? uid.Substring(3) : (object?)null));
                         await Exec(conn, tx,
-                            "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,report_group,sort_order,created_at,updated_at) " +
-                            $"VALUES ({u},{nn},@u2,@src,@n,@col,@d,@pu,@ur,@rg,@so,@now,@now)", ct, p, now);
+                            "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) " +
+                            $"VALUES ({u},{nn},@u2,@src,@n,@col,@d,@pu,@ur,@so,@now,@now)", ct, p, now);
                         catNo[uid] = nn;
                         no = nn;
                         ins++;
@@ -521,9 +521,6 @@ namespace TaskCalendarWidget
             ("@col", S(c, "color")),
             ("@d",  S(c, "desc")),
             ("@ur", B(c, "usesRepo") ? 1 : 0),
-            //  보고서 묶음(2026-10-06, schema_version 13). 'etc' 외 값(없음, null, 1, 'ETC', 'exclude')은 전부 include 로 내린다.
-            //  CHECK(report_group IN ('include','etc')) 가 3819 로 저장 전체를 막지 않게 하는 자리이기도 하다.
-            ("@rg", S(c, "reportGroup") == "etc" ? "etc" : "include"),
             ("@so", i),
         };
 

@@ -965,13 +965,6 @@ git/svn 작성자 · **근태·초과시간**(`<attendance>` → 신규 `cal_att
 >   없어도 무해하다 — 켜진 채 남은 과제는 틀리지 않은 안내 한 줄을 띄울 뿐이다).
 >   **④ 과제가 지워지면** 행과 함께 사라진다. `repo-paths.json` 의 고아 키는 무해하다.
 
-> **2026-10-06: `cal_category.report_group`(보고서 묶음) 반영.** 같은 표에 두 번째 '과제의 성질' 컬럼이 늘었다.
-> 운영 반영은 [`migrate-2026-10-06-category-report-group.sql`](deploy/migrate-2026-10-06-category-report-group.sql)
-> (**schema_version 12 → 13**, 가드 `12/13`, 멱등, 차단형 사후 검증), 정의의 단일 소스는
-> [`schema-calendar.sql`](deploy/schema-calendar.sql) 이고, 위젯 `CalendarDb.ExpectedSchemaVersion` 도 13 이다.
-> 새 위젯의 부팅 과제 조회가 이 컬럼을 SELECT 하므로 **DB 를 먼저 올린다**(안 올린 v12 DB + 새 위젯 = ERROR 1054 로
-> 과제 목록이 빈다). 뜻과 규칙은 아래 §6 의 '보고서 묶음' 과 [`docs/REPORT-INCLUDE-STATE.md`](../docs/REPORT-INCLUDE-STATE.md).
-
 #### 미리알림은 서버에 못 붙는 날 어떻게 되나 (2026-08-31 제기 · **2026-09-02 결정: ① 수용**)
 
 이 절은 「무엇을 DB 로 올리고, 안 올리는 것은 로컬 **어디에** 두는가」를 정하는 자리다. 그런데
@@ -1133,9 +1126,6 @@ git/svn 작성자 · **근태·초과시간**(`<attendance>` → 신규 `cal_att
 >   뜻이 아니다.** 전 행 0 이면 안내가 아무 데도 안 뜨고, 그건 이 컬럼을 만들기 전과 같은 상태다.
 >   이관은 행마다 `gitRepo`/`svnRepo` 유무로 계산해 넣는다(계약 I-1) — 그래서 마이그레이션에
 >   **0행 가드**를 걸어, 데이터가 있는 DB 에서는 백필 대신 **멈추게** 했다
-> 끝으로 **`cal_category` 의 보고서 묶음**(§6)은 **2026-10-06 에 `report_group` 으로 신설됐다**(schema_version 13,
->   `migrate-2026-10-06-category-report-group.sql`). 이 규칙대로 DEFAULT 는 **'include'(지금 동작)** 다.
->   uses_repo 와 달리 계산할 근거가 없는 값이라(옛 XML 에도 DB 에도 없다) 백필이 곧 정답이고, 0행 가드 없이 데이터가 있는 DB 에도 적용한다
 
 > **2026-08-11 — `cal_audit_trash` 를 명부에서 뺐다(13 → 12).** 감사 트리거 전체를 폐기하기로
 > 결정했고(§7.5·§10), 그 표는 트리거가 쓰는 유일한 대상이었다. 표가 남으면 아무도 쓰지 않는
@@ -2304,17 +2294,6 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
   과제 N개가 전부 `(공식 과제)` 로 뭉친다. 저장하되 **project 해석 성공 시 표시에 쓰지 않는
   스냅샷 폴백**이다
 - 색상·설명은 양쪽 다 저장 — 공식 과제도 색은 사용자 것이다(v0.16.0)
-
-**보고서 묶음 `report_group`(2026-10-06, schema_version 13).** 과제마다 보고서에서 어떻게 보일지다.
-
-| 항목 | 정의 |
-|---|---|
-| 뜻 | `include` = 보고서에 이 과제 행으로 나간다(기본). `etc` = 이 과제의 일정, 할 일, 커밋 제목과 공수가 보고서의 '기타' 행으로 합쳐진다 |
-| 타입 | `VARCHAR(8) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'include'`, 위치 `AFTER uses_repo` |
-| CHECK | `chk_cal_category_rgroup CHECK (report_group IN ('include','etc'))`. 값 집합이 고정이라 `_bin`(source 와 같은 관례: 'ETC' 같은 변형이 통과하지 않게). NOT NULL 과 함께라야 방벽이다 |
-| DEFAULT 'include' 의 이유 | 백필이 지금 동작을 바꾸지 않아야 한다(전 과제가 지금처럼 자기 행). 그리고 이 컬럼을 모르는 v12 위젯의 INSERT(컬럼 목록에 없음)가 그대로 성공해야 한다 |
-| 앱 키 | `category.reportGroup`('include' \| 'etc'). 부팅 조회(`CalendarDb`)가 **모든 과제에 항상** 싣는다(usesRepo 바로 뒤). `fromXML` 도 항상 만든다. 저장(`CalendarWriteDb.CategoryParams` 의 `@rg`)은 'etc' 외 값을 전부 'include' 로 내린다. XML 은 'etc' 일 때만 `reportGroup="etc"` 속성 |
-| 구버전 위젯 | 업그레이드된 DB 에 구버전으로 과제를 저장하면 그 과제의 etc 가 include 로 되돌아갈 수 있다(무해하나 설정이 풀린다) |
 
 **`db_gone` 컬럼은 두지 않는다.** 파생값 캐시라 ADR-18 과 충돌하고 쓰기 주체·시점이 정의되지
 않는다. 조회 시 파생한다:

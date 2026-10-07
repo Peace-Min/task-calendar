@@ -178,10 +178,7 @@ async function reload(ms = 20000) {
 }
 
 const order = () => J('state.categories.map(function(c){ return c.id; })');
-//  etc = 보고서 묶음 '기타'(docs/REPORT-INCLUDE-STATE.md, 2026-10-06). 그 과제는 보고서에 자기 행이 없다(사용자 '기타' 과제 자신은 예외).
-const cats = () => J('state.categories.map(function(c){ return { id: c.id, name: String(c.name || ""), off: !!isOfficialCat(c), pick: !!isPickableCat(c), etc: (typeof isEtcCat === "function") ? !!isEtcCat(c) : false }; })');
-//  보고서에 자기 행이 있어야 하는 과제(포함 과제 + 사용자 '기타' 과제). collectReportData 의 gitaCat 은 이름이 정확히 '기타' 인 과제다.
-const rowCat = (c) => !c.etc || c.name === '기타';
+const cats = () => J('state.categories.map(function(c){ return { id: c.id, name: String(c.name || ""), off: !!isOfficialCat(c), pick: !!isPickableCat(c) }; })');
 const domOrder = () => J("[].map.call(document.querySelectorAll('#catList .cat-row'), function(r){ return r.dataset.id; })");
 const domOfficial = () => J("[].map.call(document.querySelectorAll('#catList .cat-row'), function(r){ return !!r.querySelector('.cat-badge.db'); })");
 const isOpen = (sel) => `(function(){ const m = document.querySelector(${JSON.stringify(sel)}); return !!m && !m.classList.contains('hidden') && !m.classList.contains('closing'); })()`;
@@ -472,7 +469,7 @@ async function main() {
     note(`기간 ${from}~${to}: 행 ${rows.length} · 내용 있는 행 ${rows.filter((r) => r.n > 0).length} · 미분류 ${keys.includes('__uncat__') ? '있음' : '없음'} · 「기타」 과제 ${cs.some((c) => c.name.trim() === '기타') ? '있음' : '없음'}`);
     ok('C4 보고서 행이 모두 알려진 과제(또는 미분류)다', keys.every((k) => exp.includes(k)), JSON.stringify(keys));
     ok('C4 보고서 행 순서 = state.categories 순서(「기타」 과제 뒤 · 미분류 맨 뒤)', same(keys, expPresent), JSON.stringify({ keys, exp: expPresent }));
-    if (!src.skipEmpty) ok('C4 「내용 없는 항목 제외」가 꺼져 있으니 모든 포함 과제가 행이다(보고서 묶음 기타로 합친 과제는 제외)', cs.filter(rowCat).every((c) => keys.includes(c.id)), `${keys.length} vs ${cs.filter(rowCat).length}(기타로 합친 과제 ${cs.length - cs.filter(rowCat).length}개)`);
+    if (!src.skipEmpty) ok('C4 「내용 없는 항목 제외」가 꺼져 있으니 모든 과제가 행이다', cs.every((c) => keys.includes(c.id)), `${keys.length} vs ${cs.length}`);
     else note('「내용 없는 항목 제외」가 켜져 있다 — 빈 과제 행은 빠진다(순서만 본다)');
     if (keys.includes('__uncat__')) ok('C4 미분류는 맨 뒤', keys[keys.length - 1] === '__uncat__');
     else na('C4 미분류 맨 뒤', `${from}~${to} 에 미분류 기록이 없다`);
@@ -480,8 +477,7 @@ async function main() {
     if (gita.length) ok('C4 「기타」 과제는 일반 과제 뒤', keys.filter((k) => k !== '__uncat__').slice(-gita.length).every((k) => gita.includes(k)));
     else na('C4 「기타」 과제 맨 뒤', '「기타」 이름의 과제가 없다');
     //  같은 순서가 **옮긴 순서**에서 나온다(옮긴 행이 보고서에서도 맨 앞 — 「기타」가 아니면)
-    if (cs[0] && cs[0].name.trim() !== '기타' && rowCat(cs[0])) ok('C4 맨 위로 옮긴 과제가 보고서 첫 행이다', keys[0] === cs[0].id || (src.skipEmpty && !keys.includes(cs[0].id)), JSON.stringify(keys.slice(0, 3)));
-    else if (cs[0] && !rowCat(cs[0])) na('C4 맨 위로 옮긴 과제가 보고서 첫 행', '맨 위 과제가 보고서 묶음 기타라 자기 행이 없다');
+    if (cs[0] && cs[0].name.trim() !== '기타') ok('C4 맨 위로 옮긴 과제가 보고서 첫 행이다', keys[0] === cs[0].id || (src.skipEmpty && !keys.includes(cs[0].id)), JSON.stringify(keys.slice(0, 3)));
 
     //  보고서 창을 사람이 여는 문(헤더 #btnReportTop)으로 연다 — 일간(오늘) 미리보기 카드 순서.
     await cdp.ev(`(function(){ const b = document.getElementById('btnReportTop'); if (b) b.click(); else openReport(); return 1; })()`);

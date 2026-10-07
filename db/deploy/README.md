@@ -226,13 +226,6 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 | `migrate-2026-09-10-dev-end-date.sql` | `project` 에 **`dev_end_date`**(개발종료일) 신설 — 계약종료일(`end_date`)과 **별개**의 날짜입니다(개발을 먼저 끝내고 검수·납품 기간이 남거나, 계약만 연장되거나, **선진행**처럼 계약 날짜가 아예 없는데 개발은 도는 경우). `AFTER end_date` 로 자리까지 못 박습니다 — 정본(신규 구축)과 컬럼 순서가 같아야 `mysqldump --no-data` 대조가 성립합니다. 기존 행은 전부 NULL(미정). **위젯이 이 컬럼을 SELECT 하므로 DB 를 먼저 올리세요**(구버전 DB + 새 위젯 = `ERROR 1054` 로 과제 목록이 통째로 빔) | 9 → 10 |
 | `migrate-2026-09-10-user-sort-order.sql` | (사용자 표) `app_user` 에 **`sort_order`**(명부 서열) 신설 — 관리자가 앱 안에서 정하는 **전사 단일** 서열입니다(설계 [`../../docs/USER-ADMIN.md`](../../docs/USER-ADMIN.md)). `AFTER title` 로 자리까지 못 박습니다 — 정본(비공개 `01-schema-users.sql`)과 컬럼 순서가 같아야 `mysqldump --no-data` 대조가 성립합니다. 기존 행은 **NULL 로 두지 않고** 직급 서열 → 이름 순으로 10 간격을 채웁니다(참고값. 관리자가 한 번 저장하면 앱이 전량 재작성). **같은 날 두 번째 판이라 위 `dev-end-date` 를 먼저 적용하세요** — 가드가 그 순서를 강제합니다 | 10 → 11 |
 | `migrate-2026-09-10-user-sort-order-int.sql` | `app_user.sort_order` 를 **SMALLINT → INT UNSIGNED** 로 넓힌다(값·위치 보존, MODIFY 만). SMALLINT 은 10 간격 6,553명이 천장이었다(격리 DB 실측 6,554명째 ERROR 1264 전량 롤백). 가드가 11 에서만 열린다. 위젯 `ExpectedSchemaVersion` 12 와 같은 창에 | 11 → 12 |
-| `migrate-2026-10-06-category-report-group.sql` | `cal_category` 에 **`report_group`** 신설(보고서 묶음 포함/기타, `VARCHAR(8) NOT NULL DEFAULT 'include'`, `AFTER uses_repo`, CHECK `chk_cal_category_rgroup`). 과제마다 보고서에 제 행으로 나갈지(include) '기타' 행으로 합칠지(etc) 정합니다(설계 [`../../docs/REPORT-INCLUDE-STATE.md`](../../docs/REPORT-INCLUDE-STATE.md)). 기존 행은 전부 include. 멱등(두 번 돌려도 같다). **새 위젯의 부팅 과제 조회가 이 컬럼을 SELECT 하므로 DB 를 먼저 올리세요**(마이그레이션 안 한 v12 DB + 새 위젯 = 부팅 때 `ERROR 1054` 로 과제 목록이 통째로 빔) | 12 → 13 |
-
-> ### ⚠️ `migrate-2026-10-06-category-report-group.sql`: DB 를 먼저 올리세요
->
-> - **배포 순서는 DB 가 먼저입니다.** 새 위젯의 부팅 과제 조회(`CalendarDb` 의 `cal_category` SELECT)가 `c.report_group` 을 읽습니다. 판번호 게이트는 평소 조회를 막지 않으므로(전량 교체만 거부합니다. 설계 §5.5) **이 파일을 적용하지 않은 v12 DB 에 새 위젯이 붙으면 부팅 조회가 `ERROR 1054` 로 죽어 과제 목록이 통째로 빕니다.**
-> - **반대 방향(적용한 DB + 구버전 위젯)은 무해합니다.** 구버전의 과제 INSERT 는 컬럼 목록에 `report_group` 이 없지만 `DEFAULT 'include'` 가 메웁니다. 다만 **구버전 위젯으로 과제를 저장하면 그 과제의 기타 설정이 포함으로 되돌아갈 수 있습니다**(구버전은 이 값을 모르고 저장합니다). 모든 PC 의 위젯을 새 판으로 올리면 사라지는 위험입니다.
-> - 재실행 안전합니다. 컬럼과 CHECK 가 이미 있으면 조용히 지나가고 버전도 13 그대로입니다. 가드는 `schema_version` 이 12 또는 13 일 때만 엽니다.
 
 > ### ⚠️ `migrate-2026-09-10-user-sort-order.sql` — 적용 전에 알아야 할 셋
 >

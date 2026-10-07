@@ -110,10 +110,7 @@ namespace TaskCalendarWidget
         //     같은 날 두 번째 판이다. 이번에도 짝이 중요하다 — ProjectDb.LoadMembersJsonAsync 가 그 컬럼을
         //     SELECT·ORDER BY 하고 직원 관리 쓰기가 그 컬럼에 UPDATE 를 건다(DB 를 먼저 올릴 것).
         //   ★ 2026-09-10: 11 → 12(migrate-2026-09-10-user-sort-order-int.sql — sort_order SMALLINT→INT UNSIGNED).
-        //   ★ 2026-10-06: 12 → 13(migrate-2026-10-06-category-report-group.sql: cal_category.report_group 보고서 묶음).
-        //     부팅 과제 조회(catSql)가 그 새 컬럼을 SELECT 한다. v12 DB 에 이 위젯이 붙으면 1054 로
-        //     과제 목록이 통째로 빈다(DB 를 먼저 올릴 것).
-        internal const string ExpectedSchemaVersion = "13";
+        internal const string ExpectedSchemaVersion = "12";
 
         private readonly Action<string> _log;
 
@@ -594,7 +591,7 @@ namespace TaskCalendarWidget
             //   경로 문자열은 DB 에 없고 repoPaths(로컬)가 준다. 이 둘을 함께 실어야 화면이
             //   '경로가 없다' 와 '저장소를 안 쓰는 과제다' 를 가른다(G-6 의 usesRepo 절).
             const string catSql =
-                "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, c.uses_repo, c.report_group, " +
+                "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, c.uses_repo, " +
                 "CAST(c.created_at AS CHAR) AS created_at, CAST(c.updated_at AS CHAR) AS updated_at, " +
                 "(c.source='db' AND (p.uid IS NULL OR p.is_active=0)) AS db_gone " +
                 "FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid " +
@@ -613,8 +610,7 @@ namespace TaskCalendarWidget
                     (string git, string svn) repo = ("", "");
                     if (repoPaths != null && repoPaths.TryGetValue(uid, out var rp)) repo = rp;
 
-                    // 키 순서·집합은 fromXML() 의 category 객체 + usesRepo + reportGroup. 9개는 항상 있고,
-                    // (reportGroup 은 usesRepo 바로 뒤. 2026-10-06, fromXML 도 이 키를 항상 만든다)
+                    // 키 순서·집합은 fromXML() 의 category 객체 + usesRepo. 8개는 항상 있고,
                     // source='db' 일 때만 source·dbGone 두 개가 뒤에 붙는다(개인 과제는 키 자체가 없다 — G-6).
                     // ★ usesRepo 만은 fromXML() 에 대응이 **없는** 키다 — 계약 G-0 이 명시한 유일한
                     //   의도된 예외다. XML 에는 경로 문자열만 있고 '쓴다/안 쓴다'는 없다(§4).
@@ -633,9 +629,6 @@ namespace TaskCalendarWidget
                         // ★ true/false 둘 다 키를 만든다(source·dbGone 과 다르다) — undefined 는 false 와
                         //   같은 자리에 떨어져 '경로 없음 안내' 분기가 조용히 사라진다.
                         ["usesRepo"]  = (IntOrNull(rd, "uses_repo") ?? 0) != 0,   // G-4 — 0/1 을 그대로 넘기지 않는다
-                        // 보고서 묶음(2026-10-06, schema_version 13). 'etc' 외 값은 전부 'include' 로 읽는다.
-                        //   키를 항상 만든다(fromXML 과 같은 모양이어야 XML 대 DB 대조가 맞는다).
-                        ["reportGroup"] = Str(rd, "report_group") == "etc" ? "etc" : "include",
                         ["createdAt"] = Iso(Str(rd, "created_at")), // G-3
                     };
                     AddDbSourceFlags(c, rd);   // source='db' 일 때만 source·dbGone(타인 열람과 같은 함수)

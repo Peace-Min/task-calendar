@@ -3671,7 +3671,7 @@ test('계약⑨: INT 확장 마이그레이션은 MODIFY sort_order INT UNSIGNED
     MIGRATE_INT + ' 이 sort_order 를 INT UNSIGNED NULL DEFAULT NULL 로 MODIFY 하지 않는다');
   assert.ok(/IF\(@v = '11'/.test(code), MIGRATE_INT + ' 의 가드가 11 에서 열리지 않는다(재실행·건너뛰기 방지)');
   assert.ok(/SET v = '12'[\s\S]{0,120}AND v = '11'/.test(code), MIGRATE_INT + ' 이 11→12 로 올리지 않는다');
-  assert.strictEqual(canonSchemaVersion(), '13', '정본 시딩이 13 이 아니다(2026-10-06 report_group 판) — 위젯·마이그레이션과 어긋난다');
+  assert.strictEqual(canonSchemaVersion(), '12', '정본 시딩이 12 가 아니다 — 위젯·마이그레이션과 어긋난다');
 });
 test('변이⑨: MODIFY 의 INT 를 SMALLINT 로 되돌리면 계약⑨ 가 실패한다 + 통제군', () => {
   assert.ok(migrateIntSql);

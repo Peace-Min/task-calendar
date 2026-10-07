@@ -686,22 +686,6 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 .code-tab.on{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent)}
 .cust-row .code-ord,.cat-row .code-ord{display:inline-flex;gap:2px;flex:none}
 .cust-row .code-ord .btn,.cat-row .code-ord .btn{padding:2px 7px;line-height:1.1}
-/* 보고서 묶음 [포함 | 기타](docs/REPORT-INCLUDE-STATE.md, 2026-10-06). ▲▼(.code-ord)와 같은 크기 규칙이고,
-   지금 값은 aria-pressed 로 보인다(눌린 쪽 = accent 소프트 배경, 토큰 색만). */
-.cat-row .cat-rg{display:inline-flex;gap:2px;flex:none}
-.cat-row .cat-rg .btn{padding:2px 7px;line-height:1.1}
-.cat-row .cat-rg .btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent-2);border-color:var(--accent);font-weight:700}
-@media (max-width:440px){ .cat-row .cat-rg .btn{min-height:32px;min-width:var(--sp-5)} }
-/* 좁은 폭(≤440px)에서는 과제 줄을 두 줄로 나눈다(2026-10-06 QA r1, 320px 실측: [포함 | 기타]가 더해지자 이름이 한 글자씩
-   세로로 접히고 '0건'이 이름에 겹쳤으며 목록에 가로 스크롤이 생겼다). 첫 줄 = 색 점, 이름(남는 폭 전부), 건수.
-   둘째 줄 = ▲▼, [포함 | 기타], 수정, 삭제(제거). ::after(폭 100%, 높이 0)가 줄을 끊고 order 로 첫 줄 뒤에 선다.
-   버튼들의 DOM 순서는 그대로라 Tab 순서와 화면 순서가 같다. */
-@media (max-width:440px){
-  .cat-row{flex-wrap:wrap;row-gap:var(--sp-1)}
-  .cat-row > .cat-dot + div{flex:1 1 0}
-  .cat-row::after{content:'';flex-basis:100%;height:0;order:1}
-  .cat-row > .code-ord,.cat-row > .cat-rg,.cat-row > .link{order:2}
-}
 /* 직급·소속 관리 — 조직 트리는 들여쓰기만(깊이는 JS 가 인라인 padding 으로 준다).
    ★ 줄 끝의 사용 개수 배지(「0명」「1명 · 하위 4개」)는 없앴다(ADMIN-HUB-4 N1 · 2026-10-06 — 의미 없고 난잡하다는 지적).
      그 숫자가 하던 일(숨김이 왜 꺼졌나)은 꺼진 [숨김]의 툴팁 · aria-describedby 문장이 한다(N2). */
@@ -1027,20 +1011,6 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-mirror .rcard:hover .rtask-edit-btn,.rpt-mirror .rtask:focus-within .rtask-edit-btn,.rpt-mirror .rcard:hover .rtask-del-btn,.rpt-mirror .rtask:focus-within .rtask-del-btn{opacity:.7}
 .rpt-mirror .rtask .rtask-edit-btn:hover{opacity:1;color:var(--accent);background:var(--hover-bg)}
 .rpt-mirror .rtask .rtask-del-btn:hover{opacity:1;color:var(--danger);background:var(--hover-bg)}
-/* 보고서 창 X(이 보고서에서만 빼기, docs/REPORT-INCLUDE-STATE.md). 행 카드 머리 오른쪽 끝의 테두리 있는 작은 원형 버튼이다.
-   항목 삭제(.rtask-del-btn: 테두리 없는 휴지통, 위험색)와 모양을 가른다. 기록을 지우지 않으므로 위험색을 쓰지 않는다.
-   크기는 미러 배율(--m-scale)을 따른다. 시간 입력칸이나 안내가 margin-left:auto 를 가진 줄에서는 그 뒤에 붙는다. */
-.rpt-mirror .rcard-x{flex:none;margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:calc(var(--m-scale) * 20px);height:calc(var(--m-scale) * 20px);padding:0;border:1px solid var(--line-2);border-radius:50%;background:var(--panel);color:var(--muted);cursor:pointer}
-.rpt-mirror .rcard-hwrap ~ .rcard-x,.rpt-mirror .rcard-hnote ~ .rcard-x{margin-left:6px}
-.rpt-mirror .rcard-x .ic{width:calc(var(--m-scale) * 11px);height:calc(var(--m-scale) * 11px)}
-.rpt-mirror .rcard-x:hover,.rpt-mirror .rcard-x:focus-visible{color:var(--text);border-color:var(--accent)}
-/* 좁은 폭(≤440px, 터치 위젯)에서는 X 의 히트 영역을 앱의 터치 하한 32px(.x 닫기와 같은 값)로 키운다. 아이콘 크기는 그대로다
-   (2026-10-06 QA r1, loop-ui-visual V7: 400px 에서 20x20 이었다). */
-@media (max-width:440px){ .rpt-mirror .rcard-x{min-width:32px;min-height:32px} }
-.rpt-mirror .rcard-hmerge{flex:none;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);white-space:nowrap}
-.rpt-excl{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);margin-top:6px;font-size:var(--fs-meta);color:var(--muted)}
-.rpt-excl .rx-lb{font-weight:600;color:var(--text)}
-.rpt-excl .btn.sm{padding:2px 8px}
 .rpt-mirror .rtask.editing{display:block}
 .rpt-mirror .rtask.editing .nd-cedit-wrap{margin-top:2px}
 .rpt-mirror .rtask-edit{width:100%;box-sizing:border-box;min-height:52px;resize:vertical;font:inherit;font-size:calc(var(--m-scale) * var(--fs-body));line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
@@ -3088,7 +3058,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <div class="rpt-preview">
           <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
-          <div class="rpt-excl hidden" id="rptExcl" role="group" aria-label="이 보고서에서 뺀 과제" hidden></div>
           <div id="rptOut" class="rpt-mirror" role="tabpanel" aria-label="보고서 초안 미리보기"></div>
         </div>
       </div>
@@ -9029,23 +8998,6 @@ function moveCategory(id, delta){
   save();
   return true;
 }
-// 보고서 묶음(docs/REPORT-INCLUDE-STATE.md, 2026-10-06): 과제마다 보고서에서 어떻게 보일지.
-//   'include'(기본) = 보고서에 이 과제 행으로 나간다. 'etc' = 업무와 공수가 보고서의 '기타' 행으로 합쳐진다.
-//   ★ 판독은 이 함수 하나다. 'etc' 일 때만 'etc', 그 밖(키 없음, null, 1, 'ETC', 'exclude' 등)은 전부 'include'.
-//     DB(cal_category.report_group)와 XML(reportGroup 속성)도 같은 규칙으로 읽고 쓴다.
-function catReportGroup(c){ return (c && c.reportGroup === 'etc') ? 'etc' : 'include'; }
-function isEtcCat(c){ return catReportGroup(c) === 'etc'; }
-// 보고서 묶음 바꾸기. moveCategory 와 같은 순서: 관문(guardEdit) → 과제 없음이나 같은 값이면 false → 값 변경 → save() **1회** → true.
-//   ★ 잠겨 있으면(서버 끊김) 아무것도 바꾸지 않는다. 토스트는 관문이 한 번 띄운다.
-function setCategoryReportGroup(id, group){
-  if(guardEdit()) return false;
-  const c = state.categories.find(x => x.id === id);
-  const g = (group === 'etc') ? 'etc' : 'include';
-  if(!c || catReportGroup(c) === g) return false;
-  c.reportGroup = g;
-  save();
-  return true;
-}
 
 /* ---------- XML 직렬화 / 역직렬화 ---------- */
 function toXML(){
@@ -9065,7 +9017,6 @@ function toXML(){
     el.setAttribute('color', c.color);
     if(c.gitRepo) el.setAttribute('gitRepo', c.gitRepo);
     if(c.svnRepo) el.setAttribute('svnRepo', c.svnRepo);   // SVN 작업복사본(git과 독립 — 과제가 둘 다 보유 가능)
-    if(catReportGroup(c) === 'etc') el.setAttribute('reportGroup', 'etc');   // 보고서 묶음: 기타일 때만 쓴다(포함은 속성 없음 = 옛 파일과 같은 바이트)
     el.setAttribute('createdAt', c.createdAt || '');
     // 공식 과제(DB 유래) — 출처와 '라벨을 그리는 데 필요한 최소값'만 영속한다(name·color는 위 공통 경로가 이미 기록).
     // ★ 상세 메타(발주처·구분·상태·기간·사업명·계약명·통상명칭)는 기록하지 않는다(2026-07-24) — 그건 DB 캐시이고,
@@ -9250,8 +9201,6 @@ function fromXML(text){
       desc: txt(c,'description'),
       gitRepo, svnRepo,
       createdAt: c.getAttribute('createdAt') || nowIso(),
-      // 보고서 묶음: 키를 항상 만든다(DB 부팅 조회와 같은 모양). 'etc' 외 값(속성 없음 포함)은 전부 include.
-      reportGroup: c.getAttribute('reportGroup') === 'etc' ? 'etc' : 'include',
     };
     // 공식 과제(DB 유래) — source·dbGone만 왕복(name·color는 위 공통 경로). 하위호환: 옛 XML엔 source 속성이 없으므로 개인 과제로 로드(추가 키 없음).
     // ★ 옛 파일에 남아 있는 상세 메타 속성(customer/section/status/기간/사업명…)은 '읽지 않는다' — 그러면 그만이다(에러 없음).
@@ -9426,7 +9375,7 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
   const norm = s => ({
     g: s.gitAuthor||'',
     sv: s.svnAuthor||'',
-    c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'',c.gitRepo||'',c.svnRepo||'',catReportGroup(c)]),
+    c: s.categories.map(c=>[c.id,c.name,c.color,c.desc||'',c.gitRepo||'',c.svnRepo||'']),
     e: s.entries.map(e=>[e.id,e.date,e.title,e.categoryId||null,!!e.allDay,e.startTime||'',e.endTime||'',e.memo||'',e.source||'',
       e.endDate||'',
       e.recur ? [e.recur.freq, e.recur.interval||1, e.recur.until||'', e.recur.count||0] : null,
@@ -10501,7 +10450,6 @@ function closeOverlay(ov){
   if(ov.id === 'adminHub' && __ah.docked && __ah.docked.dataset.busy === '1') return;
   //  ★ 일간·주간 **둘 다** 비운다(2026-09-18): 한쪽만 비우면 다시 열었을 때 주간 캐시가 이전 기간의 것으로 남는다(#rptFrom 과 같은 짝).
   if(ov.id === 'reportModal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
-  if(ov.id === 'reportModal') rptExcluded.clear();   // 보고서 창 X(뺀 과제)도 창과 함께 사라진다(서버, localStorage 어디에도 없다)
   if(ov.id === 'orgTitleModal') otAfterClose();     // 직급·소속을 고쳤으면 「구성원 편집」이 드롭다운·명부를 다시 받는다
   //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
   //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
@@ -10854,21 +10802,6 @@ function catMoveBtnsHtml(c){
     + `<button type="button" class="btn sm" data-act="down" aria-label="아래로 이동: ${nm}" title="${dnEnd ? CAT_END_TIP.down : '아래로'}"${dnEnd ? ' aria-disabled="true"' : ''}>▼</button>`
     + `</span>`;
 }
-// 보고서 묶음 [포함 | 기타](docs/REPORT-INCLUDE-STATE.md). ▲▼ 옆 작은 두 버튼. 누르면 바로 저장(setCategoryReportGroup, 저장 1회).
-//   지금 값은 aria-pressed 로 말한다(눌린 쪽 = 지금 값). 그룹 이름에 과제명을 실어 낭독기가 어느 과제인지 말한다.
-function catReportGroupHtml(c){
-  const etc = isEtcCat(c), nm = esc(c.name);
-  return `<span class="cat-rg" role="group" aria-label="보고서 묶음: ${nm}">`
-    + `<button type="button" class="btn sm" data-act="rg-include" aria-pressed="${etc ? 'false' : 'true'}" title="보고서에 이 과제 행으로 나갑니다">포함</button>`
-    + `<button type="button" class="btn sm" data-act="rg-etc" aria-pressed="${etc ? 'true' : 'false'}" title="보고서의 기타 행으로 합쳐집니다">기타</button>`
-    + `</span>`;
-}
-// 전환 뒤 목록을 다시 그리지 않고 그 줄의 눌림 표시만 맞춘다(포커스가 그 버튼에 남는다).
-function catSyncReportGroup(row, c){
-  if(!row || !c) return;
-  const g = catReportGroup(c);
-  row.querySelectorAll('.cat-rg [data-act]').forEach(b => b.setAttribute('aria-pressed', b.dataset.act === 'rg-' + g ? 'true' : 'false'));
-}
 // 단일 목록 렌더 — 개인/공식(DB)을 한 목록에 출처 배지와 함께. 개인=수정/삭제, 공식=제거(사용 0건일 때만)·수정불가(원본은 카탈로그 Admin).
 function catRowHtml(c){
   if(isOfficialCat(c)){
@@ -10887,7 +10820,6 @@ function catRowHtml(c){
       </div>
       <span class="cat-count">${use}건</span>
       ${catMoveBtnsHtml(c)}
-      ${catReportGroupHtml(c)}
       <button class="link" data-act="edit" title="색상, 설명, Git, SVN을 수정합니다 (과제명만 DB 원본으로 잠깁니다)">수정</button>
       <button class="link danger" data-act="unsub"${removable?'':' disabled'} title="${esc(rmTip)}">제거</button>
     </div>`;
@@ -10903,7 +10835,6 @@ function catRowHtml(c){
     </div>
     <span class="cat-count">${n}건</span>
     ${catMoveBtnsHtml(c)}
-    ${catReportGroupHtml(c)}
     <button class="link" data-act="edit">수정</button>
     <button class="link danger" data-act="del">삭제</button>
   </div>`;
@@ -13256,23 +13187,8 @@ function fmtH(min){ const h = min / 60; return Number.isInteger(h) ? String(h) :
 // 일간 보고의 과제별 시간 — 본문 헤더 '[과제] : n' 과 전송 payload.hours 가 **같은 rows·같은 함수**에서 나온다(WYSIWYG · 2026-09-23 §3.4-C-2).
 //   예전엔 payload 가 state.categories 등록 순서를 따로 돌아 '기타' 위치·조건식이 본문과 갈릴 수 있었다.
 function reportDailyHours(rows, date){
-  return (rows || []).map(r => ({ key: r.key, name: String(r.name || ''), hours: reportRowHours(r, date) }))
+  return (rows || []).map(r => ({ key: r.key, name: String(r.name || ''), hours: getTaskHours(date, r.key) }))
     .filter(x => x.name && x.hours != null);
-}
-// 한 보고서 행의 그날 공수 = 그 행의 hourKeys 각각의 getTaskHours 합(전부 비면 null).
-//   일반 행은 [자기 id] 라 getTaskHours(date, key) 와 같은 값이다. '기타' 행은 보고서 묶음 '기타'(isEtcCat)로 합친
-//   과제들의 공수를 함께 센다(docs/REPORT-INCLUDE-STATE.md). 공수를 읽는 곳(일간 헤더, 일간 전송 hours, 주간 content,
-//   내용 없는 항목 판정)이 모두 이 함수나 같은 hourKeys 를 쓴다. 어느 과제의 공수도 한 행에서 한 번만 더해진다.
-function reportRowHours(row, date){
-  const ks = (row && Array.isArray(row.hourKeys) && row.hourKeys.length) ? row.hourKeys : [row && row.key];
-  let h = null;
-  for(const k of ks){ const v = getTaskHours(date, k); if(v != null) h = (h == null) ? v : h + v; }
-  return h;
-}
-// 일간 카드의 '기타로 합친 과제 Nh 포함' 값: 행 합계에서 자기 칸(입력칸에 보이는 값)을 뺀 것. 소수 둘째자리.
-function reportMergedHours(row, date){
-  const all = reportRowHours(row, date), own = getTaskHours(date, row && row.key);
-  return Math.round(((all || 0) - (own || 0)) * 100) / 100;
 }
 // 중복 제목 강등 시 본문·날짜별 설명 병합(순수 함수). 같은 본문은 한 번만, 다르면 줄바꿈으로 잇는다.
 function mergeReportBody(a, b){
@@ -13297,11 +13213,7 @@ function collectReportData(from, to, sources){
   const includeDetails = src.desc !== false;
   const skipEmpty = !!src.skipEmpty;
   const gitaCat = state.categories.find(c => c.name === '기타');   // 사용자가 '기타' 과제를 만든 경우 미분류를 그쪽으로 병합
-  //  보고서 묶음 '기타'(isEtcCat, docs/REPORT-INCLUDE-STATE.md): 그 과제의 일정, 할 일, 커밋도 미분류와 같은 '기타' 키로 간다.
-  //  사용자 '기타' 과제 자신은 etc 여도 자기 행으로 남는다(etcIds 에서 뺀다). etc 과제가 없으면 키는 전과 같다.
-  const etcKey = gitaCat ? gitaCat.id : '__uncat__';
-  const etcIds = state.categories.filter(c => isEtcCat(c) && c !== gitaCat).map(c => c.id);
-  const catKey = e => { const c = catById(e.categoryId); return (c && !isEtcCat(c)) ? e.categoryId : etcKey; };
+  const catKey = e => catById(e.categoryId) ? e.categoryId : (gitaCat ? gitaCat.id : '__uncat__');
   const items = new Map(), seen = new Map(), bucket = new Map();
   const meta = new Map(), pos = new Map();   // meta: k -> [{text,editable,entryId,hash,cidx}] (titles와 1:1 정렬), pos: k -> Map(title -> index)
   const uncat = [], uncatMeta = [];
@@ -13385,17 +13297,12 @@ function collectReportData(from, to, sources){
     }
   }
   // 행 구성: 등록 과제 전부(0건 포함) + 미분류 '기타'(엔트리 또는 할 일 제목이 있을 때만)
-  //  hourKeys = 이 행에 공수를 더할 키들(reportRowHours). 일반 행 [자기 id], 사용자 '기타' 과제 행 [자기 id, ...etc 과제 id].
   let rows = state.categories.map(c => ({ key:c.id, name:c.name, color:c.color,
-    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[],
-    hourKeys: (c === gitaCat) ? [...new Set([c.id].concat(etcIds))] : [c.id] }));
-  if(etcIds.length) rows = rows.filter(r => !etcIds.includes(r.key));   // 기타로 합친 과제는 자기 행이 없다
+    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));
   // '기타'는 등록 순서와 관계없이 일반 과제 뒤에 둔다. 미분류가 실제 '기타' 과제로 병합돼도 같은 규칙을 유지한다.
   rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));
-  //  미분류 '기타' 행: 미분류 항목이 있거나, 사용자 '기타' 과제 없이 etc 과제가 있을 때(제목이 없어도 공수를 담을 자리).
-  if(bucket.has('__uncat__') || uncat.length || (etcIds.length && !gitaCat)) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
-    titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[], hourKeys:[...new Set(['__uncat__'].concat(etcIds))] });
-  const hourKeysByKey = new Map(rows.map(r => [r.key, r.hourKeys]));
+  if(bucket.has('__uncat__') || uncat.length) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d',
+    titles:uncat, titleMeta:uncatMeta, entries:bucket.get('__uncat__')||[] });
   // '내용 없는 항목 제외' = 보고서에 쓸 내용이 아예 없는 과제 행만 뺀다(사용자 정의, 2026-09-18).
   //   · 제목이 있는 일정·할 일·커밋은 그 자체가 내용 → 설명(메모/dayNote) 유무와 무관하게 절대 빼지 않는다.
   //   · 공수도 내용이다: 일간 헤더 '[과제] : n'·주간 content 줄이 바로 이 행에서 나오므로,
@@ -13403,18 +13310,10 @@ function collectReportData(from, to, sources){
   //   · 여기서 세는 공수는 **(날짜×과제) 공수표뿐이다** — 보고에 나가는 시간이 그것 하나이기 때문이다.
   //     일정의 hours(e.hours)는 보고서 어디에도 실리지 않으므로, 그걸 근거로 남기면 화면에 '빈 과제명' 한 줄만 나간다.
   //   · 그래서 제외 조건은 '제목 0개 AND 공수표 0' 하나뿐.
-  const rangeTaskHours = key => { const ks = hourKeysByKey.get(key) || [key]; let h = 0; for(let d = from; d && d <= to; d = addDays(d, 1)){ for(const k of ks){ const v = getTaskHours(d, k); if(v != null) h += v; } } return h; };
+  const rangeTaskHours = key => { let h = 0; for(let d = from; d && d <= to; d = addDays(d, 1)){ const v = getTaskHours(d, key); if(v != null) h += v; } return h; };
   const rowHasHours = r => rangeTaskHours(r.key) > 0;
   if(skipEmpty) rows = rows.filter(r => (Array.isArray(r.titles) && r.titles.length > 0) || rowHasHours(r));
-  //  보고서 창 X(rptReportSources 의 exclude): 맨 마지막에 거른다('기타' 맨 뒤, 내용 없는 항목 제외 뒤).
-  //  excluded = 이번에 빠진 행(rows 와 같은 순서). 지금 행에 없는 키(예: 뺀 뒤 그 과제를 기타로 바꿈)는 세지 않는다.
-  const exclude = (src.exclude && typeof src.exclude.has === 'function') ? src.exclude : null;
-  let excluded = [];
-  if(exclude && exclude.size){
-    excluded = rows.filter(r => exclude.has(r.key)).map(r => ({ key: r.key, name: r.name }));
-    rows = rows.filter(r => !exclude.has(r.key));
-  }
-  return { rows, excluded };
+  return { rows };
 }
 // 과제 데이터 내보내기 — 선택 과제 1개 + 기간의 캘린더 기록을 날짜별 Markdown 문자열로 직렬화.
 // 순수 함수(state만 읽고 DOM·부수효과 없음 → 단위테스트 가능). git/svn patch는 호스트가 별도 파일로 만든다.
@@ -13499,44 +13398,6 @@ function rptSources(){
   const ev = $('#rptSrcEvent'), td = $('#rptSrcTodo'), gt = $('#rptSrcGit'), ds = $('#rptWithDesc'), se = $('#rptSkipEmpty');
   return { event: ev ? ev.checked : true, todo: td ? td.checked : true, git: gt ? gt.checked : true, desc: ds ? ds.checked : true, skipEmpty: se ? se.checked : false };
 }
-// 보고서 창에서 X 로 뺀 과제(docs/REPORT-INCLUDE-STATE.md): row.key → 과제명. 창 단위 수명이다.
-//   일간, 주간, 기간 취합 탭을 오가도 남고(키가 과제 id 라 어느 기간에도 맞는다), 창을 열 때(openReport)와
-//   닫을 때(closeOverlay) 비운다. 서버에도 localStorage 에도 쓰지 않는다.
-const rptExcluded = new Map();
-// 보고서 수집에 넘기는 출처 = 체크박스(rptSources) + 이번 창에서 뺀 과제. rptSources 는 저장(tc_rptSources)되는
-//   객체라 exclude 를 섞지 않는다. 미리보기, 복사, 전송(일간, 주간)이 모두 이 함수를 지난다(같은 rows).
-function rptReportSources(){ return Object.assign({}, rptSources(), { exclude: rptExcluded }); }
-// 뺀 과제 막대(#rptExcl): 'N개' + 과제별 되돌리기 + 모두 되돌리기. 비면 숨긴다. excluded = collectReportData(또는
-//   netcusParsedWithout)가 돌려준 이번 렌더의 실제로 빠진 행이다(지금 행에 없는 키는 세지 않는다).
-function renderRptExcl(excluded){
-  const bar = $('#rptExcl'); if(!bar) return;
-  const list = Array.isArray(excluded) ? excluded : [];
-  if(!list.length){ bar.innerHTML = ''; bar.classList.add('hidden'); bar.hidden = true; return; }
-  bar.innerHTML = `<span class="rx-lb">뺀 과제 ${list.length}개</span>`
-    + list.map(x => `<button type="button" class="btn sm" data-rxback="${esc(x.key)}" aria-label="${esc('되돌리기: ' + x.name)}" title="${esc('되돌리기: ' + x.name)}">${esc(x.name)}</button>`).join('')
-    + `<button type="button" class="btn sm" data-rxall="1">모두 되돌리기</button>`;
-  bar.classList.remove('hidden'); bar.hidden = false;
-}
-// 행 카드 머리의 X(이 보고서에서만 빼기). 캘린더 출처와 netcus 출처가 같은 버튼을 쓴다.
-function rptXBtnHtml(key, name){
-  return '<button type="button" class="rcard-x" data-rx="' + esc(String(key)) + '" data-rxn="' + esc(String(name == null ? '' : name)) + '"'
-    + ' aria-label="' + esc('이 보고서에서 빼기: ' + (name == null ? '' : name)) + '" title="이 보고서에서만 뺍니다. 기록은 지우지 않습니다">' + ICON.xmark + '</button>';
-}
-// 포커스 규칙: X 뒤 = 막대의 그 과제 되돌리기, 되돌리기 뒤 = 되살아난 카드의 X, 모두 되돌리기 뒤 = 첫 카드의 X.
-//   buildReport 가 다시 그리면 포커스가 body 로 떨어지므로 여기서 옮긴다.
-function rptFocusExclBack(key){
-  const bar = $('#rptExcl'); if(!bar) return;
-  const bs = [...bar.querySelectorAll('[data-rxback]')];
-  const b = bs.find(x => x.dataset.rxback === key) || bar.querySelector('[data-rxall]');
-  if(b) b.focus();
-}
-function rptFocusCardX(key){
-  const out = $('#rptOut'); if(!out) return;
-  const xs = [...out.querySelectorAll('.rcard-x')];
-  const b = (key == null ? null : xs.find(x => x.dataset.rx === key)) || xs[0];
-  if(b) b.focus();
-  else { const bar = $('#rptExcl'); const a = bar && bar.querySelector('[data-rxall]'); if(a) a.focus(); }
-}
 // 포함 항목(일정/할일/커밋/설명포함/내용없는항목제외 = 항목도 공수도 없는 과제 행만 제외)을 일간/주간 모드별로 캐싱(#7 reportFormatPrefs와 동일 패턴, custom=weekly 재사용). 저장은 localStorage tc_rptSources={daily,weekly}.
 function normRptSrc(o){ o = o || {}; return { event: o.event !== false, todo: o.todo !== false, git: o.git !== false, desc: o.desc !== false, skipEmpty: !!o.skipEmpty }; }
 function loadRptSourcePrefs(){
@@ -13620,13 +13481,13 @@ function updateRptSendVis(){
 }
 // 주간보고용 필드 — content(과제투입시간: [과제명]:시간), endwork(진행사항: 과제별 업무 불릿), subject(제목 추정)
 function buildWeeklyFields(from, to, sources){
-  const { rows } = collectReportData(from, to, sources || rptReportSources());
+  const { rows } = collectReportData(from, to, sources || rptSources());
   if(!rows.length) return null;
   let grandHours = 0;
   const contentRows = rows.map(r => {
     let hours = 0, hasHours = false;
     for(let date = from; date <= to; date = addDays(date, 1)){
-      const value = reportRowHours(r, date);
+      const value = getTaskHours(date, r.key);
       if(value != null){ hours += value; hasHours = true; }
     }
     hours = Math.round(hours * 100) / 100;
@@ -13763,36 +13624,6 @@ function parseNetcusWeek(days, categories, opts){
     tasks, unclassified,
     stats: { daysTotal: rows.length, daysRead, emptyDays, readFailedDays, reasons, unregistered }
   };
-}
-// netcus 출처 행 키(보고서 창 X, docs/REPORT-INCLUDE-STATE.md). 매칭된 과제는 과제 id(캘린더 출처와 같은 키라
-//   한 번 빼면 두 출처에서 함께 빠진다), 아니면 'nc:' + 정규화 이름(NFC + 공백 제거, 파서와 같은 규칙). 순수.
-//   parseNetcusWeek 과제는 catId/name, parseNetcusWeekly 과제는 catId/norm 을 갖는다. '[미분류]' 블록 키는 '__nc_uncat__'.
-function ncRowKey(t){
-  if(t && t.matched && t.catId) return String(t.catId);
-  const nn = (t && t.norm != null) ? String(t.norm) : String(t && t.name != null ? t.name : '').normalize('NFC').replace(/\s+/g, '');
-  return 'nc:' + nn;
-}
-// netcus 병합 결과에서 보고서 창 X 로 뺀 행을 거른 사본. 순수(전역 rptExcluded 를 읽지 않는다, 호출자가 넘긴다).
-//   반환 { parsed: 걸러진 사본(원본과 캐시는 그대로), excluded: [{key, name}] }(그려진 순서). 기타 묶기는 하지 않는다
-//   (netcus 기록의 과제는 이름으로만 이어져 불안정하다. 사용자 결정 2026-10-06).
-function netcusParsedWithout(parsed, exclude){
-  const ex = (exclude && typeof exclude.has === 'function' && exclude.size) ? exclude : null;
-  if(!parsed || !ex) return { parsed, excluded: [] };
-  const excluded = [], kept = [];
-  for(const t of (Array.isArray(parsed.tasks) ? parsed.tasks : [])){
-    const k = ncRowKey(t);
-    if(ex.has(k)) excluded.push({ key: k, name: String(t && t.name != null ? t.name : '') }); else kept.push(t);
-  }
-  const out = Object.assign({}, parsed, { tasks: kept });
-  if(Array.isArray(parsed.unclassified) && parsed.unclassified.length && ex.has('__nc_uncat__')){
-    out.unclassified = []; excluded.push({ key: '__nc_uncat__', name: '미분류' });
-  }
-  if(Array.isArray(parsed.order)) out.order = kept.map(t => t.name);
-  if(parsed.hoursByTask && typeof parsed.hoursByTask === 'object'){
-    const hb = {}; for(const t of kept) if(Object.prototype.hasOwnProperty.call(parsed.hoursByTask, t.name)) hb[t.name] = parsed.hoursByTask[t.name];
-    out.hoursByTask = hb;
-  }
-  return { parsed: out, excluded };
 }
 // netcus 주간 전송 텍스트(진행사항/endwork) — 순수·결정론. // 사유 주석·통계 없음(표시 전용과 분리) → Layer1 테스트 대상.
 function buildNetcusSendText(parsed){
@@ -14020,14 +13851,13 @@ function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
   const out = $('#rptOut'), sum = $('#rptSummary');
-  renderRptExcl(null);   // 뺀 과제 막대는 이번 렌더가 다시 그린다(가드 화면이나 netcus 대기 화면에 낡은 막대가 남지 않게)
   syncReportFontUI();   // 조기 반환 경로들보다 앞 — netcus 미리보기·가드 화면에서도 미리보기 서식이 설정과 일치하게
   syncReportFormatUI();   // 서식 컨트롤도 같은 이유로 가드 앞(2026-09-18)
   // ★ 규칙(2026-09-18 리뷰): 저장값 → 컨트롤 표시, 저장, 요약줄, 독립 슬롯(근태)은 본문 가드와 무관하게
   //   buildReport 첫머리에서 한다. 렌더는 저장값을 읽기만 한다. 미리보기·복사·전송(일간·주간)은 같은
   //   rows/flags 에서 나온다(WYSIWYG). — 전에는 이 두 줄이 날짜 가드·netcus 조기반환 **뒤**에 있어,
   //   잘못된 기간이나 netcus 출처에서 체크를 바꾸면 그 선택이 저장되지 않고 ⚙요약도 낡은 값을 말했다.
-  const src = rptReportSources();   // 체크박스 + 이번 창에서 X 로 뺀 과제(저장은 아래 saveRptSourcePrefs 가 체크박스만)
+  const src = rptSources();
   saveRptSourcePrefs();   // 포함 항목 선택을 현재 보고 유형(일간/주간)별로 영속
   { const os = $('#rptOptSum');   // ⚙옵션 접힘 시 발견성 — 포함 수/머리기호 요약
     if(os){ const pc = [src.event, src.todo, src.git].filter(Boolean).length;
@@ -14078,10 +13908,9 @@ function buildReport(){
     out.innerHTML = '<div class="rpt-guard">포함할 항목을 한 개 이상 선택하세요.<br>위에서 <b>일정, 할 일, 커밋 내역</b> 중 하나 이상을 체크하세요.</div>';
     return;
   }
-  const { rows, excluded } = collectReportData(from, to, src);
-  renderRptExcl(excluded);   // 뺀 과제 막대: 아래 가드보다 먼저(전부 뺐을 때도 되돌리기가 보여야 한다)
+  const { rows } = collectReportData(from, to, src);
   if(!rows.length){
-    sum.textContent = excluded.length ? '모든 과제를 뺐습니다. 되돌리기로 다시 넣을 수 있습니다' : '등록된 과제가 없습니다. [내 과제]에서 추가하세요.'; out.innerHTML = ''; return;
+    sum.textContent = '등록된 과제가 없습니다. [내 과제]에서 추가하세요.'; out.innerHTML = ''; return;
   }
   // 표시 설정(머리기호/들여쓰기) — 표시+복사 전용. 데이터 불변. (컨트롤 표시는 syncReportFormatUI 가 가드 앞에서 맞춘다)
   const _mkSpec = reportMarkerSpec();
@@ -14102,9 +13931,6 @@ function buildReport(){
     if(daily && r.key !== '__uncat__'){ const _th = getTaskHours(from, r.key);
       html += `<span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.5" inputmode="decimal" value="${_th != null ? _th : ''}" data-hcat="${esc(r.key)}" aria-label="${esc(r.name)} 시간(회사 일간보고용)" placeholder="0"><span class="rcard-hu">h</span></span>`; }
     else if(daily){ html += `<span class="rcard-hnote" title="미분류 항목은 과제별 시간을 저장할 수 없습니다. 항목에 과제를 지정하면 입력칸이 생깁니다">시간은 과제를 지정한 뒤</span>`; }
-    //  보고서 묶음 '기타'로 합친 과제의 공수: 입력칸(자기 칸) 값과 별도로 이 행 합계에 들어간다는 것을 옆에 적는다.
-    if(daily){ const _mh = reportMergedHours(r, from); if(_mh > 0) html += `<span class="rcard-hmerge">기타로 합친 과제 ${_mh}h 포함</span>`; }
-    html += rptXBtnHtml(r.key, r.name);   // 이 보고서에서만 빼기(창 단위, 저장 안 함)
     html += `</div>`;
     if(r.titles.length){
       if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
@@ -14165,7 +13991,6 @@ function ncLoadingHtml(label){ return '<div class="rnc-loading" id="rncProg">' +
 async function renderNetcusInto(from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
-  renderRptExcl(null);   // 안내, 대기, 오류 화면에는 막대를 두지 않는다(미리보기가 다시 그린다)
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 netcus 미리보기에서 비움
   // 브라우저(비 HOST): netcus 병합은 위젯 전용 — 안내만
   if(!HOST){
@@ -14241,9 +14066,6 @@ function renderNetcusError(err, from, to){
 function renderNetcusPreview(parsed, at){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
-  //  보고서 창 X: 캐시(netcusMerge.parsed)는 원본 그대로 두고 그릴 때마다 거른다. 기타 묶기는 netcus 출처에 없다.
-  const _nx = netcusParsedWithout(parsed, rptExcluded); parsed = _nx.parsed;
-  renderRptExcl(_nx.excluded);
   const md = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); return m ? ((+m[2]) + '/' + (+m[3])) : String(d || ''); };
   let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + ' 읽기전용: netcus 일간보고를 그대로 가져옴'
     + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
@@ -14259,7 +14081,7 @@ function renderNetcusPreview(parsed, at){
     let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;
     // 헤더는 과제명만(진행사항 필드 계약). 시간은 과제투입시간(content)로 감 → 작은 힌트로만 표기(헤더 대괄호엔 안 붙임).
     const hHint = hk.length ? '<span class="rnc-hhint">과제투입시간 ' + esc(String(hsum)) + 'h</span>' : '';
-    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + rptXBtnHtml(ncRowKey(t), t.name) + '</div>';
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
     if(t.lines.length){   // 날짜 프리픽스 없이 + 동일 내용 중복 제거(주간 종합 뷰)
       const seen = Object.create(null), body = [];   // create(null): 'constructor' 등 프로토타입 이름 라인 오탈락 방지(전송/복사와 WYSIWYG 일치)
       for(const ln of t.lines){ const tx = ln.text || ''; if(tx && !seen[tx]){ seen[tx] = 1; body.push(esc(tx)); } }
@@ -14268,14 +14090,14 @@ function renderNetcusPreview(parsed, at){
     html += '</div>';
   }
   if(parsed.unclassified.length){
-    html += '<div class="rcard rnc-card rnc-uncat"><div class="rcard-head"><span class="rcard-nm">[미분류]</span>' + rptXBtnHtml('__nc_uncat__', '미분류') + '</div><div class="rcard-tasks">'
+    html += '<div class="rcard rnc-card rnc-uncat"><div class="rcard-head"><span class="rcard-nm">[미분류]</span></div><div class="rcard-tasks">'
       + parsed.unclassified.map(u => {
           const why = (u.reason === 'ambiguous') ? '형식 모호' : '머리표 없음';
           return '<div class="rnc-uline">' + esc(u.text) + ' <span class="rnc-why">// ' + esc(why) + ', ' + esc(md(u.date)) + '</span></div>';
         }).join('')
       + '</div></div>';
   }
-  if(!parsed.tasks.length && !parsed.unclassified.length && !_nx.excluded.length){
+  if(!parsed.tasks.length && !parsed.unclassified.length){
     html += '<div class="rpt-guard">그 기간 netcus 일간보고에서 가져올 내용이 없습니다.</div>';
   }
   out.innerHTML = html;
@@ -14295,14 +14117,13 @@ function renderNetcusPreview(parsed, at){
     parts.push('빈 날: ' + st.emptyDays.map(d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? WD[new Date(+m[1], +m[2]-1, +m[3]).getDay()] : d; }).join('·'));
   }
   if(st.readFailedDays && st.readFailedDays.length) parts.push('읽기 실패 ' + st.readFailedDays.length + '일');
-  if(sum) sum.textContent = (_nx.excluded.length && !parsed.tasks.length && !parsed.unclassified.length) ? '모든 과제를 뺐습니다. 되돌리기로 다시 넣을 수 있습니다' : parts.join(', ');
+  if(sum) sum.textContent = parts.join(', ');
   updateRptSendVis();   // 읽기 잠금(__netcusBusy)으로 비활성됐던 전송 버튼을 현재 모드 기준으로 복원
 }
 // ===== netcus 주간보고 범위 → 과제별 병합(Phase2) — 위젯(HOST) 전용, 읽기전용 미리보기 =====
 async function renderNetcusWeeklyInto(from, to){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
-  renderRptExcl(null);   // 안내, 대기, 오류 화면에는 막대를 두지 않는다(미리보기가 다시 그린다)
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯은 netcus 미리보기에서 비움
   if(!HOST){
     if(sum) sum.textContent = 'netcus 주간보고 병합은 위젯에서만 됩니다';
@@ -14376,10 +14197,6 @@ function renderNetcusWeeklyError(err, from, to){
 function renderNetcusWeeklyPreview(parsed, at){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
-  //  보고서 창 X: 원본(_src, 캐시)은 그대로 두고 그릴 때마다 거른다. 표시 형식 전환도 원본으로 다시 그린다.
-  const _src = parsed;
-  const _nx = netcusParsedWithout(_src, rptExcluded); parsed = _nx.parsed;
-  renderRptExcl(_nx.excluded);
   let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + ' 읽기전용: netcus 주간보고를 과제별로 병합'
     + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
     + '<span class="seg seg-auto seg-micro" role="group" aria-label="표시 형식">'
@@ -14390,7 +14207,7 @@ function renderNetcusWeeklyPreview(parsed, at){
   for(const t of parsed.tasks){
     html += '<div class="rcard rnc-card">';
     const hHint = (t.hours > 0) ? '<span class="rnc-hhint">투입 ' + esc(String(t.hours)) + 'h</span>' : '';
-    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + rptXBtnHtml(ncRowKey(t), t.name) + '</div>';
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
     const blocks = (t.blocks || []);
     if(!weeklyFlat){   // 주차별 — 주차 소제목 + 진행사항
       for(const b of blocks){
@@ -14409,7 +14226,7 @@ function renderNetcusWeeklyPreview(parsed, at){
     }
     html += '</div>';
   }
-  if(!parsed.tasks.length && !_nx.excluded.length){
+  if(!parsed.tasks.length){
     html += '<div class="rpt-guard">그 기간 netcus 주간보고에서 과제별로 가져올 내용이 없습니다.</div>';
   }
   out.innerHTML = html;
@@ -14418,9 +14235,9 @@ function renderNetcusWeeklyPreview(parsed, at){
     const flat = b.dataset.wmode === 'flat';
     if(flat === weeklyFlat) return;
     weeklyFlat = flat; try{ localStorage.setItem('tc_weeklyFlat', flat ? '1' : '0'); }catch(_){}
-    renderNetcusWeeklyPreview(_src, at);
+    renderNetcusWeeklyPreview(parsed, at);
   }));
-  if(sum) sum.textContent = (_nx.excluded.length && !parsed.tasks.length) ? '모든 과제를 뺐습니다. 되돌리기로 다시 넣을 수 있습니다' : '과제 ' + parsed.tasks.length + '개, ' + (parsed.weekCount || 0) + '주 병합';
+  if(sum) sum.textContent = '과제 ' + parsed.tasks.length + '개, ' + (parsed.weekCount || 0) + '주 병합';
   updateRptSendVis();   // 읽기 잠금(__netcusBusy)으로 비활성됐던 전송 버튼을 현재 모드 기준으로 복원
 }
 // 내용 출처 세그의 표시를 state.reportSource 에 맞춘다 — openReport(재오픈)와 setReportMode(모드 전환)가 공유한다.
@@ -14433,7 +14250,6 @@ function syncReportSourceSeg(){
     const on = x.dataset.rsrc === src; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
 }
 function openReport(){
-  rptExcluded.clear();   // 보고서 창 X 는 창 단위다. 열 때 모두 포함으로 돌아온다(저장하지 않는다)
   clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
   openModal('#reportModal');
   setReportMode('daily');   // 기본: 일간(오늘). 포함 항목 선택은 setReportMode→applyRptSourcePrefs가 모드별로 복원. 주간/커스텀은 탭으로 전환
@@ -14600,15 +14416,15 @@ function buildReportText(indentUnit){
   const _ncF = $('#rptFrom').value, _ncT = $('#rptTo').value;
   if(state.reportSource === 'week' && reportMode !== 'daily'){
     const _wp = (netcusWeeklyMerge && netcusWeeklyMerge.parsed && netcusWeeklyMerge.key === ncMergeKey(_ncF, _ncT)) ? netcusWeeklyMerge.parsed : null;
-    return _wp ? buildNetcusWeeklyText(netcusParsedWithout(_wp, rptExcluded).parsed, weeklyFlat) : '';   // X 로 뺀 과제는 복사에서도 뺀다
+    return _wp ? buildNetcusWeeklyText(_wp, weeklyFlat) : '';
   }
   if(state.reportSource === 'net' && reportMode !== 'daily'){
     const _np = (netcusMerge && netcusMerge.parsed && netcusMerge.key === ncMergeKey(_ncF, _ncT)) ? netcusMerge.parsed : null;
-    return _np ? buildNetcusSendText(netcusParsedWithout(_np, rptExcluded).parsed) : '';   // X 로 뺀 과제는 복사에서도 뺀다
+    return _np ? buildNetcusSendText(_np) : '';
   }
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
-  const { rows } = collectReportData(from, to, rptReportSources());
+  const { rows } = collectReportData(from, to, rptSources());
   if(!rows.length) return '';
   // 화면 미리보기와 동일(WYSIWYG) — 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 스페이스. 카드마다 번호 리셋.
   const _mkSpec = reportMarkerSpec();
@@ -16056,7 +15872,7 @@ function bind(){
       //   ★ 파싱이 아니라 전달이다(설계 §5.9.3) — 본문을 만들 때 이미 갖고 있던 값을 그대로 보낸다.
       //     호스트가 본문을 되파싱하면 전각 콜론·&nbsp; 들여쓰기 같은 표기 문제를 다시 만난다.
       //   ★ 실는 건 과제 **이름**이다. cat_no 는 싣지 않는다 — 앱이 아직 XML 을 써 DB 번호를 모른다.
-      const rptHours = reportDailyHours(collectReportData(from, to, rptReportSources()).rows, from)
+      const rptHours = reportDailyHours(collectReportData(from, to, rptSources()).rows, from)
         .map(x => ({ name: x.name, hours: x.hours }));   // 본문 헤더와 같은 rows·같은 함수(reportDailyHours) — 이름·값·순서가 본문과 같다
       const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, hours: rptHours, dryRun: false };   // 늘 실제 제출(UI-CLARITY U3) — 호스트의 미제출(DryRun) 갈래는 남아 있지만 웹은 고르지 않는다
       //  ★ 실제 제출 전 확인은 한 번(UI-CLARITY U4) — 위젯(자동 전송)에서만 묻는다. 브라우저는 netcus 창만 열어 주고 제출하지 않는다.
@@ -16076,9 +15892,8 @@ function bind(){
       // 자기 보고를 자기가 덮어쓴다. 버튼은 보고 유형만 보므로(updateRptSendVis) 전송 경로를 여기서 끊는다.
       if(state.reportSource === 'week'){ toast('netcus 주간보고 출처는 기간 취합 전용이라 전송할 수 없습니다', 'warn'); return; }
       if(state.reportSource === 'net'){
-        const _np0 = (netcusMerge.key === ncMergeKey(from, to)) ? netcusMerge.parsed : null;
-        if(!_np0){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
-        const parsed = netcusParsedWithout(_np0, rptExcluded).parsed;   // 보고서 창 X 로 뺀 과제는 보내지 않는다(미리보기와 같은 거름)
+        const parsed = (netcusMerge.key === ncMergeKey(from, to)) ? netcusMerge.parsed : null;
+        if(!parsed){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
         const endwork = buildNetcusSendText(parsed);
         if(!endwork.trim()){ toast('보낼 내용이 없습니다', 'warn'); return; }
         const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: buildNetcusHoursText(parsed), endwork, planwork: buildNetcusPlanText(parsed) } };
@@ -16090,7 +15905,7 @@ function bind(){
         Platform.report.submitWeekly(payload);
         return;
       }
-      const wf = buildWeeklyFields(from, to, rptReportSources());
+      const wf = buildWeeklyFields(from, to, rptSources());
       if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
       const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork, planwork: wf.planwork } };
@@ -16385,13 +16200,6 @@ function bind(){
       if(b && b.getAttribute('aria-disabled') === 'true') return;
       catMoveRow(c.id, act === 'up' ? -1 : +1); return;
     }
-    if(act === 'rg-include' || act === 'rg-etc'){   // 보고서 묶음 전환. 관문과 저장(1회)은 setCategoryReportGroup 이 한다
-      if(setCategoryReportGroup(c.id, act === 'rg-etc' ? 'etc' : 'include')){
-        catSyncReportGroup(row, c);
-        const rm = $('#reportModal'); if(rm && !rm.classList.contains('hidden')) buildReport();   // 열린 보고서 창도 바로 따라간다
-      }
-      return;
-    }
     if((act === 'unsub' || act === 'del') && guardEdit()) return;
     if(act === 'unsub'){   // 공식(DB) 과제 구독 해제 — 사용 0건일 때만(엔트리는 안 건드림)
       if(!catRemovable(c)){ toast(`사용 중인 과제는 제거할 수 없습니다. 일정 정리/재연결 후 시도하세요`, 'warn'); return; }
@@ -16649,21 +16457,6 @@ function bind(){
       _seg.querySelectorAll('[data-rsrc]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
       buildReport();   // 출처 전환 → 미리보기 재빌드(net=병합 미리보기 / cal=캘린더 카드)
     }); }
-  // 보고서 창 X(이 보고서에서만 빼기)와 뺀 과제 막대(#rptExcl)의 되돌리기. 창 단위 상태라 저장하지 않는다.
-  //   캘린더 출처와 netcus 출처가 같은 버튼, 같은 Map(rptExcluded), 같은 다시 그리기(buildReport)를 쓴다.
-  $('#rptOut').addEventListener('click', ev => {
-    const b = ev.target.closest && ev.target.closest('.rcard-x'); if(!b) return;
-    const key = b.dataset.rx; if(!key) return;
-    rptExcluded.set(key, b.dataset.rxn || '');
-    buildReport();
-    rptFocusExclBack(key);
-  });
-  { const bar = $('#rptExcl'); if(bar) bar.addEventListener('click', ev => {
-    if(ev.target.closest && ev.target.closest('[data-rxall]')){ rptExcluded.clear(); buildReport(); rptFocusCardX(null); return; }
-    const b = ev.target.closest && ev.target.closest('[data-rxback]'); if(!b) return;
-    const key = b.dataset.rxback;
-    rptExcluded.delete(key); buildReport(); rptFocusCardX(key);
-  }); }
   // 과제별 시간 입력(일간) — (날짜×과제) 시간 저장(setTaskHours). 재빌드 없이 값만 정규화 반영(포커스 유지). 복사/전송 텍스트는 getTaskHours로 재계산.
   $('#rptOut').addEventListener('change', ev => {
     const inp = ev.target.closest && ev.target.closest('.rcard-h-in'); if(!inp) return;
