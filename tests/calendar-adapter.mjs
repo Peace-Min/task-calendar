@@ -1728,8 +1728,14 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
    *   ProjectDb 는 RepoPaths·UserSession 을 함께 요구하고, UserSession 은 Dpapi 를 요구한다
    *   (그 클래스는 NetcusService.cs 안에 있어 링크하면 WebView2 가 딸려온다 → Program.cs 의 대역). */
   const PROJECT_DB_CS = join(WIDGET_DIR, 'ProjectDb.cs');
+  /*   실측 2026-10-06: 서버 연결 장애 대응(0847975)에서 CalendarDb, ProjectDb 가 DbErrors(원인 분류)와
+   *   DbFault(시험용 장애 주입)를 부르게 되면서 모든 조합이 CS0103 으로 깨졌다. 두 파일을 더한 조합으로 회복했다.
+   *   loop-calendar-write 등 다른 러너는 이미 두 파일을 링크한다. (d7574fb 에서 들어왔다가 그 커밋 롤백 때 이 부분만 다시 살림) */
+  const DB_ERRORS_CS = join(WIDGET_DIR, 'DbErrors.cs');
+  const DB_FAULT_CS = join(WIDGET_DIR, 'DbFault.cs');
   const extraCandidates = [[], [REPO_PATHS_CS], [USER_SESSION_CS], [USER_SESSION_CS, REPO_PATHS_CS],
-                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS]];
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS],
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS]];
   let lastErr = '';
   for (const ex of extraCandidates) {
     const files = base.concat(ex.filter((f) => existsSync(f)));
