@@ -80,7 +80,8 @@ const PROMPT_FNS = ['maybeAskLegacyImport', 'showLegacyPrompt', 'legacyPromptImp
 const ASK_ONLY_FNS = PROMPT_FNS.filter((f) => f !== 'legacyPromptImport');
 //  성공 토스트 — 결정 문구(2026-10-01)
 const OK_TOAST = (c, e, t) => `이전 기록을 가져왔습니다. 과제 ${c}개, 기록 ${e}개, 할 일 ${t}개`;
-const SANDBOX_FNS = ['calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
+//  defaultTaskOf, isDefaultTask — 빈 캘린더 판정이 기본 과제(휴가, 기타)를 빼고 센다(DEFAULT-TASKS §4.1).
+const SANDBOX_FNS = ['defaultTaskOf', 'isDefaultTask', 'calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
   'legacyPromptDismissed', 'legacyTimeText', 'legacySizeText', 'maybeAskLegacyImport', 'showLegacyPrompt',
   'legacyPromptImport', 'legacyPromptNever', 'renderEmptyHint', 'renderDataSourceBadge', 'usDbLineText',
   'ensureBootErrorBox', 'showDbConflict', 'schemaServerOlder'];   // schemaServerOlder — 불일치 배지의 방향 판정(S7, 2026-10-01)
@@ -121,6 +122,9 @@ function sandbox(src, over = {}) {
   const dom = fakeDom();
   const ctx = {
     state: { categories: [], entries: [], todos: [] },
+    DEFAULT_TASK_NAMES: ['휴가', '기타'],   // 앱의 const(기본 과제 이름) — 잘라 온 함수가 읽는다
+    catNameKey: (c) => String((c && c.name) || '').trim(),   // 앱의 const(이름 비교는 앞뒤 공백을 뺀다)
+    awaitSaveIdle: async () => {},   // 저장 왕복 기다리기 — 이 시험의 가짜 저장은 늘 끝나 있다(실제 기다림은 default-tasks ⑱ 이 본다)
     HOST: true, PEER: false,
     __bootMeta: { userId: 7, schemaMismatch: false, canWrite: true, schemaVersion: '12', rev: 5 },
     currentUser: { loginId: 'hjlee' },
@@ -904,14 +908,18 @@ if (!JSDOM) {
         assert.strictEqual(W.reqs('replaceAllState').length, 1, '전량 교체가 정확히 한 번 나가지 않았다');
         assert.strictEqual(W.reqs('saveState').length, 0, '교체가 통상(차분) 저장으로 나갔다');
         const sent = W.reqs('replaceAllState')[0].params.state;
-        assert.deepStrictEqual(JSON.parse(JSON.stringify([sent.categories.map((c) => c.id), sent.entries.map((e) => e.id), sent.todos.map((t) => t.id)])),
-          [['c1'], ['e1', 'e2'], ['t1']], '호스트로 보낸 상태가 파일 내용(과제 1 · 기록 2 · 할 일 1)이 아니다');
-        assert.strictEqual(W.ev('JSON.stringify([state.categories.length, state.entries.length, state.todos.length])'), '[1,2,1]',
-          '화면 상태가 파일 내용으로 바뀌지 않았다');
+        //  파일 내용 + 기본 과제(휴가, 기타 · DEFAULT-TASKS §4.7). 과제가 빈 할 일(t1)은 기타로 붙는다.
+        assert.deepStrictEqual(JSON.parse(JSON.stringify([sent.categories.map((c) => c.id === 'c1' ? 'c1' : c.name), sent.entries.map((e) => e.id), sent.todos.map((t) => t.id)])),
+          [['c1', '휴가', '기타'], ['e1', 'e2'], ['t1']], '호스트로 보낸 상태가 파일 내용(과제 1 · 기록 2 · 할 일 1) + 기본 과제가 아니다');
+        const gita = sent.categories.find((c) => c.name === '기타');
+        assert.strictEqual(sent.todos[0].categoryId, gita.id, '과제가 빈 할 일이 기타로 붙지 않았다(DEFAULT-TASKS §4.7)');
+        assert.strictEqual(sent.entries.map((e) => e.categoryId).join(','), 'c1,c1', '과제가 있는 기록의 과제가 바뀌었다');
+        assert.strictEqual(W.ev('JSON.stringify([state.categories.length, state.entries.length, state.todos.length])'), '[3,2,1]',
+          '화면 상태가 파일 내용(+ 기본 과제)으로 바뀌지 않았다');
         assert.ok(!W.opened().includes('#importModal') && !W.isOpen('importModal'), '바로 교체 경로인데 미리보기(#importModal)가 열렸다');
         assert.ok(!W.isOpen('legacyModal'), '물음 창이 닫히지 않았다');
         const ok = W.toasts().filter((x) => x.kind === 'success').map((x) => x.toast);
-        assert.deepStrictEqual(ok, [OK_TOAST(1, 2, 1)], '성공 토스트가 정확히 한 번(과제 1 · 기록 2 · 할 일 1)이 아니다: ' + JSON.stringify(ok));
+        assert.deepStrictEqual(ok, [OK_TOAST(3, 2, 1)], '성공 토스트가 정확히 한 번(과제 3(기본 과제 포함) · 기록 2 · 할 일 1)이 아니다: ' + JSON.stringify(ok));
         assert.ok(!W.toasts().some((x) => /데이터를 (교체|병합)했습니다/.test(x.toast)), 'applyImport 의 교체 토스트(또는 병합 토스트)가 함께 떴다');
         assert.ok(!W.el('emptyHint'), '교체 뒤에도 빈 캘린더 안내가 남았다');
       } finally { W.close(); }
@@ -932,11 +940,13 @@ if (!JSDOM) {
       const W = await bootToPrompt(source, { ok: true });
       try {
         W.ev("state.categories.push({ id: 'mine', name: '방금 만든 과제', color: '', desc: '', gitRepo: '', svnRepo: '', createdAt: '' })");
+        const before = W.ev("state.categories.map(c => c.id).join(',')");   // 기본 과제(휴가, 기타) + mine
+        assert.ok(/(^|,)mine$/.test(before), '시험 전제: 방금 만든 과제가 목록에 없다');
         W.el('btnLegacyImport').click();
         await settle();
         assert.strictEqual(W.reqs('replaceAllState').length, 0, '비어 있지 않은데 바로 교체했다 — 방금 만든 과제를 말없이 지운다');
         assert.ok(W.opened().includes('#importModal') && W.isOpen('importModal'), '비어 있지 않은데 미리보기(교체 확인)를 열지 않았다');
-        assert.strictEqual(W.ev("state.categories.map(c => c.id).join(',')"), 'mine', '미리보기 전에 상태가 바뀌었다');
+        assert.strictEqual(W.ev("state.categories.map(c => c.id).join(',')"), before, '미리보기 전에 상태가 바뀌었다');
       } finally { W.close(); }
     },
   };
@@ -977,8 +987,8 @@ if (!JSDOM) {
       await settle();
       assert.strictEqual(W.reqs('replaceAllState').length, 1, '확인창에서 [교체] 를 눌렀는데 전량 교체가 정확히 한 번 나가지 않았다');
       const sent = W.reqs('replaceAllState')[0].params.state;
-      assert.deepStrictEqual(JSON.parse(JSON.stringify([sent.categories.map((c) => c.id), sent.entries.map((e) => e.id), sent.todos.map((t) => t.id)])),
-        [['c1'], ['e1', 'e2'], ['t1']], '호스트로 보낸 상태가 파일 내용(과제 1, 기록 2, 할 일 1)이 아니다');
+      assert.deepStrictEqual(JSON.parse(JSON.stringify([sent.categories.map((c) => c.id === 'c1' ? 'c1' : c.name), sent.entries.map((e) => e.id), sent.todos.map((t) => t.id)])),
+        [['c1', '휴가', '기타'], ['e1', 'e2'], ['t1']], '호스트로 보낸 상태가 파일 내용(과제 1, 기록 2, 할 일 1) + 기본 과제가 아니다');
       assert.ok(!W.isOpen('importModal'), '교체 뒤에도 미리보기 창이 열려 있다');
       assert.ok(W.toasts().some((x) => /^데이터를 교체했습니다/.test(x.toast)), '교체 토스트가 뜨지 않았다');
       assert.ok(!W.toasts().some((x) => /병합/.test(x.toast)), '병합 토스트가 떴다');

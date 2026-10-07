@@ -1224,7 +1224,9 @@ CREATE TABLE cal_entry (
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   -- 부모(과제) 방향은 RESTRICT — 과제를 지우면 그 일정도 같이 사라지는 게 아니라, 앱이 먼저
   -- 일정의 cat_no 를 정리하도록 강제한다(CASCADE/RESTRICT 혼동이 사고의 원인이었다).
-  -- 앱의 deleteCategory() 가 실제로 그렇게 한다: 먼저 `e.categoryId = null` 로 전부 풀고 과제를 지운다.
+  -- 앱의 deleteCategory() 는 2026-10-07 부터 그 과제의 일정, 할 일, 공수를 같은 저장에서 **함께 지운다**
+  -- (docs/DEFAULT-TASKS.md §4.5. 예전에는 `e.categoryId = null` 로 풀었다). 그래서 지우는 저장에 참조가 남지 않는다.
+  -- cat_no 가 NULL 허용인 것은 그대로다(스키마 변경 없음). 앱은 '과제 없음' 기록을 더 만들지 않는다(기본 과제 기타).
   CONSTRAINT fk_cal_entry_category FOREIGN KEY (user_id, cat_no) REFERENCES cal_category(user_id, cat_no)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT chk_cal_entry_uid      CHECK (uid <> ''),
@@ -1492,14 +1494,13 @@ CREATE TABLE cal_room (
 --      이 DB 에는 감사 휴지통이 없어(2026-08-11 폐지) 되돌릴 수단이 주간 mysqldump 뿐이다.
 --      RESTRICT 면 어댑터가 순서를 틀렸을 때 ERROR 1451 로 시끄럽게 멈춘다 — 이 파일의 일관된 취향이다.
 --   ★ 그 대가로 **어댑터가 지켜야 할 순서가 하나 생겼다**: 과제 삭제 트랜잭션은
---        (1) cal_entry.cat_no·cal_todo.cat_no 를 NULL 로,
+--        (1) 그 과제의 cal_entry, cal_todo 행을 DELETE(2026-10-07 부터. 예전에는 cat_no 를 NULL 로 풀었다),
 --        (2) cal_task_hours 의 그 cat_no 행을 DELETE,
 --        (3) 마지막에 cal_category 행을 DELETE.
---      ★ 앱 메모리에서의 순서와 다르다 — deleteCategory() 는 배열에서 과제를 먼저 걷어내고 공수를 나중에
---        정리한다. 그 순서를 그대로 SQL 로 옮기면 (3) 이 (2) 보다 앞서 1451 로 죽는다. 순서를 뒤집을 것.
---   ※ 사용자에게 보이는 문구와도 어긋난다(고칠 대상): 과제 삭제 확인 대화상자는 "이 과제에 속한 N개
---     기록은 '미분류'로 변경됩니다. (기록 자체는 유지)" 라고만 말하고 공수가 함께 지워진다는 말은 없다.
---     N 도 일정 수만 센다. 앱 담당이 문구에 공수 삭제를 명시할 것(이 파일 범위 밖).
+--      ★ 앱 메모리에서의 순서와 다르다. deleteCategory() 는 state 에서 일정, 할 일, 공수를 걷은 뒤 과제를 뺀다.
+--        DB 순서는 어댑터(CalendarWriteDb)가 정한다: 공수(6) → 일정, 할 일, 과제(10, 자식→부모).
+--   ※ 문구는 2026-10-07 에 고쳤다(docs/DEFAULT-TASKS.md §4.5): 과제 삭제 확인창이 일정, 할 일, 과제별 시간이
+--     각각 몇 개 함께 지워지는지 적는다.
 --
 -- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외). cal_room 과 같은 근거다:
 --   엔티티가 아니라 키 (user_id, work_date, cat_no) 로 주소지정되는 값 행이고, 같은 사용자의

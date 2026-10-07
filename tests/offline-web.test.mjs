@@ -37,6 +37,10 @@ const GATED_FUNCTIONS = [
   'setCommitSubject', 'setCommitMessage', 'setEntryTitle', 'setTodoText', 'commitDayNoteEdit',
   'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다
   'moveCategory',         // 과제 순서 ▲▼(docs/CATEGORY-ORDER.md R7) — 맞바꾸기 전에 막는다
+  //  (deleteCategory 도 관문을 지나지만 여기에는 못 싣는다 — 이름 자체가 WRITE_TOKENS 의 'deleteCategory(' 라 머리말에서 걸린다.
+  //   그 관문은 tests/default-tasks.test.mjs 가 따로 본다. 화면 쪽은 아래 GATED_HANDLERS 의 「과제 목록 삭제(del)」.)
+  'moveCategoryData',     // 다른 과제로 옮기기(DEFAULT-TASKS §4.6) — 옮기기 전에 막는다
+  'openCatMoveModal',     // 옮기기 창 — 끊긴 채로 대상을 고르게 하지 않는다
 ];
 const WRITE_TOKENS = ['save()', 'saveFull()', 'dbSave(', 'addEntry(', 'updateEntry(', 'deleteEntry(', 'addTodo(',
   'updateTodo(', 'addCategory(', 'updateCategory(', 'deleteCategory(', 'subscribeDbCat(', 'unsubscribeDbCat(',
@@ -49,6 +53,7 @@ const GATED_HANDLERS = [
   ['할 일 행 완료·삭제·중요', "const row = ev.target.closest('.todo-row'); if(!row) return;", 'toggleTodo(row.dataset.id)'],
   ['과제 목록 제거(unsub)', "$('#catList').addEventListener('click'", 'unsubscribeDbCat(c.id)'],
   ['과제 목록 삭제(del)', "$('#catList').addEventListener('click'", 'deleteCategory(c.id)'],
+  ['과제 목록 옮기기(movedata)', "$('#catList').addEventListener('click'", 'openCatMoveModal(c.id)'],
   ['근태(보고서)', 'const svGuarded = () =>', 'sv(); };'],
   ['과제별 시간(보고서)', "const from = $('#rptFrom').value; const cat = inp.dataset.hcat;", 'setTaskHours(from, cat, inp.value)'],
   ['머리기호', "$('#rptMarker').addEventListener('change'", 'save()'],

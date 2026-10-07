@@ -111,6 +111,8 @@ tests/
 │                            postMessage 를 한 번도 안 부르나(봉인) · 게이트 없나 · rev/행수 불변 · 프레임 정리
 ├─ loop-import-ui.mjs        **실제 위젯**(CDP) + 실 DB — 「XML 가져오기」 실동작(교체 왕복, 미리보기에 병합 버튼 없음)
 ├─ loop-schema-gate.mjs     **실제 위젯**(CDP) + 실 DB — P1-1 스키마 게이트·P1-2 부팅 재시도·P1-8 개명 가드 회귀
+├─ loop-default-tasks.mjs   **실제 위젯**(CDP) + 실 DB: 기본 과제 휴가, 기타(DEFAULT-TASKS): 부팅 보장(정확히 하나씩, 다시 읽어도 같은 id),
+│                            기본 과제 삭제 거부, 과제 삭제 = 데이터 삭제(FK 순서), 다른 과제로 옮기기(겹친 날 시간 합산, 24 상한): zz 잔재 0
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
 ├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
 ├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
@@ -779,3 +781,20 @@ node tests/loop-org-title.mjs -v               # 케이스별 상세
 정리는 시작(sweep)·종료(cleanupAll)·프로세스 exit 그물 세 겹이다 — zzU 계정과 그 캘린더 자식 표 → `org_unit`(zzO, **잎부터**) → `title_code`(zzJ) 삭제 ·
 시작 순번 복원 · 로그인 계정 권한 복원. 두 마스터의 zz 행은 **관리자 연결로만** 지운다 — 앱 계정에는 그 표의 DELETE 가 없다(§6).
 배포 전 게이트 규약: **무작위 시드로 5회 연속 통과**, 한 번이라도 실패하면 1부터 다시 센다.
+
+## loop-default-tasks.mjs: 기본 과제 휴가, 기타 실동작 루프(DEFAULT-TASKS §6)
+
+실행 중인 위젯(CDP 9222, 로그인한 아무 계정)으로 `docs/DEFAULT-TASKS.md` 의 세 곳을 실 DB 왕복으로 본다. DB 에 직접 붙지 않는다(비밀번호 필요 없음).
+D1 부팅 보장(reloadState 뒤 개인 과제 휴가, 기타가 정확히 하나씩, 한 번 더 읽어도 같은 id, 이미 있으면 저장 0).
+D2 기본 과제 보호(행에 [삭제] 없음, `deleteCategory` 거부, 다시 읽어도 그대로).
+D3 과제 삭제 = 데이터 삭제(zz 과제에 일정 2, 할 일 1, 시간 2일 → [삭제] 확인창 숫자 → 저장 성공(과제 DELETE 가 FK 1451 로 막히지 않는다) → 다시 읽어 0, 이웃 과제 시간은 남음).
+D4 다른 과제로 옮기기(화면의 [옮기기] → 대상 → 확인창 → 다시 읽으면 일정, 할 일이 대상으로, 겹친 날 시간은 더하고 24 상한, 출발 과제는 빈 채로 남음).
+시험 데이터는 **`zzDEF-<seed>-`** 접두(과제, 일정과 할 일 제목)이고 시간은 **2099-12** 날짜에만 적는다. 정리는 zz 과제를 [삭제]로 지우는 것이다(딸린 데이터가 함께 지워진다).
+
+```
+# 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 로그인
+node tests/loop-default-tasks.mjs                # 시각 기반 시드
+node tests/loop-default-tasks.mjs --seed=1001    # 재현(요약 줄이 이 명령을 그대로 찍어 준다)
+```
+
+**종료코드**: 통과=0, 실패(또는 정리 실패)=1, 판정 없음(위젯 미기동, 비로그인, 새 기능이 없는 옛 빌드, 시작 정리 실패)=2.

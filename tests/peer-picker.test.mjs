@@ -184,7 +184,10 @@ if (!JSDOM) {
        `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수)`);
 } else {
   const ME = { loginId: 'phmin', name: '박현민', title: '수석연구원', orgUnit: 'SW 3팀' };
-  const EMPTY = { categories: [], entries: [], todos: [], rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '' };
+  //  기본 과제(휴가, 기타)는 서버에 이미 있는 것으로 둔다. 없으면 부팅 보장(DEFAULT-TASKS §3)이 저장(saveState)을 한 번
+  //  보내서, 이 파일이 세는 「보낸 명령」에 섞인다(이 파일의 관심사가 아니다). 보장 자체는 tests/default-tasks.test.mjs 가 본다.
+  const EMPTY = { categories: [{ id: 'c-vac', name: '휴가', color: '#2e9e6b' }, { id: 'c-etc', name: '기타', color: '#5b6b7d' }],
+    entries: [], todos: [], rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '' };
   const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
   function boot(src, url = 'https://tcapp.local/') {
     const posted = [], errors = [];

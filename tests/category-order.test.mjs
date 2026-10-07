@@ -7,7 +7,9 @@
 //      ★ 2026-10-06(docs/ADMIN-HUB-4.md N3) — ADMIN-HUB-3 의 ✥ 끌기를 걷고 ▲▼ 로 되돌렸다(끌기 계약 category-drag.test.mjs 는 지웠다).
 //      한 번 = 한 칸 · 저장 1회(R2·C2). 관문(guardEdit) → 맞바꿈 → save() 순(R7·C6).
 //   ③ 옮긴 뒤 포커스는 옮겨진 행의 같은 버튼(끝에 닿아 꺼졌으면 같은 행의 반대쪽) · 목록을 다시 만들지 않는다(R3·C7).
-//   ④ 같은 순서가 보고서 행(「기타」·미분류는 맨 뒤)·필터 막대·과제 선택 상자에 그대로 쓰인다(R4·R5·C4·C5).
+//   ④ 같은 순서가 보고서 행·필터 막대·과제 선택 상자에 그대로 쓰인다(R4·C4·C5).
+//      ★ 2026-10-07 기본 과제(docs/DEFAULT-TASKS.md §4.3) — R5(「기타」·미분류는 보고서 맨 뒤)를 지웠다. 기타도 목록의 한 과제라
+//        ▲▼ 로 정한 자리에 선다. 미분류 합성 행(__uncat__)도 없다. 아래 정적④·행동②③ 이 그 규칙이 되살아나면 실패한다.
 //   ⑤ 저장 payload(saveState.state.categories)가 그 순서다 — 호스트는 배열 자리를 sort_order 로 쓴다(C3 의 웹 몫).
 //
 // 검사 함수를 테스트와 변이 시험이 공유한다 — 검사가 정말 잡는지 같은 함수를 변이된 소스에 다시 돌려 증명한다.
@@ -73,9 +75,22 @@ const MUT = {
     s),
   //  보고서 행을 이름순으로 정렬한다(R4 위반)
   sortReport: (s) => mutate(
-    "  rows = rows.filter(r => String(r.name || '').trim() !== '기타')",
-    "  rows.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));\n  rows = rows.filter(r => String(r.name || '').trim() !== '기타')",
+    "    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));\n",
+    "    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));\n  rows.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko'));\n",
     s),
+  //  옛 R5 를 되살린다 — 「기타」 과제를 보고서 맨 뒤로(2026-10-07 에 지운 규칙)
+  gitaLastBack: (s) => mutate(
+    "    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));\n",
+    "    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));\n  rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));\n",
+    s),
+  //  옛 미분류 합성 행을 되살린다 — 과제 없는 기록을 '__uncat__' 버킷으로 모아 맨 뒤에 붙인다
+  uncatBack: (s) => mutate(
+    "  const catKey = e => e.categoryId || '';",
+    "  const catKey = e => catById(e.categoryId) ? e.categoryId : '__uncat__';",
+    mutate(
+      "    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));\n",
+      "    titles:items.get(c.id)||[], titleMeta:meta.get(c.id)||[], entries:bucket.get(c.id)||[] }));\n  if(items.has('__uncat__')) rows.push({ key:'__uncat__', name:'기타', color:'#5b6b7d', titles:items.get('__uncat__'), titleMeta:meta.get('__uncat__')||[], entries:bucket.get('__uncat__')||[] });\n",
+      s)),
 };
 
 /* ── 정적 계약(jsdom 불필요) ─────────────────────────────────────────── */
@@ -126,7 +141,7 @@ const statics = {
     assert.ok(!/save\(\)|saveFull\(\)|dbSave\(/.test(ui), 'catMoveRow(화면 쪽)가 따로 저장한다 — 저장은 moveCategory 한 번이다');
     assert.ok(ui.indexOf('moveCategory(') < ui.indexOf('insertBefore'), 'catMoveRow 가 데이터보다 화면을 먼저 바꾼다(잠금 중에 화면만 움직인다)');
     const i = app.indexOf("$('#catList').addEventListener('click'");
-    const j = app.indexOf("if((act === 'unsub' || act === 'del') && guardEdit()) return;", i);
+    const j = app.indexOf("if((act === 'unsub' || act === 'del' || act === 'movedata') && guardEdit()) return;", i);
     assert.ok(i > 0 && j > i, '#catList 위임 앵커를 찾지 못했다');
     const dl = app.slice(i, j);
     assert.ok(dl.includes("if(act === 'up' || act === 'down'){") && dl.includes("catMoveRow(c.id, act === 'up' ? -1 : +1); return;"),
@@ -134,13 +149,14 @@ const statics = {
     assert.ok(dl.includes("if(b && b.getAttribute('aria-disabled') === 'true') return;"), '#catList 위임이 끝 버튼(aria-disabled)을 거르지 않는다(N3)');
     assert.strictEqual((ui.match(/moveCategory\(/g) || []).length, 1, 'catMoveRow 가 moveCategory 를 여러 번 부른다 — 한 번 옮기는데 저장이 여러 번이 된다');
   },
-  //  보고서 행 = state.categories 순서, 「기타」 맨 뒤, 미분류 그 뒤 — 이름순 정렬 없음
+  //  보고서 행 = state.categories 순서 그대로 — 이름순 정렬 없음, 「기타」 맨 뒤 규칙 없음, 미분류 합성 행 없음(2026-10-07)
   reportOrder(app) {
     const b = fnBody(app, 'collectReportData');
     assert.ok(/let rows = state\.categories\.map\(/.test(b), '보고서 행이 state.categories 순서에서 나오지 않는다(R4)');
-    assert.ok(b.includes("rows = rows.filter(r => String(r.name || '').trim() !== '기타').concat(rows.filter(r => String(r.name || '').trim() === '기타'));"),
-      '「기타」 과제를 맨 뒤로 보내는 규칙이 사라졌다(R5)');
-    assert.ok(/rows\.push\(\{ key:'__uncat__'/.test(b), '미분류 행을 맨 뒤에 붙이지 않는다(R5)');
+    assert.ok(!/'기타'/.test(b), "collectReportData 가 '기타' 이름을 따로 다룬다 — 「기타」 맨 뒤 규칙이나 gitaCat 병합이 되살아났다(DEFAULT-TASKS §4.3)");
+    assert.ok(!/__uncat__/.test(b) && !/uncat/i.test(b), '미분류 합성 행(__uncat__)이 되살아났다(DEFAULT-TASKS §4.3)');
+    assert.ok(!/gitaCat/.test(b), '미분류를 기타 과제로 병합하는 gitaCat 이 되살아났다(DEFAULT-TASKS §4.3)');
+    assert.ok(!/\.concat\(/.test(b.slice(b.indexOf('let rows = '))), '보고서 행 뒤에 다른 행을 이어 붙인다 — 목록 순서와 갈린다(R4)');
     assert.ok(!/rows\s*(=\s*rows\s*)?\.(slice\(\)\.)?sort\(/.test(b), '보고서 행을 정렬한다 — 목록 순서와 갈린다(R4)');
   },
   //  좁은 폭(≤440px · 터치 위젯) ▲▼ 히트 영역 — 높이 32px · 폭 24px(--sp-5) 하한. jsdom 은 레이아웃을 재지 못하므로 규칙을 잠근다.
@@ -169,11 +185,12 @@ const statics = {
     const nf = fnBody(app, 'noteFilterBarHtml');
     assert.ok(/for\(const c of state\.categories\)/.test(nf) && !/\.sort\(/.test(nf), '할 일·작업일지 과제 필터가 state.categories 순서가 아니다');
     const te = fnBody(app, 'todoEditHtml');
-    assert.ok(/state\.categories\.map\(/.test(te) && !/categories[^;]*\.sort\(/.test(te), '할 일 편집의 과제 선택이 state.categories 순서가 아니다');
+    assert.ok(/state\.categories\.filter\(isPickableCat\)/.test(te) && !/categories[^;]*\.sort\(/.test(te), '할 일 편집의 과제 선택이 state.categories 순서가 아니다');
     const ex = fnBody(app, 'openExportModal');
     assert.ok(/for\(const c of state\.categories\)/.test(ex) && !/\.sort\(/.test(ex), '내보내기 과제 선택이 state.categories 순서가 아니다');
     //  새 기록·빠른 추가·검색은 모두 fillCatSelect 를 쓴다(따로 만들면 그쪽이 낡는다)
-    for (const sel of ["fillCatSelect($('#fCat'))", "fillCatSelect($('#qaCat'), '과제 없음')", "fillCatSelect($('#sCatSelect'), '과제를 선택하세요')"]) {
+    //  기록 폼 둘(#fCat, #qaCat)은 빈 선택지 없이 채운다(DEFAULT-TASKS §4.2). 검색 탭만 자리표시('과제를 선택하세요')를 쓴다.
+    for (const sel of ["fillCatSelect($('#fCat'))", "fillCatSelect($('#qaCat'))", "fillCatSelect($('#sCatSelect'), '과제를 선택하세요')"]) {
       assert.ok(app.includes(sel), `${sel} 이 사라졌다 — 그 선택 상자가 따로 순서를 만든다`);
     }
   },
@@ -182,7 +199,7 @@ const statics = {
 test('정적①: 「과제 관리」 목록이 state.categories 순서 그대로다(다시 묶지 않는다) + 안내 한 줄', () => statics.listInRealOrder(src));
 test('정적②: ▲▼ 는 진짜 버튼 · aria-label · 끝 aria-disabled + 툴팁 · 자리(건수 뒤·수정 앞) · 손잡이 잔재 0 — 개인·공식 행 모두', () => statics.moveButtons(src));
 test('정적③: 이동은 guardEdit → 맞바꿈 → save() 1회 · 위임이 ▲▼ 를 catMoveRow 로 보낸다', () => statics.handlerOrder(src));
-test('정적④: 보고서 행 = state.categories 순서(「기타」·미분류 맨 뒤) · 정렬 없음', () => statics.reportOrder(src));
+test('정적④: 보고서 행 = state.categories 순서 그대로(「기타」 맨 뒤 규칙, 미분류 합성 행 없음) · 정렬 없음', () => statics.reportOrder(src));
 test('정적⑤: 필터 막대·과제 선택 상자·할 일 필터·내보내기가 state.categories 를 정렬 없이 돈다', () => statics.pickersInOrder(src));
 test('정적⑥: 좁은 폭(≤440px) ▲▼ 히트 영역 하한(32px · 24px) — 직급·소속 줄과 한 규칙 · 터치 위젯(R3)', () => statics.touchFloor(src));
 test('변이①s: 개인 먼저 재묶음을 되살리면 정적① 이 실패한다', () => {
@@ -196,6 +213,12 @@ test('변이③s: 저장을 두 번 하면 정적③ 이 실패한다', () => {
 });
 test('변이④s: 보고서 행을 이름순으로 정렬하면 정적④ 가 실패한다', () => {
   assert.throws(() => statics.reportOrder(MUT.sortReport(src)), /정렬/);
+});
+test('변이⑦s: 「기타」 맨 뒤 규칙을 되살리면 정적④ 가 실패한다', () => {
+  assert.throws(() => statics.reportOrder(MUT.gitaLastBack(src)), /'기타' 이름을 따로 다룬다/);
+});
+test('변이⑧s: 미분류 합성 행(__uncat__)을 되살리면 정적④ 가 실패한다', () => {
+  assert.throws(() => statics.reportOrder(MUT.uncatBack(src)), /'기타' 이름을 따로 다룬다|미분류 합성 행/);
 });
 test('변이⑤s: 좁은 폭 ▲▼ 하한을 지우면 정적⑥ 이 실패한다', () => {
   assert.throws(() => statics.touchFloor(MUT.noTouchFloor(src)), /min-height:32px/);
@@ -221,12 +244,15 @@ if (!JSDOM) {
   const ENT = (id, categoryId) => ({ id, date: '2026-10-01', title: '업무 ' + id, categoryId, allDay: true, startTime: '', endTime: '',
     memo: '', location: '', source: '', commits: [], createdAt: CA, updatedAt: CA });
   //  이름은 '이름순 정렬'이 실제 순서와 갈리도록 고른다(감마 < 공식 < 베타 < 알파 · ko).
+  //  기본 과제(휴가, 기타 · DEFAULT-TASKS §2)는 늘 있으므로 서버에 이미 있는 것으로 맨 뒤에 둔다(없으면 부팅 보장이 맨 뒤에 붙인다).
+  //  e-u(과제 없는 옛 기록)는 남긴다 — 보고서에 합성 행을 만들지 않는다는 것을 행동②가 본다.
   const DATA = {
-    categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-c', '감마'), CAT('db-o', '공식 오메가', { source: 'db' })],
+    categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-c', '감마'), CAT('db-o', '공식 오메가', { source: 'db' }), CAT('c-v', '휴가'), CAT('c-e', '기타')],
     entries: [ENT('e-a', 'c-a'), ENT('e-b', 'c-b'), ENT('e-c', 'c-c'), ENT('e-o', 'db-o'), ENT('e-u', null)],
     todos: [], rooms: ['201호'],
   };
-  //  「기타」 과제가 있는 판 — 미분류는 그쪽으로 합쳐진다.
+  const ALL = ['c-a', 'c-b', 'c-c', 'db-o', 'c-v', 'c-e'];
+  //  「기타」 과제가 가운데 있는 판(휴가는 부팅 보장이 맨 뒤에 붙인다) — 미분류는 그쪽으로 **합쳐지지 않는다**(2026-10-07).
   const DATA_GITA = {
     categories: [CAT('c-a', '알파'), CAT('c-b', '베타'), CAT('c-g', '기타'), CAT('c-c', '감마')],
     entries: [ENT('e-a', 'c-a'), ENT('e-b', 'c-b'), ENT('e-g', 'c-g'), ENT('e-c', 'c-c'), ENT('e-u', null)],
@@ -310,32 +336,32 @@ if (!JSDOM) {
     //  C1·C2·C5·⑤ — 목록 순서 · 한 칸 이동 · 저장 1회 · payload 순서 · 끝 비활성 · 필터 막대·선택 상자 순서
     async moveAndSave(source) {
       await withBoot(source, DATA, async (W) => {
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-b', 'c-c', 'db-o'], '시드 순서가 다르다');
+        assert.deepStrictEqual(W.order(), ALL, '시드 순서가 다르다');
         assert.ok(W.ev("isOfficialCat(state.categories[3])"), '공식 과제가 공식으로 실리지 않았다(시드 문제)');
         assert.deepStrictEqual(W.domOrder(), W.order(), '목록이 state.categories 순서가 아니다(C1)');
         assert.strictEqual(W.btn('c-a', 'up').getAttribute('aria-disabled'), 'true', '첫 행의 ▲ 가 끝 표시(aria-disabled)가 아니다(R2·N3)');
         assert.strictEqual(W.btn('c-a', 'up').title, '맨 위입니다', '첫 행 ▲ 의 이유 툴팁이 다르다(N3)');
-        assert.strictEqual(W.btn('db-o', 'down').getAttribute('aria-disabled'), 'true', '마지막 행의 ▼ 가 끝 표시(aria-disabled)가 아니다(R2·N3)');
-        assert.strictEqual(W.btn('db-o', 'down').title, '맨 아래입니다', '마지막 행 ▼ 의 이유 툴팁이 다르다(N3)');
+        assert.strictEqual(W.btn('c-e', 'down').getAttribute('aria-disabled'), 'true', '마지막 행의 ▼ 가 끝 표시(aria-disabled)가 아니다(R2·N3)');
+        assert.strictEqual(W.btn('c-e', 'down').title, '맨 아래입니다', '마지막 행 ▼ 의 이유 툴팁이 다르다(N3)');
         assert.strictEqual(W.btn('c-a', 'up').disabled, false, '끝 버튼을 disabled 로 껐다 — 포커스가 닿지 않는다(N3)');
         assert.ok(W.w.document.querySelector('#catList .cat-row[data-id="c-c"] .code-ord [data-act="up"]'), '▲▼ 가 .code-ord 묶음 안에 있지 않다(N3)');
         //  끝 버튼을 눌러도 아무것도 바뀌지 않는다(저장 0)
         await press(W, 'c-a', 'up');
-        await press(W, 'db-o', 'down');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-b', 'c-c', 'db-o'], '끝 버튼을 눌렀더니 순서가 바뀌었다(N3)');
+        await press(W, 'c-e', 'down');
+        assert.deepStrictEqual(W.order(), ALL, '끝 버튼을 눌렀더니 순서가 바뀌었다(N3)');
         assert.strictEqual(saveOrders(W).length, 0, '끝 버튼을 눌렀더니 저장이 나갔다(N3)');
         assert.strictEqual(W.btn('c-c', 'up').getAttribute('aria-label'), '위로 이동: 감마', 'aria-label 이 다르다(R3)');
         assert.strictEqual(W.btn('c-c', 'down').getAttribute('aria-label'), '아래로 이동: 감마', 'aria-label 이 다르다(R3)');
         assert.strictEqual(W.btn('c-c', 'up').tagName, 'BUTTON');
 
         await press(W, 'c-c', 'up');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-c', 'c-b', 'db-o'], '▲ 한 번이 한 칸 이동이 아니다(C2)');
-        assert.deepStrictEqual(saveOrders(W), [['c-a', 'c-c', 'c-b', 'db-o']], '한 번 옮겼는데 저장이 1회가 아니거나 payload 순서가 다르다(C2)');
+        assert.deepStrictEqual(W.order(), ['c-a', 'c-c', 'c-b', 'db-o', 'c-v', 'c-e'], '▲ 한 번이 한 칸 이동이 아니다(C2)');
+        assert.deepStrictEqual(saveOrders(W), [['c-a', 'c-c', 'c-b', 'db-o', 'c-v', 'c-e']], '한 번 옮겼는데 저장이 1회가 아니거나 payload 순서가 다르다(C2)');
         await press(W, 'c-c', 'up');
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o'], '▲ 두 번 뒤 순서가 C,A,B,O 가 아니다');
+        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '▲ 두 번 뒤 순서가 C,A,B,O 가 아니다');
         const saves = saveOrders(W);
         assert.strictEqual(saves.length, 2, '두 번 옮겼는데 저장이 ' + saves.length + '회다(한 번 = 저장 1회)');
-        assert.deepStrictEqual(saves[1], ['c-c', 'c-a', 'c-b', 'db-o'], '저장 payload 의 categories 순서가 화면 순서가 아니다(호스트는 배열 자리를 sort_order 로 쓴다)');
+        assert.deepStrictEqual(saves[1], ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '저장 payload 의 categories 순서가 화면 순서가 아니다(호스트는 배열 자리를 sort_order 로 쓴다)');
         assert.deepStrictEqual(W.domOrder(), W.order(), '옮긴 뒤 목록이 state.categories 순서가 아니다');
         assert.strictEqual(W.btn('c-c', 'up').getAttribute('aria-disabled'), 'true', '맨 위로 온 행의 ▲ 가 끝 표시가 아니다');
         assert.strictEqual(W.btn('c-a', 'up').getAttribute('aria-disabled'), null, '맨 위에서 밀려난 행의 ▲ 가 끝 표시인 채다');
@@ -343,7 +369,7 @@ if (!JSDOM) {
         //  데이터 쪽 끝 막기 — 화면을 거치지 않고 불러도 배열 밖으로 빠지지 않는다(moveCategory 가 마지막 관문이다)
         assert.strictEqual(W.ev("moveCategory('c-c', -1)"), false, '맨 위 과제를 위로 옮기라는 요청을 받아들였다(R2)');
         await settle();
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o'], '맨 위에서 위로 옮기자 순서가 깨졌다(R2): ' + JSON.stringify(W.order()));
+        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '맨 위에서 위로 옮기자 순서가 깨졌다(R2): ' + JSON.stringify(W.order()));
 
         //  필터 막대 · 과제 선택 상자 — 같은 순서(C5)
         const chips = W.evJSON("[].map.call(document.querySelectorAll('#filterbar [data-cat]'), function(b){ return b.dataset.cat; }).filter(Boolean)");
@@ -353,30 +379,32 @@ if (!JSDOM) {
 
         //  공식을 개인 사이로 — 다시 열어도(새로 그려도) 섞인 그대로다(R1 — 개인 먼저로 다시 묶지 않는다)
         await press(W, 'db-o', 'up');
-        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'db-o', 'c-b']);
+        assert.deepStrictEqual(W.order(), ['c-c', 'c-a', 'db-o', 'c-b', 'c-v', 'c-e']);
         W.ev("closeModal('#categoryModal'); openCatModal();");
-        assert.deepStrictEqual(W.domOrder(), ['c-c', 'c-a', 'db-o', 'c-b'], '다시 연 목록이 실제 순서가 아니다 — 개인/공식으로 다시 묶었다(R1)');
+        assert.deepStrictEqual(W.domOrder(), ['c-c', 'c-a', 'db-o', 'c-b', 'c-v', 'c-e'], '다시 연 목록이 실제 순서가 아니다 — 개인/공식으로 다시 묶었다(R1)');
         assert.strictEqual(W.w.document.getElementById('catOrderHint').classList.contains('hidden'), false, '안내 한 줄이 안 보인다(R8)');
       });
     },
-    //  C4 — 보고서 행 순서 = 목록 순서, 미분류(기타)는 맨 뒤
+    //  C4 — 보고서 행 순서 = 목록 순서 그대로. 과제 없는 옛 기록(e-u)은 합성 행을 만들지 않는다(2026-10-07)
     async reportRows(source) {
       await withBoot(source, DATA, async (W) => {
         await press(W, 'c-c', 'up');
         await press(W, 'c-c', 'up');
         const keys = W.evJSON("collectReportData('2026-10-01', '2026-10-01').rows.map(function(r){ return r.key; })");
-        assert.deepStrictEqual(keys, ['c-c', 'c-a', 'c-b', 'db-o', '__uncat__'], '보고서 행 순서가 목록 순서(미분류 맨 뒤)가 아니다(C4): ' + JSON.stringify(keys));
+        assert.deepStrictEqual(keys, ['c-c', 'c-a', 'c-b', 'db-o', 'c-v', 'c-e'], '보고서 행 순서가 목록 순서가 아니다(C4 · 미분류 합성 행 없음): ' + JSON.stringify(keys));
       });
     },
-    //  R5 — 「기타」 과제는 맨 위로 옮겨도 보고서에서는 맨 뒤(미분류는 그리로 합쳐진다)
-    async gitaLast(source) {
+    //  옛 R5 폐기(2026-10-07) — 「기타」 과제를 맨 위로 옮기면 보고서에서도 맨 위다. 과제 없는 기록은 그리로 합쳐지지 않는다.
+    async gitaInListOrder(source) {
       await withBoot(source, DATA_GITA, async (W) => {
+        assert.deepStrictEqual(W.order().slice(0, 4), ['c-a', 'c-b', 'c-g', 'c-c'], '시드 순서가 다르다');
+        assert.strictEqual(W.ev("state.categories.filter(function(c){ return c.name === '기타'; }).length"), 1, "파일의 '기타' 가 있는데 기본 과제 기타를 또 만들었다");
         await press(W, 'c-g', 'up');
         await press(W, 'c-g', 'up');
-        assert.deepStrictEqual(W.order(), ['c-g', 'c-a', 'c-b', 'c-c'], '「기타」 가 맨 위로 오지 않았다');
+        assert.deepStrictEqual(W.order().slice(0, 4), ['c-g', 'c-a', 'c-b', 'c-c'], '「기타」 가 맨 위로 오지 않았다');
         const rows = W.evJSON("collectReportData('2026-10-01', '2026-10-01').rows.map(function(r){ return [r.key, r.titles.length]; })");
-        assert.deepStrictEqual(rows.map((r) => r[0]), ['c-a', 'c-b', 'c-c', 'c-g'], '「기타」 과제가 보고서 맨 뒤가 아니다(R5): ' + JSON.stringify(rows));
-        assert.strictEqual(rows[3][1], 2, '미분류가 「기타」 과제로 합쳐지지 않았다');
+        assert.deepStrictEqual(rows.map((r) => r[0]).slice(0, 4), ['c-g', 'c-a', 'c-b', 'c-c'], '「기타」 과제가 목록 자리(맨 위)에 있지 않다 — 맨 뒤 규칙이 되살아났다: ' + JSON.stringify(rows));
+        assert.strictEqual(rows[0][1], 1, '과제 없는 기록이 「기타」 과제로 합쳐졌다(gitaCat 병합이 되살아났다)');
       });
     },
     //  C7 — 포커스가 옮겨진 행의 같은 버튼 · 목록을 다시 만들지 않는다(스크롤 자리 유지의 근거)
@@ -395,7 +423,7 @@ if (!JSDOM) {
         //  ▼ 는 그 자리의 같은 버튼을 유지한다
         await press(W, 'c-c', 'down');
         assert.strictEqual(W.w.document.activeElement, W.btn('c-c', 'down'), '▼ 한 칸 뒤 포커스가 같은 ▼ 에 있지 않다');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-c', 'c-b', 'db-o']);
+        assert.deepStrictEqual(W.order(), ['c-a', 'c-c', 'c-b', 'db-o', 'c-v', 'c-e']);
       });
     },
     //  C6 — 오프라인 잠금 중에는 상태·저장 변화 0 + 토스트
@@ -405,8 +433,8 @@ if (!JSDOM) {
         assert.strictEqual(W.ev('editLocked()'), true, '끊김 주입이 잠금을 세우지 않았다(시험 전제)');
         W.clear();
         await press(W, 'c-c', 'up');
-        assert.deepStrictEqual(W.order(), ['c-a', 'c-b', 'c-c', 'db-o'], '잠긴 채 순서가 바뀌었다(R7)');
-        assert.deepStrictEqual(W.domOrder(), ['c-a', 'c-b', 'c-c', 'db-o'], '잠긴 채 화면의 순서가 바뀌었다(R7)');
+        assert.deepStrictEqual(W.order(), ALL, '잠긴 채 순서가 바뀌었다(R7)');
+        assert.deepStrictEqual(W.domOrder(), ALL, '잠긴 채 화면의 순서가 바뀌었다(R7)');
         assert.strictEqual(W.reqs('saveState').length, 0, '잠긴 채 저장을 보냈다(R7)');
         assert.ok(W.toasts().includes('서버에 연결되지 않아 지금은 편집할 수 없습니다'), '막았는데 이유를 말하지 않는다: ' + JSON.stringify(W.toasts()));
         assert.strictEqual(W.ev('unsaved'), false, '잠긴 채 눌렀는데 미저장 표시가 섰다 — 바뀐 것이 없어야 한다');
@@ -415,13 +443,14 @@ if (!JSDOM) {
   };
 
   test('행동①: ▲ 한 번 = 한 칸 · 저장 1회 · payload 순서 · 끝 비활성 · 필터 막대·선택 상자 같은 순서 · 다시 열어도 섞인 순서(C1·C2·C5)', () => checks.moveAndSave(src));
-  test('행동②: 보고서 행 순서 = 목록 순서 · 미분류 맨 뒤(C4)', () => checks.reportRows(src));
-  test('행동③: 「기타」 과제는 맨 위로 옮겨도 보고서 맨 뒤(R5)', () => checks.gitaLast(src));
+  test('행동②: 보고서 행 순서 = 목록 순서 그대로 · 미분류 합성 행 없음(C4)', () => checks.reportRows(src));
+  test('행동③: 「기타」 과제를 맨 위로 옮기면 보고서에서도 맨 위 · 과제 없는 기록은 합쳐지지 않는다(옛 R5 폐기)', () => checks.gitaInListOrder(src));
   test('행동④: 옮긴 뒤 포커스가 옮겨진 행의 같은 버튼(끝이면 반대쪽) · 목록을 다시 만들지 않는다(C7)', () => checks.focusKept(src));
   test('행동⑤: 오프라인 잠금 중 이동 불가 — 상태·화면·저장 0 · 토스트(C6)', () => checks.lockedNoop(src));
 
   test('변이①: 개인 먼저 재묶음을 되살리면 행동① 이 실패한다', async () => {
-    await assert.rejects(() => checks.moveAndSave(MUT.regroup(src)), /다시 묶었다/);
+    //  기본 과제(개인)가 공식 과제 뒤에 오면서 재묶음이 첫 화면(C1)에서 바로 드러난다 — 어느 쪽에서 잡혀도 같은 위반이다.
+    await assert.rejects(() => checks.moveAndSave(MUT.regroup(src)), /다시 묶었다|목록이 state\.categories 순서가 아니다/);
   });
   test('변이②: moveCategory 의 guardEdit 를 지우면 행동⑤ 가 실패한다', async () => {
     await assert.rejects(() => checks.lockedNoop(MUT.noGuard(src)), /잠긴 채 (순서|화면의 순서)가 바뀌었다/);
@@ -437,5 +466,11 @@ if (!JSDOM) {
   });
   test('변이④: 보고서 행을 이름순으로 정렬하면 행동② 가 실패한다', async () => {
     await assert.rejects(() => checks.reportRows(MUT.sortReport(src)), /보고서 행 순서/);
+  });
+  test('변이⑦: 「기타」 맨 뒤 규칙을 되살리면 행동③ 이 실패한다', async () => {
+    await assert.rejects(() => checks.gitaInListOrder(MUT.gitaLastBack(src)), /맨 뒤 규칙이 되살아났다/);
+  });
+  test('변이⑧: 미분류 합성 행을 되살리면 행동② 가 실패한다', async () => {
+    await assert.rejects(() => checks.reportRows(MUT.uncatBack(src)), /보고서 행 순서/);
   });
 }

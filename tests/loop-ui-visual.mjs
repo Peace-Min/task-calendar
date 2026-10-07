@@ -116,6 +116,10 @@ const EXEMPT = {
     '#cPalette', '.palette',
     // 테마 선택 메뉴는 세로 목록(버튼 6개가 각 줄). 근거: `#themeMenu`는 드롭다운 패널이다.
     '#themeMenu',
+    // 과제 필터 막대는 과제 칩 수(사용자 데이터)에 따라 여러 줄로 접히는 것이 설계다.
+    // 근거: CSS `.filterbar{flex-wrap:wrap;max-height:66px;overflow-y:auto}`(카테고리가 많아도 약 2줄로 제한 + 스크롤).
+    // 2026-10-07 기본 과제(휴가, 기타)로 칩이 2개 늘자 1400px 에서 접혀 오탐이 났다(DEFAULT-TASKS).
+    '#filterbar',
   ],
   // V4 겹침 — 의도적으로 겹치는 구조
   overlap: [],

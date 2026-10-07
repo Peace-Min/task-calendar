@@ -18,15 +18,29 @@ const PAD_SRC = "const pad = n => String(n).padStart(2, '0');";
 const YMD_SRC = 'const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;';
 
 // 임의의 소스 문자열에서 defaultState를 되살린다 — 본 테스트와 변이 주입이 같은 경로를 쓴다.
+// 기본 과제(휴가, 기타 · docs/DEFAULT-TASKS.md §3)를 붙이는 보장 함수와 그 이름표(const)도 **소스에서** 잘라 온다.
+// 하네스가 따로 적으면 앱의 이름이 바뀌어도(예: '기타'→'그 외') 이 파일은 옛 이름을 재고 통과한다.
+function defaultTasksSrc(source) {
+  const consts = ['DEFAULT_TASKS', 'DEFAULT_TASK_NAMES', 'catNameKey'].map((n) => {
+    const m = source.match(new RegExp('^const ' + n + ' = .*;$', 'm'));
+    assert.ok(m, `소스에서 const ${n} 선언을 찾지 못했다`);
+    return m[0];
+  });
+  return consts.join('\n') + '\n' + extractFunction(source, 'defaultTaskOf') + '\n' + extractFunction(source, 'ensureDefaultTasks') + '\n';
+}
 function buildDefaultState(source) {
   return new Function(
     PAD_SRC + '\n' + YMD_SRC + '\n' +
     "let seq = 0; const uid = prefix => prefix + '-' + (++seq);\n" +
     "const nowIso = () => '2026-07-01T00:00:00.000Z';\n" +
     "const DEFAULT_ROOMS = [];\n" +
+    defaultTasksSrc(source) +
     extractFunction(source, 'defaultState') + '\nreturn defaultState;'
   )();
 }
+// 기본 과제(휴가, 기타)는 샘플이 아니다 — 아래 '샘플 문구' 계약은 그 둘을 빼고 본다.
+const DEFAULT_NAMES = ['휴가', '기타'];
+const sampleCats = (initial) => initial.categories.filter((c) => !DEFAULT_NAMES.includes(c.name));
 const defaultState = buildDefaultState(src);
 
 // 주입한 헬퍼가 소스와 갈라지면 이 파일의 날짜 계약 전체가 딴 세상을 재는 셈이 된다.
@@ -37,15 +51,32 @@ test('하네스 충실도: 주입하는 pad·ymd 정의가 소스와 글자 그�
 
 test('defaultState: 신규 설치 과제·일정·할 일은 모두 샘플임을 제목에서 명시', () => {
   const initial = defaultState();
-  assert.ok(initial.categories.every(category => category.name.includes('[샘플]')));
+  assert.ok(sampleCats(initial).length > 0 && sampleCats(initial).every(category => category.name.includes('[샘플]')));
   assert.ok(initial.entries.every(entry => entry.title.includes('[샘플 일정]')));
   assert.ok(initial.todos.every(todo => todo.text.includes('[샘플 할 일]')));
 });
 
 test('defaultState: 샘플 과제 설명과 일정 메모에 수정·삭제 가능한 예시임을 명시', () => {
   const initial = defaultState();
-  assert.ok(initial.categories.every(category => /예시/.test(category.desc) && /수정하거나 삭제/.test(category.desc)));
+  assert.ok(sampleCats(initial).every(category => /예시/.test(category.desc) && /수정하거나 삭제/.test(category.desc)));
   assert.ok(initial.entries.every(entry => /예시/.test(entry.memo) && /수정하거나 삭제/.test(entry.memo)));
+});
+
+// 기본 과제(DEFAULT-TASKS §3): 브라우저 첫 실행(데모)에도 휴가와 기타가 **정확히 하나씩**, 개인 과제로 있다.
+function defaultTasksPresent(initial) {
+  for (const nm of DEFAULT_NAMES) {
+    const hits = initial.categories.filter((c) => c.name === nm);
+    assert.strictEqual(hits.length, 1, `기본 과제 '${nm}' 가 ${hits.length}개다(정확히 하나여야 한다)`);
+    assert.notStrictEqual(hits[0].source, 'db', `기본 과제 '${nm}' 가 공식 과제다`);
+  }
+}
+test('defaultState: 기본 과제 휴가, 기타가 개인 과제로 정확히 하나씩 있다(데모 첫 실행도 같은 규칙)', () => {
+  defaultTasksPresent(defaultState());
+});
+test('변이: defaultState 가 보장 함수를 부르지 않으면 기본 과제 계약이 잡는다', () => {
+  const bad = src.replace('  ensureDefaultTasks(s);   // 기본 과제(휴가, 기타)는 데모 첫 실행에도 있다', '  // (지움)');
+  assert.notStrictEqual(bad, src, '변이 대상 문자열이 없다');
+  assert.throws(() => defaultTasksPresent(buildDefaultState(bad)()), /기본 과제 '휴가' 가 0개다/);
 });
 
 // ══ defaultState 구조 계약(검사 함수 — 테스트 + 변이 주입이 같은 함수를 쓴다) ══════════
@@ -94,8 +125,9 @@ const checks = {
         `샘플 데이터가 실재하지 않는 과제를 가리킨다: categoryId=${JSON.stringify(row.categoryId)} (${row.title || row.text})`);
     });
     // 아무 데이터도 딸리지 않은 샘플 과제는 첫 화면에서 빈 껍데기로 보인다.
+    //  (기본 과제 휴가, 기타는 샘플이 아니라 늘 있는 과제라 비어 있는 것이 정상이다 · DEFAULT-TASKS §3)
     const used = new Set([...initial.entries, ...initial.todos].map(row => row.categoryId));
-    initial.categories.forEach(category => {
+    sampleCats(initial).forEach(category => {
       assert.ok(used.has(category.id),
         `샘플 과제에 딸린 일정·할 일이 하나도 없다: ${category.name}`);
     });

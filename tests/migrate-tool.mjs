@@ -14,6 +14,8 @@
  *    ⑤ project_uid 중단 — source='db' 인데 id 가 'db-'+36자가 아니면 **멈춘다**
  *    ⑥ 중복 예외일 dedup — 1062 로 이관 전체가 롤백되지 않는다
  *    ⑦ 커밋·저장소 경로가 실제로 옮겨진다(CalendarWriteDb 는 못 하는 것)
+ *    ⑧ 과제 참조 정리(docs/DEFAULT-TASKS.md §4.7, 앱의 XML 가져오기와 같은 규칙): 기본 과제 휴가, 기타 보장(있으면 재사용,
+ *       앞뒤 공백 무시), 과제 없는/없는 과제의 일정, 할 일 → 기타, 목록에 없는 공식 과제 → 편입(공수 보존), 없는 과제의 공수는 버림
  *
  *  【실행】
  *    $env:TC_TEST_DB_ADMIN_PW = '<root 비번>'
@@ -94,6 +96,30 @@ function synthXml({ badStatus = false, dupExcept = false, badDbId = false } = {}
 본문 줄2</commit></commits></entry></entries><todos><todo id="tA" done="false" categoryId="${badDbId ? 'db-TOOSHORT' : 'cA'}" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><text>합성 할 일</text><dayNotes><dayNote date="2026-03-05">그날</dayNote></dayNotes></todo></todos><rooms><room>합성실</room></rooms><prefs reportMarker="•" reportIndent="4"/>${att}</taskCalendar>`;
 }
 
+//  ⑧ 과제 참조 정리 픽스처 — 파일에 ' 기타'(앞뒤 공백) 개인 과제가 있고 휴가는 없다.
+//    일정: 과제 없음, 없는 개인 과제, 목록에 없는 공식 과제, 정상. 할 일: 과제 없음. 공수: 없는 개인 과제(버림), 목록에 없는 공식 과제(보존).
+const ORPHAN_DB = 'db-0f0f0f0f-1111-2222-3333-444444444444';
+function synthDefaultsXml() {
+  const ent = (id, cat) => `<entry id="${id}" date="2026-03-01"${cat == null ? '' : ` categoryId="${cat}"`} allDay="true" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><title>${id}</title><memo/></entry>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<taskCalendar version="1"><categories>` +
+    `<category id="cA" color="#111111" createdAt="2026-01-01T00:00:00.000Z"><name>합성 과제</name><description/></category>` +
+    `<category id="cG" color="#222222" createdAt="2026-01-01T00:00:00.000Z"><name> 기타 </name><description/></category>` +
+    `</categories><entries>${ent('eNull', null)}${ent('eGone', 'c-gone')}${ent('eDb', ORPHAN_DB)}${ent('eOk', 'cA')}</entries>` +
+    `<todos><todo id="tNull" done="false" createdAt="2026-01-01T00:00:00.000Z" updatedAt="2026-01-01T00:00:00.000Z"><text>합성 할 일</text></todo></todos>` +
+    `<taskHours><day date="2026-03-01"><t cat="c-gone" h="3"/><t cat="${ORPHAN_DB}" h="2"/><t cat="cA" h="1"/></day></taskHours>` +
+    `<rooms/></taskCalendar>`;
+}
+//  실 data.xml 이관 뒤에도 성립해야 하는 과제 참조 불변식(⑧ 과 ① 이 함께 쓴다)
+function catInvariants(label) {
+  const nVac = Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U} AND source='local' AND TRIM(name)='휴가'`));
+  const nEtc = Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U} AND source='local' AND TRIM(name)='기타'`));
+  ok(`${label}: 개인 과제 휴가가 있다(기본 과제)`, nVac >= 1, `휴가 ${nVac}`);
+  ok(`${label}: 개인 과제 기타가 있다(기본 과제)`, nEtc >= 1, `기타 ${nEtc}`);
+  const nNull = Number(one(`SELECT (SELECT COUNT(*) FROM cal_entry WHERE user_id=${U} AND cat_no IS NULL)+(SELECT COUNT(*) FROM cal_todo WHERE user_id=${U} AND cat_no IS NULL)`));
+  ok(`${label}: 과제 없는(cat_no NULL) 일정, 할 일이 없다`, nNull === 0, `${nNull}건`);
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 const t0 = Date.now();
 console.log('═'.repeat(72));
@@ -120,7 +146,12 @@ try {
   const xml = readFileSync(OPT.xml, 'utf8');
   const nCat = (xml.match(/<category /g) || []).length, nEnt = (xml.match(/<entry /g) || []).length;
   const nTodo = (xml.match(/<todo /g) || []).length, nCommit = (xml.match(/<commit /g) || []).length;
-  ok('과제 건수', Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)) === nCat, `DB=${one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)} XML=${nCat}`);
+  //  과제 = 파일 과제 + 정리가 붙인 과제(편입한 공식 과제, 새로 만든 기본 과제). 붙인 수는 도구가 [3b] 줄에 찍는다.
+  const m3b = /공식 과제 편입 (\d+)건, 기본 과제 새로 만듦 (\d+)건/.exec(r1.out);
+  const extra = m3b ? Number(m3b[1]) + Number(m3b[2]) : NaN;
+  ok('과제 건수(파일 + 정리가 붙인 과제)', Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)) === nCat + extra,
+     `DB=${one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`)} XML=${nCat} 정리=${extra}`);
+  catInvariants('실 data.xml');
   ok('일정 건수', Number(one(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`)) === nEnt);
   ok('할 일 건수', Number(one(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`)) === nTodo);
   ok('★ 커밋이 옮겨졌다(쓰기 계층은 못 하는 것)',
@@ -208,6 +239,33 @@ try {
          keys.join(','));
     }
   }
+
+  /* ⑧ 과제 참조 정리 — 앱의 XML 가져오기와 같은 규칙 */
+  console.log('\n[⑧] 과제 참조 정리(기본 과제, 기타로 붙이기, 공식 과제 편입, 없는 과제의 공수)');
+  wipe(U);
+  const xDef = join(WORK, 'defaults.xml'); writeFileSync(xDef, synthDefaultsXml(), 'utf8');
+  const r8 = tool([`--login-id=${LOGIN}`, `--xml=${xDef}`]);
+  ok('이관 성공(없는 과제의 공수를 버린 경고만)', r8.code === 0 || /경고/.test(r8.out), r8.out.split('\n').slice(-4).join(' / '));
+  ok('왕복 대조 통과(도구 내장)', /건수·서명 일치/.test(r8.out), (r8.out.match(/✗[^\n]*/g) || []).slice(0, 2).join(' | '));
+  catInvariants('⑧');
+  const catRows = sql(`SELECT uid, source, name, sort_order FROM cal_category WHERE user_id=${U} ORDER BY sort_order`);
+  ok("파일의 ' 기타 ' 를 기본 과제로 다시 쓰고 이름을 바로잡았다(두 번째 기타를 만들지 않는다)",
+     catRows.filter((r) => r[2].trim() === '기타').length === 1 && (catRows.find((r) => r[0] === 'cG') || [])[2] === '기타',
+     JSON.stringify(catRows));
+  ok('휴가를 새로 만들어 목록 맨 뒤에 붙였다', (catRows[catRows.length - 1] || [])[2] === '휴가' && /^c-/.test((catRows[catRows.length - 1] || [])[0]), JSON.stringify(catRows));
+  ok('목록에 없던 공식 과제를 편입했다(source=db, project_uid)', Number(one(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U} AND uid='${ORPHAN_DB}' AND source='db' AND project_uid='${ORPHAN_DB.slice(3)}'`)) === 1);
+  const catOf = (tbl, id) => one(`SELECT c.uid FROM ${tbl} x JOIN cal_category c ON c.user_id=x.user_id AND c.cat_no=x.cat_no WHERE x.user_id=${U} AND x.uid='${id}'`);
+  ok('과제 없는 일정 → 기타', catOf('cal_entry', 'eNull') === 'cG', catOf('cal_entry', 'eNull'));
+  ok('없는 개인 과제의 일정 → 기타', catOf('cal_entry', 'eGone') === 'cG', catOf('cal_entry', 'eGone'));
+  ok('목록에 없는 공식 과제의 일정은 기타가 아니라 그 공식 과제로', catOf('cal_entry', 'eDb') === ORPHAN_DB, catOf('cal_entry', 'eDb'));
+  ok('정상 일정은 그대로', catOf('cal_entry', 'eOk') === 'cA');
+  ok('과제 없는 할 일 → 기타', catOf('cal_todo', 'tNull') === 'cG', catOf('cal_todo', 'tNull'));
+  const th = sql(`SELECT c.uid, h.hours FROM cal_task_hours h JOIN cal_category c ON c.user_id=h.user_id AND c.cat_no=h.cat_no WHERE h.user_id=${U} ORDER BY c.uid`);
+  ok('공수: 공식 과제(편입) 2 와 정상 1 은 남고 없는 개인 과제 3 은 버렸다',
+     JSON.stringify(th.map((r) => [r[0], Number(r[1])])) === JSON.stringify([['cA', 1], [ORPHAN_DB, 2]].sort((a, b) => (a[0] < b[0] ? -1 : 1))), JSON.stringify(th));
+  ok('버린 공수를 보고했다', /⚠ 없는 과제의 공수 1건/.test(r8.out), (r8.out.match(/⚠ 없는 과제의 공수[^\n]*/) || ['(보고 없음)'])[0]);
+  ok('기타로 붙인 건수를 알렸다(일정 2 + 할 일 1)', /일정, 할 일 3건을 기본 과제 '기타'에 붙였다/.test(r8.out));
+  ok("옛 경고 문구('미분류')가 없다", !/미분류/.test(r8.out));
 
   /* ⑦ 없는 사용자 거부 */
   console.log('\n[⑦] 없는 사용자');

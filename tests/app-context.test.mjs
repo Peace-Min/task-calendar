@@ -927,13 +927,31 @@ if (!JSDOM) {
       }
     });
 
-    test('collectReportData: 기타 과제는 등록 순서와 무관하게 항상 마지막', () => {
+    //  2026-10-07 기본 과제(docs/DEFAULT-TASKS.md §4.3) — '기타는 맨 뒤' 규칙과 미분류 합성 행(__uncat__)을 지웠다.
+    //  기타도 내 과제 목록의 한 과제라 목록 순서 그대로다(순서는 ▲▼ 로 사용자가 정한다).
+    test('collectReportData: 기타 과제도 목록 순서 그대로(맨 뒤로 보내는 규칙 없음)', () => {
       const withEtcFirst = JSON.parse(JSON.stringify(reportState));
       withEtcFirst.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
       seed(withEtcFirst);
       const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
-      assert.strictEqual(r.rows[r.rows.length - 1].name, '기타');
-      assert.deepStrictEqual(r.rows.slice(0, -1).map(row => row.name), ['보고서 작성', '시스템 점검']);
+      assert.deepStrictEqual(r.rows.map(row => row.name), ['기타', '보고서 작성', '시스템 점검'],
+        "'기타' 가 목록 순서를 벗어났다 — '기타는 맨 뒤' 규칙이 되살아났다");
+    });
+
+    //  과제 없는 기록(categoryId null)과 없는 과제를 가리키는 기록은 **행을 만들지 않는다**(합성 '기타' 행 없음).
+    //  내 데이터에는 생기지 않지만(새 기록은 기타, 가져오기는 기타로 붙인다) 개발 DB 더미에는 남아 있다(§5).
+    test('collectReportData: 과제 없는 기록은 합성 행(__uncat__)을 만들지 않고 실재하는 기타 과제로 병합되지도 않는다', () => {
+      const st = JSON.parse(JSON.stringify(reportState));
+      st.categories.push({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
+      st.entries.push({ id: 'nul', date: '2026-07-09', title: '과제 없는 옛 일정', categoryId: null, allDay: true, startTime: '', endTime: '',
+        location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
+      st.entries.push({ id: 'dng', date: '2026-07-09', title: '사라진 과제의 일정', categoryId: 'c-gone', allDay: true, startTime: '', endTime: '',
+        location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
+      seed(st);
+      const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
+      assert.deepStrictEqual(r.rows.map(row => row.key), ['c-1', 'c-2', 'c-etc'], '행이 목록 과제 그대로가 아니다(합성 행이 생겼다)');
+      assert.ok(!r.rows.some(row => row.key === '__uncat__'), '미분류 합성 행(__uncat__)이 되살아났다');
+      assert.deepStrictEqual(rowOf(r, '기타').titles, [], "과제 없는 기록이 실재하는 '기타' 과제로 병합됐다(gitaCat 병합이 되살아났다)");
     });
 
     // ── PART A: setCommitSubject / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
@@ -1895,22 +1913,30 @@ if (!JSDOM) {
       ev("reportMode='daily'");
     });
 
-    // 미분류 '기타' 행 — 실재하는 과제가 아니라 (날짜×과제) 공수를 저장할 곳이 없다(DB 쓰기에서 FK 로 버려진다).
-    test("report UI: 미분류 '기타' 행에는 시간 입력칸 대신 안내가 선다", () => {
+    // 2026-10-07 기본 과제(DEFAULT-TASKS §4.3) — 휴가, 기타는 진짜 과제라 카드마다 시간 입력칸이 있고, 그 시간이
+    //  일간 본문 '[기타] : n', 주간 과제투입시간 줄, 합계에 들어간다. 예전 미분류 '기타' 행 전용 안내(.rcard-hnote)는 지웠다.
+    test('report UI: 휴가, 기타 카드에도 시간 입력칸이 있고 그 시간이 일간 본문, 주간 과제투입시간, 합계에 들어간다', () => {
+      const E = (id, date, title, cat) => ({ id, date, title, categoryId: cat, allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA });
       seed({
         gitAuthor: '', svnAuthor: '',
-        categories: [{ id: 'ca', name: '정상과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
-        entries: [
-          { id: 'n1', date: '2026-07-08', title: '정상 일정', categoryId: 'ca', allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-          { id: 'u1', date: '2026-07-08', title: '미분류 일정', categoryId: null, allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null, endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA },
-        ],
-        todos: [], rooms: [],
+        categories: [{ id: 'ca', name: '정상과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'cv', name: '휴가', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+          { id: 'cg', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+        entries: [E('n1', '2026-07-08', '정상 일정', 'ca'), E('g1', '2026-07-08', '사내 교육', 'cg')],
+        todos: [], rooms: [], taskHours: { '2026-07-08': { ca: 4, cg: 2.5, cv: 1 } }, attendance: {},
       });
       ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptSkipEmpty').checked=false; buildReport();");
       const html = ev("$('#rptOut').innerHTML");
-      assert.ok(/data-hcat="ca"/.test(html), '대조군: 실재 과제 행에는 입력칸이 있다');
-      assert.ok(!/data-hcat="__uncat__"/.test(html), '미분류 행에는 입력칸이 없다 — 적어도 저장되지 않는다');
-      assert.ok(/rcard-hnote/.test(html), '대신 왜 아직 못 적는지 한 줄로 말한다');
+      for (const k of ['ca', 'cv', 'cg']) assert.ok(new RegExp('data-hcat="' + k + '"').test(html), `과제 ${k} 카드에 시간 입력칸이 없다`);
+      assert.ok(!/rcard-hnote/.test(html) && !/__uncat__/.test(html), '미분류 전용 안내(.rcard-hnote)나 __uncat__ 이 되살아났다');
+      const daily = ev('buildReportText()');
+      assert.ok(daily.includes('[기타] : 2.5') && daily.includes('[휴가] : 1') && daily.includes('[정상과제] : 4'), '일간 본문에 기본 과제 시간이 없다: ' + daily);
+      const wf = evJSON("buildWeeklyFields('2026-07-06','2026-07-12',{event:true,todo:true,git:true,desc:true,skipEmpty:false})");
+      assert.ok(wf.content.includes('[기타] : 2.5') && wf.content.includes('[휴가] : 1'), '주간 과제투입시간에 기본 과제 시간이 없다: ' + wf.content);
+      assert.ok(/합계 : 7\.5/.test(wf.content), '주간 합계에 기본 과제 시간이 빠졌다(4 + 2.5 + 1 = 7.5): ' + wf.content);
+      //  입력칸으로 적은 값도 그 과제 키로 저장된다(setTaskHours 경로 · 예전 미분류 행은 저장할 곳이 없었다)
+      ev("(function(){ var i = document.querySelector('#rptOut .rcard-h-in[data-hcat=\"cg\"]'); i.value = '3'; i.dispatchEvent(new Event('change', { bubbles: true })); })()");
+      assert.strictEqual(ev("getTaskHours('2026-07-08','cg')"), 3, '기타 카드의 입력칸에 적은 시간이 기타 과제로 저장되지 않았다');
       ev("reportMode='daily'");
     });
 
@@ -2545,16 +2571,17 @@ if (!JSDOM) {
       assert.ok(cap.fields.content.includes('[보고서 작성] : 2') && cap.fields.content.includes('[시스템 점검] : 1.5'),
         '본문 헤더에 같은 시간이 없다 — 본문과 payload 가 같은 값을 말해야 한다');
     });
-    test("일간 전송: '기타'를 먼저 등록해도 payload.hours 에서 '기타'는 마지막(등록 순서가 아니라 rows 규칙)", () => {
+    //  2026-10-07 기본 과제(DEFAULT-TASKS §4.3) — '기타는 맨 뒤' 규칙이 없어졌다. payload.hours 와 본문은 **같은 rows**(목록 순서)를 따른다.
+    test("일간 전송: '기타'를 먼저 등록하면 payload.hours 와 본문 모두 '기타'가 먼저다(목록 순서 = rows 순서)", () => {
       const st = JSON.parse(JSON.stringify(reportState));
       st.categories.unshift({ id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA });
       st.taskHours = { '2026-07-08': { 'c-etc': 3, 'c-1': 2 } }; st.attendance = {};
       const cap = sendDailyCapture(st);
       assert.ok(cap, '전송 페이로드가 어댑터에 전달되지 않았다');
-      assert.deepStrictEqual(cap.hours, [{ name: '보고서 작성', hours: 2 }, { name: '기타', hours: 3 }],
-        "payload 가 과제 등록 순서를 따른다 — 본문은 '기타'를 맨 뒤에 두는데 전송 hours 는 앞에 둔다");
+      assert.deepStrictEqual(cap.hours, [{ name: '기타', hours: 3 }, { name: '보고서 작성', hours: 2 }],
+        "payload 가 목록 순서를 따르지 않는다 — '기타는 맨 뒤' 규칙이 되살아났다");
       const c = cap.fields.content;
-      assert.ok(c.indexOf('[보고서 작성] : 2') >= 0 && c.indexOf('[기타] : 3') > c.indexOf('[보고서 작성] : 2'), "본문에서도 '기타'가 마지막이어야 한다");
+      assert.ok(c.indexOf('[기타] : 3') >= 0 && c.indexOf('[보고서 작성] : 2') > c.indexOf('[기타] : 3'), "본문도 목록 순서여야 한다('기타' 먼저)");
     });
 
     // 2026-09-23 §3.4-C-11 — load() 는 reportSource 를 항상 cal 로(인메모리 전용 값)
@@ -2633,7 +2660,8 @@ if (!JSDOM) {
                    attendance: { '2026-07-13': { status: '6', overtime: 0 } } }));
       h.ev('pendingImport = ' + JSON.stringify(IMPORT_FILE) + ';');
       h.ev('applyImport()');
-      assert.deepStrictEqual(h.evJSON('state.categories.map(function(c){return c.id;})'), ['cz'],
+      //  파일 내용 + 기본 과제 휴가, 기타(파일에 없으면 가져오기가 만든다 · DEFAULT-TASKS §4.7)
+      assert.deepStrictEqual(h.evJSON("state.categories.map(function(c){return c.id === 'cz' ? 'cz' : c.name;})"), ['cz', '휴가', '기타'],
         '교체 뒤 과제가 파일 내용과 다르다(기존 과제가 남았다 = 병합)');
       assert.deepStrictEqual(h.evJSON('state.entries.map(function(e){return e.id;})'), ['ez'],
         '교체 뒤 기록이 파일 내용과 다르다(기존 기록이 남았다 = 병합)');

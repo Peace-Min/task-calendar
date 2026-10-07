@@ -453,6 +453,10 @@ namespace TaskCalendarWidget
                 tokens["user_pref"] = now;
 
                 // ── 10. 삭제 — 자식→부모 순. 일정/할 일 먼저, 과제는 마지막(FK) ────────
+                //   ★ 과제 삭제는 앱이 같은 저장에서 그 과제의 일정, 할 일, 공수를 **함께 지운 state** 로 온다
+                //     (deleteCategory, 2026-10-07 docs/DEFAULT-TASKS.md §4.5. 예전처럼 참조를 null 로 풀지 않는다).
+                //     그 과제를 가리키는 일정이 하나라도 남아 오면 4번이 아직 catNo 에 있는 옛 cat_no 로 쓰고,
+                //     아래 과제 DELETE 가 FK(1451)로 실패한다. 참조 정리는 앱의 책임이고 여기서는 순서만 지킨다.
                 foreach (var kv in new List<KeyValuePair<string, uint>>(entNo))
                     if (!seenEnt.Contains(kv.Key))
                     {

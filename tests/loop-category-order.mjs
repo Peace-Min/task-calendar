@@ -16,7 +16,9 @@
  *      끝은 disabled 가 아니라 aria-disabled 다(포커스가 남아 이유를 읽는다) — 이 루프의 끝 판정도 그 표식을 본다.
  *    C7        옮긴 뒤 포커스 = 옮겨진 행의 같은 ▲ · 모달 스크롤 자리 유지 · 맨 위에 닿으면 포커스가 ▼ 로
  *    C3        reloadState → 다시 읽힌 state.categories 순서 = 옮긴 직후 순서(서버 저장)
- *    C4        collectReportData(이번 달, rptSources()) 행 = 목록 순서(「기타」·미분류 맨 뒤) + 보고서 미리보기 카드 순서
+ *    C4        collectReportData(이번 달, rptSources()) 행 = 목록 순서 그대로 + 보고서 미리보기 카드 순서
+ *              ★ 2026-10-07 기본 과제(docs/DEFAULT-TASKS.md §4.3) — 「기타」 맨 뒤 규칙과 미분류 합성 행(__uncat__)을 지웠다.
+ *                기타도 목록의 한 과제라 제 자리에 선다. 이 루프는 그 둘이 되살아나면 실패한다.
  *    C5        필터 막대 칩 · 새 기록 #fCat · 빠른 추가 #qaCat 옵션 순서 = state.categories
  *    C6        __dbFault{network} → 끊김 → ▼ → 순서·화면 변화 0 · saveState 0 · 잠금 토스트 → 해제 → 복구
  *    정리      장애 off · 원래 순서로 되돌린다(진짜 ▲ 로) · zz 과제 삭제 · reloadState → 원래 순서 확인 · 모달 닫기
@@ -280,13 +282,9 @@ function todayIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-//  보고서 행의 기대 순서 — state.categories 순서에서 「기타」 이름 과제를 뒤로, 미분류(__uncat__)는 맨 뒤.
-function expectedReportKeys(cs, rowKeys) {
-  const nonG = cs.filter((c) => c.name.trim() !== '기타').map((c) => c.id);
-  const g = cs.filter((c) => c.name.trim() === '기타').map((c) => c.id);
-  const exp = nonG.concat(g);
-  if (rowKeys.includes('__uncat__')) exp.push('__uncat__');
-  return exp;
+//  보고서 행의 기대 순서 — state.categories 순서 그대로(2026-10-07 부터 「기타」 맨 뒤도, 미분류 합성 행도 없다).
+function expectedReportKeys(cs) {
+  return cs.map((c) => c.id);
 }
 
 /* ── 본체 ─────────────────────────────────────────────────────────── */
@@ -449,13 +447,13 @@ async function main() {
   ok('C3 다시 읽힌 state.categories 순서 = 옮긴 직후 순서', same(await order(), EXPECT), JSON.stringify({ got: await order(), want: EXPECT }));
 
   /* ── C4 보고서 ── */
-  head('C4 보고서 행 순서 = 목록 순서(「기타」·미분류 맨 뒤) — collectReportData + 미리보기');
+  head('C4 보고서 행 순서 = 목록 순서 그대로(「기타」 맨 뒤 규칙, 미분류 합성 행 없음) — collectReportData + 미리보기');
   await closeAll();
   {
     let [from, to] = monthRange();
     const rowsOf = (f, t) => J(`collectReportData(${JSON.stringify(f)}, ${JSON.stringify(t)}, rptSources()).rows.map(function(r){ return { key: r.key, name: r.name, n: r.titles.length }; })`);
     let rows = await rowsOf(from, to);
-    //  이번 달에 내용이 없으면 기록이 있는 기간(가장 이른 ~ 가장 늦은 기록 날짜)으로 넓힌다 — 내용 있는 행·미분류가 실제로 줄을 서게.
+    //  이번 달에 내용이 없으면 기록이 있는 기간(가장 이른 ~ 가장 늦은 기록 날짜)으로 넓힌다 — 내용 있는 행이 실제로 줄을 서게.
     if (!rows.some((r) => r.n > 0)) {
       const span = await J(`(function(){ const ds = (state.entries || []).map(function(e){ return e.date; }).filter(function(d){ return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(d || ''); }).sort();
         return ds.length ? [ds[0], ds[ds.length - 1]] : null; })()`);
@@ -464,20 +462,20 @@ async function main() {
     const src = await J('rptSources()');
     const cs = await cats();
     const keys = rows.map((r) => r.key);
-    const exp = expectedReportKeys(cs, keys);
+    const exp = expectedReportKeys(cs);
     const expPresent = exp.filter((k) => keys.includes(k));
-    note(`기간 ${from}~${to}: 행 ${rows.length} · 내용 있는 행 ${rows.filter((r) => r.n > 0).length} · 미분류 ${keys.includes('__uncat__') ? '있음' : '없음'} · 「기타」 과제 ${cs.some((c) => c.name.trim() === '기타') ? '있음' : '없음'}`);
-    ok('C4 보고서 행이 모두 알려진 과제(또는 미분류)다', keys.every((k) => exp.includes(k)), JSON.stringify(keys));
-    ok('C4 보고서 행 순서 = state.categories 순서(「기타」 과제 뒤 · 미분류 맨 뒤)', same(keys, expPresent), JSON.stringify({ keys, exp: expPresent }));
+    note(`기간 ${from}~${to}: 행 ${rows.length} · 내용 있는 행 ${rows.filter((r) => r.n > 0).length} · 「기타」 과제 ${cs.some((c) => c.name.trim() === '기타') ? '있음' : '없음'}`);
+    ok('C4 보고서 행이 모두 내 과제 목록의 과제다(미분류 합성 행 없음)', keys.every((k) => exp.includes(k)) && !keys.includes('__uncat__'), JSON.stringify(keys));
+    ok('C4 보고서 행 순서 = state.categories 순서 그대로', same(keys, expPresent), JSON.stringify({ keys, exp: expPresent }));
     if (!src.skipEmpty) ok('C4 「내용 없는 항목 제외」가 꺼져 있으니 모든 과제가 행이다', cs.every((c) => keys.includes(c.id)), `${keys.length} vs ${cs.length}`);
     else note('「내용 없는 항목 제외」가 켜져 있다 — 빈 과제 행은 빠진다(순서만 본다)');
-    if (keys.includes('__uncat__')) ok('C4 미분류는 맨 뒤', keys[keys.length - 1] === '__uncat__');
-    else na('C4 미분류 맨 뒤', `${from}~${to} 에 미분류 기록이 없다`);
-    const gita = cs.filter((c) => c.name.trim() === '기타').map((c) => c.id);
-    if (gita.length) ok('C4 「기타」 과제는 일반 과제 뒤', keys.filter((k) => k !== '__uncat__').slice(-gita.length).every((k) => gita.includes(k)));
-    else na('C4 「기타」 과제 맨 뒤', '「기타」 이름의 과제가 없다');
-    //  같은 순서가 **옮긴 순서**에서 나온다(옮긴 행이 보고서에서도 맨 앞 — 「기타」가 아니면)
-    if (cs[0] && cs[0].name.trim() !== '기타') ok('C4 맨 위로 옮긴 과제가 보고서 첫 행이다', keys[0] === cs[0].id || (src.skipEmpty && !keys.includes(cs[0].id)), JSON.stringify(keys.slice(0, 3)));
+    //  기본 과제 기타(DEFAULT-TASKS §2)는 늘 있다 — 보고서에서도 목록의 제자리에 선다(맨 뒤로 보내지 않는다)
+    const gita = cs.filter((c) => c.name.trim() === '기타' && !c.off).map((c) => c.id);
+    ok('C4 기본 과제 기타가 목록에 있다(부팅 보장)', gita.length >= 1, JSON.stringify(cs.map((c) => c.name)));
+    if (gita.length && keys.includes(gita[0])) ok('C4 「기타」 과제는 목록 자리 그대로(맨 뒤 규칙 없음)', keys.indexOf(gita[0]) === expPresent.indexOf(gita[0]), JSON.stringify({ keys, exp: expPresent }));
+    else na('C4 「기타」 과제 자리', '「기타」 행이 이 기간 보고서에 없다(내용 없는 항목 제외)');
+    //  같은 순서가 **옮긴 순서**에서 나온다(옮긴 행이 보고서에서도 맨 앞)
+    if (cs[0]) ok('C4 맨 위로 옮긴 과제가 보고서 첫 행이다', keys[0] === cs[0].id || (src.skipEmpty && !keys.includes(cs[0].id)), JSON.stringify(keys.slice(0, 3)));
 
     //  보고서 창을 사람이 여는 문(헤더 #btnReportTop)으로 연다 — 일간(오늘) 미리보기 카드 순서.
     await cdp.ev(`(function(){ const b = document.getElementById('btnReportTop'); if (b) b.click(); else openReport(); return 1; })()`);
@@ -494,12 +492,12 @@ async function main() {
       vlog('미리보기:', JSON.stringify(pv));
       if (!pv.dom.length) { undecide(`C4 미리보기 카드(${label})`, `미리보기에 카드가 없다(${pv.mode} · 출처 ${pv.src})`); return; }
       ok(`C4 ${label} 미리보기 카드 순서 = 보고서 행 순서(${pv.from}~${pv.to} · ${pv.dom.length}장 · 내용 있는 행 ${pv.n})`, same(pv.dom, pv.data), JSON.stringify({ dom: pv.dom, data: pv.data }));
-      const expK = expectedReportKeys(cs, pv.keys).filter((k) => pv.keys.includes(k));
-      ok(`C4 ${label} 미리보기의 행 = state.categories 순서(「기타」·미분류 맨 뒤)`, same(pv.keys, expK), JSON.stringify({ keys: pv.keys, exp: expK }));
-      if (pv.keys.includes('__uncat__')) ok(`C4 ${label} 미리보기의 마지막 카드 = 미분류(「기타」)`, pv.keys[pv.keys.length - 1] === '__uncat__' && pv.dom[pv.dom.length - 1] === '기타', JSON.stringify(pv.dom.slice(-2)));
+      const expK = expectedReportKeys(cs).filter((k) => pv.keys.includes(k));
+      ok(`C4 ${label} 미리보기의 행 = state.categories 순서 그대로`, same(pv.keys, expK), JSON.stringify({ keys: pv.keys, exp: expK }));
+      ok(`C4 ${label} 미리보기에 미분류 합성 카드(__uncat__)가 없다`, !pv.keys.includes('__uncat__'), JSON.stringify(pv.keys));
     };
     await checkPreview('일간(오늘)');
-    //  기록이 있는 기간이 오늘이 아니면 「기간 취합」 탭으로 그 기간을 그린다 — 내용 있는 카드·미분류 카드까지 줄을 선다.
+    //  기록이 있는 기간이 오늘이 아니면 「기간 취합」 탭으로 그 기간을 그린다 — 내용 있는 카드까지 줄을 선다.
     if (from !== to || from !== todayIso()) {
       const net = await cdp.ev("state.reportSource === 'net' || state.reportSource === 'week'");
       if (net) na('C4 기간 취합 미리보기', '내용 출처가 netcus 라 기간 취합은 netcus 미리보기다');

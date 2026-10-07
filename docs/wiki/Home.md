@@ -9,6 +9,7 @@
 - [다른 사람 일정 보기](다른-사람-일정-보기): 툴바의 '👥 다른 사람 일정', 사람/조직도 탭, 즐겨찾기와 최근 본 사람, 사람 바꾸기, 보이는 것과 안 보이는 것, 밀도, 겹쳐 보기와 나란히 보기, 시간 겹침
 - [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정): 무엇을 누르면 어느 날짜가 선택되는지, 기간 막대 클릭 수정(2026-10-01)
 - [과제 순서 바꾸기](과제-순서-바꾸기): '🏷️ 내 과제'의 ▲▼ 로 순서를 정하면 보고서 순서가 따라갑니다
+- [기본 과제 휴가와 기타](기본-과제-휴가와-기타): 늘 있는 휴가, 기타 과제, 과제 삭제 시 데이터 삭제, 다른 과제로 옮기기
 - [서버 연결이 끊겼을 때](서버-연결이-끊겼을-때): 화면에 무엇이 뜨고, 무엇을 하면 되는지
 - [XML 가져오기](XML-가져오기): 예전 버전 기록 옮기기, 가져오기는 언제나 교체(2026-10-07 병합 제거)
 
@@ -27,4 +28,5 @@
   - 루프: `tests/loop-peer-view.mjs`, `tests/loop-peer-frame.mjs`
 - 관리 화면 기획서: [`docs/ADMIN-HUB.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/ADMIN-HUB.md), 루프 `tests/loop-admin-hub.mjs`
 - XML 병합 제거 기획서: [`docs/XML-MERGE-REMOVAL.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/XML-MERGE-REMOVAL.md), 실 위젯 루프 `tests/loop-import-ui.mjs`
+- 기본 과제 기획서: [`docs/DEFAULT-TASKS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/DEFAULT-TASKS.md), 실 위젯 루프 `tests/loop-default-tasks.mjs`
 - 화면 혼란 3건 기획서: [`docs/UI-CLARITY-2026-10-01.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/UI-CLARITY-2026-10-01.md)

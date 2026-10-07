@@ -18,7 +18,13 @@
 //     XML 은 PC 단위인데 이관은 사람 단위다. 두 번째 PC 에서 또 돌리면 삭제한 일정이 되살아난다.
 //
 //   ★ 조용히 버리지 않는다. 버린 것은 전부 리포트에 건수로 보고한다
-//     (entry@hours · 무효 근태 day · 중복 예외일 · 미존재 과제 참조).
+//     (entry@hours, 무효 근태 day, 중복 예외일, 없는 과제의 공수).
+//
+//   ★ 과제 참조는 앱의 「XML 가져오기」(importNormalizeCats)와 **같은 규칙**으로 정리한다(docs/DEFAULT-TASKS.md §4.7).
+//     ① 목록에 없는 공식 과제('db-'+36자)를 가리키는 일정, 할 일, 공수 → 그 공식 과제를 편입한다(앱의 dbGone 자리표시와 같다).
+//     ② 기본 과제: 이름이 정확히 '휴가', '기타'(앞뒤 공백 무시)인 개인 과제를 쓰고, 없으면 만든다(목록 맨 뒤).
+//     ③ 과제가 없거나 없는 과제를 가리키는 일정, 할 일 → 기타. ④ 없는 과제의 공수는 버리고 건수를 보고한다.
+//     예전에는 ③을 cat_no NULL 로 넣었다. 앱에 '과제 없음' 상태가 사라진 뒤로 그런 기록은 보고서에서 조용히 빠진다.
 //
 //  【사용】
 //    dotnet run -- --login-id=hjlee [--xml=PATH] [--dry-run]
@@ -168,12 +174,76 @@ static class P
         if (existing > 0) Die($"이 사용자에게 이미 캘린더 데이터가 {existing}행 있다. 이 도구는 INSERT 전용이라 덮어쓰지 않는다(§8).");
         Console.WriteLine("  재실행 방지 통과 · 기존 데이터 0행");
 
+        // ── 3b. 과제 참조 정리, 앱의 XML 가져오기와 같은 규칙(머리말 ①~④, DEFAULT-TASKS §4.7) ──────
+        //   트랜잭션 **밖에서** 계획만 세운다(공식 과제 이름 조회가 실패해도 이관 트랜잭션을 건드리지 않게).
+        Console.WriteLine("\n[3b] 과제 참조 정리(앱 가져오기와 같은 규칙)");
+        var extraCats = new List<(string Id, bool IsDb, string Name, string Color)>();
+        //  ① 목록에 없는 공식 과제 참조: 일정, 할 일, 공수 어디서든. 문서 순서대로 한 번씩.
+        var dbRefs = new List<string>();
+        void NoteDbRef(string? id)
+        {
+            if (string.IsNullOrEmpty(id) || !id.StartsWith("db-", StringComparison.Ordinal)) return;
+            if (id.Length != 39) return;                         // 규격 밖: project_uid 를 만들 근거가 없다(③ 기타로)
+            if (catUids.Contains(id) || dbRefs.Contains(id)) return;
+            dbRefs.Add(id);
+        }
+        foreach (var x in ents) NoteDbRef(A(x, "categoryId"));
+        foreach (var x in tods) NoteDbRef(A(x, "categoryId"));
+        foreach (var d in thDays) foreach (var x in d.Elements("t")) NoteDbRef(A(x, "cat"));
+        foreach (var id in dbRefs)
+        {
+            //  이름은 회사 DB 의 공식 과제 이름(통상명칭 → 사업명). 없거나 못 읽으면 앱의 자리표시와 같은 '(공식 과제)'.
+            string name = "(공식 과제)";
+            try
+            {
+                var nm = await Sc(conn, null,
+                    "SELECT COALESCE(NULLIF(TRIM(common_name),''), NULLIF(TRIM(project_name),'')) FROM project WHERE uid=@pu LIMIT 1",
+                    ("@pu", id.Substring(3)));
+                if (nm is string s && s.Length > 0) name = s;
+            }
+            catch (Exception ex) { Note($"공식 과제 이름을 읽지 못했다({id}): {ex.Message}. '(공식 과제)' 로 둔다."); }
+            extraCats.Add((id, true, name, "#5b6b7d"));
+            catUids.Add(id);
+        }
+        //  ② 기본 과제: 개인 과제 중 이름(앞뒤 공백 무시)이 정확히 같은 첫 과제. 없으면 만든다. 색은 앱(DEFAULT_TASKS)과 같다.
+        var defaultIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        var normalizeName = new Dictionary<string, string>(StringComparer.Ordinal);   // 파일 과제 id → 바로잡은 이름(' 기타' → '기타')
+        var createdDefaults = new List<string>();
+        foreach (var (dn, dc) in new[] { ("휴가", "#2e9e6b"), ("기타", "#5b6b7d") })
+        {
+            var hit = cats.FirstOrDefault(c => A(c, "source") != "db" && T(c.Element("name")).Trim() == dn);
+            if (hit != null)
+            {
+                defaultIds[dn] = A(hit, "id");
+                if (T(hit.Element("name")) != dn) normalizeName[A(hit, "id")] = dn;   // 앱 ensureDefaultTasks 와 같이 정확한 이름으로
+            }
+            else
+            {
+                string nid = "c-" + Guid.NewGuid().ToString();
+                extraCats.Add((nid, false, dn, dc));
+                catUids.Add(nid);
+                defaultIds[dn] = nid;
+                createdDefaults.Add(dn);
+            }
+        }
+        string gitaId = defaultIds["기타"];
+        //  ③ 일정, 할 일의 과제: 목록(+①)에 있으면 그대로, 비었거나 없으면 기타
+        int toGita = 0;
+        string MapCat(string raw)
+        {
+            if (raw.Length > 0 && catUids.Contains(raw)) return raw;
+            toGita++;
+            return gitaId;
+        }
+        Console.WriteLine($"  공식 과제 편입 {dbRefs.Count}건, 기본 과제 새로 만듦 {createdDefaults.Count}건" +
+                          (normalizeName.Count > 0 ? $", 기본 과제 이름 바로잡음 {normalizeName.Count}건" : ""));
+
         // ── 4. 이관 ──────────────────────────────────────────────────────────
         Console.WriteLine($"\n[4] 이관{(dry ? "(예행)" : "")}");
         string now = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
         var catNo = new Dictionary<string, uint>(StringComparer.Ordinal);
         var repoPaths = new Dictionary<string, object>(StringComparer.Ordinal);
-        int droppedHours = 0, droppedDays = 0, dedupExcept = 0, orphanCat = 0;
+        int droppedHours = 0, droppedDays = 0, dedupExcept = 0, droppedTh = 0;
 
         await using var tx = await conn.BeginTransactionAsync();
         try
@@ -191,24 +261,32 @@ static class P
                     "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) " +
                     "VALUES (@u,@n,@id,@src,@nm,@col,@desc,@pu,@ur,@so,@ca,@ca)",
                     ("@u", uid), ("@n", ++no), ("@id", id), ("@src", isDb ? "db" : "local"),
-                    ("@nm", T(c.Element("name"))), ("@col", A(c, "color")), ("@desc", T(c.Element("description"))),
+                    ("@nm", normalizeName.TryGetValue(id, out var fixedName) ? fixedName : T(c.Element("name"))),
+                    ("@col", A(c, "color")), ("@desc", T(c.Element("description"))),
                     ("@pu", isDb ? id.Substring(3) : (object?)null),
                     ("@ur", (git.Length > 0 || svn.Length > 0) ? 1 : 0), ("@so", (int)no - 1), ("@ca", created));
                 catNo[id] = no;
             }
-            Console.WriteLine($"  과제 {catNo.Count}건");
+            //  3b 에서 정한 과제: 편입한 공식 과제, 새로 만든 기본 과제. 목록 **맨 뒤**에 붙는다(앱과 같다).
+            foreach (var x in extraCats)
+            {
+                await Ex(conn, tx,
+                    "INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) " +
+                    "VALUES (@u,@n,@id,@src,@nm,@col,'',@pu,0,@so,@ca,@ca)",
+                    ("@u", uid), ("@n", ++no), ("@id", x.Id), ("@src", x.IsDb ? "db" : "local"),
+                    ("@nm", x.Name), ("@col", x.Color), ("@pu", x.IsDb ? x.Id.Substring(3) : (object?)null),
+                    ("@so", (int)no - 1), ("@ca", now));
+                catNo[x.Id] = no;
+            }
+            Console.WriteLine($"  과제 {catNo.Count}건(파일 {cats.Count} + 정리 {extraCats.Count})");
 
             // 4-2 일정 + 자식
             uint eno = 0; int nExcept = 0, nCommit = 0;
             foreach (var e in ents)
             {
                 string id = A(e, "id");
-                string? cid = A(e, "categoryId"); if (cid.Length == 0) cid = null;
-                object? cno = null;
-                if (cid != null) {
-                    //  미존재 참조는 NULL 로 정리하고 건수를 보고한다(H-3) — 앱은 무해하지만 DB 는 번호를 만들 수 없다.
-                    if (catNo.TryGetValue(cid, out var cv)) cno = cv; else orphanCat++;
-                }
+                //  비었거나 없는 과제 → 기타(3b ③). NULL 로 두지 않는다: 앱에 '과제 없음' 상태가 없다(DEFAULT-TASKS §2).
+                object? cno = catNo[MapCat(A(e, "categoryId"))];
                 if (A(e, "hours").Length > 0) droppedHours++;   // 받을 컬럼이 없다(§5.3). 조용히 버리지 않는다.
                 var rec = e.Element("recur");
                 string rf = rec == null ? "" : A(rec, "freq");
@@ -270,9 +348,7 @@ static class P
             foreach (var t in tods)
             {
                 string id = A(t, "id");
-                string? cid = A(t, "categoryId"); if (cid.Length == 0) cid = null;
-                object? cno = null;
-                if (cid != null) { if (catNo.TryGetValue(cid, out var cv)) cno = cv; else orphanCat++; }
+                object? cno = catNo[MapCat(A(t, "categoryId"))];   // 비었거나 없는 과제 → 기타(3b ③)
                 await Ex(conn, tx,
                     "INSERT INTO cal_todo (user_id,todo_no,uid,cat_no,todo_text,note,due,end_date,done,prio,completed_at,sort_order,created_at,updated_at) " +
                     "VALUES (@u,@n,@id,@c,@tx,@nt,@du,@ed,@dn,@pr,@co,@so,@ca,@ua)",
@@ -309,7 +385,7 @@ static class P
                 string date = A(d, "date"); if (DateOrNull(date) == null) continue;
                 foreach (var t in d.Elements("t"))
                 {
-                    if (!catNo.TryGetValue(A(t, "cat"), out var cv)) { orphanCat++; continue; }
+                    if (!catNo.TryGetValue(A(t, "cat"), out var cv)) { droppedTh++; continue; }   // 없는 과제의 공수는 버린다(3b ④, 앱과 같다)
                     if (!double.TryParse(A(t, "h"), NumberStyles.Float, CultureInfo.InvariantCulture, out var h) || !(h > 0)) continue;
                     await Ex(conn, tx, "INSERT INTO cal_task_hours (user_id,work_date,cat_no,hours,updated_at) VALUES (@u,@d,@c,@h,@n)",
                         ("@u", uid), ("@d", date), ("@c", cv), ("@h", Math.Round((decimal)h, 2)), ("@n", now));
@@ -377,8 +453,13 @@ static class P
         if (droppedHours > 0) Note($"일정별 hours {droppedHours}건 — 받을 컬럼이 없다(§5.3). 값은 XML 에 남아 있다.");
         if (droppedDays > 0)  Warn($"근태 {droppedDays}일 — status 가 유효 코드가 아니라 행을 만들지 않았다(미기록으로 남는다).");
         if (dedupExcept > 0)  Note($"중복 예외일 {dedupExcept}건 — 같은 날짜가 두 번 있어 하나만 넣었다.");
-        if (orphanCat > 0)    Warn($"미존재 과제 참조 {orphanCat}건 — cat_no 를 NULL 로 두었다(화면에서 '미분류').");
-        if (droppedHours + droppedDays + dedupExcept + orphanCat == 0) Console.WriteLine("  버린 것 없음");
+        if (droppedTh > 0)    Warn($"없는 과제의 공수 {droppedTh}건을 버렸다(앱의 XML 가져오기와 같은 규칙). 값은 XML 에 남아 있다.");
+        if (droppedHours + droppedDays + dedupExcept + droppedTh == 0) Console.WriteLine("  버린 것 없음");
+        //  버린 것이 아니라 **옮긴** 것: 경고가 아니라 알림이다(앱 가져오기도 말없이 같은 일을 한다).
+        if (toGita > 0)       Note($"과제가 없거나 없는 과제를 가리키는 일정, 할 일 {toGita}건을 기본 과제 '기타'에 붙였다.");
+        if (createdDefaults.Count > 0) Note($"기본 과제 {string.Join(", ", createdDefaults)}을(를) 새로 만들었다(목록 맨 뒤).");
+        if (normalizeName.Count > 0)   Note($"기본 과제 이름의 앞뒤 공백을 지웠다 {normalizeName.Count}건.");
+        if (dbRefs.Count > 0) Note($"목록에 없던 공식 과제 {dbRefs.Count}건을 편입했다(그 과제를 가리키는 일정, 할 일, 공수가 있었다).");
 
         // ── 6. 저장소 경로 — DB 가 아니라 로컬 파일로 간다(§4) ───────────────
         Console.WriteLine("\n[6] 저장소 경로");
@@ -412,7 +493,7 @@ static class P
         if (dry) Console.WriteLine("  [예행] 롤백했으므로 대조 대상이 없다. 실제 이관 뒤 다시 확인할 것.");
         else
         {
-            var bad = await Verify(conn, uid, cats, ents, tods, rooms, thDays, atDays);
+            var bad = await Verify(conn, uid, cats.Select(x => A(x, "id")).Concat(extraCats.Select(x => x.Id)).ToList(), ents, tods, rooms, thDays, atDays);
             if (bad.Count == 0) Console.WriteLine("  ✓ 건수·서명 일치");
             else { foreach (var b in bad) Console.WriteLine("  ✗ " + b); Warns.Add($"왕복 대조 불일치 {bad.Count}건"); }
         }
@@ -430,7 +511,7 @@ static class P
     // 건수 대조 — 자식 표 포함. 값 서명은 앱 왕복(loop/dryrun)이 이미 덮으므로 여기서는
     //   '넣은 만큼 들어갔나' 를 본다(§8 의 건수 대조 항목).
     static async Task<List<string>> Verify(MySqlConnection c, int uid,
-        List<XElement> cats, List<XElement> ents, List<XElement> tods, List<string> rooms,
+        List<string> catIds, List<XElement> ents, List<XElement> tods, List<string> rooms,
         List<XElement> th, List<XElement> at)
     {
         var bad = new List<string>();
@@ -439,8 +520,11 @@ static class P
             long got = Convert.ToInt64(await Sc(c, null, sql) ?? 0L);
             if (got != want) bad.Add($"{what}: XML {want} ≠ DB {got}");
         }
-        await Cmp("과제", $"SELECT COUNT(*) FROM cal_category WHERE user_id={uid}", cats.Count);
+        await Cmp("과제", $"SELECT COUNT(*) FROM cal_category WHERE user_id={uid}", catIds.Count);   // 파일 과제 + 3b 에서 붙인 과제
         await Cmp("일정", $"SELECT COUNT(*) FROM cal_entry WHERE user_id={uid}", ents.Count);
+        //  과제 없는 일정, 할 일이 없어야 한다(3b ③: 전부 기타나 실재하는 과제로 붙었다)
+        await Cmp("과제 없는 일정, 할 일", $"SELECT (SELECT COUNT(*) FROM cal_entry WHERE user_id={uid} AND cat_no IS NULL)" +
+                  $"+(SELECT COUNT(*) FROM cal_todo WHERE user_id={uid} AND cat_no IS NULL)", 0);
         await Cmp("할 일", $"SELECT COUNT(*) FROM cal_todo WHERE user_id={uid}", tods.Count);
         await Cmp("회의실", $"SELECT COUNT(*) FROM cal_room WHERE user_id={uid}", rooms.Count);
         await Cmp("커밋", $"SELECT COUNT(*) FROM cal_entry_commit WHERE user_id={uid}",
@@ -450,7 +534,7 @@ static class P
 
         //  ★ uid 집합 대조 — 바이트 그대로 비교한다(uid 는 utf8mb4_bin). 번호는 넣지 않는다.
         foreach (var (tbl, want) in new[] {
-            ("cal_category", cats.Select(x => x.Attribute("id")!.Value)),
+            ("cal_category", catIds.AsEnumerable()),
             ("cal_entry",    ents.Select(x => x.Attribute("id")!.Value)),
             ("cal_todo",     tods.Select(x => x.Attribute("id")!.Value)) })
         {
