@@ -18,7 +18,7 @@
  *
  *  ★ 네이티브 파일 대화상자는 이 시험의 범위 밖이다(모달이라 자동화가 클릭을 요구).
  *    그 자리는 계약 ⑦-2 가 소스로 잠근다. 여기서는 **그 뒤 전부**를 돈다:
- *      showImportPreview → #importModal → applyImport(replace|merge)
+ *      showImportPreview → #importModal → applyImport()(교체 하나, 2026-10-07 병합 제거)
  *      → saveFull → dbSave{replaceAll} → replaceAllState → CalendarWriteDb → DB
  *
  *  실행:
@@ -152,7 +152,7 @@ try {
   /* ── 3. 교체 — 전량 삭제 + 전량 삽입이 실제로 돈다 ──────────────── */
   console.log('\n[3] 교체(replace) — 전량 교체');
   const catNoBefore = num(`SELECT IFNULL(MIN(cat_no),0) FROM cal_category WHERE user_id=${U}`);
-  await cdp.ev("applyImport('replace')");
+  await cdp.ev('applyImport()');
   await waitRev(U, base.rev, '교체 저장');
   const after = {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
@@ -192,20 +192,33 @@ try {
   ok('충돌 배너가 없다(저장이 거부되지 않았다)', !scr.conflict);
   ok('빈 캘린더 안내가 없다(데이터가 있으므로)', !scr.hint);
 
-  /* ── 5. 병합 — 같은 파일이면 아무것도 늘지 않아야 한다 ──────────── */
-  console.log('\n[5] 병합(merge) — 같은 내용이면 증가 0');
+  /* ── 5. 미리보기에 병합 버튼이 없다(2026-10-07 병합 제거) ────────── */
+  //  가져오기는 교체 하나다. 미리보기 창은 확인 창으로 남고 버튼은 [취소] [교체] 둘뿐이다.
+  //  [취소] 는 아무것도 저장하지 않는다(rev 그대로).
+  console.log('\n[5] 미리보기 버튼 = [취소] [교체] (병합 없음)');
   const rev5 = num(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`);
   await cdp.ev(`showImportPreview('roundtrip.xml', ${JSON.stringify(xml)})`);
-  await cdp.ev("applyImport('merge')");
-  await waitRev(U, rev5, '병합 저장');
+  const btn = JSON.parse(await cdp.ev(`JSON.stringify({
+    open: !document.getElementById('importModal').classList.contains('hidden'),
+    labels: [].map.call(document.querySelectorAll('#importModal .modal-foot button'), b => b.textContent.trim()),
+    merge: !!document.getElementById('btnImpMerge'),
+    mergeWord: (document.getElementById('importModal').textContent || '').includes('병합')
+  })`));
+  ok('미리보기 창이 열렸다', btn.open);
+  ok('미리보기 버튼이 [취소] [교체] 둘뿐이다', JSON.stringify(btn.labels) === JSON.stringify(['취소', '교체']), JSON.stringify(btn.labels));
+  ok('병합 버튼(#btnImpMerge)이 없다', !btn.merge);
+  ok('미리보기 창이 병합을 말하지 않는다', !btn.mergeWord);
+  await cdp.ev("document.querySelector('#importModal .modal-foot [data-close]').click()");
+  await sleep(800);   // 닫기 애니메이션(MD_OUT)과 혹시 모를 저장 왕복을 기다린다
+  ok('[취소] 로 미리보기가 닫혔다', await cdp.ev("document.getElementById('importModal').classList.contains('hidden')"));
+  ok('[취소] 는 저장하지 않는다(rev 그대로)', num(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`) === rev5,
+     `rev ${rev5} → ${num(`SELECT rev FROM cal_user_rev WHERE user_id=${U}`)}`);
   const m = {
     cat: num(`SELECT COUNT(*) FROM cal_category WHERE user_id=${U}`),
     ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${U}`),
     cmt: num(`SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}`),
     todo: num(`SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}`),
   };
-  for (const k of ['cat', 'ent', 'cmt', 'todo'])
-    ok(`병합 뒤 ${k} 가 늘지 않았다(중복 판정)`, m[k] === after[k], `${after[k]} → ${m[k]}`);
 
   /* ── 6. 원상 확인 ───────────────────────────────────────────────── */
   console.log('\n[6] 원상');

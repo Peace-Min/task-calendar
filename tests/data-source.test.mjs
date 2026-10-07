@@ -497,7 +497,7 @@ test('표시등③: 두 진입점이 미리보기를 공유한다', () => c7.pre
 
 test('변이㉓: 안내가 가져오기를 대신 실행하면 표시등① 이 실패한다(자동이관 부활)', () => {
   const bad = mutate("  btn.addEventListener('click', () => startImport());",
-    "  btn.addEventListener('click', () => startImport()); applyImport('merge');", src);
+    "  btn.addEventListener('click', () => startImport()); applyImport();", src);
   assert.throws(() => c7.emptyHintGuidesOnly(bad), /자동이관이 된다/);
 });
 

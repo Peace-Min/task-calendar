@@ -173,7 +173,7 @@ test('폐기④: 내보내기·가져오기는 살아 있다(과잉 삭제 방�
   const code = stripComments(app, 'html');
   assert.ok(/function toXML\(/.test(code), 'toXML() 이 사라졌다 — 「XML 내보내기」가 죽는다');
   assert.ok(/function fromXML\(/.test(code), 'fromXML() 이 사라졌다 — 「XML 가져오기」가 죽는다(= 이관 경로)');
-  assert.ok(/function applyImport\(/.test(code), 'applyImport() 가 사라졌다 — 교체/병합이 죽는다');
+  assert.ok(/function applyImport\(/.test(code), 'applyImport() 가 사라졌다. 교체(가져오기)가 죽는다');
 });
 
 test('폐기⑤: 호스트 훑기가 widget/*.cs 를 전부 덮는다(한 파일만 보지 않는다)', () => {

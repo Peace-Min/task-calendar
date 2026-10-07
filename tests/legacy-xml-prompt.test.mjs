@@ -5,8 +5,11 @@
 //      ★ 묻는 단계는 읽지도 적용하지도 않는다. 「가져오기」를 **눌러야** 호스트가 읽는다(readLegacyXml).
 //        그래서 2026-09-01 의 「자동이관 폐기, 명시적 가져오기」(설계 §3b)와 부딪치지 않는다.
 //      ★ 「가져오기」 = **바로 교체**(2026-10-01 사용자 결정) — 두 번째 미리보기(#importModal)는 없다.
-//        applyImport('replace') → saveFull → replaceAllState. 병합은 이 경로에서 절대 부르지 않는다.
-//        누른 순간 캘린더가 비어 있지 않으면(그새 무언가를 적었다) 말없이 지우지 않고 미리보기(병합/교체)로 간다.
+//        applyImport({ quiet: true }) → saveFull → replaceAllState.
+//        누른 순간 캘린더가 비어 있지 않으면(그새 무언가를 적었다) 말없이 지우지 않고 미리보기(교체)로 간다.
+//      ★ 2026-10-07 병합 제거(docs/XML-MERGE-REMOVAL.md): XML 가져오기는 어느 문으로 들어와도 교체 하나다.
+//        applyImport 는 모드 인자 없이 교체만 한다. 미리보기(#importModal) 버튼은 [취소] [교체] 둘뿐이다.
+//        병합 버튼(#btnImpMerge), 병합기(mergeLegacyStores), 병합 토스트가 되살아나면 '병합 제거' 시험이 실패한다.
 //        성공 토스트는 저장이 들어간 뒤 한 번: 「이전 기록을 가져왔습니다 — 과제 N개 · 기록 M개 · 할 일 K개」.
 //      ★ ⋯ 메뉴 「XML 가져오기」(startImport → pickImportXml → showImportPreview)는 그대로다(data-source 표시등③).
 //      호스트 두 명령:
@@ -111,7 +114,8 @@ function fakeDom() {
 }
 
 function sandbox(src, over = {}) {
-  //  apply — applyImport 호출마다 [mode, quiet, 그 순간의 pendingImport]
+  //  apply — applyImport 호출마다 [종류, quiet, 그 순간의 pendingImport]
+  //    종류 = 'replace'(인자 없음 또는 옵션 객체 하나) | 'mode:<첫 인자>'(모드를 넘겼다 = 옛 병합/교체 고르기의 부활)
   const calls = { host: [], preview: [], open: [], close: [], toast: [], apply: [], save: 0, blocked: 0, guard: 0 };
   const store = new Map();
   const dom = fakeDom();
@@ -137,11 +141,14 @@ function sandbox(src, over = {}) {
       if (/^BAD/.test(String(t))) throw new Error('XML 파싱 오류 — 올바른 XML 파일이 아닙니다.');
       return { categories: [{ id: 'c1' }], entries: [{ id: 'e1' }, { id: 'e2' }], todos: [{ id: 't1' }] };
     },
-    //  적용 — 진짜 applyImport('replace') 처럼 state 를 갈아끼우고 saveFull() 의 Promise<boolean> 을 돌려준다.
+    //  적용 — 진짜 applyImport(opt) 처럼 state 를 갈아끼우고 saveFull() 의 Promise<boolean> 을 돌려준다.
     //  __applyResult: 'ok' | 'fail'(저장 실패) | 'blocked'(관문에 막혀 undefined)
     __applyResult: 'ok',
-    applyImport: (mode, opt) => {
-      calls.apply.push([mode, !!(opt && opt.quiet), ctx.pendingImport]);
+    applyImport: (...args) => {
+      const opt = args[0];
+      const replaceOnly = args.length === 0 || (args.length === 1 && opt !== null && typeof opt === 'object');
+      const mode = replaceOnly ? 'replace' : 'mode:' + JSON.stringify(opt);
+      calls.apply.push([mode, !!(replaceOnly && opt && opt.quiet), ctx.pendingImport]);
       if (ctx.__applyResult === 'blocked') return undefined;
       if (mode === 'replace' && ctx.pendingImport) {
         const p = ctx.pendingImport;
@@ -328,7 +335,7 @@ const checks = {
 
   //  W2 묻는 단계는 읽기·적용·저장을 하지 않는다. 「가져오기」(legacyPromptImport)는 **바로 교체**한다:
   //     관문(guardEdit·schemaBlocked) → readLegacyXml → fromXML → 누른 순간 빈 캘린더인가(아니면 미리보기)
-  //     → pendingImport → applyImport('replace', {quiet}) → 저장이 들어간 뒤 성공 토스트 한 번.
+  //     → pendingImport → applyImport({ quiet: true }) → 저장이 들어간 뒤 성공 토스트 한 번.
   promptPathContract(src) {
     for (const fn of ASK_ONLY_FNS) {
       const b = fnBody(src, fn);
@@ -346,19 +353,20 @@ const checks = {
     }
     //  병합·직접 저장·두 번째 미리보기 창은 이 경로에 없다
     assert.ok(!/'merge'|"merge"/.test(imp), '「가져오기」가 병합을 부른다 — 이 경로는 교체 하나다(2026-10-01)');
+    assert.ok(!/applyImport\(\s*['"`]/.test(imp), '「가져오기」가 applyImport 에 모드를 넘긴다(병합을 부른다). 가져오기는 교체 하나다(2026-10-07)');
     for (const bad of ['save(', 'saveFull', 'dbSave', 'replaceAll', 'openModal(', '#importModal']) {
-      assert.ok(!imp.includes(bad), `「가져오기」가 ${bad} 를 직접 쓴다 — 적용·저장은 applyImport('replace') 한 문으로, 미리보기 창은 열지 않는다`);
+      assert.ok(!imp.includes(bad), `「가져오기」가 ${bad} 를 직접 쓴다 — 적용·저장은 applyImport() 한 문으로, 미리보기 창은 열지 않는다`);
     }
     const parse = imp.indexOf('fromXML(text)');
     const recheck = imp.indexOf('if(!calendarIsEmpty()){ showImportPreview(name, text); return; }');
     const pend = imp.indexOf('pendingImport = data;');
-    const apply = imp.indexOf("applyImport('replace', { quiet: true })");
+    const apply = imp.indexOf('applyImport({ quiet: true })');
     assert.ok(parse > read, '「가져오기」가 읽은 내용을 fromXML 로 해석하지 않는다');
     assert.ok(/try\{ data = fromXML\(text\); \}catch\(err\)\{ toast\('가져오기 실패: ' \+ err\.message, 'error'\); return; \}/.test(imp),
       '해석 실패를 「가져오기 실패: …」 토스트로 알리고 멈추지 않는다');
     assert.ok(recheck > read,
       '「가져오기」가 누른 순간 빈 캘린더인지 다시 보지 않는다 — 물음이 떠 있는 사이 적은 기록을 교체가 말없이 지운다');
-    assert.ok(apply > 0, "「가져오기」가 applyImport('replace', { quiet: true }) 로 바로 교체하지 않는다");
+    assert.ok(apply > 0, '「가져오기」가 applyImport({ quiet: true }) 로 바로 교체하지 않는다');
     assert.ok(parse < apply && recheck < apply && pend > recheck && pend < apply,
       '순서가 어긋났다 — 해석 → 빈 캘린더 재확인 → pendingImport → 교체 여야 한다');
     assert.strictEqual((imp.match(/showImportPreview\(/g) || []).length, 1,
@@ -367,9 +375,10 @@ const checks = {
       '성공 토스트가 저장이 들어간 뒤(ok) 한 번이 아니거나 문구가 결정과 다르다');
     //  applyImport 쪽: quiet 이면 자기 토스트를 끄고, 저장 결과를 돌려준다
     const ap = fnBody(src, 'applyImport');
-    assert.ok(/function applyImport\(mode, opt\)\{/.test(ap), 'applyImport 가 opt 를 받지 않는다');
-    assert.ok(ap.includes('if(!quiet) toast(`데이터를 교체했습니다') && ap.includes('if(!quiet) toast(`데이터를 병합했습니다'),
+    assert.ok(/function applyImport\(opt\)\{/.test(ap), 'applyImport 가 opt 하나만 받지 않는다(모드 인자가 되살아났다)');
+    assert.ok(ap.includes('if(!quiet) toast(`데이터를 교체했습니다'),
       'applyImport 가 quiet 일 때도 자기 토스트를 띄운다 — 이전 기록 가져오기에 성공 토스트가 둘 뜬다');
+    assert.ok(!ap.includes('데이터를 병합했습니다'), 'applyImport 에 병합 토스트가 되살아났다. 가져오기는 교체 하나다(2026-10-07)');
     assert.ok(/const saved = saveFull\(\);[^\n]*\n\s*return saved;/.test(ap), 'applyImport 가 saveFull() 의 결과를 돌려주지 않는다');
     const sf = fnBody(src, 'saveFull');
     assert.ok(/return dbSave\(\{ replaceAll: true \}\);/.test(sf), 'saveFull 이 dbSave 의 Promise<boolean> 을 돌려주지 않는다');
@@ -380,7 +389,7 @@ const checks = {
       '「다시 묻지 않기」 버튼 배선이 끊겼다');
   },
 
-  //  W2' 행동(node:vm): 빈 캘린더 → 읽기 → 바로 교체(병합 0 · 미리보기 0) → 저장 뒤 토스트 한 번.
+  //  W2' 행동(node:vm): 빈 캘린더 → 읽기 → 바로 교체(모드 인자 0, 미리보기 0) → 저장 뒤 토스트 한 번.
   //     비어 있지 않으면 미리보기 · 해석 실패는 토스트 · 관문이 막으면 읽지도 않는다 · 저장 실패면 성공 토스트 없음.
   async importBehaves(src) {
     const readCalls = (s) => s.calls.host.filter(([c]) => c === 'readLegacyXml');
@@ -392,7 +401,7 @@ const checks = {
     //  ★ JSON 으로 비교한다 — 인자 객체는 vm 영역에서 만들어져 프로토타입이 달라 deepStrictEqual 이 늘 실패한다.
     assert.strictEqual(JSON.stringify(readCalls(s)), JSON.stringify([['readLegacyXml', { name: 'old.xml' }]]),
       '「가져오기」가 감지한 그 이름으로 읽기를 요청하지 않았다');
-    assert.ok(s.calls.apply.every(([m]) => m === 'replace'), '「가져오기」가 병합을 불렀다 — 이 경로는 교체 하나다');
+    assert.ok(s.calls.apply.every(([m]) => m === 'replace'), '「가져오기」가 병합을 불렀다(applyImport 에 모드를 넘겼다). 이 경로는 교체 하나다: ' + JSON.stringify(s.calls.apply.map(([m]) => m)));
     assert.strictEqual(s.calls.apply.length, 1, '빈 캘린더인데 바로 교체(applyImport)하지 않았다');
     assert.strictEqual(s.calls.apply[0][1], true, '교체를 quiet 로 부르지 않았다 — 「데이터를 교체했습니다」 토스트가 하나 더 뜬다');
     assert.strictEqual(JSON.stringify(s.calls.apply[0][2] && s.calls.apply[0][2].entries), JSON.stringify([{ id: 'e1' }, { id: 'e2' }]),
@@ -410,7 +419,7 @@ const checks = {
     busy.ctx.legacyPromptImport();
     await flush(); await flush();
     assert.strictEqual(busy.calls.apply.length, 0, '물음이 떠 있는 사이 기록을 적었는데(비어 있지 않은데) 바로 교체했다 — 말없이 지운다');
-    assert.deepStrictEqual(busy.calls.preview, [['old.xml', '<taskCalendar/>']], '비어 있지 않은데 미리보기(병합/교체 고르기)로 넘기지 않았다');
+    assert.deepStrictEqual(busy.calls.preview, [['old.xml', '<taskCalendar/>']], '비어 있지 않은데 미리보기(교체 확인)로 넘기지 않았다');
     //  해석 실패
     const bad = sandbox(src);
     bad.ctx.__replies.readLegacyXml = { ok: true, name: 'old.xml', text: 'BAD<' };
@@ -564,7 +573,7 @@ const checks = {
     assert.ok(md.includes('<h2>이전 버전 기록을 찾았습니다</h2>'), '제목이 다르다');
     assert.ok(md.includes("이 PC에 이전 버전(XML 저장)에서 쓰던 기록 파일이 있습니다. '가져오기'를 누르면 이 파일의 기록으로 캘린더를 채우고, 원본 파일은 이름 끝에 '.migrated-날짜'가 붙어 그대로 보관됩니다."),
       '안내 문장이 결정 문구(2026-10-01)와 다르다');
-    assert.ok(!/'교체'|「교체」|병합/.test(md), '물음 창이 아직 병합/교체 고르기를 말한다 — 이 창의 「가져오기」는 바로 교체다');
+    assert.ok(!/'교체'|「교체」|병합/.test(md), '물음 창이 교체를 고르는 듯 말하거나 병합을 말한다. 이 창의 「가져오기」는 바로 교체다');
     //  세 버튼의 순서: 다시 묻지 않기 · 나중에 · 가져오기
     const iN = md.indexOf('id="btnLegacyNever"'), iL = md.indexOf('data-close>나중에<'), iI = md.indexOf('id="btnLegacyImport"');
     assert.ok(iN > 0 && iN < iL && iL < iI, '버튼 순서가 다시 묻지 않기 · 나중에 · 가져오기 가 아니다');
@@ -581,6 +590,39 @@ const checks = {
     assert.match(s.ctx.legacyTimeText('2026-09-01T00:00:00Z'), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, '시각이 YYYY-MM-DD HH:mm 이 아니다');
     assert.strictEqual(s.ctx.legacyTimeText('nope'), '-');
     assert.strictEqual(s.ctx.legacySizeText(2048), '2 KB');
+  },
+
+  //  W8 병합 제거(2026-10-07, docs/XML-MERGE-REMOVAL.md): XML 가져오기는 어느 문으로 들어와도 교체 하나다.
+  //     미리보기 창은 확인 창으로 남되 버튼은 [취소] [교체] 둘. 병합 버튼, 병합기, 병합 토스트, 모드 인자는 없다.
+  importReplaceOnly(src) {
+    const md = markupBlock(src, '<div class="overlay hidden" id="importModal">', '<!-- ===== 이전 버전 기록 감지');
+    const foot = md.slice(md.indexOf('<div class="modal-foot">'));
+    assert.ok(foot.length < md.length, '#importModal 의 modal-foot 을 찾지 못했다');
+    const labels = [...foot.matchAll(/<button\b[^>]*>([^<]*)<\/button>/g)].map((m) => m[1].trim());
+    assert.deepStrictEqual(labels, ['취소', '교체'], '미리보기 버튼이 [취소] [교체] 둘이 아니다(병합 버튼이 되살아났다?): ' + JSON.stringify(labels));
+    assert.ok(/<button class="btn" data-close>취소<\/button>/.test(foot), '[취소] 가 그냥 닫기가 아니다');
+    assert.ok(/<button class="btn danger" id="btnImpReplace">교체<\/button>/.test(foot), '[교체] 버튼(#btnImpReplace)이 없다');
+    assert.ok(!md.includes('병합'), '미리보기 창이 아직 병합을 말한다. 설명은 교체 한 줄이다');
+    //  앱 어디에도 병합의 흔적이 없다(주석 포함, 이름 자체를 쓰지 않는다)
+    for (const [bad, why] of [['btnImpMerge', '병합 버튼'], ['mergeLegacyStores', '병합기'], ['데이터를 병합했습니다', '병합 토스트']]) {
+      assert.ok(!src.includes(bad), `앱에 ${why}(${bad})가 되살아났다. 가져오기는 교체 하나다(2026-10-07)`);
+    }
+    //  applyImport = 교체만. 모드 인자도, 모드로 가르는 갈래도 없다.
+    const ap = fnBody(src, 'applyImport');
+    assert.ok(/^function applyImport\(opt\)\{/.test(ap.trim()), 'applyImport 가 모드 인자를 받는다(병합 갈래의 자리가 되살아났다)');
+    assert.ok(!/\bmode\b|merge|병합|\}else\{/.test(ap), 'applyImport 에 모드로 가르는 갈래(병합)가 되살아났다');
+    //  호출처 전부: 모드 문자열을 넘기는 곳이 없다(인자 없음 또는 { quiet: true } 만)
+    const code = stripJs(src);
+    const calls = [...code.matchAll(/\bapplyImport\(([^)]*)\)/g)].map((m) => m[1].trim()).filter((a) => a !== 'opt');
+    assert.ok(calls.length >= 3, 'applyImport 호출처를 찾지 못했다(교체 버튼, 이전 기록 가져오기, 시험용 창구): ' + JSON.stringify(calls));
+    const odd = calls.filter((a) => a !== '' && a !== '{ quiet: true }');
+    assert.deepStrictEqual(odd, [], 'applyImport 에 모드(또는 알 수 없는 인자)를 넘기는 호출처가 있다: ' + JSON.stringify(odd));
+    //  교체 버튼은 확인창을 지나 교체한다(지워지는 것을 한 번 더 알리는 유일한 장치)
+    assert.ok(/\$\('#btnImpReplace'\)\.addEventListener\('click', async \(\) => \{\s*if\(await confirmBox\('전체 교체', [^\n]*'교체'\) === 'ok'\) applyImport\(\);\s*\}\);/.test(code),
+      '[교체] 가 확인창(전체 교체)을 거쳐 applyImport() 를 부르지 않는다');
+    //  시험용 창구도 교체만(병합 기본값 제거)
+    assert.ok(/importXml\(text\)\{ pendingImport = fromXML\(text\); applyImport\(\); \}/.test(code),
+      '시험용 창구 importXml 이 교체 전용이 아니다(병합 기본값이 되살아났다?)');
   },
 };
 
@@ -604,6 +646,8 @@ test('감지⑪(웹): 물음 창 마크업 — 결정 문구·세 버튼·닫기
 test('상단①(웹): 빈 캘린더 안내·DB 배지·부팅 실패 상자·충돌 안내는 제목줄 아래에 들어간다', () => checks.placementBelowTitleBar(app));
 test('상단②(웹): DB 배지는 문제가 있을 때만(불일치=빨강·읽기 전용) — 정상이면 없다', () => checks.badgeOnlyWhenWrong(app));
 test('상단③(웹): 정상 연결 정보는 「사용자 정보」의 한 줄로 옮겼다', () => checks.userInfoDbLine(app));
+test('병합 제거①(웹): 미리보기 버튼은 [취소] [교체] 뿐이고, 병합 버튼, 병합기, 병합 토스트, 모드 인자가 앱에 없다(2026-10-07)',
+  () => checks.importReplaceOnly(app));
 
 // ── 변이 시험 — 게이트가 정말 발화하는지 ─────────────────────────────
 test('변이⑩a: 감지 조건에서 !PEER 를 빼면 감지⑤·⑥ 이 실패한다', async () => {
@@ -612,10 +656,40 @@ test('변이⑩a: 감지 조건에서 !PEER 를 빼면 감지⑤·⑥ 이 실패
   await assert.rejects(() => checks.triggerBehaves(bad), /남의 일정 창\(PEER\) 인데/);
 });
 
-test('변이⑩b: 「가져오기」가 병합을 부르면 감지⑦·⑧ 이 실패한다', async () => {
-  const bad = mutate(app, "applyImport('replace', { quiet: true })", "applyImport('merge', { quiet: true })");
+test('변이⑩b: 「가져오기」가 병합을 부르면(모드를 넘기면) 감지⑦·⑧ 이 실패한다', async () => {
+  const bad = mutate(app, 'applyImport({ quiet: true })', "applyImport('merge', { quiet: true })");
   assert.throws(() => checks.promptPathContract(bad), /병합을 부른다/);
   await assert.rejects(() => checks.importBehaves(bad), /병합을 불렀다/);
+});
+
+//  병합 제거(2026-10-07): 병합이 어느 모양으로 되살아나도 병합 제거① 이 실패한다
+test('변이⑩t: 미리보기에 병합 버튼을 되살리면 병합 제거① 이 실패한다', () => {
+  const bad = mutate(app, '      <button class="btn danger" id="btnImpReplace">교체</button>',
+    '      <button class="btn primary" id="btnImpMerge">병합</button>\n      <button class="btn danger" id="btnImpReplace">교체</button>');
+  assert.throws(() => checks.importReplaceOnly(bad), /\[취소\] \[교체\] 둘이 아니다/);
+});
+test('변이⑩u: 병합기(mergeLegacyStores)를 되살리면 병합 제거① 이 실패한다', () => {
+  const bad = mutate(app, 'function applyImport(opt){',
+    'function mergeLegacyStores(dstTH, dstAT, srcTH, srcAT){ return { n: 0, th: [], at: [] }; }\nfunction applyImport(opt){');
+  assert.throws(() => checks.importReplaceOnly(bad), /병합기\(mergeLegacyStores\)가 되살아났다/);
+});
+test('변이⑩v: applyImport 에 병합 갈래(모드 인자, 병합 토스트)를 되살리면 병합 제거①, 감지⑦ 이 실패한다', () => {
+  const bad = mutate(app, 'function applyImport(opt){', 'function applyImport(mode, opt){');
+  assert.throws(() => checks.importReplaceOnly(bad), /모드 인자를 받는다/);
+  assert.throws(() => checks.promptPathContract(bad), /opt 하나만 받지 않는다/);
+  const bad2 = mutate(app, '  if(!quiet) toast(`데이터를 교체했습니다',
+    "  if(opt === 'merge'){ toast(`데이터를 병합했습니다.`); return; }\n  if(!quiet) toast(`데이터를 교체했습니다");
+  assert.throws(() => checks.importReplaceOnly(bad2), /병합 토스트\(데이터를 병합했습니다\)가 되살아났다/);
+  assert.throws(() => checks.promptPathContract(bad2), /병합 토스트가 되살아났다/);
+});
+test('변이⑩w: 시험용 창구 importXml 의 병합 기본값을 되살리면 병합 제거① 이 실패한다', () => {
+  const bad = mutate(app, 'importXml(text){ pendingImport = fromXML(text); applyImport(); }',
+    "importXml(text, mode){ pendingImport = fromXML(text); applyImport(mode || 'merge'); }");
+  assert.throws(() => checks.importReplaceOnly(bad), /모드\(또는 알 수 없는 인자\)를 넘기는 호출처가 있다/);
+});
+test('변이⑩x: [교체] 가 확인창을 건너뛰면 병합 제거① 이 실패한다', () => {
+  const bad = mutate(app, "    if(await confirmBox('전체 교체', ", "    if(true || await confirmBox('전체 교체', ");
+  assert.throws(() => checks.importReplaceOnly(bad), /확인창\(전체 교체\)을 거쳐/);
 });
 
 test('변이⑩b2: 누른 순간의 빈 캘린더 재확인을 빼면 감지⑦·⑧ 이 실패한다(그새 적은 기록을 말없이 지운다)', async () => {
@@ -838,7 +912,7 @@ if (!JSDOM) {
         assert.ok(!W.isOpen('legacyModal'), '물음 창이 닫히지 않았다');
         const ok = W.toasts().filter((x) => x.kind === 'success').map((x) => x.toast);
         assert.deepStrictEqual(ok, [OK_TOAST(1, 2, 1)], '성공 토스트가 정확히 한 번(과제 1 · 기록 2 · 할 일 1)이 아니다: ' + JSON.stringify(ok));
-        assert.ok(!W.toasts().some((x) => /데이터를 (교체|병합)했습니다/.test(x.toast)), 'applyImport 의 교체/병합 토스트가 함께 떴다');
+        assert.ok(!W.toasts().some((x) => /데이터를 (교체|병합)했습니다/.test(x.toast)), 'applyImport 의 교체 토스트(또는 병합 토스트)가 함께 떴다');
         assert.ok(!W.el('emptyHint'), '교체 뒤에도 빈 캘린더 안내가 남았다');
       } finally { W.close(); }
     },
@@ -853,7 +927,7 @@ if (!JSDOM) {
         assert.ok(W.toasts().some((x) => x.kind === 'error' && /저장 실패: 쓰기 거부/.test(x.toast)), '저장 실패를 기존 실패 처리가 알리지 않았다');
       } finally { W.close(); }
     },
-    //  누른 순간 비어 있지 않다 → 지우지 않고 늘 쓰던 미리보기(병합/교체)로
+    //  누른 순간 비어 있지 않다 → 지우지 않고 늘 쓰던 미리보기(교체 확인)로
     async nonEmptyGoesToPreview(source) {
       const W = await bootToPrompt(source, { ok: true });
       try {
@@ -861,7 +935,7 @@ if (!JSDOM) {
         W.el('btnLegacyImport').click();
         await settle();
         assert.strictEqual(W.reqs('replaceAllState').length, 0, '비어 있지 않은데 바로 교체했다 — 방금 만든 과제를 말없이 지운다');
-        assert.ok(W.opened().includes('#importModal') && W.isOpen('importModal'), '비어 있지 않은데 미리보기(병합/교체)를 열지 않았다');
+        assert.ok(W.opened().includes('#importModal') && W.isOpen('importModal'), '비어 있지 않은데 미리보기(교체 확인)를 열지 않았다');
         assert.strictEqual(W.ev("state.categories.map(c => c.id).join(',')"), 'mine', '미리보기 전에 상태가 바뀌었다');
       } finally { W.close(); }
     },
@@ -870,26 +944,61 @@ if (!JSDOM) {
   test('실행①(jsdom): 빈 캘린더 「가져오기」 → readLegacyXml → 진짜 교체(replaceAllState 1회, 내용=파일) · 성공 토스트 1회 · 미리보기 창 없음',
     () => runtime.replacesDirectly(app));
   test('실행②(jsdom): 교체 저장이 실패하면 성공 토스트 없이 기존 실패 처리만', () => runtime.failSaysNothingMore(app));
-  test('실행③(jsdom): 누른 순간 비어 있지 않으면 교체하지 않고 미리보기(병합/교체)로', () => runtime.nonEmptyGoesToPreview(app));
-  test('실행④(jsdom): ⋯ 메뉴 「XML 가져오기」는 그대로 미리보기(병합/교체)를 연다', async () => {
-    const W = boot(app);
+  test('실행③(jsdom): 누른 순간 비어 있지 않으면 교체하지 않고 미리보기(교체 확인)로', () => runtime.nonEmptyGoesToPreview(app));
+  //  ⋯ 메뉴 「XML 가져오기」(2026-10-07 병합 제거): 미리보기 → 버튼은 [취소] [교체] 뿐 → [교체] → 확인창(전체 교체)
+  //  → [교체] → 진짜 교체(replaceAllState 1회, 내용 = 파일). 병합 버튼도 병합 토스트도 없다.
+  runtime.menuImportReplaceOnly = async (source) => {
+    const W = boot(source);
     try {
       W.handlers.legacyXmlProbe = { ok: true, found: false };
       W.handlers.pickImportXml = { ok: true, name: 'pick.xml', text: LEGACY_XML };
+      W.handlers.replaceAllState = { ok: true };
       W.applyState(EMPTY);
       await settle();
       W.clear();
       W.ev('startImport()');
       await settle();
       assert.strictEqual(W.reqs('pickImportXml').length, 1, '⋯ 메뉴 가져오기가 호스트 파일창을 열지 않았다');
-      assert.ok(W.isOpen('importModal'), '⋯ 메뉴 가져오기가 미리보기(병합/교체)를 열지 않았다');
+      assert.ok(W.isOpen('importModal'), '⋯ 메뉴 가져오기가 미리보기(교체 확인)를 열지 않았다');
       assert.strictEqual(W.reqs('replaceAllState').length, 0, '⋯ 메뉴 가져오기가 고르기 전에 저장했다');
+      //  (가) 버튼은 [취소] [교체] 뿐
+      const labels = JSON.parse(W.ev("JSON.stringify([].map.call(document.querySelectorAll('#importModal .modal-foot button'), function(b){ return b.textContent.trim(); }))"));
+      assert.deepStrictEqual(labels, ['취소', '교체'], '미리보기 버튼이 [취소] [교체] 둘이 아니다(병합 버튼이 되살아났다?): ' + JSON.stringify(labels));
+      assert.strictEqual(W.el('btnImpMerge'), null, '미리보기에 병합 버튼(#btnImpMerge)이 있다');
+      //  (나) [교체] → 확인창 → 교체. 닫기 애니메이션 타이머가 흐르지 않으므로 감속 모드로 즉시 닫히게 한다.
+      W.w.matchMedia = (q) => ({ matches: /prefers-reduced-motion/.test(String(q)), media: String(q),
+        addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+      W.el('btnImpReplace').click();
+      await settle();
+      assert.ok(W.isOpen('confirmModal'), '[교체] 를 눌렀는데 확인창이 뜨지 않았다. 지워지는 것을 한 번 더 알리는 유일한 장치다');
+      assert.strictEqual(W.el('cfTitle').textContent, '전체 교체', '확인창 제목이 「전체 교체」가 아니다');
+      assert.strictEqual(W.reqs('replaceAllState').length, 0, '확인창에서 고르기 전에 교체 저장이 나갔다');
+      W.el('cfOk').click();
+      await settle();
+      assert.strictEqual(W.reqs('replaceAllState').length, 1, '확인창에서 [교체] 를 눌렀는데 전량 교체가 정확히 한 번 나가지 않았다');
+      const sent = W.reqs('replaceAllState')[0].params.state;
+      assert.deepStrictEqual(JSON.parse(JSON.stringify([sent.categories.map((c) => c.id), sent.entries.map((e) => e.id), sent.todos.map((t) => t.id)])),
+        [['c1'], ['e1', 'e2'], ['t1']], '호스트로 보낸 상태가 파일 내용(과제 1, 기록 2, 할 일 1)이 아니다');
+      assert.ok(!W.isOpen('importModal'), '교체 뒤에도 미리보기 창이 열려 있다');
+      assert.ok(W.toasts().some((x) => /^데이터를 교체했습니다/.test(x.toast)), '교체 토스트가 뜨지 않았다');
+      assert.ok(!W.toasts().some((x) => /병합/.test(x.toast)), '병합 토스트가 떴다');
     } finally { W.close(); }
+  };
+  test('실행④(jsdom): ⋯ 메뉴 「XML 가져오기」 미리보기는 [취소] [교체] 뿐이고, [교체] 는 확인창을 지나 진짜 교체한다(병합 없음)',
+    () => runtime.menuImportReplaceOnly(app));
+  test('변이⑩y(jsdom): 미리보기에 병합 버튼을 되살리면 실행④ 가 실패한다', async () => {
+    const bad = mutate(app, '      <button class="btn danger" id="btnImpReplace">교체</button>',
+      '      <button class="btn primary" id="btnImpMerge">병합</button>\n      <button class="btn danger" id="btnImpReplace">교체</button>');
+    await assert.rejects(() => runtime.menuImportReplaceOnly(bad), /\[취소\] \[교체\] 둘이 아니다/);
+  });
+  test('변이⑩z(jsdom): [교체] 가 확인창을 건너뛰면 실행④ 가 실패한다', async () => {
+    const bad = mutate(app, "    if(await confirmBox('전체 교체', ", "    if(true || await confirmBox('전체 교체', ");
+    await assert.rejects(() => runtime.menuImportReplaceOnly(bad), /확인창이 뜨지 않았다/);
   });
 
   test('변이⑩r(jsdom): applyImport 의 quiet 를 빼면 실행① 이 실패한다(토스트 둘)', async () => {
-    const bad = mutate(app, "applyImport('replace', { quiet: true })", "applyImport('replace')");
-    await assert.rejects(() => runtime.replacesDirectly(bad), /성공 토스트가 정확히 한 번|교체\/병합 토스트가 함께 떴다/);
+    const bad = mutate(app, 'applyImport({ quiet: true })', 'applyImport()');
+    await assert.rejects(() => runtime.replacesDirectly(bad), /성공 토스트가 정확히 한 번|교체 토스트\(또는 병합 토스트\)가 함께 떴다/);
   });
   test('변이⑩s(jsdom): 재확인을 빼면 실행③ 이 실패한다', async () => {
     const bad = mutate(app, '    if(!calendarIsEmpty()){ showImportPreview(name, text); return; }   // 그새 무언가를 적었다', '    //');

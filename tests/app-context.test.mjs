@@ -2601,10 +2601,11 @@ if (!JSDOM) {
     //  여기 네 건이 migrateLocalStores() 를 시험하고 있었다. 그 함수는 부팅 경로에서
     //  localStorage 를 훑어 state 에 병합하고 save() 까지 하는 **자동 1회 이관**이었고,
     //  스스로 TODO(제거예정) 을 달고도 계속 살아 있었다. 지금은 명시적 「XML 가져오기」가
-    //  그 일을 한다(사용자가 파일을 고르고 교체/병합을 누른다).
+    //  그 일을 한다(사용자가 파일을 고르고 교체를 누른다).
     //
     //  그래서 시험할 것이 **반대로** 바뀐다: '잘 이관되는가' 가 아니라 '되살아나지 않는가'.
-    //  병합 규칙(mergeLegacyStores)은 살아남은 경로 — 가져오기 병합 — 으로 옮겨 시험한다.
+    //  2026-10-07 병합 제거(docs/XML-MERGE-REMOVAL.md): 가져오기 병합과 그 병합기도 없앴다.
+    //  예전 '가져오기 병합: 기존 값은 절대 덮지 않는다' 시험 자리에, 병합이 없고 교체가 파일 내용 그대로임을 잠근다.
 
     test('자동이관 폐기: 부팅이 구 localStorage 를 훑지 않는다', () => {
       const app = loadAppSource();
@@ -2616,21 +2617,45 @@ if (!JSDOM) {
         `구 저장소를 읽는 코드가 ${reads.length}곳 남아 있다 — 좀비 데이터가 다시 들어올 문이다`);
     });
 
-    test('가져오기 병합: 기존 값은 절대 덮지 않는다(없는 것만 채움) — mergeLegacyStores 규칙', () => {
-      seed(THS({ taskHours: { '2026-07-13': { ca: 8 } },
-                 attendance: { '2026-07-13': { status: '6', overtime: 0 } } }));
-      //  파일 쪽: 같은 날짜에 다른 값 + 없던 값. 병합은 '현재가 이기고 없는 것만' 이어야 한다.
-      const incoming = {
-        categories: [], entries: [], todos: [], rooms: [],
-        taskHours: { '2026-07-13': { ca: 6.5, cb: 1 } },
-        attendance: { '2026-07-13': { status: '2', overtime: 5 } },
-      };
-      ev('pendingImport = ' + JSON.stringify(incoming) + ';');
-      ev("applyImport('merge')");
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','ca')"), 8, '기존 값이 덮였다');
-      assert.strictEqual(evJSON("getTaskHours('2026-07-13','cb')"), 1, '없던 값을 안 채웠다');
-      assert.deepStrictEqual(evJSON("getAttendance('2026-07-13')"), { status: '6', overtime: 0 },
-        '기존 근태가 덮였다 — 근태는 회사 일간보고로 나가는 값이다');
+    //  가져오기 = 교체 하나. h = { ev, evJSON, seed } (원본 앱과 변이 앱이 같은 검사를 쓴다. 아래 변이⑦)
+    //  현재 쪽(과제 ca·cb, 시간 ca:8, 근태 '6')과 파일 쪽(과제 cz, 다른 시간·근태)이 겹치게 둔다.
+    //  병합이면 현재 값이 살아남고, 교체면 state 가 파일 내용과 같다.
+    const IMPORT_FILE = {
+      categories: [{ id: 'cz', name: '파일과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+      entries: [{ id: 'ez', date: '2026-07-14', categoryId: 'cz', title: '파일 기록', allDay: true }],
+      todos: [], rooms: [],
+      taskHours: { '2026-07-13': { cz: 6.5 } },
+      attendance: { '2026-07-14': { status: '2', overtime: 5 } },
+    };
+    const importReplacesAll = (h) => {
+      h.seed(THS({ entries: [{ id: 'ea', date: '2026-07-13', categoryId: 'ca', title: '내 기록', allDay: true }],
+                   taskHours: { '2026-07-13': { ca: 8 } },
+                   attendance: { '2026-07-13': { status: '6', overtime: 0 } } }));
+      h.ev('pendingImport = ' + JSON.stringify(IMPORT_FILE) + ';');
+      h.ev('applyImport()');
+      assert.deepStrictEqual(h.evJSON('state.categories.map(function(c){return c.id;})'), ['cz'],
+        '교체 뒤 과제가 파일 내용과 다르다(기존 과제가 남았다 = 병합)');
+      assert.deepStrictEqual(h.evJSON('state.entries.map(function(e){return e.id;})'), ['ez'],
+        '교체 뒤 기록이 파일 내용과 다르다(기존 기록이 남았다 = 병합)');
+      assert.deepStrictEqual(h.evJSON('state.taskHours'), IMPORT_FILE.taskHours,
+        '교체 뒤 과제별 시간이 파일 내용과 다르다(기존 값이 남았다 = 병합)');
+      assert.deepStrictEqual(h.evJSON('state.attendance'), IMPORT_FILE.attendance,
+        '교체 뒤 근태가 파일 내용과 다르다(기존 근태가 남았다 = 병합)');
+      assert.strictEqual(h.ev('pendingImport'), null, '교체 뒤 pendingImport 가 비워지지 않았다');
+    };
+
+    test('가져오기 = 교체 하나(2026-10-07 병합 제거): 병합 버튼, 병합기가 없고 미리보기 버튼은 [취소] [교체] 뿐', () => {
+      assert.strictEqual(ev("document.getElementById('btnImpMerge')"), null, '미리보기에 병합 버튼(#btnImpMerge)이 되살아났다');
+      assert.strictEqual(ev('typeof mergeLegacyStores'), 'undefined', '병합기(mergeLegacyStores)가 되살아났다');
+      assert.deepStrictEqual(
+        evJSON("[].map.call(document.querySelectorAll('#importModal .modal-foot button'), function(b){ return b.textContent.trim(); })"),
+        ['취소', '교체'], '미리보기 버튼이 [취소] [교체] 둘이 아니다');
+      assert.ok(!String(ev("document.getElementById('importModal').textContent")).includes('병합'), '미리보기 창이 아직 병합을 말한다');
+      assert.strictEqual(ev('applyImport.length'), 1, 'applyImport 가 opt 하나가 아닌 인자를 받는다(모드 인자가 되살아났다)');
+    });
+
+    test('가져오기 = 교체 하나: 기존 과제, 기록, 시간, 근태는 남지 않고 state 가 파일 내용과 같다', () => {
+      importReplacesAll({ ev, evJSON, seed });
     });
 
     test('과제 삭제: 그 과제의 (날짜×과제) 시간도 동반 정리, 다른 과제 시간은 보존', () => {
@@ -3654,6 +3679,25 @@ if (!JSDOM) {
           assert.ok(names.includes('내용과제'), '변이 앱에서 내용과제 행을 찾지 못했다(보고서 골격이 달라졌다)');
           assert.ok(names.includes('일정공수과제'),
             '변이했는데도 그 행이 빠진다 — 계약이 「어떤 공수를 세는가」를 확인하지 못한다');
+        });
+    });
+
+    // ── 변이⑦ 가져오기에 병합을 되살리면(기존 과제를 남기고 파일 것만 더하면) 교체 계약이 깨진다(2026-10-07 병합 제거) ──
+    test('변이⑦: applyImport 가 기존 과제를 남기는 병합으로 돌아가면 「가져오기 = 교체 하나」 시험이 실패한다', () => {
+      importReplacesAll({ ev, evJSON, seed });   // 사전조건: 정상 앱은 파일 내용 그대로 교체한다
+      withMutatedApp(
+        '    categories: pendingImport.categories.filter(c => !cseen.has(c.id) && cseen.add(c.id)),',
+        '    categories: state.categories.concat(pendingImport.categories).filter(c => !cseen.has(c.id) && cseen.add(c.id)),',
+        (m) => {
+          assert.throws(() => importReplacesAll(m), /교체 뒤 과제가 파일 내용과 다르다/,
+            '변이(병합)했는데도 교체 계약이 통과한다. 계약이 기존 과제가 남는지 보지 않는다');
+        });
+      withMutatedApp(
+        '    taskHours: pendingImport.taskHours || {},     // 교체 = 가져온 파일이 통째로 원본',
+        '    taskHours: Object.assign({}, pendingImport.taskHours, state.taskHours),',
+        (m) => {
+          assert.throws(() => importReplacesAll(m), /교체 뒤 과제별 시간이 파일 내용과 다르다/,
+            '변이(시간 병합)했는데도 교체 계약이 통과한다. 계약이 기존 시간이 남는지 보지 않는다');
         });
     });
   }
