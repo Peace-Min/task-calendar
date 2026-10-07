@@ -354,12 +354,18 @@ function gitBits(round, i) {
   return { source: 'git', commits };
 }
 
+//  보고서 묶음(category.reportGroup, 2026-10-06 · schema_version 13)의 오남용 값.
+//  호스트(CalendarWriteDb.CategoryParams)는 'etc' 외 값을 전부 'include' 로 내려 저장해야 한다.
+//  라운드마다 과제 하나는 이 중 하나로 보낸다 → 되읽은 값이 'include' 면 정규화가 실제로 돈 것이다.
+const RG_MISUSE = ['ETC', 1, null, 'exclude'];
 function makeState(prev, round) {
   const cats = [];
   const nCat = rint(1, 3);
   for (let i = 0; i < nCat; i++)
     cats.push({ id: `c-${round}-${i}`, name: pick(NAMES) + i, color: '#3e5be0', desc: `설명 ${i}`,
-                gitRepo: '', svnRepo: '', usesRepo: rnd() < 0.5, createdAt: '2026-01-01T00:00:00.000Z' });
+                gitRepo: '', svnRepo: '', usesRepo: rnd() < 0.5, reportGroup: rnd() < 0.5 ? 'etc' : 'include',
+                createdAt: '2026-01-01T00:00:00.000Z' });
+  cats[rint(0, cats.length - 1)].reportGroup = RG_MISUSE[round % RG_MISUSE.length];
   const entries = [];
   for (let i = 0; i < rint(0, 4); i++) {
     const allDay = rnd() < 0.4;
@@ -413,13 +419,21 @@ function normEntry(e) {
 }
 function normTodo(t) { const { updatedAt, createdAt, ...rest } = t; return rest; }
 function normCat(c) { const { createdAt, ...rest } = c; return rest; }
+//  보낸 쪽만 정규화한다: reportGroup 은 'etc' 일 때만 'etc', 그 밖(오남용 값 포함)은 'include'.
+//  ★ 받은 쪽은 손대지 않는다. 받은 쪽까지 정규화하면 호스트가 키를 빠뜨리거나 'ETC' 를 그대로
+//    돌려줘도 같은 모양으로 접혀 이 왕복이 그 고장을 못 본다(아래 자가 점검이 그것을 확인한다).
+function normCatSent(c) {
+  const rest = normCat(c);
+  rest.reportGroup = rest.reportGroup === 'etc' ? 'etc' : 'include';
+  return rest;
+}
 
 function compare(sent, got) {
   const diffs = [];
   const cmp = (path, a, b) => {
     if (JSON.stringify(a) !== JSON.stringify(b)) diffs.push(`${path}: 보냄=${JSON.stringify(a)} 받음=${JSON.stringify(b)}`);
   };
-  cmp('categories', sent.categories.map(normCat), (got.categories || []).map(normCat));
+  cmp('categories', sent.categories.map(normCatSent), (got.categories || []).map(normCat));
   cmp('entries', sent.entries.map(normEntry), (got.entries || []).map(normEntry));
   cmp('todos', sent.todos.map(normTodo), (got.todos || []).map(normTodo));
   for (const k of ['gitAuthor','svnAuthor','rooms','reportMarker','reportMarkerCustom','reportIndent',
@@ -428,11 +442,32 @@ function compare(sent, got) {
   return diffs;
 }
 
+/* ── 비교기 자가 점검(DB 불필요) ─────────────────────────────────────────
+ *  '받은 값이 보낸 오남용 값 그대로'(호스트가 정규화를 빼먹은 고장)와 '키를 안 실음'을
+ *  compare 가 실제로 잡는지 먼저 확인한다. 못 잡으면 아래 왕복이 전부 거짓 초록이다. */
+function selfCheckCompare() {
+  const base = { categories: [], entries: [], todos: [], gitAuthor: '', svnAuthor: '', rooms: [], reportMarker: '-',
+    reportMarkerCustom: '', reportIndent: 2, gitCommitBody: false, reportFormatPrefs: {}, taskHours: {}, attendance: {}, reportFont: {} };
+  const cat = (rg) => ({ id: 'c-x', name: 'x', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', usesRepo: false, reportGroup: rg, createdAt: 'z' });
+  const sent = { ...base, categories: [cat('ETC')] };
+  const fixed = { ...base, categories: [cat('include')] };
+  const broken = { ...base, categories: [cat('ETC')] };
+  const noKey = { ...base, categories: [(() => { const c = cat('include'); delete c.reportGroup; return c; })()] };
+  const sentEtc = { ...base, categories: [cat('etc')] };
+  return [
+    ['정규화된 받은 값(include)은 통과', compare(sent, fixed).length === 0],
+    ["받은 값이 오남용 값 그대로('ETC')면 DIFF", compare(sent, broken).length > 0],
+    ['받은 쪽에 reportGroup 키가 없으면 DIFF', compare(sent, noKey).length > 0],
+    ["etc 를 보냈는데 include 가 오면 DIFF", compare(sentEtc, fixed).length > 0],
+  ];
+}
+
 /* ── main ──────────────────────────────────────────────────────────────── */
 const t0 = Date.now();
 console.log('═'.repeat(70));
 console.log(`캘린더 쓰기 루프 테스트 — DB=${OPT.db} · seed=${OPT.seed} · 라운드 ${OPT.rounds}`);
 console.log('═'.repeat(70));
+for (const [name, cond] of selfCheckCompare()) ok(`자가 점검: ${name}`, cond, '비교기가 reportGroup 고장을 못 잡는다');
 console.log('러너 빌드 중(CalendarDb + CalendarWriteDb 를 링크)…');
 buildRunner();
 
@@ -491,10 +526,12 @@ try {
   console.log('\n[연속 저장] 한 스냅샷으로 3회 이어서 — 매 표의 토큰이 갱신되는지');
   wipe(U);
   const base = makeState(null, 500);
+  base.categories[0].reportGroup = 'include';
   const s2 = JSON.parse(JSON.stringify(base));      // 1) 값만 수정(전 표를 UPDATE 로 통과시킨다)
   if (s2.entries[0]) { s2.entries[0].title = '연속-수정'; s2.entries[0].memo = '2회차'; }
   if (s2.todos[0]) s2.todos[0].text = '연속-할일';
   s2.categories[0].name = '연속-과제';
+  s2.categories[0].reportGroup = 'etc';             // 보고서 묶음 include → etc(UPDATE 의 report_group=@rg 경로)
   s2.gitAuthor = '연속작성자';
   for (const d of Object.keys(s2.attendance)) s2.attendance[d].overtime = 7;
   for (const d of Object.keys(s2.taskHours)) for (const c of Object.keys(s2.taskHours[d])) s2.taskHours[d][c] = 3.25;
@@ -512,6 +549,8 @@ try {
     const back = run({ op: 'read', loginId: LOGIN });
     const diffs = back.ok ? compare(s3, JSON.parse(back.state)) : ['읽기 실패'];
     ok('연속 저장의 마지막 상태가 그대로 남았다', diffs.length === 0, diffs.slice(0, 3).join(' | '));
+    const c0 = back.ok ? (JSON.parse(back.state).categories || []).find((c) => c.id === s3.categories[0].id) : null;
+    ok("연속 저장: 과제의 reportGroup 이 include → etc 로 바뀌어 남았다", !!c0 && c0.reportGroup === 'etc', JSON.stringify(c0 && c0.reportGroup));
   }
   // ── §3.3 충돌 — 낡은 토큰으로 저장하면 거부되고 아무것도 안 바뀐다 ──────
   //    ★ 여기서 DB 를 비우면 안 된다 — 빈 DB 에는 낡을 토큰이 없어 전부 INSERT 로 성공해 버리고,
@@ -574,6 +613,7 @@ try {
 
     //  ③ 전혀 다른 내용으로 전량 교체(= 가져오기 '교체').
     const imported = makeState(null, 91);
+    imported.categories[0].reportGroup = 'etc';     // XML 가져오기의 호스트 쪽 왕복: etc 가 교체 뒤에도 남는가
     const r1 = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(imported), replaceAll: true });
     ok('전량 교체 저장이 성공한다', r1.ok === true, r1.msg || r1.error || '');
 
@@ -582,6 +622,8 @@ try {
       const got = JSON.parse(rback.state);
       ok('교체 결과가 보낸 state 와 같다', compare(imported, got).length === 0,
          compare(imported, got).slice(0, 3).join(' | '));
+      const ec = (got.categories || []).find((c) => c.id === imported.categories[0].id);
+      ok("교체 뒤 되읽은 etc 과제의 reportGroup 이 'etc'", !!ec && ec.reportGroup === 'etc', JSON.stringify(ec && ec.reportGroup));
       //  ★ 옛 데이터가 **한 조각도** 남으면 안 된다 — 교체인데 병합이 되면 사용자는 모른다.
       const oldIds = new Set((base.categories || []).map((c) => c.id));
       const leaked = (got.categories || []).filter((c) => oldIds.has(c.id));

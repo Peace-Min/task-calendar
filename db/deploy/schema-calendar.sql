@@ -678,6 +678,10 @@
 --                                  값만 센다). 대신 이관 도구가 무엇을 근거로 이 비트를 세우는지는
 --                                  아래 I-1 이 못박는다.
 --
+--       category.reportGroup → cal_category.report_group('include'|'etc'). (2026-10-06 신설, schema_version 13)
+--                              · 키를 항상 만든다(부팅 조회와 fromXML 둘 다). 'etc' 외 값은 전부 'include'.
+--                              · toXML() 은 'etc' 일 때만 reportGroup="etc" 속성을 쓴다(옛 XML 은 전부 include).
+--
 --       category.dbGone      → source='db' 인 행만, LEFT JOIN project 로 파생한다(§6).
 --                              컬럼으로 저장하지 않는다 — 파생값 캐시라 ADR-18 과 충돌한다.
 --
@@ -1089,6 +1093,14 @@ CREATE TABLE cal_category (
   --   ④ DEFAULT 는 **0('안 쓴다')** 이다. 1 로 백필하면 ②의 안내가 모든 과제에 뜬다(설계 §5.5).
   --   ⑤ 누가 세우고 누가 지우나 — 쓰기 계층 계약은 아래 헤더 **I 부류**가 정본이다.
   uses_repo    TINYINT(1)   NOT NULL DEFAULT 0,                                         -- 저장소를 쓰는 과제인가. 1=쓴다/0=안 쓴다. ★ 경로 문자열이 아니다(위 ①). 앱으로는 category.usesRepo(boolean) 로 나간다(G-6)
+  -- ★ 보고서 묶음 (docs/REPORT-INCLUDE-STATE.md · 2026-10-06 신설, schema_version 13)
+  --   include = 보고서에 이 과제 행으로 나간다(기본, 신설 전과 같은 동작).
+  --   etc     = 이 과제의 업무와 공수가 보고서의 '기타' 행으로 합쳐진다.
+  --   DEFAULT 가 include 인 이유: 백필이 지금 동작을 바꾸지 않아야 하고, 이 컬럼을 모르는 v12 위젯의
+  --   INSERT(컬럼 목록에 report_group 없음)도 그대로 성공해야 한다.
+  --   값 집합이 고정이라 _bin + CHECK 다(source 와 같은 관례: 'ETC' 같은 변형이 저장되지 않게).
+  --   앱으로는 category.reportGroup('include'|'etc') 로 나간다(G-6, 부팅 조회가 모든 과제에 항상 싣는다).
+  report_group VARCHAR(8)   CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT 'include', -- 보고서 묶음. include=과제 행/etc=기타 행으로 합침. 앱 키 category.reportGroup
   sort_order   INT          NOT NULL DEFAULT 0,                                         -- 화면 표시 순서. XML 문서 순서를 박제한 유일한 근거. ★ cat_no 와 다른 값이다(계약 E 의 ★)
   created_at   DATETIME(3)  NOT NULL,                                                   -- 생성 시각(UTC). 앱이 계산해 보낸다
   -- ★ 이관 규칙: updated_at = created_at 을 그대로 복사한다(원본이 없다).
@@ -1115,6 +1127,8 @@ CREATE TABLE cal_category (
   -- 불리언 컬럼은 값 집합을 CHECK 로 못박는다(cal_entry.all_day·cal_todo.done 과 같은 관례).
   -- NOT NULL 이 함께 있어야 실제 방벽이 된다 — MySQL 의 CHECK 는 식이 NULL 이면 통과시킨다(§5.1 ★).
   CONSTRAINT chk_cal_category_usesrepo01 CHECK (uses_repo IN (0,1)),
+  -- 보고서 묶음 값 집합(2026-10-06, schema_version 13). NOT NULL 과 함께라야 실제 방벽이다.
+  CONSTRAINT chk_cal_category_rgroup  CHECK (report_group IN ('include','etc')),
   -- 공식 과제인데 project_uid 가 없으면 §6 의 LEFT JOIN 이 항상 db_gone 을 뱉는다. 반대로 개인 과제에
   -- project_uid 가 붙으면 남의 과제명을 끌어다 쓰게 된다. 두 방향을 다 막는다.
   --
@@ -1976,7 +1990,9 @@ CREATE TABLE cal_schema_meta (
 --     tests/schema-integrity.test.mjs 의 '계약⑥: 버전 정합' 이 실패한다(둘이 갈라지지 않게).
 --   · 12 (2026-09-10): app_user.sort_order SMALLINT→INT UNSIGNED (migrate-2026-09-10-user-sort-order-int.sql)
 --       10 간격 6,553명 천장(SMALLINT 65,535) 제거 — 부하 실측 뒤 배포 전에 넓혔다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '12', UTC_TIMESTAMP(3));
+--   · 13 (2026-10-06): cal_category.report_group (migrate-2026-10-06-category-report-group.sql)
+--       보고서 묶음 include/etc. 새 위젯의 부팅 과제 조회가 이 컬럼을 SELECT 하므로 DB 를 먼저 올린다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '13', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

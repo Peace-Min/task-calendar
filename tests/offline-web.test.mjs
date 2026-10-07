@@ -37,6 +37,7 @@ const GATED_FUNCTIONS = [
   'setCommitSubject', 'setCommitMessage', 'setEntryTitle', 'setTodoText', 'commitDayNoteEdit',
   'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다
   'moveCategory',         // 과제 순서 ▲▼(docs/CATEGORY-ORDER.md R7) — 맞바꾸기 전에 막는다
+  'setCategoryReportGroup', // 보고서 묶음 [포함 | 기타](docs/REPORT-INCLUDE-STATE.md) — 값을 바꾸기 전에 막는다
 ];
 const WRITE_TOKENS = ['save()', 'saveFull()', 'dbSave(', 'addEntry(', 'updateEntry(', 'deleteEntry(', 'addTodo(',
   'updateTodo(', 'addCategory(', 'updateCategory(', 'deleteCategory(', 'subscribeDbCat(', 'unsubscribeDbCat(',

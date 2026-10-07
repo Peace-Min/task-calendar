@@ -130,10 +130,17 @@ const checks = {
   // ⑤ 웹→호스트 경계가 hours 를 실어 나른다
   hoursCrossesBoundary(app, cs) {
     // 웹: 페이로드를 만들 때 getTaskHours 로 구조화한다(본문 되파싱이 아니다)
-    assert.ok(/const rptHours = reportDailyHours\(collectReportData\(from, to, rptSources\(\)\)\.rows, from\)/.test(app),
+    //  ★ 2026-10-06(docs/REPORT-INCLUDE-STATE.md): 출처는 rptReportSources()(체크박스 + 보고서 창 X 로 뺀 과제)다.
+    //    본문(buildReportText)도 같은 함수를 지나므로 '본문과 같은 rows' 라는 계약은 그대로다.
+    assert.ok(/const rptHours = reportDailyHours\(collectReportData\(from, to, rptReportSources\(\)\)\.rows, from\)/.test(app),
       '웹이 hours 를 본문과 같은 rows 에서 만들지 않는다 — 호스트가 본문을 되파싱하게 되거나(전각 콜론·&nbsp;), 본문과 순서가 갈린다');
-    assert.ok(/getTaskHours\(date, r\.key\)/.test(extractFunction(app, 'reportDailyHours')),
-      'reportDailyHours 가 getTaskHours 에서 값을 가져오지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다');
+    //  공수는 두 단계로 공수표에서 온다: reportDailyHours → reportRowHours(행의 hourKeys) → getTaskHours.
+    //  (보고서 묶음 '기타' 행은 합친 과제들의 공수를 함께 센다. 되파싱이 아니라 공수표라는 점은 같다.)
+    assert.ok(/reportRowHours\(r, date\)/.test(extractFunction(app, 'reportDailyHours')),
+      'reportDailyHours 가 reportRowHours 에서 값을 가져오지 않는다 — 본문 헤더와 payload 가 다른 공수를 말할 수 있다');
+    { const rh = extractFunction(app, 'reportRowHours');
+      assert.ok(/row\.hourKeys/.test(rh) && /for\(const k of ks\)\{ const v = getTaskHours\(date, k\);/.test(rh),
+        'reportRowHours 가 행의 hourKeys 를 getTaskHours 로 합산하지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다'); }
     assert.ok(/reportDailyHours\(rows, from\)/.test(extractFunction(app, 'buildReportText')),
       '본문 헤더가 reportDailyHours 를 쓰지 않는다 — payload 와 헤더가 다른 함수에서 나와 갈릴 수 있다(§0-2)');
     assert.ok(/hours: p\.hours \|\| \[\]/.test(app),

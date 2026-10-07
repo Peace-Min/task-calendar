@@ -111,6 +111,11 @@ tests/
 │                            postMessage 를 한 번도 안 부르나(봉인) · 게이트 없나 · rev/행수 불변 · 프레임 정리
 ├─ loop-import-ui.mjs        **실제 위젯**(CDP) + 실 DB — 「XML 가져오기」 실동작(교체·병합 왕복)
 ├─ loop-schema-gate.mjs     **실제 위젯**(CDP) + 실 DB — P1-1 스키마 게이트·P1-2 부팅 재시도·P1-8 개명 가드 회귀
+├─ loop-report-include.mjs   **실제 위젯**(CDP), 비밀번호 불필요: 보고서 포함 상태(docs/REPORT-INCLUDE-STATE.md) 실동작. [포함 | 기타] 진짜 클릭과 저장 1회,
+│                            reloadState 뒤 유지, 보고서 기타 묶기, 미리보기 X 와 뺀 과제 막대, 주간 탭, 창 닫기 복귀, 끊김 중 전환 변화 0
+├─ loop-migrate-report-group.mjs  MySQL(스크래치 DB `tc_mig_<seed>`, 비밀번호는 env 만): migrate-2026-10-06-category-report-group.sql 을
+│                            v12 로 강등한 복제본에 두 번 적용(멱등), 컬럼 정의와 CHECK 와 백필 검증, v12 꼴 INSERT, 가드
+├─ tools/report-golden.mjs   보고서 출력 골든(A1): `--html <경로> --out <json>`. 옛 HTML 과 새 HTML 의 출력 JSON 을 그대로 맞댄다
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
 ├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
 ├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
@@ -122,6 +127,8 @@ tests/
 
 > **별도 실행 스크립트의 정본은 이 목록이 아니라 `tests/*.mjs` 중 `*.test.mjs`가 아닌 파일들**이다(`harness.mjs`·`run-tests.mjs` 제외). 여기 없는 파일이 보이면 이 표가 뒤처진 것이다 — 실제로 2026-09-02까지 넷만 적혀 있었다.
 > 아래 개별 절이 있는 것은 그중 일부다. 절이 없는 스크립트는 **파일 머리말이 사용법의 정본**이다.
+>
+> **로컬 `dist/rehearsal/run-loops.ps1` 사본의 `$once` 에 `loop-report-include` 와 `loop-migrate-report-group` 을 추가할 것**(2026-10-06. dist 는 git 에 없어 사본마다 손으로 넣는다).
 
 ## loop-ui-integrity.mjs — 루프 UI 정합성 테스트(실배포 전 게이트)
 
@@ -416,6 +423,7 @@ DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제
   순서를 포기해야 하는 구간은 `ORDER_EXEMPT`에 적고 요약에 **반드시** 찍는다 — **지금은 비어 있다**
 - 맵(`taskHours`·`attendance`·`dayNotes`)의 **키 순서는 계약이 아니다.** 키 집합과 값만 본다
 - **계약상 차이표** — `entry.hours→null`(컬럼 폐지) · `category.usesRepo` 신설 키를 기준에 얹음(2026-08-27) ·
+  (`category.reportGroup` 은 차이표에 없다: DB 와 fromXML 양쪽 상시 키라 정규화 없이 그대로 같아야 한다, 2026-10-06)
   `gitRepo`/`svnRepo`(로컬 소유). 이 표에 **없는** 차이는 전부 위반이고, 표에 있는 것은 요약에 **반드시 찍는다**.
   ※ 옛 항목 둘은 없어졌다 — `commits→[]`는 **G-7 개정(2026-09-01)으로 대조 대상이 됐고**(커밋을 지우던 정규화를 제거했다),
   `lsMigrated→true`는 그 키 자체가 사라졌다. 차이표의 정본은 `calendar-adapter.mjs`의 `normalizeExpected()`다
@@ -432,7 +440,7 @@ DB에 있는데도 `commits`가 `[]`로 오는지를 봐야 그 계약이 실제
 | G-3 | 시각 6자리가 ISO `Z` · 소수 **정확히 3자리**(자릿수가 흔들리면 §8 왕복 서명이 어긋난다) |
 | G-4 | `allDay`·`done`·`gitCommitBody`·`lsMigrated`·`dbGone`이 boolean(0/1이면 화면은 같고 내보내기만 달라진다) |
 | G-5 | `recurExcept`가 `except_date` 오름차순 · 근태에 빈 status 키 없음 · `taskHours` 값이 숫자(DECIMAL을 문자열로 흘리면 합계가 문자열 접합이 된다). ※ `entries`/`todos`의 **배열 순서**는 여기서가 아니라 `[ORDER]`가 기준과 인덱스별로 대조해 본다(더 강한 판정 — 날짜뿐 아니라 문서 순서를 본다). 옛 "`entry_date` 단조" 검사는 기준이 갖지 않은 성질을 요구하던 것이라 삭제됐다 |
-| G-6 | `hours`가 명시적 null(컬럼 폐지) · `source`/`dbGone`은 공식 과제에만(개인 과제에는 키 자체가 없다) · `usesRepo`는 DB에만 있는 거울값(경로에서 파생하지 않는다) · `gitRepo`/`svnRepo`는 로컬 저장소 몫. ※ 옛 **`lsMigrated` 검사는 2026-09-01에 삭제**됐다 — 자동이관(`migrateLocalStores()`)이 사라지면서 그 키 자체가 없어졌다(G-0 15 → 14) |
+| G-6 | `hours`가 명시적 null(컬럼 폐지) · `source`/`dbGone`은 공식 과제에만(개인 과제에는 키 자체가 없다) · `usesRepo`는 DB에만 있는 거울값(경로에서 파생하지 않는다) · `gitRepo`/`svnRepo`는 로컬 저장소 몫. `category.reportGroup` 은 모든 과제에 상시 키이고 값은 include 또는 etc 다(DB 와 fromXML 양쪽 상시 키, 2026-10-06). ※ 옛 **`lsMigrated` 검사는 2026-09-01에 삭제**됐다 — 자동이관(`migrateLocalStores()`)이 사라지면서 그 키 자체가 없어졌다(G-0 15 → 14) |
 | G-7 | **(2026-09-01 개정)** `entry.commits`를 **부팅 조회가 실어 왔는가** — DB 행수와 일치해야 한다. 개정 전에는 *"`commits`가 `[]`인가"*(지연 조회 전제)였는데, **그 지연 조회가 한 번도 배선된 적이 없어** DB 모드에서 커밋이 영영 빈 배열이었고 커밋 기반 일간·주간 보고가 통째로 비어 나갔다. **DB에 커밋이 실제로 있는 상태에서** 통과해야 의미가 있다(0행이면 「검출력 없음」으로 찍는다) |
 | §3.5/§3.6 | `performance_schema` 문장 다이제스트로 **관측**한다: `START TRANSACTION WITH CONSISTENT SNAPSHOT` · 격리수준·time_zone·lock_wait_timeout 설정 · **부팅 조회가 읽어야 하는 표 전부**(명부는 `calendar-adapter.mjs`의 부팅 조회 표 목록이 정본 — **`cal_entry_commit`도 2026-09-01 G-7 개정으로 들어왔다.** 예전엔 "없음"을 확인했다) · COMMIT · **연결 1회**. 다이제스트는 리터럴을 `?`로 지우므로 **값**(`REPEATABLE-READ`·`+00:00`·`5`)은 소스 텍스트로 따로 본다 |
 

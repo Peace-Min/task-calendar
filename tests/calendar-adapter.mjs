@@ -738,7 +738,9 @@ function synthFixtureXml(projectUid) {
   const cats = [];
   cats.push(`<category id="c-alpha" color="#123abc" gitRepo="D:\\repos\\alpha" createdAt="${CA}">` +
     `<name>알파 과제</name><description>설명 있음 · 특수문자 &amp; &lt;태그&gt; '따옴표'</description></category>`);
-  cats.push(`<category id="c-beta" color="#00ff00" svnRepo="C:\\wc\\beta" createdAt="${CA}">` +
+  // ★ reportGroup="etc"(2026-10-06, schema_version 13): 보고서 묶음 '기타'. 이 한 건이 있어야
+  //   '어댑터가 report_group 을 안 읽고 include 를 상수로 넣는' 결함이 DIFF 로 잡힌다(M21).
+  cats.push(`<category id="c-beta" color="#00ff00" svnRepo="C:\\wc\\beta" reportGroup="etc" createdAt="${CA}">` +
     `<name>베타 과제</name><description/></category>`);
   cats.push(`<category id="c-gamma" createdAt="${CA}"><name>감마(색 없음→기본색)</name><description/></category>`);
   if (projectUid) {
@@ -906,8 +908,10 @@ function loadFixtureIntoDb(exp, userId) {
     //   하나라도 비어 있지 않으면 1. 이관 시점에 존재하는 증거는 그것뿐이다(한 PC 의 data.xml 하나).
     //   ※ DEFAULT 0 에 맡기면 전 행이 0 이 되어 §4 의 안내가 아무 데도 안 뜬다 — sort_order 와 같은 함정이다.
     const usesRepo = usesRepoOf(c) ? 1 : 0;
-    S.push(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,sort_order,created_at,updated_at) VALUES (` +
-      `${U},${no},${q(c.id)},${q(src)},${q(c.name)},${q(c.color)},${q(c.desc)},${q(projUid)},${usesRepo},${i},` +
+    // 보고서 묶음(2026-10-06): fromXML 이 만든 키를 그대로 넣는다. 'etc' 외 값은 include(호스트 저장과 같은 규칙).
+    const reportGroup = c.reportGroup === 'etc' ? 'etc' : 'include';
+    S.push(`INSERT INTO cal_category (user_id,cat_no,uid,source,name,color,description,project_uid,uses_repo,report_group,sort_order,created_at,updated_at) VALUES (` +
+      `${U},${no},${q(c.id)},${q(src)},${q(c.name)},${q(c.color)},${q(c.desc)},${q(projUid)},${usesRepo},${q(reportGroup)},${i},` +
       `${q(isoToDt(c.createdAt, `category[${c.id}].createdAt`))},${q(isoToDt(c.createdAt, 'x'))});`);
   });
 
@@ -1416,7 +1420,7 @@ namespace TaskCalendarWidget
             {
                 // ① cal_category — ORDER BY sort_order(G-5). dbGone 은 LEFT JOIN project 파생(G-6)
                 using (var cmd = new MySqlCommand(
-                    "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, c.uses_repo, " + Iso("c.created_at") + " AS created_at, " +
+                    "SELECT c.cat_no, c.uid, c.source, c.name, c.color, c.description, c.uses_repo, c.report_group, " + Iso("c.created_at") + " AS created_at, " +
                     "(p.uid IS NULL) AS db_gone FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid " +
                     "WHERE c.user_id=@u ORDER BY c.sort_order", conn))
                 {
@@ -1434,6 +1438,7 @@ namespace TaskCalendarWidget
                         o["gitRepo"] = Repo(uid, "gitRepo");             // G-6: 로컬 저장소에서 채운다
                         o["svnRepo"] = Repo(uid, "svnRepo");
                         o["usesRepo"] = B(rd, "uses_repo");              // G-6: DB 에만 있다(위 둘의 거울). 경로에서 파생하지 않는다
+                        o["reportGroup"] = S(rd, "report_group") == "etc" ? "etc" : "include"; // G-6: 상시 키(2026-10-06). fromXML 도 항상 만든다
                         o["createdAt"] = S(rd, "created_at");            // G-3
                         if (S(rd, "source") == "db") { o["source"] = "db"; o["dbGone"] = B(rd, "db_gone"); }
                         // ★ 개인 과제에는 source·dbGone 키를 만들지 않는다(G-6)
@@ -1728,8 +1733,14 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
    *   ProjectDb 는 RepoPaths·UserSession 을 함께 요구하고, UserSession 은 Dpapi 를 요구한다
    *   (그 클래스는 NetcusService.cs 안에 있어 링크하면 WebView2 가 딸려온다 → Program.cs 의 대역). */
   const PROJECT_DB_CS = join(WIDGET_DIR, 'ProjectDb.cs');
+  /*   실측 2026-10-06: 서버 연결 장애 대응(0847975)에서 CalendarDb, ProjectDb 가 DbErrors(원인 분류)와
+   *   DbFault(시험용 장애 주입)를 부르게 되면서 모든 조합이 CS0103 으로 깨졌다. 두 파일을 더한 조합으로 회복했다.
+   *   loop-calendar-write 등 다른 러너는 이미 두 파일을 링크한다. */
+  const DB_ERRORS_CS = join(WIDGET_DIR, 'DbErrors.cs');
+  const DB_FAULT_CS = join(WIDGET_DIR, 'DbFault.cs');
   const extraCandidates = [[], [REPO_PATHS_CS], [USER_SESSION_CS], [USER_SESSION_CS, REPO_PATHS_CS],
-                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS]];
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS],
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS]];
   let lastErr = '';
   for (const ex of extraCandidates) {
     const files = base.concat(ex.filter((f) => existsSync(f)));
@@ -2033,6 +2044,18 @@ function normalizeExpected(exp, { localReposAccepted }) {
     }
   }
 
+  /* ★ category.reportGroup(2026-10-06, schema_version 13): fromXML 과 부팅 조회 **둘 다** 항상 만드는 키다.
+   *   그래서 usesRepo 와 달리 기준 쪽을 손대지 않는다(정규화 없음 = 양쪽이 그냥 같아야 한다).
+   *   픽스처 적격성만 본다. 전부 include 면 'DB 를 안 읽고 include 를 상수로 넣은 어댑터'가 통과한다. */
+  {
+    const etc = e.categories.filter((c) => c.reportGroup === 'etc').length;
+    applied.push(`G-6 category.reportGroup 상시 키 — 정규화 없음(etc ${etc}건 · include ${e.categories.length - etc}건)`);
+    if (etc === 0 || etc === e.categories.length) {
+      note(`픽스처 조건 미달 — category.reportGroup 이 전부 ${etc === 0 ? 'include' : 'etc'} 다(${e.categories.length}건). ` +
+        `이 픽스처로는 '어댑터가 report_group 을 읽지 않고 상수를 넣는' 결함을 검출할 수 없다(synth 가 덮는다)`);
+    }
+  }
+
   if (!localReposAccepted) {
     n = 0;
     for (const c of e.categories) { if (c.gitRepo || c.svnRepo) n++; c.gitRepo = ''; c.svnRepo = ''; }
@@ -2221,6 +2244,21 @@ function contractChecks(expNorm, act, expRaw, dbFacts) {
   } else if (act.categories && act.categories.length) {
     const t = act.categories.filter((c) => c.usesRepo === true).length;
     ok(`G-6 category.usesRepo 전 과제에 존재 (${act.categories.length}건 중 true ${t}건) — 경로 유무와 별개의 비트다`);
+  }
+
+  // reportGroup 도 **모든 과제에 항상** 있어야 한다(2026-10-06). 값은 'include' | 'etc' 둘뿐이다.
+  //   키가 빠지면 웹은 include 로 읽어 동작은 같지만, XML 대 DB 대조(fromXML 은 항상 만든다)와
+  //   loop-calendar-write 왕복 비교가 모양 차이로 갈라진다. 값이 그 둘 밖이면 호스트 정규화가 빠진 것이다.
+  const rgMissing = (act.categories || []).filter((c) => !Object.prototype.hasOwnProperty.call(c, 'reportGroup'));
+  const rgBad = (act.categories || []).filter((c) => Object.prototype.hasOwnProperty.call(c, 'reportGroup') &&
+    c.reportGroup !== 'include' && c.reportGroup !== 'etc');
+  if (rgMissing.length) {
+    violate('G-6', `category.reportGroup 키가 없다 — ${rgMissing.length}건(예: ${short(rgMissing[0].id)}). 부팅 조회는 모든 과제에 항상 실어야 한다`);
+  } else if (rgBad.length) {
+    violate('G-6', `category.reportGroup 값이 include/etc 가 아니다 — ${rgBad.slice(0, 5).map((c) => `${c.id}=${short(c.reportGroup)}`).join(', ')}`);
+  } else if (act.categories && act.categories.length) {
+    const t = act.categories.filter((c) => c.reportGroup === 'etc').length;
+    ok(`G-6 category.reportGroup 전 과제에 존재 (${act.categories.length}건 중 etc ${t}건)`);
   }
 
   // ── G-7(개정) 커밋은 부팅 조회가 **실어 와야** 한다 ──────────────────
@@ -2524,6 +2562,20 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
     const c = a.categories.find((x) => typeof x.usesRepo === 'boolean');
     c.usesRepo = c.usesRepo ? 1 : 0; return `categories[${c.id}].usesRepo = ${c.usesRepo}`;
   }, (a) => (a.categories || []).some((x) => typeof x.usesRepo === 'boolean'));
+
+  /* ── reportGroup(2026-10-06 · schema_version 13) 전용 변이 ───────────────
+   *   M21 — 어댑터가 report_group 을 안 읽고 값을 뒤집는다(또는 include 를 상수로 넣는다) →
+   *          '기타' 로 정한 과제가 보고서에 제 행으로 다시 나온다. synth 의 c-beta(etc)가 잡는다.
+   *   M22 — 키를 아예 안 만든다 → fromXML 과 모양이 갈라진다. */
+  add('M21', 'G-6 — reportGroup 값을 뒤집음(DB 의 report_group 을 안 나름)', 'DIFF', /값이 다르다/, (a) => {
+    const c = a.categories.find((x) => x.reportGroup === 'etc') || a.categories.find((x) => x.reportGroup === 'include');
+    c.reportGroup = c.reportGroup === 'etc' ? 'include' : 'etc'; return `categories[${c.id}].reportGroup → ${c.reportGroup}`;
+  }, (a) => (a.categories || []).some((x) => x.reportGroup === 'etc' || x.reportGroup === 'include'));
+
+  add('M22', '키 유무 — 과제에서 reportGroup 키를 통째로 뺌(undefined)', 'DIFF', /키가 없다/, (a) => {
+    const c = a.categories.find((x) => Object.prototype.hasOwnProperty.call(x, 'reportGroup'));
+    delete c.reportGroup; return `categories[${c.id}].reportGroup 키 삭제`;
+  }, (a) => (a.categories || []).some((x) => Object.prototype.hasOwnProperty.call(x, 'reportGroup')));
 
   /* ── 순서 전용 변이 ─────────────────────────────────────────────────────
    * 결함 A 가 있던 자리를 정면으로 겨눈다. 셋 다 **항목은 하나도 잃지 않고 자리만** 바꾼다 —
