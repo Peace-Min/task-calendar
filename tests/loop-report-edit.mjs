@@ -17,6 +17,8 @@
  *    E8   전송(가로채기) — content 의 상세 줄이 &nbsp; 들여쓰기, B 는 본문과 hours 에서 빠짐 · 대기 표지
  *         → __netcusResult(true) 흉내 → 임시 저장이 지워진다
  *    E9   실패 회신 흉내 → 임시 저장이 남는다(그리고 표지는 비워진다)
+ *    E10  보고서 묶음(docs/REPORT-GROUP.md): 깨끗한 날짜(D2)에서 왼쪽 "설정" → 설정 창(첫 선택 상자 포커스) → B 를 A 에 묶기 → 닫기(포커스가
+ *         "설정" 으로), B 는 A 카드 안의 작은 카드, A 합계 3.5, 묶음만으로 키, 머리 줄과 hours 가 합친 값(가로채기 전송) → 성공 회신 흉내로 지워진다
  *    정리 2099 임시 저장 키 삭제, 시험 날짜의 시간 지우기(앱으로) → 다시 읽어 잔재 0 확인
  *
  *  ★ 실제로 netcus 에 보내지 않는다(두 겹): Platform.report.submitDaily 를 가로채 payload 만 붙잡고,
@@ -171,7 +173,7 @@ async function reload(ms = 20000) {
   return 'timeout';
 }
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#reportModal'].forEach(function(s){
+  await cdp.ev(`(function(){ ['#confirmModal','#rptGroupModal','#reportModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -368,6 +370,42 @@ async function main() {
   ok('E9 표지는 비워졌다(뒤이은 다른 성공 회신이 지우지 않게)', (await cdp.ev('__rptDraftSending')) === '');
   await cdp.ev(`window.__netcusResult(true, '표지 없는 성공 회신(루프)'); 1`);
   ok('E9 표지 없는 성공 회신으로는 지우지 않는다', !!(await stored(D)));
+
+  /* ── E10 보고서 묶음 ── */
+  head('E10 보고서 묶음 — 설정 창에서 B 를 A 에 묶기, 카드와 합계, 키, 가로챈 전송, 성공 회신으로 지움');
+  for (const [cat, h] of [[catA, 2], [catB, 1.5]]) { await cdp.ev(`setTaskHours(${JSON.stringify(D2)}, ${JSON.stringify(cat)}, ${h}); 1`); await saveIdle(); }
+  ok('E10 깨끗한 날짜로 열었다', await openReportAt(D2));
+  await setView('card'); await sleep(150);
+  ok('E10 "보고서 묶음" 줄과 "묶은 과제 없음"', await cdp.ev(`!$('#rptGroupRow').classList.contains('hidden') && $('#rptGroupSum').textContent === '묶은 과제 없음'`));
+  ok('E10 렌더만으로는 키가 없다', (await stored(D2)) === null);
+  await cdp.ev(`(function(){ const b = document.getElementById('rptGroupOpen'); b.focus(); b.click(); return 1; })()`);
+  ok('E10 설정 창이 열렸다', await waitFor(isOpen('#rptGroupModal'), 3000, 100));
+  await sleep(250);
+  ok('E10 열면 첫 선택 상자에 포커스', await cdp.ev(`document.activeElement === document.querySelector('#rgmRows select:not([disabled])')`));
+  await cdp.ev(`(function(){ const s = [].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(x){ return x.dataset.gsrc === ${JSON.stringify(catB)}; });
+    s.value = ${JSON.stringify(catA)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+  await sleep(200);
+  ok('E10 A 는 대상이라 선택 상자가 꺼졌다(한 단계)', await cdp.ev(`[].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(x){ return x.dataset.gsrc === ${JSON.stringify(catA)}; }).disabled`));
+  await cdp.ev(`document.querySelector('#rptGroupModal [data-close]').click(); 1`);
+  ok('E10 닫기로 닫혔다(보고서 창은 남는다)', (await waitFor(`document.getElementById('rptGroupModal').classList.contains('hidden')`, 3000, 100)) && (await cdp.ev(isOpen('#reportModal'))));
+  await sleep(250);
+  ok('E10 닫으면 포커스가 "설정" 으로 돌아온다', await cdp.ev(`document.activeElement === document.getElementById('rptGroupOpen')`));
+  ok('E10 B 는 A 카드 안의 작은 카드("묶음"), A 합계 3.5 h', await cdp.ev(`(function(){ const a = [].find.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.rcat === ${JSON.stringify(catA)}; });
+    if (!a) return false; const sub = a.querySelector('.rcard-subs > .rcard'); const g = a.querySelector('.rcard-gsum');
+    return !!sub && sub.dataset.rcat === ${JSON.stringify(catB)} && !!sub.querySelector('.rcard-grp') && !!g && g.textContent === '합계 3.5 h'; })()`));
+  const s10 = await stored(D2);
+  ok('E10 묶음만으로 그 날짜 키가 생겼다', !!s10 && s10.group && s10.group[catB] === catA && Object.keys(s10.body || {}).length === 0, JSON.stringify(s10));
+  ok('E10 나가는 글 머리 줄은 합친 시간, B 머리 줄 없음', await cdp.ev(`(function(){ const t = buildReportText(); return t.indexOf(${JSON.stringify(`[${nameA}] : 3.5\n`)}) === 0 && t.indexOf(${JSON.stringify(`[${nameB}]`)}) < 0; })()`));
+  const s10b = await sendIntercepted();
+  ok('E10 payload 를 붙잡았다', !!s10b.cap);
+  if (s10b.cap) {
+    ok('E10 hours = 머리 줄(A 3.5, B 없음)', Array.isArray(s10b.cap.hours) && s10b.cap.hours.some((x) => x.name === nameA && x.hours === 3.5) && !s10b.cap.hours.some((x) => x.name === nameB), JSON.stringify(s10b.cap.hours));
+    ok('E10 content 에 B 머리 줄 없음', !String(s10b.cap.fields.content).includes(`[${nameB}]`));
+  }
+  ok('E10 netcus 명령은 하나도 나가지 않았다', same(await J('__rptLoop.blocked'), []));
+  await cdp.ev(`window.__netcusResult(true, '시험 회신(루프, 실제 전송 아님)'); 1`);
+  await sleep(200);
+  ok('E10 성공 회신 흉내 → 묶음까지 지워졌다', (await stored(D2)) === null && (await cdp.ev(`!document.querySelector('#rptOut .rcard-subs')`)));
 }
 
 let aborted = null;

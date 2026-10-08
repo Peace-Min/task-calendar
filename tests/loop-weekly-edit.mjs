@@ -14,6 +14,8 @@
  *    E5   창 닫고 다시 열기, 다른 주로 바꾸기, 위젯 다시 읽기(reloadState) 뒤에도 그대로
  *    E6   채우기(가로채기): subject, endwork(&nbsp; 들여쓰기, B 없음), content(B 없음, 합계 3), planwork → 성공 회신 흉내 뒤에도 남음
  *    E7   출처 netcus 일간보고(가짜 병합 캐시, 실제 읽기 없음): 같은 이름 과제의 고친 글과 X 가 따라온다
+ *    E8   보고서 묶음(docs/REPORT-GROUP.md): 설정 창에서 B 를 A 에 묶기 → A 카드 안의 작은 카드와 합계, 기간 키의 group, A 의 고친 진행사항은
+ *         그대로 두고 낡은 초안 안내, 채우기(가로채기)의 content, planwork, endwork 에 B 머리 줄 없음 → 모두 초안으로가 묶음까지 지운다
  *    정리 2099 주간 키 삭제, 시험 주 시간 지우기(앱으로), 출처와 포함 항목 저장값 원복 → 다시 읽어 잔재 0
  *
  *  ★ 실제로 회사 화면을 채우지 않는다(두 겹): Platform.report.submitWeekly 를 가로채 payload 만 붙잡고,
@@ -169,7 +171,7 @@ async function reload(ms = 20000) {
   return 'timeout';
 }
 async function closeAll() {
-  await cdp.ev(`(function(){ ['#confirmModal','#reportModal'].forEach(function(s){
+  await cdp.ev(`(function(){ ['#confirmModal','#rptGroupModal','#reportModal'].forEach(function(s){
     try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
   await sleep(400);
 }
@@ -327,6 +329,43 @@ async function main() {
   const cap7 = await fillIntercepted();
   ok('E7 net 채우기 endwork 에 고친 글, B 없음', !!cap7 && String(cap7.fields.endwork).startsWith(`[${nameA}]\n• 루프 진행 상세`) && !String(cap7.fields.endwork).includes(`[${nameB}]`));
   await cdp.ev(`window.__netcusResult(true, '주간보고 작성 폼을 채웠습니다 (루프 흉내)'); state.reportSource = 'cal'; clearNetcusMerge(); syncReportSourceSeg(); buildReport(); 1`);   // 시험 동안은 cal(원래 출처는 정리에서 되돌린다)
+
+  head('E8 보고서 묶음(REPORT-GROUP) — 설정 창에서 B 를 A 에 묶기: 합계, 차주계획, 낡은 초안 안내, 채우기(가로채기), 모두 초안으로');
+  ok('E8 시험 주로 다시 열었다', await openWeeklyAt(W1[0]));
+  await setView('card'); await sleep(150);
+  ok('E8 B 되돌리기(E3 의 X)', (await clickInCard(kB, '.rcard-back')) === 'ok');
+  await sleep(150);
+  await cdp.ev(`(function(){ const b = document.getElementById('rptGroupOpen'); b.focus(); b.click(); return 1; })()`);
+  ok('E8 설정 창이 열렸다', await waitFor(isOpen('#rptGroupModal'), 3000, 100));
+  await sleep(250);
+  await cdp.ev(`(function(){ const s = [].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(x){ return x.dataset.gsrc === ${JSON.stringify(kB)}; });
+    s.value = ${JSON.stringify(kA)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+  await sleep(200);
+  await cdp.ev(`document.querySelector('#rptGroupModal [data-close]').click(); 1`);
+  ok('E8 닫았다, 포커스는 "설정" 으로', (await waitFor(`document.getElementById('rptGroupModal').classList.contains('hidden')`, 3000, 100)) && (await sleep(250), await cdp.ev(`document.activeElement === document.getElementById('rptGroupOpen')`)));
+  const c8 = await cardsInfo();
+  ok('E8 B 는 A 카드 안(머리 카드 아님), A 합계 4.5 h', await cdp.ev(`(function(){ const a = [].find.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk === ${JSON.stringify(kA)}; });
+    const sub = a && a.querySelector('.rcard-subs > .rcard'); const g = a && a.querySelector('.rcard-gsum');
+    return !!sub && sub.dataset.wk === ${JSON.stringify(kB)} && !!g && g.textContent === '합계 4.5 h' && ![].some.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk === ${JSON.stringify(kB)}; }); })()`), JSON.stringify(c8.slice(0, 3)));
+  const s8 = await stored(W1[0], W1[1]);
+  ok('E8 기간 키에 묶음이 저장됐다', !!s8 && s8.group && s8.group[kB] === kA, JSON.stringify(s8 && s8.group));
+  ok('E8 글 편집: A 진행사항은 고친 글 그대로, 낡은 초안 안내가 뜬다', (await setView('doc')) === 'ok' && (await sleep(150), await cdp.ev(`(function(){ const s = [].find.call(document.querySelectorAll('#rptOut .rdoc-sec'), function(x){ return x.dataset.wsec === 'prog' && x.dataset.wk === ${JSON.stringify(kA)}; });
+    return !!s && !s.querySelector('.rdoc-stale').hidden && s.querySelector('.rdoc-ta').value === ${JSON.stringify(DETAIL)}; })()`)));
+  const cap8 = await fillIntercepted();
+  ok('E8 채우기 payload 를 붙잡았다', !!cap8);
+  if (cap8) {
+    const f = cap8.fields || {};
+    ok('E8 content: A 4.5, B 줄 없음, 합계 4.5', String(f.content).includes(`[${nameA}] : 4.5`) && !String(f.content).includes(`[${nameB}]`) && String(f.content).endsWith('합계 : 4.5'), f.content);
+    ok('E8 planwork 와 endwork 에 B 머리 줄 없음', !String(f.planwork).includes(`[${nameB}]`) && !String(f.endwork).includes(`[${nameB}]`));
+  }
+  ok('E8 netcus 명령은 하나도 나가지 않았다', same(await J('__wkLoop.blocked'), []));
+  await cdp.ev(`window.__netcusResult(true, '주간보고 작성 폼을 채웠습니다 (루프 흉내)'); 1`);
+  await cdp.ev(`document.querySelector('#rptOut .rdoc-resetall').click(); 1`);
+  ok('E8 모두 초안으로 확인창(문구에 "묶음")', (await waitFor(isOpen('#confirmModal'), 4000, 100)) && (await cdp.ev(`document.getElementById('cfMsg').textContent.indexOf('묶음') >= 0`)));
+  await cdp.ev(`document.getElementById('cfOk').click(); 1`);
+  await waitFor(`document.getElementById('confirmModal').classList.contains('hidden')`, 3000, 100);
+  await sleep(200);
+  ok('E8 모두 초안으로 → 기간 키(묶음 포함)가 지워졌다', (await stored(W1[0], W1[1])) === null && (await cdp.ev(`$('#rptGroupSum').textContent === '묶은 과제 없음'`)));
 }
 
 let aborted = null;

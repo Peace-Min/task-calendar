@@ -1,0 +1,1103 @@
+// 보고서 묶음(docs/REPORT-GROUP.md, 2026-10-08): §6 시험.
+//
+// 이 파일이 지키는 것:
+//   (S) 정적: 묶음이 없을 때의 예전 길(머리 줄 시간 함수, 주간 네 칸 감싸기, 복사 갈래)이 그대로 남아 있다, 묶음 함수는 PEER 를
+//       저장소보다 먼저 본다, 설정 창 마크업(제목, 닫기 하나, 라벨), 좁은 폭 CSS, 새 문구 기호.
+//   (B) jsdom 브라우저 모드, 일간: 묶음 없을 때 바이트 같음(복사, 전송, 낡은 묶음 흔적이 있어도), 묶음 적용(머리 줄 목록, 합친 시간과
+//       소수 반올림, 본문 초안 꼴: 이름 줄 + 한 단계 더 들여쓰기, 머리기호 번호 이어짐, payload.hours = 머리 줄), 한 단계 규칙(설정 창 선택지),
+//       공식 과제 묶기, X(대상은 묶음 전체, 작은 카드는 그 과제만), 임시 저장(묶음만으로 키, 닫고 열기, 재시작, 날짜별, 새 날짜는 묶음 없음,
+//       모두 초안으로가 묶음까지 지움, 렌더는 쓰지 않음), 낡은 초안 안내, 묶인 과제의 고친 글은 묶음 동안 쉬었다가 풀면 다시 쓰인다, 설정 창 접근성.
+//   (B) 주간 캘린더 출처: 바이트 같음, 과제투입시간과 합계, 진행사항, 차주계획, 복사, 기간별 저장, X 와 묶음.
+//   (W) jsdom 위젯 모드: 일간 전송 성공 회신이 묶음까지 지운다, 보낸 뒤 묶음을 바꾸면 지우지 않는다, 주간 net 출처 묶음과 바이트 같음.
+//   (P) 열람 창(PEER): 묶음 줄이 없고 임시 저장 접근 0.
+//   (M) 변이: 위 계약을 되돌리면 같은 검사기가 잡는다.
+// ★ 실제 netcus 전송과 채우기는 없다. Platform.report.submitDaily / submitWeekly 를 가로채 payload 만 본다.
+// ★ 시험마다 시작과 끝에 tc_rptDraft 키를 지운다(렌더는 쓰지 않으므로 키는 사용자 동작으로만 생긴다).
+// 생략 규약: jsdom 이 없으면 (B)(W)(P)와 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+
+const app = loadAppSource();
+
+// 앵커 하나를 정확히 한 번 바꾼다(없거나 여럿이면 실패: 조용히 통과하는 껍데기 변이를 막는다).
+function mutate(text, find, repl) {
+  const a = text.indexOf(find);
+  assert.ok(a >= 0, '변이 앵커를 찾지 못했다: ' + find.slice(0, 120));
+  assert.strictEqual(a, text.lastIndexOf(find), '변이 앵커가 여러 곳에 있다: ' + find.slice(0, 120));
+  return text.slice(0, a) + repl + text.slice(a + find.length);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// (S) 정적 검사기
+// ══════════════════════════════════════════════════════════════════════
+const S = {
+  //  §3, §6: 묶음이 없으면 예전 길: 머리 줄 시간은 getTaskHours 그대로, 주간은 예전 조립을 그대로 돌려주고, 복사는 예전 갈래.
+  fastPaths(src) {
+    const dh = extractFunction(src, 'reportDailyHours');
+    assert.ok(dh.includes('const _g = rptDayGroup(rows, date);') && /: getTaskHours\(date, r\.key\) \}\)\)/.test(dh), 'reportDailyHours 가 묶음이 없을 때 예전 값(getTaskHours)을 그대로 쓰지 않는다');
+    const lv = extractFunction(src, 'rptGroupLive');
+    assert.ok(lv.includes('ks.has(group[k])') && lv.includes('if(!cand.has(t)) live.set(s, t);'), '지금 행에 없는 대상이나 두 단계 묶음을 거르지 않는다(낡은 흔적이 글을 바꾼다)');
+    const o = extractFunction(src, 'rptWOutFields');
+    assert.ok(/if\(!L\.any\) return base;/.test(o), '주간: 초안이 닿지 않으면 예전 결과를 그대로 돌려주지 않는다');
+    assert.ok(o.includes('content: (L.out.length || L.group.length) ? c.content : base.content,'), '주간: 묶음이 과제투입시간과 합계를 다시 내지 않는다');
+    const bt = extractFunction(src, 'buildReportText');
+    assert.ok(bt.includes(': reportRowBodyText(r, indentUnit, _mkSpec, _indent);') && bt.includes('(_dg && _dg.kids.has(r.key)) ? reportGroupBodyText('), '일간 복사, 전송 글이 묶음 대상만 묶음 본문으로 만들지 않는다');
+  },
+  //  §5: 열람 창은 부모와 localStorage 를 같이 쓴다. 묶음 문맥은 저장소보다 PEER 를 먼저 본다.
+  peerFirst(src) {
+    const b = extractFunction(src, 'rptGroupCtx');
+    const g = b.indexOf('if(PEER) return null;');
+    const touch = Math.min(...['rptDraftGet(', 'rptWDraftGet('].map(t => { const i = b.indexOf(t); return i < 0 ? Infinity : i; }));
+    assert.ok(g > 0 && g < touch, 'rptGroupCtx 가 PEER 를 저장소보다 먼저 보지 않는다: 열람 창에 묶음 설정이 생기거나 내 초안을 읽는다');
+    const on = src.slice(src.indexOf("$('#rptGroupOpen').addEventListener('click'"), src.indexOf("$('#rgmRows').addEventListener('change'"));
+    assert.ok(on.includes('if(PEER || !rptGroupCtx()) return;'), '설정 링크 처리기가 열람 창을 막지 않는다');
+  },
+  //  §4: 설정 창: 보고서 창 뒤 형제(위에 뜬다), 제목, 닫기 하나, 선택 상자마다 라벨.
+  dialogMarkup(src) {
+    const a = src.indexOf('<div class="overlay hidden" id="reportModal">'), b = src.indexOf('<div class="overlay hidden" id="rptGroupModal">');
+    assert.ok(a > 0 && b > a, '설정 창이 보고서 창보다 앞에 있다(뒤에 깔린다)');
+    const m = src.slice(b, src.indexOf('\n</div>\n', b));
+    assert.ok(m.includes('<h2>보고서 묶음</h2>'), '설정 창 제목이 없다');
+    assert.strictEqual(m.split('<button').length - 1, 1, '설정 창의 버튼은 닫기 하나여야 한다');
+    assert.ok(m.includes('data-close>닫기</button>'), '닫기 버튼이 공통 닫기([data-close])가 아니다');
+    const r = extractFunction(src, 'rptGroupDlgRender');
+    assert.ok(r.includes('<label class="rgm-name" for="rgmSel${i}">') && r.includes('<select id="rgmSel${i}"'), '선택 상자에 라벨(for)이 이어지지 않는다');
+    assert.ok(r.includes(".concat(isTgt ? [] : g.rows.filter(y => y.k !== x.k && !live.has(y.k))"), '한 단계 규칙: 선택지에서 자기 자신과 묶인 과제를 빼지 않는다');
+    const css = src.slice(src.indexOf('<style>'), src.indexOf('</style>'));
+    //  두 규칙 모두 바로 앞의 @media 가 440px 이하 블록이어야 한다(밖에 있으면 넓은 폭에서도 한 열이 된다).
+    for (const rule of ['#rptGroupModal .rgm-row{grid-template-columns:minmax(0,1fr)}', '#rptGroupModal .rgm-sel{min-height:32px}']) {
+      const at = css.indexOf(rule), m = css.lastIndexOf('@media', at);
+      assert.ok(at > 0 && css.startsWith('@media (max-width:440px)', m) && !css.slice(m, at).includes('\n}'),'440px 이하에서 설정 창이 한 열(32px 선택 상자)이 아니다: ' + rule);
+    }
+  },
+};
+
+test('GS1 (§3, §6): 묶음이 없을 때의 예전 길이 남아 있다(머리 줄 시간, 주간 감싸기, 복사 갈래), 낡은 묶음 흔적을 거른다', () => S.fastPaths(app));
+test('GS2 (§5): 묶음 문맥과 설정 링크는 PEER 를 저장소보다 먼저 본다', () => S.peerFirst(app));
+test('GS3 (§4): 설정 창: 보고서 창 위, 제목, 닫기 하나, 라벨, 한 단계 선택지, 좁은 폭 한 열', () => S.dialogMarkup(app));
+test('GS4 (§6): 새 화면 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
+  const phrases = ['보고서 묶음', '설정', '묶은 과제 없음', '묶음', '합계 ', ' 자체', '그대로 [', ']에 합치기', '다른 과제가 묶여 있어 바꿀 수 없습니다',
+    '이 보고서에는 묶을 과제가 없습니다.', '과제를 이 보고서에서만 다른 과제의 머리 줄 아래로 묶습니다',
+    '과제를 이 보고서에서만 다른 과제의 머리 줄 아래로 묶습니다. 업무 줄은 그 과제 본문 뒤에 과제 이름과 함께 들어가고, 시간은 그 과제 시간에 더해집니다. 묶음은 한 단계만 되고, 다음 보고서는 묶음 없이 시작합니다.',
+    '이 과제 시간과 묶인 과제 시간의 합', '이 보고서에서 위 과제의 머리 줄 아래로 묶었습니다', '에 묶은 과제', ', 묶은 과제 ',
+    '이 날짜의 고친 내용과 뺀 과제, 묶음을 모두 버리고 초안으로 되돌릴까요?', '이 기간의 고친 내용과 뺀 과제, 묶음을 모두 버리고 초안으로 되돌릴까요?',
+    '자체 시간(회사 일간보고용, 묶인 과제 시간은 따로)', '고친 글에 묶은 과제 줄이 없습니다. 글 편집에서 초안으로 되돌리면 들어갑니다.',
+    '묶인 과제의 고친 글(일간 내용, 주간 진행사항과 차주계획)은 묶음 동안 쓰이지 않고 남아 있다가 묶음을 풀면 다시 쓰입니다.', 'aria-label="보고서 묶음 설정"'];
+  for (const p of phrases) {
+    assert.ok(app.includes(p), '문구가 앱에 없다(시험 목록 갱신 필요): ' + p);
+    assert.ok(!/—|–|「|」|(^|\s)·|·(\s|$)/.test(p), '금지 기호: ' + p);
+  }
+});
+test('변이 GSM1: 낡은 대상 거르기나 한 단계 거르기를 빼면 GS1 이 잡는다', () => {
+  assert.throws(() => S.fastPaths(mutate(app, ' && group[k] !== k && ks.has(group[k])) cand.set', ' && group[k] !== k) cand.set')), /거르지 않는다/);
+  assert.throws(() => S.fastPaths(mutate(app, 'if(!cand.has(t)) live.set(s, t);', 'live.set(s, t);')), /거르지 않는다/);
+});
+test('변이 GSM2: rptGroupCtx 의 PEER 관문을 빼면 GS2 가 잡는다', () => {
+  assert.throws(() => S.peerFirst(mutate(app, "function rptGroupCtx(){\n  if(PEER) return null;\n", 'function rptGroupCtx(){\n')), /PEER/);
+});
+test('변이 GSM3: 라벨을 끊거나 묶인 과제를 선택지에 넣으면 GS3 이 잡는다', () => {
+  assert.throws(() => S.dialogMarkup(mutate(app, '<label class="rgm-name" for="rgmSel${i}">', '<label class="rgm-name">')), /라벨/);
+  assert.throws(() => S.dialogMarkup(mutate(app, "g.rows.filter(y => y.k !== x.k && !live.has(y.k))", 'g.rows.filter(y => y.k !== x.k)')), /한 단계/);
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// (B)(W)(P) jsdom 실행
+// ══════════════════════════════════════════════════════════════════════
+const jsdomMod = await importOptional('jsdom');
+const JSDOM = jsdomMod?.JSDOM || null;
+
+if (!JSDOM) {
+  skip('report-group: jsdom 미설치: 보고서 묶음 실행 계약(바이트 같음, 묶음 적용, 설정 창, 임시 저장, 전송 회신, PEER)을 돌리지 못했다', SKIP_NO_JSDOM,
+       `이 파일의 test( 호출 ${countTestsBelow(import.meta.url, 'if (!JSDOM) {')}곳이 등록되지 않았다(정적 계수)`);
+} else {
+  const quiet = () => (jsdomMod.VirtualConsole ? new jsdomMod.VirtualConsole() : undefined);
+  const tick = (ms = 20) => new Promise((r) => setTimeout(r, ms));
+  async function waitFor(pred, what, ms = 3000) {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) { if (pred()) return; await tick(); }
+    assert.fail('시간 안에 일어나지 않았다: ' + what);
+  }
+  const shims = (win) => {
+    if (typeof win.crypto === 'undefined') win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
+    win.scrollTo = () => {};
+    win.HTMLElement.prototype.scrollIntoView = function () {};
+    if (!win.CSS) win.CSS = { escape: (v) => String(v).replace(/[^\w-]/g, (c) => '\\' + c) };
+  };
+  function wrap(dom, posted) {
+    const w = dom.window;
+    return { w, posted, doc: w.document, ev: (code) => w.eval(code), evJSON: (code) => JSON.parse(w.eval('JSON.stringify(' + code + ')')),
+      close: async () => { await tick(); try { w.close(); } catch (_) {} } };
+  }
+  const bootBrowser = (src) => wrap(new JSDOM(src, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://tcapp.local/', virtualConsole: quiet(), beforeParse: shims }), []);
+  //  위젯 모드: 가짜 호스트는 메시지를 배열에 넣기만 한다(실제 netcus 제출 경로 없음).
+  function bootWidget(src, url = 'https://tcapp.local/') {
+    const posted = [];
+    const dom = new JSDOM(src, { runScripts: 'dangerously', pretendToBeVisual: true, url, virtualConsole: quiet(),
+      beforeParse(win) {
+        win.chrome = { webview: { postMessage(m) { let o = null; try { o = JSON.parse(m); } catch (_) {} posted.push(o || { raw: String(m) }); }, addEventListener() {}, removeEventListener() {} } };
+        shims(win);
+      } });
+    const M = wrap(dom, posted);
+    const sess = posted.find((x) => x && x.cmd === 'userSessionGet');
+    if (sess) M.ev('__hostReply(' + JSON.stringify(sess.reqId) + ', ' + JSON.stringify({ ok: true, user: { loginId: 'tester', name: '시험자' } }) + ')');
+    return M;
+  }
+  const overlayOpen = (m, id) => { const o = m.doc.getElementById(id); return !!o && !o.classList.contains('hidden') && !o.classList.contains('closing'); };
+  const overlayClosed = (m, id) => { const o = m.doc.getElementById(id); return !o || o.classList.contains('hidden'); };
+  async function confirmOk(m, wantMsg) {
+    await waitFor(() => overlayOpen(m, 'confirmModal'), '확인창이 뜬다');
+    if (wantMsg) assert.ok(m.doc.getElementById('cfMsg').textContent.includes(wantMsg), '확인 문구에 "' + wantMsg + '" 가 없다: ' + m.doc.getElementById('cfMsg').textContent);
+    m.doc.getElementById('cfOk').click();
+    await waitFor(() => overlayClosed(m, 'confirmModal'), '확인창이 닫힌다');
+    await tick(); await tick();
+  }
+  const allKeys = (m, pre) => m.evJSON(`(function(){ var a=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf(${JSON.stringify(pre)})===0) a.push(k); } return a.sort(); })()`);
+  const clearDrafts = (m) => m.ev("(function(){ var a=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf('tc_rptDraft')===0) a.push(k); } a.forEach(function(k){ localStorage.removeItem(k); }); __rptDraftMem.clear(); __rptDraftDirty.clear(); __rptDraftFailed.clear(); clearTimeout(__rptDraftTimer); __rptDraftSending=''; })()");
+  const getStored = (m, key) => m.evJSON('JSON.parse(localStorage.getItem(' + JSON.stringify(key) + ') || "null")');
+  const setView = (m, v) => m.doc.querySelector(`#rptViewSeg [data-rview="${v}"]`).click();
+  const copyText = async (m) => {
+    m.ev("window.__clip = null; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: function(t){ window.__clip = t; return Promise.resolve(); } } });");
+    await m.ev('copyReport()');
+    return m.ev('window.__clip');
+  };
+  //  설정 창을 사람처럼 연다(왼쪽 "설정" 링크) / 선택 상자를 바꾼다(change 처리기 = 사람이 고른 것).
+  const openDlg = async (m) => { m.doc.getElementById('rptGroupOpen').click(); await waitFor(() => overlayOpen(m, 'rptGroupModal'), '설정 창이 열린다'); await tick(); };
+  const closeDlg = async (m) => { m.doc.querySelector('#rptGroupModal [data-close]').click(); await waitFor(() => overlayClosed(m, 'rptGroupModal'), '설정 창이 닫힌다'); };
+  const dlgSel = (m, k) => m.ev(`[].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(s){ return s.dataset.gsrc === ${JSON.stringify(k)}; })`);
+  const pick = (m, src, tgt) => { const s = dlgSel(m, src); assert.ok(s, src + ' 선택 상자가 없다'); s.value = tgt; assert.strictEqual(s.value, tgt, src + ' 선택 상자에 ' + tgt + ' 선택지가 없다'); s.dispatchEvent(new m.w.Event('change', { bubbles: true })); };
+  const optsOf = (m, k) => m.evJSON(`(function(){ var s = [].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(s){ return s.dataset.gsrc === ${JSON.stringify(k)}; }); return s ? { disabled: s.disabled, opts: [].map.call(s.options, function(o){ return o.value + '|' + o.textContent; }) } : null; })()`);
+  //  묶음을 사람처럼 정한다: 설정 창을 열고 고르고 닫는다.
+  async function groupVia(m, pairs) { await openDlg(m); for (const [s, t] of pairs) pick(m, s, t); await closeDlg(m); }
+  const heads = (txt) => String(txt).split('\n\n').map(b => b.split('\n')[0]);
+  const headHours = (txt) => heads(txt).map(h => { const mm = /^\[(.+?)\](?: : (.+))?$/.exec(h); return mm ? (mm[2] != null ? { name: mm[1], hours: Number(mm[2]) } : null) : 'bad:' + h; }).filter(Boolean);
+
+  const CA = '2026-07-01T00:00:00.000Z';
+  const E = (o) => Object.assign({ allDay: true, startTime: '', endTime: '', location: '', memo: '', source: '', commits: [], hours: null,
+    endDate: '', recur: null, recurExcept: [], createdAt: CA, updatedAt: CA }, o);
+
+  // ───────────────────────── 일간 ─────────────────────────
+  //  알파: 일정(메모 2줄) + 커밋(본문) + 기간 할 일(그날 메모), 베타: 일정, 감마: 시간만, 델타: 아무것도 없음, 기타: 기본 과제(빈 과제)
+  const dayState = (T, Y, N) => ({
+    gitAuthor: '', svnAuthor: '',
+    categories: [
+      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-c', name: '감마', color: '#d97706', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-etc', name: '기타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+    ],
+    entries: [
+      E({ id: 'e-a1', date: T, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인\n• 암호화 모듈 확인' }),
+      E({ id: 'g-a', date: T, title: '작업일지', categoryId: 'c-a', source: 'git', commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+      E({ id: 'e-b1', date: T, title: '고객 회신', categoryId: 'c-b' }),
+      E({ id: 'e-y1', date: Y, title: '어제 업무', categoryId: 'c-b' }),
+    ],
+    todos: [{ id: 't-p', text: '기간 할 일', done: false, categoryId: 'c-a', due: Y, endDate: N, prio: 'normal', completedAt: '', note: '',
+              dayNotes: { [T]: '오늘 메모' }, createdAt: CA, updatedAt: CA }],
+    rooms: [], attendance: {},
+    taskHours: { [T]: { 'c-a': 2, 'c-b': 1.5, 'c-c': 1 } },
+    gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+    reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
+  });
+  //  예전 buildReportText(4b4a018) 의 캘린더 경로 그대로: "묶음이 없으면 바이트까지 같다"(§3)의 기준. 앱 전역을 쓴다.
+  function REF(indentUnit) {
+    indentUnit = indentUnit || ' ';
+    const from = $('#rptFrom').value, to = $('#rptTo').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
+    const { rows } = collectReportData(from, to, rptSources());
+    if (!rows.length) return '';
+    const _mkSpec = reportMarkerSpec();
+    const _fmt = currentReportFormatPref();
+    const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
+    const _pad = indentUnit.repeat(_indent * 2);
+    const _daily = (reportMode === 'daily');
+    const _hmap = _daily ? new Map(rows.map(r => [r.key, getTaskHours(from, r.key)]).filter(x => x[1] != null)) : null;
+    const blocks = rows.map(r => {
+      let _head = `[${r.name}]`;
+      if (_hmap) { const _h = _hmap.get(r.key); if (_h != null) _head += ` : ${_h}`; }
+      return _head + r.titles.map((t, i) => {
+        const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
+        const m = (r.titleMeta && r.titleMeta[i]) || null;
+        const _sub = _pad + reportSubIndent(_prefix, indentUnit);
+        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);
+      }).join('');
+    });
+    return blocks.join('\n\n') + '\n';
+  }
+  //  예전 payload.hours(묶음 없음): 과제 순서대로 시간이 있는 것만.
+  const REF_HOURS = "collectReportData($('#rptFrom').value, $('#rptFrom').value, rptSources()).rows.map(function(r){ return { name: r.name, hours: getTaskHours($('#rptFrom').value, r.key) }; }).filter(function(x){ return x.hours != null; })";
+  const openDaily = (m, date) => m.ev(`openReport(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+    + ` $('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
+  const setDate = (m, date) => m.ev(`$('#rptFrom').value = ${JSON.stringify(date)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
+  const dcard = (m, cat) => m.ev(`[].find.call(document.querySelectorAll('#rptOut .rcard'), function(c){ return c.dataset.rcat === ${JSON.stringify(cat)}; })`);
+  const topCats = (m) => m.evJSON("[].map.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.rcat; })");
+  const subCats = (m, cat) => m.evJSON(`(function(){ var c = [].find.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.rcat === ${JSON.stringify(cat)}; }); return c ? [].map.call(c.querySelectorAll('.rcard-subs > .rcard'), function(x){ return x.dataset.rcat; }) : null; })()`);
+  const capSend = (m) => m.ev('window.__cap = null; Platform.report.submitDaily = function(p){ window.__cap = JSON.parse(JSON.stringify(p)); };');
+  const sendDailyBrowser = (m) => { capSend(m); m.doc.getElementById('btnRptSend').click(); return m.evJSON('window.__cap'); };
+  const NB = ' ', NBS = '&nbsp;';
+
+  //  ── 바이트 같음 검사기(일간): 변이 시험이 재사용. 묶음 없음 + 낡은 묶음 흔적(지금 행에 없는 과제, 두 단계, 자기 자신) 둘 다 ──
+  const FORMATS = [['-', '', 2], ['1.', '', 3], ['none', '', 0], ['가.', '', 1], ['1.', '▶', 2]];
+  async function assertDailySame(m, T, KEY) {
+    m.ev('window.__REF = ' + REF.toString());
+    //  낡은 흔적: 없는 과제에서 / 없는 과제로 / 자기 자신. 지금 행에 닿는 묶음이 아니라 무시돼야 한다.
+    const stale = { v: 1, date: T, body: {}, base: {}, out: [], group: { 'c-gone': 'c-a', 'c-a': 'c-gone2', 'c-b': 'c-b' }, savedAt: '' };
+    let n = 0;
+    for (const variant of ['none', 'stale']) {
+      if (variant === 'stale') m.ev(`localStorage.setItem(${JSON.stringify(KEY)}, ${JSON.stringify(JSON.stringify(stale))}); __rptDraftMem.clear(); __rptDraftDirty.clear();`);
+      for (const [mk, cu, ind] of FORMATS) for (const desc of [true, false]) {
+        m.ev(`state.reportFormatPrefs = { daily: { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} }, weekly: { marker: '-', markerCustom: '', indent: 2 } };`
+          + ` $('#rptWithDesc').checked = ${desc}; reportMode = 'daily'; $('#rptFrom').value = ${JSON.stringify(T)}; $('#rptTo').value = ${JSON.stringify(T)}; buildReport();`);
+        const tag = `${variant} ${mk}/${cu}/${ind} desc=${desc}`;
+        assert.ok(m.ev('__REF()').includes('[알파] : 2'), '기준 글이 비었다: ' + tag);
+        assert.strictEqual(m.ev('buildReportText()'), m.ev('__REF()'), '복사 글(U+00A0)이 예전과 다르다: ' + tag);
+        assert.strictEqual(m.ev("buildReportText('&nbsp;')"), m.ev("__REF('&nbsp;')"), '전송 글(&nbsp;)이 예전과 다르다: ' + tag);
+        assert.deepStrictEqual(m.evJSON("reportDailyHours(collectReportData($('#rptFrom').value, $('#rptFrom').value, rptSources()).rows, $('#rptFrom').value).map(function(x){ return { name: x.name, hours: x.hours }; })"), m.evJSON(REF_HOURS), '머리 줄 시간이 예전과 다르다: ' + tag);
+        assert.ok(!m.ev("document.querySelector('#rptOut .rcard-subs, #rptOut .rcard-gsum, #rptOut .rcard-own')"), '묶음이 없는데 묶음 카드가 보인다: ' + tag);
+        n++;
+      }
+      m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } }; $('#rptWithDesc').checked = true; buildReport();`);
+      assert.strictEqual(await copyText(m), m.ev('__REF()'), '복사 버튼이 싣는 글이 예전과 다르다: ' + variant);
+      const cap = sendDailyBrowser(m);
+      assert.ok(cap, '전송 payload 를 붙잡지 못했다');
+      assert.strictEqual(cap.fields.content, m.ev("__REF('&nbsp;')"), '전송 content 가 예전과 다르다: ' + variant);
+      assert.deepStrictEqual(cap.hours, m.evJSON(REF_HOURS), 'payload.hours 가 예전과 다르다: ' + variant);
+      assert.ok(!m.ev("$('#rptSummary').textContent").includes('묶은 과제'), '묶음이 없는데 요약줄에 묶은 과제가 있다: ' + variant);
+      assert.strictEqual(m.ev("$('#rptGroupSum').textContent"), '묶은 과제 없음', '왼쪽 요약이 "묶은 과제 없음" 이 아니다: ' + variant);
+    }
+    return n;
+  }
+
+  //  ── 묶음 적용 검사기(일간): 변이 시험이 재사용 ──
+  //  ① '-' 2단: 베타 → 델타(빈 대상). 델타 머리 줄 = 베타 시간, 본문 = 이름 줄 + 한 단계 더(머리기호 '- ' 폭 2) 들여 쓴 베타 본문.
+  //  ② '1.' 1단: 베타, 감마 → 알파. 번호는 알파 업무 셋 다음 4, 5 로 이어지고, 베타 본문은 자기 번호(1.)로 '4. ' 폭(3)만큼 더 들여 쓴다. 감마는 빈 과제라 이름 줄만.
+  async function assertDailyGrouped(m, T) {
+    m.ev('window.__REF = ' + REF.toString());
+    const refBlocks = (unit) => m.ev(`__REF(${JSON.stringify(unit)})`).replace(/\n$/, '').split('\n\n');
+    //  ①
+    await groupVia(m, [['c-b', 'c-d']]);
+    for (const unit of [NB, NBS]) {
+      const rb = refBlocks(unit);
+      const want = [rb[0], rb[2], `[델타] : 1.5\n${unit.repeat(4)}- 베타\n${unit.repeat(6)}- 고객 회신`, rb[4]].join('\n\n') + '\n';
+      assert.strictEqual(m.ev(`buildReportText(${unit === NB ? '' : "'&nbsp;'"})`), want, '묶음 ① 글이 다르다(' + (unit === NB ? '복사' : '전송') + ')');
+    }
+    assert.deepStrictEqual(topCats(m), ['c-a', 'c-c', 'c-d', 'c-etc'], '묶인 베타가 머리 카드로 남았다');
+    assert.deepStrictEqual(subCats(m, 'c-d'), ['c-b'], '베타가 델타 카드 안의 작은 카드가 아니다');
+    assert.ok(dcard(m, 'c-b').querySelector('.rcard-grp') && dcard(m, 'c-b').querySelector('.rcard-grp').textContent === '묶음', '작은 카드에 "묶음" 표시가 없다');
+    assert.strictEqual(dcard(m, 'c-d').querySelector('.rcard-gsum').textContent, '합계 1.5 h', '대상 머리에 합계가 없다');
+    assert.ok(dcard(m, 'c-d').querySelector('.rcard-own .rcard-h-in[data-hcat="c-d"]') && dcard(m, 'c-d').querySelector('.rcard-own').textContent.startsWith('델타 자체'), '대상 자체 시간 칸 "델타 자체 [ ] h" 가 없다');
+    assert.ok(dcard(m, 'c-b').querySelector('.rcard-h-in[data-hcat="c-b"]'), '묶인 과제의 시간 칸이 작은 카드에 없다');
+    assert.ok(m.ev("$('#rptSummary').textContent").includes(', 묶은 과제 1개'), '요약줄에 "묶은 과제 1개" 가 없다');
+    assert.strictEqual(m.ev("$('#rptGroupSum').textContent"), '베타 → 델타', '왼쪽 요약이 다르다');
+    let cap = sendDailyBrowser(m);
+    assert.deepStrictEqual(cap.hours, headHours(cap.fields.content), 'payload.hours 가 머리 줄(이름, 값, 순서)과 다르다 ①');
+    assert.deepStrictEqual(cap.hours, [{ name: '알파', hours: 2 }, { name: '감마', hours: 1 }, { name: '델타', hours: 1.5 }], 'payload.hours ①');
+    //  시간 칸을 바꾸면 다시 그리지 않고 합계만 맞춘다(포커스 유지). 머리 줄도 따라온다.
+    const inp = dcard(m, 'c-b').querySelector('.rcard-h-in'); inp.focus(); inp.value = '2.25'; inp.dispatchEvent(new m.w.Event('change', { bubbles: true }));
+    assert.strictEqual(dcard(m, 'c-d').querySelector('.rcard-gsum').textContent, '합계 2.25 h', '시간 칸을 바꿨는데 합계가 따라오지 않는다');
+    assert.strictEqual(m.doc.activeElement, inp, '시간 칸 입력 뒤 포커스를 잃었다(다시 그렸다)');
+    assert.ok(m.ev('buildReportText()').includes('[델타] : 2.25\n'), '머리 줄 시간이 바뀐 시간 칸을 따르지 않는다');
+    inp.value = '1.5'; inp.dispatchEvent(new m.w.Event('change', { bubbles: true }));
+    //  ②
+    await openDlg(m); pick(m, 'c-b', 'c-b'); pick(m, 'c-b', 'c-a'); pick(m, 'c-c', 'c-a'); await closeDlg(m);
+    m.ev(`state.reportFormatPrefs = { daily: { marker: '1.', markerCustom: '', indent: 1 }, weekly: { marker: '-', markerCustom: '', indent: 2 } }; buildReport();`);
+    for (const unit of [NB, NBS]) {
+      const rb = refBlocks(unit);
+      const alpha = rb[0].replace('[알파] : 2\n', '[알파] : 4.5\n') + `\n${unit.repeat(2)}4. 베타\n${unit.repeat(5)}1. 고객 회신\n${unit.repeat(2)}5. 감마`;
+      assert.strictEqual(m.ev(`buildReportText(${unit === NB ? '' : "'&nbsp;'"})`), [alpha, rb[3], rb[4]].join('\n\n') + '\n', '묶음 ② 글이 다르다(' + (unit === NB ? '복사' : '전송') + ')');
+    }
+    cap = sendDailyBrowser(m);
+    assert.deepStrictEqual(cap.hours, headHours(cap.fields.content), 'payload.hours 가 머리 줄과 다르다 ②');
+    assert.deepStrictEqual(cap.hours, [{ name: '알파', hours: 4.5 }], 'payload.hours ②');
+    //  글 편집: 대상 머리 줄은 합친 시간, 옆에 "베타, 감마 묶음", 묶인 과제는 칸이 없고 대상 칸 초안에 들어 있다(공백 단위)
+    setView(m, 'doc');
+    const sec = m.ev("[].find.call(document.querySelectorAll('#rptOut .rdoc-sec'), function(s){ return s.dataset.rcat === 'c-a'; })");
+    assert.strictEqual(sec.querySelector('.rdoc-head').textContent, '[알파] : 4.5', '글 편집 머리 줄이 합친 시간이 아니다');
+    assert.strictEqual(sec.querySelector('.rdoc-grp').textContent, '베타, 감마 묶음', '머리 줄 옆 묶음 표시가 없다');
+    assert.ok(sec.querySelector('.rdoc-ta').value.endsWith('\n  4. 베타\n     1. 고객 회신\n  5. 감마'), '글 편집 초안에 묶인 과제 줄이 없다: ' + JSON.stringify(sec.querySelector('.rdoc-ta').value.slice(-60)));
+    assert.deepStrictEqual(m.evJSON("[].map.call(document.querySelectorAll('#rptOut .rdoc-sec'), function(s){ return s.dataset.rcat; })"), ['c-a', 'c-d', 'c-etc'], '묶인 과제에 글 편집 칸이 있다');
+    setView(m, 'card');
+  }
+  //  소수 합계(0.1 + 0.2 → 0.3): 머리 줄, payload.hours, 카드 합계가 같은 반올림: 변이 시험이 재사용
+  async function assertDailyFrac(m, T) {
+    m.ev(`state.taskHours = { ${JSON.stringify(T)}: { 'c-a': 0.1, 'c-b': 0.2 } }; buildReport();`);
+    await groupVia(m, [['c-b', 'c-a']]);
+    assert.ok(m.ev('buildReportText()').startsWith('[알파] : 0.3\n'), '소수 합계가 0.3 이 아니다: ' + JSON.stringify(m.ev('buildReportText()').slice(0, 20)));
+    assert.strictEqual(dcard(m, 'c-a').querySelector('.rcard-gsum').textContent, '합계 0.3 h', '카드 합계가 0.3 이 아니다');
+    const cap = sendDailyBrowser(m);
+    assert.deepStrictEqual(cap.hours, [{ name: '알파', hours: 0.3 }], 'payload.hours 소수 합계');
+  }
+
+  let B = null, bootErr = null;
+  try { B = bootBrowser(app); } catch (e) { bootErr = e; }
+  if (bootErr) {
+    test('GB0: 브라우저 모드 부팅', () => { throw bootErr; });
+  } else {
+    const T = B.ev('todayYmd()'), Y = B.ev('addDays(todayYmd(), -1)'), N = B.ev('addDays(todayYmd(), 1)');
+    const KEY = B.ev('rptDraftKey(todayYmd())'), KEY_Y = B.ev('rptDraftKey(addDays(todayYmd(), -1))');
+    const fresh = () => { clearDrafts(B); B.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(B, T); };
+    const done = () => { clearDrafts(B); B.ev("rptView = 'card'; rptViewW = 'card'; reportMode = 'daily'; state.reportSource = 'cal';"); if (overlayOpen(B, 'rptGroupModal')) B.ev("closeModal('#rptGroupModal')"); };
+
+    test('GB1 (§3, §6): 일간: 묶음이 없으면(낡은 묶음 흔적만 있어도) 복사, 전송 글과 payload.hours 가 예전과 바이트 같다', async () => {
+      fresh();
+      try { assert.ok((await assertDailySame(B, T, KEY)) >= 20); } finally { done(); }
+    });
+    test('GB2 (§3): 일간 묶음: 머리 줄 목록, 합친 시간, 본문 초안 꼴(이름 줄 + 한 단계 더, 머리기호 번호 이어짐), payload.hours = 머리 줄, 카드', async () => {
+      fresh();
+      try { await assertDailyGrouped(B, T); } finally { done(); }
+    });
+    test('GB3 (§3): 일간 묶음 소수 합계(0.1 + 0.2)는 0.3 으로 머리 줄, 카드, payload.hours 가 같다', async () => {
+      fresh();
+      try { await assertDailyFrac(B, T); } finally { done(); }
+    });
+
+    //  한 단계 규칙(§3, §4): 설정 창 선택지: 변이 시험이 재사용
+    async function assertOneLevel(m) {
+      await groupVia(m, [['c-b', 'c-d']]);
+      await openDlg(m);
+      const all = ['c-a', 'c-b', 'c-c', 'c-d', 'c-etc'];
+      const d = optsOf(m, 'c-d');
+      assert.deepStrictEqual(d, { disabled: true, opts: ['c-d|그대로 [델타]'] }, '다른 과제가 묶인 델타는 선택 상자가 꺼지고 "그대로" 뿐이어야 한다');
+      const b = optsOf(m, 'c-b');
+      assert.strictEqual(b.disabled, false);
+      assert.deepStrictEqual(b.opts.map(o => o.split('|')[0]), ['c-b', 'c-a', 'c-c', 'c-d', 'c-etc'], '묶인 베타의 선택지(그대로 + 머리 과제)가 다르다');
+      assert.ok(b.opts.includes('c-d|[델타]에 합치기') && b.opts[0] === 'c-b|그대로 [베타]');
+      for (const k of ['c-a', 'c-c', 'c-etc']) {
+        const o = optsOf(m, k);
+        const vals = o.opts.map(x => x.split('|')[0]);
+        assert.ok(!vals.slice(1).includes(k), k + ' 선택지에 자기 자신이 있다');
+        assert.ok(!vals.includes('c-b'), k + ' 선택지에 묶인 과제(베타)가 대상으로 있다(두 단계)');
+        assert.deepStrictEqual(vals, [k].concat(all.filter(x => x !== k && x !== 'c-b')), k + ' 선택지가 다르다');
+      }
+      assert.strictEqual(m.ev("rptGroupSet('c-d', 'c-a')"), false, '다른 과제가 묶인 델타를 다른 곳에 묶을 수 있다');
+      assert.strictEqual(m.ev("rptGroupSet('c-a', 'c-b')"), false, '묶인 베타를 대상으로 고를 수 있다');
+      assert.strictEqual(m.ev("rptGroupSet('c-a', 'c-a')"), true, '대조군: 그대로는 늘 된다');
+      assert.deepStrictEqual(m.evJSON(`rptDraftGet(${JSON.stringify(T)}).group`), { 'c-b': 'c-d' }, '규칙에 어긋난 선택이 저장됐다');
+      await closeDlg(m);
+    }
+    test('GB4 (§3, §4): 한 단계 규칙: 대상 후보에 자기 자신과 묶인 과제가 없고, 다른 과제가 묶인 과제는 묶일 수 없다', async () => {
+      fresh();
+      try { await assertOneLevel(B); } finally { done(); }
+    });
+
+    test('GB5 (§1, §4): 공식 과제도 묶을 수 있다(기타로), 설정 창에 "공식" 표시', async () => {
+      clearDrafts(B);
+      const st = dayState(T, Y, N); st.categories[0].source = 'db';
+      B.ev('state = ' + JSON.stringify(st) + ';'); openDaily(B, T);
+      try {
+        await openDlg(B);
+        const row = B.ev("[].find.call(document.querySelectorAll('#rgmRows .rgm-row'), function(r){ return r.querySelector('select').dataset.gsrc === 'c-a'; })");
+        assert.ok(row.querySelector('.cat-badge') && row.querySelector('.cat-badge').textContent === '공식', '공식 과제에 "공식" 표시가 없다');
+        assert.ok(!B.ev("[].find.call(document.querySelectorAll('#rgmRows .rgm-row'), function(r){ return r.querySelector('select').dataset.gsrc === 'c-b'; })").querySelector('.cat-badge'), '개인 과제에 "공식" 표시가 있다');
+        pick(B, 'c-a', 'c-etc'); await closeDlg(B);
+        const txt = B.ev('buildReportText()');
+        assert.ok(!txt.includes('[알파]') && txt.includes('[기타] : 2\n' + NB.repeat(4) + '- 알파\n' + NB.repeat(6) + '- 로그인 화면 리뷰'), '공식 과제가 기타 아래로 묶이지 않았다: ' + JSON.stringify(txt.slice(-300)));
+        assert.deepStrictEqual(topCats(B), ['c-b', 'c-c', 'c-d', 'c-etc']);
+      } finally { done(); }
+    });
+
+    //  X 와 묶음(§3): 대상 X 는 묶음 전체, 작은 카드 X 는 그 과제만: 변이 시험이 재사용
+    async function assertXGroup(m) {
+      await groupVia(m, [['c-b', 'c-a'], ['c-c', 'c-a']]);
+      const n0 = m.ev("document.querySelectorAll('#rptOut .rcard').length");
+      //  작은 카드(베타) X: 그 과제만 빠진다(줄과 시간)
+      dcard(m, 'c-b').querySelector('.rcard-x').click();
+      assert.strictEqual(m.ev("document.querySelectorAll('#rptOut .rcard').length"), n0, '작은 카드 X 가 카드를 지웠다(제자리에 남아야 한다)');
+      assert.ok(dcard(m, 'c-b').classList.contains('rcard-out') && dcard(m, 'c-b').querySelector('.rcard-back'), '작은 카드가 흐려지지 않았거나 되돌리기가 없다');
+      let txt = m.ev('buildReportText()');
+      assert.ok(txt.startsWith('[알파] : 3\n') && !txt.includes('베타') && txt.includes('- 감마'), '작은 카드 X 뒤 대상에서 그 과제 줄과 시간만 빠지지 않았다: ' + JSON.stringify(txt.slice(0, 30)));
+      let cap = sendDailyBrowser(m);
+      assert.deepStrictEqual(cap.hours, [{ name: '알파', hours: 3 }], '작은 카드 X 뒤 payload.hours');
+      dcard(m, 'c-b').querySelector('.rcard-back').click();
+      assert.ok(m.ev('buildReportText()').startsWith('[알파] : 4.5\n'), '작은 카드 되돌리기 뒤 시간이 돌아오지 않았다');
+      //  대상(알파) X: 대상과 묶음 전체가 빠진다
+      dcard(m, 'c-a').querySelector('.rcard-x').click();
+      txt = m.ev('buildReportText()');
+      assert.ok(!/\[알파\]|베타|감마/.test(txt), '대상 X 뒤에도 묶음이 남았다: ' + JSON.stringify(txt));
+      cap = sendDailyBrowser(m);
+      assert.deepStrictEqual(cap.hours, [], '대상 X 뒤 payload.hours 에 묶음이 남았다');
+      assert.ok(dcard(m, 'c-a').classList.contains('rcard-out') && dcard(m, 'c-b').closest('.rcard-out'), '대상 카드와 작은 카드가 함께 흐려지지 않았다');
+      dcard(m, 'c-a').querySelector('.rcard-back').click();
+      assert.ok(m.ev('buildReportText()').startsWith('[알파] : 4.5\n'), '대상 되돌리기 뒤 묶음이 돌아오지 않았다');
+    }
+    test('GB6 (§3): X: 대상 X 는 대상과 묶음 전체를, 작은 카드 X 는 그 과제만(줄과 시간) 이 보고서에서 뺀다', async () => {
+      fresh();
+      try { await assertXGroup(B); } finally { done(); }
+    });
+
+    //  임시 저장 수명(§5): 변이 시험이 재사용
+    async function assertStorage(m) {
+      assert.deepStrictEqual(allKeys(m, 'tc_rptDraft'), [], '전제: 키 없음');
+      await groupVia(m, [['c-b', 'c-a']]);
+      assert.deepStrictEqual(allKeys(m, 'tc_rptDraft'), [KEY], '묶음만으로 그 날짜 키가 생기지 않았다');
+      const d = getStored(m, KEY);
+      assert.deepStrictEqual([d.v, d.date, d.group, d.body, d.out], [1, T, { 'c-b': 'c-a' }, {}, []], '저장본 꼴이 다르다: ' + JSON.stringify(d));
+      assert.ok(m.ev("$('#rptEditInfo').textContent").includes('이 PC에 임시 저장됨'), '묶음만 있을 때 "임시 저장됨" 이 없다');
+      m.ev("closeModal('#reportModal')");
+      await waitFor(() => overlayClosed(m, 'reportModal'), '보고서가 닫힌다');
+      openDaily(m, T);
+      assert.deepStrictEqual(subCats(m, 'c-a'), ['c-b'], '닫고 열자 묶음이 사라졌다');
+      m.ev('__rptDraftMem.clear(); __rptDraftDirty.clear(); __rptDraftFailed.clear(); buildReport();');
+      assert.deepStrictEqual(subCats(m, 'c-a'), ['c-b'], '재시작(메모리 비움) 뒤 저장소에서 묶음을 읽지 못했다');
+      setDate(m, Y);
+      assert.ok(!m.ev("document.querySelector('#rptOut .rcard-subs')") && m.ev("$('#rptGroupSum').textContent") === '묶은 과제 없음', '다른 날짜(새 날짜)가 묶음 없이 시작하지 않는다');
+      assert.ok(!allKeys(m, 'tc_rptDraft').includes(KEY_Y), '다른 날짜 키가 렌더만으로 생겼다');
+      setDate(m, T);
+      assert.deepStrictEqual(subCats(m, 'c-a'), ['c-b'], '날짜를 오가자 묶음이 섞이거나 사라졌다');
+      //  모두 초안으로: 확인 문구에 "묶음", 키와 묶음이 모두 지워진다
+      setView(m, 'doc');
+      assert.strictEqual(m.ev("$('#rptOut .rdoc-resetall').disabled"), false, '묶음만 있을 때 "모두 초안으로" 가 꺼져 있다');
+      m.doc.querySelector('#rptOut .rdoc-resetall').click();
+      await confirmOk(m, '묶음');
+      assert.ok(!allKeys(m, 'tc_rptDraft').includes(KEY), '"모두 초안으로" 뒤에도 키가 남았다');
+      setView(m, 'card');
+      assert.ok(!m.ev("document.querySelector('#rptOut .rcard-subs')"), '"모두 초안으로" 뒤에도 묶음이 남았다');
+      //  묶음을 다 풀고 다른 것도 없으면 키를 지운다
+      await groupVia(m, [['c-c', 'c-a']]);
+      assert.ok(allKeys(m, 'tc_rptDraft').includes(KEY));
+      await groupVia(m, [['c-c', 'c-c']]);
+      assert.ok(!allKeys(m, 'tc_rptDraft').includes(KEY), '묶음을 다 풀었는데 키가 남았다');
+    }
+    test('GB7 (§5): 임시 저장: 묶음만으로 키, 닫고 열기와 재시작 뒤 유지, 날짜별(새 날짜는 묶음 없음), 모두 초안으로가 묶음까지 지움, 다 풀면 키 삭제', async () => {
+      fresh();
+      try { await assertStorage(B); } finally { done(); }
+    });
+
+    test('GB8 (§5): 렌더와 글 만들기, 설정 창 열고 닫기만으로는 저장소에 쓰지 않는다', async () => {
+      fresh();
+      try {
+        B.ev(`localStorage.setItem(${JSON.stringify(KEY)}, JSON.stringify({ v:1, date:${JSON.stringify(T)}, body:{}, base:{}, out:[], group:{ 'c-b':'c-a', 'c-gone':'c-a' }, savedAt:'2026-01-01T00:00:00.000Z' }));`);
+        B.ev("window.__w = []; (function(){ var P = Storage.prototype, s = P.setItem, r = P.removeItem; P.setItem = function(k){ if(String(k).indexOf('tc_rptDraft')===0) window.__w.push('set '+k); return s.apply(this, arguments); }; P.removeItem = function(k){ if(String(k).indexOf('tc_rptDraft')===0) window.__w.push('rm '+k); return r.apply(this, arguments); }; window.__unspy = function(){ P.setItem = s; P.removeItem = r; }; })();");
+        try {
+          B.ev('buildReport();'); setView(B, 'doc'); setView(B, 'card'); setDate(B, Y); setDate(B, T);
+          await openDlg(B); await closeDlg(B);
+          B.ev("buildReportText(); buildReportText('&nbsp;'); reportDailyHours(collectReportData($('#rptFrom').value, $('#rptFrom').value, rptSources()).rows, $('#rptFrom').value); setReportMode('weekly'); setReportMode('daily');");
+          setDate(B, T);
+          assert.deepStrictEqual(B.evJSON('window.__w'), [], '렌더나 글 만들기, 설정 창 열고 닫기가 저장소에 썼다');
+        } finally { B.ev('window.__unspy()'); }
+        assert.deepStrictEqual(subCats(B, 'c-a'), ['c-b'], '전제: 저장본의 묶음을 읽어 그렸다(없는 과제 흔적은 무시)');
+      } finally { done(); }
+    });
+
+    //  낡은 초안 안내(§3): 대상 본문을 고친 뒤 묶음을 바꾸면 고친 글은 그대로, "캘린더 기록이 바뀌었습니다" 가 뜬다: 변이 시험이 재사용
+    async function assertStale(m) {
+      setView(m, 'doc');
+      const taA = () => m.ev("[].find.call(document.querySelectorAll('#rptOut .rdoc-ta'), function(t){ return t.dataset.rcat === 'c-a'; })");
+      const staleA = () => m.ev("[].find.call(document.querySelectorAll('#rptOut .rdoc-sec'), function(s){ return s.dataset.rcat === 'c-a'; }).querySelector('.rdoc-stale').hidden");
+      const t = taA(); t.value = '• 알파 고친 글'; t.dispatchEvent(new m.w.Event('input', { bubbles: true }));
+      assert.strictEqual(staleA(), true, '막 고쳤는데 낡았다고 한다');
+      await groupVia(m, [['c-b', 'c-a']]);
+      assert.strictEqual(staleA(), false, '대상 본문을 고친 뒤 묶음을 바꿨는데 낡은 초안 안내가 없다');
+      assert.strictEqual(taA().value, '• 알파 고친 글', '묶음이 고친 글을 덮었다');
+      assert.ok(m.ev('buildReportText()').startsWith('[알파] : 3.5\n• 알파 고친 글\n\n[감마]'), '나가는 글이 고친 글 그대로가 아니다(머리 줄은 합친 시간)');
+      await groupVia(m, [['c-b', 'c-b']]);
+      assert.strictEqual(staleA(), true, '묶음을 풀어 초안이 기준본과 같아졌는데 안내가 남았다');
+      setView(m, 'card');
+    }
+    test('GB9 (§3): 낡은 초안 안내: 대상 본문을 고친 뒤 묶음을 바꾸면 고친 글은 그대로 두고 안내가 뜬다', async () => {
+      fresh();
+      try { await assertStale(B); } finally { done(); }
+    });
+
+    test('GB10 (§3): 묶인 과제의 고친 글은 묶음 동안 쓰이지 않고 남았다가 묶음을 풀면 다시 쓰인다', async () => {
+      fresh();
+      try {
+        setView(B, 'doc');
+        const t = B.ev("[].find.call(document.querySelectorAll('#rptOut .rdoc-ta'), function(t){ return t.dataset.rcat === 'c-b'; })");
+        t.value = '• 베타 고친 글'; t.dispatchEvent(new B.w.Event('input', { bubbles: true }));
+        B.ev('rptDraftFlush()');
+        await groupVia(B, [['c-b', 'c-a']]);
+        let txt = B.ev('buildReportText()');
+        assert.ok(!txt.includes('베타 고친 글') && txt.includes(NB.repeat(4) + '- 베타\n' + NB.repeat(6) + '- 고객 회신'), '묶음 동안 묶인 과제의 고친 글이 쓰였다(자동 초안이어야 한다)');
+        assert.strictEqual(getStored(B, KEY).body['c-b'], '• 베타 고친 글', '묶을 때 묶인 과제의 고친 글이 지워졌다');
+        assert.ok(!B.ev("$('#rptEditInfo').textContent").includes('고친 과제'), '쉬고 있는 고친 글을 "고친 과제" 로 센다');
+        await groupVia(B, [['c-b', 'c-b']]);
+        txt = B.ev('buildReportText()');
+        assert.ok(txt.includes('[베타] : 1.5\n• 베타 고친 글'), '묶음을 풀었는데 고친 글이 돌아오지 않았다');
+      } finally { done(); }
+    });
+
+    //  설정 창 접근성(§4): 라벨, 첫 선택 상자 포커스, Esc, 닫기, 포커스가 돌아갈 자리: 변이 시험이 재사용
+    async function assertDlgA11y(m) {
+      assert.ok(!m.doc.getElementById('rptGroupRow').classList.contains('hidden'), '일간에 "보고서 묶음" 줄이 없다');
+      assert.strictEqual(m.ev("$('#rptGroupRow .rpt-opt-lb').textContent"), '보고서 묶음');
+      const link = m.doc.getElementById('rptGroupOpen');
+      assert.strictEqual(link.textContent, '설정');
+      link.focus();
+      await openDlg(m);
+      const modal = m.doc.querySelector('#rptGroupModal .modal');
+      assert.strictEqual(modal.getAttribute('role'), 'dialog', '설정 창에 role=dialog 가 없다');
+      assert.ok(modal.getAttribute('aria-labelledby') && m.doc.getElementById(modal.getAttribute('aria-labelledby')).textContent === '보고서 묶음', '설정 창 이름이 제목에 이어지지 않는다');
+      const sels = [...m.doc.querySelectorAll('#rgmRows select')];
+      assert.strictEqual(sels.length, 5, '과제마다 선택 상자 하나가 아니다');
+      for (const s of sels) {
+        const lb = m.doc.querySelector(`#rgmRows label[for="${s.id}"]`);
+        assert.ok(s.id && lb && lb.textContent.trim().length > 0, '선택 상자에 라벨이 없다: ' + s.dataset.gsrc);
+      }
+      assert.strictEqual(m.doc.activeElement, sels[0], '열면 첫 선택 상자에 포커스가 가지 않는다');
+      assert.strictEqual(m.ev("_modalStack[_modalStack.length - 1].opener && _modalStack[_modalStack.length - 1].opener.id"), 'rptGroupOpen', '닫으면 포커스가 "설정" 링크로 돌아가지 않는다(opener)');
+      assert.strictEqual(m.doc.querySelectorAll('#rptGroupModal button').length, 1, '설정 창의 버튼이 닫기 하나가 아니다');
+      //  Esc 로 닫힌다(보고서 창은 남는다)
+      m.doc.dispatchEvent(new m.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await waitFor(() => overlayClosed(m, 'rptGroupModal'), 'Esc 로 설정 창이 닫힌다');
+      assert.ok(overlayOpen(m, 'reportModal'), 'Esc 가 보고서 창까지 닫았다');
+      //  닫기 버튼으로도 닫힌다
+      await openDlg(m); await closeDlg(m);
+      assert.ok(overlayOpen(m, 'reportModal'));
+    }
+    test('GB11 (§4): 설정 창 접근성: 라벨, 열면 첫 선택 상자, 닫기 하나, Esc, 닫으면 "설정" 으로', async () => {
+      fresh();
+      try { await assertDlgA11y(B); } finally { done(); }
+    });
+
+    test('GB12 (§2, §4): 기간 취합(custom)에는 "보고서 묶음" 줄이 없고 묶음이 적용되지 않는다', async () => {
+      fresh();
+      try {
+        await groupVia(B, [['c-b', 'c-a']]);
+        B.ev(`setReportMode('custom'); $('#rptFrom').value = ${JSON.stringify(T)}; $('#rptTo').value = ${JSON.stringify(T)}; buildReport();`);
+        assert.ok(B.doc.getElementById('rptGroupRow').classList.contains('hidden'), '기간 취합에 "보고서 묶음" 줄이 보인다');
+        assert.ok(!B.ev("document.querySelector('#rptOut .rcard-subs')") && B.ev('buildReportText()').includes('[베타]'), '기간 취합에 일간 묶음이 적용됐다');
+      } finally { done(); }
+    });
+
+    // ── 독립 리뷰 뒤 정정(REPORT-GROUP 정정 이력 "리뷰 뒤") ──
+    const setSkip = (m, on) => m.ev(`$('#rptSkipEmpty').checked = ${on}; $('#rptSkipEmpty').dispatchEvent(new Event('change'));`);
+    //  정정 1: 대상을 고친 뒤 묶으면 나가는 글에는 묶인 과제 줄이 없다. 카드가 그것을 말한다(고친 글은 덮지 않는다) — 변이 시험이 재사용
+    async function assertCardStale(m) {
+      setView(m, 'doc');
+      const t = m.ev("[].find.call(document.querySelectorAll('#rptOut .rdoc-ta'), function(t){ return t.dataset.rcat === 'c-a'; })");
+      t.value = '• 알파 고친 글'; t.dispatchEvent(new m.w.Event('input', { bubbles: true }));
+      setView(m, 'card');
+      assert.ok(!dcard(m, 'c-a').querySelector('.rcard-gstale'), '묶기 전에는 묶음 안내가 없어야 한다');
+      await groupVia(m, [['c-b', 'c-a']]);
+      const n = dcard(m, 'c-a').querySelector('.rcard-gstale');
+      assert.ok(n && n.textContent === '고친 글에 묶은 과제 줄이 없습니다. 글 편집에서 초안으로 되돌리면 들어갑니다.', '고친 대상 카드에 "묶은 과제 줄이 없다" 안내가 없다');
+      assert.ok(m.ev('buildReportText()').startsWith('[알파] : 3.5\n• 알파 고친 글\n\n'), '안내가 고친 글을 덮었다');
+      setView(m, 'doc');
+      m.doc.querySelector('#rptOut .rdoc-sec[data-rcat="c-a"] .rdoc-revert').click();
+      await confirmOk(m);
+      setView(m, 'card');
+      assert.ok(!dcard(m, 'c-a').querySelector('.rcard-gstale'), '초안으로 되돌린 뒤에도 안내가 남았다');
+    }
+    test('GB13 (리뷰 정정 1): 대상을 고친 뒤 묶으면 카드에 "고친 글에 묶은 과제 줄이 없습니다" 안내, 초안으로 되돌리면 사라진다', async () => {
+      fresh();
+      try { await assertCardStale(B); } finally { done(); }
+    });
+
+    //  정정 2: 빈 [기타] 로 묶고 "내용 없는 항목 제외" 를 켜도 대상은 행으로 남고, 걸러진 묶인 과제의 묶음도 쓰기 때 버리지 않는다. 지운 과제를 가리키는 묶음만 걷는다 — 변이 시험이 재사용
+    async function assertSkipEmptyKeeps(m) {
+      await groupVia(m, [['c-b', 'c-etc']]);
+      setSkip(m, true);
+      assert.deepStrictEqual(topCats(m), ['c-a', 'c-c', 'c-etc'], '내용 없는 항목 제외를 켜자 묶음 대상 [기타] 가 빠졌다');
+      assert.deepStrictEqual(subCats(m, 'c-etc'), ['c-b'], '내용 없는 항목 제외를 켜자 묶음이 풀렸다');
+      const txt = m.ev('buildReportText()');
+      assert.ok(txt.endsWith('[기타] : 1.5\n' + NB.repeat(4) + '- 베타\n' + NB.repeat(6) + '- 고객 회신\n'), '빈 [기타] 대상 글이 다르다: ' + JSON.stringify(txt.slice(-80)));
+      const cap = sendDailyBrowser(m);
+      assert.deepStrictEqual(cap.hours, [{ name: '알파', hours: 2 }, { name: '감마', hours: 1 }, { name: '기타', hours: 1.5 }], '내용 없는 항목 제외 + 묶음 payload.hours');
+      //  걸러진 묶인 과제(빈 델타 → 알파): 다른 쓰기가 있어도 묶음이 남는다
+      setSkip(m, false);
+      await groupVia(m, [['c-d', 'c-a']]);
+      setSkip(m, true);
+      assert.ok(!m.ev("document.querySelector('#rptOut .rcard[data-rcat=\"c-d\"]')"), '전제: 빈 델타는 걸러진다');
+      dcard(m, 'c-c').querySelector('.rcard-x').click();
+      dcard(m, 'c-c').querySelector('.rcard-back').click();
+      assert.deepStrictEqual(getStored(m, KEY).group, { 'c-b': 'c-etc', 'c-d': 'c-a' }, '걸러진 행 때문에 쓰기가 묶음을 버렸다');
+      setSkip(m, false);
+      assert.deepStrictEqual(subCats(m, 'c-a'), ['c-d'], '내용 없는 항목 제외를 끄자 묶음이 돌아오지 않았다');
+      //  지운 과제를 가리키는 묶음은 다음 쓰기 때 걷는다
+      m.ev(`(function(){ var k = ${JSON.stringify(KEY)}, d = JSON.parse(localStorage.getItem(k)); d.group['c-gone'] = 'c-a'; d.group['c-c'] = 'c-gone2'; localStorage.setItem(k, JSON.stringify(d)); __rptDraftMem.clear(); __rptDraftDirty.clear(); buildReport(); })()`);
+      dcard(m, 'c-c').querySelector('.rcard-x').click();
+      assert.deepStrictEqual(getStored(m, KEY).group, { 'c-b': 'c-etc', 'c-d': 'c-a' }, '지운 과제를 가리키는 묶음을 쓰기 때 걷지 않았다');
+      setSkip(m, false);
+    }
+    test('GB14 (리뷰 정정 2, 4): 빈 [기타] 로 묶고 내용 없는 항목 제외를 켜도 묶음 유지(행, 글, hours) · 걸러진 묶인 과제의 묶음도 쓰기 때 남고 지운 과제 묶음만 걷는다', async () => {
+      fresh();
+      try { await assertSkipEmptyKeeps(B); } finally { setSkip(B, false); done(); }
+    });
+
+    //  정정 3: 숨은 묶음이 되살아나지 않는다(a → b 가 숨어 있을 때 b → 다른 과제로 묶었다가 풀면 a 는 머리 줄로 남는다) — 변이 시험이 재사용
+    async function assertNoResurrect(m) {
+      await groupVia(m, [['c-d', 'c-b']]);
+      setSkip(m, true);   // 빈 델타가 걸러져 델타 → 베타 는 숨는다(베타는 대상이 아니게 보인다)
+      await openDlg(m);
+      assert.strictEqual(optsOf(m, 'c-b').disabled, false, '전제: 델타 → 베타 가 숨어 있어 베타 선택 상자가 켜져 있다');
+      pick(m, 'c-b', 'c-a'); await closeDlg(m);
+      assert.deepStrictEqual(getStored(m, KEY).group, { 'c-b': 'c-a' }, '베타를 묶을 때 베타를 대상으로 삼던 숨은 묶음(델타 → 베타)을 지우지 않았다');
+      setSkip(m, false);
+      await groupVia(m, [['c-b', 'c-b']]);
+      assert.ok(m.ev("!!document.querySelector('#rptOut > .rcard[data-rcat=\"c-d\"]')") && !m.ev("document.querySelector('#rptOut .rcard-subs')"), '묶음을 풀자 숨어 있던 델타 → 베타 가 되살아났다');
+    }
+    test('GB15 (리뷰 정정 3): a → b 가 숨어 있을 때 b → 다른 과제로 묶었다가 풀어도 a → b 가 되살아나지 않는다(내용 없는 항목 제외 켜고 끄기)', async () => {
+      fresh();
+      try { await assertNoResurrect(B); } finally { setSkip(B, false); done(); }
+    });
+
+    //  정정 6: 설정 링크 이름, 요약은 글이 바뀔 때만 쓴다(aria-live 되풀이 방지) — 변이 시험이 재사용
+    async function assertSumQuiet(m) {
+      assert.strictEqual(m.doc.getElementById('rptGroupOpen').getAttribute('aria-label'), '보고서 묶음 설정', '설정 링크의 접근 이름이 "보고서 묶음 설정" 이 아니다');
+      const n0 = m.doc.getElementById('rptGroupSum').firstChild;
+      m.ev('buildReport(); buildReport();');
+      assert.strictEqual(m.doc.getElementById('rptGroupSum').firstChild, n0, '글이 같은데 요약을 다시 썼다(aria-live 가 다시 읽는다)');
+      await groupVia(m, [['c-b', 'c-a']]);
+      const n1 = m.doc.getElementById('rptGroupSum').firstChild;
+      assert.ok(n1 !== n0 && m.ev("$('#rptGroupSum').textContent") === '베타 → 알파', '묶음이 바뀌었는데 요약이 바뀌지 않았다');
+      m.ev('buildReport();');
+      assert.strictEqual(m.doc.getElementById('rptGroupSum').firstChild, n1, '글이 같은데 요약을 다시 썼다(묶음 뒤)');
+    }
+    test('GB16 (리뷰 정정 6): 설정 링크 aria-label, 요약(aria-live)은 글이 바뀔 때만 쓴다', async () => {
+      fresh();
+      try { await assertSumQuiet(B); } finally { done(); }
+    });
+
+    test('변이 GBM11: 카드 묶음 안내를 빼면 GB13 이 잡는다', async () => {
+      const bad = mutate(app, '      if(_gStale) html += `<div class="rcard-gstale"', '      if(false) html += `<div class="rcard-gstale"');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertCardStale(X), /안내가 없다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM12: 빈 대상을 살리지 않거나, 걸러진 행 기준으로 묶음을 걷거나, 지운 과제 묶음을 걷지 않으면 GB14 가 잡는다', async () => {
+      const cases = [
+        [mutate(app, 'if(_keep.size) rows = _rowsAll.filter(r => rows.includes(r) || _keep.has(r.key));', ''), /\[기타\] 가 빠졌다/],
+        [mutate(app, "if(!_cats.has(k) || !_cats.has(d.group[k])) delete d.group[k]; }", "if(!_cats.has(k) || !_cats.has(d.group[k]) || (keys && (!keys.has(k) || !keys.has(d.group[k])))) delete d.group[k]; }"), /쓰기가 묶음을 버렸다/],
+        [mutate(app, "  if(d && d.group){ const _cats = new Set((state.categories || []).map(c => c.id)); for(const k of Object.keys(d.group)) if(!_cats.has(k) || !_cats.has(d.group[k])) delete d.group[k]; }\n", ''), /지운 과제를 가리키는 묶음/],
+      ];
+      for (const [bad, re] of cases) {
+        const X = bootBrowser(bad);
+        try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertSkipEmptyKeeps(X), re); }
+        finally { clearDrafts(X); await X.close(); }
+      }
+    });
+    test('변이 GBM13: 묶을 때 숨은 묶음을 지우지 않으면 GB15 가 잡는다', async () => {
+      const bad = mutate(app, 'for(const x of Object.keys(d.group)) if(d.group[x] === src) delete d.group[x]; ', '');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertNoResurrect(X), /숨은 묶음/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM14: 요약을 다시 그릴 때마다 쓰면 GB16 이 잡는다', async () => {
+      const bad = mutate(app, 'if(sum && sum.innerHTML !== sumHtml) sum.innerHTML = sumHtml;', 'if(sum) sum.innerHTML = sumHtml;');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertSumQuiet(X), /다시 썼다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+
+    // ── 변이(일간) ──
+    test('변이 GBM1: 머리 줄 시간 함수가 묶음을 무시하면 GB2 가 잡는다', async () => {
+      const bad = mutate(app, '  const _g = rptDayGroup(rows, date);\n', '  const _g = null;\n');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDailyGrouped(X, T), /글이 다르다|payload\.hours|합계/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM2: 묶인 과제 줄의 한 단계 들여쓰기를 빼면 GB2 가 잡는다', async () => {
+      const bad = mutate(app, "(kidBody ? '\\n' + String(kidBody).split('\\n').map(l => sub + l).join('\\n') : '')", "(kidBody ? '\\n' + String(kidBody) : '')");
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDailyGrouped(X, T), /글이 다르다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM3: 묶인 과제 번호를 이어 매기지 않으면 GB2 가 잡는다', async () => {
+      const bad = mutate(app, 'const mk = reportMarkerAt(spec, r.titles.length + j);', 'const mk = reportMarkerAt(spec, j);');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDailyGrouped(X, T), /묶음 ② 글이 다르다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM4: 합계 반올림을 빼면 GB3 이 잡는다', async () => {
+      const bad = mutate(app, '  return any ? Math.round(s * 100) / 100 : null;', '  return any ? s : null;');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDailyFrac(X, T), /0\.3/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM5: 낡은 대상(없는 과제)을 거르지 않으면 GB1 의 바이트 비교가 잡는다', async () => {
+      const bad = mutate(app, ' && group[k] !== k && ks.has(group[k])) cand.set', ' && group[k] !== k) cand.set');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDailySame(X, T, KEY), /예전과 다르다|묶음 카드|묶은 과제/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM6: 설정 창 선택지에 묶인 과제를 넣으면(두 단계) GB4 가 잡는다', async () => {
+      const bad = mutate(app, "g.rows.filter(y => y.k !== x.k && !live.has(y.k))", 'g.rows.filter(y => y.k !== x.k)');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertOneLevel(X), /묶인 과제|선택지/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM7: 대상 X 가 묶인 과제를 남기면(묶인 과제를 머리 줄로 되살리면) GB6 이 잡는다', async () => {
+      const bad = mutate(app, "  const blocks = rows.filter(r => !(_dr && _dr.out.includes(r.key))).filter(r => !(_dg && _dg.kid.has(r.key))).map(r => {",
+        "  const blocks = rows.filter(r => !(_dr && _dr.out.includes(r.key))).filter(r => !(_dg && _dg.kid.has(r.key) && !_dr.out.includes(_dg.kid.get(r.key)))).map(r => {");
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertXGroup(X), /대상 X 뒤에도 묶음이 남았다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM8: 묶음만 있는 저장본을 빈 것으로 치거나 읽을 때 묶음을 버리면 GB7 이 잡는다', async () => {
+      const bad1 = mutate(app, " && !Object.keys(d.group || {}).length); }\n// 저장본 → 정규화", "); }\n// 저장본 → 정규화");
+      let X = bootBrowser(bad1);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertStorage(X), /키가 생기지 않았다/); }
+      finally { clearDrafts(X); await X.close(); }
+      const bad2 = mutate(app, "savedAt: typeof o.savedAt === 'string' ? o.savedAt : '', group: rptGroupNorm(o.group) };   // group: 보고서 묶음(REPORT-GROUP §5)\n}\n// 그 날짜의 초안",
+        "savedAt: typeof o.savedAt === 'string' ? o.savedAt : '', group: {} };\n}\n// 그 날짜의 초안");
+      X = bootBrowser(bad2);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertStorage(X), /사라졌다|임시 저장됨/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM9: 대상 초안을 묶음 없이 만들면(낡은 초안 비교가 묶음을 못 보면) GB9 가 잡는다', async () => {
+      const bad = mutate(app, "        draft: _gk.length ? reportGroupBodyText(r, _gk, ' ', _mkSpec, _indent) : reportRowBodyText(r, ' ', _mkSpec, _indent),",
+        "        draft: reportRowBodyText(r, ' ', _mkSpec, _indent),");
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertStale(X), /낡은 초안 안내가 없다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GBM10: 열면 첫 선택 상자 포커스나 라벨을 잃으면 GB11 이 잡는다', async () => {
+      const bad = mutate(app, '<label class="rgm-name" for="rgmSel${i}">', '<label class="rgm-name">');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDlgA11y(X), /라벨/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+
+    // ───────────────────────── 주간(캘린더 출처) ─────────────────────────
+    const MON = '2026-07-13', SUN = '2026-07-19', MON2 = '2026-07-20', SUN2 = '2026-07-26';
+    //  weekly-edit 과 같은 상태: 알파(3.5), 베타(1), 감마(0.5), 델타(없음), '알 파'(동명, 키 알파#c-a2)
+    const weekState = () => ({
+      gitAuthor: '', svnAuthor: '',
+      categories: [
+        { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-c', name: '감마', color: '#d97706', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-d', name: '델타', color: '#5b6b7d', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+        { id: 'c-a2', name: '알 파', color: '#888888', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      ],
+      entries: [
+        E({ id: 'e-a1', date: MON, title: '로그인 화면 리뷰', categoryId: 'c-a', memo: 'UI 확인\n• 암호화 모듈 확인' }),
+        E({ id: 'g-a', date: '2026-07-14', title: '작업일지', categoryId: 'c-a', source: 'git', commits: [{ hash: 'h1', short: 'h1', time: '09:00', subject: '기능 추가', body: '본문 첫 줄\n  - 들여쓴 본문' }] }),
+        E({ id: 'e-b1', date: '2026-07-15', title: '고객 회신', categoryId: 'c-b' }),
+        E({ id: 'e-a2x', date: '2026-07-16', title: '동명 과제 일', categoryId: 'c-a2' }),
+        E({ id: 'e-n1', date: '2026-07-21', title: '다음 주 일', categoryId: 'c-b' }),
+      ],
+      todos: [],
+      rooms: [], attendance: {},
+      taskHours: { [MON]: { 'c-a': 2, 'c-b': 1 }, '2026-07-14': { 'c-a': 1.5, 'c-c': 0.5 }, '2026-07-21': { 'c-b': 3 } },
+      gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+      reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
+    });
+    //  예전 buildReportText(028409e) 의 캘린더 경로: 주간 복사의 기준(앱 전역을 쓴다).
+    function WREF(indentUnit) {
+      indentUnit = indentUnit || ' ';
+      const from = $('#rptFrom').value, to = $('#rptTo').value;
+      const { rows } = collectReportData(from, to, rptSources());
+      if (!rows.length) return '';
+      const _mkSpec = reportMarkerSpec();
+      const _fmt = currentReportFormatPref();
+      const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
+      const _pad = indentUnit.repeat(_indent * 2);
+      return rows.map(r => '[' + r.name + ']' + r.titles.map((t, i) => {
+        const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
+        const m = (r.titleMeta && r.titleMeta[i]) || null;
+        const _sub = _pad + reportSubIndent(_prefix, indentUnit);
+        return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);
+      }).join('')).join('\n\n') + '\n';
+    }
+    const openWeekly = (m, mon) => m.ev(`openReport(); setReportMode('weekly'); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit','#rptWithDesc'].forEach(function(s){ $(s).checked = true; }); $('#rptSkipEmpty').checked = false;`
+      + ` $('#rptFrom').value = ${JSON.stringify(mon)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
+    const setWeek = (m, mon) => m.ev(`$('#rptFrom').value = ${JSON.stringify(mon)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
+    const wcard = (m, k) => m.ev(`[].find.call(document.querySelectorAll('#rptOut .rcard'), function(c){ return c.dataset.wk === ${JSON.stringify(k)}; })`);
+    const wTop = (m) => m.evJSON("[].map.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk; })");
+    const wSubs = (m, k) => m.evJSON(`(function(){ var c = [].find.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk === ${JSON.stringify(k)}; }); return c ? [].map.call(c.querySelectorAll('.rcard-subs > .rcard'), function(x){ return x.dataset.wk; }) : null; })()`);
+    const sendW = (m) => { m.ev('window.__capW = null; Platform.report.submitWeekly = function(p){ window.__capW = JSON.parse(JSON.stringify(p)); };'); m.doc.getElementById('btnRptSend').click(); const c = m.evJSON('window.__capW'); if (m.ev('HOST')) m.ev('clearTimeout(Netcus.watchdog)'); return c; };
+    const baseCal = (m) => m.evJSON('buildWeeklyFields($("#rptFrom").value, $("#rptTo").value, rptSources())');
+    const WKEY = () => B.ev(`rptWKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)})`);
+    const wfresh = () => { clearDrafts(B); B.ev('state = ' + JSON.stringify(weekState()) + ';'); openWeekly(B, MON); setView(B, 'card'); };
+
+    //  바이트 같음(주간 cal): 묶음 없음 + 낡은 묶음 흔적(다른 이름, 자기 자신): 변이 시험이 재사용
+    async function assertWeekSame(m) {
+      m.ev('window.__WREF = ' + WREF.toString());
+      let n = 0;
+      for (const variant of ['none', 'stale']) {
+        if (variant === 'stale') m.ev(`localStorage.setItem(rptWKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)}), JSON.stringify({ v:1, from:${JSON.stringify(MON)}, to:${JSON.stringify(SUN)}, prog:{}, progBase:{}, progBaseSrc:{}, plan:{}, out:[], group:{ '사라진과제':'알파', '알파':'없는대상', '베타':'베타' }, savedAt:'' })); __rptDraftMem.clear(); __rptDraftDirty.clear();`);
+        for (const [mk, cu, ind] of FORMATS) {
+          m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: ${JSON.stringify(mk)}, markerCustom: ${JSON.stringify(cu)}, indent: ${ind} } }; buildReport();`);
+          const tag = `${variant} ${mk}/${cu}/${ind}`;
+          const base = baseCal(m);
+          assert.deepStrictEqual(m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)'), base, '네 칸이 buildWeeklyFields 와 다르다: ' + tag);
+          assert.strictEqual(m.ev('buildReportText()'), m.ev('__WREF()'), '주간 복사가 예전과 다르다: ' + tag);
+          assert.ok(!m.ev("document.querySelector('#rptOut .rcard-subs, #rptOut .rcard-gsum')"), '묶음이 없는데 묶음 카드가 보인다: ' + tag);
+          n++;
+        }
+        m.ev(`state.reportFormatPrefs = { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } }; buildReport();`);
+        const cap = sendW(m), b = baseCal(m);
+        assert.deepStrictEqual(cap.fields, { sdate: MON, edate: SUN, subject: b.subject, content: b.content, endwork: b.endwork, planwork: b.planwork }, '실제 채우기 네 칸이 예전과 다르다: ' + variant);
+        assert.strictEqual(await copyText(m), m.ev('__WREF()'), '복사 버튼 글이 예전과 다르다: ' + variant);
+      }
+      return n;
+    }
+    test('GW1 (§3, §6): 주간(캘린더): 묶음이 없으면(낡은 묶음 흔적만 있어도) 네 칸, 복사, 실제 채우기가 예전과 바이트 같다', async () => {
+      wfresh();
+      try { assert.ok((await assertWeekSame(B)) >= 10); } finally { done(); }
+    });
+
+    //  주간(cal) 묶음 적용: 베타 → 알파: 변이 시험이 재사용
+    async function assertWeekGrouped(m) {
+      const base = baseCal(m), bw = base.endwork.split('\n\n');
+      await groupVia(m, [['베타', '알파']]);
+      const o = m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
+      assert.strictEqual(o.content, '[알파] : 4.5\n[감마] : 0.5\n[델타]\n[알 파]\n-----\n합계 : 5', '과제투입시간과 합계가 묶음 뒤 값이 아니다');
+      assert.strictEqual(o.planwork, '[알파]\n[감마]\n[델타]\n[알 파]', '차주계획 머리 줄에 묶인 과제가 남았다');
+      assert.strictEqual(o.endwork, [bw[0] + `\n${NBS.repeat(4)}- 베타\n${NBS.repeat(6)}- 고객 회신`, bw[2], bw[3], bw[4]].join('\n\n'), '진행사항에 묶인 과제 줄(이름 줄 + 한 단계 더)이 없다');
+      assert.strictEqual(o.subject, base.subject);
+      const cap = sendW(m);
+      assert.deepStrictEqual(cap.fields, { sdate: MON, edate: SUN, subject: o.subject, content: o.content, endwork: o.endwork, planwork: o.planwork }, '실제 채우기 네 칸이 묶음 결과와 다르다');
+      const cp = m.ev('buildReportText()');
+      assert.ok(cp.includes(`${NB.repeat(4)}- 베타\n${NB.repeat(6)}- 고객 회신\n\n[감마]`) && !cp.includes('[베타]'), '주간 복사에 묶음이 반영되지 않았다');
+      assert.deepStrictEqual(wTop(m), ['알파', '감마', '델타', '알파#c-a2'], '묶인 베타가 머리 카드로 남았다');
+      assert.deepStrictEqual(wSubs(m, '알파'), ['베타'], '베타가 알파 카드 안에 없다');
+      assert.strictEqual(wcard(m, '알파').querySelector('.rcard-gsum').textContent, '합계 4.5 h', '주간 대상 카드에 합계가 없다');
+      assert.strictEqual(wcard(m, '베타').querySelector('.rcard-wh').textContent, '이번 주 1 h', '묶인 작은 카드의 이번 주 시간');
+      assert.ok(m.ev("$('#rptSummary').textContent").includes(', 묶은 과제 1개'), '주간 요약줄에 "묶은 과제 1개" 가 없다');
+      setView(m, 'doc');
+      assert.strictEqual(m.ev("$('#rptOut .rwd-hours').textContent"), o.content, '글 편집 과제투입시간이 묶음 뒤 값이 아니다');
+      assert.ok(!m.ev("[].some.call(document.querySelectorAll('#rptOut [data-wsec]'), function(x){ return x.dataset.wk === '베타'; })"), '묶인 과제에 진행사항이나 차주계획 칸이 있다');
+      const sec = m.ev("[].find.call(document.querySelectorAll('#rptOut .rdoc-sec'), function(s){ return s.dataset.wsec === 'prog' && s.dataset.wk === '알파'; })");
+      assert.strictEqual(sec.querySelector('.rdoc-grp').textContent, '베타 묶음');
+      assert.ok(sec.querySelector('.rdoc-ta').value.endsWith('\n    - 베타\n      - 고객 회신'), '주간 글 편집 초안에 묶인 과제 줄이 없다');
+      setView(m, 'card');
+    }
+    test('GW2 (§3): 주간(캘린더) 묶음: 과제투입시간과 합계, 진행사항(이름 줄 + 한 단계 더), 차주계획 머리 줄, 복사, 카드, 글 편집', async () => {
+      wfresh();
+      try { await assertWeekGrouped(B); } finally { done(); }
+    });
+
+    test('GW3 (§3, §5): 주간: X(대상은 묶음 전체, 작은 카드는 그 과제만), 기간별 임시 저장(묶음만으로 키, 다른 주는 묶음 없음), 모두 초안으로', async () => {
+      wfresh();
+      try {
+        await groupVia(B, [['베타', '알파'], ['감마', '알파']]);
+        const K = WKEY();
+        assert.deepStrictEqual(allKeys(B, 'tc_rptDraft'), [K], '주간 묶음만으로 그 기간 키가 생기지 않았다');
+        assert.deepStrictEqual(getStored(B, K).group, { '베타': '알파', '감마': '알파' });
+        wcard(B, '감마').querySelector('.rcard-x').click();
+        let o = B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
+        assert.ok(o.content.startsWith('[알파] : 4.5\n[델타]') && o.content.endsWith('합계 : 4.5') && !o.endwork.includes('감마'), '작은 카드 X 뒤 그 과제 시간과 줄만 빠지지 않았다: ' + o.content);
+        wcard(B, '알파').querySelector('.rcard-x').click();
+        o = B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
+        assert.ok(!/알파\]|베타|감마/.test(o.endwork.replace('[알 파]', '')) && o.content === '[델타]\n[알 파]\n-----\n합계 : 0' && o.planwork === '[델타]\n[알 파]', '대상 X 뒤에도 묶음이 남았다: ' + JSON.stringify(o));
+        wcard(B, '알파').querySelector('.rcard-back').click();
+        setWeek(B, MON2);
+        assert.ok(!B.ev("document.querySelector('#rptOut .rcard-subs')") && B.ev("$('#rptGroupSum').textContent") === '묶은 과제 없음', '다른 주가 묶음 없이 시작하지 않는다');
+        assert.deepStrictEqual(allKeys(B, 'tc_rptDraft'), [K], '다른 주 키가 렌더만으로 생겼다');
+        setWeek(B, MON);
+        assert.deepStrictEqual(wSubs(B, '알파'), ['베타', '감마'], '주를 오가자 묶음이 사라졌다');
+        setView(B, 'doc');
+        B.doc.querySelector('#rptOut .rdoc-resetall').click();
+        await confirmOk(B, '묶음');
+        assert.deepStrictEqual(allKeys(B, 'tc_rptDraft'), [], '주간 "모두 초안으로" 뒤에도 키가 남았다');
+        assert.deepStrictEqual(B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)'), baseCal(B), '"모두 초안으로" 뒤 네 칸이 예전과 같지 않다');
+      } finally { done(); }
+    });
+
+    //  리뷰 정정(주간 캘린더): 고친 대상 카드 안내(1), 빈 대상 살리기(2), 묶인 과제의 쉬는 고친 글은 "고친 과제" 로 세지 않음(4) — 변이 시험이 재사용
+    async function assertWeekReview(m) {
+      setView(m, 'doc');
+      const typeW = (wsec, k, text) => { const t = m.ev(`[].find.call(document.querySelectorAll('#rptOut textarea[data-wsec]'), function(t){ return t.dataset.wsec === ${JSON.stringify(wsec)} && t.dataset.wk === ${JSON.stringify(k)}; })`); t.value = text; t.dispatchEvent(new m.w.Event('input', { bubbles: true })); };
+      typeW('prog', '알파', '• 알파 주간 고친 글');
+      typeW('prog', '베타', '• 베타 주간 고친 글');
+      assert.ok(m.ev("$('#rptEditInfo').textContent").includes('고친 과제 2개'), '전제: 고친 과제 2개');
+      await groupVia(m, [['베타', '알파']]);
+      assert.ok(m.ev("$('#rptEditInfo').textContent").includes('고친 과제 1개'), '묶인 베타의 쉬는 고친 글을 "고친 과제" 로 센다: ' + m.ev("$('#rptEditInfo').textContent"));
+      setView(m, 'card');
+      const n = wcard(m, '알파').querySelector('.rcard-gstale');
+      assert.ok(n && n.textContent.startsWith('고친 글에 묶은 과제 줄이 없습니다'), '주간 고친 대상 카드에 묶음 안내가 없다');
+      //  빈 델타로 감마를 묶고 내용 없는 항목 제외를 켜도 델타가 남는다
+      await groupVia(m, [['감마', '델타']]);
+      m.ev("$('#rptSkipEmpty').checked = true; $('#rptSkipEmpty').dispatchEvent(new Event('change'));");
+      try {
+        assert.deepStrictEqual(wSubs(m, '델타'), ['감마'], '주간: 내용 없는 항목 제외를 켜자 빈 대상 델타가 빠졌다');
+        assert.ok(m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').content.includes('[델타] : 0.5'), '주간: 빈 대상 델타 시간이 나가지 않는다');
+      } finally { m.ev("$('#rptSkipEmpty').checked = false; $('#rptSkipEmpty').dispatchEvent(new Event('change'));"); }
+    }
+    test('GW7 (리뷰 정정 1, 2, 4): 주간 — 고친 대상 카드 안내, 빈 대상 살리기, 묶인 과제의 쉬는 고친 글은 "고친 과제" 로 세지 않음', async () => {
+      wfresh();
+      try { await assertWeekReview(B); } finally { done(); }
+    });
+    test('변이 GWM6: 주간 고친 과제 셈에서 묶인 과제를 거르지 않거나 카드 안내를 빼면 GW7 이 잡는다', async () => {
+      for (const [bad, re] of [
+        [mutate(app, '.filter(k => !grp.has(k));   // 고친 과제', ';   // 고친 과제'), /고친 과제/],
+        [mutate(app, "        : !!(_gw && _gw.kidNames && _gw.kidNames.length && rptWStale(_wd, _w.k, 'cal', _gw.draft));", '        : false;'), /묶음 안내가 없다/],
+      ]) {
+        const X = bootBrowser(bad);
+        try { X.ev('state = ' + JSON.stringify(weekState()) + ';'); openWeekly(X, MON); setView(X, 'card'); await assert.rejects(() => assertWeekReview(X), re); }
+        finally { clearDrafts(X); await X.close(); }
+      }
+    });
+
+    test('변이 GWM1: 주간 네 칸에서 묶음이 과제투입시간을 다시 내지 않으면 GW2 가 잡는다', async () => {
+      const bad = mutate(app, 'content: (L.out.length || L.group.length) ? c.content : base.content,', 'content: L.out.length ? c.content : base.content,');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(weekState()) + ';'); openWeekly(X, MON); setView(X, 'card'); await assert.rejects(() => assertWeekGrouped(X), /과제투입시간과 합계/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GWM2: 주간 조립이 묶음을 적용하지 않으면 GW2 가 잡는다', async () => {
+      const bad = mutate(app, "  M = rptWGroupModel(M, d);   // 보고서 묶음: 묶인 행은 빠지고 대상의 본문과 시간이 합쳐진다(묶음이 없으면 M 그대로)\n", '');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(weekState()) + ';'); openWeekly(X, MON); setView(X, 'card'); await assert.rejects(() => assertWeekGrouped(X), /묶음 뒤 값이 아니다|남았다/); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+    test('변이 GWM3: 낡은 묶음 흔적을 거르지 않으면 GW1 이 잡는다', async () => {
+      const bad = mutate(app, ' && group[k] !== k && ks.has(group[k])) cand.set', ' && group[k] !== k) cand.set');
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(weekState()) + ';'); openWeekly(X, MON); setView(X, 'card'); await assert.rejects(() => assertWeekSame(X)); }
+      finally { clearDrafts(X); await X.close(); }
+    });
+  }
+
+  // ── (W) 위젯 모드 ──────────────────────────────────────────────────
+  const META = { schemaVersion: '12', expectedSchema: '12', schemaMismatch: false, rev: 1, canWrite: true, userId: 7 };
+  async function widgetDaily(src) {
+    const M = bootWidget(src);
+    const T = M.ev('todayYmd()'), Y = M.ev('addDays(todayYmd(), -1)'), N = M.ev('addDays(todayYmd(), 1)');
+    clearDrafts(M);
+    M.ev('__applyState(' + JSON.stringify(JSON.stringify(dayState(T, Y, N))) + ',' + JSON.stringify(META) + ')');
+    await tick();
+    openDaily(M, T);
+    return { M, T, KEY: 'tc_rptDraft:7:' + T };
+  }
+  async function groupAndSend(M) {
+    await groupVia(M, [['c-b', 'c-a']]);
+    M.ev('window.__cap = null; Platform.report.submitDaily = function(p){ window.__cap = JSON.parse(JSON.stringify(p)); };');
+    M.doc.getElementById('btnRptSend').click();
+    await confirmOk(M);
+    const cap = M.evJSON('window.__cap');
+    assert.ok(cap, '확인 뒤 전송 payload 가 나가지 않았다');
+    M.ev('clearTimeout(Netcus.watchdog)');
+    return cap;
+  }
+  //  보낸 뒤 묶음을 바꾸면 성공 회신이 지우지 않는다(서명에 묶음이 들어 있다): 변이 시험이 재사용
+  async function changedAfterSendKept(M, KEY) {
+    await groupAndSend(M);
+    await groupVia(M, [['c-c', 'c-a']]);
+    M.ev("window.__netcusResult(true, '회사 일간보고 전송 완료(시험)')");
+    M.ev('rptDraftFlush()');
+    assert.ok(allKeys(M, 'tc_rptDraft').includes(KEY), '보낸 뒤 바꾼 묶음까지 성공 회신이 지웠다');
+    assert.deepStrictEqual(M.evJSON(`JSON.parse(localStorage.getItem(${JSON.stringify(KEY)})).group`), { 'c-b': 'c-a', 'c-c': 'c-a' });
+  }
+  test('GW4 (§5): 위젯 일간 전송: payload 는 묶음 뒤 값(hours = 머리 줄)이고 성공 회신이면 묶음까지 지운다', async () => {
+    const { M, KEY } = await widgetDaily(app);
+    try {
+      const cap = await groupAndSend(M);
+      assert.ok(cap.fields.content.startsWith('[알파] : 3.5\n') && !cap.fields.content.includes('[베타]'), '전송 content 에 묶음이 반영되지 않았다');
+      assert.deepStrictEqual(cap.hours, headHours(cap.fields.content), 'payload.hours 가 머리 줄과 다르다');
+      assert.deepStrictEqual(cap.hours, [{ name: '알파', hours: 3.5 }, { name: '감마', hours: 1 }]);
+      assert.ok(allKeys(M, 'tc_rptDraft').includes(KEY), '전제: 회신 전에는 묶음 저장본이 있다');
+      M.ev("window.__netcusResult(false, '전송 실패(시험)')");
+      assert.ok(allKeys(M, 'tc_rptDraft').includes(KEY), '실패 회신이 묶음을 지웠다');
+      await groupAndSend(M);
+      M.ev("window.__netcusResult(true, '회사 일간보고 전송 완료(시험)')");
+      assert.ok(!allKeys(M, 'tc_rptDraft').includes(KEY), '성공 회신인데 묶음 저장본이 남았다');
+      assert.ok(!M.ev("document.querySelector('#rptOut .rcard-subs')"), '지운 뒤에도 미리보기가 묶음을 보인다');
+    } finally { clearDrafts(M); await M.close(); }
+  });
+  test('GW5 (§5): 전송을 누른 뒤 회신 전에 묶음을 바꾸면 성공 회신이 지우지 않는다', async () => {
+    const { M, KEY } = await widgetDaily(app);
+    try { await changedAfterSendKept(M, KEY); } finally { clearDrafts(M); await M.close(); }
+  });
+  test('변이 GWM4: 초안 서명에서 묶음을 빼면 GW5 가 잡는다', async () => {
+    const bad = mutate(app, "  return JSON.stringify({ body, out: [...((d && d.out) || [])].sort(), group });", "  return JSON.stringify({ body, out: [...((d && d.out) || [])].sort() });");
+    const { M, KEY } = await widgetDaily(bad);
+    try { await assert.rejects(() => changedAfterSendKept(M, KEY), /보낸 뒤 바꾼 묶음/); } finally { clearDrafts(M); await M.close(); }
+  });
+
+  //  주간 net 출처: 바이트 같음(낡은 흔적) + 묶음(미등록과제 → 베타). net 본문은 원문 줄이라 이름 줄에 들여쓰기가 없다.
+  const MONn = '2026-07-13', SUNn = '2026-07-19';
+  const NET_DAYS = [
+    { date: MONn, content: '[알파] : 2\n• 로그인 리뷰\n    - UI 확인\n[베타]\n• 고객 회신', ok: true },
+    { date: '2026-07-14', content: '선행 메모\n[알파] : 1.5\n• 로그인 리뷰\n• 추가 작업\n[미등록과제] : 1\n탐색', ok: true },
+  ];
+  async function widgetNet(src) {
+    const M = bootWidget(src);
+    clearDrafts(M);
+    const st = { gitAuthor: '', svnAuthor: '', categories: [
+      { id: 'c-a', name: '알파', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA },
+      { id: 'c-b', name: '베타', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
+      entries: [], todos: [], rooms: [], attendance: {}, taskHours: {}, gitCommitBody: true, reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
+      reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } } };
+    M.ev('__applyState(' + JSON.stringify(JSON.stringify(st)) + ',' + JSON.stringify(META) + ')');
+    await tick();
+    M.ev(`openReport(); setReportMode('weekly'); $('#rptFrom').value = ${JSON.stringify(MONn)}; $('#rptFrom').dispatchEvent(new Event('change'));`);
+    setView(M, 'card');
+    M.ev(`netcusMerge = { key: ncMergeKey(${JSON.stringify(MONn)}, ${JSON.stringify(SUNn)}), parsed: parseNetcusWeek(${JSON.stringify(NET_DAYS)}, state.categories, { sumTime: true }), at: '09:00' }; state.reportSource = 'net'; syncReportSourceSeg(); buildReport();`);
+    return M;
+  }
+  const netBase = (m) => m.evJSON('(function(){ var p = netcusMerge.parsed; return { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: weekSubjectGuess($("#rptFrom").value) }; })()');
+  function sendWN(m) { m.ev('window.__capW = null; Platform.report.submitWeekly = function(p){ window.__capW = JSON.parse(JSON.stringify(p)); };'); m.doc.getElementById('btnRptSend').click(); m.ev('clearTimeout(Netcus.watchdog)'); return m.evJSON('window.__capW'); }
+  async function assertNetGrouped(M) {
+    const base = netBase(M);
+    assert.deepStrictEqual(M.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)'), base, 'net: 묶음 없을 때 네 칸이 netcus 조립과 다르다');
+    assert.strictEqual(M.ev('buildReportText()'), base.endwork, 'net: 묶음 없을 때 복사가 다르다');
+    M.ev(`localStorage.setItem(rptWKey(${JSON.stringify(MONn)}, ${JSON.stringify(SUNn)}), JSON.stringify({ v:1, from:${JSON.stringify(MONn)}, to:${JSON.stringify(SUNn)}, prog:{}, progBase:{}, progBaseSrc:{}, plan:{}, out:[], group:{ '@미분류':'알파', '없음':'베타' }, savedAt:'' })); __rptDraftMem.clear(); __rptDraftDirty.clear(); buildReport();`);
+    assert.deepStrictEqual(M.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)'), base, 'net: 미분류나 없는 이름을 가리키는 묶음 흔적이 네 칸을 바꿨다');
+    let cap = sendWN(M);
+    assert.deepStrictEqual(cap && cap.fields, { sdate: MONn, edate: SUNn, subject: base.subject, content: base.content, endwork: base.endwork, planwork: base.planwork }, 'net: 실제 채우기가 예전과 다르다');
+    await openDlg(M);
+    assert.ok(!dlgSel(M, '@미분류'), '미분류가 묶음 설정에 있다(과제가 아니다)');
+    pick(M, '미등록과제', '베타'); await closeDlg(M);
+    const o = M.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
+    assert.strictEqual(o.content, '[알파] : 3.5\n[베타] : 1\n-----\n합계 : 4.5', 'net 과제투입시간과 합계가 묶음 뒤 값이 아니다');
+    assert.strictEqual(o.planwork, '[알파]\n[베타]', 'net 차주계획에 묶인 과제가 남았다');
+    assert.strictEqual(o.endwork, '[알파]\n• 로그인 리뷰\n- UI 확인\n• 추가 작업\n\n[베타]\n• 고객 회신\n- 미등록과제\n' + NBS.repeat(2) + '탐색\n\n[미분류]\n선행 메모', 'net 진행사항에 묶인 과제 줄이 없다: ' + JSON.stringify(o.endwork));
+    cap = sendWN(M);
+    assert.deepStrictEqual(cap.fields.content, o.content);
+    assert.deepStrictEqual(M.evJSON("[].map.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk; })"), ['알파', '베타', '@미분류'], 'net 카드에서 묶인 과제가 머리 카드로 남았다');
+    assert.strictEqual(M.ev("[].find.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk === '베타'; }).querySelector('.rcard-subs > .rcard').dataset.wk"), '미등록과제');
+    assert.ok(M.ev("$('#rptSummary').textContent").includes('묶은 과제 1개'), 'net 요약줄에 "묶은 과제 1개" 가 없다');
+  }
+  test('GW6 (§2, §3): 주간 net 출처: 묶음이 없으면(흔적만 있어도) 바이트 같고, 묶으면 과제투입시간, 합계, 진행사항, 차주계획, 카드가 묶음을 따른다, 미분류는 묶지 않는다', async () => {
+    const M = await widgetNet(app);
+    try { await assertNetGrouped(M); } finally { clearDrafts(M); await M.close(); }
+  });
+  //  리뷰 정정 1(net): 고친 대상 카드 안내 — 변이 시험이 재사용
+  async function assertNetStale(M) {
+    setView(M, 'doc');
+    const t = M.ev("[].find.call(document.querySelectorAll('#rptOut textarea[data-wsec]'), function(t){ return t.dataset.wsec === 'prog' && t.dataset.wk === '베타'; })");
+    t.value = '• 베타 넷 고친 글'; t.dispatchEvent(new M.w.Event('input', { bubbles: true }));
+    setView(M, 'card');
+    const card = () => M.ev("[].find.call(document.querySelectorAll('#rptOut > .rcard'), function(c){ return c.dataset.wk === '베타'; })");
+    assert.ok(!card().querySelector('.rcard-gstale'), '묶기 전에는 안내가 없어야 한다');
+    await groupVia(M, [['미등록과제', '베타']]);
+    assert.ok(card().querySelector('.rcard-gstale'), 'net 고친 대상 카드에 묶음 안내가 없다');
+    assert.ok(M.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').endwork.includes('[베타]\n• 베타 넷 고친 글\n\n'), '안내가 고친 글을 덮었다');
+  }
+  test('GW8 (리뷰 정정 1): 주간 net — 대상을 고친 뒤 묶으면 카드에 묶음 안내', async () => {
+    const M = await widgetNet(app);
+    try { await assertNetStale(M); } finally { clearDrafts(M); await M.close(); }
+  });
+  test('변이 GWM7: net 카드 묶음 안내를 빼면 GW8 이 잡는다', async () => {
+    const bad = mutate(app, "if(_gw && _gw.kidNames && _gw.kidNames.length && rptWStale(_wd, _w.k, 'net', _gw.draft)) html +=", 'if(false) html +=');
+    const M = await widgetNet(bad);
+    try { await assert.rejects(() => assertNetStale(M), /안내가 없다/); } finally { clearDrafts(M); await M.close(); }
+  });
+  test('변이 GWM5: net 카드가 묶음을 무시하면 GW6 이 잡는다', async () => {
+    const bad = mutate(app, "    if(_ngl && _ngl.has(_gk)) continue;   // 묶인 과제는 대상 카드 안에서 그린다\n", '');
+    const M = await widgetNet(bad);
+    try { await assert.rejects(() => assertNetGrouped(M), /머리 카드로 남았다/); } finally { clearDrafts(M); await M.close(); }
+  });
+
+  // ── (P) 열람 창 ─────────────────────────────────────────────────
+  async function assertPeer(P) {
+    assert.strictEqual(P.ev('PEER'), true);
+    const T = P.ev('todayYmd()'), Y = P.ev('addDays(todayYmd(), -1)'), N = P.ev('addDays(todayYmd(), 1)');
+    P.ev(`localStorage.setItem('tc_rptDraft:me:' + todayYmd(), JSON.stringify({ v:1, date: todayYmd(), body:{}, base:{}, out:[], group:{ 'c-b':'c-a' }, savedAt:'' }));`);
+    P.ev("window.__acc = []; (function(){ var Pr = Storage.prototype; ['getItem','setItem','removeItem'].forEach(function(n){ var o = Pr[n]; Pr[n] = function(k){ if(String(k).indexOf('tc_rptDraft')===0) window.__acc.push(n+' '+k); return o.apply(this, arguments); }; }); var ok = Pr.key; Pr.key = function(){ window.__acc.push('key'); return ok.apply(this, arguments); }; })();");
+    P.w.__applyState(JSON.stringify(dayState(T, Y, N)), { peerName: '홍길동', canWrite: false });
+    await tick();
+    P.ev(`reportMode = 'daily'; $('#rptFrom').value = todayYmd(); $('#rptTo').value = todayYmd(); ['#rptSrcEvent','#rptSrcTodo','#rptSrcGit'].forEach(function(s){ $(s).checked = true; }); buildReport();`);
+    assert.ok(P.ev("document.querySelectorAll('#rptOut .rcard').length") > 0, '전제: 열람 창에서 카드가 그려졌다');
+    assert.ok(P.doc.getElementById('rptGroupRow').classList.contains('hidden'), '열람 창에 "보고서 묶음" 줄이 보인다');
+    assert.ok(!P.ev("document.querySelector('#rptOut .rcard-subs')") && P.ev('buildReportText()').includes('[베타]'), '열람 창이 부모의 묶음을 읽어 적용했다');
+    P.doc.getElementById('rptGroupOpen').click(); await tick();
+    assert.ok(overlayClosed(P, 'rptGroupModal'), '열람 창에서 설정 창이 열렸다');
+    assert.strictEqual(P.ev("rptGroupSet('c-b', 'c-a')"), false, '열람 창에서 묶음을 정할 수 있다');
+    P.ev(`reportMode = 'weekly'; $('#rptFrom').value = '2026-07-13'; $('#rptTo').value = '2026-07-19'; buildReport();`);
+    assert.ok(P.doc.getElementById('rptGroupRow').classList.contains('hidden'), '열람 창 주간에 "보고서 묶음" 줄이 보인다');
+    assert.deepStrictEqual(P.evJSON('window.__acc'), [], '열람 창이 임시 저장(묶음)을 읽거나 썼다');
+  }
+  test('GP1 (§4, §5): 열람 창(PEER): "보고서 묶음" 줄과 설정 창이 없고 임시 저장 접근 0', async () => {
+    const P = bootWidget(app, 'https://tcapp.local/?peer=1');
+    try { await assertPeer(P); } finally { await P.close(); }
+  });
+  test('변이 GPM1: 묶음 문맥의 PEER 관문을 빼면 GP1 이 잡는다', async () => {
+    const bad = mutate(app, "function rptGroupCtx(){\n  if(PEER) return null;\n", 'function rptGroupCtx(){\n');
+    const P = bootWidget(bad, 'https://tcapp.local/?peer=1');
+    try { await assert.rejects(() => assertPeer(P), /열람 창/); } finally { await P.close(); }
+  });
+}
