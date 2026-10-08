@@ -34,7 +34,8 @@ const GATED_FUNCTIONS = [
   'openEntryModal', 'openQuickAdd', 'saveEntryFromForm', 'qaSave', 'saveCatFromForm', 'deleteCommitRow',
   'addRoom', 'deleteRoom', 'startImport', 'showImportPreview', 'applyImport', 'clearAll',
   'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog', 'runGitImport',
-  'setCommitSubject', 'setCommitMessage', 'setEntryTitle', 'setTodoText', 'commitDayNoteEdit',
+  'setCommitMessage', 'commitDayNoteEdit',
+  //  (setCommitSubject, setEntryTitle, setTodoText 는 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5). '없어졌다'는 아래 REPORT_EDIT_GONE 이 잠근다.)
   'legacyPromptImport',   // 이전 기록 「가져오기」 = 바로 교체(2026-10-01) — 읽기 전에 막는다
   'moveCategory',         // 과제 순서 ▲▼(docs/CATEGORY-ORDER.md R7) — 맞바꾸기 전에 막는다
   //  (deleteCategory 도 관문을 지나지만 여기에는 못 싣는다 — 이름 자체가 WRITE_TOKENS 의 'deleteCategory(' 라 머리말에서 걸린다.
@@ -61,12 +62,19 @@ const GATED_HANDLERS = [
   ['들여쓰기', 'const _setRptInd = d => {', 'save()'],
   ['보고서 글꼴', "if(_ff) _ff.addEventListener('change'", 'save()'],
   ['보고서 글자 크기', "if(_fs) _fs.addEventListener('change'", 'save()'],
-  ['보고서 줄 삭제', "} else if(b.dataset.ract === 'del'){", 'deleteCommitRow(rid'],
   ['기록 모달 삭제 버튼', "$('#btnEntryDelete').addEventListener('click'", 'deleteEntry(e.id)'],
   ['빠른 편집 → 자세히 편집', "$('#qaAdvanced').addEventListener('click'", 'updateEntry(id, d)'],
 ];
 
+//  2026-10-07 REPORT-EDIT §5 — 보고서 줄에서 캘린더 기록을 고치거나 지우던 진입점은 관문을 지나는 게 아니라 **아예 없다**.
+//  보고서 글은 글 편집(임시 저장, 캘린더 데이터 아님)에서 고친다. 되살아나면 관문 목록에 다시 올려야 할 쓰기 경로가 생긴다.
+const REPORT_EDIT_GONE = ['function setCommitSubject(', 'function setEntryTitle(', 'function setTodoText(', 'function commitReportEdit(',
+  "b.dataset.ract === 'del'", "b.dataset.ract === 'edit'", 'data-ract=', 'rtask-del-btn', 'rtask-edit-btn'];
+
 const statics = {
+  reportLineEditGone(app) {
+    for (const t of REPORT_EDIT_GONE) assert.ok(!app.includes(t), `보고서 줄편집/삭제 진입점이 되살아났다: ${t} — 보고서에서 캘린더 기록을 바꾸는 길이다(REPORT-EDIT §5)`);
+  },
   functionsGated(app) {
     for (const fn of GATED_FUNCTIONS) {
       const b = extractFunction(app, fn);
@@ -99,9 +107,16 @@ const statics = {
   },
 };
 
-test('정적①: 편집 진입점 함수 22곳이 첫 쓰기 전에 guardEdit() 을 지난다', () => statics.functionsGated(src));
+test(`정적①: 편집 진입점 함수 ${GATED_FUNCTIONS.length}곳이 첫 쓰기 전에 guardEdit() 을 지난다`, () => statics.functionsGated(src));
 test('정적②: 배선 진입점 16곳(끌어 옮기기·할 일·과제·보고서 서식·근태·시간·삭제)이 guardEdit() 을 지난다', () => statics.handlersGated(src));
 test('정적③: 연결 상태 경로는 메모리 전용이다(로컬 저장소 대기열 없음)', () => statics.memoryOnly(src));
+test('정적⑤: 보고서 줄편집·삭제 진입점(setCommitSubject, setEntryTitle, setTodoText, 줄 ✎/✕)은 관문이 아니라 아예 없다(REPORT-EDIT §5)', () => statics.reportLineEditGone(src));
+test('변이⑤s: 보고서 줄 삭제 처리기를 되살리면 정적⑤ 가 실패한다', () => {
+  const bad = mutate("  $('#rptOut').addEventListener('input', ev => {",
+    "  $('#rptOut').addEventListener('click', ev => { const b = ev.target.closest('[data-ract]'); if(b && b.dataset.ract === 'del') deleteCommitRow(b.dataset.reid, '', 0); });\n  $('#rptOut').addEventListener('input', ev => {", src);
+  assert.throws(() => statics.reportLineEditGone(bad), /되살아났다/);
+  assert.doesNotThrow(() => statics.reportLineEditGone(src), '대조군: 현재 소스는 통과해야 한다');
+});
 test('정적④: 브라우저(!HOST)·열람 창(PEER)에서는 잠금이 늘 false 다', () => {
   for (const [HOST, PEER] of [[false, false], [true, true], [false, true]]) {
     const ctx = { HOST, PEER, bootOk: false, unsaved: true, conn: 'offline', out: null };
@@ -386,7 +401,8 @@ if (!JSDOM) {
     W.ev("$('#fTitle').value = '고친 제목'; saveEntryFromForm();");
     await settle();
     assert.strictEqual(W.ev("entryById('e-1').title"), '기존 기록', '끊긴 상태에서 기록 수정이 메모리에 들어갔다');
-    assert.strictEqual(W.call('setEntryTitle', 'e-1', '줄편집'), false, '보고서 줄편집이 막히지 않았다');
+    //  (보고서 줄편집 setEntryTitle 은 없앴다(REPORT-EDIT §5). 끊긴 상태의 보고서 글 편집은 캘린더 데이터가 아니라 막지 않는다.)
+    assert.strictEqual(W.ev('typeof setEntryTitle'), 'undefined', '보고서 줄편집(setEntryTitle)이 되살아났다');
     W.call('addRoom', '새 회의실');
     assert.ok(!W.ev("state.rooms.includes('새 회의실')"), '회의실 추가가 막히지 않았다');
     await W.ev('clearAll()');

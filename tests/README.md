@@ -113,6 +113,8 @@ tests/
 ├─ loop-schema-gate.mjs     **실제 위젯**(CDP) + 실 DB — P1-1 스키마 게이트·P1-2 부팅 재시도·P1-8 개명 가드 회귀
 ├─ loop-default-tasks.mjs   **실제 위젯**(CDP) + 실 DB: 기본 과제 휴가, 기타(DEFAULT-TASKS): 부팅 보장(정확히 하나씩, 다시 읽어도 같은 id),
 │                            기본 과제 삭제 거부, 과제 삭제 = 데이터 삭제(FK 순서), 다른 과제로 옮기기(겹친 날 시간 합산, 24 상한): zz 잔재 0
+├─ loop-report-edit.mjs     **실제 위젯**(CDP): 일간 보고서 글 편집(REPORT-EDIT): X(제자리 흐림, 높이 불변), 글 편집 입력, 창 닫고 열기,
+│                            날짜 바꾸기, reloadState 뒤 임시 저장 유지, 전송 가로채기(실제 전송 없음) 뒤 성공/실패 회신 흉내: 2099 잔재 0
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
 ├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
 ├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
@@ -798,3 +800,20 @@ node tests/loop-default-tasks.mjs --seed=1001    # 재현(요약 줄이 이 명�
 ```
 
 **종료코드**: 통과=0, 실패(또는 정리 실패)=1, 판정 없음(위젯 미기동, 비로그인, 새 기능이 없는 옛 빌드, 시작 정리 실패)=2.
+
+## loop-report-edit.mjs: 일간 보고서 글 편집 실동작 루프(REPORT-EDIT §7)
+
+실행 중인 위젯(CDP 9222, 로그인한 아무 계정)으로 `docs/REPORT-EDIT.md` 의 임시 저장 수명과 X, 글 편집을 실제 WebView2 저장소에서 본다.
+DB 에 직접 붙지 않는다(비밀번호 필요 없음). 짝인 계약 시험은 `report-edit.test.mjs`(jsdom, 상시 스위트)다.
+E1 시험 날짜(2099-12-02)로 일간 보고서 열기(기본 카드, X, 줄 ✎/✕ 없음) · E2 시간 칸 두 과제 · E3 X(제자리, 카드와 머리 높이 불변, 바로 저장) ·
+E4 글 편집(잠긴 머리 줄, 상세 줄 입력 뒤 디바운스 저장) · E5 창 닫고 다시 열기 · E6 날짜 바꾸기 · E7 reloadState 뒤에도 그대로 ·
+E8 전송 가로채기(content 의 &nbsp; 들여쓰기, 뺀 과제는 본문과 hours 에서 빠짐) → `__netcusResult(true)` 흉내로 지워짐 · E9 실패 회신 흉내면 남음.
+**실제로 netcus 에 보내지 않는다**: `Platform.report.submitDaily` 를 가로채 payload 만 붙잡고, `hpost` 도 감싸 netcus 명령은 호스트로 넘기지 않는다(두 겹).
+정리는 `tc_rptDraft:<who>:2099-*` 키 삭제, 시험 날짜의 과제 시간 지우기(앱으로), 사용자의 포함 항목 저장값(`tc_rptSources`) 원복 뒤 다시 읽어 잔재 0 확인이다.
+
+```
+# 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 로그인
+node tests/loop-report-edit.mjs
+```
+
+**종료코드**: 통과=0, 실패(또는 정리 실패)=1, 판정 없음(위젯 미기동, 비로그인, 새 기능이 없는 옛 빌드)=2.

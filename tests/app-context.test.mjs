@@ -590,7 +590,7 @@ if (!JSDOM) {
     });
     const collectDN = (from, to, src) => evJSON('collectReportData(' + JSON.stringify(from) + ',' + JSON.stringify(to) + ',' + JSON.stringify(src) + ')');
     const rowCp = r => r.rows.find(x => x.name === '기획');
-    const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null; editingReportKey=null;");
+    const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");
 
     test('기간 할일 dayNotes → 주간 보고: details=본문만(복사·전송), dayDetails=날짜 보존(미리보기)', () => {
       seed(dnState());
@@ -954,9 +954,10 @@ if (!JSDOM) {
       assert.deepStrictEqual(rowOf(r, '기타').titles, [], "과제 없는 기록이 실재하는 '기타' 과제로 병합됐다(gitaCat 병합이 되살아났다)");
     });
 
-    // ── PART A: setCommitSubject / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
-    // 커밋 subject 쓰기·삭제는 이 두 API만 통과한다. 호출 시 notifyDataChanged가 패널/그리드를
+    // ── PART A: setCommitMessage / deleteCommitRow (커밋 데이터 단일 변경 경로 · 결정6) ──
+    // 커밋 쓰기(메시지 고치기, 삭제)는 커밋 내역 탭의 이 두 API만 통과한다. 호출 시 notifyDataChanged가 패널/그리드를
     // 재렌더하므로 부팅된 jsdom 컨텍스트에서 실행(렌더 안전성도 함께 검증). state는 seed로 격리.
+    // (2026-10-07 REPORT-EDIT §5: 일간 보고서 줄 ✎ 전용이던 setCommitSubject 는 ✎ 와 함께 없앴다. 아래 시험이 '없어졌다'를 잠근다.)
     const mutState = () => ({
       gitAuthor: '', svnAuthor: '',
       categories: [{ id: 'c-1', name: '시스템 점검', color: '#2e9e6b', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
@@ -975,33 +976,23 @@ if (!JSDOM) {
     });
     const commitSubjectOf = (eid, i) => evJSON(`entryById(${JSON.stringify(eid)}).commits[${i}].subject`);
 
-    test('setCommitSubject: hash로 해석 → subject 변경·true, 공백 접기·updatedAt 갱신', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"  고친   메시지  ")'), true);
-      assert.strictEqual(commitSubjectOf('g1', 0), '고친 메시지');       // \s+ 접기 + 트림
-      assert.notStrictEqual(evJSON('entryById("g1").updatedAt'), CA);    // updatedAt 갱신됨
-      assert.strictEqual(commitSubjectOf('g1', 1), '둘째 커밋');          // 다른 커밋은 불변
+    //  보고서와 캘린더는 따로 관리한다(REPORT-EDIT §1, §5). 보고서 줄에서 캘린더 기록을 고치던 함수와 그 편집 상태가
+    //  되살아나면 보고서를 고치려다 일정, 할 일, 커밋 제목이 바뀐다. 커밋 내역 탭의 단일 경로(setCommitMessage, deleteCommitRow)는 그대로다.
+    test('REPORT-EDIT §5: 보고서 줄편집 전용 함수(setCommitSubject, setEntryTitle, setTodoText, commitReportEdit)와 편집 키가 없다', () => {
+      for (const fn of ['setCommitSubject', 'setEntryTitle', 'setTodoText', 'commitReportEdit']) {
+        assert.strictEqual(ev('typeof ' + fn), 'undefined', fn + ' 가 되살아났다: 보고서에서 캘린더 기록을 고치는 길이 다시 열린다');
+        assert.ok(!new RegExp('\\b' + fn + '\\s*\\(').test(loadAppSource()), fn + '( 호출이나 정의가 소스에 남아 있다');
+      }
+      assert.strictEqual(ev('typeof editingReportKey'), 'undefined', '일간 보고서 줄편집 키(editingReportKey)가 되살아났다');
+      for (const fn of ['setCommitMessage', 'deleteCommitRow', 'commitDayNoteEdit']) {
+        assert.strictEqual(ev('typeof ' + fn), 'function', '대조군: ' + fn + ' 는 그대로 있어야 한다(커밋 내역 탭, 주간 날짜 줄 ✎)');
+      }
     });
-    test('setCommitSubject: cidx로 해석(hash 없는 레거시 커밋)', () => {
+    test('REPORT-EDIT §5: 커밋 제목은 커밋 내역 탭(setCommitMessage)으로만 바뀐다(대조군: 그 길은 살아 있다)', () => {
       seed(mutState());
-      assert.strictEqual(ev('setCommitSubject("g2","",0,"해시없음 수정")'), true);
-      assert.strictEqual(commitSubjectOf('g2', 0), '해시없음 수정');
-    });
-    test('setCommitSubject: 동일 텍스트 → false(무변경)', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"첫 커밋")'), false);
-      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');
-    });
-    test('setCommitSubject: 빈 값/공백만 → false(빈값 저장 안 함)', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"   ")'), false);
-      assert.strictEqual(ev('setCommitSubject("g1","h1",0,"")'), false);
-      assert.strictEqual(commitSubjectOf('g1', 0), '첫 커밋');   // 원본 유지
-    });
-    test('setCommitSubject: 없는 엔트리/커밋 → false', () => {
-      seed(mutState());
-      assert.strictEqual(ev('setCommitSubject("nope","h1",0,"x")'), false);
-      assert.strictEqual(ev('setCommitSubject("g1","zzz",5,"x")'), false);
+      assert.strictEqual(ev('setCommitMessage("g1","h1",0,"  고친   메시지  ")'), true);
+      assert.strictEqual(commitSubjectOf('g1', 0), '고친 메시지');
+      assert.strictEqual(commitSubjectOf('g1', 1), '둘째 커밋');
     });
 
     // ── setCommitMessage (커밋 내역 탭 전체메시지 편집 — 첫 줄=제목·나머지=본문 재분리) ──
@@ -1180,11 +1171,11 @@ if (!JSDOM) {
       const r = collect('2026-07-01', '2026-07-31', { event: true, todo: true, git: true });
       const cm = rowByName(r, '혼합과제');
       const em = cm.titleMeta.find(m => m.text === '일정제목');
-      assert.strictEqual(em.editable, true);          // 비-git 일정 → 일간 라인편집(setEntryTitle)
+      assert.strictEqual(em.editable, true);          // 비-git 일정(titleMeta 는 다른 데서도 쓰여 그대로 둔다, REPORT-EDIT §5)
       assert.strictEqual(em.kind, 'event');
       assert.strictEqual(em.entryId, 'ev1');
       const tm = cm.titleMeta.find(m => m.text === '할일제목');
-      assert.strictEqual(tm.editable, true);          // 할 일 → 일간 라인편집(setTodoText)
+      assert.strictEqual(tm.editable, true);          // 할 일(titleMeta 그대로)
       assert.strictEqual(tm.kind, 'todo');
       assert.strictEqual(tm.todoId, 'td1');
       // titles(문자열) shape 불변: [중복 커밋(dedup), 일정제목, 할일제목]
@@ -1683,7 +1674,7 @@ if (!JSDOM) {
       assert.strictEqual(p.reportMarkerCustom, '', 'len>8 custom은 무시→기본 빈값');
     });
 
-    // F4 — 회귀: buildReport 일간 출력에 편집 앵커 유지 + rtask-t는 마커 없는 원문만
+    // F4 — 회귀: buildReport 일간 출력은 읽기 전용(REPORT-EDIT §2.2) + rtask-t는 마커 없는 원문만
     const gitDailyState = (marker, indent) => ({
       gitAuthor: '', svnAuthor: '',
       categories: [{ id: 'cg', name: '깃과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
@@ -1693,20 +1684,20 @@ if (!JSDOM) {
     });
     const renderDaily = (marker, indent) => {
       seed(gitDailyState(marker, indent));
-      ev("reportMode='daily'; editingReportKey=null;");
+      ev("reportMode='daily';");
       ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
       ev('buildReport()');
       return ev("$('#rptOut').innerHTML");
     };
-    test('regression: 일간 buildReport — rtask-edit-btn + data-reid/rhash/rcidx 유지, rtask-t=마커없는 원문', () => {
+    test('regression: 일간 buildReport — 줄은 읽기 전용(✎, ✕, data-ract, 원본 앵커 없음), rtask-t=마커없는 원문', () => {
       const html = renderDaily('1.', 3);
-      assert.ok(/rtask-edit-btn/.test(html), '편집 버튼(✎) 유지');
-      assert.ok(/data-reid="gu"/.test(html), 'data-reid 유지');
-      assert.ok(/data-rhash="hu"/.test(html), 'data-rhash 유지');
-      assert.ok(/data-rcidx="0"/.test(html), 'data-rcidx 유지');
+      //  REPORT-EDIT §5: 일간 줄 ✎/✕ 는 캘린더 기록(커밋 제목, 일정, 할 일)을 고치거나 지웠다. 보고서와 캘린더는 따로라 없앴다.
+      assert.ok(!/rtask-edit-btn|rtask-del-btn|data-ract=/.test(html), '일간 줄에 ✎/✕ 가 되살아났다');
+      assert.ok(!/data-reid=|data-rhash=|data-rcidx=|data-rkind=/.test(html), '일간 줄에 캘린더 원본을 가리키는 앵커가 남아 있다');
+      assert.ok(/class="rtask rtask-ro"/.test(html), '일간 줄은 읽기 전용(.rtask-ro)이다');
       const m = /<span class="rtask-t">([^<]*)<\/span>/.exec(html);
       assert.ok(m, 'rtask-t span 존재');
-      assert.strictEqual(m[1], '유니크 커밋', 'rtask-t는 마커 없는 원문만(setCommitSubject·편집 textarea 안전)');
+      assert.strictEqual(m[1], '유니크 커밋', 'rtask-t는 마커 없는 원문만');
       assert.ok(/<span class="rtask-mk">1\. <\/span>/.test(html), '마커는 rtask-mk 별도 span');
       assert.ok(/padding-left:55px/.test(html), '들여쓰기 13+3*14=55px');
     });
@@ -1714,13 +1705,14 @@ if (!JSDOM) {
       const html = renderDaily('none', 0);
       assert.ok(!/rtask-mk/.test(html), '무번호는 마커 span 없음');
       assert.ok(/<span class="rtask-t">유니크 커밋<\/span>/.test(html), 'rtask-t 원문 유지');
-      assert.ok(/rtask-edit-btn/.test(html), '편집 버튼 유지');
+      assert.ok(!/rtask-edit-btn/.test(html), '편집 버튼(✎)이 되살아났다(REPORT-EDIT §5)');
       assert.ok(/padding-left:13px/.test(html), 'indent0 → base 13px');
     });
 
-    // 항목3 회귀 — 할일만 있는 카드(일정 0)는 흐림(rcard-empty) 아님 + 편집힌트 노출.
+    // 항목3 회귀 — 할일만 있는 카드(일정 0)는 흐림(rcard-empty) 아님.
     //   버그: 흐림 판정을 entries(일정)로 해서 할일-only가 '빈 카드'로 오판·흐려짐 → hasContent(titles)로 수정.
-    test('regression(항목3): 할일-only 카드 — rcard-empty 미부여 + 편집힌트 노출(일정 없어도)', () => {
+    //   (카드마다 붙던 '오늘치는 여기서 바로 수정' 힌트는 줄 ✎ 와 함께 없앴다. 요약줄이 글 편집을 안내한다, REPORT-EDIT §2.1)
+    test('regression(항목3): 할일-only 카드 — rcard-empty 미부여 + 요약줄이 글 편집을 안내(카드 힌트 없음)', () => {
       seed({
         gitAuthor: '', svnAuthor: '',
         categories: [{ id: 'ct', name: '할일과제', color: '#3e5be0', desc: '', gitRepo: '', svnRepo: '', createdAt: CA }],
@@ -1728,14 +1720,17 @@ if (!JSDOM) {
         todos: [{ id: 'td', text: '할일 항목', done: false, categoryId: 'ct', due: '2026-07-08', endDate: '', prio: 'normal', note: '', createdAt: CA, updatedAt: CA }],
         rooms: [], reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,
       });
-      ev("reportMode='daily'; editingReportKey=null;");
+      ev("reportMode='daily';");
       ev("$('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true;");
       ev('buildReport()');
       const html = ev("$('#rptOut').innerHTML");
       assert.ok(html.includes('할일 항목'), '할일 항목이 카드에 렌더됨');
       // 할일과제 카드가 rcard-empty(흐림)가 아니어야 (일정이 없어도 내용은 있음)
       assert.ok(!/class="rcard rcard-empty"/.test(html) && !/class="rcard [^"]*rcard-empty/.test(html), '할일-only 카드에 rcard-empty 미부여');
-      assert.ok(/오늘치는 여기서 바로 수정/.test(html), '할일-only 카드에도 편집 힌트 노출');
+      assert.ok(!/오늘치는 여기서 바로 수정/.test(html) && !/rcard-note edit/.test(html), '옛 편집 힌트(줄 ✎ 를 가리키던 문구)가 되살아났다');
+      const sum = ev("$('#rptSummary').textContent");
+      assert.ok(sum.includes('내용은 글 편집에서 고칩니다. 캘린더 기록은 바뀌지 않습니다'), '요약줄이 새 동작(글 편집, 캘린더 불변)을 말하지 않는다: ' + sum);
+      assert.ok(!sum.includes('수정 가능'), "요약줄에 옛 ', 하루(수정 가능)' 가 남아 있다");
     });
 
     // ── Item1 — 일간 과제별 시간 입력(tc_taskHours) → buildReportText 헤더 "[과제] : n" ──
@@ -1773,22 +1768,25 @@ if (!JSDOM) {
       ev("reportMode='daily'");
     });
 
-    // ── Item2/재작업 — 일간 편집가능 라인(커밋·일정·할일) 모두에 삭제(✕) 노출(원본 삭제) ──
-    // (최초엔 git만이었으나, "일간 정리→주간 병합 클린" 목적상 일정·할일도 원본삭제로 확장)
-    test('Item2(일간): 삭제(✕)는 편집가능 라인(커밋·일정·할일) 모두 노출', () => {
+    // ── Item2/재작업 → REPORT-EDIT §5(2026-10-07): 일간 줄의 삭제(✕, 원본 삭제)와 편집(✎)은 커밋·일정·할일 모두 없앴다 ──
+    //  보고서에서 빼고 싶으면 카드 X(이 보고서에서 빼기)를 쓴다. 캘린더 기록은 그대로 남는다.
+    test('Item2(일간): 줄 ✕/✎ 는 커밋·일정 라인 어디에도 없다(원본을 지우는 길이 보고서에 없다)', () => {
       seed(reportState);
       // git 커밋 라인(2026-07-08, g1) → 삭제 버튼 + git 라벨
-      ev("reportMode='daily'; editingReportKey=null; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
+      ev("reportMode='daily'; $('#rptFrom').value='2026-07-08'; $('#rptTo').value='2026-07-08'; $('#rptFrom').disabled=false; $('#rptTo').disabled=true; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; buildReport();");
       const gitHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/rtask-del-btn/.test(gitHtml), 'git 커밋 라인에 삭제 버튼');
-      assert.ok(/data-ract="del"/.test(gitHtml), '삭제 액션 앵커(data-ract=del)');
-      assert.ok(/이 커밋 삭제/.test(gitHtml), 'git 삭제 라벨');
+      assert.ok(/class="rtask rtask-ro"/.test(gitHtml), '전제: 일간 카드 줄이 그려졌다');
+      assert.ok(!/rtask-del-btn/.test(gitHtml), 'git 커밋 라인에 삭제 버튼이 되살아났다');
+      assert.ok(!/data-ract=/.test(gitHtml), '삭제/편집 액션 앵커(data-ract)가 되살아났다');
+      assert.ok(!/이 커밋 삭제/.test(gitHtml), 'git 삭제 라벨이 남아 있다');
+      assert.ok(/class="rcard-x"/.test(gitHtml), '대조군: 보고서에서 빼는 길은 카드 X 다');
       // 일정 라인(2026-07-09, v1) → 편집 + 삭제(원본 제거로 확장)
       ev("$('#rptFrom').value='2026-07-09'; $('#rptTo').value='2026-07-09'; buildReport();");
       const evHtml = ev("$('#rptOut').innerHTML");
-      assert.ok(/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼');
-      assert.ok(/rtask-del-btn/.test(evHtml), '일정 라인에도 삭제 버튼(원본 삭제)');
-      assert.ok(/이 일정 삭제/.test(evHtml), '일정 삭제 라벨(aria/title)');
+      assert.ok(/class="rtask rtask-ro"/.test(evHtml), '전제: 일정 라인이 그려졌다');
+      assert.ok(!/rtask-edit-btn/.test(evHtml), '일정 라인 편집 버튼이 되살아났다');
+      assert.ok(!/rtask-del-btn/.test(evHtml), '일정 라인 삭제 버튼(원본 삭제)이 되살아났다');
+      assert.ok(!/이 일정 삭제/.test(evHtml), '일정 삭제 라벨이 남아 있다');
       ev("reportMode='daily'");
     });
     test('Item2: deleteCommitRow — 커밋 제거 후 commits 반영(마지막이면 엔트리 제거)', () => {

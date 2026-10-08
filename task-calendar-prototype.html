@@ -998,7 +998,7 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-mirror .rcard-h-in:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .rpt-mirror .rcard-hu{font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--muted)}
 .rpt-mirror .rcard-tasks{font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--text);line-height:1.7;margin:5px 0 0;padding-left:13px;word-break:keep-all;overflow-wrap:anywhere}
-/* 일간 보고서 커밋 라인 편집(✎) — 조밀 라인 위에 확장형 편집기(Part B와 동일 톤) */
+/* 일간 보고서 줄은 읽기 전용이다(docs/REPORT-EDIT.md §2.2, 2026-10-07). 고치기는 글 편집 보기에서 하고, 캘린더 기록을 바꾸던 줄 ✎/✕ 는 없앴다. */
 .rpt-mirror .rcard-tasks .rtask{display:flex;align-items:flex-start;gap:4px}
 .rpt-mirror .rtask .rtask-mk{flex:none;color:var(--muted);white-space:pre;font-variant-numeric:tabular-nums}
 .rpt-mirror .rtask .rtask-t{flex:1;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
@@ -1006,16 +1006,7 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-mirror .rtask .rtask-desc,.rpt-mirror .rtask-roline .rtask-desc{margin-top:2px;color:var(--muted);font-size:calc(var(--m-scale) * var(--fs-meta));line-height:1.45;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask-roline{display:flex;align-items:flex-start;gap:4px}   /* 주간 읽기전용 줄도 마커(.rtask-mk)+본문(.rtask-main) 구조 → 설명·dayNote가 제목 아래 정렬 */
 .rpt-mirror .rcard-tasks .rtask-body{white-space:pre-wrap;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);line-height:1.5;margin:0 0 3px;padding-left:14px;word-break:keep-all;overflow-wrap:anywhere}
-.rpt-mirror .rtask .rtask-edit-btn,.rpt-mirror .rtask .rtask-del-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);cursor:pointer;opacity:.4;transition:opacity .12s,color .12s,background .12s}
-.rpt-mirror .rtask .rtask-edit-btn .ic,.rpt-mirror .rtask .rtask-del-btn .ic{width:13px;height:13px}
-.rpt-mirror .rcard:hover .rtask-edit-btn,.rpt-mirror .rtask:focus-within .rtask-edit-btn,.rpt-mirror .rcard:hover .rtask-del-btn,.rpt-mirror .rtask:focus-within .rtask-del-btn{opacity:.7}
-.rpt-mirror .rtask .rtask-edit-btn:hover{opacity:1;color:var(--accent);background:var(--hover-bg)}
-.rpt-mirror .rtask .rtask-del-btn:hover{opacity:1;color:var(--danger);background:var(--hover-bg)}
-.rpt-mirror .rtask.editing{display:block}
-.rpt-mirror .rtask.editing .nd-cedit-wrap{margin-top:2px}
-.rpt-mirror .rtask-edit{width:100%;box-sizing:border-box;min-height:52px;resize:vertical;font:inherit;font-size:calc(var(--m-scale) * var(--fs-body));line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
-.rpt-mirror .rtask-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
-/* 보고서 — 기간 할일 날짜별 dayNote 라인(주간/일간 편집 개방). 제목 아래 한 단계 들여쓴 편집 가능 라인. */
+/* 보고서: 기간 할일 날짜별 dayNote 라인. 편집(✎)은 주간만 연다(일간은 읽기 전용, REPORT-EDIT §5). 제목 아래 한 단계 들여쓴 라인. */
 .rpt-mirror .rcard-tasks .rdn{display:flex;align-items:flex-start;gap:4px;margin:1px 0 1px 18px;color:var(--muted);font-size:calc(var(--m-scale) * var(--fs-meta));line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
 .rpt-mirror .rtask-main .rdn{margin-left:0}   /* .rtask-main 안(일간·주간 공통) → 제목 텍스트 아래 정렬(고정 18px 오프셋 제거, 마커 폭 무관) */
 .rpt-mirror .rdn .rdn-main{flex:1;min-width:0}
@@ -1029,7 +1020,44 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-mirror .rdn-edit{width:100%;box-sizing:border-box;min-height:48px;resize:vertical;font:inherit;font-size:calc(var(--m-scale) * var(--fs-body));line-height:1.5;padding:7px 9px;border:1px solid var(--accent);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
 .rpt-mirror .rdn-edit:focus{outline:none;box-shadow:0 0 0 2px var(--accent-soft)}
 .rpt-mirror .rcard-note{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);margin-top:5px;display:inline-block}
-.rpt-mirror .rcard-note.edit{color:var(--accent-2)}
+/* 일간 글 편집(docs/REPORT-EDIT.md §2). 카드 X(이 보고서에서 빼기)는 카드를 지우지 않고 그 자리에 흐리게 남긴다(카드 순서, 수 불변). */
+.rpt-mirror .rcard-out{background:var(--bg)}
+.rpt-mirror .rcard-out .rcard-nm{text-decoration:line-through;color:var(--muted);font-weight:400}
+.rpt-mirror .rcard-out .rcard-tasks{opacity:.4}
+/* 시간 칸과 X, 그리고 "이 보고서에서 뺌 되돌리기" 는 격자 한 칸에서 맞바꾼다. 감춘 쪽도 높이는 남겨 카드 높이가 바뀌지 않는다(폭만 내준다). */
+.rpt-mirror .rcard-slot{margin-left:auto;display:grid;align-items:center;justify-items:end;flex:none}
+.rpt-mirror .rcard-slot > *{grid-area:1 / 1}
+.rpt-mirror .rcard-live{display:inline-flex;align-items:center;gap:5px}
+.rpt-mirror .rcard-out .rcard-live{visibility:hidden;max-width:0;overflow:hidden}
+.rpt-mirror .rcard-outnote{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted)}
+.rpt-mirror .rcard-x{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:1px solid transparent;border-radius:50%;background:none;color:var(--muted);cursor:pointer}
+.rpt-mirror .rcard-x .ic{width:12px;height:12px}
+.rpt-mirror .rcard-x:hover{color:var(--text);background:var(--hover-bg);border-color:var(--line-2)}
+.rpt-mirror .rcard-x:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rpt-mirror .rcard-edited{flex:none;font-size:calc(var(--m-scale) * var(--fs-micro));font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.rpt-mirror .rcard-free{white-space:pre-wrap}   /* 고친 글은 줄바꿈과 들여쓰기 그대로 */
+/* 글 편집 보기: 보낼 글 전체가 문서처럼 이어진다. 회색 머리 줄은 잠겨 있고(카드에서 정함) 그 아래 내용 칸만 고친다. */
+.rpt-mirror .rdoc-info{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);line-height:1.6}
+.rpt-mirror .rdoc{border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);padding:8px 10px;display:flex;flex-direction:column;gap:10px}
+.rpt-mirror .rdoc-sec{display:flex;flex-direction:column;gap:2px}
+.rpt-mirror .rdoc-lock{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;background:var(--bg);border-radius:var(--r-sm);padding:3px 8px;font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--muted);user-select:none}
+.rpt-mirror .rdoc-lk{display:inline-flex;opacity:.8}
+.rpt-mirror .rdoc-lk .ic{width:12px;height:12px}
+.rpt-mirror .rdoc-head{font-weight:600;overflow-wrap:anywhere}
+.rpt-mirror .rdoc-stale{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--warn-text)}
+.rpt-mirror .rdoc-revert{margin-left:auto}
+.rpt-mirror .rdoc-ta{display:block;width:100%;box-sizing:border-box;min-height:calc(var(--m-scale) * 30px);resize:none;overflow:hidden;font:inherit;font-size:calc(var(--m-scale) * var(--fs-meta));line-height:1.7;padding:4px 8px;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;color:var(--text);white-space:pre-wrap}
+.rpt-mirror .rdoc-ta:hover{border-color:var(--line)}
+.rpt-mirror .rdoc-ta:focus{outline:2px solid var(--accent);outline-offset:-1px;background:var(--panel)}
+.rpt-mirror .rdoc-ta::placeholder{color:var(--muted)}
+.rpt-mirror .rdoc-warn{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--warn-text);padding:0 8px}
+.rpt-mirror .rdoc-outsec{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);padding:2px 8px}
+/* 일간 미리보기 머리(REPORT-EDIT §2.1): 고친 과제 수, 임시 저장 시각, 보기 전환 [카드][글 편집]. 미러 밖이라 배율을 받지 않는다. */
+.rpt-viewbar{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;margin-top:6px}
+.rpt-edit-info{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font-size:var(--fs-micro);color:var(--muted)}
+.rpt-edit-pill{font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.rpt-edit-saved{color:var(--ok)}
+.rpt-viewbar .rpt-view-seg{margin-left:auto}
 /* netcus 일간보고 병합 미리보기(읽기전용) — 보고서 모달 전용 */
 .rpt-mirror .rnc-loading{display:flex;align-items:center;gap:8px;padding:22px 14px;color:var(--muted);font-size:calc(var(--m-scale) * var(--fs-meta));flex-wrap:wrap}
 .rpt-mirror .rnc-loading .ic{width:15px;height:15px;flex:none;animation:spin .8s linear infinite}
@@ -1107,7 +1135,9 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
   #reportModal .rpt-body{display:grid;grid-template-columns:300px minmax(0,1fr);gap:0;flex:0 1 min(66vh,600px);min-height:0}
   #reportModal .rpt-rail{overflow:auto;padding-right:18px;border-right:1px solid var(--line)}
   #reportModal .rpt-preview{overflow:auto;padding-left:18px;display:flex;flex-direction:column}
-  #reportModal #rptSummary{position:sticky;top:0;z-index:1;background:var(--panel);padding-bottom:6px;margin-top:0}
+  /* 요약줄과 일간 보기 전환 줄을 한 머리로 묶어 함께 붙인다(둘을 따로 sticky 로 두면 top:0 에서 겹친다, REPORT-EDIT §2.1) */
+  #reportModal .rpt-pvhead{position:sticky;top:0;z-index:1;background:var(--panel);padding-bottom:6px}
+  #reportModal #rptSummary{margin-top:0}
   #reportModal .rpt-optbtn{display:none}          /* 넓은 폭: 토글 숨김 + 패널 강제 노출 */
   #reportModal .rpt-optpanel{display:block!important}
 }
@@ -1974,6 +2004,8 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .check{min-height:32px}
   .cust-row .code-ord .btn{min-height:32px}
   .rpt-mirror .rcard-h-in{min-height:32px}
+  .rpt-mirror .rcard-x{width:32px;height:32px}   /* 일간 카드 X(이 보고서에서 빼기)도 같은 하한(REPORT-EDIT §2.2) */
+  .rpt-mirror .rcard-back,.rpt-mirror .rdoc-revert,.rpt-mirror .rdoc-resetall{display:inline-flex;align-items:center;min-height:32px;padding:0 4px}   /* 글 편집 링크도 X 와 같은 32px 히트(숨김[hidden]은 !important 라 그대로 숨는다) */
   /* 시트 폭에선 좌우 20px 거터가 3버튼 푸터(닫기+전송+복사=282px)를 280px 안에 못 담아 1.8px 차이로 접혔다.
      푸터만 16px 거터로 줄여 한 줄을 지킨다(버튼 크기·간격 8px 접촉 규칙은 건드리지 않는다). */
   .modal-foot{padding-left:16px;padding-right:16px}
@@ -3076,7 +3108,17 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           </div>
         </div>
         <div class="rpt-preview">
-          <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
+          <div class="rpt-pvhead">
+            <div class="rpt-summary" id="rptSummary" role="status" aria-live="polite" aria-atomic="true"></div>
+            <!-- 일간만: 고친 과제 수, 임시 저장 시각, 보기 전환(REPORT-EDIT §2.1). buildReport 가 보이고 숨긴다 -->
+            <div class="rpt-viewbar hidden" id="rptViewBar">
+              <span class="rpt-edit-info" id="rptEditInfo"></span>
+              <div class="seg seg-auto seg-micro rpt-view-seg" id="rptViewSeg" role="group" aria-label="미리보기 보기">
+                <button type="button" class="seg-b active" data-rview="card" aria-pressed="true">카드</button>
+                <button type="button" class="seg-b" data-rview="doc" aria-pressed="false" title="보낼 글 전체를 문서처럼 보고 과제마다 내용을 고칩니다">글 편집</button>
+              </div>
+            </div>
+          </div>
           <div id="rptOut" class="rpt-mirror" role="tabpanel" aria-label="보고서 초안 미리보기"></div>
         </div>
       </div>
@@ -9549,7 +9591,7 @@ let noteTab = 'detail';      // 우측 패널 탭: 'detail'(일정 상세) | 'to
 let noteFilterCat = null;    // 할 일/작업일지 전용 과제 필터 — 캘린더 전역 filterCatId와 독립
 let noteCollapsed = new Set(['done','nodate']);  // 접힌 섹션 키(완료·기한없음은 기본 접힘)
 let editingTodoId = null;    // 인라인 편집 중인 TODO id
-let editingCommitKey = null; let editingReportKey = null; let editingDayNoteKey = null;// 인라인 편집 중인 커밋 행 키(eidhashcidx) — 작업일지 탭
+let editingCommitKey = null; let editingDayNoteKey = null;// 인라인 편집 중인 커밋 행 키(eidhashcidx): 작업일지 탭. (일간 보고서 줄편집 키는 줄 ✎ 와 함께 없앴다, REPORT-EDIT §5)
 let panelSheetOpen = false;  // 좁은 폭(<=760)에서 하단 시트 열림 여부
 let noteImportantOnly = false; // 할 일 탭 '★ 중요만' 필터
 let __entryGitLoaded = false; // 기록 모달에서 Git 커밋을 불러왔는지 → 저장 시 source='git'
@@ -10593,6 +10635,7 @@ function closeOverlay(ov){
   if(ov.id === 'adminHub' && __ah.docked && __ah.docked.dataset.busy === '1') return;
   //  ★ 일간·주간 **둘 다** 비운다(2026-09-18): 한쪽만 비우면 다시 열었을 때 주간 캐시가 이전 기간의 것으로 남는다(#rptFrom 과 같은 짝).
   if(ov.id === 'reportModal'){ clearNetcusMerge(); clearNetcusWeeklyMerge(); }   // 닫기 경로가 하나로 모였으니 부수효과도 여기 한 곳에서
+  if(ov.id === 'reportModal') rptDraftFlush();   // 모아 두던 글 편집 입력을 바로 쓴다(닫자마자 앱을 꺼도 남게, REPORT-EDIT §4)
   if(ov.id === 'orgTitleModal') otAfterClose();     // 직급·소속을 고쳤으면 「구성원 편집」이 드롭다운·명부를 다시 받는다
   //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
   //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
@@ -11318,6 +11361,7 @@ window.__netcusResult = function(ok, msg){
   const s = $('#rptSendStatus'); if(s){ setRptSendText(s, (ok ? ICON.check : ICON.alert) + ' ' + esc(msg)); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
   const b = $('#btnRptSend'); if(b) b.disabled = false;
   toast(msg, ok ? 'success' : 'error');   // netcus 전송 실패 = 회사 보고가 안 올라간 것 → 경고가 아니라 오류
+  rptDraftOnSendResult(ok, msg);   // 일간 전송 대기 표지가 있고 성공일 때만 그 날짜의 임시 저장을 지운다(실패, 바쁨, 주간 채우기 회신은 지우지 않는다)
 };
 window.__netcusProbeResult = function(ok, msg){
   const m = $('#ncProbeMsg'); if(m){ m.textContent = msg || ''; m.style.color = ok ? '' : 'var(--danger-text)'; }
@@ -11347,7 +11391,7 @@ window.__netcusStatus = function(s){
 // 전송 워치독 — fire-and-forget 전송이 결과(__netcusResult) 없이 끝나면(호스트 크래시 등) 100초 뒤 버튼 복구 + 안내(영구잠김 방지).
 function armRptSendWatchdog(){
   clearTimeout(Netcus.watchdog);
-  Netcus.watchdog = setTimeout(function(){ const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ICON.alert + ' 전송 결과를 받지 못했습니다. 다시 시도하세요'); st.className = 'rpt-send-status err'; } }, 100000);
+  Netcus.watchdog = setTimeout(function(){ rptDraftDisarmSend(); const b = $('#btnRptSend'); if(b) b.disabled = false; const st = $('#rptSendStatus'); if(st){ setRptSendText(st, ICON.alert + ' 전송 결과를 받지 못했습니다. 다시 시도하세요'); st.className = 'rpt-send-status err'; } }, 100000);
 }
 
 /* ===== 자동 업데이트 — 호스트(WPF)가 확인/다운로드/설치 담당. JS는 배너 + 설정 필드만 ===== */
@@ -13645,7 +13689,7 @@ function saveRptSourcePrefs(){   // 현재 체크박스를 현재 모드 키에 
 let reportMode = 'daily';
 function setReportMode(mode){
   reportMode = mode;
-  editingReportKey = null; editingDayNoteKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지)
+  editingDayNoteKey = null;   // 유형 전환 시 열린 인라인 편집기 폐기(stale 편집 상태 방지). 주간의 날짜 줄 ✎ 만 남았다
   $$('#reportModal [data-rmode]').forEach(b => { const on = b.dataset.rmode === mode; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1; });   // role=tab 선택상태 announce + roving tabindex
   const from = $('#rptFrom'), to = $('#rptTo');
   const _pf = from.value, _pt = to.value;   // 전환 전 기간 — 아래 분기가 프로그램적으로 바꾼다
@@ -14073,6 +14117,249 @@ function syncReportFormatUI(){
   if(cin) cin.value = f.markerCustom || '';
   if(iv) iv.textContent = indent + '단';
 }
+// ===== 일간 보고서 글 편집(docs/REPORT-EDIT.md, 2026-10-07) =====
+//  ★ 보고서와 캘린더는 따로 관리한다. 여기서 고친 글과 X(이 보고서에서 빼기)는 캘린더 기록(일정, 할 일, 커밋)을 바꾸지 않는다.
+//    예전의 일간 줄 ✎/✕ 는 보고서를 고치려다 캘린더 기록을 고치거나 지웠다. 그래서 없앴다(§5).
+//  ★ 머리 줄 `[과제] : 시간` 은 글로 고칠 수 없다. 카드의 과제와 시간 칸만 정한다. 주간 과제투입시간, 보고 기록 시간(payload.hours),
+//    netcus 일간보고 합치기가 모두 이 머리 줄과 같은 값을 읽기 때문이다(§1).
+//  ★ 보내기 전의 고친 글은 브라우저 저장소에 계정 + 날짜 단위로만 둔다(파일 입출력, 호스트 명령 없음: 위젯과 브라우저가 같은 코드).
+//    잃어도 되는 임시본이다. 저장소가 막혔거나 손상됐으면 메모리에만 두고(앱이 켜져 있는 동안은 남는다) "임시 저장됨" 표시만 뺀다(§4).
+//  ★ 열람 창(PEER)은 localStorage 를 부모 창과 같이 쓴다. 그래서 임시 저장을 읽지도 쓰지도 않는다(남의 일정을 보며 내 초안이 섞이면 안 된다).
+let rptView = 'card';                    // 일간 미리보기 보기: 'card' | 'doc'(글 편집). 보고서를 열 때마다 카드로 돌아간다
+const RPT_DRAFT_PREFIX = 'tc_rptDraft:'; // 키 = tc_rptDraft:<who>:<YYYY-MM-DD>
+const RPT_DRAFT_KEEP_DAYS = 14;          // 보고서를 열 때 이보다 오래된 날짜의 임시 저장은 지운다
+const RPT_DRAFT_DEBOUNCE_MS = 400;       // 내용 칸 입력은 짧게 모아서 쓴다(X, 되돌리기, 초안으로는 바로 쓴다)
+const RPT_TAB_UNITS = 4;                 // 고친 글의 줄 앞 탭 하나 = 들여쓰기 단위 4개
+const __rptDraftMem = new Map();         // key → 초안 | null. 이 세션에서 쓴 최신본(디바운스 사이와 저장소가 막혔을 때의 정본)
+const __rptDraftDirty = new Set();       // 저장소에 아직 못 쓴(대기 중이거나 실패한) 키. 이 키는 읽기도 메모리가 우선이다
+const __rptDraftFailed = new Set();      // 저장소 쓰기가 실패한 키 → "임시 저장됨" 표시를 뺀다
+let __rptDraftTimer = null;
+let __rptDraftSending = '';              // 일간 전송 대기 표지(그 날짜의 키). __netcusResult(true) 가 이 표지가 있을 때만 그 키를 지운다
+let __rptDraftSendSnap = '';             // 표지를 세울 때의 초안 서명(rptDraftSig). 회신 때 지금 초안과 같을 때만 지운다(보낸 뒤 고친 글을 지키려고)
+let __rptCtx = null;                     // 지금 그린 일간 미리보기의 {date, rows:[{key,name,head,draft}]} (입력 처리기가 초안과 비교할 때 쓴다)
+const _rptOwn = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+// 계정 = legacyPromptKey 와 같은 순서(__bootMeta.userId → currentUser.loginId → 'me'). 같은 PC 의 다른 계정 초안이 섞이지 않게.
+function rptDraftWho(){
+  const m = __bootMeta || {};
+  return (m.userId != null && String(m.userId) !== '') ? String(m.userId)
+       : ((currentUser && currentUser.loginId) ? String(currentUser.loginId) : 'me');
+}
+function rptDraftKey(date){ return RPT_DRAFT_PREFIX + rptDraftWho() + ':' + date; }
+function rptDraftEmpty(date){ return { v: 1, date, body: {}, base: {}, out: [], savedAt: '' }; }
+function rptDraftIsEmpty(d){ return !d || (!Object.keys(d.body || {}).length && !(d.out || []).length); }
+// 저장본 → 정규화. 모양이 틀리면 null(손상): 읽는 쪽이 메모리본이나 빈 초안으로 대신한다. 문자열 맵과 문자열 배열만 받는다.
+function rptDraftNorm(o, date){
+  if(!o || typeof o !== 'object' || o.v !== 1) return null;
+  const strMap = x => { const r = {}; if(x && typeof x === 'object' && !Array.isArray(x)) for(const k of Object.keys(x)) if(k && k !== '__proto__' && typeof x[k] === 'string') r[k] = x[k]; return r; };
+  const body = strMap(o.body), base = strMap(o.base);
+  for(const k of Object.keys(base)) if(!_rptOwn(body, k)) delete base[k];   // 기준본은 고친 과제에만 있다
+  const out = Array.isArray(o.out) ? [...new Set(o.out.filter(k => typeof k === 'string' && k))] : [];
+  return { v: 1, date, body, base, out, savedAt: typeof o.savedAt === 'string' ? o.savedAt : '' };
+}
+// 그 날짜의 초안(고친 글, 기준본, 뺀 과제). 늘 새 객체다(호출부가 고쳐도 원본이 안 바뀐다). 읽기만 한다: 렌더는 저장하지 않는다.
+function rptDraftGet(date){
+  const empty = rptDraftEmpty(date);
+  if(PEER || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return empty;
+  const key = rptDraftKey(date);
+  const fromMem = () => { const m = __rptDraftMem.get(key); return (m && rptDraftNorm(JSON.parse(JSON.stringify(m)), date)) || empty; };
+  if(__rptDraftDirty.has(key)) return fromMem();
+  let raw = null;
+  try{ raw = localStorage.getItem(key); }catch(_){ return fromMem(); }
+  if(raw == null) return empty;
+  try{ return rptDraftNorm(JSON.parse(raw), date) || fromMem(); }catch(_){ return fromMem(); }
+}
+// 지금 그 날짜에 그린 행(과제 id). 그린 적이 없거나 다른 날짜면 null(= 거를 기준이 없다).
+function rptCtxKeys(date){ return (__rptCtx && __rptCtx.date === date) ? new Set(__rptCtx.rows.map(x => x.key)) : null; }
+// 지금 행에 있는 과제의 고친 글과 뺀 과제만 센다. 없어진 과제(지운 과제, 빈 항목 제외로 빠진 행)의 흔적은 "고침/임시 저장" 으로 치지 않는다.
+function rptDraftLive(d, keys){
+  if(!d) return { body: {}, out: [] };
+  if(!keys) return { body: d.body || {}, out: d.out || [] };
+  const body = {}; for(const k of Object.keys(d.body || {})) if(keys.has(k)) body[k] = d.body[k];
+  return { body, out: (d.out || []).filter(k => keys.has(k)) };
+}
+// 쓰기 = 메모리에 바로 + 저장소는 now 면 바로, 아니면 짧게 모아서. 고친 것도 뺀 것도 없으면 키를 지운다.
+//   ★ 쓸 때만 지금 행에 없는 과제의 body, base, out 을 걷는다(렌더는 여전히 쓰지 않는다). 그래야 없어진 과제의 흔적이 키를 영영 살려 두지 않는다.
+function rptDraftPut(date, d, now){
+  if(PEER || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return;
+  const key = rptDraftKey(date);
+  const keys = rptCtxKeys(date);
+  if(d && keys){
+    for(const k of Object.keys(d.body || {})) if(!keys.has(k)) delete d.body[k];
+    for(const k of Object.keys(d.base || {})) if(!keys.has(k)) delete d.base[k];
+    d.out = (d.out || []).filter(k => keys.has(k));
+  }
+  __rptDraftMem.set(key, rptDraftIsEmpty(d) ? null : d);
+  __rptDraftDirty.add(key);
+  clearTimeout(__rptDraftTimer); __rptDraftTimer = null;
+  if(now) rptDraftFlush(); else __rptDraftTimer = setTimeout(rptDraftFlush, RPT_DRAFT_DEBOUNCE_MS);
+}
+function rptDraftFlush(){
+  clearTimeout(__rptDraftTimer); __rptDraftTimer = null;
+  if(PEER) return;
+  for(const key of [...__rptDraftDirty]){
+    const d = __rptDraftMem.get(key);
+    try{
+      if(d){ d.savedAt = new Date().toISOString(); localStorage.setItem(key, JSON.stringify(d)); }
+      else localStorage.removeItem(key);
+      __rptDraftDirty.delete(key); __rptDraftFailed.delete(key);
+    }catch(_){ __rptDraftFailed.add(key); }   // 막혔거나 가득 참 → 메모리에만 남긴다(다음 쓰기 때 다시 시도)
+  }
+  rptEditInfoRender();
+}
+// 보고서를 열 때: 이 계정의 RPT_DRAFT_KEEP_DAYS 일 지난 임시 저장을 지운다(보내지 않고 둔 옛 초안이 쌓이지 않게).
+function rptDraftPrune(){
+  if(PEER) return;
+  const pre = RPT_DRAFT_PREFIX + rptDraftWho() + ':', cut = addDays(todayYmd(), -RPT_DRAFT_KEEP_DAYS);
+  const old = k => { const d = String(k).slice(pre.length); return String(k).startsWith(pre) && /^\d{4}-\d{2}-\d{2}$/.test(d) && d < cut; };
+  let keys = [];
+  try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && old(k)) keys.push(k); } }catch(_){ keys = []; }
+  for(const k of [...__rptDraftMem.keys()]) if(old(k) && !keys.includes(k)) keys.push(k);
+  for(const k of keys){
+    try{ localStorage.removeItem(k); }catch(_){}
+    __rptDraftMem.delete(k); __rptDraftDirty.delete(k); __rptDraftFailed.delete(k);
+  }
+}
+// 고친 글 → 나가는 본문. 줄 앞 공백(스페이스, U+00A0)과 탭만 들여쓰기 단위로 바꾸고 줄 안쪽 공백은 그대로 둔다(§3.2).
+//   앞뒤 빈 줄과 끝 공백은 걷는다: 과제 사이 빈 줄(\n\n)이 겹치거나 머리 줄 바로 아래가 비면 보고서 꼴이 흐트러진다.
+function reportEditedBodyOut(text, unit){
+  const t = String(text == null ? '' : text).replace(/\r\n?/g, '\n').replace(/^(?:[ \t\u00A0]*\n)+/, '').replace(/\s+$/, '');
+  if(!t) return '';
+  return t.split('\n').map(l => {
+    if(/^[ \t\u00A0]*$/.test(l)) return '';   // 공백뿐인 가운데 줄은 빈 줄로(&nbsp; 만 있는 줄을 보내지 않는다)
+    const lead = /^[ \t\u00A0]*/.exec(l)[0];
+    let p = ''; for(const ch of lead) p += (ch === '\t') ? unit.repeat(RPT_TAB_UNITS) : unit;
+    return p + l.slice(lead.length);
+  }).join('\n');
+}
+// 대괄호 머리 줄 꼴(parseNetcusWeek 의 reBracket 과 같은 꼴): 내용 칸에 이런 줄이 있으면 netcus 합치기에서 과제 머리 줄로 읽힌다.
+function rptHasBracketLine(text){
+  const re = /^\s*\[\s*(.+?)\s*\]\s*[:：]?\s*(\d+(?:\.\d+)?)?\s*(?:시간|h|H)?\s*$/;
+  return String(text || '').split('\n').some(l => { const m = re.exec(l); return !!(m && m[1].trim()); });
+}
+// 일간 전송 대기 표지: 확인 뒤, Platform.report.submitDaily 직전에 세운다. 위젯만(브라우저는 성공 회신이 없어 자동으로 지우지 않는다).
+//   이때의 초안 서명을 함께 둔다. 회신까지 사이에 고친 글은 성공 회신이 지우지 않는다(보낸 글과 다르니까).
+function rptDraftArmSend(date){
+  __rptDraftSending = (Platform.caps.reportAuto && !PEER) ? rptDraftKey(date) : '';
+  __rptDraftSendSnap = __rptDraftSending ? rptDraftSig(rptDraftGet(date)) : '';
+}
+function rptDraftDisarmSend(){ __rptDraftSending = ''; __rptDraftSendSnap = ''; }
+// 초안 서명 = 고친 글과 뺀 과제만(기준본, savedAt 은 뺀다). 키 순서와 out 순서에 흔들리지 않게 정렬한다.
+function rptDraftSig(d){
+  const b = (d && d.body) || {}, body = {};
+  for(const k of Object.keys(b).sort()) body[k] = b[k];
+  return JSON.stringify({ body, out: [...((d && d.out) || [])].sort() });
+}
+// 주간 채우기 성공 회신(호스트 NetcusService.NetcusWeekFill 의 문구). 회신에 종류가 없어 문구 머리로만 가른다.
+//   이 회신은 일간 전송의 회신이 아니다: 대기 표지를 건드리지 않고 지우지도 않는다. 문구가 바뀌면 report-edit 시험이 잡는다.
+const RPT_WEEKFILL_OK_RE = /^주간보고 /;
+// __netcusResult 가 부른다. 표지는 회신이 오면(성공이든 실패든) 비운다. 성공이고 표지가 있을 때만 그 날짜의 임시 저장을 지운다.
+//   이 회신에는 날짜도 종류도 없다(주간 채우기, 바쁨, 자격 오류도 같은 콜백): 그래서 표지 없이는 아무것도 지우지 않는다.
+function rptDraftOnSendResult(ok, msg){
+  if(ok === true && RPT_WEEKFILL_OK_RE.test(String(msg || ''))) return;   // 주간 채우기 성공: 일간 대기 표지와 임시 저장은 그대로
+  const key = __rptDraftSending, snap = __rptDraftSendSnap; __rptDraftSending = ''; __rptDraftSendSnap = '';
+  if(!key || ok !== true || PEER) return;
+  const date = key.slice(key.lastIndexOf(':') + 1);
+  if(rptDraftSig(rptDraftGet(date)) !== snap){   // 보낸 뒤에 고쳤다: 지우지 않는다(다시 그리지도 않는다, 쓰던 글이 그대로 남는다)
+    toast('전송한 뒤에 고친 내용은 임시 저장에 남겨 두었습니다', 'info');
+    return;
+  }
+  __rptDraftMem.set(key, null); __rptDraftDirty.add(key); rptDraftFlush();
+  const rm = $('#reportModal');
+  if(rm && !rm.classList.contains('hidden') && reportMode === 'daily' && rptDraftKey($('#rptFrom').value) === key){
+    //  열린 미리보기가 그 날짜면 다시 그린다. buildReport 는 전송 상태 줄을 비우므로 방금 쓴 결과 문구는 되살린다.
+    const st = $('#rptSendStatus'); const keep = st ? { h: st.innerHTML, c: st.className } : null;
+    buildReport();
+    if(st && keep){ st.className = keep.c; setRptSendText(st, keep.h); }
+  }
+}
+// 과제 하나의 머리 줄. 일간만 시간(hmap). 시간이 없으면(0, 미입력) 과제명만.
+function reportRowHead(r, hmap){
+  let h = `[${r.name}]`;
+  if(hmap){ const v = hmap.get(r.key); if(v != null) h += ` : ${v}`; }
+  return h;
+}
+// 과제 하나의 초안 본문 = 머리 줄 아래 줄들(머리기호, 들여쓰기, 설명 줄, 커밋 본문, 기간 할 일 날짜 줄). 머리 줄과 첫 줄 사이의 '\n' 은 넣지 않는다.
+//   buildReportText(나가는 글)와 글 편집(초안)이 **같은 함수**를 쓴다(§3.1). 글 편집은 unit=' '(보통 공백)으로 부른다.
+function reportRowBodyText(r, indentUnit, mkSpec, indent){
+  const _pad = indentUnit.repeat(indent * 2);   // 복사=U+00A0 / netcus=&nbsp; / 글 편집=' '
+  return r.titles.map((t, i) => {
+    const _mk = reportMarkerAt(mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
+    const m = (r.titleMeta && r.titleMeta[i]) || null;
+    const _sub = _pad + reportSubIndent(_prefix, indentUnit);   // 설명·본문은 마커 폭만큼 들여쓰기 → 제목 텍스트 아래 정렬(마커보다 왼쪽으로 튀어나오지 않게)
+    return _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);   // 일정 메모/할일 노트(설명) + 커밋 전체 본문: 주간 전송과 같은 함수
+  }).join('\n');
+}
+// 미리보기 머리(§2.1): "고친 과제 n개", "이 PC에 임시 저장됨 HH:MM". 저장소가 막혀 있으면 저장 표시는 없다.
+function rptEditInfoRender(){
+  const el = $('#rptEditInfo'); if(!el) return;
+  const ctx = __rptCtx;
+  if(!ctx || PEER || reportMode !== 'daily'){ el.innerHTML = ''; return; }
+  const d = rptDraftGet(ctx.date);
+  const live = rptDraftLive(d, rptCtxKeys(ctx.date));   // 지금 행 기준(없어진 과제의 흔적은 세지 않는다)
+  const n = Object.keys(live.body).length;
+  let h = n ? `<span class="rpt-edit-pill">고친 과제 ${n}개</span>` : '';
+  const at = d.savedAt ? new Date(d.savedAt) : null;
+  if(!rptDraftIsEmpty(live) && at && !isNaN(at) && !__rptDraftFailed.has(rptDraftKey(ctx.date))){
+    h += `<span class="rpt-edit-saved">이 PC에 임시 저장됨 ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}</span>`;
+  }
+  el.innerHTML = h;
+  const ra = $('#rptOut .rdoc-resetall'); if(ra) ra.disabled = rptDraftIsEmpty(live);
+}
+// 보기 전환 줄: 일간(캘린더 출처, 과제가 있을 때)만. 열람 창에는 없다.
+function rptViewBarSync(show){
+  const bar = $('#rptViewBar'); if(!bar) return;
+  bar.classList.toggle('hidden', !show || PEER);
+  $$('#rptViewSeg [data-rview]').forEach(b => { const on = b.dataset.rview === rptView; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  if(!show){ __rptCtx = null; const el = $('#rptEditInfo'); if(el) el.innerHTML = ''; }
+}
+// 글 편집 보기 HTML(§2.3). 머리 줄은 textarea 가 아니다(잠김). 내용 칸 처음 값 = 그 과제의 초안 본문, 고쳤으면 고친 글.
+function rptDocHtml(ctx, d){
+  let html = `<div class="rdoc-info">복사와 전송은 이 글 그대로 나갑니다. 회색 머리 줄은 카드에서 정해집니다. 그 아래 내용은 상세 줄, 들여쓰기, 번호까지 자유롭게 쓰세요. `
+    + `<button type="button" class="lnk rdoc-resetall" data-rdact="resetall"${rptDraftIsEmpty(rptDraftLive(d, rptCtxKeys(ctx.date))) ? ' disabled' : ''}>모두 초안으로</button></div>`;
+  html += '<div class="rdoc">' + ctx.rows.map(x => {
+    const k = esc(x.key);
+    if(d.out.includes(x.key)) return `<div class="rdoc-outsec" data-rcat="${k}">[${esc(x.name)}] 이 보고서에서 뺌, 카드에서 되돌릴 수 있습니다</div>`;
+    const edited = _rptOwn(d.body, x.key);
+    const text = edited ? d.body[x.key] : x.draft;
+    const stale = edited && _rptOwn(d.base, x.key) && d.base[x.key] !== x.draft;   // 그새 커밋이나 일정이 늘었다(§3.3). 자동으로 덮지 않는다
+    //  textarea 바로 뒤 '\n' 은 HTML 파서가 먹는 자리다: 고친 글이 빈 줄로 시작해도 그 줄이 사라지지 않게 하나 넣어 둔다.
+    return `<div class="rdoc-sec" data-rcat="${k}">`
+      + `<div class="rdoc-lock"><span class="rdoc-lk" aria-hidden="true">${ICON.lock}</span><span class="rdoc-head" title="과제와 시간은 카드에서 정합니다">${esc(x.head)}</span>`
+      + `<span class="rdoc-stale"${stale ? '' : ' hidden'}>캘린더 기록이 바뀌었습니다. 초안으로 되돌리면 새 내용이 들어갑니다</span>`
+      + `<button type="button" class="lnk rdoc-revert" data-rdact="revert"${edited ? '' : ' hidden'} aria-label="${esc(x.name)} 초안으로 되돌리기">초안으로</button></div>`
+      + `<textarea class="rdoc-ta" data-rcat="${k}" rows="1" spellcheck="false" placeholder="내용 없음(쓰려면 여기를 누르세요)" aria-label="${esc(x.name)} 내용">\n${esc(text)}</textarea>`
+      + `<div class="rdoc-warn"${rptHasBracketLine(text) ? '' : ' hidden'}>대괄호로 시작하는 줄은 netcus 일간보고 합치기에서 과제 머리 줄로 읽힐 수 있습니다.</div>`
+      + `</div>`;
+  }).join('') + '</div>';
+  return html;
+}
+// 글 양에 맞춰 늘어나는 내용 칸. 숨은 창(높이 0)에서는 건드리지 않는다(CSS 최소 높이가 받친다).
+function rptGrow(ta){
+  if(!ta) return;
+  ta.style.height = 'auto';
+  const h = ta.scrollHeight;
+  ta.style.height = h > 0 ? (h + 2) + 'px' : '';
+}
+// 내용 칸 입력 → 메모리에 바로, 저장소에는 짧게 모아서. 초안과 같아지면 "고치지 않음"으로 돌아간다(키도 비면 지운다).
+function rptDocInput(ta){
+  if(PEER || reportMode !== 'daily' || !__rptCtx) return;
+  const date = __rptCtx.date, cat = ta.dataset.rcat;
+  const row = __rptCtx.rows.find(x => x.key === cat); if(!row) return;
+  const text = String(ta.value).replace(/\r\n?/g, '\n');
+  const d = rptDraftGet(date);
+  if(text === row.draft){ delete d.body[cat]; delete d.base[cat]; }
+  else { if(!_rptOwn(d.body, cat)) d.base[cat] = row.draft; d.body[cat] = text; }   // 기준본 = 고치기 시작할 때의 초안(§3.3)
+  rptDraftPut(date, d, false);
+  rptGrow(ta);
+  const sec = ta.closest('.rdoc-sec');
+  if(sec){
+    const edited = _rptOwn(d.body, cat);
+    const rv = sec.querySelector('.rdoc-revert'); if(rv) rv.hidden = !edited;
+    const sl = sec.querySelector('.rdoc-stale'); if(sl) sl.hidden = !(edited && _rptOwn(d.base, cat) && d.base[cat] !== row.draft);
+    const wn = sec.querySelector('.rdoc-warn'); if(wn) wn.hidden = !rptHasBracketLine(text);
+  }
+  rptEditInfoRender();
+}
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
   updateRptSendVis();
@@ -14093,6 +14380,7 @@ function buildReport(){
       // 접힘 요약에 적으면 '옵션 안에 있는 설정'으로 오인된다(380px 발견성 근거도 함께 사라짐).
       os.textContent = `(포함 ${pc}/3, 설명 ${src.desc ? '포함' : '제외'}${src.skipEmpty ? ', 빈항목 제외' : ''}, 머리기호 ${mk})`; } }
   const attHost = $('#rptAttendRail'); if(attHost) attHost.innerHTML = '';   // 근태 슬롯(레일)은 매 빌드 초기화(가드 경로 포함) — 유효 일간에서만 채움
+  rptViewBarSync(false);   // 일간 보기 전환 줄도 매 빌드 숨김으로 시작(가드 경로 포함). 유효한 일간 카드를 그릴 때만 보인다(REPORT-EDIT §2.1)
   // ⚙옵션 표시(출처·모드 기반, 날짜 유효성 무관) — 조기반환 앞에 확정해야 잘못된 기간에서도 캘린더 전환 시 옵션 복귀
   const _isNet = (state.reportSource === 'net'), _isWeek = (state.reportSource === 'week');
   const _netMode = ((_isNet || _isWeek) && reportMode !== 'daily');   // net(일간병합)·week(주간병합) 둘 다 캘린더 렌더 대신 netcus 미리보기
@@ -14144,37 +14432,47 @@ function buildReport(){
   const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
   const _padL = 13 + _indent * 14;   // 기존 base 13px 유지
   const spanMulti = (from !== to);   // 기간 보고(여러 날) 여부 — 기간 할일 dayNote 라인에 "요일 M/D" 접두 표시 결정(일간=원문)
+  //  일간 글 편집(REPORT-EDIT): 그 날짜의 초안(고친 글, 뺀 과제)을 읽기만 한다. 렌더는 저장소에 쓰지 않는다(§7).
+  const _dr = daily ? rptDraftGet(from) : null;
+  const _hmap = daily ? new Map(reportDailyHours(rows, from).map(x => [x.key, x.hours])) : null;   // 머리 줄 = buildReportText 와 같은 값
+  if(daily){
+    __rptCtx = { date: from, rows: rows.map(r => ({ key: r.key, name: String(r.name || ''), head: reportRowHead(r, _hmap), draft: reportRowBodyText(r, ' ', _mkSpec, _indent) })) };
+    rptViewBarSync(true);
+  }
+  const _docView = daily && rptView === 'doc' && !PEER;
+  //  다시 그려도(데이터 변경 알림 등) 쓰던 내용 칸의 포커스와 커서를 지킨다: 글은 입력 때마다 메모리에 이미 들어가 있다.
+  const _ae = document.activeElement;
+  const _keepTa = (_docView && _ae && _ae.classList && _ae.classList.contains('rdoc-ta') && out.contains(_ae))
+    ? { cat: _ae.dataset.rcat, s: _ae.selectionStart, e: _ae.selectionEnd } : null;
   let html = '';
-  for(const r of rows){
+  if(_docView) html = rptDocHtml(__rptCtx, _dr);
+  else for(const r of rows){
     const hasEntry = r.entries.length > 0;
-    const hasContent = r.titles.length > 0;   // 할일/커밋만 있어도 내용 있음 — 흐림·편집힌트 판정은 '내용 유무'로(일정 유무 아님)
-    html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}">`;
+    const _out = !!(_dr && _dr.out.includes(r.key));        // X 로 뺀 과제: 카드는 그 자리에 흐리게 남는다(행 수, 순서 불변)
+    const _edited = !!(_dr && _rptOwn(_dr.body, r.key));    // 글 편집에서 고친 과제: 본문은 고친 글 그대로
+    const _freeText = _edited ? reportEditedBodyOut(_dr.body[r.key], ' ') : '';
+    const hasContent = _edited ? !!_freeText : r.titles.length > 0;   // 할일/커밋만 있어도 내용 있음: 흐림 판정은 '내용 유무'로(일정 유무 아님)
+    html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}${_out ? ' rcard-out' : ''}"${daily ? ` data-rcat="${esc(r.key)}"` : ''}>`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
+    if(_edited) html += `<span class="rcard-edited" title="글 편집에서 고친 과제입니다. 캘린더 기록은 바뀌지 않습니다">고침</span>`;
     // 일간만 — 과제별 시간 입력('[과제] : n' 계약). 값은 setTaskHours로 (date×catId) 저장. 주간/커스텀은 없음(읽기전용).
     // ★ 모든 행이 실재하는 과제다(휴가, 기타 포함, DEFAULT-TASKS §4.3). 예전의 미분류 '기타' 행 전용 안내(입력칸 없음)는 지웠다.
+    // ★ 시간 칸 + X 와 "이 보고서에서 뺌 되돌리기" 는 한 칸(.rcard-slot)에서 맞바꾼다. 카드 높이가 바뀌지 않는다(§2.2).
     if(daily){ const _th = getTaskHours(from, r.key);
-      html += `<span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.5" inputmode="decimal" value="${_th != null ? _th : ''}" data-hcat="${esc(r.key)}" aria-label="${esc(r.name)} 시간(회사 일간보고용)" placeholder="0"><span class="rcard-hu">h</span></span>`; }
+      html += `<span class="rcard-slot"><span class="rcard-live"><span class="rcard-hwrap"><input type="number" class="rcard-h-in" min="0" max="24" step="0.5" inputmode="decimal" value="${_th != null ? _th : ''}" data-hcat="${esc(r.key)}" aria-label="${esc(r.name)} 시간(회사 일간보고용)" placeholder="0"${_out ? ' tabindex="-1"' : ''}><span class="rcard-hu">h</span></span>`
+        + (PEER ? '' : `<button type="button" class="rcard-x" data-rxact="out" title="이 보고서에서 빼기" aria-label="${esc(r.name)} 이 보고서에서 빼기"${_out ? ' tabindex="-1"' : ''}>${ICON.xmark}</button>`) + `</span>`
+        + (_out ? `<span class="rcard-outnote">이 보고서에서 뺌 <button type="button" class="lnk rcard-back" data-rxact="back" aria-label="${esc(r.name)} 보고서에 되돌리기">되돌리기</button></span>` : '')
+        + `</span>`; }
     html += `</div>`;
-    if(r.titles.length){
-      if(daily){   // 일간: 라인별 렌더 — 단일 git 커밋 출처 라인만 ✎(setCommitSubject 편집), 그 외는 읽기전용 텍스트
+    if(_edited){
+      if(_freeText) html += `<div class="rcard-tasks rcard-free">${esc(_freeText)}</div>`;   // 고친 글 그대로(줄바꿈, 들여쓰기 보존)
+    } else if(r.titles.length){
+      if(daily){   // 일간: 읽기 전용(REPORT-EDIT §2.2). 고치기는 글 편집에서 한다. 캘린더 기록을 바꾸던 줄 ✎/✕ 와 날짜 줄 ✎ 는 없앴다(§5)
         html += `<div class="rcard-tasks" style="padding-left:${_padL}px">` + r.titles.map((t, i) => {
-          // 머리기호는 .rtask-t 밖 별도 span으로(원문 esc(t)만 rtask-t에 — 편집 textarea/setCommitSubject가 원문 사용)
           const _mk = reportMarkerAt(_mkSpec, i); const _mkS = _mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : '';
           const m = (r.titleMeta && r.titleMeta[i]) || null;
-          const _detailHtml = reportDetailsHtml(m);
-          if(m && m.editable){
-            const key = String(m.kind) + '|' + String(m.entryId || m.todoId || '') + '|' + String(m.hash || '') + '|' + String(m.cidx == null ? '' : m.cidx);
-            const dr = `data-rkind="${esc(m.kind)}" data-reid="${esc(m.entryId || m.todoId || '')}" data-rhash="${esc(m.hash || '')}" data-rcidx="${m.cidx==null?'':m.cidx}"`;
-            if(editingReportKey === key){
-              return `<div class="rtask editing" ${dr}><div class="nd-cedit-wrap"><textarea class="rtask-edit" maxlength="500" rows="2" aria-label="항목 수정">${esc(t)}</textarea><div class="nd-cedit-acts"><button type="button" class="nd-cbtn2 rtask-cancel" data-ract="cancel" aria-label="편집 취소">취소</button><button type="button" class="nd-cbtn2 nd-cedit-save rtask-save" data-ract="save" aria-label="커밋 메시지 저장">저장</button></div></div></div>`;
-            }
-            // 편집 가능한 라인(커밋·일정·할일)에 삭제(✕) 노출 — 원본까지 제거(일간만; 주간/커스텀은 rtask-ro라 미노출). rkind별 라우팅.
-            const _delLbl = m.kind === 'git' ? '이 커밋 삭제' : m.kind === 'event' ? '이 일정 삭제' : m.kind === 'todo' ? '이 할 일 삭제' : '';
-            const _del = _delLbl ? `<button type="button" class="rtask-del-btn" data-ract="del" title="${_delLbl}" aria-label="${_delLbl}">${ICON.trash || ICON.xmark}</button>` : '';
-            return `<div class="rtask" ${dr}>${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}${reportDayLinesHtml(m, true, spanMulti)}</span><button type="button" class="rtask-edit-btn" data-ract="edit" title="항목 수정" aria-label="항목 수정">${ICON.wrench}</button>${_del}</div>` + (m.body ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
-          }
-          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${_detailHtml}${reportDayLinesHtml(m, true, spanMulti)}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
+          return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${reportDetailsHtml(m)}${reportDayLinesHtml(m, false, spanMulti)}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
         }).join('') + `</div>`;
       } else {   // 주간/커스텀: 제목은 읽기전용 — 단, 기간 할일 날짜별 dayNote 라인만 예외적으로 편집 개방(제목은 계속 읽기전용)
         html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => {
@@ -14184,16 +14482,25 @@ function buildReport(){
         }).join('')}</div>`;
       }
     }
-    if(daily && hasContent) html += `<span class="rcard-note edit">오늘치는 여기서 바로 수정</span>`;   // 할일/커밋만 있어도 편집 가능 → 힌트 노출
-    else if(hasEntry && !daily) html += `<span class="rcard-note">여러 날 합산이라 날짜별로 수정</span>`;
+    if(hasEntry && !daily) html += `<span class="rcard-note">여러 날 합산이라 날짜별로 수정</span>`;
     html += `</div>`;
   }
   out.innerHTML = html;
+  if(_docView){
+    $$('#rptOut .rdoc-ta').forEach(rptGrow);
+    if(_keepTa){ const ta = [...$$('#rptOut .rdoc-ta')].find(x => x.dataset.rcat === _keepTa.cat);
+      if(ta){ ta.focus(); try{ ta.setSelectionRange(_keepTa.s, _keepTa.e); }catch(_){} } }
+  }
+  if(daily) rptEditInfoRender();
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
   let line = `${from} ~ ${to}, 과제 ${rows.length}개, 업무 ${totalItems}건`;
   const picked = [src.event && '일정', src.todo && '할 일', src.git && '커밋'].filter(Boolean);
   if(picked.length < 3) line += `, 포함: ${picked.join('·')}`;
-  if(daily) line += ', 하루(수정 가능)';
+  if(daily){   // 예전 요약줄 끝의 '수정 가능' 은 줄 ✎ 를 가리켰다. 이제 내용은 글 편집에서만 고치고 캘린더 기록은 그대로다(§2.1)
+    const _nOut = _dr ? rows.filter(r => _dr.out.includes(r.key)).length : 0;
+    if(_nOut) line += `, ${_nOut}개 뺌`;
+    if(!PEER) line += '. 내용은 글 편집에서 고칩니다. 캘린더 기록은 바뀌지 않습니다';   // 열람 창에는 글 편집이 없다
+  }
   sum.textContent = line;
 }
 // ===== netcus 일간보고 → 주간보고 병합(Phase2) — 위젯(HOST) 전용, 읽기전용 미리보기 =====
@@ -14475,6 +14782,8 @@ function syncReportSourceSeg(){
 }
 function openReport(){
   clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
+  rptView = 'card';   // 일간 미리보기는 늘 카드 보기로 연다(REPORT-EDIT §2.1)
+  rptDraftPrune();    // 14일 지난 이 계정의 임시 저장 정리(§4). 그 뒤의 렌더는 읽기만 한다
   openModal('#reportModal');
   setReportMode('daily');   // 기본: 일간(오늘). 포함 항목 선택은 setReportMode→applyRptSourcePrefs가 모드별로 복원. 주간/커스텀은 탭으로 전환
   // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
@@ -14650,23 +14959,22 @@ function buildReportText(indentUnit){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return '';
   const { rows } = collectReportData(from, to, rptSources());
   if(!rows.length) return '';
-  // 화면 미리보기와 동일(WYSIWYG) — 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 스페이스. 카드마다 번호 리셋.
+  // 화면 미리보기와 동일(WYSIWYG): 머리기호는 실제 문자로, 들여쓰기는 (indent*2) 단위(indentUnit). 카드마다 번호 리셋.
   const _mkSpec = reportMarkerSpec();
   const _fmt = currentReportFormatPref();
   const _indent = Math.max(0, Math.min(6, _fmt.indent != null ? _fmt.indent : 2));
-  const _pad = indentUnit.repeat(_indent * 2);   // 복사=U+00A0 / netcus=&nbsp; (호출부가 지정)
   const _daily = (reportMode === 'daily');   // 일간만 '[과제] : n'(회사 일간보고 계약). from==to==그날.
   const _hmap = _daily ? new Map(reportDailyHours(rows, from).map(x => [x.key, x.hours])) : null;   // payload.hours 와 같은 함수
-  const blocks = rows.map(r => {
-    let _head = `[${r.name}]`;
-    if(_hmap){ const _h = _hmap.get(r.key); if(_h != null) _head += ` : ${_h}`; }   // 시간 있으면 헤더에, 없으면 과제명만(getTaskHours 는 0·미입력을 null 로 준다)
-    return _head + r.titles.map((t, i) => {
-      const _mk = reportMarkerAt(_mkSpec, i); const _prefix = _mk ? (_mk + ' ') : '';
-      const m = (r.titleMeta && r.titleMeta[i]) || null;
-      const _sub = _pad + reportSubIndent(_prefix, indentUnit);   // 설명·본문은 마커 폭만큼 들여쓰기 → 제목 텍스트 아래 정렬(마커보다 왼쪽으로 튀어나오지 않게)
-      return '\n' + _pad + _prefix + t + reportTextDetails(m, _sub) + reportTextBody(m, _sub);   // 일정 메모/할일 노트(설명) + 커밋 전체 본문 — 주간 전송과 같은 함수
-    }).join('');
+  //  일간만: 글 편집에서 고친 글과 X 로 뺀 과제(REPORT-EDIT §3.2). 머리 줄은 늘 카드 값(reportRowHead)이고 글로 고칠 수 없다.
+  //  ★ 고친 것도 뺀 것도 없으면 아래는 예전 식과 바이트까지 같다: 머리 줄 + ('\n' + 초안 본문). 초안 본문은 글 편집과 같은 함수(reportRowBodyText)다.
+  const _dr = _daily ? rptDraftGet(from) : null;
+  const blocks = rows.filter(r => !(_dr && _dr.out.includes(r.key))).map(r => {
+    const _body = (_dr && _rptOwn(_dr.body, r.key))
+      ? reportEditedBodyOut(_dr.body[r.key], indentUnit)          // 고친 글 그대로(줄 앞 공백과 탭만 단위로)
+      : reportRowBodyText(r, indentUnit, _mkSpec, _indent);       // 그 순간의 초안 본문(복사=U+00A0 / netcus=&nbsp;, 호출부가 지정)
+    return reportRowHead(r, _hmap) + (_body ? '\n' + _body : '');   // 시간 있으면 헤더에, 없으면 과제명만(getTaskHours 는 0, 미입력을 null 로 준다)
   });
+  if(!blocks.length) return '';   // 전부 뺐으면 보낼 글이 없다(복사, 전송 모두 '내용 없음' 안내로)
   return blocks.join('\n\n') + '\n';
 }
 // 복사용 HTML — 평문(buildReportText)과 내용이 완전히 동일하고 폰트/줄바꿈만 입힌다(내용 드리프트 방지).
@@ -14945,25 +15253,15 @@ function findCommitInEntry(entry, chash, cidx){
   return (cidx >= 0 && cidx < entry.commits.length) ? entry.commits[cidx] : null;
 }
 // ── 커밋 데이터 단일 변경 경로(결정6) ──────────────────────────────────
-// 커밋 subject/삭제 쓰기는 어느 표면(작업일지 탭·보고서)에서 호출하든 오직
-// setCommitSubject / deleteCommitRow 두 API만 통과한다. 데이터 수정은 여기서 1회만 일어나고
-// notifyDataChanged()가 열려 있는 모든 뷰(패널·그리드·보고서 초안)를 한 번에 재반영한다.
+// 커밋 쓰기(메시지 고치기, 삭제)는 커밋 내역 탭의 setCommitMessage / deleteCommitRow 두 API만 통과한다.
+// 데이터 수정은 여기서 1회만 일어나고 notifyDataChanged()가 열려 있는 모든 뷰(패널, 그리드, 보고서 초안)를 한 번에 재반영한다.
+// (보고서에서 캘린더 기록을 고치던 setCommitSubject / setEntryTitle / setTodoText 는 일간 줄 ✎/✕ 와 함께 없앴다.
+//  보고서와 캘린더는 따로 관리한다: 보고서 글은 글 편집에서 고치고 캘린더 기록은 바뀌지 않는다, REPORT-EDIT §5)
 // 데이터 변경 후 열린 뷰 재반영 — 단일 리렌더 트리거. 보고서 모달이 떠 있으면 초안도 갱신.
 function notifyDataChanged(){
   renderPanel(); renderGrid();
   const rm = $('#reportModal');
   if(rm && !rm.classList.contains('hidden')) buildReport();   // 열려 있을 때만(커밋내역↔보고서 교차 반영)
-}
-// 커밋 subject 변경 — 유일한 subject 쓰기 경로. 정규화·무변경/빈값 차단. 실제 변경 시 true.
-function setCommitSubject(entryId, hash, cidx, text){
-  if(peerReadOnly()) return false;   // P2 — 열람 창(연결 잠금보다 먼저: 거기선 잠금이 늘 꺼져 있다)
-  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
-  const e = entryById(entryId); if(!e) return false;
-  const c = findCommitInEntry(e, hash, cidx); if(!c) return false;
-  const v = String(text || '').replace(/\s+/g, ' ').trim();
-  if(!v || v === c.subject) return false;   // 빈 값/무변경은 기록하지 않음
-  c.subject = v; e.updatedAt = nowIso();
-  save(); notifyDataChanged(); return true;
 }
 // 커밋 전체 메시지(제목+본문) 변경 — 커밋 내역 탭 편집 전용 단일 변이 경로(결정6). 첫 비어있지 않은 줄=제목(정규화), 나머지=본문(원문 줄바꿈 보존·끝 공백만 정리).
 function setCommitMessage(entryId, hash, cidx, fullText){
@@ -14979,24 +15277,6 @@ function setCommitMessage(entryId, hash, cidx, fullText){
   if(subject === c.subject && body === (c.body || '')) return false;    // 무변경
   c.subject = subject; c.body = body; e.updatedAt = nowIso();
   save(); notifyDataChanged(); return true;
-}
-// 일정 제목 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
-function setEntryTitle(entryId, text){
-  if(peerReadOnly()) return false;   // P2 — 열람 창(연결 잠금보다 먼저: 거기선 잠금이 늘 꺼져 있다)
-  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
-  const e = entryById(entryId); if(!e) return false;
-  const v = String(text || '').replace(/\s+/g, ' ').trim();
-  if(!v || v === e.title) return false;
-  e.title = v; e.updatedAt = nowIso(); save(); notifyDataChanged(); return true;
-}
-// 할 일 텍스트 변경 — 일간 보고서 줄편집 전용. 정규화·무변경/빈값 차단. 실제 변경 시 true.
-function setTodoText(todoId, text){
-  if(peerReadOnly()) return false;   // P2 — 열람 창(연결 잠금보다 먼저: 거기선 잠금이 늘 꺼져 있다)
-  if(guardEdit()) return false;   // 연결 잠금(§4) — 호출부는 false 를 받으면 편집기만 걷는다
-  const t = (state.todos || []).find(x => x.id === todoId); if(!t) return false;
-  const v = String(text || '').replace(/\s+/g, ' ').trim();
-  if(!v || v === t.text) return false;
-  t.text = v; t.updatedAt = nowIso(); save(); notifyDataChanged(); return true;
 }
 // 커밋 삭제 — hash(있으면) 아니면 인덱스로 제거. 마지막 커밋이면 git 기록 자체를 제거. 유일한 삭제 경로.
 function deleteCommitRow(eid, chash, cidx){
@@ -15022,19 +15302,6 @@ function commitCommitEdit(inp){
   // setCommitMessage가 첫 줄=제목·나머지=본문으로 재분리 후 저장+notifyDataChanged(패널·그리드·보고서 재반영) → 이중 렌더 금지.
   const ok = setCommitMessage(rowEl.dataset.eid, rowEl.dataset.chash, parseInt(rowEl.dataset.cidx, 10), inp.value);
   if(!ok) renderPanel();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
-}
-// 일간 보고서 커밋 라인 인라인 편집 커밋 — (entryId,hash,cidx)를 .rtask 행에서 해석해 setCommitSubject로만 위임.
-// 성공 시 setCommitSubject→notifyDataChanged가 buildReport(보고서)+renderPanel(커밋내역)+renderGrid를 교차 반영한다.
-function commitReportEdit(ta){
-  const rowEl = ta.closest('.rtask'); if(!rowEl){ editingReportKey = null; return; }
-  if(ta.dataset.cancel){ editingReportKey = null; buildReport(); return; }   // Esc/취소
-  editingReportKey = null;
-  const el = rowEl, kind = el.dataset.rkind, id = el.dataset.reid;
-  let ok = false;
-  if(kind === 'git') ok = setCommitSubject(id, el.dataset.rhash, parseInt(el.dataset.rcidx, 10), ta.value);
-  else if(kind === 'event') ok = setEntryTitle(id, ta.value);
-  else if(kind === 'todo') ok = setTodoText(id, ta.value);
-  if(!ok) buildReport();   // 무변경/실패 시 편집기만 걷어내도록 1회 렌더
 }
 // 보고서 날짜별 dayNote 라인 인라인 편집 커밋 — (todoId,date)를 .rdn 행에서 해석해 updateTodo({dayNotes:{date:val}})로만 위임.
 // 원본 dayNotes 변경 → notifyDataChanged가 패널·그리드·보고서를 한 번에 교차 반영(단일 소스, 이중 렌더 금지).
@@ -16101,7 +16368,10 @@ function bind(){
       //   ★ 파싱이 아니라 전달이다(설계 §5.9.3) — 본문을 만들 때 이미 갖고 있던 값을 그대로 보낸다.
       //     호스트가 본문을 되파싱하면 전각 콜론·&nbsp; 들여쓰기 같은 표기 문제를 다시 만난다.
       //   ★ 실는 건 과제 **이름**이다. cat_no 는 싣지 않는다 — 앱이 아직 XML 을 써 DB 번호를 모른다.
+      //   ★ X(이 보고서에서 빼기)로 뺀 과제는 본문에서 빠지므로 여기서도 뺀다: 머리 줄과 이름, 값, 순서가 같아야 한다(REPORT-EDIT §3.2).
+      const _rptOut = new Set(rptDraftGet(from).out);
       const rptHours = reportDailyHours(collectReportData(from, to, rptSources()).rows, from)
+        .filter(x => !_rptOut.has(x.key))
         .map(x => ({ name: x.name, hours: x.hours }));   // 본문 헤더와 같은 rows·같은 함수(reportDailyHours) — 이름·값·순서가 본문과 같다
       const payload = { __tc: 'netcus-report', v: 1, kind: 'daily', date: { y: p[0], m: p[1], d: p[2] }, fields: { status: at.status, overtime: at.overtime, content }, hours: rptHours, dryRun: false };   // 늘 실제 제출(UI-CLARITY U3) — 호스트의 미제출(DryRun) 갈래는 남아 있지만 웹은 고르지 않는다
       //  ★ 실제 제출 전 확인은 한 번(UI-CLARITY U4) — 위젯(자동 전송)에서만 묻는다. 브라우저는 netcus 창만 열어 주고 제출하지 않는다.
@@ -16112,8 +16382,10 @@ function bind(){
         const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' 전송 시작…'); s.className = 'rpt-send-status busy'; }
         armRptSendWatchdog();
       }
+      rptDraftArmSend(from);   // 일간 전송 대기 표지(REPORT-EDIT §4): 확인 뒤, 보내기 직전. 성공 회신만 이 날짜의 임시 저장을 지운다
       Platform.report.submitDaily(payload);
     } else {
+      rptDraftDisarmSend();   // 주간 채우기 회신(__netcusResult)이 일간 임시 저장을 지우지 않게: 대기 표지는 일간 전송 것뿐이다
       // 주간보고 — 채우고 열어두기(직접 제출). 기간/제목/과제투입시간/진행사항 자동 채움.
       if(!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to){ toast('기간을 선택하세요 (시작 ≤ 종료)', 'warn'); return; }
       // 내용 출처 = netcus 일간보고 → endwork는 병합 파서 결과의 '깨끗한' 텍스트(// 사유·통계 없음). 과제투입시간은 기본 비움.
@@ -16703,45 +16975,59 @@ function bind(){
     setTaskHours(from, cat, inp.value);
     const v = getTaskHours(from, cat); inp.value = (v != null ? v : '');   // 6.50→6.5·음수/과대 클램프 표시 정리
   });
-  // 일간 보고서 커밋 라인 편집(✎)/삭제(🗑) — 편집=setCommitSubject / 삭제=deleteCommitRow(둘 다 단일 경로). 커밋내역 탭과 동일 배선.
+  // 일간 글 편집(REPORT-EDIT §2): 카드 X(이 보고서에서 빼기)/되돌리기, 초안으로, 모두 초안으로. 캘린더 기록은 건드리지 않는다.
+  //  ★ 예전 이 자리의 줄 ✎/✕(제목 고치기 = setCommitSubject 등, 원본 삭제 = deleteCommitRow 등)는 없앴다. 보고서를 고치려다
+  //    캘린더 기록이 바뀌거나 지워졌다(§1, §5). 커밋 삭제는 커밋 내역 탭(deleteCommitRow)에만 남는다.
+  //  ★ 임시 저장은 캘린더 데이터가 아니라서 연결 잠금(guardEdit)을 지나지 않는다. 열람 창(PEER)에서는 아무것도 하지 않는다.
   $('#rptOut').addEventListener('click', ev => {
-    const b = ev.target.closest('.rtask [data-ract]'); if(!b) return;
-    const rowEl = b.closest('.rtask');
-    if(b.dataset.ract === 'edit'){
-      editingReportKey = String(rowEl.dataset.rkind) + '|' + String(rowEl.dataset.reid || '') + '|' + String(rowEl.dataset.rhash || '') + '|' + rowEl.dataset.rcidx;
+    const b = ev.target.closest && ev.target.closest('[data-rxact], [data-rdact]'); if(!b) return;
+    if(peerReadOnly()) return;
+    if(reportMode !== 'daily') return;
+    const date = $('#rptFrom').value;
+    const focusIn = (cat, sel) => { const c = [...$$('#rptOut [data-rcat]')].find(x => x.dataset.rcat === cat); const t = c && c.querySelector(sel); if(t) t.focus(); };
+    if(b.dataset.rxact){   // X = 그 자리에 흐리게 남긴다 / 되돌리기 = 원래대로. 저장소에는 바로 쓴다(입력처럼 모으지 않는다)
+      const card = b.closest('.rcard'); const cat = card && card.dataset.rcat; if(!cat) return;
+      const on = b.dataset.rxact === 'out';
+      const d = rptDraftGet(date);
+      d.out = d.out.filter(k => k !== cat); if(on) d.out.push(cat);
+      rptDraftPut(date, d, true);
       buildReport();
-      const ta = $('#rptOut .rtask-edit'); if(ta){ ta.focus(); const n = ta.value.length; try{ ta.setSelectionRange(n, n); }catch(_){} }
-    } else if(b.dataset.ract === 'del'){   // 원본 삭제 — git=커밋내역 / event=일정 / todo=할 일. 일간만(편집가능 라인에만 버튼).
-      const kind = rowEl.dataset.rkind, rid = rowEl.dataset.reid;
-      if(guardEdit()) return;
-      if(kind === 'git'){
-        const rhash = rowEl.dataset.rhash, rcidx = parseInt(rowEl.dataset.rcidx, 10);
-        confirmBox('커밋 삭제', '이 커밋 내역을 삭제할까요?', '삭제').then(r => {
-          if(r === 'ok') deleteCommitRow(rid, rhash, rcidx);   // save + notifyDataChanged + toast 내장
-        });
-      } else if(kind === 'event'){
-        const e = entryById(rid); if(!e) return;
-        const from = $('#rptFrom').value;
-        if(e.recur){   // 반복: 캘린더 삭제와 동일 — '이 날짜만'(recurExcept) / '전체 삭제'
-          confirmBox('반복 일정 삭제', `'${e.title}' (${recurLabel(e)})`, `이 날짜(${fmtShort(from)})만 삭제`, '반복 전체 삭제', {alt:'danger'}).then(r => {
-            if(r === 'ok'){ e.recurExcept = [...(e.recurExcept || []), from]; e.updatedAt = nowIso(); save(); notifyDataChanged(); toast('이 날짜의 반복을 건너뜁니다'); }
-            else if(r === 'alt'){ deleteEntry(e.id); notifyDataChanged(); toast('반복 일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreEntry(e); notifyDataChanged(); }}); }
-          });
-        } else {
-          confirmBox('일정 삭제', `'${e.title}' 일정을 삭제할까요? (캘린더에서도 제거)`, '삭제').then(r => {
-            if(r === 'ok'){ deleteEntry(e.id); notifyDataChanged(); toast('일정을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreEntry(e); notifyDataChanged(); }}); }
-          });
-        }
-      } else if(kind === 'todo'){
-        const t = (state.todos || []).find(x => x.id === rid); if(!t) return;
-        confirmBox('할 일 삭제', `'${t.text}' 할 일을 삭제할까요? (할 일 목록에서도 제거)`, '삭제').then(r => {
-          if(r === 'ok'){ deleteTodo(t.id); notifyDataChanged(); toast('할 일을 삭제했습니다', 'success', {label:'실행 취소', fn:()=>{ restoreTodo(t); notifyDataChanged(); }}); }
-        });
-      }
+      focusIn(cat, on ? '.rcard-back' : '.rcard-x');   // 키보드 사용자가 제자리에서 바로 되돌릴 수 있게
+      //  시간이 있는 과제를 뺐으면 안내만 한다(막지 않는다, 2026-10-08 사용자 결정). 머리 줄과 같은 값(getTaskHours)이고,
+      //  주간 과제투입시간은 (날짜×과제) 시간표를 그대로 더하므로 이 보고서에서 빼도 거기에는 남는다. 되돌리기는 말없이.
+      if(on){ const _h = getTaskHours(date, cat);
+        if(_h != null && _h > 0){ const _r = __rptCtx && __rptCtx.rows.find(x => x.key === cat);
+          toast(`'${_r ? _r.name : ''}'의 ${_h}시간은 주간 과제투입시간에는 계속 들어갑니다. 주간에서도 빼려면 시간 칸을 비우세요.`, 'info'); } }
+      return;
     }
-    // 'save'/'cancel'은 focusout(commitReportEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
+    if(b.dataset.rdact === 'revert'){   // 그 과제만 초안으로(고친 글과 기준본을 버린다)
+      const sec = b.closest('.rdoc-sec'); const cat = sec && sec.dataset.rcat; if(!cat) return;
+      confirmBox('초안으로 되돌리기', '이 과제의 고친 내용을 버리고 초안으로 되돌릴까요?', '되돌리기').then(r => {
+        if(r !== 'ok') return;
+        const d = rptDraftGet(date); delete d.body[cat]; delete d.base[cat];
+        rptDraftPut(date, d, true); buildReport(); focusIn(cat, '.rdoc-ta');
+      });
+    } else if(b.dataset.rdact === 'resetall'){   // 이 날짜의 고친 글과 뺀 과제를 모두 버린다(키도 지운다). 브라우저는 전송 성공 회신이 없어 이 길로 지운다
+      confirmBox('모두 초안으로', '이 날짜의 고친 내용과 뺀 과제를 모두 버리고 초안으로 되돌릴까요?', '되돌리기').then(r => {
+        if(r !== 'ok') return;
+        rptDraftPut(date, rptDraftEmpty(date), true); buildReport();
+        //  지운 버튼(모두 초안으로)은 꺼지므로 포커스가 body 로 떨어진다: 첫 내용 칸, 없으면 보기 전환으로 옮긴다.
+        const f = $('#rptOut .rdoc-ta') || $('#rptViewSeg .seg-b.active'); if(f) f.focus();
+      });
+    }
   });
-  // 날짜별 dayNote 라인 편집(✎) — 주간(제목 읽기전용이어도 이 라인만 편집 개방)·일간 공통. 저장은 commitDayNoteEdit→updateTodo 단일 경로.
+  $('#rptOut').addEventListener('input', ev => {
+    const ta = ev.target.closest && ev.target.closest('.rdoc-ta'); if(!ta) return;
+    rptDocInput(ta);
+  });
+  $('#rptViewSeg').addEventListener('click', ev => {   // 보기 전환 [카드][글 편집]: 글과 X 는 보기와 무관하게 그대로다
+    const b = ev.target.closest && ev.target.closest('[data-rview]'); if(!b || b.dataset.rview === rptView) return;
+    if(PEER) return;
+    rptView = (b.dataset.rview === 'doc') ? 'doc' : 'card';
+    buildReport();
+  });
+  window.addEventListener('pagehide', rptDraftFlush);   // 모아 두던 입력이 있으면 창이 내려갈 때 쓴다(잃어도 되는 임시본이지만 아낄 수 있으면 아낀다)
+  // 날짜별 dayNote 라인 편집(✎): 주간만(제목 읽기전용이어도 이 라인만 편집 개방. 일간 카드는 읽기 전용, REPORT-EDIT §5). 저장은 commitDayNoteEdit→updateTodo 단일 경로.
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest && ev.target.closest('.rdn [data-dnact]'); if(!b) return;
     if(b.dataset.dnact === 'edit'){
@@ -16752,29 +17038,20 @@ function bind(){
     }
     // 'save'/'cancel'은 focusout(commitDayNoteEdit)/mousedown 경로에서 처리 → 이중 커밋 방지
   });
-  $('#rptOut').addEventListener('mousedown', ev => {   // 취소 버튼: focusout 전에 취소 의도 심기(저장 아닌 취소로 종결)
-    const c = ev.target.closest && ev.target.closest('.rtask-cancel'); if(!c) return;
-    const row = c.closest('.rtask'); const ta = row && row.querySelector('.rtask-edit');
-    if(ta) ta.dataset.cancel = '1';
-  });
-  $('#rptOut').addEventListener('mousedown', ev => {   // dayNote 라인 취소 버튼
+  $('#rptOut').addEventListener('mousedown', ev => {   // dayNote 라인 취소 버튼: focusout 전에 취소 의도 심기(저장 아닌 취소로 종결)
     const c = ev.target.closest && ev.target.closest('.rdn-cancel'); if(!c) return;
     const row = c.closest('.rdn'); const ta = row && row.querySelector('.rdn-edit');
     if(ta) ta.dataset.cancel = '1';
   });
   $('#rptOut').addEventListener('keydown', ev => {
     if(ev.isComposing || ev.keyCode === 229) return;   // 한글 IME 조합 중 Enter 무시
-    if(ev.target.classList && ev.target.classList.contains('rtask-edit')){
-      if(ev.key === 'Enter'){ ev.preventDefault(); ev.target.blur(); }   // subject는 단행 → Enter=커밋(줄바꿈 삽입 금지)
-      else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
-    } else if(ev.target.classList && ev.target.classList.contains('rdn-edit')){
+    if(ev.target.classList && ev.target.classList.contains('rdn-edit')){
       if(ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); ev.target.blur(); }   // Enter=저장, Shift+Enter=줄바꿈
       else if(ev.key === 'Escape'){ ev.preventDefault(); ev.target.dataset.cancel = '1'; ev.target.blur(); }
     }
   });
   $('#rptOut').addEventListener('focusout', ev => {
-    if(ev.target.classList && ev.target.classList.contains('rtask-edit')) commitReportEdit(ev.target);
-    else if(ev.target.classList && ev.target.classList.contains('rdn-edit')) commitDayNoteEdit(ev.target);
+    if(ev.target.classList && ev.target.classList.contains('rdn-edit')) commitDayNoteEdit(ev.target);
   });
   $('#bulkGitModal .rpt-presets').addEventListener('click', ev => {
     const b = ev.target.closest('[data-bulk]'); if(b) setBulkRange(b.dataset.bulk);

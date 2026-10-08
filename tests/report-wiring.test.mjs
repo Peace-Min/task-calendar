@@ -132,6 +132,11 @@ const checks = {
     // 웹: 페이로드를 만들 때 getTaskHours 로 구조화한다(본문 되파싱이 아니다)
     assert.ok(/const rptHours = reportDailyHours\(collectReportData\(from, to, rptSources\(\)\)\.rows, from\)/.test(app),
       '웹이 hours 를 본문과 같은 rows 에서 만들지 않는다 — 호스트가 본문을 되파싱하게 되거나(전각 콜론·&nbsp;), 본문과 순서가 갈린다');
+    //  REPORT-EDIT §3.2(2026-10-07): X(이 보고서에서 빼기)로 본문에서 뺀 과제는 hours 에서도 빠진다. 같은 초안(rptDraftGet)의 out 을 본다.
+    assert.ok(/const _rptOut = new Set\(rptDraftGet\(from\)\.out\);\s*const rptHours = reportDailyHours\(collectReportData\(from, to, rptSources\(\)\)\.rows, from\)\s*\.filter\(x => !_rptOut\.has\(x\.key\)\)\s*\.map\(x => \(\{ name: x\.name, hours: x\.hours \}\)\);/.test(app),
+      'payload.hours 가 X 로 뺀 과제를 빼지 않는다 — 본문에는 없는 과제의 시간이 보고 기록에 남는다(머리 줄과 hours 가 갈린다)');
+    assert.ok(/rows\.filter\(r => !\(_dr && _dr\.out\.includes\(r\.key\)\)\)/.test(extractFunction(app, 'buildReportText')),
+      '본문(buildReportText)이 같은 초안의 out 으로 과제를 빼지 않는다 — hours 와 본문이 다른 기준을 쓴다');
     assert.ok(/getTaskHours\(date, r\.key\)/.test(extractFunction(app, 'reportDailyHours')),
       'reportDailyHours 가 getTaskHours 에서 값을 가져오지 않는다 — 이미 아는 값을 다시 파싱하는 셈이다');
     assert.ok(/reportDailyHours\(rows, from\)/.test(extractFunction(app, 'buildReportText')),
@@ -327,6 +332,11 @@ test('변이④: 주간 저장을 채우기 성공 통지 앞으로 옮기면 �
 test('변이⑤: 웹이 hours 를 안 실으면 배선⑤ 가 실패한다', () => {
   const bad = mutate('hours: p.hours || []', 'dummy: 0', src);
   assert.throws(() => checks.hoursCrossesBoundary(bad, mainwin), /호스트로 넘기지 않는다/);
+});
+
+test('변이⑤b: payload.hours 에서 X 로 뺀 과제 거르기를 지우면 배선⑤ 가 실패한다(REPORT-EDIT §3.2)', () => {
+  const bad = mutate('        .filter(x => !_rptOut.has(x.key))\n', '', src);
+  assert.throws(() => checks.hoursCrossesBoundary(bad, mainwin), /X 로 뺀 과제를 빼지 않는다/);
 });
 
 test('변이⑥: 호스트가 hours 를 안 읽으면 배선⑤ 가 실패한다', () => {

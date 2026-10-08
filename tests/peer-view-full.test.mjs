@@ -171,8 +171,11 @@ const W = {
     for (const sel of ['#btnAddHere', '#btnTodoNew', '#btnGitHere', '#btnGitBulk', '.todo-del', '.nd-cbtn', '.card-actions']) {
       assert.ok(hidden.has(sel), `PEER 에서 ${sel} 을(를) 감추지 않는다 — 열람 창에 편집 수단이 보인다(P3)`);
     }
-    for (const fn of ['toggleTodo', 'updateTodo', 'deleteTodo', 'addTodo', 'setCommitSubject', 'setCommitMessage',
-                      'setTodoText', 'setEntryTitle', 'deleteCommitRow']) {
+    //  setCommitSubject, setTodoText, setEntryTitle 은 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5) — 아래에서 '없다'를 본다.
+    for (const fn of ['setCommitSubject', 'setTodoText', 'setEntryTitle']) {
+      assert.ok(!src.includes('function ' + fn + '('), `${fn} 가 되살아났다 — 열람 창 관문 목록에 다시 올려야 할 쓰기 경로다`);
+    }
+    for (const fn of ['toggleTodo', 'updateTodo', 'deleteTodo', 'addTodo', 'setCommitMessage', 'deleteCommitRow']) {
       const body = extractFunction(src, fn);
       const g = body.indexOf('peerReadOnly()');
       assert.ok(g >= 0, `${fn} 에 PEER 관문(peerReadOnly)이 없다 — 열람 창에서 state 를 바꾼다`);
@@ -451,8 +454,7 @@ if (!JSDOM) {
       const before = P.ev('JSON.stringify({t:state.todos, e:state.entries})');
       const calls = [
         'toggleTodo("t-1")', 'updateTodo("t-1", {text:"침입"})', 'deleteTodo("t-1")', 'addTodo("침입 할일")',
-        'setTodoText("t-1", "침입")', 'setEntryTitle("e-t1", "침입")',
-        'setCommitSubject("e-g1", "abc1234def", 0, "침입")', 'setCommitMessage("e-g1", "abc1234def", 0, "침입")',
+        'setCommitMessage("e-g1", "abc1234def", 0, "침입")',
         'deleteCommitRow("e-g1", "abc1234def", 0)', 'deleteEntry("e-t1")',
       ];
       for (const c of calls) {
