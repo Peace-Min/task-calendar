@@ -718,13 +718,13 @@ if (!JSDOM) {
     test('주간 보고 렌더: 날짜별 dayNote 라인은 읽기 전용(✎ 없음) + 요일 접두 + X', () => {
       seed(dnState());
       setWeekly('2026-07-13', '2026-07-19');
-      ev('buildReport()');
+      ev("rptViewW = 'card'; buildReport()");   // 주간 기본은 글 편집(회사 폼, 2026-10-08). 카드 보기에서 본다
       const html = ev("$('#rptOut').innerHTML");
       assert.ok(html.includes('초안 작성') && html.includes('월 7/13'), '전제: 날짜별 라인과 요일 접두');
       assert.ok(!/data-dnact=|rdn-edit-btn|data-dnid=/.test(html), '주간 날짜 줄에 ✎(편집 앵커)가 있다');
       assert.ok(/<div class="rdn ro">/.test(html), '주간 날짜 줄이 읽기 전용(.rdn.ro)이 아니다');
       assert.ok(/class="rcard-x"/.test(html), '주간 카드에 X 가 없다');
-      ev("reportMode='daily'");
+      ev("reportMode='daily'; rptViewW = 'doc';");
     });
     test('기간 취합 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
       seed(dnState());

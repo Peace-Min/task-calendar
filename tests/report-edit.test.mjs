@@ -424,6 +424,8 @@ if (!JSDOM) {
         assert.strictEqual(B.ev("$('#rptViewSeg [data-rview=\"card\"]').getAttribute('aria-pressed')"), 'true', '기본 보기가 카드가 아니다');
         //  WEEKLY-EDIT(2026-10-08): 주간 작성도 읽기 전용 카드 + X + 보기 전환. 날짜 줄 ✎ 는 기간 취합에만 남는다.
         B.ev(`setReportMode('weekly'); $('#rptFrom').value = ${JSON.stringify(Y)}; $('#rptTo').value = ${JSON.stringify(N)}; buildReport();`);
+        assert.ok(B.ev("!!document.querySelector('#rptOut .rwf')"), '주간은 글 편집(회사 폼)으로 열려야 한다(2026-10-08)');
+        B.ev("rptViewW = 'card'; buildReport();");
         const wk = B.ev("$('#rptOut').innerHTML");
         assert.ok(wk.includes('오늘 메모') && !/rdn-edit-btn|data-dnact=/.test(wk), '주간 날짜 줄 ✎ 가 남아 있다(주간도 읽기 전용)');
         assert.ok(/rcard-x/.test(wk), '주간 카드에 X 가 없다');

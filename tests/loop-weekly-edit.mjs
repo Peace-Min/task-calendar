@@ -7,10 +7,10 @@
  *
  *  케이스:
  *    O0   전제: 로그인, conn ok, bootOk, 새 빌드(rptWOutFields 등), 지난 실행 잔재(2099 주간 키) 정리
- *    E1   주간 작성을 2099 시험 주로 연다: 카드 보기, 카드마다 X, 날짜 줄 ✎ 없음, 보기 전환 보임
+ *    E1   주간 작성을 2099 시험 주로 연다: 글 편집(회사 폼 모양) 기본, 입력 칸은 진행사항과 차주계획뿐 → 카드로 바꿔 X, 날짜 줄 ✎ 없음
  *    E2   두 과제(A, B)에 시험 주 시간(앱 함수) → 카드의 "이번 주 n h"
  *    E3   X(B): 카드 제자리, 카드와 머리 높이 그대로, 키 tc_rptDraftW: 에 바로 저장
- *    E4   글 편집: 회사 폼 순서, 읽기 전용 과제투입시간(B 빠짐, 합계 다시), 제목, 진행사항 상세 줄, 차주계획 → 저장
+ *    E4   글 편집: 회사 폼 행과 순서, 읽기 전용 과제투입시간(B 빠짐, 합계 다시), 진행사항 상세 줄, 차주계획 → 저장(제목은 자동, 저장 안 함)
  *    E5   창 닫고 다시 열기, 다른 주로 바꾸기, 위젯 다시 읽기(reloadState) 뒤에도 그대로
  *    E6   채우기(가로채기): subject, endwork(&nbsp; 들여쓰기, B 없음), content(B 없음, 합계 3), planwork → 성공 회신 흉내 뒤에도 남음
  *    E7   출처 netcus 일간보고(가짜 병합 캐시, 실제 읽기 없음): 같은 이름 과제의 고친 글과 X 가 따라온다
@@ -42,7 +42,7 @@ const W1 = ['2099-12-07', '2099-12-13'], W2 = ['2099-12-14', '2099-12-20'];
 const W1D2 = '2099-12-08', W1D3 = '2099-12-09';
 const ALLDAYS = [W1[0], W1D2, W1D3];
 const NB = '&nbsp;';
-const SUBJ = '루프 시험 주간보고';
+//  제목은 고칠 수 없다(회사 폼처럼 기간에 따라 자동, 2026-10-08). 채우기 payload 의 제목은 앱의 weekSubjectGuess 와 같아야 한다.
 const DETAIL = '• 루프 진행 상세\n    - 하위 한 줄\n    - 하위 두 줄';
 const PLAN = '• 루프 다음 주 계획';
 
@@ -246,10 +246,13 @@ async function main() {
   [kA, kB] = await J(`[rptWNameKey(${JSON.stringify(nameA)}), rptWNameKey(${JSON.stringify(nameB)})]`);
   if (kA === kB) { notReady = true; undecide('O0 앞 두 과제 이름이 정규화로 같다', `${nameA} / ${nameB}`); return; }
 
-  head('E1 주간 작성을 시험 주로 연다 — 카드 보기, 카드마다 X, 날짜 줄 ✎ 없음, 보기 전환 보임');
+  head('E1 주간 작성을 시험 주로 연다: 글 편집(회사 폼) 기본 → 카드로 바꿔 X, 날짜 줄 ✎ 없음');
   ok('E1 보고서 창이 열렸다', await openWeeklyAt(W1[0]));
   ok('E1 주간, 시험 주', same(await J(`[reportMode, $('#rptFrom').value, $('#rptTo').value]`), ['weekly', W1[0], W1[1]]));
-  ok('E1 기본 보기 = 카드, 보기 전환 줄이 보인다', same(await J(`[rptViewW, $('#rptViewBar').classList.contains('hidden')]`), ['card', false]));
+  ok('E1 기본 보기 = 글 편집(회사 폼), 보기 전환 줄이 보인다', same(await J(`[rptViewW, $('#rptViewBar').classList.contains('hidden'), !!document.querySelector('#rptOut .rwf')]`), ['doc', false, true]));
+  ok('E1 회사 폼에 input 이 없고(제목, 세 칸은 입력 아님) 세 칸은 자리만', await cdp.ev(`document.querySelectorAll('#rptOut .rwf input').length === 0 && document.querySelectorAll('#rptOut .rwf-off').length === 3`));
+  ok('E1 카드 보기로 바꿨다', (await setView('card')) === 'ok');
+  await sleep(150);
   ok('E1 카드마다 X, 날짜 줄 ✎ 없음', await cdp.ev(`document.querySelectorAll('#rptOut .rcard-x').length === document.querySelectorAll('#rptOut .rcard').length && !document.querySelector('#rptOut [data-dnact]')`));
 
   head('E2 시간 — A 에 월 2 + 화 1, B 에 수 1.5(앱 함수 setTaskHours → 저장)');
@@ -269,38 +272,41 @@ async function main() {
   const s3 = await stored(W1[0], W1[1]);
   ok('E3 키 tc_rptDraftW:… 에 바로 저장(out 에 B)', s3 && s3.v === 1 && s3.out.includes(kB) && (await loopKeys()).length === 1, JSON.stringify(s3));
 
-  head('E4 글 편집 — 제목, 진행사항 상세 줄, 차주계획 → 잠시 뒤 저장');
+  head('E4 글 편집(회사 폼): 진행사항 상세 줄, 차주계획 → 잠시 뒤 저장');
   ok('E4 글 편집 보기로', (await setView('doc')) === 'ok');
   await sleep(150);
-  ok('E4 회사 폼 순서와 세 칸 안내', same(await J(`[].map.call(document.querySelectorAll('#rptOut .rwd-h'), function(x){ return x.firstChild.textContent; })`), ['제목', '진행사항', '과제투입시간', '차주계획'])
-    && (await cdp.ev(`!!document.querySelector('#rptOut .rwd-note')`)));
+  ok('E4 회사 폼 행과 순서', same(await J(`[].map.call(document.querySelectorAll('#rptOut .rwf > .rwf-lab'), function(x){ return x.textContent; })`), ['기간', '제목', '진행사항', '과제투입시간', '미처리사항', '차주계획', '문제점 및 건의사항', '회의내용']));
+  ok('E4 기간과 제목은 잠긴 자동 값', (await cdp.ev(`$('#rptOut .rwf-val[data-wrow="subject"] .rwf-box').textContent`)) === (await cdp.ev(`weekSubjectGuess(${JSON.stringify(W1[0])})`)));
   ok('E4 읽기 전용 과제투입시간에 B 가 없고 합계 3', (await cdp.ev(`$('#rptOut .rwd-hours').textContent`)).endsWith('합계 : 3') && !(await cdp.ev(`$('#rptOut .rwd-hours').textContent`)).includes(`[${nameB}]`));
-  ok('E4 제목 입력', (await typeIn('subject', '', SUBJ)) === 'ok');
+  //  (제목 칸은 입력이 아니다)
   ok('E4 진행사항 입력', (await typeIn('prog', kA, DETAIL)) === 'ok');
   ok('E4 차주계획 입력', (await typeIn('plan', kA, PLAN)) === 'ok');
   await sleep(700);
   const s4 = await stored(W1[0], W1[1]);
-  ok('E4 저장됐다(subject, prog, plan, out)', s4 && s4.subject === SUBJ && s4.prog[kA] === DETAIL && s4.plan[kA] === PLAN && s4.out.includes(kB), JSON.stringify(s4));
-  ok('E4 "고친 칸 3개", "이 PC에 임시 저장됨"', await cdp.ev(`(function(){ const t = $('#rptEditInfo').textContent; return t.indexOf('고친 칸 3개') >= 0 && t.indexOf('이 PC에 임시 저장됨') >= 0; })()`));
+  ok('E4 저장됐다(prog, plan, out, 제목 없음)', s4 && !('subject' in s4) && s4.prog[kA] === DETAIL && s4.plan[kA] === PLAN && s4.out.includes(kB), JSON.stringify(s4));
+  ok('E4 "고친 과제 1개", "이 PC에 임시 저장됨"', await cdp.ev(`(function(){ const t = $('#rptEditInfo').textContent; return t.indexOf('고친 과제 1개') >= 0 && t.indexOf('이 PC에 임시 저장됨') >= 0; })()`));
 
   head('E5 창 닫고 다시 열기, 주 바꾸기, 다시 읽기(reloadState) 뒤에도 그대로');
   await closeAll();
   ok('E5 다시 열었다', await openWeeklyAt(W1[0]));
   const c5 = await cardsInfo();
-  ok('E5 카드 보기로 열리고 B 는 뺐고 A 는 고침', (await cdp.ev('rptViewW')) === 'card' && (c5.find((c) => c.k === kB) || {}).out === true && (c5.find((c) => c.k === kA) || {}).edited === true);
+  ok('E5 다시 열면 글 편집(회사 폼)으로', (await cdp.ev('rptViewW')) === 'doc');
+  await setView('card'); await sleep(150);
+  const c5b = await cardsInfo();
+  ok('E5 B 는 뺐고 A 는 고침', (c5b.find((c) => c.k === kB) || {}).out === true && (c5b.find((c) => c.k === kA) || {}).edited === true);
   await setWeek(W2[0]);
   ok('E5 다른 주는 깨끗(렌더만으로 키가 생기지 않음)', (await cdp.ev(`!document.querySelector('#rptOut .rcard-out, #rptOut .rcard-edited')`)) && (await loopKeys()).length === 1);
   await setWeek(W1[0]);
   await closeAll();
   ok('E5 reloadState → 적용', (await reload()) === 'applied');
-  ok('E5 다시 읽은 뒤에도 그대로', (await openWeeklyAt(W1[0])) && (await cdp.ev(`!!document.querySelector('#rptOut .rcard-out') && !!document.querySelector('#rptOut .rcard-edited')`)));
+  ok('E5 다시 읽은 뒤에도 그대로', (await openWeeklyAt(W1[0])) && (await setView('card')) === 'ok' && (await sleep(150), true) && (await cdp.ev(`!!document.querySelector('#rptOut .rcard-out') && !!document.querySelector('#rptOut .rcard-edited')`)));
 
   head('E6 채우기(가로채기) — 네 칸 확인, 성공 회신 흉내 뒤에도 임시 저장이 남는다');
   const cap = await fillIntercepted();
   ok('E6 payload 를 붙잡았다(호스트로 나가지 않음)', !!cap);
   if (cap) {
     const f = cap.fields || {};
-    ok('E6 subject = 고친 제목', f.subject === SUBJ, f.subject);
+    ok('E6 subject = 자동 제목(고칠 수 없다)', f.subject === (await cdp.ev(`weekSubjectGuess(${JSON.stringify(W1[0])})`)), f.subject);
     ok('E6 endwork: A 상세 줄이 &nbsp; 들여쓰기, B 없음', String(f.endwork).startsWith(`[${nameA}]\n• 루프 진행 상세\n${NB.repeat(4)}- 하위 한 줄`) && !String(f.endwork).includes(`[${nameB}]`), JSON.stringify(String(f.endwork).slice(0, 160)));
     ok('E6 content: B 줄 없고 합계 3', !String(f.content).includes(`[${nameB}]`) && String(f.content).endsWith('합계 : 3'), f.content);
     ok('E6 planwork: A 계획, B 없음', String(f.planwork).startsWith(`[${nameA}]\n${PLAN}`) && !String(f.planwork).includes(`[${nameB}]`), f.planwork);

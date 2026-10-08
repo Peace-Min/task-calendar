@@ -65,15 +65,28 @@ const S = {
     assert.ok(!/rptW|RPT_WDRAFT/.test(extractFunction(src, 'rptDraftOnSendResult')), '전송 회신 처리가 주간 초안에 닿는다(채우기 성공으로 지우면 안 된다)');
   },
 };
+//  2026-10-08: 회사 폼 표는 스크롤하는 미리보기 안에서 줄어들어 잘리지 않고(flex:none), 440px 이하에서 이름 칸을 84px 로 줄인다.
+function formCss(src) {
+  const css = src.slice(src.indexOf('<style>'), src.indexOf('</style>'));
+  assert.ok(/\.rpt-mirror \.rwf\{flex:none;display:grid;grid-template-columns:110px minmax\(0,1fr\)/.test(css), '회사 폼 표가 flex:none(잘림 방지) + 110px 이름 칸이 아니다');
+  const m440 = css.indexOf('@media (max-width:440px)');
+  assert.ok(m440 > 0 && /\.rpt-mirror \.rwf\{grid-template-columns:84px minmax\(0,1fr\)\}/.test(css.slice(m440)), '440px 이하에서 회사 폼 이름 칸이 84px 가 아니다');
+  assert.ok(/\.rpt-mirror \.rwf-info\{color:var\(--accent-2\)\}/.test(css), '과제투입시간 이름의 안내 색이 토큰이 아니다');
+}
+test('WS6 (2026-10-08): 회사 폼 표 CSS — flex:none(잘림 방지), 440px 이하 이름 칸 84px, 안내 색 토큰', () => formCss(app));
+test('변이 WSM5: 표의 flex:none 이나 440px 규칙을 빼면 WS6 이 잡는다', () => {
+  assert.throws(() => formCss(mutate(app, '.rpt-mirror .rwf{flex:none;display:grid;', '.rpt-mirror .rwf{display:grid;')), /flex:none/);
+  assert.throws(() => formCss(mutate(app, '  .rpt-mirror .rwf{grid-template-columns:84px minmax(0,1fr)}', '')), /84px/);
+});
 test('WS1 (§3.2): 주간 날짜 줄 ✎ 없음 · 기간 취합만 남음', () => S.noWeeklyDayNoteEdit(app));
 test('WS2 (§4·§6): 주간 전송은 buildWeeklyFields / buildNetcus* 를 감싼다(시그니처, 반환 키 그대로) · 확인창 없음', () => S.sendWraps(app));
 test('WS3 (§5): 주간 키 접두 tc_rptDraftW: · PEER 관문 · 회신 처리는 주간 초안을 모른다', () => S.storageKeys(app));
 test('WS4 (§7): 새 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
-  const phrases = ['미처리사항, 문제점 및 건의사항, 회의내용은 열린 회사 화면에서 직접 쓰세요.', '고친 칸 ', '이번 주 ',
-    '회사 주간보고 폼과 같은 순서입니다. 회색 머리 줄과 과제투입시간은 카드에서 정해지고, 나머지는 자유롭게 씁니다. 채우기와 복사는 이 글 그대로 나갑니다. ',
-    '이 칸의 고친 내용을 버리고 초안으로 되돌릴까요?', '이 기간의 고친 칸과 뺀 과제를 모두 버리고 초안으로 되돌릴까요?', '계획 없음(쓰려면 여기를 누르세요)',
-    '시간 기록 없음', '과제는 카드에서 정합니다', '제목 초안으로 되돌리기', '주간보고 제목',
-    'netcus 일간보고를 합친 초안입니다. 고친 글은 회사 일간보고를 바꾸지 않습니다'];
+  const phrases = ['회사 화면에서 직접 씁니다', '왼쪽 달력에서 고름', '기간에 따라 자동', '고친 과제 ', '이번 주 ',
+    '일간에 적은 시간의 합계라 여기서는 고치지 않습니다. 회사 안내: 기타와 휴가도 작성, 휴가 1일 8시간, 반차 4시간.',
+    '회사 주간보고 작성 폼과 같은 모양입니다. 기간과 제목은 왼쪽 달력에서 고른 주로 정해지고, 회색 [과제] 머리 줄과 과제투입시간은 카드에서 정해집니다. 진행사항과 차주계획은 자유롭게 쓰세요. 채우기와 복사는 이 글 그대로 나갑니다. ',
+    '이 칸의 고친 내용을 버리고 초안으로 되돌릴까요?', '이 기간의 고친 내용과 뺀 과제를 모두 버리고 초안으로 되돌릴까요?', '다음 주 계획(쓰려면 여기를 누르세요)',
+    '시간 기록 없음', '과제는 카드에서 정합니다', 'netcus 일간보고를 합친 초안입니다. 고친 글은 회사 일간보고를 바꾸지 않습니다'];
   for (const p of phrases) {
     assert.ok(app.includes(p), '문구가 앱에 없다: ' + p);
     assert.ok(!/—|–|「|」|(^|\s)·|·(\s|$)/.test(p), '금지 기호: ' + p);
@@ -254,7 +267,8 @@ if (!JSDOM) {
   if (bootErr) {
     test('WB0: 브라우저 모드 부팅', () => { throw bootErr; });
   } else {
-    const fresh = () => { clearDrafts(B); B.ev('state = ' + JSON.stringify(stateFor()) + ';'); openWeekly(B, MON); };
+    //  주간은 글 편집(회사 폼)으로 열린다(2026-10-08). 카드를 쓰는 시험은 열고 나서 카드로 바꾼다(기본 보기는 WB12 가 잠근다).
+    const fresh = () => { clearDrafts(B); B.ev('state = ' + JSON.stringify(stateFor()) + ';'); openWeekly(B, MON); setView(B, 'card'); };
     const done = () => { clearDrafts(B); B.ev("rptViewW = 'card'; rptView = 'card'; state.reportSource = 'cal'; reportMode = 'daily';"); };
     const KEY = () => B.ev(`rptWKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)})`);
 
@@ -263,7 +277,7 @@ if (!JSDOM) {
       try { assert.ok((await assertCalSame(B)) >= 20); } finally { done(); }
     });
 
-    test('WB2 (§3.2·§3.3): 카드는 읽기 전용 + 이번 주 시간 + X · 글 편집은 회사 폼 순서, 머리 줄은 잠김(입력 아님)', () => {
+    test('WB2 (§3.2·§3.3): 카드는 읽기 전용 + 이번 주 시간 + X · 글 편집은 회사 폼 모양, 머리 줄은 잠김(입력 아님)', () => {
       fresh();
       try {
         assert.deepStrictEqual([B.ev("$('#rptFrom').value"), B.ev("$('#rptTo').value"), B.ev('rptViewW')], [MON, SUN, 'card'], '전제: 주간, 그 주, 카드 보기');
@@ -274,42 +288,36 @@ if (!JSDOM) {
         assert.ok(!card(B, '델타').querySelector('.rcard-wh'), '시간 기록 없는 과제에 이번 주 시간이 있다');
         assert.ok(card(B, '알파#c-a2'), '동명 과제(뒤의 것)는 이름키#과제id 키로 따로 선다');
         setView(B, 'doc');
-        const hs = B.evJSON("[].map.call(document.querySelectorAll('#rptOut .rwd-h'), function(x){ return x.firstChild.textContent; })");
-        assert.deepStrictEqual(hs, ['제목', '진행사항', '과제투입시간', '차주계획'], '회사 폼 순서가 아니다');
-        assert.ok(B.ev("$('#rptOut .rwd-note').textContent").includes('미처리사항, 문제점 및 건의사항, 회의내용은 열린 회사 화면에서 직접 쓰세요.'));
-        assert.strictEqual(B.ev("document.querySelectorAll('#rptOut .rwdoc textarea, #rptOut .rwdoc input').length"), 1 + 5 + 5, '입력은 제목 1 + 진행사항 5 + 차주계획 5 뿐이어야 한다(세 칸 입력 없음)');
+        checkForm(B, MON, SUN);
+        assert.strictEqual(B.ev("document.querySelectorAll('#rptOut .rwf textarea').length"), 5 + 5, '입력은 진행사항 5 + 차주계획 5 뿐이어야 한다');
+        assert.strictEqual(B.ev("document.querySelectorAll('#rptOut .rwf input').length"), 0, '회사 폼에 input 이 있다(제목, 세 칸은 입력이 아니다)');
         const heads = B.evJSON("[].map.call(document.querySelectorAll('#rptOut .rdoc-head'), function(x){ return x.tagName + '|' + x.textContent; })");
         assert.ok(heads.length === 10 && heads.every(h => h.startsWith('SPAN|[')), '머리 줄이 잠긴 span 이 아니다: ' + JSON.stringify(heads));
-        assert.strictEqual(B.ev("$('#rptOut .rdoc-subj').value"), B.ev(`weekSubjectGuess(${JSON.stringify(MON)})`), '제목 초안이 weekSubjectGuess 가 아니다');
         assert.strictEqual(B.ev("$('#rptOut .rwd-hours').textContent"), baseCal(B).content, '과제투입시간 블록이 전송 content 와 다르다');
         assert.strictEqual(field(B, 'plan', '알파').value, '', '차주계획 초안은 빈 칸이어야 한다');
         assert.strictEqual(field(B, 'prog', '알파').value, B.ev("rptWModelNow($('#rptFrom').value, $('#rptTo').value).rows[0].draft"), '진행사항 초안이 본문 함수(공백 단위)와 다르다');
       } finally { done(); }
     });
 
-    test('WB3 (§4): 글 편집 — 진행사항 상세 줄은 endwork 에 &nbsp; 들여쓰기로, 차주계획은 planwork 에, 제목은 subject 에 · 동명 과제는 따로', () => {
+    test('WB3 (§4): 글 편집 — 진행사항 상세 줄은 endwork 에 &nbsp; 들여쓰기로, 차주계획은 planwork 에, 제목은 늘 자동 · 동명 과제는 따로', () => {
       fresh();
       try {
         setView(B, 'doc');
         typeIn(B, 'prog', '알파', '• 로그인 화면 리뷰\n    - UI 확인\n\t1) 암호화');
         typeIn(B, 'plan', '베타', '• 다음 주 회신 마무리\n  - 설치 일정');
-        typeIn(B, 'subject', '', '  7월 셋째주 주간보고  ');
         typeIn(B, 'prog', '알파#c-a2', '동명 과제 글');
         const NB = '&nbsp;';
         const base = baseCal(B), o = B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
         assert.ok(o.endwork.startsWith('[알파]\n• 로그인 화면 리뷰\n' + NB.repeat(4) + '- UI 확인\n' + NB.repeat(4) + '1) 암호화\n\n[베타]\n'), 'endwork 에 고친 진행사항이 &nbsp; 들여쓰기로 들어가지 않았다: ' + JSON.stringify(o.endwork.slice(0, 120)));
         assert.ok(o.endwork.endsWith('[알 파]\n동명 과제 글'), '동명 과제의 고친 글이 자기 블록에 들어가지 않았다');
         assert.strictEqual(o.planwork, '[알파]\n\n[베타]\n• 다음 주 회신 마무리\n' + NB.repeat(2) + '- 설치 일정\n\n[감마]\n\n[델타]\n\n[알 파]', '차주계획(planwork) 꼴이 다르다');
-        assert.strictEqual(o.subject, '7월 셋째주 주간보고', '제목(subject)이 앞뒤 공백 정리된 고친 글이 아니다');
+        assert.strictEqual(o.subject, base.subject, '제목(subject)이 자동 제목이 아니다');
         assert.strictEqual(o.content, base.content, 'X 가 없는데 content 가 바뀌었다');
-        assert.ok(B.ev("$('#rptEditInfo').textContent").includes('고친 칸 4개'), '"고친 칸 4개" 가 없다');
+        assert.ok(B.ev("$('#rptEditInfo').textContent").includes('고친 과제 3개'), '"고친 과제 3개"(진행사항이나 차주계획을 고친 과제) 가 없다: ' + B.ev("$('#rptEditInfo').textContent"));
         const cap = sendW(B);
         assert.deepStrictEqual([cap.fields.subject, cap.fields.endwork, cap.fields.planwork, cap.fields.content], [o.subject, o.endwork, o.planwork, o.content], '실제 전송이 글 편집 결과가 아니다');
         const cp = B.ev('buildReportText()');
         assert.ok(cp.startsWith('[알파]\n• 로그인 화면 리뷰\n    - UI 확인\n'), '주간 복사에 고친 진행사항이 U+00A0 으로 들어가지 않았다');
-        //  초안과 같게 되돌려 쓰면 "고치지 않음"
-        typeIn(B, 'subject', '', B.ev(`weekSubjectGuess(${JSON.stringify(MON)})`));
-        assert.strictEqual(B.evJSON('rptWDraftGet($("#rptFrom").value, $("#rptTo").value).subject'), null, '초안과 같은 제목이 고친 칸으로 남는다');
       } finally { done(); }
     });
 
@@ -351,19 +359,19 @@ if (!JSDOM) {
       const KC = B.ev(`rptWKey(${JSON.stringify(C0)}, ${JSON.stringify(C1)})`);
       openWeekly(B, C0);
       try {
-        setView(B, 'doc');
         typeIn(B, 'prog', '베타', '베타 상세');
         await tick(500);
         assert.deepStrictEqual(allKeys(B, 'tc_rptDraft'), [KC], '키가 하나(주간 키)가 아니다');
         assert.ok(KC.startsWith('tc_rptDraftW:') && KC.endsWith(`:${C0}_${C1}`), '키 꼴이 tc_rptDraftW:<who>:<from>_<to> 가 아니다: ' + KC);
         const d = getStored(B, KC);
-        assert.deepStrictEqual([d.v, d.from, d.to, d.prog['베타'], typeof d.progBase['베타'], d.out, d.subject], [1, C0, C1, '베타 상세', 'string', [], null]);
+        assert.deepStrictEqual([d.v, d.from, d.to, d.prog['베타'], typeof d.progBase['베타'], d.out, 'subject' in d], [1, C0, C1, '베타 상세', 'string', [], false]);
         assert.ok(B.ev("$('#rptEditInfo').textContent").includes('이 PC에 임시 저장됨'));
         setView(B, 'card'); clickIn(B, '감마', '.rcard-x');
         B.ev("closeModal('#reportModal')");
         await waitFor(() => overlayClosed(B, 'reportModal'), '보고서가 닫힌다');
         openWeekly(B, C0);
-        assert.strictEqual(B.ev('rptViewW'), 'card', '다시 열면 카드 보기');
+        assert.strictEqual(B.ev('rptViewW'), 'doc', '다시 열면 글 편집(회사 폼)');
+        setView(B, 'card');
         assert.ok(card(B, '감마').classList.contains('rcard-out') && card(B, '베타').querySelector('.rcard-free').textContent === '베타 상세', '닫고 열자 X 나 고친 글이 사라졌다');
         B.ev('__rptDraftMem.clear(); __rptDraftDirty.clear(); __rptDraftFailed.clear(); buildReport();');
         assert.ok(card(B, '감마').classList.contains('rcard-out'), '재시작(메모리 비움) 뒤 저장소에서 읽지 못했다');
@@ -382,7 +390,7 @@ if (!JSDOM) {
         B.doc.querySelector('#rptOut .rdoc-resetall').click();
         await confirmOk(B);
         assert.ok(!getStored(B, KC), '"모두 초안으로" 뒤에도 키가 남았다');
-        assert.ok(B.doc.activeElement && B.doc.activeElement.classList.contains('rdoc-subj'), '"모두 초안으로" 뒤 포커스가 제목 칸으로 가지 않았다');
+        assert.ok(B.doc.activeElement && B.doc.activeElement.classList.contains('rdoc-ta'), '"모두 초안으로" 뒤 포커스가 첫 내용 칸으로 가지 않았다');
       } finally { done(); }
     });
 
@@ -418,7 +426,7 @@ if (!JSDOM) {
         } finally { B.ev('window.__unspy()'); }
         setWeek(B, MON);
         assert.ok(card(B, '델타').classList.contains('rcard-out') && card(B, '알파').querySelector('.rcard-free'), '전제: 저장본을 읽어 그렸다');
-        assert.ok(B.ev("$('#rptEditInfo').textContent").includes('고친 칸 2개'), '고친 칸은 지금 행 기준(제목 + 알파)이어야 한다: ' + B.ev("$('#rptEditInfo').textContent"));
+        assert.ok(B.ev("$('#rptEditInfo').textContent").includes('고친 과제 1개'), '고친 과제는 지금 행 기준(알파, 예전 저장본의 제목은 세지 않음)이어야 한다: ' + B.ev("$('#rptEditInfo').textContent"));
         //  막힌 저장소
         B.ev("(function(){ var P = Storage.prototype, g = P.getItem, s = P.setItem, r = P.removeItem, k = P.key; var bad = function(x){ return String(x).indexOf('tc_rptDraft')===0; };"
           + " P.getItem = function(x){ if(bad(x)) throw new Error('blocked'); return g.apply(this, arguments); }; P.setItem = function(x){ if(bad(x)) throw new Error('blocked'); return s.apply(this, arguments); };"
@@ -426,7 +434,7 @@ if (!JSDOM) {
           + " window.__unblock = function(){ P.getItem = g; P.setItem = s; P.removeItem = r; P.key = k; }; })();");
         try {
           B.ev('__rptDraftMem.clear(); __rptDraftDirty.clear(); __rptDraftFailed.clear(); openReport(); setReportMode("weekly");');
-          setWeek(B, MON);
+          setWeek(B, MON); setView(B, 'card');
           clickIn(B, '베타', '.rcard-x');
           assert.ok(card(B, '베타').classList.contains('rcard-out'), '막힌 저장소에서 X 가 동작하지 않는다');
           setView(B, 'doc'); typeIn(B, 'prog', '알파', '막힌 저장소 글'); B.ev('rptDraftFlush()');
@@ -460,7 +468,7 @@ if (!JSDOM) {
       st.entries.push(E({ id: 'e-p1', date: '2026-07-16', title: '개인 기타 일', categoryId: 'c-p' }));
       return st; };
     function checkDupStable(m) {
-      m.ev('state = ' + JSON.stringify(dupState()) + ';'); openWeekly(m, MON);
+      m.ev('state = ' + JSON.stringify(dupState()) + ';'); openWeekly(m, MON); setView(m, 'card');
       //  과제 id 로 본다(키 꼴과 무관하게): 지금 행 모델에서 그 과제의 키, 그리고 초안의 out / prog 가 어느 과제에 닿는지.
       const F = '$("#rptFrom").value, $("#rptTo").value';
       const keyOf = (cat) => m.ev(`(function(){ var r = rptWModelNow(${F}).rows.find(function(x){ return x.catId === ${JSON.stringify(cat)}; }); return r ? r.k : null; })()`);
@@ -498,7 +506,7 @@ if (!JSDOM) {
     function checkFrac(m) {
       const st = stateFor();
       st.taskHours = { [MON]: { 'c-a': 0.1, 'c-b': 0.2, 'c-c': 1.25 } };
-      m.ev('state = ' + JSON.stringify(st) + ';'); openWeekly(m, MON);
+      m.ev('state = ' + JSON.stringify(st) + ';'); openWeekly(m, MON); setView(m, 'card');
       clickIn(m, '감마', '.rcard-x');
       const c = m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').content;
       assert.ok(c.endsWith('-----\n합계 : 0.3'), 'X 뒤 소수 합계가 반올림되지 않았다: ' + JSON.stringify(c));
@@ -514,20 +522,82 @@ if (!JSDOM) {
       try { assert.throws(() => checkFrac(X), /반올림/); } finally { X.close(); }
     });
 
-    //  정정 7: 공백뿐인 제목은 고친 칸이 아니다(초안 제목이 나간다).
-    test('WB11 (정정 7): 공백뿐인 제목은 "고친 칸" 으로 세지 않고 초안 제목이 나간다', () => {
+    //  2026-10-08 사용자 결정: 제목은 고칠 수 없고 늘 자동이다. 예전 저장본에 제목이 있어도 읽을 때 버리고 다음 쓰기 때 사라진다.
+    function checkSubjectAuto(m) {
+      const K = m.ev(`rptWKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)})`);
+      m.ev(`localStorage.setItem(${JSON.stringify(K)}, JSON.stringify({ v:1, from:${JSON.stringify(MON)}, to:${JSON.stringify(SUN)}, subject:'예전에 고친 제목', prog:{}, progBase:{}, plan:{}, out:[], savedAt:'2026-01-01T00:00:00.000Z' })); buildReport();`);
+      const auto = m.ev(`weekSubjectGuess(${JSON.stringify(MON)})`);
+      assert.strictEqual(m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').subject, auto, '예전 저장본의 제목이 나간다(늘 자동이어야 한다)');
+      const cap = sendW(m);
+      assert.strictEqual(cap.fields.subject, auto, '실제 채우기 payload 의 제목이 자동 제목이 아니다');
+      setView(m, 'doc');
+      assert.strictEqual(m.ev("$('#rptOut .rwf-val[data-wrow=\"subject\"] .rwf-box').textContent"), auto, '제목 칸이 자동 제목을 보이지 않는다');
+      assert.strictEqual(m.ev("document.querySelectorAll('#rptOut .rwf-val[data-wrow=\"subject\"] input, #rptOut .rwf-val[data-wrow=\"subject\"] textarea, #rptOut .rwf-val[data-wrow=\"subject\"] button').length"), 0, '제목 칸에 입력이나 초안으로가 있다');
+      assert.ok(!m.ev("$('#rptEditInfo').textContent").includes('고친'), '예전 저장본의 제목을 고친 것으로 센다');
+      typeIn(m, 'plan', '알파', '다음 주 계획');
+      m.ev('rptDraftFlush()');
+      assert.ok(!('subject' in m.evJSON(`JSON.parse(localStorage.getItem(${JSON.stringify(K)}))`)), '다음 쓰기 뒤에도 저장본에 제목이 남아 있다');
+    }
+    test('WB11 (2026-10-08): 제목은 고칠 수 없고 늘 자동 · 예전 저장본의 제목은 무시되고 다음 쓰기 때 사라진다', () => {
       fresh();
+      try { checkSubjectAuto(B); } finally { done(); }
+    });
+    test('변이 WBM5: 저장본의 제목을 다시 쓰게 하면 WB11 이 잡는다', () => {
+      const bad = mutate(app, "    subject: base.subject,   // 제목은 고치지 않는다(자동)", "    subject: (d.subject != null && String(d.subject).trim()) ? String(d.subject).trim() : base.subject,")
+        .replace("  return { v: 1, from, to, prog, progBase, progBaseSrc, plan, out, savedAt:", "  return { v: 1, from, to, subject: (typeof o.subject === 'string') ? o.subject : null, prog, progBase, progBaseSrc, plan, out, savedAt:");
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(stateFor()) + ';'); openWeekly(X, MON); setView(X, 'card'); assert.throws(() => checkSubjectAuto(X), /제목/); } finally { X.close(); }
+    });
+
+    //  2026-10-08 사용자 결정: 회사 주간보고 작성 폼 모양(행과 순서, 잠긴 기간과 제목, 파란 과제투입시간과 안내, 세 칸 자리). 변이 시험이 재사용한다.
+    function checkForm(m, from, to) {
+      const rows = m.evJSON("[].map.call(document.querySelectorAll('#rptOut .rwf > .rwf-lab'), function(x){ return x.dataset.wrow + '|' + x.textContent; })");
+      assert.deepStrictEqual(rows, ['period|기간', 'subject|제목', 'prog|진행사항', 'hours|과제투입시간', 'todo|미처리사항', 'plan|차주계획', 'issue|문제점 및 건의사항', 'meeting|회의내용'], '회사 폼의 행과 순서가 아니다');
+      assert.strictEqual(m.ev("document.querySelectorAll('#rptOut .rwf > .rwf-val').length"), 8, '값 칸이 행마다 하나가 아니다');
+      const val = (k) => `$('#rptOut .rwf-val[data-wrow="${k}"]')`;
+      assert.ok(m.ev(`${val('period')}.textContent`).includes(from + ' ~ ' + to) && m.ev(`${val('period')}.textContent`).includes('왼쪽 달력에서 고름'), '기간 칸');
+      assert.ok(m.ev(`${val('subject')}.textContent`).includes('기간에 따라 자동'), '제목 칸 잠금 표시');
+      assert.ok(m.ev(`$('#rptOut .rwf-lab[data-wrow="hours"]').classList.contains('rwf-info')`), '과제투입시간 이름이 안내 색(rwf-info)이 아니다');
+      assert.ok(m.ev(`${val('hours')}.querySelector('.rwf-note').textContent`).includes('일간에 적은 시간의 합계라 여기서는 고치지 않습니다. 회사 안내: 기타와 휴가도 작성, 휴가 1일 8시간, 반차 4시간.'), '과제투입시간 안내');
+      assert.strictEqual(m.ev(`${val('hours')}.querySelector('.rwd-hours').textContent`), m.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').content, '과제투입시간 블록이 전송 content 와 다르다');
+      for (const k of ['todo', 'issue', 'meeting']) {
+        const info = m.evJSON(`(function(){ var v = ${val(k)}; var o = v.querySelector('.rwf-off'); return { t: o ? o.textContent : '', inputs: v.querySelectorAll('input, textarea, select, button, [contenteditable], [tabindex]').length, tab: o ? o.tabIndex : null }; })()`);
+        assert.deepStrictEqual(info, { t: '회사 화면에서 직접 씁니다', inputs: 0, tab: -1 }, k + ' 칸이 자리만 있는 비활성 칸이 아니다');
+      }
+      assert.ok(m.ev(`${val('prog')}.querySelectorAll('.rdoc-ta').length`) > 0 && m.ev(`${val('plan')}.querySelectorAll('.rdoc-ta').length`) > 0, '진행사항, 차주계획 칸이 값 칸 안에 없다');
+      assert.ok(!m.ev("$('#rptOut').textContent").includes('열린 회사 화면에서 직접 쓰세요'), '예전 세 칸 안내 줄이 남아 있다');
+    }
+    test('WB12 (2026-10-08): 주간은 글 편집(회사 폼)으로 열린다 · 바꾸면 그 열기 동안 기억 · 일간은 카드로 연다', () => {
+      clearDrafts(B);
       try {
-        setView(B, 'doc');
-        typeIn(B, 'subject', '', '   ');
-        assert.strictEqual(B.evJSON('rptWDraftGet($("#rptFrom").value, $("#rptTo").value).subject'), null, '공백뿐인 제목이 고친 칸으로 저장됐다');
-        assert.ok(!B.ev("$('#rptEditInfo').textContent").includes('고친 칸'), '공백뿐인 제목을 고친 칸으로 센다');
-        assert.strictEqual(B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').subject, B.ev(`weekSubjectGuess(${JSON.stringify(MON)})`));
-        B.ev(`rptWDraftPut(${JSON.stringify(MON)}, ${JSON.stringify(SUN)}, Object.assign(rptWEmpty(${JSON.stringify(MON)}, ${JSON.stringify(SUN)}), { subject: '  ' }), true); buildReport();`);   // 예전 저장본(공백 제목)
-        assert.ok(!B.ev("$('#rptEditInfo').textContent").includes('고친 칸'), '저장본의 공백 제목을 고친 칸으로 센다');
-        typeIn(B, 'subject', '', ' 고친 제목 ');
-        assert.ok(B.ev("$('#rptEditInfo').textContent").includes('고친 칸 1개'), '대조군: 글이 있는 제목은 고친 칸이다');
+        B.ev('state = ' + JSON.stringify(stateFor()) + ';');
+        B.ev("openReport();");
+        assert.strictEqual(B.ev('rptView'), 'card', '일간은 카드로 연다');
+        assert.ok(B.ev("document.querySelectorAll('#rptOut .rcard').length") > 0 && !B.ev("!!document.querySelector('#rptOut .rwf')"), '일간 첫 화면이 카드가 아니다');
+        openWeekly(B, MON);
+        assert.strictEqual(B.ev('rptViewW'), 'doc', '주간 첫 진입이 글 편집이 아니다');
+        assert.strictEqual(B.ev("$('#rptViewSeg [data-rview=\"doc\"]').getAttribute('aria-pressed')"), 'true', '보기 전환이 글 편집을 가리키지 않는다');
+        checkForm(B, MON, SUN);
+        setView(B, 'card');
+        B.ev("setReportMode('daily'); setReportMode('weekly');");
+        assert.strictEqual(B.ev('rptViewW'), 'card', '같은 열기에서 바꾼 주간 보기를 기억하지 않는다');
+        B.ev("closeModal('#reportModal')");
+        B.ev("openReport(); setReportMode('weekly');");
+        assert.strictEqual(B.ev('rptViewW'), 'doc', '다시 열면 주간은 다시 글 편집이어야 한다');
       } finally { done(); }
+    });
+    test('변이 WBM6: 세 칸을 입력으로 바꾸거나 행 순서를 바꾸면 WB12 의 폼 검사가 잡는다', () => {
+      const bad1 = mutate(app, "  const off = `<div class=\"rwf-off\" aria-disabled=\"true\">${RPT_WFORM_OFF}</div>`;", "  const off = `<textarea class=\"rwf-off\">${RPT_WFORM_OFF}</textarea>`;");
+      const bad2 = mutate(app, "    + row('todo', '미처리사항', off)\n    + row('plan', '차주계획', plan)", "    + row('plan', '차주계획', plan)\n    + row('todo', '미처리사항', off)");
+      for (const bad of [bad1, bad2]) {
+        const X = bootBrowser(bad);
+        try { X.ev('state = ' + JSON.stringify(stateFor()) + ';'); openWeekly(X, MON); assert.throws(() => checkForm(X, MON, SUN)); } finally { X.close(); }
+      }
+    });
+    test('변이 WBM7: 주간 기본 보기를 카드로 되돌리면 WB12 가 잡는다', () => {
+      const bad = mutate(app, "  rptViewW = 'doc';   // 주간은 글 편집(회사 폼 모양)으로 연다", "  rptViewW = 'card';   // 주간은 글 편집(회사 폼 모양)으로 연다");
+      const X = bootBrowser(bad);
+      try { X.ev('state = ' + JSON.stringify(stateFor()) + ';'); assert.throws(() => { openWeekly(X, MON); assert.strictEqual(X.ev('rptViewW'), 'doc', '주간 첫 진입이 글 편집이 아니다'); }, /글 편집/); } finally { X.close(); }
     });
 
     test('변이 WBM1: cal 빈 진행사항 표시(-)를 바꾸면 WB1 의 조립 비교가 잡는다', async () => {
@@ -540,7 +610,7 @@ if (!JSDOM) {
       const bad = mutate(app, '  const live = M.rows.filter(r => !isOut(r));\n  const prog = r =>', '  const live = M.rows;\n  const prog = r =>');
       const X = bootBrowser(bad);
       try {
-        X.ev('state = ' + JSON.stringify(stateFor()) + ';'); openWeekly(X, MON);
+        X.ev('state = ' + JSON.stringify(stateFor()) + ';'); openWeekly(X, MON); setView(X, 'card');
         clickIn(X, '알파', '.rcard-x');
         const o = X.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
         assert.ok(o.endwork.includes('[알파]'), '변이가 경로에 닿지 않았다');
@@ -560,6 +630,7 @@ if (!JSDOM) {
     M.ev('__applyState(' + JSON.stringify(JSON.stringify(stateFor())) + ',' + JSON.stringify(META) + ')');
     await tick();
     openWeekly(M, MON);
+    setView(M, 'card');
     M.ev(`netcusMerge = { key: ncMergeKey(${JSON.stringify(MON)}, ${JSON.stringify(SUN)}), parsed: parseNetcusWeek(${JSON.stringify(NET_DAYS)}, state.categories, { sumTime: true }), at: '09:00' }; state.reportSource = 'net'; syncReportSourceSeg(); buildReport();`);
     return M;
   }
