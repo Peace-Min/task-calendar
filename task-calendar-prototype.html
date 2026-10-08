@@ -1125,19 +1125,60 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-group{display:flex;flex-direction:column;gap:4px;margin-top:10px;margin-bottom:10px}
 .rpt-group-top{display:flex;align-items:center;gap:8px}
 .rpt-group-sum{font-size:var(--fs-micro);color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
-#rptGroupModal .rgm-hint{font-size:var(--fs-meta);color:var(--muted);line-height:1.6;margin:0 0 12px}
-#rptGroupModal .rgm-rows{display:flex;flex-direction:column;gap:8px}
-#rptGroupModal .rgm-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,200px);align-items:center;column-gap:10px;row-gap:2px}
-#rptGroupModal .rgm-name{display:flex;align-items:center;gap:7px;min-width:0;font-size:var(--fs-body);color:var(--text)}
-#rptGroupModal .rgm-name .cat-badge{margin-left:0;flex:none}
-#rptGroupModal .rgm-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#rptGroupModal .rgm-dot{width:10px;height:10px;border-radius:50%;flex:none}
-#rptGroupModal .rgm-sel{width:100%;min-width:0;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:5px 8px;font-size:var(--fs-meta);font-family:inherit;background:var(--panel);color:var(--text)}
-#rptGroupModal .rgm-sel:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-#rptGroupModal .rgm-sel:disabled{opacity:.6;cursor:not-allowed}
-#rptGroupModal .rgm-row.on .rgm-sel{border-color:var(--accent);color:var(--accent-2);font-weight:600}
-#rptGroupModal .rgm-tip{grid-column:2;font-size:var(--fs-micro);color:var(--muted);line-height:1.4}
+/*  설정 창(2026-10-08 끌어넣기): 보고서 순서 그대로 머리 과제마다 묶음(.rgm-grp), 묶인 과제는 가는 선으로 이어 들여 쓴 줄(.kid) */
+#rptGroupModal .rgm-hint{font-size:var(--fs-meta);color:var(--muted);line-height:1.6;margin:0 0 4px}
+#rptGroupModal .rgm-sub{font-size:var(--fs-micro);color:var(--muted);line-height:1.5;margin:0 0 12px}
+#rptGroupModal .rgm-rows{position:relative;display:flex;flex-direction:column;gap:2px}
+#rptGroupModal .rgm-grp{border:1.5px solid transparent;border-radius:var(--r-md);transition:background .12s,border-color .12s}
+#rptGroupModal .rgm-grp.has{background:var(--dim-bg);border-color:var(--line)}
+#rptGroupModal .rgm-grp.drop{border-color:var(--accent);border-style:dashed;background:var(--accent-soft)}
+#rptGroupModal .rgm-row{position:relative;display:flex;align-items:center;gap:8px;min-height:36px;padding:3px 4px;border-radius:var(--r-sm);user-select:none}
+#rptGroupModal .rgm-row[data-dr="1"]{cursor:grab}
+#rptGroupModal .rgm-row:hover{background:var(--hover-bg)}
+#rptGroupModal .rgm-grp.has > .rgm-row.top:hover,#rptGroupModal .rgm-grp.drop .rgm-row:hover{background:transparent}
+#rptGroupModal .rgm-row.src{opacity:.35}
+#rptGroupModal .rgm-hdl{width:14px;flex:none;text-align:center;color:var(--faint-text);font-size:13px;line-height:1;opacity:0}
+#rptGroupModal .rgm-row:hover .rgm-hdl,#rptGroupModal .rgm-row:focus-within .rgm-hdl{opacity:1}
+#rptGroupModal .rgm-dot{width:9px;height:9px;border-radius:50%;flex:none}
+#rptGroupModal .rgm-who{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px}
+#rptGroupModal .rgm-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-body);font-weight:600;color:var(--text)}
+#rptGroupModal .rgm-row.kid .rgm-t,#rptGroupModal .rgm-row.dim .rgm-t{font-weight:500}
+#rptGroupModal .rgm-row.dim .rgm-t{color:var(--muted)}
+#rptGroupModal .rgm-who .cat-badge{margin-left:0;flex:none;align-self:center}
+#rptGroupModal .rgm-meta{flex:none;font-size:var(--fs-micro);color:var(--muted);white-space:nowrap}
+#rptGroupModal .rgm-row.kid{margin-left:22px;padding-left:10px}
+#rptGroupModal .rgm-row.kid::before{content:'';position:absolute;left:-6px;top:0;bottom:50%;width:10px;border-left:1.5px solid var(--line-2);border-bottom:1.5px solid var(--line-2);border-bottom-left-radius:6px}
+#rptGroupModal .rgm-ib{flex:none;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:var(--r-sm);background:none;color:var(--muted);cursor:pointer;opacity:0}
+#rptGroupModal .rgm-ib svg{width:15px;height:15px}
+#rptGroupModal .rgm-row.kid .rgm-ib{opacity:.6}
+#rptGroupModal .rgm-row:hover .rgm-ib,#rptGroupModal .rgm-row .rgm-ib:focus,#rptGroupModal .rgm-ib[aria-expanded="true"]{opacity:1}
+#rptGroupModal .rgm-ib:hover{background:var(--line);color:var(--text)}
+#rptGroupModal .rgm-ib:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#rptGroupModal .rgm-menu{position:absolute;z-index:5;min-width:190px;max-width:calc(100% - 8px);padding:5px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow)}
+#rptGroupModal .rgm-mh{font-size:var(--fs-micro);font-weight:600;color:var(--muted);padding:6px 9px 4px}
+#rptGroupModal .rgm-menu button{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:6px 9px;border:0;border-radius:var(--r-sm);background:none;color:var(--text);font:inherit;font-size:var(--fs-body);text-align:left;cursor:pointer}
+#rptGroupModal .rgm-menu button > span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#rptGroupModal .rgm-menu button:hover,#rptGroupModal .rgm-menu button:focus{background:var(--hover-bg);outline:none}
+#rptGroupModal .rgm-menu button:focus-visible{box-shadow:inset 0 0 0 2px var(--accent)}
+#rptGroupModal .rgm-more{display:flex;align-items:center;gap:6px;padding:8px 4px 2px;font-size:var(--fs-meta);color:var(--muted)}
+#rptGroupModal .rgm-more .lnk{font-size:var(--fs-meta);color:var(--muted);text-underline-offset:2px}
 #rptGroupModal .rgm-none{font-size:var(--fs-meta);color:var(--muted);margin:0}
+#rptGroupModal .rgm-clear{font-size:var(--fs-meta);font-weight:600;text-decoration:none}
+#rptGroupModal .rgm-clear:hover{text-decoration:underline}
+#rptGroupModal .rgm-clear:disabled{color:var(--faint-text);text-decoration:none;cursor:default}
+/*  끄는 동안: 줄을 본뜬 그림자(포인터를 따라감, 눌리지 않음)는 창(.overlay) 안에 붙인다. 원래 줄은 흐리게 */
+#rptGroupModal .rgm-ghost{position:fixed;z-index:60;margin:0;pointer-events:none;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);opacity:.96}
+#rptGroupModal .rgm-ghost::before{display:none}
+#rptGroupModal .rgm-ghost .rgm-hdl{opacity:1}
+body.rgm-dragging,body.rgm-dragging *{cursor:grabbing!important;user-select:none}
+/*  마우스가 없는 화면: ⋯ 와 X 는 늘 보인다. 터치는 ⠿ 에서만 끌기 시작(줄은 그대로 스크롤) */
+@media (hover:none){
+  #rptGroupModal .rgm-ib,#rptGroupModal .rgm-row.kid .rgm-ib{opacity:1}
+}
+@media (pointer:coarse){
+  #rptGroupModal .rgm-hdl{opacity:1;touch-action:none;cursor:grab;padding:9px 4px;margin:-9px 0;box-sizing:content-box}
+  #rptGroupModal .rgm-row[data-dr="1"]{cursor:default}
+}
 .rsd-soon{display:inline-block;font-size:var(--fs-micro);font-weight:700;color:var(--accent-2);background:var(--accent-soft);border-radius:999px;padding:1px 6px;margin-left:2px;vertical-align:1px;white-space:nowrap}
 /* 내용 출처 = 저장되는 값 → 공용 .seg. 전체폭 3등분은 기본 flex:1 1 0가 이미 한다(전용 규칙 없음) */
 .rpt-seg .seg-b{padding:5px 6px}   /* 3열 라벨이 길어 좌우 패딩만 좁힘 */
@@ -2050,9 +2091,9 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
   .rpt-mirror .rcard-h-in{min-height:32px}
   .rpt-mirror .rcard-x{width:32px;height:32px}   /* 일간 카드 X(이 보고서에서 빼기)도 같은 하한(REPORT-EDIT §2.2) */
   .rpt-mirror .rcard-back,.rpt-mirror .rdoc-revert,.rpt-mirror .rdoc-resetall{display:inline-flex;align-items:center;min-height:32px;padding:0 4px}
-  #rptGroupModal .rgm-row{grid-template-columns:minmax(0,1fr)}   /* 보고서 묶음 설정: 좁은 폭에서는 이름 아래 선택 상자 */
-  #rptGroupModal .rgm-tip{grid-column:1}
-  #rptGroupModal .rgm-sel{min-height:32px}
+  #rptGroupModal .rgm-who{flex-wrap:wrap;row-gap:0}   /* 보고서 묶음 설정: 좁은 폭에서는 업무와 시간이 이름 아래로, 버튼은 32px 히트 */
+  #rptGroupModal .rgm-ib{width:32px;height:32px}
+  #rptGroupModal .rgm-more .lnk,#rptGroupModal .rgm-clear{display:inline-flex;align-items:center;min-height:32px}
   .rpt-mirror .rcard-subs{padding-left:6px}
   .rpt-mirror .rwf{grid-template-columns:84px minmax(0,1fr)}   /* 주간 회사 폼: 좁은 폭에서는 항목 이름 칸을 줄인다 */   /* 글 편집 링크도 X 와 같은 32px 히트(숨김[hidden]은 !important 라 그대로 숨는다) */
   /* 시트 폭에선 좌우 20px 거터가 3버튼 푸터(닫기+전송+복사=282px)를 280px 안에 못 담아 1.8px 차이로 접혔다.
@@ -3187,17 +3228,18 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
-<!-- ===== 보고서 묶음 설정(REPORT-GROUP §4): 보고서 창 바로 뒤 형제라 그 위에 뜬다. 과제마다 선택 상자 하나, 바꾸면 바로 적용.
-     닫기 버튼 하나(Esc, 배경도 닫는다). 열면 첫 선택 상자로, 닫으면 왼쪽 "설정" 링크로 포커스가 간다(_modalStack). ===== -->
+<!-- ===== 보고서 묶음 설정(REPORT-GROUP §4): 보고서 창 바로 뒤 형제라 그 위에 뜬다. 보고서 순서 그대로 과제를 보이고,
+     끌어다 다른 과제 위에 놓으면 묶는다(끌기 없이: 묶인 과제 X, 머리 과제 ⋯ 메뉴). 바꾸면 바로 적용.
+     아래 왼쪽 "모두 풀기", 오른쪽 닫기(Esc, 배경도 닫는다). 열면 목록의 첫 버튼으로, 닫으면 왼쪽 "설정" 링크로 포커스가 간다(_modalStack). ===== -->
 <div class="overlay hidden" id="rptGroupModal">
-  <div class="modal" style="width:min(520px,100%)">
+  <div class="modal" style="width:min(460px,100%)">
     <div class="modal-head"><h2>보고서 묶음</h2></div>
     <div class="modal-body">
-      <p class="rgm-hint">과제를 이 보고서에서만 다른 과제의 머리 줄 아래로 묶습니다. 업무 줄은 그 과제 본문 뒤에 과제 이름과 함께 들어가고, 시간은 그 과제 시간에 더해집니다. 묶음은 한 단계만 되고, 다음 보고서는 묶음 없이 시작합니다.</p>
-      <p class="rgm-hint">묶인 과제의 고친 글(일간 내용, 주간 진행사항과 차주계획)은 묶음 동안 쓰이지 않고 남아 있다가 묶음을 풀면 다시 쓰입니다.</p>
+      <p class="rgm-hint">과제를 끌어다 다른 과제 위에 놓으면, 이 보고서에서는 그 과제 안에 함께 씁니다. 시간도 더해지고, 다음 보고서에는 남지 않습니다.</p>
+      <p class="rgm-sub">묶인 과제의 고친 글은 지워지지 않고, 꺼내면 다시 쓰입니다.</p>
       <div class="rgm-rows" id="rgmRows"></div>
     </div>
-    <div class="modal-foot"><span class="spacer"></span><button type="button" class="btn" data-close>닫기</button></div>
+    <div class="modal-foot"><button type="button" class="lnk rgm-clear" id="rgmClear" disabled>모두 풀기</button><span class="spacer"></span><button type="button" class="btn" data-close>닫기</button></div>
   </div>
 </div>
 
@@ -14861,15 +14903,18 @@ function rptWGroupModel(M, d){
   return Object.assign({}, M, { rows, group: live });
 }
 // 묶음 설정 문맥: 일간, 주간 미리보기를 그린 뒤에만(기간 취합, 열람 창, 가드 화면, netcus 읽는 중에는 없다).
+//   행마다 n(자기 업무 줄 수)과 h(자기 시간, 없으면 null): 설정 창의 "업무 n건, n시간". 일간은 그 날짜 시간 칸, 주간은 행 모델의 이번 주 합.
+//   주간 cal 의 n 은 캘린더 업무 줄, net 의 n 은 합친 원문 줄(설명 줄도 한 줄로 센다) 수다.
 function rptGroupCtx(){
   if(PEER) return null;
   if(reportMode === 'daily' && __rptCtx){
-    const d = rptDraftGet(__rptCtx.date);
-    return { mode: 'daily', rows: __rptCtx.rows.map(x => ({ k: x.key, name: x.name, catId: x.key })), group: d.group || {} };
+    const d = rptDraftGet(__rptCtx.date), date = __rptCtx.date;
+    return { mode: 'daily', rows: __rptCtx.rows.map(x => ({ k: x.key, name: x.name, catId: x.key, n: x.n != null ? x.n : null, h: getTaskHours(date, x.key) })), group: d.group || {} };
   }
   if(reportMode === 'weekly' && __rptWCtx){
     const M = __rptWCtx.model, d = rptWDraftGet(M.from, M.to);
-    return { mode: 'weekly', rows: M.rows.filter(r => !r.uncat).map(r => ({ k: r.k, name: r.name, catId: r.catId != null ? r.catId : null })), group: d.group || {} };
+    return { mode: 'weekly', rows: M.rows.filter(r => !r.uncat).map(r => ({ k: r.k, name: r.name, catId: r.catId != null ? r.catId : null,
+      n: (r.cr && Array.isArray(r.cr.titles)) ? r.cr.titles.length : (r.draft ? String(r.draft).split('\n').length : 0), h: r.hasHours ? r.hours : null })), group: d.group || {} };
   }
   return null;
 }
@@ -14885,23 +14930,69 @@ function rptGroupRowRender(){
   if(sum && sum.innerHTML !== sumHtml) sum.innerHTML = sumHtml;   // aria-live 라 글이 바뀔 때만 쓴다(다시 그릴 때마다 읽지 않게)
   const ov = $('#rptGroupModal'); if(ov && isOverlayOpen(ov)) rptGroupDlgRender();
 }
-// 설정 창(§4): 과제마다 한 줄, 왼쪽 색 점과 이름(공식이면 "공식"), 오른쪽 선택 상자 "그대로 [이름]" 또는 "[대상]에 합치기".
-//   한 단계 규칙: 묶인 과제는 선택지에 없고, 다른 과제가 묶인 과제는 선택 상자가 꺼진다. 자기 자신은 "그대로" 뿐이다.
+// 설정 창(§4, 2026-10-08 끌어넣기로 바꿈): 보고서에 나갈 순서와 모양 그대로. 머리 과제마다 묶음(.rgm-grp[data-grp]), 묶인 과제는 그 아래 들여 쓴 줄(.kid).
+//   줄: ⠿(끌기), 색 점, 이름, "공식", "업무 n건, n시간"(머리 과제는 묶인 과제까지 더한 값). 묶인 과제는 X(꺼내기), 묶인 과제가 없는 머리 과제는 ⋯(넣을 곳 메뉴).
+//   다른 과제가 묶인 머리 과제는 끌 수도 넣을 수도 없다(한 단계). 내용 없는 머리 과제(업무 줄, 시간, 묶인 과제가 모두 없음)는 "보기" 뒤에 접어 둔다.
+//   창 상태(__rgm: 펼침, 열린 메뉴, 이번에 꺼낸 과제)는 창을 열 때마다 처음으로. 렌더는 저장소에 쓰지 않는다.
+const __rgm = { showEmpty: false, menuFor: null, keep: new Set() };
+const RGM_I_MORE = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="12.5" cy="8" r="1.4"/></svg>';
+const RGM_I_X = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>';
+function rgmMeta(n, h){ return [n ? `업무 ${n}건` : '', h ? `${h}시간` : ''].filter(Boolean).join(', '); }
+// 설정 창 안의 요소를 키로 찾는다(키는 이름일 수 있어 선택자에 넣지 않는다).
+function rgmFind(attr, k){ return [...$$('#rgmRows [data-' + attr + ']')].find(e => e.getAttribute('data-' + attr) === k) || null; }
+// 끌어 놓기 판정(순수): live = rptGroupLive 결과, src = 끈 과제, over = 놓은 곳 묶음의 머리 과제 키(묶음 밖이면 null).
+//   rptGroupSet 에 줄 대상(src 자신 = 풀기)을 돌려주고, 바뀔 것이 없으면 null.
+//   다른 과제가 묶인 과제는 끌 수 없다. 자기 묶음, 지금 부모, 묶인 과제 위는 그대로. 묶인 과제를 묶음 밖에 놓으면 푼다.
+function rptGroupDropTarget(live, src, over){
+  if([...live.values()].includes(src)) return null;
+  const par = live.get(src) || null;
+  if(over == null || over === '') return par ? src : null;
+  if(over === src || over === par || live.has(over)) return null;
+  return over;
+}
 function rptGroupDlgRender(){
   const box = $('#rgmRows'); if(!box) return;
-  const g = rptGroupCtx();
-  if(!g || !g.rows.length){ box.innerHTML = '<p class="rgm-none">이 보고서에는 묶을 과제가 없습니다.</p>'; return; }
-  const live = rptGroupLive(g.group, g.rows.map(x => x.k)), tgts = new Set(live.values());
-  box.innerHTML = g.rows.map((x, i) => {
-    const cur = live.get(x.k) || x.k, isTgt = tgts.has(x.k), c = x.catId != null ? catById(x.catId) : null;
-    const opts = [`<option value="${esc(x.k)}"${cur === x.k ? ' selected' : ''}>그대로 [${esc(x.name)}]</option>`]
-      .concat(isTgt ? [] : g.rows.filter(y => y.k !== x.k && !live.has(y.k)).map(y => `<option value="${esc(y.k)}"${cur === y.k ? ' selected' : ''}>[${esc(y.name)}]에 합치기</option>`)).join('');
-    return `<div class="rgm-row${cur !== x.k ? ' on' : ''}">`
-      + `<label class="rgm-name" for="rgmSel${i}"><span class="rgm-dot" style="background:${validColor((c && c.color) || '#5b6b7d')}" aria-hidden="true"></span><span class="rgm-t">${esc(x.name)}</span>${isOfficialCat(c) ? '<span class="cat-badge db">공식</span>' : ''}</label>`
-      + `<select id="rgmSel${i}" class="rgm-sel" data-gsrc="${esc(x.k)}"${isTgt ? ` disabled aria-describedby="rgmTip${i}"` : ''}>${opts}</select>`
-      + (isTgt ? `<span class="rgm-tip" id="rgmTip${i}">다른 과제가 묶여 있어 바꿀 수 없습니다</span>` : '')
+  const g = rptGroupCtx(), clr = $('#rgmClear');
+  if(!g || !g.rows.length){ box.innerHTML = '<p class="rgm-none">이 보고서에는 묶을 과제가 없습니다.</p>'; if(clr) clr.disabled = true; __rgm.menuFor = null; return; }
+  const live = rptGroupLive(g.group, g.rows.map(x => x.k));
+  const kidsOf = k => g.rows.filter(y => live.get(y.k) === k);
+  const tops = g.rows.filter(x => !live.has(x.k));
+  const full = x => !!(x.n || x.h || kidsOf(x.k).length);
+  const color = x => { const c = x.catId != null ? catById(x.catId) : null; return validColor((c && c.color) || '#5b6b7d'); };
+  if(__rgm.menuFor && !tops.some(x => x.k === __rgm.menuFor && !kidsOf(x.k).length)) __rgm.menuFor = null;   // 메뉴 주인이 묶였거나 사라졌다
+  const row = (x, kid) => {
+    const ks = kid ? [] : kidsOf(x.k), c = x.catId != null ? catById(x.catId) : null;
+    let n = x.n, h = x.h;
+    for(const k of ks){ if(k.n) n = (n || 0) + k.n; if(k.h != null) h = Math.round(((h || 0) + k.h) * 100) / 100; }
+    const meta = rgmMeta(n, h), dr = !ks.length;
+    let btn = '';
+    if(kid) btn = `<button type="button" class="rgm-ib" data-gout="${esc(x.k)}" title="꺼내기" aria-label="${esc(x.name)} 꺼내기">${RGM_I_X}</button>`;
+    else if(!ks.length && tops.length > 1) btn = `<button type="button" class="rgm-ib" data-gmenu="${esc(x.k)}" aria-haspopup="menu" aria-expanded="${__rgm.menuFor === x.k ? 'true' : 'false'}" aria-label="${esc(x.name)} 메뉴">${RGM_I_MORE}</button>`;
+    return `<div class="rgm-row ${kid ? 'kid' : 'top'}${(kid ? (x.n || x.h) : full(x)) ? '' : ' dim'}" data-gk="${esc(x.k)}" data-dr="${dr ? 1 : 0}">`
+      + `<span class="rgm-hdl" aria-hidden="true">${dr ? '⠿' : ''}</span><span class="rgm-dot" style="background:${color(x)}" aria-hidden="true"></span>`
+      + `<span class="rgm-who"><span class="rgm-t" title="${esc(x.name)}">${esc(x.name)}</span>${isOfficialCat(c) ? '<span class="cat-badge db">공식</span>' : ''}${meta ? `<span class="rgm-meta">${meta}</span>` : ''}</span>`
+      + btn + `</div>`;
+  };
+  const emp = tops.filter(x => !full(x) && !__rgm.keep.has(x.k)).length;   // 접어 둘 수 있는 내용 없는 과제(이번에 꺼낸 과제는 그대로 보인다)
+  const vis = tops.filter(x => __rgm.showEmpty || full(x) || __rgm.keep.has(x.k));
+  let html = vis.map(x => { const ks = kidsOf(x.k); return `<div class="rgm-grp${ks.length ? ' has' : ''}" data-grp="${esc(x.k)}">${row(x, false)}${ks.map(k => row(k, true)).join('')}</div>`; }).join('');
+  if(emp) html += `<div class="rgm-more">${__rgm.showEmpty
+    ? `<button type="button" class="lnk" data-gmore aria-expanded="true" aria-label="내용 없는 과제 접기">접기</button>`
+    : `<span>${g.mode === 'weekly' ? '이번 주' : '오늘'} 내용 없는 과제 ${emp}개</span><button type="button" class="lnk" data-gmore aria-expanded="false">보기</button>`}</div>`;
+  if(__rgm.menuFor){
+    html += `<div class="rgm-menu" role="menu" id="rgmMenu" aria-label="넣을 곳"><div class="rgm-mh" aria-hidden="true">넣을 곳</div>`
+      + tops.filter(y => y.k !== __rgm.menuFor).map(y => `<button type="button" role="menuitem" tabindex="-1" data-ginto="${esc(y.k)}"><span class="rgm-dot" style="background:${color(y)}" aria-hidden="true"></span><span>${esc(y.name)}</span></button>`).join('')
       + `</div>`;
-  }).join('');
+  }
+  box.innerHTML = html;
+  if(clr) clr.disabled = !live.size;
+  const mn = $('#rgmMenu'), mb = __rgm.menuFor ? rgmFind('gmenu', __rgm.menuFor) : null;
+  if(mn && mb){   // ⋯ 아래 오른쪽 끝에 맞춘다. 창 본문 아래로 넘치면 위로 연다
+    const r = mb.getBoundingClientRect(), p = box.getBoundingClientRect(), body = box.closest('.modal-body');
+    const lim = body ? body.getBoundingClientRect().bottom : Infinity, mh = mn.offsetHeight || 0;
+    mn.style.right = Math.max(0, p.right - r.right) + 'px';
+    mn.style.top = ((r.bottom + 4 + mh > lim && r.top - p.top - mh - 4 >= 0) ? (r.top - p.top - mh - 4) : (r.bottom - p.top + 4)) + 'px';
+  }
 }
 // 선택을 바꾸면 바로 적용하고 그 보고서의 임시 저장에 바로 쓴다(사용자 동작이라 쓴다. 렌더는 쓰지 않는다). 규칙에 어긋나는 값은 무시한다.
 function rptGroupSet(src, tgt){
@@ -15016,7 +15107,8 @@ function buildReport(){
       const _gk = (_dg && _dg.kids.get(r.key)) || [];   // 이 과제에 묶인 행(뺀 것 제외): 초안 본문과 시간에 들어간다
       return { key: r.key, name: String(r.name || ''), head: reportRowHead(r, _hmap),
         draft: _gk.length ? reportGroupBodyText(r, _gk, ' ', _mkSpec, _indent) : reportRowBodyText(r, ' ', _mkSpec, _indent),
-        kidOf: (_dg && _dg.kid.get(r.key)) || '', kids: _gk.map(k => k.key), kidNames: _gk.map(k => String(k.name || '')) };
+        kidOf: (_dg && _dg.kid.get(r.key)) || '', kids: _gk.map(k => k.key), kidNames: _gk.map(k => String(k.name || '')),
+        n: r.titles.length };   // n: 자기 업무 줄 수(묶음 설정 창의 "업무 n건")
     }) };
     rptViewBarSync(true);
   }
@@ -17651,20 +17743,131 @@ function bind(){
     rptGroupSumSync(from);   // 보고서 묶음: 대상 카드의 "합계 n h" 만 맞춘다(다시 그리지 않아 포커스가 그대로다)
   });
   // 보고서 묶음(REPORT-GROUP §4): 왼쪽 "보고서 묶음 [설정]" → 설정 창. 열람 창에는 줄 자체가 없다(rptGroupRowRender).
-  //  창을 닫으면 포커스는 이 설정 링크로 돌아온다(_modalStack 의 opener). 선택을 바꾸면 바로 적용, 임시 저장된다.
+  //  창을 닫으면 포커스는 이 설정 링크로 돌아온다(_modalStack 의 opener). 열면 목록의 첫 버튼으로(__focusFirst). 바꾸면 바로 적용, 임시 저장된다.
   $('#rptGroupOpen').addEventListener('click', () => {
     if(PEER || !rptGroupCtx()) return;
+    __rgm.showEmpty = false; __rgm.menuFor = null; __rgm.keep.clear();   // 창 상태는 열 때마다 처음으로
     rptGroupDlgRender();
     const ov = $('#rptGroupModal'); ov.__returnTo = $('#rptGroupOpen');
+    ov.__focusFirst = () => $('#rgmRows button') || null;
     openModal(ov);
   });
-  $('#rgmRows').addEventListener('change', ev => {
-    const sel = ev.target.closest && ev.target.closest('select[data-gsrc]'); if(!sel) return;
-    const src = sel.dataset.gsrc;
-    if(!rptGroupSet(src, sel.value)) rptGroupDlgRender();   // 규칙에 어긋나면 지금 묶음으로 되돌려 보인다
-    const again = [...$$('#rgmRows select[data-gsrc]')].find(x => x.dataset.gsrc === src);
-    if(again) again.focus();   // 다시 그려도 쓰던 선택 상자에 포커스를 둔다(키보드 사용자)
+  //  설정 창 동작: ⋯(넣을 곳 메뉴), 메뉴 항목(묶기), X(꺼내기), 보기/접기. 바꾸면 rptGroupSet 이 창을 다시 그리고, 포커스는 옮겨 간 줄의 버튼으로.
+  const _rgmFocus = el => { if(el) try{ el.focus(); }catch(_){} };
+  const _rgmFirst = () => $('#rgmRows button') || $('#rptGroupModal [data-close]');
+  const _rgmMenuClose = (focusBtn) => { const k = __rgm.menuFor; if(!k) return; __rgm.menuFor = null; rptGroupDlgRender(); if(focusBtn) _rgmFocus(rgmFind('gmenu', k)); };
+  $('#rgmRows').addEventListener('click', ev => {
+    const t = ev.target; if(!t || !t.closest) return;
+    const m = t.closest('[data-gmenu]'), into = t.closest('[data-ginto]'), out = t.closest('[data-gout]'), more = t.closest('[data-gmore]');
+    if(m){
+      const k = m.getAttribute('data-gmenu');
+      __rgm.menuFor = (__rgm.menuFor === k) ? null : k;
+      rptGroupDlgRender();
+      _rgmFocus(__rgm.menuFor ? $('#rgmMenu [data-ginto]') : rgmFind('gmenu', k));
+      return;
+    }
+    if(into){
+      const src = __rgm.menuFor, tgt = into.getAttribute('data-ginto');
+      __rgm.menuFor = null;
+      if(!src || !rptGroupSet(src, tgt)) rptGroupDlgRender();
+      _rgmFocus(rgmFind('gout', src) || _rgmFirst());   // 넣은 과제의 X 로
+      return;
+    }
+    if(__rgm.menuFor && !(t.closest('#rgmMenu'))) _rgmMenuClose(false);   // 메뉴 밖을 누르면 메뉴만 닫는다
+    if(out){
+      const k = out.getAttribute('data-gout');
+      __rgm.keep.add(k);   // 꺼낸 과제는 내용이 없어도 이번 창에서는 보인다
+      if(!rptGroupSet(k, k)) rptGroupDlgRender();
+      _rgmFocus(rgmFind('gmenu', k) || _rgmFirst());   // 제자리로 돌아간 과제의 ⋯ 로
+      return;
+    }
+    if(more){ __rgm.showEmpty = !__rgm.showEmpty; rptGroupDlgRender(); _rgmFocus($('#rgmRows [data-gmore]')); }
   });
+  //  메뉴 키보드: 위아래 화살표로 항목 사이, Enter/Space 는 버튼 그대로, Esc 와 Tab 은 메뉴만 닫고 ⋯ 로(창은 그대로: 전파를 막는다).
+  $('#rgmRows').addEventListener('keydown', ev => {
+    if(!__rgm.menuFor) return;
+    if(ev.key === 'Escape' || (ev.key === 'Tab' && ev.target.closest && ev.target.closest('#rgmMenu'))){ ev.preventDefault(); ev.stopPropagation(); _rgmMenuClose(true); return; }
+    const mn = ev.target.closest && ev.target.closest('#rgmMenu'); if(!mn) return;
+    const items = [...mn.querySelectorAll('[data-ginto]')], n = items.length; if(!n) return;
+    const i = items.indexOf(document.activeElement);
+    let j = -1;
+    if(ev.key === 'ArrowDown') j = (i + 1) % n; else if(ev.key === 'ArrowUp') j = (i - 1 + n) % n;
+    else if(ev.key === 'Home') j = 0; else if(ev.key === 'End') j = n - 1;
+    if(j >= 0){ ev.preventDefault(); items[j].focus(); }
+  });
+  //  창의 다른 곳(머리, 아래 줄)을 눌러도 메뉴를 닫는다. 목록 안 누르기는 위 처리기가 맡는다(다시 그려 떨어진 노드라 경로로 본다).
+  $('#rptGroupModal').addEventListener('click', ev => {
+    if(!__rgm.menuFor) return;
+    const path = ev.composedPath ? ev.composedPath() : [];
+    if(path.includes($('#rgmRows'))) return;
+    _rgmMenuClose(false);
+  });
+  //  모두 풀기: 지금 묶음마다 rptGroupSet(출처, 출처). 단추가 꺼지므로 포커스는 목록의 첫 버튼으로.
+  $('#rgmClear').addEventListener('click', () => {
+    const g = rptGroupCtx(); if(!g) return;
+    const live = rptGroupLive(g.group, g.rows.map(x => x.k));
+    __rgm.menuFor = null;
+    for(const s of [...live.keys()]){ __rgm.keep.add(s); rptGroupSet(s, s); }
+    rptGroupDlgRender();
+    const clr = $('#rgmClear');
+    _rgmFocus(clr && !clr.disabled ? clr : _rgmFirst());
+  });
+  //  끌어 넣기(포인터 이벤트): HTML5 끌어 놓기는 자동화에서 멈추고 WebView2 와 터치에서 동작이 달라 쓰지 않는다.
+  //    끌 수 있는 줄([data-dr="1"])의 버튼 아닌 곳을 누르고 5px 넘게 움직이면 시작한다(터치는 ⠿ 에서만, 목록 스크롤을 지키려고).
+  //    줄을 본뜬 그림자가 포인터를 따라가고, 놓을 곳(포인터 아래 묶음)을 점선으로 칠한다. 판정은 rptGroupDropTarget 하나.
+  //    Esc, pointercancel, 창 포커스 잃기는 취소한다.
+  let _rgmDrag = null;
+  const _rgmSetDrop = k => $$('#rgmRows [data-grp]').forEach(x => x.classList.toggle('drop', k != null && x.getAttribute('data-grp') === k));
+  const _rgmOver = ev => { const el = document.elementFromPoint ? document.elementFromPoint(ev.clientX, ev.clientY) : null, gp = el && el.closest ? el.closest('#rgmRows [data-grp]') : null; return gp ? gp.getAttribute('data-grp') : null; };
+  const _rgmEnd = (apply, ev) => {
+    const d = _rgmDrag; if(!d) return;
+    _rgmDrag = null;
+    document.removeEventListener('pointermove', _rgmMove, true); document.removeEventListener('pointerup', _rgmUp, true);
+    document.removeEventListener('pointercancel', _rgmCancel, true); document.removeEventListener('keydown', _rgmKey, true);
+    if(!d.on) return;
+    if(d.ghost) d.ghost.remove();
+    document.body.classList.remove('rgm-dragging'); d.row.classList.remove('src'); _rgmSetDrop(null);
+    if(!apply) return;
+    if(ev) d.over = _rgmOver(ev);
+    const tgt = rptGroupDropTarget(d.live, d.k, d.over);
+    if(tgt == null) return;
+    if(tgt === d.k) __rgm.keep.add(d.k);
+    if(!rptGroupSet(d.k, tgt)) rptGroupDlgRender();
+  };
+  function _rgmMove(ev){
+    const d = _rgmDrag; if(!d || ev.pointerId !== d.id) return;
+    if(!d.on){
+      if(Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) return;
+      d.on = true;
+      if(__rgm.menuFor) _rgmMenuClose(false);
+      const row = rgmFind('gk', d.k) || d.row; d.row = row;   // 메뉴를 닫느라 다시 그렸으면 새 줄
+      const rc = row.getBoundingClientRect(); d.dx = d.x - rc.left; d.dy = d.y - rc.top;
+      const gh = row.cloneNode(true); gh.classList.add('rgm-ghost'); gh.setAttribute('aria-hidden', 'true'); gh.removeAttribute('data-gk');
+      gh.querySelectorAll('button').forEach(b => b.remove()); gh.style.width = rc.width + 'px';
+      $('#rptGroupModal').appendChild(gh); d.ghost = gh;
+      row.classList.add('src'); document.body.classList.add('rgm-dragging');
+    }
+    ev.preventDefault();
+    d.ghost.style.left = (ev.clientX - d.dx) + 'px'; d.ghost.style.top = (ev.clientY - d.dy) + 'px';
+    d.over = _rgmOver(ev);
+    const tgt = rptGroupDropTarget(d.live, d.k, d.over);
+    _rgmSetDrop(tgt != null && tgt !== d.k ? tgt : null);
+  }
+  function _rgmUp(ev){ if(_rgmDrag && ev.pointerId === _rgmDrag.id) _rgmEnd(true, ev); }
+  function _rgmCancel(ev){ if(_rgmDrag && ev.pointerId === _rgmDrag.id) _rgmEnd(false); }
+  function _rgmKey(ev){ if(ev.key === 'Escape' && _rgmDrag && _rgmDrag.on){ ev.preventDefault(); ev.stopImmediatePropagation(); _rgmEnd(false); } }
+  $('#rgmRows').addEventListener('pointerdown', ev => {
+    if(_rgmDrag || ev.button !== 0 || ev.isPrimary === false) return;
+    const t = ev.target; if(!t || !t.closest || t.closest('button')) return;
+    const row = t.closest('.rgm-row[data-dr="1"]'); if(!row) return;
+    if(ev.pointerType === 'touch' && !t.closest('.rgm-hdl')) return;   // 터치: ⠿ 에서만(줄을 밀면 목록이 스크롤된다)
+    const g = rptGroupCtx(); if(!g) return;
+    _rgmDrag = { k: row.getAttribute('data-gk'), row, x: ev.clientX, y: ev.clientY, id: ev.pointerId, on: false, ghost: null, over: null,
+      live: rptGroupLive(g.group, g.rows.map(x => x.k)) };
+    document.addEventListener('pointermove', _rgmMove, true); document.addEventListener('pointerup', _rgmUp, true);
+    document.addEventListener('pointercancel', _rgmCancel, true); document.addEventListener('keydown', _rgmKey, true);
+  });
+  window.addEventListener('blur', () => { if(_rgmDrag) _rgmEnd(false); });
   // 일간 글 편집(REPORT-EDIT §2): 카드 X(이 보고서에서 빼기)/되돌리기, 초안으로, 모두 초안으로. 캘린더 기록은 건드리지 않는다.
   //  ★ 예전 이 자리의 줄 ✎/✕(제목 고치기 = setCommitSubject 등, 원본 삭제 = deleteCommitRow 등)는 없앴다. 보고서를 고치려다
   //    캘린더 기록이 바뀌거나 지워졌다(§1, §5). 커밋 삭제는 커밋 내역 탭(deleteCommitRow)에만 남는다.

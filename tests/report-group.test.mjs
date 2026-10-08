@@ -2,12 +2,14 @@
 //
 // 이 파일이 지키는 것:
 //   (S) 정적: 묶음이 없을 때의 예전 길(머리 줄 시간 함수, 주간 네 칸 감싸기, 복사 갈래)이 그대로 남아 있다, 묶음 함수는 PEER 를
-//       저장소보다 먼저 본다, 설정 창 마크업(제목, 닫기 하나, 라벨), 좁은 폭 CSS, 새 문구 기호.
+//       저장소보다 먼저 본다, 설정 창 마크업(제목, 모두 풀기와 닫기, X 와 ⋯ 이름, 머리 과제만 넣을 곳,
+//       예전 선택 상자 없음, 포인터 끌기, 터치는 ⠿ 에만 touch-action), 좁은 폭 CSS, 새 문구 기호, 끌어 놓기 판정 rptGroupDropTarget(순수 함수).
 //   (B) jsdom 브라우저 모드, 일간: 묶음 없을 때 바이트 같음(복사, 전송, 낡은 묶음 흔적이 있어도), 묶음 적용(머리 줄 목록, 합친 시간과
-//       소수 반올림, 본문 초안 꼴: 이름 줄 + 한 단계 더 들여쓰기, 머리기호 번호 이어짐, payload.hours = 머리 줄), 한 단계 규칙(설정 창 선택지),
+//       소수 반올림, 본문 초안 꼴: 이름 줄 + 한 단계 더 들여쓰기, 머리기호 번호 이어짐, payload.hours = 머리 줄), 한 단계 규칙(설정 창 구조, 넣을 곳, 끌기),
 //       공식 과제 묶기, X(대상은 묶음 전체, 작은 카드는 그 과제만), 임시 저장(묶음만으로 키, 닫고 열기, 재시작, 날짜별, 새 날짜는 묶음 없음,
-//       모두 초안으로가 묶음까지 지움, 렌더는 쓰지 않음), 낡은 초안 안내, 묶인 과제의 고친 글은 묶음 동안 쉬었다가 풀면 다시 쓰인다, 설정 창 접근성.
-//   (B) 주간 캘린더 출처: 바이트 같음, 과제투입시간과 합계, 진행사항, 차주계획, 복사, 기간별 저장, X 와 묶음.
+//       모두 초안으로가 묶음까지 지움, 렌더는 쓰지 않음), 낡은 초안 안내, 묶인 과제의 고친 글은 묶음 동안 쉬었다가 풀면 다시 쓰인다, 설정 창 접근성(⋯ 메뉴 키보드, 포커스),
+//       내용 없는 과제 접기, 끌어 놓기(포인터 이벤트를 MouseEvent 로 흉내, elementFromPoint 바꿔 끼우기), 모두 풀기.
+//   (B) 주간 캘린더 출처: 바이트 같음, 과제투입시간과 합계, 진행사항, 차주계획, 복사, 기간별 저장, X 와 묶음, 설정 창(이번 주 문구, 업무와 시간, 끌기).
 //   (W) jsdom 위젯 모드: 일간 전송 성공 회신이 묶음까지 지운다, 보낸 뒤 묶음을 바꾸면 지우지 않는다, 주간 net 출처 묶음과 바이트 같음.
 //   (P) 열람 창(PEER): 묶음 줄이 없고 임시 저장 접근 0.
 //   (M) 변이: 위 계약을 되돌리면 같은 검사기가 잡는다.
@@ -48,40 +50,75 @@ const S = {
     const g = b.indexOf('if(PEER) return null;');
     const touch = Math.min(...['rptDraftGet(', 'rptWDraftGet('].map(t => { const i = b.indexOf(t); return i < 0 ? Infinity : i; }));
     assert.ok(g > 0 && g < touch, 'rptGroupCtx 가 PEER 를 저장소보다 먼저 보지 않는다: 열람 창에 묶음 설정이 생기거나 내 초안을 읽는다');
-    const on = src.slice(src.indexOf("$('#rptGroupOpen').addEventListener('click'"), src.indexOf("$('#rgmRows').addEventListener('change'"));
+    const on = src.slice(src.indexOf("$('#rptGroupOpen').addEventListener('click'"), src.indexOf("$('#rgmRows').addEventListener('click'"));
     assert.ok(on.includes('if(PEER || !rptGroupCtx()) return;'), '설정 링크 처리기가 열람 창을 막지 않는다');
   },
-  //  §4: 설정 창: 보고서 창 뒤 형제(위에 뜬다), 제목, 닫기 하나, 선택 상자마다 라벨.
+  //  §4(2026-10-08 끌어넣기): 설정 창: 보고서 창 뒤 형제(위에 뜬다), 제목, 아래 "모두 풀기"와 닫기, 줄마다 X(꺼내기)와 ⋯(메뉴) 이름,
+  //    넣을 곳 메뉴는 머리 과제만(한 단계), 예전 선택 상자와 그 CSS 는 없다, 끌기는 포인터 이벤트, 터치 끌기는 ⠿ 에만 touch-action, 좁은 폭 32px.
   dialogMarkup(src) {
     const a = src.indexOf('<div class="overlay hidden" id="reportModal">'), b = src.indexOf('<div class="overlay hidden" id="rptGroupModal">');
     assert.ok(a > 0 && b > a, '설정 창이 보고서 창보다 앞에 있다(뒤에 깔린다)');
     const m = src.slice(b, src.indexOf('\n</div>\n', b));
     assert.ok(m.includes('<h2>보고서 묶음</h2>'), '설정 창 제목이 없다');
-    assert.strictEqual(m.split('<button').length - 1, 1, '설정 창의 버튼은 닫기 하나여야 한다');
-    assert.ok(m.includes('data-close>닫기</button>'), '닫기 버튼이 공통 닫기([data-close])가 아니다');
+    assert.strictEqual(m.split('<button').length - 1, 2, '설정 창 아래 버튼은 "모두 풀기"와 닫기 둘이어야 한다');
+    assert.ok(m.includes('data-close>닫기</button>') && m.includes('id="rgmClear" disabled>모두 풀기</button>'), '닫기([data-close])나 모두 풀기가 없다');
+    assert.ok(!m.includes('<select') && !m.includes('rgm-sel'), '예전 선택 상자가 남았다');
     const r = extractFunction(src, 'rptGroupDlgRender');
-    assert.ok(r.includes('<label class="rgm-name" for="rgmSel${i}">') && r.includes('<select id="rgmSel${i}"'), '선택 상자에 라벨(for)이 이어지지 않는다');
-    assert.ok(r.includes(".concat(isTgt ? [] : g.rows.filter(y => y.k !== x.k && !live.has(y.k))"), '한 단계 규칙: 선택지에서 자기 자신과 묶인 과제를 빼지 않는다');
+    assert.ok(r.includes('aria-label="${esc(x.name)} 꺼내기"') && r.includes('title="꺼내기"'), '묶인 과제 X 에 "이름 꺼내기" 이름이 없다');
+    assert.ok(r.includes('aria-haspopup="menu"') && r.includes('aria-label="${esc(x.name)} 메뉴"') && r.includes('role="menuitem"') && r.includes('role="menu"'), '⋯ 메뉴의 접근성 표지(haspopup, 이름, role)가 없다');
+    assert.ok(r.includes('tops.filter(y => y.k !== __rgm.menuFor)'), '한 단계 규칙: 넣을 곳 메뉴가 머리 과제만이 아니다(자기 자신이나 묶인 과제가 들어간다)');
+    assert.ok(!/<select|<option/.test(r), '설정 창이 아직 선택 상자를 그린다');
     const css = src.slice(src.indexOf('<style>'), src.indexOf('</style>'));
-    //  두 규칙 모두 바로 앞의 @media 가 440px 이하 블록이어야 한다(밖에 있으면 넓은 폭에서도 한 열이 된다).
-    for (const rule of ['#rptGroupModal .rgm-row{grid-template-columns:minmax(0,1fr)}', '#rptGroupModal .rgm-sel{min-height:32px}']) {
-      const at = css.indexOf(rule), m = css.lastIndexOf('@media', at);
-      assert.ok(at > 0 && css.startsWith('@media (max-width:440px)', m) && !css.slice(m, at).includes('\n}'),'440px 이하에서 설정 창이 한 열(32px 선택 상자)이 아니다: ' + rule);
+    assert.ok(!/\.rgm-sel|\.rgm-tip|\.rgm-name/.test(css), '예전 선택 상자 CSS(.rgm-sel, .rgm-tip, .rgm-name)가 남았다');
+    const ta = [...css.matchAll(/#rptGroupModal[^{}]*\{[^{}]*touch-action:none/g)].map(x => x[0]);
+    assert.ok(ta.length === 1 && ta[0].includes('.rgm-hdl') && css.lastIndexOf('@media', css.indexOf(ta[0])) === css.lastIndexOf('@media (pointer:coarse)', css.indexOf(ta[0])), '터치 끌기 touch-action:none 이 ⠿ 에만(굵은 포인터에서만) 있지 않다: ' + JSON.stringify(ta));
+    const on = src.slice(src.indexOf("$('#rgmRows').addEventListener('click'"), src.indexOf("window.addEventListener('blur', () => { if(_rgmDrag) _rgmEnd(false); });"));
+    assert.ok(on.includes("addEventListener('pointerdown'") && on.includes("'pointercancel'") && !/draggable|dragstart|dataTransfer/.test(on), '끌기가 포인터 이벤트가 아니다(HTML5 끌어 놓기는 자동화와 터치에서 다르다)');
+    assert.ok(on.includes("if(ev.pointerType === 'touch' && !t.closest('.rgm-hdl')) return;"), '터치는 ⠿ 에서만 끌기를 시작해야 한다(목록 스크롤)');
+    //  좁은 폭(440px 이하) 규칙: 바로 앞의 @media 가 440px 이하 블록이어야 한다.
+    for (const rule of ['#rptGroupModal .rgm-ib{width:32px;height:32px}', '#rptGroupModal .rgm-who{flex-wrap:wrap;row-gap:0}']) {
+      const at = css.indexOf(rule), mm = css.lastIndexOf('@media', at);
+      assert.ok(at > 0 && css.startsWith('@media (max-width:440px)', mm) && !css.slice(mm, at).includes('\n}'), '440px 이하에서 설정 창 버튼이 32px 가 아니거나 이름 줄이 접히지 않는다: ' + rule);
     }
+  },
+  //  끌어 놓기 판정(순수 함수 rptGroupDropTarget): 앱 소스에서 떼어 돌린다.
+  dropRules(src) {
+    const f = new Function('return (' + extractFunction(src, 'rptGroupDropTarget') + ')')();
+    const L = (o) => new Map(Object.entries(o));
+    const live = L({ b: 'a', c: 'a' });   // b, c 가 a 에 묶였다. d, e 는 머리 과제
+    const cases = [
+      ['d', 'a', 'a', '머리 과제를 다른 묶음 위에 놓으면 그 과제에 묶인다'],
+      ['d', 'e', 'e', '빈 머리 과제 위에도 넣는다'],
+      ['d', 'd', null, '자기 위에 놓으면 그대로'],
+      ['d', null, null, '묶이지 않은 과제를 묶음 밖에 놓으면 그대로'],
+      ['a', 'd', null, '다른 과제가 묶인 과제는 끌 수 없다(한 단계)'],
+      ['a', null, null, '다른 과제가 묶인 과제는 끌 수 없다(밖)'],
+      ['b', null, 'b', '묶인 과제를 묶음 밖에 놓으면 푼다'],
+      ['b', '', 'b', '묶인 과제를 묶음 밖에 놓으면 푼다(빈 키)'],
+      ['b', 'a', null, '묶인 과제를 지금 부모 위에 놓으면 그대로'],
+      ['b', 'd', 'd', '묶인 과제를 다른 머리 과제로 옮긴다'],
+      ['d', 'b', null, '묶인 과제 위(키)에는 넣지 않는다(두 단계)'],
+    ];
+    for (const [s0, over, want, why] of cases) assert.strictEqual(f(live, s0, over), want, why + ': ' + s0 + ' → ' + over);
+    assert.strictEqual(f(new Map(), 'x', 'y'), 'y', '묶음이 없을 때 넣기');
+    assert.strictEqual(f(new Map(), 'x', null), null, '묶음이 없을 때 밖');
   },
 };
 
 test('GS1 (§3, §6): 묶음이 없을 때의 예전 길이 남아 있다(머리 줄 시간, 주간 감싸기, 복사 갈래), 낡은 묶음 흔적을 거른다', () => S.fastPaths(app));
 test('GS2 (§5): 묶음 문맥과 설정 링크는 PEER 를 저장소보다 먼저 본다', () => S.peerFirst(app));
-test('GS3 (§4): 설정 창: 보고서 창 위, 제목, 닫기 하나, 라벨, 한 단계 선택지, 좁은 폭 한 열', () => S.dialogMarkup(app));
+test('GS3 (§4): 설정 창: 보고서 창 위, 제목, 모두 풀기와 닫기, X 와 ⋯ 이름, 머리 과제만 넣을 곳, 선택 상자 없음, 포인터 끌기, 좁은 폭 32px', () => S.dialogMarkup(app));
+test('GS5 (§4): 끌어 놓기 판정 rptGroupDropTarget: 넣기, 옮기기, 밖에 놓아 풀기, 자기와 부모 위는 그대로, 묶음이 있는 과제는 못 끈다', () => S.dropRules(app));
 test('GS4 (§6): 새 화면 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운데 점이 없다', () => {
-  const phrases = ['보고서 묶음', '설정', '묶은 과제 없음', '묶음', '합계 ', ' 자체', '그대로 [', ']에 합치기', '다른 과제가 묶여 있어 바꿀 수 없습니다',
-    '이 보고서에는 묶을 과제가 없습니다.', '과제를 이 보고서에서만 다른 과제의 머리 줄 아래로 묶습니다',
-    '과제를 이 보고서에서만 다른 과제의 머리 줄 아래로 묶습니다. 업무 줄은 그 과제 본문 뒤에 과제 이름과 함께 들어가고, 시간은 그 과제 시간에 더해집니다. 묶음은 한 단계만 되고, 다음 보고서는 묶음 없이 시작합니다.',
+  const phrases = ['보고서 묶음', '설정', '묶은 과제 없음', '묶음', '합계 ', ' 자체',
+    '이 보고서에는 묶을 과제가 없습니다.',
+    '과제를 끌어다 다른 과제 위에 놓으면, 이 보고서에서는 그 과제 안에 함께 씁니다. 시간도 더해지고, 다음 보고서에는 남지 않습니다.',
+    '묶인 과제의 고친 글은 지워지지 않고, 꺼내면 다시 쓰입니다.', '모두 풀기', '넣을 곳', '꺼내기', '} 꺼내기"', '} 메뉴"',
+    "'이번 주' : '오늘'} 내용 없는 과제 ${emp}개", '>보기</button>', '>접기</button>', '내용 없는 과제 접기', '업무 ${n}건', '${h}시간',
     '이 과제 시간과 묶인 과제 시간의 합', '이 보고서에서 위 과제의 머리 줄 아래로 묶었습니다', '에 묶은 과제', ', 묶은 과제 ',
     '이 날짜의 고친 내용과 뺀 과제, 묶음을 모두 버리고 초안으로 되돌릴까요?', '이 기간의 고친 내용과 뺀 과제, 묶음을 모두 버리고 초안으로 되돌릴까요?',
     '자체 시간(회사 일간보고용, 묶인 과제 시간은 따로)', '고친 글에 묶은 과제 줄이 없습니다. 글 편집에서 초안으로 되돌리면 들어갑니다.',
-    '묶인 과제의 고친 글(일간 내용, 주간 진행사항과 차주계획)은 묶음 동안 쓰이지 않고 남아 있다가 묶음을 풀면 다시 쓰입니다.', 'aria-label="보고서 묶음 설정"'];
+    'aria-label="보고서 묶음 설정"'];
   for (const p of phrases) {
     assert.ok(app.includes(p), '문구가 앱에 없다(시험 목록 갱신 필요): ' + p);
     assert.ok(!/—|–|「|」|(^|\s)·|·(\s|$)/.test(p), '금지 기호: ' + p);
@@ -94,9 +131,19 @@ test('변이 GSM1: 낡은 대상 거르기나 한 단계 거르기를 빼면 GS1
 test('변이 GSM2: rptGroupCtx 의 PEER 관문을 빼면 GS2 가 잡는다', () => {
   assert.throws(() => S.peerFirst(mutate(app, "function rptGroupCtx(){\n  if(PEER) return null;\n", 'function rptGroupCtx(){\n')), /PEER/);
 });
-test('변이 GSM3: 라벨을 끊거나 묶인 과제를 선택지에 넣으면 GS3 이 잡는다', () => {
-  assert.throws(() => S.dialogMarkup(mutate(app, '<label class="rgm-name" for="rgmSel${i}">', '<label class="rgm-name">')), /라벨/);
-  assert.throws(() => S.dialogMarkup(mutate(app, "g.rows.filter(y => y.k !== x.k && !live.has(y.k))", 'g.rows.filter(y => y.k !== x.k)')), /한 단계/);
+test('변이 GSM3: X 이름을 빼거나, 묶인 과제를 넣을 곳에 넣거나, 터치 끌기를 줄 전체로 넓히면 GS3 이 잡는다', () => {
+  assert.throws(() => S.dialogMarkup(mutate(app, 'title="꺼내기" aria-label="${esc(x.name)} 꺼내기"', 'title="꺼내기"')), /꺼내기/);
+  assert.throws(() => S.dialogMarkup(mutate(app, 'tops.filter(y => y.k !== __rgm.menuFor)', 'g.rows.filter(y => y.k !== __rgm.menuFor)')), /한 단계/);
+  assert.throws(() => S.dialogMarkup(mutate(app, "    if(ev.pointerType === 'touch' && !t.closest('.rgm-hdl')) return;", '')), /터치/);
+  assert.throws(() => S.dialogMarkup(mutate(app, '#rptGroupModal .rgm-row[data-dr="1"]{cursor:grab}', '#rptGroupModal .rgm-row[data-dr="1"]{cursor:grab;touch-action:none}')), /touch-action/);
+});
+test('변이 GSM4: 끌어 놓기 판정의 규칙 하나를 빼면 GS5 가 잡는다', () => {
+  for (const [find, repl, re] of [
+    ['  if([...live.values()].includes(src)) return null;\n  const par', '  const par', /한 단계/],
+    ["  if(over == null || over === '') return par ? src : null;", "  if(over == null || over === '') return null;", /푼다/],
+    ['  if(over === src || over === par || live.has(over)) return null;', '  if(over === src || live.has(over)) return null;', /부모/],
+    ['  if(over === src || over === par || live.has(over)) return null;', '  if(over === src || over === par) return null;', /두 단계/],
+  ]) assert.throws(() => S.dropRules(mutate(app, find, repl)), re);
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -159,12 +206,44 @@ if (!JSDOM) {
     await m.ev('copyReport()');
     return m.ev('window.__clip');
   };
-  //  설정 창을 사람처럼 연다(왼쪽 "설정" 링크) / 선택 상자를 바꾼다(change 처리기 = 사람이 고른 것).
+  //  설정 창을 사람처럼 연다(왼쪽 "설정" 링크).
   const openDlg = async (m) => { m.doc.getElementById('rptGroupOpen').click(); await waitFor(() => overlayOpen(m, 'rptGroupModal'), '설정 창이 열린다'); await tick(); };
   const closeDlg = async (m) => { m.doc.querySelector('#rptGroupModal [data-close]').click(); await waitFor(() => overlayClosed(m, 'rptGroupModal'), '설정 창이 닫힌다'); };
-  const dlgSel = (m, k) => m.ev(`[].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(s){ return s.dataset.gsrc === ${JSON.stringify(k)}; })`);
-  const pick = (m, src, tgt) => { const s = dlgSel(m, src); assert.ok(s, src + ' 선택 상자가 없다'); s.value = tgt; assert.strictEqual(s.value, tgt, src + ' 선택 상자에 ' + tgt + ' 선택지가 없다'); s.dispatchEvent(new m.w.Event('change', { bubbles: true })); };
-  const optsOf = (m, k) => m.evJSON(`(function(){ var s = [].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(s){ return s.dataset.gsrc === ${JSON.stringify(k)}; }); return s ? { disabled: s.disabled, opts: [].map.call(s.options, function(o){ return o.value + '|' + o.textContent; }) } : null; })()`);
+  //  설정 창 줄과 묶음(키는 이름일 수 있어 앱의 rgmFind 로 찾는다)
+  const rowEl = (m, k) => m.ev(`rgmFind('gk', ${JSON.stringify(k)})`);
+  const grpEl = (m, k) => m.ev(`rgmFind('grp', ${JSON.stringify(k)})`);
+  const findIn = (m, attr, k) => m.ev(`rgmFind(${JSON.stringify(attr)}, ${JSON.stringify(k)})`);
+  const groupsOf = (m) => m.evJSON("[].map.call(document.querySelectorAll('#rgmRows [data-grp]'), function(g){ return [g.getAttribute('data-grp')].concat([].map.call(g.querySelectorAll('.rgm-row.kid'), function(r){ return r.getAttribute('data-gk'); })); })");
+  const showEmpty = (m) => { const b = m.doc.querySelector('#rgmRows [data-gmore]'); if (b && b.getAttribute('aria-expanded') === 'false') b.click(); };
+  //  묶음 하나를 사람처럼 정한다(끌기 없이): 묶인 과제는 X(꺼내기), 머리 과제는 ⋯ 메뉴의 넣을 곳. tgt === src 는 꺼내기.
+  function pick(m, src, tgt) {
+    if (!rowEl(m, src)) showEmpty(m);
+    assert.ok(rowEl(m, src), src + ' 줄이 설정 창에 없다');
+    const x = findIn(m, 'gout', src);
+    if (x && x.closest('[data-grp]').getAttribute('data-grp') === tgt) return;   // 이미 그 과제에 묶여 있다
+    if (x) x.click();
+    if (tgt === src) return;
+    const b = findIn(m, 'gmenu', src);
+    assert.ok(b, src + ' 에 ⋯ 메뉴가 없다(다른 과제가 묶여 있거나 머리 과제가 하나뿐이다)');
+    b.click();
+    const it = [...m.doc.querySelectorAll('#rgmMenu [data-ginto]')].find((e) => e.getAttribute('data-ginto') === tgt);
+    assert.ok(it, src + ' 의 넣을 곳에 ' + tgt + ' 가 없다');
+    it.click();
+  }
+  //  ⋯ 메뉴의 넣을 곳 목록(열었다가 다시 눌러 닫는다). ⋯ 가 없으면 null.
+  const menuOf = (m, k) => { const b = findIn(m, 'gmenu', k); if (!b) return null; b.click(); const r = m.evJSON("[].map.call(document.querySelectorAll('#rgmMenu [data-ginto]'), function(e){ return e.getAttribute('data-ginto'); })"); findIn(m, 'gmenu', k).click(); return r; };
+  //  끌기를 사람처럼: 누르고 움직이고 놓는다. jsdom 에는 PointerEvent 와 elementFromPoint 가 없어 MouseEvent 에 pointer 이름과 속성을 주고,
+  //    포인터 아래 요소는 document.elementFromPoint 를 바꿔 끼워 정한다(실 위젯 루프는 진짜 PointerEvent 를 쓴다).
+  function pev(m, type, x, y, extra) {
+    const e = new m.w.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });
+    for (const [k, v] of Object.entries(Object.assign({ pointerId: 1, pointerType: 'mouse', isPrimary: true }, extra || {}))) Object.defineProperty(e, k, { value: v });
+    return e;
+  }
+  const dragDown = (m, k, o = {}) => { const r = rowEl(m, k); assert.ok(r, k + ' 줄이 없다'); r.querySelector(o.from || '.rgm-t').dispatchEvent(pev(m, 'pointerdown', 10, 10, o.ev)); };
+  const dragMove = (m, overEl, o = {}) => { m.doc.elementFromPoint = () => overEl; m.doc.dispatchEvent(pev(m, 'pointermove', 10, 40, o.ev)); };
+  const dragUp = (m, overEl, o = {}) => { m.doc.elementFromPoint = () => overEl; m.doc.dispatchEvent(pev(m, 'pointerup', 10, 40, o.ev)); delete m.doc.elementFromPoint; };
+  const dragTo = (m, k, overEl) => { dragDown(m, k); dragMove(m, overEl); dragUp(m, overEl); };
+  const dlgHead = (m) => m.doc.querySelector('#rptGroupModal .modal-head h2');
   //  묶음을 사람처럼 정한다: 설정 창을 열고 고르고 닫는다.
   async function groupVia(m, pairs) { await openDlg(m); for (const [s, t] of pairs) pick(m, s, t); await closeDlg(m); }
   const heads = (txt) => String(txt).split('\n\n').map(b => b.split('\n')[0]);
@@ -354,20 +433,27 @@ if (!JSDOM) {
     async function assertOneLevel(m) {
       await groupVia(m, [['c-b', 'c-d']]);
       await openDlg(m);
-      const all = ['c-a', 'c-b', 'c-c', 'c-d', 'c-etc'];
-      const d = optsOf(m, 'c-d');
-      assert.deepStrictEqual(d, { disabled: true, opts: ['c-d|그대로 [델타]'] }, '다른 과제가 묶인 델타는 선택 상자가 꺼지고 "그대로" 뿐이어야 한다');
-      const b = optsOf(m, 'c-b');
-      assert.strictEqual(b.disabled, false);
-      assert.deepStrictEqual(b.opts.map(o => o.split('|')[0]), ['c-b', 'c-a', 'c-c', 'c-d', 'c-etc'], '묶인 베타의 선택지(그대로 + 머리 과제)가 다르다');
-      assert.ok(b.opts.includes('c-d|[델타]에 합치기') && b.opts[0] === 'c-b|그대로 [베타]');
-      for (const k of ['c-a', 'c-c', 'c-etc']) {
-        const o = optsOf(m, k);
-        const vals = o.opts.map(x => x.split('|')[0]);
-        assert.ok(!vals.slice(1).includes(k), k + ' 선택지에 자기 자신이 있다');
-        assert.ok(!vals.includes('c-b'), k + ' 선택지에 묶인 과제(베타)가 대상으로 있다(두 단계)');
-        assert.deepStrictEqual(vals, [k].concat(all.filter(x => x !== k && x !== 'c-b')), k + ' 선택지가 다르다');
-      }
+      //  보고서 순서 그대로: 알파, 감마, 델타(안에 베타). 빈 기타는 접혀 있다
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-c'], ['c-d', 'c-b']], '설정 창 묶음 구조(보고서 순서, 델타 안에 베타)가 다르다');
+      const gd = grpEl(m, 'c-d'), rd = rowEl(m, 'c-d'), rb = rowEl(m, 'c-b');
+      assert.ok(gd.classList.contains('has') && rb.classList.contains('kid') && rb.parentElement === gd, '베타가 델타 묶음 안의 들여 쓴 줄이 아니다');
+      assert.ok(rd.getAttribute('data-dr') === '0' && rd.querySelector('.rgm-hdl').textContent === '' && !rd.querySelector('button'), '다른 과제가 묶인 델타에 ⠿ 나 ⋯ 가 있다(한 단계)');
+      assert.strictEqual(rd.querySelector('.rgm-meta').textContent, '업무 1건, 1.5시간', '델타 줄이 묶인 과제까지 더한 업무와 시간이 아니다');
+      assert.strictEqual(rb.querySelector('.rgm-meta').textContent, '업무 1건, 1.5시간', '묶인 베타 줄의 자기 업무와 시간이 다르다');
+      assert.strictEqual(rowEl(m, 'c-a').querySelector('.rgm-meta').textContent, '업무 3건, 2시간', '알파 줄의 업무와 시간이 다르다');
+      assert.strictEqual(rowEl(m, 'c-c').querySelector('.rgm-meta').textContent, '1시간', '시간만 있는 감마 줄은 시간만 보여야 한다');
+      const bx = findIn(m, 'gout', 'c-b');
+      assert.ok(bx && bx.getAttribute('aria-label') === '베타 꺼내기' && bx.getAttribute('title') === '꺼내기', '묶인 베타에 X(베타 꺼내기)가 없다');
+      //  넣을 곳: 머리 과제만(자기 자신과 묶인 베타는 없다). 접힌 빈 기타도 넣을 곳이다
+      assert.deepStrictEqual(menuOf(m, 'c-a'), ['c-c', 'c-d', 'c-etc'], '알파의 넣을 곳이 다르다(자기 자신이나 묶인 과제가 들어 있다)');
+      assert.deepStrictEqual(menuOf(m, 'c-c'), ['c-a', 'c-d', 'c-etc'], '감마의 넣을 곳이 다르다');
+      //  끌어 놓기: 다른 과제가 묶인 델타는 끌리지 않는다. 베타를 지금 부모(델타) 위, 알파를 자기 위에 놓으면 그대로
+      dragDown(m, 'c-d'); dragMove(m, grpEl(m, 'c-a'));
+      assert.ok(!m.doc.querySelector('#rptGroupModal .rgm-ghost') && !grpEl(m, 'c-a').classList.contains('drop'), '다른 과제가 묶인 델타를 끌 수 있다');
+      dragUp(m, grpEl(m, 'c-a'));
+      dragTo(m, 'c-b', rowEl(m, 'c-d'));
+      dragTo(m, 'c-a', rowEl(m, 'c-a'));
+      assert.deepStrictEqual(m.evJSON(`rptDraftGet(${JSON.stringify(T)}).group`), { 'c-b': 'c-d' }, '규칙에 어긋난 끌어 놓기(묶음 있는 과제, 부모 위, 자기 위)가 묶음을 바꿨다');
       assert.strictEqual(m.ev("rptGroupSet('c-d', 'c-a')"), false, '다른 과제가 묶인 델타를 다른 곳에 묶을 수 있다');
       assert.strictEqual(m.ev("rptGroupSet('c-a', 'c-b')"), false, '묶인 베타를 대상으로 고를 수 있다');
       assert.strictEqual(m.ev("rptGroupSet('c-a', 'c-a')"), true, '대조군: 그대로는 늘 된다');
@@ -385,9 +471,9 @@ if (!JSDOM) {
       B.ev('state = ' + JSON.stringify(st) + ';'); openDaily(B, T);
       try {
         await openDlg(B);
-        const row = B.ev("[].find.call(document.querySelectorAll('#rgmRows .rgm-row'), function(r){ return r.querySelector('select').dataset.gsrc === 'c-a'; })");
+        const row = rowEl(B, 'c-a');
         assert.ok(row.querySelector('.cat-badge') && row.querySelector('.cat-badge').textContent === '공식', '공식 과제에 "공식" 표시가 없다');
-        assert.ok(!B.ev("[].find.call(document.querySelectorAll('#rgmRows .rgm-row'), function(r){ return r.querySelector('select').dataset.gsrc === 'c-b'; })").querySelector('.cat-badge'), '개인 과제에 "공식" 표시가 있다');
+        assert.ok(!rowEl(B, 'c-b').querySelector('.cat-badge'), '개인 과제에 "공식" 표시가 있다');
         pick(B, 'c-a', 'c-etc'); await closeDlg(B);
         const txt = B.ev('buildReportText()');
         assert.ok(!txt.includes('[알파]') && txt.includes('[기타] : 2\n' + NB.repeat(4) + '- 알파\n' + NB.repeat(6) + '- 로그인 화면 리뷰'), '공식 과제가 기타 아래로 묶이지 않았다: ' + JSON.stringify(txt.slice(-300)));
@@ -527,15 +613,44 @@ if (!JSDOM) {
       const modal = m.doc.querySelector('#rptGroupModal .modal');
       assert.strictEqual(modal.getAttribute('role'), 'dialog', '설정 창에 role=dialog 가 없다');
       assert.ok(modal.getAttribute('aria-labelledby') && m.doc.getElementById(modal.getAttribute('aria-labelledby')).textContent === '보고서 묶음', '설정 창 이름이 제목에 이어지지 않는다');
-      const sels = [...m.doc.querySelectorAll('#rgmRows select')];
-      assert.strictEqual(sels.length, 5, '과제마다 선택 상자 하나가 아니다');
-      for (const s of sels) {
-        const lb = m.doc.querySelector(`#rgmRows label[for="${s.id}"]`);
-        assert.ok(s.id && lb && lb.textContent.trim().length > 0, '선택 상자에 라벨이 없다: ' + s.dataset.gsrc);
-      }
-      assert.strictEqual(m.doc.activeElement, sels[0], '열면 첫 선택 상자에 포커스가 가지 않는다');
+      const mb = findIn(m, 'gmenu', 'c-a');
+      assert.ok(mb && mb.getAttribute('aria-label') === '알파 메뉴' && mb.getAttribute('aria-haspopup') === 'menu' && mb.getAttribute('aria-expanded') === 'false', '⋯ 에 이름(알파 메뉴), aria-haspopup, aria-expanded 가 없다');
+      for (const b of m.doc.querySelectorAll('#rgmRows button')) assert.ok((b.getAttribute('aria-label') || b.textContent).trim(), '이름 없는 버튼이 있다');
+      assert.strictEqual(m.doc.activeElement, mb, '열면 목록의 첫 버튼(알파 ⋯)에 포커스가 가지 않는다');
       assert.strictEqual(m.ev("_modalStack[_modalStack.length - 1].opener && _modalStack[_modalStack.length - 1].opener.id"), 'rptGroupOpen', '닫으면 포커스가 "설정" 링크로 돌아가지 않는다(opener)');
-      assert.strictEqual(m.doc.querySelectorAll('#rptGroupModal button').length, 1, '설정 창의 버튼이 닫기 하나가 아니다');
+      assert.deepStrictEqual([...m.doc.querySelectorAll('#rptGroupModal .modal-foot button')].map(b => b.textContent), ['모두 풀기', '닫기'], '아래 줄이 "모두 풀기"와 닫기가 아니다');
+      assert.ok(m.doc.getElementById('rgmClear').disabled, '묶음이 없는데 "모두 풀기" 가 켜져 있다');
+      //  ⋯ 메뉴 키보드: 열면 첫 항목, 화살표로 돌고, Esc 는 메뉴만 닫고 ⋯ 로 돌아온다(설정 창은 그대로)
+      mb.click();
+      const items = () => [...m.doc.querySelectorAll('#rgmMenu [role="menuitem"]')];
+      const menu = m.doc.getElementById('rgmMenu');
+      assert.ok(menu && menu.getAttribute('role') === 'menu' && menu.textContent.startsWith('넣을 곳'), '"넣을 곳" 메뉴(role=menu)가 열리지 않았다');
+      assert.strictEqual(findIn(m, 'gmenu', 'c-a').getAttribute('aria-expanded'), 'true', '메뉴가 열렸는데 aria-expanded 가 true 가 아니다');
+      assert.deepStrictEqual(items().map(e => e.getAttribute('data-ginto')), ['c-b', 'c-c', 'c-d', 'c-etc'], '알파의 넣을 곳이 다른 머리 과제 전부가 아니다');
+      assert.strictEqual(m.doc.activeElement, items()[0], '메뉴를 열면 첫 항목에 포커스가 가지 않는다');
+      const key = (k) => m.doc.activeElement.dispatchEvent(new m.w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+      key('ArrowDown'); assert.strictEqual(m.doc.activeElement, items()[1], '아래 화살표가 다음 항목으로 가지 않는다');
+      key('ArrowUp'); key('ArrowUp'); assert.strictEqual(m.doc.activeElement, items()[3], '위 화살표가 끝으로 돌지 않는다');
+      key('Escape');
+      await tick();
+      assert.ok(!m.doc.getElementById('rgmMenu') && overlayOpen(m, 'rptGroupModal'), 'Esc 가 메뉴만 닫지 않았다(설정 창까지 닫혔거나 메뉴가 남았다)');
+      assert.strictEqual(m.doc.activeElement, findIn(m, 'gmenu', 'c-a'), 'Esc 뒤 포커스가 ⋯ 로 돌아가지 않았다');
+      //  메뉴 바깥(창 제목)을 누르면 메뉴만 닫힌다
+      findIn(m, 'gmenu', 'c-a').click();
+      assert.ok(m.doc.getElementById('rgmMenu'), '전제: 메뉴가 열렸다');
+      dlgHead(m).click();
+      assert.ok(!m.doc.getElementById('rgmMenu') && overlayOpen(m, 'rptGroupModal'), '메뉴 바깥을 눌렀는데 메뉴가 닫히지 않았다');
+      //  고르기(알파 → 감마): 포커스는 넣은 알파의 X 로. X: 제자리로 돌아오고 포커스는 알파 ⋯ 로
+      findIn(m, 'gmenu', 'c-a').click();
+      items().find(e => e.getAttribute('data-ginto') === 'c-c').click();
+      assert.deepStrictEqual(groupsOf(m), [['c-b'], ['c-c', 'c-a']], '메뉴로 고른 묶음이 설정 창에 보이지 않는다');
+      assert.strictEqual(m.ev("$('#rptGroupSum').textContent"), '알파 → 감마');
+      assert.strictEqual(m.doc.activeElement, findIn(m, 'gout', 'c-a'), '넣은 뒤 포커스가 알파의 X 로 가지 않았다');
+      assert.ok(!m.doc.getElementById('rgmClear').disabled, '묶음이 있는데 "모두 풀기" 가 꺼져 있다');
+      findIn(m, 'gout', 'c-a').click();
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-b'], ['c-c']], 'X 로 꺼낸 알파가 제자리(보고서 순서)로 돌아오지 않았다');
+      assert.strictEqual(m.doc.activeElement, findIn(m, 'gmenu', 'c-a'), 'X 뒤 포커스가 알파 ⋯ 로 가지 않았다');
+      assert.deepStrictEqual(m.evJSON(`rptDraftGet(${JSON.stringify(T)}).group`), {}, 'X 뒤에도 묶음이 남았다');
       //  Esc 로 닫힌다(보고서 창은 남는다)
       m.doc.dispatchEvent(new m.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await waitFor(() => overlayClosed(m, 'rptGroupModal'), 'Esc 로 설정 창이 닫힌다');
@@ -544,7 +659,7 @@ if (!JSDOM) {
       await openDlg(m); await closeDlg(m);
       assert.ok(overlayOpen(m, 'reportModal'));
     }
-    test('GB11 (§4): 설정 창 접근성: 라벨, 열면 첫 선택 상자, 닫기 하나, Esc, 닫으면 "설정" 으로', async () => {
+    test('GB11 (§4): 설정 창 접근성: 열면 첫 버튼, ⋯ 메뉴(이름, 화살표, Esc 는 메뉴만, 바깥 누르기), 고르기 뒤 X 로, X 뒤 ⋯ 로, Esc 와 닫기, 닫으면 "설정" 으로', async () => {
       fresh();
       try { await assertDlgA11y(B); } finally { done(); }
     });
@@ -619,7 +734,7 @@ if (!JSDOM) {
       await groupVia(m, [['c-d', 'c-b']]);
       setSkip(m, true);   // 빈 델타가 걸러져 델타 → 베타 는 숨는다(베타는 대상이 아니게 보인다)
       await openDlg(m);
-      assert.strictEqual(optsOf(m, 'c-b').disabled, false, '전제: 델타 → 베타 가 숨어 있어 베타 선택 상자가 켜져 있다');
+      assert.ok(findIn(m, 'gmenu', 'c-b'), '전제: 델타 → 베타 가 숨어 있어 베타는 묶음 없는 머리 과제(⋯ 가 있다)');
       pick(m, 'c-b', 'c-a'); await closeDlg(m);
       assert.deepStrictEqual(getStored(m, KEY).group, { 'c-b': 'c-a' }, '베타를 묶을 때 베타를 대상으로 삼던 숨은 묶음(델타 → 베타)을 지우지 않았다');
       setSkip(m, false);
@@ -710,10 +825,10 @@ if (!JSDOM) {
       try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDailySame(X, T, KEY), /예전과 다르다|묶음 카드|묶은 과제/); }
       finally { clearDrafts(X); await X.close(); }
     });
-    test('변이 GBM6: 설정 창 선택지에 묶인 과제를 넣으면(두 단계) GB4 가 잡는다', async () => {
-      const bad = mutate(app, "g.rows.filter(y => y.k !== x.k && !live.has(y.k))", 'g.rows.filter(y => y.k !== x.k)');
+    test('변이 GBM6: 넣을 곳 메뉴에 묶인 과제를 넣으면(두 단계) GB4 가 잡는다', async () => {
+      const bad = mutate(app, 'tops.filter(y => y.k !== __rgm.menuFor)', 'g.rows.filter(y => y.k !== __rgm.menuFor)');
       const X = bootBrowser(bad);
-      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertOneLevel(X), /묶인 과제|선택지/); }
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertOneLevel(X), /넣을 곳/); }
       finally { clearDrafts(X); await X.close(); }
     });
     test('변이 GBM7: 대상 X 가 묶인 과제를 남기면(묶인 과제를 머리 줄로 되살리면) GB6 이 잡는다', async () => {
@@ -741,10 +856,161 @@ if (!JSDOM) {
       try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertStale(X), /낡은 초안 안내가 없다/); }
       finally { clearDrafts(X); await X.close(); }
     });
-    test('변이 GBM10: 열면 첫 선택 상자 포커스나 라벨을 잃으면 GB11 이 잡는다', async () => {
-      const bad = mutate(app, '<label class="rgm-name" for="rgmSel${i}">', '<label class="rgm-name">');
+    test('변이 GBM10: 열면 첫 버튼 포커스를 잃거나, 메뉴 Esc 가 설정 창까지 닫으면 GB11 이 잡는다', async () => {
+      for (const [bad, re] of [
+        [mutate(app, "    ov.__focusFirst = () => $('#rgmRows button') || null;\n", ''), /첫 버튼/],
+        [mutate(app, 'ev.preventDefault(); ev.stopPropagation(); _rgmMenuClose(true); return;', 'ev.preventDefault(); _rgmMenuClose(true); return;'), /Esc 가 메뉴만/],
+      ]) {
+        const X = bootBrowser(bad);
+        try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDlgA11y(X), re); }
+        finally { clearDrafts(X); await X.close(); }
+      }
+    });
+
+    //  ── 설정 창(2026-10-08 끌어넣기): 내용 없는 과제 접기, 끌어 놓기, 모두 풀기 ──
+    //  내용 없는 과제(업무 줄, 시간, 묶인 과제가 모두 없음)는 "오늘 내용 없는 과제 N개 [보기]" 뒤에 접힌다. 보기 = 흐리게 펼침, 접기. 열 때마다 접힘. 변이 시험이 재사용
+    async function assertFold(m) {
+      await openDlg(m);
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-b'], ['c-c']], '내용 없는 델타, 기타가 접혀 있지 않다');
+      const more = () => m.doc.querySelector('#rgmRows .rgm-more');
+      assert.ok(more() && more().textContent === '오늘 내용 없는 과제 2개보기', '"오늘 내용 없는 과제 2개 [보기]" 줄이 없다: ' + (more() && more().textContent));
+      m.doc.querySelector('#rgmRows [data-gmore]').click();
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-b'], ['c-c'], ['c-d'], ['c-etc']], '보기를 눌렀는데 내용 없는 과제가 제자리에 나오지 않았다');
+      assert.ok(rowEl(m, 'c-d').classList.contains('dim') && rowEl(m, 'c-etc').classList.contains('dim') && !rowEl(m, 'c-c').classList.contains('dim'), '내용 없는 과제만 흐려야 한다');
+      assert.ok(!rowEl(m, 'c-d').querySelector('.rgm-meta'), '내용 없는 과제에 업무나 시간 표시가 있다');
+      assert.strictEqual(more().textContent, '접기', '펼친 뒤 "접기" 가 없다');
+      assert.strictEqual(m.doc.activeElement, m.doc.querySelector('#rgmRows [data-gmore]'), '보기 뒤 포커스가 접기로 가지 않았다');
+      m.doc.querySelector('#rgmRows [data-gmore]').click();
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-b'], ['c-c']], '접기를 눌렀는데 접히지 않았다');
+      //  빈 기타에 베타를 넣으면 기타는 내용이 생겨 펼쳐진다(묶인 과제가 있는 과제는 내용 있음)
+      pick(m, 'c-b', 'c-etc');
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-c'], ['c-etc', 'c-b']], '베타가 들어간 기타가 보이지 않는다');
+      assert.strictEqual(more().textContent, '오늘 내용 없는 과제 1개보기');
+      //  내용 없는 델타를 감마에 넣었다가 꺼내면, 꺼낸 델타는 이번 창에서는 보인다(사라지지 않게)
+      assert.strictEqual(m.ev("rptGroupSet('c-d', 'c-c')"), true);   // 접힌 채로(보기를 누르지 않고) 묶는다
+      assert.ok(rowEl(m, 'c-d') && rowEl(m, 'c-d').classList.contains('kid'), '전제: 접힌 채로 델타가 감마 안에 보인다');
+      findIn(m, 'gout', 'c-d').click();
+      assert.ok(rowEl(m, 'c-d'), '꺼낸 빈 델타가 다시 접혀 사라졌다');
+      assert.ok(!more(), '접을 과제가 없는데 보기 줄이 있다');
+      await closeDlg(m);
+      await openDlg(m);
+      assert.ok(!rowEl(m, 'c-d') && more() && more().textContent === '오늘 내용 없는 과제 1개보기', '다시 열었는데 창 상태(펼침, 꺼낸 과제)가 처음으로 돌아가지 않았다');
+      await closeDlg(m);
+    }
+    test('GB17 (§4): 설정 창: 내용 없는 과제는 "오늘 내용 없는 과제 N개 [보기]" 뒤에 접히고, 보기는 흐리게 펼치고 접기로 접는다, 꺼낸 과제는 남고, 열 때마다 처음으로', async () => {
+      fresh();
+      try { await assertFold(B); } finally { done(); }
+    });
+
+    //  끌어 놓기(포인터 이벤트): 넣기(점선 강조, 그림자, 흐린 원래 줄), 옮기기, 밖에 놓아 풀기, Esc 와 pointercancel 취소, 5px 안은 끌기 아님, 터치는 ⠿ 에서만. 변이 시험이 재사용
+    async function assertDrag(m) {
+      await openDlg(m);
+      const K = () => m.evJSON(`rptDraftGet(${JSON.stringify(T)}).group`);
+      //  베타 → 알파: 움직이는 동안 알파 묶음이 점선, 그림자는 창 안, 원래 줄은 흐림. 놓으면 묶인다
+      dragDown(m, 'c-b'); dragMove(m, rowEl(m, 'c-a'));
+      const gh = m.doc.querySelector('#rptGroupModal .rgm-ghost');
+      assert.ok(gh && gh.getAttribute('aria-hidden') === 'true' && !gh.querySelector('button'), '끄는 동안 그림자(눌리지 않는 본뜬 줄)가 창 안에 없다');
+      assert.ok(grpEl(m, 'c-a').classList.contains('drop') && rowEl(m, 'c-b').classList.contains('src') && m.doc.body.classList.contains('rgm-dragging'), '놓을 곳 강조나 흐린 원래 줄이 없다');
+      dragUp(m, rowEl(m, 'c-a'));
+      assert.ok(!m.doc.querySelector('.rgm-ghost') && !m.doc.body.classList.contains('rgm-dragging') && !m.doc.querySelector('#rgmRows .drop'), '놓은 뒤 그림자나 강조가 남았다');
+      assert.deepStrictEqual(K(), { 'c-b': 'c-a' }, '베타를 알파 위에 놓았는데 묶이지 않았다');
+      assert.deepStrictEqual(groupsOf(m), [['c-a', 'c-b'], ['c-c']]);
+      //  묶인 베타를 감마로 옮긴다
+      dragTo(m, 'c-b', rowEl(m, 'c-c'));
+      assert.deepStrictEqual(K(), { 'c-b': 'c-c' }, '묶인 베타를 다른 머리 과제로 옮기지 못했다');
+      //  다른 과제가 묶인 감마는 끌리지 않는다
+      dragTo(m, 'c-c', rowEl(m, 'c-a'));
+      assert.deepStrictEqual(K(), { 'c-b': 'c-c' }, '다른 과제가 묶인 감마를 끌어 묶었다(두 단계)');
+      //  묶인 베타를 지금 부모(감마) 위에 놓으면 그대로
+      dragTo(m, 'c-b', rowEl(m, 'c-c'));
+      assert.deepStrictEqual(K(), { 'c-b': 'c-c' }, '묶인 베타를 지금 부모 위에 놓았는데 그대로가 아니다');
+      //  묶인 베타를 묶음 밖(창 제목)에 놓으면 푼다
+      dragTo(m, 'c-b', dlgHead(m));
+      assert.deepStrictEqual(K(), {}, '묶인 베타를 묶음 밖에 놓았는데 풀리지 않았다');
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-b'], ['c-c']], '푼 베타가 제자리로 돌아오지 않았다');
+      //  Esc 는 끌기만 취소한다(설정 창은 그대로)
+      dragDown(m, 'c-b'); dragMove(m, rowEl(m, 'c-a'));
+      m.doc.body.dispatchEvent(new m.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      await tick();
+      assert.ok(!m.doc.querySelector('.rgm-ghost') && overlayOpen(m, 'rptGroupModal'), 'Esc 가 끌기를 취소하지 않았거나 설정 창을 닫았다');
+      dragUp(m, rowEl(m, 'c-a'));
+      assert.deepStrictEqual(K(), {}, 'Esc 로 취소한 끌기가 묶었다');
+      //  pointercancel 도 취소
+      dragDown(m, 'c-b'); dragMove(m, rowEl(m, 'c-a'));
+      m.doc.dispatchEvent(pev(m, 'pointercancel', 10, 40));
+      assert.ok(!m.doc.querySelector('.rgm-ghost'), 'pointercancel 뒤 그림자가 남았다');
+      dragUp(m, rowEl(m, 'c-a'));
+      assert.deepStrictEqual(K(), {}, 'pointercancel 로 취소한 끌기가 묶었다');
+      //  5px 안에서 놓으면 끌기가 아니다
+      dragDown(m, 'c-b');
+      m.doc.elementFromPoint = () => rowEl(m, 'c-a');
+      m.doc.dispatchEvent(pev(m, 'pointermove', 12, 12)); m.doc.dispatchEvent(pev(m, 'pointerup', 12, 12));
+      delete m.doc.elementFromPoint;
+      assert.deepStrictEqual(K(), {}, '5px 안의 누르기가 끌기로 묶었다');
+      //  버튼(⋯)에서 시작하면 끌기가 아니다
+      dragDown(m, 'c-b', { from: '[data-gmenu]' }); dragMove(m, rowEl(m, 'c-a')); dragUp(m, rowEl(m, 'c-a'));
+      assert.deepStrictEqual(K(), {}, '⋯ 버튼에서 끌기가 시작됐다');
+      //  터치: 줄을 밀면 스크롤(끌기 아님), ⠿ 에서는 끈다
+      const touch = { ev: { pointerType: 'touch' } };
+      dragDown(m, 'c-b', touch); dragMove(m, rowEl(m, 'c-a'), touch); dragUp(m, rowEl(m, 'c-a'), touch);
+      assert.deepStrictEqual(K(), {}, '터치로 줄을 밀었는데 끌기가 됐다(목록이 스크롤되지 않는다)');
+      dragDown(m, 'c-b', { from: '.rgm-hdl', ev: { pointerType: 'touch' } }); dragMove(m, rowEl(m, 'c-a'), touch); dragUp(m, rowEl(m, 'c-a'), touch);
+      assert.deepStrictEqual(K(), { 'c-b': 'c-a' }, '터치로 ⠿ 를 끌어 놓았는데 묶이지 않았다');
+      await closeDlg(m);
+      assert.ok(m.ev('buildReportText()').startsWith('[알파] : 3.5\n'), '끌어 넣은 묶음이 나가는 글에 들어가지 않았다');
+    }
+    test('GB18 (§4): 끌어 놓기(포인터 이벤트): 넣기와 강조, 옮기기, 묶음 있는 과제는 못 끔, 부모 위는 그대로, 밖에 놓아 풀기, Esc 와 pointercancel 취소, 5px, 버튼에서 시작 안 함, 터치는 ⠿ 에서만', async () => {
+      fresh();
+      try { await assertDrag(B); } finally { delete B.doc.elementFromPoint; done(); }
+    });
+
+    //  모두 풀기: 지금 묶음을 모두 푼다(키도 지운다). 꺼지고 포커스는 목록의 첫 버튼. 변이 시험이 재사용
+    async function assertClearAll(m) {
+      await groupVia(m, [['c-b', 'c-a'], ['c-c', 'c-a']]);
+      await openDlg(m);
+      const clr = m.doc.getElementById('rgmClear');
+      assert.ok(!clr.disabled, '묶음이 있는데 "모두 풀기" 가 꺼져 있다');
+      assert.deepStrictEqual(groupsOf(m), [['c-a', 'c-b', 'c-c']]);
+      assert.strictEqual(rowEl(m, 'c-a').querySelector('.rgm-meta').textContent, '업무 4건, 4.5시간', '머리 줄이 묶인 과제까지 더한 업무와 시간이 아니다');
+      clr.click();
+      assert.deepStrictEqual(m.evJSON(`rptDraftGet(${JSON.stringify(T)}).group`), {}, '"모두 풀기" 뒤에도 묶음이 남았다');
+      assert.ok(!allKeys(m, 'tc_rptDraft').includes(KEY), '"모두 풀기" 로 다 풀었는데 키가 남았다');
+      assert.deepStrictEqual(groupsOf(m), [['c-a'], ['c-b'], ['c-c']], '"모두 풀기" 뒤 과제가 제자리로 돌아오지 않았다');
+      assert.ok(m.doc.getElementById('rgmClear').disabled, '다 풀었는데 "모두 풀기" 가 켜져 있다');
+      assert.strictEqual(m.doc.activeElement, m.doc.querySelector('#rgmRows button'), '"모두 풀기" 뒤 포커스가 목록의 첫 버튼이 아니다');
+      assert.strictEqual(m.ev("$('#rptGroupSum').textContent"), '묶은 과제 없음');
+      await closeDlg(m);
+    }
+    test('GB19 (§4): 모두 풀기: 묶음을 모두 풀고 키를 지운다, 꺼지고 포커스는 첫 버튼, 요약은 "묶은 과제 없음"', async () => {
+      fresh();
+      try { await assertClearAll(B); } finally { done(); }
+    });
+    test('변이 GBM15: 접기를 빼거나, 꺼낸 과제를 남기지 않으면 GB17 이 잡는다', async () => {
+      for (const [bad, re] of [
+        [mutate(app, '  const vis = tops.filter(x => __rgm.showEmpty || full(x) || __rgm.keep.has(x.k));', '  const vis = tops;'), /접혀 있지 않다/],
+        [mutate(app, '      __rgm.keep.add(k);   // 꺼낸 과제는', '      // 꺼낸 과제는'), /사라졌다/],
+      ]) {
+        const X = bootBrowser(bad);
+        try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertFold(X), re); }
+        finally { clearDrafts(X); await X.close(); }
+      }
+    });
+    test('변이 GBM16: 놓기가 판정을 건너뛰거나, 밖에 놓아 풀기를 빼거나, Esc 취소나 터치 ⠿ 제한을 빼면 GB18 이 잡는다', async () => {
+      for (const [bad, re] of [
+        [mutate(app, '    const tgt = rptGroupDropTarget(d.live, d.k, d.over);\n    if(tgt == null) return;', '    const tgt = d.over;\n    if(tgt == null) return;'), /두 단계|그대로|풀리지/],
+        [mutate(app, "  if(over == null || over === '') return par ? src : null;", "  if(over == null || over === '') return null;"), /풀리지 않았다/],
+        [mutate(app, "  function _rgmKey(ev){ if(ev.key === 'Escape' && _rgmDrag && _rgmDrag.on){ ev.preventDefault(); ev.stopImmediatePropagation(); _rgmEnd(false); } }", '  function _rgmKey(ev){}'), /Esc/],
+        [mutate(app, "    if(ev.pointerType === 'touch' && !t.closest('.rgm-hdl')) return;", ''), /터치로 줄을 밀었는데/],
+      ]) {
+        const X = bootBrowser(bad);
+        try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDrag(X), re); }
+        finally { delete X.doc.elementFromPoint; clearDrafts(X); await X.close(); }
+      }
+    });
+    test('변이 GBM17: 모두 풀기가 묶음을 풀지 않으면 GB19 가 잡는다', async () => {
+      const bad = mutate(app, '    for(const s of [...live.keys()]){ __rgm.keep.add(s); rptGroupSet(s, s); }\n', '');
       const X = bootBrowser(bad);
-      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertDlgA11y(X), /라벨/); }
+      try { X.ev('state = ' + JSON.stringify(dayState(T, Y, N)) + ';'); openDaily(X, T); await assert.rejects(() => assertClearAll(X), /모두 풀기/); }
       finally { clearDrafts(X); await X.close(); }
     });
 
@@ -884,6 +1150,26 @@ if (!JSDOM) {
         assert.deepStrictEqual(allKeys(B, 'tc_rptDraft'), [], '주간 "모두 초안으로" 뒤에도 키가 남았다');
         assert.deepStrictEqual(B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)'), baseCal(B), '"모두 초안으로" 뒤 네 칸이 예전과 같지 않다');
       } finally { done(); }
+    });
+
+    test('GW9 (§4): 주간 설정 창: "이번 주 내용 없는 과제", 이번 주 업무와 시간(묶인 과제까지 더한 머리 줄), 끌어 넣기와 밖에 놓아 풀기', async () => {
+      wfresh();
+      try {
+        await openDlg(B);
+        assert.deepStrictEqual(groupsOf(B), [['알파'], ['베타'], ['감마'], ['알파#c-a2']], '주간 설정 창 순서나 접기가 다르다(빈 델타는 접힌다)');
+        assert.strictEqual(B.doc.querySelector('#rgmRows .rgm-more').textContent, '이번 주 내용 없는 과제 1개보기', '주간 문구가 "이번 주 내용 없는 과제" 가 아니다');
+        const nA = B.ev("collectReportData($('#rptFrom').value, $('#rptTo').value, rptSources()).rows.find(function(r){ return r.key === 'c-a'; }).titles.length");
+        assert.ok(nA > 0, '전제: 알파에 이번 주 업무 줄이 있다');
+        assert.strictEqual(rowEl(B, '알파').querySelector('.rgm-meta').textContent, `업무 ${nA}건, 3.5시간`, '주간 알파 줄의 업무와 시간이 다르다');
+        assert.strictEqual(rowEl(B, '감마').querySelector('.rgm-meta').textContent, '0.5시간', '시간만 있는 감마 줄은 시간만 보여야 한다');
+        dragTo(B, '베타', rowEl(B, '알파'));
+        assert.deepStrictEqual(getStored(B, WKEY()).group, { '베타': '알파' }, '주간: 끌어 넣기가 기간 키에 묶음을 쓰지 않았다');
+        assert.strictEqual(rowEl(B, '알파').querySelector('.rgm-meta').textContent, `업무 ${nA + 1}건, 4.5시간`, '주간 머리 줄이 묶인 과제까지 더한 값이 아니다');
+        assert.ok(B.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)').content.startsWith('[알파] : 4.5\n'), '주간 과제투입시간에 끌어 넣은 묶음이 들어가지 않았다');
+        dragTo(B, '베타', dlgHead(B));
+        assert.deepStrictEqual(allKeys(B, 'tc_rptDraft'), [], '주간: 밖에 놓아 다 풀었는데 키가 남았다');
+        await closeDlg(B);
+      } finally { delete B.doc.elementFromPoint; done(); }
     });
 
     //  리뷰 정정(주간 캘린더): 고친 대상 카드 안내(1), 빈 대상 살리기(2), 묶인 과제의 쉬는 고친 글은 "고친 과제" 로 세지 않음(4) — 변이 시험이 재사용
@@ -1029,7 +1315,8 @@ if (!JSDOM) {
     let cap = sendWN(M);
     assert.deepStrictEqual(cap && cap.fields, { sdate: MONn, edate: SUNn, subject: base.subject, content: base.content, endwork: base.endwork, planwork: base.planwork }, 'net: 실제 채우기가 예전과 다르다');
     await openDlg(M);
-    assert.ok(!dlgSel(M, '@미분류'), '미분류가 묶음 설정에 있다(과제가 아니다)');
+    showEmpty(M);
+    assert.ok(!rowEl(M, '@미분류') && !(menuOf(M, '알파') || []).includes('@미분류'), '미분류가 묶음 설정에 있다(과제가 아니다)');
     pick(M, '미등록과제', '베타'); await closeDlg(M);
     const o = M.evJSON('rptWOutFields($("#rptFrom").value, $("#rptTo").value)');
     assert.strictEqual(o.content, '[알파] : 3.5\n[베타] : 1\n-----\n합계 : 4.5', 'net 과제투입시간과 합계가 묶음 뒤 값이 아니다');

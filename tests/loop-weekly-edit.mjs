@@ -14,7 +14,7 @@
  *    E5   창 닫고 다시 열기, 다른 주로 바꾸기, 위젯 다시 읽기(reloadState) 뒤에도 그대로
  *    E6   채우기(가로채기): subject, endwork(&nbsp; 들여쓰기, B 없음), content(B 없음, 합계 3), planwork → 성공 회신 흉내 뒤에도 남음
  *    E7   출처 netcus 일간보고(가짜 병합 캐시, 실제 읽기 없음): 같은 이름 과제의 고친 글과 X 가 따라온다
- *    E8   보고서 묶음(docs/REPORT-GROUP.md): 설정 창에서 B 를 A 에 묶기 → A 카드 안의 작은 카드와 합계, 기간 키의 group, A 의 고친 진행사항은
+ *    E8   보고서 묶음(docs/REPORT-GROUP.md): 설정 창에서 B 를 A 위로 끌어 넣기(PointerEvent) → A 카드 안의 작은 카드와 합계, 기간 키의 group, A 의 고친 진행사항은
  *         그대로 두고 낡은 초안 안내, 채우기(가로채기)의 content, planwork, endwork 에 B 머리 줄 없음 → 모두 초안으로가 묶음까지 지운다
  *    정리 2099 주간 키 삭제, 시험 주 시간 지우기(앱으로), 출처와 포함 항목 저장값 원복 → 다시 읽어 잔재 0
  *
@@ -169,6 +169,26 @@ async function reload(ms = 20000) {
     await sleep(200);
   }
   return 'timeout';
+}
+//  보고서 묶음 설정 창 끌어 놓기(REPORT-GROUP §4, 2026-10-08): 진짜 PointerEvent 로 누르고(줄 이름) 5px 넘게 움직이고 놓는다.
+//    놓을 곳은 rgmFind('grp', over) 묶음(null 이면 창 제목 = 묶음 밖). 포인터 아래 판정은 실제 elementFromPoint 다.
+//    돌려주는 것: { lit: 놓기 직전 놓을 곳 점선 강조, ghost: 끄는 동안 그림자 } 또는 'no-src' / 'no-over'.
+async function dragRow(src, over) {
+  return J(`(function(){
+    const s = rgmFind('gk', ${JSON.stringify(src)});
+    const o = ${JSON.stringify(over)} === null ? document.querySelector('#rptGroupModal .modal-head h2') : rgmFind('grp', ${JSON.stringify(over)});
+    if(!s) return 'no-src'; if(!o) return 'no-over';
+    s.scrollIntoView({ block: 'nearest' }); o.scrollIntoView({ block: 'nearest' });
+    const a = s.querySelector('.rgm-t').getBoundingClientRect(), b = o.getBoundingClientRect();
+    const x0 = a.left + 4, y0 = a.top + a.height / 2, x1 = b.left + Math.min(40, b.width / 2), y1 = b.top + Math.min(14, b.height / 2);
+    const P = function(t, el, x, y){ el.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', isPrimary: true, button: 0, buttons: t === 'pointerup' ? 0 : 1, clientX: x, clientY: y })); };
+    P('pointerdown', s.querySelector('.rgm-t'), x0, y0);
+    P('pointermove', document, x0 + 8, y0 + 8);
+    P('pointermove', document, x1, y1);
+    const lit = ${JSON.stringify(over)} !== null && o.classList.contains('drop'), ghost = !!document.querySelector('#rptGroupModal .rgm-ghost');
+    P('pointerup', document, x1, y1);
+    return { lit: lit, ghost: ghost, left: !!document.querySelector('#rptGroupModal .rgm-ghost') };
+  })()`);
 }
 async function closeAll() {
   await cdp.ev(`(function(){ ['#confirmModal','#rptGroupModal','#reportModal'].forEach(function(s){
@@ -330,7 +350,7 @@ async function main() {
   ok('E7 net 채우기 endwork 에 고친 글, B 없음', !!cap7 && String(cap7.fields.endwork).startsWith(`[${nameA}]\n• 루프 진행 상세`) && !String(cap7.fields.endwork).includes(`[${nameB}]`));
   await cdp.ev(`window.__netcusResult(true, '주간보고 작성 폼을 채웠습니다 (루프 흉내)'); state.reportSource = 'cal'; clearNetcusMerge(); syncReportSourceSeg(); buildReport(); 1`);   // 시험 동안은 cal(원래 출처는 정리에서 되돌린다)
 
-  head('E8 보고서 묶음(REPORT-GROUP) — 설정 창에서 B 를 A 에 묶기: 합계, 차주계획, 낡은 초안 안내, 채우기(가로채기), 모두 초안으로');
+  head('E8 보고서 묶음(REPORT-GROUP) — 설정 창에서 B 를 A 에 끌어 넣기: 합계, 차주계획, 낡은 초안 안내, 채우기(가로채기), 모두 초안으로');
   ok('E8 시험 주로 다시 열었다', await openWeeklyAt(W1[0]));
   await setView('card'); await sleep(150);
   ok('E8 B 되돌리기(E3 의 X)', (await clickInCard(kB, '.rcard-back')) === 'ok');
@@ -338,9 +358,14 @@ async function main() {
   await cdp.ev(`(function(){ const b = document.getElementById('rptGroupOpen'); b.focus(); b.click(); return 1; })()`);
   ok('E8 설정 창이 열렸다', await waitFor(isOpen('#rptGroupModal'), 3000, 100));
   await sleep(250);
-  await cdp.ev(`(function(){ const s = [].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(x){ return x.dataset.gsrc === ${JSON.stringify(kB)}; });
-    s.value = ${JSON.stringify(kA)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+  ok('E8 열면 목록의 첫 버튼에 포커스', await cdp.ev(`document.activeElement === document.querySelector('#rgmRows button')`));
+  //  끌어 넣기(진짜 PointerEvent): B 를 A 묶음 위로. 주간 키는 이름 키(kA, kB)
+  const d8 = await dragRow(kB, kA);
+  ok('E8 끄는 동안 그림자와 A 묶음 점선 강조, 놓은 뒤 그림자 없음', !!d8 && d8.ghost === true && d8.lit === true && d8.left === false, JSON.stringify(d8));
   await sleep(200);
+  ok('E8 B 는 A 묶음 안의 들여 쓴 줄(X "꺼내기" 있음)', await cdp.ev(`(function(){ const g = rgmFind('grp', ${JSON.stringify(kA)}), b = rgmFind('gk', ${JSON.stringify(kB)}), x = rgmFind('gout', ${JSON.stringify(kB)});
+    return !!g && !!b && b.classList.contains('kid') && b.parentElement === g && !!x && x.getAttribute('title') === '꺼내기'; })()`));
+  ok('E8 A 줄은 이번 주 합친 시간(4.5시간)', await cdp.ev(`(rgmFind('gk', ${JSON.stringify(kA)}).querySelector('.rgm-meta') || {}).textContent`).then((t) => String(t || '').endsWith('4.5시간')));
   await cdp.ev(`document.querySelector('#rptGroupModal [data-close]').click(); 1`);
   ok('E8 닫았다, 포커스는 "설정" 으로', (await waitFor(`document.getElementById('rptGroupModal').classList.contains('hidden')`, 3000, 100)) && (await sleep(250), await cdp.ev(`document.activeElement === document.getElementById('rptGroupOpen')`)));
   const c8 = await cardsInfo();

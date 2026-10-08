@@ -17,7 +17,8 @@
  *    E8   전송(가로채기) — content 의 상세 줄이 &nbsp; 들여쓰기, B 는 본문과 hours 에서 빠짐 · 대기 표지
  *         → __netcusResult(true) 흉내 → 임시 저장이 지워진다
  *    E9   실패 회신 흉내 → 임시 저장이 남는다(그리고 표지는 비워진다)
- *    E10  보고서 묶음(docs/REPORT-GROUP.md): 깨끗한 날짜(D2)에서 왼쪽 "설정" → 설정 창(첫 선택 상자 포커스) → B 를 A 에 묶기 → 닫기(포커스가
+ *    E10  보고서 묶음(docs/REPORT-GROUP.md): 깨끗한 날짜(D2)에서 왼쪽 "설정" → 설정 창(첫 버튼 포커스) → B 를 A 위로 끌어 넣기(PointerEvent)
+ *         → X 로 꺼내기 → ⋯ 메뉴(Esc 는 메뉴만) → A 고르기 → 닫기(포커스가
  *         "설정" 으로), B 는 A 카드 안의 작은 카드, A 합계 3.5, 묶음만으로 키, 머리 줄과 hours 가 합친 값(가로채기 전송) → 성공 회신 흉내로 지워진다
  *    정리 2099 임시 저장 키 삭제, 시험 날짜의 시간 지우기(앱으로) → 다시 읽어 잔재 0 확인
  *
@@ -171,6 +172,26 @@ async function reload(ms = 20000) {
     await sleep(200);
   }
   return 'timeout';
+}
+//  보고서 묶음 설정 창 끌어 놓기(REPORT-GROUP §4, 2026-10-08): 진짜 PointerEvent 로 누르고(줄 이름) 5px 넘게 움직이고 놓는다.
+//    놓을 곳은 rgmFind('grp', over) 묶음(null 이면 창 제목 = 묶음 밖). 포인터 아래 판정은 실제 elementFromPoint 다.
+//    돌려주는 것: { lit: 놓기 직전 놓을 곳 점선 강조, ghost: 끄는 동안 그림자 } 또는 'no-src' / 'no-over'.
+async function dragRow(src, over) {
+  return J(`(function(){
+    const s = rgmFind('gk', ${JSON.stringify(src)});
+    const o = ${JSON.stringify(over)} === null ? document.querySelector('#rptGroupModal .modal-head h2') : rgmFind('grp', ${JSON.stringify(over)});
+    if(!s) return 'no-src'; if(!o) return 'no-over';
+    s.scrollIntoView({ block: 'nearest' }); o.scrollIntoView({ block: 'nearest' });
+    const a = s.querySelector('.rgm-t').getBoundingClientRect(), b = o.getBoundingClientRect();
+    const x0 = a.left + 4, y0 = a.top + a.height / 2, x1 = b.left + Math.min(40, b.width / 2), y1 = b.top + Math.min(14, b.height / 2);
+    const P = function(t, el, x, y){ el.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, pointerId: 7, pointerType: 'mouse', isPrimary: true, button: 0, buttons: t === 'pointerup' ? 0 : 1, clientX: x, clientY: y })); };
+    P('pointerdown', s.querySelector('.rgm-t'), x0, y0);
+    P('pointermove', document, x0 + 8, y0 + 8);
+    P('pointermove', document, x1, y1);
+    const lit = ${JSON.stringify(over)} !== null && o.classList.contains('drop'), ghost = !!document.querySelector('#rptGroupModal .rgm-ghost');
+    P('pointerup', document, x1, y1);
+    return { lit: lit, ghost: ghost, left: !!document.querySelector('#rptGroupModal .rgm-ghost') };
+  })()`);
 }
 async function closeAll() {
   await cdp.ev(`(function(){ ['#confirmModal','#rptGroupModal','#reportModal'].forEach(function(s){
@@ -372,7 +393,7 @@ async function main() {
   ok('E9 표지 없는 성공 회신으로는 지우지 않는다', !!(await stored(D)));
 
   /* ── E10 보고서 묶음 ── */
-  head('E10 보고서 묶음 — 설정 창에서 B 를 A 에 묶기, 카드와 합계, 키, 가로챈 전송, 성공 회신으로 지움');
+  head('E10 보고서 묶음 — 설정 창에서 B 를 A 에 끌어 넣기, X, ⋯ 메뉴, 카드와 합계, 키, 가로챈 전송, 성공 회신으로 지움');
   for (const [cat, h] of [[catA, 2], [catB, 1.5]]) { await cdp.ev(`setTaskHours(${JSON.stringify(D2)}, ${JSON.stringify(cat)}, ${h}); 1`); await saveIdle(); }
   ok('E10 깨끗한 날짜로 열었다', await openReportAt(D2));
   await setView('card'); await sleep(150);
@@ -381,11 +402,25 @@ async function main() {
   await cdp.ev(`(function(){ const b = document.getElementById('rptGroupOpen'); b.focus(); b.click(); return 1; })()`);
   ok('E10 설정 창이 열렸다', await waitFor(isOpen('#rptGroupModal'), 3000, 100));
   await sleep(250);
-  ok('E10 열면 첫 선택 상자에 포커스', await cdp.ev(`document.activeElement === document.querySelector('#rgmRows select:not([disabled])')`));
-  await cdp.ev(`(function(){ const s = [].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(x){ return x.dataset.gsrc === ${JSON.stringify(catB)}; });
-    s.value = ${JSON.stringify(catA)}; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+  ok('E10 열면 목록의 첫 버튼에 포커스', await cdp.ev(`document.activeElement === document.querySelector('#rgmRows button')`));
+  ok('E10 A, B 는 시간이 있어 펼쳐져 있고 묶인 과제가 없다', await cdp.ev(`!!rgmFind('gk', ${JSON.stringify(catA)}) && !!rgmFind('gk', ${JSON.stringify(catB)}) && !document.querySelector('#rgmRows .rgm-row.kid')`));
+  //  끌어 넣기(진짜 PointerEvent): B 를 A 묶음 위로
+  const d10 = await dragRow(catB, catA);
+  ok('E10 끄는 동안 그림자와 A 묶음 점선 강조, 놓은 뒤 그림자 없음', !!d10 && d10.ghost === true && d10.lit === true && d10.left === false, JSON.stringify(d10));
   await sleep(200);
-  ok('E10 A 는 대상이라 선택 상자가 꺼졌다(한 단계)', await cdp.ev(`[].find.call(document.querySelectorAll('#rgmRows select[data-gsrc]'), function(x){ return x.dataset.gsrc === ${JSON.stringify(catA)}; }).disabled`));
+  ok('E10 B 는 A 묶음 안의 들여 쓴 줄, A 는 ⠿ 와 ⋯ 가 없다(한 단계)', await cdp.ev(`(function(){ const g = rgmFind('grp', ${JSON.stringify(catA)}), b = rgmFind('gk', ${JSON.stringify(catB)}), a = rgmFind('gk', ${JSON.stringify(catA)});
+    return !!g && !!b && b.classList.contains('kid') && b.parentElement === g && a.getAttribute('data-dr') === '0' && !a.querySelector('button'); })()`));
+  ok('E10 A 줄은 합친 시간(3.5시간)', await cdp.ev(`(rgmFind('gk', ${JSON.stringify(catA)}).querySelector('.rgm-meta') || {}).textContent`).then((t) => String(t || '').endsWith('3.5시간')));
+  //  끌기 없이: X(꺼내기) → 제자리, 포커스는 B 의 ⋯ / ⋯ 메뉴에서 A 고르기 → 다시 묶임, 포커스는 B 의 X
+  await cdp.ev(`rgmFind('gout', ${JSON.stringify(catB)}).click(); 1`); await sleep(200);
+  ok('E10 X 로 꺼냈다(묶음 없음), 포커스는 B 의 ⋯', await cdp.ev(`!document.querySelector('#rgmRows .rgm-row.kid') && document.activeElement === rgmFind('gmenu', ${JSON.stringify(catB)})`));
+  await cdp.ev(`rgmFind('gmenu', ${JSON.stringify(catB)}).click(); 1`); await sleep(150);
+  ok('E10 ⋯ 메뉴 "넣을 곳" 이 열리고 첫 항목에 포커스', await cdp.ev(`!!document.getElementById('rgmMenu') && document.activeElement === document.querySelector('#rgmMenu [role="menuitem"]')`));
+  await cdp.ev(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); 1`); await sleep(200);
+  ok('E10 메뉴에서 Esc 는 메뉴만 닫는다(설정 창은 열려 있고 포커스는 ⋯)', (await cdp.ev(isOpen('#rptGroupModal'))) && (await cdp.ev(`!document.getElementById('rgmMenu') && document.activeElement === rgmFind('gmenu', ${JSON.stringify(catB)})`)));
+  await cdp.ev(`rgmFind('gmenu', ${JSON.stringify(catB)}).click(); 1`); await sleep(150);
+  await cdp.ev(`[].find.call(document.querySelectorAll('#rgmMenu [data-ginto]'), function(x){ return x.getAttribute('data-ginto') === ${JSON.stringify(catA)}; }).click(); 1`); await sleep(200);
+  ok('E10 메뉴로 다시 묶었다, 포커스는 B 의 X', await cdp.ev(`!!rgmFind('gout', ${JSON.stringify(catB)}) && document.activeElement === rgmFind('gout', ${JSON.stringify(catB)})`));
   await cdp.ev(`document.querySelector('#rptGroupModal [data-close]').click(); 1`);
   ok('E10 닫기로 닫혔다(보고서 창은 남는다)', (await waitFor(`document.getElementById('rptGroupModal').classList.contains('hidden')`, 3000, 100)) && (await cdp.ev(isOpen('#reportModal'))));
   await sleep(250);
