@@ -119,7 +119,9 @@ function closesWindow(site) {
 // merge·weekly·userlogin·validate는 finally에서 창을 닫으므로 인계가 없다(아래에서 코드로 확인).
 const HANDOFF_LOADS = {
   // 주간 채움: 목록에서 pjm_write.jsp로 POST하는 그 순간이 인계 문서의 로드다(창을 열어둔 채 반환).
-  week: 'await cw.ExecuteScriptAsync(goWrite);',
+  //   2026-10-08 WEEKLY-UPSERT: 같은 기간 글이 있으면 그 글의 수정 화면(pjm_modify.jsp, 로컬 함수 OpenModify)을 넘긴다.
+  //   두 문서 모두 인계 문서다. 값이 배열이면 지점마다 같은 계약(로드 전 detach)을 따로 본다.
+  week: ['await cw.ExecuteScriptAsync(goWrite);', 'await wv.ExecuteScriptAsync(goModify);'],
   // 캡처: 게시판 홈으로 이동한 뒤 창을 그대로 열어두고 사용자가 직접 탐색·삭제한다.
   probe: 'await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));',
   // 일간 전송: ①DryRun(미제출)이 남기는 폼 페이지 ②실제 제출 뒤 되읽기 페이지 — 같은 문장이 두 번 나온다.
@@ -238,7 +240,7 @@ const checks = {
   //    붙였다 뗀 핸들러는 무음 취소가 아니라 응답 주체 없는 영구 정지가 된다.
   //    → attach → detach → 인계 로드 순서를 소스에서 직접 확인한다.
   detachBeforeHandoff(source) {
-    for (const [tag, anchor] of Object.entries(HANDOFF_LOADS)) {
+    for (const [tag, anchors] of Object.entries(HANDOFF_LOADS)) for (const anchor of [].concat(anchors)) {
       const site = callSites(source).find((s) => s.tag === tag);
       assert.ok(site, `${tag} 호출부를 찾지 못함`);
       const m = site.member;
@@ -439,6 +441,20 @@ test('변이⑨: week의 detach를 인계 로드(pjm_write.jsp POST) 뒤로 옮�
   bad = mutate('                await wnav;' + NL,
     '                await wnav;' + NL + '                detach?.Invoke(); detach = null;' + NL, bad);
   assert.throws(() => checks.detachBeforeHandoff(bad), /week: 사용자에게 넘길 문서를 로드하기 전에 detach가 끝나지 않는다/);
+});
+
+test('변이⑨b: 주간 채움 수정 경로의 detach를 수정 화면 로드(pjm_modify.jsp POST) 뒤로 옮기면 detachBeforeHandoff가 실패한다', () => {
+  let bad = mutate('                    detach?.Invoke(); detach = null;' + NL + '                    var mnav = NavOnce(wv, 15000);',
+    '                    var mnav = NavOnce(wv, 15000);');
+  bad = mutate('                    await mnav;' + NL,
+    '                    await mnav;' + NL + '                    detach?.Invoke(); detach = null;' + NL, bad);
+  //  수정 경로의 detach 가 빠지면 가장 가까운 앞 detach 는 새 글 경로의 것이고, 그 사이에 return 이 있다(다른 경로다).
+  assert.throws(() => checks.detachBeforeHandoff(bad), /week: (사용자에게 넘길 문서를 로드하기 전에 detach가 끝나지 않는다|detach와 인계 로드 사이에 return이 있다)/);
+});
+
+test('변이⑨c: 주간 채움 수정 경로의 인계 지점이 사라지면(앵커 없음) detachBeforeHandoff가 판정 불가로 실패한다', () => {
+  const bad = mutate('await wv.ExecuteScriptAsync(goModify);', 'await wv.ExecuteScriptAsync(GoModifyJs(hit.ViewNo, id));');
+  assert.throws(() => checks.detachBeforeHandoff(bad), /week: 인계 문서 로드 지점을 찾지 못함/);
 });
 
 test('변이⑩: probe의 인계 전 detach를 지우면(=창 Closed까지 자동수락 유지) detachBeforeHandoff가 실패한다', () => {

@@ -624,6 +624,29 @@ namespace TaskCalendarWidget
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
                 if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
 
+                // 같은 기간 글 찾기(WEEKLY-UPSERT). 있으면 그 글의 수정 화면(아래 OpenModify), 없으면 이어지는 새 글 경로 그대로.
+                //   목록과 보기 화면을 읽는 동안은 자동수락을 켜 둔다(사용자에게 넘기는 문서가 아니다).
+                //   확인에 실패하면 새 글을 열지 않고 멈춘다. 확인 없이 새 글을 열면 같은 주 글이 다시 둘이 된다.
+                NetcusProgress("기존 주간보고 확인 중…");
+                NetcusStatus("weekfill", "checking");
+                NcSameWeek same;
+                try { same = await NcFindSameWeek(cw, id, req.Sdate, req.Edate); }
+                catch (Exception lex) { Log("netcus(week) 기존 글 찾기 예외: " + lex); same = new NcSameWeek(); }   // Ok=false
+                if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+                if (!same.Ok)
+                {
+                    try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 읽던 목록이나 보기 화면은 넘기지 않는다
+                    NetcusResult(false, WeekLookupFailMsg);
+                    return;
+                }
+                if (same.ViewNo.Length > 0) { await OpenModify(cw, same); return; }
+                if (same.Opened > 0)
+                {
+                    // 보기 화면을 열었으면 목록으로 돌아온다. 새 글 경로는 예전처럼 목록에서 출발한다.
+                    await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+                }
+
                 // 작성 폼은 직접 GET하면 서버가 '게시판이 옳지 않습니다' 거부 → 목록의 form(table_code=report_tbl)을
                 // pjm_write.jsp로 POST해야 함. 폼 연결 의존을 피해 동적 POST 폼으로 table_code/id를 실어 이동.
                 NetcusProgress("작성 폼 여는 중…");
@@ -684,6 +707,84 @@ namespace TaskCalendarWidget
                 //    위젯은 주간을 전송하지 않고 사용자가 직접 제출한다(위 문구 그대로).
                 //    그래서 사용자가 폼에서 보완한 내용은 담기지 않고, 컴럼 이름도 composed_at 이다(§5.9.5).
                 _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);
+
+                // ── 같은 기간 글이 있을 때: 그 글의 수정 화면(pjm_modify.jsp)을 열어 세 칸만 채운다(WEEKLY-UPSERT §3.2) ──
+                //   로컬 함수인 이유: 자동수락 detach(이 메서드의 지역 변수)를 수정 화면 로드 직전에 여기서 끊어야 한다(인계 계약).
+                async Task OpenModify(CoreWebView2 wv, NcSameWeek hit)
+                {
+                    NetcusProgress("기존 주간보고 여는 중…");
+                    NetcusStatus("weekfill", "opening");
+                    // 실제 흐름(보기 화면 → 수정 버튼)대로 그 글의 보기 화면부터 연다. 읽기 문서라 자동수락은 아직 켜 둔다.
+                    var vnav = NavOnce(wv, 15000);
+                    await wv.ExecuteScriptAsync(GoViewJs(hit.ViewNo, id));
+                    await vnav;
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+
+                    // ★ 수정 화면은 사용자에게 넘기는 문서다. 새 글 경로와 같은 이유로 로드 전에 자동수락을 끈다
+                    //   (로드 시점 스냅샷이라 로드 뒤 원복은 늦고, 붙였다 떼면 임시저장, 제출 confirm 이 응답 없이 멈춘다).
+                    detach?.Invoke(); detach = null;
+                    var mnav = NavOnce(wv, 15000);
+                    string goModify = GoModifyJs(hit.ViewNo, id);
+                    await wv.ExecuteScriptAsync(goModify);
+                    await mnav;
+                    if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+
+                    NetcusProgress("페이지 확인 중…");
+                    string mprobe = "null";
+                    for (int i = 0; i < 16; i++)
+                    {
+                        if (_w2 == null) { NetcusResult(false, "확인 창이 닫혀 중단되었습니다."); return; }
+                        mprobe = await wv.ExecuteScriptAsync(WeekModifyProbeJs);
+                        if (mprobe != null && mprobe != "null") break;
+                        await Task.Delay(300);
+                    }
+                    if (!NcParseModifyProbe(mprobe, out var msd, out var med, out var mwd))
+                    {
+                        // 수정 화면이 아니다(칸이 없거나 같은 이름이 둘 이상). 다른 실패 경로처럼 창을 닫는다(자동수락은 이미 꺼져 있다).
+                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                        NetcusResult(false, "주간보고 수정 화면을 찾지 못했습니다. 로그인 또는 페이지 접근을 확인하세요.");
+                        return;
+                    }
+                    Log($"netcus(week) 수정 화면: view_no={hit.ViewNo}, 기간 {msd} ~ {med}, 작성일 {mwd}");
+                    // 열린 글의 기간이 요청과 확실히 다르면 채우지 않는다(다른 주 글을 고치는 사고 방지). 형식을 못 읽으면 로그만 남기고 진행.
+                    if (NcDate(msd, out var mA) && NcDate(med, out var mB) && NcDate(req.Sdate, out var rA) && NcDate(req.Edate, out var rB) && (mA != rA || mB != rB))
+                    {
+                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                        NetcusResult(false, "열린 수정 화면의 기간이 요청한 기간과 달라 채우지 않았습니다. 다시 시도하세요.");
+                        return;
+                    }
+
+                    NetcusProgress("내용 작성 중…");
+                    NetcusStatus("weekfill", "filling");
+                    // 안전판을 먼저 끼운다. 원래 Bmodify 는 빈 폼을 보내 기존 글을 빈 값으로 덮을 수 있다 → 못 끼우면 창을 닫고 멈춘다.
+                    //   진단(일간의 form-assoc 로그와 같은 목적): 반환에 sig(원래 Bmodify 표지), form(칸이 폼에 묶였는지), names(보낼 칸 이름)가 실린다.
+                    string ovr;
+                    try
+                    {
+                        string ovRaw = await wv.ExecuteScriptAsync(WeekModifyOverrideJs(hit.ViewNo, id)) ?? "";
+                        try { ovr = JsonSerializer.Deserialize<string>(ovRaw) ?? ""; } catch { ovr = ovRaw.Trim('"'); }
+                    }
+                    catch (Exception oex) { ovr = "err " + oex.Message; }
+                    Log("netcus(week) Bmodify override: " + ovr + (ovr.StartsWith("ok sig=0", StringComparison.Ordinal) ? " (원래 Bmodify 에 pjm_modify.jsp?go=write 가 없다: 페이지 구조가 바뀌었을 수 있다)" : ""));
+                    if (!ovr.StartsWith("ok", StringComparison.Ordinal))
+                    {
+                        try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }
+                        NetcusResult(false, "주간보고 수정 화면을 준비하지 못했습니다. 페이지 구조가 바뀌었을 수 있습니다.");
+                        return;
+                    }
+                    // 바꾸기 전 세 칸의 원래 길이만 남긴다(내용은 남기지 않는다). 회사에서 손으로 쓴 차주계획 등을 덮었는지 문의 때 가늠하는 근거다.
+                    string olen = "";
+                    try { olen = await wv.ExecuteScriptAsync(WeekModifyOrigLenJs) ?? ""; } catch (Exception lex2) { olen = "err " + lex2.Message; }
+                    Log($"netcus(week) 수정 화면 원래 길이(글자 수) {olen} → 새 길이 endwork={req.Endwork.Length}, content={req.Content.Length}, planwork={req.Planwork.Length}");
+                    // 진행사항, 과제투입시간, 차주계획 셋만 채운다. 기간, 제목, 작성일, 미처리사항, 문제점, 회의내용은 그대로 둔다.
+                    var mfilled = await wv.ExecuteScriptAsync(WeekModifyFillJs(req.Endwork, req.Content, req.Planwork));
+                    if (mfilled != "1") { NetcusResult(false, "주간보고 수정 화면 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다."); return; }
+
+                    try { _w2win?.Activate(); } catch { }
+                    NetcusResult(true, WeekModifyOkMsg(hit.Matches));
+                    //  새 글 경로와 같다: 기록하는 것은 '캘린더가 채운 내용'이다(사용자가 창에서 고친 내용은 담기지 않는다).
+                    _host.SaveWeeklyReport(req.Sdate, req.Edate, req.Subject, req.Content, req.Endwork, req.Planwork);
+                }
             }
             catch (Exception ex)
             {
@@ -838,82 +939,26 @@ namespace TaskCalendarWidget
                 // 목록 1페이지 이동(GET). 이후 페이지는 go_list 폼 재현.
                 await NavTo(cw, "https://www.netcus.com/pjm/pjm.jsp?id=" + Uri.EscapeDataString(id));
 
+                // 목록 순회는 공용 NcCrawlWeekly(주간 채움의 같은 기간 글 찾기와 같이 쓴다). 상한과 창, 회신은 예전 그대로.
                 const int MAXPAGES = 40, MAXREAD = 60;
-                var seenViews = new HashSet<string>();
-                int opened = 0; bool capped = false;
-
-                for (int p = 1; p <= MAXPAGES && !capped; p++)
-                {
-                    if (p > 1)
+                var crawl = await NcCrawlWeekly(cw, id, winLo, winHi, MAXPAGES, MAXREAD, "netcus 주간범위",
+                    n => NetcusStatus("weekly", "reading", n, -1),   // 총 미상 → total=-1
+                    (viewNo, regStr, cell) =>
                     {
-                        var lnav = NavOnce(cw, 15000);
-                        await cw.ExecuteScriptAsync(GoListJs(p, id));   // go_list(p) 재현
-                        await lnav;
-                    }
-                    // 목록 행 추출(테이블 로드 대기 재시도)
-                    string rowsRaw = "null";
-                    for (int i = 0; i < 16; i++)
-                    {
-                        rowsRaw = await cw.ExecuteScriptAsync(RowExtractJs);
-                        if (rowsRaw != null && rowsRaw != "null" && rowsRaw != "\"[]\"") break;
-                        await Task.Delay(250);
-                    }
-                    var rows = NcParseRows(rowsRaw);
-                    if (rows.Count == 0)
-                    {
-                        // 행 0 — login 리다이렉트(세션 만료)인지 진짜 더 없는 페이지인지 구분
-                        var pwp = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
-                        if (pwp == "true") { GitReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }   // login 폼 = 세션 만료 → 부분데이터 폐기, 명시 중단
-                        break;   // 비번칸 없음 = 진짜 더 없는 페이지
-                    }
-
-                    bool anyNew = false, allOlder = true;
-                    var candidates = new List<(string viewNo, string regStr)>();
-                    foreach (var r in rows)
-                    {
-                        if (string.IsNullOrEmpty(r.viewNo)) continue;
-                        if (!seenViews.Contains(r.viewNo)) anyNew = true;
-                        bool regOk = NcDate(r.regDate, out var dReg);
-                        if (regOk && dReg >= winLo) allOlder = false;
-                        if (!regOk || (dReg >= winLo && dReg <= winHi)) candidates.Add((r.viewNo, r.regDate));   // 창 안(또는 날짜 불명=관대) → 후보
-                    }
-                    if (!anyNew) break;   // go_list가 마지막 페이지로 클램프(반복) → 진전 없음 → 중단
-
-                    foreach (var c in candidates)
-                    {
-                        if (seenViews.Contains(c.viewNo)) continue;
-                        seenViews.Add(c.viewNo);
-                        if (opened >= MAXREAD) { capped = true; Log("netcus 주간범위: 읽기 상한(60) 도달 — 중단"); break; }
-
-                        var vnav = NavOnce(cw, 15000);
-                        await cw.ExecuteScriptAsync(GoViewJs(c.viewNo, id));   // go_view(viewNo) 재현
-                        await vnav;
-                        opened++;
-                        NetcusStatus("weekly", "reading", opened, -1);   // 총 미상 → total=-1
-
-                        string cellRaw = "null";
-                        for (int i = 0; i < 16; i++)
-                        {
-                            cellRaw = await cw.ExecuteScriptAsync(CellExtractJs);
-                            if (cellRaw != null && cellRaw != "null" && cellRaw.Length > 4) break;
-                            await Task.Delay(250);
-                        }
-                        var cell = NcParseCell(cellRaw);
-                        if (cell == null) continue;
+                        if (cell == null) return true;   // 셀을 못 읽은 글은 건너뛴다(예전 그대로)
 
                         bool include;
                         if (NcPeriod(cell.period, out var ps, out var pe)) include = (ps <= dTo && pe >= dFrom);   // 기간 겹침 확정
                         else include = true;   // 기간 파싱 실패 → 작성일 사전필터 통과분은 관대 포함
-                        if (!include) continue;
+                        if (!include) return true;
 
-                        string regdate = !string.IsNullOrWhiteSpace(cell.regdate) ? cell.regdate : c.regStr;
+                        string regdate = !string.IsNullOrWhiteSpace(cell.regdate) ? cell.regdate : regStr;
                         weeks.Add(new { regdate, title = cell.title ?? "", period = cell.period ?? "", endwork = cell.endwork ?? "", content = cell.content ?? "", plan = cell.plan ?? "" });
-                    }
+                        return true;
+                    });
+                if (crawl.SessionLost) { GitReply(reqId, new { ok = false, error = "session", weeks = Array.Empty<object>() }); return; }   // login 폼 = 세션 만료 → 부분데이터 폐기, 명시 중단
 
-                    if (allOlder) break;   // 페이지 전체가 from-7 이전 → 최신순이므로 이후 페이지 불필요
-                }
-
-                Log($"netcus 주간범위 완료: {weeks.Count}건 (열람 {opened})");
+                Log($"netcus 주간범위 완료: {weeks.Count}건 (열람 {crawl.Opened})");
                 GitReply(reqId, new { ok = true, error = "", weeks });
             }
             catch (Exception ex)
@@ -927,6 +972,132 @@ namespace TaskCalendarWidget
                 try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 읽기 전용 — 확인창 닫음
                 _ncBusy = false; NetcusBusy(false);
             }
+        }
+
+        // 내 주간보고 목록 순회(공용). NetcusWeeklyRangeRead 와 주간 채움의 같은 기간 글 찾기(NcFindSameWeek)가 같이 쓴다.
+        //   전제: 현재 문서가 목록 1페이지다(호출자가 pjm.jsp?id= 로 옮겨 둔다). 자동수락은 호출자가 붙여 둔 채로 부른다(읽기 구간).
+        //   페이지마다 행 {viewNo, regDate} → 작성일 사전필터 [winLo, winHi](날짜 불명=관대 포함) → 후보만 보기 화면을 열어
+        //   onCell(viewNo, 목록 작성일, 셀)을 부른다. 셀을 못 읽으면 cell=null. onCell 이 false 면 바로 멈추고 Aborted.
+        //   멈춤: 행 0 + 비번칸 = SessionLost / 행 0 + 비번칸 없음 = EmptyPage(그 페이지 번호) / 새 행 없음(go_list 클램프) = NoProgress /
+        //         페이지 전체가 winLo 이전 = AllOlder(최신순) / 열람 maxRead 도달 = Capped. 넷 다 아니면 maxPages 를 다 돈 것이다.
+        private sealed class NcCrawlEnd { public bool SessionLost, Aborted, Capped, NoProgress, AllOlder; public int EmptyPage, Opened; }
+
+        private async Task<NcCrawlEnd> NcCrawlWeekly(CoreWebView2 cw, string id, DateTime winLo, DateTime winHi, int maxPages, int maxRead,
+            string logTag, Action<int> onOpened, Func<string, string, NcCell?, bool> onCell)
+        {
+            var end = new NcCrawlEnd();
+            var seenViews = new HashSet<string>();
+            int opened = 0; bool capped = false;
+
+            for (int p = 1; p <= maxPages && !capped; p++)
+            {
+                if (p > 1)
+                {
+                    var lnav = NavOnce(cw, 15000);
+                    await cw.ExecuteScriptAsync(GoListJs(p, id));   // go_list(p) 재현
+                    await lnav;
+                }
+                // 목록 행 추출(테이블 로드 대기 재시도)
+                string rowsRaw = "null";
+                for (int i = 0; i < 16; i++)
+                {
+                    rowsRaw = await cw.ExecuteScriptAsync(RowExtractJs);
+                    if (rowsRaw != null && rowsRaw != "null" && rowsRaw != "\"[]\"") break;
+                    await Task.Delay(250);
+                }
+                var rows = NcParseRows(rowsRaw);
+                if (rows.Count == 0)
+                {
+                    // 행 0 — login 리다이렉트(세션 만료)인지 진짜 더 없는 페이지인지 구분
+                    var pwp = await cw.ExecuteScriptAsync("(function(){return !!document.querySelector('input[type=password]');})()");
+                    if (pwp == "true") { end.SessionLost = true; end.Opened = opened; return end; }   // login 폼 = 세션 만료 → 호출자가 명시 중단
+                    end.EmptyPage = p;
+                    break;   // 비번칸 없음 = 진짜 더 없는 페이지
+                }
+
+                bool anyNew = false, allOlder = true;
+                var candidates = new List<(string viewNo, string regStr)>();
+                foreach (var r in rows)
+                {
+                    if (string.IsNullOrEmpty(r.viewNo)) continue;
+                    if (!seenViews.Contains(r.viewNo)) anyNew = true;
+                    bool regOk = NcDate(r.regDate, out var dReg);
+                    if (regOk && dReg >= winLo) allOlder = false;
+                    if (!regOk || (dReg >= winLo && dReg <= winHi)) candidates.Add((r.viewNo, r.regDate));   // 창 안(또는 날짜 불명=관대) → 후보
+                }
+                if (!anyNew) { end.NoProgress = true; break; }   // go_list가 마지막 페이지로 클램프(반복) → 진전 없음 → 중단
+
+                foreach (var c in candidates)
+                {
+                    if (seenViews.Contains(c.viewNo)) continue;
+                    seenViews.Add(c.viewNo);
+                    if (opened >= maxRead) { capped = true; Log($"{logTag}: 읽기 상한({maxRead}) 도달 — 중단"); break; }
+
+                    var vnav = NavOnce(cw, 15000);
+                    await cw.ExecuteScriptAsync(GoViewJs(c.viewNo, id));   // go_view(viewNo) 재현
+                    await vnav;
+                    opened++;
+                    onOpened(opened);
+
+                    string cellRaw = "null";
+                    for (int i = 0; i < 16; i++)
+                    {
+                        cellRaw = await cw.ExecuteScriptAsync(CellExtractJs);
+                        if (cellRaw != null && cellRaw != "null" && cellRaw.Length > 4) break;
+                        await Task.Delay(250);
+                    }
+                    if (!onCell(c.viewNo, c.regStr, NcParseCell(cellRaw))) { end.Aborted = true; end.Opened = opened; return end; }
+                }
+
+                if (allOlder) { end.AllOlder = true; break; }   // 페이지 전체가 winLo 이전 → 최신순이므로 이후 페이지 불필요
+            }
+
+            end.Capped = capped; end.Opened = opened;
+            return end;
+        }
+
+        // 같은 기간 주간보고 찾기(WEEKLY-UPSERT §3.1). 현재 문서가 목록 1페이지여야 한다. 자동수락은 붙인 채로 부른다.
+        //   후보 창은 작성일 sdate-7 ~ edate+14(같은 주를 며칠 뒤 다시 올리는 경우를 위해 뒤를 조금 넓힌다), 열람 상한 20.
+        //   Ok=false 면 확인 실패다: 요청 기간을 못 읽음, 세션 만료, 보기 화면이나 기간 칸을 못 읽음, 목록을 못 읽음,
+        //   상한에 닿았는데 같은 글을 못 찾음. 호출자는 그때 새 글을 열지 않는다(확인 없이 열면 같은 주 글이 다시 둘이 된다).
+        private sealed class NcSameWeek { public bool Ok; public string ViewNo = ""; public int Matches, Opened; }
+
+        private async Task<NcSameWeek> NcFindSameWeek(CoreWebView2 cw, string id, string sdate, string edate)
+        {
+            var res = new NcSameWeek();
+            if (!NcDate(sdate, out var ds) || !NcDate(edate, out var de)) { Log("netcus(week) 기존 글 찾기 실패: 요청 기간을 읽지 못함(" + sdate + " ~ " + edate + ")"); return res; }
+
+            const int UPSERT_MAXPAGES = 40, UPSERT_MAXREAD = 20;
+            var found = new List<(string viewNo, string period, bool canModify)>();
+            int locked = 0;
+            string why = "";
+            var end = await NcCrawlWeekly(cw, id, ds.AddDays(-7), de.AddDays(14), UPSERT_MAXPAGES, UPSERT_MAXREAD, "netcus(week) 기존 글 찾기",
+                n => NetcusStatus("weekfill", "checking", n, -1),
+                (viewNo, regStr, cell) =>
+                {
+                    // 보기 화면이나 기간 칸을 못 읽었다 = 그 글이 같은 기간일 수도 있다 → 확인 실패(건너뛰지 않는다)
+                    if (cell == null || string.IsNullOrWhiteSpace(cell.period)) { why = "보기 화면을 읽지 못함(view_no=" + viewNo + ")"; return false; }
+                    found.Add((viewNo, cell.period, cell.mod == "1"));   // 수정 단추가 있는 글(내가 고칠 수 있는 글)만 고를 수 있다
+                    return true;
+                });
+            res.Opened = end.Opened;
+
+            if (end.SessionLost) why = "세션 만료";
+            else if (!end.Aborted && end.EmptyPage > 0 && await cw.ExecuteScriptAsync(ListPageMarkJs) != "true")
+                why = "목록을 읽지 못함(페이지 " + end.EmptyPage + ")";   // 행 0 인데 목록 페이지 표지도 없다 = 빈 목록이 아니라 못 읽은 것
+            if (why.Length == 0)
+            {
+                res.ViewNo = NcPickSameWeek(found, sdate, edate, out int matches, out locked);
+                res.Matches = matches;
+                bool finished = end.AllOlder || end.NoProgress || end.EmptyPage > 0;   // 창 끝까지 봤다
+                if (res.ViewNo.Length == 0 && (end.Capped || !finished))
+                    why = end.Capped ? $"열람 상한({UPSERT_MAXREAD})에 닿았는데 같은 글이 없음" : $"페이지 상한({UPSERT_MAXPAGES})에 닿았는데 같은 글이 없음";
+            }
+            res.Ok = why.Length == 0;
+            if (!res.Ok) res.ViewNo = "";
+            Log($"netcus(week) 기존 글 찾기: 열람 {end.Opened}, 같은 기간 {res.Matches}건" + (locked > 0 ? $"(수정 단추 없는 같은 기간 글 {locked}건은 뺌)" : "")
+                + (res.ViewNo.Length > 0 ? ", 고를 글 view_no=" + res.ViewNo : "") + (res.Ok ? "" : ", 실패: " + why));
+            return res;
         }
 
         // ExecuteScriptAsync는 JSON 문자열을 다시 JSON 인코딩 → 이중 디코드.
@@ -961,7 +1132,7 @@ namespace TaskCalendarWidget
                 using var d = JsonDocument.Parse(inner);
                 var r = d.RootElement;
                 string G(string k) => r.TryGetProperty(k, out var v) ? (v.GetString() ?? "") : "";
-                return new NcCell { period = G("period"), title = G("title"), regdate = G("regdate"), endwork = G("endwork"), content = G("content"), plan = G("plan") };
+                return new NcCell { period = G("period"), title = G("title"), regdate = G("regdate"), endwork = G("endwork"), content = G("content"), plan = G("plan"), mod = G("mod") };
             }
             catch (Exception ex) { Log("netcus 주간범위 셀파싱 실패: " + ex.Message); return null; }
         }

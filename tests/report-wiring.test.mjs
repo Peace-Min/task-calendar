@@ -21,7 +21,7 @@
 //     (ReportDb 가 "가장 나쁜 실패"라고 적어 둔 자리). 그래서 도메인 밖 값은 기록 직전에 안전한 값으로 내린다.
 //   ⑪ (2026-09-18) 주간 전송은 내용 출처 'week'(netcus 주간보고 병합)를 거부한다 — 그건 읽기 전용 취합이다.
 import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, extractCsMember } from './harness.mjs';
 import { canonSql, canonStatusCodes } from './canon-schema.mjs';
 
 const src = loadAppSource();
@@ -113,10 +113,16 @@ const checks = {
   },
 
   // ④ 주간 저장은 폼 채우기 성공 뒤에 불린다
+  //   2026-10-08 WEEKLY-UPSERT: NetcusWeekFill 에 같은 기간 글의 수정 경로(로컬 함수 OpenModify)가 생겨 저장 호출이 둘이다.
+  //   여기는 새 글 경로(OpenModify 앞)만 본다. 수정 경로의 저장은 weekly-upsert.test.mjs 가 같은 방식으로 잠근다.
+  //   옛 판의 고정 창(앞 12000자)은 메서드가 길어지면 수정 경로의 호출을 새 글 경로의 것으로 잘못 집는다 → 멤버 본문으로 자르고 경계에서 끊는다.
   weeklySaveAfterFill(cs) {
     const i = cs.indexOf('private async Task NetcusWeekFill(');
     assert.ok(i > 0, 'NetcusWeekFill 을 찾지 못했다');
-    const b = cs.slice(i, i + 12000);
+    const all = extractCsMember(cs, 'private async Task NetcusWeekFill(');
+    const mod = all.indexOf('async Task OpenModify(');
+    assert.ok(mod > 0, '수정 경로(OpenModify)의 경계를 찾지 못했다. 새 글 경로를 가를 수 없다');
+    const b = all.slice(0, mod);
     const okMsg = b.indexOf('주간보고 작성 폼을 채웠습니다');
     const call = b.indexOf('_host.SaveWeeklyReport(');
     assert.ok(call > 0, 'NetcusWeekFill 안에서 SaveWeeklyReport 호출을 찾지 못했다 — 배선이 끊겼다');
