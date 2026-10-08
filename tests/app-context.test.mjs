@@ -591,6 +591,7 @@ if (!JSDOM) {
     const collectDN = (from, to, src) => evJSON('collectReportData(' + JSON.stringify(from) + ',' + JSON.stringify(to) + ',' + JSON.stringify(src) + ')');
     const rowCp = r => r.rows.find(x => x.name === '기획');
     const setWeekly = (f, t) => ev("reportMode='weekly'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");
+    const setCustom = (f, t) => ev("reportMode='custom'; $('#rptFrom').value='" + f + "'; $('#rptTo').value='" + t + "'; $('#rptSrcEvent').checked=true; $('#rptSrcTodo').checked=true; $('#rptSrcGit').checked=true; $('#rptWithDesc').checked=true; $('#rptSkipEmpty').checked=false; editingDayNoteKey=null;");   // WEEKLY-EDIT: 날짜 줄 ✎ 는 기간 취합에만 남는다
 
     test('기간 할일 dayNotes → 주간 보고: details=본문만(복사·전송), dayDetails=날짜 보존(미리보기)', () => {
       seed(dnState());
@@ -713,9 +714,21 @@ if (!JSDOM) {
       ev("localStorage.removeItem('tc_rptSources'); reportMode='daily';");
     });
 
-    test('주간 보고 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
+    //  WEEKLY-EDIT §3.2(2026-10-08): 주간 작성 카드는 읽기 전용(날짜 줄 ✎ 없음, X 있음). 날짜 줄 ✎ 와 저장 왕복은 기간 취합(custom)에 남는다.
+    test('주간 보고 렌더: 날짜별 dayNote 라인은 읽기 전용(✎ 없음) + 요일 접두 + X', () => {
       seed(dnState());
       setWeekly('2026-07-13', '2026-07-19');
+      ev('buildReport()');
+      const html = ev("$('#rptOut').innerHTML");
+      assert.ok(html.includes('초안 작성') && html.includes('월 7/13'), '전제: 날짜별 라인과 요일 접두');
+      assert.ok(!/data-dnact=|rdn-edit-btn|data-dnid=/.test(html), '주간 날짜 줄에 ✎(편집 앵커)가 있다');
+      assert.ok(/<div class="rdn ro">/.test(html), '주간 날짜 줄이 읽기 전용(.rdn.ro)이 아니다');
+      assert.ok(/class="rcard-x"/.test(html), '주간 카드에 X 가 없다');
+      ev("reportMode='daily'");
+    });
+    test('기간 취합 렌더: 기간 할일 날짜별 dayNote 라인(.rdn) 편집 앵커 + 요일 접두 + 제목 읽기전용', () => {
+      seed(dnState());
+      setCustom('2026-07-13', '2026-07-19');
       ev('buildReport()');
       const html = ev("$('#rptOut').innerHTML");
       assert.ok(html.includes('data-dnid="tp"') && html.includes('data-dndate="2026-07-13"'), '날짜별 편집 앵커(todoId/date)');
@@ -727,9 +740,9 @@ if (!JSDOM) {
       assert.ok(evJSON("!!$('#rptOut').querySelector('.rtask-roline .rtask-main .rdn')"), 'dayNote 라인이 .rtask-main 안 → 제목 텍스트 아래 정렬(마커 폭 무관)');
     });
 
-    test('주간 날짜별 라인 저장: 클릭→편집→저장이 updateTodo(dayNotes) 왕복 반영', () => {
+    test('기간 취합 날짜별 라인 저장: 클릭→편집→저장이 updateTodo(dayNotes) 왕복 반영', () => {
       seed(dnState());
-      setWeekly('2026-07-13', '2026-07-19');
+      setCustom('2026-07-13', '2026-07-19');
       ev('buildReport()');
       ev("document.querySelector('#rptOut .rdn[data-dndate=\"2026-07-13\"] [data-dnact=\"edit\"]').click();");
       assert.strictEqual(ev('editingDayNoteKey'), 'tp|2026-07-13', '클릭 시 편집 키 설정');
@@ -739,9 +752,9 @@ if (!JSDOM) {
       assert.strictEqual(ev('editingDayNoteKey'), null, '저장 후 편집 상태 해제');
     });
 
-    test('주간 날짜별 라인 비우기: 빈 값 저장 시 그 날짜 dayNote 제거', () => {
+    test('기간 취합 날짜별 라인 비우기: 빈 값 저장 시 그 날짜 dayNote 제거', () => {
       seed(dnState());
-      setWeekly('2026-07-13', '2026-07-19');
+      setCustom('2026-07-13', '2026-07-19');
       ev('buildReport()');
       ev("document.querySelector('#rptOut .rdn[data-dndate=\"2026-07-15\"] [data-dnact=\"edit\"]').click();");
       ev("var _ta=document.querySelector('#rptOut .rdn-edit'); _ta.value='   '; commitDayNoteEdit(_ta);");
@@ -985,7 +998,7 @@ if (!JSDOM) {
       }
       assert.strictEqual(ev('typeof editingReportKey'), 'undefined', '일간 보고서 줄편집 키(editingReportKey)가 되살아났다');
       for (const fn of ['setCommitMessage', 'deleteCommitRow', 'commitDayNoteEdit']) {
-        assert.strictEqual(ev('typeof ' + fn), 'function', '대조군: ' + fn + ' 는 그대로 있어야 한다(커밋 내역 탭, 주간 날짜 줄 ✎)');
+        assert.strictEqual(ev('typeof ' + fn), 'function', '대조군: ' + fn + ' 는 그대로 있어야 한다(커밋 내역 탭, 기간 취합 날짜 줄 ✎)');
       }
     });
     test('REPORT-EDIT §5: 커밋 제목은 커밋 내역 탭(setCommitMessage)으로만 바뀐다(대조군: 그 길은 살아 있다)', () => {

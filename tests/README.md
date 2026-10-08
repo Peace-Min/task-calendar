@@ -115,6 +115,8 @@ tests/
 │                            기본 과제 삭제 거부, 과제 삭제 = 데이터 삭제(FK 순서), 다른 과제로 옮기기(겹친 날 시간 합산, 24 상한): zz 잔재 0
 ├─ loop-report-edit.mjs     **실제 위젯**(CDP): 일간 보고서 글 편집(REPORT-EDIT): X(제자리 흐림, 높이 불변), 글 편집 입력, 창 닫고 열기,
 │                            날짜 바꾸기, reloadState 뒤 임시 저장 유지, 전송 가로채기(실제 전송 없음) 뒤 성공/실패 회신 흉내: 2099 잔재 0
+├─ loop-weekly-edit.mjs     **실제 위젯**(CDP): 주간 보고서 글 편집(WEEKLY-EDIT): 이번 주 시간, X, 회사 폼 순서 글 편집, 닫고 열기,
+│                            주 바꾸기, reloadState 뒤 유지, 채우기 가로채기(실제 채우기 없음), 가짜 net 캐시로 출처 바꾸기: 2099 잔재 0
 ├─ calendar-adapter.mjs       MySQL + .NET SDK(복제본) — DB 읽기 계층 대조(어댑터 계약 G)
 ├─ migrate-tool.mjs           이관 도구(`db/deploy/xml-to-db`) 왕복 대조
 ├─ dryrun-xml-to-db.mjs       이관 예행연습 — 실제 `data.xml`을 읽어 이관 전 필수 조치를 찾아낸다
@@ -814,6 +816,23 @@ E8 전송 가로채기(content 의 &nbsp; 들여쓰기, 뺀 과제는 본문과 
 ```
 # 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 로그인
 node tests/loop-report-edit.mjs
+```
+
+**종료코드**: 통과=0, 실패(또는 정리 실패)=1, 판정 없음(위젯 미기동, 비로그인, 새 기능이 없는 옛 빌드)=2.
+
+## loop-weekly-edit.mjs: 주간 보고서 글 편집 실동작 루프(WEEKLY-EDIT §7)
+
+실행 중인 위젯(CDP 9222, 로그인한 아무 계정)으로 `docs/WEEKLY-EDIT.md` 의 주간 X, 글 편집, 임시 저장 수명을 실제 WebView2 저장소에서 본다.
+DB 에 직접 붙지 않는다(비밀번호 필요 없음). 짝인 계약 시험은 `weekly-edit.test.mjs`(jsdom, 상시 스위트)다.
+E1 2099-12-07 주로 주간 작성 열기, E2 두 과제 시간과 "이번 주 n h", E3 X(제자리, 높이 불변, 키 `tc_rptDraftW:` 에 바로 저장),
+E4 글 편집(회사 폼 순서, 읽기 전용 과제투입시간, 제목, 진행사항 상세 줄, 차주계획), E5 닫고 열기, 주 바꾸기, reloadState 뒤에도 그대로,
+E6 채우기 가로채기(네 칸 확인) 뒤 성공 회신 흉내에도 남음, E7 가짜 netcus 병합 캐시로 출처를 바꿔도 같은 이름 과제의 고친 글과 X 가 따라옴.
+**실제로 회사 화면을 채우지 않는다**: `Platform.report.submitWeekly` 를 가로채고 `hpost` 의 netcus 명령도 막는다(두 겹). netcus 일간보고도 읽지 않는다.
+정리는 `tc_rptDraftW:<who>:2099-*` 키 삭제, 시험 주 과제 시간 지우기(앱으로), 출처와 포함 항목 저장값(`tc_rptSources`) 원복 뒤 다시 읽어 잔재 0 확인이다.
+
+```
+# 사전: 위젯을 TC_DEBUG_PORT=9222 로 띄우고 로그인
+node tests/loop-weekly-edit.mjs
 ```
 
 **종료코드**: 통과=0, 실패(또는 정리 실패)=1, 판정 없음(위젯 미기동, 비로그인, 새 기능이 없는 옛 빌드)=2.

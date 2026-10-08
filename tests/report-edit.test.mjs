@@ -55,8 +55,9 @@ const S = {
     }
     const br = extractFunction(src, 'buildReport');
     assert.ok(br.includes('reportDayLinesHtml(m, false, spanMulti)'), '일간 카드의 기간 할 일 날짜 줄이 읽기 전용(editable=false)이 아니다');
-    assert.ok(br.includes('reportDayLinesHtml(m, true, spanMulti)'), '대조군: 주간 날짜 줄 ✎ 는 남아 있어야 한다');
-    assert.ok(src.includes("$('#rptOut').addEventListener('focusout'") && /commitDayNoteEdit\(ev\.target\)/.test(src), '주간 날짜 줄 편집 처리기(commitDayNoteEdit)가 사라졌다');
+    //  WEEKLY-EDIT §3.2(2026-10-08): 주간 카드도 읽기 전용이다. 날짜 줄 ✎ 는 기간 취합(custom)에만 남는다(!weekly).
+    assert.ok(br.includes('reportDayLinesHtml(m, !weekly, spanMulti)'), '주간/기간 취합 갈래의 날짜 줄이 "기간 취합만 ✎" 꼴이 아니다');
+    assert.ok(src.includes("$('#rptOut').addEventListener('focusout'") && /commitDayNoteEdit\(ev\.target\)/.test(src), '기간 취합 날짜 줄 편집 처리기(commitDayNoteEdit)가 사라졌다');
   },
   //  §3.1 — 초안 본문은 함수 하나. 나가는 글(buildReportText)과 글 편집(buildReport 의 초안)이 같은 함수를 쓴다.
   sharedBody(src) {
@@ -134,7 +135,7 @@ const S = {
   },
 };
 
-test('S1 (§5): 일간 줄 ✎/✕ 와 그 처리기, 옛 안내 문구가 없다 · 주간 날짜 줄 ✎ 는 남는다', () => S.noLineEdit(app));
+test('S1 (§5): 일간 줄 ✎/✕ 와 그 처리기, 옛 안내 문구가 없다 · 날짜 줄 ✎ 는 기간 취합에만 남는다', () => S.noLineEdit(app));
 test('S2 (§3.1): 나가는 글(buildReportText)과 글 편집 초안이 같은 본문 함수(reportRowBodyText)와 머리 줄 함수를 쓴다', () => S.sharedBody(app));
 test('S3 (§3.2·§4·§6): payload.hours 는 X 를 거르고, 대기 표지는 확인 뒤 보내기 직전 · 주간 전송과 워치독이 거둔다', () => S.sendWiring(app));
 test('S4 (§4): 성공 회신 + 대기 표지가 있을 때만 임시 저장을 지운다', () => S.resultClears(app));
@@ -203,7 +204,7 @@ test('변이 SM1: 일간 줄 ✕(data-ract="del")를 되살리면 S1 이 잡는�
   assert.throws(() => S.noLineEdit(bad), /data-ract=/);
 });
 test('변이 SM2: 일간 날짜 줄 ✎ 를 되살리면(editable=true) S1 이 잡는다', () => {
-  const bad = mutate(app, 'reportDayLinesHtml(m, false, spanMulti)', 'reportDayLinesHtml(m, true, spanMulti)');
+  const bad = mutate(app, 'reportDayLinesHtml(m, false, spanMulti)', 'reportDayLinesHtml(m, !weekly, spanMulti)');
   assert.throws(() => S.noLineEdit(bad), /읽기 전용/);
 });
 test('변이 SM3: buildReportText 가 본문을 따로 조립하면 S2 가 잡는다', () => {
@@ -411,7 +412,7 @@ if (!JSDOM) {
     const fresh = () => { clearDrafts(B); B.ev('state = ' + JSON.stringify(stateFor(T, Y, N)) + ';'); openDaily(B, T); };
     const done = () => { clearDrafts(B); B.ev("rptView = 'card'; reportMode = 'daily';"); };
 
-    test('B1 (§2.2·§5): 일간 카드에는 ✎, ✕, 날짜 줄 ✎ 가 없고 X 는 있다 · 주간 날짜 줄 ✎ 는 있다', () => {
+    test('B1 (§2.2·§5): 일간 카드에는 ✎, ✕, 날짜 줄 ✎ 가 없고 X 는 있다 · 주간도 읽기 전용 + X · 기간 취합만 날짜 줄 ✎, X 없음', () => {
       fresh();
       try {
         const html = B.ev("$('#rptOut').innerHTML");
@@ -421,11 +422,17 @@ if (!JSDOM) {
         assert.strictEqual(B.ev("document.querySelectorAll('#rptOut .rcard-x').length"), 4, '카드마다 X 가 하나씩 있어야 한다');
         assert.strictEqual(B.ev("$('#rptViewBar').classList.contains('hidden')"), false, '일간 보기 전환 줄이 보이지 않는다');
         assert.strictEqual(B.ev("$('#rptViewSeg [data-rview=\"card\"]').getAttribute('aria-pressed')"), 'true', '기본 보기가 카드가 아니다');
+        //  WEEKLY-EDIT(2026-10-08): 주간 작성도 읽기 전용 카드 + X + 보기 전환. 날짜 줄 ✎ 는 기간 취합에만 남는다.
         B.ev(`setReportMode('weekly'); $('#rptFrom').value = ${JSON.stringify(Y)}; $('#rptTo').value = ${JSON.stringify(N)}; buildReport();`);
         const wk = B.ev("$('#rptOut').innerHTML");
-        assert.ok(/class="rdn-edit-btn"/.test(wk), '대조군: 주간 날짜 줄 ✎ 는 남아 있어야 한다');
-        assert.ok(!/rcard-x/.test(wk), '주간 카드에 X 가 있다(일간만)');
-        assert.strictEqual(B.ev("$('#rptViewBar').classList.contains('hidden')"), true, '주간에 일간 보기 전환 줄이 보인다');
+        assert.ok(wk.includes('오늘 메모') && !/rdn-edit-btn|data-dnact=/.test(wk), '주간 날짜 줄 ✎ 가 남아 있다(주간도 읽기 전용)');
+        assert.ok(/rcard-x/.test(wk), '주간 카드에 X 가 없다');
+        assert.strictEqual(B.ev("$('#rptViewBar').classList.contains('hidden')"), false, '주간에 보기 전환 줄이 보이지 않는다');
+        B.ev(`setReportMode('custom'); $('#rptFrom').value = ${JSON.stringify(Y)}; $('#rptTo').value = ${JSON.stringify(N)}; buildReport();`);
+        const cu = B.ev("$('#rptOut').innerHTML");
+        assert.ok(/class="rdn-edit-btn"/.test(cu), '대조군: 기간 취합 날짜 줄 ✎ 는 남아 있어야 한다');
+        assert.ok(!/rcard-x/.test(cu), '기간 취합 카드에 X 가 있다');
+        assert.strictEqual(B.ev("$('#rptViewBar').classList.contains('hidden')"), true, '기간 취합에 보기 전환 줄이 보인다');
       } finally { done(); }
     });
 

@@ -1052,6 +1052,15 @@ mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0
 .rpt-mirror .rdoc-ta::placeholder{color:var(--muted)}
 .rpt-mirror .rdoc-warn{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--warn-text);padding:0 8px}
 .rpt-mirror .rdoc-outsec{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);padding:2px 8px}
+/* 주간 글 편집(docs/WEEKLY-EDIT.md §3): 카드의 이번 주 시간, 회사 폼 순서의 칸 머리, 제목 입력, 읽기 전용 과제투입시간, 세 칸 안내 */
+.rpt-mirror .rcard-wh{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.rpt-mirror .rwd-sec{display:flex;flex-direction:column;gap:4px}
+.rpt-mirror .rwd-sec + .rwd-sec{border-top:1px solid var(--line);padding-top:8px}
+.rpt-mirror .rwd-h{display:flex;align-items:center;gap:8px;font-size:calc(var(--m-scale) * var(--fs-meta));font-weight:700;color:var(--text)}
+.rpt-mirror .rdoc-subj{width:100%;box-sizing:border-box;font:inherit;font-size:calc(var(--m-scale) * var(--fs-meta));padding:5px 8px;border:1px solid var(--ctl-border);border-radius:var(--r-sm);background:var(--panel);color:var(--text)}
+.rpt-mirror .rdoc-subj:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.rpt-mirror .rwd-hours{white-space:pre-wrap;font-size:calc(var(--m-scale) * var(--fs-meta));color:var(--muted);background:var(--bg);border-radius:var(--r-sm);padding:4px 8px;line-height:1.6;user-select:text}
+.rpt-mirror .rwd-note{font-size:calc(var(--m-scale) * var(--fs-micro));color:var(--muted);padding-top:4px}
 /* 일간 미리보기 머리(REPORT-EDIT §2.1): 고친 과제 수, 임시 저장 시각, 보기 전환 [카드][글 편집]. 미러 밖이라 배율을 받지 않는다. */
 .rpt-viewbar{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;margin-top:6px}
 .rpt-edit-info{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font-size:var(--fs-micro);color:var(--muted)}
@@ -14291,6 +14300,7 @@ function reportRowBodyText(r, indentUnit, mkSpec, indent){
 }
 // 미리보기 머리(§2.1): "고친 과제 n개", "이 PC에 임시 저장됨 HH:MM". 저장소가 막혀 있으면 저장 표시는 없다.
 function rptEditInfoRender(){
+  if(reportMode === 'weekly') return rptWEditInfoRender();   // 주간은 제 규칙(고친 칸, 기간 키)으로
   const el = $('#rptEditInfo'); if(!el) return;
   const ctx = __rptCtx;
   if(!ctx || PEER || reportMode !== 'daily'){ el.innerHTML = ''; return; }
@@ -14305,12 +14315,13 @@ function rptEditInfoRender(){
   el.innerHTML = h;
   const ra = $('#rptOut .rdoc-resetall'); if(ra) ra.disabled = rptDraftIsEmpty(live);
 }
-// 보기 전환 줄: 일간(캘린더 출처, 과제가 있을 때)만. 열람 창에는 없다.
+// 보기 전환 줄: 일간(캘린더 출처, 과제가 있을 때)과 주간(캘린더, netcus 일간보고 출처)만. 기간 취합과 열람 창에는 없다.
 function rptViewBarSync(show){
   const bar = $('#rptViewBar'); if(!bar) return;
   bar.classList.toggle('hidden', !show || PEER);
-  $$('#rptViewSeg [data-rview]').forEach(b => { const on = b.dataset.rview === rptView; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
-  if(!show){ __rptCtx = null; const el = $('#rptEditInfo'); if(el) el.innerHTML = ''; }
+  const _v = (reportMode === 'weekly') ? rptViewW : rptView;   // 보기는 모드별로 따로 기억한다(WEEKLY-EDIT §3.1)
+  $$('#rptViewSeg [data-rview]').forEach(b => { const on = b.dataset.rview === _v; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  if(!show){ __rptCtx = null; __rptWCtx = null; const el = $('#rptEditInfo'); if(el) el.innerHTML = ''; }
 }
 // 글 편집 보기 HTML(§2.3). 머리 줄은 textarea 가 아니다(잠김). 내용 칸 처음 값 = 그 과제의 초안 본문, 고쳤으면 고친 글.
 function rptDocHtml(ctx, d){
@@ -14359,6 +14370,309 @@ function rptDocInput(ta){
     const wn = sec.querySelector('.rdoc-warn'); if(wn) wn.hidden = !rptHasBracketLine(text);
   }
   rptEditInfoRender();
+}
+// ===== 주간 보고서 글 편집(docs/WEEKLY-EDIT.md, 2026-10-08) =====
+//  ★ 일간 글 편집과 같은 틀이다(보고서와 캘린더는 따로, 머리 줄 잠금, X, 임시 저장). 다른 점만 적는다.
+//    - 주간 작성(reportMode === 'weekly')만. 기간 취합(custom)은 같은 렌더 갈래를 쓰지만 손대지 않는다.
+//    - 출처가 둘(cal, net)이라 고친 글과 X 는 **과제 이름(정규화)** 으로 기억한다. net 과제에는 과제 id 가 없을 수 있다.
+//      출처를 바꿔도 같은 이름이면 따라온다(초안 본문만 출처에 맞게 다시 만든다).
+//    - 앱에서 고치는 칸은 넷(제목, 진행사항, 과제투입시간(읽기 전용), 차주계획). 나머지 세 칸은 회사 화면에서 쓴다.
+//    - 임시 저장 키는 tc_rptDraftW:<who>:<from>_<to>. 일간 키(tc_rptDraft:)와 접두가 달라 일간 정리, 감시와 섞이지 않는다.
+//    - 주간 채우기 성공으로는 지우지 않는다(채우기는 제출이 아니다). 기간 끝이 14일 넘게 지난 키만 보고서를 열 때 지운다.
+//  ★ 고친 것도 뺀 것도 없으면 나가는 네 칸과 주간 복사는 예전과 바이트까지 같다: buildWeeklyFields / buildNetcus* 결과를
+//    그대로 돌려주고(rptWOutFields), 초안이 닿은 칸만 rptWCompose 로 다시 만든다. rptWCompose 도 빈 초안이면 같은 글을 낸다(시험이 잠근다).
+let rptViewW = 'card';                     // 주간 미리보기 보기(일간 rptView 와 따로 기억). 보고서를 열 때마다 카드로
+const RPT_WDRAFT_PREFIX = 'tc_rptDraftW:'; // 키 = tc_rptDraftW:<who>:<from>_<to>
+const RPT_UNCAT_KEY = '@미분류';           // net 출처 [미분류] 블록 행의 키(과제 이름 키는 @ 로 시작하지 않는다)
+let __rptWCtx = null;                      // 지금 그린 주간 미리보기의 { from, to, model }(입력 처리기가 초안과 비교할 때 쓴다)
+function rptWNameKey(name){ return String(name == null ? '' : name).normalize('NFC').replace(/\s+/g, ''); }
+function rptWKey(from, to){ return RPT_WDRAFT_PREFIX + rptDraftWho() + ':' + from + '_' + to; }
+function rptWEmpty(from, to){ return { v: 1, from, to, subject: null, prog: {}, progBase: {}, progBaseSrc: {}, plan: {}, out: [], savedAt: '' }; }
+function rptWIsEmpty(d){ return !d || (d.subject == null && !Object.keys(d.prog || {}).length && !Object.keys(d.plan || {}).length && !(d.out || []).length); }
+const _rptWValid = (from, to) => /^\d{4}-\d{2}-\d{2}$/.test(from || '') && /^\d{4}-\d{2}-\d{2}$/.test(to || '') && from <= to;
+function rptWNorm(o, from, to){
+  if(!o || typeof o !== 'object' || o.v !== 1) return null;
+  const strMap = x => { const r = {}; if(x && typeof x === 'object' && !Array.isArray(x)) for(const k of Object.keys(x)) if(k && k !== '__proto__' && typeof x[k] === 'string') r[k] = x[k]; return r; };
+  const prog = strMap(o.prog), progBase = strMap(o.progBase), progBaseSrc = strMap(o.progBaseSrc), plan = strMap(o.plan);
+  for(const k of Object.keys(progBase)) if(!_rptOwn(prog, k)) delete progBase[k];   // 기준본은 고친 진행사항에만
+  for(const k of Object.keys(progBaseSrc)) if(!_rptOwn(progBase, k)) delete progBaseSrc[k];   // 기준본을 만든 출처(cal | net)
+  const out = Array.isArray(o.out) ? [...new Set(o.out.filter(k => typeof k === 'string' && k))] : [];
+  return { v: 1, from, to, subject: (typeof o.subject === 'string') ? o.subject : null, prog, progBase, progBaseSrc, plan, out, savedAt: typeof o.savedAt === 'string' ? o.savedAt : '' };
+}
+// 그 기간의 주간 초안. 일간 rptDraftGet 과 같은 규칙(메모리 우선 키, 손상이면 메모리본이나 빈 초안, PEER 는 읽지 않는다). 읽기만 한다.
+function rptWDraftGet(from, to){
+  const empty = rptWEmpty(from, to);
+  if(PEER || !_rptWValid(from, to)) return empty;
+  const key = rptWKey(from, to);
+  const fromMem = () => { const m = __rptDraftMem.get(key); return (m && rptWNorm(JSON.parse(JSON.stringify(m)), from, to)) || empty; };
+  if(__rptDraftDirty.has(key)) return fromMem();
+  let raw = null;
+  try{ raw = localStorage.getItem(key); }catch(_){ return fromMem(); }
+  if(raw == null) return empty;
+  try{ return rptWNorm(JSON.parse(raw), from, to) || fromMem(); }catch(_){ return fromMem(); }
+}
+// 쓰기는 일간과 같은 메모리, 디바운스, 플러시(rptDraftFlush)를 쓴다. 비면 키를 지운다.
+//   ★ 주간은 쓸 때 지금 행에 없는 이름을 걷지 않는다: 행은 출처(cal, net)에 따라 달라서, 걷으면 출처를 바꿨다 돌아올 때 고친 글이 사라진다.
+function rptWDraftPut(from, to, d, now){
+  if(PEER || !_rptWValid(from, to)) return;
+  const key = rptWKey(from, to);
+  __rptDraftMem.set(key, rptWIsEmpty(d) ? null : d);
+  __rptDraftDirty.add(key);
+  clearTimeout(__rptDraftTimer); __rptDraftTimer = null;
+  if(now) rptDraftFlush(); else __rptDraftTimer = setTimeout(rptDraftFlush, RPT_DRAFT_DEBOUNCE_MS);
+}
+// 보고서를 열 때: 이 계정의 주간 키 중 기간 끝(to)이 RPT_DRAFT_KEEP_DAYS 일보다 오래된 것만 지운다.
+function rptWDraftPrune(){
+  if(PEER) return;
+  const pre = RPT_WDRAFT_PREFIX + rptDraftWho() + ':', cut = addDays(todayYmd(), -RPT_DRAFT_KEEP_DAYS);
+  const old = k => { const m = String(k).startsWith(pre) ? /^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/.exec(String(k).slice(pre.length)) : null; return !!m && m[2] < cut; };
+  let keys = [];
+  try{ for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && old(k)) keys.push(k); } }catch(_){ keys = []; }
+  for(const k of [...__rptDraftMem.keys()]) if(old(k) && !keys.includes(k)) keys.push(k);
+  for(const k of keys){
+    try{ localStorage.removeItem(k); }catch(_){}
+    __rptDraftMem.delete(k); __rptDraftDirty.delete(k); __rptDraftFailed.delete(k);
+  }
+}
+// 행 키(net): 같은 목록에 같은 이름이 또 나오면 '#2', '#3'(net 은 같은 이름을 한 과제로 합치므로 실제로는 생기지 않는다).
+function _rptWUniq(){ const seen = {}; return k => { seen[k] = (seen[k] || 0) + 1; return seen[k] > 1 ? k + '#' + seen[k] : k; }; }
+// 행 키(cal): 이름이 같은 과제가 여럿이면 **거르지 않은 state.categories 순서**로 첫 과제만 이름 키(net 과 맞는다), 나머지는 '이름키#과제id'.
+//   그린 행(빈 항목 제외로 걸러지고 순서가 정해진 행)의 자리로 매기면 빈 항목 제외를 켜거나 ▲▼ 로 옮길 때 키가 다른 과제로 옮겨 간다(리뷰 재현).
+function rptWCalKey(catId, name){
+  const nk = rptWNameKey(name);
+  const first = (state.categories || []).find(c => rptWNameKey(c.name) === nk);
+  return (!first || first.id === catId) ? nk : nk + '#' + catId;
+}
+// 주간 행 모델(cal): collectReportData 의 rows 와 1:1, 순서 그대로. 시간 합은 buildWeeklyFields 와 같은 계산(날짜마다 더하고 과제마다 반올림).
+function rptWModelCal(rows, from, to){
+  const spec = reportMarkerSpec(), fmt = currentReportFormatPref();
+  const indent = Math.max(0, Math.min(6, fmt.indent != null ? fmt.indent : 2));
+  return { src: 'cal', from, to, rows: (rows || []).map(r => {
+    let hours = 0, hasHours = false;
+    for(let date = from; date <= to; date = addDays(date, 1)){ const v = getTaskHours(date, r.key); if(v != null){ hours += v; hasHours = true; } }
+    hours = Math.round(hours * 100) / 100;
+    return { k: rptWCalKey(r.key, r.name), name: String(r.name == null ? '' : r.name), color: r.color, catId: r.key, plan: true,
+      hasHours, hours, draft: reportRowBodyText(r, ' ', spec, indent), body: unit => reportRowBodyText(r, unit, spec, indent) };
+  }) };
+}
+// 주간 행 모델(net): parseNetcusWeek 결과. 본문은 buildNetcusSendText 와 같은 규칙(날짜 없이, 같은 줄 한 번). [미분류]도 한 행(차주계획, 과제투입시간에는 없다).
+function rptWModelNet(parsed, from, to){
+  parsed = parsed || {};
+  const tasks = Array.isArray(parsed.tasks) ? parsed.tasks : [], uncl = Array.isArray(parsed.unclassified) ? parsed.unclassified : [];
+  const uq = _rptWUniq();
+  const rows = tasks.map(t => {
+    const seen = {}, lines = [];
+    for(const ln of (Array.isArray(t && t.lines) ? t.lines : [])){ const tx = String(ln && ln.text != null ? ln.text : ''); if(tx && !Object.prototype.hasOwnProperty.call(seen, tx)){ seen[tx] = 1; lines.push(tx); } }
+    const hb = (t && t.hoursByDate) || {}, hk = Object.keys(hb);
+    let hs = 0; for(const k of hk) hs += (hb[k] || 0); hs = Math.round(hs * 100) / 100;
+    const txt = lines.join('\n'), name = String(t && t.name != null ? t.name : '');
+    return { k: uq(rptWNameKey(name)), name, matched: !!(t && t.matched), plan: true, hasHours: hk.length > 0, hours: hs, draft: txt, body: () => txt, lines: t.lines || [] };
+  });
+  if(uncl.length){
+    const txt = uncl.map(u => String(u && u.text != null ? u.text : '')).join('\n');
+    rows.push({ k: RPT_UNCAT_KEY, name: '미분류', uncat: true, plan: false, hasHours: false, hours: 0, draft: txt, body: () => txt, uncl });
+  }
+  return { src: 'net', from, to, rows };
+}
+// 지금 행 기준으로 초안이 닿는 곳(없어진 이름의 흔적은 세지 않는다).
+function rptWLive(M, d){
+  const ks = new Set(M.rows.map(r => r.k));
+  const prog = Object.keys(d.prog || {}).filter(k => ks.has(k)), plan = Object.keys(d.plan || {}).filter(k => ks.has(k) && !M.rows.find(r => r.k === k).uncat);
+  const out = (d.out || []).filter(k => ks.has(k));
+  const subject = d.subject != null && !!String(d.subject).trim();   // 나가는 규칙(rptWCompose)과 같게: 공백뿐인 제목은 초안 제목이 나간다
+  return { prog, plan, out, subject, any: subject || prog.length > 0 || plan.length > 0 || out.length > 0 };
+}
+// 네 칸을 초안으로 조립한다(§4). 빈 초안이면 buildWeeklyFields(cal) / buildNetcus*(net) 와 같은 글이다.
+function rptWCompose(M, d){
+  const U = '&nbsp;';
+  const isOut = r => (d.out || []).includes(r.k);
+  const live = M.rows.filter(r => !isOut(r));
+  const prog = r => _rptOwn(d.prog, r.k) ? reportEditedBodyOut(d.prog[r.k], U) : r.body(U);
+  const endwork = live.map(r => { const b = prog(r); return (M.src === 'cal') ? (`[${r.name}]\n` + (b || '-')) : ('[' + r.name + ']' + (b ? '\n' + b : '')); }).join('\n\n');
+  const hrows = live.filter(r => !r.uncat && (M.src === 'cal' || r.hasHours));
+  let content = '';
+  if(M.src === 'cal' || hrows.length){
+    let g = 0;
+    const lines = hrows.map(r => { if(r.hasHours) g += r.hours; return `[${r.name}]` + (r.hasHours ? ` : ${r.hours}` : ''); });
+    g = Math.round(g * 100) / 100;
+    content = lines.concat(['-----', `합계 : ${g}`]).join('\n');
+  }
+  const prows = live.filter(r => r.plan);
+  const anyPlan = prows.some(r => _rptOwn(d.plan, r.k));
+  const planwork = anyPlan
+    ? prows.map(r => { const b = _rptOwn(d.plan, r.k) ? reportEditedBodyOut(d.plan[r.k], U) : ''; return `[${r.name}]` + (b ? '\n' + b : ''); }).join('\n\n')
+    : prows.map(r => `[${r.name}]`).join('\n');
+  const subject = (d.subject != null && d.subject.trim()) ? d.subject.trim() : weekSubjectGuess(M.from);
+  return { content, endwork, planwork, subject, liveCount: live.length };
+}
+// 지금 주간 모델(출처별). net 은 그 기간 병합 캐시가 있을 때만(전송 경로와 같은 대조).
+function rptWModelNow(from, to){
+  if(!_rptWValid(from, to)) return null;
+  if(state.reportSource === 'net'){
+    const p = (netcusMerge && netcusMerge.parsed && netcusMerge.key === ncMergeKey(from, to)) ? netcusMerge.parsed : null;
+    return p ? rptWModelNet(p, from, to) : null;
+  }
+  return rptWModelCal(collectReportData(from, to, rptSources()).rows, from, to);
+}
+// 주간 전송 네 칸 = 예전 결과(buildWeeklyFields / buildNetcus*)를 감싼다. 초안이 닿은 칸만 다시 만든다. 다 뺐으면 null(보낼 것 없음).
+function rptWOutFields(from, to){
+  const M = rptWModelNow(from, to); if(!M) return null;
+  let base;
+  if(M.src === 'net'){ const p = netcusMerge.parsed; base = { content: buildNetcusHoursText(p), endwork: buildNetcusSendText(p), planwork: buildNetcusPlanText(p), subject: weekSubjectGuess(from) }; }
+  else base = buildWeeklyFields(from, to, rptSources());
+  if(!base) return null;
+  const d = rptWDraftGet(from, to), L = rptWLive(M, d);
+  if(!L.any) return base;
+  const c = rptWCompose(M, d);
+  if(!c.liveCount) return null;
+  return {
+    content: L.out.length ? c.content : base.content,
+    endwork: (L.out.length || L.prog.length) ? c.endwork : base.endwork,
+    planwork: (L.out.length || L.plan.length) ? c.planwork : base.planwork,
+    subject: L.subject ? c.subject : base.subject,
+  };
+}
+// 주간 복사(진행사항): 예전 복사 글(cal: 머리 줄 + 본문, 끝 '\n' / net: buildNetcusSendText)에 고친 글과 X 를 반영. 단위 U+00A0.
+function rptWCopyText(M, d, unit){
+  const isOut = r => (d.out || []).includes(r.k);
+  const blocks = M.rows.filter(r => !isOut(r)).map(r => {
+    const b = _rptOwn(d.prog, r.k) ? reportEditedBodyOut(d.prog[r.k], unit) : r.body(unit);
+    return '[' + r.name + ']' + (b ? '\n' + b : '');
+  });
+  if(M.src === 'net') return blocks.join('\n\n');
+  return blocks.length ? blocks.join('\n\n') + '\n' : '';
+}
+// 미리보기 머리(주간): "고친 칸 n개"(제목, 진행사항, 차주계획), "이 PC에 임시 저장됨 HH:MM". 지금 행 기준.
+function rptWEditInfoRender(){
+  const el = $('#rptEditInfo'); if(!el) return;
+  const ctx = __rptWCtx;
+  if(!ctx || PEER || reportMode !== 'weekly'){ el.innerHTML = ''; return; }
+  const d = rptWDraftGet(ctx.from, ctx.to), L = rptWLive(ctx.model, d);
+  const n = (L.subject ? 1 : 0) + L.prog.length + L.plan.length;
+  let h = n ? `<span class="rpt-edit-pill">고친 칸 ${n}개</span>` : '';
+  const at = d.savedAt ? new Date(d.savedAt) : null;
+  if(L.any && at && !isNaN(at) && !__rptDraftFailed.has(rptWKey(ctx.from, ctx.to))){
+    h += `<span class="rpt-edit-saved">이 PC에 임시 저장됨 ${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}</span>`;
+  }
+  el.innerHTML = h;
+  const ra = $('#rptOut .rdoc-resetall'); if(ra) ra.disabled = !L.any;
+}
+// 주간 카드 머리 오른쪽 칸: 이번 주 시간(읽기 전용, 기록 있는 과제만)과 X. 뺀 카드는 같은 칸에서 "이 보고서에서 뺌 되돌리기".
+function rptWSlotHtml(r, out){
+  return `<span class="rcard-slot"><span class="rcard-live">`
+    + (r.hasHours ? `<span class="rcard-wh">이번 주 ${esc(String(r.hours))} h</span>` : '')
+    + (PEER ? '' : `<button type="button" class="rcard-x" data-rxact="out" title="이 보고서에서 빼기" aria-label="${esc(r.name)} 이 보고서에서 빼기"${out ? ' tabindex="-1"' : ''}>${ICON.xmark}</button>`) + `</span>`
+    + (out ? `<span class="rcard-outnote">이 보고서에서 뺌 <button type="button" class="lnk rcard-back" data-rxact="back" aria-label="${esc(r.name)} 보고서에 되돌리기">되돌리기</button></span>` : '')
+    + `</span>`;
+}
+// 주간 글 편집 보기(§3.3): 회사 폼 순서: 제목, 진행사항, 과제투입시간(읽기 전용), 차주계획, 그리고 세 칸 안내.
+function rptWDocHtml(M, d){
+  const L = rptWLive(M, d), c = rptWCompose(M, d);
+  const isOut = r => (d.out || []).includes(r.k);
+  const outLine = r => `<div class="rdoc-outsec" data-wk="${esc(r.k)}">[${esc(r.name)}] 이 보고서에서 뺌, 카드에서 되돌릴 수 있습니다</div>`;
+  const sec = (wsec, r, text, edited, stale, ph) => `<div class="rdoc-sec" data-wsec="${wsec}" data-wk="${esc(r.k)}">`
+    + `<div class="rdoc-lock"><span class="rdoc-lk" aria-hidden="true">${ICON.lock}</span><span class="rdoc-head" title="과제는 카드에서 정합니다">${esc('[' + r.name + ']')}</span>`
+    + `<span class="rdoc-stale"${stale ? '' : ' hidden'}>캘린더 기록이 바뀌었습니다. 초안으로 되돌리면 새 내용이 들어갑니다</span>`
+    + `<button type="button" class="lnk rdoc-revert" data-rdact="revert"${edited ? '' : ' hidden'} aria-label="${esc(r.name)} 초안으로 되돌리기">초안으로</button></div>`
+    + `<textarea class="rdoc-ta" data-wsec="${wsec}" data-wk="${esc(r.k)}" rows="1" spellcheck="false" placeholder="${ph}" aria-label="${esc(r.name)} ${wsec === 'plan' ? '차주계획' : '진행사항'}">\n${esc(text)}</textarea>`
+    + `<div class="rdoc-warn"${rptHasBracketLine(text) ? '' : ' hidden'}>대괄호로 시작하는 줄은 netcus 일간보고 합치기에서 과제 머리 줄로 읽힐 수 있습니다.</div></div>`;
+  let html = `<div class="rdoc-info">회사 주간보고 폼과 같은 순서입니다. 회색 머리 줄과 과제투입시간은 카드에서 정해지고, 나머지는 자유롭게 씁니다. 채우기와 복사는 이 글 그대로 나갑니다. `
+    + `<button type="button" class="lnk rdoc-resetall" data-rdact="resetall"${L.any ? '' : ' disabled'}>모두 초안으로</button></div>`;
+  html += '<div class="rdoc rwdoc">';
+  html += `<div class="rwd-sec" data-wsec="subject"><div class="rwd-h">제목<button type="button" class="lnk rdoc-revert" data-rdact="revert"${L.subject ? '' : ' hidden'} aria-label="제목 초안으로 되돌리기">초안으로</button></div>`
+    + `<input type="text" class="rdoc-subj" data-wsec="subject" maxlength="200" spellcheck="false" aria-label="주간보고 제목" value="${esc(L.subject ? d.subject : weekSubjectGuess(M.from))}"></div>`;
+  html += '<div class="rwd-sec"><div class="rwd-h">진행사항</div>' + M.rows.map(r => {
+    if(isOut(r)) return outLine(r);
+    const edited = _rptOwn(d.prog, r.k);
+    const stale = edited && rptWStale(d, r.k, M.src, r.draft);
+    return sec('prog', r, edited ? d.prog[r.k] : r.draft, edited, stale, '내용 없음(쓰려면 여기를 누르세요)');
+  }).join('') + '</div>';
+  html += `<div class="rwd-sec"><div class="rwd-h">과제투입시간</div><div class="rwd-hours">${c.content ? esc(c.content) : '시간 기록 없음'}</div></div>`;
+  html += '<div class="rwd-sec"><div class="rwd-h">차주계획</div>' + M.rows.filter(r => r.plan).map(r => {
+    if(isOut(r)) return outLine(r);
+    const edited = _rptOwn(d.plan, r.k);
+    return sec('plan', r, edited ? d.plan[r.k] : '', edited, false, '계획 없음(쓰려면 여기를 누르세요)');
+  }).join('') + '</div>';
+  html += '<div class="rwd-note">미처리사항, 문제점 및 건의사항, 회의내용은 열린 회사 화면에서 직접 쓰세요.</div>';
+  return html + '</div>';
+}
+// 낡은 초안(§3.3): 기준본이 지금 출처에서 만들어졌고 지금 초안과 다를 때만. 다른 출처의 기준본과 비교하면 출처를 바꾸기만 해도 늘 낡았다고 말한다.
+function rptWStale(d, k, src, draft){
+  if(!_rptOwn(d.prog, k) || !_rptOwn(d.progBase, k)) return false;
+  return (_rptOwn(d.progBaseSrc, k) ? d.progBaseSrc[k] : 'cal') === src && d.progBase[k] !== draft;
+}
+// 다시 그려도 쓰던 칸(제목, 내용 칸)의 포커스와 커서를 지킨다. 돌려주는 함수를 다시 그린 뒤 부른다.
+function rptWKeepFocus(out){
+  const ae = document.activeElement;
+  if(!ae || !out || !out.contains(ae) || !ae.dataset || !ae.dataset.wsec) return () => {};
+  const k = { wsec: ae.dataset.wsec, wk: ae.dataset.wk || '', s: ae.selectionStart, e: ae.selectionEnd };
+  return () => {
+    const el = [...$$('#rptOut [data-wsec]')].find(x => (x.tagName === 'TEXTAREA' || x.tagName === 'INPUT') && x.dataset.wsec === k.wsec && (x.dataset.wk || '') === k.wk);
+    if(el){ el.focus(); try{ el.setSelectionRange(k.s, k.e); }catch(_){} }
+  };
+}
+// 주간 미리보기 본문(카드 또는 글 편집)을 그리기 전에 부른다: 문맥을 세우고 보기 전환 줄을 보인다.
+function rptWBegin(M){ __rptWCtx = { from: M.from, to: M.to, model: M }; rptViewBarSync(true); return rptWDraftGet(M.from, M.to); }
+function rptWAfterRender(){
+  if(rptViewW === 'doc') $$('#rptOut .rdoc-ta').forEach(rptGrow);
+  rptWEditInfoRender();
+}
+// 주간 입력(제목, 진행사항, 차주계획) → 메모리에 바로, 저장소에는 짧게 모아서. 초안과 같아지면 "고치지 않음"으로.
+function rptWDocInput(el){
+  if(PEER || reportMode !== 'weekly' || !__rptWCtx) return;
+  const { from, to, model: M } = __rptWCtx, wsec = el.dataset.wsec, k = el.dataset.wk;
+  const text = String(el.value).replace(/\r\n?/g, '\n');
+  const d = rptWDraftGet(from, to);
+  let row = null;
+  if(wsec === 'subject'){ if(text === weekSubjectGuess(from) || !text.trim()) d.subject = null; else d.subject = text; }   // 비우거나 공백뿐이면 초안 제목이 나가므로 고친 칸이 아니다
+  else {
+    row = M.rows.find(r => r.k === k); if(!row) return;
+    if(wsec === 'prog'){ if(text === row.draft){ delete d.prog[k]; delete d.progBase[k]; delete d.progBaseSrc[k]; } else { if(!_rptOwn(d.prog, k)){ d.progBase[k] = row.draft; d.progBaseSrc[k] = M.src; } d.prog[k] = text; } }
+    else if(wsec === 'plan'){ if(!text.trim()) delete d.plan[k]; else d.plan[k] = text; }
+  }
+  rptWDraftPut(from, to, d, false);
+  if(el.tagName === 'TEXTAREA') rptGrow(el);
+  const box = el.closest('.rdoc-sec, .rwd-sec');
+  if(box){
+    const edited = wsec === 'subject' ? rptWLive(M, d).subject : _rptOwn(wsec === 'prog' ? d.prog : d.plan, k);
+    const rv = box.querySelector('.rdoc-revert'); if(rv) rv.hidden = !edited;
+    const sl = box.querySelector('.rdoc-stale'); if(sl) sl.hidden = !(wsec === 'prog' && rptWStale(d, k, M.src, row.draft));
+    const wn = box.querySelector('.rdoc-warn'); if(wn) wn.hidden = !rptHasBracketLine(text);
+  }
+  rptWEditInfoRender();
+}
+// 주간 X, 되돌리기, 초안으로, 모두 초안으로(#rptOut click 처리기가 넘긴다). 주간 X 에는 시간 안내가 없다(네 칸 모두에서 빠진다).
+function rptWClick(b){
+  const ctx = __rptWCtx; if(!ctx) return;
+  const { from, to } = ctx;
+  const focusIn = (k, sel) => { const c = [...$$('#rptOut [data-wk]')].find(x => x.dataset.wk === k && x.matches('.rcard, .rdoc-sec')); const t = c && c.querySelector(sel); if(t) t.focus(); };
+  if(b.dataset.rxact){
+    const card = b.closest('.rcard'); const k = card && card.dataset.wk; if(!k) return;
+    const on = b.dataset.rxact === 'out';
+    const d = rptWDraftGet(from, to);
+    d.out = d.out.filter(x => x !== k); if(on) d.out.push(k);
+    rptWDraftPut(from, to, d, true);
+    buildReport();
+    focusIn(k, on ? '.rcard-back' : '.rcard-x');
+    return;
+  }
+  if(b.dataset.rdact === 'revert'){
+    const box = b.closest('[data-wsec]'); if(!box) return;
+    const wsec = box.dataset.wsec, k = box.dataset.wk;
+    confirmBox('초안으로 되돌리기', '이 칸의 고친 내용을 버리고 초안으로 되돌릴까요?', '되돌리기').then(r => {
+      if(r !== 'ok') return;
+      const d = rptWDraftGet(from, to);
+      if(wsec === 'subject') d.subject = null; else if(wsec === 'prog'){ delete d.prog[k]; delete d.progBase[k]; delete d.progBaseSrc[k]; } else if(wsec === 'plan') delete d.plan[k];
+      rptWDraftPut(from, to, d, true); buildReport();
+      const f = wsec === 'subject' ? $('#rptOut .rdoc-subj') : [...$$('#rptOut .rdoc-ta')].find(x => x.dataset.wsec === wsec && x.dataset.wk === k); if(f) f.focus();
+    });
+  } else if(b.dataset.rdact === 'resetall'){
+    confirmBox('모두 초안으로', '이 기간의 고친 칸과 뺀 과제를 모두 버리고 초안으로 되돌릴까요?', '되돌리기').then(r => {
+      if(r !== 'ok') return;
+      rptWDraftPut(from, to, rptWEmpty(from, to), true); buildReport();
+      const f = $('#rptOut .rdoc-subj') || $('#rptViewSeg .seg-b.active'); if(f) f.focus();
+    });
+  }
 }
 function buildReport(){
   const from = $('#rptFrom').value, to = $('#rptTo').value;
@@ -14440,19 +14754,29 @@ function buildReport(){
     rptViewBarSync(true);
   }
   const _docView = daily && rptView === 'doc' && !PEER;
+  //  주간 작성(WEEKLY-EDIT): 이름 키 행 모델과 그 기간 초안. 기간 취합(custom)은 이 갈래를 타지 않는다.
+  const weekly = (reportMode === 'weekly');
+  const _wm = weekly ? rptWModelCal(rows, from, to) : null;
+  const _wKeep = weekly ? rptWKeepFocus(out) : null;
+  const _wd = weekly ? rptWBegin(_wm) : null;
+  const _wDoc = weekly && rptViewW === 'doc' && !PEER;
   //  다시 그려도(데이터 변경 알림 등) 쓰던 내용 칸의 포커스와 커서를 지킨다: 글은 입력 때마다 메모리에 이미 들어가 있다.
   const _ae = document.activeElement;
   const _keepTa = (_docView && _ae && _ae.classList && _ae.classList.contains('rdoc-ta') && out.contains(_ae))
     ? { cat: _ae.dataset.rcat, s: _ae.selectionStart, e: _ae.selectionEnd } : null;
   let html = '';
+  let _ri = -1;
   if(_docView) html = rptDocHtml(__rptCtx, _dr);
+  else if(_wDoc) html = rptWDocHtml(_wm, _wd);
   else for(const r of rows){
+    _ri++;
     const hasEntry = r.entries.length > 0;
-    const _out = !!(_dr && _dr.out.includes(r.key));        // X 로 뺀 과제: 카드는 그 자리에 흐리게 남는다(행 수, 순서 불변)
-    const _edited = !!(_dr && _rptOwn(_dr.body, r.key));    // 글 편집에서 고친 과제: 본문은 고친 글 그대로
-    const _freeText = _edited ? reportEditedBodyOut(_dr.body[r.key], ' ') : '';
+    const _w = weekly ? _wm.rows[_ri] : null;               // 주간 행(이름 키)
+    const _out = weekly ? _wd.out.includes(_w.k) : !!(_dr && _dr.out.includes(r.key));        // X 로 뺀 과제: 카드는 그 자리에 흐리게 남는다(행 수, 순서 불변)
+    const _edited = weekly ? _rptOwn(_wd.prog, _w.k) : !!(_dr && _rptOwn(_dr.body, r.key));    // 글 편집에서 고친 과제: 본문은 고친 글 그대로
+    const _freeText = _edited ? reportEditedBodyOut(weekly ? _wd.prog[_w.k] : _dr.body[r.key], ' ') : '';
     const hasContent = _edited ? !!_freeText : r.titles.length > 0;   // 할일/커밋만 있어도 내용 있음: 흐림 판정은 '내용 유무'로(일정 유무 아님)
-    html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}${_out ? ' rcard-out' : ''}"${daily ? ` data-rcat="${esc(r.key)}"` : ''}>`;
+    html += `<div class="rcard${hasContent ? '' : ' rcard-empty'}${_out ? ' rcard-out' : ''}"${daily ? ` data-rcat="${esc(r.key)}"` : (weekly ? ` data-wk="${esc(_w.k)}"` : '')}>`;
     html += `<div class="rcard-head"><span class="rc-dot" style="background:${validColor(r.color || '#5b6b7d')}"></span>`;
     html += `<span class="rcard-nm">${esc(r.name)}</span>`;
     if(_edited) html += `<span class="rcard-edited" title="글 편집에서 고친 과제입니다. 캘린더 기록은 바뀌지 않습니다">고침</span>`;
@@ -14464,6 +14788,7 @@ function buildReport(){
         + (PEER ? '' : `<button type="button" class="rcard-x" data-rxact="out" title="이 보고서에서 빼기" aria-label="${esc(r.name)} 이 보고서에서 빼기"${_out ? ' tabindex="-1"' : ''}>${ICON.xmark}</button>`) + `</span>`
         + (_out ? `<span class="rcard-outnote">이 보고서에서 뺌 <button type="button" class="lnk rcard-back" data-rxact="back" aria-label="${esc(r.name)} 보고서에 되돌리기">되돌리기</button></span>` : '')
         + `</span>`; }
+    else if(weekly) html += rptWSlotHtml(_w, _out);   // 주간: 이번 주 시간(읽기 전용) + X
     html += `</div>`;
     if(_edited){
       if(_freeText) html += `<div class="rcard-tasks rcard-free">${esc(_freeText)}</div>`;   // 고친 글 그대로(줄바꿈, 들여쓰기 보존)
@@ -14474,11 +14799,11 @@ function buildReport(){
           const m = (r.titleMeta && r.titleMeta[i]) || null;
           return `<div class="rtask rtask-ro">${_mkS}<span class="rtask-main"><span class="rtask-t">${esc(t)}</span>${reportDetailsHtml(m)}${reportDayLinesHtml(m, false, spanMulti)}</span></div>` + ((m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : '');
         }).join('') + `</div>`;
-      } else {   // 주간/커스텀: 제목은 읽기전용 — 단, 기간 할일 날짜별 dayNote 라인만 예외적으로 편집 개방(제목은 계속 읽기전용)
+      } else {   // 주간/커스텀: 제목은 읽기전용. 기간 할일 날짜별 dayNote ✎ 는 기간 취합에만 남는다(주간은 읽기 전용, WEEKLY-EDIT §3.2)
         html += `<div class="rcard-tasks" style="padding-left:${_padL}px">${r.titles.map((t, i) => {
           const _mk = reportMarkerAt(_mkSpec, i);
           const m = (r.titleMeta && r.titleMeta[i]) || null;
-          return `<div class="rtask-roline">${_mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : ''}<span class="rtask-main">${esc(t)}${reportDetailsHtml(m)}${reportDayLinesHtml(m, true, spanMulti)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</span></div>`;
+          return `<div class="rtask-roline">${_mk ? `<span class="rtask-mk">${esc(_mk)} </span>` : ''}<span class="rtask-main">${esc(t)}${reportDetailsHtml(m)}${reportDayLinesHtml(m, !weekly, spanMulti)}${(m && m.body) ? `<div class="rtask-body">${esc(m.body)}</div>` : ''}</span></div>`;
         }).join('')}</div>`;
       }
     }
@@ -14492,6 +14817,7 @@ function buildReport(){
       if(ta){ ta.focus(); try{ ta.setSelectionRange(_keepTa.s, _keepTa.e); }catch(_){} } }
   }
   if(daily) rptEditInfoRender();
+  if(weekly){ rptWAfterRender(); _wKeep(); }
   const totalItems = rows.reduce((n, r) => n + r.titles.length, 0);
   let line = `${from} ~ ${to}, 과제 ${rows.length}개, 업무 ${totalItems}건`;
   const picked = [src.event && '일정', src.todo && '할 일', src.git && '커밋'].filter(Boolean);
@@ -14500,6 +14826,11 @@ function buildReport(){
     const _nOut = _dr ? rows.filter(r => _dr.out.includes(r.key)).length : 0;
     if(_nOut) line += `, ${_nOut}개 뺌`;
     if(!PEER) line += '. 내용은 글 편집에서 고칩니다. 캘린더 기록은 바뀌지 않습니다';   // 열람 창에는 글 편집이 없다
+  }
+  if(weekly){   // 주간도 같은 안내(WEEKLY-EDIT §3)
+    const _nOutW = _wm.rows.filter(w => _wd.out.includes(w.k)).length;
+    if(_nOutW) line += `, ${_nOutW}개 뺌`;
+    if(!PEER) line += '. 내용은 글 편집에서 고칩니다. 캘린더 기록은 바뀌지 않습니다';
   }
   sum.textContent = line;
 }
@@ -14597,8 +14928,14 @@ function renderNetcusError(err, from, to){
 function renderNetcusPreview(parsed, at){
   const out = $('#rptOut'), sum = $('#rptSummary');
   if(!out) return;
+  //  주간 작성이면 글 편집(WEEKLY-EDIT): 이름 키 행 모델, X, 글 편집 보기. 기간 취합(custom)은 예전 그대로 읽기 전용.
+  const _weekly = (reportMode === 'weekly');
+  const _wm = _weekly ? rptWModelNet(parsed, $('#rptFrom').value, $('#rptTo').value) : null;
+  const _wKeep = _weekly ? rptWKeepFocus(out) : null;
+  const _wd = _weekly ? rptWBegin(_wm) : null;
   const md = d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); return m ? ((+m[2]) + '/' + (+m[3])) : String(d || ''); };
-  let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + ' 읽기전용: netcus 일간보고를 그대로 가져옴'
+  //  주간 작성은 이 글을 고쳐 보낸다: "읽기전용" 은 맞지 않는다. 기간 취합은 예전 배너 그대로.
+  let html = '<div class="rnc-banner"><span class="rnc-banner-t">' + ICON.book + (_weekly ? ' netcus 일간보고를 합친 초안입니다. 고친 글은 회사 일간보고를 바꾸지 않습니다' : ' 읽기전용: netcus 일간보고를 그대로 가져옴')
     + (at ? ' <span class="rnc-at">(조회 ' + esc(at) + ')</span>' : '') + '</span>'
     + '<button type="button" class="rnc-refresh" id="rncRefresh" title="다시 읽기">' + ICON.refresh + ' 새로고침</button></div>';
   // 읽기 실패 날 가시화(무음 손실 방지) — ok:false로 못 읽은 날은 '빈 날'과 별개의 danger 배너로.
@@ -14606,14 +14943,21 @@ function renderNetcusPreview(parsed, at){
   if(_rf.length){
     html += '<div class="rnc-fail">' + ICON.alert + ' 읽기 실패 ' + _rf.length + '일(재시도 권장): ' + esc(_rf.map(md).join(', ')) + '</div>';
   }
+  if(_weekly && rptViewW === 'doc' && !PEER) html += rptWDocHtml(_wm, _wd);
+  else {
+  let _ti = -1;
   for(const t of parsed.tasks){
-    html += '<div class="rcard rnc-card">';
+    _ti++;
+    const _w = _weekly ? _wm.rows[_ti] : null, _wOut = !!(_w && _wd.out.includes(_w.k)), _wEd = !!(_w && _rptOwn(_wd.prog, _w.k));
+    html += '<div class="rcard rnc-card' + (_wOut ? ' rcard-out' : '') + '"' + (_w ? ' data-wk="' + esc(_w.k) + '"' : '') + '>';
     const hb = t.hoursByDate || {}; const hk = Object.keys(hb);
     let hsum = 0; for(const k of hk) hsum += (hb[k] || 0); hsum = Math.round(hsum * 100) / 100;
     // 헤더는 과제명만(진행사항 필드 계약). 시간은 과제투입시간(content)로 감 → 작은 힌트로만 표기(헤더 대괄호엔 안 붙임).
-    const hHint = hk.length ? '<span class="rnc-hhint">과제투입시간 ' + esc(String(hsum)) + 'h</span>' : '';
-    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>') + '</div>';
-    if(t.lines.length){   // 날짜 프리픽스 없이 + 동일 내용 중복 제거(주간 종합 뷰)
+    const hHint = (hk.length && !_w) ? '<span class="rnc-hhint">과제투입시간 ' + esc(String(hsum)) + 'h</span>' : '';
+    html += '<div class="rcard-head"><span class="rcard-nm">' + esc('[' + t.name + ']') + '</span>' + hHint + (t.matched ? '' : '<span class="rnc-badge">미등록</span>')
+      + (_wEd ? '<span class="rcard-edited" title="글 편집에서 고친 과제입니다. 캘린더 기록은 바뀌지 않습니다">고침</span>' : '') + (_w ? rptWSlotHtml(_w, _wOut) : '') + '</div>';
+    if(_wEd){ const ft = reportEditedBodyOut(_wd.prog[_w.k], ' '); if(ft) html += '<div class="rcard-tasks rcard-free">' + esc(ft) + '</div>'; }
+    else if(t.lines.length){   // 날짜 프리픽스 없이 + 동일 내용 중복 제거(주간 종합 뷰)
       const seen = Object.create(null), body = [];   // create(null): 'constructor' 등 프로토타입 이름 라인 오탈락 방지(전송/복사와 WYSIWYG 일치)
       for(const ln of t.lines){ const tx = ln.text || ''; if(tx && !seen[tx]){ seen[tx] = 1; body.push(esc(tx)); } }
       if(body.length) html += '<div class="rcard-tasks">' + body.join('<br>') + '</div>';
@@ -14621,18 +14965,25 @@ function renderNetcusPreview(parsed, at){
     html += '</div>';
   }
   if(parsed.unclassified.length){
-    html += '<div class="rcard rnc-card rnc-uncat"><div class="rcard-head"><span class="rcard-nm">[미분류]</span></div><div class="rcard-tasks">'
+    const _w = _weekly ? _wm.rows.find(x => x.k === RPT_UNCAT_KEY) : null, _wOut = !!(_w && _wd.out.includes(_w.k)), _wEd = !!(_w && _rptOwn(_wd.prog, _w.k));
+    html += '<div class="rcard rnc-card rnc-uncat' + (_wOut ? ' rcard-out' : '') + '"' + (_w ? ' data-wk="' + esc(_w.k) + '"' : '') + '><div class="rcard-head"><span class="rcard-nm">[미분류]</span>'
+      + (_wEd ? '<span class="rcard-edited" title="글 편집에서 고친 과제입니다. 캘린더 기록은 바뀌지 않습니다">고침</span>' : '') + (_w ? rptWSlotHtml(_w, _wOut) : '') + '</div>';
+    if(_wEd){ const ft = reportEditedBodyOut(_wd.prog[_w.k], ' '); html += ft ? '<div class="rcard-tasks rcard-free">' + esc(ft) + '</div>' : ''; html += '</div>'; }
+    else html += '<div class="rcard-tasks">'
       + parsed.unclassified.map(u => {
           const why = (u.reason === 'ambiguous') ? '형식 모호' : '머리표 없음';
           return '<div class="rnc-uline">' + esc(u.text) + ' <span class="rnc-why">// ' + esc(why) + ', ' + esc(md(u.date)) + '</span></div>';
         }).join('')
       + '</div></div>';
   }
+  }
   if(!parsed.tasks.length && !parsed.unclassified.length){
     html += '<div class="rpt-guard">그 기간 netcus 일간보고에서 가져올 내용이 없습니다.</div>';
   }
   out.innerHTML = html;
-  const rb = $('#rncRefresh'); if(rb) rb.addEventListener('click', () => { const f = $('#rptFrom').value, tt = $('#rptTo').value; clearNetcusMerge(); renderNetcusInto(f, tt); });
+  if(_weekly){ rptWAfterRender(); _wKeep(); }
+  //  새로고침은 buildReport 를 지나지 않는다: 읽는 동안 보기 전환 줄과 주간 문맥을 buildReport 처럼 먼저 걷는다(WEEKLY-EDIT 정정).
+  const rb = $('#rncRefresh'); if(rb) rb.addEventListener('click', () => { const f = $('#rptFrom').value, tt = $('#rptTo').value; rptViewBarSync(false); clearNetcusMerge(); renderNetcusInto(f, tt); });
   // 상태 라인 — 과제/미분류(사유별)/미등록/읽은 날/빈 날
   const st = parsed.stats, parts = ['과제 ' + parsed.tasks.length + '개'];
   if(parsed.unclassified.length){
@@ -14648,6 +14999,7 @@ function renderNetcusPreview(parsed, at){
     parts.push('빈 날: ' + st.emptyDays.map(d => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? WD[new Date(+m[1], +m[2]-1, +m[3]).getDay()] : d; }).join('·'));
   }
   if(st.readFailedDays && st.readFailedDays.length) parts.push('읽기 실패 ' + st.readFailedDays.length + '일');
+  if(_weekly){ const _n = _wm.rows.filter(w => _wd.out.includes(w.k)).length; if(_n) parts.push(_n + '개 뺌'); }
   if(sum) sum.textContent = parts.join(', ');
   updateRptSendVis();   // 읽기 잠금(__netcusBusy)으로 비활성됐던 전송 버튼을 현재 모드 기준으로 복원
 }
@@ -14783,7 +15135,9 @@ function syncReportSourceSeg(){
 function openReport(){
   clearNetcusMerge(); clearNetcusWeeklyMerge();   // 모달 열 때 netcus 병합 캐시 초기화(그 세션만 보유)
   rptView = 'card';   // 일간 미리보기는 늘 카드 보기로 연다(REPORT-EDIT §2.1)
+  rptViewW = 'card';  // 주간도(WEEKLY-EDIT §3.1)
   rptDraftPrune();    // 14일 지난 이 계정의 임시 저장 정리(§4). 그 뒤의 렌더는 읽기만 한다
+  rptWDraftPrune();   // 주간: 기간 끝이 14일 넘게 지난 키(WEEKLY-EDIT §5)
   openModal('#reportModal');
   setReportMode('daily');   // 기본: 일간(오늘). 포함 항목 선택은 setReportMode→applyRptSourcePrefs가 모드별로 복원. 주간/커스텀은 탭으로 전환
   // 재오픈 시 ⚙옵션 접힘(좁은 폭 컴팩트) + 내용 출처 세그를 state.reportSource로 반영
@@ -14947,6 +15301,11 @@ function buildReportText(indentUnit){
   // ★ 캐시는 '그 기간의 것'일 때만 쓴다 — 전송 경로(#btnRptSend)가 이미 같은 대조를 한다(netcusMerge.key === ncMergeKey).
   //   복사만 대조를 빼면 기간을 바꾼 직후 복사한 내용이 화면과 다른 주(직전 기간)가 된다.
   const _ncF = $('#rptFrom').value, _ncT = $('#rptTo').value;
+  //  주간 작성 복사(WEEKLY-EDIT §4): 고친 진행사항이나 뺀 과제가 있을 때만 다시 만든다. 없으면 아래 예전 길 그대로(바이트 같음).
+  if(reportMode === 'weekly' && state.reportSource !== 'week'){
+    const _wM = rptWModelNow(_ncF, _ncT);
+    if(_wM){ const _wD = rptWDraftGet(_ncF, _ncT), _wL = rptWLive(_wM, _wD); if(_wL.out.length || _wL.prog.length) return rptWCopyText(_wM, _wD, indentUnit); }
+  }
   if(state.reportSource === 'week' && reportMode !== 'daily'){
     const _wp = (netcusWeeklyMerge && netcusWeeklyMerge.parsed && netcusWeeklyMerge.key === ncMergeKey(_ncF, _ncT)) ? netcusWeeklyMerge.parsed : null;
     return _wp ? buildNetcusWeeklyText(_wp, weeklyFlat) : '';
@@ -16395,9 +16754,11 @@ function bind(){
       if(state.reportSource === 'net'){
         const parsed = (netcusMerge.key === ncMergeKey(from, to)) ? netcusMerge.parsed : null;
         if(!parsed){ toast('먼저 netcus 일간보고를 불러오세요', 'warn'); return; }
-        const endwork = buildNetcusSendText(parsed);
+        //  네 칸 = 예전 조립(buildNetcus*)을 감싼 것. 글 편집에서 고친 칸과 뺀 과제만 바뀐다(WEEKLY-EDIT §4).
+        const wo = rptWOutFields(from, to);
+        const endwork = wo ? wo.endwork : '';
         if(!endwork.trim()){ toast('보낼 내용이 없습니다', 'warn'); return; }
-        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: weekSubjectGuess(from), content: buildNetcusHoursText(parsed), endwork, planwork: buildNetcusPlanText(parsed) } };
+        const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wo.subject, content: wo.content, endwork, planwork: wo.planwork } };
         if(Platform.caps.reportAuto){
           const b = $('#btnRptSend'); if(b) b.disabled = true;
           const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' 주간보고 폼 여는 중…'); s.className = 'rpt-send-status busy'; }
@@ -16406,7 +16767,7 @@ function bind(){
         Platform.report.submitWeekly(payload);
         return;
       }
-      const wf = buildWeeklyFields(from, to, rptSources());
+      const wf = rptWOutFields(from, to);   // buildWeeklyFields 를 감싼다: 고친 것도 뺀 것도 없으면 그 결과 그대로(WEEKLY-EDIT §4)
       if(!wf || (!wf.content && !wf.endwork)){ toast('보낼 내용이 없습니다', 'warn'); return; }
       // 표준 페이로드(포트 계약 — Platform.report 어댑터가 소비)
       const payload = { __tc: 'netcus-report', v: 1, kind: 'weekly', fields: { sdate: from, edate: to, subject: wf.subject, content: wf.content, endwork: wf.endwork, planwork: wf.planwork } };
@@ -16982,6 +17343,7 @@ function bind(){
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest && ev.target.closest('[data-rxact], [data-rdact]'); if(!b) return;
     if(peerReadOnly()) return;
+    if(reportMode === 'weekly'){ rptWClick(b); return; }   // 주간 글 편집(WEEKLY-EDIT): 이름 키, 기간 키
     if(reportMode !== 'daily') return;
     const date = $('#rptFrom').value;
     const focusIn = (cat, sel) => { const c = [...$$('#rptOut [data-rcat]')].find(x => x.dataset.rcat === cat); const t = c && c.querySelector(sel); if(t) t.focus(); };
@@ -17017,17 +17379,19 @@ function bind(){
     }
   });
   $('#rptOut').addEventListener('input', ev => {
-    const ta = ev.target.closest && ev.target.closest('.rdoc-ta'); if(!ta) return;
-    rptDocInput(ta);
+    const ta = ev.target.closest && ev.target.closest('.rdoc-ta, .rdoc-subj'); if(!ta) return;
+    if(reportMode === 'weekly') rptWDocInput(ta); else rptDocInput(ta);
   });
   $('#rptViewSeg').addEventListener('click', ev => {   // 보기 전환 [카드][글 편집]: 글과 X 는 보기와 무관하게 그대로다
-    const b = ev.target.closest && ev.target.closest('[data-rview]'); if(!b || b.dataset.rview === rptView) return;
+    const b = ev.target.closest && ev.target.closest('[data-rview]'); if(!b) return;
     if(PEER) return;
-    rptView = (b.dataset.rview === 'doc') ? 'doc' : 'card';
+    const v = (b.dataset.rview === 'doc') ? 'doc' : 'card';
+    if(reportMode === 'weekly'){ if(v === rptViewW) return; rptViewW = v; }   // 보기는 모드별로 따로(WEEKLY-EDIT §3.1)
+    else { if(v === rptView) return; rptView = v; }
     buildReport();
   });
   window.addEventListener('pagehide', rptDraftFlush);   // 모아 두던 입력이 있으면 창이 내려갈 때 쓴다(잃어도 되는 임시본이지만 아낄 수 있으면 아낀다)
-  // 날짜별 dayNote 라인 편집(✎): 주간만(제목 읽기전용이어도 이 라인만 편집 개방. 일간 카드는 읽기 전용, REPORT-EDIT §5). 저장은 commitDayNoteEdit→updateTodo 단일 경로.
+  // 날짜별 dayNote 라인 편집(✎): 기간 취합만(일간과 주간 카드는 읽기 전용, REPORT-EDIT §5, WEEKLY-EDIT §3.2). 저장은 commitDayNoteEdit→updateTodo 단일 경로.
   $('#rptOut').addEventListener('click', ev => {
     const b = ev.target.closest && ev.target.closest('.rdn [data-dnact]'); if(!b) return;
     if(b.dataset.dnact === 'edit'){
