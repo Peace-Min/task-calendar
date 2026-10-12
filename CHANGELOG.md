@@ -7,6 +7,21 @@
 
 ---
 
+## 🆕 2026-10-12, v0.20.0: 보고서 글 편집(일간, 주간), 주간 같은 기간 수정 화면, 보고서 묶음, 기본 과제 휴가와 기타, XML 병합 제거, 다른 사람 일정과 관리 화면 정리 (스키마 변경 없음)
+
+0.19.1 은 사내에 배포되지 않았고, 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마, GRANT 변경 없음**(v12, `CalendarDb.ExpectedSchemaVersion = "12"` 그대로). `db/deploy/schema-calendar.sql` 은 주석만 바뀌었다(과제 삭제가 일정, 할 일, 공수를 함께 지운다는 설명).
+
+- **XML 병합 제거**(`6373cd3`, 기획 [docs/XML-MERGE-REMOVAL.md](docs/XML-MERGE-REMOVAL.md)): 가져오기는 언제나 전량 교체.
+- **기본 과제 휴가, 기타**(`4b4a018`, 기획 [docs/DEFAULT-TASKS.md](docs/DEFAULT-TASKS.md)): 이름 기준 식별, `ensureDefaultTasks` 부팅 보장, '과제 없음' 상태와 미분류/기타 분류 로직 제거, `deleteCategory` 가 데이터를 함께 지움, `moveCategoryData` 옮기기, 이관 도구(`db/deploy/xml-to-db`)도 같은 규칙. **주의**: 일회성 NULL 정리는 두지 않았다(DB 미배포 전제). 0.19.x 에서 cat_no NULL 로 저장된 기록은 보고서에 나오지 않는다.
+- **일간 보고서 글 편집**(`028409e`, [docs/REPORT-EDIT.md](docs/REPORT-EDIT.md)): 카드 X(이 보고서에서 빼기), 본문 자유 줄, 머리 줄 잠금, localStorage 임시 저장 `tc_rptDraft:<who>:<date>`, 보고서와 캘린더 분리.
+- **주간 글 편집**(`2d04f4e`, `3e26bed`, [docs/WEEKLY-EDIT.md](docs/WEEKLY-EDIT.md)): 제목(자동, 잠금), 진행사항, 과제투입시간(읽기 전용), 차주계획. 임시 저장 `tc_rptDraftW:<who>:<from>_<to>`, 스키마 변경 없음.
+- **주간 같은 기간 수정 화면**(`dbb050f`, [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md)): `NcCrawlWeekly`, `NcFindSameWeek`, `NcPickSameWeek` 로 같은 기간 글을 찾아 `pjm_modify.jsp` 로 연다. 실사이트 수동 확인 대기.
+- **보고서 묶음**(`033ba2d`, `7526e7b`, [docs/REPORT-GROUP.md](docs/REPORT-GROUP.md)): 초안 `group:{src:target}` 한 단계, 설정 창은 포인터 이벤트 끌어넣기와 ⋯ 메뉴, X.
+- **다른 사람 일정, 관리 화면**(10-01~10-06 커밋): 겹쳐 보기, 나란히 보기, 사람 고르기(조직도 탭), 관리 허브 2~4차, '내 과제', 휴지통 통일, 관리자 아니면 관리 화면 차단, 화면 문구 기호 정리(`2deb3b6`).
+- 게이트: `TC_TEST_STRICT=1 node tests/run-tests.mjs` exit 0, 0 fail, 0 skip. 실 위젯 루프 33/33. 인스톨러 빌드와 `latest.json` sha256 대조.
+
+---
+
 ## 🆕 2026-10-01 — v0.19.1: 과제 순서 · 기간 칩 클릭 · 타인 일정 전체 보기 · 창 버튼·보고서 전송 정리 (스키마 변경 없음)
 
 0.19.0 빌드 뒤 미배포 동안 들어온 사용자 제보·요구(2026-10-01)를 묶은 패치 릴리스다. **서버 스키마·GRANT 변경 없음**(v12 · `CalendarDb.ExpectedSchemaVersion = "12"` 그대로) — 0.19.0 과 같은 서버에 그대로 올린다.
