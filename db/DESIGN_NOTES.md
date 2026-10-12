@@ -1,43 +1,43 @@
-# 설계 노트 — 과제관리 DB (모델 B: DB 원본 · 필드별 근거 · 추출/이관 전략)
+# 과제관리 DB 설계 노트 (모델 B: DB 원본, 필드별 근거, 추출/이관 전략)
 
-> 이 DB는 **원본(source of truth)이다.** Admin이 캘린더 앱으로 과제를 등록/수정(CRUD — 대상 행은 `uid` 기준)하고, Excel은 DB에서 **추출하는 리포트**일 뿐이다(양방향 동기화 없음). 기존 사업부 Excel은 **최초 1회만** 이관하고 이후엔 DB가 마스터다.
-> 이전의 "Excel 장표 컴팩트 미러" 서사(Excel 원본 → DB 미러 → 멱등 UPSERT 재임포트, `source_no`/`customer.no` 보존)와 2축(유형×단계)·결정론 uid·룩업 테이블·캘린더 전용 뷰·CHECK 설계는 **이 모델 B로 대체(superseded)됨.** 아래는 현재 확정 설계 기준으로만 서술한다.
+> 이 DB는 **원본(source of truth)이다.** Admin이 캘린더 앱으로 과제를 등록/수정(CRUD, 대상 행은 `uid` 기준)하고, Excel은 DB에서 **추출하는 리포트**일 뿐이다(양방향 동기화 없음). 기존 사업부 Excel은 **최초 1회만** 이관하고 이후엔 DB가 마스터다.
+> 이전의 "Excel 장표 컴팩트 미러" 서사(Excel 원본 → DB 미러 → 멱등 UPSERT 재임포트, `source_no`/`customer.no` 보존)와 2축(유형×단계), 결정론 uid, 룩업 테이블, 캘린더 전용 뷰, CHECK 설계는 **이 모델 B로 대체(superseded)됨.** 아래는 현재 확정 설계 기준으로만 서술한다.
 
 ## §1 모델 B(DB 원본) 채택 이유
-- **원본을 DB 하나로 못박아 "앱↔Excel 양방향 동기화 지옥"을 원천 차단한다.** 두 원본(Excel과 DB)이 공존하면 어느 쪽이 최신인지·충돌을 누가 이기는지·재임포트 멱등성 같은 문제가 끝없이 생긴다.
+- **원본을 DB 하나로 못박아 "앱↔Excel 양방향 동기화 지옥"을 원천 차단한다.** 두 원본(Excel과 DB)이 공존하면 어느 쪽이 최신인지, 충돌을 누가 이기는지, 재임포트 멱등성 같은 문제가 끝없이 생긴다.
 - **Excel은 DB에서 추출하는 리포트**로 역할을 뒤집었다. 사업부가 보던 장표 모양은 유지하되, 그 데이터의 주인은 DB다. Excel을 고쳐도 DB로 되돌아오지 않는다(단방향).
-- 편집 주체는 **캘린더 앱의 Admin**. `uid` 기준 CRUD로 과제를 등록·수정·(소프트)삭제한다(외부 참조 안정성 §2). DB가 목록·제약·이력을 강제한다.
+- 편집 주체는 **캘린더 앱의 Admin**. `uid` 기준 CRUD로 과제를 등록, 수정, (소프트)삭제한다(외부 참조 안정성 §2). DB가 목록, 제약, 이력을 강제한다.
 
 ## §2 필드별 설계 결정 (왜 이렇게)
-- **`project.id` = 내부 대리키** — `INT UNSIGNED AUTO_INCREMENT PK`. 내부 조인·PK용. DB가 원본이므로 운영 중 DROP 재구축을 하지 않아 id도 안정적이지만, **외부(위젯) 참조에는 id를 쓰지 않는다** — 아래 uid 사용.
-- **`project.uid` = 외부 안정 참조키(D1)** — `CHAR(36) NOT NULL DEFAULT (UUID())`, `UNIQUE`(assign-once). 위젯 일정이 `db-<uid>`로 참조하고, 앱의 마스터 CRUD도 대상 행을 **uid로 지목**한다(UPSERT/소프트삭제 `WHERE uid=@uid`). 일정이 DB 밖에 있어 rebuild·rename·재채번에 참조가 엉키는 사고를 막는다. ✅ schema.sql 반영 완료(로컬 전 행에 UUID 부여 — 행 수는 여기 적지 않는다. 현황 조회로 확인할 것). (→ `ARCHITECTURE.md` §4.7.3, ADR #13)
-- **`section`/`status` = 코드테이블 + FK** *(2026-07-24 ADR-22 — 원래 ENUM이었다)* — Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**하는 목표는 같고, 강제 수단이 타입에서 **외래키**로 바뀌었다.
+- **`project.id` = 내부 대리키**: `INT UNSIGNED AUTO_INCREMENT PK`. 내부 조인·PK용. DB가 원본이므로 운영 중 DROP 재구축을 하지 않아 id도 안정적이지만, **외부(위젯) 참조에는 id를 쓰지 않는다.** 아래 uid를 쓴다.
+- **`project.uid` = 외부 안정 참조키(D1)**: `CHAR(36) NOT NULL DEFAULT (UUID())`, `UNIQUE`(assign-once). 위젯 일정이 `db-<uid>`로 참조하고, 앱의 마스터 CRUD도 대상 행을 **uid로 지목**한다(UPSERT/소프트삭제 `WHERE uid=@uid`). 일정이 DB 밖에 있어 rebuild, rename, 재채번에 참조가 엉키는 사고를 막는다. ✅ schema.sql 반영 완료(로컬 전 행에 UUID 부여. 행 수는 여기 적지 않는다. 현황 조회로 확인할 것). (참고: `ARCHITECTURE.md` §4.7.3, ADR #13)
+- **`section`/`status` = 코드테이블 + FK** *(2026-07-24 ADR-22, 원래 ENUM이었다)*: Admin이 드롭다운에서 고르게 만들어 "진행중"/"진행 중"/"진행중 " 같은 **오타·공백 변종을 DB가 거부**하는 목표는 같고, 강제 수단이 타입에서 **외래키**로 바뀌었다.
   - `section VARCHAR(50) NOT NULL` → FK `section_code(name)`
-  - `status VARCHAR(50) NULL` → FK `status_code(name)` (선진행 = 계약 前 → NULL이면 FK 검사 스킵)
-  - 코드테이블은 `name` PK + `sort_order` + `is_active` + 감사. **추가=INSERT · 개명=`name` UPDATE(→ `ON UPDATE CASCADE`로 `project`까지 전파) · 재배치=`sort_order` · 숨김=`is_active=0`** 이 전부 앱에서 된다.
-  - **왜 바꿨나 — ENUM의 트레이드오프가 실제로 아팠다.** 값 추가·개명·순서·숨김에 전부 `ALTER TABLE ... MODIFY`가 필요해 런타임 관리가 불가능했다. 아래 §5가 "필요해지면 룩업 테이블로 승급"이라 적어 둔 그 경로를 실제로 갔다. 기존 DB 이관은 `deploy/migrate.ps1` 단계2(무손실·멱등). 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5.
-- **`is_active` = 소프트 삭제** — `TINYINT(1) DEFAULT 1`. 앱의 "삭제"는 `is_active=0`(숨김, **복구 가능·이력 보존**). 영구 삭제는 권한자가 DB에서 직접 `DELETE`로 청소. 조회는 보통 `WHERE is_active=1`. customer/project 양쪽에 둔다.
-- **`created_at`/`updated_at` = 감사** — `DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)`, `updated_at`은 `ON UPDATE CURRENT_TIMESTAMP(3)`로 **수정된 행만 자동 갱신**. 누가·언제 바꿨는지의 "언제"를 DB가 자동 기록(누가는 추후 `updated_by` 추가 여지, §5). **값은 UTC다.** 서버 기본값 `CURRENT_TIMESTAMP(3)`는 세션 `time_zone`으로 평가되고 이 서버의 `time_zone`은 `SYSTEM`(KST)이므로, 그것이 UTC로 평가되는 근거는 **접속 프리앰블의 `SET SESSION time_zone='+00:00'` 하나뿐이다**(`ProjectDb`의 읽기/쓰기 양쪽에 2026-09-09 신설). **프리앰블 없는 쓰기 주체를 새로 만들면 한 컬럼에 KST와 UTC가 섞이고 되돌릴 수 없다** — `DATETIME`은 '한 번 밀렸는지'를 값만 보고 구분할 수단이 없다. 2026-09-09 이전에 쌓인 행은 실제로 KST로 적혀 있었고, `deploy/migrate-2026-09-09-integrity.sql`이 **-9h 1회 정규화**로 되돌렸다(그래서 그 파일은 재실행 안전이 아니다).
-- **~~`UNIQUE(customer, project_name)`~~ → 유니크는 `uid` 하나뿐** *(2026-07-24 ADR-21)* — 같은 발주처 내 동일 사업명 금지를 **업무 규칙으로 DB에 박았다가 뺐다.** 실데이터 144건 검수 결과 `(발주처, 사업명)` 중복이 22조합/68건이었고 그 대부분이 **구성품별 계약**이라 정상이었다. 게다가 콜레이션이 ai_ci·NO PAD라 끝공백 변형은 오히려 통과시켜 **진짜 실수를 못 잡았다.** 지금은 하드 유니크 대신 **앱의 소프트 경고**(저장 시 TRIM + 정규화 비교로 유사하면 "그래도 추가?")로 잡고, `contract_name`/`common_name`은 비교 함정을 없애려 `NOT NULL DEFAULT ''`다. 기존 DB 이관은 `deploy/migrate-2026-07-24-uniqueness.sql`. 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4.
-- **FK `project.customer → customer.name` `ON UPDATE CASCADE`** — 발주처 개명 시 `project.customer`로 **자동 전파**. 삭제는 기본 `RESTRICT`(발주처를 지운다고 딸린 과제가 날아가지 않음 — 먼저 과제를 정리해야 함).
-- **`customer.name` = 자연키 PK** — 발주처명 자체가 키(FK 타겟). 발주처는 소량·고유하므로 대리키 없이 자연키로 충분.
+  - `status VARCHAR(50) NULL` → FK `status_code(name)` (선진행 = 계약 前이라 NULL이면 FK 검사 스킵)
+  - 코드테이블은 `name` PK + `sort_order` + `is_active` + 감사. **추가=INSERT, 개명=`name` UPDATE(`ON UPDATE CASCADE`로 `project`까지 전파), 재배치=`sort_order`, 숨김=`is_active=0`** 이 전부 앱에서 된다.
+  - **왜 바꿨나: ENUM의 트레이드오프가 실제로 아팠다.** 값 추가, 개명, 순서, 숨김에 전부 `ALTER TABLE ... MODIFY`가 필요해 런타임 관리가 불가능했다. 아래 §5가 "필요해지면 룩업 테이블로 승급"이라 적어 둔 그 경로를 실제로 갔다. 기존 DB 이관은 `deploy/migrate.ps1` 단계2(무손실·멱등). 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5.
+- **`is_active` = 소프트 삭제**: `TINYINT(1) DEFAULT 1`. 앱의 "삭제"는 `is_active=0`(숨김, **복구 가능·이력 보존**). 영구 삭제는 권한자가 DB에서 직접 `DELETE`로 청소. 조회는 보통 `WHERE is_active=1`. customer/project 양쪽에 둔다.
+- **`created_at`/`updated_at` = 감사**: `DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)`, `updated_at`은 `ON UPDATE CURRENT_TIMESTAMP(3)`로 **수정된 행만 자동 갱신**. 누가·언제 바꿨는지의 "언제"를 DB가 자동 기록(누가는 추후 `updated_by` 추가 여지, §5). **값은 UTC다.** 서버 기본값 `CURRENT_TIMESTAMP(3)`는 세션 `time_zone`으로 평가되고 이 서버의 `time_zone`은 `SYSTEM`(KST)이므로, 그것이 UTC로 평가되는 근거는 **접속 프리앰블의 `SET SESSION time_zone='+00:00'` 하나뿐이다**(`ProjectDb`의 읽기/쓰기 양쪽에 2026-09-09 신설). **프리앰블 없는 쓰기 주체를 새로 만들면 한 컬럼에 KST와 UTC가 섞이고 되돌릴 수 없다.** `DATETIME`은 '한 번 밀렸는지'를 값만 보고 구분할 수단이 없다. 2026-09-09 이전에 쌓인 행은 실제로 KST로 적혀 있었고, `deploy/migrate-2026-09-09-integrity.sql`이 **-9h 1회 정규화**로 되돌렸다(그래서 그 파일은 재실행 안전이 아니다).
+- **~~`UNIQUE(customer, project_name)`~~ → 유니크는 `uid` 하나뿐** *(2026-07-24 ADR-21)*: 같은 발주처 내 동일 사업명 금지를 **업무 규칙으로 DB에 박았다가 뺐다.** 실데이터 144건 검수 결과 `(발주처, 사업명)` 중복이 22조합/68건이었고 그 대부분이 **구성품별 계약**이라 정상이었다. 게다가 콜레이션이 ai_ci·NO PAD라 끝공백 변형은 오히려 통과시켜 **진짜 실수를 못 잡았다.** 지금은 하드 유니크 대신 **앱의 소프트 경고**(저장 시 TRIM + 정규화 비교로 유사하면 "그래도 추가?")로 잡고, `contract_name`/`common_name`은 비교 함정을 없애려 `NOT NULL DEFAULT ''`다. 기존 DB 이관은 `deploy/migrate-2026-07-24-uniqueness.sql`. 근거표는 [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4.
+- **FK `project.customer → customer.name` `ON UPDATE CASCADE`**: 발주처 개명 시 `project.customer`로 **자동 전파**. 삭제는 기본 `RESTRICT`(발주처를 지운다고 딸린 과제가 날아가지 않음. 먼저 과제를 정리해야 함).
+- **`customer.name` = 자연키 PK**: 발주처명 자체가 키(FK 타겟). 발주처는 소량·고유하므로 대리키 없이 자연키로 충분.
 
 ## §3 Excel 추출(리포트) 방향
 DB → Excel 추출 시:
 - **No 컬럼 = 추출 시점에 `ROW_NUMBER()`로 생성**한다. 저장하지 않는다(그래서 `source_no`·`customer.no`를 제거). 원본 No는 Excel 행 순번 아티팩트일 뿐, DB가 원본이면 무의미하다.
 - **섹션 헤더/그룹핑 = `section` 값으로 렌더링**한다. "일반계약/선진행/사업부관리" 블록 헤더와 그룹은 추출기가 section을 보고 그린다.
-- 즉 **Excel의 시각적 구조(순번·섹션 헤더·정렬)는 저장된 데이터가 아니라 추출기의 표현 관심사**다. DB는 순수 데이터만 갖고, 표현은 추출 단계에서 입힌다.
+- 즉 **Excel의 시각적 구조(순번, 섹션 헤더, 정렬)는 저장된 데이터가 아니라 추출기의 표현 관심사**다. DB는 순수 데이터만 갖고, 표현은 추출 단계에서 입힌다.
 
 ## §4 초기 이관 / 재구축 전략
-- **초기 이관(1회성)**: 기존 사업부 Excel(2시트) → `customer` 먼저(발주처 = FK 타겟) → `project`. 이후 Excel은 버리고 DB가 마스터. 이건 **한 번만** 하는 마이그레이션이지 반복 재임포트가 아니다.
+- **초기 이관(1회성)**: 기존 사업부 Excel(2시트)을 `customer` 먼저(발주처 = FK 타겟), 그다음 `project` 순으로 옮긴다. 이후 Excel은 버리고 DB가 마스터. 이건 **한 번만** 하는 마이그레이션이지 반복 재임포트가 아니다.
 - **로컬 개발/검증 시드**: `schema.sql` 하단의 더미 13건(롤 지명)은 **로컬 개발·검증용 픽스처**다. 실 국방데이터 아님. **서버 초기 배포 시엔 이 더미 시드 대신 실제 Excel 1회 이관으로 대체**한다.
-- **클린 재구축(로컬)**: `schema.sql` 앞부분이 옛 객체(캘린더 결합/미러 잔재 뷰·룩업 테이블·현재 테이블)를 `DROP`하므로, 통째 실행하면 깨끗한 재구축이다(재구축 자체는 멱등 — 몇 번 돌려도 같은 결과). 단, **운영 DB에는 데이터가 원본이므로 DROP 재구축을 돌리지 않는다** — 로컬 리셋 전용.
+- **클린 재구축(로컬)**: `schema.sql` 앞부분이 옛 객체(캘린더 결합/미러 잔재 뷰, 룩업 테이블, 현재 테이블)를 `DROP`하므로, 통째 실행하면 깨끗한 재구축이다(재구축 자체는 멱등이라 몇 번 돌려도 같은 결과). 단, **운영 DB에는 데이터가 원본이므로 DROP 재구축을 돌리지 않는다.** 로컬 리셋 전용.
 - 이관 시 이관 스크립트가 처리할 정리(발주처 표기 정규화, '미정'/공백 날짜→NULL, 선진행 상태 공백→NULL, 섹션 헤더행→section 값 승격)는 **1회성 이관기의 관심사**이지 DB의 상시 규칙이 아니다.
 
 ## §5 향후 (열린 결정 / 업그레이드 경로)
-- ✅ **~~ENUM 값 추가~~ → 룩업 테이블 승급 완료**(2026-07-24 ADR-22, §2). 이 항목이 예고한 경로를 그대로 갔다 — 값 추가·개명·순서·숨김이 전부 앱에서 되고 `ALTER TABLE`이 필요 없다.
+- ✅ **~~ENUM 값 추가~~ → 룩업 테이블 승급 완료**(2026-07-24 ADR-22, §2). 이 항목이 예고한 경로를 그대로 갔다. 값 추가, 개명, 순서, 숨김이 전부 앱에서 되고 `ALTER TABLE`이 필요 없다.
 - ⬜ **`updated_by` 감사 확장**: 지금은 "언제"만 기록. 누가 바꿨는지가 필요하면 `updated_by`(앱 사용자) 컬럼 추가. 앱 인증과 함께 설계.
 - ⬜ **DDL/시드 파일 분리**: 현재 `schema.sql`이 DDL+더미 시드를 겸한다. 서버 배포 시 실 이관이 시드를 대체하므로, 향후 **DDL(`schema.sql`)과 시드/이관(`seed.sql`/이관 스크립트)을 분리** 권장.
-- ✅ **캘린더 앱 연동(P3 완료)**: CRUD UI(등록/수정/소프트삭제 — 대상 행 `uid` 기준) + 위젯이 DB를 읽는 어댑터·단일 카테고리 스토어. 상세 `ARCHITECTURE.md` §4.7.
-- ✅ **`updated_by` 대신 계정 기반 권한 판정 도입**(2026-08-03 v0.17.0) — 편집 가능 여부는 로그인 계정의 `app_user.edit_role`이 **쓰기 요청 시점에** 정한다. 다만 *"누가 이 행을 바꿨나"*를 행에 남기는 `updated_by`는 아직 없다(위 항목 그대로 열려 있음). 로그인 설계는 [`../docs/USER-LOGIN.md`](../docs/USER-LOGIN.md).
+- ✅ **캘린더 앱 연동(P3 완료)**: CRUD UI(등록/수정/소프트삭제, 대상 행 `uid` 기준) + 위젯이 DB를 읽는 어댑터·단일 카테고리 스토어. 상세 `ARCHITECTURE.md` §4.7.
+- ✅ **`updated_by` 대신 계정 기반 권한 판정 도입**(2026-08-03 v0.17.0): 편집 가능 여부는 로그인 계정의 `app_user.edit_role`이 **쓰기 요청 시점에** 정한다. 다만 *"누가 이 행을 바꿨나"*를 행에 남기는 `updated_by`는 아직 없다(위 항목 그대로 열려 있음). 로그인 설계는 [`../docs/USER-LOGIN.md`](../docs/USER-LOGIN.md).
 - ⬜ **사업:계약 카디널리티**: 현재 1:1 인라인(`contract_name` 컬럼). 1사업 다계약이 실제로 있으면 계약 분리 테이블로 승급.

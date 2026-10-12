@@ -37,37 +37,37 @@ const purpose = (t) => t.comment || PURPOSE_FALLBACK[t.name] || '';
 //   구분선은 타입(varchar/int)이 아니라 ② 값이 바뀔 때 전파되는가(FK ON UPDATE CASCADE 가 실제로 도는가)
 //   ③ 우리가 값을 소유하는가 ⑤ 자식 전파 범위가 좁은가 — 셋이다. 유일성·폭은 구분선이 아니다(customer 가 login_id 보다 두 배 넓은데 자연키로 남았다).
 const KEY_NOTE = {
-  customer:     '이름(name)이 기본키인 이유 — 값을 우리 관리 화면에서 정하고(③), 참조하는 표가 project 하나뿐이며(⑤), 개명이 FK ON UPDATE CASCADE 로 실제 전파된다(② · 실측: 참조 과제 5건 전량 자동 갱신). 개명 전파는 결함이 아니라 기능이다 — 번호 키로 바꾸면 그 동작을 코드로 다시 만들어야 한다. 보조 인덱스에 키가 복제되는 비용은 이 표 규모에서 1.4 KB.',
-  section_code: '이름(name)이 기본키인 이유 — customer 와 같다: 우리가 정하는 값(③) · 참조는 project.section 한 곳(⑤) · 개명 CASCADE 실측 성공(② · 참조 과제 9건). 예전 ENUM 시절엔 값을 바꾸려면 스키마를 고쳐야 했는데, 행이 되면서 개명이 앱 화면의 일이 됐다.',
-  status_code:  '이름(name)이 기본키인 이유 — section_code 와 같다(③⑤ 충족 · 개명 CASCADE 실측 성공). 규모 4행·자식 14행이라 키 복제 비용은 0.7 KB.',
-  title_code:   '이름(name)이 기본키인 이유 — 코드표 규칙과 같다: 우리가 정하는 값(③) · 참조는 app_user.title 한 곳(⑤) · 개명 CASCADE 실측 성공(② · 사용자 41명 전량 갱신). 권한 판정에는 쓰지 않으므로 값이 바뀌어도 인가에 영향이 없다.',
-  org_unit:     '번호(org_id)가 기본키인 이유 — 이름(name)이 PK 이던 때 실측: 하위 조직이 있는 본부를 개명하면 ERROR 1451. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 조건 ②가 깨진다. 2026-08-24 에 번호 키로 옮기고 계층은 parent_id 만 잡는다 — 개명은 name 한 컬럼 갱신으로 끝난다.',
-  app_user:     '번호(user_id)가 기본키인 이유 — login_id 는 netcus 가 발급하는 값이라 우리가 소유하지 않고(③ 실패), cal_* 13표·FK 9개가 참조해 전파 범위가 넓으며(⑤ 실패), 다중경로라 RESTRICT 만 걸려 개명이 ERROR 1451(② 실패). 합성 데이터 실측으로 login_id PK 는 user_id PK 보다 인덱스가 +69%(43.23 MB vs 25.59 MB). 검토자 지적(대리키 선호)이 실제로 무는 표라 여기만 전환했다.',
-  project:      '번호(id)가 기본키이고 uid 가 외부 안정 참조키인 이유 — 같은 발주처·같은 사업명이 정당하게 반복되므로 이름은 키가 될 수 없다. id 는 내부용, uid 는 캘린더가 과제를 가리킬 때 쓰는 값이라 한 번 발급하면 바뀌지 않는다.',
-  cal_room:     '(user_id, name) 복합키인 이유 — 값으로 주소지정되는 표다. 다른 표가 이 표를 참조하지 않으므로 개명 전파 문제 자체가 없다(§5.6.7).',
-  cal_schema_meta: '문자열 k 가 키인 이유 — 설정 행 몇 개짜리 키·값 표다. 참조하는 표가 없고 값이 바뀌지 않는다(§5.6.7).',
+  customer:     '이름(name)이 기본키인 이유: 값을 우리 관리 화면에서 정하고(③), 참조하는 표가 project 하나뿐이며(⑤), 개명이 FK ON UPDATE CASCADE 로 실제 전파된다(②, 실측: 참조 과제 5건 전량 자동 갱신). 개명 전파는 결함이 아니라 기능이다. 번호 키로 바꾸면 그 동작을 코드로 다시 만들어야 한다. 보조 인덱스에 키가 복제되는 비용은 이 표 규모에서 1.4 KB.',
+  section_code: '이름(name)이 기본키인 이유는 customer 와 같다. 우리가 정하는 값이고(③), 참조는 project.section 한 곳이며(⑤), 개명 CASCADE 실측에 성공했다(②, 참조 과제 9건). 예전 ENUM 시절엔 값을 바꾸려면 스키마를 고쳐야 했는데, 행이 되면서 개명이 앱 화면의 일이 됐다.',
+  status_code:  '이름(name)이 기본키인 이유는 section_code 와 같다(③⑤ 충족, 개명 CASCADE 실측 성공). 규모 4행, 자식 14행이라 키 복제 비용은 0.7 KB.',
+  title_code:   '이름(name)이 기본키인 이유는 코드표 규칙과 같다. 우리가 정하는 값이고(③), 참조는 app_user.title 한 곳이며(⑤), 개명 CASCADE 실측에 성공했다(②, 사용자 41명 전량 갱신). 권한 판정에는 쓰지 않으므로 값이 바뀌어도 인가에 영향이 없다.',
+  org_unit:     '번호(org_id)가 기본키인 이유: 이름(name)이 PK 이던 때 실측하니 하위 조직이 있는 본부를 개명하면 ERROR 1451 이 났다. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 조건 ②가 깨진다. 2026-08-24 에 번호 키로 옮기고 계층은 parent_id 만 잡는다. 개명은 name 한 컬럼 갱신으로 끝난다.',
+  app_user:     '번호(user_id)가 기본키인 이유: login_id 는 netcus 가 발급하는 값이라 우리가 소유하지 않고(③ 실패), cal_* 13표·FK 9개가 참조해 전파 범위가 넓으며(⑤ 실패), 다중경로라 RESTRICT 만 걸려 개명이 ERROR 1451(② 실패). 합성 데이터 실측으로 login_id PK 는 user_id PK 보다 인덱스가 +69%(43.23 MB vs 25.59 MB). 검토자 지적(대리키 선호)이 실제로 무는 표라 여기만 전환했다.',
+  project:      '번호(id)가 기본키이고 uid 가 외부 안정 참조키인 이유: 같은 발주처·같은 사업명이 정당하게 반복되므로 이름은 키가 될 수 없다. id 는 내부용, uid 는 캘린더가 과제를 가리킬 때 쓰는 값이라 한 번 발급하면 바뀌지 않는다.',
+  cal_room:     '(user_id, name) 복합키인 이유: 값으로 주소지정되는 표다. 다른 표가 이 표를 참조하지 않으므로 개명 전파 문제 자체가 없다(§5.6.7).',
+  cal_schema_meta: '문자열 k 가 키인 이유: 설정 행 몇 개짜리 키·값 표다. 참조하는 표가 없고 값이 바뀌지 않는다(§5.6.7).',
 };
 const KEY_POLICY_HTML = `
   <details class="policy" id="key-policy">
-    <summary><span class="ptitle">키 정책 — 왜 어떤 표는 <b>이름</b>이 기본키이고 어떤 표는 <b>번호</b>인가</span></summary>
+    <summary><span class="ptitle">키 정책: 왜 어떤 표는 <b>이름</b>이 기본키이고 어떤 표는 <b>번호</b>인가</span></summary>
     <div class="body">
       <p>"외래키 대상 기본키는 varchar 가 아니라 id 로" 라는 지적(2026-08-23)은 옳고, 그 근거(InnoDB 는 보조 인덱스마다 기본키를 복제한다)도 사실이다. 그래서 <b>일반론으로 판단하지 않고 표마다 개명을 실제로 실행해 보고</b> 판정했다. 결과: 구분선은 타입이 아니라 아래 셋이다.</p>
       <ol>
-        <li><b>② 값이 바뀔 때 전파되는가</b> — FK <code>ON UPDATE CASCADE</code> 가 <i>실제로</i> 도는가. 전파가 없으면 그 값은 영원히 못 바꾼다.</li>
-        <li><b>③ 우리가 값을 소유하는가</b> — 남(netcus)이 발급하는 값이면 ②를 우리가 통제하지 못한다.</li>
-        <li><b>⑤ 자식 전파 범위가 좁은가</b> — 넓으면 ②가 성립해도 개명 1회의 비용과 위험이 커진다.</li>
+        <li><b>② 값이 바뀔 때 전파되는가</b>: FK <code>ON UPDATE CASCADE</code> 가 <i>실제로</i> 도는가. 전파가 없으면 그 값은 영원히 못 바꾼다.</li>
+        <li><b>③ 우리가 값을 소유하는가</b>: 남(netcus)이 발급하는 값이면 ②를 우리가 통제하지 못한다.</li>
+        <li><b>⑤ 자식 전파 범위가 좁은가</b>: 넓으면 ②가 성립해도 개명 1회의 비용과 위험이 커진다.</li>
       </ol>
       <div class="tbl-wrap"><table>
         <thead><tr><th>표</th><th>기본키</th><th>판정</th><th>근거(실측)</th></tr></thead>
         <tbody>
-          <tr><td><code>customer</code> · <code>section_code</code> · <code>status_code</code> · <code>title_code</code></td><td>이름(name)</td><td><b>자연키 유지</b></td><td>②③⑤ 전부 통과. 격리 DB 에서 개명 실행 → 참조 행 전량 자동 갱신(발주처 5건 · 구분 9건 · 직급 41명). 키 복제 비용은 넷을 합쳐 최대 약 16 KB = InnoDB 페이지 한 장.</td></tr>
-          <tr><td><code>org_unit</code></td><td>번호(org_id)</td><td><b>대리키 전환</b>(2026-08-24)</td><td>② 실패 — 자기참조 FK 에 InnoDB 가 CASCADE 를 수행하지 않아 하위 조직이 있는 본부 개명이 ERROR 1451.</td></tr>
-          <tr><td><code>app_user</code></td><td>번호(user_id)</td><td><b>대리키 전환</b>(2026-08-24)</td><td>②③⑤ 전부 실패 — login_id 는 netcus 발급 · cal_* 13표가 참조 · 다중경로라 RESTRICT. 인덱스 실측 +69%(43.23 MB vs 25.59 MB). 지적이 실제로 무는 표.</td></tr>
+          <tr><td><code>customer</code>, <code>section_code</code>, <code>status_code</code>, <code>title_code</code></td><td>이름(name)</td><td><b>자연키 유지</b></td><td>②③⑤ 전부 통과. 격리 DB 에서 개명 실행 시 참조 행 전량 자동 갱신(발주처 5건, 구분 9건, 직급 41명). 키 복제 비용은 넷을 합쳐 최대 약 16 KB = InnoDB 페이지 한 장.</td></tr>
+          <tr><td><code>org_unit</code></td><td>번호(org_id)</td><td><b>대리키 전환</b>(2026-08-24)</td><td>② 실패. 자기참조 FK 에 InnoDB 가 CASCADE 를 수행하지 않아 하위 조직이 있는 본부 개명이 ERROR 1451.</td></tr>
+          <tr><td><code>app_user</code></td><td>번호(user_id)</td><td><b>대리키 전환</b>(2026-08-24)</td><td>②③⑤ 전부 실패. login_id 는 netcus 발급, cal_* 13표가 참조, 다중경로라 RESTRICT. 인덱스 실측 +69%(43.23 MB vs 25.59 MB). 지적이 실제로 무는 표.</td></tr>
           <tr><td><code>project</code></td><td>번호(id) + uid</td><td>대리키</td><td>같은 이름의 과제가 정당하게 반복된다(TABLE-DESIGN §4). uid 는 캘린더가 과제를 가리키는 외부 안정 참조키.</td></tr>
-          <tr><td><code>cal_room</code> · <code>cal_schema_meta</code></td><td>값(name / k)</td><td>자연키 유지</td><td>값으로 주소지정되는 표. 참조하는 표가 없어 전파 문제가 없다.</td></tr>
+          <tr><td><code>cal_room</code>, <code>cal_schema_meta</code></td><td>값(name / k)</td><td>자연키 유지</td><td>값으로 주소지정되는 표. 참조하는 표가 없어 전파 문제가 없다.</td></tr>
         </tbody>
       </table></div>
-      <p class="note">유일성과 폭은 구분선이 아니다 — <code>customer.name</code>(100자)은 <code>app_user.login_id</code>(50자)보다 두 배 넓은데 자연키로 남았고, login_id 는 유일성이 완벽한데도 강등됐다. 조건표·실측·전문가 근거(양쪽) 원문: <a href="CALENDAR-TABLE-DESIGN.md">db/CALENDAR-TABLE-DESIGN.md</a> §5.6.</p>
+      <p class="note">유일성과 폭은 구분선이 아니다. <code>customer.name</code>(100자)은 <code>app_user.login_id</code>(50자)보다 두 배 넓은데 자연키로 남았고, login_id 는 유일성이 완벽한데도 강등됐다. 조건표, 실측, 전문가 근거(양쪽) 원문: <a href="CALENDAR-TABLE-DESIGN.md">db/CALENDAR-TABLE-DESIGN.md</a> §5.6.</p>
     </div>
   </details>`;
 // 표 주석의 첫 문장만 — 목록에서는 한 줄이면 된다
@@ -77,7 +77,7 @@ const firstSentence = (s) => { const m = /^(.+?[.。])\s/.exec(s + ' '); return 
 const PRIVS = ['SELECT', 'INSERT', 'UPDATE', 'DELETE'];
 const grantMap = {};
 for (const g of S.meta.grants) { const m = /GRANT (.+?) ON `taskmgr`\.`([a-z_]+)`/.exec(g); if (m) grantMap[m[2]] = m[1].split(',').map((x) => x.trim()); }
-const privWord = (t) => { const g = grantMap[t] || []; if (!g.length) return '없음'; if (g.length === 1) return '읽기'; if (g.includes('DELETE')) return '전부'; return g.includes('UPDATE') ? '읽기·추가·수정' : '읽기·추가'; };
+const privWord = (t) => { const g = grantMap[t] || []; if (!g.length) return '없음'; if (g.length === 1) return '읽기'; if (g.includes('DELETE')) return '전부'; return g.includes('UPDATE') ? '읽기/추가/수정' : '읽기/추가'; };
 const groupBy = (word) => S.tables.map((t) => t.name).filter((n) => privWord(n) === word);
 
 // FK
@@ -91,10 +91,10 @@ const ownerCascade = ownerFks.filter((e) => e.del === 'CASCADE');
 //   예전에는 "예외는 보고 기록 두 표" 라고 문장에 박아 두었는데, 2026-09-09 무결성 라운드가 그 둘을
 //   RESTRICT 로 바꾸자 같은 문서 안에서 "11개 중 11개가 RESTRICT" 와 "두 표만 CASCADE" 가 함께 찍혔다.
 //   숫자만 실측에서 뽑고 결론은 손으로 적으면 이렇게 갈린다 — 결론도 뽑는다(2026-09-10 정정).
-const ownerCascadeNames = ownerCascade.map((e) => e.from).join(' · ');
+const ownerCascadeNames = ownerCascade.map((e) => e.from).join(', ');
 const ownerRuleText = ownerCascade.length === 0
-  ? `소유자 FK <span class="hl">${ownerFks.length}개가 전부 RESTRICT</span> 다. 예외는 없다 — 사용자 행을 지우려면 그 사람의 캘린더를 먼저 정리해야 한다.`
-  : `소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 ${ownerCascadeNames} ${ownerCascade.length}표로, 소유자 FK 가 CASCADE 다 — 사용자를 지우면 함께 지워진다.`;
+  ? `소유자 FK <span class="hl">${ownerFks.length}개가 전부 RESTRICT</span> 다. 예외는 없다. 사용자 행을 지우려면 그 사람의 캘린더를 먼저 정리해야 한다.`
+  : `소유자 FK <span class="hl">${ownerFks.length}개 중 ${ownerRestrict.length}개</span>가 RESTRICT 다. 예외는 ${ownerCascadeNames} ${ownerCascade.length}표로, 소유자 FK 가 CASCADE 다. 사용자를 지우면 함께 지워진다.`;
 const ownerRuleShort = ownerCascade.length === 0
   ? '지금 CASCADE 인 소유자 FK 는 하나도 없다.'
   : `지금 CASCADE 인 소유자 FK 는 ${ownerCascadeNames} ${ownerCascade.length}표다.`;
@@ -107,7 +107,7 @@ function colDesc(t, c) {
   if (c.key === 'PRI') parts.push('<span class="chip pk">PK</span>');
   if (c.key === 'UNI') parts.push('<span class="chip uq">UNIQUE</span>');
   const fk = t.fks.find((f) => f.cols.split(',').includes(c.name));
-  if (fk) parts.push(`<span class="chip fk">FK</span> ${esc(fk.ref)}.${esc(fk.refCols)} · ${esc(ruleWord(fk))}`);
+  if (fk) parts.push(`<span class="chip fk">FK</span> ${esc(fk.ref)}.${esc(fk.refCols)} (${esc(ruleWord(fk))})`);
   const uq = t.indexes.filter((i) => i.unique && i.name !== 'PRIMARY' && i.cols.split(',').includes(c.name) && i.cols.includes(','));
   if (uq.length) parts.push('UNIQUE(' + esc(uq[0].cols) + ')');
   if (!c.nullable && c.key !== 'PRI') parts.push('필수');
@@ -118,13 +118,13 @@ function colDesc(t, c) {
   if (/on update/i.test(c.extra)) parts.push('수정 시 자동 갱신');
   const chk = t.checks.filter((k) => new RegExp('`' + c.name + '`').test(k.clause));
   if (chk.length) parts.push(`CHECK ${chk.length}개`);
-  return parts.join(' · ');
+  return parts.join(', ');
 }
 
 function tableDetails(t) {
   const pk = t.indexes.find((i) => i.name === 'PRIMARY');
   const rows = t.columns.map((c) => `<tr><td><span class="col">${esc(c.name)}</span></td><td><span class="ty">${esc(c.type)}</span></td><td class="desc-td">${colDesc(t, c)}</td></tr>`).join('');
-  const chks = t.checks.length ? `<p class="note">CHECK ${t.checks.length}개: ${t.checks.map((k) => `<code>${esc(sqlText(k.clause))}</code>`).join(' · ')}</p>` : '';
+  const chks = t.checks.length ? `<p class="note">CHECK ${t.checks.length}개: ${t.checks.map((k) => `<code>${esc(sqlText(k.clause))}</code>`).join(', ')}</p>` : '';
   const idx = t.indexes.filter((i) => i.name !== 'PRIMARY');
   return `
       <details id="t-${t.name}">
@@ -133,9 +133,9 @@ function tableDetails(t) {
           ${purpose(t) ? `<p class="purpose">${esc(purpose(t))}</p>` : ''}
           ${KEY_NOTE[t.name] ? `<p class="keynote"><b>키</b> ${esc(KEY_NOTE[t.name])} <a href="#key-policy">키 정책 ↗</a></p>` : ''}
           <div class="tbl-wrap"><table><thead><tr><th>컬럼</th><th>타입</th><th>설명</th></tr></thead><tbody>${rows}</tbody></table></div>
-          ${idx.length ? `<p class="note">인덱스: ${idx.map((i) => (i.unique ? 'UNIQUE ' : '') + '<code>' + esc(i.cols) + '</code>').join(' · ')}</p>` : ''}
+          ${idx.length ? `<p class="note">인덱스: ${idx.map((i) => (i.unique ? 'UNIQUE ' : '') + '<code>' + esc(i.cols) + '</code>').join(', ')}</p>` : ''}
           ${chks}
-          ${kidsOf(t.name).length ? `<p class="note">이 표를 참조: ${kidsOf(t.name).map((k) => `<a href="#t-${k.from}"><code>${esc(k.from)}</code></a>`).join(' · ')}</p>` : ''}
+          ${kidsOf(t.name).length ? `<p class="note">이 표를 참조: ${kidsOf(t.name).map((k) => `<a href="#t-${k.from}"><code>${esc(k.from)}</code></a>`).join(', ')}</p>` : ''}
         </div>
       </details>`;
 }
@@ -151,9 +151,9 @@ const MIGRATIONS = [
   ['08-24', 'user_id 대리키', 'app_user 에 user_id 를 두고 login_id 는 UNIQUE 로 내렸다. cal_* 의 소유자 키가 전부 user_id 로 바뀌었다. login_id 는 사내 보고 사이트의 값이라 우리가 못 바꾸는데 참조가 여러 경로라 개명이 실행조차 안 됐기 때문이다.'],
   ['08-24', 'org_unit 대리키', 'PK 를 name 에서 org_id 로 옮겼다. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 본부 개명이 1451 로 막히던 것을 실측하고 바꿨다. 이름 미러는 남기지 않았다.'],
   ['08-27', 'uses_repo', 'cal_category 에 저장소 사용 여부를 더했다.'],
-  ['08-27', 'sort_order', 'cal_category · cal_entry · cal_todo · cal_room 에 순서 컬럼을 더해 부팅 조회의 순서를 앱의 문서 순서와 맞췄다.'],
-  ['08-31', '보고 기록 3표', 'cal_report_daily · cal_report_hours(v6) · cal_report_weekly(v7) 를 만들고, 주간은 보낸 것만 담도록 다시 만들었다(v8). 캘린더가 만든 것만 담고 사이트의 현재 상태는 담지 않는다.'],
-  ['09-09', '무결성 규칙 통일', '같은 DB 안에서 장치끼리 반대로 말하던 다섯을 한 판으로 맞췄다 — 보고 표 두 개의 소유자 FK 를 CASCADE 에서 RESTRICT 로(GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었다), cal_report_hours 에 과제 FK 신설(쌍둥이 cal_task_hours 만 잠겨 있었다), cal_report_daily 에 근태·초과시간 CHECK(쌍둥이 cal_attendance 만 잠겨 있었다), hours 를 DECIMAL(4,2) 로, 감사 시각을 KST 에서 UTC 로 1회 정규화. 마지막 하나는 데이터를 바꾸므로 재실행 안전이 아니고 ProjectDb 의 접속 프리앰블과 같은 배포에 실려야 한다.'],
+  ['08-27', 'sort_order', 'cal_category, cal_entry, cal_todo, cal_room 에 순서 컬럼을 더해 부팅 조회의 순서를 앱의 문서 순서와 맞췄다.'],
+  ['08-31', '보고 기록 3표', 'cal_report_daily, cal_report_hours(v6), cal_report_weekly(v7) 를 만들고, 주간은 보낸 것만 담도록 다시 만들었다(v8). 캘린더가 만든 것만 담고 사이트의 현재 상태는 담지 않는다.'],
+  ['09-09', '무결성 규칙 통일', '같은 DB 안에서 장치끼리 반대로 말하던 다섯을 한 판으로 맞췄다: 보고 표 두 개의 소유자 FK 를 CASCADE 에서 RESTRICT 로(GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었다), cal_report_hours 에 과제 FK 신설(쌍둥이 cal_task_hours 만 잠겨 있었다), cal_report_daily 에 근태·초과시간 CHECK(쌍둥이 cal_attendance 만 잠겨 있었다), hours 를 DECIMAL(4,2) 로, 감사 시각을 KST 에서 UTC 로 1회 정규화. 마지막 하나는 데이터를 바꾸므로 재실행 안전이 아니고 ProjectDb 의 접속 프리앰블과 같은 배포에 실려야 한다.'],
 ];
 
 const html = `<!DOCTYPE html>
@@ -294,15 +294,15 @@ const html = `<!DOCTYPE html>
 <body>
 <div class="wrap">
 <header class="report">
-  <div class="eyebrow">과제관리 시스템 · 데이터 설계 보고</div>
+  <div class="eyebrow">과제관리 시스템 데이터 설계 보고</div>
   <h1>taskmgr 스키마 v${esc(S.meta.schemaVersion)}</h1>
   <div class="scope"><b>범위·시점</b> ${esc(stamp)} 개발 PC 의 실제 DB 에서 읽은 구조. 2026-07-24 판(과제 마스터 5표)을 잇되 사용자·조직 표와 캘린더 표까지 <b>23표 전부</b>를 다룬다. 설계의 근거와 결정 이력은 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> 가 정본이고, 이 문서는 배포 전 검토용으로 현재 DB 구조를 한 장에 정리했다.</div>
   <p class="lede">테이블은 과제, 사용자·조직, 캘린더 세 그룹으로 나뉜다. 과제와 사용자·조직은 회사가 관리하는 마스터이고, 캘린더는 사용자별 데이터라 user_id 로 시작하는 복합 키를 쓴다. 앱 계정 권한도 이 구분을 따른다.</p>
   <div class="meta">
-    <span class="m"><span class="dot"></span>DB <b>taskmgr</b> · MySQL <b>${esc(S.meta.mysql)}</b> · ${esc(S.meta.charset[0])}</span>
+    <span class="m"><span class="dot"></span>DB <b>taskmgr</b>, MySQL <b>${esc(S.meta.mysql)}</b>, ${esc(S.meta.charset[0])}</span>
     <span class="m">스키마 버전 <b>${esc(S.meta.schemaVersion)}</b></span>
     <span class="m">캡처 <b>${esc(stamp)}</b></span>
-    <span class="m">트리거 <b>${S.meta.triggers}</b> · 루틴 <b>${S.meta.routines}</b> · 뷰 <b>${S.meta.views}</b></span>
+    <span class="m">트리거 <b>${S.meta.triggers}</b>, 루틴 <b>${S.meta.routines}</b>, 뷰 <b>${S.meta.views}</b></span>
   </div>
 </header>
 
@@ -312,9 +312,9 @@ const html = `<!DOCTYPE html>
 </div>
 
 <div class="stats">
-  <div class="stat"><div class="n">${S.tables.length}<span class="u">표</span></div><div class="l">과제 ${PROJECT.length} · 사용자·조직 ${USERS.length} · 캘린더 ${calendar.length} · 컬럼 ${totalCols}</div></div>
-  <div class="stat"><div class="n">${edges.length}<span class="u">개</span></div><div class="l">외래키 · 소유자 FK ${ownerFks.length}개 중 RESTRICT ${ownerRestrict.length}</div></div>
-  <div class="stat"><div class="n">${totalChk}<span class="u">개</span></div><div class="l">CHECK 제약 · 값 형식을 DB 가 지킨다</div></div>
+  <div class="stat"><div class="n">${S.tables.length}<span class="u">표</span></div><div class="l">과제 ${PROJECT.length}, 사용자·조직 ${USERS.length}, 캘린더 ${calendar.length}, 컬럼 ${totalCols}</div></div>
+  <div class="stat"><div class="n">${edges.length}<span class="u">개</span></div><div class="l">외래키, 소유자 FK ${ownerFks.length}개 중 RESTRICT ${ownerRestrict.length}</div></div>
+  <div class="stat"><div class="n">${totalChk}<span class="u">개</span></div><div class="l">값 형식을 DB 가 지키는 CHECK 제약</div></div>
   <div class="stat"><div class="n">${MIGRATIONS.length}<span class="u">건</span></div><div class="l">8월 24일 이후 구조 변경</div></div>
 </div>
 
@@ -323,42 +323,42 @@ const html = `<!DOCTYPE html>
   <p class="sub">과제 그룹은 project 를 중심으로 코드표 셋이 FK 로 연결된다. 사용자·조직 그룹은 app_user 가 중심이고, 캘린더 그룹은 그 app_user 를 부모로 과제(cal_category)와 일정(cal_entry)이 이어진다.</p>
   <h3>과제</h3>
   <div class="er">
-    ${ent('customer', ['<span class="key">PK</span> name', 'is_active'], '발주처')}${rel('project.customer', 'UPDATE CASCADE · DELETE 막힘')}
-    ${ent('project', ['<span class="key">PK</span> id · <span class="key">UQ</span> uid', 'section · status · customer', 'is_active'], '과제')}${rel('section · status', 'UPDATE CASCADE · DELETE RESTRICT')}
-    ${ent('section_code · status_code', ['<span class="key">PK</span> name', 'sort_order'], '코드표')}
+    ${ent('customer', ['<span class="key">PK</span> name', 'is_active'], '발주처')}${rel('project.customer', 'UPDATE CASCADE, DELETE 막힘')}
+    ${ent('project', ['<span class="key">PK</span> id, <span class="key">UQ</span> uid', 'section, status, customer', 'is_active'], '과제')}${rel('section, status', 'UPDATE CASCADE, DELETE RESTRICT')}
+    ${ent('section_code, status_code', ['<span class="key">PK</span> name', 'sort_order'], '코드표')}
   </div>
   <h3>사용자·조직</h3>
   <div class="er">
-    ${ent('org_unit', ['<span class="key">PK</span> org_id · <span class="key">UQ</span> name', 'parent_id (자기참조)'], '조직')}${rel('app_user.org_id', 'RESTRICT')}
-    ${ent('app_user', ['<span class="key">PK</span> user_id · <span class="key">UQ</span> login_id', 'org_id · title · view_scope · edit_role'], '사용자 ' + num(byName.app_user.exact) + '명')}${rel('app_user.title', 'title_code.name')}
+    ${ent('org_unit', ['<span class="key">PK</span> org_id, <span class="key">UQ</span> name', 'parent_id (자기참조)'], '조직')}${rel('app_user.org_id', 'RESTRICT')}
+    ${ent('app_user', ['<span class="key">PK</span> user_id, <span class="key">UQ</span> login_id', 'org_id, title, view_scope, edit_role'], '사용자 ' + num(byName.app_user.exact) + '명')}${rel('app_user.title', 'title_code.name')}
     ${ent('title_code', ['<span class="key">PK</span> name', 'sort_order'], '직급')}
   </div>
   <h3>캘린더</h3>
   <div class="er">
     ${ent('app_user', ['<span class="key">PK</span> user_id'], '소유자')}${rel('user_id 전파', '모든 cal_* 의 선두 키')}
-    ${ent('cal_category', ['<span class="key">PK</span> user_id · cat_no', '<span class="key">UQ</span> user_id · uid', 'source · uses_repo · sort_order'], '과제')}${rel('(user_id, cat_no)', 'RESTRICT')}
-    ${ent('cal_entry', ['<span class="key">PK</span> user_id · entry_no', '<span class="key">UQ</span> user_id · uid', 'entry_date · recur_* · sort_order', 'updated_at = 낙관적 잠금'], '일정')}${rel('entry_no', 'CASCADE')}
-    ${ent('cal_entry_except · cal_entry_commit', ['<span class="key">PK</span> user_id · entry_no · (날짜|seq)'], '부속')}
+    ${ent('cal_category', ['<span class="key">PK</span> user_id, cat_no', '<span class="key">UQ</span> user_id, uid', 'source, uses_repo, sort_order'], '과제')}${rel('(user_id, cat_no)', 'RESTRICT')}
+    ${ent('cal_entry', ['<span class="key">PK</span> user_id, entry_no', '<span class="key">UQ</span> user_id, uid', 'entry_date, recur_*, sort_order', 'updated_at = 낙관적 잠금'], '일정')}${rel('entry_no', 'CASCADE')}
+    ${ent('cal_entry_except, cal_entry_commit', ['<span class="key">PK</span> user_id, entry_no, (날짜|seq)'], '부속')}
   </div>
-  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE) · cal_room · cal_task_hours(과제 FK RESTRICT) · cal_attendance · cal_user_pref · cal_user_rev · cal_migration_log · cal_report_daily(→ cal_report_hours CASCADE) · cal_report_weekly. ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다 — 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
+  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE), cal_room, cal_task_hours(과제 FK RESTRICT), cal_attendance, cal_user_pref, cal_user_rev, cal_migration_log, cal_report_daily(→ cal_report_hours CASCADE), cal_report_weekly. ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다. 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
 </section>
 
 <section>
   <h2><span class="idx">02</span>배포 전 점검 항목</h2>
   <p class="sub">개발 PC 에서 확인한 현재 상태와 폐쇄망 서버에서 달라져야 할 항목.</p>
   <div class="road">
-    <div class="r"><div class="when">접속 범위</div><div class="what"><b>${esc(S.meta.users.join(' · '))}</b><p>taskmgr_app@% 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</p></div></div>
+    <div class="r"><div class="when">접속 범위</div><div class="what"><b>${esc(S.meta.users.join(', '))}</b><p>taskmgr_app@% 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</p></div></div>
     <div class="r"><div class="when">버전</div><div class="what"><b>cal_schema_meta.schema_version = ${esc(S.meta.schemaVersion)}</b><p>위젯 빌드 상수와 같아야 부팅한다. 다르면 파괴적 연산만 막고 읽기는 한다.</p></div></div>
     <div class="r"><div class="when">트리거</div><div class="what"><b>${S.meta.triggers}개</b><p>감사 트리거는 8월 11일에 없앴다. 서버에 트리거가 하나라도 있으면 폐기 전 DB 를 쓰고 있다는 뜻이다.</p></div></div>
     <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 ${num(calRows)}행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 삭제한다. 03 절의 행 수도 같은 기준으로 볼 것.</p></div></div>
     <div class="r"><div class="when">구축</div><div class="what"><b>schema-calendar.sql 한 번</b><p>서버는 처음 세우므로 마이그레이션 파일은 쓰지 않는다. migrate-*.sql 은 이미 선 DB 를 옮길 때만 쓴다.</p></div></div>
-    <div class="r"><div class="when">백업</div><div class="what"><b>backup-taskmgr -Install · restore-taskmgr</b><p>주 1회 백업을 등록하고 첫 회차를 복구해 확인한다. 절차는 deploy/README.md 의 복구 절.</p></div></div>
+    <div class="r"><div class="when">백업</div><div class="what"><b>backup-taskmgr -Install, restore-taskmgr</b><p>주 1회 백업을 등록하고 첫 회차를 복구해 확인한다. 절차는 deploy/README.md 의 복구 절.</p></div></div>
   </div>
 </section>
 
 <section>
   <h2><span class="idx">03</span>테이블 상세</h2>
-  <p class="sub">이름 · PK · 개발 DB 행 수 · 앱 계정 권한 순이다. 항목을 누르면 컬럼과 제약이 펼쳐진다. 테이블 설명은 DB 의 테이블 주석 그대로다.</p>
+  <p class="sub">이름, PK, 개발 DB 행 수, 앱 계정 권한 순이다. 항목을 누르면 컬럼과 제약이 펼쳐진다. 테이블 설명은 DB 의 테이블 주석 그대로다.</p>
   ${KEY_POLICY_HTML}
   <div class="toolbar"><button type="button" data-open="1">모두 펼치기</button><button type="button" data-open="0">모두 접기</button></div>
   <h3>과제 ${PROJECT.length}</h3>
@@ -375,11 +375,11 @@ const html = `<!DOCTYPE html>
   <div class="tbl-wrap"><table>
     <thead><tr><th>권한</th><th>표</th></tr></thead>
     <tbody>
-      <tr><td><b>전부</b></td><td class="desc-td">${groupBy('전부').map((n) => `<code>${esc(n)}</code>`).join(' · ')}</td></tr>
-      <tr><td><b>읽기·추가·수정</b></td><td class="desc-td">${groupBy('읽기·추가·수정').map((n) => `<code>${esc(n)}</code>`).join(' · ')}<br><span class="note">cal_user_rev 는 단조증가 카운터라 지우면 안 되고, 보고 기록은 보낸 사실이라 지우지 않는다.</span></td></tr>
-      <tr><td><b>읽기·추가</b></td><td class="desc-td">${groupBy('읽기·추가').map((n) => `<code>${esc(n)}</code>`).join(' · ')}</td></tr>
-      <tr><td><b>읽기</b></td><td class="desc-td">${groupBy('읽기').map((n) => `<code>${esc(n)}</code>`).join(' · ')}</td></tr>
-      ${groupBy('없음').length ? `<tr><td><b>없음</b></td><td class="desc-td">${groupBy('없음').map((n) => `<code>${esc(n)}</code>`).join(' · ')}</td></tr>` : ''}
+      <tr><td><b>전부</b></td><td class="desc-td">${groupBy('전부').map((n) => `<code>${esc(n)}</code>`).join(', ')}</td></tr>
+      <tr><td><b>읽기/추가/수정</b></td><td class="desc-td">${groupBy('읽기/추가/수정').map((n) => `<code>${esc(n)}</code>`).join(', ')}<br><span class="note">cal_user_rev 는 단조증가 카운터라 지우면 안 되고, 보고 기록은 보낸 사실이라 지우지 않는다.</span></td></tr>
+      <tr><td><b>읽기/추가</b></td><td class="desc-td">${groupBy('읽기/추가').map((n) => `<code>${esc(n)}</code>`).join(', ')}</td></tr>
+      <tr><td><b>읽기</b></td><td class="desc-td">${groupBy('읽기').map((n) => `<code>${esc(n)}</code>`).join(', ')}</td></tr>
+      ${groupBy('없음').length ? `<tr><td><b>없음</b></td><td class="desc-td">${groupBy('없음').map((n) => `<code>${esc(n)}</code>`).join(', ')}</td></tr>` : ''}
     </tbody>
   </table></div>
   <p class="note">원문은 <a href="deploy/grants-calendar.sql">deploy/grants-calendar.sql</a>. 백업 계정 taskmgr_backup@localhost 는 SELECT 와 TRIGGER 만 갖는다.</p>
@@ -415,9 +415,9 @@ const html = `<!DOCTYPE html>
 </section>
 
 <footer>
-  정본 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> · DDL 단일 소스 <a href="deploy/schema-calendar.sql">deploy/schema-calendar.sql</a> · 마이그레이션 <a href="deploy/">deploy/migrate-*.sql</a><br>
+  정본 <a href="CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a>, DDL 단일 소스 <a href="deploy/schema-calendar.sql">deploy/schema-calendar.sql</a>, 마이그레이션 <a href="deploy/">deploy/migrate-*.sql</a><br>
   이 문서는 <code>information_schema</code> 에서 생성했다. 다시 만들려면 <code>TC_TEST_DB_ADMIN_PW=&lt;root 비번&gt; node tools/schema-report/dump-schema.mjs tools/schema-report/schema.json</code> 뒤에 <code>node tools/schema-report/build-schema-html.mjs tools/schema-report/schema.json db/table-design-report.html</code>.<br>
-  컬럼 주석은 DB 에 없어(0/${totalCols}) 설명 열은 키·제약·기본값으로 채웠다. 컬럼의 뜻은 정본 md 의 5.3 절과 schema-calendar.sql 의 주석에 있다.
+  컬럼 주석은 DB 에 없어(0/${totalCols}) 설명 열은 키, 제약, 기본값으로 채웠다. 컬럼의 뜻은 정본 md 의 5.3 절과 schema-calendar.sql 의 주석에 있다.
 </footer>
 </div>
 <script>

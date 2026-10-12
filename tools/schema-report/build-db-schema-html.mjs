@@ -51,13 +51,13 @@ const GROUPS = [
     { id: 'customer', tables: ['customer'] },
     { id: 'codes', tables: ['section_code', 'status_code'] },
   ] },
-  { label: '사용자 · 조직', ko: '누가 무엇을 할 수 있는가', sections: [
+  { label: '사용자·조직', ko: '누가 무엇을 할 수 있는가', sections: [
     { id: 'people', tables: [] },
     { id: 'app_user', tables: ['app_user'] },
     { id: 'org_unit', tables: ['org_unit'] },
     { id: 'title_code', tables: ['title_code'] },
   ] },
-  { label: '캘린더', ko: '개인 일정 · 할 일 · 근태 · 보고', sections: [
+  { label: '캘린더', ko: '개인 일정, 할 일, 근태, 보고', sections: [
     { id: 'calendar', tables: [] },
   ] },
 ];
@@ -125,7 +125,7 @@ function autoNote(t, c) {
   for (const k of checksOf(t, c)) {
     const cl = unq(k.clause);
     const inList = new RegExp('`' + c.name + '` in \\(([^)]*)\\)').exec(cl);
-    if (inList) s.push('허용값은 ' + inList[1].split(',').map((v) => code(v.trim().replace(/^'|'$/g, ''))).join(' · ') + '뿐입니다.');
+    if (inList) s.push('허용값은 ' + inList[1].split(',').map((v) => code(v.trim().replace(/^'|'$/g, ''))).join(', ') + '뿐입니다.');
     else s.push(`${code(k.name)} 제약이 걸려 있습니다.`);
   }
   return s.join(' ');
@@ -150,8 +150,8 @@ function columnTable(t) {
   }
   const idx = t.indexes.filter((i) => i.name !== 'PRIMARY');
   const extra = [];
-  if (idx.length) extra.push(`<p class="sub">인덱스 — ${idx.map((i) => (i.unique ? 'UNIQUE ' : '') + code(i.cols.split(',').join(', ')) + ` <span class="ko">${esc(i.name)}</span>`).join(' · ')}</p>`);
-  if (t.checks.length) extra.push(`<p class="sub">CHECK ${t.checks.length}개 — ${t.checks.map((k) => `${code(k.name)} ${code(unq(k.clause))}`).join(' · ')}</p>`);
+  if (idx.length) extra.push(`<p class="sub">인덱스: ${idx.map((i) => (i.unique ? 'UNIQUE ' : '') + code(i.cols.split(',').join(', ')) + ` <span class="ko">${esc(i.name)}</span>`).join(', ')}</p>`);
+  if (t.checks.length) extra.push(`<p class="sub">CHECK ${t.checks.length}개: ${t.checks.map((k) => `${code(k.name)} ${code(unq(k.clause))}`).join(', ')}</p>`);
   return `<div class="tw">
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
@@ -179,7 +179,7 @@ function renderSection(sec) {
   const intro = P(`${sec.id}.intro`);
   if (intro) parts.push(intro);
   if (single && !prose[`${sec.id}.intro`] && restSentence(single.comment || '')) {
-    parts.push(`<p class="sub">DB 주석 — ${esc(restSentence(single.comment))}</p>`);
+    parts.push(`<p class="sub">DB 주석: ${esc(restSentence(single.comment))}</p>`);
   }
   for (const name of sec.tables) {
     const t = byName[name];
@@ -195,19 +195,19 @@ function renderSection(sec) {
 /* ── 지금 들어 있는 것 ── */
 function nowSection() {
   const st = S.meta.stats || {};
-  const pair = (o) => Object.entries(o || {}).map(([k, v]) => `${k} ${v}`).join(' · ');
+  const pair = (o) => Object.entries(o || {}).map(([k, v]) => `${k} ${v}`).join(', ');
   const groupRows = GROUPS.map((g) => {
     const names = g.sections.flatMap((s) => s.tables);
     if (!names.length) return '';
     const rows = names.reduce((a, n) => a + byName[n].exact, 0);
-    return `<tr><td class="col">${esc(g.label)}</td><td class="type">${names.length}표 · ${num(rows)}행</td><td class="note">${names.map((n) => code(n)).join(' · ')}</td></tr>`;
+    return `<tr><td class="col">${esc(g.label)}</td><td class="type">${names.length}표, ${num(rows)}행</td><td class="note">${names.map((n) => code(n)).join(', ')}</td></tr>`;
   }).filter(Boolean).join('\n');
   const perTable = S.tables.map((t) => `<tr><td class="col">${esc(t.name)}</td><td class="type">${num(t.exact)}</td><td class="note">${esc(t.comment ? firstSentence(t.comment) : '')}</td></tr>`).join('\n');
   const permRows = [];
   if (st.viewScope) permRows.push(`<tr><td class="col">view_scope</td><td class="type">${esc(pair(st.viewScope))}</td><td class="note">설정이 같아도 소속이 다르면 열람 인원이 다릅니다.</td></tr>`);
   if (st.editRole) permRows.push(`<tr><td class="col">edit_role</td><td class="type">${esc(pair(st.editRole))}</td><td class="note"><code>admin</code>은 직원·조직 정보를 고칠 최소 인원입니다.</td></tr>`);
   if (st.nonDefaultUsers != null) permRows.push(`<tr><td class="col">기본값 아님</td><td class="type">${num(st.nonDefaultUsers)}명</td><td class="note">나머지는 <code>self</code>/<code>viewer</code> 기본값 그대로입니다.</td></tr>`);
-  if (st.orgRoots != null) permRows.push(`<tr><td class="col">조직 트리</td><td class="type">최상위 ${num(st.orgRoots)} · 하위 ${num(byName.org_unit.exact - st.orgRoots)}</td><td class="note">조회 범위(<code>unit_tree</code>)가 이 트리를 타고 내려갑니다.</td></tr>`);
+  if (st.orgRoots != null) permRows.push(`<tr><td class="col">조직 트리</td><td class="type">최상위 ${num(st.orgRoots)}, 하위 ${num(byName.org_unit.exact - st.orgRoots)}</td><td class="note">조회 범위(<code>unit_tree</code>)가 이 트리를 타고 내려갑니다.</td></tr>`);
   return `<section id="people-now">
 ${P('people-now.head') || '<h2>지금 들어 있는 것 <span class="ko">숫자만</span></h2>'}
 
@@ -248,7 +248,7 @@ ${P('people-now.after') || ''}
 /* ── 생성 구역 ── */
 const tablesRegion = [
   ...GROUPS.map((g) => [
-    `<p class="grp">${esc(g.label)} <span class="ko">${g.sections.flatMap((s) => s.tables).length}표 · ${esc(g.ko)}</span></p>`,
+    `<p class="grp">${esc(g.label)} <span class="ko">${g.sections.flatMap((s) => s.tables).length}표: ${esc(g.ko)}</span></p>`,
     ...g.sections.map(renderSection),
   ].join('\n\n')),
   nowSection(),
@@ -259,13 +259,13 @@ const totalFk = S.tables.reduce((a, t) => a + t.fks.length, 0);
 const totalChk = S.tables.reduce((a, t) => a + t.checks.length, 0);
 const d = new Date(S.meta.dumpedAt);
 const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const groupCount = GROUPS.map((g) => `${g.label} ${g.sections.flatMap((s) => s.tables).length}`).join(' · ');
+const groupCount = GROUPS.map((g) => `${g.label} ${g.sections.flatMap((s) => s.tables).length}`).join(', ');
 const factsRegion = `<ul class="facts">
   <li>데이터베이스 <b>taskmgr</b></li>
   <li>엔진 <b>MySQL ${esc(S.meta.mysql)} / InnoDB</b></li>
   <li>문자셋 <b>${esc(S.meta.charset[1])}</b></li>
   <li>표 <b>${S.tables.length}</b> <span class="ko">${esc(groupCount)}</span></li>
-  <li>컬럼 <b>${totalCols}</b> · 외래키 <b>${totalFk}</b> · CHECK <b>${totalChk}</b></li>
+  <li>컬럼 <b>${totalCols}</b>, 외래키 <b>${totalFk}</b>, CHECK <b>${totalChk}</b></li>
   <li>schema_version <b>${esc(S.meta.schemaVersion)}</b></li>
   <li>기준 <b>${stamp}</b></li>
 </ul>`;
