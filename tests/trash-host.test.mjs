@@ -180,7 +180,7 @@ const checks = {
     // 문구는 상수 한 곳에서만 온다 — 같은 말을 두 곳에 적으면 한쪽만 고쳐진다.
     const code = stripCs(cs);
     for (const [nm, txt] of [
-      ['TrashGoneMsg', '이미 삭제됐거나 없는 항목입니다 — 목록을 새로고침합니다.'],
+      ['TrashGoneMsg', '이미 삭제됐거나 없는 항목입니다. 목록을 새로고침합니다.'],
       ['TrashActiveMsg', '숨긴(퇴사) 항목만 지울 수 있습니다. 먼저 숨기세요.'],
       ['TrashNameMsg', '입력한 이름이 다릅니다.'],
       ['TrashSelfMsg', '자기 계정은 지울 수 없습니다.'],
@@ -289,7 +289,7 @@ const checks = {
     assert.ok(upd >= 0, '복구에 UPDATE 문이 없다(측정 불가 ≠ 통과)');
     assert.ok(guard < upd,
       '이미 활성 판정이 첫 UPDATE 보다 뒤에 있다 — 남이 이미 복구한 코드의 순번이 맨 뒤로 튄다');
-    assert.ok(/const string AlreadyActiveMsg\s*=\s*"이미 복구된 항목입니다 — 목록을 새로고침합니다\."/.test(code),
+    assert.ok(/const string AlreadyActiveMsg\s*=\s*"이미 복구된 항목입니다\. 목록을 새로고침합니다\."/.test(code),
       '이미 복구됨 문구 상수가 설계 §4.3 과 다르다 — 실패가 아니라 "목록이 낡았다"고 말해야 한다');
   },
 

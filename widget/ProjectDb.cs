@@ -759,17 +759,17 @@ namespace TaskCalendarWidget
         private const string SelfDeactivateMsg = "자기 계정은 퇴사 처리할 수 없습니다.";
         private const string SelfRoleMsg       = "자기 권한은 바꿀 수 없습니다. 다른 관리자가 바꿔야 합니다.";
         private const string LastAdminMsg      = "관리자가 한 명뿐이라 처리할 수 없습니다. 먼저 다른 관리자를 지정하세요.";
-        private const string UserGoneMsg       = "대상 직원을 찾을 수 없습니다 — 명부를 새로고침해 주세요.";
+        private const string UserGoneMsg       = "대상 직원을 찾을 수 없습니다. 명부를 새로고침해 주세요.";
         // 순서 저장이 **낡은 명부**로 왔을 때(목록 밖에 활성 직원이 남아 있다). 저장을 통째로 거부한다 —
         //   반만 반영하면 그 사람의 서열이 소리 없이 사라진다(2026-09-11 적대 검토 R1 · §7-1a).
         //   ★ internal 인 이유는 하나다(2026-09-11 R3-H2): 브리지(MainWindow)가 "이 거부는 낡은 명부다"
         //     를 **문장 대조**로 알아야 그때만 명부를 다시 밀어 준다. 같은 문장을 저쪽에 한 벌 더 적으면
         //     한쪽만 고쳐지는 순간 그 푸시가 조용히 멈춘다 — 정본은 이 한 줄이다.
-        internal const string StaleRosterMsg    = "명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.";
+        internal const string StaleRosterMsg    = "명부가 바뀌었습니다. 새로고침한 뒤 다시 저장하세요.";
 
         // 잠금 경합(1205 잠금 대기 초과 · 1213 교착) — 사람에게는 한 문장이다. 둘 다 "지금은 남이 잡고 있다"이고
         //   할 일도 같다(잠시 뒤 다시). 번호를 문장에 섞지 않는다 — 번호는 로그의 몫이다.
-        private const string DbBusyMsg = "다른 관리자가 같은 항목을 편집 중입니다 — 잠시 후 다시 시도하세요.";
+        private const string DbBusyMsg = "다른 관리자가 같은 항목을 편집 중입니다. 잠시 후 다시 시도하세요.";
         // 그 '둘'을 세 자리(직원 문장 매핑 · 휴지통 복구 · 영구 삭제)가 똑같이 판정한다 — 번호를 세 곳에 적으면
         //   한쪽만 고쳐진다(2026-09-11 적대 검토 R5). 판정은 여기 한 줄이고, 부르는 쪽은 문장만 고른다.
         private static bool IsLockContention(MySqlException ex) => ex.Number is 1205 or 1213;
@@ -791,12 +791,12 @@ namespace TaskCalendarWidget
                 case 1452:
                     if (m.Contains("fk_user_title")) return "등록되지 않은 직급입니다.";
                     if (m.Contains("fk_user_org_id")) return "등록되지 않은 소속입니다.";
-                    return "등록되지 않은 값이 있습니다 — 직급·소속을 다시 고르세요.";
+                    return "등록되지 않은 값이 있습니다. 직급·소속을 다시 고르세요.";
                 case 3819:   // CHECK 위반
                     if (m.Contains("chk_view_scope")) return "열람 범위 값이 올바르지 않습니다.";
                     if (m.Contains("chk_edit_role")) return "편집 권한 값이 올바르지 않습니다.";
                     return "값이 허용 범위를 벗어났습니다.";
-                case 1406: return "값이 너무 깁니다 — 길이를 줄여 주세요.";
+                case 1406: return "값이 너무 깁니다. 길이를 줄여 주세요.";
                 case 1048: return "필수 항목이 비어 있습니다.";
                 default:   return DbFailMsg;   // ★ 원문(Short(ex))은 부르는 쪽 _log 에만 — 화면에는 고정 문장이다
             }
@@ -1266,11 +1266,11 @@ namespace TaskCalendarWidget
                 case 1452:
                 {
                     string m = ex.Message ?? "";
-                    if (m.Contains("fk_project_section")) return "등록되지 않은 구분입니다 — 구분·상태 관리에서 먼저 추가하세요.";
-                    if (m.Contains("fk_project_status"))  return "등록되지 않은 상태입니다 — 구분·상태 관리에서 먼저 추가하세요.";
+                    if (m.Contains("fk_project_section")) return "등록되지 않은 구분입니다. 구분·상태 관리에서 먼저 추가하세요.";
+                    if (m.Contains("fk_project_status"))  return "등록되지 않은 상태입니다. 구분·상태 관리에서 먼저 추가하세요.";
                     return "등록되지 않은 발주처입니다.";                                          // fk_project_customer
                 }
-                case 1406: return "값이 너무 깁니다 — 길이를 줄여 주세요.";                        // 길이 초과
+                case 1406: return "값이 너무 깁니다. 길이를 줄여 주세요.";                        // 길이 초과
                 case 1048: return "필수 항목이 비어 있습니다.";                                    // NOT NULL
                 default:   return "저장하지 못했습니다: " + Short(ex);
             }
@@ -1281,7 +1281,7 @@ namespace TaskCalendarWidget
         private static string NormalizeName(string? s) =>
             System.Text.RegularExpressions.Regex.Replace((s ?? "").Trim(), @"\s+", " ").ToLowerInvariant();
 
-        private const string OfflineMsg = "서버에 연결할 수 없습니다 — 편집은 온라인에서만 가능합니다.";
+        private const string OfflineMsg = "서버에 연결할 수 없습니다. 편집은 온라인에서만 가능합니다.";
 
         // 공식 과제 추가/수정. uid가 비어 있으면 INSERT(uid는 DB DEFAULT (UUID())가 생성), 있으면 그 행 UPDATE.
         // 반환 3-튜플: (ok, msg, needConfirm). needConfirm=true는 '실패'가 아니라 '소프트 경고 확인 요청'이다
@@ -1327,11 +1327,11 @@ namespace TaskCalendarWidget
                 // 구분/상태 존재 검증(코드테이블 로드) — 좋은 에러문구용. 최종 보증은 FK. 숨김 포함 전체로 검사해
                 // 이미 저장된 값(나중에 숨긴 코드)이 편집 저장에서 막히지 않게 한다.
                 var secSet = await LoadCodeNameSetAsync(conn, cts.Token, "section_code", activeOnly: false);
-                if (!secSet.Contains(sec)) return (false, "등록되지 않은 구분입니다 — 구분·상태 관리에서 먼저 추가하세요.", false);
+                if (!secSet.Contains(sec)) return (false, "등록되지 않은 구분입니다. 구분·상태 관리에서 먼저 추가하세요.", false);
                 if (st.Length > 0)
                 {
                     var stSet = await LoadCodeNameSetAsync(conn, cts.Token, "status_code", activeOnly: false);
-                    if (!stSet.Contains(st)) return (false, "등록되지 않은 상태입니다 — 구분·상태 관리에서 먼저 추가하세요.", false);
+                    if (!stSet.Contains(st)) return (false, "등록되지 않은 상태입니다. 구분·상태 관리에서 먼저 추가하세요.", false);
                 }
 
                 if (u.Length == 0)
@@ -1382,7 +1382,7 @@ namespace TaskCalendarWidget
                         await using var q = new MySqlCommand("SELECT COUNT(*) FROM project WHERE uid=@uid", conn);
                         q.Parameters.AddWithValue("@uid", u);
                         long cnt = Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L);
-                        if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요.", false);
+                        if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다. 목록을 새로고침해 주세요.", false);
                     }
                     _log("공식 과제 수정: " + pname + " (uid=" + u + ")");
                     return (true, "공식 과제를 저장했습니다.", false);
@@ -1455,7 +1455,7 @@ namespace TaskCalendarWidget
                     await using var q = new MySqlCommand("SELECT COUNT(*) FROM project WHERE uid=@uid", conn);
                     q.Parameters.AddWithValue("@uid", u);
                     long cnt = Convert.ToInt64((await q.ExecuteScalarAsync(cts.Token)) ?? 0L);
-                    if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                    if (cnt == 0) return (false, "대상 과제를 찾을 수 없습니다. 목록을 새로고침해 주세요.");
                 }
                 _log("공식 과제 " + (active ? "복구" : "숨김") + ": uid=" + u);
                 return (true, active ? "공식 과제를 목록에 다시 표시합니다." : "공식 과제를 목록에서 숨겼습니다.");
@@ -1538,7 +1538,7 @@ namespace TaskCalendarWidget
                 cmd.Parameters.AddWithValue("@new", nw);
                 cmd.Parameters.AddWithValue("@old", o);
                 int n = await cmd.ExecuteNonQueryAsync(cts.Token);
-                if (n == 0) return (false, "발주처를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                if (n == 0) return (false, "발주처를 찾을 수 없습니다. 목록을 새로고침해 주세요.");
                 _log("발주처 개명: " + o + " → " + nw + " (project.customer는 FK CASCADE로 자동 전파)");
                 return (true, "발주처 이름을 변경했습니다. 이 발주처의 과제 표기도 함께 바뀝니다.");
             }
@@ -1568,7 +1568,7 @@ namespace TaskCalendarWidget
                 cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
                 cmd.Parameters.AddWithValue("@n", n);
                 int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
-                if (cnt == 0) return (false, "발주처를 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                if (cnt == 0) return (false, "발주처를 찾을 수 없습니다. 목록을 새로고침해 주세요.");
                 _log("발주처 " + (active ? "복구" : "숨김") + ": " + n);
                 return (true, active ? "발주처를 다시 표시합니다." : "발주처를 숨겼습니다.");
             }
@@ -1681,7 +1681,7 @@ namespace TaskCalendarWidget
                 cmd.Parameters.AddWithValue("@new", nw);
                 cmd.Parameters.AddWithValue("@old", o);
                 int n = await cmd.ExecuteNonQueryAsync(cts.Token);
-                if (n == 0) return (false, lbl + "을(를) 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                if (n == 0) return (false, lbl + "을(를) 찾을 수 없습니다. 목록을 새로고침해 주세요.");
                 _log(lbl + " 개명: " + o + " → " + nw + " (project는 FK CASCADE로 자동 전파)");
                 return (true, lbl + "을(를) 변경했습니다. 이 " + lbl + "의 과제 표기도 함께 바뀝니다.");
             }
@@ -1718,7 +1718,7 @@ namespace TaskCalendarWidget
                 await using var cmd = new MySqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@n", n);
                 int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
-                if (cnt == 0) return (false, lbl + "을(를) 찾을 수 없습니다 — 목록을 새로고침해 주세요.");
+                if (cnt == 0) return (false, lbl + "을(를) 찾을 수 없습니다. 목록을 새로고침해 주세요.");
                 _log(lbl + " " + (active ? "복구" : "숨김") + ": " + n);
                 return (true, active ? lbl + "을(를) 다시 표시합니다." : lbl + "을(를) 숨겼습니다.");
             }
@@ -1883,7 +1883,7 @@ namespace TaskCalendarWidget
 
         // 거부 문구(§4.3) — 같은 말을 두 곳에 적으면 한쪽만 고쳐진다. 시험도 이 문장들을 계약으로 붙잡는다.
         private const string TrashKindMsg   = "알 수 없는 대상입니다.";
-        private const string TrashGoneMsg   = "이미 삭제됐거나 없는 항목입니다 — 목록을 새로고침합니다.";
+        private const string TrashGoneMsg   = "이미 삭제됐거나 없는 항목입니다. 목록을 새로고침합니다.";
         private const string TrashActiveMsg = "숨긴(퇴사) 항목만 지울 수 있습니다. 먼저 숨기세요.";
         private const string TrashNameMsg   = "입력한 이름이 다릅니다.";
         private const string TrashSelfMsg   = "자기 계정은 지울 수 없습니다.";
@@ -1897,7 +1897,7 @@ namespace TaskCalendarWidget
         //     그 약속을 지키는 쪽은 브리지(MainWindow)이고, 브리지가 이 상수를 **직접** 봐야 한다 —
         //     같은 문장을 거기 한 벌 더 적으면 한쪽만 고쳐지는 순간 그 새로고침이 조용히 멈춘다
         //     (StaleRosterMsg 가 같은 이유로 internal 이다).
-        internal const string AlreadyActiveMsg = "이미 복구된 항목입니다 — 목록을 새로고침합니다.";
+        internal const string AlreadyActiveMsg = "이미 복구된 항목입니다. 목록을 새로고침합니다.";
         // 조회·복구·삭제의 마지막 문장 셋 — ★ 예외 원문을 사용자 문장에 이어 붙이지 않는다(원문은 _log 의 몫이다).
         private const string TrashLoadFailMsg    = "휴지통을 불러오지 못했습니다.";
         private const string TrashRestoreFailMsg = "복구하지 못했습니다.";
@@ -1918,12 +1918,12 @@ namespace TaskCalendarWidget
             catch (Exception ex) { return "{\"직렬화실패\":\"" + Short(ex) + "\"}"; }
         }
 
-        // 부제 — 빈 조각은 빼고 ' · ' 로 잇는다(빈 칸이 점만 남는 줄을 만들지 않는다).
+        // 부제 — 빈 조각은 빼고 ', ' 로 잇는다(빈 칸이 쉼표만 남는 줄을 만들지 않는다).
         private static string SubLine(params string[] parts)
         {
             var keep = new List<string>(parts.Length);
             foreach (var p in parts) { string t = (p ?? "").Trim(); if (t.Length > 0) keep.Add(t); }
-            return string.Join(" · ", keep);
+            return string.Join(", ", keep);
         }
 
         // 휴지통 한 줄 — 다섯 탭이 **같은 모양**이라 화면도 한 벌로 그린다(§5.1).
@@ -2356,10 +2356,10 @@ namespace TaskCalendarWidget
         //     **문장 대조**로 알아야 그때만 갱신 목록을 실어 준다. 정본은 이 한 줄이다.
         // 1142 = 앱 계정에 이 표의 쓰기 권한이 없다 — 코드 결함이 아니라 서버에 GRANT(DEPLOY §0-5)가 빠진 판이다.
         //   일반 "DB 오류"로 뭉개면 관리자는 무엇을 고쳐야 하는지 알 수 없다(휴지통 §11-2 와 같은 사고).
-        internal const string GrantMissingMsg = "DB 권한이 없습니다(1142) — 서버에 직급·소속 GRANT 를 적용해야 합니다(DEPLOY §0-5).";
-        internal const string OrgTitleStaleMsg   = "목록이 바뀌었습니다 — 새로고침한 뒤 다시 시도하세요.";
+        internal const string GrantMissingMsg = "DB 권한이 없습니다(1142). 서버에 직급·소속 GRANT 를 적용해야 합니다(DEPLOY §0-5).";
+        internal const string OrgTitleStaleMsg   = "목록이 바뀌었습니다. 새로고침한 뒤 다시 시도하세요.";
         // 이미 그 상태다(숨김→숨김 · 그 상위로의 이동) — 실패가 아니라 목록이 낡은 것이다(AlreadyActiveMsg 규율).
-        internal const string OrgTitleAlreadyMsg = "이미 그 상태입니다 — 목록을 새로고침합니다.";
+        internal const string OrgTitleAlreadyMsg = "이미 그 상태입니다. 목록을 새로고침합니다.";
 
         private const string TitleDupMsg         = "이미 있는 직급입니다.";
         private const string UnitDupMsg          = "이미 있는 조직입니다.";
@@ -2371,9 +2371,13 @@ namespace TaskCalendarWidget
         private const string UnitSelfMoveMsg     = "자기 자신을 상위로 삼을 수 없습니다";
         private const string UnitCycleMsg        = "자기 하위 조직 아래로는 옮길 수 없습니다";
         private const string OrgTitleLoadFailMsg = "직급·소속을 불러오지 못했습니다.";
-        private static string TitleInUseMsg(long n) => "이 직급인 재직자가 " + n + "명 있습니다 — 먼저 직급을 바꾸세요";
+        //  숨김 거부 문장은 웹의 꺼진 [숨김] 사유(otRender 의 why)와 같은 꼴이다. 0 인 숫자는 넣지 않고('재직자 0명'은
+        //  이유가 아니다) 조사는 마지막 낱말이 정한다(명 → 이, 개 → 가).
+        private static string TitleInUseMsg(long n) => "재직자 " + n + "명이 있어 숨길 수 없습니다. 먼저 직급을 바꾸세요";
         private static string UnitInUseMsg(long n, long m) =>
-            "이 조직에 재직자 " + n + "명 · 하위 조직 " + m + "개가 있습니다 — 먼저 옮기거나 숨기세요";
+            (n > 0 && m > 0 ? "재직자 " + n + "명과 하위 조직 " + m + "개가"
+             : n > 0 ? "재직자 " + n + "명이"
+             : "하위 조직 " + m + "개가") + " 있어 숨길 수 없습니다. 먼저 옮기거나 숨기세요";
 
         private static string OrgTitleFailJson(string msg) =>
             JsonSerializer.Serialize(new Dictionary<string, object?> { ["found"] = false, ["msg"] = msg });

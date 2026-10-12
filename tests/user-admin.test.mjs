@@ -373,7 +373,7 @@ const checks = {
       '목록 밖 활성 직원을 잠그지 않고 센다 — 판정과 갱신 사이에 등록된 사람이 그 틈으로 빠진다(§4.4)');
     assert.ok(/StaleRosterMsg/.test(so),
       '낡은 명부를 거부하는 문장(StaleRosterMsg)이 없다 — 사용자가 무엇을 해야 하는지 알 수 없다');
-    assert.ok(/const string StaleRosterMsg\s*=\s*"명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요\."/.test(cs),
+    assert.ok(/const string StaleRosterMsg\s*=\s*"명부가 바뀌었습니다\. 새로고침한 뒤 다시 저장하세요\."/.test(cs),
       '낡은 명부 거부 문구 상수가 설계와 다르다 — 할 일(새로고침 뒤 재저장)을 말해 주는 한 문장이어야 한다');
     //      거부 판정은 **쓰기보다 앞**이어야 한다. 뒤면 이미 갈아엎은 뒤에 거부하는 셈이다.
     const count = so.indexOf('SELECT COUNT(*) FROM app_user WHERE is_active=1');
@@ -493,7 +493,7 @@ const checks = {
   },
 
   // ⑭-h3 퇴사/복구의 회신이 명부를 싣는 경우도 **둘**이다(2026-09-11 적대 검토 R5 · 전송은 2026-09-14).
-  //    복구의 거부 문구(AlreadyActiveMsg — "이미 복구된 항목입니다 — 목록을 새로고침합니다.")는 정확히
+  //    복구의 거부 문구(AlreadyActiveMsg — "이미 복구된 항목입니다. 목록을 새로고침합니다.")는 정확히
   //    **실패**로 나오면서 새로고침을 약속한다. 옛 판의 브리지는 `if (ok)` 였으므로 그 약속은 한 번도
   //    지켜지지 않았다 — 관리자는 그 문장을 읽으면서 **바뀐 것이 없는 낡은 명부**를 보고 같은 [복구] 를
   //    다시 눌러 같은 거부만 반복했다(휴지통이 TRASH-DELETE §11-23 에서 닫은 것과 같은 구멍이다).
@@ -1821,7 +1821,7 @@ test('변이⑭-h2: 순서 저장이 실패에도 무조건 명부를 싣게 되
 test('변이⑭-h2b: 낡은 명부 판정을 브리지가 제 손으로 적으면 계약⑭-h2 가 실패한다(문장이 두 벌이 된다)', () => {
   const bad = mutate(main,
     'string.Equals(msg, ProjectDb.StaleRosterMsg, StringComparison.Ordinal)',
-    'string.Equals(msg, "명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.", StringComparison.Ordinal)');
+    'string.Equals(msg, "명부가 바뀌었습니다. 새로고침한 뒤 다시 저장하세요.", StringComparison.Ordinal)');
   assert.throws(() => checks.orderRosterPolicy(bad, pdb), /성공 또는 낡은 명부/);
   assert.doesNotThrow(() => checks.orderRosterPolicy(main, pdb));   // 통제군
 });
@@ -1846,7 +1846,7 @@ test('변이⑭-h3: 그 명부를 성공에만 걸면(옛 if (ok)) 계약⑭-h3 
 test('변이⑭-h3b: 그 판정을 브리지가 제 손으로 적으면 계약⑭-h3 이 실패한다(문장이 두 벌이 된다 · R5)', () => {
   const bad = mutate(main,
     'string.Equals(msg, ProjectDb.AlreadyActiveMsg, StringComparison.Ordinal)',
-    'string.Equals(msg, "이미 복구된 항목입니다 — 목록을 새로고침합니다.", StringComparison.Ordinal)');
+    'string.Equals(msg, "이미 복구된 항목입니다. 목록을 새로고침합니다.", StringComparison.Ordinal)');
   assert.throws(() => checks.activeRosterPolicy(bad, pdb), /성공 또는 이미 복구됨/);
   assert.doesNotThrow(() => checks.activeRosterPolicy(main, pdb));   // 통제군
 });
@@ -3275,7 +3275,7 @@ if (!jsdom) {
   test('계약⑭-e-DOM: 회신의 명부는 **뒤처리를 부르지 않아도** 그 자리에서 앉는다(C06·C08 의 자리)', async () => {
     //  「이미 복구됨」 거부 — 실패 회신인데도 명부가 실려 온다(§11-32). 뒤처리(userEdAfterWrite)는 부르지 않는다:
     //  그런데도 화면 명부와 열려 있는 폼이 최신이어야 한다. 앉히는 일이 부르는 쪽에 남아 있으면 여기서 갈린다.
-    const r = await probeSendSeats(13, reply(false, '이미 복구된 항목입니다 — 목록을 새로고침합니다.', REACTIVATED));
+    const r = await probeSendSeats(13, reply(false, '이미 복구된 항목입니다. 목록을 새로고침합니다.', REACTIVATED));
     assert.deepStrictEqual(r.names, [REACTIVATED.members[0].name],
       `회신에 실려 온 명부가 앉지 않았다: ${JSON.stringify(r.names)} — 화면 명부가 낡은 채로 남고(C06), ` +
       '그 낡은 id 목록으로 「순서 저장」을 누르면 호스트가 「명부가 바뀌었습니다」로 되돌려준다(C08)');
@@ -3288,7 +3288,7 @@ if (!jsdom) {
   });
 
   test('변이⑭-e-DOM: uaSend 에서 좌석을 빼면 명부가 영영 낡은 채로 남는다(1단계가 남긴 구멍)', async () => {
-    const REP = reply(false, '이미 복구된 항목입니다 — 목록을 새로고침합니다.', REACTIVATED);
+    const REP = reply(false, '이미 복구된 항목입니다. 목록을 새로고침합니다.', REACTIVATED);
     const bad = mutate(app, SEAT_IN_SEND, SEAT_IN_SEND_GONE);
     const r = await probeSendSeats(13, REP, bad);
     assert.deepStrictEqual(r.names, OLD_NAMES,
@@ -3423,7 +3423,7 @@ if (!jsdom) {
       `두 번째 호출이 회신처럼 생긴 값을 돌려줬다: ${JSON.stringify(r.second)} — '못 보냈다'와 '회신이 왔다'가 구별되지 않는다`);
   });
 
-  //  ★ R6-W3 — "이미 복구된 항목입니다 — 목록을 새로고침합니다."(AlreadyActiveMsg) 로 거부당하면
+  //  ★ R6-W3 — "이미 복구된 항목입니다. 목록을 새로고침합니다."(AlreadyActiveMsg) 로 거부당하면
   //    호스트가 약속대로 갱신 명부를 **그 거부와 함께** 돌려준다(§11-32). 그런데 열려 있는 폼의 [복구] 는
   //    userEdOpen 이 열 때 한 번 정한 그대로라, 다시 누르면 같은 거부만 되풀이됐다.
   test('계약⑦-DOM(e2): 남의 왕복이 나른 명부가 앉으면 열려 있는 폼의 [복구]가 [퇴사 처리]로 바뀐다(R6-W3)', () => {
@@ -3441,7 +3441,7 @@ if (!jsdom) {
 
   //  ★ 그리고 **거부 회신에 실려 온 명부**도 같은 일을 해야 한다 — 그것이 AlreadyActiveMsg 의 진짜 길이다.
   test('계약⑦-DOM(e4): 회신에 실려 온 명부도 열려 있는 폼을 다시 맞춘다(거부 문장은 폼에 남는다)', async () => {
-    const MSG = '이미 복구된 항목입니다 — 목록을 새로고침합니다.';
+    const MSG = '이미 복구된 항목입니다. 목록을 새로고침합니다.';
     const r = await probeFormReply(13, reply(false, MSG, REACTIVATED));
     assert.strictEqual(r.before.uop, 'on', `전제 붕괴: 퇴사자의 폼이 [복구]로 서지 않았다: ${JSON.stringify(r.before)}`);
     assert.strictEqual(r.closes, 0, '실패했는데 폼을 닫았다 — 관리자가 무엇을 고쳐야 하는지 읽을 자리가 사라진다');

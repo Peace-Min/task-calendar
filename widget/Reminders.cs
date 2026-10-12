@@ -286,11 +286,11 @@ namespace TaskCalendarWidget
             // 본체 — 제목 / 시각·장소 / 확인
             var body = new StackPanel { Margin = new Thickness(14, 12, 14, 13) };
             body.Children.Add(new TextBlock { Text = title, Foreground = SB(pal.Text), FontSize = 15.5, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
-            string meta = startTime + (string.IsNullOrEmpty(endTime) ? "" : " – " + endTime) + (string.IsNullOrEmpty(loc) ? "" : "  ·  " + loc);
+            string meta = startTime + (string.IsNullOrEmpty(endTime) ? "" : "~" + endTime) + (string.IsNullOrEmpty(loc) ? "" : ", " + loc);
             body.Children.Add(new TextBlock { Text = meta, Foreground = SB(pal.Muted), FontSize = 12.5, Margin = new Thickness(0, 5, 0, 0), TextWrapping = TextWrapping.Wrap });
 
             var okBorder = new Border { Background = SB(pal.BtnBg), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand, Margin = new Thickness(0, 13, 0, 0) };
-            okBorder.Child = new TextBlock { Text = "확인 — 알림 끄기", Foreground = SB(pal.BtnText), FontSize = 13.5, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 9, 0, 9) };
+            okBorder.Child = new TextBlock { Text = "확인(알림 끄기)", Foreground = SB(pal.BtnText), FontSize = 13.5, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 9, 0, 9) };
             okBorder.MouseEnter += (_, _) => okBorder.Opacity = 0.9;
             okBorder.MouseLeave += (_, _) => okBorder.Opacity = 1.0;
             okBorder.MouseLeftButtonUp += (_, _) => { try { _onAck(); } catch { } };

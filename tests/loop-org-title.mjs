@@ -198,7 +198,7 @@ function appGrantGaps() {
 }
 /** 회신 문장이 'GRANT 가 없다' 로 읽히는가 — 첫 쓰기에만 쓴다(§6).
  *  ★ 호스트가 1142 를 **제 문장**으로 돌려준다(ProjectDb.GrantMissingMsg · §11-2 정정):
- *    「DB 권한이 없습니다(1142) — 서버에 직급·소속 GRANT 를 적용해야 합니다(DEPLOY §0-5).」
+ *    「DB 권한이 없습니다(1142). 서버에 직급·소속 GRANT 를 적용해야 합니다(DEPLOY §0-5).」
  *    옛 판처럼 일반 DB 오류로 뭉개진 위젯도 있을 수 있어 그쪽 문장까지 함께 본다(정본 대조는
  *    tests/org-title-host.test.mjs 계약⑤-b 가 진다). */
 const looksLikeGrantDenied = (msg) => /1142|command denied|권한이 없|DB 오류/.test(String(msg || ''));

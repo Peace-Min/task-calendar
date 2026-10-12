@@ -105,7 +105,7 @@ namespace TaskCalendarWidget
         //      낙관적 잠금·rev·발번·자식 정리가 전부 한 경로에 남는다(두 번째 쓰기 경로를 만들지 않는다).
         public async Task<CalendarSaveResult> SaveAsync(CalendarSnapshot prev, string newStateJson, bool replaceAll = false)
         {
-            if (prev == null) return Fail("부팅 스냅샷이 없습니다 — 다시 시작한 뒤 저장하세요");
+            if (prev == null) return Fail("부팅 스냅샷이 없습니다. 다시 시작한 뒤 저장하세요");
             if (string.IsNullOrWhiteSpace(newStateJson)) return Fail("저장할 내용이 비었습니다");
 
             // ── 0. 낡은 클라이언트 게이트(§5.5) — 트랜잭션을 **열기 전에** 끊는다 ─────────
@@ -120,8 +120,8 @@ namespace TaskCalendarWidget
             if (replaceAll && !string.Equals(prev.SchemaVersion, CalendarDb.ExpectedSchemaVersion, StringComparison.Ordinal))
             {
                 string sv = prev.SchemaVersion.Length == 0 ? "(알 수 없음)" : prev.SchemaVersion;
-                string m = "서버 스키마 v" + sv + " · 위젯은 v" + CalendarDb.ExpectedSchemaVersion +
-                           " — 전량 교체(가져오기·초기화)는 위젯을 업데이트한 뒤 하세요";
+                string m = "서버 스키마 v" + sv + ", 위젯 v" + CalendarDb.ExpectedSchemaVersion +
+                           ". 전량 교체(가져오기·초기화)는 위젯을 업데이트한 뒤 하세요";
                 _log("전량 교체 거부(스키마 불일치): " + m);
                 return new CalendarSaveResult { Ok = false, SchemaMismatch = true, Message = m, Kind = DbErrorKind.Schema };
             }
@@ -738,10 +738,10 @@ namespace TaskCalendarWidget
             Dictionary<string, string> tokens, string tokKey, List<(string, object?)> ps, string now, CancellationToken ct)
         {
             if (!tokens.TryGetValue(tokKey, out var prevTok))
-                throw new ConflictException("이 항목의 버전을 알 수 없습니다 — 새로고침 후 다시 시도하세요");
+                throw new ConflictException("이 항목의 버전을 알 수 없습니다. 새로고침 후 다시 시도하세요");
             var all = new List<(string, object?)>(ps) { ("@prev", prevTok) };
             int n = await Exec(conn, tx, $"UPDATE {table} {setWhere} AND updated_at=@prev", ct, all, now);
-            if (n == 0) throw new ConflictException("다른 곳에서 먼저 수정되었습니다 — 새로고침 후 다시 시도하세요");
+            if (n == 0) throw new ConflictException("다른 곳에서 먼저 수정되었습니다. 새로고침 후 다시 시도하세요");
         }
 
         //  토큰을 건 DELETE. 삭제에도 같은 조건을 건다(§3.3 — 세션 수명 = 스테일 윈도우).
@@ -751,7 +751,7 @@ namespace TaskCalendarWidget
             if (!tokens.TryGetValue(tokKey, out var prevTok)) return;   // 이미 우리가 지운 것 — 조용히 통과
             int n = await Exec(conn, tx, $"DELETE FROM {table} {where} AND updated_at=@prev", ct,
                 new List<(string, object?)> { ("@prev", prevTok) }, now);
-            if (n == 0) throw new ConflictException("다른 곳에서 먼저 수정되었습니다 — 새로고침 후 다시 시도하세요");
+            if (n == 0) throw new ConflictException("다른 곳에서 먼저 수정되었습니다. 새로고침 후 다시 시도하세요");
         }
 
         //  새 state 에 없어진 (토큰 접두어) 행들을 지운다.

@@ -936,12 +936,12 @@ const PAYLOAD = {
   found: true,
   admin: true,
   projects: [
-    { key: 'zzP-uid-1', name: 'zzP 과제 A', sub: 'zzC 발주처 · 개발', refs: 2, deletable: true, why: '' },
-    { key: 'zzP-uid-2', name: 'zzP 과제 B', sub: 'zzC 발주처 · 연구', refs: 0, deletable: true, why: '' },
+    { key: 'zzP-uid-1', name: 'zzP 과제 A', sub: 'zzC 발주처, 개발', refs: 2, deletable: true, why: '' },
+    { key: 'zzP-uid-2', name: 'zzP 과제 B', sub: 'zzC 발주처, 연구', refs: 0, deletable: true, why: '' },
   ],
   users: [
-    { key: '31', name: 'zzU_a', sub: 'zzU-조직 · 사원 · zzUa', refs: 0, deletable: true, why: '' },
-    { key: '32', name: 'zzU_b', sub: 'zzU-조직 · 대리 · zzUb', refs: 7, deletable: false, why: WHY_USER },
+    { key: '31', name: 'zzU_a', sub: 'zzU-조직, 사원, zzUa', refs: 0, deletable: true, why: '' },
+    { key: '32', name: 'zzU_b', sub: 'zzU-조직, 대리, zzUb', refs: 7, deletable: false, why: WHY_USER },
   ],
   customers: [{ key: 'zzC 발주처', name: 'zzC 발주처', sub: '', refs: 1, deletable: false, why: WHY_CUST }],
   sections: [],
@@ -1181,7 +1181,7 @@ if (!jsdom) {
     //  참조 요약은 종류마다 다른 문장이고, 0 이면 아예 내지 않는다.
     assert.ok(/편입 2건/.test(r.text), `과제 행에 '편입 2건' 이 없다: ${JSON.stringify(r.text.slice(0, 120))}`);
     assert.ok(!/편입 0건/.test(r.text), "참조 0건인데 '편입 0건' 을 적었다 — 아무것도 알려 주지 않는 문장이다");
-    assert.ok(/zzC 발주처 · 개발/.test(r.text), '부제(발주처·구분)가 행에 없다');
+    assert.ok(/zzC 발주처, 개발/.test(r.text), '부제(발주처·구분)가 행에 없다');
     assert.strictEqual(r.emptyHidden, true, '행이 있는데 빈 탭 안내가 떠 있다');
 
     const cu = probeRender(PAYLOAD, 'customer');

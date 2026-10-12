@@ -295,8 +295,8 @@ const wiring = {
     assert.ok(/window\.__applyStateError\("\s*\+\s*JsonSerializer\.Serialize\(msg\)\s*\+\s*","\s*\+\s*opt/.test(cs),
       'JS 호출에 retryable 옵션이 실리지 않는다');
     for (const [needle, why] of [
-      ['ApplyStateError("로그인 정보가 없습니다 — 로그인 후 다시 시작하세요", retryable: false)', '로그인 없음'],
-      ['ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요", retryable: false)', '미등록 사용자'],
+      ['ApplyStateError("로그인 정보가 없습니다. 로그인 후 다시 시작하세요", retryable: false)', '로그인 없음'],
+      ['ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다. 관리자에게 문의하세요", retryable: false)', '미등록 사용자'],
     ]) assert.ok(cs.includes(needle),
       `${why} 을(를) 재시도 가능으로 넘긴다 — 몇 번을 다시 걸어도 같은 답이 오는데 서버만 두드린다`);
     //  연결 실패는 반대로 **재시도 대상**이어야 한다(기본값 true 를 그대로 쓴다).
@@ -326,7 +326,7 @@ test('변이⑤: 성공 시 상자를 안 걷으면 배선③ 이 실패한다',
 });
 
 test('변이⑥: 미등록 사용자를 재시도 대상으로 바꾸면 배선④ 가 실패한다', () => {
-  const bad = mutate('ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요", retryable: false);',
-    'ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요");', mainwin);
+  const bad = mutate('ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다. 관리자에게 문의하세요", retryable: false);',
+    'ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다. 관리자에게 문의하세요");', mainwin);
   assert.throws(() => wiring.hostSplitsRetryable(bad), /미등록 사용자/);
 });

@@ -13,8 +13,13 @@
 //   (R) jsdom: 앱을 위젯 모드로 띄우고 주요 창(도움말, 사용설명서, 패치노트, 설정, 내 과제, 보고서, 사용자 정보,
 //       다른 사람 일정 고르기, ⚙ 관리 항목들, 문의, 로그인 화면)을 열어 보이는 글과 title / aria-label / placeholder 를 검사한다.
 //   (M) 변이: 보이는 글에 「 를 하나 넣으면 (S)와 (R)가 각각 잡는다.
+//   (H) 호스트(C#, widget/*.cs)가 화면으로 보내는 문구(2026-10-12): 메시지 상자, 웹으로 가는 결과 문구
+//       (NetcusResult, UpdateResult, ApplyStateError, 회신의 msg/error 등), 거부 문구 상수, 창 제목, 트레이 메뉴.
+//       파일 전체를 훑지 않고 **화면으로 가는 자리(싱크)** 의 인자만 본다. 로그(Log, _log)는 사람이 읽는 화면이 아니라
+//       기호가 남아 있어도 된다. 싱크 이름이 바뀌어 하나도 안 잡히면 그것도 실패다(지킴이가 눈을 감지 않게).
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
-import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM, stripCsComments } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -37,7 +42,6 @@ const ALLOW_TEXT = new Map([
 //  스크립트 문자열 중 화면 문구가 아닌 것. [그 줄에 있어야 하는 표지, 리터럴 원문(따옴표 포함), 이유].
 //  리터럴만으로 허용하면 같은 조각이 다른 화면 문구에 끼어도 통과하므로, 줄 표지를 함께 본다.
 const ALLOW_JS = [
-  ["const staleRoster = (!r.ok && r.msg ===", "'명부가 바뀌었습니다 — 새로고침한 뒤 다시 저장하세요.'", '호스트(C#) 상수와 글자 그대로 맞대는 비교값. 바꾸려면 C# 과 함께'],
   ['console.warn(`알 수 없는 taskCalendar 버전', ') — v1 규칙으로 해석을 시도합니다.', '로그 전용(console.warn)'],
   ['const PRESET_MARKERS = new Set(', "'–'", '보고서 머리기호 저장값(데이터)'],
   ["'–':{kind:'const',ch:'–'}", "'–'", '보고서 머리기호 출력 문자(기능)'],
@@ -171,6 +175,127 @@ test('(S) 분해기가 주석은 건너뛰고 보이는 글은 잡는다(자기 
 test('변이(S): 보이는 토스트 문구에 「 를 넣으면 (S)가 잡는다', () => {
   const m = mutate(app, "toast('읽기 전용 보기라 여기서는 지울 수 없습니다', 'info')", "toast('「읽기 전용」 보기라 여기서는 지울 수 없습니다', 'info')");
   assert.ok(staticScan(m).bad.some((b) => /낫표/.test(b)), '보이는 토스트에 낫표를 넣었는데 (S)가 잡지 못했다');
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// (H) 호스트(C#)가 화면으로 보내는 문구
+// ══════════════════════════════════════════════════════════════════════
+//  C# 을 가린다: 주석은 공백으로, 문자열 리터럴은 같은 길이의 x 로 바꾼 '코드' 와, 리터럴 목록(위치, 보간 구멍을 뺀 글)을 돌려준다.
+//  싱크 찾기와 괄호 짝 맞추기는 가린 코드에서 하므로 문자열 속 괄호나 주석이 판정을 흐리지 않는다.
+const CS_BS = String.fromCharCode(92);
+function maskCs(src) {
+  const code = src.split('');
+  const lits = [];
+  const blank = (s, e, ch) => { for (let k = s; k < e; k++) if (code[k] !== '\n' && code[k] !== '\r') code[k] = ch; };
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i], d = src[i + 1];
+    if (c === '/' && d === '/') { const s = i; while (i < src.length && src[i] !== '\n') i++; blank(s, i, ' '); continue; }
+    if (c === '/' && d === '*') { const s = i; const e = src.indexOf('*/', i + 2); i = e < 0 ? src.length : e + 2; blank(s, i, ' '); continue; }
+    if (c === "'") { i++; while (i < src.length && src[i] !== "'") { if (src[i] === CS_BS) i++; i++; } i++; continue; }
+    const m = /^(\$@|@\$|\$|@)?"/.exec(src.slice(i, i + 3));
+    if (!m) { i++; continue; }
+    const verb = (m[1] || '').includes('@'), interp = (m[1] || '').includes('$');
+    const s = i; i += m[0].length;
+    let depth = 0, text = '';
+    while (i < src.length) {
+      const ch = src[i];
+      if (depth > 0) {
+        if (ch === '{') depth++;
+        else if (ch === '}') { depth--; if (depth === 0) text += '{}'; }
+        else if (ch === '"') { i++; while (i < src.length && src[i] !== '"') { if (src[i] === CS_BS) i++; i++; } }
+        i++; continue;
+      }
+      if (interp && ch === '{') { if (src[i + 1] === '{') { text += '{'; i += 2; continue; } depth = 1; i++; continue; }
+      if (!verb && ch === CS_BS) { text += src.slice(i, i + 2); i += 2; continue; }
+      if (ch === '"') { if (verb && src[i + 1] === '"') { text += '"'; i += 2; continue; } i++; break; }
+      text += ch; i++;
+    }
+    blank(s + 1, i - 1, 'x');
+    lits.push({ s, e: i, text });
+  }
+  return { code: code.join(''), lits };
+}
+//  싱크: [이름, 정규식(가린 코드에서), 끝내는 방식, 이 파일들에서만]. 'call' = 정규식이 여는 괄호까지 먹었다(짝이 닫히면 끝),
+//  'expr' = 대입이나 => 뒤의 식(깊이 0 의 ; 또는 , 또는 감싼 괄호가 닫히면 끝).
+const HOST_SINKS = [
+  ['MessageBox.Show',     /\bMessageBox\.Show\(/g, 'call'],
+  ['NetcusResult',        /\bNetcusResult\(/g, 'call'],
+  ['NetcusProgress',      /\bNetcusProgress\(/g, 'call'],
+  ['JsCredsResult',       /\bJsCredsResult\(/g, 'call'],
+  ['UpdateResult',        /\bUpdateResult\(/g, 'call'],
+  ['ApplyStateError',     /\bApplyStateError\(/g, 'call'],
+  ['ConflictException',   /\bnew ConflictException\(/g, 'call'],
+  ['Fail',                /\bFail\(/g, 'call'],
+  ['J (웹으로 가는 문구)', /\bJ\(/g, 'call'],
+  ['GitReply',            /\bGitReply\(/g, 'call'],
+  ['ReplyOnUi',           /\bReplyOnUi\(/g, 'call'],
+  ['return (false, 사유)', /\breturn \(false,/g, 'call'],
+  ['Title/Text/Header =', /\b(?:Title|Text|Header)\s*=(?![=>])/g, 'expr'],
+  ['회신의 msg/error =',   /\b(?:msg|error)\s*=(?![=>])/g, 'expr'],
+  ['const string …Msg/Fail', /\bconst string \w*(?:Msg|Fail)\s*=/g, 'expr'],
+  ['static string …Msg(..) =>', /\bstatic string \w*Msg\([^)]*\)\s*=>/g, 'expr'],
+  ['BootMessage/ConnMessage', /\bstatic string (?:BootMessage|ConnMessage)\(string kind\)\s*=>/g, 'expr'],
+  ['알림 창 meta 줄',       /\bstring meta\s*=/g, 'expr'],
+  ['오류 문장 매핑 return', /\breturn (?=")/g, 'expr', ['ProjectDb.cs']],
+];
+function hostScan(files) {
+  const bad = [], hits = new Map(HOST_SINKS.map(([n]) => [n, 0]));
+  for (const [name, src] of files) {
+    const { code, lits } = maskCs(src);
+    const seen = new Set();   // 한 리터럴이 싱크 둘에 걸려도(회신 호출 안의 error = …) 한 번만 센다
+    for (const [sink, re, how, only] of HOST_SINKS) {
+      if (only && !only.includes(name)) continue;
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(code))) {
+        hits.set(sink, hits.get(sink) + 1);
+        let j = m.index + m[0].length, depth = how === 'call' ? 1 : 0;
+        for (; j < code.length; j++) {
+          const ch = code[j];
+          if (ch === '(' || ch === '[' || ch === '{') depth++;
+          else if (ch === ')' || ch === ']' || ch === '}') { depth--; if (depth < (how === 'call' ? 1 : 0)) break; }
+          else if (how === 'expr' && depth === 0 && (ch === ';' || ch === ',')) break;
+        }
+        for (const l of lits) {
+          if (l.s < m.index || l.s >= j || seen.has(l.s)) continue;
+          seen.add(l.s);
+          const f = badOf(l.text);
+          if (f.length) bad.push(`${name}:${lineOf(src, l.s)} ${sink} [${f.join(', ')}] ${JSON.stringify(l.text.slice(0, 120))}`);
+        }
+      }
+    }
+  }
+  return { bad: [...new Set(bad)], hits };
+}
+const HOST_DIR = new URL('../widget/', import.meta.url);
+const hostFiles = readdirSync(HOST_DIR).filter((f) => f.endsWith('.cs')).sort()
+  .map((f) => [f, readFileSync(new URL(f, HOST_DIR), 'utf8')]);
+
+test('(H) 호스트가 화면으로 보내는 문구(메시지 상자, 결과 문구, 거부 문구, 창 제목, 메뉴)에 금지 기호가 없다', () => {
+  const { bad } = hostScan(hostFiles);
+  assert.ok(bad.length === 0, `호스트의 보이는 문구에 금지 기호가 ${bad.length}곳 있다. 마침표, 쉼표, 괄호, 콜론으로 바꿀 것(korean-ai-punct P1~P3):\n  ` + bad.slice(0, 40).join('\n  '));
+});
+test('(H) 싱크가 모두 실제 코드에서 잡힌다(이름이 바뀌어 지킴이가 눈을 감지 않았다)', () => {
+  const { hits } = hostScan(hostFiles);
+  const blind = [...hits.entries()].filter(([, n]) => n === 0).map(([k]) => k);
+  assert.deepStrictEqual(blind, [], '한 번도 잡히지 않은 싱크가 있다. 호출 이름이 바뀌었으면 HOST_SINKS 를 고칠 것');
+});
+test('(H) 분해기 자기 점검: 로그와 주석은 보지 않고, 화면 싱크의 문자열만 본다', () => {
+  const probe = '// 주석 — 무시\nLog("로그 — 무시 · 무시"); _log($"{a} — 로그"); NetcusResult(false, "보임 — 걸림");\n' +
+    'GitReply(reqId, new { ok = false, error = $"{(x ? "가" : "나")} · 걸림" });\nvar t = new TextBlock { Text = "직급·소속" };\n' +
+    'MessageBox.Show(\n  "본문",\n  "제목 「걸림」");';
+  const { bad } = hostScan([['Probe.cs', probe]]);
+  assert.strictEqual(bad.length, 3, 'NetcusResult, GitReply 보간 문자열, MessageBox 제목 세 곳만 걸려야 한다: ' + bad.join(' | '));
+});
+test('변이(H): 업데이트 결과 문구와 조직 숨김 거부 문구에 기호를 넣으면 (H)가 잡는다', () => {
+  const upd = hostFiles.find(([f]) => f === 'Update.cs');
+  const pdb = hostFiles.find(([f]) => f === 'ProjectDb.cs');
+  const m1 = mutate(upd[1], 'UpdateResult(false, "업데이트 확인 실패. 소스에 접근할 수 없습니다")', 'UpdateResult(false, "업데이트 확인 실패 — 소스에 접근할 수 없습니다")');
+  const m2 = mutate(pdb[1], '"재직자 " + n + "명과 하위 조직 "', '"재직자 " + n + "명 · 하위 조직 "');
+  const r = hostScan(hostFiles.map(([f, s]) => [f, f === 'Update.cs' ? m1 : f === 'ProjectDb.cs' ? m2 : s]));
+  assert.ok(r.bad.some((b) => /^Update\.cs:\d+ UpdateResult \[엠 대시/.test(b)), '업데이트 결과 문구에 엠 대시를 넣었는데 (H)가 잡지 못했다: ' + r.bad.join(' | '));
+  assert.ok(r.bad.some((b) => /^ProjectDb\.cs:\d+ static string …Msg\(\.\.\) => \[띄어 쓴 가운데 점/.test(b)), '조직 숨김 거부 문구에 가운데 점을 넣었는데 (H)가 잡지 못했다: ' + r.bad.join(' | '));
 });
 
 // ══════════════════════════════════════════════════════════════════════

@@ -460,7 +460,7 @@ if (!JSDOM) {
       assert.strictEqual(W.ev('conn'), 'denied');
     });
     await withBoot(src, async (W) => {
-      W.applyError('이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요', { retryable: false, kind: 'unregistered' });
+      W.applyError('이 계정이 서버에 등록돼 있지 않습니다. 관리자에게 문의하세요', { retryable: false, kind: 'unregistered' });
       assert.ok(/등록돼 있지 않습니다/.test(W.text('dsErrorText')), '미등록은 호스트 문구를 그대로 써야 한다: ' + W.text('dsErrorText'));
       W.clear(); await W.run(20 * 60 * 1000, 10000);
       assert.strictEqual(W.posts('reloadState').length, 0);

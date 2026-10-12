@@ -179,7 +179,7 @@ namespace TaskCalendarWidget
                 // 최초 실행 시 1회만 묻는다(묻지 않고 자동 등록하지 않음). 이후 ⚙에서 변경.
                 var ans = MessageBox.Show(
                     "Windows를 켤 때 이 위젯을 자동으로 실행할까요?\n\n나중에 ⚙(설정) 메뉴에서 언제든 바꿀 수 있습니다.",
-                    "수행과제 캘린더 — 자동 시작 설정",
+                    "수행과제 캘린더 자동 시작 설정",
                     MessageBoxButton.YesNo, MessageBoxImage.Question);
                 bool on = ans == MessageBoxResult.Yes;
                 SetAutoStart(on);
@@ -883,7 +883,7 @@ namespace TaskCalendarWidget
             {
                 // 분기 단일 소스 — gitlog와 동일하게 명시 vcs 우선(없으면 DetectVcs). svn은 작성자 자동감지 불가.
                 if (ResolveVcs(repo, vcs) == "svn")
-                    payload = new { ok = false, email = "", name = "", error = "SVN은 작성자 자동 감지가 안 됩니다 — 본인 SVN 사용자명을 직접 입력하세요." };
+                    payload = new { ok = false, email = "", name = "", error = "SVN은 작성자 자동 감지가 안 됩니다. 본인 SVN 사용자명을 직접 입력하세요." };
                 else
                 {
                     var (ok, email, name, err) = await Task.Run(() => GitAuthor(repo));
@@ -1006,7 +1006,7 @@ namespace TaskCalendarWidget
             {
                 var dlg = new Microsoft.Win32.OpenFileDialog
                 {
-                    Title = "XML 가져오기 — 옮길 파일을 고르세요",
+                    Title = "XML 가져오기: 옮길 파일을 고르세요",
                     Filter = "캘린더 XML (*.xml)|*.xml|모든 파일 (*.*)|*.*",
                     CheckFileExists = true,
                     Multiselect = false,
@@ -1780,11 +1780,11 @@ namespace TaskCalendarWidget
                 if (id.Length == 0 || pw.Length == 0) { Fail("ID와 비밀번호를 입력하세요."); return; }
                 // ★ 인증 시도 '전에' 진행 중 여부를 본다. 그냥 부르면 LoginVerify가 false를 돌려
                 //   '다른 작업 중'이 'ID/비밀번호 오류'로 표시된다(이전 구현의 실제 결함).
-                if (_netcus.IsBusy) { Fail("다른 회사 시스템 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+                if (_netcus.IsBusy) { Fail("다른 회사 시스템 작업이 진행 중입니다. 잠시 후 다시 시도하세요."); return; }
 
                 // ① 인증 — netcus 보호 페이지 도달로 판정(최소화·비활성 창).
                 //    자격 불일치와 사내망 미연결을 구분할 신호가 없으므로 단정하지 않는다.
-                if (!await _netcus.LoginVerify(id, pw)) { Fail("로그인하지 못했습니다 — ID/비밀번호 또는 사내망 연결을 확인하세요."); return; }
+                if (!await _netcus.LoginVerify(id, pw)) { Fail("로그인하지 못했습니다. ID/비밀번호 또는 사내망 연결을 확인하세요."); return; }
 
                 // ② 인가 — app_user 조회. null=연결 실패 / "{}"=미등록 / is_active=0 → 비활성.
                 string? json;
@@ -1795,8 +1795,8 @@ namespace TaskCalendarWidget
                     {
                         //  OFFLINE-RESILIENCE S2 — 「DB에 연결하지 못했습니다」를 원인 종류별로 가른다. 회신에 kind·detail.
                         string k = cap.HasError ? cap.Kind : DbErrorKind.Unknown;
-                        string dm = k == DbErrorKind.Network ? "DB에 연결하지 못했습니다 — 서버가 꺼져 있거나 네트워크 문제입니다."
-                                  : k == DbErrorKind.Auth ? "DB 접근이 거부되었습니다 — 관리자에게 문의하세요."
+                        string dm = k == DbErrorKind.Network ? "DB에 연결하지 못했습니다. 서버가 꺼져 있거나 네트워크 문제입니다."
+                                  : k == DbErrorKind.Auth ? "DB 접근이 거부되었습니다. 관리자에게 문의하세요."
                                   : "DB에 연결하지 못했습니다.";
                         ReplyOnUi(reqId, new { ok = false, msg = dm, kind = k, detail = cap.Detail });
                         return;
@@ -1809,7 +1809,7 @@ namespace TaskCalendarWidget
 
                 // ③ 저장 2개 — 세션(신원) + netcus 자격(보고 전송이 valid:true를 보고 다시 묻지 않는다).
                 //    둘 다 '되읽어 확인'된 경우에만 성공이고, 하나라도 실패하면 양쪽을 지운다(반쪽 상태 금지).
-                const string SaveFail = "로그인 정보를 이 PC에 저장하지 못했습니다 — 다시 시도하세요.";
+                const string SaveFail = "로그인 정보를 이 PC에 저장하지 못했습니다. 다시 시도하세요.";
                 var fresh = new UserSession { LoginId = id, Name = u.name, Title = u.title, OrgUnit = u.orgUnit };
                 var (sok, _) = UserSession.Save(_dataDir, id, u.name, u.title, u.orgUnit, Log);
                 if (!sok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }
@@ -1859,7 +1859,7 @@ namespace TaskCalendarWidget
 
                 string? json = await _projectDb.LoadUserInfoJsonAsync(s.LoginId);
                 if (json == null)
-                { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요." }); return; }
+                { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요." }); return; }
 
                 // Deserialize<JsonElement> 는 복제본을 돌려준다 — JsonDocument 수명에 묶이지 않아 회신에 그대로 실을 수 있다.
                 var info = JsonSerializer.Deserialize<JsonElement>(json);
@@ -1892,7 +1892,7 @@ namespace TaskCalendarWidget
             string? me = CurrentLoginId();
             if (string.IsNullOrEmpty(me))
             {
-                GitReply(reqId, new { ok = false, error = "로그인 정보가 없습니다 — 다시 시작하세요" });
+                GitReply(reqId, new { ok = false, error = "로그인 정보가 없습니다. 다시 시작하세요" });
                 return;
             }
             try
@@ -1921,7 +1921,7 @@ namespace TaskCalendarWidget
 
                 string? json = await _projectDb.LoadMembersJsonAsync(s.LoginId, includeInactive, flatOrder);
                 if (json == null)
-                { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요." }); return; }
+                { ReplyOnUi(reqId, new { ok = false, msg = "서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요." }); return; }
 
                 // Deserialize<JsonElement> 는 복제본을 돌려준다 — JsonDocument 수명에 묶이지 않아 회신에 그대로 실을 수 있다.
                 var data = JsonSerializer.Deserialize<JsonElement>(json);
@@ -2280,7 +2280,7 @@ namespace TaskCalendarWidget
                 {
                     //  ★ 로그인 전이면 '빈 캘린더'가 아니라 **이유**를 보여준다. 빈 화면은
                     //    "내 데이터가 사라졌다"로 읽힌다 — 실제로는 누구 것인지 모를 뿐이다.
-                    ApplyStateError("로그인 정보가 없습니다 — 로그인 후 다시 시작하세요", retryable: false);
+                    ApplyStateError("로그인 정보가 없습니다. 로그인 후 다시 시작하세요", retryable: false);
                     return;
                 }
 
@@ -2308,7 +2308,7 @@ namespace TaskCalendarWidget
                 //  '오프라인'과 반드시 구분해야 하는 실패다(§3.6) — 사용자가 원인을 오해하면
                 //  관리자도 엉뚱한 곳을 본다.
                 Log("DB 부팅 조회 실패(미등록 사용자): " + ex.Message);
-                ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요", retryable: false);
+                ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다. 관리자에게 문의하세요", retryable: false);
                 return;
             }
             catch (Exception ex)
@@ -2333,7 +2333,7 @@ namespace TaskCalendarWidget
             var snap = _calSnap;
             if (snap == null)
             {
-                GitReply(reqId, new { ok = false, conflict = false, error = "부팅 스냅샷이 없습니다 — 위젯을 다시 시작하세요", kind = "", detail = "" });
+                GitReply(reqId, new { ok = false, conflict = false, error = "부팅 스냅샷이 없습니다. 위젯을 다시 시작하세요", kind = "", detail = "" });
                 return;
             }
             try

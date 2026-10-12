@@ -103,8 +103,8 @@ const checks = {
     const cap = boot.indexOf('DbErrors.Capture()'), load = boot.indexOf('LoadSnapshotAsync('), apply = boot.indexOf('ApplyBootDbError(cap)');
     assert.ok(cap >= 0 && cap < load && load < apply, '부팅이 조회 실패의 원인 종류를 받아 오지 않는다(Capture → LoadSnapshot → ApplyBootDbError)');
     assert.ok(/if \(snap == null && cap\.HasError\) \{ ApplyBootDbError\(cap\); return; \}/.test(boot), '분류된 실패를 분류 문구로 보내지 않는다');
-    for (const lit of ['ApplyStateError("로그인 정보가 없습니다 — 로그인 후 다시 시작하세요", retryable: false)',
-                       'ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다 — 관리자에게 문의하세요", retryable: false)'])
+    for (const lit of ['ApplyStateError("로그인 정보가 없습니다. 로그인 후 다시 시작하세요", retryable: false)',
+                       'ApplyStateError("이 계정이 서버에 등록돼 있지 않습니다. 관리자에게 문의하세요", retryable: false)'])
       assert.ok(boot.includes(lit), `로그인 없음·미등록 경로가 바뀌었다: ${lit}`);
 
     const abe = csMember(s.off, 'private void ApplyBootDbError(DbErrorCapture cap)');
@@ -112,8 +112,8 @@ const checks = {
       '부팅 실패의 문구·재시도 여부가 kind 에서 오지 않는다 — 권한 거부도 3번 헛돈다(S6)');
     const bm = csMember(s.dbe, 'public static string BootMessage(string kind)');
     for (const [k, msg] of [
-      ['Network', '서버에 연결할 수 없습니다 — 서버가 꺼져 있거나 네트워크 문제입니다'],
-      ['Auth', 'DB 접근이 거부되었습니다 — DB 이름·계정 설정과 서버 권한을 확인하세요(관리자)'],
+      ['Network', '서버에 연결할 수 없습니다(꺼져 있거나 네트워크 문제)'],
+      ['Auth', 'DB 접근이 거부되었습니다. 위젯 설정(DB 이름·계정)과 서버 권한을 확인하세요(관리자)'],
       ['Schema', 'DB 구조가 이 버전과 맞지 않습니다'],
     ]) assert.ok(new RegExp(`DbErrorKind\\.${k}\\s*=>\\s*"${msg.replace(/[()]/g, '\\$&')}"`).test(bm), `${k} 문구가 계약과 다르다`);
     assert.ok(/_\s*=>\s*"서버 오류로 캘린더를 받지 못했습니다"/.test(bm), 'unknown 문구가 계약과 다르다');

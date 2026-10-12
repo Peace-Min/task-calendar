@@ -125,7 +125,7 @@ namespace TaskCalendarWidget
         //   호출측(로그인 핸들러)은 실패 시 세션까지 함께 지워 반쪽 상태를 남기지 않는다.
         public (bool ok, string msg) SaveCredsForLogin(string id, string pw)
         {
-            const string Fail = "로그인 정보를 이 PC에 저장하지 못했습니다 — 다시 시도하세요.";
+            const string Fail = "로그인 정보를 이 PC에 저장하지 못했습니다. 다시 시도하세요.";
             try
             {
                 Directory.CreateDirectory(_host.DataDir);
@@ -284,7 +284,7 @@ namespace TaskCalendarWidget
         // 저장된 자격증명으로 실제 로그인해 성공/실패 검증(보조 WebView2, 가시 창)
         private async Task NetcusValidateCreds(string id, string pw)
         {
-            if (_ncBusy) { JsCredsResult(false, "다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+            if (_ncBusy) { JsCredsResult(false, "다른 netcus 작업이 진행 중입니다. 잠시 후 다시 시도하세요."); return; }
             _ncBusy = true; NetcusBusy(true);
             Action? detach = null;
             try
@@ -296,7 +296,7 @@ namespace TaskCalendarWidget
                 NetcusStatus("validate", "login");
                 bool ok = await NetcusLoginVerify(cw, id, pw);
                 SetCredsValid(ok);   // 명시적 검증 결과만 영속(op 로그인 성패로는 갱신 안 함) → 이후 op의 전제 게이트
-                JsCredsResult(ok, ok ? "로그인 확인됨 — 자격증명 OK" : "로그인 실패 — ID/비밀번호를 확인하세요");
+                JsCredsResult(ok, ok ? "로그인 확인됨(자격증명 OK)" : "로그인 실패. ID/비밀번호를 확인하세요");
             }
             catch (Exception ex) { Log("netcus 자격증명 검증 예외: " + ex); JsCredsResult(false, "검증 오류: " + ex.Message); }
             finally
@@ -448,15 +448,15 @@ namespace TaskCalendarWidget
 
         private async Task NetcusSubmit(NetcusReq req)
         {
-            if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+            if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다. 잠시 후 다시 시도하세요."); return; }
             _ncBusy = true; NetcusBusy(true);
             CoreWebView2? cw = null;
             Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
-                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다 — 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
-                if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다 — 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다. 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
+                if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다. 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 NetcusProgress("창 준비 중…");
                 await EnsureW2();
@@ -468,7 +468,7 @@ namespace TaskCalendarWidget
                 if (!await NetcusLoginVerify(cw, id, pw))
                 {
                     try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 실패한 창 남기지 않음
-                    NetcusResult(false, "netcus 로그인 실패 — 설정에서 ID/비밀번호를 확인하세요.");
+                    NetcusResult(false, "netcus 로그인 실패. 설정에서 ID/비밀번호를 확인하세요.");
                     return;
                 }
 
@@ -492,7 +492,7 @@ namespace TaskCalendarWidget
                     if (probe == "true") break;
                     await Task.Delay(300);
                 }
-                if (probe != "true") { NetcusResult(false, "입력 폼을 찾지 못했습니다 — 로그인 또는 페이지 접근을 확인하세요."); return; }
+                if (probe != "true") { NetcusResult(false, "입력 폼을 찾지 못했습니다. 로그인 또는 페이지 접근을 확인하세요."); return; }
                 // 진단: 페이지 자체 함수(Bmodify)가 쓰는 document.form 연결이 Chromium에서 유효한지 로그
                 try { Log("netcus form-assoc(document.form.status): " + await cw.ExecuteScriptAsync("(function(){try{return !!(document.form&&document.form.status);}catch(e){return false;}})()")); } catch { }
 
@@ -507,7 +507,7 @@ namespace TaskCalendarWidget
                     + $"if(ot){{ot.selectedIndex={req.Overtime};}}if(ct){{ct.value={J(req.Content)};}}"
                     + "return (st&&ct)?1:0;}catch(e){return 0;}})()";
                 var filled = await cw.ExecuteScriptAsync(fill);
-                if (filled != "1") { NetcusResult(false, "입력 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
+                if (filled != "1") { NetcusResult(false, "입력 폼 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다."); return; }
                 if (keepStatus)
                 {
                     // 나중에 "왜 근태가 안 바뀌었지"를 추적할 유일한 근거 — 사이트에서 읽은 값을 그대로 남긴다.
@@ -575,17 +575,17 @@ namespace TaskCalendarWidget
                     await Task.Delay(300);
                 }
                 Log("netcus verify: " + vr + " (needle=" + needle + ")");
-                if (vr == -1) NetcusResult(false, "세션 만료/로그인 필요 — 자격증명을 확인하세요.");
+                if (vr == -1) NetcusResult(false, "세션이 만료됐거나 로그인이 필요합니다. 자격증명을 확인하세요.");
                 else if (vr == 1)
                 {
-                    NetcusResult(true, "회사 일간보고 전송 완료 — 한글까지 정상 저장 확인. netcus 사이트에서도 확인하세요.");
+                    NetcusResult(true, "회사 일간보고 전송 완료(한글까지 정상 저장 확인). netcus 사이트에서도 확인하세요.");
                     //  ★ 결과를 먼저 알리고 그 다음 기록한다 — 사용자가 보는 진실은 '전송됐다'이고,
                     //    DB 저장은 그걸 바꾸지 못한다. vr==1(되읽어 검증됨)일 때만 부른다 —
                     //    실패한 전송을 기록하면 표가 거짓말을 하게 된다.
                     _host.SaveDailyReport(req.Y, req.M, req.D, req.Status, req.Overtime, req.Content, req.HoursJson);
                 }
-                else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치) — netcus에서 확인하세요.");
-                else NetcusResult(false, "저장 확인 실패(내용이 비어 있음) — 열린 창에서 직접 확인하세요.");
+                else if (vr == 2) NetcusResult(false, "저장은 됐으나 한글이 깨졌을 수 있습니다(되읽기 대조 불일치). netcus에서 확인하세요.");
+                else NetcusResult(false, "저장 확인 실패(내용이 비어 있음). 열린 창에서 직접 확인하세요.");
             }
             catch (Exception ex) { Log("netcus 예외: " + ex); NetcusResult(false, "전송 오류: " + ex.Message); }
             finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
@@ -595,15 +595,15 @@ namespace TaskCalendarWidget
         // 창을 띄워 둔다. 차주계획 내용·회의내용 등을 보완 후 사용자가 직접 '제출'(Bwrite) — euc-kr은 네이티브 폼이 처리.
         private async Task NetcusWeekFill(NetcusWeekReq req)
         {
-            if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요."); return; }
+            if (_ncBusy) { NetcusResult(false, "다른 netcus 작업이 진행 중입니다. 잠시 후 다시 시도하세요."); return; }
             _ncBusy = true; NetcusBusy(true);
             CoreWebView2? cw = null;
             Action? detach = null;
             try
             {
                 var (id, pw) = NetcusLoadCreds();
-                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다 — 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
-                if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다 — 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
+                if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다. 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
+                if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다. 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
 
                 NetcusProgress("창 준비 중…");
                 await EnsureW2();
@@ -615,7 +615,7 @@ namespace TaskCalendarWidget
                 if (!await NetcusLoginVerify(cw, id, pw))
                 {
                     try { Dispatcher.Invoke(() => { try { _w2win?.Close(); } catch { } }); } catch { }   // 실패한 창 남기지 않음
-                    NetcusResult(false, "netcus 로그인 실패 — 설정에서 ID/비밀번호를 확인하세요.");
+                    NetcusResult(false, "netcus 로그인 실패. 설정에서 ID/비밀번호를 확인하세요.");
                     return;
                 }
 
@@ -673,7 +673,7 @@ namespace TaskCalendarWidget
                     if (probe == "true") break;
                     await Task.Delay(300);
                 }
-                if (probe != "true") { NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다 — 로그인 또는 페이지 접근을 확인하세요."); return; }
+                if (probe != "true") { NetcusResult(false, "주간보고 작성 폼을 찾지 못했습니다. 로그인 또는 페이지 접근을 확인하세요."); return; }
 
                 NetcusProgress("내용 작성 중…");
                 NetcusStatus("weekfill", "filling");
@@ -683,7 +683,7 @@ namespace TaskCalendarWidget
                     + $"set('content',{J(req.Content)});set('endwork',{J(req.Endwork)});set('planwork',{J(req.Planwork)});"
                     + "return !!document.getElementsByName('content')[0];}catch(e){return false;}})()";
                 var filled = await cw.ExecuteScriptAsync(fill);
-                if (filled != "true") { NetcusResult(false, "주간보고 폼 채우기 실패 — 페이지 구조가 바뀌었을 수 있습니다."); return; }
+                if (filled != "true") { NetcusResult(false, "주간보고 폼 채우기 실패. 페이지 구조가 바뀌었을 수 있습니다."); return; }
 
                 // 안전장치 — 이 폼도 <table> 안 빈 폼이라 페이지의 Bwrite(document.form.submit)가 빈 폼을 보낼 수 있다.
                 // Bwrite를 euc-kr 동적 폼 버전으로 오버라이드(원본과 동일 검증·confirm 유지) → 사용자가 보완 후 직접 제출해도 안전.
@@ -702,7 +702,7 @@ namespace TaskCalendarWidget
                 try { Log("netcus(week) Bwrite override: " + await cw.ExecuteScriptAsync(ov)); } catch { }
 
                 try { _w2win?.Activate(); } catch { }
-                NetcusResult(true, "주간보고 작성 폼을 채웠습니다 — 차주계획 내용 등을 보완 후 열린 창에서 직접 ‘제출’하세요.");
+                NetcusResult(true, "주간보고 작성 폼을 채웠습니다. 차주계획 내용 등을 보완한 뒤 열린 창에서 직접 ‘제출’하세요.");
                 //  ★ 여기서 기록하는 것은 '보냈다'가 아니라 **'캘린더가 작성했다'**다.
                 //    위젯은 주간을 전송하지 않고 사용자가 직접 제출한다(위 문구 그대로).
                 //    그래서 사용자가 폼에서 보완한 내용은 담기지 않고, 컴럼 이름도 composed_at 이다(§5.9.5).
@@ -790,7 +790,7 @@ namespace TaskCalendarWidget
             {
                 Log("netcus(week) 예외: " + ex);
                 bool disposed = (ex.Message ?? "").Contains("disposed");
-                NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다 — 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
+                NetcusResult(false, disposed ? "확인 창이 닫혀 중단되었습니다. 다시 시도하세요." : ("주간보고 작성 오류: " + ex.Message));
             }
             finally { detach?.Invoke(); _ncBusy = false; NetcusBusy(false); }
         }
@@ -1147,7 +1147,7 @@ namespace TaskCalendarWidget
             {
                 // 이미 캡처 창이 열려 있으면 기존 안내, 그 외 다른 op 진행 중이면 busy 거절.
                 if (_probeOpen) JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("이미 캡처 창이 열려 있습니다.") + ")");
-                else JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("다른 netcus 작업이 진행 중입니다 — 잠시 후 다시 시도하세요.") + ")");
+                else JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("다른 netcus 작업이 진행 중입니다. 잠시 후 다시 시도하세요.") + ")");
                 return;
             }
             _ncBusy = true; NetcusBusy(true);
@@ -1158,13 +1158,13 @@ namespace TaskCalendarWidget
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw))
                 {
                     _ncBusy = false; NetcusBusy(false);
-                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 자격증명이 없습니다 — 설정에서 저장하세요.") + ")");
+                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 자격증명이 없습니다. 설정에서 저장하세요.") + ")");
                     return;
                 }
                 if (NetcusCredsValid() == false)   // 검증 실패 확정 → 로그인 시도 없이 차단(no-creds와 동일 인라인 해제)
                 {
                     _ncBusy = false; NetcusBusy(false);
-                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("저장된 자격증명이 로그인 실패 상태입니다 — 설정에서 확인하세요.") + ")");
+                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("저장된 자격증명이 로그인 실패 상태입니다. 설정에서 확인하세요.") + ")");
                     return;
                 }
 
@@ -1178,7 +1178,7 @@ namespace TaskCalendarWidget
                 {
                     _ncBusy = false; NetcusBusy(false);
                     detach?.Invoke();
-                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 로그인 실패 — 설정에서 로그인 정보를 확인하세요.") + ")");
+                    JsCall("window.__netcusProbeResult && window.__netcusProbeResult(false," + J("netcus 로그인 실패. 설정에서 로그인 정보를 확인하세요.") + ")");
                     return;
                 }
 
@@ -1208,7 +1208,7 @@ namespace TaskCalendarWidget
                 // 캡처 바 즉시 주입(이후 탐색마다 OnProbeNav가 재주입)
                 await InjectProbeBar(cw);
 
-                JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("netcus 캡처 창을 열었습니다 — 주간보고 목록/조회로 이동 후 상단 '이 페이지 HTML 저장'을 누르세요.") + ")");
+                JsCall("window.__netcusProbeResult && window.__netcusProbeResult(true," + J("netcus 캡처 창을 열었습니다. 주간보고 목록/조회로 이동한 뒤 상단 '이 페이지 HTML 저장'을 누르세요.") + ")");
                 // 성공 경로: _ncBusy·_probeOpen은 창이 살아있는 동안 유지(창 Closed에서 리셋). detach는 인계 직전에 이미 끝났다.
             }
             catch (Exception ex)

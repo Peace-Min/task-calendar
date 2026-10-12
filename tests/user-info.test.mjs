@@ -1643,11 +1643,11 @@ if (!JSDOM) {
       reply({ ok: true, info: { found: true, edit_role: 'admin', view_scope: 'all', is_active: 1 } });
       await w.eval('loadUserPerm()');
       assert.ok(/관리자/.test(txt('usEditRole')), '전제: 직전 조회가 성공해 값이 남아 있다');
-      reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
+      reply({ ok: false, msg: '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.' });
       await w.eval('loadUserPerm()');
       assert.strictEqual(txt('usEditRole'), '확인할 수 없음', '실패했는데 직전(낡은) 권한이 그대로 남았다');
       assert.strictEqual(txt('usViewScope'), '확인할 수 없음');
-      assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.', '호스트가 준 사유를 그대로 보여주지 않는다');
+      assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', '호스트가 준 사유를 그대로 보여주지 않는다');
       assert.ok(!/관리자|admin/.test(txt('usEditRole')), '실패 상태에서 권한을 추측해 표시했다');
     });
 
@@ -1677,13 +1677,13 @@ if (!JSDOM) {
     test('사용자정보(jsdom) ㊲: 조회 실패는 신원을 지우지 않는다 — 세션 값이 남는다', async () => {
       loginSW3();
       w.eval('updateUserUi()');
-      reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
+      reply({ ok: false, msg: '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.' });
       await w.eval('loadUserPerm()');
       assert.strictEqual(txt('usName'), '이현진', '조회에 실패했다고 이름을 지웠다 — 오프라인에서도 이름은 보여야 한다');
       assert.strictEqual(txt('usTitle'), '책임연구원', '조회 실패가 직급을 지웠다');
       assert.strictEqual(txt('usOrg'), 'SW 3팀', '조회 실패가 소속을 지웠다');
       assert.strictEqual(txt('usEditRole'), '확인할 수 없음', '전제: 권한만 「모른다」고 말한다');
-      assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.', '전제: 사유는 권한 블록에 있다');
+      assert.strictEqual(txt('usPermMsg'), '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', '전제: 사유는 권한 블록에 있다');
     });
 
     test('사용자정보(jsdom) ㊳: 빈 소속은 두 경로 모두 「소속 미등록」이다(문구 깜빡임 금지)', async () => {
@@ -1902,7 +1902,7 @@ if (!JSDOM) {
       membersReply({ found: true, scope: 'unit_tree', myUnit: 'SW개발본부', units: UNITS_ALL, members: roster(ALLOW_SW) });
       await w.eval('openMembers()');
       assert.strictEqual(rows(), 89, '전제: 직전 조회가 성공해 목록이 차 있다');
-      reply({ ok: false, msg: '서버에 연결하지 못했습니다 — 잠시 후 다시 시도하세요.' });
+      reply({ ok: false, msg: '서버에 연결하지 못했습니다. 잠시 후 다시 시도하세요.' });
       await w.eval('openMembers()');
       assert.strictEqual(rows(), 0, '실패했는데 직전(낡은) 명부가 그대로 남았다');
       assert.strictEqual(nodes().length, 0, '실패했는데 직전 조직 트리가 남았다');

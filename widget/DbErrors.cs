@@ -136,8 +136,8 @@ namespace TaskCalendarWidget
         // ── 부팅 실패 문구(§3 · S1/S6/S7) ────────────────────────────────────────
         public static string BootMessage(string kind) => kind switch
         {
-            DbErrorKind.Network => "서버에 연결할 수 없습니다 — 서버가 꺼져 있거나 네트워크 문제입니다",
-            DbErrorKind.Auth    => "DB 접근이 거부되었습니다 — DB 이름·계정 설정과 서버 권한을 확인하세요(관리자)",
+            DbErrorKind.Network => "서버에 연결할 수 없습니다(꺼져 있거나 네트워크 문제)",
+            DbErrorKind.Auth    => "DB 접근이 거부되었습니다. 위젯 설정(DB 이름·계정)과 서버 권한을 확인하세요(관리자)",
             DbErrorKind.Schema  => "DB 구조가 이 버전과 맞지 않습니다",
             _                   => "서버 오류로 캘린더를 받지 못했습니다",
         };
@@ -145,10 +145,10 @@ namespace TaskCalendarWidget
         // 부팅이 아닌 자리(핑 회신 등)의 같은 분류 문구.
         public static string ConnMessage(string kind) => kind switch
         {
-            DbErrorKind.Network => "서버에 연결할 수 없습니다 — 서버가 꺼져 있거나 네트워크 문제입니다",
-            DbErrorKind.Auth    => "DB 접근이 거부되었습니다 — DB 이름·계정 설정과 서버 권한을 확인하세요(관리자)",
+            DbErrorKind.Network => "서버에 연결할 수 없습니다(꺼져 있거나 네트워크 문제)",
+            DbErrorKind.Auth    => "DB 접근이 거부되었습니다. 위젯 설정(DB 이름·계정)과 서버 권한을 확인하세요(관리자)",
             DbErrorKind.Schema  => "DB 구조가 이 버전과 맞지 않습니다",
-            _                   => "서버 오류 — 잠시 뒤 다시 시도하세요",
+            _                   => "서버 오류입니다. 잠시 뒤 다시 시도하세요",
         };
 
         // ── 관찰 지점 — 모든 DB 실패 catch 가 이 한 줄을 부른다 ─────────────────────

@@ -58,7 +58,7 @@ namespace TaskCalendarWidget
                 var own = OwnVersion();
                 if (m == null || own == null)
                 {
-                    if (userInitiated) UpdateResult(false, "업데이트 확인 실패 — 버전 정보를 읽지 못했습니다");
+                    if (userInitiated) UpdateResult(false, "업데이트 확인 실패. 버전 정보를 읽지 못했습니다");
                     else UpdateNone();   // 백그라운드: 파싱 실패(매니페스트 이상) → 열린 배너 닫기
                     return;
                 }
@@ -70,7 +70,7 @@ namespace TaskCalendarWidget
                     string info = JsonSerializer.Serialize(new { version = mver, notes });
                     JsCall("window.__updateAvailable && window.__updateAvailable(" + JsonSerializer.Serialize(info) + ")");
                     // 설정 '지금 확인'이면 #updSrcMsg 스피너가 배너만으로는 안 풀리므로 결과도 함께 통지.
-                    if (userInitiated) UpdateResult(true, "새 버전 발견 — 배너에서 업데이트하세요");
+                    if (userInitiated) UpdateResult(true, "새 버전이 있습니다. 배너에서 업데이트하세요");
                 }
                 else
                 {
@@ -82,7 +82,7 @@ namespace TaskCalendarWidget
             catch (Exception ex)
             {
                 Log("업데이트 확인 실패(무음): " + ex.Message);
-                if (userInitiated) UpdateResult(false, "업데이트 확인 실패 — 소스에 접근할 수 없습니다");
+                if (userInitiated) UpdateResult(false, "업데이트 확인 실패. 소스에 접근할 수 없습니다");
                 else UpdateNone();   // 백그라운드: 소스 접근/매니페스트 실패(서버 오프) → 열린 배너 닫기
             }
         }
@@ -134,7 +134,7 @@ namespace TaskCalendarWidget
                 await DownloadFileAsync(CombineUrl(src, file), dest, 300000);   // 설치기 다운로드는 넉넉히(5분)
                 if (!File.Exists(dest) || new FileInfo(dest).Length == 0)
                 {
-                    UpdateResult(false, "내려받기 실패 — 다시 시도"); TryDelete(dest); return;
+                    UpdateResult(false, "내려받기 실패. 다시 시도하세요"); TryDelete(dest); return;
                 }
 
                 // 해시 검증(필수) — 대소문자 무시 hex 비교. sha는 위에서 이미 비어있지 않음을 보장.
@@ -144,7 +144,7 @@ namespace TaskCalendarWidget
                 if (!string.Equals(got, want, StringComparison.OrdinalIgnoreCase))
                 {
                     Log($"해시 불일치: got={got} want={want}");
-                    UpdateResult(false, "검증 실패 — 다시 시도");
+                    UpdateResult(false, "검증 실패. 다시 시도하세요");
                     TryDelete(dest);
                     return;
                 }
@@ -168,13 +168,13 @@ namespace TaskCalendarWidget
             catch (TimeoutException)
             {
                 Log("업데이트 적용 시간 초과");
-                UpdateResult(false, "시간 초과 — 다시 시도");
+                UpdateResult(false, "시간 초과. 다시 시도하세요");
                 TryDelete(dest);
             }
             catch (Exception ex)
             {
                 Log("업데이트 적용 실패: " + ex.Message);
-                UpdateResult(false, "업데이트 실패 — " + ex.Message);
+                UpdateResult(false, "업데이트 실패: " + ex.Message);
                 TryDelete(dest);
             }
             finally { _updBusy = false; }   // 성공/실패/시간초과 무엇이든 항상 해제 — 영구 잠금 방지
