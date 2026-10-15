@@ -12,7 +12,7 @@
 //
 //   ★ 앱 전체를 부팅하지 않는다 — 판정 함수만 떼어 내 빈 문서에 심는다(trash-web.test.mjs 와 같은 방식).
 //   ★ 검사와 변이가 **같은 창구**를 쓴다. 변이로 안 깨지는 검사는 장식이다.
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCodeIdsBlock, importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -101,6 +101,7 @@ function genHarnessJs(fnText, kind) {
   const render = code ? 'renderCodeList' : 'renderCustomerList';
   const reload = code ? 'reloadCodeList' : 'reloadCustomerList';
   return [
+    extractCodeIdsBlock(app),   // codeIdOf — 목록은 번호가 있는 행만 받는다(CODE-TABLE-IDS §4)
     `var codeKind = 'section', ${listVar} = [];`,
     "var ICON = { spinner: '' };",
     `function ${render}(){ document.getElementById('${boxId}').textContent = 'RENDERED:' + ${code ? 'codeKind' : "'cust'"} + ':' + ${listVar}.map(function(c){ return c.name; }).join(','); }`,
@@ -115,11 +116,11 @@ function genHarnessJs(fnText, kind) {
     `  ${reload}();`,
     '  var cmds = __pending.map(function(x){ return x.cmd; });',
     '  var kinds = __pending.map(function(x){ return x.p && x.p.kind || ""; });',
-    "  __pending[0].res({ ok: true, list: JSON.stringify([{ name: 'OLD' }]) });",
+    "  __pending[0].res({ ok: true, list: JSON.stringify([{ id: 1, name: 'OLD' }]) });",
     '  await __tick();',
     '  var afterStale = String(box.textContent);',
     `  var varAfterStale = ${listVar}.map(function(c){ return c.name; }).join(',');`,
-    "  __pending[1].res({ ok: true, list: JSON.stringify([{ name: 'NEW' }]) });",
+    "  __pending[1].res({ ok: true, list: JSON.stringify([{ id: 2, name: 'NEW' }]) });",
     '  await __tick();',
     '  return { cmds: cmds, kinds: kinds, afterStale: afterStale, varAfterStale: varAfterStale,',
     `           final: String(box.textContent), varFinal: ${listVar}.map(function(c){ return c.name; }).join(',') };`,

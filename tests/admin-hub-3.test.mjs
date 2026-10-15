@@ -74,7 +74,8 @@ const statics = {
     const load = body(src, 'trLoadOrg');
     assert.deepStrictEqual([...load.matchAll(/hostRequest\('(\w+)'/g)].map((m) => m[1]), ['orgTitleGet'], '사람 휴지통의 소속·직급 조회가 직급·소속 화면의 orgTitleGet 이 아니다(M10)');
     const rs = body(src, 'trOrgRestore');
-    assert.ok(/cmd: 'unitSetActive', orgId: Number\(key\), active: true/.test(rs) && /cmd: 'titleSetActive', name: String\(key\), active: true/.test(rs),
+    //  ★ 2026-10-15 — 직급도 번호(titleId)로 보낸다(CODE-TABLE-IDS §4). 명령 이름은 그대로다(새 명령 없음).
+    assert.ok(/cmd: 'unitSetActive', orgId: Number\(key\), active: true/.test(rs) && /cmd: 'titleSetActive', titleId: Number\(key\), active: true/.test(rs),
       '소속·직급 복구가 직급·소속 화면이 쓰던 명령(unitSetActive · titleSetActive · active:true)이 아니다(M10)');
     assert.ok(/trSend\(p\)/.test(rs), '소속·직급 복구가 휴지통의 왕복 한 곳(trSend — 잠금·회신 문장)을 지나지 않는다');
     assert.ok(/trSeatOrg\(rep\.orgTitle\)/.test(rs), '복구 회신의 갱신 목록(orgTitle)을 앉히지 않는다 — 복구한 항목이 휴지통에 남는다');
@@ -151,9 +152,10 @@ if (!JSDOM) {
   const ROSTER = { found: true, admin: true, includeInactive: false, units: [], titles: [],
     members: [{ userId: 11, loginId: 'zzA', name: 'zzA_가', title: '선임', orgUnit: 'SW 1팀', isActive: true }] };
   const U = (orgId, name, parentId, depth, active, extra) => Object.assign({ orgId, name, parentId, depth, sort: orgId * 10, active, users: 0, children: 0 }, extra || {});
-  const T = (name, active, users = 0) => ({ name, sort: 10, active, users });
+  //  직급 행 열쇠는 번호(titleId)다(CODE-TABLE-IDS §4).
+  const T = (titleId, name, active, users = 0) => ({ titleId, name, sort: 10, active, users });
   const ORG = { found: true, admin: true,
-    titles: [T('수석', true, 1), T('zz빈직급', true, 0), T('zz옛직급', false)],
+    titles: [T(1, '수석', true, 1), T(2, 'zz빈직급', true, 0), T(3, 'zz옛직급', false)],
     units: [U(1, '회사', null, 0, true, { children: 2 }), U(2, 'SW 1팀', 1, 1, true, { users: 1, children: 0 }),
             U(9, 'zz숨긴팀', 2, 2, false), U(10, 'zz숨긴본부', 1, 1, false, { children: 1 }), U(11, 'zz숨긴본부의팀', 10, 2, false)] };
   //  zz숨긴팀(9)을 복구한 뒤의 회신 / zz빈직급을 숨긴 뒤의 회신
@@ -384,7 +386,7 @@ if (!JSDOM) {
         B.ev(`__rep.titleSetActive = function(p){ return { ok: true, msg: '숨겼습니다', orgTitle: ${JSON.stringify(JSON.stringify(ORG_HIDDEN))} }; }; 1`);
         await openHub(B, 'orgtitle'); await settle(60);
         const names = () => $$(B, '#otList .cust-row').map((r) => r.dataset.otkey);
-        assert.deepStrictEqual(names(), ['수석', 'zz빈직급'], `직급 탭에 숨긴 직급이 섰다: ${JSON.stringify(names())}(R4)`);
+        assert.deepStrictEqual(names(), ['1', '2'], `직급 탭에 숨긴 직급이 섰다: ${JSON.stringify(names())}(R4)`);
         assert.strictEqual($$(B, '#otList .cust-badge').length, 0, '「숨김」 배지가 남았다(R4)');
         assert.strictEqual($$(B, '#otList [data-otop="show"]').length, 0, '직급·소속 화면에 [복구]가 남았다(R4 — 복구는 휴지통)');
         assert.strictEqual($(B, '#otShowHidden'), null, '「숨긴 값도 표시」가 남았다(R4)');
@@ -393,12 +395,12 @@ if (!JSDOM) {
         assert.deepStrictEqual(names(), ['1', '2'], `소속 탭에 숨긴 소속이 섰다: ${JSON.stringify(names())}(R4)`);
         await pick(B, 'title'); await settle(60);
         //  숨김 — 확인 → titleSetActive(active:false) → 목록에서 빠지고 토스트가 어디로 갔는지 말한다
-        $(B, '#otList [data-otop="hide"][data-otkey="zz빈직급"]').click();
+        $(B, '#otList [data-otop="hide"][data-otkey="2"]').click();
         await confirmOk(B);
         await settle(60);
         const sent = calls(B, 'titleSetActive');
-        assert.strictEqual(sent.length, 1); assert.strictEqual(sent[0][1].name, 'zz빈직급'); assert.strictEqual(sent[0][1].active, false);
-        assert.deepStrictEqual(names(), ['수석'], '숨긴 직급이 직급·소속 목록에 남았다(R4)');
+        assert.strictEqual(sent.length, 1); assert.strictEqual(sent[0][1].titleId, 2); assert.strictEqual(sent[0][1].active, false);
+        assert.deepStrictEqual(names(), ['1'], '숨긴 직급이 직급·소속 목록에 남았다(R4)');
         assert.ok(toasts(B).some((t) => t[0] === '휴지통으로 옮겼습니다. 복구는 🗑 휴지통에서 할 수 있습니다' && t[1] === 'success'),
           `숨김 토스트가 「휴지통으로 옮겼습니다. 복구는 🗑 휴지통에서 할 수 있습니다」가 아니다: ${JSON.stringify(toasts(B))}(R4)`);
         //  사람 휴지통 직급 탭에 나타난다(그 사이 호스트 목록도 바뀌었다)

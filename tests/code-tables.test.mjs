@@ -65,13 +65,14 @@ function csMember(source, sig) {
 }
 
 // 코드테이블 CRUD 멤버들의 시그니처 — 한곳에 모아 둔다(개명되면 여기 한 줄만 고친다).
+//  ★ 2026-10-15 — 추가만 이름으로 받고 개명·숨김·순서·참조 수는 번호로 받는다(CODE-TABLE-IDS §4).
 const SIG = {
-  resolve:  'private static bool ResolveCodeKind(string? kind, out string table, out string projCol)',
+  resolve:  'private static bool ResolveCodeKind(string? kind, out string table, out string idCol)',
   add:      'public async Task<(bool ok, string msg)> AddCodeAsync(string? kind, string? name)',
-  rename:   'public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, string? oldName, string? newName)',
-  setActive:'public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, string? name, bool active)',
-  reorder:  'public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<string>? orderedNames)',
-  refCount: 'public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCodeAsync(string? kind, string? name)',
+  rename:   'public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, int id, string? newName)',
+  setActive:'public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, int id, bool active)',
+  reorder:  'public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<int>? orderedIds)',
+  refCount: 'public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCodeAsync(string? kind, int id)',
 };
 
 // C# 소스에서 [시작 선언, 다음 선언) 구간만 잘라낸다. 두 마커가 다 있고 순서가 맞아야 한다
@@ -140,31 +141,31 @@ const checks = {
   },
   // 활성 코드 로더(드롭다운 소스)는 sort_order 순 — 로더 **구간 안에서** 확인한다.
   activeLoaderSorted(pdb) {
-    const b = csSlice(pdb, 'private async Task<string?> LoadActiveCodeNamesJsonAsync',
+    const b = csSlice(pdb, 'private async Task<string?> LoadActiveCodesJsonAsync',
                            'public async Task<string?> LoadCodesFullJsonAsync');
     assert.ok(/WHERE is_active=1 ORDER BY sort_order, name/.test(b), '활성 코드 로더가 sort_order 순이 아니다');
   },
   // full 로더(관리 화면)는 활성 먼저 · 그 안에서 sort_order.
   fullLoaderSorted(pdb) {
     const b = csSlice(pdb, 'public async Task<string?> LoadCodesFullJsonAsync',
-                           'private static async Task<HashSet<string>> LoadCodeNameSetAsync');
+                           'private static async Task<HashSet<int>> LoadCodeIdSetAsync');
     assert.ok(/ORDER BY is_active DESC, sort_order, name/.test(b), 'full 로더 정렬이 다르다');
   },
   // note 는 쓰기(UpsertProjectAsync)·바인딩(BindProject)·읽기(LoadProjectsJsonAsync) 세 구간에
   // 각각 있어야 한다. 한 구간에서 빠져도 다른 구간의 같은 문자열이 존재검사를 만족시키면 안 된다.
   noteWiredPerScope(pdb) {
     const up = csSlice(pdb, 'public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync',
-                            'private static async Task<(string pn, string cn)?> FindSimilarActiveAsync');
-    assert.ok(/INSERT INTO project \(section, customer, project_name, contract_name, common_name, [\s\S]{0,80}status, note\)/.test(up),
+                            'private static async Task<(string pn, string cn, string cust)?> FindSimilarActiveAsync');
+    assert.ok(/INSERT INTO project \(section_id, customer_id, project_name, contract_name, common_name, [\s\S]{0,80}status_id, note\)/.test(up),
       'UpsertProjectAsync 의 INSERT 에 note 가 없다');
-    assert.ok(/status=@st, note=@note WHERE uid=@uid/.test(up), 'UpsertProjectAsync 의 UPDATE 에 note 가 없다');
+    assert.ok(/status_id=@st, note=@note WHERE uid=@uid/.test(up), 'UpsertProjectAsync 의 UPDATE 에 note 가 없다');
     const bind = csSlice(pdb, 'private static void BindProject',
                               'public async Task<(bool ok, string msg)> SetProjectActiveAsync');
     assert.ok(/AddWithValue\("@note", nt\)/.test(bind),
       'BindProject 에 note 바인딩이 없다(INSERT/UPDATE 둘 다 @note 미바인딩으로 터진다)');
     const sel = csSlice(pdb, 'public async Task<string?> LoadProjectsJsonAsync',
                              'public async Task<string?> LoadCustomersJsonAsync');
-    assert.ok(/status, note, is_active FROM project WHERE is_active=1/.test(sel),
+    assert.ok(/st\.name AS status, p\.status_id, p\.note, p\.is_active /.test(sel),
       'LoadProjectsJsonAsync 의 SELECT 에 note 가 없다(저장은 되는데 다시 읽히지 않는다)');
   },
 };
@@ -226,14 +227,14 @@ test('호스트: 하드코딩 Sections/Statuses 배열이 제거됐다(코드테
   assert.ok(!/private static readonly string\[\] Sections/.test(projectDb), 'Sections 하드코딩 배열이 남아 있다');
   assert.ok(!/private static readonly string\[\] Statuses/.test(projectDb), 'Statuses 하드코딩 배열이 남아 있다');
 });
-test('호스트: ResolveCodeKind가 section→section_code/section, status→status_code/status로 해석', () => {
+test('호스트: ResolveCodeKind가 section→section_code/section_id, status→status_code/status_id로 해석', () => {
   const b = csMember(projectDb, SIG.resolve);
-  assert.ok(/case "section": table = "section_code"; projCol = "section";/.test(b), 'section 매핑이 다르다');
-  assert.ok(/case "status":\s+table = "status_code";\s+projCol = "status";/.test(b), 'status 매핑이 다르다');
+  assert.ok(/case "section": table = "section_code"; idCol = "section_id";/.test(b), 'section 매핑이 다르다');
+  assert.ok(/case "status":\s+table = "status_code";\s+idCol = "status_id";/.test(b), 'status 매핑이 다르다');
   assert.ok(/default:[\s\S]{0,60}return false;/.test(b), '알 수 없는 kind 방어(default→false)가 없다');
 });
-test('호스트: 코드 로더 5종(활성 sections/statuses·full·nameset) 존재', () => {
-  for (const m of ['LoadSectionCodesJsonAsync', 'LoadStatusCodesJsonAsync', 'LoadCodesFullJsonAsync', 'LoadCodeNameSetAsync']) {
+test('호스트: 코드 로더 5종(활성 sections/statuses·full·idset) 존재', () => {
+  for (const m of ['LoadSectionCodesJsonAsync', 'LoadStatusCodesJsonAsync', 'LoadCodesFullJsonAsync', 'LoadCodeIdSetAsync']) {
     assert.ok(new RegExp('Task[^\\n]*' + m).test(projectDb), `${m}가 없다`);
   }
   // 드롭다운 로더는 활성만 sort_order 순
@@ -250,12 +251,13 @@ test('호스트: 코드 CRUD 5종(add/rename/setActive/reorder/refCount) 존재 
     assert.ok(new RegExp('public async Task[^\\n]*' + m + '\\(string\\? kind').test(projectDb), `${m}(kind …)가 없다`);
   }
 });
-test('호스트: rename은 CASCADE 의존(수동 UPDATE project 없음) · reorder는 트랜잭션', () => {
+test('호스트: rename은 번호로 찾은 한 행 UPDATE(project 를 건드리지 않는다) · reorder는 트랜잭션·번호', () => {
   const rn = csMember(projectDb, SIG.rename);
-  assert.ok(/UPDATE \{table\} SET name=@new WHERE name=@old/.test(rn), '코드 개명이 name UPDATE가 아니다');
-  assert.ok(!/UPDATE project SET/.test(rn), 'rename이 project를 직접 UPDATE한다(FK CASCADE로 자동 전파여야 함)');
+  assert.ok(/UPDATE \{table\} SET name=@new WHERE \{idCol\}=@id/.test(rn), '코드 개명이 번호로 찾은 한 행 UPDATE 가 아니다');
+  assert.ok(!/UPDATE project SET/.test(rn), 'rename이 project를 직접 UPDATE한다(번호로 가리키므로 조인이 따라와야 한다)');
+  assert.ok(!/WHERE name=/.test(rn), 'rename 이 아직 이름으로 찾는다');
   const ro = csMember(projectDb, SIG.reorder);
-  assert.ok(/BeginTransactionAsync/.test(ro) && /sort_order=@s/.test(ro), 'reorder가 트랜잭션 sort_order 재부여가 아니다');
+  assert.ok(/BeginTransactionAsync/.test(ro) && /SET sort_order=@s WHERE \{idCol\}=@id/.test(ro), 'reorder가 트랜잭션 번호 sort_order 재부여가 아니다');
 });
 test('호스트: 복구(setActive true)는 sort_order를 MAX+10으로 재부여 — 활성 순번 충돌 방지', () => {
   // 왜: 숨김은 sort_order를 그대로 두는데 reorder는 '활성 값만' 10·20·30…으로 재부여한다.
@@ -264,36 +266,37 @@ test('호스트: 복구(setActive true)는 sort_order를 MAX+10으로 재부여 
   const sa = csMember(projectDb, SIG.setActive);
   assert.ok(/is_active=1, *sort_order=\(SELECT/.test(sa), '복구가 sort_order를 재부여하지 않는다(순번 충돌 재발)');
   assert.ok(/COALESCE\(MAX\(sort_order\),0\)\+10/.test(sa), '복구 순번이 MAX+10(맨 뒤)이 아니다');
-  assert.ok(/UPDATE \{table\} SET is_active=0 WHERE name=@n/.test(sa), '숨김은 sort_order를 건드리지 않아야 한다');
+  assert.ok(/UPDATE \{table\} SET is_active=0 WHERE \{idCol\}=@id/.test(sa), '숨김은 번호로 찾고 sort_order를 건드리지 않아야 한다');
 });
 test('호스트: add는 1062로 활성/숨김 구분 · refCount는 활성 과제만', () => {
   const ad = csMember(projectDb, SIG.add);
   assert.ok(/mex\.Number == 1062/.test(ad) && /숨김 처리된 동일/.test(ad) && /이미 등록된/.test(ad), '1062 활성/숨김 분기가 없다');
   const rc = csMember(projectDb, SIG.refCount);
-  assert.ok(/SELECT COUNT\(\*\) FROM project WHERE \{projCol\}=@n AND is_active=1/.test(rc), 'refCount가 활성 과제만 세지 않는다');
+  assert.ok(/SELECT COUNT\(\*\) FROM project WHERE \{projCol\}=@id AND is_active=1/.test(rc), 'refCount가 활성 과제만 번호로 세지 않는다');
 });
 test('호스트: UpsertProjectAsync — note 파라미터 + 코드테이블 로드 검증(하드코딩 아님)', () => {
   const up = projectDb.slice(projectDb.indexOf('public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync'),
-                             projectDb.indexOf('private static async Task<(string pn, string cn)?> FindSimilarActiveAsync'));
+                             projectDb.indexOf('private static async Task<(string pn, string cn, string cust)?> FindSimilarActiveAsync'));
   assert.ok(/string\? note = null, bool confirmSimilar = false/.test(up), 'note 파라미터가 없다');
   assert.ok(/string nt = \(note \?\? ""\)\.Trim\(\);/.test(up), 'note TRIM이 없다');
-  // 코드 존재 검증을 코드테이블 로드로(하드코딩 배열 IndexOf 아님)
-  assert.ok(/LoadCodeNameSetAsync\(conn, cts\.Token, "section_code", activeOnly: false\)/.test(up), 'section 검증이 코드테이블 로드가 아니다');
-  assert.ok(/LoadCodeNameSetAsync\(conn, cts\.Token, "status_code", activeOnly: false\)/.test(up), 'status 검증이 코드테이블 로드가 아니다');
+  // 코드 존재 검증을 코드테이블 로드로(하드코딩 배열 IndexOf 아님). 2026-10-15 부터 번호 집합이다.
+  assert.ok(/LoadCodeIdSetAsync\(conn, cts\.Token, "section_code", "section_id", activeOnly: false\)/.test(up), 'section 검증이 코드테이블 로드가 아니다');
+  assert.ok(/LoadCodeIdSetAsync\(conn, cts\.Token, "status_code", "status_id", activeOnly: false\)/.test(up), 'status 검증이 코드테이블 로드가 아니다');
   assert.ok(!/Array\.IndexOf\(Sections|Array\.IndexOf\(Statuses/.test(projectDb), '하드코딩 배열 검증이 남아 있다');
 });
 test('호스트: INSERT/UPDATE/SELECT에 note 반영', () => {
-  assert.ok(/INSERT INTO project \(section, customer, project_name, contract_name, common_name, [\s\S]{0,80}status, note\)/.test(projectDb), 'INSERT에 note가 없다');
-  assert.ok(/status=@st, note=@note WHERE uid=@uid/.test(projectDb), 'UPDATE에 note가 없다');
-  assert.ok(/status, note, is_active FROM project WHERE is_active=1/.test(projectDb), 'SELECT에 note가 없다');
+  assert.ok(/INSERT INTO project \(section_id, customer_id, project_name, contract_name, common_name, [\s\S]{0,80}status_id, note\)/.test(projectDb), 'INSERT에 note가 없다');
+  assert.ok(/status_id=@st, note=@note WHERE uid=@uid/.test(projectDb), 'UPDATE에 note가 없다');
+  assert.ok(/p\.status_id, p\.note, p\.is_active /.test(projectDb), 'SELECT에 note가 없다');
   assert.ok(/AddWithValue\("@note", nt\)/.test(projectDb), 'note 바인딩이 없다');
   // ★ 위 네 줄도 파일 전체 존재검사다 — 쓰기·바인딩·읽기 세 구간으로 잘라 각각 못박는다.
   checks.noteWiredPerScope(projectDb);
 });
 test('호스트: MySqlMsg가 FK 3종을 제약명으로 구분', () => {
   const m = projectDb.slice(projectDb.indexOf('private static string MySqlMsg'), projectDb.indexOf('private static string NormalizeName'));
-  assert.ok(/fk_project_section/.test(m) && /등록되지 않은 구분입니다/.test(m), 'section FK 안내가 없다');
-  assert.ok(/fk_project_status/.test(m) && /등록되지 않은 상태입니다/.test(m), 'status FK 안내가 없다');
+  //  ★ v13 정본(schema-structure.sql)의 명시 제약 이름으로 가른다.
+  assert.ok(/m\.Contains\("fk_project_section_id"\)/.test(m) && /등록되지 않은 구분입니다/.test(m), 'section FK 안내가 없다');
+  assert.ok(/m\.Contains\("fk_project_status_id"\)/.test(m) && /등록되지 않은 상태입니다/.test(m), 'status FK 안내가 없다');
   assert.ok(/등록되지 않은 발주처입니다/.test(m), '발주처 FK 안내가 사라졌다');
 });
 
@@ -312,8 +315,10 @@ test('브리지: __applyCodes로 sections/statuses 2배열 전달 · 코드 Run*
     const b = mainWindow.slice(mainWindow.indexOf('private async Task ' + m), mainWindow.indexOf('private async Task ' + m) + 400);
     assert.ok(/ReplyOnUi\(reqId,/.test(b), `${m}가 ReplyOnUi로 회신하지 않는다`);
   }
-  // codeReorder는 문자열 배열(names) 수신
-  assert.ok(/GetStrArray\(doc, "names"\)/.test(mainWindow), 'codeReorder가 names 배열을 읽지 않는다');
+  // codeReorder는 번호 배열(ids) 수신 — 이름 배열은 개명 한 번에 어긋난다(CODE-TABLE-IDS §4)
+  assert.ok(/RunReorderCodesAsync\(GetStr\(doc, "reqId"\), GetStr\(doc, "kind"\), GetIntArray\(doc, "ids"\)\)/.test(mainWindow), 'codeReorder가 ids 번호 배열을 읽지 않는다');
+  for (const c of ['codeRename', 'codeSetActive', 'codeRefCount'])
+    assert.ok(new RegExp('case "' + c + '":[^\\n]*\\n[^\\n]*GetInt\\(doc, "id"\\)').test(mainWindow), `${c} 가 번호(id)를 읽지 않는다`);
 });
 
 // ── 웹: 드롭다운 DB 로드 · __applyCodes · 코드 관리 · note · 인라인 제거 ──
@@ -339,10 +344,10 @@ test('웹: 코드 관리 조작은 offEditGuard 게이트', () => {
     assert.ok(/offEditGuard\(/.test(extractFunction(src, fn)), `${fn}가 offEditGuard를 거치지 않는다`);
   }
 });
-test('웹: codeMove가 활성 순서 스왑 후 codeReorder(names) 전송', () => {
+test('웹: codeMove가 활성 순서 스왑 후 codeReorder(ids) 전송', () => {
   const b = extractFunction(src, 'codeMove');
-  assert.ok(/codeList\.filter\(c => c\.active\)\.map\(c => c\.name\)/.test(b), '활성 순서 배열을 만들지 않는다');
-  assert.ok(/codeSend\('codeReorder', \{ names: active \}/.test(b), 'codeReorder(names) 전송이 없다');
+  assert.ok(/codeList\.filter\(c => c\.active\)\.map\(c => c\.id\)/.test(b), '활성 순서 번호 배열을 만들지 않는다');
+  assert.ok(/codeSend\('codeReorder', \{ ids: active \}/.test(b), 'codeReorder(ids) 전송이 없다');
 });
 test('웹: note — payload·mapDbRows·offEditOpen 반영, 편입분엔 안 넘어감(전시 미노출)', () => {
   const save = extractFunction(src, 'offEdSaveNow');
@@ -435,8 +440,8 @@ test('변이㉕: 부팅 블록 자체가 사라지면 조용히 통과하지 않
 
 test('변이㉖: 활성 코드 로더의 정렬이 사라져도 같은 SQL 이 다른 로더에 있으면 옛 존재검사는 통과한다(범위고정이 잡는다)', () => {
   // '필터 전용 활성 코드 로더가 하나 더 생긴' 상황을 모사 — 감사가 지적한 구조적 약점.
-  let bad = mutate('$"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name"',
-                   '$"SELECT name FROM {table} WHERE is_active=1"', projectDb);
+  let bad = mutate('$"SELECT {idCol} AS cid, name FROM {table} WHERE is_active=1 ORDER BY sort_order, name"',
+                   '$"SELECT {idCol} AS cid, name FROM {table} WHERE is_active=1"', projectDb);
   bad = mutate('private static bool IsDateOrEmpty(string? s)',
     'private async Task<string?> LoadFilterCodeNamesJsonAsync(string table)\n' +
     '        {\n            var q = $"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name";\n' +
@@ -448,8 +453,8 @@ test('변이㉖: 활성 코드 로더의 정렬이 사라져도 같은 SQL 이 �
 });
 
 test('변이㉗: 읽기 SELECT 에서 note 만 빠져도 잡힌다(쓰기 쪽 note 가 존재검사를 만족시켜도)', () => {
-  const bad = mutate('"status, note, is_active FROM project WHERE is_active=1 ORDER BY common_name"',
-                     '"status, is_active FROM project WHERE is_active=1 ORDER BY common_name"', projectDb);
+  const bad = mutate('"st.name AS status, p.status_id, p.note, p.is_active "',
+                     '"st.name AS status, p.status_id, p.is_active "', projectDb);
   assert.throws(() => checks.noteWiredPerScope(bad), /LoadProjectsJsonAsync 의 SELECT 에 note 가 없다/);
 });
 

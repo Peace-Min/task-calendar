@@ -51,7 +51,7 @@ const PORT = Number(process.env.TC_DEBUG_PORT || ARG.get('port') || 9222);
 const MYSQL = process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe';
 const USER = process.env.TC_TEST_DB_ADMIN_USER || 'root';
 const PW = process.env.TC_TEST_DB_ADMIN_PW || '';
-const DB = process.env.TC_TEST_DB_NAME || 'taskmgr';
+const DB = process.env.TC_TEST_DB_NAME || 'taskcalendar';
 //  U3 의 관찰 창. 3초 안에 자동 재시도가 안 나오면 '안 한다' 로 본다 —
 //  dbSave 는 실패하면 __dbDirty 를 내리고 끝내므로, 재시도가 있다면 즉시 나온다.
 const QUIET_MS = Number(ARG.get('quiet') || 3000);

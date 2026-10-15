@@ -23,6 +23,27 @@ namespace TaskCalendarWidget
         public bool RoleOnly { get; }
     }
 
+    // 동작이 묶인 코드값의 고정 번호(CODE-TABLE-IDS §3). 시드(db/deploy/schema-structure.sql)의 번호와 같아야 한다.
+    //   ★ 앱은 이름 글자가 아니라 이 번호로 판정한다. 이름은 관리 화면에서 바꿀 수 있고, 바꿔도 동작은 그대로다.
+    //   ★ 웹에도 같은 표가 한 벌 있다(task-calendar-prototype.html 의 CODE_ID). 시험(code-ids-app)이 둘을 대조한다.
+    //   ★ 고정 번호를 늘릴 때는 이 표와 IsProtected 에 함께 더한다.
+    internal static class CodeIds
+    {
+        public const int SectionPre      = 2;   // 구분 선진행: 날짜와 상태를 비우고 잠근다
+        public const int StatusActive    = 1;   // 상태 진행중: 엑셀 초록(색만, 보호하지 않는다)
+        public const int StatusEnded     = 2;   // 상태 종료: 목록 필터 제외, 엑셀 회색
+        public const int StatusDelivered = 3;   // 상태 1차 납품완료: 엑셀 파랑(색만)
+
+        // 숨김과 삭제를 막는 행 = 동작이 묶인 둘(구분 2, 상태 2). 색만 묶인 행은 지워도 깨지는 것이 없어 막지 않는다.
+        public static bool IsProtected(string kind, int id) =>
+            (kind == "section" && id == SectionPre) || (kind == "status" && id == StatusEnded);
+
+        // 거부 문장. 웹의 꺼진 버튼 사유(CODE_PROTECT_WHY)와 글자까지 같다.
+        public const string SectionPreMsg  = "이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.";
+        public const string StatusEndedMsg = "이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.";
+        public static string ProtectedMsg(string kind) => kind == "section" ? SectionPreMsg : StatusEndedMsg;
+    }
+
     // 과제 DB 연동 — 사내 MySQL(taskmgr)의 공식 과제(project)를 읽어 웹으로 넘기고(READ),
     // 공식 과제 편집(P3.2)의 쓰기(UPSERT/소프트삭제)를 처리한다. 오프라인이면 읽기는 null을 돌려 웹이 목록을 비우고
     // (로컬 캐시 없음 — ADR-18), 쓰기는 '온라인에서만 가능'을 명시적으로 알린다(무음 유실 금지).
@@ -243,11 +264,20 @@ namespace TaskCalendarWidget
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
 
+                // ★ 코드 셋은 번호로만 저장된다(CODE-TABLE-IDS §2). 이름은 조인으로 만들고 옛 키(section·customer·status)로
+                //   그대로 내보낸다(화면 표시용). 동작 판정과 편집은 함께 싣는 번호(sectionId·customerId·statusId)로 한다.
+                //   상태는 NULL(상태 없음)이 있어 LEFT JOIN 이다. 구분·발주처는 NOT NULL + FK 라 내부 조인이다.
                 const string sql =
-                    "SELECT uid, section, customer, project_name, contract_name, common_name, " +
-                    "DATE_FORMAT(start_date,'%Y-%m-%d') start_date, DATE_FORMAT(end_date,'%Y-%m-%d') end_date, " +
-                    "DATE_FORMAT(dev_end_date,'%Y-%m-%d') dev_end_date, " +
-                    "status, note, is_active FROM project WHERE is_active=1 ORDER BY common_name";
+                    "SELECT p.uid, s.name AS section, p.section_id, c.name AS customer, p.customer_id, " +
+                    "p.project_name, p.contract_name, p.common_name, " +
+                    "DATE_FORMAT(p.start_date,'%Y-%m-%d') start_date, DATE_FORMAT(p.end_date,'%Y-%m-%d') end_date, " +
+                    "DATE_FORMAT(p.dev_end_date,'%Y-%m-%d') dev_end_date, " +
+                    "st.name AS status, p.status_id, p.note, p.is_active " +
+                    "FROM project p " +
+                    "JOIN section_code s ON s.section_id = p.section_id " +
+                    "JOIN customer c ON c.customer_id = p.customer_id " +
+                    "LEFT JOIN status_code st ON st.status_id = p.status_id " +
+                    "WHERE p.is_active=1 ORDER BY p.common_name";
                 await using var cmd = new MySqlCommand(sql, conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
 
@@ -258,7 +288,9 @@ namespace TaskCalendarWidget
                     {
                         ["uid"]           = Str(rd, "uid"),
                         ["section"]       = Str(rd, "section"),
+                        ["sectionId"]     = IntOrNull(rd, "section_id"),
                         ["customer"]      = Str(rd, "customer"),
+                        ["customerId"]    = IntOrNull(rd, "customer_id"),
                         ["project_name"]  = Str(rd, "project_name"),
                         ["contract_name"] = Str(rd, "contract_name"),
                         ["common_name"]   = Str(rd, "common_name"),
@@ -266,6 +298,7 @@ namespace TaskCalendarWidget
                         ["end_date"]      = Str(rd, "end_date"),
                         ["dev_end_date"]  = Str(rd, "dev_end_date"),
                         ["status"]        = Str(rd, "status"),
+                        ["statusId"]      = IntOrNull(rd, "status_id"),   // 상태 없음이면 null
                         ["note"]          = Str(rd, "note"),
                         ["is_active"]     = IntOrNull(rd, "is_active"),
                     });
@@ -276,7 +309,8 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 과제 로드 실패(목록 비움): " + Short(ex)); return null; }
         }
 
-        // 발주처 마스터(customer, is_active=1)를 이름 배열 JSON으로. 편집 폼의 발주처 드롭다운 소스.
+        // 발주처 마스터(customer, is_active=1)를 [{id, name}] JSON으로. 편집 폼의 발주처 드롭다운 소스.
+        //   ★ 드롭다운 값은 번호다(CODE-TABLE-IDS §4). 이름은 표시용이다.
         // 실패(오프라인 포함) 시 null → 웹은 카탈로그에 실제로 쓰인 발주처만으로 폴백한다(마스터 캐시 없음).
         public async Task<string?> LoadCustomersJsonAsync()
         {
@@ -284,21 +318,21 @@ namespace TaskCalendarWidget
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
-                await using var cmd = new MySqlCommand("SELECT name FROM customer WHERE is_active=1 ORDER BY name", conn);
+                await using var cmd = new MySqlCommand("SELECT customer_id, name FROM customer WHERE is_active=1 ORDER BY name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
-                var names = new List<string>();
+                var rows = new List<Dictionary<string, object?>>();
                 while (await rd.ReadAsync(cts.Token))
                 {
                     string n = Str(rd, "name");
-                    if (n.Length > 0) names.Add(n);
+                    if (n.Length > 0) rows.Add(new Dictionary<string, object?> { ["id"] = IntOrNull(rd, "customer_id"), ["name"] = n });
                 }
-                _log("DB 발주처 로드: " + names.Count + "건");
-                return JsonSerializer.Serialize(names);
+                _log("DB 발주처 로드: " + rows.Count + "건");
+                return JsonSerializer.Serialize(rows);
             }
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 발주처 로드 실패: " + Short(ex)); return null; }
         }
 
-        // 발주처 전체(숨김 포함) — 관리 화면 전용. [{name, active}] JSON. 활성 먼저, 그 안에서 이름순.
+        // 발주처 전체(숨김 포함) — 관리 화면 전용. [{id, name, active}] JSON. 활성 먼저, 그 안에서 이름순.
         // (편집 폼·추출 드롭다운은 활성만 필요해 LoadCustomersJsonAsync를 쓰고, 이 메서드는 관리 UI에서만 쓴다.)
         public async Task<string?> LoadCustomersFullJsonAsync()
         {
@@ -306,7 +340,7 @@ namespace TaskCalendarWidget
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
-                await using var cmd = new MySqlCommand("SELECT name, is_active FROM customer ORDER BY is_active DESC, name", conn);
+                await using var cmd = new MySqlCommand("SELECT customer_id, name, is_active FROM customer ORDER BY is_active DESC, name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                 var rows = new List<Dictionary<string, object?>>();
                 while (await rd.ReadAsync(cts.Token))
@@ -314,7 +348,7 @@ namespace TaskCalendarWidget
                     string n = Str(rd, "name");
                     if (n.Length == 0) continue;
                     var a = IntOrNull(rd, "is_active");
-                    rows.Add(new Dictionary<string, object?> { ["name"] = n, ["active"] = (a ?? 1) != 0 });
+                    rows.Add(new Dictionary<string, object?> { ["id"] = IntOrNull(rd, "customer_id"), ["name"] = n, ["active"] = (a ?? 1) != 0 });
                 }
                 _log("DB 발주처(전체) 로드: " + rows.Count + "건");
                 return JsonSerializer.Serialize(rows);
@@ -343,9 +377,11 @@ namespace TaskCalendarWidget
                 // ★ 소속 이름은 org_unit 한 곳에만 있다(app_user 에는 org_id 뿐) — JOIN 으로 이름을 만든다.
                 //   별칭 org_unit 은 웹으로 나가는 payload 키다(MainWindow.ParseAppUser 가 "org_unit"을 읽는다).
                 //   LEFT JOIN 이라 소속이 없는 사람(org_id IS NULL)은 그대로 NULL → Str() 이 ""로 바꾼다(종전과 동일).
+                //   ★ 직급 이름도 같은 방식이다(app_user 에는 title_id 뿐 · CODE-TABLE-IDS §2). 별칭 title 이 payload 키다.
                 const string sql =
-                    "SELECT u.login_id, u.name, u.title, o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
+                    "SELECT u.login_id, u.name, t.name AS title, u.title_id, o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "LEFT JOIN title_code t ON t.title_id = u.title_id " +
                     "WHERE u.login_id=@id";
                 await using var cmd = new MySqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@id", id);
@@ -361,6 +397,7 @@ namespace TaskCalendarWidget
                     ["login_id"]   = Str(rd, "login_id"),
                     ["name"]       = Str(rd, "name"),
                     ["title"]      = Str(rd, "title"),
+                    ["titleId"]    = IntOrNull(rd, "title_id"),
                     ["org_unit"]   = Str(rd, "org_unit"),
                     ["view_scope"] = Str(rd, "view_scope"),
                     ["edit_role"]  = Str(rd, "edit_role"),
@@ -393,8 +430,9 @@ namespace TaskCalendarWidget
                 // ★ 소속 이름은 JOIN 으로 만든다(위 LoadAppUserJsonAsync 와 같은 이유·같은 별칭).
                 //   컬럼 순서·이름을 그대로 두었으므로 아래 payload 와 웹(사용자 정보 모달)은 손대지 않는다.
                 const string sql =
-                    "SELECT u.name, u.title, o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
+                    "SELECT u.name, t.name AS title, u.title_id, o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "LEFT JOIN title_code t ON t.title_id = u.title_id " +
                     "WHERE u.login_id=@id";
                 await using var cmd = new MySqlCommand(sql, conn);
                 cmd.Parameters.AddWithValue("@id", id);   // 값은 반드시 파라미터 바인딩(문자열 연결 금지)
@@ -410,6 +448,7 @@ namespace TaskCalendarWidget
                     ["found"]      = true,
                     ["name"]       = Str(rd, "name"),
                     ["title"]      = Str(rd, "title"),
+                    ["titleId"]    = IntOrNull(rd, "title_id"),
                     ["org_unit"]   = Str(rd, "org_unit"),
                     ["view_scope"] = Str(rd, "view_scope"),
                     ["edit_role"]  = Str(rd, "edit_role"),
@@ -550,10 +589,12 @@ namespace TaskCalendarWidget
                 //     보기 화면은 종전대로 소속 → 순번 → 이름. 정렬은 여기 두 리터럴뿐이다 — 화면은 어느 쪽도 재정렬하지 않는다.
                 //   ★ WHERE 는 두 갈래다. 퇴사자 포함은 관리자 전용이고, 그 판정은 이미 위에서
                 //     이 연결로 읽은 edit_role 이 했다(withInactive). 웹이 보낸 플래그만으로는 열리지 않는다.
+                //   ★ 직급 이름도 JOIN 으로 만든다(app_user 에는 title_id 뿐). 별칭 title 은 종전 payload 키 그대로다.
                 string rosterSql =
-                    "SELECT u.user_id, u.login_id, u.name, u.title, u.sort_order, u.org_id, " +
+                    "SELECT u.user_id, u.login_id, u.name, t.name AS title, u.title_id, u.sort_order, u.org_id, " +
                     "o.name AS org_unit, u.view_scope, u.edit_role, u.is_active " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "LEFT JOIN title_code t ON t.title_id = u.title_id " +
                     (withInactive ? "" : "WHERE u.is_active=1 ") +
                     (flatOrder ? "ORDER BY u.sort_order IS NULL, u.sort_order, u.name"
                                : "ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name");
@@ -577,6 +618,7 @@ namespace TaskCalendarWidget
                         {
                             row["userId"]    = IntOrNull(rd, "user_id");
                             row["orgId"]     = IntOrNull(rd, "org_id");     // 소속 없으면 null(드롭다운의 '(없음)')
+                            row["titleId"]   = IntOrNull(rd, "title_id");   // 직급 드롭다운 값(이름이 아니라 번호)
                             row["viewScope"] = Str(rd, "view_scope");
                             row["editRole"]  = Str(rd, "edit_role");
                             row["isActive"]  = (IntOrNull(rd, "is_active") ?? 0) != 0;
@@ -587,16 +629,21 @@ namespace TaskCalendarWidget
                 }
 
                 // 직급 목록 — 편집 폼의 드롭다운 소스. 관리자일 때만 읽는다(비관리자에게는 쓸 데가 없다).
-                //   ★ 활성만·직급 서열순이다. title 은 FK 타겟이라 여기 없는 값은 저장이 DB 에서 막힌다 —
+                //   ★ 활성만·직급 서열순이다. 저장은 활성 직급 번호만 받는다(UpsertUserAsync) —
                 //     드롭다운을 이 목록으로 채우면 '고를 수 없는 값'과 '저장할 수 없는 값'이 같아진다.
-                List<string>? titles = null;
+                //   ★ [{id, name}] 다(CODE-TABLE-IDS §4). 드롭다운 값은 번호, 글자는 이름이다.
+                List<Dictionary<string, object?>>? titles = null;
                 if (isAdmin)
                 {
-                    titles = new List<string>();
+                    titles = new List<Dictionary<string, object?>>();
                     await using var cmd = new MySqlCommand(
-                        "SELECT name FROM title_code WHERE is_active=1 ORDER BY sort_order, name", conn);
+                        "SELECT title_id, name FROM title_code WHERE is_active=1 ORDER BY sort_order, name", conn);
                     await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
-                    while (await rd.ReadAsync(cts.Token)) { string n = Str(rd, "name"); if (n.Length > 0) titles.Add(n); }
+                    while (await rd.ReadAsync(cts.Token))
+                    {
+                        string n = Str(rd, "name");
+                        if (n.Length > 0) titles.Add(new Dictionary<string, object?> { ["id"] = IntOrNull(rd, "title_id"), ["name"] = n });
+                    }
                 }
 
                 var unitPayload = new List<Dictionary<string, object?>>(units.Count);
@@ -789,7 +836,7 @@ namespace TaskCalendarWidget
                 case 1062: return "이미 등록된 ID 입니다.";
                 case 1451:
                 case 1452:
-                    if (m.Contains("fk_user_title")) return "등록되지 않은 직급입니다.";
+                    if (m.Contains("fk_user_title_id")) return "등록되지 않은 직급입니다.";
                     if (m.Contains("fk_user_org_id")) return "등록되지 않은 소속입니다.";
                     return "등록되지 않은 값이 있습니다. 직급·소속을 다시 고르세요.";
                 case 3819:   // CHECK 위반
@@ -829,30 +876,31 @@ namespace TaskCalendarWidget
         }
 
         // 대상 직원 1행을 잠근 채 읽는다(없으면 null).
-        //   ★ title·org_id 도 함께 읽는다 — '지금 저장돼 있는 값'은 그 값이 폐지됐어도 다시 저장할 수 있어야 하고
+        //   ★ title_id·org_id 도 함께 읽는다 — '지금 저장돼 있는 값'은 그 값이 폐지됐어도 다시 저장할 수 있어야 하고
         //     (§4.3 의 2026-09-10 완화), 그 판정은 잠근 행의 값으로 해야 판정과 갱신이 갈리지 않는다.
-        private static async Task<(int userId, string editRole, int isActive, string name, string title, int? orgId)?> LockedUserAsync(
+        private static async Task<(int userId, string editRole, int isActive, string name, int? titleId, int? orgId)?> LockedUserAsync(
             MySqlConnection conn, MySqlTransaction tx, int userId, CancellationToken ct)
         {
             await using var cmd = new MySqlCommand(
-                "SELECT user_id, name, title, org_id, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE", conn, tx);
+                "SELECT user_id, name, title_id, org_id, edit_role, is_active FROM app_user WHERE user_id=@uid FOR UPDATE", conn, tx);
             cmd.Parameters.AddWithValue("@uid", userId);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
             if (!await rd.ReadAsync(ct)) return null;
             return (IntOrNull(rd, "user_id") ?? 0, Str(rd, "edit_role"), IntOrNull(rd, "is_active") ?? 0,
-                    Str(rd, "name"), Str(rd, "title"), IntOrNull(rd, "org_id"));
+                    Str(rd, "name"), IntOrNull(rd, "title_id"), IntOrNull(rd, "org_id"));
         }
 
         // 직원 등록/수정. userId 가 없으면 INSERT, 있으면 그 행 UPDATE.
         //   ★ UPDATE 에서 login_id 를 건드리지 않는다 — 넷커스 소유 값이고, 바꿔야 하면 DBA(org-ops)다.
         //   ★ 신규 등록은 sort_order 를 비워 둔다(NULL = 그 소속의 맨 뒤). 관리자가 ▲▼ 로 끌어올려 저장한다.
+        //   ★ 직급은 번호(titleId)로 받는다(CODE-TABLE-IDS §4). null 은 '직급 없음'이다.
         public async Task<(bool ok, string msg)> UpsertUserAsync(int? userId, string? loginId, string? name,
-            string? title, int? orgId, string? viewScope, string? editRole)
+            int? titleId, int? orgId, string? viewScope, string? editRole)
         {
             // ── 앱단 선검증(형식·도메인) — DB 까지 보내지 않고 바로 사용자 문장으로. 최종 보증은 DB 제약이다.
             string lid = (loginId ?? "").Trim();
             string nm  = (name ?? "").Trim();
-            string ti  = (title ?? "").Trim();
+            int? ti    = titleId.HasValue && titleId.Value > 0 ? titleId : null;
             string vs  = (viewScope ?? "").Trim();
             string er  = (editRole ?? "").Trim();
             if (!LoginIdShape.IsMatch(lid)) return (false, "로그인 ID 는 영문·숫자·._- 만 쓸 수 있습니다.");
@@ -870,9 +918,9 @@ namespace TaskCalendarWidget
                 await using var connOwn = conn;
                 string me = SessionLoginId();
 
-                // 직급·소속 존재 검증 — 좋은 에러문구용(최종은 fk_user_title · fk_user_org_id).
+                // 직급·소속 존재 검증 — 좋은 에러문구용(최종은 fk_user_title_id · fk_user_org_id).
                 //   활성만 본다: 폐지된 직급·조직으로 **새로** 배정하지 못하게 하는 것이 이 화면의 목적이다.
-                var titleSet = await LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: true);
+                var titleSet = await LoadCodeIdSetAsync(conn, cts.Token, "title_code", "title_id", activeOnly: true);
 
                 // 활성 조직인가 — 두 분기(신규·수정)가 같은 문장을 쓴다. 같은 말을 두 벌로 적으면 한쪽만 고쳐진다.
                 async Task<bool> OrgIsActiveAsync(MySqlTransaction? t)
@@ -886,7 +934,7 @@ namespace TaskCalendarWidget
                 try
                 {
                     // ── 잠금 방지(§4.4) — 판정과 갱신이 **같은 트랜잭션**이어야 한다. 수정이면 대상 행부터 잠근다.
-                    (int userId, string editRole, int isActive, string name, string title, int? orgId)? target = null;
+                    (int userId, string editRole, int isActive, string name, int? titleId, int? orgId)? target = null;
                     int? myId = null;
                     if (userId.HasValue)
                     {
@@ -900,11 +948,14 @@ namespace TaskCalendarWidget
                     //    폐지된 직급을 단 사람의 이름 한 글자를 고치려 할 때 "등록되지 않은 직급입니다"로 막히면,
                     //    관리자는 그 사람의 직급부터 바꿔야 한다 — 화면은 저장된 값을 드롭다운에 그대로 남기므로
                     //    '보이는 값'과 '되는 값'이 갈린다. 저장된 값과의 대조는 **잠근 행**으로 한다(위 FOR UPDATE).
-                    //    ★ 신규 등록은 curTitle·curOrg 가 없어(null) '지금 저장된 값' 갈래가 저절로 닫힌다 —
+                    //    ★ 신규 등록은 target 이 없어 '지금 저장된 값' 갈래가 저절로 닫힌다 —
                     //      곧 **활성만**이다. "완화는 '이미 그 값인 사람'에게만" 이라는 규칙이 한 줄로 유지된다.
-                    string? curTitle = target?.title;
+                    //    ★ 직급 없음(null)은 '지금 직급이 없는 사람'에게만 통과한다(옛 이름 판정의 빈 문자열과 같은 결과).
                     int? curOrg = target?.orgId;
-                    if (!titleSet.Contains(ti) && !string.Equals(ti, curTitle, StringComparison.Ordinal))
+                    bool titleOk = ti.HasValue
+                        ? (titleSet.Contains(ti.Value) || (target.HasValue && target.Value.titleId == ti))
+                        : (target.HasValue && target.Value.titleId == null);
+                    if (!titleOk)
                     { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 직급입니다."); }
                     if (orgId.HasValue && orgId.Value != (curOrg ?? -1) && !await OrgIsActiveAsync(tx))
                     { await tx.RollbackAsync(cts.Token); return (false, "등록되지 않은 소속입니다."); }
@@ -927,10 +978,10 @@ namespace TaskCalendarWidget
                         { await tx.RollbackAsync(cts.Token); return (false, LastAdminMsg); }
 
                         await using (var cmd = new MySqlCommand(
-                            "UPDATE app_user SET name=@nm, title=@ti, org_id=@org, view_scope=@vs, edit_role=@er WHERE user_id=@uid", conn, tx))
+                            "UPDATE app_user SET name=@nm, title_id=@ti, org_id=@org, view_scope=@vs, edit_role=@er WHERE user_id=@uid", conn, tx))
                         {
                             cmd.Parameters.AddWithValue("@nm", nm);
-                            cmd.Parameters.AddWithValue("@ti", ti);
+                            cmd.Parameters.AddWithValue("@ti", ti.HasValue ? (object)ti.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@vs", vs);
                             cmd.Parameters.AddWithValue("@er", er);
@@ -946,12 +997,12 @@ namespace TaskCalendarWidget
                         // 직급·소속은 위 한 벌이 이미 봤다 — 신규는 curTitle·curOrg 가 null 이라 **활성만**이다(R7).
                         // 신규 등록 — sort_order 는 넣지 않는다(NULL = 맨 뒤). user_id 는 AUTO_INCREMENT 가 준다.
                         await using (var cmd = new MySqlCommand(
-                            "INSERT INTO app_user (login_id, name, title, org_id, view_scope, edit_role) " +
+                            "INSERT INTO app_user (login_id, name, title_id, org_id, view_scope, edit_role) " +
                             "VALUES (@lid,@nm,@ti,@org,@vs,@er)", conn, tx))
                         {
                             cmd.Parameters.AddWithValue("@lid", lid);
                             cmd.Parameters.AddWithValue("@nm", nm);
-                            cmd.Parameters.AddWithValue("@ti", ti);
+                            cmd.Parameters.AddWithValue("@ti", ti.HasValue ? (object)ti.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@org", orgId.HasValue ? (object)orgId.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@vs", vs);
                             cmd.Parameters.AddWithValue("@er", er);
@@ -1160,44 +1211,50 @@ namespace TaskCalendarWidget
         //   kind 문자열('section'|'status')로 테이블·컬럼을 단일 소스에서 해석한다(중복 분기 방지).
         //   드롭다운 = 활성만 sort_order 순, 관리 화면 = 숨김 포함 전체.
         // ================================================================================
-        private static bool ResolveCodeKind(string? kind, out string table, out string projCol)
+        //   ★ 2026-10-15 — 번호 키(CODE-TABLE-IDS §2). idCol 은 코드표의 기본키이자 project 의 자식 열 이름이다
+        //     (org_id 선례: 자식 열 이름을 부모 기본키 이름과 같게 둔다). 그래서 projCol 과 idCol 이 같은 글자다.
+        private static bool ResolveCodeKind(string? kind, out string table, out string idCol)
         {
             switch ((kind ?? "").Trim())
             {
-                case "section": table = "section_code"; projCol = "section"; return true;
-                case "status":  table = "status_code";  projCol = "status";  return true;
-                default:        table = "";             projCol = "";        return false;
+                case "section": table = "section_code"; idCol = "section_id"; return true;
+                case "status":  table = "status_code";  idCol = "status_id";  return true;
+                default:        table = "";             idCol = "";           return false;
             }
         }
 
-        // 활성 코드값 이름 배열 JSON — 편집 폼·필터 드롭다운 소스. 실패면 null(웹이 폴백/비활성).
-        public async Task<string?> LoadSectionCodesJsonAsync() => await LoadActiveCodeNamesJsonAsync("section_code");
-        public async Task<string?> LoadStatusCodesJsonAsync()  => await LoadActiveCodeNamesJsonAsync("status_code");
-        private async Task<string?> LoadActiveCodeNamesJsonAsync(string table)
+        // 활성 코드값 [{id, name}] JSON — 편집 폼·필터 드롭다운 소스. 실패면 null(웹이 폴백/비활성).
+        public async Task<string?> LoadSectionCodesJsonAsync() => await LoadActiveCodesJsonAsync("section_code", "section_id");
+        public async Task<string?> LoadStatusCodesJsonAsync()  => await LoadActiveCodesJsonAsync("status_code", "status_id");
+        private async Task<string?> LoadActiveCodesJsonAsync(string table, string idCol)
         {
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
-                await using var cmd = new MySqlCommand($"SELECT name FROM {table} WHERE is_active=1 ORDER BY sort_order, name", conn);
+                await using var cmd = new MySqlCommand($"SELECT {idCol} AS cid, name FROM {table} WHERE is_active=1 ORDER BY sort_order, name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
-                var names = new List<string>();
-                while (await rd.ReadAsync(cts.Token)) { string n = Str(rd, "name"); if (n.Length > 0) names.Add(n); }
-                _log("DB 코드 로드(" + table + "): " + names.Count + "건");
-                return JsonSerializer.Serialize(names);
+                var rows = new List<Dictionary<string, object?>>();
+                while (await rd.ReadAsync(cts.Token))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length > 0) rows.Add(new Dictionary<string, object?> { ["id"] = IntOrNull(rd, "cid"), ["name"] = n });
+                }
+                _log("DB 코드 로드(" + table + "): " + rows.Count + "건");
+                return JsonSerializer.Serialize(rows);
             }
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 코드 로드 실패(" + table + "): " + Short(ex)); return null; }
         }
 
-        // 코드값 전체(숨김 포함) — 관리 화면 전용. [{name, active, sort}] JSON. 활성 먼저, 그 안에서 sort_order·name.
+        // 코드값 전체(숨김 포함) — 관리 화면 전용. [{id, name, active, sort}] JSON. 활성 먼저, 그 안에서 sort_order·name.
         public async Task<string?> LoadCodesFullJsonAsync(string? kind)
         {
-            if (!ResolveCodeKind(kind, out string table, out _)) return null;
+            if (!ResolveCodeKind(kind, out string table, out string idCol)) return null;
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                 await using var conn = await OpenReadAsync(cts.Token);
-                await using var cmd = new MySqlCommand($"SELECT name, sort_order, is_active FROM {table} ORDER BY is_active DESC, sort_order, name", conn);
+                await using var cmd = new MySqlCommand($"SELECT {idCol} AS cid, name, sort_order, is_active FROM {table} ORDER BY is_active DESC, sort_order, name", conn);
                 await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
                 var rows = new List<Dictionary<string, object?>>();
                 while (await rd.ReadAsync(cts.Token))
@@ -1206,6 +1263,7 @@ namespace TaskCalendarWidget
                     if (n.Length == 0) continue;
                     rows.Add(new Dictionary<string, object?>
                     {
+                        ["id"] = IntOrNull(rd, "cid"),
                         ["name"] = n,
                         ["active"] = (IntOrNull(rd, "is_active") ?? 1) != 0,
                         ["sort"] = IntOrNull(rd, "sort_order") ?? 0,
@@ -1216,14 +1274,15 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 코드(전체) 로드 실패(" + table + "): " + Short(ex)); return null; }
         }
 
-        // 같은 연결로 코드 이름 집합 로드(UpsertProjectAsync 선검증용 — 좋은 에러문구). activeOnly=false면 숨김 포함.
-        private static async Task<HashSet<string>> LoadCodeNameSetAsync(MySqlConnection conn, System.Threading.CancellationToken ct, string table, bool activeOnly)
+        // 같은 연결로 코드 번호 집합 로드(존재 선검증용 — 좋은 에러문구). activeOnly=false면 숨김 포함.
+        //   표·열 이름은 코드 상수뿐이다(사용자 입력은 SQL 에 닿지 않는다).
+        private static async Task<HashSet<int>> LoadCodeIdSetAsync(MySqlConnection conn, System.Threading.CancellationToken ct, string table, string idCol, bool activeOnly)
         {
-            var set = new HashSet<string>(StringComparer.Ordinal);
-            string sql = activeOnly ? $"SELECT name FROM {table} WHERE is_active=1" : $"SELECT name FROM {table}";
+            var set = new HashSet<int>();
+            string sql = activeOnly ? $"SELECT {idCol} AS cid FROM {table} WHERE is_active=1" : $"SELECT {idCol} AS cid FROM {table}";
             await using var cmd = new MySqlCommand(sql, conn);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
-            while (await rd.ReadAsync(ct)) { string n = Str(rd, "name"); if (n.Length > 0) set.Add(n); }
+            while (await rd.ReadAsync(ct)) { int? v = IntOrNull(rd, "cid"); if (v.HasValue) set.Add(v.Value); }
             return set;
         }
 
@@ -1234,10 +1293,6 @@ namespace TaskCalendarWidget
         //       '무엇을 고치면 되는지' 알 수 있는 문장으로만 노출한다(SQL/스택 노출 금지).
         // ※ 구분/상태는 하드코딩 배열이 아니라 코드테이블에서 로드해 선검증한다(최종 보증은 FK).
         // ================================================================================
-
-        // 빈 문자열/공백 → DBNull(스키마의 NULL 허용 컬럼). 그 외는 트림한 값.
-        private static object TextOrNull(string? s) =>
-            string.IsNullOrWhiteSpace(s) ? DBNull.Value : (object)s!.Trim();
 
         // 'YYYY-MM-DD'만 날짜로 인정. 빈값 → DBNull(선진행·미정 계약은 날짜가 없다).
         // ★ 형식 불일치는 여기서 조용히 NULL로 만들지 않는다 — 호출부(UpsertProjectAsync)가 IsDateOrEmpty로 선검증해 실패를 되돌린다.
@@ -1265,10 +1320,11 @@ namespace TaskCalendarWidget
                 case 1451:
                 case 1452:
                 {
+                    //  ★ 제약 이름은 v13 정본(schema-structure.sql)의 명시 이름이다. 번호 키로 바꾸며 자동 이름에서 정리됐다.
                     string m = ex.Message ?? "";
-                    if (m.Contains("fk_project_section")) return "등록되지 않은 구분입니다. 구분·상태 관리에서 먼저 추가하세요.";
-                    if (m.Contains("fk_project_status"))  return "등록되지 않은 상태입니다. 구분·상태 관리에서 먼저 추가하세요.";
-                    return "등록되지 않은 발주처입니다.";                                          // fk_project_customer
+                    if (m.Contains("fk_project_section_id")) return "등록되지 않은 구분입니다. 구분·상태 관리에서 먼저 추가하세요.";
+                    if (m.Contains("fk_project_status_id"))  return "등록되지 않은 상태입니다. 구분·상태 관리에서 먼저 추가하세요.";
+                    return "등록되지 않은 발주처입니다.";                                          // fk_project_customer_id
                 }
                 case 1406: return "값이 너무 깁니다. 길이를 줄여 주세요.";                        // 길이 초과
                 case 1048: return "필수 항목이 비어 있습니다.";                                    // NOT NULL
@@ -1287,25 +1343,27 @@ namespace TaskCalendarWidget
         // 반환 3-튜플: (ok, msg, needConfirm). needConfirm=true는 '실패'가 아니라 '소프트 경고 확인 요청'이다
         //   — 비슷한 과제가 이미 있으니 그래도 추가할지 사용자에게 물으라는 신호. confirmSimilar=true로 재호출하면 검사 없이 저장한다.
         // 이름 필드(사업명·계약명·통상명칭·발주처)는 저장 전 TRIM. 빈 계약명/통상명칭은 ''로 저장(NULL 금지 — 비교 함정 방지).
-        public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(string? uid, string section, string customer,
-            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? devEndDate, string? status,
+        // ★ 2026-10-15 — 구분·발주처·상태는 번호로 받는다(CODE-TABLE-IDS §4). 0 이하는 '없음'이다(상태만 허용).
+        public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(string? uid, int sectionId, int customerId,
+            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? devEndDate, int? statusId,
             string? note = null, bool confirmSimilar = false)
         {
             // ── 앱단 선검증(형식·필수) — DB까지 보내지 않고 바로 사용자 문장으로. 구분/상태 존재 검증은 연결 후(코드테이블 로드).
             string u = (uid ?? "").Trim();
-            string sec = (section ?? "").Trim(), cust = (customer ?? "").Trim(), pname = (projectName ?? "").Trim();
+            string pname = (projectName ?? "").Trim();
             string cn = (contractName ?? "").Trim(), mn = (commonName ?? "").Trim();   // 빈값은 ''(NULL 아님)
             string nt = (note ?? "").Trim();                                            // 비고(빈값 '')
-            string st = (status ?? "").Trim(), sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
+            string sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
+            int? st = statusId.HasValue && statusId.Value > 0 ? statusId : null;      // 상태 없음 = NULL
             string ded = (devEndDate ?? "").Trim();                                    // 개발종료일 — 아래 선진행 분기에서 비우지 않는다
             if (pname.Length == 0) return (false, "사업명을 입력하세요.", false);
-            if (cust.Length == 0) return (false, "발주처를 선택하세요.", false);
-            if (sec.Length == 0) return (false, "구분을 선택하세요.", false);
+            if (customerId <= 0) return (false, "발주처를 선택하세요.", false);
+            if (sectionId <= 0) return (false, "구분을 선택하세요.", false);
             // 선진행 = 계약 전 단계 → 날짜·상태는 스키마상 NULL이어야 한다(웹 폼도 같은 규칙으로 잠근다).
-            //   ※ '선진행'은 코드테이블 개명 가능하나, 이 특수규칙은 표준 시드값 기준(개명하면 규칙도 함께 손봐야 함).
+            //   ★ 판정은 이름이 아니라 고정 번호(CodeIds.SectionPre)다 — 이름을 바꿔도 규칙이 따라간다(CODE-TABLE-IDS §3).
             //   ★ ded(개발종료일)는 여기서 비우지 않는다 — 선진행은 '계약 전'일 뿐 개발은 이미 돌고 있어
             //     개발종료일이야말로 이 구간에서 유일하게 의미 있는 날짜다(2026-09-10 설계 결정).
-            if (sec == "선진행") { sd = ""; ed = ""; st = ""; }
+            if (sectionId == CodeIds.SectionPre) { sd = ""; ed = ""; st = null; }
             // 날짜 형식 선검증 — 잘못된 형식을 조용히 NULL로 저장하지 않고 사용자에게 되돌린다(무음 데이터 유실 방지).
             if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
@@ -1326,12 +1384,12 @@ namespace TaskCalendarWidget
 
                 // 구분/상태 존재 검증(코드테이블 로드) — 좋은 에러문구용. 최종 보증은 FK. 숨김 포함 전체로 검사해
                 // 이미 저장된 값(나중에 숨긴 코드)이 편집 저장에서 막히지 않게 한다.
-                var secSet = await LoadCodeNameSetAsync(conn, cts.Token, "section_code", activeOnly: false);
-                if (!secSet.Contains(sec)) return (false, "등록되지 않은 구분입니다. 구분·상태 관리에서 먼저 추가하세요.", false);
-                if (st.Length > 0)
+                var secSet = await LoadCodeIdSetAsync(conn, cts.Token, "section_code", "section_id", activeOnly: false);
+                if (!secSet.Contains(sectionId)) return (false, "등록되지 않은 구분입니다. 구분·상태 관리에서 먼저 추가하세요.", false);
+                if (st.HasValue)
                 {
-                    var stSet = await LoadCodeNameSetAsync(conn, cts.Token, "status_code", activeOnly: false);
-                    if (!stSet.Contains(st)) return (false, "등록되지 않은 상태입니다. 구분·상태 관리에서 먼저 추가하세요.", false);
+                    var stSet = await LoadCodeIdSetAsync(conn, cts.Token, "status_code", "status_id", activeOnly: false);
+                    if (!stSet.Contains(st.Value)) return (false, "등록되지 않은 상태입니다. 구분·상태 관리에서 먼저 추가하세요.", false);
                 }
 
                 if (u.Length == 0)
@@ -1340,21 +1398,21 @@ namespace TaskCalendarWidget
                     //    같은 게 있으면 저장하지 말고 확인을 요청한다. confirmSimilar=true면 건너뛴다(사용자가 이미 '추가' 선택).
                     if (!confirmSimilar)
                     {
-                        var sim = await FindSimilarActiveAsync(conn, cts.Token, cust, pname, cn);
+                        var sim = await FindSimilarActiveAsync(conn, cts.Token, customerId, pname, cn);
                         if (sim.HasValue)
                         {
                             string cnShown = sim.Value.cn.Length > 0 ? sim.Value.cn : "(계약명 없음)";
                             return (false,
-                                "비슷한 과제가 있습니다: " + cust + " / " + sim.Value.pn + " / " + cnShown + ". 그래도 추가하시겠습니까?",
+                                "비슷한 과제가 있습니다: " + sim.Value.cust + " / " + sim.Value.pn + " / " + cnShown + ". 그래도 추가하시겠습니까?",
                                 true);
                         }
                     }
-                    const string ins = "INSERT INTO project (section, customer, project_name, contract_name, common_name, " +
-                                       "start_date, end_date, dev_end_date, status, note) " +
+                    const string ins = "INSERT INTO project (section_id, customer_id, project_name, contract_name, common_name, " +
+                                       "start_date, end_date, dev_end_date, status_id, note) " +
                                        "VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@ded,@st,@note)";
                     await using (var cmd = new MySqlCommand(ins, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, ded, st, nt);
+                        BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, ded, st, nt);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
@@ -1366,13 +1424,13 @@ namespace TaskCalendarWidget
                 }
                 else
                 {
-                    const string upd = "UPDATE project SET section=@sec, customer=@cust, project_name=@pn, contract_name=@cn, " +
+                    const string upd = "UPDATE project SET section_id=@sec, customer_id=@cust, project_name=@pn, contract_name=@cn, " +
                                        "common_name=@mn, start_date=@sd, end_date=@ed, dev_end_date=@ded, " +
-                                       "status=@st, note=@note WHERE uid=@uid";
+                                       "status_id=@st, note=@note WHERE uid=@uid";
                     int n;
                     await using (var cmd = new MySqlCommand(upd, conn))
                     {
-                        BindProject(cmd, sec, cust, pname, cn, mn, sd, ed, ded, st, nt);
+                        BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, ded, st, nt);
                         cmd.Parameters.AddWithValue("@uid", u);
                         n = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -1399,35 +1457,37 @@ namespace TaskCalendarWidget
 
         // 소프트 경고 후보 조회 — 같은 발주처의 활성 과제 중 (사업명, 계약명)이 '정규화 기준'으로 같은 첫 행의 표시값을 돌려준다(없으면 null).
         // 정규화 비교는 SQL 문자열함수가 아니라 C#에서 한다(발주처당 과제 수가 적어 안전하고, ai_ci·NO PAD의 함정을 피한다).
-        private static async Task<(string pn, string cn)?> FindSimilarActiveAsync(
-            MySqlConnection conn, System.Threading.CancellationToken ct, string customer, string projectName, string contractName)
+        //   ★ 발주처는 번호로 찾고, 경고 문장에 넣을 발주처 이름은 같은 조회의 조인으로 받는다(cust).
+        private static async Task<(string pn, string cn, string cust)?> FindSimilarActiveAsync(
+            MySqlConnection conn, System.Threading.CancellationToken ct, int customerId, string projectName, string contractName)
         {
             string nPn = NormalizeName(projectName), nCn = NormalizeName(contractName);
             await using var cmd = new MySqlCommand(
-                "SELECT project_name, contract_name FROM project WHERE customer=@c AND is_active=1", conn);
-            cmd.Parameters.AddWithValue("@c", customer);
+                "SELECT p.project_name, p.contract_name, c.name AS cust FROM project p " +
+                "JOIN customer c ON c.customer_id = p.customer_id WHERE p.customer_id=@c AND p.is_active=1", conn);
+            cmd.Parameters.AddWithValue("@c", customerId);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
             while (await rd.ReadAsync(ct))
             {
                 string ep = Str(rd, "project_name"), ec = Str(rd, "contract_name");
-                if (NormalizeName(ep) == nPn && NormalizeName(ec) == nCn) return (ep, ec);
+                if (NormalizeName(ep) == nPn && NormalizeName(ec) == nCn) return (ep, ec, Str(rd, "cust"));
             }
             return null;
         }
 
         // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나지 않게 한 곳에서. cn/mn/nt는 이미 TRIM된 문자열('' 허용, NULL 금지).
-        private static void BindProject(MySqlCommand cmd, string sec, string cust, string pname,
-            string cn, string mn, string sd, string ed, string ded, string st, string nt)
+        private static void BindProject(MySqlCommand cmd, int sec, int cust, string pname,
+            string cn, string mn, string sd, string ed, string ded, int? st, string nt)
         {
-            cmd.Parameters.AddWithValue("@sec", sec);
-            cmd.Parameters.AddWithValue("@cust", cust);
+            cmd.Parameters.AddWithValue("@sec", sec);     // 구분 번호
+            cmd.Parameters.AddWithValue("@cust", cust);   // 발주처 번호
             cmd.Parameters.AddWithValue("@pn", pname);
             cmd.Parameters.AddWithValue("@cn", cn);   // '' 그대로(NULL 아님)
             cmd.Parameters.AddWithValue("@mn", mn);   // '' 그대로(NULL 아님)
             cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
             cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
             cmd.Parameters.AddWithValue("@ded", DateOrNull(ded));   // 개발종료일(빈값=NULL). 선진행이어도 살아 있다
-            cmd.Parameters.AddWithValue("@st", TextOrNull(st));
+            cmd.Parameters.AddWithValue("@st", st.HasValue ? (object)st.Value : DBNull.Value);   // 상태 번호(없음=NULL)
             cmd.Parameters.AddWithValue("@note", nt);  // 비고 '' 그대로(NULL 아님)
         }
 
@@ -1465,10 +1525,10 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
-        // 발주처(customer) 마스터 관리 — 이름만 관리한다(더미 View_Customer가 No+이름뿐, customer 테이블도
-        //   name+is_active+감사뿐이라 스키마 변경 없음). name이 자연키 PK이자 project.customer의 FK 타겟이며
-        //   FK가 ON UPDATE CASCADE라 개명은 과제로 자동 전파된다(schema.sql 확인). 하드삭제는 앱에서 안 한다
-        //   (사용자 방침: 실삭제는 DB에서 직접) — 앱은 소프트삭제(is_active)만. 규약은 UpsertProjectAsync와 동일.
+        // 발주처(customer) 마스터 관리 — 이름만 관리한다(더미 View_Customer가 No+이름뿐).
+        //   ★ 2026-10-15 — 기본키는 번호(customer_id)이고 name 은 UNIQUE 라벨이다(CODE-TABLE-IDS §2).
+        //     project 는 번호로 가리키므로 개명은 이 표의 **한 행 UPDATE** 로 끝나고 화면은 조인으로 따라온다.
+        //     편집·관리 메시지는 번호로 오간다(§4). 하드삭제는 휴지통에서만(관리자) — 여기는 소프트삭제(is_active)만.
         // ================================================================================
 
         // 발주처 존재/활성 상태 — null=없음, true=활성, false=숨김. (별도 짧은 조회 — 1062 안내를 나누는 용도)
@@ -1487,7 +1547,7 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 상태 조회 실패: " + Short(ex)); return null; }
         }
 
-        // 발주처 추가. name은 자연키 PK라 중복(1062)이면 이미 존재 — 활성/숨김을 구분해 안내(숨김이면 복구 필요).
+        // 발주처 추가. name 은 UNIQUE 라 중복(1062)이면 이미 존재 — 활성/숨김을 구분해 안내(숨김이면 복구 필요).
         public async Task<(bool ok, string msg)> AddCustomerAsync(string? name)
         {
             string n = (name ?? "").Trim();
@@ -1517,14 +1577,13 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("발주처 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
         }
 
-        // 발주처 개명. FK가 ON UPDATE CASCADE라 project.customer는 자동 반영된다(따로 갱신 불필요).
-        // oldName==newName은 no-op 성공, 대상 없음(0행)은 실패, newName 충돌(1062)은 안내.
-        public async Task<(bool ok, string msg)> RenameCustomerAsync(string? oldName, string? newName)
+        // 발주처 개명 = 번호로 찾은 **한 행 UPDATE**. project 는 번호로 가리키므로 따로 갱신할 것이 없다(조인이 따라온다).
+        // 대상 없음(0행)은 실패, newName 충돌(1062)은 안내. 같은 이름이면 웹이 왕복을 만들지 않는다.
+        public async Task<(bool ok, string msg)> RenameCustomerAsync(int customerId, string? newName)
         {
-            string o = (oldName ?? "").Trim(), nw = (newName ?? "").Trim();
-            if (o.Length == 0) return (false, "변경할 발주처를 지정하세요.");
+            string nw = (newName ?? "").Trim();
+            if (customerId <= 0) return (false, "변경할 발주처를 지정하세요.");
             if (nw.Length == 0) return (false, "새 발주처명을 입력하세요.");
-            if (string.Equals(o, nw, StringComparison.Ordinal)) return (true, "변경 사항이 없습니다.");   // no-op
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1534,12 +1593,12 @@ namespace TaskCalendarWidget
                 catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
-                await using var cmd = new MySqlCommand("UPDATE customer SET name=@new WHERE name=@old", conn);
+                await using var cmd = new MySqlCommand("UPDATE customer SET name=@new WHERE customer_id=@id", conn);
                 cmd.Parameters.AddWithValue("@new", nw);
-                cmd.Parameters.AddWithValue("@old", o);
+                cmd.Parameters.AddWithValue("@id", customerId);
                 int n = await cmd.ExecuteNonQueryAsync(cts.Token);
                 if (n == 0) return (false, "발주처를 찾을 수 없습니다. 목록을 새로고침해 주세요.");
-                _log("발주처 개명: " + o + " → " + nw + " (project.customer는 FK CASCADE로 자동 전파)");
+                _log("발주처 개명: customer_id=" + customerId + " 새 이름 " + nw + " (과제는 번호로 가리켜 조인이 따라온다)");
                 return (true, "발주처 이름을 변경했습니다. 이 발주처의 과제 표기도 함께 바뀝니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062)
@@ -1551,10 +1610,9 @@ namespace TaskCalendarWidget
         }
 
         // 발주처 소프트삭제(숨김)/복구. 하드삭제는 하지 않는다(FK RESTRICT라 참조 중이면 DELETE도 막힌다).
-        public async Task<(bool ok, string msg)> SetCustomerActiveAsync(string? name, bool active)
+        public async Task<(bool ok, string msg)> SetCustomerActiveAsync(int customerId, bool active)
         {
-            string n = (name ?? "").Trim();
-            if (n.Length == 0) return (false, "대상 발주처가 지정되지 않았습니다.");
+            if (customerId <= 0) return (false, "대상 발주처가 지정되지 않았습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1564,12 +1622,12 @@ namespace TaskCalendarWidget
                 catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 숨김/복구): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
-                await using var cmd = new MySqlCommand("UPDATE customer SET is_active=@a WHERE name=@n", conn);
+                await using var cmd = new MySqlCommand("UPDATE customer SET is_active=@a WHERE customer_id=@id", conn);
                 cmd.Parameters.AddWithValue("@a", active ? 1 : 0);
-                cmd.Parameters.AddWithValue("@n", n);
+                cmd.Parameters.AddWithValue("@id", customerId);
                 int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
                 if (cnt == 0) return (false, "발주처를 찾을 수 없습니다. 목록을 새로고침해 주세요.");
-                _log("발주처 " + (active ? "복구" : "숨김") + ": " + n);
+                _log("발주처 " + (active ? "복구" : "숨김") + ": customer_id=" + customerId);
                 return (true, active ? "발주처를 다시 표시합니다." : "발주처를 숨겼습니다.");
             }
             catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("발주처 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
@@ -1577,10 +1635,9 @@ namespace TaskCalendarWidget
         }
 
         // 이 발주처를 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다). 오프라인/실패면 ok=false.
-        public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCustomerAsync(string? name)
+        public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCustomerAsync(int customerId)
         {
-            string n = (name ?? "").Trim();
-            if (n.Length == 0) return (false, 0, "대상 발주처가 지정되지 않았습니다.");
+            if (customerId <= 0) return (false, 0, "대상 발주처가 지정되지 않았습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
@@ -1590,8 +1647,8 @@ namespace TaskCalendarWidget
                 catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(발주처 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
-                await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project WHERE customer=@c AND is_active=1", conn);
-                cmd.Parameters.AddWithValue("@c", n);
+                await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project WHERE customer_id=@c AND is_active=1", conn);
+                cmd.Parameters.AddWithValue("@c", customerId);
                 int count = (int)Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
                 return (true, count, "");
             }
@@ -1600,8 +1657,10 @@ namespace TaskCalendarWidget
 
         // ================================================================================
         // 구분/상태 코드값 관리 — 발주처 CRUD를 그대로 복제(kind로 테이블·컬럼 해석).
-        //   추가=INSERT / 개명=UPDATE name(→FK CASCADE로 project 전파) / 숨김=is_active / 재배치=sort_order.
-        //   하드삭제는 앱에서 안 한다(FK RESTRICT). 규약은 UpsertProjectAsync와 동일.
+        //   추가=INSERT / 개명=번호로 찾은 한 행 UPDATE name / 숨김=is_active / 재배치=sort_order.
+        //   ★ 개명·숨김·순서·참조 수는 전부 번호로 받는다(CODE-TABLE-IDS §4). 이름은 추가할 때만 받는다.
+        //   ★ 동작이 묶인 행(CodeIds.IsProtected: 구분 2, 상태 2)은 숨기지 못한다. 개명과 순서 바꾸기는 된다(§3).
+        //   하드삭제는 휴지통에서만(관리자). 규약은 UpsertProjectAsync와 동일.
         // ================================================================================
 
         // 코드값 존재/활성 상태 — null=없음, true=활성, false=숨김(1062 안내 분기용).
@@ -1622,7 +1681,7 @@ namespace TaskCalendarWidget
 
         private static string KindLabel(string kind) => kind == "status" ? "상태" : "구분";
 
-        // 코드값 추가 — 다음 sort_order = MAX+10(끝에 붙임). name PK 중복(1062)이면 활성/숨김 구분 안내.
+        // 코드값 추가 — 다음 sort_order = MAX+10(끝에 붙임). name UNIQUE 중복(1062)이면 활성/숨김 구분 안내.
         public async Task<(bool ok, string msg)> AddCodeAsync(string? kind, string? name)
         {
             if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
@@ -1659,15 +1718,15 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 추가 실패: " + Short(ex)); return (false, "추가하지 못했습니다: " + Short(ex)); }
         }
 
-        // 코드값 개명 — FK ON UPDATE CASCADE라 project.section/status가 자동 반영된다. no-op/0행/1062 처리.
-        public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, string? oldName, string? newName)
+        // 코드값 개명 = 번호로 찾은 한 행 UPDATE. project 는 번호로 가리켜 조인이 따라온다. 0행/1062 처리.
+        //   ★ 고정 번호 행(선진행·종료)도 이름은 바꿀 수 있다 — 동작은 번호에 묶여 있다(CODE-TABLE-IDS §3).
+        public async Task<(bool ok, string msg)> RenameCodeAsync(string? kind, int id, string? newName)
         {
-            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
+            if (!ResolveCodeKind(kind, out string table, out string idCol)) return (false, "대상 종류가 올바르지 않습니다.");
             string lbl = KindLabel(kind!.Trim());
-            string o = (oldName ?? "").Trim(), nw = (newName ?? "").Trim();
-            if (o.Length == 0) return (false, "변경할 " + lbl + "을(를) 지정하세요.");
+            string nw = (newName ?? "").Trim();
+            if (id <= 0) return (false, "변경할 " + lbl + "을(를) 지정하세요.");
             if (nw.Length == 0) return (false, "새 " + lbl + "명을 입력하세요.");
-            if (string.Equals(o, nw, StringComparison.Ordinal)) return (true, "변경 사항이 없습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1677,12 +1736,12 @@ namespace TaskCalendarWidget
                 catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(" + table + " 개명): " + Short(cex)); return (false, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
-                await using var cmd = new MySqlCommand($"UPDATE {table} SET name=@new WHERE name=@old", conn);
+                await using var cmd = new MySqlCommand($"UPDATE {table} SET name=@new WHERE {idCol}=@id", conn);
                 cmd.Parameters.AddWithValue("@new", nw);
-                cmd.Parameters.AddWithValue("@old", o);
+                cmd.Parameters.AddWithValue("@id", id);
                 int n = await cmd.ExecuteNonQueryAsync(cts.Token);
                 if (n == 0) return (false, lbl + "을(를) 찾을 수 없습니다. 목록을 새로고침해 주세요.");
-                _log(lbl + " 개명: " + o + " → " + nw + " (project는 FK CASCADE로 자동 전파)");
+                _log(lbl + " 개명: " + idCol + "=" + id + " 새 이름 " + nw + " (과제는 번호로 가리켜 조인이 따라온다)");
                 return (true, lbl + "을(를) 변경했습니다. 이 " + lbl + "의 과제 표기도 함께 바뀝니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, "그 이름의 " + lbl + "이(가) 이미 있습니다."); }
@@ -1691,12 +1750,15 @@ namespace TaskCalendarWidget
         }
 
         // 코드값 소프트삭제(숨김)/복구. 하드삭제 안 함(FK RESTRICT).
-        public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, string? name, bool active)
+        //   ★ 동작이 묶인 행(구분 2, 상태 2)의 숨김은 연결도 열기 전에 거부한다(CODE-TABLE-IDS §3). 복구는 막지 않는다
+        //     (옛 DB 에서 이미 숨겨 둔 행을 되살리는 길이다).
+        public async Task<(bool ok, string msg)> SetCodeActiveAsync(string? kind, int id, bool active)
         {
-            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
-            string lbl = KindLabel(kind!.Trim());
-            string n = (name ?? "").Trim();
-            if (n.Length == 0) return (false, "대상 " + lbl + "이(가) 지정되지 않았습니다.");
+            if (!ResolveCodeKind(kind, out string table, out string idCol)) return (false, "대상 종류가 올바르지 않습니다.");
+            string kd = kind!.Trim();
+            string lbl = KindLabel(kd);
+            if (id <= 0) return (false, "대상 " + lbl + "이(가) 지정되지 않았습니다.");
+            if (!active && CodeIds.IsProtected(kd, id)) { _log(lbl + " 숨김 거부(고정 번호): " + idCol + "=" + id); return (false, CodeIds.ProtectedMsg(kd)); }
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1713,25 +1775,25 @@ namespace TaskCalendarWidget
                 //     맨 뒤로 보내면 항상 고유하고, 사용자가 ▲▼로 원하는 자리에 옮기면 된다.
                 //     (MySQL은 UPDATE 대상 테이블을 직접 서브쿼리로 못 읽어 파생테이블로 감싼다.)
                 string sql = active
-                    ? $"UPDATE {table} SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM {table}) x) WHERE name=@n"
-                    : $"UPDATE {table} SET is_active=0 WHERE name=@n";
+                    ? $"UPDATE {table} SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM {table}) x) WHERE {idCol}=@id"
+                    : $"UPDATE {table} SET is_active=0 WHERE {idCol}=@id";
                 await using var cmd = new MySqlCommand(sql, conn);
-                cmd.Parameters.AddWithValue("@n", n);
+                cmd.Parameters.AddWithValue("@id", id);
                 int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
                 if (cnt == 0) return (false, lbl + "을(를) 찾을 수 없습니다. 목록을 새로고침해 주세요.");
-                _log(lbl + " " + (active ? "복구" : "숨김") + ": " + n);
+                _log(lbl + " " + (active ? "복구" : "숨김") + ": " + idCol + "=" + id);
                 return (true, active ? lbl + "을(를) 다시 표시합니다." : lbl + "을(를) 숨겼습니다.");
             }
             catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log(lbl + " 숨김/복구 실패(" + mex.Number + "): " + Short(mex)); return (false, "처리하지 못했습니다: " + Short(mex)); }
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
-        // 코드값 순서 재배치 — 받은 이름 순서대로 sort_order = (index+1)*10 재부여(트랜잭션). 존재하는 이름만 갱신.
-        public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<string>? orderedNames)
+        // 코드값 순서 재배치 — 받은 번호 순서대로 sort_order = (index+1)*10 재부여(트랜잭션). 존재하는 번호만 갱신.
+        public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<int>? orderedIds)
         {
-            if (!ResolveCodeKind(kind, out string table, out _)) return (false, "대상 종류가 올바르지 않습니다.");
+            if (!ResolveCodeKind(kind, out string table, out string idCol)) return (false, "대상 종류가 올바르지 않습니다.");
             string lbl = KindLabel(kind!.Trim());
-            if (orderedNames == null || orderedNames.Count == 0) return (false, "정렬할 " + lbl + " 목록이 비어 있습니다.");
+            if (orderedIds == null || orderedIds.Count == 0) return (false, "정렬할 " + lbl + " 목록이 비어 있습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1745,18 +1807,17 @@ namespace TaskCalendarWidget
                 try
                 {
                     int order = 0;
-                    foreach (var raw in orderedNames)
+                    foreach (int cid in orderedIds)
                     {
-                        string nm = (raw ?? "").Trim();
-                        if (nm.Length == 0) continue;
+                        if (cid <= 0) continue;
                         order += 10;
-                        await using var cmd = new MySqlCommand($"UPDATE {table} SET sort_order=@s WHERE name=@n", conn, (MySqlTransaction)tx);
+                        await using var cmd = new MySqlCommand($"UPDATE {table} SET sort_order=@s WHERE {idCol}=@id", conn, (MySqlTransaction)tx);
                         cmd.Parameters.AddWithValue("@s", order);
-                        cmd.Parameters.AddWithValue("@n", nm);
+                        cmd.Parameters.AddWithValue("@id", cid);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     await tx.CommitAsync(cts.Token);
-                    _log(lbl + " 순서변경: " + orderedNames.Count + "건");
+                    _log(lbl + " 순서변경: " + orderedIds.Count + "건");
                     return (true, lbl + " 순서를 변경했습니다.");
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
@@ -1766,11 +1827,11 @@ namespace TaskCalendarWidget
         }
 
         // 이 코드값을 쓰는 '활성' 과제 수 — 숨김 확인 UX용(막지는 않는다).
-        public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCodeAsync(string? kind, string? name)
+        //   ★ project 의 자식 열 이름은 코드표 기본키 이름과 같다(section_id, status_id). ResolveCodeKind 의 idCol 하나로 쓴다.
+        public async Task<(bool ok, int count, string msg)> CountActiveProjectsByCodeAsync(string? kind, int id)
         {
             if (!ResolveCodeKind(kind, out _, out string projCol)) return (false, 0, "대상 종류가 올바르지 않습니다.");
-            string n = (name ?? "").Trim();
-            if (n.Length == 0) return (false, 0, "대상이 지정되지 않았습니다.");
+            if (id <= 0) return (false, 0, "대상이 지정되지 않았습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
@@ -1780,8 +1841,8 @@ namespace TaskCalendarWidget
                 catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(코드 참조수): " + Short(cex)); return (false, 0, OfflineMsg); }
                 await using var connOwn = conn;   // 위에서 연 연결의 수명(본문은 conn 그대로 사용)
 
-                await using var cmd = new MySqlCommand($"SELECT COUNT(*) FROM project WHERE {projCol}=@n AND is_active=1", conn);
-                cmd.Parameters.AddWithValue("@n", n);
+                await using var cmd = new MySqlCommand($"SELECT COUNT(*) FROM project WHERE {projCol}=@id AND is_active=1", conn);
+                cmd.Parameters.AddWithValue("@id", id);
                 int count = (int)Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
                 return (true, count, "");
             }
@@ -1840,9 +1901,10 @@ namespace TaskCalendarWidget
             {
                 case "project":  table = "project";      keyCol = "uid";     nameCol = "project_name"; label = "과제";   return true;
                 case "user":     table = "app_user";     keyCol = "user_id"; nameCol = "name";         label = "인력";   return true;
-                case "customer": table = "customer";     keyCol = "name";    nameCol = "name";         label = "발주처"; return true;
-                case "section":  table = "section_code"; keyCol = "name";    nameCol = "name";         label = "구분";   return true;
-                case "status":   table = "status_code";  keyCol = "name";    nameCol = "name";         label = "상태";   return true;
+                //  ★ 2026-10-15 — 코드 셋의 열쇠는 번호다(CODE-TABLE-IDS §4). 이름(nameCol)은 확인 입력 대조에만 쓴다.
+                case "customer": table = "customer";     keyCol = "customer_id"; nameCol = "name";     label = "발주처"; return true;
+                case "section":  table = "section_code"; keyCol = "section_id";  nameCol = "name";     label = "구분";   return true;
+                case "status":   table = "status_code";  keyCol = "status_id";   nameCol = "name";     label = "상태";   return true;
                 default:         table = ""; keyCol = ""; nameCol = ""; label = ""; return false;
             }
         }
@@ -1957,22 +2019,27 @@ namespace TaskCalendarWidget
         //     화면이 [영구 삭제] 를 켜고, 같은 콜레이션으로 다시 세는 삭제 시점 판정이 1451 로 막는다
         //     (힌트 ≠ 판정이 되는 자리). LEFT JOIN 은 FK 와 **같은 콜레이션**으로 맞으므로 그 틈이 사라진다.
         //   ★ 표·컬럼 이름은 전부 코드 상수다(ResolveTrashKind 와 같은 규약) — 사용자 입력은 SQL 에 닿지 않는다.
+        //   ★ 2026-10-15 — 번호 키(CODE-TABLE-IDS §2). 조인은 번호끼리라 콜레이션 틈 자체가 없다. 행 열쇠(key)도 번호다.
+        //   ★ 동작이 묶인 행(구분 2, 상태 2)은 숨겨져 있어도(옛 DB) 지울 수 없다고 미리 말한다. 판정은 DeleteTrashAsync 가 다시 한다.
         private static async Task<List<Dictionary<string, object?>>> TrashCodeListAsync(
-            MySqlConnection conn, string table, string projCol, CancellationToken ct)
+            MySqlConnection conn, string kind, string table, string idCol, CancellationToken ct)
         {
             var rows = new List<Dictionary<string, object?>>();
             await using (var cmd = new MySqlCommand(
-                "SELECT c.name AS nm, COUNT(p.uid) AS cnt FROM " + table + " c " +
-                "LEFT JOIN project p ON p." + projCol + " = c.name " +
-                "WHERE c.is_active=0 GROUP BY c.name ORDER BY c.name", conn))
+                "SELECT c." + idCol + " AS cid, c.name AS nm, COUNT(p.uid) AS cnt FROM " + table + " c " +
+                "LEFT JOIN project p ON p." + idCol + " = c." + idCol + " " +
+                "WHERE c.is_active=0 GROUP BY c." + idCol + ", c.name ORDER BY c.name", conn))
             await using (var rd = await cmd.ExecuteReaderAsync(ct))
             {
                 while (await rd.ReadAsync(ct))
                 {
                     string n = Str(rd, "nm");
-                    if (n.Length == 0) continue;
+                    int? cid = IntOrNull(rd, "cid");
+                    if (n.Length == 0 || !cid.HasValue) continue;
                     long c = LongOrZero(rd, "cnt");
-                    rows.Add(TrashRow(n, n, "", c, c == 0, c == 0 ? "" : CodeInUseMsg(c)));
+                    bool locked = CodeIds.IsProtected(kind, cid.Value);
+                    string why = locked ? CodeIds.ProtectedMsg(kind) : (c == 0 ? "" : CodeInUseMsg(c));
+                    rows.Add(TrashRow(cid.Value.ToString(CultureInfo.InvariantCulture), n, "", c, c == 0 && !locked, why));
                 }
             }
             return rows;
@@ -2027,8 +2094,12 @@ namespace TaskCalendarWidget
                     while (await rd.ReadAsync(cts.Token)) catRefs[Str(rd, "project_uid")] = LongOrZero(rd, "c");
                 }
                 var projects = new List<Dictionary<string, object?>>();
+                //    ★ 발주처·구분 이름은 번호 조인으로 만든다(부제 표시용).
                 await using (var cmd = new MySqlCommand(
-                    "SELECT uid, project_name, common_name, customer, section FROM project WHERE is_active=0 ORDER BY project_name", conn))
+                    "SELECT p.uid, p.project_name, p.common_name, c.name AS customer, s.name AS section FROM project p " +
+                    "LEFT JOIN customer c ON c.customer_id = p.customer_id " +
+                    "LEFT JOIN section_code s ON s.section_id = p.section_id " +
+                    "WHERE p.is_active=0 ORDER BY p.project_name", conn))
                 await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
                 {
                     while (await rd.ReadAsync(cts.Token))
@@ -2045,8 +2116,9 @@ namespace TaskCalendarWidget
                 //      (빈 탭 하나를 그리려고 전 기록을 훑을 이유가 없다).
                 var retired = new List<(int uid, string name, string sub)>();
                 await using (var cmd = new MySqlCommand(
-                    "SELECT u.user_id, u.name, u.title, u.login_id, o.name AS org_unit " +
+                    "SELECT u.user_id, u.name, t.name AS title, u.login_id, o.name AS org_unit " +
                     "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+                    "LEFT JOIN title_code t ON t.title_id = u.title_id " +
                     "WHERE u.is_active=0 ORDER BY u.name", conn))
                 await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
                 {
@@ -2076,10 +2148,10 @@ namespace TaskCalendarWidget
                     users.Add(TrashRow(r.uid.ToString(CultureInfo.InvariantCulture), r.name, r.sub, c, c == 0 && !self, why));
                 }
 
-                // ③ 코드 3종 — 셋이 같은 함수다(발주처도 이름 자연키 마스터라 코드와 구조가 같다).
-                var customers = await TrashCodeListAsync(conn, "customer", "customer", cts.Token);
-                var sections  = await TrashCodeListAsync(conn, "section_code", "section", cts.Token);
-                var statuses  = await TrashCodeListAsync(conn, "status_code", "status", cts.Token);
+                // ③ 코드 3종 — 셋이 같은 함수다(발주처도 번호 키 마스터라 코드와 구조가 같다).
+                var customers = await TrashCodeListAsync(conn, "customer", "customer", "customer_id", cts.Token);
+                var sections  = await TrashCodeListAsync(conn, "section", "section_code", "section_id", cts.Token);
+                var statuses  = await TrashCodeListAsync(conn, "status", "status_code", "status_id", cts.Token);
 
                 _log("휴지통 조회: 과제 " + projects.Count + " · 인력 " + users.Count + " · 발주처 " + customers.Count +
                      " · 구분 " + sections.Count + " · 상태 " + statuses.Count + "건");
@@ -2113,7 +2185,8 @@ namespace TaskCalendarWidget
             string k = (key ?? "").Trim();
             if (k.Length == 0) return (false, TrashNoTarget);
             object keyVal = k;
-            if (kd == "user")
+            //  ★ 과제만 uid(문자열)이고 나머지 넷(인력, 발주처, 구분, 상태)은 번호다.
+            if (kd != "project")
             {
                 if (!int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tid) || tid <= 0)
                     return (false, TrashNoTarget);
@@ -2161,9 +2234,9 @@ namespace TaskCalendarWidget
                         //    같은 이유이고, SetUserActiveAsync 의 복구와 **같은 규칙**이다(2026-09-11 R3).
                         //    옛 순번을 들고 돌아오면 그 숫자가 활성 서열(10·20·30…) 사이에 끼어든다(USER-ADMIN §7-1a).
                         case "user":     sql = "UPDATE app_user SET is_active=1, sort_order=NULL WHERE user_id=@k"; break;
-                        case "customer": sql = "UPDATE customer SET is_active=1 WHERE name=@k"; break;
-                        case "section":  sql = "UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE name=@k"; break;
-                        case "status":   sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE name=@k"; break;
+                        case "customer": sql = "UPDATE customer SET is_active=1 WHERE customer_id=@k"; break;
+                        case "section":  sql = "UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE section_id=@k"; break;
+                        case "status":   sql = "UPDATE status_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM status_code) x) WHERE status_id=@k"; break;
                         //  ★ ResolveTrashKind 가 이미 걸러 여기 닿지 않는다. 닿았다면 종류가 늘었는데 이 switch 만
                         //    안 고친 것이다 — 롤백+거부 문장을 한 벌 더 적어 조용히 덮지 말고 **터뜨린다**(2026-09-11 R5).
                         //    바깥 catch 가 롤백하고 고정 문구를 돌려주며, 원인은 로그에 그대로 남는다.
@@ -2208,11 +2281,15 @@ namespace TaskCalendarWidget
             if (k.Length == 0) return (false, TrashNoTarget);
             object keyVal = k;
             int targetUserId = 0;
-            if (kd == "user")
+            //  ★ 과제만 uid(문자열)이고 나머지 넷(인력, 발주처, 구분, 상태)은 번호다.
+            if (kd != "project")
             {
-                if (!int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out targetUserId) || targetUserId <= 0)
+                if (!int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out int tid) || tid <= 0)
                     return (false, TrashNoTarget);
-                keyVal = targetUserId;
+                keyVal = tid;
+                if (kd == "user") targetUserId = tid;
+                //  ★ 동작이 묶인 행(구분 2, 상태 2)은 숨겨져 있어도 지우지 않는다(CODE-TABLE-IDS §3). 연결도 열지 않는다.
+                if (CodeIds.IsProtected(kd, tid)) { _log("영구 삭제 거부(고정 번호) " + label + " " + tid); return (false, CodeIds.ProtectedMsg(kd)); }
             }
             try
             {
@@ -2271,12 +2348,12 @@ namespace TaskCalendarWidget
                     else
                     {
                         // 코드 3종은 그 값을 쓰는 과제가 **숨긴 과제까지 포함해** 0건일 때만. 최종 보증은 FK RESTRICT 다.
-                        string cntSql = kd == "customer" ? "SELECT COUNT(*) FROM project WHERE customer=@n"
-                                      : kd == "section"  ? "SELECT COUNT(*) FROM project WHERE section=@n"
-                                                         : "SELECT COUNT(*) FROM project WHERE status=@n";
+                        string cntSql = kd == "customer" ? "SELECT COUNT(*) FROM project WHERE customer_id=@n"
+                                      : kd == "section"  ? "SELECT COUNT(*) FROM project WHERE section_id=@n"
+                                                         : "SELECT COUNT(*) FROM project WHERE status_id=@n";
                         await using (var cmd = new MySqlCommand(cntSql, conn, tx))
                         {
-                            cmd.Parameters.AddWithValue("@n", k);
+                            cmd.Parameters.AddWithValue("@n", keyVal);
                             refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
                         }
                         if (refs > 0) { await tx.RollbackAsync(cts.Token); return (false, CodeInUseMsg(refs)); }
@@ -2306,9 +2383,9 @@ namespace TaskCalendarWidget
                     {
                         case "project":  delSql = "DELETE FROM project WHERE uid=@k"; break;
                         case "user":     delSql = "DELETE FROM app_user WHERE user_id=@k"; break;
-                        case "customer": delSql = "DELETE FROM customer WHERE name=@k"; break;
-                        case "section":  delSql = "DELETE FROM section_code WHERE name=@k"; break;
-                        case "status":   delSql = "DELETE FROM status_code WHERE name=@k"; break;
+                        case "customer": delSql = "DELETE FROM customer WHERE customer_id=@k"; break;
+                        case "section":  delSql = "DELETE FROM section_code WHERE section_id=@k"; break;
+                        case "status":   delSql = "DELETE FROM status_code WHERE status_id=@k"; break;
                         //  ★ 복구 쪽과 같은 이유로 **터뜨린다**(R5) — 되돌릴 수 없는 조작에서 '기본값으로 아무거나' 도,
                         //    거부 문장 복제도 답이 아니다. 여기 닿았다는 것은 종류가 늘고 이 switch 만 안 고쳤다는 뜻이다.
                         default:         throw new InvalidOperationException("알 수 없는 휴지통 종류(영구 삭제): " + kd);
@@ -2452,8 +2529,8 @@ namespace TaskCalendarWidget
         //   연결/질의 실패면 {found:false, msg}. '볼 수 없는 사람'과 '서버가 안 된다'를 화면이 갈라야 한다.
         //   ★ users 는 **재직자**(is_active=1) 수, children 은 **활성** 하위 조직 수다. 둘 다 화면 힌트고
         //     최종 판정은 쓰기 함수가 같은 트랜잭션에서 다시 센다.
-        //   ★ 직급의 재직자 수는 LEFT JOIN 으로 센다 — FK 컬럼과 **같은 콜레이션**으로 맞춰야 힌트와 판정이
-        //     갈리지 않는다(휴지통 TrashCodeListAsync 가 2026-09-11 R4 로 고친 그 자리와 같은 이유).
+        //   ★ 직급의 재직자 수는 LEFT JOIN 으로 센다. 2026-10-15 부터 번호끼리 맞춘다(title_id · CODE-TABLE-IDS §2) —
+        //     힌트와 판정(TitleSetActiveAsync)이 같은 열을 본다.
         public async Task<string?> LoadOrgTitleJsonAsync(string loginId)
         {
             string me = (loginId ?? "").Trim();
@@ -2477,9 +2554,9 @@ namespace TaskCalendarWidget
 
                 var titles = new List<Dictionary<string, object?>>();
                 await using (var cmd = new MySqlCommand(
-                    "SELECT t.name AS nm, t.sort_order AS so, t.is_active AS act, COUNT(u.user_id) AS cnt " +
-                    "FROM title_code t LEFT JOIN app_user u ON u.title = t.name AND u.is_active=1 " +
-                    "GROUP BY t.name, t.sort_order, t.is_active ORDER BY t.sort_order, t.name", conn))
+                    "SELECT t.title_id AS tid, t.name AS nm, t.sort_order AS so, t.is_active AS act, COUNT(u.user_id) AS cnt " +
+                    "FROM title_code t LEFT JOIN app_user u ON u.title_id = t.title_id AND u.is_active=1 " +
+                    "GROUP BY t.title_id, t.name, t.sort_order, t.is_active ORDER BY t.sort_order, t.name", conn))
                 await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
                 {
                     while (await rd.ReadAsync(cts.Token))
@@ -2488,6 +2565,7 @@ namespace TaskCalendarWidget
                         if (n.Length == 0) continue;
                         titles.Add(new Dictionary<string, object?>
                         {
+                            ["titleId"] = IntOrNull(rd, "tid"),   // 행 열쇠(쓰기 메시지는 이 번호로 온다)
                             ["name"]   = n,
                             ["sort"]   = IntOrNull(rd, "so") ?? 0,
                             ["active"] = (IntOrNull(rd, "act") ?? 0) != 0,
@@ -2537,7 +2615,7 @@ namespace TaskCalendarWidget
 
         // ---------- 직급(title_code) ----------
 
-        // 직급 추가 — sort_order = MAX+10(맨 뒤). 중복은 PK(name)가 1062 로 잡는다(숨긴 동명도 같은 답이다 · §4.2).
+        // 직급 추가 — sort_order = MAX+10(맨 뒤). 중복은 UNIQUE(name)가 1062 로 잡는다(숨긴 동명도 같은 답이다 · §4.2).
         public async Task<(bool ok, string msg)> TitleAddAsync(string? name)
         {
             string n = (name ?? "").Trim();
@@ -2569,15 +2647,14 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
-        // 직급 개명 — fk_user_title 이 ON UPDATE CASCADE 라 app_user.title 이 **한 문장으로** 따라온다(§3.1).
+        // 직급 개명 = 번호로 찾은 **한 행 UPDATE**. app_user 는 title_id 로 가리키므로 따라 고칠 것이 없다(CODE-TABLE-IDS §4).
         //   0행이면 그 직급이 이미 없다 = 화면이 낡았다(OrgTitleStaleMsg — 브리지가 이 문장으로 목록을 다시 싣는다).
-        public async Task<(bool ok, string msg)> TitleRenameAsync(string? oldName, string? newName)
+        public async Task<(bool ok, string msg)> TitleRenameAsync(int titleId, string? newName)
         {
-            string o = (oldName ?? "").Trim(), nw = (newName ?? "").Trim();
-            if (o.Length == 0) return (false, "변경할 직급을 지정하세요.");
+            string nw = (newName ?? "").Trim();
+            if (titleId <= 0) return (false, "변경할 직급을 지정하세요.");
             if (nw.Length == 0) return (false, "새 직급명을 입력하세요.");
             if (nw.Length > 30) return (false, "직급명은 30자까지 입니다.");
-            if (string.Equals(o, nw, StringComparison.Ordinal)) return (true, "변경 사항이 없습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -2588,14 +2665,14 @@ namespace TaskCalendarWidget
                 await using var connOwn = conn;
 
                 int cnt;
-                await using (var cmd = new MySqlCommand("UPDATE title_code SET name=@new WHERE name=@old", conn))
+                await using (var cmd = new MySqlCommand("UPDATE title_code SET name=@new WHERE title_id=@id", conn))
                 {
                     cmd.Parameters.AddWithValue("@new", nw);
-                    cmd.Parameters.AddWithValue("@old", o);
+                    cmd.Parameters.AddWithValue("@id", titleId);
                     cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
                 }
                 if (cnt == 0) return (false, OrgTitleStaleMsg);
-                _log("직급 개명: " + o + " → " + nw + " (app_user.title 은 FK CASCADE 로 자동 전파)");
+                _log("직급 개명: title_id=" + titleId + " 새 이름 " + nw + " (사람은 번호로 가리켜 조인이 따라온다)");
                 return (true, "직급을 변경했습니다. 이 직급인 사람의 표기도 함께 바뀝니다.");
             }
             catch (MySqlException mex) when (mex.Number == 1062) { return (false, TitleDupMsg); }
@@ -2609,10 +2686,9 @@ namespace TaskCalendarWidget
         //     낡은 화면이 [복구] 를 한 번 더 걸면 멀쩡히 서 있던 자리가 소리 없이 맨 뒤로 밀린다(R4 와 같은 판단).
         //   ★ 복구는 sort_order = MAX+10 이다 — 순서 재배치가 **활성만** 10·20·30… 으로 다시 매기므로 옛 순번을
         //     그대로 들고 오면 활성끼리 겹쳐 순서가 콜레이션에 좌우된다(SetCodeActiveAsync 가 루프 I5 로 실측한 결함).
-        public async Task<(bool ok, string msg)> TitleSetActiveAsync(string? name, bool active)
+        public async Task<(bool ok, string msg)> TitleSetActiveAsync(int titleId, bool active)
         {
-            string n = (name ?? "").Trim();
-            if (n.Length == 0) return (false, "대상 직급이 지정되지 않았습니다.");
+            if (titleId <= 0) return (false, "대상 직급이 지정되지 않았습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -2626,9 +2702,9 @@ namespace TaskCalendarWidget
                 try
                 {
                     int? cur = null;
-                    await using (var q = new MySqlCommand("SELECT is_active FROM title_code WHERE name=@n FOR UPDATE", conn, tx))
+                    await using (var q = new MySqlCommand("SELECT is_active FROM title_code WHERE title_id=@t FOR UPDATE", conn, tx))
                     {
-                        q.Parameters.AddWithValue("@n", n);
+                        q.Parameters.AddWithValue("@t", titleId);
                         var o = await q.ExecuteScalarAsync(cts.Token);
                         if (o != null && o != DBNull.Value) cur = Convert.ToInt32(o);
                     }
@@ -2639,15 +2715,15 @@ namespace TaskCalendarWidget
                     {
                         long users;
                         await using (var q = new MySqlCommand(
-                            "SELECT COUNT(*) FROM app_user WHERE title=@n AND is_active=1 FOR UPDATE", conn, tx))
+                            "SELECT COUNT(*) FROM app_user WHERE title_id=@t AND is_active=1 FOR UPDATE", conn, tx))
                         {
-                            q.Parameters.AddWithValue("@n", n);
+                            q.Parameters.AddWithValue("@t", titleId);
                             users = await ScalarLongAsync(q, cts.Token);
                         }
                         if (users > 0)
                         {
                             await SafeRollbackAsync(tx);
-                            _log("직급 숨김 거부: " + n + " — 재직자 " + users + "명");
+                            _log("직급 숨김 거부: title_id=" + titleId + " — 재직자 " + users + "명");
                             return (false, TitleInUseMsg(users));
                         }
                     }
@@ -2660,15 +2736,15 @@ namespace TaskCalendarWidget
                     }
 
                     await using (var cmd = new MySqlCommand(active
-                        ? "UPDATE title_code SET is_active=1, sort_order=@s WHERE name=@n"
-                        : "UPDATE title_code SET is_active=0 WHERE name=@n", conn, tx))
+                        ? "UPDATE title_code SET is_active=1, sort_order=@s WHERE title_id=@t"
+                        : "UPDATE title_code SET is_active=0 WHERE title_id=@t", conn, tx))
                     {
-                        cmd.Parameters.AddWithValue("@n", n);
+                        cmd.Parameters.AddWithValue("@t", titleId);
                         if (active) cmd.Parameters.AddWithValue("@s", nextSort);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     await tx.CommitAsync(cts.Token);
-                    _log("직급 " + (active ? "복구" : "숨김") + ": " + n);
+                    _log("직급 " + (active ? "복구" : "숨김") + ": title_id=" + titleId);
                     return (true, active ? "직급을 다시 표시합니다." : "직급을 숨겼습니다.");
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)
@@ -2677,17 +2753,16 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("직급 숨김/복구 실패: " + Short(ex)); return (false, DbFailMsg); }
         }
 
-        // 직급 순서 — 받은 이름 순서대로 10·20·30… 전량 재작성(ReorderCodesAsync 와 같은 방식).
-        //   ★ 다만 **활성 전부가 와야 한다**(§4.2). 빠진 이름이 있으면 화면이 낡은 것이고, 그대로 절반만 다시
+        // 직급 순서 — 받은 번호 순서대로 10·20·30… 전량 재작성(ReorderCodesAsync 와 같은 방식).
+        //   ★ 다만 **활성 전부가 와야 한다**(§4.2). 빠진 번호가 있으면 화면이 낡은 것이고, 그대로 절반만 다시
         //     매기면 목록 밖 직급이 새 번호들 사이에 끼어든다 — 아무것도 쓰지 않고 거부한다(StaleRosterMsg 규율).
-        public async Task<(bool ok, string msg)> TitleReorderAsync(IReadOnlyList<string>? orderedNames)
+        public async Task<(bool ok, string msg)> TitleReorderAsync(IReadOnlyList<int>? orderedIds)
         {
-            if (orderedNames == null || orderedNames.Count == 0) return (false, "정렬할 직급 목록이 비어 있습니다.");
-            var kept = new List<string>(orderedNames.Count);
-            foreach (var raw in orderedNames)
+            if (orderedIds == null || orderedIds.Count == 0) return (false, "정렬할 직급 목록이 비어 있습니다.");
+            var kept = new List<int>(orderedIds.Count);
+            foreach (int tid in orderedIds)
             {
-                string nm = (raw ?? "").Trim();
-                if (nm.Length > 0) kept.Add(nm);
+                if (tid > 0) kept.Add(tid);
             }
             if (kept.Count == 0) return (false, "정렬할 직급 목록이 비어 있습니다.");
             try
@@ -2703,12 +2778,12 @@ namespace TaskCalendarWidget
                 try
                 {
                     // ① 지금의 활성 직급 집합을 잠근 채 읽어 **받은 집합과 같은지** 본다(판정과 갱신 사이를 닫는다).
-                    var live = new HashSet<string>(StringComparer.Ordinal);
-                    await using (var q = new MySqlCommand("SELECT name FROM title_code WHERE is_active=1 FOR UPDATE", conn, tx))
+                    var live = new HashSet<int>();
+                    await using (var q = new MySqlCommand("SELECT title_id FROM title_code WHERE is_active=1 FOR UPDATE", conn, tx))
                     await using (var rd = await q.ExecuteReaderAsync(cts.Token))
-                        while (await rd.ReadAsync(cts.Token)) live.Add(Str(rd, "name"));
+                        while (await rd.ReadAsync(cts.Token)) { int? v = IntOrNull(rd, "title_id"); if (v.HasValue) live.Add(v.Value); }
 
-                    var given = new HashSet<string>(kept, StringComparer.Ordinal);
+                    var given = new HashSet<int>(kept);
                     if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))
                     {
                         await SafeRollbackAsync(tx);
@@ -2718,12 +2793,12 @@ namespace TaskCalendarWidget
 
                     // ② 받은 순서대로 10·20·30… 전량 재작성.
                     int order = 0;
-                    foreach (var nm in kept)
+                    foreach (int tid in kept)
                     {
                         order += 10;
-                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE name=@n", conn, tx);
+                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE title_id=@t", conn, tx);
                         cmd.Parameters.AddWithValue("@s", order);
-                        cmd.Parameters.AddWithValue("@n", nm);
+                        cmd.Parameters.AddWithValue("@t", tid);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     await tx.CommitAsync(cts.Token);

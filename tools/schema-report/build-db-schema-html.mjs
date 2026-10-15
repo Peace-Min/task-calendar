@@ -261,7 +261,7 @@ const d = new Date(S.meta.dumpedAt);
 const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const groupCount = GROUPS.map((g) => `${g.label} ${g.sections.flatMap((s) => s.tables).length}`).join(', ');
 const factsRegion = `<ul class="facts">
-  <li>데이터베이스 <b>taskmgr</b></li>
+  <li>데이터베이스 <b>${esc(S.meta.db || 'taskcalendar')}</b></li>
   <li>엔진 <b>MySQL ${esc(S.meta.mysql)} / InnoDB</b></li>
   <li>문자셋 <b>${esc(S.meta.charset[1])}</b></li>
   <li>표 <b>${S.tables.length}</b> <span class="ko">${esc(groupCount)}</span></li>

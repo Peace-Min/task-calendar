@@ -40,7 +40,7 @@ for (const [label, sql] of [['deploy/schema-structure.sql', schemaDeploy]]) {
 function upsertBody() {
   const s = projectDb.indexOf('public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync');
   assert.ok(s >= 0, 'UpsertProjectAsync가 3-튜플 반환으로 바뀌지 않았다');
-  const e = projectDb.indexOf('private static async Task<(string pn, string cn)?> FindSimilarActiveAsync');
+  const e = projectDb.indexOf('private static async Task<(string pn, string cn, string cust)?> FindSimilarActiveAsync');
   assert.ok(e > s, 'FindSimilarActiveAsync 경계를 찾지 못함');
   return projectDb.slice(s, e);
 }
@@ -104,8 +104,9 @@ test('호스트: 이름 필드 TRIM + 빈 계약명/통상명칭은 \'\'(NULL �
   const b = upsertBody();
   assert.ok(/string cn = \(contractName \?\? ""\)\.Trim\(\), mn = \(commonName \?\? ""\)\.Trim\(\);/.test(b),
     '계약명·통상명칭 TRIM이 없다');
-  assert.ok(/string sec = \(section \?\? ""\)\.Trim\(\), cust = \(customer \?\? ""\)\.Trim\(\), pname = \(projectName \?\? ""\)\.Trim\(\);/.test(b),
-    '발주처·사업명 TRIM이 없다');
+  //  ★ 2026-10-15 — 구분·발주처·상태는 번호로 온다(CODE-TABLE-IDS §4). TRIM 할 이름 필드는 사업명·계약명·통상명칭이다.
+  assert.ok(/string pname = \(projectName \?\? ""\)\.Trim\(\);/.test(b), '사업명 TRIM이 없다');
+  assert.ok(/if \(customerId <= 0\) return \(false, "발주처를 선택하세요\.", false\);/.test(b), '발주처 번호 필수 검사가 없다');
   // BindProject는 cn/mn을 TextOrNull(빈값→NULL) 하지 않고 그대로 문자열로 쓴다
   const bind = projectDb.slice(projectDb.indexOf('private static void BindProject'), projectDb.indexOf('private static void BindProject') + 700);
   assert.ok(/AddWithValue\("@cn", cn\)/.test(bind), '@cn을 문자열 그대로 쓰지 않는다(빈값이 NULL이 된다)');
@@ -118,16 +119,16 @@ test('호스트: INSERT에만 소프트경고, UPDATE(자기수정)엔 검사 �
   // confirmSimilar 검사는 u.Length==0(INSERT) 블록 안에 있어야 한다
   const insBlock = b.slice(b.indexOf('if (u.Length == 0)'), b.indexOf('const string upd'));
   assert.ok(/if \(!confirmSimilar\)/.test(insBlock), 'INSERT 블록에 소프트경고 검사가 없다');
-  assert.ok(/FindSimilarActiveAsync\(conn, cts\.Token, cust, pname, cn\)/.test(insBlock), '유사 검사 호출이 없다');
+  assert.ok(/FindSimilarActiveAsync\(conn, cts\.Token, customerId, pname, cn\)/.test(insBlock), '유사 검사 호출이 없다(발주처 번호로)');
   checks.softWarnGuard(insBlock);   // 조건(sim.HasValue)과 경고 반환을 한 덩어리로 — 조건 뒤집기 방지
   const updBlock = b.slice(b.indexOf('const string upd'));
   assert.ok(!/FindSimilarActiveAsync/.test(updBlock), 'UPDATE에도 유사 검사가 걸려 자기수정이 막힌다');
 });
 
 test('호스트: FindSimilarActiveAsync는 활성 과제만 후보로, C#에서 정규화 비교', () => {
-  const s = projectDb.indexOf('private static async Task<(string pn, string cn)?> FindSimilarActiveAsync');
+  const s = projectDb.indexOf('private static async Task<(string pn, string cn, string cust)?> FindSimilarActiveAsync');
   const b = projectDb.slice(s, projectDb.indexOf('private static void BindProject'));
-  assert.ok(/WHERE customer=@c AND is_active=1/.test(b), '활성 과제만 후보로 삼지 않는다');
+  assert.ok(/WHERE p\.customer_id=@c AND p\.is_active=1/.test(b), '활성 과제만 후보로 삼지 않는다(발주처 번호로)');
   assert.ok(/NormalizeName\(ep\) == nPn && NormalizeName\(ec\) == nCn/.test(b), '(사업명, 계약명) 정규화 동시 비교가 아니다');
 });
 

@@ -123,7 +123,7 @@ const checks = {
     const t = csMember(cs, TITLE_SIGS.TitleSetActiveAsync);
     const txT = t.indexOf('BeginTransactionAsync');
     assert.ok(txT >= 0, 'TitleSetActiveAsync 가 트랜잭션을 열지 않는다 — 판정과 갱신 사이가 열려 있다');
-    const cntT = t.indexOf('SELECT COUNT(*) FROM app_user WHERE title=@n AND is_active=1 FOR UPDATE');
+    const cntT = t.indexOf('SELECT COUNT(*) FROM app_user WHERE title_id=@t AND is_active=1 FOR UPDATE');
     assert.ok(cntT > txT,
       '직급 숨김의 재직자 세기가 트랜잭션 **밖**(또는 FOR UPDATE 없이)이다 — 세는 사이에 그 직급으로 옮겨 온 사람이 판정을 빠져나간다');
     assert.ok(/FOR UPDATE/.test(t.slice(0, cntT)), '대상 직급 행을 FOR UPDATE 로 잡지 않은 채 센다');
@@ -177,7 +177,7 @@ const checks = {
   // ④ 순서 저장 — **활성 전부**가 와야 하고(집합 대조), 받아들이면 10 간격으로 전량 재작성한다.
   reorderNeedsWholeSet(cs) {
     const t = csMember(cs, TITLE_SIGS.TitleReorderAsync);
-    assert.ok(/SELECT name FROM title_code WHERE is_active=1 FOR UPDATE/.test(t),
+    assert.ok(/SELECT title_id FROM title_code WHERE is_active=1 FOR UPDATE/.test(t),
       '직급 순서가 지금의 **활성** 집합을 잠근 채 읽지 않는다 — 판정과 갱신 사이가 열린다');
     assert.ok(/given\.SetEquals\(live\)/.test(t) && /OrgTitleStaleMsg/.test(t),
       '직급 순서가 받은 집합과 활성 집합을 대조해 낡은 화면을 거부하지 않는다');
@@ -313,8 +313,8 @@ test('변이①-b: 이 구역에 DELETE 문을 하나 넣으면 계약① 이 �
 });
 
 test('변이②: 직급 숨김의 재직자 세기에서 FOR UPDATE 를 떼면 계약② 가 실패한다', () => {
-  const bad = mutate(pdb, '"SELECT COUNT(*) FROM app_user WHERE title=@n AND is_active=1 FOR UPDATE"',
-    '"SELECT COUNT(*) FROM app_user WHERE title=@n AND is_active=1"');
+  const bad = mutate(pdb, '"SELECT COUNT(*) FROM app_user WHERE title_id=@t AND is_active=1 FOR UPDATE"',
+    '"SELECT COUNT(*) FROM app_user WHERE title_id=@t AND is_active=1"');
   assert.throws(() => checks.hideJudgedInSameTx(bad), /재직자 세기가 트랜잭션 \*\*밖\*\*/);
   assert.doesNotThrow(() => checks.hideJudgedInSameTx(pdb));   // 통제군
 });
@@ -356,8 +356,8 @@ test('변이④: 재매김 간격을 10 에서 1 로 줄이면 계약④ 가 실
   //  ★ 'order += 10;' 는 코드표(ReorderCodesAsync)에도 같은 줄이 있다 — String.replace 는 첫 일치만 바꾸므로
   //    바로 뒤따르는 UPDATE 문까지 묶어 **이 한 곳**을 가리킨다(유일하지 않은 변이는 엉뚱한 함수를 친다).
   const bad = mutate(pdb,
-    '                        order += 10;\n                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE name=@n", conn, tx);',
-    '                        order += 1;\n                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE name=@n", conn, tx);');
+    '                        order += 10;\n                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE title_id=@t", conn, tx);',
+    '                        order += 1;\n                        await using var cmd = new MySqlCommand("UPDATE title_code SET sort_order=@s WHERE title_id=@t", conn, tx);');
   assert.throws(() => checks.reorderNeedsWholeSet(bad), /직급 순서가 10 간격으로 다시 매기지 않는다/);
   assert.doesNotThrow(() => checks.reorderNeedsWholeSet(pdb));   // 통제군
 });

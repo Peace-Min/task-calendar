@@ -50,7 +50,7 @@ const OPT = {
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   rounds: Number(ARG.get('rounds') || 10),
   seed: Number(ARG.get('seed') || 20260901),
 };

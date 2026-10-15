@@ -55,10 +55,11 @@ function extractFn(web, name) {
 // ── 회신 본보기 ─────────────────────────────────────────────────────
 //   직급 셋(활성 둘 · 숨김 하나 · 재직자가 있는 직급 하나) · 조직 여섯(시드 트리의 축소판).
 //   ★ units 는 호스트가 준 **깊이우선 순서 그대로**다 — 화면이 다시 묶거나 정렬하지 않는다(계약③).
+//  ★ 2026-10-15 — 직급 행 열쇠는 번호(titleId)다(CODE-TABLE-IDS §4 · 소속의 orgId 와 같은 방식).
 const TITLES = [
-  { name: '전무', sort: 10, active: true, users: 3 },
-  { name: '수석', sort: 40, active: true, users: 0 },
-  { name: '옛직급', sort: 90, active: false, users: 0 },
+  { titleId: 1, name: '전무', sort: 10, active: true, users: 3 },
+  { titleId: 4, name: '수석', sort: 40, active: true, users: 0 },
+  { titleId: 9, name: '옛직급', sort: 90, active: false, users: 0 },
 ];
 const UNITS = [
   { orgId: 1, name: '기술개발총괄', parentId: null, depth: 0, sort: 10, active: true, users: 1, children: 2 },
@@ -73,7 +74,7 @@ const DENY = { found: true, admin: false };
 //  쓰기 회신이 실어 오는 갱신 목록 — 직급이 하나 늘었다(행 수가 바뀌어야 '앉았다'고 말할 수 있다).
 const SEATED = {
   found: true, admin: true,
-  titles: TITLES.concat([{ name: 'zzJ신규', sort: 100, active: true, users: 0 }]),
+  titles: TITLES.concat([{ titleId: 12, name: 'zzJ신규', sort: 100, active: true, users: 0 }]),
   units: UNITS,
 };
 //  ★ 2026-10-06(docs/ADMIN-HUB-4.md N2) — 사유 문장은 지금 숫자로 짓되 0 인 숫자는 빼고(「재직자 0명」은 이유가 아니다),
@@ -171,8 +172,8 @@ const checks = {
     const mv = extractFunction(web, 'otMove');
     assert.ok(/otSend\('unitReorder', \{ parentId:/.test(mv) && /orgIds: arr\.map/.test(mv),
       'otMove 가 형제 집합 전체(orgIds)를 보내지 않는다 — 절반만 보내면 호스트가 낡은 화면으로 거부한다');
-    assert.ok(/otSend\('titleReorder', \{ names: arr \}\)/.test(mv),
-      'otMove 가 활성 직급 전체(names)를 보내지 않는다');
+    assert.ok(/otSend\('titleReorder', \{ titleIds: arr \}\)/.test(mv),
+      'otMove 가 활성 직급 전체(titleIds 번호)를 보내지 않는다');
     assert.ok(!/__otData\.titles\s*=|__otData\.units\s*=/.test(mv),
       'otMove 가 화면의 목록을 미리 고친다 — 순서의 정본은 DB 이고, 새 순서는 회신(orgTitle)으로 온다');
   },
@@ -460,7 +461,7 @@ const dom = {
   // ④-직급 회신 순서 그대로 · 숨김은 걸러진다 · 숨길 수 없는 행은 사유가 title 에.
   titleRows(src) {
     const r = probe(PAYLOAD, 'title', false, src);
-    assert.deepStrictEqual(r.rows.map((x) => x.key), ['전무', '수석'],
+    assert.deepStrictEqual(r.rows.map((x) => x.key), ['1', '4'],
       `직급 탭이 회신 순서대로 활성 둘을 그리지 않는다: ${JSON.stringify(r.rows.map((x) => x.key))}`);
     const hideJ = r.rows[0].btns.find((b) => b.op === 'hide');
     assert.ok(hideJ, '재직자 3명인 직급에 [숨김] 버튼 자체가 없다 — 부재는 사유를 알려 주지 않는다');
@@ -562,9 +563,9 @@ const dom = {
     assert.deepStrictEqual(u.sent.map((s) => s.cmd), ['unitReorder'], `소속 ▲▼ 가 보낸 명령이 다르다: ${JSON.stringify(u.sent)}`);
     assert.deepStrictEqual(u.sent[0].params, { parentId: 2, orgIds: [7, 6] },
       `소속 ▼ 의 페이로드가 계약과 다르다: ${JSON.stringify(u.sent[0].params)}`);
-    const t = probeMoveSend(PAYLOAD, 'title', '수석', 'up', src);
+    const t = probeMoveSend(PAYLOAD, 'title', '4', 'up', src);
     assert.deepStrictEqual(t.sent.map((s) => s.cmd), ['titleReorder'], `직급 ▲▼ 가 보낸 명령이 다르다: ${JSON.stringify(t.sent)}`);
-    assert.deepStrictEqual(t.sent[0].params, { names: ['수석', '전무'] },
+    assert.deepStrictEqual(t.sent[0].params, { titleIds: [4, 1] },
       `직급 ▲ 의 페이로드가 계약과 다르다: ${JSON.stringify(t.sent[0].params)}`);
   },
 
@@ -620,20 +621,20 @@ const dom = {
   // ⑨-DOM 회신마다 목록을 통째로 다시 만들어도 **쥐고 있던 컨트롤의 신원**으로 포커스가 돌아온다.
   //   ★ 안 돌려주면 ▲▼ 한 번에 포커스가 body 로 떨어져, 다음 ▲▼ 를 누르려면 Tab 을 처음부터 굴려야 한다.
   focusKeep(src) {
-    const r = probeFocusKeep('전무', 'rename', false, src);
+    const r = probeFocusKeep('1', 'rename', false, src);
     assert.strictEqual(r.found, true, "전제 붕괴: '전무' 행의 [이름변경] 을 찾지 못했다");
     assert.strictEqual(r.started, true, '전제 붕괴: 시험이 그 버튼에 포커스를 주지 못했다');
     assert.deepStrictEqual(r.tabs, [-1, -1],
       `행이 포커스를 받을 수 없다(tabIndex ${JSON.stringify(r.tabs)}) — 잠금·재렌더가 물러설 자리가 없다`);
     assert.strictEqual(r.sameNode, false, '전제 붕괴: 목록이 다시 만들어지지 않았다(같은 노드다)');
     assert.strictEqual(r.isBody, false, '회신이 목록을 다시 만들자 포커스가 body 로 떨어졌다 — Tab 이 문서 처음부터 다시 시작한다');
-    assert.strictEqual(r.key, '전무', `포커스가 다른 행으로 갔다: ${JSON.stringify(r.key)}`);
+    assert.strictEqual(r.key, '1', `포커스가 다른 행으로 갔다: ${JSON.stringify(r.key)}`);
     assert.strictEqual(r.op, 'rename', `포커스가 다른 버튼으로 갔다: ${JSON.stringify(r.op)}`);
     //  왕복 중이면 새 버튼이 전부 꺼진 채로 서므로 **그 행**으로 물러난다(없는 자리를 억지로 만들지 않는다).
-    const s = probeFocusKeep('전무', 'rename', true, src);
+    const s = probeFocusKeep('1', 'rename', true, src);
     assert.strictEqual(s.isBody, false, '잠긴 렌더에서 포커스가 body 로 떨어졌다 — 행이 받아 줘야 한다');
     assert.strictEqual(s.isRow, true, `잠긴 렌더에서 포커스가 행으로 물러나지 않았다(op=${JSON.stringify(s.op)})`);
-    assert.strictEqual(s.key, '전무', '물러난 행이 쥐고 있던 그 행이 아니다');
+    assert.strictEqual(s.key, '1', '물러난 행이 쥐고 있던 그 행이 아니다');
   },
 
   // ⑨-DOM(b) 왕복이 시작되는 순간의 잠금 — 쥔 버튼이 꺼지면 행으로 물러나고, 풀리면 그 버튼으로 돌아온다.

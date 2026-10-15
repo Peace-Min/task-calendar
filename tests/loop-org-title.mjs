@@ -18,7 +18,7 @@
  *   C00 진입 — 「구성원 편집」 → #uaOrgTitle 존재 → 실클릭 → orgTitleGet 이 admin:true · 직급 ≥ 11 ·
  *              조직이 깊이우선(부모가 자식보다 먼저 · depth 가 부모+1)
  *   C01 직급 추가(zzJ)     — 행이 생기고 DB sort_order = 직전 MAX+10
- *   C02 직급 개명(zzJ→zzJ2)— DB 이름이 바뀐다(app_user.title 은 FK CASCADE 라 따라온다)
+ *   C02 직급 개명(zzJ→zzJ2)— DB 이름이 바뀐다(title_id 는 그대로, app_user.title_id 도 그대로라 표기는 조인이 따라온다)
  *   C03 직급 순서(zzJ2 ▲)  — 두 값의 sort_order 가 맞바뀌고 나머지도 10 간격으로 다시 매겨진다
  *   C04 직급 숨김 거부     — zzU 직원을 잠시 zzJ2 로 둔다 → '재직자' 문장으로 거부 → 직원 직급 복구 →
  *                            숨김 성공 → 목록에서 빠짐 → **사람 휴지통 직급 탭**에서 복구(복구 뒤 sort_order = MAX+10)
@@ -79,7 +79,7 @@ const OPT = {
   budget: Number(ARG.get('budget') || 120),
   verbose: ARG.has('verbose') || ARG.has('v'),
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',   // ← 비밀. 소스에 기본값 없음(이 파일은 커밋된다)
   appUser: process.env.TC_TEST_DB_APP_USER || 'taskmgr_app',
@@ -229,11 +229,11 @@ SELECT 'U', COUNT(*) FROM app_user   WHERE login_id NOT LIKE 'zzU%';
 SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version';
 SELECT 'M', edit_role, CAST(is_active AS CHAR), CAST(user_id AS CHAR), name FROM app_user WHERE login_id=${esc(me)};
 SELECT 'H', IFNULL(SHA2(GROUP_CONCAT(x ORDER BY x SEPARATOR '|'),256),'(빈집합)') FROM (
-            SELECT CONCAT('J/',name,'/',sort_order,'/',is_active)                                AS x
+            SELECT CONCAT('J/',title_id,'/',name,'/',sort_order,'/',is_active)                   AS x
               FROM title_code WHERE name NOT LIKE 'zzJ%'
   UNION ALL SELECT CONCAT('O/',org_id,'/',name,'/',IFNULL(parent_id,'-'),'/',sort_order,'/',is_active)
               FROM org_unit   WHERE name NOT LIKE 'zzO%'
-  UNION ALL SELECT CONCAT('U/',user_id,'/',IFNULL(title,'-'),'/',IFNULL(org_id,'-'),'/',edit_role,'/',is_active)
+  UNION ALL SELECT CONCAT('U/',user_id,'/',IFNULL(title_id,'-'),'/',IFNULL(org_id,'-'),'/',edit_role,'/',is_active)
               FROM app_user   WHERE login_id NOT LIKE 'zzU%'
 ) z`;
 
@@ -258,14 +258,15 @@ const countsKey = (c) => `${c.title_code}/${c.org_unit}/${c.app_user}`;
 let ORDER0 = null;
 function captureOrder() {
   return {
-    titles: sql(`SELECT name, sort_order FROM title_code WHERE name NOT LIKE 'zzJ%'`, { what: '직급 순번 기록' }),
+    //  v13: 직급도 번호(title_id)로 적고 번호로 되돌린다(조직의 org_id 와 같은 방식).
+    titles: sql(`SELECT title_id, sort_order FROM title_code WHERE name NOT LIKE 'zzJ%'`, { what: '직급 순번 기록' }),
     units: sql(`SELECT org_id, sort_order FROM org_unit WHERE name NOT LIKE 'zzO%'`, { what: '조직 순번 기록' }),
   };
 }
 function restoreOrder(o) {
   if (!o) return;
   const st = [];
-  for (const [name, so] of o.titles) st.push(`UPDATE title_code SET sort_order=${Number(so)} WHERE name=${esc(name)}`);
+  for (const [id, so] of o.titles) st.push(`UPDATE title_code SET sort_order=${Number(so)} WHERE title_id=${Number(id)}`);
   for (const [id, so] of o.units) st.push(`UPDATE org_unit SET sort_order=${Number(so)} WHERE org_id=${Number(id)}`);
   if (!st.length) return;
   //  절대값 UPDATE — 다시 적용해도 결과가 같다(idempotent 자격).
@@ -554,7 +555,7 @@ function invariants(caseId) {
  *    먼저 걷어낸다. 둘을 합쳐야 닫힌다.
  *  ★ 지우는 순서는 FK 순서다: zzU 직원의 캘린더 자식 표 → cal_user_pref/rev → app_user(zzU)
  *    → org_unit(zzO, **잎부터**) → title_code(zzJ).
- *    app_user.title 과 app_user.org_id 가 RESTRICT 라 직원이 먼저 사라져야 마스터를 지울 수 있다.
+ *    app_user.title_id 와 app_user.org_id 가 RESTRICT 라 직원이 먼저 사라져야 마스터를 지울 수 있다.
  *  ★ 앱 계정에는 이 두 표의 DELETE 가 **없다**(§6) — 그래서 여기서만 관리자 연결로 지운다. */
 function zzLeft() {
   return n1(`SELECT
@@ -655,6 +656,9 @@ const titleSort = (name) => Number(s1(`SELECT sort_order FROM title_code WHERE n
 const titleActive = (name) => s1(`SELECT CAST(is_active AS CHAR) FROM title_code WHERE name=${esc(name)}`, '직급 활성');
 const titleRows = (name) => n1(`SELECT COUNT(*) FROM title_code WHERE name=${esc(name)}`, '직급 행 수');
 const titleMax = () => Number(s1(`SELECT COALESCE(MAX(sort_order),0) FROM title_code`, '직급 최대 순번') || 0);
+//  v13: 직급의 행 열쇠는 번호다(화면 data-otkey, 휴지통 data-tkey, 쓰기 메시지 titleId 가 모두 이 값).
+const titleIdOf = (name) => Number(s1(`SELECT title_id FROM title_code WHERE name=${esc(name)}`, '직급 번호') || 0);
+const titleNameOf = (id) => s1(`SELECT name FROM title_code WHERE title_id=${Number(id)}`, '직급 이름');
 const unitId = (name) => Number(s1(`SELECT org_id FROM org_unit WHERE name=${esc(name)}`, '조직 번호') || 0);
 const unitName = (id) => s1(`SELECT name FROM org_unit WHERE org_id=${Number(id)}`, '조직 이름');
 const unitParent = (id) => Number(s1(`SELECT IFNULL(parent_id,0) FROM org_unit WHERE org_id=${Number(id)}`, '조직 상위') || 0);
@@ -662,7 +666,10 @@ const unitSort = (id) => Number(s1(`SELECT sort_order FROM org_unit WHERE org_id
 const unitActive = (id) => s1(`SELECT CAST(is_active AS CHAR) FROM org_unit WHERE org_id=${Number(id)}`, '조직 활성');
 const unitRows = (name) => n1(`SELECT COUNT(*) FROM org_unit WHERE name=${esc(name)}`, '조직 행 수');
 const siblingMax = (pid) => Number(s1(`SELECT COALESCE(MAX(sort_order),0) FROM org_unit WHERE parent_id=${Number(pid)}`, '형제 최대 순번') || 0);
-const userTitle = (loginId) => s1(`SELECT IFNULL(title,'') FROM app_user WHERE login_id=${esc(loginId)}`, '직원 직급');
+//  v13: app_user 에는 title_id 만 있다. 이름은 title_code 를 조인해서 읽는다.
+const userTitle = (loginId) => s1(`SELECT IFNULL(t.name,'') FROM app_user u LEFT JOIN title_code t ON t.title_id = u.title_id
+                                    WHERE u.login_id=${esc(loginId)}`, '직원 직급');
+const userTitleId = (loginId) => Number(s1(`SELECT IFNULL(title_id,0) FROM app_user WHERE login_id=${esc(loginId)}`, '직원 직급 번호') || 0);
 
 /* 거부 문구 — 호스트 상수와 뜻이 같아야 한다(ProjectDb.cs · 설계 §5.2). 여기 적힌 것이 계약이다. */
 const MSG = {
@@ -715,7 +722,7 @@ async function main() {
   else if (gaps.length) bailNoGrant(`앱 계정 ${OPT.appUser}@'%' 의 권한이 모자란다 — ${gaps.join(' · ')}`);
   else vlog(`앱 계정 ${OPT.appUser} 권한 확인: org_unit·title_code 에 INSERT·UPDATE 있음`);
 
-  const T = { one: NM.title1(), two: NM.title2() };
+  const T = { one: NM.title1(), two: NM.title2(), id: 0 };   // id = C01 이 만든 직급의 title_id(개명해도 그대로)
   const U = { lid: NM.user(), uid: 0 };
   const O = { one: NM.unit1(), two: NM.unit2(), oneId: 0, twoId: 0 };
   let PARENT = null;   // zzO 를 매달 상위(실 조직)
@@ -739,8 +746,9 @@ async function main() {
       JSON.stringify(data && { found: data.found, admin: data.admin }))) return;
     const titles = data.titles || [], units = data.units || [];
     okq('C00 직급 시드 11개 이상', titles.length >= 11, `실제 ${titles.length}`);
-    okq('C00 직급 행 모양(name·sort·active·users)', titles.every((t) =>
-      t && typeof t.name === 'string' && typeof t.sort === 'number' && typeof t.active === 'boolean' && typeof t.users === 'number'),
+    okq('C00 직급 행 모양(titleId·name·sort·active·users)', titles.every((t) =>
+      t && typeof t.titleId === 'number' && t.titleId > 0
+      && typeof t.name === 'string' && typeof t.sort === 'number' && typeof t.active === 'boolean' && typeof t.users === 'number'),
       JSON.stringify(titles[0]));
     okq('C00 조직이 하나 이상', units.length >= 1, `실제 ${units.length}`);
     okq('C00 조직 행 모양(orgId·parentId·depth·sort·active·users·children)', units.every((u) =>
@@ -783,10 +791,12 @@ async function main() {
     }
     if (!okq('C01 직급 추가 성공', rep.ok === true, rep.msg)) return;
     okq('C01 DB 에 행이 생겼다', titleRows(T.one) === 1);
+    T.id = titleIdOf(T.one);
+    okq('C01 새 직급에 번호(title_id)가 붙었다', T.id > 0, String(T.id));
     okq(`C01 sort_order = 직전 MAX+10 (${max0}+10)`, titleSort(T.one) === max0 + 10, `실제 ${titleSort(T.one)}`);
     okq('C01 새 직급은 활성이다', titleActive(T.one) === '1', String(titleActive(T.one)));
     //  회신의 갱신 목록이 화면에 앉았는가 — otSend 가 otSeat 한 곳으로 앉힌다(설계 §5.1).
-    const row = await otRow(T.one);
+    const row = await otRow(String(T.id));
     okq('C01 화면에 그 행이 섰다(회신의 orgTitle 이 앉았다)', !!row, '행이 없다 — otSeat 가 목록을 앉히지 못했다');
     okq('C01 재직자 0명이라 [숨김] 이 켜져 있다', !!otBtn(row, 'hide') && otBtn(row, 'hide').disabled === false,
       JSON.stringify(otBtn(row, 'hide')));
@@ -799,24 +809,28 @@ async function main() {
 
   /* ── C02 직급 개명 ─────────────────────────────────────────────────── */
   await runCase('C02', `직급 개명(${T.one} → ${T.two})`, async () => {
-    if (titleRows(T.one) !== 1) { skip('C02', 'C01 이 직급을 만들지 못했다'); return; }
+    if (titleRows(T.one) !== 1 || !T.id) { skip('C02', 'C01 이 직급을 만들지 못했다'); return; }
     const sort0 = titleSort(T.one);
-    const rep = await otsend('titleRename', { oldName: T.one, newName: T.two });
+    const rep = await otsend('titleRename', { titleId: T.id, newName: T.two });
     if (!okq('C02 개명 성공', rep.ok === true, rep.msg)) return;
     okq('C02 옛 이름은 사라졌다', titleRows(T.one) === 0);
     okq('C02 새 이름이 앉았다', titleRows(T.two) === 1);
     okq('C02 순번은 그대로다(개명은 서열을 건드리지 않는다)', titleSort(T.two) === sort0, `${sort0} → ${titleSort(T.two)}`);
-    const row = await otRow(T.two);
+    okq('C02 번호(title_id)는 그대로다(개명은 한 행 UPDATE)', titleIdOf(T.two) === T.id, `${T.id} → ${titleIdOf(T.two)}`);
+    const row = await otRow(String(T.id));
     okq('C02 화면의 행 이름도 바뀌었다', !!row && row.name === T.two, row ? row.name : '행 없다');
 
     //  없는 직급을 고치면 '화면이 낡았다'(§4.2) — 호스트가 직접 막는다(화면을 우회한다).
-    const gone = await hsend('titleRename', { oldName: T.one, newName: T.one + 'x' });
+    //  v13: 없는 번호로 보낸다(지금 MAX(title_id)+1000 은 어느 행도 아니다).
+    const noId = Number(s1(`SELECT COALESCE(MAX(title_id),0)+1000 FROM title_code`, 'C02 없는 직급 번호') || 0);
+    const gone = await hsend('titleRename', { titleId: noId, newName: T.one + 'x' });
     okq('C02 없는 직급 개명은 낡은 목록으로 거부', gone.ok === false && MSG.stale.test(String(gone.msg)), JSON.stringify(gone.msg));
+    okq('C02 거부 뒤 그 이름의 행이 생기지 않았다', titleRows(T.one + 'x') === 0);
   });
 
   /* ── C03 직급 순서 ─────────────────────────────────────────────────── */
   await runCase('C03', `직급 순서(${T.two} 를 한 칸 위로) — 두 값이 맞바뀌고 전량 10 간격`, async () => {
-    if (titleRows(T.two) !== 1) { skip('C03', 'C02 가 직급을 남기지 못했다'); return; }
+    if (titleRows(T.two) !== 1 || !T.id) { skip('C03', 'C02 가 직급을 남기지 못했다'); return; }
     const before = sql(`SELECT name FROM title_code WHERE is_active=1 ORDER BY sort_order, name`, { what: 'C03 활성 직급 순서' })
       .map((r) => r[0]);
     const i = before.indexOf(T.two);
@@ -828,7 +842,7 @@ async function main() {
     const clicked = await ev(`(function(){
       var bs = document.querySelectorAll('#otList [data-otop="up"]');
       for(var k=0;k<bs.length;k++){
-        if(String(bs[k].dataset.otkey||'') !== ${J(T.two)}) continue;
+        if(String(bs[k].dataset.otkey||'') !== ${J(String(T.id))}) continue;
         if(bs[k].disabled) return 'disabled';
         bs[k].click(); return 'clicked';
       }
@@ -849,7 +863,10 @@ async function main() {
       `실제 [${sorts.join(', ')}]`);
 
     //  낡은 목록(하나 빠뜨린 배열)은 호스트가 거부한다 — 화면을 우회해 곧장 보낸다.
-    const short = await hsend('titleReorder', { names: after.slice(0, Math.max(1, after.length - 1)) });
+    //  v13: 번호 배열(titleIds)로 보낸다.
+    const afterIds = sql(`SELECT title_id FROM title_code WHERE is_active=1 ORDER BY sort_order, name`, { what: 'C03 저장 뒤 번호 순서' })
+      .map((r) => Number(r[0]));
+    const short = await hsend('titleReorder', { titleIds: afterIds.slice(0, Math.max(1, afterIds.length - 1)) });
     okq('C03 활성 하나를 빠뜨린 순서 저장은 거부', short.ok === false && MSG.stale.test(String(short.msg)), JSON.stringify(short.msg));
 
     rebase('C03 순서 저장이 활성 직급의 sort_order 를 10 간격으로 다시 매겼다 — 이 기능의 계약이다(끝에 시작값으로 되돌린다)');
@@ -857,22 +874,23 @@ async function main() {
 
   /* ── C04 직급 숨김 거부 → 숨김 → 복구 ──────────────────────────────── */
   await runCase('C04', `직급 숨김 — 재직자가 있으면 거부 · 없으면 숨김 · 복구는 MAX+10`, async () => {
-    if (titleRows(T.two) !== 1) { skip('C04', 'C02 가 직급을 남기지 못했다'); return; }
+    if (titleRows(T.two) !== 1 || !T.id) { skip('C04', 'C02 가 직급을 남기지 못했다'); return; }
     //  ① zzU 직원 하나를 그 직급으로 만든다(직원 등록은 「구성원 편집」의 길 그대로다).
     const mk = await hsend('saveUser', {
-      userId: 0, loginId: U.lid, name: U.lid, title: T.two,
+      userId: 0, loginId: U.lid, name: U.lid, titleId: T.id,
       orgId: null, viewScope: 'self', editRole: 'viewer', includeInactive: false,
     });
     if (!okq('C04 시험 직원 등록(그 직급으로)', mk.ok === true, mk.msg)) return;
     U.uid = Number(s1(`SELECT user_id FROM app_user WHERE login_id=${esc(U.lid)}`, 'C04 시험 직원 id') || 0);
     if (!okq('C04 시험 직원이 DB 에 앉았다', U.uid > 0)) return;
-    okq('C04 그 직원의 직급이 시험 직급이다', userTitle(U.lid) === T.two, userTitle(U.lid));
+    okq('C04 그 직원의 직급이 시험 직급이다(title_id, 조인 이름 둘 다)', userTitleId(U.lid) === T.id && userTitle(U.lid) === T.two,
+      `${userTitleId(U.lid)}/${userTitle(U.lid)}`);
     rebase(`C04 가 시험 직원(${U.lid})을 만들었다 — zz 행이라 실행 수에는 안 들어가지만 기준을 다시 뜬다`);
 
     //  ② 화면 힌트: 재직자가 있으니 [숨김] 이 꺼지고 사유가 title 에 붙는다.
     await openOrgTitleByClick();
     await otTab('title');
-    const row = await otRow(T.two);
+    const row = await otRow(String(T.id));
     const hide = otBtn(row, 'hide');
     okq('C04 화면의 [숨김] 이 꺼져 있다(aria-disabled · 포커스 가능 · N2)', !!hide && hide.aria === true && hide.disabled === false, JSON.stringify(hide));
     okq('C04 꺼진 이유가 title 에 붙어 있다', !!hide && MSG.titleInUse.test(String(hide.title)), JSON.stringify(hide && hide.title));
@@ -880,50 +898,52 @@ async function main() {
     okq('C04 줄에 사용 개수 배지가 없다(N1)', !!row && row.cnt === false, JSON.stringify(row && row.cnt));
 
     //  ③ 호스트 판정: 화면을 우회해도 같은 문장으로 거부한다(힌트와 판정이 갈리면 판정이 이긴다 · §4.1).
-    const deny = await hsend('titleSetActive', { name: T.two, active: false });
+    const deny = await hsend('titleSetActive', { titleId: T.id, active: false });
     okq('C04 재직자가 있는 직급 숨김은 호스트가 거부', deny.ok === false && MSG.titleInUse.test(String(deny.msg)), JSON.stringify(deny.msg));
     okq('C04 거부 뒤에도 그 직급은 활성', titleActive(T.two) === '1');
 
     //  ④ 직원의 직급을 실 직급으로 되돌리면 숨길 수 있다.
-    const realTitle = s1(`SELECT name FROM title_code WHERE is_active=1 AND name NOT LIKE 'zzJ%' ORDER BY sort_order, name LIMIT 1`, 'C04 실 직급');
-    if (!realTitle) { skip('C04 숨김/복구', '되돌릴 실 직급이 없다'); return; }
+    const realTitleId = Number(s1(`SELECT title_id FROM title_code WHERE is_active=1 AND name NOT LIKE 'zzJ%' ORDER BY sort_order, name LIMIT 1`, 'C04 실 직급') || 0);
+    if (!realTitleId) { skip('C04 숨김/복구', '되돌릴 실 직급이 없다'); return; }
+    const realTitle = titleNameOf(realTitleId);
     const mv = await hsend('saveUser', {
-      userId: U.uid, loginId: U.lid, name: U.lid, title: realTitle,
+      userId: U.uid, loginId: U.lid, name: U.lid, titleId: realTitleId,
       orgId: null, viewScope: 'self', editRole: 'viewer', includeInactive: false,
     });
     if (!okq('C04 시험 직원의 직급을 실 직급으로 되돌렸다', mv.ok === true, mv.msg)) return;
-    okq('C04 DB 직원 직급이 바뀌었다', userTitle(U.lid) === realTitle, userTitle(U.lid));
+    okq('C04 DB 직원 직급이 바뀌었다', userTitleId(U.lid) === realTitleId && userTitle(U.lid) === realTitle,
+      `${userTitleId(U.lid)}/${userTitle(U.lid)}`);
 
-    const off = await otsend('titleSetActive', { name: T.two, active: false });
+    const off = await otsend('titleSetActive', { titleId: T.id, active: false });
     okq('C04 재직자 0명이 되자 숨김 성공', off.ok === true, off.msg);
     okq('C04 DB is_active=0', titleActive(T.two) === '0', String(titleActive(T.two)));
     //  이미 그 상태면 거부한다(복구가 순번을 새로 주기 때문 · §4.2).
-    const again = await hsend('titleSetActive', { name: T.two, active: false });
+    const again = await hsend('titleSetActive', { titleId: T.id, active: false });
     okq('C04 이미 숨김인데 또 숨기면 거부', again.ok === false && MSG.already.test(String(again.msg)), JSON.stringify(again.msg));
 
     //  ⑤ 화면: 숨긴 직급은 직급·소속 목록에서 **빠진다**(ADMIN-HUB-3 M4 — 예전: 「숨긴 값도 표시」를 켜면 [복구]로 섰다).
-    const hrow = await otRow(T.two);
+    const hrow = await otRow(String(T.id));
     okq('C04 숨긴 직급이 직급·소속 목록에서 빠졌다(M4)', hrow === null, JSON.stringify(hrow));
     okq('C04 직급·소속 화면에 「숨긴 값도 표시」가 없다(M4)', (await ev(`!document.getElementById('otShowHidden')`)) === true);
 
     //  ⑥ 복구는 사람 휴지통의 직급 탭에서 — sort_order 는 맨 뒤(MAX+10)로 새로 준다(활성끼리 겹치지 않게 · §4.2).
     await openPeopleTrash();
     await trTab('title');
-    const trow = await trRow(T.two);
+    const trow = await trRow(String(T.id));
     okq('C04 숨긴 직급이 사람 휴지통 직급 탭에 섰다(M3)', !!trow && trow.name === T.two, JSON.stringify(trow));
     okq('C04 그 줄에 [복구]가 켜져 있고 [영구 삭제]는 없다(M3)', !!trow && !!trow.restore && trow.restore.disabled === false && trow.del === false, JSON.stringify(trow));
     okq('C04 직급 탭 안내 「영구 삭제하지 않습니다」', !!trow && /영구 삭제하지 않습니다/.test(trow.note), JSON.stringify(trow && trow.note));
     const max0 = titleMax();
-    const on = await trRestoreClick(T.two);
+    const on = await trRestoreClick(String(T.id));
     okq('C04 휴지통 [복구] → 확인 → 왕복 끝', on === 'ok', on);
     okq('C04 DB is_active=1', titleActive(T.two) === '1', String(titleActive(T.two)));
     okq(`C04 복구 뒤 sort_order = MAX+10 (${max0}+10)`, titleSort(T.two) === max0 + 10, `실제 ${titleSort(T.two)}`);
-    okq('C04 복구한 직급이 휴지통에서 빠졌다(회신의 목록이 앉았다)', (await trRow(T.two)) === null);
+    okq('C04 복구한 직급이 휴지통에서 빠졌다(회신의 목록이 앉았다)', (await trRow(String(T.id))) === null);
     await ev(`(closeModal('#trashModal'), 1)`);
     await waitPage((x) => !x.trOpen && !x.uaBusy && x.uaOrgTitle, { timeout: 20000 });   // 복구 뒤 「구성원 편집」이 명부를 다시 받는다(otAfterClose)
     await openOrgTitleByClick();
     await otTab('title');
-    okq('C04 복구한 직급이 직급·소속 목록에 돌아왔다', !!(await otRow(T.two)));
+    okq('C04 복구한 직급이 직급·소속 목록에 돌아왔다', !!(await otRow(String(T.id))));
 
     rebase('C04 복구가 MAX+10 을 새로 주었다(실행 행은 그대로) — 기준을 다시 뜬다');
   });

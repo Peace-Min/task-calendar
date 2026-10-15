@@ -10,6 +10,7 @@
  *   이미 떠 있는 위젯(TC_DEBUG_PORT=9222)에 CDP로 붙어 **실제 DOM을 클릭·입력**해
  *   구분/상태 코드값(#codeModal)과 발주처(#customerModal)를 무작위 시퀀스로 반복 편집하고,
  *   매 조작 뒤 MySQL을 직접 조회해 정합성 불변식(I1~I8)을 검사한다.
+ *   v13(docs/CODE-TABLE-IDS.md): 코드표와 과제 참조는 번호(id)로 본다. 끝에서 고정 번호 보호(P: 구분 2, 상태 2)를 따로 본다.
  *   중간중간 DB 계정을 잠가 온라인→오프라인→온라인 전환(시나리오 A/B/C)을 주입한다.
  *
  * 전제(이 스크립트가 하지 않는 것):
@@ -46,7 +47,7 @@ const DEFAULTS = {
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
   dbHost: '127.0.0.1',
   dbPort: 3306,
-  dbName: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  dbName: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',     // ← 비밀. 소스에 기본값 없음
   appUser: process.env.TC_TEST_APP_USER || 'taskmgr_app',
@@ -189,12 +190,14 @@ function mustQuery(sql, what) {
  *   S: section_code        ORDER BY is_active DESC, sort_order, name  (LoadCodesFullJsonAsync)
  *   T: status_code         동일
  *   P: project             ORDER BY uid (해시·불변식용)
- *   컬럼 수를 7로 통일해 한 배치에서 태그로 구분 파싱한다. */
+ *   컬럼 수를 7로 통일해 한 배치에서 태그로 구분 파싱한다.
+ *   ★ v13(docs/CODE-TABLE-IDS.md): 코드표 셋은 번호(id)가 열쇠이고 과제는 번호로 참조한다. 이름은 표시용이다.
+ *     그래서 행마다 id 를 같이 뽑고, 과제 참조는 section_id/status_id/customer_id 로 본다. */
 const SNAP_SQL = `
-SELECT 'C', name, CAST(is_active AS CHAR), '', '', '', '' FROM customer ORDER BY is_active DESC, name;
-SELECT 'S', name, CAST(is_active AS CHAR), CAST(sort_order AS CHAR), '', '', '' FROM section_code ORDER BY is_active DESC, sort_order, name;
-SELECT 'T', name, CAST(is_active AS CHAR), CAST(sort_order AS CHAR), '', '', '' FROM status_code ORDER BY is_active DESC, sort_order, name;
-SELECT 'P', uid, CAST(is_active AS CHAR), section, IFNULL(status,''), CAST(status IS NULL AS CHAR), customer FROM project ORDER BY uid;
+SELECT 'C', CAST(customer_id AS CHAR), name, CAST(is_active AS CHAR), '', '', '' FROM customer ORDER BY is_active DESC, name;
+SELECT 'S', CAST(section_id AS CHAR), name, CAST(is_active AS CHAR), CAST(sort_order AS CHAR), '', '' FROM section_code ORDER BY is_active DESC, sort_order, name;
+SELECT 'T', CAST(status_id AS CHAR), name, CAST(is_active AS CHAR), CAST(sort_order AS CHAR), '', '' FROM status_code ORDER BY is_active DESC, sort_order, name;
+SELECT 'P', uid, CAST(is_active AS CHAR), CAST(section_id AS CHAR), IFNULL(CAST(status_id AS CHAR),''), CAST(status_id IS NULL AS CHAR), CAST(customer_id AS CHAR) FROM project ORDER BY uid;
 `;
 
 function snapshot() {
@@ -202,10 +205,10 @@ function snapshot() {
   const snap = { customers: [], sections: [], statuses: [], projects: [] };
   for (const c of rs) {
     const tag = c[0];
-    if (tag === 'C') snap.customers.push({ name: c[1], active: c[2] === '1' });
-    else if (tag === 'S') snap.sections.push({ name: c[1], active: c[2] === '1', sort: Number(c[3]) });
-    else if (tag === 'T') snap.statuses.push({ name: c[1], active: c[2] === '1', sort: Number(c[3]) });
-    else if (tag === 'P') snap.projects.push({ uid: c[1], active: c[2] === '1', section: c[3], status: c[5] === '1' ? null : c[4], customer: c[6] });
+    if (tag === 'C') snap.customers.push({ id: Number(c[1]), name: c[2], active: c[3] === '1' });
+    else if (tag === 'S') snap.sections.push({ id: Number(c[1]), name: c[2], active: c[3] === '1', sort: Number(c[4]) });
+    else if (tag === 'T') snap.statuses.push({ id: Number(c[1]), name: c[2], active: c[3] === '1', sort: Number(c[4]) });
+    else if (tag === 'P') snap.projects.push({ uid: c[1], active: c[2] === '1', sectionId: Number(c[3]), statusId: c[5] === '1' ? null : Number(c[4]), customerId: Number(c[6]) });
   }
   snap.hash = snapHash(snap);
   return snap;
@@ -213,10 +216,10 @@ function snapshot() {
 /** 정렬 무관 해시(코드포인트 정렬로 정규화) — 오프라인 구간 '비트 단위 불변' 비교용 */
 function snapHash(s) {
   const norm = {
-    customers: s.customers.map((x) => [x.name, x.active]).sort(cmpArr),
-    sections: s.sections.map((x) => [x.name, x.active, x.sort]).sort(cmpArr),
-    statuses: s.statuses.map((x) => [x.name, x.active, x.sort]).sort(cmpArr),
-    projects: s.projects.map((x) => [x.uid, x.active, x.section, x.status, x.customer]).sort(cmpArr),
+    customers: s.customers.map((x) => [x.id, x.name, x.active]).sort(cmpArr),
+    sections: s.sections.map((x) => [x.id, x.name, x.active, x.sort]).sort(cmpArr),
+    statuses: s.statuses.map((x) => [x.id, x.name, x.active, x.sort]).sort(cmpArr),
+    projects: s.projects.map((x) => [x.uid, x.active, x.sectionId, x.statusId, x.customerId]).sort(cmpArr),
   };
   return createHash('sha256').update(JSON.stringify(norm)).digest('hex').slice(0, 16);
 }
@@ -225,8 +228,21 @@ const cmpArr = (a, b) => (JSON.stringify(a) < JSON.stringify(b) ? -1 : 1);
 /** 스냅샷의 코드/발주처 리스트 접근자 */
 const listOf = (snap, table) => (table === 'section_code' ? snap.sections : table === 'status_code' ? snap.statuses : snap.customers);
 const findRow = (snap, table, name) => listOf(snap, table).find((x) => x.name === name) || null;
+const findRowById = (snap, table, id) => listOf(snap, table).find((x) => x.id === Number(id)) || null;
 /** 앱의 드롭다운 소스와 같은 순서(활성만, sort_order·name) */
-const activeNames = (snap, table) => listOf(snap, table).filter((x) => x.active).map((x) => x.name);
+const activeIds = (snap, table) => listOf(snap, table).filter((x) => x.active).map((x) => x.id);
+/** 과제가 코드표를 가리키는 열(번호) */
+const projKeyOf = (table) => (table === 'section_code' ? 'sectionId' : table === 'status_code' ? 'statusId' : 'customerId');
+/** 표마다 번호 열 이름(SQL) */
+const idColOf = (table) => (table === 'section_code' ? 'section_id' : table === 'status_code' ? 'status_id' : 'customer_id');
+/* 고정 번호(CODE-TABLE-IDS §3): 구분 2(선진행), 상태 2(종료)는 숨김과 영구 삭제가 막혀 있다.
+ * 무작위 조작이 이 둘을 숨기거나 지울 후보로 고르지 않게 한 곳에 둔다. 발주처는 해당 없음. */
+const PROTECTED_ID = { section_code: 2, status_code: 2 };
+const isProtected = (table, id) => PROTECTED_ID[table] != null && Number(id) === PROTECTED_ID[table];
+const PROTECTED_MSG = {
+  section_code: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
+  status_code: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
+};
 
 /* ── 직원 명부 스냅샷(USER-ADMIN §8-8) ────────────────────────────────────────
  *  ★ 위 snapshot() 에 합치지 않는다. 그 해시는 오프라인 구간의 '비트 단위 불변' 비교에 쓰이는데,
@@ -349,7 +365,7 @@ function emergencyUnlock() {
  *    zzC/zzT 행이 그대로 남았다(개발 DB 에 18건 누적 — 09-03~09-07). 재현: 시작 2초 뒤 강제 종료 → 19건.
  *    강제 종료(TerminateProcess)는 어떤 핸들러도 못 받으므로, 종료 정리만으로는 부족하다 —
  *    그래서 **다음 실행이 시작할 때 이전 잔재를 먼저 걷어낸다**(선행 정리). 둘을 합쳐야 닫힌다.
- *  · `_zzR<seed>` 개명 중 죽은 행은 원래 이름으로 되돌린다(project 는 FK UPDATE CASCADE 로 따라온다).
+ *  - `_zzR<seed>` 개명 중 죽은 행은 원래 이름으로 되돌린다(v13: project 는 번호로 참조하므로 그 행 한 줄만 바뀐다).
  *  · `zzT<seed>_*` · `zzC<seed>_*` 는 지운다. project 가 참조 중이면(FK RESTRICT/NO ACTION → 1451) 지우지 않고 보고한다.
  *  · 동기(spawnSync)라 process.on('exit') 안에서도 돈다. isTemp 는 뒤에서 선언되는 const 라(TDZ) 여기선 안 쓴다. */
 function sweepTemp(reason) {
@@ -542,7 +558,8 @@ const INSTALL_JS = `(function(){
     e.click();
     return { ok:true };
   };
-  /* 목록 행 버튼 클릭 — 속성값 비교로 찾는다(한글/특수문자 셀렉터 이스케이프 회피) */
+  /* 목록 행 버튼 클릭: 속성값 비교로 찾는다(한글/특수문자 셀렉터 이스케이프 회피)
+     v13: 코드값·발주처 행 버튼의 속성값은 번호(id 문자열)다. 부르는 쪽이 String(id) 를 넘긴다. */
   L.rowBtn = function(boxSel, attr, name){
     var box = document.querySelector(boxSel);
     if(!box) return { ok:false, err:'목록 없음: '+boxSel };
@@ -564,16 +581,17 @@ const INSTALL_JS = `(function(){
     e.dispatchEvent(new Event('change', { bubbles:true }));
     return { ok:true, value: e.value };
   };
-  /* 인라인 개명 입력칸(codeBeginRename/custBeginRename이 만든 행 안의 input) */
-  L.setRowInput = function(boxSel, name, v){
+  /* 인라인 개명 입력칸(codeBeginRename/custBeginRename이 만든 행 안의 input)
+     v13: 행은 data-id(번호 문자열)로 찾는다. 개명 모드에서 행의 안쪽만 바뀌고 data-id 는 남는다. */
+  L.setRowInput = function(boxSel, id, v){
     var box = document.querySelector(boxSel);
     if(!box) return { ok:false, err:'목록 없음: '+boxSel };
     var rs = Array.prototype.slice.call(box.querySelectorAll('.cust-row'));
     var row = null;
-    for (var i=0;i<rs.length;i++){ if (rs[i].getAttribute('data-name') === name){ row = rs[i]; break; } }
-    if(!row) return { ok:false, err:'행 없음: '+name };
+    for (var i=0;i<rs.length;i++){ if (rs[i].getAttribute('data-id') === String(id)){ row = rs[i]; break; } }
+    if(!row) return { ok:false, err:'행 없음: id='+id };
     var inp = row.querySelector('input');
-    if(!inp) return { ok:false, err:'인라인 입력칸 없음(개명 모드 진입 실패): '+name };
+    if(!inp) return { ok:false, err:'인라인 입력칸 없음(개명 모드 진입 실패): id='+id };
     try{ inp.focus(); inp.select(); }catch(_){}
     inp.value = v;
     inp.dispatchEvent(new Event('input', { bubbles:true }));
@@ -627,11 +645,14 @@ const INSTALL_JS = `(function(){
   L.rowCaps = function(boxSel){
     var box = document.querySelector(boxSel); if(!box) return [];
     return Array.prototype.slice.call(box.querySelectorAll('.cust-row')).map(function(r){
-      var g = function(a){ var b = r.querySelector('['+a+']'); return !!b && !b.disabled; };
-      return { name: r.getAttribute('data-name'), hidden: r.classList.contains('hidden-cust'),
+      var g = function(a){ var b = r.querySelector('['+a+']'); return !!b && !b.disabled && b.getAttribute('aria-disabled') !== 'true'; };
+      /* v13: 고정 번호 행(구분 2, 상태 2)의 [숨김]은 disabled 가 아니라 aria-disabled + data-codelock 이다. 후보에서 뺀다. */
+      var lock = !!r.querySelector('[data-codehide][data-codelock]');
+      return { id: r.getAttribute('data-id'), name: r.getAttribute('data-name'), hidden: r.classList.contains('hidden-cust'),
                up: g('data-codeup'), down: g('data-codedown'),
                edit: g('data-codeedit') || g('data-custedit'),
-               hide: g('data-codehide') || g('data-custhide'),
+               hide: !lock && (g('data-codehide') || g('data-custhide')),
+               lock: lock,
                show: g('data-codeshow') || g('data-custshow') };
     });
   };
@@ -647,13 +668,15 @@ const INSTALL_JS = `(function(){
     s.codeKind   = (typeof codeKind !== 'undefined') ? codeKind : null;
     s.codeShowHidden = (typeof codeShowHidden !== 'undefined') ? !!codeShowHidden : null;
     s.custShowHidden = (typeof custShowHidden !== 'undefined') ? !!custShowHidden : null;
-    s.offSections = (typeof offSections !== 'undefined' && offSections) ? offSections.slice() : null;
-    s.offStatuses = (typeof offStatuses !== 'undefined' && offStatuses) ? offStatuses.slice() : null;
-    s.dbCustomers = (typeof dbCustomers !== 'undefined' && dbCustomers) ? dbCustomers.slice() : null;
+    /* v13: 드롭다운 소스는 [{id, name}] 이다. 비교가 키 순서에 흔들리지 않게 같은 모양으로 다시 만든다. */
+    var idName = function(o){ return { id: Number(o && o.id), name: String((o && o.name) || '') }; };
+    s.offSections = (typeof offSections !== 'undefined' && offSections) ? offSections.map(idName) : null;
+    s.offStatuses = (typeof offStatuses !== 'undefined' && offStatuses) ? offStatuses.map(idName) : null;
+    s.dbCustomers = (typeof dbCustomers !== 'undefined' && dbCustomers) ? dbCustomers.map(idName) : null;
     s.codeList = (typeof codeList !== 'undefined' && codeList)
-      ? codeList.map(function(c){ return { name:c.name, active:!!c.active, sort:c.sort }; }) : null;
+      ? codeList.map(function(c){ return { id:Number(c.id), name:c.name, active:!!c.active, sort:c.sort }; }) : null;
     s.custList = (typeof custList !== 'undefined' && custList)
-      ? custList.map(function(c){ return { name:c.name, active:!!c.active }; }) : null;
+      ? custList.map(function(c){ return { id:Number(c.id), name:c.name, active:!!c.active }; }) : null;
     s.codeRows = L.rowNames('#codeList');
     s.custRows = L.rowNames('#custList');
     var cl = document.getElementById('codeList'), ul = document.getElementById('custList');
@@ -787,22 +810,26 @@ async function waitConverge(pred, ms = 3000) {
 
 function cloneSnap(s) { return JSON.parse(JSON.stringify({ customers: s.customers, sections: s.sections, statuses: s.statuses, projects: s.projects })); }
 
-/** plan = {table, kind:'add'|'rename'|'hide'|'show'|'reorder', name, newName, order:[...]} */
-function expectAfter(before, plan, success) {
+/** plan = {table, kind:'add'|'rename'|'hide'|'show'|'reorder', id, name, newName, order:[id...]}
+ *  v13: 행은 번호(id)로 찾는다. 'add' 는 번호를 AUTO_INCREMENT 가 정하므로 after 에서 이름으로 찾아 채운다
+ *  (after 를 안 넘기면 null 이고, 그때 해시는 비교용이 아니라 검산용이다). */
+function expectAfter(before, plan, success, after) {
   const exp = cloneSnap(before);
   if (!success || !plan) { exp.hash = snapHash(exp); return exp; }
   const list = plan.table === 'section_code' ? exp.sections : plan.table === 'status_code' ? exp.statuses : exp.customers;
-  const projField = plan.table === 'section_code' ? 'section' : plan.table === 'status_code' ? 'status' : 'customer';
-  const row = list.find((x) => x.name === plan.name) || null;
+  const row = plan.id != null ? (list.find((x) => x.id === Number(plan.id)) || null) : null;
 
   if (plan.kind === 'add') {
     const maxSort = list.reduce((a, x) => Math.max(a, x.sort || 0), 0);
-    const nu = { name: plan.name, active: true };
+    const got = after ? findRow(after, plan.table, plan.name) : null;
+    //  새 번호는 기존 번호와 겹치면 안 된다(겹치면 null 로 두어 해시 불일치로 드러나게 한다)
+    const newId = got && !list.some((x) => x.id === got.id) ? got.id : null;
+    const nu = { id: newId, name: plan.name, active: true };
     if (plan.table !== 'customer') nu.sort = maxSort + 10;      // AddCodeAsync: MAX(sort_order)+10
     list.push(nu);
   } else if (plan.kind === 'rename') {
+    //  v13: 개명은 그 행 한 줄 UPDATE 다. 과제는 번호로 가리키므로 바뀌지 않는다(CASCADE 없음)
     if (row) row.name = plan.newName;
-    for (const p of exp.projects) if (p[projField] === plan.name) p[projField] = plan.newName;   // FK ON UPDATE CASCADE
   } else if (plan.kind === 'hide') {
     if (row) row.active = false;
   } else if (plan.kind === 'show') {
@@ -817,7 +844,7 @@ function expectAfter(before, plan, success) {
       }
     }
   } else if (plan.kind === 'reorder') {
-    plan.order.forEach((nm, i) => { const r = list.find((x) => x.name === nm); if (r) r.sort = (i + 1) * 10; });  // ReorderCodesAsync
+    plan.order.forEach((id, i) => { const r = list.find((x) => x.id === Number(id)); if (r) r.sort = (i + 1) * 10; });  // ReorderCodesAsync(번호 배열)
   }
   exp.hash = snapHash(exp);
   return exp;
@@ -826,7 +853,7 @@ function expectAfter(before, plan, success) {
 /** 스냅샷 두 개의 차이를 사람이 읽는 형태로 */
 function diffSnap(a, b) {
   const out = [];
-  const key = { customers: 'name', sections: 'name', statuses: 'name', projects: 'uid' };
+  const key = { customers: 'id', sections: 'id', statuses: 'id', projects: 'uid' };   // v13: 코드표는 번호가 열쇠
   for (const g of ['customers', 'sections', 'statuses', 'projects']) {
     const ma = new Map(a[g].map((x) => [x[key[g]], x])), mb = new Map(b[g].map((x) => [x[key[g]], x]));
     for (const [k, v] of ma) {
@@ -842,16 +869,16 @@ function diffSnap(a, b) {
 
 let PROJECT_N0 = null;    // 시작 시점 과제 행수(기대: 14 고정)
 
-/** I1 FK 무결성·고아 0 */
+/** I1 FK 무결성·고아 0 (v13: 번호로 본다) */
 function invFk(snap) {
-  const secs = new Set(snap.sections.map((x) => x.name));
-  const sts = new Set(snap.statuses.map((x) => x.name));
-  const cus = new Set(snap.customers.map((x) => x.name));
+  const secs = new Set(snap.sections.map((x) => x.id));
+  const sts = new Set(snap.statuses.map((x) => x.id));
+  const cus = new Set(snap.customers.map((x) => x.id));
   const bad = [];
   for (const p of snap.projects) {
-    if (!secs.has(p.section)) bad.push(`uid=${p.uid} section='${p.section}' 고아`);
-    if (p.status !== null && !sts.has(p.status)) bad.push(`uid=${p.uid} status='${p.status}' 고아`);
-    if (!cus.has(p.customer)) bad.push(`uid=${p.uid} customer='${p.customer}' 고아`);
+    if (!secs.has(p.sectionId)) bad.push(`uid=${p.uid} section_id=${p.sectionId} 고아`);
+    if (p.statusId !== null && !sts.has(p.statusId)) bad.push(`uid=${p.uid} status_id=${p.statusId} 고아`);
+    if (!cus.has(p.customerId)) bad.push(`uid=${p.uid} customer_id=${p.customerId} 고아`);
   }
   if (bad.length) violate('I1', `FK 고아 ${bad.length}건`, bad.slice(0, 10));
   return bad.length === 0;
@@ -887,40 +914,39 @@ function invCommon(snap) {
   return a && b && c;
 }
 
-/** I3 개명 전파(CASCADE) — 개명 성공 시 old 참조 0건 + 참조 행수 이동 */
+/** I3 개명(v13): 그 번호의 행 이름만 바뀌고, 옛 이름의 행은 남지 않으며, 과제 참조는 한 줄도 바뀌지 않는다.
+ *  (v12 의 CASCADE 전파 검사를 대신한다. 번호로 가리키므로 과제가 따라올 것이 없다.) */
 function invRenameCascade(before, after, plan) {
-  const f = plan.table === 'section_code' ? 'section' : plan.table === 'status_code' ? 'status' : 'customer';
-  const cntBeforeOld = before.projects.filter((p) => p[f] === plan.name).length;
-  const cntBeforeNew = before.projects.filter((p) => p[f] === plan.newName).length;
-  const cntAfterOld = after.projects.filter((p) => p[f] === plan.name).length;
-  const cntAfterNew = after.projects.filter((p) => p[f] === plan.newName).length;
+  const f = projKeyOf(plan.table);
   let good = true;
-  if (cntAfterOld !== 0) { violate('I3', `개명 후에도 옛 값 참조가 남음: ${f}='${plan.name}' ${cntAfterOld}건`); good = false; }
-  if (cntAfterNew !== cntBeforeOld + cntBeforeNew) {
-    violate('I3', `개명 참조 이동 불일치: ${f} '${plan.name}'(${cntBeforeOld}) + '${plan.newName}'(${cntBeforeNew}) → '${plan.newName}'(${cntAfterNew})`);
-    good = false;
-  }
+  const row = findRowById(after, plan.table, plan.id);
+  if (!row || row.name !== plan.newName) { violate('I3', `개명 후 ${plan.table} id=${plan.id} 의 이름이 '${plan.newName}' 이 아니다`, row); good = false; }
+  if (findRow(after, plan.table, plan.name)) { violate('I3', `개명 후에도 옛 이름 '${plan.name}' 행이 남아 있다(${plan.table})`); good = false; }
+  const refB = before.projects.filter((p) => p[f] === Number(plan.id)).map((p) => p.uid).join(',');
+  const refA = after.projects.filter((p) => p[f] === Number(plan.id)).map((p) => p.uid).join(',');
+  if (refB !== refA) { violate('I3', `개명이 과제 참조를 바꿨다(${f}=${plan.id})`, { 전: refB, 후: refA }); good = false; }
   return good;
 }
 
-/** I4 숨김 보존 — 숨겨도 그 값을 쓰던 과제의 값은 그대로(NULL화·소실 금지) */
+/** I4 숨김 보존: 숨겨도 그 값을 쓰던 과제의 값은 그대로(NULL화, 소실 금지). v13: 번호로 본다 */
 function invHidePreserve(before, after, plan) {
-  const f = plan.table === 'section_code' ? 'section' : plan.table === 'status_code' ? 'status' : 'customer';
-  const users = before.projects.filter((p) => p[f] === plan.name).map((p) => p.uid);
+  const f = projKeyOf(plan.table);
+  const id = Number(plan.id);
+  const users = before.projects.filter((p) => p[f] === id).map((p) => p.uid);
   const map = new Map(after.projects.map((p) => [p.uid, p]));
   const lost = [];
   for (const uid of users) {
     const p = map.get(uid);
     if (!p) lost.push(`${uid}: 행 소실`);
-    else if (p[f] !== plan.name) lost.push(`${uid}: ${f} '${plan.name}' → ${JSON.stringify(p[f])}`);
+    else if (p[f] !== id) lost.push(`${uid}: ${f} ${id} → ${JSON.stringify(p[f])}`);
   }
-  if (lost.length) { violate('I4', `숨김/복구 후 참조 값 변형 ${lost.length}건 (${plan.table} '${plan.name}')`, lost.slice(0, 8)); return false; }
+  if (lost.length) { violate('I4', `숨김/복구 후 참조 값 변형 ${lost.length}건 (${plan.table} id=${id} '${plan.name}')`, lost.slice(0, 8)); return false; }
   return true;
 }
 
-/** I5b 정렬 결과 일치 — ▲▼ 후 활성 순서가 의도한 순서와 같은가 */
+/** I5b 정렬 결과 일치: ▲▼ 후 활성 순서(번호)가 의도한 순서와 같은가 */
 function invOrderMatches(after, plan) {
-  const got = activeNames(after, plan.table);
+  const got = activeIds(after, plan.table);
   const want = plan.order;
   if (JSON.stringify(got) !== JSON.stringify(want)) {
     violate('I5', `정렬 결과 불일치(${plan.table})`, { 기대: want, 실제: got });
@@ -931,17 +957,18 @@ function invOrderMatches(after, plan) {
 
 /**
  * I6 UI↔DB 일치.
- *  · offSections/offStatuses = DB 활성 코드값(sort_order 순)  ← LoadActiveCodeNamesJsonAsync
- *  · codeList = DB 전체(is_active DESC, sort_order, name)      ← LoadCodesFullJsonAsync
- *  · dbCustomers = DB 활성 발주처(name 순), custList = 전체
+ *  - offSections/offStatuses = DB 활성 코드값 [{id, name}](sort_order 순)  ← LoadActiveCodeNamesJsonAsync
+ *  - codeList = DB 전체 [{id, name, active, sort}](is_active DESC, sort_order, name)  ← LoadCodesFullJsonAsync
+ *  - dbCustomers = DB 활성 발주처 [{id, name}](name 순), custList = 전체 [{id, name, active}]
  *  ※ 스냅샷을 DB의 ORDER BY 그대로 뽑았으므로 배열을 그대로 비교한다(JS 콜레이션 개입 없음).
  *  ※ hpost(loadCodes/loadCustomers)는 fire-and-forget이라 잠시 기다렸다 비교한다.
  */
 async function invUiMatchesDb(snap, { codeOpen, custOpen, kind }) {
   let good = true;
-  const wantSec = snap.sections.filter((x) => x.active).map((x) => x.name);
-  const wantSt = snap.statuses.filter((x) => x.active).map((x) => x.name);
-  const wantCustAct = snap.customers.filter((x) => x.active).map((x) => x.name);
+  const idName = (x) => ({ id: x.id, name: x.name });
+  const wantSec = snap.sections.filter((x) => x.active).map(idName);
+  const wantSt = snap.statuses.filter((x) => x.active).map(idName);
+  const wantCustAct = snap.customers.filter((x) => x.active).map(idName);
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
   const s = await waitConverge((x) => eq(x.offSections, wantSec) && eq(x.offStatuses, wantSt), 3500);
@@ -950,7 +977,7 @@ async function invUiMatchesDb(snap, { codeOpen, custOpen, kind }) {
 
   if (codeOpen && s.codeOpen && s.codeList) {
     const table = (kind || s.codeKind) === 'status' ? 'status_code' : 'section_code';
-    const want = listOf(snap, table).map((x) => ({ name: x.name, active: x.active, sort: x.sort }));
+    const want = listOf(snap, table).map((x) => ({ id: x.id, name: x.name, active: x.active, sort: x.sort }));
     const got = s.codeList;
     if (!eq(got, want)) { violate('I6', `관리 목록(codeList/${table})이 DB와 불일치`, { UI: got, DB: want }); good = false; }
     // 화면에 실제로 그려진 행 = 목록 중 (숨김표시 여부에 따른) 필터 결과
@@ -958,7 +985,7 @@ async function invUiMatchesDb(snap, { codeOpen, custOpen, kind }) {
     if (!eq(s.codeRows, wantRows)) { violate('I6', '코드 목록 DOM 행이 기대와 불일치', { DOM: s.codeRows, 기대: wantRows }); good = false; }
   }
   if (custOpen && s.custOpen && s.custList) {
-    const want = snap.customers.map((x) => ({ name: x.name, active: x.active }));
+    const want = snap.customers.map((x) => ({ id: x.id, name: x.name, active: x.active }));
     if (!eq(s.custList, want)) { violate('I6', '관리 목록(custList)이 DB와 불일치', { UI: s.custList, DB: want }); good = false; }
     const wantRows = want.filter((x) => s.custShowHidden || x.active).map((x) => x.name);
     if (!eq(s.custRows, wantRows)) { violate('I6', '발주처 목록 DOM 행이 기대와 불일치', { DOM: s.custRows, 기대: wantRows }); good = false; }
@@ -1033,7 +1060,9 @@ async function untilEv(expr, timeout = 20000) {
   const t = Date.now();
   for (;;) { if (await ev(`!!(${expr})`)) return true; if (Date.now() - t > timeout) return false; await sleep(150); }
 }
-async function opTrashRestore(tab, name, desc) {
+async function opTrashRestore(tab, key, desc) {
+  //  v13: 휴지통 줄의 data-tkey 는 코드값·발주처 모두 번호 문자열이다(trashGet 의 key)
+  key = String(key);
   await closeIfOpen('#codeModal'); await closeIfOpen('#customerModal');
   await ev("__lt.click('#offTrash')");
   if (!(await untilEv("isOverlayOpen(document.getElementById('trashModal')) && !__trBusy && __trData && __trAdmin"))) {
@@ -1041,14 +1070,15 @@ async function opTrashRestore(tab, name, desc) {
   }
   await ev(`__lt.click('#trTabs [data-trtab="${tab}"]')`);
   await untilEv(`__trTab === ${jstr(tab)}`, 5000);
-  const rec = await doWrite(desc, `(function(){ var b = [].find.call(document.querySelectorAll('#trList [data-top="restore"]'), function(x){ return x.dataset.tkey === ${jstr(name)}; });
-    if(!b) return { ok:false, err:'복구 버튼 없음: ' + ${jstr(name)} }; if(b.disabled) return { ok:false, err:'복구 버튼 비활성' }; b.click(); return { ok:true }; })()`);
+  const rec = await doWrite(desc, `(function(){ var b = [].find.call(document.querySelectorAll('#trList [data-top="restore"]'), function(x){ return x.dataset.tkey === ${jstr(key)}; });
+    if(!b) return { ok:false, err:'복구 버튼 없음: ' + ${jstr(key)} }; if(b.disabled) return { ok:false, err:'복구 버튼 비활성' }; b.click(); return { ok:true }; })()`);
   await ev(`(function(){ var m = document.getElementById('trashModal'); if(m && isOverlayOpen(m)) closeModal('#trashModal'); return 1; })()`);
   await untilEv("!isOverlayOpen(document.getElementById('trashModal'))", 5000);
   return rec;
 }
 
-/* ── 코드값 조작 ── */
+/* ── 코드값 조작 ──
+ *  v13: 행 버튼(data-codeedit/codehide/codeup/codedown/codesave)의 값은 번호다. 이름은 로그와 기대 모델용으로만 든다. */
 
 async function opCodeAdd(kind, name) {
   await openCodeModal(kind);
@@ -1057,47 +1087,50 @@ async function opCodeAdd(kind, name) {
   return { rec, plan: { table: TABLE_OF(kind), kind: 'add', name } };
 }
 
-async function opCodeRename(kind, oldName, newName) {
+async function opCodeRename(kind, id, oldName, newName) {
   await openCodeModal(kind);
-  const begin = await ev(`__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codeedit', ${jstr(oldName)})`);
-  if (!begin || begin.ok === false) return { rec: { desc: `코드개명 '${oldName}'`, outcome: 'trigger-failed', trigger: begin, toasts: [] }, plan: null };
+  const key = String(id);
+  const begin = await ev(`__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codeedit', ${jstr(key)})`);
+  if (!begin || begin.ok === false) return { rec: { desc: `코드개명 '${oldName}'(id=${key})`, outcome: 'trigger-failed', trigger: begin, toasts: [] }, plan: null };
   await sleep(80);
-  const set = await ev(`__lt.setRowInput(${jstr(CODE_BOX)}, ${jstr(oldName)}, ${jstr(newName)})`);
-  if (!set || set.ok === false) return { rec: { desc: `코드개명 '${oldName}'`, outcome: 'trigger-failed', trigger: set, toasts: [] }, plan: null };
-  const rec = await doWrite(`코드개명(${kind}) '${oldName}' → '${newName}'`,
-    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codesave', ${jstr(oldName)})`);
-  return { rec, plan: { table: TABLE_OF(kind), kind: 'rename', name: oldName, newName } };
+  const set = await ev(`__lt.setRowInput(${jstr(CODE_BOX)}, ${jstr(key)}, ${jstr(newName)})`);
+  if (!set || set.ok === false) return { rec: { desc: `코드개명 '${oldName}'(id=${key})`, outcome: 'trigger-failed', trigger: set, toasts: [] }, plan: null };
+  const rec = await doWrite(`코드개명(${kind}) id=${key} '${oldName}' → '${newName}'`,
+    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codesave', ${jstr(key)})`);
+  return { rec, plan: { table: TABLE_OF(kind), kind: 'rename', id: Number(id), name: oldName, newName } };
 }
 
-async function opCodeHide(kind, name, confirmChoice = 'ok') {
+async function opCodeHide(kind, id, name, confirmChoice = 'ok') {
   await openCodeModal(kind);
-  const rec = await doWrite(`코드숨김(${kind}) '${name}'`,
-    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(name)})`, { confirm: confirmChoice });
+  const rec = await doWrite(`코드숨김(${kind}) id=${id} '${name}'`,
+    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(String(id))})`, { confirm: confirmChoice });
   const applied = rec.outcome === 'success';
-  return { rec, plan: { table: TABLE_OF(kind), kind: 'hide', name }, cancelled: rec.confirm && rec.confirm.choice === 'alt' && !applied };
+  return { rec, plan: { table: TABLE_OF(kind), kind: 'hide', id: Number(id), name }, cancelled: rec.confirm && rec.confirm.choice === 'alt' && !applied };
 }
 
-async function opCodeShow(kind, name) {
+async function opCodeShow(kind, id, name) {
   //  복구는 휴지통에서(ADMIN-HUB-4 후속 — 편집 화면의 제자리 [복구]는 없어졌다)
-  const rec = await opTrashRestore(kind === 'status' ? 'status' : 'section', name, `코드복구(${kind}) '${name}' — 🗑 휴지통`);
-  return { rec, plan: { table: TABLE_OF(kind), kind: 'show', name } };
+  const rec = await opTrashRestore(kind === 'status' ? 'status' : 'section', id, `코드복구(${kind}) id=${id} '${name}' (🗑 휴지통)`);
+  return { rec, plan: { table: TABLE_OF(kind), kind: 'show', id: Number(id), name } };
 }
 
-async function opCodeMove(kind, name, dir, curActiveOrder) {
+/** curActiveOrder = DB 활성 순서의 번호 배열 */
+async function opCodeMove(kind, id, name, dir, curActiveOrder) {
   await openCodeModal(kind);
-  const i = curActiveOrder.indexOf(name);
+  const nid = Number(id);
+  const i = curActiveOrder.indexOf(nid);
   const j = i + (dir === 'up' ? -1 : 1);
   if (i < 0 || j < 0 || j >= curActiveOrder.length) {
     return { rec: { desc: `코드순서(${kind}) '${name}' ${dir}`, outcome: 'trigger-failed', toasts: [], trigger: { ok: false, err: 'UI 순서와 DB 순서가 어긋남' } }, plan: null };
   }
   const order = curActiveOrder.slice();
-  order[i] = order[j]; order[j] = name;
-  const rec = await doWrite(`코드순서(${kind}) '${name}' ${dir === 'up' ? '▲' : '▼'}`,
-    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-code${dir === 'up' ? 'up' : 'down'}', ${jstr(name)})`);
-  return { rec, plan: { table: TABLE_OF(kind), kind: 'reorder', name, order } };
+  order[i] = order[j]; order[j] = nid;
+  const rec = await doWrite(`코드순서(${kind}) id=${nid} '${name}' ${dir === 'up' ? '▲' : '▼'}`,
+    `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-code${dir === 'up' ? 'up' : 'down'}', ${jstr(String(nid))})`);
+  return { rec, plan: { table: TABLE_OF(kind), kind: 'reorder', id: nid, name, order } };
 }
 
-/* ── 발주처 조작 ── */
+/* ── 발주처 조작 ── (v13: data-custedit/custhide/custsave 의 값은 customer_id) */
 
 async function opCustAdd(name) {
   await openCustModal();
@@ -1106,29 +1139,30 @@ async function opCustAdd(name) {
   return { rec, plan: { table: 'customer', kind: 'add', name } };
 }
 
-async function opCustRename(oldName, newName) {
+async function opCustRename(id, oldName, newName) {
   await openCustModal();
-  const begin = await ev(`__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custedit', ${jstr(oldName)})`);
-  if (!begin || begin.ok === false) return { rec: { desc: `발주처개명 '${oldName}'`, outcome: 'trigger-failed', trigger: begin, toasts: [] }, plan: null };
+  const key = String(id);
+  const begin = await ev(`__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custedit', ${jstr(key)})`);
+  if (!begin || begin.ok === false) return { rec: { desc: `발주처개명 '${oldName}'(id=${key})`, outcome: 'trigger-failed', trigger: begin, toasts: [] }, plan: null };
   await sleep(80);
-  const set = await ev(`__lt.setRowInput(${jstr(CUST_BOX)}, ${jstr(oldName)}, ${jstr(newName)})`);
-  if (!set || set.ok === false) return { rec: { desc: `발주처개명 '${oldName}'`, outcome: 'trigger-failed', trigger: set, toasts: [] }, plan: null };
-  const rec = await doWrite(`발주처개명 '${oldName}' → '${newName}'`,
-    `__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custsave', ${jstr(oldName)})`);
-  return { rec, plan: { table: 'customer', kind: 'rename', name: oldName, newName } };
+  const set = await ev(`__lt.setRowInput(${jstr(CUST_BOX)}, ${jstr(key)}, ${jstr(newName)})`);
+  if (!set || set.ok === false) return { rec: { desc: `발주처개명 '${oldName}'(id=${key})`, outcome: 'trigger-failed', trigger: set, toasts: [] }, plan: null };
+  const rec = await doWrite(`발주처개명 id=${key} '${oldName}' → '${newName}'`,
+    `__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custsave', ${jstr(key)})`);
+  return { rec, plan: { table: 'customer', kind: 'rename', id: Number(id), name: oldName, newName } };
 }
 
-async function opCustHide(name, confirmChoice = 'ok') {
+async function opCustHide(id, name, confirmChoice = 'ok') {
   await openCustModal();
-  const rec = await doWrite(`발주처숨김 '${name}'`,
-    `__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custhide', ${jstr(name)})`, { confirm: confirmChoice });
-  return { rec, plan: { table: 'customer', kind: 'hide', name } };
+  const rec = await doWrite(`발주처숨김 id=${id} '${name}'`,
+    `__lt.rowBtn(${jstr(CUST_BOX)}, 'data-custhide', ${jstr(String(id))})`, { confirm: confirmChoice });
+  return { rec, plan: { table: 'customer', kind: 'hide', id: Number(id), name } };
 }
 
-async function opCustShow(name) {
+async function opCustShow(id, name) {
   //  복구는 휴지통에서(ADMIN-HUB-4 후속 — 편집 화면의 제자리 [복구]는 없어졌다)
-  const rec = await opTrashRestore('customer', name, `발주처복구 '${name}' — 🗑 휴지통`);
-  return { rec, plan: { table: 'customer', kind: 'show', name } };
+  const rec = await opTrashRestore('customer', id, `발주처복구 id=${id} '${name}' (🗑 휴지통)`);
+  return { rec, plan: { table: 'customer', kind: 'show', id: Number(id), name } };
 }
 
 /* ────────────────────────────── 12. 조작 결과 검증 ────────────────────────────── */
@@ -1153,7 +1187,7 @@ async function verifyOp(before, plan, rec, ctx) {
   invCommon(after);
 
   const success = rec.outcome === 'success';
-  const expected = expectAfter(before, plan, success);
+  const expected = expectAfter(before, plan, success, after);   // add 의 새 번호는 after 에서 채운다
   const changed = before.hash !== after.hash;
 
   if (after.hash !== expected.hash) {
@@ -1199,16 +1233,18 @@ async function runRandomOp(before) {
 
     const dbList = listOf(before, table);
     const act = dbList.filter((x) => x.active), hid = dbList.filter((x) => !x.active);
-    const activeOrder = act.map((x) => x.name);
+    const activeOrder = act.map((x) => x.id);   // v13: 순서는 번호 배열(codeReorder ids)
     const caps = await codeCaps();
-    const renamable = caps.filter((c) => c.edit).map((c) => c.name);
+    //  v13: 후보는 {id, name}. 고정 번호(구분 2, 상태 2)는 숨김 후보에서 뺀다(개명과 순서는 허용이라 그대로 둔다)
+    const renamable = caps.filter((c) => c.edit).map((c) => ({ id: Number(c.id), name: c.name }));
+    const hideable = caps.filter((c) => c.hide && !isProtected(table, c.id)).map((c) => ({ id: Number(c.id), name: c.name }));
     const movable = caps.filter((c) => c.up || c.down);
 
     const opts = [[3, 'add'], [1, 'addDup']];   // 「숨김표시 토글」은 없다(ADMIN-HUB-4 후속 — 편집 화면은 활성만)
-    if (renamable.some(isTemp)) opts.push([2, 'renameTemp']);
-    if (renamable.some((n) => !isTemp(n))) opts.push([2, 'renameRound']);
-    if (act.length > 2 && caps.some((c) => c.hide)) opts.push([2, 'hide']);
-    if (act.length > 2 && caps.some((c) => c.hide)) opts.push([1, 'hideCancel']);
+    if (renamable.some((c) => isTemp(c.name))) opts.push([2, 'renameTemp']);
+    if (renamable.some((c) => !isTemp(c.name))) opts.push([2, 'renameRound']);
+    if (act.length > 2 && hideable.length) opts.push([2, 'hide']);
+    if (act.length > 2 && hideable.length) opts.push([1, 'hideCancel']);
     if (hid.length) opts.push([3, 'show']);
     if (movable.length) opts.push([3, 'move']);
     if (act.length >= 2) opts.push([1, 'renameCollide']);
@@ -1228,47 +1264,47 @@ async function runRandomOp(before) {
       return verifyOp(before, null, rec, ctx);
     }
     if (act2 === 'renameTemp') {
-      const from = pick(renamable.filter(isTemp));
-      const r = await opCodeRename(kind, from, tmpCode());
+      const from = pick(renamable.filter((c) => isTemp(c.name)));
+      const r = await opCodeRename(kind, from.id, from.name, tmpCode());
       if (r.rec.outcome !== 'success') await cancelInline('code');
       return verifyOp(before, r.plan, r.rec, ctx);
     }
     if (act2 === 'renameRound') {
       // 시드 값은 반드시 왕복 — 최종 상태가 해석 가능하게(운영자 요청)
-      const orig = pick(renamable.filter((n) => !isTemp(n)));
-      const via = `${orig}_zzR${OPT.seed}`;
-      const r1 = await opCodeRename(kind, orig, via);
+      const orig = pick(renamable.filter((c) => !isTemp(c.name)));
+      const via = `${orig.name}_zzR${OPT.seed}`;
+      const r1 = await opCodeRename(kind, orig.id, orig.name, via);
       if (r1.rec.outcome !== 'success') await cancelInline('code');
       const mid = await verifyOp(before, r1.plan, r1.rec, ctx);
       if (!findRow(mid, table, via)) return mid;                  // 1단계 실패 → 되돌릴 것이 없다(같은 이름 재개명 = 무토스트 정체 회피)
-      const r2 = await opCodeRename(kind, via, orig);
+      const r2 = await opCodeRename(kind, orig.id, via, orig.name);
       if (r2.rec.outcome !== 'success') await cancelInline('code');
       return verifyOp(mid, r2.plan, r2.rec, ctx);
     }
     if (act2 === 'renameCollide') {
-      const a = pick(activeOrder);
-      const b = pick(activeOrder.filter((n) => n !== a));
-      const r = await opCodeRename(kind, a, b);
-      if (r.rec.outcome === 'success') violate('NEG', `'${a}' → 이미 있는 '${b}' 개명이 성공했다(PK 중복이 막히지 않음)`);
+      const a = pick(act);
+      const b = pick(act.filter((x) => x.id !== a.id));
+      const r = await opCodeRename(kind, a.id, a.name, b.name);
+      if (r.rec.outcome === 'success') violate('NEG', `'${a.name}' → 이미 있는 '${b.name}' 개명이 성공했다(UNIQUE 중복이 막히지 않음)`);
       if (r.rec.outcome !== 'success') await cancelInline('code');
       return verifyOp(before, r.rec.outcome === 'success' ? r.plan : null, r.rec, ctx);
     }
     if (act2 === 'hide' || act2 === 'hideCancel') {
       const choice = act2 === 'hideCancel' ? 'alt' : 'ok';
-      const name = pick(caps.filter((c) => c.hide).map((c) => c.name));
-      const r = await opCodeHide(kind, name, choice);
+      const t = pick(hideable);
+      const r = await opCodeHide(kind, t.id, t.name, choice);
       const applied = r.rec.outcome === 'success';
       return verifyOp(before, applied ? r.plan : null, r.rec, ctx);
     }
     if (act2 === 'show') {
-      const name = pick(hid.map((x) => x.name));
-      const r = await opCodeShow(kind, name);
+      const t = pick(hid);
+      const r = await opCodeShow(kind, t.id, t.name);
       return verifyOp(before, r.rec.outcome === 'success' ? r.plan : null, r.rec, ctx);
     }
     if (act2 === 'move') {
       const c = pick(movable);
       const dir = c.up && c.down ? (rnd() < 0.5 ? 'up' : 'down') : (c.up ? 'up' : 'down');
-      const r = await opCodeMove(kind, c.name, dir, activeOrder);
+      const r = await opCodeMove(kind, c.id, c.name, dir, activeOrder);
       return verifyOp(before, r.rec.outcome === 'success' ? r.plan : null, r.rec, ctx);
     }
     return before;
@@ -1279,13 +1315,14 @@ async function runRandomOp(before) {
   if (rnd() < 0.25) await setShowHidden('cust', rnd() < 0.5);
   const act = before.customers.filter((x) => x.active), hid = before.customers.filter((x) => !x.active);
   const caps = await custCaps();
-  const renamable = caps.filter((c) => c.edit).map((c) => c.name);
+  const renamable = caps.filter((c) => c.edit).map((c) => ({ id: Number(c.id), name: c.name }));
+  const hideable = caps.filter((c) => c.hide).map((c) => ({ id: Number(c.id), name: c.name }));
   const ctx = { codeOpen: false, custOpen: true };
 
   const opts = [[3, 'add'], [1, 'addDup']];   // 「숨김표시 토글」은 없다(ADMIN-HUB-4 후속 — 편집 화면은 활성만)
-  if (renamable.some(isTemp)) opts.push([2, 'renameTemp']);
-  if (renamable.some((n) => !isTemp(n))) opts.push([2, 'renameRound']);
-  if (act.length > 2 && caps.some((c) => c.hide)) opts.push([3, 'hide']);
+  if (renamable.some((c) => isTemp(c.name))) opts.push([2, 'renameTemp']);
+  if (renamable.some((c) => !isTemp(c.name))) opts.push([2, 'renameRound']);
+  if (act.length > 2 && hideable.length) opts.push([3, 'hide']);
   if (hid.length) opts.push([3, 'show']);
   const a2 = pickWeighted(opts);
 
@@ -1302,30 +1339,30 @@ async function runRandomOp(before) {
     return verifyOp(before, null, rec, ctx);
   }
   if (a2 === 'renameTemp') {
-    const from = pick(renamable.filter(isTemp));
-    const r = await opCustRename(from, tmpCust());
+    const from = pick(renamable.filter((c) => isTemp(c.name)));
+    const r = await opCustRename(from.id, from.name, tmpCust());
     if (r.rec.outcome !== 'success') await cancelInline('cust');
     return verifyOp(before, r.plan, r.rec, ctx);
   }
   if (a2 === 'renameRound') {
-    const orig = pick(renamable.filter((n) => !isTemp(n)));
-    const via = `${orig}_zzR${OPT.seed}`;
-    const r1 = await opCustRename(orig, via);
+    const orig = pick(renamable.filter((c) => !isTemp(c.name)));
+    const via = `${orig.name}_zzR${OPT.seed}`;
+    const r1 = await opCustRename(orig.id, orig.name, via);
     if (r1.rec.outcome !== 'success') await cancelInline('cust');
     const mid = await verifyOp(before, r1.plan, r1.rec, ctx);
     if (!findRow(mid, 'customer', via)) return mid;               // 1단계 실패 → 되돌릴 것 없음
-    const r2 = await opCustRename(via, orig);
+    const r2 = await opCustRename(orig.id, via, orig.name);
     if (r2.rec.outcome !== 'success') await cancelInline('cust');
     return verifyOp(mid, r2.plan, r2.rec, ctx);
   }
   if (a2 === 'hide') {
-    const name = pick(caps.filter((c) => c.hide).map((c) => c.name));
-    const r = await opCustHide(name, rnd() < 0.25 ? 'alt' : 'ok');
+    const t = pick(hideable);
+    const r = await opCustHide(t.id, t.name, rnd() < 0.25 ? 'alt' : 'ok');
     return verifyOp(before, r.rec.outcome === 'success' ? r.plan : null, r.rec, ctx);
   }
   if (a2 === 'show') {
-    const name = pick(hid.map((x) => x.name));
-    const r = await opCustShow(name);
+    const t = pick(hid);
+    const r = await opCustShow(t.id, t.name);
     return verifyOp(before, r.rec.outcome === 'success' ? r.plan : null, r.rec, ctx);
   }
   return before;
@@ -1503,19 +1540,21 @@ async function scenarioC(before) {
   attempts.push(await doWrite(`C:코드추가 '${nm}'`, "__lt.click('#codeAddBtn')", { timeout: 30000 }));
 
   // C-2) 개명(행 버튼이 있으면)
-  const target = (caps.find((c) => c.edit) || {}).name;
+  //  v13: 행 버튼은 번호(data-id)로 누른다
+  const target = caps.find((c) => c.edit) || null;
   if (target) {
-    const begin = await ev(`__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codeedit', ${jstr(target)})`);
+    const begin = await ev(`__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codeedit', ${jstr(String(target.id))})`);
     if (begin && begin.ok) {
       await sleep(80);
-      await ev(`__lt.setRowInput(${jstr(CODE_BOX)}, ${jstr(target)}, ${jstr(target + '_zzC')})`);
-      attempts.push(await doWrite(`C:코드개명 '${target}'`, `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codesave', ${jstr(target)})`, { timeout: 30000 }));
+      await ev(`__lt.setRowInput(${jstr(CODE_BOX)}, ${jstr(String(target.id))}, ${jstr(target.name + '_zzC')})`);
+      attempts.push(await doWrite(`C:코드개명 id=${target.id} '${target.name}'`, `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codesave', ${jstr(String(target.id))})`, { timeout: 30000 }));
       await cancelInline('code');
     }
   }
   // C-3) 숨김(refCount 왕복이 먼저 실패 → 확인창 없이 setActive 실패로 가야 한다)
-  const hideT = (caps.find((c) => c.hide) || {}).name;
-  if (hideT) attempts.push(await doWrite(`C:코드숨김 '${hideT}'`, `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(hideT)})`, { timeout: 30000 }));
+  //   고정 번호 행은 웹이 왕복 없이 막으므로(토스트 없음) 후보에서 뺀다(rowCaps 의 hide 가 이미 거른다)
+  const hideT = caps.find((c) => c.hide && !isProtected('section_code', c.id)) || null;
+  if (hideT) attempts.push(await doWrite(`C:코드숨김 id=${hideT.id} '${hideT.name}'`, `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(String(hideT.id))})`, { timeout: 30000 }));
 
   // C-4) 발주처 추가(다른 모달 경로도 한 번)
   await ev("__lt.click('#codeModal .modal-foot [data-close]')"); await sleep(200);
@@ -1576,6 +1615,157 @@ async function reconverge() {
   return snap;
 }
 
+/* ────────────────────────────── 14.5 고정 번호 보호(CODE-TABLE-IDS §3) ──────────────────────────────
+ *  구분 2(선진행), 상태 2(종료)는 숨김과 영구 삭제가 막혀 있고 이름은 바꿀 수 있다. 값싸게 넷을 본다.
+ *   (1) 화면: 그 행의 [숨김]은 aria-disabled + data-codelock + title(이유) + aria-describedby(이유 span) 이다.
+ *       눌러도 확인창도 토스트도 없고 #codeMsg 에 이유만 뜬다. DB 는 그대로다.
+ *   (2) 호스트: codeSetActive(active:false), trashDelete 를 직접 보내도 ok:false 와 그 문장으로 거부한다. DB 는 그대로다.
+ *       (화면이 버튼을 꺼도 호스트가 마지막 관문이다. 웹을 거치지 않는 요청으로 그 관문을 따로 잠근다.)
+ *   (3) 개명 왕복: 이름을 바꿔도 동작은 번호를 따라간다(구분 2: 날짜와 상태 잠금, 상태 2: 진행중만 필터에서 빠짐).
+ *       바꾼 이름은 `_zzR<seed>` 라 중간에 죽어도 sweepTemp 가 되돌린다. 끝나면 원래 이름으로 돌린다.
+ *  권한 거부(편집 권한 없는 계정)는 결함이 아니라 사전조건 미충족이라 건너뜀으로 적는다. */
+const DENY_RE = /편집 권한이 없습니다|관리자만|관리자 인증|로그인이 필요합니다|비활성 처리된 계정|사용자 정보가 등록되어 있지 않습니다/;
+
+async function hostCall(cmd, params, timeout = 15000) {
+  try {
+    return await ev(`hostRequest(${jstr(cmd)}, ${jstr(params)}, ${Number(timeout)})`);
+  } catch (e) { return { ok: false, error: String(e && e.message) }; }
+}
+
+/** DB 가 바뀌었으면 위반으로 적고, 숨겨졌으면 원래 활성 순번으로 되돌린다(지워졌으면 되돌릴 수 없어 보고만 한다). */
+function protectFrozen(tag, before, table, id) {
+  const after = snapshot();
+  if (before.hash === after.hash) return after;
+  violate('P', `${tag}: 거부돼야 할 요청 뒤에 DB가 바뀌었다`, diffSnap(before, after));
+  const b = findRowById(before, table, id), a = findRowById(after, table, id);
+  if (b && a && b.active && !a.active) {
+    const r = mysqlRun(`UPDATE ${table} SET is_active=1, sort_order=${Number(b.sort)} WHERE ${idColOf(table)}=${Number(id)};`);
+    console.error(`[복구] ${table} ${idColOf(table)}=${id} 다시 활성(${r.ok ? '성공' : '실패 errno ' + r.errno})`);
+  } else if (b && !a) {
+    console.error(`[복구 불가] ${table} ${idColOf(table)}=${id} '${b.name}' 행이 지워졌다. 시드에서 다시 넣어야 한다.`);
+  }
+  return snapshot();
+}
+
+async function phaseProtectedCodes(snap) {
+  curPhase = 'P-protected-codes';
+  log('── P: 고정 번호 보호(구분 2 선진행, 상태 2 종료) ──');
+  await closeIfOpen('#customerModal');
+  for (const kind of ['section', 'status']) {
+    const table = TABLE_OF(kind);
+    const pid = PROTECTED_ID[table];
+    const msg = PROTECTED_MSG[table];
+    let cur = snapshot();
+    const row = findRowById(cur, table, pid);
+    if (!row) { violate('P', `${table} ${idColOf(table)}=${pid} 행이 없다(시드 고정 번호 누락)`); continue; }
+    if (!row.active) { log(`   [건너뜀] ${table} id=${pid} '${row.name}' 가 숨겨져 있다(옛 DB). 화면 행이 없어 이 구간을 볼 수 없다.`); continue; }
+    const ctx = { codeOpen: true, custOpen: false, kind };
+
+    // (1) 화면의 꺼진 [숨김]
+    await openCodeModal(kind);
+    const ui = await ev(`(function(){
+      var box = document.getElementById('codeList'); if(!box) return { ok:false, err:'목록 없음' };
+      var r = [].find.call(box.querySelectorAll('.cust-row'), function(x){ return x.getAttribute('data-id') === ${jstr(String(pid))}; });
+      if(!r) return { ok:false, err:'행 없음' };
+      var b = r.querySelector('[data-codehide]'); if(!b) return { ok:false, err:'숨김 버튼 없음' };
+      var dId = b.getAttribute('aria-describedby'); var d = dId ? document.getElementById(dId) : null;
+      return { ok:true, lock: b.getAttribute('data-codelock'), aria: b.getAttribute('aria-disabled'), title: b.getAttribute('title'),
+               desc: d ? String(d.textContent||'') : null };
+    })()`);
+    if (!ui || !ui.ok) violate('P', `(${kind}) 고정 번호 행의 [숨김]을 찾지 못했다`, ui);
+    else {
+      const bad = [];
+      if (ui.lock !== '1') bad.push('data-codelock');
+      if (ui.aria !== 'true') bad.push('aria-disabled');
+      if (ui.title !== msg) bad.push('title');
+      if (ui.desc !== msg) bad.push('aria-describedby');
+      if (bad.length) violate('P', `(${kind}) 고정 번호 행 [숨김]의 잠금 표식이 어긋난다: ${bad.join(', ')}`, ui);
+      else ok(`(${kind}) id=${pid} [숨김] 꺼짐 + 이유 표시`);
+    }
+    {
+      const b0 = cur;
+      const rec = await doWrite(`P:(${kind}) 꺼진 [숨김] 클릭 id=${pid}`,
+        `__lt.rowBtn(${jstr(CODE_BOX)}, 'data-codehide', ${jstr(String(pid))})`, { expectToast: false, timeout: 8000 });
+      const s = await state();
+      if (rec.confirm) violate('P', `(${kind}) 꺼진 [숨김]을 누르자 확인창이 떴다`, rec.confirm);
+      if ((rec.toasts || []).length) violate('P', `(${kind}) 꺼진 [숨김]을 누르자 토스트가 떴다(왕복이 나갔다)`, rec.toasts);
+      if (!String(s.codeMsg || '').includes(msg)) violate('P', `(${kind}) 꺼진 [숨김]을 눌러도 이유 문장이 #codeMsg 에 없다`, s.codeMsg);
+      cur = protectFrozen(`(${kind}) 꺼진 [숨김] 클릭`, b0, table, pid);
+      opLog.push({ n: curOp, phase: curPhase, desc: rec.desc, outcome: rec.outcome, confirm: null });
+    }
+
+    // (2) 호스트 직접 요청: 숨김, 영구 삭제
+    for (const [cmd, params] of [
+      ['codeSetActive', { kind, id: pid, active: false }],
+      ['trashDelete', { kind, key: String(pid), confirm: row.name }],
+    ]) {
+      const b0 = snapshot();
+      const res = await hostCall(cmd, params);
+      const rmsg = String((res && (res.msg || res.error)) || '');
+      if (res && res.ok) violate('P', `(${kind}) 호스트가 고정 번호 ${cmd} 를 받아들였다`, res);
+      else if (rmsg === msg) ok(`(${kind}) 호스트 ${cmd} 거부 + 보호 문장`);
+      else if (DENY_RE.test(rmsg)) log(`   [건너뜀] (${kind}) ${cmd} 가 권한으로 먼저 거부됐다: ${rmsg}`);
+      else violate('P', `(${kind}) 호스트 ${cmd} 거부 문장이 보호 문장이 아니다`, { 기대: msg, 실제: rmsg });
+      cur = protectFrozen(`(${kind}) 호스트 ${cmd}`, b0, table, pid);
+      opLog.push({ n: curOp, phase: curPhase, desc: `P:(${kind}) host ${cmd} id=${pid}`, outcome: res && res.ok ? 'success' : 'error', confirm: null });
+    }
+    // 호스트 휴지통 회신이 목록을 다시 밀었을 수 있다. 화면을 다시 맞추고 넘어간다
+    await ev(`(hpost({cmd:'loadCodes'}), 1)`);
+    await closeIfOpen('#codeModal');
+
+    // (3) 개명 왕복. 동작은 번호를 따라가야 한다
+    const orig = row.name;
+    const via = `${orig}_zzR${OPT.seed}`;
+    const r1 = await opCodeRename(kind, pid, orig, via);
+    if (r1.rec.outcome !== 'success') await cancelInline('code');
+    const mid = await verifyOp(cur, r1.plan, r1.rec, ctx);
+    if (r1.rec.outcome !== 'success' || !findRow(mid, table, via)) {
+      if (r1.rec.denied) log(`   [건너뜀] (${kind}) 개명이 권한으로 거부됐다`);
+      else violate('P', `(${kind}) 고정 번호 행의 개명이 되지 않았다(개명은 허용이어야 한다)`, { outcome: r1.rec.outcome, toasts: r1.rec.toasts });
+      continue;
+    }
+    await waitConverge((x) => (x.offSections || []).concat(x.offStatuses || []).some((o) => o.id === pid && o.name === via), 4000);
+    const caps = await codeCaps();
+    const cap = caps.find((c) => Number(c.id) === pid);
+    if (!cap || !cap.lock) violate('P', `(${kind}) 개명 뒤 목록 행의 [숨김] 잠금이 풀렸다(이름으로 판정하고 있다)`, cap);
+    if (kind === 'section') {
+      const r = await ev(`(function(){
+        var sec = document.getElementById('offEdSection'), st = document.getElementById('offEdStart'), en = document.getElementById('offEdEnd'), ss = document.getElementById('offEdStatus');
+        if(!sec || !st || typeof offEdFillEnums !== 'function' || typeof offEdApplySectionRule !== 'function') return { ok:false, err:'편집 폼 요소나 함수 없음' };
+        offEdFillEnums(${jstr(String(pid))}, '', ${jstr(via)}, '');
+        sec.value = ${jstr(String(pid))};
+        offEdApplySectionRule();
+        var out = { ok:true, value: sec.value, label: sec.options[sec.selectedIndex] ? String(sec.options[sec.selectedIndex].textContent||'') : '',
+                    start: !!st.disabled, end: !!(en && en.disabled), status: !!(ss && ss.disabled) };
+        var other = [].find.call(sec.options, function(o){ return o.value !== ${jstr(String(pid))}; });
+        if(other){ sec.value = other.value; offEdApplySectionRule(); }   // 닫힌 폼이지만 잠금을 풀어 둔다(열 때 다시 채운다)
+        return out;
+      })()`);
+      if (!r || !r.ok) violate('P', '(section) 날짜 잠금 판정을 돌리지 못했다', r);
+      else if (!(r.start && r.end && r.status)) violate('P', `(section) 이름을 '${via}' 로 바꾸자 선진행 날짜 잠금이 풀렸다(이름으로 판정하고 있다)`, r);
+      else ok(`(section) 이름을 바꿔도 id=${pid} 의 날짜와 상태 잠금 유지`);
+    } else {
+      const r = await ev(`(function(){
+        if(typeof offMatches !== 'function') return { ok:false, err:'offMatches 없음' };
+        var blank = { name:'', projectName:'', contractName:'', customer:'' };
+        var end = offMatches(Object.assign({ statusId: ${pid} }, blank), { activeOnly:true, q:'' });
+        var run = offMatches(Object.assign({ statusId: 1 }, blank), { activeOnly:true, q:'' });
+        var kindOf = (typeof offStatusKind === 'function') ? offStatusKind(${pid}) : null;
+        return { ok:true, end: end, run: run, kind: kindOf };
+      })()`);
+      if (!r || !r.ok) violate('P', '(status) 진행중만 필터 판정을 돌리지 못했다', r);
+      else if (r.end !== false || r.run !== true || r.kind !== 'end') violate('P', `(status) 이름을 '${via}' 로 바꾸자 종료 동작(필터 제외, 회색)이 어긋났다`, r);
+      else ok(`(status) 이름을 바꿔도 id=${pid} 는 진행중만 필터에서 빠지고 종료로 칠해진다`);
+    }
+    const r2 = await opCodeRename(kind, pid, via, orig);
+    if (r2.rec.outcome !== 'success') await cancelInline('code');
+    const back = await verifyOp(mid, r2.plan, r2.rec, ctx);
+    if (!findRow(back, table, orig)) violate('P', `(${kind}) 원래 이름 '${orig}' 로 되돌리지 못했다(종료 정리가 _zzR 접미사로 되돌린다)`);
+    await closeIfOpen('#codeModal');
+  }
+  return snapshot();
+}
+
 /* ────────────────────────────── 15. I7 하드삭제 정책(migadmin 직접) ────────────────────────────── */
 
 const sqlStr = (s) => "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "''") + "'";
@@ -1585,26 +1775,31 @@ async function phaseHardDelete(snap) {
   log('── I7: 하드삭제 정책(UI엔 삭제 없음 → DB에서 직접 확인) ──');
 
   // (a) 사용 중인 값 DELETE → FK RESTRICT로 거부돼야 한다(시드 값은 삭제되지 않으므로 안전)
-  const usedSec = snap.projects.map((p) => p.section).find(Boolean);
-  const usedSt = snap.projects.map((p) => p.status).find(Boolean);
-  const usedCu = snap.projects.map((p) => p.customer).find(Boolean);
-  for (const [t, v] of [['section_code', usedSec], ['status_code', usedSt], ['customer', usedCu]]) {
-    if (!v) continue;
+  //   v13: 번호로 지운다. 고정 번호(구분 2, 상태 2)는 FK 가 막더라도 후보로 고르지 않는다(혹시 FK 가 빠졌을 때 잃지 않게)
+  const usedOf = (table) => {
+    const k = projKeyOf(table);
+    const v = snap.projects.map((p) => p[k]).find((id) => id != null && !isProtected(table, id));
+    return v == null ? null : v;
+  };
+  for (const t of ['section_code', 'status_code', 'customer']) {
+    const v = usedOf(t);
+    if (v == null) continue;
+    const label = `${idColOf(t)}=${v}('${(findRowById(snap, t, v) || {}).name || '?'}')`;
     const b = snapshot();
-    const r = mysqlRun(`DELETE FROM ${t} WHERE name=${sqlStr(v)};`);
+    const r = mysqlRun(`DELETE FROM ${t} WHERE ${idColOf(t)}=${Number(v)};`);
     const a = snapshot();
-    if (r.ok) violate('I7', `사용 중인 ${t} '${v}' DELETE가 거부되지 않았다(FK RESTRICT 미작동)`, diffSnap(b, a));
-    else if (r.errno !== 1451) violate('I7', `사용 중인 ${t} '${v}' DELETE가 1451이 아닌 오류로 실패`, { errno: r.errno, err: r.err.trim().split('\n').pop() });
-    else ok(`사용 중 ${t} '${v}' DELETE 거부(errno 1451)`);
-    if (b.hash !== a.hash) violate('I7', `거부된 DELETE인데 DB가 변경됐다(${t} '${v}')`, diffSnap(b, a));
+    if (r.ok) violate('I7', `사용 중인 ${t} ${label} DELETE가 거부되지 않았다(FK RESTRICT 미작동)`, diffSnap(b, a));
+    else if (r.errno !== 1451) violate('I7', `사용 중인 ${t} ${label} DELETE가 1451이 아닌 오류로 실패`, { errno: r.errno, err: r.err.trim().split('\n').pop() });
+    else ok(`사용 중 ${t} ${label} DELETE 거부(errno 1451)`);
+    if (b.hash !== a.hash) violate('I7', `거부된 DELETE인데 DB가 변경됐다(${t} ${label})`, diffSnap(b, a));
   }
 
-  // (b) 미사용 임시값 DELETE → 성공해야 한다. **테스트가 만든 zz* 만** 대상으로 한다.
+  // (b) 미사용 임시값 DELETE → 성공해야 한다. **테스트가 만든 zz* 만** 대상으로 한다. (v13: 참조는 번호로 센다)
   const refd = new Set();
-  for (const p of snap.projects) { refd.add('S:' + p.section); if (p.status) refd.add('T:' + p.status); refd.add('C:' + p.customer); }
+  for (const p of snap.projects) { refd.add('S:' + p.sectionId); if (p.statusId != null) refd.add('T:' + p.statusId); refd.add('C:' + p.customerId); }
   const targets = [];
   const pickTemp = (list, tag, table) => {
-    const t = list.find((x) => isTemp(x.name) && !refd.has(tag + ':' + x.name));
+    const t = list.find((x) => isTemp(x.name) && !isProtected(table, x.id) && !refd.has(tag + ':' + x.id));
     if (t) targets.push({ table, name: t.name });
   };
   pickTemp(snap.sections, 'S', 'section_code');
@@ -1925,6 +2120,12 @@ async function selfcheck() {
   const plan = { table: 'section_code', kind: 'add', name: 'zzSelfCheck' };
   const exp = expectAfter(s, plan, true);
   log(`기대모델 검산: add 후 section_code ${exp.sections.length}행, 새 sort=${exp.sections[exp.sections.length - 1].sort}`);
+  //  v13: 고정 번호 둘이 시드대로 있는지(읽기만)
+  for (const t of ['section_code', 'status_code']) {
+    const r = findRowById(s, t, PROTECTED_ID[t]);
+    if (!r) violate('P', `${t} ${idColOf(t)}=${PROTECTED_ID[t]} 행이 없다(시드 고정 번호 누락)`);
+    else log(`고정 번호 ${t} ${PROTECTED_ID[t]} = '${r.name}'${r.active ? '' : ' (숨김: 옛 DB)'}`);
+  }
   printSummary(s);
   process.exit(violations.length ? 1 : 0);
 }
@@ -2033,8 +2234,12 @@ async function main() {
     }
   }
 
-  /* ── I7 하드삭제 정책 ── */
+  /* ── P 고정 번호 보호(CODE-TABLE-IDS §3) ── */
   curOp = OPT.ops;
+  try { snap = await phaseProtectedCodes(snap); }
+  catch (e) { violate('P', `고정 번호 보호 검사 중 예외: ${e.message}`); snap = snapshot(); try { await closeIfOpen('#codeModal'); } catch (_) { } }
+
+  /* ── I7 하드삭제 정책 ── */
   try { snap = await phaseHardDelete(snap); }
   catch (e) { violate('I7', `하드삭제 검사 중 예외: ${e.message}`); snap = snapshot(); }
 

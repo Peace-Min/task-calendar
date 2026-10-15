@@ -141,7 +141,7 @@ const DEFAULTS = {
   mysqldump: process.env.TC_TEST_MYSQLDUMP || '',
   dbHost: '127.0.0.1',
   dbPort: 3306,
-  dbName: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  dbName: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   clone: process.env.TC_TEST_CAL_CLONE || `cal_probe_adapter_${process.pid}`,
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',

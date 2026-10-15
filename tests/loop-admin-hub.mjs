@@ -16,6 +16,7 @@
  *      📁 회사 과제 › 📁 공식 과제(도킹)의 상세·목록에 「캘린더에 추가 · ✓ 추가됨 · 제거」 · ✓ · 왼쪽 막대가 보이지 않는다(편집·숨김은 보인다).
  *   H3c 항목 분리(docs/ADMIN-HUB-4.md N4 · 보기만 한다) — 왼쪽 9개(사람 4 · 회사 과제 5) · 직급/소속/구분/상태가 그 탭으로 도킹 ·
  *      머리 제목 = 그 이름 · 화면 안 탭 전환 숨김 · 위치 줄 · 직급·소속 줄에 사용 개수 배지 없음(N1) · 꺼진 [숨김] = aria-disabled + 이유(N2).
+ *      구분·상태는 고정 번호 2번 줄만 [숨김]이 잠긴다(CODE-TABLE-IDS §3). 그 버튼을 눌러도 확인창과 호스트 요청이 없다(이것만 누른다).
  *   H4 📁 회사 과제 › 🏭 발주처 — zz 발주처 하나를 **화면으로** 추가(＋ 추가) → 목록·DB(선택)에 생긴다.
  *   H5 같은 발주처를 **화면으로** 숨김 → 📁 회사 과제 › 🗑 휴지통 › 발주처 탭 → 영구 삭제(이름 입력) → 목록·휴지통·DB(선택)에서 사라진다.
  *      (2026-10-02 ADMIN-HUB-3 M2 — 항목 이름 「삭제된 항목」→「🗑 휴지통」 · 항목 id 는 그대로 trash.)
@@ -33,7 +34,7 @@
  *
  * 실행:
  *   node tests/loop-admin-hub.mjs [--seed=N] [--port=9222] [-v]
- *   (선택) $env:TC_TEST_DB_ADMIN_PW='...'; $env:TC_TEST_DB_NAME='taskmgr'   — DB 대조까지
+ *   (선택) $env:TC_TEST_DB_ADMIN_PW='...'; $env:TC_TEST_DB_NAME='taskcalendar'   — DB 대조까지
  *
  * 종료코드: 0 = 전부 통과 · 1 = 위반 있음 · 2 = 판정 없음(전제 미충족)
  * ===================================================================================== */
@@ -48,7 +49,7 @@ const OPT = {
   port: Number(ARG.get('port') || process.env.TC_DEBUG_PORT || 9222),
   verbose: ARG.has('verbose') || ARG.has('v'),
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',   // ← 비밀. 기본값 없음 · 없으면 DB 대조만 건너뛴다
 };
@@ -58,6 +59,11 @@ if (ARG.has('help') || ARG.has('h')) {
   process.exit(0);
 }
 const ZZ = `zzC_hub${OPT.seed}`;   // zzC 접두 — loop-trash·loop-ui-integrity 의 정리 규칙(zzC%)과 같은 이름 공간
+//  고정 번호 잠금 문장(ProjectDb.CodeIds 와 웹 CODE_PROTECT_WHY 와 글자까지 같다, CODE-TABLE-IDS §3)
+const PROTECT_WHY = {
+  section: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
+  status: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
+};
 
 const T0 = Date.now();
 const el = () => ((Date.now() - T0) / 1000).toFixed(1).padStart(6) + 's';
@@ -177,27 +183,36 @@ const click = (sel) => ev(`(function(){ var b = document.querySelector(${J(sel)}
 const noStack = (s, docked) => JSON.stringify(s.stack) === J(['adminHub']) && JSON.stringify(s.visible.slice().sort()) === J(['adminHub', docked].sort());
 
 /* ── 정리 길(화면 그대로): 숨김 → 영구 삭제 ── */
+//  ★ v13(CODE-TABLE-IDS §4): 발주처 버튼(data-custhide)과 휴지통 키(data-tkey)는 이름이 아니라 번호(customer_id)다.
+//    이름은 줄의 data-name 과 호스트 목록(loadCustomersFull 의 {id, name, active})으로만 찾는다.
+const custIdByName = (name) => evj(`(async function(){ var r = await hostRequest('loadCustomersFull', {}, 20000);
+  var row = r && r.ok ? JSON.parse(r.list || '[]').find(function(x){ return x && x.name === ${J(name)}; }) : null;
+  return JSON.stringify(row ? String(row.id) : ''); })()`);
 async function hideViaHub(name) {
   if (!(await click('#ahNav [data-ahitem="cust"]'))) return false;
   const s0 = await waitPage((x) => x.docked === 'customerModal' && !x.custLoading && !x.custBusy, { timeout: 20000 });
   if (!s0 || !s0.custRows.includes(name)) return !s0 ? false : 'absent';
-  const hid = await ev(`(function(){ var bs = document.querySelectorAll('#custList [data-custhide]');
-    for(var i=0;i<bs.length;i++) if(bs[i].getAttribute('data-custhide') === ${J(name)}){ bs[i].click(); return true; } return false; })()`);
+  const hid = await ev(`(function(){ var rs = document.querySelectorAll('#custList .cust-row');
+    for(var i=0;i<rs.length;i++){ if(String(rs[i].dataset.name || '') !== ${J(name)}) continue;
+      var b = rs[i].querySelector('[data-custhide]'); if(!b || b.getAttribute('data-custhide') !== String(rs[i].dataset.id || '')) return false;
+      b.click(); return true; } return false; })()`);
   if (!hid) return false;
   const s1 = await waitPage((x) => x.cfOpen || (!x.custBusy && !x.custLoading && !x.custRows.includes(name)), { timeout: 20000 });
   if (s1 && s1.cfOpen) { await click('#cfOk'); }
   return !!(await waitPage((x) => !x.cfOpen && !x.custBusy && !x.custLoading && !x.custRows.includes(name), { timeout: 20000 }));
 }
 async function purgeViaHub(name) {
+  const key = await custIdByName(name);   // 휴지통 키 = customer_id 문자열
+  if (!key) return 'absent';
   if (!(await click('#ahNav [data-ahitem="trash"]'))) return false;
   const s0 = await waitPage((x) => x.docked === 'trashModal' && !x.trBusy, { timeout: 20000 });
   if (!s0) return false;
   await click('#trTabs [data-trtab="customer"]');
   const s1 = await waitPage((x) => x.trTab === 'customer', { timeout: 6000 });
   if (!s1) return false;
-  if (!s1.trKeys.includes(name)) return 'absent';
+  if (!s1.trKeys.includes(key)) return 'absent';
   const pressed = await ev(`(function(){ var bs = document.querySelectorAll('#trList [data-top="delete"]');
-    for(var i=0;i<bs.length;i++) if(String(bs[i].dataset.tkey||'') === ${J(name)} && !bs[i].disabled){ bs[i].click(); return true; } return false; })()`);
+    for(var i=0;i<bs.length;i++) if(String(bs[i].dataset.tkey||'') === ${J(key)} && !bs[i].disabled){ bs[i].click(); return true; } return false; })()`);
   if (!pressed) return false;
   if (!(await waitPage((x) => x.ctOpen, { timeout: 8000 }))) return false;
   //  ★ 이 화면에서 쓰는 stack 판정(확인창은 관리 화면 **위**에 쌓인다 — 겹침이 아니라 확인창이다)
@@ -205,8 +220,8 @@ async function purgeViaHub(name) {
   ok('H5 영구 삭제 확인창은 관리 화면 위에 쌓인다(body 의 뒤쪽 형제 · 칸 안이 아니다)',
     JSON.stringify(sc.stack) === J(['adminHub', 'confirmTypedModal']), J(sc.stack));
   await ev(`(function(){ var i = document.getElementById('ctInput'); i.value = ${J(name)}; i.dispatchEvent(new Event('input', { bubbles: true })); return 1; })()`);
-  await click('#ctOk');
-  return !!(await waitPage((x) => !x.ctOpen && !x.trSaving && !x.trKeys.includes(name), { timeout: 20000 }));
+  await click('#ctOk');   // 확인창에는 번호가 아니라 이름을 친다(위 ctInput)
+  return !!(await waitPage((x) => !x.ctOpen && !x.trSaving && !x.trKeys.includes(key), { timeout: 20000 }));
 }
 
 /* ── 본문 ── */
@@ -316,13 +331,36 @@ async function main() {
           kind: ${J(ov)} === 'orgTitleModal' ? __otTab : codeKind,
           badges: o.querySelectorAll('#otList .ot-cnt, #otList .badge').length,
           hides: [].map.call(o.querySelectorAll('#otList [data-otop="hide"][aria-disabled="true"]'), function(b){
-            var d = document.getElementById(b.getAttribute('aria-describedby') || ''); return { t: b.title, d: d ? d.textContent : null, dis: b.disabled }; }) }; })())`);
+            var d = document.getElementById(b.getAttribute('aria-describedby') || ''); return { t: b.title, d: d ? d.textContent : null, dis: b.disabled }; }),
+          codeRows: o.querySelectorAll('#codeList .cust-row').length,
+          locks: [].map.call(o.querySelectorAll('#codeList [data-codelock="1"]'), function(b){
+            var d = document.getElementById(b.getAttribute('aria-describedby') || ''), r = b.closest('.cust-row');
+            return { id: b.getAttribute('data-codehide'), rowId: r ? String(r.dataset.id || '') : null, aria: b.getAttribute('aria-disabled'),
+                     t: b.title, d: d ? d.textContent : null, dis: b.disabled }; }) }; })())`);
       ok(`H3c ${nm}: 그 탭으로 도킹 · 제목 「${nm}」 · 화면 안 탭 전환 숨김 · 위치 줄`, !!s && v.kind === it && v.head === nm && v.tabs === false && v.where.endsWith(nm), J(v));
       if (ov === 'orgTitleModal') {
         ok(`H3c ${nm}: 줄에 사용 개수 배지가 없다(N1)`, v.badges === 0, String(v.badges));
         if (v.hides.length) ok(`H3c ${nm}: 꺼진 [숨김] = aria-disabled(포커스 가능) + title = aria-describedby 문장 「…있어 숨길 수 없습니다」(N2)`,
           v.hides.every((h) => !h.dis && h.t && h.t === h.d && /숨길 수 없습니다/.test(h.t)), J(v.hides.slice(0, 3)));
         else log(`H3c ${nm}: 숨길 수 없는 줄이 없다 — N2 판정 생략`);
+      } else if (!v.codeRows) log(`H3c ${nm}: 코드 목록이 비어 있다(오프라인?), 고정 번호 잠금 판정 생략`);
+      else {
+        //  고정 번호 잠금(CODE-TABLE-IDS §3): 구분 2(선진행), 상태 2(종료)만 [숨김]이 꺼진다. 이유 문장은 호스트 거부 문장과 같다.
+        const want = PROTECT_WHY[it];
+        ok(`H3c ${nm}: 꺼진 [숨김]은 2번 줄 하나뿐 = data-codelock + aria-disabled(포커스 가능) + title = aria-describedby = 고정 문장`,
+          v.locks.length === 1 && v.locks.every((h) => h.id === '2' && h.rowId === '2' && h.aria === 'true' && !h.dis && h.t === want && h.d === want),
+          J(v.locks));
+        //  눌러도 아무것도 나가지 않는다. 누르는 동안만 hostRequest 를 감싸 명령을 센다(원본은 그대로 부른다).
+        if (v.locks.length) {
+          const pressed = await evj(`(async function(){
+            var oH = window.hostRequest, got = [];
+            window.hostRequest = function(cmd){ got.push(String(cmd)); return oH.apply(this, arguments); };
+            try{ var b = document.querySelector('#codeList [data-codelock="1"]'); if(b) b.click(); await new Promise(function(r){ setTimeout(r, 600); }); }
+            finally { window.hostRequest = oH; }
+            return JSON.stringify({ got: got, cf: isOverlayOpen(document.getElementById('confirmModal')) }); })()`);
+          ok(`H3c ${nm}: 꺼진 [숨김]을 눌러도 확인창도 호스트 요청도 없다`, pressed.got.length === 0 && pressed.cf === false, J(pressed));
+          if (pressed.cf) await ev(`(function(){ var b = document.querySelector('#confirmModal [data-close]'); if(b) b.click(); return 1; })()`);
+        }
       }
     }
   }

@@ -2734,10 +2734,11 @@ if (!JSDOM) {
 
     test('Excel 추출: 필터가 걸리면 부제에 전체/추출 건수와 필터가 함께 남는다', () => {
       seedCatalog([
-        { id: 'db-1', name: 'a', color: '#3e5be0', source: 'db', section: '일반계약', customer: 'A청', status: '진행중', projectName: 'a' },
-        { id: 'db-2', name: 'b', color: '#c2770a', source: 'db', section: '선진행', customer: 'B사', status: '종료', projectName: 'b' },
+        { id: 'db-1', name: 'a', color: '#3e5be0', source: 'db', section: '일반계약', customer: 'A청', status: '진행중', projectName: 'a', sectionId: 1, customerId: 1, statusId: 1 },
+        { id: 'db-2', name: 'b', color: '#c2770a', source: 'db', section: '선진행', customer: 'B사', status: '종료', projectName: 'b', sectionId: 2, customerId: 2, statusId: 2 },
       ]);
-      ev("document.getElementById('offSection').value = '일반계약'; renderOfficialList();");
+      //  ★ 필터 옵션 값은 번호다(CODE-TABLE-IDS §4). 부제에는 고른 옵션의 이름이 남는다.
+      ev("document.getElementById('offSection').value = '1'; renderOfficialList();");
       const sub = ev("(function(){var f=offFilters(); var l=dbCatalog.filter(function(c){return offMatches(c,f);});" +
                      "return offExportSubtitle(f, dbCatalog.length, l.length, '2026-07-22');})()");
       assert.strictEqual(sub, '2026-07-22 추출 · 전체 2건 중 1건 · 필터: 구분=일반계약 · 숨김 과제 제외');
@@ -2750,10 +2751,11 @@ if (!JSDOM) {
     // 실질 위험: 캐시가 있으면 서버가 꺼져 있어도 Excel 장표가 뽑히는데, 부제엔 '오늘 추출'로 찍히고
     //           데이터는 몇 주 전 것일 수 있다(오정보가 남에게 전달됨).
     // ══════════════════════════════════════════════════════════════════
+    //  ★ 2026-10-15 — 호스트 payload 는 이름(section·customer·status)과 번호(sectionId·customerId·statusId)를 함께 싣는다.
     const DBROW = (uid, extra) => Object.assign({
-      uid, section: '일반계약', customer: 'A청', project_name: 'P' + uid, contract_name: 'C' + uid,
+      uid, section: '일반계약', sectionId: 1, customer: 'A청', customerId: 1, project_name: 'P' + uid, contract_name: 'C' + uid,
       common_name: '통상' + uid, start_date: '2026-01-01', end_date: '2026-12-31', dev_end_date: '2026-09-30',
-      status: '진행중', is_active: 1,
+      status: '진행중', statusId: 1, is_active: 1,
     }, extra || {});
     const applyRows = (rows) => ev('__applyProjects(' + JSON.stringify(JSON.stringify(rows)) + ')');
 
@@ -2904,9 +2906,9 @@ if (!JSDOM) {
                   { id: 'e2', title: 'b', date: '2026-07-21', categoryId: 'p1' }],
       }));
       applyRows([
-        DBROW('u1', { customer: '방위사업청', project_name: '함정 레이더 성능개량', contract_name: '저장장치', common_name: '레이더 성능개량', status: '진행중' }),
-        DBROW('u2', { customer: '방위사업청', project_name: '함정 레이더 성능개량', contract_name: '처리장치', common_name: '레이더 성능개량', status: '진행중' }),
-        DBROW('u3', { section: '선진행', customer: '국방과학연구소', project_name: '위성 통신 체계', contract_name: '', common_name: '위성통신', status: '', start_date: null, end_date: null }),
+        DBROW('u1', { customer: '방위사업청', customerId: 2, project_name: '함정 레이더 성능개량', contract_name: '저장장치', common_name: '레이더 성능개량', status: '진행중', statusId: 1 }),
+        DBROW('u2', { customer: '방위사업청', customerId: 2, project_name: '함정 레이더 성능개량', contract_name: '처리장치', common_name: '레이더 성능개량', status: '진행중', statusId: 1 }),
+        DBROW('u3', { section: '선진행', sectionId: 2, customer: '국방과학연구소', customerId: 3, project_name: '위성 통신 체계', contract_name: '', common_name: '위성통신', status: '', statusId: null, start_date: null, end_date: null }),
       ]);
       ev('rlPick.clear(); rlpFor = null; rlpCollapsed.clear();');
     };
@@ -3081,32 +3083,35 @@ if (!JSDOM) {
     // ══════════════════════════════════════════════════════════════════
     // 구분/상태 코드테이블(ENUM 대체) + note 컬럼 (2026-07-24)
     // ══════════════════════════════════════════════════════════════════
+    //  ★ 2026-10-15 — 코드목록 원소는 [{id, name}] 이고 드롭다운 값은 번호, 글자는 이름이다(CODE-TABLE-IDS §4).
+    const SECS = [{ id: 1, name: '일반계약' }, { id: 2, name: '선진행' }, { id: 7, name: '신규구분' }];
+    const STS = [{ id: 1, name: '진행중' }, { id: 2, name: '종료' }];
     test('코드목록: __applyCodes가 offSections/offStatuses를 채우고 편집폼 드롭다운에 반영', () => {
       ev("offSections = []; offStatuses = [];");
-      ev("__applyCodes(" + JSON.stringify(JSON.stringify(['일반계약', '선진행', '신규구분'])) + "," +
-                          JSON.stringify(JSON.stringify(['진행중', '종료'])) + ")");
-      assert.deepStrictEqual(evJSON('offSections'), ['일반계약', '선진행', '신규구분']);
-      assert.deepStrictEqual(evJSON('offStatuses'), ['진행중', '종료']);
+      ev("__applyCodes(" + JSON.stringify(JSON.stringify(SECS)) + "," + JSON.stringify(JSON.stringify(STS)) + ")");
+      assert.deepStrictEqual(evJSON('offSections'), SECS);
+      assert.deepStrictEqual(evJSON('offStatuses'), STS);
       // 편집폼 드롭다운이 코드목록에서 채워진다
-      ev("offEdFillEnums('선진행', '종료')");
-      assert.deepStrictEqual(evJSON("[].slice.call(document.getElementById('offEdSection').options).map(function(o){return o.value;})"),
-        ['일반계약', '선진행', '신규구분'], '구분 드롭다운이 코드목록으로 채워지지 않는다');
-      assert.strictEqual(ev("document.getElementById('offEdSection').value"), '선진행');
+      ev("offEdFillEnums(2, 2)");
+      assert.deepStrictEqual(evJSON("[].slice.call(document.getElementById('offEdSection').options).map(function(o){return [o.value, o.textContent];})"),
+        [['1', '일반계약'], ['2', '선진행'], ['7', '신규구분']], '구분 드롭다운이 코드목록(번호 값 · 이름 글자)으로 채워지지 않는다');
+      assert.strictEqual(ev("document.getElementById('offEdSection').value"), '2');
+      assert.strictEqual(ev("document.getElementById('offEdStatus').value"), '2');
     });
 
     test('코드목록: 연결 실패("")면 기존값 유지(우아한 폴백)', () => {
-      ev("offSections = ['일반계약']; offStatuses = ['진행중'];");
+      ev("offSections = [{id:1,name:'일반계약'}]; offStatuses = [{id:1,name:'진행중'}];");
       ev("__applyCodes('','')");
-      assert.deepStrictEqual(evJSON('offSections'), ['일반계약'], '빈 응답에 기존값을 잃는다');
-      assert.deepStrictEqual(evJSON('offStatuses'), ['진행중']);
+      assert.deepStrictEqual(evJSON('offSections'), [{ id: 1, name: '일반계약' }], '빈 응답에 기존값을 잃는다');
+      assert.deepStrictEqual(evJSON('offStatuses'), [{ id: 1, name: '진행중' }]);
     });
 
     test('코드목록: 편집 중 값이 목록에 없어도(숨겨진 코드) 옵션 보존', () => {
-      ev("__applyCodes(" + JSON.stringify(JSON.stringify(['일반계약'])) + ",'')");
-      ev("offEdFillEnums('폐지된구분', '')");
-      const opts = evJSON("[].slice.call(document.getElementById('offEdSection').options).map(function(o){return o.value;})");
-      assert.ok(opts.includes('폐지된구분'), '편집 중 값이 드롭다운에서 사라진다(값 유실)');
-      assert.strictEqual(ev("document.getElementById('offEdSection').value"), '폐지된구분');
+      ev("__applyCodes(" + JSON.stringify(JSON.stringify([{ id: 1, name: '일반계약' }])) + ",'')");
+      ev("offEdFillEnums(5, '', '폐지된구분', '')");
+      const opts = evJSON("[].slice.call(document.getElementById('offEdSection').options).map(function(o){return [o.value, o.textContent];})");
+      assert.ok(opts.some(o => o[0] === '5' && o[1] === '폐지된구분'), '편집 중 값이 드롭다운에서 사라진다(값 유실): ' + JSON.stringify(opts));
+      assert.strictEqual(ev("document.getElementById('offEdSection').value"), '5');
     });
 
     test('note: offEditOpen이 편집폼 textarea에 note를 채운다(payload 조립은 code-tables 소스검증)', () => {
@@ -3226,15 +3231,18 @@ if (!JSDOM) {
     });
 
     // ── 색상 = 로컬 소유 (2026-07-30) ──────────────────────────────────
-    // taskmgr DB 어느 테이블에도 색 컬럼이 없다. 색은 sectionColor(section)이 뽑는 '앱의 초기 표시 관례'일 뿐이고,
+    // taskmgr DB 어느 테이블에도 색 컬럼이 없다. 색은 sectionColor(sectionId)이 뽑는 '앱의 초기 표시 관례'일 뿐이고,
     // 보고서에 나가지도 않는다. 그러니 편입 이후의 색은 사용자 것이다 — 어떤 DB 경로도 되돌리면 안 된다.
-    test('색 소유권: 신규 편입은 구분(section) 팔레트 색을 초기값으로 받는다', () => {
+    //  ★ 2026-10-15 — 팔레트의 열쇠는 구분 **번호**다(CODE-TABLE-IDS §3-4). 이름을 바꿔도 색이 같고, 표에 없는 번호는 기본색.
+    test('색 소유권: 신규 편입은 구분(sectionId) 팔레트 색을 초기값으로 받는다', () => {
       seed(THS({ categories: [] }));
-      applyRows([DBROW('u1', { section: '일반계약' }), DBROW('u2', { section: '선진행' }), DBROW('u3', { section: '없는구분' })]);
+      applyRows([DBROW('u1', { section: '일반계약', sectionId: 1 }), DBROW('u2', { section: '이름바꾼선진행', sectionId: 2 }),
+                 DBROW('u3', { section: '없는구분', sectionId: 99 })]);
       ev("subscribeDbCat(dbCatalogById('db-u1')); subscribeDbCat(dbCatalogById('db-u2')); subscribeDbCat(dbCatalogById('db-u3'));");
       const col = id => ev("state.categories.find(function(c){return c.id==='" + id + "';}).color");
-      assert.strictEqual(col('db-u1'), ev("sectionColor('일반계약')"), '일반계약 초기색이 팔레트와 다르다');
-      assert.strictEqual(col('db-u2'), ev("sectionColor('선진행')"), '선진행 초기색이 팔레트와 다르다');
+      assert.strictEqual(col('db-u1'), '#3e5be0', '구분 1(일반계약) 초기색이 팔레트와 다르다');
+      assert.strictEqual(col('db-u1'), ev("sectionColor(1)"));
+      assert.strictEqual(col('db-u2'), '#c2770a', '구분 2(선진행)의 이름을 바꾸자 초기색이 바뀌었다(이름으로 고른다)');
       assert.strictEqual(col('db-u3'), '#5b6b7d', '미등록 구분의 폴백 색이 바뀌었다');
     });
 

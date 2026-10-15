@@ -70,8 +70,9 @@ const follow = {
     for (const a of ['data-custshow', 'data-codeshow', 'function custDoShow', 'function codeDoShow']) assert.ok(!code.includes(a), `제자리 [복구](${a})가 남았다 — 복구는 회사 과제 휴지통이다`);
     assert.ok(/const rows = custList\.filter\(c => c\.active\);/.test(extractFunction(src, 'renderCustomerList')), '발주처 목록이 숨긴 발주처까지 그린다');
     assert.ok(/const rows = codeList\.filter\(c => c\.active\);/.test(extractFunction(src, 'renderCodeList')), '구분·상태 목록이 숨긴 값까지 그린다');
-    assert.ok(/custSend\('setCustomerActive', \{ name, active: false \}, '발주처를 숨겼습니다', null, OT_HIDDEN_MSG\)/.test(extractFunction(src, 'custDoHide')), '발주처 숨김 토스트가 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」가 아니다');
-    assert.ok(/codeSend\('codeSetActive', \{ name, active: false \}, codeKindLabel\(\) \+ '을\(를\) 숨겼습니다', null, OT_HIDDEN_MSG\)/.test(extractFunction(src, 'codeDoHide')), '구분·상태 숨김 토스트가 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」가 아니다');
+    //  ★ 2026-10-15 — 숨김은 번호(customerId · id)로 보낸다(CODE-TABLE-IDS §4).
+    assert.ok(/custSend\('setCustomerActive', \{ customerId, active: false \}, '발주처를 숨겼습니다', null, OT_HIDDEN_MSG\)/.test(extractFunction(src, 'custDoHide')), '발주처 숨김 토스트가 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」가 아니다');
+    assert.ok(/codeSend\('codeSetActive', \{ id, active: false \}, codeKindLabel\(\) \+ '을\(를\) 숨겼습니다', null, OT_HIDDEN_MSG\)/.test(extractFunction(src, 'codeDoHide')), '구분·상태 숨김 토스트가 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」가 아니다');
     for (const fn of ['custSend', 'codeSend']) assert.ok(/toast\(forceToast \|\| res\.msg \|\| okToast, 'success'\)/.test(extractFunction(src, fn)), `${fn} 가 화면이 정한 토스트를 쓰지 않는다`);
   },
   notes(src) {
@@ -114,12 +115,12 @@ if (!JSDOM) {
   const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
   const FADE = 200;
   const ORG = { found: true, admin: true,
-    titles: [{ name: '수석', sort: 10, active: true, users: 1 }, { name: '선임', sort: 20, active: true, users: 0 }, { name: '책임', sort: 30, active: true, users: 0 }],
+    titles: [{ titleId: 1, name: '수석', sort: 10, active: true, users: 1 }, { titleId: 2, name: '선임', sort: 20, active: true, users: 0 }, { titleId: 3, name: '책임', sort: 30, active: true, users: 0 }],
     units: [{ orgId: 1, name: '회사', parentId: null, depth: 0, sort: 10, active: true, users: 0, children: 1 },
             { orgId: 2, name: 'SW 1팀', parentId: 1, depth: 1, sort: 20, active: true, users: 1, children: 0 }] };
   const CODES = (kind) => ({ ok: true, list: JSON.stringify(kind === 'status'
-    ? [{ name: 'zz진행중', active: true, sort: 1 }, { name: 'zz종료', active: true, sort: 2 }, { name: 'zz보류', active: true, sort: 3 }]
-    : [{ name: 'zz일반계약', active: true, sort: 1 }, { name: 'zz연구과제', active: true, sort: 2 }]) });
+    ? [{ id: 1, name: 'zz진행중', active: true, sort: 1 }, { id: 2, name: 'zz종료', active: true, sort: 2 }, { id: 3, name: 'zz보류', active: true, sort: 3 }]
+    : [{ id: 1, name: 'zz일반계약', active: true, sort: 1 }, { id: 4, name: 'zz연구과제', active: true, sort: 2 }]) });
   function boot(src) {
     const posted = [], errors = [];
     const vc = new jsdomMod.VirtualConsole();
@@ -147,7 +148,7 @@ if (!JSDOM) {
     if (sess) w.eval('__hostReply(' + JSON.stringify(sess.reqId) + ', ' + JSON.stringify({ ok: true, user: ME }) + ')');
     w.eval('currentUser = ' + JSON.stringify(ME));
     w.__applyState(JSON.stringify(EMPTY), {});
-    w.eval('dbOnline = true; offSections = ["zz일반계약", "zz연구과제"]; offStatuses = ["zz진행중", "zz종료", "zz보류"];');
+    w.eval('dbOnline = true; offSections = [{id:1,name:"zz일반계약"},{id:4,name:"zz연구과제"}]; offStatuses = [{id:1,name:"zz진행중"},{id:2,name:"zz종료"},{id:3,name:"zz보류"}];');
     w.eval('window.__toasts = []; (function(){ var t = toast; toast = function(m, k, a, ms){ __toasts.push(String(m)); return t(m, k, a, ms); }; })();');
     w.eval('ahNoteRole(true)');
     return B;
@@ -173,7 +174,7 @@ if (!JSDOM) {
         assert.strictEqual(shown(B, '#orgTitleModal .code-tabs'), false, '도킹 중 [직급 | 소속] 전환이 보인다(N4)');
         assert.strictEqual(where(B), '👥 사람 ›🏷 직급');
         assert.ok(shown(B, '#orgTitleModal [data-note="title"]') && !shown(B, '#orgTitleModal [data-note="unit"]'), '직급 칸의 아랫줄에 직급 문장만 서야 한다(후속)');
-        assert.deepStrictEqual([...B.doc.querySelectorAll('#otList .cust-row')].map((r) => r.dataset.otkey), ['수석', '선임', '책임']);
+        assert.deepStrictEqual([...B.doc.querySelectorAll('#otList .cust-row')].map((r) => r.dataset.otkey), ['1', '2', '3']);
         assert.strictEqual($(B, '#ahNtitle').textContent, '3'); assert.strictEqual($(B, '#ahNunit').textContent, '2', '소속 개수(같은 회신)가 없다(N4)');
         await pick(B, 'unit');
         assert.strictEqual(navOn(B), 'unit'); assert.strictEqual(docked(B), 'orgTitleModal');

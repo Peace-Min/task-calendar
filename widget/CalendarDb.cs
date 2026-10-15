@@ -110,7 +110,11 @@ namespace TaskCalendarWidget
         //     같은 날 두 번째 판이다. 이번에도 짝이 중요하다 — ProjectDb.LoadMembersJsonAsync 가 그 컬럼을
         //     SELECT·ORDER BY 하고 직원 관리 쓰기가 그 컬럼에 UPDATE 를 건다(DB 를 먼저 올릴 것).
         //   ★ 2026-09-10: 11 → 12(migrate-2026-09-10-user-sort-order-int.sql — sort_order SMALLINT→INT UNSIGNED).
-        internal const string ExpectedSchemaVersion = "12";
+        //   ★ 2026-10-15: 12 → 13(migrate-2026-10-15-code-ids.sql, 코드표 넷 번호 키 · CODE-TABLE-IDS).
+        //     짝이 가장 중요한 판이다. ProjectDb 의 과제·발주처·코드·직급 SQL 이 전부 새 번호 열(customer_id,
+        //     section_id, status_id, title_id)을 읽고 쓴다. v12 DB 에 이 위젯이 붙으면 그 질의가 1054 로 죽는다
+        //     (DB 를 먼저 올릴 것). 그 전 판들의 이관 파일은 git 이력에만 남아 있다(§8-2).
+        internal const string ExpectedSchemaVersion = "13";
 
         private readonly Action<string> _log;
 

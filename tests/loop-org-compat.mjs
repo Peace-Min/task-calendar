@@ -110,7 +110,7 @@ const DEFAULTS = {
   mysqldump: process.env.TC_TEST_MYSQLDUMP || '',   // 비면 mysql.exe 와 같은 bin 에서 찾는다
   dbHost: '127.0.0.1',
   dbPort: 3306,
-  dbName: process.env.TC_TEST_DB_NAME || 'taskmgr',  // 복제 원본(읽기만 한다)
+  dbName: process.env.TC_TEST_DB_NAME || 'taskcalendar',  // 복제 원본(읽기만 한다)
   clone: process.env.TC_TEST_ORG_CLONE || `org_probe_loop_${process.pid}`,
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',   // ← 비밀. 소스에 기본값 없음
@@ -715,6 +715,21 @@ ALTER TABLE org_unit COMMENT = '조직 트리. PK=org_id(내부 정체성) · na
 ALTER TABLE app_user COMMENT = '사용자. 인증은 netcus, 여기는 인가만. 비밀번호 컬럼 없음. 소속 정본은 org_id 하나 — 이름 미러 없음.';
 `;
 
+/** v13 전제 확인. payload 계약 SQL 이 app_user.title_id 와 title_code(title_id) 를 조인한다.
+ *  그 열이 없는 원본(v12 이하)은 이 판의 대상이 아니다. 위반이 아니라 전제 불충족(exit 2)이다.
+ *  ★ 내장 참조 DDL(SEVER_DDL)은 조직만 절단하고 직급은 건드리지 않는다. 절단 전 원본을 복제해도
+ *    title_id 는 생기지 않으므로, 이 확인은 시험대 DDL 보다 **먼저** 한다. */
+function requireV13Titles(db, where) {
+  const r = mustQuery(
+    `SELECT (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='app_user' AND COLUMN_NAME='title_id'),
+            (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='title_code' AND COLUMN_NAME='title_id');`,
+    'v13 직급 번호 열 확인', db);
+  if (Number(r[0][0]) !== 1 || Number(r[0][1]) !== 1) {
+    envFail(`${where} 에 app_user.title_id 또는 title_code.title_id 가 없다. 스키마 v13(코드표 번호 키) 이전 DB 다`,
+      '이 루프의 payload 계약은 v13 의 title_id 조인을 전제로 한다. v13 으로 이관한 DB(기본 taskcalendar)를 원본으로 주세요.');
+  }
+}
+
 function resolveMigration() {
   if (OPT.referenceDdl) return { source: '내장 참조 DDL(완전 절단 · --reference-ddl)', sql: SEVER_DDL, builtin: true };
   if (OPT.migration && OPT.migration !== 'auto') {
@@ -759,6 +774,7 @@ if (MUT.noopOps) console.log('★ TC_TEST_MUTATE_NOOP — 모든 조작을 no-op
  *  절단 뒤에는 이름이 org_unit.name 한 곳에만 있으므로, 페이로드를 만들려면 JOIN 해야 한다.
  *  · units   : ProjectDb.cs:364 자리 — payload {name, parent, sortOrder}
  *  · members : ProjectDb.cs:395 자리 — payload {loginId, name, title, orgUnit}
+ *    (v13: app_user 는 title_id 만 든다. payload 의 title 은 title_code 를 LEFT JOIN 한 이름이다. 직급 없음(NULL)도 행이 남아야 한다.)
  *  · user    : ProjectDb.cs:232/278/339 자리 — 로그인 인가·사용자정보·열람범위 기준점
  *  ★ LEFT JOIN 이어야 한다: 루트는 parent_id 가 NULL 이고, 소속 미등록자는 org_id 가 NULL 이다.
  *    INNER JOIN 으로 쓰면 루트가 통째로 사라지고 미등록자가 명부에서 지워진다(--selftest 가 확인).
@@ -769,12 +785,14 @@ const HOST = {
     'FROM org_unit c LEFT JOIN org_unit p ON p.org_id = c.parent_id ' +
     'WHERE c.is_active=1 ORDER BY c.sort_order, c.name',
   members:
-    'SELECT u.login_id, u.name, u.title, o.name ' +
+    'SELECT u.login_id, u.name, t.name, o.name ' +
     'FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id ' +
+    'LEFT JOIN title_code t ON t.title_id = u.title_id ' +
     'WHERE u.is_active=1 ORDER BY o.name, u.name',
   user:
-    'SELECT u.login_id, u.name, u.title, o.name, u.view_scope, u.edit_role, u.is_active ' +
-    'FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id WHERE u.login_id=@id',
+    'SELECT u.login_id, u.name, t.name, o.name, u.view_scope, u.edit_role, u.is_active ' +
+    'FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id ' +
+    'LEFT JOIN title_code t ON t.title_id = u.title_id WHERE u.login_id=@id',
 };
 
 /* ── 같은 답을 **다른 방법으로** 뽑는 대조본 ──────────────────────────────────
@@ -788,7 +806,8 @@ const XREF = {
     'SELECT c.name, (SELECT p.name FROM org_unit p WHERE p.org_id = c.parent_id), c.sort_order ' +
     'FROM org_unit c WHERE c.is_active=1 ORDER BY c.sort_order, c.name',
   members:
-    'SELECT u.login_id, u.name, u.title, (SELECT o.name FROM org_unit o WHERE o.org_id = u.org_id) ' +
+    'SELECT u.login_id, u.name, (SELECT t.name FROM title_code t WHERE t.title_id = u.title_id), ' +
+    '(SELECT o.name FROM org_unit o WHERE o.org_id = u.org_id) ' +
     'FROM app_user u WHERE u.is_active=1 ' +
     'ORDER BY (SELECT o.name FROM org_unit o WHERE o.org_id = u.org_id), u.name',
 };
@@ -853,9 +872,11 @@ function compareResult(a, b, orderKeys) {
  *    I4 의 "리터럴 'NULL' 값 0건" 가드가 없애 준다.) */
 const SNAP_ORG = `SELECT org_id, name, IFNULL(parent_id,0), parent_id IS NULL, sort_order, is_active
                     FROM org_unit ORDER BY org_id`;
-const SNAP_USER = `SELECT user_id, login_id, name, IFNULL(title,''), title IS NULL,
+//  v13: 직급은 번호(title_id)로 뜬다. 이름은 SNAP_TITLE 로 따로 받아 JS 가 번호로 찾는다(payload 의 JOIN 과 독립인 정답).
+const SNAP_USER = `SELECT user_id, login_id, name, IFNULL(title_id,0), title_id IS NULL,
                           IFNULL(org_id,0), org_id IS NULL, view_scope, edit_role, is_active
                      FROM app_user ORDER BY user_id`;
+const SNAP_TITLE = `SELECT title_id, name FROM title_code ORDER BY title_id`;
 
 /* 카운터 묶음 — 한 블록 안에 여러 SELECT 를 이어 붙여 'key<TAB>value' 로 받는다.
  *  ★ 도달불가는 재귀 CTE(깊이 512 가드)로 센다. 순환이 있으면 그 사슬은 루트에서
@@ -868,7 +889,7 @@ SELECT 'dup_name_exact', COUNT(*) - COUNT(DISTINCT BINARY name) FROM org_unit;
 SELECT 'name_ci_drift', COUNT(DISTINCT BINARY name) - COUNT(DISTINCT name) FROM org_unit;
 SELECT 'inactive_parent', COUNT(*) FROM org_unit c JOIN org_unit p ON p.org_id = c.parent_id WHERE c.is_active=1 AND p.is_active=0;
 SELECT 'member_hidden', COUNT(*) FROM app_user u JOIN org_unit o ON o.org_id = u.org_id WHERE u.is_active=1 AND o.is_active=0;
-SELECT 'lit_null', (SELECT COUNT(*) FROM org_unit WHERE name='NULL') + (SELECT COUNT(*) FROM app_user WHERE name='NULL' OR login_id='NULL' OR title='NULL');
+SELECT 'lit_null', (SELECT COUNT(*) FROM org_unit WHERE name='NULL') + (SELECT COUNT(*) FROM app_user WHERE name='NULL' OR login_id='NULL') + (SELECT COUNT(*) FROM title_code WHERE name='NULL');
 WITH RECURSIVE t AS (SELECT org_id, 0 AS d FROM org_unit WHERE parent_id IS NULL UNION ALL SELECT o.org_id, t.d+1 FROM org_unit o JOIN t ON o.parent_id = t.org_id WHERE t.d < 512)
 SELECT 'unreachable', (SELECT COUNT(*) FROM org_unit) - (SELECT COUNT(DISTINCT org_id) FROM t);
 `;
@@ -880,6 +901,7 @@ function snapshot() {
   const items = [
     { key: 'org', sql: SNAP_ORG },
     { key: 'usr', sql: SNAP_USER },
+    { key: 'tit', sql: SNAP_TITLE },
     { key: 'cnt', sql: COUNT_SQL.trim() },
     { key: 'hu', sql: MUT.payloadUnits || HOST.units },
     { key: 'hm', sql: MUT.payloadMembers || HOST.members },
@@ -899,11 +921,14 @@ function snapshot() {
     sort: Number(r[4]),
     active: r[5] === '1',
   }));
+  const titleName = new Map(b.get('tit').map((r) => [Number(r[0]), r[1]]));
   const users = b.get('usr').map((r) => ({
     userId: Number(r[0]),
     loginId: r[1],
     name: r[2],
-    title: r[4] === '1' ? null : r[3],
+    titleId: r[4] === '1' ? null : Number(r[3]),
+    //  표시 이름은 번호로 찾는다(FK 가 있어 못 찾는 일은 없다. 못 찾으면 NULL 로 두어 payload 와 갈리게 한다).
+    title: r[4] === '1' ? null : (titleName.has(Number(r[3])) ? titleName.get(Number(r[3])) : null),
     orgId: r[6] === '1' ? null : Number(r[5]),
     scope: r[7],
     role: r[8],
@@ -1499,7 +1524,7 @@ function execPlan(plan) {
 }
 
 const sameUnit = (x, y) => x.name === y.name && x.parentId === y.parentId && x.sort === y.sort && x.active === y.active;
-const sameUser = (x, y) => x.loginId === y.loginId && x.name === y.name && x.title === y.title && x.orgId === y.orgId && x.scope === y.scope && x.active === y.active;
+const sameUser = (x, y) => x.loginId === y.loginId && x.name === y.name && x.titleId === y.titleId && x.orgId === y.orgId && x.scope === y.scope && x.active === y.active;
 const showUnit = (u) => `${u.name}(#${u.orgId}, parent_id=${u.parentId}, sort=${u.sort}, ${u.active ? '활성' : '숨김'})`;
 const showUser = (u) => `${u.loginId}(org_id=${u.orgId})`;
 
@@ -2002,8 +2027,8 @@ function selftestCases(st) {
     teardown: userWithOrg ? `UPDATE app_user SET org_id=${n(userWithOrg.orgId)} WHERE user_id=${n(userWithOrg.userId)};` : undefined,
     mutate: () => {
       const prev = MUT.payloadMembers;
-      MUT.payloadMembers = 'SELECT u.login_id, u.name, u.title, o.name FROM app_user u ' +
-        'LEFT JOIN org_unit o ON o.org_id = u.org_id WHERE u.is_active=1';
+      MUT.payloadMembers = 'SELECT u.login_id, u.name, t.name, o.name FROM app_user u ' +
+        'LEFT JOIN org_unit o ON o.org_id = u.org_id LEFT JOIN title_code t ON t.title_id = u.title_id WHERE u.is_active=1';
       return () => { MUT.payloadMembers = prev; };
     },
   });
@@ -2309,6 +2334,7 @@ function selfcheck() {
     console.error('              node tests/loop-org-compat.mjs --ops=60');
     process.exit(2);
   }
+  requireV13Titles(OPT.dbName, OPT.dbName);
   stats.migSource = '(적용하지 않음 — 이미 절단된 DB 를 읽기만 한다)';
   invSchemaContract();
   PROBES = probeUsersOf(snapshot());
@@ -2330,6 +2356,7 @@ function main() {
   /* ── 1. 복제 ── */
   curPhase = 'clone';
   createClone();
+  requireV13Titles(CLONE, `복제본(원본 ${OPT.dbName})`);
 
   /* ── 2. 원본이 절단 **전**인가 **후**인가 ───────────────────────────────────
    *  ★ 이 테스트는 처음 쓸 때 원본(taskmgr)이 아직 절단 전이라고 전제했다. 그 전제가

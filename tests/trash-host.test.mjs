@@ -533,8 +533,8 @@ test('변이⑦-a3: 인력 복구를 코드 2종처럼 MAX\\+10 으로 바꾸면
 
 test('변이⑦-b: 구분 복구에서 재매김을 빼면 계약⑦ 이 실패한다(옛 순번이 활성 사이에 끼어든다)', () => {
   const bad = mutate(pdb,
-    '"UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE name=@k"',
-    '"UPDATE section_code SET is_active=1 WHERE name=@k"');
+    '"UPDATE section_code SET is_active=1, sort_order=(SELECT s FROM (SELECT COALESCE(MAX(sort_order),0)+10 AS s FROM section_code) x) WHERE section_id=@k"',
+    '"UPDATE section_code SET is_active=1 WHERE section_id=@k"');
   assert.throws(() => checks.restoreReordersOnlyCodes(bad), /section_code 복구에 sort_order 재매김/);
 });
 

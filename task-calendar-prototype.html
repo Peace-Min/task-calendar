@@ -5886,7 +5886,8 @@ window.__saveFailed = function(){
 
 /* ---------- 과제 DB(공식 과제) READ 경로 — 온라인 전용(로컬 캐시 없음) ---------- */
 let dbOnline = false;   // 마지막 __applyProjects가 DB 실데이터였는지(true=온라인). false면 dbCatalog는 비어 있다.
-// DB 행 배열 → dbCatalog 형태. common_name 우선, 없으면 project_name. 색은 부문(section)으로.
+// DB 행 배열 → dbCatalog 형태. common_name 우선, 없으면 project_name. 색은 구분 번호(sectionId)로.
+//   ★ 이름(customer·section·status)은 표시용이고 판정과 편집은 번호(customerId·sectionId·statusId)로 한다(CODE-TABLE-IDS §4).
 function mapDbRows(arr){
   if(!Array.isArray(arr)) return [];
   return arr.map(r => {
@@ -5894,8 +5895,9 @@ function mapDbRows(arr){
     const u = String(r.uid || '').trim();
     if(!u) return null;
     const name = (String(r.common_name || '').trim() || String(r.project_name || '').trim() || '(이름 없음)');
-    return { id:'db-' + u, name, color:sectionColor(r.section), source:'db',
+    return { id:'db-' + u, name, color:sectionColor(r.sectionId), source:'db',
       customer:String(r.customer || ''), section:String(r.section || ''), status:String(r.status || ''),
+      customerId:codeIdOf(r.customerId), sectionId:codeIdOf(r.sectionId), statusId:codeIdOf(r.statusId),   // 상태 없음 = null
       startDate:String(r.start_date || ''), endDate:String(r.end_date || ''),
       devEndDate:String(r.dev_end_date || ''),   // 개발종료일 — 계약종료일과 별개. 상세·편집·Excel 에만 쓰인다(목록 행은 폭 고정)
       projectName:String(r.project_name || ''), contractName:String(r.contract_name || ''),
@@ -5926,10 +5928,10 @@ window.__applyProjects = function(jsonStr){
   let changed = false;
   try{ changed = syncSubscribedDbMeta() || changed; }catch(_){}
   try{ if(__xmlApplied) changed = migrateDbSubscriptions() || changed; }catch(_){}
-  // 신규 공식 과제 등록 직후 자동 편입(만든 사람은 쓸 것) — customer+projectName로 재조회 결과에서 매칭
+  // 신규 공식 과제 등록 직후 자동 편입(만든 사람은 쓸 것) — 발주처 번호 + projectName 으로 재조회 결과에서 매칭
   try{
     if(__pendingAutoSub){
-      const m = dbCatalog.find(c => offTrim(c.customer) === __pendingAutoSub.customer && offTrim(c.projectName) === __pendingAutoSub.projectName);
+      const m = dbCatalog.find(c => c.customerId === __pendingAutoSub.customerId && offTrim(c.projectName) === __pendingAutoSub.projectName);
       if(m){ subscribeDbCat(m); changed = true; }
       __pendingAutoSub = null;
     }
@@ -7343,7 +7345,7 @@ function mbApplyData(d){
 let __uaAdmin = false;      // 이번 조회에서 호스트가 인정한 관리자 여부(회신에 admin:true 가 있었나)
 let __uaMembers = [];       // 이번 조회의 구성원(전원 · 「퇴사자 보기」면 퇴사자까지)
 let __uaUnits = [];         // 조직 목록 — 편집 폼의 소속 드롭다운 소스(DB 마스터)
-let __uaTitles = [];        // 활성 직급 이름 배열 — 편집 폼 드롭다운 소스(DB 마스터)
+let __uaTitles = [];        // 활성 직급 [{id, name}] — 편집 폼 드롭다운 소스(DB 마스터 · 값은 번호)
 let __uaInactive = false;   // 「퇴사자 보기」 — 켜면 membersGet 을 includeInactive 로 다시 부른다
 let __uaOrder = false;      // 「순서 편집」 모드 — 켜면 행마다 ▲▼ 가 생긴다
 let __uaOrderBackup = null; // 순서 편집 시작 시점의 명부 스냅샷. 저장하지 않고 끄면 이걸로 되돌린다
@@ -8086,7 +8088,8 @@ function userEdMsgSet(html, tone){
 //     (2026-09-10). 그러면 관리자가 이름 하나 고치려고 열어 [저장]만 눌러도 그 사람의 직급이 조용히 바뀐다.
 //     대신 그 값을 맨 위에 끼워 넣고 '목록에 없음'이라고 말한다 — 그대로 두면 호스트가 기존 값을 받아 준다.
 //   ★ 반환값 = '끼워 넣었나'. 호출부(userEdOpen)가 안내 문구를 띄울 근거다.
-function userEdFillSelect(id, items, cur, blankLabel){
+//   ★ curLabel = 목록에 없는 지금 값을 보일 글자(값이 번호일 때 · 직급). 없으면 값 그대로 쓴다.
+function userEdFillSelect(id, items, cur, blankLabel, curLabel){
   const sel = document.getElementById(id); if(!sel) return false;
   while(sel.firstChild) sel.removeChild(sel.firstChild);
   if(blankLabel != null){
@@ -8103,7 +8106,7 @@ function userEdFillSelect(id, items, cur, blankLabel){
   const known = want === '' || Array.prototype.some.call(sel.options, o => o.value === want);
   if(!known){
     const o = document.createElement('option');
-    o.value = want; o.textContent = want + ' (목록에 없음)';   // 고를 수 있는 옵션이다(disabled 아님 — 유지가 기본값이다)
+    o.value = want; o.textContent = (curLabel ? String(curLabel) : want) + ' (목록에 없음)';   // 고를 수 있는 옵션이다(disabled 아님 — 유지가 기본값이다)
     sel.insertBefore(o, sel.firstChild);
   }
   sel.value = want;
@@ -8139,7 +8142,9 @@ function userEdOpen(userId){
   set('userEdName', m ? m.name : '');
   //  ★ 목록에 없는 값이 하나라도 있으면(비활성 직급·폐지된 소속 등) 아래에서 그 사실을 말한다.
   let unknown = false;
-  unknown = userEdFillSelect('userEdTitle', __uaTitles.map(t => ({ value: t, label: t })), m ? m.title : '', null) || unknown;
+  //  직급은 번호가 값이고 이름이 글자다(CODE-TABLE-IDS §4). 목록에 없는 지금 값은 그 사람의 직급 이름으로 보인다.
+  unknown = userEdFillSelect('userEdTitle', __uaTitles.filter(t => t && t.id != null).map(t => ({ value: t.id, label: t.name })),
+    m && m.titleId != null ? m.titleId : '', null, m ? m.title : '') || unknown;
   unknown = userEdFillSelect('userEdOrg',
     __uaUnits.filter(u => u && u.orgId != null).map(u => ({ value: u.orgId, label: u.name })),
     m && m.orgId != null ? m.orgId : '', '(소속 없음)') || unknown;
@@ -8243,7 +8248,7 @@ async function userEdSaveNow(){
     userId: __ueId || 0,
     loginId: val('userEdLogin'),
     name: val('userEdName'),
-    title: val('userEdTitle'),
+    titleId: Number(val('userEdTitle') || 0),   // 직급 번호(0 = 고르지 않음)
     orgId: Number(val('userEdOrg') || 0),
     viewScope: userEdPick('userEdScope'),
     editRole: userEdPick('userEdRole'),
@@ -8251,7 +8256,7 @@ async function userEdSaveNow(){
   //  클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
   if(!payload.loginId){ userEdMsgSet(ICON.alert + ' 로그인 ID 를 입력하세요.', 'err'); focus('userEdLogin'); return; }
   if(!payload.name){ userEdMsgSet(ICON.alert + ' 이름을 입력하세요.', 'err'); focus('userEdName'); return; }
-  if(!payload.title){ userEdMsgSet(ICON.alert + ' 직급을 고르세요.', 'err'); focus('userEdTitle'); return; }
+  if(!payload.titleId){ userEdMsgSet(ICON.alert + ' 직급을 고르세요.', 'err'); focus('userEdTitle'); return; }
   if(!payload.viewScope || !payload.editRole){ userEdMsgSet(ICON.alert + ' 열람 범위와 편집 권한을 고르세요.', 'err'); return; }
   userEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
   //  ★ 회신은 **이 폼의 클로저가** 받는다(2026-09-14) — 그래서 "이 회신이 지금 열려 있는 그 폼의 것인가"를
@@ -8329,8 +8334,8 @@ function trOrgRows(kind){
     });
   }
   const titles = Array.isArray(__trOrg.titles) ? __trOrg.titles : [];
-  return titles.filter(t => t && t.active === false && String(t.name || ''))
-    .map(t => ({ key: String(t.name), name: String(t.name), refs: Number(t.users) || 0, deletable: false, sub: '', why: '' }));
+  return titles.filter(t => t && t.active === false && String(t.name || '') && t.titleId != null)
+    .map(t => ({ key: String(t.titleId), name: String(t.name), refs: Number(t.users) || 0, deletable: false, sub: '', why: '' }));
 }
 
 // 탭 + 목록 렌더 — innerHTML 금지. 관리자가 아니면 **행도 컨트롤도 탭도 만들지 않는다**(숨김이 아니라 부재).
@@ -8447,11 +8452,14 @@ function trRender(){
     //  ★ 사유(why)를 **보이는 줄**로 낸다(2026-09-10). 예전에는 꺼진 버튼의 title 에만 있었는데,
     //    Chromium 은 disabled 컨트롤에 툴팁을 띄우지 않는다 — 관리자는 '왜 안 눌리지'를 영영 알 수 없었다.
     //    title 은 그대로 둔다(마우스가 아닌 경로·기존 시험의 손잡이).
-    if(it && it.deletable === false && it.why){
+    //  ★ 동작이 묶인 코드(구분 2, 상태 2)는 호스트 힌트가 없어도 이유를 낸다(lockWhy · CODE-TABLE-IDS §3).
+    const lockWhy = codeProtectedWhy(def.kind, key);
+    const shownWhy = (it && it.deletable === false && it.why) ? String(it.why) : lockWhy;
+    if(shownWhy){
       const wy = document.createElement('div');
       wy.className = 'set-hint'; wy.style.margin = '0';
       wy.dataset.trwhy = key;   // 시험이 잡는 손잡이(이름으로 셀렉터를 만들면 한글 이스케이프가 낀다)
-      wy.textContent = String(it.why);
+      wy.textContent = shownWhy;
       row.appendChild(wy);
     }
     //  행과 버튼은 **형제**다(.mba-line 이 한 줄로 묶는다 — 「구성원 편집」과 같은 골격).
@@ -8478,8 +8486,9 @@ function trRender(){
     db.dataset.top = 'delete'; db.dataset.tkey = key;
     //  ★ 지울 수 없으면 **끄고 사유를 붙인다**. 눌러 봐야 거부되는 버튼은 관리자에게 이유를 알려 주지 않는다.
     //    '지울 수 없음'과 '왕복 중'은 사유가 다르지만 결과는 같다 — 잠금은 한 식으로 정한다.
-    const deletable = !!(it && it.deletable === true);
-    if(!deletable) db.title = (it && it.why) ? String(it.why) : '';
+    //  ★ 동작이 묶인 코드(구분 2, 상태 2)는 호스트 힌트와 무관하게 화면도 끈다(위 lockWhy). 판정은 호스트가 다시 한다.
+    const deletable = !!(it && it.deletable === true) && !lockWhy;
+    if(!deletable) db.title = (it && it.why) ? String(it.why) : lockWhy;
     db.disabled = !deletable || __trSaving;
     db.addEventListener('click', () => trDelete(def.kind, key, nm, refs));
     act.appendChild(db);
@@ -8646,7 +8655,7 @@ function trOrgRestore(kind, key, name){
   confirmBox('복구', "'" + name + "' 을(를) 다시 씁니다. '직급·소속' 목록과 드롭다운에 돌아옵니다. 계속할까요?", '복구', '취소').then(async r => {
     if(r !== 'ok') return;
     const p = (kind === 'unit') ? { cmd: 'unitSetActive', orgId: Number(key), active: true }
-                                : { cmd: 'titleSetActive', name: String(key), active: true };
+                                : { cmd: 'titleSetActive', titleId: Number(key), active: true };
     const rep = await trSend(p);
     if(!rep) return;
     trSeatOrg(rep.orgTitle);
@@ -8858,9 +8867,23 @@ async function submitLogout(){
 // P3.5 단일 목록 모델: state.categories = 캘린더의 '유일한' 과제 목록. DB 유래 과제도 source:'db'로 여기에 함께 담기고 XML에 영속된다.
 // (이전의 이중 목록 — state.categories vs dbCatalog — 은 소비 지점 33곳 중 일부만 병합돼 필터바에 DB 과제가 안 뜨는 실버그를 낳았다.)
 // dbCatalog = DB 전체 목록(구독 후보) — 카탈로그 화면·재연결 select 전용. 사용자가 고른 것(구독)만 state.categories로 편입된다.
-let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, section, status, startDate, endDate, devEndDate, projectName, contractName, commonName }]
-const DB_SECTION_COLORS = { '일반계약':'#3e5be0', '사업부관리':'#8a5cf6', '선진행':'#c2770a' };
-function sectionColor(section){ return DB_SECTION_COLORS[(section||'').trim()] || '#5b6b7d'; }
+let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, section, status, customerId, sectionId, statusId, startDate, endDate, devEndDate, projectName, contractName, commonName }]
+/* ---------- 코드값 고정 번호(CODE-TABLE-IDS §3) ----------
+   ★ 동작은 이름 글자가 아니라 이 번호로 판정한다. 이름은 관리 화면에서 바꿀 수 있고 바꿔도 동작은 그대로다.
+   ★ 호스트에 같은 표가 한 벌 있다(widget/ProjectDb.cs 의 CodeIds). 시험(code-ids-app)이 둘을 대조한다.
+   ★ 고정 번호를 늘릴 때는 이 표와 CODE_PROTECT_WHY 에 함께 더한다. */
+const CODE_ID = { SECTION_PRE: 2, STATUS_ACTIVE: 1, STATUS_ENDED: 2 };
+//  숨김과 삭제를 막는 행(구분 2, 상태 2)과 그 이유. 호스트 CodeIds.SectionPreMsg, StatusEndedMsg 와 글자까지 같다.
+const CODE_PROTECT_WHY = {
+  section: { [CODE_ID.SECTION_PRE]: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.' },
+  status:  { [CODE_ID.STATUS_ENDED]: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.' },
+};
+const codeProtectedWhy = (kind, id) => { const t = CODE_PROTECT_WHY[kind]; return (t && t[Number(id)]) || ''; };
+// 번호 정규화 — 양의 정수만 번호다(그 밖은 null = 없음).
+const codeIdOf = v => { const n = Number(v); return (Number.isInteger(n) && n > 0) ? n : null; };
+//  구분 색 = 번호 기준(CODE-TABLE-IDS §3-4). 표에 없는 번호는 기본색. 1=일반계약 · 2=선진행 · 3=사업부관리(시드)
+const DB_SECTION_COLORS = { 1: '#3e5be0', 3: '#8a5cf6', 2: '#c2770a' };
+function sectionColor(sectionId){ return DB_SECTION_COLORS[codeIdOf(sectionId)] || '#5b6b7d'; }
 const dbCatalogById = id => dbCatalog.find(c => c.id === id) || null;
 // 과제 해석: 단일 목록(state.categories) 우선 → 미편입 db-* 엣지는 카탈로그 폴백 → null. 기존 render/label 코드가 그대로 동작.
 const catById   = id => state.categories.find(c => c.id === id) || dbCatalogById(id) || null;
@@ -8894,7 +8917,7 @@ function subscribeDbCat(src, s){
   //   DB에 색 컬럼 자체가 없고(전 테이블), sectionColor()는 '앱의 초기 표시 관례'일 뿐이다.
   //   사용자가 고른 색이 편입 재실행으로 날아가면 안 된다. DB 기준으로 맞출 것은 name·dbGone뿐.
   if(cur){ Object.assign(cur, { name: src.name || '(공식 과제)', source:'db', dbGone: !!src.dbGone }); return cur; }
-  const color = (/^#[0-9a-fA-F]{6}$/.test(src.color || '')) ? src.color : sectionColor(src.section);   // 신규 편입의 '초기값'
+  const color = (/^#[0-9a-fA-F]{6}$/.test(src.color || '')) ? src.color : sectionColor(src.sectionId);   // 신규 편입의 '초기값'
   const c = { id: src.id, source:'db', dbGone: !!src.dbGone, name: src.name || '(공식 과제)', color,
     desc:'', gitRepo:'', svnRepo:'', createdAt: nowIso() };
   s.categories.push(c); return c;
@@ -8961,7 +8984,7 @@ function migrateDbSubscriptions(){
   }
   return changed;
 }
-let __pendingAutoSub = null;   // 신규 공식 과제 등록 직후 재조회 결과에서 자동 편입할 대상 {customer, projectName}
+let __pendingAutoSub = null;   // 신규 공식 과제 등록 직후 재조회 결과에서 자동 편입할 대상 {customerId, projectName}
 
 // 노트 TODO 배열 정규화 — 손상/외부편집 데이터 방어(텍스트는 한 줄로, 빈 항목 제외)
 function normTodos(a){
@@ -11638,8 +11661,8 @@ function saveCatFromForm(){
    편집(P3.2) 버튼은 권한과 무관하게 늘 보인다 — 권한 판정은 호스트가 요청 시점에 한다. */
 // 구분/상태는 DB 코드테이블에서 로드한다(더 이상 하드코딩 ENUM 아님) — 부팅·카탈로그 열 때 loadCodes로 채워진다.
 // 오프라인이면 빈 배열 → 드롭다운 비활성/빈 목록으로 우아하게 폴백(편집은 offEditGuard가 온라인을 요구하므로 실질 영향 적음).
-let offSections = [];   // 활성 구분 코드값(sort_order 순) — __applyCodes가 채움
-let offStatuses = [];   // 활성 상태 코드값(sort_order 순)
+let offSections = [];   // 활성 구분 코드값 [{id, name}](sort_order 순) — __applyCodes가 채움
+let offStatuses = [];   // 활성 상태 코드값 [{id, name}](sort_order 순)
 const OFF_NO_STATUS = '__none__';   // 상태가 비어 있는 행을 고르는 필터 센티널(ENUM 값과 충돌하지 않게)
 let offSelId = null;                // 선택된 공식 과제 id(db-<uid>) — 상세 패널 대상
 const offCollapsed = new Set();     // 접힌 그룹(구분명). 모달을 닫아도 세션 동안 유지
@@ -11652,49 +11675,70 @@ function offPeriod(c){
   const a = offDate(c.startDate), b = offDate(c.endDate);
   return (a || b) ? ((a || '미정') + ' ~ ' + (b || '미정')) : '';   // 한쪽만 있으면 반대쪽은 '미정'
 }
-// 상태 → 표시 종류. 진행중=초록 / 종료=회색 / 그 외(1차 납품완료·미정)=앰버 / 없음=약화
-function offStatusKind(st){
-  const s = offTrim(st);
-  if(!s) return 'none';
-  if(s === '진행중') return 'run';
-  if(s === '종료') return 'end';
+// 상태 번호 → 표시 종류. 진행중(1)=초록 / 종료(2)=회색 / 그 외(1차 납품완료·미정)=앰버 / 없음=약화
+//   ★ 이름이 아니라 고정 번호(CODE_ID)로 판정한다 — 이름을 바꿔도 색이 따라간다(CODE-TABLE-IDS §3).
+function offStatusKind(statusId){
+  const id = codeIdOf(statusId);
+  if(id == null) return 'none';
+  if(id === CODE_ID.STATUS_ACTIVE) return 'run';
+  if(id === CODE_ID.STATUS_ENDED) return 'end';
   return 'warn';
 }
 function offSectionOf(c){ return offTrim(c.section) || '구분 없음'; }
-function offFilters(){
-  const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
-  const chk = document.getElementById('offActiveOnly');
-  // qRaw = 사용자가 친 그대로(추출 정보줄에 남길 원문). q = 비교용 정규화(공백·대소문자 무시).
-  return { q:offNorm(val('offSearch')), qRaw:offTrim(val('offSearch')), customer:val('offCustomer'), section:val('offSection'),
-           status:val('offStatus'), activeOnly:!chk || chk.checked };
+// 필터 셀렉트 하나 읽기 — 값(v)은 번호(또는 OFF_NO_STATUS), 글자(t)는 고른 옵션의 이름이다.
+//   ★ 판정은 번호(customerId·sectionId·statusId)로 하고 이름(customer·section·status)은 추출 정보줄에만 쓴다.
+function offFilterPick(id){
+  const e = document.getElementById(id);
+  if(!e || !e.value) return { v:'', t:'' };
+  const o = e.options && e.selectedIndex >= 0 ? e.options[e.selectedIndex] : null;
+  return { v:String(e.value), t:(e.value === OFF_NO_STATUS) ? OFF_NO_STATUS : (o ? offTrim(o.textContent) : '') };
 }
+function catalogFilters(searchId, custId, secId, stId, activeId){
+  const se = document.getElementById(searchId);
+  const raw = se ? se.value : '';
+  const chk = document.getElementById(activeId);
+  const cu = offFilterPick(custId), sc = offFilterPick(secId), st = offFilterPick(stId);
+  // qRaw = 사용자가 친 그대로(추출 정보줄에 남길 원문). q = 비교용 정규화(공백·대소문자 무시).
+  return { q:offNorm(raw), qRaw:offTrim(raw),
+           customerId:cu.v, customer:cu.t, sectionId:sc.v, section:sc.t, statusId:st.v, status:st.t,
+           activeOnly:!chk || chk.checked };
+}
+function offFilters(){ return catalogFilters('offSearch', 'offCustomer', 'offSection', 'offStatus', 'offActiveOnly'); }
 // '활성 필터'는 기본값에서 벗어난 것만 센다 — 진행중만(기본 ON)은 켜져 있는 게 정상이라 세지 않는다.
 function offActiveFilterCount(f){
   return (f.q ? 1 : 0) + (f.customer ? 1 : 0) + (f.section ? 1 : 0) + (f.status ? 1 : 0) + (f.activeOnly ? 0 : 1);
 }
+//  ★ 판정은 전부 번호다(CODE-TABLE-IDS §3·§4). '진행중만'(activeOnly)은 고정 번호 종료(CODE_ID.STATUS_ENDED)를 뺀다.
 function offMatches(c, f){
-  if(f.activeOnly && offTrim(c.status) === '종료') return false;
-  if(f.customer && offTrim(c.customer) !== f.customer) return false;
-  if(f.section && offTrim(c.section) !== f.section) return false;
-  if(f.status === OFF_NO_STATUS){ if(offTrim(c.status)) return false; }
-  else if(f.status && offTrim(c.status) !== f.status) return false;
+  const sid = codeIdOf(c.statusId);
+  if(f.activeOnly && sid === CODE_ID.STATUS_ENDED) return false;
+  if(f.customerId && String(codeIdOf(c.customerId)) !== String(f.customerId)) return false;
+  if(f.sectionId && String(codeIdOf(c.sectionId)) !== String(f.sectionId)) return false;
+  if(f.statusId === OFF_NO_STATUS){ if(sid != null) return false; }
+  else if(f.statusId && String(sid) !== String(f.statusId)) return false;
   if(f.q){
     const hay = offNorm([c.name, c.projectName, c.contractName, c.customer].join(' '));
     if(!hay.includes(f.q)) return false;
   }
   return true;
 }
-// 구분(section)으로 묶고 ENUM 순서 → 그 외는 가나다. 그룹 안은 이름순.
+// 구분 번호(sectionId)로 묶고 코드 순서(offSections) → 그 외는 가나다. 그룹 안은 이름순.
+//   돌려주는 모양은 [[라벨(구분 이름), 행들], …] 그대로다(그리는 쪽은 라벨만 본다).
 function offGroups(list){
-  const map = new Map();
-  for(const c of list){ const k = offSectionOf(c); if(!map.has(k)) map.set(k, []); map.get(k).push(c); }
-  const rank = k => { const i = offSections.indexOf(k); return i < 0 ? offSections.length : i; };
-  const out = [...map.entries()].sort((a, b) => (rank(a[0]) - rank(b[0])) || a[0].localeCompare(b[0], 'ko'));
+  const map = new Map();   // 열쇠 = 구분 번호 문자열(없으면 '')
+  for(const c of list){
+    const id = codeIdOf(c.sectionId), k = id == null ? '' : String(id);
+    if(!map.has(k)) map.set(k, [offSectionOf(c), []]);
+    map.get(k)[1].push(c);
+  }
+  const rank = k => { const i = offSections.findIndex(s => String(s.id) === k); return i < 0 ? offSections.length : i; };
+  const out = [...map.entries()].sort((a, b) => (rank(a[0]) - rank(b[0])) || a[1][0].localeCompare(b[1][0], 'ko')).map(([, g]) => g);
   out.forEach(([, rows]) => rows.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko')));
   return out;
 }
-// 필터 셀렉트 채우기 — 발주처는 데이터에서 distinct, 구분·상태는 ENUM 고정(+데이터에만 있는 값 보강).
+// 필터 셀렉트 채우기 — 발주처는 데이터에서 distinct, 구분·상태는 코드 순서(+데이터에만 있는 값 보강).
 // 현재 선택값은 옵션이 남아 있으면 보존, 사라졌으면 '전체'로 되돌린다(유령 필터 방지).
+// ★ 옵션 값은 번호, 글자는 이름이다(CODE-TABLE-IDS §4). 이름을 바꿔도 고른 필터가 그대로 남는다.
 // ★ 카탈로그와 재연결 선택 팝업이 같은 로직을 쓰도록 셀렉트 id 3개를 인자로 받는다(재사용, 동작 동일).
 function fillCatalogFilterSelects(custId, secId, stId){
   const fill = (id, values, allLabel) => {
@@ -11704,17 +11748,28 @@ function fillCatalogFilterSelects(custId, secId, stId){
       values.map(o => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
     sel.value = values.some(o => o.v === cur) ? cur : '';
   };
-  const uniq = key => [...new Set(dbCatalog.map(c => offTrim(c[key])).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
-  fill(custId, uniq('customer').map(v => ({ v, t:v })), '발주처 전체');
-  const secs = [...offSections, ...uniq('section').filter(s => !offSections.includes(s))];
-  fill(secId, secs.map(v => ({ v, t:v })), '구분 전체');
-  const sts = [...offStatuses, ...uniq('status').filter(s => !offStatuses.includes(s))].map(v => ({ v, t:v }));
-  if(dbCatalog.some(c => !offTrim(c.status))) sts.push({ v:OFF_NO_STATUS, t:'상태 없음' });
+  //  데이터에 실제로 쓰인 (번호, 이름) 짝 — 번호가 열쇠다. 코드 목록에 이미 있는 번호는 빼고 보강한다.
+  const pairs = (idKey, nameKey, known) => {
+    const seen = new Set((known || []).map(o => String(o.v)));
+    const m = new Map();
+    for(const c of dbCatalog){
+      const id = codeIdOf(c[idKey]); if(id == null || seen.has(String(id))) continue;
+      const nm = offTrim(c[nameKey]); if(nm && !m.has(String(id))) m.set(String(id), nm);
+    }
+    return [...m.entries()].map(([v, t]) => ({ v, t })).sort((a, b) => a.t.localeCompare(b.t, 'ko'));
+  };
+  fill(custId, pairs('customerId', 'customer', []), '발주처 전체');
+  const codeOpts = arr => (arr || []).map(o => ({ v:String(o.id), t:String(o.name) }));
+  const secBase = codeOpts(offSections);
+  fill(secId, [...secBase, ...pairs('sectionId', 'section', secBase)], '구분 전체');
+  const stBase = codeOpts(offStatuses);
+  const sts = [...stBase, ...pairs('statusId', 'status', stBase)];
+  if(dbCatalog.some(c => codeIdOf(c.statusId) == null)) sts.push({ v:OFF_NO_STATUS, t:'상태 없음' });
   fill(stId, sts, '상태 전체');
 }
 function offFillSelects(){ fillCatalogFilterSelects('offCustomer', 'offSection', 'offStatus'); }
 function offRowHtml(c){
-  const k = offStatusKind(c.status), on = (offSelId === c.id);
+  const k = offStatusKind(c.statusId), on = (offSelId === c.id);
   const cust = offTrim(c.customer), sec = offTrim(c.section), st = offTrim(c.status), per = offPeriod(c);
   const subbed = catIsSubscribed(c.id);   // 편입 상태(단일 목록 헬퍼) — 행에 시각 표시(좌측 강조 + 이름 옆 ✓)
   return `<div class="off-row${on ? ' on' : ''}${subbed ? ' subbed' : ''}" role="row" tabindex="-1" aria-selected="${on ? 'true' : 'false'}" data-id="${esc(c.id)}">`
@@ -11767,7 +11822,7 @@ function renderOfficialDetail(){
   const c = offSelId ? dbCatalogById(offSelId) : null;
   // 선택한 과제가 DB 재조회로 사라졌으면 선택도 함께 비운다(유령 선택 방지)
   if(!c){ offSelId = null; box.innerHTML = `<div class="off-d-empty">왼쪽에서 과제를 선택하세요</div>`; return; }
-  const k = offStatusKind(c.status), st = offTrim(c.status), per = offPeriod(c);
+  const k = offStatusKind(c.statusId), st = offTrim(c.status), per = offPeriod(c);
   const val = v => { const s = offTrim(v); return s ? esc(s) : `<span class="off-mut">미정</span>`; };
   box.innerHTML = `<div class="off-d-title">${esc(c.name)}</div>`
     + `<dl class="off-dl">`
@@ -11908,7 +11963,8 @@ function offExportRow(c){
     startDate:    offDate(o.startDate),     // 'YYYY-MM-DD'만 통과(호스트가 진짜 날짜 셀로 기록)
     endDate:      offDate(o.endDate),
     devEndDate:   offDate(o.devEndDate),   // 개발종료일(계약종료일과 별개)
-    status:       offTrim(o.status),        // 호스트가 이 값을 상태색 힌트로도 쓴다
+    status:       offTrim(o.status),        // 상태 이름(표시 열)
+    statusId:     codeIdOf(o.statusId),     // 호스트가 이 번호로 상태색 힌트를 단다(이름이 아니다 · CODE-TABLE-IDS §3)
     // '사용여부' 열은 없앴다 — 호스트 질의가 is_active=1만 읽어(ProjectDb.LoadProjectsJsonAsync) 숨김 행은
     // 애초에 오지 않고, 결과적으로 전 행이 "사용"인 상수 열이 장표에 나갔다(장표에서 상수 열은 노이즈).
     // 잃어버린 정보(=숨김은 포함 안 됨)는 부제에 상시 표기한다. 숨김 포함 추출이 생기면 그때 열을 되살린다.
@@ -11925,7 +11981,7 @@ function offExportRows(list){
 // (activeOnly는 기본 ON이지만 실제로 행을 걸러내므로 반드시 남긴다).
 //
 // ★ 표기는 '종료 제외'다 — 화면 체크박스 라벨('진행중만')을 그대로 쓰면 파일이 거짓말을 한다.
-//   offMatches의 실제 조건은 status !== '종료'라서 미정·1차 납품완료가 함께 뽑힌다. 화면은 사용자가 눈으로 보지만
+//   offMatches의 실제 조건은 '상태 번호가 종료(CODE_ID.STATUS_ENDED)가 아님'이라서 미정·1차 납품완료가 함께 뽑힌다. 화면은 사용자가 눈으로 보지만
 //   장표는 파일로 남아 남에게 전달된다 — 받는 사람이 '진행중 과제 목록'으로 오해하면 안 된다.
 //   (화면 라벨은 UX 문제라 건드리지 않는다. 파일 표기만 정확히 한다.)
 function offExportFilterSummary(f){
@@ -11968,7 +12024,7 @@ function offSyncExportBtn(n){
 // 시트2(발주처) 데이터 — 활성 발주처 마스터를 이름순으로. 마스터가 아직 안 실렸으면(loadCustomers 전) 카탈로그에
 // 실제로 쓰인 발주처로 폴백해 빈 시트를 피한다. 번호(No)는 호스트가 이 순서 그대로 매긴다(웹=무엇을, 호스트=어떻게).
 function offCustomerExportList(){
-  let names = (dbCustomers || []).map(offTrim).filter(Boolean);
+  let names = (dbCustomers || []).map(c => offTrim(c && c.name)).filter(Boolean);
   if(!names.length) names = dbCatalog.map(c => offTrim(c.customer)).filter(Boolean);
   return [...new Set(names)].sort((a, b) => a.localeCompare(b, 'ko'));
 }
@@ -12021,19 +12077,25 @@ async function runOfficialXlsxExport(){
    진입 조건이 둘(위젯 · 온라인)이고 실패 이유가 서로 다르므로 게이트를 한 곳(offEditGuard)에 모은다.
    저장은 호스트(saveProject) 왕복 → __projectSaved. 성공하면 호스트가 곧바로 재조회하므로 목록은 저절로 맞춰진다. */
 const offUidOf = id => String(id || '').replace(/^db-/, '');   // 'db-<uid>' → '<uid>'(DB 파라미터용)
-let dbCustomers = [];      // 발주처 마스터(customer.name) — 호스트 loadCustomers 결과
+let dbCustomers = [];      // 발주처 마스터 [{id, name}](customer) — 호스트 loadCustomers 결과
 let offEdUid = null;       // 편집 대상 uid. ''/null = 신규 추가
 let offEdBusy = false;     // 저장 왕복 중(중복 제출·닫기 방지)
-let __offEdSubmit = null;  // 직전 제출 스냅샷 {isNew, customer, projectName} — 신규 등록 성공 시 자동 편입 매칭용
+let __offEdSubmit = null;  // 직전 제출 스냅샷 {isNew, customerId, projectName} — 신규 등록 성공 시 자동 편입 매칭용
 // (무응답 워치독은 projBeginRequest/__projWatchdog로 일원화 — 저장·숨김 공용)
 
-// 호스트가 읽어 온 발주처 목록 주입. 실패("")면 기존 목록에서 뽑은 발주처만으로 폴백한다.
+// 코드 목록 한 벌 정규화 — 호스트가 주는 [{id, name}] 에서 번호와 이름이 둘 다 있는 것만 남긴다.
+function codeListOf(arr){
+  if(!Array.isArray(arr)) return null;
+  return arr.map(x => ({ id: codeIdOf(x && x.id), name: offTrim(x && x.name) })).filter(x => x.id != null && x.name);
+}
+// 호스트가 읽어 온 발주처 목록([{id, name}]) 주입. 실패("")면 기존 목록에서 뽑은 발주처만으로 폴백한다.
 window.__applyCustomers = function(jsonStr){
   try{
     const s = (jsonStr == null) ? '' : String(jsonStr);
     if(s && s.trim()){
       let arr = null; try{ arr = JSON.parse(s); }catch(_){ arr = null; }
-      if(Array.isArray(arr)) dbCustomers = arr.map(v => String(v || '').trim()).filter(Boolean);
+      const list = codeListOf(arr);
+      if(list) dbCustomers = list;
     }
   }catch(_){}
   try{
@@ -12043,10 +12105,11 @@ window.__applyCustomers = function(jsonStr){
   }catch(_){}
 };
 // 호스트가 읽어 온 구분/상태 코드목록(활성) 주입. 인자 2개 = sections/statuses 각각의 JSON 배열 문자열('' 또는 파싱실패면 유지).
+//   ★ 원소는 [{id, name}] 이다(CODE-TABLE-IDS §4). 드롭다운 값은 번호, 글자는 이름이다.
 window.__applyCodes = function(sectionsJson, statusesJson){
   const parse = (s, cur) => {
     try{ const t = (s == null) ? '' : String(s);
-      if(t && t.trim()){ const arr = JSON.parse(t); if(Array.isArray(arr)) return arr.map(v => String(v || '').trim()).filter(Boolean); }
+      if(t && t.trim()){ const list = codeListOf(JSON.parse(t)); if(list) return list; }
     }catch(_){}
     return cur;   // 실패/빈값이면 기존값 유지(연결 끊김에 우아하게)
   };
@@ -12061,42 +12124,50 @@ window.__applyCodes = function(sectionsJson, statusesJson){
     const ed = document.getElementById('officialEditModal');
     if(ed && !ed.classList.contains('hidden')){
       const s = document.getElementById('offEdSection'), st = document.getElementById('offEdStatus');
-      offEdFillEnums(s ? s.value : '', st ? st.value : '');   // 현재 선택 보존하며 다시 채움
+      const lbl = e => (e && e.selectedIndex >= 0 && e.options[e.selectedIndex]) ? offTrim(e.options[e.selectedIndex].textContent) : '';
+      offEdFillEnums(s ? s.value : '', st ? st.value : '', lbl(s), lbl(st));   // 현재 선택(번호와 글자) 보존하며 다시 채움
     }
   }catch(_){}
   try{ const rp = document.getElementById('relinkPickModal'); if(rp && !rp.classList.contains('hidden')){ rlpFillSelects(); renderRlpList(); } }catch(_){}
 };
 // 발주처 = 마스터 + 현재 목록에 실제로 쓰인 값 + 편집 중인 값의 합집합(FK가 살아 있는 값이 사라지지 않게)
+//   ★ 옵션 값은 발주처 번호, 글자는 이름이다(CODE-TABLE-IDS §4). cur 는 번호다.
 function offEdFillCustomers(cur){
   const sel = document.getElementById('offEdCustomer'); if(!sel) return;
-  const used = dbCatalog.map(c => offTrim(c.customer)).filter(Boolean);
-  const all = [...new Set([...dbCustomers, ...used, offTrim(cur)].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
-  sel.innerHTML = `<option value="">발주처 선택</option>` + all.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
-  sel.value = all.includes(offTrim(cur)) ? offTrim(cur) : '';
+  const want = codeIdOf(cur) == null ? '' : String(codeIdOf(cur));
+  const m = new Map();
+  for(const c of dbCustomers) if(c && codeIdOf(c.id) != null && offTrim(c.name)) m.set(String(codeIdOf(c.id)), offTrim(c.name));
+  for(const c of dbCatalog){ const id = codeIdOf(c.customerId); if(id != null && !m.has(String(id)) && offTrim(c.customer)) m.set(String(id), offTrim(c.customer)); }
+  const all = [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'ko'));
+  sel.innerHTML = `<option value="">발주처 선택</option>` + all.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
+  sel.value = m.has(want) ? want : '';
 }
-// 편집 폼의 구분/상태 드롭다운 — DB 코드목록(offSections/offStatuses)으로 채운다.
-// 편집 중인 값이 목록에 없으면(나중에 숨겨진 코드 등) 옵션을 보강해 값이 유실되지 않게 한다.
-function offEdFillEnums(section, status){
-  const curSec = offTrim(section), curSt = offTrim(status);
+// 편집 폼의 구분/상태 드롭다운 — DB 코드목록(offSections/offStatuses)으로 채운다. 값은 번호, 글자는 이름이다.
+// 편집 중인 값이 목록에 없으면(나중에 숨겨진 코드 등) 옵션을 보강해 값이 유실되지 않게 한다(그 글자는 secName·stName).
+function offEdFillEnums(section, status, secName, stName){
+  const curSec = codeIdOf(section), curSt = codeIdOf(status);
+  const opt = o => `<option value="${esc(String(o.id))}">${esc(o.name)}</option>`;
   const sec = document.getElementById('offEdSection');
   if(sec){
     const secs = [...offSections];
-    if(curSec && !secs.includes(curSec)) secs.push(curSec);   // 편집 중 값 보존
-    sec.innerHTML = secs.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
-    sec.value = secs.includes(curSec) ? curSec : (secs[0] || '');
+    if(curSec != null && !secs.some(o => o.id === curSec)) secs.push({ id: curSec, name: offTrim(secName) || String(curSec) });   // 편집 중 값 보존
+    sec.innerHTML = secs.map(opt).join('');
+    sec.value = secs.some(o => o.id === curSec) ? String(curSec) : (secs[0] ? String(secs[0].id) : '');
   }
   const st = document.getElementById('offEdStatus');
   if(st){
     const sts = [...offStatuses];
-    if(curSt && !sts.includes(curSt)) sts.push(curSt);
-    st.innerHTML = `<option value="">상태 없음</option>` + sts.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join('');
-    st.value = sts.includes(curSt) ? curSt : '';
+    if(curSt != null && !sts.some(o => o.id === curSt)) sts.push({ id: curSt, name: offTrim(stName) || String(curSt) });
+    st.innerHTML = `<option value="">상태 없음</option>` + sts.map(opt).join('');
+    st.value = sts.some(o => o.id === curSt) ? String(curSt) : '';
   }
 }
 // 선진행 = 계약 전 단계 → 계약시작·종료·상태는 스키마상 NULL. 값을 비우고 잠근다(다른 구분이면 다시 연다).
+//   ★ 판정은 이름이 아니라 고정 번호(CODE_ID.SECTION_PRE)다 — 이름을 바꿔도 잠금이 따라간다(CODE-TABLE-IDS §3).
+//     호스트(ProjectDb.UpsertProjectAsync)도 같은 번호로 판정한다. 한쪽만 바꾸면 갈린다.
 function offEdApplySectionRule(){
   const sec = document.getElementById('offEdSection');
-  const pre = !!sec && offTrim(sec.value) === '선진행';
+  const pre = !!sec && codeIdOf(sec.value) === CODE_ID.SECTION_PRE;
   // ★ 'offEdDevEnd' 는 이 배열에 넣지 않는다 — 선진행은 '계약 전'일 뿐 개발은 이미 돌고 있어
   //   개발종료일이야말로 이 구간에서 유일하게 의미 있는 날짜다(2026-09-10 설계 결정).
   //   호스트(ProjectDb)도 같은 이유로 선진행 분기에서 ded 를 비우지 않는다. 한쪽만 바꾸면 갈린다.
@@ -12106,8 +12177,10 @@ function offEdApplySectionRule(){
     e.disabled = pre;
   });
   const h = document.getElementById('offEdHint');
+  //  안내 글자는 지금 고른 구분의 이름을 그대로 쓴다(이름을 바꿔도 화면이 거짓말하지 않게).
+  const preName = (pre && sec.selectedIndex >= 0 && sec.options[sec.selectedIndex]) ? offTrim(sec.options[sec.selectedIndex].textContent) : '';
   if(h) h.innerHTML = pre
-    ? `<b>선진행</b>은 계약 전 단계라 계약기간·상태를 비워 둡니다(자동 잠금). 계약이 확정되면 구분을 <b>일반계약</b>으로 바꾸고 날짜를 입력하세요.`
+    ? `<b>${esc(preName)}</b>은(는) 계약 전 단계라 계약기간·상태를 비워 둡니다(자동 잠금). 계약이 확정되면 구분을 바꾸고 날짜를 입력하세요.`
     : `발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.`;
 }
 function offEdMsgSet(html, tone){
@@ -12166,8 +12239,8 @@ function offEditOpen(id){
   set('offEdEnd', c ? offDate(c.endDate) : '');
   set('offEdDevEnd', c ? offDate(c.devEndDate) : '');
   set('offEdNote', c ? c.note : '');   // 비고(관리 전용 내부메모)
-  offEdFillEnums(c ? c.section : '', c ? c.status : '');
-  offEdFillCustomers(c ? c.customer : '');
+  offEdFillEnums(c ? c.sectionId : '', c ? c.statusId : '', c ? c.section : '', c ? c.status : '');
+  offEdFillCustomers(c ? c.customerId : '');
   offEdApplySectionRule();
   offEdMsgSet('');
   offEdSetBusy(false);
@@ -12177,25 +12250,27 @@ function offEditOpen(id){
 function offEdSaveNow(){
   if(offEdBusy) return;
   const val = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  //  ★ 구분·발주처·상태는 번호로 보낸다(CODE-TABLE-IDS §4). 0 = 고르지 않음(상태는 '상태 없음').
+  const idv = id => codeIdOf(val(id)) || 0;
   const payload = {
     cmd: 'saveProject',
     uid: offEdUid || '',
-    section: val('offEdSection'),
-    customer: val('offEdCustomer'),
+    sectionId: idv('offEdSection'),
+    customerId: idv('offEdCustomer'),
     projectName: val('offEdName'),
     contractName: val('offEdContract'),
     commonName: val('offEdCommon'),
     startDate: val('offEdStart'),
     endDate: val('offEdEnd'),
     devEndDate: val('offEdDevEnd'),   // 선진행이어도 보낸다 — 잠금 대상이 아니다(offEdApplySectionRule 참조)
-    status: val('offEdStatus'),
+    statusId: idv('offEdStatus'),
     note: (document.getElementById('offEdNote') ? String(document.getElementById('offEdNote').value || '').trim() : ''),
   };
   // 클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
   const focus = id => { const e = document.getElementById(id); if(e){ try{ e.focus(); }catch(_){} } };
   if(!payload.projectName){ offEdMsgSet(ICON.alert + ' 사업명을 입력하세요.', 'err'); focus('offEdName'); return; }
-  if(!payload.customer){ offEdMsgSet(ICON.alert + ' 발주처를 선택하세요.', 'err'); focus('offEdCustomer'); return; }
-  if(!payload.section){ offEdMsgSet(ICON.alert + ' 구분을 선택하세요.', 'err'); focus('offEdSection'); return; }
+  if(!payload.customerId){ offEdMsgSet(ICON.alert + ' 발주처를 선택하세요.', 'err'); focus('offEdCustomer'); return; }
+  if(!payload.sectionId){ offEdMsgSet(ICON.alert + ' 구분을 선택하세요.', 'err'); focus('offEdSection'); return; }
   if(payload.startDate && payload.endDate && payload.startDate > payload.endDate){
     offEdMsgSet(ICON.alert + ' 계약종료일이 계약시작일보다 빠릅니다.', 'err'); focus('offEdEnd'); return;
   }
@@ -12206,7 +12281,7 @@ function offEdSaveNow(){
 let __offEdPending = null;   // 마지막 전송 payload(소프트경고 '추가' 시 재전송용)
 function offEdSend(payload){
   __offEdPending = payload;
-  __offEdSubmit = { isNew: !payload.uid, customer: payload.customer, projectName: payload.projectName };   // 신규 등록 성공 시 자동 편입 매칭용
+  __offEdSubmit = { isNew: !payload.uid, customerId: payload.customerId, projectName: payload.projectName };   // 신규 등록 성공 시 자동 편입 매칭용
   offEdSetBusy(true);
   projBeginRequest();   // 세대 시작 + 워치독(더블클릭은 offEdBusy 가드가, 늦은 응답은 세대 가드가 차단)
   offEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
@@ -12234,7 +12309,7 @@ window.__projectSaved = function(ok, msg, needConfirm){
   }
   if(ok){
     // 신규 등록이면 재조회 결과에서 자동 편입(만든 사람은 쓸 것) — __applyProjects가 customer+projectName로 매칭
-    if(__offEdSubmit && __offEdSubmit.isNew) __pendingAutoSub = { customer: __offEdSubmit.customer, projectName: __offEdSubmit.projectName };
+    if(__offEdSubmit && __offEdSubmit.isNew) __pendingAutoSub = { customerId: __offEdSubmit.customerId, projectName: __offEdSubmit.projectName };
     if(edOpen){ offEdMsgSet(''); closeModal('#officialEditModal'); }
     toast(msg || '저장했습니다', 'success');
   }else{
@@ -12264,10 +12339,11 @@ function offHideProject(id){
    ★ 조작은 전부 offEditGuard(위젯·온라인)를 통과하고, 편집 권한은 호스트가 요청 시점에 판정한다.
    호스트 왕복은 hostRequest(reqId 상관). 성공 시:
      · 발주처 드롭다운(dbCustomers)을 loadCustomers로 갱신
-     · 이름변경은 과제 표기(project.customer)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출
+     · 이름변경은 과제 표기가 조인으로 따라오므로(과제는 번호로 가리킨다) loadProjects도 재호출
      · 관리 목록(custList)은 loadCustomersFull로 다시 읽어 그린다
-   name이 자연키라 uid 없이 이름으로 참조한다. */
-let custList = [];            // [{name, active}] — 관리 모달이 마지막으로 읽은 전체 목록
+   ★ 2026-10-15 — 개명·숨김·참조 수는 번호(customerId)로 보낸다(CODE-TABLE-IDS §4). 이름은 추가할 때만 보낸다.
+     행의 data-id 가 번호, data-name 은 인라인 편집 가드(원래 이름 대조)용이다. */
+let custList = [];            // [{id, name, active}] — 관리 모달이 마지막으로 읽은 전체 목록
 let custBusy = false;         // 관리 왕복 중(중복 조작 방지)
 
 function custMsgSet(html, tone){
@@ -12312,7 +12388,7 @@ async function reloadCustomerList(){
   if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">발주처 목록을 불러오지 못했습니다.</div>`; return; }
   let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
   custList = Array.isArray(arr)
-    ? arr.map(x => ({ name: String((x && x.name) || '').trim(), active: !(x && x.active === false) })).filter(x => x.name)
+    ? arr.map(x => ({ id: codeIdOf(x && x.id), name: String((x && x.name) || '').trim(), active: !(x && x.active === false) })).filter(x => x.name && x.id != null)
     : [];
   renderCustomerList();
 }
@@ -12326,12 +12402,13 @@ function renderCustomerList(){
     return;
   }
   box.innerHTML = rows.map(c => {
-    const nm = esc(c.name);
-    const act = `<button type="button" class="btn sm" data-custedit="${nm}">이름변경</button>`
-      + `<button type="button" class="btn sm danger" data-custhide="${nm}">숨김</button>`;
-    return `<div class="cust-row" role="listitem" data-name="${nm}"><span class="cust-nm">${nm}</span>${act}</div>`;
+    const nm = esc(c.name), id = esc(String(c.id));
+    const act = `<button type="button" class="btn sm" data-custedit="${id}">이름변경</button>`
+      + `<button type="button" class="btn sm danger" data-custhide="${id}">숨김</button>`;
+    return `<div class="cust-row" role="listitem" data-id="${id}" data-name="${nm}"><span class="cust-nm">${nm}</span>${act}</div>`;
   }).join('');
 }
+const custItem = id => custList.find(c => String(c.id) === String(id)) || null;
 // 관리 조작 공통 왕복 — 성공 시 드롭다운·목록 갱신(이름변경은 과제 표기까지 → loadProjects).
 //  forceToast — 성공 토스트를 화면이 정할 때만(숨김: 어디로 갔는지 말한다 · ADMIN-HUB-4 후속). 없으면 호스트 문장 그대로다.
 async function custSend(cmd, params, okToast, onOk, forceToast){
@@ -12345,7 +12422,7 @@ async function custSend(cmd, params, okToast, onOk, forceToast){
     if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
     toast(forceToast || res.msg || okToast, 'success');
     hpost({ cmd: 'loadCustomers' });                                  // 편집 폼 드롭다운 최신화(dbCustomers)
-    if(cmd === 'renameCustomer') hpost({ cmd: 'loadProjects' });      // 과제의 발주처 표기 갱신(FK CASCADE 반영)
+    if(cmd === 'renameCustomer') hpost({ cmd: 'loadProjects' });      // 과제의 발주처 표기 갱신(조인으로 따라온 새 이름)
     reloadCustomerList();
   }else{
     custMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '처리하지 못했습니다.'), 'err');
@@ -12358,10 +12435,11 @@ function custDoAdd(){
   if(!name){ custMsgSet(ICON.alert + ' 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
   offEditGuard(() => custSend('addCustomer', { name }, '발주처를 추가했습니다', () => { if(inp) inp.value = ''; if(inp) inp.focus(); }));
 }
-function custDoHide(name){
+function custDoHide(id){
+  const customerId = codeIdOf(id); if(customerId == null) return;
   offEditGuard(async () => {
     // 막지는 않고 경고만(참조 과제 수). 조회 실패는 '모름'으로 정직하게 알린다 — 0건으로 위장하지 않는다.
-    const rc = await hostRequest('customerRefCount', { name }, 15000);
+    const rc = await hostRequest('customerRefCount', { customerId }, 15000);
     const known = !!(rc && rc.ok);
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
@@ -12373,42 +12451,46 @@ function custDoHide(name){
         `이 발주처를 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
-    custSend('setCustomerActive', { name, active: false }, '발주처를 숨겼습니다', null, OT_HIDDEN_MSG);   // 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(직급·소속과 같은 말)
+    custSend('setCustomerActive', { customerId, active: false }, '발주처를 숨겼습니다', null, OT_HIDDEN_MSG);   // 「휴지통으로 옮겼습니다 · 복구는 🗑 휴지통에서」(직급·소속과 같은 말)
   });
 }
-// 인라인 이름변경 — 해당 행을 입력+저장/취소로 바꾼다(게이트 통과 후).
-function custBeginRename(name){
+// 인라인 이름변경 — 해당 행을 입력+저장/취소로 바꾼다(게이트 통과 후). 행은 번호(data-id)로 찾는다.
+function custBeginRename(id){
+  const it = custItem(id); if(!it) return;
   offEditGuard(() => {
     const box = document.getElementById('custList'); if(!box) return;
-    const row = [...box.querySelectorAll('.cust-row')].find(r => r.dataset.name === name);
+    const row = [...box.querySelectorAll('.cust-row')].find(r => r.dataset.id === String(it.id));
     if(!row) return;
-    row.innerHTML = `<span class="cust-edit"><input type="text" maxlength="100" autocomplete="off" value="${esc(name)}"></span>`
-      + `<button type="button" class="btn sm primary" data-custsave="${esc(name)}">저장</button>`
+    row.innerHTML = `<span class="cust-edit"><input type="text" maxlength="100" autocomplete="off" value="${esc(it.name)}"></span>`
+      + `<button type="button" class="btn sm primary" data-custsave="${esc(String(it.id))}">저장</button>`
       + `<button type="button" class="btn sm" data-custcancel="1">취소</button>`;
     const inp = row.querySelector('input');
     if(inp){ inp.focus(); try{ inp.select(); }catch(_){}
       inp.addEventListener('keydown', ev => {
-        if(ev.key === 'Enter'){ ev.preventDefault(); custCommitRename(name, row); }
+        if(ev.key === 'Enter'){ ev.preventDefault(); custCommitRename(it.id, row); }
         else if(ev.key === 'Escape'){ ev.preventDefault(); renderCustomerList(); }
       });
     }
   });
 }
-function custCommitRename(oldName, row){
+function custCommitRename(id, row){
+  const it = custItem(id); if(!it) return;
   const inp = row.querySelector('input');
   const newName = inp ? String(inp.value || '').trim() : '';
   if(!newName){ custMsgSet(ICON.alert + ' 새 발주처명을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
-  if(newName === oldName){ renderCustomerList(); return; }   // 변경 없음 → 원복
-  custSend('renameCustomer', { oldName, newName }, '발주처 이름을 변경했습니다');   // 이미 인증된 컨텍스트
+  if(newName === it.name){ renderCustomerList(); return; }   // 변경 없음 → 원복
+  custSend('renameCustomer', { customerId: it.id, newName }, '발주처 이름을 변경했습니다');   // 이미 인증된 컨텍스트
 }
 /* ---------- 구분·상태 코드값 관리 — 발주처 관리(custSend/renderCustomerList)를 그대로 복제 ----------
    ★ 문은 하나다: 공식 과제 화면(#officialModal) 하단 줄의 「구분·상태 관리」(#offCodeMgr) — 2026-09-18 사용자 결정.
      편집 폼(#officialEditModal)은 고르기만 한다(폼 안의 링크는 없앴다).
    kind('section'|'status') 하나로 두 리스트를 한 모달에서 관리. 조작은 offEditGuard(위젯·온라인).
    호스트 왕복 = hostRequest. 성공 시 드롭다운(offSections/offStatuses)을 loadCodes로 갱신,
-   개명은 과제 표기(section/status)까지 FK CASCADE로 바뀌므로 loadProjects도 재호출. name이 자연키라 uid 없음. */
+   개명은 과제 표기(section/status)가 조인으로 따라오므로 loadProjects도 재호출.
+   ★ 2026-10-15 — 개명·숨김·순서·참조 수는 번호(id · ids)로 보낸다(CODE-TABLE-IDS §4). 이름은 추가할 때만 보낸다.
+   ★ 동작이 묶인 행(구분 2, 상태 2)은 [숨김]을 끄고 이유를 단다(codeProtectedWhy). 판정은 호스트가 다시 한다. */
 let codeKind = 'section';    // 현재 탭
-let codeList = [];           // [{name, active, sort}] — 현재 탭의 마지막 로드 목록
+let codeList = [];           // [{id, name, active, sort}] — 현재 탭의 마지막 로드 목록
 let codeBusy = false;
 
 function codeMsgSet(html, tone){
@@ -12448,7 +12530,7 @@ async function reloadCodeList(){
   if(!res || !res.ok){ box.innerHTML = `<div class="cust-empty">목록을 불러오지 못했습니다.</div>`; return; }
   let arr = []; try{ arr = JSON.parse(res.list || '[]'); }catch(_){ arr = []; }
   codeList = Array.isArray(arr)
-    ? arr.map(x => ({ name: String((x && x.name) || '').trim(), active: !(x && x.active === false), sort: Number(x && x.sort) || 0 })).filter(x => x.name)
+    ? arr.map(x => ({ id: codeIdOf(x && x.id), name: String((x && x.name) || '').trim(), active: !(x && x.active === false), sort: Number(x && x.sort) || 0 })).filter(x => x.name && x.id != null)
     : [];
   renderCodeList();
 }
@@ -12462,20 +12544,28 @@ function renderCodeList(){
   }
   // 활성 값끼리의 순서만 ▲▼ 노출(숨김은 순서 대상 아님). 첫/끝은 해당 방향 비활성.
   const active = rows.filter(c => c.active);
-  box.innerHTML = rows.map(c => {
-    const nm = esc(c.name);
+  box.innerHTML = rows.map((c, n) => {
+    const nm = esc(c.name), id = esc(String(c.id));
     let ord = '';
     {
-      const i = active.findIndex(a => a.name === c.name);
+      const i = active.findIndex(a => a.id === c.id);
       ord = `<span class="code-ord">`
-        + `<button type="button" class="btn sm" data-codeup="${nm}"${i <= 0 ? ' disabled' : ''} title="위로">▲</button>`
-        + `<button type="button" class="btn sm" data-codedown="${nm}"${i >= active.length - 1 ? ' disabled' : ''} title="아래로">▼</button></span>`;
+        + `<button type="button" class="btn sm" data-codeup="${id}"${i <= 0 ? ' disabled' : ''} title="위로">▲</button>`
+        + `<button type="button" class="btn sm" data-codedown="${id}"${i >= active.length - 1 ? ' disabled' : ''} title="아래로">▼</button></span>`;
     }
-    const act = `<button type="button" class="btn sm" data-codeedit="${nm}">이름변경</button>`
-      + `<button type="button" class="btn sm danger" data-codehide="${nm}">숨김</button>`;
-    return `<div class="cust-row" role="listitem" data-name="${nm}"><span class="cust-nm">${nm}</span>${ord}${act}</div>`;
+    //  ★ 동작이 묶인 행은 [숨김]을 끄고 이유를 붙인다(직급·소속 화면의 꺼진 [숨김]과 같은 손: title + aria-describedby).
+    //    disabled 가 아니라 aria-disabled 다 — 포커스가 닿아야 키보드 사용자도 그 문장을 듣는다. 눌러도 아무것도 하지 않는다.
+    const why = codeProtectedWhy(codeKind, c.id);
+    const wid = 'codeWhy-' + n;
+    const hide = why
+      ? `<span class="sr-only" id="${wid}">${esc(why)}</span>`
+        + `<button type="button" class="btn sm danger" data-codehide="${id}" data-codelock="1" aria-disabled="true" title="${esc(why)}" aria-describedby="${wid}">숨김</button>`
+      : `<button type="button" class="btn sm danger" data-codehide="${id}">숨김</button>`;
+    const act = `<button type="button" class="btn sm" data-codeedit="${id}">이름변경</button>` + hide;
+    return `<div class="cust-row" role="listitem" data-id="${id}" data-name="${nm}"><span class="cust-nm">${nm}</span>${ord}${act}</div>`;
   }).join('');
 }
+const codeItem = id => codeList.find(c => String(c.id) === String(id)) || null;
 // 공통 왕복 — 성공 시 드롭다운(loadCodes)·목록 갱신. 개명은 과제 표기까지(loadProjects).
 //  forceToast — 성공 토스트를 화면이 정할 때만(숨김: 어디로 갔는지 말한다 · ADMIN-HUB-4 후속). 없으면 호스트 문장 그대로다.
 async function codeSend(cmd, params, okToast, onOk, forceToast){
@@ -12489,7 +12579,7 @@ async function codeSend(cmd, params, okToast, onOk, forceToast){
     if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
     toast(forceToast || res.msg || okToast, 'success');
     hpost({ cmd: 'loadCodes' });                            // 편집 폼·필터 드롭다운 최신화
-    if(cmd === 'codeRename') hpost({ cmd: 'loadProjects' }); // 과제의 구분/상태 표기 갱신(FK CASCADE 반영)
+    if(cmd === 'codeRename') hpost({ cmd: 'loadProjects' }); // 과제의 구분/상태 표기 갱신(조인으로 따라온 새 이름)
     reloadCodeList();
   }else{
     codeMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '처리하지 못했습니다.'), 'err');
@@ -12503,10 +12593,14 @@ function codeDoAdd(){
   offEditGuard(() => codeSend('codeAdd', { name }, codeKindLabel() + '을(를) 추가했습니다', () => { if(inp){ inp.value = ''; inp.focus(); } }),
     codeKindLabel() + '을(를) 추가하려면 관리자 인증이 필요합니다.');
 }
-function codeDoHide(name){
+function codeDoHide(key){
+  const id = codeIdOf(key); if(id == null) return;
+  //  고정 번호 행 — 버튼이 꺼져 있다(aria-disabled). 위임으로 닿아도 이유만 다시 보이고 끝낸다.
+  const why = codeProtectedWhy(codeKind, id);
+  if(why){ codeMsgSet(ICON.alert + ' ' + esc(why), 'err'); return; }
   offEditGuard(async () => {
     // 참조 수 조회가 실패하면 '모름'이다 — 0건인 것처럼 조용히 넘어가지 않는다(잘못된 확신을 주므로).
-    const rc = await hostRequest('codeRefCount', { kind: codeKind, name }, 15000);
+    const rc = await hostRequest('codeRefCount', { kind: codeKind, id }, 15000);
     const known = !!(rc && rc.ok);
     const n = known ? (Number(rc.count) || 0) : 0;
     if(!known){
@@ -12518,42 +12612,45 @@ function codeDoHide(name){
         `이 ${codeKindLabel()}을(를) 쓰는 과제 ${n}건이 있습니다. 숨겨도 기존 과제 표기는 유지됩니다. 계속할까요? 숨긴 항목은 공식 과제 화면의 '🗑 휴지통'에서 복구하거나 영구 삭제할 수 있습니다(관리자).`, '숨김', '취소');
       if(r !== 'ok') return;
     }
-    codeSend('codeSetActive', { name, active: false }, codeKindLabel() + '을(를) 숨겼습니다', null, OT_HIDDEN_MSG);   // 직급·소속과 같은 말(ADMIN-HUB-4 후속)
+    codeSend('codeSetActive', { id, active: false }, codeKindLabel() + '을(를) 숨겼습니다', null, OT_HIDDEN_MSG);   // 직급·소속과 같은 말(ADMIN-HUB-4 후속)
   }, codeKindLabel() + '을(를) 숨기려면 관리자 인증이 필요합니다.');
 }
-function codeBeginRename(name){
+//  ★ 고정 번호 행(선진행·종료)도 이름은 바꿀 수 있다 — 동작은 번호에 묶여 있다(CODE-TABLE-IDS §3).
+function codeBeginRename(key){
+  const it = codeItem(key); if(!it) return;
   offEditGuard(() => {
     const box = document.getElementById('codeList'); if(!box) return;
-    const row = [...box.querySelectorAll('.cust-row')].find(r => r.dataset.name === name);
+    const row = [...box.querySelectorAll('.cust-row')].find(r => r.dataset.id === String(it.id));
     if(!row) return;
-    row.innerHTML = `<span class="cust-edit"><input type="text" maxlength="50" autocomplete="off" value="${esc(name)}"></span>`
-      + `<button type="button" class="btn sm primary" data-codesave="${esc(name)}">저장</button>`
+    row.innerHTML = `<span class="cust-edit"><input type="text" maxlength="50" autocomplete="off" value="${esc(it.name)}"></span>`
+      + `<button type="button" class="btn sm primary" data-codesave="${esc(String(it.id))}">저장</button>`
       + `<button type="button" class="btn sm" data-codecancel="1">취소</button>`;
     const inp = row.querySelector('input');
     if(inp){ inp.focus(); try{ inp.select(); }catch(_){}
       inp.addEventListener('keydown', ev => {
-        if(ev.key === 'Enter'){ ev.preventDefault(); codeCommitRename(name, row); }
+        if(ev.key === 'Enter'){ ev.preventDefault(); codeCommitRename(it.id, row); }
         else if(ev.key === 'Escape'){ ev.preventDefault(); renderCodeList(); }
       });
     }
   }, codeKindLabel() + ' 이름을 변경하려면 관리자 인증이 필요합니다.');
 }
-function codeCommitRename(oldName, row){
+function codeCommitRename(key, row){
+  const it = codeItem(key); if(!it) return;
   const inp = row.querySelector('input');
   const newName = inp ? String(inp.value || '').trim() : '';
   if(!newName){ codeMsgSet(ICON.alert + ' 새 ' + codeKindLabel() + '값을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
-  if(newName === oldName){ renderCodeList(); return; }
-  codeSend('codeRename', { oldName, newName }, codeKindLabel() + '을(를) 변경했습니다');
+  if(newName === it.name){ renderCodeList(); return; }
+  codeSend('codeRename', { id: it.id, newName }, codeKindLabel() + '을(를) 변경했습니다');
 }
-// ▲▼ 순서 이동 — 현재 활성 순서에서 한 칸 스왑 후 전체 이름배열을 codeReorder로 전송.
-function codeMove(name, dir){
+// ▲▼ 순서 이동 — 현재 활성 순서에서 한 칸 스왑 후 전체 번호 배열을 codeReorder로 전송.
+function codeMove(key, dir){
   offEditGuard(() => {
-    const active = codeList.filter(c => c.active).map(c => c.name);
-    const i = active.indexOf(name); if(i < 0) return;
+    const active = codeList.filter(c => c.active).map(c => c.id);
+    const i = active.indexOf(codeIdOf(key)); if(i < 0) return;
     const j = i + (dir === 'up' ? -1 : 1);
     if(j < 0 || j >= active.length) return;
     const tmp = active[i]; active[i] = active[j]; active[j] = tmp;
-    codeSend('codeReorder', { names: active }, codeKindLabel() + ' 순서를 변경했습니다');
+    codeSend('codeReorder', { ids: active }, codeKindLabel() + ' 순서를 변경했습니다');
   }, codeKindLabel() + ' 순서를 변경하려면 관리자 인증이 필요합니다.');
 }
 
@@ -12570,9 +12667,10 @@ let __otData = null, __otTab = 'title', __otBusy = false, __otSaving = false;
 const otTitles = () => (__otData && Array.isArray(__otData.titles)) ? __otData.titles : [];
 const otUnits  = () => (__otData && Array.isArray(__otData.units))  ? __otData.units  : [];
 const otAdmin  = () => !!(__otData && __otData.admin === true);   // 관리자 여부는 **호스트가 정한 값**이다
+//  행 열쇠는 둘 다 번호다 — 소속은 orgId, 직급은 titleId(CODE-TABLE-IDS §4 · org_id 선례).
 const otItem   = key => (__otTab === 'unit')
   ? otUnits().find(u => u && String(u.orgId) === String(key))
-  : otTitles().find(t => t && String(t.name) === String(key));
+  : otTitles().find(t => t && String(t.titleId) === String(key));
 // [추가]가 꺼지는 규칙 한 곳 — 렌더(otSyncAdd)와 잠금(otSyncControls)이 같은 식을 본다.
 //   ★ 상위를 안 고르면 꺼진다: 상위 없는 조직은 새 최상위가 되는데 최상위는 하나뿐이다(설계 §3.2).
 const otAddDisabled = () => {
@@ -12715,7 +12813,7 @@ function otRender(){
   const pkey = v => String(v == null ? '' : v);
   for(const it of rows){
     const nm = String(it.name || '');
-    const key = unit ? String(it.orgId) : nm;
+    const key = unit ? String(it.orgId) : String(it.titleId);
     const users = Number(it.users) || 0;
     const kids = unit ? (Number(it.children) || 0) : 0;
     const row = document.createElement('div');
@@ -12733,7 +12831,7 @@ function otRender(){
     row.appendChild(nmEl);
     {
       const arr = unit ? actUnits.filter(u => pkey(u.parentId) === pkey(it.parentId)) : actTitles;
-      const i = unit ? arr.findIndex(u => String(u.orgId) === key) : arr.findIndex(t => String(t.name) === key);
+      const i = unit ? arr.findIndex(u => String(u.orgId) === key) : arr.findIndex(t => String(t.titleId) === key);
       const ord = document.createElement('span'); ord.className = 'code-ord';
       ord.appendChild(otBtn('up', key, '▲', 'btn sm', i <= 0, '위로'));
       ord.appendChild(otBtn('down', key, '▼', 'btn sm', i < 0 || i >= arr.length - 1, '아래로'));
@@ -12883,7 +12981,7 @@ function otCommitRename(key){
   if(newName === oldName){ otRender(); return; }   // 변경 없음 → 원복(왕복을 만들지 않는다)
   otMsgSet('');
   if(__otTab === 'unit') otSend('unitRename', { orgId: Number(key), newName: newName });
-  else otSend('titleRename', { oldName: oldName, newName: newName });
+  else otSend('titleRename', { titleId: Number(key), newName: newName });
 }
 
 // 숨김 — 확인 한 번(되돌릴 수 있는 조작이라 이름 입력까지 요구하지 않는다).
@@ -12897,7 +12995,7 @@ function otDoHide(key){
   confirmBox('숨김', "'" + nm + "' 을(를) 숨깁니다. 드롭다운과 이 목록에서 빠지고 기존 표기는 남습니다(복구는 🗑 휴지통). 계속할까요?", '숨김', '취소').then(r => {
     if(r !== 'ok') return;
     if(unit) otSend('unitSetActive', { orgId: Number(key), active: false }, OT_HIDDEN_MSG);
-    else otSend('titleSetActive', { name: nm, active: false }, OT_HIDDEN_MSG);
+    else otSend('titleSetActive', { titleId: Number(key), active: false }, OT_HIDDEN_MSG);
   });
 }
 
@@ -12915,11 +13013,11 @@ function otMove(key, dir){
     const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
     otSend('unitReorder', { parentId: pid == null ? null : Number(pid), orgIds: arr.map(u => Number(u.orgId)) });
   }else{
-    const arr = otTitles().filter(t => t && t.active !== false).map(t => String(t.name));
-    const i = arr.indexOf(String(key)), j = i + d;
+    const arr = otTitles().filter(t => t && t.active !== false).map(t => Number(t.titleId));
+    const i = arr.indexOf(Number(key)), j = i + d;
     if(i < 0 || j < 0 || j >= arr.length) return;
     const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
-    otSend('titleReorder', { names: arr });
+    otSend('titleReorder', { titleIds: arr });
   }
 }
 
@@ -13105,18 +13203,13 @@ function openRelinkModal(){
    재사용: offMatches / offGroups / offActiveFilterCount / offStatusKind / fillCatalogFilterSelects(순수·공유).
    분리: 자체 DOM(rlp*)과 자체 상태(rlpFor, rlpCollapsed) — 카탈로그의 offSelId/offCollapsed를 건드리지 않는다.
    행 렌더만 카탈로그와 다르다: 동명 과제 식별을 위해 사업명·계약명을 추가로 노출한다. */
-function rlpFilters(){
-  const val = id => { const e = document.getElementById(id); return e ? e.value : ''; };
-  const chk = document.getElementById('rlpActiveOnly');
-  return { q:offNorm(val('rlpSearch')), qRaw:offTrim(val('rlpSearch')), customer:val('rlpCustomer'),
-           section:val('rlpSection'), status:val('rlpStatus'), activeOnly:!chk || chk.checked };
-}
+function rlpFilters(){ return catalogFilters('rlpSearch', 'rlpCustomer', 'rlpSection', 'rlpStatus', 'rlpActiveOnly'); }
 function rlpFillSelects(){ fillCatalogFilterSelects('rlpCustomer', 'rlpSection', 'rlpStatus'); }
 // 팝업 행 — .off-row 골격(그리드·hover·선택·포커스)만 재사용하고 내용은 .rlp-* 전용 마크업.
 // 1행 = 통상명칭 + 구분 배지 + 상태 칩 / 2행 = 레이블 붙은 발주처·사업·계약·기간. data-rlpid=대상 db-id.
 // 카탈로그 상세와 같은 축을 다 보여주는 이유: 여기서 고른 하나로 일정·할일 수십 건의 소속이 바뀐다(되돌리기 비싸다).
 function rlpRowHtml(c){
-  const k = offStatusKind(c.status);
+  const k = offStatusKind(c.statusId);
   const cust = offTrim(c.customer), pn = offTrim(c.projectName), cn = offTrim(c.contractName),
         st = offTrim(c.status), sec = offTrim(c.section), per = offPeriod(c);
   const picked = (rlPick.get(rlpFor) === c.id);

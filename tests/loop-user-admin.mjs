@@ -37,7 +37,7 @@
  *   I2 활성 사용자 중 sort_order NULL 은 **아직 순서 저장을 안 거친 계정**뿐 — 새로 등록한 zzU,
  *      그리고 **막 복구된 계정**(복구가 서열을 비운다 · §11-29). 둘 다 다음 순서 저장이 숫자를 준다.
  *   I3 app_user 총원 = 시작 총원 + 이번 라운드 zzU 수
- *   I4 zzU 외 행은 **기대값과 글자까지 같다**(login_id·name·title·org_id·view_scope·edit_role·is_active·sort_order)
+ *   I4 zzU 외 행은 **기대값과 글자까지 같다**(login_id·name·title_id·org_id·view_scope·edit_role·is_active·sort_order)
  *      ★ '기대값' 은 시작 스냅샷에서 출발해, **정당한 변경을 낸 케이스가 스스로 갱신**한다
  *        (순서 저장은 전원을 다시 쓰고, C13 은 phmin 을 잠깐 editor 로 내린다).
  *        플래그로 검사를 끄지 않는 이유: 끄면 그 구간의 **다른** 변화도 함께 눈이 먼다.
@@ -71,7 +71,7 @@ const OPT = {
   budget: Number(ARG.get('budget') || 60),
   verbose: ARG.has('verbose') || ARG.has('v'),
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',   // ← 비밀. 소스에 기본값 없음(이 파일은 커밋된다)
 };
@@ -174,10 +174,12 @@ const esc = (v) => "'" + String(v).replace(/\\/g, '\\\\').replace(/'/g, "''") + 
  *  2026-09-10 — 편집 화면은 팀과 무관한 전사 서열이라 소속을 첫 키로 두지 않는다(사용자 결정). 이 스냅샷은 #uaList 와 비교한다.
  *  다르면 '화면 순서 = DB 순서' 비교가 JS 콜레이션 차이로 가짜 실패를 낸다.                     */
 const SNAP_SQL = `
-SELECT 'U', u.user_id, u.login_id, u.name, IFNULL(u.title,''), IFNULL(CAST(u.org_id AS CHAR),''),
+SELECT 'U', u.user_id, u.login_id, u.name, IFNULL(t.name,''), IFNULL(CAST(u.org_id AS CHAR),''),
        IFNULL(o.name,''), u.view_scope, u.edit_role, CAST(u.is_active AS CHAR),
-       IFNULL(CAST(u.sort_order AS CHAR),'~')     -- '~' = NULL. sort_order 는 숫자라 값과 겹칠 수 없다
+       IFNULL(CAST(u.sort_order AS CHAR),'~'),    -- '~' = NULL. sort_order 는 숫자라 값과 겹칠 수 없다
+       IFNULL(CAST(u.title_id AS CHAR),'')        -- v13: 직급은 번호(title_id), 이름은 title_code 조인
   FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id
+                  LEFT JOIN title_code t ON t.title_id = u.title_id
  ORDER BY u.sort_order IS NULL, u.sort_order, u.name;
 SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version'`;
 
@@ -194,13 +196,15 @@ function dbSnap(what = '스냅샷') {
         orgId: c[5] === '' ? null : Number(c[5]), org: c[6],
         viewScope: c[7], editRole: c[8], active: c[9] === '1',
         sort: c[10] === '~' ? null : Number(c[10]),
+        titleId: c[11] === '' ? null : Number(c[11]),
       });
     } else if (c[0] === 'V') schemaVersion = c[1];
   }
   return { users, schemaVersion, byId: new Map(users.map((u) => [u.uid, u])) };
 }
-/** I4 가 비교하는 8필드 — 이 목록이 곧 '무엇을 지키는가' 다. */
-const identity = (u) => [u.loginId, u.name, u.title, u.orgId, u.viewScope, u.editRole, u.active, u.sort];
+/** I4 가 비교하는 8필드 — 이 목록이 곧 '무엇을 지키는가' 다.
+ *  v13: 직급은 번호(titleId)로 지킨다. 이름(title)은 조인 결과라 표시와 메시지용으로만 둔다. */
+const identity = (u) => [u.loginId, u.name, u.titleId, u.orgId, u.viewScope, u.editRole, u.active, u.sort];
 const idHash = (rows) => createHash('sha256')
   .update(JSON.stringify(rows.slice().sort((a, b) => a.uid - b.uid).map((u) => [u.uid, ...identity(u)])))
   .digest('hex').slice(0, 16);
@@ -317,7 +321,7 @@ const PSTATE = `JSON.stringify({
 })`;
 const pstate = () => evj(PSTATE);
 /** 명부(호스트가 준 그대로 · 화면 필터 전) — 「구성원 편집」 화면의 상태다 */
-const members = () => evj(`JSON.stringify(__uaMembers.map(function(m){return {uid:m.userId,loginId:m.loginId,name:m.name,title:m.title,org:m.orgUnit,orgId:m.orgId,scope:m.viewScope,role:m.editRole,active:m.isActive,sort:m.sortOrder};}))`);
+const members = () => evj(`JSON.stringify(__uaMembers.map(function(m){return {uid:m.userId,loginId:m.loginId,name:m.name,title:m.title,titleId:m.titleId,org:m.orgUnit,orgId:m.orgId,scope:m.viewScope,role:m.editRole,active:m.isActive,sort:m.sortOrder};}))`);
 /** 화면에 실제로 그려진 행 순서(「구성원 편집」의 .mba-line) */
 const screenIds = () => evj(`JSON.stringify(Array.prototype.map.call(document.querySelectorAll('#uaList .mba-line'), function(l){ var b=l.querySelector('[data-uid]'); return b?Number(b.getAttribute('data-uid')):0; }))`);
 /** 편집 폼 하단 왼쪽 버튼(#userEdActive) — 2026-09-10 퇴사·복구가 행에서 이 자리로 옮겨 왔다.
@@ -499,7 +503,8 @@ async function runCase(id, title, fn) {
 }
 
 /** 편집 폼을 거쳐 저장하기 — '실제 화면 경로'가 필요한 케이스용(등록·수정). */
-async function formSave({ uid = 0, loginId, name, title, orgId, scope, role }) {
+//  v13: titleId = 직급 번호(#userEdTitle 의 option value 가 번호 문자열이다).
+async function formSave({ uid = 0, loginId, name, titleId, orgId, scope, role }) {
   await ev(`userEdOpen(${uid})`);
   await sleep(80);
   //  ★ 신규 등록에는 퇴사시킬 대상이 없다 — 폼 하단 왼쪽 버튼은 감춰져 있어야 한다(2026-09-10).
@@ -514,7 +519,7 @@ async function formSave({ uid = 0, loginId, name, title, orgId, scope, role }) {
   okq(`서열 번호 칸이 명부 값과 같다(uid=${uid})`, so.v === so.exp && so.ro === true, `보임=${JSON.stringify(so.v)} 기대=${JSON.stringify(so.exp)} readonly=${so.ro}`);
   if (loginId != null) await setv('#userEdLogin', loginId);
   await setv('#userEdName', name);
-  await setv('#userEdTitle', title);
+  if (!(await setv('#userEdTitle', titleId))) throw new Error(`직급 드롭다운에 값이 붙지 않았다(titleId=${titleId}), 옵션에 없는 번호다`);
   await setv('#userEdOrg', orgId == null ? '' : String(orgId));
   //  ★ 열람 범위·편집 권한은 드롭다운이다(2026-09-10 · 라디오 3개 × 2묶음 → <select> 2칸).
   //    값이 안 붙으면 **크게 실패**시킨다: 옵션에 없는 값을 조용히 흘리면 '저장은 성공인데 권한은 딴 값'이 통과한다.
@@ -650,17 +655,22 @@ async function main() {
   if (!entry0) { console.error("[위반] 「사용자 정보」에 구성원 입구(#usUserAdmin/#usMembers)가 남아 있다 — J5 로 없앴다"); process.exit(1); }
   log('「사용자 정보」에 구성원 입구 없음 확인(J5) — 편집 화면은 openUserAdmin() 으로 연다');
 
+  //  v13: __uaTitles 는 [{id, name}] 이다. T1, T2 는 그 객체(메시지는 .id, 비교는 titleId).
   const T1 = meta.titles[0], T2 = meta.titles[1];
+  if (!T1 || !T2 || !(Number(T1.id) > 0) || !(Number(T2.id) > 0)) {
+    console.error(`[판정 없음] __uaTitles 가 [{id, name}] 모양이 아니다: ${JSON.stringify(meta.titles.slice(0, 2))} (v13 이전 위젯?)`);
+    process.exit(2);
+  }
   const O1 = meta.units[rint(0, meta.units.length - 1)];
   const O2 = meta.units.find((u) => u.orgId !== O1.orgId) || meta.units[0];
-  log(`직급 ${meta.titles.length}종 · 조직 ${meta.units.length}개 · 명부 ${s.n}명 (T1=${T1} T2=${T2} O1=${O1.name} O2=${O2.name})`);
+  log(`직급 ${meta.titles.length}종 · 조직 ${meta.units.length}개 · 명부 ${s.n}명 (T1=${T1.name}#${T1.id} T2=${T2.name}#${T2.id} O1=${O1.name} O2=${O2.name})`);
 
   const A = { lid: tmpId(), uid: 0 };   // C01 이 만드는 계정(소속 없음)
   const B = { lid: tmpId(), uid: 0 };   // C02 가 만드는 계정(소속 있음 · 나중에 admin 이 된다)
 
   /* ── C01 등록(최소: 직급만) ─────────────────────────────────────────── */
   await runCase('C01', '등록(최소 · 직급만)', async () => {
-    const rep = await formSave({ uid: 0, loginId: A.lid, name: A.lid, title: T1, orgId: null, scope: 'self', role: 'viewer' });
+    const rep = await formSave({ uid: 0, loginId: A.lid, name: A.lid, titleId: T1.id, orgId: null, scope: 'self', role: 'viewer' });
     if (!okq('C01 등록 성공 회신', rep.ok, rep.msg)) return;
     const ms = await members();
     const row = ms.find((m) => m.loginId === A.lid);
@@ -679,7 +689,7 @@ async function main() {
 
   /* ── C02 등록(직급·소속·unit_tree·editor) ───────────────────────────── */
   await runCase('C02', '등록(직급·소속·unit_tree·editor)', async () => {
-    const rep = await formSave({ uid: 0, loginId: B.lid, name: B.lid, title: T2, orgId: O1.orgId, scope: 'unit_tree', role: 'editor' });
+    const rep = await formSave({ uid: 0, loginId: B.lid, name: B.lid, titleId: T2.id, orgId: O1.orgId, scope: 'unit_tree', role: 'editor' });
     if (!okq('C02 등록 성공 회신', rep.ok, rep.msg)) return;
     const ms = await members();
     const row = ms.find((m) => m.loginId === B.lid);
@@ -687,9 +697,9 @@ async function main() {
     B.uid = row.uid;
     madeUids.add(B.uid); pendingOrder.add(B.uid);
     const db = dbSnap('C02 확인').byId.get(B.uid);
-    okq('C02 DB 값 일치(title·org_id·view_scope·edit_role)',
-      !!db && db.title === T2 && db.orgId === O1.orgId && db.viewScope === 'unit_tree' && db.editRole === 'editor',
-      db ? `${db.title}/${db.orgId}/${db.viewScope}/${db.editRole}` : '행 없음');
+    okq('C02 DB 값 일치(title_id·org_id·view_scope·edit_role)',
+      !!db && db.titleId === T2.id && db.title === T2.name && db.orgId === O1.orgId && db.viewScope === 'unit_tree' && db.editRole === 'editor',
+      db ? `${db.titleId}(${db.title})/${db.orgId}/${db.viewScope}/${db.editRole}` : '행 없음');
     okq('C02 신규도 sort_order NULL', !!db && db.sort === null, db ? String(db.sort) : '');
   });
 
@@ -703,22 +713,22 @@ async function main() {
   /* ── C03 수정: 이름·직급·소속 ───────────────────────────────────────── */
   await runCase('C03', '수정(이름·직급·소속)', async () => {
     const nm = B.lid + '_r';
-    const rep = await formSave({ uid: B.uid, name: nm, title: T1, orgId: O2.orgId, scope: 'unit_tree', role: 'editor' });
+    const rep = await formSave({ uid: B.uid, name: nm, titleId: T1.id, orgId: O2.orgId, scope: 'unit_tree', role: 'editor' });
     if (!okq('C03 수정 성공 회신', rep.ok, rep.msg)) return;
     const db = dbSnap('C03 확인').byId.get(B.uid);
-    okq('C03 DB 반영(name·title·org_id)', !!db && db.name === nm && db.title === T1 && db.orgId === O2.orgId,
-      db ? `${db.name}/${db.title}/${db.orgId}` : '행 없음');
+    okq('C03 DB 반영(name·title_id·org_id)', !!db && db.name === nm && db.titleId === T1.id && db.title === T1.name && db.orgId === O2.orgId,
+      db ? `${db.name}/${db.titleId}(${db.title})/${db.orgId}` : '행 없음');
     okq('C03 login_id 는 바뀌지 않는다(넷커스 소유 · §6)', !!db && db.loginId === B.lid, db ? db.loginId : '');
     const row = (await members()).find((m) => m.uid === B.uid);
-    okq('C03 명부 반영', !!row && row.name === nm && row.title === T1 && row.orgId === O2.orgId,
-      row ? `${row.name}/${row.title}/${row.orgId}` : '명부에 없음');
+    okq('C03 명부 반영(관리자 행에 titleId, 표시는 이름)', !!row && row.name === nm && row.titleId === T1.id && row.title === T1.name && row.orgId === O2.orgId,
+      row ? `${row.name}/${row.titleId}(${row.title})/${row.orgId}` : '명부에 없음');
     B.name = nm;
   });
 
   /* ── C04 열람 범위 self → all → unit_tree ───────────────────────────── */
   await runCase('C04', '열람 범위 self → all → unit_tree', async () => {
     for (const sc of ['self', 'all', 'unit_tree']) {
-      const rep = await send({ cmd: 'saveUser', userId: B.uid, loginId: B.lid, name: B.name, title: T1, orgId: O2.orgId, viewScope: sc, editRole: 'editor' });
+      const rep = await send({ cmd: 'saveUser', userId: B.uid, loginId: B.lid, name: B.name, titleId: T1.id, orgId: O2.orgId, viewScope: sc, editRole: 'editor' });
       if (!okq(`C04 view_scope=${sc} 저장`, rep.ok, rep.msg)) return;
       const db = dbSnap(`C04 ${sc}`).byId.get(B.uid);
       okq(`C04 DB view_scope=${sc}`, !!db && db.viewScope === sc, db ? db.viewScope : '행 없음');
@@ -742,7 +752,7 @@ async function main() {
   await runCase('C17', '마지막 관리자 규칙(§4.4-3) — 과잉 차단 없음 + 자기 규칙이 먼저다', async () => {
     //  ① 대역 관리자 하나(zzU) — 활성 admin 을 2 로 만든다. 실 관리자는 절대 건드리지 않는다.
     const mk = await send({
-      cmd: 'saveUser', userId: 0, loginId: AD.lid, name: AD.lid, title: T1,
+      cmd: 'saveUser', userId: 0, loginId: AD.lid, name: AD.lid, titleId: T1.id,
       orgId: null, viewScope: 'self', editRole: 'admin',
     });
     if (!okq('C17 대역 관리자 등록 성공', mk.ok, mk.msg)) return;
@@ -756,7 +766,7 @@ async function main() {
 
     //  ② 관리자가 둘이면 **남을 강등하는 것은 성공해야 한다** — 규칙이 과잉 차단하지 않는다는 증명.
     const dn = await send({
-      cmd: 'saveUser', userId: AD.uid, loginId: AD.lid, name: AD.lid, title: T1,
+      cmd: 'saveUser', userId: AD.uid, loginId: AD.lid, name: AD.lid, titleId: T1.id,
       orgId: null, viewScope: 'self', editRole: 'viewer',
     });
     okq('C17 관리자가 둘일 때 남(admin)의 강등은 성공한다(§4.4-3 은 과잉 차단하지 않는다)', dn.ok === true, dn.msg);
@@ -789,7 +799,7 @@ async function main() {
   /* ── C05 편집 권한 viewer → editor → admin (대상은 zzU · 본인 아님) ──── */
   await runCase('C05', '편집 권한 viewer → editor → admin', async () => {
     for (const role of ['viewer', 'editor', 'admin']) {
-      const rep = await send({ cmd: 'saveUser', userId: B.uid, loginId: B.lid, name: B.name, title: T1, orgId: O2.orgId, viewScope: 'unit_tree', editRole: role });
+      const rep = await send({ cmd: 'saveUser', userId: B.uid, loginId: B.lid, name: B.name, titleId: T1.id, orgId: O2.orgId, viewScope: 'unit_tree', editRole: role });
       if (!okq(`C05 edit_role=${role} 저장`, rep.ok, rep.msg)) return;
       const db = dbSnap(`C05 ${role}`).byId.get(B.uid);
       okq(`C05 DB edit_role=${role}`, !!db && db.editRole === role, db ? db.editRole : '행 없음');
@@ -946,7 +956,7 @@ async function main() {
     if (!okq('C20 대상(B) 행을 읽었다', !!cur)) return;
     const newName = B.lid + '_p20';
     const rep = await send({
-      cmd: 'saveUser', userId: B.uid, loginId: cur.loginId, name: newName, title: cur.title,
+      cmd: 'saveUser', userId: B.uid, loginId: cur.loginId, name: newName, titleId: cur.titleId,
       orgId: cur.orgId, viewScope: cur.viewScope, editRole: cur.editRole,
     });
     if (!okq('C20 무관한 저장이 성공했다(회신에 갱신 명부가 실려 온다)', rep.ok === true, rep.msg)) return;
@@ -1198,7 +1208,7 @@ async function main() {
   await runCase('C10', '잠금 방지② 자기 권한 변경 거부(admin→editor)', async () => {
     const me = dbSnap('C10 전').byId.get(meRow.uid);
     const rep = await send({
-      cmd: 'saveUser', userId: meRow.uid, loginId: me.loginId, name: me.name, title: me.title,
+      cmd: 'saveUser', userId: meRow.uid, loginId: me.loginId, name: me.name, titleId: me.titleId,
       orgId: me.orgId, viewScope: me.viewScope, editRole: 'editor',
     });
     okq('C10 거부됐다', rep.ok === false, `ok=${rep.ok}`);
@@ -1210,12 +1220,13 @@ async function main() {
 
   /* ── C11 검증 5종 ───────────────────────────────────────────────────── */
   await runCase('C11', '입력 검증 5종(§4.3)', async () => {
-    const base = { cmd: 'saveUser', userId: 0, name: 'zz검증', title: T1, orgId: O1.orgId, viewScope: 'self', editRole: 'viewer' };
+    const base = { cmd: 'saveUser', userId: 0, name: 'zz검증', titleId: T1.id, orgId: O1.orgId, viewScope: 'self', editRole: 'viewer' };
     const cases = [
       ['잘못된 ID', { ...base, loginId: 'zz U@x' }, '로그인 ID 는 영문·숫자·._- 만 쓸 수 있습니다.'],
       ['중복 ID(대소문자 무시)', { ...base, loginId: ME.toUpperCase() }, '이미 등록된 ID 입니다.'],
       ['빈 이름', { ...base, loginId: tmpId(), name: '' }, '이름을 입력하세요.'],
-      ['미등록 직급', { ...base, loginId: tmpId(), title: 'zz없는직급' }, '등록되지 않은 직급입니다.'],
+      //  v13: 없는 번호로 보낸다(MAX(title_id)+1000 은 어느 행도 아니다).
+      ['미등록 직급', { ...base, loginId: tmpId(), titleId: Number(sql(`SELECT COALESCE(MAX(title_id),0)+1000 FROM title_code`, { what: 'C11 없는 직급 번호' })[0][0]) }, '등록되지 않은 직급입니다.'],
       ['도메인 밖 viewScope', { ...base, loginId: tmpId(), viewScope: 'galaxy' }, '열람 범위 값이 올바르지 않습니다.'],
     ];
     const before = dbSnap('C11 전');
@@ -1237,7 +1248,7 @@ async function main() {
   const C = { lid: tmpId(), uid: 0 };
   await runCase('C12', '정수 null 내성(orgId:null · userId:null → 회신이 온다)', async () => {
     const rep = await send({
-      cmd: 'saveUser', userId: null, loginId: C.lid, name: C.lid, title: T1,
+      cmd: 'saveUser', userId: null, loginId: C.lid, name: C.lid, titleId: T1.id,
       orgId: null, viewScope: 'self', editRole: 'viewer',
     });
     okq('C12 회신이 왔다(굳지 않았다)', rep && typeof rep.ok === 'boolean', JSON.stringify(rep));
@@ -1254,7 +1265,7 @@ async function main() {
     const idle = await waitPage((x) => !x.saving && !x.busy, { timeout: 12000 });
     if (!okq('C14 시작 시 유휴', !!idle)) return;
     const n1 = A.lid + '_x1', n2 = A.lid + '_x2';
-    const mk = (nm) => ({ cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: nm, title: T1, orgId: null, viewScope: 'self', editRole: 'viewer' });
+    const mk = (nm) => ({ cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: nm, titleId: T1.id, orgId: null, viewScope: 'self', editRole: 'viewer' });
     //  같은 평가 안에서 연달아 두 번 — 두 번째는 __uaSaving 으로 막혀야 한다.
     await ev(`(uaSend(${JSON.stringify(mk(n1))}), uaSend(${JSON.stringify(mk(n2))}), 1)`);
     const s = await waitPage((x) => x.r > idle.r, { timeout: 15000 });
@@ -1310,7 +1321,7 @@ async function main() {
       okq('C13 편집 폼에 닿을 수 없다(#userEditModal 안 열림)', s3.ueOpen === false, String(s3.ueOpen));
 
       const rep = await send({
-        cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: A.lid + '_nope', title: T1,
+        cmd: 'saveUser', userId: A.uid, loginId: A.lid, name: A.lid + '_nope', titleId: T1.id,
         orgId: null, viewScope: 'self', editRole: 'viewer',
       });
       okq('C13 쓰기 거부', rep.ok === false, `ok=${rep.ok}`);

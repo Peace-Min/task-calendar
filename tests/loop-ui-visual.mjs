@@ -273,8 +273,10 @@ V._realSave = prev ? prev._realSave : window.save;
 window.save = function(){ V.saveCalls++; };               // 디스크·호스트 쓰기 차단
 V._snapCats = prev ? prev._snapCats : JSON.parse(JSON.stringify(state.categories));
 V._realRows = prev ? prev._realRows : (typeof dbCatalog !== 'undefined' ? dbCatalog : []).map(function(c){
+  /* v13(CODE-TABLE-IDS §4): __applyProjects 행은 이름(표시용)과 번호를 함께 싣는다. 번호가 없으면 필터와 색이 빠진다. */
   return { uid: String(c.id||'').replace(/^db-/,''), project_name:c.projectName, common_name:c.commonName,
            contract_name:c.contractName, customer:c.customer, section:c.section, status:c.status,
+           customerId:c.customerId, sectionId:c.sectionId, statusId:(c.statusId == null ? null : c.statusId),
            start_date:c.startDate, end_date:c.endDate, dev_end_date:c.devEndDate, note:c.note };
 });
 V._realOnline = prev ? prev._realOnline : ((typeof dbOnline !== 'undefined') ? !!dbOnline : false);
@@ -332,6 +334,11 @@ V.applyReal = function(){
 V.longRows = function(n){
   var SEC = ['체계개발','성능개량','양산','연구용역','시험평가','기타사업'];
   var ST  = ['진행','수주','종료','보류','',  '계약대기'];
+  /* v13: 동작과 색은 번호로 정해진다(구분 2 선진행, 상태 2 종료). 글자는 길이 시험용 가짜라 번호를 따로 붙인다.
+     '종료' 칸은 고정 번호 2, 빈 칸은 상태 없음(null). 나머지는 시드에 없는 번호라 기본색과 '그 밖' 점으로 그려진다.
+     구분 2(선진행)는 쓰지 않는다: 이 행들은 날짜와 상태를 가져서, 선진행이면 있을 수 없는 조합이 된다. */
+  var SEC_ID = [1, 3, 11, 12, 13, 14];
+  var ST_ID  = [1, 3, 2, 4, null, 14];
   var CUS = ['국방과학연구소 미래전력연구원 무기체계개발본부',
              '방위사업청 지상무기사업부 기동화력사업팀',
              '한화시스템(주) 지휘통제사업본부 통합체계연구소',
@@ -346,8 +353,11 @@ V.longRows = function(n){
       common_name:   '통합지휘통제체계 성능개량 ' + (i+1) + '차 확장 시험평가 지원',
       contract_name: '통합지휘통제체계 성능개량사업 소프트웨어 개발 및 기술지원 용역계약(' + (2020+idx) + '-' + (i+1) + '호)',
       customer: CUS[i % CUS.length],
+      customerId: 9001 + (i % CUS.length),
       section:  SEC[idx],
+      sectionId: SEC_ID[idx],
       status:   ST[idx],
+      statusId: ST_ID[idx],
       start_date: '2024-0' + ((idx%9)+1) + '-01',
       end_date:   '2027-1' + (idx%2) + '-31',
       dev_end_date: '2026-1' + (idx%2) + '-15',

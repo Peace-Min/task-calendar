@@ -138,7 +138,7 @@ export const checks = {
 
   //  ② 호스트의 세 SQL 이 **전부** 그 컬럼을 담는다(하나라도 빠지면 무음 유실)
   hostSqlCarriesColumn(cs) {
-    const sel = csSqlLiteral(cs, 'SELECT uid,');
+    const sel = csSqlLiteral(cs, 'SELECT p.uid,');
     const ins = csSqlLiteral(cs, 'INSERT INTO project (');
     const upd = csSqlLiteral(cs, 'UPDATE project SET ');
     assert.ok(sel && ins && upd,

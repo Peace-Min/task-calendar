@@ -3,7 +3,7 @@
 // 파일 바이트(xlsx) 자체는 호스트(C# XlsxWriter)가 만들므로 여기서는
 //  (1) '무엇을 뽑는가'(행 매핑·필터 요약·건수·버튼 상태)와
 //  (2) 웹이 보내는 키 ↔ 호스트 컬럼 정의가 어긋나지 않는지를 못박는다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, extractCodeIdsBlock } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const src = loadAppSource();
@@ -26,9 +26,12 @@ function makeExportCtx(env) {
     'let dbCustomers = __env.dbCustomers || [];\n' +
     // 캐시 제거(2026-07-24) 후 버튼/툴팁이 '연결 안 됨'을 구분하므로 온라인 여부도 주입한다(기본 true).
     'let dbOnline = (__env.dbOnline !== false);\n' +
+    // 고정 번호 머리(CODE_ID · codeIdOf 등) — 앱과 같은 글자를 떼어 온다(CODE-TABLE-IDS §3).
+    extractCodeIdsBlock(src) + '\n' +
     // 구분/상태는 이제 DB 코드테이블 로드값(offSections/offStatuses) — 테스트엔 표준 시드값을 주입.
-    'let offSections = __env.offSections || ["일반계약","선진행","사업부관리"];\n' +
-    'let offStatuses = __env.offStatuses || ["진행중","종료","1차 납품완료","미정"];\n' +
+    //  ★ 2026-10-15 — 원소는 [{id, name}] 이다(번호가 정렬과 묶음의 열쇠다).
+    'let offSections = __env.offSections || [{id:1,name:"일반계약"},{id:2,name:"선진행"},{id:3,name:"사업부관리"}];\n' +
+    'let offStatuses = __env.offStatuses || [{id:1,name:"진행중"},{id:2,name:"종료"},{id:3,name:"1차 납품완료"},{id:4,name:"미정"}];\n' +
     constLine('offTrim') + '\n' +
     constLine('offNorm') + '\n' +
     constLine('OFF_NO_STATUS') + '\n' +
@@ -157,7 +160,7 @@ test('추출 행 매핑: null/빈 계약명·통상명칭·상태는 빈 문자�
 test('추출 행 매핑: 상수 열이던 사용여부(active)는 행에 담지 않는다', () => {
   assert.strictEqual('active' in X.offExportRow({ active: false }), false);
   assert.strictEqual('active' in X.offExportRow({}), false);
-  assert.strictEqual(Object.keys(X.offExportRow({})).length, 9);   // 2026-09-10 개발종료일 신설로 8 → 9
+  assert.strictEqual(Object.keys(X.offExportRow({})).length, 10);   // 2026-09-10 개발종료일 신설로 8 → 9, 2026-10-15 statusId(색 힌트)로 → 10
   assert.doesNotThrow(() => X.offExportRow(null));   // 방어 — 크래시 금지
 });
 
@@ -174,18 +177,27 @@ test('추출 행 매핑: 날짜는 YYYY-MM-DD 앞부분만, 비거나 형식이 
   assert.strictEqual(X.offExportRow({ startDate: '미정' }).startDate, '미정');   // 형식 아님 → 호스트가 빈 셀로 처리
 });
 
-test('추출 행 매핑: 값은 전부 문자열(호스트가 문자열만 읽는다)', () => {
+test('추출 행 매핑: 값은 전부 문자열(호스트가 문자열만 읽는다) · statusId 만 번호(색 힌트)', () => {
   const r = X.offExportRow({ section: '선진행', customer: 1234, projectName: 0 });
-  for (const [k, v] of Object.entries(r)) assert.strictEqual(typeof v, 'string', `${k}가 문자열이 아님`);
+  for (const [k, v] of Object.entries(r)) if (k !== 'statusId') assert.strictEqual(typeof v, 'string', `${k}가 문자열이 아님`);
+  //  ★ 상태색은 이름이 아니라 번호로 정한다(CODE-TABLE-IDS §3). 번호가 없으면 null(힌트 없음).
+  assert.strictEqual(r.statusId, null, '상태 번호가 없는데 statusId 가 null 이 아니다');
+  assert.strictEqual(X.offExportRow({ statusId: 2 }).statusId, 2, 'statusId 가 번호로 실리지 않는다');
+  assert.strictEqual(X.offExportRow({ statusId: '3' }).statusId, 3, 'statusId 문자열 번호를 정규화하지 않는다');
 });
 
 test('추출 행 순서: 화면과 같은 구분 그룹 순(ENUM 순) → 그룹 안은 이름순', () => {
+  //  ★ 묶음과 순서는 구분 번호(sectionId)와 코드 순서로 정한다 — 이름 글자가 아니다(CODE-TABLE-IDS §3).
   const list = [
-    { name: '나과제', projectName: '나과제', section: '선진행' },
-    { name: '가과제', projectName: '가과제', section: '일반계약' },
-    { name: '다과제', projectName: '다과제', section: '일반계약' },
+    { name: '나과제', projectName: '나과제', section: '선진행', sectionId: 2 },
+    { name: '가과제', projectName: '가과제', section: '일반계약', sectionId: 1 },
+    { name: '다과제', projectName: '다과제', section: '일반계약', sectionId: 1 },
   ];
   assert.deepStrictEqual(X.offExportRows(list).map(r => r.projectName), ['가과제', '다과제', '나과제']);
+  //  이름을 바꿔도(선진행 → 계약전) 번호가 같으면 순서는 그대로다.
+  const renamed = list.map(c => Object.assign({}, c, c.sectionId === 2 ? { section: '계약전' } : {}));
+  assert.deepStrictEqual(X.offExportRows(renamed).map(r => r.projectName), ['가과제', '다과제', '나과제'],
+    '구분 이름을 바꾸자 묶음 순서가 바뀌었다(이름으로 정렬한다)');
 });
 
 // ── 버튼 상태 ──────────────────────────────────────────────────────────
@@ -280,8 +292,10 @@ test('추출 계약(v2): 열 너비도 계약이다 — 실측 캘리브레이�
 test('추출 계약(v2): 웹이 만드는 행의 키 집합 = 호스트가 읽는 필드 집합(No는 호스트 전용이라 제외)', () => {
   const cols = hostExportCols();
   const fields = cols.map(c => c.field).filter(Boolean);   // Field 빈 문자열 = 연번(웹이 안 보냄)
-  const keys = Object.keys(X.offExportRow({}));
+  //  statusId 는 열이 아니라 상태색 힌트다(호스트 ReadProjectExportRows 가 따로 읽는다).
+  const keys = Object.keys(X.offExportRow({})).filter(k => k !== 'statusId');
   assert.deepStrictEqual([...keys].sort(), [...fields].sort());
+  assert.ok(/r\.TryGetProperty\("statusId", out var sid\)/.test(hostSource()), '호스트가 행의 statusId(상태색 힌트)를 읽지 않는다');
   assert.strictEqual(cols.filter(c => !c.field).length, 1, '연번 열은 정확히 하나(Field 빈 문자열)');
   assert.strictEqual(cols[0].field, '', '연번은 첫 열이어야 한다');
 });
@@ -303,9 +317,14 @@ test('추출 계약(v2): 상태색 규칙은 호스트(도메인)에만 있고 X
   const start = cs.indexOf('ProjectStatusAccents');
   assert.ok(start >= 0, 'ProjectStatusAccents 정의를 찾지 못함');
   const block = cs.slice(start, cs.indexOf('};', start));
-  const keys = [...block.matchAll(/\["([^"]+)"\]\s*=\s*new XlsxWriter\.Accent\("([0-9A-Fa-f]{8})",\s*"([0-9A-Fa-f]{8})"\)/g)]
+  //  ★ 2026-10-15 — 열쇠는 상태 이름이 아니라 고정 번호(CodeIds)다(CODE-TABLE-IDS §3). 이름을 바꿔도 색이 따라간다.
+  const keys = [...block.matchAll(/\[CodeIds\.(\w+)\]\s*=\s*new XlsxWriter\.Accent\("([0-9A-Fa-f]{8})",\s*"([0-9A-Fa-f]{8})"\)/g)]
     .map(m => ({ k: m[1], fill: m[2], font: m[3] }));
-  assert.deepStrictEqual(keys.map(x => x.k), ['진행중', '1차 납품완료', '종료']);
+  assert.deepStrictEqual(keys.map(x => x.k), ['StatusActive', 'StatusDelivered', 'StatusEnded']);
+  assert.ok(/Dictionary<int, XlsxWriter\.Accent> ProjectStatusAccents/.test(cs), '상태색 표의 열쇠가 번호(int)가 아니다');
+  const pdb = projectDbSource();
+  for (const [k, v] of [['StatusActive', 1], ['StatusDelivered', 3], ['StatusEnded', 2]])
+    assert.ok(new RegExp('public const int ' + k + '\\s*=\\s*' + v + ';').test(pdb), `CodeIds.${k} 가 ${v} 가 아니다(시드 고정 번호)`);
   assert.deepStrictEqual(keys.map(x => x.fill), ['FFE8F3EC', 'FFE9F0FA', 'FFF0F1F3']);
   assert.deepStrictEqual(keys.map(x => x.font), ['FF1E7A45', 'FF1F5FA8', 'FF6B7280']);
   // 도메인 지식 격리 — XlsxWriter는 '어떤 상태가 무슨 색'인지 알면 안 된다(주석은 설명이므로 제외하고 검사).
@@ -677,7 +696,7 @@ test('XlsxWriter: 임시 파일에 쓰고 성공 시에만 목적지로 이동(�
 test('발주처 시트: 활성 발주처를 이름순으로 뽑는다(마스터 우선)', () => {
   const ctx = makeExportCtx({
     HOST: true, document: { getElementById: () => null },
-    dbCustomers: ['LIG넥스원', '방위사업청', '국방과학연구소'],
+    dbCustomers: [{ id: 3, name: 'LIG넥스원' }, { id: 1, name: '방위사업청' }, { id: 2, name: '국방과학연구소' }],
     dbCatalog: [{ customer: '한화시스템' }],   // 마스터가 있으면 카탈로그는 무시
   });
   assert.deepStrictEqual(ctx.offCustomerExportList(), ['국방과학연구소', '방위사업청', 'LIG넥스원']);
@@ -695,7 +714,7 @@ test('발주처 시트: 마스터가 비면 카탈로그에서 실제 쓰인 발
 test('발주처 시트: 중복·공백은 정리하고 이름순 정렬', () => {
   const ctx = makeExportCtx({
     HOST: true, document: { getElementById: () => null },
-    dbCustomers: [' 방위사업청 ', '방위사업청', '', '  ', 'LIG넥스원'],
+    dbCustomers: [{ id: 1, name: ' 방위사업청 ' }, { id: 1, name: '방위사업청' }, { id: 4, name: '' }, { id: 5, name: '  ' }, { id: 3, name: 'LIG넥스원' }],
   });
   assert.deepStrictEqual(ctx.offCustomerExportList(), ['방위사업청', 'LIG넥스원']);
 });
@@ -752,27 +771,34 @@ test('발주처 CRUD: add — 빈 이름 거부 · 1062는 활성/숨김 구분 
   assert.ok(/INSERT INTO customer \(name\) VALUES \(@n\)/.test(b), '파라미터 바인딩 INSERT가 아니다');
 });
 
-test('발주처 CRUD: rename — 빈값 거부·no-op 성공·1062 안내·0행 실패, FK CASCADE 의존', () => {
+//  ★ 2026-10-15 — 개명은 번호로 찾은 **한 행 UPDATE** 다(CODE-TABLE-IDS §4). 같은 이름이면 웹이 왕복을 만들지 않는다
+//    (custCommitRename 의 원복 · 아래 웹 계약).
+test('발주처 CRUD: rename — 번호 필수·빈값 거부·1062 안내·0행 실패, 번호로 찾은 한 행 UPDATE', () => {
   const db = projectDbSource();
   const b = db.slice(db.indexOf('RenameCustomerAsync'), db.indexOf('SetCustomerActiveAsync'));
+  assert.ok(/RenameCustomerAsync\(int customerId, string\? newName\)/.test(b), '개명이 번호(customerId)를 받지 않는다');
   assert.ok(/새 발주처명을 입력하세요/.test(b), '빈 newName 거부가 없다');
-  assert.ok(/string\.Equals\(o, nw, StringComparison\.Ordinal\)\) return \(true/.test(b), 'oldName==newName no-op 성공이 없다');
+  assert.ok(/if \(customerId <= 0\) return \(false, "변경할 발주처를 지정하세요\."\);/.test(b), '번호 없는 개명 거부가 없다');
   assert.ok(/그 이름의 발주처가 이미 있습니다/.test(b), '1062 안내가 없다');
   assert.ok(/발주처를 찾을 수 없습니다/.test(b), '0행(대상 없음) 처리가 없다');
-  assert.ok(/UPDATE customer SET name=@new WHERE name=@old/.test(b), '개명 UPDATE가 파라미터 바인딩이 아니다');
+  assert.ok(/UPDATE customer SET name=@new WHERE customer_id=@id/.test(b), '개명 UPDATE가 번호로 찾는 파라미터 바인딩이 아니다');
+  assert.ok(!/UPDATE project/.test(b), '개명이 project 를 따라 고친다(번호로 가리키므로 필요 없다)');
+  const web = extractFunction(src, 'custCommitRename');
+  assert.ok(/if\(newName === it\.name\)\{ renderCustomerList\(\); return; \}/.test(web), '같은 이름이면 원복하는(왕복 없는) 갈래가 웹에 없다');
+  assert.ok(/custSend\('renameCustomer', \{ customerId: it\.id, newName \}/.test(web), '웹이 개명을 번호(customerId)로 보내지 않는다');
 });
 
 test('발주처 CRUD: setActive는 UPDATE is_active(하드삭제 없음)', () => {
   const db = projectDbSource();
   const b = db.slice(db.indexOf('SetCustomerActiveAsync'), db.indexOf('CountActiveProjectsByCustomerAsync'));
-  assert.ok(/UPDATE customer SET is_active=@a WHERE name=@n/.test(b), 'is_active 소프트삭제 UPDATE가 없다');
+  assert.ok(/UPDATE customer SET is_active=@a WHERE customer_id=@id/.test(b), 'is_active 소프트삭제 UPDATE가 없다(번호로)');
   //  ★ 2026-09-10(휴지통) — 하드삭제 경로가 **하나** 생겼다(docs/TRASH-DELETE.md §3.3).
   //    "앱은 발주처를 지우지 않는다"는 방침은 "지우는 자리는 휴지통 한 곳뿐"으로 좁혀졌다:
   //    관리자만·숨긴 값만·그 값을 쓰는 과제 0건(숨긴 과제 포함)일 때만·이름을 그대로 입력해야 지워진다.
   //    그래서 이 계약은 '없다'가 아니라 '그 함수 밖에 없다'를 본다 — 숨김 경로에 DELETE 가 끼면 여기서 운다.
   const delTrash = db.slice(db.indexOf('public async Task<(bool ok, string msg)> DeleteTrashAsync'));
   assert.ok(delTrash.length > 0, 'DeleteTrashAsync 를 찾지 못했다(측정 불가 ≠ 통과)');
-  assert.ok(/DELETE FROM customer WHERE name=@k/.test(delTrash), '휴지통의 발주처 영구 삭제 SQL 이 없다');
+  assert.ok(/DELETE FROM customer WHERE customer_id=@k/.test(delTrash), '휴지통의 발주처 영구 삭제 SQL 이 없다(번호로)');
   assert.ok(!/DELETE FROM customer/.test(db.replace(delTrash, '')),
     '휴지통(DeleteTrashAsync) 밖에서 발주처를 하드삭제한다 — 숨김은 is_active=0 이고 행은 남는다(방침 위반)');
 });
@@ -782,7 +808,7 @@ test('발주처 CRUD: refCount는 활성 과제만 센다', () => {
   // CountActive… 선언부터 그 다음 멤버(private static string Str)까지로 자른다
   //   (LoadCustomersFullJsonAsync는 이 메서드보다 위에 있어 경계로 못 쓴다.)
   const b = db.slice(db.indexOf('CountActiveProjectsByCustomerAsync'), db.indexOf('private static string Str'));
-  assert.ok(/SELECT COUNT\(\*\) FROM project WHERE customer=@c AND is_active=1/.test(b), '활성 과제 카운트 쿼리가 다르다');
+  assert.ok(/SELECT COUNT\(\*\) FROM project WHERE customer_id=@c AND is_active=1/.test(b), '활성 과제 카운트 쿼리가 다르다(번호로)');
 });
 
 // 브리지 계약 — 4개 cmd + 회신은 ReplyOnUi(UI 스레드 마샬)로만.

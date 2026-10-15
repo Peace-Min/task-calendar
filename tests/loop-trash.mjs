@@ -28,6 +28,12 @@
  *   C10 확인창 취소    — confirmTyped 의 [data-close] **실클릭** → 호스트로 아무것도 나가지 않는다
  *   C11 사유 가시화    — 기록 있는 퇴사자의 why 가 **보이는 줄**(.set-hint[data-trwhy])로 그려진다(툴팁만으로는 안 보인다)
  *   C12 쓰기 중 잠금   — [복구] → [확인] 그 순간 #trList 의 버튼 전부 disabled + #trashModal[data-busy=1] → 회신 뒤 해제
+ *   C13 고정 번호 보호: 구분 2(선진행), 상태 2(종료)의 숨김과 영구 삭제는 거부(DB 그대로), 복구는 막지 않는다.
+ *                        개명은 되고, 개명 뒤에도 날짜 잠금과 '진행중만' 필터는 번호를 따른다(이름은 반드시 되돌린다)
+ *
+ * v13(docs/CODE-TABLE-IDS.md §3, §4): 코드는 번호로 주고받는다. saveProject 는 sectionId/customerId/statusId,
+ *   saveUser 는 titleId, 발주처/코드 관리는 customerId 와 id, 휴지통 키는 과제만 uid 이고 나머지는 번호 문자열이다.
+ *   확인 입력(confirm)은 여전히 이름이다.
  *   C08 비관리자       — 로그인 계정을 잠시 editor 로 내린다(**반드시 복원**): #uaTrash 부재 · admin:false · 삭제 거부
  *
  * 진입 문은 **둘**이다(2026-09-18 사용자 결정 · §5.0) — 「사용자 정보」에는 휴지통이 없다:
@@ -74,7 +80,7 @@ const OPT = {
   budget: Number(ARG.get('budget') || 120),
   verbose: ARG.has('verbose') || ARG.has('v'),
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',   // ← 비밀. 소스에 기본값 없음(이 파일은 커밋된다)
 };
@@ -187,12 +193,14 @@ SELECT 'T', COUNT(*) FROM status_code  WHERE name         NOT LIKE 'zzT%';
 SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version';
 SELECT 'M', edit_role, CAST(is_active AS CHAR), CAST(user_id AS CHAR), name FROM app_user WHERE login_id=${esc(me)};
 SELECT 'H', IFNULL(SHA2(GROUP_CONCAT(x ORDER BY x SEPARATOR '|'),256),'(빈집합)') FROM (
-            SELECT CONCAT('P/',uid,'/',is_active)                     AS x FROM project      WHERE project_name NOT LIKE 'zzP%'
-  UNION ALL SELECT CONCAT('U/',user_id,'/',edit_role,'/',is_active)        FROM app_user     WHERE login_id     NOT LIKE 'zzU%'
-  UNION ALL SELECT CONCAT('C/',name,'/',is_active)                         FROM customer     WHERE name         NOT LIKE 'zzC%'
-  UNION ALL SELECT CONCAT('S/',name,'/',is_active,'/',sort_order)          FROM section_code WHERE name         NOT LIKE 'zzT%'
-  UNION ALL SELECT CONCAT('T/',name,'/',is_active,'/',sort_order)          FROM status_code  WHERE name         NOT LIKE 'zzT%'
+            SELECT CONCAT('P/',uid,'/',is_active,'/',section_id,'/',customer_id,'/',IFNULL(status_id,'-')) AS x FROM project WHERE project_name NOT LIKE 'zzP%'
+  UNION ALL SELECT CONCAT('U/',user_id,'/',edit_role,'/',is_active,'/',IFNULL(title_id,'-'))  FROM app_user     WHERE login_id     NOT LIKE 'zzU%'
+  UNION ALL SELECT CONCAT('C/',customer_id,'/',name,'/',is_active)                           FROM customer     WHERE name         NOT LIKE 'zzC%'
+  UNION ALL SELECT CONCAT('S/',section_id,'/',name,'/',is_active,'/',sort_order)             FROM section_code WHERE name         NOT LIKE 'zzT%'
+  UNION ALL SELECT CONCAT('T/',status_id,'/',name,'/',is_active,'/',sort_order)              FROM status_code  WHERE name         NOT LIKE 'zzT%'
 ) z`;
+//  ★ v13: 과제와 직원은 이름이 아니라 번호(section_id, customer_id, status_id, title_id)로 코드를 가리킨다.
+//    해시에 그 번호를 함께 싣는다(NULL 은 CONCAT 을 통째로 NULL 로 만들어 GROUP_CONCAT 이 그 행을 건너뛰므로 IFNULL).
 
 function dbSnap(me, what = '스냅샷') {
   const rs = sql(SNAP_SQL(me), { what });
@@ -498,7 +506,23 @@ function invariants(caseId) {
  *    (customer/section_code/status_code 는 project 가 먼저 사라져야 지워진다 — FK RESTRICT.)
  *  ★ 편입분(cal_category, source='db')은 **이름으로** 찾는다. 과제 행이 이미 사라진 잔재에는
  *    project_uid 로 되짚을 근거가 없기 때문이다 — 편입분의 name 은 과제명(zzP…)을 그대로 물려받는다. */
+/*  ★ C13 은 고정 번호 행(구분 2, 상태 2)의 **이름을 잠시 바꾼다**(이름 + RENAME_MARK + 시드). 실행 중 강제 종료되면
+ *    바뀐 이름이 남으므로, 시작과 종료 양쪽에서 표식 앞부분으로 되돌린다. 번호로 고정한 절대값 UPDATE 라 재적용해도 같다.
+ *    ★ 표식은 zz 접두가 아니라 **뒤에 붙인다**. 'zzT%' 로 지우는 sweep 이 고정 번호 행을 지우려 들면 안 된다.   */
+const RENAME_MARK = '~zzR';
+function restoreRenamedCodes(reason) {
+  const like = esc('%' + RENAME_MARK + '%'), mark = esc(RENAME_MARK);
+  const n = n1(`SELECT (SELECT COUNT(*) FROM section_code WHERE section_id=2 AND name LIKE ${like})
+                     + (SELECT COUNT(*) FROM status_code  WHERE status_id=2  AND name LIKE ${like})`, '개명 잔재 수');
+  if (!n) return 0;
+  sql(`UPDATE section_code SET name=SUBSTRING_INDEX(name, ${mark}, 1) WHERE section_id=2 AND name LIKE ${like};\n` +
+      `UPDATE status_code  SET name=SUBSTRING_INDEX(name, ${mark}, 1) WHERE status_id=2  AND name LIKE ${like}`,
+    { readOnly: false, idempotent: true, what: '고정 번호 행 이름 복원' });
+  console.error(`[cleanup] 고정 번호 행 이름 복원(${reason}): ${n}건`);
+  return n;
+}
 function sweepZz(reason) {
+  try { restoreRenamedCodes(reason); } catch (e) { console.error('[cleanup] 고정 번호 행 이름 복원 실패: ' + e.message); }
   const before = {
     user: n1(`SELECT COUNT(*) FROM app_user WHERE login_id LIKE 'zzU%'`, 'zz 인력 수'),
     proj: n1(`SELECT COUNT(*) FROM project WHERE project_name LIKE 'zzP%'`, 'zz 과제 수'),
@@ -592,22 +616,23 @@ const NM = {
   sec: () => `zzT${OPT.seed}구분`,
   stat: () => `zzT${OPT.seed}상태`,
 };
-/** 과제 하나를 앱 경로(saveProject)로 만들고 uid 를 돌려준다. */
-async function makeProject(name, { section, customer, status }) {
+/** 과제 하나를 앱 경로(saveProject)로 만들고 uid 를 돌려준다.
+ *  ★ v13: 코드는 번호로 보낸다(sectionId, customerId, statusId, 0 = 상태 없음, CODE-TABLE-IDS §4). */
+async function makeProject(name, { sectionId, customerId, statusId }) {
   const rep = await hsend({
-    cmd: 'saveProject', uid: '', section, customer, projectName: name,
+    cmd: 'saveProject', uid: '', sectionId: Number(sectionId), customerId: Number(customerId), projectName: name,
     contractName: '', commonName: name + '_공통', startDate: '2026-01-01', endDate: '2026-12-31',
-    devEndDate: '', status, note: '', confirm: true,   // confirm=true — '비슷한 과제' 소프트 경고를 건너뛴다
+    devEndDate: '', statusId: Number(statusId || 0), note: '', confirm: true,   // confirm=true — '비슷한 과제' 소프트 경고를 건너뛴다
   }, 'p', { expectPush: 'pa' });
   if (!rep.ok) throw new Error(`과제 등록 실패: ${rep.msg}`);
   const uid = s1(`SELECT uid FROM project WHERE project_name=${esc(name)}`, '새 과제 uid');
   if (!uid) throw new Error('과제를 만들었는데 DB 에서 uid 를 찾지 못했다');
   return uid;
 }
-/** 직원 하나를 앱 경로(saveUser)로 만들고 user_id 를 돌려준다. */
-async function makeUser(loginId, { title, role = 'viewer' }) {
+/** 직원 하나를 앱 경로(saveUser)로 만들고 user_id 를 돌려준다. 직급은 번호(titleId, 0 = 없음)로 보낸다. */
+async function makeUser(loginId, { titleId, role = 'viewer' }) {
   const rep = await hsend({
-    cmd: 'saveUser', userId: 0, loginId, name: loginId, title,
+    cmd: 'saveUser', userId: 0, loginId, name: loginId, titleId: Number(titleId || 0),
     orgId: 0, viewScope: 'self', editRole: role, includeInactive: false,
   }, 'u');
   if (!rep.ok) throw new Error(`직원 등록 실패: ${rep.msg}`);
@@ -630,6 +655,9 @@ const MSG = {
   done: '영구 삭제했습니다.',
   records: (n) => `기록 ${n}건이 있어 지울 수 없습니다. 퇴사 상태로 유지됩니다.`,
   inUse: (n) => `이 값을 쓰는 과제가 ${n}건(숨긴 과제 포함) 있어 지울 수 없습니다.`,
+  //  고정 번호 보호(ProjectDb.CodeIds.SectionPreMsg, StatusEndedMsg, CODE-TABLE-IDS §3)
+  protSection: '이 구분은 과제 날짜 규칙(선진행)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
+  protStatus: '이 상태는 목록 필터와 엑셀 강조(종료)에 쓰여 숨기거나 지울 수 없습니다. 이름은 바꿀 수 있습니다.',
 };
 
 /* ────────────────────────────── 7. 본체 ────────────────────────────── */
@@ -662,19 +690,21 @@ async function main() {
   log(`시작 스냅샷: 실행 ${countsKey(BASE.counts)}(과제/직원/발주처/구분/상태) · schema_version=${BASE.schemaVersion} · 해시 ${String(BASE.hash).slice(0, 12)}`);
 
   //  실행 코드값 — 시험 과제가 빌려 쓴다(값을 고치지 않는다. 참조만 한다).
-  //  ★ '선진행'은 제외한다: 그 구분은 날짜·상태를 강제로 비우는 특수 규칙이 있어(UpsertProjectAsync)
-  //    시험 과제가 의도한 모습으로 앉지 않는다.
+  //  ★ 구분 2(선진행)는 제외한다: 그 구분은 날짜·상태를 강제로 비우는 특수 규칙이 있어(UpsertProjectAsync)
+  //    시험 과제가 의도한 모습으로 앉지 않는다. 상태 2(종료)도 뺀다(진행중만 필터에서 빠진다. C13 이 따로 본다).
+  //  ★ v13: 번호로 고른다(이름 글자 비교 없음, CODE-TABLE-IDS §3). saveProject/saveUser 가 번호를 받는다.
+  const pick = (q, what) => Number(s1(q, what) || 0);
   const REAL = {
-    section: s1(`SELECT name FROM section_code WHERE is_active=1 AND name<>'선진행' AND name NOT LIKE 'zzT%' ORDER BY sort_order, name LIMIT 1`, '실 구분'),
-    customer: s1(`SELECT name FROM customer WHERE is_active=1 AND name NOT LIKE 'zzC%' ORDER BY name LIMIT 1`, '실 발주처'),
-    status: s1(`SELECT name FROM status_code WHERE is_active=1 AND name NOT LIKE 'zzT%' ORDER BY sort_order, name LIMIT 1`, '실 상태'),
-    title: s1(`SELECT name FROM title_code WHERE is_active=1 ORDER BY sort_order, name LIMIT 1`, '실 직급'),
+    sectionId: pick(`SELECT section_id FROM section_code WHERE is_active=1 AND section_id<>2 AND name NOT LIKE 'zzT%' ORDER BY sort_order, section_id LIMIT 1`, '실 구분'),
+    customerId: pick(`SELECT customer_id FROM customer WHERE is_active=1 AND name NOT LIKE 'zzC%' ORDER BY name, customer_id LIMIT 1`, '실 발주처'),
+    statusId: pick(`SELECT status_id FROM status_code WHERE is_active=1 AND status_id<>2 AND name NOT LIKE 'zzT%' ORDER BY sort_order, status_id LIMIT 1`, '실 상태'),
+    titleId: pick(`SELECT title_id FROM title_code WHERE is_active=1 ORDER BY sort_order, title_id LIMIT 1`, '실 직급'),
   };
-  if (!REAL.section || !REAL.customer || !REAL.status || !REAL.title) {
+  if (!REAL.sectionId || !REAL.customerId || !REAL.statusId || !REAL.titleId) {
     console.error(`[판정 없음] 시험 과제를 만들 실 코드값이 모자란다: ${JSON.stringify(REAL)}`);
     process.exit(2);
   }
-  vlog(`빌려 쓸 실 코드값: 구분=${REAL.section} 발주처=${REAL.customer} 상태=${REAL.status} 직급=${REAL.title}`);
+  vlog(`빌려 쓸 실 코드값(번호): 구분=${REAL.sectionId} 발주처=${REAL.customerId} 상태=${REAL.statusId} 직급=${REAL.titleId}`);
 
   //  진입 문 둘을 각각 열어 확인해 둔다(§5.0) — C08 이 '내려가면 사라진다'를 보려면 먼저 서 있어야 한다.
   //   ① 과제 쪽: 「공식 과제 (DB)」 하단 줄의 #offTrash — 정적 버튼이고 위젯이면 보인다(발주처 관리와 같은 규칙).
@@ -743,7 +773,7 @@ async function main() {
     //       셋을 함께 강제한다. 어기면 3819 로 막힌다(schema-calendar.sql §5.2).
     const U0 = NM.user(0);
     let u0 = 0;
-    try { u0 = await makeUser(U0, { title: REAL.title }); }
+    try { u0 = await makeUser(U0, { titleId: REAL.titleId }); }
     catch (e) { ok('C01 두 번째 편입자 등록', false, e.message); }
     if (u0) {
       sql(`DELETE FROM cal_category WHERE user_id=${u0};\n` +
@@ -880,7 +910,7 @@ async function main() {
   /* ── C02 인력(기록 0) ────────────────────────────────────────────── */
   const U1 = NM.user(1);
   await runCase('C02', `인력 기록 0(${U1}) 등록·퇴사·삭제`, async () => {
-    const uid = await makeUser(U1, { title: REAL.title });
+    const uid = await makeUser(U1, { titleId: REAL.titleId });
     const off = await hsend({ cmd: 'setUserActive', userId: uid, active: false, includeInactive: false }, 'u');
     if (!okq('C02 퇴사 성공 회신', off.ok, off.msg)) return;
 
@@ -904,7 +934,7 @@ async function main() {
   /* ── C03 인력(기록 2) ────────────────────────────────────────────── */
   const U2 = NM.user(2);
   await runCase('C03', `인력 기록 있음(${U2}) — 거부되고 퇴사 상태로 남는다`, async () => {
-    const uid = await makeUser(U2, { title: REAL.title });
+    const uid = await makeUser(U2, { titleId: REAL.titleId });
     //  기록을 심는다 — 개인 과제 1 + 일정 1 = §3.2 의 9표 합계 2건.
     //  ★ 앱이 만든 것이 아니라 SQL 로 심는 이유: 이 계정은 **한 번도 로그인하지 않는다**(넷커스 자격이 없다).
     //    앱 경로로는 남의 계정에 기록을 만들 길이 없으므로, 여기서만 정본 스키마를 직접 따른다.
@@ -976,33 +1006,44 @@ async function main() {
     if (!okq('C04 구분 추가', !!(a2 && a2.ok), JSON.stringify(a2))) return;
     const a3 = await hreq('codeAdd', { kind: 'status', name: STT });
     if (!okq('C04 상태 추가', !!(a3 && a3.ok), JSON.stringify(a3))) return;
+    //  ★ v13: 새 행은 AUTO_INCREMENT 번호를 받는다. 추가는 이름으로, 나머지(숨김·복구·삭제·휴지통 키)는 그 번호로 한다.
+    const CUid = n1(`SELECT customer_id FROM customer WHERE name=${esc(CU)}`, 'C04 발주처 번호');
+    const SEid = n1(`SELECT section_id FROM section_code WHERE name=${esc(SE)}`, 'C04 구분 번호');
+    const STid = n1(`SELECT status_id FROM status_code WHERE name=${esc(STT)}`, 'C04 상태 번호');
+    if (!okq('C04 새 코드 셋의 번호를 찾았다', CUid > 0 && SEid > 0 && STid > 0, J({ CUid, SEid, STid }))) return;
+    //  고정 번호(2)와 겹치면 아래 숨김·삭제가 보호 규칙에 걸려 이 케이스가 보려는 것을 못 본다.
+    okq('C04 새 구분·상태 번호가 고정 번호(2)가 아니다', SEid !== 2 && STid !== 2, J({ SEid, STid }));
 
-    const uid = await makeProject(P2, { section: SE, customer: CU, status: STT });
+    const uid = await makeProject(P2, { sectionId: SEid, customerId: CUid, statusId: STid });
+    const linked = sql(`SELECT CAST(section_id AS CHAR), CAST(customer_id AS CHAR), CAST(IFNULL(status_id,0) AS CHAR) FROM project WHERE uid=${esc(uid)}`, { what: 'C04 과제 번호' })[0] || [];
+    okq('C04 과제가 새 번호 셋을 가리킨다(section_id, customer_id, status_id)',
+      J(linked) === J([String(SEid), String(CUid), String(STid)]), J(linked));
     const hide = await hsend({ cmd: 'setProjectActive', uid, active: false }, 'p', { expectPush: 'pa' });
     if (!okq('C04 그 과제를 숨겼다(숨긴 과제도 FK 로 붙든다)', hide.ok, hide.msg)) return;
 
-    for (const [kind, name, label] of [['customer', CU, '발주처'], ['section', SE, '구분'], ['status', STT, '상태']]) {
+    for (const [kind, id, label] of [['customer', CUid, '발주처'], ['section', SEid, '구분'], ['status', STid, '상태']]) {
       const r = kind === 'customer'
-        ? await hreq('setCustomerActive', { name, active: false })
-        : await hreq('codeSetActive', { kind, name, active: false });
+        ? await hreq('setCustomerActive', { customerId: id, active: false })
+        : await hreq('codeSetActive', { kind, id, active: false });
       okq(`C04 ${label} 숨김`, !!(r && r.ok), JSON.stringify(r));
     }
 
     //  ① 쓰는 과제가 1건(숨긴 과제 포함) → 셋 다 지울 수 없다.
     let g = (await trashGet()).data;
     const want1 = MSG.inUse(1);
-    for (const [key, name, label] of [['customers', CU, '발주처'], ['sections', SE, '구분'], ['statuses', STT, '상태']]) {
-      const row = trFind(g, key, name);
-      if (!okq(`C04 휴지통 「${label}」 탭에 보인다`, !!row)) continue;
+    for (const [key, id, name, label] of [['customers', CUid, CU, '발주처'], ['sections', SEid, SE, '구분'], ['statuses', STid, STT, '상태']]) {
+      const row = trFind(g, key, String(id));   // 휴지통 키 = 번호 문자열
+      if (!okq(`C04 휴지통 ${label} 탭에 보인다(키 ${id})`, !!row)) continue;
+      okq(`C04 ${label} 이름(라벨)이 그대로다`, row.name === name, JSON.stringify(row.name));
       okq(`C04 ${label} refs 1`, Number(row.refs) === 1, `실제 ${row.refs}`);
       okq(`C04 ${label} deletable:false`, row.deletable === false, JSON.stringify(row.deletable));
       okq(`C04 ${label} why 가 §4.3 문장 그대로`, row.why === want1, `기대 ${JSON.stringify(want1)} / 실제 ${JSON.stringify(row.why)}`);
     }
     {
-      const rep = await hsend({ cmd: 'trashDelete', kind: 'customer', key: CU, confirm: CU }, 't');
+      const rep = await hsend({ cmd: 'trashDelete', kind: 'customer', key: String(CUid), confirm: CU }, 't');
       okq('C04 발주처 삭제는 거부된다(화면 우회)', rep.ok === false, `ok=${rep.ok}`);
       okq('C04 거부 문구 일치', rep.msg === want1, `기대 ${JSON.stringify(want1)} / 실제 ${JSON.stringify(rep.msg)}`);
-      okq('C04 발주처 행은 그대로', n1(`SELECT COUNT(*) FROM customer WHERE name=${esc(CU)}`, 'C04 발주처 잔존') === 1);
+      okq('C04 발주처 행은 그대로', n1(`SELECT COUNT(*) FROM customer WHERE customer_id=${CUid}`, 'C04 발주처 잔존') === 1);
     }
 
     //  ② 그 과제를 휴지통에서 지우면 셋 다 지울 수 있게 된다.
@@ -1012,8 +1053,8 @@ async function main() {
       okq('C04 과제 0행', projRows(uid) === 0);
     }
     g = (await trashGet()).data;
-    for (const [key, name, label] of [['customers', CU, '발주처'], ['sections', SE, '구분'], ['statuses', STT, '상태']]) {
-      const row = trFind(g, key, name);
+    for (const [key, id, label] of [['customers', CUid, '발주처'], ['sections', SEid, '구분'], ['statuses', STid, '상태']]) {
+      const row = trFind(g, key, String(id));
       okq(`C04 ${label} 가 이제 deletable:true`, !!row && row.deletable === true && Number(row.refs) === 0, JSON.stringify(row));
     }
 
@@ -1021,27 +1062,30 @@ async function main() {
     //     옛 순번을 들고 돌아오면 활성끼리 겹쳐 드롭다운 순서가 콜레이션에 좌우된다(실측된 결함).
     {
       const maxBefore = n1(`SELECT COALESCE(MAX(sort_order),0) FROM section_code`, 'C04 구분 최대 순번');
-      const rep = await hsend({ cmd: 'trashRestore', kind: 'section', key: SE }, 't', { expectPush: 'ta' });
+      const rep = await hsend({ cmd: 'trashRestore', kind: 'section', key: String(SEid) }, 't', { expectPush: 'ta' });
       if (okq('C04 구분 복구 성공', rep.ok === true, rep.msg)) {
-        const now = sql(`SELECT CAST(is_active AS CHAR), CAST(sort_order AS CHAR) FROM section_code WHERE name=${esc(SE)}`, { what: 'C04 복구 확인' })[0] || [];
+        const now = sql(`SELECT CAST(is_active AS CHAR), CAST(sort_order AS CHAR) FROM section_code WHERE section_id=${SEid}`, { what: 'C04 복구 확인' })[0] || [];
         okq('C04 복구된 구분이 활성이다', now[0] === '1', String(now[0]));
         okq(`C04 복구된 구분의 sort_order = MAX+10 (${maxBefore}+10)`, Number(now[1]) === maxBefore + 10, `실제 ${now[1]}`);
       }
-      const r2 = await hreq('codeSetActive', { kind: 'section', name: SE, active: false });
+      const r2 = await hreq('codeSetActive', { kind: 'section', id: SEid, active: false });
       okq('C04 다시 숨김(삭제 전제는 숨김이다)', !!(r2 && r2.ok), JSON.stringify(r2));
     }
 
     //  ④ 셋을 이름 대조로 지운다(오타 한 번씩 먼저).
-    for (const [kind, name, table, label] of [
-      ['customer', CU, 'customer', '발주처'],
-      ['section', SE, 'section_code', '구분'],
-      ['status', STT, 'status_code', '상태'],
+    //     키는 번호, 확인 입력(confirm)은 여전히 **이름**이다(사람이 화면에서 치는 글자, §5.2).
+    for (const [kind, id, name, table, idCol, label] of [
+      ['customer', CUid, CU, 'customer', 'customer_id', '발주처'],
+      ['section', SEid, SE, 'section_code', 'section_id', '구분'],
+      ['status', STid, STT, 'status_code', 'status_id', '상태'],
     ]) {
-      const bad = await hsend({ cmd: 'trashDelete', kind, key: name, confirm: name + 'X' }, 't');
+      const bad = await hsend({ cmd: 'trashDelete', kind, key: String(id), confirm: name + 'X' }, 't');
       okq(`C04 ${label} 이름 오타는 거부`, bad.ok === false && bad.msg === MSG.name, JSON.stringify(bad));
-      const rep = await hsend({ cmd: 'trashDelete', kind, key: name, confirm: name }, 't', { expectPush: 'ta' });
+      const byId = await hsend({ cmd: 'trashDelete', kind, key: String(id), confirm: String(id) }, 't');
+      okq(`C04 ${label} 확인란에 번호를 쳐도 거부(이름 대조)`, byId.ok === false && byId.msg === MSG.name, JSON.stringify(byId));
+      const rep = await hsend({ cmd: 'trashDelete', kind, key: String(id), confirm: name }, 't', { expectPush: 'ta' });
       okq(`C04 ${label} 삭제 성공`, rep.ok === true, rep.msg);
-      okq(`C04 ${label} 0행`, n1(`SELECT COUNT(*) FROM ${table} WHERE name=${esc(name)}`, `C04 ${label} 잔여`) === 0);
+      okq(`C04 ${label} 0행`, n1(`SELECT COUNT(*) FROM ${table} WHERE ${idCol}=${id}`, `C04 ${label} 잔여`) === 0);
     }
   });
 
@@ -1168,7 +1212,7 @@ async function main() {
   //    title 은 그대로 둔다(마우스가 아닌 경로 · 기존 시험의 손잡이) — 둘 다 있는지 함께 본다.
   const U4 = NM.user(4);
   await runCase('C11', `사유 가시화(${U4}) — .set-hint[data-trwhy] 로 보인다`, async () => {
-    const uid = await makeUser(U4, { title: REAL.title });
+    const uid = await makeUser(U4, { titleId: REAL.titleId });
     //  기록 1건이면 '기록 있음'이 성립한다(C03 과 같은 이유로 SQL 로 심는다 — 이 계정은 로그인하지 않는다).
     sql(`DELETE FROM cal_entry WHERE user_id=${uid};\n` +
       `DELETE FROM cal_category WHERE user_id=${uid};\n` +
@@ -1274,6 +1318,105 @@ async function main() {
     okq('C12 정리 완료(0행)', projRows(uid) === 0);
   });
 
+  /* ── C13 고정 번호 보호(구분 2 선진행, 상태 2 종료, CODE-TABLE-IDS §3) ── */
+  //  숨김과 영구 삭제는 호스트가 거부한다(DB 그대로). 복구와 개명은 된다. 개명한 뒤에도 날짜 잠금과 '진행중만' 필터는
+  //  이름이 아니라 번호를 따른다. 개명은 반드시 되돌린다(finally, 강제 종료는 restoreRenamedCodes 가 받친다).
+  const P7 = NM.proj(7), P8 = NM.proj(8);
+  await runCase('C13', '고정 번호(구분 2, 상태 2): 숨김과 삭제는 거부, 개명은 되고 동작은 번호를 따른다', async () => {
+    const orig = {
+      section: s1(`SELECT name FROM section_code WHERE section_id=2`, 'C13 구분 2 이름'),
+      status: s1(`SELECT name FROM status_code WHERE status_id=2`, 'C13 상태 2 이름'),
+    };
+    if (!orig.section || !orig.status) { skip('C13', `고정 번호 행이 없다(구분 2=${orig.section}, 상태 2=${orig.status}), v13 시드가 아니다`); return; }
+    const T = {
+      section: { table: 'section_code', idCol: 'section_id', label: '구분', want: MSG.protSection },
+      status: { table: 'status_code', idCol: 'status_id', label: '상태', want: MSG.protStatus },
+    };
+    const rowOf = (k) => J(sql(`SELECT name, CAST(is_active AS CHAR), CAST(sort_order AS CHAR) FROM ${T[k].table} WHERE ${T[k].idCol}=2`,
+      { what: `C13 ${T[k].label} 2 행` })[0] || null);
+    const row0 = { section: rowOf('section'), status: rowOf('status') };
+
+    //  ① 숨김 거부, ② 영구 삭제 거부(활성이어도 보호 문장이 먼저다. 연결도 열지 않는다), ③ 복구는 막지 않는다
+    for (const kind of ['section', 'status']) {
+      const { label, want } = T[kind];
+      const r = await hreq('codeSetActive', { kind, id: 2, active: false });
+      okq(`C13 ${label} 2 숨김은 거부된다`, !!r && r.ok === false, J(r));
+      okq(`C13 ${label} 2 숨김 거부 문구가 호스트 상수 그대로`, !!r && r.msg === want, J(r && r.msg));
+      const d = await hsend({ cmd: 'trashDelete', kind, key: '2', confirm: orig[kind] }, 't');
+      okq(`C13 ${label} 2 영구 삭제는 거부된다(이름을 맞게 쳐도)`, d.ok === false, `ok=${d.ok}`);
+      okq(`C13 ${label} 2 삭제 거부 문구가 호스트 상수 그대로`, d.msg === want, J(d.msg));
+      const rs = await hsend({ cmd: 'trashRestore', kind, key: '2' }, 't');
+      okq(`C13 ${label} 2 복구는 보호에 막히지 않는다(활성이라 '이미 복구됨')`, rs.ok === false && rs.msg === MSG.already, J(rs));
+      okq(`C13 ${label} 2 행이 그대로다(이름, 활성, 순번)`, rowOf(kind) === row0[kind], `${row0[kind]} → ${rowOf(kind)}`);
+    }
+
+    //  ④ 개명: 한 행 UPDATE. 과제 행은 바뀌지 않고, 규칙은 번호를 따른다.
+    const nm = { section: orig.section + RENAME_MARK + OPT.seed, status: orig.status + RENAME_MARK + OPT.seed };
+    let u7 = '', u8 = '';
+    try {
+      const refs0 = n1(`SELECT COUNT(*) FROM project WHERE section_id=2 OR status_id=2`, 'C13 고정 번호를 쓰는 과제 수');
+      for (const kind of ['section', 'status']) {
+        const r = await hreq('codeRename', { kind, id: 2, newName: nm[kind] });
+        okq(`C13 ${T[kind].label} 2 개명은 된다`, !!r && r.ok === true, J(r));
+        okq(`C13 ${T[kind].label} 2 이름이 바뀌었다(번호 그대로)`,
+          s1(`SELECT name FROM ${T[kind].table} WHERE ${T[kind].idCol}=2`, 'C13 개명 확인') === nm[kind]);
+      }
+      okq('C13 개명해도 과제 행의 번호 참조는 그대로다(CASCADE 없음)',
+        n1(`SELECT COUNT(*) FROM project WHERE section_id=2 OR status_id=2`, 'C13 고정 번호를 쓰는 과제 수(후)') === refs0);
+
+      //  ④-a 구분 2 날짜 잠금: 날짜와 상태를 실어 보내도 호스트가 비운다(이름이 바뀌어도).
+      u7 = await makeProject(P7, { sectionId: 2, customerId: REAL.customerId, statusId: REAL.statusId });
+      const r7 = sql(`SELECT IFNULL(DATE_FORMAT(start_date,'%Y-%m-%d'),''), IFNULL(DATE_FORMAT(end_date,'%Y-%m-%d'),''), ` +
+        `CAST(IFNULL(status_id,0) AS CHAR), CAST(section_id AS CHAR) FROM project WHERE uid=${esc(u7)}`, { what: 'C13 선진행 과제' })[0] || [];
+      okq('C13 개명한 구분 2 과제도 날짜와 상태가 비었다(번호 규칙)', J(r7) === J(['', '', '0', '2']), J(r7));
+
+      //  ④-b 상태 2 '진행중만' 필터: 이름이 바뀌어도 번호 2 는 빠진다(웹 offMatches, offStatusKind).
+      u8 = await makeProject(P8, { sectionId: REAL.sectionId, customerId: REAL.customerId, statusId: 2 });
+      okq('C13 상태 2 과제가 status_id=2 로 앉았다',
+        n1(`SELECT COUNT(*) FROM project WHERE uid=${esc(u8)} AND status_id=2`, 'C13 종료 과제') === 1);
+      let has = false;
+      for (let i = 0; i < 40 && !has; i++) { has = await catalogHas(u8); if (!has) await sleep(150); }
+      if (okq('C13 카탈로그에 상태 2 과제가 실렸다', has)) {
+        const f = await evj(`JSON.stringify((function(){
+          var c = dbCatalog.find(function(x){ return x && x.id === 'db-' + ${J(u8)}; }); if(!c) return null;
+          var base = { q:'', qRaw:'', customerId:'', customer:'', sectionId:'', section:'', statusId:'', status:'' };
+          return { statusId: c.statusId, status: c.status, kind: offStatusKind(c.statusId),
+                   on: offMatches(c, Object.assign({}, base, { activeOnly: true })), off: offMatches(c, Object.assign({}, base, { activeOnly: false })) };
+        })())`);
+        okq('C13 카탈로그 행 = statusId 2, 이름은 바뀐 이름(표시용)', !!f && f.statusId === 2 && f.status === nm.status, J(f));
+        okq("C13 '진행중만'은 개명한 상태 2 를 뺀다, 끄면 보인다, 색 종류 end", !!f && f.on === false && f.off === true && f.kind === 'end', J(f));
+        const sec = await evj(`JSON.stringify((function(){ var c = dbCatalog.find(function(x){ return x && x.id === 'db-' + ${J(u7)}; });
+          return c ? { sectionId: c.sectionId, section: c.section } : null; })())`);
+        okq('C13 카탈로그의 구분 2 과제 = sectionId 2, 바뀐 이름', !!sec && sec.sectionId === 2 && sec.section === nm.section, J(sec));
+      }
+    } finally {
+      //  시험 과제 정리(숨김 → 이름 대조 삭제) → 이름 되돌리기(앱 경로 → 안 되면 번호 고정 UPDATE).
+      for (const [u, p] of [[u7, P7], [u8, P8]]) {
+        if (!u) continue;
+        try {
+          const h = await hsend({ cmd: 'setProjectActive', uid: u, active: false }, 'p', { expectPush: 'pa' });
+          const d = h.ok ? await hsend({ cmd: 'trashDelete', kind: 'project', key: u, confirm: p }, 't', { expectPush: 'ta' }) : h;
+          okq(`C13 정리: ${p} 삭제(0행)`, d.ok === true && projRows(u) === 0, J(d));
+        } catch (e) { ok(`C13 정리: ${p}`, false, e.message); }
+      }
+      for (const kind of ['section', 'status']) {
+        try {
+          const cur = s1(`SELECT name FROM ${T[kind].table} WHERE ${T[kind].idCol}=2`, 'C13 이름 확인');
+          if (cur !== orig[kind]) {
+            const r = await hreq('codeRename', { kind, id: 2, newName: orig[kind] });
+            if (!(r && r.ok)) note(`C13 ${T[kind].label} 2 이름 되돌리기 회신 실패(${J(r)}), 번호 고정 UPDATE 로 되돌린다`);
+          }
+        } catch (e) { note(`C13 ${T[kind].label} 2 이름 되돌리기 예외: ${e.message}`); }
+      }
+      try { restoreRenamedCodes('C13'); } catch (e) { note('C13 표식 복원 예외: ' + e.message); }
+      okq('C13 정리: 구분 2, 상태 2 행이 시작과 같다(이름, 활성, 순번)',
+        rowOf('section') === row0.section && rowOf('status') === row0.status,
+        J({ section: rowOf('section'), status: rowOf('status') }));
+      //  화면의 드롭다운과 과제 표기를 되돌린 이름으로 다시 받는다(화면 경로 codeSend 가 성공 뒤 하는 일과 같다).
+      try { await ev(`(hpost({ cmd: 'loadCodes' }), hpost({ cmd: 'loadProjects' }), 1)`); } catch (_) { }
+    }
+  });
+
   /* ── C08 비관리자 ─────────────────────────────────────────────────── */
   //  ★★ 이 케이스만 **로그인 계정의 권한을 실제로 내린다.** 복원 실패는 사람이 DB 로 가야 푸는 상태를
   //    남기므로, finally 에서 반드시 되돌리고 **읽어서 확인**한다(cleanupAll 이 한 겹 더 받친다).
@@ -1281,7 +1424,7 @@ async function main() {
   await runCase('C08', '비관리자 — 진입 버튼 부재 · admin:false · 삭제 거부', async () => {
     //  내려가는 동안 '활성 관리자 0' 이 되면 앱에서 되돌릴 길이 사라진다 — 대역 관리자를 먼저 세운다.
     let standIn = 0;
-    try { standIn = await makeUser(U3, { title: REAL.title, role: 'admin' }); }
+    try { standIn = await makeUser(U3, { titleId: REAL.titleId, role: 'admin' }); }
     catch (e) { skip('C08', `대역 관리자를 만들지 못했다(${e.message}) — 로그인 계정을 내릴 수 없다`); return; }
     const admins = n1(`SELECT COUNT(*) FROM app_user WHERE edit_role='admin' AND is_active=1`, 'C08 활성 admin 수');
     if (admins < 2) { skip('C08', `활성 admin 이 ${admins}명뿐이다 — 내리면 관리자가 0이 된다`); return; }

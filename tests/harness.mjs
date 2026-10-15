@@ -196,6 +196,18 @@ export function loadAppSource() {
   return readFileSync(url, 'utf8');
 }
 
+// ── 코드값 고정 번호 머리(CODE-TABLE-IDS §3) ─────────────────────────
+// 웹의 `const CODE_ID = ` 부터 `function sectionColor(` 줄까지를 그대로 떼어 준다.
+//   함수만 떼어 심는 시험이 번호 판정(CODE_ID · CODE_PROTECT_WHY · codeProtectedWhy · codeIdOf ·
+//   DB_SECTION_COLORS · sectionColor)을 앱과 같은 글자로 갖게 한다(대역을 손으로 적으면 앱과 갈린다).
+export function extractCodeIdsBlock(source) {
+  const a = source.indexOf('const CODE_ID = ');
+  const b = a < 0 ? -1 : source.indexOf('function sectionColor(', a);
+  if (a < 0 || b < 0) throw new Error('extractCodeIdsBlock: CODE_ID 머리(CODE_ID ~ sectionColor)를 찾지 못함');
+  const e = source.indexOf('\n', b);
+  return source.slice(a, e < 0 ? source.length : e);
+}
+
 // ── 함수 추출 ───────────────────────────────────────────────────────
 // 소스 문자열에서 `function fnName(...){...}` 선언을 중괄호 짝을 맞춰 잘라 문자열로 반환.
 // 문자열/템플릿 리터럴('...' "..." `...`) 내부의 중괄호는 카운트에서 제외해 오탐 방지.

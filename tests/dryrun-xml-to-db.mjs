@@ -36,7 +36,7 @@ const OPT = {
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
   adminUser: process.env.TC_TEST_DB_ADMIN_USER || 'root',
   adminPw: process.env.TC_TEST_DB_ADMIN_PW || '',
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',
   xml: ARG.get('xml') || join(process.env.APPDATA || '', 'TaskCalendar', 'data.xml'),
 };
 if (!OPT.adminPw) { console.error("[중단] TC_TEST_DB_ADMIN_PW 가 필요합니다."); process.exit(2); }

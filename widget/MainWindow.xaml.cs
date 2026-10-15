@@ -549,9 +549,10 @@ namespace TaskCalendarWidget
 
                     // ----- 공식 과제 쓰기(P3.2) — 관리자 편집. 결과는 __projectSaved(ok,msg) + 성공 시 자동 재조회 -----
                     case "saveProject":     // uid 없으면 신규 INSERT, 있으면 그 uid UPDATE. confirm=true면 소프트 경고 검사 건너뜀.
-                        _ = SaveProjectAsync(GetStr(doc, "uid"), GetStr(doc, "section"), GetStr(doc, "customer"),
+                        //  ★ 구분·발주처·상태는 번호로 받는다(CODE-TABLE-IDS §4). statusId 0 = 상태 없음.
+                        _ = SaveProjectAsync(GetStr(doc, "uid"), GetInt(doc, "sectionId"), GetInt(doc, "customerId"),
                             GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
-                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "devEndDate"), GetStr(doc, "status"),
+                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "devEndDate"), GetInt(doc, "statusId"),
                             GetStr(doc, "note"), GetBool(doc, "confirm"));
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
@@ -559,43 +560,45 @@ namespace TaskCalendarWidget
                         break;
 
                     // ----- 발주처(customer) 마스터 관리 — 이름만. 회신은 ReplyOnUi(reqId)로 {ok,msg,count?} -----
+                    //   ★ 추가만 이름으로 받고 나머지(개명·숨김·참조 수)는 번호(customerId)로 받는다(CODE-TABLE-IDS §4).
                     case "addCustomer":
                         _ = RunAddCustomerAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
                         break;
                     case "renameCustomer":
-                        _ = RunRenameCustomerAsync(GetStr(doc, "reqId"), GetStr(doc, "oldName"), GetStr(doc, "newName"));
+                        _ = RunRenameCustomerAsync(GetStr(doc, "reqId"), GetInt(doc, "customerId"), GetStr(doc, "newName"));
                         break;
                     case "setCustomerActive":
-                        _ = RunSetCustomerActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "name"), GetBool(doc, "active"));
+                        _ = RunSetCustomerActiveAsync(GetStr(doc, "reqId"), GetInt(doc, "customerId"), GetBool(doc, "active"));
                         break;
                     case "customerRefCount":   // 이 발주처를 쓰는 활성 과제 수(숨김 확인 UX용)
-                        _ = RunCustomerRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
+                        _ = RunCustomerRefCountAsync(GetStr(doc, "reqId"), GetInt(doc, "customerId"));
                         break;
-                    case "loadCustomersFull":  // 관리 화면 전용 — 숨김 포함 전체 [{name,active}]
+                    case "loadCustomersFull":  // 관리 화면 전용 — 숨김 포함 전체 [{id,name,active}]
                         _ = RunLoadCustomersFullAsync(GetStr(doc, "reqId"));
                         break;
 
                     // ----- 구분/상태 코드테이블 관리 — kind('section'|'status')로 분기. 발주처 브리지 패턴 복제. -----
+                    //   ★ 추가만 이름으로 받고 나머지(개명·숨김·순서·참조 수)는 번호(id · ids)로 받는다(CODE-TABLE-IDS §4).
                     case "loadCodes":          // 드롭다운 소스(활성 코드값) → __applyCodes({sections, statuses})
                         _ = LoadCodesToWebAsync();
                         break;
-                    case "getCodesFull":       // 관리 화면 전용 — 숨김 포함 전체 [{name,active,sort}]
+                    case "getCodesFull":       // 관리 화면 전용 — 숨김 포함 전체 [{id,name,active,sort}]
                         _ = RunLoadCodesFullAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"));
                         break;
                     case "codeAdd":
                         _ = RunAddCodeAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"));
                         break;
                     case "codeRename":
-                        _ = RunRenameCodeAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "oldName"), GetStr(doc, "newName"));
+                        _ = RunRenameCodeAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetInt(doc, "id"), GetStr(doc, "newName"));
                         break;
                     case "codeSetActive":
-                        _ = RunSetCodeActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"), GetBool(doc, "active"));
+                        _ = RunSetCodeActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetInt(doc, "id"), GetBool(doc, "active"));
                         break;
                     case "codeReorder":
-                        _ = RunReorderCodesAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStrArray(doc, "names"));
+                        _ = RunReorderCodesAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetIntArray(doc, "ids"));
                         break;
                     case "codeRefCount":       // 이 코드값을 쓰는 활성 과제 수(숨김 확인 UX용)
-                        _ = RunCodeRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "name"));
+                        _ = RunCodeRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetInt(doc, "id"));
                         break;
 
                     // ★ 관리자 브리지(adminLogin/adminLogout/adminStateGet/saveAdminCred)는 폐지됐다(USER-LOGIN §3.3).
@@ -630,7 +633,7 @@ namespace TaskCalendarWidget
                     //     (발주처·코드 브리지와 같은 모양이다).
                     case "saveUser":         // userId 없으면 신규 INSERT, 있으면 그 user_id UPDATE
                         _ = SaveUserAsync(GetStr(doc, "reqId"), GetInt(doc, "userId"), GetStr(doc, "loginId"), GetStr(doc, "name"),
-                            GetStr(doc, "title"), GetInt(doc, "orgId"), GetStr(doc, "viewScope"), GetStr(doc, "editRole"),
+                            GetInt(doc, "titleId"), GetInt(doc, "orgId"), GetStr(doc, "viewScope"), GetStr(doc, "editRole"),
                             GetBool(doc, "includeInactive"));
                         break;
                     case "setUserActive":    // 퇴사 처리(active=false) / 복구(true) — 행은 남는다
@@ -649,6 +652,7 @@ namespace TaskCalendarWidget
                     case "trashGet":
                         _ = RunTrashGetAsync(GetStr(doc, "reqId"));
                         break;
+                    //   ★ key 는 과제면 uid, 나머지(인력·발주처·구분·상태)는 번호 문자열이다(CODE-TABLE-IDS §4).
                     case "trashRestore":
                         _ = TrashRestoreAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetStr(doc, "key"), GetBool(doc, "includeInactive"));
                         break;
@@ -666,14 +670,15 @@ namespace TaskCalendarWidget
                     case "titleAdd":
                         _ = TitleAddAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
                         break;
+                    //   ★ 직급도 소속과 같이 번호(titleId · titleIds)로 받는다. 추가만 이름이다(CODE-TABLE-IDS §4).
                     case "titleRename":
-                        _ = TitleRenameAsync(GetStr(doc, "reqId"), GetStr(doc, "oldName"), GetStr(doc, "newName"));
+                        _ = TitleRenameAsync(GetStr(doc, "reqId"), GetInt(doc, "titleId"), GetStr(doc, "newName"));
                         break;
                     case "titleSetActive":
-                        _ = TitleSetActiveAsync(GetStr(doc, "reqId"), GetStr(doc, "name"), GetBool(doc, "active"));
+                        _ = TitleSetActiveAsync(GetStr(doc, "reqId"), GetInt(doc, "titleId"), GetBool(doc, "active"));
                         break;
                     case "titleReorder":
-                        _ = TitleReorderAsync(GetStr(doc, "reqId"), GetStrArray(doc, "names"));
+                        _ = TitleReorderAsync(GetStr(doc, "reqId"), GetIntArray(doc, "titleIds"));
                         break;
                     case "unitAdd":          // parentId 는 필수다(0 이면 호스트가 「상위 조직을 고르세요」로 거부한다)
                         _ = UnitAddAsync(GetStr(doc, "reqId"), GetStr(doc, "name"), GetInt(doc, "parentId"));
@@ -1239,12 +1244,16 @@ namespace TaskCalendarWidget
 
         // 상태 → 강조색(도메인 지식). XlsxWriter는 '진행중이 초록'인 걸 모른다 — 힌트 키만 받는다.
         // 이 표에 없는 값(미정·빈값)은 힌트가 매칭되지 않아 기본(줄무늬) 스타일로 떨어진다.
-        private static readonly Dictionary<string, XlsxWriter.Accent> ProjectStatusAccents = new Dictionary<string, XlsxWriter.Accent>
+        //   ★ 2026-10-15 — 기준은 상태 **번호**다(CODE-TABLE-IDS §3). 이름을 바꿔도 색이 따라간다.
+        //     웹이 행마다 statusId 를 함께 보내고, 힌트 키는 StatusAccentKey 한 곳이 만든다.
+        private static readonly Dictionary<int, XlsxWriter.Accent> ProjectStatusAccents = new Dictionary<int, XlsxWriter.Accent>
         {
-            ["진행중"]       = new XlsxWriter.Accent("FFE8F3EC", "FF1E7A45"),
-            ["1차 납품완료"] = new XlsxWriter.Accent("FFE9F0FA", "FF1F5FA8"),
-            ["종료"]         = new XlsxWriter.Accent("FFF0F1F3", "FF6B7280"),
+            [CodeIds.StatusActive]    = new XlsxWriter.Accent("FFE8F3EC", "FF1E7A45"),   // 진행중(초록)
+            [CodeIds.StatusDelivered] = new XlsxWriter.Accent("FFE9F0FA", "FF1F5FA8"),   // 1차 납품완료(파랑)
+            [CodeIds.StatusEnded]     = new XlsxWriter.Accent("FFF0F1F3", "FF6B7280"),   // 종료(회색)
         };
+        private static string StatusAccentKey(int statusId) =>
+            "status:" + statusId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         private static XlsxWriter.Col[] ProjectExportColDefs() =>
             ProjectExportCols.Select(c => new XlsxWriter.Col(c.Header, c.Width, c.Align, c.IsDate, c.Wrap)).ToArray();
@@ -1296,8 +1305,10 @@ namespace TaskCalendarWidget
                         ? (v.GetString() ?? "") : "";
                 }
                 var row = new XlsxWriter.Row(cells);
-                // 상태 문자열을 그대로 스타일 힌트로 — 색 규칙(ProjectStatusAccents)은 이 파일에만 있다.
-                if (ProjectExportStatusCol >= 0) row.WithHint(ProjectExportStatusCol, cells[ProjectExportStatusCol]);
+                // 상태 **번호**를 스타일 힌트로 — 색 규칙(ProjectStatusAccents)은 이 파일에만 있다. 번호가 없으면(상태 없음) 힌트도 없다.
+                if (ProjectExportStatusCol >= 0 && r.TryGetProperty("statusId", out var sid) &&
+                    sid.ValueKind == JsonValueKind.Number && sid.TryGetInt32(out int stId) && stId > 0)
+                    row.WithHint(ProjectExportStatusCol, StatusAccentKey(stId));
                 list.Add(row);
             }
             return list;
@@ -1329,7 +1340,7 @@ namespace TaskCalendarWidget
             catch (Exception ex) { ReplyOnUi(reqId, new { ok = false, error = ex.Message }); return; }
 
             var xdoc = new XlsxWriter.Doc();
-            foreach (var kv in ProjectStatusAccents) xdoc.Accents[kv.Key] = kv.Value;
+            foreach (var kv in ProjectStatusAccents) xdoc.Accents[StatusAccentKey(kv.Key)] = kv.Value;
 
             var sheets = new List<XlsxWriter.Sheet>
             {
@@ -1635,11 +1646,11 @@ namespace TaskCalendarWidget
                 + JsonSerializer.Serialize(msg ?? "") + "," + (needConfirm ? "true" : "false") + ")");
 
         // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
-        private async Task SaveProjectAsync(string uid, string section, string customer, string projectName,
-            string contractName, string commonName, string startDate, string endDate, string devEndDate, string status, string note, bool confirm)
+        private async Task SaveProjectAsync(string uid, int sectionId, int customerId, string projectName,
+            string contractName, string commonName, string startDate, string endDate, string devEndDate, int statusId, string note, bool confirm)
         {
-            var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, section, customer, projectName,
-                contractName, commonName, startDate, endDate, devEndDate, status, note: note, confirmSimilar: confirm);
+            var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, sectionId, customerId, projectName,
+                contractName, commonName, startDate, endDate, devEndDate, statusId > 0 ? statusId : (int?)null, note: note, confirmSimilar: confirm);
             ProjectSaved(ok, msg, needConfirm);
             if (ok) await LoadProjectsToWebAsync();
         }
@@ -1659,19 +1670,19 @@ namespace TaskCalendarWidget
             var (ok, msg) = await _projectDb.AddCustomerAsync(name);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunRenameCustomerAsync(string reqId, string oldName, string newName)
+        private async Task RunRenameCustomerAsync(string reqId, int customerId, string newName)
         {
-            var (ok, msg) = await _projectDb.RenameCustomerAsync(oldName, newName);
+            var (ok, msg) = await _projectDb.RenameCustomerAsync(customerId, newName);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunSetCustomerActiveAsync(string reqId, string name, bool active)
+        private async Task RunSetCustomerActiveAsync(string reqId, int customerId, bool active)
         {
-            var (ok, msg) = await _projectDb.SetCustomerActiveAsync(name, active);
+            var (ok, msg) = await _projectDb.SetCustomerActiveAsync(customerId, active);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunCustomerRefCountAsync(string reqId, string name)
+        private async Task RunCustomerRefCountAsync(string reqId, int customerId)
         {
-            var (ok, count, msg) = await _projectDb.CountActiveProjectsByCustomerAsync(name);
+            var (ok, count, msg) = await _projectDb.CountActiveProjectsByCustomerAsync(customerId);
             ReplyOnUi(reqId, new { ok, count, msg });
         }
         // list = JSON 배열 문자열(웹이 JSON.parse). __applyProjects와 같은 '문자열로 전달' 규약(이중 인코딩 회피).
@@ -1704,24 +1715,24 @@ namespace TaskCalendarWidget
             var (ok, msg) = await _projectDb.AddCodeAsync(kind, name);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunRenameCodeAsync(string reqId, string kind, string oldName, string newName)
+        private async Task RunRenameCodeAsync(string reqId, string kind, int id, string newName)
         {
-            var (ok, msg) = await _projectDb.RenameCodeAsync(kind, oldName, newName);
+            var (ok, msg) = await _projectDb.RenameCodeAsync(kind, id, newName);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunSetCodeActiveAsync(string reqId, string kind, string name, bool active)
+        private async Task RunSetCodeActiveAsync(string reqId, string kind, int id, bool active)
         {
-            var (ok, msg) = await _projectDb.SetCodeActiveAsync(kind, name, active);
+            var (ok, msg) = await _projectDb.SetCodeActiveAsync(kind, id, active);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunReorderCodesAsync(string reqId, string kind, List<string> names)
+        private async Task RunReorderCodesAsync(string reqId, string kind, List<int> ids)
         {
-            var (ok, msg) = await _projectDb.ReorderCodesAsync(kind, names);
+            var (ok, msg) = await _projectDb.ReorderCodesAsync(kind, ids);
             ReplyOnUi(reqId, new { ok, msg });
         }
-        private async Task RunCodeRefCountAsync(string reqId, string kind, string name)
+        private async Task RunCodeRefCountAsync(string reqId, string kind, int id)
         {
-            var (ok, count, msg) = await _projectDb.CountActiveProjectsByCodeAsync(kind, name);
+            var (ok, count, msg) = await _projectDb.CountActiveProjectsByCodeAsync(kind, id);
             ReplyOnUi(reqId, new { ok, count, msg });
         }
 
@@ -1978,11 +1989,12 @@ namespace TaskCalendarWidget
         //   — org_unit.org_id 는 AUTO_INCREMENT 라 0 인 조직이 존재할 수 없다.
         //   ★ 회신에 갱신된 명부(roster)를 함께 싣는다 — **성공했을 때만**이다(옛 `if (ok)` 푸시의 조건
         //     그대로). 실패면 명부가 바뀌지 않았으므로 실을 것이 없다("" — 웹은 목록을 그대로 둔다).
-        private async Task SaveUserAsync(string reqId, int userId, string loginId, string name, string title,
+        //   ★ titleId 0 도 '직급 없음'(NULL)이다(title_id 도 AUTO_INCREMENT · CODE-TABLE-IDS §2).
+        private async Task SaveUserAsync(string reqId, int userId, string loginId, string name, int titleId,
             int orgId, string viewScope, string editRole, bool includeInactive)
         {
             var (ok, msg) = await _projectDb.UpsertUserAsync(userId > 0 ? userId : (int?)null, loginId, name,
-                title, orgId > 0 ? orgId : (int?)null, viewScope, editRole);
+                titleId > 0 ? titleId : (int?)null, orgId > 0 ? orgId : (int?)null, viewScope, editRole);
             string roster = ok ? await ReadMembersJsonAsync(includeInactive) : "";
             ReplyOnUi(reqId, new { ok, msg, roster });
         }
@@ -2171,21 +2183,21 @@ namespace TaskCalendarWidget
             await ReplyOrgTitleAsync(reqId, ok, msg);
         }
 
-        private async Task TitleRenameAsync(string reqId, string oldName, string newName)
+        private async Task TitleRenameAsync(string reqId, int titleId, string newName)
         {
-            var (ok, msg) = await _projectDb.TitleRenameAsync(oldName, newName);
+            var (ok, msg) = await _projectDb.TitleRenameAsync(titleId, newName);
             await ReplyOrgTitleAsync(reqId, ok, msg);
         }
 
-        private async Task TitleSetActiveAsync(string reqId, string name, bool active)
+        private async Task TitleSetActiveAsync(string reqId, int titleId, bool active)
         {
-            var (ok, msg) = await _projectDb.TitleSetActiveAsync(name, active);
+            var (ok, msg) = await _projectDb.TitleSetActiveAsync(titleId, active);
             await ReplyOrgTitleAsync(reqId, ok, msg);
         }
 
-        private async Task TitleReorderAsync(string reqId, List<string> names)
+        private async Task TitleReorderAsync(string reqId, List<int> titleIds)
         {
-            var (ok, msg) = await _projectDb.TitleReorderAsync(names);
+            var (ok, msg) = await _projectDb.TitleReorderAsync(titleIds);
             await ReplyOrgTitleAsync(reqId, ok, msg);
         }
 

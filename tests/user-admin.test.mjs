@@ -182,7 +182,8 @@ const checks = {
     const lockedSel = /SELECT ([^"]*) FROM app_user WHERE user_id=@uid FOR UPDATE/.exec(code);
     assert.ok(lockedSel,
       '대상 직원을 FOR UPDATE 로 읽지 않는다 — 판정과 갱신 사이에 값이 바뀔 수 있다');
-    for (const col of ['user_id', 'name', 'edit_role', 'is_active', 'title', 'org_id']) {
+    //  ★ 2026-10-15 — 직급은 번호(title_id)다(CODE-TABLE-IDS §2).
+    for (const col of ['user_id', 'name', 'edit_role', 'is_active', 'title_id', 'org_id']) {
       assert.ok(new RegExp('\\b' + col + '\\b').test(lockedSel[1]),
         `잠근 행 읽기에 ${col} 이(가) 없다 — 판정의 근거를 잠그지 않은 채 읽으면 판정과 갱신이 갈린다`);
     }
@@ -242,7 +243,7 @@ const checks = {
       assert.ok(up.includes(msg), `입력 검증 문구가 없다: ${msg}`);
     }
     // 직급·소속은 **활성 마스터**로 검사한다 — 폐지된 값으로 새로 배정하지 못하게.
-    assert.ok(/LoadCodeNameSetAsync\(conn, cts\.Token, "title_code", activeOnly: true\)/.test(up),
+    assert.ok(/LoadCodeIdSetAsync\(conn, cts\.Token, "title_code", "title_id", activeOnly: true\)/.test(up),
       '직급 검증이 활성 title_code 로드가 아니다(하드코딩이거나 숨김 포함이다)');
     assert.ok(/SELECT COUNT\(\*\) FROM org_unit WHERE org_id=@o AND is_active=1/.test(up),
       '소속 검증이 활성 org_unit 조회가 아니다');
@@ -264,14 +265,16 @@ const checks = {
     //    등록용이 같은 말(문구까지 같다)을 두 벌 적고 있어 한쪽만 고치면 조용히 갈렸다. 지금은
     //    '지금 저장된 값'을 curTitle·curOrg 로 받고, 신규는 그 둘이 null 이라 갈래가 저절로 닫힌다
     //    — 곧 **활성만**이다. 그래서 계약도 한 벌을 본다(두 벌을 강제하면 중복을 계약으로 굳히는 셈이다).
-    assert.ok(/!titleSet\.Contains\(ti\) && !string\.Equals\(ti, curTitle, StringComparison\.Ordinal\)/.test(up),
+    //  ★ 2026-10-15 — 직급은 번호(ti = titleId)로 견준다. 직급 없음(null)은 '지금 직급이 없는 사람'에게만 통과한다.
+    assert.ok(/\? \(titleSet\.Contains\(ti\.Value\) \|\| \(/.test(up) && /if \(!titleOk\)/.test(up),
       '직급 검사가 "활성이거나 현재 저장된 값"이 아니다 — 폐지된 직급을 단 사람은 이름 한 글자도 못 고친다(§4.3)');
     assert.ok(/orgId\.HasValue && orgId\.Value != \(curOrg \?\? -1\)/.test(up),
       '소속 검사가 "활성이거나 현재 저장된 값"이 아니다 — 값이 그대로면 조회조차 하지 않아야 한다(§4.3)');
     //    완화가 **신규 등록까지 번지지 않는다**는 것은 '지금 저장된 값'의 출처로 못박는다: 그 둘은
     //    잠근 대상 행(target)에서만 오고, 신규면 target 이 null 이라 함께 null 이다. 입력값이나 상수에서
     //    오면 등록도 통과해 폐지된 직급으로 새 사람이 들어온다.
-    assert.ok(/string\? curTitle = target\?\.title;/.test(up) && /int\? curOrg = target\?\.orgId;/.test(up),
+    assert.ok(/\|\| \(target\.HasValue && target\.Value\.titleId == ti\)\)/.test(up) &&
+              /: \(target\.HasValue && target\.Value\.titleId == null\);/.test(up) && /int\? curOrg = target\?\.orgId;/.test(up),
       "'지금 저장된 값'이 잠근 대상 행(target)에서 오지 않는다 — 신규 등록까지 완화가 번지면 폐지된 직급으로 새 사람이 들어온다");
     assert.ok(/target = await LockedUserAsync\(conn, tx, userId\.Value, cts\.Token\);/.test(up),
       '대상 행을 FOR UPDATE 로 잠근 뒤 읽지 않는다 — 완화의 근거가 잠기지 않은 값이 된다(§4.4)');
@@ -1643,7 +1646,7 @@ test("변이⑰-b: 못 시작한 두 사유를 한 false 로 뭉치면 계약⑰
 test('변이⑱: 끼워 넣은 옵션의 라벨을 지우면 계약⑱ 이 실패한다(무엇이 문제인지 화면이 말하지 않는다)', () => {
   //  ★ '갈아치우기'로 되돌리는 변이(const known = true)는 **형태로는 안 잡힌다** — 코드가 그대로 남고 안 돌 뿐이다.
   //    그건 DOM 쪽 변이(변이⑱-DOM)가 잡는다. 여기서는 형태가 실제로 잡는 자리를 흔든다.
-  const bad = mutate(app, "    o.value = want; o.textContent = want + ' (목록에 없음)';",
+  const bad = mutate(app, "    o.value = want; o.textContent = (curLabel ? String(curLabel) : want) + ' (목록에 없음)';",
     '    o.value = want; o.textContent = want;');
   assert.throws(() => checks.unknownValueIsKept(bad), /끼워 넣지 않는다/);
   assert.doesNotThrow(() => checks.unknownValueIsKept(app));   // 통제군
@@ -1906,22 +1909,22 @@ test('변이④: 로그인 ID 정규식을 넓히면 계약④ 가 실패한다'
 });
 
 test('변이④-b: 직급 검증을 숨김 포함으로 바꾸면 계약④ 가 실패한다(폐지된 직급으로 신규 배정)', () => {
-  const bad = mutate(pdb, 'LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: true)',
-                          'LoadCodeNameSetAsync(conn, cts.Token, "title_code", activeOnly: false)');
+  const bad = mutate(pdb, 'LoadCodeIdSetAsync(conn, cts.Token, "title_code", "title_id", activeOnly: true)',
+                          'LoadCodeIdSetAsync(conn, cts.Token, "title_code", "title_id", activeOnly: false)');
   assert.throws(() => checks.inputValidation(bad), /활성 title_code 로드가 아니다/);
   assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
 });
 
 test('변이④-c: 수정에서 "현재 저장된 값 허용"을 지우면 계약④ 가 실패한다(폐지 직급인 사람을 못 고친다)', () => {
   const bad = mutate(pdb,
-    'if (!titleSet.Contains(ti) && !string.Equals(ti, curTitle, StringComparison.Ordinal))',
-    'if (!titleSet.Contains(ti))');
+    '? (titleSet.Contains(ti.Value) || (target.HasValue && target.Value.titleId == ti))',
+    '? titleSet.Contains(ti.Value)');
   assert.throws(() => checks.inputValidation(bad), /직급 검사가/);
   assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
 });
 
 test("변이④-d: '지금 저장된 값'을 잠근 행이 아니라 입력값에서 받으면 계약④ 가 실패한다(완화가 신규 등록까지 번진다)", () => {
-  const bad = mutate(pdb, 'string? curTitle = target?.title;', 'string? curTitle = ti;');
+  const bad = mutate(pdb, '|| (target.HasValue && target.Value.titleId == ti))', '|| (ti.HasValue))');
   assert.throws(() => checks.inputValidation(bad), /잠근 대상 행\(target\)에서 오지 않는다/);
   assert.doesNotThrow(() => checks.inputValidation(pdb));   // 통제군
 });
