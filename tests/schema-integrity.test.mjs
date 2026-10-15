@@ -232,9 +232,11 @@ function migratedVersions(files, readFn) {
 function checkVersionParity(sql, versions) {
   const seeded = seededVersion(sql);
   assert.ok(seeded !== null, 'schema-calendar.sql 의 schema_version 시딩을 읽지 못했다(판정 불가)');
-  assert.ok(versions.length >= 5,
-    'migrate-*.sql 에서 버전 상향을 ' + versions.length + '건만 찾았다 — 열거·파싱이 빗나가면 ' +
-    '이 계약은 아무것도 대조하지 않는다(2026-09-09 기준 6건)');
+  //  2026-10-15 지난 이관 파일을 지워(CODE-TABLE-IDS §8-2) 남은 상향은 migrate-2026-10-15-code-ids.sql 의 한 건이다.
+  //  0건이면 열거나 파싱이 빗나간 것이라 이 계약이 아무것도 대조하지 않는다.
+  assert.ok(versions.length >= 1,
+    'migrate-*.sql 에서 버전 상향을 ' + versions.length + '건만 찾았다. 열거나 파싱이 빗나가면 ' +
+    '이 계약은 아무것도 대조하지 않는다(2026-10-15 기준 1건)');
   const top = versions.reduce((a, b) => (b.v > a.v ? b : a));
   assert.strictEqual(seeded, top.v,
     'schema-calendar.sql 이 시딩하는 schema_version(' + seeded + ')과 가장 높은 마이그레이션(' +

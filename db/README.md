@@ -40,7 +40,7 @@
 *(2026-09-02 기준 실측값. 서버는 여기가 아니라 [`deploy/README.md`](deploy/README.md)를 따릅니다.)*
 
 - MySQL **8.4.9 Community**: winget `Oracle.MySQL`로 설치. Windows 서비스 **`MySQL84`**(자동시작), 포트 **3306**
-- 접속 `root` / `taskmgr123`, DB `taskmgr` (charset `utf8mb4` / collation `utf8mb4_0900_ai_ci`)
+- 접속 `root` / (관리자 비밀번호는 문서에 적지 않는다. 명령은 `-p` 로 물어보게 한다), DB `taskmgr` (charset `utf8mb4` / collation `utf8mb4_0900_ai_ci`)
 - 바이너리 `C:\Program Files\MySQL\MySQL Server 8.4\bin`, 데이터 `C:\ProgramData\MySQL\MySQL Server 8.4\Data`, 설정 `...\my.ini`
 - 멈춰 있으면(관리자 PowerShell): `Start-Service MySQL84`
 - **서버 요건: MySQL 8.0.16+.** 그 미만은 `CHECK` 제약을 파싱만 하고 **조용히 무시**합니다(캘린더 스키마가 CHECK로 무결성을 지키므로 사용 불가). `init-calendar`가 이것을 게이트로 막습니다. 콜레이션 `utf8mb4_0900_ai_ci`도 8.0+에만 있습니다.
@@ -58,7 +58,8 @@ deploy\backup-taskmgr.cmd -Install   # 주간 백업(구축에 딸려 오지 않
 > ```bash
 > # ⚠️ 로컬 초기 구축/리셋 전용 (모든 데이터·uid 소실):
 > MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
-> "$MYSQL" -uroot -ptaskmgr123 --get-server-public-key taskmgr < db/schema.sql
+> # db/schema.sql 은 2026-10-15 에 지웠다. 새 DB 는 deploy\setup-taskcalendar.cmd 로 만든다(비밀번호는 묻는 창에 넣는다).
+> "$MYSQL" -uroot -p --get-server-public-key --default-character-set=utf8mb4 taskcalendar -e "SELECT v FROM cal_schema_meta;"
 > ```
 > 운영 DB의 데이터 변경은 **앱의 CRUD(또는 DB 직접 편집)**로만 합니다.
 
@@ -67,9 +68,9 @@ DB는 앱 CRUD로 계속 변하는 **살아있는 데이터**다. 아래 건수�
 ```bash
 MYSQL="/c/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe"
 # 서비스 확인(PowerShell): Get-Service MySQL84   # Running이어야
-"$MYSQL" -uroot -ptaskmgr123 --get-server-public-key taskmgr -e "SELECT COUNT(*) AS projects FROM project;"                    # 현황(예시 13)
-"$MYSQL" -uroot -ptaskmgr123 --get-server-public-key taskmgr -e "SELECT COUNT(*) AS active FROM project WHERE is_active=1;"     # 현황(예시 13)
-"$MYSQL" -uroot -ptaskmgr123 --get-server-public-key taskmgr -e "SELECT COUNT(*) AS customers FROM customer;"                  # 현황(예시 8)
+"$MYSQL" -uroot -p --get-server-public-key taskmgr -e "SELECT COUNT(*) AS projects FROM project;"                    # 현황(예시 13)
+"$MYSQL" -uroot -p --get-server-public-key taskmgr -e "SELECT COUNT(*) AS active FROM project WHERE is_active=1;"     # 현황(예시 13)
+"$MYSQL" -uroot -p --get-server-public-key taskmgr -e "SELECT COUNT(*) AS customers FROM customer;"                  # 현황(예시 8)
 ```
 서비스가 멈춰있으면(PowerShell 관리자): `Start-Service MySQL84`.
 

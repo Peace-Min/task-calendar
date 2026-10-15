@@ -61,7 +61,7 @@ import { existsSync } from 'node:fs';
 const DEFAULTS = {
   viewer: 'phmin',
   seed: 20260903,
-  db: process.env.TC_TEST_DB_NAME || 'taskmgr',
+  db: process.env.TC_TEST_DB_NAME || 'taskcalendar',   // 2026-10-15 기본 DB 를 앱이 쓰는 taskcalendar 로
   mysql: process.env.TC_TEST_MYSQL || 'C:/Program Files/MySQL/MySQL Server 8.4/bin/mysql.exe',
   dbHost: '127.0.0.1',
   dbPort: 3306,
@@ -386,7 +386,9 @@ function resolveTargets(users) {
 /* ══════════════════════════ 4. 더미 소재 ══════════════════════════ */
 
 // DB 등록 과제 색 — section 별로 고정한다(같은 과제가 89명에게 같은 색으로 보여야 한다).
-const DB_SECTION_COLORS = { 일반계약: '#3e5be0', 사업부관리: '#8a5cf6', 선진행: '#c2770a' };
+//   2026-10-15 부터 구분은 번호(section_id)로 가리킨다. 고정 번호 1 일반계약, 2 선진행, 3 사업부관리(CODE-TABLE-IDS §3).
+//   표에 없는 번호는 기본색이다(웹의 색 표와 같은 규칙).
+const DB_SECTION_COLORS = { 1: '#3e5be0', 3: '#8a5cf6', 2: '#c2770a' };
 const FALLBACK_COLOR = '#5b6b7d';
 
 // 앱 PALETTE — 일반과제 색은 여기서만 고른다.
@@ -499,17 +501,17 @@ function makeGen(rng) {
   return { rint, pick, chance, b36, hex, pickWeighted, shuffled, rng };
 }
 
-/** 조직에 맞는 section 가중치 — 사업부·경영지원은 '사업부관리' 쪽으로 기운다. */
+/** 조직에 맞는 section 가중치 — 사업부·경영지원은 '사업부관리' 쪽으로 기운다. 키는 section_id(1 일반계약, 2 선진행, 3 사업부관리). */
 function sectionWeights(orgId) {
-  if (orgId === 4) return { 사업부관리: 6, 일반계약: 2, 선진행: 1 };
-  if (orgId === 5) return { 사업부관리: 5, 일반계약: 2, 선진행: 1 };
-  return { 일반계약: 6, 선진행: 3, 사업부관리: 1 };   // SW/시스템 팀 및 그 밖
+  if (orgId === 4) return { 3: 6, 1: 2, 2: 1 };
+  if (orgId === 5) return { 3: 5, 1: 2, 2: 1 };
+  return { 1: 6, 2: 3, 3: 1 };   // SW/시스템 팀 및 그 밖
 }
 
 /**
  * 사용자 1명분 더미를 만든다. DB 를 보지 않고 순수 계산만 한다(테스트·dry-run 이 쉬워진다).
  * @param user   {userId, loginId, name, orgId}
- * @param projects [{uid, section, label}]
+ * @param projects [{uid, sectionId, section, label}]  (section = 구분 이름, 설명 문구용)
  * @param seed   씨앗(= OPT.seed ^ user_id)
  */
 function buildUserData(user, projects, seed) {
@@ -520,8 +522,8 @@ function buildUserData(user, projects, seed) {
   const wants = sectionWeights(user.orgId);
   const bySection = new Map();
   for (const p of projects) {
-    if (!bySection.has(p.section)) bySection.set(p.section, []);
-    bySection.get(p.section).push(p);
+    if (!bySection.has(p.sectionId)) bySection.set(p.sectionId, []);
+    bySection.get(p.sectionId).push(p);
   }
   const dbWant = 3 + rint(3);              // 3~5개
   const chosen = [];
@@ -547,7 +549,7 @@ function buildUserData(user, projects, seed) {
     cats.push({
       catNo: ++catNo, kind: 'db',
       uid: 'db-' + p.uid, source: 'db', name: p.label,
-      color: DB_SECTION_COLORS[p.section] || FALLBACK_COLOR,
+      color: DB_SECTION_COLORS[p.sectionId] || FALLBACK_COLOR,
       description: chance(0.3) ? p.section + ' 과제' : '',
       projectUid: p.uid, usesRepo: 0, titles: DB_TITLES,
     });
@@ -1055,12 +1057,13 @@ function verifyDelta(before, after, targetIds) {
 
 function loadProjects() {
   const r = mustQuery(
-    'SELECT uid, section, IFNULL(common_name,' + q('') + '), IFNULL(project_name,' + q('') + ')' +
-    ' FROM project WHERE is_active=1 ORDER BY id;', '과제 목록');
+    'SELECT p.uid, p.section_id, s.name, IFNULL(p.common_name,' + q('') + '), IFNULL(p.project_name,' + q('') + ')' +
+    ' FROM project p JOIN section_code s ON s.section_id = p.section_id WHERE p.is_active=1 ORDER BY p.id;', '과제 목록');
   const list = r.map((c) => ({
-    uid: c[0], section: c[1],
+    // 2026-10-15 구분은 번호로 가리킨다. 이름은 설명 문구에만 쓴다.
+    uid: c[0], sectionId: Number(c[1]), section: c[2],
     // common_name 이 빈 문자열인 행이 실제로 있다(id=17) — 그때는 project_name 으로 대체한다.
-    label: (c[2] && c[2].trim().length) ? c[2].trim() : (c[3] || '').trim(),
+    label: (c[3] && c[3].trim().length) ? c[3].trim() : (c[4] || '').trim(),
   })).filter((p) => p.uid && p.uid.length === 36 && p.label.length);
   if (!list.length) envFail('활성 project 행이 없습니다 — DB 등록 과제 카테고리를 만들 수 없습니다.');
   return list;

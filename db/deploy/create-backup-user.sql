@@ -44,7 +44,10 @@
 CREATE USER IF NOT EXISTS 'taskmgr_backup'@'localhost'
   IDENTIFIED BY 'CHANGE_ME_ON_DEPLOY';   -- ★ 배포 시 강한 비밀번호로 교체
 
-GRANT SELECT, TRIGGER ON taskmgr.* TO 'taskmgr_backup'@'localhost';
+-- 2026-10-15: backup-taskmgr.ps1 의 기본 DB 가 taskcalendar 로 바뀌었다(CODE-TABLE-IDS §8-1). 그 DB 에 준다.
+--   0.16 클라이언트가 쓰는 옛 taskmgr 도 백업한다면 아래 주석 줄을 함께 실행한다(-DbName taskmgr).
+GRANT SELECT, TRIGGER ON taskcalendar.* TO 'taskmgr_backup'@'localhost';
+-- GRANT SELECT, TRIGGER ON taskmgr.* TO 'taskmgr_backup'@'localhost';
 
 -- 뷰가 생기면 함께 부여(그 전에는 불필요):
 -- GRANT SHOW VIEW ON taskmgr.* TO 'taskmgr_backup'@'localhost';
@@ -54,4 +57,4 @@ GRANT SELECT, TRIGGER ON taskmgr.* TO 'taskmgr_backup'@'localhost';
 FLUSH PRIVILEGES;
 
 -- 확인: SHOW GRANTS FOR 'taskmgr_backup'@'localhost';
---   기대: GRANT USAGE ON *.* … / GRANT SELECT, TRIGGER ON `taskmgr`.* …
+--   기대: GRANT USAGE ON *.* … / GRANT SELECT, TRIGGER ON `taskcalendar`.* …

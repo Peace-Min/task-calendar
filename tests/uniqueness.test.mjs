@@ -10,19 +10,20 @@ import { readFileSync } from 'node:fs';
 const src = loadAppSource();
 const projectDb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
 const mainWindow = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
+// ★ 2026-10-15 db/schema.sql 과 migrate-2026-07-24-uniqueness.sql 은 지웠다(CODE-TABLE-IDS §8-2, git 이력에 있다).
+//   구조의 정본은 schema-structure.sql 하나다.
 const schemaDeploy = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
-const migration = readFileSync(new URL('../db/deploy/migrate-2026-07-24-uniqueness.sql', import.meta.url), 'utf8');
 
 // ── 스키마: 유니크 제거 · uid 존치 · NOT NULL DEFAULT '' (두 파일 모두) ───────────────
-for (const [label, sql] of [['schema.sql', schema], ['deploy/schema-structure.sql', schemaDeploy]]) {
+for (const [label, sql] of [['deploy/schema-structure.sql', schemaDeploy]]) {
   test(`스키마(${label}): (customer, project_name) 하드 유니크가 제거됐다`, () => {
     assert.ok(!/UNIQUE KEY uq_project \(customer, project_name\)/.test(sql), 'uq_project(customer, project_name)가 남아 있다');
     assert.ok(!/uq_project\b(?!_uid)/.test(sql.replace(/uq_project_uid/g, '')), '이름 유니크 잔재가 있다');
   });
   test(`스키마(${label}): uid 유니크는 유지 · customer 조회 인덱스도 유지`, () => {
     assert.ok(/UNIQUE KEY uq_project_uid \(uid\)/.test(sql), 'uq_project_uid(uid)가 사라졌다(과제 정체성)');
-    assert.ok(/KEY ix_project_customer \(customer\)/.test(sql), 'ix_project_customer가 사라졌다(발주처 조회·소프트경고 후보)');
+    // 2026-10-15 번호 키: 발주처 조회 인덱스는 customer_id 위에 선다(CODE-TABLE-IDS §2).
+    assert.ok(/KEY ix_project_customer_id \(customer_id\)/.test(sql), 'ix_project_customer_id가 사라졌다(발주처 조회·소프트경고 후보)');
   });
   test(`스키마(${label}): contract_name·common_name = NOT NULL DEFAULT ''`, () => {
     assert.ok(/contract_name VARCHAR\(200\) NOT NULL DEFAULT ''/.test(sql), "contract_name이 NOT NULL DEFAULT ''가 아니다");
@@ -33,21 +34,7 @@ for (const [label, sql] of [['schema.sql', schema], ['deploy/schema-structure.sq
   });
 }
 
-// ── 마이그레이션 스크립트 ───────────────────────────────────────────────
-test('마이그레이션: NULL→\'\' 선처리 → DROP uq_project → MODIFY NOT NULL DEFAULT \'\' 순서', () => {
-  const iFillCn = migration.indexOf("UPDATE project SET contract_name = ''");
-  const iFillMn = migration.indexOf("UPDATE project SET common_name   = ''");
-  const iDrop = migration.indexOf('DROP INDEX uq_project');
-  const iModify = migration.indexOf('MODIFY contract_name VARCHAR(200) NOT NULL DEFAULT');
-  assert.ok(iFillCn >= 0 && iFillMn >= 0, 'NULL→\'\' 선처리가 없다(NOT NULL 전환이 실패한다)');
-  assert.ok(iDrop >= 0, 'DROP INDEX uq_project가 없다');
-  assert.ok(iModify >= 0, 'MODIFY NOT NULL DEFAULT가 없다');
-  assert.ok(iFillCn < iModify && iFillMn < iModify, 'NULL 채우기가 MODIFY보다 뒤에 있다(전환 실패)');
-  assert.ok(/멱등.*아님|아님.*멱등/.test(migration), '멱등 아님 경고가 없다');
-  assert.ok(/최초 구축은 schema/.test(migration), '최초 구축 vs 마이그레이션 구분 안내가 없다');
-  // uid 유니크는 건드리지 않는다(과제 정체성)
-  assert.ok(!/DROP INDEX uq_project_uid/.test(migration), '마이그레이션이 uid 유니크를 지운다(정체성 파괴)');
-});
+// ── (옛) 마이그레이션 스크립트 계약은 지웠다. migrate-2026-07-24-uniqueness.sql 을 2026-10-15 에 지웠다(git 이력에 있다).
 
 // ── 호스트 ProjectDb: 시그니처·반환계약·TRIM·1062 정정·죽은 코드 ─────────
 function upsertBody() {

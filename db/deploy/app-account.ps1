@@ -12,7 +12,7 @@
 param(
   [string]$BaseDir = "C:\mysql",
   [int]$Port = 3306,
-  [string]$DbName = "taskmgr",
+  [string]$DbName = "taskcalendar",       # 2026-10-15 기본값 taskmgr → taskcalendar(CODE-TABLE-IDS §8-1)
   [string]$ServiceName = "MySQL84",
   [string]$RootPassword = "",
   [string]$AppUser = "taskmgr_app",       # 위젯 DeployConfig.DbUser 와 같아야 함
@@ -61,7 +61,7 @@ $acnf = Join-Path $env:TEMP ("myacc2_"+[IO.Path]::GetRandomFileName()+".cnf")
 try {
   if((Q "SELECT 1;") -ne "1"){ Die "root로 접속 실패. 비번/서버를 확인하세요(포트 $Port)." }
   $hasDb = Q "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$DbName';"
-  if($hasDb -ne $DbName){ Die "'$DbName' 데이터베이스가 없습니다. (init-db 로 먼저 구축하세요)" }
+  if($hasDb -ne $DbName){ Die "'$DbName' 데이터베이스가 없습니다. (setup-taskcalendar.cmd 로 먼저 구축하세요)" }
 
   $existed = [int](Q "SELECT COUNT(*) FROM mysql.user WHERE user='$AppUser';")
   Info ("계정 상태: " + $(if($existed -gt 0){"이미 있음 → 비밀번호 재설정"}else{"없음 → 새로 생성"}))

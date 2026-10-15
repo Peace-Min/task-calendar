@@ -7,9 +7,9 @@ import { readFileSync } from 'node:fs';
 const src = loadAppSource();
 const projectDb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
 const mainWindow = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const schema = readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8');
+// ★ 2026-10-15 db/schema.sql 과 db/deploy/migrate.ps1 은 지웠다(CODE-TABLE-IDS §8-2). 구조의 정본은 schema-structure.sql 하나다.
+//   코드표 번호 키 전환(이관 SQL, setup 변환, 고정 번호)의 계약은 tests/code-ids-db.test.mjs 가 본다.
 const schemaDeploy = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
-const migratePs1 = readFileSync(new URL('../db/deploy/migrate.ps1', import.meta.url), 'utf8');
 
 // ══ 범위 고정 도구 ═════════════════════════════════════════════════════
 // ★ 2026-09-04 변이감사(P5)로 드러난 구멍: 이 파일의 여러 단언이 **파일 전체**에 대한
@@ -169,31 +169,39 @@ const checks = {
   },
 };
 
-// ── 스키마: 코드테이블 · FK · note (두 파일 모두) ───────────────────────
-for (const [label, sql] of [['schema.sql', schema], ['deploy/schema-structure.sql', schemaDeploy]]) {
-  test(`스키마(${label}): section_code/status_code 테이블(name PK·sort_order·is_active)`, () => {
-    for (const t of ['section_code', 'status_code']) {
-      const re = new RegExp('CREATE TABLE ' + t + '[\\s\\S]{0,400}?PRIMARY KEY \\(name\\)');
-      assert.ok(re.test(sql), `${t} 테이블 정의가 없다`);
-      const block = sql.slice(sql.indexOf('CREATE TABLE ' + t), sql.indexOf('PRIMARY KEY (name)', sql.indexOf('CREATE TABLE ' + t)));
+// ── 스키마: 코드테이블 · FK · note ─────────────────────────────────────
+//  ★ 2026-10-15 코드표 번호 키(CODE-TABLE-IDS §2). 기본키는 번호(section_id, status_id, customer_id), 이름은 UNIQUE 라벨,
+//    project 는 번호로 가리키고 FK 는 ON UPDATE RESTRICT ON DELETE RESTRICT 다(번호는 바뀌지 않아 CASCADE 가 필요 없다).
+//    옛 db/schema.sql 은 지웠다. 구조의 정본은 schema-structure.sql 하나다.
+for (const [label, sql] of [['deploy/schema-structure.sql', schemaDeploy]]) {
+  test(`스키마(${label}): section_code/status_code 테이블(번호 PK·name UNIQUE·sort_order·is_active)`, () => {
+    for (const [t, id] of [['section_code', 'section_id'], ['status_code', 'status_id']]) {
+      const at = sql.indexOf('CREATE TABLE ' + t + ' (');
+      assert.ok(at >= 0, `${t} 테이블 정의가 없다`);
+      const block = sql.slice(at, sql.indexOf('ENGINE=InnoDB', at));
+      assert.ok(new RegExp('PRIMARY KEY \\(' + id + '\\)').test(block), `${t} 의 기본키가 ${id} 가 아니다`);
+      assert.ok(new RegExp(id + '\\s+SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT').test(block), `${t}.${id} 가 SMALLINT UNSIGNED AUTO_INCREMENT 가 아니다`);
       assert.ok(/name\s+VARCHAR\(50\)\s+NOT NULL/.test(block), `${t}.name VARCHAR(50) NOT NULL이 아니다`);
+      assert.ok(new RegExp('UNIQUE KEY uq_' + t + '_name \\(name\\)').test(block), `${t}.name 에 UNIQUE 가 없다(옛 기본키가 하던 중복 막기)`);
       assert.ok(/sort_order\s+INT\s+NOT NULL DEFAULT 0/.test(block), `${t}.sort_order 정의가 다르다`);
       assert.ok(/is_active\s+TINYINT\(1\)\s+NOT NULL DEFAULT 1/.test(block), `${t}.is_active 정의가 다르다`);
     }
   });
-  test(`스키마(${label}): project.section VARCHAR+NOT NULL, status VARCHAR+NULL, note VARCHAR(500) NOT NULL DEFAULT ''`, () => {
-    assert.ok(/section\s+VARCHAR\(50\)\s+NOT NULL/.test(sql), 'project.section이 VARCHAR(50) NOT NULL이 아니다');
-    assert.ok(/status\s+VARCHAR\(50\)\s+NULL/.test(sql), 'project.status가 VARCHAR(50) NULL이 아니다');
+  test(`스키마(${label}): project.section_id NOT NULL, status_id NULL, note VARCHAR(500) NOT NULL DEFAULT ''`, () => {
+    assert.ok(/\n\s*section_id\s+SMALLINT UNSIGNED NOT NULL,/.test(sql), 'project.section_id 가 SMALLINT UNSIGNED NOT NULL 이 아니다');
+    assert.ok(/\n\s*status_id\s+SMALLINT UNSIGNED NULL DEFAULT NULL,/.test(sql), 'project.status_id 가 SMALLINT UNSIGNED NULL 이 아니다');
     assert.ok(/note\s+VARCHAR\(500\) NOT NULL DEFAULT ''/.test(sql), "project.note가 NOT NULL DEFAULT ''가 아니다");
     assert.ok(!/section\s+ENUM/.test(sql) && !/status\s+ENUM/.test(sql), 'ENUM 정의가 남아 있다');
+    assert.ok(!/^\s*(section|status|customer)\s+VARCHAR/m.test(sql), 'project 에 옛 이름 참조 열(section/status/customer VARCHAR)이 남아 있다');
   });
-  test(`스키마(${label}): FK fk_project_section/status = ON UPDATE CASCADE ON DELETE RESTRICT`, () => {
-    assert.ok(/CONSTRAINT fk_project_section FOREIGN KEY \(section\) REFERENCES section_code\(name\)[\s\S]{0,80}ON UPDATE CASCADE ON DELETE RESTRICT/.test(sql),
-      'fk_project_section이 없거나 CASCADE/RESTRICT가 아니다');
-    assert.ok(/CONSTRAINT fk_project_status FOREIGN KEY \(status\) REFERENCES status_code\(name\)[\s\S]{0,80}ON UPDATE CASCADE ON DELETE RESTRICT/.test(sql),
-      'fk_project_status가 없거나 CASCADE/RESTRICT가 아니다');
-    // 발주처 FK도 유지
-    assert.ok(/fk_project_customer FOREIGN KEY \(customer\) REFERENCES customer\(name\)/.test(sql), '발주처 FK가 사라졌다');
+  test(`스키마(${label}): FK fk_project_section_id/status_id/customer_id = ON UPDATE RESTRICT ON DELETE RESTRICT`, () => {
+    assert.ok(/CONSTRAINT fk_project_section_id FOREIGN KEY \(section_id\) REFERENCES section_code\(section_id\)[\s\S]{0,80}ON UPDATE RESTRICT ON DELETE RESTRICT/.test(sql),
+      'fk_project_section_id 가 없거나 RESTRICT/RESTRICT 가 아니다');
+    assert.ok(/CONSTRAINT fk_project_status_id FOREIGN KEY \(status_id\) REFERENCES status_code\(status_id\)[\s\S]{0,80}ON UPDATE RESTRICT ON DELETE RESTRICT/.test(sql),
+      'fk_project_status_id 가 없거나 RESTRICT/RESTRICT 가 아니다');
+    assert.ok(/CONSTRAINT fk_project_customer_id FOREIGN KEY \(customer_id\) REFERENCES customer\(customer_id\)[\s\S]{0,80}ON UPDATE RESTRICT ON DELETE RESTRICT/.test(sql),
+      '발주처 FK(fk_project_customer_id)가 없거나 RESTRICT/RESTRICT 가 아니다');
+    assert.ok(!/ON UPDATE CASCADE/.test(sql), '과제 트랙에 ON UPDATE CASCADE 가 남아 있다(번호 키는 바뀌지 않는다)');
   });
   test(`스키마(${label}): DROP 순서 — project 먼저, 코드테이블 포함`, () => {
     const iProj = sql.indexOf('DROP TABLE IF EXISTS project;');
@@ -202,37 +210,16 @@ for (const [label, sql] of [['schema.sql', schema], ['deploy/schema-structure.sq
     assert.ok(iProj >= 0 && iSec >= 0 && iSt >= 0, '코드테이블 DROP이 없다');
     assert.ok(iProj < iSec && iProj < iSt, 'project를 코드테이블보다 먼저 DROP하지 않는다(FK 참조 순서)');
   });
-  test(`스키마(${label}): 코드테이블 표준 시드(일반계약/선진행/사업부관리 · 진행중/종료/1차 납품완료/미정)`, () => {
-    assert.ok(/INSERT INTO section_code[\s\S]{0,120}'일반계약', 10[\s\S]{0,60}'선진행', 20[\s\S]{0,60}'사업부관리', 30/.test(sql),
-      'section_code 시드가 없거나 sort_order가 다르다');
-    assert.ok(/INSERT INTO status_code[\s\S]{0,160}'진행중', 10[\s\S]{0,120}'미정', 40/.test(sql), 'status_code 시드가 없다');
+  test(`스키마(${label}): 코드테이블 표준 시드(고정 번호 1 일반계약, 2 선진행, 3 사업부관리 / 1 진행중, 2 종료, 3 1차 납품완료, 4 미정)`, () => {
+    assert.ok(/INSERT INTO section_code \(section_id, name, sort_order\) VALUES\s*\(1, '일반계약', 10\), \(2, '선진행', 20\), \(3, '사업부관리', 30\);/.test(sql),
+      'section_code 시드가 없거나 고정 번호·sort_order가 다르다');
+    assert.ok(/INSERT INTO status_code \(status_id, name, sort_order\) VALUES\s*\(1, '진행중', 10\), \(2, '종료', 20\), \(3, '1차 납품완료', 30\), \(4, '미정', 40\);/.test(sql),
+      'status_code 시드가 없거나 고정 번호가 다르다');
   });
 }
 
-// ── 마이그레이션 — 멱등 단계 ────────────────────────────────────────────
-test('마이그레이션: 코드테이블 CREATE IF NOT EXISTS + INSERT IGNORE 시드 + 기존값 흡수(SELECT DISTINCT)', () => {
-  assert.ok(/CREATE TABLE IF NOT EXISTS ``\$DbName``\.section_code/.test(migratePs1), 'section_code CREATE IF NOT EXISTS가 없다');
-  assert.ok(/CREATE TABLE IF NOT EXISTS ``\$DbName``\.status_code/.test(migratePs1), 'status_code CREATE IF NOT EXISTS가 없다');
-  assert.ok(/INSERT IGNORE INTO ``\$DbName``\.section_code \(name,sort_order\) VALUES/.test(migratePs1), 'section 표준 시드(INSERT IGNORE)가 없다');
-  // 안전망: FK 붙이기 전 기존 project 값 흡수
-  assert.ok(/INSERT IGNORE INTO ``\$DbName``\.section_code \(name,sort_order\) SELECT DISTINCT section, 900 FROM ``\$DbName``\.project/.test(migratePs1),
-    'project.section 기존값 흡수가 없다(FK 생성 실패 위험)');
-  assert.ok(/INSERT IGNORE INTO ``\$DbName``\.status_code \(name,sort_order\) SELECT DISTINCT status, 900 FROM ``\$DbName``\.project/.test(migratePs1),
-    'project.status 기존값 흡수가 없다');
-});
-test('마이그레이션: ENUM→VARCHAR는 COLUMN_TYPE=enum일 때만 · FK는 없을 때만 · note는 없을 때만(멱등)', () => {
-  assert.ok(/\$secType -like 'enum\*'/.test(migratePs1), 'section ENUM 조건 검사가 없다');
-  assert.ok(/\$stType\s+-like 'enum\*'/.test(migratePs1), 'status ENUM 조건 검사가 없다');
-  assert.ok(/MODIFY section VARCHAR\(50\) NOT NULL/.test(migratePs1), 'section VARCHAR 변경이 없다');
-  assert.ok(/MODIFY status VARCHAR\(50\) NULL/.test(migratePs1), 'status VARCHAR NULL 변경이 없다');
-  assert.ok(/\$hasFkSec -eq 0/.test(migratePs1) && /ADD CONSTRAINT fk_project_section/.test(migratePs1), 'section FK 조건부 추가가 없다');
-  assert.ok(/\$hasFkSt -eq 0/.test(migratePs1) && /ADD CONSTRAINT fk_project_status/.test(migratePs1), 'status FK 조건부 추가가 없다');
-  assert.ok(/\$hasNote -eq 0/.test(migratePs1) && /ADD COLUMN note VARCHAR\(500\) NOT NULL DEFAULT ''/.test(migratePs1), 'note 조건부 추가가 없다');
-});
-test('마이그레이션: 무손실 검증 — count before==after, 최종 최신이면 스킵', () => {
-  assert.ok(/"\$custN" -ne "\$custA" -or "\$projN" -ne "\$projA"/.test(migratePs1), '데이터 건수 before==after 검증이 없다');
-  assert.ok(/이미 반영됨\(건너뜀\)/.test(migratePs1), '단계1 멱등 스킵 문구가 없다');
-});
+// ── (옛) 마이그레이션 계약 세 건은 지웠다. db/deploy/migrate.ps1 을 2026-10-15 에 지웠다(git 이력에 있다).
+//    지금 남은 이관 파일(migrate-2026-10-15-code-ids.sql)의 계약은 tests/code-ids-db.test.mjs 에 있다.
 
 // ── 호스트 ProjectDb — 코드 CRUD·로더·검증·note ─────────────────────────
 test('호스트: 하드코딩 Sections/Statuses 배열이 제거됐다(코드테이블 로드로 대체)', () => {

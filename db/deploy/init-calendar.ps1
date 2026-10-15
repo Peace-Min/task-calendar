@@ -83,7 +83,7 @@
 param(
   [string]$DbHost = "127.0.0.1",     # 대상 MySQL 호스트(서버 이관 시 서버 IP)
   [int]$Port = 3306,
-  [string]$DbName = "taskmgr",
+  [string]$DbName = "taskcalendar",   # 2026-10-15 기본값 taskmgr → taskcalendar(앱이 쓰는 DB. CODE-TABLE-IDS §8-1)
   [string]$BaseDir = "C:\mysql",     # mysql.exe 위치(없으면 서비스 binPath 추론)
   [string]$ServiceName = "MySQL84",
   [string]$DbUser = "root",          # DDL·GRANT 를 낼 관리 계정
@@ -208,13 +208,9 @@ $scriptDir   = Split-Path -Parent $PSCommandPath
 $schemaFile  = Join-Path $scriptDir "schema-calendar.sql"
 $grantsFile  = Join-Path $scriptDir "grants-calendar.sql"
 
-# ★ 기존 DB 를 새 키로 옮기는 마이그레이션 파일. 선행 조건 1-4 가 실패했을 때 사람에게 이름을 말해 준다.
-#   파일 이름을 문자열로 박아 두되, 폴더에 실제로 있으면 전체 경로를 보여 준다(없으면 이름만 말한다) —
-#   있지도 않은 경로를 '여기 있다'고 안내하면 사람이 그 자리에서 한 번 더 막힌다.
-$MIGRATE_FILE = "migrate-2026-08-24-user-id.sql"
-$MIGRATE_HINT = $MIGRATE_FILE
-$migPath = Join-Path $scriptDir $MIGRATE_FILE
-if(Test-Path $migPath){ $MIGRATE_HINT = $migPath }
+# ★ 옛 키(login_id PK) DB 를 user_id 로 옮기던 이관 파일(migrate-2026-08-24-user-id.sql)은 2026-10-15 에 지웠다
+#   (git 이력에 있다). 선행 조건 1-4 가 실패했을 때는 새 DB 를 처음부터 만드는 길을 안내한다.
+$MIGRATE_HINT = "setup-taskcalendar.cmd(새 DB 를 처음부터 만든다)"
 
 # ============================================================================
 #  SQL 문장 분해기 — 주석·문자열을 인식해 세미콜론으로 자른다
@@ -281,7 +277,7 @@ Write-Host "   캘린더(cal_*) 테이블 구축"
 Write-Host "   대상: $DbHost`:$Port  DB=$DbName"
 Write-Host "============================================"
 
-# --- mysql.exe 위치 (init-db.ps1 과 같은 방식) ---
+# --- mysql.exe 위치 (backup-taskmgr.ps1 과 같은 방식) ---
 $mysql = Join-Path $BaseDir "bin\mysql.exe"
 if(-not (Test-Path $mysql)){
   try {
@@ -604,7 +600,7 @@ try {
 
   # 1-2) DB 존재. 이 스크립트는 DB 를 만들지 않는다 — 과제 DB 가 이미 있다는 전제다.
   $hasDb = QSrv "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='$DbName';"
-  if($hasDb -ne $DbName){ Die "'$DbName' 데이터베이스가 없습니다. 과제 DB 를 먼저 구축하세요(init-db.cmd)." }
+  if($hasDb -ne $DbName){ Die "'$DbName' 데이터베이스가 없습니다. 새 DB 는 setup-taskcalendar.cmd 로 만드세요." }
   Ok "데이터베이스 '$DbName' 존재"
 
   # 1-3) 참조 대상 테이블.
@@ -641,7 +637,7 @@ try {
   $actUserKey  =  Q "SELECT COLUMN_KEY FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';"
   if($actUserType -eq ""){
     $actUserPk = Q "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME='app_user' AND CONSTRAINT_NAME='PRIMARY';"
-    Die "app_user 에 user_id 컬럼이 없습니다(현재 PK: $actUserPk). 2026-08-24 키 전환으로 cal_* 는 cal_schema_meta 를 뺀 전부가 app_user.user_id($expUserType)를 참조합니다 — 지금 진행하면 FK $nUserFk 개가 전부 errno 150 으로 실패하고, 그 전에 옛 cal_* 는 이미 DROP 된 뒤라 반파 상태가 됩니다. 기존 DB 라면 $MIGRATE_HINT 를 먼저 적용하고, 새 DB 라면 taskmgr-company-data\apply.cmd(01-schema-users.sql)로 사용자 표를 먼저 구축하세요."
+    Die "app_user 에 user_id 컬럼이 없습니다(현재 PK: $actUserPk). 2026-08-24 키 전환으로 cal_* 는 cal_schema_meta 를 뺀 전부가 app_user.user_id($expUserType)를 참조합니다 — 지금 진행하면 FK $nUserFk 개가 전부 errno 150 으로 실패하고, 그 전에 옛 cal_* 는 이미 DROP 된 뒤라 반파 상태가 됩니다. 옛 키 DB 는 더 옮기지 않습니다. $MIGRATE_HINT 로 새로 만들거나, 새 DB 라면 taskmgr-company-data\apply.cmd(01-schema-users.sql)로 사용자 표를 먼저 구축하세요."
   }
   if($actUserType -ne $expUserType){ Die "app_user.user_id 타입 불일치 — schema-calendar.sql 은 [$expUserType] 를 전제하는데 실제는 [$actUserType] 입니다. InnoDB 는 폭·부호가 다르면 FK 를 만들지 않습니다 — cal_* 의 app_user 참조 FK $nUserFk 개가 전부 실패합니다." }
   if($actUserNull -ne 'NO'){ Die "app_user.user_id 가 NULL 을 허용합니다 — 소유자 키에 NULL 이 들어가면 그 사람의 캘린더 행이 주인 없는 행이 됩니다(cal_* 는 전부 NOT NULL 로 만듭니다). NOT NULL 로 고치세요." }

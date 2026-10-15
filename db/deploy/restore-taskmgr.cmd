@@ -30,9 +30,10 @@ rem  --- END EXITCODES ---
 rem
 rem  Usage:
 rem    restore-taskmgr.cmd -WhatIf
-rem    restore-taskmgr.cmd -TargetDb taskmgr_restore_drill -Grants
+rem    restore-taskmgr.cmd -TargetDb taskcalendar_restore_drill -Grants
 rem    restore-taskmgr.cmd -DumpPath "D:\taskmgr-backup\taskmgr-20260824-102609.sql" -Grants
-rem    restore-taskmgr.cmd -TargetDb taskmgr_restore_drill -DropTarget
+rem    restore-taskmgr.cmd -TargetDb taskcalendar_restore_drill -DropTarget
+rem    (defaults: -LiveDb taskcalendar -TargetDb taskcalendar_restore)
 rem
 rem  Do NOT end an argument value with a backslash - powershell.exe reads \"
 rem  as an escaped quote and swallows the following argument.

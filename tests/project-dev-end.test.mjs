@@ -21,8 +21,8 @@ import { stripSqlComments, canonSchemaVersion } from './canon-schema.mjs';
 const COL = 'dev_end_date';        // DB 컬럼명
 const JSKEY = 'devEndDate';        // 화면·호스트가 주고받는 키
 const FORM_ID = 'offEdDevEnd';     // 편집 폼 입력칸 id
-const MIGRATE = 'migrate-2026-09-10-dev-end-date.sql';
-
+// ★ 2026-10-15 이관 파일 migrate-2026-09-10-dev-end-date.sql 과 db/schema.sql 은 지웠다(CODE-TABLE-IDS §8-2, git 이력에 있다).
+//   그래서 정본은 schema-structure.sql 하나이고, 마이그레이션 모양 계약(옛 계약⑤)은 함께 없앴다.
 // ── 기준 파일 로드 — 최상위에서 던지지 않는다(run-tests 의 import 루프에서 던지면 프로세스가 죽어
 //    **전 스위트 판정이 증발**한다. commit-merge.test.mjs 가 그 사고로 남긴 관례다). ──
 const missing = [];
@@ -35,12 +35,10 @@ function readOr(url, label) {
 }
 const R = (rel) => new URL('../' + rel, import.meta.url);
 const canonFiles = [
-  ['db/schema.sql', readOr(R('db/schema.sql'), 'db/schema.sql')],
   ['db/deploy/schema-structure.sql', readOr(R('db/deploy/schema-structure.sql'), 'db/deploy/schema-structure.sql')],
 ];
 const projectDb = readOr(R('widget/ProjectDb.cs'), 'widget/ProjectDb.cs');
 const mainWin = readOr(R('widget/MainWindow.xaml.cs'), 'widget/MainWindow.xaml.cs');
-const migrateSql = readOr(R('db/deploy/' + MIGRATE), 'db/deploy/' + MIGRATE);
 let app = '';
 try { app = loadAppSource(); } catch { missing.push('task-calendar-prototype.html'); }
 
@@ -191,34 +189,6 @@ export const checks = {
       '기존 값이 조용히 지워진다(2026-09-10 설계 결정). 실제: ' + locked.join(', '));
   },
 
-  //  ⑤ 마이그레이션이 자리를 못 박고, 가드·승격 값이 정본과 맞물린다
-  migrationShape(sql, canonVer) {
-    const code = stripSqlComments(sql);
-    assert.ok(/ALTER\s+TABLE\s+project[\s\S]{0,400}?ADD\s+COLUMN\s+dev_end_date\s+DATE\s+NULL/i.test(code),
-      MIGRATE + ' 이 project 에 ' + COL + ' DATE NULL 을 추가하지 않는다');
-    assert.ok(/ADD\s+COLUMN\s+dev_end_date[\s\S]{0,400}?AFTER\s+end_date/i.test(code),
-      MIGRATE + ' 에 `AFTER end_date` 가 없다 — 컬럼이 표 끝에 붙어 정본(신규 구축)과 순서가 갈린다. ' +
-      '그 차이는 mysqldump 대조에서만 드러나므로, 여기서 못 박지 않으면 아무도 모른다');
-    //  값은 이 파일 자신에게서 읽고, 정본과는 **관계**로 대조한다 — 시험에 판번호를 박으면
-    //  정본이 움직일 때 시험이 거짓말을 한다.
-    //  ★ 2026-09-10 정정: 예전에는 "이 마이그레이션이 올리는 값 = 정본이 심는 값" 이었다. 그건
-    //    '이 파일이 언제나 마지막 판' 이라는 가정이었고, 같은 날 user-sort-order(10 → 11)가 뒤에
-    //    붙으면서 깨졌다. 이 파일이 지켜야 할 사실은 셋으로 좁혀진다:
-    //      ① 한 칸만 움직인다 · ② 가드가 그 출발값을 요구한다 · ③ 정본을 **앞서가지 않는다**.
-    //    정본과 '최신 마이그레이션'의 일치는 schema-integrity 계약⑥ 이 파일 목록 전체로 본다.
-    const bump = /UPDATE\s+cal_schema_meta\s+SET\s+v\s*=\s*'(\d+)'[\s\S]{0,200}?AND\s+v\s*=\s*'(\d+)'/i.exec(code);
-    assert.ok(bump, MIGRATE + ' 에서 schema_version 승격 문장을 찾지 못했다');
-    const to = Number(bump[1]), from = Number(bump[2]);
-    assert.strictEqual(to, from + 1,
-      MIGRATE + ' 이 판번호를 ' + from + ' → ' + to + ' 로 움직인다 — 한 번에 한 칸이어야 중간 판이 건너뛰어지지 않는다');
-    assert.ok(to <= Number(canonVer),
-      MIGRATE + ' 이 올리는 값(' + to + ')이 정본이 심는 값(' + canonVer + ')보다 크다 — ' +
-      '마이그레이션이 정본을 앞서가면 아무도 도달할 수 없는 판번호를 자칭하게 된다');
-    const guard = /@v\s*=\s*'(\d+)'/.exec(code);
-    assert.ok(guard, MIGRATE + " 에 선행조건 가드(@v = 'N')가 없다 — 재실행이 1060 으로 죽는다");
-    assert.strictEqual(guard[1], String(from),
-      MIGRATE + ' 의 가드가 v=' + guard[1] + " 를 요구한다 — 승격 출발값 기준으로는 '" + from + "' 이어야 한다");
-  },
 };
 
 // ══ 시험 ═══════════════════════════════════════════════════════════
@@ -241,10 +211,6 @@ test('계약③: saveProject 분기가 devEndDate 를 읽고 장표에 개발종
 
 test('계약④: 폼·payload 에 개발종료일이 있고 선진행 잠금 배열에는 없다(설계 결정)', () => {
   checks.appWiring(app);
-});
-
-test('계약⑤: 마이그레이션이 AFTER end_date 로 붙이고 판번호를 한 칸만(가드=출발값) 움직인다', () => {
-  checks.migrationShape(migrateSql, canonSchemaVersion());
 });
 
 // ── 변이 시험 — 계약이 정말 발화하는지(통제군 포함) ─────────────────
@@ -306,33 +272,3 @@ test('변이④b: payload 에서 devEndDate 를 빼면 계약④ 가 실패한�
   assert.throws(() => checks.appWiring(bad), /payload 에 devEndDate 가 없다/);
 });
 
-test('변이⑤: 마이그레이션에서 AFTER 절을 지우면 계약⑤ 가 실패한다', () => {
-  const bad = migrateSql.replace(/\n[^\S\n]*AFTER end_date;/, ';');
-  assert.notStrictEqual(bad, migrateSql, '변이 준비 실패: AFTER 절의 모양이 바뀌었다');
-  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /AFTER end_date` 가 없다/);
-  assert.doesNotThrow(() => checks.migrationShape(migrateSql, canonSchemaVersion()));
-});
-
-test('변이⑤b: 가드를 옛 판번호에 두면 계약⑤ 가 승격 출발값과의 어긋남을 잡는다', () => {
-  const bad = migrateSql.replace("IF(@v = '9'", "IF(@v = '8'");
-  assert.notStrictEqual(bad, migrateSql, '변이 준비 실패: 가드 형태가 바뀌었다');
-  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /가드가 v=8/);
-});
-
-test('변이⑤c: 판번호를 두 칸 건너뛰면 계약⑤ 가 실패한다(중간 판 누락)', () => {
-  const bad = migrateSql.replace("SET v = '10', updated_at", "SET v = '11', updated_at");
-  assert.notStrictEqual(bad, migrateSql, '변이 준비 실패: 승격 문장의 모양이 바뀌었다');
-  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /한 번에 한 칸이어야/);
-});
-
-test('변이⑤d: 마이그레이션이 정본보다 앞서가면 계약⑤ 가 실패한다', () => {
-  //  한 칸 규칙은 지키면서 정본(11)을 넘어서는 형태 — 통제군과 달라야 하는 자리다.
-  const ahead = Number(canonSchemaVersion()) + 1;
-  const bad = migrateSql
-    .replace("SET v = '10', updated_at", `SET v = '${ahead}', updated_at`)
-    .replace("AND v = '9'", `AND v = '${ahead - 1}'`)
-    .replace("IF(@v = '9'", `IF(@v = '${ahead - 1}'`);
-  assert.notStrictEqual(bad, migrateSql, '변이 준비 실패: 승격·가드 문장의 모양이 바뀌었다');
-  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /정본이 심는 값.*보다 크다/);
-  assert.doesNotThrow(() => checks.migrationShape(migrateSql, canonSchemaVersion()));   // 통제군
-});

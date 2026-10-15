@@ -31,14 +31,20 @@
         (사용자 표가 캘린더보다 먼저여야 한다: schema-calendar.sql 머리의 가드가 app_user.user_id 를 요구한다)
         → 표 개수 · schema_version(= schema-calendar.sql 이 시딩하는 값, 파일에서 읽는다) 대조
     [3] 데이터 — (a) 사용자 3표 = 회사 시드: 02-seed-org.sql → 03-seed-users.sql → 04-permissions.sql
-        (대상 DB 를 선택한 채 원본 파일 그대로) → app_user.sort_order 백필(03 은 sort_order 를 적지 않는다 —
-        migrate-2026-09-10-user-sort-order.sql 2단계와 같은 순서: 직급 서열 → 이름 → user_id, 10 간격) →
+        (대상 DB 를 선택한 채 원본 파일 그대로) → app_user.sort_order 백필(03 은 sort_order 를 적지 않는다.
+        순서: 직급 서열 → 이름 → user_id, 10 간격) →
         user_id/org_id NULL·중복 0 · 3표 행 수 > 0 · AUTO_INCREMENT > MAX → 명부 대조(원본 app_user 에 login_id 가
         있으면 '원본에만 · 시드에만' 을 센다. 경고만 하고 멈추지 않는다).
         (b) 과제 4표 = 원본에서 복사 — FK 순서. 컬럼은 원본∩대상 교집합(빠진 컬럼은 대상 기본값, 원본에만 있는
         컬럼은 보고서에 이름을 적는다). project.contract_name/common_name 의 NULL 은 '' 로 넣는다(대상 NOT NULL).
         4표의 created_at/updated_at 은 KST→UTC(-9h) 로 민다(-NoShift 로 끈다). 이후 cal_user_rev 재시딩 ·
         고아 행 0(6관계 — 사용자 3관계는 곧 시드 검사) · 행 수 원본과 일치 · AUTO_INCREMENT > MAX(id) 를 확인한다.
+        ★ 2026-10-15 코드표 번호 키(docs/CODE-TABLE-IDS.md §5). 원본(0.16 모양)은 이름이 키이고 대상은 번호가 키다.
+          코드표 셋(section_code, status_code, customer)의 번호는 이 스크립트가 매긴다. 이름이 고정 번호 지도
+          (schema-structure.sql 끝의 코드표 시드 INSERT)에 있으면(BINARY 일치) 그 번호, 없으면 지도의 MAX+1 부터 이름순이다.
+          project 는 원본의 이름 열(section, customer, status)을 JOIN ON name 으로 대상의 번호 열(*_id)로 바꿔 넣는다.
+          복사 뒤 번호로 되살린 이름이 원본과 BINARY 로 같은지(NULL 대칭 포함) 확인하고, 다르면 멈춘다.
+          원본의 참조 고아, 빈 이름, 0과 1 밖의 is_active 는 사전 점검에서 막는다(대상의 NOT NULL 과 CHECK 가 받지 않는다).
     [4] 권한 — create-app-user.sql · grants-calendar.sql(두 파일의 `taskmgr.` 를 대상 DB 로 바꾼 임시 사본) ·
         05-grants.sql(DATABASE() 를 쓰므로 원본 그대로, 대상 DB 를 선택한 채 실행) → SHOW GRANTS 대조
     [5] 보고서 — 화면에 찍힌 모든 줄을 <BackupDir>\setup-taskcalendar-<시각>.txt 로 남긴다.
@@ -125,7 +131,7 @@ $SEED_TABLES  = @('title_code','org_unit','app_user')
 # 재구축은 늘 한다(머리말 ⚠️ 재구축) — 이 수가 0 이 아니면 '계속하면 지워지는 사람의 기록' 이다.
 $CAL_DATA_TABLES = @('cal_entry','cal_todo','cal_task_hours','cal_attendance','cal_report_daily','cal_report_weekly')
 
-# 복사 SELECT 에서 NULL 을 '' 로 바꿔 넣는 컬럼(migrate-2026-07-24-uniqueness.sql 의 정규화와 같은 뜻).
+# 복사 SELECT 에서 NULL 을 '' 로 바꿔 넣는 컬럼(옛 2026-07-24 유일성 정규화와 같은 뜻).
 # 0.16 원본은 NULL 을 허용했지만 대상은 NOT NULL DEFAULT '' 라, 그대로 SELECT 하면 INSERT … SELECT 가 NULL 에서
 # 막힌다. 원본은 읽기만 하므로 UPDATE 로 고칠 수 없다 — 그래서 옮기는 순간 IFNULL(<col>, '') 로 바꾼다.
 $NULL_TO_EMPTY = [ordered]@{ project = @('contract_name','common_name') }
@@ -141,18 +147,30 @@ $KEY_COLS = [ordered]@{
   section_code = @('name');   status_code = @('name');  customer = @('name')
   project      = @('id','uid')
 }
+# 2026-10-15 코드표 번호 키(CODE-TABLE-IDS §5). 원본은 이름이 키이고 대상은 번호가 키다.
+#   $CODE_ID_COLS : 코드표의 번호 열. 원본에서 옮기지 않고 복사할 때 매긴다(고정 번호 지도, 나머지는 MAX+1 부터 이름순).
+#   $PROJECT_REFS : project 의 이름 참조(src, 원본) → 번호 참조(dst, 대상). 복사 SELECT 가 JOIN ON name 으로 바꾼다.
+#                   nullable = 대상 열이 NULL 을 받는가(status_id 만. NULL 은 상태 없음).
+$CODE_ID_COLS = [ordered]@{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id' }
+$PROJECT_REFS = @(
+  @{ src='section';  dst='section_id';  parent='section_code'; pid='section_id';  nullable=$false },
+  @{ src='customer'; dst='customer_id'; parent='customer';     pid='customer_id'; nullable=$false },
+  @{ src='status';   dst='status_id';   parent='status_code';  pid='status_id';   nullable=$true }
+)
 # AUTO_INCREMENT > MAX(번호) 확인 — 복사한 표와 시딩한 표를 따로 둔다(확인 시점이 다르다: 시딩 직후 · 복사 직후).
-$AUTOINC_KEYS      = [ordered]@{ project = 'id' }
+#   2026-10-15 부터 코드표 셋도 번호를 명시해 넣으므로 함께 본다.
+$AUTOINC_KEYS      = [ordered]@{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id'; project = 'id' }
 $SEED_AUTOINC_KEYS = [ordered]@{ org_unit = 'org_id'; app_user = 'user_id' }
 
 # 고아 행 검사. 복사 중에는 FK 검사를 껐으므로 **이것이 진짜 검사다.**
-# 자식 컬럼이 NULL 이면 '참조 없음' 이라 고아가 아니다(status · org_id · title · parent_id 는 NULL 허용).
+# 자식 컬럼이 NULL 이면 '참조 없음' 이라 고아가 아니다(status_id, org_id, title_id, parent_id 는 NULL 허용).
+# 2026-10-15 부터 코드표 참조는 번호다(project.*_id, app_user.title_id).
 $ORPHAN_CHECKS = @(
-  @{ name='project -> customer';     child='project';  col='customer';  parent='customer';     pcol='name' },
-  @{ name='project -> section_code'; child='project';  col='section';   parent='section_code'; pcol='name' },
-  @{ name='project -> status_code';  child='project';  col='status';    parent='status_code';  pcol='name' },
+  @{ name='project -> customer';     child='project';  col='customer_id'; parent='customer';     pcol='customer_id' },
+  @{ name='project -> section_code'; child='project';  col='section_id';  parent='section_code'; pcol='section_id' },
+  @{ name='project -> status_code';  child='project';  col='status_id';   parent='status_code';  pcol='status_id' },
   @{ name='app_user -> org_unit';    child='app_user'; col='org_id';    parent='org_unit';     pcol='org_id' },
-  @{ name='app_user -> title_code';  child='app_user'; col='title';     parent='title_code';   pcol='name' },
+  @{ name='app_user -> title_code';  child='app_user'; col='title_id';  parent='title_code';   pcol='title_id' },
   @{ name='org_unit -> org_unit';    child='org_unit'; col='parent_id'; parent='org_unit';     pcol='org_id' }
 )
 
@@ -337,6 +355,22 @@ $verMatch = [regex]::Match($calText, "VALUES \('schema_version', '(\d+)'")
 if(-not $verMatch.Success){ Die "schema-calendar.sql 에서 schema_version 시딩 줄(VALUES ('schema_version', 'N'))을 찾지 못했습니다 — 파일 형식이 바뀌었습니다." }
 $expVersion = $verMatch.Groups[1].Value
 
+# 고정 번호 지도(CODE-TABLE-IDS §3). schema-structure.sql 끝의 코드표 시드 INSERT 가 정본이다(번호를 여기 박지 않는다).
+#   section_code, status_code 는 시드가 있고 customer 는 없다(빈 지도 = 1 부터 이름순).
+$FIXED_IDS = [ordered]@{}
+foreach($t in $CODE_ID_COLS.Keys){
+  $FIXED_IDS[$t] = [ordered]@{}
+  $mm = [regex]::Match($structText, "(?is)INSERT\s+INTO\s+$t\s*\(\s*$($CODE_ID_COLS[$t])\s*,\s*name\s*,\s*sort_order\s*\)\s*VALUES(.*?);")
+  if(-not $mm.Success){ continue }
+  foreach($v in [regex]::Matches($mm.Groups[1].Value, "\(\s*(\d+)\s*,\s*'((?:[^']|'')*)'")){
+    # 키는 문자열로 둔다. [ordered] 사전에 정수를 넣으면 키가 아니라 '몇 번째' 로 읽힌다.
+    $FIXED_IDS[$t][[string]([int]$v.Groups[1].Value)] = $v.Groups[2].Value.Replace("''", "'")
+  }
+}
+if($FIXED_IDS['section_code'].Count -lt 1 -or $FIXED_IDS['status_code'].Count -lt 1){
+  Die "schema-structure.sql 에서 코드표 시드(INSERT INTO section_code / status_code (번호, name, sort_order))를 읽지 못했습니다. 파일 형식이 바뀌었습니다."
+}
+
 # 세 DDL 파일이 만드는 표 이름(줄머리의 CREATE TABLE 만 — 주석 속 예시는 '--' 로 시작하므로 안 걸린다).
 $ddlTables = @()
 foreach($txt in @($structText, $usersText, $calText)){
@@ -504,12 +538,42 @@ try {
   $srcTables = @(QRows "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$SourceDb' AND TABLE_TYPE='BASE TABLE';" "원본 표 목록")
   $lack = @($COPY_ORDER | Where-Object { $srcTables -notcontains $_ })
   if($lack.Count -gt 0){ Die "원본 '$SourceDb' 에 다음 표가 없습니다: $($lack -join ', ')" }
+  $srcColMap = @{}
   foreach($t in $KEY_COLS.Keys){
     $sc = @(QRows "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='$SourceDb' AND TABLE_NAME='$t';" "원본 $t 컬럼")
+    $srcColMap[$t] = $sc
     foreach($k in $KEY_COLS[$t]){
       if($sc -notcontains $k){ Die "원본 $SourceDb.$t 에 정체성 컬럼 '$k' 가 없습니다. 이대로 복사하면 새 번호가 매겨져 옛 번호와 어긋납니다 — 원본을 먼저 최신 스키마로 마이그레이션하세요." }
     }
   }
+  # --- 2026-10-15 번호 키로 옮길 수 있는가(읽기만, 확인 전) ---
+  #   대상의 NOT NULL 과 CHECK 는 원본의 어긋난 행을 받지 않는다(FK 를 끄고 넣어도 번호가 비거나 CHECK 에 걸린다).
+  #   그래서 여기서 센다. 하나라도 있으면 원본 데이터를 먼저 고친다(이 스크립트는 원본을 고치지 않는다).
+  foreach($r in $PROJECT_REFS){
+    if($srcColMap['project'] -notcontains $r.src){ Die "원본 $SourceDb.project 에 이름 참조 컬럼 '$($r.src)' 가 없습니다. 이 스크립트는 0.16 모양(이름 키) 원본을 전제로 합니다." }
+  }
+  $srcBad = @()
+  foreach($r in $PROJECT_REFS){
+    $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb 'project') + " c LEFT JOIN " + (TQ $SourceDb $r.parent) + " p ON p.``name`` = c." + (BQ $r.src) + " WHERE c." + (BQ $r.src) + " IS NOT NULL AND p.``name`` IS NULL;") "원본 project.$($r.src) 고아 수")
+    if($n -ne 0){ $srcBad += "project.$($r.src) 가 $($r.parent) 에 없는 이름을 가리키는 행 $n 개" }
+    if(-not $r.nullable){
+      $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb 'project') + " WHERE " + (BQ $r.src) + " IS NULL;") "원본 project.$($r.src) NULL 수")
+      if($n -ne 0){ $srcBad += "project.$($r.src) 가 NULL 인 행 $n 개(대상은 NOT NULL)" }
+    }
+  }
+  foreach($t in $CODE_ID_COLS.Keys){
+    $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE ``name`` = '';") "원본 $t 빈 이름 수")
+    if($n -ne 0){ $srcBad += "$t 의 빈 이름 $n 행(대상 CHECK name <> '')" }
+  }
+  foreach($t in $COPY_ORDER){
+    if($srcColMap[$t] -contains 'is_active'){
+      $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE is_active NOT IN (0,1);") "원본 $t is_active 범위")
+      if($n -ne 0){ $srcBad += "$t.is_active 가 0, 1 이 아닌 행 $n 개(대상 CHECK)" }
+    }
+  }
+  if($srcBad.Count -gt 0){ Die ("원본 '$SourceDb' 의 과제 트랙을 번호 키로 옮길 수 없습니다: " + ($srcBad -join '; ') + ". 원본을 고친 뒤 다시 실행하세요.") }
+  Ok "원본 이름 참조 점검: 고아 0, 빈 이름 0, is_active 0/1 (번호 키로 옮길 수 있음)"
+
   # 명부 대조([3], 정보용)를 할 수 있는가 — 원본 app_user 에 login_id 가 있을 때만(0.16 옛 모양에도 있다).
   # 없으면 대조를 건너뛸 뿐 멈추지 않는다.
   $srcLoginCheck = $false
@@ -595,6 +659,7 @@ try {
   Log "  백업 폴더     : $BackupDir"
   Log "  회사 데이터   : $CompanyDataDir"
   Log "  원본에서 복사 : $($COPY_ORDER -join ',') (과제 트랙 4표)"
+  Log "  번호 키       : 원본 이름 키를 대상 번호 키로 바꿈(고정 번호 = schema-structure.sql 시드, 나머지는 MAX+1 부터 이름순)"
   Log "  사용자 표     : 원본에서 옮기지 않음 — 회사 시드(02·03·04)로 채움 (보고 사이트 명부와 동일)"
   if($srcLoginCheck){ Log "  명부 대조     : 원본 app_user.login_id ↔ 시드 명부 (정보용 — 달라도 멈추지 않음)" }
   else              { Log "  명부 대조     : 안 함 (원본에 app_user.login_id 없음)" }
@@ -688,7 +753,7 @@ try {
   ApplySqlFile $permsFile     $TargetDb "$permsName (권한)" $seedHint
 
   # app_user.sort_order 백필 — 03 은 sort_order 를 적지 않아 사람이 전원 NULL 로 들어온다(04 도 건드리지 않는다).
-  # migrate-2026-09-10-user-sort-order.sql 2단계와 **같은 문장**(표 이름만 대상 DB 로 한정):
+  # 옛 migrate-2026-09-10-user-sort-order.sql 2단계와 같은 순서식(그 파일은 2026-10-15 에 지웠다. 표 이름만 대상 DB 로 한정):
   #   · 순서 = 직급 서열(title_code.sort_order, 없으면 맨 뒤) → 이름 → user_id, 10 간격.
   #   · 다중 표 UPDATE 에는 ORDER BY 를 못 쓰므로 ROW_NUMBER() 창 함수로 번호를 만든다(그 파일의 ★).
   #   · u.updated_at = u.updated_at — 명시 대입으로 ON UPDATE 를 막는다(번호 매기기로 갱신 시각을 바꾸지 않는다).
@@ -698,7 +763,7 @@ try {
   if($sortNullBefore -gt 0){
     $sortSql = "UPDATE " + (TQ $TargetDb 'app_user') + " u JOIN (SELECT u2.user_id, " +
                "ROW_NUMBER() OVER (ORDER BY (t.sort_order IS NULL), t.sort_order, u2.name, u2.user_id) * 10 AS n " +
-               "FROM " + (TQ $TargetDb 'app_user') + " u2 LEFT JOIN " + (TQ $TargetDb 'title_code') + " t ON t.name = u2.title" +
+               "FROM " + (TQ $TargetDb 'app_user') + " u2 LEFT JOIN " + (TQ $TargetDb 'title_code') + " t ON t.title_id = u2.title_id" +
                ") r ON r.user_id = u.user_id SET u.sort_order = r.n, u.updated_at = u.updated_at; SELECT ROW_COUNT();"
     $sortFilled = [long](Q $sortSql "app_user.sort_order 백필")
   }
@@ -770,6 +835,15 @@ try {
     $cols    = @($tgtCols | Where-Object { $srcCols -contains $_ })      # 대상의 ORDINAL_POSITION 순서를 따른다
     $srcOnly = @($srcCols | Where-Object { $tgtCols -notcontains $_ })
     $tgtOnly = @($tgtCols | Where-Object { $srcCols -notcontains $_ })
+    # 2026-10-15 번호 키 열은 원본에서 옮기지 않는다(아래에서 매기거나 이름을 번호로 바꿔 넣는다).
+    #   $genCols = 대상에서 이 스크립트가 채우는 번호 열, $convSrc = 번호로 바뀌어 들어가는 원본의 이름 열
+    $genCols = @()
+    $convSrc = @()
+    if($CODE_ID_COLS.Contains($t)){ $genCols = @($CODE_ID_COLS[$t]) }
+    if($t -eq 'project'){ $genCols = @($PROJECT_REFS | ForEach-Object { $_.dst }); $convSrc = @($PROJECT_REFS | ForEach-Object { $_.src }) }
+    $cols    = @($cols    | Where-Object { $genCols -notcontains $_ })
+    $srcOnly = @($srcOnly | Where-Object { $convSrc -notcontains $_ })
+    $tgtOnly = @($tgtOnly | Where-Object { $genCols -notcontains $_ })
     foreach($c in $cols){ if($c -notmatch '^[A-Za-z0-9_]+$'){ Die "$t 의 컬럼 이름이 식별자 형식이 아닙니다: [$c]" } }
     foreach($k in $KEY_COLS[$t]){ if($cols -notcontains $k){ Die "$t 의 정체성 컬럼 '$k' 가 복사 목록에 없습니다." } }
     $sel = @()
@@ -777,23 +851,58 @@ try {
     $nulled = @()
     foreach($c in $cols){
       if($doShift -and ($SHIFT_TABLES -contains $t) -and ($SHIFT_COLS -contains $c)){
-        $sel += ('DATE_SUB(' + (BQ $c) + ', INTERVAL 9 HOUR)')
+        $sel += ('DATE_SUB(s.' + (BQ $c) + ', INTERVAL 9 HOUR)')
         $shifted += $c
       } elseif($NULL_TO_EMPTY.Contains($t) -and ($NULL_TO_EMPTY[$t] -contains $c)){
         # 07-24 정규화를 복사 SELECT 에서 한다(원본은 읽기만 하므로 UPDATE 할 수 없다). 몇 행이었는지는 보고서에 남긴다.
-        $sel += ('IFNULL(' + (BQ $c) + ", '')")
+        $sel += ('IFNULL(s.' + (BQ $c) + ", '')")
         $nNullSrc = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE " + (BQ $c) + " IS NULL;") "원본 $t.$c NULL 수")
         $nulled += ("$c " + $nNullSrc + "행")
       } else {
-        $sel += (BQ $c)
+        $sel += ('s.' + (BQ $c))
       }
     }
-    $copy.Add('INSERT INTO ' + (TQ $TargetDb $t) + ' (' + (($cols | ForEach-Object { BQ $_ }) -join ',') + ') SELECT ' + ($sel -join ',') + ' FROM ' + (TQ $SourceDb $t) + ';')
+    # 번호 열. 코드표: 고정 번호 지도에 있는 이름(BINARY)은 그 번호, 나머지는 지도의 MAX+1 부터 이름순.
+    #          project: 원본 이름을 방금 넣은 대상 코드표에서 찾아 번호로(NOT NULL 열은 JOIN, status 는 LEFT JOIN).
+    #   이름 비교는 대상 콜레이션(utf8mb4_0900_ai_ci)으로 한다. 원본 표의 문자셋이 달라도 CONVERT 로 맞춘다.
+    $insCols = @($cols)
+    $from = ''
+    $genNote = ''
+    if($CODE_ID_COLS.Contains($t)){
+      $nameKey = 'CONVERT(s.' + (BQ 'name') + ' USING utf8mb4)'
+      $ord = 'ORDER BY ' + $nameKey + ' COLLATE utf8mb4_0900_ai_ci, CAST(' + $nameKey + ' AS BINARY)'
+      $map = $FIXED_IDS[$t]
+      if($map.Count -gt 0){
+        $base = [int](($map.Keys | ForEach-Object { [int]$_ } | Measure-Object -Maximum).Maximum)
+        $mapSql = (@($map.Keys | ForEach-Object { 'SELECT ' + $_ + ' AS id, ''' + (SqlStr $map[$_]) + ''' AS nm' }) -join ' UNION ALL ')
+        $sel += ('CASE WHEN m.id IS NOT NULL THEN m.id ELSE ' + $base + ' + ROW_NUMBER() OVER (PARTITION BY (m.id IS NULL) ' + $ord + ') END')
+        $from = ' LEFT JOIN (' + $mapSql + ') m ON CAST(' + $nameKey + ' AS BINARY) = CAST(m.nm AS BINARY)'
+        $genNote = $CODE_ID_COLS[$t] + '(고정 ' + $map.Count + '개, 나머지 ' + ($base + 1) + ' 부터 이름순)'
+      } else {
+        $sel += ('ROW_NUMBER() OVER (' + $ord + ')')
+        $genNote = $CODE_ID_COLS[$t] + '(1 부터 이름순)'
+      }
+      $insCols += $CODE_ID_COLS[$t]
+    } elseif($t -eq 'project'){
+      $i = 0
+      foreach($r in $PROJECT_REFS){
+        $a = 'r' + $i
+        $i++
+        $kind = ' JOIN '
+        if($r.nullable){ $kind = ' LEFT JOIN ' }
+        $from += $kind + (TQ $TargetDb $r.parent) + ' ' + $a + ' ON ' + $a + '.' + (BQ 'name') + ' = CONVERT(s.' + (BQ $r.src) + ' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci'
+        $sel += ($a + '.' + (BQ $r.pid))
+        $insCols += $r.dst
+      }
+      $genNote = (@($PROJECT_REFS | ForEach-Object { $_.src + '->' + $_.dst }) -join ',')
+    }
+    $copy.Add('INSERT INTO ' + (TQ $TargetDb $t) + ' (' + (($insCols | ForEach-Object { BQ $_ }) -join ',') + ') SELECT ' + ($sel -join ',') + ' FROM ' + (TQ $SourceDb $t) + ' s' + $from + ';')
     $line = "  {0,-13} 컬럼 {1,2}개" -f $t, $cols.Count
     if($shifted.Count -gt 0){ $line += " · -9h: " + ($shifted -join ',') }
     if($nulled.Count -gt 0){ $line += " · NULL→'': " + ($nulled -join ',') }
     if($tgtOnly.Count -gt 0){ $line += " · 원본에 없음(대상 기본값): " + ($tgtOnly -join ',') }
     if($srcOnly.Count -gt 0){ $line += " · ★ 원본에만 있어 복사 안 함: " + ($srcOnly -join ',') }
+    if($genNote){ $line += ", 번호: " + $genNote }
     $colReport.Add($line)
   }
   $copy.Add('SET FOREIGN_KEY_CHECKS=1;')
@@ -802,6 +911,31 @@ try {
   $copyFile = NewTemp "setup_copy_" ".sql"
   [IO.File]::WriteAllText($copyFile, (($copy.ToArray()) -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($false)))
   ApplySqlFile $copyFile "" "과제 4표 복사(한 세션)"
+
+  # --- 2026-10-15 번호 키 복사 검증(CODE-TABLE-IDS §5) ---
+  #   원본과 대상의 키 모양이 다르므로 행 수와 고아 0 만으로는 '같은 이름을 가리키는가' 를 모른다.
+  #   (a) 코드표 셋: 원본의 모든 이름이 대상에 글자 그대로(BINARY) 있다.
+  #   (b) 고정 번호: 지도에 있는 이름은 지도의 번호를 받았다(없는 이름은 경고만 한다. 그 동작이 걸릴 행이 없다).
+  #   (c) project 참조 셋: 대상의 번호로 되살린 이름 = 원본의 이름(BINARY, NULL 대칭). 행이 빠져도 여기서 잡힌다.
+  #   ※ 한글 이름은 mysql 명령줄 인자로 넘기지 않는다(콘솔 코드페이지에서 깨진다). 16진 바이트로 비교한다.
+  $idBad = @()
+  foreach($t in $CODE_ID_COLS.Keys){
+    $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " s WHERE NOT EXISTS (SELECT 1 FROM " + (TQ $TargetDb $t) + " t WHERE CAST(t.``name`` AS BINARY) = CAST(CONVERT(s.``name`` USING utf8mb4) AS BINARY));") "$t 이름 복원")
+    if($n -ne 0){ $idBad += "$t 의 원본 이름이 대상에 글자 그대로 없음 $n 행" }
+    foreach($id in $FIXED_IDS[$t].Keys){
+      $hex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($FIXED_IDS[$t][$id]))).Replace('-', '')
+      $got = Q ("SELECT IFNULL(MIN(" + (BQ $CODE_ID_COLS[$t]) + "), '') FROM " + (TQ $TargetDb $t) + " WHERE CAST(``name`` AS BINARY) = X'" + $hex + "';") "$t 고정 번호 $id"
+      if("$got" -eq ""){ Warn "$t 고정 번호 $id 의 이름이 원본에 없습니다. 그 번호에 묶인 동작이 걸릴 행이 없습니다(멈추지 않음)." }
+      elseif("$got" -ne "$id"){ $idBad += "$t 고정 번호 $id 의 이름이 번호 $got 을 받음" }
+    }
+  }
+  foreach($r in $PROJECT_REFS){
+    $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb 'project') + " s LEFT JOIN " + (TQ $TargetDb 'project') + " p ON p.id = s.id LEFT JOIN " + (TQ $TargetDb $r.parent) + " c ON c." + (BQ $r.pid) + " = p." + (BQ $r.dst) +
+                   " WHERE p.id IS NULL OR NOT (CAST(CONVERT(s." + (BQ $r.src) + " USING utf8mb4) AS BINARY) <=> CAST(c.``name`` AS BINARY));") "project.$($r.src) 번호 복원")
+    if($n -ne 0){ $idBad += "project.$($r.src) 를 번호로 되살린 이름이 원본과 다른 행 $n 개" }
+  }
+  if($idBad.Count -gt 0){ Die ("번호 키 복사 검증 실패: " + ($idBad -join '; ') + ". 대소문자만 다른 참조처럼 원본의 이름 표기가 어긋난 곳을 고친 뒤 다시 실행하세요.") }
+  Ok "번호 키 복사 검증: 이름 복원 BINARY 일치(코드표 3, project 참조 3), 고정 번호 일치"
 
   # cal_user_rev — schema-calendar.sql 이 'app_user 전원에게 rev 0 행' 을 시딩하지만, 그 시점의 app_user 는
   # 비어 있었다. 사람이 (a) 회사 시드로 들어왔으므로 같은 시딩을 다시 한다(그 파일 끝 '릴리스 게이트' 가 누락 0 을 요구한다).
@@ -836,7 +970,7 @@ try {
   Ok "행 수 4표 일치 (원본 = 대상)"
 
   foreach($t in $AUTOINC_KEYS.Keys){ CheckAutoInc $t $AUTOINC_KEYS[$t] }
-  Ok "AUTO_INCREMENT 확인 (project — org_unit · app_user 는 시딩 직후에 확인)"
+  Ok "AUTO_INCREMENT 확인 (코드표 3 + project. org_unit, app_user 는 시딩 직후에 확인)"
 
   # ==========================================================================
   #  [4/5] 권한
@@ -903,7 +1037,8 @@ try {
   Log "  고아 행        : 0 ($($ORPHAN_CHECKS.Count)개 관계)"
   if($doShift){ Log "  시각 이동      : $($SHIFT_TABLES -join ',') 의 $($SHIFT_COLS -join '/') -9시간" }
   else        { Log "  시각 이동      : 안 함(-NoShift)" }
-  Log "  sort_order     : app_user $sortFilled 행 백필(migrate-2026-09-10 2단계와 같은 순서 · NULL 0)"
+  Log "  sort_order     : app_user $sortFilled 행 백필(직급 서열, 이름, user_id 순, NULL 0)"
+  Log "  번호 키        : 코드표 3 + project 참조 3, 이름 복원 BINARY 일치(고정 번호 = schema-structure.sql 시드)"
   Log "  권한           : OK ('$AppUser'@'%' · 표 $($expGrantTables.Count)개)"
   Log "  원본 백업      : $srcDump"
   if($tgtDump){ Log "  삭제 전 대상   : $tgtDump" }

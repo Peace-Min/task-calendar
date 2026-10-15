@@ -2,9 +2,16 @@
 
 MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지금(개인 PC 임시)과 나중(서버 이관) 모두 같은 스크립트**로 실행하므로 동일 구조가 재현됩니다. 데이터는 이 키트가 만들지 않습니다(구조/권한만).
 
+> **2026-10-15 진입점 정리(docs/CODE-TABLE-IDS.md §8-2).** 새 DB 를 만드는 진입점은 **`setup-taskcalendar.cmd` 하나**입니다.
+> 옛 진입점 `init-db.cmd`/`init-db.ps1`, `migrate.cmd`/`migrate.ps1`, `../schema.sql`, 지난 `migrate-2026-*.sql` 열두 개와
+> `rollback-2026-08-24-org-id.sql` 은 지웠습니다(git 이력에 있습니다). 아래 본문에 그 이름이 남은 곳은 옛 기록입니다.
+> - **새 DB(회사 서버 포함)**: `setup-taskcalendar.cmd`. 스키마 파일로 `taskcalendar` 를 만들고, 원본 `taskmgr` 에서 과제 트랙을 복사하면서 코드표 이름을 번호로 바꿉니다.
+> - **데이터가 있는 로컬 DB(v12)**: `migrate-2026-10-15-code-ids.sql` 한 번(v12 → v13, 코드표 번호 키). 백업 먼저(`backup-taskmgr.cmd -DbName taskcalendar`), 복제한 격리 DB 에서 먼저. 실행법은 그 파일 머리말.
+> - 운영 스크립트(`backup-taskmgr`, `restore-taskmgr`, `init-calendar`, `org-ops`, `app-account`)의 기본 DB 는 `taskcalendar` 입니다. 옛 DB 는 `-DbName taskmgr` 처럼 이름을 적습니다.
+
 **이 폴더에는 서로 독립적인 트랙 둘**이 들어 있습니다. 같은 `taskmgr` DB 를 대상으로 하지만 다루는 테이블도, 앱 계정에 주는 권한도 다릅니다. **한쪽 문서를 다른 쪽 근거로 쓰지 마세요.**
 
-- **과제 트랙**: `project`·`customer` 등. 진입점 `init-db.cmd`. 설계는 [`../TABLE-DESIGN.md`](../TABLE-DESIGN.md)
+- **과제 트랙**: `project`·`customer` 등. 진입점 `setup-taskcalendar.cmd`(2026-10-15 부터. 옛 `init-db.cmd` 는 지웠습니다). 설계는 [`../TABLE-DESIGN.md`](../TABLE-DESIGN.md)
 - **캘린더 트랙**: `cal_*`(개인 일정, 할 일, 공수, 근태). 진입점 `init-calendar.cmd`. 설계는 [`../CALENDAR-TABLE-DESIGN.md`](../CALENDAR-TABLE-DESIGN.md)
 
 그리고 트랙과 무관하게 **DB 전체를 대상으로 하는 운영 도구**가 하나 있습니다. 바로 **백업**(`backup-taskmgr`)입니다.
@@ -14,12 +21,11 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 
 | 파일 | 역할 |
 |---|---|
-| `init-db.cmd` / `init-db.ps1` | **원큐**: `CREATE DATABASE` + 테이블 구조 + 앱 계정(최소권한) |
-| `schema-structure.sql` | 구조 전용 DDL(customer/project). 시드 없음 |
-| `create-app-user.sql` | 앱 계정 수동 생성용(참고). init-db가 자동으로도 함 |
-| `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙 |
-| `migrate.cmd` / `migrate.ps1` | **기존 데이터 DB 마이그레이션(재실행 안전, 무손실)**: 단계1 이름 유니크 제거+`NOT NULL DEFAULT ''`(ADR-21), 단계2 구분/상태 ENUM→코드테이블+FK, note 추가(ADR-22). 더블클릭하면 root 비번만 묻는다. 각 단계 멱등(반영됐으면 스킵) |
-| `migrate-2026-07-24-uniqueness.sql` | (단계1 단독 SQL. 참고용이고 실사용은 위 migrate.cmd 권장) |
+| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **원큐(진입점)**: 새 DB 구조 + 회사 시드 + 원본 과제 복사(코드표 이름을 번호로) + 앱 권한 + 검증. 아래 캘린더 트랙 표의 같은 줄 참조 |
+| `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드 |
+| `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
+| `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
+| `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다 |
 
 ## 구성: 캘린더 트랙 (`cal_*`), 백업
 
@@ -49,10 +55,10 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 
 ## 지금: 과제 구조 만들기
 
-로컬(개인 PC)에서 **`init-db.cmd` 더블클릭** 후 root 비번과 앱 계정 비번 입력.
+2026-10-15 부터 **`setup-taskcalendar.cmd` 더블클릭**(root 비번, 앱 계정이 없으면 앱 계정 비번). 과제, 사용자, 캘린더 구조를 한 번에 만듭니다(옛 `init-db.cmd` 는 지웠습니다).
 서버를 대상으로 하려면:
 ```
-init-db.cmd -DbHost 192.168.0.50 -Port 3306
+setup-taskcalendar.cmd -DbHost 192.168.0.50 -Port 3306
 ```
 - **앱 계정 비번**은 위젯 빌드의 `DeployConfig.DbPassword` 와 **똑같이** 넣어야 앱이 붙습니다.
 - 앱 계정은 **과제 테이블에 대해** `SELECT`/`INSERT`/`UPDATE` 만(DDL, DROP 없음).
@@ -212,6 +218,10 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
   ```
 
 ### 적용 순서: 번호 오름차순, 건너뛰지 마세요
+
+> **2026-10-15:** 아래 표의 파일(3~12)은 지웠습니다(git 이력에 있습니다). 지금 남은 이관 파일은
+> `migrate-2026-10-15-code-ids.sql`(12 → 13, 코드표 번호 키) 하나이고, 데이터가 있는 로컬 DB 에만 씁니다.
+> 새 DB 는 `setup-taskcalendar.cmd` 가 최신 판(13)으로 바로 만듭니다.
 
 | 파일 | 무엇을 바꾸나 | `schema_version` |
 |---|---|---|
@@ -998,9 +1008,8 @@ mysql -u root -p taskmgr < 내부망LLM이_만든_INSERT.sql
 ```
 # 로컬(현 서버)에서 데이터 추출
 mysqldump -u root -p taskmgr > taskmgr-data.sql
-# 새 서버에서
-init-db.cmd       -DbHost <새서버>    # 과제 구조 + 계정
-init-calendar.cmd -DbHost <새서버>    # 캘린더 구조 + 권한 (app_user 가 생긴 뒤에)
+# 새 서버에서(2026-10-15 부터 이 한 줄이 구조, 시드, 과제 복사, 권한을 다 한다)
+setup-taskcalendar.cmd -DbHost <새서버>
 mysql -u root -p -h <새서버> taskmgr < taskmgr-data.sql   # 데이터
 # 위젯: DeployConfig.DbHost 를 새 서버로 바꿔 재빌드
 ```
@@ -1013,14 +1022,14 @@ mysql -u root -p -h <새서버> taskmgr < taskmgr-data.sql   # 데이터
 - 사용자 PC 에 남아 있는 옛 캘린더 파일(`%APPDATA%\TaskCalendar\data.xml`)은 이 dump/restore 경로가 아니라 **1회성 이관**으로 옮깁니다(설계 §8. `cal_migration_log` 가 재실행을 막습니다). 두 갈래가 있습니다. 배포자가 일괄로 돌리는 **`xml-to-db`** 도구, 그리고 사용자가 앱에서 직접 올리는 **XML 가져오기**(자동 이관은 폐기했습니다. 설계 §3b). 어느 쪽이든 **한 번**입니다.
 
 ## 검증
-init-db 후 서버 루트의 `check.cmd`(mysql-offline 저장소) 또는:
+setup-taskcalendar 후(그 스크립트가 검증 보고서를 남깁니다) 또는:
 ```
-mysql -u root -p -e "USE taskmgr; SHOW TABLES; SELECT COUNT(*) FROM project;"
+mysql -u root -p -e "USE taskcalendar; SHOW TABLES; SELECT COUNT(*) FROM project;"
 ```
 캘린더 쪽은 `init-calendar` 의 게이트 + `grants-calendar.sql` 끝의 확인 목록입니다(위 '검증' 절 참조).
 백업은 이 게이트에 안 들어옵니다. `backup-taskmgr.cmd -Status` 와 첫 회차 로그를 따로 보세요(위 '백업' 절).
 
-> ⚠️ `init-db`/`schema-structure.sql`은 멱등 재구축이라 **기존 테이블을 DROP**합니다. 데이터가 있는 DB에 재실행하면 지워집니다(최초 구축용).
+> ⚠️ `setup-taskcalendar`/`schema-structure.sql`은 멱등 재구축이라 **기존 테이블을 DROP**합니다. 데이터가 있는 DB에 재실행하면 지워집니다(최초 구축용).
 
 ## 편집 권한 (앱 내 공식 과제 편집 게이트)
 

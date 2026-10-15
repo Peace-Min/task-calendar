@@ -134,7 +134,7 @@ param(
 
   [string]$DbHost = "127.0.0.1",
   [int]$Port = 3306,
-  [string]$DbName = "taskmgr",
+  [string]$DbName = "taskcalendar",   # 2026-10-15 기본값 taskmgr → taskcalendar(CODE-TABLE-IDS §8-1)
   [string]$BaseDir = "C:\mysql",       # mysql.exe 위치(없으면 서비스 binPath 추론)
   [string]$ServiceName = "MySQL84",
   [string]$DbUser = ""                 # 비우면 TC_OPS_DB_ADMIN_USER, 그것도 없으면 root
@@ -535,7 +535,7 @@ SELECT
 "@
 $nCols = Get-Num $colSql "번호 컬럼 3종 실재"
 if ($nCols -ne 3) {
-  Die "이 DB 는 조직 대리키(org_id) 전환 전 스키마입니다(있는 컬럼 $nCols/3). db/deploy/migrate-2026-08-24-org-id.sql 을 먼저 적용하세요." 5
+  Die "이 DB 는 조직 대리키(org_id) 전환 전 스키마입니다(있는 컬럼 $nCols/3). 옛 이관 파일(migrate-2026-08-24-org-id.sql)은 2026-10-15 에 지웠습니다. 새 DB 는 db/deploy/setup-taskcalendar.cmd 로 만드세요." 5
 }
 # 이름 미러가 남아 있으면 절단이 덜 끝난 것이다. 이 도구는 그 컬럼을 쓰지 않으므로,
 # 그대로 두면 아무도 갱신하지 않는 낡은 이름이 표에 남아 그걸 읽는 쪽이 틀린 트리를 그린다.
@@ -546,7 +546,7 @@ SELECT COUNT(*) FROM information_schema.COLUMNS
      OR (TABLE_NAME='app_user' AND COLUMN_NAME='org_unit'));
 "@ "이름 미러 컬럼 잔존"
 if ($nMirror -ne 0) {
-  Die "이 DB 에는 이름 미러 컬럼이 $nMirror 개 남아 있습니다(org_unit.parent / app_user.org_unit) — 조직 절단 마이그레이션이 덜 끝났습니다. 이 도구는 그 컬럼을 쓰지 않으므로, 두면 낡은 이름이 표에 남습니다. db/deploy/migrate-2026-08-24-org-id.sql 을 끝까지 적용하세요." 5
+  Die "이 DB 에는 이름 미러 컬럼이 $nMirror 개 남아 있습니다(org_unit.parent / app_user.org_unit) — 조직 절단 마이그레이션이 덜 끝났습니다. 이 도구는 그 컬럼을 쓰지 않으므로, 두면 낡은 이름이 표에 남습니다. 새 DB 는 db/deploy/setup-taskcalendar.cmd 로 만드세요(옛 이관 파일은 2026-10-15 에 지웠습니다)." 5
 }
 
 # ============================================================================

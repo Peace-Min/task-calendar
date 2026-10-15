@@ -37,12 +37,9 @@ const migrateSrc = new Map(MIGRATE_FILES.map((f) => [f, loadSql(f)]));
 // 아래 checks.migrationChain 이 그 사실을 매번 다시 확인한다 — 나중에 누가 이 파일들에
 // 버전 갱신을 넣으면 제외 목록이 거짓이 되고 테스트가 그 자리에서 실패한다.
 const PRE_VERSION_FILES = new Map([
-  ['migrate-2026-07-24-uniqueness.sql',
-   'project 표의 유니크·NOT NULL 조정. cal_* 도 cal_schema_meta 도 아직 없던 시절의 1회용'],
-  ['migrate-2026-08-24-user-id.sql',
-   'app_user 의 PK 를 login_id→user_id 로. schema-calendar.sql **앞**에 도는 선행 파일이라 cal_schema_meta 가 존재하지 않는다'],
-  ['migrate-2026-08-24-org-id.sql',
-   'org_unit 의 PK 를 name→org_id 로. 대상이 org_unit/app_user 뿐 — cal_* 를 건드리지 않는다'],
+  // 2026-10-15 지난 migrate-2026-*.sql(07-24 uniqueness, 08-24 user-id, 08-24 org-id 포함)을 지웠다(CODE-TABLE-IDS §8-2).
+  // 남은 이관 파일은 migrate-2026-10-15-code-ids.sql(12 → 13) 하나라 지금 이 목록은 비어 있다.
+  // 버전을 올리지 않는 이관 파일을 다시 더하면 여기에 사유와 함께 적는다(변이⑦ 이 이 장치를 시험한다).
 ]);
 
 // ── DROP 에만 있어도 되는 표(명시적 허용 목록) ────────────────────────
@@ -223,11 +220,11 @@ const checks = {
 
   // ⑦ 마이그레이션 체인 — (N→M) 이 끊김·중복 없이 이어지고 마지막이 정본 버전과 같다.
   //    srcMap: 파일명 → 원문 · canon: schema-calendar.sql 원문.
-  migrationChain(srcMap, canon) {
+  migrationChain(srcMap, canon, preVersion = PRE_VERSION_FILES) {
     const links = [];
     for (const [file, sql] of srcMap) {
       const pair = versionBump(sql);
-      if (PRE_VERSION_FILES.has(file)) {
+      if (preVersion.has(file)) {
         // 제외 근거를 매번 다시 확인한다 — '버전을 안 올리는 파일'이라는 주장이 여전히 참인가.
         assert.strictEqual(pair, null,
           `${file} 은 버전 도입 전 파일로 제외돼 있는데 schema_version 을 ${pair && pair.join('→')} 로 올린다. ` +
@@ -433,9 +430,10 @@ test('변이②: DROP 순서를 뒤집으면 dropOrderChildFirst 가 실패한�
 });
 
 test('변이③: 마이그레이션 체인에 구멍을 내면 migrationChain 이 실패한다', () => {
-  // 5→6(report-daily)을 빼면 repo-flag(4→5) 다음이 report-weekly(6→7) 가 되어 v=5 출발이 사라진다.
+  //  2026-10-15 남은 파일이 하나(12 → 13)라, 그 뒤에 한 칸 떨어진 가짜 파일(14 → 15)을 붙여 v=13 출발이 없는 상태를 만든다.
   const holed = new Map(migrateSrc);
-  holed.delete('migrate-2026-08-31-report-daily.sql');
+  holed.set('migrate-2099-01-01-ghost.sql',
+    "UPDATE cal_schema_meta SET v = '15', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'schema_version' AND v = '14';\n");
   assert.doesNotThrow(() => checks.migrationChain(migrateSrc, canonSql), '원본은 통과해야 한다');
   assert.throws(() => checks.migrationChain(holed, canonSql), /체인이 끊겼다/);
 });
@@ -474,11 +472,16 @@ test('변이⑥: 정본 버전만 올리고 마이그레이션을 안 쓰면 mig
 });
 
 test('변이⑦: 버전 도입 전 파일이 버전을 올리기 시작하면 제외 목록이 거짓이라고 알린다', () => {
-  const lying = new Map(migrateSrc);
-  const victim = 'migrate-2026-07-24-uniqueness.sql';
-  lying.set(victim, migrateSrc.get(victim) +
+  //  2026-10-15 제외 목록이 비었으므로, 가짜 '버전 도입 전 파일' 하나를 목록과 소스에 함께 넣어 장치를 시험한다.
+  const victim = 'migrate-2000-01-01-pre-version.sql';
+  const pre = new Map([[victim, '시험용 가짜 파일']]);
+  const honest = new Map(migrateSrc);
+  honest.set(victim, '-- cal_schema_meta 를 건드리지 않는 파일\nALTER TABLE project ADD COLUMN x INT;\n');
+  assert.doesNotThrow(() => checks.migrationChain(honest, canonSql, pre), '제외 목록이 참이면 통과해야 한다');
+  const lying = new Map(honest);
+  lying.set(victim, honest.get(victim) +
     "\nUPDATE cal_schema_meta SET v = '3', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'schema_version' AND v = '2';\n");
-  assert.throws(() => checks.migrationChain(lying, canonSql), /PRE_VERSION_FILES 에서 빼고/);
+  assert.throws(() => checks.migrationChain(lying, canonSql, pre), /PRE_VERSION_FILES 에서 빼고/);
 });
 
 test('변이⑨: 실제로 났던 결함(보고 기록 3표의 DROP 누락, c4cf813)을 재현하면 잡는다', () => {

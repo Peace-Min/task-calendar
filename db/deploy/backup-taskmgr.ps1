@@ -1,5 +1,7 @@
 ﻿<#
   backup-taskmgr.ps1 — taskmgr DB 주간 백업(mysqldump) + '온전한 백업인지' 대조.
+  (2026-10-15: 기본 DB 는 taskcalendar 다. 앱이 쓰는 DB 가 그것이다. 파일 이름은 사람의 습관대로 그대로 둔다.
+   0.16 클라이언트가 쓰는 옛 DB 를 다루려면 -DbName taskmgr 처럼 이름을 적는다. CODE-TABLE-IDS §8-1)
 
   보통은 backup-taskmgr.cmd 더블클릭(1회 수동 백업), 정기 실행은 -Install 로 등록.
 
@@ -77,7 +79,7 @@
 [CmdletBinding()]
 param(
   [string]$BackupDir = "D:\taskmgr-backup",   # ★ C: 와 별개 물리 볼륨을 권장(6번 경고 참조)
-  [string]$DbName    = "taskmgr",
+  [string]$DbName    = "taskcalendar",
   [int]$Keep         = 8,                     # 남길 세대 수(주 1회 → 약 2개월)
   [string]$CnfPath   = "",                    # 비우면 %ProgramData%\taskmgr\backup-taskmgr.cnf
   [switch]$Install,                           # 작업 스케줄러에 주 1회 등록(관리자)
@@ -567,14 +569,14 @@ if(-not (Test-Path $howto)){
 taskmgr 백업 복구 방법
 =======================
 1) 복구용 빈 DB 를 만든다(원본을 덮어쓰기 전에 반드시 여기서 먼저 확인할 것):
-     mysql -uroot -p -e "CREATE DATABASE taskmgr_restore CHARACTER SET utf8mb4;"
+     mysql -uroot -p -e "CREATE DATABASE taskcalendar_restore CHARACTER SET utf8mb4;"
 
 2) 덤프를 밀어넣는다(이 파일들은 UTF-8, --default-character-set 을 반드시 줄 것):
-     mysql -uroot -p --default-character-set=utf8mb4 taskmgr_restore < "taskmgr-YYYYMMDD-HHMMSS.sql"
+     mysql -uroot -p --default-character-set=utf8mb4 taskcalendar_restore < "taskcalendar-YYYYMMDD-HHMMSS.sql"
 
 3) 표·트리거·행 수가 원본과 같은지 확인한다:
-     SELECT COUNT(*) FROM information_schema.TABLES   WHERE TABLE_SCHEMA='taskmgr_restore' AND TABLE_TYPE='BASE TABLE';
-     SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='taskmgr_restore';
+     SELECT COUNT(*) FROM information_schema.TABLES   WHERE TABLE_SCHEMA='taskcalendar_restore' AND TABLE_TYPE='BASE TABLE';
+     SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA='taskcalendar_restore';
 
 4) ★ 계정과 권한을 다시 만든다 — 이 덤프에는 들어 있지 않다.
    덤프는 taskmgr 한 DB 만 뜬다. 계정 정보는 mysql 스키마에 있어서 대상이 아니다.

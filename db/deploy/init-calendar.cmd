@@ -22,7 +22,8 @@ rem    2026-08-11 decision to drop the audit triggers). Do not reuse those two
 rem    values for a different meaning - callers pinned to the old table would
 rem    silently take the wrong branch.
 rem
-rem  Usage:  init-calendar.cmd [-DbHost 192.168.0.50] [-DbName taskmgr] [-Force]
+rem  Usage:  init-calendar.cmd [-DbHost 192.168.0.50] [-DbName taskcalendar] [-Force]
+rem          (the default database is taskcalendar)
 rem  Do NOT end an argument value with a backslash - powershell.exe reads \" as
 rem  an escaped quote and swallows the following argument.
 rem ===========================================================================

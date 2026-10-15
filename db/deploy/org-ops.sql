@@ -69,7 +69,7 @@ SET @n_mirror := (SELECT COUNT(*) FROM information_schema.COLUMNS
                      AND ((TABLE_NAME = 'org_unit' AND COLUMN_NAME = 'parent')
                        OR (TABLE_NAME = 'app_user' AND COLUMN_NAME = 'org_unit')));
 SET @g := CASE
-  WHEN @n_new_cols <> 3 THEN 'SELECT 1 FROM `중단: org_id 전환 전 스키마다 - migrate-2026-08-24-org-id.sql 먼저`'
+  WHEN @n_new_cols <> 3 THEN 'SELECT 1 FROM `중단: org_id 전환 전 스키마다 - setup-taskcalendar 로 다시 만들 것`'
   WHEN @n_mirror <> 0   THEN 'SELECT 1 FROM `중단: 이름 미러 컬럼이 남아 있다 - 절단 마이그레이션이 덜 끝났다`'
   ELSE 'DO 0' END;
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;

@@ -31,6 +31,8 @@
 --       배포 순서(고정):
 --         · 신규 DB : 01-schema-users.sql(→02·03…) → schema-calendar.sql → grants-calendar.sql
 --         · 기존 DB : migrate-2026-08-24-user-id.sql → schema-calendar.sql → grants-calendar.sql
+--           (2026-10-15: 그 이관 파일은 지웠다(git 이력에 있다). 옛 키 DB 는 더 옮기지 않고, 새 DB 는
+--            setup-taskcalendar.ps1 이 01-schema-users.sql → 이 파일 → grants-calendar.sql 순서로 만든다.)
 --       ★ 기존 DB 에서 마이그레이션을 건너뛰면 이 파일은 **DROP 에 도달하기 전에** 멈춘다
 --         (아래 SET NAMES 바로 다음의 '0. 선행조건 가드'). 그 가드가 없던 시절에는 DROP 이
 --         전부 실행된 뒤 첫 CREATE TABLE 이 ERROR 3734 로 죽어 cal_* 가 0개 남았다(실측).
@@ -973,7 +975,7 @@ SET @g_has_user_id := (SELECT COUNT(*) FROM information_schema.COLUMNS
                         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'app_user'
                           AND COLUMN_NAME = 'user_id');
 SET @g := IF(@g_has_user_id = 1, 'DO 0',
-             'SELECT 1 FROM `중단: app_user.user_id 없음 - migrate-2026-08-24-user-id.sql 먼저`');
+             'SELECT 1 FROM `중단: app_user.user_id 없음 - 01-schema-users.sql 로 다시 만들 것`');
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
 -- 가드 3) 타입과 인덱스가 FK 를 받을 수 있는 모양인가
@@ -1977,7 +1979,11 @@ CREATE TABLE cal_schema_meta (
 --     tests/schema-integrity.test.mjs 의 '계약⑥: 버전 정합' 이 실패한다(둘이 갈라지지 않게).
 --   · 12 (2026-09-10): app_user.sort_order SMALLINT→INT UNSIGNED (migrate-2026-09-10-user-sort-order-int.sql)
 --       10 간격 6,553명 천장(SMALLINT 65,535) 제거 — 부하 실측 뒤 배포 전에 넓혔다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '12', UTC_TIMESTAMP(3));
+--   · 13 (2026-10-15): 코드표 넷(customer, section_code, status_code, title_code)을 번호 키로
+--       (migrate-2026-10-15-code-ids.sql, docs/CODE-TABLE-IDS.md). 이 파일의 cal_* 는 바뀌지 않았지만
+--       판번호의 정본이 여기라 이 줄이 여기 있다. 위젯 ExpectedSchemaVersion 도 같은 배포에서 13 이다.
+--     ※ 2026-10-15 에 지난 migrate-2026-*.sql(위 3~12)은 지웠다(git 이력에 있다). 남은 이관 파일은 13 하나다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '13', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1) — 구조 생성 직후 반드시 함께 실행

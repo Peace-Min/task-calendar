@@ -109,10 +109,11 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_entry TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, DELETE ON taskmgr.cal_entry_except TO 'taskmgr_app'@'%';
 
 -- ---------- 커밋 목록 ----------
--- 네 동사 전부: 개별 삭제 UI 가 실재하고(deleteCommitRow :8934, 호출부 :9725/:10486),
---   제목·본문 인라인 편집이 있으며(setCommitSubject :8898 / setCommitMessage :8907),
---   범위 재수집은 삭제 후 재삽입이다.
-GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_entry_commit TO 'taskmgr_app'@'%';
+-- DELETE 필요: 개별 삭제 UI 가 실재하고(deleteCommitRow :8934, 호출부 :9725/:10486), 범위 재수집은 삭제 후 재삽입이다.
+-- UPDATE 는 주지 않는다(2026-10-15, CODE-TABLE-IDS §8-3). 제목과 본문 인라인 편집(setCommitSubject, setCommitMessage)도
+--   호스트는 그 일정의 커밋 행을 지운 뒤 다시 넣는다(widget/CalendarWriteDb.cs 의 DELETE FROM cal_entry_commit → INSERT).
+--   이 표에 UPDATE 를 내는 경로가 없다.
+GRANT SELECT, INSERT, DELETE ON taskmgr.cal_entry_commit TO 'taskmgr_app'@'%';
 
 -- ---------- 할 일 ----------
 -- DELETE 필요: deleteTodo(:8809) 호출부 3곳. (완료 토글·본문 수정은 UPDATE)
@@ -122,14 +123,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_todo TO 'taskmgr_app'@'%';
 -- DELETE 필요: normalizeTodoDayNotes(:8757-8766)가 updateTodo 마다 빈 값과 기한 범위를
 --   벗어난 날짜를 탈락시킨다 — 부모 할일은 살아 있는데 자식 행만 사라지는 경우가 정상 경로다.
 --   (부모를 지울 때의 자식 정리는 FK ON DELETE CASCADE 가 하므로 이 권한과 무관하다)
-GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_todo_day_note TO 'taskmgr_app'@'%';
+-- UPDATE 는 주지 않는다(2026-10-15, §8-3). 호스트는 할 일의 날짜별 설명을 지운 뒤 다시 넣는다(CalendarWriteDb.cs).
+GRANT SELECT, INSERT, DELETE ON taskmgr.cal_todo_day_note TO 'taskmgr_app'@'%';
 
 -- ---------- 장소(회의실) 목록 ----------
 -- DELETE 필요: deleteRoom(:5872-5877) / addRoom(:5862-5871).
--- UPDATE 필요: 이름이 PK 라 이름 수정 자체는 없지만, 중간 항목이 지워지면 뒤 행들의
---   sort_order 를 다시 써야 한다. 회의실에는 createdAt 조차 없어 sort_order 가 표시 순서의
---   유일한 근거다 — 이 UPDATE 가 막히면 순서가 조용히 뒤섞인다.
-GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_room TO 'taskmgr_app'@'%';
+-- UPDATE 는 주지 않는다(2026-10-15, §8-3). 순서(sort_order)를 다시 쓸 때도 호스트는 그 사람의 회의실 목록을
+--   통째로 지운 뒤 순서대로 다시 넣는다(CalendarWriteDb.cs 의 DELETE FROM cal_room WHERE user_id → INSERT).
+GRANT SELECT, INSERT, DELETE ON taskmgr.cal_room TO 'taskmgr_app'@'%';
 
 -- ---------- (날짜 × 과제) 투입 시간 ----------
 -- DELETE 필요: 공수에 0/빈칸을 넣는 것은 0 저장이 아니라 행 삭제다

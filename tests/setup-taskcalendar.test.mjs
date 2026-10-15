@@ -25,13 +25,15 @@
 //        ([client] 아님: mysqldump 도 [client] 를 읽고 모르는 옵션에서 멈춘다)
 //     ⑭ project.contract_name/common_name 의 NULL 은 복사 SELECT 의 IFNULL(<col>, '') 로(대상 NOT NULL)
 //     ⑮ 창 멈춤 규칙: 리다이렉트면 안 멈춤 · ps1 직접 실행이면 늘 멈춤 · .cmd 가 TC_SETUP_LAUNCHER=cmd
-//     ⑯ app_user.sort_order 백필 — migrate-2026-09-10 2단계와 같은 문장 · 04 뒤 · 과제 복사 앞
+//     ⑯ app_user.sort_order 백필 — 직급 서열(title_id 조인) → 이름 → user_id 순 · 04 뒤 · 과제 복사 앞
 //     ⑰ 회사 데이터 폴더가 옛 판(08-24 이전)이면 사전 점검에서 멈춘다 · CREATE DATABASE 보다 앞
 //     ⑱ ApplySqlFile 은 mysql 출력을 UTF-8 로 읽고 원래 인코딩으로 되돌린다
 //     ⑲ 대상 DB 가 있어도 사전 점검은 멈추지 않는다 · 확인 전 요약에 재구축(노랑)·캘린더 기록(빨강) · 보고서에 남김
 //     ⑳ 옛 판 작업장 <대상>_legacy_stage — 사전 점검은 읽기만 · 삭제는 확인 뒤 · 정확한 이름 가드 안
 //     ㉑ 대상의 캘린더 기록 행 수 — QRowsTry(죽지 않음)로만 · 없는 표는 건너뜀 · Die 없음
 //     ㉒ -Force 는 호환용 무동작 — "-Force 로/를" 안내 문장이 없다
+//     ㉓ 2026-10-15 코드표 번호 키: 원본 이름 키를 대상 번호 키로(고정 번호 지도 = schema-structure.sql 시드, 나머지 MAX+1 이름순,
+//        project 는 JOIN ON name) · 확인 전 원본 점검 · 복사 뒤 이름 복원 BINARY 검증
 //
 // 공용 기계(주석 마스커·비번 검사·종료코드 표·변이 주입기)는 tests/ps-guard-lib.mjs 의 것을 쓴다 —
 // backup/restore 계약과 같은 잣대를 대기 위해서다.
@@ -52,7 +54,7 @@ const cmdSrc = norm(cmdBytes.toString('latin1'));
 const appUserSqlSrc = readFileSync(new URL('../db/deploy/create-app-user.sql', import.meta.url), 'utf8');
 const calGrantsSqlSrc = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
 const calSchemaSrc = readFileSync(new URL('../db/deploy/schema-calendar.sql', import.meta.url), 'utf8');
-const sortOrderMigSrc = readFileSync(new URL('../db/deploy/migrate-2026-09-10-user-sort-order.sql', import.meta.url), 'utf8');
+// (옛 migrate-2026-09-10-user-sort-order.sql 은 2026-10-15 에 지웠다. 백필 순서식은 아래 ⑯ 이 ps1 안에서만 본다.)
 const structSqlSrc = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
 
 // 문자열 '내용' 까지 공백으로 지운 사본(길이 동일). 중괄호 짝 맞추기에만 쓴다 —
@@ -187,7 +189,7 @@ const checks = {
       'KST→UTC 이동 대상 표는 과제 트랙 4표뿐이어야 한다(사용자 3표는 원본에서 옮기지 않는다 — 회사 시드)');
     assert.deepStrictEqual(listLiteral(code, 'SHIFT_COLS').sort(), ['created_at', 'updated_at'],
       'KST→UTC 이동 대상 컬럼은 created_at/updated_at 뿐이어야 한다');
-    assert.ok(/'DATE_SUB\(' \+ \(BQ \$c\) \+ ', INTERVAL 9 HOUR\)'/.test(code),
+    assert.ok(/'DATE_SUB\(s\.' \+ \(BQ \$c\) \+ ', INTERVAL 9 HOUR\)'/.test(code),
       'DATE_SUB(<col>, INTERVAL 9 HOUR) 이동식이 사라졌거나 바뀌었다');
     assert.ok(code.includes("\n$SHIFT_TABLES = @('section_code','status_code','customer','project')\n"),
       '$SHIFT_TABLES 줄이 바뀌었다 — KST→UTC 이동 대상은 과제 트랙 4표 그대로여야 한다');
@@ -213,13 +215,14 @@ const checks = {
     // 고아 행 6관계(자식.컬럼 → 부모.컬럼).
     const rel = [...code.matchAll(/child='(\w+)';\s*col='(\w+)';\s*parent='(\w+)';\s*pcol='(\w+)'/g)]
       .map((m) => `${m[1]}.${m[2]}->${m[3]}.${m[4]}`).sort();
+    //  2026-10-15 코드표 참조는 번호다(CODE-TABLE-IDS §2).
     assert.deepStrictEqual(rel, [
       'app_user.org_id->org_unit.org_id',
-      'app_user.title->title_code.name',
+      'app_user.title_id->title_code.title_id',
       'org_unit.parent_id->org_unit.org_id',
-      'project.customer->customer.name',
-      'project.section->section_code.name',
-      'project.status->status_code.name',
+      'project.customer_id->customer.customer_id',
+      'project.section_id->section_code.section_id',
+      'project.status_id->status_code.status_id',
     ], '고아 행 검사 관계가 바뀌었다 — FK 검사를 끄고 넣었으므로 이것이 유일한 정합성 관문이다');
     assert.ok(/foreach\(\$oc in \$ORPHAN_CHECKS\)/.test(code) && /" c LEFT JOIN "/.test(code) &&
       /" IS NOT NULL AND p\." \+ \(BQ \$oc\.pcol\) \+ " IS NULL;"/.test(code),
@@ -468,8 +471,8 @@ const checks = {
     // (g) 시딩 검사 — 번호 NULL·중복 0 · 3표 행 수 > 0 · AUTO_INCREMENT > MAX (시드 직후 · 과제 복사 앞).
     assert.deepStrictEqual(listLiteral(code, 'SEED_TABLES'), ['title_code', 'org_unit', 'app_user'], '$SEED_TABLES 가 사용자 3표가 아니다');
     assert.ok(/\$SEED_AUTOINC_KEYS\s*=\s*\[ordered\]@\{ org_unit = 'org_id'; app_user = 'user_id' \}/.test(code) &&
-      /\$AUTOINC_KEYS\s*=\s*\[ordered\]@\{ project = 'id' \}/.test(code),
-      'AUTO_INCREMENT 확인 대상이 (시드: org_unit · app_user / 복사: project) 가 아니다');
+      /\$AUTOINC_KEYS\s*=\s*\[ordered\]@\{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id'; project = 'id' \}/.test(code),
+      'AUTO_INCREMENT 확인 대상이 (시드: org_unit · app_user / 복사: 코드표 셋 + project) 가 아니다');
     const seedAi = onlyOnce(code, /foreach\(\$t in \$SEED_AUTOINC_KEYS\.Keys\)\{ CheckAutoInc /, '시드 AUTO_INCREMENT 확인');
     const copyAi = onlyOnce(code, /foreach\(\$t in \$AUTOINC_KEYS\.Keys\)\{ CheckAutoInc /, '복사 AUTO_INCREMENT 확인');
     assert.ok(seedAi > a04 && seedAi < copyApply && copyAi > copyApply, 'AUTO_INCREMENT 확인 위치가 (시드 직후 · 복사 직후) 가 아니다');
@@ -514,7 +517,7 @@ const checks = {
       "$NULL_TO_EMPTY 가 project 의 contract_name · common_name 이 아니다");
     const br = /\} elseif\(\$NULL_TO_EMPTY\.Contains\(\$t\) -and \(\$NULL_TO_EMPTY\[\$t\] -contains \$c\)\)\{\n([\s\S]*?)\n      \} else \{/.exec(code);
     assert.ok(br, "NULL→'' 가지(elseif($NULL_TO_EMPTY …))를 찾지 못했다");
-    assert.ok(br[1].includes(`$sel += ('IFNULL(' + (BQ $c) + ", '')")`),
+    assert.ok(br[1].includes(`$sel += ('IFNULL(s.' + (BQ $c) + ", '')")`),
       "복사 SELECT 가 contract_name/common_name 을 IFNULL(<col>, '') 로 감싸지 않는다 — 원본의 NULL 이 NOT NULL 대상에서 INSERT 를 막는다");
     assert.ok(/'\) SELECT ' \+ \(\$sel -join ','\) \+ ' FROM ' \+ \(TQ \$SourceDb \$t\)/.test(code),
       '복사 INSERT 가 $sel(IFNULL · -9h 식)로 원본에서 SELECT 하지 않는다');
@@ -525,19 +528,18 @@ const checks = {
     assert.ok(!/"UPDATE " \+ \(TQ \$SourceDb\b/.test(code), '원본에 UPDATE 를 낸다 — 원본은 읽기만 한다');
   },
 
-  // ⑯ app_user.sort_order 백필 — 03 은 sort_order 를 적지 않는다. migrate-2026-09-10-user-sort-order.sql 2단계와
-  // 같은 순서식 · 04 뒤(사람이 다 들어온 뒤) · 과제 복사 앞.
+  // ⑯ app_user.sort_order 백필 — 03 은 sort_order 를 적지 않는다. 순서식(옛 migrate-2026-09-10 2단계와 같은 뜻)은
+  // 직급 서열(title_code 를 title_id 로 조인) → 이름 → user_id, 10 간격 · 04 뒤(사람이 다 들어온 뒤) · 과제 복사 앞.
   sortBackfill(ps) {
     const code = maskPs(ps);
     const ORDER = 'ROW_NUMBER() OVER (ORDER BY (t.sort_order IS NULL), t.sort_order, u2.name, u2.user_id) * 10';
-    assert.ok(sortOrderMigSrc.includes(ORDER), '실물: migrate-2026-09-10-user-sort-order.sql 의 순서식이 바뀌었다 — 스크립트의 백필도 함께 고칠 것');
     assert.ok(/\$sortNullBefore = \[long\]\(Q \("SELECT COUNT\(\*\) FROM " \+ \(TQ \$TargetDb 'app_user'\) \+ " WHERE sort_order IS NULL;"\)/.test(code),
       '백필 조건이 "시드 뒤 대상 app_user 에 sort_order NULL 이 있음" 이 아니다');
     const blk = /\n  if\(\$sortNullBefore -gt 0\)\{\n([\s\S]*?)\n  \}/.exec(code);
     assert.ok(blk, 'if($sortNullBefore -gt 0){ … } 백필 가지를 찾지 못했다 — 03-seed-users.sql 은 sort_order 를 적지 않으므로 백필이 늘 필요하다');
     const b = blk[1];
     assert.ok(b.includes(ORDER), 'sort_order 백필의 순서식이 마이그레이션(직급 서열 NULL 뒤 → 서열 → 이름 → user_id, ×10)과 다르다');
-    assert.ok(/LEFT JOIN " \+ \(TQ \$TargetDb 'title_code'\) \+ " t ON t\.name = u2\.title/.test(b), '백필이 title_code 를 LEFT JOIN 하지 않는다');
+    assert.ok(/LEFT JOIN " \+ \(TQ \$TargetDb 'title_code'\) \+ " t ON t\.title_id = u2\.title_id/.test(b), '백필이 title_code 를 직급 번호(title_id)로 LEFT JOIN 하지 않는다');
     assert.ok(b.includes('SET u.sort_order = r.n, u.updated_at = u.updated_at'),
       '백필이 updated_at 을 자기 값으로 대입하지 않는다 — ON UPDATE 가 전원의 갱신 시각을 지금으로 덮는다');
     assert.ok(/\$sortFilled = \[long\]\(Q \$sortSql /.test(b), '백필 문장을 실행하는 자리가 없다');
@@ -624,7 +626,7 @@ test('setup-taskcalendar ⑫ 사용자 3표는 회사 시드(02 → 03 → 04, �
 test("setup-taskcalendar ⑬ mysql 세션 UTC: .cnf 의 [mysql] 그룹에 init-command SET time_zone='+00:00' ([client] 아님)", () => checks.cnfUtc(psSrc));
 test("setup-taskcalendar ⑭ project.contract_name/common_name 은 복사 SELECT 에서 IFNULL(<col>, '')", () => checks.nullToEmpty(psSrc));
 test('setup-taskcalendar ⑮ 창 멈춤: 리다이렉트면 안 멈춤 · 직접 실행이면 늘 멈춤 · .cmd 가 TC_SETUP_LAUNCHER=cmd', () => checks.pauseRule(psSrc, cmdSrc));
-test('setup-taskcalendar ⑯ app_user.sort_order 백필: migrate-2026-09-10 2단계와 같은 문장 · 04 뒤 · 과제 복사 앞', () => checks.sortBackfill(psSrc));
+test('setup-taskcalendar ⑯ app_user.sort_order 백필: 직급 서열(title_id) → 이름 → user_id · 04 뒤 · 과제 복사 앞', () => checks.sortBackfill(psSrc));
 
 // ══ 실물 대조 — 스크립트가 기대는 파일 형식이 실제 파일과 맞는가 ═════════
 test('setup-taskcalendar ⑦ 실물: \\btaskmgr\\. 치환이 두 권한 파일의 스키마만 바꾸고 계정 이름은 남긴다', () => {
@@ -726,7 +728,7 @@ test('setup-taskcalendar ⑩ 변이: init-command 를 [client] 로 옮기거나 
 
 test("setup-taskcalendar ⑩ 변이: contract_name/common_name 의 IFNULL 을 빼면 ⑭ 가 잡는다", () => {
   assert.throws(() => checks.nullToEmpty(mutate(psSrc,
-    "        $sel += ('IFNULL(' + (BQ $c) + \", '')\")\n", '        $sel += (BQ $c)\n')), /IFNULL/);
+    "        $sel += ('IFNULL(s.' + (BQ $c) + \", '')\")\n", "        $sel += ('s.' + (BQ $c))\n")), /IFNULL/);
 });
 
 test('setup-taskcalendar ⑩ 변이: sort_order 백필을 지우거나 조건을 끄거나 updated_at 대입을 빼면 ⑯ 이 잡는다', () => {
@@ -822,4 +824,122 @@ test('setup-taskcalendar ⑩ 변이: 대상 존재로 다시 멈추게 하면 �
 test('setup-taskcalendar ⑩ 변이: "-Force 로 다시 실행하세요" 안내를 되살리면 ㉒ 가 잡는다', () => {
   assert.throws(() => checks.noForceHint(mutate(psSrc,
     '깨져 있습니다 — 고친 뒤 다시 실행하세요." }', '깨져 있습니다 — 고친 뒤 -Force 로 다시 실행하세요." }'), cmdSrc), /-Force 를 쓰라고/);
+});
+
+// ══ ㉓ 2026-10-15 코드표 번호 키(CODE-TABLE-IDS §5) ══════════════════════
+//  원본 taskmgr(0.16 모양)는 코드표 이름이 키이고 대상 taskcalendar 는 번호가 키다. 복사 단계가 이름을 번호로 바꾼다.
+//  못 박는 것: 상수(번호 열, project 참조), 고정 번호 지도는 schema-structure.sql 의 시드에서 읽는다(숫자를 박지 않는다),
+//  확인 전 원본 점검(고아, NULL, 빈 이름, is_active), 복사 SQL 모양(지도 BINARY 일치, MAX+1 이름순, JOIN ON name),
+//  복사 뒤 검증(이름 복원 BINARY, 고정 번호, Die), 한글을 명령줄 인자로 넘기지 않음(16진 비교).
+function parseFixedIdsLikePs(struct, table, idCol) {
+  // ps1 의 정규식과 같은 뜻(JS 로 옮김). 키는 문자열.
+  const m = new RegExp('INSERT\\s+INTO\\s+' + table + '\\s*\\(\\s*' + idCol + '\\s*,\\s*name\\s*,\\s*sort_order\\s*\\)\\s*VALUES([\\s\\S]*?);', 'i').exec(struct);
+  if (!m) return null;
+  const out = {};
+  for (const v of m[1].matchAll(/\(\s*(\d+)\s*,\s*'((?:[^']|'')*)'/g)) out[String(Number(v[1]))] = v[2].replace(/''/g, "'");
+  return out;
+}
+const codeIdChecks = {
+  constants(ps) {
+    const code = maskPs(ps);
+    assert.ok(code.includes("$CODE_ID_COLS = [ordered]@{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id' }"),
+      '$CODE_ID_COLS 가 코드표 셋의 번호 열(section_id, status_id, customer_id)이 아니다');
+    const refs = [...code.matchAll(/@\{ src='(\w+)';\s*dst='(\w+)';\s*parent='(\w+)';\s*pid='(\w+)';\s*nullable=\$(true|false) \}/g)]
+      .map((m) => `${m[1]}->${m[2]}:${m[3]}.${m[4]}:${m[5]}`);
+    assert.deepStrictEqual(refs, [
+      'section->section_id:section_code.section_id:false',
+      'customer->customer_id:customer.customer_id:false',
+      'status->status_id:status_code.status_id:true',
+    ], '$PROJECT_REFS 가 (section, customer = NOT NULL, status = NULL 허용) 세 참조가 아니다');
+    assert.ok(/\$AUTOINC_KEYS\s*=\s*\[ordered\]@\{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id'; project = 'id' \}/.test(code),
+      'AUTO_INCREMENT 확인 대상에 코드표 셋의 번호 열이 없다(번호를 명시해 넣으므로 카운터가 MAX 보다 커야 한다)');
+  },
+  fixedMap(ps) {
+    const code = maskPs(ps);
+    const at = onlyOnce(code, /\n\$FIXED_IDS = \[ordered\]@\{\}\n/, '고정 번호 지도 선언');
+    const conn = onlyOnce(code, /\$ping = & \$mysql /, '접속');
+    assert.ok(at < conn, '고정 번호 지도를 접속 전(파일만 보는 사전 점검)에 읽지 않는다');
+    assert.ok(code.includes('[regex]::Match($structText, "(?is)INSERT\\s+INTO\\s+$t\\s*\\(\\s*$($CODE_ID_COLS[$t])\\s*,\\s*name\\s*,\\s*sort_order\\s*\\)\\s*VALUES(.*?);")'),
+      '고정 번호 지도를 schema-structure.sql 의 시드 INSERT 에서 읽지 않는다(번호를 박으면 시드와 갈라진다)');
+    assert.ok(/\$FIXED_IDS\[\$t\]\[\[string\]\(\[int\]\$v\.Groups\[1\]\.Value\)\] = /.test(code),
+      "고정 번호 지도의 키가 문자열이 아니다. [ordered] 사전에 정수 키를 쓰면 '키' 가 아니라 '몇 번째' 로 읽힌다(실측: 빈 사전에서 범위 밖 오류)");
+    assert.ok(/if\(\$FIXED_IDS\['section_code'\]\.Count -lt 1 -or \$FIXED_IDS\['status_code'\]\.Count -lt 1\)\{\s*\n\s*Die /.test(code),
+      '시드를 못 읽었을 때 멈추지 않는다(빈 지도면 선진행, 종료가 MAX+1 번호를 받는다)');
+    // 실물: 지금 schema-structure.sql 에서 같은 식으로 읽으면 고정 번호가 나온다.
+    assert.deepStrictEqual(parseFixedIdsLikePs(structSqlSrc, 'section_code', 'section_id'), { 1: '일반계약', 2: '선진행', 3: '사업부관리' },
+      '실물: schema-structure.sql 의 section_code 시드를 고정 번호 지도로 읽지 못한다');
+    assert.deepStrictEqual(parseFixedIdsLikePs(structSqlSrc, 'status_code', 'status_id'), { 1: '진행중', 2: '종료', 3: '1차 납품완료', 4: '미정' },
+      '실물: schema-structure.sql 의 status_code 시드를 고정 번호 지도로 읽지 못한다');
+    assert.strictEqual(parseFixedIdsLikePs(structSqlSrc, 'customer', 'customer_id'), null, '실물: customer 에 시드가 생겼다(지도와 MAX+1 규칙을 다시 볼 것)');
+  },
+  sourcePreflight(ps) {
+    const code = maskPs(ps);
+    const confirm = onlyOnce(code, /Read-Host "계속하려면 Y"/, '확인 질문');
+    const die = onlyOnce(code, /if\(\$srcBad\.Count -gt 0\)\{ Die /, '원본 점검 Die');
+    assert.ok(die < confirm, '원본의 번호 키 점검이 확인 질문 뒤다(사전 점검 = 아무것도 바꾸지 않은 채 종료코드 3 이어야 한다)');
+    const blk = code.slice(code.indexOf('$srcBad = @()'), die);
+    assert.ok(/LEFT JOIN " \+ \(TQ \$SourceDb \$r\.parent\) \+ " p ON p\.``name`` = c\." \+ \(BQ \$r\.src\)/.test(blk) &&
+      /IS NOT NULL AND p\.``name`` IS NULL;/.test(blk), '원본 project 의 이름 참조 고아를 세지 않는다(대상의 NOT NULL 번호가 비게 된다)');
+    assert.ok(/if\(-not \$r\.nullable\)\{/.test(blk) && /" IS NULL;"\) "원본 project\.\$\(\$r\.src\) NULL 수"/.test(blk),
+      'NOT NULL 참조(section, customer)의 원본 NULL 을 세지 않는다');
+    assert.ok(/WHERE ``name`` = '';/.test(blk), "원본 코드표의 빈 이름을 세지 않는다(대상 CHECK name <> '')");
+    assert.ok(/WHERE is_active NOT IN \(0,1\);/.test(blk), '원본의 is_active 범위를 세지 않는다(대상 CHECK is_active IN (0,1))');
+    assert.ok(!/\bUPDATE\b|\bDELETE\b|\bINSERT\b/.test(blk), '원본 점검 블록이 쓰기 문장을 낸다(원본은 읽기만 한다)');
+    assert.ok(/foreach\(\$r in \$PROJECT_REFS\)\{\s*\n\s*if\(\$srcColMap\['project'\] -notcontains \$r\.src\)\{ Die /.test(code),
+      '원본 project 에 이름 참조 열(section, customer, status)이 있는지 보지 않는다');
+  },
+  copySql(ps) {
+    const code = maskPs(ps);
+    // 번호 열은 원본에서 옮기지 않는다(교집합에서 빼고, 보고서의 '원본에만' 에서도 뺀다).
+    assert.ok(/\$cols    = @\(\$cols    \| Where-Object \{ \$genCols -notcontains \$_ \}\)/.test(code), '번호 열을 교집합 복사 목록에서 빼지 않는다');
+    assert.ok(/\$srcOnly = @\(\$srcOnly \| Where-Object \{ \$convSrc -notcontains \$_ \}\)/.test(code), '번호로 바뀌는 원본 이름 열이 "원본에만 있어 복사 안 함" 으로 보고된다');
+    // 코드표: 지도에 있는 이름(BINARY)은 그 번호, 나머지는 지도의 MAX+1 부터 이름순.
+    assert.ok(code.includes("$sel += ('CASE WHEN m.id IS NOT NULL THEN m.id ELSE ' + $base + ' + ROW_NUMBER() OVER (PARTITION BY (m.id IS NULL) ' + $ord + ') END')"),
+      '코드표 번호 식(지도 번호, 아니면 MAX+1 부터 이름순)이 바뀌었다');
+    assert.ok(code.includes("$from = ' LEFT JOIN (' + $mapSql + ') m ON CAST(' + $nameKey + ' AS BINARY) = CAST(m.nm AS BINARY)'"),
+      '고정 번호 지도와의 매칭이 BINARY 가 아니다(대소문자만 다른 이름이 조용히 고정 번호를 가져간다)');
+    assert.ok(code.includes("$ord = 'ORDER BY ' + $nameKey + ' COLLATE utf8mb4_0900_ai_ci, CAST(' + $nameKey + ' AS BINARY)'"),
+      '나머지 이름의 번호 순서가 "이름순(대상 콜레이션) + BINARY 동률 깨기" 가 아니다');
+    assert.ok(/\$base = \[int\]\(\(\$map\.Keys \| ForEach-Object \{ \[int\]\$_ \} \| Measure-Object -Maximum\)\.Maximum\)/.test(code),
+      'MAX+1 의 기준이 지도의 최대 번호가 아니다(원본에 시드 이름이 빠져 있어도 고정 번호를 다른 이름이 차지하면 안 된다)');
+    // project: 이름을 대상 코드표에서 찾아 번호로. NOT NULL 은 JOIN, status 는 LEFT JOIN.
+    assert.ok(/\$kind = ' JOIN '\s*\n\s*if\(\$r\.nullable\)\{ \$kind = ' LEFT JOIN ' \}/.test(code), 'project 참조의 JOIN 종류가 (NOT NULL = JOIN, NULL 허용 = LEFT JOIN) 이 아니다');
+    assert.ok(code.includes("' = CONVERT(s.' + (BQ $r.src) + ' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci'"),
+      'project 의 이름 참조를 대상 콜레이션으로 맞춰 찾지 않는다(원본 문자셋이 다르면 Illegal mix of collations)');
+    assert.ok(code.includes("$copy.Add('INSERT INTO ' + (TQ $TargetDb $t) + ' (' + (($insCols | ForEach-Object { BQ $_ }) -join ',') + ') SELECT ' + ($sel -join ',') + ' FROM ' + (TQ $SourceDb $t) + ' s' + $from + ';')"),
+      '복사 INSERT 가 ($insCols, $sel, 원본 별칭 s, $from) 모양이 아니다');
+    assert.ok(/\$sel \+= \('s\.' \+ \(BQ \$c\)\)/.test(code), '복사 SELECT 의 원본 열을 별칭 s 로 묶지 않는다(JOIN 한 표와 열 이름이 겹친다)');
+  },
+  verifyAfterCopy(ps) {
+    const code = maskPs(ps);
+    const apply = onlyOnce(code, /ApplySqlFile\s+\$copyFile\b/, '과제 복사 적용');
+    const die = onlyOnce(code, /if\(\$idBad\.Count -gt 0\)\{ Die /, '번호 키 검증 Die');
+    const orphan = onlyOnce(code, /foreach\(\$oc in \$ORPHAN_CHECKS\)/, '고아 행 검사');
+    assert.ok(apply < die && die < orphan, '번호 키 복사 검증이 (복사 뒤, 고아 검사 앞) 이 아니다');
+    const blk = code.slice(apply, die);
+    assert.ok(/WHERE CAST\(t\.``name`` AS BINARY\) = CAST\(CONVERT\(s\.``name`` USING utf8mb4\) AS BINARY\)\);/.test(blk),
+      '코드표 이름이 대상에 글자 그대로(BINARY) 있는지 보지 않는다');
+    assert.ok(/<=> CAST\(c\.``name`` AS BINARY\)\);/.test(blk) && /WHERE p\.id IS NULL OR NOT \(CAST\(CONVERT\(s\." \+ \(BQ \$r\.src\) \+ " USING utf8mb4\) AS BINARY\)/.test(blk),
+      'project 참조를 번호로 되살린 이름이 원본과 BINARY, NULL 대칭(<=>)으로 같은지 보지 않는다');
+    assert.ok(/\$hex = \(\[BitConverter\]::ToString\(\[Text\.Encoding\]::UTF8\.GetBytes\(\$FIXED_IDS\[\$t\]\[\$id\]\)\)\)\.Replace\('-', ''\)/.test(blk) &&
+      /= X'" \+ \$hex \+ "';/.test(blk), "고정 번호 확인이 한글 이름을 16진(X'...')이 아니라 명령줄 글자로 넘긴다(콘솔 코드페이지에서 깨진다)");
+    assert.ok(/elseif\("\$got" -ne "\$id"\)\{ \$idBad \+= /.test(blk), '고정 번호와 다른 번호를 받은 이름을 실패로 세지 않는다');
+  },
+};
+test('setup-taskcalendar ㉓ 번호 키: 상수($CODE_ID_COLS, $PROJECT_REFS, AUTO_INCREMENT 대상)', () => codeIdChecks.constants(psSrc));
+test('setup-taskcalendar ㉓ 번호 키: 고정 번호 지도는 schema-structure.sql 시드에서 읽는다(문자열 키), 못 읽으면 멈춤', () => codeIdChecks.fixedMap(psSrc));
+test('setup-taskcalendar ㉓ 번호 키: 확인 전 원본 점검(고아, NOT NULL, 빈 이름, is_active), 읽기만', () => codeIdChecks.sourcePreflight(psSrc));
+test('setup-taskcalendar ㉓ 번호 키: 복사 SQL(지도 BINARY, MAX+1 이름순, JOIN ON name, 원본 별칭 s)', () => codeIdChecks.copySql(psSrc));
+test('setup-taskcalendar ㉓ 번호 키: 복사 뒤 검증(이름 복원 BINARY, NULL 대칭, 고정 번호, 16진 비교, Die)', () => codeIdChecks.verifyAfterCopy(psSrc));
+test('setup-taskcalendar ㉓ 변이: 복사 뒤 검증의 Die 를 끄거나 BINARY 매칭을 빼거나 정수 키로 되돌리면 잡는다', () => {
+  assert.throws(() => codeIdChecks.verifyAfterCopy(mutate(psSrc, '  if($idBad.Count -gt 0){ Die ', '  if($false){ Die ')), /번호 키 검증 Die/);
+  assert.throws(() => codeIdChecks.copySql(mutate(psSrc,
+    "$from = ' LEFT JOIN (' + $mapSql + ') m ON CAST(' + $nameKey + ' AS BINARY) = CAST(m.nm AS BINARY)'",
+    "$from = ' LEFT JOIN (' + $mapSql + ') m ON ' + $nameKey + ' = m.nm'")), /BINARY/);
+  assert.throws(() => codeIdChecks.fixedMap(mutate(psSrc,
+    '$FIXED_IDS[$t][[string]([int]$v.Groups[1].Value)] = ', '$FIXED_IDS[$t][[int]$v.Groups[1].Value] = ')), /문자열이 아니다/);
+  assert.throws(() => codeIdChecks.copySql(mutate(psSrc,
+    "        if($r.nullable){ $kind = ' LEFT JOIN ' }\n", '')), /JOIN 종류/);
+  assert.throws(() => codeIdChecks.sourcePreflight(mutate(psSrc,
+    '  if($srcBad.Count -gt 0){ Die ', '  if($false){ Die ')), /원본 점검 Die/);
 });

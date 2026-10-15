@@ -34,6 +34,7 @@ rem    backup-taskmgr.cmd -BackupDir "E:\backup" -Keep 12
 rem    backup-taskmgr.cmd -Status
 rem    backup-taskmgr.cmd -Install      (run as Administrator)
 rem    backup-taskmgr.cmd -Uninstall    (run as Administrator)
+rem    backup-taskmgr.cmd -DbName taskmgr   (the default database is taskcalendar)
 rem
 rem  Do NOT end an argument value with a backslash - powershell.exe reads \"
 rem  as an escaped quote and swallows the following argument.

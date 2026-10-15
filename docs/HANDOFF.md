@@ -96,7 +96,7 @@ $env:TC_DEBUG_PORT='9222'; Start-Process widget\bin\Debug\net9.0-windows\TaskCal
 # 엄격 게이트
 TC_TEST_STRICT=1 node tests/run-tests.mjs
 # 실 위젯+실 DB 루프(비밀번호는 환경변수로만 · 명령줄 -p 금지)
-export TC_TEST_DB_ADMIN_PW=taskmgr123; node tests/loop-user-admin.mjs --seed=N ; node tests/loop-trash.mjs --seed=N
+read -rs TC_TEST_DB_ADMIN_PW; export TC_TEST_DB_ADMIN_PW; node tests/loop-user-admin.mjs --seed=N ; node tests/loop-trash.mjs --seed=N
 ```
 
 - **실 DB 회귀는 `dist/rehearsal/run-loops.ps1`**(gitignore, 메인이 직접 돌린다). 비밀번호는 stdin 첫 줄로만 넘긴다: `printf '%s\n' "$PW" | powershell -NoProfile -ExecutionPolicy Bypass -File dist/rehearsal/run-loops.ps1` (백그라운드 약 20분). 하는 일은 순서대로 개발 PC `taskcalendar` 재구축, Debug 위젯 재기동(9222), 새 기능 실화면(`cdp-check.mjs`), `taskmgr` 의 `cal_*` 복사, 루프 14종 1회와 관리자 3종×5, 두 DB schema_version 확인이다. 결과는 `dist/rehearsal/loops-<시각>.txt`. 파일이 없으면 이 줄과 git 기록(2026-10-01)으로 다시 만든다.

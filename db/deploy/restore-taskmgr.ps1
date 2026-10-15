@@ -1,5 +1,7 @@
 ﻿<#
   restore-taskmgr.ps1 — taskmgr 백업 덤프를 되살리고 '정말 되살아났는지' 를 대조한다.
+  (2026-10-15: 기본 DB 는 taskcalendar 다. 앱이 쓰는 DB 가 그것이다. 파일 이름은 사람의 습관대로 그대로 둔다.
+   0.16 클라이언트가 쓰는 옛 DB 를 다루려면 -LiveDb taskmgr -TargetDb taskmgr_restore 처럼 이름을 적는다. CODE-TABLE-IDS §8-1)
 
   backup-taskmgr.ps1 의 짝이다. 저쪽은 '제대로 떴는가' 를 보고, 이쪽은 '되살아나는가' 를 본다.
   보통은 restore-taskmgr.cmd 로 실행한다.
@@ -116,17 +118,17 @@
   ⚠️ 이 스크립트가 -LiveDb 에 하는 일은 읽기뿐이다(SELECT · information_schema · mysqldump).
      쓰기는 -TargetDb 와 백업 폴더에만 한다. 가드(1단계)가 그 경계를 지킨다.
 
-  예)  restore-taskmgr.cmd -TargetDb taskmgr_restore_drill
+  예)  restore-taskmgr.cmd -TargetDb taskcalendar_restore_drill
        restore-taskmgr.cmd -DumpPath "D:\taskmgr-backup\taskmgr-20260824-102609.sql" -Grants
-       restore-taskmgr.cmd -TargetDb taskmgr_restore_drill -DropTarget
+       restore-taskmgr.cmd -TargetDb taskcalendar_restore_drill -DropTarget
        restore-taskmgr.cmd -WhatIf
 #>
 [CmdletBinding()]
 param(
   [string]$DumpPath   = "",                        # 비우면 -BackupDir 의 최신 *.sql (.partial 제외)
   [string]$BackupDir  = "D:\taskmgr-backup",
-  [string]$TargetDb   = "taskmgr_restore",         # ★ 기본은 라이브가 아닌 별도 DB
-  [string]$LiveDb     = "taskmgr",                 # 대조 기준(읽기 전용)
+  [string]$TargetDb   = "taskcalendar_restore",    # ★ 기본은 라이브가 아닌 별도 DB
+  [string]$LiveDb     = "taskcalendar",            # 대조 기준(읽기 전용)
   [switch]$Grants,                                 # 복구 후 계정·권한 재적용(복구방법.txt 4번)
   [switch]$DropTarget,                             # 리허설 뒷정리 — TargetDb 를 지운다
   [switch]$WhatIf,                                 # 실제 쓰기 없이 계획만 출력

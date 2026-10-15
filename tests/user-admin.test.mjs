@@ -48,8 +48,8 @@ const missing = [];
 const readOr = (url, label) => {
   try { return readFileSync(url, 'utf8'); } catch (_) { missing.push(label); return ''; }
 };
-const MIGRATE = 'db/deploy/migrate-2026-09-10-user-sort-order.sql';
-const migrateSql = readOr(new URL('../' + MIGRATE, import.meta.url), MIGRATE);
+// ★ 2026-10-15 이관 파일 migrate-2026-09-10-user-sort-order(-int).sql 은 지웠다(CODE-TABLE-IDS §8-2, git 이력에 있다).
+//   그래서 이 게이트의 정본 대조는 01-schema-users.sql 하나로 본다(옛 계약①-b, ⑨ 는 함께 없앴다).
 const usersCanon = readOr(new URL('../../taskmgr-company-data/01-schema-users.sql', import.meta.url),
   'taskmgr-company-data/01-schema-users.sql');
 const userGrants = readOr(new URL('../../taskmgr-company-data/05-grants.sql', import.meta.url),
@@ -128,12 +128,14 @@ const checks = {
     //    정본은 INT UNSIGNED 이고, 11 마이그레이션(SMALLINT 신설) 뒤에 12 마이그레이션(MODIFY INT)이 따라와 같은 모양에 이른다.
     assert.ok(/\bINT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(line[0]) && !/SMALLINT/i.test(line[0]),
       `${label}: sort_order 가 INT UNSIGNED NULL DEFAULT NULL 이 아니다 — 12 마이그레이션(INT 확장) 뒤의 모양과 갈리면 덤프 대조가 깨진다`);
-    // 위치: title 바로 다음 컬럼이어야 한다(ADD COLUMN … AFTER title 과 짝).
+    // 위치: 직급 열 바로 다음이어야 한다. 2026-10-15 부터 직급은 번호(title_id)다(CODE-TABLE-IDS §2).
+    //   이관(migrate-2026-10-15-code-ids.sql)이 title_id 를 title 뒤에 더하고 title 을 지우므로 같은 자리에 선다.
     const cols = blk.split('\n').map((l) => /^[^\S\n]*`?([a-z_]+)`?\s+[A-Z]/.exec(l)).filter(Boolean).map((m) => m[1]);
-    const iT = cols.indexOf('title'), iS = cols.indexOf('sort_order');
-    assert.ok(iT >= 0, `${label}: title 컬럼을 찾지 못했다(판정 불가)`);
+    const iT = cols.indexOf('title_id'), iS = cols.indexOf('sort_order');
+    assert.ok(iT >= 0, `${label}: title_id 컬럼을 찾지 못했다(판정 불가)`);
+    assert.ok(cols.indexOf('title') < 0, `${label}: 옛 직급 이름 열(title)이 남아 있다`);
     assert.strictEqual(iS, iT + 1,
-      `${label}: sort_order 가 title 바로 뒤가 아니다(title=${iT}, sort_order=${iS}) — ` +
+      `${label}: sort_order 가 title_id 바로 뒤가 아니다(title_id=${iT}, sort_order=${iS}) — ` +
       '컬럼 순서가 다르면 "마이그레이션으로 온 DB"와 "새로 세운 DB"가 mysqldump 대조에서 갈린다');
     // UNIQUE·인덱스·COMMENT 를 두지 않는다(§3.1 — 전량 재작성 중간의 중복이 1062 로 죽지 않게).
     assert.ok(!/UNIQUE[^\n]*sort_order|KEY[^\n]*\(\s*`?sort_order`?\s*\)/i.test(blk),
@@ -141,40 +143,6 @@ const checks = {
     assert.ok(!/sort_order[^\n]*COMMENT/i.test(line[0]),
       `${label}: sort_order 에 컬럼 COMMENT 가 붙었다 — 이 DB 는 컬럼 주석이 0/174 다. ` +
       '여기만 달면 이관 경로에만 주석이 붙어 정본과 갈린다(09-09 가 복구한 드리프트와 같은 종류)');
-  },
-
-  // ① 계속 — 마이그레이션이 같은 자리·같은 모양으로 붙이고, 감사 시각을 덮지 않는다.
-  migrationShape(sql, canonVer) {
-    const code = stripSqlComments(sql);
-    assert.ok(/ALTER\s+TABLE\s+app_user[\s\S]{0,400}?ADD\s+COLUMN\s+sort_order\s+SMALLINT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(code),
-      MIGRATE + ' 이 app_user 에 sort_order SMALLINT UNSIGNED NULL DEFAULT NULL 을 추가하지 않는다');
-    assert.ok(/ADD\s+COLUMN\s+sort_order[\s\S]{0,400}?AFTER\s+title/i.test(code),
-      MIGRATE + ' 에 `AFTER title` 이 없다 — 컬럼이 표 끝에 붙어 정본(신규 구축)과 순서가 갈린다. ' +
-      '그 차이는 mysqldump 대조에서만 드러나므로, 여기서 못 박지 않으면 아무도 모른다');
-    //  ★ updated_at 을 명시하지 않으면 서버 ON UPDATE 가 89행의 갱신 시각을 전부 덮는다.
-    //    "언제 이 사람의 정보가 마지막으로 바뀌었나"는 인사 이력이고, 컬럼 하나 늘린 일로 지울 값이 아니다.
-    //    (migrate-2026-09-09-integrity.sql (5) 가 같은 이유로 같은 장치를 썼다.)
-    assert.ok(/UPDATE\s+app_user[\s\S]{0,600}?updated_at\s*=\s*u\.updated_at/i.test(code),
-      MIGRATE + ' 의 초기값 UPDATE 가 updated_at 을 명시하지 않는다 — 89행의 갱신 시각이 전부 지금으로 덮인다');
-    //  판번호는 정본에서 읽어 대조한다(시험에 숫자를 박으면 정본이 움직일 때 시험이 거짓말을 한다).
-    //  ★ 2026-09-10: 이 파일(11 신설)은 더 이상 '정본까지 올리는' 파일이 아니다 — 12(INT 확장)가 뒤에 있다.
-    //    그래서 '한 칸만 · 가드=출발값 · 정본을 앞서지 않음' 으로 판정한다(project-dev-end 계약⑤ 와 같은 형태).
-    const canonTo = String(canonVer);
-    const bump = /UPDATE\s+cal_schema_meta\s+SET\s+v\s*=\s*'(\d+)'[\s\S]{0,200}?AND\s+v\s*=\s*'(\d+)'/i.exec(code);
-    assert.ok(bump, MIGRATE + ' 에서 schema_version 승격 문장을 찾지 못했다');
-    const to = bump[1], from = bump[2];
-    assert.strictEqual(String(Number(from) + 1), to, MIGRATE + ' 이 판번호를 ' + from + ' → ' + to + ' 로 움직인다 — 한 번에 한 칸이어야 중간 판이 건너뛰어지지 않는다');
-    assert.ok(Number(to) <= Number(canonTo), MIGRATE + ' 이 올리는 값(' + to + ')이 정본(' + canonTo + ')을 앞서간다 — 아무도 도달할 수 없는 판번호');
-    const guard = /@v\s*=\s*'(\d+)'/.exec(code);
-    assert.ok(guard, MIGRATE + " 에 선행조건 가드(@v = 'N')가 없다 — 재실행이 1060 으로 죽는다");
-    assert.strictEqual(guard[1], from, MIGRATE + ' 의 가드가 v=' + guard[1] + " 를 요구한다 — 정본 기준으로는 '" + from + "' 이어야 한다");
-    //  사후 검증 — 존재만 보지 않는다(위치·NULL·판번호를 @bad 가 기계적으로 막는다).
-    assert.ok(/ORDINAL_POSITION\s*=\s*1\s*\+/.test(code),
-      MIGRATE + ' 의 사후 검증이 컬럼 위치를 보지 않는다 — AFTER 가 먹혔는지 확인할 길이 없다');
-    assert.ok(/is_active\s*=\s*1\s+AND\s+sort_order\s+IS\s+NULL/i.test(code),
-      MIGRATE + ' 의 사후 검증이 "활성 사용자 중 sort_order NULL 0명"을 보지 않는다');
-    assert.ok(/중단: 사후 검증 실패/.test(code),
-      MIGRATE + ' 의 사후 검증이 출력만 하고 멈추지 않는다 — 아무도 안 읽는 경고는 게이트가 아니다');
   },
 
   // ② 관리자 관문 — 거부가 '오프라인'으로 뭉개지지 않는다(USER-LOGIN §3.3 의 함정).
@@ -1279,11 +1247,8 @@ test('기준⓪: 이 게이트의 기준 파일이 전부 실재한다(못 읽�
     '  · 읽지 못한 것을 통과로 넘기면 이 게이트는 그 순간부터 아무것도 지키지 않는다.');
 });
 
-test('계약①: 정본(01-schema-users.sql)의 sort_order 가 title 바로 뒤 · UNIQUE·인덱스·COMMENT 없음', () => {
+test('계약①: 정본(01-schema-users.sql)의 sort_order 가 title_id 바로 뒤 · UNIQUE·인덱스·COMMENT 없음', () => {
   checks.canonColumnShape(usersCanon, 'taskmgr-company-data/01-schema-users.sql');
-});
-test('계약①-b: 마이그레이션이 AFTER title 로 붙이고 감사 시각을 덮지 않으며 판번호 한 칸을 올린다', () => {
-  checks.migrationShape(migrateSql, canonSchemaVersion());
 });
 test('계약②: 직원 쓰기의 권한 거부가 오프라인 문구로 뭉개지지 않는다(USER-LOGIN §3.3 함정)', () => {
   checks.deniedIsNotOffline(pdb);
@@ -1893,7 +1858,7 @@ test('변이①: 정본에서 sort_order 를 org_id 뒤로 옮기면 계약① �
   assert.ok(org, '변이 준비 실패: org_id 줄을 찾지 못했다');
   const movedBlk = pulled.replace(org[0], () => org[0] + line[0]);
   const bad = stripSqlComments(usersCanon).replace(blk, () => movedBlk);
-  assert.throws(() => checks.canonColumnShape(bad, 'x'), /title 바로 뒤가 아니다/);
+  assert.throws(() => checks.canonColumnShape(bad, 'x'), /title_id 바로 뒤가 아니다/);
   assert.doesNotThrow(() => checks.canonColumnShape(usersCanon, 'x'));   // 통제군
 });
 
@@ -1901,18 +1866,6 @@ test('변이①-b: 정본에 UNIQUE 를 걸면 계약① 이 실패한다(전량
   const bad = mutate(usersCanon, '  PRIMARY KEY (user_id),', '  UNIQUE KEY uq_app_user_sort_order (sort_order),\n  PRIMARY KEY (user_id),');
   assert.throws(() => checks.canonColumnShape(bad, 'x'), /UNIQUE·인덱스가 붙었다/);
   assert.doesNotThrow(() => checks.canonColumnShape(usersCanon, 'x'));   // 통제군
-});
-
-test('변이①-c: 마이그레이션에서 AFTER title 을 지우면 계약①-b 가 실패한다', () => {
-  const bad = mutate(migrateSql, '\n  AFTER title;', ';');
-  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /AFTER title` 이 없다/);
-  assert.doesNotThrow(() => checks.migrationShape(migrateSql, canonSchemaVersion()));   // 통제군
-});
-
-test('변이①-d: 초기값 UPDATE 에서 updated_at 명시를 빼면 계약①-b 가 실패한다(감사 시각 전면 덮어쓰기)', () => {
-  const bad = mutate(migrateSql, ',\n       u.updated_at = u.updated_at;', ';');
-  assert.throws(() => checks.migrationShape(bad, canonSchemaVersion()), /updated_at 을 명시하지 않는다/);
-  assert.doesNotThrow(() => checks.migrationShape(migrateSql, canonSchemaVersion()));   // 통제군
 });
 
 test('변이②: 권한 거부를 오프라인 문구로 바꾸면 계약② 가 실패한다', () => {
@@ -3660,32 +3613,8 @@ test("변이⑧-b: 바깥 catch 의 Log 를 지우면 계약⑧ 이 실패한다
   assert.ok(!/\bLog\(/.test(outerCatch(bad) ?? ""), "변이본이 계약⑧ 을 통과한다 — 검사가 무효");
 });
 
-// ── 계약⑨: 12 마이그레이션 — sort_order 를 INT UNSIGNED 로 넓히고, 가드가 11 에서만 열리며, 12 로 올린다 ──
-//   SMALLINT UNSIGNED 는 10 간격 6,553명이 천장이다(2026-09-10 격리 DB 실측: 6,554명째 ERROR 1264 · 전량 롤백).
-const MIGRATE_INT = 'db/deploy/migrate-2026-09-10-user-sort-order-int.sql';
-const migrateIntSql = readOr(new URL('../' + MIGRATE_INT, import.meta.url), MIGRATE_INT);
-test('계약⑨: INT 확장 마이그레이션은 MODIFY sort_order INT UNSIGNED NULL · 가드 11 · 승격 12 다', () => {
-  assert.ok(migrateIntSql, MIGRATE_INT + ' 을 읽지 못했다 — 측정 못 함');
-  const code = stripSqlComments(migrateIntSql);
-  assert.ok(/ALTER\s+TABLE\s+app_user\s+MODIFY\s+sort_order\s+INT\s+UNSIGNED\s+NULL\s+DEFAULT\s+NULL/i.test(code),
-    MIGRATE_INT + ' 이 sort_order 를 INT UNSIGNED NULL DEFAULT NULL 로 MODIFY 하지 않는다');
-  assert.ok(/IF\(@v = '11'/.test(code), MIGRATE_INT + ' 의 가드가 11 에서 열리지 않는다(재실행·건너뛰기 방지)');
-  assert.ok(/SET v = '12'[\s\S]{0,120}AND v = '11'/.test(code), MIGRATE_INT + ' 이 11→12 로 올리지 않는다');
-  assert.strictEqual(canonSchemaVersion(), '12', '정본 시딩이 12 가 아니다 — 위젯·마이그레이션과 어긋난다');
-});
-test('변이⑨: MODIFY 의 INT 를 SMALLINT 로 되돌리면 계약⑨ 가 실패한다 + 통제군', () => {
-  assert.ok(migrateIntSql);
-  const bad = migrateIntSql.replace('MODIFY sort_order INT UNSIGNED', 'MODIFY sort_order SMALLINT UNSIGNED');
-  assert.notStrictEqual(bad, migrateIntSql, '변이가 적용되지 않았다');
-  assert.ok(!/MODIFY\s+sort_order\s+INT\s+UNSIGNED/i.test(stripSqlComments(bad)), '변이본이 계약⑨ 를 통과한다 — 검사가 무효');
-  assert.ok(/MODIFY\s+sort_order\s+INT\s+UNSIGNED/i.test(stripSqlComments(migrateIntSql)), '통제군: 원본은 통과해야 한다');
-});
-test('변이⑨-b: 가드를 10 으로 바꾸면 계약⑨ 가 실패한다(앞선 판을 건너뛴 DB 에서 열린다)', () => {
-  const bad = migrateIntSql.replace("IF(@v = '11'", "IF(@v = '10'");
-  assert.notStrictEqual(bad, migrateIntSql);
-  assert.ok(!/IF\(@v = '11'/.test(stripSqlComments(bad)));
-  assert.ok(/IF\(@v = '11'/.test(stripSqlComments(migrateIntSql)), '통제군: 원본은 통과해야 한다');
-});
+// ── (옛) 계약⑨ 는 지웠다. migrate-2026-09-10-user-sort-order-int.sql 을 2026-10-15 에 지웠다(git 이력에 있다).
+//    sort_order 의 INT UNSIGNED 모양은 위 계약① 이 정본(01-schema-users.sql)에서 그대로 본다.
 
 // ── 계약⑥-c: 「구성원 편집」은 팀과 무관하게 전사 서열순 — 호스트의 두 번째 ORDER BY(flatOrder)를 편집 화면만 부른다 ──
 //   사용자 결정 2026-09-10. 정렬 리터럴은 호스트에 둘뿐이고(보기: 소속→순번→이름 / 편집: 순번→이름), 화면은 어느 쪽도 재정렬하지 않는다.
