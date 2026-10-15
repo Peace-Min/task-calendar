@@ -39,7 +39,7 @@
 |---|---|---|
 | `DbHost` | `localhost` | **서버 PC의 고정 IP** |
 | `DbName` | `taskcalendar` | 그대로(0.19 이후 신버전의 주 DB, §0-6. v0.19.0 부터 저장소 기본값). `taskmgr` 는 0.16과 0.17.1 이 계속 쓴다 |
-| `DbPassword` | 저장소용 값 | `init-db` 실행 시 정한 **앱 계정(`taskmgr_app`) 비밀번호**. 어긋나면 접속이 안 된다 |
+| `DbPassword` | 저장소용 값 | `setup-taskcalendar` 실행 시 정한(앱 계정이 이미 있으면 그때 정한) **앱 계정(`taskmgr_app`) 비밀번호**. 어긋나면 접속이 안 된다. 옛 진입점 `init-db` 는 2026-10-15 에 지웠다 |
 | `UpdateSourceUrl` | `""`(비움) | 공유폴더/FTP 경로(§5 방법 B). 비워 두면 각 PC 설정에서 넣어야 켜진다 |
 
 > ⚠️ **`localhost`인 채로 빌드하면 안 된다.** 배포된 PC들이 각자 *자기 PC*의 MySQL을 찾아 아무도 서버에 붙지 않는다. [CHANGELOG.md](CHANGELOG.md)의 v0.18.0 항목 끝이 같은 경고를 한다(로컬 빌드는 게이트용이지 배포 산출물이 아니다).
@@ -55,6 +55,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1
 ### 0-3. 미적용 `migrate-*.sql` 적용
 
 [`db/deploy/README.md`](db/deploy/README.md)의 **캘린더 표 마이그레이션(`cal_*`, `schema_version`)** 절이 정본이다. 그 절의 표 순서대로 **번호 오름차순으로, 건너뛰지 말고** 적용한다. 왜 필요한지, 무엇을 깨뜨리는지, 되돌릴 수 있는지는 각 파일의 머리말에 적혀 있다.
+
+> **2026-10-15 정리.** 지난 `migrate-2026-*.sql`(v12 까지)은 지웠고, 남은 이관 파일은 `migrate-2026-10-15-code-ids.sql`(12 → 13, 코드표 번호 키) 하나다. 이 파일은 **데이터가 있는 v12 DB**(개발자 로컬 `taskcalendar`)에만 쓴다. 회사 서버처럼 새로 세우는 DB 는 §0-6 의 `setup-taskcalendar.cmd` 가 처음부터 v13 으로 만들므로 이 단계가 없다. 백업은 DB 이름을 적어서 받는다: `backup-taskmgr.cmd -DbName taskcalendar`(기본값도 `taskcalendar` 다).
 
 > **판번호를 이 문서에 적지 않는다.** 값의 정본은 `db/deploy/schema-calendar.sql` 끝의 `INSERT INTO cal_schema_meta … VALUES ('schema_version', …)` 한 줄이고, 지금 서버 값은 아래로 읽는다:
 >
@@ -93,7 +95,7 @@ SHOW GRANTS FOR 'taskmgr_app'@'%';
 > 상황: 마지막 배포판 **0.16**(2026-07-30)은 캘린더가 아직 XML 이고 DB 에서는 **과제 표 4개**만 쓴다. 그 사용자들이 붙는 MySQL(폐쇄망 개인 PC)의 `taskmgr` 에는 과제 표 + 사용자 표만 있고 `cal_*` 는 없다.
 > 결정: `taskmgr` 는 **손대지 않고**(0.16 이 계속 쓴다) 같은 서버에 새 주 DB **`taskcalendar`** 를 세워 신버전(0.19 이후)이 그쪽에 붙는다. 실서버에는 나중에 `taskcalendar` 만 올린다(덤프 복원). 전환 기간에 과제 카탈로그가 두 벌로 갈리는 것은 알고 감수한 대가다.
 
-**왜 "표 복사"가 아니라 "구조 새로 + 데이터만" 인가.** 옛 `project` 에는 `dev_end_date` 가 없고 시각이 KST 다. 표를 통째로 옮기면 마이그레이션 체인(v9 는 `cal_*` 가 있어야 돈다)을 다시 타야 한다. 정본 DDL 3개(`schema-structure.sql`, 비공개 `01-schema-users.sql`, `schema-calendar.sql` 순서)로 v12 구조를 세우고 데이터만 `INSERT … SELECT` 하면 그 문제가 없다. 리허설에서 **정본 DDL 로 세운 DB 와 마이그레이션을 누적한 v12 DB 의 컬럼(175), 인덱스, FK 시그니처 차이 0건**을 실측했다.
+**왜 "표 복사"가 아니라 "구조 새로 + 데이터만" 인가.** 옛 `project` 에는 `dev_end_date` 가 없고 시각이 KST 다. 표를 통째로 옮기면 마이그레이션 체인(v9 는 `cal_*` 가 있어야 돈다)을 다시 타야 한다. 정본 DDL 3개(`schema-structure.sql`, 비공개 `01-schema-users.sql`, `schema-calendar.sql` 순서)로 v12 구조(2026-10-15 부터 v13, 코드표 번호 키)를 세우고 데이터만 `INSERT … SELECT` 하면 그 문제가 없다. v13 부터는 복사할 때 원본의 코드표 이름을 번호로 바꿔 넣고, 번호로 되살린 이름이 원본과 `BINARY` 로 같은지 확인한다. 리허설에서 **정본 DDL 로 세운 DB 와 마이그레이션을 누적한 v12 DB 의 컬럼(175), 인덱스, FK 시그니처 차이 0건**을 실측했다.
 
 **실행: 더블클릭 한 번** (`db/deploy/setup-taskcalendar.cmd`, 상세는 `setup-taskcalendar.ps1` 머리말):
 

@@ -61,7 +61,7 @@
 <body>
 <div class="wrap">
   <h1>과제관리 결정 최종본 <span style="font-size:.9rem;color:var(--ok)">✅ 확정</span></h1>
-<p style="margin:8px 0 16px;padding:10px 14px;border-left:4px solid #c9a227;background:#fff8e1;font-size:14px;line-height:1.5"><b>⚠️ 2026-07-21 시점 스냅샷</b>: 이 문서는 그날의 <b>과제 마스터(축 A) 결정</b>을 정리한 수기 페이지이고 이후 갱신되지 않았다. 그 뒤 <b>2026-07-24 ADR-21·22</b>(이름 하드 유니크 제거, <code>section</code>/<code>status</code> ENUM→코드테이블+FK. 아래 '2테이블' 항목이 그때 폐기됐다. 과제 트랙은 <code>section_code</code>·<code>status_code</code> 를 더해 4표다)와 <b>캘린더 DB 전환</b>(ADR-18 온라인 전용, 08-24 대리키, 08-26 org_unit 절단, 09-01 XML 은퇴)과 <b>2026-09-02 결정 5건</b>(트렁크, 미리알림, 비번, DEPLOY.md, 배포 시점)은 여기 없다. <b>현행 결정의 정본은 <code>docs/DECISIONS.md</code>와 <code>docs/ROADMAP.md</code> §5</b>다. "최종본"은 2026-07-21 기준이라는 뜻으로만 읽을 것.</p>
+<p style="margin:8px 0 16px;padding:10px 14px;border-left:4px solid #c9a227;background:#fff8e1;font-size:14px;line-height:1.5"><b>⚠️ 2026-07-21 시점 스냅샷</b>: 이 문서는 그날의 <b>과제 마스터(축 A) 결정</b>을 정리한 수기 페이지이고 이후 갱신되지 않았다. 그 뒤 <b>2026-07-24 ADR-21·22</b>(이름 하드 유니크 제거, <code>section</code>/<code>status</code> ENUM→코드테이블+FK. 아래 '2테이블' 항목이 그때 폐기됐다. 과제 트랙은 <code>section_code</code>·<code>status_code</code> 를 더해 4표다), <b>2026-10-15 ADR-23</b>(코드표 넷을 번호 키로. 아래 'FK <code>ON UPDATE CASCADE</code>' 항목도 그때 폐기됐다. 발주처 개명은 이제 라벨 한 행이다)와 <b>캘린더 DB 전환</b>(ADR-18 온라인 전용, 08-24 대리키, 08-26 org_unit 절단, 09-01 XML 은퇴)과 <b>2026-09-02 결정 5건</b>(트렁크, 미리알림, 비번, DEPLOY.md, 배포 시점)은 여기 없다. <b>현행 결정의 정본은 <code>docs/DECISIONS.md</code>와 <code>docs/ROADMAP.md</code> §5</b>다. "최종본"은 2026-07-21 기준이라는 뜻으로만 읽을 것.</p>
   <p class="sub">설계, 배포, 정책 전 항목 확정. 상세 규약은 ARCHITECTURE.md / ROADMAP.md. 2026-07-21 (P3 구현 반영)</p>
   <div class="legend">
     <span class="lchip ok">✅ 확정</span>
@@ -80,7 +80,7 @@
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">소프트삭제 + 감사</span></div><div class="desc"><code>is_active=0</code>(복구가능), <code>created_at</code>/<code>updated_at</code> 자동.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">FK <code>ON UPDATE CASCADE</code></span></div><div class="desc">발주처 개명 자동 전파. 삭제는 RESTRICT.</div></div>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">과제명 중복 미처리</span></div><div class="desc">현재도 안 막음(회귀 아님).</div></div>
-  <div class="item"><div class="row"><span class="badge ok">확정 D1</span><span class="ttl">안정 <code>uid</code> 추가 (외부 참조키)</span></div><div class="desc"><code>project</code>에 UUID(assign-once) 추가. 일정은 <code>db-&lt;uid&gt;</code>로 참조하므로 rename, 덤프복원, 이관에도 불변. 내부 PK(autoinc <code>id</code>)는 유지. <b>전시명을 키로 쓰지 않음.</b> ✅ schema.sql 반영 완료(로컬 13행 UUID)</div></div>
+  <div class="item"><div class="row"><span class="badge ok">확정 D1</span><span class="ttl">안정 <code>uid</code> 추가 (외부 참조키)</span></div><div class="desc"><code>project</code>에 UUID(assign-once) 추가. 일정은 <code>db-&lt;uid&gt;</code>로 참조하므로 rename, 덤프복원, 이관에도 불변. 내부 PK(autoinc <code>id</code>)는 유지. <b>전시명을 키로 쓰지 않음.</b> ✅ 그때의 schema.sql 반영 완료(로컬 13행 UUID. 그 파일은 2026-10-15 에 지웠고 지금 정본은 <code>db/deploy/schema-structure.sql</code>)</div></div>
 
   <h2>배포와 운영</h2>
   <div class="item"><div class="row"><span class="badge ok">확정</span><span class="ttl">MySQL 유지, 사용자는 앱만</span></div><div class="desc">SQLite 기각(편집자 여럿·중앙권한). 사용자 PC에 MySQL 설치 불필요.</div></div>

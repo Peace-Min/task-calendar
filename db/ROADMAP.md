@@ -82,7 +82,7 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 ## P3. 앱 ↔ DB 연동 (핵심 구현): **[L]** ✅ **완료** *(localhost)*
 > WPF+WebView2 위젯 작업. 이 프로젝트의 본체. (하위 항목이 확정 결정의 P3.1~P3.5에 대응)
 
-- [x] **3s = 스키마 선행** `project`에 안정 `uid`(UUID, assign-once)를 추가하고 일정은 `db-<uid>`로 참조. schema.sql 반영 완료(로컬 13행 UUID). (참고: `ARCHITECTURE.md` §4.7.3, ADR #13)
+- [x] **3s = 스키마 선행** `project`에 안정 `uid`(UUID, assign-once)를 추가하고 일정은 `db-<uid>`로 참조. 그때의 schema.sql 반영 완료(로컬 13행 UUID. 그 파일은 2026-10-15 에 지웠고 지금 정본은 `deploy/schema-structure.sql`). (참고: `ARCHITECTURE.md` §4.7.3, ADR #13)
 - [x] **3a = P3.1** MySQL 커넥터 연결. **접속 정보 = 배포 베이크(★배포 구성 상수, `ProjectDb.cs`)**. 사용자 설정 UI 없음. `db-config.json`은 **관리자 자격만** 저장(연결정보 아님). *(초기안 "config 외부화"는 §4.6에서 베이크로 정정)*
 - [x] **3b = P3.1** 과제 목록 **읽기 + 로컬 캐시**(오프라인 조회). *(그 캐시는 2026-07-24 ADR-18로 제거됨, 머리말 참조. 체크는 당시 완료 기록)*
 - [x] **3c** **온라인 상태 감지**: 마스터 CRUD는 온라인일 때만(오프라인=읽기전용, 조회는 캐시로 지속) *(캐시 조회는 07-24 제거)*
@@ -110,7 +110,7 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 - [x] **다중 시트**: `Write(path, Doc, IReadOnlyList<Sheet>)`. 스타일(styles.xml)은 전 시트 공유, 제목/부제는 시트별.
       Content_Types Override, workbook `<sheets>`, workbook.rels(워크시트 rId1..N + styles rId(N+1)), Print_Titles(localSheetId=시트 인덱스)를 시트 수에 맞게 일반화.
 - [x] **발주처 관리(CRUD, 이름만)**: `ProjectDb.cs`의 `AddCustomerAsync`/`RenameCustomerAsync`/`SetCustomerActiveAsync`(소프트삭제)/
-      `CountActiveProjectsByCustomerAsync`(참조수). 이름변경은 **FK ON UPDATE CASCADE**로 과제에 자동 전파. **하드삭제는 앱에서 안 함**(DB에서 직접).
+      `CountActiveProjectsByCustomerAsync`(참조수). 이름변경은 **FK ON UPDATE CASCADE**로 과제에 자동 전파(그때의 모양. 2026-10-15 ADR-23 부터는 `customer_id` 번호 키라 라벨 한 행 UPDATE 이고 화면은 조인으로 따라온다). **하드삭제는 앱에서 안 함**(DB에서 직접. 지금은 휴지통의 영구 삭제가 있다).
       브리지 4종(`addCustomer`/`renameCustomer`/`setCustomerActive`/`customerRefCount`) + 관리 UI(`#customerModal`·편집폼 인라인 ＋).
       관리 조작은 전부 **offEditGuard(위젯, 온라인, 관리자)** 게이트(쓰기라 인증 필요).
 - [x] **추출 시트2 '발주처'**: 마스터 전체(과제 필터와 무관하므로 부제에 '전체'로 명시). 2열(No·발주처), 활성 발주처를 이름순으로.
@@ -188,8 +188,8 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
 > **구축 절차의 정본은 [`deploy/README.md`](deploy/README.md) '배포 순서'다.** 아래는 체크리스트일 뿐이고, 순서, 선행조건, 종료코드는 그 문서가 정한다(`app_user` 가 먼저 서 있어야 `cal_*` 의 FK 가 붙는다. 뒤집으면 errno 1824).
 
 - [ ] 폐쇄망 PC에 MySQL **반입·설치**(반입 절차 확인)
-- [ ] `schema.sql` 적용 + P5 실데이터 이관
-- [ ] **캘린더 트랙 구축**: `deploy\init-calendar.cmd`: 표 명부, FK, 권한, `schema_version` 행을 한 번에 대조하고 어긋나면 `exit 1`. **`cal_*` 를 DROP 하므로 빈 DB에서만**
+- [ ] **구조 적용 + 과제 복사**: `deploy\setup-taskcalendar.cmd -DbHost <서버>`(2026-10-15 부터 진입점은 이것 하나. 옛 `schema.sql` 적용 단계는 없어졌다). 스키마 파일로 `taskcalendar` 를 만들고 원본 `taskmgr` 에서 과제 트랙을 복사하며 코드표 이름을 번호로 바꾼다. P5 실데이터 이관은 그 원본에 들어 있는 것이 기준이다
+- [ ] **캘린더 트랙 구축**: `setup-taskcalendar` 가 함께 한다(그 안에서 `schema-calendar.sql`, `grants-calendar.sql`). 따로 돌리는 `deploy\init-calendar.cmd` 는 표 명부, FK, 권한, `schema_version` 행을 한 번에 대조하고 어긋나면 `exit 1`. **`cal_*` 를 DROP 하므로 빈 DB에서만**
 - [ ] **백업 등록**: `deploy\backup-taskmgr.cmd -Install`(관리자 콘솔): 정기 덤프 작업 등록. 1회 수동 백업은 인수 없이. 확인은 `-Status`
 - [ ] **서버화**: `bind-address=0.0.0.0`, 방화벽 3306, 원격 최소권한 계정
 - [ ] 고정 IP 확인(이미 설정됨) 후 `ProjectDb.cs` **★배포 구성 상수를 폐쇄망 IP로 교체 후 재빌드·자동업데이트 배포**
@@ -226,7 +226,7 @@ P6 폐쇄망 임시서버 ─▶ P7 배포·운영        P6.5 per-user 인증(a
       "캘린더가 **보낸 것만** 담는다". 사이트 되읽기 동기화는 **버린 안**이다(사이트가 무효화 신호를 주지 않는다).
 - [x] `grants-calendar.sql` 로 `taskmgr_app` 최소권한 부여. **새 표에 권한이 0 이면 배선이 `ERROR 1142` 로 죽는다**(실제로 그렇게 발견했다)
 - [x] 재구축 경로(`schema-calendar.sql`) ↔ 운영 DB **전수 대조 일치**, **재구축 2회차 오류 0**(DROP 3줄 누락을 그때 잡았다)
-- [x] **무결성 규칙 통일 라운드**(2026-09-09, `deploy/migrate-2026-09-09-integrity.sql`): 소유자 FK 를 전부 `RESTRICT` 로 통일, `cal_report_hours` 에 과제 FK 신설, `cal_report_daily` 에 근태·초과시간 CHECK, `hours` 를 `DECIMAL(4,2)` 로, 감사 시각 KST→UTC **1회 정규화**(+ `widget/ProjectDb.cs` 접속 프리앰블 신설). ⚠️ **이 파일만 재실행 안전이 아니다.** 적용 전 백업 필수이고 코드와 **같은 배포**에 실어야 한다(절차 정본: [`deploy/README.md`](deploy/README.md) '적용 순서')
+- [x] **무결성 규칙 통일 라운드**(2026-09-09, `deploy/migrate-2026-09-09-integrity.sql`. 그 파일은 2026-10-15 에 지웠고 git 이력에 있다. 내용은 스키마 파일에 들어 있다): 소유자 FK 를 전부 `RESTRICT` 로 통일, `cal_report_hours` 에 과제 FK 신설, `cal_report_daily` 에 근태·초과시간 CHECK, `hours` 를 `DECIMAL(4,2)` 로, 감사 시각 KST→UTC **1회 정규화**(+ `widget/ProjectDb.cs` 접속 프리앰블 신설). ⚠️ **이 파일만 재실행 안전이 아니다.** 적용 전 백업 필수이고 코드와 **같은 배포**에 실어야 한다(절차 정본: [`deploy/README.md`](deploy/README.md) '적용 순서')
 - **게이트**: `information_schema` 전수 대조 ✅, `TC_TEST_STRICT=1 node tests/run-tests.mjs` 의 `schema-integrity` 계약 7종 ✅
 
 ## C2. 이관 도구: **[M]** ✅ **완료**

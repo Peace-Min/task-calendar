@@ -116,7 +116,7 @@
 | `bind()` 985줄 분할 | M | 전체 JS의 12%가 한 함수. 무관한 핸들러 201건 공존 |
 | **C# 실행 테스트 도입** | M | 9,423줄에 0건(전부 regex 문자열 검사). Reminders, Update, RepoPaths, XlsxWriter, NetcusText부터 |
 | 쓰기 모델 차분화 | M | 편집마다 상태 전체 재기록. 5년치면 편집 1회 = 수천 문장, 20s 타임아웃. ★미실측(지금 23건) |
-| ~~`cal_report_hours.cat_no`~~ ✅ **2026-09-09 해소.** `fk_crh_cat`(RESTRICT) 신설(`db/deploy/migrate-2026-09-09-integrity.sql`) | S | 남은 것 하나: `cat_no`를 실제로 채우는 날 **과제 삭제 전 NULL 낮추기** 규칙이 필요하다. 근거 절 `db/CALENDAR-TABLE-DESIGN.md` §5.9.6 은 아직 "FK 를 걸지 않는다" 전제로 쓰여 있어 함께 갱신해야 한다 |
+| ~~`cal_report_hours.cat_no`~~ ✅ **2026-09-09 해소.** `fk_crh_cat`(RESTRICT) 신설(`db/deploy/migrate-2026-09-09-integrity.sql`. 그 파일은 2026-10-15 에 지웠고 지금은 `schema-calendar.sql` 에 있다) | S | 남은 것 하나: `cat_no`를 실제로 채우는 날 **과제 삭제 전 NULL 낮추기** 규칙이 필요하다. 근거 절 `db/CALENDAR-TABLE-DESIGN.md` §5.9.6 은 아직 "FK 를 걸지 않는다" 전제로 쓰여 있어 함께 갱신해야 한다 |
 | 접속문자열 빌더 4벌, 발주처↔코드값 블록 복제, 고아 자격증명 코드 | S | 한쪽만 고쳐진 드리프트 이미 관찰됨 |
 | 테스트가 함수 이름을 텍스트로 잠금(`extractFunction` 17파일) | M | 위 리팩토링을 하면 동작 불변이어도 깨짐. **부채 상환 전에 이것부터** |
 

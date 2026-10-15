@@ -1,4 +1,4 @@
-# DB 프로비저닝 키트 (taskmgr)
+# DB 프로비저닝 키트 (taskcalendar, 옛 taskmgr)
 
 MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지금(개인 PC 임시)과 나중(서버 이관) 모두 같은 스크립트**로 실행하므로 동일 구조가 재현됩니다. 데이터는 이 키트가 만들지 않습니다(구조/권한만).
 
@@ -7,12 +7,13 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 > `rollback-2026-08-24-org-id.sql` 은 지웠습니다(git 이력에 있습니다). 아래 본문에 그 이름이 남은 곳은 옛 기록입니다.
 > - **새 DB(회사 서버 포함)**: `setup-taskcalendar.cmd`. 스키마 파일로 `taskcalendar` 를 만들고, 원본 `taskmgr` 에서 과제 트랙을 복사하면서 코드표 이름을 번호로 바꿉니다.
 > - **데이터가 있는 로컬 DB(v12)**: `migrate-2026-10-15-code-ids.sql` 한 번(v12 → v13, 코드표 번호 키). 백업 먼저(`backup-taskmgr.cmd -DbName taskcalendar`), 복제한 격리 DB 에서 먼저. 실행법은 그 파일 머리말.
-> - 운영 스크립트(`backup-taskmgr`, `restore-taskmgr`, `init-calendar`, `org-ops`, `app-account`)의 기본 DB 는 `taskcalendar` 입니다. 옛 DB 는 `-DbName taskmgr` 처럼 이름을 적습니다.
+> - 운영 스크립트(`backup-taskmgr`, `restore-taskmgr`, `init-calendar`, `org-ops`, `app-account`)의 기본 DB 는 `taskcalendar` 입니다. 옛 DB 는 `-DbName taskmgr` 처럼 이름을 적습니다(`restore-taskmgr` 는 `-LiveDb`, `-TargetDb`). 파일 이름은 그대로 둡니다.
+> - 코드표(발주처, 구분, 상태, 직급)는 번호 키입니다(`schema_version` 13). `project` 와 `app_user` 는 이름이 아니라 `customer_id`, `section_id`, `status_id`, `title_id` 를 담습니다. 아래 본문에서 *"과제 트랙의 자연키 PK"* 라고 적은 곳은 그 전의 기록입니다. 근거는 [`../TABLE-DESIGN.md`](../TABLE-DESIGN.md) §9 ADR-23.
 
-**이 폴더에는 서로 독립적인 트랙 둘**이 들어 있습니다. 같은 `taskmgr` DB 를 대상으로 하지만 다루는 테이블도, 앱 계정에 주는 권한도 다릅니다. **한쪽 문서를 다른 쪽 근거로 쓰지 마세요.**
+**이 폴더에는 서로 독립적인 트랙 둘**이 들어 있습니다. 같은 DB(지금은 `taskcalendar`)를 대상으로 하지만 다루는 테이블도, 앱 계정에 주는 권한도 다릅니다. **한쪽 문서를 다른 쪽 근거로 쓰지 마세요.**
 
 - **과제 트랙**: `project`·`customer` 등. 진입점 `setup-taskcalendar.cmd`(2026-10-15 부터. 옛 `init-db.cmd` 는 지웠습니다). 설계는 [`../TABLE-DESIGN.md`](../TABLE-DESIGN.md)
-- **캘린더 트랙**: `cal_*`(개인 일정, 할 일, 공수, 근태). 진입점 `init-calendar.cmd`. 설계는 [`../CALENDAR-TABLE-DESIGN.md`](../CALENDAR-TABLE-DESIGN.md)
+- **캘린더 트랙**: `cal_*`(개인 일정, 할 일, 공수, 근태). 새 DB 에서는 `setup-taskcalendar.cmd` 가 함께 만들고, 캘린더만 다시 세울 때 `init-calendar.cmd` 를 씁니다. 설계는 [`../CALENDAR-TABLE-DESIGN.md`](../CALENDAR-TABLE-DESIGN.md)
 
 그리고 트랙과 무관하게 **DB 전체를 대상으로 하는 운영 도구**가 하나 있습니다. 바로 **백업**(`backup-taskmgr`)입니다.
 구축이 아니라 **설치**라 위 두 진입점에 딸려 오지 않습니다. 아래 '백업' 절.
@@ -25,11 +26,11 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드 |
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
-| `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다 |
+| `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
 
 ## 구성: 캘린더 트랙 (`cal_*`), 백업
 
-> 아래 여섯 중 **앞의 셋만** 캘린더 트랙입니다. **백업과 복구 파일은 `taskmgr` DB 전체**가 대상이며,
+> 아래 여섯 중 **앞의 셋만** 캘린더 트랙입니다. **백업과 복구 파일은 DB 전체**(기본 `taskcalendar`)가 대상이며,
 > 캘린더 트랙 작업 중에 만들어졌을 뿐 과제 표도 함께 받습니다.
 
 | 파일 | 역할 |
@@ -39,7 +40,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `grants-calendar.sql` | 앱 계정(`taskmgr_app`) 권한 **단일 소스**. 표마다 '왜 그 동사를 주는지 / 왜 안 주는지'가 주석으로 붙어 있다 |
 | `backup-taskmgr.cmd` / `backup-taskmgr.ps1` | **주간 mysqldump 백업 + '온전한 덤프인지' 대조.** 구축이 아니라 **운영** 도구라 `init-calendar` 와 별개로 돈다. `-Install` 로 작업 스케줄러에 등록. 아래 '백업' 절 |
 | `create-backup-user.sql` | 백업 전용 최소권한 계정(`taskmgr_backup`). **주는 권한과 안 주는 권한의 근거가 주석에 붙어 있다.** 특히 `TRIGGER` 를 왜 함께 줘야 하는지 |
-| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **새 주 DB `taskcalendar` 원큐 구축(2026-09-23, 09-29 개정).** 기존 `taskmgr`(0.16 전용, 읽기만) 옆에 정본 DDL 3개로 v12 구조를 세우고, 사용자 3표는 회사 시드(02, 03, 04)로, 과제 4표는 원본에서 id/uid 보존으로 복사(시각 KST→UTC), 앱 권한 3파일 적용, 검증 보고서. 원본 사용자 표는 login_id 대조(경고)에만 읽는다. 어떻게 끝나든 보고서(`-FAILED`)가 남는다. **대상이 이미 있으면 실행할 때마다 백업(`<대상>-before-drop-<시각>.sql`) 후 DROP 하고 처음부터 다시 만든다**(2026-09-30, `-Force` 불필요. 받기만 하고 무시). 운영 전환 뒤 다시 돌리면 대상의 캘린더 데이터가 지워진다(before-drop 덤프가 유일한 사본). 종료코드 0/1/2/3. 왜, 언제 쓰는지는 DEPLOY.md §0-6 |
+| `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **새 주 DB `taskcalendar` 원큐 구축(2026-09-23, 09-29 개정).** 기존 `taskmgr`(0.16 전용, 읽기만) 옆에 정본 DDL 3개로 최신 구조(2026-10-15 부터 v13)를 세우고, 사용자 3표는 회사 시드(02, 03, 04)로, 과제 4표는 원본에서 id/uid 보존으로 복사(시각 KST→UTC. 코드표 이름은 고정 번호 지도에 맞춰 번호로 바꾸고, 번호로 되살린 이름이 원본과 `BINARY` 로 같은지 확인한다), 앱 권한 3파일 적용, 검증 보고서. 원본 사용자 표는 login_id 대조(경고)에만 읽는다. 어떻게 끝나든 보고서(`-FAILED`)가 남는다. **대상이 이미 있으면 실행할 때마다 백업(`<대상>-before-drop-<시각>.sql`) 후 DROP 하고 처음부터 다시 만든다**(2026-09-30, `-Force` 불필요. 받기만 하고 무시). 운영 전환 뒤 다시 돌리면 대상의 캘린더 데이터가 지워진다(before-drop 덤프가 유일한 사본). 종료코드 0/1/2/3. 왜, 언제 쓰는지는 DEPLOY.md §0-6 |
 | `restore-taskmgr.cmd` / `restore-taskmgr.ps1` | **덤프 되살리기 + '정말 되살아났는지' 대조.** `backup-taskmgr` 의 짝이다. 기본은 라이브가 아닌 **별도 DB** 로 복구하고, 라이브 덮어쓰기는 스위치+**이름 타이핑**이 있어야만 열린다. `-Grants` 가 `복구방법.txt` 4번(계정과 권한은 덤프에 없다)을 대신한다. 아래 '복구' 절 |
 
 > 두 `.sql` 은 `init-calendar` 없이 `mysql` 로 직접 돌려도 되지만, **순서와 게이트를 사람이 대신 지켜야 한다.** 아래 두 절이 그 내용이다.
@@ -73,12 +74,13 @@ setup-taskcalendar.cmd -DbHost 192.168.0.50 -Port 3306
 ```
 init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 ```
-- **선행 조건**: `app_user` 가 이미 있어야 하고, **그 표에 `user_id` 컬럼이 있어야** 합니다(`cal_*` 가 그 컬럼을 FK 로 가리킵니다). `init-calendar` 는 이것을 선행 조건 단계(`1-4`)에서 확인하고 어긋나면 **아무것도 만들지 않고 멈춥니다**(코드 `1`). `mysql` 로 `schema-calendar.sql` 을 직접 돌려도 **그 파일 자신의 선행조건 가드**(맨 앞 `0.` 절)가 `DROP` 보다 **먼저** 멈춰 세웁니다. 실측하면 기존 `cal_*` 가 살아남고 에러 메시지가 *"중단: app_user.user_id 없음 - migrate-2026-08-24-user-id.sql 먼저"* 로 나옵니다(`ERROR 1146`). 두 겹인 이유는 러너를 안 거치는 사람이 실재하기 때문입니다.
+- **선행 조건**: `app_user` 가 이미 있어야 하고, **그 표에 `user_id` 컬럼이 있어야** 합니다(`cal_*` 가 그 컬럼을 FK 로 가리킵니다). `init-calendar` 는 이것을 선행 조건 단계(`1-4`)에서 확인하고 어긋나면 **아무것도 만들지 않고 멈춥니다**(코드 `1`). `mysql` 로 `schema-calendar.sql` 을 직접 돌려도 **그 파일 자신의 선행조건 가드**(맨 앞 `0.` 절)가 `DROP` 보다 **먼저** 멈춰 세웁니다. 실측하면 기존 `cal_*` 가 살아남고 에러 메시지가 *"중단: app_user.user_id 없음 - 01-schema-users.sql 로 다시 만들 것"* 으로 나옵니다(`ERROR 1146`. 2026-10-15 전에는 지운 이관 파일 이름을 가리켰습니다). 두 겹인 이유는 러너를 안 거치는 사람이 실재하기 때문입니다.
   > **⚠️ 그 가드는 `mysql --force` 하나로 무력화됩니다.** `--force` 는 에러가 나도 계속 진행하므로
   > 가드 다음 줄의 `DROP TABLE` 이 그대로 돕니다. **이 파일을 돌릴 때 `--force` 를 붙이지 마세요.**
   > **무엇을 보는가: '컬럼이 있나' 하나가 아닙니다**(`init-calendar.ps1` 의 `1-4`·`1-4b`가 정본):
-  > - `app_user.user_id` 가 **존재**하는가. 없으면 지금 PK 가 무엇인지까지 찍고, **먼저 적용할 파일 이름**
-  >   (`migrate-2026-08-24-user-id.sql` / 새 DB 라면 `taskmgr-company-data\apply.cmd`)을 알려 주고 멈춥니다.
+  > - `app_user.user_id` 가 **존재**하는가. 없으면 지금 PK 가 무엇인지까지 찍고, **어떻게 다시 만들지**
+  >   (`setup-taskcalendar.cmd` / 새 DB 라면 `taskmgr-company-data\apply.cmd`)를 알려 주고 멈춥니다. 옛 키 DB 를 옮기던
+  >   `migrate-2026-08-24-user-id.sql` 은 2026-10-15 에 지웠습니다.
   > - **타입이 글자 하나까지 같은가**: `schema-calendar.sql` 이 선언한 `user_id` 타입을 파일에서 읽어
   >   실제 컬럼과 대조합니다. InnoDB 는 폭이나 부호가 다르면 FK 를 만들지 않습니다.
   > - **`NOT NULL` 인가**, **PK/UNIQUE 인덱스가 있는가**: FK 의 부모 컬럼은 인덱스의 선두여야 합니다.
@@ -95,8 +97,9 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
   > 전제)이 그 자리에서 사라집니다. 그래서 **두 겹으로** 막습니다: `init-calendar` 의 선행 조건 단계와
   > `schema-calendar.sql` 자신의 `0.` 가드(둘 다 `DROP` 전).
   > - **이 전환으로 표가 늘거나 줄지 않았습니다.** 바뀐 것은 각 표의 키입니다. *(그 뒤 08-27과 08-31 마이그레이션으로는 표가 늘었습니다. 지금 몇 개인지는 `schema-calendar.sql`의 `CREATE TABLE` 목록이 정본이고, `init-calendar.ps1`의 `$DESIGN_TABLES` 명부가 그것과 대조합니다. **문서에 숫자를 박지 마세요.** 이 줄이 예전에 "여전히 13개"라고 적고 있었고, 스키마가 그보다 늘어난 뒤에도 그 문장이 남아 다음 사람에게 거짓을 말했습니다. 같은 함정이 `init-calendar.ps1` 의 명부에서도 터져 2026-09-02까지 원큐 구축 진입점을 `Die` 로 막고 있었습니다.)*
-  > - 캘린더 트랙의 전환일 뿐 **과제 트랙(`init-db`)은 대상이 아닙니다.** 그쪽 자연키 PK 는
-  >   `ON UPDATE CASCADE` 가 실제로 도는 정상 설계입니다(실측 근거는 설계 **§5.6**).
+  > - 캘린더 트랙의 전환일 뿐 **과제 트랙은 그날의 대상이 아니었습니다.** 그쪽은 2026-10-15 에 따로 번호 키로
+  >   바꿨습니다(코드표 넷, `migrate-2026-10-15-code-ids.sql`, 설계 **§5.6**). 그 전에는 자연키 PK 와
+  >   `ON UPDATE CASCADE` 를 정상 설계로 남겨 두었습니다.
 - 앱 계정 비번은 묻지 않습니다. 이 키트는 **계정을 만들지 않고 권한만 줍니다**(비번이 두 파일에 흩어지는 것을 피하려고 `create-app-user.sql` 과 역할을 갈랐습니다).
 
 ### 배포 순서: `schema` → `grants` (바꾸지 마세요)
@@ -110,13 +113,13 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
    ```sql
    -- 지금 DB 가 어느 쪽인가 (한 줄이라도 나오면 '기존 DB')
    SELECT COLUMN_NAME FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA='taskmgr' AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='app_user' AND COLUMN_NAME='user_id';
    ```
 
    | | 상태 | 0 단계에서 할 일 |
    |---|---|---|
    | **신규 DB** | `app_user` 가 아예 없다 | 비공개 저장소 `taskmgr-company-data` 의 **`apply.cmd`**(`01-schema-users.sql` → `03-seed-users.sql` …). 처음부터 `user_id` 가 있는 표가 만들어집니다 |
-   | **기존 DB** | `app_user` 는 있는데 **PK 가 `login_id`** 이고 `user_id` 가 없다 | **`migrate-2026-08-24-user-id.sql` 을 먼저 적용**합니다(대리키 신설 + `login_id` UNIQUE 강등). `01-schema-users.sql` 을 그냥 다시 돌리면 **`DROP TABLE app_user` 로 실명 89명이 사라집니다.** 재실행 안전이 아닙니다 |
+   | **기존 DB** | `app_user` 는 있는데 **PK 가 `login_id`** 이고 `user_id` 가 없다 | *(2026-08-24 ~ 10-14)* **`migrate-2026-08-24-user-id.sql` 을 먼저 적용**했습니다(대리키 신설 + `login_id` UNIQUE 강등). **2026-10-15 부터 그 파일은 없습니다.** 옛 키 DB 는 더 옮기지 않고 `setup-taskcalendar.cmd` 로 새 DB 를 만듭니다(원본은 읽기만 합니다). `01-schema-users.sql` 을 그 DB 에 그냥 다시 돌리면 **`DROP TABLE app_user` 로 실명 89명이 사라집니다.** 재실행 안전이 아닙니다 |
 
    > **★ 이 단계를 건너뛰면 무엇이 막아 주는가: 두 겹입니다. 둘 다 `DROP` 보다 앞에 있습니다.**
    > `schema-calendar.sql` 은 `cal_*` 를 전부 `DROP` 한 **뒤에** 첫 `CREATE TABLE` 의 FK 를 만나는
@@ -124,7 +127,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
    > (DDL 은 롤백이 없습니다). 그래서 둘로 막습니다:
    > - `init-calendar.ps1` 선행 조건 `1-4`: 코드 `1` 로 멈추고 적용할 파일 이름을 찍습니다.
    > - `schema-calendar.sql` 자신의 `0.` 가드: 러너를 안 거치고 `mysql` 로 직접 돌려도 멈춥니다
-   >   (실측: 기존 `cal_*` 가 살아남고 `ERROR 1146` 메시지에 *"migrate-2026-08-24-user-id.sql 먼저"*).
+   >   (실측: 기존 `cal_*` 가 살아남고 `ERROR 1146` 메시지가 뜬다. 2026-10-15 부터 그 메시지는 *"01-schema-users.sql 로 다시 만들 것"*).
    > **⚠️ 단, `mysql --force` 를 붙이면 두 번째 겹이 무력화됩니다.** 붙이지 마세요.
    > 그리고 **0 단계는 사람이 먼저 하는 것이 정답**입니다. 스크립트는 막아 줄 뿐 대신 해 주지 않습니다.
    > ※ **2026-08-24 현재 실 `taskmgr` 은 이 단계를 이미 마쳤습니다.** `app_user` PK = `user_id`
@@ -135,6 +138,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
    > (`migrate-2026-08-24-org-id.sql`). **`init-calendar` 는 그것을 요구하지 않지만**
    > `taskmgr-company-data\apply.cmd` 는 요구합니다. 아래 **'사용자·조직 표 마이그레이션'** 절.
    > (2026-08-24 현재 실 `taskmgr` 은 **아직 안 했습니다.** `org_unit.org_id` 없음, 직접 확인.)
+   > (2026-10-15: 지금은 적용됐고 그 이관 파일과 되돌리기 파일은 지웠습니다. `setup-taskcalendar` 가 만드는 새 DB 는 처음부터 `org_id` 구조입니다.)
 1. **`schema-calendar.sql`**: 표가 없으면 GRANT 를 걸 대상이 없습니다(없는 표에 GRANT 는 `ERROR 1146`).
 2. **`grants-calendar.sql`**: 계정이 없으면 `ERROR 1410` 으로 시끄럽게 멈춥니다(의도. 조용히 건너뛰면 앱이 배포 후 첫 조회에서 `ERROR 1142` 로 죽습니다).
 
@@ -199,7 +203,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 
 > **백업은 이 게이트가 보지 않습니다.** 별도 도구라서입니다. 아래 '백업' 절의 확인을 따로 하세요.
 
-> ⚠️ `init-calendar`/`schema-calendar.sql` 도 **멱등 재구축이라 기존 `cal_*` 를 DROP** 합니다(최초 1회 구축용). 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 사라집니다. 운영 중 구조 변경은 별도 `migrate-*.sql` 로 하세요.
+> ⚠️ `init-calendar`/`schema-calendar.sql` 도 **멱등 재구축이라 기존 `cal_*` 를 DROP** 합니다(최초 1회 구축용). 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 사라집니다. 운영 중 구조 변경은 별도 `migrate-*.sql` 로 하세요(지금 남은 것은 `migrate-2026-10-15-code-ids.sql` 하나).
 
 ## 캘린더 표 마이그레이션: `cal_*`, `schema_version`
 
@@ -236,6 +240,9 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 | `migrate-2026-09-10-dev-end-date.sql` | `project` 에 **`dev_end_date`**(개발종료일) 신설. 계약종료일(`end_date`)과 **별개**의 날짜입니다(개발을 먼저 끝내고 검수·납품 기간이 남거나, 계약만 연장되거나, **선진행**처럼 계약 날짜가 아예 없는데 개발은 도는 경우). `AFTER end_date` 로 자리까지 못 박습니다. 정본(신규 구축)과 컬럼 순서가 같아야 `mysqldump --no-data` 대조가 성립합니다. 기존 행은 전부 NULL(미정). **위젯이 이 컬럼을 SELECT 하므로 DB 를 먼저 올리세요**(구버전 DB + 새 위젯 = `ERROR 1054` 로 과제 목록이 통째로 빔) | 9 → 10 |
 | `migrate-2026-09-10-user-sort-order.sql` | (사용자 표) `app_user` 에 **`sort_order`**(명부 서열) 신설. 관리자가 앱 안에서 정하는 **전사 단일** 서열입니다(설계 [`../../docs/USER-ADMIN.md`](../../docs/USER-ADMIN.md)). `AFTER title` 로 자리까지 못 박습니다. 정본(비공개 `01-schema-users.sql`)과 컬럼 순서가 같아야 `mysqldump --no-data` 대조가 성립합니다. 기존 행은 **NULL 로 두지 않고** 직급 서열 → 이름 순으로 10 간격을 채웁니다(참고값. 관리자가 한 번 저장하면 앱이 전량 재작성). **같은 날 두 번째 판이라 위 `dev-end-date` 를 먼저 적용하세요.** 가드가 그 순서를 강제합니다 | 10 → 11 |
 | `migrate-2026-09-10-user-sort-order-int.sql` | `app_user.sort_order` 를 **SMALLINT → INT UNSIGNED** 로 넓힌다(값·위치 보존, MODIFY 만). SMALLINT 은 10 간격 6,553명이 천장이었다(격리 DB 실측 6,554명째 ERROR 1264 전량 롤백). 가드가 11 에서만 열린다. 위젯 `ExpectedSchemaVersion` 12 와 같은 창에 | 11 → 12 |
+| **`migrate-2026-10-15-code-ids.sql`** *(지금 남은 유일한 이관 파일)* | (과제 트랙과 사용자 표) 코드표 넷 `customer`, `section_code`, `status_code`, `title_code` 의 PK 를 이름에서 **번호**(`customer_id`, `section_id`, `status_id`, `title_id`)로. 자식 `project.customer`/`section`/`status`, `app_user.title` 을 `*_id` 번호 열로 바꾸고 옛 열을 지운다. 위젯 `ExpectedSchemaVersion` 13 과 같은 창에. 아래 '코드표 번호 키 이관' 절 | 12 → 13 |
+
+> 위 표에서 이 줄 앞의 파일은 전부 지웠습니다(2026-10-15). 아래 두 ⚠️ 상자도 그 파일들의 기록입니다.
 
 > ### ⚠️ `migrate-2026-09-10-user-sort-order.sql`: 적용 전에 알아야 할 셋
 >
@@ -254,6 +261,40 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 > - **`widget/ProjectDb.cs` 의 접속 프리앰블과 반드시 같은 배포에 실어야 합니다.** 한쪽만 나가면 한 컬럼에 **KST 와 UTC 가 섞입니다.** SQL 만 나가면 정규화 뒤에 앱이 다시 KST 로 쓰고, 코드만 나가면 옛 행은 KST 인 채로 새 행만 UTC 가 됩니다. 어느 쪽이든 사후 구분이 안 됩니다.
 > - 적용 뒤에는 **표 주석이 바뀌므로**(⑥) `tools/schema-report/` 의 재생성까지 한 라운드입니다. 절차는 파일 머리말에 있습니다.
 
+### 코드표 번호 키 이관: `migrate-2026-10-15-code-ids.sql` (12 → 13)
+
+결정과 근거는 [`../../docs/CODE-TABLE-IDS.md`](../../docs/CODE-TABLE-IDS.md) §6, 설계는 [`../TABLE-DESIGN.md`](../TABLE-DESIGN.md) §9 ADR-23. **실행법과 단계의 정본은 그 파일의 머리말**이고 아래는 색인입니다.
+
+**언제 쓰나.** 이미 데이터가 있고 지우면 안 되는 **v12 DB 하나**에만 씁니다. 지금은 개발자 로컬 PC 의 `taskcalendar` 가 그것입니다.
+- 새로 세우는 DB(회사 서버 포함)에는 **쓰지 않습니다.** `setup-taskcalendar.cmd` 가 고친 스키마 파일로 처음부터 v13 을 만들고, 원본 `taskmgr` 에서 과제를 복사할 때 이름을 번호로 바꿉니다.
+- `title_code` 와 `app_user` 는 회사 저장소가 만든 표지만 같은 물리 DB 안에 있으므로 이 파일이 함께 옮깁니다.
+- 판번호가 12 가 아니면 할 일이 없습니다(이미 13 이면 가드에서 멈춥니다).
+
+**어떻게.**
+1. 위젯을 모두 닫습니다(열린 트랜잭션이 있으면 첫 `ALTER` 가 10초 뒤 `ERROR 1205` 로 멈춥니다. 이때는 바뀐 것이 없습니다).
+2. **백업. DB 이름을 꼭 적습니다**: `backup-taskmgr.cmd -DbName taskcalendar`. 덤프가 끝난 것을 확인하고 다음으로 갑니다.
+3. 관리자 계정으로, 문자셋 `utf8mb4` 로, **`--force` 없이** 돌립니다(비밀번호는 명령줄에 쓰지 않습니다):
+   ```
+   mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\deploy\migrate-2026-10-15-code-ids.sql
+   ```
+4. 끝나면 위젯을 v13 판(`ExpectedSchemaVersion` 13)으로 바꿔 띄웁니다. 옛 위젯(12)은 이 DB 를 거부합니다.
+- 실 DB 에 돌리기 전에 **복제한 격리 DB 에서 먼저** 돌립니다(CODE-TABLE-IDS §6, §12).
+
+**무엇을 확인하나.**
+- **가드(아무것도 바꾸기 전)**: 대상 표 7개, `schema_version = '12'`, 옛 모양(이름 키)인지, 문자셋, 뷰와 트리거 없음, 외래키 모양, 데이터 사전 점검.
+- **절단 관문(옛 열을 지우기 직전)**: 번호로 되살린 이름이 스냅숏(과제 uid 별 발주처, 구분, 상태와 사용자별 직급)과 `BINARY` 로 한 글자도 다르지 않고 NULL 여부도 같아야 합니다. 시드 이름은 고정 번호 지도(구분 2=선진행, 상태 2=종료 등)로 번호를 받고, 나머지는 MAX+1 부터 이름순입니다.
+- **사후 검증**: 고아 0, 표별 행 수 불변, 이름 복원 `BINARY` 일치, `cal_*` 행 수와 `cal_user_rev` 불변, 구조, `AUTO_INCREMENT` > MAX. 어긋나면 실행을 실패시킵니다.
+- 끝으로 앱 계정의 안 쓰는 `UPDATE` 권한(`cal_entry_commit`, `cal_todo_day_note`, `cal_room`)을 거둡니다(CODE-TABLE-IDS §8-3).
+- 사람이 따로 할 대조: 빈 격리 DB 에 `setup-taskcalendar` 로 새로 만든 결과와 `information_schema`(열, 인덱스, 외래키, CHECK, 표 COMMENT)가 같아야 합니다. 질의 예는 파일 머리말 【대조】.
+
+**멈추면.** 조건이 어긋나면 '없는 표 이름'을 SELECT 해 `ERROR 1146` 으로 멈춥니다. 마지막 *"중단: …"* 줄이 이유입니다.
+- **가드나 절단 관문에서 멈춤**: 옛 열과 옛 키가 그대로입니다(관문에서 멈췄다면 더한 번호 열만 남습니다). 원인(데이터)을 고친 뒤 이 파일을 그대로 다시 돌리면 됩니다.
+- **절단 관문 뒤에서 멈춤**: 반쯤 바뀐 상태입니다. 가드가 재실행을 막으므로 2번의 백업으로 되돌린 뒤 다시 합니다.
+- DDL 은 암묵 커밋이라 이 파일은 원자적이지 않습니다. 안전장치는 백업과 절단 관문입니다. **`--force` 를 붙이면 관문이 무력화됩니다**(에러가 나도 다음 줄로 가서 옛 열을 지웁니다).
+
+**실측(2026-10-15, MySQL 8.4.9, 실데이터 로컬 복제본: 발주처 8, 구분 3, 상태 4, 직급 11, 과제 14, 사용자 89, 일정 3,625)**:
+절단 관문과 사후 검증 전부 0. 다시 돌리면 v12 가드에서 멈춤. 대소문자만 다른 표류(`project.customer` 가 `'ZZCASE'`, `customer.name` 이 `'zzCase'`)는 절단 관문에서 멈추고 옛 열이 그대로 남음. 이관한 DB 와 `setup-taskcalendar` 로 새로 만든 DB 의 `information_schema` 가 양쪽 359줄로 차이 0. 계약일 역전(`start_date > end_date`)은 로컬 `taskcalendar` 와 원본 `taskmgr` 모두 0건(그래서 순서 CHECK 를 넣을지는 따로 정합니다. 이 파일은 넣지 않습니다).
+
 ---
 
 ## 사용자·조직 표 마이그레이션: `app_user`, `org_unit`
@@ -263,12 +304,18 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 > **이미 서 있는 DB 를 옮기는 1회용 SQL 만** 이쪽에 있습니다. 실명 데이터가 안 들어가기 때문입니다.
 > 둘은 서로 **독립**입니다(건드리는 키가 겹치지 않습니다. 저쪽은 `app_user` 의 키, 이쪽은
 > `org_unit` 의 키 + `app_user` 에 컬럼 하나). 어느 쪽을 먼저 돌려도 되지만 **결국 둘 다** 돌려야 합니다.
+>
+> **2026-10-15: 아래 표의 앞 세 파일(`migrate-2026-08-24-user-id.sql`, `migrate-2026-08-24-org-id.sql`,
+> `rollback-2026-08-24-org-id.sql`)은 지웠습니다**(git 이력에 있습니다). 옛 키 DB 를 더 옮기지 않고, 새 DB 는
+> `setup-taskcalendar.cmd` 가 처음부터 `user_id`, `org_id` 구조로 만들기 때문입니다. 이 절과 바로 아래
+> '조직 대리키 전환' 절은 그 파일들이 무엇을 했고 무엇을 지켰는지의 기록입니다. **지금도 쓰는 것은 `org-ops` 둘**입니다.
+> 직급(`title_code`, `app_user.title_id`)의 번호 키 전환은 위 '코드표 번호 키 이관' 절의 파일이 함께 합니다.
 
 | 파일 | 무엇을 바꾸나 | 누가 요구하나 |
 |---|---|---|
-| `migrate-2026-08-24-user-id.sql` | `app_user` PK: `login_id` → **`user_id`** | `cal_*` 의 소유자 FK(위 '배포 순서' 단계 `0`), `init-calendar` 선행조건 `1-4` |
-| `migrate-2026-08-24-org-id.sql` | `org_unit` PK: `name` → **`org_id`** (+ `app_user.org_id` 신설, **구 컬럼 `org_unit.parent`·`app_user.org_unit` DROP**) | `taskmgr-company-data\apply.cmd` 의 `02`·`03` 시드, `apply.ps1` 의 `org_id` 게이트 |
-| `rollback-2026-08-24-org-id.sql` | 위 org-id 를 **되돌린다**(구 컬럼을 정본에서 **재생성**) | (사고 시에만) |
+| ~~`migrate-2026-08-24-user-id.sql`~~ (지움) | `app_user` PK: `login_id` → **`user_id`** | `cal_*` 의 소유자 FK(위 '배포 순서' 단계 `0`), `init-calendar` 선행조건 `1-4` |
+| ~~`migrate-2026-08-24-org-id.sql`~~ (지움) | `org_unit` PK: `name` → **`org_id`** (+ `app_user.org_id` 신설, **구 컬럼 `org_unit.parent`·`app_user.org_unit` DROP**) | `taskmgr-company-data\apply.cmd` 의 `02`·`03` 시드, `apply.ps1` 의 `org_id` 게이트 |
+| ~~`rollback-2026-08-24-org-id.sql`~~ (지움) | 위 org-id 를 **되돌린다**(구 컬럼을 정본에서 **재생성**) | (사고 시에만) |
 | `org-ops.cmd` (=`org-ops.ps1`) | 구축이 아니라 **운영**용. 조직 개명, 신설, 팀 이동, 인사이동. **보통 쓰는 것이 이쪽입니다** (사전 불변식 점검, `-WhatIf`, `repair`, 종료코드 계약) | 조직이 바뀔 때마다 |
 | `org-ops.sql` | 같은 4종의 **`mysql` 전용 대체본**. PowerShell 을 못 쓰는 환경용 | 〃 |
 
@@ -279,6 +326,9 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 > 여기 08-24 두 개가 `(전제)` 인 것은 판번호 체계가 서기 **전**의 파일이라서입니다.
 
 ### 조직 대리키 전환: `migrate-2026-08-24-org-id.sql`
+
+> **2026-10-15: 이 파일은 지웠습니다(git 이력에 있습니다).** 아래는 그 파일의 기록입니다. 조직을 바꾸는 지금의
+> 도구는 이 절 뒤쪽의 `org-ops.cmd`/`org-ops.sql` 이고, 그 부분은 지금도 유효합니다(기본 DB 는 `taskcalendar`).
 
 **무엇을 하나.** `org_unit` 의 기본키를 이름에서 번호로 옮깁니다. `org_id`(PK, AUTO_INCREMENT) 신설,
 `name` 은 `UNIQUE` 로 강등, 계층의 정본을 `parent_id`(FK)로 옮기고, **개명을 막던 자기참조 FK
@@ -482,7 +532,7 @@ org-ops.cmd repair -DeactivateOrphanedChildren           :: 그 아래 전부와
 ```
 # 대체 — mysql 만 있는 환경. 파일 맨 위 [입력] 블록만 고치고 통째로 실행
 #   (@op = show | rename | new | move | assign)
-mysql -u root -p --default-character-set=utf8mb4 taskmgr < org-ops.sql
+mysql -u root -p --default-character-set=utf8mb4 taskcalendar < org-ops.sql   # 옛 DB 면 taskmgr
 ```
 
 **★ 신설만 명령 이름이 갈립니다.** 나머지는 이름이 같습니다. 옮겨 적을 때 주의하세요.
@@ -998,26 +1048,25 @@ SELECT v FROM cal_schema_meta WHERE k='schema_version';
 
 실 데이터는 폐쇄망 밖으로 못 주므로, **내부망 LLM**이 `schema-structure.sql`(구조) + `load-template.sql`(형식·규칙)을 보고 실제 과제의 INSERT SQL을 생성하고 실행:
 ```
-mysql -u root -p taskmgr < 내부망LLM이_만든_INSERT.sql
+mysql -u root -p --default-character-set=utf8mb4 taskcalendar < 내부망LLM이_만든_INSERT.sql
 ```
-규칙(코드값+발주처 먼저, section/status는 코드테이블 존재값, 선진행 NULL 등)은 `load-template.sql` 상단 참고.
+규칙(코드값+발주처 먼저, section/status는 코드테이블에 있는 이름, 선진행 NULL 등)은 `load-template.sql` 상단 참고. 2026-10-15 부터 과제는 이름으로 적어 임시 표에 넣고 템플릿 끝에서 이름으로 번호를 찾아 옮깁니다(못 찾는 이름이 있으면 멈춥니다. `--force` 금지).
 
 ## 나중: 서버 이관
 
 구조는 다시 설계하지 않습니다. 서버에서 **같은 스크립트 실행**(구조·계정 재현) + 로컬 데이터는 dump/restore:
 ```
-# 로컬(현 서버)에서 데이터 추출
+# 로컬(현 서버)에서 원본 과제 DB 추출
 mysqldump -u root -p taskmgr > taskmgr-data.sql
-# 새 서버에서(2026-10-15 부터 이 한 줄이 구조, 시드, 과제 복사, 권한을 다 한다)
+# 새 서버에서: 원본을 먼저 붓고(setup 이 같은 서버의 taskmgr 을 읽어 과제를 복사한다)
+mysql -u root -p -h <새서버> taskmgr < taskmgr-data.sql
+# 이 한 줄이 taskcalendar 의 구조, 회사 시드, 과제 복사(코드표 이름을 번호로), 권한, 검증을 다 한다
 setup-taskcalendar.cmd -DbHost <새서버>
-mysql -u root -p -h <새서버> taskmgr < taskmgr-data.sql   # 데이터
 # 위젯: DeployConfig.DbHost 를 새 서버로 바꿔 재빌드
 ```
-- 두 스크립트의 **순서가 있습니다.** `cal_*` 가 `app_user.user_id` 를 FK 로 가리키므로 **그 컬럼까지 갖춘 `app_user`** 가 먼저 있어야 합니다. `app_user` 자체는 이 키트가 만들지 않습니다(비공개 저장소 `taskmgr-company-data` 의 `apply.cmd`). 위 '배포 순서' 의 단계 `0`.
-  - **새 서버로 옮기는 경우**는 대개 '신규 DB' 경로입니다. `apply.cmd` 로 사용자 표를 세우면 됩니다.
-    다만 **덤프를 먼저 붓고 그 위에 구축하는 순서**라면 그 덤프가 옛 `app_user`(PK=`login_id`)를 되살려
-    놓았을 수 있습니다. 그때는 새 서버에서도 **`migrate-2026-08-24-user-id.sql` 이 먼저**입니다.
-    판정 쿼리는 위 '배포 순서' 단계 `0` 의 표에 있습니다. 눈으로 짐작하지 말고 한 번 돌려 보세요.
+- 2026-10-15 전의 이 블록은 `setup` 을 먼저 돌리고 덤프를 나중에 부었습니다. `setup-taskcalendar` 는 **같은 서버의 원본(`-SourceDb`, 기본 `taskmgr`)에서** 과제를 복사하므로 원본이 먼저 있어야 합니다. 원본의 과제 표는 0.16 모양(이름 키)이어도 됩니다. 복사하면서 번호로 바꿉니다.
+- 사용자 표(`app_user` 등)는 원본에서 옮기지 않습니다. `setup` 이 비공개 저장소 `taskmgr-company-data` 의 시드로 `user_id`, `org_id`, `title_id` 구조를 처음부터 만듭니다. 그래서 옛 덤프가 옛 `app_user`(PK=`login_id`)를 되살려 놓아도 새 DB 에는 영향이 없습니다(옛 키를 옮기던 `migrate-2026-08-24-user-id.sql` 은 2026-10-15 에 지웠습니다).
+- 이미 쓰던 `taskcalendar`(캘린더 기록 포함)를 그대로 옮겨야 하는 경우는 `setup` 이 아니라 덤프 복원입니다(DEPLOY.md §0-6, 아래 '복구' 절의 `restore-taskmgr`). `setup` 을 다시 돌리면 대상의 캘린더 기록이 지워집니다.
 - **이관 직후 새 서버에서 `backup-taskmgr.cmd -Install` 을 돌리세요.** 백업은 구조에 딸려 오지 않습니다(별도 도구·스케줄러 등록). 아래 '백업' 절.
 - 사용자 PC 에 남아 있는 옛 캘린더 파일(`%APPDATA%\TaskCalendar\data.xml`)은 이 dump/restore 경로가 아니라 **1회성 이관**으로 옮깁니다(설계 §8. `cal_migration_log` 가 재실행을 막습니다). 두 갈래가 있습니다. 배포자가 일괄로 돌리는 **`xml-to-db`** 도구, 그리고 사용자가 앱에서 직접 올리는 **XML 가져오기**(자동 이관은 폐기했습니다. 설계 §3b). 어느 쪽이든 **한 번**입니다.
 

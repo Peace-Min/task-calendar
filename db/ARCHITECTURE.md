@@ -1,7 +1,8 @@
 # 과제관리 시스템 아키텍처 & 배포 결정 문서
 
 > 이 문서는 **과제 트랙**(`project`·`customer`·코드테이블)의 **배포·운영 아키텍처와 그 결정 근거**를 담는다.
-> DB 스키마 자체의 설계 근거는 [`DESIGN_NOTES.md`](DESIGN_NOTES.md)·[`TABLE-DESIGN.md`](TABLE-DESIGN.md), 컬럼 상세는 [`schema.sql`](schema.sql)·[`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) 참조.
+> DB 스키마 자체의 설계 근거는 [`DESIGN_NOTES.md`](DESIGN_NOTES.md)·[`TABLE-DESIGN.md`](TABLE-DESIGN.md), 컬럼 상세는 [`deploy/schema-structure.sql`](deploy/schema-structure.sql)(옛 `schema.sql` 은 2026-10-15 에 지웠다), [`../docs/DB-SCHEMA.html`](../docs/DB-SCHEMA.html) 참조.
+> **2026-10-15**: 코드표(발주처, 구분, 상태, 직급)의 기본키가 이름에서 번호로 바뀌었다(ADR #23, `schema_version` 13). 새 DB 진입점은 `deploy/setup-taskcalendar.cmd` 하나다. 본문 §3 은 고쳤고, 그 밖의 본문에 남은 이름 키와 옛 진입점 표기는 그날의 기록이다.
 > 최종 갱신: **2026-09-02**(아래 갱신 노트). 그 이전 본문은 2026-07-24판(ADR #19)이다.
 
 > ### 갱신 노트: 2026-09-02에 무엇이 달라졌나
@@ -41,10 +42,10 @@
 
 ## 3. 확정 데이터 모델 (요약)
 
-2 테이블 (상세는 `schema.sql`):
-- **`customer`**: 발주처 마스터. `name` PK(자연키) + `is_active` + 감사.
-- **`project`**: 과제 마스터. `id` PK(내부 대리키·autoinc) + **`uid`(외부 안정 참조키, UUID assign-once, 일정이 `db-<uid>`로 참조)** + `section`/`status`(코드테이블 FK) + `customer` FK(ON UPDATE CASCADE) + 사업명 + 계약명·통상명칭(`NOT NULL DEFAULT ''`) + 시작/종료일 + `note`(비고·관리 전용) + `is_active` + 감사. 유니크는 **`UNIQUE(uid)` 하나뿐**이고, 이름 기반 하드 유니크는 **제거**(ADR-21). `section`/`status`는 **ENUM이 아니라 코드테이블 + FK**(ADR-22). 상세: [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5·§4.
-- **`section_code` / `status_code`**: 구분·상태 코드(발주처와 대칭 룩업). `name` PK + `sort_order` + `is_active` + 감사. 앱에서 추가/개명(FK CASCADE)/순서/숨김. `project.section`/`.status`의 FK 타겟(ADR-22).
+2 테이블 (상세는 `deploy/schema-structure.sql`):
+- **`customer`**: 발주처 마스터. `customer_id` PK(번호, 2026-10-15 ADR #23) + `name`(UNIQUE 라벨) + `is_active` + 감사.
+- **`project`**: 과제 마스터. `id` PK(내부 대리키·autoinc) + **`uid`(외부 안정 참조키, UUID assign-once, 일정이 `db-<uid>`로 참조)** + `section_id`/`status_id`(코드테이블 FK, 번호) + `customer_id` FK(번호, ON UPDATE/DELETE RESTRICT) + 사업명 + 계약명·통상명칭(`NOT NULL DEFAULT ''`) + 시작/종료일 + `note`(비고·관리 전용) + `is_active` + 감사. 유니크는 **`UNIQUE(uid)` 하나뿐**이고, 이름 기반 하드 유니크는 **제거**(ADR-21). `section`/`status`는 **ENUM이 아니라 코드테이블 + FK**(ADR-22). 상세: [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5·§4.
+- **`section_code` / `status_code`**: 구분·상태 코드(발주처와 대칭 룩업). `section_id`/`status_id` PK(번호) + `name`(UNIQUE 라벨) + `sort_order` + `is_active` + 감사. 앱에서 추가, 개명(라벨 한 행), 순서, 숨김. `project.section_id`/`.status_id`의 FK 타겟(ADR-22, 키 모양은 ADR #23). 구분 2=선진행, 상태 2=종료는 고정 번호이고 숨김과 삭제가 막힌다.
 
 편집 권한 통제를 위해 **`app_user` 테이블이 추가될 예정**(§5, 앱 연동 단계에서).
 
@@ -146,7 +147,7 @@ MySQL은 항상 서버 프로세스가 떠 있어야 하는 **클라이언트-�
 - 보고서 품질은 "사용자가 공식 과제가 있을 땐 골라주느냐"에 달렸으므로 피커에서 공식 과제를 잘 보이게(그래야 기타로 덜 샘).
 
 #### 4.7.3 참조 식별자(안정 uid)와 재연결
-- **안정 uid(D1)**: `project`에 `uid`(UUID, assign-once) 추가. 일정은 **내부 autoinc `id`가 아니라 `db-<uid>`로 참조**. rename, 덤프복원, 재이관에도 불변이라 재빌드/재채번으로 참조가 엉키는 사고를 막는다. (내부 PK는 autoinc `id` 유지. ✅ schema.sql 반영 완료, 로컬 13행 UUID.)
+- **안정 uid(D1)**: `project`에 `uid`(UUID, assign-once) 추가. 일정은 **내부 autoinc `id`가 아니라 `db-<uid>`로 참조**. rename, 덤프복원, 재이관에도 불변이라 재빌드/재채번으로 참조가 엉키는 사고를 막는다. (내부 PK는 autoinc `id` 유지. ✅ 그때의 schema.sql(지금은 `deploy/schema-structure.sql`) 반영 완료, 로컬 13행 UUID.)
 - **재연결 도우미(v1, 순수 수동, 구현)**: 미연결 개인 과제를 사용자가 **DB 목록에서 직접 선택**해 공식으로 일괄 연결 / 또는 개인 유지. 자동 이름매칭 없음(오타·변종도 수동 해결). 자동 pre-fill은 나중 옵션.
   - 배치(구현): 설정의 **상시 버튼**("🔗 기존 과제 재연결")으로 개인 과제를 **카테고리 단위로** 공식 과제에 매핑하고, 확인 시 그 과제로 태그된 일정·할일의 `categoryId`를 일괄 교체(로컬 쓰기, 오프라인 가능). 대상 공식 과제는 먼저 단일 목록에 편입해 필터바에도 즉시 뜬다.
   - 개별(구현): 일정 편집에서 DB 재선택(상시 가능).
@@ -228,7 +229,7 @@ MySQL은 항상 서버 프로세스가 떠 있어야 하는 **클라이언트-�
 [개발] 외부망 PC, localhost MySQL 로 앱↔DB 연동·권한 개발·검증
    │  (반입/이관)
    ▼
-[임시 운영] 폐쇄망 PC(고정 IP)에 MySQL 설치 + 구조 적용(deploy/init-db · init-calendar)
+[임시 운영] 폐쇄망 PC(고정 IP)에 MySQL 설치 + 구조 적용(deploy/setup-taskcalendar. 2026-10-15 전에는 init-db, init-calendar)
             + 백업 설치(deploy/backup-taskmgr -Install) + 데이터
             DeployConfig.cs 상수(DbHost·DbPassword)를 실값으로 교체 → 재빌드 → 자동업데이트로 배포
    │  (배포 구성 상수만 교체·재빌드)
@@ -263,8 +264,9 @@ Excel은 이 흐름과 별개로 **DB에서 단방향 추출**되는 리포트(N
 | 17 | ~~인증 상태는 **PC 단위로 영속**(한 번 인증 → 계속 유지)~~ *(2026-07-22 결정, **2026-08-03 v0.17.0으로 폐기**: 공용 관리자 인증 자체가 없어졌다. '한 번 로그인 → 세션 유지'라는 성질만 netcus 계정 로그인이 이어받았다)* | 앱 켤 때마다 재인증은 실사용에서 번거로움. netcus 자격증명이 이미 같은 패턴이고, P6.5의 회사 사이트 인증 위임도 '한 번 로그인 → 유지'라 지금 맞춰둠. `db-config.json`의 `adminUnlocked`에 저장, 설정창 **해제**로 잠금, **비밀번호 변경 시 자동 해제**(옛 잠금해제 잔존 방지) | 실행 세션 한정(재시작 시 해제) / 시간 만료(30분) |
 | 18 | **로컬 DB 카탈로그 캐시 제거** *(2026-07-24, §4.5)* | main 최신 설계문서(`docs/2026-07-22-calendar-server-auth-direction.md`) §7·장애정책이 'DB 정보를 로컬에 캐싱해 오프라인에서도 기능 지원'을 **배제**. 실질 위험도 확인됨. 캐시가 있으면 서버가 꺼져 있어도 **Excel 장표가 뽑히는데** 부제엔 '오늘 추출'로 찍히고 데이터는 몇 주 전 것일 수 있다(오정보 유통). 캘린더 본체(일정·할일)는 로컬 XML이라 캐시가 없어도 핵심 기능은 무영향(**앞 문장의 근거는 2026-09-02 현재 성립하지 않는다.** v0.18.0에서 캘린더 본체도 DB로 갔다. 결정 자체는 유지되고 오히려 **캘린더에도 확대 적용**됐다. 온라인 전용, 캐시 없음). **편입분(`state.categories`의 `source:'db'`)은 캐시가 아니라 카테고리 목록**이므로 유지하되 보관 메타를 `name`·`color`로 최소화(개인 과제와 동일 모델, §4.7.4) | 캐시 유지(+TTL/staleness 배지) / 편입분에 상세 메타 보관 |
 | 19 | ~~**관리자 인증 = 설정 화면 인증 + 호스트 방어**~~ *(2026-07-24, §4.6. **2026-08-03 v0.17.0으로 폐기**: 공용 관리자 비밀번호 체계가 통째로 사라지고 로그인 신원 + `app_user.edit_role` 판정으로 대체됐다. **다만 "진짜 방어선은 호스트다"라는 교훈은 그대로 이어졌다.** 지금도 판정은 `ProjectDb.OpenWriteAsync` 한 곳에서 한다)* | **보안 결함 수정**: 미인증(viewer)에서도 `saveAdminCred`가 실행돼 공격자가 관리자 비번을 갈아치우고 관리자가 되며 원래 관리자는 잠기는 **계정 탈취 + DoS**가 실사용 테스트에서 발견·실증됨. 원인 ① 웹 '등록' 버튼에 인증 게이트 없음 ② 호스트 `SaveAdminCred`가 현재 인증 상태 미확인. **진짜 방어선은 ②다.** 브리지 메시지는 웹에서 직접 던질 수 있어 UI 게이트는 우회된다. 동시에 UX 결함(설정에 인증칸이 없어 '자격 등록'을 로그인으로 오해)도 해소: 인증을 **설정에서만** 하도록 netcus 자격증명 패턴으로 통일하고 JIT 프롬프트(ADR #16)를 폐기. 변경 성공 후 잠금해제는 **유지**(같은 사람이 바꾼 것). 복구는 `db-config.json`을 지워 베이크 디폴트로 | UI 게이트만 추가(우회 가능) / 현재 비번 재입력 요구(인증 영속과 중복) / JIT 프롬프트 유지 |
-| 21 | **`(customer, project_name)` 유니크 제거 + 소프트 경고** *(2026-07-24, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4)* | 실데이터 144건 검수: `(발주처, 사업명)` 중복 22조합/68건(**구성품별 계약**이라 정상), `(발주처, 사업명, 계약명)`까지 같은 중복 1조합/2건(**연도별 갱신**으로 날짜만 다르고 매년 반복), 끝공백 등 보이지 않는 차이 존재. 이름 하드 유니크는 이 도메인에 틀린 규칙이고, ai_ci·NO PAD라 끝공백 변형은 오히려 통과시켜 진짜 실수를 못 잡는다. 그래서 유니크는 `uid` 하나만 두고, 실수 중복은 **앱 소프트 경고**(저장 시 TRIM + 정규화 비교로 `(발주처, 사업명, 계약명)` 유사 시 '그래도 추가?' 확인). `contract_name`/`common_name`은 `NOT NULL DEFAULT ''`(비교 함정 방지). 기존 DB는 `deploy/migrate-2026-07-24-uniqueness.sql`로 이관 | 이름 유니크 유지(연도갱신마다 이름에 연도 수동 부착) / 계약명 포함 유니크(갱신 반복이라 동일 문제) |
-| 22 | **구분/상태 ENUM → 룩업 코드테이블(section_code/status_code) + FK, note 컬럼** *(2026-07-24, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5)* | ENUM은 값 추가/개명/순서변경/숨김에 `ALTER TABLE`이 필요해 런타임 관리가 불가능. 발주처(customer)와 **대칭인 코드테이블 + FK(ON UPDATE CASCADE / ON DELETE RESTRICT)**로 바꾸면 앱에서 추가=INSERT, 개명=name UPDATE(CASCADE로 project 전파), 재배치=sort_order, 숨김=is_active로 관리하고, **무결성은 FK가 승계**(내부망 LLM의 직접 SQL 대량 INSERT에서도 오타 값 거부). status는 nullable(선진행=NULL이면 FK 스킵). 겸사겸사 `note`(관리 전용 비고·전시 미노출) 추가. 기존 DB는 `deploy/migrate.ps1` 단계2로 무손실 이관(ENUM→VARCHAR, 안전망 흡수, FK 추가 멱등) | ENUM 유지(ALTER 필요) / 자유텍스트(무결성 없음) / 별도 API 검증 |
+| 21 | **`(customer, project_name)` 유니크 제거 + 소프트 경고** *(2026-07-24, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §4)* | 실데이터 144건 검수: `(발주처, 사업명)` 중복 22조합/68건(**구성품별 계약**이라 정상), `(발주처, 사업명, 계약명)`까지 같은 중복 1조합/2건(**연도별 갱신**으로 날짜만 다르고 매년 반복), 끝공백 등 보이지 않는 차이 존재. 이름 하드 유니크는 이 도메인에 틀린 규칙이고, ai_ci·NO PAD라 끝공백 변형은 오히려 통과시켜 진짜 실수를 못 잡는다. 그래서 유니크는 `uid` 하나만 두고, 실수 중복은 **앱 소프트 경고**(저장 시 TRIM + 정규화 비교로 `(발주처, 사업명, 계약명)` 유사 시 '그래도 추가?' 확인). `contract_name`/`common_name`은 `NOT NULL DEFAULT ''`(비교 함정 방지). 기존 DB는 `deploy/migrate-2026-07-24-uniqueness.sql`로 이관(그 파일은 2026-10-15 에 지웠다) | 이름 유니크 유지(연도갱신마다 이름에 연도 수동 부착) / 계약명 포함 유니크(갱신 반복이라 동일 문제) |
+| 22 | **구분/상태 ENUM → 룩업 코드테이블(section_code/status_code) + FK, note 컬럼** *(2026-07-24, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §2.5)* | ENUM은 값 추가/개명/순서변경/숨김에 `ALTER TABLE`이 필요해 런타임 관리가 불가능. 발주처(customer)와 **대칭인 코드테이블 + FK(ON UPDATE CASCADE / ON DELETE RESTRICT)**로 바꾸면 앱에서 추가=INSERT, 개명=name UPDATE(CASCADE로 project 전파), 재배치=sort_order, 숨김=is_active로 관리하고, **무결성은 FK가 승계**(내부망 LLM의 직접 SQL 대량 INSERT에서도 오타 값 거부). status는 nullable(선진행=NULL이면 FK 스킵). 겸사겸사 `note`(관리 전용 비고·전시 미노출) 추가. 기존 DB는 `deploy/migrate.ps1` 단계2로 무손실 이관(ENUM→VARCHAR, 안전망 흡수, FK 추가 멱등. 그 스크립트는 2026-10-15 에 지웠다). *(키 모양, 즉 이름 PK 와 CASCADE 는 #23 이 번호 키로 바꿨다)* | ENUM 유지(ALTER 필요) / 자유텍스트(무결성 없음) / 별도 API 검증 |
+| 23 | **코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로** *(2026-10-15, [`TABLE-DESIGN.md`](TABLE-DESIGN.md) §9 ADR-23, [`../docs/CODE-TABLE-IDS.md`](../docs/CODE-TABLE-IDS.md))* | 검토 지적("외래키가 가리키는 기본키는 id 로")을 코드표에도 적용. 옛 유지 근거 "운영 중이라 옮기는 순이익이 음수"는 새 DB `taskcalendar` 가 회사 서버에 아직 없어 성립하지 않았고, 비용으로 셌던 "개명 전파를 코드로 재구현"은 틀렸다(라벨 한 행 UPDATE + 조인). `*_id SMALLINT UNSIGNED` PK, `name` UNIQUE 라벨, 자식은 번호 참조(RESTRICT/RESTRICT). 동작이 묶인 구분 2(선진행), 상태 2(종료)는 고정 번호로 판정하고 숨김과 삭제를 막는다. `schema_version` 13 | 이름 키 유지 / 역할 열 / 색 열 |
 
 > ADR #20은 결번(TABLE-DESIGN.md가 이 결정을 #21로 먼저 확정·커밋해 번호를 맞춤).
 
@@ -290,7 +292,7 @@ Excel은 이 흐름과 별개로 **DB에서 단방향 추출**되는 리포트(N
 | **클라이언트-서버** | DB(서버)는 한 대, 나머지는 접속(클라이언트)하는 구조 |
 | **원본(source of truth)** | 데이터의 진짜 기준. 여기선 DB |
 | **ENUM** | 컬럼에 허용 값 목록을 **타입에** 고정하는 MySQL 타입. **이 DB는 쓰지 않는다.** 값 추가, 개명, 순서, 숨김에 `ALTER TABLE`이 필요해 런타임 관리가 불가능하기 때문(ADR-22) |
-| **코드테이블** | ENUM 대신 쓰는 룩업 표(`section_code`·`status_code`). `name` PK + `sort_order` + `is_active`. 무결성은 **FK**가 강제하고, 추가=INSERT, 개명=UPDATE(CASCADE 전파), 숨김=`is_active=0`으로 앱에서 관리한다 |
+| **코드테이블** | ENUM 대신 쓰는 룩업 표(`section_code`·`status_code`). 번호 PK(`section_id` 등) + `name`(UNIQUE 라벨) + `sort_order` + `is_active`. 무결성은 **FK**가 강제하고, 추가=INSERT, 개명=라벨 한 행 UPDATE(자식은 번호를 들고 있어 그대로), 숨김=`is_active=0`으로 앱에서 관리한다(2026-10-15 전에는 `name` PK 와 CASCADE 전파) |
 | **소프트삭제** | 실제 삭제 대신 `is_active=0`으로 숨김(복구 가능) |
 | **감사(audit)** | `created_at`/`updated_at`로 생성·수정 시각 자동 기록 |
 | **캐시** | 마지막 조회 데이터를 로컬에 복사해 둠(오프라인 조회용). **이 시스템은 DB 카탈로그를 캐싱하지 않는다**(ADR-18) |
@@ -298,4 +300,4 @@ Excel은 이 흐름과 별개로 **DB에서 단방향 추출**되는 리포트(N
 | **DHCP** | 네트워크가 IP를 자동 배정(바뀔 수 있음) |
 | **고정 IP** | PC에 항상 같은 IP를 고정(서버에 필수) |
 | **bind-address** | MySQL이 어느 네트워크의 접속을 받을지 설정(0.0.0.0=전체) |
-| **FK / ON UPDATE CASCADE** | 외래키 / 부모 값(발주처명) 변경 시 자식(과제)에 자동 전파 |
+| **FK / ON UPDATE CASCADE** | 외래키 / 부모 값 변경 시 자식에 자동 전파. 과제 트랙은 2026-10-15 부터 번호 키라 쓰지 않는다(번호는 바뀌지 않는다). 지금 쓰는 곳은 `org_unit` 쪽 FK 다 |

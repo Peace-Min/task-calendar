@@ -17,13 +17,14 @@
 | 버전 | **v0.19.1 소스 갱신(빌드와 게이트는 이어서)**(2026-10-01, 과제 순서, 기간 칩 클릭, 타인 일정 전체 보기, 창 버튼/보고서 전송 정리, 스키마 변경 없음). 직전 **v0.19.0 은 빌드 완료, 미배포**. `dist/installer/TaskCalendarWidget-Setup-v0.19.0.exe` sha256 `0ad02b32…3df8` 가 `latest.json` 과 같다. 버전 파일 여덟 자리 정합(`tests/version-sync.test.mjs`). 위젯 기본 `DbName` 은 **`taskcalendar`**(0.16, 0.17.1 은 `taskmgr`). **미배포 판이라 같은 번호로 여러 번 다시 빌드했다**(사용자 결정). 마지막 빌드가 위 해시다 |
 | 위젯 스키마 계약 | `CalendarDb.ExpectedSchemaVersion = "12"`. 배포돼 있는 것은 0.16(사용자 대부분)과 0.17.1(사용자 본인 PC)이고 둘 다 `taskmgr` 를 쓴다 |
 | 개발 DB | 이 PC MySQL 8.4.9 에 **`taskmgr`(v12, 원본)** 와 **`taskcalendar`(v12, 개발용 사본)**. `taskcalendar` 는 `run-loops` 가 매번 `setup-taskcalendar` 로 다시 만들고 `taskmgr` 의 `cal_*` 를 복사해 채운다(개발 전용). root 비밀번호는 사용자가 채팅으로 준다. 파일이나 메모리에 적지 않는다 |
+| 2026-10-15 코드표 번호 키 | 브랜치 `feat/code-ids`, 결정 [CODE-TABLE-IDS.md](CODE-TABLE-IDS.md). 발주처, 구분, 상태, 직급의 기본키를 번호(`customer_id`, `section_id`, `status_id`, `title_id`)로, `schema_version` **13**. DB 층(A단계)은 커밋됐다. 이 전환이 끝나면 위 두 줄의 `12` 는 `13` 이 된다. 로컬 `taskcalendar` 는 `db/deploy/migrate-2026-10-15-code-ids.sql`(백업 먼저), 회사 서버는 `setup-taskcalendar` 로 새로 만든다. 옛 진입점(`init-db`, `migrate.cmd`, `db/schema.sql`)과 지난 `migrate-2026-*.sql` 은 지웠다 |
 | 게이트 | 엄격 `TC_TEST_STRICT=1 node tests/run-tests.mjs` 결과 **1894 pass / 0 fail / 0 skip**, CS 경고 0, **실 DB 루프 27/27 통과**(2026-10-01 15:27, `dist/rehearsal/loops-20261001-152731.txt`: 새 기능 실화면, 루프 14종 1회, 관리자 3종×5). 두 DB schema_version 은 시작과 끝 모두 12 |
 | 폐쇄망 개인 PC | `taskcalendar` 구축 완료(2026-09-30, 회사 데이터 레포 pull 뒤 `setup-taskcalendar.cmd`). 위젯은 아직 0.17.1 이라 **v0.19.0 설치와 XML 이관 전**이다 |
 | GitHub 위키 | 게시됨(2026-10-01): Home, 사이드바, '서버 연결이 끊겼을 때'(사용자), '서버 장애 시 동작과 진단'(운영). **원본은 `docs/wiki/`**. 고친 뒤 위키 저장소(`task-calendar.wiki.git`)에 복사하고 푸쉬한다 |
 
 ## 2. 9월 2일(ROADMAP §0) 이후 끝낸 것 (전부 커밋됨)
 
-1. **스키마 정합 6종**(v9, `migrate-2026-09-09-integrity.sql`)과 v0.18.1 릴리스 빌드(실배포는 안 함).
+1. **스키마 정합 6종**(v9, `migrate-2026-09-09-integrity.sql`. 그 파일은 2026-10-15 에 지웠고 내용은 스키마 파일에 있다)과 v0.18.1 릴리스 빌드(실배포는 안 함).
 2. **과제 개발종료일** `project.dev_end_date`(v10), 관리자 편집, Excel 열.
 3. **사용자 관리**(v11, v12): `app_user.sort_order INT UNSIGNED`, 관리자 전용 '구성원 편집'(등록, 수정, 퇴사, 복구, ▲▼ 서열, 전사 단일 순서). '구성원 보기'와 완전히 독립이다. 설계와 이력은 [USER-ADMIN.md](USER-ADMIN.md).
 4. **편집 폼 UX**: 퇴사/복구를 폼 하단으로, 등록 버튼을 창 하단 주 버튼으로, 서열 번호는 읽기전용 칸, 라디오를 드롭다운으로, 모달 폼 세로 리듬 전역 정정.

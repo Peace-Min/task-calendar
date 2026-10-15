@@ -37,7 +37,7 @@
 | 삭제 전제 | **숨긴 항목만** 지울 수 있다(`is_active=0`). 활성 항목은 호스트가 거부한다 | 두 단계(숨김 → 삭제)가 실수 방지의 전부다. 한 번에 지우는 길을 두지 않는다 |
 | 과제 삭제 조건 | 참조가 있어도 지울 수 있다. 대신 확인창에 **몇 명이 편입 중인지** 보여 준다 | `project` 를 가리키는 FK 가 없다. 개인 카테고리의 `project_uid` 는 문자열 참조고, 과제가 없어지면 조회 시 **`db_gone`** 으로 파생돼 라벨, 일정, 보고가 그대로 남는다(§3.1). 데이터 모델이 이미 "과제가 사라진 세계"를 견딘다 |
 | 인력 삭제 조건 | **기록 0건**인 계정만(§3.2 의 9개 표 합계 0). 기록이 있으면 거부하고 퇴사 상태로 둔다 | 사용자 결정. 11개 표가 `app_user` 를 FK 로 붙들고 있어 기록이 있으면 DB 도 거부한다(1451). 기록까지 지우는 연쇄 삭제는 보고 이력과 감사 기록을 통째로 없애므로 하지 않는다 |
-| 코드 3종 삭제 조건 | 그 값을 쓰는 과제가 **숨긴 과제까지 포함해** 0건일 때만 | `project.customer / section / status` 가 FK(RESTRICT). 앱이 미리 세어 안내하고, 최종 보증은 FK |
+| 코드 3종 삭제 조건 | 그 값을 쓰는 과제가 **숨긴 과제까지 포함해** 0건일 때만 | `project.customer / section / status` 가 FK(RESTRICT). 앱이 미리 세어 안내하고, 최종 보증은 FK. *(2026-10-15 부터 자식 열은 번호 `project.customer_id / section_id / status_id` 이고 FK 는 여전히 RESTRICT 다. 구분 2(선진행)와 상태 2(종료)는 숨길 수도 지울 수도 없어 휴지통에 오지 않는다. [CODE-TABLE-IDS](CODE-TABLE-IDS.md) §3)* |
 | 확인 | 확인창 한 번 + **이름을 그대로 입력**해야 [영구 삭제]가 켜진다. 호스트도 입력값을 대조한다 | 되돌릴 수 없는 조작의 관례(GitHub 저장소 삭제와 같다). 폐쇄망이라 되돌리기는 백업뿐이다(§7) |
 | 기록 | 삭제 직전 행 전체를 JSON 한 줄로 위젯 로그에 남긴다 | 표를 새로 두지 않는다. 감사 표가 있어도 폐쇄망에서 되살릴 수단은 백업뿐이라 로그로 충분하다 |
 | 권한 | 앱 계정에 다섯 표 **DELETE** 를 준다(세 파일, §3.3) | 관문이 호스트에 있으므로 DB 권한은 '가능하게'만 한다 |
@@ -48,6 +48,8 @@
 ## 3. 데이터
 
 ### 3.1 참조 지도: 무엇이 무엇을 붙들고 있나 (정본 `db/deploy/schema-calendar.sql`·`db/schema.sql` 2026-09-10)
+
+> **2026-10-15**: `db/schema.sql` 은 지웠고 과제 트랙의 정본은 `db/deploy/schema-structure.sql` 이다. 코드표가 번호 키가 되어 아래 코드 3종 행의 붙드는 쪽은 `project.customer_id`(`fk_project_customer_id`), `project.section_id`(`fk_project_section_id`), `project.status_id`(`fk_project_status_id`)다. 종류(FK RESTRICT)와 지웠을 때의 결과는 같다. 아래 표는 2026-09-10 의 이름 그대로 둔다.
 
 | 지울 표 | 붙드는 쪽 | 종류 | 지웠을 때 |
 |---|---|---|---|
@@ -112,7 +114,7 @@ COMMIT
 
 | 메시지 | 방향 | 내용 |
 |---|---|---|
-| `trashGet` | 웹 → 호스트 | 인자 없음(`reqId` 왕복). **회신은 `{ ok, data, msg }` 로 감싼다**(`membersGet` 과 같은 요청/회신 배관). 페이로드는 `data` 안이다. 복구와 삭제 회신의 `trash` 는 감싸지 않은 그 페이로드 문자열이다(2026-09-14 이전에는 `__applyTrash(json)` 푸시였다. §11-28 에 이어 §11-31 에서 그 이름까지 지웠다). 화면은 `r.data || r` 로 읽어 두 길을 한 함수로 그린다. 페이로드: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid`, 인력 `userId`, 나머지 `name`), `name`, `sub`(부제: 발주처·구분 / 소속, 직급, ID / 없음), `refs`(참조 수, §3.1), `deletable`(bool), `why`(불가 사유 문장, 없으면 '') |
+| `trashGet` | 웹 → 호스트 | 인자 없음(`reqId` 왕복). **회신은 `{ ok, data, msg }` 로 감싼다**(`membersGet` 과 같은 요청/회신 배관). 페이로드는 `data` 안이다. 복구와 삭제 회신의 `trash` 는 감싸지 않은 그 페이로드 문자열이다(2026-09-14 이전에는 `__applyTrash(json)` 푸시였다. §11-28 에 이어 §11-31 에서 그 이름까지 지웠다). 화면은 `r.data || r` 로 읽어 두 길을 한 함수로 그린다. 페이로드: `{ found, admin, projects[], users[], customers[], sections[], statuses[] }`. 관리자가 아니면 `{ found:true, admin:false }` 만(목록 없음). 각 항목: `key`(과제 `uid`, 인력 `userId`, 나머지 `name`. 2026-10-15 부터 나머지도 번호다, [CODE-TABLE-IDS](CODE-TABLE-IDS.md) §4), `name`, `sub`(부제: 발주처·구분 / 소속, 직급, ID / 없음), `refs`(참조 수, §3.1), `deletable`(bool), `why`(불가 사유 문장, 없으면 '') |
 | `trashRestore` | 웹 → 호스트 | `{ kind, key }`. `kind ∈ project / user / customer / section / status`. **`RestoreTrashAsync` 가 `OpenAdminAsync` 로 열고 `UPDATE … SET is_active=1` 을 직접 한다**. 기존 `Set*ActiveAsync` 를 재사용하지 않는다(그 길은 `OpenWriteAsync` 라 editor 가 통과해 "휴지통 세 함수는 관리자만" 계약이 깨진다). 구분·상태는 복구 시 `sort_order = MAX+10` 을 다시 매기고, **인력은 `sort_order = NULL` 로 비운다**(둘 다 활성 순번 충돌 방지, §11-27). **회신 `{ ok, msg, trash, roster }`**(`reqId` 왕복, `ReplyOnUi`, §11-28) |
 | `trashDelete` | 웹 → 호스트 | `{ reqId, kind, key, confirm, includeInactive }`. `confirm` = 사용자가 입력한 이름. **회신 `{ ok, msg, trash, roster }`** |
 

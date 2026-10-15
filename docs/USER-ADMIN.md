@@ -54,6 +54,8 @@ sort_order  INT UNSIGNED NULL DEFAULT NULL,        -- 전체 직원 서열. 작�
 
 ### 3.2 마이그레이션: `migrate-2026-09-10-user-sort-order.sql` (10 → 11)
 
+> **2026-10-15**: 이 절과 §11-14 의 이관 파일(`migrate-2026-09-10-user-sort-order.sql`, `-int.sql`, `-dev-end-date.sql`)은 지웠다(git 이력에 있다). 그 결과는 회사 저장소 `01-schema-users.sql` 과 `db/deploy/schema-structure.sql` 에 들어 있고, 새 DB 는 `setup-taskcalendar` 가 처음부터 만든다. 같은 날 직급이 번호 키가 되어 `app_user.title` 은 `app_user.title_id`(`title_code.title_id` 를 가리킨다, FK `fk_user_title_id`)로 바뀌었다. `sort_order` 는 이제 `title_id` 바로 뒤다. 아래 SQL 의 `title` 과 `t.name = u2.title` 조인은 그날의 모양이다([CODE-TABLE-IDS](CODE-TABLE-IDS.md)).
+
 `migrate-2026-09-10-dev-end-date.sql` 과 같은 형식. 가드가 `'10'` 아니면 중단(재실행도 막는다).
 
 ```sql
@@ -106,6 +108,8 @@ UPDATE app_user u
 | `saveUser` | 웹 → 호스트 | `{ reqId, userId?, loginId, name, title, orgId, viewScope, editRole, includeInactive }`. `userId` 없으면 INSERT, 있으면 UPDATE. **회신 `{ ok, msg, roster }`**(`reqId` 왕복, `ReplyOnUi`). `roster` = 갱신된 명부 JSON **문자열**이고 **성공했을 때만** 싣는다. 실패면 `""` |
 | `setUserActive` | 웹 → 호스트 | `{ reqId, userId, active, includeInactive }`. 퇴사 처리와 복구. **회신 `{ ok, msg, roster }`**. `roster` 는 `ok \|\| msg == AlreadyActiveMsg` 둘일 때만(§11-32) |
 | `saveUserOrder` | 웹 → 호스트 | `{ reqId, userIds: [...], includeInactive }` 화면에 보이는 순서 그대로. 호스트가 10·20·30… 으로 **전량 재작성**. **회신 `{ ok, msg, roster }`**. `roster` 는 `ok \|\| msg == StaleRosterMsg` 둘일 때만(§11-30②) |
+
+> **2026-10-15**: 직급이 번호 키가 되어 `saveUser` 의 직급도 번호로 주고받는다(편집 메시지는 번호, 표시용 값은 이름과 번호를 함께. [CODE-TABLE-IDS](CODE-TABLE-IDS.md) §4). 아래 §4.3 의 `title` 행도 같은 뜻으로 읽는다(최종 보증은 `fk_user_title_id`). 정확한 필드 이름은 그 라운드의 코드와 시험이 정본이다.
 
 세 쓰기는 **요청/회신 배관**(`hostRequest` ↔ `ReplyOnUi`)을 탄다. 결과와 갱신된 명부가 **한 회신**으로 온다. 웹은 회신 하나만 받으면 결과와 화면이 같은 시점의 것이라, 뒤따르는 푸시를 기다릴 필요가 없다(2026-09-14, §11-34).
 
@@ -332,7 +336,7 @@ ORDER BY u.sort_order IS NULL, u.sort_order, u.name        -- 편집(flatOrder)
 > 아래 열둘은 **설계와 다르게 처리한 곳**이다. 본문은 §3.2 만 실물에 맞춰 고쳤고, 나머지는 여기에만 적는다. 본문을 지우면 "왜 그렇게 했나"가 함께 사라지기 때문이다. **본문과 여기가 다르면 여기가 맞다.**
 
 **1. §3.2 의 초기값 SQL 이 MySQL 에서 안 돌아 창 함수로 바꿨다.**
-`SET @r := 0` + `UPDATE … LEFT JOIN … ORDER BY` 형태였는데, MySQL 은 **다중 표 UPDATE 에 `ORDER BY` 를 허용하지 않는다**("For multiple-table syntax, ORDER BY and LIMIT cannot be used"). 사용자 변수 누적은 8.4 에서 평가 순서를 보장하지도 않는다. `ROW_NUMBER() OVER (…) * 10` 을 파생 표로 만들어 조인하는 형태로 대체했고 **결과 순서와 간격은 설계 그대로**다. 본문 §3.2 의 SQL 도 실제 마이그레이션(`db/deploy/migrate-2026-09-10-user-sort-order.sql`)과 같은 문장으로 고쳤다. 문서와 SQL 을 두 벌 두면 어긋나고, 어긋난 쪽이 문서라 아무도 실행해 보지 않는다.
+`SET @r := 0` + `UPDATE … LEFT JOIN … ORDER BY` 형태였는데, MySQL 은 **다중 표 UPDATE 에 `ORDER BY` 를 허용하지 않는다**("For multiple-table syntax, ORDER BY and LIMIT cannot be used"). 사용자 변수 누적은 8.4 에서 평가 순서를 보장하지도 않는다. `ROW_NUMBER() OVER (…) * 10` 을 파생 표로 만들어 조인하는 형태로 대체했고 **결과 순서와 간격은 설계 그대로**다. 본문 §3.2 의 SQL 도 실제 마이그레이션(`db/deploy/migrate-2026-09-10-user-sort-order.sql`, 2026-10-15 에 지웠다)과 같은 문장으로 고쳤다. 문서와 SQL 을 두 벌 두면 어긋나고, 어긋난 쪽이 문서라 아무도 실행해 보지 않는다.
 
 **2. 쓰기 세 명령의 payload 에 `includeInactive` 가 하나씩 붙었다(§4.2).**
 설계는 `saveUser`·`setUserActive`·`saveUserOrder` 에 그 필드를 두지 않았다. 그런데 §4.2 마지막 줄의 약속대로 **호스트가 성공 직후 스스로 명부를 다시 읽어 밀어 주는데**, 그때 '퇴사자 보기'가 켜져 있었는지를 호스트가 알 방법이 없다. 호스트는 그 상태를 캐시하지 않는다(캐시하면 웹과 호스트에 같은 상태가 두 벌 생긴다). 그래서 웹이 매 요청에 현재 토글 값을 함께 실어 보내고 호스트는 그것을 재조회에 그대로 물려준다. 저장했더니 켜 둔 '퇴사자 보기'가 꺼지는 일이 없다.
@@ -379,7 +383,7 @@ Node 시험은 MySQL 을 띄울 수 없다. 그래서 상시 게이트가 보는
 **14. `sort_order` 를 SMALLINT UNSIGNED → INT UNSIGNED 로 넓혔다(부하 실측 뒤 배포 전 결정 2026-09-10).**
 간격은 소모되지 않는다(전량 재작성)는 것과 별개로, 타입이 천장이었다. 격리 DB 실측(서버측, mysql 기동 제외):
 89명 31ms, 1,000명 173ms, 3,000명 375ms, 6,553명 923ms 정상, **6,554명째 ERROR 1264 로 전량 롤백**(값 65,540 > 65,535).
-INT UNSIGNED 로 20,000명 재작성 2.7초. 마이그레이션 `migrate-2026-09-10-user-sort-order-int.sql`(11→12, MODIFY 만, 값 보존),
+INT UNSIGNED 로 20,000명 재작성 2.7초. 마이그레이션 `migrate-2026-09-10-user-sort-order-int.sql`(11→12, MODIFY 만, 값 보존. 2026-10-15 에 지웠다),
 비공개 `01-schema-users.sql` 동일 타입, 위젯 `ExpectedSchemaVersion` 12. 시험: user-admin 계약① 을 INT 로, 계약⑨(12 판) 신설,
 계약①-b 는 '한 칸, 정본을 앞서지 않음' 형태로(11 판이 더는 정본까지 올리는 파일이 아니다). 남은 여지: 재작성이 사람마다
 UPDATE 한 문장이라 수천 명이면 왕복 비용이 초 단위로 붙는다(15초 타임아웃 안). 그 규모가 오면 한 문장(CASE)으로 묶는다.
