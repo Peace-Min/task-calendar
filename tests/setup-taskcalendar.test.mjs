@@ -470,9 +470,9 @@ const checks = {
     assert.ok(/명부 대조[^\n]*\$xSrcOnly[^\n]*\$xSeedOnly/.test(code.slice(s5)), '보고서에 명부 대조 두 수(원본에만 · 시드에만)가 없다');
     // (g) 시딩 검사 — 번호 NULL·중복 0 · 3표 행 수 > 0 · AUTO_INCREMENT > MAX (시드 직후 · 과제 복사 앞).
     assert.deepStrictEqual(listLiteral(code, 'SEED_TABLES'), ['title_code', 'org_unit', 'app_user'], '$SEED_TABLES 가 사용자 3표가 아니다');
-    assert.ok(/\$SEED_AUTOINC_KEYS\s*=\s*\[ordered\]@\{ org_unit = 'org_id'; app_user = 'user_id' \}/.test(code) &&
+    assert.ok(/\$SEED_AUTOINC_KEYS\s*=\s*\[ordered\]@\{ org_unit = 'org_id'; app_user = 'user_id'; title_code = 'title_id' \}/.test(code) &&
       /\$AUTOINC_KEYS\s*=\s*\[ordered\]@\{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id'; project = 'id' \}/.test(code),
-      'AUTO_INCREMENT 확인 대상이 (시드: org_unit · app_user / 복사: 코드표 셋 + project) 가 아니다');
+      'AUTO_INCREMENT 확인 대상이 (시드: org_unit, app_user, title_code / 복사: 코드표 셋 + project) 가 아니다');
     const seedAi = onlyOnce(code, /foreach\(\$t in \$SEED_AUTOINC_KEYS\.Keys\)\{ CheckAutoInc /, '시드 AUTO_INCREMENT 확인');
     const copyAi = onlyOnce(code, /foreach\(\$t in \$AUTOINC_KEYS\.Keys\)\{ CheckAutoInc /, '복사 AUTO_INCREMENT 확인');
     assert.ok(seedAi > a04 && seedAi < copyApply && copyAi > copyApply, 'AUTO_INCREMENT 확인 위치가 (시드 직후 · 복사 직후) 가 아니다');
@@ -931,6 +931,72 @@ test('setup-taskcalendar ㉓ 번호 키: 고정 번호 지도는 schema-structur
 test('setup-taskcalendar ㉓ 번호 키: 확인 전 원본 점검(고아, NOT NULL, 빈 이름, is_active), 읽기만', () => codeIdChecks.sourcePreflight(psSrc));
 test('setup-taskcalendar ㉓ 번호 키: 복사 SQL(지도 BINARY, MAX+1 이름순, JOIN ON name, 원본 별칭 s)', () => codeIdChecks.copySql(psSrc));
 test('setup-taskcalendar ㉓ 번호 키: 복사 뒤 검증(이름 복원 BINARY, NULL 대칭, 고정 번호, 16진 비교, Die)', () => codeIdChecks.verifyAfterCopy(psSrc));
+// ㉔ 2026-10-15 리뷰 수정: 보호 번호(구분 2, 상태 2)와 AUTO_INCREMENT 바닥.
+//  원본에서 라벨을 바꿔 번호 2 가 비면 멈추고(확인 전 원본 점검 + 복사 뒤 Die), 숨겨져 왔으면 켜고 알린다.
+//  고정 번호를 둔 표(구분, 상태, 직급)는 카운터를 max(고정 번호 최댓값 + 1, MAX+1)로 올린다. 바닥은 시드에서 읽는다.
+const fixedRowChecks = {
+  protectedIds(ps) {
+    const code = maskPs(ps);
+    assert.ok(code.includes("$PROTECTED_IDS = [ordered]@{ section_code = '2'; status_code = '2' }"), '$PROTECTED_IDS 가 (구분 2, 상태 2) 가 아니다(호스트 CodeIds, 웹 CODE_ID 와 같아야 한다)');
+    // 확인 전 원본 점검: 보호 이름이 원본에 글자 그대로(16진) 있는가. 없으면 $srcBad 로 멈춘다(아무것도 바꾸기 전).
+    const die = onlyOnce(code, /if\(\$srcBad\.Count -gt 0\)\{ Die /, '원본 점검 Die');
+    const pre = code.slice(code.indexOf('$srcBad = @()'), die);
+    assert.ok(/foreach\(\$t in \$PROTECTED_IDS\.Keys\)\{/.test(pre) && pre.includes("AS BINARY) = X'\" + $phex + \"';") &&
+      /if\(\$n -ne 1\)\{ \$srcBad \+= /.test(pre), '확인 전 원본 점검이 보호 이름(선진행, 종료)이 원본에 있는지 16진으로 보고 멈추지 않는다');
+    // 복사 뒤: 보호 번호의 이름이 없으면 Warn 이 아니라 Die, 라벨을 시드 이름으로 되돌리라고 말한다.
+    const apply = onlyOnce(code, /ApplySqlFile\s+\$copyFile\b/, '과제 복사 적용');
+    const idDie = onlyOnce(code, /if\(\$idBad\.Count -gt 0\)\{ Die /, '번호 키 검증 Die');
+    const blk = code.slice(apply, idDie);
+    const m = /if\("\$got" -eq ""\)\{\s*\n\s*if\(\$PROTECTED_IDS\.Contains\(\$t\) -and \$PROTECTED_IDS\[\$t\] -eq \$id\)\{\s*\n\s*Die "([^\n]*)"/.exec(blk);
+    assert.ok(m, '복사 뒤 보호 번호 행이 없을 때 멈추지 않는다(경고만 하면 선진행, 종료 동작이 아무 행에도 걸리지 않는다)');
+    assert.ok(/되돌린 뒤 다시 실행하세요/.test(m[1]), '보호 번호가 비었을 때 원본 라벨을 시드 이름으로 되돌리라고 안내하지 않는다');
+    // 숨겨져 온 보호 행은 켜고(SET is_active = 1) 알린 뒤, 켜져 있음을 확인한다. 고아 검사 앞.
+    const orphan = onlyOnce(code, /foreach\(\$oc in \$ORPHAN_CHECKS\)/, '고아 행 검사');
+    const re = code.slice(idDie, orphan);
+    assert.ok(re.includes('" SET is_active = 1 WHERE " + $protPk + " = " + $protId + " AND is_active = 0;"') &&
+      /Warn "[^"\n]*숨겨져 있어 켰습니다/.test(re), '숨겨져 온 보호 행을 켜고 알리지 않는다');
+    assert.ok(/if\(\$on -ne 1\)\{ Die /.test(re), '보호 행을 켠 뒤 켜져 있는지 확인해 멈추지 않는다');
+    assert.ok(!/\$pid\b/i.test(code), '$pid 를 쓴다(PowerShell 자동 변수 $PID 는 읽기 전용이라 대입하면 죽는다)');
+  },
+  autoIncFloor(ps, seedOrg) {
+    const code = maskPs(ps);
+    // 바닥은 시드에서 읽는다(숫자를 박지 않는다): 코드표 둘은 $FIXED_IDS, 직급은 02 의 _title_seed.
+    assert.ok(code.includes('$AUTOINC_FLOOR[$t] = 1 + [int](($FIXED_IDS[$t].Keys | ForEach-Object { [int]$_ } | Measure-Object -Maximum).Maximum)'),
+      '구분, 상태의 AUTO_INCREMENT 바닥을 고정 번호 지도의 최댓값 + 1 로 정하지 않는다');
+    assert.ok(code.includes('[regex]::Match($seedOrgText, "(?is)INSERT\\s+INTO\\s+_title_seed') && code.includes("$AUTOINC_FLOOR['title_code'] = 1 + "),
+      '직급의 AUTO_INCREMENT 바닥을 02-seed-org.sql 의 _title_seed 에서 읽지 않는다');
+    const ai = /function CheckAutoInc\([^)]*\)\{([\s\S]*?)\n  \}/.exec(code);
+    assert.ok(ai, 'CheckAutoInc 를 찾지 못했다');
+    const alter = ai[1].indexOf('" AUTO_INCREMENT = " + [Math]::Max($floor, $mx + 1)');
+    const read = ai[1].indexOf('information_schema_stats_expiry=0');
+    assert.ok(alter >= 0 && read > alter, 'CheckAutoInc 가 바닥이 있는 표의 카운터를 max(바닥, MAX+1)로 올린 뒤에 읽지 않는다');
+    assert.ok(/if\(\$ai -lt \$floor\)\{ Die /.test(ai[1]), 'CheckAutoInc 가 AUTO_INCREMENT 가 바닥 이상인지 확인해 멈추지 않는다');
+    // 실물: 지금 시드로 계산한 바닥이 구분 4, 상태 5, 직급 12 다(고정 번호 최댓값 + 1).
+    const floorOf = (o) => 1 + Math.max(...Object.keys(o).map(Number));
+    assert.strictEqual(floorOf(parseFixedIdsLikePs(structSqlSrc, 'section_code', 'section_id')), 4, '실물: 구분 바닥이 4 가 아니다');
+    assert.strictEqual(floorOf(parseFixedIdsLikePs(structSqlSrc, 'status_code', 'status_id')), 5, '실물: 상태 바닥이 5 가 아니다');
+    const ts = /INSERT\s+INTO\s+_title_seed\s*\(\s*title_id\s*,\s*name\s*,\s*sort_order\s*\)\s*VALUES([\s\S]*?);/i.exec(seedOrg);
+    assert.ok(ts, '실물: 02-seed-org.sql 의 _title_seed 를 읽지 못했다');
+    assert.strictEqual(1 + Math.max(...[...ts[1].matchAll(/\(\s*(\d+)\s*,/g)].map((x) => Number(x[1]))), 12, '실물: 직급 바닥이 12 가 아니다');
+  },
+};
+const seedOrgSrc = (() => { try { return readFileSync(new URL('../../taskmgr-company-data/02-seed-org.sql', import.meta.url), 'utf8'); } catch { return ''; } })();
+test('setup-taskcalendar ㉔ 보호 번호: 원본에 선진행, 종료가 없으면 확인 전에 멈추고 복사 뒤에도 Die, 숨겨져 왔으면 켠다', () => fixedRowChecks.protectedIds(psSrc));
+test('setup-taskcalendar ㉔ AUTO_INCREMENT 바닥: 구분 4, 상태 5, 직급 12(시드에서 읽음), 올린 뒤 확인', () => fixedRowChecks.autoIncFloor(psSrc, seedOrgSrc));
+test('setup-taskcalendar ㉔ 변이: 보호 번호 Die 를 Warn 으로, 켜기를 빼거나, 바닥 올리기나 확인을 빼면 잡는다', () => {
+  assert.throws(() => fixedRowChecks.protectedIds(mutate(psSrc,
+    "        if($PROTECTED_IDS.Contains($t) -and $PROTECTED_IDS[$t] -eq $id){\n          Die ", "        if($PROTECTED_IDS.Contains($t) -and $PROTECTED_IDS[$t] -eq $id){\n          Warn ")), /멈추지 않는다/);
+  assert.throws(() => fixedRowChecks.protectedIds(mutate(psSrc,
+    "    if($n -ne 1){ $srcBad += ", "    if($false){ $srcBad += ")), /확인 전 원본 점검/);
+  assert.throws(() => fixedRowChecks.protectedIds(mutate(psSrc,
+    '" SET is_active = 1 WHERE " + $protPk', '" SET is_active = 0 WHERE " + $protPk')), /켜고 알리지 않는다/);
+  assert.throws(() => fixedRowChecks.autoIncFloor(mutate(psSrc,
+    "    if($ai -lt $floor){ Die ", "    if($false){ Die "), seedOrgSrc), /바닥 이상인지/);
+  assert.throws(() => fixedRowChecks.autoIncFloor(mutate(psSrc,
+    '" AUTO_INCREMENT = " + [Math]::Max($floor, $mx + 1)', '" AUTO_INCREMENT = " + ($mx + 1)'), seedOrgSrc), /max\(바닥, MAX\+1\)/);
+  assert.doesNotThrow(() => fixedRowChecks.protectedIds(psSrc));
+  assert.doesNotThrow(() => fixedRowChecks.autoIncFloor(psSrc, seedOrgSrc));
+});
 test('setup-taskcalendar ㉓ 변이: 복사 뒤 검증의 Die 를 끄거나 BINARY 매칭을 빼거나 정수 키로 되돌리면 잡는다', () => {
   assert.throws(() => codeIdChecks.verifyAfterCopy(mutate(psSrc, '  if($idBad.Count -gt 0){ Die ', '  if($false){ Die ')), /번호 키 검증 Die/);
   assert.throws(() => codeIdChecks.copySql(mutate(psSrc,

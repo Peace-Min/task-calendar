@@ -35,10 +35,13 @@
 --    3) 자식에 *_id 열을 NULL 허용으로 더하고 JOIN … ON name 으로 채운다.
 --    4) ★ 절단 관문: 번호로 되살린 이름이 스냅숏과 BINARY 로 한 글자도 다르지 않고 NULL 여부도 같아야 한다.
 --       하나라도 다르면 여기서 멈춘다. 멈춰도 옛 열과 옛 키는 그대로다(더한 열만 남는다).
+--       이어서 동작이 묶인 고정 번호 행(구분 2 선진행, 상태 2 종료)이 있는지 본다. 옛 DB 에서 라벨을 바꿔 번호 2 가
+--       비었으면 여기서 멈춘다(옛 DB 에서 라벨을 시드 이름으로 되돌린 뒤 다시 돌린다). 두 행이 숨겨져 있으면 켠다(알림).
 --    5) 되돌릴 수 없는 지점: 옛 외래키, 옛 열(인덱스는 함께 사라진다)을 지우고 부모 기본키를 번호로 바꾼다.
---       UNIQUE(name), CHECK, 자식 NOT NULL, 인덱스와 외래키를 건다. AUTO_INCREMENT 는 MAX+1 로 맞춰진다.
+--       UNIQUE(name), CHECK, 자식 NOT NULL, 인덱스와 외래키를 건다. AUTO_INCREMENT 는 MAX+1 과 고정 번호 바닥
+--       (구분 4, 상태 5, 직급 12) 중 큰 값으로 올린다.
 --    6) v13 을 기록하고 사후 검증(고아 0, 표별 행 수 불변, 이름 복원 BINARY 일치, cal_* 행 수와 cal_user_rev 불변,
---       구조, AUTO_INCREMENT > MAX). 어긋나면 실행을 실패시킨다.
+--       구조, AUTO_INCREMENT > MAX 와 바닥, 보호 행이 켜져 있음). 어긋나면 실행을 실패시킨다.
 --    7) 앱 계정의 안 쓰는 UPDATE 권한 회수(cal_entry_commit, cal_todo_day_note, cal_room, CODE-TABLE-IDS §8-3).
 --       grants-calendar.sql 에서 뺀 권한을 이미 받은 DB 에서도 거두어, init-calendar 의 GRANT 대조와 맞춘다.
 --
@@ -59,7 +62,7 @@
 --       ORDER BY TABLE_NAME, ORDINAL_POSITION;
 --    (STATISTICS, REFERENTIAL_CONSTRAINTS, CHECK_CONSTRAINTS, TABLES.TABLE_COMMENT 도 같은 방식으로. AUTO_INCREMENT 값은 데이터에 따라 다르다.)
 --
---  【안 하는 것】 과제 계약일 순서 CHECK(start_date <= end_date)는 넣지 않는다. 실데이터를 먼저 본다(§8-4):
+--  【안 하는 것】 과제 계약일 순서 CHECK(start_date <= end_date)는 넣지 않는다(§8-4 결정: 뒤집힌 행 0건, 호스트가 검사):
 --      SELECT id, uid, start_date, end_date FROM project WHERE start_date > end_date;
 -- =====================================================================
 
@@ -417,6 +420,37 @@ SET @g := IF(@cut_parent + @cut_fixed
              'SELECT 1 FROM `중단: 번호가 옛 이름을 그대로 되살리지 못한다 - 옛 열을 지우지 않았다`');
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
+-- ---------- 4-b) 동작이 묶인 고정 번호 행이 있어야 한다(CODE-TABLE-IDS §3) ----------
+--  구분 2(선진행)는 날짜 잠금, 상태 2(종료)는 '진행중만' 필터와 엑셀 회색에 묶여 있고 앱은 이 두 행의 숨김과 삭제를 막는다.
+--  옛 DB 에서 라벨을 바꿨다면(예: '선진행(계약전)') 지도에 안 맞아 MAX+1 번호를 받고, 번호 2 는 비어 버린다.
+--  그러면 동작이 아무 행에도 걸리지 않으므로 옛 열이 남아 있는 여기서 멈춘다. 고치는 법: 옛 DB 에서 그 라벨을 시드 이름
+--  ('선진행', '종료')으로 되돌리고 이 파일을 다시 돌린다(4) 에서 멈춘 것과 같아 그대로 재실행된다). 바꾼 라벨은 v13 이 된 뒤
+--  관리 화면에서 다시 붙이면 된다(번호 2 에 묶인 동작은 그대로 남는다).
+SET @fix_sec := (SELECT COUNT(*) FROM section_code WHERE section_id = 2);
+SET @fix_st  := (SELECT COUNT(*) FROM status_code  WHERE status_id  = 2);
+SELECT 'section_code' AS tbl, 2 AS fixed_id, '선진행' AS seed_name, @fix_sec AS found
+UNION ALL SELECT 'status_code', 2, '종료', @fix_st;
+SET @g := IF(@fix_sec = 1 AND @fix_st = 1, 'DO 0',
+             'SELECT 1 FROM `중단: 구분 2(선진행)나 상태 2(종료)가 없다 - 옛 DB 에서 이름을 시드대로 되돌릴 것`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+
+-- ---------- 4-c) 보호 행은 켜져 있어야 한다 ----------
+--  앱은 이 두 행을 숨길 수 없게 막는다. 옛 DB 에서 숨겨져(is_active = 0) 왔다면 숨김을 풀 길이 없으므로 여기서 켠다.
+--  켠 행은 알림으로 보인다(정상이면 0행). 감사 시각은 다른 백필과 같이 덮지 않는다.
+SELECT '알림: 숨겨져 있던 보호 행을 다시 켠다' AS notice, 'section_code' AS tbl, section_id AS id, name
+  FROM section_code WHERE section_id = 2 AND is_active = 0
+UNION ALL
+SELECT '알림: 숨겨져 있던 보호 행을 다시 켠다', 'status_code', status_id, name
+  FROM status_code WHERE status_id = 2 AND is_active = 0;
+UPDATE section_code SET is_active = 1, updated_at = updated_at WHERE section_id = 2 AND is_active = 0;
+UPDATE status_code  SET is_active = 1, updated_at = updated_at WHERE status_id  = 2 AND is_active = 0;
+--  위에서 is_active 를 바꿨을 수 있으므로 코드표 지문(1) 단계)을 여기서 다시 뜬다. 6) 의 불변 검사는 이 값과 비교한다.
+SET @c0_fp_codes := (SELECT CONCAT_WS(',',
+  (SELECT IFNULL(BIT_XOR(CRC32(CONCAT_WS('|', name, is_active, created_at, updated_at))), 0) FROM customer),
+  (SELECT IFNULL(BIT_XOR(CRC32(CONCAT_WS('|', name, sort_order, is_active, created_at, updated_at))), 0) FROM section_code),
+  (SELECT IFNULL(BIT_XOR(CRC32(CONCAT_WS('|', name, sort_order, is_active, created_at, updated_at))), 0) FROM status_code),
+  (SELECT IFNULL(BIT_XOR(CRC32(CONCAT_WS('|', name, sort_order, is_active, created_at, updated_at))), 0) FROM title_code)));
+
 -- =====================================================================
 --  5) 절단: 되돌릴 수 없는 지점. 여기서부터 멈추면 백업으로 되돌린다
 -- =====================================================================
@@ -482,6 +516,17 @@ ALTER TABLE title_code
   ADD CONSTRAINT chk_title_code_name   CHECK (name <> ''),
   ADD CONSTRAINT chk_title_code_active CHECK (is_active IN (0,1)),
   COMMENT = '직급 코드. PK=title_id, name=UNIQUE 라벨. 표시와 정렬 전용, 권한 판정에 쓰지 않는다.';
+
+-- ---------- 5-3b) AUTO_INCREMENT 바닥: 고정 번호의 최댓값 + 1 ----------
+--  옛 DB 에 시드 이름이 빠져 있으면(예: 구분 '사업부관리' 가 없음) 카운터가 MAX+1 이라 다음 새 행이 비어 있는 고정 번호
+--  (구분 3)를 차지한다. 그래서 고정 번호를 둔 세 표는 카운터를 max(바닥, MAX+1)로 올려 둔다. 바닥: 구분 4, 상태 5, 직급 12.
+--  customer 는 고정 번호가 없다. ALTER TABLE ... AUTO_INCREMENT 는 상수만 받으므로 문장을 만들어 돌린다.
+SET @s := CONCAT('ALTER TABLE section_code AUTO_INCREMENT = ', (SELECT GREATEST(4,  IFNULL(MAX(section_id), 0) + 1) FROM section_code));
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+SET @s := CONCAT('ALTER TABLE status_code AUTO_INCREMENT = ',  (SELECT GREATEST(5,  IFNULL(MAX(status_id), 0) + 1) FROM status_code));
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+SET @s := CONCAT('ALTER TABLE title_code AUTO_INCREMENT = ',   (SELECT GREATEST(12, IFNULL(MAX(title_id), 0) + 1) FROM title_code));
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 
 -- ---------- 5-4) 자식: NOT NULL, 인덱스, 외래키(ON UPDATE RESTRICT ON DELETE RESTRICT), CHECK ----------
 --  ※ 인덱스를 외래키보다 먼저(같은 문장 안에서) 이름을 붙여 만든다. 그래야 InnoDB 가 자동 이름 인덱스를 만들지 않고,
@@ -620,30 +665,36 @@ SET @e_struct := (SELECT
   + ((SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'title_code'
        AND TABLE_COMMENT = '직급 코드. PK=title_id, name=UNIQUE 라벨. 표시와 정렬 전용, 권한 판정에 쓰지 않는다.') <> 1));
 
--- E6) AUTO_INCREMENT > MAX(번호): 다음 새 행이 기존 번호와 부딪히지 않는다
+-- E6) AUTO_INCREMENT > MAX(번호) 이고 고정 번호 바닥(구분 4, 상태 5, 직급 12) 이상: 다음 새 행이 기존 번호나
+--     비어 있는 고정 번호와 부딪히지 않는다(5-3b).
 SET @e_ai := (SELECT
     ((SELECT IFNULL(AUTO_INCREMENT, 0) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'customer')
       <= (SELECT IFNULL(MAX(customer_id), 0) FROM customer))
   + ((SELECT IFNULL(AUTO_INCREMENT, 0) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'section_code')
-      <= (SELECT IFNULL(MAX(section_id), 0) FROM section_code))
+      <= (SELECT GREATEST(3, IFNULL(MAX(section_id), 0)) FROM section_code))
   + ((SELECT IFNULL(AUTO_INCREMENT, 0) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'status_code')
-      <= (SELECT IFNULL(MAX(status_id), 0) FROM status_code))
+      <= (SELECT GREATEST(4, IFNULL(MAX(status_id), 0)) FROM status_code))
   + ((SELECT IFNULL(AUTO_INCREMENT, 0) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'title_code')
-      <= (SELECT IFNULL(MAX(title_id), 0) FROM title_code)));
+      <= (SELECT GREATEST(11, IFNULL(MAX(title_id), 0)) FROM title_code)));
+
+-- E8) 보호 행(구분 2, 상태 2)이 하나씩 있고 켜져 있다(4-b, 4-c).
+SET @e_fixed := ((SELECT COUNT(*) FROM section_code WHERE section_id = 2 AND is_active = 1) <> 1)
+              + ((SELECT COUNT(*) FROM status_code  WHERE status_id  = 2 AND is_active = 1) <> 1);
 
 -- E7) 판번호
 SET @e_ver := (SELECT COUNT(*) = 0 FROM cal_schema_meta WHERE k = 'schema_version' AND v = '13');
 
 SELECT @e_orphan AS e1_orphan, @e_rows AS e2_rows, @e_proj_drift AS e3_project_drift, @e_user_drift AS e3_user_drift,
-       @e_same AS e4_unchanged_bad, @e_struct AS e5_struct_bad, @e_ai AS e6_autoinc_bad, @e_ver AS e7_version_bad;
+       @e_same AS e4_unchanged_bad, @e_struct AS e5_struct_bad, @e_ai AS e6_autoinc_bad, @e_ver AS e7_version_bad,
+       @e_fixed AS e8_fixed_bad;
 
--- (정보) 동작이 묶인 고정 번호 행이 있는가. 없으면 그 동작이 아무 행에도 걸리지 않는다(멈추지는 않는다).
+-- (정보) 동작이 묶인 고정 번호 행과 지금 라벨(4-b 가 없으면 멈췄고, E8 이 켜져 있는지 본다).
 SELECT 'section_code 2' AS fixed_row, (SELECT name FROM section_code WHERE section_id = 2) AS name, '선진행 동작' AS bound
 UNION ALL
 SELECT 'status_code 2', (SELECT name FROM status_code WHERE status_id = 2), '종료 동작';
 
-SET @g := IF(@e_orphan + @e_rows + @e_proj_drift + @e_user_drift + @e_same + @e_struct + @e_ai + @e_ver = 0, 'DO 0',
-             'SELECT 1 FROM `중단: 사후 검증 실패 - 위 e1~e7 을 볼 것. 백업으로 되돌린다`');
+SET @g := IF(@e_orphan + @e_rows + @e_proj_drift + @e_user_drift + @e_same + @e_struct + @e_ai + @e_ver + @e_fixed = 0, 'DO 0',
+             'SELECT 1 FROM `중단: 사후 검증 실패 - 위 e1~e8 을 볼 것. 백업으로 되돌린다`');
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
 DROP TEMPORARY TABLE IF EXISTS _cid_snap_project;

@@ -363,8 +363,11 @@ test('변이④: 재매김 간격을 10 에서 1 로 줄이면 계약④ 가 실
 });
 
 test('변이④-b: 집합 대조를 개수 비교로 느슨하게 하면 계약④ 가 실패한다', () => {
-  const bad = mutate(pdb, 'if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))',
-    'if (given.Count != live.Count)');
+  //  ★ 같은 대조 줄이 코드표(ReorderCodesAsync, 2026-10-15)에도 있고 그쪽이 파일에서 먼저 나온다. 뒤따르는
+  //    직급 거부 로그까지 묶어 **이 한 곳**을 가리킨다(변이④ 와 같은 이유).
+  const tail = '\n                    {\n                        await SafeRollbackAsync(tx);\n                        _log("직급 순서 저장 거부:';
+  const bad = mutate(pdb, 'if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))' + tail,
+    'if (given.Count != live.Count)' + tail);
   assert.throws(() => checks.reorderNeedsWholeSet(bad), /낡은 화면을 거부하지 않는다/);
   assert.doesNotThrow(() => checks.reorderNeedsWholeSet(pdb));   // 통제군
 });

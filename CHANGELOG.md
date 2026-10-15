@@ -7,9 +7,13 @@
 
 ---
 
-## 🆕 2026-10-12, v0.20.0: 보고서 글 편집(일간, 주간), 주간 같은 기간 수정 화면, 보고서 묶음, 기본 과제 휴가와 기타, XML 병합 제거, 다른 사람 일정과 관리 화면 정리 (스키마 변경 없음)
+## 🆕 2026-10-12, v0.20.0: 보고서 글 편집(일간, 주간), 주간 같은 기간 수정 화면, 보고서 묶음, 기본 과제 휴가와 기타, XML 병합 제거, 다른 사람 일정과 관리 화면 정리, 코드표 번호 키 (스키마 v13, DB 먼저)
 
-0.19.1 은 사내에 배포되지 않았고, 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마, GRANT 변경 없음**(v12, `CalendarDb.ExpectedSchemaVersion = "12"` 그대로). `db/deploy/schema-calendar.sql` 은 주석만 바뀌었다(과제 삭제가 일정, 할 일, 공수를 함께 지운다는 설명).
+0.19.1 은 사내에 배포되지 않았고, 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마가 v12 에서 v13 으로 바뀐다**(`CalendarDb.ExpectedSchemaVersion = "13"`). 배포 순서는 **DB 먼저, 그다음 앱**이다. 0.20.0 앱은 v12 DB 를, 0.19.x 앱은 v13 DB 를 거부한다.
+
+- 회사 서버를 새로 만들 때: `db/deploy/setup-taskcalendar`. 구버전 DB `taskmgr` 에서 과제 트랙을 복사하면서 코드 이름을 번호로 바꾼다.
+- 데이터가 있는 v12 DB: `backup-taskmgr -DbName taskcalendar` 로 백업한 뒤 `db/deploy/migrate-2026-10-15-code-ids.sql` 을 `--force` 없이 적용한다(조건이 어긋나면 에러로 멈추는 방식이라 `--force` 를 붙이면 안 된다).
+- GRANT: 앱 계정의 안 쓰는 UPDATE(cal_entry_commit, cal_todo_day_note, cal_room)를 뺐다. 이관 SQL 이 이미 받은 DB 에서도 거둔다.
 
 - **XML 병합 제거**(`6373cd3`, 기획 [docs/XML-MERGE-REMOVAL.md](docs/XML-MERGE-REMOVAL.md)): 가져오기는 언제나 전량 교체.
 - **기본 과제 휴가, 기타**(`4b4a018`, 기획 [docs/DEFAULT-TASKS.md](docs/DEFAULT-TASKS.md)): 이름 기준 식별, `ensureDefaultTasks` 부팅 보장, '과제 없음' 상태와 미분류/기타 분류 로직 제거, `deleteCategory` 가 데이터를 함께 지움, `moveCategoryData` 옮기기, 이관 도구(`db/deploy/xml-to-db`)도 같은 규칙. **주의**: 일회성 NULL 정리는 두지 않았다(DB 미배포 전제). 0.19.x 에서 cat_no NULL 로 저장된 기록은 보고서에 나오지 않는다.
@@ -18,6 +22,7 @@
 - **주간 같은 기간 수정 화면**(`dbb050f`, [docs/WEEKLY-UPSERT.md](docs/WEEKLY-UPSERT.md)): `NcCrawlWeekly`, `NcFindSameWeek`, `NcPickSameWeek` 로 같은 기간 글을 찾아 `pjm_modify.jsp` 로 연다. 실사이트 수동 확인 대기.
 - **보고서 묶음**(`033ba2d`, `7526e7b`, [docs/REPORT-GROUP.md](docs/REPORT-GROUP.md)): 초안 `group:{src:target}` 한 단계, 설정 창은 포인터 이벤트 끌어넣기와 ⋯ 메뉴, X.
 - **다른 사람 일정, 관리 화면**(10-01~10-06 커밋): 겹쳐 보기, 나란히 보기, 사람 고르기(조직도 탭), 관리 허브 2~4차, '내 과제', 휴지통 통일, 관리자 아니면 관리 화면 차단, 화면 문구 기호 정리(`2deb3b6`).
+- **코드표 번호 키**(`67378a6`, `0cd0b43`, `3a80a8a`, `4de2d7f`, 리뷰 수정 라운드, 기획 [docs/CODE-TABLE-IDS.md](docs/CODE-TABLE-IDS.md)): `customer`, `section_code`, `status_code`, `title_code` 의 기본키를 `SMALLINT UNSIGNED` 번호로 바꾸고 이름은 UNIQUE 라벨로 남겼다. 자식 열은 `project.customer_id`, `section_id`, `status_id`, `app_user.title_id` 이고 외래키는 ON UPDATE/DELETE RESTRICT. 웹과 호스트의 편집, 관리 메시지는 번호로 오간다. 동작은 고정 번호로 판정한다(구분 2 선진행, 상태 2 종료). 이 두 행은 숨김과 삭제를 막고 개명은 허용한다. 이관 SQL 과 setup 은 고정 번호 행이 없으면 멈추고, 숨겨져 있으면 되살리며, AUTO_INCREMENT 를 고정 번호보다 크게 맞춘다. 낡은 진입점(`init-db`, `migrate`, 지난 `migrate-2026-*.sql`)을 지웠고 진입점은 `setup-taskcalendar` 하나다. 운영 스크립트 기본 DB 는 `taskcalendar`.
 - 게이트: `TC_TEST_STRICT=1 node tests/run-tests.mjs` exit 0, 0 fail, 0 skip. 실 위젯 루프 33/33. 인스톨러 빌드와 `latest.json` sha256 대조.
 
 ---

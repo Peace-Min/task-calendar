@@ -1788,12 +1788,21 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log(lbl + " 숨김/복구 실패: " + Short(ex)); return (false, "처리하지 못했습니다: " + Short(ex)); }
         }
 
-        // 코드값 순서 재배치 — 받은 번호 순서대로 sort_order = (index+1)*10 재부여(트랜잭션). 존재하는 번호만 갱신.
+        // 코드값 순서 재배치. 받은 번호 순서대로 sort_order = (index+1)*10 재부여(트랜잭션).
+        //   ★ 화면(codeMove)은 **활성 전부**를 보낸다. 받은 번호 집합이 지금의 활성 집합과 같아야 한다(중복, 빠짐,
+        //     낯선 번호 모두 거부). 다르면 화면이 낡은 것이고, 그대로 절반만 다시 매기면 목록 밖 코드가 새 번호들 사이에
+        //     끼어든다. 아무것도 쓰지 않고 직급 순서(TitleReorderAsync)와 같은 문장으로 거부한다(2026-10-15 리뷰).
         public async Task<(bool ok, string msg)> ReorderCodesAsync(string? kind, IReadOnlyList<int>? orderedIds)
         {
             if (!ResolveCodeKind(kind, out string table, out string idCol)) return (false, "대상 종류가 올바르지 않습니다.");
             string lbl = KindLabel(kind!.Trim());
             if (orderedIds == null || orderedIds.Count == 0) return (false, "정렬할 " + lbl + " 목록이 비어 있습니다.");
+            var kept = new List<int>(orderedIds.Count);
+            foreach (int cid in orderedIds)
+            {
+                if (cid > 0) kept.Add(cid);
+            }
+            if (kept.Count == 0) return (false, "정렬할 " + lbl + " 목록이 비어 있습니다.");
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -1806,10 +1815,24 @@ namespace TaskCalendarWidget
                 await using var tx = await conn.BeginTransactionAsync(cts.Token);
                 try
                 {
-                    int order = 0;
-                    foreach (int cid in orderedIds)
+                    // ① 지금의 활성 집합을 잠근 채 읽어 **받은 집합과 같은지** 본다(판정과 갱신 사이를 닫는다).
+                    var live = new HashSet<int>();
+                    await using (var q = new MySqlCommand($"SELECT {idCol} AS cid FROM {table} WHERE is_active=1 FOR UPDATE", conn, (MySqlTransaction)tx))
+                    await using (var rd = await q.ExecuteReaderAsync(cts.Token))
+                        while (await rd.ReadAsync(cts.Token)) { int? v = IntOrNull(rd, "cid"); if (v.HasValue) live.Add(v.Value); }
+
+                    var given = new HashSet<int>(kept);
+                    if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))
                     {
-                        if (cid <= 0) continue;
+                        await SafeRollbackAsync(tx);
+                        _log(lbl + " 순서변경 거부: 받은 " + kept.Count + "개 / 활성 " + live.Count + "개, 화면이 낡았다");
+                        return (false, OrgTitleStaleMsg);
+                    }
+
+                    // ② 받은 순서대로 10·20·30… 전량 재작성.
+                    int order = 0;
+                    foreach (int cid in kept)
+                    {
                         order += 10;
                         await using var cmd = new MySqlCommand($"UPDATE {table} SET sort_order=@s WHERE {idCol}=@id", conn, (MySqlTransaction)tx);
                         cmd.Parameters.AddWithValue("@s", order);
@@ -1817,7 +1840,7 @@ namespace TaskCalendarWidget
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     await tx.CommitAsync(cts.Token);
-                    _log(lbl + " 순서변경: " + orderedIds.Count + "건");
+                    _log(lbl + " 순서변경: " + kept.Count + "건");
                     return (true, lbl + " 순서를 변경했습니다.");
                 }
                 catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로 — 원래 예외가 살아남아야 한다(SafeRollbackAsync 주석)

@@ -217,7 +217,7 @@ const checks = {
     assert.ok(/otSend\('titleRename', \{ titleId: Number\(key\), newName: newName \}\)/.test(extractFunction(web, 'otCommitRename')), '직급 개명이 번호를 싣지 않는다');
     assert.ok(/otSend\('titleSetActive', \{ titleId: Number\(key\), active: false \}/.test(extractFunction(web, 'otDoHide')), '직급 숨김이 번호를 싣지 않는다');
     assert.ok(/cmd: 'titleSetActive', titleId: Number\(key\), active: true/.test(extractFunction(web, 'trOrgRestore')), '휴지통 직급 복구가 번호를 싣지 않는다');
-    assert.ok(/titleId: Number\(val\('userEdTitle'\) \|\| 0\)/.test(extractFunction(web, 'userEdSaveNow')), '직원 저장이 직급을 번호로 보내지 않는다');
+    assert.ok(/titleId: val\('userEdTitle'\) \? Number\(val\('userEdTitle'\)\) : null,/.test(extractFunction(web, 'userEdSaveNow')), '직원 저장이 직급을 번호로(직급 없음은 null) 보내지 않는다');
   },
 };
 

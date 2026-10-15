@@ -59,9 +59,9 @@
 | section_code | **2** | 선진행 | 날짜와 상태를 비우고 잠근다(호스트 `ProjectDb.cs` 1305~1308, 웹 `offEdApplySectionRule`) |
 | section_code | 3 | 사업부관리 | 색만 |
 | status_code | 1 | 진행중 | 목록 초록 점, 엑셀 초록(색만, 보호하지 않음) |
-| status_code | **2** | 종료 | 필터 제외(`offFilters`), 엑셀 회색(`MainWindow.xaml.cs` 1246) |
-| status_code | 3 | 1차 납품완료 | 그 밖(주황 점) |
-| status_code | 4 | 미정 | 그 밖(주황 점) |
+| status_code | **2** | 종료 | 필터 제외(`offFilters`), 엑셀 회색(`MainWindow.xaml.cs` 의 `ProjectStatusAccents`) |
+| status_code | 3 | 1차 납품완료 | 엑셀 파랑(`CodeIds.StatusDelivered`, 색만, 보호하지 않음), 목록 점은 그 밖(주황) |
+| status_code | 4 | 미정 | 그 밖(주황 점), 엑셀 기본 |
 | title_code | 회사 저장소 02 에 명시 | | 없음 |
 
 - 동작은 번호 상수로 판정한다(웹, 호스트 각각 한 곳에 상수를 둔다). 이름 글자 비교는 모두 없앤다.
@@ -70,6 +70,8 @@
 - 동작이 묶인 행은 관리 화면에서 **숨김과 삭제를 막는다**(호스트가 거부하고 웹은 버튼을 끄고 이유를 보인다). 라벨 개명과 순서 바꾸기는 허용한다.
 - 구분 색 표 `DB_SECTION_COLORS` 는 번호 기준으로 바꾼다. 표에 없는 번호는 기본색.
 - 앞으로 고정 번호를 늘릴 때는 같은 상수와 보호 목록에 더한다.
+- 보호 행은 언제나 있고 켜져 있어야 한다(2026-10-15 리뷰). 이관 SQL 과 setup 은 옛 DB 에서 라벨을 바꿔 구분 2 나 상태 2 가 비면 멈추고(옛 DB 에서 라벨을 시드 이름으로 되돌린 뒤 다시 돌린다), 숨겨져(`is_active=0`) 왔으면 켜고 알린다.
+- AUTO_INCREMENT 바닥은 고정 번호의 최댓값 + 1 이다(구분 4, 상태 5, 직급 12). 옛 DB 에 시드 이름이 빠져 있어도 다음 새 행이 비어 있는 고정 번호를 차지하지 않는다. 이관 SQL 과 setup 둘 다 카운터를 max(바닥, MAX+1)로 올린다. 발주처는 고정 번호가 없다.
 
 ## 4. 통신 규약 (org_unit 선례)
 
@@ -95,8 +97,8 @@
 1. 옛 값 스냅샷을 임시 표로 남긴다(project uid 별 customer, section, status / app_user user_id 별 title).
 2. 부모 표에 번호 열을 더하고 배정한다. 시드 이름은 고정 번호 지도로, 나머지는 MAX+1 부터 이름순.
 3. 자식에 `*_id` 열을 NULL 허용으로 더하고 `JOIN ... ON name` 으로 채운다.
-4. **절단 관문**: 번호로 되살린 이름이 옛 값과 `BINARY` 로 한 글자도 다르지 않고 NULL 여부도 같아야 한다. 하나라도 다르면 중단.
-5. 옛 외래키, 옛 열, 옛 인덱스를 지우고 부모 기본키를 번호로 바꾼다. UNIQUE(name), CHECK, 자식 NOT NULL, 인덱스와 외래키를 건다. AUTO_INCREMENT 를 MAX 보다 크게.
+4. **절단 관문**: 번호로 되살린 이름이 옛 값과 `BINARY` 로 한 글자도 다르지 않고 NULL 여부도 같아야 한다. 하나라도 다르면 중단. 이어서 구분 2, 상태 2 행이 없으면 중단하고(4-b), 숨겨져 있으면 켠다(4-c, §3).
+5. 옛 외래키, 옛 열, 옛 인덱스를 지우고 부모 기본키를 번호로 바꾼다. UNIQUE(name), CHECK, 자식 NOT NULL, 인덱스와 외래키를 건다. AUTO_INCREMENT 를 MAX 보다 크고 고정 번호 바닥(구분 4, 상태 5, 직급 12) 이상으로(5-3b).
 6. v13 을 기록하고 사후 검증: 고아 0, 표별 행 수 불변, cal_* 행 수와 cal_user_rev 불변.
 7. 재구축 경로와 대조: 빈 격리 DB 에 setup 으로 만든 결과와 information_schema(열, 인덱스, 외래키, CHECK, COMMENT)가 같아야 한다.
 
@@ -116,7 +118,8 @@ DDL 은 암묵 커밋이라 원자적이지 않다. 0번 백업과 4번 관문�
 2. **낡은 진입점 삭제**: `db/deploy/init-db.ps1`, `init-db.cmd`, `migrate.ps1`, `migrate.cmd`, `db/schema.sql`, 지난 `migrate-2026-*.sql` 과 `rollback-2026-08-24-org-id.sql`. 진입점은 `setup-taskcalendar` 하나로. 지우기 전에 이 파일들을 읽는 스크립트와 시험을 찾아 함께 정리한다. `db/deploy/README.md` 의 안내도 고친다.
 3. **안 쓰는 권한**: `cal_entry_commit`, `cal_todo_day_note`, `cal_room` 의 GRANT UPDATE 를 뺀다(호스트는 DELETE 뒤 INSERT 만 한다).
 4. **CHECK**: 코드표 `name<>''`, 과제 트랙 `is_active IN (0,1)`. 과제 계약일 순서 CHECK 는 기존 데이터를 확인한 뒤 넣을지 정한다.
-5. **문서 속 비밀번호**: `db/README.md` 61행의 `-ptaskmgr123` 을 지운다(이미 GitHub 에 올라갔다. 비밀번호를 바꿀지는 사용자가 정한다).
+   - 결정(2026-10-15): **계약일 순서 CHECK(`start_date <= end_date`)는 넣지 않았다.** 로컬 `taskcalendar` 와 원본 `taskmgr` 모두 순서가 뒤집힌 과제가 0건이고, 호스트(`ProjectDb.UpsertProjectAsync`)가 저장 전에 검사한다. 로컬 DB 는 이미 v13 으로 이관했으므로 지금 넣으려면 이관을 한 번 더 해야 한다. 필요해지면 다음 판번호에서 넣는다.
+5. **문서 속 비밀번호**: `db/README.md` 61행에 적혀 있던 문서 속 root 비밀번호(명령줄 `-p` 뒤의 글자)를 지운다(이미 GitHub 에 올라갔다. 비밀번호를 바꿀지는 사용자가 정한다). 저장소 어디에도 그 글자가 남지 않게 `tests/code-ids-db.test.mjs` 가 추적 파일 전체를 훑는다.
 6. **문서 어긋남**: cal_task_hours, cal_attendance 머리 주석(updated_at), §5.6.7 cal_room 길이(실제 40), §5.6.1 title_code 길이(실제 30), "실 DB 미적용" 배너.
 
 ## 9. 문서
@@ -152,3 +155,4 @@ DDL 은 암묵 커밋이라 원자적이지 않다. 0번 백업과 4번 관문�
 
 - 2026-10-15 신설.
 - 2026-10-15 보강: 앱 코드는 id 로 판단(사용자 확인). 보호 대상은 구분 2번, 상태 2번. cal_room, cal_schema_meta 를 그대로 두는 DB 구조상의 이유를 적음.
+- 2026-10-15 리뷰 수정 라운드: §3 표의 상태 3번(1차 납품완료)이 엑셀 파랑(`CodeIds.StatusDelivered`)인 것을 바로잡음. §3 에 보호 행 존재와 활성, AUTO_INCREMENT 바닥(4, 5, 12)을 더함(이관 SQL 4-b, 4-c, 5-3b 와 setup 이 같은 규칙). §8-4 에 계약일 CHECK 를 넣지 않은 결정을 적음. §8-5 에서 비밀번호 글자를 지우고 추적 파일 전체 검사로 바꿈. 릴리스 문서(RELEASE_NOTES, CHANGELOG, 앱 패치노트)를 v13 과 배포 순서(DB 먼저)로 고침(§11). 그 밖에 직원 편집의 직급 없음 유지, 코드 순서 저장의 낡은 화면 거부, 스키마 보고서 생성기의 v13 문장.

@@ -3575,6 +3575,77 @@ if (!jsdom) {
     assert.strictEqual(probeFill([{ value: '사원', label: '사원' }], '주임', null).value, '주임');   // 통제군
   });
 
+  //  ★ 2026-10-15 리뷰 P2: 직급이 없는(title_id NULL) 사람은 빈 옵션이 없어 '직급 없음'을 고를 수 없었다.
+  //    폼은 아무것도 골라지지 않은 채 열리고 [저장]은 '직급을 고르세요' 로 막혀, 이름 한 글자를 고치려 해도 없던
+  //    직급(목록 첫 줄이면 대표)을 넣어야 했다. '(직급 없음)' 은 그런 사람에게만 두고(호스트 titleOk 가 직급 없음을
+  //    '이미 직급이 없는 사람'에게만 받는다), 그대로 저장하면 titleId 가 null 로 나간다.
+  //    진짜 userEdOpen 과 userEdSaveNow 를 진짜 폼 마크업 위에서 돌린다.
+  const titleNullHarnessJs = (src) => [
+    'var __uaAdmin = true, __uaMembers = [], __uaTitles = [], __uaUnits = [], __uaSaving = false, __ueId = 0;',
+    'var currentUser = { loginId: "zzTadmin" };',
+    'var ICON = { alert: "!", spinner: "~" };',
+    'var US_VIEW_SCOPE = {}, US_EDIT_ROLE = {};',
+    'function usRoleText(map, k){ return String(k); }',
+    'var __msgs = [], __sent = [];',
+    'function userEdMsgSet(h, t){ __msgs.push({ html: String(h == null ? "" : h), tone: String(t || "") }); }',
+    'function uaSetSaving(){} function openModal(){} function formSnapshot(){ return ""; } function toast(){}',
+    'function userEdAfterWrite(){}',
+    'function uaSend(p){ __sent.push(JSON.parse(JSON.stringify(p))); return Promise.resolve(null); }',
+    extractFunction(src, 'userEdFillSelect'),
+    extractFunction(src, 'userEdPick'),
+    extractFunction(src, 'userEdOpen'),
+    extractFn(src, 'userEdSaveNow'),
+    'window.__probe = function(members, titles, uid){',
+    '  __uaMembers = members; __uaTitles = titles; __sent.length = 0; __msgs.length = 0;',
+    '  userEdOpen(uid);',
+    '  var sel = document.getElementById("userEdTitle");',
+    '  var opts = Array.prototype.map.call(sel.options, function(o){ return { v: String(o.value), t: String(o.textContent) }; });',
+    '  var value = String(sel.value), idx = sel.selectedIndex;',
+    '  return userEdSaveNow().then(function(){',
+    '    return { value: value, idx: idx, options: opts, sent: __sent.slice(), err: __msgs.filter(function(x){ return x.tone === "err"; }).map(function(x){ return x.html; }) };',
+    '  });',
+    '};',
+  ].join('\n');
+  const TN_FIXTURE = '<!doctype html><html><body>' + userEditModalMarkup(app) + '</body></html>';
+  const TN_TITLES = [{ id: 1, name: '대표' }, { id: 9, name: '연구원' }];
+  const TN_MEMBERS = [
+    { userId: 71, loginId: 'zzTnull', name: 'zzT_직급없음', title: null, titleId: null, orgId: null, viewScope: 'self', editRole: 'viewer', isActive: true },
+    { userId: 72, loginId: 'zzTyes', name: 'zzT_연구원', title: '연구원', titleId: 9, orgId: null, viewScope: 'self', editRole: 'viewer', isActive: true },
+  ];
+  const probeTitleNull = (uid, src = app) => runInJsdomAsync(TN_FIXTURE, titleNullHarnessJs(src), '__probe', TN_MEMBERS, TN_TITLES, uid);
+
+  test('계약⑱-DOM(직급 없음): 직급이 없는 사람은 (직급 없음)이 골라진 채 열리고 [저장]은 titleId null 로 보낸다', async () => {
+    const r = await probeTitleNull(71);
+    assert.deepStrictEqual(r.options[0], { v: '', t: '(직급 없음)' }, `직급이 없는 사람의 첫 옵션이 (직급 없음)이 아니다: ${JSON.stringify(r.options)}`);
+    assert.deepStrictEqual([r.idx, r.value], [0, ''], `직급이 없는 사람을 열었는데 (직급 없음)이 골라져 있지 않다(실제: ${JSON.stringify([r.idx, r.value])})`);
+    assert.deepStrictEqual(r.err, [], `직급이 없는 사람의 저장을 화면이 막는다: ${JSON.stringify(r.err)}`);
+    assert.strictEqual(r.sent.length, 1, '저장 메시지가 나가지 않았다');
+    assert.strictEqual(r.sent[0].cmd, 'saveUser');
+    assert.strictEqual(r.sent[0].titleId, null, `직급 없음이 null 로 나가지 않는다(실제: ${JSON.stringify(r.sent[0].titleId)})`);
+    //  직급이 있는 사람에게는 빈 옵션이 없다(호스트가 직급 없음으로 바꾸는 것을 받지 않는다). 그 사람의 직급 그대로 나간다.
+    const y = await probeTitleNull(72);
+    assert.ok(!y.options.some((o) => o.v === ''), `직급이 있는 사람에게 (직급 없음)을 내준다: ${JSON.stringify(y.options)}`);
+    assert.strictEqual(y.sent[0].titleId, 9, `직급이 있는 사람의 직급 번호가 그대로 나가지 않는다(실제: ${JSON.stringify(y.sent[0].titleId)})`);
+    //  신규 등록에도 빈 옵션이 없다(직급은 필수다).
+    const n = await probeTitleNull(0);
+    assert.ok(!n.options.some((o) => o.v === ''), `신규 등록에 (직급 없음)을 내준다: ${JSON.stringify(n.options)}`);
+  });
+
+  test('변이⑱-DOM(직급 없음): 빈 옵션을 빼거나 저장 검사를 옛것으로 되돌리면 직급이 없는 사람을 저장할 수 없다', async () => {
+    //  ① 빈 옵션이 없으면 아무 옵션도 골라지지 않은 채 열리고(selectedIndex -1), [저장]은 '직급을 고르세요' 로 막힌다.
+    //     관리자가 이름 한 글자를 고치려면 그 사람에게 없던 직급(목록 첫 줄이면 대표)부터 골라 넣어야 했다.
+    const bad = mutate(app, "noTitle ? '(직급 없음)' : null, m ? m.title : ''", "null, m ? m.title : ''");
+    const r = await probeTitleNull(71, bad);
+    assert.strictEqual(r.idx, -1, `변이 전제: 빈 옵션이 없으면 아무것도 골라지지 않아야 한다(실제: ${JSON.stringify(r)})`);
+    assert.deepStrictEqual([r.sent.length, r.err], [0, ['! 직급을 고르세요.']], `변이 전제: 옛 동작이면 저장이 막혀야 한다(실제: ${JSON.stringify(r)})`);
+    //  ② 빈 옵션은 있어도 저장 검사가 옛것(!payload.titleId)이면 같은 자리에서 막힌다.
+    const bad2 = mutate(app, '  if(payload.titleId == null && !noTitleKept){', '  if(!payload.titleId){');
+    const r2 = await probeTitleNull(71, bad2);
+    assert.deepStrictEqual([r2.sent.length, r2.err], [0, ['! 직급을 고르세요.']], `변이 전제: 옛 검사면 저장이 막혀야 한다(실제: ${JSON.stringify(r2)})`);
+    const ok = await probeTitleNull(71);   // 통제군
+    assert.deepStrictEqual([ok.idx, ok.sent[0].titleId], [0, null]);
+  });
+
   test('계약⑳-DOM: 검색 중 머리줄은 걸러진 수와 전체 수를 함께 낸다', () => {
     const all = probeScope('', false);
     assert.strictEqual(all.scope, '구성원 3명', `검색어가 없을 때의 문구가 다르다: ${JSON.stringify(all.scope)}`);

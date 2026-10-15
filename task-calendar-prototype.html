@@ -3864,6 +3864,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <li><b>XML 가져오기는 언제나 교체</b>: 합치기 방식은 없어졌고, 가져오면 지금 캘린더를 파일 내용으로 바꿉니다.</li>
         <li><b>다른 사람 일정</b>: 상단 버튼으로 바로 열고, 사람을 <b>검색, 즐겨찾기, 최근 본 사람, 조직도</b>에서 고릅니다. 그 사람 달력과 내 달력을 <b>나란히 보기</b>, 내 일정 <b>겹쳐 보기</b>도 됩니다.</li>
         <li><b>관리 화면 (관리자)</b>: 구성원, 직급, 소속, 회사 과제를 한 곳에서 다루고 휴지통을 함께 씁니다. '과제 관리'는 <b>내 과제</b>로 이름이 바뀌었습니다. 관리자가 아니면 관리 화면이 열리지 않습니다.</li>
+        <li><b>선진행과 종료</b>: 관리 화면에서 구분 '선진행'과 상태 '종료'는 이름을 바꿀 수 있지만, 앱 동작(날짜 잠금, '진행중만' 필터)에 쓰여 숨기거나 지울 수 없습니다.</li>
       </ul>
       <div class="patch-ver"><span class="pv-tag old">v0.19.1</span><span class="pv-date">2026-10-01</span></div>
       <p class="patch-intro"><b>과제 순서</b>를 직접 정하고, <b>다른 사람 일정</b>도 내 화면처럼 다 봅니다. 기간 일정 클릭, 창 버튼, 보고서 전송도 실제 동작에 맞게 바로잡았습니다.</p>
@@ -8143,8 +8144,12 @@ function userEdOpen(userId){
   //  ★ 목록에 없는 값이 하나라도 있으면(비활성 직급·폐지된 소속 등) 아래에서 그 사실을 말한다.
   let unknown = false;
   //  직급은 번호가 값이고 이름이 글자다(CODE-TABLE-IDS §4). 목록에 없는 지금 값은 그 사람의 직급 이름으로 보인다.
+  //  ★ 빈 옵션 '(직급 없음)'은 **지금 직급이 없는(NULL) 사람에게만** 둔다(2026-10-15). 빈 옵션이 없으면 빈 값을 고를
+  //    수 없어 첫 직급(대표)이 골라진 채 열리고, [저장]만 눌러도 그 사람의 직급이 조용히 바뀐다. 다른 사람에게는
+  //    두지 않는다: 호스트(titleOk)가 직급 없음을 '이미 직급이 없는 사람'에게만 받아 준다.
+  const noTitle = !!m && m.titleId == null;
   unknown = userEdFillSelect('userEdTitle', __uaTitles.filter(t => t && t.id != null).map(t => ({ value: t.id, label: t.name })),
-    m && m.titleId != null ? m.titleId : '', null, m ? m.title : '') || unknown;
+    m && m.titleId != null ? m.titleId : '', noTitle ? '(직급 없음)' : null, m ? m.title : '') || unknown;
   unknown = userEdFillSelect('userEdOrg',
     __uaUnits.filter(u => u && u.orgId != null).map(u => ({ value: u.orgId, label: u.name })),
     m && m.orgId != null ? m.orgId : '', '(소속 없음)') || unknown;
@@ -8248,7 +8253,7 @@ async function userEdSaveNow(){
     userId: __ueId || 0,
     loginId: val('userEdLogin'),
     name: val('userEdName'),
-    titleId: Number(val('userEdTitle') || 0),   // 직급 번호(0 = 고르지 않음)
+    titleId: val('userEdTitle') ? Number(val('userEdTitle')) : null,   // 직급 번호. null = 직급 없음(호스트 GetInt 가 0 으로, 0 은 NULL 로 받는다)
     orgId: Number(val('userEdOrg') || 0),
     viewScope: userEdPick('userEdScope'),
     editRole: userEdPick('userEdRole'),
@@ -8256,7 +8261,10 @@ async function userEdSaveNow(){
   //  클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
   if(!payload.loginId){ userEdMsgSet(ICON.alert + ' 로그인 ID 를 입력하세요.', 'err'); focus('userEdLogin'); return; }
   if(!payload.name){ userEdMsgSet(ICON.alert + ' 이름을 입력하세요.', 'err'); focus('userEdName'); return; }
-  if(!payload.titleId){ userEdMsgSet(ICON.alert + ' 직급을 고르세요.', 'err'); focus('userEdTitle'); return; }
+  //  직급 없음은 '(직급 없음)' 옵션이 있을 때(= 지금 직급이 없는 사람, userEdOpen)만 그대로 보낸다.
+  const tsel = document.getElementById('userEdTitle');
+  const noTitleKept = !!tsel && Array.prototype.some.call(tsel.options, o => o.value === '');
+  if(payload.titleId == null && !noTitleKept){ userEdMsgSet(ICON.alert + ' 직급을 고르세요.', 'err'); focus('userEdTitle'); return; }
   if(!payload.viewScope || !payload.editRole){ userEdMsgSet(ICON.alert + ' 열람 범위와 편집 권한을 고르세요.', 'err'); return; }
   userEdMsgSet(ICON.spinner + ' 저장 중…', 'busy');
   //  ★ 회신은 **이 폼의 클로저가** 받는다(2026-09-14) — 그래서 "이 회신이 지금 열려 있는 그 폼의 것인가"를

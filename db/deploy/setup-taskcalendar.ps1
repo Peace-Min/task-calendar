@@ -160,7 +160,7 @@ $PROJECT_REFS = @(
 # AUTO_INCREMENT > MAX(번호) 확인 — 복사한 표와 시딩한 표를 따로 둔다(확인 시점이 다르다: 시딩 직후 · 복사 직후).
 #   2026-10-15 부터 코드표 셋도 번호를 명시해 넣으므로 함께 본다.
 $AUTOINC_KEYS      = [ordered]@{ section_code = 'section_id'; status_code = 'status_id'; customer = 'customer_id'; project = 'id' }
-$SEED_AUTOINC_KEYS = [ordered]@{ org_unit = 'org_id'; app_user = 'user_id' }
+$SEED_AUTOINC_KEYS = [ordered]@{ org_unit = 'org_id'; app_user = 'user_id'; title_code = 'title_id' }
 
 # 고아 행 검사. 복사 중에는 FK 검사를 껐으므로 **이것이 진짜 검사다.**
 # 자식 컬럼이 NULL 이면 '참조 없음' 이라 고아가 아니다(status_id, org_id, title_id, parent_id 는 NULL 허용).
@@ -370,6 +370,13 @@ foreach($t in $CODE_ID_COLS.Keys){
 if($FIXED_IDS['section_code'].Count -lt 1 -or $FIXED_IDS['status_code'].Count -lt 1){
   Die "schema-structure.sql 에서 코드표 시드(INSERT INTO section_code / status_code (번호, name, sort_order))를 읽지 못했습니다. 파일 형식이 바뀌었습니다."
 }
+# 동작이 묶인 고정 번호(CODE-TABLE-IDS §3). 호스트 CodeIds.SectionPre, StatusEnded 와 웹 CODE_ID 가 같은 번호를 쓰고,
+#   앱은 이 두 행의 숨김과 삭제를 막는다. 원본에 그 시드 이름이 없으면(라벨을 바꿨으면) 번호 2 가 비므로 멈추고,
+#   원본에서 숨겨져 왔으면 대상에서 켠다. 색만 묶인 나머지 고정 번호는 없어도 경고만 한다.
+$PROTECTED_IDS = [ordered]@{ section_code = '2'; status_code = '2' }
+foreach($t in $PROTECTED_IDS.Keys){
+  if(-not $FIXED_IDS[$t].Contains($PROTECTED_IDS[$t])){ Die "schema-structure.sql 의 $t 시드에 보호 번호 $($PROTECTED_IDS[$t]) 이 없습니다. 파일 형식이 바뀌었습니다." }
+}
 
 # 세 DDL 파일이 만드는 표 이름(줄머리의 CREATE TABLE 만 — 주석 속 예시는 '--' 로 시작하므로 안 걸린다).
 $ddlTables = @()
@@ -402,6 +409,17 @@ if($oldCompany.Count -gt 0){
        ". 그 폴더(taskmgr-company-data)를 최신으로 받은 뒤(git pull) 다시 실행하세요.")
 }
 Ok "회사 데이터 판 확인 (app_user.user_id · org_unit.org_id · 시드 번호 명시)"
+
+# AUTO_INCREMENT 바닥 = 고정 번호의 최댓값 + 1(CODE-TABLE-IDS §3). 원본에 시드 이름이 빠져 있어도(예: 구분 '사업부관리')
+#   다음 새 행이 비어 있는 고정 번호를 차지하지 않게 한다. 구분, 상태는 schema-structure.sql 시드, 직급은 02 의 _title_seed.
+#   customer 는 고정 번호가 없다(바닥 없음, MAX+1). CheckAutoInc 가 카운터를 이 값 이상으로 올리고 확인한다.
+$AUTOINC_FLOOR = [ordered]@{}
+foreach($t in $FIXED_IDS.Keys){
+  if($FIXED_IDS[$t].Count -gt 0){ $AUTOINC_FLOOR[$t] = 1 + [int](($FIXED_IDS[$t].Keys | ForEach-Object { [int]$_ } | Measure-Object -Maximum).Maximum) }
+}
+$titleSeed = [regex]::Match($seedOrgText, "(?is)INSERT\s+INTO\s+_title_seed\s*\(\s*title_id\s*,\s*name\s*,\s*sort_order\s*\)\s*VALUES(.*?);")
+if(-not $titleSeed.Success){ Die "02-seed-org.sql 에서 직급 배정표(INSERT INTO _title_seed (title_id, name, sort_order))를 읽지 못했습니다. 파일 형식이 바뀌었습니다." }
+$AUTOINC_FLOOR['title_code'] = 1 + [int](([regex]::Matches($titleSeed.Groups[1].Value, "\(\s*(\d+)\s*,") | ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Maximum).Maximum)
 
 # 권한 파일 3개는 계정 이름을 글자로 박아 두었다. -AppUser 가 다르면 엉뚱한 계정에 권한이 붙는다.
 if(-not $appUserText.Contains("'" + $AppUser + "'@'%'")){   Die "create-app-user.sql 에 '$AppUser'@'%' 가 없습니다 — 이 파일이 만드는 계정과 -AppUser 가 다릅니다." }
@@ -507,13 +525,20 @@ try {
     if(-not $out.Contains($TargetDb + '.')){ Die "$label 에 바꿀 'taskmgr.' 가 하나도 없습니다 — 파일 형식이 바뀌었습니다." }
     return $out
   }
-  # AUTO_INCREMENT > MAX(번호). 명시 번호로 넣으면 MySQL 이 카운터를 올린다 — 그것을 확인만 한다.
+  # AUTO_INCREMENT > MAX(번호). 명시 번호로 넣으면 MySQL 이 카운터를 올린다. 그것을 확인한다.
+  # 고정 번호를 둔 표($AUTOINC_FLOOR: 구분, 상태, 직급)는 카운터를 max(바닥, MAX+1)로 먼저 올리고, 바닥 이상인지도 본다.
   # stats_expiry=0: information_schema 의 AUTO_INCREMENT 는 기본 24시간 캐시라 갓 만든 표는 낡은 값을 보인다.
   # 부르는 곳은 둘: [3] 회사 시드 직후($SEED_AUTOINC_KEYS)와 과제 복사 직후($AUTOINC_KEYS).
   function CheckAutoInc([string]$t, [string]$k){
-    $ai = [long](Q ("SET SESSION information_schema_stats_expiry=0; SELECT IFNULL(AUTO_INCREMENT,0) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$TargetDb' AND TABLE_NAME='$t';") "$t AUTO_INCREMENT")
     $mx = [long](Q ("SELECT IFNULL(MAX(" + (BQ $k) + "),0) FROM " + (TQ $TargetDb $t) + ";") "$t MAX($k)")
+    $floor = 0
+    if($AUTOINC_FLOOR.Contains($t)){
+      $floor = [long]$AUTOINC_FLOOR[$t]
+      Q ("ALTER TABLE " + (TQ $TargetDb $t) + " AUTO_INCREMENT = " + [Math]::Max($floor, $mx + 1) + ";") "$t AUTO_INCREMENT 바닥 $floor" | Out-Null
+    }
+    $ai = [long](Q ("SET SESSION information_schema_stats_expiry=0; SELECT IFNULL(AUTO_INCREMENT,0) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$TargetDb' AND TABLE_NAME='$t';") "$t AUTO_INCREMENT")
     if($ai -le $mx){ Die "$t 의 AUTO_INCREMENT($ai) 가 MAX($k)=$mx 이하입니다 — 다음 신규 행이 기존 번호와 부딪힙니다." }
+    if($ai -lt $floor){ Die "$t 의 AUTO_INCREMENT($ai) 가 고정 번호 바닥 $floor 보다 작습니다. 다음 새 행이 비어 있는 고정 번호를 차지합니다." }
     Log ("  {0,-13} MAX({1})={2} · AUTO_INCREMENT={3}" -f $t, $k, $mx, $ai)
   }
   # 실패해도 죽지 않는 여러 줄 질의 — 정보용 질의(사전 점검의 캘린더 기록 행 수 · [3] 명부 대조)에만 쓴다.
@@ -564,6 +589,14 @@ try {
   foreach($t in $CODE_ID_COLS.Keys){
     $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE ``name`` = '';") "원본 $t 빈 이름 수")
     if($n -ne 0){ $srcBad += "$t 의 빈 이름 $n 행(대상 CHECK name <> '')" }
+  }
+  # 보호 번호(구분 2, 상태 2)는 시드 이름으로만 받는다. 원본에서 라벨을 바꿨다면 번호 2 가 비어 동작이 아무 행에도 걸리지 않는다.
+  #   한글 이름은 명령줄 글자가 아니라 16진(X'...')으로 넘긴다(콘솔 코드페이지에서 깨진다).
+  foreach($t in $PROTECTED_IDS.Keys){
+    $pnm = $FIXED_IDS[$t][$PROTECTED_IDS[$t]]
+    $phex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($pnm))).Replace('-', '')
+    $n = [long](Q ("SELECT COUNT(*) FROM " + (TQ $SourceDb $t) + " WHERE CAST(CONVERT(``name`` USING utf8mb4) AS BINARY) = X'" + $phex + "';") "원본 $t 보호 이름")
+    if($n -ne 1){ $srcBad += "$t 에 이름 '$pnm' 이 없음(고정 번호 $($PROTECTED_IDS[$t]) 은 앱 동작에 묶여 있다. 원본에서 그 라벨을 '$pnm' 으로 되돌릴 것. 이름은 구축 뒤 관리 화면에서 다시 바꿀 수 있다)" }
   }
   foreach($t in $COPY_ORDER){
     if($srcColMap[$t] -contains 'is_active'){
@@ -925,7 +958,12 @@ try {
     foreach($id in $FIXED_IDS[$t].Keys){
       $hex = ([BitConverter]::ToString([Text.Encoding]::UTF8.GetBytes($FIXED_IDS[$t][$id]))).Replace('-', '')
       $got = Q ("SELECT IFNULL(MIN(" + (BQ $CODE_ID_COLS[$t]) + "), '') FROM " + (TQ $TargetDb $t) + " WHERE CAST(``name`` AS BINARY) = X'" + $hex + "';") "$t 고정 번호 $id"
-      if("$got" -eq ""){ Warn "$t 고정 번호 $id 의 이름이 원본에 없습니다. 그 번호에 묶인 동작이 걸릴 행이 없습니다(멈추지 않음)." }
+      if("$got" -eq ""){
+        if($PROTECTED_IDS.Contains($t) -and $PROTECTED_IDS[$t] -eq $id){
+          Die "$t 에 고정 번호 $id 행이 없습니다. 원본 '$SourceDb' 의 $t 에 이름 '$($FIXED_IDS[$t][$id])' 이 없어서입니다(라벨을 바꿨다면 그 행은 MAX+1 번호를 받았습니다). 이 번호는 앱 동작에 묶여 있습니다. 원본에서 그 라벨을 '$($FIXED_IDS[$t][$id])' 으로 되돌린 뒤 다시 실행하세요. 이름은 구축 뒤 관리 화면에서 다시 바꿀 수 있습니다."
+        }
+        Warn "$t 고정 번호 $id 의 이름이 원본에 없습니다. 이 번호는 색만 묶여 있어 멈추지 않습니다."
+      }
       elseif("$got" -ne "$id"){ $idBad += "$t 고정 번호 $id 의 이름이 번호 $got 을 받음" }
     }
   }
@@ -936,6 +974,21 @@ try {
   }
   if($idBad.Count -gt 0){ Die ("번호 키 복사 검증 실패: " + ($idBad -join '; ') + ". 대소문자만 다른 참조처럼 원본의 이름 표기가 어긋난 곳을 고친 뒤 다시 실행하세요.") }
   Ok "번호 키 복사 검증: 이름 복원 BINARY 일치(코드표 3, project 참조 3), 고정 번호 일치"
+
+  # 보호 행(구분 2, 상태 2)은 켜져 있어야 한다. 앱은 이 행의 숨김을 막으므로, 원본에서 숨겨져 왔다면 풀 길이 없다. 여기서 켜고 알린다.
+  #   ($pid 는 PowerShell 자동 변수(읽기 전용)라 쓰지 않는다.)
+  foreach($t in $PROTECTED_IDS.Keys){
+    $protId = $PROTECTED_IDS[$t]
+    $protPk = BQ $CODE_ID_COLS[$t]
+    $off = [long](Q ("SELECT COUNT(*) FROM " + (TQ $TargetDb $t) + " WHERE " + $protPk + " = " + $protId + " AND is_active = 0;") "$t 보호 행 숨김 여부")
+    if($off -gt 0){
+      Q ("UPDATE " + (TQ $TargetDb $t) + " SET is_active = 1 WHERE " + $protPk + " = " + $protId + " AND is_active = 0;") "$t 보호 행 켜기" | Out-Null
+      Warn "$t 고정 번호 $protId('$($FIXED_IDS[$t][$protId])') 이 원본에서 숨겨져 있어 켰습니다. 앱 동작에 묶인 행이라 숨길 수 없습니다."
+    }
+    $on = [long](Q ("SELECT COUNT(*) FROM " + (TQ $TargetDb $t) + " WHERE " + $protPk + " = " + $protId + " AND is_active = 1;") "$t 보호 행 확인")
+    if($on -ne 1){ Die "$t 고정 번호 $protId 행이 켜져 있지 않습니다(켠 뒤 $on 행)." }
+  }
+  Ok "보호 행 확인: 구분 $($PROTECTED_IDS['section_code']), 상태 $($PROTECTED_IDS['status_code']) 이 있고 켜져 있음"
 
   # cal_user_rev — schema-calendar.sql 이 'app_user 전원에게 rev 0 행' 을 시딩하지만, 그 시점의 app_user 는
   # 비어 있었다. 사람이 (a) 회사 시드로 들어왔으므로 같은 시딩을 다시 한다(그 파일 끝 '릴리스 게이트' 가 누락 0 을 요구한다).

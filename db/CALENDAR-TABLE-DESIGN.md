@@ -475,11 +475,12 @@ UPDATE cal_entry SET ..., updated_at = ?      -- 앱이 UTC 로 계산해 보낸
 | | 표 | 누가 쓰나 | 동기화 |
 |---|---|---|---|
 | **개인 데이터** | `cal_entry`, `cal_entry_except`, `cal_entry_commit`<br>`cal_todo`, `cal_todo_day_note`<br>`cal_attendance`, `cal_task_hours`<br>`cal_category`, `cal_room`, `cal_user_pref` | **본인** | ✅ 대상 |
-| **관리자 소관** | `app_user`, `org_unit`, `title_code`<br>`project`, `customer`, `section_code`, `status_code` | **관리자**(`apply.ps1`·과제 관리 화면) | ❌ **대상 아님** |
+| **관리자 소관** | `app_user`, `org_unit`, `title_code`<br>`project`, `customer`, `section_code`, `status_code` | **관리자**(`apply.ps1`, 앱의 관리 화면: 구성원 편집, 직급과 소속 관리, 과제 관리) | ❌ **대상 아님** |
 
 **관리자 소관은 폴링하지 않는다.** 이유는 셋이고, 셋 다 이미 구현돼 있다:
 
-1. **앱에 쓰기 경로가 없다**: 앱 계정 GRANT 가 `app_user`, `org_unit`, `title_code` 에 SELECT 뿐이다(§7.4).
+1. **본인 데이터가 아니라 관리자가 쓰는 표다**: 앱의 쓰기 경로는 관리 화면뿐이고, 호스트가 쓰기 직전에 매번 권한을 DB 에서 다시 확인한다(사용자와 조직 3표는 `admin` 만, `ProjectDb.OpenAdminAsync`. 과제 4표는 `editor` 이상, `OpenWriteAsync`). 앱 계정 GRANT 는 `app_user` 에 SELECT, INSERT, UPDATE, DELETE(삭제는 기록 0건 계정의 휴지통 영구 삭제뿐), `org_unit`, `title_code` 에 SELECT, INSERT, UPDATE 다(비공개 저장소 `05-grants.sql`, `db/deploy/grants-calendar.sql`). '여러 환경의 같은 계정' 이 서로의 화면을 맞출 일이 아니다.
+   > 2026-10-15 정정: 이 줄은 예전에 *"앱에 쓰기 경로가 없다: 앱 계정 GRANT 가 `app_user`, `org_unit`, `title_code` 에 SELECT 뿐이다(§7.4)"* 라고 적었다. 구성원 편집과 직급, 소속 관리 화면이 생기면서 쓰기가 열려 틀린 문장이 됐다. 폴링하지 않는다는 결론은 그대로다.
 2. **이미 '열 때 조회'다**: 코드가 그렇게 적혀 있다:
    - `"권한은 열 때마다 DB에서 새로 읽는다(userInfoGet). 세션 파일에는 권한이 없다"`
    - `"과제 DB에 등록된 값입니다. 열 때마다 서버에서 새로 읽습니다."`

@@ -259,6 +259,33 @@ test('호스트: rename은 번호로 찾은 한 행 UPDATE(project 를 건드리
   const ro = csMember(projectDb, SIG.reorder);
   assert.ok(/BeginTransactionAsync/.test(ro) && /SET sort_order=@s WHERE \{idCol\}=@id/.test(ro), 'reorder가 트랜잭션 번호 sort_order 재부여가 아니다');
 });
+// 2026-10-15 리뷰: 코드 순서도 직급 순서(TitleReorderAsync)처럼 **활성 전부**가 와야 한다. 받은 번호 집합이
+//   지금의 활성 집합과 다르면(중복, 빠짐, 낯선 번호) 화면이 낡은 것이라 아무것도 쓰지 않고 같은 문장으로 거부한다.
+function codeReorderStaleCheck(cs) {
+  const ro = csMember(cs, SIG.reorder);
+  assert.ok(/SELECT \{idCol\} AS cid FROM \{table\} WHERE is_active=1 FOR UPDATE/.test(ro),
+    '코드 순서가 지금의 **활성** 집합을 잠근 채 읽지 않는다(판정과 갱신 사이가 열린다)');
+  assert.ok(/given\.Count != kept\.Count \|\| given\.Count != live\.Count \|\| !given\.SetEquals\(live\)/.test(ro),
+    '코드 순서가 받은 집합(중복 없음)과 활성 집합을 대조하지 않는다');
+  const rej = /if \(given\.Count != kept\.Count[^)]*\)\)\s*\{([\s\S]*?)\}/.exec(ro);
+  assert.ok(rej && /SafeRollbackAsync\(tx\)/.test(rej[1]) && /return \(false, OrgTitleStaleMsg\);/.test(rej[1]),
+    '낡은 화면의 코드 순서를 롤백하고 직급 순서와 같은 문장(OrgTitleStaleMsg)으로 거부하지 않는다');
+  const check = ro.indexOf('given.SetEquals(live)');
+  const write = ro.indexOf('SET sort_order=@s');
+  assert.ok(check > 0 && write > check, '코드 순서가 집합을 대조하기 전에 sort_order 를 쓴다');
+  assert.ok(/foreach \(int cid in kept\)/.test(ro), '코드 순서가 걸러 낸 목록(kept)이 아니라 받은 그대로를 다시 매긴다');
+}
+test('호스트: 코드 순서는 활성 전부를 받아야 한다(집합 대조, 중복과 빠짐 거부, 직급 순서와 같은 문장)', () => codeReorderStaleCheck(projectDb));
+test('변이: 코드 순서의 집합 대조를 끄거나 거부 문장을 바꾸면 잡는다', () => {
+  assert.throws(() => codeReorderStaleCheck(mutate('if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))',
+    'if (given.Count != kept.Count || !given.IsSubsetOf(live))', projectDb)), /대조하지 않는다/);
+  const reorderAt = projectDb.indexOf(SIG.reorder);
+  const tail = projectDb.slice(reorderAt).replace('_log(lbl + " 순서변경 거부: 받은 " + kept.Count + "개 / 활성 " + live.Count + "개, 화면이 낡았다");\n                        return (false, OrgTitleStaleMsg);',
+    '_log(lbl + " 순서변경 거부: 받은 " + kept.Count + "개 / 활성 " + live.Count + "개, 화면이 낡았다");\n                        return (false, "다시 시도하세요.");');
+  assert.notStrictEqual(tail, projectDb.slice(reorderAt), '변이 준비 실패');
+  assert.throws(() => codeReorderStaleCheck(projectDb.slice(0, reorderAt) + tail), /같은 문장/);
+  assert.doesNotThrow(() => codeReorderStaleCheck(projectDb));
+});
 test('호스트: 복구(setActive true)는 sort_order를 MAX+10으로 재부여 — 활성 순번 충돌 방지', () => {
   // 왜: 숨김은 sort_order를 그대로 두는데 reorder는 '활성 값만' 10·20·30…으로 재부여한다.
   // 옛 순번을 들고 복구되면 활성끼리 sort_order가 겹쳐 드롭다운 순서가 이름 tiebreak에 좌우된다.

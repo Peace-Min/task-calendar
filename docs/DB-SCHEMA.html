@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>taskmgr DB 테이블 구조 (과제, 사용자, 캘린더)</title>
+<title>taskcalendar DB 테이블 구조 (과제, 사용자, 캘린더)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 /* 폐쇄망이라 웹폰트를 쓰지 않는다(로드 실패 시 조용히 다른 폰트로 떨어짐).
@@ -150,7 +150,7 @@ footer p{margin:0 0 4px; max-width:none}
 <div class="wrap">
 
 <p class="eyebrow">수행과제 캘린더 데이터베이스 레퍼런스</p>
-<h1>taskmgr DB 테이블 구조</h1>
+<h1>taskcalendar DB 테이블 구조</h1>
 
 <p class="lede">앱이 쓰는 데이터베이스(<code>taskcalendar</code>. v0.19.0 전의 이름은 <code>taskmgr</code>)가 실제로 어떻게 생겼는지, 그리고 무엇을 DB가 강제하고 무엇을 앱이 지키는지 정리한 문서입니다. <b>과제</b>(무엇을 하는가), <b>사용자·조직</b>(누가 무엇을 할 수 있는가), <b>캘린더</b>(개인 일정, 할 일, 근태, 보고) 세 묶음을 담습니다.</p>
 <p class="sub">표·컬럼 구조는 실제 DB에서 생성합니다(재생성 명령은 문서 끝). 설명과 근거는 사람이 씁니다.</p>
@@ -1212,7 +1212,7 @@ footer p{margin:0 0 4px; max-width:none}
   <div class="rule-row"><dt>명단 갱신</dt><dd>원본은 사내 주간보고 시스템의 좌측 조직도입니다. 링크의 <code>id=</code> 값이 그대로 <code>login_id</code>가 됩니다. <b><code>user_id</code>는 사람이 정하지 않습니다</b>. 행을 추가할 때 DB가 발급합니다.</dd></div>
   <div class="rule-row"><dt>로그인 ID 변경</dt><dd><code>UPDATE app_user SET login_id=…</code> 한 줄입니다. 개인 일정이 <code>user_id</code>로 사람을 가리키므로 <b>일정·근태는 따라 움직이지 않습니다</b>(움직일 필요가 없습니다). <b>퇴사자 ID가 재발급되면 <u>전임자 행을 재사용하지 말고 새 행을 만드세요</u></b>. 재사용하면 신입이 전임자의 근태를 물려받습니다.</dd></div>
 </dl>
-<p class="sub">앱이 쓰는 DB 계정의 권한은 묶음마다 다릅니다. <b>과제 네 표</b>는 읽기, 추가, 수정, <b>사용자·조직 세 표</b>는 <b>읽기만</b>입니다. 어느 쪽도 삭제나 구조 변경은 할 수 없습니다. 사용자 표를 읽기 전용으로 묶은 이유는 위 경고와 같습니다. 쓰기가 열려 있으면 권한 자체를 탈취할 수 있습니다.</p>
+<p class="sub">앱이 쓰는 DB 계정(<code>taskmgr_app</code>)의 권한은 표마다 다릅니다. <b>과제 네 표</b>는 읽기, 추가, 수정, 삭제입니다(삭제는 휴지통의 영구 삭제 한 곳). <b>사용자·조직 세 표</b>도 관리 화면(구성원 편집, 직급과 소속 관리) 때문에 쓰기가 열려 있습니다. <code>app_user</code> 는 읽기, 추가, 수정, 삭제(삭제는 기록이 0건인 계정을 휴지통에서 영구 삭제할 때뿐이고 퇴사는 <code>is_active=0</code>), <code>org_unit</code> 과 <code>title_code</code> 는 읽기, 추가, 수정이고 삭제는 없습니다(숨김만). 구조 변경(DDL)은 어느 표에도 할 수 없습니다. 쓰기가 열려 있으면 권한 자체를 바꿀 수 있으므로, 호스트가 이 표들을 고치기 전에 매번 관리자(<code>edit_role='admin'</code>)인지 DB 에서 다시 확인합니다. 권한의 정본은 <code>db/deploy/create-app-user.sql</code>, <code>db/deploy/grants-calendar.sql</code>, 비공개 저장소의 <code>05-grants.sql</code> 입니다.</p>
 </section>
 
 <footer>
