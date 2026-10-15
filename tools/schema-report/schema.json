@@ -1,6 +1,7 @@
 {
  "meta": {
-  "schemaVersion": "12",
+  "db": "taskcalendar",
+  "schemaVersion": "13",
   "mysql": "8.4.9",
   "charset": [
    "utf8mb4",
@@ -11,6 +12,29 @@
   "views": 0,
   "grants": [
    "GRANT USAGE ON *.* TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`app_user` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_attendance` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_category` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_entry_commit` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_entry_except` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_entry` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT ON `taskcalendar`.`cal_migration_log` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_daily` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_report_hours` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`cal_report_weekly` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_room` TO `taskmgr_app`@`%`",
+   "GRANT SELECT ON `taskcalendar`.`cal_schema_meta` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_task_hours` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, DELETE ON `taskcalendar`.`cal_todo_day_note` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_todo` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_user_pref` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_user_rev` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`customer` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`org_unit` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`project` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`section_code` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`status_code` TO `taskmgr_app`@`%`",
+   "GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`title_code` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`app_user` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_attendance` TO `taskmgr_app`@`%`",
    "GRANT SELECT, INSERT, UPDATE, DELETE ON `taskmgr`.`cal_category` TO `taskmgr_app`@`%`",
@@ -39,7 +63,7 @@
    "taskmgr_app@%",
    "taskmgr_backup@localhost"
   ],
-  "dumpedAt": "2026-09-28T00:34:32.031Z",
+  "dumpedAt": "2026-10-15T13:17:28.764Z",
   "stats": {
    "viewScope": {
     "self": 71,
@@ -93,8 +117,8 @@
      "comment": ""
     },
     {
-     "name": "title",
-     "type": "varchar(30)",
+     "name": "title_id",
+     "type": "smallint unsigned",
      "nullable": true,
      "def": null,
      "key": "MUL",
@@ -172,14 +196,14 @@
      "cols": "org_id"
     },
     {
-     "name": "fk_user_title",
-     "unique": false,
-     "cols": "title"
-    },
-    {
      "name": "ix_user_active",
      "unique": false,
      "cols": "is_active"
+    },
+    {
+     "name": "ix_user_title_id",
+     "unique": false,
+     "cols": "title_id"
     },
     {
      "name": "PRIMARY",
@@ -202,29 +226,29 @@
      "del": "RESTRICT"
     },
     {
-     "name": "fk_user_title",
-     "cols": "title",
+     "name": "fk_user_title_id",
+     "cols": "title_id",
      "ref": "title_code",
-     "refCols": "name",
-     "upd": "CASCADE",
+     "refCols": "title_id",
+     "upd": "RESTRICT",
      "del": "RESTRICT"
     }
    ],
    "checks": [
     {
-     "name": "chk_edit_role",
-     "clause": "(`edit_role` in (_utf8mb4\\\\'viewer\\\\',_utf8mb4\\\\'editor\\\\',_utf8mb4\\\\'admin\\\\'))"
-    },
-    {
      "name": "chk_view_scope",
      "clause": "(`view_scope` in (_utf8mb4\\\\'self\\\\',_utf8mb4\\\\'unit_tree\\\\',_utf8mb4\\\\'all\\\\'))"
+    },
+    {
+     "name": "chk_edit_role",
+     "clause": "(`edit_role` in (_utf8mb4\\\\'viewer\\\\',_utf8mb4\\\\'editor\\\\',_utf8mb4\\\\'admin\\\\'))"
     }
    ]
   },
   {
    "name": "cal_attendance",
    "engine": "InnoDB",
-   "rows": 5837,
+   "rows": 5838,
    "comment": "날짜별 근태·초과시간(netcus 일간보고용). PK=(user_id,work_date). ★미기록=행 없음 — 되돌리기는 DELETE.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 5838,
@@ -294,22 +318,22 @@
    ],
    "checks": [
     {
-     "name": "chk_cal_attendance_overtime",
-     "clause": "((`overtime` >= 0) and (`overtime` <= 11))"
-    },
-    {
      "name": "chk_cal_attendance_status",
      "clause": "((`status` in (_utf8mb4\\\\'1\\\\',_utf8mb4\\\\'2\\\\',_utf8mb4\\\\'3\\\\',_utf8mb4\\\\'4\\\\',_utf8mb4\\\\'5\\\\',_utf8mb4\\\\'6\\\\',_utf8mb4\\\\'7\\\\',_utf8mb4\\\\'9\\\\',_utf8mb4\\\\'10\\\\',_utf8mb4\\\\'11\\\\',_utf8mb4\\\\'12\\\\')) and (not((`status` like _utf8mb4\\\\'% \\\\'))))"
+    },
+    {
+     "name": "chk_cal_attendance_overtime",
+     "clause": "((`overtime` >= 0) and (`overtime` <= 11))"
     }
    ]
   },
   {
    "name": "cal_category",
    "engine": "InnoDB",
-   "rows": 711,
+   "rows": 713,
    "comment": "캘린더 과제(카테고리). source=local(개인)/db(공식). PK=(user_id,cat_no), 앱 id 는 uid(user_id 안에서 UNIQUE).",
    "coll": "utf8mb4_0900_ai_ci",
-   "exact": 711,
+   "exact": 713,
    "columns": [
     {
      "name": "user_id",
@@ -449,16 +473,12 @@
    ],
    "checks": [
     {
-     "name": "chk_cal_category_color",
-     "clause": "regexp_like(`color`,_utf8mb4\\\\'^#[0-9a-fA-F]{6}$\\\\')"
-    },
-    {
-     "name": "chk_cal_category_projuid",
-     "clause": "(((`source` = _utf8mb4\\\\'db\\\\') and (`project_uid` is not null) and (char_length(`uid`) = 39) and (substr(`uid`,1,3) = _utf8mb4\\\\'db-\\\\') and ((`project_uid` collate utf8mb4_0900_bin) = substr(`uid`,4))) or ((`source` = _utf8mb4\\\\'local\\\\') and (`project_uid` is null)))"
-    },
-    {
      "name": "chk_cal_category_source",
      "clause": "(`source` in (_utf8mb4\\\\'local\\\\',_utf8mb4\\\\'db\\\\'))"
+    },
+    {
+     "name": "chk_cal_category_color",
+     "clause": "regexp_like(`color`,_utf8mb4\\\\'^#[0-9a-fA-F]{6}$\\\\')"
     },
     {
      "name": "chk_cal_category_uid",
@@ -467,6 +487,10 @@
     {
      "name": "chk_cal_category_usesrepo01",
      "clause": "(`uses_repo` in (0,1))"
+    },
+    {
+     "name": "chk_cal_category_projuid",
+     "clause": "(((`source` = _utf8mb4\\\\'db\\\\') and (`project_uid` is not null) and (char_length(`uid`) = 39) and (substr(`uid`,1,3) = _utf8mb4\\\\'db-\\\\') and ((`project_uid` collate utf8mb4_0900_bin) = substr(`uid`,4))) or ((`source` = _utf8mb4\\\\'local\\\\') and (`project_uid` is null)))"
     }
    ]
   },
@@ -710,8 +734,12 @@
    ],
    "checks": [
     {
-     "name": "chk_cal_entry_allday",
-     "clause": "((`all_day` = 0) or ((`start_time` is null) and (`end_time` is null)))"
+     "name": "chk_cal_entry_uid",
+     "clause": "(`uid` <> _utf8mb4\\\\'\\\\')"
+    },
+    {
+     "name": "chk_cal_entry_source",
+     "clause": "(`source` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'git\\\\'))"
     },
     {
      "name": "chk_cal_entry_allday01",
@@ -722,28 +750,24 @@
      "clause": "((`end_date` is null) or (`end_date` > `entry_date`))"
     },
     {
-     "name": "chk_cal_entry_git",
-     "clause": "((`source` <> _utf8mb4\\\\'git\\\\') or ((`end_date` is null) and (`recur_freq` is null)))"
-    },
-    {
-     "name": "chk_cal_entry_recur",
-     "clause": "(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in (_utf8mb4\\\\'weekly\\\\',_utf8mb4\\\\'monthly\\\\')) and (`recur_interval` is not null) and (`recur_interval` >= 1) and (`recur_count` is not null) and (`recur_count` >= 0)))"
+     "name": "chk_cal_entry_allday",
+     "clause": "((`all_day` = 0) or ((`start_time` is null) and (`end_time` is null)))"
     },
     {
      "name": "chk_cal_entry_remind",
      "clause": "((`remind` is null) or (`remind` between 0 and 10080))"
     },
     {
-     "name": "chk_cal_entry_source",
-     "clause": "(`source` in (_utf8mb4\\\\'\\\\',_utf8mb4\\\\'git\\\\'))"
-    },
-    {
-     "name": "chk_cal_entry_uid",
-     "clause": "(`uid` <> _utf8mb4\\\\'\\\\')"
+     "name": "chk_cal_entry_recur",
+     "clause": "(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in (_utf8mb4\\\\'weekly\\\\',_utf8mb4\\\\'monthly\\\\')) and (`recur_interval` is not null) and (`recur_interval` >= 1) and (`recur_count` is not null) and (`recur_count` >= 0)))"
     },
     {
      "name": "chk_cal_entry_until",
      "clause": "((`recur_until` is null) or regexp_like(`recur_until`,_utf8mb4\\\\'^[0-9]{4}-[0-9]{2}-[0-9]{2}$\\\\'))"
+    },
+    {
+     "name": "chk_cal_entry_git",
+     "clause": "((`source` <> _utf8mb4\\\\'git\\\\') or ((`end_date` is null) and (`recur_freq` is null)))"
     }
    ]
   },
@@ -965,7 +989,7 @@
   {
    "name": "cal_report_daily",
    "engine": "InnoDB",
-   "rows": 1,
+   "rows": 0,
    "comment": "캘린더가 보낸 일간보고. 사이트의 현재 상태가 아니다",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 0,
@@ -1408,7 +1432,7 @@
   {
    "name": "cal_task_hours",
    "engine": "InnoDB",
-   "rows": 6561,
+   "rows": 6562,
    "comment": "(날짜×과제) 투입 시간(시간 단위). PK=(user_id,work_date,cat_no). 과제 FK RESTRICT. 0=행 삭제.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 6561,
@@ -1673,8 +1697,12 @@
    ],
    "checks": [
     {
-     "name": "chk_cal_todo_comp",
-     "clause": "((`done` = 1) or (`completed_at` is null))"
+     "name": "chk_cal_todo_uid",
+     "clause": "(`uid` <> _utf8mb4\\\\'\\\\')"
+    },
+    {
+     "name": "chk_cal_todo_prio",
+     "clause": "(`prio` in (_utf8mb4\\\\'normal\\\\',_utf8mb4\\\\'high\\\\'))"
     },
     {
      "name": "chk_cal_todo_done01",
@@ -1685,12 +1713,8 @@
      "clause": "((`end_date` is null) or ((`due` is not null) and (`end_date` > `due`)))"
     },
     {
-     "name": "chk_cal_todo_prio",
-     "clause": "(`prio` in (_utf8mb4\\\\'normal\\\\',_utf8mb4\\\\'high\\\\'))"
-    },
-    {
-     "name": "chk_cal_todo_uid",
-     "clause": "(`uid` <> _utf8mb4\\\\'\\\\')"
+     "name": "chk_cal_todo_comp",
+     "clause": "((`done` = 1) or (`completed_at` is null))"
     }
    ]
   },
@@ -2006,16 +2030,25 @@
    "name": "customer",
    "engine": "InnoDB",
    "rows": 8,
-   "comment": "발주처 마스터. name=자연키. Admin 관리.",
+   "comment": "발주처 마스터. PK=customer_id, name=UNIQUE 라벨. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 8,
    "columns": [
+    {
+     "name": "customer_id",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "auto_increment",
+     "comment": ""
+    },
     {
      "name": "name",
      "type": "varchar(100)",
      "nullable": false,
      "def": null,
-     "key": "PRI",
+     "key": "UNI",
      "extra": "",
      "comment": ""
     },
@@ -2051,11 +2084,25 @@
     {
      "name": "PRIMARY",
      "unique": true,
+     "cols": "customer_id"
+    },
+    {
+     "name": "uq_customer_name",
+     "unique": true,
      "cols": "name"
     }
    ],
    "fks": [],
-   "checks": []
+   "checks": [
+    {
+     "name": "chk_customer_name",
+     "clause": "(`name` <> _utf8mb4\\\\'\\\\')"
+    },
+    {
+     "name": "chk_customer_active",
+     "clause": "(`is_active` in (0,1))"
+    }
+   ]
   },
   {
    "name": "org_unit",
@@ -2162,7 +2209,7 @@
    "name": "project",
    "engine": "InnoDB",
    "rows": 14,
-   "comment": "과제 마스터. DB 원본. section/status=코드테이블+FK, is_active=소프트삭제.",
+   "comment": "과제 마스터. DB 원본. 코드는 번호 참조(customer_id, section_id, status_id), is_active=소프트삭제.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 14,
    "columns": [
@@ -2185,8 +2232,8 @@
      "comment": ""
     },
     {
-     "name": "section",
-     "type": "varchar(50)",
+     "name": "section_id",
+     "type": "smallint unsigned",
      "nullable": false,
      "def": null,
      "key": "MUL",
@@ -2194,8 +2241,8 @@
      "comment": ""
     },
     {
-     "name": "customer",
-     "type": "varchar(100)",
+     "name": "customer_id",
+     "type": "smallint unsigned",
      "nullable": false,
      "def": null,
      "key": "MUL",
@@ -2257,8 +2304,8 @@
      "comment": ""
     },
     {
-     "name": "status",
-     "type": "varchar(50)",
+     "name": "status_id",
+     "type": "smallint unsigned",
      "nullable": true,
      "def": null,
      "key": "MUL",
@@ -2304,24 +2351,24 @@
    ],
    "indexes": [
     {
-     "name": "fk_project_status",
-     "unique": false,
-     "cols": "status"
-    },
-    {
      "name": "ix_project_active",
      "unique": false,
      "cols": "is_active"
     },
     {
-     "name": "ix_project_customer",
+     "name": "ix_project_customer_id",
      "unique": false,
-     "cols": "customer"
+     "cols": "customer_id"
     },
     {
-     "name": "ix_project_section",
+     "name": "ix_project_section_id",
      "unique": false,
-     "cols": "section"
+     "cols": "section_id"
+    },
+    {
+     "name": "ix_project_status_id",
+     "unique": false,
+     "cols": "status_id"
     },
     {
      "name": "PRIMARY",
@@ -2336,46 +2383,60 @@
    ],
    "fks": [
     {
-     "name": "fk_project_customer",
-     "cols": "customer",
+     "name": "fk_project_customer_id",
+     "cols": "customer_id",
      "ref": "customer",
-     "refCols": "name",
-     "upd": "CASCADE",
-     "del": "NO ACTION"
-    },
-    {
-     "name": "fk_project_section",
-     "cols": "section",
-     "ref": "section_code",
-     "refCols": "name",
-     "upd": "CASCADE",
+     "refCols": "customer_id",
+     "upd": "RESTRICT",
      "del": "RESTRICT"
     },
     {
-     "name": "fk_project_status",
-     "cols": "status",
+     "name": "fk_project_section_id",
+     "cols": "section_id",
+     "ref": "section_code",
+     "refCols": "section_id",
+     "upd": "RESTRICT",
+     "del": "RESTRICT"
+    },
+    {
+     "name": "fk_project_status_id",
+     "cols": "status_id",
      "ref": "status_code",
-     "refCols": "name",
-     "upd": "CASCADE",
+     "refCols": "status_id",
+     "upd": "RESTRICT",
      "del": "RESTRICT"
     }
    ],
-   "checks": []
+   "checks": [
+    {
+     "name": "chk_project_active",
+     "clause": "(`is_active` in (0,1))"
+    }
+   ]
   },
   {
    "name": "section_code",
    "engine": "InnoDB",
    "rows": 3,
-   "comment": "구분 코드. name=자연키. 개명=FK CASCADE. Admin 관리.",
+   "comment": "구분 코드. PK=section_id(고정 번호 2=선진행), name=UNIQUE 라벨. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 3,
    "columns": [
+    {
+     "name": "section_id",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "auto_increment",
+     "comment": ""
+    },
     {
      "name": "name",
      "type": "varchar(50)",
      "nullable": false,
      "def": null,
-     "key": "PRI",
+     "key": "UNI",
      "extra": "",
      "comment": ""
     },
@@ -2420,26 +2481,49 @@
     {
      "name": "PRIMARY",
      "unique": true,
+     "cols": "section_id"
+    },
+    {
+     "name": "uq_section_code_name",
+     "unique": true,
      "cols": "name"
     }
    ],
    "fks": [],
-   "checks": []
+   "checks": [
+    {
+     "name": "chk_section_code_active",
+     "clause": "(`is_active` in (0,1))"
+    },
+    {
+     "name": "chk_section_code_name",
+     "clause": "(`name` <> _utf8mb4\\\\'\\\\')"
+    }
+   ]
   },
   {
    "name": "status_code",
    "engine": "InnoDB",
    "rows": 4,
-   "comment": "상태 코드. name=자연키. 개명=FK CASCADE. Admin 관리.",
+   "comment": "상태 코드. PK=status_id(고정 번호 2=종료), name=UNIQUE 라벨. Admin 관리.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 4,
    "columns": [
+    {
+     "name": "status_id",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "auto_increment",
+     "comment": ""
+    },
     {
      "name": "name",
      "type": "varchar(50)",
      "nullable": false,
      "def": null,
-     "key": "PRI",
+     "key": "UNI",
      "extra": "",
      "comment": ""
     },
@@ -2484,26 +2568,49 @@
     {
      "name": "PRIMARY",
      "unique": true,
+     "cols": "status_id"
+    },
+    {
+     "name": "uq_status_code_name",
+     "unique": true,
      "cols": "name"
     }
    ],
    "fks": [],
-   "checks": []
+   "checks": [
+    {
+     "name": "chk_status_code_active",
+     "clause": "(`is_active` in (0,1))"
+    },
+    {
+     "name": "chk_status_code_name",
+     "clause": "(`name` <> _utf8mb4\\\\'\\\\')"
+    }
+   ]
   },
   {
    "name": "title_code",
    "engine": "InnoDB",
    "rows": 11,
-   "comment": "직급 코드. 표시·정렬 전용 — 권한 판정에 쓰지 않는다.",
+   "comment": "직급 코드. PK=title_id, name=UNIQUE 라벨. 표시와 정렬 전용, 권한 판정에 쓰지 않는다.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 11,
    "columns": [
+    {
+     "name": "title_id",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "PRI",
+     "extra": "auto_increment",
+     "comment": ""
+    },
     {
      "name": "name",
      "type": "varchar(30)",
      "nullable": false,
      "def": null,
-     "key": "PRI",
+     "key": "UNI",
      "extra": "",
      "comment": ""
     },
@@ -2548,11 +2655,25 @@
     {
      "name": "PRIMARY",
      "unique": true,
+     "cols": "title_id"
+    },
+    {
+     "name": "uq_title_code_name",
+     "unique": true,
      "cols": "name"
     }
    ],
    "fks": [],
-   "checks": []
+   "checks": [
+    {
+     "name": "chk_title_code_active",
+     "clause": "(`is_active` in (0,1))"
+    },
+    {
+     "name": "chk_title_code_name",
+     "clause": "(`name` <> _utf8mb4\\\\'\\\\')"
+    }
+   ]
   }
  ]
 }
