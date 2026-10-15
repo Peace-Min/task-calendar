@@ -264,7 +264,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:customer.intro -->
 <p>과제가 참조하는 발주처 목록입니다. 앱의 <b>발주처 관리</b> 화면에서 추가, 이름변경, 숨김을 합니다.</p>
-<p class="sub"><b>왜 번호(id)가 아니라 이름(<code>name</code>)이 기본키인가.</b> 세 조건을 다 만족하기 때문입니다. ① 값을 <b>우리 관리 화면에서</b> 정합니다(남이 발급하는 값이 아닙니다) ② 참조하는 표가 <code>project</code> <b>하나뿐</b>이라 전파 범위가 좁습니다 ③ 개명이 <code>ON UPDATE CASCADE</code> 로 <b>실제 전파됩니다</b>(격리 DB 실측: 발주처 개명 시 참조 과제 5건 전량 자동 갱신). 그래서 발주처 이름을 고치면 과제 표기가 한 번에 따라오는데, 이것은 결함이 아니라 <b>기능</b>입니다. 번호 키로 바꾸면 그 동작을 앱 코드로 다시 만들어야 합니다. "외래키 대상은 id 로" 라는 일반 규칙의 근거(보조 인덱스에 기본키가 복제됨)는 이 표 규모(8행, 자식 14행)에서 1.4 KB 입니다. 같은 규칙을 적용해 <b>번호로 바꾼 표</b>는 <code>app_user</code>와 <code>org_unit</code> 입니다. 그 둘은 조건이 깨졌기 때문이고, 이유는 각 표 설명과 <a href="#key-policy">키 정책 요약</a>에 있습니다.</p>
+<p class="sub"><b>왜 번호(id)가 아니라 이름(<code>name</code>)이 기본키인가.</b> 세 조건을 다 만족하기 때문입니다. ① 값을 <b>우리 관리 화면에서</b> 정합니다(남이 발급하는 값이 아닙니다) ② 참조하는 표가 <code>project</code> <b>하나뿐</b>이라 전파 범위가 좁습니다 ③ 개명이 <code>ON UPDATE CASCADE</code> 로 <b>실제 전파됩니다</b>(격리 DB 실측: 발주처 개명 시 참조 과제 5건 전량 자동 갱신). 그래서 발주처 이름을 고치면 과제 표기가 한 번에 따라오는데, 이것은 결함이 아니라 <b>기능</b>입니다. 번호 키로 바꾸면 그 동작을 앱 코드로 다시 만들어야 하고, <code>project</code> 에는 번호만 남아 과제를 보여줄 때마다 이 표를 조인해야 합니다. "외래키 대상은 id 로" 라는 일반 규칙의 근거(보조 인덱스에 기본키가 복제됨)는 이 표 규모(8행, 자식 14행)에서 1.4 KB 입니다. 같은 규칙을 적용해 <b>번호로 바꾼 표</b>는 <code>app_user</code>와 <code>org_unit</code> 입니다. 그 둘은 조건이 깨졌기 때문이고, 이유는 각 표 설명과 <a href="#key-policy">키 정책 요약</a>에 있습니다.</p>
 <!-- /PROSE:customer.intro -->
 
 <div class="tw">
@@ -287,7 +287,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:codes.intro -->
 <p>두 표는 <b>구조가 완전히 같습니다.</b> 구분(일반계약, 선진행, 사업부관리)과 상태(진행중, 종료, 1차 납품완료, 미정)를 담고, 앱의 <b>구분·상태 관리</b> 화면에서 다룹니다.</p>
-<p class="sub"><b>기본키가 이름(<code>name</code>)인 이유</b>는 <code>customer</code> 와 같습니다. 우리가 정하는 값이고, 참조는 <code>project.section</code>/<code>project.status</code> 한 곳이며, 개명이 <code>ON UPDATE CASCADE</code> 로 실제 전파됩니다(실측: 구분 개명 시 참조 과제 9건 전량 갱신). 값이 3~4개뿐인 표라 번호 키를 두면 조인만 하나 늘고 얻는 것이 없습니다. 예전 <code>ENUM</code> 시절에는 값 하나를 바꾸려면 스키마를 고쳐 앱을 다시 배포해야 했는데, 행이 되면서 개명이 앱 화면의 일이 됐습니다.</p>
+<p class="sub"><b>기본키가 이름(<code>name</code>)인 이유</b>는 <code>customer</code> 와 같습니다. 우리가 정하는 값이고, 참조는 <code>project.section</code>/<code>project.status</code> 한 곳이며, 개명이 <code>ON UPDATE CASCADE</code> 로 실제 전파됩니다(실측: 구분 개명 시 참조 과제 9건 전량 갱신). 번호 키를 두면 <code>project</code> 에 번호만 남아 과제를 보여줄 때마다 이 표를 조인해야 합니다(지금은 <code>project.section</code> 에 이름이 그대로 있어 조인이 필요 없습니다). 그 대가로 아끼는 공간은 값이 3~4개뿐이라 1 KB 도 안 됩니다. 자세한 비교는 <a href="#key-policy">키 정책 요약</a>에 있습니다. 예전 <code>ENUM</code> 시절에는 값 하나를 바꾸려면 스키마를 고쳐 앱을 다시 배포해야 했는데, 행이 되면서 개명이 앱 화면의 일이 됐습니다.</p>
 <!-- /PROSE:codes.intro -->
 
 <h3><span class="tname">section_code</span> <span class="ko">구분 코드</span></h3>
@@ -331,6 +331,14 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">project</td><td class="type">번호(id) + uid</td><td>대리키</td><td class="note">같은 이름의 과제가 정당하게 반복되므로 이름은 키가 될 수 없음. uid 는 캘린더가 과제를 가리키는 외부 안정 참조키</td></tr>
 <tr><td class="col">cal_room, cal_schema_meta</td><td class="type">값(name / k)</td><td>자연키 유지</td><td class="note">값으로 주소지정되는 표. 참조하는 표가 없어 전파 문제 없음</td></tr>
 </tbody></table>
+<p><b>검토 지적을 받고도 발주처, 구분, 상태, 직급을 번호로 바꾸지 않은 이유.</b> 바꿔서 얻는 것과 잃는 것을 재 봤습니다.</p>
+<ul>
+<li><b>얻는 것</b>: 저장 공간 최대 약 16 KB(InnoDB 페이지 한 장)뿐입니다.</li>
+<li><b>잃는 것 1, 조인</b>: 지금은 자식 행에 이름 글자가 그대로 있어서, 이름을 보여줄 때 코드표를 볼 필요가 없습니다. 번호 키로 바꾸면 자식 행에 번호만 남아 이름을 보여주는 <b>모든 조회에 코드표 조인이 하나씩</b> 붙습니다. 우리 코드에 두 경우가 나란히 있습니다. 구성원 조회(<code>widget/ProjectDb.cs</code> 347행)에서 직급은 <code>u.title</code> 로 바로 읽지만, 번호 키로 바꾼 소속은 <code>LEFT JOIN org_unit</code> 을 해야 이름이 나오고 이 조인이 구성원 조회 네 곳에 모두 붙어 있습니다. 과제도 지금은 <code>project</code> 한 표에서 발주처, 구분, 상태 이름을 바로 읽는데(같은 파일 250행), 번호로 바꾸면 과제 한 행을 보여주는 데 표 넷이 필요합니다. 코드표가 작아서 느려지지는 않습니다. 비용은 속도가 아니라 모든 조회에 붙는 복잡도와, 새 조회에서 조인을 빠뜨리면 화면에 이름 대신 번호가 나오는 위험입니다.</li>
+<li><b>잃는 것 2, 개명 전파</b>: 이름을 고치면 과제 표기가 한 번에 따라오는 동작(<code>ON UPDATE CASCADE</code>)을 앱 코드로 다시 만들어야 합니다.</li>
+<li><b>잃는 것 3, 이전 작업</b>: 이미 운영 중인 데이터와 앱을 옮기는 작업과 그 위험이 듭니다.</li>
+</ul>
+<p>지적의 근거가 실제로 크게 작용하는 표에는 따랐습니다. <code>app_user</code> 는 인덱스가 +69% 커져서 번호 키로 바꿨고, <code>org_unit</code> 은 개명 전파가 안 돼서 바꿨습니다. <b>다시 볼 조건</b>: 코드표를 참조하는 표가 여럿으로 늘거나, 자식 행이 수만 단위가 되어 복제 비용이 MB 단위가 되거나, 값을 외부 시스템이 정하게 되면 다시 판정합니다.</p>
 <p class="sub">유일성과 폭은 구분선이 아닙니다. <code>customer.name</code>(100자)이 <code>app_user.login_id</code>(50자)보다 넓은데 자연키로 남았고, login_id 는 유일한데도 번호로 갔습니다. 조건표, 실측, 전문가 근거(양쪽 모두) 원문: <a href="../db/CALENDAR-TABLE-DESIGN.md">CALENDAR-TABLE-DESIGN.md</a> §5.6.</p>
 </div>
 <p class="sub">예전에는 이 값들을 컬럼 정의(<code>ENUM</code>) 안에 박아 두어 바꾸려면 스키마를 고치고 앱을 다시 배포해야 했습니다. 지금은 표의 <b>행</b>이라 발주처와 똑같이 앱에서 다룹니다.</p>
@@ -491,7 +499,7 @@ footer p{margin:0 0 4px; max-width:none}
 
 <!-- PROSE:title_code.intro -->
 <p>구조가 <code>section_code</code>·<code>status_code</code>와 사실상 같습니다. <b>권한 판정에는 절대 쓰이지 않습니다.</b></p>
-<p class="sub"><b>기본키가 이름(<code>name</code>)인 이유</b>도 코드표와 같습니다. 우리가 정하는 값이고, 참조는 <code>app_user.title</code> 한 곳이며, 개명은 CASCADE 로 실제 전파됩니다(실측: 직급 개명 시 사용자 41명 전량 갱신). 권한에 쓰이지 않으므로 값이 바뀌어도 인가에는 영향이 없습니다. <a href="#key-policy">키 정책 요약</a>.</p>
+<p class="sub"><b>기본키가 이름(<code>name</code>)인 이유</b>도 코드표와 같습니다. 우리가 정하는 값이고, 참조는 <code>app_user.title</code> 한 곳이며, 개명은 CASCADE 로 실제 전파됩니다(실측: 직급 개명 시 사용자 41명 전량 갱신). 권한에 쓰이지 않으므로 값이 바뀌어도 인가에는 영향이 없습니다. 구성원 조회는 <code>app_user.title</code> 에서 직급 이름을 바로 읽어 이 표를 조인하지 않습니다(번호 키로 바꾼 소속은 <code>LEFT JOIN org_unit</code> 이 필요한 것과 대조됩니다). <a href="#key-policy">키 정책 요약</a>.</p>
 <!-- /PROSE:title_code.intro -->
 
 <div class="tw">
