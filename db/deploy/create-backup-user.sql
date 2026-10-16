@@ -8,15 +8,15 @@
 --   거기에 root 를 적어 두면 '.cnf 한 파일이 읽히는 것' 이 곧 'DB 전체에 대한
 --   DROP·GRANT 권한이 넘어가는 것' 이 된다. 백업이 실제로 필요로 하는 동작은
 --   읽기뿐이므로, 노출되더라도 피해가 '읽기' 까지로 끝나는 계정을 따로 판다.
---   (같은 논리로 접속 호스트도 '%' 가 아니라 'localhost' 다 — 백업은 DB 서버와
+--   (같은 논리로 접속 호스트도 '%' 가 아니라 'localhost' 다. 백업은 DB 서버와
 --    같은 PC 에서 돈다. 다른 PC 에서 돌릴 거라면 그 PC 의 주소로 바꿀 것.)
 --
--- ★ 왜 SELECT 만으로는 안 되는가 — 실측 결과다:
+-- ★ 왜 SELECT 만으로는 안 되는가. 실측 결과다:
 --   SELECT 만 가진 계정으로 mysqldump 를 돌리면 **에러도 경고도 없이 exit 0** 으로
 --   끝나는데 트리거가 통째로 빠진다.
---     · 같은 DB, root          : 6404 바이트 · 표 3 · 트리거 3 · exit 0
---     · 같은 DB, SELECT 만     : 3377 바이트 · 표 3 · 트리거 0 · exit 0
---   (실제 taskmgr 규모에서는 72K 對 48K · 표 20 · 트리거 15 → 0 으로 측정됐다)
+--     - 같은 DB, root          : 6404 바이트, 표 3, 트리거 3, exit 0
+--     - 같은 DB, SELECT 만     : 3377 바이트, 표 3, 트리거 0, exit 0
+--   (실제 taskmgr 규모에서는 72K 對 48K, 표 20, 트리거 15 → 0 으로 측정됐다)
 --   더 나쁜 것은 information_schema.TRIGGERS 도 TRIGGER 권한으로 걸러진다는 점이다.
 --   그 계정 눈에는 DB 쪽 트리거도 0 개로 보이므로 '덤프 0 == DB 0' 으로 대조까지
 --   통과해 버린다(실측: SELECT 만 가진 계정의 COUNT(*) = 0, TRIGGER 까지 가진
@@ -24,14 +24,14 @@
 --   먼저 확인한다. 이 GRANT 를 빼면 그 검사에서 막혀 백업이 아예 돌지 않는다.
 --
 -- 안 주는 권한과 그 이유:
---   · LOCK TABLES : --single-transaction 으로 뜨므로 필요 없다(InnoDB 일관 스냅샷).
---   · PROCESS     : --no-tablespaces 로 뜨므로 필요 없다. 이걸 주면 서버 전역의
+--   - LOCK TABLES : --single-transaction 으로 뜨므로 필요 없다(InnoDB 일관 스냅샷).
+--   - PROCESS     : --no-tablespaces 로 뜨므로 필요 없다. 이걸 주면 서버 전역의
 --                   다른 세션·쿼리가 전부 보인다(전역 권한이라 DB 경계를 넘는다).
---   · RELOAD      : --flush-logs / --source-data 를 쓰지 않으므로 필요 없다.
---   · SHOW VIEW / EXECUTE·SHOW_ROUTINE : 현재 taskmgr 에 뷰 0 · 저장 프로시저 0.
+--   - RELOAD      : --flush-logs / --source-data 를 쓰지 않으므로 필요 없다.
+--   - SHOW VIEW / EXECUTE·SHOW_ROUTINE : 현재 taskmgr 에 뷰 0, 저장 프로시저 0.
 --                   나중에 생기면 아래 주석 처리된 줄을 함께 부여할 것
 --                   (뷰가 있는데 SHOW VIEW 가 없으면 mysqldump 는 그때는 조용하지
---                    않고 exit 2 로 죽는다 — 실측).
+--                    않고 exit 2 로 죽는다. 실측으로 확인).
 -- ----------------------------------------------------------------------------
 -- 배포(폐쇄망 서버)에서:
 --   1) 아래 IDENTIFIED BY '...' 를 실제 강한 비밀번호로 교체

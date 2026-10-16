@@ -270,9 +270,9 @@ test('계약⑥: db/deploy/create-app-user.sql 이 두 표에 SELECT·INSERT·UP
 test('계약⑥-b: db/deploy/grants-calendar.sql 이 두 표에 SELECT·INSERT·UPDATE 를 주고 DELETE 는 안 준다', () => {
   checks.grantsOpenWritesNotDelete(calGrants, CAL_GRANTS);
   //  머리말 서술도 사실이어야 한다 — 없는 사실도, 빠진 사실도 다음 사람이 그대로 믿는다.
-  assert.ok(/org_unit\s+SELECT \+ \*\*INSERT · UPDATE\*\*/.test(calGrants),
+  assert.ok(/org_unit\s+SELECT \+ \*\*INSERT, UPDATE\*\*/.test(calGrants),
     'grants-calendar.sql 머리말이 아직 org_unit 을 "이번 범위 밖" 으로 적고 있다(§6)');
-  assert.ok(/title_code\s+SELECT \+ \*\*INSERT · UPDATE\*\*/.test(calGrants),
+  assert.ok(/title_code\s+SELECT \+ \*\*INSERT, UPDATE\*\*/.test(calGrants),
     'grants-calendar.sql 머리말이 아직 title_code 를 "이번 범위 밖" 으로 적고 있다(§6)');
 });
 if (userGrants) {

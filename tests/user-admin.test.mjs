@@ -519,9 +519,9 @@ const checks = {
         `05-grants.sql 이 ${t} 에 DELETE 를 준다 — 이 판은 숨김까지고 행은 남는다(§2 삭제 없음)`);
     }
     // grants-calendar.sql 은 GRANT 를 늘리지 않는다(캘린더 표의 단일 소스다). 대신 **서술이 사실이어야** 한다.
-    assert.ok(/app_user\s+SELECT \+ \*\*INSERT · UPDATE · DELETE\*\*/.test(calGrantsSql),
+    assert.ok(/app_user\s+SELECT \+ \*\*INSERT, UPDATE, DELETE\*\*/.test(calGrantsSql),
       'grants-calendar.sql 머리말의 app_user 권한 서술이 실제 분포(SELECT·INSERT·UPDATE·DELETE)와 다르다 — 없는 사실도, 빠진 사실도 다음 사람이 그대로 믿는다');
-    assert.ok(/app_user 의 DELETE 는 휴지통 관문\(ProjectDb\.DeleteTrashAsync\) 한 곳뿐이다 — 퇴사는 is_active=0 이고 행은 남으며, 기록 0건인 계정만 관리자가 지운다\(TRASH-DELETE §3\.2\)/.test(calGrantsSql),
+    assert.ok(/app_user 의 DELETE 는 휴지통 관문\(ProjectDb\.DeleteTrashAsync\) 한 곳뿐이다\. 퇴사는 is_active=0 이고 행은 남으며, 기록 0건인 계정만 관리자가 지운다\(TRASH-DELETE §3\.2\)/.test(calGrantsSql),
       'grants-calendar.sql 서술이 아직 "app_user DELETE 없음"이다 — DELETE 는 휴지통 한 곳뿐이라고 적어야 한다(§3.3)');
     assert.ok(!/GRANT[^\n]*(?:INSERT|UPDATE|DELETE)[^\n]*taskmgr\.app_user/.test(calGrantsSql),
       'grants-calendar.sql 이 app_user 쓰기를 직접 부여한다 — 그 도메인의 GRANT 정본은 05-grants.sql 하나다');

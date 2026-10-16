@@ -11,7 +11,7 @@
 --    그래서 과제는 이름으로 적어 임시 표(_load_project)에 먼저 넣고, 마지막에 이름으로 번호를 찾아 옮긴다.
 --
 --  ★ 반드시 지킬 규칙 (어기면 아래 검사가 멈추거나 INSERT 가 거부된다) ★
---   1) 순서: 코드값(section_code/status_code) + customer(발주처) 먼저 → 그다음 과제. (전부 project 의 FK)
+--   1) 순서: 코드값(section_code/status_code)과 customer(발주처)를 먼저, 그다음 과제. (전부 project 의 FK)
 --   2) project 에서 넣지 않는 컬럼(자동 생성): id, uid, is_active, created_at, updated_at
 --   3) 구분과 상태는 코드표에 있는 이름이어야 한다. 기본 행은 번호가 고정이다:
 --        구분 1 일반계약, 2 선진행, 3 사업부관리 / 상태 1 진행중, 2 종료, 3 1차 납품완료, 4 미정.
