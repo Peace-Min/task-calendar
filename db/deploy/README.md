@@ -365,6 +365,47 @@ mysql --default-character-set=utf8mb4 -u root -p taskcalendar < "<OutDir>\taskca
 
 **종료코드.** `0` 완료 또는 할 일 없음, `1` 변경 실패(되돌려짐) 또는 커밋 뒤 확인 실패, `2` 취소, `3` 사전 점검 실패(아무것도 안 바꿈), `5` 되돌리기 파일 실패(아무것도 안 바꿈). 표의 정본은 `.ps1` 과 `.cmd` 머리의 같은 ASCII 블록입니다. 비밀번호는 `migrate-code-ids.cmd` 와 같은 방식으로 받습니다(인자 없음, `TASKMGR_ADMIN_PW`, stdin 첫 줄, 가려진 입력). 회귀 계약은 `tests/scope-all-cmd.test.mjs`.
 
+### 검토자 읽기 전용 계정(reviewer-account.cmd)
+
+외부 검토자가 자기 PC 에서 MySQL 클라이언트(Workbench, DBeaver, HeidiSQL)로 `taskcalendar` 를 읽어야 할 때 씁니다(2026-10-16). 검토자 PC 의 IP 에서만 붙는 전용 계정 `reviewer` 를 만들고 `SELECT, SHOW VIEW` 만 줍니다. 바뀌는 것은 MySQL 의 계정과 권한 정보뿐이고 DB 안의 표와 행은 그대로입니다. 정본은 `reviewer-account.ps1` 머리말입니다.
+
+**왜 root 나 앱 계정을 주지 않나.**
+- root 는 `root@localhost` 하나뿐이라 다른 PC 에서는 붙지 못하고, 붙는다 해도 모든 권한입니다. 원격 root 를 새로 여는 것은 하지 않습니다.
+- 앱 계정 `taskmgr_app` 은 쓰기 권한이 있고, 비밀번호가 위젯 설정에 들어 있어 바꾸면 모든 위젯이 끊깁니다.
+- 그래서 검토용 계정을 따로 둡니다. 이름은 `root`, `taskmgr_app`, `taskmgr_backup` 을 받지 않습니다(같은 이름에 더 구체적인 호스트를 붙이면 그 PC 에서 기존 계정 대신 이 계정이 맞습니다).
+
+**데이터 노출.** 이 계정은 그 DB 의 모든 표를 읽습니다. 모든 직원의 일정, 할 일, 주간보고, 이름과 조직이 보입니다. 검토가 끝나면 바로 지웁니다(아래 지우기).
+
+**서버 PC 에서 하는 일.**
+1. 검토자 PC 의 IP 를 받습니다(검토자 PC 에서 `ipconfig`). 한 대면 `192.168.16.25`, 그 대역 아무 PC 면 `192.168.16.%`(/24) 꼴입니다. `%` 하나, 이름(`localhost` 등), 다른 와일드카드는 받지 않습니다.
+2. `reviewer-account.cmd` 를 오른쪽 단추로 눌러 **관리자 권한으로 실행** 합니다(방화벽 규칙을 만들려면 관리자 권한이 있어야 합니다). 명령 창에서는 관리자 명령 창을 열고:
+   ```
+   reviewer-account.cmd -ReviewerIp 192.168.16.25
+   reviewer-account.cmd -ReviewerIp 192.168.16.%
+   ```
+   더블클릭하면 IP 를 묻습니다. 다른 배치 파일 안에서 부를 때는 `%` 를 `%%` 로 적습니다.
+3. 도구가 root 비밀번호를 묻고 접속한 뒤 `bind_address`, `port`, `skip_networking` 을 보여 줍니다. `skip_networking=ON` 이거나 `bind_address` 가 `127.0.0.1`(또는 localhost)뿐이면 다른 PC 에서 붙을 수 없다고 경고하고, 고칠 my.ini 경로(서비스 `MySQL84` 의 `--defaults-file`)를 알려 줍니다. `[mysqld]` 에서 `skip-networking` 을 지우고 `bind-address=0.0.0.0`(또는 서버의 내부망 IP)로 둔 뒤 서비스를 다시 띄웁니다. 계정은 경고와 상관없이 만듭니다.
+4. 확인 화면(계정 `'reviewer'@'<IP>'`, DB, 권한 "읽기 전용(SELECT, SHOW VIEW)", 모든 직원 데이터 경고)에서 `Y` 를 누르고 검토자 비밀번호를 두 번 입력합니다. 12자 이상, 영문과 숫자와 기호만(따옴표, 역슬래시, 백틱, 공백, 한글은 안 됨), root 비밀번호와 달라야 합니다.
+5. 도구가 `CREATE USER ... PASSWORD EXPIRE NEVER` 와 `GRANT SELECT, SHOW VIEW ON taskcalendar.* TO ...` 를 내고, `SHOW GRANTS FOR` 가 `USAGE` 와 그 한 줄뿐인지 봅니다. 다르면 방금 만든 계정을 `DROP USER` 로 되돌리고 멈춥니다(종료코드 1). GRANT OPTION 은 주지 않습니다.
+6. 관리자 권한이면 받는 규칙 `TaskCalendar MySQL reviewer <IP>` 를 만듭니다(TCP 3306, 원격 주소는 그 IP 나 `a.b.c.0/24`, 프로필 Domain,Private). 관리자 권한이 아니면 실패로 치지 않고 관리자 PowerShell 에서 칠 `New-NetFirewallRule ...` 명령을 그대로 보여 줍니다. 이미 3306 을 아무 주소에나 여는 규칙이 있으면 알려 줍니다(그때 IP 제한은 MySQL 계정의 호스트만 남습니다). 네트워크가 공용(Public)이면 이 규칙이 듣지 않는다고도 알려 줍니다.
+7. 마지막에 검토자에게 줄 접속 정보를 보여 줍니다. 이 PC 의 IPv4(검토자와 같은 대역 표시), 포트, 사용자, DB, 클라이언트별 입력 칸입니다. 비밀번호는 화면과 보고서에 없습니다.
+
+**검토자에게 줄 것.** 클라이언트(Workbench, DBeaver, HeidiSQL 중 하나), 서버 IP, 포트(3306), 사용자 `reviewer`, 기본 스키마 `taskcalendar`. 비밀번호는 메신저 대화방이나 메일 본문이 아닌 길로 따로 전달합니다. DBeaver 에서 "Public Key Retrieval is not allowed" 가 나오면 드라이버 속성 `allowPublicKeyRetrieval=true` 로 둡니다.
+
+**비밀번호 바꾸기, 보기, 지우기.**
+```
+reviewer-account.cmd -ReviewerIp 192.168.16.25 -ResetPassword   # 비밀번호만 바꾼다(ALTER USER)
+reviewer-account.cmd -List                                      # reviewer 계정(모든 호스트), 권한, 방화벽 규칙
+reviewer-account.cmd -Drop -ReviewerIp 192.168.16.25            # 계정과 방화벽 규칙을 지운다
+```
+`-Drop` 은 확인(`Y`) 뒤 `DROP USER IF EXISTS` 를 내고 사라졌는지 확인합니다. `DROP USER` 는 열린 세션을 끊지 않으므로 그 호스트에서 온 세션을 `KILL` 합니다. 방화벽 규칙은 관리자 권한이면 지우고, 아니면 `Remove-NetFirewallRule` 명령을 보여 줍니다.
+
+**리허설(이 PC 에서만).** `-AllowLocal -ReviewerIp 127.0.0.1 -NoFirewall` 이면 `'reviewer'@'127.0.0.1'` 을 만들고, 그 계정으로 실제로 붙어 표 목록은 읽히고 `CREATE TABLE` 은 거부되는지(오류 1142)까지 봅니다. 끝나면 `-AllowLocal -Drop -ReviewerIp 127.0.0.1 -NoFirewall` 로 지웁니다.
+
+**종료코드.** `0` 완료(만들기, 비밀번호 바꾸기, 지우기, 보기), `1` 계정 단계 실패(새로 만든 계정은 되돌림), `2` 취소, `3` 사전 점검 실패(IP, 계정 이름, 도구, 비밀번호, 접속, DB, 이미 있는 계정. 아무것도 안 바꿈), `6` 방화벽 단계 실패(계정은 있음, 보여 준 명령을 관리자 PowerShell 에서 실행). 관리자 권한이 아니어서 방화벽을 건너뛴 것은 실패가 아닙니다(종료코드 0, 보고서에 할 일로 남음). 표의 정본은 `.ps1` 과 `.cmd` 머리의 같은 ASCII 블록입니다.
+
+**비밀번호.** 둘 다 인자로 받지 않습니다. root 는 `scope-all.cmd` 와 같은 방식(`TASKMGR_ADMIN_PW`, stdin 첫 줄, 가려진 입력)이고, 검토자 비밀번호는 `TASKMGR_REVIEWER_PW` 나 가려진 입력 두 번입니다. 계정 SQL 은 `%TEMP%` 의 임시 `.sql` 에만 쓰고 mysql 의 stdin 으로 흘린 뒤 바로 지웁니다. mysql 출력은 비밀번호 글자를 가린 뒤에만 화면에 옮깁니다. 기록은 `dist\reviewer-account\reviewer-account-<시각>.txt` 입니다. 회귀 계약은 `tests/reviewer-account-cmd.test.mjs`.
+
 ---
 
 ## 사용자·조직 표 마이그레이션: `app_user`, `org_unit`
