@@ -251,8 +251,12 @@ main{flex:1;display:flex;min-height:0;position:relative}
 }
 /* 월 보기 밀도(설정) — 촘촘히=셀 높이↑+세로 스크롤 / 펼침=내용만큼 늘고 스크롤(잘림 없음) */
 .grid.dense{grid-auto-rows:176px;overflow-y:auto;overflow-x:hidden}
-.grid.expand{grid-auto-rows:minmax(74px,auto);overflow-y:auto;overflow-x:hidden}
-.grid.expand .cell{overflow:visible}
+/* 펼침의 주 줄은 내용만큼 늘어야 한다. 줄 최소값을 고정값(minmax(74px,auto))으로 두면, 격자 높이가 정해진 자리(.cal 안의 flex:1, min-height:0)에서는
+   남는 높이만 나눠 받아 줄이 더 늘지 않는다. 그러면 칩이 많은 칸은 다음 주 줄 밑으로 깔리고 격자에 세로 스크롤도 생기지 않는다
+   (2026-10-16 열람 창 겹쳐 보기 + 펼침에서 실측, 내 창 펼침도 같았다). 그래서 줄 최소값은 min-content(내용 높이)로 두고 칸 최소 74px 는 칸이 진다.
+   내용이 적으면 auto 최대값이 남는 높이를 나눠 채우므로 예전 모양과 같고, 내용이 많으면 격자가 스크롤 상자가 된다. */
+.grid.expand{grid-auto-rows:minmax(min-content,auto);overflow-y:auto;overflow-x:hidden}
+.grid.expand .cell{overflow:visible;min-height:74px}
 .grid.expand .chips{overflow:visible;flex:none}
 .cell{
   background:var(--panel);padding:5px 6px;display:flex;flex-direction:column;gap:3px;
@@ -1728,12 +1732,8 @@ body[data-peer][data-peer-layout="side"] .cal-tab{ display:flex; align-items:cen
   border-radius:var(--r-md) var(--r-md) 0 0; background:var(--panel); color:var(--text);
   font-size:var(--fs-meta); font-weight:700; white-space:nowrap; overflow:hidden }
 body[data-peer][data-peer-layout="side"] .cal-tab-mine{ border-bottom-color:var(--mine-bar) }
-/*  S4 — 펼침 + 나란히 보기: 주 줄이 **내용만큼** 늘게 한다(minmax(min-content,auto) · 칸 최소 74px — 최소 크기 함수가 고정값(74px)이면 격자가 남는 높이만 나눠 준다). 기본 규칙 minmax(74px,auto) 는 격자 높이가
-    정해져 있으면 남는 높이까지만 늘어서, 칩이 많은 칸은 다음 주 줄 위로 넘친다(2026-10-02 실측 6/19: 내용 206px · 줄 118px).
-    줄 맞춤(peerSyncRows)은 「제 높이」 를 재서 큰 쪽에 맞추므로, 제 높이가 내용보다 작으면 맞춰도 겹친다 — 그래서 여기서 고친다.
-    ★ 겹쳐 보기·내 창의 펼침은 S11(화면 그대로)이라 손대지 않는다(같은 넘침이 있다 — 따로 고칠 거리). */
-body[data-peer][data-peer-layout="side"] .grid.expand{ grid-auto-rows:minmax(min-content, auto) }
-body[data-peer][data-peer-layout="side"] .grid.expand .cell{ min-height:74px }
+/*  S4: 펼침 + 나란히 보기의 줄은 내용만큼 늘어야 줄 맞춤(peerSyncRows)이 겹치지 않는다(2026-10-02 실측 6/19: 내용 206px, 줄 118px).
+    예전엔 여기서만 minmax(min-content,auto) 로 고쳤지만, 2026-10-16 부터는 기본 규칙 .grid.expand 가 같은 값이라(겹쳐 보기, 내 창 펼침의 같은 넘침 해소) 따로 두지 않는다. */
 .cal-tab-t{ overflow:hidden; text-overflow:ellipsis }
 /*  S9 — 「내 일정」 겹 토글 칩은 감춘다(오른쪽 달력이 곧 내 일정). tc_peerOverlay 값은 그대로라 겹쳐 보기로 돌아오면 원래대로다. */
 body[data-peer][data-peer-layout="side"] #peerOverlayToggle{ display:none }
