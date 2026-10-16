@@ -58,6 +58,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File db\deploy\backup-taskmgr.ps1
 
 > **2026-10-15 정리.** 지난 `migrate-2026-*.sql`(v12 까지)은 지웠고, 남은 이관 파일은 `migrate-2026-10-15-code-ids.sql`(12 → 13, 코드표 번호 키) 하나다. 이 파일은 **데이터가 있는 v12 DB**(개발자 로컬 `taskcalendar`)에만 쓴다. 회사 서버처럼 새로 세우는 DB 는 §0-6 의 `setup-taskcalendar.cmd` 가 처음부터 v13 으로 만들므로 이 단계가 없다. 백업은 DB 이름을 적어서 받는다: `backup-taskmgr.cmd -DbName taskcalendar`(기본값도 `taskcalendar` 다).
 
+> **2026-10-16, 0.21.0 배포 순서(기존 PC 의 DB).** 데이터가 있는 v12 DB 는 손으로 백업하고 SQL 을 돌리지 않고 마스터 cmd 하나로 옮긴다: 그 DB 에 붙은 위젯을 모두 닫고 `dbdeploymigrate-code-ids.cmd` 를 더블클릭한다. 판번호(13 이면 할 일 없음), 앱 계정 세션, 확인(Y), 백업과 검증, 이관 SQL(`--force` 없이), 결과 판정을 차례로 하고, 멈추면 절단 전인지 뒤인지와 되돌리는 명령을 보여 준다(종료코드 0 이 아니면 끝난 것이 아니다). 그다음 §0-4 대조를 하고 0.21.0 앱을 올린다. 상세는 [`db/deploy/README.md`](db/deploy/README.md) 의 '기존 PC 의 DB 이관(마스터 cmd)' 절.
+
 > **판번호를 이 문서에 적지 않는다.** 값의 정본은 `db/deploy/schema-calendar.sql` 끝의 `INSERT INTO cal_schema_meta … VALUES ('schema_version', …)` 한 줄이고, 지금 서버 값은 아래로 읽는다:
 >
 > ```sql

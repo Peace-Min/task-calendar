@@ -7,6 +7,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 > `rollback-2026-08-24-org-id.sql` 은 지웠습니다(git 이력에 있습니다). 아래 본문에 그 이름이 남은 곳은 옛 기록입니다.
 > - **새 DB(회사 서버 포함)**: `setup-taskcalendar.cmd`. 스키마 파일로 `taskcalendar` 를 만들고, 원본 `taskmgr` 에서 과제 트랙을 복사하면서 코드표 이름을 번호로 바꿉니다.
 > - **데이터가 있는 로컬 DB(v12)**: `migrate-2026-10-15-code-ids.sql` 한 번(v12 → v13, 코드표 번호 키). 백업 먼저(`backup-taskmgr.cmd -DbName taskcalendar`), 복제한 격리 DB 에서 먼저. 실행법은 그 파일 머리말.
+>   2026-10-16 부터는 손으로 돌리지 않고 마스터 cmd `migrate-code-ids.cmd` 를 씁니다(판번호와 앱 세션 확인, 백업과 검증, `--force` 없는 실행, 실패 판정). 아래 '기존 PC 의 DB 이관(마스터 cmd)' 절.
 > - 운영 스크립트(`backup-taskmgr`, `restore-taskmgr`, `init-calendar`, `org-ops`, `app-account`)의 기본 DB 는 `taskcalendar` 입니다. 옛 DB 는 `-DbName taskmgr` 처럼 이름을 적습니다(`restore-taskmgr` 는 `-LiveDb`, `-TargetDb`). 파일 이름은 그대로 둡니다.
 > - 코드표(발주처, 구분, 상태, 직급)는 번호 키입니다(`schema_version` 13). `project` 와 `app_user` 는 이름이 아니라 `customer_id`, `section_id`, `status_id`, `title_id` 를 담습니다. 아래 본문에서 *"과제 트랙의 자연키 PK"* 라고 적은 곳은 그 전의 기록입니다. 근거는 [`../TABLE-DESIGN.md`](../TABLE-DESIGN.md) §9 ADR-23.
 
@@ -27,6 +28,7 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
+| `migrate-code-ids.cmd` / `migrate-code-ids.ps1` | **위 이관 SQL 의 마스터 cmd**(2026-10-16). 더블클릭 한 번으로 판번호 확인(13 이면 할 일 없음), 앱 세션 확인, 확인(Y), 백업과 검증, 이관 SQL(`--force` 없이), 결과 판정까지 한다. 멈추면 절단 전인지 뒤인지 DB 상태로 가르고 되돌리는 명령을 보여 준다. 종료코드 0~5. 아래 '기존 PC 의 DB 이관(마스터 cmd)' 절 |
 
 ## 구성: 캘린더 트랙 (`cal_*`), 백업
 
@@ -270,7 +272,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 - `title_code` 와 `app_user` 는 회사 저장소가 만든 표지만 같은 물리 DB 안에 있으므로 이 파일이 함께 옮깁니다.
 - 판번호가 12 가 아니면 할 일이 없습니다(이미 13 이면 가드에서 멈춥니다).
 
-**어떻게.**
+**어떻게.** 2026-10-16 부터는 아래 '기존 PC 의 DB 이관(마스터 cmd)' 절의 `migrate-code-ids.cmd` 가 이 순서를 대신합니다. 손으로 할 때의 순서는 이렇습니다.
 1. 위젯을 모두 닫습니다(열린 트랜잭션이 있으면 첫 `ALTER` 가 10초 뒤 `ERROR 1205` 로 멈춥니다. 이때는 바뀐 것이 없습니다).
 2. **백업. DB 이름을 꼭 적습니다**: `backup-taskmgr.cmd -DbName taskcalendar`. 덤프가 끝난 것을 확인하고 다음으로 갑니다.
 3. 관리자 계정으로, 문자셋 `utf8mb4` 로, **`--force` 없이** 돌립니다(비밀번호는 명령줄에 쓰지 않습니다):
@@ -294,6 +296,41 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 
 **실측(2026-10-15, MySQL 8.4.9, 실데이터 로컬 복제본: 발주처 8, 구분 3, 상태 4, 직급 11, 과제 14, 사용자 89, 일정 3,625)**:
 절단 관문과 사후 검증 전부 0. 다시 돌리면 v12 가드에서 멈춤. 대소문자만 다른 표류(`project.customer` 가 `'ZZCASE'`, `customer.name` 이 `'zzCase'`)는 절단 관문에서 멈추고 옛 열이 그대로 남음. 이관한 DB 와 `setup-taskcalendar` 로 새로 만든 DB 의 `information_schema` 가 양쪽 359줄로 차이 0. 계약일 역전(`start_date > end_date`)은 로컬 `taskcalendar` 와 원본 `taskmgr` 모두 0건(그래서 순서 CHECK 를 넣을지는 따로 정합니다. 이 파일은 넣지 않습니다).
+
+### 기존 PC 의 DB 이관(마스터 cmd): `migrate-code-ids.cmd`
+
+위 이관 SQL 을 사람이 지켜야 하는 순서(위젯 닫기, 백업, 백업 확인, `--force` 없이 실행, 멈춘 자리 판단)째로 한 번에 돌리는 도구입니다(2026-10-16). 0.21.0 을 올리기 전에, 데이터가 있는 v12 DB(예: 서버 노릇을 하는 PC 의 `taskcalendar`)에 한 번 씁니다. 정본은 `migrate-code-ids.ps1` 머리말입니다.
+
+**언제 쓰지 않나.** 새로 세우는 DB(회사 서버 포함)는 `setup-taskcalendar.cmd` 로 만듭니다. 이미 v13 인 DB 는 이 도구가 판번호를 읽고 "이미 v13 입니다. 할 일이 없습니다." 로 끝냅니다(종료코드 0).
+
+```
+migrate-code-ids.cmd                                  # 더블클릭: 묻고, 백업하고, 옮긴다
+migrate-code-ids.cmd -DbName taskcalendar_copy        # 복제한 격리 DB 로 먼저 리허설
+migrate-code-ids.cmd -DbHost 192.168.0.50 -BackupDir "D:\taskmgr-backup"
+```
+
+**하는 일(첫 실패에서 멈춥니다).**
+1. 사전 점검: `mysql.exe`, `mysqldump.exe`(`-BaseDir`, 서비스 `MySQL84` 의 binPath, `C:\Program Files\MySQL\MySQL Server 8.4` 순서), 같은 폴더의 `migrate-2026-10-15-code-ids.sql`, 접속, DB 와 `cal_schema_meta`, `schema_version`(13 이면 끝, 12 가 아니면 멈춤), 옛 모양(이름 키). 판번호가 12 인데 옛 모양이 아니면 앞선 실행이 반쯤 바꾼 DB 로 보고 멈춥니다(이전 백업 목록을 보여 줍니다).
+2. 앱 세션 확인: `information_schema.PROCESSLIST` 에서 앱 계정(`taskmgr_app`)이 이 DB 에 붙은 연결을 셉니다. 하나라도 있으면 목록을 보여 주고 멈춥니다(종료코드 4). `-Force` 는 이 확인 하나만 건너뜁니다.
+3. 확인: DB, 서버, 행 수(project, app_user, cal_entry), 백업 경로를 보여 주고 `Y` 를 받습니다(`-Yes` 면 묻지 않습니다. 입력이 리다이렉트된 무인 실행은 `-Yes` 가 있어야 합니다).
+4. 백업: `mysqldump --single-transaction --no-tablespaces --routines --triggers --events --set-gtid-purged=OFF` 를 `<BackupDir>\<DB>-before-code-ids-<시각>.sql` 로 뜹니다. 1KB 를 넘고 끝에 `-- Dump completed` 가 있어야 통과이고, 그전에는 `.partial` 이름이라 `restore-taskmgr` 가 고르지 않습니다. `--databases` 는 쓰지 않습니다(덤프에 `USE` 가 들어가면 `restore-taskmgr -TargetDb` 가 라이브로 들어갑니다). 기본 `BackupDir` 는 `dist\migrate-code-ids\backup` 입니다.
+5. 이관 SQL: `mysql --default-character-set=utf8mb4 -t <DB> < migrate-2026-10-15-code-ids.sql`, `--force` 없이. 출력과 오류는 `<BackupDir>\<DB>-migrate-code-ids-<시각>.log` 에 남습니다.
+6. 판정: 판번호를 다시 읽어 13 인지, 사전 점검, 절단 관문(`cut_*`), 사후 검증(`e1`~`e8`) 표가 모두 0 인지, 행 수가 같은지 봅니다. 성공하면 "이제 0.21.0 앱을 설치하세요" 로 끝납니다.
+
+**멈추면(종료코드 1).** 출력 문구가 아니라 DB 상태(판번호, 옛 열, 이름 기본키, 이름 외래키)를 다시 읽어 가릅니다.
+- **절단 전**(옛 열과 키가 그대로): "옛 열은 그대로입니다. 메시지대로 데이터를 고친 뒤 다시 실행하세요." 마지막 *"중단: …"* 줄이 이유입니다. `ERROR 1205` 면 위젯이 열려 있던 것입니다.
+- **스키마는 13 이고 마지막 권한 회수만 실패**: 관리자가 칠 `REVOKE UPDATE …` 세 줄을 보여 줍니다.
+- **절단 뒤이거나 알 수 없음**: 그 DB 를 쓰지 말고 백업으로 되돌립니다. 도구가 아래 꼴의 명령을 경로까지 채워 보여 줍니다(비밀번호는 `restore-taskmgr` 가 따로 묻습니다):
+  ```
+  restore-taskmgr.cmd -DumpPath "<백업>" -BackupDir "<백업 폴더>" -LiveDb taskcalendar -TargetDb taskcalendar_before_code_ids
+  restore-taskmgr.cmd -DumpPath "<백업>" -BackupDir "<백업 폴더>" -LiveDb taskcalendar -TargetDb taskcalendar -OverwriteLive
+  restore-taskmgr.cmd -BackupDir "<백업 폴더>" -LiveDb taskcalendar -TargetDb taskcalendar_before_code_ids -DropTarget
+  ```
+  첫 줄은 별도 DB 로 되살려 내용을 확인하는 것이고, 둘째 줄이 라이브를 이관 전으로 되돌립니다. 둘째 줄은 대화형 콘솔에서만 열리고 DB 이름을 그대로 입력해야 합니다. `restore-taskmgr` 가 지금 상태를 pre-restore 덤프로 먼저 남긴 뒤 DB 를 지우고 다시 만들어 붓습니다(앱 계정 권한은 DB 를 지워도 남습니다). 셋째 줄은 확인용 DB 뒷정리입니다.
+
+**종료코드.** `0` 성공 또는 이미 v13, `1` 이관 실패(위 안내), `2` 취소, `3` 사전 점검 실패(아무것도 안 바꿈), `4` 앱 세션이 열려 있음(아무것도 안 바꿈), `5` 백업 실패(DB 는 그대로). 표의 정본은 `.ps1` 과 `.cmd` 머리의 같은 ASCII 블록입니다.
+
+**비밀번호.** 인자로 받지 않습니다. 환경변수 `TASKMGR_ADMIN_PW`, 입력이 리다이렉트돼 있으면 stdin 첫 줄(상한 10초), 대화형이면 가려진 입력 순서이고, mysql 에는 임시 `.cnf`(`--defaults-extra-file`)로만 넘기며 끝나면 지웁니다. 회귀 계약은 `tests/migrate-code-ids-cmd.test.mjs`.
 
 ---
 
