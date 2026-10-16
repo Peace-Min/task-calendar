@@ -143,16 +143,27 @@ test('(순수) buildMineOverlay: 입력 배열·항목·예외일 배열을 변�
 //    (이건 런타임으로도 볼 수 있지만, mountPeerFrame 은 iframe load 이벤트 안에서만 도는
 //     경로라 부팅만으로는 지나가지 않는다. 그래서 텍스트로 못박는다.)
 // ══════════════════════════════════════════════════════════════════════
+//  WINDOW-UI §4(2026-10-16) — 열람은 따로 뜨는 창(?peerwin=1)에서 한다. 그 창에는 내 state 가 없어서 내 겹은 메인 창의 상태를
+//  호스트가 물어 온다(peerMine). 그래서 거르는 자리가 둘이다: 메인 창의 __peerMineSnapshot(내보내기 전) · 열람 창의 pvMineGet(받은 뒤).
+//  mountPeerFrame 은 그렇게 걸러 둔 __pv.mine 만 붙인다(state.entries 를 직접 읽지 않는다).
+const peerMineSnapshotSrc = (src) => {
+  const a = src.indexOf('window.__peerMineSnapshot = function(){');
+  assert.ok(a >= 0, '메인 창의 __peerMineSnapshot 을 찾지 못했다');
+  return src.slice(a, src.indexOf('\n};', a));
+};
 function peerFrameWiringHasFilter(src) {
-  return extractFunction(src, 'mountPeerFrame').includes('buildMineOverlay(');
+  return peerMineSnapshotSrc(src).includes('buildMineOverlay((state && state.entries) || [])')
+      && extractFunction(src, 'pvMineGet').includes('buildMineOverlay(r.entries)')
+      && extractFunction(src, 'mountPeerFrame').includes('.concat(__pv.mine || [])')
+      && !/state\.entries/.test(extractFunction(src, 'mountPeerFrame'));
 }
 
-test('(정적) 배선: mountPeerFrame 은 부모 state 를 buildMineOverlay 로 걸러서 내려보낸다', () => {
+test('(정적) 배선: 내 겹은 메인 창에서 buildMineOverlay 로 걸러 내보내고, 열람 창도 받은 것을 다시 걸러 mountPeerFrame 이 붙인다', () => {
   const src = loadAppSource();
   assert.ok(peerFrameWiringHasFilter(src),
-    'mountPeerFrame 이 buildMineOverlay 를 부르지 않는다 — 걸러지지 않은 내 데이터가 열람 창으로 간다');
-  assert.ok(extractFunction(src, 'mountPeerFrame').includes('.concat(buildMineOverlay(state.entries))'),
-    '겹이 상대 entries 뒤에 붙는 형태가 아니다(배선이 바뀌었다면 이 계약도 함께 갱신할 것)');
+    '내 겹의 거름 자리(메인 __peerMineSnapshot, 열람 창 pvMineGet) 중 하나가 빠졌거나 mountPeerFrame 이 state.entries 를 직접 붙인다');
+  assert.ok(/if\(PEER \|\| PEERWIN\) return \[\];/.test(peerMineSnapshotSrc(src)),
+    '열람 창이나 열람 프레임이 __peerMineSnapshot 으로 무언가를 내보낸다(그 창에는 내 일정이 없어야 한다)');
 });
 
 // ── 변이③ buildMineOverlay 가 memo 를 복사한다 → 최소 payload 계약이 깨진다 ──
@@ -190,11 +201,17 @@ test('변이④: buildMineOverlay 가 source==="git" 을 안 거르면 커밋 �
 });
 
 // ── 변이⑤ 부모가 state.entries 를 그대로 concat → 걸러지지 않은 내 데이터가 통째로 간다 ──
-test('변이⑤: 부모가 buildMineOverlay 를 건너뛰고 state.entries 를 그대로 보내면 배선 계약이 깨진다', () => {
+test('변이⑤: 메인 창이 buildMineOverlay 를 건너뛰고 state.entries 를 그대로 내보내면 배선 계약이 깨진다', () => {
   assert.ok(peerFrameWiringHasFilter(loadAppSource()), '사전조건: 정상 앱은 걸러서 보낸다');
-  const mutated = mutateSource('.concat(buildMineOverlay(state.entries))', '.concat(state.entries)');
+  const mutated = mutateSource('try{ return buildMineOverlay((state && state.entries) || []); }', 'try{ return ((state && state.entries) || []); }');
   assert.ok(!peerFrameWiringHasFilter(mutated),
-    '변이했는데도 배선 계약이 통과한다 — 계약이 mountPeerFrame 본문을 안 본다');
+    '변이했는데도 배선 계약이 통과한다 — 계약이 __peerMineSnapshot 본문을 안 본다');
+});
+test('변이⑤-b: 열람 창이 받은 겹을 다시 거르지 않거나, mountPeerFrame 이 state.entries 를 붙이면 배선 계약이 깨진다', () => {
+  const a = mutateSource("? buildMineOverlay(r.entries) : [])", "? r.entries : [])");
+  assert.ok(!peerFrameWiringHasFilter(a), '열람 창의 두 번째 거름을 빼도 계약이 통과한다');
+  const b = mutateSource('.concat(__pv.mine || [])', '.concat(buildMineOverlay(state.entries))');
+  assert.ok(!peerFrameWiringHasFilter(b), 'mountPeerFrame 이 열람 창의 (빈) state 를 읽어도 계약이 통과한다');
 });
 
 // ══════════════════════════════════════════════════════════════════════

@@ -101,12 +101,12 @@ function expandProblems(src) {
   const cal = exactRule(src, '.cal');
   if (!cal.some(r => decl(r.body, 'display') === 'flex' && decl(r.body, 'flex-direction') === 'column')) P.push('.cal 이 flex 세로가 아니다');
   if (!exactRule(src, 'main').some(r => decl(r.body, 'min-height') === '0')) P.push('main 에 min-height:0 이 없다');
-  // 6) 열람 창 틀: 모달 본문이 iframe 에 남은 높이를 주고(min-height:0, 넘침 숨김), iframe 은 flex:1 로 그 높이를 받는다.
-  const mb = exactRule(src, '#peerModal .modal-body');
+  // 6) 열람 창 틀(WINDOW-UI §4 독립 창의 #peerWin): 본문이 iframe 에 남은 높이를 주고(min-height:0, 넘침 숨김), iframe 은 flex:1 로 그 높이를 받는다.
+  const mb = exactRule(src, '#peerWin .pv-body');
   if (!mb.some(r => decl(r.body, 'min-height') === '0' && decl(r.body, 'overflow') === 'hidden' && decl(r.body, 'display') === 'flex'))
-    P.push('#peerModal .modal-body 에 display:flex + min-height:0 + overflow:hidden 이 없다');
-  if (!exactRule(src, '#peerModal :is(.pv-frame, .pv-skeleton)').some(r => /^1 1\b/.test(decl(r.body, 'flex') || '')))
-    P.push('#peerModal 의 .pv-frame 이 flex:1 로 남은 높이를 받지 않는다');
+    P.push('#peerWin .pv-body 에 display:flex + min-height:0 + overflow:hidden 이 없다');
+  if (!exactRule(src, '#peerWin :is(.pv-frame, .pv-skeleton)').some(r => /^1 1\b/.test(decl(r.body, 'flex') || '')))
+    P.push('#peerWin 의 .pv-frame 이 flex:1 로 남은 높이를 받지 않는다');
   // 7) 펼침이 실제로 격자에 걸린다: 렌더가 expand 클래스를 붙이고, 열람 창 기본 밀도가 펼침이다.
   if (!/g\.classList\.toggle\('expand', dens === 'expand'\)/.test(src)) P.push('renderMonthGrid 가 .expand 를 토글하지 않는다');
   if (!/function calDensityDefault\(\)\{ return PEER \? 'expand' : 'fixed'; \}/.test(src)) P.push('열람 창 기본 밀도가 펼침이 아니다');
@@ -140,8 +140,8 @@ test('변이(칸 최소 높이 빼기, 격자 min-height:0 빼기, 열람 창 �
   assert.ok(a.some(x => /min-height:74px/.test(x)), JSON.stringify(a));
   const b = expandProblems(mutate(app, '  overflow:hidden;min-height:0;\n}\n/* 월 보기 밀도', '  overflow:hidden;\n}\n/* 월 보기 밀도'));
   assert.ok(b.some(x => /^\.grid 에 flex:1/.test(x)), JSON.stringify(b));
-  const c = expandProblems(mutate(app, '#peerModal .modal-body{ padding:4px; flex:1 1 auto; min-height:0;', '#peerModal .modal-body{ padding:4px; flex:1 1 auto;'));
-  assert.ok(c.some(x => /#peerModal \.modal-body/.test(x)), JSON.stringify(c));
+  const c = expandProblems(mutate(app, '#peerWin .pv-body{ padding:4px; flex:1 1 auto; min-height:0;', '#peerWin .pv-body{ padding:4px; flex:1 1 auto;'));
+  assert.ok(c.some(x => /#peerWin \.pv-body/.test(x)), JSON.stringify(c));
 });
 
 test('(정적) 판정 함수 자체: 내용 기반 줄 값만 통과시킨다', () => {

@@ -223,7 +223,7 @@ class Cdp {
     }
     //  ?peer=1 프레임은 제외한다 — 조종할 것은 **부모** 창이다.
     const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl
-      && /tcapp\.local/i.test(x.url || '') && !/peer=1/.test(x.url || ''))[0];
+      && /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1/.test(x.url || ''))[0];
     if (!t) throw new Error('부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;

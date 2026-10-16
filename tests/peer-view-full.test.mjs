@@ -212,14 +212,18 @@ const W = {
     assert.ok(/name="peerDensity"/.test(h) && /class="check"/.test(h), '밀도 전환이 띠의 .check 라디오 관례가 아니다');
     assert.ok(/\+ peerDensityHtml\(\);/.test(src), '열람 띠(#peerBanner)에 밀도 전환이 붙지 않는다');
   },
-  //  P5 — 모달이 크다.
+  //  P5 — 열람 화면이 크다. 2026-10-16(WINDOW-UI §4)부터는 따로 뜨는 창이라 창 전체를 쓴다(크기는 사람이 창 테두리로 정한다).
   modalLarge(src) {
     const r = cssRules(src);
-    const modal = r.find((x) => x.sel === '#peerModal .modal');
-    assert.ok(modal && /width:min\(1400px, 100%\)/.test(modal.decl) && /98vh/.test(modal.decl), '#peerModal 이 크지 않다(P5): ' + (modal && modal.decl));
-    const body = r.find((x) => x.sel === '#peerModal .modal-body');
-    assert.ok(body && /flex:1 1 auto/.test(body.decl) && /min-height:0/.test(body.decl), '#peerModal 본문이 남은 높이를 받지 않는다');
-    assert.ok(r.some((x) => x.sel === '#peerModal :is(.pv-frame, .pv-skeleton)' && /flex:1 1 auto/.test(x.decl)), 'iframe 이 모달 본문을 채우지 않는다');
+    const win = r.find((x) => x.sel === '#peerWin');
+    assert.ok(win && /position:fixed/.test(win.decl) && /inset:0/.test(win.decl) && /display:flex/.test(win.decl) && /flex-direction:column/.test(win.decl),
+      '#peerWin 이 창 전체를 쓰지 않는다(P5): ' + (win && win.decl));
+    const body = r.find((x) => x.sel === '#peerWin .pv-body');
+    assert.ok(body && /flex:1 1 auto/.test(body.decl) && /min-height:0/.test(body.decl), '#peerWin 본문이 남은 높이를 받지 않는다');
+    assert.ok(r.some((x) => x.sel === '#peerWin :is(.pv-frame, .pv-skeleton)' && /flex:1 1 auto/.test(x.decl)), 'iframe 이 열람 창 본문을 채우지 않는다');
+    assert.ok(r.some((x) => x.sel === 'html[data-peerwin] body > :not(#peerWin):not(#peerPicker):not(#toastWrap)' && /display:none !important/.test(x.decl)),
+      '열람 창에서 메인 화면이 감춰지지 않는다(allowlist 가 아니다)');
+    assert.ok(!r.some((x) => /#peerModal/.test(x.sel)), '옛 열람 모달(#peerModal) 규칙이 남았다');
   },
   //  P1 — 그리드 클릭은 공유 처리 하나다(PEER 전용 길이 없다).
   gridClickShared(src) {
@@ -235,13 +239,17 @@ const W = {
     const m = extractFunction(src, 'mountPeerFrame');
     assert.ok(m.includes('todos: res.todos || []'), '부모가 받은 할 일을 열람 창에 넣지 않는다(P2)');
     assert.ok(!/state\.todos|state\.taskHours|state\.attendance|state\.rooms/.test(m), '부모가 **내** 할 일·시간·근태·회의실을 열람 창에 보낸다(P6)');
-    assert.ok(m.includes('.concat(buildMineOverlay(state.entries))'), '내 겹이 일정(state.entries)에서만 만들어지지 않는다');
+    //  WINDOW-UI §4 — 내 겹은 메인 창 state.entries 에서 만든다(__peerMineSnapshot). 열람 창은 그것을 받아(__pv.mine) 붙이기만 한다.
+    assert.ok(m.includes('.concat(__pv.mine || [])'), '내 겹이 열람 창이 받아 둔 겹(__pv.mine)이 아니다');
+    const a = src.indexOf('window.__peerMineSnapshot = function(){'), snap = src.slice(a, src.indexOf('\n};', a));
+    assert.ok(a >= 0 && snap.includes('buildMineOverlay((state && state.entries) || [])') && !/todos|taskHours|attendance|rooms/.test(snap),
+      '내 겹이 일정(state.entries)에서만 만들어지지 않는다');
   },
 };
 test('(W) P2: 「할 일」·「커밋 내역」 탭은 PEER 에서 감추지 않는다', () => W.tabsNotHidden(app));
 test('(W) P3: 편집 수단은 CSS 로 감추고 변경 함수는 PEER 관문으로 먼저 끊는다(Q6)', () => W.editAffordancesGuarded(app));
 test('(W) P4: 밀도 — 열람 창 전용 키 · 기본 펼침 · 띠의 전환(고정/촘촘히/펼침)', () => W.densitySeparated(app));
-test('(W) P5: 열람 모달은 위젯 창에 맞게 크고 iframe 이 본문을 채운다', () => W.modalLarge(app));
+test('(W) P5: 열람 창(따로 뜨는 창)은 창 전체를 쓰고 iframe 이 본문을 채운다', () => W.modalLarge(app));
 test('(W) P1: 그리드 클릭은 PEER 전용 길 없이 공유 처리(누른 칸의 날짜)를 쓴다', () => W.gridClickShared(app));
 test('(W) P6: 내 겹은 일정만 · 상대 할 일은 받은 그대로 넣는다', () => W.overlayEntriesOnly(app));
 

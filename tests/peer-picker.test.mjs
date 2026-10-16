@@ -11,6 +11,10 @@
 //   (M) 변이 — 최근 기록 줄 빼기 · 최근 기록을 조회 전으로 옮기기(실패도 기록) · 즐겨찾기 중복 빼기 제거 · Esc 캡처 빼기 — 각각 잡힌다.
 //
 // ★ R10(실 DB · 봉인)·R11(테마 대비 · 실 위젯)은 레이아웃·실 호스트가 있어야 한다 → tests/loop-peer-frame.mjs 「사람 고르기」 라운드 · 실 위젯 캡처.
+// ★ 2026-10-16(docs/WINDOW-UI.md §4) — 열람은 따로 뜨는 창(호스트 PeerWindow 가 이 파일을 ?peerwin=1 로 띄운다)에서 한다.
+//   그래서 jsdom 도 둘을 띄운다: B = 내 창(툴바 👥 · 구성원 보기 → 호스트에 peerOpen 만 보낸다), V = 열람 창(?peerwin=1 ·
+//   호스트가 __peerWinOpen 으로 대상을 넘긴다 · ▾ 사람 바꾸기 · ☆/★ · 최근 기록). 실제로는 두 창이 localStorage 를 함께 쓰지만
+//   jsdom 은 창마다 따로라서, 두 창을 오가는 저장 공유는 실 위젯 확인(loop-peer-frame ⑤)이 본다.
 // ★ jsdom 은 iframe 을 불러오지 않는다(load 이벤트가 없다). 그래서 열람 프레임의 두 함수(__applyState · peerViewNow)를 시험이 대신 세우고
 //   load 를 직접 쏜다(landFrame) — 부모 쪽 계약(언제 기록하나 · 무엇을 meta 로 넘기나)만 본다. 프레임 쪽 잇기는 PEER 부팅으로 따로 본다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 **등록되지 않고** skip(판정 없음)으로 계수된다(러너 exit 2).
@@ -65,8 +69,12 @@ test('(정적) K1: 좁은 폭 — ≤1199px 라벨 접기 · ≤549px ⋯ 로 �
   assert.match(css, /#btnSearch,#btnCatsTop,#btnFeedback,#btnUser\{display:none\}/, '기존 ≤440px 접기 줄이 바뀌었다');
 });
 
-test('(정적) K9·K10: 열람 창 제목 옆 「▾ 사람 바꾸기」(aria-haspopup) · ☆ 즐겨찾기(aria-pressed) — 부모 마크업에 있다', () => {
-  const pm = app.slice(app.indexOf('<div class="overlay hidden" id="peerModal">'), app.indexOf('<!-- ===== 구성원 편집'));
+test('(정적) K9·K10: 열람 창 제목 옆 「▾ 사람 바꾸기」(aria-haspopup) · ☆ 즐겨찾기(aria-pressed) — 열람 껍데기(#peerWin) 마크업에 있다', () => {
+  const at = app.indexOf('<div class="pv-win hidden" id="peerWin">');
+  assert.ok(at > 0, '#peerWin 껍데기를 찾지 못했다');
+  const pm = app.slice(at, app.indexOf('<!-- ===== 구성원 편집'));
+  assert.ok(!/id="peerModal"/.test(app), '옛 열람 모달(#peerModal)이 남았다');
+  assert.ok(!/data-close/.test(pm), '열람 창 껍데기에 닫기 단추가 있다(닫기는 Windows 창 테두리가 맡는다)');
   assert.match(pm, /<h2 id="pvTitle">/);
   assert.match(pm, /<button class="btn sm pv-switch" id="pvSwitch" type="button" aria-haspopup="dialog" aria-expanded="false"[^>]*>▾ 사람 바꾸기<\/button>/);
   assert.match(pm, /<button class="pk-star" id="pvFav" type="button" aria-pressed="false"[^>]*>☆<\/button>/);
@@ -217,6 +225,8 @@ if (!JSDOM) {
         if(r === 'pending') return new Promise(function(){});
         if(r === undefined || r === 'fail') return Promise.resolve({ ok:false, msg:'시험: 회신 없음' });
         return Promise.resolve(JSON.parse(JSON.stringify(r))); };`);
+    //  열람 창(?peerwin=1)은 세션을 묻지도 내 달력을 받지도 않는다. 대상과 내 신원(me)은 호스트가 __peerWinOpen 으로 넘긴다(openPeer).
+    if (url.includes('peerwin=1')) return B;
     //  부팅의 세션 조회에 답한다(안 답하면 10초 뒤 로그인 게이트가 다시 덮는다) → 로그인 상태 · 빈 캘린더 주입.
     const sess = posted.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).find((m) => m && m.cmd === 'userSessionGet');
     if (sess) w.eval('__hostReply(' + JSON.stringify(sess.reqId) + ', ' + JSON.stringify({ ok: true, user: ME }) + ')');
@@ -262,13 +272,19 @@ if (!JSDOM) {
   const starBtn = (B, id) => [...B.doc.querySelectorAll('#pkBody .pk-star')].find((b) => b.dataset.login === id);
   const key = (B, el, k) => el.dispatchEvent(new B.w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
   const type = (B, v) => { const i = B.doc.getElementById('pkSearch'); i.value = v; i.dispatchEvent(new B.w.Event('input', { bubbles: true })); };
-  const pvOpen = (B) => { const m = B.doc.getElementById('peerModal'); return !m.classList.contains('hidden') && !m.classList.contains('closing'); };
+  const PW_URL = 'https://tcapp.local/?peerwin=1';
+  //  열람 창 껍데기가 펴져 있는가(?peerwin=1 에서만 펴진다 · 닫기는 OS 창이 맡으므로 웹이 접을 일이 없다).
+  const pvOpen = (X) => !X.doc.getElementById('peerWin').classList.contains('hidden');
+  //  내 창이 호스트에 보낸 열람 창 열기(peerOpen)의 대상들.
+  const peerOpens = (X) => X.posted.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } })
+    .filter((m) => m && m.cmd === 'peerOpen').map((m) => m.loginId);
   //  다음 시험을 위해 깨끗이 — 팝오버·모달을 닫고(페이드 없이) 저장 키·호출 기록·회신표를 비운다.
   async function reset(B) {
     B.ev(`(function(){ try{ if(__pk) pkClose(false); }catch(_){}
       document.querySelectorAll('.overlay').forEach(function(o){ o.classList.remove('closing'); o.classList.add('hidden'); });
       __calls.length = 0; __rep = {}; currentUser = ${JSON.stringify(ME)}; return 1; })()`);
     for (const k of Object.keys(B.w.localStorage)) if (/^tc_peer(Fav|Recent):/.test(k)) B.w.localStorage.removeItem(k);
+    B.posted.length = 0;
     await settle();
   }
   async function openTop(B, rep = membersOk()) {
@@ -276,16 +292,21 @@ if (!JSDOM) {
     B.doc.getElementById('btnPeerPick').click();
     await settle();
   }
-  //  열람 창을 「그 사람」으로 열고 프레임까지 띄운다(성공 경로).
-  async function openPeer(B, id, name, view = null) {
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK));
-    B.ev(`openPeerSchedule(${JSON.stringify(id)}, ${JSON.stringify(name)})`);
-    return landFrame(B, view);
+  //  열람 창(V)을 「그 사람」으로 열고 프레임까지 띄운다(성공 경로). 호스트가 하는 그대로 __peerWinOpen 으로 넘긴다.
+  async function openPeer(X, id, name, view = null) {
+    X.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK));
+    X.ev(`__peerWinOpen(${JSON.stringify({ loginId: id, name, me: ME })})`);
+    return landFrame(X, view);
   }
 
-  let B = null;
-  test('(R) 부팅: 내 창(HOST · 로그인 phmin)이 오류 없이 뜨고 열린 모달이 없다', () => {
+  let B = null, V = null;
+  test('(R) 부팅: 내 창(HOST · 로그인 phmin)이 오류 없이 뜨고 열린 모달이 없다 · 열람 창(?peerwin=1)도 오류 없이 뜬다', () => {
     B = boot(app);
+    V = boot(app, PW_URL);
+    assert.strictEqual(V.ev('PEERWIN'), true);
+    assert.ok(pvOpen(V), '열람 창에서 껍데기가 펴지지 않았다');
+    assert.ok(!pvOpen(B), '내 창에서 열람 껍데기가 보인다');
+    assert.deepStrictEqual(V.errors, [], '열람 창 부팅 중 페이지 오류');
     assert.strictEqual(B.ev('HOST'), true);
     assert.strictEqual(B.ev('currentUser && currentUser.loginId'), 'phmin');
     assert.deepStrictEqual(B.ev('openOverlays().map(function(o){return o.id;}).join(",")'), '', '부팅 뒤 열린 모달이 있다 — 팝오버 시험의 전제가 깨진다');
@@ -413,51 +434,54 @@ if (!JSDOM) {
     B.ev("__rep.membersGet = 'fail'");
     B.doc.querySelector('#pkBody [data-act="retry"]') || B.ev('pkLoad()');
     await settle();
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK));
     openBtn(B, 'ihyoon').click();
     await settle();
     assert.ok(!isOpen(B), '고르면 팝오버가 닫혀야 한다');
-    assert.ok(pvOpen(B), '열람 창이 열리지 않았다');
-    assert.deepStrictEqual(calls(B, 'peerSchedule').map((c) => c[1].loginId), ['ihyoon']);
-    assert.strictEqual(B.doc.getElementById('pvTitle').textContent, '윤인환 님의 일정');
+    assert.deepStrictEqual(peerOpens(B), ['ihyoon'], '호스트에 열람 창을 열라고(peerOpen) 보내지 않았다');
+    assert.deepStrictEqual(calls(B, 'peerSchedule'), [], '내 창이 남의 일정을 직접 조회했다(조회는 열람 창이 한다)');
+    assert.ok(!pvOpen(B), '내 창 안에 열람 화면이 펴졌다');
   });
 
   // ── R4 ──
   test('(R4) 최근: 성공한 열람만 · 맨 앞 · 중복은 앞으로 · 5명 — 실패·권한 없음·뜨기 전 닫힘은 넣지 않는다', async () => {
-    await reset(B);
-    await openPeer(B, 'wblee', '이웅빈');
-    assert.deepStrictEqual(list(B, keyR()), ['wblee']);
-    assert.ok(/\{"peerName":"이웅빈","canWrite":false,"view":null\}/.test(JSON.stringify(frameMeta(B))), JSON.stringify(frameMeta(B)));
-    await openPeer(B, 'ihyoon', '윤인환');
-    await openPeer(B, 'wblee', '이웅빈');
-    assert.deepStrictEqual(list(B, keyR()), ['wblee', 'ihyoon'], '중복을 앞으로 당기지 않았다');
-    for (let i = 0; i < 5; i++) await openPeer(B, 'g0' + i, '김시험0' + i);
-    assert.deepStrictEqual(list(B, keyR()), ['g04', 'g03', 'g02', 'g01', 'g00'], '5명으로 자르지 않았다(최신이 맨 앞)');
+    await reset(V);
+    await openPeer(V, 'wblee', '이웅빈');
+    assert.deepStrictEqual(list(V, keyR()), ['wblee']);
+    assert.ok(/\{"peerName":"이웅빈","canWrite":false,"view":null\}/.test(JSON.stringify(frameMeta(V))), JSON.stringify(frameMeta(V)));
+    await openPeer(V, 'ihyoon', '윤인환');
+    await openPeer(V, 'wblee', '이웅빈');
+    assert.deepStrictEqual(list(V, keyR()), ['wblee', 'ihyoon'], '중복을 앞으로 당기지 않았다');
+    for (let i = 0; i < 5; i++) await openPeer(V, 'g0' + i, '김시험0' + i);
+    assert.deepStrictEqual(list(V, keyR()), ['g04', 'g03', 'g02', 'g01', 'g00'], '5명으로 자르지 않았다(최신이 맨 앞)');
     //  실패 · 권한 없음
-    const before = getLS(B, keyR());
-    B.ev("__rep.peerSchedule = {ok:false, error:'통신 실패'}; openPeerSchedule('b1', '차은우')");
+    const before = getLS(V, keyR());
+    V.ev("__rep.peerSchedule = {ok:false, error:'통신 실패'}; openPeerSchedule('b1', '차은우')");
     await settle();
-    B.ev("__rep.peerSchedule = {ok:true, allowed:false}; openPeerSchedule('b1', '차은우')");
+    V.ev("__rep.peerSchedule = {ok:true, allowed:false}; openPeerSchedule('b1', '차은우')");
     await settle();
-    assert.ok(/권한이 없습니다/.test(B.doc.getElementById('pvHost').textContent), '전제: 권한 없음 안내');
-    assert.strictEqual(getLS(B, keyR()), before, '실패·권한 없음이 최근에 들어갔다');
-    //  뜨기 전에 닫음 — 프레임은 생겼지만 주입 전 → 넣지 않는다
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + "; openPeerSchedule('ihyoon', '윤인환')");
+    assert.ok(/권한이 없습니다/.test(V.doc.getElementById('pvHost').textContent), '전제: 권한 없음 안내');
+    assert.strictEqual(getLS(V, keyR()), before, '실패·권한 없음이 최근에 들어갔다');
+    //  뜨기 전에 다른 사람으로 바뀜 — 프레임은 생겼지만 주입 전 → 넣지 않는다
+    V.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + "; openPeerSchedule('ihyoon', '윤인환')");
     await settle();
-    const stale = B.ev("(function(){ var f = document.querySelector('#pvHost iframe'); if(!f) return 0; f.contentWindow.__applyState = function(){}; closePeerFrame(); f.dispatchEvent(new Event('load')); return 1; })()");
+    const stale = V.ev("(function(){ var f = document.querySelector('#pvHost iframe'); if(!f) return 0; f.contentWindow.__applyState = function(){}; closePeerFrame(); f.dispatchEvent(new Event('load')); return 1; })()");
     assert.strictEqual(stale, 1, '전제: 프레임이 생겼다');
-    assert.strictEqual(getLS(B, keyR()), before, '주입 전에 닫았는데(늦게 온 load) 최근에 들어갔다');
+    assert.strictEqual(getLS(V, keyR()), before, '주입 전에 닫았는데(늦게 온 load) 최근에 들어갔다');
   });
 
   test('(R4) 「구성원 보기」에서 연 것도 최근에 남는다(입구와 무관) · 즐겨찾기에 있는 사람은 최근에 두 줄로 안 나온다', async () => {
-    await reset(B);
-    B.ev('__rep.membersGet = ' + JSON.stringify(membersOk()) + '; __rep.peerSchedule = ' + JSON.stringify(PEER_OK));
+    await reset(B); await reset(V);
+    B.ev('__rep.membersGet = ' + JSON.stringify(membersOk()));
     await B.ev('openMembers()');
     const row = B.doc.querySelector('#mbList .mb-row.is-link[data-login="ihyoon"]');
     assert.ok(row, '전제: 구성원 보기에 윤인환 행');
     row.click();
-    await landFrame(B);
-    assert.deepStrictEqual(list(B, keyR()), ['ihyoon'], '구성원 보기에서 연 사람이 최근에 없다');
+    assert.deepStrictEqual(peerOpens(B), ['ihyoon'], '구성원 보기 행이 열람 창 열기(peerOpen)를 보내지 않았다');
+    //  호스트가 하는 일: 그 대상을 열람 창에 넘긴다 → 최근은 열람 창의 주입 성공 자리에서 남는다(입구와 무관)
+    const sent = B.posted.map((s) => JSON.parse(s)).find((m) => m.cmd === 'peerOpen');
+    await openPeer(V, sent.loginId, sent.name);
+    assert.deepStrictEqual(list(V, keyR()), ['ihyoon'], '구성원 보기에서 연 사람이 최근에 없다');
+    B.ev("closeModal('#membersModal')");
     await reset(B);
     setLS(B, keyF(), [{ loginId: 'wblee', name: '이웅빈' }]);
     setLS(B, keyR(), [{ loginId: 'wblee', name: '이웅빈' }, { loginId: 'ihyoon', name: '윤인환' }]);
@@ -541,56 +565,61 @@ if (!JSDOM) {
   });
 
   // ── R7 ──
-  test('(R7) 열람 창 ▾ 바꾸기: 같은 팝오버가 제목 아래(모달 안)에 뜨고 지금 보는 사람은 「· 보는 중」 · 누를 수 없음', async () => {
-    await reset(B);
-    setLS(B, keyR(), [{ loginId: 'ihyoon', name: '윤인환' }]);
-    await openPeer(B, 'wblee', '이웅빈', { y: 2026, m: 5, sel: '2026-06-11' });
-    B.ev('__rep.membersGet = ' + JSON.stringify(membersOk()));
-    B.doc.getElementById('pvSwitch').click();
+  test('(R7) 열람 창 ▾ 바꾸기: 같은 팝오버가 제목 아래(열람 창 머리 줄)에 뜨고 지금 보는 사람은 「· 보는 중」 · 누를 수 없음', async () => {
+    await reset(V);
+    setLS(V, keyR(), [{ loginId: 'ihyoon', name: '윤인환' }]);
+    await openPeer(V, 'wblee', '이웅빈', { y: 2026, m: 5, sel: '2026-06-11' });
+    V.ev('__rep.membersGet = ' + JSON.stringify(membersOk()));
+    V.doc.getElementById('pvSwitch').click();
     await settle();
-    assert.ok(isOpen(B) && pop(B).parentElement === B.doc.querySelector('#peerModal .modal-head'), '팝오버가 열람 창 머리 줄 아래에 뜨지 않았다');
-    assert.ok(pop(B).classList.contains('pk-in'));
-    assert.strictEqual(B.doc.getElementById('pvSwitch').getAttribute('aria-expanded'), 'true');
-    assert.strictEqual(active(B), 'pkSearch');
-    //  ★ 2026-10-02 실 위젯 실측 — 열람 창이 열릴 때 body 자식이던 팝오버에 붙은 inert·aria-hidden 이 모달 머리로 옮겨도 남아
-    //    검색 칸이 포커스를 못 받았다(jsdom 은 inert 를 따르지 않아 위 active 판정만으로는 못 잡는다 → 속성을 직접 본다).
-    assert.ok(!pop(B).hasAttribute('inert') && !pop(B).hasAttribute('aria-hidden'), '모달 안 팝오버에 inert/aria-hidden 이 남았다 — 실 위젯에서 검색 칸이 포커스를 못 받는다');
-    const rec = sec(B, 'Recent');
+    assert.ok(isOpen(V) && pop(V).parentElement === V.doc.querySelector('#peerWin .modal-head'), '팝오버가 열람 창 머리 줄 아래에 뜨지 않았다');
+    assert.ok(pop(V).classList.contains('pk-in'));
+    assert.strictEqual(V.doc.getElementById('pvSwitch').getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(active(V), 'pkSearch');
+    //  ★ 2026-10-02 실 위젯 실측 — 팝오버에 inert·aria-hidden 이 남으면 검색 칸이 포커스를 못 받는다(jsdom 은 inert 를 따르지 않는다 → 속성을 직접 본다).
+    assert.ok(!pop(V).hasAttribute('inert') && !pop(V).hasAttribute('aria-hidden'), '머리 줄 팝오버에 inert/aria-hidden 이 남았다 — 실 위젯에서 검색 칸이 포커스를 못 받는다');
+    const rec = sec(V, 'Recent');
     assert.deepStrictEqual(rec.map((x) => x.id), ['wblee', 'ihyoon'], '최근 목록(방금 연 이웅빈 + 윤인환)');
     assert.ok(rec[0].off && /이웅빈 선임 \(보는 중\)/.test(rec[0].text) && rec[0].tip === '지금 보고 있는 사람입니다', JSON.stringify(rec[0]));
-    B.ev('__calls.length = 0');
-    openBtn(B, 'wblee').click();
-    assert.deepStrictEqual(calls(B), [], '보는 중인 사람을 다시 열었다');
-    //  Esc — 팝오버만 닫고 열람 창은 그대로 · 포커스는 ▾ 로
-    key(B, B.doc.getElementById('pkSearch'), 'Escape');
-    assert.ok(!isOpen(B), 'Esc 로 팝오버가 닫히지 않았다');
-    assert.ok(pvOpen(B), 'Esc 가 열람 창까지 닫았다 — 팝오버만 닫아야 한다');
-    assert.strictEqual(active(B), 'pvSwitch');
-    assert.strictEqual(pop(B).parentElement, B.doc.body, '닫힌 팝오버가 열람 창 안에 남았다(다음에 열 때 숨은 검색 칸이 포커스를 집는다)');
-    assert.ok(pop(B).hasAttribute('inert'), '열람 창이 열린 채 body 로 돌아온 팝오버가 inert 가 아니다(모달 뒤에서 포커스를 받는다)');
+    V.ev('__calls.length = 0');
+    openBtn(V, 'wblee').click();
+    assert.deepStrictEqual(calls(V), [], '보는 중인 사람을 다시 열었다');
+    //  Esc — 팝오버만 닫고 열람 껍데기는 그대로 · 포커스는 ▾ 로
+    key(V, V.doc.getElementById('pkSearch'), 'Escape');
+    assert.ok(!isOpen(V), 'Esc 로 팝오버가 닫히지 않았다');
+    assert.ok(pvOpen(V), 'Esc 가 열람 화면을 접었다 — 팝오버만 닫아야 한다');
+    assert.strictEqual(active(V), 'pvSwitch');
+    assert.strictEqual(pop(V).parentElement, V.doc.body, '닫힌 팝오버가 열람 창 머리 줄에 남았다(다음에 열 때 숨은 검색 칸이 포커스를 집는다)');
+    assert.ok(!pop(V).hasAttribute('inert'), '열람 창에는 모달이 없는데 body 로 돌아온 팝오버가 inert 다(다음에 열 때 포커스를 못 받는다)');
   });
 
-  test('(R7) 바꾸기: 창을 닫지 않고 그 자리에서 다른 사람으로 — 새 프레임 · 보던 달(meta.view) 잇기 · 최근 앞으로', async () => {
-    B.doc.getElementById('pvSwitch').click();
+  test('(R7) 바꾸기: 창을 닫지 않고 그 자리에서 다른 사람으로 — 새 프레임 · 보던 달(meta.view) 잇기 · 최근 앞으로 · 문서 제목(창 제목)도 바뀐다', async () => {
+    V.doc.getElementById('pvSwitch').click();
     await settle();
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + '; __calls.length = 0');
-    const oldFrame = B.doc.querySelector('#pvHost iframe');
-    openBtn(B, 'ihyoon').click();
-    assert.ok(pvOpen(B), '사람을 바꾸는데 열람 창이 닫혔다');
-    assert.ok(!isOpen(B), '고르면 팝오버는 닫혀야 한다');
-    assert.strictEqual(B.doc.getElementById('pvTitle').textContent, '윤인환 님의 일정');
-    assert.deepStrictEqual(calls(B, 'peerSchedule').map((c) => c[1].loginId), ['ihyoon']);
-    assert.strictEqual(active(B), 'pvSwitch', '바꾼 뒤 포커스가 ▾ 로 돌아오지 않았다');
-    await landFrame(B);
-    const frames = B.doc.querySelectorAll('#pvHost iframe');
+    V.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + '; __calls.length = 0');
+    const oldFrame = V.doc.querySelector('#pvHost iframe');
+    openBtn(V, 'ihyoon').click();
+    assert.ok(pvOpen(V), '사람을 바꾸는데 열람 화면이 접혔다');
+    assert.ok(!isOpen(V), '고르면 팝오버는 닫혀야 한다');
+    assert.strictEqual(V.doc.getElementById('pvTitle').textContent, '윤인환 님의 일정');
+    assert.strictEqual(V.doc.title, '윤인환 님의 일정', '문서 제목이 안 바뀌었다(호스트가 창 제목으로 쓴다)');
+    assert.deepStrictEqual(calls(V, 'peerSchedule').map((c) => c[1].loginId), ['ihyoon']);
+    assert.deepStrictEqual(peerOpens(V), [], '열람 창 안의 바꾸기가 호스트에 창 열기를 보냈다(그 자리에서 바꿔야 한다)');
+    assert.strictEqual(active(V), 'pvSwitch', '바꾼 뒤 포커스가 ▾ 로 돌아오지 않았다');
+    await landFrame(V);
+    const frames = V.doc.querySelectorAll('#pvHost iframe');
     assert.strictEqual(frames.length, 1); assert.notStrictEqual(frames[0], oldFrame, '프레임을 새로 만들지 않았다');
-    assert.ok(!B.doc.body.contains(oldFrame), '옛 프레임이 남았다');
-    assert.deepStrictEqual(frameMeta(B).view, { y: 2026, m: 5, sel: '2026-06-11' }, '보던 달을 새 프레임에 넘기지 않았다');
-    assert.strictEqual(frameMeta(B).peerName, '윤인환');
-    assert.deepStrictEqual(list(B, keyR()), ['ihyoon', 'wblee']);
-    //  툴바·구성원 보기에서 새로 열 때는 잇지 않는다(그 창의 첫 달 = 오늘)
-    await openPeer(B, 'g01', '김시험01');
-    assert.strictEqual(frameMeta(B).view, null, '바꾸기가 아닌데 달을 이었다');
+    assert.ok(!V.doc.body.contains(oldFrame), '옛 프레임이 남았다');
+    assert.deepStrictEqual(frameMeta(V).view, { y: 2026, m: 5, sel: '2026-06-11' }, '보던 달을 새 프레임에 넘기지 않았다');
+    assert.strictEqual(frameMeta(V).peerName, '윤인환');
+    assert.deepStrictEqual(list(V, keyR()), ['ihyoon', 'wblee']);
+    //  메인 창(툴바·구성원 보기)에서 다른 사람을 새로 열 때는 잇지 않는다(그 사람의 첫 달 = 오늘)
+    await openPeer(V, 'g01', '김시험01');
+    assert.strictEqual(frameMeta(V).view, null, '바꾸기가 아닌데 달을 이었다');
+    //  같은 사람을 메인 창에서 다시 고르면 보던 달을 잇는다(다시 읽어 권한도 새로 판정한다)
+    await openPeer(V, 'g01', '김시험01', { y: 2026, m: 1, sel: '2026-02-03' });
+    await openPeer(V, 'g01', '김시험01');
+    assert.deepStrictEqual(frameMeta(V).view, { y: 2026, m: 1, sel: '2026-02-03' }, '같은 사람을 다시 열었는데 보던 달을 잃었다');
   });
 
   test('(R7) 프레임 쪽: meta.view 를 받으면 그 달로 그린다(보기 방식·밀도는 저장값 그대로) · 이상값은 무시', () => {
@@ -617,7 +646,8 @@ if (!JSDOM) {
 
   // ── R8 ──
   test('(R8) 열람 창 ☆/★ = 저장 — 누르면 즐겨찾기 · 팝오버의 ★ 와 양방향으로 같다', async () => {
-    await reset(B);
+    await reset(V);
+    const B = V;   // 이 시험은 열람 창 안에서만 돈다(☆/★ 와 ▾ 바꾸기의 팝오버)
     await openPeer(B, 'wblee', '이웅빈');
     const fv = B.doc.getElementById('pvFav');
     assert.ok(!fv.classList.contains('hidden'));
@@ -667,11 +697,11 @@ if (!JSDOM) {
     type(B, '책임');   // 윤인환(책임 · 최근에 있음 → 최근 묶음에서 걸러져 남는다) · 차은우(책임연구원 · 범위 밖 → 결과)
     assert.deepStrictEqual(sec(B, 'Recent').map((x) => [x.id, x.off]), [['ihyoon', false]], '검색어로 최근을 거르지 않았다');
     assert.deepStrictEqual(sec(B, 'Result').map((x) => [x.id, x.off]), [['b1', true]], '최근에 이미 보인 사람이 결과에 또 나왔다');
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + '; __calls.length = 0');
+    B.posted.length = 0;
     key(B, B.doc.getElementById('pkSearch'), 'Enter');
     await settle();
-    assert.deepStrictEqual(calls(B, 'peerSchedule').map((c) => c[1].loginId), ['ihyoon']);
-    assert.ok(pvOpen(B) && !isOpen(B));
+    assert.deepStrictEqual(peerOpens(B), ['ihyoon'], 'Enter 가 첫 열 수 있는 행으로 열람 창을 열지 않았다');
+    assert.ok(!isOpen(B));
   });
 
   test('(R9) ⋯ 접기 항목으로 열면 ⋯ 버튼 아래에 뜨고 Esc 로 ⋯ 버튼에 포커스가 돌아온다', async () => {
@@ -685,21 +715,25 @@ if (!JSDOM) {
     assert.strictEqual(active(B), 'btnMore');
   });
 
-  test('(R) 마무리: 조작 내내 페이지 오류 0 · 내 창이 쓰기 명령을 보내지 않았다(사람 고르기 경로)', async () => {
-    await reset(B);
+  test('(R) 마무리: 조작 내내 페이지 오류 0 · 내 창이 쓰기 명령을 보내지 않았다(사람 고르기 경로) · 열람 창은 읽기 넷만 보냈다', async () => {
     assert.deepStrictEqual(B.errors, [], '페이지 오류: ' + B.errors.slice(0, 2).join(' | '));
     const posts = B.posted.map((s) => { try { return JSON.parse(s).cmd; } catch (_) { return '?'; } });
     const writes = posts.filter((c) => /save|replace|import|delete|update|netcus|report/i.test(String(c)));
     assert.deepStrictEqual(writes, [], '쓰기로 보이는 명령이 나갔다: ' + writes.join(','));
-    B.close();
+    assert.deepStrictEqual(V.errors, [], '열람 창 페이지 오류: ' + V.errors.slice(0, 2).join(' | '));
+    const vposts = V.posted.map((s) => { try { return JSON.parse(s).cmd; } catch (_) { return '?'; } });
+    assert.deepStrictEqual(vposts.filter((c) => !['peerWinReady', 'peerSchedule', 'membersGet', 'peerMine'].includes(c)), [],
+      '열람 창이 읽기 넷 밖의 명령을 보냈다: ' + vposts.join(','));
+    B.close(); V.close();
   });
 
   // ══════════════════════════════════════════════════════════════════════
   // (M) 변이 — 판정이 정말 무는가
   // ══════════════════════════════════════════════════════════════════════
   async function recentOnlyOnSuccess(src) {
-    const X = boot(src);
+    const X = boot(src, PW_URL);
     try {
+      X.ev('currentUser = ' + JSON.stringify(ME));   // 호스트가 __peerWinOpen 의 me 로 이미 알려 준 상태(최근 키가 선다)
       X.ev("__rep.peerSchedule = {ok:true, allowed:false}; openPeerSchedule('b1', '차은우')");
       await settle();
       assert.deepStrictEqual(list(X, keyR()), [], '권한 없음이 최근에 들어갔다');
@@ -720,21 +754,25 @@ if (!JSDOM) {
     bad = mutate(bad, "  pvSyncFav();                                       // K10", "  pkNoteRecent(loginId, name); pvSyncFav();   // K10");
     await assert.rejects(() => recentOnlyOnSuccess(bad), /권한 없음이 최근에 들어갔다/);
   });
-  async function escKeepsPeerModal(src) {
+  //  K11 — 팝오버의 Esc 는 팝오버만 닫는다. 2026-10-16 부터 열람 화면은 모달이 아니라 따로 뜨는 창이라, 새는 Esc 가 닫을 모달이 없다.
+  //    대신 내 창의 전역 Esc 마지막 단계(맨 앞에 띄우기 해제 = hpost focus)가 함께 돈다 → 그것으로 잰다.
+  async function escKeepsOthers(src) {
     const X = boot(src);
     try {
-      await openPeer(X, 'wblee', '이웅빈');
+      X.ev('window.__big = true');   // 맨 앞에 띄우기 켜짐(호스트가 __setFocus(true) 로 알린 상태)
       X.ev('__rep.membersGet = ' + JSON.stringify(membersOk()));
-      X.doc.getElementById('pvSwitch').click();
+      X.doc.getElementById('btnPeerPick').click();
       await settle();
+      X.posted.length = 0;
       key(X, X.doc.getElementById('pkSearch'), 'Escape');
       assert.ok(!isOpen(X), 'Esc 로 팝오버가 닫히지 않았다');
-      assert.ok(pvOpen(X), 'Esc 가 열람 창까지 닫았다');
+      const cmds = X.posted.map((s) => JSON.parse(s).cmd);
+      assert.ok(!cmds.includes('focus'), '팝오버의 Esc 가 맨 앞에 띄우기까지 풀었다(전역 Esc 로 샜다)');
     } finally { X.close(); }
   }
-  test('(변이) K11: 원본은 「바꾸기의 Esc 는 팝오버만 닫는다」를 통과한다(대조군)', () => escKeepsPeerModal(app));
-  test('(변이) K11: Esc 캡처의 stopImmediatePropagation 을 빼면 「바꾸기」의 Esc 가 열람 창까지 닫아 잡힌다', async () => {
+  test('(변이) K11: 원본은 「팝오버의 Esc 는 팝오버만 닫는다」를 통과한다(대조군)', () => escKeepsOthers(app));
+  test('(변이) K11: Esc 캡처의 stopImmediatePropagation 을 빼면 팝오버의 Esc 가 전역 Esc(맨 앞에 띄우기 해제)로 새어 잡힌다', async () => {
     const bad = mutate(app, "    ev.preventDefault(); ev.stopImmediatePropagation();\n    pkClose(true);", '    pkClose(true);');
-    await assert.rejects(() => escKeepsPeerModal(bad), /열람 창까지 닫았다/);
+    await assert.rejects(() => escKeepsOthers(bad), /전역 Esc 로 샜다/);
   });
 }

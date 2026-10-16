@@ -52,7 +52,7 @@ class Cdp {
   static async attach(port) {
     const list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json();
     const t = (list || []).filter(x => x.type === 'page' && x.webSocketDebuggerUrl)
-      .find(x => /tcapp\.local/i.test(x.url || ''));
+      .find(x => /tcapp\.local/i.test(x.url || '') && !/peerwin=1/.test(x.url || ''));   // 열람 창(?peerwin=1)은 메인 창이 아니다
     if (!t) throw new Error(`CDP page 타겟이 없습니다(포트 ${port}) — 위젯을 TC_DEBUG_PORT=${port} 로 띄웠나요?`);
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;

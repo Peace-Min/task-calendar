@@ -18,6 +18,12 @@
  *        대상이 든 조직(seedTarget 의 org_id)을 트리(넓음)·경로(좁음)로 고른다 → 대상 행(직속 행 수 = DB 활성 인원 · 나 제외) →
  *        열람 → 그 사람 일정 · postMessage 0 · DB 무변화(누적 검증). 저장 키는 ⑤ 와 같은 finally 가 되돌린다.
  *
+ *  ★★ 2026-10-16(docs/WINDOW-UI.md §4) — 열람 화면이 메인 창 안의 모달(#peerModal)이 아니라 **따로 뜨는 창**(호스트 PeerWindow,
+ *    같은 HTML 을 ?peerwin=1 로 띄운다)이 됐다. 그래서 CDP 대상이 둘이다: main = 메인 창(입구 · 내 state · 통제군 hpost),
+ *    cdp = 열람 창(?peerwin=1 · 머리줄 · ▾ 사람 바꾸기 · ☆/★ · #pvHost 의 ?peer=1 프레임). 열람 창은 하나라
+ *    라운드마다 메인 창에서 다시 열어도 **같은 대상(창)** 이 다시 쓰인다. 닫기는 Windows 창 닫기(WM_CLOSE)로 한다.
+ *    호스트 거름(읽기 넷만 받는다)도 여기서 실제로 본다 — 열람 창 최상위에서 쓰기 명령을 직접 쏘면 거절 회신과 로그 한 줄이 와야 한다.
+ *
  *  ★★ 2026-09-09 — 이 시험이 낡아서 실패했던 자리(고친 경위):
  *    2026-09-07 에 C4.1 「내 일정 겹쳐보기」가 들어왔고 **기본값이 켬**이다. 그래서 열람 창에는
  *    대상 3건이 아니라 3 + 내 겹 이 뜬다. 이 시험은 겹을 모른 채 `state.entries.length === 3` 을
@@ -49,7 +55,7 @@
  *    실제로 반응하는지 본다. 반응하지 않으면 위의 '로그 0줄'은 아무 의미가 없다.
  *
  *  실행:
- *    TC_DEBUG_PORT=9222 로 위젯을 띄운 뒤(로그인 상태)
+ *    TC_DEBUG_PORT=9222 로 위젯을 띄운 뒤(로그인 상태 · 창이 화면에 보이게)
  *    TC_TEST_DB_ADMIN_PW=… node tests/loop-peer-frame.mjs [--rounds=8]
  * ==========================================================================*/
 import { spawnSync } from 'node:child_process';
@@ -101,6 +107,7 @@ const FORBIDDEN = [
   [/보고 기록/, '보고 기록 — 열람 창이 회사 보고를 남겼다'],
   [/netcus/i, 'netcus — 열람 창이 회사 시스템과 통신했다'],
   [/부팅 조회/, '부팅 조회 — 열람 창이 ready 를 보내 **내** 캘린더를 받았다'],
+  [/열람 창 명령 거부/, '열람 창 명령 거부 — 열람 창 웹이 읽기 넷 밖의 명령을 보냈다(웹 봉인 PEERWIN_CMD 가 샜다)'],
 ];
 function logLines() {
   if (!existsSync(LOG)) throw new Error('위젯 로그를 찾지 못했다: ' + LOG);
@@ -129,15 +136,13 @@ async function waitLog(sinceIdx, re, want = 1, ms = 8000) {
 /* ── 최소 CDP ─────────────────────────────────────────────────────────── */
 class Cdp {
   #ws = null; #id = 0; #p = new Map();
-  static async attach(port) {
-    let list;
-    try { list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
-    catch (e) { throw new Error(`CDP 에 붙지 못했다(포트 ${port}) — 위젯을 TC_DEBUG_PORT=${port} 로 띄웠나요?`); }
-    //  ★ ?peer=1 프레임을 제외한다 — 우리가 조종할 것은 **부모** 창이다.
-    const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl
-      && /tcapp\.local/i.test(x.url || '') && !/peer=1/.test(x.url || ''))[0];
-    if (!t) throw new Error('부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
+  //  kind: 'main' = 메인 창(?peer=1 프레임과 ?peerwin=1 열람 창을 뺀 tcapp.local) · 'peer' = 열람 창(?peerwin=1).
+  static async attach(port, kind = 'main') {
+    const t = await peerTarget(port, kind);
+    if (!t) throw new Error(kind === 'peer' ? '열람 창(?peerwin=1) page 타겟이 없다 — 메인 창에서 열지 못했다'
+                                            : '메인 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
     const c = new Cdp();
+    c.targetId = t.id;
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;
     await new Promise((res, rej) => {
       const to = setTimeout(() => rej(new Error('WS 시간 초과')), 10000);
@@ -172,6 +177,55 @@ class Cdp {
   close() { try { this.#ws.close(); } catch { } }
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function cdpList(port) {
+  try { return await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
+  catch (e) { throw new Error(`CDP 에 붙지 못했다(포트 ${port}) — 위젯을 TC_DEBUG_PORT=${port} 로 띄웠나요?`); }
+}
+const isMainUrl = (u) => /tcapp\.local/i.test(u || '') && !/peer(win)?=1/.test(u || '');
+const isPeerWinUrl = (u) => /tcapp\.local/i.test(u || '') && /peerwin=1/.test(u || '');
+async function peerTarget(port, kind) {
+  const list = await cdpList(port);
+  return (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl && (kind === 'peer' ? isPeerWinUrl(x.url) : isMainUrl(x.url)))[0] || null;
+}
+async function peerWinTargets(port) { return (await cdpList(port) || []).filter((x) => x.type === 'page' && isPeerWinUrl(x.url)); }
+//  열람 창을 메인 창의 입구로 연다(openPeerSchedule → 호스트 peerOpen). 열람 창 대상이 뜰 때까지 기다려 붙는다(이미 붙어 있으면 그대로).
+async function openPeerWin(main, cur, login, name) {
+  await main.ev(`openPeerSchedule(${JSON.stringify(login)}, ${JSON.stringify(name)})`);
+  for (let i = 0; i < 60; i++) {
+    const t = await peerTarget(PORT, 'peer');
+    if (t) {
+      if (cur && cur.targetId === t.id) return cur;
+      if (cur) cur.close();
+      const c = await Cdp.attach(PORT, 'peer');
+      //  열람 창 웹이 막 떴으면 껍데기와 대상 주입(__peerWinOpen)이 끝날 때까지 기다린다.
+      for (let k = 0; k < 40; k++) { if (await c.ev("typeof __pv !== 'undefined' && !!__pv").catch(() => false)) break; await sleep(150); }
+      return c;
+    }
+    await sleep(250);
+  }
+  throw new Error('열람 창(?peerwin=1)이 뜨지 않았다 — 호스트가 peerOpen 을 받지 못했거나 PeerWindow 를 만들지 못했다');
+}
+//  열람 창을 사람이 닫듯 닫는다(Windows 창에 WM_CLOSE). 웹에는 닫는 문이 없다(창 테두리의 닫기 단추가 맡는다).
+function closePeerWinOs() {
+  const ps = `Add-Type @"
+using System; using System.Text; using System.Runtime.InteropServices;
+public static class PW { public delegate bool EP(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EP f, IntPtr l);
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l); }
+"@
+$ids = @(Get-Process TaskCalendarWidget -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }); $n = 0
+[void][PW]::EnumWindows({ param($h, $l) $p = 0; [void][PW]::GetWindowThreadProcessId($h, [ref]$p)
+  if ($ids -contains [int]$p -and [PW]::IsWindowVisible($h)) { $sb = New-Object System.Text.StringBuilder 256; [void][PW]::GetWindowText($h, $sb, 256)
+    $t = $sb.ToString(); if ($t -like '*님의 일정' -or $t -eq '다른 사람 일정') { [void][PW]::PostMessage($h, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero); $script:n++ } }
+  return $true }, [IntPtr]::Zero)
+"closed=$n"`;
+  const r = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
+  const m = /closed=(\d+)/.exec(r.stdout || '');
+  return m ? Number(m[1]) : -1;
+}
 
 /* ══════════════════════════════════════════════════════════════════════
  *  C4.1 「내 일정 겹쳐보기」를 다루는 도구들
@@ -379,7 +433,7 @@ async function pkState(cdp) {
     const rows=[...document.querySelectorAll("#pkBody [data-sec] .pk-row")].map((r)=>{const o=r.querySelector(".pk-open"), s=r.querySelector(".pk-star");
       return {sec:r.closest("[data-sec]").dataset.sec, id:o.dataset.login, text:o.textContent.replace(/\\s+/g," ").trim(),
               off:o.getAttribute("aria-disabled")==="true", star:s ? s.getAttribute("aria-pressed") : null};});
-    return JSON.stringify({open:!!p && !p.classList.contains("hidden"), inModal:!!(p && p.closest("#peerModal")),
+    return JSON.stringify({open:!!p && !p.classList.contains("hidden"), inModal:!!(p && p.closest("#peerWin")),
       status:(typeof __pk!=="undefined" && __pk) ? __pk.status : null, focus:(document.activeElement||{}).id||"", rows});})()`));
 }
 async function pkWait(cdp) {
@@ -396,10 +450,12 @@ async function pkClickRow(cdp, login, act = 'open') {
     if(!b) return false; b.click(); return true;})()`);
 }
 //  열람 프레임이 그 사람 데이터로 떴나 — 조회·주입이 끝날 때까지 기다린다(프레임 교체 중이면 옛 것을 읽지 않게 제목도 함께 본다).
+//  ★ 같은 사람을 다시 열 때는 옛 프레임에 표시(data-old)를 해 두고 새 프레임만 기다린다(markOldFrame) — 제목만 보면 옛 것을 읽는다.
+async function markOldFrame(cdp) { await cdp.ev(`(()=>{const f=document.querySelector("#pvHost iframe"); if(f) f.dataset.old="1"; return 1;})()`); }
 async function waitPeerFrame(cdp, title) {
   for (let i = 0; i < 60; i++) {
     await sleep(200);
-    const r = JSON.parse(await cdp.ev(`(()=>{const f=document.querySelector("#pvHost iframe");
+    const r = JSON.parse(await cdp.ev(`(()=>{const f=document.querySelector("#pvHost iframe:not([data-old])");
       let n=-1; try{ n = f && f.contentWindow && f.contentWindow.__test ? f.contentWindow.__test.counts().entries : -1; }catch(_){}
       return JSON.stringify({n, title:(document.getElementById("pvTitle")||{}).textContent||"", frames:document.querySelectorAll("#pvHost iframe").length});})()`));
     if (r.n >= 0 && r.title === title + ' 님의 일정') return r;
@@ -413,7 +469,8 @@ console.log('═'.repeat(72));
 console.log(`타인 일정 열람 창 — 실동작 루프 (라운드 ${ROUNDS} · 실 위젯 · 실 DB)`);
 console.log('═'.repeat(72));
 
-let cdp, TUID = 0, TU2ID = 0;
+let cdp = null, main = null, TUID = 0, TU2ID = 0, PEER_TID = '';
+let REF_SKIP = null;   // 호스트 거름 시험이 일부러 낸 거절 로그 구간 [시작, 끝)
 //  사람이 골라 둔 보기 방식(tc_peerLayout) — 시험이 라운드마다 겹쳐 보기·나란히 보기를 오가므로 끝나면 이 값으로 되돌린다.
 //  undefined = 아직 못 읽음(되돌리지 않는다) · null = 저장값 없음(지운다).
 let LAYOUT0;
@@ -423,13 +480,15 @@ let PK0, PK_KEYS = null;
 try {
   TUID = seedTarget();
   TU2ID = seedTarget2();
-  cdp = await Cdp.attach(PORT);
-  //  ★ 부모와 열람 프레임은 같은 출처라 localStorage 가 같다 — 부모에서 읽고 되돌린다.
-  LAYOUT0 = await cdp.ev("(()=>{ try{ return localStorage.getItem('tc_peerLayout'); }catch(_){ return null; } })()");
+  main = await Cdp.attach(PORT, 'main');
+  //  시작할 때 열람 창이 떠 있으면 닫고 시작한다(앞 실행이 남긴 창 · 창이 처음 만들어지는 경로도 보려고).
+  if ((await peerWinTargets(PORT)).length) { closePeerWinOs(); await sleep(1200); }
+  //  ★ 메인 창, 열람 창, 열람 프레임은 같은 출처·같은 WebView2 환경이라 localStorage 가 하나다 — 메인 창에서 읽고 되돌린다.
+  LAYOUT0 = await main.ev("(()=>{ try{ return localStorage.getItem('tc_peerLayout'); }catch(_){ return null; } })()");
 
-  const me = String(await cdp.ev("(typeof currentUser!=='undefined' && currentUser && currentUser.loginId) || ''")).trim();
+  const me = String(await main.ev("(typeof currentUser!=='undefined' && currentUser && currentUser.loginId) || ''")).trim();
   PK_KEYS = { fav: 'tc_peerFav:' + me, recent: 'tc_peerRecent:' + me };
-  PK0 = JSON.parse(await cdp.ev(`JSON.stringify({ fav: localStorage.getItem(${JSON.stringify(PK_KEYS.fav)}), recent: localStorage.getItem(${JSON.stringify(PK_KEYS.recent)}) })`));
+  PK0 = JSON.parse(await main.ev(`JSON.stringify({ fav: localStorage.getItem(${JSON.stringify(PK_KEYS.fav)}), recent: localStorage.getItem(${JSON.stringify(PK_KEYS.recent)}) })`));
   const MYID = num(`SELECT user_id FROM app_user WHERE login_id='${me.replace(/'/g, "''")}'`);
   if (!MYID) throw new Error(`로그인 사용자를 찾지 못했다(login='${me}')`);
   console.log(`\n로그인 ${me}(user_id=${MYID}) · 대상 ${TU}(user_id=${TUID}) · 일정 ${TITLES.length}건 심음\n`);
@@ -444,13 +503,17 @@ try {
     tgt2Ent: num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${TU2ID}`),
     tgt2Rev: num(`SELECT rev FROM cal_user_rev WHERE user_id=${TU2ID}`),
   };
-  const myStateBase = String(await cdp.ev('state.entries.length + "/" + state.categories.length'));
+  const myStateBase = String(await main.ev('state.entries.length + "/" + state.categories.length'));
   const logBase = logLines().length;
   console.log('기준선:', JSON.stringify(base), '· 화면 state', myStateBase);
 
   for (let r = 1; r <= ROUNDS; r++) {
-    //  ① 열기
-    await cdp.ev(`openPeerSchedule(${JSON.stringify(TU)}, "열람대상")`);
+    //  ① 열기 — 메인 창의 입구로(호스트가 열람 창을 만들거나 앞으로 가져와 대상을 바꾼다)
+    cdp = await openPeerWin(main, cdp, TU, '열람대상');
+    if (r === 1) PEER_TID = cdp.targetId;
+    const wins = await peerWinTargets(PORT);
+    ok(`R${r} 열람 창은 하나다(라운드마다 다시 열어도 같은 창을 다시 쓴다)`, wins.length === 1 && wins[0].id === PEER_TID,
+       `열람 창 대상 ${wins.length}개 · ${wins.map((w) => w.id === PEER_TID ? '첫 창' : '새 창').join(',')}`);
     let loaded = false;
     for (let i = 0; i < 40; i++) {
       await sleep(150);
@@ -460,7 +523,7 @@ try {
       if (Number(n) >= 0) { loaded = true; break; }
     }
     ok(`R${r} 열람 창이 뜨고 데이터가 들어온다`, loaded);
-    if (!loaded) { await cdp.ev('closeModal("#peerModal")'); continue; }
+    if (!loaded) continue;
 
     //  ①-00 보기 방식을 **겹쳐 보기**로 먼저 세운다 — 아래 ①~①' 은 겹쳐 보기의 명제다.
     //  ★ 나란히 보기에서는 내 겹이 토글과 무관하게 통과하므로(S9) 「겹을 끄면 대상 것만」 이 원리적으로 성립하지 않는다.
@@ -484,13 +547,16 @@ try {
     //    명부가 .hidden 인 동안 display:none 밑에서 0×0 이었는데, 위 검사들은 전부
     //    프레임 **안쪽**만 보므로 113건이 초록으로 통과했다(2026-09-03 실측: .modal 0×0).
     //    안쪽만 보는 오라클은 바깥이 무너진 것을 원리적으로 못 본다.
-    const box = JSON.parse(await cdp.ev(`(()=>{const m=document.querySelector("#peerModal .modal");
-      if(!m) return JSON.stringify({w:0,h:0,op:"0",err:"#peerModal .modal 없음"});
+    //  ★ 2026-10-16 — 열람 화면은 따로 뜨는 창의 껍데기(#peerWin)다. 메인 화면은 그 창에서 통째로 감춰져야 한다.
+    const box = JSON.parse(await cdp.ev(`(()=>{const m=document.getElementById("peerWin");
+      if(!m) return JSON.stringify({w:0,h:0,op:"0",err:"#peerWin 없음"});
       const r=m.getBoundingClientRect(), c=getComputedStyle(m);
-      return JSON.stringify({w:Math.round(r.width), h:Math.round(r.height), op:c.opacity});})()`));
-    ok(`R${r} **부모에서 보인다**: 열람 모달이 0×0 이 아니다`, box.w >= 300 && box.h >= 200,
-       `모달 ${box.w}×${box.h} op=${box.op}${box.err ? ' · ' + box.err : ''} — ` +
+      const others=[...document.body.children].filter((e)=>e!==m && e.id!=="toastWrap" && e.id!=="peerPicker" && getComputedStyle(e).display!=="none").map((e)=>e.id||e.className);
+      return JSON.stringify({w:Math.round(r.width), h:Math.round(r.height), op:c.opacity, vw:innerWidth, vh:innerHeight, others});})()`));
+    ok(`R${r} **열람 창에서 보인다**: 껍데기(#peerWin)가 창을 채운다(0×0 이 아니다)`, box.w >= 300 && box.h >= 200 && box.w === box.vw && box.h === box.vh,
+       `껍데기 ${box.w}×${box.h} · 창 ${box.vw}×${box.vh} op=${box.op}${box.err ? ' · ' + box.err : ''} — ` +
        '숨겨진 조상 밑에 들어갔는지 확인할 것(#membersModal 의 자식이 되면 이렇게 된다)');
+    ok(`R${r} 열람 창에는 메인 화면이 보이지 않는다(allowlist)`, Array.isArray(box.others) && box.others.length === 0, (box.others || []).join(','));
 
     //  ② **그 사람의** 것이 떴는가 — 내 것이 아니라
     const shown = JSON.parse(await cdp.ev(`(()=>{const w=document.querySelector("#pvHost iframe").contentWindow;
@@ -529,17 +595,20 @@ try {
     //    움직이는 동안 프레임 계기는 0). 여기서는 그 결과를 **싸게** 지킨다 —
     //    공식 과제 목록이 부모엔 있고 프레임엔 없어야 한다.
     //  ★ 부모가 0이면 이 비교는 아무것도 증명하지 않으므로 그때는 판정하지 않고 말한다.
+    //  ★ 2026-10-16 — 비교 상대는 **메인 창**이다(열람 창은 과제 목록을 읽지 않는다). 열람 창 자신도 0 이어야 한다.
+    const catMain = Number(await main.ev(`(typeof dbCatalog !== "undefined" && dbCatalog) ? dbCatalog.length : -1`));
     const cat = JSON.parse(await cdp.ev(`(()=>{
-      const mine = (typeof dbCatalog !== "undefined" && dbCatalog) ? dbCatalog.length : -1;
+      const shell = (typeof dbCatalog !== "undefined" && dbCatalog) ? dbCatalog.length : -1;
       const w = document.querySelector("#pvHost iframe").contentWindow;
       let theirs = -1;
       try{ theirs = Number(w.eval("(typeof dbCatalog!=='undefined' && dbCatalog) ? dbCatalog.length : -1")); }catch(_){}
-      return JSON.stringify({mine, theirs}); })()`));
+      return JSON.stringify({shell, theirs}); })()`));
+    cat.mine = catMain;
     if (cat.mine <= 0) {
       console.log(`  · 참고: 부모의 공식 과제 목록이 ${cat.mine}개라 프레임 대조를 건너뛴다(전제 불충족)`);
     } else {
-      ok(`R${r} 호스트가 부모에 준 공식 과제가 프레임엔 없다`, cat.theirs === 0,
-         `부모 ${cat.mine}개 · 프레임 ${cat.theirs}개 — 호스트 데이터가 프레임으로 넘어갔다`);
+      ok(`R${r} 호스트가 메인 창에 준 공식 과제가 열람 창과 프레임엔 없다`, cat.theirs === 0 && cat.shell === 0,
+         `메인 ${cat.mine}개 · 열람 창 ${cat.shell}개 · 프레임 ${cat.theirs}개 — 호스트 데이터가 열람 쪽으로 넘어갔다`);
     }
     //  ★★ **allowlist 검사** — 보이는 조작 수단이 허용 목록뿐인가.
     //    감추기를 blocklist 로 했다가 열람 창에 보고서·⋯메뉴·문의·테마까지 다 노출됐다(사용자 지적).
@@ -620,14 +689,14 @@ try {
     //    거기서는 반드시 나가는 것을 확인한다. 나가지 않으면 이 시험 전체가 헛돌고 있는 것이다.
     //    (2026-09-03 감사에서 이 통제군이 없어 '봉인의 증거'라고 말할 근거가 없었다.)
     //  ★ 부모의 postMessage 는 **삼킨다**(원본을 부르지 않는다) — 진짜로 나가면 호스트가 실행한다.
-    const ctl = JSON.parse(await cdp.ev(`(()=>{
+    const ctl = JSON.parse(await main.ev(`(()=>{
       let n=0; const orig=window.chrome.webview.postMessage.bind(window.chrome.webview);
       window.chrome.webview.postMessage=function(m){ n++; };   // 삼킨다
       let err=null;
       try{ hpost({cmd:"loadCodes"}); hpost({cmd:"loadProjects"}); }catch(e){ err=e.message; }
       window.chrome.webview.postMessage=orig;
       return JSON.stringify({posted:n, err}); })()`));
-    ok(`R${r} **통제군**: 같은 명령이 부모에서는 실제로 나간다`, ctl.posted > 0 && !ctl.err,
+    ok(`R${r} **통제군**: 같은 명령이 메인 창에서는 실제로 나간다`, ctl.posted > 0 && !ctl.err,
        `부모 postMessage ${ctl.posted}회${ctl.err ? ' · ' + ctl.err : ''} — ` +
        '부모에서도 안 나가면 위의 「봉인」 판정은 근거가 없다(조작 자체가 무해한 것일 뿐)');
 
@@ -666,10 +735,11 @@ try {
     const on = await visible(cdp);
     //  통제군 — 부모가 실제로 겹을 만들어 보냈는가. 부모의 비-git 일정 수와 맞아야 한다.
     //  (0 건이면 아래 "함께 보인다" 는 아무것도 증명하지 않는다.)
-    const parentMine = Number(await cdp.ev(`state.entries.filter(e=>e && e.source!=='git').length`));
-    ok(`R${r} 부모가 보낸 겹의 수가 부모의 비-git 일정 수와 같다(겹이 실제로 만들어졌다)`,
+    //  ★ 2026-10-16 — 겹의 재료는 메인 창의 state 다(호스트가 peerMine 으로 물어 와 열람 창에 넘긴다).
+    const parentMine = Number(await main.ev(`state.entries.filter(e=>e && e.source!=='git').length`));
+    ok(`R${r} 메인 창이 보낸 겹의 수가 메인 창의 비-git 일정 수와 같다(겹이 실제로 만들어졌다)`,
        on.dataMine === parentMine && parentMine > 0,
-       `프레임 _mine ${on.dataMine}건 · 부모 비-git ${parentMine}건 — 0 이면 아래 검사들이 헛돈다`);
+       `프레임 _mine ${on.dataMine}건 · 메인 비-git ${parentMine}건 — 0 이면 아래 검사들이 헛돈다`);
     ok(`R${r} 겹을 켜면 내 일정이 **함께** 보인다(대상 ${TITLES.length}건 + 내 ${on.dataMine}건)`,
        on.visTheirs === TITLES.length && on.visMine === on.dataMine && on.visMine > 0,
        `대상 ${on.visTheirs}건 · 내 겹 ${on.visMine}/${on.dataMine}건`);
@@ -810,19 +880,37 @@ try {
     await setLayout(cdp, 'overlay');
     await setOverlay(cdp, true);
 
-    //  ④ 닫기 — 프레임이 사라져야 한다
-    await cdp.ev('closeModal("#peerModal")');
-    await sleep(400);
-    const after = JSON.parse(await cdp.ev(`JSON.stringify({
-      frames: document.querySelectorAll("#pvHost iframe").length,
+    //  ④ 쌓이지 않는가 — 열람 창의 프레임은 하나뿐이고(다음 라운드에 다시 열면 옛 것을 없앤다), 메인 창에는 프레임도 열람 상태도 없다.
+    const afterPeer = JSON.parse(await cdp.ev(`JSON.stringify({ frames: document.querySelectorAll("#pvHost iframe").length,
+      anyFrame: document.querySelectorAll("iframe[src*='peer=1']").length })`));
+    const after = JSON.parse(await main.ev(`JSON.stringify({
       anyFrame: document.querySelectorAll("iframe[src*='peer=1']").length,
       pv: (__pv===null)?"null":"살아있음",
+      shell: document.getElementById("peerWin").classList.contains("hidden"),
       myState: state.entries.length + "/" + state.categories.length })`));
-    ok(`R${r} 닫으면 프레임이 사라진다`, after.frames === 0 && after.anyFrame === 0,
-       `#pvHost ${after.frames} · 전체 ${after.anyFrame}`);
-    ok(`R${r} __pv 가 비워진다(생명주기 종료)`, after.pv === 'null', after.pv);
+    ok(`R${r} 열람 창의 프레임은 하나뿐이다(쌓이지 않는다)`, afterPeer.frames === 1 && afterPeer.anyFrame === 1,
+       `#pvHost ${afterPeer.frames} · 전체 ${afterPeer.anyFrame}`);
+    ok(`R${r} 메인 창에는 열람 프레임도 열람 상태(__pv)도 없고 껍데기도 숨어 있다`, after.anyFrame === 0 && after.pv === 'null' && after.shell === true,
+       JSON.stringify(after));
     ok(`R${r} 내 화면 state 가 그대로다`, after.myState === myStateBase, `${myStateBase} → ${after.myState}`);
     if (r % 3 === 0) process.stdout.write(`  … ${r}/${ROUNDS} (실패 ${fail})\n`);
+  }
+
+  /* ── 열람 창 닫기 — Windows 창을 닫아도 메인 창은 그대로 · 다시 열면 새 창(같은 자리) ── */
+  console.log('\n[창] 열람 창 닫기 → 메인 창 그대로 → 다시 열기');
+  {
+    const n = closePeerWinOs();
+    let gone = false;
+    for (let i = 0; i < 40 && !gone; i++) { await sleep(150); gone = (await peerWinTargets(PORT)).length === 0; }
+    ok('창: 열람 창을 닫으면 그 대상(WebView2)이 사라진다', n >= 1 && gone, `WM_CLOSE ${n}건 · 사라짐=${gone}`);
+    try { cdp.close(); } catch { }
+    cdp = null;
+    const ms = String(await main.ev('state.entries.length + "/" + state.categories.length + "/" + (currentUser && currentUser.loginId)'));
+    ok('창: 열람 창을 닫아도 메인 창은 그대로다(로그인과 내 state)', ms === myStateBase + '/' + me, `${myStateBase}/${me} → ${ms}`);
+    cdp = await openPeerWin(main, null, TU, '열람대상');
+    const f0 = await waitPeerFrame(cdp, '열람대상');
+    ok('창: 닫은 뒤 다시 열면 새 열람 창이 그 사람으로 뜬다', f0.n >= 0 && f0.frames === 1 && cdp.targetId !== PEER_TID, JSON.stringify(f0));
+    PEER_TID = cdp.targetId;
   }
 
   /* ── ⑥ 「사람 고르기」(docs/PEER-PICKER.md R10) — 툴바 👥 → 검색 → 열람 → 최근에 남음 → ☆ 즐겨찾기(팝오버 = 열람 창) →
@@ -830,28 +918,32 @@ try {
    *  ★ 저장 키(tc_peerFav/Recent:<me>)는 비운 채로 시작해 판정을 결정적으로 하고, 끝나면(finally) 시작 전 값으로 되돌린다.
    *  ★ 조작은 사람이 누르는 자리로만 한다 — 툴바 버튼 · 검색 칸 · 행 · ☆ · ▾. 내부 함수(pkOpen 등)를 직접 부르지 않는다. */
   console.log('\n[사람 고르기] 툴바 → 검색 → 열람 → 최근 → 즐겨찾기 → ▾ 바꾸기 (R10)');
-  await cdp.ev(`(()=>{ localStorage.removeItem(${JSON.stringify(PK_KEYS.fav)}); localStorage.removeItem(${JSON.stringify(PK_KEYS.recent)}); return 1; })()`);
+  //  ★ 저장소는 두 창이 함께 쓴다. 지우는 것은 메인 창에서, 읽는 것은 쓰는 쪽(열람 창)에서 한다(창 사이 전파가 잠깐 늦을 수 있다).
+  await main.ev(`(()=>{ localStorage.removeItem(${JSON.stringify(PK_KEYS.fav)}); localStorage.removeItem(${JSON.stringify(PK_KEYS.recent)}); return 1; })()`);
+  await sleep(300);
   const lsPk = async () => JSON.parse(await cdp.ev(`JSON.stringify({
     fav: JSON.parse(localStorage.getItem(${JSON.stringify(PK_KEYS.fav)}) || "[]").map((x)=>x.loginId),
     recent: JSON.parse(localStorage.getItem(${JSON.stringify(PK_KEYS.recent)}) || "[]").map((x)=>x.loginId) })`));
   {
     //  (a) 툴바 입구 — 내 창에 있다 · 누르면 팝오버 · 검색 칸 포커스
-    const has = await cdp.ev(`!!document.getElementById("btnPeerPick")`);
+    const has = await main.ev(`!!document.getElementById("btnPeerPick")`);
     ok('R10 툴바에 「다른 사람 일정」 입구가 있다', has === true);
-    await cdp.ev(`document.getElementById("btnPeerPick").click()`);
-    let s = await pkWait(cdp);
+    await main.ev(`document.getElementById("btnPeerPick").click()`);
+    let s = await pkWait(main);
     ok('R10 팝오버가 열리고 검색 칸에 포커스 · 명부를 읽었다', s.open && !s.inModal && s.focus === 'pkSearch' && s.status === 'ok',
        `open=${s.open} inModal=${s.inModal} focus=${s.focus} status=${s.status}`);
     //  (b) 검색 — 심은 두 사람이 결과에 · 열 수 있다(회색 아님)
-    s = await pkType(cdp, '열람대상');
+    s = await pkType(main, '열람대상');
     const r1 = s.rows.find((x) => x.id === TU), r2 = s.rows.find((x) => x.id === TU2);
     ok('R10 검색 「열람대상」 → 두 대상이 결과에 · 열 수 있다', !!r1 && !!r2 && !r1.off && !r2.off && r1.sec === 'Result',
        JSON.stringify(s.rows.slice(0, 5)));
-    //  (c) 열기 — 팝오버가 닫히고 지금의 열람 창이 그 사람으로
-    await pkClickRow(cdp, TU);
+    //  (c) 열기 — 팝오버가 닫히고 열람 창(같은 창)이 그 사람으로(지금도 같은 사람을 보고 있어 옛 프레임에 표시를 해 둔다)
+    await markOldFrame(cdp);
+    await pkClickRow(main, TU);
+    await sleep(400);
     const f1 = await waitPeerFrame(cdp, '열람대상');
-    s = await pkState(cdp);
-    ok('R10 행을 누르면 팝오버가 닫히고 열람 창이 그 사람으로 뜬다', f1.n >= 0 && f1.frames === 1 && !s.open, JSON.stringify(f1));
+    s = await pkState(main);
+    ok('R10 행을 누르면 팝오버가 닫히고 열람 창이 그 사람으로 뜬다', f1.n >= 0 && f1.frames === 1 && !s.open && (await peerWinTargets(PORT)).length === 1, JSON.stringify(f1));
     await sleep(300);
     let st = await lsPk();
     ok('R10 열린 사람이 「최근 본 사람」 맨 앞에 남는다', JSON.stringify(st.recent) === JSON.stringify([TU]), JSON.stringify(st));
@@ -880,13 +972,13 @@ try {
     s = await pkType(cdp, '열람대상둘');
     await pkClickRow(cdp, TU2);
     const f2 = await waitPeerFrame(cdp, '열람대상둘');
-    const sw = JSON.parse(await cdp.ev(`(()=>{const m=document.getElementById("peerModal"), w=${FRAME_W};
+    const sw = JSON.parse(await cdp.ev(`(()=>{const m=document.getElementById("peerWin"), w=${FRAME_W};
       const st=w.__test.state();
-      return JSON.stringify({modal: !m.classList.contains("hidden") && !m.classList.contains("closing"),
+      return JSON.stringify({modal: !m.classList.contains("hidden"), title: document.title,
         view: w.peerViewNow(), titles: st.entries.filter((e)=>!e._mine).map((e)=>e.title).sort(),
         frames: document.querySelectorAll("iframe[src*='peer=1']").length});})()`));
-    ok('R10 바꾸기: 열람 창을 닫지 않고 그 자리에서 다른 사람으로(새 프레임 하나)', f2.n >= 0 && sw.modal && sw.frames === 1,
-       JSON.stringify({ f2, modal: sw.modal, frames: sw.frames }));
+    ok('R10 바꾸기: 열람 창을 닫지 않고 그 자리에서 다른 사람으로(새 프레임 하나 · 창 제목도)', f2.n >= 0 && sw.modal && sw.frames === 1 && sw.title === '열람대상둘 님의 일정',
+       JSON.stringify({ f2, modal: sw.modal, frames: sw.frames, title: sw.title }));
     ok('R10 바꾸기: 바뀐 사람의 일정이 뜬다(앞 사람 것 없음)', JSON.stringify(sw.titles) === JSON.stringify([...TITLES2].sort()), sw.titles.join(','));
     ok('R10 바꾸기: 보던 달(6월)이 이어진다', !!sw.view && sw.view.y === 2026 && sw.view.m === 5, JSON.stringify(sw.view));
     st = await lsPk();
@@ -902,11 +994,12 @@ try {
       return JSON.stringify({posted:n, err, picker: !!w.document.getElementById("btnPeerPick") || !!w.document.getElementById("peerPicker")});})()`));
     ok('R10 **봉인(바꾼 창)**: postMessage 0회', sealed2.posted === 0 && !sealed2.err, JSON.stringify(sealed2));
     ok('R10 열람 창 안에는 👥 입구·팝오버가 없다', sealed2.picker === false, '프레임 안에 #btnPeerPick/#peerPicker 가 있다');
-    //  (h) 닫기 — 프레임이 사라진다
-    await cdp.ev('closeModal("#peerModal")');
-    await sleep(400);
-    const gone = Number(await cdp.ev(`document.querySelectorAll("iframe[src*='peer=1']").length`));
-    ok('R10 닫으면 프레임이 사라진다', gone === 0, `프레임 ${gone}`);
+    //  (h) 메인 창 팝오버의 ★ 가 열람 창에서 넣은 즐겨찾기와 같다(두 창이 저장소를 함께 쓴다 · storage 이벤트로 다시 칠한다)
+    await main.ev(`document.getElementById("btnPeerPick").click()`);
+    s = await pkWait(main);
+    const mf = s.rows.find((x) => x.id === TU);
+    ok('R10 열람 창에서 넣은 즐겨찾기가 메인 창 사람 고르기에도 ★ 로 보인다', !!mf && mf.sec === 'Fav' && mf.star === 'true', JSON.stringify(mf || s.rows.slice(0, 4)));
+    await main.ev(`document.getElementById("btnPeerPick").click()`);   // 토글로 닫는다
   }
 
   /* ── ⑦ 「사람 고르기 · 조직도」(docs/PEER-PICKER-ORG.md R10) — 툴바 👥 → (열 때 늘 「사람」 탭) → 「조직도」 탭 →
@@ -923,19 +1016,19 @@ try {
     const meQ = me.replace(/'/g, "''");
     const dbDirect = num(`SELECT COUNT(*) FROM app_user WHERE org_id=${TU_ORG} AND is_active=1 AND login_id<>'${meQ}'`);
     ok('R10(조직도) 대상의 조직을 DB 에서 읽었다', !!TU_UNIT && TU_ORG > 0, `org_id=${TU_ORG} name=${TU_UNIT}`);
-    await cdp.ev(`document.getElementById("btnPeerPick").click()`);
-    let s = await pkWait(cdp);
-    const t0 = JSON.parse(await cdp.ev(`JSON.stringify({people:(document.getElementById("pkTabPeople")||{}).getAttribute?.("aria-selected"),
+    await main.ev(`document.getElementById("btnPeerPick").click()`);
+    let s = await pkWait(main);
+    const t0 = JSON.parse(await main.ev(`JSON.stringify({people:(document.getElementById("pkTabPeople")||{}).getAttribute?.("aria-selected"),
       view:(document.getElementById("peerPicker")||{dataset:{}}).dataset.view})`));
     ok('R10(조직도) 팝오버는 「사람」 탭으로 열린다', s.open && s.status === 'ok' && t0.people === 'true' && t0.view === 'people', JSON.stringify(t0));
-    await cdp.ev(`document.getElementById("pkTabOrg").click()`);
+    await main.ev(`document.getElementById("pkTabOrg").click()`);
     await sleep(150);
-    const view = String(await cdp.ev(`document.getElementById("peerPicker").dataset.view`));
+    const view = String(await main.ev(`document.getElementById("peerPicker").dataset.view`));
     ok('R10(조직도) 「조직도」 탭 → 조직도 본문(두 칸 또는 한 칸)', view === 'org-wide' || view === 'org-narrow', view);
     //  루트 → 대상 조직 경로를 따라 사람이 누르는 대로 — 넓으면 ▸ 펼치고 노드, 좁으면 경로의 루트 → 하위 조직 줄을 차례로.
-    const path = JSON.parse(await cdp.ev(`JSON.stringify((typeof __pk!=="undefined" && __pk && __pk.org) ? pkOrgPath(__pk.org, ${JSON.stringify(TU_UNIT)}) : [])`));
+    const path = JSON.parse(await main.ev(`JSON.stringify((typeof __pk!=="undefined" && __pk && __pk.org) ? pkOrgPath(__pk.org, ${JSON.stringify(TU_UNIT)}) : [])`));
     ok('R10(조직도) 대상 조직이 조직도 트리에 있다', path.length > 0 && path[path.length - 1] === TU_UNIT, JSON.stringify(path));
-    const nav = JSON.parse(await cdp.ev(`(async()=>{const P=${JSON.stringify(path)}, wide=${JSON.stringify(view === 'org-wide')};
+    const nav = JSON.parse(await main.ev(`(async()=>{const P=${JSON.stringify(path)}, wide=${JSON.stringify(view === 'org-wide')};
       const wait=(ms)=>new Promise((r)=>setTimeout(r,ms)); const steps=[];
       const q=(sel,u)=>[...document.querySelectorAll(sel)].find((b)=>b.dataset.unit===u);
       if(wide){
@@ -951,15 +1044,16 @@ try {
                      : (document.querySelector("#pkBody .pk-crumb b")||{}).textContent;
       return JSON.stringify({steps, sel, unitRows:document.querySelectorAll('#pkBody [data-sec="Unit"] .pk-row').length});})()`));
     ok('R10(조직도) 대상의 조직이 골라졌다(트리 선택 · 또는 경로 끝)', nav.sel === TU_UNIT, JSON.stringify(nav));
-    s = await pkState(cdp);
+    s = await pkState(main);
     const tr = s.rows.find((x) => x.id === TU);
     ok('R10(조직도) 오른쪽 목록에 대상 행이 있다 · 열 수 있다(회색 아님)', !!tr && tr.sec === 'Unit' && !tr.off, JSON.stringify(tr || s.rows.slice(0, 5)));
     ok('R10(조직도) 직속 사람 행 수 = DB 의 그 조직 활성 인원(나 제외)', nav.unitRows === dbDirect, `화면 ${nav.unitRows} · DB ${dbDirect}`);
     ok('R10(조직도) 나 자신은 조직도 목록에 없다', !s.rows.some((x) => x.id === me), JSON.stringify(s.rows.filter((x) => x.id === me)));
-    //  열기 — 팝오버가 닫히고 그 사람 열람 창
-    await pkClickRow(cdp, TU);
+    //  열기 — 팝오버가 닫히고 그 사람 열람 창(지금 보던 사람이 둘째 대상이라 첫 대상으로 바뀐다)
+    await pkClickRow(main, TU);
+    await sleep(400);
     const f3 = await waitPeerFrame(cdp, '열람대상');
-    s = await pkState(cdp);
+    s = await pkState(main);
     ok('R10(조직도) 대상 행을 누르면 팝오버가 닫히고 열람 창이 그 사람으로 뜬다', f3.n >= 0 && f3.frames === 1 && !s.open, JSON.stringify(f3));
     const titles3 = JSON.parse(await cdp.ev(`(()=>{const w=${FRAME_W}; return JSON.stringify(w.__test.state().entries.filter((e)=>!e._mine).map((e)=>e.title).sort());})()`));
     ok('R10(조직도) 그 사람 일정이 뜬다', JSON.stringify(titles3) === JSON.stringify([...TITLES].sort()), titles3.join(','));
@@ -972,15 +1066,38 @@ try {
       w.chrome.webview.postMessage=orig;
       return JSON.stringify({posted:n, err});})()`));
     ok('R10(조직도) **봉인**: 조직도에서 연 창도 postMessage 0회', sealed3.posted === 0 && !sealed3.err, JSON.stringify(sealed3));
-    await cdp.ev('closeModal("#peerModal")');
-    await sleep(400);
-    const gone3 = Number(await cdp.ev(`document.querySelectorAll("iframe[src*='peer=1']").length`));
-    ok('R10(조직도) 닫으면 프레임이 사라진다', gone3 === 0, `프레임 ${gone3}`);
+    const one3 = Number(await cdp.ev(`document.querySelectorAll("iframe[src*='peer=1']").length`));
+    ok('R10(조직도) 열람 창의 프레임은 하나뿐이다', one3 === 1, `프레임 ${one3}`);
   }
 
   //  R3 — 좌우 줄 맞춤을 한 번이라도 실제로 쟀는가(창이 안 그려지면 모두 건너뛰어 아무것도 증명하지 않는다).
   ok('나란히 보기 줄 맞춤(R3)을 실제로 쟀다(판정 불가 ≠ 통과)', R3_MEASURED > 0,
      '한 번도 못 쟀다 — 위젯 창을 화면에 띄운 채로 돌릴 것(최소화·가림이면 칸 높이가 0 이다)');
+
+  /* ── 호스트 거름(WINDOW-UI §4) — 열람 창 최상위에서 웹 봉인을 건너뛰고 쓰기 명령을 직접 쏜다 ──
+   *  ★ 웹의 hpost 봉인(PEERWIN_CMD)은 앞에서 늘 잡고 있었다. 여기서는 그 뒤의 **호스트** 거름을 본다:
+   *    거절 회신({ok:false})이 와야 하고, 로그에 「열람 창 명령 거부」가 그만큼 찍히고, DB 는 그대로여야 한다(아래 누적이 함께 본다). */
+  console.log('\n[호스트 거름] 열람 창이 직접 보낸 쓰기 명령을 호스트가 거절하는가');
+  {
+    const mk = logLines().length;
+    const ref = JSON.parse(await cdp.ev(`(async()=>{const got={}, ids=["pw:saveState-9001","pw:replaceAllState-9002","pw:userLogout-9003"];
+      for(const id of ids) __hostPending[id]=(r)=>{ got[id]=r; };
+      const P=(o)=>window.chrome.webview.postMessage(JSON.stringify(o));
+      P({cmd:"saveState", reqId:ids[0], state:{categories:[], entries:[]}});
+      P({cmd:"replaceAllState", reqId:ids[1], state:{categories:[], entries:[]}});
+      P({cmd:"userLogout", reqId:ids[2]});
+      P({cmd:"peerOpen", loginId:"x"});
+      P({cmd:"membersGet", reqId:"membersGet-9004"});
+      await new Promise((r)=>setTimeout(r,1500));
+      return JSON.stringify(got);})()`));
+    const refused = Object.values(ref).filter((x) => x && x.ok === false && /열람 창에서는 할 수 없는 요청/.test(x.error || '')).length;
+    ok('호스트 거름: pw: 번호의 쓰기 명령 셋에 거절 회신이 왔다', refused === 3, JSON.stringify(ref));
+    const nRef = await waitLog(mk, /열람 창 명령 거부/, 5);
+    ok('호스트 거름: 거절이 로그에 다섯 줄(쓰기 셋, peerOpen, pw: 없는 번호)', nRef === 5, `${nRef}줄`);
+    const still = String(await main.ev('(currentUser && currentUser.loginId) + "/" + state.entries.length + "/" + state.categories.length'));
+    ok('호스트 거름: 거절 뒤에도 메인 창은 로그인 그대로, 내 state 그대로', still === me + '/' + myStateBase, still);
+    REF_SKIP = [mk, logLines().length];   // 이 구간의 거절 줄은 일부러 낸 것이다(아래 금지 문구 검사에서 뺀다)
+  }
 
   /* ── 누적 검증 — 여기가 루프의 값이다 ──────────────────────────── */
   console.log('\n[누적] 몇 번을 열고 닫아도 아무것도 안 변했는가');
@@ -999,7 +1116,7 @@ try {
   ok('내 rev 가 한 번도 오르지 않았다(저장이 새지 않았다)', end.myRev === base.myRev,
      `${base.myRev} → ${end.myRev}`);
 
-  const newLines = logSince(logBase);
+  const newLines = logSince(logBase).filter((_, i) => !REF_SKIP || logBase + i < REF_SKIP[0] || logBase + i >= REF_SKIP[1]);
   const hits = [];
   for (const [re, why] of FORBIDDEN) for (const l of newLines) if (re.test(l)) { hits.push(why + ' :: ' + l.trim()); break; }
   ok('호스트 로그에 금지 문구가 없다', hits.length === 0, hits.slice(0, 3).join(' | '));
@@ -1011,8 +1128,8 @@ try {
   /* ── 검출력 시험 — 로그 오라클이 진짜 반응하는가 ────────────────── */
   console.log('\n[검출력] 로그 오라클이 정말 우는지 확인한다');
   const mark = logLines().length;
-  //  ★ 부모 창의 hpost 는 봉인돼 있지 않다. 일부러 한 번 보내 오라클을 흔든다.
-  await cdp.ev('hpost({cmd:"loadProjects"})');
+  //  ★ 메인 창의 hpost 는 봉인돼 있지 않다. 일부러 한 번 보내 오라클을 흔든다.
+  await main.ev('hpost({cmd:"loadProjects"})');
   const probe = await waitLog(mark, /DB 과제 로드/, 1);
   ok('봉인되지 않은 곳에서 보내면 로그에 찍힌다 — 위의 「금지 문구 없음」이 유의미하다',
      probe > 0, `찍힌 줄 ${probe}`);
@@ -1021,11 +1138,13 @@ try {
   fail++; F.push('중단: ' + e.message);
   console.log('\n[중단] ' + e.message);
 } finally {
-  try { if (cdp) { await cdp.ev('closeModal("#peerModal")').catch(() => {}); } } catch { }
-  //  보기 방식 원상 복구 — 시작 전 값으로(없었으면 지운다). 프레임은 닫혔으니 부모의 같은 저장소에 쓴다.
+  //  열람 창을 닫는다(Windows 창 닫기) — 남의 데이터를 실은 창을 남기지 않고, 뒤에 도는 루프가 엉뚱한 대상에 붙지 않게.
+  try { if (cdp) cdp.close(); } catch { }
+  try { if (main) { const n = closePeerWinOs(); console.log(`  · 열람 창 닫음(WM_CLOSE ${n}건)`); await sleep(800); } } catch { }
+  //  보기 방식 원상 복구 — 시작 전 값으로(없었으면 지운다). 두 창이 함께 쓰는 저장소라 메인 창에서 쓴다.
   try {
-    if (cdp && LAYOUT0 !== undefined) {
-      const back = await cdp.ev(LAYOUT0 === null
+    if (main && LAYOUT0 !== undefined) {
+      const back = await main.ev(LAYOUT0 === null
         ? "(()=>{ localStorage.removeItem('tc_peerLayout'); return localStorage.getItem('tc_peerLayout'); })()"
         : `(()=>{ localStorage.setItem('tc_peerLayout', ${JSON.stringify(String(LAYOUT0))}); return localStorage.getItem('tc_peerLayout'); })()`);
       console.log(`  · 보기 방식 되돌림: tc_peerLayout = ${JSON.stringify(back)}(시작 전 ${JSON.stringify(LAYOUT0)})`);
@@ -1033,15 +1152,15 @@ try {
   } catch (e) { console.log('  ! 보기 방식 되돌리기 실패: ' + e.message); }
   //  사람 고르기 저장 키 원상 복구(R10) — 시작 전 값으로(없었으면 지운다). 시험 대상이 내 즐겨찾기·최근에 남지 않게.
   try {
-    if (cdp && PK0 !== undefined && PK_KEYS) {
-      const back = await cdp.ev(`(()=>{ const o=${JSON.stringify(PK0)}, k=${JSON.stringify(PK_KEYS)};
+    if (main && PK0 !== undefined && PK_KEYS) {
+      const back = await main.ev(`(()=>{ const o=${JSON.stringify(PK0)}, k=${JSON.stringify(PK_KEYS)};
         if(o.fav===null) localStorage.removeItem(k.fav); else localStorage.setItem(k.fav, o.fav);
         if(o.recent===null) localStorage.removeItem(k.recent); else localStorage.setItem(k.recent, o.recent);
         return JSON.stringify({fav:localStorage.getItem(k.fav), recent:localStorage.getItem(k.recent)}); })()`);
       console.log(`  · 사람 고르기 키 되돌림: ${back}(시작 전 ${JSON.stringify(PK0)})`);
     }
   } catch (e) { console.log('  ! 사람 고르기 키 되돌리기 실패: ' + e.message); }
-  try { if (cdp) cdp.close(); } catch { }
+  try { if (main) main.close(); } catch { }
   try { wipeTarget(); } catch (e) { console.log('  ! 정리 실패: ' + e.message); }
   try { wipeUser(TU2); } catch (e) { console.log('  ! 정리 실패(대상2): ' + e.message); }
 }

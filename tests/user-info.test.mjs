@@ -648,7 +648,7 @@ const checks = {
     const b = jsBody(source, 'renderMembers');
     for (const w of ['renderGrid', 'dpBody', '새 기록', '저장']) {
       assert.ok(!md.includes(w),
-        `구성원 모달에 일정 열람 UI 흔적(${w})이 들어왔다 — 열람은 #peerModal 이 한다(명부는 명부다). 그리고 renderGrid·dpBody 는 **편집 가능한** 내 캘린더 렌더러다 — 남의 화면에 끌어오면 편집 컨트롤이 딸려 온다`);
+        `구성원 모달에 일정 열람 UI 흔적(${w})이 들어왔다 — 열람은 따로 뜨는 열람 창(#peerWin, ?peerwin=1)이 한다(명부는 명부다). 그리고 renderGrid·dpBody 는 **편집 가능한** 내 캘린더 렌더러다 — 남의 화면에 끌어오면 편집 컨트롤이 딸려 온다`);
       assert.ok(!b.includes(w),
         `renderMembers 가 일정 열람 UI(${w})를 그린다 — 행은 '진입점'까지다(여는 것은 openPeerSchedule)`);
     }
@@ -773,11 +773,16 @@ const checks = {
     assert.ok(/\?peer=1/.test(mount), 'iframe 이 ?peer=1 없이 뜬다 — 그 창이 ready 를 보내 **내** 캘린더를 받는다');
     assert.ok(/__applyState\(/.test(mount), '주입이 __applyState 가 아니다 — 부팅과 다른 문이 생기면 모양이 갈라진다');
 
-    //  ③ 닫으면 **없앤다.** 숨기기만 하면 남의 데이터를 실은 문서가 계속 살아 있다.
+    //  ③ 사람을 바꾸면 옛 프레임을 **없앤다.** 숨기기만 하면 남의 데이터를 실은 문서가 계속 살아 있다.
+    //    ★ 2026-10-16(WINDOW-UI §4) — 열람 화면이 따로 뜨는 창이 되면서 닫기 경로는 하나(Windows 창 닫기)다.
+    //      그때는 호스트가 창과 WebView2 를 통째로 없앤다(PeerWindow.Closed → Dispose · tests/peer-window.test.mjs).
+    //      그래서 예전의 '모달 닫힘 감시(MutationObserver)' 는 없어졌고, 여기서는 바꿀 때 없애는지만 본다.
     assert.ok(/\.remove\(\)/.test(close), 'closePeerFrame 이 프레임을 없애지 않는다');
     assert.ok(/__pv = null/.test(close), 'closePeerFrame 이 __pv 를 비우지 않는다 — 생명주기가 안 끝난다');
-    assert.ok(/MutationObserver/.test(source) && /closePeerFrame\(\)/.test(source),
-      '닫힘을 한 곳에서 감시하지 않는다 — 닫기 경로가 여럿이라 버튼마다 붙이면 새 경로에서 샌다');
+    assert.ok(/closePeerFrame\(\);/.test(open.split('const pv = __pv')[0] || ''),
+      'openPeerSchedule 이 새 사람을 열기 전에 옛 프레임을 없애지 않는다 — 남의 데이터를 실은 문서가 쌓인다');
+    assert.ok(/if\(!PEERWIN\)\{ hpost\(\{ cmd:'peerOpen'/.test(open),
+      '메인 창의 openPeerSchedule 이 호스트에 열람 창 열기(peerOpen)만 보내지 않는다 — 남의 데이터가 메인 창으로 온다');
 
     //  ④ 남의 DB 문자열을 마크업으로 해석하지 않는다.
     assert.ok(!/innerHTML/.test(jsBody(source, 'pvFail')), 'pvFail 이 innerHTML 을 쓴다');
@@ -795,6 +800,8 @@ const checks = {
       `호스트로 나가는 문이 ${exits}개다(기대 2: 부팅 ready · hpost). 늘어나면 봉인 한 곳으로는 못 막는다`);
     const h = jsBody(source, 'hpost');
     assert.ok(/if\(PEER\)/.test(h), 'hpost 가 PEER 를 막지 않는다 — 열람 창이 저장·전송을 할 수 있다');
+    //  열람 창(?peerwin=1, WINDOW-UI §4)은 읽기 넷만 보낸다 — 호스트도 같은 목록으로 거른다(peer-window.test.mjs).
+    assert.ok(/if\(PEERWIN && !PEERWIN_CMD\.has\(/.test(h), 'hpost 가 열람 창(PEERWIN)의 명령을 읽기 넷으로 거르지 않는다');
     assert.ok(/return;/.test(h), 'hpost 의 PEER 갈래가 return 으로 끊지 않는다');
     //  ★ 조용히 버리지 않는다 — 새 편집 버튼이 생겨도 「고장」이 아니라 「읽기 전용」으로 보이게.
     assert.ok(/toast\(/.test(h), 'PEER 차단이 아무 말도 하지 않는다 — 눌러도 무반응이면 고장으로 읽힌다');
@@ -986,7 +993,7 @@ const checks = {
     const bal = (seg.match(/<div\b/g) || []).length - (seg.match(/<\/div>/g) || []).length;
     assert.strictEqual(bal, 0,
       `#membersModal 마크업이 스스로 닫히지 않는다(<div> 잔량 ${bal}) — ` +
-      '#peerModal 이 그 **안에** 들어가 있다는 뜻이다. 형제로 꺼낼 것. ' +
+      '열람 껍데기(#peerWin)가 그 **안에** 들어가 있다는 뜻이다. 형제로 꺼낼 것. ' +
       '자식이면 명부가 닫힌 동안 열람 창이 display:none 밑에서 0×0 이 되어 보이지 않고, ' +
       '명부를 닫아도 남의 데이터를 실은 iframe 이 살아 남는다');
   },
@@ -1065,7 +1072,7 @@ function mutate(base, from, to) {
   return out;
 }
 
-test('변이·중첩: #peerModal 을 명부 모달 안으로 되돌리면 사용자정보 ⑲ 가 잡는다', () => {
+test('변이·중첩: 열람 껍데기(#peerWin, 옛 #peerModal)를 명부 모달 안으로 넣으면 사용자정보 ⑲ 가 잡는다', () => {
   //  ★ 이것이 2026-09-03 이전의 실제 마크업이다 — 명부를 닫는 </div> 를 열람 모달 뒤로 미룬 꼴.
   const bad = mutate(src, '  </div>\n\n</div>\n\n<!-- ===== 타인 일정 열람',
                           '  </div>\n\n<!-- ===== 타인 일정 열람');
@@ -1993,22 +2000,26 @@ if (!JSDOM) {
       assert.ok(/읽기 전용/.test(soonText()), `누를 행이 있는데 권한 없음 문구가 떴다: ${soonText()}`);
     });
 
-    test('구성원(jsdom) ㉟: 행을 누르면 열람이 열리고 login_id 로 조회한다 — 명부는 그대로', () => {
-      //  hostRequest 를 가로채 '무엇을 어떤 인자로 불렀나' 를 본다(실제 왕복은 없다).
-      w.eval('__hostCalls = []; hostRequest = function(cmd, p){ __hostCalls.push([cmd, p]); return new Promise(function(){}); };');
+    test('구성원(jsdom) ㉟: 행을 누르면 열람 창을 그 login_id 로 연다(호스트에 peerOpen) — 명부는 그대로', () => {
+      //  hostRequest 와 호스트로 나가는 문(postMessage)을 가로채 '무엇을 어떤 인자로 보냈나' 를 본다(실제 왕복은 없다).
+      //  ★ 2026-10-16(WINDOW-UI §4) — 열람은 따로 뜨는 창이다. 메인 창은 남의 일정을 조회하지 않고 peerOpen 하나만 보낸다.
+      w.eval('__hostCalls = []; hostRequest = function(cmd, p){ __hostCalls.push([cmd, p]); return new Promise(function(){}); };'
+           + '__posts = []; window.chrome.webview.postMessage = function(s){ __posts.push(JSON.parse(s)); };');
       const link = linkRows()[0];
       assert.ok(link, '전제: 누를 수 있는 행이 있다');
       const wantLogin = link.dataset.login;
       assert.ok(wantLogin, '누를 수 있는 행에 login_id 가 없다');
       link.click();
       const calls = JSON.parse(w.eval('JSON.stringify(__hostCalls)'));
-      assert.strictEqual(calls.length, 1, `행 클릭이 조회를 정확히 1회 보내지 않았다: ${JSON.stringify(calls)}`);
-      assert.strictEqual(calls[0][0], 'peerSchedule', `다른 명령을 보냈다: ${calls[0][0]}`);
-      assert.strictEqual(calls[0][1] && calls[0][1].loginId, wantLogin,
-        '조회 대상이 그 행의 login_id 가 아니다 — 동명이인이면 남의 일정을 연다');
-      //  ★ 열람 모달이 열리고, **명부는 그대로 있어야 한다**(닫으면 되돌아갈 자리가 없다).
-      const pv = w.document.getElementById('peerModal');
-      assert.ok(pv && !pv.classList.contains('hidden'), '열람 모달이 열리지 않았다');
+      assert.deepStrictEqual(calls, [], `메인 창이 행 클릭으로 무언가를 조회했다(조회는 열람 창이 한다): ${JSON.stringify(calls)}`);
+      const posts = JSON.parse(w.eval('JSON.stringify(__posts)'));
+      assert.strictEqual(posts.length, 1, `행 클릭이 호스트에 정확히 1건을 보내지 않았다: ${JSON.stringify(posts)}`);
+      assert.strictEqual(posts[0].cmd, 'peerOpen', `다른 명령을 보냈다: ${posts[0].cmd}`);
+      assert.strictEqual(posts[0].loginId, wantLogin,
+        '열 대상이 그 행의 login_id 가 아니다 — 동명이인이면 남의 일정을 연다');
+      //  ★ 메인 창 안에는 열람 화면이 펴지지 않고, **명부는 그대로 있어야 한다**(닫으면 되돌아갈 자리가 없다).
+      const pv = w.document.getElementById('peerWin');
+      assert.ok(pv && pv.classList.contains('hidden'), '메인 창 안에 열람 화면이 펴졌다');
       const md = w.document.getElementById('membersModal');
       assert.ok(!md.classList.contains('hidden'), '행을 눌렀더니 구성원 모달이 닫혔다 — 자리를 지켜야 한다');
       assert.ok(!md.classList.contains('closing'), '구성원 모달이 닫히는 중이다(페이드아웃)');

@@ -158,12 +158,13 @@ if (!JSDOM) {
   const ME = { loginId: 'phmin', name: '박현민', title: '수석연구원', orgUnit: 'SW 2팀' };
   const EMPTY = { categories: [], entries: [], todos: [], rooms: [], taskHours: {}, attendance: {}, gitAuthor: '', svnAuthor: '' };
   const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
-  function boot(src) {
+  //  url 이 ?peerwin=1 이면 열람 창(docs/WINDOW-UI.md §4 — 호스트의 따로 뜨는 창)이다. 그 창은 세션도 내 달력도 받지 않는다.
+  function boot(src, url = 'https://tcapp.local/') {
     const posted = [], errors = [];
     const vc = new jsdomMod.VirtualConsole();
     vc.on('jsdomError', (e) => errors.push(String(e && (e.stack || e.message) || e)));
     const dom = new JSDOM(src, {
-      runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://tcapp.local/', virtualConsole: vc,
+      runScripts: 'dangerously', pretendToBeVisual: true, url, virtualConsole: vc,
       beforeParse(win) {
         win.chrome = { webview: { postMessage: (s) => posted.push(String(s)), addEventListener() {}, removeEventListener() {} } };
         if (typeof win.crypto === 'undefined') win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
@@ -179,6 +180,7 @@ if (!JSDOM) {
         if(r === 'pending') return new Promise(function(){});
         if(r === undefined || r === 'fail') return Promise.resolve({ ok:false, msg:'시험: 회신 없음' });
         return Promise.resolve(JSON.parse(JSON.stringify(r))); };`);
+    if (url.includes('peerwin=1')) return B;
     const sess = posted.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).find((m) => m && m.cmd === 'userSessionGet');
     if (sess) w.eval('__hostReply(' + JSON.stringify(sess.reqId) + ', ' + JSON.stringify({ ok: true, user: ME }) + ')');
     w.eval('currentUser = ' + JSON.stringify(ME));
@@ -214,7 +216,9 @@ if (!JSDOM) {
   const type = (B, v) => { const i = B.doc.getElementById('pkSearch'); i.value = v; i.dispatchEvent(new B.w.Event('input', { bubbles: true })); };
   const act = (B) => { const a = B.doc.activeElement; if (!a) return '';
     return a.id || (a.classList.contains('pk-node') ? 'node:' + a.dataset.unit : a.className + ':' + (a.dataset.login || a.dataset.unit || '')); };
-  const pvOpen = (B) => { const m = B.doc.getElementById('peerModal'); return !m.classList.contains('hidden') && !m.classList.contains('closing'); };
+  const pvOpen = (X) => !X.doc.getElementById('peerWin').classList.contains('hidden');
+  const peerOpens = (X) => X.posted.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } })
+    .filter((m) => m && m.cmd === 'peerOpen').map((m) => m.loginId);
   //  창 폭 — jsdom 의 innerWidth 는 고정값이다 → 시험이 덮어쓰고 resize 를 쏜다(G6 경계).
   const setVW = (B, px) => { Object.defineProperty(B.w, 'innerWidth', { value: px, configurable: true, writable: true }); B.w.dispatchEvent(new B.w.Event('resize')); };
   async function reset(B) {
@@ -222,6 +226,7 @@ if (!JSDOM) {
       document.querySelectorAll('.overlay').forEach(function(o){ o.classList.remove('closing'); o.classList.add('hidden'); });
       __calls.length = 0; __rep = {}; currentUser = ${JSON.stringify(ME)}; return 1; })()`);
     for (const k of Object.keys(B.w.localStorage)) if (/^tc_peer(Fav|Recent):/.test(k)) B.w.localStorage.removeItem(k);
+    B.posted.length = 0;
     setVW(B, 1024);
     await settle();
   }
@@ -423,15 +428,15 @@ if (!JSDOM) {
     assert.ok(notes(B).includes('이 조직에는 사람이 없습니다'));
   });
 
-  test('(R5) 조직도 목록에서 사람을 누르면 팝오버가 닫히고 열람 창이 그 사람으로 뜬다(openPeerSchedule 그대로)', async () => {
+  test('(R5) 조직도 목록에서 사람을 누르면 팝오버가 닫히고 그 사람으로 열람 창을 연다(호스트에 peerOpen · openPeerSchedule 그대로)', async () => {
     node(B, '연구소').click();
     subBtn(B, 'SW 1팀').click();
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + '; __calls.length = 0');
+    B.ev('__calls.length = 0'); B.posted.length = 0;
     openBtn(B, 'ihyoon').click();
     await settle();
-    assert.ok(!isOpen(B) && pvOpen(B));
-    assert.deepStrictEqual(calls(B, 'peerSchedule').map((c) => c[1].loginId), ['ihyoon']);
-    assert.strictEqual(B.doc.getElementById('pvTitle').textContent, '윤인환 님의 일정');
+    assert.ok(!isOpen(B) && !pvOpen(B), '팝오버가 안 닫혔거나 내 창 안에 열람 화면이 펴졌다');
+    assert.deepStrictEqual(peerOpens(B), ['ihyoon'], '호스트에 열람 창 열기(peerOpen)를 보내지 않았다');
+    assert.deepStrictEqual(calls(B, 'peerSchedule'), [], '내 창이 남의 일정을 직접 조회했다');
   });
 
   // ── R6 ──
@@ -466,11 +471,13 @@ if (!JSDOM) {
 
   // ── R7 ──
   test('(R7) 열람 창 ▾ 바꾸기: 탭·조직도가 똑같이 있다 · 넓어져도 머리 폭 안 · 지금 보는 사람은 조직도 목록에서도 「· 보는 중」 회색', async () => {
+    const MAIN = B;
+    B = boot(app, 'https://tcapp.local/?peerwin=1');   // 이 시험은 열람 창(?peerwin=1) 안에서 돈다 — 끝에서 내 창으로 되돌린다
     await reset(B);
     B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK));
-    B.ev("openPeerSchedule('wblee', '이웅빈')");
+    B.ev(`__peerWinOpen(${JSON.stringify({ loginId: 'wblee', name: '이웅빈', me: ME })})`);
     await landFrame(B);
-    const head = B.doc.querySelector('#peerModal .modal-head');
+    const head = B.doc.querySelector('#peerWin .modal-head');
     let hw = 900;
     Object.defineProperty(head, 'clientWidth', { get: () => hw, configurable: true });
     B.ev('__rep.membersGet = ' + JSON.stringify(membersOk()));
@@ -505,6 +512,9 @@ if (!JSDOM) {
     assert.strictEqual(B.doc.getElementById('pvTitle').textContent, '윤인환 님의 일정');
     assert.strictEqual(act(B), 'pvSwitch');
     delete head.clientWidth;
+    await landFrame(B);   // 바꾼 사람의 조회 회신이 끝난 뒤에 닫는다(닫힌 창에 늦게 온 회신이 그리면 jsdom 이 던진다)
+    assert.deepStrictEqual(B.errors, []);
+    B.close(); B = MAIN;
   });
 
   // ── R8 ──
@@ -576,11 +586,11 @@ if (!JSDOM) {
     key(B, B.doc.getElementById('pkSearch'), 'ArrowDown');
     assert.strictEqual(act(B), 'pk-sub:SW 2팀', '좁을 때 검색 칸 ↓ 가 목록 첫 줄이 아니다');
     //  검색 칸 Enter 는 사람 행만 연다(하위 조직 줄을 고르지 않는다)
-    B.ev('__rep.peerSchedule = ' + JSON.stringify(PEER_OK) + '; __calls.length = 0');
+    B.posted.length = 0;
     B.doc.getElementById('pkSearch').focus();
     key(B, B.doc.getElementById('pkSearch'), 'Enter');
     await settle();
-    assert.deepStrictEqual(calls(B, 'peerSchedule').map((c) => c[1].loginId), ['lab']);
+    assert.deepStrictEqual(peerOpens(B), ['lab']);
   });
 
   // ── R9 ──

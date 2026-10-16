@@ -39,6 +39,8 @@ namespace TaskCalendarWidget
         private bool _focusMode = false;                  // 맨 앞에 띄우기(Topmost 만, 크기와 위치는 그대로) 활성 여부
         private bool _maximized = false;                  // 창 버튼 최대화(작업 영역 채움) 상태. WindowState 는 Normal 그대로다
         private RECT _normalRect;                         // 최대화 직전 창 물리 좌표(복원과 설정 저장 기준)
+        private string? _appDir;                          // 이번 실행의 가상 호스트 폴더(tcapp.local). 열람 창이 같은 곳을 매핑한다
+        private PeerWindow? _peerWin;                     // 다른 사람 일정 보기 창(WINDOW-UI §4). 하나만 뜬다. 닫히면 null
 
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "TaskCalendarWidget";
@@ -241,7 +243,7 @@ namespace TaskCalendarWidget
                 s.AreBrowserAcceleratorKeysEnabled = false;
                 s.IsZoomControlEnabled = false;
 
-                web.CoreWebView2.WebMessageReceived += OnWebMessage;
+                web.CoreWebView2.WebMessageReceived += OnMainWebMessage;   // 열람 창(PeerWindow)도 같은 처리기(OnWebMessage)로 온다
                 web.CoreWebView2.NavigationCompleted += (_, ev) =>
                 {
                     HideLoading();   // 반드시 ApplyDesktopMode보다 먼저 — WPF 렌더 영역이 남은 채 부착되면 검게 렌더됨
@@ -268,6 +270,7 @@ namespace TaskCalendarWidget
                     Directory.CreateDirectory(appDir);
                     File.WriteAllText(Path.Combine(appDir, "index.html"), html, new UTF8Encoding(false));
                     web.CoreWebView2.SetVirtualHostNameToFolderMapping("tcapp.local", appDir, CoreWebView2HostResourceAccessKind.Allow);
+                    _appDir = appDir;   // 열람 창(PeerWindow)도 같은 폴더를 같은 이름으로 매핑한다(같은 출처라 localStorage 가 하나)
                     Log($"가상 호스트 로드(localStorage 영속) — HTML {html.Length}자 · dir={Path.GetFileName(appDir)}");
                     web.CoreWebView2.Navigate("https://tcapp.local/index.html");
                     PruneOldAppDirs(appRoot, appDir);   // 이전 회차 폴더 정리(잠겨 있으면 조용히 건너뜀)
@@ -436,8 +439,31 @@ namespace TaskCalendarWidget
             return list;
         }
 
-        private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        private void OnMainWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e) => OnWebMessage(e, web.CoreWebView2);
+        internal void OnPeerWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2 core) => OnWebMessage(e, core);   // PeerWindow 가 부른다
+
+        // ============ 열람 창(PeerWindow)의 메시지 길(WINDOW-UI §4) ============
+        //  열람 창이 보낼 수 있는 명령은 이 넷뿐이다. 모두 읽기다(열람 창 웹이 뜸, 남의 일정 조회, 사람 고르기 명부, 내 일정 겹).
+        //  나머지(저장, 쓰기, 보고, 창 조작, 부팅 ready)는 OnWebMessage 가 거절하고 로그를 남긴다.
+        //  ★ 웹도 같은 목록으로 hpost 를 막지만(PEERWIN_CMD) 그것을 믿지 않는다. 판정은 여기다.
+        internal static readonly HashSet<string> PeerWinCommands = new(StringComparer.Ordinal)
         {
+            "peerWinReady", "peerSchedule", "membersGet", "peerMine",
+        };
+        //  열람 창 요청 번호의 머리. 회신은 이 표시를 보고 열람 창으로 간다(ReplyCore). 두 창의 번호가 겹치지 않는다.
+        internal const string PeerReqPrefix = "pw:";
+
+        //  회신을 받을 쪽. 'pw:' 번호면 열람 창, 아니면 메인 창. 열람 창이 닫혔으면 null(회신을 버린다).
+        private CoreWebView2? ReplyCore(string reqId) =>
+            reqId.StartsWith(PeerReqPrefix, StringComparison.Ordinal) ? _peerWin?.Core : web.CoreWebView2;
+
+        //  메인 창과 열람 창의 웹 메시지가 모두 여기로 온다. origin = 보낸 CoreWebView2.
+        //  ★ 열람 창에서 온 것은 PeerWinCommands 와 'pw:' 번호만 받는다. 메인 창이 'pw:' 번호를 쓰면 버린다(회신 길이 섞이지 않게).
+        private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)
+        {
+            bool fromPeer = origin != null && _peerWin != null && ReferenceEquals(origin, _peerWin.Core);
+            if (!fromPeer && (origin == null || !ReferenceEquals(origin, web.CoreWebView2))) return;   // 모르는 창
+            if (fromPeer && !(e.Source ?? "").StartsWith("https://tcapp.local/", StringComparison.OrdinalIgnoreCase)) return;
             string raw;
             try { raw = e.TryGetWebMessageAsString(); }
             catch { return; }
@@ -447,9 +473,22 @@ namespace TaskCalendarWidget
             {
                 using var doc = JsonDocument.Parse(raw);
                 if (!doc.RootElement.TryGetProperty("cmd", out var cmdEl)) return;
+                string cmd = cmdEl.ValueKind == JsonValueKind.String ? (cmdEl.GetString() ?? "") : "";
+                string rq = GetStr(doc, "reqId");
+                bool peerReq = rq.StartsWith(PeerReqPrefix, StringComparison.Ordinal);
+                if (fromPeer)
+                {
+                    if (!PeerWinCommands.Contains(cmd) || (rq.Length > 0 && !peerReq))
+                    {
+                        Log("열람 창 명령 거부: " + cmd);
+                        if (peerReq) GitReply(rq, new { ok = false, error = "열람 창에서는 할 수 없는 요청입니다" });
+                        return;
+                    }
+                }
+                else if (peerReq) return;
                 var hwnd = new WindowInteropHelper(this).Handle;
 
-                switch (cmdEl.GetString())
+                switch (cmd)
                 {
                     case "ready":
                         //  ★ 2026-09-01 — 데이터 출처는 **DB 하나**다(XmlRetired = true).
@@ -523,6 +562,7 @@ namespace TaskCalendarWidget
                     // ----- 시작 알림(리마인더) -----
                     case "reminderSync":
                         RemSync(doc);
+                        _peerWin?.SetDark(_remTheme == "dark");   // 테마가 바뀌면 열람 창 제목줄도 따라간다(알림 동기화가 해석된 테마를 싣는다)
                         break;
 
                     // ----- 자동 업데이트(FTP/파일 기반) -----
@@ -633,7 +673,8 @@ namespace TaskCalendarWidget
                     case "membersGet":       // 구성원 모달 — 조직 트리 + 내 열람 범위 안의 사람들(열 때마다 재조회)
                         //   includeInactive 는 관리자의 「퇴사자 보기」다. 여기서 판정하지 않는다 —
                         //   호스트가 DB 에서 읽은 edit_role 로 ProjectDb 가 무시하거나 반영한다(웹은 신뢰 경계 밖).
-                        _ = RunMembersGetAsync(GetStr(doc, "reqId"), GetBool(doc, "includeInactive"), GetBool(doc, "flat"));   // flat = 「구성원 편집」(전사 서열 순)
+                        //   열람 창의 사람 고르기는 재직자 명부만 쓴다(퇴사자 보기, 서열 순은 메인 창의 관리 화면 것이다).
+                        _ = RunMembersGetAsync(GetStr(doc, "reqId"), !fromPeer && GetBool(doc, "includeInactive"), !fromPeer && GetBool(doc, "flat"));   // flat = 「구성원 편집」(전사 서열 순)
                         break;
 
                     // ----- 직원 정보 쓰기(USER-ADMIN §4.2) — 관리자 전용. 회신은 ReplyOnUi(reqId)로 {ok,msg,roster} -----
@@ -713,6 +754,15 @@ namespace TaskCalendarWidget
                         //     읽는다. 웹이 viewer 를 실어 보내게 하면 그 값을 바꾸는 것만으로
                         //     남의 권한을 빌려 쓴다.
                         _ = RunPeerScheduleAsync(GetStr(doc, "reqId"), GetStr(doc, "loginId"));
+                        break;
+                    case "peerOpen":         // WINDOW-UI §4 — 메인 창의 입구(툴바 👥, 구성원 보기 행). 열람 창을 열거나 앞으로 가져와 대상을 바꾼다
+                        OpenPeerWindow(GetStr(doc, "loginId"), GetStr(doc, "name"));
+                        break;
+                    case "peerWinReady":     // 열람 창 웹이 떴다. 기다리던 대상을 넘긴다(__peerWinOpen)
+                        if (fromPeer) _peerWin?.OnWebReady();
+                        break;
+                    case "peerMine":         // 열람 창의 내 일정 겹. 메인 창의 지금 상태를 물어 와 넘긴다(DB 를 다시 읽지 않는다)
+                        _ = RunPeerMineAsync(rq);
                         break;
 
                     case "netcusWeekSubmit":
@@ -1631,7 +1681,7 @@ namespace TaskCalendarWidget
             {
                 string json = JsonSerializer.Serialize(payload);
                 string call = "window.__hostReply(" + JsonSerializer.Serialize(reqId) + "," + json + ")";
-                _ = web.CoreWebView2?.ExecuteScriptAsync(call);
+                _ = ReplyCore(reqId)?.ExecuteScriptAsync(call);   // 'pw:' 번호면 열람 창으로(WINDOW-UI §4)
             }
             catch (Exception ex) { Log("GitReply 오류: " + ex.Message); }
         }
@@ -1845,6 +1895,7 @@ namespace TaskCalendarWidget
                 if (!cok) { UserSession.Clear(_dataDir, Log); _netcus.ClearCredsForLogout(); Fail(SaveFail); return; }
 
                 Log("사용자 로그인 완료: " + id + " (" + u.name + " · " + u.orgUnit + ")");
+                Dispatcher.Invoke(ClosePeerWindow);   // 계정이 바뀌었다. 앞 계정으로 연 열람 창을 남기지 않는다
                 ReplyOnUi(reqId, new { ok = true, user = UserPayload(fresh) });
             }
             catch (Exception ex)
@@ -1864,6 +1915,7 @@ namespace TaskCalendarWidget
             {
                 UserSession.Clear(_dataDir, Log);
                 _netcus.ClearCredsForLogout();
+                ClosePeerWindow();   // 로그아웃하면 열람 창도 닫는다(WINDOW-UI §4)
                 Log("사용자 로그아웃 — 세션·자격증명 삭제");
             }
             catch (Exception ex) { Log("사용자 로그아웃 예외: " + ex.Message); }
@@ -1929,7 +1981,8 @@ namespace TaskCalendarWidget
                 if (json == null) { GitReply(reqId, new { ok = false, error = "서버에서 일정을 받지 못했습니다" }); return; }
                 //  ★ allowed:false 도 **성공 회신**이다 — 통신 실패와 권한 없음은 사용자에게 다른 사실이다.
                 //    한 덩어리로 묶으면 화면이 "서버가 이상한가?" 와 "내가 볼 수 없는가?" 를 구분 못 한다.
-                _ = web.CoreWebView2.ExecuteScriptAsync(
+                //  회신은 물은 창으로 간다(열람 창이면 'pw:' 번호다. ReplyCore).
+                _ = ReplyCore(reqId)?.ExecuteScriptAsync(
                     "window.__hostReply(" + JsonSerializer.Serialize(reqId) + ", Object.assign({ok:true}, " + json + "))");
             }
             catch (Exception ex)
@@ -1937,6 +1990,114 @@ namespace TaskCalendarWidget
                 Log("타인 일정 조회 예외: " + ex.Message);
                 GitReply(reqId, new { ok = false, error = ex.Message });
             }
+        }
+
+        // ============ 다른 사람 일정 보기 창(WINDOW-UI §4) ============
+        //  메인 창의 입구(peerOpen)가 부른다. 창은 하나다: 없으면 만들어 띄우고, 있으면 앞으로 가져와(최소화면 되살려) 대상만 바꾼다.
+        //  ★ 대상(loginId)과 표시 이름만 웹에서 받는다. 보는 사람(me)은 세션에서 읽는다. me 는 웹의 즐겨찾기 키와
+        //    「나 자신 빼기」에만 쓰이고, 권한 판정은 열람 창이 보내는 peerSchedule 마다 RunPeerScheduleAsync 가 세션으로 다시 한다.
+        internal const double PeerMinWidth = 480, PeerMinHeight = 360;
+
+        private void OpenPeerWindow(string loginId, string name)
+        {
+            loginId = (loginId ?? "").Trim();
+            if (loginId.Length == 0) return;
+            UserSession? s = null;
+            try { s = UserSession.Load(_dataDir, Log); } catch { }
+            if (s == null || s.LoginId.Length == 0) { Log("열람 창: 로그인 정보가 없어 열지 않음"); return; }
+            if (_cwvEnv == null || _appDir == null) { Log("열람 창: WebView2 환경이나 가상 호스트가 없어 열지 않음"); return; }
+            string json = JsonSerializer.Serialize(new { loginId, name = name ?? "", me = UserPayload(s) });
+            if (_peerWin == null)
+            {
+                var (r, max) = PeerStartBounds();
+                var w = new PeerWindow(this, _cwvEnv, _appDir, r, max, _remTheme == "dark");
+                w.Closed += (_, _) => { if (ReferenceEquals(_peerWin, w)) _peerWin = null; };
+                _peerWin = w;
+                w.Show();
+                Log($"열람 창 열기 ({r.Left:0},{r.Top:0} {r.Width:0}x{r.Height:0}{(max ? " 최대화" : "")})");
+            }
+            _peerWin.ShowTarget(json);
+            _peerWin.BringToFront();
+        }
+
+        //  앱 종료, 로그아웃, 계정 바뀜. 닫히면서 자리를 남긴다(PeerWindow.Closing → RememberPeerBounds).
+        private void ClosePeerWindow()
+        {
+            var w = _peerWin;
+            _peerWin = null;
+            if (w == null) return;
+            try { w.Close(); } catch (Exception ex) { Log("열람 창 닫기 오류: " + ex.Message); }
+        }
+
+        //  PeerWindow 가 닫힐 때 부른다. 자리는 PC 에 하나(_settings.Peer)다.
+        internal void RememberPeerBounds(Rect r, bool maximized)
+        {
+            if (r.IsEmpty || double.IsNaN(r.Width) || r.Width < PeerMinWidth || r.Height < PeerMinHeight) return;
+            _settings.Peer = new PeerWindowBounds { Left = r.Left, Top = r.Top, Width = r.Width, Height = r.Height, Maximized = maximized };
+            SaveSettings();
+        }
+
+        internal void PeerLog(string msg) => Log(msg);
+
+        //  처음 열 때의 자리. 저장값이 있으면 그것을 지금 화면에 맞추고(FitPeerRect), 없으면 메인 창이 있는 모니터 가운데에
+        //  1400x900(작업 영역의 90% 를 넘지 않게)으로 연다. 좌표는 WPF DIP 다.
+        private (Rect rect, bool maximized) PeerStartBounds()
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            double sx = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1, sy = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1;
+            Rect Dip(System.Drawing.Rectangle p) => new Rect(p.Left / sx, p.Top / sy, p.Width / sx, p.Height / sy);
+            var works = System.Windows.Forms.Screen.AllScreens.Select(sc => Dip(sc.WorkingArea)).ToList();
+            var hwnd = new WindowInteropHelper(this).Handle;
+            Rect home = hwnd != IntPtr.Zero ? Dip(System.Windows.Forms.Screen.FromHandle(hwnd).WorkingArea) : SystemParameters.WorkArea;
+            var virt = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                                SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            var p = _settings.Peer;
+            Rect saved = p == null ? Rect.Empty : new Rect(p.Left, p.Top, Math.Max(0, p.Width), Math.Max(0, p.Height));
+            return (FitPeerRect(saved, virt, works, home, SystemParameters.WorkArea), p != null && p.Maximized);
+        }
+
+        //  열람 창 자리 맞추기(순수 함수). saved 가 비었거나 너무 작으면 home(메인 창 모니터) 가운데 기본 크기.
+        //  saved 의 제목줄이 어느 모니터 작업 영역에도 걸치지 않으면(그 모니터를 뺐다) 주 모니터(primary) 가운데로 끌어온다.
+        //  그 밖에는 크기를 가상 화면 안으로 줄이고 위치를 가상 화면 안으로 당긴다.
+        internal static Rect FitPeerRect(Rect saved, Rect virt, IReadOnlyList<Rect> works, Rect home, Rect primary)
+        {
+            static Rect Center(Rect wa, double w, double h)
+            {
+                w = Math.Min(w, wa.Width); h = Math.Min(h, wa.Height);
+                return new Rect(wa.Left + (wa.Width - w) / 2, wa.Top + (wa.Height - h) / 2, w, h);
+            }
+            bool valid = !saved.IsEmpty && !double.IsNaN(saved.Left) && !double.IsNaN(saved.Top)
+                      && !double.IsInfinity(saved.Left) && !double.IsInfinity(saved.Top)
+                      && saved.Width >= PeerMinWidth && saved.Height >= PeerMinHeight;
+            if (!valid) return Center(home, Math.Min(1400, home.Width * 0.9), Math.Min(900, home.Height * 0.9));
+            double sw = Math.Min(saved.Width, virt.Width), sh = Math.Min(saved.Height, virt.Height);
+            var bar = new Rect(saved.Left, saved.Top, sw, 32);   // 제목줄(끌어서 옮기는 자리)
+            bool onScreen = works.Any(wa => { var i = Rect.Intersect(wa, bar); return !i.IsEmpty && i.Width >= 100 && i.Height >= 16; });
+            if (!onScreen) return Center(primary, sw, sh);
+            double x = Math.Min(Math.Max(saved.Left, virt.Left), Math.Max(virt.Left, virt.Right - sw));
+            double y = Math.Min(Math.Max(saved.Top, virt.Top), Math.Max(virt.Top, virt.Bottom - sh));
+            return new Rect(x, y, sw, sh);
+        }
+
+        //  열람 창의 내 일정 겹(peerMine). 메인 창 웹에 지금 상태를 묻고(__peerMineSnapshot: 겹 모양만) 그대로 회신한다.
+        //  ★ 메인 창이 정본이다(저장 전 편집도 보인다). DB 를 다시 읽지 않는다.
+        //  ★ 메인 창의 답이 배열이 아니면 빈 배열로 보낸다(JSON 을 다시 읽어 확인한 뒤에만 회신에 싣는다).
+        private async Task RunPeerMineAsync(string reqId)
+        {
+            string arr = "[]";
+            try
+            {
+                string? r = web.CoreWebView2 == null ? null : await web.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){try{return window.__peerMineSnapshot?window.__peerMineSnapshot():[];}catch(e){return [];}})()");
+                if (!string.IsNullOrEmpty(r))
+                {
+                    using var d = JsonDocument.Parse(r);
+                    if (d.RootElement.ValueKind == JsonValueKind.Array) arr = d.RootElement.GetRawText();
+                }
+            }
+            catch (Exception ex) { Log("열람 창 내 일정 겹 조회 오류: " + ex.Message); }
+            try { _ = ReplyCore(reqId)?.ExecuteScriptAsync("window.__hostReply(" + JsonSerializer.Serialize(reqId) + ", {ok:true, entries:" + arr + "})"); }
+            catch (Exception ex) { Log("열람 창 회신 오류: " + ex.Message); }
         }
 
         private async Task RunMembersGetAsync(string reqId, bool includeInactive, bool flatOrder = false)
@@ -2748,6 +2909,7 @@ namespace TaskCalendarWidget
         private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
         {
             if (!ConfirmCloseIfUnsaved("창 닫기")) { e.Cancel = true; return; }   // §6 — 세션·시스템 종료는 묻지 않는다
+            ClosePeerWindow();   // 앱을 닫으면 열람 창도 닫는다. 그 창의 자리를 먼저 _settings 에 남긴 뒤 아래에서 함께 저장한다
             SaveSettings();
             CleanupTray();   // 창이 실제로 닫히면 트레이 정리(잔상 방지)
             CleanupReminders();   // 열린 알림 창·타이머 정리
@@ -3144,5 +3306,17 @@ namespace TaskCalendarWidget
         public bool Maximized { get; set; } = false;      // 창 버튼 최대화로 닫았는지. Left..Height 는 그때도 최대화 직전 평소 창이다
         // 자동 업데이트 소스 폴더 URL(ftp:// · http(s):// · UNC/로컬 경로). 빈 값 = 업데이트 기능 휴면.
         public string UpdateSourceUrl { get; set; } = "";
+        // 다른 사람 일정 보기 창(WINDOW-UI §4)의 마지막 자리. PC 에 하나다. null = 아직 연 적 없음(기본 크기로 연다)
+        public PeerWindowBounds? Peer { get; set; }
+    }
+
+    // 열람 창 자리(DIP). Left..Height 는 평소 창이다(최대화로 닫았어도 그 직전 자리). Maximized 면 최대화로 연다.
+    public class PeerWindowBounds
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public bool Maximized { get; set; }
     }
 }
