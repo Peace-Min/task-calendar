@@ -230,7 +230,7 @@ const checks = {
     // 성공 판정: 판번호를 다시 읽어 13 인지 보고, 관문 표 셋을 본다.
     assert.ok(/\$verAfter = QTry \$SQL_VERSION\s*\n\s*if\(\$verAfter -ne \$toVersion\)\{/.test(code), '이관 뒤 판번호를 다시 읽어 13 인지 보지 않는다');
     for (const h of ['customer_empty_name', 'cut_parent', 'e1_orphan']) assert.ok(code.includes(`'${h}'`), `관문 표 ${h} 를 읽지 않는다`);
-    assert.ok(/"  다음 단계: 이제 0\.21\.0 앱을 설치하세요\./.test(code), '성공 뒤 "이제 0.21.0 앱을 설치하세요" 안내가 없다');
+    assert.ok(/"  다음 단계: 이제 0\.21\.0 이상\(최신\) 앱을 설치하세요\./.test(code), '성공 뒤 "이제 0.21.0 이상(최신) 앱을 설치하세요" 안내가 없다');
   },
 
   // ⑩ 실물: 판번호를 이관 SQL 에서 읽는 식이 실제 파일과 맞고, 그 판이 정본과 같다

@@ -299,7 +299,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 
 ### 기존 PC 의 DB 이관(마스터 cmd): `migrate-code-ids.cmd`
 
-위 이관 SQL 을 사람이 지켜야 하는 순서(위젯 닫기, 백업, 백업 확인, `--force` 없이 실행, 멈춘 자리 판단)째로 한 번에 돌리는 도구입니다(2026-10-16). 0.21.0 을 올리기 전에, 데이터가 있는 v12 DB(예: 서버 노릇을 하는 PC 의 `taskcalendar`)에 한 번 씁니다. 정본은 `migrate-code-ids.ps1` 머리말입니다.
+위 이관 SQL 을 사람이 지켜야 하는 순서(위젯 닫기, 백업, 백업 확인, `--force` 없이 실행, 멈춘 자리 판단)째로 한 번에 돌리는 도구입니다(2026-10-16). 0.21.0 이상 앱(지금은 0.22.0)을 올리기 전에, 데이터가 있는 v12 DB(예: 서버 노릇을 하는 PC 의 `taskcalendar`)에 한 번 씁니다. 정본은 `migrate-code-ids.ps1` 머리말입니다.
 
 **언제 쓰지 않나.** 새로 세우는 DB(회사 서버 포함)는 `setup-taskcalendar.cmd` 로 만듭니다. 이미 v13 인 DB 는 이 도구가 판번호를 읽고 "이미 v13 입니다. 할 일이 없습니다." 로 끝냅니다(종료코드 0).
 
@@ -315,7 +315,7 @@ migrate-code-ids.cmd -DbHost 192.168.0.50 -BackupDir "D:\taskmgr-backup"
 3. 확인: DB, 서버, 행 수(project, app_user, cal_entry), 백업 경로를 보여 주고 `Y` 를 받습니다(`-Yes` 면 묻지 않습니다. 입력이 리다이렉트된 무인 실행은 `-Yes` 가 있어야 합니다).
 4. 백업: `mysqldump --single-transaction --no-tablespaces --routines --triggers --events --set-gtid-purged=OFF` 를 `<BackupDir>\<DB>-before-code-ids-<시각>.sql` 로 뜹니다. 1KB 를 넘고 끝에 `-- Dump completed` 가 있어야 통과이고, 그전에는 `.partial` 이름이라 `restore-taskmgr` 가 고르지 않습니다. `--databases` 는 쓰지 않습니다(덤프에 `USE` 가 들어가면 `restore-taskmgr -TargetDb` 가 라이브로 들어갑니다). 기본 `BackupDir` 는 `dist\migrate-code-ids\backup` 입니다.
 5. 이관 SQL: `mysql --default-character-set=utf8mb4 -t <DB> < migrate-2026-10-15-code-ids.sql`, `--force` 없이. 출력과 오류는 `<BackupDir>\<DB>-migrate-code-ids-<시각>.log` 에 남습니다.
-6. 판정: 판번호를 다시 읽어 13 인지, 사전 점검, 절단 관문(`cut_*`), 사후 검증(`e1`~`e8`) 표가 모두 0 인지, 행 수가 같은지 봅니다. 성공하면 "이제 0.21.0 앱을 설치하세요" 로 끝납니다.
+6. 판정: 판번호를 다시 읽어 13 인지, 사전 점검, 절단 관문(`cut_*`), 사후 검증(`e1`~`e8`) 표가 모두 0 인지, 행 수가 같은지 봅니다. 성공하면 "이제 0.21.0 이상(최신) 앱을 설치하세요" 로 끝납니다.
 
 **멈추면(종료코드 1).** 출력 문구가 아니라 DB 상태(판번호, 옛 열, 이름 기본키, 이름 외래키)를 다시 읽어 가릅니다.
 - **절단 전**(옛 열과 키가 그대로): "옛 열은 그대로입니다. 메시지대로 데이터를 고친 뒤 다시 실행하세요." 마지막 *"중단: …"* 줄이 이유입니다. `ERROR 1205` 면 위젯이 열려 있던 것입니다.

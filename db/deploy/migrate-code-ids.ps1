@@ -9,7 +9,7 @@
     근거와 결정은 docs/CODE-TABLE-IDS.md, 이관 SQL 의 단계와 가드는 그 파일 머리말이 정본이다.
 
   언제 쓰나
-    데이터가 들어 있고 지우면 안 되는 v12 DB 하나를 0.21.0 앱이 쓰는 v13 으로 올릴 때.
+    데이터가 들어 있고 지우면 안 되는 v12 DB 하나를 0.21.0 이상 앱이 쓰는 v13 으로 올릴 때.
     예: 서버 노릇을 하는 PC 의 taskcalendar(0.19.x 를 쓰던 DB).
 
   언제 쓰지 않나
@@ -377,7 +377,7 @@ try {
   foreach($t in $COUNT_TABLES){ Log ("  행 수 {0,-8}: {1}" -f $t, $countsBefore[$t]) }
   Log "  백업         : $dumpPath"
   Log "  이관 기록    : $migLog"
-  Log "  이 DB 에 붙는 위젯을 모두 닫았는지 확인하세요. 이관 뒤에는 0.21.0 앱만 이 DB 에 붙습니다." 'Yellow'
+  Log "  이 DB 에 붙는 위젯을 모두 닫았는지 확인하세요. 이관 뒤에는 0.21.0 이상 앱만 이 DB 에 붙습니다." 'Yellow'
   if(-not $Yes){
     $a = Read-Host "계속하려면 Y"
     if("$a".Trim() -ne 'Y'){
@@ -488,7 +488,7 @@ try {
       foreach($t in @('cal_entry_commit','cal_todo_day_note','cal_room')){
         Log "     REVOKE UPDATE ON $dbQ.$t FROM '$AppUser'@'%';"
       }
-      Finish $EXIT_FAIL "중단: 권한 회수만 실패했습니다(종료코드 $EXIT_FAIL). 스키마는 v$toVersion 입니다. 위 세 줄을 실행한 뒤 0.21.0 앱을 설치하세요." 'Red'
+      Finish $EXIT_FAIL "중단: 권한 회수만 실패했습니다(종료코드 $EXIT_FAIL). 스키마는 v$toVersion 입니다. 위 세 줄을 실행한 뒤 0.21.0 이상(최신) 앱을 설치하세요." 'Red'
     }
     Log "  DB 상태: 판번호 [$verNow], 옛 열 [$colsNow]/4, 이름 기본키 [$pkNow]/4, 이름 외래키 [$fkNow] (절단 뒤이거나 알 수 없음)" 'Red'
     Log "  옛 열을 지우는 단계 이후에 멈췄거나 상태를 확인할 수 없습니다. 이 DB 를 그대로 쓰지 말고 백업으로 되돌리세요." 'Red'
@@ -537,7 +537,7 @@ try {
   Log "  백업         : $dumpPath"
   Log "  이관 기록    : $migLog"
   Log ""
-  Log "  다음 단계: 이제 0.21.0 앱을 설치하세요. 0.19.x 와 0.20.0 앱은 이 DB 에 붙지 않습니다." 'Cyan'
+  Log "  다음 단계: 이제 0.21.0 이상(최신) 앱을 설치하세요. 0.19.x 와 0.20.0 앱은 이 DB 에 붙지 않습니다." 'Cyan'
   Finish $EXIT_OK "완료: '$DbName' 이 v$verAfter 입니다(종료코드 $EXIT_OK)." 'Green'
 } finally {
   # exit(Finish) 로 끝나도 finally 는 돈다. Cleanup 은 두 번 불려도 안전하다.

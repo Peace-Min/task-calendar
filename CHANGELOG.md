@@ -7,9 +7,37 @@
 
 ---
 
+## 🆕 2026-10-16, v0.22.0: 창 버튼(최소화, 최대화, 닫기), 맨 앞에 띄우기 단순화, 다른 사람 일정 보기 독립 창(PeerWindow), 펼침 칸 높이 정정 (스키마 변경 없음, v13)
+
+0.21.0(스키마 v13, 코드표 번호 키)은 빌드만 하고 사내에 배포하지 않았다. 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마, GRANT 변경 없음**(v13, `CalendarDb.ExpectedSchemaVersion = "13"` 그대로). 0.19.x 나 0.20.0 에서 올리는 곳은 0.21.0 의 DB 단계(v12 DB 면 `db/deploy/migrate-code-ids.cmd`, 회사 서버면 `db/deploy/README.md` 대로 v13 DB)를 먼저 마친 뒤 앱을 올린다. 기획 [docs/WINDOW-UI.md](docs/WINDOW-UI.md).
+
+- `ba5c535` fix(window): 맨 앞에 띄우기 중 `SaveSettings` 가 확대 좌표를 평소 창 크기로 저장하던 문제, 최소화나 숨김 상태에서 진입하면 화면만 어두워지던 문제. [docs/BUG-FOCUS-RESTORE.md](docs/BUG-FOCUS-RESTORE.md).
+- `c4308a3` fix(peer): 밀도 '펼침' 의 `grid-auto-rows:minmax(74px,auto)` 를 `minmax(min-content,auto)` 와 칸 `min-height:74px` 로. 줄이 내용만큼 늘고 넘칠 때만 격자가 스크롤된다(겹쳐 보기, 나란히 보기, 내 달력 모두).
+- `c464445` docs: WINDOW-UI 기획.
+- `4accafc` feat(window): 창 버튼 셋과 제목줄 두 번 누르기, 맨 앞에 띄우기를 Topmost 만으로(스크림과 1100x800 확대 제거, ba5c535 의 확대 좌표 보정도 제거), 최소화 중 저장이 -32000 좌표를 쓰던 결함.
+- `75a806f` feat(peer): 열람 창을 독립 창 `widget/PeerWindow.cs` 로. `#peerModal` 오버레이 제거, 웹은 `?peerwin=1` 에서 `#peerWin` 껍데기만 편다.
+- `e9cc1fc` fix(window): 독립 리뷰 수정(열람 창 회신 길, 맨 앞 중 열람 창 Topmost, 배율 혼합 복원, 최소화 고립, 작업 영역 변경, 번호 없는 읽기 거절, ProcessFailed).
+
+주요 구조:
+- **최대화**: `WindowStyle="None"`, `AllowsTransparency="True"` 라 `WindowState.Maximized` 를 쓰지 않고 창이 있는 모니터의 작업 영역(`MonitorFromRect` 의 `rcWork`, 물리 px)에 직접 맞춘다. 복원 좌표와 최대화 여부를 창 위치 설정에 저장해 시작할 때 되살린다. 최대화 중 끌면 커서 밑으로 복원, Win+위 지원. 최대화 중 `WM_DISPLAYCHANGE`, `WM_SETTINGCHANGE`(`SPI_SETWORKAREA`)에 작업 영역으로 다시 맞춘다. 웹 메시지 `winMinimize`, `winMaximizeToggle`, 상태 알림 `__setWinState`. 최소화 버튼은 트레이를 켠 일반 창 모드에서만(위젯 모드는 작업 표시줄 단추가 없어 되돌릴 길이 없고, 최소화되면 바로 되살린다). 트레이 보이기, 트레이 끄기, 크기 프리셋, 다음 모니터로, 위치 초기화는 최소화를 먼저 푼다.
+- **맨 앞에 띄우기**: 크기와 위치는 그대로 두고 Topmost 만 켜고 끈다(다시 누르거나 Esc). 켜져 있는 동안 열람 창도 Topmost 를 따라간다.
+- **PeerWindow**: 일반 창 테두리, Owner 없음, 작업 표시줄에 따로, 창 하나 재사용(다시 고르면 앞으로 가져와 대상만 바꿈). 메인과 **같은 WebView2 환경**과 `tcapp.local` 매핑이라 localStorage(즐겨찾기, 테마)를 함께 쓴다. 메시지는 메인과 같은 `OnWebMessage` 로 오되 **명령 넷의 허용 목록**(`peerWinReady`, `peerSchedule`, `membersGet`, `peerMine`)만 받고 나머지는 거절과 로그. 보는 사람은 호스트 세션에서 읽는다(웹이 정하지 않음). 자리(평소 좌표와 최대화)는 `widget.settings.json` 의 `Peer` 에 하나 저장하고 `FitPeerRect` 로 화면 안에 맞춘다. 앱 종료, 로그아웃, 다른 계정 로그인이면 닫는다. 렌더러 프로세스 실패는 다시 읽고 브라우저 실패는 창을 닫는다.
+- **회신 길**: 열람 창 요청 번호는 `pw:<소금>:<명령>-<번호>`(창마다 다른 소금). 호스트는 요청을 보낸 `CoreWebView2` 를 받을 때 기록하고, 그 창이 아직 지금 열람 창일 때만 회신한다(닫았다 다시 연 창에 옛 회신이 가지 않는다). `peerWinReady` 말고는 `pw:` 번호가 없으면 거절.
+- **겹쳐 보기의 내 일정**: DB 를 다시 읽지 않고 호스트가 메인 창의 `__peerMineSnapshot` 을 `ExecuteScriptAsync` 로 받아 열람 창에 넘긴다(`peerMine`, 프레임은 `__peerSetMine` 으로 겹만 갈아 끼우고 필터와 고른 날은 유지). 메인 상태가 정본이라 저장 전 편집도 보인다.
+
+시험: `tests/window-buttons.test.mjs`(신규), `tests/focus-restore.test.mjs`(Topmost 만 켜는 계약으로 다시 씀), `tests/peer-window.test.mjs`(신규, `FitPeerRect` 는 C# 그대로 컴파일), `tests/peer-expand-scroll.test.mjs`(신규). 열람 창 관련 기존 시험(peer-picker, peer-overlay, peer-view-full 등)과 실 위젯 루프는 독립 창 기준으로 옮겼다(루프는 `peerwin=1` 대상에 따로 붙는다).
+
+알려진 한계([docs/WINDOW-UI.md](docs/WINDOW-UI.md) §5):
+- 열람 창 자리는 DIP 로 하나만 기억하고 `FitPeerRect` 는 메인 창 DPI 로 환산한 작업 영역에 맞춘다. 모니터마다 배율이 다르면 다른 배율 모니터에 두었던 자리가 조금 어긋나게 열릴 수 있다(화면 밖으로 나가지는 않는다).
+- 트레이를 켠 일반 창 모드에서 최대화 중 Win+아래는 복원하지 않고 최소화한다(`StateChanged` 만으로는 최소화 경로를 가를 수 없다). 다시 열면 최대화 그대로라 상태는 어긋나지 않는다.
+
+- 게이트: `TC_TEST_STRICT=1 node tests/run-tests.mjs` exit 0, strict 2706/0/0. 실 위젯 루프 33/33 을 두 번(리뷰 수정 전과 뒤). 버전 단일 소스 정합(`tests/version-sync.test.mjs`). 인스톨러 빌드와 `latest.json` sha256 대조는 릴리스 빌드 때.
+
+---
+
 ## 🆕 2026-10-16, v0.21.0: 코드표 번호 키(발주처, 구분, 상태, 직급), 기존 DB 이관 마스터 cmd (스키마 v13, DB 먼저)
 
-0.20.0(스키마 v12, 보고서 글 편집 판)은 사내에 배포하지 않았고, 코드표 번호 키 전환을 0.21.0 으로 따로 낸다(2026-10-16 사용자 결정). 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마가 v12 에서 v13 으로 바뀐다**(`CalendarDb.ExpectedSchemaVersion = "13"`). 배포 순서는 **DB 먼저, 그다음 앱**이다. 0.21.0 앱은 v12 DB 를, 0.19.x 와 0.20.0 앱은 v13 DB 를 거부한다.
+0.20.0(스키마 v12, 보고서 글 편집 판)은 사내에 배포하지 않았고, 코드표 번호 키 전환을 0.21.0 으로 따로 낸다(2026-10-16 사용자 결정). 이 0.21.0 빌드도 배포하지 않았고 0.22.0(스키마 v13 그대로)이 대신한다. 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마가 v12 에서 v13 으로 바뀐다**(`CalendarDb.ExpectedSchemaVersion = "13"`). 배포 순서는 **DB 먼저, 그다음 앱**이다. 0.21.0 앱은 v12 DB 를, 0.19.x 와 0.20.0 앱은 v13 DB 를 거부한다.
 
 - 회사 서버를 새로 만들 때: `db/deploy/setup-taskcalendar.cmd`. 구버전 DB `taskmgr` 에서 과제 트랙을 복사하면서 코드 이름을 번호로 바꾼다.
 - 데이터가 있는 v12 DB: `db/deploy/migrate-code-ids.cmd`(새 마스터 cmd). 판번호(13 이면 할 일 없음, 12 가 아니면 멈춤), 옛 모양, 앱 계정 세션(PROCESSLIST)을 확인하고, 확인(Y) 뒤 mysqldump 백업(`--databases` 없이, `.partial` 로 떠서 1KB 와 `-- Dump completed` 확인 뒤 이름 확정)을 검증한 다음에만 `migrate-2026-10-15-code-ids.sql` 을 `--force` 없이 돌린다. 실패하면 DB 상태(판번호, 옛 열, 옛 기본키, 옛 외래키)를 다시 읽어 절단 전과 절단 뒤를 가르고, 절단 뒤면 `restore-taskmgr` 되돌리기 명령을 찍는다. 종료코드 0~5. 계약 `tests/migrate-code-ids-cmd.test.mjs`.
