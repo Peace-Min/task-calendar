@@ -10,8 +10,13 @@
 //   (R) jsdom: 위젯 모드로 띄워 버튼 클릭, 두 번 누르기, 최대화 중 끌기 문턱, 상태 알림, 트레이에 따른 최소화 표시를 본다.
 //       ★ 가짜 호스트는 메시지를 배열에 넣기만 한다.
 //       최소화 중에는 저장 좌표를 건드리지 않는다(GetWindowRect 가 -32000 자리를 준다).
+//   (S) 2026-10-16 리뷰 수정: 복원은 가장 가까운 모니터의 작업 영역(물리 px)으로 당긴다(VirtualScreen DIP 에 창 DPI 를
+//       곱하지 않는다). 최소화된 채로 트레이 '보이기', 아이콘, 트레이 끄기, 크기 프리셋, 모니터 이동, 초기화를 하면 먼저
+//       되살린다(UnMinimize, 최대화였으면 RefitMax). 위젯 모드(트레이 끔)에서 최소화되면 바로 되살리고 최대화였으면 복원한다.
+//       최대화 중 작업 영역이나 해상도가 바뀌면(WM_SETTINGCHANGE + SPI_SETWORKAREA, WM_DISPLAYCHANGE) 다시 맞춘다.
 //   (M) 변이: WindowState.Maximized 로 바꾸기, Maximized 저장 빼기, 최소화 가드 빼기, 크기 조절 가드 빼기, 두 번 누르기 빼기,
-//       최대화 중 끌기 문턱 빼기를 각각 잡는다.
+//       최대화 중 끌기 문턱 빼기, 복원을 가상 화면 DIP 로 되돌리기, 최소화 되살리기 빼기, 위젯 모드 최소화 되돌림 빼기,
+//       창 메시지 훅 빼기, 작업 영역 바뀜 상수 틀리기를 각각 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
 import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, stripCsComments,
          importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
@@ -105,6 +110,12 @@ function checkWorkArea(cs) {
   assert.match(rest, /int w = _normalRect\.Right - _normalRect\.Left, h = _normalRect\.Bottom - _normalRect\.Top;/, 'RestoreFromMax 가 직전 크기로 돌아가지 않는다');
   assert.match(rest, /SetWindowPos\(hwnd, IntPtr\.Zero, rx, ry, w, h,/, 'RestoreFromMax 가 직전 좌표로 SetWindowPos 하지 않는다');
   assert.match(rest, /SendWinState\(\);\s*SaveSettings\(\);/, 'RestoreFromMax 가 웹에 알리고 저장하지 않는다');
+  //  리뷰 P1-3: 모니터마다 배율이 다르면 VirtualScreen(시스템 DPI 의 DIP)에 창 DPI 를 곱한 값은 물리 px 가 아니다.
+  assert.doesNotMatch(rest, /SystemParameters\.VirtualScreen|GetDpi\(/, 'RestoreFromMax 가 DIP 가상 화면에 창 DPI 를 곱해 물리 좌표를 맞춘다(배율이 다른 모니터에서 어긋난다)');
+  assert.match(rest, /GetMonitorInfo\(MonitorFromRect\(ref nr, MONITOR_DEFAULTTONEAREST\), ref mi\)/, 'RestoreFromMax 가 복원 좌표에서 가장 가까운 모니터를 고르지 않는다');
+  assert.match(rest, /var wa = mi\.rcWork;\s*w = Math\.Min\(w, wa\.Right - wa\.Left\); h = Math\.Min\(h, wa\.Bottom - wa\.Top\);\s*rx = Math\.Min\(Math\.Max\(rx, wa\.Left\), wa\.Right - w\);\s*ry = Math\.Min\(Math\.Max\(ry, wa\.Top\), wa\.Bottom - h\);/,
+    'RestoreFromMax 가 복원 좌표를 그 모니터의 작업 영역 안으로 당기지 않는다');
+  assert.match(cs, /\[DllImport\("user32\.dll"\)\] private static extern IntPtr MonitorFromRect\(ref RECT lprc, uint flags\);/, 'MonitorFromRect 선언이 없다');
   // 시스템 최대화(Win+위)도 작업 영역 최대화로 바꾼다
   const sc = member(cs, 'private void Window_StateChanged(');
   assert.match(sc, /if \(WindowState != WindowState\.Maximized\) return;\s*WindowState = WindowState\.Normal;[\s\S]*MaximizeCore\(\);/, '시스템 최대화를 가로채 작업 영역 최대화로 바꾸지 않는다');
@@ -136,6 +147,36 @@ function checkGestures(cs) {
   assert.match(member(cs, 'private void ResetBounds()'), /if \(_maximized\) \{ _maximized = false; SendWinState\(\); \}/, '초기화가 최대화를 풀지 않는다');
 }
 
+//  리뷰 P1-4, P2-1: 최소화된 창을 되살리는 길. 트레이를 끈 위젯은 작업 표시줄 단추가 없어 최소화로 남으면 고립된다.
+function checkUnminimize(cs) {
+  const un = member(cs, 'private void UnMinimize()');
+  assert.match(un, /if \(WindowState != WindowState\.Minimized\) return;\s*WindowState = WindowState\.Normal;\s*if \(_maximized\) RefitMax\(\);/, 'UnMinimize 가 Normal 로 되살리고 최대화였으면 작업 영역에 다시 맞추지 않는다');
+  assert.match(member(cs, 'private void ShowFromTray()'), /^[^{]*\{\s*Show\(\);\s*UnMinimize\(\);/, "트레이 아이콘이나 '보이기' 가 최소화를 풀지 않는다");
+  assert.match(member(cs, 'private void SetTrayEnabled(bool on)'), /else \{ if \(!IsVisible \|\| WindowState == WindowState\.Minimized\) ShowFromTray\(\); DisposeTray\(\); \}/, '최소화된 채 트레이를 끄면 되살리지 않는다(고립된다)');
+  for (const [sig, after] of [['private void SetSize(', 'RestoreFromMax();'], ['private void MoveToNextMonitor()', 'RestoreFromMax();'], ['private void ResetBounds()', 'if (_maximized) { _maximized = false; SendWinState(); }']]) {
+    const b = member(cs, sig);
+    const u = b.indexOf('UnMinimize();'), a = b.indexOf(after);
+    assert.ok(u >= 0 && a > u, sig + ' 가 최소화를 먼저 풀지 않는다(최소화된 창의 좌표는 -32000 자리다)');
+  }
+  const sc = member(cs, 'private void Window_StateChanged(');
+  assert.match(sc, /if \(WindowState == WindowState\.Minimized\)\s*\{\s*if \(!_settings\.TrayEnabled\)\s*Dispatcher\.BeginInvoke\(new Action\(\(\) =>\s*\{\s*if \(WindowState != WindowState\.Minimized \|\| _settings\.TrayEnabled\) return;\s*WindowState = WindowState\.Normal;\s*if \(_maximized\) RestoreFromMax\(\);\s*ApplyDesktopMode\(\);/,
+    '위젯 모드(트레이 끔)에서 최소화되면 되살리지 않는다(또는 최대화였을 때 이전 크기로 돌리지 않는다)');
+  assert.ok(sc.indexOf('WindowState == WindowState.Minimized') < sc.indexOf('if (WindowState != WindowState.Maximized) return;'), '최소화 갈래가 최대화 가로채기의 return 뒤에 있다(닿지 않는다)');
+}
+//  리뷰 P2-3: 최대화 중 작업 영역이나 해상도가 바뀌면 지금 모니터의 작업 영역에 다시 맞춘다.
+function checkWorkAreaChange(cs) {
+  assert.match(member(cs, 'private void Window_SourceInitialized('), /HwndSource\.FromHwnd\(new WindowInteropHelper\(this\)\.Handle\)\?\.AddHook\(WndProc\);/, '창 메시지 훅을 걸지 않는다');
+  assert.match(cs, /private const int WM_SETTINGCHANGE = 0x001A, WM_DISPLAYCHANGE = 0x007E, SPI_SETWORKAREA = 0x002F;/, '작업 영역, 해상도 바뀜 메시지 값이 다르다');
+  const wp = member(cs, 'private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)');
+  assert.match(wp, /if \(_maximized && \(msg == WM_DISPLAYCHANGE \|\| \(msg == WM_SETTINGCHANGE && wParam\.ToInt64\(\) == SPI_SETWORKAREA\)\)\)\s*Dispatcher\.BeginInvoke\(new Action\(RefitMax\)\);/, '최대화 중 작업 영역, 해상도 바뀜에 다시 맞추지 않는다');
+  assert.match(wp, /return IntPtr\.Zero;\s*\}?\s*$/,'WndProc 가 메시지를 그대로 흘려보내지 않는다');
+  assert.doesNotMatch(wp, /handled\s*=\s*true/, 'WndProc 가 메시지를 삼킨다');
+  const rf = member(cs, 'private void RefitMax()');
+  assert.match(rf, /if \(!_maximized \|\| WindowState == WindowState\.Minimized\) return;/, 'RefitMax 가 최대화가 아니거나 최소화 중에도 창을 옮긴다');
+  assert.match(rf, /GetMonitorInfo\(MonitorFromWindow\(hwnd, MONITOR_DEFAULTTONEAREST\), ref mi\)[\s\S]*var wa = mi\.rcWork;\s*SetWindowPos\(hwnd, IntPtr\.Zero, wa\.Left, wa\.Top, wa\.Right - wa\.Left, wa\.Bottom - wa\.Top,/, 'RefitMax 가 지금 모니터의 작업 영역에 맞추지 않는다');
+  assert.doesNotMatch(rf, /_normalRect/, 'RefitMax 가 복원 좌표(_normalRect)를 덮는다');
+}
+
 test('창 버튼①: 제목줄 = 기능 버튼, 구분선, 창 버튼 셋(최소화, 최대화, 닫기 46x32). 닫기는 하나, 최대화 중 손잡이 숨김', () => checkMarkup(app));
 test('창 버튼②: 빈 곳 두 번 누르기 = 최대화 전환, 최대화 중 끌기는 4px 문턱, __setWinState 가 글리프와 툴팁을 바꾼다', () => checkDblAndDrag(app));
 test('창 버튼③: 호스트 winMinimize, winMaximizeToggle, ready 의 상태 알림', () => checkHostMessages(CS));
@@ -149,7 +190,7 @@ test('변이 M1: MaximizeCore 를 WindowState.Maximized 로 바꾸면 ④가 잡
   assert.throws(() => checkWorkArea(bad), /WindowState\.Maximized/);
 });
 test('변이 M2: rcWork 대신 rcMonitor 를 쓰면 ④가 잡는다', () => {
-  const bad = mutate(CS, 'var wa = mi.rcWork;', 'var wa = mi.rcMonitor;');
+  const bad = mutate(CS, 'var wa = mi.rcWork;                   // 그 창이 있는 모니터의 작업 영역', 'var wa = mi.rcMonitor;                // 그 창이 있는 모니터의 작업 영역');
   assert.throws(() => checkWorkArea(bad));
 });
 test('변이 M3: Maximized 저장을 빼면 ⑤가 잡는다', () => {
@@ -167,6 +208,25 @@ test('변이 M5: 최대화 중 저장이 지금 좌표를 쓰면 ⑤가 잡는�
 test('변이 M6: 최소화 가드를 빼면 ⑤가 잡는다', () => {
   const bad = mutate(CS, ': WindowState != WindowState.Minimized && GetWindowRect(hwnd, out r)', ': GetWindowRect(hwnd, out r)');
   assert.throws(() => checkPersist(bad), /최소화/);
+});
+test('창 버튼⑦: 최소화된 채로 트레이 보이기, 트레이 끄기, 프리셋, 모니터 이동, 초기화를 하면 먼저 되살리고, 위젯 모드의 최소화는 바로 되돌린다', () => checkUnminimize(CS));
+test('창 버튼⑧: 최대화 중 작업 영역이나 해상도가 바뀌면 지금 모니터의 작업 영역에 다시 맞춘다(복원 좌표는 그대로)', () => checkWorkAreaChange(CS));
+test('변이 M7: 복원을 예전처럼 가상 화면 DIP 에 창 DPI 를 곱해 맞추면 ④가 잡는다', () => {
+  const bad = mutate(CS, '                var nr = _normalRect;\n', '                var nr = _normalRect;\n                var pdpi = VisualTreeHelper.GetDpi(this); int vlp = (int)(SystemParameters.VirtualScreenLeft * pdpi.DpiScaleX);\n');
+  assert.throws(() => checkWorkArea(bad), /DIP 가상 화면/);
+});
+test('변이 M8: 트레이 보이기의 되살리기, 트레이 끄기의 최소화 조건, 프리셋의 되살리기를 각각 빼면 ⑦이 잡는다', () => {
+  assert.throws(() => checkUnminimize(mutate(CS, '            Show();\n            UnMinimize();   // 최소화된 채로', '            Show();\n            //   최소화된 채로')), /보이기/);
+  assert.throws(() => checkUnminimize(mutate(CS, 'if (!IsVisible || WindowState == WindowState.Minimized) ShowFromTray();', 'if (!IsVisible) ShowFromTray();')), /트레이를 끄면/);
+  assert.throws(() => checkUnminimize(mutate(CS, '            UnMinimize();       // 최소화 중이면 먼저 되살린다\n', '')), /SetSize\( 가 최소화를 먼저 풀지 않는다/);
+});
+test('변이 M9: 위젯 모드 최소화 되돌림을 빼면 ⑦이 잡는다', () => {
+  const bad = mutate(CS, '                if (!_settings.TrayEnabled)\n                    Dispatcher.BeginInvoke(', '                if (false)\n                    Dispatcher.BeginInvoke(');
+  assert.throws(() => checkUnminimize(bad), /위젯 모드/);
+});
+test('변이 M10: 창 메시지 훅을 빼거나 SPI_SETWORKAREA 값을 틀리면 ⑧이 잡는다', () => {
+  assert.throws(() => checkWorkAreaChange(mutate(CS, '?.AddHook(WndProc);', ';')), /훅/);
+  assert.throws(() => checkWorkAreaChange(mutate(CS, 'SPI_SETWORKAREA = 0x002F;', 'SPI_SETWORKAREA = 0x0030;')), /메시지 값/);
 });
 
 // ══════════════════════════════════════════════════════════════════════

@@ -153,6 +153,7 @@ namespace TaskCalendarWidget
             if (hwnd == IntPtr.Zero) return;
             var dpi = VisualTreeHelper.GetDpi(this);
             var wa = SystemParameters.WorkArea;
+            UnMinimize();   // 최소화 중이면 먼저 되살린다(최소화된 창에 SetWindowPos 하면 자리가 -32000 쪽에 남는다)
             if (_maximized) { _maximized = false; SendWinState(); }   // 초기화는 평소 창으로
             int w = (int)(380 * dpi.DpiScaleX), h = (int)(470 * dpi.DpiScaleY);
             int x = (int)((wa.Right - 380 - 16) * dpi.DpiScaleX);
@@ -165,6 +166,7 @@ namespace TaskCalendarWidget
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
+            UnMinimize();       // 최소화 중이면 먼저 되살린다
             RestoreFromMax();   // 최대화 중이면 먼저 평소 창으로(크기 프리셋은 평소 창의 크기다)
             var dpi = VisualTreeHelper.GetDpi(this);
             SetWindowPos(hwnd, IntPtr.Zero, 0, 0, (int)(w * dpi.DpiScaleX), (int)(h * dpi.DpiScaleY),
@@ -390,6 +392,7 @@ namespace TaskCalendarWidget
                     return true;
                 }, IntPtr.Zero);
                 if (mons.Count < 2) { Log("모니터 1개 — 이동 안 함"); return; }
+                UnMinimize();       // 최소화 중이면 먼저 되살린다(최소화된 창의 GetWindowRect 는 -32000 자리다)
                 RestoreFromMax();   // 최대화 중이면 평소 창으로 돌린 뒤 옮긴다
                 var curMi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
                 GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref curMi);
@@ -453,19 +456,50 @@ namespace TaskCalendarWidget
         //  열람 창 요청 번호의 머리. 회신은 이 표시를 보고 열람 창으로 간다(ReplyCore). 두 창의 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
 
-        //  회신을 받을 쪽. 'pw:' 번호면 열람 창, 아니면 메인 창. 열람 창이 닫혔으면 null(회신을 버린다).
-        private CoreWebView2? ReplyCore(string reqId) =>
-            reqId.StartsWith(PeerReqPrefix, StringComparison.Ordinal) ? _peerWin?.Core : web.CoreWebView2;
+        //  'pw:' 요청을 보낸 열람 창의 CoreWebView2. 요청이 올 때(OnWebMessage) 적고 회신할 때(ReplyCore) 꺼내 지운다.
+        //  ★ 회신 때 지금의 _peerWin 을 그대로 쓰면, 창을 닫았다 다시 연 뒤에 옛 창의 늦은 회신이 새 창으로 간다
+        //    (웹의 번호는 페이지마다 0 부터 다시 센다). 그래서 보낸 창을 기억해 두고 그 창이 아직 지금 열람 창일 때만 보낸다.
+        private readonly Dictionary<string, CoreWebView2> _peerReqOrigin = new(StringComparer.Ordinal);
+
+        private void RememberPeerReq(string reqId, CoreWebView2 origin)
+        {
+            lock (_peerReqOrigin)
+            {
+                if (_peerReqOrigin.Count > 256) _peerReqOrigin.Clear();   // 회신 없이 쌓이기만 하는 번호(웹이 직접 쏜 것)를 끝없이 들고 있지 않는다
+                _peerReqOrigin[reqId] = origin;
+            }
+        }
+
+        //  회신을 받을 쪽. 'pw:' 번호면 그 요청을 보낸 열람 창, 아니면 메인 창.
+        //  보낸 창이 닫혔거나 다른 창(다시 연 열람 창)으로 바뀌었으면 null 이다(회신을 버리고 로그를 남긴다).
+        private CoreWebView2? ReplyCore(string reqId)
+        {
+            if (!reqId.StartsWith(PeerReqPrefix, StringComparison.Ordinal)) return web.CoreWebView2;
+            CoreWebView2? from;
+            lock (_peerReqOrigin) { if (!_peerReqOrigin.Remove(reqId, out from)) from = null; }
+            var cur = _peerWin?.Core;
+            if (from == null || cur == null || !ReferenceEquals(from, cur))
+            {
+                Log("열람 창 회신 버림(보낸 창이 닫혔거나 바뀜): " + reqId);
+                return null;
+            }
+            return cur;
+        }
 
         //  메인 창과 열람 창의 웹 메시지가 모두 여기로 온다. origin = 보낸 CoreWebView2.
         //  ★ 열람 창에서 온 것은 PeerWinCommands 와 'pw:' 번호만 받는다. 메인 창이 'pw:' 번호를 쓰면 버린다(회신 길이 섞이지 않게).
         private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)
         {
-            bool fromPeer = origin != null && _peerWin != null && ReferenceEquals(origin, _peerWin.Core);
-            if (!fromPeer && (origin == null || !ReferenceEquals(origin, web.CoreWebView2))) return;   // 모르는 창
-            if (fromPeer && !(e.Source ?? "").StartsWith("https://tcapp.local/", StringComparison.OrdinalIgnoreCase)) return;
+            //  보낸 창 가르기와 출처, 본문 읽기는 모두 try 안이다. 닫히는 중인 열람 창의 Core 나 e.Source 가 던져도 메시지를 버리고 끝난다.
+            bool fromPeer;
             string raw;
-            try { raw = e.TryGetWebMessageAsString(); }
+            try
+            {
+                fromPeer = origin != null && _peerWin != null && ReferenceEquals(origin, _peerWin.Core);
+                if (!fromPeer && (origin == null || !ReferenceEquals(origin, web.CoreWebView2))) return;   // 모르는 창
+                if (fromPeer && !(e.Source ?? "").StartsWith("https://tcapp.local/", StringComparison.OrdinalIgnoreCase)) return;
+                raw = e.TryGetWebMessageAsString();
+            }
             catch { return; }
             if (string.IsNullOrEmpty(raw)) return;
 
@@ -478,7 +512,9 @@ namespace TaskCalendarWidget
                 bool peerReq = rq.StartsWith(PeerReqPrefix, StringComparison.Ordinal);
                 if (fromPeer)
                 {
-                    if (!PeerWinCommands.Contains(cmd) || (rq.Length > 0 && !peerReq))
+                    if (peerReq) RememberPeerReq(rq, origin!);   // 회신은 이 창이 아직 지금 열람 창일 때만 간다(ReplyCore)
+                    //  peerWinReady 말고는 모두 'pw:' 번호가 있어야 한다(번호 없는 읽기 명령은 회신 길이 없으니 받지 않는다).
+                    if (!PeerWinCommands.Contains(cmd) || (cmd != "peerWinReady" && !peerReq))
                     {
                         Log("열람 창 명령 거부: " + cmd);
                         if (peerReq) GitReply(rq, new { ok = false, error = "열람 창에서는 할 수 없는 요청입니다" });
@@ -2011,13 +2047,24 @@ namespace TaskCalendarWidget
             {
                 var (r, max) = PeerStartBounds();
                 var w = new PeerWindow(this, _cwvEnv, _appDir, r, max, _remTheme == "dark");
-                w.Closed += (_, _) => { if (ReferenceEquals(_peerWin, w)) _peerWin = null; };
+                w.Closed += (_, _) => { if (ReferenceEquals(_peerWin, w)) _peerWin = null; lock (_peerReqOrigin) _peerReqOrigin.Clear(); };
                 _peerWin = w;
                 w.Show();
                 Log($"열람 창 열기 ({r.Left:0},{r.Top:0} {r.Width:0}x{r.Height:0}{(max ? " 최대화" : "")})");
             }
             _peerWin.ShowTarget(json);
-            _peerWin.BringToFront();
+            _peerWin.BringToFront();   // 맨 앞에 띄우기 중이면 이 창도 맨 위 띠에 둔다(BringToFront 가 FrontActive 를 본다)
+        }
+
+        //  메인 창이 맨 앞에 떠 있는지. 열람 창이 앞으로 올 때 자기 Topmost 를 여기에 맞춘다.
+        internal bool FrontActive => _focusMode;
+
+        //  맨 앞에 띄우기를 켜고 끌 때 열람 창의 Topmost 를 함께 맞춘다. 메인 창만 Topmost 면 열람 창은 메인 창 뒤에 깔리고,
+        //  끈 뒤에도 열람 창이 Topmost 로 남으면 다른 창들을 계속 가린다.
+        private void SyncPeerTopmost()
+        {
+            try { if (_peerWin != null) _peerWin.Topmost = _focusMode; }
+            catch (Exception ex) { Log("열람 창 맨 앞 맞추기 오류: " + ex.Message); }
         }
 
         //  앱 종료, 로그아웃, 계정 바뀜. 닫히면서 자리를 남긴다(PeerWindow.Closing → RememberPeerBounds).
@@ -2025,6 +2072,7 @@ namespace TaskCalendarWidget
         {
             var w = _peerWin;
             _peerWin = null;
+            lock (_peerReqOrigin) _peerReqOrigin.Clear();   // 그 창에 갈 회신은 이제 없다
             if (w == null) return;
             try { w.Close(); } catch (Exception ex) { Log("열람 창 닫기 오류: " + ex.Message); }
         }
@@ -2788,6 +2836,7 @@ namespace TaskCalendarWidget
         private void Window_SourceInitialized(object? sender, EventArgs e)
         {
             ApplyWindowMode();   // 트레이 모드면 일반 앱 창(작업표시줄+Alt+Tab), 아니면 도구 창(제외)
+            HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WndProc);   // 작업 영역, 해상도 바뀜(최대화 다시 맞추기)
             if (_settings.Maximized) MaximizeCore();   // 최대화로 닫았으면 최대화로 연다(평소 창은 ApplyWindowBounds 가 이미 놓았다)
         }
 
@@ -3001,6 +3050,7 @@ namespace TaskCalendarWidget
         private void ShowFromTray()
         {
             Show();
+            UnMinimize();   // 최소화된 채로 아이콘이나 '보이기' 를 누르면 되살린다(Show 만으로는 최소화가 풀리지 않는다)
             if (_settings.TrayEnabled) { Activate(); Log("트레이에서 복귀(앞으로)"); }   // 일반 창: 앞으로
             else { ApplyDesktopMode(); Log("트레이에서 복귀"); }                         // 위젯: 다시 최하위
         }
@@ -3022,7 +3072,8 @@ namespace TaskCalendarWidget
         {
             _settings.TrayEnabled = on;
             if (on) EnsureTray();
-            else { if (!IsVisible) ShowFromTray(); DisposeTray(); }   // 숨김 상태에서 끄면 먼저 창 복귀(고립 방지)
+            //  숨김이나 최소화 상태에서 끄면 먼저 창 복귀(고립 방지). 트레이를 끈 위젯은 작업 표시줄 단추가 없어 최소화를 되돌릴 길이 없다.
+            else { if (!IsVisible || WindowState == WindowState.Minimized) ShowFromTray(); DisposeTray(); }
             SaveSettings();
             SendTrayState();
             RefreshWindowMode();   // 작업표시줄/Alt+Tab 노출 + z-order 전환(일반↔위젯)
@@ -3095,6 +3146,7 @@ namespace TaskCalendarWidget
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             _focusMode = true;                    // Topmost 보다 먼저: Deactivated/ApplyDesktopMode 가 최하위로 내리지 않게
+            SyncPeerTopmost();                    // 열람 창도 맨 위 띠로(메인 창보다 먼저 올려 메인 창이 그 위에 온다)
             Topmost = true;
             Activate();                           // Esc 수신용 키보드 포커스
             SendFocusState();
@@ -3106,6 +3158,7 @@ namespace TaskCalendarWidget
             if (!_focusMode) return;
             _focusMode = false;
             Topmost = false;
+            SyncPeerTopmost();                    // 열람 창도 맨 위 띠에서 내린다(풀린 뒤에도 다른 창을 가리지 않게)
             ApplyDesktopMode();                   // 위젯 모드면 다시 최하위로(일반 창 모드는 그 자리)
             SendFocusState();
             Log("맨 앞에 띄우기 해제");
@@ -3153,15 +3206,20 @@ namespace TaskCalendarWidget
             _maximized = false;
             if (hwnd != IntPtr.Zero)
             {
-                // 화면 구성이 바뀌었을 수 있다: 복원 좌표를 가상 화면 안으로 클램프
-                double vl = SystemParameters.VirtualScreenLeft, vt = SystemParameters.VirtualScreenTop;
-                var pdpi = VisualTreeHelper.GetDpi(this);
-                int vlp = (int)(vl * pdpi.DpiScaleX), vtp = (int)(vt * pdpi.DpiScaleY);
-                int vrp = vlp + (int)(SystemParameters.VirtualScreenWidth * pdpi.DpiScaleX);
-                int vbp = vtp + (int)(SystemParameters.VirtualScreenHeight * pdpi.DpiScaleY);
+                //  화면 구성이 바뀌었을 수 있다: 복원 좌표를 그 자리에서 가장 가까운 모니터의 작업 영역 안으로 당긴다.
+                //  ★ 물리 px 끼리 맞춘다. SystemParameters.VirtualScreen* 는 시스템 DPI 의 DIP 라, 창 DPI 를 곱하면
+                //    모니터마다 배율이 다를 때 어긋난다. 모니터 하나에 맞추면 모니터 사이 빈 곳에 놓이지도 않는다.
                 int w = _normalRect.Right - _normalRect.Left, h = _normalRect.Bottom - _normalRect.Top;
-                int rx = Math.Min(Math.Max(_normalRect.Left, vlp), Math.Max(vlp, vrp - w));
-                int ry = Math.Min(Math.Max(_normalRect.Top, vtp), Math.Max(vtp, vbp - h));
+                int rx = _normalRect.Left, ry = _normalRect.Top;
+                var nr = _normalRect;
+                var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                if (GetMonitorInfo(MonitorFromRect(ref nr, MONITOR_DEFAULTTONEAREST), ref mi))
+                {
+                    var wa = mi.rcWork;
+                    w = Math.Min(w, wa.Right - wa.Left); h = Math.Min(h, wa.Bottom - wa.Top);
+                    rx = Math.Min(Math.Max(rx, wa.Left), wa.Right - w);
+                    ry = Math.Min(Math.Max(ry, wa.Top), wa.Bottom - h);
+                }
                 SetWindowPos(hwnd, IntPtr.Zero, rx, ry, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
             }
             SendWinState();
@@ -3189,11 +3247,60 @@ namespace TaskCalendarWidget
         }
 
         //  Win+위 화살표 같은 시스템 최대화(WindowState.Maximized)는 작업 표시줄까지 덮는다. 바로 되돌리고 작업 영역 최대화로 바꾼다.
+        //  바탕화면 위젯 모드(트레이 끔)에서 최소화되면(Win+아래 화살표 등) 바로 되살린다. 그 모드는 작업 표시줄 단추가 없어
+        //  최소화하면 되돌릴 길이 없다. 창 버튼 최대화 중이었으면 Windows 의 Win+아래처럼 이전 크기로 돌린다.
         private void Window_StateChanged(object? sender, EventArgs e)
         {
+            if (WindowState == WindowState.Minimized)
+            {
+                if (!_settings.TrayEnabled)
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (WindowState != WindowState.Minimized || _settings.TrayEnabled) return;
+                        WindowState = WindowState.Normal;
+                        if (_maximized) RestoreFromMax();
+                        ApplyDesktopMode();
+                        Log("위젯 모드 최소화 되돌림");
+                    }));
+                return;
+            }
             if (WindowState != WindowState.Maximized) return;
             WindowState = WindowState.Normal;
             Dispatcher.BeginInvoke(new Action(() => { if (!_maximized) { MaximizeCore(); SaveSettings(); } }));
+        }
+
+        //  최소화를 푼다. 창 버튼 최대화(_maximized)에서 최소화했으면, 되살린 뒤 지금 모니터의 작업 영역에 다시 맞춘다(RefitMax).
+        //  WindowState 는 Normal 로만 돌린다(이 창은 WindowState.Maximized 를 쓰지 않는다).
+        private void UnMinimize()
+        {
+            if (WindowState != WindowState.Minimized) return;
+            WindowState = WindowState.Normal;
+            if (_maximized) RefitMax();
+        }
+
+        //  최대화 중에 작업 영역이 바뀌면(작업 표시줄 크기나 위치, 해상도, 모니터 구성) 지금 모니터의 작업 영역에 다시 맞춘다.
+        //  _normalRect(복원 좌표)는 건드리지 않는다.
+        private void RefitMax()
+        {
+            if (!_maximized || WindowState == WindowState.Minimized) return;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero) return;
+            var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref mi)) return;
+            var wa = mi.rcWork;
+            SetWindowPos(hwnd, IntPtr.Zero, wa.Left, wa.Top, wa.Right - wa.Left, wa.Bottom - wa.Top, SWP_NOZORDER | SWP_NOACTIVATE);
+            Log($"최대화 다시 맞춤 ({wa.Left},{wa.Top} {wa.Right - wa.Left}x{wa.Bottom - wa.Top})");
+        }
+
+        private const int WM_SETTINGCHANGE = 0x001A, WM_DISPLAYCHANGE = 0x007E, SPI_SETWORKAREA = 0x002F;
+
+        //  창 메시지 훅(Window_SourceInitialized 에서 건다). 작업 영역 바뀜(WM_SETTINGCHANGE + SPI_SETWORKAREA)과
+        //  해상도 바뀜(WM_DISPLAYCHANGE)만 본다. 메시지는 그대로 흘려보낸다(handled 를 세우지 않는다).
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (_maximized && (msg == WM_DISPLAYCHANGE || (msg == WM_SETTINGCHANGE && wParam.ToInt64() == SPI_SETWORKAREA)))
+                Dispatcher.BeginInvoke(new Action(RefitMax));   // 새 작업 영역이 자리 잡은 뒤에 맞춘다
+            return IntPtr.Zero;
         }
 
         // ============ 자동 시작 ============
@@ -3271,6 +3378,7 @@ namespace TaskCalendarWidget
         [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT pt);
         [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
         [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromRect(ref RECT lprc, uint flags);
         [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
         [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
         [DllImport("user32.dll", SetLastError = true, EntryPoint = "GetWindowLongPtr")]

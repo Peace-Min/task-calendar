@@ -18711,12 +18711,15 @@ async function validateExistingRepoFor(kind, path){
 
 /* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */
 let __reqSeq = 0;
+//  열람 창(PEERWIN)의 번호에는 창마다 다른 소금을 붙인다. __reqSeq 는 페이지마다 0 부터 다시 세므로, 창을 닫았다 다시 열거나
+//  다시 읽으면 같은 번호가 또 나온다. 옛 창에 가야 할 늦은 회신이 새 창의 같은 번호를 풀지 않게 한다(호스트도 보낸 창을 따로 본다).
+const __reqSalt = PEERWIN ? Date.now().toString(36) + Math.random().toString(36).slice(2, 8) : '';
 const __hostPending = {};
 function hostRequest(cmd, params, timeoutMs){
   return new Promise(resolve => {
     if(!HOST){ resolve({ok:false, error:'호스트(위젯)가 아닙니다'}); return; }
     //  'pw:' = 열람 창(PEERWIN)의 번호. 호스트가 이 표시를 보고 회신을 그 창으로 보낸다(두 창의 번호가 겹치지 않는다).
-    const reqId = (PEERWIN ? 'pw:' : '') + cmd + '-' + (++__reqSeq);
+    const reqId = (PEERWIN ? 'pw:' + __reqSalt + ':' : '') + cmd + '-' + (++__reqSeq);
     const to = setTimeout(() => { if(__hostPending[reqId]){ delete __hostPending[reqId]; resolve({ok:false, error:'호스트 응답 시간 초과', timeout:true}); } }, timeoutMs || 20000);
     __hostPending[reqId] = res => { clearTimeout(to); resolve(res); };
     hpost(Object.assign({cmd, reqId}, params || {}));

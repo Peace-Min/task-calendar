@@ -12,13 +12,17 @@
 //   (S) 핀(최하위) 모드와의 관계: 맨 앞 중에는 ApplyDesktopMode 와 Window_Deactivated 가 최하위로 내리지 않는다.
 //       끄면 ApplyDesktopMode 로 원래 자리(위젯 모드면 최하위)로 돌아간다.
 //   (S) Esc: 웹 keydown 이 맨 앞 중이면 "focus" 를 보내고, 호스트 "focus" 는 ToggleFocusMode 다.
-//   (M) 변이: 진입 전 표시 제거, 순서 뒤집기, 맨 앞 경로에 SetWindowPos 추가, 스크림 부활, 가드 제거를 각각 잡는다.
+//   (S) 2026-10-16 리뷰 P1-2: 맨 앞 중에는 열람 창(PeerWindow)도 맨 위 띠에 둔다. 켜고 끌 때 SyncPeerTopmost 가 맞추고,
+//       열람 창을 열거나 앞으로 가져올 때(BringToFront)는 FrontActive 를 따른다. 끈 뒤에 열람 창이 Topmost 로 남지 않는다.
+//   (M) 변이: 진입 전 표시 제거, 순서 뒤집기, 맨 앞 경로에 SetWindowPos 추가, 스크림 부활, 가드 제거,
+//       열람 창 맞추기를 끌 때 빼기, BringToFront 의 Topmost 빼기를 각각 잡는다.
 import { test, assert, extractCsMember, stripCsComments, loadAppSource } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 
 const SRC = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8').replace(/\r/g, '');
 const APPCS = readFileSync(new URL('../widget/App.xaml.cs', import.meta.url), 'utf8').replace(/\r/g, '');
 const APP = loadAppSource();
+const PWCS = readFileSync(new URL('../widget/PeerWindow.cs', import.meta.url), 'utf8').replace(/\r/g, '');
 
 const body = (src, sig) => extractCsMember(src, sig);
 
@@ -74,6 +78,16 @@ function checkGuards(src) {
   assert.match(stripCsComments(src), /case "focus": ToggleFocusMode\(\); break;/, '호스트 "focus" 가 ToggleFocusMode 가 아니다');
 }
 
+function checkPeerTopmost(src, pw) {
+  const enter = body(src, 'private void EnterFront()');
+  const leave = body(src, 'private void LeaveFront()');
+  assert.match(enter, /_focusMode = true;\s*SyncPeerTopmost\(\);\s*Topmost = true;/, '맨 앞을 켤 때 열람 창을 맨 위 띠로 올리지 않는다(메인 창 뒤에 깔린다)');
+  assert.match(leave, /_focusMode = false;\s*Topmost = false;\s*SyncPeerTopmost\(\);/, '맨 앞을 끌 때 열람 창을 맨 위 띠에서 내리지 않는다(풀린 뒤에도 다른 창을 가린다)');
+  assert.match(body(src, 'private void SyncPeerTopmost()'), /if \(_peerWin != null\) _peerWin\.Topmost = _focusMode;/, 'SyncPeerTopmost 가 열람 창 Topmost 를 맨 앞 상태에 맞추지 않는다');
+  assert.match(stripCsComments(src), /internal bool FrontActive => _focusMode;/, 'FrontActive 가 맨 앞 상태가 아니다');
+  assert.match(body(pw, 'public void BringToFront()'), /Topmost = _host\.FrontActive;\s*Activate\(\);/, '열람 창을 열거나 앞으로 가져올 때 맨 앞 상태를 따르지 않는다');
+}
+
 function checkEsc(app) {
   assert.ok(/if\(window\.__big\)\{ hpost\(\{cmd:'focus'\}\); ev\.preventDefault\(\); return; \}/.test(app), '웹 Esc 가 맨 앞 중에 "focus" 를 보내지 않는다');
 }
@@ -89,6 +103,7 @@ test('맨 앞②: 숨었거나 최소화된 채로 켜면 먼저 보이게 하�
 test('맨 앞③: 스크림, 진입 전 좌표, OpenBig/CloseBig, 1100 확대가 없고 SaveSettings 는 맨 앞을 보지 않는다', () => checkNoLegacy(SRC, APPCS));
 test('맨 앞④: 맨 앞 중에는 최하위로 내리지 않고(핀 모드 가드), 숨기면 푼다', () => checkGuards(SRC));
 test('맨 앞⑤: Esc 는 맨 앞 중에 "focus" 를 보내 푼다', () => checkEsc(APP));
+test('맨 앞⑦: 맨 앞 중에는 열람 창도 맨 위 띠에 두고(열 때, 앞으로 가져올 때 포함), 끄면 함께 내린다', () => checkPeerTopmost(SRC, PWCS));
 test('맨 앞⑥: 종료(Window_Closing)도 SaveSettings 를 거친다', () => {
   assert.match(body(SRC, 'private void Window_Closing('), /SaveSettings\(\);/, 'Window_Closing 이 창 좌표를 저장하지 않는다');
 });
@@ -124,6 +139,12 @@ test('변이⑤: 스크림 필드를 되살리면 ③이 실패한다', () => {
 test('변이⑥: Window_Deactivated 의 맨 앞 가드를 지우면 ④가 실패한다', () => {
   const bad = mutate(SRC, '            if (_focusMode) return;   // 포커스 모드 중에는 맨 앞 유지(클릭해도 안 내려감)\n', '');
   assert.throws(() => checkGuards(bad), /Deactivated/);
+});
+test('변이⑧: 끌 때 열람 창 맞추기를 빼거나, BringToFront 의 Topmost 를 빼면 ⑦이 실패한다', () => {
+  const bad = mutate(SRC, '            SyncPeerTopmost();                    // 열람 창도 맨 위 띠에서 내린다', '            //  열람 창도 맨 위 띠에서 내린다');
+  assert.throws(() => checkPeerTopmost(bad, PWCS), /끌 때/);
+  const badPw = mutate(PWCS, '            Topmost = _host.FrontActive;', '');
+  assert.throws(() => checkPeerTopmost(SRC, badPw), /맨 앞 상태를 따르지 않는다/);
 });
 test('변이⑦: 웹 Esc 해제를 지우면 ⑤가 실패한다', () => {
   const bad = mutate(APP, "if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }", '');

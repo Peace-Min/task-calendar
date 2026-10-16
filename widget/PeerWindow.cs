@@ -31,7 +31,11 @@ namespace TaskCalendarWidget
         private WindowState _shownState;     // 최소화 직전 상태(되살릴 때 최대화였으면 최대화로)
         private bool _dark;                  // 제목줄을 어둡게(다크 테마)
 
-        public CoreWebView2? Core => _web.CoreWebView2;
+        //  닫히는 중이거나 없앤(Dispose) 창에서는 CoreWebView2 를 읽으면 던질 수 있다. 그때는 null(회신과 메시지 가르기가 버린다).
+        public CoreWebView2? Core
+        {
+            get { try { return _web.CoreWebView2; } catch { return null; } }
+        }
 
         public PeerWindow(MainWindow host, CoreWebView2Environment env, string appDir, Rect bounds, bool maximized, bool dark)
         {
@@ -92,6 +96,7 @@ namespace TaskCalendarWidget
                 };
                 //  새 창 열기(링크 등)는 막는다. 이 창은 열람 화면 하나만 띄운다.
                 core.NewWindowRequested += (_, e) => e.Handled = true;
+                core.ProcessFailed += (_, e) => OnProcessFailed(core, e.ProcessFailedKind);
                 core.SetVirtualHostNameToFolderMapping("tcapp.local", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 core.Navigate("https://tcapp.local/index.html?peerwin=1");
             }
@@ -99,6 +104,23 @@ namespace TaskCalendarWidget
             {
                 _host.PeerLog("열람 창 WebView2 초기화 실패: " + ex.Message);
                 try { Close(); } catch { }
+            }
+        }
+
+        //  WebView2 프로세스가 죽었다. 그리는 프로세스(렌더러)면 다시 읽는다(웹이 peerWinReady 를 다시 보내면 마지막 대상을 다시 넘긴다).
+        //  브라우저 프로세스면 이 CoreWebView2 는 더 쓸 수 없어 창을 닫는다(다시 고르면 새로 연다). 그 밖(GPU 등)은 WebView2 가 스스로 되살린다.
+        private void OnProcessFailed(CoreWebView2 core, CoreWebView2ProcessFailedKind kind)
+        {
+            _host.PeerLog("열람 창 WebView2 프로세스 실패: " + kind);
+            if (kind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
+            {
+                Dispatcher.BeginInvoke(new Action(() => { try { Close(); } catch { } }));
+                return;
+            }
+            if (kind == CoreWebView2ProcessFailedKind.RenderProcessExited || kind == CoreWebView2ProcessFailedKind.RenderProcessUnresponsive)
+            {
+                _ready = false;   // 다시 읽은 웹이 준비를 알릴 때까지 대상을 쥐고 있는다
+                try { core.Reload(); } catch (Exception ex) { _host.PeerLog("열람 창 다시 읽기 실패: " + ex.Message); }
             }
         }
 
@@ -119,10 +141,12 @@ namespace TaskCalendarWidget
         private void Push() => Js("window.__peerWinOpen && window.__peerWinOpen(" + _pending + ")");
 
         //  앞으로 가져온다. 최소화돼 있으면 최소화 직전 상태(최대화 또는 평소)로 되살린다.
+        //  Topmost 는 메인 창의 맨 앞에 띄우기를 따른다(켜고 끌 때는 MainWindow.SyncPeerTopmost 가 맞춘다).
         public void BringToFront()
         {
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = _shownState == WindowState.Maximized ? WindowState.Maximized : WindowState.Normal;
+            Topmost = _host.FrontActive;   // 메인 창이 맨 앞에 떠 있으면 이 창도 맨 위 띠에 둔다(메인 창 뒤에 깔리지 않게)
             Activate();
         }
 
