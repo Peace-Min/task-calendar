@@ -115,7 +115,6 @@ namespace TaskCalendarWidget
 
         private void CleanupTray()
         {
-            try { (Current?.MainWindow as MainWindow)?.CleanupScrim(); } catch { }   // 넓게 보기 딤 배경 고스트 방지
             try { (Current?.MainWindow as MainWindow)?.CleanupTray(); } catch { }
         }
     }

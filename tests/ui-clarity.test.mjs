@@ -19,9 +19,9 @@ const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta
 
 const OLD = '넓게 보기';
 const TIP = {
-  focusOff:  '맨 앞에 띄우기: 다른 창 위에 크게 띄워 작업합니다 (Esc 로 해제)',
+  focusOff:  '맨 앞에 띄우기: 크기와 위치는 그대로 두고 다른 창 위에 띄웁니다 (다시 누르거나 Esc 로 해제)',
   focusOn:   '맨 앞 해제 (Esc)',
-  closeTray: '트레이로 숨기기 (종료는 ☰ 메뉴)',
+  closeTray: '닫기: 트레이로 숨깁니다. 미리알림은 계속 동작하고, 완전히 끄려면 ☰ 메뉴의 종료를 누릅니다.',
   closeQuit: '닫기(종료)',
 };
 const CONFIRM_MSG = '회사 보고 시스템에 실제로 제출합니다. 계속할까요?';
@@ -89,12 +89,14 @@ const S = {
       assert.ok(src.includes(`  ${k}:`) && src.includes(`'${v}'`), `HB_TIP.${k} 가 「${v}」 가 아니다`);
     }
     const mk = hostBarMarkup(src);
-    assert.ok(/<button data-host="focus" id="hbFocus" title="\$\{HB_TIP\.focusOff\}" aria-label="\$\{HB_TIP\.focusOff\}">\$\{ICON\.front\}<\/button>/.test(mk),
+    assert.ok(/<button data-host="focus" id="hbFocus" title="\$\{HB_TIP\.focusOff\}" aria-label="\$\{HB_TIP\.focusOff\}" aria-pressed="false">\$\{ICON\.front\}<\/button>/.test(mk),
       '#hbFocus 가 HB_TIP.focusOff(title·aria-label) + ICON.front 가 아니다');
     assert.ok(!mk.includes('⤢'), '제목줄 마크업에 확대 글리프(⤢)가 남아 있다 — 「넓게 보기」로 읽힌다');
     const sf = windowFn(src, '__setFocus');
-    assert.ok(/HB_TIP\.focusOn/.test(sf) && /HB_TIP\.focusOff/.test(sf) && /ICON\.front/.test(sf) && /aria-label/.test(sf),
-      '__setFocus 가 HB_TIP·ICON.front·aria-label 로 상태를 바꾸지 않는다');
+    assert.ok(/HB_TIP\.focusOn/.test(sf) && /HB_TIP\.focusOff/.test(sf) && /aria-label/.test(sf) && /aria-pressed/.test(sf),
+      '__setFocus 가 HB_TIP·aria-label·aria-pressed 로 상태를 바꾸지 않는다');
+    //  켜짐을 ✕ 로 보이면 바로 옆 창 닫기 ✕ 와 헷갈린다(WINDOW-UI §1). 아이콘은 그대로 두고 눌린 바탕(pinon)만 바꾼다.
+    assert.ok(!sf.includes("'✕'") && !/innerHTML/.test(sf), '__setFocus 가 아이콘을 ✕ 로 바꾼다(닫기 버튼과 헷갈린다)');
     assert.ok(!sf.includes('⤢'), '__setFocus 가 확대 글리프(⤢)로 되돌린다');
     // 아이콘: 겹친 두 창 — 앞 창이 채워짐(currentColor). svgIc 를 쓴다(다른 제목줄 아이콘과 같은 크기 규칙 .ic).
     const m = /\n {2}front: +svgIc\('([^']*)'/.exec(src);
@@ -147,9 +149,9 @@ const S = {
     const mk = hostBarMarkup(src);
     assert.ok(!src.includes('hbHide'), '제목줄 「_」(#hbHide) 가 남아 있다 — ✕ 가 같은 일을 한다(U5)');
     assert.ok(!/data-host="hide"/.test(src), 'data-host="hide" 버튼이 남아 있다');
-    assert.strictEqual((mk.match(/<button data-host=/g) || []).length, 4, '제목줄 버튼이 4개(맨 앞·부착·메뉴·✕)가 아니다');
-    assert.ok(/<button data-host="close" id="hbClose" title="\$\{HB_TIP\.closeQuit\}" aria-label="\$\{HB_TIP\.closeQuit\}">✕<\/button>/.test(mk),
-      '✕ 가 #hbClose · HB_TIP.closeQuit 기본 툴팁이 아니다');
+    assert.strictEqual((mk.match(/<button data-host=/g) || []).length, 6, '제목줄 버튼이 6개(맨 앞, 부착, 메뉴, 최소화, 최대화, 닫기)가 아니다');
+    assert.ok(/<button data-host="close" id="hbClose" class="cap-close" title="\$\{HB_TIP\.closeQuit\}" aria-label="\$\{HB_TIP\.closeQuit\}">\$\{CAP_ICON\.close\}<\/button>/.test(mk),
+      '닫기가 #hbClose(창 버튼 cap-close) · HB_TIP.closeQuit 기본 툴팁이 아니다');
     const st = windowFn(src, '__setTray');
     assert.ok(/getElementById\('hbClose'\)/.test(st) && /on \? HB_TIP\.closeTray : HB_TIP\.closeQuit/.test(st) && /aria-label/.test(st),
       '__setTray 가 ✕ 툴팁(트레이로 숨기기 / 닫기(종료))을 바꾸지 않는다');
@@ -172,9 +174,11 @@ test('S5 (U3·U4·V3): 일간 전송 payload 는 dryRun:false 상수 · 제출 �
 test('S6 (U5·V4): 제목줄에 「_」(#hbHide) 없음 · ✕ 툴팁은 __setTray 가 트레이 상태로 정한다', () => S.trayCloseOnly(app));
 test('S7 (U6): 호스트 ✕/숨기기/종료 동작은 그대로다', () => S.hostCloseUnchanged(mainwin));
 test('S8 (V2): 사용 안내·설정 안내가 새 이름을 말한다', () => {
-  assert.ok(app.includes('<li><b>맨 앞에 띄우기</b>(제목줄 버튼이나 ☰ 메뉴)로 다른 창 위에 크게 띄워'), '사용 안내(창 모드·크기)가 새 이름이 아니다');
-  assert.ok(app.includes("'맨 앞에 띄우기'(다른 창 위에 크게) 지원"), '도움말(창 모드)이 새 이름이 아니다');
-  assert.ok(app.includes("'맨 앞에 띄우기'로 창을 크게 펼치면 가장 잘 보입니다."), '설정(월 보기 밀도) 안내가 새 이름이 아니다');
+  //  WINDOW-UI §2: 맨 앞에 띄우기는 크기를 바꾸지 않는다. 크게 보기는 창 버튼 최대화가 맡는다.
+  assert.ok(app.includes('<li><b>맨 앞에 띄우기</b>(제목줄 버튼이나 ☰ 메뉴)는 크기와 위치는 그대로 두고 다른 창 위에 띄웁니다.'), '사용 안내(창 모드와 크기)가 새 동작을 말하지 않는다');
+  assert.ok(app.includes("'맨 앞에 띄우기'(크기는 그대로 다른 창 위에) 지원"), '도움말(창 모드)이 새 동작을 말하지 않는다');
+  assert.ok(app.includes('제목줄의 최대화 버튼으로 창을 크게 펼치면 가장 잘 보입니다.'), '설정(월 보기 밀도) 안내가 최대화를 말하지 않는다');
+  assert.ok(!/다른 창 위에 크게/.test(app.slice(0, patchRange(app)[0]) + app.slice(patchRange(app)[1])), '안내에 예전 동작(다른 창 위에 크게)이 남아 있다');
   assert.ok(app.includes('<b>실제로 제출</b>합니다(제출 직전에 한 번 확인합니다)'), '설정(회사 일간보고) 안내가 「늘 실제 제출」을 말하지 않는다');
 });
 
@@ -318,7 +322,7 @@ if (!JSDOM) {
   if (bootErr) {
     test('R0: 위젯 모드 부팅', () => { throw bootErr; });
   } else {
-    test('R1 (V1): 제목줄 #hbFocus — 「맨 앞에 띄우기」 툴팁·aria · 겹친 창 SVG, 켜면 ✕ + 「맨 앞 해제 (Esc)」', () => {
+    test('R1 (V1): 제목줄 #hbFocus — 「맨 앞에 띄우기」 툴팁·aria · 겹친 창 SVG, 켜면 눌린 바탕 + 「맨 앞 해제 (Esc)」(아이콘은 그대로)', () => {
       const f = M.doc.getElementById('hbFocus');
       assert.ok(f, '#hbFocus 가 없다');
       assert.strictEqual(f.title, TIP.focusOff);
@@ -329,27 +333,29 @@ if (!JSDOM) {
       M.ev('__setFocus(true)');
       assert.strictEqual(f.title, TIP.focusOn);
       assert.strictEqual(f.getAttribute('aria-label'), TIP.focusOn);
-      assert.strictEqual(f.textContent.trim(), '✕');
+      assert.ok(f.querySelector('svg.ic') && !f.textContent.includes('✕'), '켜짐에서 아이콘이 ✕ 로 바뀌었다(닫기와 헷갈린다)');
+      assert.strictEqual(f.getAttribute('aria-pressed'), 'true');
       assert.ok(f.classList.contains('pinon'));
       M.ev('__setFocus(false)');
       assert.strictEqual(f.title, TIP.focusOff);
       assert.ok(f.querySelector('svg.ic') && !f.classList.contains('pinon'), '해제 뒤 아이콘이 돌아오지 않는다');
+      assert.strictEqual(f.getAttribute('aria-pressed'), 'false');
       const bar = M.doc.getElementById('hostbar');
       assert.ok(!bar.textContent.includes(OLD) && ![...bar.querySelectorAll('[title]')].some((e) => e.title.includes(OLD)), '제목줄에 「넓게 보기」 가 보인다');
     });
 
-    test('R2 (V4): 제목줄에 「_」 없음 · ✕ 툴팁 = 트레이 켬 「트레이로 숨기기 (종료는 ☰ 메뉴)」 / 끔 「닫기(종료)」', () => {
+    test('R2 (V4): 제목줄에 「_」 없음 · 닫기 툴팁 = 트레이 켬 「닫기: 트레이로 숨깁니다…」 / 끔 「닫기(종료)」', () => {
       const bar = M.doc.getElementById('hostbar');
       assert.ok(bar, '#hostbar 가 없다(위젯 모드 부팅 실패)');
       assert.strictEqual(M.doc.getElementById('hbHide'), null, '#hbHide 가 있다');
       assert.strictEqual(bar.querySelector('[data-host="hide"]'), null, 'data-host="hide" 버튼이 있다');
-      assert.deepStrictEqual([...bar.querySelectorAll('button[data-host]')].map((b) => b.dataset.host), ['focus', 'pin', 'menu', 'close']);
+      assert.deepStrictEqual([...bar.querySelectorAll('button[data-host]')].map((b) => b.dataset.host), ['focus', 'pin', 'menu', 'winMinimize', 'winMaximizeToggle', 'close']);
       const c = bar.querySelector('button[data-host="close"]');
       assert.strictEqual(c.title, TIP.closeQuit, '기본(호스트가 상태를 알리기 전) ✕ 툴팁');
       M.ev('__setTray(true)');
       assert.strictEqual(c.title, TIP.closeTray);
       assert.strictEqual(c.getAttribute('aria-label'), TIP.closeTray);
-      assert.strictEqual(bar.querySelectorAll('button[data-host]').length, 4, '트레이를 켜자 버튼이 늘었다');
+      assert.strictEqual(bar.querySelectorAll('button[data-host]').length, 6, '트레이를 켜자 버튼이 늘었다');
       M.ev('__setTray(false)');
       assert.strictEqual(c.title, TIP.closeQuit);
       assert.strictEqual(c.getAttribute('aria-label'), TIP.closeQuit);
@@ -410,7 +416,7 @@ if (!JSDOM) {
       const B = boot(bad);
       try {
         const hosts = [...B.doc.querySelectorAll('#hostbar button[data-host]')].map((b) => b.dataset.host);
-        assert.notDeepStrictEqual(hosts, ['focus', 'pin', 'menu', 'close'], '변이가 제목줄에 닿지 않았다');
+        assert.notDeepStrictEqual(hosts, ['focus', 'pin', 'menu', 'winMinimize', 'winMaximizeToggle', 'close'], '변이가 제목줄에 닿지 않았다');
         assert.ok(B.doc.getElementById('hbHide'), '변이 앱에 #hbHide 가 없다');
       } finally { await B.close(); }
     });

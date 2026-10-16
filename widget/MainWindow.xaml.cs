@@ -36,9 +36,9 @@ namespace TaskCalendarWidget
         private bool _desktopApplied = false;   // 바탕화면 모드 1회 적용 플래그
 
         private System.Windows.Forms.NotifyIcon? _tray;   // 옵션 트레이 아이콘 (DisposeTray가 멱등이라 별도 플래그 불필요)
-        private bool _focusMode = false;                  // 넓게 보기(일시 맨앞·확대) 활성 여부
-        private RECT _preFocusRect;                       // 넓게 보기 진입 전 창 물리 좌표
-        private Window? _scrim;                            // 넓게 보기 딤 배경 창
+        private bool _focusMode = false;                  // 맨 앞에 띄우기(Topmost 만, 크기와 위치는 그대로) 활성 여부
+        private bool _maximized = false;                  // 창 버튼 최대화(작업 영역 채움) 상태. WindowState 는 Normal 그대로다
+        private RECT _normalRect;                         // 최대화 직전 창 물리 좌표(복원과 설정 저장 기준)
 
         private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string RunValueName = "TaskCalendarWidget";
@@ -49,6 +49,7 @@ namespace TaskCalendarWidget
         public MainWindow()
         {
             InitializeComponent();
+            StateChanged += Window_StateChanged;   // Win+위 화살표 같은 시스템 최대화를 작업 영역 최대화로 바꾼다
 
             // 비클라이언트(리사이즈) 테두리를 0으로 → 클라이언트=창 전체(WebView2가 꽉 채워 검은 테두리 없음).
             // ResizeMode=CanResize라 프로그램적 SetWindowPos 리사이즈가 허용됨(NoResize는 크기를 고정해 막음).
@@ -101,10 +102,12 @@ namespace TaskCalendarWidget
             try
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
-                //  맨 앞에 띄우기(넓게 보기) 중에는 지금 좌표가 확대된 창이다. 진입 전 좌표를 평소 창으로 저장한다
-                //  (BUG-FOCUS-RESTORE). 종료, 끌기 끝, 설정 변경 등 어느 경로로 불려도 같다.
+                //  최대화 중에는 지금 좌표가 작업 영역이다. 최대화 직전 좌표를 평소 창으로 저장하고 최대화 여부는
+                //  Maximized 에 따로 둔다(WINDOW-UI §1). 맨 앞에 띄우기는 크기를 바꾸지 않으므로 따로 볼 것이 없다.
+                //  최소화 중에는 GetWindowRect 가 -32000 자리의 작은 창을 준다. 그때는 좌표를 건드리지 않는다(마지막 저장값 유지).
                 RECT r = default;
-                bool have = hwnd != IntPtr.Zero && (_focusMode ? (r = _preFocusRect).Right > r.Left : GetWindowRect(hwnd, out r));
+                bool have = hwnd != IntPtr.Zero && (_maximized ? (r = _normalRect).Right > r.Left
+                                                               : WindowState != WindowState.Minimized && GetWindowRect(hwnd, out r));
                 if (have)
                 {
                     var dpi = VisualTreeHelper.GetDpi(this);
@@ -112,6 +115,7 @@ namespace TaskCalendarWidget
                     _settings.Top = r.Top / dpi.DpiScaleY;
                     _settings.Width = (r.Right - r.Left) / dpi.DpiScaleX;
                     _settings.Height = (r.Bottom - r.Top) / dpi.DpiScaleY;
+                    _settings.Maximized = _maximized;
                 }
                 Directory.CreateDirectory(_dataDir);
                 File.WriteAllText(_settingsFile,
@@ -147,6 +151,7 @@ namespace TaskCalendarWidget
             if (hwnd == IntPtr.Zero) return;
             var dpi = VisualTreeHelper.GetDpi(this);
             var wa = SystemParameters.WorkArea;
+            if (_maximized) { _maximized = false; SendWinState(); }   // 초기화는 평소 창으로
             int w = (int)(380 * dpi.DpiScaleX), h = (int)(470 * dpi.DpiScaleY);
             int x = (int)((wa.Right - 380 - 16) * dpi.DpiScaleX);
             int y = (int)((wa.Bottom - 470 - 16) * dpi.DpiScaleY);
@@ -158,6 +163,7 @@ namespace TaskCalendarWidget
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero) return;
+            RestoreFromMax();   // 최대화 중이면 먼저 평소 창으로(크기 프리셋은 평소 창의 크기다)
             var dpi = VisualTreeHelper.GetDpi(this);
             SetWindowPos(hwnd, IntPtr.Zero, 0, 0, (int)(w * dpi.DpiScaleX), (int)(h * dpi.DpiScaleY),
                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -381,6 +387,7 @@ namespace TaskCalendarWidget
                     return true;
                 }, IntPtr.Zero);
                 if (mons.Count < 2) { Log("모니터 1개 — 이동 안 함"); return; }
+                RestoreFromMax();   // 최대화 중이면 평소 창으로 돌린 뒤 옮긴다
                 var curMi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
                 GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref curMi);
                 int idx = mons.FindIndex(m => m.Left == curMi.rcWork.Left && m.Top == curMi.rcWork.Top);
@@ -456,6 +463,7 @@ namespace TaskCalendarWidget
                         SendPinState();
                         SendTrayState();
                         SendFocusState();
+                        SendWinState();
                         ReminderInit();   // 시작 알림 타이머·확인 이력 1회 초기화(타이머는 항상 가동 — 전역 on/off 없음)
                         break;
                     case "reloadState":   // 충돌 뒤 '새로고침' — 부팅 조회를 다시 돌려 스냅샷과 화면을 함께 갱신한다.
@@ -730,10 +738,11 @@ namespace TaskCalendarWidget
                     // ----- 이동 (부착 상태에서는 잠금) -----
                     case "dragbegin":
                         if (_settings.Pinned) break;
+                        if (_maximized) RestoreUnderCursor(hwnd, GetInt(doc, "fxm"), GetInt(doc, "capw"));   // 최대화 중 끌면 평소 크기로 돌아와 커서 밑에 온다
                         GetWindowRect(hwnd, out _gestureRect);
                         break;
                     case "dragmove":
-                        if (_settings.Pinned) break;
+                        if (_settings.Pinned || _maximized) break;
                         SetWindowPos(hwnd, IntPtr.Zero,
                             _gestureRect.Left + GetInt(doc, "dx"), _gestureRect.Top + GetInt(doc, "dy"),
                             0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -743,9 +752,11 @@ namespace TaskCalendarWidget
                         break;
                     // ----- 리사이즈 (부착/플로팅 모두 가능) -----
                     case "resizebegin":
+                        if (_maximized) break;   // 최대화 중에는 가장자리 크기 조절이 없다(웹도 손잡이를 숨긴다)
                         GetWindowRect(hwnd, out _gestureRect);
                         break;
                     case "resizemove":
+                        if (_maximized) break;
                         {
                             var dpi = VisualTreeHelper.GetDpi(this);
                             int minW = (int)(MinWidth * dpi.DpiScaleX), minH = (int)(MinHeight * dpi.DpiScaleY);
@@ -763,7 +774,7 @@ namespace TaskCalendarWidget
                         }
                         break;
                     case "resizeend":
-                        SaveSettings();
+                        if (!_maximized) SaveSettings();
                         break;
 
                     // ----- Git 커밋 연동 (과제별 저장소에서 내 커밋 읽기) -----
@@ -845,6 +856,8 @@ namespace TaskCalendarWidget
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
                     case "focus": ToggleFocusMode(); break;
+                    case "winMinimize": MinimizeWindow(); break;          // 창 버튼(WINDOW-UI §1)
+                    case "winMaximizeToggle": ToggleMaximize(); break;    // 창 버튼, 제목줄 빈 곳 두 번 누르기
                     case "hide": HideToTray(); break;   // 트레이 켜졌을 때만 HTML이 버튼 노출
                     case "close":
                         if (_settings.TrayEnabled) HideToTray();   // 트레이 사용 시 ✕ = 트레이로 숨김
@@ -2614,6 +2627,7 @@ namespace TaskCalendarWidget
         private void Window_SourceInitialized(object? sender, EventArgs e)
         {
             ApplyWindowMode();   // 트레이 모드면 일반 앱 창(작업표시줄+Alt+Tab), 아니면 도구 창(제외)
+            if (_settings.Maximized) MaximizeCore();   // 최대화로 닫았으면 최대화로 연다(평소 창은 ApplyWindowBounds 가 이미 놓았다)
         }
 
         // 창 노출 모드: 트레이 모드 = '일반 앱 창'(작업표시줄+Alt+Tab 노출, 최하위 강제 해제 → 다른 앱 쓰는 중 Alt+Tab으로 불러와 볼 수 있음).
@@ -2735,7 +2749,6 @@ namespace TaskCalendarWidget
         {
             if (!ConfirmCloseIfUnsaved("창 닫기")) { e.Cancel = true; return; }   // §6 — 세션·시스템 종료는 묻지 않는다
             SaveSettings();
-            CleanupScrim();  // 넓게 보기 중 종료 시 딤 배경 고스트 방지
             CleanupTray();   // 창이 실제로 닫히면 트레이 정리(잔상 방지)
             CleanupReminders();   // 열린 알림 창·타이머 정리
         }
@@ -2832,7 +2845,7 @@ namespace TaskCalendarWidget
 
         private void HideToTray()
         {
-            if (_focusMode) CloseBig();   // 넓게 보기 중이면 먼저 닫아 스크림 고스트 방지
+            if (_focusMode) LeaveFront();   // 숨기면 맨 앞도 푼다(다시 보일 때 다른 창을 가리지 않게)
             if (_tray == null) EnsureTray();
             Hide();
             if (!_settings.TrayHintShown)
@@ -2889,7 +2902,6 @@ namespace TaskCalendarWidget
         private void ExitApp()
         {
             if (!ConfirmCloseIfUnsaved("종료")) return;   // §6 — 저장되지 않은 변경이 있으면 묻는다(「아니오」= 닫지 않음)
-            CleanupScrim();
             DisposeTray();
             Application.Current.Shutdown();
         }
@@ -2903,99 +2915,123 @@ namespace TaskCalendarWidget
             try { _ = web.CoreWebView2?.ExecuteScriptAsync("window.__setFocus && window.__setFocus(" + (_focusMode ? "true" : "false") + ")"); } catch { }
         }
 
-        // ============ 넓게 보기 (모달식 — 딤 배경 + 중앙 확대, 최대화 대체) ============
-        private void ToggleFocusMode() { if (!_focusMode) OpenBig(); else CloseBig(); }
-
-        private void OpenBig()
+        private void SendWinState()
         {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero || _focusMode || _scrim != null) return;
-            //  숨었거나 최소화된 채로 들어오면 창은 안 보이고 화면만 어두워진다. 먼저 보이게 한 뒤 좌표를 잡는다(BUG-FOCUS-RESTORE).
+            try { _ = web.CoreWebView2?.ExecuteScriptAsync("window.__setWinState && window.__setWinState('" + (_maximized ? "max" : "normal") + "')"); } catch { }
+        }
+
+        // ============ 맨 앞에 띄우기 (Topmost 만, 크기와 위치는 그대로) ============
+        //  WINDOW-UI §2(2026-10-16): 예전에는 화면 가운데 1100x800 으로 키우고 뒤를 어둡게 했다. 크게 보기는 창 버튼 최대화가 맡고,
+        //  이 기능은 다른 창들 위로 올리기만 한다. 다시 누르거나 Esc(웹이 "focus" 를 보낸다)로 푼다.
+        //  WPF Topmost 속성을 쓴다. SummonToFront 가 Topmost 를 잠깐 바꿨다 되돌릴 때 이 상태를 그대로 돌려놓는다.
+        private void ToggleFocusMode() { if (!_focusMode) EnterFront(); else LeaveFront(); }
+
+        private void EnterFront()
+        {
+            if (_focusMode) return;
+            //  숨었거나 최소화된 채로 누르면 맨 위로 올라가도 보이지 않는다. 먼저 보이게 한다(BUG-FOCUS-RESTORE).
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-            GetWindowRect(hwnd, out _preFocusRect);   // 복원 기준(절대 settings 재계산 안 함)
-            var dpi = VisualTreeHelper.GetDpi(this);
-            var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
-            GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref mi);
-            int waW = mi.rcWork.Right - mi.rcWork.Left, waH = mi.rcWork.Bottom - mi.rcWork.Top;
-            int w = Math.Min((int)(1100 * dpi.DpiScaleX), (int)(waW * 0.9));
-            int h = Math.Min((int)(800 * dpi.DpiScaleY), (int)(waH * 0.9));
-            int x = mi.rcWork.Left + (waW - w) / 2, y = mi.rcWork.Top + (waH - h) / 2;
-            _focusMode = true;                    // 어떤 SetWindowPos보다 먼저 → Deactivated/ApplyDesktopMode 가드 무장
-            ShowScrim(mi.rcMonitor);              // 딤 배경 먼저(TOPMOST) → 위젯이 그 위에
-            SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
+            _focusMode = true;                    // Topmost 보다 먼저: Deactivated/ApplyDesktopMode 가 최하위로 내리지 않게
+            Topmost = true;
             Activate();                           // Esc 수신용 키보드 포커스
             SendFocusState();
-            Log("넓게 보기 진입");
+            Log("맨 앞에 띄우기 켬");
         }
 
-        private void CloseBig()
+        private void LeaveFront()
         {
             if (!_focusMode) return;
+            _focusMode = false;
+            Topmost = false;
+            ApplyDesktopMode();                   // 위젯 모드면 다시 최하위로(일반 창 모드는 그 자리)
+            SendFocusState();
+            Log("맨 앞에 띄우기 해제");
+        }
+
+        // ============ 창 버튼: 최소화, 최대화 (WINDOW-UI §1) ============
+        //  WindowStyle=None + AllowsTransparency 라 WindowState.Maximized 는 작업 표시줄까지 덮는다. 그래서 최대화는 직전 좌표를
+        //  _normalRect 에 두고 창을 그 모니터의 작업 영역(rcWork, 물리 px)에 직접 맞춘다. WindowState 는 Normal 그대로다.
+        private void MinimizeWindow()
+        {
+            //  바탕화면 위젯 모드(트레이 끔)는 작업 표시줄 단추가 없어 최소화하면 되돌릴 길이 없다. 웹도 이 모드에서는 버튼을 숨긴다.
+            if (!_settings.TrayEnabled) return;
+            WindowState = WindowState.Minimized;
+        }
+
+        private void ToggleMaximize() { if (_maximized) RestoreFromMax(); else MaximizeWindow(); }
+
+        private void MaximizeWindow()
+        {
+            if (_maximized) return;
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            MaximizeCore();
+            SaveSettings();
+        }
+
+        //  시작 복원(SourceInitialized)에서도 부른다. 그때는 Show 와 저장을 부르지 않는다.
+        private void MaximizeCore()
+        {
             var hwnd = new WindowInteropHelper(this).Handle;
-            _focusMode = false;                   // 복원 전에 해제(가드 재무장)
-            CleanupScrim();                       // 즉시 닫기(페이드 없음 → 고스트/이중스크림 원천 차단)
-            // 화면 구성 변경 대비: 복원 좌표를 가상 화면 안으로 클램프
-            double vl = SystemParameters.VirtualScreenLeft, vt = SystemParameters.VirtualScreenTop;
-            var pdpi = VisualTreeHelper.GetDpi(this);
-            int vlp = (int)(vl * pdpi.DpiScaleX), vtp = (int)(vt * pdpi.DpiScaleY);
-            int vrp = vlp + (int)(SystemParameters.VirtualScreenWidth * pdpi.DpiScaleX);
-            int vbp = vtp + (int)(SystemParameters.VirtualScreenHeight * pdpi.DpiScaleY);
-            int w = _preFocusRect.Right - _preFocusRect.Left, h = _preFocusRect.Bottom - _preFocusRect.Top;
-            int rx = Math.Min(Math.Max(_preFocusRect.Left, vlp), Math.Max(vlp, vrp - w));
-            int ry = Math.Min(Math.Max(_preFocusRect.Top, vtp), Math.Max(vtp, vbp - h));
+            if (hwnd == IntPtr.Zero || _maximized || !GetWindowRect(hwnd, out _normalRect)) return;
+            var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            if (!GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), ref mi)) return;
+            var wa = mi.rcWork;                   // 그 창이 있는 모니터의 작업 영역(작업 표시줄 제외)
+            _maximized = true;
+            SetWindowPos(hwnd, IntPtr.Zero, wa.Left, wa.Top, wa.Right - wa.Left, wa.Bottom - wa.Top, SWP_NOZORDER | SWP_NOACTIVATE);
+            SendWinState();
+            Log($"최대화 ({wa.Left},{wa.Top} {wa.Right - wa.Left}x{wa.Bottom - wa.Top})");
+        }
+
+        private void RestoreFromMax()
+        {
+            if (!_maximized) return;
+            var hwnd = new WindowInteropHelper(this).Handle;
+            _maximized = false;
             if (hwnd != IntPtr.Zero)
             {
-                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                // 일반 창 모드면 최하위로 내리지 않고 현재 위치(비-topmost)에 둠 → Alt+Tab 유지
-                IntPtr z = _settings.TrayEnabled ? HWND_NOTOPMOST : HWND_BOTTOM;
-                SetWindowPos(hwnd, z, rx, ry, w, h, SWP_NOACTIVATE);
+                // 화면 구성이 바뀌었을 수 있다: 복원 좌표를 가상 화면 안으로 클램프
+                double vl = SystemParameters.VirtualScreenLeft, vt = SystemParameters.VirtualScreenTop;
+                var pdpi = VisualTreeHelper.GetDpi(this);
+                int vlp = (int)(vl * pdpi.DpiScaleX), vtp = (int)(vt * pdpi.DpiScaleY);
+                int vrp = vlp + (int)(SystemParameters.VirtualScreenWidth * pdpi.DpiScaleX);
+                int vbp = vtp + (int)(SystemParameters.VirtualScreenHeight * pdpi.DpiScaleY);
+                int w = _normalRect.Right - _normalRect.Left, h = _normalRect.Bottom - _normalRect.Top;
+                int rx = Math.Min(Math.Max(_normalRect.Left, vlp), Math.Max(vlp, vrp - w));
+                int ry = Math.Min(Math.Max(_normalRect.Top, vtp), Math.Max(vtp, vbp - h));
+                SetWindowPos(hwnd, IntPtr.Zero, rx, ry, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
             }
-            ApplyDesktopMode();                   // 이제 _focusMode=false라 안전하게 다시 최하위로(위젯 모드만)
+            SendWinState();
             SaveSettings();
-            SendFocusState();
-            Log("넓게 보기 해제");
+            Log("이전 크기로");
         }
 
-        // 딤 배경(스크림) 창 — 별도 테두리 없는 반투명 WPF Window. 위젯 바로 아래(TOPMOST 밴드).
-        private void ShowScrim(RECT mon)
+        //  최대화 중 제목줄을 끌면 Windows 처럼 평소 크기로 돌아와 커서 밑에 붙는다(위쪽은 그대로).
+        //  웹은 최대화 중에 4px 넘게 움직여야 dragbegin 을 보낸다(그냥 누르거나 두 번 누르기로는 여기 오지 않는다).
+        //  fxm = 끌기 칸 안에서 커서의 가로 위치(천분율), capw = 오른쪽 버튼 묶음 폭(물리 px). 복원된 창에서도 커서가
+        //  끌기 칸 같은 비율 자리에 오게 한다. 값이 없으면 창 전체 비율로 놓는다.
+        private void RestoreUnderCursor(IntPtr hwnd, int fxm, int capw)
         {
-            try
-            {
-                _scrim = new Window
-                {
-                    WindowStyle = WindowStyle.None,
-                    ResizeMode = ResizeMode.NoResize,
-                    AllowsTransparency = true,
-                    ShowInTaskbar = false,
-                    ShowActivated = false,
-                    Topmost = true,
-                    WindowStartupLocation = WindowStartupLocation.Manual,
-                    Left = -32000, Top = -32000, Width = 1, Height = 1,   // 첫 프레임 플래시 방지(즉시 화면 밖)
-                    Opacity = 0,
-                    Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x6B, 0, 0, 0)), // 약 0.42, 히트테스트 위해 non-null
-                };
-                _scrim.MouseLeftButtonDown += (_, __) => CloseBig();   // 바깥(스크림) 클릭 = 닫기
-                _scrim.SourceInitialized += (_, __) =>
-                {
-                    var sh = new WindowInteropHelper(_scrim!).Handle;
-                    int ex = GetWindowLong(sh, GWL_EXSTYLE);
-                    SetWindowLong(sh, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW);
-                    SetWindowPos(sh, HWND_TOPMOST, mon.Left, mon.Top, mon.Right - mon.Left, mon.Bottom - mon.Top,
-                        SWP_NOACTIVATE | SWP_SHOWWINDOW);   // 물리 px 직접 배치(혼합 DPI 정확)
-                    _scrim.BeginAnimation(Window.OpacityProperty,
-                        new System.Windows.Media.Animation.DoubleAnimation(0, 0.42, TimeSpan.FromMilliseconds(130)));
-                };
-                _scrim.Show();
-            }
-            catch (Exception ex) { Log("스크림 생성 오류: " + ex.Message); }
+            int nw = _normalRect.Right - _normalRect.Left, nh = _normalRect.Bottom - _normalRect.Top;
+            if (!_maximized || nw <= 0 || nh <= 0 || !GetCursorPos(out POINT pt) || !GetWindowRect(hwnd, out RECT cur)) return;
+            int cw = Math.Max(1, cur.Right - cur.Left);
+            int x = (fxm > 0 && fxm <= 1000 && capw > 0 && capw < nw)
+                ? pt.X - (int)((long)fxm * (nw - capw) / 1000)
+                : pt.X - (int)((long)(pt.X - cur.Left) * nw / cw);
+            x = Math.Min(Math.Max(x, cur.Left), Math.Max(cur.Left, cur.Right - nw));
+            _maximized = false;
+            SetWindowPos(hwnd, IntPtr.Zero, x, cur.Top, nw, nh, SWP_NOZORDER | SWP_NOACTIVATE);
+            SendWinState();
+            Log("최대화 중 끌기: 평소 크기로");
         }
 
-        // 스크림 즉시 닫기(페이드 없음) — 멱등. 종료/크래시/트레이숨김/닫기 모든 경로에서 안전.
-        public void CleanupScrim()
+        //  Win+위 화살표 같은 시스템 최대화(WindowState.Maximized)는 작업 표시줄까지 덮는다. 바로 되돌리고 작업 영역 최대화로 바꾼다.
+        private void Window_StateChanged(object? sender, EventArgs e)
         {
-            var s = _scrim; _scrim = null;
-            if (s != null) { try { s.Close(); } catch { } }
+            if (WindowState != WindowState.Maximized) return;
+            WindowState = WindowState.Normal;
+            Dispatcher.BeginInvoke(new Action(() => { if (!_maximized) { MaximizeCore(); SaveSettings(); } }));
         }
 
         // ============ 자동 시작 ============
@@ -3105,6 +3141,7 @@ namespace TaskCalendarWidget
         public bool Pinned { get; set; } = true;
         public bool TrayEnabled { get; set; } = false;   // 기본 OFF(위젯 우선)
         public bool TrayHintShown { get; set; } = false;  // '트레이로 숨김' 안내는 1회만
+        public bool Maximized { get; set; } = false;      // 창 버튼 최대화로 닫았는지. Left..Height 는 그때도 최대화 직전 평소 창이다
         // 자동 업데이트 소스 폴더 URL(ftp:// · http(s):// · UNC/로컬 경로). 빈 값 = 업데이트 기능 휴면.
         public string UpdateSourceUrl { get; set; } = "";
     }

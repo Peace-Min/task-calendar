@@ -21,6 +21,7 @@
   /* 시간 겹침(O5) — 앰버. 배지 글자 / 배지 바탕 5.81:1 · 칸 점 / 패널 3.50:1 · 일요일 칸 3.07:1(비텍스트 3:1) */
   --ovl-bg:#fbefd0; --ovl-ink:#7a5600; --ovl-dot:#b97d00;
   --titlebar:#222a3d;             /* 호스트바 중립 다크 — accent는 액션·선택 전용 */
+  --cap-close:#c42b1c; --cap-close-down:#b1271a;   /* 창 닫기 버튼 hover, 누름(Windows 11 과 같은 빨강, 테마와 무관하게 흰 글리프) */
   --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
   --accent-fill:var(--accent);    /* 흰 글자를 얹는 accent '채움' 전용 — 테마의 --accent가 흰 글자에서 AA 미달이면 여기만 어둡게 리맵 */
   --on-accent:#fff;               /* --accent-fill 위 글자색 */
@@ -83,6 +84,18 @@ body:not(.pinned) #hostbar .hb-drag{cursor:move}  /* 부착 해제(플로팅) �
 #hostbar .hb-btns button .ic{width:15px;height:15px;vertical-align:0}   /* SVG 글리프도 문자 글리프(☰·✕)와 같은 광학 크기로 */
 #hostbar .hb-btns button:hover{background:rgba(255,255,255,.2)}
 #hostbar .hb-btns button.pinon{background:rgba(255,255,255,.28)}
+/* 창 버튼(WINDOW-UI §1): 기능 버튼(맨 앞, 핀, ☰) 오른쪽에 얇은 구분선, 그다음 Windows 11 식 최소화, 최대화(이전 크기로), 닫기 46x32 */
+#hostbar .hb-sep{flex:none;width:1px;align-self:center;height:16px;background:rgba(255,255,255,.22);margin:0 6px}
+#hostbar .hb-cap{display:flex;height:100%;flex:none}
+#hostbar .hb-cap button{width:46px;height:32px;border:0;padding:0;background:transparent;color:inherit;cursor:default;display:flex;align-items:center;justify-content:center;transition:background .08s}
+#hostbar .hb-cap button svg{width:10px;height:10px;display:block}
+#hostbar .hb-cap button:hover{background:rgba(255,255,255,.12)}
+#hostbar .hb-cap button:active{background:rgba(255,255,255,.08)}
+#hostbar .hb-cap button.cap-close:hover{background:var(--cap-close)}
+#hostbar .hb-cap button.cap-close:active{background:var(--cap-close-down)}
+/* 최대화 중(body.winmax): 작업 영역을 꽉 채운 창이라 가장자리 크기 조절 손잡이를 없애고, 제목줄은 기본 커서 */
+body.winmax .rsz{display:none}
+body.winmax #hostbar .hb-drag{cursor:default}
 /* 위젯 리사이즈 핸들 — 네 가장자리 + 네 모서리(8방향). 모두 투명(우하 그립만 보임), position:fixed 라 스크롤과 무관 */
 .rsz{position:fixed;z-index:200;touch-action:none}
 .rsz-w{left:0;top:20px;bottom:20px;width:8px;cursor:ew-resize}      /* 좌(모서리 사이) — 8px 그랩(투명, 시각 변화 0) */
@@ -2617,7 +2630,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="modal-body">
       <div class="set-sec">
         <div class="set-lb">월 보기 밀도 <span class="set-badge auto">자동 저장</span></div>
-        <div class="set-hint">달력 칸이 넘칠 때 표시 방식. '맨 앞에 띄우기'로 창을 크게 펼치면 가장 잘 보입니다.</div>
+        <div class="set-hint">달력 칸이 넘칠 때 표시 방식. 제목줄의 최대화 버튼으로 창을 크게 펼치면 가장 잘 보입니다.</div>
         <label class="set-opt"><input type="radio" name="calDensity" value="fixed"><span><b>고정 (+N 더보기)</b><br><span class="set-od">한 달 전체가 한 화면. 바쁜 날은 +N으로 접고 클릭 시 펼침. (기본·표준)</span></span></label>
         <label class="set-opt"><input type="radio" name="calDensity" value="dense"><span><b>촘촘히</b><br><span class="set-od">칸을 키워 더 많이 표시. 길어지면 세로 스크롤.</span></span></label>
         <label class="set-opt"><input type="radio" name="calDensity" value="expand"><span><b>펼침 (스크롤)</b><br><span class="set-od">칸이 내용만큼 늘어나 전부 표시(잘림 없음). 회사 캘린더식이라 월 전체가 한눈에 들어오지는 않음.</span></span></label>
@@ -3326,7 +3339,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <li><b>내 과제</b>(헤더): 과제 추가, 이름, 색상, Git 경로 설정</li>
           <li><b>기본 과제 휴가, 기타</b>: 늘 있는 과제입니다(회사 주간보고에 늘 들어가는 항목). 이름을 바꾸거나 지울 수는 없고 색상과 순서는 바꿀 수 있습니다. 과제를 고르지 않은 새 기록은 <b>기타</b>로 들어갑니다</li>
           <li><b>과제 삭제</b>: 과제를 지우면 그 과제의 일정, 할 일, 과제별 시간도 <b>함께 지워집니다</b>. 남기려면 먼저 그 과제 줄의 <b>옮기기</b>로 다른 과제에 옮기세요(같은 날짜의 시간은 더해집니다)</li>
-          <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, '맨 앞에 띄우기'(다른 창 위에 크게) 지원</li>
+          <li><b>창 모드</b>: 트레이를 켜면 일반 창(작업표시줄·Alt+Tab), 끄면 바탕화면 위젯. 창 <b>가장자리를 드래그</b>해 크기 조절, 제목줄 오른쪽의 창 버튼으로 최소화와 최대화, '맨 앞에 띄우기'(크기는 그대로 다른 창 위에) 지원</li>
           <li>데이터는 <b>서버에 자동 저장</b>됩니다. 내 PC에 사본을 남기거나 이전 버전 기록을 옮길 때는 ⋯ 메뉴의 <b>XML로 내보내기 / XML 가져오기</b></li>
         </ul>
       </section>
@@ -3799,7 +3812,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <ul>
           <li><b>트레이 켬</b> = 일반 앱 창(작업표시줄·Alt+Tab에 나타남). <b>끔</b> = 바탕화면 위젯(다른 창 뒤 바탕화면에 상주).</li>
           <li>창 <b>가장자리를 드래그</b>해 크기를 조절하고, 좌우 사이 <b>구분선</b>으로 달력/패널 너비를 바꿉니다.</li>
-          <li><b>맨 앞에 띄우기</b>(제목줄 버튼이나 ☰ 메뉴)로 다른 창 위에 크게 띄워 집중해 작업할 수 있습니다. <b>Esc</b> 로 해제합니다.</li>
+          <li>제목줄 오른쪽 끝의 창 버튼으로 <b>최소화</b>, <b>최대화</b>, 닫기를 합니다. 최대화는 작업 표시줄을 가리지 않는 크기로 채우고, 다시 누르면 이전 크기로 돌아갑니다. 제목줄 빈 곳을 두 번 눌러도 됩니다. 최소화 버튼은 트레이를 켠 일반 창 모드에서만 보입니다.</li>
+          <li><b>맨 앞에 띄우기</b>(제목줄 버튼이나 ☰ 메뉴)는 크기와 위치는 그대로 두고 다른 창 위에 띄웁니다. 다시 누르거나 <b>Esc</b> 로 해제합니다.</li>
           <li>오른쪽 위 패널은 <b>위아래로 높이 조절</b>이 가능합니다.</li>
         </ul>
       </section>
@@ -16616,10 +16630,20 @@ const TOAST_ICON = { success:ICON.check, warn:ICON.alert, error:ICON.xmark, info
 // 위젯 제목줄 툴팁 — 마크업(buildHostBar)과 상태 갱신(__setFocus · __setTray)이 **같은 문구**를 쓰게 한 곳에 둔다(UI-CLARITY U1·U5).
 //  ★ 여기(부팅 호출보다 앞)에 둔다 — buildHostBar() 는 아래 「시작」에서 동기로 불리므로 그 뒤에 const 를 두면 TDZ 다.
 const HB_TIP = {
-  focusOff:  '맨 앞에 띄우기: 다른 창 위에 크게 띄워 작업합니다 (Esc 로 해제)',
+  focusOff:  '맨 앞에 띄우기: 크기와 위치는 그대로 두고 다른 창 위에 띄웁니다 (다시 누르거나 Esc 로 해제)',
   focusOn:   '맨 앞 해제 (Esc)',
-  closeTray: '트레이로 숨기기 (종료는 ☰ 메뉴)',
+  closeTray: '닫기: 트레이로 숨깁니다. 미리알림은 계속 동작하고, 완전히 끄려면 ☰ 메뉴의 종료를 누릅니다.',
   closeQuit: '닫기(종료)',
+  min:       '최소화',
+  max:       '최대화',
+  restore:   '이전 크기로',
+};
+// 창 버튼 글리프(WINDOW-UI §1, 시안 proto-window-buttons.html). 10x10 선 글리프, currentColor 만 쓴다.
+const CAP_ICON = {
+  min:     '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5.5h10" stroke="currentColor" stroke-width="1"/></svg>',
+  max:     '<svg viewBox="0 0 10 10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1"/></svg>',
+  restore: '<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x=".5" y="2.5" width="7" height="7" rx="1"/><path d="M2.5 2.5V1.5a1 1 0 0 1 1-1h5a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1h-1"/></svg>',
+  close:   '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M.5.5l9 9M9.5.5l-9 9" stroke="currentColor" stroke-width="1"/></svg>',
 };
 function applyIcons(){   // 정적 크롬 버튼의 이모지를 단색 SVG로 치환(라벨 보존)
   const set = (id, html) => { const el = $('#'+id); if(el) el.innerHTML = html; };
@@ -18710,10 +18734,11 @@ function buildReminderOccs(){   // startTime 있는 일정만, 향후 48h 발생
 function pushReminders(){ if(!HOST) return; try{ hpost({ cmd:'reminderSync', occ: buildReminderOccs(), theme: reminderTheme() }); }catch(_){} }
 let __gesture = null; // {type:'move'|'resize', sx, sy, dpr}
 let __pinned = true;  // 바탕화면 부착 상태 — 부착 중에는 이동(드래그) 잠금
-function __gBegin(type, e, el, edge){
+let __winMax = false; // 창 버튼 최대화 상태(호스트가 __setWinState 로 알린다)
+function __gBegin(type, e, el, edge, extra){
   __gesture = { type, sx:e.screenX, sy:e.screenY, dpr: window.devicePixelRatio || 1, edge: edge || 'se' };
   try{ el.setPointerCapture(e.pointerId); }catch(_){}
-  hpost({cmd: type==='move' ? 'dragbegin' : 'resizebegin'});
+  hpost(Object.assign({cmd: type==='move' ? 'dragbegin' : 'resizebegin'}, extra || {}));
   e.preventDefault();
 }
 function __gMove(e){
@@ -18734,22 +18759,62 @@ function buildHostBar(){
   bar.id = 'hostbar';
   bar.innerHTML = `<div class="hb-drag" id="hbDrag">⠿ 수행과제 캘린더</div>
     <div class="hb-btns">
-      <button data-host="focus" id="hbFocus" title="${HB_TIP.focusOff}" aria-label="${HB_TIP.focusOff}">${ICON.front}</button>
+      <button data-host="focus" id="hbFocus" title="${HB_TIP.focusOff}" aria-label="${HB_TIP.focusOff}" aria-pressed="false">${ICON.front}</button>
       <button data-host="pin" id="hbPin" title="바탕화면 부착/해제">${ICON.pin}</button>
       <button data-host="menu" title="위젯 메뉴">☰</button>
-      <button data-host="close" id="hbClose" title="${HB_TIP.closeQuit}" aria-label="${HB_TIP.closeQuit}">✕</button>
+    </div>
+    <span class="hb-sep" aria-hidden="true"></span>
+    <div class="hb-cap">
+      <button data-host="winMinimize" id="hbMin" title="${HB_TIP.min}" aria-label="${HB_TIP.min}" hidden>${CAP_ICON.min}</button>
+      <button data-host="winMaximizeToggle" id="hbMax" title="${HB_TIP.max}" aria-label="${HB_TIP.max}">${CAP_ICON.max}</button>
+      <button data-host="close" id="hbClose" class="cap-close" title="${HB_TIP.closeQuit}" aria-label="${HB_TIP.closeQuit}">${CAP_ICON.close}</button>
     </div>`;
+  //  최소화(#hbMin)는 처음에 숨긴다. 트레이를 끈 바탕화면 위젯 모드는 작업 표시줄 단추가 없어 최소화하면 되돌릴 길이 없다.
+  //  호스트가 __setTray(true) 를 알리면 보인다(닫기 툴팁의 기본값이 '종료'인 것과 같은 가정).
   const surf = document.getElementById('appSurface') || document.body;   // 호스트바도 반투명 표면 안(=--wo 적용 대상)
   surf.insertBefore(bar, surf.firstChild);
   // 이동: 호스트바 빈 영역 드래그
   const drag = bar.querySelector('#hbDrag');
   drag.style.touchAction = 'none';
-  drag.addEventListener('pointerdown', e => { if(e.button===0 && !__pinned) __gBegin('move', e, drag); }); // 부착 중엔 이동 불가
-  drag.addEventListener('pointermove', __gMove);
-  drag.addEventListener('pointerup', e => __gEnd(e, drag));
-  drag.addEventListener('pointercancel', e => __gEnd(e, drag));
-  // 버튼
-  bar.querySelector('.hb-btns').addEventListener('click', ev => {
+  //  최대화 중 누름은 4px 넘게 움직여야 끌기로 친다. 그냥 누르거나 두 번 누르기(복원)에서 호스트가 창을 커서 밑으로 되돌리지 않게.
+  let maxPress = null;
+  drag.addEventListener('pointerdown', e => {
+    if(e.button!==0 || __pinned) return;   // 부착 중엔 이동 불가
+    if(__winMax){ maxPress = { sx:e.screenX, sy:e.screenY }; try{ drag.setPointerCapture(e.pointerId); }catch(_){} e.preventDefault(); return; }
+    __gBegin('move', e, drag);
+  });
+  drag.addEventListener('pointermove', e => {
+    if(maxPress){
+      if(Math.abs(e.screenX - maxPress.sx) + Math.abs(e.screenY - maxPress.sy) >= 4){
+        //  호스트가 평소 크기로 커서 밑에 되돌린다. 커서가 복원된 창의 끌기 칸(#hbDrag) 위에 남도록 칸 안 가로 위치(천분율)와
+        //  오른쪽 버튼 묶음 폭(물리 px)을 함께 보낸다. 창 전체 비율로 놓으면 커서가 창 버튼 위에 올 수 있다.
+        const dr = drag.getBoundingClientRect(), br = bar.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+        maxPress = null;
+        __gBegin('move', e, drag, null, { fxm: Math.round(1000 * Math.min(1, Math.max(0, (e.clientX - dr.left) / Math.max(1, dr.width)))),
+                                           capw: Math.round((br.width - dr.width) * dpr) });
+      }
+      return;
+    }
+    __gMove(e);
+  });
+  //  최대화 중 끌기로 창이 평소 크기로 바뀌면 WebView 가 포인터 캡처를 놓는다(2026-10-16 실측 lostpointercapture).
+  //  누른 채면 다시 잡는다. 안 잡으면 커서가 끌기 칸을 벗어나는 순간 끌기가 멈추고 손을 떼도 끝나지 않는다.
+  drag.addEventListener('lostpointercapture', e => {
+    if(__gesture && __gesture.type === 'move' && (e.buttons & 1)){ try{ drag.setPointerCapture(e.pointerId); }catch(_){} }
+  });
+  //  다시 잡지 못해도 끌기가 이어지고 끝나도록 창 전체에서도 듣는다(끌기 칸이 받은 것은 칸의 처리기가 맡는다).
+  window.addEventListener('pointermove', e => {
+    if(!__gesture || __gesture.type !== 'move' || e.target === drag) return;
+    if(e.buttons & 1) __gMove(e); else __gEnd(e, drag);   // 버튼이 떼진 채 움직이면 놓친 pointerup 이다
+  }, true);
+  window.addEventListener('pointerup', e => { if(__gesture && __gesture.type === 'move' && e.target !== drag) __gEnd(e, drag); }, true);
+  const dragUp = e => { if(maxPress){ maxPress = null; try{ drag.releasePointerCapture(e.pointerId); }catch(_){} return; } __gEnd(e, drag); };
+  drag.addEventListener('pointerup', dragUp);
+  drag.addEventListener('pointercancel', dragUp);
+  // 빈 곳 두 번 누르기 = 최대화와 이전 크기 전환(버튼들은 #hbDrag 밖이라 걸리지 않는다)
+  drag.addEventListener('dblclick', e => { if(e.button===0){ e.preventDefault(); hpost({cmd:'winMaximizeToggle'}); } });
+  // 버튼(기능 버튼과 창 버튼 모두 data-host)
+  bar.addEventListener('click', ev => {
     const b = ev.target.closest('button[data-host]'); if(b) hpost({cmd:b.dataset.host});
   });
   // 리사이즈: 네 가장자리 + 네 모서리 = 8방향. 상단 가장자리(n)는 2026-09-18 추가 — 배지 여백 때문에 창 맨 위 띠가
@@ -18775,19 +18840,31 @@ window.__setPinned = function(p){
   const drag = document.getElementById('hbDrag');
   if(drag) drag.title = __pinned ? '부착 중 (이동하려면 부착 버튼을 눌러 해제)' : '드래그하여 이동';   // 아이콘이 SVG가 되어 툴팁에서 이모지로 가리킬 수 없다
 };
-// 맨 앞에 띄우기 표시(겹친 창 아이콘 ↔ ✕) — 호스트가 진입/해제 시 호출(호스트 내부 이름은 OpenBig/CloseBig · _focusMode)
+// 맨 앞에 띄우기 표시. 호스트가 켜고 끌 때 호출한다(호스트 내부 이름은 EnterFront, LeaveFront, _focusMode).
+//  켜짐은 핀처럼 눌린 바탕(pinon)과 aria-pressed 로만 보인다. 예전처럼 ✕ 로 바꾸면 바로 옆 닫기 ✕ 와 헷갈린다(WINDOW-UI §1).
 window.__big = false;
 window.__setFocus = function(f){
   window.__big = !!f;
   const b = document.getElementById('hbFocus');
-  if(b){ b.classList.toggle('pinon', !!f); b.innerHTML = f ? '✕' : ICON.front;
+  if(b){ b.classList.toggle('pinon', !!f); b.setAttribute('aria-pressed', f ? 'true' : 'false');
     const t = f ? HB_TIP.focusOn : HB_TIP.focusOff; b.title = t; b.setAttribute('aria-label', t); }
+};
+// 창 상태(호스트가 최대화, 이전 크기로, 최대화 중 끌기에서 알린다) → 최대화 버튼 글리프와 툴팁, body.winmax(크기 조절 손잡이 숨김)
+window.__setWinState = function(s){
+  __winMax = s === 'max';
+  document.body.classList.toggle('winmax', __winMax);
+  const b = document.getElementById('hbMax');
+  if(b){ b.innerHTML = __winMax ? CAP_ICON.restore : CAP_ICON.max;
+    const t = __winMax ? HB_TIP.restore : HB_TIP.max; b.title = t; b.setAttribute('aria-label', t); }
 };
 // 트레이 상태 → ✕ 툴팁(UI-CLARITY U5). 트레이 사용 시 ✕ 는 트레이로 숨기고(호스트 case "close"), 끄면 종료한다.
 //  「_」(트레이로 숨기기) 버튼은 없앴다 — ✕ 와 똑같은 일을 하는 버튼이 둘이면 둘 다 의심하게 된다.
+//  최소화(#hbMin)도 트레이를 따른다. 트레이를 끈 바탕화면 위젯은 작업 표시줄 단추가 없어 최소화하면 되돌릴 길이 없다.
 window.__setTray = function(on){
   const c = document.getElementById('hbClose');
   if(c){ const t = on ? HB_TIP.closeTray : HB_TIP.closeQuit; c.title = t; c.setAttribute('aria-label', t); }
+  const m = document.getElementById('hbMin');
+  if(m) m.hidden = !on;
 };
 </script>
 </body>
