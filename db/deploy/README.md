@@ -332,6 +332,39 @@ migrate-code-ids.cmd -DbHost 192.168.0.50 -BackupDir "D:\taskmgr-backup"
 
 **비밀번호.** 인자로 받지 않습니다. 환경변수 `TASKMGR_ADMIN_PW`, 입력이 리다이렉트돼 있으면 stdin 첫 줄(상한 10초), 대화형이면 가려진 입력 순서이고, mysql 에는 임시 `.cnf`(`--defaults-extra-file`)로만 넘기며 끝나면 지웁니다. 회귀 계약은 `tests/migrate-code-ids-cmd.test.mjs`.
 
+### 모든 직원의 열람 범위를 전체로(scope-all.cmd)
+
+이 회사는 주간보고를 이미 서로 다 볼 수 있으므로, 캘린더의 일정 열람 범위도 모든 직원이 '전체' 입니다(2026-10-16 결정). `scope-all.cmd` 는 `<DB>.app_user` 의 모든 행(재직, 비활성 모두)의 `view_scope` 를 `all` 로 바꿉니다. `edit_role` 과 다른 열은 건드리지 않습니다. 정본은 `scope-all.ps1` 머리말입니다.
+
+```
+scope-all.cmd                                  # 더블클릭: 지금 분포를 보여 주고, 묻고, 바꾼다
+scope-all.cmd -DbName taskcalendar_copy        # 복제한 격리 DB 로 먼저 리허설
+scope-all.cmd -DbHost 192.168.0.50 -OutDir "D:\taskmgr-ops"
+```
+
+**언제 다시 돌리나.**
+- `setup-taskcalendar.cmd` 로 서버를 새로 세운 뒤. 새 행의 기본값이 `self` 이고, setup 이 붓는 회사 시드 `04-permissions.sql` 도 대부분을 `self` 로 둡니다.
+- 관리 화면에서 새 직원을 등록하면서 열람 범위를 기본값(본인만)으로 둔 뒤.
+
+이미 모두 `all` 이면 "이미 모두 전체입니다. 할 일이 없습니다." 로 끝납니다(종료코드 0). 몇 번을 돌려도 안전합니다.
+
+**하는 일(첫 실패에서 멈춥니다).**
+1. 사전 점검: `mysql.exe`(`-BaseDir`, 서비스 `MySQL84` 의 binPath, `C:\Program Files\MySQL\MySQL Server 8.4` 순서), 접속, DB, `app_user` 와 `user_id`, `view_scope` 열. `cal_schema_meta` 의 `schema_version` 은 보여 주기만 합니다(특정 판을 요구하지 않습니다). 지금 분포(`view_scope`, 재직 여부별 인원)와 바뀔 행 수를 보여 주고 `Y` 를 받습니다(`-Yes` 면 묻지 않습니다. 입력이 리다이렉트된 무인 실행은 `-Yes` 가 있어야 합니다).
+2. 되돌리기 파일: 바뀔 행마다 `UPDATE app_user SET view_scope='<옛 값>' WHERE user_id=<번호>;` 한 줄씩 `<OutDir>\<DB>-scope-before-<시각>.sql` 에 씁니다. 다시 읽어 줄 수와 `user_id` 목록이 계획과 같아야 다음으로 갑니다(아니면 종료코드 5, DB 는 그대로). 기본 `OutDir` 는 `dist\scope-all` 입니다.
+3. 변경: 트랜잭션 하나입니다. 바뀔 행을 잠그고, `user_id` 목록이 계획과 같은지 보고, `UPDATE app_user SET view_scope = 'all'` 을 한 뒤 바뀐 행 수가 계획과 같을 때만 `COMMIT` 합니다. 어긋나면 커밋 전에 멈추고 되돌려집니다(종료코드 1). `'all'` 인지는 글자 그대로 봅니다(위젯이 대소문자까지 그대로 비교하므로 `ALL` 같은 값도 바꿀 대상입니다).
+4. 확인: `'all'` 이 아닌 행이 0 인지 다시 세고 새 분포와 되돌리기 파일 경로를 보여 줍니다.
+
+`app_user.updated_at` 은 `ON UPDATE CURRENT_TIMESTAMP(3)` 라서 실제로 바뀐 행만 지금 시각으로 바뀝니다(표가 스스로 하는 일입니다).
+
+**위젯은 다시 시작하지 않아도 됩니다.** 위젯은 열람 범위를 부팅 때 읽어 두지 않고, 구성원 창이나 사람 고르기 목록을 열 때(`membersGet`), 다른 사람 일정을 열 때(`CanViewScheduleAsync`) 마다 DB 에서 새로 읽습니다. 이미 열려 있는 구성원 창이나 사람 고르기 목록만 닫았다가 다시 열면 됩니다.
+
+**되돌리기.** 되돌리기 파일 머리말에 명령이 적혀 있습니다. MySQL 의 bin 폴더에서 아래처럼 붓습니다(비밀번호는 mysql 이 묻습니다). `user_id` 로 행을 골라 `view_scope` 하나만 되돌리므로, 그 사이 관리 화면에서 그 사람들에게 바꾼 열람 범위도 파일의 값으로 덮입니다.
+```
+mysql --default-character-set=utf8mb4 -u root -p taskcalendar < "<OutDir>\taskcalendar-scope-before-<시각>.sql"
+```
+
+**종료코드.** `0` 완료 또는 할 일 없음, `1` 변경 실패(되돌려짐) 또는 커밋 뒤 확인 실패, `2` 취소, `3` 사전 점검 실패(아무것도 안 바꿈), `5` 되돌리기 파일 실패(아무것도 안 바꿈). 표의 정본은 `.ps1` 과 `.cmd` 머리의 같은 ASCII 블록입니다. 비밀번호는 `migrate-code-ids.cmd` 와 같은 방식으로 받습니다(인자 없음, `TASKMGR_ADMIN_PW`, stdin 첫 줄, 가려진 입력). 회귀 계약은 `tests/scope-all-cmd.test.mjs`.
+
 ---
 
 ## 사용자·조직 표 마이그레이션: `app_user`, `org_unit`
