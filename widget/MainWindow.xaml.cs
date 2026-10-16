@@ -101,7 +101,11 @@ namespace TaskCalendarWidget
             try
             {
                 var hwnd = new WindowInteropHelper(this).Handle;
-                if (hwnd != IntPtr.Zero && GetWindowRect(hwnd, out RECT r))
+                //  맨 앞에 띄우기(넓게 보기) 중에는 지금 좌표가 확대된 창이다. 진입 전 좌표를 평소 창으로 저장한다
+                //  (BUG-FOCUS-RESTORE). 종료, 끌기 끝, 설정 변경 등 어느 경로로 불려도 같다.
+                RECT r = default;
+                bool have = hwnd != IntPtr.Zero && (_focusMode ? (r = _preFocusRect).Right > r.Left : GetWindowRect(hwnd, out r));
+                if (have)
                 {
                     var dpi = VisualTreeHelper.GetDpi(this);
                     _settings.Left = r.Left / dpi.DpiScaleX;
@@ -2906,6 +2910,9 @@ namespace TaskCalendarWidget
         {
             var hwnd = new WindowInteropHelper(this).Handle;
             if (hwnd == IntPtr.Zero || _focusMode || _scrim != null) return;
+            //  숨었거나 최소화된 채로 들어오면 창은 안 보이고 화면만 어두워진다. 먼저 보이게 한 뒤 좌표를 잡는다(BUG-FOCUS-RESTORE).
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
             GetWindowRect(hwnd, out _preFocusRect);   // 복원 기준(절대 settings 재계산 안 함)
             var dpi = VisualTreeHelper.GetDpi(this);
             var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
