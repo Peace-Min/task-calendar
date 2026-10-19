@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{PAGE_TITLE}}</title>
+<link rel="icon" href="data:,">
+<!--
+  사용 가이드 영상 소개 페이지. tools/guide-video/build-site.mjs 가 이 틀로 index.html 을 만든다.
+  외부 자원을 쓰지 않는다(폐쇄망). CSS 와 JS 는 모두 이 파일 안에 있고, 영상과 자막은 같은 폴더에 둔다.
+  배포 담당자가 채울 곳: 아래 스크립트 맨 위의 SITE_CONFIG 한 곳(설치 안내, 문의).
+-->
+<style>
+:root {
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+  --surface-2: #f0f3f9;
+  --text: #172033;
+  --muted: #586378;
+  --line: #e1e6ef;
+  --accent: #2f62e0;
+  --accent-ink: #ffffff;
+  --accent-soft: #e8eefc;
+  --accent-line: #b9cbf6;
+  --warn-bg: #fff6e0;
+  --warn-line: #e9c46a;
+  --warn-text: #6b4b00;
+  --focus: #2f62e0;
+  --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .06);
+  --radius: 14px;
+  --font: "Pretendard", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e131b;
+    --surface: #161d28;
+    --surface-2: #1c2533;
+    --text: #e6ebf3;
+    --muted: #9ba7ba;
+    --line: #273245;
+    --accent: #6f9bff;
+    --accent-ink: #0b1220;
+    --accent-soft: #1b2843;
+    --accent-line: #34508a;
+    --warn-bg: #2d2412;
+    --warn-line: #7a6024;
+    --warn-text: #f1d78e;
+    --focus: #8fb2ff;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 16px; line-height: 1.65;
+  word-break: keep-all; overflow-wrap: anywhere;
+}
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 16px; top: -60px; z-index: 10; padding: 8px 14px; background: var(--accent); color: var(--accent-ink); border-radius: 8px; text-decoration: none; }
+.skip:focus { top: 12px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+
+/* 머리 */
+.top { background: var(--surface); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 24px; min-height: 64px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; color: var(--text); text-decoration: none; }
+.mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); position: relative; flex: none; }
+.mark::before { content: ""; position: absolute; left: 7px; right: 7px; top: 9px; bottom: 7px; border: 2px solid var(--accent-ink); border-radius: 3px; }
+.mark::after { content: ""; position: absolute; left: 7px; right: 7px; top: 13px; height: 2px; background: var(--accent-ink); }
+.brand small { font-weight: 500; color: var(--muted); font-size: 14px; }
+.nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+.nav a { color: var(--muted); text-decoration: none; padding: 6px 12px; border-radius: 8px; font-size: 15px; }
+.nav a:hover { background: var(--surface-2); color: var(--text); }
+
+/* 첫 화면 */
+.hero { padding: 48px 0 40px; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 40px; align-items: center; }
+.eyebrow { display: inline-block; font-size: 14px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; margin: 0 0 14px; }
+.hero h1 { font-size: 44px; line-height: 1.2; margin: 0 0 16px; letter-spacing: -0.02em; }
+.hero .value { font-size: 20px; line-height: 1.55; margin: 0 0 14px; }
+.hero .note { color: var(--muted); margin: 0 0 22px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.chips a { display: inline-block; padding: 8px 14px; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; text-decoration: none; color: var(--text); font-size: 15px; }
+.chips a:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+
+/* 영상 */
+.vframe { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+.vframe video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.play-cover {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  border: 0; margin: 0; padding: 0; cursor: pointer; color: #fff; font: inherit;
+  background: linear-gradient(180deg, rgba(8, 12, 20, .15), rgba(8, 12, 20, .55));
+}
+.play-cover[hidden] { display: none; }
+.play-cover:focus-visible { outline-offset: -6px; border-radius: var(--radius); }
+.play-icon { width: 76px; height: 76px; border-radius: 50%; background: rgba(255, 255, 255, .95); position: relative; box-shadow: 0 6px 20px rgba(0, 0, 0, .3); }
+.play-icon::after { content: ""; position: absolute; left: 31px; top: 23px; border-style: solid; border-width: 15px 0 15px 24px; border-color: transparent transparent transparent #1d3f9a; }
+.play-cover:hover .play-icon { background: #fff; }
+.play-text { font-size: 18px; font-weight: 600; text-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+.play-dur { font-size: 14px; opacity: .9; text-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+.vmsg { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; background: var(--warn-bg); color: var(--warn-text); border: 2px dashed var(--warn-line); border-radius: var(--radius); font-size: 16px; }
+.vmsg[hidden] { display: none; }
+.vslot.is-missing video, .vslot.is-missing .play-cover { visibility: hidden; }
+.vmeta { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 14px; color: var(--muted); }
+.dl { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-decoration: none; color: var(--text); }
+.dl:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.dl::before { content: ""; width: 10px; height: 10px; border: solid currentColor; border-width: 0 2px 2px 0; transform: translateY(-3px) rotate(45deg); }
+.dl-size { color: var(--muted); }
+
+/* 가이드 */
+main { padding-bottom: 24px; }
+.guide { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 28px; margin: 0 0 28px; box-shadow: var(--shadow); scroll-margin-top: 16px; }
+.guide-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 20px; }
+.guide-no { flex: none; width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 19px; margin-top: 2px; }
+.guide h2 { margin: 0 0 6px; font-size: 26px; line-height: 1.3; letter-spacing: -0.01em; }
+.guide-head p { margin: 0; color: var(--muted); max-width: 72ch; }
+.guide-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; align-items: stretch; }
+.steps-panel { position: relative; min-height: 240px; }
+.steps-scroll { position: absolute; inset: 0; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-2); padding: 12px; }
+.steps-head { margin: 2px 4px 10px; font-weight: 700; font-size: 15px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.steps-count { color: var(--accent); }
+.steps-hint { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: auto; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.step {
+  width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: start;
+  text-align: left; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; cursor: pointer; line-height: 1.45;
+}
+.step:hover { border-color: var(--accent-line); }
+.step:disabled { cursor: default; opacity: .6; }
+.step-no { width: 26px; height: 26px; border-radius: 8px; background: var(--surface-2); color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; }
+.step-title { display: block; font-size: 15px; font-weight: 600; }
+.step-sub { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+.step-time { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.step.is-current { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.step.is-current .step-no { background: var(--accent); color: var(--accent-ink); }
+.step.is-current .step-time { color: var(--accent); font-weight: 600; }
+
+/* 설치와 문의 */
+.help { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 0 0 24px; scroll-margin-top: 16px; }
+.help-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
+.help-card h2 { font-size: 19px; margin: 0 0 8px; }
+.help-card p { margin: 0 0 6px; }
+.help-card .todo { border: 2px dashed var(--warn-line); background: var(--warn-bg); color: var(--warn-text); border-radius: 10px; padding: 10px 12px; font-size: 15px; }
+.foot { color: var(--muted); font-size: 13px; padding: 8px 0 40px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+@media (max-width: 1080px) {
+  .hero-grid { grid-template-columns: 1fr; gap: 28px; }
+  .hero h1 { font-size: 38px; }
+}
+@media (max-width: 960px) {
+  .guide-grid { grid-template-columns: 1fr; }
+  .steps-panel { min-height: 0; }
+  .steps-scroll { position: static; }
+}
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  .top .wrap { gap: 8px; padding-top: 10px; padding-bottom: 8px; }
+  .nav { margin-left: -8px; width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { white-space: nowrap; padding: 6px 8px; font-size: 14px; }
+  .hero { padding: 28px 0 28px; }
+  .hero h1 { font-size: 30px; }
+  .hero .value { font-size: 17px; }
+  .guide { padding: 18px 16px; border-radius: 16px; margin-bottom: 20px; }
+  .guide-head { gap: 12px; }
+  .guide-no { width: 34px; height: 34px; font-size: 17px; }
+  .guide h2 { font-size: 21px; }
+  .help { grid-template-columns: 1fr; }
+  .play-icon { width: 60px; height: 60px; }
+  .play-icon::after { left: 24px; top: 18px; border-width: 12px 0 12px 19px; }
+  .steps-hint { margin-left: 0; width: 100%; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">본문으로 건너뛰기</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" id="top"><span class="mark" aria-hidden="true"></span>{{PRODUCT}} <small>사용 가이드</small></a>
+    <nav class="nav" aria-label="가이드 목록">
+        {{NAV}}
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">사용 가이드 영상</p>
+      <h1>{{PRODUCT}}</h1>
+      <p class="value">{{VALUE}}</p>
+      <p class="note">{{HERO_NOTE}}</p>
+      <ul class="chips" aria-label="바로 가기">
+        <li><a href="#schedule">일정과 할 일</a></li>
+        <li><a href="#peer">다른 사람 일정 보기</a></li>
+        <li><a href="#report">보고서 작성</a></li>
+      </ul>
+    </div>
+    {{HERO_VIDEO}}
+  </div>
+</div>
+
+<main id="main" class="wrap" tabindex="-1">
+  {{SECTIONS}}
+
+  <!-- 설치 안내와 문의: 글은 아래 스크립트 맨 위 SITE_CONFIG 에서 채운다. 비어 있으면 점선 상자로 "배포 담당자 입력" 표시가 보인다. -->
+  <section class="help" id="help" aria-label="설치와 문의">
+    <div class="help-card">
+      <h2 data-cfg-title="install">설치 파일과 업데이트 안내</h2>
+      <div data-cfg-body="install"></div>
+    </div>
+    <div class="help-card">
+      <h2 data-cfg-title="contact">문의</h2>
+      <div data-cfg-body="contact"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <span>{{PRODUCT}} 사용 가이드</span>
+  <span>{{BUILD_INFO}}</span>
+</footer>
+
+<script>
+// ===== 배포 담당자가 고치는 곳(여기 한 곳만) =====================================
+//  글은 그대로 화면에 나온다(HTML 아님). 줄을 나누려면 \n 을 쓴다. 비워 두면 점선 상자로 "배포 담당자 입력" 이 보인다.
+//  installLink 에 설치 파일 폴더나 사내 주소를 적으면 그 아래 링크가 생긴다(installLinkText 는 링크 글).
+//  subtitles.on: 자막 트랙을 처음부터 켤지. 영상 화면에는 같은 자막이 이미 들어 있다.
+//  subtitles.position: 'top' 이면 자막 트랙을 화면 위쪽에 띄워 영상 속 자막(아래쪽)과 겹치지 않게 한다. 'bottom' 은 브라우저 기본 자리.
+var SITE_CONFIG = {
+  installTitle: '설치 파일과 업데이트 안내',
+  installText: '',
+  installLink: '',
+  installLinkText: '설치 파일 열기',
+  contactTitle: '문의',
+  contactText: '',
+  subtitles: { on: false, position: 'top' }
+};
+// =============================================================================
+
+(function () {
+  'use strict';
+  var DATA = /*__GUIDE_DATA__*/null;
+  var LEAD = 0.3; // 단계를 누르면 자막보다 조금 앞에서 시작한다(커서가 움직이는 장면부터)
+  var TODO = {
+    install: '[배포 담당자 입력] 설치 파일이 있는 곳(공유 폴더 경로나 사내 주소)과 업데이트 받는 법을 적어 주세요.',
+    contact: '[배포 담당자 입력] 문의할 담당자나 부서, 연락 방법을 적어 주세요.'
+  };
+
+  function fmtLen(sec) {
+    var s = Math.round(sec);
+    var m = Math.floor(s / 60), r = s % 60;
+    return m > 0 ? (m + '분' + (r ? ' ' + r + '초' : '')) : (r + '초');
+  }
+  function vttTime(sec) {
+    var ms = Math.round(sec * 1000);
+    var p = function (n, w) { n = String(n); while (n.length < (w || 2)) n = '0' + n; return n; };
+    return p(Math.floor(ms / 3600000)) + ':' + p(Math.floor(ms / 60000) % 60) + ':' + p(Math.floor(ms / 1000) % 60) + '.' + p(ms % 1000, 3);
+  }
+  function vttOf(cues) {
+    var out = 'WEBVTT\n';
+    for (var i = 0; i < cues.length; i++) {
+      var t = String(cues[i][2]).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      out += '\n' + (i + 1) + '\n' + vttTime(cues[i][0]) + ' --> ' + vttTime(cues[i][1]) + '\n' + t + '\n';
+    }
+    return out;
+  }
+
+  // ── 설치 안내와 문의 ─────────────────────────────────────────
+  function fillHelp(key, title, text, link, linkText) {
+    var h = document.querySelector('[data-cfg-title="' + key + '"]');
+    var body = document.querySelector('[data-cfg-body="' + key + '"]');
+    if (!h || !body) return;
+    if (title) h.textContent = title;
+    body.textContent = '';
+    var lines = String(text || '').split('\n');
+    var any = false;
+    for (var i = 0; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      var p = document.createElement('p');
+      p.textContent = lines[i];
+      body.appendChild(p);
+      any = true;
+    }
+    if (link) {
+      var a = document.createElement('a');
+      a.href = link;
+      a.textContent = linkText || link;
+      var lp = document.createElement('p');
+      lp.appendChild(a);
+      body.appendChild(lp);
+      any = true;
+    }
+    if (!any) {
+      var t = document.createElement('p');
+      t.className = 'todo';
+      t.textContent = TODO[key];
+      body.appendChild(t);
+    }
+  }
+  fillHelp('install', SITE_CONFIG.installTitle, SITE_CONFIG.installText, SITE_CONFIG.installLink, SITE_CONFIG.installLinkText);
+  fillHelp('contact', SITE_CONFIG.contactTitle, SITE_CONFIG.contactText);
+
+  // ── 영상 ───────────────────────────────────────────────────
+  var subs = SITE_CONFIG.subtitles || {};
+  var allVideos = [];
+
+  function setupSlot(slot) {
+    var id = slot.getAttribute('data-video');
+    var info = (DATA && DATA.videos && DATA.videos[id]) || { cues: [], mp4: '' };
+    var video = slot.querySelector('video');
+    var msg = slot.querySelector('.vmsg');
+    var cover = slot.querySelector('[data-play]');
+    var section = slot.closest('.guide');
+    var steps = section ? Array.prototype.slice.call(section.querySelectorAll('.step')) : [];
+    var scroller = section ? section.querySelector('.steps-scroll') : null;
+    var trackEl = video.querySelector('track');
+    var missing = false;
+    allVideos.push(video);
+
+    function showMissing() {
+      if (missing) return;
+      missing = true;
+      slot.classList.add('is-missing');
+      video.removeAttribute('controls');
+      msg.textContent = '영상 파일을 찾을 수 없습니다(' + (info.mp4 || '파일 이름 없음') + '). 이 페이지와 같은 폴더에 영상 파일이 있는지 확인해 주세요.';
+      msg.hidden = false;
+      if (cover) cover.hidden = true;
+      steps.forEach(function (b) { b.disabled = true; });
+      var d = slot.querySelector('[data-dur]');
+      if (d) d.textContent = '영상 없음';
+    }
+    video.addEventListener('error', showMissing);
+    if (video.error) showMissing();
+
+    // 자막 트랙: file:// 로 열면 브라우저가 옆의 .vtt 를 읽지 못하므로 페이지 안의 자막으로 바꾼다.
+    // 웹 서버가 .vtt 를 내주지 않을 때(형식 등록 누락)도 같은 길로 간다.
+    function useInline() {
+      if (!trackEl || trackEl.getAttribute('data-inline') || !info.cues || !info.cues.length) return;
+      trackEl.setAttribute('data-inline', '1');
+      trackEl.src = 'data:text/vtt;charset=utf-8,' + encodeURIComponent(vttOf(info.cues));
+    }
+    function placeCues() {
+      if (!trackEl || !trackEl.track || !trackEl.track.cues) return;
+      var cues = trackEl.track.cues;
+      for (var i = 0; i < cues.length; i++) {
+        if (subs.position === 'top') { cues[i].snapToLines = true; cues[i].line = 0; }
+      }
+    }
+    function applyMode() {
+      if (!trackEl || !trackEl.track) return;
+      trackEl.track.mode = subs.on === false ? 'hidden' : 'showing';
+    }
+    if (trackEl) {
+      if (subs.on === false) trackEl.removeAttribute('default');
+      trackEl.addEventListener('error', useInline);
+      trackEl.addEventListener('load', function () { placeCues(); applyMode(); });
+      if (location.protocol === 'file:') useInline();
+      applyMode();
+      if (trackEl.readyState === 2) placeCues();
+      if (trackEl.readyState === 3) useInline();
+    }
+
+    function onMeta() {
+      if (!(video.duration > 0)) return;
+      var d = slot.querySelector('[data-dur]');
+      if (d) d.textContent = '길이 ' + fmtLen(video.duration);
+      var ds = slot.querySelector('[data-dur-short]');
+      if (ds) ds.textContent = fmtLen(video.duration);
+      applyMode();
+    }
+    video.addEventListener('loadedmetadata', onMeta);
+    if (video.readyState >= 1) onMeta();
+
+    if (cover) {
+      // 덮개가 보이는 동안은 재생 막대를 숨겨 화면을 깔끔하게 둔다(누르면 다시 나온다).
+      if (!missing) video.removeAttribute('controls');
+      cover.addEventListener('click', function () {
+        video.muted = true;
+        if (!missing) video.setAttribute('controls', '');
+        var p = video.play();
+        if (p && p.catch) p.catch(function () {});
+        video.focus();
+      });
+      video.addEventListener('play', function () { cover.hidden = true; if (!missing) video.setAttribute('controls', ''); });
+      video.addEventListener('ended', function () {
+        cover.hidden = false;
+        video.removeAttribute('controls');
+        var t = cover.querySelector('.play-text');
+        if (t) t.textContent = '다시 보기';
+      });
+    }
+
+    video.addEventListener('play', function () {
+      allVideos.forEach(function (v) { if (v !== video && !v.paused) v.pause(); });
+    });
+
+    if (!steps.length) return;
+    var times = steps.map(function (b) { return parseFloat(b.getAttribute('data-t')) || 0; });
+    var current = -1;
+    function mark(i) {
+      if (i === current) return;
+      current = i;
+      steps.forEach(function (b, k) {
+        var on = k === i;
+        b.classList.toggle('is-current', on);
+        if (on) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+      });
+      // 목록이 따로 스크롤될 때만(넓은 화면) 목록 안에서 보이게 옮긴다. 페이지는 움직이지 않는다.
+      var b = i >= 0 ? steps[i] : null;
+      if (b && scroller && b.offsetParent === scroller && scroller.scrollHeight > scroller.clientHeight + 1) {
+        var y = b.offsetTop;
+        if (i === 0) scroller.scrollTop = 0;
+        else if (y < scroller.scrollTop + 8) scroller.scrollTop = Math.max(0, y - 8);
+        else if (y + b.offsetHeight > scroller.scrollTop + scroller.clientHeight - 8) scroller.scrollTop = y + b.offsetHeight - scroller.clientHeight + 8;
+      }
+    }
+    function sync() {
+      var t = video.currentTime + 0.05;
+      var idx = -1;
+      for (var i = 0; i < times.length; i++) if (t >= times[i] - LEAD) idx = i;
+      mark(idx);
+    }
+    video.addEventListener('timeupdate', sync);
+    video.addEventListener('seeked', sync);
+    steps.forEach(function (b, i) {
+      b.addEventListener('click', function () {
+        if (missing) return;
+        var go = Math.max(0, times[i] - LEAD);
+        try { video.currentTime = go; } catch (e) { /* 메타데이터 전이면 무시 */ }
+        mark(i);
+        var p = video.play();
+        if (p && p.catch) p.catch(function () {});
+      });
+    });
+  }
+
+  var slots = document.querySelectorAll('.vslot');
+  for (var i = 0; i < slots.length; i++) setupSlot(slots[i]);
+})();
+</script>
+</body>
+</html>

@@ -26,6 +26,7 @@
 
 ## 목차
 - [소개](#소개)
+- [사용 가이드 영상](#-사용-가이드-영상)
 - [주요 기능](#-주요-기능)
 - [시작하기](#-시작하기)
 - [사용법](#-사용법)
@@ -63,6 +64,19 @@
 > - 📄 **개발 이력**: [CHANGELOG.md](CHANGELOG.md)
 > - 🗺 **지금 어디이고 다음이 무엇인가**: [docs/ROADMAP.md](docs/ROADMAP.md)
 > - 📐 **반출 XML 포맷**: [SPEC.md](SPEC.md)
+
+## 🎬 사용 가이드 영상
+
+처음 쓰는 분은 아래 영상부터 보면 빠릅니다. 영상은 저장소에 넣지 않고 [GitHub 릴리스(guide-videos)](https://github.com/Peace-Min/task-calendar/releases/tag/guide-videos)에 올려 두었습니다. 화면의 과제, 발주처, 다른 구성원은 촬영용 예시 데이터입니다(녹화한 본인 계정만 실제).
+
+| 영상 | 길이 | 내용 |
+|---|---|---|
+| [전체 소개](https://github.com/Peace-Min/task-calendar/releases/download/guide-videos/TaskCalendar_Overview_v3.mp4) | 0:29 | 무엇을 하는 앱인지 한눈에 |
+| [일정과 할 일](https://github.com/Peace-Min/task-calendar/releases/download/guide-videos/TaskCalendar_Guide_ScheduleTodo_v3.mp4) | 1:19 | 공식 과제 연결, 일정 등록과 수정, 할 일 체크 |
+| [다른 사람 일정 보기](https://github.com/Peace-Min/task-calendar/releases/download/guide-videos/TaskCalendar_Guide_PeerSchedules_v3.mp4) | 1:15 | 독립 열람 창, 구성원 고르기, 겹쳐 보기와 나란히 보기 |
+| [보고서 작성](https://github.com/Peace-Min/task-calendar/releases/download/guide-videos/TaskCalendar_Guide_Report_v3.mp4) | 1:42 | 일간, 주간 보고서 초안 작성과 복사 |
+
+> 사내 배포용으로는 영상과 자막, 단계별 목차를 한 페이지에 묶은 소개 페이지를 따로 만들 수 있습니다. 폴더 하나를 사내 웹 서버나 공유 폴더에 복사하면 됩니다. 만드는 법은 [tools/guide-video/README.md](tools/guide-video/README.md) 참고.
 
 ## ✨ 주요 기능
 

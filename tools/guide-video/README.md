@@ -84,3 +84,25 @@ v3 에서 더한 것: `zoom`(`sel` 이나 `rect`, `scale`, `ms`, `reset`, `pad`.
 ## 실제 앱과 다른 점  편집으로 생긴 차이(잘라 낸 구간, 합성한 창 틀, 네이티브 목록)
 ## 검증 목록      ffprobe, 전체 디코딩, 프레임 확인, 경고 토스트, 이름 확인, 정리 상태
 ```
+
+## 사내 소개 페이지(dist/guide-site)
+
+영상 네 편을 한 페이지로 묶어 사내에 올린다. 폐쇄망용이라 외부 자원(CDN, 웹 글꼴, 외부 그림)이 하나도 없고, file:// 과 http:// 모두에서 돈다.
+
+| 파일 | 역할 |
+|---|---|
+| `build-site.mjs` | `dist/guide-video` 의 MP4 를 복사하고, SRT 를 WebVTT(.vtt)로 바꾸고, 자막에서 단계 목록을 뽑아 `index.html` 을 만든다 |
+| `site/template.html` | 페이지 틀(CSS, JS 가 모두 안에 있음). 밝은 화면과 어두운 화면(시스템 설정), 375px 폭까지 |
+| `site/check-site.mjs` | 헤드리스 Edge(CDP)로 file:// 과 http:// 에서 열어 확인하고 스크린샷을 `dist/guide-site-shots/` 에 남긴다 |
+
+```powershell
+node tools/guide-video/build-site.mjs                      # 기본 --version v3 --out dist/guide-site --src dist/guide-video (경로는 저장소 루트 기준)
+node tools/guide-video/site/check-site.mjs --scratch <임시 폴더>   # 선택: 확인과 스크린샷(Edge 를 포트 9566 으로 띄웠다가 닫는다)
+```
+
+- 결과: `dist/guide-site/` 에 `index.html` 하나와 MP4 네 편, 같은 이름의 `.vtt` 네 개(약 53MB). 이 폴더를 통째로 사내 웹 서버나 공유 폴더에 복사하면 된다.
+- 단계 목록: 가이드 자막의 앞 번호("3. ...")가 같은 줄을 한 단계로 묶는다. 10개가 넘으면 가장 짧은 단계를 앞 단계에 합친다. 단계를 누르면 그 장면 0.3초 앞부터 재생하고, 재생 중에는 지금 단계를 표시한다.
+- 배포 전에 채울 것: `index.html`(다시 만들 거라면 `site/template.html`) 스크립트 맨 위의 `SITE_CONFIG` 한 곳. `installText`, `installLink`(설치 파일 폴더나 사내 주소), `contactText`. 비워 두면 화면에 "[배포 담당자 입력]" 점선 상자가 보인다.
+- 자막 트랙: 영상 화면 아래쪽에 같은 자막이 이미 들어 있어서, 트랙 자막은 화면 위쪽에 띄운다(`SITE_CONFIG.subtitles.position`). 겹쳐 보여 거슬리면 `subtitles.on` 을 `false` 로 둔다.
+- file:// 로 열면 브라우저가 옆의 .vtt 를 읽지 못하므로 페이지 안에 넣어 둔 같은 자막을 쓴다. 웹 서버가 .vtt 를 내주지 않을 때(IIS 의 MIME 형식 미등록 등)도 같다. IIS 에 올릴 때는 `.vtt` 를 `text/vtt`, `.mp4` 를 `video/mp4` 로 등록해 두면 좋다.
+- 영상 파일이 빠지면 그 자리에 "영상 파일을 찾을 수 없습니다" 안내가 나오고 나머지는 그대로 돈다.
