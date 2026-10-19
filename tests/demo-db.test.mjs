@@ -6,14 +6,15 @@
 //   가드 하나가 빠지면 되돌릴 근거 없이 실데이터를 잃는다. 그래서 못 박는다:
 //     ① 생성기는 결정적이다(같은 입력이면 같은 SQL, 명령줄과 모듈 호출이 같은 바이트)
 //     ② 이름: 공식 과제, 발주처, 장소는 '(예시)' 로 시작하고, 사람 이름은 가상 명단에서만 나오며, login_id 는 가짜 모양이다.
-//        녹화 계정은 이름만 바꾸고 login_id 는 16진 리터럴로만 SQL 에 들어간다
+//        녹화 계정은 이름도 login_id 도 바꾸지 않고(2026-10-19 사용자 결정), login_id 는 16진 리터럴로만 SQL 에 들어간다.
+//        가상 이름이 녹화 계정의 지금 이름과 같으면 트랜잭션 전에 멈춘다
 //     ③ SQL 가드: 문자셋, 표, schema_version 13, 녹화 계정 존재, 트랜잭션 안의 검증이 COMMIT 앞에 있다
 //     ④ SQL 은 계정과 권한, DDL 을 건드리지 않는다(GRANT, CREATE USER, DROP USER, DROP DATABASE, ALTER TABLE 없음)
 //     ⑤ 데이터가 스키마 CHECK 를 지킨다(기간, 종일, 공식 과제 uid, 색, 시간 범위, 할 일 완료 시각, 기본 과제)
 //     ⑥ 지우는 표 목록이 스키마의 cal_* 표 전부와 맞물린다(새 표가 생기면 여기서 걸린다)
 //     ⑦ ps1: 비밀번호를 명령줄에 싣지 않는다, 종료코드 표가 .cmd 와 같고 실제로 내는 코드와 같다, .cmd 는 ASCII 와 %*
 //     ⑧ ps1 순서: -Load 는 백업(검증) 다음 표지 파일 다음 생성과 적용, -Restore 는 덤프 검증과 안전 덤프 다음 DROP, 그다음 행 수 대조
-//     ⑨ ps1 세션 확인, 녹화 계정 읽기(widget/UserSession.cs 와 같은 파일과 형식), 이미 데모면 거부
+//     ⑨ ps1 세션 확인, 녹화 계정 읽기(widget/UserSession.cs 와 같은 파일과 형식), 이미 데모면 거부, 녹화 계정 이름을 바꾸지 않는다
 //     ⑩ 문서: 줄표, 띄운 가운데 점, 낫표 없음, db/deploy/README.md 가 이 키트를 가리킨다
 //   각 계약에 변이 주입을 짝으로 둔다(검사가 정말 잡는지 증명한다).
 import { test, assert } from './harness.mjs';
@@ -53,24 +54,30 @@ const checks = {
   sqlGuards(s) {
     const c = sqlCode(s);
     const at = (re, label) => { const m = re.exec(c); assert.ok(m, `SQL 에 ${label} 이(가) 없다: ${re}`); return m.index; };
-    at(/HEX\('홍길동'\) = 'ED998DEAB8B8EB8F99'/, '문자셋 가드');
+    at(/HEX\('가나다'\) = 'EAB080EB8298EB8BA4'/, '문자셋 가드');
     at(/@n_tbl = \d+, 'DO 0'/, '표 존재 가드');
     const ver = at(/IF\(@v <=> '13', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'schema_version 13 가드');
     const me = at(/IF\(@n_me = 1, 'DO 0'/, '녹화 계정 존재 가드');
     at(/IF\(@n_other_active >= 3, 'DO 0'/, '동료 수 가드');
     at(/IF\(@n_my_dummy = 0, 'DO 0'/, '녹화 계정과 가상 명단 겹침 가드');
+    const nameCap = at(/^SET @my_name_hex := \(SELECT HEX\(name\) FROM app_user WHERE user_id = @u_me\);$/m, '녹화 계정 이름 잡아 두기');
+    at(/^SET @n_my_name_dummy := \(SELECT COUNT\(\*\) FROM _demo_names WHERE name = TRIM\(CONVERT\(UNHEX\(@my_name_hex\) USING utf8mb4\)\) COLLATE utf8mb4_0900_ai_ci\);$/m, '가상 이름과 녹화 계정 이름 비교');
+    const nameDummy = at(/IF\(@n_my_name_dummy = 0, 'DO 0'/, '가상 이름과 녹화 계정 이름 겹침 가드');
     const tx = at(/^START TRANSACTION;$/m, 'START TRANSACTION');
     const commit = at(/^COMMIT;$/m, 'COMMIT');
     assert.strictEqual(c.split(/^START TRANSACTION;$/m).length, 2, 'START TRANSACTION 이 하나가 아니다');
     assert.strictEqual(c.split(/^COMMIT;$/m).length, 2, 'COMMIT 이 하나가 아니다');
     assert.ok(ver < tx && me < tx, '판번호와 녹화 계정 가드가 트랜잭션보다 뒤에 있다');
+    assert.ok(me < nameCap && nameCap < nameDummy && nameDummy < tx, '녹화 계정 이름을 잡아 두고 가상 이름과 비교하는 일이 트랜잭션 전에 순서대로 있지 않다');
     // 실제 표를 바꾸는 문장은 전부 트랜잭션 안에 있다(임시 표 말고)
     const writes = [...c.matchAll(/^(UPDATE|DELETE FROM|INSERT INTO) (\w+)/gm)].filter((m) => !m[2].startsWith('_demo_'));
     assert.ok(writes.length > 10, '쓰기 문장을 찾지 못했다');
     for (const m of writes) assert.ok(m.index > tx && m.index < commit, `트랜잭션 밖의 쓰기: ${m[0]}`);
     // COMMIT 직전 검증 묶음
     const verify = c.slice(c.indexOf('-- 6)') >= 0 ? c.indexOf('cal_user_rev (user_id, rev)') : 0, commit);
-    for (const re of [/@fp_user2 = @fp_user/, /@fp_org2 = @fp_org AND @fp_title2 = @fp_title/, /HEX\(login_id\) = @my_login_hex/,
+    for (const re of [/@fp_user2 = @fp_user/, /@fp_org2 = @fp_org AND @fp_title2 = @fp_title/,
+      /WHERE user_id = @u_me AND HEX\(name\) = @my_name_hex AND HEX\(login_id\) = @my_login_hex\) = 1, 'DO 0'/,
+      /WHERE user_id <> @u_me AND CAST\(name AS BINARY\) = UNHEX\(@my_name_hex\)\) = 0, 'DO 0'/,
       /SELECT COUNT\(\*\) FROM app_user\) = @n_user/, /name NOT LIKE '\(예시\)%'/, /common_name NOT LIKE '\(예시\)%'/]) {
       assert.ok(re.test(verify), `COMMIT 앞 검증에 ${re} 가 없다`);
     }
@@ -97,7 +104,7 @@ const checks = {
       assert.ok(!new RegExp(`(INSERT INTO|UPDATE|DELETE FROM) ${t}\\b`).test(c), `${t} 를 바꾼다(조직과 코드표는 그대로여야 한다)`);
     }
   },
-  // ② 녹화 계정: login_id 는 16진으로만, 이름만 바꾼다
+  // ② 녹화 계정: login_id 는 16진으로만, 이름도 login_id 도 바꾸지 않는다
   sqlRecordingUser(s, login) {
     const c = sqlCode(s);
     assert.ok(!c.includes(login), '녹화 계정 login_id 가 SQL 에 글자 그대로 들어 있다(16진 리터럴로만 넣어야 한다)');
@@ -107,8 +114,9 @@ const checks = {
     assert.deepStrictEqual(ups, [
       "UPDATE app_user u JOIN _demo_rank r ON r.user_id = u.user_id SET u.login_id = CONCAT('~demo~', u.user_id);",
       'UPDATE app_user u JOIN _demo_rank r ON r.user_id = u.user_id JOIN _demo_names n ON n.rn = r.rn SET u.name = n.name, u.login_id = n.login_id;',
-      "UPDATE app_user SET name = '홍길동' WHERE user_id = @u_me;",
-    ], 'app_user 를 바꾸는 문장이 셋(임시 login_id, 가상 명단, 녹화 계정 이름만)이 아니다');
+    ], 'app_user 를 바꾸는 문장이 둘(임시 login_id, 가상 명단)이 아니다. 녹화 계정 이름은 바꾸지 않는다(2026-10-19 사용자 결정)');
+    assert.ok(!/^(UPDATE|INSERT INTO|REPLACE INTO|DELETE FROM)\b[^;]*\bapp_user\b[^;]*@u_me\b/m.test(c), '녹화 계정(@u_me)을 직접 바꾸는 문장이 있다');
+    assert.ok(!/홍길동/.test(c), '생성 SQL 에 홍길동이 있다(녹화 계정 이름은 그대로여야 한다)');
     assert.ok(/FROM app_user WHERE user_id <> @u_me;/.test(c), '이름 받을 순서에서 녹화 계정을 빼지 않는다');
   },
 };
@@ -174,6 +182,7 @@ test('데모②: 공식 과제, 발주처, 장소는 모두 (예시) 로 시작�
 
 test('데모②: 사람 이름은 가상 명단에서만 나오고 login_id 는 가짜 모양이다', () => {
   const names = G.peopleNames();
+  assert.strictEqual(D.RECORDING_NAME, undefined, 'demo-data.mjs 에 녹화 계정 이름(RECORDING_NAME)이 남아 있다');
   assert.deepStrictEqual(names.slice(0, 4).map((p) => p.name), ['김철수', '이영희', '박민수', '최지은'], '명단 앞 넷이 정한 순서가 아니다');
   assert.deepStrictEqual(names.slice(0, 4).map((p) => p.login), ['kimcs', 'leeyh', 'parkms', 'choije'], '명단 앞 넷의 login_id 가 다르다');
   assert.ok(names.length >= 300, `명단이 ${names.length}명뿐이다(사람이 많은 DB 에서 가드에 걸린다)`);
@@ -184,7 +193,6 @@ test('데모②: 사람 이름은 가상 명단에서만 나오고 login_id 는 
     assert.ok(!seen.has(p.name), `이름이 겹친다: ${p.name}`); seen.add(p.name);
     assert.ok(!seenLogin.has(p.login), `login_id 가 겹친다: ${p.login}`); seenLogin.add(p.login);
     assert.ok(/^[a-z0-9]{2,50}$/.test(p.login), `login_id 모양이 가짜 모양이 아니다: ${p.login}`);
-    assert.notStrictEqual(p.name, D.RECORDING_NAME, '명단에 녹화 이름이 있다');
     assert.ok(!D.AVOID_NAMES.includes(p.name), `명단에 피해야 할 이름이 있다: ${p.name}`);
     if (fixed.has(p.name)) { assert.strictEqual(p.login, fixed.get(p.name)); continue; }
     const s = p.name[0], g = p.name.slice(1);
@@ -214,7 +222,11 @@ test('변이③④②: 가드를 빼거나 금지 문장을 넣으면 검사가 
     [checks.sqlNoAccountsNoDdl, mutate(sql, '\nCOMMIT;\n', "\nCREATE USER 'x'@'%';\nCOMMIT;\n")],
     [checks.sqlNoAccountsNoDdl, mutate(sql, '\nCOMMIT;\n', '\nDELETE FROM cal_user_rev;\nCOMMIT;\n')],
     [checks.sqlNoAccountsNoDdl, mutate(sql, '\nCOMMIT;\n', '\nDROP TABLE project;\nCOMMIT;\n')],
-    [(s) => checks.sqlRecordingUser(s, LOGIN), mutate(sql, "UPDATE app_user SET name = '홍길동' WHERE user_id = @u_me;", "UPDATE app_user SET name = '홍길동', login_id = 'hong01' WHERE user_id = @u_me;")],
+    // 녹화 계정 이름 바꾸기를 되살리면 잡는다(2026-10-19 사용자 결정: 녹화 계정은 실제 이름 그대로)
+    [(s) => checks.sqlRecordingUser(s, LOGIN), mutate(sql, '\n\n-- 2) cal_*', "\nUPDATE app_user SET name = '홍길동' WHERE user_id = @u_me;\n\n-- 2) cal_*")],
+    [(s) => checks.sqlRecordingUser(s, LOGIN), mutate(sql, '\n\n-- 2) cal_*', "\nUPDATE app_user SET name = CONVERT(X'EAB980ECB2A0EC8898' USING utf8mb4) WHERE user_id = @u_me;\n\n-- 2) cal_*")],
+    [checks.sqlGuards, mutate(sql, 'IF(@n_my_name_dummy = 0, ', 'IF(1, ')],
+    [checks.sqlGuards, mutate(sql, 'AND HEX(name) = @my_name_hex AND HEX(login_id) = @my_login_hex', 'AND HEX(login_id) = @my_login_hex')],
     [(s) => checks.sqlRecordingUser(s, LOGIN), sql + `\n-- ${LOGIN}\nSELECT '${LOGIN}';\n`],
   ];
   muts.forEach(([fn, s], i) => assert.throws(() => fn(s), `변이 ${i} 를 잡지 못했다`));
@@ -391,9 +403,9 @@ const orderChecks = {
     const gen = pos(/& \$node \$genPath "--my-login" \$MyLoginId "--base-date" \$BaseDate "--out" \$sqlPath/, '생성기 호출');
     const apply = pos(/cmd \/c "`"\$mysql`" --defaults-extra-file=`"\$\(\$script:cnfPath\)`" --default-character-set=utf8mb4 -N -B `"\$DbName`" < `"\$sqlPath`"/, '적용(--force 없음)');
     const verify = pos(/Step 3 "확인"/, '확인 단계');
-    const hong = pos(/if\(\$m2\[0\] -ne \$RECORDING_HEX\)/, '녹화 계정 이름 확인');
+    const nameSame = pos(/if\(\$m2\[0\] -ne \$meNameHex\)\{ \$bad\.Add/, '녹화 계정 이름 불변 확인');
     const loginSame = pos(/\$m2\[1\] -ne \$meLoginHex/, '녹화 계정 login_id 불변 확인');
-    const seq = [ver, already, demoAlready, sess, confirm, dump, counts, marker, gen, apply, verify, hong, loginSame];
+    const seq = [ver, already, demoAlready, sess, confirm, dump, counts, marker, gen, apply, verify, nameSame, loginSame];
     for (let i = 1; i < seq.length; i++) assert.ok(seq[i - 1] < seq[i], `-Load 순서가 틀렸다(${i - 1} 번째와 ${i} 번째)`);
     for (const l of L.split('\n').filter((x) => /cmd \/c|& \$mysql/.test(x))) assert.ok(!/--force/.test(l), '-Load 가 mysql 에 --force 를 준다: ' + l.trim());
   },
@@ -476,6 +488,33 @@ test('데모⑨: 녹화 계정은 -MyLoginId 나 위젯 세션 파일(UserSessio
   assert.ok(/if\(\$mf\[0\] -ne '1'\)\{ DiePre/.test(code), '녹화 계정이 정확히 한 명인지 보지 않는다');
 });
 
+const recChecks = {
+  psKeepsName(src) {
+    const code = maskPs(src);
+    assert.ok(!/홍길동/.test(src), 'ps1 에 홍길동이 있다(녹화 계정 이름은 그대로여야 한다)');
+    assert.ok(!/RECORDING_NAME|RECORDING_HEX/.test(code), 'ps1 에 녹화 계정의 바꿀 이름 상수가 있다');
+    assert.ok(!/로그아웃했다가|다시 로그인하면|다시 로그인하세요/.test(src), 'ps1 에 다시 로그인하라는 안내가 남아 있다');
+    const L = block(code, "if($mode -eq 'Load'){\n    if(-not $dbExists)", "if($mode -eq 'Restore'){");
+    assert.ok(/\$meName = FromUtf8Hex \$meNameHex/.test(L), '-Load 가 녹화 계정 이름을 읽어 두지 않는다');
+    assert.ok(/Ok "녹화 계정: user_id \$meId, 이름 그대로\(\$\(FromUtf8Hex \$m2\[0\]\)\), login_id 그대로"/.test(L), '-Load 요약이 녹화 계정 이름을 그대로 보여 주지 않는다');
+    assert.ok(/if\(\$m2\[0\] -ne \$meNameHex\)\{ \$bad\.Add\("녹화 계정 이름이 바뀌었습니다"\) \}/.test(L), '-Load 확인이 녹화 계정 이름을 넣기 전 값과 비교하지 않는다');
+    const S = block(code, "if($mode -eq 'Status'){\n    if(-not $dbExists)", "if($mode -eq 'Load'){\n    if(-not $dbExists)");
+    assert.ok(/이름 \$\(FromUtf8Hex \$f\[0\]\)/.test(S), '-Status 가 녹화 계정 이름을 그대로 보여 주지 않는다');
+    const f = block(code, 'function FromUtf8Hex(', '$PREFIX_LIKE');
+    assert.ok(/\[Text\.Encoding\]::UTF8\.GetString/.test(f), 'FromUtf8Hex 가 UTF-8 로 풀지 않는다');
+  },
+};
+test('데모⑨: ps1 은 녹화 계정 이름을 바꾸지 않고 그대로 보여 주며, 다시 로그인하라고 하지 않는다', () => recChecks.psKeepsName(psSrc));
+test('변이⑨: ps1 에 녹화 계정 이름 바꾸기나 다시 로그인 안내를 되살리면 검사가 잡는다', () => {
+  const muts = [
+    mutate(psSrc, '$DEMO_PREFIX    = "(예시)"\n', '$DEMO_PREFIX    = "(예시)"\n$RECORDING_NAME = "홍길동"\n'),
+    mutate(psSrc, 'if($m2[0] -ne $meNameHex){', 'if($m2[0] -ne $RECORDING_HEX){'),
+    mutate(psSrc, '녹화 계정은 이름이 그대로라 다시 로그인하지 않아도 됩니다.', '로그아웃했다가 다시 로그인하면 바뀐 이름이 보입니다.'),
+    mutate(psSrc, '이름 그대로($(FromUtf8Hex $m2[0]))', '이름 바뀜'),
+  ];
+  muts.forEach((s, i) => assert.throws(() => recChecks.psKeepsName(s), '변이 ' + i + ' 를 잡지 못했다'));
+});
+
 test('데모⑨: -Status 는 읽기만 하고, mysql -e 에는 ASCII 만 싣는다', () => {
   const code = maskPs(psSrc);
   const S = block(code, "if($mode -eq 'Status'){\n    if(-not $dbExists)", "if($mode -eq 'Load'){\n    if(-not $dbExists)");
@@ -495,7 +534,8 @@ test('데모⑩: 키트 문서와 화면 문구에 줄표, 띄운 가운데 점,
       assert.ok(!re.test(s), `${f} 에 ${label} 가 있다`);
     }
   }
-  for (const re of [/이슈 #13/, /홍길동/, /모든 세션과 모든 루프에게 데모 데이터/, /위젯 루프.*녹화하지 마세요/, /MySQL 계정과 권한/, /demo-db\.cmd -Load/, /demo-db\.cmd -Restore/, /조직\(org_unit\)과 직급\(title_code\)/]) {
+  assert.ok(!/홍길동/.test(readme) && !/로그아웃했다가/.test(readme), 'db/demo/README.md 에 녹화 계정 이름 바꾸기나 다시 로그인 안내가 남아 있다');
+  for (const re of [/이슈 #13/, /녹화 계정은 이름도 login_id 도 그대로/, /다시 로그인하지 않아도 됩니다/, /모든 세션과 모든 루프에게 데모 데이터/, /위젯 루프.*녹화하지 마세요/, /MySQL 계정과 권한/, /demo-db\.cmd -Load/, /demo-db\.cmd -Restore/, /조직\(org_unit\)과 직급\(title_code\)/]) {
     assert.ok(re.test(readme), `db/demo/README.md 에 ${re} 가 없다`);
   }
   assert.ok(/\[`\.\.\/demo\/README\.md`\]\(\.\.\/demo\/README\.md\)/.test(deployReadme), 'db/deploy/README.md 가 db/demo/README.md 를 가리키지 않는다');

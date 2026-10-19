@@ -10,6 +10,8 @@
 //   - 결정적이다. 같은 --my-login 과 --base-date 면 바이트까지 같은 SQL 이 나온다(시각, 난수 원천을 쓰지 않는다.
 //     created_at 과 updated_at 은 SQL 안의 UTC_TIMESTAMP(3) 로 넣는다).
 //   - 녹화 계정의 user_id 는 SQL 안에서 login_id 로 찾는다. login_id 는 16진 리터럴로만 들어간다(따옴표 이스케이프에 기대지 않는다).
+//   - 녹화 계정은 이름도 login_id 도 바꾸지 않는다. 바꾸기 전 값을 SQL 안에서 잡아 두고 COMMIT 앞에서 그대로인지 본다.
+//     생성기는 녹화 계정의 이름을 모르므로, 가상 이름이 그 이름과 같은지는 SQL 안에서(트랜잭션 전) 본다.
 //   - 가드가 하나라도 틀리면 '없는 표 이름' 을 SELECT 해 ERROR 1146 으로 멈춘다(db/deploy/migrate-2026-10-15-code-ids.sql 과 같은 수법).
 //     mysql 은 --force 없이 첫 오류에서 끝나고, 열린 트랜잭션은 연결이 끊기며 되돌려진다.
 //   - 바꾸는 것은 DML 뿐이고 트랜잭션 하나다(임시 표 말고는 DDL 이 없다). 계정과 권한(GRANT, CREATE USER)은 건드리지 않는다.
@@ -79,7 +81,7 @@ function guard(cond, why) {
 // 고정 명단 넷 다음에 성과 이름을 엮는다. (s, r) 마다 이름 번호 g = (5s + r) mod G 라 같은 조합이 두 번 나오지 않는다.
 export function peopleNames() {
   const out = D.FIXED_PEOPLE.map((p) => ({ name: p.name, login: p.login }));
-  const avoid = new Set([D.RECORDING_NAME, ...D.AVOID_NAMES, ...out.map((p) => p.name)]);
+  const avoid = new Set([...D.AVOID_NAMES, ...out.map((p) => p.name)]);
   const S = D.SURNAMES.length, G = D.GIVEN_NAMES.length;
   for (let r = 0; r < G; r++) {
     for (let s = 0; s < S; s++) {
@@ -307,7 +309,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
     '--  demo-load.sql: 사용 설명 영상(이슈 #13)용 데모 데이터. db/demo/build-demo-sql.mjs 가 만든 파일이다. 손으로 고치지 말 것.',
     `--  기준 날짜 ${baseDate}, 녹화 계정 login_id 16진 ${hexUtf8(myLogin)}`,
     '--  실행은 db/demo/demo-db.ps1 -Load 가 한다(백업을 먼저 뜬다). 손으로 돌리지 말 것. --force 금지.',
-    '--  바꾸는 것: app_user 의 name, login_id(녹화 계정은 name 만), customer, project, cal_* 사용자 데이터, cal_user_rev(올림).',
+    '--  바꾸는 것: app_user 의 name, login_id(녹화 계정은 그대로), customer, project, cal_* 사용자 데이터, cal_user_rev(올림).',
     '--  그대로 두는 것: org_unit, title_code, section_code, status_code, cal_schema_meta, 계정과 권한.',
     '-- =====================================================================',
     'SET NAMES utf8mb4;',
@@ -317,7 +319,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
     'SET SESSION group_concat_max_len = 4194304;',
     '',
     '-- 0) 가드: 여기까지는 아무것도 바꾸지 않는다',
-    guard("HEX('홍길동') = 'ED998DEAB8B8EB8F99'", '문자셋이 utf8mb4 가 아니다'),
+    guard("HEX('가나다') = 'EAB080EB8298EB8BA4'", '문자셋이 utf8mb4 가 아니다'),
     `SET @n_tbl := (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME IN (${tblList}));`,
     guard(`@n_tbl = ${REQUIRED_TABLES.length}`, '필요한 표가 다 있지 않다(DB 이름 확인)'),
     "SET @v := (SELECT v FROM cal_schema_meta WHERE k = 'schema_version');",
@@ -327,6 +329,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
     guard('@n_me = 1', '녹화 계정 login_id 가 app_user 에 없다'),
     'SET @u_me := (SELECT user_id FROM app_user WHERE login_id = @my_login);',
     'SET @my_login_hex := (SELECT HEX(login_id) FROM app_user WHERE user_id = @u_me);',
+    'SET @my_name_hex := (SELECT HEX(name) FROM app_user WHERE user_id = @u_me);',
     'SET @my_org := (SELECT org_id FROM app_user WHERE user_id = @u_me);',
     'SET @n_user := (SELECT COUNT(*) FROM app_user);',
     'SET @n_other_active := (SELECT COUNT(*) FROM app_user WHERE user_id <> @u_me AND is_active = 1);',
@@ -346,6 +349,9 @@ export function buildDemoSql({ myLogin, baseDate }) {
   push(
     'SET @n_my_dummy := (SELECT COUNT(*) FROM _demo_names WHERE login_id = @my_login);',
     guard('@n_my_dummy = 0', '녹화 계정 login_id 가 가상 명단과 겹친다'),
+    '-- 녹화 계정의 지금 이름과 같은 가상 이름이 있으면 멈춘다(녹화 계정과 다른 사람이 같은 이름으로 보이지 않게)',
+    'SET @n_my_name_dummy := (SELECT COUNT(*) FROM _demo_names WHERE name = TRIM(CONVERT(UNHEX(@my_name_hex) USING utf8mb4)) COLLATE utf8mb4_0900_ai_ci);',
+    guard('@n_my_name_dummy = 0', '녹화 계정 이름이 가상 명단의 이름과 같다'),
     '',
     '-- 이름 받을 순서. 재직 중이고 같은 조직인 사람이 앞에 온다. 앞의 셋(김철수, 이영희, 박민수)이 일정 데이터를 받는 동료다.',
     '-- 임시 표는 트랜잭션 밖에서 만든다(GTID 일관성 모드에서도 막히지 않게).',
@@ -358,7 +364,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
     'SET @u_c3 := (SELECT user_id FROM _demo_rank WHERE rn = 3);',
     guard('(SELECT COUNT(*) FROM app_user WHERE user_id IN (@u_c1,@u_c2,@u_c3) AND is_active = 1) = 3', '동료 셋이 재직 중이 아니다'),
     '',
-    '-- 1) 트랜잭션 시작. 사람: 녹화 계정은 이름만, 나머지는 명단 순서대로 이름과 login_id',
+    '-- 1) 트랜잭션 시작. 사람: 녹화 계정은 그대로, 나머지는 명단 순서대로 이름과 login_id',
     'START TRANSACTION;',
     "SELECT CONCAT('lock:', COUNT(*)) FROM app_user FOR UPDATE;",
     guard('(SELECT COUNT(*) FROM app_user) = @n_user AND (SELECT COUNT(*) FROM _demo_rank) = @n_user - 1', '준비하는 사이 사람 수가 바뀌었다'),
@@ -369,7 +375,6 @@ export function buildDemoSql({ myLogin, baseDate }) {
     'UPDATE app_user u JOIN _demo_rank r ON r.user_id = u.user_id JOIN _demo_names n ON n.rn = r.rn SET u.name = n.name, u.login_id = n.login_id;',
     'SET @n_renamed := ROW_COUNT();',
     guard('@n_renamed = @n_user - 1', '이름을 바꾼 사람 수가 맞지 않는다'),
-    `UPDATE app_user SET name = ${sqlStr(D.RECORDING_NAME)} WHERE user_id = @u_me;`,
     '',
     '-- 2) cal_* 사용자 데이터 비우기(자식 먼저). cal_user_rev 와 cal_schema_meta 는 지우지 않는다',
     ...WIPE_TABLES.map((t) => `DELETE FROM ${t};`),
@@ -417,7 +422,8 @@ export function buildDemoSql({ myLogin, baseDate }) {
     '',
     '-- 6) 검증: 하나라도 어긋나면 COMMIT 전에 멈춘다(트랜잭션은 되돌려진다)',
     guard('(SELECT COUNT(*) FROM app_user) = @n_user', '사람 수가 바뀌었다'),
-    guard(`(SELECT COUNT(*) FROM app_user WHERE user_id = @u_me AND HEX(name) = '${hexUtf8(D.RECORDING_NAME)}' AND HEX(login_id) = @my_login_hex) = 1`, '녹화 계정의 이름이나 login_id 가 기대와 다르다'),
+    guard('(SELECT COUNT(*) FROM app_user WHERE user_id = @u_me AND HEX(name) = @my_name_hex AND HEX(login_id) = @my_login_hex) = 1', '녹화 계정의 이름이나 login_id 가 바뀌었다'),
+    guard('(SELECT COUNT(*) FROM app_user WHERE user_id <> @u_me AND CAST(name AS BINARY) = UNHEX(@my_name_hex)) = 0', '녹화 계정과 같은 이름의 다른 사람이 남았다'),
     guard('(SELECT COUNT(*) FROM app_user u WHERE u.user_id <> @u_me AND NOT EXISTS (SELECT 1 FROM _demo_names n WHERE CAST(n.name AS BINARY) = CAST(u.name AS BINARY) AND CAST(n.login_id AS BINARY) = CAST(u.login_id AS BINARY))) = 0', '가상 명단에 없는 이름이 남았다'),
     "SET @fp_user2 := (SELECT SHA2(GROUP_CONCAT(CONCAT_WS(',', user_id, IFNULL(title_id,'-'), IFNULL(org_id,'-'), view_scope, edit_role, is_active, IFNULL(sort_order,'-')) ORDER BY user_id SEPARATOR ';'), 256) FROM app_user);",
     "SET @fp_org2 := (SELECT SHA2(IFNULL(GROUP_CONCAT(CONCAT_WS(',', org_id, HEX(name), IFNULL(parent_id,'-'), sort_order, is_active) ORDER BY org_id SEPARATOR ';'),''), 256) FROM org_unit);",

@@ -8,7 +8,7 @@
     -Status   지금 DB 에 데모 데이터가 들어 있는지 보여 준다(읽기만 한다).
 
   무엇이 바뀌나(-Load)
-    app_user: 녹화 계정은 name 만 '홍길동' 으로(login_id 는 그대로. 앱이 그 login_id 로 로그인돼 있다).
+    app_user: 녹화 계정은 name 도 login_id 도 그대로(앱이 그 login_id 로 로그인돼 있고 세션 파일에 실제 이름이 남아 있다).
               나머지 사람은 name 과 login_id 를 가상 명단(demo-data.mjs)으로. user_id, 소속, 직급, 권한, 재직 여부, 순서는 그대로.
     customer, project: 전부 지우고 '(예시)' 로 시작하는 발주처 5개, 공식 과제 8개로.
     cal_*: 사용자 데이터를 전부 지우고 녹화 계정과 동료 셋(김철수, 이영희, 박민수)에게 지난달과 이번 달 데이터를 만든다.
@@ -29,7 +29,7 @@
           표별 행 수는 같은 이름 뒤에 .counts.json 으로, 어느 백업으로 되돌릴지는 <OutDir>\<DbName>-demo-marker.json 에 적는다.
       [2] 데모 SQL: node build-demo-sql.mjs 로 <OutDir>\<DbName>-demo-load-<시각>.sql 을 만들고 --force 없이 붓는다.
           SQL 안의 가드가 틀리면 COMMIT 전에 멈추고 트랜잭션은 되돌려진다.
-      [3] 확인: 녹화 계정 이름 홍길동과 login_id 불변, 사람 수, 조직과 직급 행 수, 발주처와 공식 과제, 캘린더 행, 판번호.
+      [3] 확인: 녹화 계정 이름과 login_id 불변, 사람 수, 조직과 직급 행 수, 발주처와 공식 과제, 캘린더 행, 판번호.
     -Restore
       [0] 사전 점검: 도구, 접속, 백업 고르기(-DumpPath, 없으면 표지 파일, 그것도 없으면 가장 최근 before-demo 백업),
           백업 끝의 '-- Dump completed', CREATE DATABASE 나 USE 가 없는지, .counts.json, 지금 DB 가 데모인지, 세션.
@@ -107,7 +107,6 @@ $DEFAULT_COLLATION = "utf8mb4_0900_ai_ci"
 $GENERATOR      = "build-demo-sql.mjs"
 $LOGIN_RE       = '^[A-Za-z0-9._@-]{1,50}$'   # build-demo-sql.mjs 의 LOGIN_RE 와 같다
 $DEMO_PREFIX    = "(예시)"
-$RECORDING_NAME = "홍길동"
 # mysqldump 의 GTID 옵션. 비밀번호 명령줄 검사(tests/ps-guard-lib.mjs)가 '-p...' 를 비번으로 보므로 이름을 둘로 나눠 적는다.
 $GTID_PURGED_OFF = "--set-gtid-" + "purged=OFF"
 
@@ -213,8 +212,14 @@ Ok "기록 폴더: $OutDir"
 # 글을 UTF-8 16진으로. mysql -e 에는 ASCII 만 싣는다(명령줄 코드페이지를 거치며 한글이 깨지지 않게).
 function Utf8Hex([string]$s){ return (([Text.Encoding]::UTF8.GetBytes($s) | ForEach-Object { $_.ToString('X2') }) -join '') }
 function HexStr([string]$s){ return "CONVERT(X'" + (Utf8Hex $s) + "' USING utf8mb4)" }
+# mysql 이 낸 HEX() 값을 글로(화면에 이름을 그대로 보이려고). 모양이 틀리면 16진 그대로 둔다.
+function FromUtf8Hex([string]$h){
+  if("$h" -notmatch '^([0-9A-Fa-f]{2})*$'){ return "$h" }
+  $b = New-Object byte[] ($h.Length / 2)
+  for($i = 0; $i -lt $b.Length; $i++){ $b[$i] = [Convert]::ToByte($h.Substring($i * 2, 2), 16) }
+  return [Text.Encoding]::UTF8.GetString($b)
+}
 $PREFIX_LIKE = "CONCAT(" + (HexStr $DEMO_PREFIX) + ", '%')"
-$RECORDING_HEX = Utf8Hex $RECORDING_NAME
 
 # --- 도구: -BaseDir, 서비스 binPath, 기본 설치 경로 순서로 mysql.exe 와 mysqldump.exe 를 함께 찾는다 ---
 $toolRoots = New-Object System.Collections.Generic.List[string]
@@ -465,8 +470,7 @@ try {
       $who = QTry "SELECT HEX(name), view_scope FROM $dbQ.app_user WHERE login_id = $(HexStr $MyLoginId) COLLATE utf8mb4_0900_ai_ci;"
       if($who){
         $f = "$who".Split("`t")
-        $isHong = ($f[0] -eq $RECORDING_HEX)
-        Log "  녹화 계정      : $MyLoginId, 이름이 홍길동인가 $isHong, 열람 범위 $($f[1])"
+        Log "  녹화 계정      : $MyLoginId, 이름 $(FromUtf8Hex $f[0]), 열람 범위 $($f[1])"
       } else { Warn "login_id $MyLoginId 인 사람이 없습니다." }
     }
     $sessRes = SessionCount
@@ -499,7 +503,8 @@ try {
     $mf = "$me".Split("`t")
     if($mf[0] -ne '1'){ DiePre "login_id '$MyLoginId' 인 사람이 app_user 에 정확히 한 명이 아닙니다($($mf[0])명). -MyLoginId 를 확인하세요." }
     $meId = $mf[1]; $meNameHex = $mf[2]; $meLoginHex = $mf[3]; $meScope = $mf[4]
-    Ok "녹화 계정: user_id $meId (login_id 는 그대로 두고 이름만 홍길동으로 바꿉니다)"
+    $meName = FromUtf8Hex $meNameHex
+    Ok "녹화 계정: user_id $meId, 이름 $meName (이름과 login_id 는 그대로 둡니다)"
     if($meScope -eq 'self'){ Warn "녹화 계정의 열람 범위가 self 입니다. 다른 사람 일정(겹쳐 보기, 나란히 보기)을 보려면 scope-all.cmd 나 관리 화면으로 넓히세요." }
     $others = [int](QPre "SELECT COUNT(*) FROM $dbQ.app_user WHERE user_id <> $meId AND is_active = 1;" "재직 인원")
     if($others -lt 3){ DiePre "재직 중인 다른 사람이 $others 명입니다. 동료 셋(김철수, 이영희, 박민수)에게 데이터를 만들 수 없습니다." }
@@ -515,7 +520,7 @@ try {
     $loadLog   = Join-Path $OutDir ("$DbName-demo-load-" + $script:ts + ".log")
     Log ""
     Log "  DB         : $DbName  (서버 $DbHost`:$Port, $dbCharset / $dbCollation)"
-    Log "  사람       : $($countsBefore['app_user'])명. 녹화 계정은 이름만 홍길동, 나머지는 가상 이름과 login_id 로 바뀝니다."
+    Log "  사람       : $($countsBefore['app_user'])명. 녹화 계정($meName)은 이름과 login_id 그대로, 나머지는 가상 이름과 login_id 로 바뀝니다."
     Log "  공식 과제  : $($st.Projects)개, 발주처 $($st.Customers)개를 지우고 '(예시)' 과제 8개, 발주처 5개로 바꿉니다."
     Log "  캘린더     : cal_* 사용자 데이터를 지우고 녹화 계정과 동료 셋에게 지난달, 이번 달 데이터를 만듭니다."
     Log "  백업       : $dumpPath"
@@ -590,7 +595,7 @@ try {
     $bad = New-Object System.Collections.Generic.List[string]
     $me2 = QTry "SELECT HEX(name), HEX(login_id) FROM $dbQ.app_user WHERE user_id = $meId;"
     $m2 = "$me2".Split("`t")
-    if($m2[0] -ne $RECORDING_HEX){ $bad.Add("녹화 계정 이름이 홍길동이 아닙니다") }
+    if($m2[0] -ne $meNameHex){ $bad.Add("녹화 계정 이름이 바뀌었습니다") }
     if($m2.Count -lt 2 -or $m2[1] -ne $meLoginHex){ $bad.Add("녹화 계정 login_id 가 바뀌었습니다") }
     $countsAfter = TableCounts
     if($null -eq $countsAfter){ $bad.Add("표별 행 수를 세지 못했습니다") }
@@ -611,7 +616,7 @@ try {
       Log "     $(RestoreHint)"
       Finish $EXIT_FAIL "중단: 넣은 뒤 확인에 실패했습니다(종료코드 $EXIT_FAIL)." 'Red'
     }
-    Ok "녹화 계정: user_id $meId, 이름 홍길동, login_id 그대로"
+    Ok "녹화 계정: user_id $meId, 이름 그대로($(FromUtf8Hex $m2[0])), login_id 그대로"
     Log ""
     Log "  요약"
     Log "    이름을 바꾼 사람 : $($summary['renamed'])명(녹화 계정 제외, 전체 $($summary['users'])명)"
@@ -620,7 +625,7 @@ try {
     foreach($k in @('cal_me','cal_c1','cal_c2','cal_c3')){ if($summary.Contains($k)){ Log "    $k : $($summary[$k])" } }
     Log "    녹화 계정 열람 범위: $($summary['my_view_scope'])"
     Log ""
-    Log "  위젯을 다시 띄우세요. 설정의 계정 이름은 세션 파일에 남은 옛 이름이라, 로그아웃했다가 다시 로그인하면 홍길동으로 바뀝니다." 'Cyan'
+    Log "  위젯을 다시 띄우세요. 녹화 계정은 이름이 그대로라 다시 로그인하지 않아도 됩니다." 'Cyan'
     Log "  녹화가 끝나면 되돌리세요: $(RestoreHint)" 'Cyan'
     Finish $EXIT_OK "완료: '$DbName' 에 데모 데이터를 넣었습니다(종료코드 $EXIT_OK). 백업: $dumpPath" 'Green'
   }
@@ -741,7 +746,7 @@ try {
       catch { Warn "표지 파일을 옮기지 못했습니다: $markerPath ($($_.Exception.Message)). 다음 -Load 전에 지우세요." }
     }
     Log ""
-    Log "  위젯을 다시 띄우세요. 설정의 계정 이름이 홍길동으로 남아 있으면 로그아웃했다가 다시 로그인하세요." 'Cyan'
+    Log "  위젯을 다시 띄우세요." 'Cyan'
     Finish $EXIT_OK "완료: '$DbName' 을 데모 전 상태로 되살렸습니다(종료코드 $EXIT_OK)." 'Green'
   }
 } finally {
