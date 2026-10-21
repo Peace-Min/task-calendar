@@ -305,7 +305,15 @@ const checks = {
   // ══ ⑦ 배포 스크립트 ════════════════════════════════════════════════
   publish(ps) {
     const code = ps.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
-    assert.ok(!/WriteAllText\(\$latest|'latest\.json'\s*\)\s*-Force|Copy-Item \$latest/.test(code), 'publish-update.ps1 이 아직 latest.json 을 만들거나 복사한다');
+    //  latest.json 은 0.22 이하 위젯을 위한 전환용으로 남는다(2026-10-21). 형식은 옛것 그대로이고,
+    //  공유폴더에는 exe 복사와 해시 대조가 끝난 뒤 임시 이름에서 바꿔 단다.
+    assert.ok(/version = \$ver[\s\S]*file\s+= \$fileName[\s\S]*sha256\s+= \$sha/.test(code), '전환용 latest.json(version, file, sha256)을 만들지 않는다');
+    {
+      const cp0 = code.slice(code.indexOf('if ($CopyTo) {'));
+      const iExe = cp0.indexOf('Copy-Item $setup -Destination $dest -Force'), iHash = cp0.indexOf('if ($copied -ne $sha) { Fail ');
+      const iTmp = cp0.indexOf("'latest.json.tmp'"), iMove = cp0.indexOf('Move-Item -LiteralPath $tmp');
+      assert.ok(iExe >= 0 && iHash > iExe && iTmp > iHash && iMove > iTmp, '공유폴더 latest.json 이 exe 복사와 해시 대조 뒤, 임시 이름에서 바꿔 달지 않는다');
+    }
     assert.ok(/\$structMatch = \[regex\]::Match\(\$gateText, 'public const int AppStructureVersion = \(\\d\+\);'\)/.test(code), '앱 구조 번호를 DbGate.cs 에서 읽지 않는다');
     assert.ok(/\$releaseSql = Join-Path \$distDir "release-v\$ver\.sql"/.test(code), 'release-v<버전>.sql 을 만들지 않는다');
     assert.ok(/WHERE k = 'db_structure_version'/.test(code) && /@cur <=> '\$structure' AND @upd <=> '0'/.test(code), 'release SQL 이 구조 번호와 갱신 중 표시를 확인하지 않는다');

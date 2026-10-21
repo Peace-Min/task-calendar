@@ -11,8 +11,8 @@
 | 판정 값 | `cal_schema_meta.schema_version`, 부팅 때 1회 읽기 | 키 다섯 개(`db_structure_version`, `db_updating`, `app_latest_version`, `app_installer_file`, `app_installer_sha256`), 연결 열 때마다 읽기 |
 | 다를 때 | 빨간 띠, 가져오기와 초기화만 차단 | 읽기와 쓰기 모두 차단, 전체 화면 안내 |
 | 연결 여는 곳 | 7곳이 각자 생성 | 관문 `DbGate` 한 곳(핑 제외) |
-| 업데이트 정보 | 공유 폴더 `latest.json` | DB 의 `app_` 세 키, 파일만 공유 폴더 |
-| 배포 스크립트 | `latest.json` 을 exe 보다 먼저 복사 | exe 만 복사하고 `app_` 갱신 SQL 을 만들어 준다 |
+| 업데이트 정보 | 공유 폴더 `latest.json` | DB 의 `app_` 세 키, 파일만 공유 폴더(`latest.json` 은 0.22 이하용으로 계속 만든다) |
+| 배포 스크립트 | `latest.json` 을 exe 보다 먼저 복사 | exe 복사, 해시 대조, 그다음 전환용 `latest.json`. `app_` 갱신 SQL 도 만든다 |
 
 ## 2. 호스트(C#)
 
@@ -69,8 +69,8 @@
 - 이관 `db/deploy/migrate-2026-10-21-version-gate.sql`(13 에서 14): DB-RELEASE-OPS §5 의 형식을 처음 따르는 파일. `schema_version = '13'` 확인, 닫기(이 판만 예외로 `db_updating` 행을 먼저 만든다), 새 키 다섯 개 넣기, `schema_version` 행 지우기, 열기. 다시 돌려도 안전하게.
 - 정본 `db/deploy/schema-calendar.sql`: 시드를 새 키 다섯 개로(`app_` 값은 빈 문자열로 시드하고, 빈 값이면 업데이트 없음으로 본다). 표 주석과 `cal_schema_meta` 설명 갱신.
 - 키를 읽는 스크립트를 새 키로: `setup-taskcalendar.ps1`, `init-calendar.ps1`, `restore-taskmgr.ps1`, `scope-all.ps1`, `db/demo/*`, `tools/schema-report/*`. 지난 이관(`migrate-2026-10-15-code-ids.*`)은 고치지 않는다(12 에서 13 전용, 이력).
-- `installer/publish-update.ps1`: `latest.json` 을 만들지 않는다. Setup 만 복사하고(옛 파일 유지), `dist/installer/release-v<버전>.sql`(앱만 바뀐 배포용 `app_` 세 줄 갱신, 구조 번호 확인 포함)을 만들어 경로를 알려 준다.
-- 워크스페이스 `CLAUDE.md` 릴리스 체크리스트의 `latest.json` 항목을 `release-v<버전>.sql` 과 해시 대조로 바꾼다.
+- `installer/publish-update.ps1`: Setup 을 복사하고(옛 파일 유지) 해시를 대조한 뒤, 0.22 이하 위젯을 위한 전환용 `latest.json` 을 임시 이름에서 바꿔 단다(2026-10-21 보완: 기존 사용자가 0.23.0 으로 넘어오는 유일한 길이다). 그리고 `dist/installer/release-v<버전>.sql`(앱만 바뀐 배포용 `app_` 세 줄 갱신, 구조 번호 확인 포함)을 만들어 경로를 알려 준다.
+- 워크스페이스 `CLAUDE.md` 릴리스 체크리스트에 `release-v<버전>.sql` 을 더한다(`latest.json` 과 해시 대조 항목은 전환기 동안 유지).
 
 ## 5. 시험
 

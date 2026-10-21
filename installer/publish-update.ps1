@@ -8,15 +8,17 @@
     3) dist\installer\release-v<버전>.sql 생성 = DB 의 app_ 세 키(app_latest_version, app_installer_file,
        app_installer_sha256)를 바꾸는 짧은 SQL. 구조 번호(widget\DbGate.cs 의 AppStructureVersion)가 맞고
        갱신 중이 아닐 때만 바꾼다(docs/DB-RELEASE-OPS.md §4, docs/VERSION-GATE.md §4)
-    4) (선택 -CopyTo) Setup exe 만 공유폴더로 복사하고, 복사본의 해시를 다시 재서 대조한다
+    4) dist\installer\latest.json 생성 = 0.23.0 전의 위젯(공유폴더 매니페스트를 보는 옛 업데이트 방식)을 위한 다리
+    5) (선택 -CopyTo) Setup exe 를 공유폴더로 복사하고 복사본의 해시를 다시 대조한 뒤, latest.json 을 임시 이름으로 썼다가 바꿔 단다
 
   사용 예:
     powershell -ExecutionPolicy Bypass -File publish-update.ps1
     powershell -ExecutionPolicy Bypass -File publish-update.ps1 -Build -Notes "리마인더 개선"
     powershell -ExecutionPolicy Bypass -File publish-update.ps1 -CopyTo "\\192.168.0.10\TaskCalendar"
 
-  ※ 2026-10-21 부터 공유폴더 매니페스트(latest.json)를 만들지 않는다. 배포 정보는 DB 에 있고(위 3),
-    공유폴더에는 Setup exe 만 둔다. 위젯은 DB 의 app_ 키를 읽고 파일만 'UpdateSourceUrl' 폴더에서 받는다.
+  ※ 2026-10-21 부터 0.23.0 이상 위젯은 배포 정보를 DB 의 app_ 키에서 읽고(위 3), 파일만 'UpdateSourceUrl' 폴더에서 받는다.
+  ※ latest.json 은 전환용으로 계속 만든다. 폐쇄망의 기존 사용자(0.22 이하)는 공유폴더의 latest.json 만 보고 업데이트를 찾으므로,
+    이것이 없으면 0.23.0 으로 넘어올 길이 없다. 모든 사용자가 0.23.0 이상이 된 뒤에는 공유폴더의 latest.json 을 지워도 된다.
   ※ 순서: Setup 을 먼저 올리고(옛 Setup 은 지우지 않는다), 그다음 release-v<버전>.sql 을 Workbench 에서 실행한다.
     SQL 을 먼저 돌리면 위젯이 아직 없는 파일을 받으려다 실패한다.
 #>
@@ -130,10 +132,18 @@ $lines = @(
 [System.IO.File]::WriteAllText($releaseSql, (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "`n✓ 배포 SQL 생성 → $releaseSql" -ForegroundColor Green
 
-$oldManifest = Join-Path $distDir 'latest.json'
-if (Test-Path $oldManifest) {
-  Write-Host "! $oldManifest 는 옛 빌드가 남긴 것이다. 이제 쓰지 않으니 공유폴더에 올리지 말 것" -ForegroundColor Yellow
+# 5.5) latest.json: 0.22 이하 위젯을 위한 전환용 매니페스트(형식은 옛것 그대로: version, file, notes, sha256)
+$manifest = [ordered]@{
+  version = $ver
+  file    = $fileName
+  notes   = $Notes
+  sha256  = $sha
 }
+$json = $manifest | ConvertTo-Json -Depth 4
+$latest = Join-Path $distDir 'latest.json'
+# BOM 없는 UTF-8 로 기록(옛 위젯 host 가 http/ftp/파일 모두 안전하게 파싱)
+[System.IO.File]::WriteAllText($latest, $json, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "✓ 전환용 매니페스트 생성(0.22 이하 위젯용) → $latest" -ForegroundColor Green
 
 # 6) (선택) 공유폴더로 Setup exe 만 복사. 옛 Setup 은 지우지 않는다(DB-RELEASE-OPS §4.1 1).
 #    복사본을 다시 재서 해시가 같은지 본다. 다르면 SQL 을 돌리지 말아야 하므로 실패로 끝낸다.
@@ -146,6 +156,12 @@ if ($CopyTo) {
     $copied = (Get-FileHash -Algorithm SHA256 -Path $dest).Hash.ToLower()
     if ($copied -ne $sha) { Fail "복사본 해시가 다릅니다: $dest ($copied, 기대 $sha). release SQL 을 실행하지 말고 다시 복사하세요" }
     Write-Host "`n✓ 공유폴더 복사와 해시 대조 완료 → $dest" -ForegroundColor Green
+    # latest.json 은 exe 복사와 해시 대조가 끝난 **뒤에**, 임시 이름으로 썼다가 바꿔 단다.
+    #   옛 위젯이 복사 도중에 확인해도 "아직 없는 exe" 나 "덜 써진 매니페스트" 를 보지 않게 한다.
+    $tmp = Join-Path $CopyTo 'latest.json.tmp'
+    Copy-Item $latest -Destination $tmp -Force
+    Move-Item -LiteralPath $tmp -Destination (Join-Path $CopyTo 'latest.json') -Force
+    Write-Host "✓ 공유폴더 latest.json 갱신(0.22 이하 위젯용)" -ForegroundColor Green
   }
 }
 
@@ -153,6 +169,7 @@ if ($CopyTo) {
 Write-Host "`n──────────────────────────────────────────────" -ForegroundColor DarkGray
 Write-Host " 배포 방법(docs/DB-RELEASE-OPS.md §4)" -ForegroundColor White
 Write-Host "  1) $fileName 을 공유폴더(각 위젯의 'UpdateSourceUrl' 위치)에 올린다. 옛 Setup 은 지우지 않는다" -ForegroundColor Gray
+Write-Host "     그다음 latest.json 도 올린다(0.22 이하 사용자용. -CopyTo 를 쓰면 이 순서로 자동)" -ForegroundColor Gray
 Write-Host "  2) 그다음 Workbench 에서 실행: $releaseSql" -ForegroundColor Gray
 Write-Host "     (DB 구조가 바뀌는 배포면 이관 SQL 을 먼저 돌린 뒤 이 SQL 을 돌린다)" -ForegroundColor Gray
 Write-Host "  예) ftp://<서버IP>/TaskCalendar/, \\<서버>\TaskCalendar\, http(s)://.../TaskCalendar/" -ForegroundColor DarkGray
