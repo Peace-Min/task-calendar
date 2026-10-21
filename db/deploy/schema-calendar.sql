@@ -931,7 +931,7 @@
 --     트리거가 하나도 없어야 한다. init-calendar.ps1 의 게이트가 'cal_* 트리거 0개'를 확인한다.
 --     되살릴 자리는 이 DB 가 아니라 API 서버 계층이다(같은 DB 안의 휴지통은 그 DB 가 죽으면 함께 죽는다).
 --  ★ cal_schema_meta 는 앱 계정에 SELECT 만 주어야 한다(§5.5). 앱이 버전 행을 올릴 수 있으면
---     '낡은 클라이언트 차단'이 성립하지 않는다. 그 부여의 단일 소스는 grants-calendar.sql 이다.
+--     버전 관문(VERSION-GATE)이 성립하지 않는다. 그 부여의 단일 소스는 grants-calendar.sql 이다.
 --     ※ 여기에 그 파일의 '현재 상태'(있다/없다)를 적지 않는다. 한때 "지금은 그 GRANT 가 없다" 고
 --       적혀 있었는데 그 사이 추가돼 이 파일만 거짓말을 하고 있었다. 다른 파일의 상태는 그 파일에서
 --       확인한다. 배포 후 확인 절차는 grants-calendar.sql 꼬리의 검증 쿼리 4b) 가 갖고 있다.
@@ -1912,27 +1912,32 @@ CREATE TABLE cal_migration_log (
 --   되살리지 말 것: 이 DB 안에 트리거를 다시 넣으면 init-calendar.ps1 의 '트리거 0개' 게이트가 실패한다.
 
 -- =====================================================================
---  13. cal_schema_meta: 스키마 버전 행 (§5.5)
+--  13. cal_schema_meta: 버전 관문 값 다섯 개 (docs/DB-RELEASE-OPS.md §2, docs/VERSION-GATE.md)
 -- =====================================================================
--- §5.5 가 요구한 '스키마 버전 행 + 빌드 상수를 접속 시 1회 비교, 낡은 클라이언트는 파괴적 연산만 차단'의
--- 저장소 측 절반이다. 이 행이 없으면 스키마를 ALTER 한 뒤 구버전 위젯이 붙었을 때 막을 수단이 0 이다.
--- 특히 §8 의 '가져오기 교체'(전량 DELETE + INSERT)와 이관 도구가 파괴적 연산이라, 새 컬럼을 모르는
--- 구버전 클라이언트가 교체를 돌리면 그 사용자의 새 컬럼 값이 전부 기본값으로 되돌아간다.
+-- 버전 관문의 저장소 측 절반이다. 2026-10-21(구조 번호 14)부터 키 다섯 개를 둔다:
+--   db_structure_version  DB 표 구조 번호. 표가 바뀔 때만 1씩 오른다. 앱 상수(DbGate.AppStructureVersion)와
+--                         **같아야 동작**한다. 다르면 앱이 읽기와 쓰기를 모두 막고 안내를 띄운다
+--   db_updating           '0' / '1'. 1 이면 DB 갱신 중이라 모든 앱이 잠시 기다린다(이관 SQL 이 세우고 내린다)
+--   app_latest_version    지금 배포 중인 최신 앱 버전. 빈 값이면 새 버전 없음
+--   app_installer_file    공유 폴더에서 받을 Setup 파일 이름
+--   app_installer_sha256  받은 파일 대조용 해시(64자. v VARCHAR(64) 에 꼭 맞는다)
+-- 옛 키 schema_version(13 까지)은 migrate-2026-10-21-version-gate.sql 이 지웠다.
 --
 -- 사용 규약(위젯 측):
---   - 접속 프리앰블에서 SELECT v FROM cal_schema_meta WHERE k='schema_version' 를 1회 읽는다.
---   - 빌드 상수와 다르면 파괴적 연산(가져오기 교체, 이관, 전량 삭제)만 막고 조회·편집은 계속되게 한다.
---     §5.5 가 '전 쓰기 봉인은 과하다'고 못박았다.
+--   - 연결을 열 때마다 관문(DbGate.OpenAsync)이 SELECT k, v FROM cal_schema_meta WHERE k IN (...) 를 한 번 읽는다.
+--   - db_updating 이 먼저, 그다음 구조 번호를 정수로 비교한다. 행이 없거나 숫자가 아니면 막는다.
+--   - 업데이트 확인은 판정 없이 app_ 세 키만 읽는다(막힌 상태에서도 업데이트 버튼이 동작해야 한다).
 --   - 앱 계정에는 SELECT 만 준다. 앱이 이 행을 올릴 수 있으면 차단 자체가 무의미해진다(헤더 참조).
+--     잠금 읽기(FOR SHARE)를 쓰지 않는 이유도 이것이다(MySQL 8 은 SELECT 말고 권한을 더 요구한다).
 --
 -- 사용자별 데이터가 아니라 user_id 도 FK 도 없다. 값 집합이 고정된 토큰이라 두 컬럼 모두 _bin.
 CREATE TABLE cal_schema_meta (
-  k          VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 메타 키. 현재 'schema_version' 하나. 앱이 정확 비교하므로 _bin
-  v          VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 값. schema_version 은 단조증가 정수 문자열
+  k          VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 메타 키. 위 다섯 개. 앱이 정확 비교하므로 _bin
+  v          VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 값. db_structure_version 은 단조증가 정수 문자열
   updated_at DATETIME(3) NOT NULL,                                            -- 갱신 시각(UTC). 아래 시딩은 UTC_TIMESTAMP(3) 명시. CURRENT_TIMESTAMP 는 세션 tz 로 평가되므로 쓰지 않는다
   PRIMARY KEY (k)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='스키마 버전 행(§5.5). 앱은 SELECT 만 — 위젯 빌드 상수와 비교해 파괴적 연산만 차단.';
+  COMMENT='구조 번호와 배포 정보(키-값). 앱은 SELECT 만, 연결마다 구조 번호를 비교해 다르면 읽기와 쓰기를 막는다(VERSION-GATE).';
 
 -- 시딩: 구조를 바꾸는 migrate-*.sql 은 반드시 이 값을 함께 올려야 한다(올리지 않으면 게이트가 죽은 문자가 된다).
 -- ★ 2026-08-21: 1 → 2. cal_attendance 신설 + cal_user_pref 서식 12컬럼 = 명백한 구조 변경이다.
@@ -1980,7 +1985,17 @@ CREATE TABLE cal_schema_meta (
 --       (migrate-2026-10-15-code-ids.sql, docs/CODE-TABLE-IDS.md). 이 파일의 cal_* 는 바뀌지 않았지만
 --       판번호의 정본이 여기라 이 줄이 여기 있다. 위젯 ExpectedSchemaVersion 도 같은 배포에서 13 이다.
 --     ※ 2026-10-15 에 지난 migrate-2026-*.sql(위 3~12)은 지웠다(git 이력에 있다). 남은 이관 파일은 13 하나다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('schema_version', '13', UTC_TIMESTAMP(3));
+--   - 14 (2026-10-21): 버전 관문(migrate-2026-10-21-version-gate.sql, docs/VERSION-GATE.md). 표 구조는 그대로이고
+--       이 표의 키가 schema_version 하나에서 위 다섯 개로 바뀌었다. 앱 상수는 DbGate.AppStructureVersion(14).
+--       이 판부터 이관 SQL 은 DB-RELEASE-OPS §5 형식(확인, 닫기, 바꾸기, 검증, 열기)을 따르고,
+--       판 올림은 UPDATE ... WHERE k = 'db_structure_version' AND v = '<앞 판>' 한 줄이다.
+--   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
+--   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '14', UTC_TIMESTAMP(3)),
+  ('db_updating', '0', UTC_TIMESTAMP(3)),
+  ('app_latest_version', '', UTC_TIMESTAMP(3)),
+  ('app_installer_file', '', UTC_TIMESTAMP(3)),
+  ('app_installer_sha256', '', UTC_TIMESTAMP(3));
 
 -- =====================================================================
 --  cal_user_rev 전원 시딩 (§3.1): 구조 생성 직후 반드시 함께 실행

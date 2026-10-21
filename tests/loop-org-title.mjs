@@ -226,7 +226,7 @@ SET SESSION group_concat_max_len=8388608;
 SELECT 'J', COUNT(*) FROM title_code WHERE name     NOT LIKE 'zzJ%';
 SELECT 'O', COUNT(*) FROM org_unit   WHERE name     NOT LIKE 'zzO%';
 SELECT 'U', COUNT(*) FROM app_user   WHERE login_id NOT LIKE 'zzU%';
-SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version';
+SELECT 'V', v FROM cal_schema_meta WHERE k='db_structure_version';
 SELECT 'M', edit_role, CAST(is_active AS CHAR), CAST(user_id AS CHAR), name FROM app_user WHERE login_id=${esc(me)};
 SELECT 'H', IFNULL(SHA2(GROUP_CONCAT(x ORDER BY x SEPARATOR '|'),256),'(빈집합)') FROM (
             SELECT CONCAT('J/',title_id,'/',name,'/',sort_order,'/',is_active)                   AS x

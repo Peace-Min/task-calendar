@@ -37,14 +37,16 @@ function mutate(text, find, repl) {
 const member = (src, sig) => extractCsMember(src, sig);
 
 // ══ (S) 호스트 ════════════════════════════════════════════════════════
-const READ_FOUR = ['membersGet', 'peerMine', 'peerSchedule', 'peerWinReady'];
+//  2026-10-21 gateRecheck(버전 관문 재확인, VERSION-GATE §2.5)가 더해졌다. 읽기 하나라 열람 창의 차단 카드도 쓴다.
+//  웹의 PEERWIN_CMD 는 Phase B(웹 차단 카드)에서 같은 이름을 더한다. 호스트가 먼저 받을 수 있게 둔다.
+const READ_FOUR = ['gateRecheck', 'membersGet', 'peerMine', 'peerSchedule', 'peerWinReady'];
 function peerCommands(cs) {
   const m = /internal static readonly HashSet<string> PeerWinCommands = new\(StringComparer\.Ordinal\)\s*\{([^}]*)\}/.exec(stripCsComments(cs));
   assert.ok(m, 'PeerWinCommands 목록을 찾지 못했다');
   return [...m[1].matchAll(/"(\w+)"/g)].map((x) => x[1]).sort();
 }
 function checkWhitelist(cs) {
-  assert.deepStrictEqual(peerCommands(cs), READ_FOUR, '열람 창이 보낼 수 있는 명령이 읽기 넷이 아니다');
+  assert.deepStrictEqual(peerCommands(cs), READ_FOUR, '열람 창이 보낼 수 있는 명령이 읽기 넷과 관문 재확인이 아니다');
   const d = member(cs, 'private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)');
   assert.match(d, /bool fromPeer;\s*string raw;\s*try\s*\{\s*fromPeer = origin != null && _peerWin != null && ReferenceEquals\(origin, _peerWin\.Core\);/,
     '보낸 창을 CoreWebView2 로 가르지 않는다(또는 그 가르기가 try 밖이다. 닫히는 창의 Core 가 던지면 처리기가 터진다)');
@@ -145,7 +147,7 @@ test('(M) PeerWindow: ProcessFailed 구독을 빼거나, 렌더러 실패에 준
   assert.throws(() => checkProcessFailed(mutate(PW, '                _ready = false;   // 다시 읽은 웹이', '                //   다시 읽은 웹이')), /준비 표시를 내리고/);
 });
 test('(M) 호스트: 쓰기 명령을 목록에 넣거나, 거름을 빼거나, 회신 길을 메인 하나로 만들면 잡는다', () => {
-  assert.throws(() => checkWhitelist(mutate(CS, '"peerWinReady", "peerSchedule", "membersGet", "peerMine",', '"peerWinReady", "peerSchedule", "membersGet", "peerMine", "saveState",')), /읽기 넷이 아니다/);
+  assert.throws(() => checkWhitelist(mutate(CS, '"peerWinReady", "peerSchedule", "membersGet", "peerMine",', '"peerWinReady", "peerSchedule", "membersGet", "peerMine", "saveState",')), /읽기 넷과 관문 재확인이 아니다/);
   assert.throws(() => checkWhitelist(mutate(CS, '                    if (!PeerWinCommands.Contains(cmd) || (cmd != "peerWinReady" && !peerReq))', '                    if (false)')), /거르지 않는다/);
   assert.throws(() => checkReplyRouting(mutate(CS, 'if (!reqId.StartsWith(PeerReqPrefix, StringComparison.Ordinal)) return web.CoreWebView2;', 'return web.CoreWebView2;')), /열람 창에 가지 않는다/);
   //  리뷰 P1-1: 보낸 창 확인을 빼면(지금 열람 창으로 그냥 보내면), 보낸 창 기록을 빼면 잡는다

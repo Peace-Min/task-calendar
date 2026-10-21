@@ -25,7 +25,7 @@ rem  --- EXITCODES (ASCII; this block must match line-for-line in .ps1 and .cmd)
 rem    0 ok - demo data loaded and verified, the DB was restored and verified, or the status was shown
 rem    1 failed - the demo SQL or the restore stopped, or the check afterwards failed; read the printed state and steps
 rem    2 cancelled - the confirmation was not Y; nothing was changed
-rem    3 precheck failed - tools, password, connection, DB, schema_version not 13, recording login, demo state or backup file; nothing was changed
+rem    3 precheck failed - tools, password, connection, DB, db_structure_version not 14, recording login, demo state or backup file; nothing was changed
 rem    4 app sessions open - the app account is still connected to this DB; close every widget; nothing was changed
 rem    5 backup failed - mysqldump failed or the dump is incomplete; the DB was not touched
 rem  --- END EXITCODES ---

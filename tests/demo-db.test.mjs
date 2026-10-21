@@ -8,7 +8,7 @@
 //     ② 이름: 공식 과제, 발주처, 장소는 '(예시)' 로 시작하고, 사람 이름은 가상 명단에서만 나오며, login_id 는 가짜 모양이다.
 //        녹화 계정은 이름도 login_id 도 바꾸지 않고(2026-10-19 사용자 결정), login_id 는 16진 리터럴로만 SQL 에 들어간다.
 //        가상 이름이 녹화 계정의 지금 이름과 같으면 트랜잭션 전에 멈춘다
-//     ③ SQL 가드: 문자셋, 표, schema_version 13, 녹화 계정 존재, 트랜잭션 안의 검증이 COMMIT 앞에 있다
+//     ③ SQL 가드: 문자셋, 표, db_structure_version 14(2026-10-21 부터, 옛 키 schema_version), 녹화 계정 존재, 트랜잭션 안의 검증이 COMMIT 앞에 있다
 //     ④ SQL 은 계정과 권한, DDL 을 건드리지 않는다(GRANT, CREATE USER, DROP USER, DROP DATABASE, ALTER TABLE 없음)
 //     ⑤ 데이터가 스키마 CHECK 를 지킨다(기간, 종일, 공식 과제 uid, 색, 시간 범위, 할 일 완료 시각, 기본 과제)
 //     ⑥ 지우는 표 목록이 스키마의 cal_* 표 전부와 맞물린다(새 표가 생기면 여기서 걸린다)
@@ -56,7 +56,8 @@ const checks = {
     const at = (re, label) => { const m = re.exec(c); assert.ok(m, `SQL 에 ${label} 이(가) 없다: ${re}`); return m.index; };
     at(/HEX\('가나다'\) = 'EAB080EB8298EB8BA4'/, '문자셋 가드');
     at(/@n_tbl = \d+, 'DO 0'/, '표 존재 가드');
-    const ver = at(/IF\(@v <=> '13', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'schema_version 13 가드');
+    assert.ok(/SET @v := \(SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version'\);/.test(c), 'SQL 이 구조 번호를 db_structure_version 키로 읽지 않는다');
+    const ver = at(/IF\(@v <=> '14', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'db_structure_version 14 가드');
     const me = at(/IF\(@n_me = 1, 'DO 0'/, '녹화 계정 존재 가드');
     at(/IF\(@n_other_active >= 3, 'DO 0'/, '동료 수 가드');
     at(/IF\(@n_my_dummy = 0, 'DO 0'/, '녹화 계정과 가상 명단 겹침 가드');
@@ -209,12 +210,12 @@ test('데모②: 사람 이름은 가상 명단에서만 나오고 login_id 는 
 });
 
 // ══ ③ ④ SQL 가드와 금지 문장 ══════════════════════════════════════════
-test('데모③: SQL 가드(문자셋, 표, 판번호 13, 녹화 계정)와 트랜잭션 안 검증', () => checks.sqlGuards(sql));
+test('데모③: SQL 가드(문자셋, 표, 구조 번호 14, 녹화 계정)와 트랜잭션 안 검증', () => checks.sqlGuards(sql));
 test('데모④: SQL 은 계정, 권한, DDL, 조직과 코드표, 판번호를 건드리지 않는다', () => checks.sqlNoAccountsNoDdl(sql));
 
 test('변이③④②: 가드를 빼거나 금지 문장을 넣으면 검사가 잡는다', () => {
   const muts = [
-    [checks.sqlGuards, mutate(sql, "IF(@v <=> '13', 'DO 0',", "IF(1, 'DO 0',")],
+    [checks.sqlGuards, mutate(sql, "IF(@v <=> '14', 'DO 0',", "IF(1, 'DO 0',")],
     [checks.sqlGuards, mutate(sql, 'IF(@n_me = 1, ', 'IF(1, ')],
     [checks.sqlGuards, mutate(sql, '\nSTART TRANSACTION;\n', '\n')],
     [checks.sqlGuards, mutate(sql, 'IF(@fp_user2 = @fp_user, ', 'IF(1, ')],
@@ -333,7 +334,7 @@ test('데모⑥: 지우는 표와 그대로 두는 표가 스키마의 cal_* 표
     '구분 코드 고정 번호(1 일반계약, 2 선진행, 3 사업부관리)가 바뀌었다. demo-data.mjs 의 section 번호를 함께 볼 것');
   assert.ok(/\(1, '진행중', 10\), \(2, '종료', 20\), \(3, '1차 납품완료', 30\), \(4, '미정', 40\);/.test(schemaStruct),
     '상태 코드 고정 번호가 바뀌었다. demo-data.mjs 의 status 번호를 함께 볼 것');
-  assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('schema_version', '13'/.test(schemaCal), '스키마 판번호가 13 이 아니다. SCHEMA_VERSION 을 함께 올릴 것');
+  assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('db_structure_version', '14'/.test(schemaCal), '구조 번호가 14 가 아니다. SCHEMA_VERSION 을 함께 올릴 것');
 });
 
 // ══ ⑦ ps1 과 .cmd 의 공통 계약 ═════════════════════════════════════════
@@ -392,7 +393,7 @@ const orderChecks = {
   load(code) {
     const L = block(code, "if($mode -eq 'Load'){\n    if(-not $dbExists)", "if($mode -eq 'Restore'){");
     const pos = (re, label) => { const m = re.exec(L); assert.ok(m, `-Load 에 ${label} 이(가) 없다`); return m.index; };
-    const ver = pos(/if\(\$ver -ne \$SCHEMA_VERSION\)\{ DiePre/, '판번호 13 확인');
+    const ver = pos(/if\(\$ver -ne \$SCHEMA_VERSION\)\{ DiePre/, '구조 번호 14 확인');
     const already = pos(/if\(\$marker\)\{ DiePre/, '표지 파일이 있으면 거부');
     const demoAlready = pos(/if\(\$st\.DemoProjects -gt 0 -or \$st\.DemoCustomers -gt 0\)\{ DiePre/, '이미 (예시) 과제가 있으면 거부');
     const sess = pos(/\n\s*CheckSessions\n/, '세션 확인');

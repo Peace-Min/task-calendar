@@ -21,8 +21,10 @@ const loadSql = (name) => readFileSync(new URL(name, DEPLOY), 'utf8');
 const CANON = 'schema-calendar.sql';   // 정본 재구축 스크립트
 const canonSql = loadSql(CANON);
 
-// 가드 ⑨ 전용 — 위젯이 아는 스키마 판본(§5.5). SQL 이 아니라 C# 소스에서 읽는다.
+// 가드 ⑩ 전용: 부팅 조회와 열람 조회의 정렬. SQL 이 아니라 C# 소스에서 읽는다.
 const adapterSrc = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.url), 'utf8');
+// 가드 ⑨ 전용: 위젯이 아는 DB 구조 번호. 2026-10-21 부터 DbGate.AppStructureVersion(정수)이다(VERSION-GATE §2.1).
+const gateSrc = readFileSync(new URL('../widget/DbGate.cs', import.meta.url), 'utf8');
 
 // migrate-*.sql 전수(이름순 — 날짜가 이름 앞에 있어 사전순 = 시간순).
 const MIGRATE_FILES = readdirSync(DEPLOY)
@@ -276,17 +278,17 @@ const checks = {
   //      "낡은 클라이언트" 로 판정돼 가져오기·초기화가 전부 막힌다.
   //    ★ 상수만 먼저 올려도 마찬가지로 위험하다 — 아직 안 올린 서버에서 같은 증상이 난다.
   //      즉 이 둘은 **한 커밋 안에서 같이 움직여야 하고**, 그것을 기계가 붙잡는 자리가 여기다.
-  widgetSchemaMatchesCanon(adapter, canon) {
-    const v = widgetExpectedSchema(adapter);
+  widgetSchemaMatchesCanon(gate, canon) {
+    const v = widgetExpectedSchema(gate);
     assert.ok(v !== null,
-      'widget/CalendarDb.cs 에서 `internal const string ExpectedSchemaVersion = "N";` 를 찾지 못했다 — ' +
+      'widget/DbGate.cs 에서 `public const int AppStructureVersion = N;` 를 찾지 못했다. ' +
       '이름이나 형태를 바꿨다면 이 검사도 함께 고칠 것(안 고치면 게이트가 조용히 검사 없는 상태가 된다)');
     const canonVer = canonSchemaVersion(canon);
-    assert.ok(canonVer !== null, `${CANON} 에서 schema_version INSERT 값을 찾지 못했다`);
+    assert.ok(canonVer !== null, `${CANON} 에서 db_structure_version INSERT 값을 찾지 못했다`);
     assert.strictEqual(v, canonVer,
-      `위젯 상수(ExpectedSchemaVersion=${v}) 와 정본(${CANON} 의 ${canonVer}) 이 다르다 — ` +
-      'migrate-*.sql 로 스키마를 올렸다면 widget/CalendarDb.cs 의 상수도 같은 커밋에서 올릴 것. ' +
-      '어긋난 채 배포하면 최신 위젯이 스스로를 낡은 클라이언트로 판정해 가져오기·초기화가 막힌다');
+      `위젯 상수(AppStructureVersion=${v}) 와 정본(${CANON} 의 ${canonVer}) 이 다르다. ` +
+      'migrate-*.sql 로 구조 번호를 올렸다면 widget/DbGate.cs 의 상수도 같은 커밋에서 올릴 것. ' +
+      '어긋난 채 배포하면 버전 관문이 최신 위젯을 정본 DB 에서 막는다(읽기와 쓰기 모두)');
   },
 
   // ⑩ 부팅 조회와 타인 열람 조회가 **같은 순서**로 일정을 읽는가.
@@ -314,12 +316,14 @@ const checks = {
 export { checks, dropList, createList, maskSql, migrateSrc, canonSql };
 
 // UPDATE cal_schema_meta SET v='M' … WHERE k='schema_version' AND v='N' → [N, M]. 없으면 null.
+// 2026-10-21 부터 키는 db_structure_version 이다(13 까지는 schema_version). 둘 다 같은 판 올림으로 읽는다.
+// 한 문장 안에서만 찾는다([^;]). 같은 파일의 db_updating 갱신(SET v = '0')이 다음 문장의 WHERE 와 엮이지 않게.
 // 문자열 '값'이 필요하므로 주석만 지운 판에서 찾되, 그 자리가 **문자열 안이 아님**을
 // 문자열까지 지운 판으로 대조한다(repo-flag.sql 은 안내 문구 안에 같은 낱말을 담고 있다).
 function versionBump(sql) {
   const withStr = maskSql(sql, false);
   const noStr = maskSql(sql, true);
-  const re = /\bUPDATE\s+`?cal_schema_meta`?\s+SET\s+v\s*=\s*'(\d+)'[\s\S]*?WHERE\s+k\s*=\s*'schema_version'\s+AND\s+v\s*=\s*'(\d+)'/gi;
+  const re = /\bUPDATE\s+`?cal_schema_meta`?\s+SET\s+v\s*=\s*'(\d+)'[^;]*?WHERE\s+k\s*=\s*'(?:schema_version|db_structure_version)'\s+AND\s+v\s*=\s*'(\d+)'/gi;
   let m;
   const found = [];
   while ((m = re.exec(withStr)) !== null) {
@@ -332,11 +336,11 @@ function versionBump(sql) {
   return found[0];
 }
 
-// INSERT INTO cal_schema_meta … VALUES ('schema_version', 'X', …) → X. 없으면 null.
+// INSERT INTO cal_schema_meta … VALUES ('db_structure_version', 'X', …) → X. 없으면 null(2026-10-21 부터, 옛 키 schema_version).
 function canonSchemaVersion(sql) {
   const withStr = maskSql(sql, false);
   const noStr = maskSql(sql, true);
-  const re = /\bINSERT\s+INTO\s+`?cal_schema_meta`?[\s\S]{0,200}?VALUES\s*\(\s*'schema_version'\s*,\s*'(\d+)'/gi;
+  const re = /\bINSERT\s+INTO\s+`?cal_schema_meta`?[\s\S]{0,200}?VALUES\s*\(\s*'db_structure_version'\s*,\s*'(\d+)'/gi;
   let m;
   while ((m = re.exec(withStr)) !== null) {
     if (!/^INSERT$/i.test(noStr.substr(m.index, 6))) continue;
@@ -345,9 +349,9 @@ function canonSchemaVersion(sql) {
   return null;
 }
 
-// widget/CalendarDb.cs 의 `internal const string ExpectedSchemaVersion = "N";` → N. 없으면 null.
+// widget/DbGate.cs 의 `public const int AppStructureVersion = N;` → N. 없으면 null.
 function widgetExpectedSchema(cs) {
-  const m = /\bconst\s+string\s+ExpectedSchemaVersion\s*=\s*"(\d+)"\s*;/.exec(cs);
+  const m = /\bconst\s+int\s+AppStructureVersion\s*=\s*(\d+)\s*;/.exec(cs);
   return m ? Number(m[1]) : null;
 }
 
@@ -393,8 +397,8 @@ test('스키마 가드 ⑧: 모든 cal_* 표 이름이 cal_ 로 시작한다(오
   assert.deepStrictEqual(odd, [], `cal_ 로 시작하지 않는 표: ${odd.join(', ')}`);
 });
 
-test('스키마 가드 ⑨: 위젯의 ExpectedSchemaVersion 이 정본이 심는 값과 같다(§5.5 낡은 클라이언트 차단)', () =>
-  checks.widgetSchemaMatchesCanon(adapterSrc, canonSql));
+test('스키마 가드 ⑨: 위젯의 AppStructureVersion 이 정본이 심는 db_structure_version 과 같다(버전 관문)', () =>
+  checks.widgetSchemaMatchesCanon(gateSrc, canonSql));
 
 test('스키마 가드 ⑩: 부팅 조회와 타인 열람 조회가 일정을 같은 순서로 읽는다', () =>
   checks.entryOrderIsSharedByBothReads(adapterSrc));
@@ -430,10 +434,10 @@ test('변이②: DROP 순서를 뒤집으면 dropOrderChildFirst 가 실패한�
 });
 
 test('변이③: 마이그레이션 체인에 구멍을 내면 migrationChain 이 실패한다', () => {
-  //  2026-10-15 남은 파일이 하나(12 → 13)라, 그 뒤에 한 칸 떨어진 가짜 파일(14 → 15)을 붙여 v=13 출발이 없는 상태를 만든다.
+  //  2026-10-21 남은 파일이 둘(12 → 13, 13 → 14)이라, 그 뒤에 한 칸 떨어진 가짜 파일(15 → 16)을 붙여 v=14 출발이 없는 상태를 만든다.
   const holed = new Map(migrateSrc);
   holed.set('migrate-2099-01-01-ghost.sql',
-    "UPDATE cal_schema_meta SET v = '15', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'schema_version' AND v = '14';\n");
+    "UPDATE cal_schema_meta SET v = '16', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '15';\n");
   assert.doesNotThrow(() => checks.migrationChain(migrateSrc, canonSql), '원본은 통과해야 한다');
   assert.throws(() => checks.migrationChain(holed, canonSql), /체인이 끊겼다/);
 });
@@ -465,7 +469,7 @@ test('변이⑥: 정본 버전만 올리고 마이그레이션을 안 쓰면 mig
   const cur = canonSchemaVersion(canonSql);
   assert.ok(cur !== null, '변이 준비 실패: 정본 버전 문자열을 찾지 못했다');
   const bumped = canonSql.replace(
-    new RegExp("('schema_version',\\s*)'" + cur + "'"), "$1'" + (cur + 1) + "'");
+    new RegExp("('db_structure_version',\\s*)'" + cur + "'"), "$1'" + (cur + 1) + "'");
   assert.notStrictEqual(bumped, canonSql, '변이 준비 실패: 정본 버전 문자열을 바꾸지 못했다');
   assert.throws(() => checks.migrationChain(migrateSrc, bumped),
     new RegExp('정본 값\\(' + (cur + 1) + '\\)'));
@@ -505,11 +509,11 @@ test('변이·정렬: 열람 조회에 날짜를 앞세우면(원래 있던 결�
 });
 
 test('변이⑩: 위젯 상수만 낡게 두면(마이그레이션 후 갱신 누락) 가드 ⑨ 가 잡는다', () => {
-  const bad = adapterSrc.replace(/(\bconst\s+string\s+ExpectedSchemaVersion\s*=\s*")\d+(")/, '$17$2');
-  assert.notStrictEqual(bad, adapterSrc, '변이 준비 실패: ExpectedSchemaVersion 선언을 찾지 못했다');
-  assert.throws(() => checks.widgetSchemaMatchesCanon(bad, canonSql), /ExpectedSchemaVersion=7/);
+  const bad = gateSrc.replace(/(\bconst\s+int\s+AppStructureVersion\s*=\s*)\d+(\s*;)/, '$17$2');
+  assert.notStrictEqual(bad, gateSrc, '변이 준비 실패: AppStructureVersion 선언을 찾지 못했다');
+  assert.throws(() => checks.widgetSchemaMatchesCanon(bad, canonSql), /AppStructureVersion=7/);
   //  상수 선언 자체가 사라진 경우(=게이트 폐기)도 조용히 통과하면 안 된다.
-  const gone = adapterSrc.replace(/\bconst\s+string\s+ExpectedSchemaVersion\s*=\s*"\d+"\s*;/, '');
+  const gone = gateSrc.replace(/\bconst\s+int\s+AppStructureVersion\s*=\s*\d+\s*;/, '');
   assert.throws(() => checks.widgetSchemaMatchesCanon(gone, canonSql), /찾지 못했다/);
 });
 

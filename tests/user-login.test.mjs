@@ -368,9 +368,11 @@ test('부팅에 app_user 백그라운드 재조회가 없다(로그아웃과 경
 
 // ══ ⑩ ProjectDb 접근 관문 ═══════════════════════════════════════════
 
-test('불변식①: ProjectDb에서 new MySqlConnection을 직접 부르는 곳은 세 헬퍼 안뿐이다', () => {
+test('불변식①: ProjectDb 는 연결을 직접 만들지 않고 세 헬퍼 안에서만 버전 관문(DbGate.OpenAsync)으로 연다', () => {
   //  ★ 2026-09-10 — 관문이 셋이 됐다(USER-ADMIN §4.1). 직원 정보(app_user) 쓰기는 admin 만 통과하는
   //    별도 관문을 지난다: 그 표는 '누가 관리자인가'를 담고 있어 editor 가 쓰면 스스로 승격할 수 있다.
+  //  ★ 2026-10-21: 연결은 버전 관문(DbGate.OpenAsync)이 만든다(VERSION-GATE §2.1). ProjectDb 의
+  //    new MySqlConnection 은 0 이고, 관문 호출 셋이 세 헬퍼 안에 하나씩 있다.
   const readSpan  = (() => { const s = projectDb.indexOf('private static async Task<MySqlConnection> OpenReadAsync');
                              return [s, projectDb.indexOf('private async Task<MySqlConnection> OpenWriteAsync')]; })();
   const writeSpan = (() => { const s = projectDb.indexOf('private async Task<MySqlConnection> OpenWriteAsync');
@@ -383,8 +385,10 @@ test('불변식①: ProjectDb에서 new MySqlConnection을 직접 부르는 곳�
     '관문 헬퍼의 배치 순서가 읽기 → 쓰기 → 관리자가 아니다(구간 계산이 헛돈다 — 판정 불가)');
   const spans = [readSpan, writeSpan, adminSpan];
   const inAnyHelper = (i) => spans.some(([a, b]) => i > a && i < b);
-  const hits = [...projectDb.matchAll(/new MySqlConnection\(/g)].map(m => m.index);
-  assert.ok(hits.length === 3, `new MySqlConnection 호출이 ${hits.length}곳이다(헬퍼 3곳이어야 한다)`);
+  const direct = [...projectDb.matchAll(/new MySqlConnection\(/g)].map(m => m.index);
+  assert.ok(direct.length === 0, `new MySqlConnection 호출이 ${direct.length}곳이다(0곳이어야 한다. 연결은 DbGate.OpenAsync 가 연다)`);
+  const hits = [...projectDb.matchAll(/DbGate\.OpenAsync\(/g)].map(m => m.index);
+  assert.ok(hits.length === 3, `DbGate.OpenAsync 호출이 ${hits.length}곳이다(헬퍼 3곳이어야 한다)`);
   for (const i of hits) {
     assert.ok(inAnyHelper(i), `헬퍼 밖에서 연결을 직접 연다(offset ${i}) — 관문이 fail-open이 된다`);
   }
@@ -428,7 +432,7 @@ test('관문: OpenWriteAsync는 non-static이고 세션 loginId로 권한을 조
   const b = bare(projectDb, 'private async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)');
   // ① 세션(신원)이 먼저 — 없으면 연결조차 열지 않는다.
   const load = b.indexOf('UserSession.Load(_dataDir');
-  const open = b.indexOf('new MySqlConnection(');
+  const open = b.indexOf('DbGate.OpenAsync(');   // 2026-10-21 부터 연결은 버전 관문이 만든다
   assert.ok(load >= 0, '세션을 읽지 않는다 — 누구의 권한인지 모르는 채 연결을 연다');
   assert.ok(load < open, '세션 검사가 연결 생성보다 뒤에 있다');
   assert.ok(/throw new NotAuthorizedException\("로그인이 필요합니다\."\)/.test(b), '미로그인 거부 문구가 계약과 다르다');
@@ -436,15 +440,19 @@ test('관문: OpenWriteAsync는 non-static이고 세션 loginId로 권한을 조
   assert.ok(/SELECT edit_role, is_active FROM app_user WHERE login_id=@id/.test(b),
     '권한 쿼리가 없거나 계약과 다르다(edit_role·is_active를 한 쿼리로 읽어야 퇴사·회수가 공짜로 반영된다)');
   assert.ok(/AddWithValue\("@id", s\.LoginId\)/.test(b), '값을 파라미터로 바인딩하지 않는다(문자열 연결 금지)');
-  assert.ok(b.indexOf('conn.OpenAsync(') < b.indexOf('SELECT edit_role'), '권한 조회가 연결 오픈보다 앞에 있다');
+  assert.ok(b.indexOf('DbGate.OpenAsync(') < b.indexOf('SELECT edit_role'), '권한 조회가 연결 오픈보다 앞에 있다');
   // ③ 거부 3분기 — 사유별 문구가 그대로 사용자에게 간다.
   for (const m of ['사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.', '비활성 처리된 계정입니다.', '편집 권한이 없습니다.']) {
     assert.ok(b.includes(m), `거부 문구가 계약과 다르다: ${m}`);
   }
   assert.ok(/"editor"/.test(b) && /"admin"/.test(b), 'edit_role 허용값(editor·admin)을 검사하지 않는다');
   // ④ 거부해도 연결을 흘리지 않는다 — 예외로 빠져나가는 경로마다 정리가 필요하다.
+  //    2026-10-21 부터 연결 실패의 정리는 버전 관문(DbGate.OpenWithMetaAsync) 안에 있다. 여기 남는 것은 둘이다.
   const disposes = [...b.matchAll(/conn\.DisposeAsync\(\)/g)].length;
-  assert.ok(disposes >= 3, `거부·실패 경로의 연결 정리가 ${disposes}곳뿐이다(연결 실패·권한 거부·조회 실패 = 3곳 이상)`);
+  assert.ok(disposes >= 2, `거부·실패 경로의 연결 정리가 ${disposes}곳뿐이다(권한 거부·조회 실패 = 2곳 이상)`);
+  const gate = readFileSync(new URL('../widget/DbGate.cs', import.meta.url), 'utf8');
+  assert.ok(/try \{ await conn\.OpenAsync\(ct\); \}\s*catch \{ await conn\.DisposeAsync\(\); throw; \}/.test(gate),
+    '버전 관문이 열기 실패한 연결을 정리하지 않는다(연결 실패 경로의 정리가 사라졌다)');
 });
 
 test('관문: OpenReadAsync는 static 그대로이고 권한 검사가 없다(조회는 막지 않는다)', () => {

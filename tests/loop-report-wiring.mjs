@@ -187,7 +187,7 @@ const PROJ = (root) => `<Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <Compile Include="R.cs" />
     <Compile Include="${root}/widget/ReportDb.cs" />
-    <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" />
+    <Compile Include="${root}/widget/DeployConfig.cs" /> <Compile Include="${root}/widget/DbErrors.cs" /> <Compile Include="${root}/widget/DbFault.cs" /> <Compile Include="${root}/widget/DbGate.cs" />
   </ItemGroup>
   <ItemGroup><PackageReference Include="MySqlConnector" Version="2.3.7" /></ItemGroup>
 </Project>`;

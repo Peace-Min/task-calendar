@@ -200,12 +200,16 @@ const TRASH_MEMBERS = ['LoadTrashJsonAsync', 'RestoreTrashAsync', 'DeleteTrashAs
 
 const gate = {
   // 연결을 여는 헬퍼는 딱 셋이다(읽기·쓰기·관리자). 무검사 opener 를 하나 더 다는 순간 여기서 운다.
+  //  2026-10-21 버전 관문(VERSION-GATE §2.1): 세 헬퍼는 연결을 직접 만들지 않고 DbGate.OpenAsync 로 연다.
+  //  그래서 ProjectDb 안의 new MySqlConnection 은 0 이고, 관문 호출은 헬퍼마다 하나씩 셋이다.
   openersAreExactlyThree(pdb) {
     const decls = [...stripCsComments(pdb).matchAll(/Task<MySqlConnection>\s+(\w+)\s*\(/g)].map((m) => m[1]).sort();
     assert.deepStrictEqual(decls, ['OpenAdminAsync', 'OpenReadAsync', 'OpenWriteAsync'],
       `연결 헬퍼가 [${decls.join(', ')}] 이다 — 관문 밖에 연결을 여는 통로가 생겼다`);
     const opens = (pdb.match(/new MySqlConnection\(/g) || []).length;
-    assert.strictEqual(opens, 3, `new MySqlConnection 이 ${opens}곳이다(헬퍼 3곳이어야 한다 — 관문 우회 통로)`);
+    assert.strictEqual(opens, 0, `new MySqlConnection 이 ${opens}곳이다(0곳이어야 한다. 연결은 버전 관문 DbGate.OpenAsync 가 연다. 관문 우회 통로)`);
+    const gates = (stripCsComments(pdb).match(/DbGate\.OpenAsync\(/g) || []).length;
+    assert.strictEqual(gates, 3, `DbGate.OpenAsync 호출이 ${gates}곳이다(헬퍼 3곳이어야 한다)`);
   },
 
   // 모든 연결 개시 지점이 세 관문 중 하나를 지난다. 11곳을 전부 갈아끼운 변이가 여기서 죽는다.
@@ -465,8 +469,8 @@ const PURGE_API = [
 test('변이신규B: 관문 밖에 Task<bool> 쓰기 API 를 달면 쓰기 SQL 검사가 실패한다', () => {
   const bad = mutate(projectDb, '        public async Task<(bool ok, string msg)> SetProjectActiveAsync(', PURGE_API);
   assert.throws(() => gate.writeSqlGoesThroughGate(bad), /PurgeProjectsAsync 가 쓰기 SQL 을 실행하면서 쓰기 관문을 지나지 않는다/);
-  // 연결 생성 지점은 3 그대로다 — 개수만 세는 방어로는 절대 안 잡힌다(그래서 위 검사가 필요하다).
-  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  // 연결 생성 지점은 0 그대로다(관문 DbGate 가 연다): 개수만 세는 방어로는 절대 안 잡힌다(그래서 위 검사가 필요하다).
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 0, '변이 전제: 연결 생성 지점은 늘지 않는다(ProjectDb 는 0, 관문이 연다)');
   gate.openersAreExactlyThree(bad);
 });
 
@@ -476,7 +480,7 @@ test('변이신규A: 쓰기 관문 안에 조기 반환을 넣으면 조기 출�
     '                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");',
     '                if (MasterUnlocked) return conn;\n                if (!found) throw new NotAuthorizedException("사용자 정보가 등록되어 있지 않습니다. 관리자에게 문의하세요.");');
   assert.throws(() => gate.gateHasNoEarlyExit(bad), /거부 3분기 앞으로 빠져나가는 조기 반환이 생겼다/);
-  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 0, '변이 전제: 연결 생성 지점은 늘지 않는다(ProjectDb 는 0, 관문이 연다)');
 });
 
 test('변이신규A-b: 신원 검사를 다른 조건과 엮으면 조기 출구 검사가 실패한다', () => {
@@ -496,7 +500,7 @@ test('변이A1: 직원 쓰기를 쓰기 관문(editor 통과)으로 내리면 �
   assert.throws(() => gate.writeSqlGoesThroughGate(bad),
     /UpsertUserAsync 가 app_user 를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
   // 관문 정의도, 연결 생성 지점 수도 그대로다 — '관문이 있다'만 보는 검사로는 절대 안 잡힌다.
-  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 0, '변이 전제: 연결 생성 지점은 늘지 않는다(ProjectDb 는 0, 관문이 연다)');
   gate.openersAreExactlyThree(bad);
 });
 
@@ -545,7 +549,7 @@ test('변이A5: 직급 숨김/복구를 쓰기 관문(editor 통과)으로 내�
   assert.throws(() => gate.writeSqlGoesThroughGate(bad),
     /TitleSetActiveAsync 가 직급·소속 마스터를 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
   // 관문 정의도, 연결 생성 지점 수도 그대로다 — '관문이 있다'만 보는 검사로는 절대 안 잡힌다.
-  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 3, '변이 전제: 연결 생성 지점은 늘지 않는다');
+  assert.strictEqual((bad.match(/new MySqlConnection\(/g) || []).length, 0, '변이 전제: 연결 생성 지점은 늘지 않는다(ProjectDb 는 0, 관문이 연다)');
   gate.openersAreExactlyThree(bad);
 });
 

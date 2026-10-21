@@ -266,7 +266,7 @@ const factsRegion = `<ul class="facts">
   <li>문자셋 <b>${esc(S.meta.charset[1])}</b></li>
   <li>표 <b>${S.tables.length}</b> <span class="ko">${esc(groupCount)}</span></li>
   <li>컬럼 <b>${totalCols}</b>, 외래키 <b>${totalFk}</b>, CHECK <b>${totalChk}</b></li>
-  <li>schema_version <b>${esc(S.meta.schemaVersion)}</b></li>
+  <li>db_structure_version <b>${esc(S.meta.schemaVersion)}</b></li>
   <li>기준 <b>${stamp}</b></li>
 </ul>`;
 

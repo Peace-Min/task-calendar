@@ -323,7 +323,7 @@ FLUSH PRIVILEGES;
 --
 --  7) ★ 앱 계정으로 직접 접속해 거부되는지 (셋 다 ERROR 1142 여야 한다. 실측으로 볼 것)
 --     mysql -u taskmgr_app -p taskmgr
---       UPDATE cal_schema_meta SET v='999' WHERE k='schema_version';  -- 1142 (SELECT 만 줬다)
+--       UPDATE cal_schema_meta SET v='999' WHERE k='db_structure_version';  -- 1142 (SELECT 만 줬다)
 --       DELETE FROM cal_user_rev;                                     -- 1142 (rev 는 단조증가)
 --       DELETE FROM cal_migration_log;                                -- 1142 (재실행 방지 마커)
 -- ============================================================================

@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '13';
+export const SCHEMA_VERSION = '14';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -322,8 +322,8 @@ export function buildDemoSql({ myLogin, baseDate }) {
     guard("HEX('가나다') = 'EAB080EB8298EB8BA4'", '문자셋이 utf8mb4 가 아니다'),
     `SET @n_tbl := (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME IN (${tblList}));`,
     guard(`@n_tbl = ${REQUIRED_TABLES.length}`, '필요한 표가 다 있지 않다(DB 이름 확인)'),
-    "SET @v := (SELECT v FROM cal_schema_meta WHERE k = 'schema_version');",
-    guard(`@v <=> '${SCHEMA_VERSION}'`, `schema_version 이 ${SCHEMA_VERSION} 이 아니다`),
+    "SET @v := (SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version');",
+    guard(`@v <=> '${SCHEMA_VERSION}'`, `구조 번호가 ${SCHEMA_VERSION} 이 아니다`),
     `SET @my_login := CONVERT(X'${hexUtf8(myLogin)}' USING utf8mb4) COLLATE utf8mb4_0900_ai_ci;`,
     'SET @n_me := (SELECT COUNT(*) FROM app_user WHERE login_id = @my_login);',
     guard('@n_me = 1', '녹화 계정 login_id 가 app_user 에 없다'),
@@ -437,7 +437,7 @@ export function buildDemoSql({ myLogin, baseDate }) {
     guard("(SELECT COUNT(*) FROM cal_category c LEFT JOIN project p ON p.uid = c.project_uid WHERE c.source = 'db' AND p.id IS NULL) = 0", '공식 과제를 가리키지 않는 내 과제가 있다'),
     guard("(SELECT COUNT(*) FROM cal_category WHERE source = 'local' AND name IN ('휴가','기타')) = 8", '기본 과제(휴가, 기타)가 네 사람에게 하나씩 있지 않다'),
     guard('(SELECT COUNT(*) FROM app_user u LEFT JOIN cal_user_rev r ON r.user_id = u.user_id WHERE r.user_id IS NULL) = 0', 'cal_user_rev 행이 없는 사람이 있다'),
-    guard(`(SELECT v FROM cal_schema_meta WHERE k = 'schema_version') <=> '${SCHEMA_VERSION}'`, 'schema_version 이 바뀌었다'),
+    guard(`(SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version') <=> '${SCHEMA_VERSION}'`, '구조 번호가 바뀌었다'),
     'COMMIT;',
     "SELECT 'demo:committed';",
     'DROP TEMPORARY TABLE IF EXISTS _demo_rank;',

@@ -26,7 +26,7 @@ namespace TaskCalendarWidget
         public const string DbPassword = "taskmgr1234";     // DB 비밀번호 — 앱 계정을 만들 때(create-app-user.sql) 정한 값과 반드시 일치
 
         // ── 자동 업데이트 소스 (공유폴더/FTP 경로; 설정 UI로도 지정 가능) ───────────
-        public const string UpdateSourceUrl = "";           // 저장소엔 비워둠 — 배포 시 공유폴더 경로(latest.json+Setup exe 위치)
+        public const string UpdateSourceUrl = "";           // 저장소엔 비워둠. 배포 시 공유폴더 경로(Setup exe 위치, 배포 정보는 DB 의 app_ 키, VERSION-GATE §2.6)
 
         // ── XML 저장 경로 폐기 스위치 (설계 §3.9) ─────────────────────────────
         //  false = 이관 전. data.xml 읽기/쓰기와 TC_DATA_SOURCE 분기가 **살아 있어야 한다.**

@@ -76,6 +76,7 @@ namespace TaskCalendarWidget
             ApplyWindowBounds();
             ApplyWindowIcon();   // 작업표시줄/Alt+Tab 버튼 브랜드 아이콘(트레이 모드 노출 시 빈 아이콘 방지)
             _netcus = new NetcusService(this);   // Env/DataDir은 라이브 getter로 읽으므로 이른 생성 안전
+            GateHostInit();   // 버전 관문 판정을 웹에 미는 구독(VERSION-GATE §2.3). 웹이 뜨기 전 조회의 판정도 받는다
             _projectDb = new ProjectDb(_dataDir, Log);   // 과제 DB. 접속정보는 DeployConfig 상수이고 이 폴더에 쓰는 설정 파일은 없다
                                                         //   (옛 db-config.json 은 2026-07-30 에 폐지 — ProjectDb.cs 머리말 참조).
                                                         //   _dataDir 을 넘기는 것은 쓰기 관문이 UserSession.Load(_dataDir) 로
@@ -452,6 +453,7 @@ namespace TaskCalendarWidget
         internal static readonly HashSet<string> PeerWinCommands = new(StringComparer.Ordinal)
         {
             "peerWinReady", "peerSchedule", "membersGet", "peerMine",
+            "gateRecheck",   // 버전 관문 재확인(VERSION-GATE §2.5). 읽기 하나라 열람 창의 차단 카드도 쓴다
         };
         //  열람 창 요청 번호의 머리. 회신은 이 표시를 보고 열람 창으로 간다(ReplyCore). 두 창의 번호가 겹치지 않는다.
         internal const string PeerReqPrefix = "pw:";
@@ -523,6 +525,9 @@ namespace TaskCalendarWidget
                 }
                 else if (peerReq) return;
                 var hwnd = new WindowInteropHelper(this).Handle;
+                //  이 명령을 처리하는 동안 관문이 막으면 { ok:false } 회신에 kind 'gate' 가 붙는다(GateHost.WithGate).
+                //  여기서 시작한 비동기 작업은 이 흐름 표시를 들고 간다(AsyncLocal).
+                using var gateFlow = DbGate.BeginFlow();
 
                 switch (cmd)
                 {
@@ -534,6 +539,7 @@ namespace TaskCalendarWidget
                         //    사라졌다" 로 보이고, 거기서 편집하면 되돌릴 경로도 없다.
                         //    옛 파일을 되살릴 일이 생기면 그건 부팅이 아니라 「XML 가져오기」로 한다.
                         OfflineHostInit();       // DB 실패 분류·연결 끊김 통지 구독(1회 · OFFLINE-RESILIENCE §3/S12)
+                        GateOnReady();           // 설치 실패 기록 확인(1회)과 이미 막힌 상태 다시 밀기(VERSION-GATE §2.5, §2.6)
                         _ = BootFromDbAsync();   // async — 실패도 웹에 명시적으로 알린다(조용한 XML 폴백 없음)
                         SendPinState();
                         SendTrayState();
@@ -546,6 +552,9 @@ namespace TaskCalendarWidget
                         break;
                     case "dbPing":       // 재연결 확인(OFFLINE-RESILIENCE §5) — 끊긴 뒤에만 웹이 부른다(정상일 때 폴링 없음)
                         _ = RunDbPingAsync(GetStr(doc, "reqId"));
+                        break;
+                    case "gateRecheck":  // 버전 관문 재확인(VERSION-GATE §2.5). 메인 창과 열람 창의 차단 카드가 부른다
+                        _ = GateRecheckAsync(rq);
                         break;
                     case "unsavedState":  // §6 닫기 경고 — 웹의 「저장되지 않은 변경」 표시를 받아 둔다(회신 없음)
                         SetWebUnsaved(GetBool(doc, "on"));
@@ -796,6 +805,7 @@ namespace TaskCalendarWidget
                         break;
                     case "peerWinReady":     // 열람 창 웹이 떴다. 기다리던 대상을 넘긴다(__peerWinOpen)
                         if (fromPeer) _peerWin?.OnWebReady();
+                        if (fromPeer) GatePushToPeer();   // 버전 관문이 막혀 있으면 열람 창에도 같은 카드(VERSION-GATE §3)
                         break;
                     case "peerMine":         // 열람 창의 내 일정 겹. 메인 창의 지금 상태를 물어 와 넘긴다(DB 를 다시 읽지 않는다)
                         _ = RunPeerMineAsync(rq);
@@ -1489,7 +1499,8 @@ namespace TaskCalendarWidget
         // 백그라운드에서 그대로 부르면 회신이 통째로 유실될 수 있다(JsCall과 같은 이유로 Dispatcher를 거친다).
         private void ReplyOnUi(string reqId, object payload)
         {
-            try { Dispatcher.Invoke(() => GitReply(reqId, payload)); }
+            var p = WithGate(payload);   // 관문 흐름 표시는 이 스레드에서 읽는다(Invoke 너머로 흐른다고 기대하지 않는다)
+            try { Dispatcher.Invoke(() => GitReply(reqId, p)); }
             catch (Exception ex) { Log("ReplyOnUi 오류: " + ex.Message); }
         }
 
@@ -1715,7 +1726,7 @@ namespace TaskCalendarWidget
             if (string.IsNullOrEmpty(reqId)) return;
             try
             {
-                string json = JsonSerializer.Serialize(payload);
+                string json = JsonSerializer.Serialize(WithGate(payload));   // 관문이 막은 실패면 kind 'gate' 가 붙는다(GateHost)
                 string call = "window.__hostReply(" + JsonSerializer.Serialize(reqId) + "," + json + ")";
                 _ = ReplyCore(reqId)?.ExecuteScriptAsync(call);   // 'pw:' 번호면 열람 창으로(WINDOW-UI §4)
             }
@@ -2533,11 +2544,13 @@ namespace TaskCalendarWidget
                 if (snap == null) { ApplyStateError("서버에서 캘린더를 받지 못했습니다"); return; }
 
                 _calSnap = snap;   // 쓰기가 쓸 토큰·번호 맵. 세션 동안 유지한다(계약 H-2)
-                //  ★ expectedSchema·schemaMismatch 는 §5.5 게이트의 **거울**이다 — 진짜 방어는
-                //    쓰기 계층(CalendarWriteDb)이 하고, 웹은 이 값으로 배지를 경고 톤으로 바꾸고
-                //    가져오기·초기화를 미리 막는다(눌러 본 뒤 거부당하는 것보다 낫다).
-                bool schemaMismatch = !string.Equals(snap.SchemaVersion, CalendarDb.ExpectedSchemaVersion, StringComparison.Ordinal);
-                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema = CalendarDb.ExpectedSchemaVersion, schemaMismatch, rev = snap.Rev, userId = snap.UserId, canWrite = true, db = DeployConfig.DbName, host = DeployConfig.DbHost });
+                //  ★ gate 는 버전 관문의 판정이다(VERSION-GATE §2.1). 여기까지 왔으면 관문을 지났으니 보통 'ok' 다.
+                //    expectedSchema·schemaMismatch 는 옛 웹을 위해 남긴 거울이고 이제 gate 와 관문 상수에서 나온다
+                //    (진짜 방어는 연결마다 관문과 쓰기 계층(CalendarWriteDb)이 한다).
+                string gate = DbGate.Last?.State ?? "ok";
+                string expectedSchema = DbGate.AppStructureVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                bool schemaMismatch = gate != "ok" || !string.Equals(snap.SchemaVersion, expectedSchema, StringComparison.Ordinal);
+                var meta = JsonSerializer.Serialize(new { schemaVersion = snap.SchemaVersion, expectedSchema, schemaMismatch, gate, rev = snap.Rev, userId = snap.UserId, canWrite = true, db = DeployConfig.DbName, host = DeployConfig.DbHost });
                 js = "window.__applyState(" + JsonSerializer.Serialize(snap.StateJson) + "," + meta + ")";
                 Log($"DB 부팅 조회: user_id={snap.UserId} rev={snap.Rev} schema=v{snap.SchemaVersion}");
             }

@@ -291,7 +291,7 @@ test('(H) 분해기 자기 점검: 로그와 주석은 보지 않고, 화면 싱
 test('변이(H): 업데이트 결과 문구와 조직 숨김 거부 문구에 기호를 넣으면 (H)가 잡는다', () => {
   const upd = hostFiles.find(([f]) => f === 'Update.cs');
   const pdb = hostFiles.find(([f]) => f === 'ProjectDb.cs');
-  const m1 = mutate(upd[1], 'UpdateResult(false, "업데이트 확인 실패. 소스에 접근할 수 없습니다")', 'UpdateResult(false, "업데이트 확인 실패 — 소스에 접근할 수 없습니다")');
+  const m1 = mutate(upd[1], 'UpdateResult(false, "업데이트 확인 실패. 서버에 접근할 수 없습니다")', 'UpdateResult(false, "업데이트 확인 실패 — 서버에 접근할 수 없습니다")');
   const m2 = mutate(pdb[1], '"재직자 " + n + "명과 하위 조직 "', '"재직자 " + n + "명 · 하위 조직 "');
   const r = hostScan(hostFiles.map(([f, s]) => [f, f === 'Update.cs' ? m1 : f === 'ProjectDb.cs' ? m2 : s]));
   assert.ok(r.bad.some((b) => /^Update\.cs:\d+ UpdateResult \[엠 대시/.test(b)), '업데이트 결과 문구에 엠 대시를 넣었는데 (H)가 잡지 못했다: ' + r.bad.join(' | '));

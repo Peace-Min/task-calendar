@@ -9,6 +9,7 @@
 //   ⑤ dbPing — 연결 3초 · SELECT 1 · 장애 주입을 지난다.
 //   ⑥ __dbFault — TC_DEBUG_PORT 실행에서만(DbFault.Enabled 는 그 환경변수에서만 정해진다).
 //   ⑦ 모든 DB 열기 지점이 DbFault.ThrowIfActive() 를 지난다(widget/*.cs 전부를 훑는다).
+//      2026-10-21 부터 연결을 만드는 곳은 버전 관문(DbGate.cs)과 dbPing 뿐이고, 데이터 계층 넷은 관문으로 연다.
 //   ⑧ commit-lost 는 한 발짜리이고 COMMIT **뒤**에 터진다.
 //   ⑨ S12 — 연결 끊김 푸시는 network 일 때만 · 2초 이상 디바운스.
 //   ⑩ S10 — 보고 기록 저장 재시도 10·30·60초 → 그래도 실패면 __reportRecordFailed.
@@ -30,6 +31,7 @@ const src = {
   wdb:   W('CalendarWriteDb.cs'),
   pdb:   W('ProjectDb.cs'),
   rdb:   W('ReportDb.cs'),
+  gate:  W('DbGate.cs'),
   app:   W('App.xaml.cs'),
   upd:   W('Update.cs'),
 };
@@ -216,19 +218,26 @@ const checks = {
   // ⑦ 모든 DB 열기 지점이 장애 주입을 지난다(widget/*.cs 전부)
   throwIfActive(s, files = widgetCs()) {
     let total = 0;
+    const where = new Set();
     for (const [f, code] of files) {
       const c = stripCs(code);
       for (const m of c.matchAll(/new MySqlConnection\(/g)) {
         total++;
+        where.add(f);
         const before = c.slice(Math.max(0, m.index - 600), m.index);
         const lastOpen = before.lastIndexOf('new MySqlConnection(');
         const fault = before.lastIndexOf('DbFault.ThrowIfActive();');
         assert.ok(fault >= 0 && fault > lastOpen, `${f}: 연결을 여는 자리(offset ${m.index})가 DbFault.ThrowIfActive() 를 지나지 않는다`);
       }
     }
-    assert.ok(total >= 7, `DB 연결 생성 지점이 ${total}곳뿐이다(CalendarDb·CalendarWriteDb·ProjectDb×3·ReportDb·dbPing = 7) — 훑기가 헛돈다`);
-    for (const [k, label] of [['cdb', 'CalendarDb'], ['wdb', 'CalendarWriteDb'], ['pdb', 'ProjectDb'], ['rdb', 'ReportDb'], ['off', 'dbPing']])
+    //  2026-10-21 버전 관문(VERSION-GATE §2.1): 연결 생성은 DbGate(관문 입구, 업데이트 확인) 2곳과 dbPing 1곳 = 3.
+    assert.ok(total >= 3, `DB 연결 생성 지점이 ${total}곳뿐이다(DbGate×2·dbPing = 3). 훑기가 헛돈다`);
+    assert.deepStrictEqual([...where].sort(), ['DbGate.cs', 'OfflineHost.cs'],
+      `연결을 직접 만드는 파일이 [${[...where].sort().join(', ')}] 이다. 버전 관문(DbGate)과 dbPing 밖에서 연결을 연다`);
+    for (const [k, label] of [['gate', 'DbGate'], ['off', 'dbPing']])
       assert.ok(/DbFault\.ThrowIfActive\(\);/.test(stripCs(s[k])), `${label} 에 장애 주입 지점이 없다`);
+    for (const [k, label] of [['cdb', 'CalendarDb'], ['wdb', 'CalendarWriteDb'], ['pdb', 'ProjectDb'], ['rdb', 'ReportDb']])
+      assert.ok(/DbGate\.Open(?:WithMeta)?Async\(/.test(stripCs(s[k])), `${label} 가 버전 관문(DbGate)으로 연결을 열지 않는다(장애 주입도 건너뛴다)`);
     const t = csMember(s.fault, 'public static void ThrowIfActive()');
     assert.ok(/if \(!Enabled\) return;/.test(t), 'ThrowIfActive 가 배포 실행에서도 동작한다');
     assert.ok(/m == Network\)\s*throw new DbFaultException\(DbErrorKind\.Network, 2003,/.test(t) &&
@@ -433,11 +442,18 @@ test('변이⑭: Enabled 를 다른 환경변수로 켜면 주입⑥ 이 실패�
   assert.throws(() => checks.faultGate(with_('fault', bad)), /TC_DEBUG_PORT/);
 });
 
-test('변이⑮: ProjectDb 의 연결 관문 하나가 장애 주입을 건너뛰면 주입⑦ 이 실패한다', () => {
-  const bad = src.pdb.replace('            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작\n', '');
-  assert.notStrictEqual(bad, src.pdb, '변이가 원본을 바꾸지 못했다');
+test('변이⑮: 버전 관문(DbGate)의 연결 입구가 장애 주입을 건너뛰면 주입⑦ 이 실패한다', () => {
+  const bad = src.gate.replace('            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7). 배포 실행에서는 무동작\n', '');
+  assert.notStrictEqual(bad, src.gate, '변이가 원본을 바꾸지 못했다');
+  const files = widgetCs().map(([f, c]) => [f, f === 'DbGate.cs' ? bad : c]);
+  assert.throws(() => checks.throwIfActive(with_('gate', bad), files), /DbGate\.cs: 연결을 여는 자리/);
+});
+
+test('변이⑮-b: 데이터 계층이 관문을 건너뛰고 연결을 직접 만들면 주입⑦ 이 실패한다', () => {
+  const bad = mutate(src.pdb, 'var conn = await DbGate.OpenAsync(BuildConnString(), ct);\n            await ApplyPreambleAsync(conn, ReadPreambleSql, ct);',
+    'DbFault.ThrowIfActive();\n            var conn = new MySqlConnection(BuildConnString());\n            await conn.OpenAsync(ct);\n            await ApplyPreambleAsync(conn, ReadPreambleSql, ct);');
   const files = widgetCs().map(([f, c]) => [f, f === 'ProjectDb.cs' ? bad : c]);
-  assert.throws(() => checks.throwIfActive(with_('pdb', bad), files), /ProjectDb\.cs: 연결을 여는 자리/);
+  assert.throws(() => checks.throwIfActive(with_('pdb', bad), files), /버전 관문\(DbGate\)과 dbPing 밖에서 연결을 연다/);
 });
 
 test('변이⑯: 새 파일이 장애 주입 없이 연결을 열면 주입⑦ 이 잡는다(widget/*.cs 전수)', () => {

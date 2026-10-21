@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
@@ -14,9 +15,11 @@ using System.Windows;
 
 namespace TaskCalendarWidget
 {
-    // FTP/파일 기반 자동 업데이트. 관리자가 공유폴더(UpdateSourceUrl)에 latest.json + Setup exe를 올려두면,
-    // 각 위젯이 시작 후 + 주기적으로 조용히 확인 → 새 버전이면 상단 배너 → '지금 업데이트' 시 내려받기·검증·설치·재시작.
-    // 모든 실패(접근불가/파일없음/파싱오류/해시불일치)는 무음: Log만 남기고 UI·예외·시작지연 없음. URL 비면 완전 휴면.
+    // DB 기반 업데이트(docs/VERSION-GATE.md §2.6, DB-RELEASE-OPS §3.3). 배포 정보는 DB 의 cal_schema_meta
+    // app_ 세 키(app_latest_version, app_installer_file, app_installer_sha256)이고, 파일만 공유폴더(UpdateSourceUrl)에서 받는다.
+    // 2026-10-21 까지는 공유폴더의 매니페스트 파일이 그 역할을 했다. 이제 그 파일은 만들지도 읽지도 않는다.
+    // 각 위젯이 시작 후 + 주기적으로 조용히 확인 → 새 버전이면 상단 배너(정상) 또는 차단 화면의 버튼(막힘)
+    // → '지금 업데이트' 시 내려받기·검증·설치·재시작. 확인 실패는 무음(Log만). URL 비면 완전 휴면.
     public partial class MainWindow
     {
         private System.Windows.Threading.DispatcherTimer? _updTimer;   // 30분 주기 확인(서버 오프 시 배너 자동 종료 반응성)
@@ -31,7 +34,9 @@ namespace TaskCalendarWidget
                 var first = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(9) };
                 first.Tick += (_, _) => { first.Stop(); _ = CheckForUpdateAsync(false); };
                 first.Start();
-                // 이후 30분마다 무음 확인 — 새 버전 발견뿐 아니라 '서버 오프 → 열린 배너 자동 종료'도 이 주기로 반영(폐쇄망 로컬 소스라 부담 없음)
+                // 이후 30분마다 무음 확인. 새 버전 발견뿐 아니라 '서버 오프 → 열린 배너 자동 종료'도 이 주기로 반영.
+                // ★ 이것이 정상 상태에서 허용된 **유일한 주기 DB 읽기**다("정상일 때 주기 DB 접속 없음" A11 의 예외,
+                //   VERSION-GATE §2.5). PC 하나가 30분에 키 다섯 개를 한 번 읽는다. 다른 주기 DB 접속을 더하지 말 것.
                 _updTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMinutes(30) };
                 _updTimer.Tick += (_, _) => { _ = CheckForUpdateAsync(false); };
                 _updTimer.Start();
@@ -46,28 +51,33 @@ namespace TaskCalendarWidget
         private async Task CheckForUpdateAsync(bool userInitiated = false)
         {
             string src = (_settings?.UpdateSourceUrl ?? "").Trim();
-            if (src.Length == 0) return;   // 휴면
+            if (src.Length == 0) return;   // 휴면. 받을 폴더를 모르면 새 버전을 알려도 받을 수 없다
             if (_updBusy) return;          // 적용 진행 중이면 확인 생략
             try
             {
-                string json = await FetchTextAsync(CombineUrl(src, "latest.json"), 6000);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-                string mver = GetJsonStr(root, "version");
-                var m = ParseVer(mver);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                var (mver, _, _) = await DbGate.ReadReleaseAsync(CalendarDb.BuildConnString(), cts.Token);
                 var own = OwnVersion();
+                if (mver.Length == 0)   // app_latest_version 이 빈 값 = 배포 중인 새 버전 없음(정본 시드의 기본)
+                {
+                    Log("업데이트 없음: 배포 중인 새 버전이 없다(app_latest_version 빈 값)");
+                    if (userInitiated) UpdateResult(true, "이미 최신 버전입니다" + (own == null ? "" : " (v" + own.ToString(3) + ")"));
+                    else UpdateNone();
+                    return;
+                }
+                var m = ParseVer(mver);
                 if (m == null || own == null)
                 {
                     if (userInitiated) UpdateResult(false, "업데이트 확인 실패. 버전 정보를 읽지 못했습니다");
-                    else UpdateNone();   // 백그라운드: 파싱 실패(매니페스트 이상) → 열린 배너 닫기
+                    else UpdateNone();   // 백그라운드: 버전 값 이상 → 열린 배너 닫기
                     return;
                 }
                 if (IsNewer(m, own))
                 {
-                    string notes = GetJsonStr(root, "notes");
                     Log($"업데이트 발견: {mver} > 내 {own.ToString(3)}");
                     // __updateAvailable(infoJson) — HTML이 JSON.parse하므로 문자열로 전달(이중 직렬화).
-                    string info = JsonSerializer.Serialize(new { version = mver, notes });
+                    // notes 는 DB 에 두지 않는다(DB-RELEASE-OPS §2). 바뀐 내용은 업데이트 뒤 패치노트 창에서 본다.
+                    string info = JsonSerializer.Serialize(new { version = mver, notes = "" });
                     JsCall("window.__updateAvailable && window.__updateAvailable(" + JsonSerializer.Serialize(info) + ")");
                     // 설정 '지금 확인'이면 #updSrcMsg 스피너가 배너만으로는 안 풀리므로 결과도 함께 통지.
                     if (userInitiated) UpdateResult(true, "새 버전이 있습니다. 배너에서 업데이트하세요");
@@ -81,9 +91,9 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex)
             {
-                Log("업데이트 확인 실패(무음): " + ex.Message);
-                if (userInitiated) UpdateResult(false, "업데이트 확인 실패. 소스에 접근할 수 없습니다");
-                else UpdateNone();   // 백그라운드: 소스 접근/매니페스트 실패(서버 오프) → 열린 배너 닫기
+                Log("업데이트 확인 실패(무음): " + DbErrors.Sanitize(ex.Message));
+                if (userInitiated) UpdateResult(false, "업데이트 확인 실패. 서버에 접근할 수 없습니다");
+                else UpdateNone();   // 백그라운드: 서버 접근 실패 → 열린 배너 닫기
             }
         }
 
@@ -100,20 +110,20 @@ namespace TaskCalendarWidget
             try
             {
                 UpdateProgress("업데이트 확인 중…");
-                // 매니페스트 재확인 — 파일명/해시/버전 확보
-                string json = await FetchTextAsync(CombineUrl(src, "latest.json"), 6000);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-                string file = GetJsonStr(root, "file");
-                string sha = GetJsonStr(root, "sha256");
-                string mver = GetJsonStr(root, "version");
+                // 배포 정보 재확인: 파일명/해시/버전 확보. 차단 화면(업데이트 필요)의 버튼도 이 길로 온다.
+                // ★ ReadReleaseAsync 는 관문 판정을 하지 않는다. 막힌 상태에서도 읽혀야 이 버튼이 동작한다.
+                string mver, file, sha;
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)))
+                    (mver, file, sha) = await DbGate.ReadReleaseAsync(CalendarDb.BuildConnString(), cts.Token);
 
-                // 다운그레이드 방지 — 배너 노출과 클릭 사이에 매니페스트가 롤백/구버전으로 바뀌었을 수 있다.
+                // 다운그레이드 방지: 배너 노출과 클릭 사이에 배포 정보가 롤백/구버전으로 바뀌었을 수 있다.
+                // 받을 새 버전이 없으면(운영 실수: app_ 값 누락) 별도 상태 없이 같은 문구로 알린다(2026-10-21 결정).
                 var mv = ParseVer(mver);
                 var own = OwnVersion();
-                if (mv == null || own == null || !IsNewer(mv, own))
+                if (mver.Length == 0 || mv == null || own == null || !IsNewer(mv, own))
                 {
-                    UpdateResult(false, "이미 최신이거나 더 낮은 버전입니다");
+                    Log("업데이트 적용 중단: 받을 새 버전이 없다(app_latest_version=" + (mver.Length == 0 ? "빈 값" : mver) + ")");
+                    UpdateResult(false, InstallerNotFoundMsg);
                     return;
                 }
                 // 무결성 해시 필수 — 없으면 설치 중단(검증 불가 exe 실행 금지). 진짜 진위성은 아니지만 변조 최소 방어.
@@ -122,7 +132,7 @@ namespace TaskCalendarWidget
                     UpdateResult(false, "무결성 해시(sha256)가 없어 설치를 중단했습니다");
                     return;
                 }
-                if (string.IsNullOrWhiteSpace(file)) { UpdateResult(false, "업데이트 파일 정보가 없습니다"); return; }
+                if (string.IsNullOrWhiteSpace(file)) { UpdateResult(false, InstallerNotFoundMsg); return; }
                 file = Path.GetFileName(file);   // 경로 조작 방지 — 파일명만 취함
 
                 // 임시 폴더 정리(오래된 잔여 제거) 후 재생성
@@ -131,7 +141,15 @@ namespace TaskCalendarWidget
                 dest = Path.Combine(dir, file);
 
                 UpdateProgress("내려받는 중…");
-                await DownloadFileAsync(CombineUrl(src, file), dest, 300000);   // 설치기 다운로드는 넉넉히(5분)
+                try { await DownloadFileAsync(CombineUrl(src, file), dest, 300000); }   // 설치기 다운로드는 넉넉히(5분)
+                catch (Exception dx) when (IsNotFound(dx))
+                {
+                    // Setup 미업로드(운영 실수). 재시도 루프 없이 문구만. 수동 설치 경로는 차단 화면이 보여 준다.
+                    Log("설치 파일 없음: " + CombineUrl(src, file) + " (" + dx.Message + ")");
+                    UpdateResult(false, InstallerNotFoundMsg);
+                    TryDelete(dest);
+                    return;
+                }
                 if (!File.Exists(dest) || new FileInfo(dest).Length == 0)
                 {
                     UpdateResult(false, "내려받기 실패. 다시 시도하세요"); TryDelete(dest); return;
@@ -156,6 +174,8 @@ namespace TaskCalendarWidget
                 // 이었으나 그 파일은 2026-09-01 에 데이터 출처에서 폐기됐다): 일정·과제는 MySQL 에 있고
                 // 설치기는 프로그램 파일만 교체하므로, 갱신 도중 꺼져도 DB 쪽에 남는 흔적이 없다.
                 UpdateProgress("설치 후 자동으로 재시작합니다…");
+                // 설치 시도 기록: Setup 을 띄우기 **직전**에 쓴다. 다음 실행에서 버전이 그대로면 설치 실패로 본다.
+                WriteUpdateAttempt(mver, file);
                 Log($"설치기 실행(/SILENT /UPDATED=1): {dest} (v{mver})");
                 Process.Start(new ProcessStartInfo(dest, "/SILENT /UPDATED=1") { UseShellExecute = true });
                 await Task.Delay(700);   // 진행 메시지 전달 + 설치기 기동 여유
@@ -178,6 +198,88 @@ namespace TaskCalendarWidget
                 TryDelete(dest);
             }
             finally { _updBusy = false; }   // 성공/실패/시간초과 무엇이든 항상 해제 — 영구 잠금 방지
+        }
+
+        // 받을 새 버전이 없거나 설치 파일을 찾지 못했을 때의 문구(VERSION-GATE §2.6). 차단 화면의 버튼 아래에 뜬다.
+        private const string InstallerNotFoundMsg = "새 버전 파일을 찾을 수 없습니다. 관리자에게 문의해 주세요.";
+
+        // 파일이 없다는 뜻의 실패만 고른다(UNC/로컬 파일 없음, FTP 550, HTTP 404). 연결 실패나 시간 초과는 아니다.
+        private static bool IsNotFound(Exception ex)
+        {
+            for (var e = ex; e != null; e = e.InnerException)
+            {
+                if (e is FileNotFoundException || e is DirectoryNotFoundException) return true;
+                if (e is WebException we && we.Response is FtpWebResponse fr &&
+                    fr.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable) return true;
+                if (e is HttpRequestException he && he.StatusCode == HttpStatusCode.NotFound) return true;
+            }
+            return false;
+        }
+
+        // ---------- 설치 시도 기록(%LOCALAPPDATA%\TaskCalendar\update-attempt.json) ----------
+        //  { target, at, count, file }. Setup 을 띄우기 직전에 쓰고, 다음 실행(웹 ready)에서 본다.
+        //    자기 버전 >= target  → 설치 성공. 기록을 지운다.
+        //    자기 버전 <  target  → 설치 실패. 'installFailed' 를 한 번 밀고 기록(count)은 남긴다.
+        //  같은 target 으로 다시 시도하면 count 가 오른다. count >= 2 면 웹은 자동 재시도 대신 수동 설치 안내만 보인다.
+        private static string UpdateAttemptPath =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TaskCalendar", "update-attempt.json");
+
+        private sealed class UpdateAttempt
+        {
+            public string target { get; set; } = "";
+            public string at { get; set; } = "";
+            public int count { get; set; }
+            public string file { get; set; } = "";
+        }
+
+        private static UpdateAttempt? ReadUpdateAttempt()
+        {
+            try
+            {
+                string p = UpdateAttemptPath;
+                if (!File.Exists(p)) return null;
+                return JsonSerializer.Deserialize<UpdateAttempt>(File.ReadAllText(p, Encoding.UTF8));
+            }
+            catch { return null; }   // 깨진 기록은 없는 것으로 본다(다음 시도가 새로 쓴다)
+        }
+
+        private void WriteUpdateAttempt(string target, string file)
+        {
+            try
+            {
+                var prev = ReadUpdateAttempt();
+                int count = prev != null && prev.target == target ? prev.count + 1 : 1;
+                var rec = new UpdateAttempt { target = target, at = DateTime.UtcNow.ToString("o"), count = count, file = file };
+                string p = UpdateAttemptPath;
+                Directory.CreateDirectory(Path.GetDirectoryName(p)!);
+                File.WriteAllText(p, JsonSerializer.Serialize(rec), new UTF8Encoding(false));
+                Log("설치 시도 기록: v" + target + " (" + count + "번째)");
+            }
+            catch (Exception ex) { Log("설치 시도 기록 실패(설치는 계속한다): " + ex.Message); }
+        }
+
+        //  웹 ready 때 한 번(GateHost.GateOnReady). 실패면 GateHost 의 설치 실패 필드를 채운다(푸시는 부른 쪽이 한다).
+        private void CheckUpdateAttempt()
+        {
+            var a = ReadUpdateAttempt();
+            if (a == null) return;
+            var own = OwnVersion();
+            var t = ParseVer(a.target);
+            if (own == null || t == null || a.target.Trim().Length == 0)
+            {
+                TryDelete(UpdateAttemptPath);
+                return;
+            }
+            if (!IsNewer(t, own))
+            {
+                Log("설치 확인: v" + own.ToString(3) + " 이 목표 v" + a.target + " 이상이다. 설치 시도 기록을 지운다");
+                TryDelete(UpdateAttemptPath);
+                return;
+            }
+            _installFailedTarget = a.target;
+            _installFailedCount = Math.Max(1, a.count);
+            _installFailedFile = a.file ?? "";
+            Log("설치 실패로 본다: 목표 v" + a.target + ", 지금 v" + own.ToString(3) + " (" + _installFailedCount + "번째 시도 뒤)");
         }
 
         // ---------- 호스트→HTML 통지 ----------
@@ -208,42 +310,6 @@ namespace TaskCalendarWidget
                 return Path.Combine(b, child);
             }
             return baseUrl.TrimEnd('/') + "/" + child;
-        }
-
-        // 작은 텍스트(latest.json) 받기 — 짧은 타임아웃. 모든 대기는 timeoutMs로 상한(UI 스레드 무동결).
-        private static async Task<string> FetchTextAsync(string url, int timeoutMs)
-        {
-            switch (KindOf(url))
-            {
-                case SrcKind.Http:
-                {
-                    using var http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
-                    // HttpClient.Timeout 위에 한 겹 더(GetString은 본문까지 포함하지만 방어적 상한).
-                    return await BoundAsync(http.GetStringAsync(url), timeoutMs);
-                }
-                case SrcKind.Ftp:
-                {
-                    // FtpWebRequest.Timeout/ReadWriteTimeout은 GetResponseAsync에서 안정적으로 지켜지지 않으므로
-                    // 응답/읽기 대기를 명시적으로 상한하고, 초과 시 요청을 Abort.
-                    var req = MakeFtp(url, timeoutMs);
-                    try
-                    {
-                        using var resp = (FtpWebResponse)await BoundAsync(req.GetResponseAsync(), timeoutMs);
-                        using var s = resp.GetResponseStream();
-                        using var reader = new StreamReader(s, Encoding.UTF8);
-                        return await BoundAsync(reader.ReadToEndAsync(), timeoutMs);
-                    }
-                    catch { try { req.Abort(); } catch { } throw; }
-                }
-                default:
-                {
-                    string path = url;
-                    if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)) { try { path = new Uri(path).LocalPath; } catch { } }
-                    // 동기 파일 오픈(CreateFile)은 첫 await 전에 UI 스레드에서 실행되어, 죽은 UNC면
-                    // OS SMB 타임아웃(20~30s)까지 막힌다(취소 토큰이 이 오픈을 못 끊음). 풀 스레드로 밀고 대기만 상한.
-                    return await BoundAsync(Task.Run(() => File.ReadAllText(path, Encoding.UTF8)), timeoutMs);
-                }
-            }
         }
 
         // 바이너리(설치기) 받기 → destPath. 모든 대기는 timeoutMs로 상한(UI 스레드 무동결).
@@ -348,9 +414,6 @@ namespace TaskCalendarWidget
             }
             return false;
         }
-
-        private static string GetJsonStr(JsonElement root, string key) =>
-            root.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String ? (el.GetString() ?? "") : "";
 
         private static string Sha256Hex(string path)
         {

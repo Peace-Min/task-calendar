@@ -17,7 +17,7 @@
     (ProjectDb.CanViewScheduleAsync), 'ALL' 이나 'all ' 처럼 표의 정렬 규칙으로는 같아 보이는 값도 바꿀 대상으로 센다.
 
   단계(화면에 [n/3] 으로 찍힌다. 첫 실패에서 멈춘다)
-    [0] 사전 점검: mysql.exe, 접속, DB, app_user 표와 user_id, view_scope 열, cal_schema_meta 의 schema_version
+    [0] 사전 점검: mysql.exe, 접속, DB, app_user 표와 user_id, view_scope 열, cal_schema_meta 의 db_structure_version
         (특정 판을 요구하지 않는다. 표나 행이 없으면 그렇다고만 알린다), 지금 분포(view_scope, 재직 여부별 인원),
         바뀔 행 수. 0 이면 "이미 모두 전체입니다. 할 일이 없습니다." 로 끝낸다(종료코드 0).
         그다음 DB, 서버, 바뀔 행 수, 되돌리기 파일 경로를 보여 주고 Y 를 받는다(-Yes 면 묻지 않는다).
@@ -329,9 +329,9 @@ try {
   if([int](QPre "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = '$DbName' AND TABLE_NAME = 'cal_schema_meta';" "cal_schema_meta 유무") -lt 1){
     Warn "'$DbName' 에 cal_schema_meta 표가 없습니다. 판번호는 알 수 없습니다(계속합니다)."
   } else {
-    $ver = QPre "SELECT v FROM $dbQ.cal_schema_meta WHERE k = 'schema_version';" "schema_version"
-    if($ver){ Ok "'$DbName' 의 schema_version = $ver" }
-    else { Warn "'$DbName'.cal_schema_meta 에 schema_version 행이 없습니다. 판번호는 알 수 없습니다(계속합니다)." }
+    $ver = QPre "SELECT v FROM $dbQ.cal_schema_meta WHERE k = 'db_structure_version';" "db_structure_version"
+    if($ver){ Ok "'$DbName' 의 db_structure_version = $ver" }
+    else { Warn "'$DbName'.cal_schema_meta 에 db_structure_version 행이 없습니다. 판번호는 알 수 없습니다(계속합니다)." }
   }
 
   # --- 지금 분포와 계획 ---

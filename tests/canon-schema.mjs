@@ -49,11 +49,11 @@ export function parseStatusCodes(sql, constraintName) {
   return codes;
 }
 
-//  정본이 시딩하는 schema_version. **문자열 그대로** 돌려준다 —
-//  DB 의 cal_schema_meta.v 도 위젯의 비교도 문자열이라(utf8mb4_bin 정확 비교),
-//  숫자로 바꾸면 '09' 같은 값이 조용히 같아진다.
+//  정본이 시딩하는 DB 구조 번호. **문자열 그대로** 돌려준다.
+//  DB 의 cal_schema_meta.v 는 문자열이라(utf8mb4_bin 정확 비교), 숫자로 바꾸면 '09' 같은 값이 조용히 같아진다.
+//  2026-10-21 부터 키는 db_structure_version 이다(옛 schema_version, docs/VERSION-GATE.md §4).
 export function parseSeededSchemaVersion(sql) {
-  const m = /INSERT\s+INTO\s+cal_schema_meta[\s\S]{0,200}?VALUES\s*\(\s*'schema_version'\s*,\s*'(\d+)'/i.exec(sql);
+  const m = /INSERT\s+INTO\s+cal_schema_meta[\s\S]{0,200}?VALUES\s*\(\s*'db_structure_version'\s*,\s*'(\d+)'/i.exec(sql);
   return m ? m[1] : null;
 }
 
@@ -75,7 +75,7 @@ export function canonSql() {
 export function canonSchemaVersion() {
   const v = parseSeededSchemaVersion(canonSql());
   if (v === null) {
-    throw new Error(`${CANON_PATH} 의 schema_version 시딩(INSERT INTO cal_schema_meta … 'schema_version', 'N')을 ` +
+    throw new Error(`${CANON_PATH} 의 db_structure_version 시딩(INSERT INTO cal_schema_meta … 'db_structure_version', 'N')을 ` +
                     '읽지 못했다 — 문장 형태가 바뀌었다면 여기 정규식을 함께 고칠 것. 못 읽으면 측정 못 함이다.');
   }
   return v;

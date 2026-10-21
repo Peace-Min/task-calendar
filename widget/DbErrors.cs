@@ -9,7 +9,7 @@ namespace TaskCalendarWidget
     // ================================================================================
     //  DB 오류 분류 — 서버(DB) 연결 장애 대응 기획서 §3 (docs/OFFLINE-RESILIENCE.md)
     // ================================================================================
-    //  웹으로 가는 kind 는 이 다섯 값뿐이다. 문자열로 두는 이유: 그대로 JSON 에 실리고,
+    //  웹으로 가는 kind 는 이 여섯 값뿐이다. 문자열로 두는 이유: 그대로 JSON 에 실리고,
     //  웹이 같은 글자로 분기한다(enum 이면 직렬화 규약이 하나 더 생긴다).
     internal static class DbErrorKind
     {
@@ -18,6 +18,9 @@ namespace TaskCalendarWidget
         public const string Schema       = "schema";        // 표·컬럼 없음 — 버전 불일치. 재시도 안 함
         public const string Unregistered = "unregistered";  // 신원이 서지 않는다(app_user 미등록 · 로그인 없음)
         public const string Unknown      = "unknown";       // 그 밖 — 네트워크와 같이 재시도한다
+        //  버전 관문(DbGate)이 막았다. 세부는 회신의 gate.state(updating, needUpdate, serverOld, unknown).
+        //  ★ 재시도 대상이 아니다. 풀리는 길은 관문 재확인 루프(GateHost)와 업데이트 하나다.
+        public const string Gate         = "gate";
     }
 
     internal static class DbErrors
@@ -55,6 +58,7 @@ namespace TaskCalendarWidget
             switch (e)
             {
                 case DbFaultException f:                return f.Kind;   // 디버그 장애 주입(§7) — 스스로 kind 를 안다
+                case DbGateException:                   return DbErrorKind.Gate;   // 버전 관문(VERSION-GATE §2.3)
                 case CalendarUserNotFoundException:     return DbErrorKind.Unregistered;
                 case MySqlException me:
                     if (NetworkCodes.Contains(me.Number)) return DbErrorKind.Network;
@@ -139,6 +143,7 @@ namespace TaskCalendarWidget
             DbErrorKind.Network => "서버에 연결할 수 없습니다(꺼져 있거나 네트워크 문제)",
             DbErrorKind.Auth    => "DB 접근이 거부되었습니다. 위젯 설정(DB 이름·계정)과 서버 권한을 확인하세요(관리자)",
             DbErrorKind.Schema  => "DB 구조가 이 버전과 맞지 않습니다",
+            DbErrorKind.Gate    => "앱과 서버의 버전이 맞지 않아 멈췄습니다",
             _                   => "서버 오류로 캘린더를 받지 못했습니다",
         };
 
@@ -148,6 +153,7 @@ namespace TaskCalendarWidget
             DbErrorKind.Network => "서버에 연결할 수 없습니다(꺼져 있거나 네트워크 문제)",
             DbErrorKind.Auth    => "DB 접근이 거부되었습니다. 위젯 설정(DB 이름·계정)과 서버 권한을 확인하세요(관리자)",
             DbErrorKind.Schema  => "DB 구조가 이 버전과 맞지 않습니다",
+            DbErrorKind.Gate    => "앱과 서버의 버전이 맞지 않아 멈췄습니다",
             _                   => "서버 오류입니다. 잠시 뒤 다시 시도하세요",
         };
 

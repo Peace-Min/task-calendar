@@ -24,6 +24,8 @@ namespace TaskCalendarWidget
         public string Detail { get; init; } = "";
         //  1062(중복 키) — 응답만 끊긴 저장(S9) 뒤의 재시도가 '이미 들어간 새 행'을 또 넣으려 할 때 난다.
         public bool DuplicateKey { get; init; }
+        //  버전 관문이 막았다(Kind = "gate"). 커밋 직전 재확인에서 막혔으면 아무것도 쓰이지 않았다(롤백).
+        public GateSnapshot? Gate { get; init; }
         public long Rev { get; init; }
         public IReadOnlyDictionary<string, string> Tokens { get; init; } = new Dictionary<string, string>();
         public IReadOnlyDictionary<string, uint> CategoryNoByUid { get; init; } = new Dictionary<string, uint>();
@@ -109,18 +111,17 @@ namespace TaskCalendarWidget
             if (string.IsNullOrWhiteSpace(newStateJson)) return Fail("저장할 내용이 비었습니다");
 
             // ── 0. 낡은 클라이언트 게이트(§5.5) — 트랜잭션을 **열기 전에** 끊는다 ─────────
-            //   막는 것은 **전량 교체뿐**이다. 통상 저장(replaceAll=false)은 그대로 통과시킨다 —
-            //   §5.5 가 "전 쓰기 봉인은 과하다(조회·편집은 계속되게)" 로 못박은 자리다.
-            //   ★ 왜 전량 교체만인가: 차분 저장은 자기가 아는 컬럼만 건드리므로 새 스키마에서도
-            //     남의 데이터를 지우지 않는다. 전량 교체는 **먼저 전부 DELETE 한 뒤** 자기가 아는
-            //     모양으로 다시 넣기 때문에, 낡은 위젯이 돌면 새 스키마에서 늘어난 값이 통째로
-            //     사라진다. 되돌릴 방법이 없다.
+            //   부팅 스냅샷이 들고 온 구조 번호로 **전량 교체**를 한 번 더 막는다. 2026-10-21 부터는 연결마다
+            //   관문(DbGate)이 모든 읽기와 쓰기를 막으므로 이 분기는 두 번째 문이다(부팅 뒤 서버가 바뀐 경우).
+            //   ★ 왜 전량 교체는 따로 남기나: 전량 교체는 **먼저 전부 DELETE 한 뒤** 자기가 아는 모양으로
+            //     다시 넣기 때문에, 낡은 위젯이 돌면 새 스키마에서 늘어난 값이 통째로 사라진다. 되돌릴 방법이 없다.
             //   ★ 서버 값이 ''(cal_schema_meta 행 없음)이어도 막는다. '모르는 상태'에서 되돌릴 수
             //     없는 연산을 실행할 이유가 없다 — 정상 배포에서는 정본이 반드시 심는다.
-            if (replaceAll && !string.Equals(prev.SchemaVersion, CalendarDb.ExpectedSchemaVersion, StringComparison.Ordinal))
+            string appStructure = DbGate.AppStructureVersion.ToString(CultureInfo.InvariantCulture);
+            if (replaceAll && !string.Equals(prev.SchemaVersion, appStructure, StringComparison.Ordinal))
             {
                 string sv = prev.SchemaVersion.Length == 0 ? "(알 수 없음)" : prev.SchemaVersion;
-                string m = "서버 스키마 v" + sv + ", 위젯 v" + CalendarDb.ExpectedSchemaVersion +
+                string m = "서버 스키마 v" + sv + ", 위젯 v" + appStructure +
                            ". 전량 교체(가져오기·초기화)는 위젯을 업데이트한 뒤 하세요";
                 _log("전량 교체 거부(스키마 불일치): " + m);
                 return new CalendarSaveResult { Ok = false, SchemaMismatch = true, Message = m, Kind = DbErrorKind.Schema };
@@ -144,9 +145,9 @@ namespace TaskCalendarWidget
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 var ct = cts.Token;
-                DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
-                await using var conn = new MySqlConnection(BuildConnString());
-                await conn.OpenAsync(ct);
+                //  연결은 관문(DbGate)이 연다. 장애 주입과 구조 번호 판정이 그 안에 있다.
+                //  관문의 메타 읽기는 autocommit 한 문장이라, 아래 프리앰블의 격리수준은 그 뒤 트랜잭션에 그대로 걸린다.
+                await using var conn = await DbGate.OpenAsync(BuildConnString(), ct);
                 await Exec(conn, null, WritePreambleSql, ct);
 
                 await using var tx = await conn.BeginTransactionAsync(ct);
@@ -476,6 +477,24 @@ namespace TaskCalendarWidget
                         catNo.Remove(kv.Key); tokens.Remove("category:" + kv.Value); del++;
                     }
 
+                // ── 11. 관문 재확인: 커밋 바로 앞(VERSION-GATE §2.2) ─────────────────────
+                //   연결을 연 뒤 이관 SQL 이 db_updating = '1' 을 세웠을 수 있다. 같은 트랜잭션에서 잠금 없이
+                //   한 번 더 읽고(READ-COMMITTED 라 방금 커밋된 값이 보인다) 막혔으면 통째로 롤백한다.
+                //   ★ FOR SHARE 를 쓰지 않는다. 앱 계정은 cal_schema_meta 에 SELECT 만 있고 MySQL 8 은 FOR SHARE 에
+                //     권한을 더 요구한다. rev 증가가 첫 문장이라는 규칙(1번)과 commit-lost 주입 자리(커밋 뒤)는 그대로다.
+                var gateMeta = await DbGate.ReadMetaAsync(conn, tx, ct);
+                if (DbGate.Observe(gateMeta) != GateVerdict.Ok)
+                {
+                    try { await tx.RollbackAsync(CancellationToken.None); } catch { /* 연결을 닫으면 서버가 어차피 롤백한다 */ }
+                    var gs = DbGate.Last;
+                    _log("캘린더 저장 중단(버전 관문, 커밋 직전): " + (gs?.State ?? "unknown") + ", 롤백");
+                    return new CalendarSaveResult
+                    {
+                        Ok = false, Message = DbErrors.ConnMessage(DbErrorKind.Gate),
+                        Kind = DbErrorKind.Gate, Detail = gs?.State ?? "", Gate = gs,
+                    };
+                }
+
                 await tx.CommitAsync(ct);
                 _log($"캘린더 저장{(replaceAll ? "(전량 교체)" : "")}: user_id={u} rev={newRev} · 추가 {ins} · 수정 {upd} · 삭제 {del}");
 
@@ -500,6 +519,7 @@ namespace TaskCalendarWidget
                 {
                     Ok = false, Message = "저장하지 못했습니다: " + detail,
                     Kind = kind, Detail = detail, DuplicateKey = DbErrors.Number(ex) == 1062,
+                    Gate = ex is DbGateException ? DbGate.Last : null,
                 };
             }
 

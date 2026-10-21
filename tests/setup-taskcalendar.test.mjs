@@ -15,7 +15,7 @@
 //     ⑦ 스키마 치환은 낱말 경계 `\btaskmgr\.` · 두 파일에만 · 05-grants.sql 은 대상 DB 선택 후 원본 그대로
 //     ⑧ 대상 DROP 은 확인 뒤 · 원본 덤프 뒤 · 대상 덤프(DumpDb $TargetDb) 뒤 · DROP 은 대상 하나와 옛 판 작업장
 //        (_legacy_stage, 이름 가드 안) 하나뿐 · $Force 는 어떤 조건에도 안 쓰인다(2026-09-30: 재구축은 늘 한다)
-//     ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다(숫자를 박지 않는다)
+//     ⑨ 기대 구조 번호(db_structure_version, 옛 schema_version)는 schema-calendar.sql 에서 읽는다(숫자를 박지 않는다)
 //     ⑩ 변이 주입 — 위 검사가 실제로 잡는지 증명
 //     ⑪ 어떤 종료코드로 끝나든 보고서가 남는다
 //     ⑫ 사용자 3표는 원본에서 옮기지 않고 회사 시드(02 → 03 → 04, 대상 DB)로 채운다 · 원본 사용자 표는
@@ -367,12 +367,13 @@ const checks = {
     assert.ok(/-Force is still accepted[\s\S]*?does nothing/.test(cmd), '.cmd 머리말이 -Force 가 무동작임을 적지 않는다');
   },
 
-  // ⑨ schema_version 은 파일에서 읽는다.
+  // ⑨ 구조 번호는 파일에서 읽는다. 2026-10-21 부터 키는 db_structure_version 이다(VERSION-GATE §4).
   versionFromFile(ps) {
-    assert.ok(ps.includes(`[regex]::Match($calText, "VALUES \\('schema_version', '(\\d+)'")`),
-      'schema-calendar.sql 에서 schema_version 을 읽는 정규식이 사라졌다');
-    assert.ok(!/'12'|"12"/.test(ps),
-      "ps1 에 '12' 가 박혀 있다 — 기대 schema_version 은 schema-calendar.sql 에서 읽어야 한다(스키마가 오르면 조용히 낡는다)");
+    assert.ok(ps.includes(`[regex]::Match($calText, "VALUES \\('db_structure_version', '(\\d+)'")`),
+      'schema-calendar.sql 에서 db_structure_version 을 읽는 정규식이 사라졌다');
+    assert.ok(ps.includes(`WHERE k='db_structure_version';`), '대상 DB 의 구조 번호를 db_structure_version 키로 읽지 않는다');
+    assert.ok(!/'1[2-9]'|"1[2-9]"/.test(ps),
+      "ps1 에 '12' 같은 판번호가 박혀 있다. 기대 구조 번호는 schema-calendar.sql 에서 읽어야 한다(스키마가 오르면 조용히 낡는다)");
     assert.ok(/if\(\$actVersion -ne \$expVersion\)\{ Die /.test(maskPs(ps)),
       '실제 schema_version 을 파일 값과 대조해 멈추는 자리가 사라졌다');
   },
@@ -620,7 +621,7 @@ test('setup-taskcalendar ⑤ KST→UTC(-9h)는 과제 트랙 4표의 created_at/
 test('setup-taskcalendar ⑥ FK 검사 끄고 넣고 다시 켬 · 고아 행 6관계', () => checks.fkAndOrphans(psSrc));
 test('setup-taskcalendar ⑦ 스키마 치환 \\btaskmgr\\. — 두 파일만 · 05-grants 는 대상 DB 선택', () => checks.schemaSubst(psSrc));
 test('setup-taskcalendar ⑧ 대상 DROP 은 확인 뒤 · 대상 덤프 뒤 · DROP 은 대상과 옛 판 작업장 둘뿐 · $Force 는 조건에 없음', () => checks.targetGuard(psSrc));
-test('setup-taskcalendar ⑨ 기대 schema_version 은 schema-calendar.sql 에서 읽는다', () => checks.versionFromFile(psSrc));
+test('setup-taskcalendar ⑨ 기대 구조 번호(db_structure_version)는 schema-calendar.sql 에서 읽는다', () => checks.versionFromFile(psSrc));
 test('setup-taskcalendar ⑪ 어떤 종료코드로 끝나든 보고서가 남는다(사전 점검 실패·취소 포함)', () => checks.reportAlways(psSrc));
 test('setup-taskcalendar ⑫ 사용자 3표는 회사 시드(02 → 03 → 04, 대상 DB) · 원본 사용자 표는 복사·요구하지 않음 · login_id 명부 대조는 경고만', () => checks.seedUsers(psSrc));
 test("setup-taskcalendar ⑬ mysql 세션 UTC: .cnf 의 [mysql] 그룹에 init-command SET time_zone='+00:00' ([client] 아님)", () => checks.cnfUtc(psSrc));
@@ -639,9 +640,9 @@ test('setup-taskcalendar ⑦ 실물: \\btaskmgr\\. 치환이 두 권한 파일�
   assert.ok(appUserSqlSrc.includes('CHANGE_ME_ON_DEPLOY'), 'create-app-user.sql 의 비밀번호 자리표가 사라졌다 — -AppPassword 가 들어갈 자리가 없다');
 });
 
-test('setup-taskcalendar ⑨ 실물: schema-calendar.sql 에 스크립트가 읽는 schema_version 시딩 줄이 있다', () => {
-  const m = /VALUES \('schema_version', '(\d+)'/.exec(calSchemaSrc);
-  assert.ok(m, "schema-calendar.sql 에 VALUES ('schema_version', 'N') 줄이 없다 — 스크립트가 기대 버전을 못 읽고 사전 점검에서 멈춘다");
+test('setup-taskcalendar ⑨ 실물: schema-calendar.sql 에 스크립트가 읽는 db_structure_version 시딩 줄이 있다', () => {
+  const m = /VALUES \('db_structure_version', '(\d+)'/.exec(calSchemaSrc);
+  assert.ok(m, "schema-calendar.sql 에 VALUES ('db_structure_version', 'N') 줄이 없다. 스크립트가 기대 버전을 못 읽고 사전 점검에서 멈춘다");
 });
 
 // ══ ⑩ 변이 주입 — 검사가 실제로 잡는지 증명 ═══════════════════════════

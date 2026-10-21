@@ -29,7 +29,7 @@
         옛 판이 남긴 작업장(<대상>_legacy_stage)이 있으면 함께 지운다(원본 덤프를 부은 작업용 사본이라 백업 없음).
     [2] 구조 — CREATE DATABASE → schema-structure.sql → 01-schema-users.sql → schema-calendar.sql
         (사용자 표가 캘린더보다 먼저여야 한다: schema-calendar.sql 머리의 가드가 app_user.user_id 를 요구한다)
-        → 표 개수 · schema_version(= schema-calendar.sql 이 시딩하는 값, 파일에서 읽는다) 대조
+        → 표 개수, db_structure_version(= schema-calendar.sql 이 시딩하는 값, 파일에서 읽는다) 대조
     [3] 데이터 — (a) 사용자 3표 = 회사 시드: 02-seed-org.sql → 03-seed-users.sql → 04-permissions.sql
         (대상 DB 를 선택한 채 원본 파일 그대로) → app_user.sort_order 백필(03 은 sort_order 를 적지 않는다.
         순서: 직급 서열 → 이름 → user_id, 10 간격) →
@@ -349,10 +349,11 @@ $appUserText       = Get-Content -LiteralPath $appUserFile       -Raw -Encoding 
 $calGrantsText     = Get-Content -LiteralPath $calGrantsFile     -Raw -Encoding UTF8
 $companyGrantsText = Get-Content -LiteralPath $companyGrantsFile -Raw -Encoding UTF8
 
-# 기대 스키마 버전은 schema-calendar.sql 이 시딩하는 값 그대로다(숫자를 여기 박지 않는다 — 박으면
+# 기대 DB 구조 번호는 schema-calendar.sql 이 시딩하는 값 그대로다(숫자를 여기 박지 않는다. 박으면
 # 스키마가 올라갈 때 이 스크립트만 낡아 '정상 구축' 을 실패로 판정한다).
-$verMatch = [regex]::Match($calText, "VALUES \('schema_version', '(\d+)'")
-if(-not $verMatch.Success){ Die "schema-calendar.sql 에서 schema_version 시딩 줄(VALUES ('schema_version', 'N'))을 찾지 못했습니다 — 파일 형식이 바뀌었습니다." }
+# 2026-10-21 부터 키는 db_structure_version 이다(옛 schema_version, docs/VERSION-GATE.md §4).
+$verMatch = [regex]::Match($calText, "VALUES \('db_structure_version', '(\d+)'")
+if(-not $verMatch.Success){ Die "schema-calendar.sql 에서 db_structure_version 시딩 줄(VALUES ('db_structure_version', 'N'))을 찾지 못했습니다. 파일 형식이 바뀌었습니다." }
 $expVersion = $verMatch.Groups[1].Value
 
 # 고정 번호 지도(CODE-TABLE-IDS §3). schema-structure.sql 끝의 코드표 시드 INSERT 가 정본이다(번호를 여기 박지 않는다).
@@ -688,7 +689,7 @@ try {
     Log "  대상(새로)    : $TargetDb"
   }
   if($legacyStageExists){ Log "  옛 판이 남긴 작업장: '$legacyStageDb' 있음 → 삭제" 'Yellow' }
-  Log "  schema_version: $expVersion (schema-calendar.sql)"
+  Log "  구조 번호     : $expVersion (schema-calendar.sql 의 db_structure_version)"
   Log "  백업 폴더     : $BackupDir"
   Log "  회사 데이터   : $CompanyDataDir"
   Log "  원본에서 복사 : $($COPY_ORDER -join ',') (과제 트랙 4표)"
@@ -766,9 +767,9 @@ try {
   $tgtTables = @(QRows "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA='$TargetDb';" "대상 표 목록")
   $miss = @($ddlTables | Where-Object { $tgtTables -notcontains $_ })
   if($miss.Count -gt 0){ Die "DDL 이 만드는 표 중 대상에 없는 것이 있습니다: $($miss -join ', ')" }
-  $actVersion = Q ("SELECT v FROM " + (TQ $TargetDb 'cal_schema_meta') + " WHERE k='schema_version';") "schema_version"
-  if($actVersion -ne $expVersion){ Die "cal_schema_meta.schema_version 이 [$actVersion] 입니다(schema-calendar.sql 기대 [$expVersion])." }
-  Ok "표 $tblCount 개 · schema_version $actVersion"
+  $actVersion = Q ("SELECT v FROM " + (TQ $TargetDb 'cal_schema_meta') + " WHERE k='db_structure_version';") "db_structure_version"
+  if($actVersion -ne $expVersion){ Die "cal_schema_meta.db_structure_version 이 [$actVersion] 입니다(schema-calendar.sql 기대 [$expVersion])." }
+  Ok "표 $tblCount 개, db_structure_version $actVersion"
 
   # ==========================================================================
   #  [3/5] 데이터 — 사용자 3표는 회사 시드 · 과제 4표는 원본에서 복사(id/uid 보존)
@@ -1084,7 +1085,7 @@ try {
   elseif($srcLoginCheck) { Log "  명부 대조      : 질의 실패로 건너뜀(위 경고)" }
   else                   { Log "  명부 대조      : 안 함(원본에 app_user.login_id 없음)" }
   Log "  대상 DB        : $TargetDb"
-  Log "  schema_version : $actVersion"
+  Log "  구조 번호      : $actVersion"
   Log "  표 수          : $tblCount"
   foreach($t in $COPY_ORDER){ Log ("  행 수 {0,-13}: {1}" -f $t, $tgtCounts[$t]) }
   Log "  고아 행        : 0 ($($ORPHAN_CHECKS.Count)개 관계)"

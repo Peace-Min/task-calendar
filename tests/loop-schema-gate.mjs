@@ -84,12 +84,12 @@ function q(sql) {
   return (r.stdout || '').trim();
 }
 const num = (sql) => Number(q(sql));
-const schemaVer = () => q("SELECT v FROM cal_schema_meta WHERE k='schema_version'");
+const schemaVer = () => q("SELECT v FROM cal_schema_meta WHERE k='db_structure_version'");
 //  ★ touched — **한 번이라도 실제로 썼는가.** finally 는 이 플래그가 참일 때만 복구를 시도한다.
 //    2026-09-09 사고의 직접 원인이 이것이 없었던 것이다: 선행조건에서 중단해 아무것도 안 바꿨는데도
 //    finally 가 하드코딩 값을 써서 실 DB 를 강등시켰다. 안 바꿨으면 되돌릴 것도 없다.
 let touched = false;
-const setSchemaVer = (v) => { touched = true; return q(`UPDATE cal_schema_meta SET v='${v}' WHERE k='schema_version'`); };
+const setSchemaVer = (v) => { touched = true; return q(`UPDATE cal_schema_meta SET v='${v}' WHERE k='db_structure_version'`); };
 
 /* ── 최소 CDP ─────────────────────────────────────────────────────────── */
 class Cdp {
@@ -279,7 +279,7 @@ if (F.length) { console.log('\n실패 목록:'); F.forEach(f => console.log('  �
 //    안내문 자체가 DB 를 강등시킨다(2026-09-09 사고의 재발 경로가 정확히 여기다).
 if (!restored) {
   console.log(`\n★★ 경고: schema_version 을 '${startVer}'(시작할 때 읽은 값) 로 되돌리지 못했습니다 — 수동으로 되돌리세요:\n` +
-              `   UPDATE cal_schema_meta SET v='${startVer}' WHERE k='schema_version';`);
+              `   UPDATE cal_schema_meta SET v='${startVer}' WHERE k='db_structure_version';`);
 }
 console.log((fail === 0 && restored)
   ? '스키마 게이트·부팅 재시도·개명 가드 검증 통과 ✓'

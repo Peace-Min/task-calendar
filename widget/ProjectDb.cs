@@ -146,10 +146,8 @@ namespace TaskCalendarWidget
         //   "권한을 알려면 먼저 권한이 있어야 한다"는 순환이 생겨 아무도 로그인하지 못한다.
         private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
         {
-            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
-            var conn = new MySqlConnection(BuildConnString());
-            try { await conn.OpenAsync(ct); }
-            catch { await conn.DisposeAsync(); throw; }   // 못 연 연결을 새지 않게 정리하고 원인은 그대로 전파
+            //  연결은 버전 관문(DbGate)이 연다. 장애 주입, 열기 실패 정리, 구조 번호 판정이 모두 그 안에 있다.
+            var conn = await DbGate.OpenAsync(BuildConnString(), ct);
             await ApplyPreambleAsync(conn, ReadPreambleSql, ct);   // 프리앰블은 연 연결마다 — 예외를 두면 그 자리가 규약 밖이 된다
             return conn;
         }
@@ -167,10 +165,9 @@ namespace TaskCalendarWidget
             var s = UserSession.Load(_dataDir, _log);
             if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
 
-            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
-            var conn = new MySqlConnection(BuildConnString());
-            try { await conn.OpenAsync(ct); }
-            catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
+            //  연결은 버전 관문(DbGate)이 연다. 연결 실패와 관문 차단은 그대로 전파 = 호출측에서 '오프라인' 또는 관문 화면.
+            //  관문은 권한 판정보다 먼저다. 구조가 다른 DB 에서는 권한 조회 SQL 부터 믿을 수 없다.
+            var conn = await DbGate.OpenAsync(BuildConnString(), ct);
             // ★ 프리앰블은 권한 판정보다 **먼저** 건다. 판정 쿼리도 이 연결로 도는 데다,
             //   순서를 뒤집으면 '권한은 통과했는데 프리앰블에서 죽는' 창이 생겨 실패 원인이 흐려진다.
             await ApplyPreambleAsync(conn, WritePreambleSql, ct);
@@ -219,10 +216,7 @@ namespace TaskCalendarWidget
             var s = UserSession.Load(_dataDir, _log);
             if (s == null || s.LoginId.Length == 0) throw new NotAuthorizedException("로그인이 필요합니다.");
 
-            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
-            var conn = new MySqlConnection(BuildConnString());
-            try { await conn.OpenAsync(ct); }
-            catch { await conn.DisposeAsync(); throw; }   // 연결 실패는 그대로 전파 = 호출측에서 '오프라인'
+            var conn = await DbGate.OpenAsync(BuildConnString(), ct);   // 버전 관문(DbGate). OpenWriteAsync 와 같다
             await ApplyPreambleAsync(conn, WritePreambleSql, ct);   // 쓰기와 같은 프리앰블(격리수준까지) — 판정보다 먼저
             try
             {

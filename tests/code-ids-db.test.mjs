@@ -256,8 +256,11 @@ export const checks = {
     const post = /SET @g := IF\(@e_orphan \+ @e_rows \+ @e_proj_drift \+ @e_user_drift \+ @e_same \+ @e_struct \+ @e_ai \+ @e_ver \+ @e_fixed = 0, 'DO 0',/.test(code);
     assert.ok(post, '사후 검증의 중단 조건이 (고아, 행 수, 이름 복원, 불변, 구조, AUTO_INCREMENT, 판번호, 보호 행) 전부가 아니다');
     assert.ok(/information_schema_stats_expiry = 0/.test(code), 'AUTO_INCREMENT 를 낡은 캐시(stats_expiry)로 읽는다');
-    // 판번호: 정본 시딩 13 과 맞물린다
-    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '13', 'schema-calendar.sql 이 schema_version 13 을 시딩하지 않는다');
+    // 판번호: 이 파일이 만든 13 에서 다음 판(migrate-2026-10-21-version-gate.sql, 13 에서 14)이 출발한다.
+    //   2026-10-21 부터 정본은 키가 db_structure_version 이고 값이 14 다. 체인 전체는 schema-guards ⑥ 이 본다.
+    const nextMig = readFileSync(R('db/deploy/migrate-2026-10-21-version-gate.sql'), 'utf8');
+    assert.ok(/SET @fresh := \(@old <=> '13'/.test(stripSqlComments(nextMig)), '다음 판(version-gate)이 13 에서 출발하지 않는다');
+    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '14', 'schema-calendar.sql 이 db_structure_version 14 를 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');
     assert.ok(/mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\\deploy\\migrate-2026-10-15-code-ids\.sql/.test(mig), '머리말에 실행 명령(utf8mb4, taskcalendar)이 없다');
@@ -388,8 +391,9 @@ export const checks = {
     const gone = ['db/deploy/init-db.ps1', 'db/deploy/init-db.cmd', 'db/deploy/migrate.ps1', 'db/deploy/migrate.cmd', 'db/schema.sql',
       'db/deploy/rollback-2026-08-24-org-id.sql'];
     for (const f of gone) assert.ok(!existsSync(R(f)), `지웠어야 할 낡은 진입점이 남아 있다: ${f}`);
-    const mig = readdirSync(R('db/deploy/')).filter((f) => /^migrate-.*\.sql$/.test(f));
-    assert.deepStrictEqual(mig, [MIG_NAME], `db/deploy 의 이관 파일이 ${MIG_NAME} 하나가 아니다: ${mig.join(', ')}`);
+    //  2026-10-21 버전 관문 이관(13 에서 14)이 하나 늘었다. 그 앞 판들은 여전히 git 이력에만 있다.
+    const mig = readdirSync(R('db/deploy/')).filter((f) => /^migrate-.*\.sql$/.test(f)).sort();
+    assert.deepStrictEqual(mig, [MIG_NAME, 'migrate-2026-10-21-version-gate.sql'], `db/deploy 의 이관 파일이 ${MIG_NAME} 와 버전 관문 이관 둘이 아니다: ${mig.join(', ')}`);
     const names = ['init-db.ps1', 'init-db.cmd', 'migrate.ps1', 'migrate.cmd', 'db/schema.sql', 'rollback-2026-08-24-org-id.sql',
       'migrate-2026-07-', 'migrate-2026-08-', 'migrate-2026-09-'];
     const bad = [];

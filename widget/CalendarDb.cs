@@ -35,11 +35,9 @@ namespace TaskCalendarWidget
         // (c) cal_user_rev.rev — 지금은 보관만 한다(폴링은 §3.7.3 의 '나중'). 스냅샷과 짝이다.
         public long Rev { get; }
 
-        // 프리앰블에서 읽은 스키마 버전(§3.6). 값을 나르기만 한다 —
-        //   '낡은 클라이언트의 파괴적 연산 차단' 판정은 쓰기 경로의 몫이다(§5.5).
-        //   ★ 그 판정 지점은 **CalendarWriteDb.SaveAsync 의 replaceAll 분기 하나뿐**이고,
-        //     비교 상대는 CalendarDb.ExpectedSchemaVersion 이다. 여기서 판정하지 않는 이유는
-        //     읽기를 막을 이유가 없어서다 — 낡은 위젯도 조회·편집은 계속되어야 한다(§5.5).
+        // 관문(DbGate)이 연결을 열며 읽은 DB 구조 번호(cal_schema_meta.db_structure_version). 값을 나르기만 한다.
+        //   ★ 읽기와 쓰기를 막는 판정은 연결마다 관문이 한다(VERSION-GATE §2.1). 이 값을 쓰는 곳은
+        //     CalendarWriteDb.SaveAsync 의 전량 교체 게이트(DbGate.AppStructureVersion 과 정확히 같아야 함)뿐이다.
         public string SchemaVersion { get; }
 
         // 이 스냅샷의 소유자. 쓰기 경로가 WHERE user_id 로 쓸 값이다.
@@ -93,28 +91,10 @@ namespace TaskCalendarWidget
     // ================================================================================
     internal sealed class CalendarDb
     {
-        // ── 이 위젯이 아는 스키마 판본(§5.5 「스키마 진화 규칙」) ──────────────────────
-        //   부팅 프리앰블이 읽은 서버 값(cal_schema_meta.schema_version)과 **접속 시 1회** 비교하고,
-        //   다르면 **파괴적 연산만** 막는다(전량 교체 = 가져오기·전체 초기화). 통상 저장·조회는
-        //   그대로 둔다 — 전 쓰기 봉인은 과하고, 낡은 위젯이라고 하루를 못 쓰게 만들 이유가 없다.
-        //   ★ `migrate-*.sql` 로 정본(db/deploy/schema-calendar.sql)의 값을 올릴 때 **이 상수도
-        //     같이 올린다.** 잊으면 tests/schema-guards.test.mjs 가드 ⑨ 가 빨간불을 낸다.
-        //   ★ 서버 값을 앱이 올려서 통과할 수는 없다 — 앱 계정의 cal_schema_meta 권한은 SELECT
-        //     하나뿐이다(db/deploy/grants-calendar.sql). 막으려는 대상이 자기 통과증을 발급하면
-        //     이 게이트는 무의미해진다(§5.5 ★).
-        //   ★ 2026-09-09: 8 → 9(migrate-2026-09-09-integrity.sql — 무결성 규칙 통일 + 감사 시각 정규화).
-        //   ★ 2026-09-10: 9 → 10(migrate-2026-09-10-dev-end-date.sql — project.dev_end_date 개발종료일 신설).
-        //     이번 판은 짝이 특히 중요하다 — ProjectDb.LoadProjectsJsonAsync 가 **그 새 컬럼을 SELECT 한다.**
-        //     v9 DB 에 이 위젯이 붙으면 그 질의가 1054 로 죽어 과제 목록이 통째로 빈다(DB 를 먼저 올릴 것).
-        //   ★ 2026-09-10: 10 → 11(migrate-2026-09-10-user-sort-order.sql — app_user.sort_order 명부 서열 신설).
-        //     같은 날 두 번째 판이다. 이번에도 짝이 중요하다 — ProjectDb.LoadMembersJsonAsync 가 그 컬럼을
-        //     SELECT·ORDER BY 하고 직원 관리 쓰기가 그 컬럼에 UPDATE 를 건다(DB 를 먼저 올릴 것).
-        //   ★ 2026-09-10: 11 → 12(migrate-2026-09-10-user-sort-order-int.sql — sort_order SMALLINT→INT UNSIGNED).
-        //   ★ 2026-10-15: 12 → 13(migrate-2026-10-15-code-ids.sql, 코드표 넷 번호 키 · CODE-TABLE-IDS).
-        //     짝이 가장 중요한 판이다. ProjectDb 의 과제·발주처·코드·직급 SQL 이 전부 새 번호 열(customer_id,
-        //     section_id, status_id, title_id)을 읽고 쓴다. v12 DB 에 이 위젯이 붙으면 그 질의가 1054 로 죽는다
-        //     (DB 를 먼저 올릴 것). 그 전 판들의 이관 파일은 git 이력에만 남아 있다(§8-2).
-        internal const string ExpectedSchemaVersion = "13";
+        // ── 이 위젯이 아는 DB 구조 번호 ─────────────────────────────────────────────
+        //   2026-10-21 부터 DbGate.AppStructureVersion(정수)이다. 옛 ExpectedSchemaVersion 은 부팅 때 한 번
+        //   비교해 전량 교체만 막았지만, 지금은 연결을 열 때마다 관문이 비교해 읽기와 쓰기를 모두 막는다
+        //   (docs/VERSION-GATE.md §2.1). 판 올림 이력(8 → 13)도 그 상수 옆으로 옮기지 않고 git 이력에 둔다.
 
         private readonly Action<string> _log;
 
@@ -131,7 +111,8 @@ namespace TaskCalendarWidget
         //   낙관적 잠금의 '영향 행 0 = 충돌' 계약은 드라이버 기본값(False)에 얹혀서 참이고,
         //   누가 true 로 바꾸거나 드라이버를 갈면 **값이 그대로인 저장이 전부 "다른 곳에서 먼저
         //   수정되었습니다"로 뜬다.** 명시해 두면 그 사고가 애초에 안 난다.
-        private static string BuildConnString() =>
+        //  internal: 관문 재확인(GateHost)과 업데이트 확인(Update.cs)이 같은 접속 대상을 쓴다.
+        internal static string BuildConnString() =>
             new MySqlConnectionStringBuilder
             {
                 Server = DeployConfig.DbHost,
@@ -232,11 +213,14 @@ namespace TaskCalendarWidget
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                 var ct = cts.Token;
-                await using var conn = await OpenReadAsync(ct);
+                //  관문이 연결을 열며 읽은 구조 번호를 그대로 스냅샷에 싣는다(전량 교체 게이트의 재료).
+                //  여기까지 왔으면 관문을 통과했으니 앱 상수와 같다. 따로 다시 읽지 않는다.
+                var (opened, gateMeta) = await DbGate.OpenWithMetaAsync(BuildConnString(), ct);
+                await using var conn = opened;
 
                 // ── 프리앰블(연결당 1회) ───────────────────────────────────────────
                 await ExecAsync(conn, ReadPreambleSql, ct);
-                string schemaVersion = await ReadSchemaVersionAsync(conn, ct);
+                string schemaVersion = (gateMeta.DbStructure ?? "").Trim();
                 int userId = await ResolveUserIdAsync(conn, loginId, ct);
 
                 // ── 스냅샷 트랜잭션 ────────────────────────────────────────────────
@@ -508,29 +492,14 @@ namespace TaskCalendarWidget
 
         // 읽기용 연결. 실패(오프라인·인증오류)는 그대로 던진다 — 호출측이 자기 문맥의 메시지로 처리한다.
         // ★ 읽기에는 권한 검사를 두지 않는다(USER-LOGIN §3.3) — 회수의 목적은 편집 차단이지 조회 차단이 아니다.
-        private static async Task<MySqlConnection> OpenReadAsync(CancellationToken ct)
-        {
-            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
-            var conn = new MySqlConnection(BuildConnString());
-            try { await conn.OpenAsync(ct); }
-            catch { await conn.DisposeAsync(); throw; }   // 못 연 연결을 새지 않게 정리하고 원인은 그대로 전파
-            return conn;
-        }
+        // ★ 연결은 관문(DbGate)이 연다. 장애 주입, 열기 실패 정리, 구조 번호 판정이 모두 그 안에 있다.
+        private static Task<MySqlConnection> OpenReadAsync(CancellationToken ct) =>
+            DbGate.OpenAsync(BuildConnString(), ct);
 
         private static async Task ExecAsync(MySqlConnection conn, string sql, CancellationToken ct)
         {
             await using var cmd = new MySqlCommand(sql, conn);
             await cmd.ExecuteNonQueryAsync(ct);
-        }
-
-        // 스키마 버전(§3.6 프리앰블 · §5.5). 행이 없으면 "" — 판정은 쓰기 경로의 몫이라 여기선 막지 않는다.
-        //   ★ 이 읽기를 §3.5 의 스냅샷 트랜잭션 안으로 끌어넣지 말 것. 조회 스냅샷과 같은 창에 둘 이유가
-        //     없고(§3.5 의 '빠지는 것' 표), 창만 길어진다.
-        private static async Task<string> ReadSchemaVersionAsync(MySqlConnection conn, CancellationToken ct)
-        {
-            await using var cmd = new MySqlCommand("SELECT v FROM cal_schema_meta WHERE k='schema_version'", conn);
-            var v = await cmd.ExecuteScalarAsync(ct);
-            return v == null || v is DBNull ? "" : (v.ToString() ?? "");
         }
 
         // 이미 연 연결로 해석한다(연결당 1회). 값은 반드시 파라미터 바인딩 — loginId 는 사용자 입력에서 왔다.

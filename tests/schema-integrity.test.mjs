@@ -211,7 +211,8 @@ function checkCatNoFk(sql) {
     'fk_crh_cat 이 RESTRICT 가 아니다 — CASCADE 는 침묵 삭제와 같은 말인데 이 값은 회사로 나간 보고 숫자다');
 }
 
-//  계약⑥ — 정본이 시딩하는 schema_version 과 마이그레이션 최댓값이 같다.
+//  계약⑥: 정본이 시딩하는 구조 번호와 마이그레이션 최댓값이 같다.
+//    2026-10-21 부터 키는 db_structure_version 이다(옛 schema_version, migrate-2026-10-21-version-gate.sql).
 //    갈라지면 "새로 세운 DB" 와 "마이그레이션으로 온 DB" 가 서로 다른 버전을 자칭한다.
 //  ★ 파서는 문자열을 준다(DB·위젯의 비교가 문자열이라 그쪽이 정본이다). 이 계약만 마이그레이션의
 //    최댓값과 크기 비교를 하므로 여기서 숫자로 바꾼다.
@@ -223,7 +224,8 @@ function migratedVersions(files, readFn) {
   const out = [];
   for (const f of files) {
     const src = stripSql(readFn(f));
-    const re = /UPDATE\s+cal_schema_meta\s+SET\s+v\s*=\s*'(\d+)'/gi;
+    //  구조 번호 행만 센다. 같은 파일의 db_updating 갱신(SET v = '0')을 판으로 읽지 않게 키까지 본다.
+    const re = /UPDATE\s+cal_schema_meta\s+SET\s+v\s*=\s*'(\d+)'[^;]*?WHERE\s+k\s*=\s*'(?:schema_version|db_structure_version)'/gi;
     let m;
     while ((m = re.exec(src)) !== null) out.push({ file: f, v: Number(m[1]) });
   }
@@ -231,15 +233,15 @@ function migratedVersions(files, readFn) {
 }
 function checkVersionParity(sql, versions) {
   const seeded = seededVersion(sql);
-  assert.ok(seeded !== null, 'schema-calendar.sql 의 schema_version 시딩을 읽지 못했다(판정 불가)');
-  //  2026-10-15 지난 이관 파일을 지워(CODE-TABLE-IDS §8-2) 남은 상향은 migrate-2026-10-15-code-ids.sql 의 한 건이다.
+  assert.ok(seeded !== null, 'schema-calendar.sql 의 db_structure_version 시딩을 읽지 못했다(판정 불가)');
+  //  2026-10-15 지난 이관 파일을 지워(CODE-TABLE-IDS §8-2) 남은 상향은 code-ids(12 에서 13)와 version-gate(13 에서 14) 두 건이다.
   //  0건이면 열거나 파싱이 빗나간 것이라 이 계약이 아무것도 대조하지 않는다.
   assert.ok(versions.length >= 1,
     'migrate-*.sql 에서 버전 상향을 ' + versions.length + '건만 찾았다. 열거나 파싱이 빗나가면 ' +
     '이 계약은 아무것도 대조하지 않는다(2026-10-15 기준 1건)');
   const top = versions.reduce((a, b) => (b.v > a.v ? b : a));
   assert.strictEqual(seeded, top.v,
-    'schema-calendar.sql 이 시딩하는 schema_version(' + seeded + ')과 가장 높은 마이그레이션(' +
+    'schema-calendar.sql 이 시딩하는 구조 번호(' + seeded + ')과 가장 높은 마이그레이션(' +
     top.file + ' → ' + top.v + ')이 다르다. 구조를 고칠 때 정본과 마이그레이션 중 한쪽만 ' +
     '올리면 두 배포 경로가 서로 다른 버전을 자칭하게 되고, 앱의 버전 가드가 어느 쪽을 믿을지 모른다.');
 }
@@ -345,10 +347,10 @@ test('변이⑤: fk_crh_cat 선언을 지우면 계약⑤ 가 실패한다', () 
 test('변이⑥: 정본 시딩 값만 바꾸면 계약⑥ 이 실패한다(마이그레이션과 갈라짐)', () => {
   const seeded = seededVersion(CANON);
   assert.ok(seeded !== null, '시딩 값을 읽지 못했다');
-  const bad = CANON.replace("VALUES ('schema_version', '" + seeded + "'", "VALUES ('schema_version', '" + (seeded - 1) + "'");
+  const bad = CANON.replace("VALUES ('db_structure_version', '" + seeded + "'", "VALUES ('db_structure_version', '" + (seeded - 1) + "'");
   assert.notStrictEqual(bad, CANON, '변이가 원본을 바꾸지 못했다 — 시딩 문장의 형태가 바뀌었다');
   const versions = migratedVersions(migrateFiles, (f) => readOr(new URL(f, DEPLOY_DIR), 'db/deploy/' + f));
-  assert.throws(() => checkVersionParity(bad, versions), /시딩하는 schema_version/);
+  assert.throws(() => checkVersionParity(bad, versions), /시딩하는 구조 번호/);
   //  통제군 — 손대지 않은 원본은 통과한다
   assert.doesNotThrow(() => checkVersionParity(CANON, versions));
 });

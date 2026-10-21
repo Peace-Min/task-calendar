@@ -57,7 +57,7 @@ function keyNote(n) {
     case 'app_user':     return `번호(${pkCols(n)})가 기본키인 이유: login_id 는 netcus 가 발급하는 값이라 우리가 소유하지 않고, cal_* 여러 표가 참조하며, 다중경로라 RESTRICT 만 걸려 개명이 ERROR 1451 이었다. 합성 데이터 실측으로 login_id PK 는 user_id PK 보다 인덱스가 +69%(43.23 MB vs 25.59 MB). 2026-08-24 에 옮겼다.`;
     case 'project':      return `번호(${pkCols(n)})가 기본키이고 uid 가 외부 안정 참조키인 이유: 같은 발주처, 같은 사업명이 정당하게 반복되므로 이름은 키가 될 수 없다. id 는 내부용, uid 는 캘린더가 과제를 가리킬 때 쓰는 값이라 한 번 발급하면 바뀌지 않는다.`;
     case 'cal_room':     return `(${pkCols(n)}) 복합키를 그대로 두는 이유: 이 표를 가리키는 외래키가 없어 규칙의 대상이 아니다. 번호를 붙이면 중복을 막을 UNIQUE(user_id, name) 이 따로 필요해 인덱스가 2개에서 3개가 되고, 앱은 한 사람의 목록을 WHERE user_id=? 로 통째로 읽는데 지금 기본키가 그 행들을 붙여 둔다. 저장은 지우고 다시 넣는 방식이라 번호는 소모만 된다.`;
-    case 'cal_schema_meta': return `문자열 ${pkCols(n)} 가 키인 이유: 행이 schema_version 하나인 설정 표이고 앱은 늘 k 로 찾는다. 가리키는 외래키가 없다. 번호를 붙여도 k 에 UNIQUE 를 또 걸어야 한다.`;
+    case 'cal_schema_meta': return `문자열 ${pkCols(n)} 가 키인 이유: 행이 버전 관문 키 다섯 개(db_structure_version 등)뿐인 설정 표이고 앱은 늘 k 로 찾는다. 가리키는 외래키가 없다. 번호를 붙여도 k 에 UNIQUE 를 또 걸어야 한다.`;
     default: return '';
   }
 }
@@ -367,7 +367,7 @@ const html = `<!DOCTYPE html>
   <p class="sub">개발 PC 에서 확인한 현재 상태와 폐쇄망 서버에서 달라져야 할 항목.</p>
   <div class="road">
     <div class="r"><div class="when">접속 범위</div><div class="what"><b>${esc(S.meta.users.join(', '))}</b><p>taskmgr_app@% 는 어디서든 붙는다. 사내 서브넷으로 좁힐지 배포 때 정한다(ROADMAP 미결).</p></div></div>
-    <div class="r"><div class="when">버전</div><div class="what"><b>cal_schema_meta.schema_version = ${esc(S.meta.schemaVersion)}</b><p>위젯 빌드 상수와 같아야 부팅한다. 다르면 파괴적 연산만 막고 읽기는 한다.</p></div></div>
+    <div class="r"><div class="when">버전</div><div class="what"><b>cal_schema_meta.db_structure_version = ${esc(S.meta.schemaVersion)}</b><p>앱의 구조 번호(DbGate.AppStructureVersion)와 같아야 동작한다. 다르면 읽기와 쓰기를 모두 막고 안내를 띄운다.</p></div></div>
     <div class="r"><div class="when">트리거</div><div class="what"><b>${S.meta.triggers}개</b><p>감사 트리거는 8월 11일에 없앴다. 서버에 트리거가 하나라도 있으면 폐기 전 DB 를 쓰고 있다는 뜻이다.</p></div></div>
     <div class="r"><div class="when">행 수</div><div class="what"><b>cal_* 합 ${num(calRows)}행</b><p>대부분 더미(seed-dummy.mjs)다. 실서비스 전에 <code>seed-dummy.mjs --purge --all-users</code> 로 삭제한다. 03 절의 행 수도 같은 기준으로 볼 것.</p></div></div>
     <div class="r"><div class="when">구축</div><div class="what"><b>setup-taskcalendar 한 번</b><p>서버는 처음 세우므로 이관 파일은 쓰지 않는다. 구버전 DB taskmgr 에서 과제 트랙을 복사하면서 코드 이름을 번호로 바꾼다. migrate-2026-10-15-code-ids.sql 은 데이터가 이미 있는 v12 DB 를 v13 으로 옮길 때만 쓴다(백업 먼저, --force 없이).</p></div></div>

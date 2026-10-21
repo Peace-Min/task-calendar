@@ -16,6 +16,7 @@ namespace TaskCalendarWidget
     //    저장 실패   saveState 회신 { ok:false, conflict, schemaMismatch, error, kind, detail }
     //    S9 해소     saveState 회신 { ok:true, conflict:false, error:"", rev, ins:0, upd:0, del:0, renamedTo:"", renameError:"", resolvedConflict:true }
     //    로그인 실패 userLogin 회신 { ok:false, msg, kind, detail }   (DB 조회 실패일 때만 kind 가 붙는다)
+    //    버전 관문   위 회신 모두 { ok:false, kind:'gate', gate:{...} } 이 붙을 수 있다, 푸시는 __versionGate(GateHost.cs)
     //    핑          dbPing 회신   { ok:true } | { ok:false, kind, error, detail }
     //    장애 주입   __dbFault 회신 { ok:true, mode } | { ok:false, error }
     //    S12 푸시    window.__dbConnLost({ kind, detail })              — network 일 때만 · 2초 디바운스
@@ -34,6 +35,9 @@ namespace TaskCalendarWidget
         {
             string kind = cap.HasError ? cap.Kind : DbErrorKind.Unknown;
             Log("DB 부팅 조회 실패: kind=" + kind + " · detail=" + cap.Detail);
+            //  버전 관문이 막았으면 옵션에 gate 정보를 싣는다(VERSION-GATE §2.3). 화면 전환은 __versionGate 푸시가 한다.
+            var gate = kind == DbErrorKind.Gate ? (DbGate.FlowBlocked ?? DbGate.Last) : null;
+            if (gate != null) { ApplyStateError(DbErrors.BootMessage(kind), false, kind, cap.Detail, gate); return; }
             ApplyStateError(DbErrors.BootMessage(kind), DbErrors.IsRetryable(kind), kind, cap.Detail);
         }
 

@@ -996,11 +996,14 @@ try {
     Remove-Item $script:tmpOut   -Force -ErrorAction SilentlyContinue; $script:tmpOut   = $null
   }
 
-  # 5-6) 스키마 버전 행(§5.5). 행이 없으면 낡은 클라이언트 차단이 죽은 문자가 된다.
+  # 5-6) 버전 관문 행(docs/VERSION-GATE.md). 2026-10-21 부터 키는 db_structure_version 이다(옛 schema_version).
+  #      행이 없으면 앱의 관문이 '모름' 으로 판정해 읽기와 쓰기를 모두 막는다.
   if($expTables -contains 'cal_schema_meta'){
-    $schemaVer = Q "SELECT v FROM cal_schema_meta WHERE k='schema_version';"
-    if($schemaVer -eq ""){ $fail += "★ cal_schema_meta 에 schema_version 행이 없습니다 — 위젯이 빌드 상수와 비교할 대상이 없어 §5.5 의 '낡은 클라이언트는 파괴적 연산 차단'이 성립하지 않습니다" }
-    else { Ok "스키마 버전 행 schema_version = $schemaVer" }
+    $schemaVer = Q "SELECT v FROM cal_schema_meta WHERE k='db_structure_version';"
+    $updating  = Q "SELECT v FROM cal_schema_meta WHERE k='db_updating';"
+    if($schemaVer -eq ""){ $fail += "★ cal_schema_meta 에 db_structure_version 행이 없습니다. 앱의 버전 관문이 '모름' 으로 판정해 모든 접속을 막습니다" }
+    else { Ok "구조 번호 행 db_structure_version = $schemaVer" }
+    if($updating -ne "0"){ $fail += "★ cal_schema_meta.db_updating 이 [$updating] 입니다('0' 이어야 앱이 동작합니다)" }
   }
 
   # 5-7) ★ cal_* 트리거가 0개인지. 2026-08-11 결정으로 이 키트는 트리거를 만들지 않는다.

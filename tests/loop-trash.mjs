@@ -190,7 +190,7 @@ SELECT 'U', COUNT(*) FROM app_user     WHERE login_id     NOT LIKE 'zzU%';
 SELECT 'C', COUNT(*) FROM customer     WHERE name         NOT LIKE 'zzC%';
 SELECT 'S', COUNT(*) FROM section_code WHERE name         NOT LIKE 'zzT%';
 SELECT 'T', COUNT(*) FROM status_code  WHERE name         NOT LIKE 'zzT%';
-SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version';
+SELECT 'V', v FROM cal_schema_meta WHERE k='db_structure_version';
 SELECT 'M', edit_role, CAST(is_active AS CHAR), CAST(user_id AS CHAR), name FROM app_user WHERE login_id=${esc(me)};
 SELECT 'H', IFNULL(SHA2(GROUP_CONCAT(x ORDER BY x SEPARATOR '|'),256),'(빈집합)') FROM (
             SELECT CONCAT('P/',uid,'/',is_active,'/',section_id,'/',customer_id,'/',IFNULL(status_id,'-')) AS x FROM project WHERE project_name NOT LIKE 'zzP%'

@@ -987,7 +987,7 @@ else{
 #
 #     widget/CalendarDb.cs 의 부팅 경로가 실제로 던지는 조회를 그대로 쓴다:
 #       · ReadPreambleSql                                       (§3.6 접속 프리앰블)
-#       · SELECT v FROM cal_schema_meta WHERE k='schema_version' (§5.5 판본 확인)
+#       - SELECT k, v FROM cal_schema_meta WHERE k IN (...)       (버전 관문, DbGate.MetaSql)
 #       · SELECT user_id FROM app_user WHERE login_id=?          (공개 API 1)
 #       · SELECT rev FROM cal_user_rev WHERE user_id=?           (§3.5 스냅샷 판본)
 #       · SELECT uid, name, color FROM cal_category …            (부팅 조회 1/10)
@@ -1032,7 +1032,7 @@ if($NoSmoke){
     $probeLoginEsc = $probeLogin -replace "'","''"
     $smokeSqls = @(
       @("프리앰블",       "SET SESSION innodb_lock_wait_timeout=5, SESSION time_zone='+00:00', SESSION transaction_isolation='REPEATABLE-READ';"),
-      @("cal_schema_meta","SELECT v FROM cal_schema_meta WHERE k='schema_version';"),
+      @("cal_schema_meta","SELECT k, v FROM cal_schema_meta WHERE k IN ('db_structure_version','db_updating','app_latest_version','app_installer_file','app_installer_sha256');"),
       @("app_user",       "SELECT user_id FROM app_user WHERE login_id='$probeLoginEsc';"),
       @("cal_user_rev",   "SELECT rev FROM cal_user_rev WHERE user_id=(SELECT user_id FROM app_user WHERE login_id='$probeLoginEsc');"),
       @("cal_category",   "SELECT uid, name, color FROM cal_category WHERE user_id=(SELECT user_id FROM app_user WHERE login_id='$probeLoginEsc') ORDER BY sort_order;"),

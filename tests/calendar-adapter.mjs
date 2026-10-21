@@ -1384,8 +1384,8 @@ namespace TaskCalendarWidget
             await Exec(conn, "SET SESSION innodb_lock_wait_timeout=5", ct);
             await Exec(conn, "SET SESSION time_zone='+00:00'", ct);
             await Exec(conn, "SET SESSION transaction_isolation='REPEATABLE-READ'", ct);
-            using (var vc = new MySqlCommand("SELECT v FROM cal_schema_meta WHERE k='schema_version'", conn))
-                { var v = await vc.ExecuteScalarAsync(ct); if (v == null) throw new Exception("cal_schema_meta 가 비어 있습니다"); }
+            using (var vc = new MySqlCommand("SELECT v FROM cal_schema_meta WHERE k='db_structure_version'", conn))
+                { var v = await vc.ExecuteScalarAsync(ct); if (v == null) throw new Exception("cal_schema_meta 에 db_structure_version 이 없습니다"); }
 
             int userId;
             using (var uc = new MySqlCommand("SELECT user_id FROM app_user WHERE login_id=@id", conn))
@@ -1733,9 +1733,13 @@ ${files.map((f) => `    <Compile Include=${JSON.stringify(f)} />`).join('\n')}
    *   loop-calendar-write 등 다른 러너는 이미 두 파일을 링크한다. (d7574fb 에서 들어왔다가 그 커밋 롤백 때 이 부분만 다시 살림) */
   const DB_ERRORS_CS = join(WIDGET_DIR, 'DbErrors.cs');
   const DB_FAULT_CS = join(WIDGET_DIR, 'DbFault.cs');
+  /*   2026-10-21 버전 관문(VERSION-GATE §2.1): CalendarDb, ProjectDb 가 연결을 DbGate.OpenAsync 로 열고
+   *   DbErrors 가 DbGateException 을 분류한다. DbGate.cs 를 더한 조합을 마지막에 둔다. */
+  const DB_GATE_CS = join(WIDGET_DIR, 'DbGate.cs');
   const extraCandidates = [[], [REPO_PATHS_CS], [USER_SESSION_CS], [USER_SESSION_CS, REPO_PATHS_CS],
                            [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS],
-                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS]];
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS],
+                           [PROJECT_DB_CS, REPO_PATHS_CS, USER_SESSION_CS, DB_ERRORS_CS, DB_FAULT_CS, DB_GATE_CS]];
   let lastErr = '';
   for (const ex of extraCandidates) {
     const files = base.concat(ex.filter((f) => existsSync(f)));
@@ -2360,7 +2364,7 @@ function checkBootQuery(connDelta) {
   if (!has(/time_zone/i)) violate('§3.6', "접속 프리앰블에 `SET SESSION time_zone` 이 없다 — 서버 함수가 한 줄만 섞여도 그 값만 9시간 어긋난 채 영구 혼재한다");
   else ok('§3.6 time_zone 설정 관측됨');
   if (!has(/innodb_lock_wait_timeout/i)) violate('§3.6', '접속 프리앰블에 `SET SESSION innodb_lock_wait_timeout` 이 없다');
-  if (!has(/cal_schema_meta/i)) violate('§3.6', '접속 프리앰블이 cal_schema_meta(schema_version)를 읽지 않았다 — 스키마 불일치를 검출할 길이 없다');
+  if (!has(/cal_schema_meta/i)) violate('§3.6', '연결이 cal_schema_meta(버전 관문 키, db_structure_version 등)를 읽지 않았다. 스키마 불일치를 검출할 길이 없다');
   if (!has(/app_user/i)) violate('§3.6', 'login_id → user_id 해석(app_user 조회)이 관측되지 않았다');
 
   const missed = NINE.filter((t) => !new RegExp(`\\b${t}\\b`, 'i').test(all));

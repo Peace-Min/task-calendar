@@ -28,6 +28,11 @@ namespace TaskCalendarWidget
         //  실패는 ReportDb 안에서 잡아 로그로 남는다(조용히 삼키는 것이 아니다).
         void SaveDailyReport(int y, int m, int d, string status, int overtime, string content, string hoursJson);
         void SaveWeeklyReport(string sdate, string edate, string subject, string content, string endwork, string planwork);
+
+        //  버전 관문 확인(VERSION-GATE §2.4). 관문으로 DB 연결을 한 번 열고 닫는다. false = 막혔다.
+        //  ★ 회사 사이트에 접속하기 **전에** 부른다. 보고는 사이트로 먼저 나가고 DB 기록은 나중이라,
+        //    막힌 상태에서 보내면 기록만 실패한다(DB-RELEASE-OPS §3.1).
+        Task<bool> GateOkAsync();
     }
 
     // 회사 일간보고(netcus pjm) 자동 전송. 보조 WebView2(메인과 같은 환경=쿠키/세션 공유)로
@@ -369,6 +374,17 @@ namespace TaskCalendarWidget
         // ----- 진행/결과 보고(메인 웹뷰로) -----
         private void NetcusProgress(string msg) { Log("netcus: " + msg); JsCall("window.__netcusProgress && window.__netcusProgress(" + JsonSerializer.Serialize(msg) + ")"); }
         private void NetcusResult(bool ok, string msg) { Log("netcus result: " + ok + " / " + msg); JsCall("window.__netcusResult && window.__netcusResult(" + (ok ? "true" : "false") + "," + JsonSerializer.Serialize(msg) + ")"); }
+        //  관문이 막아 사이트에 접속하지 않았다. 셋째 인자로 kind 'gate' 와 관문 정보를 싣는다(옛 웹은 무시한다).
+        //  화면 전환은 호스트가 이미 민 __versionGate 가 한다.
+        private void NetcusGateBlocked()
+        {
+            const string m = "앱과 서버의 버전이 맞지 않아 회사 사이트로 보내지 않았습니다.";
+            var g = DbGate.Last;
+            string extra = g == null ? JsonSerializer.Serialize(new { kind = DbErrorKind.Gate })
+                                     : JsonSerializer.Serialize(new { kind = DbErrorKind.Gate, gate = DbGate.ReplyGate(g) });
+            Log("netcus result: false / " + m + " (버전 관문)");
+            JsCall("window.__netcusResult && window.__netcusResult(false," + JsonSerializer.Serialize(m) + "," + extra + ")");
+        }
 
         // ----- 진행 프로토콜(진행바용 — JS 렌더는 다음 Phase). 텍스트 NetcusProgress와 병행(제거 안 함). -----
         private void NetcusBusy(bool on) { JsCall("window.__netcusBusy && window.__netcusBusy(" + (on ? "true" : "false") + ")"); }
@@ -454,6 +470,8 @@ namespace TaskCalendarWidget
             Action? detach = null;
             try
             {
+                //  버전 관문(VERSION-GATE §2.4). 자격 확인과 창 준비보다 먼저, 회사 사이트에 닿기 전에 본다.
+                if (!await _host.GateOkAsync()) { NetcusGateBlocked(); return; }
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다. 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
                 if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다. 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)
@@ -601,6 +619,8 @@ namespace TaskCalendarWidget
             Action? detach = null;
             try
             {
+                //  버전 관문(VERSION-GATE §2.4). 자격 확인과 창 준비보다 먼저, 회사 사이트에 닿기 전에 본다.
+                if (!await _host.GateOkAsync()) { NetcusGateBlocked(); return; }
                 var (id, pw) = NetcusLoadCreds();
                 if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(pw)) { NetcusResult(false, "자격증명이 없습니다. 설정 → 회사 일간보고에서 ID/비밀번호를 저장하세요."); return; }
                 if (NetcusCredsValid() == false) { NetcusResult(false, "저장된 자격증명이 로그인 실패 상태입니다. 설정에서 자격증명을 다시 확인하세요."); return; }   // 검증 실패 확정 → 로그인 시도 없이 차단(busy는 finally 해제)

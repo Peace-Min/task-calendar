@@ -539,18 +539,24 @@ const c8 = {
     const tx = cs.indexOf('BeginTransactionAsync');
     assert.ok(tx > 0, '트랜잭션 시작을 찾지 못했다');
     assert.ok(g < tx, '스키마 게이트가 트랜잭션을 연 뒤에 있다 — 거부해도 rev 가 이미 올라간다(§3.1)');
-    assert.ok(/CalendarDb\.ExpectedSchemaVersion/.test(cs.slice(g, g + 400)),
-      '게이트가 위젯 상수(CalendarDb.ExpectedSchemaVersion)와 비교하지 않는다');
+    //  2026-10-21 부터 위젯 상수는 DbGate.AppStructureVersion(정수)이다. 게이트는 그 문자열 꼴(appStructure)과 비교한다.
+    assert.ok(/appStructure/.test(cs.slice(g, g + 400)) &&
+              /string appStructure = DbGate\.AppStructureVersion\.ToString\(CultureInfo\.InvariantCulture\);/.test(cs.slice(Math.max(0, g - 300), g)),
+      '게이트가 위젯 상수(DbGate.AppStructureVersion)와 비교하지 않는다');
   },
 
-  //  ⑧-2 통상 저장은 **막지 않는다**(§5.5 "전 쓰기 봉인은 과하다"). 게이트 조건에서 replaceAll 이
-  //       빠지면 낡은 위젯을 쓰는 사람은 그날 하루 아무것도 저장하지 못한다.
+  //  ⑧-2 이 게이트(부팅 스냅샷의 판본 비교)는 전량 교체만 막는다. 게이트 조건에서 replaceAll 이 빠지면
+  //       부팅 뒤 판본 비교가 통상 저장까지 막는다.
+  //       ★ 2026-10-21 부터 통상 저장을 포함한 모든 읽기와 쓰기의 차단은 버전 관문(DbGate)이 연결마다 한다
+  //         (VERSION-GATE §2.1, §2.2). 판정 지점이 둘이 되지 않도록 스냅샷 판본은 여기 한 곳에서만 비교한다.
   normalSaveNotBlocked(cs) {
     const g = cs.indexOf('if (replaceAll && !string.Equals(prev.SchemaVersion');
     assert.ok(g > 0, '스키마 게이트를 찾지 못했다');
-    //  게이트 앞에 다른 스키마 비교가 또 있으면 그쪽이 통상 저장까지 막고 있을 수 있다.
-    assert.ok(!/ExpectedSchemaVersion/.test(cs.slice(0, g)),
-      '게이트보다 앞에서 스키마를 또 비교한다 — 통상 저장까지 막고 있지 않은지 확인할 것(§5.5)');
+    //  게이트 앞에 다른 스냅샷 판본 비교가 또 있으면 그쪽이 통상 저장까지 막고 있을 수 있다.
+    assert.ok(!/prev\.SchemaVersion/.test(cs.slice(0, g)),
+      '게이트보다 앞에서 스냅샷 판본을 또 비교한다. 통상 저장까지 막고 있지 않은지 확인할 것(§5.5)');
+    assert.strictEqual((cs.match(/prev\.SchemaVersion/g) || []).length, 3,
+      '스냅샷 판본(prev.SchemaVersion)을 게이트 밖에서도 읽는다. 판정 지점은 이 게이트 하나다');
   },
 
   //  ⑧-3 거부는 **충돌과 구분되는 신호**로 나간다. 같은 상자에 담으면 사용자가 '새로고침'만
@@ -569,8 +575,10 @@ const c8 = {
 
   //  ⑧-4 부팅 meta 가 두 판본을 함께 실어, 화면이 '어느 쪽이 낡았는지'를 말할 수 있게 한다.
   bootMetaCarriesBoth(mw, app) {
-    assert.ok(/expectedSchema = CalendarDb\.ExpectedSchemaVersion/.test(mw) && /schemaMismatch,/.test(mw),
-      '부팅 meta 에 expectedSchema·schemaMismatch 가 없다 — 배지가 서버 값만 보고 정상으로 보인다');
+    //  2026-10-21 부터 위젯 판본은 DbGate.AppStructureVersion 이고, meta 에 관문 판정(gate)이 함께 간다.
+    assert.ok(/string expectedSchema = DbGate\.AppStructureVersion\.ToString\(/.test(mw) &&
+              /new \{ schemaVersion = snap\.SchemaVersion, expectedSchema, schemaMismatch, gate,/.test(mw),
+      '부팅 meta 에 expectedSchema·schemaMismatch·gate 가 없다. 배지가 서버 값만 보고 정상으로 보인다');
     const b = bodyOf(app, 'function renderDataSourceBadge(meta){');
     assert.ok(/m\.schemaMismatch/.test(b) && /var\(--danger\)/.test(b),
       '배지가 스키마 불일치를 경고 톤으로 알리지 않는다');

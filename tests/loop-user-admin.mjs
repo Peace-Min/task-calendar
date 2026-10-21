@@ -181,7 +181,7 @@ SELECT 'U', u.user_id, u.login_id, u.name, IFNULL(t.name,''), IFNULL(CAST(u.org_
   FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id
                   LEFT JOIN title_code t ON t.title_id = u.title_id
  ORDER BY u.sort_order IS NULL, u.sort_order, u.name;
-SELECT 'V', v FROM cal_schema_meta WHERE k='schema_version'`;
+SELECT 'V', v FROM cal_schema_meta WHERE k='db_structure_version'`;
 
 const isTemp = (lid) => /^zzU/.test(lid || '');
 

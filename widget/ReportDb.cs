@@ -268,16 +268,18 @@ namespace TaskCalendarWidget
         }
 
         // ── 내부 ─────────────────────────────────────────────────────────────────
+        //  연결은 버전 관문(DbGate)이 연다(장애 주입, 열기 실패 정리, 구조 번호 판정).
+        //  ★ 프리앰블이 실패하면 연결을 닫고 원인을 그대로 던진다. 예전에는 열린 연결을 흘렸다.
         private static async Task<MySqlConnection> OpenWriteAsync(CancellationToken ct)
         {
-            DbFault.ThrowIfActive();   // 디버그 장애 주입(OFFLINE-RESILIENCE §7) — 배포 실행에서는 무동작
-            var conn = new MySqlConnection(BuildConnString());
-            await conn.OpenAsync(ct);
-            await using (var pre = conn.CreateCommand())
+            var conn = await DbGate.OpenAsync(BuildConnString(), ct);
+            try
             {
+                await using var pre = conn.CreateCommand();
                 pre.CommandText = WritePreambleSql;      // 프리앰블은 연 연결마다 — 예외를 두면 그 자리가 규약 밖이 된다
                 await pre.ExecuteNonQueryAsync(ct);
             }
+            catch { await conn.DisposeAsync(); throw; }
             return conn;
         }
 
