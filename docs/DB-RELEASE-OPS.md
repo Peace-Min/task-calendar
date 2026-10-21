@@ -159,6 +159,7 @@
 
 - 앱의 구조 번호 상수(`DbGate.AppStructureVersion`)와 정본 스키마 `db/deploy/schema-calendar.sql` 의 시드 값을 새 조각과 같은 커밋에서 올린다. `tests/schema-guards.test.mjs` 가드가 어긋남을 잡는다.
 - 만든 `release-v<버전>.sql` 은 개발 PC 의 MySQL 에서 **같은 권한의 시험 계정**(`taskcalendar.*` 전체 권한만)으로, 개발 DB 사본에 먼저 끝까지 돌려 본 뒤 넘긴다(옛 번호 사본에서 처음, 다시 돌리기, 중간에 멈춘 상태에서 다시 돌리기).
+- **새 표를 만드는 조각과 권한.** release SQL 은 권한을 줄 수 없다(GRANT 금지). 폐쇄망 서버의 앱 계정은 `taskcalendar.*` 전체 권한이라 새 표도 바로 쓴다. 반면 표마다 권한을 주는 환경(외부망 개발 PC 의 최소 권한 앱 계정)에서는 새 표에 권한이 없어 1142 로 실패한다. 그런 환경은 정본 권한 파일(`grants-calendar.sql`, `create-app-user.sql`)대로 root 로 따로 GRANT 한다(2026-10-21 회의실 공용화 QA 에서 확인: `room_code` 권한을 주고 지운 `cal_room` 권한은 거둠).
 
 ## 6. 실패했을 때
 

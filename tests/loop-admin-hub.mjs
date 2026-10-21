@@ -14,7 +14,7 @@
  *      도킹 창의 사각형이 오른쪽 칸 안에 있다 · inert 가 칸 안에 번지지 않았다.
  *   H3b 이름·편집만(docs/ADMIN-HUB-3.md R1·R2 · 보기만 한다) — 왼쪽 두 휴지통 항목 = 「🗑 휴지통」(id gone · trash) · 위치 줄 ·
  *      📁 회사 과제 › 📁 공식 과제(도킹)의 상세·목록에 「캘린더에 추가 · ✓ 추가됨 · 제거」 · ✓ · 왼쪽 막대가 보이지 않는다(편집·숨김은 보인다).
- *   H3c 항목 분리(docs/ADMIN-HUB-4.md N4 · 보기만 한다) — 왼쪽 9개(사람 4 · 회사 과제 5) · 직급/소속/구분/상태가 그 탭으로 도킹 ·
+ *   H3c 항목 분리(docs/ADMIN-HUB-4.md N4 · 보기만 한다) — 왼쪽 10개(사람 4, 회사 과제 5, 일정 1) · 직급/소속/구분/상태가 그 탭으로 도킹 ·
  *      머리 제목 = 그 이름 · 화면 안 탭 전환 숨김 · 위치 줄 · 직급·소속 줄에 사용 개수 배지 없음(N1) · 꺼진 [숨김] = aria-disabled + 이유(N2).
  *      구분·상태는 고정 번호 2번 줄만 [숨김]이 잠긴다(CODE-TABLE-IDS §3). 그 버튼을 눌러도 확인창과 호스트 요청이 없다(이것만 누른다).
  *   H4 📁 회사 과제 › 🏭 발주처 — zz 발주처 하나를 **화면으로** 추가(＋ 추가) → 목록·DB(선택)에 생긴다.
@@ -314,10 +314,10 @@ async function main() {
   }
 
   //  H3c — 항목 분리(N4) · 배지 없음(N1) · 꺼진 숨김의 이유(N2) — 보기만 한다(아무것도 누르지 않는다: 숨김·순서 없음)
-  log('H3c 항목 9개 · 직급/소속/구분/상태 = 그 탭으로 도킹 · 제목 · 탭 전환 숨김 · 배지 없음 · 꺼진 숨김 이유');
+  log('H3c 항목 10개 · 직급/소속/구분/상태 = 그 탭으로 도킹 · 제목 · 탭 전환 숨김 · 배지 없음 · 꺼진 숨김 이유');
   {
     const items = await evj(`JSON.stringify([].map.call(document.querySelectorAll('#ahNav [data-ahitem]'), function(b){ return b.dataset.ahitem; }))`);
-    ok('H3c 왼쪽 항목 9개 = 사람 4 · 회사 과제 5', J(items) === J(['members', 'title', 'unit', 'gone', 'projects', 'cust', 'section', 'status', 'trash']), J(items));
+    ok('H3c 왼쪽 항목 10개 = 사람 4, 회사 과제 5, 일정 1(회의실, SHARED-ROOMS)', J(items) === J(['members', 'title', 'unit', 'gone', 'projects', 'cust', 'section', 'status', 'trash', 'rooms']), J(items));
     const SPEC = [['title', 'orgTitleModal', '직급', 'people'], ['unit', 'orgTitleModal', '소속', 'people'], ['section', 'codeModal', '구분', 'proj'], ['status', 'codeModal', '상태', 'proj']];
     for (const [it, ov, nm, grp] of SPEC) {
       await click(grp === 'proj' ? '#ahGrpProj' : '#ahGrpPeople');
