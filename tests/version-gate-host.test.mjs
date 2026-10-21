@@ -9,8 +9,9 @@
 //   ④ 오류와 회신: kind 'gate'(재시도 안 함), { ok:false } 회신에 gate 정보, 부팅 실패 옵션, 푸시와 재확인 루프.
 //   ⑤ 회사 보고: 일간 전송과 주간 채우기가 사이트에 닿기 전에 관문을 본다.
 //   ⑥ 업데이트: latest.json 대신 DB 의 app_ 키, 설치 시도 기록을 Setup 실행 전에 쓴다.
-//   ⑦ 배포 스크립트: Setup exe 만 복사하고 해시를 다시 재며, release-v<버전>.sql 을 만든다.
-//   ⑧ 이관 SQL(13 에서 14): 잠금 대기 상한이 맨 위, 닫기가 바꾸기보다 먼저, 열기는 끝의 한 트랜잭션, 다시 돌려도 안전.
+//   ⑦ 배포 스크립트: Setup exe 만 복사하고 해시를 다시 재며, 조각 사슬을 빌드 전에 확인하고 release-v<버전>.sql 하나를 만든다
+//      (조립과 그 SQL 의 모양, 상태 전이는 tests/release-sql.test.mjs).
+//   ⑧ 이관 조각 v14(13 에서 14): 머리, 자기 건너뛰기, 닫힌 상태 확인, 바꾸기, 검증, 구조 번호 올리기 순서. 닫기와 열기는 하지 않는다.
 //   ⑨ 정본 시딩: 키 다섯 개, 구조 번호 = 앱 상수.
 //   ★ 검사는 함수로 묶고 아래 변이 시험이 같은 함수에 망가뜨린 소스를 넣어 실패를 확인한다.
 import { readFileSync, readdirSync } from 'node:fs';
@@ -31,7 +32,7 @@ const src = {
   netcus: R('widget/NetcusService.cs'),
   upd:    R('widget/Update.cs'),
   pub:    R('installer/publish-update.ps1'),
-  mig:    R('db/deploy/migrate-2026-10-21-version-gate.sql'),
+  mig:    R('db/deploy/migrations/v14-version-gate.sql'),
   canon:  R('db/deploy/schema-calendar.sql'),
 };
 const widgetCs = () => readdirSync(new URL('../widget/', import.meta.url))
@@ -315,63 +316,68 @@ const checks = {
       assert.ok(iExe >= 0 && iHash > iExe && iTmp > iHash && iMove > iTmp, '공유폴더 latest.json 이 exe 복사와 해시 대조 뒤, 임시 이름에서 바꿔 달지 않는다');
     }
     assert.ok(/\$structMatch = \[regex\]::Match\(\$gateText, 'public const int AppStructureVersion = \(\\d\+\);'\)/.test(code), '앱 구조 번호를 DbGate.cs 에서 읽지 않는다');
+    //  배포 SQL 은 release-sql.ps1 이 조립한다. 조각 사슬은 빌드 전에 확인하고(-CheckOnly), 실패하면 멈춘다.
+    assert.ok(/\$relGen = Join-Path \$here 'release-sql\.ps1'/.test(code) && /\$fragDir = Join-Path \$root 'db\\deploy\\migrations'/.test(code), '조립기(release-sql.ps1)와 조각 폴더(db\\deploy\\migrations)를 가리키지 않는다');
+    const iCheck = code.indexOf('& $relGen -FragmentDir $fragDir -Structure ([int]$structure) -CheckOnly');
+    assert.ok(iCheck > 0 && /-CheckOnly\nif \(\$LASTEXITCODE -ne 0\) \{ Fail /.test(code), '조각 사슬을 확인하지 않거나 실패를 무시한다');
+    assert.ok(iCheck < code.indexOf('if ($Build) {'), '조각 사슬 확인이 빌드보다 뒤다(빌드 뒤에야 사슬이 틀린 것을 안다)');
     assert.ok(/\$releaseSql = Join-Path \$distDir "release-v\$ver\.sql"/.test(code), 'release-v<버전>.sql 을 만들지 않는다');
-    assert.ok(/WHERE k = 'db_structure_version'/.test(code) && /@cur <=> '\$structure' AND @upd <=> '0'/.test(code), 'release SQL 이 구조 번호와 갱신 중 표시를 확인하지 않는다');
-    const t = code.indexOf('"START TRANSACTION;"'), c = code.indexOf('"COMMIT;"');
-    assert.ok(t > 0 && c > t, 'release SQL 이 한 트랜잭션으로 바꾸지 않는다');
-    for (const k of ['app_latest_version', 'app_installer_file', 'app_installer_sha256'])
-      assert.ok(new RegExp("UPDATE cal_schema_meta SET v = [^\\n]*WHERE k = '" + k + "';").test(code.slice(t, c)), `release SQL 이 ${k} 를 트랜잭션 안에서 바꾸지 않는다`);
+    assert.ok(/& \$relGen -FragmentDir \$fragDir -Structure \(\[int\]\$structure\) -Version \$ver -InstallerFile \$fileName -Sha256 \$sha -Notes \$Notes -OutFile \$releaseSql\nif \(\$LASTEXITCODE -ne 0\) \{ Fail /.test(code),
+      '배포 SQL 을 조립기로 만들지 않거나 실패를 무시한다(버전, 파일, 해시를 넘겨야 한다)');
+    assert.ok(!/START TRANSACTION|UPDATE cal_schema_meta/.test(code), '배포 스크립트가 SQL 을 직접 쓴다(조립은 release-sql.ps1 한 곳에서)');
     const cp = code.slice(code.indexOf('if ($CopyTo) {'));
     assert.ok(/Copy-Item \$setup -Destination \$dest -Force/.test(cp), 'Setup exe 를 복사하지 않는다');
     assert.ok(/\$copied = \(Get-FileHash -Algorithm SHA256 -Path \$dest\)\.Hash\.ToLower\(\)/.test(cp) && /if \(\$copied -ne \$sha\) \{ Fail /.test(cp), '복사본 해시를 다시 재서 대조하지 않는다');
     assert.ok(!/Remove-Item/.test(cp), '공유폴더의 옛 Setup 을 지운다');
   },
 
-  // ══ ⑧ 이관 SQL ═════════════════════════════════════════════════════
+  // ══ ⑧ 이관 조각 v14 ═════════════════════════════════════════════════
+  //  release-v<버전>.sql 안에서 닫기와 열기 사이에 돈다(DB-RELEASE-OPS §5.2). 조각 공통 규칙은 tests/release-sql.test.mjs ④.
   migration(mig) {
+    assert.ok(/^-- @migration from=13 to=14\r?\n/.test(mig), '첫 줄이 -- @migration from=13 to=14 가 아니다');
     const code = stripSqlComments(mig);
-    const stmts = code.split(';').map((x) => x.trim()).filter(Boolean);
-    assert.strictEqual(stmts[0], 'SET SESSION lock_wait_timeout = 10', '맨 위 문장이 SET SESSION lock_wait_timeout = 10 이 아니다(DB-RELEASE-OPS §5.1)');
     assert.ok(!/\b(SUPER|GRANT|REVOKE|CREATE\s+USER|SET\s+GLOBAL|PROCEDURE|FUNCTION|TRIGGER|DEFINER|DELIMITER)\b/i.test(code), '쓰지 않기로 한 문장(SUPER, GRANT, CREATE USER, SET GLOBAL, 저장 프로그램)이 있다');
     assert.ok(!/SIGNAL\s+SQLSTATE/i.test(code), 'SIGNAL 을 쓴다(저장 프로그램 밖에서는 못 쓴다)');
     //  가드: 모든 @g 는 PREPARE 로 실행되고 실패 쪽은 '없는 표 SELECT' 다(64자 이내).
     const guards = [...code.matchAll(/SET @g := IF\(([\s\S]*?)\);\s*\nPREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;/g)];
     assert.strictEqual(guards.length, [...code.matchAll(/SET @g := /g)].length, 'PREPARE 로 실행되지 않는 가드가 있다');
-    assert.ok(guards.length >= 4, `가드가 ${guards.length}개뿐이다(표, 확인, 검증, 끝 확인)`);
+    assert.ok(guards.length >= 4, `가드가 ${guards.length}개뿐이다(번호, 닫힘, 검증, 끝 확인)`);
     for (const g of guards) {
       const m = /'SELECT 1 FROM `(중단: [^`]+)`'$/.exec(g[1].trim());
       assert.ok(m, `가드의 실패 쪽이 '없는 표 SELECT' 가 아니다: ${g[1].slice(0, 80)}`);
       assert.ok([...m[1]].length <= 64, `중단 문장이 64자를 넘는다: ${m[1]}`);
     }
-    //  확인: 13 에서 출발, 이미 14 면 아무것도 안 한다, 그 밖이면 멈춘다.
-    assert.ok(/SET @old := \(SELECT v FROM cal_schema_meta WHERE k = 'schema_version'\);/.test(code), '옛 키 schema_version 을 읽지 않는다');
-    assert.ok(/SET @done := \(@old IS NULL AND @cur <=> '14' AND @upd <=> '0'\);/.test(code), '이미 14 인 DB 를 알아보지 못한다');
-    assert.ok(/SET @fresh := \(@old <=> '13'/.test(code), '13 에서만 출발하지 않는다');
-    assert.ok(/SET @partial := \(@old IS NULL AND @cur <=> '13' AND @upd <=> '1'\);/.test(code), '앞선 실행이 멈춘 상태를 이어서 끝내지 못한다');
-    assert.ok(/SET @g := IF\(@done OR @go, 'DO 0',/.test(code), '13 도 14 도 아니면 멈추지 않는다');
-    //  닫기가 바꾸기보다 먼저다. 바꾸는 문장은 모두 @go 일 때만.
-    const close = idx(code, "VALUES (''db_updating'', ''1''", '닫기(db_updating 1)');
+    //  확인: 13(옛 키든 새 키든)에서만 바꾸고, 14 이상이면 건너뛰고, 그 밖이면 멈춘다. 바꿀 때는 닫혀 있어야 한다.
+    assert.ok(/SET @m_from := COALESCE\(@m_cur, @m_old\);/.test(code) && /SET @m_old := \(SELECT v FROM cal_schema_meta WHERE k = 'schema_version'\);/.test(code), '옛 키 schema_version 을 구조 번호로 읽지 않는다');
+    assert.ok(/SET @go := \(@m_from <=> '13'\);/.test(code), '13 에서만 바꾸지 않는다');
+    assert.ok(/SET @skip := \(@m_from REGEXP '\^\[0-9\]\{1,6\}\$' AND CAST\(@m_from AS UNSIGNED\) >= 14\);/.test(code), '이미 14 이상인 DB 를 건너뛰지 않는다');
+    assert.ok(/SET @g := IF\(@go OR @skip, 'DO 0',/.test(code), '13 도 14 이상도 아니면 멈추지 않는다');
+    assert.ok(/SET @g := IF\(NOT @go OR @m_upd <=> '1', 'DO 0',/.test(code), '닫히지 않은 DB(db_updating 1 아님)에서 바꾸기 전에 멈추지 않는다');
+    //  닫기와 열기는 release SQL 의 몫: 조각은 db_updating 을 쓰지 않는다.
+    assert.ok(!/\b(UPDATE|INSERT|REPLACE|DELETE)\b[^;]*db_updating/i.test(code), '조각이 db_updating 을 쓴다(닫기와 열기는 release SQL 의 몫)');
+    assert.ok(!/lock_wait_timeout/.test(code), '잠금 대기 상한은 release SQL 맨 위에 한 번만 둔다');
+    //  순서: 닫힘 확인, 표 설명, 새 키 넣기, 옛 키 지우기, 검증, 구조 번호 올리기, 끝 확인.
+    const closed = idx(code, "SET @g := IF(NOT @go OR @m_upd <=> '1'", '닫힘 확인');
+    const alter = idx(code, "'ALTER TABLE cal_schema_meta COMMENT = ", '표 설명');
     const ins = idx(code, "(''db_structure_version'', ''13''", '새 키 넣기');
     const del = idx(code, "'DELETE FROM cal_schema_meta WHERE k = ''schema_version'''", '옛 키 지우기');
-    const verify = idx(code, "'SELECT 1 FROM `중단: 검증 실패", '검증');
-    assert.ok(close < ins && ins < del && del < verify, '순서가 (닫기, 넣기, 지우기, 검증) 이 아니다');
+    const verify = idx(code, "'SELECT 1 FROM `중단: v14 조각 검증 실패", '검증');
+    const bump = idx(code, "UPDATE cal_schema_meta SET v = '14', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '13';", '구조 번호 14');
+    const end = idx(code, "'SELECT 1 FROM `중단: v14 조각 끝 확인 실패", '끝 확인');
+    assert.ok(closed < alter && alter < ins && ins < del && del < verify && verify < bump && bump < end, '순서가 (닫힘 확인, 표 설명, 넣기, 지우기, 검증, 구조 번호 올리기, 끝 확인) 이 아니다');
     for (const m of code.matchAll(/SET @s := IF\(([\s\S]*?)\);\s*\nPREPARE _s/g))
       assert.ok(/^@go,/.test(m[1].trim()) && /'DO 0'$/.test(m[1].trim()), `바꾸는 문장이 @go 로만 실행되지 않는다: ${m[1].slice(0, 60)}`);
     for (const m of code.matchAll(/^\s*(INSERT|DELETE|UPDATE|ALTER|DROP|CREATE)\b[^\n]*/gim))
-      assert.ok(/^UPDATE cal_schema_meta SET v = '(14|0)'/.test(m[0].trim()), `PREPARE 밖에서 바꾸는 문장은 열기의 두 UPDATE 뿐이어야 한다: ${m[0].trim()}`);
-    //  바꾸기는 한 트랜잭션.
+      assert.ok(/^UPDATE cal_schema_meta SET v = '14'/.test(m[0].trim()), `PREPARE 밖에서 바꾸는 문장은 구조 번호 올리기 하나뿐이어야 한다: ${m[0].trim()}`);
+    //  새 키 넣기와 옛 키 지우기는 한 트랜잭션.
     const t1 = code.indexOf('START TRANSACTION;');
-    assert.ok(t1 > close && t1 < ins && code.indexOf('COMMIT;', t1) > del, '새 키 넣기와 옛 키 지우기가 한 트랜잭션이 아니다');
-    //  열기: 끝의 한 트랜잭션에서 14 와 db_updating 0 을 함께.
-    const t2 = code.lastIndexOf('START TRANSACTION;');
-    const up14 = idx(code, "UPDATE cal_schema_meta SET v = '14', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '13';", '구조 번호 14');
-    const up0 = idx(code, "UPDATE cal_schema_meta SET v = '0', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_updating' AND v = '1' AND @go = 1;", 'db_updating 0');
-    const c2 = code.indexOf('COMMIT;', t2);
-    assert.ok(t2 > verify && t2 < up14 && up14 < up0 && up0 < c2, '열기가 검증 뒤 한 트랜잭션(14, db_updating 0)이 아니다');
-    assert.ok(/'SELECT 1 FROM `중단: 끝 확인 실패/.test(code.slice(c2)) && /SELECT k, v, updated_at FROM cal_schema_meta ORDER BY k;/.test(code.slice(c2)), '열기 뒤 끝 확인과 결과 표가 없다');
+    assert.ok(t1 > alter && t1 < ins && code.indexOf('COMMIT;', t1) > del && code.indexOf('COMMIT;', t1) < verify, '새 키 넣기와 옛 키 지우기가 한 트랜잭션이 아니다');
+    assert.strictEqual(code.split('START TRANSACTION;').length, 2, '조각 안의 트랜잭션이 하나가 아니다');
+    //  검증은 바꿨을 때만, 새 키 다섯 개와 옛 키 없음과 구조 13 을 본다.
+    assert.ok(/SET @g := IF\(NOT @go OR \(@m_keys = 5 AND @m_nold = 0 AND @m_cur <=> '13'\), 'DO 0',/.test(code), '검증이 (키 다섯 개, 옛 키 없음, 구조 13) 이 아니다');
     assert.ok(/UTC_TIMESTAMP\(3\)/.test(code) && !/CURRENT_TIMESTAMP|NOW\(\)/i.test(code), 'updated_at 을 UTC_TIMESTAMP(3) 로 쓰지 않는다');
-    //  머리말: Workbench 실행법, 백업 먼저.
-    assert.ok(/Data Export/.test(mig) && /Ctrl\+Shift\+Enter/.test(mig) && /-- Dump completed/.test(mig), '머리말에 백업(Data Export)과 Workbench 실행법이 없다');
+    //  머리말: release SQL 로만 돈다는 것.
+    assert.ok(/혼자 실행하지 않는다/.test(mig) && /release-v<버전>\.sql/.test(mig), '머리말에 release SQL 로만 돈다는 설명이 없다');
   },
 
   // ══ ⑨ 정본 시딩 ═══════════════════════════════════════════════════
@@ -395,8 +401,8 @@ test('관문③: 저장은 rev 증가와 삭제 뒤, CommitAsync 바로 앞에�
 test('관문④: kind gate, ok:false 회신의 gate 정보, 부팅 옵션, __versionGate 푸시, 재확인 루프', () => checks.errorsAndReplies(src));
 test('관문⑤: 회사 보고 일간 전송과 주간 채우기는 사이트에 닿기 전에 관문을 본다', () => checks.netcusPrecheck(src));
 test('관문⑥: 업데이트는 DB 의 app_ 키를 읽고, 설치 시도 기록을 Setup 실행 전에 쓴다', () => checks.update(src));
-test('관문⑦: publish-update.ps1 은 Setup 만 복사해 해시를 대조하고 release-v<버전>.sql 을 만든다', () => checks.publish(src.pub));
-test('관문⑧: 이관 SQL(13 에서 14)은 잠금 대기 상한, 확인, 닫기, 바꾸기, 검증, 열기 순서이고 다시 돌려도 안전하다', () => checks.migration(src.mig));
+test('관문⑦: publish-update.ps1 은 Setup 만 복사해 해시를 대조하고, 조각 사슬을 빌드 전에 확인해 release-v<버전>.sql 하나를 만든다', () => checks.publish(src.pub));
+test('관문⑧: 이관 조각 v14(13 에서 14)는 자기 건너뛰기, 닫힘 확인, 바꾸기, 검증, 구조 번호 올리기 순서이고 닫기와 열기를 하지 않는다', () => checks.migration(src.mig));
 test('관문⑨: 정본은 키 다섯 개를 시딩하고 구조 번호가 앱 상수와 같다', () => checks.canonSeed(src.canon, src.gate));
 
 // ══ 변이: 검사가 정말 무는지 ═══════════════════════════════════════════
@@ -451,20 +457,26 @@ test('변이V11: 배포 스크립트가 공유폴더의 옛 Setup 을 지우면 
   const bad = mutate(src.pub, '    Copy-Item $setup -Destination $dest -Force', '    Remove-Item (Join-Path $CopyTo "*.exe") -Force\n    Copy-Item $setup -Destination $dest -Force');
   assert.throws(() => checks.publish(bad), /옛 Setup 을 지운다/);
 });
-test('변이V12: 이관 SQL 의 맨 위에서 잠금 대기 상한을 빼면 관문⑧ 이 실패한다', () => {
-  const bad = mutate(src.mig, 'SET SESSION lock_wait_timeout = 10;\n', '');
-  assert.throws(() => checks.migration(bad), /lock_wait_timeout/);
+test('변이V12: 조각이 스스로 열면(db_updating 0) 관문⑧ 이 실패한다', () => {
+  const line = "UPDATE cal_schema_meta SET v = '14', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '13';\n";
+  const bad = mutate(src.mig, line, line + "UPDATE cal_schema_meta SET v = '0', updated_at = UTC_TIMESTAMP(3) WHERE k = 'db_updating';\n");
+  assert.throws(() => checks.migration(bad), /db_updating 을 쓴다/);
 });
-test('변이V13: 닫기(db_updating 1)를 바꾸기 뒤로 옮기면 관문⑧ 이 실패한다', () => {
-  const close = /SET @s := IF\(@go,\n  'INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \(''db_updating''[^\n]*\n  'DO 0'\);\nPREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;\n/.exec(src.mig);
-  assert.ok(close, '변이 준비 실패: 닫기 문장을 찾지 못했다');
-  let bad = src.mig.replace(close[0], '');
-  bad = mutate(bad, '-- =====================================================================\n--  4) 검증', close[0] + '-- =====================================================================\n--  4) 검증');
-  assert.throws(() => checks.migration(bad), /순서가 \(닫기, 넣기, 지우기, 검증\)/);
+test('변이V13: 구조 번호 올리기를 검증 앞으로 옮기면 관문⑧ 이 실패한다', () => {
+  const line = "UPDATE cal_schema_meta SET v = '14', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '13';\n";
+  let bad = mutate(src.mig, line, '');
+  bad = mutate(bad, '-- 3) 검증', line + '-- 3) 검증');
+  assert.throws(() => checks.migration(bad), /순서가 \(닫힘 확인/);
 });
-test('변이V14: 이미 14 인 DB 의 확인을 빼면 관문⑧ 이 실패한다', () => {
-  const bad = mutate(src.mig, "SET @done := (@old IS NULL AND @cur <=> '14' AND @upd <=> '0');", 'SET @done := 0;');
-  assert.throws(() => checks.migration(bad), /이미 14 인 DB/);
+test('변이V14: 이미 14 인 DB 의 건너뛰기를 빼면 관문⑧ 이 실패한다', () => {
+  const bad = mutate(src.mig, "SET @skip := (@m_from REGEXP '^[0-9]{1,6}$' AND CAST(@m_from AS UNSIGNED) >= 14);", 'SET @skip := 0;');
+  assert.throws(() => checks.migration(bad), /이미 14 이상인 DB/);
+});
+test('변이V16: 배포 스크립트가 조각 사슬 확인을 빌드 뒤로 미루면 관문⑦ 이 실패한다', () => {
+  const chk = '& $relGen -FragmentDir $fragDir -Structure ([int]$structure) -CheckOnly\n';
+  let bad = mutate(src.pub, chk, '');
+  bad = mutate(bad, '# 3) 설치기 확인', chk + '# 3) 설치기 확인');
+  assert.throws(() => checks.publish(bad), /사슬 확인이 빌드보다 뒤다|조각 사슬을 확인하지 않거나/);
 });
 test('변이V15: 정본이 구조 번호만 앱과 다르게 시딩하면 관문⑨ 가 실패한다', () => {
   const bad = mutate(src.canon, "VALUES ('db_structure_version', '14', UTC_TIMESTAMP(3))", "VALUES ('db_structure_version', '15', UTC_TIMESTAMP(3))");

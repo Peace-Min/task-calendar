@@ -92,69 +92,89 @@
 
 ## 4. 배포 절차 (운영자)
 
-### 4.1 DB 구조가 바뀌는 배포
+### 4.1 받는 것
 
-퇴근 후에 한다. 사용자는 다음 날 버튼을 한 번 누른다.
+배포 하나에 파일 셋이다. 외부망 개발 PC 의 `installer\publish-update.ps1`(배포-빌드.cmd)이 `dist\installer\` 에 만든다.
 
-1. 새 Setup 파일을 공유 폴더에 올린다. 옛 Setup 파일은 지우지 않는다. 이 시점에는 아무도 새 버전을 안내받지 않는다.
+- `TaskCalendarWidget-Setup-v<버전>.exe`
+- `latest.json`(0.22 이하 사용자를 위한 전환용, 2절)
+- `release-v<버전>.sql`: **이 배포의 DB 작업 전부가 든 SQL 하나.** DB 구조가 바뀌는 배포든 앱만 바뀌는 배포든 운영자가 돌리는 SQL 은 이것 하나다. 구조가 바뀌면 이관 조각(5절)이 이 안에 들어 있다.
+
+### 4.2 절차
+
+구조가 바뀌는 배포는 퇴근 후에 한다(사용자는 다음 날 버튼을 한 번 누른다). 앱만 바뀌는 배포는 아무 때나 해도 된다.
+
+1. Setup 파일과 `latest.json` 을 공유 폴더에 올린다. 옛 Setup 파일은 지우지 않는다. 이 시점에는 0.23.0 이상 사용자 누구도 새 버전을 안내받지 않는다(`-CopyTo` 를 쓰면 exe 복사, 해시 대조, `latest.json` 순서로 올린다).
 2. Workbench **Data Export** 로 `taskcalendar` 를 백업한다(Dump Structure and Data, Self-Contained File, Single Transaction, Include Create Schema). 파일 끝에 `-- Dump completed` 가 있는지 본다.
-3. 받은 이관 SQL 을 Workbench 에서 열고 **전체 실행(Ctrl+Shift+Enter)** 한다. 오류가 나면 멈추는 기본 설정을 그대로 둔다.
-4. 마지막 확인 쿼리로 `db_structure_version`, `db_updating = 0`, `app_latest_version` 을 본다.
+3. `release-v<버전>.sql` 을 Workbench 에서 열고 `taskcalendar` 를 기본 스키마로 둔 채 **전체 실행(Ctrl+Shift+Enter)** 을 **한 번** 한다. 오류가 나면 멈추는 기본 설정을 그대로 둔다.
+4. 마지막 결과 표에서 `db_structure_version`(앱 구조 번호), `db_updating = 0`, `app_latest_version`(새 버전)을 본다.
 5. 내 PC 에서 업데이트 버튼을 눌러 새 버전이 정상 동작하는지 본다.
 
-### 4.2 앱만 바뀌는 배포
+이 SQL 이 하는 일(순서대로):
 
-1. 새 Setup 파일을 공유 폴더에 올린다.
-2. `app_` 세 키만 바꾸는 짧은 SQL 을 실행한다(구조 번호는 그대로).
+| 단계 | 내용 |
+|---|---|
+| 확인 | 구조 번호(`db_structure_version`, 14 전의 DB 는 옛 키 `schema_version`)와 `db_updating` 을 읽는다. DB 가 앱보다 새거나, 조각 사슬의 출발보다 낮거나, 값을 읽을 수 없으면 1146 으로 멈춘다. 아무것도 바뀌지 않는다 |
+| 닫기 | 구조 번호가 앱보다 낮을 때만 `db_updating = 1`(키가 없던 13 에서는 만든다). 앱만 바뀌는 배포는 닫지 않는다 |
+| 이관 조각 | 지금 번호부터 앱 번호까지의 조각을 차례로. 조각마다 이미 지난 번호면 스스로 건너뛴다. 그래서 배포를 몇 번 건너뛴 DB 도 이 파일 하나로 올라간다 |
+| 끝 확인 | 구조 번호가 앱과 같고, 옛 키가 없고, 키 다섯 개가 있는지. 틀리면 멈춘다 |
+| 열기(한 트랜잭션) | `app_latest_version`, `app_installer_file`, `app_installer_sha256`, `db_updating = 0`. 구조 번호와 새 배포 정보가 함께 보이게 된다. 값이 이미 같으면 0행이라, 성공한 뒤 다시 돌려도 바뀌는 것이 없다 |
 
-아무도 막히지 않고, 배너를 보고 편할 때 업데이트한다.
+앱만 바뀌는 배포는 아무도 막히지 않고, 배너를 보고 편할 때 업데이트한다.
 
 ### 4.3 공지
 
 - 구조가 바뀌는 배포 전날: "○일 퇴근 후 업데이트가 있습니다. 다음 날 아침 화면의 [지금 업데이트] 를 눌러 주세요. 버튼이 동작하지 않으면 (공유 폴더 경로)의 Setup 을 직접 실행하거나 담당자에게 연락해 주세요."
 
-## 5. 이관 SQL 작성 규칙 (개발자)
+## 5. 이관 조각 작성 규칙 (개발자)
+
+구조 변경은 **이관 조각**으로 낸다. 조각은 `db/deploy/migrations/v<도착 번호>-<이름>.sql`(예: `v14-version-gate.sql`) 한 파일에 구조 번호 한 칸이다. 운영자에게 조각을 따로 주지 않는다. `installer/publish-update.ps1` 이 `installer/release-sql.ps1` 로 조각을 구조 번호 순서로 이어 붙여 `release-v<버전>.sql` 하나를 만든다(4절). 확인, 닫기, 끝 확인, 열기는 그 감싸개가 하고, 조각은 바꾸기만 한다.
 
 ### 5.1 형식
 
-- `.sql` 파일 하나. Workbench 에서 `taskmgr_app` 권한으로 실행 가능한 문장만 쓴다. cmd, PowerShell, mysql.exe, 로컬 경로에 기대지 않는다.
-- 쓰지 않는 것: SUPER, CREATE USER, GRANT, SET GLOBAL, 다른 DB, 저장 프로시저(객체가 남는다).
-- 조건 검사는 `PREPARE` 로 실행할 문장을 고르고, 틀리면 없는 표를 SELECT 해 오류(1146)로 멈추는 방식을 쓴다(`migrate-2026-10-15-code-ids.sql` 의 관문 패턴).
-- 맨 위 `SET SESSION lock_wait_timeout = 10;` 으로 잠금 대기를 끊는다.
+- Workbench 에서 `taskmgr_app` 권한으로 실행 가능한 문장만 쓴다. cmd, PowerShell, mysql.exe, 로컬 경로에 기대지 않는다.
+- 쓰지 않는 것: SUPER, CREATE USER, GRANT, SET GLOBAL, 다른 DB, 저장 프로시저와 DELIMITER(객체가 남는다).
+- 조건 검사는 `PREPARE` 로 실행할 문장을 고르고, 틀리면 없는 표를 SELECT 해 오류(1146)로 멈추는 방식을 쓴다. 표 이름 자리에 `중단: ...` 으로 멈춘 이유를 적는다(64자 이내).
+- 잠금 대기 상한(`SET SESSION lock_wait_timeout = 10;`)은 감싸개 맨 위에 한 번 있다. 조각에는 쓰지 않는다.
 - 새 열과 표에는 CHARSET, COLLATE 를 적는다. 열 추가는 가능하면 `ALGORITHM=INSTANT` 를 적어, 즉시 변경이 안 되면 조용히 표를 복사하지 않고 실패하게 한다.
 
-### 5.2 순서 (닫기, 바꾸기, 열기)
+### 5.2 조각 규칙
 
-1. **확인:** `db_structure_version` 이 기대값(예: 13)인지 본다. 이미 목표값(14)이고 `db_updating = 0` 이면 아무것도 하지 않고 끝낸다. 그 밖이면 멈춘다.
-2. **닫기:** `db_updating = 1`. 이 순간부터 모든 앱이 "갱신 중" 으로 대기한다.
-3. **바꾸기:** 표 구조 변경과 데이터 옮기기.
-   - 단계마다 information_schema 를 보고 "이미 했으면 건너뛰기"(MySQL 에는 `ADD COLUMN IF NOT EXISTS` 가 없다).
+1. **첫 줄 머리:** `-- @migration from=N to=N+1`. 한 조각은 한 칸만 올린다.
+2. **자기 확인:** 구조 번호를 다시 읽어 `N` 이면 바꾸고(`@go`), 이미 `N+1` 이상이면 아무것도 하지 않고 건너뛰고(`@skip`), 그 밖이면 멈춘다. 바꿀 때는 `db_updating = 1`(닫힘)인지 보고, 아니면 멈춘다. 그래서 조각만 따로 돌리면 바꾸기 전에 멈춘다. **조각은 release SQL 로만 돌린다.**
+3. **바꾸기:** 표 구조 변경과 데이터 옮기기. 바꾸는 문장은 모두 `@go` 일 때만 실행한다(PREPARE).
+   - 단계마다 information_schema 를 보고 "이미 했으면 건너뛰기"(MySQL 에는 `ADD COLUMN IF NOT EXISTS` 가 없다). 앞선 실행이 조각 중간에 멈췄을 때 다시 돌려 이어서 끝내기 위해서다.
    - 이름만 바뀌는 열: `ALTER TABLE ... RENAME COLUMN`.
    - 값이 바뀌는 열: 새 열 추가, 트랜잭션으로 변환해 채우기, 검증, 필수로 바꾸기, 옛 열 삭제.
    - 큰 변경: 새 표(`X_new`)를 만들어 채우고 검증한 뒤 `RENAME TABLE X TO X_old, X_new TO X` 한 문장으로 바꿔 끼운다(여러 표를 원자적으로 바꾼다). 앞서 실패한 실행의 잔여물(`X_new`)이 있으면 먼저 지운다.
    - 값 바꾸기(INSERT, UPDATE, DELETE)는 `START TRANSACTION ... COMMIT` 으로 묶는다. 그 사이에 구조 변경 문장을 섞지 않는다(자동 확정된다).
    - "지우고 다시 넣기" 로 저장하는 표(`cal_room`, `cal_todo_day_note`, `cal_entry_commit`, `cal_entry_except`)는 앱의 저장 방식을 함께 확인한다.
 4. **검증:** 행 수, 남은 NULL 등. 틀리면 오류로 멈춘다(`db_updating = 1` 인 채로).
-5. **열기(한 트랜잭션):** `db_structure_version = 14`, `app_latest_version`, `app_installer_file`, `app_installer_sha256`, `db_updating = 0`.
+5. **구조 번호 올리기(끝에서 한 줄):** `UPDATE cal_schema_meta SET v = 'N+1', updated_at = UTC_TIMESTAMP(3)` 다음 줄 `WHERE k = 'db_structure_version' AND v = 'N';`. 이미 올라가 있으면 0행이다. `db_updating` 은 그대로 1 이라 앱은 끝의 열기까지 계속 기다린다.
+6. **쓰지 않는 것:** `db_updating`(닫기와 열기는 감싸개의 몫), 감싸개 변수 `@r_`.
+
+조립기(`release-sql.ps1`)가 빌드 전에 확인한다: 머리 형식, 한 칸, 구조 번호 올리기 줄, `db_updating` 쓰기와 저장 프로그램과 `@r_` 없음, 사슬에 빈틈과 겹침 없음, 마지막 도착 번호 = `DbGate.AppStructureVersion`. 어긋나면 빌드가 실패한다. 시험(`tests/release-sql.test.mjs`)은 만든 SQL 의 순서와, 흉내 실행으로 처음, 앱만, 재실행, 건너뛴 배포, 단계마다 실패 뒤 재실행을 본다.
 
 ### 5.3 앱 쪽 짝
 
-- 앱의 구조 번호 상수(`CalendarDb.ExpectedSchemaVersion`, 키 이름 변경 뒤에도 같은 역할)와 정본 스키마 `db/deploy/schema-calendar.sql` 의 시드 값을 같은 커밋에서 올린다. `tests/schema-guards.test.mjs` 가드가 어긋남을 잡는다.
-- 이관 SQL 은 이 PC 의 MySQL 에서 **같은 권한의 시험 계정**(`taskcalendar.*` 전체 권한만)으로, 운영 DB 사본에 먼저 끝까지 돌려 본 뒤 넘긴다.
+- 앱의 구조 번호 상수(`DbGate.AppStructureVersion`)와 정본 스키마 `db/deploy/schema-calendar.sql` 의 시드 값을 새 조각과 같은 커밋에서 올린다. `tests/schema-guards.test.mjs` 가드가 어긋남을 잡는다.
+- 만든 `release-v<버전>.sql` 은 개발 PC 의 MySQL 에서 **같은 권한의 시험 계정**(`taskcalendar.*` 전체 권한만)으로, 개발 DB 사본에 먼저 끝까지 돌려 본 뒤 넘긴다(옛 번호 사본에서 처음, 다시 돌리기, 중간에 멈춘 상태에서 다시 돌리기).
 
 ## 6. 실패했을 때
 
 - MySQL 은 구조 변경 문장이 하나씩 즉시 확정되어, SQL 파일 전체의 원자성은 없다. 위 순서가 그것을 대신한다.
 - 중간에 실패하면 `db_updating = 1` 에 멈춰 모든 앱이 대기한다. 반쯤 바뀐 DB 를 쓰는 앱이 없다.
+- 확인 단계에서 멈췄으면(DB 가 앱보다 새거나, 너무 낮거나, 값이 이상함) 아무것도 바뀌지 않았다. 닫지도 않았으니 사용자도 그대로 쓴다.
 - 운영자가 할 일:
-  1. 멈추고 아무것도 건드리지 않는다. 오류 메시지를 개발자에게 넘긴다.
-  2. **기본: 고쳐서 다시 돌리기.** 이관 SQL 은 다시 돌려도 이미 된 단계를 건너뛰고 이어서 끝낸다.
-  3. **30분 안에 못 고치면 백업 복원.** 갱신 직전 백업을 Data Import 로 붓는다. 구조 번호와 `app_` 값이 옛것으로 돌아가 옛 앱이 그대로 동작한다. 막혀 있던 동안 들어온 데이터가 없어 잃는 것도 없다. 공유 폴더의 새 Setup 은 아무도 가리키지 않으니 그대로 둬도 된다. 실패한 실행이 새로 만든 표는 복원 뒤에도 남지만 해는 없고, 다음 실행이 먼저 지운다.
+  1. 멈추고 아무것도 건드리지 않는다. 오류 메시지(1146 의 `중단: ...` 표 이름)를 개발자에게 넘긴다.
+  2. **기본: 고쳐서 같은 `release-v<버전>.sql` 을 처음부터 다시 돌리기.** 이미 된 조각과 단계는 건너뛰고 이어서 끝낸다. 원인이 SQL 쪽이면 개발자가 고친 새 `release-v<버전>.sql` 을 받아 그것을 돌린다.
+  3. 구조 번호는 이미 앱과 같은데 `db_updating = 1` 로 남았으면(마지막 조각 뒤, 열기 전에 멈춤) 같은 파일을 다시 돌리면 확인을 지나 열기만 하고 끝난다.
+  4. **30분 안에 못 고치면 백업 복원.** 갱신 직전 백업을 Data Import 로 붓는다. 구조 번호와 `app_` 값이 옛것으로 돌아가 옛 앱이 그대로 동작한다. 막혀 있던 동안 들어온 데이터가 없어 잃는 것도 없다. 공유 폴더의 새 Setup 은 아무도 가리키지 않으니 그대로 둬도 된다. 실패한 실행이 새로 만든 표는 복원 뒤에도 남지만 해는 없고, 다음 실행이 먼저 지운다.
 - 이미 새 앱으로 업데이트한 사람이 있는 상태에서(앱만 바뀐 배포 등) 문제가 생기면, 옛 버전으로 내리지 않고 더 높은 번호로 고쳐 올린다.
 
 ## 7. 개발 환경
 
-- 개발과 검증은 외부망 개발 PC 의 MySQL 에서 한다(위 "환경 구분"). 이관 SQL 은 개발 DB 복사본과 서버와 같은 권한의 시험 계정으로 리허설한다. 실데이터 사본 리허설이 필요하면 폐쇄망 안에서 한다.
+- 개발과 검증은 외부망 개발 PC 의 MySQL 에서 한다(위 "환경 구분"). `release-v<버전>.sql` 은 개발 DB 복사본과 서버와 같은 권한의 시험 계정으로 리허설한다. 실데이터 사본 리허설이 필요하면 폐쇄망 안에서 한다.
 - 개발 중인 앱(구조 번호가 더 높음)이 실수로 서버에 붙어도 관문에서 막힌다. 운영 DB 가 개발 빌드로부터 보호된다.
 
 ## 8. 첫 사내 배포판에 넣을 것
@@ -176,3 +196,4 @@
 
 - 2026-10-20: DB 변경은 cmd 가 아니라 Workbench 에서 실행하는 `.sql` 로 낸다.
 - 2026-10-21: 정확 일치 차단, 갱신 중 표시, `cal_schema_meta` 키 다섯 개, Setup 먼저 올리고 SQL 로 배포를 켜는 순서, 악의적 사용자 고려 안 함. DB 전문가와 앱 운용 관점의 검토를 거쳐 단순화했다(최소 앱 버전, 호환형 구분, 권한 분리는 뺐다).
+- 2026-10-21: 배포 하나에 SQL 하나(`release-v<버전>.sql`). 구조 변경은 이관 조각(`db/deploy/migrations`)으로 쓰고 배포 스크립트가 확인, 닫기, 조각, 끝 확인, 열기로 감싸 한 파일로 만든다. 운영자가 이관 SQL 과 배포 정보 SQL 의 순서를 고를 일이 없고, 배포를 건너뛴 DB 도 한 파일로 올라간다.

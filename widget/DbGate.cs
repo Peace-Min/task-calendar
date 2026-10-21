@@ -67,7 +67,7 @@ namespace TaskCalendarWidget
         //    올릴 때 **이 상수도 같은 커밋에서 올린다.** 어긋나면 tests/schema-guards.test.mjs 가드 ⑨ 가 잡는다.
         //  ★ 앱 계정의 cal_schema_meta 권한은 SELECT 하나뿐이다(db/deploy/grants-calendar.sql). 막히는 쪽이
         //    자기 통과증을 쓰지 못한다.
-        //  ★ 2026-10-21: 13 → 14(migrate-2026-10-21-version-gate.sql, schema_version 키를 db_ 와 app_ 키 다섯 개로).
+        //  ★ 2026-10-21: 13 → 14(db/deploy/migrations/v14-version-gate.sql, 배포 SQL 하나에 들어가는 조각, schema_version 키를 db_ 와 app_ 키 다섯 개로).
         public const int AppStructureVersion = 14;
 
         //  키 다섯 개를 한 번에 읽는다. 연결을 열 때마다 도는 유일한 추가 쿼리다(DB-RELEASE-OPS §3.1 의 비용).

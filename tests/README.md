@@ -90,6 +90,7 @@ tests/
 ├─ harness-selftest.test.mjs  하네스 자체 검증 테스트
 ├─ canon-schema.mjs           정본 파서 헬퍼 — `db/deploy/schema-calendar.sql` 에서 판번호·허용 코드 목록을 읽는다(러너 미수집)
 ├─ ps-guard-lib.mjs           배포 스크립트(db/deploy/*.ps1) 소스 검사 공용 기계 — restore/backup-guards 가 공유(러너 미수집)
+├─ release-sql-sim.mjs        배포 SQL(release-v<버전>.sql) 흉내 실행기. DB 없이 상태 전이와 실패 뒤 재실행을 본다(release-sql.test.mjs 전용, 러너 미수집)
 ├─ schema-integrity.test.mjs  접속 프리앰블·소유자 FK·보고 표 CHECK·공수 상한·cat_no FK·판본 정합 계약 + 변이
 ├─ *.test.mjs                 기본 스위트 — 러너가 이름순으로 자동 수집한다(목록은 파일 시스템이 정본)
 ├─ ── 아래는 ★ 별도 실행 전용(`.mjs`라 자동수집에서 빠진다. 개명 금지) ──

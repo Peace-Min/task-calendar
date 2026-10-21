@@ -27,9 +27,12 @@ const adapterSrc = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.u
 const gateSrc = readFileSync(new URL('../widget/DbGate.cs', import.meta.url), 'utf8');
 
 // migrate-*.sql 전수(이름순 — 날짜가 이름 앞에 있어 사전순 = 시간순).
-const MIGRATE_FILES = readdirSync(DEPLOY)
-  .filter((f) => /^migrate-.*\.sql$/i.test(f))
-  .sort();
+// 2026-10-21 부터 새 판은 이관 조각 db/deploy/migrations/v<번호>-*.sql 이다(release-v<버전>.sql 에 들어간다,
+// DB-RELEASE-OPS §5). 체인은 둘을 함께 본다(키는 'migrations/<이름>').
+const MIGRATE_FILES = [
+  ...readdirSync(DEPLOY).filter((f) => /^migrate-.*\.sql$/i.test(f)).sort(),
+  ...readdirSync(new URL('migrations/', DEPLOY)).filter((f) => /\.sql$/i.test(f)).sort().map((f) => 'migrations/' + f),
+];
 
 // 파일명 → 원문. 변이 시험은 이 사본을 고쳐 checks 에 넘긴다.
 const migrateSrc = new Map(MIGRATE_FILES.map((f) => [f, loadSql(f)]));

@@ -1,0 +1,376 @@
+// 배포 SQL 하나(release-v<버전>.sql) 계약 (docs/DB-RELEASE-OPS.md §4~6, docs/VERSION-GATE.md §4)
+//
+// 이 파일이 지키는 것:
+//   ① 조립기 installer/release-sql.ps1 의 조각 사슬 검사: 머리 형식, 한 칸, 구조 번호 올리기 줄, db_updating 쓰기 금지,
+//      빈틈과 겹침, 끝 = 앱 구조 번호. 어기면 정해진 종료코드로 실패한다(빌드 전에 publish-update.ps1 이 부른다).
+//   ② 만들어진 SQL 의 모양: 잠금 대기 상한, 확인이 닫기보다 먼저, 닫기가 첫 조각보다 먼저, 조각은 구조 번호 순서,
+//      끝 확인 뒤 마지막 한 트랜잭션에 네 키(app_ 셋과 db_updating 0), 그 뒤 결과 표. 멈춤은 모두 '없는 표 SELECT'.
+//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 13 에서 처음, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음),
+//      마지막 조각 뒤에 멈춘 DB 마무리, 새 DB, 낮은 DB, 이상한 값, 건너뛴 배포(13 에서 15), 그리고 바꾸는 문장마다
+//      실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태가 보이지 않는지.
+//   ④ 조각 폴더의 모든 파일이 조각 규칙(§5.2)을 따른다.
+//   ★ 조립기는 실제 PowerShell 로 돌린다(임시 조각 폴더와 임시 사본). 변이 시험도 같은 길로 실패를 확인한다.
+import { readFileSync, readdirSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, copyFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { test, assert } from './harness.mjs';
+import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
+import { FakeDb, splitStatements } from './release-sql-sim.mjs';
+
+const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const GEN = join(ROOT, 'installer', 'release-sql.ps1');
+const FRAG_DIR = join(ROOT, 'db', 'deploy', 'migrations');
+const genSrc = readFileSync(GEN, 'utf8').replace(/^﻿/, '');
+const APP = Number(/public const int AppStructureVersion = (\d+);/.exec(readFileSync(join(ROOT, 'widget', 'DbGate.cs'), 'utf8'))[1]);
+const VER = '0.99.0', FILE = 'TaskCalendarWidget-Setup-v0.99.0.exe', SHA = 'ab'.repeat(32);
+
+const TMP = mkdtempSync(join(tmpdir(), 'tc-release-sql-'));
+process.on('exit', () => { try { rmSync(TMP, { recursive: true, force: true }); } catch (_) { } });
+let seq = 0;
+
+// 조립기를 실제로 돌린다. 종료코드와 출력(ASCII 꼬리표 [XXX])과 만들어진 SQL 을 돌려준다.
+function gen(fragDir, structure, { checkOnly = false, script = GEN } = {}) {
+  const out = join(TMP, `out-${++seq}.sql`);
+  const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
+    '-FragmentDir', fragDir, '-Structure', String(structure)];
+  if (checkOnly) args.push('-CheckOnly');
+  else args.push('-Version', VER, '-InstallerFile', FILE, '-Sha256', SHA, '-Notes', 'test notes', '-OutFile', out, '-Stamp', '2026-10-21 00:00');
+  const r = spawnSync('powershell', args, { encoding: 'utf8', windowsHide: true, timeout: 120000 });
+  if (r.error) throw new Error(`powershell 을 실행하지 못했다(판정 불가): ${r.error.message}`);
+  return { code: r.status, log: (r.stdout || '') + (r.stderr || ''), sql: existsSync(out) ? readFileSync(out, 'utf8') : null };
+}
+// 임시 조각 폴더. files: { 이름: 내용 } (null 이면 실제 조각을 그대로 복사)
+function fragDir(files) {
+  const d = join(TMP, `frags-${++seq}`);
+  mkdirSync(d);
+  for (const [n, body] of Object.entries(files)) {
+    if (body === null) copyFileSync(join(FRAG_DIR, n), join(d, n));
+    else writeFileSync(join(d, n), body, 'utf8');
+  }
+  return d;
+}
+// 규칙을 따르는 시험용 조각(from 에서 to 로, 표식 키 하나를 넣는다)
+function fakeFrag(from, to, { marker = `x_v${to}_marker` } = {}) {
+  return `-- @migration from=${from} to=${to}
+-- 시험용 조각
+SET @m_cur := (SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version');
+SET @m_upd := (SELECT v FROM cal_schema_meta WHERE k = 'db_updating');
+SET @go := (@m_cur <=> '${from}');
+SET @skip := (@m_cur REGEXP '^[0-9]{1,6}$' AND CAST(@m_cur AS UNSIGNED) >= ${to});
+SET @g := IF(@go OR @skip, 'DO 0',
+             'SELECT 1 FROM \`중단: v${to} 시험 조각 - 번호가 맞지 않다\`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+SET @g := IF(NOT @go OR @m_upd <=> '1', 'DO 0',
+             'SELECT 1 FROM \`중단: v${to} 시험 조각 - 닫히지 않았다\`');
+PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
+START TRANSACTION;
+SET @s := IF(@go, 'INSERT INTO cal_schema_meta (k, v, updated_at) VALUES (''${marker}'', ''on'', UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE k = k', 'DO 0');
+PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+COMMIT;
+UPDATE cal_schema_meta SET v = '${to}', updated_at = UTC_TIMESTAMP(3)
+ WHERE k = 'db_structure_version' AND v = '${from}';
+`;
+}
+
+// 실제 조각으로 만든 SQL(한 번만 만든다)
+let _real = null;
+const realSql = () => {
+  if (_real === null) {
+    const r = gen(FRAG_DIR, APP);
+    assert.strictEqual(r.code, 0, `실제 조각으로 배포 SQL 을 만들지 못했다(exit ${r.code}): ${r.log}`);
+    _real = r.sql;
+  }
+  return _real;
+};
+// 13 에서 15 로(실제 v14 와 시험용 v15)
+let _skip = null;
+const skipSql = () => {
+  if (_skip === null) {
+    const d = fragDir({ 'v14-version-gate.sql': null, 'v15-test.sql': fakeFrag(14, 15) });
+    const r = gen(d, 15);
+    assert.strictEqual(r.code, 0, `v14 와 v15 조각으로 배포 SQL 을 만들지 못했다(exit ${r.code}): ${r.log}`);
+    _skip = r.sql;
+  }
+  return _skip;
+};
+
+// ── 출발 상태들 ────────────────────────────────────────────────────────
+const S = {
+  legacy13: () => ({ schema_version: '13' }),
+  at: (n, upd = '0', app = ['0.22.0', 'TaskCalendarWidget-Setup-v0.22.0.exe', 'cd'.repeat(32)]) => ({
+    db_structure_version: String(n), db_updating: upd,
+    app_latest_version: app[0], app_installer_file: app[1], app_installer_sha256: app[2],
+  }),
+};
+const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
+const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
+
+// 앱(다른 연결)에 보인 상태 가운데 갱신 중이 아닌 것은 처음 아니면 끝이어야 한다(반쯤 바뀐 DB 를 쓰는 앱이 없다).
+function assertNoHalfOpen(db, initial, final, label) {
+  for (const v of db.visible) {
+    if (v.db_updating === '1') continue;
+    assert.ok(same(v, initial) || (final && same(v, final)), `${label}: 갱신 중이 아닌데 처음도 끝도 아닌 상태가 앱에 보였다: ${JSON.stringify(v)}`);
+  }
+}
+
+const checks = {
+  // ══ ① 사슬 검사 ════════════════════════════════════════════════════
+  chainOk(script = GEN) {
+    const r = gen(FRAG_DIR, APP, { checkOnly: true, script });
+    assert.strictEqual(r.code, 0, `실제 조각 사슬 확인이 실패한다(exit ${r.code}): ${r.log}`);
+    const end = gen(FRAG_DIR, APP + 1, { checkOnly: true, script });
+    assert.strictEqual(end.code, 5, `사슬의 끝이 앱 구조 번호와 달라도 실패하지 않는다(exit ${end.code})`);
+    assert.ok(/\[CHAIN_END\]/.test(end.log), '사슬 끝 불일치의 꼬리표가 CHAIN_END 가 아니다');
+  },
+  chainBroken() {
+    const gap = gen(fragDir({ 'v14-version-gate.sql': null, 'v16-test.sql': fakeFrag(15, 16) }), 16, { checkOnly: true });
+    assert.strictEqual(gap.code, 4, `빈틈(15 출발 조각 없음)을 잡지 못한다(exit ${gap.code})`);
+    assert.ok(/\[CHAIN_GAP\]/.test(gap.log), '빈틈의 꼬리표가 CHAIN_GAP 이 아니다');
+    const dup = gen(fragDir({ 'v14-version-gate.sql': null, 'v14-other.sql': fakeFrag(13, 14, { marker: 'x_dup' }) }), 14, { checkOnly: true });
+    assert.strictEqual(dup.code, 4, `같은 번호에서 출발하는 조각 둘을 잡지 못한다(exit ${dup.code})`);
+    const none = gen(fragDir({}), APP, { checkOnly: true });
+    assert.strictEqual(none.code, 5, `조각이 없는데 실패하지 않는다(exit ${none.code})`);
+  },
+  fragmentRules() {
+    const real = readFileSync(join(FRAG_DIR, 'v14-version-gate.sql'), 'utf8');
+    const cases = [
+      ['머리 없음', real.replace(/^-- @migration from=13 to=14\n/, ''), 'BAD_HEADER'],
+      ['두 칸', real.replace('-- @migration from=13 to=14', '-- @migration from=13 to=15'), 'BAD_STEP'],
+      ['구조 번호 올리기 없음', real.replace("UPDATE cal_schema_meta SET v = '14', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '13';", ''), 'NO_BUMP'],
+      ['db_updating 쓰기', real + "UPDATE cal_schema_meta SET v = '0', updated_at = UTC_TIMESTAMP(3) WHERE k = 'db_updating';\n", 'WRITES_UPDATING'],
+      ['저장 프로그램', real + 'DROP PROCEDURE IF EXISTS p;\n', 'STORED_PROGRAM'],
+      ['감싸개 변수', real + 'SET @r_n := 0;\n', 'USES_R_VAR'],
+    ];
+    for (const [label, body, tag] of cases) {
+      assert.notStrictEqual(body, real, `변이 준비 실패: ${label}`);
+      const r = gen(fragDir({ 'v14-version-gate.sql': body }), 14, { checkOnly: true });
+      assert.strictEqual(r.code, 3, `${label}: 조각 규칙 위반을 잡지 못한다(exit ${r.code})`);
+      assert.ok(r.log.includes(`[${tag}]`), `${label}: 꼬리표가 ${tag} 가 아니다: ${r.log}`);
+    }
+  },
+  exitCodes(src) {
+    const table = exitCodesInTable(exitCodeTable(src, false));
+    const code = maskPs(src);
+    const used = new Set([...code.matchAll(/Stop-Gen '[A-Z_]+' "[^"\n]*" (\d+)/g)].map((m) => Number(m[1])));
+    for (const m of code.matchAll(/\bexit (\d+)\b/g)) used.add(Number(m[1]));
+    assert.deepStrictEqual([...used].sort((a, b) => a - b), table, '종료코드 표와 실제로 내는 코드가 다르다');
+  },
+
+  // ══ ② 모양 ═════════════════════════════════════════════════════════
+  shape(sql, { app = APP, first = 13, fragments = ['v14-version-gate.sql'] } = {}) {
+    const stmts = splitStatements(sql);
+    assert.strictEqual(stmts[0], 'SET SESSION lock_wait_timeout = 10', '맨 위 문장이 SET SESSION lock_wait_timeout = 10 이 아니다(DB-RELEASE-OPS §5.1)');
+    assert.strictEqual(stmts[stmts.length - 1], 'SELECT k, v, updated_at FROM cal_schema_meta ORDER BY k', '마지막 문장이 결과 표가 아니다');
+    const code = stmts.join(';\n') + ';';
+    assert.ok(!/\b(SUPER|GRANT|REVOKE|CREATE\s+USER|SET\s+GLOBAL|PROCEDURE|FUNCTION|TRIGGER|DEFINER|DELIMITER)\b/i.test(code), '쓰지 않기로 한 문장(저장 프로그램, 권한, 전역 설정)이 있다');
+    //  멈춤: 모든 @g 는 PREPARE 로 실행되고 실패 쪽은 '없는 표 SELECT'(이름 64자 이내)
+    const gs = stmts.map((s, i) => [s, i]).filter(([s]) => /^SET @g := IF\(/.test(s));
+    assert.ok(gs.length >= 6, `멈춤 확인이 ${gs.length}개뿐이다`);
+    for (const [s, i] of gs) {
+      assert.strictEqual(stmts[i + 1], 'PREPARE _g FROM @g', `PREPARE 로 실행되지 않는 멈춤 확인이 있다: ${s.slice(0, 60)}`);
+      const m = /'SELECT 1 FROM `(중단: [^`]+)`'\)$/.exec(s);
+      assert.ok(m, `멈춤 확인의 실패 쪽이 '없는 표 SELECT' 가 아니다: ${s.slice(0, 80)}`);
+      assert.ok([...m[1]].length <= 64, `중단 문장이 64자를 넘는다: ${m[1]}`);
+    }
+    const at = (re, label) => { const i = stmts.findIndex((s) => re.test(s)); assert.ok(i >= 0, `${label} 을 찾지 못했다`); return i; };
+    const iTbl = at(/^SET @g := IF\(@r_tbl = 1,/, '표 확인');
+    const iHigh = at(new RegExp(`^SET @g := IF\\(@r_n <= ${app},`), `앱(${app})보다 새 DB 멈춤`);
+    const iLow = at(new RegExp(`^SET @g := IF\\(@r_n >= ${first},`), `사슬 출발(${first})보다 낮은 DB 멈춤`);
+    const iUpd = at(/^SET @g := IF\(@r_upd <=> '0' OR @r_upd <=> '1'/, 'db_updating 값 확인');
+    const iNeed = at(new RegExp(`^SET @r_need := \\(@r_n < ${app}\\)$`), '닫을지 판단(@r_need)');
+    const iClose = at(/VALUES \(''db_updating'', ''1''/, '닫기');
+    assert.ok(/^SET @s := IF\(@r_need,/.test(stmts[iClose]), '닫기가 구조 번호가 낮을 때(@r_need)만 실행되지 않는다');
+    assert.strictEqual(stmts.filter((s) => /''db_updating'', ''1''|SET v = '1'[^;]*db_updating/.test(s)).length, 1, 'db_updating = 1 을 쓰는 자리가 닫기 하나가 아니다');
+    assert.ok(Math.max(iTbl, iHigh, iLow, iUpd) < iNeed && iNeed < iClose, '확인이 닫기보다 먼저가 아니다');
+    //  조각: 닫기 뒤, 이름이 아니라 구조 번호 순서
+    const marks = fragments.map((f) => { const i = sql.indexOf(`-- ---------- 조각 ${f} (`); assert.ok(i >= 0, `조각 ${f} 가 들어 있지 않다`); return i; });
+    for (let k = 1; k < marks.length; k++) assert.ok(marks[k - 1] < marks[k], `조각 순서가 구조 번호 순서가 아니다: ${fragments.join(', ')}`);
+    assert.ok(sql.indexOf("VALUES (''db_updating'', ''1''") < marks[0], '닫기가 첫 조각보다 먼저가 아니다');
+    //  끝 확인, 그다음 마지막 한 트랜잭션
+    const iEnd = at(/^SET @g := IF\(@r_cur <=> '\d+' AND @r_nold = 0 AND @r_keys = 5/, '끝 확인');
+    assert.ok(new RegExp(`^SET @g := IF\\(@r_cur <=> '${app}' `).test(stmts[iEnd]), `끝 확인이 구조 번호 ${app} 를 요구하지 않는다`);
+    assert.ok(sql.indexOf(`-- ---------- 조각 ${fragments[fragments.length - 1]} 끝`) < sql.indexOf("'SELECT 1 FROM `중단: 끝 확인 실패"), '끝 확인이 마지막 조각보다 먼저다');
+    const tStarts = stmts.map((s, i) => (s === 'START TRANSACTION' ? i : -1)).filter((i) => i >= 0);
+    const iT = tStarts[tStarts.length - 1], iC = stmts.lastIndexOf('COMMIT');
+    assert.ok(iT > iEnd && iC === stmts.length - 2, '열기 트랜잭션이 끝 확인 뒤, 결과 표 바로 앞이 아니다');
+    const tx = stmts.slice(iT + 1, iC);
+    const want = [['app_latest_version', VER], ['app_installer_file', FILE], ['app_installer_sha256', SHA], ['db_updating', '0']];
+    assert.strictEqual(tx.length, 4, `열기 트랜잭션의 문장이 넷이 아니다: ${tx.join(' | ')}`);
+    want.forEach(([k, v], j) => assert.strictEqual(tx[j],
+      `UPDATE cal_schema_meta SET v = '${v}', updated_at = UTC_TIMESTAMP(3) WHERE k = '${k}' AND v <> '${v}'`, `열기 트랜잭션의 ${j + 1}번째가 ${k} = ${v} 가 아니다`));
+    for (const [k, v] of want.slice(0, 3)) assert.ok(!stmts.slice(0, iT).some((s) => s.includes(`'${v}'`)), `${k} 값이 열기 트랜잭션 밖에서 쓰인다`);
+    //  머리말: 운영자 절차
+    for (const w of ['latest.json', 'Data Export', '-- Dump completed', 'Ctrl+Shift+Enter', `release-v${VER}.sql`, SHA, FILE])
+      assert.ok(sql.slice(0, sql.indexOf('SET SESSION')).includes(w), `머리말에 ${w} 가 없다`);
+  },
+
+  // ══ ③ 상태 전이 ════════════════════════════════════════════════════
+  fresh13(sql) {
+    const db = new FakeDb(S.legacy13());
+    const r = db.run(sql);
+    assert.ok(r.ok, `13 에서 처음 돌리면 끝나야 한다: ${JSON.stringify(r)}`);
+    assert.ok(same(db.meta(), finalMeta(APP)), `13 에서 돌린 결과가 키 다섯 개(구조 ${APP}, 갱신 중 0, 새 배포 정보)가 아니다: ${JSON.stringify(db.meta())}`);
+    assert.ok(/VERSION-GATE/.test(db.comment), '표 설명을 바꾸지 않았다');
+    assert.deepStrictEqual(db.writes[0], { k: 'db_updating', v: '1', was: null }, '첫 쓰기가 닫기(db_updating 1 만들기)가 아니다');
+    assert.deepStrictEqual(db.writes[db.writes.length - 1].k, 'db_updating', '마지막 쓰기가 열기(db_updating 0)가 아니다');
+    assertNoHalfOpen(db, S.legacy13(), finalMeta(APP), '13 에서 처음');
+    //  성공 뒤 다시 돌리면 바뀌는 것이 없다
+    const n = db.writes.length, before = db.stamps();
+    assert.ok(db.run(sql).ok, '성공 뒤 다시 돌리면 끝나야 한다');
+    assert.strictEqual(db.writes.length, n, `성공 뒤 다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
+    assert.deepStrictEqual(db.stamps(), before, '성공 뒤 다시 돌렸는데 updated_at 이 바뀌었다');
+  },
+  appOnly(sql) {
+    const init = S.at(APP);
+    const db = new FakeDb(init);
+    const r = db.run(sql);
+    assert.ok(r.ok, `앱만 바뀐 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.ok(same(db.meta(), finalMeta(APP)), `앱만 바뀐 배포 결과가 다르다: ${JSON.stringify(db.meta())}`);
+    assert.ok(!db.writes.some((w) => w.k === 'db_updating'), '앱만 바뀐 배포가 닫는다(db_updating 을 쓴다)');
+    assert.deepStrictEqual(db.writes.map((w) => w.k), ['app_latest_version', 'app_installer_file', 'app_installer_sha256'], '앱만 바뀐 배포가 app_ 세 키 말고 다른 것을 바꾼다');
+    assert.strictEqual(db.comment, '', '앱만 바뀐 배포가 조각을 실행했다(표 설명을 바꿨다)');
+    assertNoHalfOpen(db, init, finalMeta(APP), '앱만 바뀐 배포');
+  },
+  finishStuck(sql) {
+    const db = new FakeDb(S.at(APP, '1'));
+    const r = db.run(sql);
+    assert.ok(r.ok, `구조 ${APP} 에 갱신 중 1 로 멈춘 DB 를 마무리하지 못한다: ${JSON.stringify(r)}`);
+    assert.ok(same(db.meta(), finalMeta(APP)), `마무리 결과가 다르다: ${JSON.stringify(db.meta())}`);
+  },
+  refuses(sql) {
+    const cases = [
+      ['앱보다 새 DB', S.at(APP + 1), /보다 높다/],
+      ['사슬보다 낮은 DB(옛 키 12)', { schema_version: '12' }, /보다 낮다/],
+      ['옛 키가 13 이 아님', { schema_version: String(APP) }, /옛 키 schema_version 이 13 이 아니다/],
+      ['숫자 아님', S.at('abc'), /읽을 수 없다/],
+      ['두 키가 다름', { ...S.at(APP), schema_version: '13' }, /읽을 수 없다/],
+      ['구조 번호 없음', { db_updating: '0' }, /읽을 수 없다/],
+      ['db_updating 이상한 값', S.at(APP, '2'), /0 도 1 도 아니다/],
+      ['구조는 있는데 db_updating 없음', { db_structure_version: String(APP) }, /0 도 1 도 아니다/],
+      ['app_ 키 빠짐', { db_structure_version: String(APP), db_updating: '0' }, /끝 확인 실패/],
+    ];
+    for (const [label, init, re] of cases) {
+      const db = new FakeDb(init);
+      const r = db.run(sql);
+      assert.ok(!r.ok && re.test(r.stop || ''), `${label}: 기대한 이유로 멈추지 않았다: ${JSON.stringify(r)}`);
+      assert.strictEqual(db.writes.length, 0, `${label}: 멈췄는데 바꾼 것이 있다`);
+    }
+    const noTable = new FakeDb({}, { tableExists: false });
+    assert.ok(/표가 없다/.test(noTable.run(sql).stop || ''), 'cal_schema_meta 가 없는 DB 에서 표 확인으로 멈추지 않는다');
+  },
+  // 바꾸는 문장마다 실패를 넣는다. 멈춘 동안 앱에 반쯤 바뀐 상태가 보이지 않고, 같은 파일을 다시 돌리면 끝난다.
+  faults(sql, init, app, label) {
+    const clean = new FakeDb(init());
+    assert.ok(clean.run(sql).ok, `${label}: 실패 없이 돌린 것이 끝나지 않는다`);
+    const N = clean.mutations;
+    assert.ok(N >= 3, `${label}: 바꾸는 문장이 ${N}개뿐이다(흉내 실행이 빗나갔다)`);
+    for (let k = 1; k <= N; k++) {
+      const db = new FakeDb(init());
+      const r = db.run(sql, { failAt: k });
+      assert.strictEqual(r.fault, k, `${label}: ${k}번째 바꾸는 문장에 넣은 실패로 멈추지 않았다: ${JSON.stringify(r)}`);
+      assertNoHalfOpen(db, init(), null, `${label}, ${k}번째에서 실패`);
+      const again = db.run(sql);
+      assert.ok(again.ok, `${label}: ${k}번째에서 실패한 뒤 같은 파일을 다시 돌려도 끝나지 않는다: ${JSON.stringify(again)}`);
+      assert.ok(same(db.meta(), clean.meta()), `${label}: ${k}번째 실패 뒤 다시 돌린 결과가 실패 없이 돌린 것과 다르다: ${JSON.stringify(db.meta())}`);
+      assert.strictEqual(db.comment, clean.comment, `${label}: ${k}번째 실패 뒤 다시 돌린 표 설명이 다르다`);
+    }
+  },
+  skipped(sql) {
+    for (const [label, init] of [['13 에서 15', S.legacy13], ['14 에서 15', () => S.at(14)]]) {
+      const db = new FakeDb(init());
+      const r = db.run(sql);
+      assert.ok(r.ok, `건너뛴 배포(${label})가 끝나지 않는다: ${JSON.stringify(r)}`);
+      assert.ok(same(db.meta(), { ...finalMeta(15), x_v15_marker: 'on' }), `건너뛴 배포(${label}) 결과가 다르다: ${JSON.stringify(db.meta())}`);
+      assertNoHalfOpen(db, init(), { ...finalMeta(15), x_v15_marker: 'on' }, `건너뛴 배포(${label})`);
+    }
+    const at15 = new FakeDb(S.at(15));
+    assert.ok(at15.run(sql).ok && !at15.writes.some((w) => w.k === 'db_updating' || w.k === 'x_v15_marker'), '이미 15 인 DB 에서 닫거나 조각을 실행했다');
+  },
+};
+
+// ══ ④ 조각 폴더 ═══════════════════════════════════════════════════════
+test('배포SQL④: db/deploy/migrations 의 조각은 모두 머리, 자기 건너뛰기, 구조 번호 올리기 한 줄, db_updating 쓰기 없음을 지킨다', () => {
+  const files = readdirSync(FRAG_DIR).filter((f) => f.endsWith('.sql')).sort();
+  assert.ok(files.length >= 1, '조각이 하나도 없다');
+  for (const f of files) {
+    const t = readFileSync(join(FRAG_DIR, f), 'utf8').replace(/\r\n/g, '\n');
+    const h = /^-- @migration from=(\d+) to=(\d+)\n/.exec(t);
+    assert.ok(h, `${f}: 첫 줄이 '-- @migration from=N to=M' 이 아니다`);
+    const [from, to] = [h[1], h[2]];
+    assert.strictEqual(f, `v${to}-${f.replace(/^v\d+-/, '')}`, `${f}: 파일 이름이 v<도착 번호>- 로 시작하지 않는다`);
+    const code = t.split('\n').map((l) => l.replace(/^\s*--.*$/, '')).join('\n');
+    assert.ok(new RegExp(`SET @skip := \\([^;]*>= ${to}\\);`).test(code), `${f}: 이미 ${to} 이상이면 건너뛰는 확인(@skip)이 없다`);
+    assert.ok(new RegExp(`SET @go := \\([^;]*<=> '${from}'\\);`).test(code), `${f}: ${from} 일 때만 바꾸는 확인(@go)이 없다`);
+    assert.ok(/SET @g := IF\(NOT @go OR @m_upd <=> '1',/.test(code), `${f}: 닫히지 않은 DB 에서 멈추지 않는다(release SQL 로만 돌린다)`);
+    const bumps = code.match(/UPDATE cal_schema_meta SET v = '\d+', updated_at = UTC_TIMESTAMP\(3\)\n WHERE k = 'db_structure_version' AND v = '\d+';/g) || [];
+    assert.deepStrictEqual(bumps, [`UPDATE cal_schema_meta SET v = '${to}', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '${from}';`], `${f}: 구조 번호를 ${from} 에서 ${to} 로 올리는 줄이 정확히 하나가 아니다`);
+    assert.ok(code.lastIndexOf(bumps[0]) > code.lastIndexOf('COMMIT;'), `${f}: 구조 번호 올리기가 바꾸기 뒤(끝)가 아니다`);
+    assert.ok(!/\b(UPDATE|INSERT|REPLACE|DELETE)\b[^;]*db_updating/i.test(code), `${f}: db_updating 을 쓴다(닫기와 열기는 release SQL 의 몫)`);
+    assert.ok(!/@r_/.test(code), `${f}: 감싸개 변수(@r_)를 쓴다`);
+    assert.ok(!/SET SESSION|lock_wait_timeout/.test(code), `${f}: 잠금 대기 상한은 release SQL 맨 위에 한 번만 둔다`);
+  }
+});
+
+// ══ 계약 ═══════════════════════════════════════════════════════════════
+test('배포SQL①a: 실제 조각 사슬이 맞고, 끝이 앱 구조 번호와 다르면 종료코드 5(CHAIN_END)', () => checks.chainOk());
+test('배포SQL①b: 사슬의 빈틈과 겹침은 4, 조각 없음은 5', () => checks.chainBroken());
+test('배포SQL①c: 조각 규칙 위반(머리, 두 칸, 올리기 줄 없음, db_updating 쓰기, 저장 프로그램, @r_)은 3', () => checks.fragmentRules());
+test('배포SQL①d: release-sql.ps1 의 종료코드 표와 실제로 내는 코드가 같다', () => checks.exitCodes(genSrc));
+test('배포SQL②a: 실제 조각으로 만든 SQL 은 확인, 닫기, 조각, 끝 확인, 열기 한 트랜잭션, 결과 표 순서다', () => checks.shape(realSql()));
+test('배포SQL②b: 조각 둘(14, 15)은 구조 번호 순서로 들어가고 끝 확인과 닫기가 15 를 기준으로 한다', () =>
+  checks.shape(skipSql(), { app: 15, fragments: ['v14-version-gate.sql', 'v15-test.sql'] }));
+test('배포SQL③a: 13 에서 처음 돌리면 14 와 새 배포 정보로 열리고, 다시 돌리면 바뀌는 것이 없다', () => checks.fresh13(realSql()));
+test('배포SQL③b: 앱만 바뀐 배포는 닫지 않고 app_ 세 키만 한 트랜잭션으로 바꾼다', () => checks.appOnly(realSql()));
+test('배포SQL③c: 마지막 조각 뒤에 멈춘 DB(구조 = 앱, db_updating 1)는 같은 파일이 열기까지 마무리한다', () => checks.finishStuck(realSql()));
+test('배포SQL③d: 새 DB, 낮은 DB, 이상한 값, 키 빠짐, 표 없음에서는 아무것도 바꾸지 않고 멈춘다', () => checks.refuses(realSql()));
+test('배포SQL③e: 13 에서 올리는 중 어디서 실패해도 앱에 반쯤 바뀐 DB 가 보이지 않고, 같은 파일을 다시 돌리면 끝난다', () =>
+  checks.faults(realSql(), S.legacy13, APP, '13 에서'));
+test('배포SQL③f: 앱만 바뀐 배포가 열기 트랜잭션에서 실패해도 다시 돌리면 끝난다', () =>
+  checks.faults(realSql(), () => S.at(APP), APP, '앱만'));
+test('배포SQL③g: 건너뛴 배포(13 또는 14 에서 15)는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다', () => {
+  checks.skipped(skipSql());
+  checks.faults(skipSql(), S.legacy13, 15, '13 에서 15');
+});
+
+// ══ 변이: 검사가 정말 무는지 ═══════════════════════════════════════════
+//  조립기 사본을 고쳐 돌리거나(PowerShell), 만들어진 SQL 이나 조각을 고쳐 같은 검사에 넣는다.
+function mutantGen(from, to) {
+  const p = join(TMP, `release-sql-mut-${++seq}.ps1`);
+  writeFileSync(p, '﻿' + mutate(genSrc, from, to), 'utf8');
+  return p;
+}
+test('변이R1: 닫기를 늘 하게 바꾸면(앱만 바뀐 배포도 닫음) ③b 가 실패한다', () => {
+  const r = gen(FRAG_DIR, APP, { script: mutantGen('SET @s := IF(@r_need,', 'SET @s := IF(1,') });
+  assert.strictEqual(r.code, 0, '변이 준비 실패: 사본이 SQL 을 만들지 못했다');
+  assert.throws(() => checks.appOnly(r.sql), /닫는다/);
+});
+test('변이R2: 사슬 끝 검사를 빼면 ①a 가 실패한다', () => {
+  const script = mutantGen('if ($lastTo -ne $Structure) {', 'if ($false) {');
+  assert.throws(() => checks.chainOk(script), /달라도 실패하지 않는다/);
+});
+test('변이R3: 열기 트랜잭션에서 db_updating 0 을 빼면 ②a 와 ③a 가 실패한다', () => {
+  const bad = mutate(realSql(), "UPDATE cal_schema_meta SET v = '0', updated_at = UTC_TIMESTAMP(3) WHERE k = 'db_updating' AND v <> '0';\n", '');
+  assert.throws(() => checks.shape(bad), /문장이 넷이 아니다/);
+  assert.throws(() => checks.fresh13(bad), /키 다섯 개/);
+});
+test('변이R4: 열기를 트랜잭션 밖으로 빼면 ③e 가 실패한다(실패 시 반쯤 바뀐 값이 보인다)', () => {
+  const sql = realSql();
+  const t = sql.lastIndexOf('START TRANSACTION;\n');
+  const bad = sql.slice(0, t) + sql.slice(t).replace('START TRANSACTION;\n', '').replace('COMMIT;\n', '');
+  assert.throws(() => checks.faults(bad, () => S.at(APP), APP, '앱만'), /처음도 끝도 아닌 상태/);
+});
+test('변이R5: 조각의 자기 건너뛰기를 빼면 앱만 바뀐 배포가 멈춘다(③b 실패)', () => {
+  const real = readFileSync(join(FRAG_DIR, 'v14-version-gate.sql'), 'utf8');
+  const body = mutate(real, 'SET @g := IF(@go OR @skip, ', 'SET @g := IF(@go, ');
+  const r = gen(fragDir({ 'v14-version-gate.sql': body }), APP);
+  assert.strictEqual(r.code, 0, '변이 준비 실패: 사본 조각으로 SQL 을 만들지 못했다');
+  assert.throws(() => checks.appOnly(r.sql), /끝나지 않는다/);
+});
+test('변이R6: 열기의 같은 값 건너뛰기(AND v <>)를 빼면 재실행이 행을 바꾼다(③a 실패)', () => {
+  const bad = realSql().replace(/ AND v <> '[^']*';\n/g, ';\n');
+  assert.notStrictEqual(bad, realSql());
+  assert.throws(() => checks.fresh13(bad), /다시 돌렸는데/);
+});

@@ -1921,7 +1921,7 @@ CREATE TABLE cal_migration_log (
 --   app_latest_version    지금 배포 중인 최신 앱 버전. 빈 값이면 새 버전 없음
 --   app_installer_file    공유 폴더에서 받을 Setup 파일 이름
 --   app_installer_sha256  받은 파일 대조용 해시(64자. v VARCHAR(64) 에 꼭 맞는다)
--- 옛 키 schema_version(13 까지)은 migrate-2026-10-21-version-gate.sql 이 지웠다.
+-- 옛 키 schema_version(13 까지)은 이관 조각 db/deploy/migrations/v14-version-gate.sql 이 지웠다.
 --
 -- 사용 규약(위젯 측):
 --   - 연결을 열 때마다 관문(DbGate.OpenAsync)이 SELECT k, v FROM cal_schema_meta WHERE k IN (...) 를 한 번 읽는다.
@@ -1985,9 +1985,9 @@ CREATE TABLE cal_schema_meta (
 --       (migrate-2026-10-15-code-ids.sql, docs/CODE-TABLE-IDS.md). 이 파일의 cal_* 는 바뀌지 않았지만
 --       판번호의 정본이 여기라 이 줄이 여기 있다. 위젯 ExpectedSchemaVersion 도 같은 배포에서 13 이다.
 --     ※ 2026-10-15 에 지난 migrate-2026-*.sql(위 3~12)은 지웠다(git 이력에 있다). 남은 이관 파일은 13 하나다.
---   - 14 (2026-10-21): 버전 관문(migrate-2026-10-21-version-gate.sql, docs/VERSION-GATE.md). 표 구조는 그대로이고
+--   - 14 (2026-10-21): 버전 관문(이관 조각 migrations/v14-version-gate.sql, docs/VERSION-GATE.md). 표 구조는 그대로이고
 --       이 표의 키가 schema_version 하나에서 위 다섯 개로 바뀌었다. 앱 상수는 DbGate.AppStructureVersion(14).
---       이 판부터 이관 SQL 은 DB-RELEASE-OPS §5 형식(확인, 닫기, 바꾸기, 검증, 열기)을 따르고,
+--       이 판부터 구조 변경은 이관 조각(db/deploy/migrations)으로 내고 release-v<버전>.sql 하나에 담긴다(DB-RELEASE-OPS §5),
 --       판 올림은 UPDATE ... WHERE k = 'db_structure_version' AND v = '<앞 판>' 한 줄이다.
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.

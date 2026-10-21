@@ -62,6 +62,11 @@ try {
   migrateFiles = readdirSync(DEPLOY_DIR)
     .filter((f) => /^migrate-.*\.sql$/.test(f))
     .sort();
+  //  2026-10-21 부터 새 판은 이관 조각(db/deploy/migrations/v<번호>-*.sql)이다. 둘을 함께 센다.
+  migrateFiles.push(...readdirSync(new URL('migrations/', DEPLOY_DIR))
+    .filter((f) => /\.sql$/.test(f))
+    .sort()
+    .map((f) => 'migrations/' + f));
 } catch (_) {
   missing.push('db/deploy/ (디렉터리 열거 실패)');
 }
@@ -212,7 +217,7 @@ function checkCatNoFk(sql) {
 }
 
 //  계약⑥: 정본이 시딩하는 구조 번호와 마이그레이션 최댓값이 같다.
-//    2026-10-21 부터 키는 db_structure_version 이다(옛 schema_version, migrate-2026-10-21-version-gate.sql).
+//    2026-10-21 부터 키는 db_structure_version 이다(옛 schema_version, 이관 조각 db/deploy/migrations/v14-version-gate.sql).
 //    갈라지면 "새로 세운 DB" 와 "마이그레이션으로 온 DB" 가 서로 다른 버전을 자칭한다.
 //  ★ 파서는 문자열을 준다(DB·위젯의 비교가 문자열이라 그쪽이 정본이다). 이 계약만 마이그레이션의
 //    최댓값과 크기 비교를 하므로 여기서 숫자로 바꾼다.

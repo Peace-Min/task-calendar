@@ -66,10 +66,11 @@
 
 ## 4. DB 와 스크립트
 
-- 이관 `db/deploy/migrate-2026-10-21-version-gate.sql`(13 에서 14): DB-RELEASE-OPS §5 의 형식을 처음 따르는 파일. `schema_version = '13'` 확인, 닫기(이 판만 예외로 `db_updating` 행을 먼저 만든다), 새 키 다섯 개 넣기, `schema_version` 행 지우기, 열기. 다시 돌려도 안전하게.
+- 이관 조각 `db/deploy/migrations/v14-version-gate.sql`(13 에서 14, 머리 `-- @migration from=13 to=14`): DB-RELEASE-OPS §5.2 의 조각 규칙을 처음 따르는 파일. 옛 키 `schema_version = '13'`(또는 앞선 실행이 넣은 `db_structure_version = '13'`)이면 바꾸고 14 이상이면 건너뛴다. 바꿀 때는 닫힌 상태(`db_updating = 1`)인지 먼저 본다. 표 설명 갱신, 새 키 넣기(`db_structure_version` 13 과 빈 `app_` 세 키), `schema_version` 행 지우기, 검증, 끝에서 구조 번호 14 로 올리기. 닫기(13 에는 없던 `db_updating` 행을 만든다)와 열기는 release SQL 이 한다. 혼자 돌리지 않는다.
+- 2026-10-21 보완(배포 하나에 SQL 하나): 처음에는 이관 SQL 과 `app_` 세 키를 바꾸는 배포 정보 SQL 을 따로 냈다. 운영자가 순서를 고르지 않게 둘을 `release-v<버전>.sql` 하나로 합쳤다. 이 조각은 개발 PC 의 개발 DB 에만 옛 형식으로 적용된 적이 있어(운영 서버는 아직 13) 형식을 바꿔도 된다. 개발 DB 는 이미 14 라 새 release SQL 에서는 이 조각이 건너뛰어진다.
 - 정본 `db/deploy/schema-calendar.sql`: 시드를 새 키 다섯 개로(`app_` 값은 빈 문자열로 시드하고, 빈 값이면 업데이트 없음으로 본다). 표 주석과 `cal_schema_meta` 설명 갱신.
 - 키를 읽는 스크립트를 새 키로: `setup-taskcalendar.ps1`, `init-calendar.ps1`, `restore-taskmgr.ps1`, `scope-all.ps1`, `db/demo/*`, `tools/schema-report/*`. 지난 이관(`migrate-2026-10-15-code-ids.*`)은 고치지 않는다(12 에서 13 전용, 이력).
-- `installer/publish-update.ps1`: Setup 을 복사하고(옛 파일 유지) 해시를 대조한 뒤, 0.22 이하 위젯을 위한 전환용 `latest.json` 을 임시 이름에서 바꿔 단다(2026-10-21 보완: 기존 사용자가 0.23.0 으로 넘어오는 유일한 길이다). 그리고 `dist/installer/release-v<버전>.sql`(앱만 바뀐 배포용 `app_` 세 줄 갱신, 구조 번호 확인 포함)을 만들어 경로를 알려 준다.
+- `installer/publish-update.ps1`: Setup 을 복사하고(옛 파일 유지) 해시를 대조한 뒤, 0.22 이하 위젯을 위한 전환용 `latest.json` 을 임시 이름에서 바꿔 단다(2026-10-21 보완: 기존 사용자가 0.23.0 으로 넘어오는 유일한 길이다). 그리고 `installer/release-sql.ps1` 로 `dist/installer/release-v<버전>.sql` 하나를 만들어 경로를 알려 준다. 이 SQL 은 확인, (구조 번호가 앱보다 낮을 때만) 닫기, `db/deploy/migrations` 의 조각을 구조 번호 순서로, 끝 확인, 한 트랜잭션의 열기(`app_` 세 키와 `db_updating = 0`), 결과 표다(DB-RELEASE-OPS §4). 조각 사슬이 끊겼거나 끝이 `AppStructureVersion` 과 다르면 빌드 전에 실패한다.
 - 워크스페이스 `CLAUDE.md` 릴리스 체크리스트에 `release-v<버전>.sql` 을 더한다(`latest.json` 과 해시 대조 항목은 전환기 동안 유지).
 
 ## 5. 시험
@@ -81,6 +82,7 @@
   - 쓰기 재확인이 COMMIT 바로 앞, rev 증가 뒤에 있는지.
   - 보고 전송 전 확인이 사이트 접속보다 앞에 있는지.
   - 이관 SQL: 13 에서 14, 다시 돌리기, 이미 14, 13 도 14 도 아닌 값에서 멈춤(실제 MySQL, 같은 권한 시험 계정).
+  - 배포 SQL 하나(`tests/release-sql.test.mjs`, 2026-10-21 보완): 조립기의 조각 사슬 검사와 종료코드, 만든 SQL 의 순서(확인, 닫기, 조각, 끝 확인, 열기 한 트랜잭션), 흉내 실행으로 13 에서 처음, 앱만, 재실행, 마무리, 거절, 건너뛴 배포, 단계마다 실패 뒤 재실행.
   - 웹: `__versionGate` 상태별 카드, 편집 잠금, `ok` 복귀.
 - `tests/loop-schema-gate.mjs`: 의미가 반대가 된다("서버 값이 다르면 통상 저장도 막힌다", "db_updating 1 이면 대기 후 복귀").
 
