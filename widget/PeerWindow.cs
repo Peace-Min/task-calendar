@@ -96,6 +96,8 @@ namespace TaskCalendarWidget
                 };
                 //  새 창 열기(링크 등)는 막는다. 이 창은 열람 화면 하나만 띄운다.
                 core.NewWindowRequested += (_, e) => e.Handled = true;
+                //  웹의 window.close() = 창 닫기. 버전 관문 차단 카드의 [이 창 닫기]가 쓴다(VERSION-GATE §3). 닫는 길은 창 테두리의 ✕ 와 같다.
+                core.WindowCloseRequested += (_, _) => Dispatcher.BeginInvoke(new Action(() => { try { Close(); } catch { } }));
                 core.ProcessFailed += (_, e) => OnProcessFailed(core, e.ProcessFailedKind);
                 core.SetVirtualHostNameToFolderMapping("tcapp.local", _appDir, CoreWebView2HostResourceAccessKind.Allow);
                 core.Navigate("https://tcapp.local/index.html?peerwin=1");

@@ -131,6 +131,9 @@ body.host .brand{display:none}   /* hostbar가 앱 이름 보유 — 중복 제�
 .upd-btn:disabled{opacity:.6;cursor:default}
 .upd-btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
 .upd-btn.primary:hover{background:var(--accent-2)}
+/* 알림 닫기(✕) — 이번 실행 동안만 닫는다. 다음에 앱을 켜면 다시 알린다(시안 1번) */
+.upd-x{border:0;background:transparent;color:var(--muted);border-radius:6px;width:24px;height:24px;cursor:pointer;font-size:var(--fs-meta);line-height:1;display:inline-flex;align-items:center;justify-content:center}
+.upd-x:hover{background:var(--hover-bg);color:var(--text)}
 /* 배너 '변경내역' 경량 모달 — 신규 버전 notes만 */
 .upd-nv{font-size:var(--fs-title);font-weight:700;color:var(--accent-2);margin-bottom:8px}
 .upd-nbody{font-size:var(--fs-body);line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word}
@@ -1404,6 +1407,75 @@ body.rgm-dragging,body.rgm-dragging *{cursor:grabbing!important;user-select:none
 .lg-note{font-size:var(--fs-meta);color:var(--muted);line-height:var(--lh-body);margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--line)}
 .lg-quit-row{margin-top:var(--sp-2);display:flex;justify-content:flex-end}
 
+/* ---------- 버전 관문 차단 카드(#vgGate) — docs/VERSION-GATE.md §3, 시안 docs/prototypes/version-gate.html ----------
+   ★ 로그인 게이트처럼 .overlay 를 쓰지 않는다. .overlay 는 배경 클릭, ESC, [data-close] 로 닫히는 대상이라 차단이 뚫린다.
+   ★ 제목줄(#hostbar, 32px)은 덮지 않는다(2026-10-21 결정). 막힌 동안에도 창 이동, 최소화, 닫기가 된다.
+     그래서 위젯에서는 top 이 32px 이고, 열람 창(창 테두리가 Windows 것)에서는 0 이다.
+   ★ 뒤 화면은 흐리게 보인다(가리지 않는다, 2026-10-21 결정). 손대지 못하게 하는 것은 inert 다(vgInert).
+   ★ z-index: 모달(50)과 토스트(99) 위, 리사이즈 손잡이(200)와 로그인 게이트(300) 아래. 로그인 게이트가 떠 있으면 카드를 띄울 때 걷는다(vgShow).
+   ★ 카드는 스크롤 컨테이너다(.lg-gate 와 같은 이유): flex-start + 카드 margin:auto = 들어가면 가운데, 넘치면 위부터 스크롤. */
+#vgGate{position:fixed;left:0;right:0;top:0;bottom:0;z-index:150;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;background:rgba(18,23,42,.45)}
+body.host #vgGate{top:32px}
+#vgGate:not(.hidden){display:flex;animation:ovIn .15s ease-out}   /* display 는 여기서만(.hidden 과 !important 다툼을 만들지 않는다) */
+body.vg-on #appSurface > :not(#hostbar){filter:saturate(.6) blur(1.5px)}
+body.vg-on #updateBanner{display:none !important}   /* 막힌 동안에는 상단 알림 대신 카드의 버튼을 쓴다(§3) */
+.vg-card{margin:auto;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);width:min(460px,100%);display:flex;flex-direction:column;animation:mdIn .15s ease-out}
+.vg-card:focus{outline:none}
+.vg-top{display:flex;gap:14px;padding:22px 22px 0}
+.vg-ico{flex:none;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent-2)}
+.vg-ico svg{width:22px;height:22px}
+.vg-card[data-tone="danger"] .vg-ico{background:var(--danger-soft);color:var(--danger-text)}
+.vg-card[data-tone="neutral"] .vg-ico{background:var(--dim-bg);color:var(--muted);box-shadow:inset 0 0 0 1px var(--line)}
+.vg-head{min-width:0;flex:1}
+.vg-title{font-size:var(--fs-h2);font-weight:700;line-height:var(--lh-tight);margin:8px 0 0}
+.vg-body{color:var(--muted);font-size:var(--fs-emph);line-height:var(--lh-body);margin:6px 0 0}
+.vg-main{padding:14px 22px 0 76px;display:flex;flex-direction:column;gap:12px}
+.vg-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:16px 22px 0 76px}
+.vg-foot .btn.primary{min-width:120px}
+.vg-tail{padding-bottom:20px}
+.vg-ver{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-body);background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px}
+.vg-ver .k{color:var(--muted)}
+.vg-ver .v{font-weight:600}
+.vg-ver .v.new{color:var(--accent-2);font-weight:700}
+.vg-ver .arr{color:var(--faint-text)}
+.vg-status{display:flex;align-items:center;gap:8px;font-size:var(--fs-meta);color:var(--muted)}
+.vg-spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--accent);animation:spin .9s linear infinite;flex:none}
+.vg-pbar{height:6px;border-radius:999px;background:var(--line);overflow:hidden;position:relative}
+.vg-pbar>i{position:absolute;left:0;top:0;bottom:0;width:35%;background:var(--accent);border-radius:inherit;animation:vgIndet 1.4s ease-in-out infinite}
+@keyframes vgIndet{0%{left:-35%}100%{left:100%}}
+.vg-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:var(--fs-body)}
+.vg-steps li{display:flex;align-items:center;gap:9px;color:var(--muted)}
+.vg-steps li .vg-dot{width:14px;height:14px;flex:none;border-radius:50%;border:2px solid var(--ok)}
+.vg-steps li.now{color:var(--text);font-weight:600}
+.vg-steps li.now .vg-dot{border-color:var(--line-2);border-top-color:var(--accent);animation:spin .9s linear infinite}
+.vg-run{padding:0 22px 0 76px;display:flex;flex-direction:column}
+.vg-steps:not(:empty){margin-top:10px}
+.vg-err{color:var(--danger-text);font-size:var(--fs-body);line-height:var(--lh-body)}
+.vg-err:not(:empty){margin-top:8px}
+.vg-warn{background:var(--ovl-bg);color:var(--ovl-ink);border-radius:var(--r-sm);padding:10px 12px;font-size:var(--fs-body);line-height:var(--lh-body);border-left:3px solid var(--ovl-dot)}
+.vg-help{margin-top:18px;border-top:1px solid var(--line);padding:14px 22px 18px 76px;display:flex;flex-direction:column;gap:6px;font-size:var(--fs-meta);color:var(--muted)}
+.vg-help .vg-h{font-weight:700;color:var(--text)}
+.vg-path{display:flex;align-items:center;gap:6px}
+.vg-path code{flex:1;min-width:0;font-family:ui-monospace,Consolas,'D2Coding',monospace;font-size:var(--fs-meta);color:var(--text);background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:all}
+.vg-copy-msg:empty{display:none}
+details.vg-more{font-size:var(--fs-meta);color:var(--muted)}
+details.vg-more summary{cursor:pointer;width:max-content;border-radius:4px}
+details.vg-more dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:6px 0 0}
+details.vg-more dt{color:var(--faint-text)}
+details.vg-more dd{margin:0;color:var(--text)}
+/* 열람 창용 작은 변형(§3, 2026-10-21 결정): 같은 제목, 버튼은 [이 창 닫기] 하나 */
+.vg-card.vg-peer{width:min(340px,100%)}
+.vg-peer .vg-top{padding:18px 18px 0;gap:12px}
+.vg-peer .vg-ico{width:34px;height:34px}
+.vg-peer .vg-ico svg{width:19px;height:19px}
+.vg-peer .vg-title{font-size:var(--fs-title);margin-top:6px}
+.vg-peer .vg-body{font-size:var(--fs-body)}
+.vg-peer .vg-main{padding:12px 18px 0 64px}
+.vg-peer .vg-foot{padding:14px 18px 0 64px}
+.vg-peer .vg-tail{padding-bottom:18px}
+@media (max-width:420px){ .vg-main,.vg-foot,.vg-run,.vg-help{padding-left:22px} .vg-peer .vg-main,.vg-peer .vg-foot{padding-left:18px} }
+@media (prefers-reduced-motion:reduce){ .vg-spin,.vg-steps li.now .vg-dot{animation:none} .vg-pbar>i{animation:none;left:0;width:100%;opacity:.35} }
+
 /* ---------- 날짜 패널 내부(.nd-*) — 과제 필터·할일·커밋 목록 ----------
    (구 .note-drawer/.note-scrim/.nd-tabs/.nd-tab/#ndReport 규칙 제거 — 드로어는 우측 패널(.day-panel)로
     대체됐고 해당 마크업이 더는 생성되지 않는다. 남은 .nd-* 는 패널 본문이 실제로 쓰는 것들.) */
@@ -1579,9 +1651,11 @@ body[data-peer] .todo-daymemo{ cursor:default }
     ★ 그 창에서는 메인 화면을 통째로 감추고 #peerWin(머리줄 + 열람 프레임)만 창 전체에 편다(html[data-peerwin]).
       보이는 것은 #peerWin, 그 안으로 옮겨 가는 사람 고르기(#peerPicker), 토스트뿐이다(allowlist · 새 UI 가 생겨도 안 보인다).
     ★ 창 크기는 Windows 창 테두리로 사람이 정한다. 그래서 고정 폭·높이가 없다. 본문은 flex 로 iframe 에 남은 높이를 전부 준다.
-    ★ 메인 창에서 #peerWin 은 늘 .hidden 이다(열 일이 없다).  */
-html[data-peerwin] body > :not(#peerWin):not(#peerPicker):not(#toastWrap){ display:none !important }
+    ★ 메인 창에서 #peerWin 은 늘 .hidden 이다(열 일이 없다).
+    ★ 버전 관문 차단 카드(#vgGate)도 allowlist 에 있다(VERSION-GATE §3, 열람 창용 작은 변형). 창 테두리가 Windows 것이라 카드는 top 0 부터 덮는다.  */
+html[data-peerwin] body > :not(#peerWin):not(#peerPicker):not(#toastWrap):not(#vgGate){ display:none !important }
 html[data-peerwin] body{ overflow:hidden }
+body.vg-on #peerWin{ filter:saturate(.6) blur(1.5px) }
 #peerWin{ position:fixed; inset:0; display:flex; flex-direction:column; background:var(--bg); color:var(--text) }
 #peerWin .modal-head{ padding:6px 12px; background:var(--panel) }
 #peerWin .pv-body{ padding:4px; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden }
@@ -2344,7 +2418,8 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   <span class="upd-msg" id="updMsg"></span>
   <span class="upd-actions" id="updActions">
     <button class="upd-btn" id="updNotes" type="button" title="이 앱의 버전별 변경사항 보기">변경내역</button>
-    <button class="upd-btn primary" id="updNow" type="button">업데이트</button>
+    <button class="upd-btn primary" id="updNow" type="button">지금 업데이트</button>
+    <button class="upd-x" id="updClose" type="button" aria-label="업데이트 알림 닫기" title="닫기">✕</button>
   </span>
   <span class="upd-prog hidden" id="updProg"></span>
 </div>
@@ -2654,10 +2729,11 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </div>
       <div class="set-sec set-sec-top">
         <div class="set-lb">자동 업데이트 <span class="set-badge" id="updBadge">저장 필요</span> <span id="updSrcState" class="git-opt"></span></div>
-        <div class="set-hint">관리자가 공유폴더 한 곳(<b>latest.json</b> + 설치기)을 갱신하면 각 위젯이 조용히 확인해 새 버전이 있으면 상단 배너로 알립니다. 데스크톱 위젯에서만 동작합니다.</div>
-        <!-- 명시 저장 폼 — URL은 [저장]을 눌러야 반영된다 -->
+        <div class="set-hint">새 버전은 서버에서 확인하고, 설치 파일은 아래 폴더에서 받습니다. 새 버전이 있으면 화면 위쪽에 알림이 뜹니다. 데스크톱 위젯에서만 동작합니다.</div>
+        <!-- 명시 저장 폼 — 경로는 [저장]을 눌러야 반영된다. 2026-10-21(VERSION-GATE §2.6) 부터 이 값은 설치 파일이 있는 폴더만 뜻한다
+             (새 버전 번호와 파일 이름, 해시는 서버 DB 의 app_ 키가 정한다. latest.json 은 없다). -->
         <div class="set-form" id="updForm">
-          <label class="qa-lb" for="updSrc">업데이트 소스 URL</label>
+          <label class="qa-lb" for="updSrc">설치 파일 폴더(공유 폴더 또는 FTP)</label>
           <input type="text" id="updSrc" class="set-in" autocomplete="off" spellcheck="false" placeholder="예: ftp://<서버IP>/TaskCalendar/">
           <div class="set-form-foot">
             <button type="button" class="btn sm primary" id="updSrcSave">저장</button>
@@ -4282,6 +4358,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="lg-quit-row"><button type="button" class="btn sm" id="lgQuit">위젯 종료</button></div>
   </div>
 </div>
+<!-- 버전 관문 차단 카드(docs/VERSION-GATE.md §3). 호스트가 __versionGate 로 상태를 밀면 vgRender 가 안을 채운다.
+     ★ 닫는 길이 없다(×, ESC, 배경 클릭 없음). 상태가 'ok' 로 돌아오면 저절로 닫힌다.
+     ★ 제목줄은 덮지 않는다(#vgGate 의 top). 창 닫기는 제목줄의 ✕ 가 그대로 한다. -->
+<div class="hidden" id="vgGate"></div>
 <input type="file" id="importFile" accept=".xml,application/xml,text/xml" hidden>
 
 <script>
@@ -4470,7 +4550,13 @@ let __peerToldAt = 0;
 //  ★ 열람 창 hpost 봉인의 「자동 전송 목록」 — 여기(파일 앞)에 둔다. 처음엔 hpost 바로 위(파일 끝)에 const 로 두었다가
 //    열람 창 부팅이 그 줄보다 먼저 hpost 를 불러 TDZ(초기화 전 접근)로 hpost 가 통째로 던졌다(2026-10-01 loop-peer-frame 실측 —
 //    __peerToldAt 이 2026-09-03 에 겪은 것과 같은 사고). hpost 가 읽는 전역은 모두 이 근처에 둔다.
-const PEER_SILENT_CMD = new Set(['ready','reminderSync','unsavedState','loadProjects','loadCodes','loadCustomers','reloadState','updateCheck','updateSourceGet','dbInfoGet','focus']);
+const PEER_SILENT_CMD = new Set(['ready','reminderSync','unsavedState','loadProjects','loadCodes','loadCustomers','reloadState','updateCheck','updateSourceGet','dbInfoGet','focus','gateRecheck']);
+//  버전 관문(docs/VERSION-GATE.md §3)의 웹 상태. hostRequest(회신 가로채기)와 toast(막힌 동안 오류 토스트 끄기)가 읽으므로
+//  같은 이유(TDZ)로 여기에 둔다. 함수는 아래 「버전 관문 차단 카드」 구역에 있다.
+//    __vg            지금 보이는 차단 상태 { state, appVersion, appStructure, dbStructure, latestVersion, installerPath, attemptCount } | null(정상)
+//    __vgCheckedAt   마지막 확인 시각(ms). 푸시가 오거나 gateRecheck 회신이 오면 갱신한다
+let __vg = null;
+let __vgCheckedAt = 0;
 //  열람 창이 받은 **원본** 데이터. save() 가 여기로 되돌린다 — 아래 peerRevert 참조.
 let __peerPristine = null;
 let __peerReverting = false;   // 되돌리는 중의 재렌더가 다시 save() 를 부르면 무한루프가 된다
@@ -4484,7 +4570,7 @@ const PEER = (() => { try { return new URLSearchParams(location.search).get('pee
  *  ★ html[data-peerwin] 은 CSS 스위치다(메인 화면을 통째로 감추고 #peerWin 만 창 전체에 편다). */
 const PEERWIN = (() => { try { return HOST && !PEER && new URLSearchParams(location.search).get('peerwin') === '1'; }
                          catch (_) { return false; } })();
-const PEERWIN_CMD = new Set(['peerWinReady','peerSchedule','membersGet','peerMine']);
+const PEERWIN_CMD = new Set(['peerWinReady','peerSchedule','membersGet','peerMine','gateRecheck']);   // gateRecheck = 차단 카드의 재확인(VERSION-GATE §2.5, 읽기 하나)
 if(PEERWIN){ try{ document.documentElement.dataset.peerwin = '1'; }catch(_){} }
 /*  C4.1 — 열람 창에 얹은 **내 일정 겹**의 on/off.
  *  ★ 열람 창 **안에서만** 도는 상태다 — 부모와 통신하지 않는다(문을 늘리지 않는다).
@@ -5145,6 +5231,9 @@ window.__applyState = function(json, meta){
     //  ★ 연결 상태도 여기서 세운다(bootOk·conn) — 실패 뒤의 주입이면 과제 목록·코드도 다시 읽는다
     //    (부팅 재시도가 성공해도 과제 목록은 빈 채로 남던 구멍, 기획 §1-4).
     if(!PEER) connOnBootApplied();
+    //  ★ 버전 관문(VERSION-GATE §3) — 부팅 조회가 관문을 지났다. meta.gate 가 막힘이면 카드를 띄우고,
+    //    지난 설치 실패(installFailed)만 떠 있었다면 서버는 멀쩡하니 카드를 걷고 안내 한 줄로 바꾼다(vgOnBootApplied).
+    if(!PEER) vgOnBootApplied(meta);
     //  기본 과제를 방금 만들었으면 부팅이 끝난 **뒤에** 저장한다(위 보장 주석). 연결 상태(bootOk)가 선 다음이라 잠금 판정이 맞다.
     if(!PEER && __bootDefaultsDirty) setTimeout(bootDefaultsFlush, 0);
   }catch(e){
@@ -5305,6 +5394,13 @@ window.__applyStateError = function(msg, opt){
   __xmlApplied = true;
   hideBootSkeleton();
   const kind = connKindOf(opt);
+  //  ★ 버전 관문(kind 'gate', VERSION-GATE §2.3)은 연결 상자도, 접근 거부 띠도, 자동 재시도도 아니다. 차단 카드가 맡는다.
+  //    호스트의 재확인 루프가 'ok' 를 밀면 vgRecover 가 다시 읽는다(reloadState). 돌던 부팅 재시도와 상자는 걷는다.
+  if(kind === 'gate'){
+    if(HOST && !PEER){ __connNeedCatalog = true; clearBootError(); __connLoop = ''; }
+    vgFromReply(opt);
+    return;
+  }
   connNoteFailure(kind, opt, msg);                  // 문구(__bootLastError)·원문·db/host
   const retryable = !(opt && opt.retryable === false) && !connIsDenied(kind);
   if(HOST && !PEER){
@@ -5373,13 +5469,14 @@ function renderEmptyHint(){
   insertBelowTitleBar(b);                           // 제목줄 아래(위가 아니다 — insertBelowTitleBar 머리말)
 }
 
-//  부팅이 준 meta(schemaVersion·expectedSchema·schemaMismatch·rev·userId). 배지와 스키마 게이트가 읽는다.
+//  부팅이 준 meta(schemaVersion·expectedSchema·schemaMismatch·gate·rev·userId). 배지와 이전 기록 감지가 읽는다.
 let __bootMeta = null;
 
 // 출처 배지 — **문제가 있을 때만** 뜬다(2026-09-30 사용자 결정).
-//   · 스키마 불일치 → **경고 톤**(빨강). 그 상태에서 막히는 것이 무엇인지 미리 알려야
-//     사용자가 「가져오기」를 눌러 보고 나서야 거부당하지 않는다.
 //   · 읽기 전용(canWrite === false) → 변경이 저장되지 않는다는 사실을 알린다.
+//   ★ 스키마 불일치의 빨간 띠와 schemaBlocked 토스트는 2026-10-21 에 걷었다(VERSION-GATE §3). 서버와 앱의 구조가
+//     맞지 않으면 이제 호스트의 관문이 읽기와 쓰기를 모두 막고, 웹은 차단 카드(#vgGate)를 띄운다. 띠가 남아 있으면
+//     같은 사실을 두 곳에서 다른 말로 한다.
 //   ★ 정상(연결됨·쓰기 가능)이면 **띄우지 않는다**(있으면 걷는다). 늘 떠 있는 "DB 연결됨" 한 줄은
 //     매일 보는 사람에게 정보가 아니라 자리만 먹는 소음이었다. 정상 상태의 연결 정보(스키마·rev)는
 //     「사용자 정보」 모달의 한 줄(#usDbLine)로 옮겼다 — 궁금한 사람이 찾아볼 자리다.
@@ -5387,48 +5484,18 @@ let __bootMeta = null;
 function renderDataSourceBadge(meta){
   if(!isDbHost()) return;
   const m = meta || {};
-  const mismatch = !!m.schemaMismatch;
   const readOnly = m.canWrite === false;
   let b = document.getElementById('dsBadge');
-  if(!mismatch && !readOnly){ if(b) b.remove(); return; }   // 정상 — 배지 없음
+  if(!readOnly){ if(b) b.remove(); return; }   // 정상 — 배지 없음
   if(!b){
     b = document.createElement('div');
     b.id = 'dsBadge';
     b.style.cssText = 'margin:12px 16px 0;padding:8px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--accent-soft);color:var(--text);font-size:12px';
     insertBelowTitleBar(b);
   }
-  b.style.borderColor = mismatch ? 'var(--danger)' : 'var(--line-2)';
-  b.style.background  = mismatch ? 'var(--danger-soft)' : 'var(--accent-soft)';
-  b.style.color       = mismatch ? 'var(--danger-text)' : 'var(--text)';
-  if(mismatch){
-    //  ★ 어느 쪽이 낡았는지에 따라 할 일이 다르다(S7). 서버가 낮으면 위젯을 올려 봐야 소용없다 —
-    //    관리자가 서버 DB 를 올려야 한다. 그걸 "위젯 업데이트 필요" 라고 하면 사용자는 엉뚱한 일을 한다.
-    b.textContent = (schemaServerOlder(m)
-        ? '서버 DB 업데이트 필요(관리자), 서버 v' + (m.schemaVersion || '?') + ', 위젯 v' + (m.expectedSchema || '?') + ', 가져오기/초기화 차단'
-        : '위젯 업데이트 필요, 서버 스키마 v' + (m.schemaVersion || '?') + ', 위젯 v' + (m.expectedSchema || '?') + ', 가져오기/초기화 차단') +
-      (m.rev != null ? ', rev ' + m.rev : '');
-    return;
-  }
   b.textContent = 'DB 읽기 전용(변경은 저장되지 않습니다)' +
     (m.schemaVersion ? ', 스키마 v' + m.schemaVersion : '') +
     (m.rev != null ? ', rev ' + m.rev : '');
-}
-
-//  스키마 불일치의 방향 — 서버 판본이 위젯이 기대하는 판본보다 **낮은가**. 숫자로 못 읽으면 false(옛 문구 = 위젯 쪽).
-function schemaServerOlder(m){
-  const sv = Number(m && m.schemaVersion), wv = Number(m && m.expectedSchema);
-  return isFinite(sv) && isFinite(wv) && sv > 0 && wv > 0 && sv < wv;
-}
-//  낡은 위젯 게이트의 **웹쪽 안내**(§5.5, P1-1). true 면 호출부가 그 자리에서 멈춘다.
-//  ★ 이것은 방어가 아니라 UX 다 — 진짜 차단은 호스트(CalendarWriteDb.SaveAsync)가 한다.
-//    여기만 있으면 콘솔 한 줄로 우회되고, 여기가 없으면 사용자가 눌러 본 뒤에야 거부당한다.
-function schemaBlocked(){
-  const m = __bootMeta;
-  if(!m || !m.schemaMismatch) return false;
-  toast('서버 스키마 v' + (m.schemaVersion || '?') + ', 위젯 v' + (m.expectedSchema || '?') +
-        (schemaServerOlder(m) ? '. 관리자가 서버 DB 를 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다'
-                              : '. 위젯을 업데이트한 뒤에 가져오기·초기화를 할 수 있습니다'), 'error');
-  return true;
 }
 
 /* ---------- 이전 버전 기록 감지 (2026-09-30 사용자 결정 · 설계 §3b 부기) ----------
@@ -5441,7 +5508,8 @@ function schemaBlocked(){
  *    2026-10-07 병합 제거(XML-MERGE-REMOVAL). 그 미리보기도 이제 교체만 한다.
  *  ★ 조건: 빈 캘린더(calendarIsEmpty — 빈 캘린더 안내와 같은 정의) · 위젯(HOST) · 내 창(!PEER) ·
  *    스키마 불일치 아님(__bootMeta.schemaMismatch 를 **조용히** 본다 — 부팅 때 토스트를 띄우지 않는다).
- *    「가져오기」를 누른 뒤에는 schemaBlocked() 가 사유를 토스트로 알린다(사용자가 누른 동작이므로).
+ *    버전 관문이 막은 동안에는 이 물음까지 오지 않는다(부팅 조회가 관문에 막히고 차단 카드가 뜬다). 「가져오기」 를 누를 때는
+ *    guardEdit() 이 관문 상태(vgBlocked)까지 본다.
  *  ★ 페이지당 한 번 — 재시도·[새로고침] 으로 주입이 다시 와도 두 번 묻지 않는다.
  *  ★ 「다시 묻지 않기」는 **그 파일**(이름|수정시각)에만 건다 — 다른 파일이거나 그 뒤에 고쳐졌으면 다시 묻는다.
  *    저장소가 막힌 환경(시크릿·정책)에서도 동작해야 하므로 읽기·쓰기를 모두 try 로 감싼다.
@@ -5473,9 +5541,8 @@ function legacySizeText(n){
 async function maybeAskLegacyImport(){
   if(__legacyPromptTried) return;
   __legacyPromptTried = true;
-  //  ★ 스키마 게이트는 **조용히** 본다 — schemaBlocked() 는 막힐 때 토스트를 띄운다. 부팅 때 아무도 누르지
-  //    않았는데 토스트가 뜨면 안 된다(불일치는 상단 빨간 배지가 이미 말한다). 사용자가 누르는 「가져오기」 쪽은
-  //    schemaBlocked() 로 사유를 알린다(legacyPromptImport).
+  //  ★ 스키마 불일치는 **조용히** 본다 — 부팅 때 아무도 누르지 않았는데 토스트가 뜨면 안 된다(막힌 상태는 차단 카드가 말한다).
+  //    사용자가 누르는 「가져오기」 쪽은 guardEdit() 이 막는다(legacyPromptImport).
   if(!(calendarIsEmpty() && HOST && !PEER && !(__bootMeta && __bootMeta.schemaMismatch))) return;
   let p = null;
   try{ p = await hostRequest('legacyXmlProbe', {}, 10000); }catch(_){ p = null; }
@@ -5502,7 +5569,7 @@ function showLegacyPrompt(p){
 function legacyPromptImport(){
   const p = __legacyProbe;
   closeModal('#legacyModal');
-  if(!p || guardEdit() || schemaBlocked()) return;
+  if(!p || guardEdit()) return;                    // 버전 관문이 막았으면 guardEdit 이 막는다(editLocked 가 vgBlocked 를 본다)
   hostRequest('readLegacyXml', { name: p.name }, 60000).then(async res => {
     if(!res || !res.ok){
       toast('파일을 열지 못했습니다' + ((res && res.error) ? ': ' + res.error : ''), 'error');
@@ -5549,6 +5616,9 @@ async function awaitSaveIdle(){
 //  다음 단계(과제 목록·알림)로 간다 — 기다리지 않으면 "다시 연결되었습니다" 가 저장 결과보다 먼저 뜬다.
 function dbSave(opt){
   const replaceAll = !!(opt && opt.replaceAll);
+  //  버전 관문이 막은 동안에는 보내지 않는다(VERSION-GATE §3). 보내 봐야 관문이 거절한다. 편집은 메모리에 남기고
+  //  미저장으로 표시한다(호스트의 닫기 경고, 카드의 경고). 관문이 'ok' 로 돌아오면 vgRecover 가 먼저 저장한다.
+  if(vgBlocked()){ if(HOST && !PEER) setUnsaved(true); return Promise.resolve(false); }
   if(__dbSaving){ __dbDirty = true; return __dbSaveP; }
   __dbSaving = true;
   //  보내는 순간의 상태를 고정한다 — 왕복 중에 state 가 또 바뀌면 무엇을 저장했는지 알 수 없다.
@@ -5579,9 +5649,12 @@ function dbSave(opt){
     //    그 사이 새 편집은 잠근다 — 쌓일수록 충돌·유실 위험만 커진다. 권한 거부도 편집은 남긴다(수동 재시도).
     //    막대는 이 회신과 **같은 틱**에 선다(setUnsaved → connSyncUi 가 동기로 그린다).
     let keep = false;                        // 편집을 메모리에 남겨 다시 보낼 실패인가(막대·닫기 경고)
+    //  ★ 버전 관문(kind 'gate', VERSION-GATE §2.3)은 끊김도 충돌도 아니다. 토스트, 충돌 상자, 재연결 확인 없이
+    //    편집을 메모리에 남기고(미저장) 차단 카드로 간다. 관문이 풀리면 vgRecover 가 그 편집을 먼저 저장한다.
+    if(kind === 'gate'){ keep = true; setUnsaved(true); vgFromReply(res); }
     //  ★ 스키마 불일치는 **충돌 상자에 담지 않는다**(P1-1). 그 상자는 '새로고침하면 풀린다'고
     //    말하는데, 이건 위젯을 업데이트하기 전에는 몇 번을 눌러도 풀리지 않는다.
-    if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');
+    else if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');
     else if(res && res.conflict) showDbConflict(res.error || '다른 곳에서 먼저 수정되었습니다');
     else if(saveFailIsNetwork(res)){ keep = true; setUnsaved(true); connLost(kind || 'network', res); }
     else if(connIsDenied(kind)){ keep = true; setUnsaved(true); connLost(kind, res); toast('저장 실패: ' + (res.error || connKindText(kind, '')), 'error'); }
@@ -5653,14 +5726,16 @@ const CONN_KIND_TEXT = {
   unknown: '서버 오류입니다. 잠시 뒤 다시 시도합니다',
 };
 //  편집 잠금(§4) — 이 한 줄이 정의다. 진입점 관문(guardEdit)과 save() 의 마지막 방어가 같은 값을 본다.
+//  ★ 버전 관문이 막은 동안(vgBlocked, VERSION-GATE §3)도 잠근다. 같은 db-locked 와 같은 관문을 쓰므로 편집 경로 전부가 함께 막힌다.
 function editLocked(){
   if(!HOST || PEER) return false;
-  return !bootOk || unsaved || conn !== 'ok';
+  return !bootOk || unsaved || conn !== 'ok' || vgBlocked();
 }
 //  진입점 관문 — 잠겼으면 토스트 한 줄로 끝낸다(true = 막혔다). 한 동작이 관문 둘을 지나도 토스트는 한 번.
 //  ★ 화면은 읽을 수 있다 — 막는 것은 '바꾸는' 진입점뿐이다(있는 기록 열기·보고서 보기는 그대로).
 function guardEdit(){
   if(!editLocked()) return false;
+  if(vgBlocked()) return true;                      // 차단 카드가 이미 사정을 말한다(뒤 화면은 inert). 토스트를 겹치지 않는다
   const now = Date.now();
   if(now - __lockToldAt > 1500){ __lockToldAt = now; try{ toast(CONN_LOCK_MSG, 'warn'); }catch(_){} }
   return true;
@@ -5668,6 +5743,7 @@ function guardEdit(){
 function connKindOf(o){
   const k = (o && typeof o.kind === 'string') ? o.kind : '';
   if(!k) return '';
+  if(k === 'gate') return 'gate';                   // 버전 관문(VERSION-GATE §2.3). 끊김도 거부도 아니다. 차단 카드가 맡는다(vgFromReply)
   return (k === 'network' || k === 'auth' || k === 'schema' || k === 'unregistered' || k === 'unknown') ? k : 'unknown';
 }
 function connIsDenied(kind){ return kind === 'auth' || kind === 'schema' || kind === 'unregistered'; }
@@ -5729,6 +5805,7 @@ function connHandOffToPing(){
 function connSyncUi(){
   if(!HOST || PEER) return;
   try{ document.body.classList.toggle('db-locked', editLocked()); }catch(_){}
+  try{ vgSyncWarn(); }catch(_){}                     // 차단 카드의 「저장되지 않은 변경」 경고는 unsaved 를 따른다
   if(bootOk){
     //  미저장분이 있으면 막대가 사정을 말한다 — 상자까지 띄우면 같은 말을 두 번 한다(접근 거부만 예외).
     const wantBox = conn === 'denied' || (conn === 'offline' && !unsaved);
@@ -5775,6 +5852,7 @@ function pingRetry(){
 }
 async function connPing(){
   if(!HOST || PEER || __pingBusy || __recovering) return;
+  if(vgBlocked()) return;                           // 관문이 막은 동안에는 붙어도 저장할 수 없다. 복귀는 관문 푸시('ok')가 맡는다
   __pingBusy = true;
   let r = null;
   try{ r = await hostRequest('dbPing', {}, 6000); }catch(_){ r = null; }
@@ -5832,6 +5910,7 @@ function connStartLoop(){
 function connLost(kind, info){
   if(!HOST || PEER) return;
   kind = connKindOf({ kind: kind }) || 'network';
+  if(kind === 'gate'){ vgFromReply(info); return; }   // 끊김이 아니다. 재연결 확인을 돌리지 않고 차단 카드로 간다
   connNoteFailure(kind, info, info && (info.error || info.message));
   if(!bootOk){ connSyncUi(); return; }              // 부팅 전·부팅 실패 — 그 단계의 루프는 부팅 재시도다(하나만)
   const was = conn;
@@ -5908,6 +5987,385 @@ window.__dbConnLost = function(info){
   if(!HOST || PEER) return;
   connLost(connKindOf(info) || 'network', info);
 };
+
+/* ---------- 버전 관문 차단 카드 (docs/VERSION-GATE.md §3, 시안 docs/prototypes/version-gate.html) ----------
+ *  호스트의 관문(DbGate)은 서버 DB 를 열 때마다 구조 번호와 갱신 표시를 본다. 막히면 호스트가 window.__versionGate(상태)를
+ *  메인 창과 열람 창에 밀고, 웹은 회신을 기다리지 않고 이 카드로 바꾼다. 회신에 kind 'gate' 가 먼저 실려 와도 같은 길이다(vgFromReply).
+ *  상태: updating(서버 갱신 중), needUpdate(업데이트 필요), installFailed(설치 실패), serverOld(서버 갱신 전), unknown(버전 정보 없음).
+ *  ★ 'ok' 가 오면 카드를 닫고 한 번 다시 읽는다(vgRecover). 막힌 동안 남은 편집이 있으면 먼저 저장한 뒤 읽는다.
+ *  ★ 막힌 동안 하는 일: 편집 잠금(editLocked, db-locked), 저장 정지(dbSave), 재연결 확인 정지(connPing), 상단 업데이트 알림 숨김(CSS),
+ *    오류 토스트 끄기(toast). 뒤 화면은 흐리게 보이고 inert 다. 제목줄(#hostbar)과 리사이즈 손잡이는 살아 있다.
+ *  ★ 열람 창(PEERWIN)은 작은 변형이다. 같은 제목에 "메인 창에서 업데이트해 주세요", 버튼은 [이 창 닫기] 하나(업데이트 버튼, 수동 경로 없음).
+ *  ★ 열람 프레임(PEER, iframe)은 카드를 띄우지 않는다. 감싼 열람 창이 띄운다.
+ *  ★ 저장되지 않은 변경은 경고 문구만 보인다(목록, 목록 복사 없음, 2026-10-21 결정).
+ *  ★ 새 버전 파일을 기다리는 별도 상태는 없다(2026-10-21 결정). 받을 파일이 없으면 [지금 업데이트] 아래에 호스트의 문구가 뜬다. */
+const VG_STATES = ['updating', 'needUpdate', 'serverOld', 'unknown', 'installFailed'];
+function vgBlocked(){ return !!(__vg && VG_STATES.indexOf(__vg.state) >= 0); }
+let __vgShownState = '';      // 지금 그려 둔 카드의 상태. 바뀔 때만 진행 문구를 비우고 포커스를 옮긴다
+let __vgSteps = [];           // [지금 업데이트] 뒤의 진행 문구(__updateProgress)
+let __vgErr = '';             // 업데이트 실패 문구(__updateResult false). 버튼 바로 아래에 보인다
+let __vgBusy = false;         // 업데이트 진행 중(버튼 잠금)
+let __vgTimer = null;         // 웹 쪽 재확인 타이머(마지막 확인 시각을 새로 고친다, 갱신 중 30초, 서버 갱신 전 5분)
+let __vgLoginPending = null;  // 카드를 띄우며 걷은(또는 띄우지 못한) 로그인 게이트 { showForm, statusText }. 복귀 때 다시 띄운다
+let __vgPendingFail = false;  // 서버 판정을 모르는 채 온 설치 실패 알림. 부팅 조회가 관문을 지나면 안내 한 줄로 바꾼다
+let __vgInstallTold = false;  // 설치 실패 안내는 페이지당 한 번
+let __vgSrcUrl = '';          // 설정의 설치 파일 폴더(__updateSource). 설치 파일 경로를 모를 때 대신 보인다
+const VG_ICON = {
+  sync:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>',
+  down:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  alert:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.2v.1"/></svg>',
+  user:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>',
+};
+//  푸시(객체 또는 JSON 문자열)나 상태 이름 하나를 같은 모양으로 맞춘다. 모르는 상태는 unknown 으로 본다(막힌 쪽으로 기운다).
+function vgParse(x){
+  if(x == null) return null;
+  if(typeof x === 'string'){
+    const t = x.trim();
+    if(t.charAt(0) === '{'){ try{ x = JSON.parse(t); }catch(_){ return null; } }
+    else x = { state: t };
+  }
+  if(typeof x !== 'object') return null;
+  const str = v => (v == null ? '' : String(v)).trim();
+  let st = str(x.state);
+  if(st !== 'ok' && VG_STATES.indexOf(st) < 0) st = 'unknown';
+  const n = Number(x.attemptCount != null ? x.attemptCount : x.count);
+  return { state: st, appVersion: str(x.appVersion), appStructure: str(x.appStructure), dbStructure: str(x.dbStructure),
+    latestVersion: str(x.latestVersion), installerPath: str(x.installerPath), installFailedTarget: str(x.installFailedTarget),
+    attemptCount: (isFinite(n) && n > 0) ? Math.floor(n) : 0 };
+}
+//  호스트가 미는 문(VERSION-GATE §2.3, §2.5). stateOrJson = 'ok' 같은 상태 이름, 또는 { state, appVersion, ... }.
+window.__versionGate = function(arg){
+  if(PEER) return;
+  const g = vgParse(arg);
+  if(!g) return;
+  __vgCheckedAt = Date.now();
+  if(g.state === 'ok'){ vgRecover(); return; }
+  //  설치 실패 알림인데 서버는 막히지 않았다(앱만 고친 배포의 설치가 실패했다). 일은 할 수 있어야 하므로 막지 않고 안내만 한다.
+  //  서버 판정을 아직 모르면(dbStructure 빈 값, 부팅 조회 전) 기다렸다가 부팅 조회가 관문을 지나면 안내한다(vgOnBootApplied).
+  //  서버가 정말 막혔으면 호스트가 구조 번호를 실은 installFailed 를 다시 민다.
+  if(g.state === 'installFailed' && !vgDbMismatch(g)){
+    if(g.dbStructure === '' && !(HOST && !PEERWIN && bootOk)){ __vgPendingFail = true; return; }
+    vgInstallNotice();
+    return;
+  }
+  const prev = __vg;
+  //  회신에서 온 상태(state, dbStructure, appStructure 셋뿐)가 푸시의 자세한 값을 지우지 않게, 같은 상태면 빈 칸을 앞 값으로 채운다.
+  if(prev && prev.state === g.state){ for(const k of Object.keys(g)){ if((g[k] === '' || g[k] === 0) && prev[k]) g[k] = prev[k]; } }
+  if(g.state === 'installFailed') __vgPendingFail = false;
+  __vg = g;
+  vgShow();
+};
+function vgDbMismatch(g){ return g.dbStructure !== '' && g.appStructure !== '' && Number(g.dbStructure) !== Number(g.appStructure); }
+//  회신이 관문에 막혔다({ ok:false, kind:'gate', gate:{ state, dbStructure, appStructure } }). 푸시가 아직 안 왔으면 이것으로 카드를 띄운다.
+function vgFromReply(o){
+  if(PEER || vgBlocked()) return;
+  const g = (o && o.gate && typeof o.gate === 'object') ? o.gate : null;
+  window.__versionGate(Object.assign({}, g || {}, { state: (g && g.state) || 'unknown' }));
+}
+//  모든 호스트 회신이 지나는 자리(hostRequest). 관문 실패면 카드로 보낸다. 호출부의 실패 처리는 그대로 돌지만 토스트는 꺼져 있다(toast).
+function vgNoteReply(res){
+  if(res && res.ok === false && res.kind === 'gate') vgFromReply(res);
+}
+function vgUnsaved(){ return !!(HOST && !PEER && !PEERWIN && (unsaved || __dbSaving || __dbDirty)); }
+function vgHasUpdateButton(st){ return !PEERWIN && (st === 'needUpdate' || (st === 'installFailed' && !!__vg && __vg.attemptCount < 2)); }
+function vgHHMM(t){ const d = new Date(t || Date.now()); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function vgEvery(st){ return st === 'updating' ? 30000 : (st === 'serverOld' || st === 'unknown') ? 300000 : 0; }
+function vgStatusText(){
+  const st = __vg ? __vg.state : '';
+  return '마지막 확인 ' + vgHHMM(__vgCheckedAt) + ', ' + (st === 'updating' ? '30초' : '5분') + '마다 다시 확인';
+}
+//  카드 안을 그린다. 값(버전, 경로, 구조 번호)은 호스트에서 온 글자라 모두 esc() 를 지난다.
+function vgRender(){
+  const box = document.getElementById('vgGate');
+  if(!box || !__vg) return;
+  const g = __vg, st = g.state, peer = PEERWIN;
+  const act = document.activeElement;
+  const keepFocus = (act && box.contains(act) && act.id) ? act.id : '';
+  const cur = g.appVersion || APP_VERSION;
+  const status = '<div class="vg-status" role="status" aria-live="polite">' + (st === 'updating' ? '<span class="vg-spin" aria-hidden="true"></span>' : '')
+    + '<span id="vgStatusText">' + esc(vgStatusText()) + '</span></div>';
+  const ver = '<div class="vg-ver">현재 <b class="v">' + esc(cur) + '</b>'
+    + (g.latestVersion ? ' <span class="arr" aria-hidden="true">→</span> 새 버전 <b class="v new">' + esc(g.latestVersion) + '</b>' : '') + '</div>';
+  const more = '<details class="vg-more"><summary>자세한 정보</summary><dl>'
+    + '<dt>서버 구조 번호</dt><dd>' + esc(g.dbStructure || '알 수 없음') + '</dd>'
+    + '<dt>앱 구조 번호</dt><dd>' + esc(g.appStructure || '알 수 없음') + '</dd>'
+    + '<dt>앱 버전</dt><dd>' + esc(cur || '알 수 없음') + '</dd></dl></details>';
+  const warn = '<div id="vgWarnSlot"></div>';
+  let tone = 'info', icon = 'down', title = '', body = '', main = '', foot = '', help = '';
+  if(st === 'updating'){
+    icon = 'sync';
+    title = '서버를 갱신하고 있습니다';
+    body = '잠시 후 자동으로 다시 연결합니다. 앱을 끄지 않아도 됩니다.';
+    main = '<div class="vg-pbar" aria-hidden="true"><i></i></div>' + status + (peer ? '' : warn);
+  } else if(st === 'needUpdate'){
+    title = '새 버전이 필요합니다';
+    body = peer ? '서버가 갱신되어 이 버전으로는 일정을 볼 수 없습니다. 메인 창에서 업데이트해 주세요.'
+                : '서버가 새 구조로 갱신되어 지금 버전으로는 일정을 읽거나 저장할 수 없습니다. 업데이트하면 바로 이어서 쓸 수 있습니다.';
+    if(!peer){
+      main = ver + warn + more;
+      foot = '<button class="btn primary" type="button" id="vgPrimary" data-vg-act="update" data-vg-primary>지금 업데이트</button>';
+      help = vgHelpHtml('버튼이 동작하지 않으면');
+    }
+  } else if(st === 'installFailed'){
+    tone = 'danger'; icon = 'alert';
+    title = '업데이트를 마치지 못했습니다';
+    const retry = vgHasUpdateButton(st);
+    body = peer ? '업데이트를 마치지 못해 이 버전으로는 일정을 볼 수 없습니다. 메인 창에서 업데이트해 주세요.'
+                : '설치가 끝나지 않아 아직 ' + (cur ? cur + ' 버전입니다. ' : '이전 버전입니다. ') + (retry ? '다시 시도하거나 아래 경로에서 직접 설치해 주세요.' : '아래 경로에서 직접 설치해 주세요.');
+    if(!peer){
+      main = ver + warn + more;
+      if(retry) foot = '<button class="btn primary" type="button" id="vgPrimary" data-vg-act="update" data-vg-primary>다시 시도</button>';
+      help = vgHelpHtml('직접 설치하기');
+    }
+  } else if(st === 'serverOld'){
+    tone = 'neutral'; icon = 'user';
+    title = '서버 갱신 전입니다';
+    body = '관리자가 서버 DB를 갱신하면 자동으로 이어집니다. 관리자에게 문의해 주세요.';
+    main = status + (peer ? '' : warn + more);
+  } else {
+    tone = 'neutral'; icon = 'user';
+    title = '서버 버전을 확인할 수 없습니다';
+    body = '서버의 버전 정보를 읽을 수 없습니다. 관리자에게 문의해 주세요.';
+    main = status + (peer ? '' : warn + more);
+  }
+  if(peer) foot = '<button class="btn primary" type="button" id="vgPrimary" data-vg-act="close" data-vg-primary>이 창 닫기</button>';
+  const run = vgHasUpdateButton(st) ? '<div class="vg-run" id="vgRun"><ol class="vg-steps" id="vgSteps"></ol>'
+    + '<div class="sr-only" id="vgRunLive" role="status" aria-live="polite"></div><div class="vg-err" id="vgErr" role="alert"></div></div>' : '';
+  box.innerHTML = '<div class="vg-card' + (peer ? ' vg-peer' : '') + '" role="alertdialog" aria-modal="true" aria-labelledby="vgTitle" aria-describedby="vgBody" data-tone="' + tone + '" data-state="' + st + '" tabindex="-1">'
+    + '<div class="vg-top"><div class="vg-ico" aria-hidden="true">' + VG_ICON[icon] + '</div>'
+    + '<div class="vg-head"><h2 class="vg-title" id="vgTitle">' + esc(title) + '</h2><p class="vg-body" id="vgBody">' + esc(body) + '</p></div></div>'
+    + (main ? '<div class="vg-main">' + main + '</div>' : '')
+    + (foot ? '<div class="vg-foot">' + foot + '</div>' : '')
+    + run
+    + (help || '<div class="vg-tail"></div>')
+    + '</div>';
+  vgSyncWarn();
+  vgRenderRun();
+  if(keepFocus){ const f = document.getElementById(keepFocus); if(f){ try{ f.focus({ preventScroll:true }); }catch(_){} } }
+}
+//  수동 설치 안내(§2.6). 경로 = 설치 파일 폴더 + 파일 이름(호스트가 합친 것). 그걸 모르면 설정의 폴더라도 보인다.
+function vgHelpHtml(lead){
+  const g = __vg || {};
+  const p = g.installerPath || __vgSrcUrl;
+  return '<div class="vg-help"><div class="vg-h">' + esc(lead) + '</div>'
+    + (p ? '<div>' + (g.installerPath ? '아래 설치 파일을 직접 실행해 주세요.' : '아래 폴더에서 새 버전 설치 파일을 직접 실행해 주세요.') + '</div>'
+      + '<div class="vg-path"><code id="vgPath" title="' + esc(p) + '">' + esc(p) + '</code>'
+      + '<button class="btn sm" type="button" id="vgCopy" data-vg-act="copy" aria-label="설치 파일 경로 복사">복사</button></div>'
+      + '<div class="vg-copy-msg" id="vgCopyMsg" role="status" aria-live="polite"></div>' : '')
+    + '<div>' + (p ? '그래도 안 되면 담당자에게 문의해 주세요.' : '담당자에게 문의해 주세요.') + '</div></div>';
+}
+//  "저장되지 않은 변경" 경고(§3, 2026-10-21 결정: 문구만). unsaved 가 바뀔 때마다(connSyncUi) 다시 맞춘다.
+function vgSyncWarn(){
+  if(!vgBlocked()) return;
+  const slot = document.getElementById('vgWarnSlot');
+  if(!slot) return;
+  const on = vgUnsaved();
+  const has = !!slot.firstChild;
+  if(on === has) return;
+  slot.textContent = '';
+  if(!on) return;
+  const w = document.createElement('div');
+  w.className = 'vg-warn'; w.id = 'vgWarn'; w.setAttribute('role', 'note');
+  w.textContent = '저장되지 않은 변경이 있습니다. 업데이트하거나 앱을 다시 켜면 사라지니 필요한 내용은 따로 적어 두세요.';
+  slot.appendChild(w);
+}
+//  [지금 업데이트] 뒤의 진행과 실패. 살아 있는 영역(role=status, alert)은 그대로 두고 글만 바꾼다(다시 그리면 읽어 주지 않는다).
+function vgRenderRun(){
+  const ol = document.getElementById('vgSteps'), live = document.getElementById('vgRunLive'), err = document.getElementById('vgErr');
+  if(ol){
+    ol.textContent = '';
+    __vgSteps.forEach((t, i) => {
+      const li = document.createElement('li');
+      if(__vgBusy && i === __vgSteps.length - 1) li.className = 'now';
+      const dot = document.createElement('span'); dot.className = 'vg-dot'; dot.setAttribute('aria-hidden', 'true');
+      const tx = document.createElement('span'); tx.textContent = t;
+      li.appendChild(dot); li.appendChild(tx); ol.appendChild(li);
+    });
+  }
+  if(live) live.textContent = __vgSteps.length ? __vgSteps[__vgSteps.length - 1] : '';
+  if(err) err.textContent = __vgErr;
+  const b = document.getElementById('vgPrimary');
+  if(b && b.dataset.vgAct === 'update'){
+    b.disabled = __vgBusy;
+    if(__vgBusy) b.setAttribute('aria-busy', 'true'); else b.removeAttribute('aria-busy');
+  }
+}
+function vgFocus(){
+  const box = document.getElementById('vgGate');
+  if(!box) return;
+  const t = box.querySelector('[data-vg-primary]:not([disabled])') || box.querySelector('.vg-card');
+  if(t){ try{ t.focus({ preventScroll:true }); }catch(_){ try{ t.focus(); }catch(__){} } }
+}
+//  뒤 화면 격리. 카드, 토스트, 리사이즈 손잡이, 그리고 #appSurface 안의 제목줄(#hostbar)만 살린다.
+//  ★ 제목줄은 #appSurface 안에 있다. 그래서 #appSurface 자체가 아니라 그 자식들에 inert 를 건다(모달이 #appSurface 에 건 것도 걷는다).
+//  ★ 풀 때는 걷은 뒤 _updateInert 로 모달 상태를 다시 계산한다(_gateInert 와 같은 방식).
+function vgInert(on){
+  const set = (el, v) => { if(v){ el.setAttribute('inert', ''); el.setAttribute('aria-hidden', 'true'); } else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); } };
+  [...document.body.children].forEach(el => {
+    if(el.id === 'vgGate' || el.id === 'toastWrap' || el.id === 'loginGate' || el.tagName === 'SCRIPT') return;
+    if(el.classList && el.classList.contains('rsz')) return;
+    if(el.id === 'appSurface'){
+      set(el, false);
+      [...el.children].forEach(c => { if(c.id !== 'hostbar') set(c, on); });
+      return;
+    }
+    set(el, on);
+  });
+  if(!on){ try{ _updateInert(); }catch(_){} }
+}
+function vgShow(){
+  const box = document.getElementById('vgGate');
+  if(!box || !__vg) return;
+  vgWire(box);
+  const first = !document.body.classList.contains('vg-on');
+  const changed = __vgShownState !== __vg.state;
+  if(changed){ __vgSteps = []; __vgErr = ''; __vgBusy = false; }
+  //  로그인 게이트가 떠 있으면 걷는다. 카드보다 위(z 300)라 카드를 가리고, 제목줄까지 덮어 창을 닫을 길이 없어진다. 복귀 때 다시 띄운다.
+  if(!PEERWIN && __gateOn){
+    const f = document.getElementById('lgForm'), s = document.getElementById('lgStatus');
+    const p = { showForm: !!(f && !f.classList.contains('hidden')), statusText: s ? s.textContent : null };
+    hideLoginGate();
+    __vgLoginPending = p;
+  }
+  document.body.classList.add('vg-on');
+  box.classList.remove('hidden');
+  __vgShownState = __vg.state;
+  vgRender();
+  vgInert(true);
+  if(HOST && !PEER && !PEERWIN){
+    connSyncUi();                                     // db-locked(편집 잠금 표시)
+    if(first) hpost({ cmd:'updateSourceGet' });     // 설치 파일 경로를 모를 때 보일 폴더(__updateSource)
+  }
+  vgArmTimer();
+  if(first || changed) vgFocus();
+}
+function vgWire(box){
+  if(box.__vgWired) return;
+  box.__vgWired = true;
+  box.addEventListener('click', ev => {
+    const b = ev.target && ev.target.closest ? ev.target.closest('[data-vg-act]') : null;
+    if(!b || b.disabled || !box.contains(b)) return;
+    vgAct(b.dataset.vgAct);
+  });
+}
+function vgAct(a){
+  if(a === 'update'){
+    if(__vgBusy || PEERWIN) return;
+    __vgBusy = true; __vgErr = ''; __vgSteps = ['업데이트 준비 중…'];
+    vgRenderRun();
+    hpost({ cmd:'updateApply' });                     // 배너의 [지금 업데이트]와 같은 명령(내려받기, 대조, 설치, 다시 시작)
+  } else if(a === 'copy'){
+    const g = __vg || {};
+    vgCopy(g.installerPath || __vgSrcUrl);
+  } else if(a === 'close'){
+    try{ window.close(); }catch(_){}                  // 열람 창은 호스트가 창을 닫는다(PeerWindow 의 WindowCloseRequested)
+  }
+}
+//  경로 복사. 클립보드 API 가 안 되면 숨긴 textarea 로 한 번 더. 결과는 카드 안에 한 줄로 알린다(토스트는 카드 뒤에 깔린다).
+function vgCopy(text){
+  const say = t => { const m = document.getElementById('vgCopyMsg'); if(m) m.textContent = t; };
+  if(!text) return;
+  const fallback = () => {
+    const box = document.getElementById('vgGate') || document.body;
+    const back = document.activeElement;
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    box.appendChild(ta);
+    let ok = false;
+    try{ ta.select(); ok = !!document.execCommand('copy'); }catch(_){ ok = false; }
+    ta.remove();
+    if(back && back.focus){ try{ back.focus({ preventScroll:true }); }catch(_){} }
+    say(ok ? '경로를 복사했습니다' : '복사하지 못했습니다. 경로를 직접 선택해 주세요');
+  };
+  try{
+    if(navigator.clipboard && typeof navigator.clipboard.writeText === 'function'){
+      navigator.clipboard.writeText(text).then(() => say('경로를 복사했습니다'), fallback);
+      return;
+    }
+  }catch(_){}
+  fallback();
+}
+//  웹 쪽 재확인. 호스트도 같은 간격으로 다시 보지만 판정이 그대로면 다시 밀지 않는다(PushGate 는 같은 JSON 을 거른다).
+//  그래서 "마지막 확인" 시각은 웹이 gateRecheck 회신으로 새로 고친다. 업데이트 필요와 설치 실패는 다시 보지 않는다(§2.5).
+function vgArmTimer(){
+  if(__vgTimer){ clearTimeout(__vgTimer); __vgTimer = null; }
+  const ms = __vg ? vgEvery(__vg.state) : 0;
+  if(!ms || !HOST) return;
+  __vgTimer = setTimeout(vgTick, ms);
+}
+async function vgTick(){
+  __vgTimer = null;
+  if(!vgBlocked()) return;
+  let r = null;
+  try{ r = await hostRequest('gateRecheck', {}, 15000); }catch(_){ r = null; }
+  if(!vgBlocked()) return;                          // 그 사이 푸시가 풀었다
+  if(r && r.ok){
+    __vgCheckedAt = Date.now();
+    const st = String(r.state || '');
+    if(st === 'ok' || (st && st !== __vg.state)){ window.__versionGate({ state: st }); if(!vgBlocked()) return; }
+    const t = document.getElementById('vgStatusText'); if(t) t.textContent = vgStatusText();
+  }
+  vgArmTimer();
+}
+//  'ok' 가 왔다. 카드를 닫고, 막혔던 적이 있으면 한 번 다시 읽는다.
+function vgRecover(){
+  const was = vgBlocked();
+  __vg = null; __vgShownState = ''; __vgSteps = []; __vgErr = ''; __vgBusy = false;
+  if(__vgTimer){ clearTimeout(__vgTimer); __vgTimer = null; }
+  const box = document.getElementById('vgGate');
+  if(box){ box.classList.add('hidden'); box.textContent = ''; }
+  const wasOn = document.body.classList.contains('vg-on');
+  document.body.classList.remove('vg-on');
+  if(wasOn) vgInert(false);
+  if(!was) return;
+  //  열람 창: 보던 사람을 다시 연다(보던 달을 잇는다).
+  if(PEERWIN){ if(__pv && __pv.loginId != null) openPeerSchedule(__pv.loginId, __pv.name, { carry: pvFrameView() }); return; }
+  if(!HOST || PEER) return;
+  connSyncUi();
+  //  로그인 게이트를 걷고 카드를 띄웠다면 로그인부터 다시 한다. 로그인이 성공하면 connAfterLogin 이 다시 읽는다.
+  if(__vgLoginPending){ const p = __vgLoginPending; __vgLoginPending = null; showLoginGate(p.showForm, p.statusText); return; }
+  vgReload();
+}
+//  다시 읽기(한 번). 막힌 동안 남은 편집이 있으면 먼저 저장한다(재연결 회복 S5 와 같은 순서). 과제 목록과 코드도 다시 읽는다.
+async function vgReload(){
+  __connNeedCatalog = true;                          // 주입(__applyState, connOnBootApplied)이 과제 목록과 코드를 다시 읽는다
+  if(bootOk && unsaved){
+    const ok = await dbSave();
+    if(!ok){ connReloadCatalog(); return; }         // 실패 처리(충돌 상자, 끊김 막대, 다시 막힘)는 dbSave 가 이미 했다
+  }
+  hpost({ cmd:'reloadState' });
+}
+//  부팅 조회가 관문을 지났다(__applyState). meta.gate 가 막힘이면 카드를 띄운다. 기다리던 설치 실패 안내가 있으면 이제 한다.
+function vgOnBootApplied(meta){
+  if(!HOST || PEER) return;
+  const st = (meta && typeof meta.gate === 'string') ? meta.gate.trim() : '';
+  if(st && st !== 'ok'){ if(!vgBlocked()) window.__versionGate({ state: st }); return; }
+  if(__vgPendingFail){ __vgPendingFail = false; vgInstallNotice(); }
+}
+function vgInstallNotice(){
+  if(__vgInstallTold || PEER || PEERWIN) return;     // 열람 창은 말하지 않는다(메인 창이 한 번 말한다)
+  __vgInstallTold = true;
+  toast('지난 업데이트를 마치지 못했습니다. 새 버전 알림에서 다시 시도하거나 담당자에게 문의해 주세요', 'warn', null, 12000);
+}
+//  업데이트 진행과 결과(호스트의 __updateProgress, __updateResult)가 막힌 동안에는 카드로 온다. true = 카드가 받았다.
+function vgOnUpdateProgress(msg){
+  if(!vgBlocked() || !vgHasUpdateButton(__vg.state)) return false;
+  const t = String(msg || '').trim();
+  __vgBusy = true; __vgErr = '';
+  if(t && __vgSteps[__vgSteps.length - 1] !== t) __vgSteps.push(t);
+  vgRenderRun();
+  return true;
+}
+function vgOnUpdateResult(ok, msg){
+  if(!vgBlocked() || !vgHasUpdateButton(__vg.state) || !__vgBusy) return false;
+  const t = String(msg || '').trim();
+  if(ok){ if(t && __vgSteps[__vgSteps.length - 1] !== t) __vgSteps.push(t); vgRenderRun(); return true; }
+  __vgBusy = false;
+  __vgErr = t || '업데이트하지 못했습니다. 다시 시도해 주세요.';
+  vgRenderRun();
+  vgFocus();
+  return true;
+}
 //  호스트 통지(S10) — 보고 전송은 성공했고, 호스트가 10·30·60초로 다시 써 봐도 보고 기록 저장이 실패했다.
 //  ★ 웹은 다시 시도하지 않는다(호스트가 이미 했다). 다시 보내라고도 하지 않는다 — 전송은 됐다(두 번 올라간다).
 window.__reportRecordFailed = function(info){
@@ -6053,7 +6511,7 @@ let __loginBusy = false;  // 재진입 가드. 버튼 disabled와 '둘 다' 둔�
 // (_updateInert는 .overlay를 건너뛰므로, 우리가 씌운 inert를 그쪽이 벗겨주지 못한다).
 function _gateInert(on){
   [...document.body.children].forEach(el => {
-    if(el.id === 'loginGate' || el.id === 'toastWrap') return;
+    if(el.id === 'loginGate' || el.id === 'toastWrap' || el.id === 'vgGate') return;   // vgGate = 버전 관문 카드(그것도 격리 밖)
     if(on){ el.setAttribute('inert',''); el.setAttribute('aria-hidden','true'); }
     else { el.removeAttribute('inert'); el.removeAttribute('aria-hidden'); }
   });
@@ -6061,6 +6519,8 @@ function _gateInert(on){
 }
 // 게이트 표시 — showForm=false면 상태줄만('로그인 확인 중…'). 닫는 경로는 만들지 않는다(× · ESC · 배경클릭 전부 없음).
 function showLoginGate(showForm, statusText){
+  //  버전 관문 카드가 떠 있으면 띄우지 않고 맡겨 둔다(카드보다 위라 카드와 제목줄을 덮는다). 관문이 풀리면 vgRecover 가 띄운다.
+  if(vgBlocked() && !PEERWIN){ __vgLoginPending = { showForm, statusText }; return; }
   __gateOn = true;
   const g = document.getElementById('loginGate'); if(g) g.classList.remove('hidden');
   const f = document.getElementById('lgForm'); if(f) f.classList.toggle('hidden', !showForm);
@@ -6070,6 +6530,7 @@ function showLoginGate(showForm, statusText){
 }
 function hideLoginGate(){
   __gateOn = false;
+  __vgLoginPending = null;                          // 관문 카드가 맡아 둔 로그인 게이트도 이제 필요 없다
   const g = document.getElementById('loginGate'); if(g) g.classList.add('hidden');
   const pw = document.getElementById('lgPw'); if(pw) pw.value = '';   // 비번을 DOM에 남기지 않는다
   const m = document.getElementById('lgMsg'); if(m) m.textContent = '';   // 색은 CSS(.lg-msg)가 소유한다 — 인라인 style을 쓰지 않는다
@@ -6398,6 +6859,8 @@ function openPeerSchedule(loginId, name, opt){
   //  그 사람 일정과 내 일정 겹(메인 창의 지금 상태)을 함께 받는다. 겹을 못 받으면 겹 없이 연다(pvMineGet 이 [] 를 준다).
   Promise.all([hostRequest('peerSchedule', { loginId }, 20000), pvMineGet()]).then(([res, mine]) => {
     if(__pv !== pv) return;                          // 그 사이 다른 사람을 열었다(같은 사람을 다시 열었어도 새 차례다)
+    //  ★ 버전 관문(kind 'gate')은 실패 문구 대신 차단 카드다(VERSION-GATE §3). 관문이 풀리면 vgRecover 가 이 사람을 다시 연다(__pv 유지).
+    if(res && res.ok === false && res.kind === 'gate'){ vgFromReply(res); const h = $('#pvHost'); if(h) h.textContent = ''; return; }
     if(!res || !res.ok){ pvFail((res && res.error) || '일정을 불러오지 못했습니다'); return; }
     //  ★ '권한 없음'과 '통신 실패'를 구분해 말한다 — 사용자에게 다른 사실이다.
     if(!res.allowed){ pvFail('이 사람의 일정을 볼 권한이 없습니다.'); return; }
@@ -8987,6 +9450,8 @@ async function submitLogin(){
   __loginBusy = false;
   if(btn){ btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = '로그인'; }
   if(r && r.ok && r.user){ applyUser(r.user); hideLoginGate(); connAfterLogin(); return; }   // S2 — 로그인한 계정으로 다시 읽는다
+  //  버전 관문(kind 'gate')은 로그인 실패가 아니다. 차단 카드가 떴다(hostRequest). 풀리면 로그인 화면이 다시 뜬다(vgRecover).
+  if(r && r.kind === 'gate'){ if(pwEl) pwEl.value = ''; say(''); return; }
   // 실패 — 게이트는 그대로 두고 호스트가 준 사유(msg)를 그대로 보여준다(실패 code는 없다: 분기할 곳이 없다).
   say((r && r.msg) || '로그인하지 못했습니다. 잠시 후 다시 시도하세요.');
   if(pwEl){ pwEl.value = ''; try{ pwEl.focus(); }catch(_){} }   // 비번은 화면에도 남기지 않는다
@@ -10983,6 +11448,8 @@ function _focusables(el){
     .filter(n => !n.classList.contains('hidden') && n.offsetParent !== null);
 }
 function _updateInert(){
+  //  버전 관문 카드가 떠 있는 동안은 카드의 격리(vgInert)가 이긴다. 모달이 열리고 닫혀도 뒤 화면은 inert, 제목줄은 산다.
+  if(vgBlocked() && document.body.classList.contains('vg-on')){ vgInert(true); return; }
   const anyOpen = _modalStack.length > 0;
   [...document.body.children].forEach(el => {
     if(el.classList && el.classList.contains('overlay')) return;   // 오버레이 자신은 제외(숨겨진 건 display:none)
@@ -11641,11 +12108,14 @@ function setRptSendText(el, html){
 window.__netcusProgress = function(msg){
   const s = $('#rptSendStatus'); if(s){ setRptSendText(s, ICON.spinner + ' ' + esc(msg)); s.className = 'rpt-send-status busy'; }
 };
-window.__netcusResult = function(ok, msg){
+//  extra = { kind:'gate', gate:{...} } — 버전 관문이 막아 회사 사이트에 접속하지 않았다(VERSION-GATE §2.4). 토스트 없이 차단 카드로 간다.
+window.__netcusResult = function(ok, msg, extra){
   clearTimeout(Netcus.watchdog);   // 결과 도착 → 전송 워치독 해제(영구잠김 방지)
+  const gate = !ok && !!extra && extra.kind === 'gate';
   const s = $('#rptSendStatus'); if(s){ setRptSendText(s, (ok ? ICON.check : ICON.alert) + ' ' + esc(msg)); s.className = 'rpt-send-status ' + (ok ? 'ok' : 'err'); }
   const b = $('#btnRptSend'); if(b) b.disabled = false;
-  toast(msg, ok ? 'success' : 'error');   // netcus 전송 실패 = 회사 보고가 안 올라간 것 → 경고가 아니라 오류
+  if(gate) vgFromReply(extra);
+  else toast(msg, ok ? 'success' : 'error');   // netcus 전송 실패 = 회사 보고가 안 올라간 것 → 경고가 아니라 오류
   rptDraftOnSendResult(ok, msg);   // 일간 전송 대기 표지가 있고 성공일 때만 그 날짜의 임시 저장을 지운다(실패, 바쁨, 주간 채우기 회신은 지우지 않는다)
 };
 window.__netcusProbeResult = function(ok, msg){
@@ -11694,28 +12164,35 @@ function __updShowProgress(msg){
   if(p){ p.classList.remove('hidden'); p.innerHTML = ICON.spinner + ' ' + esc(msg); }
 }
 // host: 새 버전 알림 — infoJson = JSON.stringify({version, notes})
+//  ✕(#updClose)로 닫은 버전은 이번 실행 동안 다시 띄우지 않는다(30분 확인이 같은 버전을 또 알려도). 다음에 앱을 켜면 다시 알린다.
+let __updDismissed = '';
 window.__updateAvailable = function(infoJson){
   if(!HOST) return;   // 위젯 전용 — 브라우저에서는 호스트가 호출하지 않음
   let info; try{ info = JSON.parse(infoJson); }catch(_){ return; }
   const v = info && info.version ? String(info.version) : '';
   if(!v) return;
+  //  버전 관문 카드가 떠 있으면(VERSION-GATE §3) 배너는 CSS 가 숨긴다. 카드가 새 버전 번호를 모르면 여기서 알려 준다.
+  if(vgBlocked() && !__vg.latestVersion){ __vg.latestVersion = v; vgRender(); }
+  if(v === __updDismissed) return;
   const b = document.getElementById('updateBanner'); if(!b) return;
   b.dataset.version = v;
   const notes = info && info.notes ? String(info.notes) : '';
   b.dataset.notes = notes;   // 배너 '변경내역'이 이 신규 버전 notes만 표시(전체 이력 모달과 분리)
   const msg = $('#updMsg');
-  if(msg) msg.innerHTML = '새 버전 <b>' + esc(v) + '</b>이(가) 있습니다'
+  if(msg) msg.innerHTML = '새 버전 <b>' + esc(v) + '</b>이 있습니다'
     + (notes ? ' <span class="upd-notes" title="' + esc(notes) + '">(' + esc(notes) + ')</span>' : '');
   __updShowActions();
   b.classList.remove('hidden');
 };
 // host: 진행 문구(내려받는 중/검증 중/재시작…)
 window.__updateProgress = function(msg){
+  if(vgOnUpdateProgress(msg)) return;   // 버전 관문 카드의 [지금 업데이트]에서 왔다(진행 문구는 카드에)
   const b = document.getElementById('updateBanner');
   if(b && !b.classList.contains('hidden')) __updShowProgress(msg || '');   // 배너가 떠 있을 때만 진행 표시
 };
 // host: 결과(ok/msg). 배너가 진행 중이면 문구 갱신, 항상 토스트로도 알림.
 window.__updateResult = function(ok, msg){
+  if(vgOnUpdateResult(ok, msg)) return;   // 카드의 업데이트였다. 실패 문구는 버튼 바로 아래에 보인다(토스트 없음)
   const b = document.getElementById('updateBanner');
   if(b && !b.classList.contains('hidden')){
     const p = $('#updProg');
@@ -11734,7 +12211,12 @@ window.__updateNone = function(){
   b.classList.add('hidden');   // 조용히 숨김만(팝업/토스트 없음)
 };
 // host: 현재 저장된 소스 URL을 설정 필드에 반영
-window.__updateSource = function(url){ const u = $('#updSrc'); if(u) u.value = url || ''; };
+window.__updateSource = function(url){
+  const u = $('#updSrc'); if(u) u.value = url || '';
+  //  버전 관문 카드의 수동 설치 안내가 설치 파일 경로를 모르면 이 폴더를 대신 보인다.
+  __vgSrcUrl = String(url || '').trim();
+  if(vgBlocked() && !__vg.installerPath && __vgSrcUrl) vgRender();
+};
 // host: 현재 DB 접속 대상(DeployConfig 베이크 상수)을 설정창 「과제 DB」에 표시.
 // ★ 표시 전용 — 값은 바꿀 수 없다(입력칸·저장 버튼 없음). 비밀번호는 payload에 아예 오지 않는다.
 // ★ 값은 textContent로만 넣는다 — 호스트에서 온 문자열이 마크업으로 해석되면 안 된다(innerHTML 금지).
@@ -13631,8 +14113,7 @@ function showImportPreview(name, text){
 }
 
 function startImport(){
-  if(guardEdit()) return;
-  if(schemaBlocked()) return;   // P1-1 — 낡은 위젯의 전량 교체는 호스트가 거부한다. 여기서 사유를 먼저 알린다
+  if(guardEdit()) return;      // 버전 관문이 막은 동안도 여기서 멈춘다(editLocked 가 vgBlocked 를 본다). 진짜 거부는 호스트 관문이 한다
   if(!HOST){ $('#importFile').click(); return; }
   hostRequest('pickImportXml', {}, 120000).then(res => {
     if(!res || !res.ok){
@@ -13722,8 +14203,7 @@ function applyImport(opt){
   return saved;
 }
 async function clearAll(){
-  if(guardEdit()) return;
-  if(schemaBlocked()) return;   // P1-1 — 초기화도 전량 교체다. 지운 뒤에 거부당하면 화면만 비고 DB 는 그대로다
+  if(guardEdit()) return;      // 초기화도 전량 교체다. 버전 관문이 막은 동안은 여기서 멈춘다(지운 뒤에 거부당하면 화면만 빈다)
   if(await confirmBox('전체 데이터 초기화',
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다${HOST ? '(서버에 저장된 내 기록 포함)' : ''}.\n삭제 전 ⋯ 메뉴의 'XML로 내보내기'로 내 PC에 사본을 남기기를 권장합니다.`,
     '모두 삭제') !== 'ok') return;
@@ -16095,6 +16575,9 @@ function confirmTyped(title, msg, mustType, okLabel){
 // kind: undefined/'success'(✓ 녹) | 'warn'(⚠ 앰버) | 'error'(✕ 적) | 'info'(중립). action: {label, fn} = 되돌리기 등.
 // 카드마다 독립 타이머·Undo로 연속 동작 시 직전 Undo가 사라지지 않음(최대 3개 누적). 컨테이너가 live region.
 function toast(msg, kind, action, ms){
+  //  버전 관문 카드가 떠 있는 동안 오류와 경고 토스트는 띄우지 않는다(VERSION-GATE §3). 그 실패의 사정은 카드가 말하고,
+  //  뒤 화면은 inert 라 토스트가 가리키는 곳에 손이 닿지 않는다. 관문 회신을 받는 호출부 마흔 곳을 하나씩 고치지 않는 그물이다.
+  if((kind === 'error' || kind === 'warn') && vgBlocked()) return;
   const k = kind === 'warn' ? 'warn' : kind === 'error' ? 'error' : kind === 'info' ? 'info' : 'success';
   const stack = $(k === 'error' ? '#toastStackErr' : '#toastStack'); if(!stack) return;   // 오류=assertive 영역으로 분리(polite 컨테이너+alert 자식 중첩 이중낭독 방지)
   const glyph = k === 'warn' ? '⚠' : k === 'error' ? '✕' : k === 'info' ? '•' : '✓';
@@ -17356,6 +17839,12 @@ function bind(){
       __updShowProgress('업데이트 준비 중…');
       hpost({ cmd: 'updateApply' });   // 내려받기·검증·설치 후 자동 재시작(호스트)
     }); }
+  //  ✕ — 이번 실행 동안만 닫는다(같은 버전을 30분 확인이 다시 알려도 띄우지 않는다). 막는 것이 아니라 알림이라 닫을 수 있다.
+  { const x = $('#updClose'); if(x) x.addEventListener('click', () => {
+      const b = document.getElementById('updateBanner'); if(!b) return;
+      __updDismissed = b.dataset.version || '';
+      b.classList.add('hidden');
+    }); }
   { const h = $('#updNotes'); if(h) h.addEventListener('click', () => {   // 배너 변경내역 = 이번(신규) 버전 notes만(전체 이력 아님)
       const b = document.getElementById('updateBanner');
       const ver = (b && b.dataset.version) ? b.dataset.version : '';
@@ -18229,6 +18718,7 @@ function bind(){
     // ★ 게이트 표시 중에는 전역 단축키가 하나도 돌지 않는다 — ESC/방향키가 뒤의 모달·월 이동을 건드리면
     //   '로그인 전에는 아무것도 못 한다'가 깨진다(배경은 inert지만 document 레벨 핸들러는 inert와 무관하다).
     if(__gateOn) return;
+    if(vgBlocked()) return;   // 버전 관문 카드도 같다(VERSION-GATE §3). ESC 로 닫히지 않고, 뒤의 단축키도 돌지 않는다
     if(ev.key === 'Escape'){
       const _top = openOverlays().pop();
       //  ★ 맨 위가 「⚙ 관리」에 도킹된 창이면 관리 화면을 닫는다(H12 · closeOverlay 가 관리 화면으로 돌린다).
@@ -18730,7 +19220,8 @@ function hostRequest(cmd, params, timeoutMs){
     //  'pw:' = 열람 창(PEERWIN)의 번호. 호스트가 이 표시를 보고 회신을 그 창으로 보낸다(두 창의 번호가 겹치지 않는다).
     const reqId = (PEERWIN ? 'pw:' + __reqSalt + ':' : '') + cmd + '-' + (++__reqSeq);
     const to = setTimeout(() => { if(__hostPending[reqId]){ delete __hostPending[reqId]; resolve({ok:false, error:'호스트 응답 시간 초과', timeout:true}); } }, timeoutMs || 20000);
-    __hostPending[reqId] = res => { clearTimeout(to); resolve(res); };
+    //  관문 실패({ ok:false, kind:'gate' })는 호출부보다 먼저 차단 카드로 보낸다(VERSION-GATE §2.3). 호출부의 실패 처리는 그대로 돈다.
+    __hostPending[reqId] = res => { clearTimeout(to); try{ vgNoteReply(res); }catch(_){} resolve(res); };
     hpost(Object.assign({cmd, reqId}, params || {}));
   });
 }

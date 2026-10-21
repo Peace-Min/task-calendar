@@ -221,7 +221,7 @@ const W = {
     const body = r.find((x) => x.sel === '#peerWin .pv-body');
     assert.ok(body && /flex:1 1 auto/.test(body.decl) && /min-height:0/.test(body.decl), '#peerWin 본문이 남은 높이를 받지 않는다');
     assert.ok(r.some((x) => x.sel === '#peerWin :is(.pv-frame, .pv-skeleton)' && /flex:1 1 auto/.test(x.decl)), 'iframe 이 열람 창 본문을 채우지 않는다');
-    assert.ok(r.some((x) => x.sel === 'html[data-peerwin] body > :not(#peerWin):not(#peerPicker):not(#toastWrap)' && /display:none !important/.test(x.decl)),
+    assert.ok(r.some((x) => x.sel === 'html[data-peerwin] body > :not(#peerWin):not(#peerPicker):not(#toastWrap):not(#vgGate)' && /display:none !important/.test(x.decl)),
       '열람 창에서 메인 화면이 감춰지지 않는다(allowlist 가 아니다)');
     assert.ok(!r.some((x) => /#peerModal/.test(x.sel)), '옛 열람 모달(#peerModal) 규칙이 남았다');
   },

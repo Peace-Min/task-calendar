@@ -12,6 +12,7 @@
 - [과제 순서 바꾸기](과제-순서-바꾸기): '🏷️ 내 과제'의 ▲▼ 로 순서를 정하면 보고서 순서가 따라갑니다
 - [기본 과제 휴가와 기타](기본-과제-휴가와-기타): 늘 있는 휴가, 기타 과제, 과제 삭제 시 데이터 삭제, 다른 과제로 옮기기
 - [서버 연결이 끊겼을 때](서버-연결이-끊겼을-때): 화면에 무엇이 뜨고, 무엇을 하면 되는지
+- [앱 업데이트와 서버 갱신](앱-업데이트와-서버-갱신): 새 버전 알림, 서버 갱신 중, 업데이트 필요, 설치 실패, 관리자 문의 카드와 할 일
 - [XML 가져오기](XML-가져오기): 예전 버전 기록 옮기기, 가져오기는 언제나 교체(2026-10-07 병합 제거)
 
 ## 운영·관리자
@@ -32,4 +33,5 @@
 - 기본 과제 기획서: [`docs/DEFAULT-TASKS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/DEFAULT-TASKS.md), 실 위젯 루프 `tests/loop-default-tasks.mjs`
 - 보고서 글 편집 기획서: [`docs/REPORT-EDIT.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/REPORT-EDIT.md), 실 위젯 루프 `tests/loop-report-edit.mjs`
 - 주간 글 편집 기획서: [`docs/WEEKLY-EDIT.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/WEEKLY-EDIT.md), 실 위젯 루프 `tests/loop-weekly-edit.mjs`
+- 버전 관문 기획서: [`docs/VERSION-GATE.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/VERSION-GATE.md), 운영 정본 [`docs/DB-RELEASE-OPS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/DB-RELEASE-OPS.md), 실 위젯 루프 `tests/loop-schema-gate.mjs`
 - 화면 혼란 3건 기획서: [`docs/UI-CLARITY-2026-10-01.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/UI-CLARITY-2026-10-01.md)

@@ -129,8 +129,14 @@ test('게이트: 닫기(× · data-close) 경로가 하나도 없다', () => {
   assert.ok(!/data-close/.test(g), '게이트에 data-close가 있다 — 로그인 없이 닫고 들어갈 수 있다');
   assert.ok(!/class="x"/.test(g), '게이트에 × 버튼이 있다');
   // 닫기는 hideLoginGate 한 곳에서만 — 세션 복원/로그인 성공 뒤에만 불린다.
+  // 2026-10-21 하나 늘었다: 버전 관문 카드(vgShow)가 로그인 화면을 걷고 맡아 둔다(관문이 풀리면 vgRecover 가 다시 띄운다,
+  // 로그인 없이 들어가는 길이 아니다). 그 짝(맡아 두고 다시 띄우기)은 아래 시험이 본다.
   const callers = [...stripComments(src).matchAll(/hideLoginGate\(\)/g)].length;
-  assert.ok(callers >= 1 && callers <= 4, `hideLoginGate 호출 지점이 비정상적으로 많다(${callers}) — 닫는 길이 늘었는지 확인`);
+  assert.ok(callers >= 1 && callers <= 5, `hideLoginGate 호출 지점이 비정상적으로 많다(${callers}) — 닫는 길이 늘었는지 확인`);
+  const vs = src.slice(src.indexOf('function vgShow(){'), src.indexOf('function vgWire('));
+  assert.ok(/hideLoginGate\(\);\s*__vgLoginPending = p;/.test(vs), '관문 카드가 로그인 화면을 걷으면서 맡아 두지 않는다(풀린 뒤 로그인 없이 들어간다)');
+  const vr = src.slice(src.indexOf('function vgRecover(){'), src.indexOf('async function vgReload('));
+  assert.ok(/showLoginGate\(p\.showForm, p\.statusText\)/.test(vr), '관문이 풀린 뒤 맡아 둔 로그인 화면을 다시 띄우지 않는다');
 });
 
 test('게이트: 「위젯 종료」(#lgQuit)가 있고 close로 직접 배선돼 있다', () => {

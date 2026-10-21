@@ -15,9 +15,10 @@
 //      호스트 두 명령:
 //        · legacyXmlProbe — 데이터 폴더 최상위 *.xml 의 **이름·크기·시각만**(내용은 읽지 않는다)
 //        · readLegacyXml  — 이름만 받아 데이터 폴더 안으로만 푼다(구분자·「..」 거절 · .xml · 64MB)
-//      ★ 부팅 조건은 스키마 불일치를 **조용히** 본다(__bootMeta.schemaMismatch) — schemaBlocked() 는 토스트를
-//        띄우므로 아무도 누르지 않은 부팅 때 부르면 안 된다. 사용자가 누른 「가져오기」에서만 부른다.
-//   B. 상단 DB 배지는 **문제가 있을 때만** 뜬다(스키마 불일치·읽기 전용). 정상 연결 정보는
+//      ★ 부팅 조건은 스키마 불일치를 **조용히** 본다(__bootMeta.schemaMismatch). 토스트를 띄우는 게이트는 아무도 누르지 않은
+//        부팅 때 부르면 안 된다. 사용자가 누른 「가져오기」 는 guardEdit() 이 막는다(2026-10-21 부터 버전 관문도 그 안에서 본다,
+//        옛 schemaBlocked 토스트는 없앴다, VERSION-GATE §3).
+//   B. 상단 DB 배지는 **문제가 있을 때만** 뜬다(읽기 전용). 스키마 불일치는 2026-10-21 부터 띠가 아니라 차단 카드다. 정상 연결 정보는
 //      「사용자 정보」의 한 줄로 옮겼다. 안내·배지의 자리는 **제목줄 아래**다(예전엔 위에 떴다).
 //
 // 검사 함수(checks)를 테스트와 변이 시험이 공유한다 — 검사가 정말 잡는지 증명하기 위해서다.
@@ -84,7 +85,7 @@ const OK_TOAST = (c, e, t) => `이전 기록을 가져왔습니다. 과제 ${c}�
 const SANDBOX_FNS = ['defaultTaskOf', 'isDefaultTask', 'calendarIsEmpty', 'insertBelowTitleBar', 'legacyPromptKey', 'legacyPromptSig',
   'legacyPromptDismissed', 'legacyTimeText', 'legacySizeText', 'maybeAskLegacyImport', 'showLegacyPrompt',
   'legacyPromptImport', 'legacyPromptNever', 'renderEmptyHint', 'renderDataSourceBadge', 'usDbLineText',
-  'ensureBootErrorBox', 'showDbConflict', 'schemaServerOlder'];   // schemaServerOlder — 불일치 배지의 방향 판정(S7, 2026-10-01)
+  'ensureBootErrorBox', 'showDbConflict'];   // (schemaServerOlder 는 불일치 띠와 함께 없앴다, VERSION-GATE §3)
 
 // ── 가짜 전역(node:vm) ───────────────────────────────────────────────
 //  제목줄(header.topbar) 하나와 그 다음 형제(filterbar)가 있는 최소 DOM. 삽입은 전부 기록한다.
@@ -133,7 +134,7 @@ function sandbox(src, over = {}) {
       legacyXmlProbe: { ok: true, found: true, name: 'old.xml', size: 2048, mtime: '2026-09-01T00:00:00Z' },
       readLegacyXml: { ok: true, name: 'old.xml', text: '<taskCalendar/>' },
     },
-    //  진짜 schemaBlocked() 처럼 **부를 때마다 센다** — 막힐 때는 토스트까지 흉내 낸다.
+    //  옛 토스트 게이트 schemaBlocked() 의 흉내(앱에서는 2026-10-21 에 없앴다). 되살아나 감지 조건에 들어가면 변이⑩k 가 잡도록 남긴다.
     __blocked: false,
     schemaBlocked: () => { calls.blocked++; if (ctx.__blocked) calls.toast.push(['스키마 불일치', 'error']); return ctx.__blocked; },
     //  연결 잠금 관문 — 진짜처럼 막힐 때 토스트를 띄운다.
@@ -351,10 +352,12 @@ const checks = {
     const imp = fnBody(src, 'legacyPromptImport');
     const read = imp.indexOf("hostRequest('readLegacyXml', { name: p.name }");
     assert.ok(read > 0, '「가져오기」가 readLegacyXml 로 이름만 보내지 않는다');
-    for (const [gate, why] of [['guardEdit()', '연결 잠금(guardEdit)'], ['schemaBlocked()', '스키마 게이트(schemaBlocked)']]) {
+    //  연결 잠금(guardEdit) 하나다. 버전 관문도 그 안(editLocked → vgBlocked)에서 본다(VERSION-GATE §3).
+    for (const [gate, why] of [['guardEdit()', '연결 잠금(guardEdit)']]) {
       const g = imp.indexOf(gate);
       assert.ok(g >= 0 && g < read, `「가져오기」가 읽기 전에 ${why}를 거치지 않는다 — 막혀야 할 때 파일을 읽고 전량 교체까지 간다`);
     }
+    assert.ok(!/schemaBlocked\(/.test(imp), '「가져오기」에 옛 schemaBlocked 토스트 게이트가 되살아났다. 버전 관문은 guardEdit 이 본다');
     //  병합·직접 저장·두 번째 미리보기 창은 이 경로에 없다
     assert.ok(!/'merge'|"merge"/.test(imp), '「가져오기」가 병합을 부른다 — 이 경로는 교체 하나다(2026-10-01)');
     assert.ok(!/applyImport\(\s*['"`]/.test(imp), '「가져오기」가 applyImport 에 모드를 넘긴다(병합을 부른다). 가져오기는 교체 하나다(2026-10-07)');
@@ -433,8 +436,8 @@ const checks = {
     assert.strictEqual(bad.calls.apply.length + bad.calls.preview.length, 0, '해석이 실패했는데 적용하거나 미리보기를 띄웠다');
     assert.ok(bad.calls.toast.some(([m, k]) => k === 'error' && /^가져오기 실패: XML 파싱 오류/.test(m)), '해석 실패를 「가져오기 실패: …」로 알리지 않는다');
     assert.ok(!bad.calls.open.includes('#legacyModal') || bad.calls.close.includes('#legacyModal'), '해석 실패 뒤 물음 창이 열린 채다');
-    //  스키마 게이트 · 연결 잠금 — 읽기 전에 막는다
-    for (const [why, key] of [['스키마가 막혔는데', '__blocked'], ['연결이 잠겼는데', '__locked']]) {
+    //  연결 잠금(버전 관문 포함) — 읽기 전에 막는다
+    for (const [why, key] of [['연결이 잠겼는데', '__locked']]) {
       const blk = sandbox(src);
       await blk.ctx.maybeAskLegacyImport();
       blk.calls.toast.length = 0;
@@ -537,26 +540,24 @@ const checks = {
     assert.ok(!/querySelector\('\.wrap'\)/.test(src), "querySelector('.wrap') 폴백이 남아 있다 — 그 상자는 제목줄 위에 뜬다");
   },
 
-  //  W5 배지는 문제가 있을 때만(불일치 = 빨강 · 읽기 전용) — 정상이면 없다(있으면 걷는다)
+  //  W5 배지는 문제가 있을 때만(읽기 전용) — 정상이면 없다(있으면 걷는다).
+  //     스키마 불일치는 2026-10-21 부터 띠가 아니라 차단 카드다(VERSION-GATE §3). 띠가 되살아나면 같은 사실을 두 곳에서 말한다.
   badgeOnlyWhenWrong(src) {
     const ok = sandbox(src);
     ok.ctx.renderDataSourceBadge({ schemaMismatch: false, canWrite: true, schemaVersion: '12', rev: 3 });
     assert.strictEqual(ok.dom.inserted.length, 0, '정상 상태인데 배지가 뜬다 — 문제 있을 때만 띄운다(2026-09-30)');
-    const bad = sandbox(src);
-    bad.ctx.renderDataSourceBadge({ schemaMismatch: true, schemaVersion: '13', expectedSchema: '12', rev: 3, canWrite: true });
-    assert.strictEqual(bad.dom.inserted.length, 1, '스키마 불일치인데 배지가 뜨지 않는다');
-    const el = bad.dom.inserted[0].el;
-    assert.ok(/서버 스키마 v13/.test(el.textContent) && /위젯 업데이트 필요/.test(el.textContent) && /차단/.test(el.textContent),
-      '불일치 배지 문구가 달라졌다: ' + el.textContent);
-    assert.strictEqual(el.style.borderColor, 'var(--danger)', '불일치 배지가 경고 톤(--danger)이 아니다');
-    assert.strictEqual(bad.dom.inserted[0].ref, bad.dom.bar.nextSibling, '배지가 제목줄 바로 아래가 아니다');
-    //  정상으로 돌아오면 걷는다
-    bad.ctx.renderDataSourceBadge({ schemaMismatch: false, canWrite: true });
-    assert.ok(el.removed, '정상으로 돌아왔는데 배지가 남았다');
+    const mm = sandbox(src);
+    mm.ctx.renderDataSourceBadge({ schemaMismatch: true, schemaVersion: '13', expectedSchema: '12', rev: 3, canWrite: true });
+    assert.strictEqual(mm.dom.inserted.length, 0, '스키마 불일치 띠가 되살아났다. 불일치는 차단 카드(#vgGate)가 말한다');
     const ro = sandbox(src);
     ro.ctx.renderDataSourceBadge({ schemaMismatch: false, canWrite: false });
     assert.strictEqual(ro.dom.inserted.length, 1, '읽기 전용인데 배지가 뜨지 않는다');
-    assert.ok(/DB 읽기 전용/.test(ro.dom.inserted[0].el.textContent), '읽기 전용 배지 문구가 없다');
+    const el = ro.dom.inserted[0].el;
+    assert.ok(/DB 읽기 전용/.test(el.textContent), '읽기 전용 배지 문구가 없다');
+    assert.strictEqual(ro.dom.inserted[0].ref, ro.dom.bar.nextSibling, '배지가 제목줄 바로 아래가 아니다');
+    //  정상으로 돌아오면 걷는다
+    ro.ctx.renderDataSourceBadge({ schemaMismatch: false, canWrite: true });
+    assert.ok(el.removed, '정상으로 돌아왔는데 배지가 남았다');
   },
 
   //  W6 정상 연결 정보는 「사용자 정보」의 한 줄로 옮겼다
@@ -648,7 +649,7 @@ test('감지⑨(웹·행동): 「다시 묻지 않기」는 name|mtime 으로 �
 test('감지⑩(웹): 물음 경로의 저장소 접근은 전부 try 안이다', () => checks.storageGuarded(app));
 test('감지⑪(웹): 물음 창 마크업 — 결정 문구·세 버튼·닫기 경로·토큰만', () => checks.modalMarkup(app));
 test('상단①(웹): 빈 캘린더 안내·DB 배지·부팅 실패 상자·충돌 안내는 제목줄 아래에 들어간다', () => checks.placementBelowTitleBar(app));
-test('상단②(웹): DB 배지는 문제가 있을 때만(불일치=빨강·읽기 전용) — 정상이면 없다', () => checks.badgeOnlyWhenWrong(app));
+test('상단②(웹): DB 배지는 문제가 있을 때만(읽기 전용, 불일치 띠는 없다) — 정상이면 없다', () => checks.badgeOnlyWhenWrong(app));
 test('상단③(웹): 정상 연결 정보는 「사용자 정보」의 한 줄로 옮겼다', () => checks.userInfoDbLine(app));
 test('병합 제거①(웹): 미리보기 버튼은 [취소] [교체] 뿐이고, 병합 버튼, 병합기, 병합 토스트, 모드 인자가 앱에 없다(2026-10-07)',
   () => checks.importReplaceOnly(app));
@@ -735,8 +736,14 @@ test('변이⑩c: readLegacyXml 이 경로 구분자·「..」 를 받아들이�
 });
 
 test('변이⑩d: 정상 상태에서도 배지를 띄우면 상단② 가 실패한다', () => {
-  const bad = mutate(app, '  if(!mismatch && !readOnly){ if(b) b.remove(); return; }   // 정상 — 배지 없음\n', '');
+  const bad = mutate(app, '  if(!readOnly){ if(b) b.remove(); return; }   // 정상 — 배지 없음\n', '');
   assert.throws(() => checks.badgeOnlyWhenWrong(bad), /정상 상태인데 배지가 뜬다/);
+});
+
+test('변이⑩d2: 스키마 불일치 띠를 되살리면 상단② 가 실패한다(VERSION-GATE §3, 차단 카드가 대신한다)', () => {
+  const bad = mutate(app, '  if(!readOnly){ if(b) b.remove(); return; }   // 정상 — 배지 없음\n',
+    '  if(!readOnly && !m.schemaMismatch){ if(b) b.remove(); return; }   // 정상 — 배지 없음\n');
+  assert.throws(() => checks.badgeOnlyWhenWrong(bad), /불일치 띠가 되살아났다/);
 });
 
 test('변이⑩e: 감지가 파일 내용을 읽으면 감지② 가 실패한다', () => {
@@ -788,14 +795,13 @@ test('변이⑩l: 감지 조건에서 스키마 불일치를 빼면 감지⑤·�
   await assert.rejects(() => checks.triggerBehaves(bad), /스키마 불일치 인데 감지를 호스트에 물었다/);
 });
 
-test('변이⑩m: 「가져오기」의 스키마 게이트를 빼면 감지⑦·⑧ 이 실패한다', async () => {
-  const bad = mutate(app, '  if(!p || guardEdit() || schemaBlocked()) return;\n', '  if(!p || guardEdit()) return;\n');
-  assert.throws(() => checks.promptPathContract(bad), /스키마 게이트\(schemaBlocked\)를 거치지 않는다/);
-  await assert.rejects(() => checks.importBehaves(bad), /스키마가 막혔는데 「가져오기」가 파일을 읽었다/);
+test('변이⑩m: 「가져오기」에 옛 schemaBlocked 토스트 게이트를 되살리면 감지⑦ 이 실패한다(버전 관문은 guardEdit 이 본다)', () => {
+  const bad = mutate(app, '  if(!p || guardEdit()) return;', '  if(!p || guardEdit() || schemaBlocked()) return;');
+  assert.throws(() => checks.promptPathContract(bad), /옛 schemaBlocked 토스트 게이트가 되살아났다/);
 });
 
 test('변이⑩m2: 「가져오기」의 연결 잠금 관문을 빼면 감지⑦·⑧ 이 실패한다', async () => {
-  const bad = mutate(app, '  if(!p || guardEdit() || schemaBlocked()) return;\n', '  if(!p || schemaBlocked()) return;\n');
+  const bad = mutate(app, '  if(!p || guardEdit()) return;', '  if(!p) return;');
   assert.throws(() => checks.promptPathContract(bad), /연결 잠금\(guardEdit\)를 거치지 않는다/);
   await assert.rejects(() => checks.importBehaves(bad), /연결이 잠겼는데 「가져오기」가 파일을 읽었다/);
 });

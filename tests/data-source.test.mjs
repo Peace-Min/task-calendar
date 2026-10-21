@@ -579,20 +579,29 @@ const c8 = {
     assert.ok(/string expectedSchema = DbGate\.AppStructureVersion\.ToString\(/.test(mw) &&
               /new \{ schemaVersion = snap\.SchemaVersion, expectedSchema, schemaMismatch, gate,/.test(mw),
       '부팅 meta 에 expectedSchema·schemaMismatch·gate 가 없다. 배지가 서버 값만 보고 정상으로 보인다');
+    //  2026-10-21(VERSION-GATE §3) 부터 불일치는 빨간 띠가 아니라 차단 카드다. 배지는 읽기 전용만 말하고,
+    //  부팅 주입이 meta.gate 를 관문 카드(vgOnBootApplied)로 넘긴다.
     const b = bodyOf(app, 'function renderDataSourceBadge(meta){');
-    assert.ok(/m\.schemaMismatch/.test(b) && /var\(--danger\)/.test(b),
-      '배지가 스키마 불일치를 경고 톤으로 알리지 않는다');
+    assert.ok(!/schemaMismatch|var\(--danger\)/.test(b),
+      '배지가 아직 스키마 불일치 띠를 그린다. 불일치는 차단 카드(#vgGate)가 말한다(VERSION-GATE §3)');
+    const a = bodyOf(app, 'window.__applyState = function(json, meta){');
+    assert.ok(/vgOnBootApplied\(meta\)/.test(a), '부팅 주입이 meta.gate 를 관문 카드로 넘기지 않는다');
+    const v = bodyOf(app, 'function vgOnBootApplied(meta){');
+    assert.ok(/meta\.gate/.test(v) && /__versionGate\(/.test(v), '부팅 meta 의 관문 판정(gate)이 막힘인데 카드를 띄우지 않는다');
   },
 
   //  ⑧-5 웹은 **누르기 전에** 막는다(UX). 진짜 방어는 호스트지만, 눌러 본 뒤 거부당하는 흐름은
   //       특히 「전체 초기화」에서 나쁘다 — 화면만 비고 DB 는 그대로라 사용자가 사고로 읽는다.
+  //       2026-10-21(VERSION-GATE §3) 부터 그 관문은 편집 잠금(guardEdit → editLocked) 하나다. editLocked 가 버전 관문(vgBlocked)을 보고,
+  //       옛 schemaBlocked 토스트는 없앴다(차단 카드가 사정을 말한다).
   webGatesBothEntrances(app) {
     for (const [fn, why] of [['function startImport(){', '가져오기'], ['async function clearAll(){', '전체 초기화']]) {
       const b = bodyOf(app, fn);
-      assert.ok(/schemaBlocked\(\)/.test(b), `${why} 진입점에 스키마 게이트가 없다`);
+      assert.ok(/guardEdit\(\)/.test(b), `${why} 진입점에 스키마 게이트가 없다`);
     }
-    const g = bodyOf(app, 'function schemaBlocked(){');
-    assert.ok(/__bootMeta/.test(g) && /toast\(/.test(g), '게이트가 부팅 meta 를 읽거나 사유를 알리지 않는다');
+    const e = bodyOf(app, 'function editLocked(){');
+    assert.ok(/vgBlocked\(\)/.test(e), '편집 잠금이 버전 관문(vgBlocked)을 보지 않는다. 막힌 동안 가져오기, 초기화가 열린다');
+    assert.ok(!/function schemaBlocked\(/.test(app), '옛 schemaBlocked(토스트 게이트)가 남았다. 관문 카드와 같은 사실을 다른 말로 한다');
   },
 
   //  ⑧-6 앱 계정은 버전 행을 **읽기만** 한다(§5.5 ★). 한 줄이라도 쓰기를 주면 막으려는 대상이
@@ -612,8 +621,8 @@ const c8 = {
 test('낡은①: 전량 교체 게이트가 트랜잭션을 열기 전에 있다', () => c8.gateBeforeTransaction(writedb));
 test('낡은②: 통상 저장은 막지 않는다(§5.5 — 조회·편집은 계속되게)', () => c8.normalSaveNotBlocked(writedb));
 test('낡은③: 스키마 불일치가 낙관적 잠금 충돌과 구분돼 나간다', () => c8.mismatchIsNotConflict(writedb, mainwin, src));
-test('낡은④: 부팅 meta 가 서버·위젯 두 판본을 함께 싣고 배지가 경고한다', () => c8.bootMetaCarriesBoth(mainwin, src));
-test('낡은⑤: 가져오기·초기화 진입점이 누르기 전에 사유를 알린다', () => c8.webGatesBothEntrances(src));
+test('낡은④: 부팅 meta 가 서버·위젯 두 판본과 관문 판정을 싣고, 막힘이면 차단 카드로 간다(띠 없음)', () => c8.bootMetaCarriesBoth(mainwin, src));
+test('낡은⑤: 가져오기·초기화 진입점이 누르기 전에 막는다(편집 잠금이 버전 관문을 본다)', () => c8.webGatesBothEntrances(src));
 test('낡은⑥: 앱 계정의 cal_schema_meta 권한은 SELECT 하나뿐이다(§5.5 ★)', () => c8.versionRowIsReadOnlyForApp(grants));
 
 test('변이㉗: 게이트를 트랜잭션 뒤로 옮기면 낡은① 이 실패한다', () => {
@@ -631,14 +640,16 @@ test('변이㉘: 게이트에서 replaceAll 조건을 빼면(통상 저장까지
 });
 
 test('변이㉙: 불일치를 충돌 상자에 담으면 낡은③ 이 실패한다', () => {
-  const bad = mutate("    if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');\n    else if(res && res.conflict)",
-    '    if(res && res.conflict)', src);
+  const bad = mutate("    else if(res && res.schemaMismatch) toast((res.error || '위젯 업데이트가 필요합니다'), 'error');\n    else if(res && res.conflict)",
+    '    else if(res && res.conflict)', src);
   assert.throws(() => c8.mismatchIsNotConflict(writedb, mainwin, bad), /schemaMismatch 를 읽지 않는다/);
 });
 
-test('변이㉚: 가져오기 게이트를 없애면 낡은⑤ 가 실패한다', () => {
-  const bad = mutate('  if(schemaBlocked()) return;   // P1-1 — 낡은 위젯의 전량 교체는 호스트가 거부한다. 여기서 사유를 먼저 알린다\n', '', src);
-  assert.throws(() => c8.webGatesBothEntrances(bad), /가져오기 진입점에 스키마 게이트가 없다/);
+test('변이㉚: 편집 잠금에서 버전 관문을 빼거나 가져오기 관문을 없애면 낡은⑤ 가 실패한다', () => {
+  const bad = mutate("  return !bootOk || unsaved || conn !== 'ok' || vgBlocked();", "  return !bootOk || unsaved || conn !== 'ok';", src);
+  assert.throws(() => c8.webGatesBothEntrances(bad), /버전 관문\(vgBlocked\)을 보지 않는다/);
+  const bad2 = mutate('function startImport(){\n  if(guardEdit()) return;', 'function startImport(){\n  if(false) return;', src);
+  assert.throws(() => c8.webGatesBothEntrances(bad2), /가져오기 진입점에 스키마 게이트가 없다/);
 });
 
 test('변이㉛: 버전 행에 UPDATE 권한을 주면 낡은⑥ 이 실패한다', () => {

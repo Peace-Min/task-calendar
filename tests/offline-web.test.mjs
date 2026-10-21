@@ -650,12 +650,26 @@ if (!JSDOM) {
     W.ev("conn = 'ok';");
     assert.ok(/^캘린더 DB\(taskcalendar@10\.0\.0\.5\) 연결됨/.test(W.ev('usDbLineText(__bootMeta)')));
   }));
-  test('표시②: 불일치 배지 방향 — 서버가 낮으면 「서버 DB 업데이트 필요(관리자)」, 높으면 「위젯 업데이트 필요」(S7)', () => withBoot(src, async (W) => {
-    W.call('renderDataSourceBadge', { schemaMismatch: true, schemaVersion: '11', expectedSchema: '12', rev: 3 });
-    assert.ok(/^서버 DB 업데이트 필요\(관리자\), 서버 v11, 위젯 v12/.test(W.text('dsBadge')), W.text('dsBadge'));
-    assert.ok(!/위젯 업데이트 필요/.test(W.text('dsBadge')), '서버가 낮은데 위젯을 업데이트하라고 한다');
-    W.call('renderDataSourceBadge', { schemaMismatch: true, schemaVersion: '13', expectedSchema: '12', rev: 3 });
-    assert.ok(/위젯 업데이트 필요/.test(W.text('dsBadge')) && !/서버 DB 업데이트/.test(W.text('dsBadge')), W.text('dsBadge'));
+  //  2026-10-21(VERSION-GATE §3) — 불일치 띠의 방향 문구(S7)는 차단 카드의 상태(needUpdate, serverOld)로 옮겼다.
+  //  여기서는 그 대신 관문 실패(kind 'gate')가 연결 상태 기계에 섞이지 않는지 본다(끊김도 거부도 아니다).
+  test('표시②: 불일치 띠는 없다. 저장이 관문(kind gate)에 막히면 토스트, 끊김, 재연결 확인 없이 편집을 남기고 차단 카드로 간다', () => withBoot(src, async (W) => {
+    W.applyState();
+    W.call('renderDataSourceBadge', { schemaMismatch: true, schemaVersion: '13', expectedSchema: '12', rev: 3, canWrite: true });
+    assert.strictEqual(W.el('dsBadge'), null, '스키마 불일치 띠가 되살아났다. 불일치는 차단 카드(#vgGate)가 말한다');
+    W.handlers.saveState = { ok: false, kind: 'gate', error: '앱과 서버의 버전이 맞지 않습니다', gate: { state: 'needUpdate', dbStructure: '15', appStructure: 14 } };
+    W.handlers.dbPing = { ok: true };
+    W.clear();
+    W.ev("addEntry({ date:'2026-10-02', title:'막힌 사이 편집' })");
+    await settle();
+    assert.ok(!W.el('vgGate').classList.contains('hidden'), '저장이 관문에 막혔는데 차단 카드가 뜨지 않았다');
+    assert.strictEqual(W.ev('conn'), 'ok', '관문 실패를 연결 끊김이나 거부로 올렸다');
+    assert.strictEqual(W.ev('unsaved'), true, '막힌 저장의 편집을 미저장으로 남기지 않았다(닫기 경고가 꺼진다)');
+    assert.strictEqual(W.ev('state.entries.some(e => e.title === "막힌 사이 편집")'), true, '막힌 저장의 편집을 화면에서 지웠다');
+    assert.ok(!W.log.some((x) => x.toast && x.kind === 'error'), '관문 실패에 오류 토스트를 불렀다: ' + JSON.stringify(W.log.filter((x) => x.toast)));
+    assert.ok(!W.el('dsError'), '관문 실패에 연결 상자를 띄웠다');
+    W.clear(); await W.run(120000, 5000);
+    assert.strictEqual(W.reqs('dbPing').length, 0, '관문에 막힌 동안 재연결 확인(dbPing)을 돌렸다');
+    assert.strictEqual(W.reqs('saveState').length, 0, '관문에 막힌 동안 저장을 다시 보냈다');
   }));
   test('표시③: 보고 기록 저장 실패 통지 → 오래 남는 오류 토스트 · 웹은 다시 보내지 않는다(S10)', () => withBoot(src, async (W) => {
     W.applyState();
