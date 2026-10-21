@@ -1,0 +1,53 @@
+# 회의실 공용화 (SHARED-ROOMS)
+
+- 상태: 기획 확정(2026-10-21). 화면 시안 `docs/prototypes/shared-rooms.html`("결정할 것" 두 안 비교) 승인: 장소 칸 A안, 관리 화면 가안.
+- 목표: 사용자별 회의실 목록(`cal_room`, "회의실 관리")을 없애고, 관리자가 관리하는 **회사 공용 회의실 목록** 하나로 바꾼다. 일정의 장소는 공용 목록에서 고르거나 직접 입력한다.
+- DB 구조 번호: 14 에서 **15**. 버전 올리기와 배포는 이 작업에 포함하지 않는다(사용자 지시: 남은 작업 뒤에 한다).
+- 운용 기준: [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md)(환경 구분: 이 작업은 외부망 개발 PC 에서 하고, 폐쇄망에는 산출물로 간다).
+
+## 1. 결정 사항 (2026-10-21 사용자)
+
+- 일반 사용자 화면에서 "회의실 관리" 가 완전히 없어진다: ⋯ 메뉴의 버튼(`#btnRooms`), 일정 입력 창의 링크(`#fRoomMgr`), 빠른 추가의 링크(`#qaRoomMgr`), 회의실 관리 창(`#roomModal`).
+- 회의실 목록은 **관리자만** 관리 화면에서 고친다. 쓰기는 관리자 관문(`ProjectDb.OpenAdminAsync`, 버전 관문을 먼저 지남)을 지난다. 발주처, 구분, 상태는 편집자도 고치는 쓰기 관문이라 다르다(직급과 같은 길).
+- 일반 사용자는 발주처, 구분 목록을 받는 같은 읽기 경로(`loadCodes`)로 회의실 목록을 받는다.
+- 일정의 장소(`cal_entry.location`, 200자 글자)는 그대로 자유 글자다. 회의실 표를 가리키지 않는다(외래키 없음). 그래서 회의실 이름을 바꾸거나 지워도 지난 일정의 장소 글자는 그대로 남는다.
+- 처음 공용 목록은 지금 사용자들이 각자 등록해 둔 회의실 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣고, 관리자가 정리한다.
+
+## 2. DB
+
+- 새 표 `room_code`(코드표 번호 키 규칙, [CODE-TABLE-IDS.md](CODE-TABLE-IDS.md)): `room_id SMALLINT UNSIGNED AUTO_INCREMENT` 기본키, `name VARCHAR(40) NOT NULL UNIQUE`(CHECK `name <> ''`), `sort_order INT NOT NULL`, `created_at`, `updated_at`. 숨김(`is_active`)과 휴지통은 두지 않는다. 참조하는 표가 없어 바로 지워도 잃는 것이 없다.
+- `cal_room` 삭제. 표 수는 23 그대로(하나 빼고 하나 더함).
+- 이관 조각(14 에서 15, 배포 SQL 하나 방식): `room_code` 만들기, `cal_room` 의 이름을 모아 넣기, 검증(넣은 수가 고유 이름 수와 같음), `cal_room` 삭제, 구조 번호 15.
+- 권한: 앱 계정에 `room_code` SELECT, INSERT, UPDATE, DELETE(정본 권한 파일들). 폐쇄망 서버의 앱 계정은 `taskcalendar.*` 전체 권한이라 영향 없음.
+
+## 3. 호스트
+
+- `DbGate.AppStructureVersion` 15.
+- 캘린더 읽기(`CalendarDb` 스냅샷)와 쓰기(`CalendarWriteDb` 8단계, `DiffIsEmpty`)에서 `cal_room` 과 `rooms` 를 뺀다. `ProjectDb.UserRecordTables` 에서 `cal_room` 을 뺀다.
+- `ProjectDb` 새 메서드: 회의실 목록 읽기(일반), 전체 읽기(관리), 추가(이름), 이름 바꾸기(번호), 삭제(번호), 순서 바꾸기(번호 전체 대조, 다르면 거부). 쓰기는 모두 `OpenAdminAsync`.
+- `loadCodes` 회신에 회의실 목록을 세 번째로 싣는다(`__applyCodes`).
+- XML 이관 도구(`xml-to-db`)는 `<rooms>` 를 무시한다.
+
+## 4. 웹
+
+- 회의실 관리 창과 진입점 셋, `DEFAULT_ROOMS`, `normRooms` 를 없앤다. 상태의 `rooms` 를 개인 상태에서 빼고, 공용 목록은 `__applyCodes` 로 받는다.
+- 장소 칸(`#fLoc`, `#qaLoc`): 목록 고르기(select)에서 **직접 입력 + 공용 목록 추천**으로 바꾼다. **A안 확정**: 칸을 누르면 회의실 목록이 펼쳐지고, 친 글자로 걸러지며(맞는 부분 강조), 위아래 화살표와 Enter, Esc 가 되고, 목록에 없는 글자는 그대로 저장된다. 빠른 추가는 지금 배치(장소와 반복 나란히)를 유지한다.
+- 관리 화면에 "회의실" 항목. **가안 확정**: 왼쪽 목록에 새 묶음 "일정" 을 만들고 그 안에 "회의실" 을 둔다. 목록, ▲▼ 순서, 그 자리에서 이름 바꾸기, 삭제(확인 창만, 실행 취소 없음. 확인 문구: 일정에 이미 적힌 장소 글자는 그대로 남는다), 추가(같은 이름 거절, 앞뒤 공백 정리).
+- 공용 목록 말고 "내가 전에 적은 장소" 추천은 두지 않는다(2026-10-21, 단순하게).
+- XML 내보내기는 `<rooms>` 를 쓰지 않고, 가져오기는 `<rooms>` 를 무시한다(형식 문서 SPEC.md 에 적는다).
+- 도움말 §4 "장소와 회의실 관리" 를 고친다.
+
+## 5. 시험
+
+- 바뀌는 고정: 회의실 동작을 박아 둔 시험(app-context, pure-logic, offline-web, user-admin), 소스 자르기 끝 표지로 `#btnRooms` 를 쓰는 report-edit, weekly-edit, calendar-adapter, dryrun-xml-to-db, admin-auth(관리자 쓰기 분류), code-tables(loadCodes 호출부, __applyCodes 정규식), admin-hub 항목 목록, trash-host, demo-db, code-ids-db, setup, schema-guards, schema-integrity, loop-* 의 표 목록.
+- 새 시험: 관리자 관문 사용, 일반 사용자 화면에 회의실 관리 진입점이 없음, 장소 직접 입력이 저장됨, 이관 조각(이름 모으기, 중복 제거, 검증, 다시 돌리기).
+
+## 6. QA (개발 PC)
+
+- 배포 SQL 하나로 14 에서 15: 개발 DB 복사본과 같은 권한 시험 계정으로 리허설(첫 실행, 다시 실행, 건너뛴 판 13 에서 15).
+- 실동작: 관리자로 회의실 추가, 순서, 이름 바꾸기, 삭제. 일반 사용자 계정으로 관리 쓰기 거절. 일정 장소에 목록 고르기와 직접 입력. 기존 실동작 시험 전체.
+
+## 7. 위키
+
+- 사용자용: 장소 입력 방법(목록 고르기, 직접 입력), 회의실 목록은 관리자가 관리.
+- 관리자용: 관리 화면 회의실 관리.

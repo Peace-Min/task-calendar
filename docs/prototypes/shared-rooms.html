@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공용 회의실 프로토타입</title>
+<style>
+/* ============================================================
+   공용 회의실 시안. 사람마다 따로 두던 회의실 목록을 회사 공용 목록 하나로 바꾸고,
+   관리자만 관리 화면에서 고친다. 장소 칸은 고르기 전용(select)에서 자유 입력 + 추천으로 바뀐다.
+   실제 위젯(task-calendar-prototype.html)의 토큰, 버튼, 모달, 관리 화면, 구분/상태 목록 줄,
+   일정 입력 창, 빠른 추가, ⋯ 메뉴를 옮겨 왔다. 외부 리소스 없음(폐쇄망).
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
+  --ctl-border:#8b93a5;
+  --star:#e0a32e;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --titlebar:#222a3d;
+  --cap-close:#c42b1c; --cap-close-down:#b1271a;
+  --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd;
+  --accent-fill:var(--accent); --on-accent:#fff;
+  --danger:#d6494e; --danger-soft:#fdeeee; --danger-text:#c0343a; --danger-line:#efc7c9;
+  --sun:#c43a3f; --sat:#4b62a0;
+  --wknd-sun-bg:#faedee; --wknd-sat-bg:#eff1f6;
+  --ok:#1f7a4d; --warn-text:#8a6400;
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --shadow:0 10px 32px rgba(20,28,55,.16);
+  --seg-sh:rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-h2:17px; --fs-head:18px; --fs-display:22px;
+  --lh-tight:1.35; --lh-body:1.5;
+  --hover-bg:#f3f5fa; --dim-bg:#fafbfd;
+  --mark-bg:#ffe27a; --mark-ink:#1d2433;
+  --scrim:rgba(18,23,42,.45);
+  /* 시안 셸 전용(앱에는 없음) */
+  --page:#e6e8ee; --gone-bg:#fdeeee; --new-bg:#e7f5ee; --new-ink:#1f7a4d;
+}
+html.dark{
+  color-scheme:dark;
+  --bg:#0f1420; --panel:#1a2031; --line:#2a3245; --line-2:#3a4357;
+  --text:#e6e9f2; --muted:#a8b0c3; --faint:#5c6578; --faint-text:#9aa3b7;
+  --titlebar:#0c1019;
+  --accent:#6182ff; --accent-2:#9db0ff; --accent-soft:#1d2742;
+  --accent-fill:#4f66d8;
+  --ctl-border:#666f8a;
+  --danger:#ff6b70; --danger-soft:#3a1f23; --danger-text:#ff6b70; --danger-line:#5c3439;
+  --sun:#ff7d82; --sat:#90a4e8;
+  --ok:#6fd49a; --warn-text:#e3b766;
+  --hover-bg:#222b3e;
+  --shadow:0 12px 34px rgba(0,0,0,.55);
+  --seg-sh:rgba(0,0,0,.55);
+  --dim-bg:#141a27;
+  --wknd-sun-bg:#2f2838; --wknd-sat-bg:#252c41;
+  --scrim:rgba(4,6,12,.62);
+  --page:#080b12; --gone-bg:#3a1f23; --new-bg:#163126; --new-ink:#6fd49a;
+}
+
+html,body{min-height:100%}
+body{
+  font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;
+  background:var(--page); color:var(--text); font-size:var(--fs-emph); line-height:var(--lh-body);
+  font-variant-numeric:tabular-nums; word-break:keep-all; overflow-wrap:anywhere;
+}
+button{font-family:inherit}
+.hidden{display:none !important}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+mark{background:var(--mark-bg);color:var(--mark-ink);border-radius:2px;padding:0 1px}
+
+/* ---------- 시안 셸 ---------- */
+.wrap{max-width:1380px;margin:0 auto;padding:24px 16px 64px}
+.shell-h1{font-size:22px;font-weight:700;letter-spacing:-.01em;margin-bottom:4px}
+.shell-sub{color:var(--muted);font-size:var(--fs-body);max-width:90ch;margin-bottom:16px}
+.shell-sub code,.notes code{font-family:ui-monospace,Consolas,'D2Coding',monospace;font-size:.9em;background:var(--dim-bg);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.ctrls{display:flex;flex-direction:column;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;margin-bottom:16px}
+.ctrl-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ctrl-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);min-width:84px}
+.ctrl-tip{font-size:var(--fs-meta);color:var(--faint-text)}
+.seg{display:flex;flex-wrap:wrap;gap:2px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-md);padding:2px}
+.seg-b{border:none;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-meta);line-height:1.3;padding:5px 11px;border-radius:calc(var(--r-md) - 3px);cursor:pointer;white-space:nowrap}
+.seg-b:hover{background:var(--hover-bg)}
+.seg-b[aria-pressed="true"],.seg-b.active{background:var(--panel);font-weight:600;box-shadow:0 0 0 1px var(--ctl-border),0 1px 2px var(--seg-sh)}
+.seg-b .n{display:inline-block;min-width:1.2em;color:var(--accent-2);font-weight:700;margin-right:3px}
+.seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.seg.seg-lg .seg-b{font-size:var(--fs-body);padding:6px 15px}
+.seg.seg-auto{display:inline-flex}
+
+.stage{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:16px;align-items:start}
+@media (max-width:1150px){.stage{grid-template-columns:minmax(0,1fr)}}
+.notes{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;font-size:var(--fs-body)}
+.notes h2{font-size:var(--fs-title);font-weight:700;margin-bottom:8px}
+.notes dl{display:grid;grid-template-columns:auto 1fr;gap:7px 10px}
+.notes dt{font-weight:700;color:var(--muted);font-size:var(--fs-meta);padding-top:1px;white-space:nowrap}
+.notes dd{color:var(--text)}
+.notes .q{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.notes .q h3{font-size:var(--fs-body);font-weight:700;margin-bottom:6px}
+.notes .q ol,.notes .q ul{padding-left:18px;color:var(--muted)}
+.notes .q li{margin-bottom:5px}
+.notes .q li b{color:var(--text)}
+.notes .now{color:var(--accent-2);font-weight:700}
+
+/* ---------- 창 프레임 ---------- */
+.winbox{display:flex;justify-content:center;min-width:0}
+.win{position:relative;display:flex;flex-direction:column;width:100%;max-width:1020px;height:680px;
+  border:1px solid var(--line-2);border-radius:8px;overflow:hidden;box-shadow:var(--shadow);background:var(--bg)}
+.hostbar{display:flex;align-items:center;height:32px;background:var(--titlebar);color:#fff;flex:none;user-select:none;position:relative;z-index:5}
+.hostbar .hb-drag{flex:1;display:flex;align-items:center;gap:6px;padding-left:10px;font-size:var(--fs-meta);font-weight:600;height:100%;min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.hostbar .hb-btns{display:flex;height:100%}
+.hostbar .hb-btns button{border:none;background:transparent;color:#fff;width:36px;height:32px;cursor:pointer;font-size:var(--fs-body);display:flex;align-items:center;justify-content:center}
+.hostbar .hb-btns button:hover{background:rgba(255,255,255,.2)}
+.hostbar .hb-sep{flex:none;width:1px;height:16px;background:rgba(255,255,255,.22);margin:0 6px}
+.hostbar .hb-cap{display:flex;height:100%;flex:none}
+.hostbar .hb-cap button{width:46px;height:32px;border:0;padding:0;background:transparent;color:inherit;display:flex;align-items:center;justify-content:center}
+.hostbar .hb-cap button svg{width:10px;height:10px;display:block}
+.hostbar .hb-cap button:hover{background:rgba(255,255,255,.12)}
+.hostbar .hb-cap button.cap-close:hover{background:var(--cap-close)}
+.hostbar .ic{width:15px;height:15px}
+.surface{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg)}
+.app{flex:1;min-height:0;display:flex;flex-direction:column}
+
+/* ---------- 상단바, 버튼(앱 그대로) ---------- */
+.topbar{display:flex;align-items:center;gap:12px;background:var(--panel);border-bottom:1px solid var(--line);padding:10px 14px;flex:none;position:relative;z-index:3}
+.nav{display:flex;align-items:center;gap:6px}
+.title-btn{border:none;background:transparent;font-size:var(--fs-display);font-weight:700;color:var(--text);line-height:1.15;padding:4px 8px;border-radius:var(--r-sm)}
+.spacer{flex:1}
+.actions{display:flex;gap:8px;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);color:var(--text);
+  padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-emph);transition:background .15s,border-color .15s;white-space:nowrap;line-height:1.3}
+.btn:hover{border-color:var(--ctl-border);background:var(--hover-bg)}
+.btn.icon{padding:7px 10px}
+.btn.sm{padding:4px 10px;font-size:var(--fs-body)}
+.btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);font-weight:600}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.danger{color:var(--danger-text);border-color:var(--danger-line)}
+.btn.danger:hover{background:var(--danger-soft)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn .ic{width:15px;height:15px;flex:none}
+.menu-wrap{position:relative}
+
+/* ---------- 월 격자(뒤 화면) ---------- */
+.main{flex:1;min-height:0;display:flex}
+.cal{flex:1;min-width:0;display:flex;flex-direction:column;padding:10px 10px 8px}
+.weekdays{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:5px}
+.weekdays div{text-align:center;font-size:var(--fs-meta);font-weight:600;color:var(--muted);padding:3px 0}
+.weekdays .sun{color:var(--sun)} .weekdays .sat{color:var(--sat)}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.cell{background:var(--panel);padding:4px 5px;display:flex;flex-direction:column;gap:2px;overflow:hidden;min-height:0}
+.cell.dim{background:var(--dim-bg)} .cell.dim .num{color:var(--faint-text)}
+.cell.wknd-sun:not(.dim):not(.today){background:var(--wknd-sun-bg)}
+.cell.wknd-sat:not(.dim):not(.today){background:var(--wknd-sat-bg)}
+.num{font-size:var(--fs-body);font-weight:600;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none}
+.num.sun{color:var(--sun)} .num.sat{color:var(--sat)}
+.cell.today .num{background:var(--accent-fill);color:var(--on-accent)}
+.chip{font-size:var(--fs-micro);line-height:var(--lh-tight);padding:1px 5px;border-radius:4px;border-left:3px solid var(--c,#8a93a6);
+  background:color-mix(in srgb,var(--c,#8a93a6) 14%,var(--panel));color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none}
+
+/* ---------- 모달(앱 그대로, 창 안에 띄운다) ---------- */
+.ov{position:absolute;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10}
+.ov.top{z-index:20}
+.modal{background:var(--panel);border-radius:var(--r-lg);box-shadow:var(--shadow);width:min(540px,100%);max-height:100%;display:flex;flex-direction:column;min-height:0}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:15px 20px;border-bottom:1px solid var(--line);flex:none}
+.modal-head h2{font-size:var(--fs-h2);font-weight:700}
+.x{border:none;background:transparent;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;padding:2px 7px;border-radius:var(--r-sm)}
+.x:hover{background:var(--hover-bg);color:var(--text)}
+.modal-body{padding:var(--sp-4) 20px var(--sp-5);overflow-y:auto;min-height:0}
+.modal-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
+.modal-foot .spacer{flex:1}
+.modal-foot > .git-note{flex:1 1 0;min-width:0;margin-top:0}
+.modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:var(--sp-4) 0 6px}
+.modal-body > label:first-child,.fsect > label:first-child{margin-top:0}
+.fsect{margin-top:var(--sp-5)}
+.fsect:first-child{margin-top:0}
+.modal .fsect-cap{display:block;font-size:var(--fs-body);font-weight:700;color:var(--text);letter-spacing:.01em;margin:0 0 var(--sp-2);padding-bottom:5px;border-bottom:1px solid var(--line)}
+.modal input[type=text],.modal input[type=date],.modal select,.modal textarea{
+  width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:8px 10px;
+  font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text)}
+.modal input:focus,.modal select:focus,.modal textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.modal textarea{resize:vertical;min-height:70px;line-height:1.55}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--sp-4)}
+.check{display:flex !important;align-items:center;gap:7px;font-size:var(--fs-body) !important;color:var(--text) !important;cursor:pointer;margin:0 !important;font-weight:400 !important}
+.check input{width:15px;height:15px;accent-color:var(--accent)}
+.git-note{font-size:var(--fs-meta);color:var(--muted);line-height:1.7;margin-top:8px}
+.set-hint{font-size:var(--fs-meta);color:var(--muted);margin-bottom:10px;line-height:1.5}
+.lbl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.lbl-row>label{margin:0}
+.lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0}
+.lbl-row .lnk{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:600;white-space:nowrap}
+.lbl-row .lnk .ic{width:13px;height:13px}
+.timepick{display:inline-flex;align-items:center;gap:3px}
+.timepick select{width:auto !important;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 8px !important;font-size:var(--fs-body) !important;font-family:inherit;background:var(--panel);color:var(--text)}
+.timepick .t-sep{color:var(--muted);font-weight:700}
+.qa-trow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px}
+.qa-tcell{display:flex;align-items:center;gap:7px}
+.qa-tlbl{font-size:var(--fs-meta);color:var(--muted);min-width:28px}
+.qa-tarrow{color:var(--faint)}
+.qa-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:5px;line-height:1.5}
+.rem-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+.rem-hint{font-size:var(--fs-micro);color:var(--muted);margin-top:4px}
+
+/* ---------- 빠른 추가(앱 그대로) ---------- */
+.qa-modal{width:min(380px,100%);padding:14px 16px 12px}
+.qa-body{flex:1 1 auto;min-height:0;overflow-y:auto;padding:0 2px}
+.qa-head{display:flex;align-items:center;margin-bottom:6px;flex:none}
+.qa-tg{flex:0 1 auto;margin-right:auto}
+.modal input.qa-title{width:100%;border:none;border-bottom:2px solid var(--accent);border-radius:0;font-size:var(--fs-title);padding:4px 0 7px;outline:none;font-family:inherit;color:var(--text);background:transparent}
+.qa-title::placeholder{color:var(--faint)}
+.qa-ctx{display:flex;gap:8px;margin-top:12px}
+.modal .qa-ctx input,.modal .qa-ctx select{flex:1;min-width:0;padding:7px 9px;font-size:var(--fs-body)}
+.qa-when{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
+.qa-chk{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-body);color:var(--muted)}
+.qa-detail{margin-top:var(--sp-3);border-top:1px solid var(--line);padding-top:var(--sp-3)}
+.qa-detail .row2{column-gap:8px;row-gap:0;margin-top:4px}
+.modal .qa-lb{display:block;font-size:var(--fs-meta);color:var(--muted);font-weight:400;margin:8px 0 3px}
+.modal .qa-detail input[type=text],.modal .qa-detail input[type=date],.modal .qa-detail select,.modal .qa-detail textarea{padding:6px 8px;font-size:var(--fs-body)}
+.qa-detail textarea{min-height:34px}
+.qa-foot{display:flex;align-items:center;gap:10px;margin-top:var(--sp-4);flex:none}
+.qa-more{border:none;background:none;color:var(--accent-2);font-size:var(--fs-body);cursor:pointer;padding:4px 0;font-family:inherit;margin-right:auto}
+.qa-advanced{border:none;background:none;color:var(--muted);font-size:var(--fs-meta);cursor:pointer;padding:4px 0;font-family:inherit;text-decoration:underline}
+
+/* ---------- 관리 화면(앱 그대로) ---------- */
+.ah-modal{width:min(1120px,100%);height:100%;max-height:none}
+.ah-title{display:flex;align-items:baseline;gap:10px;min-width:0}
+.ah-who{font-size:var(--fs-meta);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ah-pill{display:inline-block;font-size:var(--fs-micro);font-weight:600;border-radius:999px;padding:1px 8px;background-color:var(--accent-soft);color:var(--accent-2);vertical-align:1px;white-space:nowrap;margin-left:6px}
+.ah-seg{display:flex;gap:8px;padding:12px 20px;border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+.ah-seg button{display:flex;gap:10px;align-items:center;border:1.5px solid var(--line-2);background-color:transparent;border-radius:12px;
+  padding:8px 16px 8px 10px;cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:0;position:relative}
+.ah-seg button:hover{border-color:var(--accent)}
+.ah-gic{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;flex:none;background-color:transparent;filter:grayscale(1);opacity:.65}
+.ah-gtx{display:flex;flex-direction:column;min-width:0}
+.ah-gt{font-weight:700;font-size:var(--fs-emph);color:var(--muted);white-space:nowrap}
+.ah-gd{font-size:var(--fs-micro);color:var(--faint-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ah-seg button.on{background-color:var(--accent-soft);border-color:var(--accent)}
+.ah-seg button.on .ah-gt{color:var(--accent-2)}
+.ah-seg button.on .ah-gd{color:var(--muted)}
+.ah-seg button.on .ah-gic{filter:none;opacity:1;background-color:var(--panel)}
+.ah-body{display:grid;grid-template-columns:200px minmax(0,1fr);flex:1;min-height:0}
+.ah-nav{background-color:var(--panel);border-right:1px solid var(--line);padding:12px 8px;overflow:auto;min-height:0}
+.ah-navlbl{font-size:var(--fs-meta);font-weight:700;color:var(--accent-2);padding:2px 10px 8px;display:flex;gap:6px;align-items:center}
+.ah-nav button{display:flex;width:100%;align-items:center;gap:8px;border:0;background-color:transparent;text-align:left;padding:8px 10px;
+  border-radius:8px;cursor:pointer;font:inherit;font-size:var(--fs-emph);color:var(--text);margin-bottom:2px}
+.ah-nav button:hover{background-color:var(--hover-bg)}
+.ah-nav button .ah-ic{width:20px;text-align:center;flex:none}
+.ah-nav button .ah-n{margin-left:auto;font-size:var(--fs-meta);color:var(--muted);font-weight:500;white-space:nowrap}
+.ah-nav button.on{background-color:var(--accent-soft);color:var(--accent-2);font-weight:700;box-shadow:inset 3px 0 0 var(--accent)}
+.ah-nav button.on .ah-n{color:var(--accent-2)}
+.ah-pane{display:flex;flex-direction:column;min-width:0;min-height:0;background-color:var(--panel);border-radius:0 0 var(--r-lg) 0}
+.ah-where{font-size:var(--fs-meta);color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:12px 20px 0;flex:none}
+.ah-where b{color:var(--text)}
+.ah-slot{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+/* 도킹된 창 모양(머리 줄 선 없음, ✕ 와 [닫기] 없음) */
+.dock-head{padding:6px 20px 2px;flex:none}
+.dock-head h2{font-size:var(--fs-h2);font-weight:700}
+.dock-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:var(--sp-3) 20px var(--sp-3)}
+.dock-body > *{flex:none}
+.dock-ph{margin:20px;padding:18px;border:1px dashed var(--line-2);border-radius:var(--r-md);color:var(--muted);font-size:var(--fs-body);text-align:center}
+.new-tag{display:inline-block;font-size:10px;font-weight:700;line-height:1.4;padding:0 6px;border-radius:999px;background:var(--new-bg);color:var(--new-ink);margin-left:6px;white-space:nowrap}
+.ah-seg .new-tag{position:absolute;top:-8px;right:8px;margin:0}
+
+/* 구분/상태 목록 줄(앱 그대로) */
+.cust-add{display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.cust-add input{flex:1;min-width:0}
+.cust-add .btn{flex:none}
+.cust-msg{font-size:var(--fs-meta);min-height:1.2em;margin:var(--sp-1) 0}
+.cust-msg.err{color:var(--danger-text)}
+.cust-msg.ok{color:var(--accent-2)}
+.cust-list{border:1px solid var(--line);border-radius:var(--r-md);overflow:auto;flex:1 1 0 !important;min-height:120px}
+.cust-row{display:flex;align-items:center;gap:var(--sp-2);padding:6px 10px;border-bottom:1px solid var(--line)}
+.cust-row:last-child{border-bottom:none}
+.cust-row .rm-ic{width:15px;height:15px;color:var(--accent);flex:none}
+.cust-row .cust-nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cust-row .cust-edit{flex:1;min-width:0}
+.cust-row .cust-edit input{width:100%;padding:5px 8px;font-size:var(--fs-emph)}
+.code-ord{display:inline-flex;gap:2px;flex:none}
+.code-ord .btn{padding:2px 7px;line-height:1.1}
+.cust-empty{padding:28px var(--sp-3);text-align:center;color:var(--muted);font-size:var(--fs-body);line-height:1.7}
+@keyframes rowFlash{from{background-color:var(--accent-soft)}to{background-color:transparent}}
+.cust-row.flash{animation:rowFlash 1s ease-out}
+@keyframes rowFlashErr{from{background-color:var(--danger-soft)}to{background-color:transparent}}
+.cust-row.flash-err{animation:rowFlashErr 1.4s ease-out}
+
+/* ---------- 장소 칸(새것) ---------- */
+/* A: 입력 칸 + 펼침 목록(콤보박스) */
+.loc-combo{position:relative}
+.modal .loc-combo input[type=text]{padding-right:58px}
+.loc-btns{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:flex;gap:2px}
+.loc-btns button{border:none;background:transparent;color:var(--muted);width:24px;height:24px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.loc-btns button:hover{background:var(--hover-bg);color:var(--text)}
+.loc-btns .loc-clr{font-size:16px}
+.loc-pop{position:absolute;left:0;right:0;top:calc(100% + 4px);min-width:220px;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);
+  box-shadow:var(--shadow);padding:4px;z-index:30;max-height:230px;overflow:auto}
+.loc-pop.up{top:auto;bottom:calc(100% + 4px)}
+.loc-sec{font-size:var(--fs-micro);font-weight:700;color:var(--faint-text);padding:6px 10px 3px}
+.loc-opt{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-body);color:var(--text)}
+.loc-opt .rm-ic{width:14px;height:14px;color:var(--accent);flex:none}
+.loc-opt .rc-ic{width:14px;height:14px;color:var(--muted);flex:none}
+.loc-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc-opt .ck{color:var(--accent-2);font-weight:700;flex:none}
+.loc-opt:hover{background:var(--hover-bg)}
+.loc-opt.act{background:var(--accent-soft)}
+.loc-foot{font-size:var(--fs-micro);color:var(--muted);padding:6px 10px 5px;border-top:1px solid var(--line);margin-top:4px;line-height:1.5}
+.loc-none{font-size:var(--fs-body);color:var(--muted);padding:8px 10px}
+/* B: 입력 칸 + 칩 줄 */
+.loc-wrap{position:relative}
+.modal .loc-wrap input[type=text]{padding-right:32px}
+.loc-wrap .loc-btns{right:4px}
+.loc-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;align-items:center}
+.loc-chips .lb{font-size:var(--fs-micro);color:var(--faint-text);font-weight:700;margin-right:2px;flex:none}
+.loc-chips.one{flex-wrap:nowrap;overflow-x:auto;padding-bottom:3px;scrollbar-width:thin}
+.lchip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:999px;
+  padding:2px 10px;font-size:var(--fs-meta);cursor:pointer;white-space:nowrap;flex:none;font-family:inherit;line-height:1.5}
+.lchip:hover{border-color:var(--ctl-border);background:var(--hover-bg)}
+.lchip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.lchip.rc{border-style:dashed}
+.loc-chips .none{font-size:var(--fs-micro);color:var(--faint-text)}
+
+/* ---------- ⋯ 메뉴 전후 ---------- */
+.cmp{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;width:100%}
+@media (max-width:760px){.cmp{grid-template-columns:minmax(0,1fr)}}
+.cmp-col{background:var(--bg);border:1px solid var(--line-2);border-radius:8px;padding:14px;min-width:0}
+.cmp-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:var(--fs-title);margin-bottom:10px}
+.cmp-h .tag{font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 8px;background:var(--panel);border:1px solid var(--line-2);color:var(--muted)}
+.cmp-sub{font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin:16px 0 6px}
+.menu{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);min-width:0;width:250px;max-width:100%;padding:6px}
+.menu button{display:block;width:100%;text-align:left;border:none;background:transparent;padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-emph);color:var(--text)}
+.menu button:hover{background:var(--hover-bg)}
+.menu button.danger{color:var(--danger-text)}
+.menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
+.menu .help-row{padding:6px 12px;font-size:var(--fs-body);color:var(--muted);line-height:1.6}
+.menu button.gone{background:var(--gone-bg);color:var(--danger-text);text-decoration:line-through;box-shadow:inset 0 0 0 1px var(--danger-line)}
+.menu .gone-note{font-size:var(--fs-micro);color:var(--danger-text);padding:0 12px 4px;font-weight:600}
+.mini{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px}
+.mini label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted)}
+.mini select,.mini input{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:8px 10px;font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text);margin-top:6px}
+.mini .gone-lnk{background:var(--gone-bg);border-radius:4px;padding:1px 5px;text-decoration:line-through;color:var(--danger-text) !important}
+
+/* ---------- 결정할 것(두 안을 나란히) ---------- */
+.dec{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px 18px 20px;margin-bottom:28px}
+.dec-eyebrow{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.dec-h{font-size:var(--fs-display);font-weight:700;letter-spacing:-.01em;margin:2px 0 4px}
+.dec-sub{font-size:var(--fs-body);color:var(--muted);max-width:90ch}
+.dq{margin-top:20px}
+.dq-h{display:flex;align-items:baseline;gap:8px;font-size:var(--fs-h2);font-weight:700;margin-bottom:10px}
+.dq-h .qn{color:var(--accent-2)}
+.dq-h .qs{font-size:var(--fs-body);font-weight:400;color:var(--muted)}
+.dq-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch}
+@media (max-width:900px){.dq-cols{grid-template-columns:minmax(0,1fr)}}
+.opt{background:var(--bg);border:1.5px solid var(--line-2);border-radius:var(--r-md);padding:14px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.opt.rec{border-color:var(--accent)}
+.opt-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.badge{font-size:22px;font-weight:800;line-height:1;padding:8px 13px;border-radius:10px;background:var(--titlebar);color:#fff;flex:none}
+.opt.rec .badge{background:var(--accent-fill)}
+.opt-name{font-weight:700;font-size:var(--fs-title);min-width:0}
+.rec-tag{margin-left:auto;font-size:var(--fs-body);font-weight:700;color:var(--new-ink);background:var(--new-bg);border:1px solid var(--new-ink);border-radius:999px;padding:2px 12px;white-space:nowrap}
+.opt-desc{font-size:var(--fs-body)}
+.pc{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;font-size:var(--fs-meta)}
+@media (max-width:520px){.pc{grid-template-columns:minmax(0,1fr)}}
+.pc h4{font-size:var(--fs-meta);font-weight:700;margin-bottom:3px}
+.pc .pro h4{color:var(--ok)}
+.pc .con h4{color:var(--danger-text)}
+.pc ul{padding-left:16px;color:var(--muted)}
+.pc li{margin-bottom:2px}
+.opt-go{align-self:flex-start;margin-top:auto}
+.opt-go[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600;cursor:default}
+/* 일정 입력 창 축소판 */
+.modal.dmock{width:100%;max-height:none;box-shadow:0 2px 10px var(--seg-sh);border:1px solid var(--line-2)}
+.dmock .modal-head{padding:10px 14px}
+.dmock .modal-head h2{font-size:var(--fs-title)}
+.dmock .modal-body{overflow:visible;padding:12px 14px 14px;min-height:370px}
+.dmock .loc-pop{max-height:200px}
+.dmock .git-note{margin-top:6px}
+/* 관리 화면 왼쪽 목록 축소판 */
+.dnav{background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);padding:8px}
+.dnav-g{display:flex;align-items:center;gap:6px;font-size:var(--fs-meta);font-weight:700;color:var(--accent-2);padding:10px 10px 4px}
+.dnav-g:first-child{padding-top:2px}
+.dnav-g .new-tag{margin-left:2px}
+.dnav-i{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 22px;border-radius:8px;font-size:var(--fs-body);color:var(--text)}
+.dnav-i .ah-ic{width:20px;text-align:center;flex:none}
+.dnav-i.on{background:var(--accent-soft);color:var(--accent-2);font-weight:700;box-shadow:inset 3px 0 0 var(--accent)}
+.detail-h{font-size:var(--fs-display);font-weight:700;letter-spacing:-.01em;margin-bottom:4px}
+
+/* ---------- 토스트(앱 그대로, 창 아래쪽) ---------- */
+.toastWrap{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:40;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;max-width:90%}
+.toast{background:#222a3d;color:#fff;padding:10px 17px;border-radius:999px;font-size:var(--fs-body);opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s;display:inline-flex;align-items:center;gap:8px;text-align:center}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.success{background:#1f7a4d}
+.toast.warn{background:#9a5b00}
+
+@media (max-width:720px){
+  .win{height:720px}
+  .ah-body{grid-template-columns:150px minmax(0,1fr)}
+  .ah-seg{padding:10px 12px}
+  .ah-seg button{padding:6px 10px 6px 8px}
+  .ah-gd{display:none}
+  .cust-row{flex-wrap:wrap;row-gap:4px}
+  .cust-row .cust-nm{flex:1 1 100%}
+  .side{display:none}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none !important;transition:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="dec" id="decide" aria-labelledby="decH">
+    <div class="dec-eyebrow">공용 회의실 시안</div>
+    <h1 class="dec-h" id="decH">결정할 것</h1>
+    <p class="dec-sub">두 안을 한 화면에 나란히 두었습니다. 양쪽 다 직접 치고 눌러 볼 수 있고, 같은 회의실 목록을 씁니다.</p>
+    <div id="decBody"></div>
+  </section>
+
+  <h2 class="detail-h" id="detail">자세히 보기</h2>
+  <p class="shell-sub">회의실 목록을 사람마다 따로 두지 않고 회사 공용 목록 하나로 바꿉니다. 목록은 관리자만 관리 화면에서 고치고, 사용자는 장소 칸에서 목록을 골라 쓰거나 아무 장소나 직접 적습니다. 관리 화면에서 바꾼 목록이 위 결정할 것과 일정 입력 창, 빠른 추가에 바로 나옵니다. 실제 앱 화면을 옮긴 것이며 저장은 되지 않습니다.</p>
+
+  <div class="ctrls" role="group" aria-label="시안 조작">
+    <div class="ctrl-row">
+      <span class="ctrl-lb" id="lbView">화면</span>
+      <div class="seg" id="viewSeg" role="group" aria-labelledby="lbView">
+        <button class="seg-b" data-view="hub"><span class="n">1</span>관리 화면 &gt; 회의실</button>
+        <button class="seg-b" data-view="entry"><span class="n">2</span>일정 입력 창</button>
+        <button class="seg-b" data-view="qa"><span class="n">3</span>빠른 추가</button>
+        <button class="seg-b" data-view="menu"><span class="n">4</span>⋯ 메뉴 전후</button>
+      </div>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-lb">그리는 안</span>
+      <span class="ctrl-tip" id="curPick"></span>
+    </div>
+    <div class="ctrl-row" data-for="entry qa">
+      <span class="ctrl-lb" id="lbRecent">내 최근 장소</span>
+      <div class="seg" id="recentSeg" role="group" aria-labelledby="lbRecent">
+        <button class="seg-b" data-recent="0">추천 안 함</button>
+        <button class="seg-b" data-recent="1">공용 목록과 함께 추천</button>
+      </div>
+      <span class="ctrl-tip">내가 전에 직접 적은 장소(공용 목록에 없는 것)를 따로 보여 줄지 비교합니다.</span>
+    </div>
+    <div class="ctrl-row">
+      <span class="ctrl-lb" id="lbList">회의실 목록</span>
+      <div class="seg" id="listSeg" role="group" aria-labelledby="lbList">
+        <button class="seg-b" data-list="fill">예시로 채우기</button>
+        <button class="seg-b" data-list="empty">비우기</button>
+      </div>
+      <span class="ctrl-lb" id="lbTheme" style="margin-left:12px;min-width:0">테마</span>
+      <div class="seg" id="themeSeg" role="group" aria-labelledby="lbTheme">
+        <button class="seg-b" data-theme="light">라이트</button>
+        <button class="seg-b" data-theme="dark">다크</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="winbox" id="winbox"></div>
+    <aside class="notes" aria-labelledby="notesH">
+      <h2 id="notesH">이 화면</h2>
+      <dl id="notesDl"></dl>
+      <div class="q">
+        <h3>그 밖에 정해 주실 것</h3>
+        <ol>
+          <li><b>내 최근 장소</b>: 공용 목록 말고 내가 직접 적었던 장소도 추천할지.</li>
+          <li><b>지금 쓰던 개인 회의실 목록</b>: 그냥 버릴지, 처음 한 번 모아 관리자에게 공용 목록 후보로 보여 줄지.</li>
+          <li><b>삭제 뒤 되돌리기</b>: 시안은 확인 창만 둡니다. 토스트의 [실행 취소]도 둘지.</li>
+        </ol>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+const SVG = {
+  pin:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7"/></svg>',
+  min:'<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" stroke="currentColor" stroke-width="1"/></svg>',
+  max:'<svg viewBox="0 0 10 10" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg>',
+  close:'<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1"/></svg>',
+  room:'<svg class="rm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>',
+  recent:'<svg class="rc-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  sliders:'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>'
+};
+
+/* ---------- 시안 상태 ---------- */
+const SAMPLE = ['대회의실', '소회의실 A', '소회의실 B', '3층 세미나실', '화상회의(Teams)', '본사 1층 접견실'];
+let nextId = 1;
+const mk = n => ({ id: nextId++, name: n });
+const S = {
+  view: 'hub', theme: 'light', variant: 'A', place: 'grp', recentOn: false,
+  rooms: SAMPLE.map(mk),
+  recent: ['고객사 한빛전자 3층', '본사 2층 라운지', '판교 현장 사무실'],   // 내가 직접 적었던 장소(공용 목록에 없는 것)
+  hubItem: 'rooms', editId: null,
+  loc: { f: '대회의실', qa: '', dA: '소회', dB: '' },   // dA, dB: 결정할 것의 두 축소판
+  qaOpen: true
+};
+const norm = s => String(s || '').replace(/\s+/g, ' ').trim();
+const keyOf = s => norm(s).toLowerCase().replace(/\s/g, '');
+const roomNames = () => S.rooms.map(r => r.name);
+const isRoom = v => !!v && S.rooms.some(r => keyOf(r.name) === keyOf(v));
+
+/* ---------- 뒤 화면(월 격자) ---------- */
+const EVENTS = {
+  '2026-10-02':[['#3e8ed0','09:30 팀 회의']],
+  '2026-10-07':[['#d0803e','보고서 마감']],
+  '2026-10-08':[['#2e9e6b','현장 점검'],['#8a6bd0','14:00 검토']],
+  '2026-10-13':[['#3e8ed0','09:30 팀 회의']],
+  '2026-10-15':[['#c0507a','교육']],
+  '2026-10-16':[['#c0507a','교육']],
+  '2026-10-20':[['#2e9e6b','자료 정리']],
+  '2026-10-21':[['#3e8ed0','09:30 주간 회의'],['#d0803e','보고서 초안']],
+  '2026-10-23':[['#8a6bd0','15:00 협의']],
+  '2026-10-27':[['#3e8ed0','09:30 팀 회의']],
+  '2026-10-29':[['#2e9e6b','현장 점검']]
+};
+function ymd(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function gridHtml(){
+  const first = new Date(2026, 9, 1), start = new Date(first);
+  start.setDate(1 - first.getDay());
+  let h = '';
+  for(let i = 0; i < 35; i++){
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    const dow = d.getDay(), other = d.getMonth() !== 9, key = ymd(d);
+    const cls = ['cell'];
+    if(other) cls.push('dim');
+    if(dow === 0) cls.push('wknd-sun'); if(dow === 6) cls.push('wknd-sat');
+    if(key === '2026-10-21') cls.push('today');
+    const numCls = 'num' + (dow === 0 ? ' sun' : dow === 6 ? ' sat' : '');
+    const ev = (EVENTS[key] || []).map(e => '<div class="chip" style="--c:' + e[0] + '">' + esc(e[1]) + '</div>').join('');
+    h += '<div class="' + cls.join(' ') + '"><div class="' + numCls + '">' + d.getDate() + '</div>' + ev + '</div>';
+  }
+  return h;
+}
+const WEEK = '<div class="weekdays"><div class="sun">일</div><div>월</div><div>화</div><div>수</div><div>목</div><div>금</div><div class="sat">토</div></div>';
+function hostbar(){
+  return '<div class="hostbar"><div class="hb-drag">⠿ 수행과제 캘린더</div>'
+    + '<div class="hb-btns"><button type="button" aria-label="바탕화면 부착/해제" title="바탕화면 부착/해제">' + SVG.pin + '</button><button type="button" aria-label="위젯 메뉴" title="위젯 메뉴">☰</button></div><span class="hb-sep" aria-hidden="true"></span>'
+    + '<div class="hb-cap"><button type="button" aria-label="최소화">' + SVG.min + '</button><button type="button" aria-label="최대화">' + SVG.max + '</button><button type="button" class="cap-close" aria-label="닫기">' + SVG.close + '</button></div></div>';
+}
+function appBack(){
+  return '<div class="app" aria-hidden="true">'
+    + '<header class="topbar"><div class="nav"><button class="btn icon" type="button" tabindex="-1">◀</button><button class="btn" type="button" tabindex="-1">오늘</button><button class="btn icon" type="button" tabindex="-1">▶</button><span class="title-btn">2026년 10월</span></div><div class="spacer"></div>'
+    + '<div class="actions"><button class="btn icon" type="button" tabindex="-1">🔍</button><button class="btn icon" type="button" tabindex="-1">👥</button><button class="btn icon" type="button" tabindex="-1">⋯</button><button class="btn primary" type="button" tabindex="-1">＋ 새 기록</button></div></header>'
+    + '<div class="main"><div class="cal">' + WEEK + '<div class="grid">' + gridHtml() + '</div></div></div></div>';
+}
+function windowHtml(inner){
+  return '<div class="win" id="win">' + hostbar() + '<div class="surface" id="surface">' + appBack() + inner + '<div class="toastWrap" id="toastWrap" aria-live="polite"></div></div></div>';
+}
+
+/* ---------- 토스트 ---------- */
+function toast(msg, tone){
+  const w = $('#toastWrap'); if(!w) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + (tone || '');
+  t.textContent = (tone === 'success' ? '✓ ' : tone === 'warn' ? '⚠ ' : '') + msg;
+  w.appendChild(t);
+  while(w.children.length > 2) w.removeChild(w.firstChild);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2600);
+}
+
+/* ---------- 확인 창(앱 confirmBox 모양) ---------- */
+function confirmBox(title, msg, okLabel, onOk){
+  const s = $('#surface'); if(!s) return;
+  const ov = document.createElement('div');
+  ov.className = 'ov top';
+  ov.innerHTML = '<div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="cfT" aria-describedby="cfM" style="width:min(380px,100%)">'
+    + '<div class="modal-head"><h2 id="cfT">' + esc(title) + '</h2><button class="x" type="button" data-cf="no" aria-label="닫기">×</button></div>'
+    + '<div class="modal-body"><p id="cfM" style="font-size:var(--fs-emph);line-height:1.6;white-space:pre-wrap;margin:0">' + esc(msg) + '</p></div>'
+    + '<div class="modal-foot"><span class="spacer"></span><button class="btn" type="button" data-cf="no">취소</button><button class="btn danger-solid" type="button" data-cf="ok">' + esc(okLabel) + '</button></div></div>';
+  s.appendChild(ov);
+  const prev = document.activeElement;
+  const done = ok => { ov.remove(); if(ok) onOk(); else if(prev && prev.focus) prev.focus(); };
+  ov.addEventListener('click', ev => { const b = ev.target.closest('[data-cf]'); if(b) done(b.dataset.cf === 'ok'); else if(ev.target === ov) done(false); });
+  ov.addEventListener('keydown', ev => { if(ev.key === 'Escape'){ ev.preventDefault(); done(false); } });
+  setTimeout(() => { const ok = $('[data-cf="ok"]', ov); if(ok) ok.focus(); }, 20);
+}
+
+/* =================================================================
+   1. 관리 화면 > 회의실
+   ================================================================= */
+function hubGroups(place){
+  place = place || S.place;
+  const proj = { id:'proj', ic:'📁', t:'회사 과제', d:'공식 과제 원본(DB)과 기준 정보', items:['projects','cust','section','status','trash'] };
+  const g = [
+    { id:'people', ic:'👥', t:'사람', d:'직원, 조직, 직급', items:['members','title','unit','gone'] },
+    proj
+  ];
+  if(place === 'grp') g.push({ id:'sched', ic:'🗓', t:'일정', d:'모든 사용자가 쓰는 공용 목록', items:['rooms'], isNew:true });
+  else proj.items = ['projects','cust','section','status','rooms','trash'];
+  return g;
+}
+const HUB_ITEMS = {
+  members:{ ic:'👤', t:'구성원' }, title:{ ic:'🏷', t:'직급' }, unit:{ ic:'🏢', t:'소속' }, gone:{ ic:'🗑', t:'휴지통' },
+  projects:{ ic:'📁', t:'공식 과제' }, cust:{ ic:'🏭', t:'발주처' }, section:{ ic:'🗂️', t:'구분' }, status:{ ic:'🔖', t:'상태' }, trash:{ ic:'🗑', t:'휴지통' },
+  rooms:{ ic:'🚪', t:'회의실' }
+};
+const groupOf = item => hubGroups().find(g => g.items.includes(item)) || hubGroups()[0];
+
+function hubHtml(){
+  const groups = hubGroups(), cur = groupOf(S.hubItem);
+  const seg = groups.map(g => '<button type="button" role="tab" data-ahgrp="' + g.id + '" class="' + (g.id === cur.id ? 'on' : '') + '" aria-selected="' + (g.id === cur.id) + '">'
+    + '<span class="ah-gic" aria-hidden="true">' + g.ic + '</span><span class="ah-gtx"><span class="ah-gt">' + g.t + '</span><span class="ah-gd">' + g.d + '</span></span>'
+    + (g.isNew ? '<span class="new-tag">새로</span>' : '') + '</button>').join('');
+  const nav = '<div class="ah-navlbl" aria-hidden="true">' + cur.ic + ' ' + cur.t + '</div>'
+    + cur.items.map(k => {
+        const it = HUB_ITEMS[k], on = k === S.hubItem;
+        const n = k === 'rooms' ? S.rooms.length + '개' : '';
+        return '<button type="button" data-ahitem="' + k + '" class="' + (on ? 'on' : '') + '"' + (on ? ' aria-current="true"' : '') + '><span class="ah-ic" aria-hidden="true">' + it.ic + '</span>' + it.t
+          + (k === 'rooms' && S.place === 'proj' ? '<span class="new-tag">새로</span>' : '')
+          + '<span class="ah-n" id="ahN' + k + '">' + n + '</span></button>';
+      }).join('');
+  const it = HUB_ITEMS[S.hubItem];
+  return '<div class="ov"><div class="modal ah-modal" role="dialog" aria-modal="true" aria-labelledby="ahH">'
+    + '<div class="modal-head"><div class="ah-title"><h2 id="ahH">⚙ 관리</h2><span class="ah-who">김민수 <span class="ah-pill">관리자</span></span></div><button class="x" type="button" aria-label="닫기" data-noop>×</button></div>'
+    + '<div class="ah-seg" role="tablist" aria-label="관리 묶음">' + seg + '</div>'
+    + '<div class="ah-body"><nav class="ah-nav" aria-label="관리 항목">' + nav + '</nav>'
+    + '<div class="ah-pane"><div class="ah-where">' + cur.ic + ' ' + cur.t + ' ›<b>' + it.ic + ' ' + it.t + '</b></div>'
+    + '<div class="ah-slot" id="ahSlot">' + (S.hubItem === 'rooms' ? roomsPaneHtml() : '<div class="dock-ph">' + it.ic + ' ' + it.t + ' 화면은 지금 그대로입니다. 이 시안은 회의실 항목만 그립니다.</div>') + '</div>'
+    + '</div></div></div></div>';
+}
+function roomsPaneHtml(){
+  return '<div class="dock-head"><h2>회의실</h2></div>'
+    + '<div class="dock-body">'
+    +   '<p class="set-hint">여기 목록은 모든 사용자의 장소 칸에 추천으로 보입니다. 목록에 없는 장소는 사용자가 직접 입력합니다.</p>'
+    +   '<div class="cust-add"><input type="text" id="rmNew" maxlength="40" autocomplete="off" spellcheck="false" placeholder="새 회의실 이름 (예: 4층 소회의실)" aria-label="새 회의실 이름"><button type="button" class="btn primary" id="rmAdd">＋ 추가</button></div>'
+    +   '<div class="cust-msg" id="rmMsg" role="status" aria-live="polite"></div>'
+    +   '<div class="cust-list" id="rmList" role="list" aria-label="회의실 목록"></div>'
+    + '</div>'
+    + '<div class="modal-foot"><div class="git-note">▲▼로 장소 칸에 보이는 순서를 바꿉니다. 이름을 바꾸거나 지워도 이미 저장된 일정의 장소 글자는 그대로입니다.</div></div>';
+}
+function rmMsg(text, tone){ const m = $('#rmMsg'); if(!m) return; m.textContent = text || ''; m.className = 'cust-msg' + (tone ? ' ' + tone : ''); }
+function renderRooms(flashId, errId){
+  const box = $('#rmList'); if(!box) return;
+  const n = $('#ahNrooms'); if(n) n.textContent = S.rooms.length + '개';
+  refreshDec();
+  if(!S.rooms.length){
+    box.innerHTML = '<div class="cust-empty">등록된 회의실이 없습니다.<br>위 칸에 이름을 적고 [＋ 추가]를 누르세요.<br>목록이 비어 있어도 사용자는 장소를 직접 입력할 수 있습니다.</div>';
+    return;
+  }
+  box.innerHTML = S.rooms.map((r, i) => {
+    const id = r.id, nm = esc(r.name);
+    if(S.editId === id){
+      return '<div class="cust-row" role="listitem" data-id="' + id + '"><span class="cust-edit"><input type="text" maxlength="40" autocomplete="off" value="' + nm + '" aria-label="' + nm + ' 새 이름"></span>'
+        + '<button type="button" class="btn sm primary" data-rmsave="' + id + '">저장</button><button type="button" class="btn sm" data-rmcancel="1">취소</button></div>';
+    }
+    return '<div class="cust-row' + (flashId === id ? ' flash' : '') + (errId === id ? ' flash-err' : '') + '" role="listitem" data-id="' + id + '">'
+      + SVG.room + '<span class="cust-nm">' + nm + '</span>'
+      + '<span class="code-ord"><button type="button" class="btn sm" data-rmup="' + id + '"' + (i === 0 ? ' disabled' : '') + ' title="위로" aria-label="' + nm + ' 위로">▲</button>'
+      + '<button type="button" class="btn sm" data-rmdown="' + id + '"' + (i === S.rooms.length - 1 ? ' disabled' : '') + ' title="아래로" aria-label="' + nm + ' 아래로">▼</button></span>'
+      + '<button type="button" class="btn sm" data-rmedit="' + id + '">이름변경</button>'
+      + '<button type="button" class="btn sm danger" data-rmdel="' + id + '">삭제</button></div>';
+  }).join('');
+  if(S.editId != null){
+    const inp = $('.cust-edit input', box);
+    if(inp){ inp.focus(); try{ inp.select(); }catch(_){} }
+  }
+}
+function dupOf(name, exceptId){ return S.rooms.find(r => r.id !== exceptId && keyOf(r.name) === keyOf(name)) || null; }
+function roomAdd(){
+  const inp = $('#rmNew'); const name = norm(inp.value);
+  if(!name){ rmMsg('⚠ 회의실 이름을 입력하세요.', 'err'); inp.focus(); return; }
+  const d = dupOf(name, null);
+  if(d){ rmMsg("⚠ '" + d.name + "'은(는) 이미 목록에 있습니다. 띄어쓰기와 대소문자는 같은 이름으로 봅니다.", 'err'); renderRooms(null, d.id); inp.focus(); try{ inp.select(); }catch(_){} return; }
+  const r = mk(name); S.rooms.push(r); inp.value = ''; rmMsg('');
+  renderRooms(r.id); inp.focus();
+  const row = $('#rmList [data-id="' + r.id + '"]'); if(row) row.scrollIntoView({ block:'nearest' });
+  toast("'" + name + "' 회의실을 추가했습니다", 'success');
+}
+function roomCommit(id){
+  const r = S.rooms.find(x => x.id === id); if(!r) return;
+  const inp = $('#rmList .cust-edit input'); const name = norm(inp ? inp.value : '');
+  if(!name){ rmMsg('⚠ 새 이름을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(name === r.name){ S.editId = null; rmMsg(''); renderRooms(); return; }
+  const d = dupOf(name, id);
+  if(d){ rmMsg("⚠ '" + d.name + "'은(는) 이미 목록에 있습니다.", 'err'); if(inp) inp.focus(); return; }
+  const old = r.name; r.name = name; S.editId = null; rmMsg('');
+  renderRooms(id);
+  toast("'" + old + "'을(를) '" + name + "'(으)로 바꿨습니다", 'success');
+}
+function roomMove(id, dir){
+  const i = S.rooms.findIndex(r => r.id === id), j = i + (dir === 'up' ? -1 : 1);
+  if(i < 0 || j < 0 || j >= S.rooms.length) return;
+  const t = S.rooms[i]; S.rooms[i] = S.rooms[j]; S.rooms[j] = t;
+  renderRooms(id);
+  const b = $('#rmList [data-rm' + dir + '="' + id + '"]');
+  if(b && !b.disabled) b.focus(); else { const o = $('#rmList [data-rm' + (dir === 'up' ? 'down' : 'up') + '="' + id + '"]'); if(o) o.focus(); }
+}
+function roomDelete(id){
+  const r = S.rooms.find(x => x.id === id); if(!r) return;
+  confirmBox('회의실 삭제', "'" + r.name + "' 회의실을 목록에서 지울까요?\n일정에 이미 적힌 장소 글자는 그대로 남습니다.", '삭제', () => {
+    S.rooms = S.rooms.filter(x => x.id !== id); rmMsg('');
+    renderRooms();
+    toast("'" + r.name + "' 회의실을 지웠습니다", 'success');
+    const nx = $('#rmList .cust-row .btn'); if(nx) nx.focus(); else { const a = $('#rmNew'); if(a) a.focus(); }
+  });
+}
+function bindHub(){
+  const root = $('#surface');
+  root.addEventListener('click', ev => {
+    const g = ev.target.closest('[data-ahgrp]');
+    if(g){ const grp = hubGroups().find(x => x.id === g.dataset.ahgrp); S.hubItem = grp.items.includes('rooms') ? 'rooms' : grp.items[0]; S.editId = null; renderWin(); return; }
+    const it = ev.target.closest('[data-ahitem]');
+    if(it){ S.hubItem = it.dataset.ahitem; S.editId = null; renderWin(); const b = $('[data-ahitem="' + S.hubItem + '"]'); if(b) b.focus(); return; }
+    if(ev.target.closest('#rmAdd')){ roomAdd(); return; }
+    const b = ev.target.closest('button'); if(!b) return;
+    if(b.dataset.rmup){ roomMove(+b.dataset.rmup, 'up'); return; }
+    if(b.dataset.rmdown){ roomMove(+b.dataset.rmdown, 'down'); return; }
+    if(b.dataset.rmedit){ S.editId = +b.dataset.rmedit; rmMsg(''); renderRooms(); return; }
+    if(b.dataset.rmsave){ roomCommit(+b.dataset.rmsave); return; }
+    if(b.dataset.rmcancel){ S.editId = null; rmMsg(''); renderRooms(); return; }
+    if(b.dataset.rmdel){ roomDelete(+b.dataset.rmdel); return; }
+    if(b.hasAttribute('data-noop')) toast('관리 화면이 닫힙니다(시안에서는 그대로 둡니다)');
+  });
+  root.addEventListener('keydown', ev => {
+    if(ev.target.id === 'rmNew' && ev.key === 'Enter'){ ev.preventDefault(); roomAdd(); return; }
+    if(ev.target.closest && ev.target.closest('.cust-edit')){
+      if(ev.key === 'Enter'){ ev.preventDefault(); roomCommit(S.editId); }
+      else if(ev.key === 'Escape'){ ev.preventDefault(); S.editId = null; rmMsg(''); renderRooms(); }
+    }
+  });
+  renderRooms();
+}
+
+/* =================================================================
+   2, 3. 장소 칸(일정 입력 창, 빠른 추가 공용)
+   ================================================================= */
+const showRecent = () => S.recentOn ? S.recent.filter(p => !isRoom(p)) : [];
+function locFieldHtml(pfx, compact, variant){
+  variant = variant || S.variant;
+  const id = pfx + 'Loc', v = S.loc[pfx] || '';
+  const ph = (compact && variant === 'A') ? '고르거나 직접 입력' : '회의실을 고르거나 직접 입력';
+  if(variant === 'A'){
+    return '<div class="loc-combo" data-pfx="' + pfx + '">'
+      + '<input type="text" id="' + id + '" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="' + id + 'Pop" maxlength="100" autocomplete="off" spellcheck="false" placeholder="' + ph + '" value="' + esc(v) + '"' + (compact ? ' aria-label="장소"' : '') + '>'
+      + '<span class="loc-btns"><button type="button" class="loc-clr' + (v ? '' : ' hidden') + '" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span>'
+      + '<div class="loc-pop hidden" id="' + id + 'Pop" role="listbox" aria-label="장소 추천"></div></div>';
+  }
+  return '<div class="loc-wrap" data-pfx="' + pfx + '">'
+    + '<input type="text" id="' + id + '" maxlength="100" autocomplete="off" spellcheck="false" placeholder="' + ph + '" value="' + esc(v) + '"' + (compact ? ' aria-label="장소"' : '') + '>'
+    + '<span class="loc-btns"><button type="button" class="loc-clr' + (v ? '' : ' hidden') + '" aria-label="장소 지우기" title="지우기">×</button></span></div>'
+    + '<div class="loc-chipbox" id="' + id + 'Chips" data-pfx="' + pfx + '"></div>';
+}
+function hl(name, q){
+  if(!q) return esc(name);
+  const i = name.toLowerCase().indexOf(q.toLowerCase());
+  if(i < 0) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + q.length)) + '</mark>' + esc(name.slice(i + q.length));
+}
+/* A: 펼침 목록 */
+const combo = {};   // pfx -> { open, typed, act }
+function popItems(pfx){
+  const c = combo[pfx], inp = $('#' + pfx + 'Loc');
+  const q = c.typed ? norm(inp.value) : '';
+  const match = n => !q || n.toLowerCase().includes(q.toLowerCase()) || keyOf(n).includes(keyOf(q));
+  const rec = showRecent().filter(match).slice(0, 3).map(n => ({ n, kind:'rc' }));
+  const rms = roomNames().filter(match).map(n => ({ n, kind:'rm' }));
+  return { q, rec, rms, all: rec.concat(rms) };
+}
+function renderPop(pfx){
+  const c = combo[pfx], pop = $('#' + pfx + 'LocPop'), inp = $('#' + pfx + 'Loc'); if(!pop) return;
+  if(!c.open){ pop.classList.add('hidden'); inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); return; }
+  const { q, rec, rms, all } = popItems(pfx);
+  const cur = norm(inp.value);
+  let h = '', k = 0;
+  const opt = it => {
+    const i = k++, on = keyOf(it.n) === keyOf(cur) && !!cur;
+    return '<div class="loc-opt' + (i === c.act ? ' act' : '') + '" role="option" id="' + pfx + 'Opt' + i + '" data-i="' + i + '" aria-selected="' + on + '">'
+      + (it.kind === 'rm' ? SVG.room : SVG.recent) + '<span class="nm">' + hl(it.n, q) + '</span>' + (on ? '<span class="ck" aria-hidden="true">✓</span>' : '') + '</div>';
+  };
+  if(rec.length) h += '<div class="loc-sec">내가 전에 적은 장소</div>' + rec.map(opt).join('');
+  if(rms.length) h += (rec.length ? '<div class="loc-sec">회의실</div>' : (S.recentOn ? '<div class="loc-sec">회의실</div>' : '')) + rms.map(opt).join('');
+  if(!all.length){
+    h += '<div class="loc-none">' + (S.rooms.length || (S.recentOn && S.recent.length) ? '맞는 회의실이 없습니다.' : '등록된 회의실이 없습니다.') + '</div>';
+  }
+  const exact = cur && all.some(it => keyOf(it.n) === keyOf(cur));
+  if(cur && !exact) h += '<div class="loc-foot">목록에 없는 장소입니다. 적은 그대로 저장됩니다.</div>';
+  else if(!cur) h += '<div class="loc-foot">목록에 없으면 칸에 바로 적으세요.</div>';
+  pop.innerHTML = h;
+  pop.classList.remove('hidden');
+  // 아래 공간이 모자라면 위로 연다
+  // 결정할 것의 축소판은 칸 아래 자리를 넉넉히 비워 두었으니 늘 아래로 연다
+  const win = inp.closest('.surface'), r = inp.getBoundingClientRect(), wr = win ? win.getBoundingClientRect() : null;
+  pop.classList.toggle('up', !!wr && (wr.bottom - r.bottom) < 200 && (r.top - wr.top) > (wr.bottom - r.bottom));
+  inp.setAttribute('aria-expanded', 'true');
+  if(c.act >= 0){ inp.setAttribute('aria-activedescendant', pfx + 'Opt' + c.act); const a = $('#' + pfx + 'Opt' + c.act); if(a) a.scrollIntoView({ block:'nearest' }); }
+  else inp.removeAttribute('aria-activedescendant');
+}
+function setLoc(pfx, v){
+  S.loc[pfx] = v;
+  const inp = $('#' + pfx + 'Loc'); if(inp && inp.value !== v) inp.value = v;
+  const box = inp ? inp.closest('.loc-combo, .loc-wrap') : null;
+  const clr = box ? $('.loc-clr', box) : null; if(clr) clr.classList.toggle('hidden', !v);
+  if($('#' + pfx + 'LocChips')) renderChips(pfx);
+}
+function bindCombo(pfx){
+  const inp = $('#' + pfx + 'Loc'), wrap = inp.closest('.loc-combo'), pop = $('#' + pfx + 'LocPop');
+  combo[pfx] = { open:false, typed:false, act:-1 };
+  const c = combo[pfx];
+  const open = typed => { c.open = true; c.typed = !!typed; c.act = -1; renderPop(pfx); };
+  const close = () => { c.open = false; c.act = -1; renderPop(pfx); };
+  const pick = i => { const it = popItems(pfx).all[i]; if(!it) return; setLoc(pfx, it.n); close(); inp.focus(); };
+  inp.addEventListener('mousedown', () => { if(!c.open) setTimeout(() => open(false), 0); });
+  inp.addEventListener('input', () => { setLoc(pfx, inp.value); open(true); });
+  inp.addEventListener('keydown', ev => {
+    const n = c.open ? popItems(pfx).all.length : 0;
+    if(ev.key === 'ArrowDown'){ ev.preventDefault(); if(!c.open){ open(false); c.act = 0; renderPop(pfx); } else if(n){ c.act = (c.act + 1) % n; renderPop(pfx); } }
+    else if(ev.key === 'ArrowUp'){ ev.preventDefault(); if(c.open && n){ c.act = c.act <= 0 ? n - 1 : c.act - 1; renderPop(pfx); } }
+    else if(ev.key === 'Enter'){ if(c.open){ ev.preventDefault(); if(c.act >= 0) pick(c.act); else close(); } }
+    else if(ev.key === 'Escape'){ if(c.open){ ev.preventDefault(); ev.stopPropagation(); close(); } }
+    else if(ev.key === 'Tab'){ close(); }
+  });
+  inp.addEventListener('blur', () => setTimeout(() => { if(!wrap.contains(document.activeElement)) close(); }, 120));
+  pop.addEventListener('mousedown', ev => ev.preventDefault());
+  pop.addEventListener('click', ev => { const o = ev.target.closest('.loc-opt'); if(o) pick(+o.dataset.i); });
+  $('.loc-tog', wrap).addEventListener('mousedown', ev => ev.preventDefault());
+  $('.loc-tog', wrap).addEventListener('click', () => { if(c.open) close(); else { inp.focus(); open(false); } });
+  $('.loc-clr', wrap).addEventListener('mousedown', ev => ev.preventDefault());
+  $('.loc-clr', wrap).addEventListener('click', () => { setLoc(pfx, ''); inp.focus(); open(false); });
+}
+/* B: 칩 줄 */
+function renderChips(pfx){
+  const box = $('#' + pfx + 'LocChips'); if(!box) return;
+  const cur = norm(S.loc[pfx]);
+  const one = pfx === 'qa' ? ' one' : '';
+  const chip = (n, rc) => '<button type="button" class="lchip' + (rc ? ' rc' : '') + (cur && keyOf(n) === keyOf(cur) ? ' on' : '') + '" data-chip="' + esc(n) + '" aria-pressed="' + (cur && keyOf(n) === keyOf(cur)) + '">' + esc(n) + '</button>';
+  let h = '<div class="loc-chips' + one + '" role="group" aria-label="회의실 추천"><span class="lb">회의실</span>'
+    + (S.rooms.length ? roomNames().map(n => chip(n, false)).join('') : '<span class="none">등록된 회의실이 없습니다. 장소를 직접 적으세요.</span>') + '</div>';
+  const rec = showRecent();
+  if(rec.length) h += '<div class="loc-chips' + one + '" role="group" aria-label="내가 전에 적은 장소"><span class="lb">최근</span>' + rec.slice(0, 3).map(n => chip(n, true)).join('') + '</div>';
+  box.innerHTML = h;
+}
+function bindChips(pfx){
+  const inp = $('#' + pfx + 'Loc'), wrap = inp.closest('.loc-wrap'), box = $('#' + pfx + 'LocChips');
+  inp.addEventListener('input', () => setLoc(pfx, inp.value));
+  $('.loc-clr', wrap).addEventListener('click', () => { setLoc(pfx, ''); inp.focus(); });
+  box.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-chip]'); if(!b) return;
+    const n = b.dataset.chip;
+    setLoc(pfx, keyOf(n) === keyOf(S.loc[pfx]) ? '' : n);   // 켜진 칩을 다시 누르면 비운다
+    const again = $('[data-chip="' + CSS.escape(n) + '"]', box); if(again) again.focus();
+  });
+  renderChips(pfx);
+}
+function bindLoc(pfx, variant){ if((variant || S.variant) === 'A') bindCombo(pfx); else bindChips(pfx); }
+function saveToast(pfx){
+  const v = norm(S.loc[pfx]);
+  if(!v){ toast('장소 없이 저장했습니다', 'success'); return; }
+  if(isRoom(v)) toast("장소 '" + v + "'(회의실 목록)로 저장했습니다", 'success');
+  else {
+    toast("장소 '" + v + "'(직접 입력)로 저장했습니다", 'success');
+    S.recent = [v].concat(S.recent.filter(x => keyOf(x) !== keyOf(v))).slice(0, 5);
+  }
+}
+function hourOpts(sel){ let h = ''; for(let i = 0; i < 24; i++) h += '<option' + (i === sel ? ' selected' : '') + '>' + String(i).padStart(2,'0') + '</option>'; return h; }
+function minOpts(sel){ let h = ''; for(let i = 0; i < 60; i += 10) h += '<option' + (i === sel ? ' selected' : '') + '>' + String(i).padStart(2,'0') + '</option>'; return h; }
+const CATS = '<option>주간 업무</option><option>스마트 공장 고도화</option><option>휴가</option><option>기타</option>';
+function remRow(){
+  return '<div class="rem-row"><div class="seg seg-auto" role="group" aria-label="미리알림 방식"><button type="button" class="seg-b">없음</button><button type="button" class="seg-b active">놓침 방지</button><button type="button" class="seg-b">직접</button></div></div>'
+    + '<div class="rem-hint">확인할 때까지 60, 30, 10, 5분 전 재알림</div>';
+}
+
+/* 2. 일정 입력 창 */
+function entryHtml(){
+  return '<div class="ov"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="enH">'
+    + '<div class="modal-head"><h2 id="enH">일정 수정</h2><button class="x" type="button" aria-label="닫기" data-noop>×</button></div>'
+    + '<div class="modal-body" id="enBody">'
+    +   '<section class="fsect"><label for="fTitle">제목 *</label><input type="text" id="fTitle" value="주간 회의">'
+    +     '<div class="row2" style="margin-top:8px"><div><label for="fCat">과제 카테고리</label><select id="fCat">' + CATS + '</select></div><div><label for="fDate">날짜</label><input type="date" id="fDate" value="2026-10-21"></div></div></section>'
+    +   '<section class="fsect"><div class="fsect-cap">시간과 장소</div>'
+    +     '<label class="check"><input type="checkbox"> 종일</label>'
+    +     '<div class="qa-trow" style="margin-top:8px"><span class="qa-tcell"><span class="qa-tlbl">시작</span><span class="timepick"><select aria-label="시작 시">' + hourOpts(9) + '</select><span class="t-sep">:</span><select aria-label="시작 분">' + minOpts(30) + '</select></span></span><span class="qa-tarrow">→</span><span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select aria-label="종료 시">' + hourOpts(10) + '</select><span class="t-sep">:</span><select aria-label="종료 분">' + minOpts(30) + '</select></span></span></div>'
+    +     '<div style="margin-top:8px"><label style="margin:8px 0 4px">미리알림</label>' + remRow() + '</div>'
+    +     '<div style="margin-top:8px"><label for="fLoc" style="margin:16px 0 6px">장소</label>' + locFieldHtml('f', false) + '</div>'
+    +   '</section>'
+    +   '<section class="fsect"><div class="fsect-cap">반복과 기간</div><label class="check"><input type="checkbox"> 여러 날에 걸침(기간)</label><label for="fRecur" style="margin-top:12px">반복</label><select id="fRecur"><option>안 함</option><option>매주</option><option>매월</option></select></section>'
+    +   '<section class="fsect"><label for="fMemo" class="fsect-cap">메모</label><textarea id="fMemo" placeholder="상세 내용, 진행 상황, 참고 사항"></textarea></section>'
+    + '</div>'
+    + '<div class="modal-foot"><button class="btn danger" type="button" data-noop>삭제</button><span class="spacer"></span><button class="btn" type="button" data-noop>취소</button><button class="btn primary" type="button" id="enSave">저장</button></div>'
+    + '</div></div>';
+}
+function bindEntry(){
+  bindLoc('f');
+  $('#enSave').addEventListener('click', () => saveToast('f'));
+  $$('#surface [data-noop]').forEach(b => b.addEventListener('click', () => toast('시안에서는 동작하지 않습니다')));
+  // 장소 칸이 보이게 본문을 내려 둔다
+  const body = $('#enBody'), loc = $('#fLoc');
+  if(body && loc) body.scrollTop = Math.max(0, loc.getBoundingClientRect().top - body.getBoundingClientRect().top - (S.variant === 'B' ? 60 : 150));
+}
+
+/* 3. 빠른 추가 */
+function qaDetailHtml(){
+  const recur = '<select id="qaRecur" aria-label="반복"><option>안 함</option><option>매주</option><option>매월</option></select>';
+  const top = S.variant === 'A'
+    ? '<div class="row2"><label class="qa-lb" for="qaLoc">장소</label><label class="qa-lb" for="qaRecur">반복</label>' + locFieldHtml('qa', true) + recur + '</div>'
+    : '<label class="qa-lb" for="qaLoc">장소</label>' + locFieldHtml('qa', true)
+      + '<label class="qa-lb" for="qaRecur">반복</label>' + recur;
+  return top
+    + '<label class="qa-lb" for="qaEnd">기간 종료일 (선택, 여러 날에 걸침)</label><input type="date" id="qaEnd">'
+    + '<label class="qa-lb" for="qaMemo">메모</label><textarea id="qaMemo" rows="1"></textarea>';
+}
+function qaHtml(){
+  return '<div class="ov"><div class="modal qa-modal" role="dialog" aria-modal="true" aria-label="빠른 추가">'
+    + '<div class="qa-head"><div class="seg seg-lg qa-tg" role="group" aria-label="유형 선택"><button type="button" class="seg-b active" aria-pressed="true">일정</button><button type="button" class="seg-b" aria-pressed="false">할 일</button></div><button class="x" type="button" aria-label="닫기" data-noop>×</button></div>'
+    + '<div class="qa-body" id="qaBody">'
+    +   '<input type="text" class="qa-title" id="qaTitle" maxlength="200" placeholder="일정 제목" value="고객사 협의" aria-label="일정 제목">'
+    +   '<div class="qa-ctx"><input type="date" value="2026-10-23" aria-label="날짜"><select aria-label="과제">' + CATS + '</select></div>'
+    +   '<div class="qa-when"><label class="qa-chk"><input type="checkbox"> 종일</label>'
+    +     '<div class="qa-trow"><span class="qa-tcell"><span class="qa-tlbl">시작</span><span class="timepick"><select aria-label="시작 시">' + hourOpts(15) + '</select><span class="t-sep">:</span><select aria-label="시작 분">' + minOpts(0) + '</select></span></span><span class="qa-tarrow">→</span><span class="qa-tcell"><span class="qa-tlbl">종료</span><span class="timepick"><select aria-label="종료 시">' + hourOpts(16) + '</select><span class="t-sep">:</span><select aria-label="종료 분">' + minOpts(0) + '</select></span></span></div>'
+    +     '<label class="qa-lb" style="margin:8px 0 3px">미리알림</label>' + remRow()
+    +   '</div>'
+    +   '<div class="qa-detail' + (S.qaOpen ? '' : ' hidden') + '" id="qaDetail">' + qaDetailHtml() + '</div>'
+    + '</div>'
+    + '<div class="qa-foot"><button type="button" class="qa-more" id="qaMore" aria-expanded="' + S.qaOpen + '">장소, 반복, 기간, 메모 ' + (S.qaOpen ? '▴' : '▾') + '</button><button class="btn primary" type="button" id="qaSave">저장</button></div>'
+    + '</div></div>';
+}
+function bindQa(){
+  bindLoc('qa');
+  $('#qaSave').addEventListener('click', () => saveToast('qa'));
+  $('#qaMore').addEventListener('click', () => { S.qaOpen = !S.qaOpen; renderWin(); const m = $('#qaMore'); if(m) m.focus(); });
+  $$('#surface [data-noop]').forEach(b => b.addEventListener('click', () => toast('시안에서는 동작하지 않습니다')));
+}
+
+/* =================================================================
+   4. ⋯ 메뉴 전후
+   ================================================================= */
+function menuHtml(before){
+  return '<div class="menu" role="menu" aria-label="' + (before ? '지금 ⋯ 메뉴' : '바뀐 뒤 ⋯ 메뉴') + '">'
+    + '<button role="menuitem" type="button">⚙ 관리<span class="ah-pill">관리자</span></button><hr>'
+    + '<button role="menuitem" type="button">설정</button>'
+    + '<button role="menuitem" type="button">업데이트 확인</button>'
+    + (before ? '<button role="menuitem" type="button" class="gone">회의실 관리</button><div class="gone-note">없어짐: 관리자는 ⚙ 관리 &gt; 회의실</div>' : '')
+    + '<hr>'
+    + '<button role="menuitem" type="button">XML로 내보내기 (내 PC 사본)</button>'
+    + '<button role="menuitem" type="button">XML 가져오기… (이전 기록)</button>'
+    + '<button role="menuitem" type="button">과제 데이터 내보내기…</button>'
+    + '<button role="menuitem" type="button" class="danger">전체 데이터 초기화</button><hr>'
+    + '<div class="help-row">날짜 더블클릭: 새 기록</div>'
+    + '<div class="help-row">데이터는 서버에 자동 저장됩니다</div></div>';
+}
+function compareHtml(){
+  const col = before => '<div class="cmp-col"><div class="cmp-h">' + (before ? '지금' : '바뀐 뒤') + '<span class="tag">' + (before ? '사람마다 따로' : '회사 공용 하나') + '</span></div>'
+    + menuHtml(before)
+    + '<div class="cmp-sub">일정 입력 창의 장소 칸</div>'
+    + '<div class="mini">' + (before
+        ? '<div class="lbl-row"><label>장소</label><span class="lnk gone-lnk" style="font-size:var(--fs-meta);font-weight:600;display:inline-flex;gap:4px;align-items:center">' + SVG.sliders + '회의실 관리</span></div><select aria-label="지금 장소 칸"><option>장소 없음</option><option selected>대회의실</option><option>소회의실 A</option><option>고객사 한빛전자 3층 (미등록)</option></select><div class="git-note">목록에서만 고릅니다. 새 장소는 회의실 관리에서 먼저 추가해야 합니다.</div>'
+        : '<label>장소</label><input type="text" value="대회의실" aria-label="바뀐 뒤 장소 칸"><div class="git-note">공용 목록에서 고르거나 아무 장소나 적습니다. 링크와 회의실 관리 창은 없습니다.</div>')
+    + '</div>'
+    + '<div class="cmp-sub">빠른 추가의 장소 칸</div>'
+    + '<div class="mini">' + (before
+        ? '<div class="lbl-row"><label>장소</label><span class="lnk gone-lnk" style="font-size:var(--fs-meta);font-weight:600;display:inline-flex;gap:4px;align-items:center">' + SVG.sliders + '회의실 관리</span></div><select aria-label="지금 빠른 추가 장소 칸"><option>장소 없음</option></select>'
+        : '<label>장소</label><input type="text" placeholder="회의실을 고르거나 직접 입력" aria-label="바뀐 뒤 빠른 추가 장소 칸">')
+    + '</div></div>';
+  return '<div class="cmp">' + col(true) + col(false) + '</div>';
+}
+
+/* =================================================================
+   결정할 것: 두 안을 나란히 둔다(둘 다 살아 있고 같은 회의실 목록을 쓴다)
+   ================================================================= */
+const DEC = [
+  { q:'장소 칸', qs:'일정 입력 창과 빠른 추가의 장소 칸 모양', kind:'var', opts:[
+    { key:'A', badge:'A안', name:'입력 칸 + 펼침 목록', rec:true,
+      desc:'칸을 누르면 회의실 목록이 펼쳐지고, 글자를 치면 맞는 회의실만 남습니다.',
+      pro:['회의실이 많아도 몇 글자로 찾습니다.', '빠른 추가의 지금 배치(장소, 반복 나란히)를 그대로 둡니다.', '↑↓와 Enter로 고릅니다.'],
+      con:['칸을 눌러야 목록이 보입니다.', '어떤 회의실이 있는지 한눈에 안 보입니다.'] },
+    { key:'B', badge:'B안', name:'입력 칸 + 칩 줄', rec:false,
+      desc:'칸 아래에 회의실 칩이 늘 보이고, 칩을 누르면 칸이 채워집니다.',
+      pro:['한 번 눌러 바로 채웁니다.', '어떤 회의실이 있는지 늘 보입니다.'],
+      con:['회의실이 많으면 칩 줄이 길어집니다.', '친 글자로 걸러지지 않습니다.', '빠른 추가는 장소를 한 줄로 늘리고 반복을 아래로 내립니다.'] }
+  ]},
+  { q:'관리 화면에서 회의실 위치', qs:'⚙ 관리의 왼쪽 목록', kind:'place', opts:[
+    { key:'grp', badge:'가안', name:"새 묶음 '일정'", rec:true,
+      desc:"'일정' 묶음을 새로 두고 그 안에 회의실을 둡니다.",
+      pro:['회의실이 과제 기준 정보와 섞이지 않습니다.', '휴일 같은 공용 목록이 생기면 같은 묶음에 넣습니다.'],
+      con:['묶음 버튼이 하나 늘고, 처음엔 항목이 회의실 하나뿐입니다.'] },
+    { key:'proj', badge:'나안', name:"'회사 과제' 묶음 안", rec:false,
+      desc:"'회사 과제' 묶음의 구분, 상태 아래에 회의실을 둡니다.",
+      pro:['묶음 버튼이 늘지 않습니다.', '구분, 상태와 같은 목록 모양이라 나란히 두기 쉽습니다.'],
+      con:['회의실이 과제 기준 정보처럼 읽힐 수 있습니다.', '회사 과제 묶음 항목이 여섯 개로 늘어납니다.'] }
+  ]}
+];
+function decMockHtml(key){
+  const pfx = 'd' + key;
+  return '<div class="modal dmock" role="group" aria-label="' + key + '안 일정 입력 창 축소판">'
+    + '<div class="modal-head"><h2>일정 수정</h2><span class="x" aria-hidden="true">×</span></div>'
+    + '<div class="modal-body"><label for="' + pfx + 'Title">제목 *</label><input type="text" id="' + pfx + 'Title" value="주간 회의">'
+    + '<label for="' + pfx + 'Loc">장소</label>' + locFieldHtml(pfx, false, key)
+    + (key === 'B' ? '<div class="git-note">칩에 없는 장소는 칸에 바로 적습니다.</div>' : '')
+    + '</div></div>';
+}
+function decNavHtml(place){
+  return '<nav class="dnav" aria-label="' + (place === 'grp' ? '가안' : '나안') + ' 관리 화면 왼쪽 목록">'
+    + hubGroups(place).map(g => '<div class="dnav-g">' + g.ic + ' ' + esc(g.t) + (g.isNew ? '<span class="new-tag">새로</span>' : '') + '</div>'
+      + g.items.map(k => {
+          const it = HUB_ITEMS[k], on = k === 'rooms';
+          return '<div class="dnav-i' + (on ? ' on' : '') + '"><span class="ah-ic" aria-hidden="true">' + it.ic + '</span>' + esc(it.t)
+            + (on && place === 'proj' ? '<span class="new-tag">새로</span>' : '') + '</div>';
+        }).join('')).join('')
+    + '</nav>';
+}
+function decOptHtml(d, o){
+  const li = a => a.map(x => '<li>' + esc(x) + '</li>').join('');
+  return '<div class="opt' + (o.rec ? ' rec' : '') + '">'
+    + '<div class="opt-top"><span class="badge">' + o.badge + '</span><span class="opt-name">' + esc(o.name) + '</span>' + (o.rec ? '<span class="rec-tag">권장</span>' : '') + '</div>'
+    + '<p class="opt-desc">' + esc(o.desc) + '</p>'
+    + (d.kind === 'var' ? decMockHtml(o.key) : decNavHtml(o.key))
+    + '<div class="pc"><div class="pro"><h4>장점</h4><ul>' + li(o.pro) + '</ul></div><div class="con"><h4>단점</h4><ul>' + li(o.con) + '</ul></div></div>'
+    + '<button type="button" class="btn sm opt-go" data-pick-' + d.kind + '="' + o.key + '"></button>'
+    + '</div>';
+}
+function buildDec(){
+  const body = $('#decBody');
+  body.innerHTML = DEC.map((d, i) => '<div class="dq" role="group" aria-labelledby="dq' + i + '">'
+    + '<h2 class="dq-h" id="dq' + i + '"><span class="qn">' + (i + 1) + '.</span>' + esc(d.q) + '<span class="qs">' + esc(d.qs) + '</span></h2>'
+    + '<div class="dq-cols">' + d.opts.map(o => decOptHtml(d, o)).join('') + '</div></div>').join('');
+  bindLoc('dA', 'A'); bindLoc('dB', 'B');
+  // A안은 '소회'를 친 채로 목록을 펼쳐 둔다(누르지 않아도 차이가 보이게)
+  Object.assign(combo.dA, { open:true, typed:true, act:-1 });
+  renderPop('dA');
+  body.addEventListener('click', ev => {
+    const b = ev.target.closest('.opt-go'); if(!b) return;
+    if(b.dataset.pickVar){ S.variant = b.dataset.pickVar; if(S.view !== 'entry' && S.view !== 'qa') S.view = 'entry'; }
+    else if(b.dataset.pickPlace){ S.place = b.dataset.pickPlace; S.view = 'hub'; S.hubItem = 'rooms'; }
+    S.editId = null;
+    renderAll();
+    $('#detail').scrollIntoView({ behavior:'smooth', block:'start' });
+  });
+}
+function renderDecPicks(){
+  $$('#decBody .opt-go').forEach(b => {
+    const on = b.dataset.pickVar ? b.dataset.pickVar === S.variant : b.dataset.pickPlace === S.place;
+    b.setAttribute('aria-pressed', String(on));
+    b.textContent = on ? '✓ 아래 자세히 보기에 나오는 안' : '이 안으로 자세히 보기 ↓';
+  });
+}
+function refreshDec(){   // 회의실 목록이나 최근 장소 설정이 바뀌면 두 축소판에 바로 반영
+  renderChips('dB');
+  if(combo.dA && combo.dA.open) renderPop('dA');
+}
+
+/* ---------- 설명 ---------- */
+const NOTES = {
+  hub: () => [
+    ['무엇', '회의실 목록이 회사 공용 하나가 됩니다. 관리자만 ⚙ 관리 화면에서 고칩니다. 구분, 상태와 같은 줄 모양(▲▼, 이름변경, 줄 끝 버튼)입니다.'],
+    ['자리', S.place === 'grp'
+      ? '<span class="now">가.</span> 새 묶음 \'일정\'에 회의실 하나. 회의실은 과제 기준 정보가 아니라서 따로 둡니다. 나중에 휴일, 일정 분류 같은 공용 목록이 생기면 같은 묶음에 넣습니다.'
+      : '<span class="now">나.</span> \'회사 과제\' 묶음의 상태 아래. 묶음 버튼이 늘지 않지만, 회의실이 과제 기준 정보처럼 읽힐 수 있습니다.'],
+    ['해 볼 것', '추가(Enter도 됨), 같은 이름 다시 추가, ▲▼, 이름변경(Enter 저장, Esc 취소), 삭제 확인 창, 위의 [비우기]로 빈 화면.'],
+    ['삭제', '회의실은 어떤 기록도 번호로 가리키지 않습니다. 그래서 숨김과 휴지통 없이 확인 한 번으로 바로 지웁니다.'],
+    ['이름변경', '이미 저장된 일정의 장소 글자는 바뀌지 않습니다. 장소는 회의실 번호가 아니라 글자로 저장됩니다.'],
+    ['같은 이름', '앞뒤 공백, 띄어쓰기, 대소문자만 다르면 같은 이름으로 보고 막습니다. 겹친 줄을 잠깐 붉게 표시합니다.'],
+    ['관리자 아님', '⋯ 메뉴에 ⚙ 관리가 보이지 않는 것은 지금과 같습니다. 회의실 목록은 장소 칸의 추천으로만 봅니다. 따로 그린 화면은 없습니다.']
+  ],
+  entry: () => [
+    ['무엇', '장소 칸이 목록에서만 고르는 칸(select)에서 글자 입력 칸으로 바뀝니다. 공용 회의실 목록은 추천일 뿐이고 아무 장소나 적을 수 있습니다. 라벨 옆 \'회의실 관리\' 링크는 없어집니다.'],
+    ['시안', S.variant === 'A'
+      ? '<span class="now">A.</span> 칸을 누르거나 ▾를 누르면 목록이 펼쳐집니다. 글자를 치면 그 글자가 든 회의실만 남습니다. ↑↓로 고르고 Enter, Esc로 닫습니다.'
+      : '<span class="now">B.</span> 칸 아래에 회의실 칩이 늘 보입니다. 칩을 누르면 칸이 채워지고, 켜진 칩을 다시 누르면 비웁니다. 회의실이 많으면 칩 줄이 길어집니다.'],
+    ['직접 입력', '목록에 없는 글자(예: 고객사 한빛전자 3층)를 적고 [저장]을 눌러 보세요. 토스트가 실제로 저장될 값과 출처를 알려 줍니다.'],
+    ['내 최근 장소', S.recentOn ? '켬. 내가 전에 직접 적은 장소(공용 목록에 없는 것) 최대 3개를 따로 보여 줍니다. 이 PC에만 기억하는 값으로 가정했습니다.' : '끔. 공용 목록만 추천합니다.'],
+    ['예전 일정', '목록에 없는 장소가 적힌 일정도 그대로 열리고 그대로 보입니다. 지금의 \'(미등록)\' 표시는 필요 없어집니다.']
+  ],
+  qa: () => [
+    ['무엇', '빠른 추가도 같은 장소 칸을 씁니다. 장소는 지금처럼 \'장소, 반복, 기간, 메모 ▾\' 안에 있습니다(시안은 펼쳐서 엽니다).'],
+    ['배치', S.variant === 'A'
+      ? '<span class="now">A.</span> 지금 자리(장소, 반복 두 칸 나란히) 그대로입니다. 펼침 목록은 칸 아래에 뜨고, 아래가 좁으면 위로 뜹니다.'
+      : '<span class="now">B.</span> 칩 줄 폭이 필요해 장소를 한 줄로 늘리고 반복을 아래로 내립니다. 창 폭이 380px라 칩은 한 줄로 두고 옆으로 밀어 봅니다.'],
+    ['직접 입력', '빈 칸에 아무 장소나 적고 [저장]을 눌러 보세요. 내 최근 장소를 켜 두면 방금 적은 장소가 다음 추천에 나옵니다.'],
+    ['링크', '라벨 옆 \'회의실 관리\' 링크와, 거기서 열리던 회의실 관리 창(빠른 추가 위에 겹쳐 뜨던 창)은 없어집니다.']
+  ],
+  menu: () => [
+    ['무엇', '⋯ 메뉴에서 \'회의실 관리\'가 빠집니다. 나머지 순서는 그대로입니다.'],
+    ['함께 없어짐', '일정 입력 창과 빠른 추가의 \'회의실 관리\' 링크, 회의실 관리 창. 사람마다 따로 두던 회의실 목록도 더 쓰지 않습니다.'],
+    ['관리자', '공용 목록은 ⚙ 관리 &gt; 회의실에서 고칩니다(1번 화면).'],
+    ['관리자 아님', '고칠 곳이 없습니다. 목록에 없는 장소는 장소 칸에 직접 적습니다.']
+  ]
+};
+function renderNotes(){
+  const t = { hub:'관리 화면 > 회의실', entry:'일정 입력 창', qa:'빠른 추가', menu:'⋯ 메뉴 전후' }[S.view];
+  $('#notesH').textContent = t;
+  $('#notesDl').innerHTML = NOTES[S.view]().map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+}
+
+/* ---------- 그리기 ---------- */
+function renderWin(){
+  const box = $('#winbox');
+  if(S.view === 'menu'){ box.innerHTML = compareHtml(); return; }
+  const inner = S.view === 'hub' ? hubHtml() : S.view === 'entry' ? entryHtml() : qaHtml();
+  box.innerHTML = windowHtml(inner);
+  if(S.view === 'hub') bindHub();
+  else if(S.view === 'entry') bindEntry();
+  else bindQa();
+}
+function renderCtrls(){
+  const set = (sel, attr, val) => $$(sel + ' [data-' + attr + ']').forEach(b => b.setAttribute('aria-pressed', String(b.dataset[attr] === String(val))));
+  set('#viewSeg', 'view', S.view);
+  set('#recentSeg', 'recent', S.recentOn ? '1' : '0');
+  $('#curPick').textContent = '장소 칸 ' + (S.variant === 'A' ? 'A안' : 'B안') + ', 관리 화면 자리 ' + (S.place === 'grp' ? '가안' : '나안') + '. 다른 안은 위 결정할 것에서 [이 안으로 자세히 보기]를 누르세요.';
+  set('#themeSeg', 'theme', S.theme);
+  $$('#listSeg [data-list]').forEach(b => b.setAttribute('aria-pressed', 'false'));
+  $$('.ctrl-row[data-for]').forEach(r => r.classList.toggle('hidden', !r.dataset.for.split(' ').includes(S.view)));
+}
+function renderAll(){ renderCtrls(); renderWin(); renderNotes(); renderDecPicks(); refreshDec(); }
+
+$('.ctrls').addEventListener('click', ev => {
+  const b = ev.target.closest('.seg-b'); if(!b) return;
+  const d = b.dataset;
+  if(d.view){ S.view = d.view; S.editId = null; }
+  else if(d.recent){ S.recentOn = d.recent === '1'; }
+  else if(d.theme){ S.theme = d.theme; document.documentElement.classList.toggle('dark', S.theme === 'dark'); }
+  else if(d.list){
+    S.editId = null;
+    if(d.list === 'empty') S.rooms = [];
+    else S.rooms = SAMPLE.map(mk);
+  }
+  renderAll();
+});
+
+buildDec();
+renderAll();
+})();
+</script>
+</body>
+</html>
