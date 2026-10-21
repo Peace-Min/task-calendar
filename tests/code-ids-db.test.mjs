@@ -259,8 +259,7 @@ export const checks = {
     // 판번호: 이 파일이 만든 13 에서 다음 판(이관 조각 migrations/v14-version-gate.sql, 13 에서 14)이 출발한다.
     //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 같은 날 회의실 공용화(v15 조각)로 15 다. 체인 전체는 schema-guards ⑥ 이 본다.
     const nextMig = readFileSync(R('db/deploy/migrations/v14-version-gate.sql'), 'utf8');
-    assert.ok(/^-- @migration from=13 to=14?
-/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
+    assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
     assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '15', 'schema-calendar.sql 이 db_structure_version 15 를 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');

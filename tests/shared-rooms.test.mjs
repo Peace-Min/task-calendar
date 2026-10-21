@@ -181,12 +181,14 @@ checks.fragment = (text, st) => {
   assert.ok(!/\b(UPDATE|INSERT|REPLACE|DELETE)\b[^;]*db_updating/i.test(code), 'db_updating 을 쓴다(닫기와 열기는 release SQL 의 몫)');
   assert.ok(!/\b(DELIMITER|PROCEDURE|FUNCTION|TRIGGER|DEFINER)\b/i.test(code), '저장 프로그램이나 DELIMITER 를 쓴다');
   assert.ok(!code.includes('@r_'), '감싸개 변수(@r_)를 쓴다');
-  assert.ok(/SET SESSION lock_wait_timeout = 10;/.test(code), 'lock_wait_timeout 을 걸지 않는다');
+  //  잠금 대기 상한은 release SQL 맨 위에서 한 번만 건다(release-sql.test.mjs ②a). 조각이 다시 걸면 규칙 위반(④)이다.
+  assert.ok(!/SET SESSION|lock_wait_timeout/.test(code), '조각이 잠금 대기 상한을 건다(release SQL 맨 위의 몫)');
+  //  변수 이름은 조각 규칙(DB-RELEASE-OPS §5.2)과 release-sql.test.mjs ④ 가 보는 @go, @skip, @g 를 쓴다
   //  건너뛰기와 멈춤: 15 이상이면 건너뛰고, 14 도 15 이상도 아니면 1146, 14 인데 닫히지 않았으면 1146
-  assert.ok(/SET @v15_skip := \(@v15_cur REGEXP '\^\[0-9\]\{1,6\}\$' AND CAST\(@v15_cur AS UNSIGNED\) >= 15\);/.test(code), '이미 15 이상인 DB 를 건너뛰지 않는다');
-  assert.ok(/SET @v15_go := \(@v15_cur <=> '14'\);/.test(code), '14 에서만 바꾸지 않는다');
-  assert.ok(/IF\(@v15_go OR @v15_skip, 'DO 0',\s*'SELECT 1 FROM `중단: [^`]+`'\)/.test(code), '14 도 15 이상도 아니면 멈추지 않는다(1146)');
-  assert.ok(/IF\(NOT @v15_go OR @v15_upd <=> '1', 'DO 0',\s*'SELECT 1 FROM `중단: [^`]+`'\)/.test(code), '닫히지 않은 DB(db_updating 이 1 이 아님)에서 멈추지 않는다');
+  assert.ok(/SET @skip := \(@m_cur REGEXP '\^\[0-9\]\{1,6\}\$' AND CAST\(@m_cur AS UNSIGNED\) >= 15\);/.test(code), '이미 15 이상인 DB 를 건너뛰지 않는다');
+  assert.ok(/SET @go := \(@m_cur <=> '14'\);/.test(code), '14 에서만 바꾸지 않는다');
+  assert.ok(/IF\(@go OR @skip, 'DO 0',\s*'SELECT 1 FROM `중단: [^`]+`'\)/.test(code), '14 도 15 이상도 아니면 멈추지 않는다(1146)');
+  assert.ok(/IF\(NOT @go OR @m_upd <=> '1', 'DO 0',\s*'SELECT 1 FROM `중단: [^`]+`'\)/.test(code), '닫히지 않은 DB(db_updating 이 1 이 아님)에서 멈추지 않는다');
   //  바꾸는 문장은 전부 PREPARE 로(건너뛸 때는 아무것도 하지 않는다). 정적 쓰기는 마지막 구조 번호 한 줄뿐
   const staticWrites = (code.match(/^\s*(?:INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b/gim) || []);
   assert.strictEqual(staticWrites.length, 1, '조건 없이 바로 도는 쓰기 문장이 구조 번호 UPDATE 말고도 있다: ' + staticWrites.join(','));
@@ -196,8 +198,8 @@ checks.fragment = (text, st) => {
   at(/TABLE_NAME = 'cal_room'/, 'cal_room 이 있는지 보는 확인(information_schema)');
   const insert = at(/'INSERT IGNORE INTO room_code \(name, sort_order, created_at, updated_at\)[\s\S]*?FROM cal_room WHERE TRIM\(name\) <> '''' GROUP BY TRIM\(name\) COLLATE utf8mb4_0900_ai_ci\) t'/, 'cal_room 이름 모으기(INSERT IGNORE, 공백 정리, 같은 이름 합치기)');
   assert.ok(/ROW_NUMBER\(\) OVER \(ORDER BY users DESC, nm\) \* 10/.test(code), '모은 이름의 순서(쓰는 사람 수, 이름)와 10 간격이 없다');
-  const verify = at(/IF\(NOT @v15_go OR \(@v15_rows >= 0 AND \(NOT @v15_take OR \(@v15_miss = 0 AND @v15_rows = @v15_dist\)\)\), 'DO 0',/, '검증(넣은 줄 수 = 고유 이름 수, 빠진 이름 0)');
-  const drop = at(/IF\(@v15_take, 'DROP TABLE cal_room', 'DO 0'\)/, 'cal_room 지우기(있을 때만, PREPARE)');
+  const verify = at(/IF\(NOT @go OR \(@m_rows >= 0 AND \(NOT @m_take OR \(@m_miss = 0 AND @m_rows = @m_dist\)\)\), 'DO 0',/, '검증(넣은 줄 수 = 고유 이름 수, 빠진 이름 0)');
+  const drop = at(/IF\(@m_take, 'DROP TABLE cal_room', 'DO 0'\)/, 'cal_room 지우기(있을 때만, PREPARE)');
   const up = code.indexOf(bump);
   assert.ok(create < insert && insert < verify && verify < drop && drop < up, '순서가 (만들기, 모으기, 검증, 지우기, 구조 번호) 가 아니다');
   //  만드는 정의가 정본과 같다(열, 키, CHECK, 표 설명)
@@ -235,15 +237,15 @@ test('변이R3: 회의실 추가를 쓰기 관문으로 내리면 호스트 검�
   assert.throws(() => checks.hostWrites(bad), /AddRoomAsync 이 관리자 관문을 지나지 않는다/);
 });
 test('변이R4: 조각의 검증을 끄면 잡는다', () => {
-  const bad = mutate(frag, 'IF(NOT @v15_go OR (@v15_rows >= 0 AND (NOT @v15_take OR (@v15_miss = 0 AND @v15_rows = @v15_dist))), ', 'IF(1, ');
+  const bad = mutate(frag, 'IF(NOT @go OR (@m_rows >= 0 AND (NOT @m_take OR (@m_miss = 0 AND @m_rows = @m_dist))), ', 'IF(1, ');
   assert.throws(() => checks.fragment(bad, struct), /검증/);
 });
 test('변이R5: 조각이 db_updating 을 쓰거나 지우기를 검증 앞으로 옮기면 잡는다', () => {
   const w = mutate(frag, "UPDATE cal_schema_meta SET v = '15', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '14';",
     "UPDATE cal_schema_meta SET v = '15', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '14';\nUPDATE cal_schema_meta SET v = '0' WHERE k = 'db_updating';");
   assert.throws(() => checks.fragment(w, struct), /db_updating 을 쓴다/);
-  const d = mutate(frag, "SET @v15_s := IF(@v15_take, 'DROP TABLE cal_room', 'DO 0');", "SELECT 1;");
-  const moved = mutate(d, '-- 4) 검증', "SET @v15_s := IF(@v15_take, 'DROP TABLE cal_room', 'DO 0');\n-- 4) 검증");
+  const d = mutate(frag, "SET @s := IF(@m_take, 'DROP TABLE cal_room', 'DO 0');", "SELECT 1;");
+  const moved = mutate(d, '-- 4) 검증', "SET @s := IF(@m_take, 'DROP TABLE cal_room', 'DO 0');\n-- 4) 검증");
   assert.throws(() => checks.fragment(moved, struct), /순서가/);
 });
 test('변이R6: 조각의 room_code 정의가 정본과 갈라지면 잡는다', () => {

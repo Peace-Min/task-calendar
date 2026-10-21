@@ -5,9 +5,10 @@
 //      빈틈과 겹침, 끝 = 앱 구조 번호. 어기면 정해진 종료코드로 실패한다(빌드 전에 publish-update.ps1 이 부른다).
 //   ② 만들어진 SQL 의 모양: 잠금 대기 상한, 확인이 닫기보다 먼저, 닫기가 첫 조각보다 먼저, 조각은 구조 번호 순서,
 //      끝 확인 뒤 마지막 한 트랜잭션에 네 키(app_ 셋과 db_updating 0), 그 뒤 결과 표. 멈춤은 모두 '없는 표 SELECT'.
-//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 13 에서 처음, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음),
-//      마지막 조각 뒤에 멈춘 DB 마무리, 새 DB, 낮은 DB, 이상한 값, 건너뛴 배포(13 에서 15), 그리고 바꾸는 문장마다
-//      실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태가 보이지 않는지.
+//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15) 그대로. 13 에서 처음(두 조각을 몰아서),
+//      14 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음), 마지막 조각 뒤에 멈춘 DB 마무리,
+//      새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, 실제 사슬 뒤에 시험 조각을 붙인 건너뛴 배포, 그리고 바꾸는 문장마다
+//      실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태(meta 와 회의실 표)가 보이지 않는지.
 //   ④ 조각 폴더의 모든 파일이 조각 규칙(§5.2)을 따른다.
 //   ★ 조립기는 실제 PowerShell 로 돌린다(임시 조각 폴더와 임시 사본). 변이 시험도 같은 길로 실패를 확인한다.
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, copyFileSync } from 'node:fs';
@@ -84,31 +85,53 @@ const realSql = () => {
   }
   return _real;
 };
-// 13 에서 15 로(실제 v14 와 시험용 v15)
-let _skip = null;
-const skipSql = () => {
-  if (_skip === null) {
-    const d = fragDir({ 'v14-version-gate.sql': null, 'v15-test.sql': fakeFrag(14, 15) });
-    const r = gen(d, 15);
-    assert.strictEqual(r.code, 0, `v14 와 v15 조각으로 배포 SQL 을 만들지 못했다(exit ${r.code}): ${r.log}`);
-    _skip = r.sql;
+// 실제 조각 이름(구조 번호 순서. 파일 이름이 v<도착 번호>- 로 시작한다는 것은 ④ 가 본다)
+const REAL_FRAGS = readdirSync(FRAG_DIR).filter((f) => f.endsWith('.sql')).sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+// 실제 사슬 뒤에 시험용 조각 하나(APP 에서 APP+1)를 붙인 것: 다음 판이 생겼을 때 여러 조각을 몰아 올리는 경우
+const NEXT = APP + 1, NEXT_FRAG = `v${NEXT}-test.sql`, NEXT_MARK = `x_v${NEXT}_marker`;
+let _ext = null;
+const extSql = () => {
+  if (_ext === null) {
+    const d = fragDir({ ...Object.fromEntries(REAL_FRAGS.map((f) => [f, null])), [NEXT_FRAG]: fakeFrag(APP, NEXT) });
+    const r = gen(d, NEXT);
+    assert.strictEqual(r.code, 0, `실제 조각과 시험용 v${NEXT} 조각으로 배포 SQL 을 만들지 못했다(exit ${r.code}): ${r.log}`);
+    _ext = r.sql;
   }
-  return _skip;
+  return _ext;
 };
 
 // ── 출발 상태들 ────────────────────────────────────────────────────────
+//  14 까지의 DB 에는 사람마다 두던 회의실 표(cal_room)가 있다. 같은 이름(앞뒤 공백, 대소문자만 다름)을 여러 사람이 쓴다.
+//  15 부터는 공용 목록(room_code)만 있다. v15 조각이 이름을 모아(공백 정리, ai_ci 로 묶기) 쓰는 사람 많은 순, 10 간격으로 넣는다.
+const CAL_ROOMS = [
+  { user_id: 1, name: '회의실A' }, { user_id: 2, name: '회의실A' }, { user_id: 3, name: ' 회의실A ' },
+  { user_id: 1, name: 'Room b' }, { user_id: 2, name: 'room B' },
+  { user_id: 1, name: '대회의실' },
+];
+const ROOM_CODES = [['회의실A', 10], ['Room b', 20], ['대회의실', 30]];
+const T = {
+  old: () => ({ cal_room: CAL_ROOMS }),
+  shared: () => ({ room_code: ROOM_CODES.map(([name, sort_order]) => ({ name, sort_order })) }),
+};
 const S = {
-  legacy13: () => ({ schema_version: '13' }),
+  legacy13: () => ({ meta: { schema_version: '13' }, tables: T.old() }),
   at: (n, upd = '0', app = ['0.22.0', 'TaskCalendarWidget-Setup-v0.22.0.exe', 'cd'.repeat(32)]) => ({
-    db_structure_version: String(n), db_updating: upd,
-    app_latest_version: app[0], app_installer_file: app[1], app_installer_sha256: app[2],
+    meta: {
+      db_structure_version: String(n), db_updating: upd,
+      app_latest_version: app[0], app_installer_file: app[1], app_installer_sha256: app[2],
+    },
+    tables: Number(n) >= 15 ? T.shared() : T.old(),
   }),
 };
+const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, ...opts });
+const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
+//  끝 상태(meta 와 회의실 표): 공용 목록 하나, cal_room 없음
+const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': JSON.stringify({ room_code: ROOM_CODES }) });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
 
-// 앱(다른 연결)에 보인 상태 가운데 갱신 중이 아닌 것은 처음 아니면 끝이어야 한다(반쯤 바뀐 DB 를 쓰는 앱이 없다).
+// 앱(다른 연결)에 보인 상태(meta 와 회의실 표) 가운데 갱신 중이 아닌 것은 처음 아니면 끝이어야 한다(반쯤 바뀐 DB 를 쓰는 앱이 없다).
 function assertNoHalfOpen(db, initial, final, label) {
   for (const v of db.visible) {
     if (v.db_updating === '1') continue;
@@ -160,7 +183,7 @@ const checks = {
   },
 
   // ══ ② 모양 ═════════════════════════════════════════════════════════
-  shape(sql, { app = APP, first = 13, fragments = ['v14-version-gate.sql'] } = {}) {
+  shape(sql, { app = APP, first = 13, fragments = REAL_FRAGS } = {}) {
     const stmts = splitStatements(sql);
     assert.strictEqual(stmts[0], 'SET SESSION lock_wait_timeout = 10', '맨 위 문장이 SET SESSION lock_wait_timeout = 10 이 아니다(DB-RELEASE-OPS §5.1)');
     assert.strictEqual(stmts[stmts.length - 1], 'SELECT k, v, updated_at FROM cal_schema_meta ORDER BY k', '마지막 문장이 결과 표가 아니다');
@@ -208,52 +231,73 @@ const checks = {
   },
 
   // ══ ③ 상태 전이 ════════════════════════════════════════════════════
+  //  출발 상태 init 은 { meta, tables }. 결과는 meta 와 회의실 표(state)를 함께 본다.
   fresh13(sql) {
-    const db = new FakeDb(S.legacy13());
+    const init = S.legacy13();
+    const db = open(init);
     const r = db.run(sql);
     assert.ok(r.ok, `13 에서 처음 돌리면 끝나야 한다: ${JSON.stringify(r)}`);
     assert.ok(same(db.meta(), finalMeta(APP)), `13 에서 돌린 결과가 키 다섯 개(구조 ${APP}, 갱신 중 0, 새 배포 정보)가 아니다: ${JSON.stringify(db.meta())}`);
+    assert.ok(same(db.state(), finalState(APP)), `13 에서 돌린 결과의 회의실 표가 공용 목록 하나(cal_room 없음)가 아니다: ${db.state()['#tables']}`);
     assert.ok(/VERSION-GATE/.test(db.comment), '표 설명을 바꾸지 않았다');
     assert.deepStrictEqual(db.writes[0], { k: 'db_updating', v: '1', was: null }, '첫 쓰기가 닫기(db_updating 1 만들기)가 아니다');
     assert.deepStrictEqual(db.writes[db.writes.length - 1].k, 'db_updating', '마지막 쓰기가 열기(db_updating 0)가 아니다');
-    assertNoHalfOpen(db, S.legacy13(), finalMeta(APP), '13 에서 처음');
+    //  조각은 구조 번호 순서로 돈다: 14 의 키 바꾸기가 15 의 회의실 옮기기보다 먼저
+    const iKeys = db.writes.findIndex((w) => w.k === 'app_latest_version'), iRoom = db.writes.findIndex((w) => w.k === 'table:room_code');
+    assert.ok(iKeys > 0 && iRoom > iKeys, `조각 순서가 구조 번호 순서가 아니다(v14 키 ${iKeys}, v15 회의실 ${iRoom})`);
+    assertNoHalfOpen(db, stateOf(init), finalState(APP), '13 에서 처음');
     //  성공 뒤 다시 돌리면 바뀌는 것이 없다
-    const n = db.writes.length, before = db.stamps();
+    const n = db.writes.length, before = db.stamps(), shape = db.state();
     assert.ok(db.run(sql).ok, '성공 뒤 다시 돌리면 끝나야 한다');
     assert.strictEqual(db.writes.length, n, `성공 뒤 다시 돌렸는데 ${db.writes.length - n}행을 바꿨다`);
     assert.deepStrictEqual(db.stamps(), before, '성공 뒤 다시 돌렸는데 updated_at 이 바뀌었다');
+    assert.ok(same(db.state(), shape), '성공 뒤 다시 돌렸는데 회의실 표가 바뀌었다');
+  },
+  // 한 칸 앞(APP-1, cal_room 이 있는 14)에서 올리는 보통의 구조 배포
+  fromPrev(sql) {
+    const init = S.at(APP - 1);
+    const db = open(init);
+    const r = db.run(sql);
+    assert.ok(r.ok, `${APP - 1} 에서 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
+    assert.ok(same(db.state(), finalState(APP)), `${APP - 1} 에서 올린 결과가 다르다: ${JSON.stringify(db.state())}`);
+    assert.deepStrictEqual(db.writes[0], { k: 'db_updating', v: '1', was: '0' }, '첫 쓰기가 닫기가 아니다');
+    assert.ok(!db.writes.some((w) => w.k === 'schema_version'), `${APP - 1} 에서 올리는데 v14 조각이 옛 키를 건드렸다`);
+    assert.strictEqual(db.comment, '', `${APP - 1} 에서 올리는데 v14 조각이 표 설명을 바꿨다(건너뛰지 않았다)`);
+    assertNoHalfOpen(db, stateOf(init), finalState(APP), `${APP - 1} 에서`);
   },
   appOnly(sql) {
     const init = S.at(APP);
-    const db = new FakeDb(init);
+    const db = open(init);
     const r = db.run(sql);
     assert.ok(r.ok, `앱만 바뀐 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
     assert.ok(same(db.meta(), finalMeta(APP)), `앱만 바뀐 배포 결과가 다르다: ${JSON.stringify(db.meta())}`);
     assert.ok(!db.writes.some((w) => w.k === 'db_updating'), '앱만 바뀐 배포가 닫는다(db_updating 을 쓴다)');
     assert.deepStrictEqual(db.writes.map((w) => w.k), ['app_latest_version', 'app_installer_file', 'app_installer_sha256'], '앱만 바뀐 배포가 app_ 세 키 말고 다른 것을 바꾼다');
     assert.strictEqual(db.comment, '', '앱만 바뀐 배포가 조각을 실행했다(표 설명을 바꿨다)');
-    assertNoHalfOpen(db, init, finalMeta(APP), '앱만 바뀐 배포');
+    assert.ok(same(db.state(), finalState(APP)), '앱만 바뀐 배포가 회의실 표를 바꿨다');
+    assertNoHalfOpen(db, stateOf(init), finalState(APP), '앱만 바뀐 배포');
   },
   finishStuck(sql) {
-    const db = new FakeDb(S.at(APP, '1'));
+    const db = open(S.at(APP, '1'));
     const r = db.run(sql);
     assert.ok(r.ok, `구조 ${APP} 에 갱신 중 1 로 멈춘 DB 를 마무리하지 못한다: ${JSON.stringify(r)}`);
-    assert.ok(same(db.meta(), finalMeta(APP)), `마무리 결과가 다르다: ${JSON.stringify(db.meta())}`);
+    assert.ok(same(db.state(), finalState(APP)), `마무리 결과가 다르다: ${JSON.stringify(db.state())}`);
   },
   refuses(sql) {
+    const at = S.at(APP);
     const cases = [
       ['앱보다 새 DB', S.at(APP + 1), /보다 높다/],
-      ['사슬보다 낮은 DB(옛 키 12)', { schema_version: '12' }, /보다 낮다/],
-      ['옛 키가 13 이 아님', { schema_version: String(APP) }, /옛 키 schema_version 이 13 이 아니다/],
+      ['사슬보다 낮은 DB(옛 키 12)', { meta: { schema_version: '12' }, tables: T.old() }, /보다 낮다/],
+      ['옛 키가 13 이 아님', { meta: { schema_version: String(APP) }, tables: T.old() }, /옛 키 schema_version 이 13 이 아니다/],
       ['숫자 아님', S.at('abc'), /읽을 수 없다/],
-      ['두 키가 다름', { ...S.at(APP), schema_version: '13' }, /읽을 수 없다/],
-      ['구조 번호 없음', { db_updating: '0' }, /읽을 수 없다/],
+      ['두 키가 다름', { ...at, meta: { ...at.meta, schema_version: '13' } }, /읽을 수 없다/],
+      ['구조 번호 없음', { meta: { db_updating: '0' } }, /읽을 수 없다/],
       ['db_updating 이상한 값', S.at(APP, '2'), /0 도 1 도 아니다/],
-      ['구조는 있는데 db_updating 없음', { db_structure_version: String(APP) }, /0 도 1 도 아니다/],
-      ['app_ 키 빠짐', { db_structure_version: String(APP), db_updating: '0' }, /끝 확인 실패/],
+      ['구조는 있는데 db_updating 없음', { meta: { db_structure_version: String(APP) }, tables: T.shared() }, /0 도 1 도 아니다/],
+      ['app_ 키 빠짐', { meta: { db_structure_version: String(APP), db_updating: '0' }, tables: T.shared() }, /끝 확인 실패/],
     ];
     for (const [label, init, re] of cases) {
-      const db = new FakeDb(init);
+      const db = open(init);
       const r = db.run(sql);
       assert.ok(!r.ok && re.test(r.stop || ''), `${label}: 기대한 이유로 멈추지 않았다: ${JSON.stringify(r)}`);
       assert.strictEqual(db.writes.length, 0, `${label}: 멈췄는데 바꾼 것이 있다`);
@@ -261,33 +305,47 @@ const checks = {
     const noTable = new FakeDb({}, { tableExists: false });
     assert.ok(/표가 없다/.test(noTable.run(sql).stop || ''), 'cal_schema_meta 가 없는 DB 에서 표 확인으로 멈추지 않는다');
   },
+  // v15 검증: 공용 목록에 모르는 이름이 이미 있으면(줄 수가 고유 이름 수와 다름) 닫힌 채 멈추고 cal_room 을 지우지 않는다
+  roomVerify(sql) {
+    const mk = () => { const x = S.at(APP - 1); x.tables.room_code = [{ name: '모르는 방', sort_order: 10 }]; return x; };
+    const db = open(mk());
+    const r = db.run(sql);
+    assert.ok(!r.ok && /회의실 이름 수가 맞지 않는다/.test(r.stop || ''), `room_code 에 모르는 이름이 있는데 v15 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
+    assert.strictEqual(db.meta().db_updating, '1', 'v15 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다');
+    assert.strictEqual(db.meta().db_structure_version, String(APP - 1), 'v15 검증에서 멈췄는데 구조 번호가 올라갔다');
+    assert.ok(db.hasTable('cal_room'), 'v15 검증에서 멈췄는데 cal_room 을 지웠다');
+    assertNoHalfOpen(db, stateOf(mk()), null, 'v15 검증 멈춤');
+  },
   // 바꾸는 문장마다 실패를 넣는다. 멈춘 동안 앱에 반쯤 바뀐 상태가 보이지 않고, 같은 파일을 다시 돌리면 끝난다.
   faults(sql, init, app, label) {
-    const clean = new FakeDb(init());
+    const clean = open(init());
     assert.ok(clean.run(sql).ok, `${label}: 실패 없이 돌린 것이 끝나지 않는다`);
     const N = clean.mutations;
     assert.ok(N >= 3, `${label}: 바꾸는 문장이 ${N}개뿐이다(흉내 실행이 빗나갔다)`);
     for (let k = 1; k <= N; k++) {
-      const db = new FakeDb(init());
+      const db = open(init());
       const r = db.run(sql, { failAt: k });
       assert.strictEqual(r.fault, k, `${label}: ${k}번째 바꾸는 문장에 넣은 실패로 멈추지 않았다: ${JSON.stringify(r)}`);
-      assertNoHalfOpen(db, init(), null, `${label}, ${k}번째에서 실패`);
+      assertNoHalfOpen(db, stateOf(init()), null, `${label}, ${k}번째에서 실패`);
       const again = db.run(sql);
       assert.ok(again.ok, `${label}: ${k}번째에서 실패한 뒤 같은 파일을 다시 돌려도 끝나지 않는다: ${JSON.stringify(again)}`);
-      assert.ok(same(db.meta(), clean.meta()), `${label}: ${k}번째 실패 뒤 다시 돌린 결과가 실패 없이 돌린 것과 다르다: ${JSON.stringify(db.meta())}`);
+      assert.ok(same(db.state(), clean.state()), `${label}: ${k}번째 실패 뒤 다시 돌린 결과가 실패 없이 돌린 것과 다르다: ${JSON.stringify(db.state())}`);
       assert.strictEqual(db.comment, clean.comment, `${label}: ${k}번째 실패 뒤 다시 돌린 표 설명이 다르다`);
     }
   },
-  skipped(sql) {
-    for (const [label, init] of [['13 에서 15', S.legacy13], ['14 에서 15', () => S.at(14)]]) {
-      const db = new FakeDb(init());
+  // 실제 사슬 뒤에 시험용 조각(APP 에서 NEXT)을 붙인 SQL: 13, 14, APP 어디서 출발해도 조각을 차례로 돌린다
+  extended(sql) {
+    const want = finalState(NEXT, { [NEXT_MARK]: 'on' });
+    for (const [label, init] of [[`13 에서 ${NEXT}`, S.legacy13], [`14 에서 ${NEXT}`, () => S.at(14)], [`${APP} 에서 ${NEXT}`, () => S.at(APP)]]) {
+      const db = open(init());
       const r = db.run(sql);
       assert.ok(r.ok, `건너뛴 배포(${label})가 끝나지 않는다: ${JSON.stringify(r)}`);
-      assert.ok(same(db.meta(), { ...finalMeta(15), x_v15_marker: 'on' }), `건너뛴 배포(${label}) 결과가 다르다: ${JSON.stringify(db.meta())}`);
-      assertNoHalfOpen(db, init(), { ...finalMeta(15), x_v15_marker: 'on' }, `건너뛴 배포(${label})`);
+      assert.ok(same(db.state(), want), `건너뛴 배포(${label}) 결과가 다르다: ${JSON.stringify(db.state())}`);
+      assertNoHalfOpen(db, stateOf(init()), want, `건너뛴 배포(${label})`);
     }
-    const at15 = new FakeDb(S.at(15));
-    assert.ok(at15.run(sql).ok && !at15.writes.some((w) => w.k === 'db_updating' || w.k === 'x_v15_marker'), '이미 15 인 DB 에서 닫거나 조각을 실행했다');
+    const atNext = open(S.at(NEXT));
+    assert.ok(atNext.run(sql).ok && !atNext.writes.some((w) => w.k === 'db_updating' || w.k === NEXT_MARK || w.k.startsWith('table:')),
+      `이미 ${NEXT} 인 DB 에서 닫거나 조각을 실행했다`);
   },
 };
 
@@ -319,10 +377,10 @@ test('배포SQL①a: 실제 조각 사슬이 맞고, 끝이 앱 구조 번호와
 test('배포SQL①b: 사슬의 빈틈과 겹침은 4, 조각 없음은 5', () => checks.chainBroken());
 test('배포SQL①c: 조각 규칙 위반(머리, 두 칸, 올리기 줄 없음, db_updating 쓰기, 저장 프로그램, @r_)은 3', () => checks.fragmentRules());
 test('배포SQL①d: release-sql.ps1 의 종료코드 표와 실제로 내는 코드가 같다', () => checks.exitCodes(genSrc));
-test('배포SQL②a: 실제 조각으로 만든 SQL 은 확인, 닫기, 조각, 끝 확인, 열기 한 트랜잭션, 결과 표 순서다', () => checks.shape(realSql()));
-test('배포SQL②b: 조각 둘(14, 15)은 구조 번호 순서로 들어가고 끝 확인과 닫기가 15 를 기준으로 한다', () =>
-  checks.shape(skipSql(), { app: 15, fragments: ['v14-version-gate.sql', 'v15-test.sql'] }));
-test('배포SQL③a: 13 에서 처음 돌리면 14 와 새 배포 정보로 열리고, 다시 돌리면 바뀌는 것이 없다', () => checks.fresh13(realSql()));
+test('배포SQL②a: 실제 조각으로 만든 SQL 은 확인, 닫기, 조각(구조 번호 순서), 끝 확인, 열기 한 트랜잭션, 결과 표 순서다', () => checks.shape(realSql()));
+test(`배포SQL②b: 실제 사슬 뒤에 조각(${NEXT})을 붙이면 구조 번호 순서로 들어가고 끝 확인과 닫기가 ${NEXT} 를 기준으로 한다`, () =>
+  checks.shape(extSql(), { app: NEXT, fragments: [...REAL_FRAGS, NEXT_FRAG] }));
+test(`배포SQL③a: 13 에서 처음 돌리면 조각을 차례로 지나 ${APP}, 새 배포 정보, 공용 회의실 목록으로 열리고, 다시 돌리면 바뀌는 것이 없다`, () => checks.fresh13(realSql()));
 test('배포SQL③b: 앱만 바뀐 배포는 닫지 않고 app_ 세 키만 한 트랜잭션으로 바꾼다', () => checks.appOnly(realSql()));
 test('배포SQL③c: 마지막 조각 뒤에 멈춘 DB(구조 = 앱, db_updating 1)는 같은 파일이 열기까지 마무리한다', () => checks.finishStuck(realSql()));
 test('배포SQL③d: 새 DB, 낮은 DB, 이상한 값, 키 빠짐, 표 없음에서는 아무것도 바꾸지 않고 멈춘다', () => checks.refuses(realSql()));
@@ -330,9 +388,14 @@ test('배포SQL③e: 13 에서 올리는 중 어디서 실패해도 앱에 반�
   checks.faults(realSql(), S.legacy13, APP, '13 에서'));
 test('배포SQL③f: 앱만 바뀐 배포가 열기 트랜잭션에서 실패해도 다시 돌리면 끝난다', () =>
   checks.faults(realSql(), () => S.at(APP), APP, '앱만'));
-test('배포SQL③g: 건너뛴 배포(13 또는 14 에서 15)는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다', () => {
-  checks.skipped(skipSql());
-  checks.faults(skipSql(), S.legacy13, 15, '13 에서 15');
+test(`배포SQL③g: 한 칸 앞(${APP - 1})에서 올리면 앞 조각은 건너뛰고 회의실을 옮겨 열리며, 어디서 실패해도 다시 돌리면 끝난다`, () => {
+  checks.fromPrev(realSql());
+  checks.faults(realSql(), () => S.at(APP - 1), APP, `${APP - 1} 에서`);
+});
+test('배포SQL③h: v15 검증이 맞지 않으면(공용 목록에 모르는 이름) 닫힌 채 멈추고 cal_room 을 지우지 않는다', () => checks.roomVerify(realSql()));
+test(`배포SQL③i: 건너뛴 배포(13, 14, ${APP} 에서 ${NEXT})는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다`, () => {
+  checks.extended(extSql());
+  checks.faults(extSql(), S.legacy13, NEXT, `13 에서 ${NEXT}`);
 });
 
 // ══ 변이: 검사가 정말 무는지 ═══════════════════════════════════════════
@@ -362,12 +425,22 @@ test('변이R4: 열기를 트랜잭션 밖으로 빼면 ③e 가 실패한다(�
   const bad = sql.slice(0, t) + sql.slice(t).replace('START TRANSACTION;\n', '').replace('COMMIT;\n', '');
   assert.throws(() => checks.faults(bad, () => S.at(APP), APP, '앱만'), /처음도 끝도 아닌 상태/);
 });
-test('변이R5: 조각의 자기 건너뛰기를 빼면 앱만 바뀐 배포가 멈춘다(③b 실패)', () => {
-  const real = readFileSync(join(FRAG_DIR, 'v14-version-gate.sql'), 'utf8');
-  const body = mutate(real, 'SET @g := IF(@go OR @skip, ', 'SET @g := IF(@go, ');
-  const r = gen(fragDir({ 'v14-version-gate.sql': body }), APP);
-  assert.strictEqual(r.code, 0, '변이 준비 실패: 사본 조각으로 SQL 을 만들지 못했다');
-  assert.throws(() => checks.appOnly(r.sql), /끝나지 않는다/);
+test('변이R5: 실제 조각 어느 것이든 자기 건너뛰기를 빼면 앱만 바뀐 배포가 멈춘다(③b 실패)', () => {
+  for (const f of REAL_FRAGS) {
+    const body = mutate(readFileSync(join(FRAG_DIR, f), 'utf8'), 'SET @g := IF(@go OR @skip, ', 'SET @g := IF(@go, ');
+    const r = gen(fragDir({ ...Object.fromEntries(REAL_FRAGS.map((x) => [x, null])), [f]: body }), APP);
+    assert.strictEqual(r.code, 0, `변이 준비 실패: 사본 조각(${f})으로 SQL 을 만들지 못했다`);
+    assert.throws(() => checks.appOnly(r.sql), /끝나지 않는다/, `${f} 의 자기 건너뛰기를 뺐는데 ③b 가 통과한다`);
+  }
+});
+test('변이R7: v15 가 cal_room 을 지우기 전에 검증하지 않으면(검증 끄기) ③h 가 실패한다', () => {
+  const bad = mutate(realSql(), 'SET @g := IF(NOT @go OR (@m_rows >= 0 AND (NOT @m_take OR (@m_miss = 0 AND @m_rows = @m_dist))), ', 'SET @g := IF(1, ');
+  assert.throws(() => checks.roomVerify(bad), /멈추지 않았다/);
+});
+test('변이R8: v15 가 cal_room 이 없을 때도 모으기를 하면(@m_take 대신 @go) 실패 뒤 재실행이 멈춘다(③e 실패)', () => {
+  const bad = realSql().split("SET @m_take := (@go AND @m_has = 1);").join('SET @m_take := (@go);');
+  assert.notStrictEqual(bad, realSql(), '변이 준비 실패');
+  assert.throws(() => checks.faults(bad, S.legacy13, APP, '13 에서'), /다시 돌려도 끝나지 않는다/);
 });
 test('변이R6: 열기의 같은 값 건너뛰기(AND v <>)를 빼면 재실행이 행을 바꾼다(③a 실패)', () => {
   const bad = realSql().replace(/ AND v <> '[^']*';\n/g, ';\n');

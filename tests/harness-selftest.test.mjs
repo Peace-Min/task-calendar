@@ -440,14 +440,16 @@ test('변이⑧: 선언 머리 검사를 끄면 호출 자리에 걸린 sig 가 
 
 
 // 변이⑨ 의 앵커 — harness.mjs 의 listCsMembers 안, **여는 중괄호를 찾는 쪽** 한 곳(뒤의 `open = k` 로 유일해진다).
+//   줄끝은 harness.mjs 작업 사본을 따른다(autocrlf 체크아웃은 CRLF, LF 워크트리는 LF). 줄끝을 못박으면 겨냥과 무관하게 앵커를 못 찾는다.
+const HARNESS_EOL = HARNESS_SRC.includes(String.fromCharCode(13, 10)) ? String.fromCharCode(13, 10) : String.fromCharCode(10);
 const NAIVE_FIND = [
   '      if (c === \'"\' || c === "\'") { k = _csCloseQuote(code, k); continue; }',
   "      if (c === '{') { open = k; break; }",
-].join(String.fromCharCode(13, 10));
+].join(HARNESS_EOL);
 const NAIVE_REPLACE = [
   '      if (c === \'"\' || c === "\'") { let j = k + 1; while (j < code.length) { if (code[j] === _CS_BS) { j += 2; continue; } if (code[j] === c) break; j++; } k = j; continue; }',
   "      if (c === '{') { open = k; break; }",
-].join(String.fromCharCode(13, 10));
+].join(HARNESS_EOL);
 
 // ── 변이⑨ listCsMembers 의 문자열 판별을 사본 시절의 순진한 것으로 되돌린다 ──
 // (깨져야 할 계약: 'listCsMembers: 8칸 들여쓰기 멤버를 하나도 빠짐없이…')

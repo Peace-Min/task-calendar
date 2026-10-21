@@ -9,9 +9,13 @@
 //   SET SESSION/NAMES, SET @x := 식, PREPARE x FROM @v / EXECUTE x / DEALLOCATE PREPARE x, DO 0,
 //   SELECT 1 FROM `중단: ...`(멈춤), 그 밖의 SELECT(보여 주기만), START TRANSACTION / COMMIT,
 //   cal_schema_meta 에 대한 INSERT ... ON DUPLICATE KEY UPDATE, DELETE, UPDATE, ALTER TABLE ... COMMENT.
-//   식: NULL, 숫자, '문자열', @변수, IF, COALESCE, CAST(x AS UNSIGNED), OR, AND, NOT, IS [NOT] NULL,
+//   식: NULL, 숫자(음수 상수 포함), '문자열', @변수, IF, COALESCE, CAST(x AS UNSIGNED), OR, AND, NOT, IS [NOT] NULL,
 //   = <> <=> < <= > >=, REGEXP, IN (...), 그리고 cal_schema_meta 와 information_schema.TABLES 를 읽는 하위 질의.
 //   NULL 은 MySQL 처럼 세 값 논리로 다룬다.
+//   회의실 표 두 개(v15 조각 migrations/v15-shared-rooms.sql 이 쓰는 모양만): cal_room(사람마다 두던 이름, v15 가 지운다),
+//   room_code(공용 목록, v15 가 만든다). CREATE TABLE IF NOT EXISTS, DROP TABLE, cal_room 에서 room_code 로의
+//   INSERT IGNORE ... SELECT(앞뒤 공백 정리, ai_ci 로 묶기, 쓰는 사람 수와 이름 순서), 그리고 SELECT COUNT(*) INTO @x
+//   세 가지(고유 이름 수, room_code 에 빠진 이름 수, room_code 줄 수). 정렬과 비교 규칙은 흉내다(대소문자와 악센트 무시).
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -83,7 +87,11 @@ function tokenize(s) {
     }
     const op = /^(<=>|<=|>=|<>|!=|=|<|>|\)|,)/.exec(s.slice(i));
     if (op) { t.push({ k: 'op', v: op[1] }); i += op[1].length; continue; }
-    const num = /^\d+/.exec(s.slice(i));
+    //  음수 상수(-1): 앞이 값이 아닐 때만(이 흉내에는 빼기 연산이 없다)
+    const prev = t[t.length - 1];
+    const neg = c === '-' && /\d/.test(s[i + 1] || '') && (!prev || (prev.k === 'op' && prev.v !== ')'));
+    const num = /^-?\d+/.exec(s.slice(i));
+    if (num && num[0][0] === '-' && !neg) throw new Error(`식을 읽지 못했다: ${s.slice(i, i + 40)}`);
     if (num) { t.push({ k: 'num', v: Number(num[0]) }); i += num[0].length; continue; }
     const id = /^@?[A-Za-z_][A-Za-z0-9_.]*/.exec(s.slice(i));
     if (id) { t.push({ k: id[0][0] === '@' ? 'var' : 'id', v: id[0] }); i += id[0].length; continue; }
@@ -155,11 +163,27 @@ class Expr {
   }
 }
 
+// ── 회의실 표 흉내(v15) ───────────────────────────────────────────────
+const fold = (x) => x.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();   // utf8mb4_0900_ai_ci 흉내
+const trimSp = (x) => x.replace(/^ +| +$/g, '');                                 // MySQL TRIM 은 공백만 지운다
+const ROOM_SRC = "FROM cal_room WHERE TRIM(name) <> '' GROUP BY TRIM(name) COLLATE utf8mb4_0900_ai_ci) t";
+const ROOM_INSERT = 'INSERT IGNORE INTO room_code (name, sort_order, created_at, updated_at) SELECT nm, ROW_NUMBER() OVER (ORDER BY users DESC, nm) * 10, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3) '
+  + 'FROM (SELECT MIN(TRIM(name)) COLLATE utf8mb4_0900_ai_ci AS nm, COUNT(DISTINCT user_id) AS users ' + ROOM_SRC;
+const ROOM_COUNTS = {
+  [`(SELECT 1 AS one ${ROOM_SRC}`]: (db) => db.roomGroups().length,
+  [`(SELECT MIN(TRIM(name)) COLLATE utf8mb4_0900_ai_ci AS nm ${ROOM_SRC} LEFT JOIN room_code r ON r.name = t.nm WHERE r.room_id IS NULL`]:
+    (db) => { const rc = db.need('room_code'); return db.roomGroups().filter((x) => !rc.some((r) => fold(r.name) === fold(x.nm))).length; },
+  'room_code': (db) => db.need('room_code').length,
+};
+
 // ── 흉내 DB ────────────────────────────────────────────────────────────
 //  meta: { 키: 값 } (cal_schema_meta). 실행 기록(writes)과 updated_at 흉내(시각 카운터)를 남긴다.
+//  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
+//  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar' } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {} } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
+    this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -169,15 +193,45 @@ export class FakeDb {
     this.tx = null;
     this.writes = [];        // [{ k, v }] 실제로 바뀐 행
     this.mutations = 0;      // 바꿀 수 있는 문장을 실행한 횟수(실패 주입 기준)
-    this.visible = [this.meta()];   // 다른 연결(앱)에 보인 상태들: 처음, 트랜잭션 밖 문장 뒤, COMMIT 뒤
+    this.visible = [this.state()];   // 다른 연결(앱)에 보인 상태들(state): 처음, 트랜잭션 밖 문장 뒤, COMMIT 뒤
   }
-  snap() { if (!this.tx) this.visible.push(this.meta()); }
+  snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
+  //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()) }; }
+  tableShape() {
+    const out = {};
+    for (const n of Object.keys(this.tables).sort()) {
+      out[n] = n === 'room_code'
+        ? this.tables[n].map((r) => [r.name, r.sort_order]).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
+        : this.tables[n].map((r) => `${r.user_id}:${r.name}`).sort();
+    }
+    return out;
+  }
+  hasTable(n) { return n === 'cal_schema_meta' ? this.tableExists : Object.prototype.hasOwnProperty.call(this.tables, n); }
+  need(n) { if (!this.hasTable(n)) throw new SqlStop(`${n}(없음)`); return this.tables[n]; }
+  //  cal_room 의 이름을 앞뒤 공백을 지우고 ai_ci 로 묶는다. nm 은 묶음의 MIN(cal_room.name 은 _bin 이라 코드 단위 순서).
+  roomGroups() {
+    const g = new Map();
+    for (const r of this.need('cal_room')) {
+      const t = trimSp(r.name);
+      if (t === '') continue;
+      const x = g.get(fold(t)) || { nm: null, users: new Set() };
+      if (x.nm === null || t < x.nm) x.nm = t;
+      x.users.add(r.user_id);
+      g.set(fold(t), x);
+    }
+    return [...g.values()].map((x) => ({ nm: x.nm, users: x.users.size }));
+  }
   stamps() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.at])); }
   subquery(q) {
     const s = q.replace(/\s+/g, ' ');
-    let m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'cal_schema_meta'$/i.exec(s);
-    if (m) return this.tableExists && this.schema ? 1 : 0;
+    let m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLES WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME (?:= '(\w+)'|IN \(([^)]*)\))$/i.exec(s);
+    if (m) {
+      if (!this.schema) return 0;
+      const names = m[1] ? [m[1]] : [...m[2].matchAll(/'(\w+)'/g)].map((x) => x[1]);
+      return names.filter((n) => this.hasTable(n)).length;
+    }
     m = /^SELECT v FROM cal_schema_meta WHERE k = '([a-z_0-9]+)'$/.exec(s);
     if (m) return this.rows.has(m[1]) ? this.rows.get(m[1]).v : null;
     m = /^SELECT COUNT\(\*\) FROM cal_schema_meta WHERE k = '([a-z_0-9]+)'$/.exec(s);
@@ -211,9 +265,47 @@ export class FakeDb {
     if (/^DEALLOCATE PREPARE \w+$/.test(s)) return;
     if (/^DO 0$/.test(s)) return;
     if ((m = /^SELECT 1 FROM `([^`]+)`$/.exec(s))) throw new SqlStop(m[1]);
+    const q = s.replace(/\s+/g, ' ');
+    if ((m = /^SELECT COUNT\(\*\) INTO (@\w+) FROM ([\s\S]+)$/.exec(q))) {
+      const f = ROOM_COUNTS[m[2]];
+      if (!f) throw new Error(`모르는 문장: ${q.slice(0, 160)}`);
+      this.vars.set(m[1], f(this));
+      return;
+    }
     if (/^SELECT\b/i.test(s)) return;   // 보여 주기만 하는 SELECT
-    if (/^START TRANSACTION$/.test(s)) { this.tx = { rows: new Map([...this.rows].map(([k, r]) => [k, { ...r }])), writes: this.writes.length }; return; }
+    if (/^START TRANSACTION$/.test(s)) {
+      this.tx = { rows: new Map([...this.rows].map(([k, r]) => [k, { ...r }])), writes: this.writes.length,
+        tables: Object.fromEntries(Object.entries(this.tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))])) };
+      return;
+    }
     if (/^COMMIT$/.test(s)) { this.tx = null; this.snap(); return; }
+    if ((m = /^CREATE TABLE IF NOT EXISTS (\w+) \(/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      if (!this.hasTable(m[1])) { this.tables[m[1]] = []; this.writes.push({ k: `table:${m[1]}`, v: 'create' }); }
+      return;
+    }
+    if ((m = /^DROP TABLE (\w+)$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      this.need(m[1]);                       // 없는 표를 지우면 MySQL 도 오류(1051)로 멈춘다
+      delete this.tables[m[1]];
+      this.writes.push({ k: `table:${m[1]}`, v: 'drop' });
+      return;
+    }
+    if (q === ROOM_INSERT) {
+      this.mutating(s, opts);
+      const rc = this.need('room_code');
+      const groups = this.roomGroups().sort((a, b) => b.users - a.users || (fold(a.nm) < fold(b.nm) ? -1 : fold(a.nm) > fold(b.nm) ? 1 : 0));
+      let n = 0;
+      groups.forEach((x, i) => {
+        if (rc.some((r) => fold(r.name) === fold(x.nm))) return;   // INSERT IGNORE: name UNIQUE(ai_ci) 충돌은 건너뛴다
+        rc.push({ name: x.nm, sort_order: (i + 1) * 10 });
+        n++;
+      });
+      if (n) this.writes.push({ k: 'table:room_code', v: `+${n}` });
+      return;
+    }
     if (!this.tableExists) throw new SqlStop('cal_schema_meta(없음)');
     if ((m = /^INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES ([\s\S]+?) ON DUPLICATE KEY UPDATE (k = k|v = '([^']*)', updated_at = UTC_TIMESTAMP\(3\))$/.exec(s))) {
       this.mutating(s, opts);
@@ -258,7 +350,7 @@ export class FakeDb {
       if (this.tx) throw new Error('끝났는데 트랜잭션이 열려 있다');
       return { ok: true };
     } catch (e) {
-      if (this.tx) { this.rows = this.tx.rows; this.writes.length = this.tx.writes; this.tx = null; }
+      if (this.tx) { this.rows = this.tx.rows; this.tables = this.tx.tables; this.writes.length = this.tx.writes; this.tx = null; }
       if (e instanceof SqlStop) return { ok: false, stop: e.stopName };
       if (e instanceof InjectedFault) return { ok: false, fault: e.n };
       throw e;

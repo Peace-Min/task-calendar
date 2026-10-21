@@ -509,7 +509,9 @@ test('변이㉔: 세션 종료 면제를 없애면 닫기⑪ 이 실패한다', 
 });
 
 test('변이㉕: 세션 종료를 취소하면 닫기⑪ 이 실패한다', () => {
-  const bad = mutate(src.app, '            base.OnSessionEnding(e);\r\n', '            e.Cancel = true;\r\n            base.OnSessionEnding(e);\r\n');
+  //  줄끝은 App.xaml.cs 작업 사본을 따른다(autocrlf 체크아웃은 CRLF, LF 워크트리는 LF).
+  const nl = src.app.includes('\r\n') ? '\r\n' : '\n';
+  const bad = mutate(src.app, '            base.OnSessionEnding(e);' + nl, '            e.Cancel = true;' + nl + '            base.OnSessionEnding(e);' + nl);
   assert.throws(() => checks.closeGuard(with_('app', bad)), /세션 종료를 가로채/);
 });
 
