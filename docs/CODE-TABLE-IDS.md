@@ -31,6 +31,7 @@
 
 범위 밖(그대로 둔다, 이유)
 - `cal_room (user_id, name)`, `cal_schema_meta (k)`: varchar 키지만 참조하는 자식이 없어 검토 규칙(외래키로 쓰이는 기본키)에 해당하지 않는다. 이관 비용과 상관없이 DB 구조만 봐도 지금이 낫다.
+  - (2026-10-21) `cal_room` 은 없앴다. 회의실이 회사 공용 목록이 되면서 관리자가 이름을 그 자리에서 바꾸게 돼 이 판단의 재검토 조건이 왔다. 새 표 `room_code` 는 이 문서의 규칙대로 번호 키(`room_id`)에 `name` UNIQUE 라벨이다(docs/SHARED-ROOMS.md). 아래 줄은 그 전의 기록이다.
   - `cal_room`: id 를 붙이면 중복을 막을 `UNIQUE(user_id, name)` 이 따로 필요해 인덱스가 2개에서 3개가 된다. 앱은 `WHERE user_id=?` 로 한 사람의 목록을 통째로 읽는데(`CalendarDb.cs` 806행) 지금 기본키는 그 행들을 붙여 둔다. 저장은 지우고 다시 넣는 방식이라(`CalendarWriteDb.cs` 428행) id 는 번호만 소모한다.
   - `cal_schema_meta`: 행이 `schema_version` 하나이고 앱은 늘 `k` 로 찾는다(`CalendarDb.cs` 527행). id 를 붙여도 `k` 에 UNIQUE 를 또 걸어야 한다.
 - `cal_category.project_uid`: 외래키가 아닌 외부 식별자다(웹, XML 의 'db-<uid>' 정체성). 문서에 그렇게 밝힌다.
@@ -120,7 +121,7 @@ DDL 은 암묵 커밋이라 원자적이지 않다. 0번 백업과 4번 관문�
 
 1. **운영 스크립트 기본 DB 이름**: 앱은 `taskcalendar` 인데 `backup-taskmgr.ps1`, `restore-taskmgr.ps1`, `init-calendar.ps1`, `org-ops.ps1`, `app-account.ps1` 의 기본값이 `taskmgr` 다. 기본값을 `taskcalendar` 로 바꾼다. 파일 이름은 그대로 둔다(안내 문서와 사람의 습관이 그 이름을 쓴다).
 2. **낡은 진입점 삭제**: `db/deploy/init-db.ps1`, `init-db.cmd`, `migrate.ps1`, `migrate.cmd`, `db/schema.sql`, 지난 `migrate-2026-*.sql` 과 `rollback-2026-08-24-org-id.sql`. 진입점은 `setup-taskcalendar` 하나로. 지우기 전에 이 파일들을 읽는 스크립트와 시험을 찾아 함께 정리한다. `db/deploy/README.md` 의 안내도 고친다.
-3. **안 쓰는 권한**: `cal_entry_commit`, `cal_todo_day_note`, `cal_room` 의 GRANT UPDATE 를 뺀다(호스트는 DELETE 뒤 INSERT 만 한다).
+3. **안 쓰는 권한**: `cal_entry_commit`, `cal_todo_day_note`, `cal_room` 의 GRANT UPDATE 를 뺀다(호스트는 DELETE 뒤 INSERT 만 한다). `cal_room` 은 2026-10-21 에 표째 없앴다(SHARED-ROOMS).
 4. **CHECK**: 코드표 `name<>''`, 과제 트랙 `is_active IN (0,1)`. 과제 계약일 순서 CHECK 는 기존 데이터를 확인한 뒤 넣을지 정한다.
    - 결정(2026-10-15): **계약일 순서 CHECK(`start_date <= end_date`)는 넣지 않았다.** 로컬 `taskcalendar` 와 원본 `taskmgr` 모두 순서가 뒤집힌 과제가 0건이고, 호스트(`ProjectDb.UpsertProjectAsync`)가 저장 전에 검사한다. 로컬 DB 는 이미 v13 으로 이관했으므로 지금 넣으려면 이관을 한 번 더 해야 한다. 필요해지면 다음 판번호에서 넣는다.
 5. **문서 속 비밀번호**: `db/README.md` 61행에 적혀 있던 문서 속 root 비밀번호(명령줄 `-p` 뒤의 글자)를 지운다(이미 GitHub 에 올라갔다. 비밀번호를 바꿀지는 사용자가 정한다). 저장소 어디에도 그 글자가 남지 않게 `tests/code-ids-db.test.mjs` 가 추적 파일 전체를 훑는다.

@@ -167,9 +167,10 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  공개 API 2 — 부팅 조회 (설계 §3.5)
         // ================================================================================
-        //   10개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
+        //   9개 표를 **한 연결·한 트랜잭션**에서 읽어 계약 G 의 state 를 만든다.
         //     cal_category · cal_entry · cal_entry_except · cal_entry_commit · cal_todo ·
-        //     cal_todo_day_note · cal_room · cal_task_hours · cal_attendance · cal_user_pref
+        //     cal_todo_day_note · cal_task_hours · cal_attendance · cal_user_pref
+        //   (2026-10-21 회의실 공용화로 cal_room 이 빠져 열에서 아홉이 됐다. 공용 회의실은 loadCodes 로 간다)
         //
         //   ★★ 계약 G-7 개정(2026-09-01) — 커밋을 **부팅에서 전량 읽는다.**
         //     원안은 지연 조회였다: "무게의 대부분인데 캘린더를 그리는 데 안 쓴다". 전제가 틀렸다.
@@ -553,7 +554,7 @@ namespace TaskCalendarWidget
                 if (v != null && v is not DBNull) rev = Convert.ToInt64(v, CultureInfo.InvariantCulture);
             }
 
-            // ── 1/10. cal_category ─────────────────────────────────────────────────
+            // ── 1/9. cal_category ─────────────────────────────────────────────────
             //   ORDER BY sort_order — XML 문서 순서를 박제한 유일한 근거(G-5).
             //   동률의 뒷순서는 uid 로 고정한다. ★ cat_no 를 쓰지 않는다 — 번호는 '만들어진 순서'일
             //   뿐이고 삭제 후 재사용되므로 표시 순서의 근거가 되지 못한다(G-5 ★).
@@ -611,7 +612,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 2/10. cal_entry ────────────────────────────────────────────────────
+            // ── 2/9. cal_entry ────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5). ★ entry_date 도 created_at 도 정렬키가 아니다.
             //   ★ 2026-08-27 에 두 번 바뀐 자리다. 원래 `entry_date, created_at, uid` 였다.
             //     ① created_at 을 뺀 이유 — 실 data.xml 의 일정 23건 중 22건이 같은 밀리초라
@@ -667,7 +668,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 3/10. cal_entry_except ─────────────────────────────────────────────
+            // ── 3/9. cal_entry_except ─────────────────────────────────────────────
             //   ORDER BY except_date(G-5). ★ ORDER BY 에 entry_no 를 쓰지 않는다 — 부모별로 접으므로
             //   행이 어떻게 섞여 오든 각 배열 안의 순서는 날짜순으로 확정된다.
             //   entry_no 는 접는 데만 쓰고 state 에는 남기지 않는다(G-1d).
@@ -691,7 +692,7 @@ namespace TaskCalendarWidget
             }
             if (orphanExcept > 0) _log("반복 없는 일정에 붙은 예외일 " + orphanExcept + "건 — state 에 넣지 않았다(앱이 만들 수 없는 모양)");
 
-            // ── 4/10. cal_entry_commit ────────────────────────────────────────────
+            // ── 4/9. cal_entry_commit ────────────────────────────────────────────
             //   ORDER BY entry_no, seq — seq 가 부모 commits 배열의 인덱스이자 표시 순서의
             //   유일한 근거다(G-5). entry_no 를 앞에 두는 것은 순서와 무관하고(부모별로 접으므로)
             //   같은 부모의 행이 붙어 오게 해 접기를 싸게 만들 뿐이다.
@@ -715,7 +716,7 @@ namespace TaskCalendarWidget
             }
             if (orphanCommit > 0) _log("부모 없는 커밋 " + orphanCommit + "건 — state 에 넣지 않았다");
 
-            // ── 5/10. cal_todo ─────────────────────────────────────────────────────
+            // ── 5/9. cal_todo ─────────────────────────────────────────────────────
             //   ORDER BY sort_order, uid (G-5 — 2026-08-27 에 확정값으로 못박혔다).
             //   ★ 여기가 원래 created_at → uid 였고, 그 근거는 '앱이 push 하므로 배열 순서 = 생성 순서'
             //     였다. 전제는 맞지만 created_at 이 그 순서를 **표현하지 못한다** — 실 data.xml 의
@@ -754,7 +755,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 6/10. cal_todo_day_note ────────────────────────────────────────────
+            // ── 6/9. cal_todo_day_note ────────────────────────────────────────────
             //   { 'YYYY-MM-DD': '설명' } 로 접는다(G-5). todo_no 는 접는 데만 쓰고 state 에는 없다(G-1d).
             //   ORDER BY note_date — 맵이라 의미는 없지만 JSON 키 순서를 재현 가능하게 만든다.
             const string dayNoteSql =
@@ -771,19 +772,11 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 7/10. cal_room ─────────────────────────────────────────────────────
-            //   객체가 아니라 **문자열 배열**이다(G-5). ORDER BY sort_order, 동률은 name(= PK 후단).
-            //   ★ 행 0개 = 빈 목록으로 확정. DEFAULT_ROOMS 재주입은 DB 전환과 함께 폐기했다
-            //     (DB 에서는 '한 번도 없었음'과 '사용자가 전부 지움'을 구분할 수 없다 — cal_room DDL 주석).
-            var rooms = new List<object?>();
-            await using (var cmd = new MySqlCommand("SELECT name FROM cal_room WHERE user_id=@u ORDER BY sort_order, name", conn))
-            {
-                cmd.Parameters.AddWithValue("@u", userId);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                while (await rd.ReadAsync(ct)) rooms.Add(Str(rd, "name"));
-            }
+            // ── (cal_room 은 2026-10-21 에 없앴다) ────────────────────────────────────
+            //   회의실은 사람마다 두지 않고 회사 공용 목록(room_code) 하나다(docs/SHARED-ROOMS.md). 부팅 state 에는
+            //   rooms 가 없다. 공용 목록은 발주처, 구분, 상태와 같은 읽기 경로(loadCodes → __applyCodes)로 간다.
 
-            // ── 8/10. cal_task_hours ───────────────────────────────────────────────
+            // ── 7/9. cal_task_hours ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { 과제uid: 시간 } } 2단 중첩(G-5).
             //   ★ 안쪽 키는 cat_no 가 아니라 그 과제의 uid 다 — JOIN 으로 되돌린다(G-5 ★).
             //     INNER JOIN 인 이유: cat_no 가 NOT NULL 이고 FK 가 있어 같은 스냅샷 안에서 반드시 해석된다
@@ -814,7 +807,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 9/10. cal_attendance ───────────────────────────────────────────────
+            // ── 8/9. cal_attendance ───────────────────────────────────────────────
             //   { 'YYYY-MM-DD': { status, overtime } }(G-5).
             //   ★ 행이 없는 날짜의 키를 만들지 않는다 — 그게 '미기록'이다. 빈 객체나 status:'' 를
             //     넣으면 getAttendance() 가 null 을 못 돌려주고, netcus 일간보고가 사용자가 사이트에
@@ -842,7 +835,7 @@ namespace TaskCalendarWidget
                 }
             }
 
-            // ── 10/10. cal_user_pref ────────────────────────────────────────────────
+            // ── 9/9. cal_user_pref ────────────────────────────────────────────────
             //   사용자당 1행. 최상위의 12개 값이 전부 여기서 온다.
             //   ★ 행이 없을 때(= 아직 이관 전인 사용자)는 fromXML() 이 <prefs> 없는 XML 에 주는 값과
             //     똑같이 채운다. 그것이 이 앱이 '설정을 한 번도 만진 적 없는 사람'에게 주던 값이고,
@@ -893,11 +886,12 @@ namespace TaskCalendarWidget
             if (badTimeFmt > 0)
                 _log("DATETIME 문자열이 'yyyy-MM-dd HH:mm:ss.fff' 가 아닌 행 " + badTimeFmt + "건 — 낙관적 잠금 토큰이 어긋날 수 있다");
 
-            // ── 계약 G-0: 최상위 반환 객체 — 키 14개, fromXML() 의 return 과 정확히 동일 ──────
+            // ── 계약 G-0: 최상위 반환 객체 — 키 13개, fromXML() 의 return 과 정확히 동일 ──────
             //   ★ lsMigrated 는 **없앴다**(2026-09-01). 여기 하드코딩 true 가 있었고, 그 이유는
             //     "false/undefined 면 migrateLocalStores() 가 localStorage 좀비를 DB 로 밀어 넣는다"
             //     였다. 즉 이 줄은 **다른 계층의 자동이관을 막으려고** 여기 서 있던 방어 부채였다.
-            //     그 자동이관을 걷어내면서 함께 사라진다. 키가 하나 줄어 최상위 키는 14 다.
+            //     그 자동이관을 걷어내면서 함께 사라진다. 키가 하나 줄어 최상위 키는 14 였다.
+            //   ★ rooms 도 없앴다(2026-10-21 회의실 공용화). 최상위 키는 13 이다.
             var state = new Dictionary<string, object?>
             {
                 ["categories"]         = categories,
@@ -905,7 +899,6 @@ namespace TaskCalendarWidget
                 ["gitAuthor"]          = gitAuthor,
                 ["svnAuthor"]          = svnAuthor,
                 ["todos"]              = todos,
-                ["rooms"]              = rooms,
                 ["reportMarker"]       = reportMarker,
                 ["reportMarkerCustom"] = reportMarkerCustom,
                 ["reportIndent"]       = reportIndent,

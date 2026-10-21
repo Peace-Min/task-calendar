@@ -78,7 +78,7 @@ export const PERSONAL_TASKS = {
   etc:     { name: '기타',      color: '#5b6b7d', desc: '' },
 };
 
-// 장소 빠른 선택(cal_room)과 일정 장소.
+// 회사 공용 회의실(room_code)과 일정 장소.
 export const ROOMS = ['(예시) 3층 회의실', '(예시) 2층 소회의실', '(예시) 교육장', '(예시) 고객사 현장'];
 
 // 공식 과제 일정 제목 묶음(과제와 무관하게 쓰는 일반 업무 이름).

@@ -57,7 +57,7 @@ const checks = {
     at(/HEX\('가나다'\) = 'EAB080EB8298EB8BA4'/, '문자셋 가드');
     at(/@n_tbl = \d+, 'DO 0'/, '표 존재 가드');
     assert.ok(/SET @v := \(SELECT v FROM cal_schema_meta WHERE k = 'db_structure_version'\);/.test(c), 'SQL 이 구조 번호를 db_structure_version 키로 읽지 않는다');
-    const ver = at(/IF\(@v <=> '14', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'db_structure_version 14 가드');
+    const ver = at(/IF\(@v <=> '15', 'DO 0', 'SELECT 1 FROM `중단: [^`]+`'\)/, 'db_structure_version 15 가드');
     const me = at(/IF\(@n_me = 1, 'DO 0'/, '녹화 계정 존재 가드');
     at(/IF\(@n_other_active >= 3, 'DO 0'/, '동료 수 가드');
     at(/IF\(@n_my_dummy = 0, 'DO 0'/, '녹화 계정과 가상 명단 겹침 가드');
@@ -215,7 +215,7 @@ test('데모④: SQL 은 계정, 권한, DDL, 조직과 코드표, 판번호를 
 
 test('변이③④②: 가드를 빼거나 금지 문장을 넣으면 검사가 잡는다', () => {
   const muts = [
-    [checks.sqlGuards, mutate(sql, "IF(@v <=> '14', 'DO 0',", "IF(1, 'DO 0',")],
+    [checks.sqlGuards, mutate(sql, "IF(@v <=> '15', 'DO 0',", "IF(1, 'DO 0',")],
     [checks.sqlGuards, mutate(sql, 'IF(@n_me = 1, ', 'IF(1, ')],
     [checks.sqlGuards, mutate(sql, '\nSTART TRANSACTION;\n', '\n')],
     [checks.sqlGuards, mutate(sql, 'IF(@fp_user2 = @fp_user, ', 'IF(1, ')],
@@ -334,7 +334,7 @@ test('데모⑥: 지우는 표와 그대로 두는 표가 스키마의 cal_* 표
     '구분 코드 고정 번호(1 일반계약, 2 선진행, 3 사업부관리)가 바뀌었다. demo-data.mjs 의 section 번호를 함께 볼 것');
   assert.ok(/\(1, '진행중', 10\), \(2, '종료', 20\), \(3, '1차 납품완료', 30\), \(4, '미정', 40\);/.test(schemaStruct),
     '상태 코드 고정 번호가 바뀌었다. demo-data.mjs 의 status 번호를 함께 볼 것');
-  assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('db_structure_version', '14'/.test(schemaCal), '구조 번호가 14 가 아니다. SCHEMA_VERSION 을 함께 올릴 것');
+  assert.ok(/INSERT INTO cal_schema_meta \(k, v, updated_at\) VALUES \('db_structure_version', '15'/.test(schemaCal), '구조 번호가 15 가 아니다. SCHEMA_VERSION 을 함께 올릴 것');
 });
 
 // ══ ⑦ ps1 과 .cmd 의 공통 계약 ═════════════════════════════════════════

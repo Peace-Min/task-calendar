@@ -32,7 +32,7 @@ function mutate(from, to, base) {
 //  함수 단위 관문 — 본문에 guardEdit() 이 있고, 그것이 첫 쓰기보다 **앞**이다.
 const GATED_FUNCTIONS = [
   'openEntryModal', 'openQuickAdd', 'saveEntryFromForm', 'qaSave', 'saveCatFromForm', 'deleteCommitRow',
-  'addRoom', 'deleteRoom', 'startImport', 'showImportPreview', 'applyImport', 'clearAll',
+  'startImport', 'showImportPreview', 'applyImport', 'clearAll',
   'offSubscribeFromCatalog', 'offUnsubscribeFromCatalog', 'runGitImport',
   'setCommitMessage', 'commitDayNoteEdit',
   //  (setCommitSubject, setEntryTitle, setTodoText 는 일간 보고서 줄 ✎ 와 함께 없앴다(REPORT-EDIT §5). '없어졌다'는 아래 REPORT_EDIT_GONE 이 잠근다.)
@@ -392,7 +392,7 @@ if (!JSDOM) {
     }
   }));
   test('잠금②: 부팅 실패 중 새 기록 진입점은 토스트로 막히고 메모리 변화 0(A1)', () => checks.newEntryBlocked(src));
-  test('잠금③: 있는 기록 열기는 된다(읽기) — 저장·제목 줄편집·회의실·초기화·가져오기는 막힌다', () => withBoot(src, async (W) => {
+  test('잠금③: 있는 기록 열기는 된다(읽기) — 저장·제목 줄편집·초기화·가져오기는 막힌다', () => withBoot(src, async (W) => {
     W.applyState();
     W.ev("__dbConnLost({ kind:'network' })");
     W.clear();
@@ -403,8 +403,8 @@ if (!JSDOM) {
     assert.strictEqual(W.ev("entryById('e-1').title"), '기존 기록', '끊긴 상태에서 기록 수정이 메모리에 들어갔다');
     //  (보고서 줄편집 setEntryTitle 은 없앴다(REPORT-EDIT §5). 끊긴 상태의 보고서 글 편집은 캘린더 데이터가 아니라 막지 않는다.)
     assert.strictEqual(W.ev('typeof setEntryTitle'), 'undefined', '보고서 줄편집(setEntryTitle)이 되살아났다');
-    W.call('addRoom', '새 회의실');
-    assert.ok(!W.ev("state.rooms.includes('새 회의실')"), '회의실 추가가 막히지 않았다');
+    //  (개인 회의실 추가 addRoom 은 2026-10-21 회의실 공용화로 없앴다. 공용 목록은 관리자 화면이 호스트 왕복으로 고친다)
+    assert.strictEqual(W.ev('typeof addRoom'), 'undefined', '개인 회의실 추가(addRoom)가 되살아났다');
     await W.ev('clearAll()');
     assert.strictEqual(W.ev('state.entries.length'), 1, '전체 초기화가 막히지 않았다');
     W.ev('startImport()');

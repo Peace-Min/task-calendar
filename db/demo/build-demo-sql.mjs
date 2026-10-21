@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '14';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '15';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -30,11 +30,11 @@ export const WIPE_TABLES = [
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly',
   'cal_task_hours', 'cal_todo_day_note', 'cal_todo',
   'cal_entry_commit', 'cal_entry_except', 'cal_entry', 'cal_category',
-  'cal_room', 'cal_attendance', 'cal_user_pref', 'cal_migration_log',
+  'cal_attendance', 'cal_user_pref', 'cal_migration_log',
 ];
 // 가드가 있는지 보는 표 전부.
 export const REQUIRED_TABLES = [
-  'app_user', 'org_unit', 'title_code', 'customer', 'section_code', 'status_code', 'project',
+  'app_user', 'org_unit', 'title_code', 'customer', 'section_code', 'status_code', 'project', 'room_code',
   'cal_schema_meta', 'cal_user_rev', ...WIPE_TABLES,
 ];
 
@@ -387,6 +387,11 @@ export function buildDemoSql({ myLogin, baseDate }) {
     'INSERT INTO project (id, uid, section_id, customer_id, project_name, contract_name, common_name, start_date, end_date, dev_end_date, status_id, note, is_active) VALUES',
     projects.map((p) => `  (${p.id}, ${sqlStr(p.uid)}, ${p.sectionId}, ${p.customerId}, ${sqlStr(p.projectName)}, ${sqlStr(p.contractName)}, ${sqlStr(p.commonName)}, ${lit(p.startDate)}, ${lit(p.endDate)}, ${lit(p.devEndDate)}, ${lit(p.statusId)}, '', 1)`).join(',\n') + ';',
     '',
+    '-- 3b) 회사 공용 회의실(room_code, 2026-10-21 SHARED-ROOMS). 사람마다 두던 cal_room 은 없어졌다',
+    'DELETE FROM room_code;',
+    'INSERT INTO room_code (room_id, name, sort_order) VALUES',
+    D.ROOMS.map((r, i) => `  (${i + 1}, ${sqlStr(r)}, ${(i + 1) * 10})`).join(',\n') + ';',
+    '',
     '-- 4) 캘린더 데이터',
     'SET @now := UTC_TIMESTAMP(3);',
   );
@@ -410,7 +415,6 @@ export function buildDemoSql({ myLogin, baseDate }) {
       push('INSERT INTO cal_task_hours (user_id, work_date, cat_no, hours, updated_at) VALUES',
         cal.hours.map((h) => `  (${u}, ${sqlStr(h.date)}, ${no(h.cat)}, ${h.hours.toFixed(2)}, @now)`).join(',\n') + ';');
     }
-    push('INSERT INTO cal_room (user_id, name, sort_order) VALUES', D.ROOMS.map((r, i) => `  (${u}, ${sqlStr(r)}, ${i})`).join(',\n') + ';');
     expect[person.who] = { cats: cal.cats.length, entries: cal.entries.length, todos: cal.todos.length, notes: notes.length, hours: cal.hours.length };
   }
 

@@ -8,6 +8,9 @@
 --     project 는 번호로 가리킨다. 개명은 그 표의 name 한 행만 바꾸면 되고 화면은 조인으로 따라온다.
 --     같은 전환을 이미 데이터가 있는 DB 에 하는 것은 migrate-2026-10-15-code-ids.sql 이다.
 --     두 경로의 결과(열, 인덱스, 외래키, CHECK, 표 COMMENT)는 글자까지 같아야 한다.
+--  ※ 2026-10-21 회의실 공용화(docs/SHARED-ROOMS.md, 구조 번호 15): 회사 공용 회의실 목록 room_code 를 둔다.
+--     사람마다 따로 두던 cal_room 을 대신한다. 어떤 표도 가리키지 않는다(일정의 장소는 글자로 저장된다).
+--     같은 변경을 이미 데이터가 있는 DB 에 하는 것은 이관 조각 migrations/v15-shared-rooms.sql 이다.
 --  주의: 맨 위 DROP 은 처음부터 다시 짓기 위한 것이다. 데이터가 있는 DB 에 다시 돌리면 지워진다.
 -- =====================================================================
 SET NAMES utf8mb4;
@@ -21,6 +24,7 @@ DROP TABLE IF EXISTS project_type;
 DROP TABLE IF EXISTS customer;
 DROP TABLE IF EXISTS section_code;
 DROP TABLE IF EXISTS status_code;
+DROP TABLE IF EXISTS room_code;        -- 참조하는 표가 없다(순서 무관)
 
 -- ---------- 발주처 마스터 ----------
 CREATE TABLE customer (
@@ -67,6 +71,22 @@ CREATE TABLE status_code (
   CONSTRAINT chk_status_code_active CHECK (is_active IN (0,1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='상태 코드. PK=status_id(고정 번호 2=종료), name=UNIQUE 라벨. Admin 관리.';
+
+-- ---------- 회의실(room) 코드표. 회사 공용 장소 추천 목록(2026-10-21, docs/SHARED-ROOMS.md) ----------
+--  관리자만 관리 화면에서 고친다(ProjectDb 의 회의실 쓰기는 OpenAdminAsync). 일반 사용자는 loadCodes 로 읽기만 한다.
+--  ★ 어떤 표도 이 번호를 가리키지 않는다. 일정의 장소(cal_entry.location)는 자유 글자다. 그래서 숨김(is_active)과
+--    휴지통이 없고, 지우면 바로 지운다(이미 적힌 일정의 장소 글자는 그대로 남는다).
+CREATE TABLE room_code (
+  room_id     SMALLINT UNSIGNED NOT NULL AUTO_INCREMENT, -- 회의실 번호(기본키). 관리 화면의 이름변경, 삭제, 순서가 이 번호로 가리킨다
+  name        VARCHAR(40)  NOT NULL,             -- 회의실 이름(라벨). UNIQUE(ai_ci: 대소문자만 다른 이름도 막는다)
+  sort_order  INT          NOT NULL,             -- 장소 칸 추천 순서(10, 20, 30 …). 추가는 MAX+10
+  created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (room_id),
+  UNIQUE KEY uq_room_code_name (name),
+  CONSTRAINT chk_room_code_name CHECK (name <> '')
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='회의실 코드. PK=room_id, name=UNIQUE 라벨. 회사 공용 장소 추천 목록. Admin 관리.';
 
 -- ---------- 과제(핵심 엔티티) ----------
 CREATE TABLE project (

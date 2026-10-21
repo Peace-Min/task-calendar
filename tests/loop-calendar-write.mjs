@@ -319,7 +319,7 @@ function assertTestUser(u, what) {
 function wipe(u) {
   assertTestUser(u, '정리(wipe)');
   for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours',
-                   'cal_attendance','cal_entry','cal_todo','cal_category','cal_room','cal_user_pref'])
+                   'cal_attendance','cal_entry','cal_todo','cal_category','cal_user_pref'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
 }
 function dropUser(u) {
@@ -394,7 +394,6 @@ function makeState(prev, round) {
   return {
     categories: cats, entries, todos,
     gitAuthor: '작성자', svnAuthor: 'svn작성자',
-    rooms: ['회의실 A', '회의실 B'].slice(0, rint(1, 2)),
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2, gitCommitBody: rnd() < 0.5,
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 },
                          weekly: { marker: '·', markerCustom: '', indent: 3 } },
@@ -422,7 +421,7 @@ function compare(sent, got) {
   cmp('categories', sent.categories.map(normCat), (got.categories || []).map(normCat));
   cmp('entries', sent.entries.map(normEntry), (got.entries || []).map(normEntry));
   cmp('todos', sent.todos.map(normTodo), (got.todos || []).map(normTodo));
-  for (const k of ['gitAuthor','svnAuthor','rooms','reportMarker','reportMarkerCustom','reportIndent',
+  for (const k of ['gitAuthor','svnAuthor','reportMarker','reportMarkerCustom','reportIndent',
                    'gitCommitBody','reportFormatPrefs','taskHours','attendance','reportFont'])
     if (!IGNORE_TOP.has(k)) cmp(k, sent[k], got[k]);
   return diffs;
@@ -614,7 +613,7 @@ try {
   // ── 전량 삭제 — 빈 state 를 저장하면 다 지워지는가 ──────────────────────
   console.log('\n[삭제] 빈 state 저장');
   const empty = makeState(null, 0); empty.categories = []; empty.entries = []; empty.todos = [];
-  empty.taskHours = {}; empty.attendance = {}; empty.rooms = [];
+  empty.taskHours = {}; empty.attendance = {};
   const delRes = run({ op: 'save', loginId: LOGIN, state: {}, stateJson: JSON.stringify(empty) });
   ok('빈 state 저장 성공', delRes.ok === true, delRes.msg || '');
   const left = Number(one(`SELECT (SELECT COUNT(*) FROM cal_entry WHERE user_id=${U})

@@ -75,7 +75,7 @@ function makeUser() {
 }
 function wipe(u) {
   for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours','cal_attendance',
-                   'cal_entry','cal_todo','cal_category','cal_room','cal_user_pref','cal_migration_log','cal_user_rev'])
+                   'cal_entry','cal_todo','cal_category','cal_user_pref','cal_migration_log','cal_user_rev'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
 }
 function dropUser(u) { wipe(u); sql(`DELETE FROM app_user WHERE user_id=${u}`, { readOnly: false, what: '사용자 삭제' }); }

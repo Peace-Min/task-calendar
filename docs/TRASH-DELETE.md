@@ -36,7 +36,7 @@
 | 삭제 주체 | `admin` 만. 발주처와 코드의 **숨김**은 지금처럼 `editor` 도 되지만 **삭제**는 `OpenAdminAsync` 를 지난다 | 되돌릴 수 없는 조작은 가장 좁은 권한으로. 과제 편집이 `editor` 인 것과 별개다 |
 | 삭제 전제 | **숨긴 항목만** 지울 수 있다(`is_active=0`). 활성 항목은 호스트가 거부한다 | 두 단계(숨김 → 삭제)가 실수 방지의 전부다. 한 번에 지우는 길을 두지 않는다 |
 | 과제 삭제 조건 | 참조가 있어도 지울 수 있다. 대신 확인창에 **몇 명이 편입 중인지** 보여 준다 | `project` 를 가리키는 FK 가 없다. 개인 카테고리의 `project_uid` 는 문자열 참조고, 과제가 없어지면 조회 시 **`db_gone`** 으로 파생돼 라벨, 일정, 보고가 그대로 남는다(§3.1). 데이터 모델이 이미 "과제가 사라진 세계"를 견딘다 |
-| 인력 삭제 조건 | **기록 0건**인 계정만(§3.2 의 9개 표 합계 0). 기록이 있으면 거부하고 퇴사 상태로 둔다 | 사용자 결정. 11개 표가 `app_user` 를 FK 로 붙들고 있어 기록이 있으면 DB 도 거부한다(1451). 기록까지 지우는 연쇄 삭제는 보고 이력과 감사 기록을 통째로 없애므로 하지 않는다 |
+| 인력 삭제 조건 | **기록 0건**인 계정만(§3.2 의 8개 표 합계 0. 2026-10-21 `cal_room` 폐지 전에는 9개). 기록이 있으면 거부하고 퇴사 상태로 둔다 | 사용자 결정. 11개 표가 `app_user` 를 FK 로 붙들고 있어 기록이 있으면 DB 도 거부한다(1451). 기록까지 지우는 연쇄 삭제는 보고 이력과 감사 기록을 통째로 없애므로 하지 않는다 |
 | 코드 3종 삭제 조건 | 그 값을 쓰는 과제가 **숨긴 과제까지 포함해** 0건일 때만 | `project.customer / section / status` 가 FK(RESTRICT). 앱이 미리 세어 안내하고, 최종 보증은 FK. *(2026-10-15 부터 자식 열은 번호 `project.customer_id / section_id / status_id` 이고 FK 는 여전히 RESTRICT 다. 구분 2(선진행)와 상태 2(종료)는 숨길 수도 지울 수도 없어 휴지통에 오지 않는다. [CODE-TABLE-IDS](CODE-TABLE-IDS.md) §3)* |
 | 확인 | 확인창 한 번 + **이름을 그대로 입력**해야 [영구 삭제]가 켜진다. 호스트도 입력값을 대조한다 | 되돌릴 수 없는 조작의 관례(GitHub 저장소 삭제와 같다). 폐쇄망이라 되돌리기는 백업뿐이다(§7) |
 | 기록 | 삭제 직전 행 전체를 JSON 한 줄로 위젯 로그에 남긴다 | 표를 새로 두지 않는다. 감사 표가 있어도 폐쇄망에서 되살릴 수단은 백업뿐이라 로그로 충분하다 |
@@ -54,7 +54,7 @@
 | 지울 표 | 붙드는 쪽 | 종류 | 지웠을 때 |
 |---|---|---|---|
 | `project` | `cal_category.project_uid` | **문자열 참조, FK 없음**(설계 §5.2) | 조회 시 `LEFT JOIN project` 가 `db_gone` 을 파생. 카테고리, 일정, 할일, 공수, 보고 기록은 **전부 남는다.** 화면은 `dbGone` 카테고리를 새 선택 대상에서만 빼고 라벨은 유지한다(`isPickableCat`) |
-| `app_user` | `cal_category` `cal_entry` `cal_todo` `cal_room` `cal_task_hours` `cal_attendance` `cal_report_daily` `cal_report_weekly` `cal_migration_log` (기록 9) + `cal_user_pref` `cal_user_rev` (부속 2) | FK 11개, 전부 RESTRICT(기본 또는 명시) | 하나라도 남아 있으면 DB 가 거부(1451). 부속 2는 로그인만 해도 생기므로 **같은 트랜잭션에서 먼저 지운다** |
+| `app_user` | `cal_category` `cal_entry` `cal_todo` `cal_task_hours` `cal_attendance` `cal_report_daily` `cal_report_weekly` `cal_migration_log` (기록 8) + `cal_user_pref` `cal_user_rev` (부속 2) | FK 10개(2026-10-21 `cal_room` 폐지 전에는 11개), 전부 RESTRICT(기본 또는 명시) | 하나라도 남아 있으면 DB 가 거부(1451). 부속 2는 로그인만 해도 생기므로 **같은 트랜잭션에서 먼저 지운다** |
 | `customer` | `project.customer` (`fk_project_customer`) | FK RESTRICT | 숨긴 과제가 쓰고 있어도 거부 |
 | `section_code` | `project.section` (`fk_project_section`) | FK RESTRICT | 위와 같다 |
 | `status_code` | `project.status` (`fk_project_status`) | FK RESTRICT | 위와 같다 |
@@ -63,10 +63,10 @@
 
 ### 3.2 "기록 0건" 의 정의 (인력)
 
-아래 9개 표의 `user_id = @uid` 행 수 합계가 **0**. 목록은 정본의 `REFERENCES app_user` 에서 `cal_user_pref`·`cal_user_rev` 를 뺀 것과 **글자까지 같아야** 한다(시험 계약 ③ 이 정본을 파싱해 대조한다. 숫자와 표 이름 박제 금지).
+아래 8개 표의 `user_id = @uid` 행 수 합계가 **0**(2026-10-21 회의실 공용화로 `cal_room` 이 빠졌다). 목록은 정본의 `REFERENCES app_user` 에서 `cal_user_pref`·`cal_user_rev` 를 뺀 것과 **글자까지 같아야** 한다(시험 계약 ③ 이 정본을 파싱해 대조한다. 숫자와 표 이름 박제 금지).
 
 ```
-cal_category · cal_entry · cal_todo · cal_room · cal_task_hours · cal_attendance ·
+cal_category · cal_entry · cal_todo · cal_task_hours · cal_attendance ·
 cal_report_daily · cal_report_weekly · cal_migration_log
 ```
 
@@ -228,7 +228,7 @@ COMMIT
 
 1. **권한 세 파일 정합**: `create-app-user.sql` 다섯 표 DELETE, `05-grants.sql` app_user DELETE, `grants-calendar.sql` 머리말 문장. USER-ADMIN 계약 ⑤("DELETE 없음")를 **"DELETE 는 `DeleteTrashAsync` 한 곳뿐"** 으로 개정한다. `DELETE FROM app_user` 가 그 함수 밖에 나타나면 실패. 변이: 다른 함수에 DELETE 한 줄 → 실패.
 2. **관문**: `trashGet`, `trashRestore`, `trashDelete` 가 여는 연결은 전부 `OpenAdminAsync`. `OpenWriteAsync` 로 열고 다섯 표를 DELETE 하는 경로 0. `tests/admin-auth.test.mjs` 확장.
-3. **기록 0 목록 = 정본**: 호스트의 9개 표 목록이 `schema-calendar.sql` 의 `REFERENCES app_user` 집합에서 `cal_user_pref`·`cal_user_rev` 를 뺀 것과 글자까지 같다(`tests/canon-schema.mjs` 로 파싱, 박제 금지). 변이: 표 하나 빼기 → 실패.
+3. **기록 0 목록 = 정본**: 호스트의 8개 표 목록이 `schema-calendar.sql` 의 `REFERENCES app_user` 집합에서 `cal_user_pref`·`cal_user_rev` 를 뺀 것과 글자까지 같다(`tests/canon-schema.mjs` 로 파싱, 박제 금지). 변이: 표 하나 빼기 → 실패.
 4. **활성 항목 거부**: `is_active=1` 이면 DELETE 문에 닿지 않는다(순수 로직 + 실 DB 루프).
 5. **이름 대조는 호스트도 한다**: `confirm` 이 다르면 DELETE 에 닿지 않는다. 변이: 대조 지우기 → 실패.
 6. **화면 부재 계약**: 휴지통으로 가는 문은 둘뿐이고 둘 다 그 도메인의 화면에 있다. `#uaTrash` 는 `uaAdminBar` 가 **관리자·비순서편집일 때만** 만들고(숨김이 아니라 부재), `#offTrash` 는 정적이되 위젯 여부로만 노출된다(관리자 판정은 열 때 `trashGet` 회신이 한다). '사용자 정보' 마크업에는 '휴지통'이 없고, `#trashModal` 마크업에도 탭 버튼과 [영구 삭제] 문자열이 없다. jsdom 으로 그려서 센다(USER-ADMIN ⑦-DOM 과 같은 하네스).

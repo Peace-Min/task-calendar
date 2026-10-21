@@ -29,6 +29,8 @@ const statics = {
   groups(src) {
     assert.ok(src.includes("{ id: 'people', ic: '👥', t: '사람',      items: ['members', 'title', 'unit', 'gone'] },"), '👥 사람 = 구성원 · 직급 · 소속 · 휴지통이 아니다(N4)');
     assert.ok(src.includes("{ id: 'proj',   ic: '📁', t: '회사 과제', items: ['projects', 'cust', 'section', 'status', 'trash'] },"), '📁 회사 과제 = 공식 과제 · 발주처 · 구분 · 상태 · 휴지통이 아니다(N4)');
+    assert.ok(src.includes("{ id: 'sched',  ic: '🗓', t: '일정',      items: ['rooms'] },"), '🗓 일정 = 회의실이 아니다(SHARED-ROOMS 가안)');
+    assert.ok(/rooms:\s+\{ ic: '🚪', t: '회의실',\s+ov: 'roomAdminModal', open: \(\) => openRoomAdmin\(\) \},/.test(src), "'회의실' 항목이 회의실 관리 창(#roomAdminModal)을 열지 않는다");
     assert.ok(/title:\s+\{ ic: '🏷', t: '직급',\s+ov: 'orgTitleModal',\s+open: \(\) => openOrgTitle\('title'\), tab: 'title' \},/.test(src), '「직급」 항목이 직급·소속 화면을 직급 탭으로 열지 않는다(N4)');
     assert.ok(/unit:\s+\{ ic: '🏢', t: '소속',\s+ov: 'orgTitleModal',\s+open: \(\) => openOrgTitle\('unit'\),\s+tab: 'unit' \},/.test(src), '「소속」 항목이 직급·소속 화면을 소속 탭으로 열지 않는다(N4)');
     assert.ok(/section:\s+\{[^}]*ov: 'codeModal',\s+open: \(\) => ahPress\('offCodeMgr'\), tab: 'section' \},/.test(src), '「구분」 항목이 지금 문(#offCodeMgr · 구분 탭)을 지나지 않는다(N4)');

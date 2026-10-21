@@ -236,7 +236,7 @@ else {
 }
 
 W ""
-W "[회의실]"
+W "[회의실] 옮기지 않는다(2026-10-21 회의실 공용화, docs/SHARED-ROOMS.md). 몇 개였는지만 본다"
 $rl = 0; foreach ($r in $rooms) { $rl = [Math]::Max($rl, $r.InnerText.Length) }
 W ("    {0}개 · 이름 최장 {1}자" -f $rooms.Count, $rl)
 

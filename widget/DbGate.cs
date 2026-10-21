@@ -68,7 +68,8 @@ namespace TaskCalendarWidget
         //  ★ 앱 계정의 cal_schema_meta 권한은 SELECT 하나뿐이다(db/deploy/grants-calendar.sql). 막히는 쪽이
         //    자기 통과증을 쓰지 못한다.
         //  ★ 2026-10-21: 13 → 14(db/deploy/migrations/v14-version-gate.sql, 배포 SQL 하나에 들어가는 조각, schema_version 키를 db_ 와 app_ 키 다섯 개로).
-        public const int AppStructureVersion = 14;
+        //  ★ 2026-10-21: 14 → 15(이관 조각 migrations/v15-shared-rooms.sql, 회의실 공용화: cal_room 을 지우고 room_code).
+        public const int AppStructureVersion = 15;
 
         //  키 다섯 개를 한 번에 읽는다. 연결을 열 때마다 도는 유일한 추가 쿼리다(DB-RELEASE-OPS §3.1 의 비용).
         internal const string MetaSql =

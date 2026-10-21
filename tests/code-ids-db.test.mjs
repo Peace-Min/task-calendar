@@ -257,10 +257,11 @@ export const checks = {
     assert.ok(post, '사후 검증의 중단 조건이 (고아, 행 수, 이름 복원, 불변, 구조, AUTO_INCREMENT, 판번호, 보호 행) 전부가 아니다');
     assert.ok(/information_schema_stats_expiry = 0/.test(code), 'AUTO_INCREMENT 를 낡은 캐시(stats_expiry)로 읽는다');
     // 판번호: 이 파일이 만든 13 에서 다음 판(이관 조각 migrations/v14-version-gate.sql, 13 에서 14)이 출발한다.
-    //   2026-10-21 부터 정본은 키가 db_structure_version 이고 값이 14 다. 체인 전체는 schema-guards ⑥ 이 본다.
+    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 같은 날 회의실 공용화(v15 조각)로 15 다. 체인 전체는 schema-guards ⑥ 이 본다.
     const nextMig = readFileSync(R('db/deploy/migrations/v14-version-gate.sql'), 'utf8');
-    assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
-    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '14', 'schema-calendar.sql 이 db_structure_version 14 를 시딩하지 않는다');
+    assert.ok(/^-- @migration from=13 to=14?
+/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
+    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '15', 'schema-calendar.sql 이 db_structure_version 15 를 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');
     assert.ok(/mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\\deploy\\migrate-2026-10-15-code-ids\.sql/.test(mig), '머리말에 실행 명령(utf8mb4, taskcalendar)이 없다');
@@ -423,7 +424,9 @@ export const checks = {
 
   // ⑥ 안 쓰는 UPDATE 권한(§8-3)
   unusedGrants(grants, writeDb, mig) {
-    for (const t of ['cal_entry_commit', 'cal_todo_day_note', 'cal_room']) {
+    //  cal_room 은 2026-10-21 회의실 공용화로 표째 없앴다(SHARED-ROOMS). 그 GRANT 도 없어야 한다(없는 표에 GRANT 는 1146).
+    assert.ok(!/ON\s+taskmgr\.cal_room\b/.test(grants), 'grants-calendar.sql 에 없앤 표 cal_room 의 GRANT 가 남았다');
+    for (const t of ['cal_entry_commit', 'cal_todo_day_note']) {
       const m = new RegExp('^GRANT\\s+([A-Z, ]+?)\\s+ON\\s+taskmgr\\.' + t + '\\s+TO', 'm').exec(grants);
       assert.ok(m, `grants-calendar.sql 에 ${t} 의 GRANT 가 없다`);
       assert.deepStrictEqual(m[1].split(',').map((s) => s.trim()).sort(), ['DELETE', 'INSERT', 'SELECT'],
@@ -489,7 +492,7 @@ test('번호 키③-c: 이관 SQL 은 보호 번호(구분 2, 상태 2)가 없�
 test('번호 키③-b: 이관 경로와 재구축 경로의 제약, 인덱스, 열, 표 COMMENT 가 글자까지 같다', () => checks.pathsAgree(STRUCT, USERS01, MIG));
 test('번호 키④: 운영 스크립트 기본 DB 는 taskcalendar(setup 원본만 taskmgr), 백업 계정 권한도 taskcalendar', () => checks.opsDefaults(OPS, SETUP, BACKUP_USER, APPLY));
 test('번호 키⑤: 낡은 진입점과 지난 이관 파일이 없고, 스크립트와 시험이 읽지 않는다', () => checks.legacyGone());
-test('번호 키⑥: cal_entry_commit, cal_todo_day_note, cal_room 에 UPDATE 권한이 없다, 이관이 거둔다', () => checks.unusedGrants(GRANTS, WRITE_DB, MIG));
+test('번호 키⑥: cal_entry_commit, cal_todo_day_note 에 UPDATE 권한이 없다, 이관이 거둔다(cal_room 은 표째 없다)', () => checks.unusedGrants(GRANTS, WRITE_DB, MIG));
 test('번호 키⑦: 회사 저장소 02, 03, apply.ps1 이 직급 번호 키를 전제한다', () => checks.companyRepo(SEED02, SEED03, APPLY));
 test('번호 키⑧: load-template, seed-dummy 가 번호 키를 따르고 db/README.md 에 비밀번호가 없다', () => checks.followers(LOAD, SEED_DUMMY, DB_README));
 test('번호 키⑧-b: 두 저장소의 추적 글 파일 어디에도 관리자 비밀번호 글자가 없다(§8-5)', () =>
@@ -531,11 +534,14 @@ test('번호 키 변이⑥: 백필 UPDATE 에서 updated_at 대입을 빼면 ③
     "   SET p.section_id = s.section_id, p.customer_id = c.customer_id, p.status_id = t.status_id;");
   assert.throws(() => checks.migrationShape(bad, CAL), /updated_at 을 자기 값으로/);
 });
-test('번호 키 변이⑦: 기본 DB 를 taskmgr 로 되돌리거나 cal_room 에 UPDATE 를 되살리면 ④, ⑥ 이 잡는다', () => {
+test('번호 키 변이⑦: 기본 DB 를 taskmgr 로 되돌리거나 cal_todo_day_note 에 UPDATE 를 되살리면 ④, ⑥ 이 잡는다', () => {
   const ops = { ...OPS, 'org-ops.ps1': mutate(OPS['org-ops.ps1'], '[string]$DbName = "taskcalendar",', '[string]$DbName = "taskmgr",') };
   assert.throws(() => checks.opsDefaults(ops, SETUP, BACKUP_USER, APPLY), /org-ops\.ps1 의 기본 DB/);
-  const g = mutate(GRANTS, "GRANT SELECT, INSERT, DELETE ON taskmgr.cal_room TO", "GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_room TO");
-  assert.throws(() => checks.unusedGrants(g, WRITE_DB, MIG), /cal_room 의 권한이/);
+  const g = mutate(GRANTS, "GRANT SELECT, INSERT, DELETE ON taskmgr.cal_todo_day_note TO", "GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_todo_day_note TO");
+  assert.throws(() => checks.unusedGrants(g, WRITE_DB, MIG), /cal_todo_day_note 의 권한이/);
+  //  없앤 표의 GRANT 를 되살려도 잡는다
+  const g2 = GRANTS + "\nGRANT SELECT, INSERT, DELETE ON taskmgr.cal_room TO 'taskmgr_app'@'%';\n";
+  assert.throws(() => checks.unusedGrants(g2, WRITE_DB, MIG), /cal_room 의 GRANT 가 남았다/);
 });
 test('번호 키 변이⑨: 보호 번호 가드를 끄거나, 켜기를 빼거나, 바닥을 낮추거나, 사후 E8 을 합에서 빼면 잡는다', () => {
   assert.throws(() => checks.fixedRowsMigration(mutate(MIG, "SET @g := IF(@fix_sec = 1 AND @fix_st = 1, 'DO 0',", "SET @g := IF(1 = 1, 'DO 0',"), STRUCT, SEED02), /에러로 멈추는 가드가 없다/);

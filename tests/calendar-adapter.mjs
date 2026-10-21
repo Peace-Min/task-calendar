@@ -783,13 +783,8 @@ function synthFixtureXml(projectUid) {
   t.push(`<todo id="t-tie-2" done="false" categoryId="c-alpha" due="2026-05-22" createdAt="${CA}" updatedAt="${UA}"><text>동률 짝 · 문서 앞</text><note/></todo>`);
   t.push(`<todo id="t-tie-1" done="false" categoryId="c-beta" due="2026-05-22" createdAt="${CA}" updatedAt="${UA}"><text>동률 짝 · 문서 뒤</text><note/></todo>`);
 
-  /* 회의실 — ★ 표시(문서) 순서가 이름 **오름차순으로도 내림차순으로도** 재현되지 않아야 한다.
-   *   cal_room 은 _no 가 없고 PK 가 (user_id, name) 이라, ORDER BY sort_order 를 빠뜨린 어댑터는
-   *   **이름순**을 돌려준다 — M6 가 재현하는 상태가 그것이고, M6b 가 그 반대 방향이다.
-   *   이 자리가 synth 에 있어야 하는 이유: 사용자의 실 data.xml 회의실 4개는 우연히 이미
-   *   이름순이라(읽기 전용이라 고칠 수도 없다) real 픽스처로는 M6 를 만들 수 없다(SKIP).
-   *   아래 배치의 이름순은 '101호 · A룸 · 대회의실 · 회의실 Z'(숫자<라틴<한글) — 양방향 모두 다르다.
-   *   ※ 순서를 바꾸려면 verifyLoaded 의 「픽스처 조건」이 조용한지 확인하고 바꿔라. */
+  /* 회의실: 2026-10-21 회의실 공용화(docs/SHARED-ROOMS.md)로 앱은 <rooms> 를 읽지 않는다. cal_room 도 없다.
+   *   그래도 옛 파일 모양을 그대로 두어 '있어도 무시한다'를 함께 본다(fromXML 결과에 rooms 키가 없어야 한다). */
   const rooms = ['회의실 Z', '101호', '대회의실', 'A룸'];
 
   const th = `<taskHours>` +
@@ -887,7 +882,7 @@ function loadFixtureIntoDb(exp, userId) {
 
   // ① 이 사용자의 cal_* 를 비운다(자식 먼저). 다른 사용자 행은 건드리지 않는다.
   for (const tbl of ['cal_todo_day_note', 'cal_entry_commit', 'cal_entry_except', 'cal_task_hours',
-    'cal_entry', 'cal_todo', 'cal_category', 'cal_room', 'cal_attendance', 'cal_user_pref']) {
+    'cal_entry', 'cal_todo', 'cal_category', 'cal_attendance', 'cal_user_pref']) {
     S.push(`DELETE FROM ${tbl} WHERE user_id=${U};`);
   }
 
@@ -964,10 +959,7 @@ function loadFixtureIntoDb(exp, userId) {
     }
   });
 
-  // ⑤ 회의실 — sort_order = 표시 순서(PK 는 name 이라, ORDER BY 를 빠뜨리면 이름순으로 나온다)
-  exp.rooms.forEach((r, i) => {
-    S.push(`INSERT INTO cal_room (user_id,name,sort_order) VALUES (${U},${q(r)},${i});`);
-  });
+  // ⑤ (회의실은 2026-10-21 에 없앴다. cal_room 이 없고 state 에도 rooms 가 없다)
 
   // ⑥ 과제별 공수 — 2단 맵 → 행. 안쪽 키는 과제 uid 다(G-1).
   const NOW = '2026-05-30 00:00:00.000';
@@ -1017,7 +1009,6 @@ function verifyLoaded(exp, userId, maps) {
     { key: 'cmt', sql: `SELECT COUNT(*) FROM cal_entry_commit WHERE user_id=${U}` },
     { key: 'todo', sql: `SELECT COUNT(*) FROM cal_todo WHERE user_id=${U}` },
     { key: 'dn', sql: `SELECT COUNT(*) FROM cal_todo_day_note WHERE user_id=${U}` },
-    { key: 'room', sql: `SELECT COUNT(*) FROM cal_room WHERE user_id=${U}` },
     { key: 'th', sql: `SELECT COUNT(*) FROM cal_task_hours WHERE user_id=${U}` },
     { key: 'att', sql: `SELECT COUNT(*) FROM cal_attendance WHERE user_id=${U}` },
     { key: 'pref', sql: `SELECT COUNT(*) FROM cal_user_pref WHERE user_id=${U}` },
@@ -1026,9 +1017,6 @@ function verifyLoaded(exp, userId, maps) {
     { key: 'catnos', sql: `SELECT cat_no FROM cal_category WHERE user_id=${U} ORDER BY sort_order` },
     { key: 'entnos', sql: `SELECT entry_no FROM cal_entry WHERE user_id=${U} ORDER BY sort_order` },
     { key: 'todonos', sql: `SELECT todo_no FROM cal_todo WHERE user_id=${U} ORDER BY sort_order` },
-    { key: 'roomsort', sql: `SELECT name FROM cal_room WHERE user_id=${U} ORDER BY sort_order` },
-    { key: 'roomname', sql: `SELECT name FROM cal_room WHERE user_id=${U} ORDER BY name` },
-    { key: 'roomnamedesc', sql: `SELECT name FROM cal_room WHERE user_id=${U} ORDER BY name DESC` },
   ], { what: '적재 검산' });
   const n = (k) => Number((b.get(k)[0] || ['0'])[0]);
   const want = {
@@ -1038,7 +1026,6 @@ function verifyLoaded(exp, userId, maps) {
     cmt: exp.entries.reduce((a, e) => a + (e.commits || []).length, 0),
     todo: exp.todos.length,
     dn: exp.todos.reduce((a, t) => a + Object.keys(t.dayNotes || {}).length, 0),
-    room: exp.rooms.length,
     th: Object.values(exp.taskHours || {}).reduce((a, m) => a + Object.keys(m).length, 0),
     att: Object.keys(exp.attendance || {}).length,
     pref: 1,
@@ -1068,16 +1055,6 @@ function verifyLoaded(exp, userId, maps) {
       ? `${seq.length}건뿐이라 오름·내림 둘 다 깨는 배치가 존재하지 않는다`
       : `표시 순서가 _no 의 ${seq.every((v, i) => i === 0 || seq[i - 1] < v) ? '오름' : '내림'}차순으로 그대로 재현된다(${seq.join(',')})`;
     note(`[${curPhase}] 픽스처 조건 미달 — ${what}: ${why} — 이 픽스처로는 ${what} 의 ORDER BY 누락(및 계약이 금지한 _no 정렬키)을 검출할 수 없다`);
-  }
-  // 회의실은 _no 가 없다 — PK 가 name 이라, ORDER BY 를 빠뜨리면 **이름순**으로 나온다.
-  const same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
-  const roomBySort = seqOf('roomsort');
-  if (exp.rooms.length > 1) {
-    if (same(roomBySort, seqOf('roomname'))) {
-      note(`[${curPhase}] 픽스처 조건 미달 — rooms 의 표시 순서 = 이름 순서라 이 픽스처로는 rooms ORDER BY 누락을 검출할 수 없다`);
-    } else if (same(roomBySort, seqOf('roomnamedesc'))) {
-      note(`[${curPhase}] 픽스처 조건 미달(절반) — rooms 의 표시 순서 = 이름 **역순**이라 이 픽스처로는 'ORDER BY name DESC' 를 쓴 어댑터를 검출할 수 없다`);
-    }
   }
   return { catNoSeq };
 }
@@ -1403,7 +1380,6 @@ namespace TaskCalendarWidget
             var entryNoToObj = new Dictionary<int, Dictionary<string, object>>();
             var todos = new List<Dictionary<string, object>>();
             var todoNoToObj = new Dictionary<int, Dictionary<string, object>>();
-            var rooms = new List<string>();
             var taskHours = new Dictionary<string, Dictionary<string, double>>();
             var attendance = new Dictionary<string, object>();
             Dictionary<string, object> pref = null;
@@ -1553,13 +1529,6 @@ namespace TaskCalendarWidget
                             ((Dictionary<string, object>)p["dayNotes"])[S(rd, "d")] = S(rd, "note_text");
                     }
                 }
-                // ⑥ cal_room — ORDER BY sort_order → 문자열 배열(G-5)
-                using (var cmd = new MySqlCommand("SELECT name FROM cal_room WHERE user_id=@u ORDER BY sort_order", conn))
-                {
-                    cmd.Parameters.AddWithValue("@u", userId);
-                    using var rd = (MySqlDataReader)await cmd.ExecuteReaderAsync(ct);
-                    while (await rd.ReadAsync(ct)) rooms.Add(S(rd, "name"));
-                }
                 // ⑦ cal_task_hours → { 날짜: { 과제uid: 시간 } }  안쪽 키는 uid 다(G-1/G-5)
                 using (var cmd = new MySqlCommand(
                     "SELECT DATE_FORMAT(work_date,'%Y-%m-%d') AS d, cat_no, hours FROM cal_task_hours " +
@@ -1623,7 +1592,6 @@ namespace TaskCalendarWidget
             outObj["gitAuthor"] = pref["gitAuthor"];
             outObj["svnAuthor"] = pref["svnAuthor"];
             outObj["todos"] = todos;
-            outObj["rooms"] = rooms;
             outObj["reportMarker"] = pref["reportMarker"];
             outObj["reportMarkerCustom"] = pref["reportMarkerCustom"];
             outObj["reportIndent"] = pref["reportIndent"];
@@ -2056,7 +2024,8 @@ function normalizeExpected(exp, { localReposAccepted }) {
 
 /* ────────────────────────────── 10. 계약별 개별 검사 ────────────────────────────── */
 
-const TOP15 = ['categories', 'entries', 'todos', 'rooms', 'taskHours', 'attendance', 'gitAuthor', 'svnAuthor',
+//  (이름은 옛 15키 그대로 둔다. 2026-09-01 lsMigrated, 2026-10-21 rooms 가 빠져 지금은 13키다)
+const TOP15 = ['categories', 'entries', 'todos', 'taskHours', 'attendance', 'gitAuthor', 'svnAuthor',
   'reportMarker', 'reportMarkerCustom', 'reportIndent', 'gitCommitBody', 'reportFormatPrefs', 'reportFont'];
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 // G-1d — state 에 흘리면 안 되는 이름(자식 표의 부모번호·소유자축·정렬 컬럼·DB 컬럼명 그대로)
@@ -2319,7 +2288,7 @@ function reportDiffs(diffs, label) { return emitDiffs(diffs, label, { print: tru
 //  부팅 조회가 읽어야 하는 표. cal_entry_commit 은 2026-09-01 G-7 개정으로 **들어왔다**
 //  (그전에는 이 목록 밖이었고, 오히려 나타나면 위반이었다).
 const NINE = ['cal_category', 'cal_entry', 'cal_entry_except', 'cal_entry_commit', 'cal_todo',
-  'cal_todo_day_note', 'cal_room', 'cal_task_hours', 'cal_attendance', 'cal_user_pref'];
+  'cal_todo_day_note', 'cal_task_hours', 'cal_attendance', 'cal_user_pref'];
 
 function psAvailable() {
   const r = mysqlRun(`SELECT ENABLED FROM performance_schema.setup_consumers WHERE NAME='statements_digest';`,
@@ -2453,13 +2422,7 @@ function mutationSuite(expNorm, act, expRaw, dbFacts) {
    *   실 data.xml 은 사용자 자료라 고칠 수 없으므로 그 자리는 synth 가 덮는다.
    *   M6b(이름 역순)를 나란히 두는 이유는 `_no` 에서 실제로 났던 사고와 같은 부류이기 때문이다:
    *   표시 순서가 어느 한쪽 방향으로 재현되면 그 방향으로 정렬한 어댑터가 초록으로 통과한다. */
-  add('M6', 'G-5 — rooms ORDER BY 누락(이름 오름차순으로)', 'DIFF', /기준과 다르다/, (a) => {
-    a.rooms = a.rooms.slice().sort(); return 'rooms 를 이름 오름차순으로 정렬';
-  }, (a) => a.rooms.length > 1 && a.rooms.join('|') !== a.rooms.slice().sort().join('|'));
-
-  add('M6b', 'G-5 — rooms 를 이름 내림차순으로(금지된 정렬키)', 'DIFF', /기준과 다르다/, (a) => {
-    a.rooms = a.rooms.slice().sort().reverse(); return 'rooms 를 이름 내림차순으로 정렬';
-  }, (a) => a.rooms.length > 1 && a.rooms.join('|') !== a.rooms.slice().sort().reverse().join('|'));
+  //  (M6, M6b: rooms 의 ORDER BY 변이는 2026-10-21 회의실 공용화로 대상이 없어졌다)
 
   add('M7', 'G-5 — 근태 맵에서 하루가 사라짐', 'DIFF', /키가 없다/, (a) => {
     const k = Object.keys(a.attendance)[0]; delete a.attendance[k]; return `attendance['${k}'] 삭제`;
@@ -2808,7 +2771,7 @@ async function main() {
     const kmiss = TOP15.filter((k) => !Object.prototype.hasOwnProperty.call(exp, k));
     if (kmiss.length) envFail(`기준(fromXML) 결과에 15키가 없다 — 오라클이 이상하다: ${kmiss.join(', ')}`);
     log(`기준 산출 — 과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · ` +
-      `장소 ${exp.rooms.length} · 공수 ${Object.keys(exp.taskHours).length}일 · 근태 ${Object.keys(exp.attendance).length}일`);
+      `공수 ${Object.keys(exp.taskHours).length}일 · 근태 ${Object.keys(exp.attendance).length}일`);
 
     const maps = loadFixtureIntoDb(exp, userId);
     verifyLoaded(exp, userId, maps);
@@ -2859,7 +2822,7 @@ async function main() {
 
     RUN.fixtures.push({
       name: f.name,
-      summary: `과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · 장소 ${exp.rooms.length} · ` +
+      summary: `과제 ${exp.categories.length} · 일정 ${exp.entries.length} · 할일 ${exp.todos.length} · ` +
         `커밋 ${dbFacts.commitRows}행(부팅에서 적재 확인) · 근태 ${Object.keys(exp.attendance).length}일`,
     });
 

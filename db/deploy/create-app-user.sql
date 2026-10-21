@@ -25,6 +25,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.project      TO 'taskmgr_app'@'%
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.customer     TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.section_code TO 'taskmgr_app'@'%';   -- 구분 코드값(위젯 관리)
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.status_code  TO 'taskmgr_app'@'%';   -- 상태 코드값(위젯 관리)
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.room_code    TO 'taskmgr_app'@'%';   -- 공용 회의실 목록(관리 화면, 2026-10-21 SHARED-ROOMS)
 
 -- 사용자·조직 도메인의 두 마스터. 2026-09-18 직급·소속 관리(docs/ORG-TITLE-ADMIN.md §6).
 --   위 넷은 과제 도메인이고 이 둘은 아니지만, §0-5 가 세 파일을 **같은 목록**으로 다시 돌리게 해 두었다.

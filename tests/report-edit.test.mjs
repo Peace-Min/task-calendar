@@ -80,7 +80,7 @@ const S = {
     assert.ok(arm > c && c > 0, '대기 표지를 확인보다 먼저 세운다 — 거절해도 표지가 남는다');
     assert.ok(!d.slice(arm, send).includes('\n      ') || d.slice(arm, send).split('\n').length === 2, '대기 표지가 보내기 바로 앞 줄이 아니다');
     assert.strictEqual(countOf(d, 'rptDraftArmSend('), 1, '대기 표지가 일간 갈래에 한 번이 아니다');
-    const wk = src.slice(src.indexOf('Platform.report.submitDaily(payload);'), src.indexOf("$('#btnRooms').addEventListener"));
+    const wk = src.slice(src.indexOf('Platform.report.submitDaily(payload);'), src.indexOf("$('#btnExport').addEventListener"));
     assert.ok(wk.indexOf('rptDraftDisarmSend();') > 0 && wk.indexOf('rptDraftDisarmSend();') < wk.indexOf('Platform.report.submitWeekly('), '주간 전송이 일간 대기 표지를 거두지 않는다 — 주간 채우기 회신이 일간 임시 저장을 지운다');
     assert.ok(extractFunction(src, 'armRptSendWatchdog').includes('rptDraftDisarmSend();'), '워치독 만료가 대기 표지를 거두지 않는다 — 늦게 온 다른 회신이 임시 저장을 지울 수 있다');
     assert.ok(extractFunction(src, 'rptDraftArmSend').includes('Platform.caps.reportAuto'), '브라우저(회신 없음)에서도 표지를 세운다');

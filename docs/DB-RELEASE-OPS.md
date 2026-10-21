@@ -148,7 +148,7 @@
    - 값이 바뀌는 열: 새 열 추가, 트랜잭션으로 변환해 채우기, 검증, 필수로 바꾸기, 옛 열 삭제.
    - 큰 변경: 새 표(`X_new`)를 만들어 채우고 검증한 뒤 `RENAME TABLE X TO X_old, X_new TO X` 한 문장으로 바꿔 끼운다(여러 표를 원자적으로 바꾼다). 앞서 실패한 실행의 잔여물(`X_new`)이 있으면 먼저 지운다.
    - 값 바꾸기(INSERT, UPDATE, DELETE)는 `START TRANSACTION ... COMMIT` 으로 묶는다. 그 사이에 구조 변경 문장을 섞지 않는다(자동 확정된다).
-   - "지우고 다시 넣기" 로 저장하는 표(`cal_room`, `cal_todo_day_note`, `cal_entry_commit`, `cal_entry_except`)는 앱의 저장 방식을 함께 확인한다.
+   - "지우고 다시 넣기" 로 저장하는 표(`cal_todo_day_note`, `cal_entry_commit`, `cal_entry_except`)는 앱의 저장 방식을 함께 확인한다.
 4. **검증:** 행 수, 남은 NULL 등. 틀리면 오류로 멈춘다(`db_updating = 1` 인 채로).
 5. **구조 번호 올리기(끝에서 한 줄):** `UPDATE cal_schema_meta SET v = 'N+1', updated_at = UTC_TIMESTAMP(3)` 다음 줄 `WHERE k = 'db_structure_version' AND v = 'N';`. 이미 올라가 있으면 0행이다. `db_updating` 은 그대로 1 이라 앱은 끝의 열기까지 계속 기다린다.
 6. **쓰지 않는 것:** `db_updating`(닫기와 열기는 감싸개의 몫), 감싸개 변수 `@r_`.

@@ -437,10 +437,10 @@ test('변이②: DROP 순서를 뒤집으면 dropOrderChildFirst 가 실패한�
 });
 
 test('변이③: 마이그레이션 체인에 구멍을 내면 migrationChain 이 실패한다', () => {
-  //  2026-10-21 남은 파일이 둘(12 → 13, 13 → 14)이라, 그 뒤에 한 칸 떨어진 가짜 파일(15 → 16)을 붙여 v=14 출발이 없는 상태를 만든다.
+  //  2026-10-21 남은 판이 셋(12 → 13, 13 → 14, 조각 14 → 15)이라, 그 뒤에 한 칸 떨어진 가짜 파일(16 → 17)을 붙여 v=15 출발이 없는 상태를 만든다.
   const holed = new Map(migrateSrc);
   holed.set('migrate-2099-01-01-ghost.sql',
-    "UPDATE cal_schema_meta SET v = '16', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '15';\n");
+    "UPDATE cal_schema_meta SET v = '17', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '16';\n");
   assert.doesNotThrow(() => checks.migrationChain(migrateSrc, canonSql), '원본은 통과해야 한다');
   assert.throws(() => checks.migrationChain(holed, canonSql), /체인이 끊겼다/);
 });

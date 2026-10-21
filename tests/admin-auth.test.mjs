@@ -193,6 +193,12 @@ const ORG_WRITE_SQL = /\b(?:INSERT\s+INTO\s+(?:title_code|org_unit)|UPDATE\s+(?:
 const ORG_WRITERS = ['TitleAddAsync', 'TitleRenameAsync', 'TitleReorderAsync', 'TitleSetActiveAsync',
                      'UnitAddAsync', 'UnitMoveAsync', 'UnitRenameAsync', 'UnitReorderAsync', 'UnitSetActiveAsync'];
 
+// 공용 회의실(room_code, 2026-10-21 docs/SHARED-ROOMS.md)을 쓰는 SQL 의 모양. 직급·소속과 같은 편이다:
+//   회사 전원의 장소 칸에 보이는 목록이라 관리자의 것이고, editor 에게 열린 발주처·코드값과 다르다.
+const ROOM_WRITE_SQL = /\b(?:INSERT\s+INTO\s+room_code|UPDATE\s+room_code|DELETE\s+FROM\s+room_code)\b/;
+// 그 넷(추가, 이름변경, 삭제, 순서). 판정은 위 모양이 하고, 이 목록은 그 판정이 덮는 범위의 증거다.
+const ROOM_WRITERS = ['AddRoomAsync', 'DeleteRoomAsync', 'RenameRoomAsync', 'ReorderRoomsAsync'];
+
 // 휴지통 세 함수(TRASH-DELETE §4.1) — 조회·복구·삭제 전부 관리자 관문이다.
 //   조회(LoadTrashJsonAsync)는 쓰기 SQL 이 없어 위 모양 검사에 걸리지 않는다. 그래서 여기 이름으로 적는다:
 //   '숨긴 항목 전량을 훑는 목록'은 읽기라도 관리자만 볼 것이라는 결정이 이 앱의 계약이기 때문이다.
@@ -235,6 +241,7 @@ const gate = {
       `쓰기 SQL 을 가진 메서드가 ${writers.length}개뿐이다(12개 이상이어야 한다 — 탐지기가 헛돌고 있다)`);
     const userWriters = [];
     const orgWriters = [];
+    const roomWriters = [];
     for (const w of writers) {
       //  직급·소속 마스터도 관리자 관문이다(2026-09-18 · ORG-TITLE-ADMIN §2). app_user 분기보다 **앞에**
       //  두지 않는다: 둘 다 관리자 관문을 요구하므로 순서가 판정을 바꾸지 않고, 한 메서드가 두 표를 함께
@@ -247,6 +254,17 @@ const gate = {
           `${w.name} 가 읽기 관문으로 연결을 열고 직급·소속 마스터를 쓴다(권한 검사 우회)`);
         assert.ok(/OpenAdminAsync\(/.test(w.body),
           `${w.name} 가 직급·소속 마스터를 쓰면서 관리자 관문을 지나지 않는다 — editor 가 조직·직급을 고칠 수 있다`);
+        continue;
+      }
+      //  공용 회의실도 관리자 관문이다(2026-10-21, SHARED-ROOMS §1). 직급·소속과 같은 문장 구조다.
+      if (!USER_WRITE_SQL.test(w.body) && ROOM_WRITE_SQL.test(w.body)) {
+        roomWriters.push(w.name);
+        assert.ok(!/OpenWriteAsync\(/.test(w.body),
+          `${w.name} 가 공용 회의실을 쓰면서 쓰기 관문(editor 통과)으로 연결을 연다. 관리자 전용이라는 계약이 깨진다`);
+        assert.ok(!/OpenReadAsync\(/.test(w.body),
+          `${w.name} 가 읽기 관문으로 연결을 열고 공용 회의실을 쓴다(권한 검사 우회)`);
+        assert.ok(/OpenAdminAsync\(/.test(w.body),
+          `${w.name} 가 공용 회의실을 쓰면서 관리자 관문을 지나지 않는다. editor 가 회사 전원의 회의실 목록을 고칠 수 있다`);
         continue;
       }
       if (USER_WRITE_SQL.test(w.body)) {
@@ -273,6 +291,9 @@ const gate = {
       `app_user 를 쓰는 메서드가 [${userWriters.join(', ')}] 이다 — 늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
     assert.deepStrictEqual(orgWriters.sort(), ORG_WRITERS,
       `직급·소속 마스터를 쓰는 메서드가 [${orgWriters.join(', ')}] 이다 — 아홉이어야 한다(ORG-TITLE-ADMIN §4.2). ` +
+      `늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
+    assert.deepStrictEqual(roomWriters.sort(), ROOM_WRITERS,
+      `공용 회의실을 쓰는 메서드가 [${roomWriters.join(', ')}] 이다. 넷이어야 한다(SHARED-ROOMS §3). ` +
       `늘었다면 그 메서드도 관리자 관문을 지나는지 사람이 확인할 것`);
   },
 
@@ -624,4 +645,19 @@ test('변이G2-c: 웹이 새 명령으로 비밀번호를 실어 보내면 웹 �
 test('변이G2-d: 로그인 외의 왕복이 비밀번호를 실으면 웹 검사가 실패한다', () => {
   const bad = mutate(src, "await hostRequest('userInfoGet', {}, 10000)", "await hostRequest('unlockEditing', { pw }, 10000)");
   assert.throws(() => revive.webSendsSecretOnlyToLogin(bad), /로그인\(userLogin\) 하나뿐이어야 한다/);
+});
+
+// ── 공용 회의실(2026-10-21, SHARED-ROOMS §1): 쓰기 넷이 관리자 관문을 지나는지 변이로 증명한다 ──
+test('변이A7: 회의실 삭제를 쓰기 관문(editor 통과)으로 내리면 대상 표 검사가 실패한다', () => {
+  const bad = mutate(projectDb,
+    'try { conn = await OpenAdminAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 삭제): "',
+    'try { conn = await OpenWriteAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 삭제): "');
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad),
+    /DeleteRoomAsync 가 공용 회의실을 쓰면서 쓰기 관문\(editor 통과\)으로 연결을 연다/);
+});
+test('변이A7-b: 회의실 순서를 읽기 관문으로 열면 대상 표 검사가 실패한다', () => {
+  const bad = mutate(projectDb,
+    'try { conn = await OpenAdminAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 순서): "',
+    'try { conn = await OpenReadAsync(cts.Token); }\n                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 순서): "');
+  assert.throws(() => gate.writeSqlGoesThroughGate(bad), /ReorderRoomsAsync 가 읽기 관문으로 연결을 열고 공용 회의실을 쓴다/);
 });

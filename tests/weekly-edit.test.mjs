@@ -23,7 +23,7 @@ function mutate(text, find, repl) {
 const countOf = (hay, needle) => hay.split(needle).length - 1;
 function weeklySendBranch(src) {
   const a = src.indexOf("rptDraftDisarmSend();   // 주간 채우기 회신");
-  const b = src.indexOf("$('#btnRooms').addEventListener", a);
+  const b = src.indexOf("$('#btnExport').addEventListener", a);
   assert.ok(a > 0 && b > a, '주간 전송 갈래를 찾지 못했다');
   return src.slice(a, b);
 }

@@ -136,8 +136,8 @@ function ownerFkClauses(sql) {
 }
 function checkOwnerFkRestrict(sql) {
   const clauses = ownerFkClauses(sql);
-  assert.ok(clauses.length >= 11,
-    'app_user 를 가리키는 FK 를 ' + clauses.length + '개만 찾았다 — 2026-09-09 실측은 11개다. ' +
+  assert.ok(clauses.length >= 10,
+    'app_user 를 가리키는 FK 를 ' + clauses.length + '개만 찾았다 — 2026-09-09 실측은 11개, 2026-10-21 cal_room 폐지로 10개다. ' +
     '못 찾았으면 판정한 것이 아니다(정규식이 빗나갔거나 표가 사라졌다).');
   const cascades = clauses.filter((c) => /ON\s+DELETE\s+CASCADE/i.test(c));
   assert.strictEqual(cascades.length, 0,

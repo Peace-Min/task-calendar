@@ -33,7 +33,6 @@ function buildDefaultState(source) {
     PAD_SRC + '\n' + YMD_SRC + '\n' +
     "let seq = 0; const uid = prefix => prefix + '-' + (++seq);\n" +
     "const nowIso = () => '2026-07-01T00:00:00.000Z';\n" +
-    "const DEFAULT_ROOMS = [];\n" +
     defaultTasksSrc(source) +
     extractFunction(source, 'defaultState') + '\nreturn defaultState;'
   )();

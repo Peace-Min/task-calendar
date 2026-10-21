@@ -398,7 +398,7 @@ function wipeTarget() { wipeUser(TU); }
 function wipeUser(login) {
   const u = one(`SELECT user_id FROM app_user WHERE login_id='${login}'`); if (!u) return;
   for (const t of ['cal_entry_commit', 'cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
-                   'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_room', 'cal_user_pref'])
+                   'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_user_pref'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, `정리(${t})`);
   sql(`DELETE FROM cal_user_rev WHERE user_id=${u}`, 'rev 정리');
   sql(`DELETE FROM app_user WHERE user_id=${u}`, '대상 삭제');

@@ -26,7 +26,8 @@ MySQL 서버에 **DB 구조(테이블) + 앱 계정**을 만드는 도구. **지
 | 파일 | 역할 |
 |---|---|
 | `setup-taskcalendar.cmd` / `setup-taskcalendar.ps1` | **원큐(진입점)**: 새 DB 구조 + 회사 시드 + 원본 과제 복사(코드표 이름을 번호로) + 앱 권한 + 검증. 아래 캘린더 트랙 표의 같은 줄 참조 |
-| `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드 |
+| `schema-structure.sql` | 과제 트랙 구조 DDL(customer, section_code, status_code, project, room_code). 코드표는 번호 키(2026-10-15), 기본 코드 행은 고정 번호로 시드. room_code 는 회사 공용 회의실 목록(2026-10-21, 관리자만 고친다, docs/SHARED-ROOMS.md) |
+| `migrations/v15-shared-rooms.sql` | **이관 조각**(14 → 15, 2026-10-21). 혼자 돌리지 않는다. 배포 SQL(release-v<버전>.sql)에 들어가 room_code 를 만들고, 사람마다 두던 cal_room 의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣고 검증한 뒤 cal_room 을 지운다. 이미 15 이상이면 건너뛴다 |
 | `create-app-user.sql` | 앱 계정 생성과 과제 표 권한(setup 이 스키마 이름을 바꿔 적용한다) |
 | `load-template.sql` | **내부망 LLM용** 데이터 INSERT 템플릿 + 규칙(이름으로 적고 번호로 바꿔 넣는다) |
 | `migrate-2026-10-15-code-ids.sql` | **데이터가 있는 로컬 DB 전용 1회 이관**(v12 → v13). 코드표 넷(발주처, 구분, 상태, 직급)을 번호 키로. 절단 관문(BINARY)과 사후 검증이 어긋나면 에러로 멈춘다. 언제, 어떻게는 아래 '코드표 번호 키 이관' 절 |
@@ -289,7 +290,7 @@ init-calendar.cmd -DbHost 192.168.0.50 -Port 3306
 - **가드(아무것도 바꾸기 전)**: 대상 표 7개, `schema_version = '12'`, 옛 모양(이름 키)인지, 문자셋, 뷰와 트리거 없음, 외래키 모양, 데이터 사전 점검.
 - **절단 관문(옛 열을 지우기 직전)**: 번호로 되살린 이름이 스냅숏(과제 uid 별 발주처, 구분, 상태와 사용자별 직급)과 `BINARY` 로 한 글자도 다르지 않고 NULL 여부도 같아야 합니다. 시드 이름은 고정 번호 지도(구분 2=선진행, 상태 2=종료 등)로 번호를 받고, 나머지는 MAX+1 부터 이름순입니다.
 - **사후 검증**: 고아 0, 표별 행 수 불변, 이름 복원 `BINARY` 일치, `cal_*` 행 수와 `cal_user_rev` 불변, 구조, `AUTO_INCREMENT` > MAX. 어긋나면 실행을 실패시킵니다.
-- 끝으로 앱 계정의 안 쓰는 `UPDATE` 권한(`cal_entry_commit`, `cal_todo_day_note`, `cal_room`)을 거둡니다(CODE-TABLE-IDS §8-3).
+- 끝으로 앱 계정의 안 쓰는 `UPDATE` 권한(`cal_entry_commit`, `cal_todo_day_note`, `cal_room`)을 거둡니다(CODE-TABLE-IDS §8-3). `cal_room` 은 2026-10-21 구조 번호 15 에서 표째 없앴습니다(SHARED-ROOMS).
 - 사람이 따로 할 대조: 빈 격리 DB 에 `setup-taskcalendar` 로 새로 만든 결과와 `information_schema`(열, 인덱스, 외래키, CHECK, 표 COMMENT)가 같아야 합니다. 질의 예는 파일 머리말 【대조】.
 
 **멈추면.** 조건이 어긋나면 '없는 표 이름'을 SELECT 해 `ERROR 1146` 으로 멈춥니다. 마지막 *"중단: …"* 줄이 이유입니다.

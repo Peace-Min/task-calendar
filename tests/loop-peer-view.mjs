@@ -182,7 +182,7 @@ function setup() {
       `VALUES (${t},1,'t-pv-1','비밀 할일','비밀 비고',0,'normal',0,'2026-01-01 00:00:00.000','2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 할일' });
   //  ★ 새어 나오면 안 되는 것들(P3) — '안 준다'를 증명하려면 있어야 한다.
-  sql(`INSERT INTO cal_room (user_id,name,sort_order) VALUES (${t},'비밀회의실',0)`, { readOnly: false, what: '대상 회의실' });
+  //  (회의실은 2026-10-21 부터 사람마다 두지 않는다. 회사 공용 room_code 라 열람 창이 숨길 개인 회의실이 없다, SHARED-ROOMS)
   sql(`INSERT INTO cal_task_hours (user_id,work_date,cat_no,hours,updated_at) VALUES (${t},'2026-09-10',1,7.25,'2026-01-01 00:00:00.000')`,
       { readOnly: false, what: '대상 과제별 시간' });
   sql(`INSERT INTO cal_attendance (user_id,work_date,status,overtime,updated_at) VALUES (${t},'2026-09-10','2',3,'2026-01-01 00:00:00.000')`,
@@ -193,7 +193,7 @@ function cleanup() {
     const id = userId(u);
     if (!id) continue;
     for (const t of ['cal_entry_commit', 'cal_entry_except', 'cal_todo_day_note', 'cal_task_hours',
-                     'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_room', 'cal_user_pref'])
+                     'cal_attendance', 'cal_entry', 'cal_todo', 'cal_category', 'cal_user_pref'])
       sql(`DELETE FROM ${t} WHERE user_id=${id}`, { readOnly: false, what: `정리(${t})` });
     sql(`DELETE FROM cal_user_rev WHERE user_id=${id}`, { readOnly: false, what: 'rev 정리' });
     sql(`DELETE FROM app_user WHERE user_id=${id}`, { readOnly: false, what: '사용자 정리' });
@@ -254,7 +254,6 @@ try {
   for (const k of ['desc', 'gitRepo', 'svnRepo', 'usesRepo'])
     ok(`과제에 ${k} 키가 없다(설정·저장소 경로)`, !(k in c1));
   const blob = JSON.stringify(a);
-  ok('회의실 목록이 새지 않는다', !blob.includes('비밀회의실'));
   ok('과제별 시간·근태가 새지 않는다', !/taskHours|attendance|7\.25/.test(blob));
   ok('거부 응답에는 데이터가 없다',
      Object.keys(peek(U_SELF, U_IN)).join(',') === 'allowed');

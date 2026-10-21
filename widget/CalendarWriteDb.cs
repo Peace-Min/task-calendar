@@ -172,7 +172,6 @@ namespace TaskCalendarWidget
                 //     · cal_migration_log 재실행 방지 마커. DELETE 권한도 없다
                 //     · cal_report_*      보고한 사실은 캘린더 데이터가 아니다(FK 도 없다).
                 //                         가져오기로 지난 보고 이력이 사라지면 안 된다
-                //     · cal_room          8번이 어차피 전량 교체한다
                 //     · cal_user_pref     9번이 UPSERT 한다(토큰 검사 없음)
                 if (replaceAll)
                 {
@@ -425,17 +424,9 @@ namespace TaskCalendarWidget
                 del += await DeleteMissing(conn, tx, u, tokens, "attendance:", seenAt, ct,
                     k => ("cal_attendance", $"work_date='{k.Split(':')[1]}'"), now);
 
-                // ── 8. 회의실 — 토큰이 없는 단순 목록이라 전량 교체 ───────────────────
-                await Exec(conn, tx, $"DELETE FROM cal_room WHERE user_id={u}", ct);
-                i = 0;
-                foreach (var r in Arr(st, "rooms"))
-                {
-                    string nm = r.ValueKind == JsonValueKind.String ? (r.GetString() ?? "").Trim() : "";
-                    if (nm.Length == 0) continue;
-                    await Exec(conn, tx, $"INSERT IGNORE INTO cal_room (user_id,name,sort_order) VALUES ({u},@n,{i})",
-                        ct, new List<(string, object?)> { ("@n", nm) }, now);
-                    i++;
-                }
+                // ── 8. (회의실은 2026-10-21 에 없앴다) ──────────────────────────────────
+                //   사람마다 두던 회의실 목록(cal_room)은 회사 공용 room_code 로 갔다(docs/SHARED-ROOMS.md).
+                //   공용 목록은 관리자만 관리 화면에서 고친다(ProjectDb, OpenAdminAsync). 저장은 회의실을 다루지 않는다.
 
                 // ── 9. 설정(사용자당 1행) ─────────────────────────────────────────────
                 var pp = PrefParams(st);
@@ -732,17 +723,6 @@ namespace TaskCalendarWidget
                     att[day.Name] = status + "|" + (IntOrNull(day.Value, "overtime") ?? 0).ToString(CultureInfo.InvariantCulture);
                 }
             rows.Add(new object?[] { "attendance", att });
-
-            //  회의실 — 앞뒤 공백 제거 · 빈 이름 제외 · 같은 이름은 처음 것만(INSERT IGNORE)
-            var rooms = new List<string>();
-            var seenRoom = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var r in Arr(st, "rooms"))
-            {
-                string nm = r.ValueKind == JsonValueKind.String ? (r.GetString() ?? "").Trim() : "";
-                if (nm.Length == 0 || !seenRoom.Add(nm)) continue;
-                rooms.Add(nm);
-            }
-            rows.Add(new object?[] { "rooms", rooms });
 
             //  설정 — 글꼴 크기는 읽기가 NULL 을 0 으로 돌려주므로 같은 규칙으로 맞춘다
             var pref = Vals(PrefParams(st));

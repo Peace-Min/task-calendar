@@ -339,8 +339,9 @@ if (!JSDOM) {
       const t1 = p.todos.find(t => t.id === 't-1');
       assert.strictEqual(t1.prio, 'high');
       assert.strictEqual(t1.note, '세부 노트');
-      // rooms
-      assert.deepStrictEqual(p.rooms, ['101호', '201호', '303호']);
+      // rooms: 2026-10-21 회의실 공용화(docs/SHARED-ROOMS.md). 개인 회의실은 내보내지도 읽지도 않는다
+      assert.ok(!('rooms' in p), 'fromXML 결과에 rooms 가 없어야 한다(공용 목록은 loadCodes 로 온다)');
+      assert.ok(!/<rooms[s>]/.test(ev('toXML()')), 'toXML 이 <rooms> 를 쓴다');
     });
 
     // ── 하위호환: 미지 속성 무시 + 구버전(선택 속성 부재) 파싱 무손상 ─────────
@@ -360,7 +361,6 @@ if (!JSDOM) {
     });
 
     test('backward-compat: 구버전 XML(hours/location/vcs/rooms/svnAuthor 부재) — 안전 기본값', () => {
-      const DEF_ROOMS = evJSON('DEFAULT_ROOMS');   // 하드코딩 대신 컨텍스트에서 읽어 드리프트 방지
       const oldXml =
         '<?xml version="1.0" encoding="UTF-8"?>\n' +
         '<taskCalendar version="1" generator="old" seenVersion="0.3" gitAuthor="old@corp.com">' +
@@ -390,9 +390,9 @@ if (!JSDOM) {
       assert.strictEqual(p.entries[0].endDate, '');
       assert.strictEqual(p.entries[0].recur, null);
       assert.deepStrictEqual(p.entries[0].recurExcept, []);
-      // todos 없음 → [], rooms 요소 없음 → 기본값
+      // todos 없음 → [], rooms 는 2026-10-21 부터 읽지 않는다(결과에 키가 없다)
       assert.deepStrictEqual(p.todos, []);
-      assert.deepStrictEqual(p.rooms, DEF_ROOMS);
+      assert.ok(!('rooms' in p), 'rooms 키가 남았다(회의실 공용화)');
       // svnAuthor 속성 부재 → gitAuthor 복사(1회 마이그레이션)
       assert.strictEqual(p.gitAuthor, 'old@corp.com');
       assert.strictEqual(p.svnAuthor, 'old@corp.com');
@@ -1661,8 +1661,8 @@ if (!JSDOM) {
       ev("state.reportFont={family:'',size:0}; reportMode='daily'");   // 상태 원복
     });
 
-    test('prefs 부재 XML → 기본값(-,"",2) + entries/todos/commits/rooms 무손실(가산적)', () => {
-      seed(roundtripState);   // 4 엔트리(커밋 2건 포함)+2 todos+rooms
+    test('prefs 부재 XML → 기본값(-,"",2) + entries/todos/commits 무손실(가산적)', () => {
+      seed(roundtripState);   // 4 엔트리(커밋 2건 포함)+2 todos
       let xml = ev('toXML()');
       xml = xml.replace(/<prefs\b[^>]*\/>/, '');
       assert.ok(!/<prefs/.test(xml), 'prefs 요소 제거됨');
@@ -1676,7 +1676,6 @@ if (!JSDOM) {
       assert.strictEqual(byId['e-2'].commits.length, 2);
       assert.deepStrictEqual(byId['e-2'].commits.map(c => c.subject), ['첫 커밋', '둘째 커밋']);
       assert.strictEqual(p.todos.length, 2);
-      assert.deepStrictEqual(p.rooms, ['101호', '201호', '303호']);
     });
     test('prefs 범위/길이 방어: reportIndent clamp 0..6, 9자 custom 무시', () => {
       seed(fmtState('1.', '', 2));

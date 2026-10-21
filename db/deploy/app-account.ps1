@@ -69,8 +69,8 @@ try {
   # 생성 또는 비번 재설정 (계정만; 테이블/데이터 무관)
   if((Exec "CREATE USER IF NOT EXISTS '$AppUser'@'%' IDENTIFIED BY '$($AppPassword -replace "'","''")';") -ne 0){ Die "계정 생성 실패." }
   if((Exec "ALTER USER '$AppUser'@'%' IDENTIFIED BY '$($AppPassword -replace "'","''")';") -ne 0){ Die "비밀번호 설정 실패." }
-  # 최소권한(두 테이블 SELECT/INSERT/UPDATE만)
-  if((Exec "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.project TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.customer TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.section_code TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.status_code TO '$AppUser'@'%'; FLUSH PRIVILEGES;") -ne 0){ Die "권한 부여 실패." }
+  # 최소권한(과제 트랙 표 SELECT/INSERT/UPDATE, 공용 회의실 room_code 는 삭제도 한다. 2026-10-21 SHARED-ROOMS)
+  if((Exec "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.project TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.customer TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.section_code TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.status_code TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE, DELETE ON ``$DbName``.room_code TO '$AppUser'@'%'; FLUSH PRIVILEGES;") -ne 0){ Die "권한 부여 실패." }
   Ok "계정 준비 완료 · 최소권한(SELECT/INSERT/UPDATE)"
 
   # 실제 그 비번으로 접속되는지 확인 = 위젯 접속 조건과 동일

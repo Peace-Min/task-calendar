@@ -136,7 +136,8 @@ const checks = {
     const judge = judgeFromSource(s.gate);
     const m = /public const int AppStructureVersion = (\d+);/.exec(stripCs(s.gate));
     assert.ok(m, 'DbGate.AppStructureVersion 을 찾지 못했다');
-    assert.strictEqual(m[1], '14', '앱 구조 번호가 14 가 아니다(VERSION-GATE 목표 버전)');
+    //  2026-10-21 회의실 공용화(SHARED-ROOMS, 이관 조각 v15)로 15. 아래 판정 표는 앱 번호를 14 로 주고 판정 함수만 본다.
+    assert.strictEqual(m[1], '15', '앱 구조 번호가 15 가 아니다(SHARED-ROOMS 목표 버전)');
     for (const [db, up, want] of VERDICT_TABLE) {
       assert.strictEqual(judge(db, up, 14), want, `판정이 다르다: db_structure_version=${JSON.stringify(db)}, db_updating=${JSON.stringify(up)}`);
     }
@@ -479,6 +480,6 @@ test('변이V16: 배포 스크립트가 조각 사슬 확인을 빌드 뒤로 �
   assert.throws(() => checks.publish(bad), /사슬 확인이 빌드보다 뒤다|조각 사슬을 확인하지 않거나/);
 });
 test('변이V15: 정본이 구조 번호만 앱과 다르게 시딩하면 관문⑨ 가 실패한다', () => {
-  const bad = mutate(src.canon, "VALUES ('db_structure_version', '14', UTC_TIMESTAMP(3))", "VALUES ('db_structure_version', '15', UTC_TIMESTAMP(3))");
+  const bad = mutate(src.canon, "VALUES ('db_structure_version', '15', UTC_TIMESTAMP(3))", "VALUES ('db_structure_version', '16', UTC_TIMESTAMP(3))");
   assert.throws(() => checks.canonSeed(bad, src.gate), /키 다섯 개/);
 });

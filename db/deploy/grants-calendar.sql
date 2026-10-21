@@ -127,10 +127,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.cal_todo TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, DELETE ON taskmgr.cal_todo_day_note TO 'taskmgr_app'@'%';
 
 -- ---------- 장소(회의실) 목록 ----------
--- DELETE 필요: deleteRoom(:5872-5877) / addRoom(:5862-5871).
--- UPDATE 는 주지 않는다(2026-10-15, §8-3). 순서(sort_order)를 다시 쓸 때도 호스트는 그 사람의 회의실 목록을
---   통째로 지운 뒤 순서대로 다시 넣는다(CalendarWriteDb.cs 의 DELETE FROM cal_room WHERE user_id → INSERT).
-GRANT SELECT, INSERT, DELETE ON taskmgr.cal_room TO 'taskmgr_app'@'%';
+-- cal_room 은 2026-10-21 에 없앴다(회의실 공용화, 구조 번호 15, docs/SHARED-ROOMS.md). 회사 공용 목록 room_code 는
+--   cal_* 가 아니라 과제 트랙 코드표라 그 권한은 create-app-user.sql(과 server-app-account.sql)에 있다.
 
 -- ---------- (날짜 × 과제) 투입 시간 ----------
 -- DELETE 필요: 공수에 0/빈칸을 넣는 것은 0 저장이 아니라 행 삭제다

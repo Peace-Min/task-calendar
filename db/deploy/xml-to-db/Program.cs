@@ -128,12 +128,15 @@ static class P
         var cats = (root.Element("categories")?.Elements("category") ?? Enumerable.Empty<XElement>()).ToList();
         var ents = (root.Element("entries")?.Elements("entry") ?? Enumerable.Empty<XElement>()).ToList();
         var tods = (root.Element("todos")?.Elements("todo") ?? Enumerable.Empty<XElement>()).ToList();
-        var rooms = (root.Element("rooms")?.Elements("room") ?? Enumerable.Empty<XElement>()).Select(r => T(r).Trim()).Where(s => s.Length > 0).ToList();
+        //  <rooms> 는 읽지 않는다(2026-10-21 회의실 공용화, docs/SHARED-ROOMS.md). 사람마다 두던 회의실 표(cal_room)가 없어졌고,
+        //  공용 목록(room_code)은 관리자가 관리 화면에서 고친다. 있으면 몇 개였는지만 알린다.
+        int roomsIgnored = (root.Element("rooms")?.Elements("room") ?? Enumerable.Empty<XElement>()).Count();
         var prefs = root.Element("prefs");
         var thDays = (root.Element("taskHours")?.Elements("day") ?? Enumerable.Empty<XElement>()).ToList();
         var atDays = (root.Element("attendance")?.Elements("day") ?? Enumerable.Empty<XElement>()).ToList();
-        Console.WriteLine($"  과제 {cats.Count} · 일정 {ents.Count} · 할 일 {tods.Count} · 회의실 {rooms.Count}" +
+        Console.WriteLine($"  과제 {cats.Count} · 일정 {ents.Count} · 할 일 {tods.Count}" +
                           $" · 공수 {thDays.Count}일 · 근태 {atDays.Count}일");
+        if (roomsIgnored > 0) Console.WriteLine($"  (회의실 {roomsIgnored}개는 옮기지 않는다. 회의실은 회사 공용 목록이다)");
 
         // ── 2. 중단 조건 — 도구가 고칠 수 없는 것은 사람에게 넘긴다 ──────────
         Console.WriteLine("\n[2] 사전 검사");
@@ -372,11 +375,7 @@ static class P
             }
             Console.WriteLine($"  할 일 {tno}건 · 날짜메모 {nNote}");
 
-            // 4-4 회의실
-            for (int i = 0; i < rooms.Count; i++)
-                await Ex(conn, tx, "INSERT INTO cal_room (user_id,name,sort_order) VALUES (@u,@n,@s)",
-                    ("@u", uid), ("@n", rooms[i]), ("@s", i));
-            Console.WriteLine($"  회의실 {rooms.Count}건");
+            // 4-4 회의실: 옮기지 않는다(위 [1] 의 주석, cal_room 폐지)
 
             // 4-5 공수
             int nTh = 0;
@@ -493,7 +492,7 @@ static class P
         if (dry) Console.WriteLine("  [예행] 롤백했으므로 대조 대상이 없다. 실제 이관 뒤 다시 확인할 것.");
         else
         {
-            var bad = await Verify(conn, uid, cats.Select(x => A(x, "id")).Concat(extraCats.Select(x => x.Id)).ToList(), ents, tods, rooms, thDays, atDays);
+            var bad = await Verify(conn, uid, cats.Select(x => A(x, "id")).Concat(extraCats.Select(x => x.Id)).ToList(), ents, tods, thDays, atDays);
             if (bad.Count == 0) Console.WriteLine("  ✓ 건수·서명 일치");
             else { foreach (var b in bad) Console.WriteLine("  ✗ " + b); Warns.Add($"왕복 대조 불일치 {bad.Count}건"); }
         }
@@ -511,7 +510,7 @@ static class P
     // 건수 대조 — 자식 표 포함. 값 서명은 앱 왕복(loop/dryrun)이 이미 덮으므로 여기서는
     //   '넣은 만큼 들어갔나' 를 본다(§8 의 건수 대조 항목).
     static async Task<List<string>> Verify(MySqlConnection c, int uid,
-        List<string> catIds, List<XElement> ents, List<XElement> tods, List<string> rooms,
+        List<string> catIds, List<XElement> ents, List<XElement> tods,
         List<XElement> th, List<XElement> at)
     {
         var bad = new List<string>();
@@ -526,7 +525,6 @@ static class P
         await Cmp("과제 없는 일정, 할 일", $"SELECT (SELECT COUNT(*) FROM cal_entry WHERE user_id={uid} AND cat_no IS NULL)" +
                   $"+(SELECT COUNT(*) FROM cal_todo WHERE user_id={uid} AND cat_no IS NULL)", 0);
         await Cmp("할 일", $"SELECT COUNT(*) FROM cal_todo WHERE user_id={uid}", tods.Count);
-        await Cmp("회의실", $"SELECT COUNT(*) FROM cal_room WHERE user_id={uid}", rooms.Count);
         await Cmp("커밋", $"SELECT COUNT(*) FROM cal_entry_commit WHERE user_id={uid}",
             ents.Sum(e => e.Element("commits")?.Elements("commit").Count() ?? 0));
         await Cmp("날짜메모", $"SELECT COUNT(*) FROM cal_todo_day_note WHERE user_id={uid}",

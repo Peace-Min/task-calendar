@@ -44,9 +44,10 @@ const AH_FNS = ['ahPress', 'ahMe', 'ahItemOfOv', 'ahIsAdmin', 'ahNoteRole', 'ahP
   'ahKey', 'ahLast', 'ahLastIn', 'ahRemember', 'ahCount', 'ahSyncFoot', 'ahCounts', 'ahFillSel', 'ahMark', 'ahSyncEmpty', 'ahFocusTarget', 'ahFocusNav',
   'ahRouteOpen', 'ahDock', 'ahUndock', 'ahAfterClose', 'ahCloseNow', 'openAdminHub', 'ahSelect', 'ahOpenFromMore', 'setupAdminHub'];
 //  ★ 2026-10-06(docs/ADMIN-HUB-4.md N4) — 직급·소속 · 구분·상태를 각각의 항목으로 갈랐다(7 → 9). 두 항목이 같은 모달을 도킹한다.
-const ITEMS = ['members', 'title', 'unit', 'gone', 'projects', 'cust', 'section', 'status', 'trash'];
+//  ★ 2026-10-21(docs/SHARED-ROOMS.md 가안): 새 묶음 🗓 일정에 항목 하나(회의실)를 더했다(9 → 10).
+const ITEMS = ['members', 'title', 'unit', 'gone', 'projects', 'cust', 'section', 'status', 'trash', 'rooms'];
 const OV_OF = { members: 'userAdminModal', title: 'orgTitleModal', unit: 'orgTitleModal', gone: 'trashModal', projects: 'officialModal', cust: 'customerModal',
-  section: 'codeModal', status: 'codeModal', trash: 'trashModal' };
+  section: 'codeModal', status: 'codeModal', trash: 'trashModal', rooms: 'roomAdminModal' };
 
 // ══════════════════════════════════════════════════════════════════════
 // (S) 정적 계약
@@ -65,15 +66,17 @@ const S = {
     assert.match(m, /<button class="x" data-close aria-label="닫기">×<\/button>/, '머리 ✕');
     assert.match(m, /<div class="ah-seg" id="ahSeg" role="tablist" aria-label="관리 묶음">/, '묶음 버튼 줄이 tablist 가 아니다(H1)');
     const tabs = [...m.matchAll(/<button type="button" role="tab" id="(\w+)" data-ahgrp="(\w+)"[^>]*>([\s\S]*?)<\/button>/g)];
-    assert.deepStrictEqual(tabs.map((t) => t[2]), ['people', 'proj'], '묶음 버튼은 사람 · 회사 과제 둘이다');
+    assert.deepStrictEqual(tabs.map((t) => t[2]), ['people', 'proj', 'sched'], '묶음 버튼은 사람, 회사 과제, 일정 셋이다(SHARED-ROOMS 가안)');
     assert.ok(/👥[\s\S]*사람[\s\S]*직원, 조직, 직급/.test(tabs[0][3]), '👥 사람(직원, 조직, 직급)');
     assert.ok(/📁[\s\S]*회사 과제[\s\S]*공식 과제 원본\(DB\)과 기준 정보/.test(tabs[1][3]), '📁 회사 과제(공식 과제 원본(DB)과 기준 정보)');
+    assert.ok(/🗓[\s\S]*일정[\s\S]*모든 사용자가 쓰는 공용 목록/.test(tabs[2][3]), '🗓 일정(모든 사용자가 쓰는 공용 목록)');
     const items = [...m.matchAll(/data-ahitem="(\w+)"[^>]*><span class="ah-ic" aria-hidden="true">([^<]+)<\/span>([^<]+)<span class="ah-n" id="ahN\1"><\/span>/g)]
       .map((x) => [x[1], x[2], x[3]]);
     //  ★ 2026-10-02(ADMIN-HUB-3 M2·M3) — 두 휴지통의 이름은 「🗑 휴지통」 하나다(예전: 「🚪 퇴사자」 · 「🗑 삭제된 항목」).
     //    묶음(👥 사람 / 📁 회사 과제)이 가른다 · 항목 id(gone · trash)는 그대로(기억·루프가 그 id 로 고른다).
     assert.deepStrictEqual(items, [['members', '👤', '구성원'], ['title', '🏷', '직급'], ['unit', '🏢', '소속'], ['gone', '🗑', '휴지통'],
-      ['projects', '📁', '공식 과제'], ['cust', '🏭', '발주처'], ['section', '🗂️', '구분'], ['status', '🔖', '상태'], ['trash', '🗑', '휴지통']], '항목 9개와 순서(H2 · ADMIN-HUB-4 N4)');
+      ['projects', '📁', '공식 과제'], ['cust', '🏭', '발주처'], ['section', '🗂️', '구분'], ['status', '🔖', '상태'], ['trash', '🗑', '휴지통'], ['rooms', '🚪', '회의실']], '항목 10개와 순서(H2, ADMIN-HUB-4 N4, SHARED-ROOMS)');
+    assert.ok(/<div class="ah-navgrp hidden" data-ahnavgrp="sched">/.test(m), '처음엔 일정 묶음의 항목도 숨어 있다');
     assert.ok(/<div class="ah-navgrp hidden" data-ahnavgrp="proj">/.test(m), '처음엔 사람 묶음의 항목만 보인다');
     assert.match(m, /<select id="ahSel" aria-label="관리 항목"><\/select>/, '좁은 창 고르기 상자(H11)');
     assert.match(m, /<div class="ah-where" id="ahWhere"/, '위치 줄(H3)');
@@ -86,7 +89,7 @@ const S = {
   //  도킹 대상보다 앞 — 도킹된 창 안에서 뜨는 확인창·편집 폼이 이 화면 위에 쌓인다(.overlay 는 DOM 순서가 쌓임 순서)
   position(src) {
     const hub = src.indexOf('id="adminHub"');
-    for (const id of ['officialModal', 'officialEditModal', 'customerModal', 'codeModal', 'userAdminModal', 'userEditModal', 'orgTitleModal', 'trashModal', 'confirmModal', 'confirmTypedModal']) {
+    for (const id of ['officialModal', 'officialEditModal', 'customerModal', 'codeModal', 'roomAdminModal', 'userAdminModal', 'userEditModal', 'orgTitleModal', 'trashModal', 'confirmModal', 'confirmTypedModal']) {
       const at = src.indexOf(`<div class="overlay hidden" id="${id}">`);
       assert.ok(at > hub, `#${id} 가 #adminHub 보다 앞에 있다 — 관리 화면 안에서 연 창이 그 뒤에 뜬다`);
     }
@@ -230,6 +233,7 @@ if (!JSDOM) {
     trashGet: { ok: true, data: TRASH },
     loadCustomersFull: { ok: true, list: JSON.stringify([{ name: 'zzC_데마시아', active: true }, { name: 'zzC_셔마야', active: true }]) },
     getCodesFull: { ok: true, list: JSON.stringify([{ name: '일반계약', active: true, sort: 1 }, { name: '연구과제', active: true, sort: 2 }]) },
+    roomsFull: { ok: true, msg: '', list: JSON.stringify([{ id: 1, name: '대회의실', sort: 10 }, { id: 2, name: '소회의실 A', sort: 20 }]) },
   };
   const INFO = (role, active = 1) => ({ ok: true, info: { name: ME.name, title: ME.title, org_unit: ME.orgUnit, view_scope: 'all', edit_role: role, is_active: active } });
 
@@ -365,10 +369,10 @@ if (!JSDOM) {
   });
 
   // ── R3 ──
-  test('(R3) 아홉 항목 = 기존 모달 그 자체(같은 id · 같은 목록) · 오른쪽 칸에 도킹 · 스택엔 관리 화면 하나(겹침 없음)', async () => {
+  test('(R3) 열 항목 = 기존 모달 그 자체(같은 id · 같은 목록) · 오른쪽 칸에 도킹 · 스택엔 관리 화면 하나(겹침 없음)', async () => {
     await reset(B); await openHub(B, 'members');
     const LIST = { members: '#userAdminModal #uaList', title: '#orgTitleModal #otList', unit: '#orgTitleModal #otList', gone: '#trashModal #trList', projects: '#officialModal #offList',
-      cust: '#customerModal #custList', section: '#codeModal #codeList', status: '#codeModal #codeList', trash: '#trashModal #trList' };
+      cust: '#customerModal #custList', section: '#codeModal #codeList', status: '#codeModal #codeList', trash: '#trashModal #trList', rooms: '#roomAdminModal #raList' };
     for (const it of ITEMS) {
       await pick(B, it);
       await settle(40);
@@ -401,7 +405,8 @@ if (!JSDOM) {
     assert.deepStrictEqual(calls(B).map((c) => c[0]).filter((c) => c !== 'userInfoGet'),
       //  사람 휴지통(gone)은 trashGet 과 함께 직급·소속 화면의 조회(orgTitleGet)를 그대로 한 번 더 한다 — 소속·직급 탭(ADMIN-HUB-3 M3 · 새 명령 없음).
       //  직급 · 소속 · 구분 · 상태는 각각 그 탭으로 같은 화면의 조회를 한다(ADMIN-HUB-4 N4 — 새 명령 없음).
-      ['membersGet', 'orgTitleGet', 'orgTitleGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'getCodesFull', 'trashGet', 'membersGet'], '각 항목이 자기 화면의 조회를 그대로 한다(새 명령 없음)');
+      //  회의실(SHARED-ROOMS)은 자기 화면의 조회(roomsFull) 하나다. 그 뒤 휴지통을 다시 고르면 trashGet 이 한 번 더 간다.
+      ['membersGet', 'orgTitleGet', 'orgTitleGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'getCodesFull', 'trashGet', 'roomsFull', 'trashGet', 'membersGet'], '각 항목이 자기 화면의 조회를 그대로 한다(새 명령 없음)');
   });
 
   test('(R3) 제자리: 관리 화면을 닫으면 도킹 창은 원래 형제 순서로 돌아가고, 단독 호출(openUserAdmin)은 지금처럼 단독으로 뜬다', async () => {

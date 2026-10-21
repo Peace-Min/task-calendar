@@ -553,10 +553,11 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
      하나뿐이므로 자식 선택자로 그 하나만 집는다. 폼별 예외 대신 토큰으로 고친다. */
 .modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:var(--sp-4) 0 6px}
 .modal-body > label:first-child{margin-top:0}
-/* ★ 자기 윗여백을 이미 가진 묶음(.fsect 24px · .rem-block 8px · .cat-form/.room-form 14px)의 **첫 라벨**은
-   그 여백과 .modal label 의 16px 이 겹쳐 32~40px 이 된다. 겹치는 자리 넷만 0 으로 되돌린다
+/* ★ 자기 윗여백을 이미 가진 묶음(.fsect 24px · .rem-block 8px · .cat-form 14px)의 **첫 라벨**은
+   그 여백과 .modal label 의 16px 이 겹쳐 32~40px 이 된다. 겹치는 자리 셋만 0 으로 되돌린다
+   (넷째였던 .room-form 은 2026-10-21 회의실 관리 창과 함께 없앴다, docs/SHARED-ROOMS.md)
    (묶음의 여백이 '칸과 칸 사이의 숨'을 이미 내고 있으므로, 지워야 할 쪽은 라벨이다). */
-.fsect > label:first-child,.rem-block > label:first-child,.cat-form > label:first-child,.room-form > label:first-child{margin-top:0}
+.fsect > label:first-child,.rem-block > label:first-child,.cat-form > label:first-child{margin-top:0}
 /* ★ `.modal .check + .check{margin-top:…}` 같은 '묶음 간격' 규칙은 두지 않는다 — 모달 안의 체크박스 묶음은
    전부 자기 간격을 이미 갖고 있고(.recur-end 3px · .rpt-checks 인라인 0 · 일괄 커밋 모달 인라인),
    그 규칙은 (0,3,0)이라 .recur-end .check(0,2,0)를 **덮어써서** 손대지 않기로 한 폼을 바꾼다. */
@@ -630,17 +631,30 @@ body.db-locked #btnNew,body.db-locked #btnAddHere,body.db-locked #btnTodoNew{opa
 }
 .cat-lock-note .ic{width:14px;height:14px;flex:none;margin-top:2px;color:var(--muted)}
 .cat-form.lock-db #cName{background:var(--dim-bg);color:var(--muted);cursor:not-allowed}
-/* 회의실 관리 */
-.room-list{display:flex;flex-direction:column;gap:7px}
-.room-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--line);border-radius:var(--r-md)}
-.room-row .room-ic{width:15px;height:15px;color:var(--accent);flex:none}
-.room-row .room-nm{font-weight:600;font-size:var(--fs-emph);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.room-row .link.danger{margin-left:auto;flex:none}
-.room-empty{padding:16px;text-align:center;color:var(--muted);font-size:var(--fs-body)}
-.room-form{border-top:1px solid var(--line);margin-top:14px;padding-top:10px}
-.room-form>label{display:block;font-size:var(--fs-meta);color:var(--muted);margin-bottom:5px}
-.room-add-row{display:flex;gap:8px}
-.room-add-row input{flex:1;min-width:0;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:8px 10px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text)}
+/* 장소 칸(일정 입력 창 #fLoc, 빠른 추가 #qaLoc): 직접 입력 + 공용 회의실 추천 펼침 목록(콤보박스, docs/SHARED-ROOMS.md A안).
+   ★ 목록은 칸 아래에 뜨고, 스크롤 상자 아래가 좁으면 위로 뜬다(.up). 지우기 ×, 목록 열기 ▾ 는 칸 오른쪽 안에 둔다. */
+.loc-combo{position:relative;min-width:0}
+.modal .loc-combo input[type=text].loc-in{width:100%;padding-right:58px}
+.loc-btns{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:flex;gap:2px}
+.loc-btns button{border:none;background:transparent;color:var(--muted);width:24px;height:24px;border-radius:var(--r-sm);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+.loc-btns button:hover{background:var(--hover-bg);color:var(--text)}
+.loc-btns .loc-clr{font-size:16px}
+.loc-pop{position:absolute;left:0;right:0;top:calc(100% + 4px);min-width:220px;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow);padding:4px;z-index:30;max-height:230px;overflow:auto}
+.loc-pop.up{top:auto;bottom:calc(100% + 4px)}
+.loc-opt{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-body);color:var(--text)}
+.loc-opt .rm-ic{width:14px;height:14px;color:var(--accent);flex:none}
+.loc-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.loc-opt .ck{color:var(--accent-2);font-weight:700;flex:none}
+.loc-opt:hover{background:var(--hover-bg)}
+.loc-opt.act{background:var(--accent-soft)}
+.loc-foot{font-size:var(--fs-micro);color:var(--muted);padding:6px 10px 5px;border-top:1px solid var(--line);margin-top:4px;line-height:1.5}
+.loc-none{font-size:var(--fs-body);color:var(--muted);padding:8px 10px}
+/* 회의실 관리(관리자, #roomAdminModal) 줄: 구분·상태 줄(.cust-row)에 장소 아이콘과 겹친 이름 표시만 더한다 */
+.cust-row .rm-ic{width:15px;height:15px;color:var(--accent);flex:none}
+@keyframes raFlash{from{background-color:var(--accent-soft)}to{background-color:transparent}}
+.cust-row.ra-flash{animation:raFlash 1s ease-out}
+@keyframes raFlashErr{from{background-color:var(--danger-soft)}to{background-color:transparent}}
+.cust-row.ra-flash-err{animation:raFlashErr 1.4s ease-out}
 .cat-form{border-top:1px solid var(--line);margin-top:14px;padding-top:4px}
 .palette{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;align-items:center}
 .swatch{
@@ -1247,7 +1261,7 @@ body.rgm-dragging,body.rgm-dragging *{cursor:grabbing!important;user-select:none
   #reportModal .rpt-optpanel{display:block!important}
 }
 .lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
-/* 라벨행 우측 바로가기 링크(예: 회의실 관리) — 칩 아닌 깔끔한 액센트 텍스트 */
+/* 라벨행 우측 바로가기 링크 — 칩 아닌 깔끔한 액센트 텍스트 */
 .lbl-row .lnk{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-meta);font-weight:600;text-decoration:none;white-space:nowrap}
 .lbl-row .lnk:hover{text-decoration:underline}
 .lbl-row .lnk .ic{width:13px;height:13px}
@@ -1985,7 +1999,7 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .timepick{display:inline-flex;align-items:center;gap:3px}
 .timepick select{border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 8px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text);font-variant-numeric:tabular-nums}
 .timepick .t-sep{color:var(--muted);font-weight:700}
-/* 라벨 + 바로가기 링크 한 줄(예: 장소 / 회의실 관리) */
+/* 라벨 + 바로가기 링크 한 줄 */
 .lbl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lbl-row>label{margin:0}
 /* 설정 모달 */
@@ -2493,7 +2507,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         </div>
         <button id="btnSettings">설정</button>
         <button id="btnUpdateCheck">업데이트 확인</button>
-        <button id="btnRooms">회의실 관리</button>
+        <!-- '회의실 관리'(#btnRooms)는 2026-10-21 에 없앴다. 회의실은 회사 공용 목록이고 관리자만 ⚙ 관리 › 일정 › 회의실에서 고친다(SHARED-ROOMS). -->
         <hr>
         <!-- XML 은 저장소가 아니라 **사본**이다(2026-10-06) — 데이터는 서버 DB 에 자동 저장된다. 이름이 역할을 말하게 한다(id·배선은 그대로). -->
         <button id="btnExport">XML로 내보내기 (내 PC 사본)</button>
@@ -2595,8 +2609,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <div class="rem-hint" id="fRemHint" aria-live="polite"></div>
         </div>
         <div style="margin-top:8px">
-          <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label><button type="button" class="lnk" id="fRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div>
-          <select id="fLoc"></select>
+          <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label></div>
+          <!-- 장소 = 직접 입력 + 공용 회의실 추천(콤보박스, SHARED-ROOMS A안). 목록에 없는 글자도 적은 그대로 저장된다. -->
+          <div class="loc-combo" data-pfx="f"><input type="text" class="loc-in" id="fLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="회의실을 고르거나 직접 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="fLocPop" role="listbox" aria-label="장소 추천"></div></div>
         </div>
       </section>
       <section class="fsect" id="recurSect">
@@ -2781,9 +2796,9 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
 </div>
 
 <!-- ===== 「⚙ 관리」 화면(관리자 허브 · docs/ADMIN-HUB.md H1–H13) =====
-     머리(⚙ 관리 · 관리자 · 내 이름 · ✕) → 묶음 선택 버튼 둘(role=tablist · 👥 사람 / 📁 회사 과제) → 왼쪽 그 묶음 항목 + 오른쪽 내용.
+     머리(⚙ 관리 · 관리자 · 내 이름 · ✕) → 묶음 선택 버튼 셋(role=tablist · 👥 사람 / 📁 회사 과제 / 🗓 일정, 2026-10-21 SHARED-ROOMS 가안) → 왼쪽 그 묶음 항목 + 오른쪽 내용.
      ★★ 오른쪽 내용(#ahSlot)은 **비어 있는 자리**다 — 화면을 새로 만들지 않는다(H4). 항목을 고르면 지금 있는 모달
-       (#userAdminModal · #orgTitleModal · #trashModal · #officialModal · #customerModal · #codeModal)의 열기 함수를 그대로 부르고,
+       (#userAdminModal · #orgTitleModal · #trashModal · #officialModal · #customerModal · #codeModal · #roomAdminModal)의 열기 함수를 그대로 부르고,
        openModal 이 그 오버레이를 이 칸 안으로 옮겨 **도킹**한다(같은 DOM · 같은 id · 같은 핸들러 — 시험·루프 선택자가 그대로 산다).
        관리 화면을 닫으면 원래 자리(body 의 형제 순서)로 되돌린다. 자세한 이유는 JS 의 ahDock 주석.
      ★ 이 오버레이는 도킹 대상 모달들보다 **앞**에 둔다: 도킹된 창 안에서 뜨는 확인창·편집 폼(#confirmModal · #userEditModal ·
@@ -2796,6 +2811,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
     <div class="ah-seg" id="ahSeg" role="tablist" aria-label="관리 묶음">
       <button type="button" role="tab" id="ahGrpPeople" data-ahgrp="people" aria-selected="true" aria-controls="ahBody"><span class="ah-gic" aria-hidden="true">👥</span><span class="ah-gtx"><span class="ah-gt">사람</span><span class="ah-gd">직원, 조직, 직급</span></span></button>
       <button type="button" role="tab" id="ahGrpProj" data-ahgrp="proj" aria-selected="false" aria-controls="ahBody" tabindex="-1"><span class="ah-gic" aria-hidden="true">📁</span><span class="ah-gtx"><span class="ah-gt">회사 과제</span><span class="ah-gd">공식 과제 원본(DB)과 기준 정보</span></span></button>
+      <button type="button" role="tab" id="ahGrpSched" data-ahgrp="sched" aria-selected="false" aria-controls="ahBody" tabindex="-1"><span class="ah-gic" aria-hidden="true">🗓</span><span class="ah-gtx"><span class="ah-gt">일정</span><span class="ah-gd">모든 사용자가 쓰는 공용 목록</span></span></button>
     </div>
     <div class="ah-body" id="ahBody" role="tabpanel" aria-labelledby="ahGrpPeople">
       <nav class="ah-nav" id="ahNav" aria-label="관리 항목">
@@ -2813,6 +2829,10 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <button type="button" data-ahitem="section" tabindex="-1"><span class="ah-ic" aria-hidden="true">🗂️</span>구분<span class="ah-n" id="ahNsection"></span></button>
           <button type="button" data-ahitem="status" tabindex="-1"><span class="ah-ic" aria-hidden="true">🔖</span>상태<span class="ah-n" id="ahNstatus"></span></button>
           <button type="button" data-ahitem="trash" tabindex="-1"><span class="ah-ic" aria-hidden="true">🗑</span>휴지통<span class="ah-n" id="ahNtrash"></span></button>
+        </div>
+        <div class="ah-navgrp hidden" data-ahnavgrp="sched">
+          <div class="ah-navlbl" aria-hidden="true">🗓 일정</div>
+          <button type="button" data-ahitem="rooms" tabindex="-1"><span class="ah-ic" aria-hidden="true">🚪</span>회의실<span class="ah-n" id="ahNrooms"></span></button>
         </div>
       </nav>
       <!-- 좁은 창(H11)에서만 보인다 — 왼쪽 목록 대신 지금 묶음의 항목만 고르는 상자. 선택지는 JS 가 묶음마다 다시 만든다. -->
@@ -3076,6 +3096,28 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
   </div>
 </div>
 
+<!-- ===== 회의실(관리자): 회사 공용 회의실 목록(room_code, docs/SHARED-ROOMS.md). '⚙ 관리 › 🗓 일정 › 🚪 회의실'에 도킹된다.
+     추가, 그 자리에서 이름 바꾸기, ▲▼ 순서, 삭제(확인 창 한 번, 실행 취소 없음). 쓰기 권한은 호스트가 판정한다(OpenAdminAsync). ===== -->
+<div class="overlay hidden" id="roomAdminModal">
+  <div class="modal">
+    <div class="modal-head"><h2>회의실</h2><button class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body">
+      <p class="set-hint">여기 목록은 모든 사용자의 장소 칸에 추천으로 보입니다. 목록에 없는 장소는 사용자가 직접 입력합니다.</p>
+      <div class="cust-add">
+        <input type="text" id="raNewName" maxlength="40" autocomplete="off" spellcheck="false" placeholder="새 회의실 이름 (예: 4층 소회의실)" aria-label="새 회의실 이름">
+        <button type="button" class="btn primary" id="raAddBtn">＋ 추가</button>
+      </div>
+      <div class="cust-msg" id="raMsg" role="status" aria-live="polite"></div>
+      <div class="cust-list" id="raList" role="list" aria-label="회의실 목록"></div>
+    </div>
+    <div class="modal-foot">
+      <div class="git-note">▲▼로 장소 칸에 보이는 순서를 바꿉니다. 이름을 바꾸거나 지워도 이미 저장된 일정의 장소 글자는 그대로입니다.</div>
+      <span class="spacer"></span>
+      <button class="btn" data-close>닫기</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 기존 과제 재연결(P3.4) — 개인 과제로 태그된 일정·할일을 공식 과제로 일괄 이동(로컬 전용) ===== -->
 <div class="overlay hidden" id="relinkModal">
   <div class="modal wide">
@@ -3122,28 +3164,6 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       <span class="off-msg" id="rlpMsg"></span>
       <span class="spacer"></span>
       <button class="btn" data-close>취소</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== 회의실 관리 모달 ===== -->
-<div class="overlay hidden" id="roomModal">
-  <div class="modal">
-    <div class="modal-head"><h2>회의실 관리</h2><button class="x" data-close>×</button></div>
-    <div class="modal-body">
-      <div id="roomMgrList" class="room-list"></div>
-      <div class="room-form">
-        <label for="roomName">회의실 추가</label>
-        <div class="room-add-row">
-          <input type="text" id="roomName" maxlength="40" placeholder="예: 301호 / 대회의실 / 온라인">
-          <button class="btn primary sm" type="button" id="btnRoomAdd">＋ 추가</button>
-        </div>
-        <div class="git-note">여기 등록한 회의실이 일정 추가·편집의 <b>장소</b> 드롭다운에 나타납니다. 일정에서는 <b>목록에서 선택</b>만 하며, 새 장소가 필요하면 여기서 먼저 추가하세요.</div>
-      </div>
-    </div>
-    <div class="modal-foot">
-      <span class="spacer"></span>
-      <button class="btn" data-close>닫기</button>
     </div>
   </div>
 </div>
@@ -3745,7 +3765,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <button type="button" data-goto="g-start">화면 구성</button>
         <button type="button" data-goto="g-add">일정 추가</button>
         <button type="button" data-goto="g-time">시간 입력</button>
-        <button type="button" data-goto="g-room">장소·회의실</button>
+        <button type="button" data-goto="g-room">장소</button>
         <button type="button" data-goto="g-edit">편집, 이동, 삭제</button>
         <button type="button" data-goto="g-todo">할 일</button>
         <button type="button" data-goto="g-cat">내 과제</button>
@@ -3765,7 +3785,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <li><b>왼쪽 월 달력</b>: 날짜 칸 안에 일정·할 일이 칩으로 표시됩니다. 위쪽 <b>‹ 오늘 ›</b>로 월을 이동합니다.</li>
           <li><b>오른쪽 패널(탭 3개)</b>: <b>일정 상세</b>(선택한 날의 일정), <b>할 일</b>, <b>커밋 내역</b>. 모두 달력에서 고른 날짜를 따릅니다.</li>
           <li><b>과제 필터 줄</b>(달력 위): <b>전체</b> 또는 특정 과제만 눌러 그 과제 기록만 볼 수 있습니다.</li>
-          <li><b>헤더 버튼</b>: 검색, 내 과제, 문의, 모양, ? 도움말, ⋯ 더보기(<b>설정</b>, 회의실 관리, 데이터), 보고서, <b>＋ 새 기록</b>.</li>
+          <li><b>헤더 버튼</b>: 검색, 내 과제, 문의, 모양, ? 도움말, ⋯ 더보기(<b>설정</b>, 데이터), 보고서, <b>＋ 새 기록</b>.</li>
           <li><b>보고서</b>는 헤더에 있습니다. 창이 <b>아주 좁을 때</b>만 헤더에서 숨겨지고, <b>⋯ 더보기</b>의 <b>보고서 초안</b>으로 엽니다.</li>
           <li><b>⋯ 더보기</b>의 <b>설정</b>에서 <b>월 보기 밀도</b>(고정 / 촘촘히 / 펼침·스크롤)를 고를 수 있습니다. 칸이 넘칠 때 잘리지 않고 펼쳐 보고 싶으면 ‘펼침’을 고릅니다.</li>
         </ul>
@@ -3778,7 +3798,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
           <li>위쪽 <b>일정 / 할 일</b> 토글에서 <b>일정</b>을 선택합니다.</li>
           <li><b>제목</b>을 적고, <b>날짜</b>와 <b>과제(카테고리)</b>를 고릅니다.</li>
           <li>바로 아래 <b>종일 / 시작·종료 시간</b>을 정합니다(아래 ‘시간 입력’ 참고).</li>
-          <li>회의실, 반복, 메모가 필요하면 <b>옵션 더보기</b>를 눌러 펼칩니다.</li>
+          <li>장소, 반복, 메모가 필요하면 <b>옵션 더보기</b>를 눌러 펼칩니다.</li>
           <li><b>저장(추가)</b>을 누르면 달력과 오른쪽 패널에 바로 반영됩니다.</li>
         </ol>
         <p class="g-tip">팁: 더 많은 항목(반복 간격·횟수 등)이 필요하면 <b>자세히 편집</b>으로 전체 편집기를 엽니다.</p>
@@ -3795,12 +3815,12 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
       </section>
 
       <section class="guide-sec" id="g-room">
-        <h3>4. 장소와 회의실 관리</h3>
+        <h3>4. 장소</h3>
         <ul>
-          <li>일정의 <b>장소</b>는 등록된 회의실 목록에서 <b>선택</b>합니다(드롭다운).</li>
-          <li>회의실을 추가·삭제하려면 두 곳 중 하나에서 <b>회의실 관리</b>를 엽니다: ① ⋯ 더보기의 '회의실 관리', ② 일정 추가·편집 폼의 <b>장소 옆 '회의실 관리'</b> 링크(작성 중에 바로 추가 가능).</li>
-          <li>관리 창에서 <b>회의실 추가</b> 칸에 이름을 적고 <b>＋ 추가</b>, 각 항목의 <b>삭제</b>로 제거합니다(삭제는 실행취소 가능).</li>
-          <li>기본 제공: <b>101호, 201호, 202호</b>. 추가한 회의실은 모든 일정의 장소 드롭다운에 나타납니다.</li>
+          <li>일정의 <b>장소</b> 칸을 누르면 <b>회사 공용 회의실 목록</b>이 펼쳐집니다. 글자를 치면 그 글자가 든 회의실만 남습니다.</li>
+          <li><b>↑ ↓</b>로 고르고 <b>Enter</b>로 넣습니다. <b>Esc</b>는 목록만 닫고, 칸 오른쪽 <b>×</b>는 장소를 지웁니다.</li>
+          <li>목록에 없는 장소(예: 고객사 3층 회의실)는 칸에 <b>바로 적으면</b> 적은 그대로 저장됩니다.</li>
+          <li>회의실 목록은 <b>관리자</b>가 <b>⚙ 관리 › 일정 › 회의실</b>에서 고칩니다. 이름을 바꾸거나 지워도 이미 저장된 일정의 장소 글자는 그대로입니다.</li>
         </ul>
       </section>
 
@@ -4742,18 +4762,8 @@ const BrowserPlatform = {
   },
 };
 const Platform = HOST ? WidgetPlatform : BrowserPlatform;  // 환경 판별은 이 한 줄뿐
-const DEFAULT_ROOMS = ['101호', '201호', '202호'];   // 자주 쓰는 회의실 기본값(설정에서 추가/삭제) — load()보다 먼저 선언(TDZ 방지)
-// 회의실 목록 정규화 — 손상/외부편집 방어(문자열·트림·빈값 제외·중복 제거·길이/개수 제한)
-function normRooms(a){
-  if(!Array.isArray(a)) return null;   // null = '명시되지 않음'(호출부에서 기본값 폴백 판단)
-  const seen = new Set(), out = [];
-  for(const r of a){
-    const s = String(r ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
-    if(!s || seen.has(s)) continue; seen.add(s); out.push(s);
-    if(out.length >= 50) break;
-  }
-  return out;
-}
+// 회의실은 사람마다 두지 않는다(2026-10-21 회의실 공용화, docs/SHARED-ROOMS.md). 옛 DEFAULT_ROOMS, normRooms 와
+//   state.rooms 는 없앴다. 회사 공용 목록은 loadCodes 회신(__applyCodes 의 세 번째 목록)이 sharedRooms 에 싣는다.
 // 근태/초과시간 — 회사 일간보고(netcus) 전송용. 코드값은 사이트 select와 동일(그대로 전송).
 const ATTEND_STATUS = [
   {v:'1',label:'정근'},{v:'2',label:'야근'},{v:'3',label:'특근'},{v:'4',label:'외근'},
@@ -5001,7 +5011,6 @@ function defaultState(){
       {id:uid('t'), text:'[샘플 할 일] 기한 없는 작업', done:false, categoryId:c1, due:'',  prio:'normal', note:'예시 데이터이며 삭제해도 됩니다.', createdAt:nowIso(), updatedAt:nowIso()},
       {id:uid('t'), text:'[샘플 할 일] 완료된 작업',    done:true,  categoryId:c2, due:d0,  prio:'normal', completedAt:nowIso(), note:'예시 데이터이며 삭제해도 됩니다.', createdAt:nowIso(), updatedAt:nowIso()},
     ],
-    rooms: DEFAULT_ROOMS.slice(),
     reportMarker: '-', reportMarkerCustom: '', reportIndent: 2,   // 보고서 표시 설정(머리기호/들여쓰기) — 표시+복사 전용
     reportFormatPrefs: { daily: { marker: '-', markerCustom: '', indent: 2 }, weekly: { marker: '-', markerCustom: '', indent: 2 } },
     gitCommitBody: false,   // 커밋 가져올 때 전체 본문(제목 제외) 포함 — 전역 옵션(기본 OFF=제목만)
@@ -5040,7 +5049,7 @@ function load(){
         // svnAuthor 1회 마이그레이션 — 구버전(필드 부재)엔 전역 작성자 하나를 git/svn이 공유했으므로 기존 값을 복사(동작 보존)
         s.svnAuthor = (s.svnAuthor === undefined || s.svnAuthor === null) ? s.gitAuthor : String(s.svnAuthor);
         s.todos = normTodos(s.todos);   // 멀티노트 — 구버전/외부편집 데이터엔 없을 수 있음(없으면 빈 배열)
-        s.rooms = normRooms(s.rooms) || DEFAULT_ROOMS.slice();   // 회의실 — 구버전엔 없음 → 기본값 폴백
+        delete s.rooms;   // 옛 개인 회의실 목록(2026-10-21 공용화로 없앴다). 남아 있어도 읽지 않는다
         // 보고서 표시 설정 — 구버전/외부편집 방어(가산적·무손실). 마커/들여쓰기는 표시+복사 전용.
         s.reportMarker = (typeof s.reportMarker === 'string' && s.reportMarker) ? s.reportMarker : '-';
         s.reportMarkerCustom = (typeof s.reportMarkerCustom === 'string') ? s.reportMarkerCustom.slice(0,8) : '';
@@ -5111,7 +5120,7 @@ function save(){
 //   따로 조립하면 한쪽만 고쳐져 조용히 갈라진다(그 차이는 tests/calendar-adapter.mjs 가
 //   대조하는 바로 그 값이다). 기본값을 바꿀 일이 있으면 여기 한 곳만 고친다.
 function buildStateFrom(data){
-  return {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], rooms:data.rooms||DEFAULT_ROOMS.slice(), reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, reportFont:normalizeReportFont(data.reportFont)};
+  return {categories:data.categories, entries:data.entries, gitAuthor:data.gitAuthor||'', svnAuthor:data.svnAuthor||'', todos:data.todos||[], reportMarker:data.reportMarker||'-', reportMarkerCustom:data.reportMarkerCustom||'', reportIndent:(data.reportIndent!=null?data.reportIndent:2), reportFormatPrefs:normalizeReportFormatPrefs(data), gitCommitBody:!!data.gitCommitBody, reportSource:'cal', taskHours:data.taskHours||{}, attendance:data.attendance||{}, reportFont:normalizeReportFont(data.reportFont)};
 }
 
 /* ---------- 데이터 출처 — 위젯은 DB, 브라우저는 localStorage ----------
@@ -7003,8 +7012,8 @@ function mountPeerFrame(res){
         entries: (res.entries || []).concat(__pv.mine || []),
         //  ★ P2 — 할 일은 호스트가 보낸 그대로(커밋은 entries[].commits 에 실려 온다).
         todos: res.todos || [],
-        //  ★ P3 — 과제별 시간·근태·회의실·서식은 호스트가 **보내지 않는다**. buildStateFrom 이 요구하는 빈 모양만 채운다.
-        rooms: [], taskHours: {}, attendance: {},
+        //  ★ P3 — 과제별 시간·근태·서식은 호스트가 **보내지 않는다**. buildStateFrom 이 요구하는 빈 모양만 채운다.
+        taskHours: {}, attendance: {},
         gitAuthor: '', svnAuthor: '',
       }), { peerName: __pv.name || __pv.loginId, canWrite: false, view: __pv.carry || null });   // view — K9 보던 달 잇기(peerApplyCarry)
       //  ★ K6 — 「최근 본 사람」은 **여기서만** 넣는다: 조회 성공 + 권한 있음 + 프레임 주입까지 끝난 자리다.
@@ -10043,12 +10052,7 @@ function toXML(){
   }
   root.appendChild(tds);
 
-  // 회의실 — 장소 빠른선택용 목록(categories/entries/todos와 형제). 빈 목록도 명시 직렬화(사용자가 전부 삭제한 상태 보존)
-  const rms = doc.createElement('rooms');
-  for(const name of (state.rooms || [])){
-    const el = doc.createElement('room'); el.textContent = name; rms.appendChild(el);
-  }
-  root.appendChild(rms);
+  // <rooms> 는 쓰지 않는다(2026-10-21 회의실 공용화). 회의실은 회사 공용 목록이라 개인 사본에 담을 것이 없다.
 
   // 표시 설정(prefs) — 보고서 머리기호/들여쓰기(표시+복사 전용, 캘린더/커밋 데이터 불변). 신규 형제 요소라 구버전과 무충돌.
   const prefs = doc.createElement('prefs');
@@ -10223,11 +10227,7 @@ function fromXML(text){
     };
   }).filter(t => t.text);
 
-  // 회의실 — <rooms> 요소가 없으면(구버전 XML) 기본값, 있으면 그 내용(빈 목록도 존중)
-  const roomsEl = root.getElementsByTagName('rooms')[0];
-  const rooms = roomsEl
-    ? (normRooms([...roomsEl.getElementsByTagName('room')].map(r => r.textContent)) || [])
-    : DEFAULT_ROOMS.slice();
+  // <rooms> 는 읽지 않는다(2026-10-21 회의실 공용화, SPEC.md). 옛 XML 에 있어도 무시한다.
 
   // svnAuthor: 속성 부재(구버전 XML) = 전역 작성자 공유 시절 → gitAuthor를 복사(1회 마이그레이션·동작 보존)
   const _svnA = root.hasAttribute('svnAuthor') ? (root.getAttribute('svnAuthor') || '') : (root.getAttribute('gitAuthor') || '');
@@ -10303,7 +10303,7 @@ function fromXML(text){
   //  lsMigrated 속성은 **읽지 않는다**(2026-09-01). 자동이관이 사라져 이 값이 가리킬 것이 없다.
   //  옛 XML 에 그 속성이 남아 있어도 그냥 무시한다 — 지우려고 파일을 고쳐 쓰지 않는다.
 
-  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, rooms, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody, reportFormatPrefs, taskHours, attendance, reportFont};
+  return {categories, entries, gitAuthor: root.getAttribute('gitAuthor') || '', svnAuthor: _svnA, todos, reportMarker, reportMarkerCustom, reportIndent, gitCommitBody, reportFormatPrefs, taskHours, attendance, reportFont};
 }
 
 function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 비교
@@ -10318,7 +10318,6 @@ function xmlRoundTrip(){ // 검증용: 내보내기→파싱 후 핵심 필드 �
       (e.commits||[]).map(c=>[c.hash||'',c.short||'',c.time||'',c.subject||'']),
       e.hours??null, e.location||'', e.remind??null]),
     t: (s.todos||[]).map(t=>[t.id,t.text,!!t.done,t.categoryId||null,t.due||'',t.endDate||'',t.prio||'normal',(t.done?(t.completedAt||''):''),t.note||'', Object.entries(t.dayNotes||{}).sort()]),
-    r: normRooms(s.rooms) || [],
     // 과제별 시간·근태 — (날짜,과제) 평탄화 후 정렬해 결정론 비교. 0/미입력은 애초에 키가 없으므로 유효값만 담긴다.
     th: Object.entries(s.taskHours||{}).sort().flatMap(([d,day]) =>
       Object.entries(day||{}).sort().filter(([,v]) => typeof v === 'number' && isFinite(v) && v > 0).map(([c,v]) => [d,c,v])),
@@ -10991,6 +10990,8 @@ function goto(ds, entryId){
 const AH_GROUPS = [
   { id: 'people', ic: '👥', t: '사람',      items: ['members', 'title', 'unit', 'gone'] },
   { id: 'proj',   ic: '📁', t: '회사 과제', items: ['projects', 'cust', 'section', 'status', 'trash'] },
+  //  🗓 일정 = 모든 사용자가 쓰는 공용 목록(2026-10-21 SHARED-ROOMS 가안). 지금은 회의실 하나다.
+  { id: 'sched',  ic: '🗓', t: '일정',      items: ['rooms'] },
 ];
 //  항목 → 도킹할 오버레이 · 여는 길. 여는 길은 **지금 그 화면으로 가는 문 그대로**다 — 발주처·구분·상태·휴지통(회사 과제)은
 //  공식 과제 화면 하단 줄의 버튼(#offCustMgr · #offCodeMgr · #offTrash)을 **누른다**(위젯에서만 보이는 버튼이라 숨어 있어도
@@ -11008,12 +11009,16 @@ const AH_ITEMS = {
   section:  { ic: '🗂️', t: '구분',        ov: 'codeModal',      open: () => ahPress('offCodeMgr'), tab: 'section' },
   status:   { ic: '🔖', t: '상태',        ov: 'codeModal',      open: () => offEditGuard(() => openCodeModal('status')), tab: 'status' },
   trash:    { ic: '🗑', t: '휴지통',      ov: 'trashModal',     open: () => ahPress('offTrash') },
+  //  회의실 = 회사 공용 회의실 목록(#roomAdminModal). 이 화면에만 문이 있다(일반 사용자 화면의 회의실 관리는 없앴다).
+  rooms:    { ic: '🚪', t: '회의실',      ov: 'roomAdminModal', open: () => openRoomAdmin() },
 };
 //  옛 항목 id 별칭(N5) — 기억(tc_adminLast)에 남은 값 · 루프·시험의 openAdminHub('orgtitle'|'codes') 를 새 항목으로 읽는다.
 const AH_ALIAS = { orgtitle: 'title', codes: 'section' };
+//  묶음 → 그 묶음 버튼(role=tab)의 id. 오른쪽 칸(tabpanel)의 이름표가 이 버튼이다.
+const AH_GRP_TAB = { people: 'ahGrpPeople', proj: 'ahGrpProj', sched: 'ahGrpSched' };
 const ahItemId = v => (v != null && Object.prototype.hasOwnProperty.call(AH_ALIAS, v)) ? AH_ALIAS[v] : v;
 const ahHasItem = v => Object.prototype.hasOwnProperty.call(AH_ITEMS, ahItemId(v));
-const AH_DOCK_OV  = new Set(['userAdminModal', 'orgTitleModal', 'trashModal', 'officialModal', 'customerModal', 'codeModal']);
+const AH_DOCK_OV  = new Set(['userAdminModal', 'orgTitleModal', 'trashModal', 'officialModal', 'customerModal', 'codeModal', 'roomAdminModal']);
 const AH_ENTRY_OV = new Set(['userModal', 'categoryModal', 'officialModal']);   // 관리 화면을 열면 닫히는 입구 창(겹치지 않는다)
 const __ah = { item: null, docked: null };       // 지금 고른 항목 · 지금 오른쪽 칸에 도킹된 오버레이(언제나 하나 이하)
 let __ahRole = { login: '', admin: null };       // userInfoGet 회신이 알려 준 값(이번 실행 · 그 계정) — null = 모른다
@@ -11112,6 +11117,8 @@ function ahCount(item){
     case 'section':  return (HOST && dbOnline && offSections.length) ? String(offSections.length) : '';   // 부팅 때 받은 코드 목록(loadCodes)
     case 'status':   return (HOST && dbOnline && offStatuses.length) ? String(offStatuses.length) : '';
     case 'trash':    return (__trAdmin && __trData) ? String(['project', 'customer', 'section', 'status'].reduce((a, k) => a + trRows(k).length, 0)) : '';
+    //  회의실: 관리 화면이 받아 온 목록(raLoaded)이 있으면 그것, 없으면 부팅 때 받은 장소 칸 목록(loadCodes)
+    case 'rooms':    return raLoaded ? String(raList.length) : (HOST && dbOnline && sharedRooms.length) ? String(sharedRooms.length) : '';
   }
   return '';
 }
@@ -11152,7 +11159,7 @@ function ahMark(item){
     const on = b.dataset.ahgrp === g.id;
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
   });
-  const body = document.getElementById('ahBody'); if(body) body.setAttribute('aria-labelledby', g.id === 'proj' ? 'ahGrpProj' : 'ahGrpPeople');
+  const body = document.getElementById('ahBody'); if(body) body.setAttribute('aria-labelledby', AH_GRP_TAB[g.id] || 'ahGrpPeople');
   document.querySelectorAll('#ahNav [data-ahnavgrp]').forEach(d => d.classList.toggle('hidden', d.dataset.ahnavgrp !== g.id));
   document.querySelectorAll('#ahNav [data-ahitem]').forEach(b => {
     const on = b.dataset.ahitem === item;
@@ -11626,7 +11633,7 @@ function openEntryModal(mode, ref){
     writeTimeSel($('#fStartH'), $('#fStartM'), e.startTime); writeTimeSel($('#fEndH'), $('#fEndM'), e.endTime);
     fEndDirty = !!e.endTime;
     remSetUi('f', e.remind);
-    fillRoomSelect($('#fLoc'), e.location || '');
+    locSet('f', e.location || '');
     $('#fMemo').value = e.memo || '';
     $('#btnEntryDelete').classList.remove('hidden');
   }else{
@@ -11639,7 +11646,7 @@ function openEntryModal(mode, ref){
     writeTimeSel($('#fStartH'), $('#fStartM'), ''); writeTimeSel($('#fEndH'), $('#fEndM'), '');
     fEndDirty = false;
     remSetUi('f', null);   // 새 기록 = 놓침 방지(기본 사다리)
-    fillRoomSelect($('#fLoc'), '');
+    locSet('f', '');
     $('#fMemo').value = '';
     $('#btnEntryDelete').classList.add('hidden');
   }
@@ -11712,7 +11719,7 @@ function saveEntryFromForm(){
   commits = commits.filter(c => { if(!c.hash) return true; if(seen.has(c.hash)) return false; seen.add(c.hash); return true; });
   const source = (__entryGitLoaded || commits.length) ? 'git' : (existing ? (existing.source || '') : '');
   const data = {title, categoryId: $('#fCat').value || null, date, allDay, startTime, endTime,
-                location: $('#fLoc').value, memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept,
+                location: locRead('f'), memo: $('#fMemo').value.trim(), source, commits, endDate, recur, recurExcept,
                 remind: remReadValue('f')};
   if(editingId){ updateEntry(editingId, data); toast('기록을 수정했습니다', 'success'); }
   else{ addEntry(data); toast('기록을 추가했습니다', 'success'); }
@@ -11954,18 +11961,135 @@ function resetCatForm(){
   const sa = $('#cSvnAuthor'); if(sa) sa.value = getSvnAuthor();
   // 두 섹션(Git·SVN) 표시는 뒤이어 호출되는 renderCatModal()→renderGitCard()가 갱신
 }
-/* ---------- 회의실(장소 선택) ---------- */
-// 장소 select 채우기 — 빈 옵션 + 등록 회의실 + (현재값이 미등록이면 보존용 옵션). cur로 선택.
-function fillRoomSelect(sel, current){
-  if(!sel) return;
-  const cur = String(current || '');
-  const rooms = state.rooms || [];
-  let html = '<option value="">장소 없음</option>';
-  for(const rm of rooms) html += `<option value="${esc(rm)}">${esc(rm)}</option>`;
-  if(cur && !rooms.includes(cur)) html += `<option value="${esc(cur)}">${esc(cur)} (미등록)</option>`;   // 기존/삭제된 장소 무손실
-  sel.innerHTML = html;
-  sel.value = cur;
+/* ---------- 장소 칸: 직접 입력 + 공용 회의실 추천(콤보박스, docs/SHARED-ROOMS.md A안) ----------
+   일정 입력 창(#fLoc, pfx 'f')과 빠른 추가(#qaLoc, pfx 'qa')가 같은 함수를 쓴다.
+   ★ 장소는 자유 글자다(cal_entry.location). 목록은 추천일 뿐이라 목록에 없는 글자도 적은 그대로 저장된다.
+     예전의 고르기 전용 select 와 '(미등록)' 보존 옵션은 없앴다. 이름이 바뀌거나 지워진 회의실 글자도 그대로 보인다.
+   ★ 칸을 누르면(또는 ▾, ↓) 목록이 펼쳐지고, 글자를 치면 그 글자가 든 회의실만 남는다(맞는 부분 강조).
+     ↑↓ 로 고르고 Enter 로 넣는다. Esc 는 목록만 닫는다(창은 닫지 않는다). Tab 은 목록을 닫고 지나간다.
+   ★ 목록(sharedRooms)은 회사 공용 하나다. 관리자만 관리 화면에서 고치고, 모든 사용자는 loadCodes 로 받는다. */
+let sharedRooms = [];   // [{id, name}]: __applyCodes 의 세 번째 목록. 실패하면 지금 것을 그대로 둔다
+const __loc = {};       // pfx → { open, typed, act, mute }: 펼침 상태(칸마다)
+const locNorm = v => String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+const locKey = v => locNorm(v).toLowerCase().replace(/\s/g, '');   // 비교용: 띄어쓰기와 대소문자를 접는다
+function locInput(pfx){ return document.getElementById(pfx + 'Loc'); }
+//  저장할 값: 적은 그대로(앞뒤 공백만 지운다). 칸이 없으면(할 일 모드의 빠른 추가) 빈 값이다.
+function locRead(pfx){ const inp = locInput(pfx); return inp ? String(inp.value || '').trim() : ''; }
+function locSyncClear(pfx){
+  const inp = locInput(pfx); if(!inp) return;
+  const box = inp.closest('.loc-combo'); const clr = box && box.querySelector('.loc-clr');
+  if(clr) clr.classList.toggle('hidden', !inp.value);
 }
+function locSet(pfx, v){
+  const inp = locInput(pfx); if(!inp) return;
+  locBind(pfx);
+  inp.value = String(v == null ? '' : v);
+  locSyncClear(pfx);
+  locClose(pfx);
+}
+function locHl(name, q){
+  if(!q) return esc(name);
+  const i = name.toLowerCase().indexOf(q.toLowerCase());
+  if(i < 0) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + q.length)) + '</mark>' + esc(name.slice(i + q.length));
+}
+//  지금 보일 추천: 친 글자가 있으면(typed) 그 글자가 든 이름만. 띄어쓰기와 대소문자는 접어서도 본다.
+function locItems(pfx){
+  const c = __loc[pfx], inp = locInput(pfx);
+  const q = (c && c.typed && inp) ? locNorm(inp.value) : '';
+  const ql = q.toLowerCase(), qk = locKey(q);
+  const names = sharedRooms.map(r => r.name);
+  return { q, list: q ? names.filter(n => n.toLowerCase().includes(ql) || locKey(n).includes(qk)) : names };
+}
+const LOC_ROOM_IC = '<svg class="rm-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
+function locRender(pfx){
+  const c = __loc[pfx], inp = locInput(pfx), pop = document.getElementById(pfx + 'LocPop');
+  if(!c || !inp || !pop) return;
+  if(!c.open){
+    pop.classList.add('hidden'); pop.innerHTML = '';
+    inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant');
+    return;
+  }
+  const { q, list } = locItems(pfx);
+  if(c.act >= list.length) c.act = list.length - 1;
+  const cur = locNorm(inp.value);
+  let h = list.map((n, i) => {
+    const on = !!cur && locKey(n) === locKey(cur);
+    return '<div class="loc-opt' + (i === c.act ? ' act' : '') + '" role="option" id="' + pfx + 'LocOpt' + i + '" data-i="' + i + '" aria-selected="' + (on ? 'true' : 'false') + '">'
+      + LOC_ROOM_IC + '<span class="nm">' + locHl(n, q) + '</span>' + (on ? '<span class="ck" aria-hidden="true">✓</span>' : '') + '</div>';
+  }).join('');
+  if(!list.length) h += '<div class="loc-none">' + (sharedRooms.length ? '맞는 회의실이 없습니다.' : '등록된 회의실이 없습니다.') + '</div>';
+  const exact = !!cur && list.some(n => locKey(n) === locKey(cur));
+  if(cur && !exact) h += '<div class="loc-foot">목록에 없는 장소입니다. 적은 그대로 저장됩니다.</div>';
+  else if(!cur) h += '<div class="loc-foot">목록에 없으면 칸에 바로 적으세요.</div>';
+  pop.innerHTML = h;
+  pop.classList.remove('hidden');
+  //  아래가 좁으면 위로 연다. 칸이 든 스크롤 상자(모달 본문) 기준
+  try{
+    const sc = inp.closest('.modal-body, .qa-body, .modal'); const r = inp.getBoundingClientRect(), wr = sc ? sc.getBoundingClientRect() : null;
+    pop.classList.toggle('up', !!wr && (wr.bottom - r.bottom) < 200 && (r.top - wr.top) > (wr.bottom - r.bottom));
+  }catch(_){}
+  inp.setAttribute('aria-expanded', 'true');
+  if(c.act >= 0){
+    inp.setAttribute('aria-activedescendant', pfx + 'LocOpt' + c.act);
+    const a = document.getElementById(pfx + 'LocOpt' + c.act); if(a && a.scrollIntoView){ try{ a.scrollIntoView({ block: 'nearest' }); }catch(_){} }
+  } else inp.removeAttribute('aria-activedescendant');
+}
+function locOpen(pfx, typed){ const c = __loc[pfx]; if(!c) return; c.open = true; c.typed = !!typed; c.act = -1; locRender(pfx); }
+function locClose(pfx){ const c = __loc[pfx]; if(!c || !c.open) return; c.open = false; c.act = -1; locRender(pfx); }
+function locPick(pfx, i){
+  const name = locItems(pfx).list[i]; if(name == null) return;
+  const inp = locInput(pfx); if(!inp) return;
+  inp.value = name; locSyncClear(pfx); locClose(pfx);
+  const c = __loc[pfx];
+  if(c) c.mute = true;   // 고른 뒤 칸으로 포커스를 돌릴 때 목록을 다시 펴지 않는다
+  try{ inp.focus(); }catch(_){}
+  if(c) c.mute = false;
+  inp.dispatchEvent(new Event('change', { bubbles: true }));   // 바뀜 감지(formSnapshot 등)가 select 시절처럼 알게
+}
+//  한 칸에 한 번만 건다. 빠른 추가는 상세를 다시 그릴 때마다 새 칸이 생기므로 칸 자체에 표식을 둔다.
+function locBind(pfx){
+  const inp = locInput(pfx); if(!inp || inp.__locBound) return;
+  inp.__locBound = true;
+  __loc[pfx] = { open: false, typed: false, act: -1, mute: false };
+  const wrap = inp.closest('.loc-combo'), pop = document.getElementById(pfx + 'LocPop');
+  inp.addEventListener('mousedown', () => { const c = __loc[pfx]; if(c && !c.open) setTimeout(() => locOpen(pfx, false), 0); });
+  inp.addEventListener('focus', () => { const c = __loc[pfx]; if(c && !c.open && !c.mute) locOpen(pfx, false); });
+  inp.addEventListener('input', () => { locSyncClear(pfx); locOpen(pfx, true); });
+  inp.addEventListener('keydown', ev => {
+    if(ev.isComposing || ev.keyCode === 229) return;   // 한글 조합 중에는 조합이 먼저다
+    const c = __loc[pfx]; if(!c) return;
+    const n = c.open ? locItems(pfx).list.length : 0;
+    if(ev.key === 'ArrowDown'){
+      ev.preventDefault();
+      if(!c.open){ locOpen(pfx, false); c.act = locItems(pfx).list.length ? 0 : -1; locRender(pfx); }
+      else if(n){ c.act = (c.act + 1) % n; locRender(pfx); }
+    } else if(ev.key === 'ArrowUp'){
+      ev.preventDefault();
+      if(c.open && n){ c.act = c.act <= 0 ? n - 1 : c.act - 1; locRender(pfx); }
+    } else if(ev.key === 'Enter'){
+      if(c.open){ ev.preventDefault(); ev.stopPropagation(); if(c.act >= 0) locPick(pfx, c.act); else locClose(pfx); }
+    } else if(ev.key === 'Escape'){
+      if(c.open){ ev.preventDefault(); ev.stopPropagation(); locClose(pfx); }   // 목록만 닫는다(창은 그대로)
+    } else if(ev.key === 'Tab'){ locClose(pfx); }
+  });
+  inp.addEventListener('blur', () => setTimeout(() => { if(!wrap || !wrap.contains(document.activeElement)) locClose(pfx); }, 120));
+  if(pop){
+    pop.addEventListener('mousedown', ev => ev.preventDefault());   // 고르는 동안 칸의 포커스를 잃지 않게
+    pop.addEventListener('click', ev => { const o = ev.target.closest('.loc-opt'); if(o) locPick(pfx, Number(o.dataset.i)); });
+  }
+  const tog = wrap && wrap.querySelector('.loc-tog'), clr = wrap && wrap.querySelector('.loc-clr');
+  if(tog){
+    tog.addEventListener('mousedown', ev => ev.preventDefault());
+    tog.addEventListener('click', () => { const c = __loc[pfx]; if(c && c.open) locClose(pfx); else { try{ inp.focus(); }catch(_){} locOpen(pfx, false); } });
+  }
+  if(clr){
+    clr.addEventListener('mousedown', ev => ev.preventDefault());
+    clr.addEventListener('click', () => { inp.value = ''; locSyncClear(pfx); try{ inp.focus(); }catch(_){} locOpen(pfx, false); inp.dispatchEvent(new Event('change', { bubbles: true })); });
+  }
+}
+//  공용 목록이 바뀌면(loadCodes 회신) 펼쳐 둔 목록만 다시 그린다. 칸의 글자는 건드리지 않는다.
+function locRefreshOpen(){ for(const p of Object.keys(__loc)){ if(__loc[p] && __loc[p].open) locRender(p); } }
 /* ---------- 미리알림(리드타임) 행 컨트롤 — entryModal(pfx 'f')·quick-add(pfx 'qa') 공용 ---------- */
 // 폼별 상태(모드·단위) 단일 소스. 숫자값은 입력창(#{pfx}RemNum)에 보관 → 폼 재열림에도 각 폼 상태 독립.
 const _remState = { f:{ mode:'def', unit:1 }, qa:{ mode:'def', unit:1 } };
@@ -12015,40 +12139,6 @@ function remRowSync(pfx, enabled, dimReason){
 // 폼별 재동기화(활성조건 계산 포함) — 세그/단위/숫자 변경·종일 토글에서 호출.
 function fRemResync(){ remRowSync('f', !$('#fAllDay').checked, 'allday'); }
 function qaRemResync(){ const ad = $('#qaAllDay'); remRowSync('qa', qaType === 'event' && !(ad && ad.checked), 'allday'); }
-// 폼(편집/빠른추가)이 열려 있는 동안 회의실을 바꾸면 그 폼의 장소 select를 즉시 갱신(현재 선택 보존)
-function refreshOpenRoomSelects(){
-  const fl = $('#fLoc'); if(fl && !$('#entryModal').classList.contains('hidden')) fillRoomSelect(fl, fl.value);
-  const ql = $('#qaLoc'); if(ql && !$('#quickAdd').classList.contains('hidden')) fillRoomSelect(ql, ql.value);
-}
-function renderRoomMgr(){
-  const list = $('#roomMgrList'); if(!list) return;
-  const rooms = state.rooms || [];
-  if(!rooms.length){ list.innerHTML = `<div class="room-empty">등록된 회의실이 없습니다.<br>아래에서 자주 쓰는 회의실을 추가해 보세요.</div>`; return; }
-  list.innerHTML = rooms.map(r => `<div class="room-row" data-room="${esc(r)}">
-    <svg class="room-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>
-    <span class="room-nm">${esc(r)}</span>
-    <button class="link danger" data-act="del" aria-label="${esc(r)} 삭제">삭제</button>
-  </div>`).join('');
-}
-function addRoom(name){
-  if(guardEdit()) return;
-  const s = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
-  if(!s){ toast('회의실 이름을 입력하세요', 'warn'); $('#roomName').focus(); return; }
-  if(!Array.isArray(state.rooms)) state.rooms = [];
-  if(state.rooms.includes(s)){ toast('이미 등록된 회의실입니다', 'warn'); $('#roomName').select(); return; }
-  if(state.rooms.length >= 50){ toast('회의실은 최대 50개까지 등록할 수 있습니다', 'warn'); return; }
-  state.rooms.push(s); save(); renderRoomMgr(); refreshOpenRoomSelects();
-  $('#roomName').value = ''; $('#roomName').focus();
-  toast(`'${s}' 회의실을 추가했습니다`, 'success');
-}
-function deleteRoom(name){
-  if(guardEdit()) return;
-  if(!Array.isArray(state.rooms)) return;
-  const i = state.rooms.indexOf(name); if(i < 0) return;
-  state.rooms.splice(i, 1); save(); renderRoomMgr(); refreshOpenRoomSelects();
-  toast(`'${name}' 회의실을 삭제했습니다`, 'success', {label:'실행 취소', fn:()=>{ if(!state.rooms.includes(name)){ state.rooms.splice(Math.min(i, state.rooms.length), 0, name); save(); renderRoomMgr(); refreshOpenRoomSelects(); } }});
-}
-function openRoomModal(){ renderRoomMgr(); $('#roomName').value = ''; openModal('#roomModal'); setTimeout(() => $('#roomName').focus(), 30); }
 /* 명시 저장 구획의 저장 상태 배지 — 'saved'(저장됨) | 'dirty'(저장 안 됨) | ''(중립: 저장 필요).
    ★ 값은 절대 읽지 않는다. input 이벤트가 '무언가 바뀌었다'는 사실만 알려주면 충분하고,
    비밀번호 값은 DPAPI 저장 경로(호스트) 외 어디에도 흐르면 안 된다. */
@@ -12726,9 +12816,11 @@ window.__applyCustomers = function(jsonStr){
     if(sel && ed && !ed.classList.contains('hidden')) offEdFillCustomers(sel.value);   // 열려 있는 폼만 갱신(선택값 보존)
   }catch(_){}
 };
-// 호스트가 읽어 온 구분/상태 코드목록(활성) 주입. 인자 2개 = sections/statuses 각각의 JSON 배열 문자열('' 또는 파싱실패면 유지).
+// 호스트가 읽어 온 구분/상태 코드목록(활성) 주입. 인자 = sections/statuses 각각의 JSON 배열 문자열('' 또는 파싱실패면 유지).
 //   ★ 원소는 [{id, name}] 이다(CODE-TABLE-IDS §4). 드롭다운 값은 번호, 글자는 이름이다.
-window.__applyCodes = function(sectionsJson, statusesJson){
+//   ★ 세 번째 인자 roomsJson = 회사 공용 회의실(room_code, docs/SHARED-ROOMS.md) [{id, name}]. 장소 칸 추천의 원본이다.
+//     실패('' 또는 파싱 실패)면 지금 목록을 그대로 둔다(다른 두 목록과 같은 규칙). 인자가 없으면(옛 호출) 건드리지 않는다.
+window.__applyCodes = function(sectionsJson, statusesJson, roomsJson){
   const parse = (s, cur) => {
     try{ const t = (s == null) ? '' : String(s);
       if(t && t.trim()){ const list = codeListOf(JSON.parse(t)); if(list) return list; }
@@ -12737,6 +12829,8 @@ window.__applyCodes = function(sectionsJson, statusesJson){
   };
   offSections = parse(sectionsJson, offSections);
   offStatuses = parse(statusesJson, offStatuses);
+  sharedRooms = parse(roomsJson, sharedRooms);
+  try{ locRefreshOpen(); }catch(_){}   // 펼쳐 둔 장소 칸 목록만 다시 그린다(칸의 글자는 그대로)
   // 열려 있는 화면 갱신 — 카탈로그 필터 셀렉트·목록, 편집 폼 드롭다운, 재연결 팝업 필터.
   try{
     const om = document.getElementById('officialModal');
@@ -13274,6 +13368,182 @@ function codeMove(key, dir){
     const tmp = active[i]; active[i] = active[j]; active[j] = tmp;
     codeSend('codeReorder', { ids: active }, codeKindLabel() + ' 순서를 변경했습니다');
   }, codeKindLabel() + ' 순서를 변경하려면 관리자 인증이 필요합니다.');
+}
+
+/* ---------- 회의실 관리(관리자): 회사 공용 회의실 목록 room_code(docs/SHARED-ROOMS.md) ----------
+   '⚙ 관리 › 🗓 일정 › 🚪 회의실'에 도킹되는 #roomAdminModal. 구분·상태 관리(codeSend, renderCodeList)와 같은 골격이다.
+   ★ 조작은 전부 호스트 왕복(hostRequest) 한 길이다. 회신 {ok,msg,list} 의 list(호스트가 쓰기 뒤 새로 읽은 목록)가
+     화면 목록(raList)이 된다. 화면이 스스로 목록을 고치지 않는다(직급·소속의 otSeat 과 같은 규칙).
+   ★ 쓰기 권한은 호스트가 요청 시점에 판정한다(ProjectDb.OpenAdminAsync). 이 화면은 입구만 관리자에게 보인다.
+   ★ 성공하면 loadCodes 로 장소 칸 추천(sharedRooms)도 새로 받는다. 열려 있는 일정 입력 창, 빠른 추가가 바로 따라온다.
+   ★ 삭제는 확인 창 한 번이고 실행 취소는 없다. 어떤 기록도 회의실 번호를 가리키지 않아(장소는 글자) 휴지통을 두지 않는다. */
+let raList = [];        // [{id, name, sort}]: 마지막으로 받은 관리 목록
+let raLoaded = false;   // 이번 실행에서 관리 목록을 한 번이라도 받았나(개수 표시용)
+let raBusy = false;
+let raEditId = null;    // 그 자리에서 이름을 바꾸는 중인 줄의 번호
+function raMsgSet(html, tone){
+  const m = document.getElementById('raMsg'); if(!m) return;
+  m.innerHTML = html || '';
+  m.style.color = tone === 'err' ? 'var(--danger)' : tone === 'ok' ? 'var(--accent-2)' : tone === 'busy' ? 'var(--accent)' : '';
+}
+//  회신의 list(문자열 JSON) → [{id, name, sort}]. 못 읽으면 null(지금 화면을 그대로 둔다).
+function raParse(json){
+  let arr = null; try{ arr = JSON.parse(String(json == null ? '' : json)); }catch(_){ arr = null; }
+  if(!Array.isArray(arr)) return null;
+  return arr.map(x => ({ id: codeIdOf(x && x.id), name: locNorm(x && x.name), sort: Number(x && x.sort) || 0 })).filter(x => x.id != null && x.name);
+}
+const raItem = id => raList.find(r => String(r.id) === String(id)) || null;
+//  같은 이름: 띄어쓰기와 대소문자만 다른 이름도 같은 이름으로 본다(호스트는 UNIQUE 로 다시 막는다).
+const raDupOf = (name, exceptId) => raList.find(r => r.id !== exceptId && locKey(r.name) === locKey(name)) || null;
+function raGuard(fn){
+  if(!HOST){ toast('회의실 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
+  if(!dbOnline){ toast('편집하려면 서버 연결이 필요합니다', 'warn'); return; }
+  if(typeof fn === 'function') fn();   // 권한 판정은 호스트가 한다
+}
+function openRoomAdmin(){
+  if(!HOST){ toast('회의실 관리는 데스크톱 위젯 전용입니다', 'warn'); return; }
+  raEditId = null;
+  const inp = document.getElementById('raNewName'); if(inp) inp.value = '';
+  raMsgSet('');
+  openModal('#roomAdminModal');
+  raReload();
+  setTimeout(() => { const e = document.getElementById('raNewName'); if(e && !e.closest('.docked')){ try{ e.focus(); }catch(_){} } }, 30);   // 도킹이면 그대로(H12)
+}
+async function raReload(){
+  const box = document.getElementById('raList'); if(!box) return;
+  const gen = String((Number(box.dataset.gen) || 0) + 1); box.dataset.gen = gen;   // 늦게 온 회신이 새 회신을 덮지 않게
+  box.innerHTML = `<div class="cust-empty">${ICON.spinner} 불러오는 중…</div>`;
+  let res = null;
+  try{ res = await hostRequest('roomsFull', {}, 20000); }catch(_){ res = null; }
+  if(box.dataset.gen !== gen) return;
+  const list = (res && res.ok) ? raParse(res.list) : null;
+  if(!list){ box.innerHTML = `<div class="cust-empty">${esc((res && res.msg) || '회의실 목록을 불러오지 못했습니다.')}</div>`; return; }
+  raList = list; raLoaded = true; raEditId = null;
+  raRender();
+}
+function raRender(flashId, errId){
+  const box = document.getElementById('raList'); if(!box) return;
+  if(!raList.length){
+    box.innerHTML = '<div class="cust-empty">등록된 회의실이 없습니다.<br>위 칸에 이름을 적고 [＋ 추가]를 누르세요.<br>목록이 비어 있어도 사용자는 장소를 직접 입력할 수 있습니다.</div>';
+    return;
+  }
+  box.innerHTML = raList.map((r, i) => {
+    const id = esc(String(r.id)), nm = esc(r.name);
+    if(raEditId === r.id){
+      return `<div class="cust-row" role="listitem" data-id="${id}"><span class="cust-edit"><input type="text" maxlength="40" autocomplete="off" spellcheck="false" value="${nm}" aria-label="${nm} 새 이름"></span>`
+        + `<button type="button" class="btn sm primary" data-rasave="${id}">저장</button><button type="button" class="btn sm" data-racancel="1">취소</button></div>`;
+    }
+    return `<div class="cust-row${flashId === r.id ? ' ra-flash' : ''}${errId === r.id ? ' ra-flash-err' : ''}" role="listitem" data-id="${id}">`
+      + LOC_ROOM_IC + `<span class="cust-nm">${nm}</span>`
+      + `<span class="code-ord"><button type="button" class="btn sm" data-raup="${id}"${i === 0 ? ' disabled' : ''} title="위로" aria-label="${nm} 위로">▲</button>`
+      + `<button type="button" class="btn sm" data-radown="${id}"${i === raList.length - 1 ? ' disabled' : ''} title="아래로" aria-label="${nm} 아래로">▼</button></span>`
+      + `<button type="button" class="btn sm" data-raedit="${id}">이름변경</button>`
+      + `<button type="button" class="btn sm danger" data-radel="${id}">삭제</button></div>`;
+  }).join('');
+  if(raEditId != null){
+    const inp = box.querySelector('.cust-edit input');
+    if(inp){ try{ inp.focus(); inp.select(); }catch(_){} }
+  }
+}
+//  공통 왕복: 성공이면 회신의 새 목록으로 다시 그리고, 장소 칸 추천(loadCodes)도 새로 받는다.
+//    실패면 호스트 문장을 그대로 보인다. 회신에 목록이 실려 왔으면(예: 화면이 낡았다) 그 목록으로 바로잡는다.
+async function raSend(cmd, params, onOk, flashOf){
+  if(raBusy){ toast('처리하는 중입니다. 잠시 후 다시 시도하세요', 'warn'); return false; }
+  raBusy = true; raMsgSet(ICON.spinner + ' 처리 중…', 'busy');
+  const ov = document.getElementById('roomAdminModal'); if(ov) ov.dataset.busy = '1';
+  let res = null;
+  try{ res = await hostRequest(cmd, params || {}, 20000); }catch(_){ res = null; }
+  finally{ raBusy = false; if(ov) delete ov.dataset.busy; }
+  const list = res ? raParse(res.list) : null;
+  if(res && res.ok){
+    raMsgSet('');
+    raEditId = null;
+    if(list){ raList = list; raLoaded = true; }
+    if(typeof onOk === 'function'){ try{ onOk(); }catch(_){} }
+    if(list) raRender(typeof flashOf === 'function' ? flashOf(raList) : null); else raReload();
+    toast(res.msg || '저장했습니다', 'success');
+    hpost({ cmd: 'loadCodes' });   // 장소 칸 추천(sharedRooms) 최신화. 열린 일정 입력 창, 빠른 추가가 따라온다
+    return true;
+  }
+  if(list && raEditId == null){ raList = list; raLoaded = true; raRender(); }
+  raMsgSet(ICON.alert + ' ' + esc((res && res.msg) || '처리하지 못했습니다.'), 'err');
+  toast((res && res.msg) || '처리하지 못했습니다', 'error');
+  return false;
+}
+function raDoAdd(){
+  const inp = document.getElementById('raNewName');
+  const name = locNorm(inp ? inp.value : '');
+  if(!name){ raMsgSet(ICON.alert + ' 회의실 이름을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(name.length > 40){ raMsgSet(ICON.alert + ' 회의실 이름은 40자까지 입니다.', 'err'); if(inp) inp.focus(); return; }
+  const d = raDupOf(name, null);
+  if(d){
+    raMsgSet(ICON.alert + ' ' + esc("'" + d.name + "'은(는) 이미 목록에 있습니다. 띄어쓰기와 대소문자는 같은 이름으로 봅니다."), 'err');
+    raRender(null, d.id);
+    if(inp){ inp.focus(); try{ inp.select(); }catch(_){} }
+    return;
+  }
+  raGuard(() => raSend('roomAdd', { name }, () => { if(inp){ inp.value = ''; inp.focus(); } },
+    rows => { const r = rows.find(x => locKey(x.name) === locKey(name)); return r ? r.id : null; }));
+}
+function raBeginRename(key){
+  const it = raItem(key); if(!it) return;
+  raGuard(() => { raEditId = it.id; raMsgSet(''); raRender(); });
+}
+function raCommitRename(key){
+  const it = raItem(key); if(!it) return;
+  const inp = document.querySelector('#raList .cust-edit input');
+  const name = locNorm(inp ? inp.value : '');
+  if(!name){ raMsgSet(ICON.alert + ' 새 이름을 입력하세요.', 'err'); if(inp) inp.focus(); return; }
+  if(name.length > 40){ raMsgSet(ICON.alert + ' 회의실 이름은 40자까지 입니다.', 'err'); if(inp) inp.focus(); return; }
+  if(name === it.name){ raEditId = null; raMsgSet(''); raRender(); return; }
+  const d = raDupOf(name, it.id);
+  if(d){ raMsgSet(ICON.alert + ' ' + esc("'" + d.name + "'은(는) 이미 목록에 있습니다."), 'err'); if(inp) inp.focus(); return; }
+  raGuard(() => raSend('roomRename', { id: it.id, newName: name }, null, () => it.id));
+}
+function raCancelRename(){ raEditId = null; raMsgSet(''); raRender(); }
+//  ▲▼: 지금 목록에서 한 칸 바꾼 뒤 번호 배열 전체를 보낸다(호스트가 지금 집합과 대조한다).
+function raMove(key, dir){
+  const id = codeIdOf(key); if(id == null) return;
+  const ids = raList.map(r => r.id);
+  const i = ids.indexOf(id), j = i + (dir === 'up' ? -1 : 1);
+  if(i < 0 || j < 0 || j >= ids.length) return;
+  const t = ids[i]; ids[i] = ids[j]; ids[j] = t;
+  raGuard(async () => {
+    const ok = await raSend('roomReorder', { ids }, null, () => id);
+    if(!ok) return;
+    const box = document.getElementById('raList'); if(!box) return;
+    const b = box.querySelector('[data-ra' + dir + '="' + id + '"]');
+    const other = box.querySelector('[data-ra' + (dir === 'up' ? 'down' : 'up') + '="' + id + '"]');
+    try{ if(b && !b.disabled) b.focus(); else if(other) other.focus(); }catch(_){}
+  });
+}
+function raDoDelete(key){
+  const it = raItem(key); if(!it) return;
+  raGuard(async () => {
+    const r = await confirmBox('회의실 삭제', "'" + it.name + "' 회의실을 목록에서 지울까요?\n일정에 이미 적힌 장소 글자는 그대로 남습니다.", '삭제');
+    if(r !== 'ok') return;
+    const ok = await raSend('roomDelete', { id: it.id });
+    if(!ok) return;
+    const box = document.getElementById('raList');
+    const nx = box && box.querySelector('.cust-row .btn'); const add = document.getElementById('raNewName');
+    try{ if(nx) nx.focus(); else if(add) add.focus(); }catch(_){}
+  });
+}
+function raListClick(ev){
+  const t = ev.target;
+  const up = t.closest('[data-raup]'); if(up){ raMove(up.dataset.raup, 'up'); return; }
+  const dn = t.closest('[data-radown]'); if(dn){ raMove(dn.dataset.radown, 'down'); return; }
+  const eb = t.closest('[data-raedit]'); if(eb){ raBeginRename(eb.dataset.raedit); return; }
+  const db = t.closest('[data-radel]'); if(db){ raDoDelete(db.dataset.radel); return; }
+  const vb = t.closest('[data-rasave]'); if(vb){ raCommitRename(vb.dataset.rasave); return; }
+  const cb = t.closest('[data-racancel]'); if(cb){ raCancelRename(); return; }
+}
+//  그 자리 이름 바꾸기: Enter 저장, Esc 취소(창은 닫지 않는다)
+function raListKey(ev){
+  if(!(ev.target && ev.target.closest && ev.target.closest('.cust-edit'))) return;
+  if(ev.isComposing || ev.keyCode === 229) return;
+  if(ev.key === 'Enter'){ ev.preventDefault(); if(raEditId != null) raCommitRename(raEditId); }
+  else if(ev.key === 'Escape'){ ev.preventDefault(); ev.stopPropagation(); raCancelRename(); }
 }
 
 /* ---------- 직급·소속 관리 — title_code/org_unit 마스터(관리자 전용 · 설계 docs/ORG-TITLE-ADMIN.md) ----------
@@ -14181,7 +14451,6 @@ function applyImport(opt){
     categories: pendingImport.categories.filter(c => !cseen.has(c.id) && cseen.add(c.id)),
     entries: pendingImport.entries.filter(e => !eseen.has(e.id) && eseen.add(e.id)),
     todos: (pendingImport.todos || []).filter(t => !tseen.has(t.id) && tseen.add(t.id)),
-    rooms: normRooms(pendingImport.rooms) || DEFAULT_ROOMS.slice(),
     reportMarker: pendingImport.reportMarker || '-',
     reportMarkerCustom: pendingImport.reportMarkerCustom || '',
     reportIndent: (pendingImport.reportIndent != null ? pendingImport.reportIndent : 2),
@@ -14208,7 +14477,7 @@ async function clearAll(){
     `과제 ${state.categories.length}개, 기록 ${state.entries.length}개가 모두 삭제됩니다${HOST ? '(서버에 저장된 내 기록 포함)' : ''}.\n삭제 전 ⋯ 메뉴의 'XML로 내보내기'로 내 PC에 사본을 남기기를 권장합니다.`,
     '모두 삭제') !== 'ok') return;
   const snap = state;   // 직전 전체 상태 스냅샷(되돌리기용)
-  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], rooms:DEFAULT_ROOMS.slice(), reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, reportFont:defaultReportFont()};
+  state = {gitAuthor:'', svnAuthor:'', categories:[], entries:[], todos:[], reportMarker:'-', reportMarkerCustom:'', reportIndent:2, reportFormatPrefs:{daily:defaultReportFormatPref(), weekly:defaultReportFormatPref()}, gitCommitBody:false, reportSource:'cal', taskHours:{}, attendance:{}, reportFont:defaultReportFont()};
   ensureDefaultTasks(state);   // 초기화 뒤에도 기본 과제(휴가, 기타)는 있다(DEFAULT-TASKS §3). 같은 전량 교체 저장에 실린다
   filterCatId = null; filterSource = null; noteFilterCat = null;
   //  ★ 초기화도 state 를 통째로 갈아끼운 것이므로 전량 교체다(가져오기와 같은 부류).
@@ -17054,7 +17323,7 @@ function openQuickAdd(date, type, entryId){
     qaEndDirty = !!e.endTime;
     const rc = $('#qaRecur'); if(rc) rc.value = (e.recur && e.recur.freq) ? e.recur.freq : '';
     const ed = $('#qaEndDate'); if(ed) ed.value = e.endDate || '';
-    fillRoomSelect($('#qaLoc'), e.location || '');
+    locSet('qa', e.location || '');
     const mm = $('#qaMemo'); if(mm){ mm.value = e.memo || ''; autoGrowArea(mm); }   // 메모(rows=1 자동확장) — 프리필 후 높이 맞춤
     qaSyncTimeRow();   // 종일 상태에 맞춰 시간 행 표시(미리알림 행도 함께 재동기화)
   }
@@ -17088,9 +17357,9 @@ function autoGrowArea(ta){ if(!ta) return; ta.style.height = 'auto'; ta.style.he
 function qaRenderDetail(){
   $('#qaDetail').innerHTML = (qaType === 'event')
     ? `<div class="row2">
-         <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaLoc">장소</label><button type="button" class="lnk" id="qaRoomMgr" title="회의실 추가·편집"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>회의실 관리</button></div>
+         <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaLoc">장소</label></div>
          <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaRecur">반복</label></div>
-         <select id="qaLoc"></select>
+         <div class="loc-combo" data-pfx="qa"><input type="text" class="loc-in" id="qaLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 직접 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="qaLocPop" role="listbox" aria-label="장소 추천"></div></div>
          <select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        </div>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
@@ -17101,8 +17370,7 @@ function qaRenderDetail(){
        <label class="qa-chk" style="margin-top:8px"><input type="checkbox" id="qaPrio"> <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" style="color:var(--star)"><path d="M12 3.5l2.5 5.3 5.8.6-4.3 3.9 1.2 5.7L12 16.6 6.8 19l1.2-5.7L3.7 9.4l5.8-.6z"/></svg> 중요</label>`;
   if(qaType === 'event'){
     // 미리알림은 상세(옵션 더보기) 밖 상시 표시 행으로 이전 — 여기선 렌더하지 않음(openQuickAdd·qaSyncTimeRow가 관리).
-    fillRoomSelect($('#qaLoc'), $('#qaLoc').value || '');   // 장소 select 채우기(재렌더 시 현재 선택 보존)
-    const rm = $('#qaRoomMgr'); if(rm) rm.addEventListener('click', openRoomModal);   // 빠른추가 → 회의실 관리(중첩 모달)
+    locBind('qa');   // 장소 칸(직접 입력 + 공용 회의실 추천). 상세를 다시 그리면 새 칸이라 다시 건다
     const mm = $('#qaMemo'); if(mm) mm.addEventListener('input', () => autoGrowArea(mm));   // 메모 rows=1 자동확장
     const rc = $('#qaRecur'), rh = $('#qaRecurHint');   // 반복 선택 시 간격·횟수 세부는 자세히 편집 안내
     // 문구는 켜짐·꺼짐 모두 넣는다 — #qaRecurHint.hidden 이 visibility 만 끄므로(자리 유지) 글이 있어야 높이가 같다(2026-09-23 §3.4-A).
@@ -17135,7 +17403,7 @@ function qaEventFormData(){
   const recur = (rf === 'weekly' || rf === 'monthly') ? {freq:rf, interval:1, until:'', count:0} : null;
   const edEl = $('#qaEndDate'); const memoEl = $('#qaMemo'); const lcEl = $('#qaLoc');
   const d = {date:$('#qaDate').value, title:$('#qaTitle').value.trim(), categoryId:$('#qaCat').value || null,
-    allDay, startTime:st, endTime:en, location:lcEl ? lcEl.value : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
+    allDay, startTime:st, endTime:en, location:lcEl ? String(lcEl.value || '').trim() : '', memo:memoEl ? memoEl.value.trim() : '', recur, endDate:edEl ? edEl.value : ''};
   // 미리알림 행은 상시 표시 → 일정 폼값엔 항상 포함(remReadValue가 모드·숫자·단위를 저장값으로 환산). 할 일은 이 함수를 타지 않음.
   d.remind = remReadValue('qa');
   return d;
@@ -17389,10 +17657,10 @@ function guideShot(kind, step){
   if(kind === 'detail') return base('날짜 상세',
     `<span class="shot-btn">검색</span><span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
     call(1, '날짜 클릭', 'left:128px;top:122px') + call(2, '상세 확인', 'right:20px;top:70px') + call(3, '수정·삭제', 'right:24px;bottom:58px'));
-  if(kind === 'room') return base('장소와 회의실',
+  if(kind === 'room') return base('장소',
     `<span class="shot-btn">⋯</span><span class="shot-btn primary">＋ 새 기록</span>`,
-    `<div class="shot-modal"><h4>회의실 관리</h4><div class="shot-field"></div><div class="shot-row"><div class="shot-field" style="flex:1"></div><span class="shot-btn primary">＋ 추가</span></div></div>`
-    + call(1, '더보기', 'right:70px;top:10px') + call(2, '회의실 추가', 'left:132px;top:82px') + call(3, '일정 장소에서 선택', 'right:54px;bottom:54px'));
+    `<div class="shot-modal"><h4>장소</h4><div class="shot-field"></div><div class="shot-line"></div><div class="shot-line mid"></div><div class="shot-line short"></div></div>`
+    + call(1, '새 기록', 'right:12px;top:10px') + call(2, '장소 칸', 'left:132px;top:82px') + call(3, '고르거나 직접 입력', 'right:54px;bottom:54px'));
   if(kind === 'commit') return base('커밋 내역',
     `<span class="shot-btn">내 과제</span><span class="shot-btn primary">＋ 새 기록</span>`,
     `<div class="shot-modal"><h4>커밋 내역</h4><div class="shot-row"><span class="shot-btn primary">이 날 커밋</span><span class="shot-btn">기간 일괄 불러오기</span></div><div class="shot-line"></div><div class="shot-line mid"></div></div>`
@@ -17415,7 +17683,7 @@ function guideShot(kind, step){
     + call(1, '더보기', 'right:18px;top:10px') + call(2, '월 보기 밀도', 'left:138px;top:84px') + call(3, '알림·일간보고', 'right:54px;bottom:52px'));
   if(kind === 'backup') return base('데이터와 사본',
     `<span class="shot-btn primary">⋯</span>`,
-    `<div class="shot-menu"><div>설정</div><div>회의실 관리</div><div class="on">XML로 내보내기</div><div>XML 가져오기…</div><div>전체 데이터 초기화</div></div>`
+    `<div class="shot-menu"><div>설정</div><div>업데이트 확인</div><div class="on">XML로 내보내기</div><div>XML 가져오기…</div><div>전체 데이터 초기화</div></div>`
     + call(1, '더보기', 'right:18px;top:10px') + call(2, '내보내기', 'right:34px;top:96px') + call(3, '가져오기', 'right:30px;top:122px'));
   if(kind === 'window') return base('창 모드와 크기',
     `<span class="shot-btn">${ICON.pin}</span><span class="shot-btn">☰</span><span class="shot-btn">×</span>`,
@@ -17928,14 +18196,10 @@ function bind(){
       Platform.report.submitWeekly(payload);
     }
   });
-  $('#btnRooms').addEventListener('click', () => { closeMore(); openRoomModal(); });
   $('#btnExport').addEventListener('click', () => { closeMore(); exportXML(); });
   $('#btnImport').addEventListener('click', () => { closeMore(); startImport(); });
   $('#btnClear').addEventListener('click', () => { closeMore(); clearAll(); });
-  $('#btnRoomAdd').addEventListener('click', () => addRoom($('#roomName').value));
-  $('#roomName').addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); addRoom($('#roomName').value); } });
-  $('#roomMgrList').addEventListener('click', ev => { const b = ev.target.closest('button[data-act="del"]'); if(!b) return; const row = b.closest('.room-row'); if(row) deleteRoom(row.dataset.room); });
-  $('#fRoomMgr').addEventListener('click', openRoomModal);   // 편집 모달 → 회의실 관리(중첩 모달)
+  locBind('f');   // 일정 입력 창의 장소 칸(직접 입력 + 공용 회의실 추천, SHARED-ROOMS)
   $('#importFile').addEventListener('change', ev => {
     const f = ev.target.files[0];
     if(f) onImportFile(f);
@@ -18354,6 +18618,11 @@ function bind(){
       const vb = t.closest('[data-codesave]'); if(vb){ const row = vb.closest('.cust-row'); if(row) codeCommitRename(vb.dataset.codesave, row); return; }
       const cb = t.closest('[data-codecancel]'); if(cb){ renderCodeList(); return; }
     }); }
+
+  /* 회의실 관리(관리자, SHARED-ROOMS): 구분·상태와 같은 위임. 그 자리 이름 바꾸기의 Enter, Esc 는 목록이 받는다 */
+  { const b = $('#raAddBtn'); if(b) b.addEventListener('click', raDoAdd); }
+  { const inp = $('#raNewName'); if(inp) inp.addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); raDoAdd(); } }); }
+  { const box = $('#raList'); if(box){ box.addEventListener('click', raListClick); box.addEventListener('keydown', raListKey); } }
 
   /* 직급·소속 관리 — 목록 버튼은 위임 하나로 받는다(행은 회신마다 새로 만들어진다) */
   { const t = $('#otTabTitle'); if(t) t.addEventListener('click', () => guardInlineEdit('otList', otRowOrig, () => otSwitchTab('title'))); }

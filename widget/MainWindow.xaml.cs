@@ -676,7 +676,7 @@ namespace TaskCalendarWidget
 
                     // ----- 구분/상태 코드테이블 관리 — kind('section'|'status')로 분기. 발주처 브리지 패턴 복제. -----
                     //   ★ 추가만 이름으로 받고 나머지(개명·숨김·순서·참조 수)는 번호(id · ids)로 받는다(CODE-TABLE-IDS §4).
-                    case "loadCodes":          // 드롭다운 소스(활성 코드값) → __applyCodes({sections, statuses})
+                    case "loadCodes":          // 드롭다운 소스(활성 코드값) + 공용 회의실 → __applyCodes(sections, statuses, rooms)
                         _ = LoadCodesToWebAsync();
                         break;
                     case "getCodesFull":       // 관리 화면 전용 — 숨김 포함 전체 [{id,name,active,sort}]
@@ -696,6 +696,26 @@ namespace TaskCalendarWidget
                         break;
                     case "codeRefCount":       // 이 코드값을 쓰는 활성 과제 수(숨김 확인 UX용)
                         _ = RunCodeRefCountAsync(GetStr(doc, "reqId"), GetStr(doc, "kind"), GetInt(doc, "id"));
+                        break;
+
+                    // ----- 공용 회의실(room_code, docs/SHARED-ROOMS.md): 관리자 전용. 회신은 ReplyOnUi(reqId)로 {ok,msg,list} -----
+                    //   ★ 일반 사용자의 목록은 loadCodes 가 세 번째 목록으로 싣는다(__applyCodes). 여기 다섯은 관리 화면 것이다.
+                    //   ★ 권한은 여기서 보지 않는다. 쓰기 넷의 판정은 요청 시점에 ProjectDb.OpenAdminAsync 한 곳이 한다.
+                    //   ★ 추가만 이름으로 받고 나머지(이름변경, 삭제, 순서)는 번호(id, ids)로 받는다(CODE-TABLE-IDS §4).
+                    case "roomsFull":
+                        _ = RunRoomsFullAsync(GetStr(doc, "reqId"));
+                        break;
+                    case "roomAdd":
+                        _ = RunRoomAddAsync(GetStr(doc, "reqId"), GetStr(doc, "name"));
+                        break;
+                    case "roomRename":
+                        _ = RunRoomRenameAsync(GetStr(doc, "reqId"), GetInt(doc, "id"), GetStr(doc, "newName"));
+                        break;
+                    case "roomDelete":
+                        _ = RunRoomDeleteAsync(GetStr(doc, "reqId"), GetInt(doc, "id"));
+                        break;
+                    case "roomReorder":
+                        _ = RunRoomReorderAsync(GetStr(doc, "reqId"), GetIntArray(doc, "ids"));
                         break;
 
                     // ★ 관리자 브리지(adminLogin/adminLogout/adminStateGet/saveAdminCred)는 폐지됐다(USER-LOGIN §3.3).
@@ -1809,13 +1829,15 @@ namespace TaskCalendarWidget
         }
 
         // ----- 구분/상태 코드테이블 관리 — 발주처와 대칭. 회신은 ReplyOnUi. 재조회(loadCodes/loadProjects)는 웹이 트리거. -----
-        // 드롭다운 소스(활성 코드값) — sections/statuses 두 배열을 한 번에 __applyCodes로. 실패는 각각 ""(웹이 폴백).
+        // 드롭다운 소스(활성 코드값) — sections/statuses 두 배열 + 공용 회의실(rooms, SHARED-ROOMS)을 한 번에 __applyCodes로.
+        //   실패는 각각 ""(웹이 그 목록만 지금 것을 그대로 둔다).
         private async Task LoadCodesToWebAsync()
         {
             string? sec = await _projectDb.LoadSectionCodesJsonAsync();
             string? st = await _projectDb.LoadStatusCodesJsonAsync();
+            string? rooms = await _projectDb.LoadRoomsJsonAsync();
             JsCall("window.__applyCodes && window.__applyCodes("
-                + JsonSerializer.Serialize(sec ?? "") + "," + JsonSerializer.Serialize(st ?? "") + ")");
+                + JsonSerializer.Serialize(sec ?? "") + "," + JsonSerializer.Serialize(st ?? "") + "," + JsonSerializer.Serialize(rooms ?? "") + ")");
         }
         private async Task RunLoadCodesFullAsync(string reqId, string kind)
         {
@@ -1848,6 +1870,41 @@ namespace TaskCalendarWidget
         {
             var (ok, count, msg) = await _projectDb.CountActiveProjectsByCodeAsync(kind, id);
             ReplyOnUi(reqId, new { ok, count, msg });
+        }
+
+        // ----- 공용 회의실 관리(SHARED-ROOMS): 회신 {ok,msg,list}. list = 관리 화면 목록 JSON 문자열(쓰기 뒤에도 새로 읽어 싣는다).
+        //   ★ 장소 칸(일반 사용자)의 목록 갱신은 웹이 성공 회신을 받고 loadCodes 로 스스로 한다(웹=무엇을, 호스트=어떻게).
+        private async Task ReplyRoomsAsync(string reqId, bool ok, string msg)
+        {
+            string? json = await _projectDb.LoadRoomsFullJsonAsync();
+            ReplyOnUi(reqId, new { ok, msg, list = json ?? "" });
+        }
+        private async Task RunRoomsFullAsync(string reqId)
+        {
+            string? json = await _projectDb.LoadRoomsFullJsonAsync();
+            ReplyOnUi(reqId, json == null
+                ? (object)new { ok = false, msg = "회의실 목록을 불러오지 못했습니다.", list = "" }
+                : new { ok = true, msg = "", list = json });
+        }
+        private async Task RunRoomAddAsync(string reqId, string name)
+        {
+            var (ok, msg) = await _projectDb.AddRoomAsync(name);
+            await ReplyRoomsAsync(reqId, ok, msg);
+        }
+        private async Task RunRoomRenameAsync(string reqId, int id, string newName)
+        {
+            var (ok, msg) = await _projectDb.RenameRoomAsync(id, newName);
+            await ReplyRoomsAsync(reqId, ok, msg);
+        }
+        private async Task RunRoomDeleteAsync(string reqId, int id)
+        {
+            var (ok, msg) = await _projectDb.DeleteRoomAsync(id);
+            await ReplyRoomsAsync(reqId, ok, msg);
+        }
+        private async Task RunRoomReorderAsync(string reqId, List<int> ids)
+        {
+            var (ok, msg) = await _projectDb.ReorderRoomsAsync(ids);
+            await ReplyRoomsAsync(reqId, ok, msg);
         }
 
         // ============ 사용자 로그인(세션 유지) — USER-LOGIN §2.2 ============

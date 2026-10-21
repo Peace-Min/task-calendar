@@ -16,7 +16,7 @@
  *       cal_category 는 3표가 RESTRICT 로 잡고 있어 **맨 마지막**). cal_attendance 는 FK 가 없다.
  *   R3 cal_user_rev 는 DELETE 하지 않는다 — 단조 증가값이라 되돌리면 앱의 변경 감지가 깨진다.
  *      사용자별 시딩이 끝나면 ODKU 로 **+1 만** 한다.
- *   R4 cal_migration_log · cal_report_* · cal_user_pref · cal_room 에는 쓰지 않는다.
+ *   R4 cal_migration_log · cal_report_* · cal_user_pref 에는 쓰지 않는다(옛 cal_room 은 2026-10-21 에 없어졌다).
  *      ★ 단 검증 V13('총 행수 불변')은 COUNT(*) 로 **읽는다** — 그 읽기가 없으면 '건드리지
  *        않았다' 를 증명할 방법이 없다. 읽기만 하고 절대 쓰지 않는다.
  *   R5 project · app_user · org_unit 등 조직·과제 원본 표는 SELECT 만 한다.
@@ -803,7 +803,7 @@ function insertChunks(out, table, cols, valueRows) {
 //  ★ 여기 한 곳만 두는 이유: 지우는 표와 넣는 표가 갈라지면 --purge 뒤에 찌꺼기가 남는다.
 //  ★ R2 FK 순서. cal_category 는 cal_entry·cal_todo·cal_task_hours 가 RESTRICT 로 잡고 있어 맨 마지막.
 //  ★ cal_user_rev 는 여기 없다 — 단조 증가라 DELETE 하지 않는다(bump 만 한다).
-//  ★ cal_report_* · cal_migration_log · cal_user_pref · cal_room 도 없다 — 이 도구가 만든 것이 아니다.
+//  ★ cal_report_* · cal_migration_log · cal_user_pref 도 없다 — 이 도구가 만든 것이 아니다.
 function deleteStatements(uid) {
   return [
     'DELETE FROM cal_task_hours WHERE user_id = ' + uid + ';',
@@ -911,7 +911,7 @@ const V_LABELS = {
   V10: 'cal_attendance.status 가 유효 코드 집합에 속한다(NULL 없음)',
   V11: '대상이 아닌 사용자의 cal_entry 행수 불변',
   V12: 'cal_user_rev — 대상은 증가, 그 외는 불변',
-  V13: '보호 대상 표(cal_report_* · cal_migration_log · cal_user_pref · cal_room) 총 행수 불변',
+  V13: '보호 대상 표(cal_report_* · cal_migration_log · cal_user_pref) 총 행수 불변',
 };
 
 const results = [];   // {id, ok, detail}
@@ -1002,7 +1002,7 @@ function verifyContent(ids) {
 }
 
 const PROTECTED_TABLES = ['cal_report_daily', 'cal_report_weekly', 'cal_report_hours',
-  'cal_migration_log', 'cal_user_pref', 'cal_room'];
+  'cal_migration_log', 'cal_user_pref'];
 
 /** 시딩 전후 대조용 스냅샷. ★ 보호 대상 표는 COUNT(*) 로 '읽기만' 한다(R4 의 예외 — V13 의 근거). */
 function snapshot() {
@@ -1132,7 +1132,7 @@ function main() {
       : '   ✗ P1  대상에 ' + after + '행이 남았다');
     console.log(!movedOutside.length ? '   ✓ P2  대상 밖 사용자의 cal_entry 행수가 그대로다'
       : '   ✗ P2  대상 밖 ' + movedOutside.length + '명의 행수가 변했다: ' + movedOutside.slice(0, 8).join(', '));
-    console.log(!guardDiff.length ? '   ✓ P3  보호표(보고기록·migration_log·pref·room)가 그대로다'
+    console.log(!guardDiff.length ? '   ✓ P3  보호표(보고기록·migration_log·pref)가 그대로다'
       : '   ✗ P3  보호표가 바뀌었다: ' + guardDiff.join(', '));
     console.log(!revNotUp.length ? '   ✓ P4  대상 전원의 cal_user_rev 가 올랐다(앱이 변경을 안다)'
       : '   ✗ P4  rev 가 안 오른 사용자 ' + revNotUp.length + '명: ' + revNotUp.slice(0, 8).join(', '));

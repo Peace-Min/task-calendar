@@ -31,6 +31,10 @@
 > 같은 날 지난 `migrate-2026-*.sql`(v12 까지), `rollback-2026-08-24-org-id.sql`, 옛 진입점(`init-db`, `migrate.cmd`,
 > `db/schema.sql`)을 지웠다(git 이력에 있다). 본문에서 그 이름이 나오는 곳은 기록이다. 남은 이관 파일은
 > `migrate-2026-10-15-code-ids.sql`(12 → 13) 하나이고 새 DB 진입점은 `setup-taskcalendar` 하나다.
+> **2026-10-21, `cal_room` 을 없앴다**(구조 번호 15, [`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md)). 회의실은 사람마다 두지 않고
+> 회사 공용 목록 `room_code`(번호 키, `name` UNIQUE, 정본 `schema-structure.sql`) 하나를 관리자만 고친다. 부팅 조회와 저장,
+> XML 이관은 회의실을 다루지 않는다(`<rooms>` 는 읽지 않는다). 아래 본문의 `cal_room` 은 그 전의 기록이다.
+> 이관은 조각 `db/deploy/migrations/v15-shared-rooms.sql` 이 한다(이름을 모아 넣고 표를 지운다).
 > 이 문서는 **결정과 근거**를 담는다. 컬럼 수준 DDL 의 단일 소스는
 > `db/deploy/schema-calendar.sql` 이다. 문서와 그 파일이 어긋나면 **그 파일이 정본**이다.
 > **표를 두 벌 두지 않는다**: 실제로 그 사고가 났다(초안 §4.0 이 `ON DELETE CASCADE` 로 적혀
@@ -370,7 +374,7 @@ UPDATE cal_entry SET ..., updated_at = ?      -- 앱이 UTC 로 계산해 보낸
 > 격리수준 명시가 왜 여기 붙는지는 §3.2 의 '읽기 연결에는 걸지 않는다' 참조.
 > READ COMMITTED 위에서는 이 구문이 Warning 138 하나만 남기고 무시된다.
 
-**대상 10개**(세어서 적는다. 게이트가 셀 수 있어야 한다):
+**대상 10개**(세어서 적는다. 게이트가 셀 수 있어야 한다. 2026-10-21 `cal_room` 폐지로 지금은 **9개**다):
 `cal_category`, `cal_entry`, `cal_entry_except`, **`cal_entry_commit`**, `cal_todo`, `cal_todo_day_note`,
 `cal_room`, `cal_task_hours`, **`cal_attendance`**, `cal_user_pref`
 
@@ -1040,7 +1044,7 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | `cal_entry_commit` | `<commits><commit>` |
 | `cal_todo` | `<todo>` |
 | `cal_todo_day_note` | `<dayNotes><dayNote>` |
-| `cal_room` | `<rooms>` |
+| ~~`cal_room`~~ (2026-10-21 폐지) | `<rooms>` (읽지 않는다. 회의실은 공용 `room_code`) |
 | `cal_task_hours` | `<taskHours>` |
 | **`cal_attendance`** | **`<attendance><day>`** |
 | **`cal_report_daily`** | 없음 (캘린더가 **보낸** 일간보고, §5.9) |
@@ -1624,7 +1628,8 @@ CHECK 를 두는 이유: **API 계층이 없어 앱이 유일한 검증기**다.
 | **`section_code`** | ~~`name VARCHAR(50)`~~ → **`section_id SMALLINT UNSIGNED`** | **전환(2026-10-15)** | 〃. 고정 번호 2=선진행(§5.6.3-a) |
 | **`status_code`** | ~~`name VARCHAR(50)`~~ → **`status_id SMALLINT UNSIGNED`** | **전환(2026-10-15)** | 〃. 고정 번호 2=종료(§5.6.3-a) |
 | **`title_code`** | ~~`name VARCHAR(30)`~~ → **`title_id SMALLINT UNSIGNED`** | **전환(2026-10-15)** | 〃. 번호는 회사 저장소 `02-seed-org.sql` 이 명시한다 |
-| `cal_room` | `(user_id, name VARCHAR(40))` | **유지** | 가리키는 자식이 없다. 구조상 지금이 낫다(§5.6.7) |
+| ~~`cal_room`~~ | `(user_id, name VARCHAR(40))` | **폐지(2026-10-21)** | 공용 `room_code`(번호 키, `name` UNIQUE)로 바꿨다(§5.6.7 끝의 주) |
+| **`room_code`** | **`room_id SMALLINT UNSIGNED`** | **신설(2026-10-21)** | 회사 공용 회의실. 가리키는 외래키는 없다. 관리 화면이 번호로 고친다 |
 | `cal_schema_meta` | `k VARCHAR(32)` | **유지** | 가리키는 자식이 없다. 행 하나를 `k` 로 찾는다(§5.6.7) |
 | **`app_user`** | ~~`login_id`~~ → **`user_id`** | **전환 완료(2026-08-24)** | ②③⑤ 전부 실패(§5.2.2) |
 | **`org_unit`** | ~~`name`~~ → **`org_id`** | **전환 완료(2026-08-24, 완전 절단)** | ②실패 근거 §5.6.6, 전환 결과 §5.6.6-a |
@@ -2247,6 +2252,11 @@ app_user.org_unit := (org_id 가 가리키는 조직의 name)
 가리키지 않는다**(가리키는 자식 표가 없다). 그래서 지적의 대상이 아니고, 아래는 이관 비용과 상관없이
 **DB 구조만 봐도** 지금 모양이 나은 이유다. (`cal_room.user_id` 가 `app_user` 를 가리키는 것은 이 표가 자식인
 쪽이고, 그 부모 키는 이미 번호 `user_id` 다.)
+
+> **2026-10-21, 아래 `cal_room` 판단의 재검토 조건이 왔다.** 사용자 결정으로 회의실이 사람마다의 목록에서 회사 공용 목록이 되고,
+> 관리자가 그 자리에서 이름을 바꾸게 됐다(아래 마지막 줄의 *"이름을 제자리에서 바꾸는 기능"*). 그래서 `cal_room` 을 지우고
+> `room_code`(번호 `room_id`, `name` UNIQUE, `sort_order`)를 새로 두었다. 일정의 장소는 여전히 글자라 외래키는 없다.
+> 정본은 `db/deploy/schema-structure.sql`, 이관은 `db/deploy/migrations/v15-shared-rooms.sql`([`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md)).
 
 **`cal_room`: PK `(user_id, name VARCHAR(40))`** *(2026-10-15 정정: 80 으로 적혀 있었다. 실제는 40, `utf8mb4_bin`)*
 - **인덱스가 늘어난다.** 지금은 PK `(user_id, name)` 과 `ix_cal_room_user_sort (user_id, sort_order)` 둘이다.
@@ -3270,6 +3280,10 @@ binlog 는 **변경 이력**이다. *"어느 상태에서 출발해 이 변경�
 ---
 
 ## 정정 이력
+
+- **2026-10-21, 회의실 공용화**([`../docs/SHARED-ROOMS.md`](../docs/SHARED-ROOMS.md), 구조 번호 15).
+  - 머리 상자, §3.5 대상 수(10 에서 9), §4 매핑표, §5.6.3 판정표, §5.6.7 에 `cal_room` 폐지와 `room_code` 신설을 적었다.
+    본문의 다른 `cal_room` 서술(정렬, 서명, 트리거 폐기 전 대상 등)은 그때의 기록이라 그대로 둔다.
 
 - **2026-10-15, 코드표 번호 키 전환과 문서 어긋남 정리**([`../docs/CODE-TABLE-IDS.md`](../docs/CODE-TABLE-IDS.md) §8-6, §9).
   - §5.6.0 검토자 질문 상자의 답을 *"바꿨다"* 로 고쳤다. 옛 답은 `<details>` 안에 그대로 남겼다.

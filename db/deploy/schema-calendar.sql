@@ -21,7 +21,7 @@
 --
 --  ⚠️ 재실행 경고: 데이터가 든 DB 에 다시 돌리면 캘린더 데이터가 전부 사라진다.
 --     아래 DROP TABLE 이 cal_* 를 자식→부모 순으로 지운다(개수는 여기 적지 않는다.
---     그 DROP 목록과 아래 CREATE TABLE 목록 자신이 정본이다). 일정, 할일, 공수, 근태, 회의실,
+--     그 DROP 목록과 아래 CREATE TABLE 목록 자신이 정본이다). 일정, 할일, 공수, 근태,
 --     보고서 서식, 보고 기록, 이관 마커가 모두 날아가고 되돌릴 수 없다.
 --     ★ 되돌릴 수단은 이 DB 안에 없다. 복구 경로는 '주간 mysqldump + binlog' 하나뿐이다
 --       (2026-08-11 결정: 감사 트리거·cal_audit_trash 폐지. 같은 DB 안에 둔 휴지통은 서버가
@@ -266,15 +266,11 @@
 --       자리라 못박아 둔다. C 의 규칙은 '속성이 없다 = 파서 기본값' 인데, sort_order 에는 대응 XML
 --       속성이 **애초에 없다.** 그래서 '부재 → DEFAULT 0' 으로 처리하면 규칙을 지킨 것 같은데 실제로는
 --       배열 순서가 통째로 사라진다. `NOT NULL DEFAULT 0` 이 C 부류처럼 보이는 것이 함정이다.
---       계약: **이관 도구는 sort_order 네 개(cal_category, cal_room, cal_entry, cal_todo)를 XML 문서
+--       계약: **이관 도구는 sort_order 셋(cal_category, cal_entry, cal_todo)을 XML 문서
 --             순서(= fromXML() 배열 인덱스)로 직접 채운다.** 상세와 실측 근거는 계약 E 를 볼 것.
 --             값을 안 주고 컬럼 DEFAULT 에 맡기면 오류도 경고도 없이 전 행이 0 이 된다.
 --
---     ※ 한 건만 '파서 기본값 그대로'가 자동 정답이 아니다: `<rooms>` 요소 부재(구버전 XML).
---       파서는 DEFAULT_ROOMS 3개를 주입하는데, cal_room 의 계약은 '행 0개 = 빈 목록'이다(아래 7. 참조).
---       이관 도구는 파서 쪽(DEFAULT_ROOMS 주입)을 따르고 그 사실을 보고한다. 이관 직후 사용자가
---       보던 목록이 사라지면 '데이터가 없어졌다'로 보이고, 반대 방향(원치 않는 3개가 생김)은
---       사용자가 지울 수 있기 때문이다. `<rooms>` 가 있는 파일은 빈 목록도 그대로 존중한다.
+--     ※ `<rooms>` 요소는 2026-10-21 부터 읽지 않는다(회의실 공용화, 아래 7. 참조). 파서도 이관 도구도 무시한다.
 --
 --     ※ ★ 근태만은 '미지 값'을 버리지 않고 흡수한다. 이 파일에서 유일한 예외다.
 --       fromXML() 의 attendance 매핑은 `ATTEND_STATUS_SET.has(String(st)) ? String(st) : '1'` 이라
@@ -370,7 +366,6 @@
 --       컬럼                         XML 의 원본            안 채우면
 --       ---------------------------------------------------------------------------------
 --       cal_category.sort_order      <category> 문서 순서    ★ 조용히 전 행 0 → 표시 순서 영구 소실
---       cal_room.sort_order          <room> 문서 순서        ★ 조용히 전 행 0 → 회의실 순서 영구 소실
 --       cal_entry.sort_order         <entry> 문서 순서       ★ 조용히 전 행 0 → 일정 배열 순서 영구 소실
 --       cal_todo.sort_order          <todo> 문서 순서        ★ 조용히 전 행 0 → 할 일 배열 순서 영구 소실
 --       cal_entry_commit.seq         commits 배열 인덱스     ERROR 1364 (시끄럽게 실패)
@@ -385,19 +380,18 @@
 --         어떤 인덱스의 선두로 요구해 불필요한 KEY 가 강제되고, 실측에서 보조 인덱스 합이
 --         25.59MB → 34.13MB 로 늘었다. 되돌리자는 제안이 나오면 이 줄을 근거로 거절할 것.
 --
---     ★ 위험한 것은 sort_order **넷**이다(2026-08-27 에 cal_entry·cal_todo 가 합류했다).
+--     ★ 위험한 것은 sort_order **셋**이다(2026-08-27 에 cal_entry·cal_todo 가 합류해 넷이었다가 2026-10-21 cal_room 폐지로 셋).
 --       NOT NULL **DEFAULT 0** 이라 안 채워도 INSERT 가 성공한다.
 --       오류도 경고도 없고 CHECK 도 게이트도 못 잡는다. 값이 '틀린' 게 아니라 '전부 같은' 상태가
 --       되기 때문이다. 실측(8.4.9): sort_order 를 뺀 3행 INSERT → 성공, 세 행 모두 0.
---     ★★ 계약(이관 도구): **네 표 모두 sort_order 를 XML 문서 순서로 채운다.** 빼먹으면 조용히 0 이 된다.
+--     ★★ 계약(이관 도구): **세 표 모두 sort_order 를 XML 문서 순서로 채운다.** 빼먹으면 조용히 0 이 된다.
 --       cal_category ← <categories> 안의 <category> 등장 순서
---       cal_room     ← <rooms> 안의 <room> 등장 순서 (= normRooms() 통과 후의 배열 순서)
 --       cal_entry    ← <entries> 안의 <entry> 등장 순서 (= fromXML 이 만든 state.entries 배열 인덱스)
 --       cal_todo     ← <todos> 안의 <todo> 등장 순서   (= 빈 text 를 filter 로 버린 **뒤**의 배열 인덱스)
 --       ※ 값은 0,1,2… 로 건너뛰지 말 것(아래 ※ 규칙). 순서만 맞으면 되지만, 재이관 왕복 서명이
 --         값 자체를 비교하므로 규칙을 고정해 둔다.
 --       ※ '문서 순서' 의 정본은 XML 텍스트가 아니라 **fromXML() 이 돌려준 배열의 인덱스**다.
---         파서가 버리는 항목이 있어서(계약 F: 빈 <todo>·범위 밖 dayNote·중복 <room>) 두 순서가
+--         파서가 버리는 항목이 있어서(계약 F: 빈 <todo>·범위 밖 dayNote) 두 순서가
 --         어긋날 수 있다. 계약 F 의 '파서를 통과한 결과만 넣는다' 와 짝을 이루는 줄이다.
 --     ※ seq 는 다르다. NOT NULL 이면서 **DEFAULT 가 없어** STRICT 에서 그 자리에 1364 로 멈춘다
 --       (실측: seq 를 뺀 커밋 2건 INSERT → ERROR 1364 "Field 'seq' doesn't have a default value").
@@ -439,9 +433,7 @@
 --       due 범위 밖 <dayNote>              normalizeTodoDayNotes() 가   cal_todo_day_note 에 부모 기간
 --       (date < due 또는 > endDate)        탈락시킴                      밖 행. DB 로는 표현 불가한 제약
 --       due 가 아예 없는 todo 의 dayNote   같은 함수가 전부 버림         같은 유령 행
---       중복 <room> 이름 / 41자 이상       normRooms(): 공백축약·trim·   중복은 PK 가 1062 로 막지만
---       / 51개째부터                       40자 절단·중복 제거·50개 상한  절단·상한은 DB 가 안 막는다
---                                                                        (41자는 STRICT 에서 1406)
+--       <rooms> 의 <room> 전부             2026-10-21 부터 읽지 않는다    넣을 표가 없다(cal_room 폐지)
 --       중복 <except date>                 dedup 안 함(A 부류 아님)      PK(user_id,entry_no,except_date)
 --                                                                        가 1062 → 이관 전체 롤백
 --       실재하지 않는 날짜의                fromXML 이 isRealDate(date)   cal_attendance 에 2026-02-30
@@ -488,11 +480,12 @@
 --     화면이 깨지거나(터지면 다행) 조용히 다르게 그려진다.
 --
 --     최상위 반환 객체(fromXML() 의 return 과 키가 정확히 같아야 한다):
---       { categories, entries, todos, rooms, taskHours, attendance,
+--       { categories, entries, todos, taskHours, attendance,
 --         gitAuthor, svnAuthor,
 --         reportMarker, reportMarkerCustom, reportIndent, gitCommitBody,
 --         reportFormatPrefs, reportFont, lsMigrated }
 --     ★ 최상위 15키는 **늘지도 줄지도 않는다.** 늘려야 할 것 같으면 그건 대개 원소의 키다.
+--       (그 뒤 두 번 줄었다: 2026-09-01 lsMigrated, 2026-10-21 rooms(회의실 공용화). 지금은 13키다.)
 --
 --     ★★ 2026-08-27 에 원소의 키 집합이 한 번 늘었다. 계약이므로 여기 명시한다:
 --        **categories 원소에 `usesRepo`(boolean)가 항상 붙는다**(G-6). fromXML() 은 그 키를 만들지
@@ -565,7 +558,6 @@
 --  ── G-5. 정렬 컬럼 → 배열 순서 / 행 → 맵 (E 의 역방향) ────────────────
 --     DB 는 행 집합이고 앱은 배열·객체다. 접는 규칙이 표마다 다르다.
 --       cal_category    ORDER BY sort_order, uid → categories 배열. sort_order·cat_no 는 state 에 넣지 않는다
---       cal_room        ORDER BY sort_order, name → rooms 문자열 배열(객체 아님)
 --       cal_entry       ORDER BY sort_order, uid → entries 배열. sort_order·entry_no 는 state 에 넣지 않는다
 --       cal_todo        ORDER BY sort_order, uid → todos 배열. sort_order·todo_no 는 state 에 넣지 않는다
 --       cal_entry_commit ORDER BY seq       → entry.commits 배열. seq 는 state 에 넣지 않는다
@@ -595,7 +587,7 @@
 --          rows.sort(date,time) 한다. 배열 순서가 새어 나오는 곳은 entrySort 의 동률뿐인데 그건 언제나
 --          '같은 날짜 안' 이라, 날짜로 먼저 정렬하든 안 하든 같은 날짜 안의 상대 순서는 **동일**하다.
 --        ★ 되돌리자는 제안이 나오면 이 세 줄을 근거로 거절할 것. 되돌리는 순간 게이트가 다시 빨간불이 된다.
---     ★ 마지막 티브레이커가 uid 인 이유(네 표 공통: category=uid, room=name, entry=uid, todo=uid):
+--     ★ 마지막 티브레이커가 uid 인 이유(세 표 공통: category=uid, entry=uid, todo=uid. 옛 cal_room 은 name 이었다):
 --        sort_order 가 동률인 상태는 정상이 아니지만(계약 E 가 0,1,2… 를 요구한다), 이관이 그 값을
 --        빠뜨리면 **전 행이 0** 이 되어 실제로 벌어진다. 그때 티브레이커가 없으면 MySQL 이 매 부팅
 --        다른 순서를 줄 수 있다. '순서가 틀렸다' 보다 '순서가 매번 바뀐다' 가 훨씬 나쁜 증상이고
@@ -785,7 +777,7 @@
 --
 --  ── H-1b. 새 항목의 sort_order 는 무엇으로 주나 (쓰기 계층 계약) ───────
 --     ※ 2026-08-27 신설. 쓰기 계층은 아직 없다. 만들 때 이 절을 구현할 것.
---     대상: cal_category, cal_room, cal_entry, cal_todo (sort_order 를 가진 네 표 전부).
+--     대상: cal_category, cal_entry, cal_todo (sort_order 를 가진 세 표 전부. cal_room 은 2026-10-21 폐지).
 --
 --     ★ 값: 그 사용자 안에서 **MAX(sort_order) + 1**. 즉 새 항목은 배열의 **끝**에 붙는다.
 --       근거: 앱이 실제로 그렇게 한다(state.entries.push / state.todos.push / categories.push).
@@ -908,7 +900,7 @@
 --       _bin 이 **아니다.** 값 집합이 고정되어 있지 않기 때문이다. 드롭다운 프리셋 말고도 fromXML() 이
 --       임의 문자열(길이 8 이하)을 그대로 받아들이고, 앱은 이 값을 비교하지 않고 그냥 앞에 붙여 출력한다.
 --       ai_ci(NO PAD)를 그대로 상속시키는 편이 안전하다. _bin 은 PAD SPACE 라 공백만으로 된 머리기호가
---       chk_..._marker(<> '') 에 걸린다(cal_room.name 에서 실제로 그렇게 동작하는 것을 확인했다).
+--       chk_..._marker(<> '') 에 걸린다(옛 cal_room.name 에서 실제로 그렇게 동작하는 것을 확인했다).
 --     ★ _bin 은 절반만 막는다. 2026-08-21 실측으로 확인한 구멍이다. utf8mb4_bin 은 PAD SPACE 라
 --       '값+뒤공백' 이 IN 목록을 그대로 통과한다(실측: 'db ' 도, '1 ' 도 통과. HEX 로 확인).
 --       앱은 정확 비교라 그 행을 '다른 값'으로 읽으므로, ai_ci 의 'Db' 사고와 결과가 똑같다.
@@ -920,7 +912,7 @@
 --         이미 배포된 DB 와 어긋나므로, 보완은 migrate-*.sql 로 할 것(아직 안 함. 미해결로 적어 둔다).
 --       ※ uid 는 이 부류가 아니다. 값 집합이 고정이 아니라 '앱이 만든 원문 보존'이 목적이라
 --         뒤공백도 원문의 일부다. 대신 chk_*_uid 가 '' 만 막는다(_bin PAD SPACE 라 공백만인 값도 함께
---         막힌다. cal_room.name 과 같은 동작이다. 실측 항목).
+--         막힌다. 옛 cal_room.name 과 같은 동작이었다. 실측 항목).
 --     ※ color 와 recur_until 은 REGEXP CHECK 라 이미 폭에 안전하다(실측: 전각 입력 ERROR 3819).
 --       대소문자는 색상 표기가 원래 양쪽을 허용하므로(앱 /^#[0-9a-fA-F]{6}$/) 의도된 통과다 → _bin 불필요.
 --
@@ -1024,7 +1016,6 @@ DROP TABLE IF EXISTS cal_report_weekly;     -- 자식 없음
 DROP TABLE IF EXISTS cal_user_pref;
 DROP TABLE IF EXISTS cal_attendance;
 DROP TABLE IF EXISTS cal_task_hours;         -- cal_category 를 참조(2026-08-24 신설 FK)
-DROP TABLE IF EXISTS cal_room;
 DROP TABLE IF EXISTS cal_todo_day_note;      -- cal_todo 를 참조
 DROP TABLE IF EXISTS cal_todo;
 DROP TABLE IF EXISTS cal_entry_commit;       -- cal_entry 를 참조
@@ -1365,7 +1356,7 @@ CREATE TABLE cal_todo (
   PRIMARY KEY (user_id, todo_no),
   UNIQUE KEY uq_cal_todo_uid (user_id, uid),              -- 옛 PK(login_id,id) 의 유일성 계약을 이어받는다
   KEY ix_cal_todo_user_due (user_id, due),
-  -- ★ ix_cal_todo_user_sort (user_id, sort_order) 를 만들지 말 것. cal_category·cal_room 에는 있지만
+  -- ★ ix_cal_todo_user_sort (user_id, sort_order) 를 만들지 말 것. cal_category 에는 있지만
   --   여기서는 쓰이지 않는다. 부팅 조회의 ORDER BY 가 sort_order, **uid** 라 인덱스로 정렬이 끝나지 않고,
   --   실측(8.4.9, 90명×40건 = 3,600행, ANALYZE 후 EXPLAIN)에서 그 인덱스를 만들어도 key=PRIMARY,
   --   **Using filesort** 그대로였다(전 컬럼 조회 모양·축약 모양 둘 다). 근거는 cal_entry 의 같은 ★ 를 볼 것.
@@ -1405,11 +1396,11 @@ CREATE TABLE cal_todo_day_note (
     ON UPDATE RESTRICT ON DELETE CASCADE,
   -- DEFAULT ('') 를 주지 않은 이유: 빈 값은 '빈 설명'이 아니라 '행 삭제'다(normalizeTodoDayNotes).
   -- 기본값이 있으면 실수로 빈 행이 생겨 보고서에 빈 줄이 찍힌다.
-  -- ★ 아래 CHECK 는 cal_room 의 chk_cal_room_name 과 **모양이 같지만 동작이 다르다.** 복붙하지 말 것.
-  --   이 컬럼은 테이블 기본 utf8mb4_0900_ai_ci(NO PAD)라 공백을 접지 않는다. cal_room.name 은
-  --   utf8mb4_bin(PAD SPACE)이라 접는다. 실측(8.4.9):
+  -- ★ 아래 CHECK 는 옛 cal_room(2026-10-21 폐지)의 chk_cal_room_name 과 **모양이 같았지만 동작이 달랐다.**
+  --   이 컬럼은 테이블 기본 utf8mb4_0900_ai_ci(NO PAD)라 공백을 접지 않는다. 옛 cal_room.name 은
+  --   utf8mb4_bin(PAD SPACE)이라 접었다. 실측(8.4.9):
   --     `' ' <> '' COLLATE utf8mb4_bin` = 0(같다고 본다) / `COLLATE utf8mb4_0900_ai_ci` = 1(다르다고 본다)
-  --     cal_room.name  = '   ' 삽입 → ERROR 3819 (chk_cal_room_name)
+  --     옛 cal_room.name = '   ' 삽입 → ERROR 3819 (chk_cal_room_name)
   --     note_text      = '   ' 삽입 → **통과**, 저장값 LENGTH=3
   --   판정: 이대로 둔다(실害 없음). 앱은 이 값을 만드는 세 경로가 전부 JS trim 후 빈 값을 버린다:
   --     fromXML() 의 dayNote 매핑(`String(...).trim()` 후 `&& v`), normalizeTodoDayNotes(), toXML()
@@ -1423,50 +1414,17 @@ CREATE TABLE cal_todo_day_note (
   COMMENT='기간 할일의 날짜별 설명. PK=(user_id,todo_no,note_date). 빈 값=행 삭제. 부모 삭제 시 CASCADE.';
 
 -- =====================================================================
---  7. cal_room: 장소(회의실) 빠른선택 목록
+--  7. (cal_room: 폐지. 2026-10-21 회의실 공용화, 구조 번호 15. 번호를 주지 않는다)
 -- =====================================================================
--- XML <rooms><room> 대응. 이름 자체가 값이라 id 가 없고, 표시 순서는 배열 순서뿐이라 sort_order 로 박제한다.
--- ★ 행 0개 = '빈 목록' 으로 확정. DEFAULT_ROOMS 재주입은 DB 전환과 함께 폐기한다
---   (DB 에서는 '한 번도 없었음'과 '사용자가 전부 지움'을 구분할 수 없기 때문).
---
--- ★★ 2026-08-24 판정: 이 표만 대리키로 가지 않는다. PK 는 (user_id, name) 을 유지한다.
---   다른 12표와 다르게 가는 이유를 근거로 남긴다(다음 사람이 '일관성'을 이유로 되돌리지 못하게):
---     ① 이번 전환이 고치려던 병이 여기엔 없다. 병은 'login_id 라는 외부 소유 값이 PK 라 개명이
---        막힌다' 였고, 그 축은 user_id 로 옮기면서 이미 나았다. name 은 우리(사용자)가 소유한
---        값이고, 이 표를 FK 로 참조하는 자식이 **하나도 없다**. 즉 값이 바뀌어도 전파할 곳이 없다.
---     ② 넣을 uid 가 없다. 앱의 rooms 는 객체가 아니라 **문자열 배열**이다(G-5).
---        room_no 를 만들면 앱이 영원히 읽지 않는 컬럼이 하나 늘 뿐이고, uid 를 만들려면
---        원문이 없는 값을 지어내야 한다. 'uid = 앱이 만든 id 원문 보존' 이라는 이 전환의 규칙 자체와 어긋난다.
---     ③ 중복 금지가 PK 로 강제되고 있었다. 대리키로 가면 그 강제는 UNIQUE(user_id, name) 로 옮겨야
---        하는데, 그러면 인덱스가 하나 늘고 얻는 것은 0 이다(막는 힘은 완전히 같다).
---     ④ 제자리 UPDATE 경로가 없다(아래 ★ updated_at 절의 근거와 같다). 자연키의 고질병인
---        'PK 를 고쳐야 하는 상황'이 이 표에는 존재하지 않는다. 변경은 추가/삭제뿐이다.
---     ⑤ 규모가 작다. 사용자당 최대 50행, name 40자. 폭으로 인한 인덱스 부담이 실질적으로 0 이다.
---   ※ 재검토 조건: 이 표를 참조하는 자식 표가 생기거나(예: 일정이 회의실을 FK 로 가리키게 되거나),
---     '이름 바꾸기' 기능이 생기면 그때 대리키로 갈 것. 그 두 경우에는 ①·④ 가 무너진다.
---
--- ★ updated_at 을 일부러 두지 않는다(§3.3 낙관적 잠금의 명시적 예외).
---   근거: 이 테이블은 엔티티가 아니라 키 (user_id, name) 으로 주소지정되는 값 행이다. 이름 자체가 값이라
---   '같은 행을 두 사람이 서로 다르게 고치는' 상황이 성립하지 않는다(변경 = 추가/삭제뿐, UPDATE 경로가 없다).
---   같은 사용자의 동시 쓰기는 §3.1 의 cal_user_rev 락이 이미 직렬화한다.
---   설계 §3.3 도 이 테이블을 낙관적 잠금 대상으로 지목하지 않았다.
---   재검토 조건: 이 테이블에 '행을 제자리에서 수정하는' 기능(이름 변경 등)이 생기면 그때 컬럼을 추가할 것.
-CREATE TABLE cal_room (
-  user_id    SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
-  name       VARCHAR(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,  -- 회의실/장소 이름. 앱이 공백축약, trim, 40자 절단, 중복 제거. 중복 판정이 정확 일치라 _bin
-  sort_order INT NOT NULL DEFAULT 0,                                                 -- 표시 순서(XML 문서 순서 박제). 최대 50개
-  PRIMARY KEY (user_id, name),
-  KEY ix_cal_room_user_sort (user_id, sort_order),   -- G-5 의 ORDER BY sort_order 조회용
-  CONSTRAINT fk_cal_room_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT,
-  -- ★ 이 CHECK 는 cal_todo_day_note.chk_cal_todo_day_note_text 와 모양이 같지만 더 넓게 막는다.
-  --   name 이 utf8mb4_bin(PAD SPACE)이라 비교 시 공백을 접기 때문이다. 실측(8.4.9): name='   ' → ERROR 3819.
-  --   같은 이유로 PK 도 '회의실A' 와 '회의실A  ' 를 같은 키로 본다(실측: ERROR 1062). 의도된 동작이다.
-  --   앱도 normRooms() 에서 공백 축약·trim 후 중복 제거를 하므로 DB 쪽이 한 겹 더 좁을 뿐이다.
-  --   ※ 개행·탭만 있는 이름은 PAD SPACE 도 접지 않아 통과한다. 그쪽은 어댑터(JS trim)가 막는다.
-  CONSTRAINT chk_cal_room_name CHECK (name <> '')
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='장소(회의실) 빠른선택. PK=(user_id,name) — 이 표만 자연키 유지(표 머리 ★★ 판정). 행 0개=빈 목록.';
+-- 사람마다 따로 두던 회의실 목록(XML <rooms><room>)이었다. 회사 공용 목록 하나(room_code, 정본은
+-- schema-structure.sql)로 바꾸고 이 표는 없앴다(docs/SHARED-ROOMS.md). 여기에 '왜 없는지'를 남기는 이유는
+-- 설계 문서의 옛 절을 읽은 사람이 '스키마가 표를 빠뜨렸다'고 판단해 다시 만드는 것을 막기 위해서다.
+--   옮긴 방법: 이관 조각 db/deploy/migrations/v15-shared-rooms.sql 이 모든 사용자의 이름을 모아(앞뒤 공백
+--     정리, 중복 제거) room_code 에 넣고 이 표를 지웠다. 일정의 장소(cal_entry.location)는 처음부터 글자라
+--     바뀐 것이 없다.
+--   부팅 조회(CalendarDb)와 저장(CalendarWriteDb)은 더 이상 회의실을 다루지 않는다. 공용 목록은
+--     발주처, 구분, 상태와 같은 읽기 경로(loadCodes)로 받는다.
+--   되살리지 말 것: 개인 회의실 목록은 2026-10-21 사용자 결정으로 없앴다(회의실 관리는 관리자만).
 
 -- =====================================================================
 --  8. cal_task_hours: (날짜 × 과제) 투입 시간
@@ -1585,7 +1543,7 @@ CREATE TABLE cal_task_hours (
 -- ★ updated_at 이 있다: §3.3 낙관적 잠금 대상이다(2026-08-26 부터, cal_task_hours 와 같다. 아래 updated_at 컬럼 주석).
 --   키 (user_id, work_date) 로 주소지정되는 값 행이지만 근태는 회사 보고로 나가는 숫자라 조용한 덮어쓰기를 막는다.
 --   (2026-10-15 정정: 예전 머리 주석은 "updated_at 을 일부러 두지 않는다, 마지막 쓰기가 이긴다" 였다. 컬럼을
---    넣은 2026-08-26 부터 틀린 문장이었다.) cal_room 은 지금도 updated_at 이 없다(제자리 UPDATE 경로가 없다).
+--    넣은 2026-08-26 부터 틀린 문장이었다.)
 CREATE TABLE cal_attendance (
   user_id   SMALLINT UNSIGNED NOT NULL,   -- 소유자(app_user.user_id)
   work_date DATE NOT NULL,                                                          -- 대상 날짜. 하루에 한 행
@@ -1989,9 +1947,12 @@ CREATE TABLE cal_schema_meta (
 --       이 표의 키가 schema_version 하나에서 위 다섯 개로 바뀌었다. 앱 상수는 DbGate.AppStructureVersion(14).
 --       이 판부터 구조 변경은 이관 조각(db/deploy/migrations)으로 내고 release-v<버전>.sql 하나에 담긴다(DB-RELEASE-OPS §5),
 --       판 올림은 UPDATE ... WHERE k = 'db_structure_version' AND v = '<앞 판>' 한 줄이다.
+--   - 15 (2026-10-21): 회의실 공용화(이관 조각 db/deploy/migrations/v15-shared-rooms.sql, docs/SHARED-ROOMS.md).
+--       사람마다 두던 cal_room 을 지우고 회사 공용 room_code(정본 schema-structure.sql)를 둔다. 표 수는 그대로다.
+--       이 판부터 이관은 조각(db/deploy/migrations/v<번호>-*.sql)으로 쓰고 배포 SQL(release-v<버전>.sql)에 들어간다.
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '14', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '15', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),

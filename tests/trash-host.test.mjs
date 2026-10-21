@@ -454,7 +454,7 @@ test('변이②-d: 인력 갈래를 통째로 지우면 계약② 가 실패한�
 });
 
 test('변이③: 기준 표 배열에서 한 표를 빼면 계약③ 이 실패한다(정본 파생이 아니면 통과할 변이)', () => {
-  const bad = mutate(pdb, '"cal_room", ', '');
+  const bad = mutate(pdb, '"cal_task_hours",', '');   // 2026-10-21 cal_room 폐지로 다른 기록 표를 뺀다
   assert.throws(() => checks.userRecordTablesMatchCanon(bad, canonSql()), /기준 표 목록이 정본과 다르다/);
   assert.doesNotThrow(() => checks.userRecordTablesMatchCanon(pdb, canonSql()));   // 통제군
 });

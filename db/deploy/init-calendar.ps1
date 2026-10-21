@@ -178,9 +178,10 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 #    13 → 16 이 됐다. 이 배열이 그때 함께 늘지 않아, 스키마는 16표인데 명부는 13표인 채로
 #    '명부에 없는 표가 있습니다' Die 가 났다(= 폐쇄망 원큐 구축의 진입점이 막혔다).
 #    표를 더하거나 뺄 때 이 배열을 같이 고치는 것이 이 파일에서 유일하게 사람 몫인 일이다.
+#  ※ 2026-10-21 회의실 공용화로 cal_room 이 빠져 16 → 15 가 됐다(공용 room_code 는 schema-structure.sql 소관).
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
-  'cal_todo','cal_todo_day_note','cal_room','cal_task_hours',
+  'cal_todo','cal_todo_day_note','cal_task_hours',
   'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly',
   'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta'
 )

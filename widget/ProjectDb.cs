@@ -1866,6 +1866,217 @@ namespace TaskCalendarWidget
             catch (Exception ex) { DbErrors.Observe(ex, _log); _log("코드 참조수 조회 실패: " + Short(ex)); return (false, 0, "확인하지 못했습니다: " + Short(ex)); }
         }
 
+        // ================================================================================
+        // 공용 회의실: room_code (docs/SHARED-ROOMS.md, 구조 번호 15)
+        //   회사 공용 장소 추천 목록 하나. 일반 사용자는 읽기만 하고(loadCodes 의 세 번째 목록), 관리자만 관리 화면에서 고친다.
+        //   ★ 쓰기 넷(추가, 이름변경, 삭제, 순서)은 전부 OpenAdminAsync 다(직급·소속과 같은 길). 발주처, 구분, 상태는 editor 도
+        //     고치는 쓰기 관문(OpenWriteAsync)이라 다르다. 회의실은 회사 전원의 장소 칸에 보이는 목록이라 관리자의 것이다.
+        //   ★ 어떤 표도 room_id 를 가리키지 않는다(일정의 장소는 글자). 그래서 숨김과 휴지통이 없고 삭제는 바로 지운다.
+        //     이름을 바꾸거나 지워도 이미 저장된 일정의 장소 글자는 그대로다.
+        //   ★ 이름변경, 삭제, 순서는 번호(room_id)로 받는다. 이름은 추가할 때만 받는다(CODE-TABLE-IDS §4 와 같은 규칙).
+        // ================================================================================
+        internal const int RoomNameMax = 40;
+        internal const string RoomAdminOnlyMsg = "회의실 목록은 관리자만 고칠 수 있습니다.";
+        internal const string RoomDupMsg = "이미 목록에 있는 회의실입니다. 대소문자만 다른 이름도 같은 이름으로 봅니다.";
+        internal const string RoomGrantMissingMsg = "DB 권한이 없습니다(1142). 서버에 room_code GRANT 를 적용해야 합니다.";
+
+        //  이름 정리: 앞뒤 공백을 지우고 안쪽 공백 여러 개를 하나로 접는다. 웹도 같은 규칙으로 보낸다.
+        internal static string NormRoomName(string? name) =>
+            System.Text.RegularExpressions.Regex.Replace(name ?? "", @"\s+", " ").Trim();
+
+        //  관리자 관문에서 막힌 사유: 등급 부족이면 회의실 문장, 신원 문제(미로그인, 미등록, 비활성)면 관문의 문장 그대로.
+        private static string RoomDenyMsg(NotAuthorizedException nex) => nex.RoleOnly ? RoomAdminOnlyMsg : nex.Message;
+
+        private static string RoomDbMsg(MySqlException mex) =>
+            mex.Number == 1142 ? RoomGrantMissingMsg : IsLockContention(mex) ? DbBusyMsg : DbFailMsg;
+
+        // 장소 칸 추천 목록 [{id, name}] JSON(sort_order, name 순). 실패면 null(웹은 지금 목록을 그대로 둔다).
+        public async Task<string?> LoadRoomsJsonAsync()
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = await OpenReadAsync(cts.Token);
+                await using var cmd = new MySqlCommand("SELECT room_id, name FROM room_code ORDER BY sort_order, name", conn);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                var rows = new List<Dictionary<string, object?>>();
+                while (await rd.ReadAsync(cts.Token))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length > 0) rows.Add(new Dictionary<string, object?> { ["id"] = IntOrNull(rd, "room_id"), ["name"] = n });
+                }
+                _log("DB 회의실 로드: " + rows.Count + "건");
+                return JsonSerializer.Serialize(rows);
+            }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 회의실 로드 실패: " + Short(ex)); return null; }
+        }
+
+        // 관리 화면 목록 [{id, name, sort}] JSON. 숨김이 없어 위와 같은 행이고 sort 가 더 붙는다.
+        public async Task<string?> LoadRoomsFullJsonAsync()
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                await using var conn = await OpenReadAsync(cts.Token);
+                await using var cmd = new MySqlCommand("SELECT room_id, name, sort_order FROM room_code ORDER BY sort_order, name", conn);
+                await using var rd = await cmd.ExecuteReaderAsync(cts.Token);
+                var rows = new List<Dictionary<string, object?>>();
+                while (await rd.ReadAsync(cts.Token))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length == 0) continue;
+                    rows.Add(new Dictionary<string, object?>
+                    {
+                        ["id"] = IntOrNull(rd, "room_id"),
+                        ["name"] = n,
+                        ["sort"] = IntOrNull(rd, "sort_order") ?? 0,
+                    });
+                }
+                return JsonSerializer.Serialize(rows);
+            }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("DB 회의실(관리) 로드 실패: " + Short(ex)); return null; }
+        }
+
+        // 회의실 추가: 끝에 붙인다(sort_order = MAX+10). 같은 이름(ai_ci UNIQUE)은 1062 로 막혀 RoomDupMsg.
+        public async Task<(bool ok, string msg)> AddRoomAsync(string? name)
+        {
+            string n = NormRoomName(name);
+            if (n.Length == 0) return (false, "회의실 이름을 입력하세요.");
+            if (n.Length > RoomNameMax) return (false, "회의실 이름은 " + RoomNameMax + "자까지 입니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 추가): " + nex.Message); return (false, RoomDenyMsg(nex)); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(회의실 추가): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                int nextSort;
+                await using (var q = new MySqlCommand("SELECT COALESCE(MAX(sort_order),0)+10 FROM room_code", conn))
+                    nextSort = (int)await ScalarLongAsync(q, cts.Token);
+                await using (var cmd = new MySqlCommand("INSERT INTO room_code (name, sort_order) VALUES (@n, @s)", conn))
+                {
+                    cmd.Parameters.AddWithValue("@n", n);
+                    cmd.Parameters.AddWithValue("@s", nextSort);
+                    await cmd.ExecuteNonQueryAsync(cts.Token);
+                }
+                _log("회의실 추가: " + n + " (sort " + nextSort + ")");
+                return (true, "'" + n + "' 회의실을 추가했습니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, RoomDupMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("회의실 추가 실패(" + mex.Number + "): " + Short(mex)); return (false, RoomDbMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("회의실 추가 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 회의실 이름변경 = 번호로 찾은 한 행 UPDATE. 0행이면 그 회의실이 이미 없다(화면이 낡았다).
+        public async Task<(bool ok, string msg)> RenameRoomAsync(int roomId, string? newName)
+        {
+            string nw = NormRoomName(newName);
+            if (roomId <= 0) return (false, "바꿀 회의실을 지정하세요.");
+            if (nw.Length == 0) return (false, "새 이름을 입력하세요.");
+            if (nw.Length > RoomNameMax) return (false, "회의실 이름은 " + RoomNameMax + "자까지 입니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 이름변경): " + nex.Message); return (false, RoomDenyMsg(nex)); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(회의실 이름변경): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var cmd = new MySqlCommand("UPDATE room_code SET name=@n WHERE room_id=@id", conn);
+                cmd.Parameters.AddWithValue("@n", nw);
+                cmd.Parameters.AddWithValue("@id", roomId);
+                int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (cnt == 0) return (false, OrgTitleStaleMsg);
+                _log("회의실 이름변경: room_id=" + roomId + " 새 이름 " + nw);
+                return (true, "회의실 이름을 '" + nw + "'(으)로 바꿨습니다.");
+            }
+            catch (MySqlException mex) when (mex.Number == 1062) { return (false, RoomDupMsg); }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("회의실 이름변경 실패(" + mex.Number + "): " + Short(mex)); return (false, RoomDbMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("회의실 이름변경 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 회의실 삭제: 바로 지운다(가리키는 표가 없다). 0행이면 이미 없다(화면이 낡았다).
+        public async Task<(bool ok, string msg)> DeleteRoomAsync(int roomId)
+        {
+            if (roomId <= 0) return (false, "지울 회의실을 지정하세요.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 삭제): " + nex.Message); return (false, RoomDenyMsg(nex)); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(회의실 삭제): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var cmd = new MySqlCommand("DELETE FROM room_code WHERE room_id=@id", conn);
+                cmd.Parameters.AddWithValue("@id", roomId);
+                int cnt = await cmd.ExecuteNonQueryAsync(cts.Token);
+                if (cnt == 0) return (false, OrgTitleStaleMsg);
+                _log("회의실 삭제: room_id=" + roomId);
+                return (true, "회의실을 지웠습니다.");
+            }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("회의실 삭제 실패(" + mex.Number + "): " + Short(mex)); return (false, RoomDbMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("회의실 삭제 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
+        // 회의실 순서: 받은 번호 순서대로 10, 20, 30 … 전량 재작성(트랜잭션).
+        //   ★ 받은 번호 집합이 지금의 전체 집합과 같아야 한다(중복, 빠짐, 낯선 번호 모두 거부). 다르면 화면이 낡은 것이라
+        //     아무것도 쓰지 않고 OrgTitleStaleMsg 로 거부한다(구분, 상태의 ReorderCodesAsync 와 같은 규칙).
+        public async Task<(bool ok, string msg)> ReorderRoomsAsync(IReadOnlyList<int>? orderedIds)
+        {
+            if (orderedIds == null || orderedIds.Count == 0) return (false, "정렬할 회의실 목록이 비어 있습니다.");
+            var kept = new List<int>(orderedIds.Count);
+            foreach (int rid in orderedIds) if (rid > 0) kept.Add(rid);
+            if (kept.Count == 0) return (false, "정렬할 회의실 목록이 비어 있습니다.");
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                MySqlConnection conn;
+                try { conn = await OpenAdminAsync(cts.Token); }
+                catch (NotAuthorizedException nex) { _log("권한 거부(회의실 순서): " + nex.Message); return (false, RoomDenyMsg(nex)); }
+                catch (Exception cex) { DbErrors.Observe(cex, _log); _log("DB 연결 실패(회의실 순서): " + Short(cex)); return (false, OfflineMsg); }
+                await using var connOwn = conn;
+
+                await using var tx = await conn.BeginTransactionAsync(cts.Token);
+                try
+                {
+                    // ① 지금의 전체 집합을 잠근 채 읽어 받은 집합과 같은지 본다(판정과 갱신 사이를 닫는다).
+                    var live = new HashSet<int>();
+                    await using (var q = new MySqlCommand("SELECT room_id FROM room_code FOR UPDATE", conn, (MySqlTransaction)tx))
+                    await using (var rd = await q.ExecuteReaderAsync(cts.Token))
+                        while (await rd.ReadAsync(cts.Token)) { int? v = IntOrNull(rd, "room_id"); if (v.HasValue) live.Add(v.Value); }
+
+                    var given = new HashSet<int>(kept);
+                    if (given.Count != kept.Count || given.Count != live.Count || !given.SetEquals(live))
+                    {
+                        await SafeRollbackAsync(tx);
+                        _log("회의실 순서 거부: 받은 " + kept.Count + "개 / 지금 " + live.Count + "개, 화면이 낡았다");
+                        return (false, OrgTitleStaleMsg);
+                    }
+
+                    // ② 받은 순서대로 10·20·30… 전량 재작성.
+                    int order = 0;
+                    foreach (int rid in kept)
+                    {
+                        order += 10;
+                        await using var cmd = new MySqlCommand("UPDATE room_code SET sort_order=@s WHERE room_id=@id", conn, (MySqlTransaction)tx);
+                        cmd.Parameters.AddWithValue("@s", order);
+                        cmd.Parameters.AddWithValue("@id", rid);
+                        await cmd.ExecuteNonQueryAsync(cts.Token);
+                    }
+                    await tx.CommitAsync(cts.Token);
+                    _log("회의실 순서: " + kept.Count + "건");
+                    return (true, "회의실 순서를 바꿨습니다.");
+                }
+                catch { await SafeRollbackAsync(tx); throw; }   // ★ 롤백은 취소되지 않은 토큰으로(SafeRollbackAsync 주석)
+            }
+            catch (MySqlException mex) { DbErrors.Observe(mex, _log); _log("회의실 순서 실패(" + mex.Number + "): " + Short(mex)); return (false, RoomDbMsg(mex)); }
+            catch (Exception ex) { DbErrors.Observe(ex, _log); _log("회의실 순서 실패: " + Short(ex)); return (false, DbFailMsg); }
+        }
+
         private static string Str(DbDataReader rd, string col)
         {
             int i = rd.GetOrdinal(col);
@@ -1926,18 +2137,18 @@ namespace TaskCalendarWidget
             }
         }
 
-        // 인력 '기록 0건'의 기준 표 9개(§3.2).
+        // 인력 '기록 0건'의 기준 표 8개(§3.2). 2026-10-21 회의실 공용화로 cal_room 이 빠져 아홉에서 여덟이 됐다.
         //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev 를
         //     뺀 것과 **글자까지 같아야 한다** — 시험 계약 ③ 이 정본을 파싱해 이 배열과 대조한다(표 이름 박제 금지).
         //   ★ 뺀 둘은 로그인 한 번이면 생기는 부속 행이라 '기록'이 아니다. 삭제 트랜잭션이 그 둘을 먼저 지운다.
         //   ★ cal_migration_log 는 뺄 수 없다 — XML 이관을 한 번이라도 한 계정은 일정이 있었던 계정이다(감사 흔적).
         private static readonly string[] UserRecordTables =
         {
-            "cal_category", "cal_entry", "cal_todo", "cal_room", "cal_task_hours",
+            "cal_category", "cal_entry", "cal_todo", "cal_task_hours",
             "cal_attendance", "cal_report_daily", "cal_report_weekly", "cal_migration_log",
         };
 
-        // 한 사람의 기록 수 = 9개 표의 합. 표 이름은 위 배열(상수)에서만 온다.
+        // 한 사람의 기록 수 = 8개 표의 합. 표 이름은 위 배열(상수)에서만 온다.
         private static string UserRefCountSql()
         {
             var parts = new List<string>(UserRecordTables.Length);
@@ -1946,7 +2157,7 @@ namespace TaskCalendarWidget
         }
 
         // 휴지통에 뜨는 사람 = 퇴사자(is_active=0) 뿐이다. 기록 수도 **그 사람들만** 센다.
-        //   ★ 전원을 세면 9개 표를 통째로 훑는다 — 일정·할일·공수는 재직자 전원의 전 기간 행이라
+        //   ★ 전원을 세면 8개 표를 통째로 훑는다 — 일정·할일·공수는 재직자 전원의 전 기간 행이라
         //     휴지통을 한 번 열 때마다 그 스캔이 돌고, 정작 쓰는 값은 퇴사자 몇 명분이다(2026-09-10 검토 지적).
         //     서브쿼리 하나로 좁히면 각 표의 user_id 인덱스로 끝난다.
         private const string InactiveUserFilter = " WHERE user_id IN (SELECT user_id FROM app_user WHERE is_active=0)";
@@ -2128,8 +2339,8 @@ namespace TaskCalendarWidget
                     }
                 }
 
-                // ② 인력 — 기록 9표 합계가 0 이고 자기 자신이 아닐 때만 지울 수 있다(§3.2).
-                //    ★ 명부를 **먼저** 읽는다: 퇴사자가 하나도 없으면 9개 표 합산은 아예 돌리지 않는다
+                // ② 인력 — 기록 8표 합계가 0 이고 자기 자신이 아닐 때만 지울 수 있다(§3.2).
+                //    ★ 명부를 **먼저** 읽는다: 퇴사자가 하나도 없으면 8개 표 합산은 아예 돌리지 않는다
                 //      (빈 탭 하나를 그리려고 전 기록을 훑을 이유가 없다).
                 var retired = new List<(int uid, string name, string sub)>();
                 await using (var cmd = new MySqlCommand(

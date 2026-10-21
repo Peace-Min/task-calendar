@@ -158,7 +158,7 @@ function makeUser() {
 }
 function dropUser(u) {
   for (const t of ['cal_entry_commit','cal_entry_except','cal_todo_day_note','cal_task_hours','cal_attendance',
-                   'cal_entry','cal_todo','cal_category','cal_room','cal_user_pref','cal_user_rev'])
+                   'cal_entry','cal_todo','cal_category','cal_user_pref','cal_user_rev'])
     sql(`DELETE FROM ${t} WHERE user_id=${u}`, { readOnly: false, what: `정리(${t})` });
   sql(`DELETE FROM app_user WHERE user_id=${u}`, { readOnly: false, what: '사용자 삭제' });
 }
@@ -196,7 +196,7 @@ try {
   console.log('\n[1] 앱의 fromXML() 로 state 만들기(정본)');
   const xmlText = readFileSync(OPT.xml, 'utf8');
   const s0 = await stateFromXml(xmlText);
-  console.log(`  과제 ${s0.categories.length} · 일정 ${s0.entries.length} · 할 일 ${s0.todos.length} · 회의실 ${s0.rooms.length}` +
+  console.log(`  과제 ${s0.categories.length} · 일정 ${s0.entries.length} · 할 일 ${s0.todos.length}` +
               ` · 근태 ${Object.keys(s0.attendance || {}).length}일 · 공수 ${Object.keys(s0.taskHours || {}).length}일`);
   const srcCommits = s0.entries.reduce((n, e) => n + ((e.commits || []).length), 0);
   const srcExcept  = s0.entries.reduce((n, e) => n + ((e.recurExcept || []).length), 0);
@@ -223,7 +223,7 @@ try {
   const dt = diffList('할 일', s0.todos, s1.todos, DROP_TODO);
   ok(`할 일 ${s0.todos.length}건이 그대로`, dt.length === 0, dt.slice(0, 2).join('\n      '));
 
-  for (const k of ['rooms', 'attendance', 'taskHours', 'gitAuthor', 'svnAuthor',
+  for (const k of ['attendance', 'taskHours', 'gitAuthor', 'svnAuthor',
                    'reportMarker', 'reportMarkerCustom', 'reportIndent', 'gitCommitBody',
                    'reportFormatPrefs', 'reportFont'])
     ok(`${k} 가 그대로`, JSON.stringify(s0[k]) === JSON.stringify(s1[k]),
@@ -234,7 +234,7 @@ try {
   ok('일정 순서 보존', s0.entries.map(e => e.id).join(',') === s1.entries.map(e => e.id).join(','),
      `원본=${s0.entries.map(e => e.id).slice(0, 5).join(',')}… 읽기=${s1.entries.map(e => e.id).slice(0, 5).join(',')}…`);
   ok('할 일 순서 보존', s0.todos.map(t => t.id).join(',') === s1.todos.map(t => t.id).join(','));
-  ok('회의실 순서 보존', JSON.stringify(s0.rooms) === JSON.stringify(s1.rooms));
+  //  (회의실은 2026-10-21 부터 state 에 없다. 회사 공용 room_code, SHARED-ROOMS)
 
   console.log('\n[5] 멱등 — 읽은 것을 다시 저장해도 같은가');
   const w2 = run({ op: 'save', loginId: LOGIN, stateJson: JSON.stringify(s1) });

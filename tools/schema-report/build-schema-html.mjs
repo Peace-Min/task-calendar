@@ -24,7 +24,7 @@ const num = (n) => Number(n).toLocaleString('ko-KR');
 const d = new Date(S.meta.dumpedAt);
 const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const PROJECT = ['project', 'customer', 'section_code', 'status_code'];
+const PROJECT = ['project', 'customer', 'section_code', 'status_code', 'room_code'];   // room_code: 2026-10-21 공용 회의실(schema-structure.sql)
 const USERS = ['app_user', 'org_unit', 'title_code'];
 const byName = Object.fromEntries(S.tables.map((t) => [t.name, t]));
 const calendar = S.tables.map((t) => t.name).filter((n) => !PROJECT.includes(n) && !USERS.includes(n));
@@ -56,7 +56,7 @@ function keyNote(n) {
     case 'org_unit':     return `번호(${pkCols(n)})가 기본키인 이유: 이름(name)이 PK 이던 때 실측하니 하위 조직이 있는 본부를 개명하면 ERROR 1451 이 났다. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않는다. 2026-08-24 에 번호 키로 옮기고 계층은 parent_id 만 잡는다. 개명은 name 한 컬럼 갱신으로 끝난다.`;
     case 'app_user':     return `번호(${pkCols(n)})가 기본키인 이유: login_id 는 netcus 가 발급하는 값이라 우리가 소유하지 않고, cal_* 여러 표가 참조하며, 다중경로라 RESTRICT 만 걸려 개명이 ERROR 1451 이었다. 합성 데이터 실측으로 login_id PK 는 user_id PK 보다 인덱스가 +69%(43.23 MB vs 25.59 MB). 2026-08-24 에 옮겼다.`;
     case 'project':      return `번호(${pkCols(n)})가 기본키이고 uid 가 외부 안정 참조키인 이유: 같은 발주처, 같은 사업명이 정당하게 반복되므로 이름은 키가 될 수 없다. id 는 내부용, uid 는 캘린더가 과제를 가리킬 때 쓰는 값이라 한 번 발급하면 바뀌지 않는다.`;
-    case 'cal_room':     return `(${pkCols(n)}) 복합키를 그대로 두는 이유: 이 표를 가리키는 외래키가 없어 규칙의 대상이 아니다. 번호를 붙이면 중복을 막을 UNIQUE(user_id, name) 이 따로 필요해 인덱스가 2개에서 3개가 되고, 앱은 한 사람의 목록을 WHERE user_id=? 로 통째로 읽는데 지금 기본키가 그 행들을 붙여 둔다. 저장은 지우고 다시 넣는 방식이라 번호는 소모만 된다.`;
+    case 'room_code':    return `번호(${pkCols(n)})가 기본키이고 이름(name)은 UNIQUE 라벨이다. 회사 공용 회의실 목록이다(2026-10-21, 사람마다 두던 cal_room 을 대신한다). 어떤 표도 이 번호를 가리키지 않는다. 일정의 장소는 글자라서 숨김과 휴지통 없이 바로 지운다. 관리자만 고친다.`;
     case 'cal_schema_meta': return `문자열 ${pkCols(n)} 가 키인 이유: 행이 버전 관문 키 다섯 개(db_structure_version 등)뿐인 설정 표이고 앱은 늘 k 로 찾는다. 가리키는 외래키가 없다. 번호를 붙여도 k 에 UNIQUE 를 또 걸어야 한다.`;
     default: return '';
   }
@@ -79,7 +79,8 @@ function keyPolicyHtml() {
           <tr><td><code>org_unit</code></td><td>번호(${esc(pkCols('org_unit'))})</td><td><b>번호 키</b>(2026-08-24)</td><td>자기참조 FK 에 InnoDB 가 CASCADE 를 수행하지 않아 하위 조직이 있는 본부 개명이 ERROR 1451 이었다.</td></tr>
           <tr><td><code>app_user</code></td><td>번호(${esc(pkCols('app_user'))})</td><td><b>번호 키</b>(2026-08-24)</td><td>login_id 는 netcus 발급, cal_* 여러 표가 참조, 다중경로라 RESTRICT. 인덱스 실측 +69%(43.23 MB vs 25.59 MB).</td></tr>
           <tr><td><code>project</code></td><td>번호(${esc(pkCols('project'))}) + uid</td><td>번호 키</td><td>같은 이름의 과제가 정당하게 반복된다(TABLE-DESIGN §4). uid 는 캘린더가 과제를 가리키는 외부 안정 참조키.</td></tr>
-          <tr><td><code>cal_room</code>, <code>cal_schema_meta</code></td><td>값(${esc(pkCols('cal_room'))} / ${esc(pkCols('cal_schema_meta'))})</td><td>자연키 유지</td><td>가리키는 외래키가 없어 규칙의 대상이 아니다. 번호를 붙이면 UNIQUE 를 하나 더 걸어야 하고(cal_room 은 인덱스 2개에서 3개), 앱은 늘 그 값으로 찾는다.</td></tr>
+          <tr><td><code>room_code</code></td><td>번호(${esc(pkCols('room_code'))}), name UNIQUE</td><td><b>번호 키</b>(2026-10-21)</td><td>회사 공용 회의실. 외래키 없음. 관리 화면의 이름변경, 삭제, 순서가 번호로 가리킨다.</td></tr>
+          <tr><td><code>cal_schema_meta</code></td><td>값(${esc(pkCols('cal_schema_meta'))})</td><td>자연키 유지</td><td>가리키는 외래키가 없어 규칙의 대상이 아니다. 번호를 붙이면 UNIQUE 를 하나 더 걸어야 하고, 앱은 늘 그 값으로 찾는다.</td></tr>
         </tbody>
       </table></div>
       <p class="note">근거와 결정 이력: <a href="CALENDAR-TABLE-DESIGN.md">db/CALENDAR-TABLE-DESIGN.md</a> §5.6, 전환 계획: <a href="../docs/CODE-TABLE-IDS.md">docs/CODE-TABLE-IDS.md</a>.</p>
@@ -169,10 +170,11 @@ const MIGRATIONS = [
   ['08-24', 'user_id 대리키', 'app_user 에 user_id 를 두고 login_id 는 UNIQUE 로 내렸다. cal_* 의 소유자 키가 전부 user_id 로 바뀌었다. login_id 는 사내 보고 사이트의 값이라 우리가 못 바꾸는데 참조가 여러 경로라 개명이 실행조차 안 됐기 때문이다.'],
   ['08-24', 'org_unit 대리키', 'PK 를 name 에서 org_id 로 옮겼다. 자기참조 FK 에는 InnoDB 가 CASCADE 를 수행하지 않아 본부 개명이 1451 로 막히던 것을 실측하고 바꿨다. 이름 미러는 남기지 않았다.'],
   ['08-27', 'uses_repo', 'cal_category 에 저장소 사용 여부를 더했다.'],
-  ['08-27', 'sort_order', 'cal_category, cal_entry, cal_todo, cal_room 에 순서 컬럼을 더해 부팅 조회의 순서를 앱의 문서 순서와 맞췄다.'],
+  ['08-27', 'sort_order', 'cal_category, cal_entry, cal_todo, cal_room(2026-10-21 폐지) 에 순서 컬럼을 더해 부팅 조회의 순서를 앱의 문서 순서와 맞췄다.'],
   ['08-31', '보고 기록 3표', 'cal_report_daily, cal_report_hours(v6), cal_report_weekly(v7) 를 만들고, 주간은 보낸 것만 담도록 다시 만들었다(v8). 캘린더가 만든 것만 담고 사이트의 현재 상태는 담지 않는다.'],
   ['09-09', '무결성 규칙 통일', '같은 DB 안에서 장치끼리 반대로 말하던 다섯을 한 판으로 맞췄다: 보고 표 두 개의 소유자 FK 를 CASCADE 에서 RESTRICT 로(GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었다), cal_report_hours 에 과제 FK 신설(쌍둥이 cal_task_hours 만 잠겨 있었다), cal_report_daily 에 근태·초과시간 CHECK(쌍둥이 cal_attendance 만 잠겨 있었다), hours 를 DECIMAL(4,2) 로, 감사 시각을 KST 에서 UTC 로 1회 정규화. 마지막 하나는 데이터를 바꾸므로 재실행 안전이 아니고 ProjectDb 의 접속 프리앰블과 같은 배포에 실려야 한다.'],
   ['10-15', '코드표 번호 키(v13)', 'customer, section_code, status_code, title_code 의 기본키를 이름에서 번호(SMALLINT UNSIGNED)로 옮기고 이름은 UNIQUE 라벨로 남겼다. 자식은 project.customer_id, section_id, status_id 와 app_user.title_id 이고 외래키는 ON UPDATE RESTRICT, ON DELETE RESTRICT. 동작이 묶인 코드값은 고정 번호(구분 2 선진행, 상태 2 종료)로 판정하고 그 두 행은 숨기거나 지울 수 없다. 데이터가 있는 DB 는 migrate-2026-10-15-code-ids.sql, 새 서버는 setup-taskcalendar.'],
+  ['10-21', '회의실 공용화(v15)', '사람마다 두던 cal_room 을 지우고 회사 공용 room_code(번호 키, name UNIQUE)를 두었다. 모든 사용자의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣었다. 관리자만 고치고, 일정의 장소는 글자라 외래키가 없다. 이관 조각 db/deploy/migrations/v15-shared-rooms.sql.'],
 ];
 
 const html = `<!DOCTYPE html>
@@ -359,7 +361,7 @@ const html = `<!DOCTYPE html>
     ${ent('cal_entry', ['<span class="key">PK</span> user_id, entry_no', '<span class="key">UQ</span> user_id, uid', 'entry_date, recur_*, sort_order', 'updated_at = 낙관적 잠금'], '일정')}${rel('entry_no', 'CASCADE')}
     ${ent('cal_entry_except, cal_entry_commit', ['<span class="key">PK</span> user_id, entry_no, (날짜|seq)'], '부속')}
   </div>
-  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE), cal_room, cal_task_hours(과제 FK RESTRICT), cal_attendance, cal_user_pref, cal_user_rev, cal_migration_log, cal_report_daily(→ cal_report_hours CASCADE), cal_report_weekly. ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다. 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
+  <p class="note">그림에는 관계를 읽는 데 필요한 키만 적었다. 전체 컬럼과 CHECK 는 03 절에서 표를 펼치면 나온다. 소유자 FK 가 걸린 표: cal_todo(→ cal_todo_day_note CASCADE), cal_task_hours(과제 FK RESTRICT), cal_attendance, cal_user_pref, cal_user_rev, cal_migration_log, cal_report_daily(→ cal_report_hours CASCADE), cal_report_weekly. ${ownerRuleShort} 괄호 안의 CASCADE 는 소유자 FK 가 아니라 그 표의 자식 FK 다. 부모 행을 지우면 딸린 줄이 함께 지워진다는 뜻이지, 사용자 삭제가 전파된다는 뜻이 아니다.</p>
 </section>
 
 <section>
