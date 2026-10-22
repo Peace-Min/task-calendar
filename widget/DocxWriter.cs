@@ -293,8 +293,8 @@ namespace TaskCalendarWidget
         {
             OpenTable(sb, ProjectGrid);
 
-            // 1행 머리(연파랑)
-            var row = new RowWriter(sb, ProjectGrid, 580, atLeast: true, cantSplit: true);
+            // 1행 머리(연파랑). 다음 줄(과제 수행 기간)과 같은 쪽에 둔다
+            var row = new RowWriter(sb, ProjectGrid, 580, atLeast: true, cantSplit: true) { KeepNext = true };
             row.Label(1, FillA, VMerge.None, "과제명");
             row.Label(4, FillA, VMerge.None, actualHead);
             row.Label(2, FillA, VMerge.None, planHead);
@@ -362,7 +362,8 @@ namespace TaskCalendarWidget
         {
             OpenTable(sb, EtcGrid);
 
-            var row = new RowWriter(sb, EtcGrid, 580, atLeast: true, cantSplit: true);
+            //  머리 줄을 본문 줄과 같은 쪽에 둔다(머리만 앞 쪽 끝에 남지 않게)
+            var row = new RowWriter(sb, EtcGrid, 580, atLeast: true, cantSplit: true) { KeepNext = true };
             row.Label(1, FillA, VMerge.None, "과제명");
             row.Label(1, FillA, VMerge.None, actualHead);
             row.End();
@@ -409,6 +410,9 @@ namespace TaskCalendarWidget
             private readonly StringBuilder _sb;
             private readonly int[] _grid;
             private int _col;
+            /// 이 줄의 칸 이름 문단에 keepNext 를 건다. 표 머리 줄이 쪽 끝에 홀로 남지 않게 다음 줄과 붙인다
+            /// (2026-10-22 QA: 마지막 기타 표의 머리 줄만 앞 쪽에 남고 본문이 다음 쪽으로 넘어갔다).
+            public bool KeepNext;
 
             public RowWriter(StringBuilder sb, int[] grid, int height, bool atLeast, bool cantSplit)
             {
@@ -447,7 +451,7 @@ namespace TaskCalendarWidget
             public void Label(int span, string fill, VMerge vm, params string[] lines) =>
                 Cell(span, fill, vm, true, s =>
                 {
-                    foreach (var l in lines) AppendPara(s, l, true, Jc.Center, 0);
+                    foreach (var l in lines) AppendPara(s, l, true, Jc.Center, 0, keepNext: KeepNext);
                 });
 
             /// 세로 병합으로 가려지는 자리. 내용은 없어도 tc 와 빈 문단은 있어야 한다.
@@ -525,10 +529,10 @@ namespace TaskCalendarWidget
 
         // 문단 하나. 빈 글자면 런 없이 문단만(빈 w:t 를 남기지 않는다).
         private static void AppendPara(StringBuilder sb, string text, bool bold, Jc jc, int indentDxa,
-            int sizeHalfPt = 0, bool underline = false)
+            int sizeHalfPt = 0, bool underline = false, bool keepNext = false)
         {
             sb.Append("<w:p>");
-            AppendPPr(sb, jc, indentDxa);
+            AppendPPr(sb, jc, indentDxa, keepNext);
             if (!string.IsNullOrEmpty(text)) AppendRun(sb, text, bold, sizeHalfPt, underline);
             sb.Append("</w:p>");
         }
@@ -536,10 +540,11 @@ namespace TaskCalendarWidget
         private static void AppendEmptyPara(StringBuilder sb) => sb.Append("<w:p/>");
 
         // pPr 순서: ... spacing, ind, jc. 간격은 styles 의 기본값(앞뒤 0, 줄 240 auto)을 따른다.
-        private static void AppendPPr(StringBuilder sb, Jc jc, int indentDxa)
+        private static void AppendPPr(StringBuilder sb, Jc jc, int indentDxa, bool keepNext = false)
         {
-            if (indentDxa <= 0 && jc == Jc.Left) return;
+            if (indentDxa <= 0 && jc == Jc.Left && !keepNext) return;
             sb.Append("<w:pPr>");
+            if (keepNext) sb.Append("<w:keepNext/>");   // pPr 순서상 keepNext 는 spacing, ind, jc 앞이다
             if (indentDxa > 0) sb.Append("<w:ind w:left=\"").Append(indentDxa).Append("\"/>");
             if (jc == Jc.Center) sb.Append("<w:jc w:val=\"center\"/>");
             sb.Append("</w:pPr>");

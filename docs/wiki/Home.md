@@ -8,6 +8,7 @@
 - [과제 캘린더](과제-캘린더): 개인 / 과제 탭, 내 과제에 넣은 공식 과제의 공용 일정, 그날 일정 목록과 [수정], 다른 사람과 동시에 고쳤을 때, 언제 새로 읽나, 최근 변경, 개인 일정에 등록
 - [보고서 회사 전송](보고서-회사-전송): 늘 실제로 제출하고, 제출 전에 한 번 확인합니다
 - [보고서 글 편집](보고서-글-편집): 일간, 주간보고에 상세 줄 쓰기, 이 보고서에서 빼기(×), 임시 저장, 보고서와 캘린더는 따로
+- [월간 보고](월간-보고): 보고서 창의 네 번째 탭, 회사 월간보고 양식 .docx 저장, 자동으로 채우는 칸(수행 실적, 기타)과 직접 쓰는 칸, 개발 일정 그림, 저장 위치, Word 와 한컴
 - [다른 사람 일정 보기](다른-사람-일정-보기): 툴바의 '👥 다른 사람 일정', 사람/조직도 탭, 즐겨찾기와 최근 본 사람, 사람 바꾸기, 보이는 것과 안 보이는 것, 밀도, 겹쳐 보기와 나란히 보기, 시간 겹침
 - [날짜 누르기와 기간 일정](날짜-누르기와-기간-일정): 무엇을 누르면 어느 날짜가 선택되는지, 기간 막대 클릭 수정(2026-10-01)
 - [과제 순서 바꾸기](과제-순서-바꾸기): '🏷️ 내 과제'의 ▲▼ 로 순서를 정하면 보고서 순서가 따라갑니다
@@ -37,4 +38,5 @@
 - 주간 글 편집 기획서: [`docs/WEEKLY-EDIT.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/WEEKLY-EDIT.md), 실 위젯 루프 `tests/loop-weekly-edit.mjs`
 - 버전 관문 기획서: [`docs/VERSION-GATE.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/VERSION-GATE.md), 운영 정본 [`docs/DB-RELEASE-OPS.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/DB-RELEASE-OPS.md), 실 위젯 루프 `tests/loop-schema-gate.mjs`
 - 과제 공용 캘린더 기획서: [`docs/PROJECT-CALENDAR-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/PROJECT-CALENDAR-PLAN.md), 실 위젯 루프 `tests/loop-project-calendar.mjs`, DB 계약 `tests/db-project-calendar.mjs`
+- 월간보고 기획서: [`docs/MONTHLY-REPORT-PLAN.md`](https://github.com/Peace-Min/task-calendar/blob/feat/monthly-report-plan/docs/MONTHLY-REPORT-PLAN.md), 화면 시험 `tests/monthly-report.test.mjs`, 실 위젯 루프 `tests/loop-monthly-report.mjs`
 - 화면 혼란 3건 기획서: [`docs/UI-CLARITY-2026-10-01.md`](https://github.com/Peace-Min/task-calendar/blob/feat/db-app/docs/UI-CLARITY-2026-10-01.md)

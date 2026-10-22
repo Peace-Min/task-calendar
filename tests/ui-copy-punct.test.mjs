@@ -56,6 +56,7 @@ const ALLOW_JS = [
   ['html += \'<div class="rncw-wk">· \'', '\'<div class="rncw-wk">· \'', '위 주간보고 본문을 그대로 보여 주는 미리보기'],
   ["`${cat ? cat.name + ' · ' : ''}커밋", "' · '", '커밋으로 만든 기록 제목(저장 데이터, 같은 꼴을 정규식이 알아본다)'],
   ['`${cat.name} · 커밋 ${mapped.length}건`', ' · 커밋 ', '커밋으로 만든 기록 제목(저장 데이터)'],
+  ["esc('월간보고 (' + String(S.name", "') – '", '월간보고 문서 미리 보기 제목: DocxWriter 가 쓰는 양식 원본 구분 글자 그대로(문서 본문 형식, MONTHLY-REPORT-PLAN §2.2)'],
 ];
 const lineAt = (src, pos) => { const a = src.lastIndexOf('\n', pos) + 1; const b = src.indexOf('\n', pos); return src.slice(a, b < 0 ? src.length : b); };
 

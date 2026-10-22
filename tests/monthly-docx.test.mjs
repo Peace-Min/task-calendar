@@ -217,3 +217,12 @@ test('변이D10: exportMonthlyDocx 를 관리 창 허용 목록에 넣으면 메
   const bad = mutate(mainCs, '"adminWinReady", "userInfoGet", "gateRecheck",', '"adminWinReady", "userInfoGet", "gateRecheck", "exportMonthlyDocx",');
   assert.throws(() => host.mainCase(bad), /허용 목록에 있다/);
 });
+
+//  표 머리 줄은 다음 줄과 같은 쪽에 둔다(2026-10-22 QA: 기타 표 머리 줄만 앞 쪽 끝에 남았다).
+test('과제 표와 기타 표의 머리 줄은 keepNext 로 다음 줄과 붙는다', () => {
+  const w = writer.replace(/\r\n/g, '\n');
+  assert.ok(/AppendPPr\(StringBuilder sb, Jc jc, int indentDxa, bool keepNext = false\)[\s\S]{0,200}<w:keepNext\/>/.test(w), 'pPr 에 keepNext 를 쓴다');
+  assert.ok(/new RowWriter\(sb, ProjectGrid, 580, atLeast: true, cantSplit: true\) \{ KeepNext = true \}/.test(w), '과제 표 1행');
+  assert.ok(/new RowWriter\(sb, EtcGrid, 580, atLeast: true, cantSplit: true\) \{ KeepNext = true \}/.test(w), '기타 표 1행');
+  assert.ok(/AppendPara\(s, l, true, Jc\.Center, 0, keepNext: KeepNext\)/.test(w), '칸 이름 문단이 줄의 KeepNext 를 따른다');
+});
