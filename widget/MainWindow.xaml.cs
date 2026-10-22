@@ -1021,6 +1021,17 @@ namespace TaskCalendarWidget
                         break;
                     }
 
+                    // ----- 과제 캘린더(docs/PROJECT-CALENDAR-PLAN.md §5.4): 메인 창 전용. 관리 창과 열람 창 허용 목록에 넣지 않는다 -----
+                    //  회신은 ReplyOnUi(reqId)로 { ok, data?, error?: { kind, message } }. 판정과 SQL 은 ProjectCalendarDb 한 곳(ProjectCalendarHost.cs).
+                    case "projectCalendarBootstrap":
+                    case "projectCalendarLoad":
+                    case "projectCalendarSave":
+                    case "projectCalendarDelete":
+                    case "projectCalendarChanges":
+                    case "projectCalendarCopy":
+                        _ = RunProjectCalendarAsync(cmd, GetStr(doc, "reqId"), raw);   // 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다)
+                        break;
+
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
                     case "focus": ToggleFocusMode(); break;

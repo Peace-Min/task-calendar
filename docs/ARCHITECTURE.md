@@ -137,6 +137,7 @@ JS는 C# 함수를 직접 호출하지 않는다. **문자열 메시지**만 주
 | **데이터** | `ready`, `reloadState`, `saveState`(차분), `replaceAllState`(전량 교체) | `__applyState`, `__applyStateError` |
 | **로그인·권한** | `userLogin`, `userLogout`, `userSessionGet`, `userInfoGet`, `membersGet` | `__hostReply` |
 | **과제 마스터** | `loadProjects`, `saveProject`, `loadCustomers`, `addCustomer`, `code*`, `dbInfoGet` | `__applyProjects`, `__applyCustomers`, `__applyCodes`, `__projectSaved`, `__dbInfo` |
+| **과제 캘린더**(2026-10-22, 메인 창 전용) | `projectCalendarBootstrap`, `projectCalendarLoad`, `projectCalendarSave`, `projectCalendarDelete`, `projectCalendarChanges`, `projectCalendarCopy` | `__hostReply`(`{ ok, data?, error?: { kind, message } }`). 복사로 개인 일정이 생기면 `__applyState` 로 개인 스냅샷을 다시 싣는다 |
 | **VCS** | `gitlog`, `gitauthor`, `gitcheck` | `__hostReply` |
 | **회사 보고** | `netcusSubmit`, `netcusWeekSubmit`, `netcusWeekMerge`, `netcusCreds*`, `netcusProbe` | `__netcus*` |
 | **창, 업데이트, 기타** | `menu`/`pin`/`focus`/`hide`/`close`, `drag*`/`resize*`, `reminderSync`, `update*`, `pickfolder`, `pickImportXml`, `openFolder`/`openLogFolder`, `export*` | `__setPinned`, `__setTray`, `__setFocus`, `__update*` |

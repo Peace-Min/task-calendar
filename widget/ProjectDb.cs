@@ -2180,6 +2180,8 @@ namespace TaskCalendarWidget
         private const string TrashFkMsg     = "다른 기록이 붙어 있어 지울 수 없습니다.";
         private const string TrashNoTarget  = "대상이 지정되지 않았습니다.";
         private const string TrashDoneMsg   = "영구 삭제했습니다.";
+        // 과제 캘린더 일정이 있는 과제(§3.1, PROJECT-CALENDAR-PLAN §2 7번). 목록 힌트(why)와 삭제 판정이 같은 문장이다.
+        internal const string TrashProjectSharedMsg = "과제 캘린더 일정이 있는 과제는 지울 수 없습니다. 숨긴 상태로 유지됩니다.";
         // 이미 활성인 항목의 복구 — 실패가 아니라 **목록이 낡은 것**이다. 그래서 문구가 새로고침을 시킨다(TrashGoneMsg 와 같은 성격).
         //   ★ 휴지통 복구와 명부 복구(SetUserActiveAsync)가 **이 한 줄을 같이 쓴다**(2026-09-11 R4) — 같은 판정에
         //     같은 말을 두 벌 적으면 한쪽만 고쳐진다. 시험도 이 상수를 계약으로 붙잡는다. 그래서 이름에 '휴지통'이 없다.
@@ -2313,13 +2315,21 @@ namespace TaskCalendarWidget
                 }
 
                 // ① 과제 — 참조는 '이 과제를 편입한 개인 카테고리' 수다. FK 가 아니라 문자열 참조라(§3.1)
-                //    지워도 DB 는 막지 않는다. 그래서 deletable 은 항상 true 고, 수는 확인창이 보여 준다.
+                //    지워도 DB 는 막지 않는다. 수는 확인창이 보여 준다.
+                //    ★ 과제 캘린더 일정이 있는 과제는 지울 수 없다(deletable=false, why=TrashProjectSharedMsg). 판정은 삭제가 다시 한다.
                 var catRefs = new Dictionary<string, long>(StringComparer.Ordinal);
                 await using (var cmd = new MySqlCommand(
                     "SELECT project_uid, COUNT(*) AS c FROM cal_category WHERE project_uid IS NOT NULL AND project_uid<>'' GROUP BY project_uid", conn))
                 await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
                 {
                     while (await rd.ReadAsync(cts.Token)) catRefs[Str(rd, "project_uid")] = LongOrZero(rd, "c");
+                }
+                var sharedRefs = new Dictionary<string, long>(StringComparer.Ordinal);
+                await using (var cmd = new MySqlCommand(
+                    "SELECT p.uid, COUNT(*) AS c FROM cal_project_event e JOIN project p ON p.id = e.project_id WHERE p.is_active=0 GROUP BY p.uid", conn))
+                await using (var rd = await cmd.ExecuteReaderAsync(cts.Token))
+                {
+                    while (await rd.ReadAsync(cts.Token)) sharedRefs[Str(rd, "uid")] = LongOrZero(rd, "c");
                 }
                 var projects = new List<Dictionary<string, object?>>();
                 //    ★ 발주처·구분 이름은 번호 조인으로 만든다(부제 표시용).
@@ -2334,8 +2344,9 @@ namespace TaskCalendarWidget
                     {
                         string uid = Str(rd, "uid");
                         long c = catRefs.TryGetValue(uid, out var x) ? x : 0L;
+                        bool shared = sharedRefs.TryGetValue(uid, out var sx) && sx > 0;
                         projects.Add(TrashRow(uid, Str(rd, "project_name"),
-                            SubLine(Str(rd, "common_name"), Str(rd, "customer"), Str(rd, "section")), c, true, ""));
+                            SubLine(Str(rd, "common_name"), Str(rd, "customer"), Str(rd, "section")), c, !shared, shared ? TrashProjectSharedMsg : ""));
                     }
                 }
 
@@ -2567,11 +2578,24 @@ namespace TaskCalendarWidget
                     }
                     else if (kd == "project")
                     {
-                        // 과제는 참조가 있어도 지운다 — 개인 카테고리는 문자열 참조라 db_gone 으로 남는다(§3.1).
+                        // 과제 캘린더 일정(cal_project_event, 지운 것 포함)이 한 건이라도 있으면 지우지 않는다(PROJECT-CALENDAR-PLAN §2 7번).
+                        //   공용 일정과 그 이력은 여러 사람의 기록이다. 최종 방어는 그 표의 FK RESTRICT(1451)이고, 여기서는 고정 문구로 먼저 거부한다.
+                        //   공용 일정이 없으면 cal_project_rev 행은 FK CASCADE 로 함께 지워진다.
+                        long shared;
+                        await using (var cmd = new MySqlCommand(
+                            "SELECT COUNT(*) FROM cal_project_event e JOIN project p ON p.id = e.project_id WHERE p.uid=@k", conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@k", k);
+                            shared = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        }
+                        if (shared > 0) { await tx.RollbackAsync(cts.Token); _log("영구 삭제 거부(과제 캘린더 일정 " + shared + "건) " + k); return (false, TrashProjectSharedMsg); }
+                        // 과제는 개인 편입이 있어도 지운다. 개인 카테고리는 문자열 참조라 db_gone 으로 남는다(§3.1).
                         //   막는 대신 **몇 명이 편입 중이었는지**를 로그에 남긴다.
-                        await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM cal_category WHERE project_uid=@k", conn, tx);
-                        cmd.Parameters.AddWithValue("@k", k);
-                        refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        await using (var cmd = new MySqlCommand("SELECT COUNT(*) FROM cal_category WHERE project_uid=@k", conn, tx))
+                        {
+                            cmd.Parameters.AddWithValue("@k", k);
+                            refs = Convert.ToInt64((await cmd.ExecuteScalarAsync(cts.Token)) ?? 0L);
+                        }
                     }
                     else
                     {

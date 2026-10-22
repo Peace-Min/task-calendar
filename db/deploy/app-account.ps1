@@ -71,6 +71,13 @@ try {
   if((Exec "ALTER USER '$AppUser'@'%' IDENTIFIED BY '$($AppPassword -replace "'","''")';") -ne 0){ Die "비밀번호 설정 실패." }
   # 최소권한(과제 트랙 표 SELECT/INSERT/UPDATE, 공용 회의실 room_code 는 삭제도 한다. 2026-10-21 SHARED-ROOMS)
   if((Exec "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.project TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.customer TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.section_code TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.status_code TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE, DELETE ON ``$DbName``.room_code TO '$AppUser'@'%'; FLUSH PRIVILEGES;") -ne 0){ Die "권한 부여 실패." }
+  # 과제 캘린더 표 넷(2026-10-22 구조 번호 16, PROJECT-CALENDAR-PLAN §4.6). 넷 다 DELETE 없음. 정본은 grants-calendar.sql.
+  #   표가 아직 없는 DB(구조 15 이하)에 GRANT 하면 1146 이라, 표가 있을 때만 준다.
+  $pcHas = [int](Q "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$DbName' AND TABLE_NAME IN ('cal_project_rev','cal_project_event','cal_project_change','cal_project_copy');")
+  if($pcHas -eq 4){
+    if((Exec "GRANT SELECT, INSERT, UPDATE ON ``$DbName``.cal_project_rev TO '$AppUser'@'%'; GRANT SELECT, INSERT, UPDATE ON ``$DbName``.cal_project_event TO '$AppUser'@'%'; GRANT SELECT, INSERT ON ``$DbName``.cal_project_change TO '$AppUser'@'%'; GRANT SELECT, INSERT ON ``$DbName``.cal_project_copy TO '$AppUser'@'%'; FLUSH PRIVILEGES;") -ne 0){ Die "과제 캘린더 표 권한 부여 실패." }
+    Ok "과제 캘린더 표 넷 권한(DELETE 없음)"
+  } else { Info "과제 캘린더 표가 아직 없습니다(구조 16 전). 그 권한은 건너뜁니다." }
   Ok "계정 준비 완료 · 최소권한(SELECT/INSERT/UPDATE)"
 
   # 실제 그 비번으로 접속되는지 확인 = 위젯 접속 조건과 동일

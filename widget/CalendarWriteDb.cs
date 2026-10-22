@@ -260,10 +260,7 @@ namespace TaskCalendarWidget
                         no = nextEnt++;
                         p.Add(("@u2", uid));
                         p.Add(("@ca", IsoToDb(S(e, "createdAt"), now)));
-                        await Exec(conn, tx,
-                            "INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,end_date,all_day,start_time,end_time," +
-                            "title,memo,source,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) " +
-                            $"VALUES ({u},{no},@u2,@c,@dt,@ed,@ad,@stt,@ett,@t,@m,@src,@loc,@rm,@rf,@ri,@ru,@rc,@so,@ca,@now)", ct, p, now);
+                        await Exec(conn, tx, EntryInsertSql(u, no), ct, p, now);
                         entNo[uid] = no;
                         ins++;
                     }
@@ -524,6 +521,42 @@ namespace TaskCalendarWidget
 
         // ── 쓰기 헬퍼 ────────────────────────────────────────────────────────────
         private static CalendarSaveResult Fail(string m) => new CalendarSaveResult { Ok = false, Message = m };
+
+        //  일정 한 건 INSERT 문(4번과 아래 InsertEntryInTxAsync 가 같은 글자를 쓴다). 값은 EntryParams + @u2(uid), @ca(생성 시각).
+        private static string EntryInsertSql(int u, uint no) =>
+            "INSERT INTO cal_entry (user_id,entry_no,uid,cat_no,entry_date,end_date,all_day,start_time,end_time," +
+            "title,memo,source,location,remind,recur_freq,recur_interval,recur_until,recur_count,sort_order,created_at,updated_at) " +
+            $"VALUES ({u},{no},@u2,@c,@dt,@ed,@ad,@stt,@ett,@t,@m,@src,@loc,@rm,@rf,@ri,@ru,@rc,@so,@ca,@now)";
+
+        // ================================================================================
+        //  이미 열린 트랜잭션 안의 개인 일정 한 건(과제 캘린더 개인 복사, ProjectCalendarDb.CopyAsync, PROJECT-CALENDAR-PLAN §5.5)
+        // ================================================================================
+        //  SaveAsync 와 **같은 규칙, 같은 문장**을 쓴다: rev 증가(1번), 락 안의 번호 발급(2번), 행 투영(EntryParams), INSERT 문.
+        //  ★ 부르는 쪽이 같은 트랜잭션에서 BumpUserRevInTxAsync 를 먼저 불러 그 사용자의 cal_user_rev 락을 쥐고 있어야 한다.
+        //    번호 발급(MAX+1)의 안전이 그 락에서 나온다(계약 H-1).
+        //  ★ 부팅 스냅샷(토큰, 번호 맵)은 바꾸지 않는다. 부른 쪽이 커밋 뒤 개인 스냅샷을 다시 읽는다(reloadState 와 같은 길).
+        internal static async Task<long> BumpUserRevInTxAsync(MySqlConnection conn, MySqlTransaction tx, int userId, CancellationToken ct)
+        {
+            await Exec(conn, tx,
+                "INSERT INTO cal_user_rev(user_id, rev) VALUES(" + userId + ", 1) " +
+                "ON DUPLICATE KEY UPDATE rev = rev + 1", ct);
+            return Convert.ToInt64(await Scalar(conn, tx, $"SELECT rev FROM cal_user_rev WHERE user_id={userId}", ct) ?? 0L,
+                                   CultureInfo.InvariantCulture);
+        }
+
+        //  entry 는 state.entries 원소와 같은 모양(id, date, endDate, startTime, endTime, title, memo, location, remind …).
+        //  순서(sort_order)는 그 사람 일정의 맨 뒤. 반환: 새 entry_no.
+        internal static async Task<uint> InsertEntryInTxAsync(MySqlConnection conn, MySqlTransaction tx, int userId,
+            JsonElement entry, uint? catNo, string now, CancellationToken ct)
+        {
+            uint no = (uint)(Convert.ToInt64(await Scalar(conn, tx, $"SELECT IFNULL(MAX(entry_no),0) FROM cal_entry WHERE user_id={userId}", ct) ?? 0L, CultureInfo.InvariantCulture) + 1);
+            int so = (int)(Convert.ToInt64(await Scalar(conn, tx, $"SELECT IFNULL(MAX(sort_order),-1) FROM cal_entry WHERE user_id={userId}", ct) ?? -1L, CultureInfo.InvariantCulture) + 1);
+            var p = EntryParams(entry, so, catNo.HasValue ? catNo.Value : (object?)null);
+            p.Add(("@u2", S(entry, "id")));
+            p.Add(("@ca", IsoToDb(S(entry, "createdAt"), now)));
+            await Exec(conn, tx, EntryInsertSql(userId, no), ct, p, now);
+            return no;
+        }
 
         // ================================================================================
         //  행 투영 — state 원소 하나가 **DB 에 무엇으로 적히는가**(위 SaveAsync 가 쓰는 바로 그 값)

@@ -16,6 +16,9 @@
 //   room_code(공용 목록, v15 가 만든다). CREATE TABLE IF NOT EXISTS, DROP TABLE, cal_room 에서 room_code 로의
 //   INSERT IGNORE ... SELECT(앞뒤 공백 정리, ai_ci 로 묶기, 쓰는 사람 수와 이름 순서), 그리고 SELECT COUNT(*) INTO @x
 //   세 가지(고유 이름 수, room_code 에 빠진 이름 수, room_code 줄 수). 정렬과 비교 규칙은 흉내다(대소문자와 악센트 무시).
+//   과제 캘린더 표 넷(v16 조각 migrations/v16-project-calendar.sql): CREATE TABLE IF NOT EXISTS 의 정의에서 열 수와 FK 수를 읽어
+//   표 모양(defs)으로 두고, information_schema.COLUMNS 와 REFERENTIAL_CONSTRAINTS 의 표별 COUNT(*) 하위 질의에 그 수로 답한다.
+//   출발 상태에 이미 있는 표의 모양은 FakeDb 의 defs 옵션으로 준다(모양을 모르는 표를 세면 '모르는 문장' 으로 실패한다).
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -176,14 +179,26 @@ const ROOM_COUNTS = {
   'room_code': (db) => db.need('room_code').length,
 };
 
+// ── 표 정의의 모양(v16): 열 수와 FK 수 ────────────────────────────────────
+//  CREATE TABLE 문 하나에서 괄호 안의 열 정의 줄(이름 + 형)과 FOREIGN KEY 를 센다. 정본과 조각의 정의를 같은 함수로 센다.
+const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|JSON|DECIMAL)\b/i;
+export function defOf(createSql) {
+  const open = createSql.indexOf('(');
+  const close = createSql.lastIndexOf(') ENGINE=');
+  if (open < 0 || close < open) throw new Error(`표 정의를 읽지 못했다: ${createSql.slice(0, 80)}`);
+  const body = createSql.slice(open + 1, close);
+  return { cols: body.split('\n').filter((l) => COL_LINE.test(l)).length, fks: (body.match(/\bFOREIGN KEY\b/g) || []).length };
+}
+
 // ── 흉내 DB ────────────────────────────────────────────────────────────
 //  meta: { 키: 값 } (cal_schema_meta). 실행 기록(writes)과 updated_at 흉내(시각 카운터)를 남긴다.
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {} } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {} } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
+    this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -204,7 +219,8 @@ export class FakeDb {
     for (const n of Object.keys(this.tables).sort()) {
       out[n] = n === 'room_code'
         ? this.tables[n].map((r) => [r.name, r.sort_order]).sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
-        : this.tables[n].map((r) => `${r.user_id}:${r.name}`).sort();
+        : this.defs[n] ? [`cols=${this.defs[n].cols}`, `fks=${this.defs[n].fks}`]
+          : this.tables[n].map((r) => `${r.user_id}:${r.name}`).sort();
     }
     return out;
   }
@@ -231,6 +247,13 @@ export class FakeDb {
       if (!this.schema) return 0;
       const names = m[1] ? [m[1]] : [...m[2].matchAll(/'(\w+)'/g)].map((x) => x[1]);
       return names.filter((n) => this.hasTable(n)).length;
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.(COLUMNS|REFERENTIAL_CONSTRAINTS) WHERE (?:TABLE_SCHEMA|CONSTRAINT_SCHEMA) = DATABASE\(\) AND TABLE_NAME = '(\w+)'$/i.exec(s);
+    if (m) {
+      if (!this.schema || !this.hasTable(m[2])) return 0;
+      const d = this.defs[m[2]];
+      if (!d) throw new Error(`모양을 모르는 표를 센다(defs 에 ${m[2]} 가 없다)`);
+      return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
     }
     m = /^SELECT v FROM cal_schema_meta WHERE k = '([a-z_0-9]+)'$/.exec(s);
     if (m) return this.rows.has(m[1]) ? this.rows.get(m[1]).v : null;
@@ -282,7 +305,11 @@ export class FakeDb {
     if ((m = /^CREATE TABLE IF NOT EXISTS (\w+) \(/.exec(q))) {
       if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
       this.mutating(s, opts);
-      if (!this.hasTable(m[1])) { this.tables[m[1]] = []; this.writes.push({ k: `table:${m[1]}`, v: 'create' }); }
+      if (!this.hasTable(m[1])) {
+        this.tables[m[1]] = [];
+        if (m[1].startsWith('cal_project_')) this.defs[m[1]] = defOf(s);
+        this.writes.push({ k: `table:${m[1]}`, v: 'create' });
+      }
       return;
     }
     if ((m = /^DROP TABLE (\w+)$/.exec(q))) {
@@ -290,6 +317,7 @@ export class FakeDb {
       this.mutating(s, opts);
       this.need(m[1]);                       // 없는 표를 지우면 MySQL 도 오류(1051)로 멈춘다
       delete this.tables[m[1]];
+      delete this.defs[m[1]];
       this.writes.push({ k: `table:${m[1]}`, v: 'drop' });
       return;
     }

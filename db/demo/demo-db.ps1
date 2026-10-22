@@ -22,7 +22,7 @@
 
   단계(화면에 [n/3] 으로 찍힌다. 첫 실패에서 멈춘다)
     -Load
-      [0] 사전 점검: mysql.exe, mysqldump.exe, node.exe, 생성기, 접속, DB, db_structure_version 15, 녹화 계정, 이미 데모인지,
+      [0] 사전 점검: mysql.exe, mysqldump.exe, node.exe, 생성기, 접속, DB, db_structure_version 16, 녹화 계정, 이미 데모인지,
           앱 계정(taskmgr_app) 세션(-Force 면 건너뜀), 표별 행 수. 그다음 Y 를 받는다(-Yes 면 묻지 않는다).
       [1] 백업: mysqldump(--single-transaction --routines --triggers --events --set-gtid-purged=OFF --no-tablespaces,
           --databases 없음)를 <OutDir>\<DbName>-before-demo-<시각>.sql 로 뜨고 끝의 '-- Dump completed' 를 확인한다.
@@ -36,13 +36,13 @@
       [1] 안전 덤프: 지금 상태(데모)를 <OutDir>\<DbName>-before-restore-<시각>.sql 로 먼저 남긴다.
       [2] 되살리기: DROP DATABASE, CREATE DATABASE(백업 때의 문자셋과 정렬 규칙, 기본 utf8mb4_0900_ai_ci), 백업 붓기.
           표 단위 권한(mysql.tables_priv)은 DB 를 지워도 남으므로 앱 계정은 그대로 붙는다.
-      [3] 확인: db_structure_version 15, 표 이름 집합과 표별 행 수가 .counts.json 과 같아야 통과. 표지 파일은 -restored- 이름으로 옮긴다.
+      [3] 확인: db_structure_version 16, 표 이름 집합과 표별 행 수가 .counts.json 과 같아야 통과. 표지 파일은 -restored- 이름으로 옮긴다.
 
   --- EXITCODES (ASCII; this block must match line-for-line in .ps1 and .cmd) ---
     0 ok - demo data loaded and verified, the DB was restored and verified, or the status was shown
     1 failed - the demo SQL or the restore stopped, or the check afterwards failed; read the printed state and steps
     2 cancelled - the confirmation was not Y; nothing was changed
-    3 precheck failed - tools, password, connection, DB, db_structure_version not 15, recording login, demo state or backup file; nothing was changed
+    3 precheck failed - tools, password, connection, DB, db_structure_version not 16, recording login, demo state or backup file; nothing was changed
     4 app sessions open - the app account is still connected to this DB; close every widget; nothing was changed
     5 backup failed - mysqldump failed or the dump is incomplete; the DB was not touched
   --- END EXITCODES ---
@@ -102,7 +102,7 @@ $EXIT_BACKUP    = 5
 $ADMIN_PW_ENV   = "TASKMGR_ADMIN_PW"   # 무인 실행 자격(restore-taskmgr.ps1, migrate-code-ids.ps1 과 같은 이름)
 $STDIN_WAIT_SEC = 10                   # stdin 첫 줄 읽기 상한(초)
 $DEFAULT_MYSQL_DIR = "C:\Program Files\MySQL\MySQL Server 8.4"
-$SCHEMA_VERSION = "15"   # cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+$SCHEMA_VERSION = "16"   # cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 $DEFAULT_COLLATION = "utf8mb4_0900_ai_ci"
 $GENERATOR      = "build-demo-sql.mjs"
 $LOGIN_RE       = '^[A-Za-z0-9._@-]{1,50}$'   # build-demo-sql.mjs 의 LOGIN_RE 와 같다

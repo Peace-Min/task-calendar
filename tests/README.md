@@ -76,6 +76,7 @@ console\                       ← 부모 폴더
 |---|---|---|
 | 상시 스위트(엄격) | `TC_TEST_STRICT=1 node tests/run-tests.mjs` | **exit 0**. skip 이 있으면 2(판정 없음)이고 strict 는 그것을 1 로 올린다 |
 | 사용자 관리 루프 | `node tests/loop-user-admin.mjs` | **무작위 시드로 5회 연속** 통과(한 번이라도 실패하면 1부터 다시 센다) |
+| 과제 캘린더 DB 계약 | `node tests/db-project-calendar.mjs --db=zz_pc_dev` | 한 번 통과(0). 공용 DB 가 아니라 구조 16 인 복사본(이름이 zz_ 로 시작)에서만 돈다. 비밀번호는 `TC_TEST_DB_ADMIN_PW` 환경 변수로만 |
 | 휴지통 루프 | `node tests/loop-trash.mjs` | 같은 규약. 앱 계정에 DELETE 권한이 **먼저** 적용돼 있어야 한다(DEPLOY.md §0-5) |
 | 직급·소속 관리 루프 | `node tests/loop-org-title.mjs` | 같은 규약. 앱 계정에 `org_unit`·`title_code` 의 **INSERT·UPDATE** 가 먼저 적용돼 있어야 한다(DEPLOY.md §0-5, ORG-TITLE-ADMIN §6). 없으면 **exit 2(판정 없음)** 로 끝난다. 실패가 아니다 |
 
@@ -98,6 +99,7 @@ tests/
 ├─ loop-ui-visual.mjs         라이브 위젯 · 읽기 전용 — 레이아웃 결함 검출
 ├─ loop-org-compat.mjs        MySQL(복제본) — org_unit 완전 절단 루프
 ├─ loop-calendar-write.mjs    라이브 위젯 + MySQL(복제본) — 캘린더 쓰기 경로 루프
+├─ db-project-calendar.mjs    C# 러너 + MySQL(복사본 zz_ DB, 일회용 계정) : 과제 캘린더 DB 계약(두 사람, PROJECT-CALENDAR-PLAN §8.2 P1)
 ├─ loop-conflict-ui.mjs       라이브 위젯(CDP) + MySQL — 충돌 안내의 실동작: 충돌이 화면에 뜨는가 ·
 │                            재시도하지 않는가 · DB 를 덮지 않는가 · 되돌릴 문이 있는가
 ├─ loop-user-admin.mjs        **실제 위젯**(CDP) + 실 DB — 사용자 관리(USER-ADMIN) 실동작: 「구성원 편집」 화면에서 등록·수정·권한·퇴사·복구·순서 저장 ·

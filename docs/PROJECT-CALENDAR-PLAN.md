@@ -1,6 +1,6 @@
 # 과제 공용 캘린더 적용 기획 (PROJECT-CALENDAR-PLAN)
 
-- 상태: **기획 확정(2026-10-22).** 열린 질문은 사용자 답으로 모두 정했다(9 절). 화면 기준은 시안 [prototypes/project-calendar.html](prototypes/project-calendar.html)(2차, 6.6 절)이다. 구현, DB 변경, 위젯 실행은 아직 하지 않았다.
+- 상태: **기획 확정(2026-10-22).** 열린 질문은 사용자 답으로 모두 정했다(9 절). 화면 기준은 시안 [prototypes/project-calendar.html](prototypes/project-calendar.html)(2차, 6.6 절)이다. **P1(DB 와 호스트) 구현(2026-10-22, 8.3 절).** 화면(P2)과 공용 개발 DB 반영, 위젯 실행은 아직 하지 않았다.
 - 출처: GitHub 이슈 [Peace-Min/task-calendar#14](https://github.com/Peace-Min/task-calendar/issues/14) 와 전달 묶음(Gist `111fd188…`의 `IMPLEMENTATION.md`, `final.html`, `previews.html`, `RESEARCH.md`). 이슈 본문과 `IMPLEMENTATION.md` 는 같은 내용이다.
 - 이 문서의 역할: 이슈는 HEAD `f461182`(앱 0.22.0, 구조 번호 13)를 보고 썼다. 그 뒤 버전 관문(14), 회의실 공용화(15), 배포 SQL 하나 방식, 관리 화면 별도 창 기획이 들어왔다. 이 문서는 이슈를 **지금 코드와 운용 규칙, 그리고 사용자 결정에 맞게 고친 적용 계획**이다. 이슈의 과제 탭 화면 계약(§3)과 수용 기준(§10)은 이 문서가 고치지 않는 한 그대로 쓴다.
 - 기준 HEAD: `e19d073`(feat/db-app). 운용 기준: [DB-RELEASE-OPS.md](DB-RELEASE-OPS.md). 이 문서의 DB 이야기는 모두 **외부망 개발 PC 의 개발과 QA** 이야기다. 폐쇄망 서버에는 배포 SQL 로만 간다.
@@ -417,6 +417,38 @@ DB-RELEASE-OPS §5 규칙 그대로:
 
 P1 이 끝나기 전에는 P2 의 실동작 QA 를 할 수 없다.
 
+### 8.3 구현 메모(P1, 2026-10-22)
+
+P1(DB 와 호스트, 화면 없음)을 브랜치 `feat/project-calendar` 에 구현했다. 공용 개발 DB `taskcalendar` 는 건드리지 않았다(15 그대로). 아래는 기획과 다르게 정했거나 기획에 없던 세부다.
+
+**DB**
+- 표 넷은 정본 `db/deploy/schema-calendar.sql` 14~17 과 이관 조각 `db/deploy/migrations/v16-project-calendar.sql` 에 있고, 두 정의는 글자까지 같다(조각은 작은따옴표만 두 겹). 그래서 정의 안에 `--` 주석을 두지 않고 열과 표 설명은 `COMMENT` 로 적었다.
+- CHECK 는 기획 표 그대로다(`deleted_at` 과 `is_deleted` 의 짝 같은 추가 CHECK 는 넣지 않았다). `cal_project_copy` 에 `event_id` 인덱스를 따로 두었다(FK 받침).
+- 정본 선행조건 가드에 4번(`project.id` 가 `int unsigned` PK)을 더했다. `project` 가 없거나 모양이 다르면 DROP 전에 멈춘다. `init-calendar.ps1` 의 허용 참조 표에 `project` 를 더했다.
+- 표 수: `setup-taskcalendar.ps1` 기대 27(과제 5 + 사용자 3 + 캘린더 19), `init-calendar.ps1` 명부 19, 데모 지우기 목록 맨 앞에 넷(공용 일정이 `project` 를 RESTRICT 로 붙들기 때문).
+- 권한: `grants-calendar.sql`(cal_* 단일 소스)과 `server-app-account.sql` 에 넷(모두 DELETE 없음). `create-app-user.sql` 은 과제 트랙 표 파일이라 GRANT 대신 "단일 소스는 grants-calendar.sql" 안내만 두었다. `app-account.ps1` 은 네 표가 있을 때만 준다(구조 15 DB 에서 1146 으로 멈추지 않게).
+- 배포 SQL: 조각 검증은 표마다 열 수와 FK 수(information_schema). 흉내 실행기가 CREATE 정의에서 같은 수를 세어(`defOf`) 13, 14, 15 에서 16, 다시 돌리기, 바꾸는 문장마다 실패 뒤 재실행, 모양이 다른 같은 이름 표가 있을 때 멈춤을 본다. 복사본 DB(`zz_pc_dev`)에서 실제 MySQL 로 15 에서 16 과 재실행을 돌렸고, 정본으로 새로 만든 표와 `SHOW CREATE TABLE` 이 같았다(정식 리허설은 따로 한다).
+- `docs/DB-SCHEMA.html`, `db/table-design-report.html` 은 공용 DB 덤프로 만드는 생성물이라 다시 만들지 않았다. 생성기(`tools/schema-report/build-schema-html.mjs`)에 키 설명과 연혁 줄만 더했고, 병합 때 공용 DB 가 16 이 되고 GRANT 가 들어간 뒤 다시 만든다.
+
+**호스트(`widget/ProjectCalendarDb.cs`, 배선 `widget/ProjectCalendarHost.cs`)**
+- 판정 함수 하나: `EligibleProjectsAsync`(내 과제의 `source='db'` 분류가 가리키는 과제). 모든 명령이 이 함수나 그 위의 `RequireProjectAsync` 를 거친다. 쓰기는 `is_active = 1` 까지, 복사는 숨긴 과제도 된다.
+- 공용 쓰기 트랜잭션의 첫 문장은 `INSERT INTO cal_project_rev … SELECT p.id … FROM project p WHERE p.uid=@pu ON DUPLICATE KEY UPDATE rev = rev + 1` 이다. 과제 uid 를 번호로 바꾸는 일도 이 문장이 한다(앞에 SELECT 가 없다).
+- **바뀐 것 없는 저장은 롤백한다.** 이력 행뿐 아니라 rev 도 오르지 않는다. 회신은 `unchanged: true` 와 지금 행이다.
+- 멱등: 같은 `(과제, mutationUid)` 이력이 있으면 그 일정의 지금 행을 `replayed: true` 로 돌려준다. 생성은 같은 `eventUid` 가 그 과제에 있어도 같다. 다른 과제의 같은 uid 는 invalid.
+- 충돌 회신은 `{ ok:false, error:{kind:'conflict'}, data:{ latest } }`(지워졌으면 `latest.deleted = true`, 없으면 null).
+- **개인 복사의 첫 잠금은 `cal_project_rev` 공유 잠금(`FOR SHARE OF r`)이다.** 공용 쓰기가 아니라 rev 를 올리지 않는다(남의 화면을 공연히 다시 읽게 하지 않는다). 그다음 `cal_user_rev` ODKU(`CalendarWriteDb.BumpUserRevInTxAsync`). `mutationUid` 는 형식만 보고, 멱등은 대응표 PK 가 맡는다. 새 개인 일정은 uid `e-<uuid>`, 그 사람 일정의 맨 뒤 순서, `all_day 0`, `remind 0`, 분류는 내 과제의 그 공식 과제다. 개인 행은 `CalendarWriteDb.InsertEntryInTxAsync`(`EntryParams` 와 `SaveAsync` 와 같은 INSERT 문 `EntryInsertSql`)로 넣는다. 새로 만들었을 때만 호스트가 `BootFromDbAsync`(reloadState 와 같은 길)로 개인 스냅샷을 다시 싣는다.
+- 최근 변경 필터는 6.6 대로 종류(`kind`: all, create, update, delete)다. 옛 이름 `fieldFilter` 도 같은 뜻으로 받는다. 새것부터, 커서는 `(changedAt, changeNo)`, 한 번에 1~200(기본 50).
+- 범위 조회는 한 번에 731일까지, 과제는 200개까지. 글자 수는 유니코드 글자(코드 포인트) 단위다(MySQL 의 문자 수와 같다). 제목과 장소는 앞뒤 공백만 걷고 자르지 않는다.
+- 참여자 수는 그 과제를 내 과제에 넣은 **활성** 사용자 수다. 부트스트랩이 글자 상한(200, 200, 8000)도 함께 준다(화면이 같은 숫자를 쓰게).
+- 휴지통: 삭제 판정뿐 아니라 목록 힌트도 공용 일정이 있는 과제를 `deletable: false` 와 같은 고정 문구로 보인다(화면 수정 없음).
+- C# 러너를 링크하는 루프와 도구의 .cs 목록은 고치지 않아도 된다(`CalendarWriteDb`, `ProjectDb` 에 새 의존이 없다).
+- 웹 상수와의 대조(글자 상한이 웹, 호스트, DDL 에서 같음)는 웹이 생기는 P2 에서 시험에 더한다. P1 시험은 호스트와 DDL 을 본다.
+
+**시험**
+- 정적: `tests/project-calendar-host.test.mjs`(정본과 조각 정의 동일, 조각 모양, 관문 하나, 첫 문장, 커밋 직전 관문, 메인 창 전용, 웹 값 미사용, 글자 상한과 칸 폭, 휴지통 거부, DELETE 없음, 복사의 행 투영. 변이 10).
+- 배포 SQL: `tests/release-sql.test.mjs` 사슬 13 에서 16(14, 15 출발, v16 검증 멈춤, IF NOT EXISTS 변이 포함)과 흉내 실행기 확장.
+- DB 계약(두 사람): `tests/db-project-calendar.mjs`. 기본 스위트 밖(이름이 `*.test.mjs` 가 아니다). 복사본 DB(이름이 `zz_` 로 시작해야 한다)와 일회용 계정(`server-app-account.sql` 권한 그대로, 끝나면 지움)으로 돈다. 2026-10-22 `zz_pc_dev`(공용 DB 덤프에 배포 SQL 로 16) 에서 40/40.
+
 ---
 
 ## 9. 결정 요약
@@ -448,3 +480,4 @@ P1 이 끝나기 전에는 P2 의 실동작 QA 를 할 수 없다.
 - 2026-10-22: 글자 상한. 제목 100자로 정했다가 상용 앱 사례(구글 캘린더 약 8,000자, Asana 약 65,000자)를 본 뒤 "과제 일정 메모만 8,000자, 나머지 200자" 로 통일. 기존 칸은 유지.
 - 2026-10-22: 결정 사항을 본문에 녹여 정리. 참여 표, 참여 관리 창, 참여 명령, 30초 확인, 사용자 FK, 개인 개선 단계를 본문에서 뺐다.
 - 2026-10-22 오후: 실제 앱 구조에 얹은 시안을 만들고 사용자 검토로 2차 수정(6.6). 과제 추가 진입 제거, 약칭 제거, 메모 첫 줄 수정, 한 화면 폼, 최근 변경 종류 필터, 오른쪽 패널 없음, 같은 날 일정 고르기(날짜 목록과 [수정]). 표 이름 확정. 관리 창과 줄끝 정리가 합쳐진 사실 반영.
+- 2026-10-22: P1(DB 와 호스트) 구현. 세부와 기획과 다르게 정한 점은 8.3 절.

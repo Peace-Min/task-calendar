@@ -161,8 +161,10 @@ checks.canon = (st, cl, gate, grants) => {
   assert.ok(!/\bis_active\b/.test(ddl[1]), 'room_code 에 숨김(is_active)이 있다(기획: 숨김과 휴지통 없음)');
   const c = stripSql(cl);
   assert.ok(!/CREATE TABLE cal_room\b/.test(c) && !/DROP TABLE IF EXISTS cal_room\b/.test(c), 'schema-calendar.sql 에 cal_room 이 남았다');
-  assert.ok(/VALUES \('db_structure_version', '15', UTC_TIMESTAMP\(3\)\)/.test(c), '정본 구조 번호가 15 가 아니다');
-  assert.ok(/public const int AppStructureVersion = 15;/.test(gate), 'DbGate.AppStructureVersion 이 15 가 아니다');
+  //  2026-10-22 과제 캘린더(이관 조각 v16)로 정본과 앱이 16 이다. 이 기능은 15 에서 들어왔으므로 15 이상을 본다(판번호 정합은 schema-guards ⑨).
+  const seeded = /VALUES \('db_structure_version', '(\d+)', UTC_TIMESTAMP\(3\)\)/.exec(c), appv = /public const int AppStructureVersion = (\d+);/.exec(gate);
+  assert.ok(seeded && Number(seeded[1]) >= 15, '정본 구조 번호가 15 이상이 아니다');
+  assert.ok(appv && Number(appv[1]) >= 15, 'DbGate.AppStructureVersion 이 15 이상이 아니다');
   const { grantsCal: gc, createApp: ca, serverApp: sa, appAcct: aa } = grants;
   assert.ok(!/ON\s+\S*cal_room\b/.test(stripSql(gc)) && !/cal_room/.test(stripSql(sa)) && !/cal_room/.test(stripSql(ca)), '권한 파일에 없앤 표 cal_room 의 GRANT 가 남았다');
   assert.ok(/GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr\.room_code\s+TO 'taskmgr_app'@'%';/.test(ca), 'create-app-user.sql 에 room_code 권한이 없다');
