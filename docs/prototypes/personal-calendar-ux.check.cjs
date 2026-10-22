@@ -1,0 +1,44 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {JSDOM}=require(require.resolve('jsdom',{paths:[path.join(process.cwd(),'tests')]}));
+const dom=new JSDOM(fs.readFileSync(path.join(__dirname,'personal-calendar-ux.html'),'utf8'),{runScripts:'dangerously'});
+const d=dom.window.document,q=s=>d.querySelector(s),all=s=>[...d.querySelectorAll(s)],click=s=>{assert(q(s),s);q(s).click();};
+assert.equal(all('.tc-cell').length,35);
+assert.equal(all('.tc-card').length,2);
+assert.equal(all('[data-panel]').length,3);
+const selected=()=>q('.tc-selected').dataset.cell;
+click('[data-view=todo]');assert.equal(all('.tc-eventchip').length,0);assert.equal(all('.tc-card').length,2);assert.equal(selected(),'2026-10-22');
+click('[data-view=event]');assert.equal(all('.tc-taskchip').length,0);assert.equal(all('.tc-eventchip').length,6);
+click('[data-panel=git]');assert(q('#tc-panelbody').textContent.includes('a84f2c1'));assert.equal(all('.tc-eventchip').length,6);
+click('[data-view=all]');click('[data-item=t1]');assert.equal(q('[data-panel=todo]').getAttribute('aria-pressed'),'true');assert(q('[data-row=t1]'));
+click('[data-check=t1]');assert.equal(all('.tc-grid [data-item=t1]').length,0);assert(q('[data-check=t1]').checked);
+click('[data-check=t1]');assert.equal(all('.tc-grid [data-item=t1]').length,5);
+click('#tc-done');assert.equal(all('.tc-grid [data-item=t5]').length,2);
+click('[data-date="2026-10-22"]');click('[data-edit=t1]');assert.equal(q('#tc-noteinput').value,'목록 화면 완료. 오류 상태 처리 진행 중.');q('#tc-noteinput').value='수정한 날짜별 기록';
+q('#tc-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));
+click('[data-edit=t1]');assert.equal(q('#tc-noteinput').value,'수정한 날짜별 기록');click('[data-close]');
+click('[data-new]');click('[data-formtype=todo]');q('#tc-titleinput').value='새 할 일';q('#tc-dateinput').value='2026-10-22';q('#tc-endinput').value='2026-10-20';
+q('#tc-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));assert(q('#tc-formerror').textContent.includes('빠를 수 없습니다'));
+q('#tc-endinput').value='2026-10-23';q('#tc-form').dispatchEvent(new dom.window.Event('submit',{bubbles:true,cancelable:true}));assert(q('#tc-panelbody').textContent.includes('새 할 일'));
+click('[data-panel=detail]');click('[data-item=e1]');assert.equal(q('[data-panel=detail]').getAttribute('aria-pressed'),'true');
+click('[data-date="2026-10-23"]');assert.equal(selected(),'2026-10-23');assert(q('#tc-panelbody').textContent.includes('고객 시연'));
+click('[data-sheetclose]');assert.equal(q('#tc-original-proposal').dataset.sheet,'false');
+click('[data-move="1"]');assert.equal(q('.tc-month').textContent,'2026년 11월');
+click('[data-today]');assert.equal(selected(),'2026-10-22');
+click('[data-cat=ops]');assert.equal(all('.tc-grid [data-item=e1]').length,0);assert.equal(all('.tc-card').length,1);
+console.log('PASS: original layout, independent calendar/panel views, chip reveal, completion/undo, record preservation, new item validation, dates, month navigation, project filtering.');
+{
+const folded=new JSDOM(fs.readFileSync(path.join(__dirname,'personal-calendar-ux.html'),'utf8'),{runScripts:'dangerously'});
+const doc=folded.window.document,get=s=>doc.querySelector(s),tap=s=>{assert(get(s),s);get(s).click();};
+tap('[data-togglepanel]');assert.equal(get('#tc-original-proposal').dataset.panelOpen,'false');
+assert.equal(get('[data-togglepanel]').getAttribute('aria-expanded'),'false');
+tap('[data-date="2026-10-22"]');assert.equal(get('#tc-original-proposal').dataset.panelOpen,'false');
+tap('[data-cell="2026-10-22"] [data-item=t1]');assert.equal(get('#tc-preview').hidden,false);assert.equal(get('#tc-original-proposal').dataset.panelOpen,'false');
+assert(get('#tc-preview').textContent.includes('목록 화면 완료'));
+tap('[data-previewcheck=t1]');assert(get('[data-previewcheck=t1]').checked);assert.equal(get('#tc-preview').hidden,false);
+tap('[data-previewcheck=t1]');assert.equal(get('[data-previewcheck=t1]').checked,false);
+tap('[data-fulldetail=t1]');assert.equal(get('#tc-overlay').hidden,false);assert.equal(get('#tc-original-proposal').dataset.panelOpen,'false');
+tap('[data-previewpanel=t1]');assert.equal(get('#tc-original-proposal').dataset.panelOpen,'true');assert.equal(get('#tc-overlay').hidden,true);assert.equal(get('[data-panel=todo]').getAttribute('aria-pressed'),'true');
+for(const name of ['git','detail','todo']){tap('[data-togglepanel]');tap('[data-openpanel='+name+']');assert.equal(get('#tc-original-proposal').dataset.panelOpen,'true');assert.equal(get('[data-panel='+name+']').getAttribute('aria-pressed'),'true');}
+tap('[data-togglepanel]');tap('[data-item=e1]');assert.equal(get('#tc-preview').hidden,false);get('#tc-original-proposal').dispatchEvent(new folded.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(get('#tc-preview').hidden,true);
+console.log('PASS: collapse/expand, collapsed date selection, preview/detail without expanding, completion/undo, three persistent panel shortcuts, Escape.');
+}
