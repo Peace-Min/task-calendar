@@ -301,10 +301,8 @@ namespace TaskCalendarWidget
             row.End();
 
             // 2행 과제명 값(세로 병합 시작) / 과제 수행 기간
-            // 과제명 칸은 위쪽 정렬. 병합 칸이 쪽을 넘으면 한컴은 글자를 첫 쪽 조각에만 그리는데,
-            // 가운데 정렬이면 글자가 쪽 경계 근처에 놓여 잘린다(2026-10-22 한컴 뷰어에서 확인).
             row = new RowWriter(sb, ProjectGrid, 346, atLeast: false, cantSplit: false);
-            row.Cell(1, null, VMerge.Restart, false, s => AppendPara(s, p.Title ?? "", false, Jc.Center, 0));
+            row.Cell(1, null, VMerge.Restart, true, s => AppendPara(s, p.Title ?? "", false, Jc.Center, 0));
             row.Label(2, FillB, VMerge.None, "과제 수행 기간");
             row.Cell(4, FillB, VMerge.None, true, s => AppendPara(s, p.Term ?? "", false, Jc.Left, 0));
             row.End();
