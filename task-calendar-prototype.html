@@ -2611,7 +2611,7 @@ html.dark input,html.dark select,html.dark textarea{ color-scheme:dark }
         <div style="margin-top:8px">
           <div class="lbl-row" style="margin-bottom:4px"><label for="fLoc">장소</label></div>
           <!-- 장소 = 직접 입력 + 공용 회의실 추천(콤보박스, SHARED-ROOMS A안). 목록에 없는 글자도 적은 그대로 저장된다. -->
-          <div class="loc-combo" data-pfx="f"><input type="text" class="loc-in" id="fLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="회의실을 고르거나 직접 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="fLocPop" role="listbox" aria-label="장소 추천"></div></div>
+          <div class="loc-combo" data-pfx="f"><input type="text" class="loc-in" id="fLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="fLocPop" role="listbox" aria-label="장소 추천"></div></div>
         </div>
       </section>
       <section class="fsect" id="recurSect">
@@ -17359,7 +17359,7 @@ function qaRenderDetail(){
     ? `<div class="row2">
          <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaLoc">장소</label></div>
          <div class="lbl-row" style="margin:8px 0 3px"><label class="qa-lb" style="margin:0" for="qaRecur">반복</label></div>
-         <div class="loc-combo" data-pfx="qa"><input type="text" class="loc-in" id="qaLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 직접 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="qaLocPop" role="listbox" aria-label="장소 추천"></div></div>
+         <div class="loc-combo" data-pfx="qa"><input type="text" class="loc-in" id="qaLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="qaLocPop" role="listbox" aria-label="장소 추천"></div></div>
          <select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select>
        </div>
        <div class="qa-hint hidden" id="qaRecurHint"></div>
