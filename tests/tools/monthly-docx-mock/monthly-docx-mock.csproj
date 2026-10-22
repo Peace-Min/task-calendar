@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 월간보고 DOCX 목업 도구: 위젯을 띄우지 않고 widget/DocxWriter.cs 하나만 링크해 지어낸 값으로 문서를 만든다.
+       외부 패키지 없음(폐쇄망 원칙과 같다). 실행 방법은 Program.cs 머리 주석. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>MonthlyDocxMock</RootNamespace>
+    <!-- 설치된 런타임을 쓴다(NuGet 에서 최신 패치를 받지 않는다) -->
+    <TargetLatestRuntimePatch>false</TargetLatestRuntimePatch>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\widget\DocxWriter.cs" Link="DocxWriter.cs" />
+  </ItemGroup>
+
+</Project>
