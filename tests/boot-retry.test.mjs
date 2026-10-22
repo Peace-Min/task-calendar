@@ -15,11 +15,10 @@
 //   ② **배선** — 순수 로직이 맞아도 배선이 틀리면 화면에서는 아무 일도 안 일어난다.
 //      특히 재시도가 hostRequest 로 가면 **성공해도 25초 뒤 '응답 시간 초과'** 로 끝난다
 //      (reloadState 는 회신이 없는 명령이다). 그 결함은 소스에서만 보인다.
-import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 function mutate(from, to, base) {
   const out = base.replace(from, to);

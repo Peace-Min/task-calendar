@@ -10,11 +10,11 @@
 //
 //   ★ 검사는 전부 checks 의 함수다 — 변이가 같은 함수를 다시 불러 '잡았다'를 증명한다(장식 검사 방지).
 import { test, skip, assert, loadAppSource, extractFunction, extractCodeIdsBlock, stripCsComments, extractCsMember,
-         importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync, readdirSync } from 'node:fs';
+         importOptional, useJsdom, runInJsdom, SKIP_NO_JSDOM, readText } from './harness.mjs';
+import { readdirSync } from 'node:fs';
 
 const app = loadAppSource();
-const R = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
+const R = (p) => readText(new URL('../' + p, import.meta.url));
 const pdb = R('widget/ProjectDb.cs');
 const main = R('widget/MainWindow.xaml.cs');
 const schema = R('db/deploy/schema-structure.sql');

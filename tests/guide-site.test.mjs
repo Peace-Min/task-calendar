@@ -11,13 +11,12 @@
 //     (D) 보이는 글에 줄표, 띄운 가운데 점, 낫표가 없다(korean-ai-punct)
 //     (E) 페이지 골격: 단계는 button, 자막 트랙 속성, 영상 없음 안내, 배포 담당자 설정 한 곳
 //   (A)와 (D)는 변이 주입으로 검사가 정말 잡는지 함께 본다.
-import { test, assert } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, readText } from './harness.mjs';
 import {
   TEMPLATE_PATH, GUIDES, SITE_TEXT, parseSrt, srtToVtt, cuesToVtt, buildChapters, renderPage, fmtVttTime,
 } from '../tools/guide-video/build-site.mjs';
 
-const template = readFileSync(TEMPLATE_PATH, 'utf8');
+const template = readText(TEMPLATE_PATH);
 
 // ── 검사기 ───────────────────────────────────────────────────────────
 function externalRefs(html) {

@@ -16,13 +16,12 @@
 //       열람 창을 열거나 앞으로 가져올 때(BringToFront)는 FrontActive 를 따른다. 끈 뒤에 열람 창이 Topmost 로 남지 않는다.
 //   (M) 변이: 진입 전 표시 제거, 순서 뒤집기, 맨 앞 경로에 SetWindowPos 추가, 스크림 부활, 가드 제거,
 //       열람 창 맞추기를 끌 때 빼기, BringToFront 의 Topmost 빼기를 각각 잡는다.
-import { test, assert, extractCsMember, stripCsComments, loadAppSource } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, extractCsMember, stripCsComments, loadAppSource, readText } from './harness.mjs';
 
-const SRC = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8').replace(/\r/g, '');
-const APPCS = readFileSync(new URL('../widget/App.xaml.cs', import.meta.url), 'utf8').replace(/\r/g, '');
+const SRC = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url)).replace(/\r/g, '');
+const APPCS = readText(new URL('../widget/App.xaml.cs', import.meta.url)).replace(/\r/g, '');
 const APP = loadAppSource();
-const PWCS = readFileSync(new URL('../widget/PeerWindow.cs', import.meta.url), 'utf8').replace(/\r/g, '');
+const PWCS = readText(new URL('../widget/PeerWindow.cs', import.meta.url)).replace(/\r/g, '');
 
 const body = (src, sig) => extractCsMember(src, sig);
 

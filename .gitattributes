@@ -10,3 +10,12 @@ task-calendar-prototype.html linguist-detectable=false
 
 # docs/ 는 조사 보고서·프로토타입 산출물(제품 코드 아님) → 문서로 분류해 통계 제외
 docs/** linguist-documentation
+
+# ── 줄끝 ────────────────────────────────────────────────────────────
+# 저장소와 작업 사본 모두 LF 로 둔다(core.autocrlf=true 여도 checkout, 병합, 새 워크트리가 CRLF 로 바꾸지 않게).
+# cmd.exe 는 LF 파일에서 라벨과 goto 를 잘못 읽을 수 있어 .cmd, .bat 만 작업 사본을 CRLF 로 둔다.
+# MainWindow.xaml.cs 는 줄끝이 \r\r\n 으로 굳어 있고 시험이 그 바이트를 앵커로 쓰므로 git 이 줄끝을 건드리지 않게 한다.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+widget/MainWindow.xaml.cs -text

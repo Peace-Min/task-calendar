@@ -3,8 +3,7 @@
 // 파일 바이트(xlsx) 자체는 호스트(C# XlsxWriter)가 만들므로 여기서는
 //  (1) '무엇을 뽑는가'(행 매핑·필터 요약·건수·버튼 상태)와
 //  (2) 웹이 보내는 키 ↔ 호스트 컬럼 정의가 어긋나지 않는지를 못박는다.
-import { test, assert, loadAppSource, extractFunction, extractCodeIdsBlock } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, extractFunction, extractCodeIdsBlock, readText } from './harness.mjs';
 
 const src = loadAppSource();
 
@@ -238,7 +237,7 @@ test('추출 버튼: 진행 중에는 렌더가 라벨/비활성 상태를 되�
 // 웹은 값만 만들고 순서·제목·너비를 모른다 — 대신 '키 집합'이 어긋나면 열이 통째로 비므로 여기서 잡는다.
 
 function hostSource() {
-  return readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+  return readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 }
 
 // cs를 주면 그 소스를 파싱한다(변이 주입용) — 안 주면 실제 호스트 파일.
@@ -337,7 +336,7 @@ test('추출 계약(v2): 상태색 규칙은 호스트(도메인)에만 있고 X
 // 파일을 실제로 열어보는 건 빌드가 필요하므로, 여기서는 깨지기 쉬운 규칙 셋만 소스에서 못박는다.
 
 function xlsxWriterSource() {
-  return readFileSync(new URL('../widget/XlsxWriter.cs', import.meta.url), 'utf8');
+  return readText(new URL('../widget/XlsxWriter.cs', import.meta.url));
 }
 
 test('XlsxWriter: fills는 0=none, 1=gray125로 시작해야 한다(Excel 하드 요구)', () => {
@@ -750,7 +749,7 @@ test('발주처 시트: 시트2는 헤더 반복 인쇄 OFF(작아서 1페이지
 
 // ── 발주처 CRUD 계약(ProjectDb ↔ 브리지 ↔ 웹) ────────────────────────────
 function projectDbSource() {
-  return readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+  return readText(new URL('../widget/ProjectDb.cs', import.meta.url));
 }
 
 test('발주처 CRUD: ProjectDb에 add/rename/setActive/refCount 4종 + 전체조회가 있다', () => {

@@ -19,19 +19,18 @@
 //     여기서는 그 위에 얹히는 계약 — 권한 파일·정본 파생·거부 문구·삭제 순서 — 을 본다.
 //   ★ 값을 시험에 박지 않는다: 표 9개는 정본(db/deploy/schema-calendar.sql)에서 읽고, 못 읽으면
 //     통과가 아니라 실패다(판정 불가 ≠ 통과).
-import { readFileSync } from 'node:fs';
 //  ★ C# 슬라이서는 **하네스의 것을 쓴다**(2026-09-11 R2-W6). 이 파일에도 사본이 있었는데, 사본은 반드시
 //    낡는다 — 실제로 하네스만 식(=>) 본문을 배웠고 이 사본은 그대로 다음 멤버를 삼키고 있었다.
-import { test, assert, stripCsComments as stripCs, extractCsMember as csMember } from './harness.mjs';
+import { test, assert, stripCsComments as stripCs, extractCsMember as csMember, readText } from './harness.mjs';
 import { canonSql, stripSqlComments } from './canon-schema.mjs';
 
-const pdb  = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const pdb  = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 // ── 기준 파일 — 없으면 '한 건의 실패'로 강등한다(최상위 throw 는 전 스위트 판정을 증발시킨다) ──
 const missing = [];
 const readOr = (rel, label) => {
-  try { return readFileSync(new URL(rel, import.meta.url), 'utf8'); } catch (_) { missing.push(label); return ''; }
+  try { return readText(new URL(rel, import.meta.url)); } catch (_) { missing.push(label); return ''; }
 };
 const CREATE_USER = 'db/deploy/create-app-user.sql';
 const CAL_GRANTS  = 'db/deploy/grants-calendar.sql';

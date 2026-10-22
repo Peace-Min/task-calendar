@@ -23,10 +23,10 @@
 //
 // 검사 함수(checks)를 테스트와 변이 시험이 공유한다 — 검사가 정말 잡는지 증명하기 위해서다.
 // 행동 검사는 앱 소스에서 함수를 잘라 node:vm 에서 가짜 전역으로 돌린다(jsdom 불필요).
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import vm from 'node:vm';
 import { test, skip, assert, loadAppSource, extractFunction, stripCsComments, extractCsMember,
-  importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+  importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 import { mutate } from './ps-guard-lib.mjs';
 
 const app = loadAppSource();
@@ -35,7 +35,7 @@ const WIDGET_DIR = new URL('../widget/', import.meta.url);
 //    기준 파일 부재는 아래 '감지⓪' 한 건의 실패로 강등한다.
 const missing = [];
 function readWidget(name) {
-  try { return readFileSync(new URL(name, WIDGET_DIR), 'utf8'); }
+  try { return readText(new URL(name, WIDGET_DIR)); }
   catch (_) { missing.push('widget/' + name); return ''; }
 }
 const mainwin = readWidget('MainWindow.xaml.cs');
@@ -43,7 +43,7 @@ const probeCs = readWidget('LegacyXmlProbe.cs');
 let hostAll = [];
 try {
   hostAll = readdirSync(WIDGET_DIR).filter((f) => f.endsWith('.cs')).sort()
-    .map((f) => ({ name: 'widget/' + f, src: readFileSync(new URL(f, WIDGET_DIR), 'utf8') }));
+    .map((f) => ({ name: 'widget/' + f, src: readText(new URL(f, WIDGET_DIR)) }));
 } catch (_) { missing.push('widget/*.cs'); }
 
 // JS 주석 제거(문자열·템플릿 리터럴은 보존) — 계약이 보는 것은 **호출**이지 설명 글자가 아니다.

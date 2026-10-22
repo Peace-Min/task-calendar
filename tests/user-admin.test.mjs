@@ -21,21 +21,20 @@
 //   ★ 판번호·문구 같은 값을 시험에 박지 않는다. 판번호는 정본(tests/canon-schema.mjs)에서 읽고,
 //     잠금 방지 문구는 ProjectDb 의 상수 선언에서 읽어 **그 상수가 실제로 쓰이는지**를 본다.
 //     못 읽으면 통과가 아니라 실패다(판정 불가 ≠ 통과).
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import {
   test, assert, loadAppSource, extractFunction, importOptional, SKIP_NO_JSDOM,
-  stripCsComments, extractCsMember, useJsdom, runInJsdom,
-} from './harness.mjs';
+  stripCsComments, extractCsMember, useJsdom, runInJsdom, readText } from './harness.mjs';
 import { canonSchemaVersion, stripSqlComments } from './canon-schema.mjs';
 
 const app = loadAppSource();
-const pdb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const pdb = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 //  호스트 **전부**(widget/*.cs) — 사라진 이름을 볼 때는 한 파일만 보면 안 된다. 지운 방출부가 옆 파일로
 //  옮겨 앉으면 MainWindow 만 훑는 계약은 그것을 통과시킨다(xml-retirement 의 폐기⑤ 와 같은 규율).
 const widgetCs = readdirSync(new URL('../widget/', import.meta.url))
   .filter((f) => f.endsWith('.cs'))
-  .map((f) => [f, readFileSync(new URL('../widget/' + f, import.meta.url), 'utf8')]);
+  .map((f) => [f, readText(new URL('../widget/' + f, import.meta.url))]);
 assert.ok(widgetCs.length >= 2, `widget/*.cs 를 ${widgetCs.length}개만 읽었다 — 판정 불가`);
 
 // ── 기준 파일 — 없으면 '한 건의 실패'로 강등한다 ────────────────────────────
@@ -46,7 +45,7 @@ assert.ok(widgetCs.length >= 2, `widget/*.cs 를 ${widgetCs.length}개만 읽었
 //    성립한다. 그래서 없으면 '측정 못 함'이지 '통과'가 아니다.
 const missing = [];
 const readOr = (url, label) => {
-  try { return readFileSync(url, 'utf8'); } catch (_) { missing.push(label); return ''; }
+  try { return readText(url); } catch (_) { missing.push(label); return ''; }
 };
 // ★ 2026-10-15 이관 파일 migrate-2026-09-10-user-sort-order(-int).sql 은 지웠다(CODE-TABLE-IDS §8-2, git 이력에 있다).
 //   그래서 이 게이트의 정본 대조는 01-schema-users.sql 하나로 본다(옛 계약①-b, ⑨ 는 함께 없앴다).

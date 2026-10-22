@@ -13,10 +13,9 @@
 //
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 **등록되지 않고** skip(판정 없음)으로 계수된다(러너 exit 2).
 import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, stripCsComments,
-         importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+         importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
-const caldb = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.url), 'utf8');
+const caldb = readText(new URL('../widget/CalendarDb.cs', import.meta.url));
 const app = loadAppSource();
 
 // 앵커 하나를 정확히 한 번 바꾼다 — 없거나 여럿이면 실패(조용히 통과하는 껍데기 변이를 막는다).

@@ -14,11 +14,11 @@
 //   ⑧ 이관 조각 v14(13 에서 14): 머리, 자기 건너뛰기, 닫힌 상태 확인, 바꾸기, 검증, 구조 번호 올리기 순서. 닫기와 열기는 하지 않는다.
 //   ⑨ 정본 시딩: 키 다섯 개, 구조 번호 = 앱 상수.
 //   ★ 검사는 함수로 묶고 아래 변이 시험이 같은 함수에 망가뜨린 소스를 넣어 실패를 확인한다.
-import { readFileSync, readdirSync } from 'node:fs';
-import { test, assert, stripCsComments as stripCs, extractCsMember as csMember } from './harness.mjs';
+import { readdirSync } from 'node:fs';
+import { test, assert, stripCsComments as stripCs, extractCsMember as csMember, readText } from './harness.mjs';
 import { stripSqlComments } from './canon-schema.mjs';
 
-const R = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
+const R = (rel) => readText(new URL('../' + rel, import.meta.url));
 const src = {
   gate:   R('widget/DbGate.cs'),
   host:   R('widget/GateHost.cs'),

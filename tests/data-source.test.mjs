@@ -14,11 +14,10 @@
 //        갈아끼운 뒤라 차분 저장과 결과는 같지만, 되돌릴 수 없는 조작이 평범한 저장과 같은 문으로
 //        들어오면 호출부를 눈으로 셀 수 없다. 그리고 전량 삭제가 **지우면 안 되는 표**를
 //        건드리지 않는지가 여기서만 검사된다(DB 없이 소스로 확인할 수 있는 유일한 자리다).
-import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource } from './harness.mjs';
+import { test, assert, loadAppSource, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 function mutate(from, to, base) {
   const out = base.replace(from, to);
@@ -331,7 +330,7 @@ test('변이⑭: 미등록 사용자 구분을 없애면 출처③ 이 실패한
 
 /* ── ⑥ 전량 교체(가져오기·초기화) ──────────────────────────────────────── */
 
-const writedb = readFileSync(new URL('../widget/CalendarWriteDb.cs', import.meta.url), 'utf8');
+const writedb = readText(new URL('../widget/CalendarWriteDb.cs', import.meta.url));
 
 //  전량 삭제가 **절대 건드리면 안 되는** 표. 각 항목에 왜 안 되는지를 함께 적는다 —
 //  이유 없이 목록만 있으면 다음 사람이 하나 지우고 통과시킨다.
@@ -527,7 +526,7 @@ test('변이㉖: 부팅이 빈 캘린더 안내를 안 부르면 표시등① �
 //      · 막아야 할 것을 안 막는가 (전량 교체)
 //      · 막지 말아야 할 것을 막는가 (통상 저장)
 
-const grants = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
+const grants = readText(new URL('../db/deploy/grants-calendar.sql', import.meta.url));
 
 const c8 = {
   //  ⑧-1 게이트가 **트랜잭션을 열기 전에** 있다. 열고 나서 막으면 rev 가 이미 올라 있고

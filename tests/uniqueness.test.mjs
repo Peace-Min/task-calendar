@@ -4,15 +4,14 @@
 // ★ 실 동작(연도갱신 실삽입·소프트경고·마이그레이션 ALTER)은 코디네이터가 실 MySQL(throwaway)로 게이트한다.
 //   여기서는 (1) 스키마/호스트/브리지/웹 소스의 계약을 못박고(회귀 방지),
 //   (2) 소프트경고의 '정규화 매칭 결정'을 JS로 포팅해 실데이터 시나리오(구성품/연도갱신/끝공백)로 검증한다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const projectDb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const mainWindow = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const projectDb = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const mainWindow = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 // ★ 2026-10-15 db/schema.sql 과 migrate-2026-07-24-uniqueness.sql 은 지웠다(CODE-TABLE-IDS §8-2, git 이력에 있다).
 //   구조의 정본은 schema-structure.sql 하나다.
-const schemaDeploy = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
+const schemaDeploy = readText(new URL('../db/deploy/schema-structure.sql', import.meta.url));
 
 // ── 스키마: 유니크 제거 · uid 존치 · NOT NULL DEFAULT '' (두 파일 모두) ───────────────
 for (const [label, sql] of [['deploy/schema-structure.sql', schemaDeploy]]) {

@@ -18,10 +18,10 @@
 //
 //   ★ 검사는 함수로 묶고(checks.*), 아래 변이 시험이 같은 함수에 **망가뜨린 소스**를 넣어 실패를 확인한다 —
 //     검사가 실제로 무는지(장식이 아닌지)를 증명하는 것이 변이 시험의 목적이다.
-import { readFileSync, readdirSync } from 'node:fs';
-import { test, assert, stripCsComments as stripCs, extractCsMember as csMember } from './harness.mjs';
+import { readdirSync } from 'node:fs';
+import { test, assert, stripCsComments as stripCs, extractCsMember as csMember, readText } from './harness.mjs';
 
-const W = (f) => readFileSync(new URL('../widget/' + f, import.meta.url), 'utf8');
+const W = (f) => readText(new URL('../widget/' + f, import.meta.url));
 const src = {
   dbe:   W('DbErrors.cs'),
   fault: W('DbFault.cs'),
@@ -509,9 +509,8 @@ test('변이㉔: 세션 종료 면제를 없애면 닫기⑪ 이 실패한다', 
 });
 
 test('변이㉕: 세션 종료를 취소하면 닫기⑪ 이 실패한다', () => {
-  //  줄끝은 App.xaml.cs 작업 사본을 따른다(autocrlf 체크아웃은 CRLF, LF 워크트리는 LF).
-  const nl = src.app.includes('\r\n') ? '\r\n' : '\n';
-  const bad = mutate(src.app, '            base.OnSessionEnding(e);' + nl, '            e.Cancel = true;' + nl + '            base.OnSessionEnding(e);' + nl);
+  //  src.app 은 readText 로 읽어 줄끝이 늘 LF 다(autocrlf 체크아웃이 CRLF 로 바꿔 놓아도).
+  const bad = mutate(src.app, '            base.OnSessionEnding(e);\n', '            e.Cancel = true;\n            base.OnSessionEnding(e);\n');
   assert.throws(() => checks.closeGuard(with_('app', bad)), /세션 종료를 가로채/);
 });
 

@@ -13,10 +13,9 @@
 //     - 이관 조각 v15: 머리, 건너뛰기, 닫힘 확인, db_updating 쓰지 않음, INSERT IGNORE 로 모으기, 검증, 지우기, 15 올리기, 순서.
 //   (R) jsdom: 장소 칸 걸러 보기(강조), ↑↓ Enter Esc, 직접 입력 저장, 옛 장소 그대로, 빠른 추가, 관리 화면 조작 명령.
 //   (M) 변이: 진입점을 되살리거나, 관문을 내리거나, 조각의 검증, 순서, db_updating 을 건드리면 잡힌다.
-import { test, skip, assert, loadAppSource, extractFunction, stripCsComments, listCsMembers, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, stripCsComments, listCsMembers, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
-const R = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8').replace(/\r+\n/g, '\n');
+const R = (p) => readText(new URL('../' + p, import.meta.url)).replace(/\r+\n/g, '\n');
 const app = loadAppSource();
 const projectDb = R('widget/ProjectDb.cs');
 const mainWindow = R('widget/MainWindow.xaml.cs');

@@ -14,8 +14,7 @@
 //     그래서 '없어야 한다'를 시험이 지킨다('있어야 한다'만 지키면 반쪽이다).
 //
 //   판정 불가 ≠ 통과 — 기준 파일을 못 읽으면 그 사실 자체가 실패다(계약⓪).
-import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
 import { stripSqlComments, canonSchemaVersion } from './canon-schema.mjs';
 
 const COL = 'dev_end_date';        // DB 컬럼명
@@ -28,7 +27,7 @@ const FORM_ID = 'offEdDevEnd';     // 편집 폼 입력칸 id
 const missing = [];
 function readOr(url, label) {
   try {
-    const s = readFileSync(url, 'utf8');
+    const s = readText(url);
     if (!s) { missing.push(label + '(빈 파일)'); return ''; }
     return s;
   } catch { missing.push(label); return ''; }

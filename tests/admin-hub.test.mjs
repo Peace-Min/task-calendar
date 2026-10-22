@@ -14,8 +14,7 @@
 //   tests/loop-admin-hub.mjs(수동 · 실 위젯) + 실 위젯 캡처. jsdom 은 @media 와 var() 를 계산하지 않는다 —
 //   그래서 R2 는 '계산된 선언값이 어떤 토큰인가'를 보고, 토큰 값은 이 파일이 CSS 원문에서 테마별로 풀어 대비를 잰다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 **등록되지 않고** skip(판정 없음)으로 계수된다(러너 exit 2).
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -551,7 +550,7 @@ if (!JSDOM) {
     assert.strictEqual(B.doc.querySelector('[role="menu"]'), null);
     assert.strictEqual(B.ev('typeof window.__openAdminHub'), 'undefined', '쓰는 곳이 없는 호스트→웹 창구가 남았다');
     assert.strictEqual(isOpen(B, 'adminHub'), false);
-    const cs = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+    const cs = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
     assert.match(cs, /case "menu": ShowSettingsMenu\(\); break;/, '호스트의 menu 처리가 원래대로가 아니다');
     assert.ok(/private void ShowSettingsMenu\(\)/.test(cs) && !/__openAdminHub|"⚙ 관리"/.test(cs), 'C# 에 「⚙ 관리」 메뉴 흔적이 남았다(J2 — 727f27b 이전과 바이트 동일해야 한다)');
   });

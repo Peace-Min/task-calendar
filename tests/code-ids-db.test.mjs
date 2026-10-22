@@ -15,14 +15,14 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import { test, assert } from './harness.mjs';
+import { test, assert, readText } from './harness.mjs';
 import { stripSqlComments, parseSeededSchemaVersion } from './canon-schema.mjs';
 import { maskPs, mutate } from './ps-guard-lib.mjs';
 
 const missing = [];
 function readOr(url, label) {
   try {
-    const s = readFileSync(url, 'utf8');
+    const s = readText(url);
     if (!s) { missing.push(label + '(빈 파일)'); return ''; }
     return s.replace(/^﻿/, '').replace(/\r\n/g, '\n');
   } catch { missing.push(label); return ''; }
@@ -67,7 +67,7 @@ function trackedTexts(dirUrl, label) {
   const out = [];
   for (const n of names) {
     if (!TEXT_EXT.test(n)) continue;
-    try { out.push([label + '/' + n, readFileSync(join(dir, n), 'utf8')]); } catch { /* 지운 채 커밋 전인 파일은 건너뛴다 */ }
+    try { out.push([label + '/' + n, readText(join(dir, n))]); } catch { /* 지운 채 커밋 전인 파일은 건너뛴다 */ }
   }
   return out;
 }
@@ -258,7 +258,7 @@ export const checks = {
     assert.ok(/information_schema_stats_expiry = 0/.test(code), 'AUTO_INCREMENT 를 낡은 캐시(stats_expiry)로 읽는다');
     // 판번호: 이 파일이 만든 13 에서 다음 판(이관 조각 migrations/v14-version-gate.sql, 13 에서 14)이 출발한다.
     //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 같은 날 회의실 공용화(v15 조각)로 15 다. 체인 전체는 schema-guards ⑥ 이 본다.
-    const nextMig = readFileSync(R('db/deploy/migrations/v14-version-gate.sql'), 'utf8');
+    const nextMig = readText(R('db/deploy/migrations/v14-version-gate.sql'));
     assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
     assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '15', 'schema-calendar.sql 이 db_structure_version 15 를 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
@@ -401,20 +401,20 @@ export const checks = {
     // 스크립트: 주석을 지운 코드에서 파일을 여는 자리(Join-Path, Get-Content, -File, %~dp0, mysql < 파일)에 옛 이름이 있으면 실패.
     const deploy = readdirSync(R('db/deploy/')).filter((f) => /\.(ps1|cmd)$/.test(f));
     for (const f of deploy) {
-      const src = readFileSync(R('db/deploy/' + f), 'utf8');
+      const src = readText(R('db/deploy/' + f));
       const code = f.endsWith('.ps1') ? maskPs(src) : src.split(/\r?\n/).filter((l) => !/^\s*rem\b/i.test(l)).join('\n');
       for (const line of code.split('\n')) {
         if (!/Join-Path|Get-Content|ReadAllText|-File\b|%~dp0|<\s*["`]?\$/.test(line)) continue;
         for (const n of names) if (line.includes(n)) bad.push(`${f}: ${line.trim().slice(0, 120)}`);
       }
     }
-    // 시험: 옛 파일을 읽는 자리(readFileSync, new URL, readOr, loadSql, loadDeploy)에 옛 이름이 있으면 실패.
+    // 시험: 옛 파일을 읽는 자리(readFileSync, readText, new URL, readOr, loadSql, loadDeploy)에 옛 이름이 있으면 실패.
     const tests = readdirSync(new URL('./', import.meta.url)).filter((f) => /\.mjs$/.test(f) && f !== 'code-ids-db.test.mjs');
     for (const f of tests) {
-      const src = readFileSync(new URL('./' + f, import.meta.url), 'utf8');
+      const src = readText(new URL('./' + f, import.meta.url));
       for (const line of src.split(/\r?\n/)) {
         if (/^\s*\/\//.test(line)) continue;
-        if (!/readFileSync|new URL\(|readOr\(|loadSql\(|loadDeploy\(|const MIGRATE/.test(line)) continue;
+        if (!/readFileSync|readText\(|new URL\(|readOr\(|loadSql\(|loadDeploy\(|const MIGRATE/.test(line)) continue;
         for (const n of names) if (line.includes(n)) bad.push(`tests/${f}: ${line.trim().slice(0, 120)}`);
       }
     }

@@ -10,11 +10,10 @@
 //       화면 문구 기호 규칙(엠 대시, en 대시, 띄어 쓴 가운데 점, 낫표 없음).
 //   (M) 변이: 핵심 줄을 빼면 위 검사가 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
-import { readFileSync } from 'node:fs';
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const peerCs = readFileSync(new URL('../widget/PeerWindow.cs', import.meta.url), 'utf8').replace(/\r/g, '');
+const peerCs = readText(new URL('../widget/PeerWindow.cs', import.meta.url)).replace(/\r/g, '');
 
 function mutate(from, to, base = src) {
   const out = base.replace(from, to);

@@ -6,14 +6,13 @@
 //          Shift+Tab으로 덮개 뒤 버튼이 눌림 / 자격 저장 실패를 삼키고 성공 회신 / 로그아웃과
 //          백그라운드 갱신이 경합해 삭제된 세션 부활 / 실패 code 7종인데 분기 0곳 / 자격 출처 2개.
 // 관례(기억)로는 반드시 다시 뚫린다. 아래 불변식은 전부 '실제로 났던 사고'를 기계가 잡게 한 것이다.
-import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src         = loadAppSource();
-const mainWindow  = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const netcus      = readFileSync(new URL('../widget/NetcusService.cs', import.meta.url), 'utf8');
-const projectDb   = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const userSession = readFileSync(new URL('../widget/UserSession.cs', import.meta.url), 'utf8');
+const mainWindow  = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
+const netcus      = readText(new URL('../widget/NetcusService.cs', import.meta.url));
+const projectDb   = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const userSession = readText(new URL('../widget/UserSession.cs', import.meta.url));
 
 // 패치노트(#patchModal)를 도려낸 소스. 폐지된 기능명을 금지하는 검사들이 쓴다 —
 // 변경 안내는 없어진 기능을 이름으로 불러야 성립하므로 그 구간만 예외로 둔다.
@@ -456,7 +455,7 @@ test('관문: OpenWriteAsync는 non-static이고 세션 loginId로 권한을 조
   //    2026-10-21 부터 연결 실패의 정리는 버전 관문(DbGate.OpenWithMetaAsync) 안에 있다. 여기 남는 것은 둘이다.
   const disposes = [...b.matchAll(/conn\.DisposeAsync\(\)/g)].length;
   assert.ok(disposes >= 2, `거부·실패 경로의 연결 정리가 ${disposes}곳뿐이다(권한 거부·조회 실패 = 2곳 이상)`);
-  const gate = readFileSync(new URL('../widget/DbGate.cs', import.meta.url), 'utf8');
+  const gate = readText(new URL('../widget/DbGate.cs', import.meta.url));
   assert.ok(/try \{ await conn\.OpenAsync\(ct\); \}\s*catch \{ await conn\.DisposeAsync\(\); throw; \}/.test(gate),
     '버전 관문이 열기 실패한 연결을 정리하지 않는다(연결 실패 경로의 정리가 사라졌다)');
 });

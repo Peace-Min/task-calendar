@@ -7,11 +7,10 @@
 //      기존 openFolder는 '호스트가 준 경로만 되돌린다'는 규약이지만, openLogFolder는 인자가 아예 없다.
 //      웹이 문자열을 못 보내므로 explorer.exe 인자 주입 표면이 0 — 이게 무너지면 규약이 규약을 잃는다.
 //   ③ 반출 경고(과제명·발주처명 포함)는 [로그 폴더 열기] 버튼과 같은 상자 안에 있어야 읽힌다.
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const mainWindow = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const mainWindow = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 // #feedbackModal 오버레이 마크업만 잘라낸다(다음 오버레이 주석 전까지).
 function feedbackMarkup() {

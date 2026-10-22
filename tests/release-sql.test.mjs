@@ -16,15 +16,15 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, assert } from './harness.mjs';
+import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
 import { FakeDb, splitStatements } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
 const FRAG_DIR = join(ROOT, 'db', 'deploy', 'migrations');
-const genSrc = readFileSync(GEN, 'utf8').replace(/^﻿/, '');
-const APP = Number(/public const int AppStructureVersion = (\d+);/.exec(readFileSync(join(ROOT, 'widget', 'DbGate.cs'), 'utf8'))[1]);
+const genSrc = readText(GEN).replace(/^﻿/, '');
+const APP = Number(/public const int AppStructureVersion = (\d+);/.exec(readText(join(ROOT, 'widget', 'DbGate.cs')))[1]);
 const VER = '0.99.0', FILE = 'TaskCalendarWidget-Setup-v0.99.0.exe', SHA = 'ab'.repeat(32);
 
 const TMP = mkdtempSync(join(tmpdir(), 'tc-release-sql-'));
@@ -158,7 +158,7 @@ const checks = {
     assert.strictEqual(none.code, 5, `조각이 없는데 실패하지 않는다(exit ${none.code})`);
   },
   fragmentRules() {
-    const real = readFileSync(join(FRAG_DIR, 'v14-version-gate.sql'), 'utf8');
+    const real = readText(join(FRAG_DIR, 'v14-version-gate.sql'));
     const cases = [
       ['머리 없음', real.replace(/^-- @migration from=13 to=14\n/, ''), 'BAD_HEADER'],
       ['두 칸', real.replace('-- @migration from=13 to=14', '-- @migration from=13 to=15'), 'BAD_STEP'],
@@ -354,7 +354,7 @@ test('배포SQL④: db/deploy/migrations 의 조각은 모두 머리, 자기 건
   const files = readdirSync(FRAG_DIR).filter((f) => f.endsWith('.sql')).sort();
   assert.ok(files.length >= 1, '조각이 하나도 없다');
   for (const f of files) {
-    const t = readFileSync(join(FRAG_DIR, f), 'utf8').replace(/\r\n/g, '\n');
+    const t = readText(join(FRAG_DIR, f)).replace(/\r\n/g, '\n');
     const h = /^-- @migration from=(\d+) to=(\d+)\n/.exec(t);
     assert.ok(h, `${f}: 첫 줄이 '-- @migration from=N to=M' 이 아니다`);
     const [from, to] = [h[1], h[2]];
@@ -427,7 +427,7 @@ test('변이R4: 열기를 트랜잭션 밖으로 빼면 ③e 가 실패한다(�
 });
 test('변이R5: 실제 조각 어느 것이든 자기 건너뛰기를 빼면 앱만 바뀐 배포가 멈춘다(③b 실패)', () => {
   for (const f of REAL_FRAGS) {
-    const body = mutate(readFileSync(join(FRAG_DIR, f), 'utf8'), 'SET @g := IF(@go OR @skip, ', 'SET @g := IF(@go, ');
+    const body = mutate(readText(join(FRAG_DIR, f)), 'SET @g := IF(@go OR @skip, ', 'SET @g := IF(@go, ');
     const r = gen(fragDir({ ...Object.fromEntries(REAL_FRAGS.map((x) => [x, null])), [f]: body }), APP);
     assert.strictEqual(r.code, 0, `변이 준비 실패: 사본 조각(${f})으로 SQL 을 만들지 못했다`);
     assert.throws(() => checks.appOnly(r.sql), /끝나지 않는다/, `${f} 의 자기 건너뛰기를 뺐는데 ③b 가 통과한다`);

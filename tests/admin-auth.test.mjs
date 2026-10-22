@@ -22,13 +22,12 @@
 //   추가로 관문 '안에서' 우회하는 형태(if (MasterUnlocked) return conn;)와, 튜플이 아닌 반환형으로
 //   관문 밖에 새 쓰기 API 를 다는 형태(Task<bool> + OpenReadAsync + UPDATE)도 여기서 막는다 —
 //   앞의 것은 new MySqlConnection 개수를 늘리지 않고, 뒤의 것은 (bool ok, …) 시그니처를 피해 간다.
-import { test, assert, loadAppSource, stripCsComments, listCsMembers } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, stripCsComments, listCsMembers, readText } from './harness.mjs';
 
 const src          = loadAppSource();
-const projectDb    = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const mainWindow   = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const deployConfig = readFileSync(new URL('../widget/DeployConfig.cs', import.meta.url), 'utf8');
+const projectDb    = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const mainWindow   = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
+const deployConfig = readText(new URL('../widget/DeployConfig.cs', import.meta.url));
 
 // ── 웹: 역할 캐시·인증 UI가 흔적 없이 사라졌다 ─────────────────────────
 // 이름을 통째로 금지한다(주석에도 남기지 않았다) — 부분 검사는 "한 군데만 남겨두기"로 빠져나간다.

@@ -14,13 +14,13 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, skip, assert, importOptional, SKIP_NO_JSDOM, stripCsComments, extractCsMember } from './harness.mjs';
+import { test, skip, assert, importOptional, SKIP_NO_JSDOM, stripCsComments, extractCsMember, readText } from './harness.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WIDGET = join(HERE, '..', 'widget');
 const NETCUS_TEXT_CS = join(WIDGET, 'NetcusText.cs');
-const svc = readFileSync(join(WIDGET, 'NetcusService.cs'), 'utf8');
-const txt = readFileSync(NETCUS_TEXT_CS, 'utf8');
+const svc = readText(join(WIDGET, 'NetcusService.cs'));
+const txt = readText(NETCUS_TEXT_CS);
 const NL = svc.includes('\r\n') ? '\r\n' : '\n';
 
 function mutate(base, from, to) {

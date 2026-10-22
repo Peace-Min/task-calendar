@@ -11,7 +11,7 @@
 //   (M) 변이: 위 계약을 되돌리면 같은 검사기가 잡는다.
 // ★ 실제 netcus 채우기는 없다. Platform.report.submitWeekly 를 가로채 payload 만 본다.
 // 생략 규약: jsdom 이 없으면 (B)(W)(P)와 그에 기대는 변이는 skip(판정 없음)으로 계수된다(러너 exit 2).
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const app = loadAppSource();
 function mutate(text, find, repl) {
@@ -93,8 +93,7 @@ test('WS4 (§7): 새 문구에 엠 대시, en 대시, 낫표, 띄어 쓴 가운�
   }
 });
 //  정정 6: 실 위젯 루프는 정리에서 출처를 시작할 때 받아 둔 값으로 되돌린다(늘 cal 로 두지 않는다).
-import { readFileSync } from 'node:fs';
-const loopSrc = readFileSync(new URL('./loop-weekly-edit.mjs', import.meta.url), 'utf8');
+const loopSrc = readText(new URL('./loop-weekly-edit.mjs', import.meta.url));
 function loopRestoresSource(src) {
   const fin = src.slice(src.indexOf('} finally {'));
   assert.ok(/srcState0 = await cdp\.ev\('state\.reportSource'\);/.test(src), '루프가 시작할 때 출처를 받아 두지 않는다');

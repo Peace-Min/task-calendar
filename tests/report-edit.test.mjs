@@ -14,12 +14,11 @@
 // ★ 실제 netcus 전송은 없다. Platform.report.submitDaily 를 가로채 payload 만 본다.
 // ★ jsdom 창마다 localStorage 가 따로지만, 시험마다 시작과 끝에 tc_rptDraft: 키를 지운다(§7).
 // 생략 규약: jsdom 이 없으면 (B)(W)(P)와 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 import vm from 'node:vm';
 
 const app = loadAppSource();
-const netcusCs = readFileSync(new URL('../widget/NetcusService.cs', import.meta.url), 'utf8');
+const netcusCs = readText(new URL('../widget/NetcusService.cs', import.meta.url));
 
 // 앵커 하나를 정확히 한 번 바꾼다(없거나 여럿이면 실패 — 조용히 통과하는 껍데기 변이를 막는다).
 function mutate(text, find, repl) {

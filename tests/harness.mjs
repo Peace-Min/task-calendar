@@ -189,11 +189,28 @@ export function countTestsBelow(fileUrl, marker) {
   return n;
 }
 
+// ── 줄끝 맞춤 ───────────────────────────────────────────────────────
+// 저장소의 텍스트 파일은 전부 LF 로 들어 있지만, core.autocrlf=true 에서 git checkout, 병합, 새 워크트리를
+// 거치면 작업 사본이 CRLF 가 된다. 코드는 같은데 '...;\n' 처럼 정확한 글자로 대조하는 앵커와 변이만
+// 대상을 못 찾아 실패한다(2026-10-22 실측: 전부 CRLF 인 사본에서 strict 206건 실패, LF 사본에서 0건).
+// 그래서 저장소 소스는 이 함수로 읽어 CRLF 를 LF 로 맞춘다. 앵커와 정규식은 LF 기준으로 쓴다.
+//   ★ 예외: \r\r\n 이 든 파일(widget/MainWindow.xaml.cs, git 이 -text 로 보는 파일)은 git 이 줄끝을
+//     건드리지 않아 바이트가 늘 같고, 시험도 그 바이트(\r\r\n)를 앵커로 쓴다. 그런 파일은 원문 그대로 둔다.
+//     \r\n 만 \n 으로 바꿔도 \r\r\n 이 \r\n 이 되어 기존 앵커가 깨지기 때문이다.
+export function toLf(text) {
+  return text.includes('\r\r\n') ? text : text.replace(/\r\n/g, '\n');
+}
+
+// 저장소 텍스트 소스를 줄끝을 맞춰 읽는다(readFileSync(path, 'utf8') 자리에 쓴다).
+// 시험이 만든 임시 출력처럼 제품이 낸 줄끝 자체를 봐야 하는 파일에는 쓰지 않는다.
+export function readText(path) {
+  return toLf(readFileSync(path, 'utf8'));
+}
+
 // ── 앱 소스 로드 ────────────────────────────────────────────────────
-// task-calendar-prototype.html을 UTF-8 텍스트로 읽어 반환. 경로는 tests/ 기준 상위 폴더.
+// task-calendar-prototype.html을 UTF-8 텍스트로 읽어 반환(줄끝은 LF 로 맞춘다). 경로는 tests/ 기준 상위 폴더.
 export function loadAppSource() {
-  const url = new URL('../task-calendar-prototype.html', import.meta.url);
-  return readFileSync(url, 'utf8');
+  return readText(new URL('../task-calendar-prototype.html', import.meta.url));
 }
 
 // ── 코드값 고정 번호 머리(CODE-TABLE-IDS §3) ─────────────────────────

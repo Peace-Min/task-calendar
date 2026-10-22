@@ -18,8 +18,8 @@
 //       파일 전체를 훑지 않고 **화면으로 가는 자리(싱크)** 의 인자만 본다. 로그(Log, _log)는 사람이 읽는 화면이 아니라
 //       기호가 남아 있어도 된다. 싱크 이름이 바뀌어 하나도 안 잡히면 그것도 실패다(지킴이가 눈을 감지 않게).
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
-import { readFileSync, readdirSync } from 'node:fs';
-import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM, stripCsComments } from './harness.mjs';
+import { readdirSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, importOptional, countTestsBelow, SKIP_NO_JSDOM, stripCsComments, readText } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -270,7 +270,7 @@ function hostScan(files) {
 }
 const HOST_DIR = new URL('../widget/', import.meta.url);
 const hostFiles = readdirSync(HOST_DIR).filter((f) => f.endsWith('.cs')).sort()
-  .map((f) => [f, readFileSync(new URL(f, HOST_DIR), 'utf8')]);
+  .map((f) => [f, readText(new URL(f, HOST_DIR))]);
 
 test('(H) 호스트가 화면으로 보내는 문구(메시지 상자, 결과 문구, 거부 문구, 창 제목, 메뉴)에 금지 기호가 없다', () => {
   const { bad } = hostScan(hostFiles);

@@ -20,13 +20,13 @@
 // → 그래서 이 파일이 기계로 잡는 계약은 "원복 줄이 있다"가 아니라
 //   ★ 사용자에게 넘길 문서를 로드하기 '전에' detach 가 끝나 있다 ★ 는 순서다.
 //   원복 줄의 존재만 보는 검사는 아무것도 증명하지 못한 채 통과한다(그렇게 사고가 났다).
-import { test, assert } from './harness.mjs';
-import { readFileSync, readdirSync } from 'node:fs';
+import { test, assert, readText } from './harness.mjs';
+import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const NETCUS_URL = new URL('../widget/NetcusService.cs', import.meta.url);
-const netcus = readFileSync(NETCUS_URL, 'utf8');
+const netcus = readText(NETCUS_URL);
 const widgetDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'widget');
 
 // ── 도우미 ──────────────────────────────────────────────────────────
@@ -309,7 +309,7 @@ test('다이얼로그 자동수락: 설정은 AttachDialogAutoAccept 한 곳만 
 
 test('다이얼로그 자동수락: 위젯 다른 소스는 AreDefaultScriptDialogsEnabled를 만지지 않는다', () => {
   for (const f of readdirSync(widgetDir).filter((x) => x.endsWith('.cs') && x !== 'NetcusService.cs')) {
-    const s = stripComments(readFileSync(join(widgetDir, f), 'utf8'));
+    const s = stripComments(readText(join(widgetDir, f)));
     assert.ok(!/AreDefaultScriptDialogsEnabled/.test(s),
       `${f}가 AreDefaultScriptDialogsEnabled를 만진다 — 스크립트 다이얼로그 정책은 NetcusService 한 곳에서만 관리한다`);
   }

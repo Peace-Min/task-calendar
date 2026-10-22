@@ -37,7 +37,7 @@
 //
 // 공용 기계(주석 마스커·비번 검사·종료코드 표·변이 주입기)는 tests/ps-guard-lib.mjs 의 것을 쓴다 —
 // backup/restore 계약과 같은 잣대를 대기 위해서다.
-import { test, assert } from './harness.mjs';
+import { test, assert, readText } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 import {
   maskPs, passwordOnCommandLineHits, exitCodeTable, exitCodesInTable, exitCodesUsed,
@@ -49,13 +49,13 @@ const CMD_URL = new URL('../db/deploy/setup-taskcalendar.cmd', import.meta.url);
 const psBytes = readFileSync(PS_URL);
 const cmdBytes = readFileSync(CMD_URL);
 const norm = (s) => s.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-const psSrc = norm(readFileSync(PS_URL, 'utf8'));
+const psSrc = norm(readText(PS_URL));
 const cmdSrc = norm(cmdBytes.toString('latin1'));
-const appUserSqlSrc = readFileSync(new URL('../db/deploy/create-app-user.sql', import.meta.url), 'utf8');
-const calGrantsSqlSrc = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
-const calSchemaSrc = readFileSync(new URL('../db/deploy/schema-calendar.sql', import.meta.url), 'utf8');
+const appUserSqlSrc = readText(new URL('../db/deploy/create-app-user.sql', import.meta.url));
+const calGrantsSqlSrc = readText(new URL('../db/deploy/grants-calendar.sql', import.meta.url));
+const calSchemaSrc = readText(new URL('../db/deploy/schema-calendar.sql', import.meta.url));
 // (옛 migrate-2026-09-10-user-sort-order.sql 은 2026-10-15 에 지웠다. 백필 순서식은 아래 ⑯ 이 ps1 안에서만 본다.)
-const structSqlSrc = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
+const structSqlSrc = readText(new URL('../db/deploy/schema-structure.sql', import.meta.url));
 
 // 문자열 '내용' 까지 공백으로 지운 사본(길이 동일). 중괄호 짝 맞추기에만 쓴다 —
 // 서식 문자열("{0,-13}")이나 메시지 속 괄호가 블록 경계를 흐리지 않게.
@@ -981,7 +981,7 @@ const fixedRowChecks = {
     assert.strictEqual(1 + Math.max(...[...ts[1].matchAll(/\(\s*(\d+)\s*,/g)].map((x) => Number(x[1]))), 12, '실물: 직급 바닥이 12 가 아니다');
   },
 };
-const seedOrgSrc = (() => { try { return readFileSync(new URL('../../taskmgr-company-data/02-seed-org.sql', import.meta.url), 'utf8'); } catch { return ''; } })();
+const seedOrgSrc = (() => { try { return readText(new URL('../../taskmgr-company-data/02-seed-org.sql', import.meta.url)); } catch { return ''; } })();
 test('setup-taskcalendar ㉔ 보호 번호: 원본에 선진행, 종료가 없으면 확인 전에 멈추고 복사 뒤에도 Die, 숨겨져 왔으면 켠다', () => fixedRowChecks.protectedIds(psSrc));
 test('setup-taskcalendar ㉔ AUTO_INCREMENT 바닥: 구분 4, 상태 5, 직급 12(시드에서 읽음), 올린 뒤 확인', () => fixedRowChecks.autoIncFloor(psSrc, seedOrgSrc));
 test('setup-taskcalendar ㉔ 변이: 보호 번호 Die 를 Warn 으로, 켜기를 빼거나, 바닥 올리기나 확인을 빼면 잡는다', () => {

@@ -86,7 +86,7 @@ console\                       ← 부모 폴더
 ```
 tests/
 ├─ run-tests.mjs              러너 — tests/*.test.mjs 전부 import 후 run() 호출, 결과 요약·종료코드(0/1/2)·jsdom 부재 힌트
-├─ harness.mjs                공용 하네스(test/skip/run, importOptional, loadAppSource, extractFunction, FakeDoc)
+├─ harness.mjs                공용 하네스(test/skip/run, importOptional, loadAppSource, readText, extractFunction, FakeDoc)
 ├─ harness-selftest.test.mjs  하네스 자체 검증 테스트
 ├─ canon-schema.mjs           정본 파서 헬퍼 — `db/deploy/schema-calendar.sql` 에서 판번호·허용 코드 목록을 읽는다(러너 미수집)
 ├─ ps-guard-lib.mjs           배포 스크립트(db/deploy/*.ps1) 소스 검사 공용 기계 — restore/backup-guards 가 공유(러너 미수집)
@@ -558,7 +558,11 @@ DB도 jsdom도 없이 `db/deploy/*.sql` **텍스트만** 읽어 재적용 가능
 - `countTestsBelow(fileUrl, marker)`: marker 뒤의 `test(` **자리 수**를 정적으로 센다(주석·문자열 제외).
   skip 줄에 사라진 규모를 붙이는 용도다. 루프 등록분을 못 세므로 정확한 건수가 아니다.
 - `assert`: Node `node:assert` 재수출(편의).
-- `loadAppSource()`: `../task-calendar-prototype.html`을 UTF-8 텍스트로 반환.
+- `loadAppSource()`: `../task-calendar-prototype.html`을 UTF-8 텍스트로 반환(줄끝은 LF 로 맞춘다).
+- `readText(path)`, `toLf(text)`: 저장소 소스를 읽을 때 `readFileSync(path, 'utf8')` 대신 쓴다. CRLF 를 LF 로 맞춰
+  autocrlf 체크아웃(git checkout, 병합, 새 워크트리)에서도 LF 앵커와 변이가 그대로 잡힌다. 그래서 앵커는 `\n` 으로 쓴다.
+  `\r\r\n` 이 든 파일(`widget/MainWindow.xaml.cs`, `-text`)은 원문 그대로 돌려준다. 시험이 만든 임시 출력처럼
+  제품이 낸 줄끝을 봐야 하는 파일에는 쓰지 않는다.
 - `extractFunction(source, fnName)`: 소스에서 `function fnName(...){...}` 선언을 중괄호 짝 맞춰
   잘라 문자열로 반환(문자열, 템플릿 리터럴, 주석 내부 중괄호 무시). 못 찾으면 에러.
   앱의 순수 함수를 eval 기반 단위테스트할 때 사용.

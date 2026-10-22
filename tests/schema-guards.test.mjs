@@ -12,19 +12,19 @@
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다
 // (이 저장소의 관례. db-conn-info.test.mjs · user-info.test.mjs 와 같은 꼴).
-import { test, assert } from './harness.mjs';
-import { readFileSync, readdirSync } from 'node:fs';
+import { test, assert, readText } from './harness.mjs';
+import { readdirSync } from 'node:fs';
 
 const DEPLOY = new URL('../db/deploy/', import.meta.url);
-const loadSql = (name) => readFileSync(new URL(name, DEPLOY), 'utf8');
+const loadSql = (name) => readText(new URL(name, DEPLOY));
 
 const CANON = 'schema-calendar.sql';   // 정본 재구축 스크립트
 const canonSql = loadSql(CANON);
 
 // 가드 ⑩ 전용: 부팅 조회와 열람 조회의 정렬. SQL 이 아니라 C# 소스에서 읽는다.
-const adapterSrc = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.url), 'utf8');
+const adapterSrc = readText(new URL('../widget/CalendarDb.cs', import.meta.url));
 // 가드 ⑨ 전용: 위젯이 아는 DB 구조 번호. 2026-10-21 부터 DbGate.AppStructureVersion(정수)이다(VERSION-GATE §2.1).
-const gateSrc = readFileSync(new URL('../widget/DbGate.cs', import.meta.url), 'utf8');
+const gateSrc = readText(new URL('../widget/DbGate.cs', import.meta.url));
 
 // migrate-*.sql 전수(이름순 — 날짜가 이름 앞에 있어 사전순 = 시간순).
 // 2026-10-21 부터 새 판은 이관 조각 db/deploy/migrations/v<번호>-*.sql 이다(release-v<버전>.sql 에 들어간다,

@@ -1,11 +1,10 @@
 // 하네스 자체 검증 — extractFunction / FakeDoc 동작 보장.
 // 이후 브리프(북마클릿 등)가 이 하네스를 믿고 쓰기 위한 안전망.
-import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction, FakeDoc, filesWithNoTests, extractCsMember, listCsMembers } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, FakeDoc, filesWithNoTests, extractCsMember, listCsMembers, readText } from './harness.mjs';
 
 // fixture 로더(tests/ 기준 상대 경로).
 function loadFixture(name) {
-  return readFileSync(new URL('./fixtures/' + name, import.meta.url), 'utf8');
+  return readText(new URL('./fixtures/' + name, import.meta.url));
 }
 
 // 1) extractFunction: 앱 소스에서 fmtH 추출 → eval → 값 검증.
@@ -113,7 +112,7 @@ test('extractCsMember: 식(=>) 본문 멤버는 ; 에서 끝난다(다음 멤버
 //      옮겨 가면서 UserSaved 푸시 자체가 사라졌다 — 없는 멤버를 앵커로 두면 이 계약은 '판정 불가'로
 //      죽는다. 같은 모양(식 본문 + 곧바로 다음 멤버)의 실물은 과제 쪽 ProjectSaved 다.
 test('extractCsMember(실물): ProjectSaved 슬라이스에 옆 멤버(SaveProjectAsync)가 섞이지 않는다', () => {
-  const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+  const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
   const b = extractCsMember(main, 'private void ProjectSaved(');
   assert.ok(/window\.__projectSaved/.test(b), 'ProjectSaved 자기 본문이 없다 — 엉뚱한 곳을 잘랐다');
   assert.ok(!/SaveProjectAsync/.test(b),
@@ -246,7 +245,7 @@ test('listCsMembers: 8칸 들여쓰기 멤버를 하나도 빠짐없이, 서로 
 });
 
 test('listCsMembers(실물): ProjectDb 의 멤버를 훑고, 슬라이스가 서로를 겹쳐 삼키지 않는다', () => {
-  const pdb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+  const pdb = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
   const all = listCsMembers(pdb);
   assert.ok(all.length >= 40,
     'ProjectDb 에서 멤버를 ' + all.length + '개만 찾았다 — 열거가 빗나가면 이름을 모르는 감시(admin-auth 의 ' +
@@ -275,7 +274,7 @@ import { writeFileSync, unlinkSync, readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join } from 'node:path';
 
-const HARNESS_SRC = readFileSync(new URL('./harness.mjs', import.meta.url), 'utf8');
+const HARNESS_SRC = readText(new URL('./harness.mjs', import.meta.url));
 const TESTS_DIR = fileURLToPath(new URL('./', import.meta.url));
 
 // 강제 종료(Ctrl+C·크래시)로 finally 가 못 돈 회차의 잔재를 먼저 치운다 — 조용히 쌓이면
@@ -380,7 +379,7 @@ test('변이⑤: extractCsMember 가 식(=>) 본문을 모르면 다음 멤버�
     assert.ok(bad.includes('LoadEverythingAsync'),
       '식 본문 갈래 없이도 옆 멤버를 안 삼킨다 — 이 계약이 겨냥한 것이 아니다');
     //  실물에서도 같은 일이 난다(계약 7 이 겨냥한 그 자리다).
-    const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+    const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
     assert.ok(/SaveProjectAsync/.test(m.extractCsMember(main, 'private void ProjectSaved(')),
       '실물 ProjectSaved 에서도 옆 멤버가 섞이지 않는다 — 변이가 겨냥을 빗나갔다(앵커를 갱신할 것)');
   });
@@ -440,16 +439,15 @@ test('변이⑧: 선언 머리 검사를 끄면 호출 자리에 걸린 sig 가 
 
 
 // 변이⑨ 의 앵커 — harness.mjs 의 listCsMembers 안, **여는 중괄호를 찾는 쪽** 한 곳(뒤의 `open = k` 로 유일해진다).
-//   줄끝은 harness.mjs 작업 사본을 따른다(autocrlf 체크아웃은 CRLF, LF 워크트리는 LF). 줄끝을 못박으면 겨냥과 무관하게 앵커를 못 찾는다.
-const HARNESS_EOL = HARNESS_SRC.includes(String.fromCharCode(13, 10)) ? String.fromCharCode(13, 10) : String.fromCharCode(10);
+//   HARNESS_SRC 는 readText 로 읽어 줄끝이 늘 LF 다(autocrlf 체크아웃이 CRLF 로 바꿔 놓아도). 그래서 앵커도 LF 로 잇는다.
 const NAIVE_FIND = [
   '      if (c === \'"\' || c === "\'") { k = _csCloseQuote(code, k); continue; }',
   "      if (c === '{') { open = k; break; }",
-].join(HARNESS_EOL);
+].join('\n');
 const NAIVE_REPLACE = [
   '      if (c === \'"\' || c === "\'") { let j = k + 1; while (j < code.length) { if (code[j] === _CS_BS) { j += 2; continue; } if (code[j] === c) break; j++; } k = j; continue; }',
   "      if (c === '{') { open = k; break; }",
-].join(HARNESS_EOL);
+].join('\n');
 
 // ── 변이⑨ listCsMembers 의 문자열 판별을 사본 시절의 순진한 것으로 되돌린다 ──
 // (깨져야 할 계약: 'listCsMembers: 8칸 들여쓰기 멤버를 하나도 빠짐없이…')
@@ -482,7 +480,7 @@ test('변이⑨: listCsMembers 가 축자 문자열을 모르면 앞 멤버가 �
 //  ★ 2026-09-07 실측 — 시험 파일 하나(holiday.test.mjs)를 감추자 1085 → 1060 pass 로
 //    24건이 증발했다. 러너①/러너② 를 넣기 전이었다면 그대로 **0 fail / exit 0** 이다.
 //    아래는 그 두 계약이 기대는 순수 함수와 배선을 잠근다.
-const runnerSrc = readFileSync(new URL('./run-tests.mjs', import.meta.url), 'utf8');
+const runnerSrc = readText(new URL('./run-tests.mjs', import.meta.url));
 
 test('census①: filesWithNoTests 가 0건 파일만 골라낸다(정렬·방어 포함)', () => {
   assert.deepStrictEqual(filesWithNoTests({ 'b.test.mjs': 0, 'a.test.mjs': 3 }), ['b.test.mjs']);

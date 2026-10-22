@@ -18,18 +18,17 @@
 //
 //   ★ 값을 시험에 박되, 박는 것은 **설계 문서의 문장**뿐이다 — 문구가 바뀌면 문서와 함께 바뀌어야 한다.
 //   ★ 못 읽은 기준 파일은 통과가 아니라 실패(또는 사유 있는 skip)다.
-import { readFileSync } from 'node:fs';
-import { test, skip, assert, stripCsComments as stripCs, extractCsMember as csMember } from './harness.mjs';
+import { test, skip, assert, stripCsComments as stripCs, extractCsMember as csMember, readText } from './harness.mjs';
 
-const pdb  = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const pdb  = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 // ── 기준 파일 ───────────────────────────────────────────────────────
 //   ★ 비공개 05-grants.sql 은 **형제 폴더**(taskmgr-company-data)에 있다. 없는 체크아웃도 있으므로
 //     '사유 있는 skip' 으로 강등한다 — 다만 있는 곳에서는 반드시 본다(있으면 검사, 없으면 사유).
 const missing = [];
 const readOr = (rel, label) => {
-  try { return readFileSync(new URL(rel, import.meta.url), 'utf8'); } catch (_) { missing.push(label); return ''; }
+  try { return readText(new URL(rel, import.meta.url)); } catch (_) { missing.push(label); return ''; }
 };
 const CREATE_USER = 'db/deploy/create-app-user.sql';
 const CAL_GRANTS  = 'db/deploy/grants-calendar.sql';
@@ -39,7 +38,7 @@ const createUser = readOr('../' + CREATE_USER, CREATE_USER);
 const calGrants  = readOr('../' + CAL_GRANTS, CAL_GRANTS);
 const deployMd   = readOr('../' + DEPLOY_MD, DEPLOY_MD);
 let userGrants = '';
-try { userGrants = readFileSync(new URL('../../' + USER_GRANTS, import.meta.url), 'utf8'); } catch (_) { userGrants = ''; }
+try { userGrants = readText(new URL('../../' + USER_GRANTS, import.meta.url)); } catch (_) { userGrants = ''; }
 
 function mutate(base, from, to) {
   const out = base.replace(from, to);

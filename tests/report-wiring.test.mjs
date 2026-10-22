@@ -20,15 +20,14 @@
 //     값 하나가 3819 를 내면 **그 날 보고 저장 트랜잭션 전체가 롤백**되는데, 전송은 이미 성공한 뒤다
 //     (ReportDb 가 "가장 나쁜 실패"라고 적어 둔 자리). 그래서 도메인 밖 값은 기록 직전에 안전한 값으로 내린다.
 //   ⑪ (2026-09-18) 주간 전송은 내용 출처 'week'(netcus 주간보고 병합)를 거부한다 — 그건 읽기 전용 취합이다.
-import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction, extractCsMember } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, extractCsMember, readText } from './harness.mjs';
 import { canonSql, canonStatusCodes } from './canon-schema.mjs';
 
 const src = loadAppSource();
-const netcus = readFileSync(new URL('../widget/NetcusService.cs', import.meta.url), 'utf8');
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const reportdb = readFileSync(new URL('../widget/ReportDb.cs', import.meta.url), 'utf8');
-const grants = readFileSync(new URL('../db/deploy/grants-calendar.sql', import.meta.url), 'utf8');
+const netcus = readText(new URL('../widget/NetcusService.cs', import.meta.url));
+const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
+const reportdb = readText(new URL('../widget/ReportDb.cs', import.meta.url));
+const grants = readText(new URL('../db/deploy/grants-calendar.sql', import.meta.url));
 
 // ⑪ netcus 주간보고 출처('week')는 기간 취합 전용 — 주간 전송 경로가 거부한다.
 //   버튼(updateRptSendVis)은 보고 유형만 보므로 출처를 막지 못한다. 가드는 전송 핸들러 안에 있어야 한다.
@@ -152,7 +151,7 @@ const checks = {
     // 호스트: 받아서 SubmitDaily 로 넘긴다
     assert.ok(/TryGetProperty\("hours", out var hrsEl\)/.test(cs),
       '호스트가 hours 를 읽지 않는다');
-    assert.ok(/req\.HoursJson/.test(readFileSync(new URL('../widget/NetcusService.cs', import.meta.url), 'utf8')),
+    assert.ok(/req\.HoursJson/.test(readText(new URL('../widget/NetcusService.cs', import.meta.url))),
       'NetcusService 가 HoursJson 을 저장 호출로 넘기지 않는다');
   },
 

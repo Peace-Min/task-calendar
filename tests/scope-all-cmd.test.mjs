@@ -18,7 +18,7 @@
 //   각 계약에 변이 주입을 짝으로 둔다(이 저장소의 관례: 검사가 정말 잡는지 증명한다).
 //
 // 공용 기계(주석 마스커, 비번 검사, 종료코드 표, 변이 주입기)는 tests/ps-guard-lib.mjs 의 것을 쓴다.
-import { test, assert } from './harness.mjs';
+import { test, assert, readText } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 import {
   maskPs, passwordOnCommandLineHits, exitCodeTable, exitCodesInTable, exitCodesUsed,
@@ -29,9 +29,9 @@ const PS_URL  = new URL('../db/deploy/scope-all.ps1', import.meta.url);
 const CMD_URL = new URL('../db/deploy/scope-all.cmd', import.meta.url);
 const psBytes = readFileSync(PS_URL);
 const norm = (s) => s.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-const psSrc  = norm(readFileSync(PS_URL, 'utf8'));
+const psSrc  = norm(readText(PS_URL));
 const cmdSrc = norm(readFileSync(CMD_URL).toString('latin1'));
-const R = (p) => norm(readFileSync(new URL('../' + p, import.meta.url), 'utf8'));
+const R = (p) => norm(readText(new URL('../' + p, import.meta.url)));
 const hostSrc = {
   projectDb: R('widget/ProjectDb.cs'),
   calendarDb: R('widget/CalendarDb.cs'),

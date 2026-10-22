@@ -13,11 +13,10 @@
 //       그래서 ⑥-c의 단언은 '그대로 있다'에서 '되돌아오지 않는다'로 뒤집혔다.
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src  = loadAppSource();
-const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 // ── 소스 슬라이서 ──────────────────────────────────────────────────────
 
@@ -198,7 +197,7 @@ test('DB접속정보 ⑥-c: 옛 #accountSection 은 사라지고 「사용자 �
 test('DB접속정보 ①-보안: DbPassword 참조는 접속 문자열 조립(ProjectDb) 한 곳뿐이다', () => {
   const hits = [...stripComments(main).matchAll(/DbPassword/g)];
   assert.strictEqual(hits.length, 0, `MainWindow 가 DbPassword 를 ${hits.length}곳에서 참조한다 — 호스트-웹 브리지에 비밀번호가 닿으면 안 된다`);
-  const db = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
+  const db = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
   const uses = [...stripComments(db).matchAll(/DeployConfig\.DbPassword/g)];
   assert.strictEqual(uses.length, 1, `ProjectDb 의 DbPassword 사용처가 ${uses.length}곳이다 — 접속 문자열 조립 한 곳이어야 한다`);
 });

@@ -19,15 +19,15 @@
 //       번호 없는 읽기 허용, 가르기를 try 밖으로, ProcessFailed 처리 빼기, 웹 소금 빼기를 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다. dotnet 이 없으면 (P)가 그렇다.
 import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, stripCsComments,
-         importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
+         importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const app = loadAppSource();
-const CS = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8').replace(/\r/g, '');
-const PW = readFileSync(new URL('../widget/PeerWindow.cs', import.meta.url), 'utf8').replace(/\r/g, '');
+const CS = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url)).replace(/\r/g, '');
+const PW = readText(new URL('../widget/PeerWindow.cs', import.meta.url)).replace(/\r/g, '');
 
 function mutate(text, find, repl) {
   const n = text.split(find).length - 1;

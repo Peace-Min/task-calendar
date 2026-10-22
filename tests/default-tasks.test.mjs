@@ -18,12 +18,11 @@
 //      이관 도구(xml-to-db)도 앱 가져오기와 같은 규칙을 따른다(정적).
 //
 // 검사 함수를 시험과 변이 시험이 함께 쓴다(같은 함수를 변이된 소스에 돌려 정말 잡는지 증명한다).
-import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src = loadAppSource();
 //  이관 도구 — 배포자가 data.xml 을 DB 로 대량 이관한다. 앱 가져오기와 같은 과제 정리 규칙을 따라야 한다(정정 이력 2차).
-const TOOL_SRC = readFileSync(new URL('../db/deploy/xml-to-db/Program.cs', import.meta.url), 'utf8');
+const TOOL_SRC = readText(new URL('../db/deploy/xml-to-db/Program.cs', import.meta.url));
 
 function mutate(from, to, base) {
   const out = base.replace(from, to);

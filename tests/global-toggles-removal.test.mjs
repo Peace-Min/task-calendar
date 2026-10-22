@@ -29,12 +29,11 @@
 //          → 인자까지 못박고, 공유 setter·동기화를 실행해 단일 소스를 실제로 읽고 쓰는지 본다.
 //   각 보강 아래에는 그 단언이 정말 우는지 증명하는 test('변이…') 가 따라붙는다.
 // ─────────────────────────────────────────────────────────────────────
-import { test, assert, loadAppSource, extractFunction } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, extractFunction, readText } from './harness.mjs';
 
 const src        = loadAppSource();
-const reminders  = readFileSync(new URL('../widget/Reminders.cs', import.meta.url), 'utf8');
-const mainWindow = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const reminders  = readText(new URL('../widget/Reminders.cs', import.meta.url));
+const mainWindow = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 // ── 공용 도우미 ──────────────────────────────────────────────────────
 

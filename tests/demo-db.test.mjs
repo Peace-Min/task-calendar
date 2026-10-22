@@ -17,7 +17,7 @@
 //     ⑨ ps1 세션 확인, 녹화 계정 읽기(widget/UserSession.cs 와 같은 파일과 형식), 이미 데모면 거부, 녹화 계정 이름을 바꾸지 않는다
 //     ⑩ 문서: 줄표, 띄운 가운데 점, 낫표 없음, db/deploy/README.md 가 이 키트를 가리킨다
 //   각 계약에 변이 주입을 짝으로 둔다(검사가 정말 잡는지 증명한다).
-import { test, assert } from './harness.mjs';
+import { test, assert, readText } from './harness.mjs';
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,7 @@ import {
 
 const R = (p) => new URL('../' + p, import.meta.url);
 const norm = (s) => s.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
-const read = (p) => norm(readFileSync(R(p), 'utf8'));
+const read = (p) => norm(readText(R(p)));
 
 const D = await import(R('db/demo/demo-data.mjs').href);
 const G = await import(R('db/demo/build-demo-sql.mjs').href);

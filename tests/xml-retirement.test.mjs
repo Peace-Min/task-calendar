@@ -14,8 +14,8 @@
 //
 //   ★ 반대 방향도 잠근다 — false 인 동안 XML 경로를 부분적으로 걷어내는 것도 막는다.
 //     반쯤 지워진 상태가 가장 위험하다(어느 경로로 도는지 아무도 모른다).
-import { readFileSync, readdirSync } from 'node:fs';
-import { test, assert, loadAppSource } from './harness.mjs';
+import { readdirSync } from 'node:fs';
+import { test, assert, loadAppSource, readText } from './harness.mjs';
 
 const app = loadAppSource();
 
@@ -27,7 +27,7 @@ const app = loadAppSource();
 //    (같은 이유로 감추기 CSS 를 allowlist 로 바꾼 적이 있다 — 이 저장소의 반복 교훈이다.)
 const WIDGET_DIR = new URL('../widget/', import.meta.url);
 const hostFiles = readdirSync(WIDGET_DIR).filter(f => f.endsWith('.cs')).sort();
-const hosts = hostFiles.map(f => ({ name: 'widget/' + f, src: readFileSync(new URL(f, WIDGET_DIR), 'utf8') }));
+const hosts = hostFiles.map(f => ({ name: 'widget/' + f, src: readText(new URL(f, WIDGET_DIR)) }));
 //  ★ 최상위에서 throw 하지 않는다 — run-tests.mjs 의 import 루프에서 던지면 프로세스가 죽고
 //    **전 스위트 판정이 증발**한다(commit-merge.test.mjs 가 같은 사고를 겪고 남긴 교훈).
 //    기준 파일 부재는 아래 '폐기⓪' 한 건의 실패로 강등하고, 나머지 커버리지는 살린다.

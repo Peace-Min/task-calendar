@@ -14,8 +14,8 @@
 //   ★ 이 게이트는 살아 있는 DB 에 붙지 않는다 — 파일(정본 SQL · 호스트 .cs)만 읽는다.
 //     DB 를 읽는 검사는 개발 PC 에서만 돌고 폐쇄망·CI 에서는 조용히 자기 때문이다.
 //     "판정 못 함"을 통과로 만들지 않는 것이 이 저장소의 규칙이다(계약⑦ 참조).
-import { readFileSync, readdirSync } from 'node:fs';
-import { test, assert, stripCsComments } from './harness.mjs';
+import { readdirSync } from 'node:fs';
+import { test, assert, stripCsComments, readText } from './harness.mjs';
 //  ★ 정본 파싱은 tests/canon-schema.mjs 한 곳에만 둔다. 여기 있던 두 정규식을 루프 시험들이
 //    베껴 가면서 2026-09-09 사고 둘이 났다(판본·근태코드를 각자 박아 둔 결과). 파서를 나눠 쓰면
 //    정본의 문장 형태가 바뀌어도 고칠 곳이 하나다.
@@ -32,7 +32,7 @@ const WIDGET_DIR = new URL('../widget/', import.meta.url);
 const missing = [];
 function readOr(url, label) {
   try {
-    const s = readFileSync(url, 'utf8');
+    const s = readText(url);
     if (!s || s.length === 0) { missing.push(label + '(내용 없음)'); return ''; }
     return s;
   } catch (_) {

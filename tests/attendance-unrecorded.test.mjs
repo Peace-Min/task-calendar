@@ -17,13 +17,12 @@
 //
 // ③④는 정규식 구경이 아니라 'C# 소스가 실제로 조립하는 JS'를 재조립해 FakeDoc 위에서 실행해 확인한다
 // (조립식이 바뀌면 재조립도 함께 바뀌므로 검사가 코드를 따라간다).
-import { readFileSync } from 'node:fs';
-import { test, assert, loadAppSource, extractFunction, FakeDoc } from './harness.mjs';
+import { test, assert, loadAppSource, extractFunction, FakeDoc, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const netcus = readFileSync(new URL('../widget/NetcusService.cs', import.meta.url), 'utf8');
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const fixture = readFileSync(new URL('./fixtures/mock-pjm-daily.html', import.meta.url), 'utf8');
+const netcus = readText(new URL('../widget/NetcusService.cs', import.meta.url));
+const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
+const fixture = readText(new URL('./fixtures/mock-pjm-daily.html', import.meta.url));
 
 // ── 공용 도우미 ──────────────────────────────────────────────────────
 function mutate(from, to, base) {

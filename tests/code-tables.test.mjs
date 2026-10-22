@@ -1,15 +1,14 @@
 // 구분/상태 ENUM → 룩업 코드테이블(section_code/status_code) + FK 전환 + note 컬럼 (2026-07-24).
 // 발주처(customer) 패턴을 대칭 복제. 실 MySQL 검증은 코디네이터 게이트; 여기서는 스키마·마이그레이션·호스트·브리지·웹의
 // 계약을 소스에서 못박는다(회귀 방지). 순수 로직(코드목록 파싱·순서 스왑)은 JS로 포팅해 동작을 확인한다.
-import { test, assert, loadAppSource, extractFunction, stripCsComments, extractCsMember } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, loadAppSource, extractFunction, stripCsComments, extractCsMember, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const projectDb = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const mainWindow = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const projectDb = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const mainWindow = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 // ★ 2026-10-15 db/schema.sql 과 db/deploy/migrate.ps1 은 지웠다(CODE-TABLE-IDS §8-2). 구조의 정본은 schema-structure.sql 하나다.
 //   코드표 번호 키 전환(이관 SQL, setup 변환, 고정 번호)의 계약은 tests/code-ids-db.test.mjs 가 본다.
-const schemaDeploy = readFileSync(new URL('../db/deploy/schema-structure.sql', import.meta.url), 'utf8');
+const schemaDeploy = readText(new URL('../db/deploy/schema-structure.sql', import.meta.url));
 
 // ══ 범위 고정 도구 ═════════════════════════════════════════════════════
 // ★ 2026-09-04 변이감사(P5)로 드러난 구멍: 이 파일의 여러 단언이 **파일 전체**에 대한

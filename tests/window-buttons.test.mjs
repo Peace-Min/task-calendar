@@ -19,11 +19,10 @@
 //       창 메시지 훅 빼기, 작업 영역 바뀜 상수 틀리기를 각각 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
 import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, stripCsComments,
-         importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+         importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const app = loadAppSource();
-const CS = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8').replace(/\r/g, '');
+const CS = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url)).replace(/\r/g, '');
 
 function mutate(text, find, repl) {
   const n = text.split(find).length - 1;

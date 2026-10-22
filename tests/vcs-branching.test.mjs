@@ -12,11 +12,10 @@
 //     그때도 잡아 준 것은 사람이 아니라 뒤늦게 붙인 계약이었다. 주석은 게이트가 아니다.
 //
 //   그래서 규칙을 코드로 잠근다: 세 진입점은 각자 ResolveVcs 를 부르고, 복제식은 어디에도 없다.
-import { readFileSync } from 'node:fs';
-import { test, assert } from './harness.mjs';
+import { test, assert, readText } from './harness.mjs';
 
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const svn = readFileSync(new URL('../widget/Svn.cs', import.meta.url), 'utf8');
+const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
+const svn = readText(new URL('../widget/Svn.cs', import.meta.url));
 
 // ── C# 메서드 본문 잘라내기 ──────────────────────────────────────────
 //  중괄호 짝을 맞추되 문자열·문자·주석 안의 중괄호는 세지 않는다(오탐 방지).

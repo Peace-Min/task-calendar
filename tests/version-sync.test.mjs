@@ -18,10 +18,9 @@
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다
 // (이 저장소의 관례. restore-guards · schema-guards · holiday 와 같은 꼴).
-import { test, assert } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, assert, readText } from './harness.mjs';
 
-const read = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
+const read = (rel) => readText(new URL('../' + rel, import.meta.url));
 
 const csproj  = read('widget/TaskCalendarWidget.csproj');
 const html    = read('task-calendar-prototype.html');

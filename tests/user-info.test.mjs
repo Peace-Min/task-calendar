@@ -11,13 +11,12 @@
 //      OpenReadAsync 여야 한다 — 쓰기 관문을 쓰면 viewer 가 자기 권한을 확인조차 못 한다.
 //
 // 검사 함수(checks)를 테스트와 변이 주입이 공유한다 — 검사가 실제로 잡는지 증명하기 위해서다.
-import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+import { test, skip, assert, loadAppSource, extractFunction, extractCsMember, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src  = loadAppSource();
-const main = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
-const pdb  = readFileSync(new URL('../widget/ProjectDb.cs', import.meta.url), 'utf8');
-const caldb = readFileSync(new URL('../widget/CalendarDb.cs', import.meta.url), 'utf8');
+const main = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
+const pdb  = readText(new URL('../widget/ProjectDb.cs', import.meta.url));
+const caldb = readText(new URL('../widget/CalendarDb.cs', import.meta.url));
 
 // ── 소스 슬라이서 ──────────────────────────────────────────────────────
 
@@ -1054,7 +1053,7 @@ test('구성원 ㊺: 화면에 죽은 개념(mbAllowedCount·u.allowed)이 남�
 
 // 세션 파일은 4필드 그대로다 — 권한을 세션에 캐시하는 순간 관리자가 역할을 바꿔도 화면이 낡은 값을 말한다.
 test('사용자정보: 세션(UserSession)에 권한 필드를 추가하지 않았다', () => {
-  const us = stripComments(readFileSync(new URL('../widget/UserSession.cs', import.meta.url), 'utf8'));
+  const us = stripComments(readText(new URL('../widget/UserSession.cs', import.meta.url)));
   for (const dead of ['EditRole', 'ViewScope', 'edit_role', 'view_scope']) {
     assert.ok(!us.includes(dead), `세션 파일에 권한(${dead})이 들어갔다 — 4필드 유지가 확정 설계다`);
   }

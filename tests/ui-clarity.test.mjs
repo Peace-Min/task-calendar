@@ -11,11 +11,10 @@
 //
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
 import { test, skip, assert, loadAppSource, extractFunction, stripCsComments,
-         importOptional, countTestsBelow, SKIP_NO_JSDOM } from './harness.mjs';
-import { readFileSync } from 'node:fs';
+         importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const app = loadAppSource();
-const mainwin = readFileSync(new URL('../widget/MainWindow.xaml.cs', import.meta.url), 'utf8');
+const mainwin = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url));
 
 const OLD = '넓게 보기';
 const TIP = {
