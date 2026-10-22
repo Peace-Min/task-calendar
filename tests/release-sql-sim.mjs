@@ -16,7 +16,7 @@
 //   room_code(공용 목록, v15 가 만든다). CREATE TABLE IF NOT EXISTS, DROP TABLE, cal_room 에서 room_code 로의
 //   INSERT IGNORE ... SELECT(앞뒤 공백 정리, ai_ci 로 묶기, 쓰는 사람 수와 이름 순서), 그리고 SELECT COUNT(*) INTO @x
 //   세 가지(고유 이름 수, room_code 에 빠진 이름 수, room_code 줄 수). 정렬과 비교 규칙은 흉내다(대소문자와 악센트 무시).
-//   과제 캘린더 표 넷(v16 조각 migrations/v16-project-calendar.sql): CREATE TABLE IF NOT EXISTS 의 정의에서 열 수와 FK 수를 읽어
+//   과제 캘린더 표 둘(v16 조각 migrations/v16-project-calendar.sql): CREATE TABLE IF NOT EXISTS 의 정의에서 열 수와 FK 수를 읽어
 //   표 모양(defs)으로 두고, information_schema.COLUMNS 와 REFERENTIAL_CONSTRAINTS 의 표별 COUNT(*) 하위 질의에 그 수로 답한다.
 //   출발 상태에 이미 있는 표의 모양은 FakeDb 의 defs 옵션으로 준다(모양을 모르는 표를 세면 '모르는 문장' 으로 실패한다).
 //

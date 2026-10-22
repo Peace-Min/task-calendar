@@ -1054,10 +1054,8 @@ git/svn 작성자, **근태·초과시간**(`<attendance>` → 신규 `cal_atten
 | `cal_user_rev` | 없음 (동시성·동기화, §3.1) |
 | `cal_migration_log` | 없음 (이관 재실행 방지, §8) |
 | `cal_schema_meta` | 없음 (스키마 버전 행, §5.5) |
-| **`cal_project_rev`** | 없음 (과제 캘린더 과제별 동시성 감시점, §5.10, 구조 16) |
-| **`cal_project_event`** | 없음 (과제 일정, 공용 트랙, §5.10) |
+| **`cal_project_event`** | 없음 (과제 일정, 공용 트랙, §5.10, 구조 16) |
 | **`cal_project_change`** | 없음 (과제 일정 변경 이력, §5.10) |
-| **`cal_project_copy`** | 없음 (과제 일정을 개인 일정으로 복사한 대응, §5.10) |
 
 > **2026-08-31, 보고 기록 3표가 들어왔다(13 → 16).** 이 셋은 `<attendance>`·`<prefs>` 와 달리
 > **XML 에 원본이 없다**: 옮겨 온 것이 아니라 새로 생기는 사실(위젯이 netcus 로 무엇을 보냈는가)이라
@@ -2509,18 +2507,16 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
 
 *(2026-10-22 신설, 구조 번호 16, 이관 조각 `db/deploy/migrations/v16-project-calendar.sql`. 기획과 결정은 [docs/PROJECT-CALENDAR-PLAN.md](../docs/PROJECT-CALENDAR-PLAN.md) §4, §5)*
 
-위의 `cal_*` 는 모두 **사람 한 명의 개인 데이터**(소유자 키 `user_id`)다. 이 절의 네 표는 그렇지 않다. 공식 과제마다 하나씩인 **공용 캘린더**이고, 그 과제를 내 과제에 넣은 사람이 함께 쓴다. 개인 표에 가짜 소유자(`user_id = 0`)를 넣어 흉내 내지 않고 따로 둔다. 공용 일정을 개인 일정으로 옮기는 길은 사람이 누르는 **명시적 복사** 하나다.
+위의 `cal_*` 는 모두 **사람 한 명의 개인 데이터**(소유자 키 `user_id`)다. 이 절의 두 표는 그렇지 않다. 공식 과제마다 하나씩인 **공용 캘린더**이고, 그 과제를 내 과제에 넣은 사람이 함께 쓴다. 개인 표에 가짜 소유자(`user_id = 0`)를 넣어 흉내 내지 않고 따로 둔다. 공용 일정을 개인 일정으로 옮기는 길은 사람이 누르는 **명시적 복사** 하나다. 복사는 그 순간의 내용을 한 번 찍어 두는 사본이다. 복사본은 평범한 개인 일정(`cal_entry`)이 되고 대응표가 없다. 원본이 바뀌거나 지워져도, 복사본을 고치거나 지워도 서로 이어지지 않는다. 같은 일정을 두 번 등록하면 개인 일정이 두 건 생긴다(2026-10-22 저녁 사용자 결정, 처음에 두었던 대응표 `cal_project_copy` 는 배포 전에 뺐다).
 
 | 표 | 키 | 하는 일 |
 |---|---|---|
-| `cal_project_rev` | PK `project_id`(`project.id` FK, ON DELETE CASCADE) | 과제별 동시성 감시점. 공용 쓰기 트랜잭션의 **첫 문장**이 이 행을 ODKU 로 잡는다(§3.1 의 `cal_user_rev` 와 같은 규칙, 단위가 사람이 아니라 과제) |
 | `cal_project_event` | PK `event_id`, UNIQUE `uid`(웹이 만든 안정 id) | 과제 일정. 소프트 삭제(`is_deleted`), 낙관적 잠금 `row_version`. `project_id` FK **RESTRICT** |
 | `cal_project_change` | PK `change_no`, UNIQUE `(project_id, mutation_uid)` | 지우지 않는 변경 이력. 한 저장의 **바뀐 필드만** `before_json`/`after_json` 에. 바뀐 것이 없으면 행이 없다 |
-| `cal_project_copy` | PK `(user_id, event_id)`, UNIQUE `(user_id, entry_no)` | 개인 복사 대응. `(user_id, entry_no)` 가 `cal_entry` 를 **ON DELETE CASCADE** 로 가리킨다 |
 
 **개인 트랙과 다른 점(일부러 다르다)**
 - **외래키가 가리키는 기본키는 번호**다(`project.id`, `event_id`, CODE-TABLE-IDS). 웹과 호스트 사이는 `projectUid`, `eventUid` 로 주고받고 호스트가 번호로 바꾼다. 개인 `cal_category` 는 `project_uid` 글자로 과제를 가리키지만(FK 아님) 공용 표는 진짜 FK 다.
-- **사람은 이름 글자로만** 남긴다(`created_by_name`, `updated_by_name`, `actor_name`). 사용자 FK 가 없어 직원 퇴사, 휴지통 인력 판정(`UserRecordTables`)과 엮이지 않는다. `cal_project_copy.user_id` 도 `app_user` 를 직접 가리키지 않고 `cal_entry` 를 거친다(`cal_entry.user_id` RESTRICT).
+- **사람은 이름 글자로만** 남긴다(`created_by_name`, `updated_by_name`, `actor_name`). 사용자 FK 가 없어 직원 퇴사, 휴지통 인력 판정(`UserRecordTables`)과 엮이지 않는다.
 - **낙관적 잠금 토큰이 `updated_at` 이 아니라 `row_version`**(정수)이다. 웹에 판 번호를 그대로 보여 주고 받기 위해서다. 행 단위 비교(`UPDATE … WHERE row_version = @expected`), 0행이면 충돌(§3.3 과 같은 뜻).
 - **멱등 키가 둘**이다. 생성은 `uid`, 모든 변경은 `(project_id, mutation_uid)`. 응답만 잃은 재시도가 행이나 이력을 두 번 만들지 않는다.
 - 시각은 모두 UTC `DATETIME(3)` 이고 앱이 명시 대입한다(서버 기본값 없음, 머리말 시각 규약).
@@ -2528,12 +2524,14 @@ GRANT SELECT, INSERT, UPDATE         ON taskmgr.cal_report_weekly TO 'taskmgr_ap
 
 **판정(누가 어느 과제를 쓰나)**: 과제 탭의 과제 = **내 과제(`cal_category`, `source='db'`)에 넣은 공식 과제**. 판정 SQL 은 `widget/ProjectCalendarDb.cs` 의 `EligibleProjectsAsync` 한 곳이고 모든 명령이 그것을 부른다. 쓰기는 거기에 `project.is_active = 1` 이 더해진다. `edit_role` 은 보지 않는다. 공용 표는 `cal_category` 를 가리키지 않는다.
 
-**잠금 순서**: 공용 쓰기는 `cal_project_rev` 만, 개인 저장은 `cal_user_rev` 만 잡는다. 개인 복사는 `cal_project_rev`(공유 잠금, `FOR SHARE OF r`) 다음 `cal_user_rev`(ODKU) 순서로 둘 다 잡는다. 순서가 하나라 교착 순환이 없다. 복사가 넣는 개인 일정 한 건은 `CalendarWriteDb` 의 같은 행 투영과 같은 INSERT 문(`EntryInsertSql`, 번호 발급 H-1)을 쓴다.
+**과제별 감시점 표가 없다**(2026-10-22 저녁 결정, 처음의 `cal_project_rev` 는 배포 전에 뺐다). 개인의 `cal_user_rev` 처럼 과제 단위로 쓰기를 줄 세울 이유가 없다: 동시 수정은 일정 행의 `row_version`(그 행 `FOR UPDATE`), 응답 유실 뒤 재시도는 이력의 `(project_id, mutation_uid)` UNIQUE 와 일정 `uid` UNIQUE, 변경 순서는 `change_no`, 과제 영구 삭제와의 경합은 `cal_project_event` 의 FK RESTRICT(쓰는 쪽은 1452 를 고정 문구 forbidden 으로 돌려준다)가 맡는다. 주기 확인이 없어 화면이 과제별 판 번호를 볼 일도 없다.
+
+**잠금 순서**: 어디서나 과제 행, 일정 행, `cal_user_rev` 순서다. 공용 쓰기는 판정 SQL 이 과제 행을 `FOR SHARE OF p` 로 잡고(관리자의 종료 `UPDATE project` 와 휴지통 `DELETE project` 가 진행 중인 쓰기와 엇갈리지 않게) 그다음 그 일정 행을 `FOR UPDATE` 로 잡는다. 과제 행 공유 잠금끼리는 서로 막지 않아 같은 과제의 다른 일정 저장은 줄 서지 않는다. 개인 저장은 `cal_user_rev` 만 잡는다. 개인 복사는 과제 행(공유), 원본 일정 행(공유, `FOR SHARE OF e`), `cal_user_rev`(ODKU) 순서다. 휴지통 영구 삭제와 관리자 종료는 과제 행만 잠그고 일정 행을 먼저 잡지 않으므로 순서가 뒤집히지 않는다. MySQL 8 의 `FOR SHARE` 는 SELECT 에 더해 UPDATE(또는 DELETE, LOCK TABLES) 권한이 필요한데 앱 계정은 `project` 에 UPDATE 가 있다. 복사가 넣는 개인 일정 한 건은 `CalendarWriteDb` 의 같은 행 투영과 같은 INSERT 문(`EntryInsertSql`, 번호 발급 H-1)을 쓴다.
 
 **지우기**
-- 과제 일정은 지우지 않는다(소프트 삭제). 이력도 지우지 않는다. 그래서 앱 계정에 네 표 모두 DELETE 권한이 없다(`grants-calendar.sql`).
-- 휴지통의 **과제 영구 삭제**는 그 과제에 공용 일정(지운 것 포함)이 한 건이라도 있으면 고정 문구로 거부한다(`ProjectDb.DeleteTrashAsync`, 최종 방어는 `cal_project_event` 의 RESTRICT 1451). 공용 일정이 없으면 `cal_project_rev` 행은 CASCADE 로 함께 지워진다.
-- 개인 복사본을 지우거나 XML 전량 교체로 `cal_entry` 가 지워지면 대응표 행이 CASCADE 로 사라져 다시 복사할 수 있다. `entry_no` 재사용(H-1)이 옛 대응을 물려받지 않는다. FK 동작은 권한 검사를 받지 않으므로 DELETE 권한 없이도 정리된다(DB 계약 시험 `tests/db-project-calendar.mjs` 로 실측).
+- 과제 일정은 지우지 않는다(소프트 삭제). 이력도 지우지 않는다. 그래서 앱 계정에 두 표 모두 DELETE 권한이 없다(`grants-calendar.sql`).
+- 휴지통의 **과제 영구 삭제**는 그 과제에 공용 일정(지운 것 포함)이 한 건이라도 있으면 고정 문구로 거부한다(`ProjectDb.DeleteTrashAsync`, 최종 방어는 `cal_project_event` 의 RESTRICT 1451). 공용 일정이 없으면 공용 표에 그 과제의 행이 없어 과제가 그대로 지워진다.
+- 개인 복사본은 평범한 개인 일정이라 개인 화면에서 지운다. 공용 표에는 남는 흔적이 없다.
 
 **검증**: 정본과 조각의 정의가 글자까지 같음, 첫 문장, 커밋 직전 관문, 판정, 글자 상한(`tests/project-calendar-host.test.mjs`), 배포 SQL 의 13, 14, 15 에서 16 과 실패 뒤 재실행(`tests/release-sql.test.mjs`), 두 사람 시나리오(`tests/db-project-calendar.mjs`, 복사본 DB 에서).
 

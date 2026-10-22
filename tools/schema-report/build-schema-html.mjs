@@ -57,10 +57,8 @@ function keyNote(n) {
     case 'app_user':     return `번호(${pkCols(n)})가 기본키인 이유: login_id 는 netcus 가 발급하는 값이라 우리가 소유하지 않고, cal_* 여러 표가 참조하며, 다중경로라 RESTRICT 만 걸려 개명이 ERROR 1451 이었다. 합성 데이터 실측으로 login_id PK 는 user_id PK 보다 인덱스가 +69%(43.23 MB vs 25.59 MB). 2026-08-24 에 옮겼다.`;
     case 'project':      return `번호(${pkCols(n)})가 기본키이고 uid 가 외부 안정 참조키인 이유: 같은 발주처, 같은 사업명이 정당하게 반복되므로 이름은 키가 될 수 없다. id 는 내부용, uid 는 캘린더가 과제를 가리킬 때 쓰는 값이라 한 번 발급하면 바뀌지 않는다.`;
     case 'room_code':    return `번호(${pkCols(n)})가 기본키이고 이름(name)은 UNIQUE 라벨이다. 회사 공용 회의실 목록이다(2026-10-21, 사람마다 두던 cal_room 을 대신한다). 어떤 표도 이 번호를 가리키지 않는다. 일정의 장소는 글자라서 숨김과 휴지통 없이 바로 지운다. 관리자만 고친다.`;
-    case 'cal_project_rev':    return `과제 번호(${pkCols(n)}) 하나가 기본키다. 과제마다 한 행인 동시성 감시점이라 다른 키가 필요 없다. 공용 쓰기의 첫 문장이 ODKU 로 잡는다. 과제 영구 삭제 때 CASCADE 로 함께 지워진다(2026-10-22, 구조 16).`;
-    case 'cal_project_event':  return `번호(${pkCols(n)})가 기본키이고 uid 는 웹이 만든 안정 id(UNIQUE, 생성 재시도의 멱등 키)다. 이력과 복사 대응표가 이 번호를 가리킨다. 행을 지우지 않고 is_deleted 로 숨긴다(2026-10-22, 구조 16).`;
+    case 'cal_project_event':  return `번호(${pkCols(n)})가 기본키이고 uid 는 웹이 만든 안정 id(UNIQUE, 생성 재시도의 멱등 키)다. 이력이 이 번호를 가리킨다. 행을 지우지 않고 is_deleted 로 숨긴다(2026-10-22, 구조 16).`;
     case 'cal_project_change': return `번호(${pkCols(n)})가 기본키다. 정렬과 커서가 이 번호에 기댄다. (project_id, mutation_uid) UNIQUE 가 응답 유실 뒤 재시도의 멱등 키다. 지우지 않는 기록이다(2026-10-22, 구조 16).`;
-    case 'cal_project_copy':   return `(${pkCols(n)}) 복합키다. 같은 원본은 한 사람에게 한 번만 복사된다. (user_id, entry_no) 가 cal_entry 를 CASCADE 로 가리켜 개인 일정을 지우면 이 행도 사라진다(2026-10-22, 구조 16).`;
     case 'cal_schema_meta': return `문자열 ${pkCols(n)} 가 키인 이유: 행이 버전 관문 키 다섯 개(db_structure_version 등)뿐인 설정 표이고 앱은 늘 k 로 찾는다. 가리키는 외래키가 없다. 번호를 붙여도 k 에 UNIQUE 를 또 걸어야 한다.`;
     default: return '';
   }
@@ -179,7 +177,7 @@ const MIGRATIONS = [
   ['09-09', '무결성 규칙 통일', '같은 DB 안에서 장치끼리 반대로 말하던 다섯을 한 판으로 맞췄다: 보고 표 두 개의 소유자 FK 를 CASCADE 에서 RESTRICT 로(GRANT 는 보고 이력을 못 지우게 하는데 FK 가 지우고 있었다), cal_report_hours 에 과제 FK 신설(쌍둥이 cal_task_hours 만 잠겨 있었다), cal_report_daily 에 근태·초과시간 CHECK(쌍둥이 cal_attendance 만 잠겨 있었다), hours 를 DECIMAL(4,2) 로, 감사 시각을 KST 에서 UTC 로 1회 정규화. 마지막 하나는 데이터를 바꾸므로 재실행 안전이 아니고 ProjectDb 의 접속 프리앰블과 같은 배포에 실려야 한다.'],
   ['10-15', '코드표 번호 키(v13)', 'customer, section_code, status_code, title_code 의 기본키를 이름에서 번호(SMALLINT UNSIGNED)로 옮기고 이름은 UNIQUE 라벨로 남겼다. 자식은 project.customer_id, section_id, status_id 와 app_user.title_id 이고 외래키는 ON UPDATE RESTRICT, ON DELETE RESTRICT. 동작이 묶인 코드값은 고정 번호(구분 2 선진행, 상태 2 종료)로 판정하고 그 두 행은 숨기거나 지울 수 없다. 데이터가 있는 DB 는 migrate-2026-10-15-code-ids.sql, 새 서버는 setup-taskcalendar.'],
   ['10-21', '회의실 공용화(v15)', '사람마다 두던 cal_room 을 지우고 회사 공용 room_code(번호 키, name UNIQUE)를 두었다. 모든 사용자의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣었다. 관리자만 고치고, 일정의 장소는 글자라 외래키가 없다. 이관 조각 db/deploy/migrations/v15-shared-rooms.sql.'],
-  ['10-22', '과제 캘린더(v16)', '공식 과제마다 공용 캘린더를 두는 새 표 넷을 더했다: cal_project_rev(과제별 동시성 감시점), cal_project_event(과제 일정, 소프트 삭제, row_version), cal_project_change(바뀐 필드만 담는 지우지 않는 이력), cal_project_copy(개인 복사 대응). 외래키는 번호(project.id, event_id)를 가리키고 사람은 이름 글자로만 남긴다. 네 표 모두 앱 계정에 DELETE 가 없다. 이관 조각 db/deploy/migrations/v16-project-calendar.sql.'],
+  ['10-22', '과제 캘린더(v16)', '공식 과제마다 공용 캘린더를 두는 새 표 둘을 더했다: cal_project_event(과제 일정, 소프트 삭제, row_version), cal_project_change(바뀐 필드만 담는 지우지 않는 이력). 과제별 감시점 표는 없다(동시 수정은 일정의 row_version, 재시도는 이력의 mutation_uid UNIQUE). 개인 일정에 등록은 한 번 찍는 사본이라 대응표가 없다. 외래키는 번호(project.id, event_id)를 가리키고 사람은 이름 글자로만 남긴다. 두 표 모두 앱 계정에 DELETE 가 없다. 이관 조각 db/deploy/migrations/v16-project-calendar.sql.'],
 ];
 
 const html = `<!DOCTYPE html>

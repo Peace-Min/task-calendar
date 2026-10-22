@@ -984,8 +984,8 @@ SET @g := IF(@g_type_ok = 1 AND @g_pk_ok = 1, 'DO 0',
              'SELECT 1 FROM `중단: app_user.user_id 가 smallint unsigned PK 가 아니다`');
 PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 
--- 가드 4) project.id 가 과제 캘린더 표(14~17)의 FK 를 받을 수 있는가(2026-10-22, 구조 번호 16)
---   cal_project_rev, cal_project_event, cal_project_change 가 project(id) 를 가리킨다. project 는 schema-structure.sql 이
+-- 가드 4) project.id 가 과제 캘린더 표(14~15)의 FK 를 받을 수 있는가(2026-10-22, 구조 번호 16)
+--   cal_project_event, cal_project_change 가 project(id) 를 가리킨다. project 는 schema-structure.sql 이
 --   먼저 만든다(setup-taskcalendar.ps1 순서). 없거나 모양이 다르면 아래 DROP 이 지나간 뒤 CREATE 가 죽으므로 여기서 먼저 멈춘다.
 SET @g_proj_type := (SELECT COUNT(*) FROM information_schema.COLUMNS
                        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project'
@@ -1020,10 +1020,8 @@ PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 --   **앞**에 있어야 한다. 아래는 이미 그 순서다(cal_task_hours 가 위쪽). 순서를 정리한답시고
 --   알파벳순으로 바꾸면 재적용이 ERROR 3730 으로 죽는다.
 DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용. 재생성하지 않는다
-DROP TABLE IF EXISTS cal_project_copy;      -- 과제 캘린더(구조 16). cal_project_event 와 cal_entry 를 참조, 자식 먼저
-DROP TABLE IF EXISTS cal_project_change;    -- cal_project_event 를 참조
+DROP TABLE IF EXISTS cal_project_change;    -- 과제 캘린더(구조 16). cal_project_event 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_project_event;     -- project 를 참조(project 는 이 파일이 지우지 않는다)
-DROP TABLE IF EXISTS cal_project_rev;
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음, 순서 무관
 DROP TABLE IF EXISTS cal_migration_log;
 DROP TABLE IF EXISTS cal_user_rev;
@@ -1968,7 +1966,7 @@ CREATE TABLE cal_schema_meta (
 --       사람마다 두던 cal_room 을 지우고 회사 공용 room_code(정본 schema-structure.sql)를 둔다. 표 수는 그대로다.
 --       이 판부터 이관은 조각(db/deploy/migrations/v<번호>-*.sql)으로 쓰고 배포 SQL(release-v<버전>.sql)에 들어간다.
 --   - 16 (2026-10-22): 과제 캘린더(이관 조각 db/deploy/migrations/v16-project-calendar.sql, docs/PROJECT-CALENDAR-PLAN.md).
---       공용 트랙 네 표(cal_project_rev, cal_project_event, cal_project_change, cal_project_copy)를 더한다(아래 14~17).
+--       공용 트랙 두 표(cal_project_event, cal_project_change)를 더한다(아래 14~15).
 --       기존 표는 바뀌지 않는다. 앱 상수는 DbGate.AppStructureVersion(16).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
@@ -2010,47 +2008,33 @@ SELECT user_id, 0 FROM app_user;
 --   ★ 이 문장 뒤에 오는 것이 계약 H-1 의 번호 발급이다. 순서를 바꾸지 말 것.
 
 -- =====================================================================
---  14~17. 과제 캘린더(공용 트랙) 네 표: 구조 번호 16 (2026-10-22, docs/PROJECT-CALENDAR-PLAN.md §4)
+--  14~15. 과제 캘린더(공용 트랙) 두 표: 구조 번호 16 (2026-10-22, docs/PROJECT-CALENDAR-PLAN.md §4)
 -- =====================================================================
 -- 공식 과제마다 공용 캘린더를 둔다. 개인 캘린더(cal_entry, cal_category)와 **별도 데이터**다.
 --   개인 표에 가짜 소유자나 user_id=0 을 넣지 않는다. 공용 일정을 개인 일정으로 옮기는 길은 명시적 복사 하나다.
+--   복사는 한 번 찍어 두는 사본이다(대응표 없음). 복사본은 평범한 개인 일정이 되고 원본과 어느 쪽으로도 이어지지 않는다.
 -- ★ 외래키가 가리키는 기본키는 번호다(project.id, event_id. docs/CODE-TABLE-IDS.md). 웹과 호스트 사이는
 --   projectUid, eventUid 로 주고받고 호스트(ProjectCalendarDb)가 번호로 바꾼다.
 -- ★ 사람은 **이름 글자로만** 남긴다(사용자 FK 없음). 직원 퇴사, 휴지통 영구 삭제와 엮이지 않는다.
 -- ★ 시각은 모두 UTC DATETIME(3). 앱이 UTC 로 계산해 명시 대입한다(서버 기본값 없음).
 -- ★ 글자 상한: 메모만 8,000자, 나머지 글자 칸은 200자. 화면, 호스트(ProjectCalendarDb.Limits), 이 DDL 의 칸 폭이
 --   같은 숫자를 쓰고, 어긋나면 tests/project-calendar-host.test.mjs 가 실패한다. 넘으면 자르지 않고 거절한다.
--- ★ 이 네 표의 정의는 이관 조각 db/deploy/migrations/v16-project-calendar.sql 의 CREATE TABLE IF NOT EXISTS 와
+-- ★ 이 두 표의 정의는 이관 조각 db/deploy/migrations/v16-project-calendar.sql 의 CREATE TABLE IF NOT EXISTS 와
 --   **글자까지 같다**(작은따옴표만 두 겹). 한쪽만 고치면 시험이 실패한다. 그래서 정의 안에 -- 주석을 두지 않고
 --   설명은 COMMENT 로 적는다.
--- ★ 앱 계정 권한(grants-calendar.sql): rev 와 event 는 SELECT, INSERT, UPDATE(DELETE 없음, 소프트 삭제),
---   change 와 copy 는 SELECT, INSERT(지우지 않는 기록, 대응표 정리는 CASCADE). FK 동작은 권한 검사를 받지 않는다.
+-- ★ 앱 계정 권한(grants-calendar.sql): event 는 SELECT, INSERT, UPDATE(DELETE 없음, 소프트 삭제),
+--   change 는 SELECT, INSERT(지우지 않는 기록).
+-- ★ 과제별 감시점 표는 두지 않는다(2026-10-22 저녁 결정, 처음의 cal_project_rev 는 배포 전에 뺐다). 동시 수정은 일정 행의
+--   row_version 이, 재시도 중복은 이력의 (project_id, mutation_uid) UNIQUE 가, 과제 영구 삭제와의 경합은 FK RESTRICT 가 막는다.
 
 -- ---------------------------------------------------------------------
---  14. cal_project_rev: 과제별 동시성 감시점
--- ---------------------------------------------------------------------
--- 그 과제의 첫 공용 쓰기 때 INSERT ... ON DUPLICATE KEY UPDATE rev = rev + 1 로 생긴다. 공용 쓰기 트랜잭션의
---   **첫 문장**이 이 ODKU 다(개인의 cal_user_rev 규칙과 같다). 과제 단위로 쓰기를 직렬화한다.
--- 과제 영구 삭제 때 CASCADE 로 함께 지워진다. 공용 일정이 있는 과제는 휴지통이 먼저 거부하고(ProjectDb),
---   최종 방어는 cal_project_event 의 RESTRICT(1451)다. 그래서 CASCADE 가 기록을 지우는 일은 없다.
-CREATE TABLE cal_project_rev (
-  project_id  INT UNSIGNED    NOT NULL           COMMENT '과제 번호(project.id)',
-  rev         BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '그 과제의 공용 쓰기마다 1씩 오른다',
-  updated_at  DATETIME(3)     NOT NULL           COMMENT '마지막 공용 쓰기 시각(UTC)',
-  PRIMARY KEY (project_id),
-  CONSTRAINT fk_cal_project_rev_project FOREIGN KEY (project_id) REFERENCES project(id)
-    ON UPDATE RESTRICT ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='과제 캘린더의 과제별 동시성 감시점. 공용 쓰기 트랜잭션의 첫 문장이 ODKU 로 잡는다. DELETE 권한 없음.';
-
--- ---------------------------------------------------------------------
---  15. cal_project_event: 과제 일정
+--  14. cal_project_event: 과제 일정
 -- ---------------------------------------------------------------------
 -- 범위 조회 조건: start_date <= @to AND COALESCE(end_date, start_date) >= @from.
 -- 종료일과 시각 규칙은 개인 cal_entry 와 같다: 하루 일정은 end_date NULL, 시각은 하루 일정에서만 둘 다 있거나 둘 다 없다.
--- 삭제는 is_deleted = 1(행을 지우지 않는다). 이력과 복사 대응표가 이 번호를 RESTRICT 로 붙든다.
+-- 삭제는 is_deleted = 1(행을 지우지 않는다). 이력이 이 번호를 RESTRICT 로 붙든다.
 CREATE TABLE cal_project_event (
-  event_id         INT UNSIGNED    NOT NULL AUTO_INCREMENT                                      COMMENT '내부 번호. 이력과 복사 대응표가 가리킨다',
+  event_id         INT UNSIGNED    NOT NULL AUTO_INCREMENT                                      COMMENT '내부 번호. 이력이 가리킨다',
   uid              CHAR(36)        CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL           COMMENT '클라이언트가 만든 안정 id. 생성 재시도의 멱등 키',
   project_id       INT UNSIGNED    NOT NULL                                                     COMMENT '과제 번호(project.id)',
   title            VARCHAR(200)    NOT NULL                                                     COMMENT '제목(앱 상한 200자)',
@@ -2083,7 +2067,7 @@ CREATE TABLE cal_project_event (
   COMMENT='과제 일정(과제 캘린더 공용 트랙). PK=event_id, 웹과의 정체성은 uid. 소프트 삭제, row_version 낙관적 잠금.';
 
 -- ---------------------------------------------------------------------
---  16. cal_project_change: 과제 일정 변경 이력(지우지 않는 기록)
+--  15. cal_project_change: 과제 일정 변경 이력(지우지 않는 기록)
 -- ---------------------------------------------------------------------
 -- 한 저장의 여러 필드 변경은 한 행이다. before_json, after_json 에는 **바뀐 필드만** 담는다
 --   (create 는 after 만, delete 는 before 만). 바뀐 것이 없는 저장은 행을 만들지 않는다.
@@ -2112,26 +2096,3 @@ CREATE TABLE cal_project_change (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='과제 일정 변경 이력(지우지 않는 기록). 한 저장의 바뀐 필드만 한 행. 바뀐 것이 없으면 행이 없다.';
 
--- ---------------------------------------------------------------------
---  17. cal_project_copy: 개인 복사 대응표
--- ---------------------------------------------------------------------
--- 같은 원본은 한 사람에게 한 번만(PK). 개인 복사본을 지우거나 XML 전량 교체로 cal_entry 가 지워지면
---   이 행이 CASCADE 로 사라져 다시 복사할 수 있다. 원본과 이력은 그대로다.
--- cal_entry.entry_no 는 삭제 뒤 재사용된다(계약 H-1). CASCADE 로 대응표가 먼저 사라지므로 재사용된 번호가
---   옛 대응을 물려받지 않는다. 사람은 cal_entry 를 거쳐 묶여(cal_entry.user_id RESTRICT) 휴지통 인력 판정을 고칠 필요가 없다.
-CREATE TABLE cal_project_copy (
-  user_id                SMALLINT UNSIGNED NOT NULL                                             COMMENT '복사한 사람(cal_entry 를 거쳐 app_user 에 묶인다)',
-  event_id               INT UNSIGNED      NOT NULL                                             COMMENT '원본 과제 일정 번호',
-  entry_no               INT UNSIGNED      NOT NULL                                             COMMENT '만든 개인 일정 번호(cal_entry.entry_no)',
-  project_name_snapshot  VARCHAR(200)      NOT NULL                                             COMMENT '복사할 때의 과제 이름(출처 표시)',
-  source_row_version     BIGINT UNSIGNED   NOT NULL                                             COMMENT '복사한 원본의 판',
-  copied_at              DATETIME(3)       NOT NULL                                             COMMENT '복사한 시각(UTC)',
-  PRIMARY KEY (user_id, event_id),
-  UNIQUE KEY uq_cal_project_copy_entry (user_id, entry_no),
-  KEY ix_cal_project_copy_event (event_id),
-  CONSTRAINT fk_cal_project_copy_event FOREIGN KEY (event_id) REFERENCES cal_project_event(event_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT fk_cal_project_copy_entry FOREIGN KEY (user_id, entry_no) REFERENCES cal_entry(user_id, entry_no)
-    ON UPDATE RESTRICT ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT='과제 일정을 개인 일정으로 복사한 대응. 같은 원본은 한 번만. 개인 일정이 지워지면 CASCADE 로 사라져 다시 복사할 수 있다.';

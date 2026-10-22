@@ -2458,17 +2458,13 @@ body:not(.pc-on) #pcView{display:none !important}
 .pc-list{list-style:none;display:flex;flex-direction:column;gap:2px}
 .pc-row{display:flex;align-items:flex-start;gap:7px;padding:6px;border-radius:var(--r-sm);min-width:0}
 .pc-row:hover{background:var(--hover-bg)}
-.pc-row.solo{background:var(--accent-soft)}
 .pc-row input{width:15px;height:15px;flex:none;accent-color:var(--c);margin-top:3px;cursor:pointer}
 .pc-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);flex:none;margin-top:5px}
 .pc-nm{flex:1;min-width:0;display:flex;flex-direction:column}
-.pc-name{border:none;background:none;font:inherit;font-size:var(--fs-body);color:var(--text);text-align:left;cursor:pointer;padding:0;line-height:20px;border-radius:4px}
-.pc-name:hover{text-decoration:underline;color:var(--accent-2)}
-.pc-row.solo .pc-name{font-weight:700;color:var(--accent-2)}
+.pc-name{font-size:var(--fs-body);color:var(--text);line-height:20px;overflow-wrap:anywhere}   /* 글자일 뿐이다(누르는 동작 없음). 표시와 숨김은 체크만 한다 */
 .pc-state{font-size:var(--fs-micro);color:var(--warn-text);font-weight:600}
 .pc-meta{font-size:var(--fs-micro);color:var(--muted);flex:none;line-height:20px}
 .pc-hint{font-size:var(--fs-micro);color:var(--faint-text);line-height:1.5;padding:0 4px}
-.pc-solo-note{font-size:var(--fs-meta);color:var(--accent-2);background:var(--accent-soft);border-radius:var(--r-sm);padding:6px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 /* 오른쪽 달력 영역 */
 .pc-area{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px;position:relative}
 .pc-bar1,.pc-bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none}
@@ -2544,27 +2540,25 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pc-wcells .pc-ev.timed{height:auto;min-height:38px}
 .pc-l1b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding-left:12px;line-height:1.3;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;text-align:left}
 .pc-wnone{grid-column:1 / -1;background:var(--panel);padding:30px;text-align:center;color:var(--muted)}
-/* 미리보기와 그날 일정 목록(팝오버) */
-.pc-pop{position:fixed;z-index:45;width:320px;max-width:calc(100vw - 16px);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:12px 14px;font-size:var(--fs-body)}
-.pc-pop-top{display:flex;align-items:center;gap:7px;margin-bottom:6px}
-.pc-pop-proj{font-size:var(--fs-meta);color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-pop-top .x{font-size:18px;margin:-4px -6px -4px 0}
-.pc-pop-title{font-size:var(--fs-title);font-weight:700;line-height:1.4}
-.pc-pop-when{display:flex;align-items:center;gap:5px;margin-top:4px;font-weight:600}
-.pc-pop-when .ic,.pc-pop-loc .ic{width:14px;height:14px;color:var(--accent)}
-.pc-pop-loc{display:flex;align-items:center;gap:5px;margin-top:3px;color:var(--muted)}
-.pc-pop-memo{margin-top:8px;color:var(--muted);white-space:pre-wrap;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;border-left:2px solid var(--line-2);padding-left:8px}
-.pc-pop-cut{font-size:var(--fs-micro);color:var(--faint-text);margin-top:2px;padding-left:10px}
-.pc-pop-acts{margin-top:10px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-.pc-dl{list-style:none;display:flex;flex-direction:column;gap:2px;margin-top:4px;max-height:260px;overflow:auto}
-.pc-dl-row{display:flex;align-items:center;gap:6px;border-radius:var(--r-sm)}
-.pc-dl-row:hover{background:var(--hover-bg)}
-.pc-dl-main{flex:1;min-width:0;display:flex;align-items:flex-start;gap:7px;border:none;background:none;font:inherit;color:var(--text);text-align:left;padding:5px 4px;cursor:pointer;border-radius:var(--r-sm)}
-.pc-dl-main .pc-edot{margin-top:5px}
-.pc-dl-txt{display:flex;flex-direction:column;min-width:0}
-.pc-dl-meta{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pc-dl-t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pc-dl-row .link{margin:0 4px 0 0;flex:none}
+/* 그날 일정 목록(팝오버) */
+.pc-pop{position:fixed;z-index:45;width:288px;max-width:calc(100vw - 16px);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:12px 14px;font-size:var(--fs-body)}
+.pc-pop-top{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
+.pc-pop-title{font-size:var(--fs-title);font-weight:700;line-height:1.4;flex:1;min-width:0}
+.pc-pop-n{font-size:var(--fs-meta);color:var(--muted);flex:none;white-space:nowrap}
+/* 그날 일정 목록의 줄은 개인 달력 칩(.chip, .chip-timed, .cdot, .chip-t, .ctitle)을 그대로 쓴다.
+   여러 날과 날짜만 있는 일정은 과제 색으로 옅게 채운 막대(왼쪽 색 막대, 굵은 제목), 시간 일정은 색 점과 굵은 시각.
+   과제 이름은 줄에 쓰지 않는다(색이 과제를 가리키고, 과제명과 기간 또는 시각은 title 과 aria-label 에 있다). 줄 전체가 상세를 여는 단추다. */
+.pc-dl{list-style:none;display:flex;flex-direction:column;gap:3px;max-height:280px;overflow:auto;padding:2px}
+.pc-dl > li{display:flex;min-width:0}
+.pc-dl .chip{flex:1;min-width:0;display:flex;align-items:center;gap:5px;border-top:0;border-right:0;border-bottom:0;font:inherit;font-size:var(--fs-body);line-height:1.35;text-align:left;padding:4px 8px;color:var(--text)}
+.pc-dl .chip .ctitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-dl .chip:not(.chip-timed) .ctitle{font-weight:700}
+.pc-dl .chip.chip-timed{padding-left:5px}
+.pc-dl .chip.chip-timed:hover{background:var(--hover-bg) !important;filter:none}
+.pc-dl .chip.chip-timed .chip-t{display:block;font-size:var(--fs-body);font-weight:700}
+.pc-dl .chip:focus-visible{outline:2px solid var(--accent);outline-offset:0}
+.pc-dl .chip.hit{box-shadow:0 0 0 2px var(--accent)}   /* 눌러서 연 일정 */
+.pc-dl .chip.chip-timed.hit{background:var(--accent-soft) !important}
 .pc-dl-empty{color:var(--muted);padding:8px 4px}
 .pc-dl-foot{margin-top:8px;display:flex;justify-content:flex-end}
 /* 좁은 창: 과제 목록은 단추 아래로 펼친다 */
@@ -2580,7 +2574,6 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pcd-memo{white-space:pre-wrap;line-height:1.65;font-size:var(--fs-emph);max-height:260px;overflow:auto}
 .pcd-memo.none{color:var(--faint-text)}
 .pcd-note{margin-top:14px;font-size:var(--fs-meta);color:var(--muted);background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;line-height:1.6}
-.pcd-copied{font-size:var(--fs-meta);color:var(--ok)}
 /* 등록과 수정 폼(한 화면) */
 .pcf-modal{width:min(520px,100%)}
 .pcf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:6px}
@@ -2639,9 +2632,6 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pcc-mb.clamp > div{max-height:calc(3em + 12px);overflow:hidden}
 .pcc-exp{align-self:flex-start;margin-top:2px}
 .pcc-empty{padding:40px 10px;text-align:center;color:var(--muted)}
-/* 개인 탭: 과제 캘린더에서 복사한 개인 일정의 출처 배지 */
-.badge.pc-copy-badge{background:var(--accent-soft);color:var(--accent-2);max-width:none;display:inline-flex;align-items:center;gap:4px}
-.badge.pc-copy-badge .ic{width:12px;height:12px}
 @media (max-width:760px){
   .pc-area{padding:8px 10px}
   .pc-wscroll{--nw:96px;--cw:76px}
@@ -5573,7 +5563,7 @@ window.__applyState = function(json, meta){
     //  ★ 버전 관문(VERSION-GATE §3) — 부팅 조회가 관문을 지났다. meta.gate 가 막힘이면 카드를 띄우고,
     //    지난 설치 실패(installFailed)만 떠 있었다면 서버는 멀쩡하니 카드를 걷고 안내 한 줄로 바꾼다(vgOnBootApplied).
     if(!PEER) vgOnBootApplied(meta);
-    //  과제 탭: 계정이 정해지면 그 사람의 마지막 탭을 되살리고, 개인 카드의 복사 배지를 위해 과제 목록을 한 번 받는다(pcOnBootApplied).
+    //  과제 탭: 계정이 정해지면 그 사람의 마지막 탭을 되살린다(pcOnBootApplied). 개인 탭이면 과제 캘린더를 읽지 않는다.
     if(!PEER) pcOnBootApplied();
     //  기본 과제를 방금 만들었으면 부팅이 끝난 **뒤에** 저장한다(위 보장 주석). 연결 상태(bootOk)가 선 다음이라 잠금 판정이 맞다.
     if(!PEER && __bootDefaultsDirty) setTimeout(bootDefaultsFlush, 0);
@@ -11159,7 +11149,6 @@ function cardHtml(e, overlaps){
       ${git?`<span class="badge badge-git" title="커밋에서 가져온 기록(Git·SVN)">${ICON.git} 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
       ${ovlBadge}
-      ${pcCopyBadge(e.id)}
     </div>
     <div class="card-title">${esc(e.title)}</div>
     ${whenRow}
@@ -19439,7 +19428,7 @@ function bind(){
         if(el && !el.classList.contains('hidden')){ el.classList.add('hidden'); closedMenu = true; }
       }
       if(closedMenu) return;
-      if(pcEscape()){ ev.preventDefault(); return; }   // 과제 탭의 팝오버(미리보기, 그날 일정 목록)와 좁은 창 과제 목록
+      if(pcEscape()){ ev.preventDefault(); return; }   // 과제 탭의 그날 일정 목록과 좁은 창 과제 목록
       if(panelSheetOpen){ closeSheet(); ev.preventDefault(); return; }          // 좁은 폭 하단 시트 먼저
       if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 맨 앞에 띄우기 해제
       return;
@@ -19922,7 +19911,9 @@ async function validateExistingRepoFor(kind, path){
  *  ★ 세대 번호(PCAL.gen, PCAL.bootGen, PCAL.rc.gen)로 늦게 온 옛 회신을 버린다. 계정이 바뀌면 상태를 통째로 비운다.
  *  ★ 기억하는 것(localStorage, 계정별 키 tc_pcal:<login_id>): 마지막 탭, 월간과 주간, 표시 선택(설정 없음과 빈 선택을 구분),
  *    메모 첫 줄 표시. 날짜는 기억하지 않는다(켤 때 오늘).
- *  ★ 판정(내 과제에 있는 공식 과제인가, 쓸 수 있나)은 서버가 한다. 화면은 부트스트랩 회신의 목록만 쓰고 state.categories 로 계산하지 않는다. */
+ *  ★ 판정(내 과제에 있는 공식 과제인가, 쓸 수 있나)은 서버가 한다. 화면은 부트스트랩 회신의 목록만 쓰고 state.categories 로 계산하지 않는다.
+ *  ★ 2026-10-22 저녁 검토 반영(기획 §6.7): 달력에 보이는 과제는 체크로만 정한다(단독 보기 없음). 달력에서 무엇을 누르든 그날 일정 목록,
+ *    목록의 줄은 상세 창이다(미리보기 없음). 개인 일정에 등록은 그때 내용을 찍은 사본이라 원본과 잇는 기록과 표시가 없다. */
 //  글자 상한. 호스트 ProjectCalendarDb.Limits 와 DDL 칸 폭이 같은 숫자다(tests/project-calendar-web.test.mjs 가 대조한다, 기획 §4.1).
 const PCAL_LIMITS = Object.freeze({ title: 200, location: 200, memo: 8000 });
 //  이 화면이 보내는 명령 여섯(기획 §5.4). pcReq 가 이 밖의 이름을 보내지 않는다.
@@ -19931,14 +19922,12 @@ const PCAL_CMDS = Object.freeze(['projectCalendarBootstrap', 'projectCalendarLoa
 const PCAL = {
   user: null,           // 설정을 읽은 계정. 다른 계정이 들어오면 상태를 비운다
   inited: false,
-  tab: 'personal', view: 'month', anchor: todayYmd(), solo: null, memoLine: false,
-  sel: null, known: [], // 표시 선택(null = 설정 없음 = 전체), 지난번에 받은 과제 목록(새로 들어온 과제를 켜려고)
+  tab: 'personal', view: 'month', anchor: todayYmd(), memoLine: false,
+  sel: null, known: [], // 표시 선택(null = 설정 없음 = 전체), 지난번에 받은 과제 목록(새로 들어온 과제를 켜려고). 달력에 보이는 과제는 이 체크로만 정한다
   projects: [], loaded: false, booting: false, bootErr: '',
   events: [], loading: false, loadErr: '', checkedAt: 0,
-  copies: new Map(),    // 원본 eventUid → 내 개인 일정 uid(부트스트랩 copies, 개인 탭 배지)
-  copyEntries: new Set(),
   gen: 0, bootGen: 0, actAt: 0,
-  pop: null,            // { el, anchor }
+  pop: null,            // 그날 일정 목록 { el, anchor }
   drawer: false,
   form: null,           // 등록과 수정 폼
   detail: null,         // 상세 창의 eventUid
@@ -20092,7 +20081,7 @@ function pcDiffRows(action, before, after){
 }
 //  'M월 D일 (요일)'
 function pcMd(ds){ const d = parseYmd(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + PC_DOW[d.getDay()] + ')'; }
-//  기간과 시각 한 줄(미리보기, 상세, 확인 창).
+//  기간과 시각 한 줄(상세, 확인 창).
 function pcWhenText(e){
   if(e.startDate === e.endDate) return pcMd(e.startDate) + (e.startTime ? ' ' + e.startTime + ' ~ ' + (e.endTime || '') : '');
   return pcMd(e.startDate) + ' ~ ' + pcMd(e.endDate) + ', ' + (diffDays(e.startDate, e.endDate) + 1) + '일';
@@ -20141,8 +20130,8 @@ function pcOn(){ return PCAL.tab === 'project'; }
 function pcProj(uid){ return PCAL.projects.find(p => p.projectUid === uid) || null; }
 function pcEv(uid){ return PCAL.events.find(e => e.eventUid === uid) || null; }
 function pcOrder(){ const o = {}; PCAL.projects.forEach((p, i) => { o[p.projectUid] = i; }); return o; }
+//  달력에 보이는 과제 = 왼쪽 목록에서 체크한 과제(목록 순서). 이름 누름 같은 다른 길은 없다(2026-10-22 저녁 단독 보기 제거).
 function pcVisible(){
-  if(PCAL.solo) return PCAL.projects.filter(p => p.projectUid === PCAL.solo);
   const s = new Set(PCAL.sel || []);
   return PCAL.projects.filter(p => s.has(p.projectUid));
 }
@@ -20168,9 +20157,9 @@ function pcResetFor(user){
   PCAL.user = user;
   PCAL.gen++; PCAL.bootGen++; PCAL.rc.gen++;
   const p = pcPrefsLoad();
-  Object.assign(PCAL, { view: p.view, anchor: todayYmd(), solo: null, memoLine: p.memo, sel: p.sel, known: p.known,
+  Object.assign(PCAL, { view: p.view, anchor: todayYmd(), memoLine: p.memo, sel: p.sel, known: p.known,
     projects: [], loaded: false, booting: false, bootErr: '', events: [], loading: false, loadErr: '', checkedAt: 0,
-    copies: new Map(), copyEntries: new Set(), drawer: false, detail: null });
+    drawer: false, detail: null });
   return p;
 }
 
@@ -20193,7 +20182,7 @@ function pcSetTab(tab, opt){
     pcRender();
     if(was !== 'project' || (opt && opt.force)) pcRefresh(true);
   } else if(was === 'project'){
-    //  숨겨진 동안 그린 개인 달력은 칸 높이를 재지 못했다(fitChips). 돌아오면 다시 그린다(복사 배지도 함께).
+    //  숨겨진 동안 그린 개인 달력은 칸 높이를 재지 못했다(fitChips). 돌아오면 다시 그린다.
     try{ renderAll(); }catch(_){}
   }
 }
@@ -20218,10 +20207,6 @@ async function pcBootstrap(opt){
   }
   const d = r.data || {};
   PCAL.projects = (Array.isArray(d.projects) ? d.projects : []).map(pcProjFromDto).filter(p => p.projectUid);
-  PCAL.copies = new Map(); PCAL.copyEntries = new Set();
-  for(const c of (Array.isArray(d.copies) ? d.copies : [])){
-    if(c && typeof c.eventUid === 'string' && typeof c.entryUid === 'string' && c.eventUid && c.entryUid){ PCAL.copies.set(c.eventUid, c.entryUid); PCAL.copyEntries.add(c.entryUid); }
-  }
   const lim = d.limits;
   if(lim && (lim.title !== PCAL_LIMITS.title || lim.location !== PCAL_LIMITS.location || lim.memo !== PCAL_LIMITS.memo)){
     try{ console.warn('과제 캘린더 글자 상한이 호스트와 다르다', lim, PCAL_LIMITS); }catch(_){}
@@ -20229,10 +20214,8 @@ async function pcBootstrap(opt){
   const uids = PCAL.projects.map(p => p.projectUid);
   PCAL.sel = pcSelReconcile(PCAL.sel, PCAL.known, uids);
   PCAL.known = uids;
-  if(PCAL.solo && uids.indexOf(PCAL.solo) < 0) PCAL.solo = null;
   PCAL.loaded = true; PCAL.bootErr = '';
   pcPrefsSave();
-  if(!pcOn()){ try{ renderDayPanel(); }catch(_){} }   // 개인 탭의 복사 배지
   return true;
 }
 async function pcLoad(){
@@ -20249,7 +20232,9 @@ async function pcLoad(){
   PCAL.events = (Array.isArray(d.events) ? d.events : []).map(pcFromDto).filter(e => e.eventUid && !e.deleted && e.startDate);
   for(const p of (Array.isArray(d.projects) ? d.projects : [])){ const q = p && pcProj(p.projectUid); if(q) q.writable = p.writable === true; }
   PCAL.loadErr = ''; PCAL.checkedAt = Date.now();
-  if(pcOn()) pcRender();
+  //  창 복귀 새로고침과 목록 열기가 겹치면 다시 그리기가 방금 연 목록을 닫는다. 열려 있던 날짜 목록은 새 데이터로 다시 연다.
+  const keepDay = PCAL.pop && PCAL.pop.day;
+  if(pcOn()){ pcRender(); if(keepDay) pcReopenDay(keepDay); }
   //  판정에서 빠진 과제(내 과제에서 뺐다)가 있으면 목록을 다시 받는다. 다시 받은 목록에는 그 과제가 없어 같은 일이 되풀이되지 않는다.
   if(Array.isArray(d.excluded) && d.excluded.length){ if(await pcBootstrap({ quiet: true })){ if(pcOn()) pcRender(); pcLoad(); } }
   return true;
@@ -20263,14 +20248,15 @@ function pcOnActivate(){
   PCAL.actAt = now;
   pcLoad();
 }
-//  부팅 주입(__applyState)마다 부른다. 계정이 처음 정해지면 그 사람의 마지막 탭을 되살리고, 복사 배지를 위해 목록을 한 번 받는다.
+//  부팅 주입(__applyState)마다 부른다. 계정이 처음 정해지면 그 사람의 마지막 탭을 되살린다.
+//  개인 탭이면 과제 캘린더를 읽지 않는다(개인 탭에는 과제 캘린더와 이어진 표시가 없다. 복사본은 보통 개인 일정이다).
 function pcOnBootApplied(){
   if(PEER || SUBWIN || !HOST) return;
   const me = pkMe();
   if(!me || me === PCAL.user) return;
   const p = pcResetFor(me);
   if(p.tab === 'project') pcSetTab('project', { quiet: true, force: true });
-  else { if(pcOn()) pcSetTab('personal', { quiet: true }); pcBootstrap({ quiet: true }); }
+  else if(pcOn()) pcSetTab('personal', { quiet: true });
 }
 
 /* ── 그리기 ─────────────────────────────────────────────────── */
@@ -20322,24 +20308,23 @@ function pcRestoreFocus(v, fk){
 }
 function pcSideHtml(inDrawer){
   const all = PCAL.projects, n = (PCAL.sel || []).length, m = all.length;
-  const solo = PCAL.solo && pcProj(PCAL.solo);
   const sel = new Set(PCAL.sel || []);
   const tag = inDrawer ? 'div' : 'aside';
   return '<' + tag + ' class="pc-side' + (inDrawer ? ' in-drawer' : '') + '" aria-label="과제 목록">'
     + '<div class="pc-side-h"><b>과제</b><span class="pc-count" aria-label="표시 ' + n + '개, 전체 ' + m + '개">' + n + ' / ' + m + '</span></div>'
-    + (solo ? '<div class="pc-solo-note"><span>단독 보기 중</span><button type="button" class="link" data-act="unsolo" data-fk="unsolo2">전체 보기로</button></div>' : '')
-    + '<div class="pc-side-btns"><button type="button" class="btn sm" data-act="selAll" data-fk="selAll"' + (n === m && !solo ? ' disabled' : '') + '>전체 선택</button>'
-    + '<button type="button" class="btn sm" data-act="selNone" data-fk="selNone"' + (n === 0 && !solo ? ' disabled' : '') + '>전체 해제</button></div>'
+    + '<div class="pc-side-btns"><button type="button" class="btn sm" data-act="selAll" data-fk="selAll"' + (n === m ? ' disabled' : '') + '>전체 선택</button>'
+    + '<button type="button" class="btn sm" data-act="selNone" data-fk="selNone"' + (n === 0 ? ' disabled' : '') + '>전체 해제</button></div>'
     + '<ul class="pc-list">' + all.map(p => {
-      const on = sel.has(p.projectUid), isSolo = PCAL.solo === p.projectUid, u = esc(p.projectUid);
-      return '<li class="pc-row' + (isSolo ? ' solo' : '') + '" style="--c:' + p.color + '">'
+      const on = sel.has(p.projectUid), u = esc(p.projectUid);
+      //  과제 이름은 글자일 뿐이다(누르는 동작 없음). 보일지 말지는 체크만 정한다.
+      return '<li class="pc-row" style="--c:' + p.color + '">'
         + '<input type="checkbox" data-act="toggle" data-uid="' + u + '" data-fk="ck-' + u + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(p.name) + ' 달력에 표시">'
         + '<span class="pc-dot" aria-hidden="true"></span>'
-        + '<span class="pc-nm"><button type="button" class="pc-name" data-act="solo" data-uid="' + u + '" data-fk="nm-' + u + '" aria-pressed="' + isSolo + '" title="' + (isSolo ? '전체 보기로 돌아가기' : '이 과제만 보기') + '">' + esc(p.name) + '</button>'
+        + '<span class="pc-nm"><span class="pc-name">' + esc(p.name) + '</span>'
         + (p.writable ? '' : '<span class="pc-state">종료, 읽기 전용</span>') + '</span>'
         + '<span class="pc-meta" title="이 과제를 내 과제에 넣은 사람 수">' + p.members + '명</span></li>';
     }).join('') + '</ul>'
-    + '<p class="pc-hint">체크는 달력에 보일지만 정합니다. 내 과제에서 빠지지 않습니다. 이름을 누르면 그 과제만 봅니다.</p>'
+    + '<p class="pc-hint">체크하면 달력에 보이고, 해제하면 숨깁니다. 내 과제에서 빠지지 않습니다.</p>'
     + '</' + tag + '>';
 }
 function pcRangeLabel(){
@@ -20348,16 +20333,17 @@ function pcRangeLabel(){
   return a.getMonth() === b.getMonth() ? (a.getMonth() + 1) + '월 ' + a.getDate() + '일 ~ ' + b.getDate() + '일'
     : (a.getMonth() + 1) + '월 ' + a.getDate() + '일 ~ ' + (b.getMonth() + 1) + '월 ' + b.getDate() + '일';
 }
-function pcCanNew(){ const solo = PCAL.solo && pcProj(PCAL.solo); return solo ? solo.writable : PCAL.projects.some(p => p.writable); }
+//  상단 "일정 등록": 쓸 수 있는 과제가 하나라도 있으면(폼에서 과제를 고른다).
+function pcCanNew(){ return PCAL.projects.some(p => p.writable); }
+//  그날 일정 목록의 "이 날짜에 일정 등록": 지금 달력에 보이는 과제 중 쓸 수 있는 것이 있을 때만.
+function pcCanNewVisible(){ return pcVisible().some(p => p.writable); }
 function pcBarHtml(narrow){
-  const solo = PCAL.solo && pcProj(PCAL.solo);
   const shown = pcVisible().length, m = PCAL.projects.length, n = (PCAL.sel || []).length;
   const wk = PCAL.view === 'week';
   const head = narrow
     ? '<button type="button" class="btn pc-scope" id="pcScope" data-act="drawer" data-fk="drawer" aria-expanded="' + !!PCAL.drawer + '" aria-haspopup="dialog" title="과제 목록 열기">'
-      + '<span class="pc-scope-t">' + (solo ? esc(solo.name) : '전체 과제') + '</span><span class="pc-count">' + n + ' / ' + m + '</span>' + PC_IC.down + '</button>'
-    : '<div class="pc-titlebox"><h2 class="pc-title">' + (solo ? esc(solo.name) + (solo.writable ? '' : '<span class="pc-ro">종료, 읽기 전용</span>') : '전체 과제') + '</h2>'
-      + (solo ? '<button type="button" class="link" data-act="unsolo" data-fk="unsolo">전체 보기로</button>' : '<span class="pc-sub">' + shown + '개 과제 표시</span>') + '</div><span class="spacer"></span>';
+      + '<span class="pc-scope-t">전체 과제</span><span class="pc-count">' + n + ' / ' + m + '</span>' + PC_IC.down + '</button>'
+    : '<div class="pc-titlebox"><h2 class="pc-title">전체 과제</h2><span class="pc-sub">' + shown + '개 과제 표시</span></div><span class="spacer"></span>';
   return '<div class="pc-bar1">' + head
     + '<button type="button" class="btn" id="pcChanges" data-act="changes" data-fk="changes" title="최근 변경: 누가 언제 무엇을 바꿨는지">' + PC_IC.history + '<span class="btn-label"> 최근 변경</span></button>'
     + '<button type="button" class="btn primary pc-w" id="pcNew" data-act="new" data-fk="new"' + (pcCanNew() ? '' : ' disabled title="종료된 과제는 읽기 전용입니다"') + '>＋ 일정 등록</button>'
@@ -20407,7 +20393,7 @@ function pcVisEvents(projectUid){
 function pcRenderMonth(body){
   const R = pcMonthRange(PCAL.anchor), today = todayYmd();
   body.innerHTML = '<div class="weekdays" role="presentation">' + PC_DOW.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
-    + '<div class="pc-grid" id="pcGrid" role="grid" aria-label="과제 월 달력(날짜를 누르면 그날 일정 목록)"></div>';
+    + '<div class="pc-grid" id="pcGrid" role="grid" aria-label="과제 월 달력(날짜나 일정을 누르면 그날 일정 목록)"></div>';
   const grid = document.getElementById('pcGrid');
   const weekH = (grid.clientHeight - (R.weeks - 1)) / R.weeks;
   const evs = pcVisEvents(), order = pcOrder();
@@ -20486,7 +20472,8 @@ function pcSelectDate(ds){
   v.querySelectorAll('[data-date="' + ds + '"], [data-hdate="' + ds + '"]').forEach(x => { x.classList.add('sel'); if(x.classList.contains('pc-day')) x.tabIndex = 0; });
 }
 
-/* ── 팝오버(미리보기, 그날 일정 목록) ─────────────────────────────── */
+/* ── 팝오버(그날 일정 목록) ─────────────────────────────────────── */
+//  달력에서 무엇을 누르든(막대, 시간 일정, 칸의 빈 곳, 날짜 숫자, "+n") 그 날짜의 같은 목록이 열린다(2026-10-22 저녁, 미리보기 없음).
 function pcPlacePop(pop, anchor, x){
   const vw = window.innerWidth || 800, vh = window.innerHeight || 600;
   const a = (anchor && anchor.getBoundingClientRect) ? anchor.getBoundingClientRect() : { left: 8, top: 8, bottom: 8 };
@@ -20516,41 +20503,57 @@ function pcClosePop(silent){
   if(!silent && P.anchor && document.body.contains(P.anchor)){ try{ P.anchor.focus(); }catch(_){} }
   return true;
 }
-function pcProjLine(p){
-  return '<span class="pc-dot" style="--c:' + p.color + ';margin-top:0" aria-hidden="true"></span><span class="pc-pop-proj">' + esc(p.name) + (p.writable ? '' : ', 읽기 전용') + '</span>';
-}
-function pcOpenPreview(uid, anchor, x){
-  const e = pcEv(uid); if(!e) return;
+//  그날 일정 목록의 한 줄(개인 달력 칩 모양). 여러 날과 날짜만 있는 일정은 과제 색 막대, 시간 일정은 색 점과 굵은 시각.
+//  과제 이름은 줄에 쓰지 않는다. "과제명, 기간 또는 시각" 은 title 과 aria-label 에 둔다. 줄 전체가 상세를 여는 단추다.
+function pcDayRowHtml(e, hit){
   const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
-  const memo = String(e.memo || ''), lines = memo.split('\n');
-  const html = '<div class="pc-pop-top">' + pcProjLine(p) + '<button type="button" class="x" data-act="popClose" aria-label="미리보기 닫기">×</button></div>'
-    + '<div class="pc-pop-title">' + esc(e.title) + '</div>'
-    + '<div class="pc-pop-when">' + (e.startTime ? ICON.clock : ICON.calendar) + ' ' + esc(pcWhenText(e)) + '</div>'
-    + (e.location ? '<div class="pc-pop-loc">' + ICON.pin + ' ' + esc(e.location) + '</div>' : '')
-    + (memo.trim() ? '<div class="pc-pop-memo">' + esc(memo) + '</div>' + (lines.length > 3 || memo.length > 120 ? '<div class="pc-pop-cut">메모 일부만 보입니다</div>' : '') : '')
-    + '<div class="pc-pop-acts">' + (p.writable ? '<button type="button" class="btn sm pc-w" data-act="edit" data-ev="' + esc(uid) + '">수정</button>' : '')
-    + '<button type="button" class="btn sm" data-act="detail" data-ev="' + esc(uid) + '">상세와 전체 메모 보기</button></div>';
-  const pop = pcShowPop(html, '일정 미리보기: ' + e.title, anchor, x);
-  if(pop){ const f = pop.querySelector('[data-act="edit"]') || pop.querySelector('[data-act="detail"]'); if(f) try{ f.focus(); }catch(_){} }
+  const col = p.color, timed = !!e.startTime && e.startDate === e.endDate;
+  const when = e.startDate === e.endDate ? (e.startTime ? e.startTime + ' ~ ' + (e.endTime || '') : fmtShort(e.startDate) + ' 하루') : fmtShort(e.startDate) + ' ~ ' + fmtShort(e.endDate);
+  const m1 = pcFirstLine(e.memo);
+  const mi = m1 ? '<span class="pc-mi" title="메모 있음">' + PC_IC.memo + '</span>' : '';
+  const tip = p.name + ', ' + when;
+  const aria = tip + ', ' + e.title + (m1 ? ', 메모 있음' : '') + (p.writable ? '' : ', 읽기 전용');
+  const cls = 'chip' + (timed ? ' chip-timed' : '') + (hit ? ' hit' : '');
+  const style = timed ? '' : ' style="border-left-color:' + col + ';background:' + tint(col, 0.2) + '"';
+  const inner = timed
+    ? '<span class="cdot" style="background:' + col + '"></span><span class="chip-t">' + esc(e.startTime) + '</span><span class="ctitle">' + esc(e.title) + '</span>' + mi
+    : '<span class="ctitle">' + esc(e.title) + '</span>' + mi;
+  return '<li><button type="button" class="' + cls + '" data-act="dlOpen" data-ev="' + esc(e.eventUid) + '"' + style
+    + ' title="' + esc(tip) + '" aria-label="' + esc(aria) + '"' + (hit ? ' aria-current="true"' : '') + '>' + inner + '</button></li>';
 }
-//  그날 일정 목록(칸의 빈 곳이나 날짜 숫자, "+n"). 줄마다 과제 색 점, 과제명, 시각 또는 기간, 제목, [수정]. 맨 아래 "이 날짜에 일정 등록".
-function pcOpenDayList(ds, anchor, projectUid){
+//  그날 일정 목록. 머리 "M월 D일 (요일)" 과 오른쪽 "일정 n건", 줄(pcDayRowHtml), 맨 아래 "이 날짜에 일정 등록".
+//  o.hit: 눌러서 연 일정(그 줄을 강조하고 초점을 둔다). o.projectUid: 주간의 과제 행에서 열었으면 등록 폼에 그 과제를 미리 고른다(목록은 같다).
+function pcOpenDayList(ds, anchor, opt){
+  const o = opt || {};
   const order = pcOrder();
-  const evs = pcVisEvents(projectUid).filter(e => e.startDate <= ds && e.endDate >= ds).sort((a, b) => pcEvSort(a, b, order));
-  const rows = evs.map(e => {
-    const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
-    const when = e.startDate === e.endDate ? (e.startTime ? e.startTime + ' ~ ' + (e.endTime || '') : '하루') : fmtShort(e.startDate) + ' ~ ' + fmtShort(e.endDate);
-    return '<li class="pc-dl-row"><button type="button" class="pc-dl-main" data-act="dlOpen" data-ev="' + esc(e.eventUid) + '"><span class="pc-edot" style="--c:' + p.color + '"></span>'
-      + '<span class="pc-dl-txt"><span class="pc-dl-meta">' + esc(p.name + ', ' + when) + '</span><span class="pc-dl-t">' + esc(e.title) + '</span></span></button>'
-      + (p.writable ? '<button type="button" class="link pc-w" data-act="edit" data-ev="' + esc(e.eventUid) + '">수정</button>' : '') + '</li>';
-  }).join('');
-  const canNew = projectUid ? !!(pcProj(projectUid) || {}).writable : pcCanNew();
-  const html = '<div class="pc-pop-top"><span class="pc-pop-title" style="flex:1">' + esc(pcMd(ds)) + '</span><span class="pc-pop-proj" style="flex:none">일정 ' + evs.length + '건</span>'
-    + '<button type="button" class="x" data-act="popClose" aria-label="닫기">×</button></div>'
-    + (evs.length ? '<ul class="pc-dl">' + rows + '</ul>' : '<div class="pc-dl-empty">이 날짜에 공용 일정이 없습니다.</div>')
-    + (canNew ? '<div class="pc-dl-foot"><button type="button" class="btn sm primary pc-w" data-act="newOn" data-date="' + ds + '"' + (projectUid ? ' data-proj="' + esc(projectUid) + '"' : '') + '>이 날짜에 일정 등록</button></div>' : '');
+  const evs = pcVisEvents().filter(e => e.startDate <= ds && e.endDate >= ds).sort((a, b) => pcEvSort(a, b, order));
+  const hit = o.hit && evs.some(e => e.eventUid === o.hit) ? o.hit : '';
+  const html = '<div class="pc-pop-top"><span class="pc-pop-title">' + esc(pcMd(ds)) + '</span><span class="pc-pop-n">일정 ' + evs.length + '건</span></div>'
+    + (evs.length ? '<ul class="pc-dl">' + evs.map(e => pcDayRowHtml(e, e.eventUid === hit)).join('') + '</ul>' : '<div class="pc-dl-empty">이 날짜에 공용 일정이 없습니다.</div>')
+    + (pcCanNewVisible() ? '<div class="pc-dl-foot"><button type="button" class="btn sm primary pc-w" data-act="newOn" data-date="' + ds + '"'
+      + (o.projectUid ? ' data-proj="' + esc(o.projectUid) + '"' : '') + '>이 날짜에 일정 등록</button></div>' : '');
   const pop = pcShowPop(html, pcMd(ds) + ' 일정 목록', anchor, null);
-  if(pop){ const f = pop.querySelector('.pc-dl-main') || pop.querySelector('[data-act="newOn"]') || pop.querySelector('.x'); if(f) try{ f.focus(); }catch(_){} }
+  if(!pop) return;
+  PCAL.pop.day = { ds, hit, projectUid: o.projectUid || '' };   // 다시 읽기가 화면을 새로 그려도 같은 목록을 다시 연다(pcLoad)
+  const f = pop.querySelector('.pc-dl .chip.hit') || pop.querySelector('.pc-dl .chip') || pop.querySelector('[data-act="newOn"]');
+  if(f) try{ f.focus(); }catch(_){}   // 목록 안에서 그 줄이 보이게 스크롤도 한다
+}
+function pcReopenDay(k){
+  const cell = document.querySelector('#pcView .pc-day[data-date="' + k.ds + '"]') || document.querySelector('#pcView .pc-wday[data-date="' + k.ds + '"]');
+  if(cell) pcOpenDayList(k.ds, cell, { hit: k.hit, projectUid: k.projectUid });
+}
+//  목록 안 방향키: 위와 아래(그리고 Home, End)로 줄과 맨 아래 등록 단추 사이를 옮긴다. 옮겼으면 true.
+function pcPopKey(ev){
+  const P = PCAL.pop; if(!P || !P.el.contains(ev.target)) return false;
+  const k = ev.key;
+  if(k !== 'ArrowDown' && k !== 'ArrowUp' && k !== 'Home' && k !== 'End') return false;
+  const items = [...P.el.querySelectorAll('.pc-dl .chip, [data-act="newOn"]')];
+  if(!items.length) return false;
+  const i = items.indexOf(document.activeElement);
+  let j = k === 'Home' ? 0 : k === 'End' ? items.length - 1 : (i < 0 ? 0 : i + (k === 'ArrowDown' ? 1 : -1));
+  j = Math.max(0, Math.min(items.length - 1, j));
+  try{ items[j].focus(); }catch(_){}
+  return true;
 }
 
 /* ── 상세 창 ──────────────────────────────────────────────────── */
@@ -20567,7 +20570,7 @@ function pcRenderDetail(){
   const e = pcEv(PCAL.detail);
   if(!e){ body.innerHTML = '<p class="pcd-note">이 일정은 지금 읽어 온 범위에 없습니다. 지워졌거나 다른 사람이 날짜를 옮겼을 수 있습니다.</p>'; foot.innerHTML = '<button type="button" class="btn" data-close>닫기</button>'; return; }
   const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
-  const ro = !p.writable, copied = PCAL.copies.has(e.eventUid);
+  const ro = !p.writable;
   const none = t => '<span class="none">' + t + '</span>';
   body.innerHTML = '<div class="pcd-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + (ro ? '<span class="pc-ro" style="margin-left:0">종료, 읽기 전용</span>' : '') + '</div>'
     + '<h3 class="pcd-title">' + esc(e.title) + '</h3>'
@@ -20582,10 +20585,10 @@ function pcRenderDetail(){
     + (e.memo ? '<div class="pcd-memo" tabindex="0">' + esc(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>')
     + '<p class="pcd-note">' + (ro ? '종료된 과제라 읽기 전용입니다. 고치거나 지울 수 없고, 개인 일정에 등록은 할 수 있습니다.'
       : '공용 일정입니다. 이 과제를 내 과제에 넣은 사람 누구나 고치고 지울 수 있습니다(글쓴이와 관계없이).') + '</p>';
-  foot.innerHTML = '<button type="button" class="btn danger pc-w" data-act="delete"' + (ro ? ' disabled' : '') + '>삭제</button><span class="spacer"></span>'
-    + (copied ? '<span class="pcd-copied">✓ 개인 탭에 있습니다</span><button type="button" class="btn" data-act="copy" disabled>' + ICON.copy + ' 개인 일정에 등록됨</button>'
-      : '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>')
-    + '<button type="button" class="btn primary pc-w" data-act="edit"' + (ro ? ' disabled' : '') + '>수정</button>';
+  //  단추: 수정(쓸 수 있는 과제만), 개인 일정에 등록(늘, 누를 때마다 확인 뒤 새 개인 일정), 삭제(쓸 수 있는 과제만).
+  foot.innerHTML = (ro ? '' : '<button type="button" class="btn danger pc-w" data-act="delete">삭제</button>') + '<span class="spacer"></span>'
+    + '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>'
+    + (ro ? '' : '<button type="button" class="btn primary pc-w" data-act="edit">수정</button>');
 }
 
 /* ── 등록과 수정 폼 ───────────────────────────────────────────── */
@@ -20602,7 +20605,8 @@ function pcOpenForm(opt){
   const $id = id => document.getElementById(id);
   $id('pcfHead').textContent = F.mode === 'edit' ? '과제 일정 수정' : '과제 일정 등록';
   const sel = $id('pcfProj');
-  const solo = PCAL.solo && pcProj(PCAL.solo);
+  //  미리 고르는 과제: 부른 곳이 준 과제(주간의 과제 행), 아니면 달력에 체크한 과제가 딱 하나이고 쓸 수 있을 때 그 과제. 그 밖은 "과제를 선택하세요".
+  const vis = pcVisible(), one = vis.length === 1 && vis[0].writable ? vis[0].projectUid : '';
   if(e){
     const p = pcProj(e.projectUid);
     sel.innerHTML = '<option value="' + esc(e.projectUid) + '">' + esc(p ? p.name : '') + '</option>';
@@ -20611,9 +20615,9 @@ function pcOpenForm(opt){
   } else {
     sel.innerHTML = '<option value="">과제를 선택하세요</option>' + PCAL.projects.filter(p => p.writable).map(p => '<option value="' + esc(p.projectUid) + '">' + esc(p.name) + '</option>').join('');
     sel.disabled = false;
-    const want = (o.projectUid && (pcProj(o.projectUid) || {}).writable) ? o.projectUid : (solo && solo.writable ? solo.projectUid : '');
+    const want = (o.projectUid && (pcProj(o.projectUid) || {}).writable) ? o.projectUid : one;
     sel.value = want;
-    $id('pcfProjHint').textContent = want ? '' : '전체 보기에서는 저장할 과제를 직접 고릅니다. 종료된 과제는 목록에 없습니다.';
+    $id('pcfProjHint').textContent = want ? '' : '저장할 과제를 고르세요. 종료된 과제는 목록에 없습니다.';
   }
   const d0 = o.date || PCAL.anchor || todayYmd();
   pcFormFill(e || { title: '', startDate: d0, endDate: d0, startTime: null, endTime: null, location: '', memo: '' });
@@ -20695,7 +20699,7 @@ async function pcSaveForm(){
     PCAL.form = null;
     const ov = document.getElementById('pcFormModal'); if(ov) ov.__openSnap = formSnapshot(ov);
     closeModal('#pcFormModal'); closeModal('#pcDetailModal');
-    if(!PCAL.solo && saved.projectUid && Array.isArray(PCAL.sel) && PCAL.sel.indexOf(saved.projectUid) < 0){
+    if(saved.projectUid && Array.isArray(PCAL.sel) && PCAL.sel.indexOf(saved.projectUid) < 0){
       PCAL.sel.push(saved.projectUid); pcPrefsSave(); toast('저장한 과제를 표시 목록에 켰습니다.', 'info');
     }
     const rg = pcRange();
@@ -20763,34 +20767,33 @@ async function pcDelete(uid){
   pcLoad();
 }
 //  기획 §5.5: 개인 화면의 저장이 다 끝난 뒤에만 복사한다(호스트가 복사 뒤 개인 스냅샷을 다시 실어 화면을 덮기 때문).
+//  ★ 복사는 지금 내용을 찍은 사본이다(2026-10-22 저녁 결정 A). 원본과 잇는 기록이 없어 "이미 등록됨" 도 없다.
+//    누를 때마다 확인 창을 거쳐 새 개인 일정이 하나씩 생긴다(두 번 등록하면 두 건).
 async function pcCopy(uid){
   const e = pcEv(uid); if(!e) return;
-  if(PCAL.copies.has(uid)){ toast('이미 개인 일정에 있습니다.', 'info'); return; }
   if(guardEdit()) return;
-  const ok = await confirmBox('개인 일정에 등록할까요?', e.title + ', ' + pcWhenText(e) + '. 지금 내용(제목, 날짜, 시간, 장소, 메모)을 내 개인 일정으로 한 번 복사합니다. 나중에 이 공용 일정이 바뀌거나 지워져도 복사본은 바뀌지 않습니다. 미리알림은 없음으로 들어갑니다.', '등록', null, { ok: 'safe' });
+  const ok = await confirmBox('개인 일정에 등록할까요?', e.title + ', ' + pcWhenText(e) + '. 지금 내용(제목, 날짜, 시간, 장소, 메모)으로 내 개인 일정을 새로 만듭니다. 그 뒤로는 내 개인 일정일 뿐이라, 이 공용 일정이 바뀌거나 지워져도, 내 일정을 고치거나 지워도 서로 이어지지 않습니다. 미리알림은 없음으로 들어갑니다.', '등록', null, { ok: 'safe' });
   if(ok !== 'ok' || guardEdit()) return;
   await awaitSaveIdle();
   if(unsaved || __dbSaving || document.getElementById('dbConflict')){
     toast('개인 일정의 저장이 끝나지 않아 등록하지 않았습니다. 개인 탭의 저장 상태를 먼저 확인하세요.', 'warn');
     return;
   }
+  //  보내는 동안은 상세 창을 붙든다(삭제와 같다). 끝나기 전에 다시 눌러 두 건이 생기지 않게 단추도 끈다.
+  const ov = document.getElementById('pcDetailModal'), btn = ov && ov.querySelector('[data-act="copy"]');
+  if(ov) ov.dataset.busy = '1';
+  if(btn) btn.disabled = true;
   const r = await pcReq('projectCalendarCopy', { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() }, 30000);
+  if(ov) delete ov.dataset.busy;
+  if(btn && btn.isConnected) btn.disabled = false;
   if(!r.ok){
     if(r.error.kind === 'gate') return;
     toast((r.error.kind === 'conflict' ? '' : '개인 일정에 등록하지 못했습니다. ') + pcErrText(r.error), r.error.kind === 'conflict' ? 'warn' : 'error');
     if(r.error.kind === 'conflict') pcLoad().then(() => { if(PCAL.detail === uid) pcRenderDetail(); });
     return;
   }
-  const d = r.data || {};
-  if(typeof d.entryUid === 'string' && d.entryUid){ PCAL.copies.set(uid, d.entryUid); PCAL.copyEntries.add(d.entryUid); }
   //  새 개인 일정은 호스트가 개인 스냅샷을 다시 실어(__applyState) 개인 탭에 넣는다(기획 §5.5 3번).
-  toast(d.existed ? '이미 개인 일정에 있습니다.' : '개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', d.existed ? 'info' : 'success');
-  if(PCAL.detail === uid) pcRenderDetail();
-}
-//  개인 탭 카드의 출처 배지(cardHtml). 내 창에서만, 부트스트랩의 복사 대응에 있는 개인 일정만.
-function pcCopyBadge(entryId){
-  if(PEER || !PCAL.copyEntries.has(entryId)) return '';
-  return '<span class="badge pc-copy-badge" title="과제 캘린더의 공용 일정을 복사한 개인 일정입니다. 원본이 바뀌어도 이 일정은 그대로입니다">' + ICON.copy + ' 과제 캘린더에서 복사</span>';
+  toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success');
 }
 
 /* ── 최근 변경 ───────────────────────────────────────────────── */
@@ -20916,21 +20919,22 @@ function pcOnViewClick(ev){
   const t = ev.target;
   if(PCAL.pop && PCAL.pop.el.contains(t)){ pcOnPopClick(ev); return; }
   if(PCAL.drawer && !t.closest('#pcDrawer') && !t.closest('#pcScope')){ PCAL.drawer = false; pcRender(); return; }
+  //  달력에서 무엇을 누르든 그 날짜의 일정 목록. 막대와 시간 일정은 누른 칸의 날짜(여러 날 막대도 시작일로 튀지 않는다)이고 그 줄을 강조한다.
+  //  주간의 과제 행에서 열면 그 과제를 등록 폼에 미리 고를 힌트로만 넘긴다(목록 내용은 같다).
+  const row = t.closest('.pc-wcells[data-proj]'), rowProj = row ? row.dataset.proj : '';
   const bar = t.closest('.pc-ev[data-ev]');
-  if(bar){ const ds = pcClickedDate(bar, ev); pcSelectDate(ds); pcOpenPreview(bar.dataset.ev, bar, ev.detail > 0 ? ev.clientX : null); return; }
+  if(bar){ const ds = pcClickedDate(bar, ev); pcSelectDate(ds); pcOpenDayList(ds, bar, { hit: bar.dataset.ev, projectUid: rowProj }); return; }
   const more = t.closest('[data-more]');
   if(more){ pcSelectDate(more.dataset.more); pcOpenDayList(more.dataset.more, more); return; }
   const day = t.closest('.pc-day[data-date], .pc-wday[data-date]');
-  if(day){ const ds = day.dataset.date; pcSelectDate(ds); const row = day.closest('[data-proj]'); pcOpenDayList(ds, day, row ? row.dataset.proj : ''); return; }
+  if(day){ const ds = day.dataset.date; pcSelectDate(ds); pcOpenDayList(ds, day, { projectUid: rowProj }); return; }
   pcClosePop(true);
   const a = t.closest('[data-act]'); if(!a) return;
   switch(a.dataset.act){
     case 'retry': pcRefresh(true); break;
     case 'cats': try{ openCatModal(); }catch(_){} break;
-    case 'selAll': PCAL.solo = null; PCAL.sel = PCAL.projects.map(p => p.projectUid); pcPrefsSave(); pcRender(); pcLoad(); break;
-    case 'selNone': PCAL.solo = null; PCAL.sel = []; pcPrefsSave(); pcRender(); pcLoad(); break;
-    case 'solo': PCAL.solo = PCAL.solo === a.dataset.uid ? null : a.dataset.uid; if(pcNarrow()) PCAL.drawer = false; pcRender(); pcLoad(); break;
-    case 'unsolo': PCAL.solo = null; pcRender(); pcLoad(); break;
+    case 'selAll': PCAL.sel = PCAL.projects.map(p => p.projectUid); pcPrefsSave(); pcRender(); pcLoad(); break;
+    case 'selNone': PCAL.sel = []; pcPrefsSave(); pcRender(); pcLoad(); break;
     case 'drawer': PCAL.drawer = !PCAL.drawer; pcRender(); if(PCAL.drawer){ const f = document.querySelector('#pcDrawer input, #pcDrawer button'); if(f) try{ f.focus(); }catch(_){} } break;
     case 'prev': pcMove(-1); break;
     case 'next': pcMove(1); break;
@@ -20943,19 +20947,14 @@ function pcOnViewClick(ev){
 }
 function pcOnPopClick(ev){
   const a = ev.target.closest('[data-act]'); if(!a) return;
-  const P = PCAL.pop;
   switch(a.dataset.act){
-    case 'popClose': pcClosePop(false); break;
-    case 'detail': pcOpenDetail(a.dataset.ev); break;
-    case 'edit': pcOpenForm({ uid: a.dataset.ev }); break;
-    case 'dlOpen': pcOpenPreview(a.dataset.ev, P ? P.anchor : a, null); break;
+    case 'dlOpen': pcOpenDetail(a.dataset.ev); break;   // 줄 전체가 상세 창(수정, 개인 일정에 등록, 삭제는 상세에서)
     case 'newOn': pcOpenForm({ date: a.dataset.date, projectUid: a.dataset.proj || '' }); break;
   }
 }
 function pcOnViewChange(ev){
   const t = ev.target, act = t && t.dataset ? t.dataset.act : '';
   if(act === 'toggle'){
-    PCAL.solo = null;
     const s = new Set(PCAL.sel || []);
     if(t.checked) s.add(t.dataset.uid); else s.delete(t.dataset.uid);
     PCAL.sel = PCAL.projects.map(p => p.projectUid).filter(u => s.has(u));
@@ -20985,6 +20984,12 @@ function pcInit(){
     v.addEventListener('click', pcOnViewClick);
     v.addEventListener('change', pcOnViewChange);
     v.addEventListener('keydown', ev => {
+      //  그날 일정 목록 안: 위와 아래로 줄을 옮긴다. 왼쪽과 오른쪽은 달을 옮기지 않게 여기서 멈춘다(Esc 는 전역 목록이 닫는다).
+      if(PCAL.pop && PCAL.pop.el.contains(ev.target)){
+        if(pcPopKey(ev) || ev.key === 'ArrowLeft' || ev.key === 'ArrowRight' || ev.key === 'PageUp' || ev.key === 'PageDown'){ ev.preventDefault(); ev.stopPropagation(); }
+        return;
+      }
+      //  날짜 칸에서 Enter(또는 스페이스): 그날 일정 목록(누름과 같다).
       if((ev.key === 'Enter' || ev.key === ' ') && ev.target.classList && ev.target.classList.contains('pc-day')){ ev.preventDefault(); ev.target.click(); }
     });
   }

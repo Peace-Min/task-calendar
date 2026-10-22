@@ -2,17 +2,17 @@
  *  tests/loop-project-calendar.mjs: 과제 탭 실 위젯 확인 (docs/PROJECT-CALENDAR-PLAN.md §8.2 P2)
  * ----------------------------------------------------------------------------
  *  디버그 위젯(TC_DEBUG_PORT=9222)에 붙어 과제 탭을 앱 경로(화면 함수와 단추)로 돌린다. DB 에 직접 붙지 않는다.
- *  전제: DB 구조 16(과제 캘린더 표 넷), 로그인한 사람의 내 과제에 쓸 수 있는(숨기지 않은) 공식 과제가 하나 이상.
+ *  전제: DB 구조 16(과제 캘린더 표 둘: cal_project_event, cal_project_change), 로그인한 사람의 내 과제에 쓸 수 있는(숨기지 않은) 공식 과제가 하나 이상.
  *  만드는 것: 제목이 zzPC-<seed> 로 시작하는 과제 일정 둘, 그중 하나의 개인 복사본 하나.
  *  보는 것:
  *    P0 정상 연결, 과제 탭 진입(목록과 범위 읽기)
  *    P1 등록 폼으로 기간 일정과 시간 일정 만들기 → 월간 막대, 시간 일정 점
- *    P2 날짜 칸 → 그날 일정 목록, 줄마다 [수정]
+ *    P2 날짜 칸 → 그날 일정 목록(두 일정 줄, [수정] 없음, 이 날짜에 일정 등록), 체크한 과제가 하나면 폼에 그 과제
  *    P3 주간(과제 행)에 막대
- *    P4 수정(폼) → 판이 오른다
+ *    P4 수정: 막대(작은 창은 칸) → 그날 일정 목록(누른 줄 강조) → 줄 → 상세 → 수정 → 판이 오른다
  *    P5 충돌: 폼을 연 뒤 같은 일정을 호스트 명령으로 한 번 더 고친다(다른 사람 흉내) → 충돌 안내 → 내 입력 유지 → 저장
  *    P6 최근 변경: 내 변경이 보이고 종류 필터(수정)가 서버에서 걸린다
- *    P7 개인 일정에 등록 → 개인 스냅샷에 복사본, 상세는 등록됨, 개인 카드 배지
+ *    P7 개인 일정에 등록 → 개인 스냅샷에 새 개인 일정(사본). 상세는 그대로 "개인 일정에 등록"(등록됨 없음), 배지 없음
  *    P8 새로고침 → 목록과 범위를 다시 읽고 일정이 그대로
  *  정리: 과제 일정은 화면(삭제 단추)과 호스트 명령으로 지운다. **공용 일정은 소프트 삭제라 DB 에 행(is_deleted=1)과
  *    변경 이력(cal_project_change)이 남는다. 설계대로다(지우지 않는 기록, 기획 §4.2).** 개인 복사본은 개인 삭제로 지운다.
@@ -65,7 +65,7 @@ async function fillAndSave(v) {
     // P0 전제
     if (!(await ev(`typeof PCAL === 'object' && typeof pcSetTab === 'function'`))) { undecide('P0 앱', '과제 탭 함수가 없다(P2 이전 빌드)'); return; }
     if (!(await waitFor(healthy, 30000))) { undecide('P0 정상 연결', JSON.stringify(await J(`{conn, bootOk, unsaved}`))); return; }
-    saved = await J(`{ tab: PCAL.tab, view: PCAL.view, solo: PCAL.solo, sel: PCAL.sel, memo: PCAL.memoLine }`);
+    saved = await J(`{ tab: PCAL.tab, view: PCAL.view, sel: PCAL.sel, memo: PCAL.memoLine }`);
     await ev(`(() => { pcSetTab('project'); return 1; })()`);
     if (!(await waitFor(idle, 20000))) { undecide('P0 과제 탭 진입', JSON.stringify(await J(`{ loaded: PCAL.loaded, err: PCAL.bootErr, loadErr: PCAL.loadErr }`))); return; }
     ok('P0 과제 탭 진입: 목록과 범위를 읽었다', await ev(`document.body.classList.contains('pc-on') && !!document.getElementById('pcView').textContent`));
@@ -73,14 +73,15 @@ async function fillAndSave(v) {
     if (!proj) { undecide('P0 쓸 수 있는 과제', '내 과제에 숨기지 않은 공식 과제를 하나 넣어 주세요(공식 과제 찾아보기)'); return; }
     projectUid = proj.projectUid;
     console.log(`  과제: ${proj.name} (${projectUid})`);
-    //  그 과제만 보고(단독), 월간, 오늘
-    await ev(`(() => { PCAL.solo = ${S(projectUid)}; PCAL.view = 'month'; PCAL.anchor = todayYmd(); pcRender(); pcLoad(); return 1; })()`);
+    //  그 과제만 체크(보이기는 체크로만 정한다), 월간, 오늘
+    await ev(`(() => { PCAL.sel = [${S(projectUid)}]; PCAL.view = 'month'; PCAL.anchor = todayYmd(); pcRender(); pcLoad(); return 1; })()`);
     await waitFor(idle, 15000);
     const today = await ev('todayYmd()');
     const d2 = await ev(`addDays(todayYmd(), 2)`);
 
     // P1 등록(폼): 기간 일정 + 시간 일정
     await ev(`(() => { pcOpenForm({ date: todayYmd() }); return 1; })()`);
+    ok('P1 체크한 과제가 하나면 등록 폼에 그 과제가 골라져 있다', (await ev(`document.getElementById('pcfProj').value`)) === projectUid);
     await fillAndSave({ proj: projectUid, title: TAG + ' 기간', s: today, e: d2, memo: '첫 줄\n둘째 줄' });
     let okSave = await waitFor(`document.getElementById('pcFormModal').classList.contains('hidden') && PCAL.events.some(e => e.title === ${S(TAG + ' 기간')})`, 15000);
     ok('P1 등록: 기간 일정이 저장되고 달력에 들어왔다', okSave);
@@ -97,8 +98,8 @@ async function fillAndSave(v) {
     ok('P1 월간: 기간 일정은 막대, 시간 일정은 점과 시각(작은 창은 +n)', m1.range && (m1.timed || m1.folded), JSON.stringify(m1));
 
     // P2 날짜 칸 → 그날 일정 목록
-    const dl = await J(`(() => { const c = document.querySelector('#pcView .pc-day[data-date="${today}"]'); if(!c) return null; c.click(); const p = document.getElementById('pcPop'); return p ? { text: p.textContent, edits: p.querySelectorAll('[data-act="edit"]').length, foot: !!p.querySelector('[data-act="newOn"]') } : null; })()`);
-    ok('P2 그날 일정 목록: 두 일정, [수정], 이 날짜에 일정 등록', !!dl && dl.text.includes(TAG + ' 기간') && dl.text.includes(TAG + ' 회의') && dl.edits >= 2 && dl.foot, dl ? `수정 ${dl.edits}` : '팝오버 없음');
+    const dl = await J(`(() => { const c = document.querySelector('#pcView .pc-day[data-date="${today}"]'); if(!c) return null; c.click(); const p = document.getElementById('pcPop'); return p ? { rows: [...p.querySelectorAll('.pc-dl .chip')].map(r => r.dataset.ev), edits: p.querySelectorAll('[data-act="edit"]').length, foot: !!p.querySelector('[data-act="newOn"]'), head: (p.querySelector('.pc-pop-n') || {}).textContent || '' } : null; })()`);
+    ok('P2 그날 일정 목록: 두 일정 줄, [수정] 없음, 이 날짜에 일정 등록', !!dl && dl.rows.includes(E1) && dl.rows.includes(E2) && dl.edits === 0 && dl.foot && /^일정 \d+건$/.test(dl.head), dl ? JSON.stringify({ rows: dl.rows.length, edits: dl.edits, head: dl.head }) : '팝오버 없음');
     await ev(`pcEscape()`);
 
     // P3 주간
@@ -108,11 +109,16 @@ async function fillAndSave(v) {
     await ev(`(() => { document.querySelector('#pcView [data-act="view"][data-v="month"]').click(); return 1; })()`);
     await waitFor(idle, 15000);
 
-    // P4 수정(폼, 미리보기 [수정])
+    // P4 수정: 달력 → 그날 일정 목록 → 줄 → 상세 → 수정
     const rv0 = await ev(`pcEv(${S(E2)}).rowVersion`);
-    //  막대가 보이면 미리보기 [수정], "+n" 으로 접혔으면 그날 일정 목록의 [수정]
-    await ev(`(() => { const b = document.querySelector('#pcView .pc-ev[data-ev="${E2}"]'); if(b) b.click(); else document.querySelector('#pcView .pc-day[data-date="${today}"]').click();
-      const btn = document.querySelector('#pcPop [data-act="edit"][data-ev="${E2}"]') || document.querySelector('#pcPop [data-act="edit"]'); btn.click(); return 1; })()`);
+    //  막대가 보이면 막대(목록에서 그 줄이 강조되고 초점), "+n" 으로 접혔으면 날짜 칸(강조 없음)
+    const p4l = await J(`(() => { const b = document.querySelector('#pcView .pc-ev[data-ev="${E2}"]'); if(b) b.click(); else document.querySelector('#pcView .pc-day[data-date="${today}"]').click();
+      const p = document.getElementById('pcPop'); if(!p) return null; const hit = p.querySelector('.pc-dl .chip.hit'), row = p.querySelector('.pc-dl .chip[data-ev="${E2}"]');
+      const r = { bar: !!b, hit: hit ? hit.dataset.ev : '', focus: !!hit && document.activeElement === hit, row: !!row }; if(row) row.click(); return r; })()`);
+    ok('P4 막대를 누르면 그날 일정 목록에서 그 줄이 강조된다(작은 창은 칸으로 열어 강조 없음)', !!p4l && p4l.row && (p4l.bar ? p4l.hit === E2 && p4l.focus : p4l.hit === ''), JSON.stringify(p4l));
+    const det = await waitFor(`!document.getElementById('pcDetailModal').classList.contains('hidden') && !document.getElementById('pcPop')`, 5000);
+    ok('P4 목록의 줄은 상세 창(삭제, 개인 일정에 등록, 수정)', det && (await ev(`[...document.querySelectorAll('#pcDetailFoot [data-act]')].map(b => b.dataset.act).join(',')`)) === 'delete,copy,edit');
+    await ev(`(() => { document.querySelector('#pcDetailFoot [data-act="edit"]').click(); return 1; })()`);
     await waitFor(`!document.getElementById('pcFormModal').classList.contains('hidden')`, 5000);
     await ev(`(() => { document.getElementById('pcfTitle').value = ${S(TAG + ' 회의 고침')}; document.getElementById('pcfSave').click(); return 1; })()`);
     const p4 = await waitFor(`document.getElementById('pcFormModal').classList.contains('hidden') && (pcEv(${S(E2)}) || {}).title === ${S(TAG + ' 회의 고침')} && !PCAL.loading`, 15000);
@@ -145,15 +151,17 @@ async function fillAndSave(v) {
     await ev(`(() => { closeModal('#pcChangesModal'); return 1; })()`);
     await sleep(300);
 
-    // P7 개인 일정에 등록
+    // P7 개인 일정에 등록: 지금 내용을 찍은 사본(새 개인 일정). 원본과 잇는 기록이 없어 "등록됨" 과 배지가 없다
+    const nCopy = `state.entries.filter(e => e.title === ${S(TAG + ' 기간')}).length`;
+    const c0 = await ev(nCopy);
     await ev(`(() => { pcOpenDetail(${S(E1)}); document.querySelector('#pcDetailFoot [data-act="copy"]').click(); return 1; })()`);
     await waitFor(`!document.getElementById('confirmModal').classList.contains('hidden')`, 5000);
     await ev(`(() => { document.getElementById('cfOk').click(); return 1; })()`);
-    const copied = await waitFor(`PCAL.copies.has(${S(E1)}) && state.entries.some(e => e.id === PCAL.copies.get(${S(E1)}))`, 20000);
-    copyEntry = await ev(`PCAL.copies.get(${S(E1)}) || ''`);
-    ok('P7 개인 일정에 등록: 개인 스냅샷에 복사본', copied, copyEntry);
-    ok('P7 상세가 등록됨으로 바뀌었다', await ev(`/개인 일정에 등록됨/.test(document.getElementById('pcDetailFoot').textContent)`));
-    ok('P7 개인 카드 출처 배지', !!copyEntry && (await ev(`pcCopyBadge(${S(copyEntry)}).includes('과제 캘린더에서 복사')`)));
+    const copied = await waitFor(`${nCopy} === ${c0 + 1} && !document.getElementById('pcDetailModal').dataset.busy`, 20000);
+    copyEntry = await ev(`(state.entries.find(e => e.title === ${S(TAG + ' 기간')}) || {}).id || ''`);
+    ok('P7 개인 일정에 등록: 개인 스냅샷에 새 개인 일정', copied, copyEntry);
+    ok('P7 상세는 그대로 "개인 일정에 등록"(등록됨 없음, 다시 누를 수 있음)', await ev(`(() => { const b = document.querySelector('#pcDetailFoot [data-act="copy"]'); return !!b && !b.disabled && !/등록됨/.test(document.getElementById('pcDetailFoot').textContent); })()`));
+    ok('P7 개인 탭 출처 배지 없음(배지 함수도 없다)', await ev(`typeof pcCopyBadge === 'undefined' && !document.querySelector('.pc-copy-badge')`));
     await ev(`(() => { closeModal('#pcDetailModal'); return 1; })()`);
     await sleep(300);
 
@@ -181,13 +189,13 @@ async function fillAndSave(v) {
       await ev(`pcLoad()`);
       const left = await ev(`PCAL.events.filter(e => e.title.startsWith('zzPC-')).length`);
       ok('정리: 범위에 zzPC 과제 일정 0건(공용 일정은 소프트 삭제라 행과 이력은 DB 에 남는다, 설계대로)', left === 0, 'left=' + left);
-      //  개인 복사본(개인 삭제 → 대응표는 CASCADE)
+      //  개인 복사본(보통 개인 일정이라 개인 삭제로 지운다)
       await ev(`(() => { state.entries.filter(e => String(e.title||'').startsWith('zzPC-')).forEach(e => deleteEntry(e.id)); return 1; })()`);
       await sleep(1500);
       const back = (await reloadAndWait()) ? await ev(`state.entries.filter(e => String(e.title||'').startsWith('zzPC-')).length`) : -1;
       ok('정리: 개인 복사본 삭제, 서버 재조회 0건', back === 0, 'remaining=' + back);
       //  화면 설정을 되돌린다
-      if (saved) await ev(`(() => { PCAL.view = ${S(saved.view)}; PCAL.solo = ${S(saved.solo)}; PCAL.sel = ${S(saved.sel)}; PCAL.memoLine = ${S(saved.memo)}; pcSetTab(${S(saved.tab)}); pcPrefsSave(); if(pcOn()){ pcRender(); pcLoad(); } return 1; })()`);
+      if (saved) await ev(`(() => { PCAL.view = ${S(saved.view)}; PCAL.sel = ${S(saved.sel)}; PCAL.memoLine = ${S(saved.memo)}; pcSetTab(${S(saved.tab)}); pcPrefsSave(); if(pcOn()){ pcRender(); pcLoad(); } return 1; })()`);
     } catch (e) { console.log('  !!! 정리 실패: ' + e.message + ', zzPC-* 과제 일정과 개인 일정을 직접 지우세요'); }
     console.log(`\n통과 ${pass}, 실패 ${fail}, 판정 불가 ${und}`);
     try { ws.close(); } catch {}

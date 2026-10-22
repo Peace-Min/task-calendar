@@ -13,8 +13,9 @@ namespace TaskCalendarWidget
     // ================================================================================
     //  과제 캘린더(공용 트랙) 호스트: docs/PROJECT-CALENDAR-PLAN.md §5
     // ================================================================================
-    //  공식 과제마다 공용 캘린더를 둔다. 표는 넷(cal_project_rev, cal_project_event, cal_project_change,
-    //  cal_project_copy, 정본 db/deploy/schema-calendar.sql 14~17)이고, 그 표의 SQL 규칙은 이 파일에만 있다.
+    //  공식 과제마다 공용 캘린더를 둔다. 표는 둘(cal_project_event, cal_project_change,
+    //  정본 db/deploy/schema-calendar.sql 14~15)이고, 그 표의 SQL 규칙은 이 파일에만 있다. 과제별 감시점 표는 없다.
+    //  개인 일정에 등록(복사)은 그 순간의 사본을 개인 일정 한 건으로 만들 뿐 대응표가 없다. 원본과 사본은 어느 쪽으로도 이어지지 않는다.
     //
     //  【명령 여섯】 MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 회신은
     //    { ok, data?, error?: { kind, message } }. kind 는 forbidden, conflict, invalid 와 연결 분류(DbErrorKind).
@@ -30,8 +31,12 @@ namespace TaskCalendarWidget
     //
     //  【트랜잭션 규칙】
     //    - 연결은 모두 DbGate.OpenAsync. 읽기는 REPEATABLE-READ 한 스냅샷, 쓰기는 READ-COMMITTED.
-    //    - 공용 쓰기의 **첫 문장**은 cal_project_rev 의 ODKU 다(BeginSharedWriteAsync). 과제 단위로 직렬화한다.
-    //    - 개인 복사는 cal_project_rev 를 공유 잠금으로 먼저, 그다음 cal_user_rev ODKU(잠금 순서 고정, §5.5).
+    //    - 공용 쓰기 트랜잭션은 판정(신원, 내 과제, 쓰기 가능)으로 시작한다(BeginSharedWriteAsync). 판정이 과제 행을 FOR SHARE 로
+    //      잡고(관리자 종료, 영구 삭제와 엇갈리지 않게), 그다음 그 일정 행을 FOR UPDATE 로 잡는다.
+    //      같은 일정의 저장과 삭제만 줄 서고, 다른 일정끼리는 막지 않는다(과제 행 공유 잠금끼리는 서로 막지 않는다).
+    //    - 잠금 순서는 어디서나 과제 행, 일정 행, 그다음 cal_user_rev 다. 개인 복사: 과제 행(공유), 원본 일정 행(공유),
+    //      cal_user_rev ODKU(§5.5). 휴지통 영구 삭제와 관리자 종료는 과제 행만 잠근다(일정 행을 먼저 잡지 않는다).
+    //    - 과제 영구 삭제와 엇갈려 FK 1452/1451 이 나면 원문 대신 고정 문구 forbidden(MsgProjectGone).
     //    - 커밋은 CommitWithGateAsync 한 곳에서만 한다. 커밋 바로 앞에서 관문을 다시 읽는다(CalendarWriteDb 와 같은 규칙).
     //    - 멱등: 같은 (과제, mutationUid) 이력이 있으면 그 결과를 돌려준다. 생성은 같은 eventUid 가 있으면 같다.
     //    - 낙관적 잠금: row_version. 판이 다르면 conflict 와 최신 행. 자동 덮어쓰기는 없다.
@@ -46,7 +51,7 @@ namespace TaskCalendarWidget
         {
             public const int Title = 200;      // cal_project_event.title VARCHAR(200)
             public const int Location = 200;   // cal_project_event.location VARCHAR(200)
-            public const int Name = 200;       // created_by_name, updated_by_name, actor_name, title_snapshot, project_name_snapshot
+            public const int Name = 200;       // created_by_name, updated_by_name, actor_name, title_snapshot
             public const int Memo = 8000;      // cal_project_event.memo TEXT, 앱 상한
         }
 
@@ -100,17 +105,6 @@ namespace TaskCalendarWidget
             "SET SESSION innodb_lock_wait_timeout=5, " +
             "SESSION time_zone='+00:00', " +
             "SESSION transaction_isolation='READ-COMMITTED'";
-
-        //  공용 쓰기의 첫 문장. 과제 uid 로 번호를 찾아 그 과제의 rev 행을 만들거나 올린다(그 행에 배타 잠금).
-        //  과제가 없으면 0행이고, 호출자가 거부한다(트랜잭션 롤백으로 아무것도 남지 않는다).
-        internal const string ProjectRevOdkuSql =
-            "INSERT INTO cal_project_rev (project_id, rev, updated_at) " +
-            "SELECT p.id, 1, @now FROM project p WHERE p.uid=@pu " +
-            "ON DUPLICATE KEY UPDATE cal_project_rev.rev = cal_project_rev.rev + 1, cal_project_rev.updated_at = @now";
-
-        //  개인 복사의 첫 문장. 공용 쓰기와 같은 행을 공유 잠금으로 잡는다(복사끼리는 막지 않고, 공용 쓰기와는 직렬).
-        internal const string ProjectRevShareSql =
-            "SELECT r.rev FROM cal_project_rev r JOIN project p ON p.id = r.project_id WHERE p.uid=@pu FOR SHARE OF r";
 
         //  "이 과제를 쓸 수 있나" 의 유일한 판정 SQL(§3.2). 내 과제에 넣은 공식 과제 = 과제 탭의 과제.
         private const string EligibleSql =
@@ -168,6 +162,8 @@ namespace TaskCalendarWidget
         internal const string MsgGone = "이미 지워졌거나 없는 일정입니다.";
         internal const string MsgOtherProject = "다른 과제의 일정입니다.";
         internal const string MsgBusy = "다른 저장과 겹쳤습니다. 잠시 뒤 다시 시도하세요.";
+        //  쓰는 사이 과제가 영구 삭제되었거나(FK 1452) 지우려는 쪽과 엇갈렸다(1451). 원문 오류 대신 이 문장으로 거부한다.
+        internal const string MsgProjectGone = "과제가 지워졌거나 내 과제에서 빠져 저장하지 못했습니다. 과제 목록을 다시 읽으세요.";
 
         private static readonly JsonSerializerOptions JsonOpt = new JsonSerializerOptions
         {
@@ -195,9 +191,9 @@ namespace TaskCalendarWidget
                     case "projectCalendarChanges":   return ProjectCalendarReply.Success(await ChangesAsync(q, ct));
                     case "projectCalendarCopy":
                     {
-                        var (data, created) = await CopyAsync(q, ct);
-                        var r = ProjectCalendarReply.Success(data);
-                        r.ReloadPersonal = created;
+                        //  성공하면 늘 새 개인 일정 한 건이 생긴다. MainWindow 가 개인 스냅샷을 다시 읽는다.
+                        var r = ProjectCalendarReply.Success(await CopyAsync(q, ct));
+                        r.ReloadPersonal = true;
                         return r;
                     }
                     default: throw new PcFail(Kind.Invalid, "알 수 없는 요청입니다.");
@@ -217,6 +213,12 @@ namespace TaskCalendarWidget
                 _log("과제 캘린더 " + cmd + " 관문 차단: " + gx.Message);
                 return ProjectCalendarReply.Failure(DbErrorKind.Gate, DbErrors.ConnMessage(DbErrorKind.Gate));
             }
+            catch (Exception fx) when (DbErrors.Number(fx) == 1452 || DbErrors.Number(fx) == 1451)
+            {
+                //  과제 영구 삭제(휴지통)와 엇갈렸다. 트랜잭션은 이미 롤백했다. 원문 오류를 보이지 않고 고정 문구로 거부한다.
+                _log("과제 캘린더 " + cmd + " 거부(FK " + DbErrors.Number(fx) + ", 과제가 사라짐): " + fx.Message);
+                return ProjectCalendarReply.Failure(Kind.Forbidden, MsgProjectGone);
+            }
             catch (Exception ex)
             {
                 var (kind, detail) = DbErrors.Observe(ex, _log);
@@ -231,11 +233,16 @@ namespace TaskCalendarWidget
         //  판정 함수 하나(§3.2): 이 사람의 과제 탭 과제
         // ================================================================================
         //  onlyUid 가 있으면 그 과제 하나만 본다(없으면 빈 목록). 쓰기 가능 여부는 Proj.Active 다.
+        //  lockProject: 같은 판정 SQL 에 FOR SHARE OF p 를 붙여 **과제 행만** 공유 잠금한다(쓰기 트랜잭션 안에서만).
+        //    관리자의 종료(UPDATE project SET is_active)와 휴지통 영구 삭제(DELETE project)가 진행 중인 공용 쓰기와
+        //    엇갈리지 않게 한다. MySQL 8 의 FOR SHARE 는 SELECT 에 더해 UPDATE(또는 DELETE, LOCK TABLES) 권한이 필요한데
+        //    앱 계정은 project 에 SELECT, INSERT, UPDATE, DELETE 가 있다(server-app-account.sql, create-app-user.sql).
         private static async Task<List<Proj>> EligibleProjectsAsync(MySqlConnection conn, MySqlTransaction? tx, int userId,
-            string? onlyUid, CancellationToken ct)
+            string? onlyUid, CancellationToken ct, bool lockProject = false)
         {
             var list = new List<Proj>();
-            string sql = EligibleSql + (onlyUid != null ? " AND p.uid=@pu" : "") + " ORDER BY c.sort_order, c.cat_no";
+            string sql = EligibleSql + (onlyUid != null ? " AND p.uid=@pu" : "") + " ORDER BY c.sort_order, c.cat_no"
+                + (lockProject ? " FOR SHARE OF p" : "");
             await using var cmd = new MySqlCommand(sql, conn, tx);
             cmd.Parameters.AddWithValue("@me", userId);
             if (onlyUid != null) cmd.Parameters.AddWithValue("@pu", onlyUid);
@@ -260,11 +267,11 @@ namespace TaskCalendarWidget
             return list;
         }
 
-        //  한 과제를 쓸 수 있는지(없으면 forbidden). write 면 숨긴 과제도 거부한다.
+        //  한 과제를 쓸 수 있는지(없으면 forbidden). write 면 숨긴 과제도 거부한다. lockProject 는 위 함수 주석.
         private static async Task<Proj> RequireProjectAsync(MySqlConnection conn, MySqlTransaction? tx, Me me, string projectUid,
-            bool write, CancellationToken ct)
+            bool write, CancellationToken ct, bool lockProject = false)
         {
-            var ps = await EligibleProjectsAsync(conn, tx, me.UserId, projectUid, ct);
+            var ps = await EligibleProjectsAsync(conn, tx, me.UserId, projectUid, ct, lockProject);
             if (ps.Count == 0) throw new PcFail(Kind.Forbidden, MsgNotMine);
             if (write && !ps[0].Active) throw new PcFail(Kind.Forbidden, MsgReadOnly);
             return ps[0];
@@ -306,24 +313,22 @@ namespace TaskCalendarWidget
             return conn;
         }
 
-        //  공용 쓰기 트랜잭션을 연다. ★ 트랜잭션의 첫 문장은 cal_project_rev ODKU 다. 그 앞에 SELECT 를 두지 않는다.
-        //  반환: 트랜잭션, 과제 번호, 올린 뒤의 rev. 과제가 없으면 forbidden(롤백).
-        private static async Task<(MySqlTransaction tx, uint projectId, long rev)> BeginSharedWriteAsync(
-            MySqlConnection conn, string projectUid, string now, CancellationToken ct)
+        //  공용 쓰기 트랜잭션을 연다. ★ 트랜잭션의 첫 문장들은 판정이다: 활성 사용자(IdentityAsync), 그다음 그 과제가 내 과제에
+        //  있고 쓸 수 있음(RequireProjectAsync, write: true = 과제 is_active 1). 그 앞에 다른 문장을 두지 않는다.
+        //  과제별 감시점 표는 없다(2026-10-22 저녁 결정). 동시 수정은 일정 행 FOR UPDATE 와 row_version, 재시도는 이력의
+        //  (project_id, mutation_uid) UNIQUE 와 일정 uid UNIQUE, 과제 영구 삭제와의 경합은 FK RESTRICT(1452 는 MsgProjectGone)가 맡는다.
+        //  반환: 트랜잭션, 나, 과제. 거부면 forbidden(롤백).
+        private static async Task<(MySqlTransaction tx, Me me, Proj proj)> BeginSharedWriteAsync(
+            MySqlConnection conn, string login, string projectUid, CancellationToken ct)
         {
             var tx = await conn.BeginTransactionAsync(ct);
             try
             {
-                int n = await Exec(conn, tx, ProjectRevOdkuSql, ct, P("@pu", projectUid), P("@now", now));
-                if (n == 0) throw new PcFail(Kind.Forbidden, MsgNotMine);
-                await using var cmd = new MySqlCommand(
-                    "SELECT r.project_id, r.rev FROM cal_project_rev r JOIN project p ON p.id = r.project_id WHERE p.uid=@pu", conn, tx);
-                cmd.Parameters.AddWithValue("@pu", projectUid);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                if (!await rd.ReadAsync(ct)) throw new PcFail(Kind.Forbidden, MsgNotMine);
-                uint pid = Convert.ToUInt32(rd["project_id"], CultureInfo.InvariantCulture);
-                long rev = Convert.ToInt64(rd["rev"], CultureInfo.InvariantCulture);
-                return (tx, pid, rev);
+                var me = await IdentityAsync(conn, tx, login, ct);
+                //  잠금 1: 과제 행(공유). 커밋까지 관리자 종료와 영구 삭제가 끼어들지 못한다. 잠금 순서는 어디서나 과제 행 다음 일정 행이다.
+                var proj = await RequireProjectAsync(conn, tx, me, projectUid, write: true, ct, lockProject: true);
+                CheckName(me.Name);
+                return (tx, me, proj);
             }
             catch { await SafeRollbackAsync(tx); await tx.DisposeAsync(); throw; }
         }
@@ -348,7 +353,7 @@ namespace TaskCalendarWidget
         }
 
         // ================================================================================
-        //  1. projectCalendarBootstrap: 과제 탭 과제 목록, 과제별 rev, 참여자 수, 내 복사 대응
+        //  1. projectCalendarBootstrap: 과제 탭 과제 목록, 참여자 수, 글자 상한
         // ================================================================================
         private async Task<object> BootstrapAsync(CancellationToken ct)
         {
@@ -356,7 +361,6 @@ namespace TaskCalendarWidget
             await using var conn = await OpenReadSnapshotAsync(ct);
             var me = await IdentityAsync(conn, null, login, ct);
             var ps = await EligibleProjectsAsync(conn, null, me.UserId, null, ct);
-            var revs = await RevsAsync(conn, ps, ct);
 
             //  참여자 수 = 그 과제를 내 과제에 넣은 활성 사용자 수(§3.2)
             var members = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -370,20 +374,6 @@ namespace TaskCalendarWidget
                 foreach (var (k, v) in inPs) cmd.Parameters.AddWithValue(k, v);
                 await using var rd = await cmd.ExecuteReaderAsync(ct);
                 while (await rd.ReadAsync(ct)) members[Str(rd, "project_uid")] = Convert.ToInt64(rd["n"], CultureInfo.InvariantCulture);
-            }
-
-            //  내 복사 대응: 원본 eventUid 와 내 개인 일정 uid
-            var copies = new List<object>();
-            await using (var cmd = new MySqlCommand(
-                "SELECT e.uid AS event_uid, en.uid AS entry_uid, p.uid AS project_uid FROM cal_project_copy cp " +
-                "JOIN cal_project_event e ON e.event_id = cp.event_id JOIN project p ON p.id = e.project_id " +
-                "JOIN cal_entry en ON en.user_id = cp.user_id AND en.entry_no = cp.entry_no " +
-                "WHERE cp.user_id=@me ORDER BY cp.copied_at", conn))
-            {
-                cmd.Parameters.AddWithValue("@me", me.UserId);
-                await using var rd = await cmd.ExecuteReaderAsync(ct);
-                while (await rd.ReadAsync(ct))
-                    copies.Add(new Dictionary<string, object?> { ["eventUid"] = Str(rd, "event_uid"), ["entryUid"] = Str(rd, "entry_uid"), ["projectUid"] = Str(rd, "project_uid") });
             }
 
             var projects = new List<object>();
@@ -400,30 +390,17 @@ namespace TaskCalendarWidget
                     ["color"] = p.Color,
                     ["active"] = p.Active,
                     ["writable"] = p.Active,
-                    ["rev"] = revs.TryGetValue(p.Id, out var rv) ? rv : 0L,
                     ["members"] = members.TryGetValue(p.Uid, out var mc) ? mc : 0L,
                 });
             return new Dictionary<string, object?>
             {
                 ["projects"] = projects,
-                ["copies"] = copies,
                 ["limits"] = new Dictionary<string, object?> { ["title"] = Limits.Title, ["location"] = Limits.Location, ["memo"] = Limits.Memo },
             };
         }
 
-        private static async Task<Dictionary<uint, long>> RevsAsync(MySqlConnection conn, List<Proj> ps, CancellationToken ct)
-        {
-            var revs = new Dictionary<uint, long>();
-            if (ps.Count == 0) return revs;
-            await using var cmd = new MySqlCommand(
-                "SELECT project_id, rev FROM cal_project_rev WHERE project_id IN (" + string.Join(",", ps.ConvertAll(p => p.Id.ToString(CultureInfo.InvariantCulture))) + ")", conn);
-            await using var rd = await cmd.ExecuteReaderAsync(ct);
-            while (await rd.ReadAsync(ct)) revs[Convert.ToUInt32(rd["project_id"], CultureInfo.InvariantCulture)] = Convert.ToInt64(rd["rev"], CultureInfo.InvariantCulture);
-            return revs;
-        }
-
         // ================================================================================
-        //  2. projectCalendarLoad: { projectUids, from, to } → 쓸 수 있는 과제의 범위 일정과 rev
+        //  2. projectCalendarLoad: { projectUids, from, to } → 쓸 수 있는 과제의 범위 일정과 쓰기 가능 여부
         // ================================================================================
         //  판정에서 빠진 과제는 오류가 아니라 excluded 로 알린다(화면 목록이 낡았을 수 있다).
         private async Task<object> LoadAsync(JsonElement q, CancellationToken ct)
@@ -457,10 +434,9 @@ namespace TaskCalendarWidget
                 await using var rd = await cmd.ExecuteReaderAsync(ct);
                 while (await rd.ReadAsync(ct)) events.Add(EventDto(ReadEvent(rd)));
             }
-            var revs = await RevsAsync(conn, take, ct);
             var projects = new List<object>();
             foreach (var p in take)
-                projects.Add(new Dictionary<string, object?> { ["projectUid"] = p.Uid, ["rev"] = revs.TryGetValue(p.Id, out var rv) ? rv : 0L, ["writable"] = p.Active });
+                projects.Add(new Dictionary<string, object?> { ["projectUid"] = p.Uid, ["writable"] = p.Active });
             return new Dictionary<string, object?> { ["projects"] = projects, ["events"] = events, ["excluded"] = excluded, ["from"] = from, ["to"] = to };
         }
 
@@ -481,19 +457,24 @@ namespace TaskCalendarWidget
             string login = SessionLoginId();
             string now = NowDb();
             await using var conn = await OpenAsync(WritePreambleSql, ct);
-            var (tx, projectId, rev) = await BeginSharedWriteAsync(conn, projectUid, now, ct);
+            var (tx, me, proj) = await BeginSharedWriteAsync(conn, login, projectUid, ct);
+            uint projectId = proj.Id;
             await using var txOwn = tx;
             try
             {
-                var me = await IdentityAsync(conn, tx, login, ct);
-                await RequireProjectAsync(conn, tx, me, projectUid, write: true, ct);
-                CheckName(me.Name);
+                //  수정은 그 일정 행을 먼저 잡는다(같은 일정의 저장과 삭제를 줄 세운다). 기다린 뒤의 아래 읽기는 READ-COMMITTED 라
+                //  앞선 저장이 커밋한 이력까지 보인다(같은 변경 id 의 동시 재시도가 두 번 적히지 않는다).
+                //  ★ 생성은 잠그지 않고 읽는다. 아직 없는 uid 를 FOR UPDATE 로 읽으면 uid 색인의 빈틈이 잠기고, 같은 빈틈에
+                //    동시에 넣는 두 생성(uid 가 달라도)이 서로의 빈틈을 기다리다 교착한다(1213, 2026-10-22 실 DB 시험).
+                //    생성의 중복은 아래 INSERT 의 uid UNIQUE(1062)가 막고, 그때 커밋된 행을 재시도 결과로 돌려준다.
+                var cur = expected == null
+                    ? await EventWhereAsync(conn, tx, "e.uid=@uid", ct, P("@uid", eventUid))
+                    : await EventByUidForUpdateAsync(conn, tx, eventUid, ct);
 
                 //  멱등: 같은 변경 id 가 이미 적혔으면(응답만 잃은 재시도) 그 결과를 돌려준다
                 var replay = await ReplayAsync(conn, tx, projectId, mutationUid, ct);
-                if (replay != null) { await SafeRollbackAsync(tx); return SaveData(replay, rev - 1, replayed: true); }
+                if (replay != null) { await SafeRollbackAsync(tx); return SaveData(replay, replayed: true); }
 
-                var cur = await EventByUidForUpdateAsync(conn, tx, eventUid, ct);
                 if (expected == null)
                 {
                     //  생성. 같은 uid 가 이 과제에 이미 있으면 재시도로 본다(4번과 같게).
@@ -501,18 +482,29 @@ namespace TaskCalendarWidget
                     {
                         if (cur.ProjectId != projectId) throw new PcFail(Kind.Invalid, MsgOtherProject);
                         await SafeRollbackAsync(tx);
-                        return SaveData(cur, rev - 1, replayed: true);
+                        return SaveData(cur, replayed: true);
                     }
-                    await Exec(conn, tx,
-                        "INSERT INTO cal_project_event (uid, project_id, title, start_date, end_date, start_time, end_time, location, memo, " +
-                        "row_version, is_deleted, created_by_name, updated_by_name, created_at, updated_at, deleted_at) " +
-                        "VALUES (@uid, @p, @t, @sd, @ed, @st, @et, @loc, @memo, 1, 0, @who, @who, @now, @now, NULL)", ct,
-                        FieldParams(f, P("@uid", eventUid), P("@p", projectId), P("@who", me.Name), P("@now", now)));
+                    try
+                    {
+                        await Exec(conn, tx,
+                            "INSERT INTO cal_project_event (uid, project_id, title, start_date, end_date, start_time, end_time, location, memo, " +
+                            "row_version, is_deleted, created_by_name, updated_by_name, created_at, updated_at, deleted_at) " +
+                            "VALUES (@uid, @p, @t, @sd, @ed, @st, @et, @loc, @memo, 1, 0, @who, @who, @now, @now, NULL)", ct,
+                            FieldParams(f, P("@uid", eventUid), P("@p", projectId), P("@who", me.Name), P("@now", now)));
+                    }
+                    catch (MySqlException dx) when (dx.Number == 1062)
+                    {
+                        //  같은 uid 의 동시 재시도가 먼저 커밋했다(uid UNIQUE). 그 문장만 취소되므로 커밋된 행을 다시 읽어 재시도로 돌려준다.
+                        var won = await EventByUidForUpdateAsync(conn, tx, eventUid, ct);
+                        if (won == null || won.ProjectId != projectId) throw new PcFail(Kind.Invalid, MsgOtherProject);
+                        await SafeRollbackAsync(tx);
+                        return SaveData(won, replayed: true);
+                    }
                     var made = await EventByUidForUpdateAsync(conn, tx, eventUid, ct) ?? throw new InvalidOperationException("방금 넣은 일정을 읽지 못했다");
                     await InsertChangeAsync(conn, tx, projectId, made.EventId, mutationUid, "create", me.Name, f.Title, null, FieldMap(f, null), now, ct);
                     await CommitWithGateAsync(conn, tx, ct);
-                    _log("과제 일정 생성: " + projectUid + " " + eventUid + " rev=" + rev);
-                    return SaveData(made, rev, replayed: false);
+                    _log("과제 일정 생성: " + projectUid + " " + eventUid);
+                    return SaveData(made, replayed: false);
                 }
 
                 //  수정
@@ -522,9 +514,9 @@ namespace TaskCalendarWidget
                 var changed = FieldMap(f, cur.F);
                 if (changed.Count == 0)
                 {
-                    //  바뀐 것이 없는 저장은 아무것도 쓰지 않는다(이력 행도, rev 도). 지금 행을 그대로 돌려준다.
+                    //  바뀐 것이 없는 저장은 아무것도 쓰지 않는다(이력 행도, 판도). 지금 행을 그대로 돌려준다.
                     await SafeRollbackAsync(tx);
-                    var same = (Dictionary<string, object?>)SaveData(cur, rev - 1, replayed: false);
+                    var same = (Dictionary<string, object?>)SaveData(cur, replayed: false);
                     same["unchanged"] = true;
                     return same;
                 }
@@ -537,8 +529,8 @@ namespace TaskCalendarWidget
                 await InsertChangeAsync(conn, tx, projectId, cur.EventId, mutationUid, "update", me.Name, f.Title, FieldMap(cur.F, f), changed, now, ct);
                 var after = await EventByUidForUpdateAsync(conn, tx, eventUid, ct) ?? throw new InvalidOperationException("방금 고친 일정을 읽지 못했다");
                 await CommitWithGateAsync(conn, tx, ct);
-                _log("과제 일정 수정: " + projectUid + " " + eventUid + " v" + after.RowVersion + " rev=" + rev);
-                return SaveData(after, rev, replayed: false);
+                _log("과제 일정 수정: " + projectUid + " " + eventUid + " v" + after.RowVersion);
+                return SaveData(after, replayed: false);
             }
             catch { await SafeRollbackAsync(tx); throw; }
         }
@@ -556,18 +548,16 @@ namespace TaskCalendarWidget
             string login = SessionLoginId();
             string now = NowDb();
             await using var conn = await OpenAsync(WritePreambleSql, ct);
-            var (tx, projectId, rev) = await BeginSharedWriteAsync(conn, projectUid, now, ct);
+            var (tx, me, proj) = await BeginSharedWriteAsync(conn, login, projectUid, ct);
+            uint projectId = proj.Id;
             await using var txOwn = tx;
             try
             {
-                var me = await IdentityAsync(conn, tx, login, ct);
-                await RequireProjectAsync(conn, tx, me, projectUid, write: true, ct);
-                CheckName(me.Name);
-
-                var replay = await ReplayAsync(conn, tx, projectId, mutationUid, ct);
-                if (replay != null) { await SafeRollbackAsync(tx); return DeleteData(replay, rev - 1, replayed: true); }
-
+                //  일정 행을 먼저 잡고(저장과 같은 순서) 그다음 같은 변경 id 의 재시도인지 본다
                 var cur = await EventByUidForUpdateAsync(conn, tx, eventUid, ct);
+                var replay = await ReplayAsync(conn, tx, projectId, mutationUid, ct);
+                if (replay != null) { await SafeRollbackAsync(tx); return DeleteData(replay, replayed: true); }
+
                 if (cur == null) throw new PcFail(Kind.Conflict, MsgGone, ConflictData(null));
                 if (cur.ProjectId != projectId) throw new PcFail(Kind.Invalid, MsgOtherProject);
                 if (cur.Deleted || cur.RowVersion != expected) throw new PcFail(Kind.Conflict, cur.Deleted ? MsgGone : MsgConflict, ConflictData(cur));
@@ -580,8 +570,8 @@ namespace TaskCalendarWidget
                 await InsertChangeAsync(conn, tx, projectId, cur.EventId, mutationUid, "delete", me.Name, cur.F.Title, FieldMap(cur.F, null), null, now, ct);
                 var after = await EventByUidForUpdateAsync(conn, tx, eventUid, ct) ?? throw new InvalidOperationException("방금 지운 일정을 읽지 못했다");
                 await CommitWithGateAsync(conn, tx, ct);
-                _log("과제 일정 삭제: " + projectUid + " " + eventUid + " rev=" + rev);
-                return DeleteData(after, rev, replayed: false);
+                _log("과제 일정 삭제: " + projectUid + " " + eventUid);
+                return DeleteData(after, replayed: false);
             }
             catch { await SafeRollbackAsync(tx); throw; }
         }
@@ -673,11 +663,12 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  6. projectCalendarCopy: { projectUid, eventUid, expectedVersion?, mutationUid } → 개인 일정 한 건
         // ================================================================================
-        //  §5.5. 잠금 순서: cal_project_rev(공유) 다음 cal_user_rev(배타). 개인 저장은 cal_user_rev 만, 공용 쓰기는
-        //  cal_project_rev 만 잡으므로 순환이 없다. 같은 원본은 한 번만(대응표 PK). 공용 이력에는 남기지 않는다.
-        //  ★ mutationUid 는 형식만 본다. 이 명령의 멱등은 대응표 (user_id, event_id) 가 맡는다.
-        //  반환 created = 새로 만들었나(MainWindow 가 그때만 개인 스냅샷을 다시 읽는다).
-        private async Task<(object data, bool created)> CopyAsync(JsonElement q, CancellationToken ct)
+        //  §5.5. 잠금 순서: 과제 행(공유), 원본 일정 행(공유), cal_user_rev(배타). 개인 저장은 cal_user_rev 만, 공용 쓰기는
+        //  과제 행 다음 일정 행만 잡으므로 순환이 없다. 공용 이력에는 남기지 않는다.
+        //  ★ 한 번 찍는 사본이다(2026-10-22 저녁 결정). 대응표가 없고 "이미 복사했나" 를 보지 않는다. 부를 때마다
+        //    새 개인 일정 한 건을 만든다. 만든 뒤에는 원본과 사본이 어느 쪽으로도 이어지지 않는다.
+        //  ★ mutationUid 는 형식만 본다(멱등 키로 쓰지 않는다).
+        private async Task<object> CopyAsync(JsonElement q, CancellationToken ct)
         {
             string projectUid = ReqUid(q, "projectUid", "과제");
             string eventUid = ReqClientId(q, "eventUid", "일정 id");
@@ -690,33 +681,18 @@ namespace TaskCalendarWidget
             await using var tx = await conn.BeginTransactionAsync(ct);
             try
             {
-                //  잠금 1: 과제 rev 행(공유). 이 사이 공용 쓰기가 그 과제의 일정을 바꾸지 못한다.
-                await Exec(conn, tx, ProjectRevShareSql, ct, P("@pu", projectUid));
                 var me = await IdentityAsync(conn, tx, login, ct);
-                var proj = await RequireProjectAsync(conn, tx, me, projectUid, write: false, ct);   // 숨긴 과제도 개인 등록은 된다
+                //  잠금 1: 과제 행(공유). 공용 쓰기와 같은 순서(과제 행, 일정 행)라 교착 순환이 없다. 숨긴 과제도 개인 등록은 된다.
+                var proj = await RequireProjectAsync(conn, tx, me, projectUid, write: false, ct, lockProject: true);
 
-                var src = await EventByUidAsync(conn, tx, eventUid, ct);
+                //  잠금 2: 원본 일정 행(공유). 커밋까지 공용 쓰기가 이 일정을 바꾸지 못해, 확인한 판 그대로 복사된다.
+                var src = await EventByUidForShareAsync(conn, tx, eventUid, ct);
                 if (src == null) throw new PcFail(Kind.Conflict, MsgGone, ConflictData(null));
                 if (src.ProjectId != proj.Id) throw new PcFail(Kind.Invalid, MsgOtherProject);
                 if (src.Deleted) throw new PcFail(Kind.Conflict, MsgGone, ConflictData(src));
                 if (expected != null && src.RowVersion != expected.Value) throw new PcFail(Kind.Conflict, MsgConflict, ConflictData(src));
 
-                //  이미 복사했으면 그 개인 일정(살아 있다. 지워졌으면 CASCADE 로 대응도 사라졌다)
-                await using (var cmd = new MySqlCommand(
-                    "SELECT en.uid FROM cal_project_copy cp JOIN cal_entry en ON en.user_id = cp.user_id AND en.entry_no = cp.entry_no " +
-                    "WHERE cp.user_id=@me AND cp.event_id=@e", conn, tx))
-                {
-                    cmd.Parameters.AddWithValue("@me", me.UserId);
-                    cmd.Parameters.AddWithValue("@e", src.EventId);
-                    var o = await cmd.ExecuteScalarAsync(ct);
-                    if (o != null && o != DBNull.Value)
-                    {
-                        await SafeRollbackAsync(tx);
-                        return (CopyData(Convert.ToString(o, CultureInfo.InvariantCulture) ?? "", eventUid, projectUid, existed: true), false);
-                    }
-                }
-
-                //  잠금 2: 내 개인 rev(배타). 번호 발급(H-1)이 이 락에 기댄다. CalendarWriteDb 의 같은 문장을 쓴다.
+                //  잠금 3: 내 개인 rev(배타). 번호 발급(H-1)이 이 락에 기댄다. CalendarWriteDb 의 같은 문장을 쓴다.
                 long personalRev = await CalendarWriteDb.BumpUserRevInTxAsync(conn, tx, me.UserId, ct);
 
                 //  분류 = 내 과제의 그 공식 과제(과제 탭에 보인다는 것이 이미 내 과제에 있다는 뜻)
@@ -750,20 +726,13 @@ namespace TaskCalendarWidget
                     ["createdAt"] = "",
                 };
                 using var entryDoc = JsonDocument.Parse(JsonSerializer.Serialize(entry));
-                uint entryNo = await CalendarWriteDb.InsertEntryInTxAsync(conn, tx, me.UserId, entryDoc.RootElement, catNo, now, ct);
-
-                string snap = proj.Display;
-                if (CountChars(snap) > Limits.Name) throw new PcFail(Kind.Invalid, "과제 이름이 너무 깁니다.");
-                await Exec(conn, tx,
-                    "INSERT INTO cal_project_copy (user_id, event_id, entry_no, project_name_snapshot, source_row_version, copied_at) " +
-                    "VALUES (@me, @e, @en, @pn, @rv, @now)", ct,
-                    P("@me", me.UserId), P("@e", src.EventId), P("@en", entryNo), P("@pn", snap), P("@rv", src.RowVersion), P("@now", now));
+                await CalendarWriteDb.InsertEntryInTxAsync(conn, tx, me.UserId, entryDoc.RootElement, catNo, now, ct);
 
                 await CommitWithGateAsync(conn, tx, ct);
                 _log("과제 일정 개인 복사: " + projectUid + " " + eventUid + " -> " + entryUid + " personalRev=" + personalRev);
-                var data = (Dictionary<string, object?>)CopyData(entryUid, eventUid, projectUid, existed: false);
+                var data = (Dictionary<string, object?>)CopyData(entryUid, eventUid, projectUid);
                 data["personalRev"] = personalRev;
-                return (data, true);
+                return data;
             }
             catch { await SafeRollbackAsync(tx); throw; }
         }
@@ -772,8 +741,8 @@ namespace TaskCalendarWidget
         private static async Task<Ev?> EventByUidForUpdateAsync(MySqlConnection conn, MySqlTransaction tx, string uid, CancellationToken ct) =>
             await EventWhereAsync(conn, tx, "e.uid=@uid FOR UPDATE OF e", ct, P("@uid", uid));
 
-        private static async Task<Ev?> EventByUidAsync(MySqlConnection conn, MySqlTransaction tx, string uid, CancellationToken ct) =>
-            await EventWhereAsync(conn, tx, "e.uid=@uid", ct, P("@uid", uid));
+        private static async Task<Ev?> EventByUidForShareAsync(MySqlConnection conn, MySqlTransaction tx, string uid, CancellationToken ct) =>
+            await EventWhereAsync(conn, tx, "e.uid=@uid FOR SHARE OF e", ct, P("@uid", uid));
 
         private static async Task<Ev?> EventWhereAsync(MySqlConnection conn, MySqlTransaction? tx, string where, CancellationToken ct,
             params (string, object?)[] ps)
@@ -885,19 +854,19 @@ namespace TaskCalendarWidget
             ["updatedAt"] = Iso(e.UpdatedAt),
         };
 
-        private static object SaveData(Ev e, long projectRev, bool replayed) => new Dictionary<string, object?>
+        private static object SaveData(Ev e, bool replayed) => new Dictionary<string, object?>
         {
-            ["event"] = EventDto(e), ["rowVersion"] = e.RowVersion, ["projectRev"] = projectRev, ["replayed"] = replayed,
+            ["event"] = EventDto(e), ["rowVersion"] = e.RowVersion, ["replayed"] = replayed,
         };
 
-        private static object DeleteData(Ev e, long projectRev, bool replayed) => new Dictionary<string, object?>
+        private static object DeleteData(Ev e, bool replayed) => new Dictionary<string, object?>
         {
-            ["eventUid"] = e.Uid, ["rowVersion"] = e.RowVersion, ["deleted"] = e.Deleted, ["projectRev"] = projectRev, ["replayed"] = replayed,
+            ["eventUid"] = e.Uid, ["rowVersion"] = e.RowVersion, ["deleted"] = e.Deleted, ["replayed"] = replayed,
         };
 
-        private static object CopyData(string entryUid, string eventUid, string projectUid, bool existed) => new Dictionary<string, object?>
+        private static object CopyData(string entryUid, string eventUid, string projectUid) => new Dictionary<string, object?>
         {
-            ["entryUid"] = entryUid, ["eventUid"] = eventUid, ["projectUid"] = projectUid, ["existed"] = existed,
+            ["entryUid"] = entryUid, ["eventUid"] = eventUid, ["projectUid"] = projectUid,
         };
 
         private static object ConflictData(Ev? latest) => new Dictionary<string, object?> { ["latest"] = latest == null ? null : EventDto(latest) };

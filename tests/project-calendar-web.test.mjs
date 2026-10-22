@@ -7,9 +7,12 @@
 //   (P) 순수 계산(node:vm): 막대 차선 배치, 주 경계 자르기, 정렬 고정, 윤년과 같은 날짜와 366일, 월간 보이는 차선 수,
 //       범위, 설정(설정 없음과 빈 선택 구분), 선택 맞추기, 메모 첫 줄, DTO 왕복, 폼 검사, 변경 이력의 전과 후.
 //   (R) jsdom(위젯 모드, 가짜 호스트): 탭 전환이 숨기고 보이는 것, 탭 진입과 새로고침과 창 복귀의 읽기, 늦은 회신 버리기,
-//       글자로만 그리기, 메모 첫 줄을 켜도 보이는 수가 같음, 그날 일정 목록과 [수정], 미리보기 [수정], 폼 검사와 저장,
-//       충돌(최신 내용 확인, 내 입력 유지), 최근 변경의 종류 필터와 더 보기, 개인 일정에 등록과 개인 탭 배지,
+//       글자로만 그리기, 메모 첫 줄을 켜도 보이는 수가 같음, 체크로만 보이기(이름 누름은 아무 일 없음, 옛 solo 설정 무시),
+//       체크가 하나면 폼에 그 과제, 달력에서 무엇을 누르든 그날 일정 목록(누른 일정 줄 강조와 초점), 줄은 상세 창,
+//       상세의 단추(수정, 개인 일정에 등록, 삭제), 목록 안 방향키와 Esc, 폼 검사와 저장, 충돌(최신 내용 확인, 내 입력 유지),
+//       최근 변경의 종류 필터와 더 보기, 개인 일정에 등록(사본: 누를 때마다 새로, 등록됨과 배지 없음),
 //       계정별 설정, 열람 창과 관리 창과 브라우저에서는 보내지 않음.
+//   2026-10-22 저녁 검토 반영(기획 §6.7): 단독 보기, 막대 미리보기, 줄의 [수정], 복사 대응과 배지와 "등록됨" 을 걷었다.
 //   (M) 변이: 핵심 줄을 빼면 위 검사가 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
 import vm from 'node:vm';
@@ -82,7 +85,6 @@ const statics = {
     assert.ok(/document\.getElementById\('pcTabs'\) \|\| document\.querySelector\('header\.topbar'\)/.test(ins), '장애 띠 자리가 탭 줄 아래가 아니다(기획 §6.3)');
     assert.ok(/if\(pcEscape\(\)\)\{ ev\.preventDefault\(\); return; \}/.test(app), '전역 Esc 목록에 과제 탭 팝오버가 없다');
     assert.ok(/if\(pcOn\(\)\)\{ pcKeyNav\(ev\.key\); return; \}/.test(app), '과제 탭에서 방향키가 개인 달력을 움직인다');
-    assert.ok(/\$\{pcCopyBadge\(e\.id\)\}/.test(extractFunction(app, 'cardHtml')), '개인 카드에 복사 배지 자리가 없다');
     assert.ok(/if\(!PEER\) pcOnBootApplied\(\);/.test(app), '부팅 주입이 과제 탭에 계정을 알리지 않는다');
     assert.ok(/ov\.id==='pcFormModal'/.test(extractFunction(app, 'isGuardedModal')), '과제 일정 폼이 닫기 확인(Esc, 배경 누름) 대상이 아니다');
     assert.ok(/<section class="pc-view" id="pcView"/.test(app) && /<div class="pc-tabs" id="pcTabs" role="tablist"/.test(app), '탭 줄이나 과제 화면 자리가 마크업에 없다');
@@ -92,10 +94,28 @@ const statics = {
     assert.ok(!/공식 과제 추가/.test(m), '과제 탭에 "공식 과제 추가" 진입이 생겼다(기획 §6.6: 내 과제 창에서만)');
     //  텍스트로만 그린다: 사용자 글을 담는 innerHTML 조립에 esc 없이 붙는 필드가 없다.
     for (const f of ['title', 'memo', 'location', 'name', 'actor', 'createdBy', 'updatedBy']) {
-      const raw = new RegExp(`\\+ (?:e|p|c|solo|L)\\.${f} \\+`, 'g');
+      const raw = new RegExp(`\\+ (?:e|p|c|L)\\.${f} \\+`, 'g');
       const lines = m.split('\n').filter((l) => l.includes("'<")).map((l) => l.replace(/esc\([^()]*\)/g, ''));
       assert.ok(!lines.some((l) => raw.test(l)), `${f} 를 esc 없이 HTML 에 붙인다`);
     }
+  },
+  //  2026-10-22 저녁 검토 반영(기획 §6.7)으로 걷은 것이 돌아오지 않는다.
+  removed(app) {
+    const m = moduleOf(app);
+    //  ① 단독 보기: 상태, 이름 단추, 머리의 단독 전환, 안내 글, 색칠 규칙이 없다. 과제 이름은 단추가 아닌 글자다.
+    for (const [re, what] of [[/PCAL\.solo|\bsolo:/, 'PCAL.solo 상태'], [/data-act="(?:un)?solo"|case 'solo'|case 'unsolo'/, '단독 보기 동작'],
+      [/pc-solo-note|\.pc-row\.solo/, '단독 보기 표시'], [/이름을 누르면/, '이름 누름 안내']]) assert.ok(!re.test(app), `${what}이 남아 있다`);
+    const side = extractFunction(m, 'pcSideHtml');
+    assert.ok(/<span class="pc-name">' \+ esc\(p\.name\) \+ '<\/span>'/.test(side) && !/<button[^']*pc-name/.test(side), '과제 이름이 누를 수 있는 단추다(보이기는 체크만 정한다)');
+    assert.ok(!/cursor:pointer/.test(/\n\.pc-name\{[^}]*\}/.exec(app)?.[0] || 'cursor:pointer'), '.pc-name 이 누를 수 있는 모양(cursor:pointer)이다');
+    assert.ok(!/solo/.test(extractFunction(m, 'pcPrefsSave')), '설정에 단독 보기를 저장한다');
+    //  ② 복사 대응: 개인 탭 배지, 대응 지도, "등록됨" 이 없다. 부트스트랩의 copies 를 읽지 않는다.
+    for (const [re, what] of [[/pcCopyBadge|pc-copy-badge/, '개인 탭 복사 배지'], [/PCAL\.copies|copyEntries|d\.copies/, '복사 대응 상태'],
+      [/개인 일정에 등록됨|pcd-copied|d\.existed/, '"등록됨" 표시']]) assert.ok(!re.test(app), `${what}이 남아 있다`);
+    //  ③ 미리보기: 막대를 눌러도 미리보기가 없다. 목록 줄에 [수정] 이 없다.
+    assert.ok(!/pcOpenPreview|pc-pop-memo|pc-pop-acts/.test(app), '막대 미리보기가 남아 있다');
+    assert.ok(!/data-act="edit"/.test(extractFunction(m, 'pcDayRowHtml') + extractFunction(m, 'pcOpenDayList')), '그날 일정 목록에 [수정] 이 있다');
+    assert.ok(/pcOpenDayList\(ds, bar, \{ hit: bar\.dataset\.ev/.test(extractFunction(m, 'pcOnViewClick')), '막대를 누르면 그날 일정 목록(누른 일정 강조)이 아니다');
   },
   punct(app) {
     const m = moduleOf(app);
@@ -107,8 +127,14 @@ const statics = {
 };
 test('정적①: 글자 상한이 웹, 호스트, DDL, 입력 칸에서 같다', () => statics.limits(src));
 test('정적②: 명령 여섯만 pcReq 한 문으로, 열람 창과 관리 창 목록 밖, 그 창에서는 탭 줄 없음', () => statics.commands(src));
-test('정적③: 주기 확인 없음, 띠 자리, Esc, 방향키, 복사 배지, 부팅 알림, 숨김 규칙, 글자 이스케이프', () => statics.wiring(src));
+test('정적③: 주기 확인 없음, 띠 자리, Esc, 방향키, 부팅 알림, 숨김 규칙, 글자 이스케이프', () => statics.wiring(src));
 test('정적④: 과제 탭 문구와 주석의 기호 규칙', () => statics.punct(src));
+test('정적⑤: 검토 반영으로 걷은 것(단독 보기, 복사 대응과 배지와 등록됨, 막대 미리보기와 목록 [수정])이 없다', () => statics.removed(src));
+test('변이S⑤: 이름 단추, 복사 배지, 미리보기를 되돌리면 정적⑤ 가 잡는다', () => {
+  assert.throws(() => statics.removed(mutate("'<span class=\"pc-nm\"><span class=\"pc-name\">' + esc(p.name) + '</span>'", "'<span class=\"pc-nm\"><button type=\"button\" class=\"pc-name\" data-act=\"solo\">' + esc(p.name) + '</button>'")), /단독 보기 동작|단추다/);
+  assert.throws(() => statics.removed(mutate('      ${ovlBadge}\n    </div>', '      ${ovlBadge}\n      ${pcCopyBadge(e.id)}\n    </div>')), /복사 배지/);
+  assert.throws(() => statics.removed(mutate('pcOpenDayList(ds, bar, { hit: bar.dataset.ev, projectUid: rowProj })', 'pcOpenPreview(bar.dataset.ev, bar, null)')), /미리보기|그날 일정 목록/);
+});
 test('변이S①: 웹 상한을 바꾸면 정적① 이 잡는다', () => {
   assert.throws(() => statics.limits(mutate('const PCAL_LIMITS = Object.freeze({ title: 200,', 'const PCAL_LIMITS = Object.freeze({ title: 100,')), /호스트 ProjectCalendarDb\.Limits 와 다르다/);
 });
@@ -120,7 +146,7 @@ test('변이S②: 목록 밖 명령을 보내거나 열람 창 목록에 넣거�
 test('변이S③: 주기 확인을 넣거나 띠 자리를 되돌리거나 esc 를 빼면 정적③ 이 잡는다', () => {
   assert.throws(() => statics.wiring(mutate('function pcOnActivate(){', 'function pcOnActivate(){ setInterval(pcLoad, 30000);')), /주기 확인/);
   assert.throws(() => statics.wiring(mutate("const bar = document.getElementById('pcTabs') || document.querySelector('header.topbar')", "const bar = document.querySelector('header.topbar')")), /탭 줄 아래/);
-  assert.throws(() => statics.wiring(mutate("'<div class=\"pc-pop-title\">' + esc(e.title) + '</div>'", "'<div class=\"pc-pop-title\">' + e.title + '</div>'")), /title 를 esc 없이/);
+  assert.throws(() => statics.wiring(mutate("'<span class=\"ctitle\">' + esc(e.title) + '</span>'", "'<span class=\"ctitle\">' + e.title + '</span>'")), /title 를 esc 없이/);
 });
 
 /* ── (P) 순수 계산 ───────────────────────────────────────────────────── */
@@ -186,6 +212,8 @@ test('순수④: 설정 고치기(설정 없음 null 과 빈 선택 [] 구분), 
   assert.strictEqual(P.pcPrefsNorm('{"sel":"x"}').sel, null);
   assert.strictEqual(P.pcPrefsNorm('{깨진').tab, 'personal');
   assert.deepStrictEqual(JSON.parse(JSON.stringify(P.pcPrefsNorm('{"tab":"project","view":"week","sel":["a","a",3,""],"memo":true}'))), { tab: 'project', view: 'week', sel: ['a'], known: [], memo: true });
+  //  옛 판이 남겼을 수 있는 단독 보기 값(solo)은 버린다(2026-10-22 저녁 단독 보기 제거). 나머지 설정은 그대로 산다.
+  assert.deepStrictEqual(J(P.pcPrefsNorm('{"tab":"project","sel":["a"],"solo":"a","known":["a","b"]}')), { tab: 'project', view: 'month', sel: ['a'], known: ['a', 'b'], memo: false }, '옛 solo 값이 설정에 남았다');
   assert.deepStrictEqual(J(P.pcSelReconcile(null, [], ['a', 'b'])), ['a', 'b'], '설정 없음이면 전체 선택');
   assert.deepStrictEqual(J(P.pcSelReconcile([], ['a', 'b'], ['a', 'b'])), [], '빈 선택이 전체로 되살아났다');
   assert.deepStrictEqual(J(P.pcSelReconcile(['a'], ['a', 'b'], ['a', 'b', 'c'])), ['a', 'c'], '새로 내 과제에 넣은 과제를 켜지 않았다');
@@ -285,7 +313,7 @@ if (!JSDOM) {
     entries, todos: [], rooms: [] });
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
-  async function boot({ url = '', host = true, login = 'hjlee', prefs = null, bootstrapReply = true, source = src } = {}) {
+  async function boot({ url = '', host = true, login = 'hjlee', prefs = null, source = src } = {}) {
     const clock = fakeClock();
     const posts = [];
     const dom = new JSDOM(source, {
@@ -319,10 +347,10 @@ if (!JSDOM) {
         for (const p of posts.filter((x) => x.cmd === 'saveState' && x.reqId && !x.__done)) { p.__done = true; w.eval('__hostReply(' + JSON.stringify(p.reqId) + ',{"ok":true})'); }
         await settle();
       },
-      async bootstrap(projects = PROJECTS, copies = []) { await W.reply('projectCalendarBootstrap', { ok: true, data: { projects, copies, limits: { title: 200, location: 200, memo: 8000 } } }); },
+      async bootstrap(projects = PROJECTS) { await W.reply('projectCalendarBootstrap', { ok: true, data: { projects, limits: { title: 200, location: 200, memo: 8000 } } }); },
       async load(events, extra = {}) {
         const p = W.last('projectCalendarLoad');
-        await W.reply('projectCalendarLoad', { ok: true, data: Object.assign({ projects: (p.projectUids || []).map((u) => ({ projectUid: u, rev: 1, writable: u !== P3 })), events, excluded: [], from: p.from, to: p.to }, extra) });
+        await W.reply('projectCalendarLoad', { ok: true, data: Object.assign({ projects: (p.projectUids || []).map((u) => ({ projectUid: u, writable: u !== P3 })), events, excluded: [], from: p.from, to: p.to }, extra) });
       },
       async click(sel) { const e = typeof sel === 'string' ? doc.querySelector(sel) : sel; assert.ok(e, `누를 것(${sel})이 없다`); e.click(); await settle(); clock.advance(150); await settle(); },
       async tab(t) { await W.click(t === 'project' ? '#pcTabProject' : '#pcTabPersonal'); },
@@ -334,17 +362,34 @@ if (!JSDOM) {
     if (host && login && !url) {
       await W.reply('userSessionGet', { ok: true, user: { loginId: login, name: '이현진' } });
       await W.applyState();
-      if (bootstrapReply) await W.bootstrap();
     }
     return W;
   }
   async function withBoot(opts, fn) { const W = await boot(opts); try { return await fn(W); } finally { W.close(); } }
+  //  달력에서 sel 을 눌러 그날 일정 목록을 연다.
+  async function openList(W, sel) {
+    await W.click(sel);
+    const pop = W.el('pcPop');
+    assert.ok(pop && /일정 목록$/.test(pop.getAttribute('aria-label') || ''), `${sel} 를 눌렀는데 그날 일정 목록이 뜨지 않았다`);
+    return pop;
+  }
+  //  달력의 sel 을 눌러 목록을 열고, 강조된 줄(없으면 첫 줄)을 눌러 상세 창을 연다.
+  async function openDetail(W, sel = '#pcView .pc-ev') {
+    const pop = await openList(W, sel);
+    const row = pop.querySelector('.pc-dl .chip.hit') || pop.querySelector('.pc-dl .chip');
+    assert.ok(row, '목록에 줄이 없다');
+    await W.click(row);
+    assert.ok(!W.el('pcDetailModal').classList.contains('hidden'), '목록의 줄을 눌렀는데 상세 창이 열리지 않았다');
+    assert.ok(!W.el('pcPop'), '상세 창을 열었는데 목록이 남았다');
+  }
+  const key = async (W, el, k) => { el.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); await settle(); };
   const EV = (n, o = {}) => Object.assign({ eventUid: U(n), projectUid: P1, title: '일정 ' + n, startDate: today(), endDate: today(), startTime: null, endTime: null,
     location: '', memo: '', rowVersion: 1, deleted: false, createdBy: '홍길동', updatedBy: '홍길동', createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }, o);
 
   test('화면①: 탭 전환이 개인 화면과 상단 단추를 숨기고 되돌린다, 탭 줄 아래로 장애 띠, 탭 진입은 목록과 범위를 읽는다', () => withBoot({}, async (W) => {
     assert.ok(W.el('pcTabs') && !W.doc.body.classList.contains('pc-on'), '처음은 개인 탭이어야 한다');
-    assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 1, '부팅 뒤 복사 배지를 위한 목록 읽기가 한 번이 아니다');
+    //  개인 탭에는 과제 캘린더와 이어진 표시가 없다(복사 배지 제거, 기획 §6.7). 그래서 개인 탭으로 켜면 과제 캘린더를 읽지 않는다.
+    assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 0, '개인 탭인데 과제 목록을 읽었다');
     assert.strictEqual(W.cmds('projectCalendarLoad').length, 0, '개인 탭인데 과제 일정을 읽었다');
     await W.tab('project');
     assert.ok(W.doc.body.classList.contains('pc-on'), '과제 탭 표시(body.pc-on)가 없다');
@@ -354,7 +399,7 @@ if (!JSDOM) {
     }
     assert.strictEqual(W.w.getComputedStyle(W.q('.topbar .nav')).display, 'none', '과제 탭에서 상단바 달 이동이 보인다');
     assert.notStrictEqual(W.w.getComputedStyle(W.el('pcView')).display, 'none', '과제 화면이 보이지 않는다');
-    assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 2, '탭 진입이 과제 목록을 다시 읽지 않았다');
+    assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 1, '탭 진입이 과제 목록을 읽지 않았다');
     await W.bootstrap();
     const ld = W.last('projectCalendarLoad');
     assert.ok(ld, '탭 진입이 범위 일정을 읽지 않았다');
@@ -412,22 +457,31 @@ if (!JSDOM) {
     await W.load([EV(1, { title: evil, memo: '첫째 줄\n둘째', startTime: '09:00', endTime: '10:00' })]);
     const l2 = W.q('#pcView .pc-wcells .pc-l2');
     assert.ok(l2 && l2.textContent === '첫째 줄', '주간에 메모 첫 줄이 제목 아래 줄에 보이지 않는다');
-    await W.click('#pcView .pc-ev');
-    assert.ok(!W.el('pcPop').querySelector('img, script, .pc-pop-loc b'), '미리보기가 사용자 글을 요소로 그렸다');
+    const pop = await openList(W, '#pcView .pc-ev');
+    assert.ok(!pop.querySelector('img, script, b'), '그날 일정 목록이 사용자 글을 요소로 그렸다');
+    const row = pop.querySelector('.pc-dl .chip');
+    assert.ok(row.textContent.includes(evil) && row.getAttribute('title').startsWith('<b>장비</b> 개발, '), '목록 줄의 제목이나 title(과제명)이 글자 그대로가 아니다');
     assert.strictEqual(W.w.__pwned, undefined);
   }));
 
-  test('화면④: 왼쪽 목록(전체 선택, 전체 해제, 체크, 단독 보기, 종료 읽기 전용), 계정별 설정에 빈 선택이 남는다', () => withBoot({}, async (W) => {
+  test('화면④: 왼쪽 목록(전체 선택, 전체 해제, 체크, 종료 읽기 전용), 이름을 눌러도 아무 일 없음, 계정별 설정에 빈 선택이 남는다', () => withBoot({}, async (W) => {
     await W.enter([]);
     assert.ok(/3 \/ 3/.test(W.q('#pcView .pc-side-h').textContent));
     assert.ok(/종료, 읽기 전용/.test(W.q(`#pcView .pc-row input[data-uid="${P3}"]`).closest('.pc-row').textContent), '종료된 과제에 읽기 전용 표시가 없다');
+    const hint = W.q('#pcView .pc-hint').textContent;
+    assert.ok(/체크하면 달력에 보이고, 해제하면 숨깁니다/.test(hint) && /내 과제에서 빠지지 않습니다/.test(hint) && !/이름/.test(hint), '목록 안내가 체크만 말하지 않는다: ' + hint);
     await W.click(`#pcView input[data-uid="${P2}"]`);
     assert.deepStrictEqual(W.last('projectCalendarLoad').projectUids, [P1, P3], '체크를 끄면 그 과제를 읽지 않아야 한다');
     await W.load([]);
-    await W.click(`#pcView .pc-name[data-uid="${P2}"]`);
-    assert.deepStrictEqual(W.last('projectCalendarLoad').projectUids, [P2], '이름을 누르면 그 과제만(단독 보기)');
-    assert.ok(/플랫폼 개선/.test(W.q('#pcView .pc-title').textContent));
-    await W.load([]);
+    //  과제 이름은 글자다. 눌러도 읽기, 선택, 제목이 그대로다(단독 보기 없음, 기획 §6.7).
+    const nm = [...W.qa('#pcView .pc-name')].find((e) => e.textContent === '플랫폼 개선');
+    assert.ok(nm && nm.tagName === 'SPAN' && !nm.hasAttribute('data-act') && !nm.closest('button, a, label'), '과제 이름이 누를 수 있는 요소다');
+    const l0 = W.cmds('projectCalendarLoad').length, sel0 = JSON.stringify(W.ev('PCAL.sel'));
+    await W.click(nm);
+    assert.strictEqual(W.cmds('projectCalendarLoad').length, l0, '이름을 누르자 일정을 다시 읽었다');
+    assert.strictEqual(JSON.stringify(W.ev('PCAL.sel')), sel0, '이름을 누르자 표시 선택이 바뀌었다');
+    assert.ok(/^전체 과제$/.test(W.q('#pcView .pc-title').textContent) && /2개 과제 표시/.test(W.q('#pcView .pc-sub').textContent), '머리가 "전체 과제, n개 과제 표시" 가 아니다');
+    assert.ok(!W.q(`#pcView input[data-uid="${P2}"]`).checked, '이름을 누르자 체크가 바뀌었다');
     await W.click('#pcView [data-act="selNone"]');
     assert.ok(/표시할 과제를 선택하세요/.test(W.el('pcView').textContent), '0개 선택 안내가 없다');
     const saved = JSON.parse(W.w.localStorage.getItem('tc_pcal:hjlee'));
@@ -436,8 +490,28 @@ if (!JSDOM) {
     assert.deepStrictEqual(W.last('projectCalendarLoad').projectUids, [P1, P2, P3]);
   }));
 
+  test('화면④b: 체크한 과제가 하나이고 쓸 수 있으면 등록 폼에 그 과제, 둘 이상이거나 읽기 전용이면 "과제를 선택하세요", 옛 solo 설정은 무시', () => withBoot(
+    { prefs: { 'tc_pcal:hjlee': JSON.stringify({ tab: 'project', view: 'month', sel: [P2], known: [P1, P2, P3], solo: P1 }) } },
+    async (W) => {
+      await W.bootstrap();
+      assert.deepStrictEqual(W.last('projectCalendarLoad').projectUids, [P2], '옛 solo 값이 보이는 과제를 바꿨다(체크만 본다)');
+      assert.ok(!('solo' in W.ev('PCAL')), 'PCAL 에 solo 상태가 있다');
+      await W.load([]);
+      const formProj = async () => { await W.click('#pcView [data-act="new"]'); const v = W.el('pcfProj').value, h = W.el('pcfProjHint').textContent; W.ev("closeModal('#pcFormModal')"); W.clock.advance(500); await settle(); return [v, h]; };
+      assert.deepStrictEqual(await formProj(), [P2, ''], '체크한 과제가 하나(쓸 수 있음)인데 폼에 그 과제가 골라져 있지 않다');
+      await W.click(`#pcView input[data-uid="${P1}"]`); await W.load([]);
+      const two = await formProj();
+      assert.strictEqual(two[0], '', '체크한 과제가 둘인데 하나를 미리 골랐다');
+      assert.ok(/고르세요/.test(two[1]));
+      await W.click(`#pcView input[data-uid="${P1}"]`); await W.click(`#pcView input[data-uid="${P2}"]`); await W.click(`#pcView input[data-uid="${P3}"]`); await W.load([]);
+      assert.deepStrictEqual(J(W.ev('PCAL.sel')), [P3]);
+      assert.strictEqual((await formProj())[0], '', '읽기 전용 과제 하나만 체크했는데 그 과제를 골랐다');
+      const saved = JSON.parse(W.w.localStorage.getItem('tc_pcal:hjlee'));
+      assert.ok(!('solo' in saved), '설정을 다시 쓸 때 옛 solo 값을 남겼다');
+    }));
+
   test('화면⑤: 저장된 빈 선택은 다시 켜도 빈 선택이다(설정 없음과 다름), 마지막 탭과 주간을 되살린다, 날짜는 오늘', () => withBoot(
-    { prefs: { 'tc_pcal:hjlee': JSON.stringify({ tab: 'project', view: 'week', sel: [], known: [P1, P2, P3], memo: true }), 'tc_pcal:other': JSON.stringify({ tab: 'personal' }) }, bootstrapReply: false },
+    { prefs: { 'tc_pcal:hjlee': JSON.stringify({ tab: 'project', view: 'week', sel: [], known: [P1, P2, P3], memo: true }), 'tc_pcal:other': JSON.stringify({ tab: 'personal' }) } },
     async (W) => {
       assert.ok(W.doc.body.classList.contains('pc-on'), '마지막 탭(과제)을 되살리지 않았다');
       await W.bootstrap();
@@ -448,48 +522,128 @@ if (!JSDOM) {
       assert.strictEqual(W.ev('PCAL.anchor'), today(), '날짜를 기억해 되살렸다(켤 때 오늘이어야 한다)');
     }));
 
-  test('화면⑥: 날짜 칸을 누르면 그날 일정 목록, 줄마다 [수정], [수정]은 수정 폼, "이 날짜에 일정 등록" 은 그 날짜의 등록 폼', () => withBoot({}, async (W) => {
-    await W.enter([EV(1, { title: '첫째' }), EV(2, { title: '둘째', projectUid: P2, startTime: '14:00', endTime: '15:00' }), EV(3, { title: '종료 과제', projectUid: P3 })]);
-    await W.click(`#pcView .pc-day[data-date="${today()}"]`);
-    const pop = W.el('pcPop');
-    assert.ok(pop, '그날 일정 목록이 뜨지 않았다');
-    const rows = [...pop.querySelectorAll('.pc-dl-row')];
+  test('화면⑥: 그날 일정 목록의 모양(머리 날짜와 n건, 막대 줄과 시간 줄, 과제명은 줄 글자가 아니라 title), [수정] 없음, 줄은 상세, "이 날짜에 일정 등록"', () => withBoot({}, async (W) => {
+    await W.enter([EV(1, { title: '첫째', memo: '메모 있음' }), EV(2, { title: '둘째', projectUid: P2, startTime: '14:00', endTime: '15:00' }), EV(3, { title: '종료 과제', projectUid: P3 })]);
+    const pop = await openList(W, `#pcView .pc-day[data-date="${today()}"]`);
+    assert.strictEqual(pop.querySelector('.pc-pop-title').textContent, W.ev(`pcMd(${JSON.stringify(today())})`), '머리가 "M월 D일 (요일)" 이 아니다');
+    assert.strictEqual(pop.querySelector('.pc-pop-n').textContent, '일정 3건');
+    const rows = [...pop.querySelectorAll('.pc-dl .chip')];
     assert.strictEqual(rows.length, 3);
-    assert.ok(/플랫폼 개선, 14:00 ~ 15:00/.test(pop.textContent), '줄에 과제명과 시각이 없다');
-    assert.strictEqual(pop.querySelectorAll('[data-act="edit"]').length, 2, '쓸 수 있는 과제의 줄에만 [수정]이 있어야 한다');
+    assert.ok(rows.every((r) => r.tagName === 'BUTTON' && r.dataset.act === 'dlOpen'), '줄 전체가 단추가 아니다');
+    assert.ok(!pop.querySelector('[data-act="edit"]') && !/수정/.test(pop.textContent), '목록에 [수정] 이 있다(줄을 누르면 상세)');
+    assert.ok(!/장비|플랫폼|구형/.test(pop.textContent), '줄 글자에 과제명이 있다(색이 과제를 가리킨다)');
+    const r2 = pop.querySelector(`[data-ev="${U(2)}"]`), r1 = pop.querySelector(`[data-ev="${U(1)}"]`);
+    assert.strictEqual(r2.getAttribute('title'), '플랫폼 개선, 14:00 ~ 15:00', '시간 줄의 title 이 "과제명, 시각" 이 아니다');
+    assert.ok(/^플랫폼 개선, 14:00 ~ 15:00, 둘째/.test(r2.getAttribute('aria-label')), r2.getAttribute('aria-label'));
+    assert.ok(r2.classList.contains('chip-timed') && r2.querySelector('.cdot') && r2.querySelector('.chip-t').textContent === '14:00', '시간 일정이 색 점과 시각이 아니다');
+    assert.ok(!r1.classList.contains('chip-timed') && /border-left-color/.test(r1.getAttribute('style') || '') && r1.querySelector('.ctitle').textContent === '첫째', '날짜 일정이 과제 색 막대가 아니다');
+    assert.ok(r1.querySelector('.pc-mi'), '메모 있음 표시가 제목 뒤에 없다');
+    assert.ok(/, 읽기 전용$/.test(pop.querySelector(`[data-ev="${U(3)}"]`).getAttribute('aria-label')), '종료 과제 줄의 aria-label 에 읽기 전용이 없다');
     assert.ok(pop.querySelector('[data-act="newOn"]'), '"이 날짜에 일정 등록" 이 없다');
-    await W.click(pop.querySelector(`[data-act="edit"][data-ev="${U(2)}"]`));
-    assert.ok(!W.el('pcFormModal').classList.contains('hidden'), '[수정]이 폼을 열지 않았다');
-    assert.strictEqual(W.el('pcfHead').textContent, '과제 일정 수정');
-    assert.strictEqual(W.el('pcfTitle').value, '둘째');
-    assert.ok(W.el('pcfProj').disabled, '수정 때 과제를 바꿀 수 있다');
-    W.ev("closeModal('#pcFormModal')"); W.clock.advance(500); await settle();
-    await W.click(`#pcView .pc-day[data-date="${today()}"] .num`);
+    await W.click(r2);
+    assert.ok(!W.el('pcDetailModal').classList.contains('hidden') && /둘째/.test(W.el('pcDetailBody').textContent), '줄이 그 일정의 상세를 열지 않았다');
+    W.ev("closeModal('#pcDetailModal')"); W.clock.advance(500); await settle();
+    await openList(W, `#pcView .pc-day[data-date="${today()}"] .num`);
     await W.click('#pcPop [data-act="newOn"]');
     assert.strictEqual(W.el('pcfHead').textContent, '과제 일정 등록');
     assert.strictEqual(W.el('pcfStart').value, today());
-    assert.strictEqual(W.el('pcfProj').value, '', '전체 보기에서 과제가 미리 골라져 있다(과제를 선택하세요 여야 한다)');
+    assert.strictEqual(W.el('pcfProj').value, '', '여러 과제를 볼 때 과제가 미리 골라져 있다(과제를 선택하세요 여야 한다)');
     assert.ok(![...W.el('pcfProj').options].some((o) => o.value === P3), '종료된 과제가 등록 목록에 있다');
+    W.ev("closeModal('#pcFormModal')"); W.clock.advance(500); await settle();
+    //  보이는 과제가 모두 읽기 전용이면 "이 날짜에 일정 등록" 이 없다(쓸 수 있는 과제가 다른 데 있어도).
+    await W.click(`#pcView input[data-uid="${P1}"]`); await W.click(`#pcView input[data-uid="${P2}"]`); await W.load([EV(3, { title: '종료 과제', projectUid: P3 })]);
+    const ro = await openList(W, `#pcView .pc-day[data-date="${today()}"]`);
+    assert.ok(!ro.querySelector('[data-act="newOn"]'), '보이는 과제가 모두 읽기 전용인데 "이 날짜에 일정 등록" 이 있다');
     W.ev('pcEscape()');
   }));
 
-  test('화면⑦: 막대 미리보기의 [수정]은 바로 폼, 상세는 전체 메모와 글쓴이와 마지막 수정, Esc 는 팝오버를 닫는다', () => withBoot({}, async (W) => {
-    await W.enter([EV(1, { title: '미리보기', memo: '1\n2\n3\n4\n5', location: '3층', createdBy: '가', updatedBy: '나' })]);
-    await W.click('#pcView .pc-ev');
-    assert.ok(W.el('pcPop'), '미리보기가 뜨지 않았다');
-    assert.ok(/메모 일부만 보입니다/.test(W.el('pcPop').textContent));
-    W.doc.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await settle();
-    assert.ok(!W.el('pcPop'), 'Esc 가 미리보기를 닫지 않았다');
-    await W.click('#pcView .pc-ev');
-    await W.click('#pcPop [data-act="edit"]');
-    assert.ok(!W.el('pcFormModal').classList.contains('hidden'), '미리보기 [수정]이 폼을 열지 않았다');
-    assert.strictEqual(W.el('pcfTitle').value, '미리보기');
-    W.ev("closeModal('#pcFormModal')"); W.clock.advance(500); await settle();
-    await W.click('#pcView .pc-ev');
-    await W.click('#pcPop [data-act="detail"]');
+  test('화면⑦: 달력에서 무엇을 누르든(막대, 시간 일정, 칸, 날짜 숫자, "+n", 주간) 그 날짜의 같은 목록, 누른 일정 줄은 강조와 초점', () => withBoot({}, async (W) => {
+    const t = today(), y = W.ev(`addDays(${JSON.stringify(t)}, -1)`), z = W.ev(`addDays(${JSON.stringify(t)}, 1)`);
+    const evs = [EV(1, { title: '긴 일정', startDate: y, endDate: z }), EV(2, { title: '회의', projectUid: P2, startTime: '09:30', endTime: '10:00' }), EV(3, { title: '셋째' })];
+    await W.enter(evs);
+    const ids = (pop) => [...pop.querySelectorAll('.pc-dl .chip')].map((r) => r.dataset.ev);
+    //  날짜 칸(빈 곳)이 기준 목록이다.
+    const base = ids(await openList(W, `#pcView .pc-day[data-date="${t}"]`));
+    assert.strictEqual(base.length, 3);
+    assert.ok(!W.q('#pcPop .chip.hit'), '칸을 눌렀는데 강조된 줄이 있다');
+    assert.strictEqual(W.doc.activeElement, W.q('#pcPop .pc-dl .chip'), '칸으로 열면 첫 줄에 초점이 있어야 한다');
+    //  여러 날 막대: 누른 칸의 날짜(jsdom 은 좌표가 없어 이 주의 막대 첫 칸)의 목록이고 그 막대 줄이 강조된다.
+    //  (jsdom 은 칸 높이가 0 이라 월간에는 차선이 하나만 보인다. 시간 일정 누름은 아래 주간에서 본다.)
+    const bar = [...W.qa('#pcView .pc-ev')].find((b) => b.dataset.ev === U(1));
+    const p1 = await openList(W, bar);
+    const ds = W.ev('PCAL.anchor');
+    assert.strictEqual(p1.querySelector('.pc-pop-title').textContent, W.ev(`pcMd(${JSON.stringify(ds)})`), '막대로 연 목록의 날짜가 선택한 날짜와 다르다');
+    assert.ok(ds >= y && ds <= z, '막대 밖의 날짜로 열었다');
+    assert.strictEqual(p1.querySelector('.chip.hit').dataset.ev, U(1), '누른 막대 줄이 강조되지 않았다');
+    //  날짜 숫자와 "+n" 도 같은 목록이다(jsdom 은 칸 높이가 0 이라 차선이 하나만 보이고 나머지는 "+n").
+    assert.deepStrictEqual(ids(await openList(W, `#pcView .pc-day[data-date="${t}"] .num`)), base, '날짜 숫자로 연 목록이 다르다');
+    const more = W.q(`#pcView .pc-more[data-more="${t}"]`);
+    assert.ok(more, '시험 준비: "+n" 이 없다');
+    assert.deepStrictEqual(ids(await openList(W, more)), base, '"+n" 으로 연 목록이 다르다');
+    //  주간: 막대와 칸도 같은 목록(모든 보이는 과제의 그날 일정)이다.
+    await W.click('#pcView [data-act="view"][data-v="week"]'); await W.load(evs);
+    //  시간 일정을 누르면 같은 목록이고 그 줄이 강조되고 초점을 받는다.
+    const timed = [...W.qa('#pcView .pc-wcells .pc-ev')].find((b) => b.dataset.ev === U(2));
+    const p2 = await openList(W, timed);
+    assert.deepStrictEqual(ids(p2), base, '시간 일정을 눌러 연 목록이 칸의 목록과 다르다');
+    const hit = p2.querySelector('.chip.hit');
+    assert.ok(hit && hit.dataset.ev === U(2) && hit.getAttribute('aria-current') === 'true', '누른 일정 줄이 강조되지 않았다');
+    assert.strictEqual(W.doc.activeElement, hit, '누른 일정 줄에 초점이 없다');
+    assert.strictEqual(p2.querySelectorAll('.chip.hit').length, 1);
+    const wbar = [...W.qa('#pcView .pc-wcells .pc-ev')].find((b) => b.dataset.ev === U(3));
+    const pw = await openList(W, wbar);
+    assert.deepStrictEqual(ids(pw), base, '주간 막대로 연 목록이 다르다');
+    assert.strictEqual(pw.querySelector('.chip.hit').dataset.ev, U(3));
+    const wcell = W.q(`#pcView .pc-wcells[data-proj="${P2}"] .pc-wday[data-date="${t}"]`);
+    assert.deepStrictEqual(ids(await openList(W, wcell)), base, '주간 칸으로 연 목록이 다르다(과제 행으로 좁히지 않는다)');
+    assert.strictEqual(W.q('#pcPop [data-act="newOn"]').dataset.proj, P2, '주간 과제 행에서 연 목록의 등록이 그 과제를 미리 고르지 않는다');
+    //  막대 미리보기는 없다.
+    assert.ok(!W.q('#pcPop [data-act="detail"]') && !W.q('#pcPop .pc-pop-memo'), '미리보기가 남아 있다');
+  }));
+
+  test('화면⑦b: 키보드(칸에서 Enter 로 목록, 위와 아래로 줄 이동, 왼쪽과 오른쪽은 달을 옮기지 않음, Esc 로 닫고 칸으로 초점)', () => withBoot({}, async (W) => {
+    await W.enter([EV(1, { title: '하나' }), EV(2, { title: '둘', projectUid: P2 }), EV(3, { title: '셋' })]);
+    const cell = W.q(`#pcView .pc-day[data-date="${today()}"]`);
+    assert.strictEqual(cell.tabIndex, 0, '선택한 날짜 칸이 탭 순서에 없다');
+    cell.focus();
+    await key(W, cell, 'Enter');
+    assert.ok(W.el('pcPop'), 'Enter 가 그날 일정 목록을 열지 않았다');
+    const rows = [...W.qa('#pcPop .pc-dl .chip')];
+    assert.strictEqual(W.doc.activeElement, rows[0]);
+    await key(W, W.doc.activeElement, 'ArrowDown');
+    assert.strictEqual(W.doc.activeElement, rows[1], '아래 방향키가 다음 줄로 옮기지 않았다');
+    await key(W, W.doc.activeElement, 'ArrowUp');
+    assert.strictEqual(W.doc.activeElement, rows[0], '위 방향키가 앞 줄로 옮기지 않았다');
+    await key(W, W.doc.activeElement, 'End');
+    assert.strictEqual(W.doc.activeElement, W.q('#pcPop [data-act="newOn"]'), 'End 가 맨 아래(등록)로 옮기지 않았다');
+    await key(W, W.doc.activeElement, 'Home');
+    assert.strictEqual(W.doc.activeElement, rows[0]);
+    const a0 = W.ev('PCAL.anchor');
+    await key(W, W.doc.activeElement, 'ArrowRight');
+    assert.ok(W.el('pcPop') && W.ev('PCAL.anchor') === a0, '목록 안의 오른쪽 방향키가 달을 옮겼다');
+    await W.click(W.doc.activeElement);   // 단추라 Enter 와 스페이스는 브라우저가 누름으로 바꾼다(jsdom 은 하지 않아 직접 누른다)
+    assert.ok(!W.el('pcDetailModal').classList.contains('hidden'), '줄 단추가 상세를 열지 않았다');
+    W.ev("closeModal('#pcDetailModal')"); W.clock.advance(500); await settle();
+    const cell2 = W.q(`#pcView .pc-day[data-date="${today()}"]`);
+    cell2.focus(); await key(W, cell2, 'Enter');
+    await key(W, W.doc, 'Escape');
+    assert.ok(!W.el('pcPop'), 'Esc 가 목록을 닫지 않았다');
+    assert.strictEqual(W.doc.activeElement, cell2, 'Esc 로 닫은 뒤 초점이 칸으로 돌아가지 않았다');
+  }));
+
+  test('화면⑦c: 상세 창은 전체 메모, 날짜, 시간, 장소, 글쓴이, 마지막 수정과 단추 셋(수정, 개인 일정에 등록, 삭제). 수정은 폼', () => withBoot({}, async (W) => {
+    await W.enter([EV(1, { title: '상세 볼 일정', memo: '1\n2\n3\n4\n5', location: '3층', createdBy: '가', updatedBy: '나', startTime: '09:00', endTime: '10:00' })]);
+    await openDetail(W);
     const body = W.el('pcDetailBody').textContent;
-    assert.ok(/1\n2\n3\n4\n5/.test(body) && /3층/.test(body) && /글쓴이가/.test(body) && /마지막 수정나/.test(body), body);
-    assert.ok(W.q('#pcDetailFoot [data-act="copy"]') && /개인 일정에 등록/.test(W.el('pcDetailFoot').textContent));
+    assert.ok(/1\n2\n3\n4\n5/.test(body) && /3층/.test(body) && /글쓴이가/.test(body) && /마지막 수정나/.test(body) && /09:00 ~ 10:00/.test(body) && /날짜/.test(body), body);
+    const acts = [...W.qa('#pcDetailFoot [data-act]')].map((b) => b.dataset.act);
+    assert.deepStrictEqual(acts, ['delete', 'copy', 'edit'], '상세의 단추가 삭제, 개인 일정에 등록, 수정이 아니다');
+    assert.ok(/개인 일정에 등록$/.test(W.q('#pcDetailFoot [data-act="copy"]').textContent.trim()) && !W.q('#pcDetailFoot [data-act="copy"]').disabled);
+    await W.click('#pcDetailFoot [data-act="edit"]');
+    assert.ok(!W.el('pcFormModal').classList.contains('hidden'), '상세의 수정이 폼을 열지 않았다');
+    assert.strictEqual(W.el('pcfHead').textContent, '과제 일정 수정');
+    assert.strictEqual(W.el('pcfTitle').value, '상세 볼 일정');
+    assert.ok(W.el('pcfProj').disabled, '수정 때 과제를 바꿀 수 있다');
   }));
 
   test('화면⑧: 폼 검사가 저장을 막고, 맞는 값은 여섯 명령 중 저장 하나로 간다(DTO), 저장 뒤 범위를 다시 읽는다', () => withBoot({}, async (W) => {
@@ -513,7 +667,7 @@ if (!JSDOM) {
     assert.deepStrictEqual(s.event, { title: '새 일정', startDate: today(), endDate: today(), startTime: '09:00', endTime: '10:00', location: '3층', memo: '메모' });
     assert.strictEqual(W.el('pcfSave').disabled, true, '저장 중에 다시 누를 수 있다');
     const l0 = W.cmds('projectCalendarLoad').length;
-    await W.reply('projectCalendarSave', { ok: true, data: { event: EV(5, { eventUid: s.eventUid, title: '새 일정' }), rowVersion: 1, projectRev: 2, replayed: false } });
+    await W.reply('projectCalendarSave', { ok: true, data: { event: EV(5, { eventUid: s.eventUid, title: '새 일정' }), rowVersion: 1, replayed: false } });
     W.clock.advance(500); await settle();
     assert.ok(W.el('pcFormModal').classList.contains('hidden'), '저장했는데 폼이 남았다');
     assert.strictEqual(W.cmds('projectCalendarLoad').length, l0 + 1, '저장 직후 범위를 다시 읽지 않았다');
@@ -538,8 +692,8 @@ if (!JSDOM) {
 
   test('화면⑩: 충돌이면 입력을 지키고 고르게 한다. 최신 내용 확인은 칸을 채우고, 내 입력 유지는 다음 저장을 최신 판 위에', () => withBoot({}, async (W) => {
     await W.enter([EV(1, { title: '원래', rowVersion: 3 })]);
-    await W.click('#pcView .pc-ev');
-    await W.click('#pcPop [data-act="edit"]');
+    await openDetail(W);
+    await W.click('#pcDetailFoot [data-act="edit"]');
     W.el('pcfTitle').value = '내가 고침';
     await W.click('#pcfSave');
     assert.strictEqual(W.last('projectCalendarSave').expectedVersion, 3);
@@ -596,10 +750,9 @@ if (!JSDOM) {
     assert.ok(W.q('#pccBody .pcc-proj'), '날짜순 묶기에 과제 표시가 없다');
   }));
 
-  test('화면⑫: 개인 일정에 등록은 개인 저장이 끝난 뒤에만 보내고, 성공하면 등록됨과 개인 탭 배지', () => withBoot({}, async (W) => {
+  test('화면⑫: 개인 일정에 등록은 개인 저장이 끝난 뒤에만 보내고, 사본이라 누를 때마다 확인 뒤 새로 보낸다(두 번이면 두 번, 등록됨과 배지 없음)', () => withBoot({}, async (W) => {
     await W.enter([EV(1, { title: '복사할 일정', rowVersion: 2 })]);
-    await W.click('#pcView .pc-ev');
-    await W.click('#pcPop [data-act="detail"]');
+    await openDetail(W);
     //  개인 저장이 진행 중이면 기다린다(그 저장이 끝나기 전에는 복사를 보내지 않는다)
     W.ev("state.entries.push({ id:'e-mine', date:'2026-10-01', title:'내 것', categoryId:'c-2', allDay:true, startTime:'', endTime:'', memo:'', location:'', source:'', commits:[] }); save();");
     await settle();
@@ -612,23 +765,36 @@ if (!JSDOM) {
     const c = W.last('projectCalendarCopy');
     assert.ok(c, '개인 저장이 끝났는데 복사를 보내지 않았다');
     assert.deepStrictEqual([c.projectUid, c.eventUid, c.expectedVersion], [P1, U(1), 2]);
-    await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-1', eventUid: U(1), projectUid: P1, existed: false, personalRev: 3 } });
-    assert.ok(/개인 일정에 등록됨/.test(W.el('pcDetailFoot').textContent) && W.q('#pcDetailFoot [data-act="copy"]').disabled, '등록 뒤 상세가 "등록됨" 으로 바뀌지 않았다');
-    //  호스트가 개인 스냅샷을 다시 실으면(§5.5 3번) 개인 탭 카드에 출처 배지가 붙는다
+    assert.ok(W.el('pcDetailModal').dataset.busy === '1' && W.q('#pcDetailFoot [data-act="copy"]').disabled, '보내는 동안 상세 창과 단추를 붙들지 않는다(다시 눌러 두 건)');
+    await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-1', eventUid: U(1), projectUid: P1, personalRev: 3 } });
+    assert.ok(W.toasts().some((t) => /개인 일정에 등록했습니다/.test(t)), '등록 알림이 없다');
+    const btn = W.q('#pcDetailFoot [data-act="copy"]');
+    assert.ok(btn && !btn.disabled && !/등록됨/.test(W.el('pcDetailFoot').textContent) && !W.el('pcDetailModal').dataset.busy, '등록 뒤 상세가 "등록됨" 으로 바뀌었거나 단추가 꺼졌다(사본이라 다시 등록할 수 있어야 한다)');
+    //  두 번째 등록: 확인 창을 다시 거쳐 새 변경 id 로 한 번 더 보낸다(화면이 막지 않는다. 호스트가 새 개인 일정을 하나 더 만든다).
+    await W.click(btn);
+    assert.ok(!W.el('confirmModal').classList.contains('hidden'), '두 번째 등록이 확인 창을 띄우지 않았다');
+    assert.strictEqual(W.cmds('projectCalendarCopy').length, 1, '확인 전에 보냈다');
+    await W.click('#cfOk');
+    const c2 = W.last('projectCalendarCopy');
+    assert.strictEqual(W.cmds('projectCalendarCopy').length, 2, '두 번째 등록을 보내지 않았다(사본은 누를 때마다 새로)');
+    assert.notStrictEqual(c2.mutationUid, c.mutationUid, '두 번째 등록이 같은 변경 id 로 나갔다');
+    await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-2', eventUid: U(1), projectUid: P1, personalRev: 4 } });
+    //  호스트가 개인 스냅샷을 다시 실어도(§5.5 3번) 개인 탭 카드는 보통 개인 일정이다(출처 배지 없음).
     W.ev("closeModal('#pcDetailModal')"); W.clock.advance(500); await settle();
-    await W.applyState([{ id: 'e-copy-1', date: today(), title: '복사할 일정', categoryId: 'db-' + P1, allDay: false, startTime: '', endTime: '', memo: '', location: '', source: '', commits: [], createdAt: '', updatedAt: '' }]);
+    const ent = (id) => ({ id, date: today(), title: '복사할 일정', categoryId: 'db-' + P1, allDay: false, startTime: '', endTime: '', memo: '', location: '', source: '', commits: [], createdAt: '', updatedAt: '' });
+    await W.applyState([ent('e-copy-1'), ent('e-copy-2')]);
     await W.tab('personal');
     W.ev(`selectedDate = ${JSON.stringify(today())}; renderAll();`);
-    const card = W.q('#dpBody .card[data-id="e-copy-1"]');
-    assert.ok(card && card.querySelector('.pc-copy-badge') && /과제 캘린더에서 복사/.test(card.textContent), '개인 탭 카드에 복사 배지가 없다');
+    const cards = W.qa('#dpBody .card[data-id^="e-copy-"]');
+    assert.strictEqual(cards.length, 2, '개인 탭에 두 사본이 보이지 않는다');
+    assert.ok(cards.every((cd) => !/과제 캘린더에서 복사/.test(cd.textContent) && !cd.querySelector('.pc-copy-badge')), '개인 탭 카드에 복사 배지가 있다');
+    assert.strictEqual(W.cmds('projectCalendarBootstrap').length, 1, '개인 탭으로 돌아오며 배지 때문에 과제 목록을 다시 읽었다');
   }));
 
-  test('화면⑬: 내 개인 저장이 막혀 있으면(미저장) 복사하지 않는다, 종료 과제는 수정 삭제가 꺼지고 등록은 된다', () => withBoot({}, async (W) => {
+  test('화면⑬: 내 개인 저장이 막혀 있으면(미저장) 복사하지 않는다, 종료 과제는 수정 삭제 단추가 없고 등록은 된다', () => withBoot({}, async (W) => {
     await W.enter([EV(3, { projectUid: P3, title: '종료 과제 일정' })]);
-    await W.click('#pcView .pc-ev');
-    assert.ok(!W.q('#pcPop [data-act="edit"]'), '종료 과제 미리보기에 [수정]이 있다');
-    await W.click('#pcPop [data-act="detail"]');
-    assert.ok(W.q('#pcDetailFoot [data-act="edit"]').disabled && W.q('#pcDetailFoot [data-act="delete"]').disabled, '종료 과제의 수정, 삭제가 켜져 있다');
+    await openDetail(W);
+    assert.ok(!W.q('#pcDetailFoot [data-act="edit"]') && !W.q('#pcDetailFoot [data-act="delete"]'), '종료 과제의 상세에 수정이나 삭제가 있다(쓸 수 있는 과제만)');
     assert.ok(!W.q('#pcDetailFoot [data-act="copy"]').disabled, '종료 과제도 개인 등록은 된다(기획 §6.6)');
     W.ev('setUnsaved(true)');
     await W.click('#pcDetailFoot [data-act="copy"]');
@@ -636,7 +802,7 @@ if (!JSDOM) {
     assert.strictEqual(W.cmds('projectCalendarCopy').length, 0, '미저장 변경이 있는데 복사를 보냈다');
   }));
 
-  test('화면⑭: 과제가 없으면 내 과제 창 안내(공식 과제 추가 진입 없음), 목록 읽기 실패는 다시 시도', () => withBoot({ bootstrapReply: false }, async (W) => {
+  test('화면⑭: 과제가 없으면 내 과제 창 안내(공식 과제 추가 진입 없음), 목록 읽기 실패는 다시 시도', () => withBoot({}, async (W) => {
     await W.tab('project');
     await W.reply('projectCalendarBootstrap', { ok: false, error: { kind: 'network', message: '서버에 연결할 수 없습니다' } });
     assert.ok(/읽지 못했습니다/.test(W.el('pcView').textContent) && W.q('#pcView [data-act="retry"]'));
@@ -674,14 +840,13 @@ if (!JSDOM) {
     assert.notStrictEqual(W.ev('PCAL.anchor'), m0, '→ 가 과제 달력을 움직이지 않았다');
     W.doc.body.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Home', bubbles: true })); await settle();
     await W.load([EV(1, { title: '지울 일정', rowVersion: 7 })]);
-    await W.click('#pcView .pc-ev');
-    await W.click('#pcPop [data-act="detail"]');
+    await openDetail(W);
     await W.click('#pcDetailFoot [data-act="delete"]');
     assert.ok(/이 일정을 삭제할까요/.test(W.el('confirmModal').textContent));
     await W.click('#cfOk');
     const d = W.last('projectCalendarDelete');
     assert.deepStrictEqual([d.projectUid, d.eventUid, d.expectedVersion], [P1, U(1), 7]);
-    await W.reply('projectCalendarDelete', { ok: true, data: { eventUid: U(1), rowVersion: 8, deleted: true, projectRev: 3 } });
+    await W.reply('projectCalendarDelete', { ok: true, data: { eventUid: U(1), rowVersion: 8, deleted: true } });
     assert.ok(!/지울 일정/.test(W.el('pcView').textContent), '지운 일정이 달력에 남았다');
   }));
 
@@ -699,7 +864,7 @@ if (!JSDOM) {
     await W.click(`#pcView .pc-day[data-date="${today()}"]`); grab(W.el('pcPop'));
     await W.click('#pcPop [data-act="newOn"]'); grab(W.el('pcFormModal'));
     W.ev("closeModal('#pcFormModal')"); W.clock.advance(500); await settle();
-    await W.click('#pcView .pc-ev'); await W.click('#pcPop [data-act="detail"]'); grab(W.el('pcDetailModal'));
+    await openDetail(W); grab(W.el('pcDetailModal'));
     W.ev("closeModal('#pcDetailModal')"); W.clock.advance(500); await settle();
     await W.click('#pcChanges'); grab(W.el('pcChangesModal'));
     await W.click('#pcView [data-act="view"][data-v="week"]'); grab(W.el('pcView'));
@@ -712,7 +877,7 @@ if (!JSDOM) {
     const W = await boot({ source: bad });
     try {
       await W.enter([EV(1, { rowVersion: 2 })]);
-      await W.click('#pcView .pc-ev'); await W.click('#pcPop [data-act="detail"]');
+      await openDetail(W);
       W.ev("state.entries.push({ id:'e-mine', date:'2026-10-01', title:'내 것', categoryId:'c-2', allDay:true, startTime:'', endTime:'', memo:'', location:'', source:'', commits:[] }); save();"); await settle();
       await W.click('#pcDetailFoot [data-act="copy"]'); await W.click('#cfOk');
       //  변이본은 저장 중(__dbSaving)이라 보내지 않는다. 원본의 기다림이 없어지면 끝까지 보내지 못한다.
@@ -734,4 +899,34 @@ if (!JSDOM) {
       assert.notStrictEqual(a.mutationUid, b.mutationUid, '변이가 변경 id 를 바꾸지 못했다');
     } finally { W.close(); }
   });
+  test('변이R③: 막대를 눌렀을 때 누른 일정을 넘기지 않으면 화면⑦ 의 강조와 초점 검사가 잡는다', async () => {
+    const bad = mutate('pcOpenDayList(ds, bar, { hit: bar.dataset.ev, projectUid: rowProj })', 'pcOpenDayList(ds, bar, { projectUid: rowProj })');
+    const W = await boot({ source: bad });
+    try {
+      await W.enter([EV(1, { title: '하나' }), EV(2, { title: '둘', startTime: '09:00', endTime: '10:00' })]);
+      await W.click('#pcView [data-act="view"][data-v="week"]'); await W.load([EV(1, { title: '하나' }), EV(2, { title: '둘', startTime: '09:00', endTime: '10:00' })]);
+      const timed = [...W.qa('#pcView .pc-wcells .pc-ev')].find((x) => x.dataset.ev === U(2));
+      const pop = await openList(W, timed);
+      assert.ok(!pop.querySelector('.chip.hit') && W.doc.activeElement !== pop.querySelector(`[data-ev="${U(2)}"]`), '변이가 강조와 초점을 없애지 못했다(화면⑦ 이 잡을 차이가 없다)');
+    } finally { W.close(); }
+  });
+  test('변이R④: 상세를 "등록됨" 으로 끄면(옛 동작) 화면⑫ 의 두 번째 등록 검사가 잡는다', async () => {
+    const bad = mutate("  toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success');", "  toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success'); const zb = document.querySelector('#pcDetailFoot [data-act=\"copy\"]'); if(zb){ zb.disabled = true; zb.textContent = '개인 일정에 등록됨'; }");
+    const W = await boot({ source: bad });
+    try {
+      await W.enter([EV(1, { rowVersion: 2 })]);
+      await openDetail(W);
+      await W.click('#pcDetailFoot [data-act="copy"]'); await W.click('#cfOk');
+      await W.reply('projectCalendarCopy', { ok: true, data: { entryUid: 'e-copy-1', eventUid: U(1), projectUid: P1, personalRev: 3 } });
+      const btn = W.q('#pcDetailFoot [data-act="copy"]');
+      assert.ok(btn.disabled && /등록됨/.test(W.el('pcDetailFoot').textContent), '변이가 상세를 "등록됨" 으로 바꾸지 못했다(화면⑫ 가 잡을 차이가 없다)');
+    } finally { W.close(); }
+  });
 }
+
+//  창 복귀 새로고침(pcLoad)과 목록 열기가 겹치면 다시 그리기가 목록을 닫았다(2026-10-22 실제 앱). 열려 있던 날짜 목록은 다시 연다.
+test('다시 읽기가 끝나도 열려 있던 그날 일정 목록을 다시 연다', () => {
+  const html = readText(R('task-calendar-prototype.html'));
+  assert.ok(/PCAL\.pop\.day = \{ ds, hit, projectUid/.test(html), '목록이 날짜와 강조 줄을 기억한다');
+  assert.ok(/const keepDay = PCAL\.pop && PCAL\.pop\.day;\n\s+if\(pcOn\(\)\)\{ pcRender\(\); if\(keepDay\) pcReopenDay\(keepDay\); \}/.test(html), 'pcLoad 가 그린 뒤 목록을 다시 연다');
+});

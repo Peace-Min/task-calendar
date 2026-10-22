@@ -109,9 +109,9 @@ const CAL_ROOMS = [
   { user_id: 1, name: '대회의실' },
 ];
 const ROOM_CODES = [['회의실A', 10], ['Room b', 20], ['대회의실', 30]];
-//  16 부터는 과제 캘린더 표 넷(cal_project_*)이 있다. 모양(열 수, FK 수)은 정본 schema-calendar.sql 의 정의에서 센다
+//  16 부터는 과제 캘린더 표 둘(cal_project_*)이 있다. 모양(열 수, FK 수)은 정본 schema-calendar.sql 의 정의에서 센다
 //  (흉내 실행기가 v16 조각의 CREATE 에서 세는 것과 같은 함수 defOf). v16 의 검증이 이 모양을 information_schema 로 다시 본다.
-const PC_TABLES = ['cal_project_rev', 'cal_project_event', 'cal_project_change', 'cal_project_copy'];
+const PC_TABLES = ['cal_project_event', 'cal_project_change'];
 const CANON_CAL = readText(join(ROOT, 'db', 'deploy', 'schema-calendar.sql'));
 const PC_DEFS = Object.fromEntries(PC_TABLES.map((n) => {
   const i = CANON_CAL.indexOf(`CREATE TABLE ${n} (`);
@@ -137,7 +137,7 @@ const S = {
 const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, ...opts });
 const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
-//  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 넷(정본과 같은 모양)
+//  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘(정본과 같은 모양)
 const FINAL_TABLES = new FakeDb({}, { tables: { ...T.shared(), ...T.pc() }, defs: PC_DEFS }).state()['#tables'];
 const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
@@ -258,7 +258,7 @@ const checks = {
     const iKeys = db.writes.findIndex((w) => w.k === 'app_latest_version'), iRoom = db.writes.findIndex((w) => w.k === 'table:room_code');
     const iPc = PC_TABLES.map((t) => db.writes.findIndex((w) => w.k === `table:${t}`));
     assert.ok(iKeys > 0 && iRoom > iKeys, `조각 순서가 구조 번호 순서가 아니다(v14 키 ${iKeys}, v15 회의실 ${iRoom})`);
-    assert.ok(iPc[0] > iRoom && iPc.every((x, k) => k === 0 || x > iPc[k - 1]), `v16 표 만들기가 v15 뒤에 FK 순서(rev, event, change, copy)로 돌지 않는다: ${iPc}`);
+    assert.ok(iPc[0] > iRoom && iPc.every((x, k) => k === 0 || x > iPc[k - 1]), `v16 표 만들기가 v15 뒤에 FK 순서(event, change)로 돌지 않는다: ${iPc}`);
     assertNoHalfOpen(db, stateOf(init), finalState(APP), '13 에서 처음');
     //  성공 뒤 다시 돌리면 바뀌는 것이 없다
     const n = db.writes.length, before = db.stamps(), shape = db.state();
@@ -287,7 +287,7 @@ const checks = {
     assert.ok(r.ok, `14 에서 올리는 배포가 끝나지 않는다: ${JSON.stringify(r)}`);
     assert.ok(same(db.state(), finalState(APP)), `14 에서 올린 결과가 다르다: ${JSON.stringify(db.state())}`);
     assert.strictEqual(db.comment, '', '14 에서 올리는데 v14 조각이 표 설명을 바꿨다(건너뛰지 않았다)');
-    assert.ok(db.writes.findIndex((w) => w.k === 'table:cal_room') < db.writes.findIndex((w) => w.k === 'table:cal_project_rev'),
+    assert.ok(db.writes.findIndex((w) => w.k === 'table:cal_room') < db.writes.findIndex((w) => w.k === 'table:cal_project_event'),
       '14 에서 올리는데 v15(cal_room 지우기)가 v16 보다 먼저 돌지 않는다');
     assertNoHalfOpen(db, stateOf(init), finalState(APP), '14 에서');
   },
@@ -349,7 +349,7 @@ const checks = {
     assert.ok(!r.ok && /회의실 이름 수가 맞지 않는다/.test(r.stop || ''), `room_code 에 모르는 이름이 있는데 v15 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
     assert.strictEqual(db.meta().db_updating, '1', 'v15 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다');
     assert.strictEqual(db.meta().db_structure_version, '14', 'v15 검증에서 멈췄는데 구조 번호가 올라갔다');
-    assert.ok(!db.hasTable('cal_project_rev'), 'v15 검증에서 멈췄는데 v16 이 돌았다');
+    assert.ok(!db.hasTable('cal_project_event'), 'v15 검증에서 멈췄는데 v16 이 돌았다');
     assert.ok(db.hasTable('cal_room'), 'v15 검증에서 멈췄는데 cal_room 을 지웠다');
     assertNoHalfOpen(db, stateOf(mk()), null, 'v15 검증 멈춤');
   },

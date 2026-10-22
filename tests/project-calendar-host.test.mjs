@@ -1,19 +1,24 @@
 // 과제 캘린더 P1(DB 와 호스트, 화면 없음) 정적 계약: docs/PROJECT-CALENDAR-PLAN.md §4, §5, §8.2
 //
 // 이 파일이 지키는 것:
-//   ① 정본(schema-calendar.sql 14~17)과 이관 조각(migrations/v16-project-calendar.sql)의 새 표 정의가 글자까지 같다
-//      (조각 쪽은 PREPARE 문자열이라 작은따옴표만 두 겹). 조각은 넷을 FK 순서로, 모두 IF NOT EXISTS 와 @go 일 때만 만들고,
+//   ① 정본(schema-calendar.sql 14~15)과 이관 조각(migrations/v16-project-calendar.sql)의 새 표 정의가 글자까지 같다
+//      (조각 쪽은 PREPARE 문자열이라 작은따옴표만 두 겹). 조각은 둘을 FK 순서로, 모두 IF NOT EXISTS 와 @go 일 때만 만들고,
 //      검증의 열 수와 FK 수가 정본의 정의와 같다.
 //   ② 연결은 DbGate.OpenAsync 로만 연다(new MySqlConnection 없음). 읽기와 쓰기 프리앰블이 각자의 격리수준과 UTC 를 건다.
-//   ③ 공용 쓰기 트랜잭션의 첫 문장이 cal_project_rev ODKU 다. 개인 복사는 cal_project_rev 공유 잠금, 그다음 cal_user_rev.
+//   ③ 공용 쓰기 트랜잭션은 판정(신원, 내 과제의 쓸 수 있는 과제)으로 시작하고, 일정 행을 잡은 뒤 재시도를 본다.
+//      개인 복사는 판정 다음 원본 일정 행 공유 잠금, 그다음 cal_user_rev.
 //   ④ 커밋은 한 곳(CommitWithGateAsync)이고 바로 앞에서 관문을 다시 읽는다. 쓰기 명령은 모두 그 함수로 커밋한다.
 //   ⑤ 명령 여섯은 메인 창 스위치에만 있다. 관리 창과 열람 창 허용 목록(호스트와 웹 둘 다)에 없고, 그 창에서 오면 거절된다.
 //   ⑥ 웹이 보낸 사용자 값을 읽지 않는다: 요청에서 읽는 키가 정해진 목록 안이고, 신원은 세션(UserSession)에서 온다.
 //      edit_role 을 보지 않는다. 판정 SQL 은 한 함수(EligibleProjectsAsync)에만 있고 모든 명령이 그것을 거친다.
 //   ⑦ 글자 상한 상수(호스트 Limits)가 DDL 칸 폭과 같다(정본과 조각 둘 다).
 //   ⑧ 휴지통 과제 영구 삭제가 공용 일정이 있으면 고정 문구로 거부하고, 목록 힌트도 같은 문장을 쓴다.
-//   ⑨ 권한: 네 표 모두 DELETE 없음(정본 권한 파일, 서버 계정 파일), 호스트에도 DELETE 문이 없다.
+//   ⑨ 권한: 두 표 모두 DELETE 없음(정본 권한 파일, 서버 계정 파일), 호스트에도 DELETE 문이 없다.
 //   ⑩ 개인 복사가 개인 저장과 같은 행 투영과 INSERT 문(CalendarWriteDb)을 쓴다.
+//   ⑪ 개인 복사는 한 번 찍는 사본이다(2026-10-22 저녁 결정): 대응표 cal_project_copy 가 어디에도 없고, "이미 복사했나" 로
+//      먼저 돌아가는 길이 없으며, 부트스트랩이 copies 를 돌려주지 않는다. 성공하면 늘 개인 스냅샷을 다시 싣는다.
+//   ⑫ 과제별 감시점 표(cal_project_rev)와 과제별 판(rev, projectRev)이 없다(2026-10-22 저녁 결정). 과제 영구 삭제와 엇갈린
+//      FK 오류(1452, 1451)는 고정 문구 forbidden, 같은 uid 의 동시 생성(1062)은 재시도로 돌려준다.
 //   그리고 변이: 위 검사들이 실제로 무는지 원본을 고쳐 본다.
 import { test, assert, readText, extractCsMember, stripCsComments } from './harness.mjs';
 import { mutate } from './ps-guard-lib.mjs';
@@ -34,7 +39,7 @@ const src = {
   html: readText(R('task-calendar-prototype.html')),
 };
 
-const TABLES = ['cal_project_rev', 'cal_project_event', 'cal_project_change', 'cal_project_copy'];
+const TABLES = ['cal_project_event', 'cal_project_change'];
 const COMMANDS = ['projectCalendarBootstrap', 'projectCalendarLoad', 'projectCalendarSave',
   'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy'];
 
@@ -66,7 +71,7 @@ const checks = {
     assert.ok(/^-- @migration from=15 to=16\n/.test(frag), '첫 줄이 -- @migration from=15 to=16 이 아니다');
     assert.ok(/SET @go := \(@m_cur <=> '15'\);/.test(code) && /SET @skip := \([^;]*>= 16\);/.test(code), '자기 확인(@go 15, @skip 16 이상)이 없다');
     assert.ok(/SET @g := IF\(NOT @go OR @m_upd <=> '1',/.test(code), '바꿀 때 닫힌 상태(db_updating 1)를 요구하지 않는다');
-    //  만들기 순서는 FK 순서(rev, event, change, copy)
+    //  만들기 순서는 FK 순서(event, change)
     const at = TABLES.map((t) => code.indexOf(`'CREATE TABLE IF NOT EXISTS ${t} (`));
     assert.ok(at.every((x) => x > 0) && at.every((x, i) => i === 0 || x > at[i - 1]), `조각이 표를 FK 순서로 만들지 않는다: ${at}`);
     //  바꾸는 문장은 PREPARE 로만: 문장 맨 앞의 CREATE, ALTER, DROP, INSERT 가 없다(구조 번호 올리기 UPDATE 하나만 맨 앞)
@@ -77,14 +82,15 @@ const checks = {
       [/lock_wait_timeout/i, 'lock_wait_timeout'], [/@r_/, '감싸개 변수 @r_'], [/\b(UPDATE|INSERT|REPLACE|DELETE)\b[^;]*db_updating/i, 'db_updating 쓰기']]) {
       assert.ok(!re.test(code), `조각에 쓰지 않기로 한 것(${why})이 있다`);
     }
-    //  검증: 표마다 열 수와 FK 수(information_schema)가 정본 정의에서 센 값과 같다
+    //  검증: 표마다 열 수와 FK 수(information_schema)가 정본 정의에서 센 값과 같다. 표 수보다 큰 번호의 변수는 없다
+    assert.ok(!new RegExp('@m_[cf]' + (TABLES.length + 1) + '\b').test(code), '조각 검증에 표 수보다 많은 번호의 변수가 남아 있다');
     TABLES.forEach((t, i) => {
       const d = defOf(`CREATE TABLE ${t} (` + canonDef(canon, t));
       assert.ok(new RegExp(`SET @m_c${i + 1} := \\(SELECT COUNT\\(\\*\\) FROM information_schema\\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${t}'\\);`).test(code), `${t} 의 열 수 검증이 없다`);
       assert.ok(new RegExp(`SET @m_f${i + 1} := \\(SELECT COUNT\\(\\*\\) FROM information_schema\\.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\\(\\) AND TABLE_NAME = '${t}'\\);`).test(code), `${t} 의 FK 수 검증이 없다`);
       assert.ok(new RegExp(`@m_c${i + 1} = ${d.cols} AND @m_f${i + 1} = ${d.fks}\\b`).test(code), `${t} 검증의 기대값이 정본 정의(열 ${d.cols}, FK ${d.fks})와 다르다`);
     });
-    assert.ok(code.indexOf('SET @m_c1') > at[3] && code.indexOf('SET @m_c1') < code.indexOf("UPDATE cal_schema_meta SET v = '16'"), '검증이 표 만들기 뒤, 구조 번호 올리기 앞이 아니다');
+    assert.ok(code.indexOf('SET @m_c1') > at[TABLES.length - 1] && code.indexOf('SET @m_c1') < code.indexOf("UPDATE cal_schema_meta SET v = '16'"), '검증이 표 만들기 뒤, 구조 번호 올리기 앞이 아니다');
   },
   canonLists(canon) {
     const code = noLineComments(canon);
@@ -107,27 +113,36 @@ const checks = {
   // ══ ③ 트랜잭션 첫 문장과 잠금 순서 ══════════════════════════════════
   firstStatement(pcdb) {
     const code = stripCsComments(pcdb);
-    assert.ok(/internal const string ProjectRevOdkuSql =\s*"INSERT INTO cal_project_rev \(project_id, rev, updated_at\) " \+\s*"SELECT p\.id, 1, @now FROM project p WHERE p\.uid=@pu " \+\s*"ON DUPLICATE KEY UPDATE cal_project_rev\.rev = cal_project_rev\.rev \+ 1, cal_project_rev\.updated_at = @now";/.test(code),
-      'ProjectRevOdkuSql 이 cal_project_rev ODKU(rev + 1) 가 아니다');
+    //  과제별 감시점 표(cal_project_rev)는 없다(2026-10-22 저녁 결정). 공용 쓰기는 판정으로 시작한다.
+    assert.ok(!/cal_project_rev|ProjectRev/.test(code), 'ProjectCalendarDb 에 과제별 감시점(cal_project_rev)이 남아 있다');
     //  트랜잭션을 여는 곳은 둘뿐: 공용 쓰기(BeginSharedWriteAsync)와 개인 복사(CopyAsync)
     assert.strictEqual((code.match(/BeginTransactionAsync\(/g) || []).length, 2, '트랜잭션을 여는 자리가 둘(공용 쓰기, 개인 복사)이 아니다');
-    const begin = extractCsMember(pcdb, 'BeginSharedWriteAsync(\n            MySqlConnection conn');
-    const afterBegin = begin.slice(begin.indexOf('BeginTransactionAsync('));
-    const firstSql = /(?:Exec\(conn, tx, |new MySqlCommand\()\s*([A-Za-z"][^,]*)/.exec(afterBegin);
-    assert.ok(firstSql && firstSql[1].trim() === 'ProjectRevOdkuSql', `공용 쓰기 트랜잭션의 첫 문장이 rev ODKU 가 아니다: ${firstSql && firstSql[1]}`);
+    const begin = stripCsComments(extractCsMember(pcdb, 'BeginSharedWriteAsync(\n            MySqlConnection conn'));
+    const afterBegin = begin.slice(begin.indexOf('BeginTransactionAsync(') + 'BeginTransactionAsync('.length);
+    const iId = afterBegin.indexOf('await IdentityAsync(conn, tx, login, ct)'), iReq = afterBegin.indexOf('await RequireProjectAsync(conn, tx, me, projectUid, write: true, ct, lockProject: true)');
+    assert.ok(iId >= 0 && iReq > iId, '공용 쓰기 트랜잭션이 판정(신원, 그다음 과제 행을 잠그는 쓰기 판정)으로 시작하지 않는다');
+    //  과제 행 공유 잠금: 판정 SQL 하나(EligibleProjectsAsync)에 FOR SHARE OF p 를 붙인다(규칙을 둘로 나누지 않는다)
+    const elig = stripCsComments(extractCsMember(pcdb, 'private static async Task<List<Proj>> EligibleProjectsAsync('));
+    assert.ok(/\(lockProject \? " FOR SHARE OF p" : ""\)/.test(elig), '판정 SQL 이 과제 행 공유 잠금(FOR SHARE OF p)을 걸지 못한다');
+    assert.ok(/EligibleProjectsAsync\(conn, tx, me\.UserId, projectUid, ct, lockProject\)/.test(stripCsComments(extractCsMember(pcdb, 'private static async Task<Proj> RequireProjectAsync('))), 'RequireProjectAsync 가 잠금 선택을 판정 함수에 넘기지 않는다');
+    assert.ok(!/Exec\(|ExecuteScalarAsync|ExecuteReaderAsync|ExecuteNonQueryAsync|new MySqlCommand/.test(afterBegin.slice(0, iId)), '공용 쓰기 트랜잭션의 첫 문장이 판정이 아니다(판정 앞에 다른 문장이 있다)');
     for (const fn of ['private async Task<object> SaveAsync(', 'private async Task<object> DeleteAsync(']) {
-      const b = extractCsMember(pcdb, fn);
-      assert.ok(/BeginSharedWriteAsync\(conn, projectUid, now, ct\)/.test(b), `${fn} 가 BeginSharedWriteAsync 로 트랜잭션을 열지 않는다`);
-      assert.ok(!/BeginTransactionAsync\(/.test(b), `${fn} 가 트랜잭션을 직접 연다(첫 문장 규칙을 우회한다)`);
-      assert.ok(b.indexOf('BeginSharedWriteAsync(') < b.indexOf('IdentityAsync('), `${fn} 가 첫 문장 앞에서 신원을 읽는다`);
+      const b = stripCsComments(extractCsMember(pcdb, fn));
+      assert.ok(/BeginSharedWriteAsync\(conn, login, projectUid, ct\)/.test(b), `${fn} 가 BeginSharedWriteAsync 로 트랜잭션을 열지 않는다`);
+      assert.ok(!/BeginTransactionAsync\(/.test(b), `${fn} 가 트랜잭션을 직접 연다(판정 규칙을 우회한다)`);
+      //  일정 행을 먼저 잡고 그다음 재시도 확인(같은 변경 id 의 동시 재시도가 두 번 적히지 않게)
+      const iLock = b.indexOf('EventByUidForUpdateAsync('), iReplay = b.indexOf('ReplayAsync(');
+      assert.ok(iLock > b.indexOf('BeginSharedWriteAsync(') && iReplay > iLock, `${fn} 가 일정 행을 잡은 뒤에 재시도를 확인하지 않는다`);
+      assert.ok(!/FOR UPDATE|FOR SHARE|EventByUid/.test(b.slice(0, b.indexOf('BeginSharedWriteAsync('))), `${fn} 가 과제 행보다 일정 행을 먼저 잠근다`);
     }
-    const copy = extractCsMember(pcdb, 'private async Task<(object data, bool created)> CopyAsync(');
-    const iBegin = copy.indexOf('BeginTransactionAsync('), iShare = copy.indexOf('await Exec(conn, tx, ProjectRevShareSql'),
+    const copy = stripCsComments(extractCsMember(pcdb, 'private async Task<object> CopyAsync('));
+    const iBegin = copy.indexOf('BeginTransactionAsync('), iMe = copy.indexOf('await IdentityAsync(conn, tx, login, ct)'),
+      iProj = copy.indexOf('await RequireProjectAsync(conn, tx, me, projectUid, write: false, ct, lockProject: true)'),
+      iShare = copy.indexOf('await EventByUidForShareAsync(conn, tx, eventUid, ct)'),
       iUser = copy.indexOf('CalendarWriteDb.BumpUserRevInTxAsync('), iIns = copy.indexOf('CalendarWriteDb.InsertEntryInTxAsync(');
-    assert.ok(iBegin > 0 && iShare > iBegin && iUser > iShare && iIns > iUser, '개인 복사의 잠금 순서가 cal_project_rev(공유) 다음 cal_user_rev 가 아니다');
-    const between = copy.slice(iBegin, iShare);
-    assert.ok(!/Exec\(|ExecuteScalarAsync|ExecuteReaderAsync|IdentityAsync/.test(between.replace(/BeginTransactionAsync\([^)]*\)/, '')), '개인 복사가 cal_project_rev 잠금 앞에서 다른 문장을 실행한다');
-    assert.ok(/ProjectRevShareSql =\s*"SELECT r\.rev FROM cal_project_rev r JOIN project p ON p\.id = r\.project_id WHERE p\.uid=@pu FOR SHARE OF r";/.test(code), '복사의 첫 잠금이 cal_project_rev 공유 잠금이 아니다');
+    assert.ok(iBegin > 0 && iMe > iBegin && iProj > iMe && iShare > iProj && iUser > iShare && iIns > iUser, '개인 복사의 잠금 순서가 과제 행(공유), 원본 일정(공유), cal_user_rev 가 아니다');
+    assert.ok(!/Exec\(|ExecuteScalarAsync|ExecuteReaderAsync/.test(copy.slice(iBegin, iMe).replace(/BeginTransactionAsync\([^)]*\)/, '')), '개인 복사가 판정 앞에서 다른 문장을 실행한다');
+    assert.ok(/EventByUidForShareAsync\([^)]*\) =>\s*await EventWhereAsync\(conn, tx, "e\.uid=@uid FOR SHARE OF e"/.test(code), '복사의 원본 읽기가 일정 행 공유 잠금(FOR SHARE OF e)이 아니다');
   },
 
   // ══ ④ 커밋 직전 관문 ═══════════════════════════════════════════════
@@ -138,7 +153,7 @@ const checks = {
     const iRead = c.indexOf('DbGate.ReadMetaAsync(conn, tx, ct)'), iObs = c.indexOf('DbGate.Observe(gateMeta) != GateVerdict.Ok'), iCommit = c.indexOf('tx.CommitAsync(');
     assert.ok(iRead > 0 && iObs > iRead && iCommit > iObs, '커밋 바로 앞에 관문 재확인(ReadMetaAsync, Observe)이 없다');
     assert.ok(/SafeRollbackAsync\(tx\)[\s\S]*throw new DbGateException/.test(c.slice(iObs, iCommit)), '관문이 막으면 롤백하고 멈추지 않는다');
-    for (const fn of ['private async Task<object> SaveAsync(', 'private async Task<object> DeleteAsync(', 'private async Task<(object data, bool created)> CopyAsync(']) {
+    for (const fn of ['private async Task<object> SaveAsync(', 'private async Task<object> DeleteAsync(', 'private async Task<object> CopyAsync(']) {
       const b = extractCsMember(pcdb, fn);
       assert.ok(/await CommitWithGateAsync\(conn, tx, ct\);/.test(b), `${fn} 가 CommitWithGateAsync 로 커밋하지 않는다`);
     }
@@ -201,16 +216,17 @@ const checks = {
     assert.strictEqual((code.match(/c\.source='db'/g) || []).length, 2, "판정 SQL(c.source='db')이 EligibleSql 과 참여자 수 두 곳이 아니다");
     assert.strictEqual((code.match(/\bEligibleSql\b/g) || []).length, 2, 'EligibleSql 을 EligibleProjectsAsync 밖에서도 쓴다');
     assert.ok(extractCsMember(pcdb, 'private static async Task<List<Proj>> EligibleProjectsAsync(').includes('EligibleSql'), '판정 함수가 EligibleSql 을 쓰지 않는다');
+    //  공용 쓰기(저장, 삭제)는 BeginSharedWriteAsync 가 신원과 쓰기 판정을 한다
+    const begin = extractCsMember(pcdb, 'BeginSharedWriteAsync(\n            MySqlConnection conn');
+    assert.ok(/IdentityAsync\(/.test(begin) && /RequireProjectAsync\(conn, tx, me, projectUid, write: true, ct, lockProject: true\)/.test(begin), 'BeginSharedWriteAsync 가 신원과 쓰기 판정(숨긴 과제 거부)을 하지 않는다');
     for (const fn of ['private async Task<object> BootstrapAsync(', 'private async Task<object> LoadAsync(', 'private async Task<object> SaveAsync(',
-      'private async Task<object> DeleteAsync(', 'private async Task<object> ChangesAsync(', 'private async Task<(object data, bool created)> CopyAsync(']) {
+      'private async Task<object> DeleteAsync(', 'private async Task<object> ChangesAsync(', 'private async Task<object> CopyAsync(']) {
       const b = extractCsMember(pcdb, fn);
-      assert.ok(/EligibleProjectsAsync\(|RequireProjectAsync\(/.test(b), `${fn} 가 판정 함수를 거치지 않는다`);
-      assert.ok(/SessionLoginId\(\)/.test(b) && /IdentityAsync\(/.test(b), `${fn} 가 세션 신원을 확인하지 않는다`);
+      const viaBegin = /BeginSharedWriteAsync\(conn, login, projectUid, ct\)/.test(b);
+      assert.ok(viaBegin || /EligibleProjectsAsync\(|RequireProjectAsync\(/.test(b), `${fn} 가 판정 함수를 거치지 않는다`);
+      assert.ok(/SessionLoginId\(\)/.test(b) && (viaBegin || /IdentityAsync\(/.test(b)), `${fn} 가 세션 신원을 확인하지 않는다`);
     }
-    for (const fn of ['private async Task<object> SaveAsync(', 'private async Task<object> DeleteAsync(']) {
-      assert.ok(/RequireProjectAsync\(conn, tx, me, projectUid, write: true, ct\)/.test(extractCsMember(pcdb, fn)), `${fn} 가 쓰기 판정(숨긴 과제 거부)을 하지 않는다`);
-    }
-    assert.ok(/RequireProjectAsync\(conn, tx, me, projectUid, write: false, ct\)/.test(extractCsMember(pcdb, 'private async Task<(object data, bool created)> CopyAsync(')), '개인 복사가 읽기 판정(숨긴 과제도 허용)을 쓰지 않는다');
+    assert.ok(/RequireProjectAsync\(conn, tx, me, projectUid, write: false, ct, lockProject: true\)/.test(extractCsMember(pcdb, 'private async Task<object> CopyAsync(')), '개인 복사가 읽기 판정(숨긴 과제도 허용)을 쓰지 않는다');
   },
 
   // ══ ⑦ 글자 상한 = DDL 칸 폭 ════════════════════════════════════════
@@ -224,7 +240,7 @@ const checks = {
       assert.strictEqual(col('cal_project_event', 'title'), `VARCHAR(${L.Title})`, `${label}: title 칸 폭이 Limits.Title 과 다르다`);
       assert.strictEqual(col('cal_project_event', 'location'), `VARCHAR(${L.Location})`, `${label}: location 칸 폭이 Limits.Location 과 다르다`);
       for (const [t, c] of [['cal_project_event', 'created_by_name'], ['cal_project_event', 'updated_by_name'], ['cal_project_change', 'actor_name'],
-        ['cal_project_change', 'title_snapshot'], ['cal_project_copy', 'project_name_snapshot']]) {
+        ['cal_project_change', 'title_snapshot']]) {
         assert.strictEqual(col(t, c), `VARCHAR(${L.Name})`, `${label}: ${t}.${c} 칸 폭이 Limits.Name 과 다르다`);
       }
       assert.strictEqual(col('cal_project_event', 'memo'), 'TEXT', `${label}: memo 가 TEXT 가 아니다`);
@@ -253,7 +269,10 @@ const checks = {
   // ══ ⑨ 권한(DELETE 없음) ═════════════════════════════════════════════
   grants(grants, server, pcdb) {
     const g = noLineComments(grants), s = noLineComments(server);
-    const want = { cal_project_rev: 'SELECT, INSERT, UPDATE', cal_project_event: 'SELECT, INSERT, UPDATE', cal_project_change: 'SELECT, INSERT', cal_project_copy: 'SELECT, INSERT' };
+    const want = { cal_project_event: 'SELECT, INSERT, UPDATE', cal_project_change: 'SELECT, INSERT' };
+    //  과제 캘린더 권한 줄은 정확히 이 둘이다(대응표 cal_project_copy 와 감시점 cal_project_rev 는 2026-10-22 저녁에 뺐다)
+    assert.strictEqual((g.match(/^GRANT [^;]*cal_project_/gm) || []).length, 2, 'grants-calendar.sql 의 과제 캘린더 권한 줄이 둘이 아니다');
+    assert.strictEqual((s.match(/^GRANT [^;]*cal_project_/gm) || []).length, 2, 'server-app-account.sql 의 과제 캘린더 권한 줄이 둘이 아니다');
     for (const [t, verbs] of Object.entries(want)) {
       assert.ok(new RegExp(`^GRANT ${verbs} ON taskmgr\\.${t}\\s+TO 'taskmgr_app'@'%';`, 'm').test(g), `grants-calendar.sql 의 ${t} 권한이 ${verbs} 가 아니다`);
       assert.ok(new RegExp(`^GRANT ${verbs} ON \`taskcalendar\`\\.\`${t}\` TO 'taskmgr_app'@'%';`, 'm').test(s), `server-app-account.sql 의 ${t} 권한이 ${verbs} 가 아니다`);
@@ -273,21 +292,59 @@ const checks = {
     const bump = extractCsMember(cwdb, 'internal static async Task<long> BumpUserRevInTxAsync(');
     assert.ok(/INSERT INTO cal_user_rev\(user_id, rev\) VALUES\(" \+ userId \+ ", 1\) " \+\s*"ON DUPLICATE KEY UPDATE rev = rev \+ 1"/.test(bump), '개인 rev 증가 문장이 SaveAsync 와 같지 않다');
   },
+
+  // ══ ⑪ 개인 복사는 한 번 찍는 사본(대응표 없음) ═════════════════════
+  copySnapshot(pcdb, host, canon, frag, grants, server) {
+    for (const [label, text] of [['ProjectCalendarDb.cs', stripCsComments(pcdb)], ['정본', noLineComments(canon)], ['조각', noLineComments(frag)],
+      ['grants-calendar.sql', noLineComments(grants)], ['server-app-account.sql', noLineComments(server)]]) {
+      assert.ok(!/cal_project_copy/.test(text), `${label} 에 대응표 cal_project_copy 가 남아 있다`);
+    }
+    const copy = stripCsComments(extractCsMember(pcdb, 'private async Task<object> CopyAsync('));
+    //  돌아가는 곳은 끝의 한 곳뿐이다("이미 복사했으면 그것" 으로 먼저 돌아가는 길이 없다)
+    assert.strictEqual((copy.match(/\breturn\b/g) || []).length, 1, '개인 복사에 끝 말고 먼저 돌아가는 길이 있다(이미 복사했나를 보면 안 된다)');
+    const iIns = copy.indexOf('CalendarWriteDb.InsertEntryInTxAsync('), iCommit = copy.indexOf('await CommitWithGateAsync(conn, tx, ct);'), iRet = copy.indexOf('return data;');
+    assert.ok(iIns > 0 && iCommit > iIns && iRet > iCommit, '개인 복사가 개인 일정을 넣고 커밋한 뒤 돌아가지 않는다');
+    assert.ok(!/existed/.test(stripCsComments(pcdb)), '개인 복사 회신에 existed 가 남아 있다');
+    const boot = stripCsComments(extractCsMember(pcdb, 'private async Task<object> BootstrapAsync('));
+    assert.ok(!/copies/.test(boot), '부트스트랩이 아직 copies 를 돌려준다');
+    assert.ok(/case "projectCalendarCopy":[\s\S]{0,240}r\.ReloadPersonal = true;/.test(stripCsComments(pcdb)), '개인 복사가 성공할 때마다 개인 스냅샷을 다시 싣지 않는다');
+    assert.ok(/if \(r\.Ok && r\.ReloadPersonal\)[\s\S]*BootFromDbAsync\(\)/.test(host), '배선이 개인 스냅샷을 다시 싣지 않는다');
+  },
+
+  // ══ ⑫ 과제별 감시점 없음, FK 경합은 고정 문구 ════════════════════════
+  noProjectRev(pcdb, canon, frag, grants, server) {
+    for (const [label, text] of [['정본', noLineComments(canon)], ['조각', noLineComments(frag)],
+      ['grants-calendar.sql', noLineComments(grants)], ['server-app-account.sql', noLineComments(server)]]) {
+      assert.ok(!/cal_project_rev/.test(text), `${label} 에 cal_project_rev 가 남아 있다`);
+    }
+    const code = stripCsComments(pcdb);
+    assert.ok(!/projectRev|\["rev"\]|RevsAsync/.test(code), '회신에 과제별 판(rev, projectRev)이 남아 있다');
+    //  과제 영구 삭제와 엇갈린 FK 오류(1452, 1451)는 원문 대신 고정 문구 forbidden. 일반 catch 보다 앞에 있다
+    const h = extractCsMember(pcdb, 'public async Task<ProjectCalendarReply> HandleAsync(');
+    const iFk = h.indexOf('when (DbErrors.Number(fx) == 1452 || DbErrors.Number(fx) == 1451)'), iAny = h.indexOf('catch (Exception ex)');
+    assert.ok(iFk > 0 && iAny > iFk, 'FK 1452/1451 을 고정 문구로 바꾸는 catch 가 일반 catch 앞에 없다');
+    assert.ok(/return ProjectCalendarReply\.Failure\(Kind\.Forbidden, MsgProjectGone\);/.test(h.slice(iFk, iAny)), 'FK 오류를 forbidden 과 고정 문구(MsgProjectGone)로 돌려주지 않는다');
+    assert.ok(/internal const string MsgProjectGone = "[^"]+";/.test(code), '고정 문구 MsgProjectGone 이 없다');
+    //  같은 uid 의 동시 생성(1062)은 재시도로 돌려준다(원문 오류가 아니다)
+    assert.ok(/catch \(MySqlException dx\) when \(dx\.Number == 1062\)[\s\S]{0,400}return SaveData\(won, replayed: true\);/.test(stripCsComments(extractCsMember(pcdb, 'private async Task<object> SaveAsync('))), '같은 uid 동시 생성(1062)을 재시도로 돌려주지 않는다');
+  },
 };
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
-test('과제캘린더①a: 새 표 넷의 정의가 정본과 이관 조각에서 글자까지 같다', () => checks.sameDefs(src.canon, src.frag));
+test('과제캘린더①a: 새 표 둘의 정의가 정본과 이관 조각에서 글자까지 같다', () => checks.sameDefs(src.canon, src.frag));
 test('과제캘린더①b: 조각은 15 에서 16 한 칸, FK 순서로 IF NOT EXISTS, 모두 PREPARE, 정본과 같은 열 수와 FK 수로 검증한다', () => checks.fragmentShape(src.canon, src.frag));
-test('과제캘린더①c: 정본 DROP 목록에 새 표 넷이 있고 시드가 16 이다', () => checks.canonLists(src.canon));
+test('과제캘린더①c: 정본 DROP 목록에 새 표 둘이 있고 시드가 16 이다', () => checks.canonLists(src.canon));
 test('과제캘린더②: 연결은 DbGate.OpenAsync 하나, 읽기와 쓰기 프리앰블이 각자의 격리수준과 UTC 를 건다', () => checks.connections(src.pcdb));
-test('과제캘린더③: 공용 쓰기의 첫 문장은 cal_project_rev ODKU, 개인 복사는 cal_project_rev 공유 잠금 다음 cal_user_rev', () => checks.firstStatement(src.pcdb));
+test('과제캘린더③: 공용 쓰기는 판정으로 시작하고 일정 행을 잡은 뒤 재시도를 본다, 개인 복사는 원본 일정 공유 잠금 다음 cal_user_rev', () => checks.firstStatement(src.pcdb));
 test('과제캘린더④: 커밋은 한 곳이고 바로 앞에서 관문을 다시 읽는다', () => checks.gateBeforeCommit(src.pcdb));
 test('과제캘린더⑤: 명령 여섯은 메인 창 전용이다(관리 창, 열람 창 허용 목록 밖, 거절 분기)', () => checks.mainOnly(src.main, src.appwin, src.html, src.pcdb, src.host));
 test('과제캘린더⑥: 웹이 보낸 사용자 값을 쓰지 않고, 신원은 세션, 판정은 함수 하나를 모든 명령이 거친다', () => checks.identity(src.pcdb));
 test('과제캘린더⑦: 글자 상한(제목, 장소, 이름 200, 메모 8,000)이 DDL 칸 폭과 같고, 넘으면 자르지 않고 거절한다', () => checks.limits(src.pcdb, src.canon, src.frag));
 test('과제캘린더⑧: 휴지통 과제 영구 삭제는 공용 일정이 있으면 고정 문구로 거부한다(목록 힌트도 같은 문장)', () => checks.trash(src.pdb));
-test('과제캘린더⑨: 새 표 넷에 DELETE 권한이 없고 호스트에도 DELETE 문이 없다', () => checks.grants(src.grants, src.server, src.pcdb));
+test('과제캘린더⑨: 새 표 둘에 DELETE 권한이 없고 호스트에도 DELETE 문이 없다', () => checks.grants(src.grants, src.server, src.pcdb));
 test('과제캘린더⑩: 개인 복사가 개인 저장과 같은 행 투영, INSERT 문, rev 증가를 쓴다', () => checks.copyProjection(src.cwdb));
+test('과제캘린더⑪: 개인 복사는 한 번 찍는 사본이다(대응표 없음, 먼저 돌아가는 길 없음, copies 없음, 늘 개인 재적재)', () => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, src.grants, src.server));
+test('과제캘린더⑫: 과제별 감시점과 판이 없고, 과제 영구 삭제와 엇갈린 FK 오류는 고정 문구 forbidden 이다', () => checks.noProjectRev(src.pcdb, src.canon, src.frag, src.grants, src.server));
 
 // ══ 변이 ═══════════════════════════════════════════════════════════════
 test('변이PC1: 조각의 정의를 정본과 다르게 바꾸면 ①a 가 실패한다', () => {
@@ -295,13 +352,13 @@ test('변이PC1: 조각의 정의를 정본과 다르게 바꾸면 ①a 가 실�
   assert.throws(() => checks.sameDefs(src.canon, bad), /글자까지 같지 않다/);
 });
 test('변이PC2: 조각 검증의 기대 열 수가 정본과 다르면 ①b 가 실패한다', () => {
-  const bad = mutate(src.frag, '@m_c2 = 17 AND', '@m_c2 = 16 AND');
+  const bad = mutate(src.frag, '@m_c1 = 17 AND', '@m_c1 = 16 AND');
   assert.throws(() => checks.fragmentShape(src.canon, bad), /검증의 기대값이 정본 정의/);
 });
-test('변이PC3: 공용 쓰기에서 첫 문장 앞에 SELECT 를 두면 ③ 이 실패한다', () => {
-  const bad = mutate(src.pcdb, 'int n = await Exec(conn, tx, ProjectRevOdkuSql, ct, P("@pu", projectUid), P("@now", now));',
-    'await Exec(conn, tx, "SELECT 1", ct);\n                int n = await Exec(conn, tx, ProjectRevOdkuSql, ct, P("@pu", projectUid), P("@now", now));');
-  assert.throws(() => checks.firstStatement(bad), /첫 문장이 rev ODKU 가 아니다/);
+test('변이PC3: 공용 쓰기에서 판정 앞에 다른 문장을 두면 ③ 이 실패한다', () => {
+  const anchor = '                var me = await IdentityAsync(conn, tx, login, ct);\n                //  잠금 1: 과제 행(공유). 커밋까지';
+  const bad = mutate(src.pcdb, anchor, '                await Exec(conn, tx, "SELECT 1", ct);\n' + anchor);
+  assert.throws(() => checks.firstStatement(bad), /첫 문장이 판정이 아니다/);
 });
 test('변이PC4: 관문 재확인을 빼면 ④ 가 실패한다', () => {
   const bad = mutate(src.pcdb, 'var gateMeta = await DbGate.ReadMetaAsync(conn, tx, ct);', 'var gateMeta = new GateMeta();');
@@ -329,9 +386,50 @@ test('변이PC9: 이력 표에 DELETE 권한을 주면 ⑨ 가 실패한다', ()
   assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한이 SELECT, INSERT 가 아니다|DELETE/);
 });
 test('변이PC10: 개인 복사가 잠금 순서를 뒤집으면(개인 rev 먼저) ③ 이 실패한다', () => {
-  const body = extractCsMember(src.pcdb, 'private async Task<(object data, bool created)> CopyAsync(');
-  const share = '                await Exec(conn, tx, ProjectRevShareSql, ct, P("@pu", projectUid));\n';
+  const body = extractCsMember(src.pcdb, 'private async Task<object> CopyAsync(');
+  const share = '                var src = await EventByUidForShareAsync(conn, tx, eventUid, ct);\n';
   assert.ok(body.includes(share), '변이 준비 실패');
   const bad = mutate(src.pcdb, share, '                await CalendarWriteDb.BumpUserRevInTxAsync(conn, tx, 0, ct);\n' + share);
-  assert.throws(() => checks.firstStatement(bad), /잠금 순서|잠금 앞에서/);
+  assert.throws(() => checks.firstStatement(bad), /잠금 순서/);
+});
+test('변이PC11: 개인 복사가 "이미 복사했나" 를 보고 먼저 돌아가면 ⑪ 이 실패한다', () => {
+  const at = '                //  잠금 3: 내 개인 rev(배타).';
+  const bad = mutate(src.pcdb, at, '                if (src.RowVersion < 0) { await SafeRollbackAsync(tx); return CopyData("", eventUid, projectUid); }\n' + at);
+  assert.throws(() => checks.copySnapshot(bad, src.host, src.canon, src.frag, src.grants, src.server), /먼저 돌아가는 길/);
+});
+test('변이PC12: 대응표 권한 줄을 되살리면 ⑨ 와 ⑪ 이 실패한다', () => {
+  const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",
+    "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';\nGRANT SELECT, INSERT ON taskmgr.cal_project_copy TO 'taskmgr_app'@'%';");
+  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 둘이 아니다/);
+  assert.throws(() => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, bad, src.server), /cal_project_copy/);
+});
+test('변이PC13: FK 1452/1451 을 고정 문구로 바꾸는 catch 를 빼면 ⑫ 가 실패한다', () => {
+  const bad = mutate(src.pcdb, 'catch (Exception fx) when (DbErrors.Number(fx) == 1452 || DbErrors.Number(fx) == 1451)', 'catch (Exception fx) when (DbErrors.Number(fx) == -1)');
+  assert.throws(() => checks.noProjectRev(bad, src.canon, src.frag, src.grants, src.server), /FK 1452\/1451/);
+});
+test('변이PC14: 감시점 권한 줄을 되살리면 ⑨ 와 ⑫ 가 실패한다', () => {
+  const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",
+    "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';\nGRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_rev TO 'taskmgr_app'@'%';");
+  assert.throws(() => checks.grants(bad, src.server, src.pcdb), /권한 줄이 둘이 아니다/);
+  assert.throws(() => checks.noProjectRev(src.pcdb, src.canon, src.frag, bad, src.server), /cal_project_rev/);
+});
+test('변이PC15: 판정 SQL 의 과제 행 공유 잠금(FOR SHARE OF p)을 빼면 ③ 이 실패한다', () => {
+  const bad = mutate(src.pcdb, '+ (lockProject ? " FOR SHARE OF p" : "");', '+ (lockProject ? "" : "");');
+  assert.throws(() => checks.firstStatement(bad), /FOR SHARE OF p/);
+});
+test('변이PC16: 공용 쓰기가 과제 행보다 일정 행을 먼저 잠그면 ③ 이 실패한다', () => {
+  const at = '            var (tx, me, proj) = await BeginSharedWriteAsync(conn, login, projectUid, ct);\n            uint projectId = proj.Id;\n            await using var txOwn = tx;\n            try\n            {\n                //  수정은 그 일정 행을 먼저 잡는다';
+  const bad = mutate(src.pcdb, at, '            await using (var pre = new MySqlCommand("SELECT 1 FROM cal_project_event WHERE uid=@u FOR UPDATE", conn)) { }\n' + at);
+  assert.throws(() => checks.firstStatement(bad), /일정 행을 먼저 잠근다/);
+  const body = extractCsMember(src.pcdb, 'private async Task<object> CopyAsync(');
+  const proj = '                var proj = await RequireProjectAsync(conn, tx, me, projectUid, write: false, ct, lockProject: true);\n';
+  assert.ok(body.includes(proj), '변이 준비 실패');
+  const bad2 = mutate(src.pcdb, proj, '                var pre = await EventByUidForShareAsync(conn, tx, eventUid, ct);\n' + proj);
+  assert.throws(() => checks.firstStatement(bad2), /잠금 순서/);
+});
+
+//  생성은 잠그지 않고 읽는다. 아직 없는 uid 를 FOR UPDATE 로 읽으면 uid 색인 빈틈이 잠겨 동시 생성 둘이 교착한다(1213, 2026-10-22).
+test('생성 경로는 없는 uid 를 잠금 읽기하지 않는다(빈틈 교착 방지)', () => {
+  const want = 'var cur = expected == null\n                    ? await EventWhereAsync(conn, tx, "e.uid=@uid", ct, P("@uid", eventUid))\n                    : await EventByUidForUpdateAsync(conn, tx, eventUid, ct);';
+  assert.ok(src.pcdb.replace(/\r\n/g, '\n').includes(want), '생성은 잠그지 않는 읽기, 수정만 FOR UPDATE');
 });

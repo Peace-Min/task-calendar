@@ -26,7 +26,7 @@ namespace TaskCalendarWidget
                 r = ProjectCalendarReply.Failure(DbErrorKind.Unknown, DbErrors.ConnMessage(DbErrorKind.Unknown));
             }
 
-            //  개인 복사로 개인 일정이 새로 생겼으면 개인 스냅샷을 다시 읽어 웹에 적용한다(reloadState 와 같은 길, §5.5 3번).
+            //  개인 복사는 성공할 때마다 개인 일정을 새로 만든다(대응표 없음). 그때 개인 스냅샷을 다시 읽어 웹에 적용한다(reloadState 와 같은 길, §5.5 3번).
             //  웹은 복사 전에 개인 화면의 미저장 변경을 먼저 저장하므로(§5.5 1번) 덮을 것이 없다.
             if (r.Ok && r.ReloadPersonal)
             {

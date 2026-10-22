@@ -2580,7 +2580,10 @@ namespace TaskCalendarWidget
                     {
                         // 과제 캘린더 일정(cal_project_event, 지운 것 포함)이 한 건이라도 있으면 지우지 않는다(PROJECT-CALENDAR-PLAN §2 7번).
                         //   공용 일정과 그 이력은 여러 사람의 기록이다. 최종 방어는 그 표의 FK RESTRICT(1451)이고, 여기서는 고정 문구로 먼저 거부한다.
-                        //   공용 일정이 없으면 cal_project_rev 행은 FK CASCADE 로 함께 지워진다.
+                        //   공용 일정이 없으면 공용 표에 그 과제를 가리키는 행이 없어 아래 DELETE 가 그대로 된다.
+                        //   잠금 순서: 이 경로는 일정 행을 잠그지 않는다(아래 COUNT 는 잠금 없는 읽기). DELETE 가 과제 행을 잡을 뿐이다.
+                        //   과제 캘린더 쓰기(ProjectCalendarDb)는 과제 행(FOR SHARE) 다음 일정 행 순서라 서로 뒤집히지 않는다.
+                        //   진행 중인 공용 쓰기가 있으면 DELETE 가 그 커밋을 기다린 뒤 공용 일정 때문에 1451 로 막힌다(아래 catch).
                         long shared;
                         await using (var cmd = new MySqlCommand(
                             "SELECT COUNT(*) FROM cal_project_event e JOIN project p ON p.id = e.project_id WHERE p.uid=@k", conn, tx))

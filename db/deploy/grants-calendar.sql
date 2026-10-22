@@ -211,17 +211,13 @@ GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_report_weekly TO 'taskmgr_app'@'%';
 GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 
 -- ---------- 과제 캘린더(공용 트랙, 구조 번호 16, docs/PROJECT-CALENDAR-PLAN.md §4.6) ----------
--- 네 표 모두 DELETE 를 주지 않는다. 앱(ProjectCalendarDb)에 DELETE 문이 없다.
---   cal_project_rev     SELECT, INSERT, UPDATE  공용 쓰기 첫 문장의 ODKU(INSERT ... ON DUPLICATE KEY UPDATE rev = rev + 1)
+-- 두 표 모두 DELETE 를 주지 않는다. 앱(ProjectCalendarDb)에 DELETE 문이 없다.
 --   cal_project_event   SELECT, INSERT, UPDATE  삭제는 소프트 삭제(is_deleted = 1)라 UPDATE 다
 --   cal_project_change  SELECT, INSERT          지우지 않는 기록. 고치지도 않는다
---   cal_project_copy    SELECT, INSERT          개인 일정이 지워지면 FK CASCADE 가 정리한다(FK 동작은 권한 검사를 받지 않는다)
--- ★ 과제 영구 삭제(휴지통)는 공용 일정이 없을 때만 되고, 그때 cal_project_rev 행은 FK CASCADE 로 함께 지워진다.
+-- ★ 과제 영구 삭제(휴지통)는 공용 일정이 없을 때만 된다(그때는 이 표들에 그 과제의 행이 없다).
 -- ★ 배포 SQL(release-v<버전>.sql)은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄들을 root 로 따로 돌린다.
-GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_rev    TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_event  TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';
-GRANT SELECT, INSERT ON taskmgr.cal_project_copy   TO 'taskmgr_app'@'%';
 
 -- ---------- 이 파일에 '없는' 동사(의도적으로 주지 않는 것들) ----------
 -- ※ 옛 cal_audit_trash(감사 휴지통) 절이 여기 있었다. 그 표는 2026-08-11 결정으로 폐지됐고

@@ -26,10 +26,10 @@ export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // 지우고 다시 채우는 cal_* 표(자식 먼저). cal_user_rev 는 지우지 않고 올린다(DELETE 금지 표). cal_schema_meta 는 그대로.
-// 과제 캘린더 네 표(2026-10-22, 구조 16)가 맨 앞이다. 공용 일정이 project 를 RESTRICT 로 붙들어 아래 DELETE FROM project 가
-//   막히지 않게, 개인 복사 대응표가 cal_entry 를 가리키므로 cal_entry 보다 먼저 지운다. 데모는 공용 일정을 채우지 않는다.
+// 과제 캘린더 두 표(2026-10-22, 구조 16)가 맨 앞이다. 공용 일정이 project 를 RESTRICT 로 붙들어 아래 DELETE FROM project 가
+//   막히지 않게 먼저 지운다. 데모는 공용 일정을 채우지 않는다.
 export const WIPE_TABLES = [
-  'cal_project_copy', 'cal_project_change', 'cal_project_event', 'cal_project_rev',
+  'cal_project_change', 'cal_project_event',
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly',
   'cal_task_hours', 'cal_todo_day_note', 'cal_todo',
   'cal_entry_commit', 'cal_entry_except', 'cal_entry', 'cal_category',

@@ -12,12 +12,13 @@
  *      - 내 과제에 없는 과제는 읽기 제외, 쓰기와 복사 거부(forbidden)
  *      - viewer(edit_role) 도 공용 쓰기를 한다
  *      - 같은 판으로 동시에 고치면 하나만 성공하고 하나는 conflict(최신 행 동봉)
- *      - 응답을 잃고 같은 mutationUid 로 다시 보내면 중복이 없다(생성과 수정 둘 다)
- *      - 바뀐 것이 없는 저장은 이력도 rev 도 남기지 않는다
+ *      - 응답을 잃고 같은 mutationUid 로 다시 보내면 중복이 없다(생성과 수정 둘 다, 같은 생성 재시도가 동시에 와도)
+ *      - 바뀐 것이 없는 저장은 이력도 판도 남기지 않는다(과제별 감시점 표는 없다, 2026-10-22 저녁 결정)
  *      - 삭제는 소프트 삭제이고 이력에 그때 제목이 남는다. 최근 변경 조회(종류 필터, 커서)
  *      - 숨긴(비활성) 과제는 읽기 전용(쓰기 forbidden, 읽기와 개인 복사는 된다). 비활성 사용자는 forbidden
- *      - 공용 일정이 있는 과제는 휴지통에서 영구 삭제가 거부되고, 없는 과제는 지워지며 rev 행이 CASCADE 로 사라진다
- *      - 개인 복사: 중복 방지, 개인 일정을 지우면 대응표가 CASCADE 로 사라져 다시 복사된다, 복사가 중간에 실패하면 개인 행 0
+ *      - 공용 일정이 있는 과제는 휴지통에서 영구 삭제가 거부되고, 없는 과제는 지워진다. 지워진 과제에 쓰면 원문 오류가 아니라 forbidden
+ *      - 개인 복사: 한 번 찍는 사본(대응표 없음). 같은 원본을 두 번 등록하면 개인 일정 두 건, 부트스트랩에 copies 없음,
+ *        복사본을 지워도 공용 일정은 그대로, 복사가 중간에 실패하면 개인 행 0
  *      - 글자 상한 초과는 invalid(자르지 않고 아무것도 쓰지 않는다)
  *
  *  【어디에 치나】 공용 개발 DB(taskcalendar)가 아니라 **복사본**(기본 zz_pc_dev, 이름이 zz_ 로 시작해야 한다)이다.
@@ -262,15 +263,14 @@ function seed() {
 
 const ev = (title, extra = {}) => ({ title, startDate: '2026-11-02', endDate: '2026-11-02', startTime: '', endTime: '', location: '', memo: '', ...extra });
 const nChanges = (where) => num(`SELECT COUNT(*) FROM cal_project_change WHERE ${where}`);
-const revOf = (p) => num(`SELECT IFNULL((SELECT rev FROM cal_project_rev WHERE project_id=${D[p].id}),0)`);
 
 async function main() {
-  //  전제: 시험 DB 가 있고 구조 16, 새 표 넷
+  //  전제: 시험 DB 가 있고 구조 16, 새 표 둘
   let v;
   try { v = one("SELECT v FROM cal_schema_meta WHERE k='db_structure_version'"); } catch (e) { console.error('[중단] 시험 DB 에 붙지 못했다: ' + e.message); process.exit(2); }
-  const nt = num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME IN ('cal_project_rev','cal_project_event','cal_project_change','cal_project_copy')`);
+  const nt = num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME IN ('cal_project_event','cal_project_change')`);
   const upd = one("SELECT v FROM cal_schema_meta WHERE k='db_updating'");
-  if (v !== '16' || nt !== 4 || upd !== '0') { console.error(`[중단] ${OPT.db} 가 구조 16(표 넷, 열림)이 아니다: v=${v} 표=${nt} db_updating=${upd}`); process.exit(2); }
+  if (v !== '16' || nt !== 2 || upd !== '0') { console.error(`[중단] ${OPT.db} 가 구조 16(표 둘, 열림)이 아니다: v=${v} 표=${nt} db_updating=${upd}`); process.exit(2); }
   console.log(`DB ${OPT.db}: 구조 ${v}, 새 표 ${nt}`);
 
   buildRunner();
@@ -293,7 +293,7 @@ async function main() {
     ok('내 과제에 없는 과제 읽기: 제외하고 알린다(excluded)', r.ok && r.data.excluded.includes(D.p2.uid) && r.data.projects.length === 1);
     const evX = randomUUID();
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p2.uid, eventUid: evX, mutationUid: randomUUID(), event: ev('zz 남의 과제') });
-    ok('내 과제에 없는 과제 쓰기: forbidden, 아무것도 쓰지 않음', !r.ok && r.error.kind === 'forbidden' && num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${evX}'`) === 0 && revOf('p2') === 0, JSON.stringify(r));
+    ok('내 과제에 없는 과제 쓰기: forbidden, 아무것도 쓰지 않음', !r.ok && r.error.kind === 'forbidden' && num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${evX}'`) === 0 && nChanges(`project_id=${D.p2.id}`) === 0, JSON.stringify(r));
     r = cmd('out', 'projectCalendarBootstrap', {});
     ok('비활성 사용자: forbidden', !r.ok && r.error.kind === 'forbidden', JSON.stringify(r));
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p1.uid, eventUid: randomUUID(), mutationUid: randomUUID(), event: ev('zz 사용자값'), loginId: D.u2.login, userId: D.u2.id });
@@ -303,9 +303,8 @@ async function main() {
     const e1 = randomUUID();
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID(), event: ev('zz 일정1', { endDate: '2026-11-04', memo: '첫 줄\n둘째 줄' }) });
     ok('viewer 가 공용 일정을 만든다(rowVersion 1)', r.ok && r.data.rowVersion === 1 && r.data.event.endDate === '2026-11-04', JSON.stringify(r).slice(0, 300));
-    const rev1 = revOf('p1');
     r = cmd('u2', 'projectCalendarLoad', { projectUids: [D.p1.uid], from: '2026-11-01', to: '2026-11-30' });
-    ok('다른 사람(u2)이 같은 일정을 읽는다', r.ok && r.data.events.some((x) => x.eventUid === e1) && r.data.projects[0].rev === rev1);
+    ok('다른 사람(u2)이 같은 일정을 읽는다', r.ok && r.data.events.some((x) => x.eventUid === e1) && !('rev' in r.data.projects[0]), JSON.stringify(r).slice(0, 300));
 
     const par = run([{ op: 'parallel',
       a: { dataDir: DIRS.u1, cmd: 'projectCalendarSave', payload: { projectUid: D.p1.uid, eventUid: e1, expectedVersion: 1, mutationUid: randomUUID(), event: ev('zz 일정1 가', { endDate: '2026-11-04' }) } },
@@ -331,13 +330,26 @@ async function main() {
     const rr = cmd('u1', 'projectCalendarSave', crPayload);
     ok('생성 재시도(같은 eventUid, mutationUid): 행 1, 이력 1', r.ok && rr.ok && rr.data.replayed === true &&
       num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${e2}'`) === 1 && nChanges(`mutation_uid='${c2}'`) === 1);
+    const e3 = randomUUID(), c3 = randomUUID();
+    const crPar = { projectUid: D.p1.uid, eventUid: e3, mutationUid: c3, event: ev('zz 동시 재시도') };
+    const parC = run([{ op: 'parallel', a: { dataDir: DIRS.u1, cmd: 'projectCalendarSave', payload: crPar }, b: { dataDir: DIRS.u1, cmd: 'projectCalendarSave', payload: crPar } }])[0];
+    ok('같은 생성 재시도가 동시에 와도: 둘 다 ok(하나는 replayed), 행 1, 이력 1(과제별 감시점 없이)', parC.a.ok && parC.b.ok && [parC.a, parC.b].filter((x) => x.data.replayed === true).length === 1 &&
+      num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${e3}'`) === 1 && nChanges(`mutation_uid='${c3}'`) === 1, JSON.stringify(parC).slice(0, 400));
+    //  서로 다른 두 생성이 같은 과제에 동시에 와도 둘 다 들어간다(없는 uid 를 잠금 읽기하면 색인 빈틈 교착, 1213)
+    for (let k = 0; k < 3; k++) {
+      const ea = randomUUID(), eb = randomUUID();
+      const parD = run([{ op: 'parallel', a: { dataDir: DIRS.u1, cmd: 'projectCalendarSave', payload: { projectUid: D.p1.uid, eventUid: ea, mutationUid: randomUUID(), event: ev('zz 동시 생성 가' + k) } },
+        b: { dataDir: DIRS.u2, cmd: 'projectCalendarSave', payload: { projectUid: D.p1.uid, eventUid: eb, mutationUid: randomUUID(), event: ev('zz 동시 생성 나' + k) } } }])[0];
+      ok('다른 두 생성이 동시에 와도 둘 다 저장(교착 없음) #' + (k + 1), parD.a.ok && parD.b.ok &&
+        num(`SELECT COUNT(*) FROM cal_project_event WHERE uid IN ('${ea}','${eb}')`) === 2, JSON.stringify({ a: parD.a.error || 'ok', b: parD.b.error || 'ok' }));
+    }
     const rr2 = cmd('u1', 'projectCalendarSave', { ...crPayload, mutationUid: randomUUID() });
     ok('생성 재시도(같은 eventUid, 새 mutationUid): 행 1 그대로', rr2.ok && rr2.data.replayed === true && num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${e2}'`) === 1);
 
-    const revBefore = revOf('p1'), chBefore = nChanges(`project_id=${D.p1.id}`);
+    const chBefore = nChanges(`project_id=${D.p1.id}`);
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p1.uid, eventUid: e1, expectedVersion: 3, mutationUid: randomUUID(), event: ev('zz 일정1 고침', { endDate: '2026-11-05', location: '3층 회의실' }) });
-    ok('바뀐 것 없는 저장: 이력 없음, 판과 rev 그대로', r.ok && r.data.unchanged === true && r.data.rowVersion === 3 &&
-      nChanges(`project_id=${D.p1.id}`) === chBefore && revOf('p1') === revBefore, JSON.stringify(r).slice(0, 300));
+    ok('바뀐 것 없는 저장: 이력 없음, 판 그대로, 회신에 과제별 판 없음', r.ok && r.data.unchanged === true && r.data.rowVersion === 3 && !('projectRev' in r.data) &&
+      nChanges(`project_id=${D.p1.id}`) === chBefore, JSON.stringify(r).slice(0, 300));
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p1.uid, eventUid: e1, expectedVersion: 2, mutationUid: randomUUID(), event: ev('zz 낡은 판') });
     ok('낡은 판으로 저장: conflict, 자동 덮어쓰기 없음', !r.ok && r.error.kind === 'conflict' && one(`SELECT title FROM cal_project_event WHERE uid='${e1}'`) === 'zz 일정1 고침');
 
@@ -382,41 +394,43 @@ async function main() {
     const n0 = u1Entries();
     let c = cmdFull('u1', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, expectedVersion: 3, mutationUid: randomUUID() });
     const entryUid = c.reply.ok ? c.reply.data.entryUid : '';
-    ok('숨긴 과제의 일정도 개인 복사가 된다(새 개인 일정, 재적재 표시)', c.reply.ok && c.reply.data.existed === false && c.reload === true && u1Entries() === n0 + 1, JSON.stringify(c).slice(0, 300));
+    ok('숨긴 과제의 일정도 개인 복사가 된다(새 개인 일정, 재적재 표시)', c.reply.ok && !('existed' in c.reply.data) && c.reload === true && u1Entries() === n0 + 1, JSON.stringify(c).slice(0, 300));
     const pe = sql(`SELECT e.title, DATE_FORMAT(e.entry_date,'%Y-%m-%d'), DATE_FORMAT(e.end_date,'%Y-%m-%d'), e.location, e.remind, c.project_uid FROM cal_entry e JOIN cal_category c ON c.user_id=e.user_id AND c.cat_no=e.cat_no WHERE e.user_id=${D.u1.id} AND e.uid='${entryUid}'`)[0] || [];
     ok('복사본: 제목, 기간, 장소 그대로, 알림 없음(0), 분류는 그 공식 과제', pe[0] === 'zz 일정1 고침' && pe[1] === '2026-11-02' && pe[2] === '2026-11-05' && pe[3] === '3층 회의실' && pe[4] === '0' && pe[5] === D.p1.uid, JSON.stringify(pe));
+    //  한 번 찍는 사본(2026-10-22 저녁 결정): 대응표가 없어 같은 원본을 다시 등록하면 개인 일정이 하나 더 생긴다
     c = cmdFull('u1', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID() });
-    ok('같은 원본 다시 복사: 기존 복사본(중복 없음)', c.reply.ok && c.reply.data.existed === true && c.reply.data.entryUid === entryUid && c.reload === false && u1Entries() === n0 + 1 &&
-      num(`SELECT COUNT(*) FROM cal_project_copy WHERE user_id=${D.u1.id}`) === 1);
+    const entryUid2 = c.reply.ok ? c.reply.data.entryUid : '';
+    ok('같은 원본 다시 등록: 새 개인 일정이 하나 더(막지 않는다, 재적재 표시)', c.reply.ok && !!entryUid2 && entryUid2 !== entryUid && c.reload === true && u1Entries() === n0 + 2, JSON.stringify(c).slice(0, 300));
+    ok('과제 캘린더 표가 둘뿐이다(대응표, 감시점 없음)', num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME LIKE 'cal_project%'`) === 2);
     r = cmd('u1', 'projectCalendarBootstrap', {});
-    ok('부트스트랩의 내 복사 대응(eventUid, entryUid)', r.ok && r.data.copies.some((x) => x.eventUid === e1 && x.entryUid === entryUid));
+    ok('부트스트랩이 복사 대응(copies)을 돌려주지 않는다', r.ok && !('copies' in r.data), JSON.stringify(r).slice(0, 200));
     r = cmd('u1', 'projectCalendarCopy', { projectUid: D.p2.uid, eventUid: e1, mutationUid: randomUUID() });
     ok('내 과제에 없는 과제로 복사: forbidden', !r.ok && r.error.kind === 'forbidden');
     const del = run([{ op: 'deletePersonalEntry', loginId: D.u1.login, entryUid }])[0];
-    ok('개인 일정을 개인 저장으로 지우면 대응표가 CASCADE 로 사라진다(앱 계정, DELETE 권한 없이)', del.ok && del.removed === 1 &&
-      num(`SELECT COUNT(*) FROM cal_project_copy WHERE user_id=${D.u1.id}`) === 0 && num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${e1}'`) === 1, JSON.stringify(del));
-    c = cmdFull('u1', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID() });
-    ok('지운 뒤 다시 복사: 새 개인 일정', c.reply.ok && c.reply.data.existed === false && c.reply.data.entryUid !== entryUid);
+    ok('복사본을 개인 저장으로 지워도 공용 일정과 다른 복사본은 그대로', del.ok && del.removed === 1 &&
+      num(`SELECT COUNT(*) FROM cal_project_event WHERE uid='${e1}' AND is_deleted=0`) === 1 && u1Entries() === n0 + 1, JSON.stringify(del));
 
+    //  복사가 중간(개인 rev 를 올린 뒤의 개인 일정 INSERT)에서 실패하면 한 트랜잭션이라 아무것도 남지 않는다
     const u2n = num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${D.u2.id}`), u2rev = num(`SELECT rev FROM cal_user_rev WHERE user_id=${D.u2.id}`);
-    sql(`REVOKE INSERT ON \`${OPT.db}\`.\`cal_project_copy\` FROM '${APP_USER}'@'%'`, '복사 대응표 INSERT 회수');
+    sql(`REVOKE INSERT ON \`${OPT.db}\`.\`cal_entry\` FROM '${APP_USER}'@'%'`, '개인 일정 INSERT 회수');
     try {
       r = cmd('u2', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID() });
-      ok('복사가 대응표에서 실패하면 개인 일정도 rev 도 남지 않는다', !r.ok && num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${D.u2.id}`) === u2n &&
-        num(`SELECT rev FROM cal_user_rev WHERE user_id=${D.u2.id}`) === u2rev && num(`SELECT COUNT(*) FROM cal_project_copy WHERE user_id=${D.u2.id}`) === 0, JSON.stringify(r));
+      ok('복사가 개인 일정 넣기에서 실패하면 개인 일정도 rev 도 남지 않는다', !r.ok && num(`SELECT COUNT(*) FROM cal_entry WHERE user_id=${D.u2.id}`) === u2n &&
+        num(`SELECT rev FROM cal_user_rev WHERE user_id=${D.u2.id}`) === u2rev, JSON.stringify(r));
     } finally {
-      sql(`GRANT INSERT ON \`${OPT.db}\`.\`cal_project_copy\` TO '${APP_USER}'@'%'`, '복사 대응표 INSERT 되돌리기');
+      sql(`GRANT INSERT ON \`${OPT.db}\`.\`cal_entry\` TO '${APP_USER}'@'%'`, '개인 일정 INSERT 되돌리기');
     }
 
     console.log('\n[휴지통 영구 삭제]');
     r = run([{ op: 'trashDelete', dataDir: DIRS.admin, key: D.p1.uid, confirm: D.p1.name }])[0];
     ok('공용 일정이 있는 과제는 영구 삭제 거부(고정 문구), 과제와 일정 그대로', !r.ok && /과제 캘린더 일정이 있는 과제는 지울 수 없습니다/.test(r.msg) &&
       num(`SELECT COUNT(*) FROM project WHERE id=${D.p1.id}`) === 1, JSON.stringify(r));
-    sql(`INSERT INTO cal_project_rev (project_id, rev, updated_at) VALUES (${D.p3.id}, 3, UTC_TIMESTAMP(3))`, 'p3 rev 행');
     sql(`UPDATE project SET is_active=0 WHERE id=${D.p3.id}`, 'p3 숨김');
     r = run([{ op: 'trashDelete', dataDir: DIRS.admin, key: D.p3.uid, confirm: D.p3.name }])[0];
-    ok('공용 일정이 없는 과제는 지워지고 rev 행이 CASCADE 로 사라진다(DELETE 권한 없이)', r.ok &&
-      num(`SELECT COUNT(*) FROM project WHERE id=${D.p3.id}`) === 0 && num(`SELECT COUNT(*) FROM cal_project_rev WHERE project_id=${D.p3.id}`) === 0, JSON.stringify(r));
+    ok('공용 일정이 없는 과제는 지워진다', r.ok && num(`SELECT COUNT(*) FROM project WHERE id=${D.p3.id}`) === 0, JSON.stringify(r));
+    r = cmd('u1', 'projectCalendarSave', { projectUid: D.p3.uid, eventUid: randomUUID(), mutationUid: randomUUID(), event: ev('zz 지워진 과제') });
+    ok('지워진 과제에 일정 등록: 원문 오류가 아니라 forbidden(고정 문구), 아무것도 쓰지 않음', !r.ok && r.error.kind === 'forbidden' && !!r.error.message &&
+      num(`SELECT COUNT(*) FROM cal_project_event WHERE project_id=${D.p3.id}`) === 0, JSON.stringify(r));
     sql(`UPDATE project SET is_active=1 WHERE id=${D.p1.id}`, '과제 복구');
   } finally {
     dropAppAccount();

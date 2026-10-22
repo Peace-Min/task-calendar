@@ -179,16 +179,16 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 #    '명부에 없는 표가 있습니다' Die 가 났다(= 폐쇄망 원큐 구축의 진입점이 막혔다).
 #    표를 더하거나 뺄 때 이 배열을 같이 고치는 것이 이 파일에서 유일하게 사람 몫인 일이다.
 #  ※ 2026-10-21 회의실 공용화로 cal_room 이 빠져 16 → 15 가 됐다(공용 room_code 는 schema-structure.sql 소관).
-#  ※ 2026-10-22 과제 캘린더(구조 번호 16)로 cal_project_ 넷이 늘어 15 → 19 가 됐다(docs/PROJECT-CALENDAR-PLAN.md §4).
+#  ※ 2026-10-22 과제 캘린더(구조 번호 16)로 cal_project_ 둘이 늘어 15 → 17 이 됐다(docs/PROJECT-CALENDAR-PLAN.md §4).
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
   'cal_todo','cal_todo_day_note','cal_task_hours',
   'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly',
   'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta',
-  'cal_project_rev','cal_project_event','cal_project_change','cal_project_copy'
+  'cal_project_event','cal_project_change'
 )
 # FK 가 참조해도 되는 '기존' 표. 여기 없는 표를 스키마가 참조하면 시작조차 하지 않는다.
-#   project: 2026-10-22 과제 캘린더 표(cal_project_rev, cal_project_event, cal_project_change)가 project(id) 를 가리킨다.
+#   project: 2026-10-22 과제 캘린더 표(cal_project_event, cal_project_change)가 project(id) 를 가리킨다.
 $ALLOWED_REF_TABLES = @('app_user','project')
 # ※ 옛 $ZERO_GRANT_TABLES(= cal_audit_trash. 앱 계정에 권한이 한 줄도 없어야 하는 표)는
 #   그 표가 폐지되면서 함께 없어졌다. 지금 규칙은 더 단순하다 — 위 명부의 cal_* **전부**에

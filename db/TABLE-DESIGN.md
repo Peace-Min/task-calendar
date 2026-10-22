@@ -176,14 +176,13 @@ section_code(section_id) 1 ────< project(section_id)    같음
 status_code(status_id)   1 ────< project(status_id)     같음 (status_id NULL 허용)
 project(uid)             ────< cal_category(project_uid)  ※ 외래키가 아닌 외부 식별자('db-<uid>')
 project(id)              1 ────< cal_project_event(project_id), cal_project_change(project_id)   FK RESTRICT (2026-10-22 과제 캘린더)
-project(id)              1 ──── cal_project_rev(project_id)  FK ON DELETE CASCADE (과제별 동시성 감시점)
 ```
 
 - 발주처, 구분, 상태를 **개명**하면 그 표의 한 행만 바뀌고, 과제 화면은 조인으로 새 이름을 보인다. 과제 행은 그대로다.
 - 참조하는 과제가 있으면 코드 행 **하드 삭제 불가**(RESTRICT). 숨기려면 소프트 삭제.
 - 사용자 쪽도 같은 모양이다. `app_user.title_id` 가 `title_code.title_id` 를 가리킨다(DDL 은 회사 저장소 `01-schema-users.sql`).
 - 일정↔과제 링크는 `uid` 기반이라 **채번·이관에도 안 깨진다**. `cal_category.project_uid` 는 FK 가 아니라 외부 식별자다(웹과 XML 의 `db-<uid>` 정체성).
-- **과제 캘린더(구조 16)는 다르다.** 공용 일정 표가 `project.id` 를 진짜 FK 로 가리킨다(번호 키, CODE-TABLE-IDS). 그래서 공용 일정(지운 것 포함)이 있는 과제는 휴지통에서 영구 삭제가 거부된다(고정 문구, 최종 방어는 RESTRICT 1451). 공용 일정이 없으면 `cal_project_rev` 행만 CASCADE 로 함께 지워진다. 설계는 db/CALENDAR-TABLE-DESIGN.md §5.10.
+- **과제 캘린더(구조 16)는 다르다.** 공용 일정 표가 `project.id` 를 진짜 FK 로 가리킨다(번호 키, CODE-TABLE-IDS). 그래서 공용 일정(지운 것 포함)이 있는 과제는 휴지통에서 영구 삭제가 거부된다(고정 문구, 최종 방어는 RESTRICT 1451). 공용 일정이 없으면 공용 표에 그 과제의 행이 없어 그대로 지워진다. 설계는 db/CALENDAR-TABLE-DESIGN.md §5.10.
 
 ---
 
