@@ -137,12 +137,20 @@ const checks = {
     const b = stripJsComments(extractFunction(source, 'raSend'));
     assert.ok(HPOST_CODES.test(b), '회의실 관리(raSend) 성공 후 loadCodes 가 없다. 장소 칸 추천이 낡은 채 남는다');
   },
-  // 호출부는 정확히 다섯 곳이다. 여섯째가 생기면 '한 곳이 망가져도 다른 곳이 만족시키는' 구멍이
+  // 관리 창(2026-10-22, docs/ADMIN-WINDOW.md): 여섯째 경로. 관리 창은 내 달력을 부팅하지 않으므로 목록을 따로 받는다
+  // (adminWinLoadCatalog. 부팅과 관문 복귀가 부른다). 회신은 목록 갱신 알림이라 메인 창도 함께 받는다.
+  adminWinLoadsCatalog(source) {
+    const b = stripJsComments(extractFunction(source, 'adminWinLoadCatalog'));
+    assert.ok(HPOST_CODES.test(b), '관리 창의 목록 받기(adminWinLoadCatalog)에 loadCodes 가 없다. 관리 창의 구분, 상태, 회의실이 빈 채로 시작한다');
+    assert.ok(HPOST_PROJECTS.test(b), '관리 창의 목록 받기(adminWinLoadCatalog)에 loadProjects 가 없다');
+    assert.ok(/adminWinLoadCatalog()/.test(stripJsComments(extractFunction(source, 'adminWinBoot'))), '관리 창 부팅이 목록을 받지 않는다');
+  },
+  // 호출부는 정확히 여섯 곳이다. 일곱째가 생기면 '한 곳이 망가져도 다른 곳이 만족시키는' 구멍이
   // 다시 열리므로, 그때는 그 경로에 대한 범위고정 단언도 위에 함께 늘려야 한다.
   loadCodesCallSites(source) {
     const n = (stripJsComments(source).match(HPOST_CODES_G) || []).length;
-    assert.strictEqual(n, 5,
-      `loadCodes 호출부가 5곳(부팅·모달 프리로드·codeSend 후·연결 회복·회의실 관리 후)이 아니다(실측 ${n}곳)`);
+    assert.strictEqual(n, 6,
+      `loadCodes 호출부가 6곳(부팅·모달 프리로드·codeSend 후·연결 회복·회의실 관리 후·관리 창 목록 받기)이 아니다(실측 ${n}곳)`);
   },
   // 활성 코드 로더(드롭다운 소스)는 sort_order 순 — 로더 **구간 안에서** 확인한다.
   activeLoaderSorted(pdb) {
@@ -412,7 +420,11 @@ test('웹: 회의실 관리(raSend) 성공 후 loadCodes 로 장소 칸 추천�
   checks.roomSendReloadsCodes(src);
 });
 
-test('웹: loadCodes 호출부는 정확히 5곳(부팅·모달 프리로드·codeSend 후·연결 회복·회의실 관리 후)', () => {
+test('웹: 관리 창(?win=admin)은 부팅에서 목록 받기(adminWinLoadCatalog)로 loadCodes·loadProjects 를 부른다(ADMIN-WINDOW)', () => {
+  checks.adminWinLoadsCatalog(src);
+});
+
+test('웹: loadCodes 호출부는 정확히 6곳(부팅·모달 프리로드·codeSend 후·연결 회복·회의실 관리 후·관리 창 목록 받기)', () => {
   checks.loadCodesCallSites(src);
 });
 
@@ -425,7 +437,7 @@ test('변이⑲: 부팅의 loadCodes 를 지우면 부팅 경로 검사가 실�
   assert.ok(/hpost\(\{ cmd:'loadCodes' \}\)/.test(bad) || /hpost\(\{ cmd: 'loadCodes' \}\)/.test(bad),
     '변이 전제가 깨졌다 — 남은 호출부가 없어서 옛 존재검사도 잡아 버린다(이 변이는 무의미)');
   assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadCodes 를 부르지 않는다/);
-  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 5곳[\s\S]*아니다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 6곳[\s\S]*아니다/);
 });
 
 test('변이⑳: 부팅의 loadProjects 를 지우면 부팅 경로 검사가 실패한다', () => {
@@ -438,7 +450,7 @@ test('변이㉑: 모달 프리로드의 loadCodes 를 지우면 프리로드 검
                      "if(HOST){ hpost({ cmd: 'loadCustomers' }); }", src);
   assert.ok(/hpost\(\{ cmd: 'loadCodes' \}\)/.test(bad), '변이 전제가 깨졌다(남은 호출부 없음)');
   assert.throws(() => checks.modalPreloadsCodes(bad), /모달 프리로드에 loadCodes 가 없다/);
-  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 5곳[\s\S]*아니다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 6곳[\s\S]*아니다/);
 });
 
 test('변이㉒: 부팅+모달을 동시에 지우고 codeSend 후 갱신만 남겨도 잡힌다(감사에서 가장 센 파손)', () => {
@@ -452,7 +464,7 @@ test('변이㉒: 부팅+모달을 동시에 지우고 codeSend 후 갱신만 남
   checks.codeSendReloadsCodes(bad);   // 남은 경로는 멀쩡 — 그래서 옛 검사가 조용했다
   assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadCodes 를 부르지 않는다/);
   assert.throws(() => checks.modalPreloadsCodes(bad), /모달 프리로드에 loadCodes 가 없다/);
-  assert.throws(() => checks.loadCodesCallSites(bad), /실측 3곳/);   // codeSend 후 + 연결 회복(2026-10-01) + 회의실 관리 후(2026-10-21)
+  assert.throws(() => checks.loadCodesCallSites(bad), /실측 4곳/);   // codeSend 후 + 연결 회복(2026-10-01) + 회의실 관리 후(2026-10-21) + 관리 창 목록 받기(2026-10-22)
 });
 
 test('변이㉓: codeSend 성공 후 갱신을 지우면 codeSend 범위검사가 실패한다', () => {
@@ -466,7 +478,7 @@ test('변이㉔: 주석에만 남은 호출은 호출로 세지 않는다(존재
   const bad = mutate("  hpost({ cmd:'loadCodes' });",
                      "  // 부팅에서는 hpost({ cmd:'loadCodes' }) 를 부르지 않는다(모달에서 싣는다)", src);
   assert.throws(() => checks.bootLoadsCatalog(bad), /부팅에서 loadCodes 를 부르지 않는다/);
-  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 5곳[\s\S]*아니다/);
+  assert.throws(() => checks.loadCodesCallSites(bad), /loadCodes 호출부가 6곳[\s\S]*아니다/);
 });
 
 test('변이㉕: 부팅 블록 자체가 사라지면 조용히 통과하지 않는다(빈 슬라이스 방어)', () => {

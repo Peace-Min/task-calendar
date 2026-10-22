@@ -2,6 +2,7 @@
 //
 // 이 파일이 지키는 것:
 //   (S) 호스트: 열람 창의 웹 메시지는 메인 창과 같은 처리기(OnWebMessage)로 오고, 읽기 넷(PeerWinCommands)만 받는다.
+//       2026-10-22: 따로 뜨는 창은 종류(WinKind, widget/AppWindow.cs)로 넓혔다. 열람 창 동작은 그대로다(관리 창은 tests/admin-window.test.mjs).
 //       요청 번호는 'pw:' 로 시작해야 하고 회신은 그 표시로 열람 창에 돌아간다(ReplyCore). 보는 사람은 세션에서 읽는다.
 //       창은 하나(_peerWin)이고 메인 창의 peerOpen 이 열거나 앞으로 가져온다. 앱 종료, 로그아웃, 계정 바뀜이면 닫는다.
 //       PeerWindow 는 Owner 없는 일반 창(SingleBorderWindow, 작업 표시줄)이고 메인 창과 같은 WebView2 환경과 가상 호스트를 쓴다.
@@ -27,7 +28,7 @@ import { join } from 'node:path';
 
 const app = loadAppSource();
 const CS = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url)).replace(/\r/g, '');
-const PW = readText(new URL('../widget/PeerWindow.cs', import.meta.url)).replace(/\r/g, '');
+const PW = readText(new URL('../widget/AppWindow.cs', import.meta.url)).replace(/\r/g, '');
 
 function mutate(text, find, repl) {
   const n = text.split(find).length - 1;
@@ -39,43 +40,60 @@ const member = (src, sig) => extractCsMember(src, sig);
 // ══ (S) 호스트 ════════════════════════════════════════════════════════
 //  2026-10-21 gateRecheck(버전 관문 재확인, VERSION-GATE §2.5)가 더해졌다. 읽기 하나라 열람 창의 차단 카드도 쓴다.
 //  웹의 PEERWIN_CMD 는 Phase B(웹 차단 카드)에서 같은 이름을 더한다. 호스트가 먼저 받을 수 있게 둔다.
+//  ★ 2026-10-22(docs/ADMIN-WINDOW.md) — 따로 뜨는 창의 구조를 창 종류(WinKind: 열람 창, 관리 창)로 넓혔다(widget/AppWindow.cs).
+//    열람 창의 동작은 그대로다: 같은 명령 넷(+관문 재확인), 'pw:' 번호, 준비 알림만 번호 없이, 보낸 창으로만 회신, 같은 자리 기억.
+//    이 파일은 열람 창 쪽 계약을 지키고, 관리 창 쪽은 tests/admin-window.test.mjs 가 지킨다.
 const READ_FOUR = ['gateRecheck', 'membersGet', 'peerMine', 'peerSchedule', 'peerWinReady'];
 function peerCommands(cs) {
   const m = /internal static readonly HashSet<string> PeerWinCommands = new\(StringComparer\.Ordinal\)\s*\{([^}]*)\}/.exec(stripCsComments(cs));
   assert.ok(m, 'PeerWinCommands 목록을 찾지 못했다');
   return [...m[1].matchAll(/"(\w+)"/g)].map((x) => x[1]).sort();
 }
-function checkWhitelist(cs) {
+//  WinKind.Peer 의 정의(AppWindow.cs). 열람 창의 주소, 번호 머리, 준비 알림, 번호 없이 받는 것이 여기서 정해진다.
+function peerKind(pw) {
+  const m = /public static readonly WinKind Peer = new\(\)\s*\{([\s\S]*?)\};/.exec(pw);
+  assert.ok(m, 'WinKind.Peer 정의를 찾지 못했다');
+  return m[1];
+}
+function checkWhitelist(cs, pw = PW) {
   assert.deepStrictEqual(peerCommands(cs), READ_FOUR, '열람 창이 보낼 수 있는 명령이 읽기 넷과 관문 재확인이 아니다');
+  const k = peerKind(pw);
+  assert.match(k, /Commands = MainWindow\.PeerWinCommands,/, '열람 창 종류가 열람 창 명령 목록을 쓰지 않는다');
+  assert.match(k, /ReadyCmd = "peerWinReady", AnyCmdWithoutReq = false,/, '열람 창이 pw: 번호 없이 읽기 명령을 보낼 수 있다(번호가 없어도 되는 것은 peerWinReady 하나다)');
+  assert.match(pw, /public bool AcceptsWithoutReq\(string cmd\) => AnyCmdWithoutReq \|\| cmd == ReadyCmd;/, '번호 없이 받는 판정이 준비 알림 하나(관리 창은 회신 없는 명령)가 아니다');
   const d = member(cs, 'private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)');
-  assert.match(d, /bool fromPeer;\s*string raw;\s*try\s*\{\s*fromPeer = origin != null && _peerWin != null && ReferenceEquals\(origin, _peerWin\.Core\);/,
+  assert.match(d, /WinKind\? fromWin;[^\n]*\n\s*string raw;\s*try\s*\{\s*fromWin = KindOfCore\(origin\);/,
     '보낸 창을 CoreWebView2 로 가르지 않는다(또는 그 가르기가 try 밖이다. 닫히는 창의 Core 가 던지면 처리기가 터진다)');
-  assert.match(d, /if \(!fromPeer && \(origin == null \|\| !ReferenceEquals\(origin, web\.CoreWebView2\)\)\) return;/, '모르는 창의 메시지를 버리지 않는다');
+  assert.match(member(cs, 'private WinKind? KindOfCore(CoreWebView2? origin)'), /foreach \(var kv in _wins\) if \(ReferenceEquals\(origin, kv\.Value\.Core\)\) return kv\.Key;/, '보낸 창을 지금 창의 CoreWebView2 와 맞대어 가르지 않는다');
+  assert.match(d, /if \(fromWin == null && \(origin == null \|\| !ReferenceEquals\(origin, web\.CoreWebView2\)\)\) return;/, '모르는 창의 메시지를 버리지 않는다');
   assert.match(d, /raw = e\.TryGetWebMessageAsString\(\);\s*\}\s*catch \{ return; \}/, '출처와 본문 읽기가 같은 try 안에 있지 않다');
-  assert.match(d, /if \(fromPeer\)\s*\{\s*if \(peerReq\) RememberPeerReq\(rq, origin!\);\s*if \(!PeerWinCommands\.Contains\(cmd\) \|\| \([^()]*!peerReq\)\)\s*\{\s*Log\("열람 창 명령 거부: " \+ cmd\);\s*if \(peerReq\) GitReply\(rq, new \{ ok = false, error = "열람 창에서는 할 수 없는 요청입니다" \}\);\s*return;\s*\}\s*\}\s*else if \(peerReq\) return;/,
-    '열람 창의 명령을 읽기 넷과 pw: 번호로 거르지 않는다(또는 거절을 말하지 않는다)');
-  assert.match(d, /\(cmd != "peerWinReady" && !peerReq\)/, '열람 창이 pw: 번호 없이 읽기 명령을 보낼 수 있다(번호가 없어도 되는 것은 peerWinReady 하나다)');
-  assert.ok(d.indexOf('if (fromPeer)') < d.indexOf('switch (cmd)'), '거름이 명령 분기보다 뒤에 있다');
-  assert.match(d, /fromPeer && !\(e\.Source \?\? ""\)\.StartsWith\("https:\/\/tcapp\.local\/"/, '열람 창 메시지의 출처(tcapp.local)를 보지 않는다');
+  assert.match(d, /if \(fromWin != null\)\s*\{\s*bool ownReq = rqKind == fromWin;\s*if \(ownReq\) RememberWinReq\(rq, origin!\);[\s\S]*?if \(!fromWin\.Commands\.Contains\(cmd\) \|\| !\(ownReq \|\| \(rq\.Length == 0 && fromWin\.AcceptsWithoutReq\(cmd\)\)\)\)\s*\{\s*Log\(fromWin\.Name \+ " 명령 거부: " \+ cmd\);\s*if \(ownReq\) GitReply\(rq, new \{ ok = false, error = fromWin\.Name \+ "에서는 할 수 없는 요청입니다" \}\);\s*return;\s*\}\s*\}\s*else if \(rqKind != null\) return;/,
+    '열람 창의 명령을 그 종류의 목록과 pw: 번호로 거르지 않는다(또는 거절을 말하지 않는다)');
+  assert.match(d, /WinKind\? rqKind = WinKind\.OfReq\(rq\);/, '번호 머리로 창을 가르지 않는다');
+  assert.ok(d.indexOf('if (fromWin != null)') < d.indexOf('switch (cmd)'), '거름이 명령 분기보다 뒤에 있다');
+  assert.match(d, /fromWin != null && !\(e\.Source \?\? ""\)\.StartsWith\("https:\/\/tcapp\.local\/"/, '따로 뜨는 창 메시지의 출처(tcapp.local)를 보지 않는다');
   assert.match(cs, /private void OnMainWebMessage\(object\? sender, CoreWebView2WebMessageReceivedEventArgs e\) => OnWebMessage\(e, web\.CoreWebView2\);/, '메인 창이 같은 처리기로 오지 않는다');
-  assert.match(cs, /internal void OnPeerWebMessage\(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2 core\) => OnWebMessage\(e, core\);/, '열람 창이 같은 처리기로 오지 않는다');
-  assert.match(PW, /core\.WebMessageReceived \+= \(_, e\) => _host\.OnPeerWebMessage\(e, core\);/, 'PeerWindow 가 메시지를 호스트 처리기로 넘기지 않는다');
-  //  명부: 열람 창의 사람 고르기는 재직자 명부만(퇴사자 보기, 서열 순은 관리 화면 것)
+  assert.match(cs, /internal void OnWinWebMessage\(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2 core\) => OnWebMessage\(e, core\);/, '따로 뜨는 창이 같은 처리기로 오지 않는다');
+  assert.match(pw, /core\.WebMessageReceived \+= \(_, e\) => _host\.OnWinWebMessage\(e, core\);/, 'AppWindow 가 메시지를 호스트 처리기로 넘기지 않는다');
+  //  명부: 열람 창의 사람 고르기는 재직자 명부만(퇴사자 보기, 서열 순은 관리 창의 구성원 편집 것)
+  assert.match(d, /bool fromPeer = fromWin == WinKind\.Peer;/);
   assert.match(d, /RunMembersGetAsync\(GetStr\(doc, "reqId"\), !fromPeer && GetBool\(doc, "includeInactive"\), !fromPeer && GetBool\(doc, "flat"\)\)/, '열람 창의 membersGet 이 퇴사자 보기나 서열 순을 켤 수 있다');
-  assert.match(d, /case "peerWinReady":\s*if \(fromPeer\) _peerWin\?\.OnWebReady\(\);/, 'peerWinReady 를 열람 창에서 온 것만 받지 않는다');
+  assert.match(d, /case "peerWinReady":[^\n]*\n\s*case "adminWinReady":\s*if \(fromWin != null && cmd == fromWin\.ReadyCmd\)\s*\{\s*WinOf\(fromWin\)\?\.OnWebReady\(\);/, '준비 알림을 그 종류의 창에서 온 것만 받지 않는다');
 }
 function checkReplyRouting(cs) {
   assert.match(cs, /internal const string PeerReqPrefix = "pw:";/);
+  assert.match(peerKind(PW), /ReqPrefix = MainWindow\.PeerReqPrefix,/, '열람 창 종류의 번호 머리가 pw: 가 아니다');
   const rc = member(cs, 'private CoreWebView2? ReplyCore(string reqId)');
-  assert.match(rc, /if \(!reqId\.StartsWith\(PeerReqPrefix, StringComparison\.Ordinal\)\) return web\.CoreWebView2;/, '회신이 pw: 번호로 열람 창에 가지 않는다');
-  assert.match(rc, /lock \(_peerReqOrigin\) \{ if \(!_peerReqOrigin\.Remove\(reqId, out from\)\) from = null; \}\s*var cur = _peerWin\?\.Core;/, '회신 때 그 요청을 보낸 창을 꺼내 보지 않는다');
-  assert.match(rc, /if \(from == null \|\| cur == null \|\| !ReferenceEquals\(from, cur\)\)\s*\{\s*Log\("열람 창 회신 버림[^"]*" \+ reqId\);\s*return null;\s*\}\s*return cur;/,
+  assert.match(rc, /var k = WinKind\.OfReq\(reqId\);\s*if \(k == null\) return web\.CoreWebView2;/, '회신이 pw: 번호로 열람 창에 가지 않는다');
+  assert.match(rc, /lock \(_winReqOrigin\) \{ if \(!_winReqOrigin\.Remove\(reqId, out from\)\) from = null; \}\s*var cur = WinOf\(k\)\?\.Core;/, '회신 때 그 요청을 보낸 창을 꺼내 보지 않는다');
+  assert.match(rc, /if \(from == null \|\| cur == null \|\| !ReferenceEquals\(from, cur\)\)\s*\{\s*Log\(k\.Name \+ " 회신 버림[^"]*" \+ reqId\);\s*return null;\s*\}\s*return cur;/,
     '보낸 창이 닫혔거나 바뀌었는데 지금 열람 창으로 회신한다(다시 연 창에 옛 회신이 간다)');
   const d = member(cs, 'private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)');
-  const remAt = d.indexOf('if (peerReq) RememberPeerReq(rq, origin!);');
-  assert.ok(remAt >= 0 && remAt < d.indexOf('GitReply(rq, new { ok = false, error = "열람 창에서는'),
+  const remAt = d.indexOf('if (ownReq) RememberWinReq(rq, origin!);');
+  assert.ok(remAt >= 0 && remAt < d.indexOf('GitReply(rq, new { ok = false, error = fromWin.Name'),
     '열람 창 요청이 올 때 보낸 창을 적지 않는다(거절 회신보다 먼저 적어야 거절도 그 창에 간다)');
-  assert.match(member(cs, 'private void ClosePeerWindow()'), /lock \(_peerReqOrigin\) _peerReqOrigin\.Clear\(\);/, '열람 창을 닫아도 보낸 창 기록이 남는다');
+  assert.match(member(cs, 'private void CloseSubWindows()'), /ForgetWinReqs\(kv\.Key\);/, '열람 창을 닫아도 보낸 창 기록이 남는다');
+  assert.match(member(cs, 'private void ForgetWinReqs(WinKind k)'), /x\.StartsWith\(k\.ReqPrefix, StringComparison\.Ordinal\)/, '닫힌 창의 회신 기록을 그 종류의 번호로 지우지 않는다');
   assert.match(member(cs, 'private void GitReply(string reqId, object payload)'), /_ = ReplyCore\(reqId\)\?\.ExecuteScriptAsync\(call\);/, 'GitReply 가 물은 창으로 회신하지 않는다');
   const ps = member(cs, 'private async Task RunPeerScheduleAsync(string reqId, string targetLoginId)');
   assert.match(ps, /string\? me = CurrentLoginId\(\);/, '보는 사람을 세션에서 읽지 않는다');
@@ -95,37 +113,46 @@ function checkOpenAndLifecycle(cs) {
   assert.match(o, /s = UserSession\.Load\(_dataDir, Log\);/, '열람 창을 열 때 세션을 보지 않는다');
   assert.match(o, /if \(s == null \|\| s\.LoginId\.Length == 0\) \{ Log\("열람 창: 로그인 정보가 없어 열지 않음"\); return; \}/, '로그인 전에도 연다');
   assert.match(o, /me = UserPayload\(s\)/, '내 신원(me)을 세션에서 싣지 않는다');
-  assert.match(o, /if \(_peerWin == null\)\s*\{[\s\S]*new PeerWindow\(this, _cwvEnv, _appDir, r, max, _remTheme == "dark"\);[\s\S]*w\.Show\(\);[\s\S]*\}\s*_peerWin\.ShowTarget\(json\);\s*_peerWin\.BringToFront\(\);/,
+  assert.match(o, /ShowWin\(WinKind\.Peer, json\);/, '열람 창 종류로 띄우지 않는다');
+  const sw = member(cs, 'private AppWindow? ShowWin(WinKind k, string json)');
+  assert.match(sw, /var w = WinOf\(k\);\s*if \(w == null\)\s*\{[\s\S]*new AppWindow\(this, k, _cwvEnv, _appDir, r, max, _remTheme == "dark"\);[\s\S]*made\.Show\(\);[\s\S]*\}\s*w\.ShowTarget\(json\);\s*w\.BringToFront\(\);/,
     '창이 하나가 아니다(있으면 다시 쓰고 앞으로 가져와야 한다)');
-  assert.match(o, /w\.Closed \+= \(_, _\) => \{ if \(ReferenceEquals\(_peerWin, w\)\) _peerWin = null; lock \(_peerReqOrigin\) _peerReqOrigin\.Clear\(\); \};/, '닫힌 창을 잊지 않는다(또는 그 창의 요청 기록을 남긴다)');
+  assert.match(sw, /made\.Closed \+= \(_, _\) => \{ if \(ReferenceEquals\(WinOf\(k\), made\)\) _wins\.Remove\(k\); ForgetWinReqs\(k\); \};/, '닫힌 창을 잊지 않는다(또는 그 창의 요청 기록을 남긴다)');
   const close = member(cs, 'private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)');
-  assert.ok(close.indexOf('ClosePeerWindow();') > close.indexOf('ConfirmCloseIfUnsaved') && close.indexOf('ClosePeerWindow();') < close.indexOf('SaveSettings();'),
+  assert.ok(close.indexOf('CloseSubWindows();') > close.indexOf('ConfirmCloseIfUnsaved') && close.indexOf('CloseSubWindows();') < close.indexOf('SaveSettings();'),
     '앱을 닫을 때 열람 창을 (저장 전에) 닫지 않는다');
-  assert.match(member(cs, 'private void RunUserLogout(string reqId)'), /ClosePeerWindow\(\);/, '로그아웃이 열람 창을 닫지 않는다');
-  assert.match(member(cs, 'private async Task RunUserLoginAsync(string reqId, string id, string pw)'), /Dispatcher\.Invoke\(ClosePeerWindow\);/, '계정이 바뀌어도 열람 창이 남는다');
-  //  PeerWindow 자체
-  const ctor = extractCsMember(PW, 'public PeerWindow(MainWindow host, CoreWebView2Environment env, string appDir, Rect bounds, bool maximized, bool dark)');
+  assert.match(member(cs, 'private void RunUserLogout(string reqId)'), /CloseSubWindows\(\);/, '로그아웃이 열람 창을 닫지 않는다');
+  assert.match(member(cs, 'private async Task RunUserLoginAsync(string reqId, string id, string pw)'), /Dispatcher\.Invoke\(CloseSubWindows\);/, '계정이 바뀌어도 열람 창이 남는다');
+  assert.match(member(cs, 'private void CloseSubWindows()'), /kv\.Value\.CloseNow\(\);/, '로그아웃, 종료 때 묻지 않고 닫지 않는다');
+  //  AppWindow 자체
+  const ctor = extractCsMember(PW, 'public AppWindow(MainWindow host, WinKind kind, CoreWebView2Environment env, string appDir, Rect bounds, bool maximized, bool dark)');
   assert.match(ctor, /WindowStyle = WindowStyle\.SingleBorderWindow;/, '일반 Windows 창 테두리가 아니다');
   assert.match(ctor, /ShowInTaskbar = true;/, '작업 표시줄에 따로 뜨지 않는다');
   assert.ok(!/\bOwner\s*=/.test(stripCsComments(PW)), 'Owner 를 둔다(메인 창과 독립이어야 한다)');
   assert.match(ctor, /if \(maximized\) WindowState = WindowState\.Maximized;/, '최대화로 닫았으면 최대화로 열지 않는다');
-  assert.match(ctor, /var r = WindowState == WindowState\.Normal \? new Rect\(Left, Top, Width, Height\) : RestoreBounds;\s*_host\.RememberPeerBounds\(r, _shownState == WindowState\.Maximized\);/, '닫을 때 평소 창 자리와 최대화 여부를 남기지 않는다');
+  assert.match(ctor, /var r = WindowState == WindowState\.Normal \? new Rect\(Left, Top, Width, Height\) : RestoreBounds;\s*_host\.RememberWinBounds\(Kind, r, _shownState == WindowState\.Maximized\);/, '닫을 때 평소 창 자리와 최대화 여부를 남기지 않는다');
   assert.match(ctor, /Closed \+= \(_, _\) => \{ try \{ _web\.Dispose\(\); \} catch \{ \} \};/, '닫힌 창의 WebView2 를 없애지 않는다(남의 데이터를 실은 문서가 남는다)');
+  assert.match(ctor, /MinWidth = kind\.MinWidth;\s*MinHeight = kind\.MinHeight;/, '종류의 최소 크기를 쓰지 않는다');
   const init = extractCsMember(PW, 'private async Task InitAsync()');
   assert.match(init, /await _web\.EnsureCoreWebView2Async\(_env\);/, '메인 창과 같은 WebView2 환경을 쓰지 않는다(localStorage 가 갈라진다)');
   assert.match(init, /SetVirtualHostNameToFolderMapping\("tcapp\.local", _appDir, CoreWebView2HostResourceAccessKind\.Allow\);/, '같은 가상 호스트를 쓰지 않는다');
-  assert.match(init, /core\.Navigate\("https:\/\/tcapp\.local\/index\.html\?peerwin=1"\);/, '열람 모드(?peerwin=1)로 띄우지 않는다');
-  assert.match(init, /core\.DocumentTitleChanged \+= /, '창 제목이 보는 사람 이름을 따라가지 않는다');
+  assert.match(init, /core\.Navigate\(Kind\.Url\);/, '종류의 주소로 띄우지 않는다');
+  assert.match(peerKind(PW), /Url = "https:\/\/tcapp\.local\/index\.html\?peerwin=1",/, '열람 모드(?peerwin=1)로 띄우지 않는다');
+  assert.match(init, /if \(Kind\.TitleFollowsDocument\)\s*\{\s*core\.DocumentTitleChanged \+= /, '창 제목이 보는 사람 이름을 따라가지 않는다');
+  assert.match(peerKind(PW), /TitleFollowsDocument = true, MinWidth = 480, MinHeight = 360, DefaultWidth = 1400, DefaultHeight = 900,/, '열람 창의 제목, 크기 규칙이 예전과 다르다');
   assert.match(init, /s\.AreDevToolsEnabled = false;/);
   assert.match(cs, /_appDir = appDir;/, '메인 창의 가상 호스트 폴더를 기억하지 않는다');
   const bf = extractCsMember(PW, 'public void BringToFront()');
   assert.match(bf, /if \(WindowState == WindowState\.Minimized\) WindowState = _shownState == WindowState\.Maximized \? WindowState\.Maximized : WindowState\.Normal;\s*Topmost = _host\.FrontActive;\s*Activate\(\);/, '최소화된 창을 되살려 앞으로 가져오지 않는다');
   //  자리 기억
   assert.match(cs, /public PeerWindowBounds\? Peer \{ get; set; \}/, '설정에 열람 창 자리가 없다');
-  const rem = member(cs, 'internal void RememberPeerBounds(Rect r, bool maximized)');
-  assert.match(rem, /_settings\.Peer = new PeerWindowBounds \{ Left = r\.Left, Top = r\.Top, Width = r\.Width, Height = r\.Height, Maximized = maximized \};\s*SaveSettings\(\);/);
-  const sb = member(cs, 'private (Rect rect, bool maximized) PeerStartBounds()');
-  assert.match(sb, /return \(FitPeerRect\(saved, virt, works, home, SystemParameters\.WorkArea\), p != null && p\.Maximized\);/, '열 때 저장 자리를 화면에 맞추지 않는다');
+  assert.match(peerKind(PW), /GetBounds = s => s\.Peer, SetBounds = \(s, b\) => s\.Peer = b,/, '열람 창 자리가 settings 의 Peer 가 아니다');
+  const rem = member(cs, 'internal void RememberWinBounds(WinKind k, Rect r, bool maximized)');
+  assert.match(rem, /r\.Width < k\.MinWidth \|\| r\.Height < k\.MinHeight\) return;/);
+  assert.match(rem, /k\.SetBounds\(_settings, new PeerWindowBounds \{ Left = r\.Left, Top = r\.Top, Width = r\.Width, Height = r\.Height, Maximized = maximized \}\);\s*SaveSettings\(\);/);
+  const sb = member(cs, 'private (Rect rect, bool maximized) WinStartBounds(WinKind k)');
+  assert.match(sb, /return \(FitWinRect\(saved, virt, works, home, SystemParameters\.WorkArea, k\.MinWidth, k\.MinHeight, k\.DefaultWidth, k\.DefaultHeight\), p != null && p\.Maximized\);/, '열 때 저장 자리를 화면에 맞추지 않는다');
+  assert.match(sb, /var p = k\.GetBounds\(_settings\);/, '그 종류의 저장 자리를 읽지 않는다');
   assert.match(sb, /System\.Windows\.Forms\.Screen\.FromHandle\(hwnd\)\.WorkingArea/, '기본 자리가 메인 창 모니터가 아니다');
 }
 test('(S) 호스트: 열람 창 메시지는 같은 처리기로 오고 읽기 넷만 받는다(나머지는 거절하고 로그) · 출처 확인 · 명부는 재직자만', () => checkWhitelist(CS));
@@ -136,55 +163,58 @@ function checkProcessFailed(pw) {
   const init = extractCsMember(pw, 'private async Task InitAsync()');
   assert.match(init, /core\.ProcessFailed \+= \(_, e\) => OnProcessFailed\(core, e\.ProcessFailedKind\);/, '열람 창이 WebView2 프로세스 실패를 받지 않는다(빈 창으로 남는다)');
   const pf = extractCsMember(pw, 'private void OnProcessFailed(CoreWebView2 core, CoreWebView2ProcessFailedKind kind)');
-  assert.match(pf, /_host\.PeerLog\("열람 창 WebView2 프로세스 실패: " \+ kind\);/, '프로세스 실패를 로그에 남기지 않는다');
-  assert.match(pf, /if \(kind == CoreWebView2ProcessFailedKind\.BrowserProcessExited\)\s*\{\s*Dispatcher\.BeginInvoke\(new Action\(\(\) => \{ try \{ Close\(\); \} catch \{ \} \}\)\);\s*return;\s*\}/, '브라우저 프로세스가 죽었는데 창을 닫지 않는다');
+  assert.match(pf, /_host\.WinLog\(Kind\.Name \+ " WebView2 프로세스 실패: " \+ kind\);/, '프로세스 실패를 로그에 남기지 않는다');
+  assert.match(pf, /if \(kind == CoreWebView2ProcessFailedKind\.BrowserProcessExited\)\s*\{\s*Dispatcher\.BeginInvoke\(new Action\(CloseNow\)\);\s*return;\s*\}/, '브라우저 프로세스가 죽었는데 창을 닫지 않는다');
   assert.match(pf, /RenderProcessExited \|\| kind == CoreWebView2ProcessFailedKind\.RenderProcessUnresponsive\)\s*\{\s*_ready = false;[\s\S]*core\.Reload\(\);/, '렌더러가 죽었는데 준비 표시를 내리고 다시 읽지 않는다');
   assert.match(extractCsMember(pw, 'public CoreWebView2? Core'), /get \{ try \{ return _web\.CoreWebView2; \} catch \{ return null; \} \}/, 'Core 가 닫힌 창에서 던진다');
 }
-test('(S) PeerWindow: WebView2 프로세스가 죽으면 로그를 남기고 렌더러는 다시 읽고 브라우저면 닫는다. Core 는 닫힌 창에서 던지지 않는다', () => checkProcessFailed(PW));
-test('(M) PeerWindow: ProcessFailed 구독을 빼거나, 렌더러 실패에 준비 표시를 내리지 않으면 잡는다', () => {
+test('(S) AppWindow: WebView2 프로세스가 죽으면 로그를 남기고 렌더러는 다시 읽고 브라우저면 닫는다. Core 는 닫힌 창에서 던지지 않는다', () => checkProcessFailed(PW));
+test('(M) AppWindow: ProcessFailed 구독을 빼거나, 렌더러 실패에 준비 표시를 내리지 않으면 잡는다', () => {
   assert.throws(() => checkProcessFailed(mutate(PW, '                core.ProcessFailed += (_, e) => OnProcessFailed(core, e.ProcessFailedKind);\n', '')), /프로세스 실패를 받지 않는다/);
   assert.throws(() => checkProcessFailed(mutate(PW, '                _ready = false;   // 다시 읽은 웹이', '                //   다시 읽은 웹이')), /준비 표시를 내리고/);
 });
 test('(M) 호스트: 쓰기 명령을 목록에 넣거나, 거름을 빼거나, 회신 길을 메인 하나로 만들면 잡는다', () => {
   assert.throws(() => checkWhitelist(mutate(CS, '"peerWinReady", "peerSchedule", "membersGet", "peerMine",', '"peerWinReady", "peerSchedule", "membersGet", "peerMine", "saveState",')), /읽기 넷과 관문 재확인이 아니다/);
-  assert.throws(() => checkWhitelist(mutate(CS, '                    if (!PeerWinCommands.Contains(cmd) || (cmd != "peerWinReady" && !peerReq))', '                    if (false)')), /거르지 않는다/);
-  assert.throws(() => checkReplyRouting(mutate(CS, 'if (!reqId.StartsWith(PeerReqPrefix, StringComparison.Ordinal)) return web.CoreWebView2;', 'return web.CoreWebView2;')), /열람 창에 가지 않는다/);
+  assert.throws(() => checkWhitelist(mutate(CS, '                    if (!fromWin.Commands.Contains(cmd) || !(ownReq || (rq.Length == 0 && fromWin.AcceptsWithoutReq(cmd))))', '                    if (false)')), /거르지 않는다/);
+  assert.throws(() => checkReplyRouting(mutate(CS, '            if (k == null) return web.CoreWebView2;', '            return web.CoreWebView2;')), /열람 창에 가지 않는다/);
   //  리뷰 P1-1: 보낸 창 확인을 빼면(지금 열람 창으로 그냥 보내면), 보낸 창 기록을 빼면 잡는다
   assert.throws(() => checkReplyRouting(mutate(CS, 'if (from == null || cur == null || !ReferenceEquals(from, cur))', 'if (cur == null)')), /다시 연 창에 옛 회신이 간다/);
-  assert.throws(() => checkReplyRouting(mutate(CS, '                    if (peerReq) RememberPeerReq(rq, origin!);', '')), /보낸 창을 적지 않는다/);
-  //  리뷰 P2-4: 번호 없는 읽기 명령을 다시 받으면 잡는다. P2-5: 가르기를 try 밖으로 빼면 잡는다
-  assert.throws(() => checkWhitelist(mutate(CS, '(cmd != "peerWinReady" && !peerReq)', '(rq.Length > 0 && !peerReq)')), /pw: 번호 없이 읽기 명령/);
-  assert.throws(() => checkWhitelist(mutate(CS, '            bool fromPeer;\n            string raw;\n            try\n            {\n                fromPeer = ',
-    '            bool fromPeer = origin != null && _peerWin != null && ReferenceEquals(origin, _peerWin.Core);\n            string raw;\n            try\n            {\n                bool _x = ')), /try 밖이다/);
-  assert.throws(() => checkOpenAndLifecycle(mutate(CS, '            ClosePeerWindow();   // 앱을 닫으면', '            //  ClosePeerWindow();   // 앱을 닫으면')), /열람 창을 \(저장 전에\) 닫지 않는다/);
+  assert.throws(() => checkReplyRouting(mutate(CS, '                    if (ownReq) RememberWinReq(rq, origin!);', '')), /보낸 창을 적지 않는다/);
+  //  리뷰 P2-4: 번호 없는 읽기 명령을 다시 받으면 잡는다(열람 창 종류가 관리 창처럼 번호 없이 받게 되면). P2-5: 가르기를 try 밖으로 빼면 잡는다
+  assert.throws(() => checkWhitelist(CS, mutate(PW, 'ReadyCmd = "peerWinReady", AnyCmdWithoutReq = false,', 'ReadyCmd = "peerWinReady", AnyCmdWithoutReq = true,')), /pw: 번호 없이 읽기 명령/);
+  assert.throws(() => checkWhitelist(mutate(CS, '            string raw;\n            try\n            {\n                fromWin = KindOfCore(origin);',
+    '            fromWin = KindOfCore(origin);\n            string raw;\n            try\n            {\n                bool _x = true;')), /try 밖이다/);
+  assert.throws(() => checkOpenAndLifecycle(mutate(CS, '            CloseSubWindows();   // 앱을 닫으면', '            //  CloseSubWindows();   // 앱을 닫으면')), /열람 창을 \(저장 전에\) 닫지 않는다/);
 });
 
-// ══ (P) FitPeerRect — C# 그대로 컴파일 ══════════════════════════════════
+// ══ (P) FitWinRect — C# 그대로 컴파일 ══════════════════════════════════
+//  2026-10-22: 최소 크기와 기본 크기를 창 종류에서 받는다(열람 창 480x360, 1400x900 · 관리 창 720x520, 1200x800). 값은 AppWindow.cs 에서 읽는다.
 const dotnetOk = (() => { const r = spawnSync('dotnet', ['--version'], { windowsHide: true, timeout: 120000 }); return !r.error && r.status === 0; })();
-const FIT_SIG = 'internal static Rect FitPeerRect(Rect saved, Rect virt, IReadOnlyList<Rect> works, Rect home, Rect primary)';
+const FIT_SIG = 'internal static Rect FitWinRect(Rect saved, Rect virt, IReadOnlyList<Rect> works, Rect home, Rect primary,';
 const FIT_MUT = {
   noMonitorGone: ['if (!onScreen) return Center(primary, sw, sh);', ''],
   noVirtClamp: ['double x = Math.Min(Math.Max(saved.Left, virt.Left), Math.Max(virt.Left, virt.Right - sw));', 'double x = saved.Left;'],
-  noDefaultCap: ['Math.Min(1400, home.Width * 0.9)', 'home.Width'],
+  noDefaultCap: ['Math.Min(defW, home.Width * 0.9)', 'home.Width'],
 };
+function kindSizes(name) {
+  const m = new RegExp(`public static readonly WinKind ${name} = new\\(\\)\\s*\\{[\\s\\S]*?MinWidth = (\\d+), MinHeight = (\\d+), DefaultWidth = (\\d+), DefaultHeight = (\\d+),`).exec(PW);
+  assert.ok(m, `WinKind.${name} 의 크기 값을 찾지 못했다`);
+  return m.slice(1, 5).map(Number);
+}
 let FIT_EXE = null;
 function fitProbe() {
   if (FIT_EXE) return FIT_EXE;
   const body = extractCsMember(CS, FIT_SIG);
-  const mins = /internal const double PeerMinWidth = (\d+), PeerMinHeight = (\d+);/.exec(CS);
-  assert.ok(mins, 'PeerMinWidth/PeerMinHeight 상수를 찾지 못했다');
-  const fns = [body.replace('FitPeerRect(', 'Fit_real(')];
+  const fns = [body.replace('FitWinRect(', 'Fit_real(')];
   for (const [k, [a, b]] of Object.entries(FIT_MUT)) {
-    assert.equal(body.split(a).length - 1, 1, `FitPeerRect 변이 앵커(${k})가 한 번이 아니다`);
-    fns.push(body.replace(a, b).replace('FitPeerRect(', `Fit_${k}(`));
+    assert.equal(body.split(a).length - 1, 1, `FitWinRect 변이 앵커(${k})가 한 번이 아니다`);
+    fns.push(body.replace(a, b).replace('FitWinRect(', `Fit_${k}(`));
   }
   const dir = join(tmpdir(), `tc-peer-fit-${process.pid}`);
   mkdirSync(dir, { recursive: true });
   process.on('exit', () => { try { rmSync(dir, { recursive: true, force: true }); } catch (_) { } });
   writeFileSync(join(dir, 'Program.cs'), `using System; using System.Collections.Generic; using System.Linq; using System.Text.Json; using System.Windows;
 static class P {
-  internal const double PeerMinWidth = ${mins[1]}, PeerMinHeight = ${mins[2]};
   ${fns.join('\n  ')}
   static Rect R(JsonElement e) => e.ValueKind == JsonValueKind.Null ? Rect.Empty : new Rect(e[0].GetDouble(), e[1].GetDouble(), e[2].GetDouble(), e[3].GetDouble());
   [STAThread] static int Main(string[] a) {
@@ -192,10 +222,12 @@ static class P {
     var outv = new List<object>();
     foreach (var c in cases.EnumerateArray()) {
       var works = c.GetProperty("works").EnumerateArray().Select(R).ToList();
-      Func<Rect, Rect, IReadOnlyList<Rect>, Rect, Rect, Rect> f = c.GetProperty("fn").GetString() switch {
+      var k = c.GetProperty("k");
+      Func<Rect, Rect, IReadOnlyList<Rect>, Rect, Rect, double, double, double, double, Rect> f = c.GetProperty("fn").GetString() switch {
         ${['real', ...Object.keys(FIT_MUT)].map((k) => `"${k}" => Fit_${k},`).join(' ')}
         _ => throw new Exception("fn") };
-      var r = f(R(c.GetProperty("saved")), R(c.GetProperty("virt")), works, R(c.GetProperty("home")), R(c.GetProperty("primary")));
+      var r = f(R(c.GetProperty("saved")), R(c.GetProperty("virt")), works, R(c.GetProperty("home")), R(c.GetProperty("primary")),
+                k[0].GetDouble(), k[1].GetDouble(), k[2].GetDouble(), k[3].GetDouble());
       outv.Add(new[] { Math.Round(r.X, 2), Math.Round(r.Y, 2), Math.Round(r.Width, 2), Math.Round(r.Height, 2) });
     }
     System.IO.File.WriteAllText(a[1], JsonSerializer.Serialize(outv));
@@ -218,7 +250,7 @@ static class P {
   const exe = join(dir, 'bin', 'Release', 'net9.0-windows', 'tc-peer-fit.exe');
   if (b.error || b.status !== 0 || !existsSync(exe)) {
     const out = (b.stdout || '').toString('utf8') + (b.stderr || '').toString('utf8');
-    throw new Error('FitPeerRect 프로브 빌드 실패:\n' + (out.split('\n').filter((l) => /error|오류/i.test(l)).slice(0, 12).join('\n') || out.slice(-1500)));
+    throw new Error('FitWinRect 프로브 빌드 실패:\n' + (out.split('\n').filter((l) => /error|오류/i.test(l)).slice(0, 12).join('\n') || out.slice(-1500)));
   }
   FIT_EXE = { exe, dir };
   return FIT_EXE;
@@ -229,7 +261,7 @@ function fit(cases) {
   const n = ++_fitSeq, inF = join(dir, `in-${n}.json`), outF = join(dir, `out-${n}.json`);
   writeFileSync(inF, JSON.stringify(cases), 'utf8');
   const r = spawnSync(exe, [inF, outF], { windowsHide: true, timeout: 120000 });
-  if (r.error || r.status !== 0) throw new Error('FitPeerRect 프로브 실행 실패: ' + (r.error ? r.error.message : (r.stderr || '').toString('utf8')));
+  if (r.error || r.status !== 0) throw new Error('FitWinRect 프로브 실행 실패: ' + (r.error ? r.error.message : (r.stderr || '').toString('utf8')));
   return JSON.parse(readFileSync(outF, 'utf8'));
 }
 //  모니터 하나(1920x1080, 작업 영역 1920x1040) · 둘(왼쪽에 하나 더) · 작은 모니터
@@ -246,21 +278,36 @@ const FIT_CASES = [
   ['오른쪽으로 삐져나가면 가상 화면 안으로 당긴다', { ...ONE, saved: [1800, 100, 1000, 700] }, [920, 100, 1000, 700]],
   ['가상 화면보다 크면 가상 화면 크기로 줄인다', { ...ONE, saved: [0, 0, 3000, 2000] }, [0, 0, 1920, 1080]],
 ];
+//  관리 창(ADMIN-WINDOW §2.1): 처음 1200x800(작업 영역의 90% 이하), 최소 720x520.
+const ADMIN_FIT_CASES = [
+  ['관리 창: 처음(저장 없음)은 메인 창 모니터 가운데 1200x800', { ...ONE, saved: null }, [360, 120, 1200, 800]],
+  ['관리 창: 작은 모니터면 작업 영역의 90%', { ...ONE, home: [0, 0, 1280, 720], saved: null }, [64, 36, 1152, 648]],
+  ['관리 창: 최소(720x520)보다 작은 저장값은 버리고 기본', { ...ONE, saved: [10, 10, 700, 600] }, [360, 120, 1200, 800]],
+  ['관리 창: 최소 크기 그대로의 저장값은 쓴다', { ...ONE, saved: [10, 10, 720, 520] }, [10, 10, 720, 520]],
+];
 if (!dotnetOk) {
-  skip('열람 창 자리(FitPeerRect C# 프로브) 시험 전부', 'dotnet 없음', 'C# 을 그대로 컴파일해 판정하는 시험이라 JS 사본으로 대신하지 않는다');
+  skip('따로 뜨는 창 자리(FitWinRect C# 프로브) 시험 전부', 'dotnet 없음', 'C# 을 그대로 컴파일해 판정하는 시험이라 JS 사본으로 대신하지 않는다');
 } else {
-  test('(P) FitPeerRect(C#): 기본 크기, 화면 밖이면 주 모니터 가운데, 가상 화면 안으로 당기기와 줄이기', () => {
-    const got = fit(FIT_CASES.map(([, c]) => ({ fn: 'real', ...c })));
+  test('(P) FitWinRect(C#, 열람 창 크기): 기본 크기, 화면 밖이면 주 모니터 가운데, 가상 화면 안으로 당기기와 줄이기', () => {
+    const k = kindSizes('Peer');
+    const got = fit(FIT_CASES.map(([, c]) => ({ fn: 'real', k, ...c })));
     FIT_CASES.forEach(([name, , want], i) => assert.deepStrictEqual(got[i], want, name));
   });
-  test('(M) FitPeerRect(C#): 모니터 없어짐 갈래, 가상 화면 당기기, 기본 크기 상한을 각각 빼면 잡는다', () => {
+  test('(P) FitWinRect(C#, 관리 창 크기): 처음 1200x800(90% 이하), 최소 720x520', () => {
+    const k = kindSizes('Admin');
+    assert.deepStrictEqual(k, [720, 520, 1200, 800], '관리 창의 최소와 기본 크기가 기획(§2.1)과 다르다');
+    const got = fit(ADMIN_FIT_CASES.map(([, c]) => ({ fn: 'real', k, ...c })));
+    ADMIN_FIT_CASES.forEach(([name, , want], i) => assert.deepStrictEqual(got[i], want, name));
+  });
+  test('(M) FitWinRect(C#): 모니터 없어짐 갈래, 가상 화면 당기기, 기본 크기 상한을 각각 빼면 잡는다', () => {
+    const k = kindSizes('Peer');
     const pick = (name) => FIT_CASES.find((c) => c[0] === name);
-    for (const [k, name] of [['noMonitorGone', '그 모니터가 없어졌으면(제목줄이 어느 작업 영역에도 없다) 주 모니터 가운데'],
+    for (const [m, name] of [['noMonitorGone', '그 모니터가 없어졌으면(제목줄이 어느 작업 영역에도 없다) 주 모니터 가운데'],
                              ['noVirtClamp', '오른쪽으로 삐져나가면 가상 화면 안으로 당긴다'],
                              ['noDefaultCap', '처음(저장 없음)은 메인 창 모니터 가운데 1400x900']]) {
       const [, c, want] = pick(name);
-      const [got] = fit([{ fn: k, ...c }]);
-      assert.notDeepStrictEqual(got, want, `변이 ${k} 가 '${name}' 를 통과했다`);
+      const [got] = fit([{ fn: m, k, ...c }]);
+      assert.notDeepStrictEqual(got, want, `변이 ${m} 가 '${name}' 를 통과했다`);
     }
   });
 }
@@ -363,7 +410,7 @@ if (!JSDOM) {
     await settle(80);
   });
   test('(M) 웹: 창 소금을 고정값으로 바꾸면 두 창의 첫 번호가 같아져 잡힌다', async () => {
-    const bad = mutate(app, "const __reqSalt = PEERWIN ? Date.now().toString(36) + Math.random().toString(36).slice(2, 8) : '';", "const __reqSalt = PEERWIN ? 'fixed0' : '';");
+    const bad = mutate(app, "const __reqSalt = __reqPfx ? Date.now().toString(36) + Math.random().toString(36).slice(2, 8) : '';", "const __reqSalt = __reqPfx ? 'fixed0' : '';");
     assert.throws(() => checkSalt(bad), /창 소금이 없다/);
     await settle(80);
   });
@@ -514,7 +561,7 @@ if (!JSDOM) {
     assert.throws(() => checkMainEntry(direct), /peerOpen\) 하나만 보내지 않는다/);
     const noShell = mutate(app, "  if(w) w.classList.remove('hidden');\n  document.title = '다른 사람 일정';", "  document.title = '다른 사람 일정';");
     assert.throws(() => checkPeerWinBoot(noShell), /펴지지 않았다/);
-    const noPrefix = mutate(app, "const reqId = (PEERWIN ? 'pw:' + __reqSalt + ':' : '') + cmd + '-' + (++__reqSeq);", "const reqId = cmd + '-' + (++__reqSeq);");
+    const noPrefix = mutate(app, "const reqId = (__reqPfx ? __reqPfx + __reqSalt + ':' : '') + cmd + '-' + (++__reqSeq);", "const reqId = cmd + '-' + (++__reqSeq);");
     const V2 = boot(noPrefix, PW_URL);
     try {
       V2.ev("hostRequest('membersGet', {}, 50)");

@@ -71,7 +71,7 @@ class Cdp {
     try { list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
     catch (e) { throw new Error(`CDP 에 붙지 못했다(포트 ${port}) — 위젯을 TC_DEBUG_PORT=${port} 로 띄웠나요? (${e.message})`); }
     const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl)
-      .find((x) => /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1/.test(x.url || ''));
+      .find((x) => /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1|[?&]win=admin/.test(x.url || ''));
     if (!t) throw new Error(`CDP page 타겟이 없습니다(포트 ${port})`);
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;

@@ -67,6 +67,7 @@
  * ===================================================================================== */
 
 import { spawnSync } from 'node:child_process';
+import { isAdminWinUrl, isMainWinUrl, openAdminWindow, ADMIN_HUB_OPEN_JS, HIDE_HUB_JS, closeAdminWindow } from './loop-adminwin.mjs';
 
 /* ────────────────────────────── 0. 인자·자격증명 ────────────────────────────── */
 
@@ -277,7 +278,7 @@ function restoreOrder(o) {
 
 class Cdp {
   #ws = null; #id = 0; #p = new Map(); #closed = false;
-  static async attach(port) {
+  static async attach(port, kind = 'main') {
     let list;
     try { list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
     catch (e) {
@@ -286,9 +287,10 @@ class Cdp {
         `  원인: ${e.message}`);
     }
     //  ?peer=1 프레임은 제외한다 — 조종할 것은 **부모** 창이다.
+    //  kind: 'main' = 메인 창(열람 창, 관리 창 제외), 'admin' = 관리 창(?win=admin, ADMIN-WINDOW)
     const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl
-      && /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1/.test(x.url || ''))[0];
-    if (!t) throw new Error('부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
+      && (kind === 'admin' ? isAdminWinUrl(x.url) : isMainWinUrl(x.url)))[0];
+    if (!t) throw new Error(kind === 'admin' ? '관리 창(?win=admin) page 타겟이 없다' : '부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;
     await new Promise((res, rej) => {
@@ -326,7 +328,11 @@ class Cdp {
   close() { try { this.#ws && this.#ws.close(); } catch { } }
 }
 
+//  ★ 2026-10-22(docs/ADMIN-WINDOW.md). 관리 화면은 관리 창(?win=admin)에서만 열린다. 이 루프는 메인 창(mainCdp)에서
+//    관리 창을 열고(openAdminHub) 그 창(cdp)에 붙어, 허브를 내린 뒤 지금처럼 단독 흐름(openTrash, openOrgTitle, openUserAdmin)으로 돈다
+//    (관리 창의 allowlist 가 단독으로 연 화면도 보여 준다. tests/loop-adminwin.mjs).
 let cdp = null;
+let mainCdp = null;
 const ev = (e) => cdp.ev(e);
 const evj = async (e) => JSON.parse(await cdp.ev(e));
 const J = (v) => JSON.stringify(v);
@@ -698,7 +704,13 @@ async function main() {
   const left0 = zzLeft();
   if (left0) { console.error(`[판정 없음] 시작 정리 뒤에도 zz 잔재 ${left0}건이 남았다 — 손으로 확인해야 한다`); process.exit(2); }
 
-  cdp = await Cdp.attach(OPT.port);
+  mainCdp = await Cdp.attach(OPT.port);
+  try { await openAdminWindow(OPT.port, (e) => mainCdp.ev(e), 'members'); }
+  catch (e) { console.error('[판정 없음] ' + e.message); process.exit(2); }
+  cdp = await Cdp.attach(OPT.port, 'admin');
+  for (let i = 0; i < 100 && !(await ev(ADMIN_HUB_OPEN_JS)); i++) await sleep(150);
+  await ev(HIDE_HUB_JS);   // 허브를 내리고 단독 흐름으로(창은 그대로)
+  await sleep(300);
   const who = await evj(`JSON.stringify({host: !!HOST, id: (currentUser&&currentUser.loginId)||'', ot: (typeof otSend==='function')})`);
   if (!who.host || !who.id) { console.error('[판정 없음] 위젯이 로그인 상태가 아니다'); process.exit(2); }
   if (!who.ot) { console.error('[판정 없음] 페이지에 otSend 가 없다 — 「직급·소속 관리」 이전 버전의 위젯이다'); process.exit(2); }
@@ -1300,7 +1312,9 @@ async function main() {
   okq(`정리: ${ME} admin/활성 복원`, end.meRole === 'admin' && end.meActive === true, `${end.meRole}/${end.meActive}`);
   okq(`정리: schema_version ${BASE.schemaVersion} 불변`, end.schemaVersion === BASE.schemaVersion, `실제 ${end.schemaVersion}`);
 
+  try { await closeAdminWindow(OPT.port, (e) => cdp.ev(e)); } catch (_) { }   // 관리 창을 닫는다(허브 닫기 = 창 닫기)
   cdp.close();
+  try { mainCdp.close(); } catch (_) { }
 }
 
 /* ────────────────────────────── 8. 요약 ────────────────────────────── */

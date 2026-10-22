@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -9,7 +10,7 @@ namespace TaskCalendarWidget
     // ================================================================================
     //  버전 관문: 호스트 쪽 배선 (docs/VERSION-GATE.md §2.3, §2.5, §2.6)
     // ================================================================================
-    //  판정은 DbGate 가 하고, 여기는 그 판정을 웹에 알리고(푸시), 막힌 동안 다시 확인하고(루프),
+    //  판정은 DbGate 가 하고, 여기는 그 판정을 웹(메인 창과 따로 뜨는 창)에 알리고(푸시), 막힌 동안 다시 확인하고(루프),
     //  회신에 관문 정보를 붙인다. MainWindow.xaml.cs 에는 배선(명령 case 한 줄씩)만 둔다.
     //  웹으로 나가는 모양(계약):
     //    푸시   window.__versionGate({ state, appVersion, appStructure, dbStructure, latestVersion, installerPath,
@@ -60,13 +61,13 @@ namespace TaskCalendarWidget
             else if (_installFailedTarget.Length > 0) PushGate(GateJson(last, forceInstallFailed: true));
         }
 
-        //  열람 창이 떴다. 막혀 있으면 그 창에도 같은 상태를 민다(메인 창 중복 푸시는 막는다).
-        private void GatePushToPeer()
+        //  따로 뜨는 창(열람 창, 관리 창)이 떴다. 막혀 있으면 그 창에도 같은 상태를 민다(메인 창 중복 푸시는 막는다).
+        private void GatePushToWin(WinKind k)
         {
             var last = DbGate.Last;
             if (last == null || last.Verdict == GateVerdict.Ok) return;
             string js = "window.__versionGate && window.__versionGate(" + GateJson(last) + ")";
-            try { _ = _peerWin?.Core?.ExecuteScriptAsync(js); } catch { }
+            try { _ = WinOf(k)?.Core?.ExecuteScriptAsync(js); } catch { }
         }
 
         //  마지막 판정을 반영한다(UI 스레드). 이벤트가 늦게 와도 늘 최신 값(DbGate.Last)을 쓴다.
@@ -94,7 +95,7 @@ namespace TaskCalendarWidget
             _gateLastPushed = json;
             string js = "window.__versionGate && window.__versionGate(" + json + ")";
             try { _ = web.CoreWebView2?.ExecuteScriptAsync(js); } catch (Exception ex) { Log("관문 푸시 실패: " + ex.Message); }
-            try { _ = _peerWin?.Core?.ExecuteScriptAsync(js); } catch { }
+            foreach (var w in _wins.Values.ToList()) { try { _ = w.Core?.ExecuteScriptAsync(js); } catch { } }   // 열람 창, 관리 창도 같은 카드(VERSION-GATE §3)
         }
 
         //  푸시 JSON. 업데이트가 필요한데 지난 설치가 실패했으면 상태를 installFailed 로 바꿔 수동 설치 안내로 보낸다.

@@ -206,7 +206,7 @@ class Cdp {
         `  → 위젯을 TC_DEBUG_PORT=${port} 환경변수와 함께 먼저 띄운 뒤 다시 실행하세요.\n` +
         `  (이 스크립트는 위젯을 직접 실행하지 않습니다.)  원인: ${e.message}`);
     }
-    const pages = (Array.isArray(list) ? list : []).filter((t) => t.type === 'page' && t.webSocketDebuggerUrl && !/peerwin=1/.test(t.url || ''));   // 열람 창(?peerwin=1, WINDOW-UI §4)은 메인 창이 아니다
+    const pages = (Array.isArray(list) ? list : []).filter((t) => t.type === 'page' && t.webSocketDebuggerUrl && !/peerwin=1|[?&]win=admin/.test(t.url || ''));   // 열람 창(?peerwin=1, WINDOW-UI §4)은 메인 창이 아니다
     if (!pages.length) throw new Error(`CDP page 타겟이 없습니다(포트 ${port}). 위젯 WebView2가 준비됐는지 확인하세요.`);
     const t = pages.find((p) => /tcapp\.local/i.test(p.url || '')) || pages[0];
     const c = new Cdp();

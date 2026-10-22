@@ -21,7 +21,7 @@ import { test, assert, extractCsMember, stripCsComments, loadAppSource, readText
 const SRC = readText(new URL('../widget/MainWindow.xaml.cs', import.meta.url)).replace(/\r/g, '');
 const APPCS = readText(new URL('../widget/App.xaml.cs', import.meta.url)).replace(/\r/g, '');
 const APP = loadAppSource();
-const PWCS = readText(new URL('../widget/PeerWindow.cs', import.meta.url)).replace(/\r/g, '');
+const PWCS = readText(new URL('../widget/AppWindow.cs', import.meta.url)).replace(/\r/g, '');
 
 const body = (src, sig) => extractCsMember(src, sig);
 
@@ -80,9 +80,10 @@ function checkGuards(src) {
 function checkPeerTopmost(src, pw) {
   const enter = body(src, 'private void EnterFront()');
   const leave = body(src, 'private void LeaveFront()');
-  assert.match(enter, /_focusMode = true;\s*SyncPeerTopmost\(\);\s*Topmost = true;/, '맨 앞을 켤 때 열람 창을 맨 위 띠로 올리지 않는다(메인 창 뒤에 깔린다)');
-  assert.match(leave, /_focusMode = false;\s*Topmost = false;\s*SyncPeerTopmost\(\);/, '맨 앞을 끌 때 열람 창을 맨 위 띠에서 내리지 않는다(풀린 뒤에도 다른 창을 가린다)');
-  assert.match(body(src, 'private void SyncPeerTopmost()'), /if \(_peerWin != null\) _peerWin\.Topmost = _focusMode;/, 'SyncPeerTopmost 가 열람 창 Topmost 를 맨 앞 상태에 맞추지 않는다');
+  //  2026-10-22(ADMIN-WINDOW): 열람 창과 관리 창(따로 뜨는 창 전부, _wins)을 함께 맞춘다(SyncWinTopmost).
+  assert.match(enter, /_focusMode = true;\s*SyncWinTopmost\(\);\s*Topmost = true;/, '맨 앞을 켤 때 열람 창, 관리 창을 맨 위 띠로 올리지 않는다(메인 창 뒤에 깔린다)');
+  assert.match(leave, /_focusMode = false;\s*Topmost = false;\s*SyncWinTopmost\(\);/, '맨 앞을 끌 때 열람 창, 관리 창을 맨 위 띠에서 내리지 않는다(풀린 뒤에도 다른 창을 가린다)');
+  assert.match(body(src, 'private void SyncWinTopmost()'), /foreach \(var w in _wins\.Values\.ToList\(\)\)\s*\{\s*try \{ w\.Topmost = _focusMode; \}/, 'SyncWinTopmost 가 따로 뜨는 창의 Topmost 를 맨 앞 상태에 맞추지 않는다');
   assert.match(stripCsComments(src), /internal bool FrontActive => _focusMode;/, 'FrontActive 가 맨 앞 상태가 아니다');
   assert.match(body(pw, 'public void BringToFront()'), /Topmost = _host\.FrontActive;\s*Activate\(\);/, '열람 창을 열거나 앞으로 가져올 때 맨 앞 상태를 따르지 않는다');
 }
@@ -140,7 +141,7 @@ test('변이⑥: Window_Deactivated 의 맨 앞 가드를 지우면 ④가 실�
   assert.throws(() => checkGuards(bad), /Deactivated/);
 });
 test('변이⑧: 끌 때 열람 창 맞추기를 빼거나, BringToFront 의 Topmost 를 빼면 ⑦이 실패한다', () => {
-  const bad = mutate(SRC, '            SyncPeerTopmost();                    // 열람 창도 맨 위 띠에서 내린다', '            //  열람 창도 맨 위 띠에서 내린다');
+  const bad = mutate(SRC, '            SyncWinTopmost();                     // 열람 창, 관리 창도 맨 위 띠에서 내린다', '            //  열람 창, 관리 창도 맨 위 띠에서 내린다');
   assert.throws(() => checkPeerTopmost(bad, PWCS), /끌 때/);
   const badPw = mutate(PWCS, '            Topmost = _host.FrontActive;', '');
   assert.throws(() => checkPeerTopmost(SRC, badPw), /맨 앞 상태를 따르지 않는다/);

@@ -21,7 +21,11 @@
  *   H5 같은 발주처를 **화면으로** 숨김 → 📁 회사 과제 › 🗑 휴지통 › 발주처 탭 → 영구 삭제(이름 입력) → 목록·휴지통·DB(선택)에서 사라진다.
  *      (2026-10-02 ADMIN-HUB-3 M2 — 항목 이름 「삭제된 항목」→「🗑 휴지통」 · 항목 id 는 그대로 trash.)
  *      ★ 가역 — 이 시험은 데이터를 남기지 않는다. 중간에 실패해도 마지막 정리(H7)가 같은 화면 길(숨김 → 영구 삭제)로 지운다.
- *   H6 Esc — 관리 화면이 닫히고 도킹 창은 제자리(body)로 돌아간다 · inert 가 남지 않는다.
+ *   H6 Esc: 관리 창은 Esc 로 닫히지 않는다(허브와 도킹 창 그대로). 허브 닫기 길(adminWinRequestClose)은 창 닫기라 관리 창 대상이 사라진다.
+ *
+ * ★ 2026-10-22(docs/ADMIN-WINDOW.md). 관리 화면은 따로 뜨는 **관리 창**(?win=admin, 두 번째 page 대상)에서 열린다.
+ *   H0~H2 의 입구(사용자 정보, ⋯ 메뉴, ☰)는 메인 창(mainCdp)에서, H2 뒤의 관리 화면 판정은 관리 창(cdp)에서 한다.
+ *   메인 창의 ⋯ 의 ⚙ 관리를 누르면 호스트가 관리 창을 띄우고, 이 루프는 그 대상에 따로 붙는다(tests/loop-adminwin.mjs).
  *   H7 복원 — 이 시험이 건드린 localStorage(tc_adminLast:*)를 시작 값으로 되돌린다 · 남은 zz 발주처 정리.
  *
  * 비밀번호:
@@ -40,6 +44,7 @@
  * ===================================================================================== */
 
 import { spawnSync } from 'node:child_process';
+import { isAdminWinUrl, isMainWinUrl, waitAdminTarget, ADMIN_HUB_OPEN_JS, closeAdminWindow } from './loop-adminwin.mjs';
 
 const ARG = new Map(process.argv.slice(2).map((a) => {
   const m = /^--([^=]+)(?:=(.*))?$/.exec(a); return m ? [m[1], m[2] ?? '1'] : [a, '1'];
@@ -98,12 +103,13 @@ const dbCust = () => sqlCount(`SELECT COUNT(*) FROM customer WHERE name = '${ZZ.
 /* ── 최소 CDP(loop-user-admin 과 같은 모양) ── */
 class Cdp {
   #ws = null; #id = 0; #p = new Map(); #closed = false;
-  static async attach(port) {
+  static async attach(port, kind = 'main') {
     let list;
     try { list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
     catch (e) { throw new Error(`CDP 에 붙지 못했다(포트 ${port}) — 위젯을 TC_DEBUG_PORT=${port} 로 먼저 띄우세요. 원인: ${e.message}`); }
-    const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl && /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1/.test(x.url || ''))[0];
-    if (!t) throw new Error('부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
+    //  kind: 'main' = 메인 창(열람 창, 열람 프레임, 관리 창 제외), 'admin' = 관리 창(?win=admin)
+    const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl && (kind === 'admin' ? isAdminWinUrl(x.url) : isMainWinUrl(x.url)))[0];
+    if (!t) throw new Error(kind === 'admin' ? '관리 창(?win=admin) page 타겟이 없다' : '부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;
     await new Promise((res, rej) => {
@@ -140,7 +146,8 @@ class Cdp {
   }
   close() { try { this.#ws && this.#ws.close(); } catch { } }
 }
-let cdp = null;
+let cdp = null;        // 지금 판정하는 창(H2 까지 메인 창, 그 뒤 관리 창)
+let mainCdp = null;    // 메인 창(입구, 정리 때 관리 창을 다시 여는 길)
 const ev = (e) => cdp.ev(e);
 const evj = async (e) => JSON.parse(await cdp.ev(e));
 
@@ -227,7 +234,7 @@ async function purgeViaHub(name) {
 /* ── 본문 ── */
 let LS0 = null;
 async function main() {
-  cdp = await Cdp.attach(OPT.port);
+  mainCdp = cdp = await Cdp.attach(OPT.port);
   log(`붙음(포트 ${OPT.port}) · seed=${OPT.seed} · 이름=${ZZ} · DB 대조 ${OPT.adminPw ? '켬(MYSQL_PWD)' : '끔'}`);
   //  H0 — 전제
   const s0 = await pstate();
@@ -236,6 +243,12 @@ async function main() {
   LS0 = await evj(`JSON.stringify(Object.keys(localStorage).filter(function(k){ return /^tc_adminLast:/.test(k); }).reduce(function(o,k){ o[k] = localStorage.getItem(k); return o; }, {}))`);
   await ev(`(function(){ document.querySelectorAll('.overlay').forEach(function(o){ if(isOverlayOpen(o)) closeOverlay(o); }); return 1; })()`);
   await sleep(400);
+  //  지난 실행이 남긴 관리 창이 있으면 먼저 닫는다(열려 있으면 ⋯ 가 앞으로 가져오기만 해 H2 의 '마지막 항목으로 열린다'를 볼 수 없다)
+  if (await waitAdminTarget(OPT.port, { timeout: 300 })) {
+    const old = await Cdp.attach(OPT.port, 'admin');
+    await closeAdminWindow(OPT.port, (e) => old.ev(e));
+    old.close();
+  }
 
   //  H1 — 사용자 정보(J5)
   log('H1 「사용자 정보」 — 계정 · 권한 · 로그아웃뿐');
@@ -261,9 +274,21 @@ async function main() {
   const last0 = await ev(`localStorage.getItem('tc_adminLast:' + currentUser.loginId) || 'members'`);
   const last = ({ orgtitle: 'title', codes: 'section' })[last0] || last0;   // 옛 기억값은 별칭으로 연다(ADMIN-HUB-4 N5)
   await click('#btnAdminHub');
-  const s2b = await waitPage((x) => x.hub && !!x.docked && !x.moreOpen, { timeout: 15000 });
-  ok('H2 ⋯ 가 닫히고 관리 화면이 마지막 항목으로 열린다', !!s2b && s2b.item === last, s2b && J({ item: s2b.item, last, more: s2b.moreOpen }));
-  ok('H2 닫으면 ⋯ 로 돌아갈 자리', await ev(`(function(){ var s = _modalStack.find(function(x){ return x.ov.id === 'adminHub'; }); return !!(s && s.opener && s.opener.id === 'btnMore'); })()`));
+  const sm = await waitPage((x) => !x.moreOpen, { timeout: 5000 });
+  ok('H2 ⋯ 가 닫히고 메인 창 안에는 관리 화면이 열리지 않는다(ADMIN-WINDOW)', !!sm && !sm.hub && !sm.docked, sm && J({ hub: sm.hub, docked: sm.docked }));
+  //  관리 창(?win=admin)이 따로 뜬다. 그 대상에 붙어 이후 판정은 관리 창에서 한다
+  const tw = await waitAdminTarget(OPT.port, { timeout: 20000 });
+  ok('H2 ⋯ 의 ⚙ 관리가 관리 창(?win=admin)을 띄운다', !!tw);
+  if (!tw) notDecided('관리 창이 뜨지 않았다. 이 빌드가 관리 창을 지원하는지, 계정이 관리자인지 확인');
+  cdp = await Cdp.attach(OPT.port, 'admin');
+  for (let i = 0; i < 100 && !(await ev(ADMIN_HUB_OPEN_JS)); i++) await sleep(150);
+  const s2b = await waitPage((x) => x.hub && !!x.docked, { timeout: 15000 });
+  ok('H2 관리 창에 허브가 마지막 항목으로 열린다', !!s2b && s2b.item === last, s2b && J({ item: s2b.item, last }));
+  ok('H2 관리 창은 메인 창과 같은 계정이다(호스트 세션)', !!s2b && s2b.login === s0.login, s2b && s2b.login);
+  //  ⋯ 를 다시 눌러도 새 창이 아니라 같은 창(하나만 뜬다, §2.3)
+  await mainCdp.ev(`(openAdminHub(null), 1)`); await sleep(800);
+  const pages = await (await fetch(`http://127.0.0.1:${OPT.port}/json`, { signal: AbortSignal.timeout(4000) })).json();
+  ok('H2 관리 창은 하나다(다시 열어도 앞으로 가져오기만)', pages.filter((x) => x.type === 'page' && isAdminWinUrl(x.url)).length === 1);
 
   //  H3 — 구성원
   log('H3 👥 사람 › 👤 구성원 — 명부가 관리 화면 안에');
@@ -394,19 +419,30 @@ async function main() {
   const hostList = await evj(`(async function(){ var r = await hostRequest('loadCustomersFull', {}, 20000); return JSON.stringify(r && r.ok ? JSON.parse(r.list || '[]').map(function(x){ return x.name; }) : null); })()`);
   ok(`H5 호스트 목록(loadCustomersFull)에 '${ZZ}' 가 없다`, Array.isArray(hostList) && !hostList.includes(ZZ));
 
-  //  H6 — Esc
-  log('H6 Esc — 관리 화면 닫힘 · 제자리 · inert 없음');
+  //  H6: Esc 는 관리 창을 닫지 않는다. 허브 닫기 = 창 닫기(ADMIN-WINDOW)
+  log('H6 Esc: 관리 창 그대로, 허브 닫기는 창 닫기');
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-  const s6 = await waitPage((x) => !x.hub && !x.docked, { timeout: 5000 });
-  ok('H6 Esc 로 관리 화면이 닫혔다', !!s6);
-  ok('H6 도킹 창이 제자리(body 직계)로 돌아갔다', await ev(`['userAdminModal','orgTitleModal','trashModal','officialModal','customerModal','codeModal'].every(function(id){ var e = document.getElementById(id); return e.parentElement === document.body && !e.classList.contains('docked'); })`));
-  ok('H6 inert 가 남지 않았다', !!s6 && s6.inertAny === 0, s6 && String(s6.inertAny));
+  await sleep(500);
+  const s6 = await pstate();
+  ok('H6 Esc 로 관리 창의 허브가 닫히지 않았다(창 닫기는 창 테두리의 ✕)', s6.hub && !!s6.docked, J({ hub: s6.hub, docked: s6.docked }));
+  ok('H6 inert 가 허브 안으로 번지지 않았다', !s6.inertInHub);
+  const gone = await closeAdminWindow(OPT.port, (e) => cdp.ev(e));
+  ok('H6 허브 닫기(adminWinRequestClose) = 관리 창 닫기, 관리 창 대상이 사라졌다', gone === true);
+  if (gone === true) { cdp.close(); cdp = mainCdp; }
 }
 
 async function cleanup() {
   if (!cdp) return;
   try {
+    //  남은 zz 발주처를 지우려면 관리 창이 있어야 한다(관리 화면은 관리 창에만 있다). 지금 메인 창이면 관리 창을 다시 연다.
+    if (cdp === mainCdp && mainCdp) {
+      const left0 = await evj(`(async function(){ var r = await hostRequest('loadCustomersFull', {}, 20000); return JSON.stringify(r && r.ok ? JSON.parse(r.list || '[]').filter(function(x){ return x.name === ${J(ZZ)}; }).length : 0); })()`);
+      if (left0) {
+        await mainCdp.ev(`(openAdminHub('cust'), 1)`);
+        if (await waitAdminTarget(OPT.port, { timeout: 20000 })) { cdp = await Cdp.attach(OPT.port, 'admin'); await sleep(1200); }
+      }
+    }
     //  남은 zz 발주처 — 같은 화면 길로(숨김 → 영구 삭제). 이미 없으면 아무것도 안 한다.
     const left = await evj(`(async function(){ var r = await hostRequest('loadCustomersFull', {}, 20000); return JSON.stringify(r && r.ok ? JSON.parse(r.list || '[]').filter(function(x){ return x.name === ${J(ZZ)}; }) : []); })()`);
     if (left.length) {
@@ -417,7 +453,8 @@ async function cleanup() {
       const again = await evj(`(async function(){ var r = await hostRequest('loadCustomersFull', {}, 20000); return JSON.stringify(r && r.ok ? JSON.parse(r.list || '[]').some(function(x){ return x.name === ${J(ZZ)}; }) : true); })()`);
       ok(`정리 — '${ZZ}' 가 남지 않았다`, again === false);
     }
-    await ev(`(function(){ var h = document.getElementById('adminHub'); if(isOverlayOpen(h)) closeOverlay(h); return 1; })()`);
+    //  관리 창이 남아 있으면 닫는다(허브 닫기 = 창 닫기). 기억 복원은 메인 창에서 한다(두 창은 localStorage 가 하나다)
+    if (cdp !== mainCdp) { await closeAdminWindow(OPT.port, (e) => cdp.ev(e)); cdp.close(); cdp = mainCdp; }
     await sleep(300);
     if (LS0) {
       await ev(`(function(){ var want = ${J(LS0)};
@@ -426,7 +463,8 @@ async function cleanup() {
       log('복원 — tc_adminLast:* 를 시작 값으로 되돌렸다');
     }
   } catch (e) { log('정리 중 오류: ' + e.message); fail++; FAILED.push('정리: ' + e.message); }
-  cdp.close();
+  try { cdp.close(); } catch { }
+  if (mainCdp && mainCdp !== cdp) try { mainCdp.close(); } catch { }
 }
 
 let undecided = '';

@@ -123,21 +123,25 @@ if (!JSDOM) {
   const CODES = (kind) => ({ ok: true, list: JSON.stringify(kind === 'status'
     ? [{ id: 1, name: 'zz진행중', active: true, sort: 1 }, { id: 2, name: 'zz종료', active: true, sort: 2 }, { id: 3, name: 'zz보류', active: true, sort: 3 }]
     : [{ id: 1, name: 'zz일반계약', active: true, sort: 1 }, { id: 4, name: 'zz연구과제', active: true, sort: 2 }]) });
-  function boot(src) {
+  //  ★ 2026-10-22(docs/ADMIN-WINDOW.md) — 관리 화면은 관리 창(?win=admin)에서만 열린다. 이 파일의 시험은 그 창에서 돈다.
+  //    관리 창에서 허브를 닫는 것은 창 닫기(window.close)라, 시험에서는 횟수만 세고 다시 열기는 허브를 내린 뒤 다시 연다(closeHub).
+  function boot(src, url = 'https://tcapp.local/?win=admin') {
     const posted = [], errors = [];
     const vc = new jsdomMod.VirtualConsole();
     vc.on('jsdomError', (e) => errors.push(String(e && (e.stack || e.message) || e)));
     const dom = new JSDOM(src, {
-      runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://tcapp.local/', virtualConsole: vc,
+      runScripts: 'dangerously', pretendToBeVisual: true, url, virtualConsole: vc,
       beforeParse(win) {
         win.chrome = { webview: { postMessage: (s) => posted.push(String(s)), addEventListener() {}, removeEventListener() {} } };
         if (typeof win.crypto === 'undefined') win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
         win.scrollTo = () => {};
         win.HTMLElement.prototype.scrollIntoView = function () {};
+        win.__realClose = win.close; win.__closeCalls = 0;
+        win.close = function () { win.__closeCalls++; };
       },
     });
     const w = dom.window;
-    const B = { w, errors, doc: w.document, ev: (c) => w.eval(c), evJSON: (c) => JSON.parse(w.eval('JSON.stringify(' + c + ')')), close: () => { try { w.close(); } catch (_) {} } };
+    const B = { w, errors, doc: w.document, ev: (c) => w.eval(c), evJSON: (c) => JSON.parse(w.eval('JSON.stringify(' + c + ')')), close: () => { try { w.__realClose.call(w); } catch (_) {} } };
     w.__CODES = CODES;
     w.eval(`window.__calls = [];
       hostRequest = function(cmd, p){ __calls.push([cmd, JSON.parse(JSON.stringify(p || {}))]);
@@ -162,7 +166,8 @@ if (!JSDOM) {
   const where = (B) => $(B, '#ahWhere').textContent.replace(/\s+/g, ' ').trim();
   const shown = (B, sel) => { const e = $(B, sel); return !!e && B.w.getComputedStyle(e).display !== 'none'; };
   const pick = async (B, item) => { B.ev(`(function(){ var b = document.querySelector('#ahNav [data-ahitem="${item}"]'); if(b.closest('.ah-navgrp').classList.contains('hidden')) document.getElementById(b.closest('[data-ahnavgrp]').dataset.ahnavgrp === 'proj' ? 'ahGrpProj' : 'ahGrpPeople').click(); b.click(); return 1; })()`); await settle(80); };
-  const closeHub = async (B) => { B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE); };
+  //  관리 창을 닫았다 다시 연 자리(허브를 내린다. 도킹 창은 감시가 제자리로 돌린다)
+  const closeHub = async (B) => { B.ev("document.getElementById('adminHub').classList.add('hidden')"); await settle(FADE); };
 
   const dom = {
     //  직급 · 소속 — 같은 #orgTitleModal 을 그 탭으로 · 머리 「직급」/「소속」 · 탭 전환 숨김 · 닫으면 단독 그대로
@@ -303,12 +308,12 @@ if (!JSDOM) {
   test('(관문) 모름 → 확인 실패(회신 없음) — 열리지 않는다(모르면 열지 않는다)', () => guard.denied(app, null, null));
   test('(관문) 모름 → 확인 회신 admin — 열린다 · 열 때 다시 확인해 회수됐으면 틀을 닫는다', () => guard.allowed(app));
   test('변이(관문)①: 관리자 아님 갈래를 빼면 (관문) viewer 가 실패한다', async () => {
-    const bad = mutate(app, "    if(role === false){ toast(AH_DENY_MSG, 'warn'); return; }\n", '');
+    const bad = mutate(app, "    if(role === false){ ahDeny(); return; }\n", '');
     await assert.rejects(() => guard.denied(bad, 'viewer', null), /틀이 열렸다/);
   });
   test('변이(관문)②: 모름 갈래(확인 뒤 열기)를 빼면 (관문) 모름 → editor 가 실패한다', async () => {
-    const bad = mutate(app, "    if(role === null){\n      ahProbe().then(ok => { if(ok === true) openAdminHub(item, opt); else toast(AH_DENY_MSG, 'warn'); });\n      return;\n    }\n", '');
-    await assert.rejects(() => guard.denied(bad, null, INFO('editor')), /틀이 열렸다|토스트/);
+    const bad = mutate(app, "    if(role === null){\n      ahProbe().then(ok => { if(ok === true) openAdminHub(item, opt); else ahDeny(); });\n      return;\n    }\n", '');
+    await assert.rejects(() => guard.denied(bad, null, INFO('editor')), /틀이 열렸다|토스트|구성원 조회가 나갔다/);   // 관리 창은 열린 틀을 바로 내리므로 먼저 나간 조회가 잡는다
   });
 
   test('변이(R)③: 도킹 창 → 항목 판정이 열린 탭을 보지 않으면 「소속」 항목이 직급으로 칠해진다', async () => {

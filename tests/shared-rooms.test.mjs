@@ -278,17 +278,20 @@ if (!JSDOM) {
   const LIST = (rows) => JSON.stringify(rows.map((r, i) => ({ id: r.id, name: r.name, sort: (i + 1) * 10 })));
   const settle = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
-  function boot(src) {
+  //  관리 화면은 관리 창(?win=admin)에서만 열린다(2026-10-22, docs/ADMIN-WINDOW.md). 회의실 관리 시험은 그 창(A)에서 돈다.
+  //    관리 창의 window.close() 는 호스트가 창을 닫는 길이라 시험에서는 횟수만 센다.
+  function boot(src, url = 'https://tcapp.local/') {
     const posted = [], errors = [];
     const vc = new jsdomMod.VirtualConsole();
     vc.on('jsdomError', (e) => errors.push(String(e && (e.stack || e.message) || e)));
     const dom = new JSDOM(src, {
-      runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://tcapp.local/', virtualConsole: vc,
+      runScripts: 'dangerously', pretendToBeVisual: true, url, virtualConsole: vc,
       beforeParse(win) {
         win.chrome = { webview: { postMessage: (s) => posted.push(String(s)), addEventListener() {}, removeEventListener() {} } };
         if (typeof win.crypto === 'undefined') win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
         win.scrollTo = () => {};
         win.HTMLElement.prototype.scrollIntoView = function () {};
+        win.__closeCalls = 0; win.close = function () { win.__closeCalls++; };
       },
     });
     const w = dom.window;
@@ -301,7 +304,7 @@ if (!JSDOM) {
     const sess = posted.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).find((m) => m && m.cmd === 'userSessionGet');
     if (sess) w.eval('__hostReply(' + JSON.stringify(sess.reqId) + ', ' + JSON.stringify({ ok: true, user: ME }) + ')');
     w.eval('currentUser = ' + JSON.stringify(ME));
-    w.__applyState(JSON.stringify(STATE), {});
+    if (!/win=admin/.test(url)) w.__applyState(JSON.stringify(STATE), {});   // 관리 창은 내 달력을 받지 않는다(호스트가 __applyState 를 메인 창에만 민다)
     w.eval('dbOnline = true;');
     w.__applyCodes('', '', JSON.stringify(ROOMS));
     return B;
@@ -314,7 +317,7 @@ if (!JSDOM) {
   const calls = (B, cmd) => B.evJSON('__calls').filter((c) => !cmd || c[0] === cmd);
   const postedCmds = (B) => B.posted.map((s) => { try { return JSON.parse(s).cmd; } catch (_) { return ''; } });
 
-  let B = null;
+  let B = null, A = null;
   test('(R) 부팅: 오류 없이 뜨고 공용 회의실 셋이 sharedRooms 에 실린다(개인 state.rooms 없음)', () => {
     B = boot(app);
     assert.deepStrictEqual(B.errors, [], '부팅 중 페이지 오류');
@@ -397,73 +400,74 @@ if (!JSDOM) {
   });
 
   test('(R) 관리 화면 › 일정 › 회의실: 목록을 읽고, ▲▼ 순서, 이름변경(Enter), 삭제(확인), 추가, 같은 이름 거절', async () => {
+    A = boot(app, 'https://tcapp.local/?win=admin');
     let rows = ROOMS.slice();
-    B.ev(`__rep = {
+    A.ev(`__rep = {
       roomsFull: { ok: true, msg: '', list: ${JSON.stringify(LIST(rows))} },
       roomReorder: function(p){ return { ok: true, msg: '회의실 순서를 바꿨습니다.', list: JSON.stringify(p.ids.map(function(id, i){ var r = ${JSON.stringify(rows)}.find(function(x){ return x.id === id; }); return { id: id, name: r.name, sort: (i + 1) * 10 }; })) }; },
       roomRename: { ok: true, msg: '바꿨습니다.', list: ${JSON.stringify(LIST([{ id: 1, name: '대회의실(본관)' }, rows[1], rows[2]]))} },
       roomDelete: { ok: true, msg: '회의실을 지웠습니다.', list: ${JSON.stringify(LIST([rows[0], rows[1]]))} },
       roomAdd: { ok: true, msg: '추가했습니다.', list: ${JSON.stringify(LIST([rows[0], rows[1], { id: 4, name: '4층 소회의실' }]))} },
     }; __calls.length = 0; ahNoteRole(true);`);
-    B.ev("openAdminHub('rooms')");
+    A.ev("openAdminHub('rooms')");
     await settle(80);
-    assert.ok(B.ev("isOverlayOpen(document.getElementById('adminHub'))"), '관리 화면이 열리지 않았다');
-    assert.strictEqual($(B, '#roomAdminModal').parentElement.id, 'ahSlot', '회의실 창이 관리 화면 칸에 도킹되지 않았다');
-    assert.ok($(B, '#ahSeg [data-ahgrp="sched"]').classList.contains('on'), "묶음 '일정' 이 고른 상태가 아니다");
-    assert.deepStrictEqual(calls(B).map((c) => c[0]).filter((c) => c !== 'userInfoGet'), ['roomsFull']);
-    const names = () => [...B.doc.querySelectorAll('#raList .cust-row .cust-nm')].map((n) => n.textContent);
+    assert.ok(A.ev("isOverlayOpen(document.getElementById('adminHub'))"), '관리 화면이 열리지 않았다');
+    assert.strictEqual($(A, '#roomAdminModal').parentElement.id, 'ahSlot', '회의실 창이 관리 화면 칸에 도킹되지 않았다');
+    assert.ok($(A, '#ahSeg [data-ahgrp="sched"]').classList.contains('on'), "묶음 '일정' 이 고른 상태가 아니다");
+    assert.deepStrictEqual(calls(A).map((c) => c[0]).filter((c) => c !== 'userInfoGet'), ['roomsFull']);
+    const names = () => [...A.doc.querySelectorAll('#raList .cust-row .cust-nm')].map((n) => n.textContent);
     assert.deepStrictEqual(names(), ['대회의실', '소회의실 A', '3층 세미나실']);
-    assert.strictEqual($(B, '#ahNrooms').textContent, '3', '항목 개수가 목록과 다르다');
+    assert.strictEqual($(A, '#ahNrooms').textContent, '3', '항목 개수가 목록과 다르다');
     //  ▼: 번호 배열 전체를 보낸다
-    $(B, '#raList [data-radown="1"]').click();
+    $(A, '#raList [data-radown="1"]').click();
     await settle(40);
-    assert.deepStrictEqual(calls(B, 'roomReorder').map((c) => c[1]), [{ ids: [2, 1, 3] }], '순서 바꾸기가 번호 전체 배열을 보내지 않는다');
-    assert.ok(postedCmds(B).includes('loadCodes'), '성공 뒤 loadCodes 로 장소 칸 목록을 다시 받지 않는다');
+    assert.deepStrictEqual(calls(A, 'roomReorder').map((c) => c[1]), [{ ids: [2, 1, 3] }], '순서 바꾸기가 번호 전체 배열을 보내지 않는다');
+    assert.ok(postedCmds(A).includes('loadCodes'), '성공 뒤 loadCodes 로 장소 칸 목록을 다시 받지 않는다');
     //  이름변경: 그 자리, Enter 저장
-    $(B, '#raList [data-raedit="1"]').click();
-    const ed = $(B, '#raList .cust-edit input');
+    $(A, '#raList [data-raedit="1"]').click();
+    const ed = $(A, '#raList .cust-edit input');
     assert.ok(ed, '그 자리 이름 칸이 열리지 않는다');
     ed.value = '대회의실(본관)';
-    key(B, ed, 'Enter');
+    key(A, ed, 'Enter');
     await settle(40);
-    assert.deepStrictEqual(calls(B, 'roomRename').map((c) => c[1]), [{ id: 1, newName: '대회의실(본관)' }]);
+    assert.deepStrictEqual(calls(A, 'roomRename').map((c) => c[1]), [{ id: 1, newName: '대회의실(본관)' }]);
     //  Esc 는 취소(창은 그대로)
-    $(B, '#raList [data-raedit="2"]').click();
-    key(B, $(B, '#raList .cust-edit input'), 'Escape');
-    assert.ok(!$(B, '#raList .cust-edit'), 'Esc 가 이름 바꾸기를 취소하지 않는다');
-    assert.ok(B.ev("isOverlayOpen(document.getElementById('adminHub'))"), 'Esc 가 관리 화면까지 닫았다');
+    $(A, '#raList [data-raedit="2"]').click();
+    key(A, $(A, '#raList .cust-edit input'), 'Escape');
+    assert.ok(!$(A, '#raList .cust-edit'), 'Esc 가 이름 바꾸기를 취소하지 않는다');
+    assert.ok(A.ev("isOverlayOpen(document.getElementById('adminHub'))"), 'Esc 가 관리 화면까지 닫았다');
     //  삭제: 확인 창 한 번
-    $(B, '#raList [data-radel="3"]').click();
+    $(A, '#raList [data-radel="3"]').click();
     await settle(40);
-    assert.ok(!$(B, '#confirmModal').classList.contains('hidden'), '삭제 확인 창이 뜨지 않는다');
-    assert.ok(/일정에 이미 적힌 장소 글자는 그대로 남습니다/.test($(B, '#cfMsg').textContent), '삭제 확인 문구가 기획과 다르다');
-    assert.strictEqual(calls(B, 'roomDelete').length, 0, '확인 전에 지웠다');
-    $(B, '#cfOk').click();
+    assert.ok(!$(A, '#confirmModal').classList.contains('hidden'), '삭제 확인 창이 뜨지 않는다');
+    assert.ok(/일정에 이미 적힌 장소 글자는 그대로 남습니다/.test($(A, '#cfMsg').textContent), '삭제 확인 문구가 기획과 다르다');
+    assert.strictEqual(calls(A, 'roomDelete').length, 0, '확인 전에 지웠다');
+    $(A, '#cfOk').click();
     await settle(250);
-    assert.deepStrictEqual(calls(B, 'roomDelete').map((c) => c[1]), [{ id: 3 }]);
+    assert.deepStrictEqual(calls(A, 'roomDelete').map((c) => c[1]), [{ id: 3 }]);
     assert.deepStrictEqual(names(), ['대회의실', '소회의실 A'], '삭제 회신의 목록으로 다시 그리지 않았다');
     //  같은 이름(띄어쓰기, 대소문자만 다름)은 보내지 않는다
-    $(B, '#raNewName').value = ' 소회의실a ';
-    $(B, '#raAddBtn').click();
+    $(A, '#raNewName').value = ' 소회의실a ';
+    $(A, '#raAddBtn').click();
     await settle(20);
-    assert.strictEqual(calls(B, 'roomAdd').length, 0, '같은 이름을 호스트에 보냈다');
-    assert.ok(/이미 목록에 있습니다/.test($(B, '#raMsg').textContent), '같은 이름 안내가 없다');
+    assert.strictEqual(calls(A, 'roomAdd').length, 0, '같은 이름을 호스트에 보냈다');
+    assert.ok(/이미 목록에 있습니다/.test($(A, '#raMsg').textContent), '같은 이름 안내가 없다');
     //  추가: 앞뒤 공백, 안쪽 공백 정리
-    $(B, '#raNewName').value = '  4층   소회의실 ';
-    key(B, $(B, '#raNewName'), 'Enter');
+    $(A, '#raNewName').value = '  4층   소회의실 ';
+    key(A, $(A, '#raNewName'), 'Enter');
     await settle(40);
-    assert.deepStrictEqual(calls(B, 'roomAdd').map((c) => c[1]), [{ name: '4층 소회의실' }]);
-    assert.strictEqual($(B, '#raNewName').value, '', '추가 뒤 칸이 비지 않는다');
+    assert.deepStrictEqual(calls(A, 'roomAdd').map((c) => c[1]), [{ name: '4층 소회의실' }]);
+    assert.strictEqual($(A, '#raNewName').value, '', '추가 뒤 칸이 비지 않는다');
   });
 
   test('(R) 관리자가 아니면 관리 화면(회의실 항목 포함)이 열리지 않는다', async () => {
-    B.ev("closeOverlay(document.getElementById('adminHub'))");
+    A.ev("document.getElementById('adminHub').classList.add('hidden')");   // 관리 창을 닫았다 다시 연 자리
     await settle(250);
-    B.ev('__calls.length = 0; ahNoteRole(false);');
-    B.ev("openAdminHub('rooms')");
+    A.ev('__calls.length = 0; ahNoteRole(false);');
+    A.ev("openAdminHub('rooms')");
     await settle(60);
-    assert.ok(!B.ev("isOverlayOpen(document.getElementById('adminHub'))"), '관리자가 아닌데 관리 화면이 열렸다');
-    assert.strictEqual(calls(B, 'roomsFull').length, 0, '관리자가 아닌데 회의실 목록을 물었다');
-    assert.deepStrictEqual(B.errors, [], '시험 중 페이지 오류');
+    assert.ok(!A.ev("isOverlayOpen(document.getElementById('adminHub'))"), '관리자가 아닌데 관리 화면이 열렸다');
+    assert.strictEqual(calls(A, 'roomsFull').length, 0, '관리자가 아닌데 회의실 목록을 물었다');
+    assert.deepStrictEqual(A.errors, [], '시험 중 페이지 오류');
   });
 }

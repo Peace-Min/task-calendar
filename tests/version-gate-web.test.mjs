@@ -13,7 +13,7 @@
 import { test, skip, assert, loadAppSource, extractFunction, importOptional, countTestsBelow, SKIP_NO_JSDOM, readText } from './harness.mjs';
 
 const src = loadAppSource();
-const peerCs = readText(new URL('../widget/PeerWindow.cs', import.meta.url)).replace(/\r/g, '');
+const peerCs = readText(new URL('../widget/AppWindow.cs', import.meta.url)).replace(/\r/g, '');
 
 function mutate(from, to, base = src) {
   const out = base.replace(from, to);

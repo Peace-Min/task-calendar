@@ -1,6 +1,6 @@
 # 관리 화면 별도 창 (ADMIN-WINDOW)
 
-- 상태: 기획 확정(2026-10-22). 2절 "정할 것" 네 가지는 기본안대로 확정(사용자 승인).
+- 상태: 기획 확정(2026-10-22). 2절 "정할 것" 네 가지는 기본안대로 확정(사용자 승인). 개발 완료, 실동작 QA 전(2026-10-22, 7절).
 - 목표: 메인 창 안의 ⚙ 관리 허브(`#adminHub`)를 **별도 OS 창**으로 연다. 창 크기 조절과 최대화가 되고, 캘린더를 보면서 관리할 수 있다.
 - 범위: 관리 허브와 그 안에 붙는 화면 전부(공식 과제 편집, 발주처, 구분, 상태, 회의실, 구성원 편집, 직원 등록과 수정, 직급과 소속, 휴지통). 보고서와 사용설명서는 이번 범위가 아니다(사용자 결정 2026-10-22, 따로 개선 방향이 있다).
 - 근거: 팝업 전수 검수(2026-10-22). 관리 화면들은 메인 캘린더 데이터(`state`)를 거의 쓰지 않고 DB 왕복과 목록 갱신 알림만 써서, 분리 비용이 가장 낮은 단위다.
@@ -49,3 +49,30 @@
 ## 6. 진행 순서
 
 - 기획 확정 뒤 개발은 별도 워크트리에서 한다. 시험 파일 줄끝 정리 작업(다른 세션)이 끝난 뒤 시작해 병합 충돌을 피한다.
+
+## 7. 구현 메모 (2026-10-22, 워크트리 feat/admin-window)
+
+- 상태: 개발 완료, 실동작 QA 전(디버그 위젯과 루프는 PM 이 돌린다). strict 2858/0/0.
+- **창 종류(호스트):** `widget/PeerWindow.cs` 를 `widget/AppWindow.cs` 로 넓혔다. `WinKind` 가 종류를 정하고(`Peer`, `Admin`, 등록은 `WinKind.All`), `AppWindow` 가 그 종류로 뜨는 창이다. 종류가 정하는 것: 주소(`?peerwin=1`, `?win=admin`), 제목, 제목이 문서 제목을 따르는지(열람 창만), 최소 크기(480x360, 720x520), 처음 크기(1400x900, 1200x800, 작업 영역 90% 이하), 번호 머리(`pw:`, `aw:`), 준비 알림(`peerWinReady`, `adminWinReady`), 번호 없이 받는 명령(열람 창은 준비 알림 하나, 관리 창은 회신 없는 명령도), 허용 목록, 목록 알림을 받는지(관리 창만), 닫기 전에 묻는지(관리 창만), 자리 기억 키(`widget.settings.json` 의 `Peer`, `Admin`). 열람 창의 값은 예전 그대로다.
+- **메인 창(호스트, `MainWindow.xaml.cs`):** `_wins`(종류마다 하나), `ShowWin`(없으면 만들고 있으면 앞으로), `OnWebMessage` 의 거름(보낸 창의 종류 목록과 번호 머리, 메인 창의 머리 달린 번호는 버림), `ReplyCore`(번호 머리로 종류를 찾고 보낸 창일 때만 회신), `ForgetWinReqs`(닫힌 종류의 회신 기록만 지움), `CloseSubWindows`(로그아웃, 계정 바뀜, 종료), `SyncWinTopmost`(맨 앞에 띄우기), `RememberWinBounds`, `WinStartBounds`, `FitWinRect`(크기 값을 인자로 받는 순수 함수).
+- **관리 창 열기:** 메인 창의 웹이 `adminOpen {item}` 을 보낸다(메인 창에서만 받는다). `OpenAdminWindowAsync` 가 세션을 보고, 창이 이미 있으면 DB 를 묻지 않고 앞으로 가져와 항목만 넘긴다(§2.3). 없으면 `LoadUserInfoJsonAsync` 로 읽은 행을 `AdminFromUserInfo`(edit_role admin, 재직)로 판정하고 관리자일 때만 연다. 아니면 `{ok:false, admin:false, msg}` 를 회신하고 웹은 토스트와 함께 입구를 숨긴다. 기다리는 사이 계정이 바뀌면 열지 않는다. 웹에는 대상(`item`, `me`)만 넘기고 권한은 넘기지 않는다(관리 창의 허브는 지금처럼 `userInfoGet` 확인으로 틀을 연다).
+- **허용 목록(43개, 호스트 `AdminWinCommands` = 웹 `ADMINWIN_CMD`):** 준비 알림, 관리자 확인(`userInfoGet`), 관문 재확인, 목록 읽기 셋, 공식 과제(`saveProject`, `setProjectActive`, `exportProjectsXlsx`, `openFolder`), 발주처 다섯, 구분과 상태 여섯, 회의실 다섯, 구성원과 직원 편집 넷(`membersGet` 은 관리 창이면 퇴사자 보기와 서열 순을 쓸 수 있다), 직급 다섯, 소속 다섯, 휴지통 셋.
+- **목록 알림:** `__applyProjects`, `__applyCustomers`, `__applyCodes`, `__projectSaved` 는 `CatalogPush` 로 메인 창과 관리 창 둘 다에 간다(`__projectSaved` 는 보낸 창이 아니면 웹의 세대 가드가 무시한다). 관문 상태(`PushGate`)도 모든 따로 뜨는 창에 가고, 창이 뜰 때 `GatePushToWin` 이 한 번 더 민다.
+- **새 과제 자동 편입:** 예전에는 관리 화면이 메인 창 안이라 저장한 창이 곧 내 캘린더였다. 이제 저장은 관리 창에서 하므로, 호스트가 새 과제 저장에 성공하면 목록 알림 바로 앞에 메인 창에 `__autoSubNext({customerId, projectName})` 를 보낸다. 메인 창의 `__applyProjects` 가 그 대상을 찾아 지금처럼 편입한다(같은 웹뷰라 순서가 지켜진다).
+- **파일 대화상자:** `exportProjectsXlsx` 의 저장 대화상자는 `DialogOwner(보낸 창)` 을 주인으로 한다(관리 창 위에 뜬다). 다른 대화상자(XML 가져오기, 폴더 고르기, 연구노트)는 관리 창이 보낼 수 없는 명령이라 메인 창 그대로다.
+- **닫기 확인(§2.2):** 관리 창의 `Closing` 은 웹이 뜬 뒤면 닫기를 멈추고 `window.__winCloseRequest()` 를 묻는다. 답 `close` 면 닫고, `ask`(직원 등록과 수정 폼에 저장 안 한 입력, 같은 확인 창을 띄웠다) 이면 웹이 [닫기] 뒤에 `window.close()` 를 부른다(`WindowCloseRequested` 는 묻지 않고 닫는다), `busy`(저장 중)면 닫지 않는다. 웹이 3초 안에 답하지 않으면 닫는다. 로그아웃, 계정 바뀜, 종료, WebView2 브라우저 프로세스 실패는 묻지 않고 닫는다(`CloseNow`).
+- **웹(`?win=admin`, `ADMINWIN`):** `adminWinBoot` 는 준비 알림과 목록 읽기(`adminWinLoadCatalog`: 과제, 코드, 발주처)만 보낸다. 내 달력, 로그인 화면, 호스트바, ready 가 없다. 호스트의 `__adminWinOpen({item, me})` 가 내 신원을 세우고 `openAdminHub(item)` 으로 허브를 연다(이미 열려 있으면 항목만 옮긴다). `hpost` 는 `ADMINWIN_CMD` 밖을 조용히 버리고, `hostRequest` 번호는 `aw:<창 소금>:` 로 시작한다. 허브 닫기(`closeOverlay(#adminHub)`)는 창 닫기 요청이다. 메인 창의 `openAdminHub` 는 `adminOpen` 만 보내고 허브를 열지 않는다. 읽기 전용 찾아보기(`#officialModal` 단독)는 메인 창 모달 그대로다.
+- **CSS:** `html[data-adminwin]` 에서 body 직계는 허브, 허브에 붙는 화면 일곱, 편집 폼 둘(`#officialEditModal`, `#userEditModal`), 확인 창 둘, 토스트, 관문 카드만 보인다. 허브는 창을 꽉 채우고(고정 폭과 높이, 둥근 모서리, 그림자 없음) 머리의 ✕ 를 감춘다. 좁은 창(720 이하) 규칙은 그대로 탄다.
+- **버전 관문:** 관리 창도 열람 창과 같은 작은 카드다(`SUBWIN`). 문구만 "관리 화면을 쓸 수 없습니다". 관문이 풀리면 목록을 다시 받고 보던 항목을 다시 연다(`adminWinReload`). 함께 고친 것: 허브가 늘 열려 있는 관리 창에서는 `_updateInert` 가 카드(#vgGate)에 inert 를 걸어 둔 채였다. `vgInert` 가 카드의 inert 를 걷는다(메인 창에서 모달이 열린 채 막혔을 때도 같은 문제가 있었다).
+
+### 기획과 다르게 한 것
+
+- **Esc 로 관리 창을 닫지 않는다.** 허브와 도킹 화면이 맨 위면 Esc 는 아무 일도 하지 않는다(안에서 뜬 확인 창과 편집 폼은 지금처럼 Esc 로 닫힌다). 목록의 이름 바꾸기 취소 같은 Esc 가 창 전체를 닫으면 안 되고, Windows 의 일반 창도 Esc 로 닫히지 않는다. 창 닫기는 창 테두리의 ✕(와 저장 안 한 입력 확인)다.
+- **관리자 아님 처리:** 관리 창 안의 확인(`userInfoGet`)이 관리자 아님이면 열린 틀을 바로 내리고 토스트를 보인 뒤 1.8초 뒤 창을 닫는다(빈 창을 남기지 않는다).
+- **허용 목록에 단독 관리 화면:** 실동작 루프(loop-user-admin, loop-trash, loop-org-title)는 관리 창에서 허브를 내리고 단독 흐름(`openUserAdmin` 등)으로 돈다. 그래서 allowlist 에 허브에 붙는 화면 일곱을 넣었다(도킹 중에는 허브 안이라 원래 보인다). 사용자 화면에는 허브를 내리는 길이 없다.
+
+### 시험과 루프
+
+- 새 시험 `tests/admin-window.test.mjs`(창 종류 등록, 허용 목록과 웹 목록 일치, 거름과 회신 길, 열기 관문(`AdminFromUserInfo` 는 C# 그대로 컴파일), 목록 알림 두 창, 대화상자 주인, 닫기 확인, `?win=admin` 부팅과 봉인, 허브가 창을 채움, 메인 창은 허브를 열지 않음, 관리자 아님, 저장 안 한 입력 확인, Esc, 관문 카드, 변이).
+- 바뀐 시험: `admin-hub*.test.mjs`, `shared-rooms`(허브 시험은 관리 창 문서에서, 입구는 메인 창에서), `peer-window`(종류로 넓힌 호스트 계약, `FitWinRect` 에 관리 창 크기 사례), `focus-restore`(`SyncWinTopmost`), `version-gate-host`(모든 따로 뜨는 창에 민다), `code-tables`(loadCodes 호출부 6곳), `user-admin`(변이 앵커).
+- 루프: `tests/loop-adminwin.mjs`(대상 고르기, 관리 창 열기와 닫기 도우미). `loop-admin-hub` 은 입구를 메인 창에서, 허브 판정을 관리 창에서 한다. `loop-user-admin`, `loop-trash`, `loop-org-title` 은 관리 창에 붙어 허브를 내리고 단독 흐름으로 돈다(메인 창의 것인 구성원 보기와 편입 확인은 메인 창에서). 나머지 루프는 메인 창 대상을 고를 때 관리 창(`win=admin`)을 뺀다. `loop-ui-integrity`, `loop-ui-visual` 은 관리 화면을 메인 창에서 단독으로 열어 감사하는 그대로다(메인 창도 코드로는 그 모달을 연다).

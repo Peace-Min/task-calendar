@@ -179,17 +179,22 @@ if (!JSDOM) {
   //  이 기능이 부를 수 있는 명령 전부 — 이 밖의 명령이 나가면 '새 명령'이다(M10)
   const KNOWN = new Set(['userInfoGet', 'membersGet', 'orgTitleGet', 'trashGet', 'loadCustomersFull', 'getCodesFull', 'unitSetActive', 'titleSetActive', 'trashRestore', 'trashDelete']);
 
-  function boot(src) {
+  //  ★ 2026-10-22(docs/ADMIN-WINDOW.md) — 관리 화면은 관리 창(?win=admin)에서만 열린다. 허브 시험은 그 창에서, 단독 찾아보기는 메인 창에서 본다.
+  //    관리 창의 window.close() 는 호스트가 창을 닫는 길이라 시험에서는 횟수만 센다.
+  const ADMIN_URL = 'https://tcapp.local/?win=admin', MAIN_URL = 'https://tcapp.local/';
+  function boot(src, url = ADMIN_URL) {
     const posted = [], errors = [];
     const vc = new jsdomMod.VirtualConsole();
     vc.on('jsdomError', (e) => errors.push(String(e && (e.stack || e.message) || e)));
     const dom = new JSDOM(src, {
-      runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://tcapp.local/', virtualConsole: vc,
+      runScripts: 'dangerously', pretendToBeVisual: true, url, virtualConsole: vc,
       beforeParse(win) {
         win.chrome = { webview: { postMessage: (s) => posted.push(String(s)), addEventListener() {}, removeEventListener() {} } };
         if (typeof win.crypto === 'undefined') win.crypto = { randomUUID: () => 'x-' + Math.random().toString(36).slice(2), getRandomValues: (a) => a };
         win.scrollTo = () => {};
         win.HTMLElement.prototype.scrollIntoView = function () {};
+        win.__realClose = win.close; win.__closeCalls = 0;
+        win.close = function () { win.__closeCalls++; };
       },
     });
     const w = dom.window;
@@ -197,7 +202,7 @@ if (!JSDOM) {
       w, posted, errors, doc: w.document,
       ev: (c) => w.eval(c),
       evJSON: (c) => JSON.parse(w.eval('JSON.stringify(' + c + ')')),
-      close: () => { try { w.close(); } catch (_) {} },
+      close: () => { try { w.__realClose.call(w); } catch (_) {} },
     };
     w.eval(`window.__calls = []; window.__rep = {}; window.__toasts = [];
       hostRequest = function(cmd, p){ __calls.push([cmd, JSON.parse(JSON.stringify(p || {}))]);
@@ -257,7 +262,7 @@ if (!JSDOM) {
   });
   const dom = {
     async dockedOfficial(src) {
-      const B = boot(src);
+      let B = boot(src);
       try {
         await reset(B); seedCatalog(B);
         await openHub(B, 'projects');
@@ -274,8 +279,11 @@ if (!JSDOM) {
         assert.strictEqual(cs(B, '#offDetail .off-d-sub', 'display'), 'none', '관리 화면에 「＋ 캘린더에 추가」가 보인다(R1)');
         assert.ok($(B, '#offDetail [data-offadd="db-702"]'), '「＋ 캘린더에 추가」 노드가 사라졌다 — 숨김은 display 만이다(단독과 같은 렌더)');
         assert.notStrictEqual(cs(B, '#offNew', 'display'), 'none', '관리 화면에 「＋ 새 공식 과제」가 사라졌다(R1 — 남는 것)');
-        //  단독(찾아보기) — 그대로다(이 표시들이 주인공)
-        B.ev("closeOverlay(document.getElementById('adminHub'))"); await settle(FADE);
+        assert.deepStrictEqual(B.errors, [], '페이지 오류');
+        B.close();
+        //  단독(찾아보기, 메인 창) — 그대로다(이 표시들이 주인공)
+        B = boot(src, MAIN_URL);
+        await reset(B); seedCatalog(B);
         B.ev('openOfficialModal()'); await settle(60);
         assert.ok(!$(B, '#officialModal').classList.contains('docked'), '전제: 단독으로 열리지 않았다');
         B.ev("offSelect('db-701')"); await settle(20);

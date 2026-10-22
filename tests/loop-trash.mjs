@@ -68,6 +68,7 @@
  * ===================================================================================== */
 
 import { spawnSync } from 'node:child_process';
+import { isAdminWinUrl, isMainWinUrl, openAdminWindow, ADMIN_HUB_OPEN_JS, HIDE_HUB_JS, closeAdminWindow } from './loop-adminwin.mjs';
 
 /* ────────────────────────────── 0. 인자·자격증명 ────────────────────────────── */
 
@@ -223,7 +224,7 @@ const countsKey = (c) => `${c.project}/${c.app_user}/${c.customer}/${c.section_c
 
 class Cdp {
   #ws = null; #id = 0; #p = new Map(); #closed = false;
-  static async attach(port) {
+  static async attach(port, kind = 'main') {
     let list;
     try { list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
     catch (e) {
@@ -232,9 +233,10 @@ class Cdp {
         `  원인: ${e.message}`);
     }
     //  ?peer=1 프레임은 제외한다 — 조종할 것은 **부모** 창이다.
+    //  kind: 'main' = 메인 창(열람 창, 관리 창 제외), 'admin' = 관리 창(?win=admin, ADMIN-WINDOW)
     const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl
-      && /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1/.test(x.url || ''))[0];
-    if (!t) throw new Error('부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
+      && (kind === 'admin' ? isAdminWinUrl(x.url) : isMainWinUrl(x.url)))[0];
+    if (!t) throw new Error(kind === 'admin' ? '관리 창(?win=admin) page 타겟이 없다' : '부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;
     await new Promise((res, rej) => {
@@ -272,7 +274,11 @@ class Cdp {
   close() { try { this.#ws && this.#ws.close(); } catch { } }
 }
 
+//  ★ 2026-10-22(docs/ADMIN-WINDOW.md). 관리 화면은 관리 창(?win=admin)에서만 열린다. 이 루프는 메인 창(mainCdp)에서
+//    관리 창을 열고(openAdminHub) 그 창(cdp)에 붙어, 허브를 내린 뒤 지금처럼 단독 흐름(openTrash, openOrgTitle, openUserAdmin)으로 돈다
+//    (관리 창의 allowlist 가 단독으로 연 화면도 보여 준다. tests/loop-adminwin.mjs).
 let cdp = null;
+let mainCdp = null;
 const ev = (e) => cdp.ev(e);
 const evj = async (e) => JSON.parse(await cdp.ev(e));
 const J = (v) => JSON.stringify(v);
@@ -447,15 +453,16 @@ const ctCancel = () => ev(`(typeof closeModal==='function' && closeModal('#confi
 
 const catalogHas = (uid) => evj(`JSON.stringify(!!(typeof dbCatalog!=='undefined' && dbCatalog && dbCatalog.some(function(c){ return c && c.id === 'db-' + ${J(uid)}; })))`);
 /** state.categories 안의 편입분 — 없으면 null. dbGone 이 이 시험의 관심사다. */
-const subCat = (uid) => evj(`(function(){
+//  편입(내 캘린더의 과제 목록, state.categories)은 메인 창의 것이다(ADMIN-WINDOW). 아래 셋은 메인 창(mainCdp)에서 본다.
+const subCat = async (uid) => JSON.parse(await mainCdp.ev(`(function(){
   var c = (state.categories||[]).find(function(x){ return x && x.id === 'db-' + ${J(uid)}; });
   return JSON.stringify(c ? { id:c.id, name:c.name, source:c.source, dbGone: !!c.dbGone } : null);
-})()`);
+})()`));
 /** 앱 자신의 편입/해제 경로(카탈로그 화면의 [추가]/[제거])를 그대로 부른다.
  *  ★ SQL 로 심지 않는 이유: 앱은 DB 모드라 cal_category 를 스스로 소유한다. 뒤에서 행을 만들거나 지우면
  *    앱의 state 와 갈리고, 다음 저장이 지운 행을 되살리거나 심은 행을 지운다(잔재의 씨앗). */
-const appSubscribe = (uid) => ev(`(offSubscribeFromCatalog('db-' + ${J(uid)}), 1)`);
-const appUnsubscribe = (uid) => ev(`(offUnsubscribeFromCatalog('db-' + ${J(uid)}), 1)`);
+const appSubscribe = (uid) => mainCdp.ev(`(offSubscribeFromCatalog('db-' + ${J(uid)}), 1)`);
+const appUnsubscribe = (uid) => mainCdp.ev(`(offUnsubscribeFromCatalog('db-' + ${J(uid)}), 1)`);
 /** cal_category 가 DB 에 실제로 앉을 때까지 기다린다(dbSave 는 비동기 왕복이다). */
 async function waitSqlCount(q, want, { timeout = 15000, what = 'DB 반영 대기' } = {}) {
   const t = Date.now();
@@ -670,7 +677,13 @@ async function main() {
   const left0 = zzLeft();
   if (left0) { console.error(`[판정 없음] 시작 정리 뒤에도 zz 잔재 ${left0}건이 남았다 — 손으로 확인해야 한다`); process.exit(2); }
 
-  cdp = await Cdp.attach(OPT.port);
+  mainCdp = await Cdp.attach(OPT.port);
+  try { await openAdminWindow(OPT.port, (e) => mainCdp.ev(e), 'members'); }
+  catch (e) { console.error('[판정 없음] ' + e.message); process.exit(2); }
+  cdp = await Cdp.attach(OPT.port, 'admin');
+  for (let i = 0; i < 100 && !(await ev(ADMIN_HUB_OPEN_JS)); i++) await sleep(150);
+  await ev(HIDE_HUB_JS);   // 허브를 내리고 단독 흐름으로(창은 그대로)
+  await sleep(300);
   const inst = await ev(INSTALL_JS);
   if (inst === 'missing') { console.error('[판정 없음] 페이지에 휴지통 회신 함수가 없다 — 휴지통 이전 버전의 위젯이다'); process.exit(2); }
   vlog(`가로채기: ${inst}`);
@@ -1539,7 +1552,9 @@ async function main() {
   okq(`정리: ${ME} admin/활성 복원`, end.meRole === 'admin' && end.meActive === true, `${end.meRole}/${end.meActive}`);
   okq(`정리: schema_version ${BASE.schemaVersion} 불변`, end.schemaVersion === BASE.schemaVersion, `실제 ${end.schemaVersion}`);
 
+  try { await closeAdminWindow(OPT.port, (e) => cdp.ev(e)); } catch (_) { }   // 관리 창을 닫는다(허브 닫기 = 창 닫기)
   cdp.close();
+  try { mainCdp.close(); } catch (_) { }
 }
 
 /* ────────────────────────────── 8. 요약 ────────────────────────────── */

@@ -1730,9 +1730,9 @@ test('계약⑭-h4: 죽은 푸시(__applyMembers·__applyTrash)는 호스트에�
 
 test('변이⑭-h4: 호스트에 __applyMembers 방출부를 되살리면 계약⑭-h4 가 실패한다(배달이 다시 둘로 갈린다)', () => {
   const bad = widgetCs.map(([n, s]) => (n !== 'MainWindow.xaml.cs' ? [n, s] : [n, mutate(s,
-    'JsCall("window.__applyProjects && window.__applyProjects(',
+    'CatalogPush("window.__applyProjects && window.__applyProjects(',   // 2026-10-22: 목록 알림은 CatalogPush(메인 창과 관리 창)로 간다
     'JsCall("window.__applyMembers && window.__applyMembers(" + JsonSerializer.Serialize("") + ")");\n'
-    + '            JsCall("window.__applyProjects && window.__applyProjects(')]));
+    + '            CatalogPush("window.__applyProjects && window.__applyProjects(')]));
   assert.throws(() => checks.deadPushesAreGone(bad, app), /죽은 푸시\(__applyMembers\)가 되살아났다/);
   assert.doesNotThrow(() => checks.deadPushesAreGone(widgetCs, app));   // 통제군
 });
@@ -1742,9 +1742,9 @@ test('변이⑭-h4: 호스트에 __applyMembers 방출부를 되살리면 계약
 //    "웹에는 수신부가 없으니 통과" 라고 말하면서 그 방출부를 통과시킨다(그건 없는 계약보다 나쁘다).
 test('변이⑭-h4c: 호스트에 __applyTrash 방출부를 되살리면 계약⑭-h4 가 실패한다(목록 배달이 둘로 갈린다)', () => {
   const bad = widgetCs.map(([n, s]) => (n !== 'MainWindow.xaml.cs' ? [n, s] : [n, mutate(s,
-    'JsCall("window.__applyProjects && window.__applyProjects(',
+    'CatalogPush("window.__applyProjects && window.__applyProjects(',   // 2026-10-22: 목록 알림은 CatalogPush(메인 창과 관리 창)로 간다
     'JsCall("window.__applyTrash && window.__applyTrash(" + JsonSerializer.Serialize("") + ")");\n'
-    + '            JsCall("window.__applyProjects && window.__applyProjects(')]));
+    + '            CatalogPush("window.__applyProjects && window.__applyProjects(')]));
   assert.throws(() => checks.deadPushesAreGone(bad, app), /죽은 푸시\(__applyTrash\)가 되살아났다/);
   assert.doesNotThrow(() => checks.deadPushesAreGone(widgetCs, app));   // 통제군
 });

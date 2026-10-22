@@ -59,6 +59,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { isAdminWinUrl, isMainWinUrl, openAdminWindow, ADMIN_HUB_OPEN_JS, HIDE_HUB_JS, closeAdminWindow } from './loop-adminwin.mjs';
 
 /* ────────────────────────────── 0. 인자·자격증명 ────────────────────────────── */
 
@@ -213,7 +214,7 @@ const idHash = (rows) => createHash('sha256')
 
 class Cdp {
   #ws = null; #id = 0; #p = new Map(); #closed = false;
-  static async attach(port) {
+  static async attach(port, kind = 'main') {
     let list;
     try { list = await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
     catch (e) {
@@ -222,9 +223,10 @@ class Cdp {
         `  원인: ${e.message}`);
     }
     //  ?peer=1 프레임은 제외한다 — 조종할 것은 **부모** 창이다.
+    //  kind: 'main' = 메인 창(열람 창, 관리 창 제외), 'admin' = 관리 창(?win=admin, ADMIN-WINDOW)
     const t = (list || []).filter((x) => x.type === 'page' && x.webSocketDebuggerUrl
-      && /tcapp\.local/i.test(x.url || '') && !/peer(win)?=1/.test(x.url || ''))[0];
-    if (!t) throw new Error('부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
+      && (kind === 'admin' ? isAdminWinUrl(x.url) : isMainWinUrl(x.url)))[0];
+    if (!t) throw new Error(kind === 'admin' ? '관리 창(?win=admin) page 타겟이 없다' : '부모 page 타겟이 없다 — 위젯이 떠 있고 로그인돼 있어야 한다');
     const c = new Cdp();
     const ws = new WebSocket(t.webSocketDebuggerUrl); c.#ws = ws;
     await new Promise((res, rej) => {
@@ -262,7 +264,11 @@ class Cdp {
   close() { try { this.#ws && this.#ws.close(); } catch { } }
 }
 
+//  ★ 2026-10-22(docs/ADMIN-WINDOW.md). 구성원 편집은 관리 창(?win=admin)에서만 열린다. 이 루프는 메인 창(mainCdp)에서
+//    관리 창을 열고(openAdminHub) 그 창(cdp)에 붙어, 허브를 내린 뒤 지금처럼 openUserAdmin() 단독 흐름으로 돈다
+//    (관리 창의 allowlist 가 단독으로 연 화면도 보여 준다. tests/loop-adminwin.mjs). 메인 창의 구성원 보기(C16)만 메인 창에서 본다.
 let cdp = null;
+let mainCdp = null;
 const ev = (e) => cdp.ev(e);
 const evj = async (e) => JSON.parse(await cdp.ev(e));
 
@@ -606,7 +612,15 @@ async function main() {
   log(`시작 스냅샷: app_user ${BASE_TOTAL}명 · schema_version=${SCHEMA_V} · 해시 ${idHash(BASE.users.filter((u) => !isTemp(u.loginId)))}`);
   if (BASE_TOTAL !== 89) note(`★ 총원이 89 가 아니다(${BASE_TOTAL}) — 이 시험은 '시작 총원 + zzU' 로 판정하므로 계속하되, 개발 DB 가 예상과 다르다는 뜻이다`);
 
-  cdp = await Cdp.attach(OPT.port);
+  mainCdp = await Cdp.attach(OPT.port);
+  const mainWho = JSON.parse(await mainCdp.ev(`JSON.stringify({host: !!HOST, id: (currentUser&&currentUser.loginId)||''})`));
+  if (!mainWho.host || !mainWho.id) { console.error('[판정 없음] 위젯이 로그인 상태가 아니다'); process.exit(2); }
+  try { await openAdminWindow(OPT.port, (e) => mainCdp.ev(e), 'members'); }
+  catch (e) { console.error('[판정 없음] ' + e.message); process.exit(2); }
+  cdp = await Cdp.attach(OPT.port, 'admin');
+  for (let i = 0; i < 100 && !(await ev(ADMIN_HUB_OPEN_JS)); i++) await sleep(150);
+  await ev(HIDE_HUB_JS);   // 허브를 내리고 단독 흐름으로(창은 그대로)
+  await sleep(300);
   const inst = await ev(INSTALL_JS);
   if (inst === 'missing') { console.error('[판정 없음] 페이지에 hostRequest 가 없다 — 구버전 위젯이다'); process.exit(2); }
   vlog(`가로채기: ${inst}`);
@@ -1356,6 +1370,11 @@ async function main() {
   //    앞의 계약들은 "비관리자에게 없다"였지만, 이제는 "관리자에게도 없다"가 판정 기준이다.
   await runCase('C16', '「구성원 보기」는 관리자에게도 편집 컨트롤이 0', async () => {
     await ev(`(typeof closeModal === 'function' && closeModal('#userAdminModal'), 1)`);
+    //  구성원 보기(#membersModal)는 메인 창의 화면이다(ADMIN-WINDOW: 관리 창으로 옮긴 것은 관리 화면뿐). 이 케이스만 메인 창에서 본다.
+    const adminCdp = cdp;
+    cdp = mainCdp;
+    try {
+    await ev(INSTALL_JS);
     await ev(`openMembers()`);
     const sv = await waitPage((x) => x.mbOpen && !x.mbBusy && x.mbN > 0, { timeout: 20000 });
     if (!okq('C16 구성원 보기 열림', !!sv)) return;
@@ -1365,9 +1384,10 @@ async function main() {
     okq('C16 옛 관리자 막대 자리(#mbAdmin) 자체가 없다', sv.mbHasBar === false, String(sv.mbHasBar));
     //  ★ 그런데 관리자 상태는 여전히 참이다 — 즉 "권한이 없어서 안 보이는 것"이 아니라
     //    "보기 화면에는 원래 없는 것"임을 같은 순간에 확인한다.
-    const admin = await evj(`JSON.stringify({ ua: !!__uaAdmin })`);
+    const admin = JSON.parse(await adminCdp.ev(`JSON.stringify({ ua: !!__uaAdmin })`));   // 관리자 상태는 관리 창의 구성원 편집이 받은 회신이다
     okq('C16 같은 순간에 관리자 상태는 참이다(권한 때문이 아니다)', admin.ua === true, String(admin.ua));
     await ev(`(typeof closeModal === 'function' && closeModal('#membersModal'), 1)`);
+    } finally { cdp = adminCdp; }
   });
 
   /* ── 종료 정리 + 전량 대조 ──────────────────────────────────────────── */
@@ -1393,7 +1413,9 @@ async function main() {
   }
 
   try { await ev(`(typeof closeModal==='function' && (closeModal('#membersModal'), closeModal('#userAdminModal')), 1)`); } catch (_) { }
+  try { await closeAdminWindow(OPT.port, (e) => cdp.ev(e)); } catch (_) { }   // 관리 창을 닫는다(허브 닫기 = 창 닫기)
   cdp.close();
+  try { mainCdp.close(); } catch (_) { }
 }
 
 /* ────────────────────────────── 8. 요약 ────────────────────────────── */

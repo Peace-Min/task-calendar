@@ -181,7 +181,7 @@ async function cdpList(port) {
   try { return await (await fetch(`http://127.0.0.1:${port}/json`, { signal: AbortSignal.timeout(4000) })).json(); }
   catch (e) { throw new Error(`CDP 에 붙지 못했다(포트 ${port}) — 위젯을 TC_DEBUG_PORT=${port} 로 띄웠나요?`); }
 }
-const isMainUrl = (u) => /tcapp\.local/i.test(u || '') && !/peer(win)?=1/.test(u || '');
+const isMainUrl = (u) => /tcapp\.local/i.test(u || '') && !/peer(win)?=1|[?&]win=admin/.test(u || '');
 const isPeerWinUrl = (u) => /tcapp\.local/i.test(u || '') && /peerwin=1/.test(u || '');
 async function peerTarget(port, kind) {
   const list = await cdpList(port);

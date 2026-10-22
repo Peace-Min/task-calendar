@@ -251,7 +251,9 @@ const checks = {
     //  푸시: 메인과 열람 창, 같은 것은 연달아 밀지 않는다.
     const pg = csMember(s.host, 'private void PushGate(string json)');
     assert.ok(/if \(json == _gateLastPushed\) return;/.test(pg), '같은 관문 상태를 연달아 민다');
-    assert.ok(/web\.CoreWebView2\?\.ExecuteScriptAsync\(js\)/.test(pg) && /_peerWin\?\.Core\?\.ExecuteScriptAsync\(js\)/.test(pg), '메인 창과 열람 창 둘 다에 밀지 않는다');
+    //  2026-10-22(ADMIN-WINDOW): 따로 뜨는 창(열람 창, 관리 창) 전부에 민다(_wins). 창이 뜰 때도 그 창에 민다(GatePushToWin).
+    assert.ok(/web\.CoreWebView2\?\.ExecuteScriptAsync\(js\)/.test(pg) && /foreach \(var w in _wins\.Values\.ToList\(\)\) \{ try \{ _ = w\.Core\?\.ExecuteScriptAsync\(js\); \} catch \{ \} \}/.test(pg), '메인 창과 따로 뜨는 창(열람 창, 관리 창) 모두에 밀지 않는다');
+    assert.ok(/case "adminWinReady":[\s\S]*?GatePushToWin\(fromWin\);/.test(s.main), '따로 뜨는 창이 뜰 때 막힌 상태를 그 창에 밀지 않는다');
     assert.ok(/"window\.__versionGate && window\.__versionGate\("/.test(pg), '__versionGate 로 밀지 않는다');
     const gj = csMember(s.host, 'private string GateJson(GateSnapshot? s, bool forceInstallFailed = false)');
     for (const k of ['state', 'appVersion', 'appStructure', 'dbStructure', 'latestVersion', 'installerPath', 'installFailedTarget', 'attemptCount'])
@@ -263,6 +265,7 @@ const checks = {
     assert.ok(/GateVerdict\.ServerOld => TimeSpan\.FromMinutes\(5\),/.test(tf) && /GateVerdict\.Unknown => TimeSpan\.FromMinutes\(5\),/.test(tf), '서버 낡음, 모름 재확인이 5분이 아니다');
     assert.ok(/_ => null,/.test(tf) && !/NeedUpdate/.test(tf) && /if \(every == null\) \{ _gateTimer\?\.Stop\(\); return; \}/.test(tf), '업데이트 필요나 정상에서 재확인을 멈추지 않는다');
     assert.ok(/"gateRecheck",/.test(stripCs(s.main).slice(stripCs(s.main).indexOf('PeerWinCommands = new'))), '열람 창이 gateRecheck 를 보낼 수 없다');
+    assert.ok(/"gateRecheck"/.test(stripCs(s.main).slice(stripCs(s.main).indexOf('AdminWinCommands = new'), stripCs(s.main).indexOf('PeerReqPrefix ='))), '관리 창이 gateRecheck 를 보낼 수 없다');
   },
 
   // ══ ⑤ 회사 보고 전송 전 확인 ═══════════════════════════════════════
