@@ -219,6 +219,13 @@ GRANT SELECT ON taskmgr.cal_schema_meta TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON taskmgr.cal_project_event  TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';
 
+-- ---------- 월간보고 개발 일정 그림(구조 번호 17, docs/MONTHLY-REPORT-PLAN.md §6.4) ----------
+-- project_schedule_image 는 이름이 cal_ 로 시작하지 않지만 schema-calendar.sql 이 만드는 표라 권한도 이 파일이 정본이다.
+--   SELECT, INSERT, UPDATE, DELETE  누구나 추가, 순서 바꾸기(UPDATE seq), 삭제(실제 행 삭제, 휴지통 없음). ScheduleImageDb 한 곳.
+-- ★ 과제 영구 삭제(휴지통) 때는 FK CASCADE 가 함께 지운다(FK 동작은 권한 검사를 받지 않는다).
+-- ★ 배포 SQL(release-v<버전>.sql)은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄을 root 로 따로 돌린다.
+GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.project_schedule_image TO 'taskmgr_app'@'%';
+
 -- ---------- 이 파일에 '없는' 동사(의도적으로 주지 않는 것들) ----------
 -- ※ 옛 cal_audit_trash(감사 휴지통) 절이 여기 있었다. 그 표는 2026-08-11 결정으로 폐지됐고
 --   스키마에도 없다. 그러므로 지금 이 파일이 만드는 cal_* 권한 표에는 '권한 0줄' 대상이 없다.

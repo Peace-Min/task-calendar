@@ -257,10 +257,10 @@ export const checks = {
     assert.ok(post, '사후 검증의 중단 조건이 (고아, 행 수, 이름 복원, 불변, 구조, AUTO_INCREMENT, 판번호, 보호 행) 전부가 아니다');
     assert.ok(/information_schema_stats_expiry = 0/.test(code), 'AUTO_INCREMENT 를 낡은 캐시(stats_expiry)로 읽는다');
     // 판번호: 이 파일이 만든 13 에서 다음 판(이관 조각 migrations/v14-version-gate.sql, 13 에서 14)이 출발한다.
-    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16 이다. 체인 전체는 schema-guards ⑥ 이 본다.
+    //   2026-10-21 부터 정본은 키가 db_structure_version 이다. 값은 회의실 공용화(v15 조각)로 15, 2026-10-22 과제 캘린더(v16 조각)로 16, 월간보고(v17 조각)로 17 이다. 체인 전체는 schema-guards ⑥ 이 본다.
     const nextMig = readText(R('db/deploy/migrations/v14-version-gate.sql'));
     assert.ok(/^-- @migration from=13 to=14\r?\n/.test(nextMig), '다음 판(version-gate 조각)이 13 에서 출발하지 않는다');
-    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '16', 'schema-calendar.sql 이 db_structure_version 16 을 시딩하지 않는다');
+    assert.strictEqual(parseSeededSchemaVersion(stripSqlComments(cal)), '17', 'schema-calendar.sql 이 db_structure_version 17 을 시딩하지 않는다');
     // 머리말: 실행법(백업 -DbName taskcalendar, utf8mb4, --force 금지)
     assert.ok(mig.includes('backup-taskmgr.cmd -DbName taskcalendar'), '머리말에 백업 명령(-DbName taskcalendar)이 없다');
     assert.ok(/mysql -u root -p --default-character-set=utf8mb4 taskcalendar < db\\deploy\\migrate-2026-10-15-code-ids\.sql/.test(mig), '머리말에 실행 명령(utf8mb4, taskcalendar)이 없다');

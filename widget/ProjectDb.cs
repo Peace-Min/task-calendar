@@ -265,7 +265,7 @@ namespace TaskCalendarWidget
                     "SELECT p.uid, s.name AS section, p.section_id, c.name AS customer, p.customer_id, " +
                     "p.project_name, p.contract_name, p.common_name, " +
                     "DATE_FORMAT(p.start_date,'%Y-%m-%d') start_date, DATE_FORMAT(p.end_date,'%Y-%m-%d') end_date, " +
-                    "DATE_FORMAT(p.dev_end_date,'%Y-%m-%d') dev_end_date, " +
+                    "DATE_FORMAT(p.dev_start_date,'%Y-%m-%d') dev_start_date, DATE_FORMAT(p.dev_end_date,'%Y-%m-%d') dev_end_date, " +
                     "st.name AS status, p.status_id, p.note, p.is_active " +
                     "FROM project p " +
                     "JOIN section_code s ON s.section_id = p.section_id " +
@@ -290,6 +290,7 @@ namespace TaskCalendarWidget
                         ["common_name"]   = Str(rd, "common_name"),
                         ["start_date"]    = Str(rd, "start_date"),
                         ["end_date"]      = Str(rd, "end_date"),
+                        ["dev_start_date"] = Str(rd, "dev_start_date"),   // 개발시작일(구조 17, 월간보고 과제 수행 기간의 시작)
                         ["dev_end_date"]  = Str(rd, "dev_end_date"),
                         ["status"]        = Str(rd, "status"),
                         ["statusId"]      = IntOrNull(rd, "status_id"),   // 상태 없음이면 null
@@ -1339,7 +1340,7 @@ namespace TaskCalendarWidget
         // 이름 필드(사업명·계약명·통상명칭·발주처)는 저장 전 TRIM. 빈 계약명/통상명칭은 ''로 저장(NULL 금지 — 비교 함정 방지).
         // ★ 2026-10-15 — 구분·발주처·상태는 번호로 받는다(CODE-TABLE-IDS §4). 0 이하는 '없음'이다(상태만 허용).
         public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync(string? uid, int sectionId, int customerId,
-            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? devEndDate, int? statusId,
+            string projectName, string? contractName, string? commonName, string? startDate, string? endDate, string? devStartDate, string? devEndDate, int? statusId,
             string? note = null, bool confirmSimilar = false)
         {
             // ── 앱단 선검증(형식·필수) — DB까지 보내지 않고 바로 사용자 문장으로. 구분/상태 존재 검증은 연결 후(코드테이블 로드).
@@ -1350,6 +1351,7 @@ namespace TaskCalendarWidget
             string sd = (startDate ?? "").Trim(), ed = (endDate ?? "").Trim();
             int? st = statusId.HasValue && statusId.Value > 0 ? statusId : null;      // 상태 없음 = NULL
             string ded = (devEndDate ?? "").Trim();                                    // 개발종료일 — 아래 선진행 분기에서 비우지 않는다
+            string dsd = (devStartDate ?? "").Trim();                                  // 개발시작일(구조 17). 개발종료일과 같이 선진행에서도 살아 있다
             if (pname.Length == 0) return (false, "사업명을 입력하세요.", false);
             if (customerId <= 0) return (false, "발주처를 선택하세요.", false);
             if (sectionId <= 0) return (false, "구분을 선택하세요.", false);
@@ -1362,6 +1364,10 @@ namespace TaskCalendarWidget
             if (!IsDateOrEmpty(sd)) return (false, "계약시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (!IsDateOrEmpty(ed)) return (false, "계약종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
             if (!IsDateOrEmpty(ded)) return (false, "개발종료일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
+            if (!IsDateOrEmpty(dsd)) return (false, "개발시작일 형식이 올바르지 않습니다(YYYY-MM-DD).", false);
+            // 개발 기간 순서: 둘 다 있을 때만 본다. DB 의 CHECK chk_project_dev_dates 와 같은 규칙을 사용자 문장으로 먼저 돌려준다.
+            if (dsd.Length > 0 && ded.Length > 0 && string.CompareOrdinal(dsd, ded) > 0)
+                return (false, "개발종료일이 개발시작일보다 빠릅니다.", false);
             if (sd.Length > 0 && ed.Length > 0 && string.CompareOrdinal(sd, ed) > 0)
                 return (false, "계약종료일이 계약시작일보다 빠릅니다.", false);
             // ★ ded 에는 순서 검증을 걸지 않는다 — 계약 시작 전에 개발이 끝나는 일이 실제로 있다
@@ -1402,11 +1408,11 @@ namespace TaskCalendarWidget
                         }
                     }
                     const string ins = "INSERT INTO project (section_id, customer_id, project_name, contract_name, common_name, " +
-                                       "start_date, end_date, dev_end_date, status_id, note) " +
-                                       "VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@ded,@st,@note)";
+                                       "start_date, end_date, dev_start_date, dev_end_date, status_id, note) " +
+                                       "VALUES (@sec,@cust,@pn,@cn,@mn,@sd,@ed,@dsd,@ded,@st,@note)";
                     await using (var cmd = new MySqlCommand(ins, conn))
                     {
-                        BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, ded, st, nt);
+                        BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, dsd, ded, st, nt);
                         await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
                     // uid는 DB가 만든다(assign-once) — 로그에만 남긴다. 웹은 재조회(loadProjects)로 새 행을 받는다.
@@ -1419,12 +1425,12 @@ namespace TaskCalendarWidget
                 else
                 {
                     const string upd = "UPDATE project SET section_id=@sec, customer_id=@cust, project_name=@pn, contract_name=@cn, " +
-                                       "common_name=@mn, start_date=@sd, end_date=@ed, dev_end_date=@ded, " +
+                                       "common_name=@mn, start_date=@sd, end_date=@ed, dev_start_date=@dsd, dev_end_date=@ded, " +
                                        "status_id=@st, note=@note WHERE uid=@uid";
                     int n;
                     await using (var cmd = new MySqlCommand(upd, conn))
                     {
-                        BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, ded, st, nt);
+                        BindProject(cmd, sectionId, customerId, pname, cn, mn, sd, ed, dsd, ded, st, nt);
                         cmd.Parameters.AddWithValue("@uid", u);
                         n = await cmd.ExecuteNonQueryAsync(cts.Token);
                     }
@@ -1471,7 +1477,7 @@ namespace TaskCalendarWidget
 
         // INSERT/UPDATE 공통 파라미터 바인딩 — 두 경로가 어긋나지 않게 한 곳에서. cn/mn/nt는 이미 TRIM된 문자열('' 허용, NULL 금지).
         private static void BindProject(MySqlCommand cmd, int sec, int cust, string pname,
-            string cn, string mn, string sd, string ed, string ded, int? st, string nt)
+            string cn, string mn, string sd, string ed, string dsd, string ded, int? st, string nt)
         {
             cmd.Parameters.AddWithValue("@sec", sec);     // 구분 번호
             cmd.Parameters.AddWithValue("@cust", cust);   // 발주처 번호
@@ -1480,6 +1486,7 @@ namespace TaskCalendarWidget
             cmd.Parameters.AddWithValue("@mn", mn);   // '' 그대로(NULL 아님)
             cmd.Parameters.AddWithValue("@sd", DateOrNull(sd));
             cmd.Parameters.AddWithValue("@ed", DateOrNull(ed));
+            cmd.Parameters.AddWithValue("@dsd", DateOrNull(dsd));   // 개발시작일(빈값=NULL). 선진행이어도 살아 있다
             cmd.Parameters.AddWithValue("@ded", DateOrNull(ded));   // 개발종료일(빈값=NULL). 선진행이어도 살아 있다
             cmd.Parameters.AddWithValue("@st", st.HasValue ? (object)st.Value : DBNull.Value);   // 상태 번호(없음=NULL)
             cmd.Parameters.AddWithValue("@note", nt);  // 비고 '' 그대로(NULL 아님)
@@ -2137,7 +2144,10 @@ namespace TaskCalendarWidget
             }
         }
 
-        // 인력 '기록 0건'의 기준 표 8개(§3.2). 2026-10-21 회의실 공용화로 cal_room 이 빠져 아홉에서 여덟이 됐다.
+        // 인력 '기록 0건'의 기준 표 9개(§3.2). 2026-10-21 회의실 공용화로 cal_room 이 빠져 아홉에서 여덟이 됐고,
+        //   2026-10-22 월간보고(구조 17)로 개발 일정 그림의 등록자(project_schedule_image.uploaded_by)가 더해져 다시 아홉이다.
+        //   ★ 원소는 '표' 또는 '표.열'이다. 열을 적지 않으면 user_id 다. 그림 표는 사람 열이 uploaded_by 라 '표.열' 로 적는다.
+        //     그 표도 app_user 를 RESTRICT 로 붙들므로, 빠지면 그림을 올린 계정을 '기록 0건'으로 오판해 지우려 들다가 1451 로 막힌다.
         //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev 를
         //     뺀 것과 **글자까지 같아야 한다** — 시험 계약 ③ 이 정본을 파싱해 이 배열과 대조한다(표 이름 박제 금지).
         //   ★ 뺀 둘은 로그인 한 번이면 생기는 부속 행이라 '기록'이 아니다. 삭제 트랜잭션이 그 둘을 먼저 지운다.
@@ -2146,13 +2156,25 @@ namespace TaskCalendarWidget
         {
             "cal_category", "cal_entry", "cal_todo", "cal_task_hours",
             "cal_attendance", "cal_report_daily", "cal_report_weekly", "cal_migration_log",
+            "project_schedule_image.uploaded_by",
         };
 
-        // 한 사람의 기록 수 = 8개 표의 합. 표 이름은 위 배열(상수)에서만 온다.
+        //  '표' 또는 '표.열' 을 (표, 사람 열)로. 값은 위 배열(코드 상수)에서만 온다.
+        private static (string table, string col) UserRecordRef(string t)
+        {
+            int dot = t.IndexOf('.');
+            return dot < 0 ? (t, "user_id") : (t.Substring(0, dot), t.Substring(dot + 1));
+        }
+
+        // 한 사람의 기록 수 = 위 배열의 표 아홉의 합. 표와 열 이름은 위 배열(상수)에서만 온다.
         private static string UserRefCountSql()
         {
             var parts = new List<string>(UserRecordTables.Length);
-            foreach (var t in UserRecordTables) parts.Add("(SELECT COUNT(*) FROM " + t + " WHERE user_id=@u)");
+            foreach (var t in UserRecordTables)
+            {
+                var (tb, col) = UserRecordRef(t);
+                parts.Add("(SELECT COUNT(*) FROM " + tb + " WHERE " + col + "=@u)");
+            }
             return "SELECT " + string.Join(" + ", parts);
         }
 
@@ -2160,14 +2182,17 @@ namespace TaskCalendarWidget
         //   ★ 전원을 세면 8개 표를 통째로 훑는다 — 일정·할일·공수는 재직자 전원의 전 기간 행이라
         //     휴지통을 한 번 열 때마다 그 스캔이 돌고, 정작 쓰는 값은 퇴사자 몇 명분이다(2026-09-10 검토 지적).
         //     서브쿼리 하나로 좁히면 각 표의 user_id 인덱스로 끝난다.
-        private const string InactiveUserFilter = " WHERE user_id IN (SELECT user_id FROM app_user WHERE is_active=0)";
+        private const string InactiveUserFilter = " IN (SELECT user_id FROM app_user WHERE is_active=0)";   // 앞에 ' WHERE <사람 열>' 을 붙여 쓴다
 
         // 퇴사자들의 기록 수를 한 문장으로 — 휴지통 목록이 사람마다 9회 왕복하지 않게(같은 배열이 소스다).
         private static string UserRefCountAllSql()
         {
             var parts = new List<string>(UserRecordTables.Length);
             foreach (var t in UserRecordTables)
-                parts.Add("SELECT user_id, COUNT(*) AS c FROM " + t + InactiveUserFilter + " GROUP BY user_id");
+            {
+                var (tb, col) = UserRecordRef(t);
+                parts.Add("SELECT " + col + " AS user_id, COUNT(*) AS c FROM " + tb + " WHERE " + col + InactiveUserFilter + " GROUP BY " + col);
+            }
             return "SELECT user_id, SUM(c) AS c FROM (" + string.Join(" UNION ALL ", parts) + ") x GROUP BY user_id";
         }
 

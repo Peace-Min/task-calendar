@@ -1020,6 +1020,7 @@ PREPARE _g FROM @g; EXECUTE _g; DEALLOCATE PREPARE _g;
 --   **앞**에 있어야 한다. 아래는 이미 그 순서다(cal_task_hours 가 위쪽). 순서를 정리한답시고
 --   알파벳순으로 바꾸면 재적용이 ERROR 3730 으로 죽는다.
 DROP TABLE IF EXISTS cal_audit_trash;   -- 폐지(§7.5). 옛 배포분 정리용. 재생성하지 않는다
+DROP TABLE IF EXISTS project_schedule_image; -- 월간보고 개발 일정 그림(구조 17). project, app_user 를 참조(둘 다 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS cal_project_change;    -- 과제 캘린더(구조 16). cal_project_event 를 참조, 자식 먼저
 DROP TABLE IF EXISTS cal_project_event;     -- project 를 참조(project 는 이 파일이 지우지 않는다)
 DROP TABLE IF EXISTS cal_schema_meta;   -- FK 없음, 순서 무관
@@ -1968,9 +1969,12 @@ CREATE TABLE cal_schema_meta (
 --   - 16 (2026-10-22): 과제 캘린더(이관 조각 db/deploy/migrations/v16-project-calendar.sql, docs/PROJECT-CALENDAR-PLAN.md).
 --       공용 트랙 두 표(cal_project_event, cal_project_change)를 더한다(아래 14~15).
 --       기존 표는 바뀌지 않는다. 앱 상수는 DbGate.AppStructureVersion(16).
+--   - 17 (2026-10-22): 월간보고(이관 조각 db/deploy/migrations/v17-monthly-report.sql, docs/MONTHLY-REPORT-PLAN.md §6).
+--       과제별 개발 일정 그림 표 project_schedule_image(아래 16)와 project.dev_start_date(정본 schema-structure.sql)를 더한다.
+--       앱 상수는 DbGate.AppStructureVersion(17).
 --   ★ app_ 세 키는 빈 값으로 시딩한다(새 버전 없음). 배포 때 release-v<버전>.sql 이 채운다(DB-RELEASE-OPS §4).
 --   ★ 첫 줄(db_structure_version)의 모양을 바꾸지 말 것. setup-taskcalendar.ps1 과 시험이 이 줄에서 기대값을 읽는다.
-INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '16', UTC_TIMESTAMP(3)),
+INSERT INTO cal_schema_meta (k, v, updated_at) VALUES ('db_structure_version', '17', UTC_TIMESTAMP(3)),
   ('db_updating', '0', UTC_TIMESTAMP(3)),
   ('app_latest_version', '', UTC_TIMESTAMP(3)),
   ('app_installer_file', '', UTC_TIMESTAMP(3)),
@@ -2096,3 +2100,43 @@ CREATE TABLE cal_project_change (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='과제 일정 변경 이력(지우지 않는 기록). 한 저장의 바뀐 필드만 한 행. 바뀐 것이 없으면 행이 없다.';
 
+-- =====================================================================
+--  16. project_schedule_image: 과제별 개발 일정 그림(구조 번호 17, 2026-10-22, docs/MONTHLY-REPORT-PLAN.md §6)
+-- =====================================================================
+-- 월간보고 양식의 '개발 일정' 칸에 넣는 그림이다(제안서나 계획서의 간트 차트를 잘라 만든 것). 공식 과제에 딸린 공용 데이터라
+--   그 과제를 쓰는 사람 모두가 같은 그림을 쓰고, 누구나 추가, 삭제, 순서 바꾸기를 한다(관리자 검사 없음, 등록자와 시각을 남긴다).
+-- ★ 이름이 cal_ 로 시작하지 않지만 이 파일에 둔다. project(schema-structure.sql)와 app_user(회사 01-schema-users.sql)를
+--   둘 다 FK 로 가리키는데, 새 서버 구축 순서(setup-taskcalendar.ps1: structure, users, calendar)에서 두 부모가 모두 있는
+--   파일은 여기 하나다. init-calendar.ps1 의 명부와 허용 목록에 이 이름 하나를 따로 적어 두었다.
+-- ★ project 를 지우면(휴지통 영구 삭제) 그림도 함께 지워진다(CASCADE). 등록한 사람은 RESTRICT 다: 그림을 올린 계정은
+--   '기록이 있는 계정'이라 휴지통에서 지우지 않고 퇴사(숨김)로만 둔다(ProjectDb.UserRecordTables 에 '표.열' 로 들어 있다).
+-- ★ seq 는 과제 안 순서(1부터)다. 앱이 과제당 5장까지 받고, 지우면 1..n 으로 다시 매긴다. 순서를 바꾸는 동안 잠깐
+--   101 이상을 쓰므로(UNIQUE 를 피해 두 번에 나눠 옮긴다) CHECK 는 1 이상만 본다.
+-- ★ 바이트는 MEDIUMBLOB(16MB 한도), 앱은 장당 5MB 로 막는다. 덤프는 mysqldump --hex-blob(backup-taskmgr.ps1).
+-- ★ 이 정의는 이관 조각 db/deploy/migrations/v17-monthly-report.sql 의 CREATE TABLE IF NOT EXISTS 와 **글자까지 같다**
+--   (작은따옴표만 두 겹). 그래서 정의 안에 -- 주석을 두지 않고 설명은 COMMENT 로 적는다.
+-- ★ 앱 계정 권한(grants-calendar.sql): SELECT, INSERT, UPDATE, DELETE(실제 행 삭제, 휴지통 없음).
+CREATE TABLE project_schedule_image (
+  id           INT UNSIGNED      NOT NULL AUTO_INCREMENT                                    COMMENT '그림 번호',
+  project_id   INT UNSIGNED      NOT NULL                                                   COMMENT '과제 번호(project.id)',
+  seq          TINYINT UNSIGNED  NOT NULL                                                   COMMENT '과제 안 순서(1부터)',
+  mime         VARCHAR(20)       CHARACTER SET ascii COLLATE ascii_bin NOT NULL             COMMENT 'image/png 또는 image/jpeg',
+  bytes        MEDIUMBLOB        NOT NULL                                                   COMMENT '그림 원본(앱 상한 5MB)',
+  width_px     SMALLINT UNSIGNED NOT NULL                                                   COMMENT '가로 화소',
+  height_px    SMALLINT UNSIGNED NOT NULL                                                   COMMENT '세로 화소',
+  sha256       CHAR(64)          CHARACTER SET ascii COLLATE ascii_bin NOT NULL             COMMENT '바이트의 SHA-256(소문자 16진수). PC 사본 확인용',
+  uploaded_by  SMALLINT UNSIGNED NOT NULL                                                   COMMENT '등록한 사람(app_user.user_id)',
+  uploaded_at  DATETIME(3)       NOT NULL                                                   COMMENT '등록 시각(UTC)',
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_project_schedule_image_seq (project_id, seq),
+  KEY ix_project_schedule_image_uploader (uploaded_by),
+  CONSTRAINT fk_project_schedule_image_project FOREIGN KEY (project_id) REFERENCES project(id)
+    ON UPDATE RESTRICT ON DELETE CASCADE,
+  CONSTRAINT fk_project_schedule_image_user FOREIGN KEY (uploaded_by) REFERENCES app_user(user_id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT chk_project_schedule_image_mime CHECK (mime IN ('image/png','image/jpeg')),
+  CONSTRAINT chk_project_schedule_image_seq  CHECK (seq >= 1),
+  CONSTRAINT chk_project_schedule_image_size CHECK (width_px >= 1 AND height_px >= 1),
+  CONSTRAINT chk_project_schedule_image_sha  CHECK (sha256 REGEXP '^[0-9a-f]{64}$')
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+  COMMENT='과제별 개발 일정 그림(월간보고). 과제 삭제 때 함께 지워진다. 등록자는 RESTRICT. 앱이 과제당 5장, 장당 5MB 로 막는다.';

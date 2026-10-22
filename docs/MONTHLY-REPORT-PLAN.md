@@ -1,6 +1,6 @@
 # 월간보고 DOCX 내보내기 기획
 
-작성 2026-10-22. 상태: 기획(구현 전). 브랜치 `feat/monthly-report-plan`.
+작성 2026-10-22. 상태: 기획 확정, 단계 A(DB 조각, 그림 명령, DOCX 저장 명령) 구현 2026-10-22 밤(12장). 화면(월간 탭)은 단계 B. 브랜치 `feat/monthly-report-plan`.
 
 ## 1. 목표
 
@@ -8,7 +8,7 @@
 이 기능은 **지정 기간의 캘린더 기록(필요하면 netcus 읽기 결과)을 과제별로 모아 회사 양식 그대로의 표에 채워 `.docx` 로 저장**한다.
 
 - 하는 일: 기존 기록을 읽어 양식 칸에 채운다. 저장 전에 과제별로 미리 보고 고칠 수 있다.
-- 하지 않는 일: 회사 사이트로 보내기, 기록 원본(일정, 할 일) 수정, 새 DB 표 추가(1차 범위에서는).
+- 하지 않는 일: 회사 사이트로 보내기, 기록 원본(일정, 할 일) 수정. DB 는 개발 일정 그림 표 하나와 개발 시작일 칸(6장, 구조 번호 17)만 더한다.
 - 결과물: Word 문서(`.docx`). PDF 가 아니다. 사용자가 받은 뒤 Word 에서 마저 다듬을 수 있어야 한다.
 
 ## 2. 양식 분석
@@ -114,7 +114,7 @@
 |---|---|---|
 | 제목의 이름 | 로그인 계정의 표시 이름 | 고칠 수 있음 |
 | 제목의 날짜 | 작성일, 기본 오늘 | 고칠 수 있음 |
-| 과제명 | 카테고리 이름(= 통상명칭, 없으면 사업명) | 고칠 수 있음 |
+| 과제명 | 통상명칭, 없으면 사업명(카테고리 이름과 같은 규칙, 11.2 의 4번) | 고칠 수 있음 |
 | 과제 수행 기간 | **DB 의 과제 개발기간**: 새 칸 `project.dev_start_date ~ dev_end_date` 를 `YYYY/MM` 로 | 개발 시작일 칸은 새로 만든다(6.5). 개발 시작, 종료는 지금 비어 있고 **사용자가 일괄로 모두 채울 예정**(앱 밖 데이터 작업, 종료 기본은 납품일 한 달 전). 한쪽이 비면 그쪽만 빈칸으로 둔다(계약 날짜로 대신하지 않음) |
 | 월간 실적 기간 | **사용자가 읽어 온 기간 그대로**(`#rptFrom ~ #rptTo` 에 해당하는 월간 탭의 실적 기간) | 모든 과제 표에 같은 값. 따로 고치지 않음 |
 | 월간 계획 기간 | **사용자가 직접 고침** | 기본값을 미리 넣어 두되(5.2) 자유롭게 바꿈 |
@@ -123,8 +123,10 @@
 | 왼쪽 수행 계획 | **사용자 직접 입력** | 자동 채움 없음 |
 | 수행 실적 | 실적 기간 취합 결과 중 그 과제 부분을 **그대로 붙임** | 5.3. 붙인 뒤 고칠 수는 있음 |
 | 오른쪽 수행 계획 | **사용자 직접 입력** | 자동 채움 없음 |
-| 기타 표 | 공식 과제가 아닌 카테고리의 취합 결과를 그대로 붙임 | 뺄 카테고리를 고를 수 있음 |
+| 기타 표 | 공식 과제가 아닌 카테고리 전부의 취합 결과를 그대로 붙임 | 뺄 카테고리를 고를 수 있고 그 제외 목록을 계정별로 기억(11.2 의 3번) |
 | 공수, 근태 | 양식에 칸 없음 | 문서에 넣지 않음 |
+
+- **실적은 개인 기록만이다.** 과제 캘린더의 공용 일정(`cal_project_event`, 구조 번호 16)은 월간 실적에 넣지 않는다. 기존 보고 취합이 개인 기록(`state.entries` 등)만 읽는 것과 같은 규칙이고, 공용 일정을 개인 일정에 등록(복사)한 것은 개인 기록이라 들어간다.
 
 ## 5. 화면
 
@@ -184,21 +186,24 @@
 
 ### 6.2 표
 
-새 표 `project_schedule_image`(구조 문서 `schema-structure.sql` 쪽, 공식 과제에 딸린 공용 데이터):
+새 표 `project_schedule_image`(공식 과제에 딸린 공용 데이터). 정본은 `schema-calendar.sql` 의 16번 표다(구현 때 정함, 12장):
+`project`(schema-structure.sql)와 `app_user`(회사 01-schema-users.sql)를 둘 다 FK 로 가리키는데, 새 서버 구축 순서가
+structure, users, calendar 라 두 부모가 모두 있는 파일은 calendar 하나뿐이다. 과제 캘린더 표(구조 16)도 같은 이유로 거기 있다.
 
 | 칸 | 형 | 뜻 |
 |---|---|---|
 | `id` | INT UNSIGNED PK | |
 | `project_id` | INT UNSIGNED, FK `project(id)` ON DELETE CASCADE | 과제 |
-| `seq` | TINYINT UNSIGNED | 과제 안 순서(1부터) |
+| `seq` | TINYINT UNSIGNED | 과제 안 순서(1부터, 지우면 1..n 으로 다시 매김) |
 | `mime` | VARCHAR(20) | `image/png` 또는 `image/jpeg`(CHECK) |
 | `bytes` | MEDIUMBLOB | 그림 원본(16MB 한도, 앱은 장당 5MB로 제한) |
-| `width_px`, `height_px` | SMALLINT UNSIGNED | 문서에 넣을 때 비율 계산용 |
-| `sha256` | CHAR(64) | PC 사본 캐시 확인용 |
-| `uploaded_by` | FK `app_user(user_id)` | 등록한 사람 |
-| `uploaded_at` | DATETIME | 등록 시각 |
+| `width_px`, `height_px` | SMALLINT UNSIGNED | 문서에 넣을 때 비율 계산용(1 이상, CHECK) |
+| `sha256` | CHAR(64) ascii | PC 사본 캐시 확인용(소문자 16진수 64자) |
+| `uploaded_by` | SMALLINT UNSIGNED, FK `app_user(user_id)` ON DELETE RESTRICT | 등록한 사람 |
+| `uploaded_at` | DATETIME(3) | 등록 시각(UTC) |
 
-- 과제당 최대 5장(앱에서 막음). 같은 과제 안에서 `(project_id, seq)` 유일.
+- 과제당 최대 5장(앱에서 막음). 같은 과제 안에서 `(project_id, seq)` 유일. 순서를 바꾸는 동안 잠깐 101 이상을 쓰므로 DB CHECK 는 `seq >= 1` 만 건다.
+- **등록한 사람 FK 는 RESTRICT 다.** 사용자 영구 삭제(휴지통)는 기록 0건인 계정만 지운다(`ProjectDb.UserRecordTables`, TRASH-DELETE §3.2). 다른 `cal_*` 기록 표와 똑같이 이 표도 그 기록 표 목록에 넣었다(열이 `user_id` 가 아니라 `uploaded_by` 라 목록에 `표.열` 로 적는다). 그래서 그림을 올린 사람은 퇴사 처리(숨김)만 되고 행은 남아 등록자 이름이 늘 보인다. SET NULL 은 등록자 표시를 잃고, CASCADE 는 공용 그림이 사람과 함께 사라져서 쓰지 않는다.
 - 크기: 그림은 보통 100KB~1MB. MySQL 8 의 기본 `max_allowed_packet`(64MB)에 걸리지 않는다. 서버 값이 더 작게 바뀌어 있으면 올리기가 실패하므로, 실패 메시지에 원인을 그대로 보여 준다.
 
 ### 6.3 읽고 쓰기
@@ -212,16 +217,17 @@
 
 ### 6.4 배포와 운영
 
-- **구조 번호 하나 상향(v16 예상).** 그림 표와 개발 시작일 칸(6.5)을 한 조각에 담는다. 이슈 #14 도 다음 번호를 쓰므로 구현 시점에 실제 번호를 정한다. 조각 `db/deploy/migrations/v<N>-monthly-report.sql` 과 `schema-structure.sql` 반영, 지금 규칙대로 Workbench 에서 돌리는 순수 `.sql`, Setup 먼저 올리고 SQL(버전 게이트 정책).
-- 권한: 앱 계정에 이 표의 SELECT, INSERT, UPDATE, DELETE. 이 표는 `app_user` 를 참조하므로 `ProjectDb.cs` 의 `UserRecordTables` 등록 여부를 확인한다(사용자 삭제 시 처리).
-- **백업**: `backup-taskmgr.ps1` 의 mysqldump 에 지금 `--hex-blob` 이 없다. 그림 바이트를 안전하게 덤프하고 되살리려면 넣어야 한다. 백업 크기는 그림 양만큼 는다(과제 수 x 몇 MB 수준).
+- **구조 번호 16 에서 17.** 16 은 과제 캘린더(이슈 #14)가 먼저 가져갔다. 그림 표와 개발 시작일 칸(6.5)을 한 조각 `db/deploy/migrations/v17-monthly-report.sql` 에 담는다. 정본은 `schema-calendar.sql`(그림 표, 시드 17)과 `schema-structure.sql`(개발 시작일 칸과 CHECK). 지금 규칙대로 Workbench 에서 돌리는 순수 `.sql`(release SQL 에 묶여 나간다), Setup 먼저 올리고 SQL(버전 게이트 정책).
+- 권한: 앱 계정에 이 표의 SELECT, INSERT, UPDATE, DELETE. 정본 권한 파일은 schema-calendar.sql 의 짝인 `grants-calendar.sql`, 서버 계정은 `server-app-account.sql`, 개발 PC 최소 권한 계정은 `app-account.ps1`(표가 있을 때만). 사용자 삭제와의 관계는 6.2 끝.
+- **백업**: `backup-taskmgr.ps1` 의 mysqldump 에 `--hex-blob` 을 넣었다(복원 전 안전 덤프 `restore-taskmgr.ps1`, 데모 전 백업 `demo-db.ps1` 도). 백업 크기는 그림 양만큼 는다(과제 수 x 몇 MB 수준).
 
 ### 6.5 개발 시작일 칸(같은 조각에 함께)
 
-- `project` 표에 `dev_start_date DATE NULL`(개발시작일, 미정=NULL)을 `dev_end_date` 앞에 더한다. 개발종료일과 짝이다.
+- `project` 표에 `dev_start_date DATE NULL`(개발시작일, 미정=NULL)을 `dev_end_date` 앞에 더한다(`end_date` 와 `dev_end_date` 사이). 개발종료일과 짝이다.
 - 그림 표와 **같은 마이그레이션 조각, 같은 구조 번호**에 넣는다. 번호를 두 번 올리지 않기 위해서다.
 - 개발종료일이 이미 지나가는 길을 그대로 따라 붙인다: 과제 읽기(`ProjectDb.cs`), 웹 `dbCatalog` 의 `devStartDate`(`mapDbRows`), 관리 화면 과제 편집 칸, 과제 xlsx 내보내기 열(`ProjectExportCols`). CHECK 로 시작일이 종료일보다 늦지 않게 막는다(둘 다 있을 때만).
-- **관리 화면이 별도 창으로 옮겨 가는 중**(admin-window 브랜치)이라 과제 편집 칸 추가가 그 작업과 겹친다. 그 브랜치가 먼저 들어오면 옮겨 간 쪽에, 아니면 지금 자리에 넣고 합칠 때 정리한다.
+- 관리 화면은 별도 창(ADMIN-WINDOW)으로 옮겨 갔다. 편집 폼은 같은 HTML(`#officialEditModal`)이라 개발종료 칸 옆 빈자리에 개발시작 칸을 넣으면 관리 창에 그대로 뜬다.
+- 개발시작일도 선진행 잠금에 넣지 않는다(개발종료일과 같은 이유).
 - 값 채우기(개발 시작, 종료 일괄 입력)는 사용자가 나중에 직접 한다. 이 기능은 칸을 만들고 읽기만 한다.
 
 ## 7. DOCX 생성
@@ -266,8 +272,8 @@
 ## 8. 진행 중인 다른 작업과의 관계
 
 - **관리 화면 별도 창**(`docs/ADMIN-WINDOW.md`, `.claude/worktrees/admin-window` 개발 중): 보고는 그 범위 밖이다. 다만 새 호스트 명령은 그 문서의 규칙(요청 창 기준 응답 전달, 파일 창 소유자 = 요청한 창)을 따른다. 월간과 그림 명령은 관리 창 허용 목록에 넣지 않는다. 두 작업이 `MainWindow.xaml.cs` 명령 분기를 함께 고치므로 **나중에 합치는 쪽이 분기 충돌을 정리**한다.
-- **이슈 #14**(과제별 공유 캘린더, 다른 세션이 기획 중): 이슈는 공유 일정을 보고에서 뺀다고 했다. 월간 실적 붙이기도 같은 규칙(공유 일정 제외). **그림 표가 구조 번호를 하나 쓰므로 #14 와 번호가 경합한다.** 먼저 구현하는 쪽이 v16 을 가져가고 다른 쪽이 다음 번호를 받는다. 구현 시점에 확인.
-- **버전 게이트**(`docs/VERSION-GATE.md`, 지금 구조 번호 15): 그림 표 조각이 들어가면 앱의 `AppStructureVersion` 과 DB 의 구조 번호를 함께 올린다. 배포는 Setup 먼저, 그다음 SQL(정책 그대로). 앱 버전은 마이너 상향(기능 추가).
+- **이슈 #14**(과제 캘린더, 2026-10-22 병합): 공용 일정은 보고에서 뺀다. 월간 실적 붙이기도 같은 규칙(공용 일정 제외, 4장 끝). 과제 캘린더가 구조 번호 16 을 가져갔고 이 기능은 17 이다.
+- **버전 게이트**(`docs/VERSION-GATE.md`, 구조 번호 16 에서 17): 앱의 `AppStructureVersion` 과 정본 시드를 17 로 함께 올렸다. 배포는 Setup 먼저, 그다음 SQL(정책 그대로). 앱 버전은 마이너 상향(기능 추가).
 - **보고 모달 개선(사용자가 나중에 할 일)**: 5.1 대로 기존 코드 접점을 탭 버튼과 `setReportMode` 분기로 묶어 둔다. 기존 함수(`collectReportData`, `rptSources`, 기존 글 만들기 함수, `monthRange`)는 **읽기만 하고 바꾸지 않는다.** 과제별로 자르는 일은 월간 쪽 감싸는 함수에서 한다.
 
 ## 9. 단계
@@ -289,7 +295,7 @@
   - XML 이스케이프 함수가 모든 글 출력에 쓰인다.
   - 변이 시험(`mutate()`): 이스케이프 호출을 지우면 시험이 실패한다.
 - `schedule-image.test.mjs`(정적):
-  - 마이그레이션 조각과 `schema-structure.sql` 의 표 정의가 같다. 기존 배포 SQL 사슬 시험(13~15)에 새 번호가 이어진다.
+  - 마이그레이션 조각과 정본(`schema-calendar.sql`, `schema-structure.sql`)의 정의가 같다. 기존 배포 SQL 사슬 시험(13~16)에 17 이 이어진다.
   - 권한 SQL 에 새 표가 있다. `AppStructureVersion` 이 새 번호다.
   - `project.dev_start_date` 가 조각과 구조 문서에 같이 있고, 과제 읽기(`ProjectDb.cs`), 웹 `devStartDate`, 관리 화면 편집, 과제 xlsx 내보내기 열에 이어진다.
   - 백업 스크립트 mysqldump 에 `--hex-blob` 이 있다.
@@ -306,7 +312,7 @@
 ### 10.2 개발 PC 실동작 시험(기본 실행 제외)
 
 - `tests/loop-monthly-docx.mjs`: `dotnet build` 후 예시 payload 로 문서를 만든다. 압축을 풀어 모든 XML 이 올바른지, 표 수 = 과제 수 + 1, 열 병합과 세로 병합 위치, 글자 포함, 그림 관계와 크기가 맞는지 확인한다. 개발 PC 의 python-docx 로 표 칸 글자를 읽어 대조한다.
-- `tests/loop-schedule-image.mjs`: **복사본 DB** 에 새 조각을 적용하고, 그림 추가, 목록, 받기(해시 일치), 순서 바꾸기, 삭제, 과제 삭제 시 함께 지워짐, mysqldump(`--hex-blob`)로 덤프하고 되살린 뒤 바이트 일치를 확인한다.
+- `tests/db-schedule-image.mjs`: **복사본 DB**(이름 zz_, 일회용 계정) 에 새 조각을 적용하고, 그림 추가, 목록, 받기(해시 일치), 순서 바꾸기, 삭제, 과제 삭제 시 함께 지워짐, mysqldump(`--hex-blob`)로 덤프하고 되살린 뒤 바이트 일치를 확인한다.
 - 눈으로 보기: Word 가 있으면 PDF 로 변환해 빈 양식 PDF 와 나란히 비교한다. 회사 사용자가 한컴오피스로 열 수 있으므로 **한글(한컴)에서도 열어** 깨짐(병합, 글머리, 그림)을 본다.
 
 ### 10.3 위젯 QA
@@ -332,11 +338,32 @@
 9. 개발 일정 그림의 등록, 삭제, 순서 바꾸기는 **월간 보고 탭의 과제 카드에서** 한다(개인 과제 관리 화면에는 두지 않음). 시안: [prototypes/monthly-report.html](prototypes/monthly-report.html).
 10. 과제 수행 기간은 카드에서 읽기 전용으로 보여 준다(DB 값 그대로).
 
-### 11.2 열린 질문(추천 기본값)
+### 11.2 추천 기본값으로 정한 것 (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
 
-1. **삭제한 그림 되살리기**: 기본은 바로 지움(백업에서만 복구). 실수가 걱정되면 지운 표시만 하고 30일 뒤 정리하는 방식으로 바꿉니다.
-2. **계획 칸 이월**: 기본은 이월 없음(직접 씀). 지난 보고의 오른쪽 계획을 새 보고의 왼쪽 계획에 미리 넣어 두길 원하면 켭니다.
-3. **기타 표 범위**: 기본은 공식 과제가 아닌 카테고리 전부(제외 목록 기억). 휴가 같은 근태성 기록은 기본 제외할지요.
-4. **과제명 표기**: 기본은 통상명칭(없으면 사업명).
-5. **내용 출처 기본**: 캘린더. 주간보고를 기본으로 바라면 바꿉니다.
-6. **한컴오피스 호환**: 회사에서 이 문서를 Word 로 여나요, 한글로 여나요. 기본은 둘 다 확인합니다.
+1. **삭제한 그림**: 바로 지운다(실제 행 삭제, 백업에서만 복구). 지운 표시와 30일 뒤 정리는 하지 않는다. (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+2. **계획 칸 이월**: 이월하지 않는다. 지난 보고의 오른쪽 계획을 새 보고의 왼쪽 계획에 미리 넣지 않는다(직접 씀). (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+3. **기타 표 범위**: 공식 과제가 아닌 카테고리 전부를 넣고, 사용자가 뺀 카테고리를 제외 목록으로 계정별로 기억한다. 근태성 카테고리를 따로 기본 제외하지 않는다. (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+4. **과제명 표기**: 통상명칭, 없으면 사업명. (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+5. **내용 출처 기본**: 캘린더. (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+6. **한컴오피스 호환**: Word 와 한컴 둘 다에서 열어 확인한다(10.2). (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+7. **과제 캘린더 공용 일정**: 월간 실적에 넣지 않는다(개인 기록만, 4장 끝). (사용자 미확인, 기본값으로 진행 2026-10-22 밤)
+
+## 12. 구현 메모(단계 A, 2026-10-22 밤)
+
+단계 A = 9장의 1단계 남은 일(호스트 저장 명령)과 2단계(DB 조각, 그림 명령) 전부. 화면(월간 탭)은 단계 B 다. 위젯 실행과 실 DB 시험은 PM 이 한다.
+
+- **DB 조각** `db/deploy/migrations/v17-monthly-report.sql`(16 에서 17): `project.dev_start_date DATE NULL` 을 `AFTER end_date, ALGORITHM=INSTANT` 로, CHECK `chk_project_dev_dates`, 새 표 `project_schedule_image`. 칸과 CHECK 는 information_schema 로 있는지 보고 없을 때만 더하고(재실행 1060, 3822 방지), 표는 IF NOT EXISTS. 검증은 칸의 형과 NULL 허용, 자리(end_date 바로 뒤), CHECK 이름, 표의 열 10과 FK 2.
+- **정본 자리**: 그림 표는 `schema-calendar.sql` 16번(6.2 의 이유), 개발 시작일 칸과 CHECK 는 `schema-structure.sql` 의 project. 이름이 `cal_` 이 아니어서 `init-calendar.ps1` 에 `$OWN_NON_CAL` 하나를 두고 명부, 허용 목록, GRANT 대조가 '이 파일의 표 = cal_* 와 그 목록' 으로 본다. `schema-guards` ⑧ 에도 같은 이름 예외.
+- **권한**: `grants-calendar.sql`, `server-app-account.sql`, `app-account.ps1`(표가 있을 때만) 에 SELECT, INSERT, UPDATE, DELETE. `create-app-user.sql` 에는 주석으로 자리만 알린다.
+- **배포 도구**: `DbGate.AppStructureVersion = 17`, 정본 시드 17, setup 표 수 26, 데모 SCHEMA_VERSION 17 과 WIPE_TABLES 맨 앞, `build-schema-html.mjs` 와 `col-notes.json`, 백업과 복원 전 안전 덤프와 데모 전 백업의 mysqldump 에 `--hex-blob`.
+- **사용자 삭제와의 관계**: `ProjectDb.UserRecordTables` 원소가 '표' 또는 '표.열' 이 되었고 `project_schedule_image.uploaded_by` 를 더했다. 기록 수 세기 두 SQL 이 그 열을 쓴다(`UserRecordRef`).
+- **개발 시작일 배선**: `ProjectDb` 읽기(`dev_start_date`), 쓰기(`@dsd`), 형식과 순서(시작 <= 종료) 검사, `saveProject` 분기, 엑셀 열 `개발시작일`(개발종료일 바로 앞, 11열), 웹 `mapDbRows` 의 `devStartDate`, 편집 폼 `#offEdDevStart`(개발종료 칸 옆 빈자리), 상세 보기, payload. 선진행 잠금에는 넣지 않았다. 일괄 채우기는 없다.
+- **그림 명령** `widget/ScheduleImageDb.cs`(DB, PC 사본, WPF 그림 검사), 배선 `widget/MonthlyReportExport.cs`(MainWindow partial). 명령: `scheduleImageList`(메타만), `scheduleImageAdd {projectUid, mode:'file'|'clipboard'}`(두 방법 다), `scheduleImageDelete {id}`, `scheduleImageMove {id, seq}`, `scheduleImageThumb {id}`(약 40KB 이하 JPEG data URL). 회신 `{ok, data?, error?:{kind, message}}`, 파일 창 취소는 `{ok:false, cancelled:true}`. kind 는 forbidden, invalid, notFound, conflict 와 연결 분류.
+  - 추가는 파일 창을 열기 전에 DB 로 미리 본다(끊김, 관문, 5장). 바이트는 머리 글자(PNG, JPEG)와 WPF `BitmapDecoder` 로 보고, 5MB, 가로세로 16,000 화소까지. 같은 과제에 같은 해시가 있으면 거절한다(기본값으로 정함).
+  - 클립보드는 PNG 데이터, 파일 하나(탐색기 복사), 비트맵 순서로 읽는다.
+  - 쓰기 트랜잭션은 신원(세션), 과제 행 FOR UPDATE, 본문, 커밋 직전 관문 재확인(`CommitWithGateAsync`). 삭제 뒤와 추가 전에 seq 를 1..n 으로 다시 매긴다(+100 으로 비켜 두 번에). 관리자 검사 없음.
+  - PC 사본: 앱 데이터 `schedule-images\<sha256>.png|jpg`, `thumb\<sha256>.jpg`, `index.json`(과제별 마지막 목록). 읽을 때마다 해시를 다시 보고, 색인에 없는 사본은 색인을 고칠 때 지운다.
+  - DB 를 못 쓰면: 목록은 실패 회신에 사본 색인(stale)을 싣고, 미리 보기는 사본으로 만들고, 추가, 삭제, 순서 바꾸기는 실패한다.
+- **DOCX 저장** `exportMonthlyDocx`: payload(7.4, 그림 바이트 없음)를 읽어 상한(과제 40, 칸마다 2,000줄, 줄 2,000자, 짧은 칸 200자)을 넘으면 거절, 요청한 창이 주인인 저장 창(기본 이름 `월간보고_<이름>_<YYMMDD>.docx`, 지난 폴더는 앱 데이터 `monthly-report.json`), `Task.Run` 에서 그림 모으기(DB, 해시가 같은 사본은 다시 받지 않음, DB 실패면 사본)와 `DocxWriter.Write`, `ReplyOnUi`. 성공 회신 `{ok, path, dir, projects, images, imageSource, notice}`.
+- **메인 창 전용**: 여섯 명령 모두 case 한 줄씩, 관리 창과 열람 창 허용 목록(호스트, 웹)에 없다.
+- **시험**: `tests/schedule-image.test.mjs`(정적, 변이 17), `tests/monthly-docx.test.mjs` 호스트 저장 명령 추가(변이 5), 배포 SQL 사슬 13~17 과 흉내 실행기의 project 모양, 실 DB 시험 `tests/db-schedule-image.mjs`(기본 실행 밖, zz_ 복사본과 일회용 계정). 구조 번호를 박아 둔 기존 시험(관문, 번호 키, 데모, 이관 cmd, 스키마 가드, 과제 캘린더, 개발종료일, 휴지통, 엑셀)을 17 과 새 열에 맞췄다. `db-project-calendar.mjs` 는 이제 앱 구조 번호와 같은 DB 를 요구한다.

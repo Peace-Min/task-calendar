@@ -97,7 +97,9 @@ const checks = {
     for (const t of TABLES) {
       assert.ok(new RegExp(`^DROP TABLE IF EXISTS ${t};`, 'm').test(code), `정본 DROP 목록에 ${t} 가 없다(재적용 1050)`);
     }
-    assert.ok(/VALUES \('db_structure_version', '16', UTC_TIMESTAMP\(3\)\)/.test(code), '정본 시드가 16 이 아니다');
+    //  2026-10-22 월간보고(이관 조각 v17)로 정본은 17 이다. 이 기능은 16 에서 들어왔으므로 16 이상을 본다(판번호 정합은 schema-guards ⑨).
+    const seeded = /VALUES \('db_structure_version', '(\d+)', UTC_TIMESTAMP\(3\)\)/.exec(code);
+    assert.ok(seeded && Number(seeded[1]) >= 16, '정본 시드가 16 이상이 아니다');
   },
 
   // ══ ② 연결과 프리앰블 ═══════════════════════════════════════════════
@@ -333,7 +335,7 @@ const checks = {
 // ══ 계약 ═══════════════════════════════════════════════════════════════
 test('과제캘린더①a: 새 표 둘의 정의가 정본과 이관 조각에서 글자까지 같다', () => checks.sameDefs(src.canon, src.frag));
 test('과제캘린더①b: 조각은 15 에서 16 한 칸, FK 순서로 IF NOT EXISTS, 모두 PREPARE, 정본과 같은 열 수와 FK 수로 검증한다', () => checks.fragmentShape(src.canon, src.frag));
-test('과제캘린더①c: 정본 DROP 목록에 새 표 둘이 있고 시드가 16 이다', () => checks.canonLists(src.canon));
+test('과제캘린더①c: 정본 DROP 목록에 새 표 둘이 있고 시드가 16 이상이다', () => checks.canonLists(src.canon));
 test('과제캘린더②: 연결은 DbGate.OpenAsync 하나, 읽기와 쓰기 프리앰블이 각자의 격리수준과 UTC 를 건다', () => checks.connections(src.pcdb));
 test('과제캘린더③: 공용 쓰기는 판정으로 시작하고 일정 행을 잡은 뒤 재시도를 본다, 개인 복사는 원본 일정 공유 잠금 다음 cal_user_rev', () => checks.firstStatement(src.pcdb));
 test('과제캘린더④: 커밋은 한 곳이고 바로 앞에서 관문을 다시 읽는다', () => checks.gateBeforeCommit(src.pcdb));

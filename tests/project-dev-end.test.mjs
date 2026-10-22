@@ -128,8 +128,14 @@ export const checks = {
     assert.notStrictEqual(iDev, -1,
       label + ' 에 ' + COL + ' 이 없다 — 개발종료일은 계약종료일과 별개의 날짜다. 정본에 없으면 ' +
       '새로 세운 DB 에만 컬럼이 빠지고, 그 DB 를 보는 위젯 질의가 1054 로 죽어 과제 목록이 통째로 빈다');
-    assert.strictEqual(iDev, iEnd + 1,
-      label + ': ' + COL + ' 이 end_date 바로 뒤가 아니다(end_date=' + iEnd + ', ' + COL + '=' + iDev + '). ' +
+    //  2026-10-22 월간보고(구조 17)로 개발시작일(dev_start_date)이 end_date 와 dev_end_date 사이에 들어왔다.
+    //  그래서 순서는 end_date, dev_start_date, dev_end_date 다(이관 조각 v17 이 AFTER end_date 로 같은 자리에 넣는다).
+    const iStart = names.indexOf('dev_start_date');
+    assert.strictEqual(iStart, iEnd + 1,
+      label + ': dev_start_date 가 end_date 바로 뒤가 아니다(end_date=' + iEnd + ', dev_start_date=' + iStart + '). ' +
+      '컬럼 순서까지 같아야 마이그레이션 결과와 신규 구축 결과가 mysqldump 대조에서 일치한다');
+    assert.strictEqual(iDev, iStart + 1,
+      label + ': ' + COL + ' 이 dev_start_date 바로 뒤가 아니다(dev_start_date=' + iStart + ', ' + COL + '=' + iDev + '). ' +
       '컬럼 순서까지 같아야 마이그레이션 결과와 신규 구축 결과가 mysqldump 대조에서 일치한다');
     assert.ok(/^dev_end_date\s+DATE\s+NULL$/i.test(cols[iDev].def),
       label + ': ' + COL + ' 의 정의가 `DATE NULL` 이 아니다 — 실제: ' + cols[iDev].def);
@@ -196,7 +202,7 @@ test('계약⓪: 게이트의 기준 파일이 전부 실재한다(못 읽었으
     '개발종료일 게이트가 기준 파일을 읽지 못했다 — 개명·이동됐다면 경로를 갱신할 것. 없는 것: ' + missing.join(', '));
 });
 
-test('계약①: 정본 SQL 두 파일 모두 project.dev_end_date 가 end_date 바로 뒤에 있다', () => {
+test('계약①: 정본 SQL 의 project.dev_end_date 가 end_date, dev_start_date 바로 뒤에 있다', () => {
   for (const [label, sql] of canonFiles) checks.canonHasColumn(label, sql);
 });
 
@@ -242,7 +248,7 @@ test('변이①b: 컬럼을 status 뒤로 옮기면 계약① 이 순서를 잡�
 
 test('변이②: UPDATE 에서만 dev_end_date 를 빼도 계약② 가 잡는다(문자열 검색이면 통과할 변이)', () => {
   //  UPDATE 쪽에만 있는 조각을 고른다 — INSERT 는 `dev_end_date`(=@ded 없음) 형태라 겹치지 않는다.
-  const bad = projectDb.replace('end_date=@ed, dev_end_date=@ded, ', 'end_date=@ed, ');
+  const bad = projectDb.replace('dev_start_date=@dsd, dev_end_date=@ded, ', 'dev_start_date=@dsd, ');
   assert.notStrictEqual(bad, projectDb, '변이 준비 실패: UPDATE 리터럴의 모양이 바뀌었다');
   //  소스 전체에는 dev_end_date 가 여전히 여러 번 남아 있다 — 그래도 잡혀야 한다.
   assert.ok(bad.includes(COL), '변이가 과했다: 소스에서 컬럼이 통째로 사라지면 이 변이는 계약②를 시험하지 않는다');

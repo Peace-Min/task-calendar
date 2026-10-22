@@ -11,6 +11,10 @@
 --  ※ 2026-10-21 회의실 공용화(docs/SHARED-ROOMS.md, 구조 번호 15): 회사 공용 회의실 목록 room_code 를 둔다.
 --     사람마다 따로 두던 cal_room 을 대신한다. 어떤 표도 가리키지 않는다(일정의 장소는 글자로 저장된다).
 --     같은 변경을 이미 데이터가 있는 DB 에 하는 것은 이관 조각 migrations/v15-shared-rooms.sql 이다.
+--  ※ 2026-10-22 월간보고(docs/MONTHLY-REPORT-PLAN.md §6.5, 구조 번호 17): project.dev_start_date(개발시작일)를
+--     end_date 와 dev_end_date 사이에 두고, 둘 다 있을 때 시작이 종료보다 늦지 않게 CHECK 를 건다.
+--     같은 변경을 이미 데이터가 있는 DB 에 하는 것은 이관 조각 migrations/v17-monthly-report.sql 이다.
+--     과제별 개발 일정 그림 표(project_schedule_image)는 app_user 도 가리켜서 schema-calendar.sql 에 있다(16번 표).
 --  주의: 맨 위 DROP 은 처음부터 다시 짓기 위한 것이다. 데이터가 있는 DB 에 다시 돌리면 지워진다.
 -- =====================================================================
 SET NAMES utf8mb4;
@@ -99,6 +103,7 @@ CREATE TABLE project (
   common_name   VARCHAR(200) NOT NULL DEFAULT '',      -- 통상명칭(빈값=''; NULL 금지)
   start_date    DATE         NULL,                     -- 계약시작일(선진행/미정=NULL)
   end_date      DATE         NULL,                     -- 계약종료일(선진행/미정=NULL)
+  dev_start_date DATE        NULL,                     -- 개발시작일(월간보고 과제 수행 기간의 시작. 계약시작일과 별개. 미정=NULL)
   dev_end_date  DATE         NULL,                     -- 개발종료일(개발 완료 목표·실제. 계약종료일과 별개. 미정=NULL)
   status_id     SMALLINT UNSIGNED NULL DEFAULT NULL,   -- 상태 (FK -> status_code.status_id; NULL 은 상태 없음)
   note          VARCHAR(500) NOT NULL DEFAULT '',      -- 비고(관리 화면 전용; 캘린더·보고서 미노출). 빈값=''
@@ -119,7 +124,9 @@ CREATE TABLE project (
     ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT fk_project_status_id FOREIGN KEY (status_id) REFERENCES status_code(status_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT,
-  CONSTRAINT chk_project_active CHECK (is_active IN (0,1))
+  CONSTRAINT chk_project_active CHECK (is_active IN (0,1)),
+  -- 개발 기간 순서: 둘 다 있을 때만 본다(한쪽이 미정이면 통과). 이관 조각 v17 과 글자까지 같다.
+  CONSTRAINT chk_project_dev_dates CHECK (dev_start_date IS NULL OR dev_end_date IS NULL OR dev_start_date <= dev_end_date)
   -- 계약일 순서 CHECK(start_date <= end_date)는 아직 걸지 않는다. 실데이터를 확인한 뒤 정한다(CODE-TABLE-IDS §8-4).
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   COMMENT='과제 마스터. DB 원본. 코드는 번호 참조(customer_id, section_id, status_id), is_active=소프트삭제.';

@@ -395,8 +395,11 @@ test('스키마 가드 ⑦: 정본의 명부(CREATE)와 DROP 목록이 문서가
     `DROP(${drops.length}) 이 CREATE(${creates.length}) 보다 짧다 — 빠뜨린 표가 있다`);
 });
 
-test('스키마 가드 ⑧: 모든 cal_* 표 이름이 cal_ 로 시작한다(오타·오분류 조기 발견)', () => {
-  const odd = createList(canonSql).map((c) => c.name).filter((n) => !/^cal_/.test(n));
+//  예외는 이름으로 하나씩 적는다. project_schedule_image(구조 17, MONTHLY-REPORT-PLAN §6.2)는 project 와 app_user 를
+//  둘 다 FK 로 가리켜 두 부모가 모두 선 뒤에 도는 이 파일에 둔다. init-calendar.ps1 의 $OWN_NON_CAL 과 같은 목록이다.
+const NON_CAL_OWN = ['project_schedule_image'];
+test('스키마 가드 ⑧: 모든 cal_* 표 이름이 cal_ 로 시작한다(오타·오분류 조기 발견, 이름으로 적은 예외만 빼고)', () => {
+  const odd = createList(canonSql).map((c) => c.name).filter((n) => !/^cal_/.test(n) && !NON_CAL_OWN.includes(n));
   assert.deepStrictEqual(odd, [], `cal_ 로 시작하지 않는 표: ${odd.join(', ')}`);
 });
 
@@ -437,10 +440,10 @@ test('변이②: DROP 순서를 뒤집으면 dropOrderChildFirst 가 실패한�
 });
 
 test('변이③: 마이그레이션 체인에 구멍을 내면 migrationChain 이 실패한다', () => {
-  //  2026-10-22 남은 판이 넷(12 → 13, 13 → 14, 조각 14 → 15, 조각 15 → 16)이라, 그 뒤에 한 칸 떨어진 가짜 파일(17 → 18)을 붙여 v=16 출발이 없는 상태를 만든다.
+  //  2026-10-22 남은 판이 다섯(12 → 13, 13 → 14, 조각 14 → 15, 조각 15 → 16, 조각 16 → 17)이라, 그 뒤에 한 칸 떨어진 가짜 파일(18 → 19)을 붙여 v=17 출발이 없는 상태를 만든다.
   const holed = new Map(migrateSrc);
   holed.set('migrate-2099-01-01-ghost.sql',
-    "UPDATE cal_schema_meta SET v = '18', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '17';\n");
+    "UPDATE cal_schema_meta SET v = '19', updated_at = UTC_TIMESTAMP(3)\n WHERE k = 'db_structure_version' AND v = '18';\n");
   assert.doesNotThrow(() => checks.migrationChain(migrateSrc, canonSql), '원본은 통과해야 한다');
   assert.throws(() => checks.migrationChain(holed, canonSql), /체인이 끊겼다/);
 });

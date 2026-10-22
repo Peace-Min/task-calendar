@@ -29,6 +29,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.room_code    TO 'taskmgr_app'@'%
 -- 과제 캘린더 표 둘(cal_project_event, cal_project_change, 2026-10-22 구조 번호 16)의
 --   권한은 여기 두지 않는다. cal_* 이므로 단일 소스는 grants-calendar.sql 이다(둘 다 DELETE 없음, PROJECT-CALENDAR-PLAN §4.6).
 --   이 파일만 돌리고 그 파일을 건너뛰면 과제 캘린더가 ERROR 1142 로 실패한다(두 파일을 함께 돌린다).
+-- 월간보고 개발 일정 그림 표(project_schedule_image, 2026-10-22 구조 번호 17)도 schema-calendar.sql 이 만들므로
+--   권한은 grants-calendar.sql 한 곳에 둔다(SELECT, INSERT, UPDATE, DELETE. MONTHLY-REPORT-PLAN §6.4).
 
 -- 사용자·조직 도메인의 두 마스터. 2026-09-18 직급·소속 관리(docs/ORG-TITLE-ADMIN.md §6).
 --   위 넷은 과제 도메인이고 이 둘은 아니지만, §0-5 가 세 파일을 **같은 목록**으로 다시 돌리게 해 두었다.

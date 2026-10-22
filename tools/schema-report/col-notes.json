@@ -38,12 +38,25 @@
     "common_name": "<span class=\"star\">★</span> <b>통상명칭: 화면과 보고서에 실제로 찍히는 이름.</b> 비어 있으면 사업명이 대신 쓰입니다. 보고서 집계가 사업부 관리 명칭과 맞아야 하므로 이 칸을 채워두는 것이 중요합니다.",
     "start_date": "계약 시작일. 계약 전(선진행)이면 비웁니다.",
     "end_date": "계약 종료일.",
+    "dev_start_date": "개발시작일. 월간보고의 과제 수행 기간 시작(2026-10-22, 구조 17). 계약시작일과 별개이고, 개발종료일과 둘 다 있으면 종료보다 늦을 수 없습니다(CHECK).",
     "dev_end_date": "개발종료일. 계약종료일과 별개(개발 완료 목표·실제). 선진행이어도 입력할 수 있습니다.",
     "status_id": "상태 번호. <code>status_code.status_id</code>를 가리킵니다. 비어 있으면(상태 없음, 선진행 등) 외래키 검사를 건너뜁니다.",
     "note": "비고. <b>관리 화면에서만</b> 보이는 내부 메모. 캘린더·보고서에는 나오지 않습니다.",
     "is_active": "1=사용, 0=숨김. <b>앱에서 지우면 이 값만 0이 되고 행은 남습니다</b>(되돌릴 수 있음).",
     "created_at": "등록 시각(자동).",
     "updated_at": "마지막 수정 시각(자동 갱신)."
+  },
+  "project_schedule_image": {
+    "id": "그림 번호(기본키).",
+    "project_id": "과제 번호. <code>project.id</code> 를 가리킵니다. <b>과제를 지우면 그림도 함께 지워집니다</b>(CASCADE).",
+    "seq": "과제 안 순서(1부터). 지우면 1부터 다시 매깁니다. 과제당 5장까지(앱).",
+    "mime": "image/png 또는 image/jpeg 만 들어갑니다(CHECK).",
+    "bytes": "그림 원본. 장당 5MB까지(앱). 백업은 mysqldump --hex-blob 으로 뜹니다.",
+    "width_px": "가로 화소. 문서에 넣을 때 비율 계산에 씁니다.",
+    "height_px": "세로 화소.",
+    "sha256": "바이트의 SHA-256(소문자 16진수). PC 사본(앱 데이터 폴더의 schedule-images)이 같은지 이 값으로 봅니다.",
+    "uploaded_by": "등록한 사람. <code>app_user.user_id</code> 를 RESTRICT 로 가리킵니다. 그림을 올린 계정은 휴지통에서 지우지 않고 퇴사(숨김)로만 둡니다.",
+    "uploaded_at": "등록 시각(UTC)."
   },
   "section_code": {
     "section_id": "<span class=\"star\">★</span> <b>구분 번호(기본키).</b> <code>project.section_id</code> 가 가리킵니다. <b>2번은 선진행으로 고정</b>입니다. 앱이 이 번호로 날짜와 상태를 잠그므로 2번은 숨기거나 지울 수 없습니다(이름은 바꿀 수 있습니다).",

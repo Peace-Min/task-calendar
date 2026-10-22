@@ -270,7 +270,9 @@ async function main() {
   try { v = one("SELECT v FROM cal_schema_meta WHERE k='db_structure_version'"); } catch (e) { console.error('[중단] 시험 DB 에 붙지 못했다: ' + e.message); process.exit(2); }
   const nt = num(`SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${OPT.db}' AND TABLE_NAME IN ('cal_project_event','cal_project_change')`);
   const upd = one("SELECT v FROM cal_schema_meta WHERE k='db_updating'");
-  if (v !== '16' || nt !== 2 || upd !== '0') { console.error(`[중단] ${OPT.db} 가 구조 16(표 둘, 열림)이 아니다: v=${v} 표=${nt} db_updating=${upd}`); process.exit(2); }
+  //  구조 번호는 앱(DbGate.AppStructureVersion)과 정확히 같아야 관문이 연다. 2026-10-22 월간보고(v17)로 17 이다.
+  const appv = /public const int AppStructureVersion = (\d+);/.exec(readFileSync(join(ROOT, 'widget', 'DbGate.cs'), 'utf8'))[1];
+  if (v !== appv || nt !== 2 || upd !== '0') { console.error(`[중단] ${OPT.db} 가 구조 ${appv}(앱과 같은 번호, 과제 캘린더 표 둘, 열림)이 아니다: v=${v} 표=${nt} db_updating=${upd}`); process.exit(2); }
   console.log(`DB ${OPT.db}: 구조 ${v}, 새 표 ${nt}`);
 
   buildRunner();

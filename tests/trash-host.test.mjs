@@ -63,7 +63,8 @@ function canonUserRefTables(sql) {
 function hostUserRecordTables(cs) {
   const m = /private static readonly string\[\] UserRecordTables\s*=\s*\{([\s\S]*?)\};/.exec(stripCs(cs));
   assert.ok(m, 'ProjectDb 에서 UserRecordTables 배열을 찾지 못했다 — 이름이 바뀌었다면 여기도 함께 고칠 것(판정 불가)');
-  return [...m[1].matchAll(/"(\w+)"/g)].map((x) => x[1]);
+  //  원소는 '표' 또는 '표.열'(2026-10-22 구조 17: project_schedule_image.uploaded_by). 비교는 표 이름으로 한다.
+  return [...m[1].matchAll(/"(\w+)(?:\.\w+)?"/g)].map((x) => x[1]);
 }
 
 // ══════════════════════════════════════════════════════════════════════

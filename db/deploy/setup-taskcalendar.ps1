@@ -136,10 +136,11 @@ $CAL_DATA_TABLES = @('cal_entry','cal_todo','cal_task_hours','cal_attendance','c
 # 막힌다. 원본은 읽기만 하므로 UPDATE 로 고칠 수 없다 — 그래서 옮기는 순간 IFNULL(<col>, '') 로 바꾼다.
 $NULL_TO_EMPTY = [ordered]@{ project = @('contract_name','common_name') }
 
-# 구조 단계 후 대상 DB 의 표 개수(과제 5 + 사용자 3 + 캘린더 17). 아래 사전 점검이 세 DDL 파일의
+# 구조 단계 후 대상 DB 의 표 개수(과제 5 + 사용자 3 + 캘린더 파일 18). 아래 사전 점검이 세 DDL 파일의
 # CREATE TABLE 수와도 맞춰 본다 — 파일에 표가 늘면 여기서 먼저 멈추고 이 값을 함께 고치라고 말한다.
-# (2026-10-21 회의실 공용화: room_code +1, cal_room -1 로 23 그대로. 2026-10-22 과제 캘린더: cal_project_ 둘 +2 로 25.)
-$EXPECTED_TABLE_COUNT = 25
+# (2026-10-21 회의실 공용화: room_code +1, cal_room -1 로 23 그대로. 2026-10-22 과제 캘린더: cal_project_ 둘 +2 로 25.
+#  2026-10-22 월간보고(구조 17): schema-calendar.sql 의 project_schedule_image +1 로 26.)
+$EXPECTED_TABLE_COUNT = 26
 
 # 정체성 컬럼. 원본에 이 컬럼이 없으면 교집합 복사가 조용히 새 번호를 매긴다 — 그러면 cal_* 가
 # 가리킬 과제의 번호가 옛 DB 와 달라진다. 그래서 사전 점검에서 원본에 있는지부터 본다.

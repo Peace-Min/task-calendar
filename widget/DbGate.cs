@@ -11,7 +11,7 @@ namespace TaskCalendarWidget
     // ================================================================================
     //  규칙 하나: DB 의 구조 번호(cal_schema_meta.db_structure_version)와 앱이 아는 구조 번호가
     //  같으면 동작하고, 다르면 읽기와 쓰기를 모두 막는다. db_updating = '1' 이면 갱신 중이라 기다린다.
-    //  ★ 데이터를 다루는 연결은 모두 여기서 연다(CalendarDb, CalendarWriteDb, ProjectDb, ReportDb, ProjectCalendarDb).
+    //  ★ 데이터를 다루는 연결은 모두 여기서 연다(CalendarDb, CalendarWriteDb, ProjectDb, ReportDb, ProjectCalendarDb, ScheduleImageDb).
     //    `new MySqlConnection(` 은 이 파일과 재연결 핑(OfflineHost dbPing)에만 있다. 시험이 강제한다
     //    (tests/version-gate-host.test.mjs). 입구가 하나라야 "어느 경로가 관문을 빼먹었나" 를 셀 필요가 없다.
     //  ★ 이것은 보안 장치가 아니라 난간이다. 정직한 구버전 앱이 새 구조의 DB 를 실수로 꼬이게 하지 않도록,
@@ -70,7 +70,8 @@ namespace TaskCalendarWidget
         //  ★ 2026-10-21: 13 → 14(db/deploy/migrations/v14-version-gate.sql, 배포 SQL 하나에 들어가는 조각, schema_version 키를 db_ 와 app_ 키 다섯 개로).
         //  ★ 2026-10-21: 14 → 15(이관 조각 migrations/v15-shared-rooms.sql, 회의실 공용화: cal_room 을 지우고 room_code).
         //  ★ 2026-10-22: 15 → 16(이관 조각 migrations/v16-project-calendar.sql, 과제 캘린더: cal_project_ 표 둘).
-        public const int AppStructureVersion = 16;
+        //  ★ 2026-10-22: 16 → 17(이관 조각 migrations/v17-monthly-report.sql, 월간보고: project.dev_start_date 와 project_schedule_image).
+        public const int AppStructureVersion = 17;
 
         //  키 다섯 개를 한 번에 읽는다. 연결을 열 때마다 도는 유일한 추가 쿼리다(DB-RELEASE-OPS §3.1 의 비용).
         internal const string MetaSql =

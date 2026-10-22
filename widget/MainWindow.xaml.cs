@@ -694,7 +694,7 @@ namespace TaskCalendarWidget
                         //  ★ 구분·발주처·상태는 번호로 받는다(CODE-TABLE-IDS §4). statusId 0 = 상태 없음.
                         _ = SaveProjectAsync(GetStr(doc, "uid"), GetInt(doc, "sectionId"), GetInt(doc, "customerId"),
                             GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
-                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "devEndDate"), GetInt(doc, "statusId"),
+                            GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "devStartDate"), GetStr(doc, "devEndDate"), GetInt(doc, "statusId"),
                             GetStr(doc, "note"), GetBool(doc, "confirm"), GetBool(doc, "autoSub"));
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
@@ -1031,6 +1031,15 @@ namespace TaskCalendarWidget
                     case "projectCalendarCopy":
                         _ = RunProjectCalendarAsync(cmd, GetStr(doc, "reqId"), raw);   // 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다)
                         break;
+
+                    // ----- 월간보고(docs/MONTHLY-REPORT-PLAN.md §6.3, §7.4): 메인 창 전용. 관리 창과 열람 창 허용 목록에 넣지 않는다 -----
+                    //  본문은 MonthlyReportExport.cs(저장 창, 그림 명령 배선)와 ScheduleImageDb.cs(DB, PC 사본). 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다).
+                    case "exportMonthlyDocx": RunMonthlyDocxExport(DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
+                    case "scheduleImageList": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
+                    case "scheduleImageAdd": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
+                    case "scheduleImageDelete": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
+                    case "scheduleImageMove": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
+                    case "scheduleImageThumb": _ = RunScheduleImageAsync(cmd, DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
 
                     case "menu": ShowSettingsMenu(); break;
                     case "pin": TogglePin(); break;
@@ -1429,6 +1438,7 @@ namespace TaskCalendarWidget
             ("계약명",   "contractName", 34, XlsxWriter.Align.Left,   false, true),   // 길고 덜 보는 열은 뒤로
             ("시작일",   "startDate",    12, XlsxWriter.Align.Center, true,  false),
             ("종료일",   "endDate",      12, XlsxWriter.Align.Center, true,  false),
+            ("개발시작일", "devStartDate", 12, XlsxWriter.Align.Center, true,  false),   // 월간보고 과제 수행 기간의 시작(구조 17). 계약시작일과 별개
             ("개발종료일", "devEndDate",   12, XlsxWriter.Align.Center, true,  false),   // 계약종료일과 별개(개발 완료 목표·실제)
             ("상태",     "status",       14, XlsxWriter.Align.Center, false, false),
         };
@@ -1861,11 +1871,11 @@ namespace TaskCalendarWidget
 
         // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
         private async Task SaveProjectAsync(string uid, int sectionId, int customerId, string projectName,
-            string contractName, string commonName, string startDate, string endDate, string devEndDate, int statusId, string note, bool confirm,
+            string contractName, string commonName, string startDate, string endDate, string devStartDate, string devEndDate, int statusId, string note, bool confirm,
             bool autoSub = false)
         {
             var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, sectionId, customerId, projectName,
-                contractName, commonName, startDate, endDate, devEndDate, statusId > 0 ? statusId : (int?)null, note: note, confirmSimilar: confirm);
+                contractName, commonName, startDate, endDate, devStartDate, devEndDate, statusId > 0 ? statusId : (int?)null, note: note, confirmSimilar: confirm);
             ProjectSaved(ok, msg, needConfirm);
             //  새 과제를 편집 폼으로 등록했으면(autoSub) 만든 사람의 캘린더(메인 창)에 자동으로 넣는다(만든 사람은 쓸 것). 저장은 관리 창에서
             //  하므로 메인 창에 대상을 알려 둔다. 바로 뒤의 목록 알림(__applyProjects)이 그 대상을 찾아 넣는다(같은 웹뷰라 순서가 지켜진다).

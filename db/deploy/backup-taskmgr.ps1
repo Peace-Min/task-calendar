@@ -9,7 +9,9 @@
     1) mysqldump.exe / mysql.exe 찾기 (init-calendar.ps1 과 같은 방식: -BaseDir → 서비스 binPath 추론)
     2) 자격 증명을 보호된 .cnf 에서 읽는다(명령줄로 비번을 받지 않는다 — 아래 ⚠️)
     3) 권한 선검사 — SHOW GRANTS 에 SELECT 와 TRIGGER 가 있는가 (★ 아래 '이 스크립트의 존재 이유')
-    4) mysqldump --single-transaction --no-tablespaces --routines --triggers
+    4) mysqldump --single-transaction --no-tablespaces --routines --triggers --hex-blob
+       (--hex-blob: 2026-10-22 구조 17 의 개발 일정 그림 바이트(project_schedule_image.bytes, MEDIUMBLOB)를 16진 리터럴로 떠서
+        문자셋 변환 없이 그대로 되살린다. docs/MONTHLY-REPORT-PLAN.md §6.4)
     5) ★ 검증 — 뜬 파일의 표 이름·트리거 이름·루틴 수·마감 표시·크기를 DB 의
        information_schema 실제 값과 대조. 하나라도 어긋나면 .partial 로 남기고 실패
     6) 세대 관리(-Keep) · 로그 한 줄 누적 · 같은 볼륨이면 경고
@@ -435,7 +437,7 @@ Info "덤프 시작 → $partPath"
 $sw = [Diagnostics.Stopwatch]::StartNew()
 # --result-file 을 쓰는 이유: PowerShell 의 '>' 로 받으면 5.1 이 UTF-16 으로 쓰거나
 # BOM 을 박아서 mysql 이 되먹이지 못하는 파일이 된다. mysqldump 가 직접 쓰게 한다.
-& $mysqldump (MyArgs) "--single-transaction" "--no-tablespaces" "--routines" "--triggers" "--result-file=$partPath" $DbName
+& $mysqldump (MyArgs) "--single-transaction" "--no-tablespaces" "--routines" "--triggers" "--hex-blob" "--result-file=$partPath" $DbName
 $dumpRc = $LASTEXITCODE
 $sw.Stop()
 $took = [math]::Round($sw.Elapsed.TotalSeconds,1)

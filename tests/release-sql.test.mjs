@@ -5,9 +5,10 @@
 //      빈틈과 겹침, 끝 = 앱 구조 번호. 어기면 정해진 종료코드로 실패한다(빌드 전에 publish-update.ps1 이 부른다).
 //   ② 만들어진 SQL 의 모양: 잠금 대기 상한, 확인이 닫기보다 먼저, 닫기가 첫 조각보다 먼저, 조각은 구조 번호 순서,
 //      끝 확인 뒤 마지막 한 트랜잭션에 네 키(app_ 셋과 db_updating 0), 그 뒤 결과 표. 멈춤은 모두 '없는 표 SELECT'.
-//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16) 그대로. 13 에서 처음(세 조각을 몰아서),
-//      14 에서 두 칸, 15 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음), 마지막 조각 뒤에 멈춘 DB 마무리,
-//      새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤, 실제 사슬 뒤에 시험 조각을 붙인 건너뛴 배포,
+//   ③ 상태 전이(흉내 실행기 tests/release-sql-sim.mjs): 실제 사슬(13 에서 14, 14 에서 15, 15 에서 16, 16 에서 17) 그대로. 13 에서 처음(네 조각을 몰아서),
+//      14 에서 세 칸, 16 에서 한 칸, 앱만 바뀐 배포(닫지 않는다), 성공 뒤 재실행(바뀌는 것 없음), 마지막 조각 뒤에 멈춘 DB 마무리,
+//      새 DB, 낮은 DB, 이상한 값, v15 회의실 검증 멈춤, v16 과제 캘린더 표 모양 검증 멈춤, v17 월간보고(칸, CHECK, 그림 표) 검증 멈춤,
+//      실제 사슬 뒤에 시험 조각을 붙인 건너뛴 배포,
 //      그리고 바꾸는 문장마다 실패를 넣어 보고 같은 파일을 다시 돌리면 끝나는지, 그 사이 앱에 반쯤 바뀐 상태(meta 와 표)가 보이지 않는지.
 //   ④ 조각 폴더의 모든 파일이 조각 규칙(§5.2)을 따른다.
 //   ★ 조립기는 실제 PowerShell 로 돌린다(임시 조각 폴더와 임시 사본). 변이 시험도 같은 길로 실패를 확인한다.
@@ -18,7 +19,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, assert, readText } from './harness.mjs';
 import { mutate, exitCodeTable, exitCodesInTable, maskPs } from './ps-guard-lib.mjs';
-import { FakeDb, splitStatements, defOf } from './release-sql-sim.mjs';
+import { FakeDb, splitStatements, defOf, PROJECT_V16, PROJECT_V17 } from './release-sql-sim.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const GEN = join(ROOT, 'installer', 'release-sql.ps1');
@@ -118,10 +119,19 @@ const PC_DEFS = Object.fromEntries(PC_TABLES.map((n) => {
   assert.ok(i >= 0, `정본에 ${n} 가 없다`);
   return [n, defOf(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i))))];
 }));
+//  17 부터는 월간보고 그림 표(project_schedule_image)와 project.dev_start_date(end_date 뒤), CHECK chk_project_dev_dates 가 있다.
+//  그림 표 모양도 정본 schema-calendar.sql 의 정의에서 같은 함수로 센다.
+const SI_TABLE = 'project_schedule_image';
+const SI_DEFS = (() => {
+  const i = CANON_CAL.indexOf(`CREATE TABLE ${SI_TABLE} (`);
+  assert.ok(i >= 0, `정본에 ${SI_TABLE} 가 없다`);
+  return { [SI_TABLE]: defOf(CANON_CAL.slice(i, CANON_CAL.indexOf(';', CANON_CAL.indexOf(') ENGINE=', i)))) };
+})();
 const T = {
   old: () => ({ cal_room: CAL_ROOMS }),
   shared: () => ({ room_code: ROOM_CODES.map(([name, sort_order]) => ({ name, sort_order })) }),
   pc: () => Object.fromEntries(PC_TABLES.map((n) => [n, []])),
+  si: () => ({ [SI_TABLE]: [] }),
 };
 const S = {
   legacy13: () => ({ meta: { schema_version: '13' }, tables: T.old() }),
@@ -130,16 +140,18 @@ const S = {
       db_structure_version: String(n), db_updating: upd,
       app_latest_version: app[0], app_installer_file: app[1], app_installer_sha256: app[2],
     },
-    tables: Number(n) >= 16 ? { ...T.shared(), ...T.pc() } : Number(n) >= 15 ? T.shared() : T.old(),
-    defs: Number(n) >= 16 ? PC_DEFS : {},
+    tables: Number(n) >= 17 ? { ...T.shared(), ...T.pc(), ...T.si() } : Number(n) >= 16 ? { ...T.shared(), ...T.pc() } : Number(n) >= 15 ? T.shared() : T.old(),
+    defs: Number(n) >= 17 ? { ...PC_DEFS, ...SI_DEFS } : Number(n) >= 16 ? PC_DEFS : {},
+    project: Number(n) >= 17 ? PROJECT_V17() : PROJECT_V16(),
   }),
 };
-const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, ...opts });
+const open = (init, opts = {}) => new FakeDb(init.meta, { tables: init.tables || {}, defs: init.defs || {}, project: init.project || PROJECT_V16(), ...opts });
 const stateOf = (init) => open(init).state();
 const finalMeta = (n) => ({ db_structure_version: String(n), db_updating: '0', app_latest_version: VER, app_installer_file: FILE, app_installer_sha256: SHA });
-//  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘(정본과 같은 모양)
-const FINAL_TABLES = new FakeDb({}, { tables: { ...T.shared(), ...T.pc() }, defs: PC_DEFS }).state()['#tables'];
-const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES });
+//  끝 상태(meta 와 표): 공용 회의실 목록 하나, cal_room 없음, 과제 캘린더 표 둘과 그림 표(정본과 같은 모양), project 에 개발 시작일 칸과 CHECK
+const FINAL_DB = new FakeDb({}, { tables: { ...T.shared(), ...T.pc(), ...T.si() }, defs: { ...PC_DEFS, ...SI_DEFS }, project: PROJECT_V17() }).state();
+const FINAL_TABLES = FINAL_DB['#tables'];
+const finalState = (n, extra = {}) => ({ ...finalMeta(n), ...extra, '#tables': FINAL_TABLES, '#project': FINAL_DB['#project'] });
 const sortObj = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
 const same = (a, b) => JSON.stringify(sortObj(a)) === JSON.stringify(sortObj(b));
 
@@ -254,11 +266,13 @@ const checks = {
     assert.ok(/VERSION-GATE/.test(db.comment), '표 설명을 바꾸지 않았다');
     assert.deepStrictEqual(db.writes[0], { k: 'db_updating', v: '1', was: null }, '첫 쓰기가 닫기(db_updating 1 만들기)가 아니다');
     assert.deepStrictEqual(db.writes[db.writes.length - 1].k, 'db_updating', '마지막 쓰기가 열기(db_updating 0)가 아니다');
-    //  조각은 구조 번호 순서로 돈다: 14 의 키 바꾸기, 15 의 회의실 옮기기, 16 의 과제 캘린더 표 만들기(FK 순서)
+    //  조각은 구조 번호 순서로 돈다: 14 의 키 바꾸기, 15 의 회의실 옮기기, 16 의 과제 캘린더 표 만들기(FK 순서), 17 의 칸, CHECK, 그림 표
     const iKeys = db.writes.findIndex((w) => w.k === 'app_latest_version'), iRoom = db.writes.findIndex((w) => w.k === 'table:room_code');
     const iPc = PC_TABLES.map((t) => db.writes.findIndex((w) => w.k === `table:${t}`));
     assert.ok(iKeys > 0 && iRoom > iKeys, `조각 순서가 구조 번호 순서가 아니다(v14 키 ${iKeys}, v15 회의실 ${iRoom})`);
     assert.ok(iPc[0] > iRoom && iPc.every((x, k) => k === 0 || x > iPc[k - 1]), `v16 표 만들기가 v15 뒤에 FK 순서(event, change)로 돌지 않는다: ${iPc}`);
+    const iMr = ['col:project.dev_start_date', 'check:chk_project_dev_dates', `table:${SI_TABLE}`].map((k) => db.writes.findIndex((w) => w.k === k));
+    assert.ok(iMr[0] > iPc[iPc.length - 1] && iMr[1] > iMr[0] && iMr[2] > iMr[1], `v17(칸, CHECK, 그림 표)이 v16 뒤에 차례로 돌지 않는다: ${iMr}`);
     assertNoHalfOpen(db, stateOf(init), finalState(APP), '13 에서 처음');
     //  성공 뒤 다시 돌리면 바뀌는 것이 없다
     const n = db.writes.length, before = db.stamps(), shape = db.state();
@@ -267,7 +281,7 @@ const checks = {
     assert.deepStrictEqual(db.stamps(), before, '성공 뒤 다시 돌렸는데 updated_at 이 바뀌었다');
     assert.ok(same(db.state(), shape), '성공 뒤 다시 돌렸는데 회의실 표가 바뀌었다');
   },
-  // 한 칸 앞(APP-1, 공용 회의실이 있고 과제 캘린더 표가 없는 15)에서 올리는 보통의 구조 배포
+  // 한 칸 앞(APP-1, 과제 캘린더 표까지 있고 월간보고 칸과 그림 표가 없는 16)에서 올리는 보통의 구조 배포
   fromPrev(sql) {
     const init = S.at(APP - 1);
     const db = open(init);
@@ -279,7 +293,7 @@ const checks = {
     assert.strictEqual(db.comment, '', `${APP - 1} 에서 올리는데 v14 조각이 표 설명을 바꿨다(건너뛰지 않았다)`);
     assertNoHalfOpen(db, stateOf(init), finalState(APP), `${APP - 1} 에서`);
   },
-  // 건너뛴 배포: 14(cal_room 이 있다)에서 v15 와 v16 을 몰아 올린다. v14 조각은 건너뛴다.
+  // 건너뛴 배포: 14(cal_room 이 있다)에서 v15, v16, v17 을 몰아 올린다. v14 조각은 건너뛴다.
   from14(sql) {
     const init = S.at(14);
     const db = open(init);
@@ -293,13 +307,30 @@ const checks = {
   },
   // v16 검증: 같은 이름의 다른 모양 표가 이미 있으면(IF NOT EXISTS 가 그대로 둔다) 닫힌 채 멈추고 구조 번호를 올리지 않는다
   pcVerify(sql) {
-    const mk = () => { const x = S.at(APP - 1); x.tables.cal_project_event = []; x.defs = { cal_project_event: { cols: 5, fks: 0 } }; return x; };
+    const mk = () => { const x = S.at(15); x.tables.cal_project_event = []; x.defs = { cal_project_event: { cols: 5, fks: 0 } }; return x; };
     const db = open(mk());
     const r = db.run(sql);
     assert.ok(!r.ok && /v16 조각 검증 실패/.test(r.stop || ''), `과제 캘린더 표 모양이 다른데 v16 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
     assert.strictEqual(db.meta().db_updating, '1', 'v16 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다');
-    assert.strictEqual(db.meta().db_structure_version, String(APP - 1), 'v16 검증에서 멈췄는데 구조 번호가 올라갔다');
+    assert.strictEqual(db.meta().db_structure_version, '15', 'v16 검증에서 멈췄는데 구조 번호가 올라갔다');
+    assert.ok(!db.hasTable(SI_TABLE), 'v16 검증에서 멈췄는데 v17 이 돌았다');
     assertNoHalfOpen(db, stateOf(mk()), null, 'v16 검증 멈춤');
+  },
+  // v17 검증: 같은 이름의 다른 모양(그림 표의 열 수, 또는 dev_start_date 의 형과 자리)이 이미 있으면 닫힌 채 멈추고 구조 번호를 올리지 않는다
+  mrVerify(sql) {
+    const cases = [
+      ['그림 표 모양이 다름', () => { const x = S.at(16); x.tables[SI_TABLE] = []; x.defs = { ...x.defs, [SI_TABLE]: { cols: 4, fks: 0 } }; return x; }],
+      ['개발 시작일 형이 다름', () => { const x = S.at(16); x.project.cols.splice(x.project.cols.indexOf('end_date:date?') + 1, 0, 'dev_start_date:varchar'); return x; }],
+      ['개발 시작일 자리가 다름', () => { const x = S.at(16); x.project.cols.push('dev_start_date:date?'); return x; }],
+    ];
+    for (const [label, mk] of cases) {
+      const db = open(mk());
+      const r = db.run(sql);
+      assert.ok(!r.ok && /v17 조각 검증 실패/.test(r.stop || ''), `${label}: v17 검증에서 멈추지 않았다: ${JSON.stringify(r)}`);
+      assert.strictEqual(db.meta().db_updating, '1', `${label}: v17 검증에서 멈췄는데 닫힌 상태(db_updating 1)가 아니다`);
+      assert.strictEqual(db.meta().db_structure_version, '16', `${label}: v17 검증에서 멈췄는데 구조 번호가 올라갔다`);
+      assertNoHalfOpen(db, stateOf(mk()), null, `v17 검증 멈춤(${label})`);
+    }
   },
   appOnly(sql) {
     const init = S.at(APP);
@@ -425,16 +456,23 @@ test('배포SQL③e: 13 에서 올리는 중 어디서 실패해도 앱에 반�
   checks.faults(realSql(), S.legacy13, APP, '13 에서'));
 test('배포SQL③f: 앱만 바뀐 배포가 열기 트랜잭션에서 실패해도 다시 돌리면 끝난다', () =>
   checks.faults(realSql(), () => S.at(APP), APP, '앱만'));
-test(`배포SQL③g: 한 칸 앞(${APP - 1})에서 올리면 앞 조각은 건너뛰고 과제 캘린더 표를 만들어 열리며, 어디서 실패해도 다시 돌리면 끝난다`, () => {
+test(`배포SQL③g: 한 칸 앞(${APP - 1})에서 올리면 앞 조각은 건너뛰고 마지막 조각만 돌려 열리며, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.fromPrev(realSql());
   checks.faults(realSql(), () => S.at(APP - 1), APP, `${APP - 1} 에서`);
 });
-test(`배포SQL③g2: 14 에서 올리면 v14 는 건너뛰고 v15(회의실), v16(과제 캘린더)을 차례로 돌려 열리며, 어디서 실패해도 다시 돌리면 끝난다`, () => {
+test(`배포SQL③g2: 14 에서 올리면 v14 는 건너뛰고 v15(회의실), v16(과제 캘린더), v17(월간보고)을 차례로 돌려 열리며, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.from14(realSql());
   checks.faults(realSql(), () => S.at(14), APP, '14 에서');
 });
 test('배포SQL③h: v15 검증이 맞지 않으면(공용 목록에 모르는 이름) 닫힌 채 멈추고 cal_room 을 지우지 않는다', () => checks.roomVerify(realSql()));
 test('배포SQL③h2: v16 검증이 맞지 않으면(같은 이름의 다른 모양 표) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => checks.pcVerify(realSql()));
+test('배포SQL③h3: v17 검증이 맞지 않으면(그림 표 모양, 개발 시작일 형이나 자리) 닫힌 채 멈추고 구조 번호를 올리지 않는다', () => checks.mrVerify(realSql()));
+test('배포SQL③g3: 16 에서 올리면 project 모양이 정본(v17)과 같아지고, 칸 추가, CHECK, 그림 표 어디서 실패해도 다시 돌리면 끝난다', () => {
+  const db = open(S.at(16));
+  assert.ok(db.run(realSql()).ok, '16 에서 올리는 배포가 끝나지 않는다');
+  assert.strictEqual(db.state()['#project'], JSON.stringify(PROJECT_V17()), `16 에서 올린 project 모양이 정본(v17)과 다르다: ${db.state()['#project']}`);
+  checks.faults(realSql(), () => S.at(16), APP, '16 에서');
+});
 test(`배포SQL③i: 건너뛴 배포(13, 14, ${APP} 에서 ${NEXT})는 조각을 차례로 돌리고, 어디서 실패해도 다시 돌리면 끝난다`, () => {
   checks.extended(extSql());
   checks.faults(extSql(), S.legacy13, NEXT, `13 에서 ${NEXT}`);
@@ -491,10 +529,30 @@ test('변이R9: v16 이 표 모양을 검증하지 않으면(검증 끄기) ③h
   const bad = sql.slice(0, i) + 'SET @g := IF(1 OR ' + sql.slice(i + 'SET @g := IF('.length);
   assert.throws(() => checks.pcVerify(bad), /멈추지 않았다/);
 });
-test('변이R10: v16 이 IF NOT EXISTS 없이 표를 만들면 중간 실패 뒤 재실행이 멈춘다(③g 실패)', () => {
+test('변이R10: v16 이 IF NOT EXISTS 없이 표를 만들면 중간 실패 뒤 재실행이 멈춘다(15 에서 올리는 ③g2 와 같은 길 실패)', () => {
   const bad = realSql().split("'CREATE TABLE IF NOT EXISTS cal_project_").join("'CREATE TABLE cal_project_");
   assert.notStrictEqual(bad, realSql(), '변이 준비 실패');
-  assert.throws(() => checks.faults(bad, () => S.at(APP - 1), APP, `${APP - 1} 에서`), /모르는 문장|다시 돌려도 끝나지 않는다/);
+  //  2026-10-22 v17 이 붙어 한 칸 앞(APP - 1)은 16 이다. v16 조각이 도는 출발점은 15 다.
+  assert.throws(() => checks.faults(bad, () => S.at(15), APP, '15 에서'), /모르는 문장|다시 돌려도 끝나지 않는다/);
+});
+test('변이R11: v17 이 칸, CHECK, 그림 표 모양을 검증하지 않으면(검증 끄기) ③h3 이 실패한다', () => {
+  const sql = realSql();
+  const i = sql.indexOf('SET @g := IF(NOT @go OR (@m_cty = 1 ');
+  assert.ok(i >= 0, '변이 준비 실패: v17 검증을 찾지 못했다');
+  const bad = sql.slice(0, i) + 'SET @g := IF(1 OR ' + sql.slice(i + 'SET @g := IF('.length);
+  assert.throws(() => checks.mrVerify(bad), /멈추지 않았다/);
+});
+test('변이R12: v17 이 칸이 있는지 보지 않고 늘 더하면 중간 실패 뒤 재실행이 멈춘다(③g3 실패)', () => {
+  const bad = mutate(realSql(), 'SET @s := IF(@go AND @m_col = 0,', 'SET @s := IF(@go,');
+  assert.throws(() => checks.faults(bad, () => S.at(16), APP, '16 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R13: v17 이 CHECK 가 있는지 보지 않고 늘 걸면 중간 실패 뒤 재실행이 멈춘다(③g3 실패)', () => {
+  const bad = mutate(realSql(), 'SET @s := IF(@go AND @m_chk = 0,', 'SET @s := IF(@go,');
+  assert.throws(() => checks.faults(bad, () => S.at(16), APP, '16 에서'), /다시 돌려도 끝나지 않는다/);
+});
+test('변이R14: v17 이 IF NOT EXISTS 없이 그림 표를 만들면 중간 실패 뒤 재실행이 멈춘다(③g3 실패)', () => {
+  const bad = mutate(realSql(), "'CREATE TABLE IF NOT EXISTS project_schedule_image (", "'CREATE TABLE project_schedule_image (");
+  assert.throws(() => checks.faults(bad, () => S.at(16), APP, '16 에서'), /모르는 문장|다시 돌려도 끝나지 않는다/);
 });
 test('변이R6: 열기의 같은 값 건너뛰기(AND v <>)를 빼면 재실행이 행을 바꾼다(③a 실패)', () => {
   const bad = realSql().replace(/ AND v <> '[^']*';\n/g, ';\n');

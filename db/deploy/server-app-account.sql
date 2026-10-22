@@ -7,6 +7,7 @@
 -- cal_entry_commit, cal_todo_day_note 에 UPDATE 가 없는 것은 의도다(앱은 지우고 다시 넣는다).
 -- 2026-10-21 회의실 공용화(구조 번호 15): cal_room 을 지우고 room_code 를 더했다(docs/SHARED-ROOMS.md).
 -- 2026-10-22 과제 캘린더(구조 번호 16): cal_project_ 표 둘을 더했다. 둘 다 DELETE 없음(docs/PROJECT-CALENDAR-PLAN.md §4.6).
+-- 2026-10-22 월간보고(구조 번호 17): project_schedule_image 를 더했다. 그림 삭제가 실제 행 삭제라 DELETE 까지(docs/MONTHLY-REPORT-PLAN.md §6.4).
 -- 파일에 바꾼 비밀번호를 남기지 말 것. 실행 뒤 이 줄을 다시 자리표시로 되돌린다.
 
 CREATE USER IF NOT EXISTS 'taskmgr_app'@'%' IDENTIFIED BY 'CHANGE_ME_ON_DEPLOY';
@@ -32,6 +33,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`cal_user_rev` TO 'taskmg
 GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`customer` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE ON `taskcalendar`.`org_unit` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`project` TO 'taskmgr_app'@'%';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`project_schedule_image` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`room_code` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`section_code` TO 'taskmgr_app'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON `taskcalendar`.`status_code` TO 'taskmgr_app'@'%';

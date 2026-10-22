@@ -180,13 +180,20 @@ if($Port -lt 1 -or $Port -gt 65535){ Die "-Port 범위가 아닙니다: $Port" }
 #    표를 더하거나 뺄 때 이 배열을 같이 고치는 것이 이 파일에서 유일하게 사람 몫인 일이다.
 #  ※ 2026-10-21 회의실 공용화로 cal_room 이 빠져 16 → 15 가 됐다(공용 room_code 는 schema-structure.sql 소관).
 #  ※ 2026-10-22 과제 캘린더(구조 번호 16)로 cal_project_ 둘이 늘어 15 → 17 이 됐다(docs/PROJECT-CALENDAR-PLAN.md §4).
+#  ※ 2026-10-22 월간보고(구조 번호 17)로 project_schedule_image 하나가 늘어 17 → 18 이 됐다(docs/MONTHLY-REPORT-PLAN.md §6).
+#    이름이 cal_ 로 시작하지 않는 이 파일의 유일한 표다. 아래 $OWN_NON_CAL 에도 적는다.
 $DESIGN_TABLES = @(
   'cal_category','cal_entry','cal_entry_except','cal_entry_commit',
   'cal_todo','cal_todo_day_note','cal_task_hours',
   'cal_attendance','cal_report_daily','cal_report_hours','cal_report_weekly',
   'cal_user_pref','cal_user_rev','cal_migration_log','cal_schema_meta',
-  'cal_project_event','cal_project_change'
+  'cal_project_event','cal_project_change',
+  'project_schedule_image'
 )
+# schema-calendar.sql 이 만들고 지우는(그래서 grants-calendar.sql 이 권한을 주는) 표 가운데 이름이 cal_ 로 시작하지 않는 것.
+#   project_schedule_image: project 와 app_user 를 둘 다 FK 로 가리켜, 두 부모가 모두 선 뒤에 도는 이 파일에 둔다(MONTHLY-REPORT-PLAN §6.2).
+#   ★ 이름을 하나씩 적는다(와일드카드 금지). 아래 허용 목록과 GRANT 대조가 '이 파일의 표' 를 cal_* 와 이 목록의 합으로 본다.
+$OWN_NON_CAL = @('project_schedule_image')
 # FK 가 참조해도 되는 '기존' 표. 여기 없는 표를 스키마가 참조하면 시작조차 하지 않는다.
 #   project: 2026-10-22 과제 캘린더 표(cal_project_event, cal_project_change)가 project(id) 를 가리킨다.
 $ALLOWED_REF_TABLES = @('app_user','project')
@@ -326,7 +333,9 @@ foreach($s in $schemaStmts){
   $sc = Blank-SqlLiterals $s      # 키워드 판정은 리터럴을 비운 사본으로 한다(위 함수 주석 참조)
   if($s -match '^SET\s+NAMES\s+utf8mb4$'){ continue }
   if($s -match '^DROP\s+TABLE\s+IF\s+EXISTS\s+`?(cal_[A-Za-z0-9_]+)`?$'){ continue }
-  if($s -match '^CREATE\s+TABLE\s+`?(cal_[A-Za-z0-9_]+)`?\s*\('){
+  if($s -match '^DROP\s+TABLE\s+IF\s+EXISTS\s+`?([A-Za-z0-9_]+)`?$' -and $OWN_NON_CAL -contains $Matches[1]){ continue }
+  if(($s -match '^CREATE\s+TABLE\s+`?(cal_[A-Za-z0-9_]+)`?\s*\(') -or
+     ($s -match '^CREATE\s+TABLE\s+`?([A-Za-z0-9_]+)`?\s*\(' -and $OWN_NON_CAL -contains $Matches[1])){
     # CREATE TABLE 본문은 DDL 이라 다른 표를 쓸 수단이 없다. 다만 CREATE … SELECT 와
     # 트리거 동반 정의만은 형태로 걸러 둔다(있을 리 없지만 있으면 여기서 멈춰야 한다).
     if($sc -match '\bSELECT\b'){ Die "schema-calendar.sql 의 CREATE TABLE 에 SELECT 가 있습니다: $head" }
@@ -507,8 +516,9 @@ foreach($m in [regex]::Matches($schemaCode,'(?i)REFERENCES\s+`?([A-Za-z0-9_]+)`?
 $extTargets = @($fkTargets | Where-Object { $_ -notlike 'cal_*' })
 
 $grantTables  = @($expGrants.Keys)
-$calGranted   = @($grantTables | Where-Object { $_ -like 'cal_*' } | Sort-Object)
-$extGranted   = @($grantTables | Where-Object { $_ -notlike 'cal_*' } | Sort-Object)
+#  이 파일의 표 = cal_* 와 $OWN_NON_CAL. 그 표는 '정확히 일치', 나머지(기존 표)는 '포함' 으로 본다.
+$calGranted   = @($grantTables | Where-Object { $_ -like 'cal_*' -or $OWN_NON_CAL -contains $_ } | Sort-Object)
+$extGranted   = @($grantTables | Where-Object { $_ -notlike 'cal_*' -and $OWN_NON_CAL -notcontains $_ } | Sort-Object)
 # 스키마에는 있는데 GRANT 파일에 없는 cal_*. ★ 이제 예외가 하나도 없다 — 한 표라도 비면 Die 다.
 #   (옛날에는 cal_audit_trash 만 '일부러 0줄'이라 상수와 대조해야 했다. 그 표가 폐지되면서
 #    '빠진 것'과 '일부러 뺀 것'을 구분할 이유가 사라졌고, 검사는 이 한 줄로 줄었다.)

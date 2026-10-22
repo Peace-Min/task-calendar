@@ -19,6 +19,10 @@
 //   과제 캘린더 표 둘(v16 조각 migrations/v16-project-calendar.sql): CREATE TABLE IF NOT EXISTS 의 정의에서 열 수와 FK 수를 읽어
 //   표 모양(defs)으로 두고, information_schema.COLUMNS 와 REFERENTIAL_CONSTRAINTS 의 표별 COUNT(*) 하위 질의에 그 수로 답한다.
 //   출발 상태에 이미 있는 표의 모양은 FakeDb 의 defs 옵션으로 준다(모양을 모르는 표를 세면 '모르는 문장' 으로 실패한다).
+//   월간보고(v17 조각 migrations/v17-monthly-report.sql): project 표의 열 순서와 형(project 옵션, 기본은 v16 까지의 모양),
+//   ALTER TABLE project ADD COLUMN ... AFTER ..., ALGORITHM=INSTANT 와 ADD CONSTRAINT ... CHECK(이미 있으면 MySQL 처럼 오류로 멈춘다),
+//   information_schema.COLUMNS(이름, 형과 NULL 허용, 바로 앞 칸 자리)와 TABLE_CONSTRAINTS(CHECK 이름) 하위 질의,
+//   그리고 새 표 project_schedule_image 의 모양(defs, MEDIUMBLOB 열 포함).
 //
 // ★ *.test.mjs 가 아니다(러너가 수집하지 않는다. ps-guard-lib.mjs 머리말과 같은 이유).
 
@@ -181,7 +185,25 @@ const ROOM_COUNTS = {
 
 // ── 표 정의의 모양(v16): 열 수와 FK 수 ────────────────────────────────────
 //  CREATE TABLE 문 하나에서 괄호 안의 열 정의 줄(이름 + 형)과 FOREIGN KEY 를 센다. 정본과 조각의 정의를 같은 함수로 센다.
-const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|JSON|DECIMAL)\b/i;
+const COL_LINE = /^\s*[a-z_][a-z0-9_]*\s+(TINYINT|SMALLINT|INT|BIGINT|VARCHAR|CHAR|DATE|DATETIME|TIME|TEXT|MEDIUMTEXT|MEDIUMBLOB|JSON|DECIMAL)\b/i;
+//  표 모양을 세는(defs) 새 표: 과제 캘린더(v16)와 월간보고 그림 표(v17)
+const SHAPED = (n) => n.startsWith('cal_project_') || n === 'project_schedule_image';
+
+// ── project 표의 모양(v17): 열 순서, 형, NULL 허용과 CHECK 이름 ──────────────────
+//  정본 schema-structure.sql 의 v16 까지 모양. dev_start_date 는 v17 이 end_date 뒤에 넣는다.
+export const PROJECT_V16 = () => ({
+  cols: ['id:int', 'uid:char', 'section_id:smallint', 'customer_id:smallint', 'project_name:varchar', 'contract_name:varchar',
+    'common_name:varchar', 'start_date:date?', 'end_date:date?', 'dev_end_date:date?', 'status_id:smallint?', 'note:varchar',
+    'is_active:tinyint', 'created_at:datetime', 'updated_at:datetime'],
+  checks: ['chk_project_active'],
+});
+export const PROJECT_V17 = () => {
+  const p = PROJECT_V16();
+  p.cols.splice(p.cols.indexOf('end_date:date?') + 1, 0, 'dev_start_date:date?');
+  p.checks.push('chk_project_dev_dates');
+  return p;
+};
+const colOf = (c) => { const [name, t] = c.split(':'); return { name, type: t.replace('?', ''), nullable: t.endsWith('?') }; };
 export function defOf(createSql) {
   const open = createSql.indexOf('(');
   const close = createSql.lastIndexOf(') ENGINE=');
@@ -195,10 +217,11 @@ export function defOf(createSql) {
 //  tables: { cal_room: [{ user_id, name }], room_code: [{ name, sort_order }] } 처럼 있는 표만 준다(없는 키 = 없는 표).
 //  표 바꾸기도 writes 에 'table:<이름>' 으로 남긴다(다시 돌렸을 때 바뀐 것이 없는지 보려고).
 export class FakeDb {
-  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {} } = {}) {
+  constructor(meta, { tableExists = true, schema = 'taskcalendar', tables = {}, defs = {}, project = PROJECT_V16() } = {}) {
     this.rows = new Map(Object.entries(meta).map(([k, v]) => [k, { v, at: 0 }]));
     this.tables = Object.fromEntries(Object.entries(tables).map(([n, rs]) => [n, rs.map((r) => ({ ...r }))]));
     this.defs = Object.fromEntries(Object.entries(defs).map(([n, d]) => [n, { ...d }]));   // 표 이름 → { cols, fks }(v16 검증용)
+    this.project = { cols: [...project.cols], checks: [...project.checks] };                  // project 표 모양(v17 검증용)
     this.tableExists = tableExists;
     this.schema = schema;
     this.comment = '';
@@ -213,7 +236,7 @@ export class FakeDb {
   snap() { if (!this.tx) this.visible.push(this.state()); }
   meta() { return Object.fromEntries([...this.rows].map(([k, r]) => [k, r.v])); }
   //  meta 에 회의실 표 모양('#tables')을 붙인 것. 앱에 보인 상태 비교와 실패 뒤 재실행 결과 비교에 쓴다.
-  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()) }; }
+  state() { return { ...this.meta(), '#tables': JSON.stringify(this.tableShape()), '#project': JSON.stringify(this.project) }; }
   tableShape() {
     const out = {};
     for (const n of Object.keys(this.tables).sort()) {
@@ -255,6 +278,24 @@ export class FakeDb {
       if (!d) throw new Error(`모양을 모르는 표를 센다(defs 에 ${m[2]} 가 없다)`);
       return m[1].toUpperCase() === 'COLUMNS' ? d.cols : d.fks;
     }
+    //  v17: project 의 칸(이름만, 또는 형과 NULL 허용까지), 바로 앞 칸 자리, CHECK 이름
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS WHERE TABLE_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND COLUMN_NAME = '(\w+)'(?: AND DATA_TYPE = '(\w+)' AND IS_NULLABLE = '(YES|NO)')?$/.exec(s);
+    if (m) {
+      if (!this.schema) return 0;
+      const c = this.project.cols.map(colOf).find((x) => x.name === m[1]);
+      if (!c) return 0;
+      if (m[2] === undefined) return 1;
+      return c.type === m[2] && c.nullable === (m[3] === 'YES') ? 1 : 0;
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.COLUMNS a JOIN information_schema\.COLUMNS b ON b\.TABLE_SCHEMA = a\.TABLE_SCHEMA AND b\.TABLE_NAME = a\.TABLE_NAME AND b\.ORDINAL_POSITION = a\.ORDINAL_POSITION \+ 1 WHERE a\.TABLE_SCHEMA = DATABASE\(\) AND a\.TABLE_NAME = 'project' AND a\.COLUMN_NAME = '(\w+)' AND b\.COLUMN_NAME = '(\w+)'$/.exec(s);
+    if (m) {
+      if (!this.schema) return 0;
+      const names = this.project.cols.map((c) => colOf(c).name);
+      const i = names.indexOf(m[1]);
+      return i >= 0 && names[i + 1] === m[2] ? 1 : 0;
+    }
+    m = /^SELECT COUNT\(\*\) FROM information_schema\.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE\(\) AND TABLE_NAME = 'project' AND CONSTRAINT_NAME = '(\w+)' AND CONSTRAINT_TYPE = 'CHECK'$/.exec(s);
+    if (m) return this.schema && this.project.checks.includes(m[1]) ? 1 : 0;
     m = /^SELECT v FROM cal_schema_meta WHERE k = '([a-z_0-9]+)'$/.exec(s);
     if (m) return this.rows.has(m[1]) ? this.rows.get(m[1]).v : null;
     m = /^SELECT COUNT\(\*\) FROM cal_schema_meta WHERE k = '([a-z_0-9]+)'$/.exec(s);
@@ -307,7 +348,7 @@ export class FakeDb {
       this.mutating(s, opts);
       if (!this.hasTable(m[1])) {
         this.tables[m[1]] = [];
-        if (m[1].startsWith('cal_project_')) this.defs[m[1]] = defOf(s);
+        if (SHAPED(m[1])) this.defs[m[1]] = defOf(s);
         this.writes.push({ k: `table:${m[1]}`, v: 'create' });
       }
       return;
@@ -319,6 +360,26 @@ export class FakeDb {
       delete this.tables[m[1]];
       delete this.defs[m[1]];
       this.writes.push({ k: `table:${m[1]}`, v: 'drop' });
+      return;
+    }
+    //  v17: project 에 칸 하나(AFTER), CHECK 하나. 이미 있으면 MySQL 처럼 오류로 멈춘다(1060, 3822). 조각은 information_schema 로 건너뛴다.
+    if ((m = /^ALTER TABLE project ADD COLUMN (\w+) (DATE) NULL AFTER (\w+), ALGORITHM=INSTANT$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      const names = this.project.cols.map((c) => colOf(c).name);
+      if (names.includes(m[1])) throw new SqlStop(`1060 칸 ${m[1]} 이 이미 있다`);
+      const at = names.indexOf(m[3]);
+      if (at < 0) throw new SqlStop(`1054 칸 ${m[3]} 이 없다`);
+      this.project.cols.splice(at + 1, 0, `${m[1]}:${m[2].toLowerCase()}?`);
+      this.writes.push({ k: `col:project.${m[1]}`, v: 'add' });
+      return;
+    }
+    if ((m = /^ALTER TABLE project ADD CONSTRAINT (\w+) CHECK \(.+\)$/.exec(q))) {
+      if (this.tx) throw new Error('트랜잭션 안의 DDL(자동 확정된다)');
+      this.mutating(s, opts);
+      if (this.project.checks.includes(m[1])) throw new SqlStop(`3822 CHECK ${m[1]} 이 이미 있다`);
+      this.project.checks.push(m[1]);
+      this.writes.push({ k: `check:${m[1]}`, v: 'add' });
       return;
     }
     if (q === ROOM_INSERT) {

@@ -21,14 +21,17 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import * as D from './demo-data.mjs';
 
-export const SCHEMA_VERSION = '16';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
+export const SCHEMA_VERSION = '17';   // cal_schema_meta.db_structure_version(2026-10-21 부터, 옛 키 schema_version)
 export const LOGIN_RE = /^[A-Za-z0-9._@-]{1,50}$/;
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // 지우고 다시 채우는 cal_* 표(자식 먼저). cal_user_rev 는 지우지 않고 올린다(DELETE 금지 표). cal_schema_meta 는 그대로.
 // 과제 캘린더 두 표(2026-10-22, 구조 16)가 맨 앞이다. 공용 일정이 project 를 RESTRICT 로 붙들어 아래 DELETE FROM project 가
 //   막히지 않게 먼저 지운다. 데모는 공용 일정을 채우지 않는다.
+// 월간보고 개발 일정 그림(project_schedule_image, 구조 17)도 맨 앞이다. 과제를 지우면 CASCADE 로 함께 지워지지만 데모가 빌려 쓰는
+//   실제 사용자(app_user)를 등록자로 RESTRICT 로 붙들고 실제 그림 바이트가 데모에 남지 않게 먼저 비운다. 데모는 그림을 채우지 않는다.
 export const WIPE_TABLES = [
+  'project_schedule_image',
   'cal_project_change', 'cal_project_event',
   'cal_report_hours', 'cal_report_daily', 'cal_report_weekly',
   'cal_task_hours', 'cal_todo_day_note', 'cal_todo',

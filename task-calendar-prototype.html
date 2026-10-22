@@ -3277,11 +3277,11 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <div><label for="offEdStart">계약시작</label><input type="date" id="offEdStart"></div>
         <div><label for="offEdEnd">계약종료</label><input type="date" id="offEdEnd"></div>
       </div>
-      <!-- 개발종료일 — 계약종료일과 별개(개발 완료 목표·실제). 선진행이어도 잠그지 않는다(계약 전이어도 개발은 돈다).
-           빈 <div>는 2열 격자를 유지하려는 것 — 짝이 없으면 입력칸이 행 전체로 늘어나 위 두 행과 폭이 어긋난다. -->
+      <!-- 개발시작일과 개발종료일: 계약 날짜와 별개(개발 기간). 선진행이어도 잠그지 않는다(계약 전이어도 개발은 돈다).
+           개발시작일은 2026-10-22 월간보고(구조 17)의 과제 수행 기간 시작이다. 둘 다 있으면 시작이 종료보다 늦을 수 없다(호스트와 DB CHECK). -->
       <div class="row2">
+        <div><label for="offEdDevStart">개발시작</label><input type="date" id="offEdDevStart"></div>
         <div><label for="offEdDevEnd">개발종료</label><input type="date" id="offEdDevEnd"></div>
-        <div></div>
       </div>
       <label for="offEdNote">비고 <span class="git-opt">(관리 화면 전용 내부메모, 캘린더·보고서에는 안 보임)</span></label>
       <textarea id="offEdNote" rows="2" maxlength="500" autocomplete="off" placeholder="내부 참고용 메모 (선택)"></textarea>
@@ -6734,6 +6734,7 @@ function mapDbRows(arr){
       customer:String(r.customer || ''), section:String(r.section || ''), status:String(r.status || ''),
       customerId:codeIdOf(r.customerId), sectionId:codeIdOf(r.sectionId), statusId:codeIdOf(r.statusId),   // 상태 없음 = null
       startDate:String(r.start_date || ''), endDate:String(r.end_date || ''),
+      devStartDate:String(r.dev_start_date || ''),   // 개발시작일(구조 17). 월간보고 과제 수행 기간의 시작. 상세, 편집, Excel 에 쓰인다
       devEndDate:String(r.dev_end_date || ''),   // 개발종료일 — 계약종료일과 별개. 상세·편집·Excel 에만 쓰인다(목록 행은 폭 고정)
       projectName:String(r.project_name || ''), contractName:String(r.contract_name || ''),
       commonName:String(r.common_name || ''),   // 편집 폼이 '통상명칭 비어 있음'과 '사업명과 같음'을 구분해야 해서 원본도 보존
@@ -9809,7 +9810,7 @@ async function submitLogout(){
 // P3.5 단일 목록 모델: state.categories = 캘린더의 '유일한' 과제 목록. DB 유래 과제도 source:'db'로 여기에 함께 담기고 XML에 영속된다.
 // (이전의 이중 목록 — state.categories vs dbCatalog — 은 소비 지점 33곳 중 일부만 병합돼 필터바에 DB 과제가 안 뜨는 실버그를 낳았다.)
 // dbCatalog = DB 전체 목록(구독 후보) — 카탈로그 화면·재연결 select 전용. 사용자가 고른 것(구독)만 state.categories로 편입된다.
-let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, section, status, customerId, sectionId, statusId, startDate, endDate, devEndDate, projectName, contractName, commonName }]
+let dbCatalog = [];   // [{ id:'db-<uid>', name, color, source:'db', customer, section, status, customerId, sectionId, statusId, startDate, endDate, devStartDate, devEndDate, projectName, contractName, commonName }]
 /* ---------- 코드값 고정 번호(CODE-TABLE-IDS §3) ----------
    ★ 동작은 이름 글자가 아니라 이 번호로 판정한다. 이름은 관리 화면에서 바꿀 수 있고 바꿔도 동작은 그대로다.
    ★ 호스트에 같은 표가 한 벌 있다(widget/ProjectDb.cs 의 CodeIds). 시험(code-ids-app)이 둘을 대조한다.
@@ -12959,6 +12960,7 @@ function renderOfficialDetail(){
     +   `<dt>구분</dt><dd>${val(c.section)}</dd>`
     +   `<dt>상태</dt><dd><span class="off-st ${k}"><i class="off-dot ${k}" aria-hidden="true"></i>${st ? esc(st) : '-'}</span></dd>`
     +   `<dt>계약기간</dt><dd>${per ? `<span class="off-per">${esc(per)}</span>` : `<span class="off-mut">미정</span>`}</dd>`
+    +   `<dt>개발시작</dt><dd>${c.devStartDate ? esc(offDate(c.devStartDate)) : `<span class="off-mut">미정</span>`}</dd>`
     +   `<dt>개발종료</dt><dd>${c.devEndDate ? esc(offDate(c.devEndDate)) : `<span class="off-mut">미정</span>`}</dd>`
     + `</dl>`
     + `<div class="off-d-ref">참조 id: ${esc(c.id)}</div>`
@@ -13089,6 +13091,7 @@ function offExportRow(c){
     contractName: offTrim(o.contractName),
     startDate:    offDate(o.startDate),     // 'YYYY-MM-DD'만 통과(호스트가 진짜 날짜 셀로 기록)
     endDate:      offDate(o.endDate),
+    devStartDate: offDate(o.devStartDate), // 개발시작일(구조 17, 계약시작일과 별개)
     devEndDate:   offDate(o.devEndDate),   // 개발종료일(계약종료일과 별개)
     status:       offTrim(o.status),        // 상태 이름(표시 열)
     statusId:     codeIdOf(o.statusId),     // 호스트가 이 번호로 상태색 힌트를 단다(이름이 아니다 · CODE-TABLE-IDS §3)
@@ -13368,6 +13371,7 @@ function offEditOpen(id){
   set('offEdContract', c ? c.contractName : '');
   set('offEdStart', c ? offDate(c.startDate) : '');
   set('offEdEnd', c ? offDate(c.endDate) : '');
+  set('offEdDevStart', c ? offDate(c.devStartDate) : '');
   set('offEdDevEnd', c ? offDate(c.devEndDate) : '');
   set('offEdNote', c ? c.note : '');   // 비고(관리 전용 내부메모)
   offEdFillEnums(c ? c.sectionId : '', c ? c.statusId : '', c ? c.section : '', c ? c.status : '');
@@ -13393,6 +13397,7 @@ function offEdSaveNow(){
     commonName: val('offEdCommon'),
     startDate: val('offEdStart'),
     endDate: val('offEdEnd'),
+    devStartDate: val('offEdDevStart'),   // 개발시작일(구조 17). 개발종료일과 같이 선진행이어도 보낸다
     devEndDate: val('offEdDevEnd'),   // 선진행이어도 보낸다 — 잠금 대상이 아니다(offEdApplySectionRule 참조)
     statusId: idv('offEdStatus'),
     note: (document.getElementById('offEdNote') ? String(document.getElementById('offEdNote').value || '').trim() : ''),

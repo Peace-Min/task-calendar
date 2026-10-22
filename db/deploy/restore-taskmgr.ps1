@@ -717,7 +717,7 @@ if($targetExisted){
   $stamp = (Get-Date).ToString("yyyyMMdd-HHmmss")
   $prePath = Join-Path $BackupDir "pre-restore-$TargetDb-$stamp.sql"
   Info "대상 DB '$TargetDb' 가 이미 있습니다 — 덮어쓰기 전에 현재 내용을 먼저 뜹니다: $prePath"
-  & $mysqldump (AdminArgs) "--single-transaction" "--no-tablespaces" "--routines" "--triggers" "--result-file=$prePath" $TargetDb
+  & $mysqldump (AdminArgs) "--single-transaction" "--no-tablespaces" "--routines" "--triggers" "--hex-blob" "--result-file=$prePath" $TargetDb   # --hex-blob: 그림 바이트(구조 17)
   $rc = $LASTEXITCODE
   if($rc -ne 0 -or -not (Test-Path $prePath)){
     Die "복구 전 안전 덤프에 실패했습니다(mysqldump exit=$rc). 되돌릴 수단 없이 덮어쓰지 않습니다: $prePath" $EXIT_CONFIG

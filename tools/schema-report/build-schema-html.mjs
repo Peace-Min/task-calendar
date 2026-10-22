@@ -59,6 +59,7 @@ function keyNote(n) {
     case 'room_code':    return `번호(${pkCols(n)})가 기본키이고 이름(name)은 UNIQUE 라벨이다. 회사 공용 회의실 목록이다(2026-10-21, 사람마다 두던 cal_room 을 대신한다). 어떤 표도 이 번호를 가리키지 않는다. 일정의 장소는 글자라서 숨김과 휴지통 없이 바로 지운다. 관리자만 고친다.`;
     case 'cal_project_event':  return `번호(${pkCols(n)})가 기본키이고 uid 는 웹이 만든 안정 id(UNIQUE, 생성 재시도의 멱등 키)다. 이력이 이 번호를 가리킨다. 행을 지우지 않고 is_deleted 로 숨긴다(2026-10-22, 구조 16).`;
     case 'cal_project_change': return `번호(${pkCols(n)})가 기본키다. 정렬과 커서가 이 번호에 기댄다. (project_id, mutation_uid) UNIQUE 가 응답 유실 뒤 재시도의 멱등 키다. 지우지 않는 기록이다(2026-10-22, 구조 16).`;
+    case 'project_schedule_image': return `번호(${pkCols(n)})가 기본키다. (project_id, seq) UNIQUE 가 과제 안 순서다. 과제(project.id)를 CASCADE 로, 등록한 사람(app_user.user_id)을 RESTRICT 로 가리킨다. 그림은 과제에 딸린 공용 데이터라 과제와 함께 지워지고, 그림을 올린 계정은 기록이 있는 계정이 된다(2026-10-22, 구조 17).`;
     case 'cal_schema_meta': return `문자열 ${pkCols(n)} 가 키인 이유: 행이 버전 관문 키 다섯 개(db_structure_version 등)뿐인 설정 표이고 앱은 늘 k 로 찾는다. 가리키는 외래키가 없다. 번호를 붙여도 k 에 UNIQUE 를 또 걸어야 한다.`;
     default: return '';
   }
@@ -178,6 +179,7 @@ const MIGRATIONS = [
   ['10-15', '코드표 번호 키(v13)', 'customer, section_code, status_code, title_code 의 기본키를 이름에서 번호(SMALLINT UNSIGNED)로 옮기고 이름은 UNIQUE 라벨로 남겼다. 자식은 project.customer_id, section_id, status_id 와 app_user.title_id 이고 외래키는 ON UPDATE RESTRICT, ON DELETE RESTRICT. 동작이 묶인 코드값은 고정 번호(구분 2 선진행, 상태 2 종료)로 판정하고 그 두 행은 숨기거나 지울 수 없다. 데이터가 있는 DB 는 migrate-2026-10-15-code-ids.sql, 새 서버는 setup-taskcalendar.'],
   ['10-21', '회의실 공용화(v15)', '사람마다 두던 cal_room 을 지우고 회사 공용 room_code(번호 키, name UNIQUE)를 두었다. 모든 사용자의 이름을 모아(앞뒤 공백 정리, 중복 제거) 넣었다. 관리자만 고치고, 일정의 장소는 글자라 외래키가 없다. 이관 조각 db/deploy/migrations/v15-shared-rooms.sql.'],
   ['10-22', '과제 캘린더(v16)', '공식 과제마다 공용 캘린더를 두는 새 표 둘을 더했다: cal_project_event(과제 일정, 소프트 삭제, row_version), cal_project_change(바뀐 필드만 담는 지우지 않는 이력). 과제별 감시점 표는 없다(동시 수정은 일정의 row_version, 재시도는 이력의 mutation_uid UNIQUE). 개인 일정에 등록은 한 번 찍는 사본이라 대응표가 없다. 외래키는 번호(project.id, event_id)를 가리키고 사람은 이름 글자로만 남긴다. 두 표 모두 앱 계정에 DELETE 가 없다. 이관 조각 db/deploy/migrations/v16-project-calendar.sql.'],
+  ['10-22', '월간보고(v17)', 'project 에 개발시작일(dev_start_date, end_date 와 dev_end_date 사이)과 개발 기간 순서 CHECK 를 더하고, 과제별 개발 일정 그림 표 project_schedule_image(바이트 MEDIUMBLOB, 과제 CASCADE, 등록자 RESTRICT)를 만들었다. 백업은 --hex-blob 으로 뜬다. 이관 조각 db/deploy/migrations/v17-monthly-report.sql.'],
 ];
 
 const html = `<!DOCTYPE html>

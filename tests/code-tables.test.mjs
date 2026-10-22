@@ -169,7 +169,8 @@ const checks = {
   noteWiredPerScope(pdb) {
     const up = csSlice(pdb, 'public async Task<(bool ok, string msg, bool needConfirm)> UpsertProjectAsync',
                             'private static async Task<(string pn, string cn, string cust)?> FindSimilarActiveAsync');
-    assert.ok(/INSERT INTO project \(section_id, customer_id, project_name, contract_name, common_name, [\s\S]{0,80}status_id, note\)/.test(up),
+    //  {0,120}: 2026-10-22 개발시작일(dev_start_date) 칸이 INSERT 열 목록에 늘었다(구조 17).
+    assert.ok(/INSERT INTO project \(section_id, customer_id, project_name, contract_name, common_name, [\s\S]{0,120}status_id, note\)/.test(up),
       'UpsertProjectAsync 의 INSERT 에 note 가 없다');
     assert.ok(/status_id=@st, note=@note WHERE uid=@uid/.test(up), 'UpsertProjectAsync 의 UPDATE 에 note 가 없다');
     const bind = csSlice(pdb, 'private static void BindProject',
@@ -325,7 +326,7 @@ test('호스트: UpsertProjectAsync — note 파라미터 + 코드테이블 로�
   assert.ok(!/Array\.IndexOf\(Sections|Array\.IndexOf\(Statuses/.test(projectDb), '하드코딩 배열 검증이 남아 있다');
 });
 test('호스트: INSERT/UPDATE/SELECT에 note 반영', () => {
-  assert.ok(/INSERT INTO project \(section_id, customer_id, project_name, contract_name, common_name, [\s\S]{0,80}status_id, note\)/.test(projectDb), 'INSERT에 note가 없다');
+  assert.ok(/INSERT INTO project \(section_id, customer_id, project_name, contract_name, common_name, [\s\S]{0,120}status_id, note\)/.test(projectDb), 'INSERT에 note가 없다');   // {0,120}: 개발시작일 칸(구조 17)
   assert.ok(/status_id=@st, note=@note WHERE uid=@uid/.test(projectDb), 'UPDATE에 note가 없다');
   assert.ok(/p\.status_id, p\.note, p\.is_active /.test(projectDb), 'SELECT에 note가 없다');
   assert.ok(/AddWithValue\("@note", nt\)/.test(projectDb), 'note 바인딩이 없다');
