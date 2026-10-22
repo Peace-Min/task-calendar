@@ -49,7 +49,8 @@ const GROUPS = [
   { label: '과제', ko: '무엇을 하는가', sections: [
     { id: 'project', tables: ['project'] },
     { id: 'customer', tables: ['customer'] },
-    { id: 'codes', tables: ['section_code', 'status_code'] },
+    { id: 'codes', tables: ['section_code', 'status_code', 'room_code'] },
+    { id: 'project_schedule_image', tables: ['project_schedule_image'] },
   ] },
   { label: '사용자·조직', ko: '누가 무엇을 할 수 있는가', sections: [
     { id: 'people', tables: [] },

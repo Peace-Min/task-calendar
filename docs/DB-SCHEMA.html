@@ -160,10 +160,10 @@ footer p{margin:0 0 4px; max-width:none}
   <li>데이터베이스 <b>taskcalendar</b></li>
   <li>엔진 <b>MySQL 8.4.9 / InnoDB</b></li>
   <li>문자셋 <b>utf8mb4_0900_ai_ci</b></li>
-  <li>표 <b>23</b> <span class="ko">과제 4, 사용자·조직 3, 캘린더 16</span></li>
-  <li>컬럼 <b>179</b>, 외래키 <b>25</b>, CHECK <b>44</b></li>
-  <li>schema_version <b>13</b></li>
-  <li>기준 <b>2026-10-15</b></li>
+  <li>표 <b>26</b> <span class="ko">과제 6, 사용자·조직 3, 캘린더 17</span></li>
+  <li>컬럼 <b>219</b>, 외래키 <b>29</b>, CHECK <b>56</b></li>
+  <li>db_structure_version <b>17</b></li>
+  <li>기준 <b>2026-10-22</b></li>
 </ul>
 <!-- GEN:FACTS:END -->
 
@@ -213,7 +213,7 @@ footer p{margin:0 0 4px; max-width:none}
 </section>
 
 <!-- GEN:TABLES:START -->
-<p class="grp">과제 <span class="ko">4표: 무엇을 하는가</span></p>
+<p class="grp">과제 <span class="ko">6표: 무엇을 하는가</span></p>
 
 <section id="project">
 <!-- PROSE:project.head -->
@@ -237,7 +237,8 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">common_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note"><span class="star">★</span> <b>통상명칭: 화면과 보고서에 실제로 찍히는 이름.</b> 비어 있으면 사업명이 대신 쓰입니다. 보고서 집계가 사업부 관리 명칭과 맞아야 하므로 이 칸을 채워두는 것이 중요합니다.</td></tr>
 <tr><td class="col">start_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span></td><td class="note">계약 시작일. 계약 전(선진행)이면 비웁니다.</td></tr>
 <tr><td class="col">end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span></td><td class="note">계약 종료일.</td></tr>
-<tr><td class="col">dev_end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span></td><td class="note">개발종료일. 계약종료일과 별개(개발 완료 목표·실제). 선진행이어도 입력할 수 있습니다.</td></tr>
+<tr><td class="col">dev_start_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note">개발시작일. 월간보고의 과제 수행 기간 시작(2026-10-22, 구조 17). 계약시작일과 별개이고, 개발종료일과 둘 다 있으면 종료보다 늦을 수 없습니다(CHECK).</td></tr>
+<tr><td class="col">dev_end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note">개발종료일. 계약종료일과 별개(개발 완료 목표·실제). 선진행이어도 입력할 수 있습니다.</td></tr>
 <tr><td class="col">status_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note">상태 번호. <code>status_code.status_id</code>를 가리킵니다. 비어 있으면(상태 없음, 선진행 등) 외래키 검사를 건너뜁니다.</td></tr>
 <tr><td class="col">note</td><td class="type">VARCHAR(500)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note">비고. <b>관리 화면에서만</b> 보이는 내부 메모. 캘린더·보고서에는 나오지 않습니다.</td></tr>
 <tr><td class="col">is_active</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 1</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note">1=사용, 0=숨김. <b>앱에서 지우면 이 값만 0이 되고 행은 남습니다</b>(되돌릴 수 있음).</td></tr>
@@ -247,7 +248,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 <p class="sub">인덱스: <code>is_active</code> <span class="ko">ix_project_active</span>, <code>customer_id</code> <span class="ko">ix_project_customer_id</span>, <code>section_id</code> <span class="ko">ix_project_section_id</span>, <code>status_id</code> <span class="ko">ix_project_status_id</span>, UNIQUE <code>uid</code> <span class="ko">uq_project_uid</span></p>
-<p class="sub">CHECK 1개: <code>chk_project_active</code> <code>(`is_active` in (0,1))</code></p>
+<p class="sub">CHECK 2개: <code>chk_project_active</code> <code>(`is_active` in (0,1))</code>, <code>chk_project_dev_dates</code> <code>((`dev_start_date` is null) or (`dev_end_date` is null) or (`dev_start_date` &lt;= `dev_end_date`))</code></p>
 
 <!-- PROSE:project.after -->
 <div class="callout">
@@ -281,7 +282,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 <p class="sub">인덱스: UNIQUE <code>name</code> <span class="ko">uq_customer_name</span></p>
-<p class="sub">CHECK 2개: <code>chk_customer_name</code> <code>(`name` &lt;&gt; '')</code>, <code>chk_customer_active</code> <code>(`is_active` in (0,1))</code></p>
+<p class="sub">CHECK 2개: <code>chk_customer_active</code> <code>(`is_active` in (0,1))</code>, <code>chk_customer_name</code> <code>(`name` &lt;&gt; '')</code></p>
 </section>
 
 <section id="codes">
@@ -330,6 +331,23 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">인덱스: UNIQUE <code>name</code> <span class="ko">uq_status_code_name</span></p>
 <p class="sub">CHECK 2개: <code>chk_status_code_active</code> <code>(`is_active` in (0,1))</code>, <code>chk_status_code_name</code> <code>(`name` &lt;&gt; '')</code></p>
 
+<h3><span class="tname">room_code</span> <span class="ko">회의실 코드</span></h3>
+
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">room_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k">AUTO_INC</span></td><td class="note auto">기본키입니다. 번호는 DB가 발급합니다.</td></tr>
+<tr><td class="col">name</td><td class="type">VARCHAR(40)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">값이 유일해야 합니다. 필수입니다. <code>chk_room_code_name</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">sort_order</td><td class="type">INT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다.</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 CURRENT_TIMESTAMP(3)</span></td><td class="note auto">필수입니다. 기본값은 <code>CURRENT_TIMESTAMP(3)</code>입니다. 행을 고치면 자동으로 갱신됩니다.</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub">인덱스: UNIQUE <code>name</code> <span class="ko">uq_room_code_name</span></p>
+<p class="sub">CHECK 1개: <code>chk_room_code_name</code> <code>(`name` &lt;&gt; '')</code></p>
+
 <!-- PROSE:codes.after -->
 <div class="callout" id="key-policy">
 <h4>키 정책 요약: 외래키가 가리키는 기본키는 번호입니다</h4>
@@ -353,6 +371,32 @@ footer p{margin:0 0 4px; max-width:none}
 </div>
 <p class="sub">예전에는 이 값들을 컬럼 정의(<code>ENUM</code>) 안에 박아 두어 바꾸려면 스키마를 고치고 앱을 다시 배포해야 했습니다. 지금은 표의 <b>행</b>이라 발주처와 똑같이 앱에서 다룹니다.</p>
 <!-- /PROSE:codes.after -->
+</section>
+
+<section id="project_schedule_image">
+<h2><span class="tname">project_schedule_image</span> <span class="ko">과제별 개발 일정 그림(월간보고)</span></h2>
+
+<p class="sub">DB 주석: 과제 삭제 때 함께 지워진다. 등록자는 RESTRICT. 앱이 과제당 5장, 장당 5MB 로 막는다.</p>
+
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">id</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span><span class="k">AUTO_INC</span></td><td class="note">그림 번호(기본키).</td></tr>
+<tr><td class="col">project_id</td><td class="type">INT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k fk">FK</span><span class="k nn">NOT NULL</span></td><td class="note">과제 번호. <code>project.id</code> 를 가리킵니다. <b>과제를 지우면 그림도 함께 지워집니다</b>(CASCADE).</td></tr>
+<tr><td class="col">seq</td><td class="type">TINYINT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">과제 안 순서(1부터). 지우면 1부터 다시 매깁니다. 과제당 5장까지(앱).</td></tr>
+<tr><td class="col">mime</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">image/png 또는 image/jpeg 만 들어갑니다(CHECK).</td></tr>
+<tr><td class="col">bytes</td><td class="type">MEDIUMBLOB</td><td><span class="k nn">NOT NULL</span></td><td class="note">그림 원본. 장당 5MB까지(앱). 백업은 mysqldump --hex-blob 으로 뜹니다.</td></tr>
+<tr><td class="col">width_px</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">가로 화소. 문서에 넣을 때 비율 계산에 씁니다.</td></tr>
+<tr><td class="col">height_px</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">세로 화소.</td></tr>
+<tr><td class="col">sha256</td><td class="type">CHAR(64)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">바이트의 SHA-256(소문자 16진수). PC 사본(앱 데이터 폴더의 schedule-images)이 같은지 이 값으로 봅니다.</td></tr>
+<tr><td class="col">uploaded_by</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">등록한 사람. <code>app_user.user_id</code> 를 RESTRICT 로 가리킵니다. 그림을 올린 계정은 휴지통에서 지우지 않고 퇴사(숨김)로만 둡니다.</td></tr>
+<tr><td class="col">uploaded_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(UTC).</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub">인덱스: <code>uploaded_by</code> <span class="ko">ix_project_schedule_image_uploader</span>, UNIQUE <code>project_id, seq</code> <span class="ko">uq_project_schedule_image_seq</span></p>
+<p class="sub">CHECK 4개: <code>chk_project_schedule_image_mime</code> <code>(`mime` in ('image/png','image/jpeg'))</code>, <code>chk_project_schedule_image_seq</code> <code>(`seq` &gt;= 1)</code>, <code>chk_project_schedule_image_size</code> <code>((`width_px` &gt;= 1) and (`height_px` &gt;= 1))</code>, <code>chk_project_schedule_image_sha</code> <code>regexp_like(`sha256`,'^[0-9a-f]{64}$')</code></p>
 </section>
 
 <p class="grp">사용자·조직 <span class="ko">3표: 누가 무엇을 할 수 있는가</span></p>
@@ -437,7 +481,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 <p class="sub">인덱스: <code>org_id</code> <span class="ko">fk_user_org_id</span>, <code>is_active</code> <span class="ko">ix_user_active</span>, <code>title_id</code> <span class="ko">ix_user_title_id</span>, UNIQUE <code>login_id</code> <span class="ko">uq_app_user_login_id</span></p>
-<p class="sub">CHECK 2개: <code>chk_view_scope</code> <code>(`view_scope` in ('self','unit_tree','all'))</code>, <code>chk_edit_role</code> <code>(`edit_role` in ('viewer','editor','admin'))</code></p>
+<p class="sub">CHECK 2개: <code>chk_edit_role</code> <code>(`edit_role` in ('viewer','editor','admin'))</code>, <code>chk_view_scope</code> <code>(`view_scope` in ('self','unit_tree','all'))</code></p>
 
 <!-- PROSE:app_user.after -->
 <div class="callout warn">
@@ -529,7 +573,7 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">CHECK 2개: <code>chk_title_code_active</code> <code>(`is_active` in (0,1))</code>, <code>chk_title_code_name</code> <code>(`name` &lt;&gt; '')</code></p>
 </section>
 
-<p class="grp">캘린더 <span class="ko">16표: 개인 일정, 할 일, 근태, 보고</span></p>
+<p class="grp">캘린더 <span class="ko">17표: 개인 일정, 할 일, 근태, 보고</span></p>
 
 <section id="calendar">
 <!-- PROSE:calendar.head -->
@@ -560,7 +604,7 @@ footer p{margin:0 0 4px; max-width:none}
 </tbody>
 </table>
 </div>
-<p class="sub">CHECK 2개: <code>chk_cal_attendance_status</code> <code>((`status` in ('1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code>, <code>chk_cal_attendance_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code></p>
+<p class="sub">CHECK 2개: <code>chk_cal_attendance_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code>, <code>chk_cal_attendance_status</code> <code>((`status` in ('1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code></p>
 </section>
 
 <section id="cal_category">
@@ -574,8 +618,8 @@ footer p{margin:0 0 4px; max-width:none}
 <tbody>
 <tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k uq">UNIQUE</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, cat_no)</code>의 일부입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. <code>(user_id, uid)</code> 조합이 유일해야 합니다.</td></tr>
 <tr class="pk"><td class="col">cat_no</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span></td><td class="note auto">기본키 <code>(user_id, cat_no)</code>의 일부입니다.</td></tr>
-<tr><td class="col">uid</td><td class="type">VARCHAR(80)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto"><code>(user_id, uid)</code> 조합이 유일해야 합니다. 필수입니다. <code>chk_cal_category_uid</code> 제약이 걸려 있습니다. <code>chk_cal_category_projuid</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">source</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 local</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>local</code>입니다. 허용값은 <code>local</code>, <code>db</code>뿐입니다. <code>chk_cal_category_projuid</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">uid</td><td class="type">VARCHAR(80)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto"><code>(user_id, uid)</code> 조합이 유일해야 합니다. 필수입니다. <code>chk_cal_category_projuid</code> 제약이 걸려 있습니다. <code>chk_cal_category_uid</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">source</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 local</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>local</code>입니다. <code>chk_cal_category_projuid</code> 제약이 걸려 있습니다. 허용값은 <code>local</code>, <code>db</code>뿐입니다.</td></tr>
 <tr><td class="col">name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr><td class="col">color</td><td class="type">CHAR(7)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 #5b6b7d</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>#5b6b7d</code>입니다. <code>chk_cal_category_color</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">description</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
@@ -588,7 +632,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 <p class="sub">인덱스: <code>user_id, sort_order</code> <span class="ko">ix_cal_category_user_sort</span>, UNIQUE <code>user_id, uid</code> <span class="ko">uq_cal_category_uid</span></p>
-<p class="sub">CHECK 5개: <code>chk_cal_category_source</code> <code>(`source` in ('local','db'))</code>, <code>chk_cal_category_color</code> <code>regexp_like(`color`,'^#[0-9a-fA-F]{6}$')</code>, <code>chk_cal_category_uid</code> <code>(`uid` &lt;&gt; '')</code>, <code>chk_cal_category_usesrepo01</code> <code>(`uses_repo` in (0,1))</code>, <code>chk_cal_category_projuid</code> <code>(((`source` = 'db') and (`project_uid` is not null) and (char_length(`uid`) = 39) and (substr(`uid`,1,3) = 'db-') and ((`project_uid` collate utf8mb4_0900_bin) = substr(`uid`,4))) or ((`source` = 'local') and (`project_uid` is null)))</code></p>
+<p class="sub">CHECK 5개: <code>chk_cal_category_color</code> <code>regexp_like(`color`,'^#[0-9a-fA-F]{6}$')</code>, <code>chk_cal_category_projuid</code> <code>(((`source` = 'db') and (`project_uid` is not null) and (char_length(`uid`) = 39) and (substr(`uid`,1,3) = 'db-') and ((`project_uid` collate utf8mb4_0900_bin) = substr(`uid`,4))) or ((`source` = 'local') and (`project_uid` is null)))</code>, <code>chk_cal_category_source</code> <code>(`source` in ('local','db'))</code>, <code>chk_cal_category_uid</code> <code>(`uid` &lt;&gt; '')</code>, <code>chk_cal_category_usesrepo01</code> <code>(`uses_repo` in (0,1))</code></p>
 </section>
 
 <section id="cal_entry">
@@ -606,15 +650,15 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">cat_no</td><td class="type">INT UNSIGNED</td><td><span class="k fk">FK</span><span class="k">NULL 허용</span><span class="k ix">INDEX</span></td><td class="note auto"><code>cal_category</code>의 <code>(user_id, cat_no)</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. 비워 둘 수 있습니다.</td></tr>
 <tr><td class="col">entry_date</td><td class="type">DATE</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다. <code>chk_cal_entry_enddate</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_enddate</code> 제약이 걸려 있습니다. <code>chk_cal_entry_git</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">all_day</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. 허용값은 <code>0</code>, <code>1</code>뿐입니다. <code>chk_cal_entry_allday</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">all_day</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. <code>chk_cal_entry_allday</code> 제약이 걸려 있습니다. 허용값은 <code>0</code>, <code>1</code>뿐입니다.</td></tr>
 <tr><td class="col">start_time</td><td class="type">TIME</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_allday</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">end_time</td><td class="type">TIME</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_allday</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">title</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
 <tr><td class="col">memo</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
-<tr><td class="col">source</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다. 허용값은 <code></code>, <code>git</code>뿐입니다. <code>chk_cal_entry_git</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">source</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다. <code>chk_cal_entry_git</code> 제약이 걸려 있습니다. 허용값은 <code></code>, <code>git</code>뿐입니다.</td></tr>
 <tr><td class="col">location</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
 <tr><td class="col">remind</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_remind</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">recur_freq</td><td class="type">VARCHAR(8)</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. 허용값은 <code>weekly</code>, <code>monthly</code>뿐입니다. <code>chk_cal_entry_git</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">recur_freq</td><td class="type">VARCHAR(8)</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_git</code> 제약이 걸려 있습니다. 허용값은 <code>weekly</code>, <code>monthly</code>뿐입니다.</td></tr>
 <tr><td class="col">recur_interval</td><td class="type">INT UNSIGNED</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_recur</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">recur_until</td><td class="type">CHAR(10)</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_recur</code> 제약이 걸려 있습니다. <code>chk_cal_entry_until</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">recur_count</td><td class="type">INT UNSIGNED</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_entry_recur</code> 제약이 걸려 있습니다.</td></tr>
@@ -625,7 +669,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 <p class="sub">인덱스: <code>user_id, cat_no</code> <span class="ko">ix_cal_entry_user_cat</span>, <code>user_id, entry_date</code> <span class="ko">ix_cal_entry_user_date</span>, UNIQUE <code>user_id, uid</code> <span class="ko">uq_cal_entry_uid</span></p>
-<p class="sub">CHECK 9개: <code>chk_cal_entry_uid</code> <code>(`uid` &lt;&gt; '')</code>, <code>chk_cal_entry_source</code> <code>(`source` in ('','git'))</code>, <code>chk_cal_entry_allday01</code> <code>(`all_day` in (0,1))</code>, <code>chk_cal_entry_enddate</code> <code>((`end_date` is null) or (`end_date` &gt; `entry_date`))</code>, <code>chk_cal_entry_allday</code> <code>((`all_day` = 0) or ((`start_time` is null) and (`end_time` is null)))</code>, <code>chk_cal_entry_remind</code> <code>((`remind` is null) or (`remind` between 0 and 10080))</code>, <code>chk_cal_entry_recur</code> <code>(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in ('weekly','monthly')) and (`recur_interval` is not null) and (`recur_interval` &gt;= 1) and (`recur_count` is not null) and (`recur_count` &gt;= 0)))</code>, <code>chk_cal_entry_until</code> <code>((`recur_until` is null) or regexp_like(`recur_until`,'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))</code>, <code>chk_cal_entry_git</code> <code>((`source` &lt;&gt; 'git') or ((`end_date` is null) and (`recur_freq` is null)))</code></p>
+<p class="sub">CHECK 9개: <code>chk_cal_entry_allday</code> <code>((`all_day` = 0) or ((`start_time` is null) and (`end_time` is null)))</code>, <code>chk_cal_entry_allday01</code> <code>(`all_day` in (0,1))</code>, <code>chk_cal_entry_enddate</code> <code>((`end_date` is null) or (`end_date` &gt; `entry_date`))</code>, <code>chk_cal_entry_git</code> <code>((`source` &lt;&gt; 'git') or ((`end_date` is null) and (`recur_freq` is null)))</code>, <code>chk_cal_entry_recur</code> <code>(((`recur_freq` is null) and (`recur_interval` is null) and (`recur_count` is null) and (`recur_until` is null)) or ((`recur_freq` is not null) and (`recur_freq` in ('weekly','monthly')) and (`recur_interval` is not null) and (`recur_interval` &gt;= 1) and (`recur_count` is not null) and (`recur_count` &gt;= 0)))</code>, <code>chk_cal_entry_remind</code> <code>((`remind` is null) or (`remind` between 0 and 10080))</code>, <code>chk_cal_entry_source</code> <code>(`source` in ('','git'))</code>, <code>chk_cal_entry_uid</code> <code>(`uid` &lt;&gt; '')</code>, <code>chk_cal_entry_until</code> <code>((`recur_until` is null) or regexp_like(`recur_until`,'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))</code></p>
 </section>
 
 <section id="cal_entry_commit">
@@ -685,6 +729,65 @@ footer p{margin:0 0 4px; max-width:none}
 </div>
 </section>
 
+<section id="cal_project_change">
+<h2><span class="tname">cal_project_change</span> <span class="ko">과제 일정 변경 이력(지우지 않는 기록)</span></h2>
+
+<p class="sub">DB 주석: 한 저장의 바뀐 필드만 한 행. 바뀐 것이 없으면 행이 없다.</p>
+
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">change_no</td><td class="type">BIGINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k">AUTO_INC</span><span class="k ix">INDEX</span></td><td class="note auto">기본키입니다. 번호는 DB가 발급합니다.</td></tr>
+<tr><td class="col">project_id</td><td class="type">INT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note auto"><code>project.id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. <code>(project_id, mutation_uid)</code> 조합이 유일해야 합니다. 필수입니다.</td></tr>
+<tr><td class="col">event_id</td><td class="type">INT UNSIGNED</td><td><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note auto"><code>cal_project_event.event_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. 필수입니다.</td></tr>
+<tr><td class="col">mutation_uid</td><td class="type">CHAR(36)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto"><code>(project_id, mutation_uid)</code> 조합이 유일해야 합니다. 필수입니다. <code>chk_cal_project_change_mutation</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">action</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 허용값은 <code>create</code>, <code>update</code>, <code>delete</code>뿐입니다.</td></tr>
+<tr><td class="col">actor_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">title_snapshot</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">before_json</td><td class="type">JSON</td><td><span class="k">NULL 허용</span></td><td class="note auto">비워 둘 수 있습니다.</td></tr>
+<tr><td class="col">after_json</td><td class="type">JSON</td><td><span class="k">NULL 허용</span></td><td class="note auto">비워 둘 수 있습니다.</td></tr>
+<tr><td class="col">changed_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다.</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub">인덱스: <code>event_id, changed_at, change_no</code> <span class="ko">ix_cal_project_change_event</span>, <code>project_id, changed_at, change_no</code> <span class="ko">ix_cal_project_change_project</span>, UNIQUE <code>project_id, mutation_uid</code> <span class="ko">uq_cal_project_change_mutation</span></p>
+<p class="sub">CHECK 2개: <code>chk_cal_project_change_mutation</code> <code>(`mutation_uid` &lt;&gt; '')</code>, <code>chk_cal_project_change_action</code> <code>(`action` in ('create','update','delete'))</code></p>
+</section>
+
+<section id="cal_project_event">
+<h2><span class="tname">cal_project_event</span> <span class="ko">과제 일정(과제 캘린더 공용 트랙)</span></h2>
+
+<p class="sub">DB 주석: PK=event_id, 웹과의 정체성은 uid. 소프트 삭제, row_version 낙관적 잠금.</p>
+
+<div class="tw">
+<table>
+<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
+<tbody>
+<tr class="pk"><td class="col">event_id</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span><span class="k">AUTO_INC</span><span class="k ix">INDEX</span></td><td class="note auto">기본키입니다. 번호는 DB가 발급합니다.</td></tr>
+<tr><td class="col">uid</td><td class="type">CHAR(36)</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">값이 유일해야 합니다. 필수입니다. <code>chk_cal_project_event_uid</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">project_id</td><td class="type">INT UNSIGNED</td><td><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note auto"><code>project.id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다. 필수입니다.</td></tr>
+<tr><td class="col">title</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. <code>chk_cal_project_event_title</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">start_date</td><td class="type">DATE</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다. <code>chk_cal_project_event_enddate</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_project_event_enddate</code> 제약이 걸려 있습니다. <code>chk_cal_project_event_time</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">start_time</td><td class="type">TIME</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_project_event_time</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">end_time</td><td class="type">TIME</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_project_event_time</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">location</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
+<tr><td class="col">memo</td><td class="type">TEXT</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">row_version</td><td class="type">BIGINT UNSIGNED</td><td><span class="k nn">NOT NULL</span><span class="k">기본 1</span></td><td class="note auto">필수입니다. 기본값은 <code>1</code>입니다.</td></tr>
+<tr><td class="col">is_deleted</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. 허용값은 <code>0</code>, <code>1</code>뿐입니다.</td></tr>
+<tr><td class="col">created_by_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">updated_by_name</td><td class="type">VARCHAR(200)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr class="audit"><td class="col">created_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note auto">필수입니다.</td></tr>
+<tr class="audit"><td class="col">updated_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다.</td></tr>
+<tr><td class="col">deleted_at</td><td class="type">DATETIME(3)</td><td><span class="k">NULL 허용</span></td><td class="note auto">비워 둘 수 있습니다.</td></tr>
+</tbody>
+</table>
+</div>
+<p class="sub">인덱스: <code>project_id, is_deleted, start_date, end_date</code> <span class="ko">ix_cal_project_event_range</span>, <code>project_id, updated_at, event_id</code> <span class="ko">ix_cal_project_event_updated</span>, UNIQUE <code>uid</code> <span class="ko">uq_cal_project_event_uid</span></p>
+<p class="sub">CHECK 5개: <code>chk_cal_project_event_deleted</code> <code>(`is_deleted` in (0,1))</code>, <code>chk_cal_project_event_enddate</code> <code>((`end_date` is null) or (`end_date` &gt; `start_date`))</code>, <code>chk_cal_project_event_time</code> <code>(((`start_time` is null) and (`end_time` is null)) or ((`end_date` is null) and (`start_time` is not null) and (`end_time` is not null) and (`end_time` &gt; `start_time`)))</code>, <code>chk_cal_project_event_title</code> <code>(`title` &lt;&gt; '')</code>, <code>chk_cal_project_event_uid</code> <code>(`uid` &lt;&gt; '')</code></p>
+</section>
+
 <section id="cal_report_daily">
 <h2><span class="tname">cal_report_daily</span> <span class="ko">캘린더가 보낸 일간보고</span></h2>
 
@@ -705,7 +808,7 @@ footer p{margin:0 0 4px; max-width:none}
 </tbody>
 </table>
 </div>
-<p class="sub">CHECK 2개: <code>chk_crd_status</code> <code>((`status` in ('','1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code>, <code>chk_crd_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code></p>
+<p class="sub">CHECK 2개: <code>chk_crd_overtime</code> <code>((`overtime` &gt;= 0) and (`overtime` &lt;= 11))</code>, <code>chk_crd_status</code> <code>((`status` in ('','1','2','3','4','5','6','7','9','10','11','12')) and (not((`status` like '% '))))</code></p>
 </section>
 
 <section id="cal_report_hours">
@@ -755,29 +858,10 @@ footer p{margin:0 0 4px; max-width:none}
 <p class="sub">CHECK 1개: <code>chk_crw_period</code> <code>(`period_start` &lt;= `period_end`)</code></p>
 </section>
 
-<section id="cal_room">
-<h2><span class="tname">cal_room</span> <span class="ko">장소(회의실) 빠른선택</span></h2>
-
-<p class="sub">DB 주석: PK=(user_id,name) — 이 표만 자연키 유지(표 머리 ★★ 판정). 행 0개=빈 목록.</p>
-
-<div class="tw">
-<table>
-<thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
-<tbody>
-<tr class="pk"><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k pk">PK</span><span class="k fk">FK</span><span class="k ix">INDEX</span></td><td class="note auto">기본키 <code>(user_id, name)</code>의 일부입니다. <code>app_user.user_id</code>에 있는 값만 들어갑니다. 참조하고 있으면 부모 행이 지워지지 않습니다.</td></tr>
-<tr class="pk"><td class="col">name</td><td class="type">VARCHAR(40)</td><td><span class="k pk">PK</span><span class="k">CHECK</span></td><td class="note auto">기본키 <code>(user_id, name)</code>의 일부입니다. <code>chk_cal_room_name</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">sort_order</td><td class="type">INT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k ix">INDEX</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다.</td></tr>
-</tbody>
-</table>
-</div>
-<p class="sub">인덱스: <code>user_id, sort_order</code> <span class="ko">ix_cal_room_user_sort</span></p>
-<p class="sub">CHECK 1개: <code>chk_cal_room_name</code> <code>(`name` &lt;&gt; '')</code></p>
-</section>
-
 <section id="cal_schema_meta">
-<h2><span class="tname">cal_schema_meta</span> <span class="ko">스키마 버전 행(§5.5)</span></h2>
+<h2><span class="tname">cal_schema_meta</span> <span class="ko">구조 번호와 배포 정보(키-값)</span></h2>
 
-<p class="sub">DB 주석: 앱은 SELECT 만 — 위젯 빌드 상수와 비교해 파괴적 연산만 차단.</p>
+<p class="sub">DB 주석: 앱은 SELECT 만, 연결마다 구조 번호를 비교해 다르면 읽기와 쓰기를 막는다(VERSION-GATE).</p>
 
 <div class="tw">
 <table>
@@ -829,7 +913,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">note</td><td class="type">MEDIUMTEXT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 ''</span></td><td class="note auto">필수입니다. 기본값은 <code>''</code>입니다.</td></tr>
 <tr><td class="col">due</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span><span class="k ix">INDEX</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_todo_enddate</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">end_date</td><td class="type">DATE</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_todo_enddate</code> 제약이 걸려 있습니다.</td></tr>
-<tr><td class="col">done</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. 허용값은 <code>0</code>, <code>1</code>뿐입니다. <code>chk_cal_todo_comp</code> 제약이 걸려 있습니다.</td></tr>
+<tr><td class="col">done</td><td class="type">TINYINT(1)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다. <code>chk_cal_todo_comp</code> 제약이 걸려 있습니다. 허용값은 <code>0</code>, <code>1</code>뿐입니다.</td></tr>
 <tr><td class="col">prio</td><td class="type">VARCHAR(8)</td><td><span class="k nn">NOT NULL</span><span class="k">기본 normal</span><span class="k">CHECK</span></td><td class="note auto">필수입니다. 기본값은 <code>normal</code>입니다. 허용값은 <code>normal</code>, <code>high</code>뿐입니다.</td></tr>
 <tr><td class="col">completed_at</td><td class="type">DATETIME(3)</td><td><span class="k">NULL 허용</span><span class="k">CHECK</span></td><td class="note auto">비워 둘 수 있습니다. <code>chk_cal_todo_comp</code> 제약이 걸려 있습니다.</td></tr>
 <tr><td class="col">sort_order</td><td class="type">INT</td><td><span class="k nn">NOT NULL</span><span class="k">기본 0</span></td><td class="note auto">필수입니다. 기본값은 <code>0</code>입니다.</td></tr>
@@ -839,7 +923,7 @@ footer p{margin:0 0 4px; max-width:none}
 </table>
 </div>
 <p class="sub">인덱스: <code>user_id, cat_no</code> <span class="ko">ix_cal_todo_user_cat</span>, <code>user_id, due</code> <span class="ko">ix_cal_todo_user_due</span>, UNIQUE <code>user_id, uid</code> <span class="ko">uq_cal_todo_uid</span></p>
-<p class="sub">CHECK 5개: <code>chk_cal_todo_uid</code> <code>(`uid` &lt;&gt; '')</code>, <code>chk_cal_todo_prio</code> <code>(`prio` in ('normal','high'))</code>, <code>chk_cal_todo_done01</code> <code>(`done` in (0,1))</code>, <code>chk_cal_todo_enddate</code> <code>((`end_date` is null) or ((`due` is not null) and (`end_date` &gt; `due`)))</code>, <code>chk_cal_todo_comp</code> <code>((`done` = 1) or (`completed_at` is null))</code></p>
+<p class="sub">CHECK 5개: <code>chk_cal_todo_comp</code> <code>((`done` = 1) or (`completed_at` is null))</code>, <code>chk_cal_todo_done01</code> <code>(`done` in (0,1))</code>, <code>chk_cal_todo_enddate</code> <code>((`end_date` is null) or ((`due` is not null) and (`end_date` &gt; `due`)))</code>, <code>chk_cal_todo_prio</code> <code>(`prio` in ('normal','high'))</code>, <code>chk_cal_todo_uid</code> <code>(`uid` &lt;&gt; '')</code></p>
 </section>
 
 <section id="cal_todo_day_note">
@@ -889,7 +973,7 @@ footer p{margin:0 0 4px; max-width:none}
 </tbody>
 </table>
 </div>
-<p class="sub">CHECK 5개: <code>chk_cal_user_pref_marker</code> <code>((`report_marker` &lt;&gt; '') and (`report_marker_daily` &lt;&gt; '') and (`report_marker_weekly` &lt;&gt; ''))</code>, <code>chk_cal_user_pref_indent</code> <code>((`report_indent` between 0 and 6) and (`report_indent_daily` between 0 and 6) and (`report_indent_weekly` between 0 and 6))</code>, <code>chk_cal_user_pref_commit_body</code> <code>(`git_commit_body` in (0,1))</code>, <code>chk_cal_user_pref_font_family</code> <code>((`report_font_family` in ('','Malgun Gothic','Gulim','Dotum','Batang','NanumGothic')) and (not((`report_font_family` like '% '))))</code>, <code>chk_cal_user_pref_font_size</code> <code>((`report_font_size` = 0) or (`report_font_size` between 10 and 16))</code></p>
+<p class="sub">CHECK 5개: <code>chk_cal_user_pref_commit_body</code> <code>(`git_commit_body` in (0,1))</code>, <code>chk_cal_user_pref_font_family</code> <code>((`report_font_family` in ('','Malgun Gothic','Gulim','Dotum','Batang','NanumGothic')) and (not((`report_font_family` like '% '))))</code>, <code>chk_cal_user_pref_font_size</code> <code>((`report_font_size` = 0) or (`report_font_size` between 10 and 16))</code>, <code>chk_cal_user_pref_indent</code> <code>((`report_indent` between 0 and 6) and (`report_indent_daily` between 0 and 6) and (`report_indent_weekly` between 0 and 6))</code>, <code>chk_cal_user_pref_marker</code> <code>((`report_marker` &lt;&gt; '') and (`report_marker_daily` &lt;&gt; '') and (`report_marker_weekly` &lt;&gt; ''))</code></p>
 </section>
 
 <section id="cal_user_rev">
@@ -921,9 +1005,9 @@ footer p{margin:0 0 4px; max-width:none}
 <table>
 <thead><tr><th>묶음</th><th>규모</th><th>표</th></tr></thead>
 <tbody>
-<tr><td class="col">과제</td><td class="type">4표, 29행</td><td class="note"><code>project</code>, <code>customer</code>, <code>section_code</code>, <code>status_code</code></td></tr>
+<tr><td class="col">과제</td><td class="type">6표, 34행</td><td class="note"><code>project</code>, <code>customer</code>, <code>section_code</code>, <code>status_code</code>, <code>room_code</code>, <code>project_schedule_image</code></td></tr>
 <tr><td class="col">사용자·조직</td><td class="type">3표, 112행</td><td class="note"><code>app_user</code>, <code>org_unit</code>, <code>title_code</code></td></tr>
-<tr><td class="col">캘린더</td><td class="type">16표, 18,593행</td><td class="note"><code>cal_attendance</code>, <code>cal_category</code>, <code>cal_entry</code>, <code>cal_entry_commit</code>, <code>cal_entry_except</code>, <code>cal_migration_log</code>, <code>cal_report_daily</code>, <code>cal_report_hours</code>, <code>cal_report_weekly</code>, <code>cal_room</code>, <code>cal_schema_meta</code>, <code>cal_task_hours</code>, <code>cal_todo</code>, <code>cal_todo_day_note</code>, <code>cal_user_pref</code>, <code>cal_user_rev</code></td></tr>
+<tr><td class="col">캘린더</td><td class="type">17표, 18,673행</td><td class="note"><code>cal_attendance</code>, <code>cal_category</code>, <code>cal_entry</code>, <code>cal_entry_commit</code>, <code>cal_entry_except</code>, <code>cal_migration_log</code>, <code>cal_project_change</code>, <code>cal_project_event</code>, <code>cal_report_daily</code>, <code>cal_report_hours</code>, <code>cal_report_weekly</code>, <code>cal_schema_meta</code>, <code>cal_task_hours</code>, <code>cal_todo</code>, <code>cal_todo_day_note</code>, <code>cal_user_pref</code>, <code>cal_user_rev</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -936,15 +1020,16 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">app_user</td><td class="type">89</td><td class="note">사용자</td></tr>
 <tr><td class="col">cal_attendance</td><td class="type">5,838</td><td class="note">날짜별 근태·초과시간(netcus 일간보고용)</td></tr>
 <tr><td class="col">cal_category</td><td class="type">713</td><td class="note">캘린더 과제(카테고리)</td></tr>
-<tr><td class="col">cal_entry</td><td class="type">3,625</td><td class="note">일정</td></tr>
+<tr><td class="col">cal_entry</td><td class="type">3,628</td><td class="note">일정</td></tr>
 <tr><td class="col">cal_entry_commit</td><td class="type">708</td><td class="note">일정에 붙은 커밋 목록</td></tr>
 <tr><td class="col">cal_entry_except</td><td class="type">326</td><td class="note">반복 일정의 예외일</td></tr>
 <tr><td class="col">cal_migration_log</td><td class="type">1</td><td class="note">data.xml→DB 1회성 이관 마커(사람 단위)</td></tr>
+<tr><td class="col">cal_project_change</td><td class="type">49</td><td class="note">과제 일정 변경 이력(지우지 않는 기록)</td></tr>
+<tr><td class="col">cal_project_event</td><td class="type">27</td><td class="note">과제 일정(과제 캘린더 공용 트랙)</td></tr>
 <tr><td class="col">cal_report_daily</td><td class="type">0</td><td class="note">캘린더가 보낸 일간보고</td></tr>
 <tr><td class="col">cal_report_hours</td><td class="type">0</td><td class="note">보낸 과제별 시간 — 공수계산기의 원천</td></tr>
 <tr><td class="col">cal_report_weekly</td><td class="type">0</td><td class="note">캘린더가 작성한 주간보고</td></tr>
-<tr><td class="col">cal_room</td><td class="type">3</td><td class="note">장소(회의실) 빠른선택</td></tr>
-<tr><td class="col">cal_schema_meta</td><td class="type">1</td><td class="note">스키마 버전 행(§5.5)</td></tr>
+<tr><td class="col">cal_schema_meta</td><td class="type">5</td><td class="note">구조 번호와 배포 정보(키-값)</td></tr>
 <tr><td class="col">cal_task_hours</td><td class="type">6,561</td><td class="note">(날짜×과제) 투입 시간(시간 단위)</td></tr>
 <tr><td class="col">cal_todo</td><td class="type">558</td><td class="note">할 일</td></tr>
 <tr><td class="col">cal_todo_day_note</td><td class="type">169</td><td class="note">기간 할일의 날짜별 설명</td></tr>
@@ -953,6 +1038,8 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">customer</td><td class="type">8</td><td class="note">발주처 마스터</td></tr>
 <tr><td class="col">org_unit</td><td class="type">12</td><td class="note">조직 트리</td></tr>
 <tr><td class="col">project</td><td class="type">14</td><td class="note">과제 마스터</td></tr>
+<tr><td class="col">project_schedule_image</td><td class="type">2</td><td class="note">과제별 개발 일정 그림(월간보고)</td></tr>
+<tr><td class="col">room_code</td><td class="type">3</td><td class="note">회의실 코드</td></tr>
 <tr><td class="col">section_code</td><td class="type">3</td><td class="note">구분 코드</td></tr>
 <tr><td class="col">status_code</td><td class="type">4</td><td class="note">상태 코드</td></tr>
 <tr><td class="col">title_code</td><td class="type">11</td><td class="note">직급 코드</td></tr>
