@@ -146,7 +146,8 @@ test('호스트: 죽은 코드 — SoftDeletedDuplicateExistsAsync 제거', () =
 
 // ── 브리지 & 웹 계약 ────────────────────────────────────────────────────
 test('브리지: saveProject가 confirm을 읽어 전달, ProjectSaved가 needConfirm 3인자로 통지', () => {
-  assert.ok(/GetStr\(doc, "note"\), GetBool\(doc, "confirm"\)\);/.test(mainWindow), 'saveProject가 note·confirm을 읽지 않는다');
+  //  2026-10-22(ADMIN-WINDOW): 뒤에 편입 표시(autoSub)가 붙었다. note, confirm 을 읽는 계약은 그대로다.
+  assert.ok(/GetStr\(doc, "note"\), GetBool\(doc, "confirm"\)(?:, GetBool\(doc, "autoSub"\))?\);/.test(mainWindow), 'saveProject가 note·confirm을 읽지 않는다');
   assert.ok(/confirmSimilar: confirm/.test(mainWindow), 'confirm을 UpsertProjectAsync로 전달하지 않는다');
   assert.ok(/private void ProjectSaved\(bool ok, string msg, bool needConfirm = false\)/.test(mainWindow),
     'ProjectSaved가 needConfirm 3인자가 아니다');

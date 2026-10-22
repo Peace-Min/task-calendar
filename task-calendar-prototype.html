@@ -13107,6 +13107,9 @@ function offEdSaveNow(){
     devEndDate: val('offEdDevEnd'),   // 선진행이어도 보낸다 — 잠금 대상이 아니다(offEdApplySectionRule 참조)
     statusId: idv('offEdStatus'),
     note: (document.getElementById('offEdNote') ? String(document.getElementById('offEdNote').value || '').trim() : ''),
+    //  ADMIN-WINDOW: 이 폼으로 새 과제를 등록하면 만든 사람의 캘린더(메인 창)에 넣는다. 저장은 관리 창에서 하므로 호스트가 메인 창에 알린다
+    //  (__autoSubNext). 폼이 아닌 전송(시험, 루프)은 이 표시가 없어 편입하지 않는다(예전에도 편입은 이 폼의 저장에서만 났다).
+    autoSub: !offEdUid,
   };
   // 클라이언트 선검증 — 왕복 없이 바로 고칠 수 있는 것만(최종 판정은 호스트/DB 제약이 한다)
   const focus = id => { const e = document.getElementById(id); if(e){ try{ e.focus(); }catch(_){} } };

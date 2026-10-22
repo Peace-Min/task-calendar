@@ -135,8 +135,9 @@ const S = {
     const pg = member(gh, 'private void PushGate(string json)');
     assert.match(pg, /foreach \(var w in _wins\.Values\.ToList\(\)\)/, '관문 상태가 관리 창에 가지 않는다');
     const sp = member(cs, 'private async Task SaveProjectAsync(string uid, int sectionId, int customerId, string projectName,');
-    assert.match(sp, /if \(ok && string\.IsNullOrEmpty\(uid\)\)\s*JsCall\("window\.__autoSubNext && window\.__autoSubNext\(" \+ JsonSerializer\.Serialize\(new \{ customerId, projectName \}\) \+ "\)"\);\s*if \(ok\) await LoadProjectsToWebAsync\(\);/,
-      '새 과제를 만든 사람의 캘린더(메인 창)에 자동 편입 대상을 목록 알림보다 먼저 알리지 않는다');
+    assert.match(sp, /if \(ok && autoSub && string\.IsNullOrEmpty\(uid\)\)\s*JsCall\("window\.__autoSubNext && window\.__autoSubNext\(" \+ JsonSerializer\.Serialize\(new \{ customerId, projectName \}\) \+ "\)"\);\s*if \(ok\) await LoadProjectsToWebAsync\(\);/,
+      '새 과제를 만든 사람의 캘린더(메인 창)에 자동 편입 대상을 목록 알림보다 먼저 알리지 않는다(또는 폼이 아닌 저장도 편입한다)');
+    assert.match(member(cs, 'private void OnWebMessage(CoreWebView2WebMessageReceivedEventArgs e, CoreWebView2? origin)'), /GetStr\(doc, "note"\), GetBool\(doc, "confirm"\), GetBool\(doc, "autoSub"\)\);/, '편입 표시(autoSub)를 웹에서 받지 않는다');
   },
   dialogOwner(cs) {
     assert.match(cs, /private Window DialogOwner\(WinKind\? from\) => \(Window\?\)\(from != null \? WinOf\(from\) : null\) \?\? this;/);
@@ -161,6 +162,12 @@ test('(S) 거름과 회신: 종류 목록 밖은 거절 · 메인 창의 aw: 번
 test('(S) 관리 창 열기: 세션의 사람이 관리자일 때만(DB 확인) · 열려 있으면 앞으로 가져오기만 · 권한은 웹으로 내려보내지 않는다', () => S.openGate(CS));
 test('(S) 목록 갱신 알림은 메인 창과 관리 창 둘 다로 · 관문 상태도 · 새 과제는 메인 창에 자동 편입 대상을 먼저 알린다', () => S.pushes(CS, GH));
 test('(S) 파일 대화상자: 관리 창이 연 엑셀 저장의 주인은 관리 창', () => S.dialogOwner(CS));
+test('(S) 새 과제 자동 편입은 편집 폼의 새 과제 저장에서만(autoSub) · 폼이 아닌 saveProject(루프의 직접 전송)는 편입하지 않는다', () => {
+  const a = app.indexOf('function offEdSaveNow(');
+  assert.ok(a >= 0, 'offEdSaveNow 를 찾지 못했다');
+  assert.match(app.slice(a, app.indexOf('\n}\n', a)), /cmd: 'saveProject',[\s\S]*autoSub: !offEdUid,\s*\};/, '편집 폼의 저장이 새 과제일 때 편입 표시(autoSub)를 싣지 않는다');
+  assert.throws(() => S.pushes(mutate(CS, 'if (ok && autoSub && string.IsNullOrEmpty(uid))', 'if (ok && string.IsNullOrEmpty(uid))'), GH), /폼이 아닌 저장도 편입한다/);
+});
 test('(S) 닫기 전 확인: 창 테두리의 ✕ 는 웹에 묻는다(답이 없으면 3초 뒤 닫는다) · 웹이 확인한 window.close 는 바로 닫는다', () => S.closeAsk(AW));
 test('(M) 호스트: 관리 창 목록에 쓰기 명령을 넣거나, 목록 알림을 메인 창 하나로 되돌리거나, 닫기 전 확인을 빼면 잡는다', () => {
   assert.throws(() => S.whitelist(mutate(CS, '"trashGet", "trashRestore", "trashDelete",', '"trashGet", "trashRestore", "trashDelete", "saveState",'), app), /관리 화면이 쓰는 명령과 다르다/);

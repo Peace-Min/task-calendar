@@ -695,7 +695,7 @@ namespace TaskCalendarWidget
                         _ = SaveProjectAsync(GetStr(doc, "uid"), GetInt(doc, "sectionId"), GetInt(doc, "customerId"),
                             GetStr(doc, "projectName"), GetStr(doc, "contractName"), GetStr(doc, "commonName"),
                             GetStr(doc, "startDate"), GetStr(doc, "endDate"), GetStr(doc, "devEndDate"), GetInt(doc, "statusId"),
-                            GetStr(doc, "note"), GetBool(doc, "confirm"));
+                            GetStr(doc, "note"), GetBool(doc, "confirm"), GetBool(doc, "autoSub"));
                         break;
                     case "setProjectActive":   // 소프트삭제(active=false)/복구 — 목록에서 감추기
                         _ = SetProjectActiveAsync(GetStr(doc, "uid"), GetBool(doc, "active"));
@@ -1850,14 +1850,17 @@ namespace TaskCalendarWidget
 
         // 공식 과제 추가/수정 — 성공하면 곧바로 재조회해서 목록(dbCategories)까지 갱신한다(사용자가 새로고침을 누를 필요 없게).
         private async Task SaveProjectAsync(string uid, int sectionId, int customerId, string projectName,
-            string contractName, string commonName, string startDate, string endDate, string devEndDate, int statusId, string note, bool confirm)
+            string contractName, string commonName, string startDate, string endDate, string devEndDate, int statusId, string note, bool confirm,
+            bool autoSub = false)
         {
             var (ok, msg, needConfirm) = await _projectDb.UpsertProjectAsync(uid, sectionId, customerId, projectName,
                 contractName, commonName, startDate, endDate, devEndDate, statusId > 0 ? statusId : (int?)null, note: note, confirmSimilar: confirm);
             ProjectSaved(ok, msg, needConfirm);
-            //  새 과제면 만든 사람의 캘린더(메인 창)에 자동으로 넣는다(만든 사람은 쓸 것). 저장은 관리 창에서 하므로 메인 창에 대상을
-            //  알려 둔다. 바로 뒤의 목록 알림(__applyProjects)이 그 대상을 찾아 넣는다(같은 웹뷰라 순서가 지켜진다).
-            if (ok && string.IsNullOrEmpty(uid))
+            //  새 과제를 편집 폼으로 등록했으면(autoSub) 만든 사람의 캘린더(메인 창)에 자동으로 넣는다(만든 사람은 쓸 것). 저장은 관리 창에서
+            //  하므로 메인 창에 대상을 알려 둔다. 바로 뒤의 목록 알림(__applyProjects)이 그 대상을 찾아 넣는다(같은 웹뷰라 순서가 지켜진다).
+            //  ★ 폼이 아닌 saveProject(시험, 루프의 직접 전송)는 편입하지 않는다. 예전에도 편입은 폼의 저장(__offEdSubmit)에서만 났다.
+            //    가리지 않으면 루프가 만든 과제마다 내 캘린더에 편입분이 쌓이고, 루프의 SQL 정리가 그 행을 앱 몰래 지워 다음 저장이 충돌한다.
+            if (ok && autoSub && string.IsNullOrEmpty(uid))
                 JsCall("window.__autoSubNext && window.__autoSubNext(" + JsonSerializer.Serialize(new { customerId, projectName }) + ")");
             if (ok) await LoadProjectsToWebAsync();
         }
