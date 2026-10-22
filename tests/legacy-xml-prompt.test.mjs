@@ -512,6 +512,9 @@ const checks = {
     const ins = fnBody(src, 'insertBelowTitleBar');
     assert.ok(/querySelector\('header\.topbar'\)/.test(ins) && /nextSibling/.test(ins),
       '삽입 기준이 제목줄 다음 자리가 아니다');
+    //  개인 / 과제 탭 줄(#pcTabs, PROJECT-CALENDAR-PLAN §6.3)이 있으면 그 아래가 먼저다. 띠가 탭 줄 위에 끼면 탭과 화면 사이가 갈린다.
+    assert.ok(/document\.getElementById\('pcTabs'\) \|\| document\.querySelector\('header\.topbar'\)/.test(ins),
+      '탭 줄(#pcTabs)이 있어도 상단바 바로 아래에 넣는다(띠가 탭 줄 위에 낀다)');
     for (const [fn, v] of [['renderEmptyHint', 'b'], ['renderDataSourceBadge', 'b'], ['ensureBootErrorBox', 'box'], ['showDbConflict', 'b']]) {
       const b = fnBody(src, fn);
       assert.ok(new RegExp('insertBelowTitleBar\\(' + v + '\\)').test(b), `${fn}() 가 제목줄 아래에 넣지 않는다`);

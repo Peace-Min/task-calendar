@@ -2426,6 +2426,246 @@ html[data-adminwin] body{ overflow:hidden }
 html[data-adminwin] #adminHub{ padding:0; background-color:var(--bg); animation:none }
 html[data-adminwin] #adminHub > .ah-modal{ width:100%; height:100%; max-width:none; max-height:none; border-radius:0; box-shadow:none; animation:none }
 html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
+/* ── 과제 공용 캘린더: 개인 / 과제 탭과 과제 탭 화면(docs/PROJECT-CALENDAR-PLAN.md §6, 시안 docs/prototypes/project-calendar.html 2차) ──
+   ★ 과제 탭에서는 개인 화면(필터바, 월 칸, 오른쪽 패널)을 지우지 않고 숨긴다. 개인 미저장 상태, 저장 큐, 장애 띠가 그대로 산다.
+   ★ 상단바에서 과제 탭에 뜻이 없는 단추(검색, 다른 사람 일정, 보고서, 새 기록)와 상단바 달 이동을 숨긴다. 과제 화면이 자기 줄을 가진다.
+   ★ 열람 창과 관리 창에는 탭 줄이 없다(pcInit 이 지운다). */
+.pc-tabs{display:flex;align-items:flex-end;gap:2px;padding:4px 12px 0;background:var(--panel);border-bottom:1px solid var(--line);flex:none}
+.pc-tab{border:none;background:transparent;padding:8px 16px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font:inherit;font-size:var(--fs-emph);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.pc-tab:hover{background:var(--hover-bg);color:var(--text)}
+.pc-tab.on{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
+.pc-tab:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+body.pc-on #filterbar,body.pc-on main > .cal,body.pc-on main > .splitter,body.pc-on #dayPanel,body.pc-on #bootSkeleton,
+body.pc-on .topbar .nav,body.pc-on #btnSearch,body.pc-on #btnPeerPick,body.pc-on #btnReportTop,body.pc-on #btnNew,
+body.pc-on .mm-fold-rp,body.pc-on .mm-fold-pk,body.pc-on #btnSearchFold{display:none !important}
+.pc-view{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+body:not(.pc-on) #pcView{display:none !important}
+.pc-main{flex:1;display:flex;min-height:0;position:relative}
+.pc-note{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.pc-note > div{max-width:440px;text-align:center}
+.pc-note .dp-empty{padding-bottom:12px}
+.pc-note .dp-empty b{color:var(--text);font-size:var(--fs-title)}
+.pc-note .btn{margin-top:6px}
+/* 왼쪽 과제 목록 */
+.pc-side{width:232px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px;min-height:0;overflow:auto;padding:12px 10px 10px}
+.pc-side.in-drawer{width:auto;border:0;padding:0;overflow:visible}
+.pc-side-h{display:flex;align-items:baseline;gap:8px;padding:0 4px}
+.pc-side-h b{font-size:var(--fs-title)}
+.pc-count{font-size:var(--fs-meta);color:var(--muted);font-weight:600}
+.pc-side-btns{display:flex;gap:6px}
+.pc-side-btns .btn{flex:1;justify-content:center}
+.pc-side-btns .btn:disabled{opacity:.5;cursor:default}
+.pc-list{list-style:none;display:flex;flex-direction:column;gap:2px}
+.pc-row{display:flex;align-items:flex-start;gap:7px;padding:6px;border-radius:var(--r-sm);min-width:0}
+.pc-row:hover{background:var(--hover-bg)}
+.pc-row.solo{background:var(--accent-soft)}
+.pc-row input{width:15px;height:15px;flex:none;accent-color:var(--c);margin-top:3px;cursor:pointer}
+.pc-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);flex:none;margin-top:5px}
+.pc-nm{flex:1;min-width:0;display:flex;flex-direction:column}
+.pc-name{border:none;background:none;font:inherit;font-size:var(--fs-body);color:var(--text);text-align:left;cursor:pointer;padding:0;line-height:20px;border-radius:4px}
+.pc-name:hover{text-decoration:underline;color:var(--accent-2)}
+.pc-row.solo .pc-name{font-weight:700;color:var(--accent-2)}
+.pc-state{font-size:var(--fs-micro);color:var(--warn-text);font-weight:600}
+.pc-meta{font-size:var(--fs-micro);color:var(--muted);flex:none;line-height:20px}
+.pc-hint{font-size:var(--fs-micro);color:var(--faint-text);line-height:1.5;padding:0 4px}
+.pc-solo-note{font-size:var(--fs-meta);color:var(--accent-2);background:var(--accent-soft);border-radius:var(--r-sm);padding:6px 8px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* 오른쪽 달력 영역 */
+.pc-area{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px;position:relative}
+.pc-bar1,.pc-bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none}
+.pc-bar2{margin:8px 0}
+.pc-titlebox{display:flex;align-items:baseline;gap:10px;min-width:0;flex:0 1 auto}
+.pc-title{font-size:var(--fs-head);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pc-sub{font-size:var(--fs-meta);color:var(--muted);white-space:nowrap}
+.pc-ro{display:inline-block;font-size:var(--fs-micro);font-weight:700;color:var(--warn-text);border:1px solid currentColor;border-radius:4px;padding:0 5px;vertical-align:3px;margin-left:6px}
+.pc-range{font-size:var(--fs-title);font-weight:700;padding:0 4px;white-space:nowrap}
+.pc-checked{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap}
+.pc-scope{flex:1;min-width:0;justify-content:space-between}
+.pc-scope-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-weight:700}
+.pc-scope .pc-count{margin-left:auto}
+.pc-err{flex:none;margin:0 0 8px;padding:7px 10px;border:1px solid var(--danger);border-radius:var(--r-sm);background:var(--danger-soft);color:var(--danger-text);font-size:var(--fs-meta)}
+.pc-body{flex:1;min-height:0;display:flex;flex-direction:column;position:relative}
+body.db-locked .pc-w{opacity:.5}
+/* 월간: 주 단위로 잘린 연속 막대 */
+.pc-grid{flex:1;min-height:0;display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.pc-week{flex:1 1 0;min-height:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));column-gap:1px;row-gap:2px;background:var(--line);overflow:hidden}
+.pc-day{background:var(--panel);padding:2px 6px;cursor:pointer;display:flex;align-items:flex-start;gap:5px;min-width:0}
+.pc-day:hover{background:var(--hover-bg)}
+.pc-day.dim{background:var(--dim-bg)} .pc-day.dim .num{color:var(--faint-text)}
+.pc-day.wknd-sat:not(.sel):not(.dim):not(:hover){background:var(--wknd-sat-bg)}
+.pc-day.wknd-sun:not(.sel):not(.dim):not(:hover){background:var(--wknd-sun-bg)}
+.pc-day.today .num{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
+.pc-day.sel,.pc-wday.sel{box-shadow:inset 0 0 0 2px var(--ctl-border)}
+.pc-day:focus-visible,.pc-wday:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pc-day .hol{line-height:22px}
+.pc-ev{position:relative;z-index:1;margin:0 3px;min-width:0;height:20px;display:flex;flex-direction:column;justify-content:center;border:none;border-left:3px solid var(--c);background:var(--cb);border-radius:var(--r-sm);padding:0 6px 0 5px;font:inherit;font-size:var(--fs-meta);line-height:var(--lh-tight);text-align:left;color:var(--text);cursor:pointer;overflow:hidden}
+.pc-ev:hover{filter:brightness(.96)}
+html.dark .pc-ev:hover{filter:brightness(1.15)}
+.pc-ev.cl{margin-left:0;border-top-left-radius:0;border-bottom-left-radius:0;border-left-width:0;padding-left:6px}
+.pc-ev.cr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
+.pc-ev.timed{background:transparent;border-left-color:transparent;padding-left:3px}
+.pc-ev.timed:hover{background:var(--hover-bg);filter:none}
+.pc-ev:focus-visible{outline:2px solid var(--accent);outline-offset:-1px;z-index:3}
+.pc-l1{display:flex;align-items:center;gap:4px;white-space:nowrap;overflow:hidden;min-width:0}
+.pc-t{overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.pc-ev:not(.timed) .pc-t{font-weight:600}
+.pc-edot{width:8px;height:8px;border-radius:50%;background:var(--c);flex:none;display:inline-block}
+.pc-time{font-size:var(--fs-micro);font-weight:700;flex:none}
+.pc-arrow{flex:none;color:var(--muted);font-size:var(--fs-micro)}
+.pc-span{margin-left:auto;font-size:var(--fs-micro);color:var(--muted);flex:none;padding-left:8px}
+.pc-mi{flex:none;display:inline-flex;color:var(--muted)}
+.pc-mi .ic{width:11px;height:11px;vertical-align:0}
+.pc-mline{flex:0 1000 auto;min-width:0;margin-left:6px;font-weight:400;font-size:var(--fs-micro);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-l2{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;padding-left:12px;min-height:14px}
+.pc-more{position:relative;z-index:1;border:none;background:none;font:inherit;font-size:var(--fs-micro);color:var(--muted);text-align:left;padding:0 6px;cursor:pointer;border-radius:var(--r-sm);white-space:nowrap;overflow:hidden;line-height:14px}
+.pc-more:hover{background:var(--hover-bg);color:var(--accent-2)}
+.pc-none{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:4;pointer-events:none}
+.pc-none > div{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);padding:6px 24px 18px;pointer-events:auto;max-width:90%}
+.pc-none .dp-empty{padding:18px 6px 0}
+.pc-none b{color:var(--text);font-size:var(--fs-title)}
+/* 주간: 과제마다 고정 행(월요일 시작). 막대 높이는 메모 첫 줄을 켜도 같다(두 줄 자리를 늘 둔다) */
+.pc-wscroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);border-radius:var(--r-md);background:var(--line);--nw:170px;--cw:0px}
+.pc-wtable{display:grid;grid-template-columns:var(--nw) minmax(0,1fr);gap:1px;min-width:calc(var(--nw) + 7 * var(--cw) + 8px);background:var(--line)}
+.pc-wcorner,.pc-whdays{position:sticky;top:0;z-index:3;background:var(--panel)}
+.pc-wcorner{left:0;z-index:4;font-size:var(--fs-meta);color:var(--muted);font-weight:600;padding:8px 10px;display:flex;align-items:center}
+.pc-whdays,.pc-wcells{display:grid;grid-template-columns:repeat(7,minmax(var(--cw),1fr));column-gap:1px;background:var(--line)}
+.pc-whday{background:var(--panel);display:flex;align-items:center;justify-content:center;gap:5px;padding:6px 2px;font-size:var(--fs-meta);color:var(--muted);font-weight:600}
+.pc-whday.sun{color:var(--sun)} .pc-whday.sat{color:var(--sat)}
+.pc-whday.today .num{background:var(--accent-fill);color:var(--on-accent)}
+.pc-whday.sel{box-shadow:inset 0 -2px 0 var(--ctl-border)}
+.pc-wname{position:sticky;left:0;z-index:2;background:var(--panel);padding:8px 10px;display:flex;flex-direction:column;gap:3px;min-width:0;border-left:3px solid var(--c)}
+.pc-wpn{font-size:var(--fs-body);font-weight:700;line-height:1.35}
+.pc-wmeta{font-size:var(--fs-micro);color:var(--muted)}
+.pc-wcells{row-gap:3px;min-height:64px}
+.pc-wday{background:var(--panel);cursor:pointer}
+.pc-wday:hover{background:var(--hover-bg)}
+.pc-wday.wknd-sat:not(.sel):not(:hover){background:var(--wknd-sat-bg)}
+.pc-wday.wknd-sun:not(.sel):not(:hover){background:var(--wknd-sun-bg)}
+.pc-wcells .pc-ev{height:38px;justify-content:flex-start;padding-top:3px;padding-bottom:2px}
+.pc-wcells .pc-ev.timed{height:auto;min-height:38px}
+.pc-l1b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;padding-left:12px;line-height:1.3;white-space:normal;word-break:keep-all;overflow-wrap:anywhere;text-align:left}
+.pc-wnone{grid-column:1 / -1;background:var(--panel);padding:30px;text-align:center;color:var(--muted)}
+/* 미리보기와 그날 일정 목록(팝오버) */
+.pc-pop{position:fixed;z-index:45;width:320px;max-width:calc(100vw - 16px);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:12px 14px;font-size:var(--fs-body)}
+.pc-pop-top{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+.pc-pop-proj{font-size:var(--fs-meta);color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-pop-top .x{font-size:18px;margin:-4px -6px -4px 0}
+.pc-pop-title{font-size:var(--fs-title);font-weight:700;line-height:1.4}
+.pc-pop-when{display:flex;align-items:center;gap:5px;margin-top:4px;font-weight:600}
+.pc-pop-when .ic,.pc-pop-loc .ic{width:14px;height:14px;color:var(--accent)}
+.pc-pop-loc{display:flex;align-items:center;gap:5px;margin-top:3px;color:var(--muted)}
+.pc-pop-memo{margin-top:8px;color:var(--muted);white-space:pre-wrap;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;border-left:2px solid var(--line-2);padding-left:8px}
+.pc-pop-cut{font-size:var(--fs-micro);color:var(--faint-text);margin-top:2px;padding-left:10px}
+.pc-pop-acts{margin-top:10px;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.pc-dl{list-style:none;display:flex;flex-direction:column;gap:2px;margin-top:4px;max-height:260px;overflow:auto}
+.pc-dl-row{display:flex;align-items:center;gap:6px;border-radius:var(--r-sm)}
+.pc-dl-row:hover{background:var(--hover-bg)}
+.pc-dl-main{flex:1;min-width:0;display:flex;align-items:flex-start;gap:7px;border:none;background:none;font:inherit;color:var(--text);text-align:left;padding:5px 4px;cursor:pointer;border-radius:var(--r-sm)}
+.pc-dl-main .pc-edot{margin-top:5px}
+.pc-dl-txt{display:flex;flex-direction:column;min-width:0}
+.pc-dl-meta{font-size:var(--fs-micro);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc-dl-t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pc-dl-row .link{margin:0 4px 0 0;flex:none}
+.pc-dl-empty{color:var(--muted);padding:8px 4px}
+.pc-dl-foot{margin-top:8px;display:flex;justify-content:flex-end}
+/* 좁은 창: 과제 목록은 단추 아래로 펼친다 */
+.pc-drawer{position:absolute;left:10px;right:10px;z-index:26;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:12px 10px 10px;max-height:72%;overflow:auto}
+/* 상세 창 */
+.pcd-proj{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--fs-body);color:var(--muted)}
+.pcd-proj .pc-dot{margin-top:0}
+.pcd-title{font-size:var(--fs-head);font-weight:700;margin:6px 0 10px;line-height:1.4}
+.pcd-grid{display:grid;grid-template-columns:84px minmax(0,1fr);gap:7px 12px;font-size:var(--fs-body)}
+.pcd-grid dt{color:var(--muted);font-weight:600}
+.pcd-grid .none{color:var(--faint-text)}
+.pcd-memo-h{font-size:var(--fs-body);font-weight:700;margin:16px 0 6px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+.pcd-memo{white-space:pre-wrap;line-height:1.65;font-size:var(--fs-emph);max-height:260px;overflow:auto}
+.pcd-memo.none{color:var(--faint-text)}
+.pcd-note{margin-top:14px;font-size:var(--fs-meta);color:var(--muted);background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 10px;line-height:1.6}
+.pcd-copied{font-size:var(--fs-meta);color:var(--ok)}
+/* 등록과 수정 폼(한 화면) */
+.pcf-modal{width:min(520px,100%)}
+.pcf-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:6px}
+.pcf-full{grid-column:1 / -1}
+.modal .pcf-f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-meta);color:var(--muted);margin:0 !important;font-weight:400 !important;min-width:0}
+.pcf-f input,.pcf-f select,.pcf-f textarea{width:100%;min-width:0}
+.pcf-f textarea{resize:vertical;min-height:72px}
+.pcf-memo-lb{display:flex;justify-content:space-between;align-items:baseline}
+.modal .pcf-f label{margin:0 !important;font-weight:400 !important;font-size:inherit !important;color:inherit !important}   /* 장소, 메모 칸의 안쪽 라벨(.modal label 의 위 여백 16px 을 끈다) */
+.pcf-count{font-variant-numeric:tabular-nums}
+.pcf-err{color:var(--danger-text);font-size:var(--fs-meta);margin-top:10px;line-height:1.5}
+.pcf-err:empty{display:none}
+.pcf-share{font-size:var(--fs-micro);color:var(--muted);margin-right:auto;line-height:1.4}
+.pcf-cf{border:1px solid var(--ovl-dot);background:var(--ovl-bg);color:var(--ovl-ink);border-radius:var(--r-md);padding:10px 12px;margin:2px 0 12px;font-size:var(--fs-body);line-height:1.55}   /* 앰버(시간 겹침과 같은 경고 토큰, 테마마다 다시 정의된다) */
+.pcf-cf b{display:block;margin-bottom:2px}
+.pcf-cf-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.pcf-cf.info{border-color:var(--line-2);background:var(--accent-soft);color:var(--text)}
+/* 최근 변경 */
+.pcc-modal{width:min(880px,100%);height:min(680px,92vh)}
+.pcc-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:12px 20px;border-bottom:1px solid var(--line);flex:none}
+.modal .pcc-tools label{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-meta);color:var(--muted);font-weight:600;margin:0}
+.modal .pcc-tools select{width:auto;padding:5px 8px;font-size:var(--fs-body)}
+.pcc-meta{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:var(--fs-meta);color:var(--muted);padding:8px 20px 0;flex:none}
+.pcc-body{flex:1;min-height:0;overflow:auto;padding:6px 20px 16px}
+.pcc-grp{border:1px solid var(--line);border-radius:var(--r-md);margin-top:10px;overflow:hidden}
+.pcc-grp > summary{list-style:none;display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--dim-bg);cursor:pointer;font-size:var(--fs-body)}
+.pcc-grp > summary::-webkit-details-marker{display:none}
+.pcc-grp > summary::before{content:"▸";color:var(--muted);font-size:var(--fs-micro);width:10px}
+.pcc-grp[open] > summary::before{content:"▾"}
+.pcc-grp > summary b{font-size:var(--fs-emph)}
+.pcc-grp > summary small{color:var(--muted);margin-left:auto;font-size:var(--fs-meta);white-space:nowrap}
+.pcc-grp > div{padding:0 12px 6px}
+.pcc-day{font-size:var(--fs-meta);font-weight:700;color:var(--muted);margin:12px 0 2px;display:flex;gap:6px;align-items:baseline}
+.pcc-day small{font-weight:400}
+.pcc-row{display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.pcc-day + .pcc-row{border-top:0}
+.pcc-time{font-size:var(--fs-meta);color:var(--muted);font-weight:600;padding-top:1px}
+.pcc-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:var(--fs-body)}
+.pcc-who{font-weight:700}
+.pcc-act{font-size:var(--fs-micro);font-weight:700;border-radius:4px;padding:0 6px;line-height:18px}
+.pcc-act.create{background:var(--dim-bg);color:var(--ok);box-shadow:inset 0 0 0 1px currentColor} .pcc-act.update{background:var(--accent-soft);color:var(--accent-2)} .pcc-act.delete{background:var(--danger-soft);color:var(--danger-text)}
+.pcc-proj{display:inline-flex;align-items:center;gap:5px;color:var(--muted);font-size:var(--fs-meta)}
+.pcc-proj .pc-dot{margin-top:0;width:8px;height:8px}
+.pcc-ev{font-weight:600}
+.pcc-gone{font-weight:600;color:var(--muted)}
+.pcc-diffs{list-style:none;margin-top:4px;display:flex;flex-direction:column;gap:3px;font-size:var(--fs-meta)}
+.pcc-diffs li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.pcc-f{color:var(--muted);min-width:44px;font-weight:600}
+.pcc-diffs del{color:var(--faint-text);text-decoration:line-through}
+.pcc-diffs ins{text-decoration:none;color:var(--accent-2);font-weight:600}
+.pcc-diffs .arr{color:var(--faint)}
+.pcc-diffs li.memo{flex-direction:column;align-items:stretch}
+.pcc-mb{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:start}
+.pcc-mb > div{white-space:pre-wrap;line-height:1.5;border:1px solid var(--line);border-radius:var(--r-sm);padding:5px 8px;background:var(--dim-bg);min-width:0}
+.pcc-mb.one{grid-template-columns:minmax(0,1fr)}
+.pcc-mb.clamp > div{max-height:calc(3em + 12px);overflow:hidden}
+.pcc-exp{align-self:flex-start;margin-top:2px}
+.pcc-empty{padding:40px 10px;text-align:center;color:var(--muted)}
+/* 개인 탭: 과제 캘린더에서 복사한 개인 일정의 출처 배지 */
+.badge.pc-copy-badge{background:var(--accent-soft);color:var(--accent-2);max-width:none;display:inline-flex;align-items:center;gap:4px}
+.badge.pc-copy-badge .ic{width:12px;height:12px}
+@media (max-width:760px){
+  .pc-area{padding:8px 10px}
+  .pc-wscroll{--nw:96px;--cw:76px}
+  .pc-wname .pc-wmeta{display:none}
+  #pcChanges .btn-label,#pcRefresh .btn-label{display:none}
+  .pc-span{display:none}
+}
+@media (max-width:560px){
+  .pc-week .pc-ev.timed .pc-time{display:none}
+  .pc-week .pc-ev{margin:0 1px;padding:0 3px;font-size:var(--fs-micro)}
+  .pc-ev.cl{padding-left:3px}
+  .pc-day{padding:2px 3px}
+  .pc-arrow{display:none}
+  .pcc-mb{grid-template-columns:minmax(0,1fr)}
+  .pcc-mb .arr{display:none}
+}
+@media (max-width:440px){
+  .pcf-grid{grid-template-columns:1fr}
+  .pcc-modal{height:88vh}
+  .pcc-tools{padding:10px 16px}
+  .pcc-meta,.pcc-body{padding-left:16px;padding-right:16px}
+  .pcd-grid{grid-template-columns:72px minmax(0,1fr)}
+  .pc-tab{padding:7px 14px}
+}
 </style>
 </head>
 <body>
@@ -2540,6 +2780,12 @@ html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
   </div>
 </header>
 
+<!-- 과제 공용 캘린더(docs/PROJECT-CALENDAR-PLAN.md §6.6): 개인 / 과제 탭. 장애 띠는 이 줄 아래에 들어간다(insertBelowTitleBar). 열람 창과 관리 창에서는 pcInit 이 지운다. -->
+<div class="pc-tabs" id="pcTabs" role="tablist" aria-label="캘린더 종류">
+  <button type="button" class="pc-tab on" role="tab" id="pcTabPersonal" aria-selected="true" aria-controls="filterbar" data-pctab="personal">개인</button>
+  <button type="button" class="pc-tab" role="tab" id="pcTabProject" aria-selected="false" aria-controls="pcView" tabindex="-1" data-pctab="project">과제</button>
+</div>
+
 <div class="filterbar ovf-scroll" id="filterbar"></div>
 
 <main>
@@ -2578,6 +2824,8 @@ html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
     </div>
     <div class="dp-body" id="dpBody" role="tabpanel" tabindex="0" aria-labelledby="dptab-detail"></div>
   </aside>
+  <!-- 과제 탭 화면(pcRender 가 채운다). 과제 탭에서는 위의 개인 달력과 패널을 숨기고 이것만 보인다. -->
+  <section class="pc-view" id="pcView" role="tabpanel" aria-labelledby="pcTabProject"></section>
 </main>
 
 </div><!-- /#appSurface -->
@@ -4328,6 +4576,54 @@ html[data-adminwin] #adminHub > .ah-modal > .modal-head > .x{ display:none }
 </div>
 
 <!-- ===== 확인 모달 (OS confirm 대체 — 파괴 액션은 빨간 버튼) ===== -->
+<!-- ===== 과제 공용 캘린더(docs/PROJECT-CALENDAR-PLAN.md §6): 상세, 등록과 수정, 최근 변경 ===== -->
+<div class="overlay hidden" id="pcDetailModal">
+  <div class="modal pcd-modal">
+    <div class="modal-head"><h2 id="pcDetailHead">과제 일정</h2><button type="button" class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body" id="pcDetailBody"></div>
+    <div class="modal-foot" id="pcDetailFoot"></div>
+  </div>
+</div>
+<div class="overlay hidden" id="pcFormModal">
+  <div class="modal qa-modal pcf-modal">
+    <div class="qa-head"><h2 class="qa-edit-title" id="pcfHead">과제 일정 등록</h2><button type="button" class="x" data-close aria-label="닫기">×</button></div>
+    <div class="qa-body">
+      <div id="pcfConflict"></div>
+      <div class="pcf-grid">
+        <label class="pcf-f pcf-full">제목<input type="text" id="pcfTitle" maxlength="200" placeholder="일정 제목" autocomplete="off"></label>
+        <label class="pcf-f">시작일<input type="date" id="pcfStart"></label>
+        <label class="pcf-f">종료일<input type="date" id="pcfEnd"></label>
+        <label class="pcf-f pcf-full">과제<select id="pcfProj" aria-describedby="pcfProjHint"></select></label>
+        <div class="qa-hint pcf-full" id="pcfProjHint"></div>
+        <label class="pcf-f">시작 시각(선택)<input type="time" id="pcfST" step="600"></label>
+        <label class="pcf-f">종료 시각(선택)<input type="time" id="pcfET" step="600"></label>
+        <div class="qa-hint pcf-full" id="pcfTimeHint" aria-live="polite"></div>
+        <div class="pcf-f pcf-full"><label for="pcfLoc">장소</label>
+          <div class="loc-combo" data-pfx="pcf"><input type="text" class="loc-in" id="pcfLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pcfLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="pcfLocPop" role="listbox" aria-label="장소 추천"></div></div>
+        </div>
+        <div class="pcf-f pcf-full"><span class="pcf-memo-lb"><label for="pcfMemo">메모</label><span class="pcf-count" id="pcfCount">0 / 8,000자</span></span>
+          <textarea id="pcfMemo" rows="3" maxlength="8000" placeholder="상세 내용, 준비물, 참고 사항"></textarea>
+        </div>
+      </div>
+      <div class="pcf-err" id="pcfErr" role="alert"></div>
+    </div>
+    <div class="qa-foot">
+      <span class="pcf-share">이 과제를 내 과제에 넣은 사람 모두에게 보입니다</span>
+      <button type="button" class="btn" data-close>취소</button>
+      <button type="button" class="btn primary pc-w" id="pcfSave">저장</button>
+    </div>
+  </div>
+</div>
+<div class="overlay hidden" id="pcChangesModal">
+  <div class="modal wide pcc-modal">
+    <div class="modal-head"><h2 id="pccHead">최근 변경</h2><button type="button" class="x" data-close aria-label="닫기">×</button></div>
+    <div class="pcc-tools" id="pccTools"></div>
+    <div class="pcc-meta" id="pccMeta"></div>
+    <div class="pcc-body" id="pccBody"></div>
+    <div class="modal-foot"><button type="button" class="btn" id="pccMore">더 보기</button><span class="spacer"></span><button type="button" class="btn" data-close>닫기</button></div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="confirmModal">
   <div class="modal" style="width:min(380px,100%)">
     <div class="modal-head"><h2 id="cfTitle">확인</h2><button class="x" data-close>×</button></div>
@@ -5277,6 +5573,8 @@ window.__applyState = function(json, meta){
     //  ★ 버전 관문(VERSION-GATE §3) — 부팅 조회가 관문을 지났다. meta.gate 가 막힘이면 카드를 띄우고,
     //    지난 설치 실패(installFailed)만 떠 있었다면 서버는 멀쩡하니 카드를 걷고 안내 한 줄로 바꾼다(vgOnBootApplied).
     if(!PEER) vgOnBootApplied(meta);
+    //  과제 탭: 계정이 정해지면 그 사람의 마지막 탭을 되살리고, 개인 카드의 복사 배지를 위해 과제 목록을 한 번 받는다(pcOnBootApplied).
+    if(!PEER) pcOnBootApplied();
     //  기본 과제를 방금 만들었으면 부팅이 끝난 **뒤에** 저장한다(위 보장 주석). 연결 상태(bootOk)가 선 다음이라 잠금 판정이 맞다.
     if(!PEER && __bootDefaultsDirty) setTimeout(bootDefaultsFlush, 0);
   }catch(e){
@@ -5481,7 +5779,8 @@ function calendarIsEmpty(){
 //  ★ 기준은 상단바(header.topbar)다 — 위젯에서는 그 위에 #hostbar 가 있으므로 둘 다의 아래가 된다.
 //    상단바가 없으면 #hostbar 아래, 그것도 없으면 예전처럼 body 맨 앞(최후의 폴백).
 function insertBelowTitleBar(el){
-  const bar = document.querySelector('header.topbar') || document.getElementById('hostbar');
+  //  ★ 개인 / 과제 탭 줄(#pcTabs, PROJECT-CALENDAR-PLAN §6.3)이 있으면 그 아래다. 띠가 탭 줄 위에 끼면 탭과 화면 사이가 갈린다.
+  const bar = document.getElementById('pcTabs') || document.querySelector('header.topbar') || document.getElementById('hostbar');
   if(bar && bar.parentNode){ bar.parentNode.insertBefore(el, bar.nextSibling); return; }
   document.body.insertBefore(el, document.body.firstChild);
 }
@@ -10860,6 +11159,7 @@ function cardHtml(e, overlaps){
       ${git?`<span class="badge badge-git" title="커밋에서 가져온 기록(Git·SVN)">${ICON.git} 커밋</span>`:''}
       ${c?`<span class="badge" style="background:${tint(col)};color:${col}">${esc(c.name)}</span>`:''}
       ${ovlBadge}
+      ${pcCopyBadge(e.id)}
     </div>
     <div class="card-title">${esc(e.title)}</div>
     ${whenRow}
@@ -11556,7 +11856,7 @@ function formSnapshot(ov){
 }
 // ★ #userEditModal 도 가드 대상이다(2026-09-10) — 남의 직급·권한을 고쳐 놓고 Esc 나 배경 클릭 한 번에
 //   조용히 버려지면, 관리자는 저장된 줄 알고 창을 닫는다. 스냅샷 기준은 userEdOpen 이 __openSnap 에 남긴다.
-function isGuardedModal(ov){ return !!ov && (ov.id==='entryModal' || ov.id==='quickAdd' || ov.id==='settingsModal' || ov.id==='userEditModal'); }
+function isGuardedModal(ov){ return !!ov && (ov.id==='entryModal' || ov.id==='quickAdd' || ov.id==='settingsModal' || ov.id==='userEditModal' || ov.id==='pcFormModal'); }
 function confirmDiscardIfDirty(ov){
   if(!isGuardedModal(ov)) return Promise.resolve(true);
   // 설정은 formSnapshot을 쓰지 않는다 — 스냅샷은 모든 input의 value를 이어 붙이므로 비밀번호가
@@ -19139,6 +19439,7 @@ function bind(){
         if(el && !el.classList.contains('hidden')){ el.classList.add('hidden'); closedMenu = true; }
       }
       if(closedMenu) return;
+      if(pcEscape()){ ev.preventDefault(); return; }   // 과제 탭의 팝오버(미리보기, 그날 일정 목록)와 좁은 창 과제 목록
       if(panelSheetOpen){ closeSheet(); ev.preventDefault(); return; }          // 좁은 폭 하단 시트 먼저
       if(window.__big){ hpost({cmd:'focus'}); ev.preventDefault(); return; }   // 마지막에 맨 앞에 띄우기 해제
       return;
@@ -19146,6 +19447,7 @@ function bind(){
     const modalOpen = $$('.overlay').some(o => !o.classList.contains('hidden'));
     if(modalOpen) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+    if(pcOn()){ pcKeyNav(ev.key); return; }   // 과제 탭: 같은 단축키가 과제 달력을 움직인다
     if(ev.key === 'ArrowLeft' || ev.key === 'PageUp') moveMonth(-1);     // PageUp/Down도 월 이동(예측 가능한 단축키)
     else if(ev.key === 'ArrowRight' || ev.key === 'PageDown') moveMonth(1);
     else if(ev.key === 'Home') goToday();
@@ -19609,6 +19911,1141 @@ async function validateExistingRepoFor(kind, path){
   applyVcsState(kind, r);
 }
 
+/* ================================================================================
+ *  과제 공용 캘린더: 과제 탭(docs/PROJECT-CALENDAR-PLAN.md §5.4 ~ §6.6, 시안 docs/prototypes/project-calendar.html 2차)
+ * ================================================================================
+ *  ★ 상태는 객체 하나(PCAL)다. 개인 state.entries 와 섞지 않는다. 개인 저장, XML, 전량 교체 경로는 이 객체를 모른다.
+ *  ★ 호스트로 가는 문은 pcReq 하나이고, 보내는 명령은 PCAL_CMDS 여섯뿐이다. 메인 창 전용이다(열람 창, 관리 창은 보내지 않는다.
+ *    호스트도 그 창들의 허용 목록 밖이라 거절한다).
+ *  ★ 주기 확인이 없다(OFFLINE-RESILIENCE A11). 다시 읽는 때: 탭에 들어올 때, 창으로 돌아올 때, 내가 저장한 직후, 새로고침 단추.
+ *  ★ 사용자가 적은 글(제목, 장소, 메모, 과제 이름, 사람 이름)은 esc() 나 textContent 로만 그린다.
+ *  ★ 세대 번호(PCAL.gen, PCAL.bootGen, PCAL.rc.gen)로 늦게 온 옛 회신을 버린다. 계정이 바뀌면 상태를 통째로 비운다.
+ *  ★ 기억하는 것(localStorage, 계정별 키 tc_pcal:<login_id>): 마지막 탭, 월간과 주간, 표시 선택(설정 없음과 빈 선택을 구분),
+ *    메모 첫 줄 표시. 날짜는 기억하지 않는다(켤 때 오늘).
+ *  ★ 판정(내 과제에 있는 공식 과제인가, 쓸 수 있나)은 서버가 한다. 화면은 부트스트랩 회신의 목록만 쓰고 state.categories 로 계산하지 않는다. */
+//  글자 상한. 호스트 ProjectCalendarDb.Limits 와 DDL 칸 폭이 같은 숫자다(tests/project-calendar-web.test.mjs 가 대조한다, 기획 §4.1).
+const PCAL_LIMITS = Object.freeze({ title: 200, location: 200, memo: 8000 });
+//  이 화면이 보내는 명령 여섯(기획 §5.4). pcReq 가 이 밖의 이름을 보내지 않는다.
+const PCAL_CMDS = Object.freeze(['projectCalendarBootstrap', 'projectCalendarLoad', 'projectCalendarSave',
+  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy']);
+const PCAL = {
+  user: null,           // 설정을 읽은 계정. 다른 계정이 들어오면 상태를 비운다
+  inited: false,
+  tab: 'personal', view: 'month', anchor: todayYmd(), solo: null, memoLine: false,
+  sel: null, known: [], // 표시 선택(null = 설정 없음 = 전체), 지난번에 받은 과제 목록(새로 들어온 과제를 켜려고)
+  projects: [], loaded: false, booting: false, bootErr: '',
+  events: [], loading: false, loadErr: '', checkedAt: 0,
+  copies: new Map(),    // 원본 eventUid → 내 개인 일정 uid(부트스트랩 copies, 개인 탭 배지)
+  copyEntries: new Set(),
+  gen: 0, bootGen: 0, actAt: 0,
+  pop: null,            // { el, anchor }
+  drawer: false,
+  form: null,           // 등록과 수정 폼
+  detail: null,         // 상세 창의 eventUid
+  rc: { group: 'project', proj: 'all', days: '7', kind: 'all', rows: [], cursor: null, more: false, busy: false, err: '', gen: 0 },
+  resizeT: 0,
+};
+const PC_DOW = ['일', '월', '화', '수', '목', '금', '토'];
+//  이 화면만 쓰는 단색 글리프(ICON 과 같은 svgIc). 메모 있음, 최근 변경, 목록 펼침.
+const PC_IC = {
+  memo: svgIc('<path d="M5 6h14M5 11h14M5 16h9"/>', 2.2),
+  history: svgIc('<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>'),
+  down: svgIc('<path d="M6 9l6 6 6-6"/>', 2.2),
+};
+
+/* ── 순수 계산(시험 대상) ────────────────────────────────────────── */
+//  유니코드 글자 수(서로게이트 쌍은 한 글자). 호스트 CountChars, MySQL 의 문자 수와 같은 단위다.
+function pcLen(s){ return [...String(s == null ? '' : s)].length; }
+//  메모의 첫 줄(앞뒤 공백을 지운 첫 비어 있지 않은 줄).
+function pcFirstLine(s){
+  const lines = String(s == null ? '' : s).split(/\r?\n/);
+  for(const x of lines){ const t = x.trim(); if(t) return t; }
+  return '';
+}
+//  같은 주 안의 순서: 시작일, 종료일 내림차순(긴 것 먼저), 과제 표시 순서, 시각, uid(기획 §6.4, 이슈 §3.4).
+function pcEvSort(a, b, order){
+  if(a.startDate !== b.startDate) return a.startDate < b.startDate ? -1 : 1;
+  if(a.endDate !== b.endDate) return a.endDate > b.endDate ? -1 : 1;
+  const oa = (order && order[a.projectUid] != null) ? order[a.projectUid] : 1e9;
+  const ob = (order && order[b.projectUid] != null) ? order[b.projectUid] : 1e9;
+  if(oa !== ob) return oa - ob;
+  const ta = a.startTime || '', tb = b.startTime || '';
+  if(ta !== tb) return ta < tb ? -1 : 1;
+  return a.eventUid < b.eventUid ? -1 : (a.eventUid > b.eventUid ? 1 : 0);
+}
+//  한 주(from 부터 7일)의 배치. 입력: 일정(startDate, endDate 포함), 그 주 첫날, 과제 순서. 출력: 조각(c0~c1 칸, 앞뒤로 이어짐 cl/cr, 차선 lane)과 차선 수.
+//  ★ 공용 일정은 반복이 없어 한 일정이 한 주에 조각 하나다. 주 경계에서 잘리고 다음 주에 같은 일정의 조각이 또 생긴다.
+function pcLayoutWeek(evs, from, order){
+  const to = addDays(from, 6);
+  const items = (evs || []).filter(e => e.startDate <= to && e.endDate >= from).slice()
+    .sort((a, b) => pcEvSort(a, b, order))
+    .map(e => ({ e, c0: e.startDate < from ? 0 : diffDays(from, e.startDate), c1: e.endDate > to ? 6 : diffDays(from, e.endDate),
+      cl: e.startDate < from, cr: e.endDate > to, lane: 0 }));
+  const ends = [];
+  for(const it of items){ let l = 0; while(l < ends.length && ends[l] >= it.c0) l++; ends[l] = it.c1; it.lane = l; }
+  return { items, lanes: ends.length };
+}
+//  월간 한 주 줄에 보일 차선 수. 다 들어가면 전부, 아니면 "+n" 줄(14px) 자리를 남기고 들어가는 만큼(최소 1).
+//  ★ 메모 첫 줄 표시와 무관하다(인자에 없다): 켜도 칸 높이와 보이는 일정 수가 같다(기획 §6.6).
+function pcMonthCap(weekH, lanes){
+  const LANE = 22, HEAD = 22, MORE = 14, PADB = 4;
+  const all = Math.floor((weekH - HEAD - PADB) / LANE);
+  if(lanes <= Math.max(1, all)) return lanes;
+  return Math.max(1, Math.floor((weekH - HEAD - MORE - PADB) / LANE));
+}
+//  월간 범위: 그 달 1일이 든 주의 일요일부터 마지막 날이 든 주의 토요일까지.
+function pcMonthRange(anchor){
+  const d = parseYmd(anchor), y = d.getFullYear(), m = d.getMonth();
+  const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
+  const from = addDays(ymd(first), -first.getDay());
+  const weeks = Math.ceil((first.getDay() + last.getDate()) / 7);
+  return { from, to: addDays(from, weeks * 7 - 1), weeks, y, m };
+}
+//  주간 범위: 월요일부터 일요일까지(기획 §6.6 기본값).
+function pcWeekRange(anchor){
+  const from = addDays(anchor, -((parseYmd(anchor).getDay() + 6) % 7));
+  return { from, to: addDays(from, 6), weeks: 1 };
+}
+//  저장해 둔 화면 설정을 고친다. sel 은 배열이면 그 선택(빈 배열 = 아무것도 안 봄), 아니면 null(설정 없음 = 전체).
+function pcPrefsNorm(raw){
+  let o = null;
+  try{ o = (typeof raw === 'string') ? JSON.parse(raw) : raw; }catch(_){ o = null; }
+  if(!o || typeof o !== 'object' || Array.isArray(o)) o = {};
+  const ids = a => Array.isArray(a) ? [...new Set(a.filter(x => typeof x === 'string' && x))] : null;
+  return { tab: o.tab === 'project' ? 'project' : 'personal', view: o.view === 'week' ? 'week' : 'month',
+    sel: ids(o.sel), known: ids(o.known) || [], memo: o.memo === true };
+}
+//  부트스트랩 목록에 맞춘 표시 선택. 설정이 없으면 전체, 있으면 그대로 두되 새로 내 과제에 넣은 과제는 켜고 빠진 과제는 정리한다(기획 §6.2).
+function pcSelReconcile(sel, known, uids){
+  if(!Array.isArray(sel)) return uids.slice();
+  const s = new Set(sel), k = new Set(Array.isArray(known) ? known : []);
+  return uids.filter(u => s.has(u) || !k.has(u));
+}
+//  호스트 DTO 한 건을 화면 모양으로(빈 값 정리). 종료일은 포함, 하루 일정이면 시작일과 같다. 시각은 HH:mm 또는 null.
+function pcFromDto(e){
+  const o = (e && typeof e === 'object') ? e : {};
+  const s = x => (typeof x === 'string' ? x : '');
+  const sd = s(o.startDate);
+  return { eventUid: s(o.eventUid), projectUid: s(o.projectUid), title: s(o.title), startDate: sd, endDate: s(o.endDate) || sd,
+    startTime: s(o.startTime) || null, endTime: s(o.endTime) || null, location: s(o.location), memo: s(o.memo),
+    rowVersion: Number(o.rowVersion) || 0, deleted: o.deleted === true, createdBy: s(o.createdBy), updatedBy: s(o.updatedBy),
+    createdAt: s(o.createdAt), updatedAt: s(o.updatedAt) };
+}
+//  폼 값 → 저장 요청의 event(호스트 ValidateFields 와 같은 모양). 제목과 장소는 앞뒤 공백만 걷는다. 시각이 없으면 null.
+function pcEventPayload(v){
+  const st = String(v.startTime || '').slice(0, 5), et = String(v.endTime || '').slice(0, 5);
+  return { title: String(v.title || '').trim(), startDate: String(v.startDate || ''), endDate: String(v.endDate || v.startDate || ''),
+    startTime: st || null, endTime: et || null, location: String(v.location || '').trim(), memo: String(v.memo == null ? '' : v.memo) };
+}
+//  저장 전 검사. 서버도 같은 규칙으로 다시 본다(넘으면 자르지 않고 거절). 돌려주는 값: { ok } 또는 { ok:false, field, msg }.
+function pcValidate(v, limits){
+  const L = limits || {};
+  const bad = (field, msg) => ({ ok: false, field, msg });
+  const title = String(v.title || '').trim();
+  if(!v.projectUid) return bad('proj', '저장할 과제를 선택하세요.');
+  if(!title) return bad('title', '제목을 입력하세요.');
+  if(pcLen(title) > L.title) return bad('title', '제목은 ' + L.title + '자까지 쓸 수 있습니다.');
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  if(!D.test(v.startDate || '') || !D.test(v.endDate || '')) return bad('start', '시작일과 종료일을 입력하세요.');
+  if(v.endDate < v.startDate) return bad('end', '종료일이 시작일보다 빠릅니다.');
+  if(diffDays(v.startDate, v.endDate) > 365) return bad('end', '기간은 366일까지 잡을 수 있습니다.');
+  const st = String(v.startTime || '').slice(0, 5), et = String(v.endTime || '').slice(0, 5);
+  if(!!st !== !!et) return bad(st ? 'et' : 'st', '시작 시각과 종료 시각은 둘 다 적거나 둘 다 비웁니다.');
+  if(st && v.startDate !== v.endDate) return bad('st', '시각은 하루 일정에서만 쓸 수 있습니다. 날짜를 같게 하거나 시각을 비우세요.');
+  if(st && et <= st) return bad('et', '종료 시각이 시작 시각보다 늦어야 합니다.');
+  if(pcLen(String(v.location || '').trim()) > L.location) return bad('loc', '장소는 ' + L.location + '자까지 쓸 수 있습니다.');
+  if(pcLen(v.memo) > L.memo) return bad('memo', '메모는 ' + Number(L.memo).toLocaleString('ko-KR') + '자까지 쓸 수 있습니다.');
+  return { ok: true };
+}
+//  변경 이력 한 줄의 변경 전과 후(호스트 before_json, after_json 은 바뀐 칸만). create 는 후만, delete 는 전만 요약한다.
+//  돌려주는 값: [{ label, b, a, memo }]. b 나 a 가 null 이면 그쪽이 없다(추가의 전, 삭제의 후). 빈 글자는 '(비어 있음)' 으로 그린다.
+function pcDiffRows(action, before, after){
+  const b = (before && typeof before === 'object') ? before : {}, a = (after && typeof after === 'object') ? after : {};
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  const fd = d => (D.test(d || '') ? fmtShort(d) : '');
+  const rows = [];
+  if(action === 'create' || action === 'delete'){
+    const o = action === 'create' ? a : b;
+    const put = (label, val, memo) => rows.push(action === 'create' ? { label, b: null, a: val, memo: !!memo } : { label, b: val, a: null, memo: !!memo });
+    const sd = o.startDate || '', ed = o.endDate || sd;
+    if(sd) put('날짜', ed && ed !== sd ? fd(sd) + ' ~ ' + fd(ed) : fd(sd));
+    if(o.startTime) put('시간', o.startTime + ' ~ ' + (o.endTime || ''));
+    if(o.location) put('장소', String(o.location));
+    if(o.memo) put('메모', String(o.memo), true);
+    return rows;
+  }
+  const has = k => Object.prototype.hasOwnProperty.call(a, k) || Object.prototype.hasOwnProperty.call(b, k);
+  const val = (o, k) => (o[k] == null ? '' : String(o[k]));
+  if(has('title')) rows.push({ label: '제목', b: val(b, 'title'), a: val(a, 'title'), memo: false });
+  if(has('startDate')) rows.push({ label: '시작일', b: fd(b.startDate), a: fd(a.startDate), memo: false });
+  if(has('endDate')) rows.push({ label: '종료일', b: fd(b.endDate), a: fd(a.endDate), memo: false });
+  if(has('startTime') && has('endTime')){
+    const t = o => (o.startTime ? o.startTime + ' ~ ' + (o.endTime || '') : '');
+    rows.push({ label: '시간', b: t(b), a: t(a), memo: false });
+  } else {
+    if(has('startTime')) rows.push({ label: '시작 시각', b: val(b, 'startTime'), a: val(a, 'startTime'), memo: false });
+    if(has('endTime')) rows.push({ label: '종료 시각', b: val(b, 'endTime'), a: val(a, 'endTime'), memo: false });
+  }
+  if(has('location')) rows.push({ label: '장소', b: val(b, 'location'), a: val(a, 'location'), memo: false });
+  if(has('memo')) rows.push({ label: '메모', b: val(b, 'memo'), a: val(a, 'memo'), memo: true });
+  return rows;
+}
+//  'M월 D일 (요일)'
+function pcMd(ds){ const d = parseYmd(ds); return (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + PC_DOW[d.getDay()] + ')'; }
+//  기간과 시각 한 줄(미리보기, 상세, 확인 창).
+function pcWhenText(e){
+  if(e.startDate === e.endDate) return pcMd(e.startDate) + (e.startTime ? ' ' + e.startTime + ' ~ ' + (e.endTime || '') : '');
+  return pcMd(e.startDate) + ' ~ ' + pcMd(e.endDate) + ', ' + (diffDays(e.startDate, e.endDate) + 1) + '일';
+}
+//  ISO(UTC) → 이 PC 시각 'M/D HH:mm'. 해석하지 못하면 빈 글자.
+function pcAtText(iso){
+  const t = Date.parse(iso || '');
+  if(!Number.isFinite(t)) return '';
+  const d = new Date(t);
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+//  웹이 만드는 id(eventUid, mutationUid). 호스트는 소문자 uuid 모양만 받는다.
+function pcUuid(){
+  const re = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  try{ const u = String(crypto.randomUUID()).toLowerCase(); if(re.test(u)) return u; }catch(_){}
+  let s = '';
+  for(let i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
+  return s.slice(0, 8) + '-' + s.slice(8, 12) + '-4' + s.slice(13, 16) + '-' + '89ab'[Math.floor(Math.random() * 4)] + s.slice(17, 20) + '-' + s.slice(20, 32);
+}
+
+/* ── 호스트 다리 ──────────────────────────────────────────────── */
+//  여섯 명령만 보낸다. 브라우저 단독, 열람 창(PEER), 따로 뜬 창(SUBWIN)에서는 아무것도 보내지 않는다.
+//  회신은 { ok, data?, error?: { kind, message } } 하나로 맞춘다(hostRequest 의 시간 초과 { ok:false, timeout } 도).
+async function pcReq(cmd, params, ms){
+  if(PCAL_CMDS.indexOf(cmd) < 0) return { ok: false, error: { kind: 'invalid', message: '알 수 없는 요청입니다.' } };
+  if(!HOST || PEER || SUBWIN) return { ok: false, error: { kind: 'host', message: '서버에 연결된 위젯에서만 쓸 수 있습니다.' } };
+  let r = null;
+  try{ r = await hostRequest(cmd, params || {}, ms || 20000); }catch(_){ r = null; }
+  if(!r) return { ok: false, error: { kind: 'network', message: '' } };
+  if(r.ok) return r;
+  const e = (r.error && typeof r.error === 'object') ? r.error
+    : { kind: r.timeout ? 'timeout' : (r.kind || 'unknown'), message: typeof r.error === 'string' ? r.error : '' };
+  return { ok: false, data: r.data || null, error: { kind: String(e.kind || 'unknown'), message: String(e.message || '') } };
+}
+//  실패 문구. 관문(gate)은 차단 카드가 말하므로 빈 글자. 거부, 충돌, 잘못된 값은 호스트의 고정 문구를 그대로 쓴다.
+function pcErrText(err){
+  const k = err && err.kind, m = (err && err.message) || '';
+  if(k === 'gate') return '';
+  if(k === 'forbidden' || k === 'conflict' || k === 'invalid' || k === 'host') return m;
+  if(k === 'timeout') return '서버 응답이 늦습니다. 잠시 뒤 다시 시도하세요.';
+  return m || CONN_KIND_TEXT[k] || CONN_KIND_TEXT.unknown;
+}
+
+/* ── 상태 도우미 ─────────────────────────────────────────────── */
+function pcOn(){ return PCAL.tab === 'project'; }
+function pcProj(uid){ return PCAL.projects.find(p => p.projectUid === uid) || null; }
+function pcEv(uid){ return PCAL.events.find(e => e.eventUid === uid) || null; }
+function pcOrder(){ const o = {}; PCAL.projects.forEach((p, i) => { o[p.projectUid] = i; }); return o; }
+function pcVisible(){
+  if(PCAL.solo) return PCAL.projects.filter(p => p.projectUid === PCAL.solo);
+  const s = new Set(PCAL.sel || []);
+  return PCAL.projects.filter(p => s.has(p.projectUid));
+}
+function pcRange(){ return PCAL.view === 'week' ? pcWeekRange(PCAL.anchor) : pcMonthRange(PCAL.anchor); }
+function pcNarrow(){ try{ return !!(window.matchMedia && window.matchMedia('(max-width:760px)').matches); }catch(_){ return false; } }
+function pcProjFromDto(p){
+  const o = (p && typeof p === 'object') ? p : {};
+  return { projectUid: String(o.projectUid || ''), name: String(o.name || o.commonName || o.projectName || ''), customer: String(o.customer || ''),
+    color: validColor(o.color), active: o.active === true, writable: o.writable === true, members: Number(o.members) || 0 };
+}
+function pcPrefsKey(){ const me = pkMe(); return me ? 'tc_pcal:' + me : (HOST ? '' : 'tc_pcal:local'); }
+function pcPrefsSave(){
+  const k = pcPrefsKey(); if(!k) return;
+  try{ localStorage.setItem(k, JSON.stringify({ tab: PCAL.tab, view: PCAL.view, sel: PCAL.sel, known: PCAL.known, memo: PCAL.memoLine })); }catch(_){}
+}
+function pcPrefsLoad(){
+  const k = pcPrefsKey(); let raw = null;
+  try{ raw = k ? localStorage.getItem(k) : null; }catch(_){ raw = null; }
+  return pcPrefsNorm(raw);
+}
+//  계정이 정해졌다(부팅 주입). 다른 계정이면 상태를 비우고 그 사람의 설정을 읽는다. 날짜는 늘 오늘.
+function pcResetFor(user){
+  PCAL.user = user;
+  PCAL.gen++; PCAL.bootGen++; PCAL.rc.gen++;
+  const p = pcPrefsLoad();
+  Object.assign(PCAL, { view: p.view, anchor: todayYmd(), solo: null, memoLine: p.memo, sel: p.sel, known: p.known,
+    projects: [], loaded: false, booting: false, bootErr: '', events: [], loading: false, loadErr: '', checkedAt: 0,
+    copies: new Map(), copyEntries: new Set(), drawer: false, detail: null });
+  return p;
+}
+
+/* ── 탭 ─────────────────────────────────────────────────────── */
+function pcSetTab(tab, opt){
+  tab = tab === 'project' ? 'project' : 'personal';
+  const was = PCAL.tab;
+  PCAL.tab = tab;
+  document.body.classList.toggle('pc-on', tab === 'project');
+  const tp = document.getElementById('pcTabPersonal'), tj = document.getElementById('pcTabProject');
+  if(tp && tj){
+    tp.classList.toggle('on', tab === 'personal'); tj.classList.toggle('on', tab === 'project');
+    tp.setAttribute('aria-selected', String(tab === 'personal')); tj.setAttribute('aria-selected', String(tab === 'project'));
+    tp.tabIndex = tab === 'personal' ? 0 : -1; tj.tabIndex = tab === 'project' ? 0 : -1;
+  }
+  pcClosePop(true);
+  if(!(opt && opt.quiet)) pcPrefsSave();
+  if(tab === 'project'){
+    try{ if(panelSheetOpen) closeSheet(); }catch(_){}
+    pcRender();
+    if(was !== 'project' || (opt && opt.force)) pcRefresh(true);
+  } else if(was === 'project'){
+    //  숨겨진 동안 그린 개인 달력은 칸 높이를 재지 못했다(fitChips). 돌아오면 다시 그린다(복사 배지도 함께).
+    try{ renderAll(); }catch(_){}
+  }
+}
+//  탭에 들어올 때, 새로고침: 과제 목록(부트스트랩)과 범위 일정. 창 복귀, 저장 직후: 범위 일정만(pcLoad).
+async function pcRefresh(full){
+  if(!HOST || PEER || SUBWIN){ pcRender(); return; }
+  if(full || !PCAL.loaded){ const ok = await pcBootstrap(); if(!ok) return; }
+  pcRender();
+  await pcLoad();
+}
+async function pcBootstrap(opt){
+  const g = ++PCAL.bootGen, user = PCAL.user;
+  PCAL.booting = true;
+  if(pcOn() && !PCAL.loaded) pcRender();
+  const r = await pcReq('projectCalendarBootstrap', {});
+  if(g !== PCAL.bootGen || user !== PCAL.user) return false;
+  PCAL.booting = false;
+  if(!r.ok){
+    PCAL.bootErr = pcErrText(r.error);
+    if(pcOn()){ pcRender(); if(PCAL.loaded && PCAL.bootErr && !(opt && opt.quiet)) toast('과제 목록을 다시 읽지 못했습니다. ' + PCAL.bootErr, 'error'); }
+    return false;
+  }
+  const d = r.data || {};
+  PCAL.projects = (Array.isArray(d.projects) ? d.projects : []).map(pcProjFromDto).filter(p => p.projectUid);
+  PCAL.copies = new Map(); PCAL.copyEntries = new Set();
+  for(const c of (Array.isArray(d.copies) ? d.copies : [])){
+    if(c && typeof c.eventUid === 'string' && typeof c.entryUid === 'string' && c.eventUid && c.entryUid){ PCAL.copies.set(c.eventUid, c.entryUid); PCAL.copyEntries.add(c.entryUid); }
+  }
+  const lim = d.limits;
+  if(lim && (lim.title !== PCAL_LIMITS.title || lim.location !== PCAL_LIMITS.location || lim.memo !== PCAL_LIMITS.memo)){
+    try{ console.warn('과제 캘린더 글자 상한이 호스트와 다르다', lim, PCAL_LIMITS); }catch(_){}
+  }
+  const uids = PCAL.projects.map(p => p.projectUid);
+  PCAL.sel = pcSelReconcile(PCAL.sel, PCAL.known, uids);
+  PCAL.known = uids;
+  if(PCAL.solo && uids.indexOf(PCAL.solo) < 0) PCAL.solo = null;
+  PCAL.loaded = true; PCAL.bootErr = '';
+  pcPrefsSave();
+  if(!pcOn()){ try{ renderDayPanel(); }catch(_){} }   // 개인 탭의 복사 배지
+  return true;
+}
+async function pcLoad(){
+  if(!PCAL.loaded || !HOST || PEER || SUBWIN) return false;
+  const vis = pcVisible().map(p => p.projectUid), rg = pcRange();
+  const g = ++PCAL.gen, user = PCAL.user;
+  if(!vis.length){ PCAL.events = []; PCAL.loading = false; PCAL.loadErr = ''; if(pcOn()) pcRender(); return true; }
+  PCAL.loading = true; pcSyncChecked();
+  const r = await pcReq('projectCalendarLoad', { projectUids: vis, from: rg.from, to: rg.to });
+  if(g !== PCAL.gen || user !== PCAL.user) return false;   // 그 사이 범위, 선택, 계정이 바뀌었다. 옛 회신은 버린다
+  PCAL.loading = false;
+  if(!r.ok){ PCAL.loadErr = pcErrText(r.error); if(pcOn()) pcRender(); return false; }
+  const d = r.data || {};
+  PCAL.events = (Array.isArray(d.events) ? d.events : []).map(pcFromDto).filter(e => e.eventUid && !e.deleted && e.startDate);
+  for(const p of (Array.isArray(d.projects) ? d.projects : [])){ const q = p && pcProj(p.projectUid); if(q) q.writable = p.writable === true; }
+  PCAL.loadErr = ''; PCAL.checkedAt = Date.now();
+  if(pcOn()) pcRender();
+  //  판정에서 빠진 과제(내 과제에서 뺐다)가 있으면 목록을 다시 받는다. 다시 받은 목록에는 그 과제가 없어 같은 일이 되풀이되지 않는다.
+  if(Array.isArray(d.excluded) && d.excluded.length){ if(await pcBootstrap({ quiet: true })){ if(pcOn()) pcRender(); pcLoad(); } }
+  return true;
+}
+//  창으로 돌아왔다(창 활성화, 다시 보임). 과제 탭이 보일 때만, 5초 안의 반복은 한 번으로.
+function pcOnActivate(){
+  if(!pcOn() || !PCAL.loaded || PEER || SUBWIN) return;
+  if(document.visibilityState && document.visibilityState !== 'visible') return;
+  const now = Date.now();
+  if(now - PCAL.actAt < 5000) return;
+  PCAL.actAt = now;
+  pcLoad();
+}
+//  부팅 주입(__applyState)마다 부른다. 계정이 처음 정해지면 그 사람의 마지막 탭을 되살리고, 복사 배지를 위해 목록을 한 번 받는다.
+function pcOnBootApplied(){
+  if(PEER || SUBWIN || !HOST) return;
+  const me = pkMe();
+  if(!me || me === PCAL.user) return;
+  const p = pcResetFor(me);
+  if(p.tab === 'project') pcSetTab('project', { quiet: true, force: true });
+  else { if(pcOn()) pcSetTab('personal', { quiet: true }); pcBootstrap({ quiet: true }); }
+}
+
+/* ── 그리기 ─────────────────────────────────────────────────── */
+function pcNoteHtml(title, lines, btn){
+  return '<div class="pc-note"><div><div class="dp-empty"><b>' + esc(title) + '</b>' + lines.map(l => '<br>' + esc(l)).join('') + '</div>' + (btn || '') + '</div></div>';
+}
+function pcSyncChecked(){
+  const el = document.getElementById('pcChecked'); if(!el) return;
+  el.textContent = PCAL.loading ? '읽는 중' : (PCAL.checkedAt ? '확인 ' + pad(new Date(PCAL.checkedAt).getHours()) + ':' + pad(new Date(PCAL.checkedAt).getMinutes()) : '');
+}
+function pcRender(){
+  const v = document.getElementById('pcView'); if(!v || !pcOn()) return;
+  const ae = document.activeElement;
+  const fk = (ae && v.contains(ae) && ae.dataset) ? (ae.dataset.fk || '') : '';
+  pcClosePop(true);
+  if(!HOST){
+    v.innerHTML = pcNoteHtml('과제 캘린더는 서버에 연결된 위젯에서만 쓸 수 있습니다', ['브라우저에서 연 화면은 공용 일정을 읽거나 저장하지 않습니다.', '개인 탭은 그대로 쓸 수 있습니다.']);
+    return;
+  }
+  if(!PCAL.loaded){
+    v.innerHTML = PCAL.bootErr
+      ? pcNoteHtml('과제 캘린더를 읽지 못했습니다', [PCAL.bootErr], '<button type="button" class="btn" data-act="retry" data-fk="retry">다시 시도</button>')
+      : pcNoteHtml('과제 캘린더를 읽는 중입니다', ['잠시만 기다려 주세요.']);
+    pcRestoreFocus(v, fk);
+    return;
+  }
+  if(!PCAL.projects.length){
+    v.innerHTML = pcNoteHtml('과제 캘린더가 비어 있습니다', ['내 과제에 넣은 공식 과제(DB 과제)의 공용 일정이 여기에 보입니다.', '상단 내 과제 창의 공식 과제 찾아보기에서 과제를 넣으세요.', '개인 탭의 기록은 그대로 있습니다.'],
+      '<button type="button" class="btn" data-act="cats" data-fk="cats">내 과제 열기</button>');
+    pcRestoreFocus(v, fk);
+    return;
+  }
+  const narrow = pcNarrow();
+  if(!narrow) PCAL.drawer = false;
+  const err = PCAL.loadErr ? '<div class="pc-err" role="alert">' + esc('일정을 읽지 못했습니다. ' + PCAL.loadErr) + '</div>' : '';
+  v.innerHTML = '<div class="pc-main">' + (narrow ? '' : pcSideHtml(false)) + '<div class="pc-area" id="pcArea">' + pcBarHtml(narrow) + err
+    + '<div class="pc-body" id="pcBody"></div>'
+    + (narrow && PCAL.drawer ? '<div class="pc-drawer" id="pcDrawer" role="dialog" aria-label="과제 목록">' + pcSideHtml(true) + '</div>' : '') + '</div></div>';
+  const body = document.getElementById('pcBody');
+  if(PCAL.view === 'week') pcRenderWeek(body); else pcRenderMonth(body);
+  if(narrow && PCAL.drawer){ const b = document.getElementById('pcScope'), dr = document.getElementById('pcDrawer'); if(b && dr) dr.style.top = (b.offsetTop + b.offsetHeight + 6) + 'px'; }
+  pcSyncChecked();
+  pcRestoreFocus(v, fk);
+}
+function pcRestoreFocus(v, fk){
+  if(!fk) return;
+  const el = v.querySelector('[data-fk="' + fk + '"]');
+  if(el && !el.disabled){ try{ el.focus({ preventScroll: true }); }catch(_){ try{ el.focus(); }catch(__){} } }
+}
+function pcSideHtml(inDrawer){
+  const all = PCAL.projects, n = (PCAL.sel || []).length, m = all.length;
+  const solo = PCAL.solo && pcProj(PCAL.solo);
+  const sel = new Set(PCAL.sel || []);
+  const tag = inDrawer ? 'div' : 'aside';
+  return '<' + tag + ' class="pc-side' + (inDrawer ? ' in-drawer' : '') + '" aria-label="과제 목록">'
+    + '<div class="pc-side-h"><b>과제</b><span class="pc-count" aria-label="표시 ' + n + '개, 전체 ' + m + '개">' + n + ' / ' + m + '</span></div>'
+    + (solo ? '<div class="pc-solo-note"><span>단독 보기 중</span><button type="button" class="link" data-act="unsolo" data-fk="unsolo2">전체 보기로</button></div>' : '')
+    + '<div class="pc-side-btns"><button type="button" class="btn sm" data-act="selAll" data-fk="selAll"' + (n === m && !solo ? ' disabled' : '') + '>전체 선택</button>'
+    + '<button type="button" class="btn sm" data-act="selNone" data-fk="selNone"' + (n === 0 && !solo ? ' disabled' : '') + '>전체 해제</button></div>'
+    + '<ul class="pc-list">' + all.map(p => {
+      const on = sel.has(p.projectUid), isSolo = PCAL.solo === p.projectUid, u = esc(p.projectUid);
+      return '<li class="pc-row' + (isSolo ? ' solo' : '') + '" style="--c:' + p.color + '">'
+        + '<input type="checkbox" data-act="toggle" data-uid="' + u + '" data-fk="ck-' + u + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(p.name) + ' 달력에 표시">'
+        + '<span class="pc-dot" aria-hidden="true"></span>'
+        + '<span class="pc-nm"><button type="button" class="pc-name" data-act="solo" data-uid="' + u + '" data-fk="nm-' + u + '" aria-pressed="' + isSolo + '" title="' + (isSolo ? '전체 보기로 돌아가기' : '이 과제만 보기') + '">' + esc(p.name) + '</button>'
+        + (p.writable ? '' : '<span class="pc-state">종료, 읽기 전용</span>') + '</span>'
+        + '<span class="pc-meta" title="이 과제를 내 과제에 넣은 사람 수">' + p.members + '명</span></li>';
+    }).join('') + '</ul>'
+    + '<p class="pc-hint">체크는 달력에 보일지만 정합니다. 내 과제에서 빠지지 않습니다. 이름을 누르면 그 과제만 봅니다.</p>'
+    + '</' + tag + '>';
+}
+function pcRangeLabel(){
+  if(PCAL.view === 'month'){ const d = parseYmd(PCAL.anchor); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월'; }
+  const r = pcWeekRange(PCAL.anchor), a = parseYmd(r.from), b = parseYmd(r.to);
+  return a.getMonth() === b.getMonth() ? (a.getMonth() + 1) + '월 ' + a.getDate() + '일 ~ ' + b.getDate() + '일'
+    : (a.getMonth() + 1) + '월 ' + a.getDate() + '일 ~ ' + (b.getMonth() + 1) + '월 ' + b.getDate() + '일';
+}
+function pcCanNew(){ const solo = PCAL.solo && pcProj(PCAL.solo); return solo ? solo.writable : PCAL.projects.some(p => p.writable); }
+function pcBarHtml(narrow){
+  const solo = PCAL.solo && pcProj(PCAL.solo);
+  const shown = pcVisible().length, m = PCAL.projects.length, n = (PCAL.sel || []).length;
+  const wk = PCAL.view === 'week';
+  const head = narrow
+    ? '<button type="button" class="btn pc-scope" id="pcScope" data-act="drawer" data-fk="drawer" aria-expanded="' + !!PCAL.drawer + '" aria-haspopup="dialog" title="과제 목록 열기">'
+      + '<span class="pc-scope-t">' + (solo ? esc(solo.name) : '전체 과제') + '</span><span class="pc-count">' + n + ' / ' + m + '</span>' + PC_IC.down + '</button>'
+    : '<div class="pc-titlebox"><h2 class="pc-title">' + (solo ? esc(solo.name) + (solo.writable ? '' : '<span class="pc-ro">종료, 읽기 전용</span>') : '전체 과제') + '</h2>'
+      + (solo ? '<button type="button" class="link" data-act="unsolo" data-fk="unsolo">전체 보기로</button>' : '<span class="pc-sub">' + shown + '개 과제 표시</span>') + '</div><span class="spacer"></span>';
+  return '<div class="pc-bar1">' + head
+    + '<button type="button" class="btn" id="pcChanges" data-act="changes" data-fk="changes" title="최근 변경: 누가 언제 무엇을 바꿨는지">' + PC_IC.history + '<span class="btn-label"> 최근 변경</span></button>'
+    + '<button type="button" class="btn primary pc-w" id="pcNew" data-act="new" data-fk="new"' + (pcCanNew() ? '' : ' disabled title="종료된 과제는 읽기 전용입니다"') + '>＋ 일정 등록</button>'
+    + '</div><div class="pc-bar2"><div class="nav">'
+    + '<button type="button" class="btn icon" data-act="prev" data-fk="prev" aria-label="' + (wk ? '이전 주' : '이전 달') + '" title="' + (wk ? '이전 주' : '이전 달') + '">' + ICON.prev + '</button>'
+    + '<button type="button" class="btn" data-act="today" data-fk="today">오늘</button>'
+    + '<button type="button" class="btn icon" data-act="next" data-fk="next" aria-label="' + (wk ? '다음 주' : '다음 달') + '" title="' + (wk ? '다음 주' : '다음 달') + '">' + ICON.next + '</button>'
+    + '<span class="pc-range" aria-live="polite">' + esc(pcRangeLabel()) + '</span></div>'
+    + '<div class="seg seg-auto" role="group" aria-label="보기">'
+    + '<button type="button" class="seg-b' + (wk ? '' : ' active') + '" data-act="view" data-v="month" data-fk="vm" aria-pressed="' + !wk + '">월간</button>'
+    + '<button type="button" class="seg-b' + (wk ? ' active' : '') + '" data-act="view" data-v="week" data-fk="vw" aria-pressed="' + wk + '">주간</button></div>'
+    + '<span class="spacer"></span>'
+    + '<label class="check"><input type="checkbox" data-act="memoLine" data-fk="memoLine"' + (PCAL.memoLine ? ' checked' : '') + '> 메모 첫 줄 표시</label>'
+    + '<span class="pc-checked" id="pcChecked" title="마지막으로 서버에서 읽은 시각. 주기 확인은 없습니다"></span>'
+    + '<button type="button" class="btn icon has-label" id="pcRefresh" data-act="refresh" data-fk="refresh" title="새로고침: 서버에서 다시 읽기" aria-label="새로고침">' + ICON.refresh + '<span class="btn-label"> 새로고침</span></button>'
+    + '</div>';
+}
+//  막대와 시간 일정 단추 하나. mode 'm'(월간) | 'w'(주간).
+function pcEvHtml(it, mode, style){
+  const e = it.e, p = pcProj(e.projectUid) || { name: '', color: '#8a93a6' };
+  const timed = !!e.startTime && e.startDate === e.endDate;
+  const m1 = pcFirstLine(e.memo);
+  const mi = m1 ? '<span class="pc-mi" title="메모 있음">' + PC_IC.memo + '</span>' : '';
+  const aria = p.name + ', ' + e.title + ', ' + pcWhenText(e) + (m1 ? ', 메모 있음' : '') + (it.cl ? ', 앞에서 이어짐' : '') + (it.cr ? ', 뒤로 이어짐' : '');
+  const cls = 'pc-ev' + (timed ? ' timed' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');
+  const st = '--c:' + p.color + ';--cb:' + tint(p.color, .2) + ';' + (style || '');
+  const data = 'data-ev="' + esc(e.eventUid) + '" data-c0="' + it.c0 + '" data-c1="' + it.c1 + '"';
+  if(mode === 'w'){
+    const l1 = timed ? '<span class="pc-edot"></span><span class="pc-time">' + esc(e.startTime) + '</span>' + mi
+      : (it.cl ? '<span class="pc-arrow" aria-hidden="true">◂</span>' : '') + '<span class="pc-t">' + esc(e.title) + '</span>' + mi + (it.cr ? '<span class="pc-arrow" aria-hidden="true" style="margin-left:auto">▸</span>' : '');
+    const l2 = '<span class="pc-l2">' + (PCAL.memoLine && m1 ? esc(m1) : '') + '</span>';
+    const l1b = timed ? '<span class="pc-l1b pc-t">' + esc(e.title) + '</span>' : '';
+    return '<button type="button" class="' + cls + '" ' + data + ' style="' + st + '" aria-label="' + esc(aria) + '"><span class="pc-l1">' + l1 + '</span>' + l1b + l2 + '</button>';
+  }
+  const mline = (PCAL.memoLine && m1) ? '<span class="pc-mline">' + esc(m1) + '</span>' : '';
+  const span = (!timed && it.c1 - it.c0 >= 2) ? '<span class="pc-span">' + esc(fmtShort(e.startDate) + ' ~ ' + fmtShort(e.endDate)) + '</span>' : '';
+  const inner = timed
+    ? '<span class="pc-edot"></span><span class="pc-time">' + esc(e.startTime) + '</span><span class="pc-t">' + esc(e.title) + '</span>' + mline + mi
+    : (it.cl ? '<span class="pc-arrow" aria-hidden="true">◂</span>' : '') + '<span class="pc-t">' + esc(e.title) + '</span>' + mline + mi + span
+      + (it.cr ? '<span class="pc-arrow" aria-hidden="true" style="margin-left:' + (span ? '4px' : 'auto') + '">▸</span>' : '');
+  return '<button type="button" class="' + cls + '" ' + data + ' style="' + st + '" aria-label="' + esc(aria) + '"><span class="pc-l1">' + inner + '</span></button>';
+}
+function pcVisEvents(projectUid){
+  const vis = new Set(pcVisible().map(p => p.projectUid));
+  return PCAL.events.filter(e => !e.deleted && vis.has(e.projectUid) && (!projectUid || e.projectUid === projectUid));
+}
+function pcRenderMonth(body){
+  const R = pcMonthRange(PCAL.anchor), today = todayYmd();
+  body.innerHTML = '<div class="weekdays" role="presentation">' + PC_DOW.map((w, i) => '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>').join('') + '</div>'
+    + '<div class="pc-grid" id="pcGrid" role="grid" aria-label="과제 월 달력(날짜를 누르면 그날 일정 목록)"></div>';
+  const grid = document.getElementById('pcGrid');
+  const weekH = (grid.clientHeight - (R.weeks - 1)) / R.weeks;
+  const evs = pcVisEvents(), order = pcOrder();
+  let html = '';
+  for(let w = 0; w < R.weeks; w++){
+    const from = addDays(R.from, w * 7);
+    const L = pcLayoutWeek(evs, from, order);
+    const cap = pcMonthCap(weekH, L.lanes);
+    const hiddenBy = [0, 0, 0, 0, 0, 0, 0];
+    for(const it of L.items) if(it.lane >= cap) for(let c = it.c0; c <= it.c1; c++) hiddenBy[c]++;
+    const anyHidden = hiddenBy.some(Boolean), nVis = Math.min(L.lanes, cap);
+    const rows = '22px' + (nVis ? ' repeat(' + nVis + ', 20px)' : '') + (anyHidden ? ' 14px' : '') + ' minmax(0,1fr)';
+    html += '<div class="pc-week" role="row" data-from="' + from + '" style="grid-template-rows:' + rows + '">';
+    for(let i = 0; i < 7; i++){
+      const ds = addDays(from, i), d = parseYmd(ds), dw = d.getDay(), hol = holidayOn(ds) || '';
+      let cls = 'pc-day';
+      if(d.getMonth() !== R.m) cls += ' dim';
+      if(ds === today) cls += ' today';
+      if(ds === PCAL.anchor) cls += ' sel';
+      if(dw === 0) cls += ' wknd-sun'; else if(dw === 6) cls += ' wknd-sat';
+      const n = L.items.filter(it => it.c0 <= i && it.c1 >= i).length;
+      html += '<div class="' + cls + '" role="gridcell" tabindex="' + (ds === PCAL.anchor ? 0 : -1) + '" data-date="' + ds + '" style="grid-column:' + (i + 1) + ';grid-row:1 / -1"'
+        + ' aria-label="' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + PC_DOW[dw] + '요일' + (hol ? ', ' + esc(hol) : '') + (ds === today ? ', 오늘' : '') + ', 일정 ' + n + '건">'
+        + '<span class="num' + ((dw === 0 || hol) ? ' sun' : dw === 6 ? ' sat' : '') + '">' + d.getDate() + '</span>' + (hol ? '<span class="hol">' + esc(hol) + '</span>' : '') + '</div>';
+    }
+    for(const it of L.items) if(it.lane < cap) html += pcEvHtml(it, 'm', 'grid-column:' + (it.c0 + 1) + ' / ' + (it.c1 + 2) + ';grid-row:' + (it.lane + 2));
+    if(anyHidden) hiddenBy.forEach((n, c) => {
+      if(n) html += '<button type="button" class="pc-more" data-more="' + addDays(from, c) + '" style="grid-column:' + (c + 1) + ';grid-row:' + (nVis + 2) + '" aria-label="' + pcMd(addDays(from, c)) + ' 일정 ' + n + '건 더 보기">+' + n + '</button>';
+    });
+    html += '</div>';
+  }
+  grid.innerHTML = html;
+  if(!pcVisible().length) body.insertAdjacentHTML('beforeend', '<div class="pc-none"><div><div class="dp-empty"><b>표시할 과제를 선택하세요</b><br>'
+    + (pcNarrow() ? '위의 과제 목록 단추' : '왼쪽 목록') + '에서 과제를 체크하면 그 과제의 공용 일정이 보입니다.</div></div></div>');
+}
+function pcRenderWeek(body){
+  const R = pcWeekRange(PCAL.anchor), today = todayYmd();
+  const days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(R.from, i));
+  const ps = pcVisible(), order = pcOrder();
+  let h = '<div class="pc-wscroll" id="pcWScroll"><div class="pc-wtable" role="grid" aria-label="과제 주간 보기">';
+  h += '<div class="pc-wcorner">과제</div><div class="pc-whdays">' + days.map(ds => {
+    const d = parseYmd(ds), dw = d.getDay(), hol = holidayOn(ds);
+    return '<div class="pc-whday' + ((dw === 0 || hol) ? ' sun' : dw === 6 ? ' sat' : '') + (ds === today ? ' today' : '') + (ds === PCAL.anchor ? ' sel' : '') + '" data-hdate="' + ds + '">'
+      + PC_DOW[dw] + ' <span class="num">' + d.getDate() + '</span></div>';
+  }).join('') + '</div>';
+  if(!ps.length) h += '<div class="pc-wnone">표시할 과제를 선택하세요</div>';
+  for(const p of ps){
+    const L = pcLayoutWeek(PCAL.events.filter(e => !e.deleted && e.projectUid === p.projectUid), R.from, order);
+    h += '<div class="pc-wname" style="--c:' + p.color + '"><span class="pc-wpn">' + esc(p.name) + '</span><span class="pc-wmeta">' + p.members + '명, 이번 주 ' + L.items.length + '건</span>'
+      + (p.writable ? '' : '<span class="pc-state">종료, 읽기 전용</span>') + '</div>';
+    h += '<div class="pc-wcells" data-from="' + R.from + '" data-proj="' + esc(p.projectUid) + '" style="grid-template-rows:4px' + (L.lanes ? ' repeat(' + L.lanes + ', auto)' : '') + ' minmax(20px,1fr)">';
+    days.forEach((ds, i) => {
+      const dw = parseYmd(ds).getDay();
+      h += '<div class="pc-wday' + (dw === 0 ? ' wknd-sun' : dw === 6 ? ' wknd-sat' : '') + (ds === PCAL.anchor ? ' sel' : '') + '" data-date="' + ds + '" style="grid-column:' + (i + 1) + ';grid-row:1 / -1" aria-hidden="true"></div>';
+    });
+    for(const it of L.items) h += pcEvHtml(it, 'w', 'grid-column:' + (it.c0 + 1) + ' / ' + (it.c1 + 2) + ';grid-row:' + (it.lane + 2));
+    h += '</div>';
+  }
+  h += '</div></div>';
+  body.innerHTML = h;
+}
+//  누른 날짜: 여러 날 막대도 누른 칸의 날짜(시작 달로 튀지 않게, loop-range-chip 과 같은 규칙).
+function pcClickedDate(btn, ev){
+  const wk = btn.closest('[data-from]');
+  const c0 = Number(btn.dataset.c0), c1 = Number(btn.dataset.c1);
+  let col = c0;
+  if(wk && ev && ev.detail > 0 && ev.clientX){ const r = wk.getBoundingClientRect(); if(r.width > 0) col = Math.floor((ev.clientX - r.left) / (r.width / 7)); }
+  col = Math.max(c0, Math.min(c1, col));
+  return wk ? addDays(wk.dataset.from, col) : PCAL.anchor;
+}
+function pcSelectDate(ds){
+  PCAL.anchor = ds;
+  const v = document.getElementById('pcView'); if(!v) return;
+  v.querySelectorAll('.pc-day.sel, .pc-wday.sel, .pc-whday.sel').forEach(x => x.classList.remove('sel'));
+  v.querySelectorAll('.pc-day[tabindex="0"]').forEach(x => { x.tabIndex = -1; });
+  v.querySelectorAll('[data-date="' + ds + '"], [data-hdate="' + ds + '"]').forEach(x => { x.classList.add('sel'); if(x.classList.contains('pc-day')) x.tabIndex = 0; });
+}
+
+/* ── 팝오버(미리보기, 그날 일정 목록) ─────────────────────────────── */
+function pcPlacePop(pop, anchor, x){
+  const vw = window.innerWidth || 800, vh = window.innerHeight || 600;
+  const a = (anchor && anchor.getBoundingClientRect) ? anchor.getBoundingClientRect() : { left: 8, top: 8, bottom: 8 };
+  const w = pop.offsetWidth || 320, h = pop.offsetHeight || 200;
+  let left = (x != null ? x : a.left + 8) - 24, top = a.bottom + 6;
+  if(top + h > vh - 8) top = a.top - h - 6;
+  if(top < 8) top = Math.max(8, Math.min(vh - h - 8, a.bottom + 6));
+  left = Math.max(8, Math.min(vw - w - 8, left));
+  pop.style.left = left + 'px'; pop.style.top = top + 'px';
+}
+function pcShowPop(html, label, anchor, x){
+  pcClosePop(true);
+  const v = document.getElementById('pcView'); if(!v) return null;
+  const pop = document.createElement('div');
+  pop.className = 'pc-pop'; pop.id = 'pcPop';
+  pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', label);
+  pop.innerHTML = html;
+  v.appendChild(pop);
+  pcPlacePop(pop, anchor, x);
+  PCAL.pop = { el: pop, anchor };
+  return pop;
+}
+function pcClosePop(silent){
+  const P = PCAL.pop; if(!P) return false;
+  PCAL.pop = null;
+  try{ P.el.remove(); }catch(_){}
+  if(!silent && P.anchor && document.body.contains(P.anchor)){ try{ P.anchor.focus(); }catch(_){} }
+  return true;
+}
+function pcProjLine(p){
+  return '<span class="pc-dot" style="--c:' + p.color + ';margin-top:0" aria-hidden="true"></span><span class="pc-pop-proj">' + esc(p.name) + (p.writable ? '' : ', 읽기 전용') + '</span>';
+}
+function pcOpenPreview(uid, anchor, x){
+  const e = pcEv(uid); if(!e) return;
+  const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
+  const memo = String(e.memo || ''), lines = memo.split('\n');
+  const html = '<div class="pc-pop-top">' + pcProjLine(p) + '<button type="button" class="x" data-act="popClose" aria-label="미리보기 닫기">×</button></div>'
+    + '<div class="pc-pop-title">' + esc(e.title) + '</div>'
+    + '<div class="pc-pop-when">' + (e.startTime ? ICON.clock : ICON.calendar) + ' ' + esc(pcWhenText(e)) + '</div>'
+    + (e.location ? '<div class="pc-pop-loc">' + ICON.pin + ' ' + esc(e.location) + '</div>' : '')
+    + (memo.trim() ? '<div class="pc-pop-memo">' + esc(memo) + '</div>' + (lines.length > 3 || memo.length > 120 ? '<div class="pc-pop-cut">메모 일부만 보입니다</div>' : '') : '')
+    + '<div class="pc-pop-acts">' + (p.writable ? '<button type="button" class="btn sm pc-w" data-act="edit" data-ev="' + esc(uid) + '">수정</button>' : '')
+    + '<button type="button" class="btn sm" data-act="detail" data-ev="' + esc(uid) + '">상세와 전체 메모 보기</button></div>';
+  const pop = pcShowPop(html, '일정 미리보기: ' + e.title, anchor, x);
+  if(pop){ const f = pop.querySelector('[data-act="edit"]') || pop.querySelector('[data-act="detail"]'); if(f) try{ f.focus(); }catch(_){} }
+}
+//  그날 일정 목록(칸의 빈 곳이나 날짜 숫자, "+n"). 줄마다 과제 색 점, 과제명, 시각 또는 기간, 제목, [수정]. 맨 아래 "이 날짜에 일정 등록".
+function pcOpenDayList(ds, anchor, projectUid){
+  const order = pcOrder();
+  const evs = pcVisEvents(projectUid).filter(e => e.startDate <= ds && e.endDate >= ds).sort((a, b) => pcEvSort(a, b, order));
+  const rows = evs.map(e => {
+    const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
+    const when = e.startDate === e.endDate ? (e.startTime ? e.startTime + ' ~ ' + (e.endTime || '') : '하루') : fmtShort(e.startDate) + ' ~ ' + fmtShort(e.endDate);
+    return '<li class="pc-dl-row"><button type="button" class="pc-dl-main" data-act="dlOpen" data-ev="' + esc(e.eventUid) + '"><span class="pc-edot" style="--c:' + p.color + '"></span>'
+      + '<span class="pc-dl-txt"><span class="pc-dl-meta">' + esc(p.name + ', ' + when) + '</span><span class="pc-dl-t">' + esc(e.title) + '</span></span></button>'
+      + (p.writable ? '<button type="button" class="link pc-w" data-act="edit" data-ev="' + esc(e.eventUid) + '">수정</button>' : '') + '</li>';
+  }).join('');
+  const canNew = projectUid ? !!(pcProj(projectUid) || {}).writable : pcCanNew();
+  const html = '<div class="pc-pop-top"><span class="pc-pop-title" style="flex:1">' + esc(pcMd(ds)) + '</span><span class="pc-pop-proj" style="flex:none">일정 ' + evs.length + '건</span>'
+    + '<button type="button" class="x" data-act="popClose" aria-label="닫기">×</button></div>'
+    + (evs.length ? '<ul class="pc-dl">' + rows + '</ul>' : '<div class="pc-dl-empty">이 날짜에 공용 일정이 없습니다.</div>')
+    + (canNew ? '<div class="pc-dl-foot"><button type="button" class="btn sm primary pc-w" data-act="newOn" data-date="' + ds + '"' + (projectUid ? ' data-proj="' + esc(projectUid) + '"' : '') + '>이 날짜에 일정 등록</button></div>' : '');
+  const pop = pcShowPop(html, pcMd(ds) + ' 일정 목록', anchor, null);
+  if(pop){ const f = pop.querySelector('.pc-dl-main') || pop.querySelector('[data-act="newOn"]') || pop.querySelector('.x'); if(f) try{ f.focus(); }catch(_){} }
+}
+
+/* ── 상세 창 ──────────────────────────────────────────────────── */
+function pcOpenDetail(uid){
+  pcClosePop(true);
+  if(!pcEv(uid)) return;
+  PCAL.detail = uid;
+  pcRenderDetail();
+  openModal('#pcDetailModal');
+}
+function pcRenderDetail(){
+  const body = document.getElementById('pcDetailBody'), foot = document.getElementById('pcDetailFoot');
+  if(!body || !foot) return;
+  const e = pcEv(PCAL.detail);
+  if(!e){ body.innerHTML = '<p class="pcd-note">이 일정은 지금 읽어 온 범위에 없습니다. 지워졌거나 다른 사람이 날짜를 옮겼을 수 있습니다.</p>'; foot.innerHTML = '<button type="button" class="btn" data-close>닫기</button>'; return; }
+  const p = pcProj(e.projectUid) || { name: '', color: '#8a93a6', writable: false };
+  const ro = !p.writable, copied = PCAL.copies.has(e.eventUid);
+  const none = t => '<span class="none">' + t + '</span>';
+  body.innerHTML = '<div class="pcd-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + (ro ? '<span class="pc-ro" style="margin-left:0">종료, 읽기 전용</span>' : '') + '</div>'
+    + '<h3 class="pcd-title">' + esc(e.title) + '</h3>'
+    + '<dl class="pcd-grid">'
+    + '<dt>날짜</dt><dd>' + esc(e.startDate === e.endDate ? pcMd(e.startDate) : pcMd(e.startDate) + ' ~ ' + pcMd(e.endDate) + ', ' + (diffDays(e.startDate, e.endDate) + 1) + '일') + '</dd>'
+    + '<dt>시간</dt><dd>' + (e.startTime ? esc(e.startTime + ' ~ ' + (e.endTime || '')) : none('시간 지정 없음')) + '</dd>'
+    + '<dt>장소</dt><dd>' + (e.location ? esc(e.location) : none('없음')) + '</dd>'
+    + '<dt>글쓴이</dt><dd>' + (e.createdBy ? esc(e.createdBy) : none('알 수 없음')) + '</dd>'
+    + '<dt>마지막 수정</dt><dd>' + esc([e.updatedBy, pcAtText(e.updatedAt)].filter(Boolean).join(', ') || '알 수 없음') + '</dd>'
+    + '</dl>'
+    + '<div class="pcd-memo-h">메모</div>'
+    + (e.memo ? '<div class="pcd-memo" tabindex="0">' + esc(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>')
+    + '<p class="pcd-note">' + (ro ? '종료된 과제라 읽기 전용입니다. 고치거나 지울 수 없고, 개인 일정에 등록은 할 수 있습니다.'
+      : '공용 일정입니다. 이 과제를 내 과제에 넣은 사람 누구나 고치고 지울 수 있습니다(글쓴이와 관계없이).') + '</p>';
+  foot.innerHTML = '<button type="button" class="btn danger pc-w" data-act="delete"' + (ro ? ' disabled' : '') + '>삭제</button><span class="spacer"></span>'
+    + (copied ? '<span class="pcd-copied">✓ 개인 탭에 있습니다</span><button type="button" class="btn" data-act="copy" disabled>' + ICON.copy + ' 개인 일정에 등록됨</button>'
+      : '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>')
+    + '<button type="button" class="btn primary pc-w" data-act="edit"' + (ro ? ' disabled' : '') + '>수정</button>';
+}
+
+/* ── 등록과 수정 폼 ───────────────────────────────────────────── */
+function pcOpenForm(opt){
+  const o = opt || {};
+  pcClosePop(true);
+  const e = o.uid ? pcEv(o.uid) : null;
+  if(o.uid && !e) return;
+  if(e){ const p = pcProj(e.projectUid); if(!p || !p.writable){ toast('종료되었거나 숨긴 과제라 읽기 전용입니다.', 'warn'); return; } }
+  else if(!pcCanNew()){ toast('일정을 등록할 수 있는 과제가 없습니다. 종료된 과제는 읽기 전용입니다.', 'warn'); return; }
+  if(guardEdit()) return;
+  const F = PCAL.form = { mode: e ? 'edit' : 'new', uid: e ? e.eventUid : pcUuid(), projectUid: e ? e.projectUid : '',
+    expected: e ? e.rowVersion : null, mutationUid: pcUuid(), conflict: '', latest: null, busy: false };
+  const $id = id => document.getElementById(id);
+  $id('pcfHead').textContent = F.mode === 'edit' ? '과제 일정 수정' : '과제 일정 등록';
+  const sel = $id('pcfProj');
+  const solo = PCAL.solo && pcProj(PCAL.solo);
+  if(e){
+    const p = pcProj(e.projectUid);
+    sel.innerHTML = '<option value="' + esc(e.projectUid) + '">' + esc(p ? p.name : '') + '</option>';
+    sel.value = e.projectUid; sel.disabled = true;
+    $id('pcfProjHint').textContent = '과제는 바꿀 수 없습니다. 잘못 골랐으면 맞는 과제에 새로 만들고 이 일정을 지웁니다.';
+  } else {
+    sel.innerHTML = '<option value="">과제를 선택하세요</option>' + PCAL.projects.filter(p => p.writable).map(p => '<option value="' + esc(p.projectUid) + '">' + esc(p.name) + '</option>').join('');
+    sel.disabled = false;
+    const want = (o.projectUid && (pcProj(o.projectUid) || {}).writable) ? o.projectUid : (solo && solo.writable ? solo.projectUid : '');
+    sel.value = want;
+    $id('pcfProjHint').textContent = want ? '' : '전체 보기에서는 저장할 과제를 직접 고릅니다. 종료된 과제는 목록에 없습니다.';
+  }
+  const d0 = o.date || PCAL.anchor || todayYmd();
+  pcFormFill(e || { title: '', startDate: d0, endDate: d0, startTime: null, endTime: null, location: '', memo: '' });
+  $id('pcfErr').textContent = '';
+  pcFormBusy(false);
+  pcRenderConflict();
+  const ov = $id('pcFormModal');
+  ov.__openSnap = formSnapshot(ov);
+  openModal(ov);
+  setTimeout(() => { const t = (!sel.disabled && !sel.value) ? sel : $id('pcfTitle'); try{ t.focus(); }catch(_){} }, 40);
+}
+function pcFormFill(e){
+  const $id = id => document.getElementById(id);
+  $id('pcfTitle').value = e.title || '';
+  $id('pcfStart').value = e.startDate || ''; $id('pcfEnd').value = e.endDate || e.startDate || '';
+  $id('pcfST').value = e.startTime || ''; $id('pcfET').value = e.endTime || '';
+  locSet('pcf', e.location || '');
+  $id('pcfMemo').value = e.memo || '';
+  pcFormSync();
+}
+function pcFormRead(){
+  const $id = id => document.getElementById(id);
+  const F = PCAL.form || {};
+  return { projectUid: F.mode === 'edit' ? F.projectUid : $id('pcfProj').value, title: $id('pcfTitle').value, startDate: $id('pcfStart').value, endDate: $id('pcfEnd').value,
+    startTime: $id('pcfST').value, endTime: $id('pcfET').value, location: locRead('pcf'), memo: $id('pcfMemo').value };
+}
+function pcFormSync(){
+  const $id = id => document.getElementById(id);
+  const s = $id('pcfStart').value, e = $id('pcfEnd').value, on = !!($id('pcfST').value || $id('pcfET').value);
+  $id('pcfTimeHint').textContent = on && s !== e ? '시각은 하루 일정에서만 적습니다. 여러 날 일정이면 시각을 비우세요.'
+    : (on ? '' : '시각을 비우면 날짜만 있는 일정입니다(예: 기능 구현 10/19 ~ 10/23).');
+  $id('pcfCount').textContent = pcLen($id('pcfMemo').value).toLocaleString('ko-KR') + ' / ' + PCAL_LIMITS.memo.toLocaleString('ko-KR') + '자';
+}
+function pcFormBusy(on){
+  const b = document.getElementById('pcfSave'), ov = document.getElementById('pcFormModal');
+  if(b){ b.disabled = !!on; b.textContent = on ? '저장 중…' : '저장'; }
+  if(ov){ if(on) ov.dataset.busy = '1'; else delete ov.dataset.busy; }
+}
+function pcFormErr(msg, field){
+  const el = document.getElementById('pcfErr'); if(el) el.textContent = msg || '';
+  const map = { proj: 'pcfProj', title: 'pcfTitle', start: 'pcfStart', end: 'pcfEnd', st: 'pcfST', et: 'pcfET', loc: 'pcfLoc', memo: 'pcfMemo' };
+  const f = field && document.getElementById(map[field]);
+  if(f){ try{ f.focus(); }catch(_){} }
+}
+function pcRenderConflict(){
+  const box = document.getElementById('pcfConflict'); if(!box) return;
+  const F = PCAL.form;
+  if(!F || !F.conflict){ box.innerHTML = ''; return; }
+  const L = F.latest;
+  const who = L ? [L.updatedBy, pcAtText(L.updatedAt)].filter(Boolean).join(', ') : '';
+  if(F.conflict === 'gone'){
+    box.innerHTML = '<div class="pcf-cf" role="alert"><b>이 일정은 이미 지워졌습니다.</b>저장하지 않았습니다. 내용이 필요하면 필요한 글을 복사해 두고 창을 닫으세요.</div>';
+  } else if(F.conflict === 'show'){
+    box.innerHTML = '<div class="pcf-cf" role="alert"><b>다른 사람이 먼저 고쳤습니다.</b>' + esc((who ? who + ' 에 고친 판이 있습니다. ' : '') + '저장하지 않았고, 내 입력은 그대로 있습니다.')
+      + '<div class="pcf-cf-btns"><button type="button" class="btn sm" data-act="cfLatest">최신 내용 확인</button><button type="button" class="btn sm" data-act="cfKeep">내 입력 유지</button></div></div>';
+  } else if(F.conflict === 'latest'){
+    box.innerHTML = '<div class="pcf-cf info" role="status">' + esc('최신 내용으로 칸을 채웠습니다' + (who ? '(' + who + ' 판)' : '') + '. 필요하면 다시 고친 뒤 저장하세요.') + '</div>';
+  } else if(F.conflict === 'keep'){
+    box.innerHTML = '<div class="pcf-cf info" role="status">' + esc('내 입력을 유지합니다. 저장을 누르면 최신 판' + (who ? '(' + who + ')' : '') + ' 위에 내 입력으로 저장됩니다.') + '</div>';
+  }
+}
+async function pcSaveForm(){
+  const F = PCAL.form; if(!F || F.busy) return;
+  if(guardEdit()) return;
+  if(F.conflict === 'show'){ toast('먼저 최신 내용 확인과 내 입력 유지 중 하나를 고르세요.', 'warn'); return; }
+  if(F.conflict === 'gone'){ toast('이미 지워진 일정이라 저장할 수 없습니다.', 'warn'); return; }
+  const v = pcFormRead();
+  const chk = pcValidate(v, PCAL_LIMITS);
+  if(!chk.ok){ pcFormErr(chk.msg, chk.field); return; }
+  pcFormErr('');
+  const req = { projectUid: v.projectUid, eventUid: F.uid, mutationUid: F.mutationUid, event: pcEventPayload(v) };
+  if(F.mode === 'edit') req.expectedVersion = F.expected;
+  F.busy = true; pcFormBusy(true);
+  const r = await pcReq('projectCalendarSave', req, 30000);
+  F.busy = false; pcFormBusy(false);
+  if(PCAL.form !== F) return;
+  if(r.ok){
+    const d = r.data || {}, saved = pcFromDto(d.event);
+    PCAL.form = null;
+    const ov = document.getElementById('pcFormModal'); if(ov) ov.__openSnap = formSnapshot(ov);
+    closeModal('#pcFormModal'); closeModal('#pcDetailModal');
+    if(!PCAL.solo && saved.projectUid && Array.isArray(PCAL.sel) && PCAL.sel.indexOf(saved.projectUid) < 0){
+      PCAL.sel.push(saved.projectUid); pcPrefsSave(); toast('저장한 과제를 표시 목록에 켰습니다.', 'info');
+    }
+    const rg = pcRange();
+    if(saved.startDate && !(saved.startDate <= rg.to && saved.endDate >= rg.from)) PCAL.anchor = saved.startDate;
+    toast(d.unchanged ? '바뀐 것이 없어 저장하지 않았습니다.' : (F.mode === 'edit' ? '수정했습니다.' : '등록했습니다. 이 과제를 내 과제에 넣은 사람 모두에게 보입니다.'), d.unchanged ? 'info' : 'success');
+    pcRender();
+    pcLoad();   // 저장 직후 확인(기획 §5.6): 남이 그 사이 바꾼 것도 함께 들어온다
+    return;
+  }
+  const k = r.error.kind;
+  if(k === 'conflict'){
+    F.mutationUid = pcUuid();
+    const L = (r.data && r.data.latest) ? pcFromDto(r.data.latest) : null;
+    F.latest = L;
+    F.conflict = (!L || L.deleted) ? 'gone' : 'show';
+    pcRenderConflict();
+    return;
+  }
+  if(k === 'gate') return;   // 차단 카드가 말한다. 입력은 그대로
+  if(k === 'invalid' || k === 'forbidden'){
+    F.mutationUid = pcUuid();
+    pcFormErr(pcErrText(r.error));
+    if(k === 'forbidden') pcBootstrap({ quiet: true }).then(ok => { if(ok && pcOn()) pcRender(); });
+    return;
+  }
+  //  연결 실패와 시간 초과: 같은 변경 id 를 남긴다. 다시 누르면 서버가 앞 저장이 들어갔는지 보고 한 번만 남긴다(멱등).
+  pcFormErr('저장하지 못했습니다. ' + pcErrText(r.error) + ' 입력은 그대로 있습니다.');
+}
+function pcConflictLatest(){
+  const F = PCAL.form; if(!F || !F.latest) return;
+  pcFormFill(F.latest);
+  F.expected = F.latest.rowVersion; F.conflict = 'latest';
+  pcRenderConflict();
+  const t = document.getElementById('pcfTitle'); if(t) try{ t.focus(); }catch(_){}
+}
+function pcConflictKeep(){
+  const F = PCAL.form; if(!F || !F.latest) return;
+  F.expected = F.latest.rowVersion; F.conflict = 'keep';
+  pcRenderConflict();
+  const b = document.getElementById('pcfSave'); if(b) try{ b.focus(); }catch(_){}
+}
+
+/* ── 삭제, 개인 일정에 등록 ───────────────────────────────────── */
+async function pcDelete(uid){
+  const e = pcEv(uid); if(!e) return;
+  const p = pcProj(e.projectUid);
+  if(!p || !p.writable){ toast('종료되었거나 숨긴 과제라 읽기 전용입니다.', 'warn'); return; }
+  if(guardEdit()) return;
+  const ok = await confirmBox('이 일정을 삭제할까요?', e.title + '. 모든 참여자의 과제 캘린더에서 사라집니다. 개인 일정에 복사해 둔 것은 그대로 남습니다. 누가 언제 지웠는지는 최근 변경에 남습니다.', '삭제');
+  if(ok !== 'ok' || guardEdit()) return;
+  const ov = document.getElementById('pcDetailModal');
+  if(ov) ov.dataset.busy = '1';
+  const r = await pcReq('projectCalendarDelete', { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() });
+  if(ov) delete ov.dataset.busy;
+  if(!r.ok){
+    if(r.error.kind === 'gate') return;
+    toast((r.error.kind === 'conflict' ? '' : '삭제하지 못했습니다. ') + pcErrText(r.error), r.error.kind === 'conflict' ? 'warn' : 'error');
+    if(r.error.kind === 'conflict'){ closeModal('#pcDetailModal'); pcLoad(); }
+    return;
+  }
+  closeModal('#pcDetailModal');
+  PCAL.events = PCAL.events.filter(x => x.eventUid !== uid);
+  toast('삭제했습니다.', 'success');
+  pcRender();
+  pcLoad();
+}
+//  기획 §5.5: 개인 화면의 저장이 다 끝난 뒤에만 복사한다(호스트가 복사 뒤 개인 스냅샷을 다시 실어 화면을 덮기 때문).
+async function pcCopy(uid){
+  const e = pcEv(uid); if(!e) return;
+  if(PCAL.copies.has(uid)){ toast('이미 개인 일정에 있습니다.', 'info'); return; }
+  if(guardEdit()) return;
+  const ok = await confirmBox('개인 일정에 등록할까요?', e.title + ', ' + pcWhenText(e) + '. 지금 내용(제목, 날짜, 시간, 장소, 메모)을 내 개인 일정으로 한 번 복사합니다. 나중에 이 공용 일정이 바뀌거나 지워져도 복사본은 바뀌지 않습니다. 미리알림은 없음으로 들어갑니다.', '등록', null, { ok: 'safe' });
+  if(ok !== 'ok' || guardEdit()) return;
+  await awaitSaveIdle();
+  if(unsaved || __dbSaving || document.getElementById('dbConflict')){
+    toast('개인 일정의 저장이 끝나지 않아 등록하지 않았습니다. 개인 탭의 저장 상태를 먼저 확인하세요.', 'warn');
+    return;
+  }
+  const r = await pcReq('projectCalendarCopy', { projectUid: e.projectUid, eventUid: e.eventUid, expectedVersion: e.rowVersion, mutationUid: pcUuid() }, 30000);
+  if(!r.ok){
+    if(r.error.kind === 'gate') return;
+    toast((r.error.kind === 'conflict' ? '' : '개인 일정에 등록하지 못했습니다. ') + pcErrText(r.error), r.error.kind === 'conflict' ? 'warn' : 'error');
+    if(r.error.kind === 'conflict') pcLoad().then(() => { if(PCAL.detail === uid) pcRenderDetail(); });
+    return;
+  }
+  const d = r.data || {};
+  if(typeof d.entryUid === 'string' && d.entryUid){ PCAL.copies.set(uid, d.entryUid); PCAL.copyEntries.add(d.entryUid); }
+  //  새 개인 일정은 호스트가 개인 스냅샷을 다시 실어(__applyState) 개인 탭에 넣는다(기획 §5.5 3번).
+  toast(d.existed ? '이미 개인 일정에 있습니다.' : '개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', d.existed ? 'info' : 'success');
+  if(PCAL.detail === uid) pcRenderDetail();
+}
+//  개인 탭 카드의 출처 배지(cardHtml). 내 창에서만, 부트스트랩의 복사 대응에 있는 개인 일정만.
+function pcCopyBadge(entryId){
+  if(PEER || !PCAL.copyEntries.has(entryId)) return '';
+  return '<span class="badge pc-copy-badge" title="과제 캘린더의 공용 일정을 복사한 개인 일정입니다. 원본이 바뀌어도 이 일정은 그대로입니다">' + ICON.copy + ' 과제 캘린더에서 복사</span>';
+}
+
+/* ── 최근 변경 ───────────────────────────────────────────────── */
+function pcOpenChanges(){
+  pcClosePop(true);
+  const R = PCAL.rc;
+  R.rows = []; R.cursor = null; R.more = false; R.err = '';
+  if(R.proj !== 'all' && !pcVisible().some(p => p.projectUid === R.proj)) R.proj = 'all';
+  pcRenderChangesTools();
+  pcRenderChanges();
+  openModal('#pcChangesModal');
+  pcLoadChanges(false);
+}
+async function pcLoadChanges(more){
+  const R = PCAL.rc, vis = pcVisible();
+  const uids = R.proj === 'all' ? vis.map(p => p.projectUid) : [R.proj];
+  const g = ++R.gen;
+  if(!uids.length){ R.rows = []; R.more = false; R.cursor = null; R.busy = false; pcRenderChanges(); return; }
+  const q = { projectUids: uids, kind: R.kind, limit: 50 };
+  if(R.days !== 'all'){ const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (Number(R.days) - 1)); q.changedFrom = d.toISOString(); }
+  if(more && R.cursor) q.cursor = R.cursor;
+  R.busy = true; pcRenderChangesMeta();
+  const r = await pcReq('projectCalendarChanges', q);
+  if(g !== R.gen) return;
+  R.busy = false;
+  if(!r.ok){ R.err = pcErrText(r.error); pcRenderChanges(); return; }
+  const d = r.data || {};
+  const rows = (Array.isArray(d.rows) ? d.rows : []).filter(x => x && x.changeNo);
+  R.rows = more ? R.rows.concat(rows) : rows;
+  R.cursor = d.nextCursor || null; R.more = d.hasMore === true; R.err = '';
+  pcRenderChanges();
+}
+function pcRenderChangesTools(){
+  const R = PCAL.rc, vis = pcVisible(), el = document.getElementById('pccTools'); if(!el) return;
+  const opt = (v, t, on) => '<option value="' + esc(v) + '"' + (on ? ' selected' : '') + '>' + esc(t) + '</option>';
+  el.innerHTML = '<div class="seg seg-auto" role="group" aria-label="묶기">' + [['project', '과제별'], ['date', '날짜순'], ['event', '일정별']].map(([v, t]) =>
+      '<button type="button" class="seg-b' + (R.group === v ? ' active' : '') + '" data-act="rcGroup" data-v="' + v + '" aria-pressed="' + (R.group === v) + '">' + t + '</button>').join('') + '</div>'
+    + '<label>과제 <select id="pccProj">' + opt('all', '표시 중인 과제 전체 (' + vis.length + ')', R.proj === 'all') + vis.map(p => opt(p.projectUid, p.name, R.proj === p.projectUid)).join('') + '</select></label>'
+    + '<label>기간 <select id="pccDays">' + [['7', '최근 7일'], ['30', '최근 30일'], ['all', '전체']].map(([v, t]) => opt(v, t, R.days === v)).join('') + '</select></label>'
+    + '<label>종류 <select id="pccKind">' + [['all', '전체'], ['create', '추가'], ['update', '수정'], ['delete', '삭제']].map(([v, t]) => opt(v, t, R.kind === v)).join('') + '</select></label>';
+}
+function pcRenderChangesMeta(){
+  const R = PCAL.rc, el = document.getElementById('pccMeta'), more = document.getElementById('pccMore');
+  if(el) el.innerHTML = '<span>' + esc(R.busy ? '읽는 중' : '불러온 변경 ' + R.rows.length + '건' + (R.more ? ', 더 있음' : ', 끝까지 불러옴')) + '</span><span>수정한 시각 기준(이 PC 시각). 예정된 날짜 기준이 아닙니다.</span>';
+  if(more){ more.disabled = R.busy || !R.more; more.textContent = R.more ? '더 보기' : '더 없음'; }
+}
+function pcRcRowHtml(c, withProj, gone){
+  const p = pcProj(c.projectUid) || { name: '', color: '#8a93a6' };
+  const at = new Date(Date.parse(c.changedAt || '') || 0);
+  const act = { create: '추가', update: '수정', delete: '삭제' }[c.action] || '';
+  const cur = pcEv(c.eventUid);
+  const title = gone.has(c.eventUid) ? '<span class="pcc-gone">' + esc(c.title) + ' (삭제됨)</span>'
+    : (cur ? '<button type="button" class="link pcc-ev" data-act="rcOpen" data-ev="' + esc(c.eventUid) + '">' + esc(cur.title) + '</button>' : '<span class="pcc-ev">' + esc(c.title) + '</span>');
+  const show = x => esc(x === '' ? '(비어 있음)' : x);
+  const diffs = pcDiffRows(c.action, c.before, c.after).map(d => {
+    if(d.memo){
+      const long = pcLen(d.b || '') + pcLen(d.a || '') > 60 || /\n/.test((d.b || '') + (d.a || ''));
+      return '<li class="memo"><span class="pcc-f">' + esc(d.label) + '</span><div class="pcc-mb' + (long ? ' clamp' : '') + (d.b == null || d.a == null ? ' one' : '') + '">'
+        + (d.b != null ? '<div><del>' + show(d.b) + '</del></div>' : '') + (d.b != null && d.a != null ? '<span class="arr">→</span>' : '')
+        + (d.a != null ? '<div><ins>' + show(d.a) + '</ins></div>' : '') + '</div>'
+        + (long ? '<button type="button" class="link pcc-exp" data-act="rcExp" aria-expanded="false">펼치기</button>' : '') + '</li>';
+    }
+    return '<li><span class="pcc-f">' + esc(d.label) + '</span>' + (d.b != null ? '<del>' + show(d.b) + '</del>' : '') + (d.b != null && d.a != null ? '<span class="arr">→</span>' : '')
+      + (d.a != null ? '<ins>' + show(d.a) + '</ins>' : '') + '</li>';
+  }).join('');
+  return '<div class="pcc-row"><div class="pcc-time">' + pad(at.getHours()) + ':' + pad(at.getMinutes()) + '</div><div><div class="pcc-line"><span class="pcc-who">' + esc(c.actor) + '</span>'
+    + '<span class="pcc-act ' + esc(c.action) + '">' + act + '</span>'
+    + (withProj ? '<span class="pcc-proj"><span class="pc-dot" style="--c:' + p.color + '" aria-hidden="true"></span>' + esc(p.name) + '</span>' : '')
+    + title + '</div><ul class="pcc-diffs">' + diffs + '</ul></div></div>';
+}
+function pcRcDayGroups(rows, withProj, gone){
+  const by = new Map();
+  for(const c of rows){ const d = ymd(new Date(Date.parse(c.changedAt || '') || 0)); if(!by.has(d)) by.set(d, []); by.get(d).push(c); }
+  return [...by.keys()].sort().reverse().map(d => '<h4 class="pcc-day">' + esc(pcMd(d)) + ' <small>불러온 ' + by.get(d).length + '건</small></h4>'
+    + by.get(d).map(c => pcRcRowHtml(c, withProj, gone)).join('')).join('');
+}
+function pcRenderChanges(){
+  const R = PCAL.rc, body = document.getElementById('pccBody'); if(!body) return;
+  pcRenderChangesMeta();
+  const vis = pcVisible();
+  const gone = new Set(R.rows.filter(c => c.action === 'delete').map(c => c.eventUid));
+  let h = '';
+  if(R.err) h = '<div class="pcc-empty">' + esc('변경을 읽지 못했습니다. ' + R.err) + '</div>';
+  else if(!vis.length) h = '<div class="pcc-empty">달력에 표시한 과제가 없습니다. 과제를 하나 이상 선택하면 그 과제의 변경이 보입니다.</div>';
+  else if(!R.rows.length) h = '<div class="pcc-empty">' + (R.busy ? '읽는 중입니다.' : '고른 조건의 변경이 없습니다.') + '</div>';
+  else if(R.group === 'date') h = pcRcDayGroups(R.rows, true, gone);
+  else if(R.group === 'project'){
+    h = PCAL.projects.filter(p => R.rows.some(c => c.projectUid === p.projectUid)).map(p => {
+      const cs = R.rows.filter(c => c.projectUid === p.projectUid);
+      return '<details class="pcc-grp" open><summary><span class="pc-dot" style="--c:' + p.color + ';margin-top:0" aria-hidden="true"></span><b>' + esc(p.name) + '</b><small>불러온 ' + cs.length + '건</small></summary><div>' + pcRcDayGroups(cs, false, gone) + '</div></details>';
+    }).join('');
+  } else {
+    const keys = []; R.rows.forEach(c => { if(keys.indexOf(c.eventUid) < 0) keys.push(c.eventUid); });
+    h = keys.map(k => {
+      const cs = R.rows.filter(c => c.eventUid === k), c0 = cs[0], p = pcProj(c0.projectUid) || { name: '', color: '#8a93a6' }, cur = pcEv(k);
+      return '<details class="pcc-grp" open><summary><span class="pc-dot" style="--c:' + p.color + ';margin-top:0" aria-hidden="true"></span><b>' + esc(cur ? cur.title : c0.title) + '</b>'
+        + (gone.has(k) ? '<span class="pcc-act delete">삭제됨</span>' : '') + '<small>불러온 ' + cs.length + '건, 최근 ' + esc(pcAtText(c0.changedAt)) + '</small></summary><div>' + pcRcDayGroups(cs, false, gone) + '</div></details>';
+    }).join('');
+  }
+  body.innerHTML = h;
+}
+
+/* ── 입력과 배선 ─────────────────────────────────────────────── */
+function pcMove(k){
+  if(PCAL.view === 'month'){ const d = parseYmd(PCAL.anchor); PCAL.anchor = ymd(new Date(d.getFullYear(), d.getMonth() + k, 1)); }
+  else PCAL.anchor = addDays(PCAL.anchor, 7 * k);
+  pcRender(); pcLoad();
+}
+function pcToday(){ PCAL.anchor = todayYmd(); pcRender(); pcLoad(); }
+//  전역 단축키(←, →, PageUp, PageDown, Home)가 과제 탭에서는 과제 달력을 움직인다.
+function pcKeyNav(key){
+  if(key === 'ArrowLeft' || key === 'PageUp') pcMove(-1);
+  else if(key === 'ArrowRight' || key === 'PageDown') pcMove(1);
+  else if(key === 'Home') pcToday();
+}
+//  전역 Esc(팝업 목록): 과제 탭의 팝오버와 좁은 창 과제 목록. 닫았으면 true.
+function pcEscape(){
+  if(pcClosePop(false)) return true;
+  if(PCAL.drawer && pcOn()){ PCAL.drawer = false; pcRender(); const b = document.getElementById('pcScope'); if(b) try{ b.focus(); }catch(_){} return true; }
+  return false;
+}
+function pcOnViewClick(ev){
+  const t = ev.target;
+  if(PCAL.pop && PCAL.pop.el.contains(t)){ pcOnPopClick(ev); return; }
+  if(PCAL.drawer && !t.closest('#pcDrawer') && !t.closest('#pcScope')){ PCAL.drawer = false; pcRender(); return; }
+  const bar = t.closest('.pc-ev[data-ev]');
+  if(bar){ const ds = pcClickedDate(bar, ev); pcSelectDate(ds); pcOpenPreview(bar.dataset.ev, bar, ev.detail > 0 ? ev.clientX : null); return; }
+  const more = t.closest('[data-more]');
+  if(more){ pcSelectDate(more.dataset.more); pcOpenDayList(more.dataset.more, more); return; }
+  const day = t.closest('.pc-day[data-date], .pc-wday[data-date]');
+  if(day){ const ds = day.dataset.date; pcSelectDate(ds); const row = day.closest('[data-proj]'); pcOpenDayList(ds, day, row ? row.dataset.proj : ''); return; }
+  pcClosePop(true);
+  const a = t.closest('[data-act]'); if(!a) return;
+  switch(a.dataset.act){
+    case 'retry': pcRefresh(true); break;
+    case 'cats': try{ openCatModal(); }catch(_){} break;
+    case 'selAll': PCAL.solo = null; PCAL.sel = PCAL.projects.map(p => p.projectUid); pcPrefsSave(); pcRender(); pcLoad(); break;
+    case 'selNone': PCAL.solo = null; PCAL.sel = []; pcPrefsSave(); pcRender(); pcLoad(); break;
+    case 'solo': PCAL.solo = PCAL.solo === a.dataset.uid ? null : a.dataset.uid; if(pcNarrow()) PCAL.drawer = false; pcRender(); pcLoad(); break;
+    case 'unsolo': PCAL.solo = null; pcRender(); pcLoad(); break;
+    case 'drawer': PCAL.drawer = !PCAL.drawer; pcRender(); if(PCAL.drawer){ const f = document.querySelector('#pcDrawer input, #pcDrawer button'); if(f) try{ f.focus(); }catch(_){} } break;
+    case 'prev': pcMove(-1); break;
+    case 'next': pcMove(1); break;
+    case 'today': pcToday(); break;
+    case 'view': if(PCAL.view !== a.dataset.v){ PCAL.view = a.dataset.v === 'week' ? 'week' : 'month'; pcPrefsSave(); pcRender(); pcLoad(); } break;
+    case 'refresh': pcRefresh(true).then(() => { if(pcOn() && PCAL.loaded && !PCAL.loadErr && !PCAL.bootErr) toast('서버에서 다시 읽었습니다.', 'info'); }); break;
+    case 'changes': pcOpenChanges(); break;
+    case 'new': pcOpenForm({ date: PCAL.anchor }); break;
+  }
+}
+function pcOnPopClick(ev){
+  const a = ev.target.closest('[data-act]'); if(!a) return;
+  const P = PCAL.pop;
+  switch(a.dataset.act){
+    case 'popClose': pcClosePop(false); break;
+    case 'detail': pcOpenDetail(a.dataset.ev); break;
+    case 'edit': pcOpenForm({ uid: a.dataset.ev }); break;
+    case 'dlOpen': pcOpenPreview(a.dataset.ev, P ? P.anchor : a, null); break;
+    case 'newOn': pcOpenForm({ date: a.dataset.date, projectUid: a.dataset.proj || '' }); break;
+  }
+}
+function pcOnViewChange(ev){
+  const t = ev.target, act = t && t.dataset ? t.dataset.act : '';
+  if(act === 'toggle'){
+    PCAL.solo = null;
+    const s = new Set(PCAL.sel || []);
+    if(t.checked) s.add(t.dataset.uid); else s.delete(t.dataset.uid);
+    PCAL.sel = PCAL.projects.map(p => p.projectUid).filter(u => s.has(u));
+    pcPrefsSave(); pcRender(); pcLoad();
+  } else if(act === 'memoLine'){
+    PCAL.memoLine = !!t.checked; pcPrefsSave(); pcRender();
+  }
+}
+function pcInit(){
+  if(PCAL.inited) return;
+  PCAL.inited = true;
+  const tabs = document.getElementById('pcTabs');
+  //  열람 창과 따로 뜬 창(관리 창, 열람 창 껍데기)에는 탭이 없다. 노드째 지운다(장애 띠 자리도 상단바로 돌아간다).
+  if(PEER || SUBWIN){ if(tabs) tabs.remove(); return; }
+  if(tabs){
+    tabs.addEventListener('click', ev => { const b = ev.target.closest('[data-pctab]'); if(b) pcSetTab(b.dataset.pctab); });
+    tabs.addEventListener('keydown', ev => {
+      if(ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight' && ev.key !== 'Home' && ev.key !== 'End') return;
+      ev.preventDefault(); ev.stopPropagation();
+      const next = (ev.key === 'Home') ? 'personal' : (ev.key === 'End') ? 'project' : (PCAL.tab === 'personal' ? 'project' : 'personal');
+      pcSetTab(next);
+      const f = document.getElementById(next === 'project' ? 'pcTabProject' : 'pcTabPersonal'); if(f) try{ f.focus(); }catch(_){}
+    });
+  }
+  const v = document.getElementById('pcView');
+  if(v){
+    v.addEventListener('click', pcOnViewClick);
+    v.addEventListener('change', pcOnViewChange);
+    v.addEventListener('keydown', ev => {
+      if((ev.key === 'Enter' || ev.key === ' ') && ev.target.classList && ev.target.classList.contains('pc-day')){ ev.preventDefault(); ev.target.click(); }
+    });
+  }
+  //  팝오버 바깥을 누르면 닫는다(과제 화면 안의 누름은 pcOnViewClick 이 판단한다).
+  document.addEventListener('mousedown', ev => {
+    if(!PCAL.pop) return;
+    const t = ev.target;
+    if(PCAL.pop.el.contains(t) || (t.closest && t.closest('#pcView'))) return;
+    pcClosePop(true);
+  }, true);
+  const det = document.getElementById('pcDetailModal');
+  if(det) det.addEventListener('click', ev => {
+    const a = ev.target.closest('[data-act]'); if(!a || a.disabled) return;
+    const uid = PCAL.detail;
+    if(a.dataset.act === 'edit') pcOpenForm({ uid });
+    else if(a.dataset.act === 'delete') pcDelete(uid);
+    else if(a.dataset.act === 'copy') pcCopy(uid);
+  });
+  const fm = document.getElementById('pcFormModal');
+  if(fm){
+    locBind('pcf');
+    fm.addEventListener('input', ev => { if(ev.target.id === 'pcfMemo') pcFormSync(); });
+    fm.addEventListener('change', ev => { if(['pcfStart', 'pcfEnd', 'pcfST', 'pcfET'].indexOf(ev.target.id) >= 0) pcFormSync(); });
+    fm.addEventListener('click', ev => {
+      const a = ev.target.closest('[data-act]'); if(!a) return;
+      if(a.dataset.act === 'cfLatest') pcConflictLatest();
+      else if(a.dataset.act === 'cfKeep') pcConflictKeep();
+    });
+    const sv = document.getElementById('pcfSave'); if(sv) sv.addEventListener('click', pcSaveForm);
+    const tt = document.getElementById('pcfTitle');
+    if(tt) tt.addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); pcSaveForm(); } });
+  }
+  const cm = document.getElementById('pcChangesModal');
+  if(cm){
+    cm.addEventListener('click', ev => {
+      const a = ev.target.closest('[data-act]'); if(!a) return;
+      const R = PCAL.rc;
+      if(a.dataset.act === 'rcGroup'){ R.group = a.dataset.v; pcRenderChangesTools(); pcRenderChanges(); }
+      else if(a.dataset.act === 'rcOpen'){ closeModal('#pcChangesModal'); pcOpenDetail(a.dataset.ev); }
+      else if(a.dataset.act === 'rcExp'){ const mb = a.previousElementSibling; if(mb){ const shut = mb.classList.toggle('clamp'); a.textContent = shut ? '펼치기' : '접기'; a.setAttribute('aria-expanded', String(!shut)); } }
+    });
+    cm.addEventListener('change', ev => {
+      const R = PCAL.rc, id = ev.target.id;
+      if(id === 'pccProj') R.proj = ev.target.value; else if(id === 'pccDays') R.days = ev.target.value; else if(id === 'pccKind') R.kind = ev.target.value; else return;
+      R.rows = []; R.cursor = null; R.more = false;
+      pcRenderChanges(); pcLoadChanges(false);
+    });
+    const mo = document.getElementById('pccMore'); if(mo) mo.addEventListener('click', () => pcLoadChanges(true));
+  }
+  //  창 복귀: 위젯 창이 다시 활성화되거나 다시 보이면 지금 범위를 한 번 다시 읽는다(주기 확인 아님).
+  window.addEventListener('focus', pcOnActivate);
+  try{ document.addEventListener('visibilitychange', pcOnActivate); }catch(_){}
+  window.addEventListener('resize', () => {
+    if(!pcOn()) return;
+    clearTimeout(PCAL.resizeT);
+    PCAL.resizeT = setTimeout(() => { if(pcOn() && !openOverlays().length && !PCAL.pop) pcRender(); }, 150);
+  });
+  //  브라우저 단독: 계정이 없으니 이 PC 의 설정(tc_pcal:local)을 쓴다. 과제 탭은 안내 한 장이다.
+  if(!HOST){ const p = pcResetFor(''); if(p.tab === 'project') pcSetTab('project', { quiet: true }); }
+}
+
 /* 호스트(WPF) 비동기 요청/응답 브리지 — reqId로 Promise를 매칭 */
 let __reqSeq = 0;
 //  따로 뜨는 창(열람 창 'pw:', 관리 창 'aw:')의 번호에는 창마다 다른 소금을 붙인다. __reqSeq 는 페이지마다 0 부터 다시 세므로, 창을 닫았다 다시 열거나
@@ -19640,6 +21077,7 @@ function hideBootSkeleton(){ const s = document.getElementById('bootSkeleton'); 
 renderWeekdays();
 bind();
 setupModalA11y();
+pcInit();                 // 과제 탭(개인 / 과제 탭 줄, 과제 화면, 모달 배선). 모달 접근성 감시가 선 다음
 setupSplitter();
 // 창 폭이 바뀌면 넘침 여부도 바뀐다(위젯은 8방향 리사이즈라 자주 일어남)
 window.addEventListener('resize', syncOverflowFade);
