@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>월간 보고 탭 시안</title>
+<!--
+  월간 보고 탭(docs/MONTHLY-REPORT-PLAN.md 4, 5, 6장)을 실제 앱 보고 모달(task-calendar-prototype.html 의 #reportModal)
+  안에 넣었을 때의 모습. 개발 전 이해 확인용 클릭 시안이다.
+  호스트 없음, DB 없음, 외부 자원 없음. 과제명과 사람 이름, 본문은 모두 지어낸 (예시) 값이다.
+  앱 모양(토큰, 테마, 모달, 버튼, 세그, 밑줄 탭, 토스트)은 앱 CSS 에서 필요한 만큼만 옮겨 왔다.
+  그림은 원래 DB 에 과제별로 두는 공용 데이터인데, 시안에서는 이 페이지 메모리에만 있다(새로 고치면 처음 그림으로 돌아간다).
+  초안(직접 쓴 칸)은 앱과 같은 방식으로 localStorage 에 둔다. 키 tc_rptDraftM:<이름>:<실적시작>_<실적끝>, 최근 6건.
+-->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+/* ===== 앱 토큰(앱 :root 에서 필요한 것) ===== */
+:root{
+  --bg:#f3f4f7; --panel:#ffffff; --line:#e4e7ee; --line-2:#d6dbe6;
+  --ctl-border:#8b93a5;
+  --text:#1d2433; --muted:#5b6373; --faint:#9aa2b3; --faint-text:#6c7488;
+  --accent:#3e5be0; --accent-2:#2e44ad; --accent-soft:#eef1fd; --accent-fill:var(--accent); --on-accent:#fff;
+  --danger:#d6494e; --danger-soft:#fdeeee; --danger-text:#c0343a; --danger-line:#efc7c9;
+  --ok:#1f7a4d; --warn-text:#8a6400;
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --shadow:0 10px 32px rgba(20,28,55,.16); --seg-sh:rgba(20,28,55,.16);
+  --fs-micro:11px; --fs-meta:12px; --fs-body:13px; --fs-emph:14px; --fs-title:15px; --fs-h2:17px; --fs-head:18px;
+  --lh-tight:1.35; --lh-body:1.5;
+  --hover-bg:#f3f5fa; --dim-bg:#fafbfd; --fill:#eef0f4;
+}
+html.dark{
+  color-scheme:dark;
+  --bg:#0f1420; --panel:#1a2031; --line:#2a3245; --line-2:#3a4357;
+  --text:#e6e9f2; --muted:#a8b0c3; --faint:#5c6578; --faint-text:#9aa3b7;
+  --accent:#6182ff; --accent-2:#9db0ff; --accent-soft:#1d2742; --accent-fill:#4f66d8;
+  --ctl-border:#666f8a;
+  --danger:#ff6b70; --danger-soft:#3a1f23; --danger-text:#ff6b70; --danger-line:#5c3439;
+  --ok:#6fd49a; --warn-text:#e3b766;
+  --hover-bg:#222b3e; --shadow:0 12px 34px rgba(0,0,0,.55); --seg-sh:rgba(0,0,0,.55);
+  --fill:#222b3e; --border-hover:#49546e; --dim-bg:#141a27;
+}
+html.dark .btn:hover,html.dark .x:hover{background:var(--fill);border-color:var(--border-hover)}
+html.dark input,html.dark select,html.dark textarea{color-scheme:dark}
+:root[data-theme="forest"]{ --bg:#eef4ef; --panel:#ffffff; --line:#d9e6dc; --line-2:#c3d6c8; --text:#1d2a22; --muted:#54665b; --accent:#2e9e6b; --accent-2:#1f7a50; --accent-soft:#e2f1e8; --accent-fill:#1f7a50; --ctl-border:#84958a; --dim-bg:#f2f7f3; --danger-line:#e6c6c8; }
+:root[data-theme="sepia"]{ --bg:#f3ead9; --panel:#fbf6ec; --line:#e6d8be; --line-2:#d4c2a3; --text:#4a3a28; --muted:#75664f; --accent:#b4602a; --accent-2:#8f4a1f; --accent-soft:#f0e2cc; --ctl-border:#a08a68; --dim-bg:#f4ecdd; --faint-text:#5f6779; --danger-line:#e0c6b4; }
+:root[data-theme="contrast"]{ --bg:#ffffff; --panel:#ffffff; --line:#444; --line-2:#111; --text:#000; --muted:#2a2a2a; --faint:#555; --faint-text:#1f1f1f; --accent:#0b3d91; --accent-2:#06296b; --accent-soft:#e6edf9; --danger-text:#a3000a; --danger-line:#a3000a; --ctl-border:#111; --dim-bg:#ededed; }
+
+/* ===== 바깥 페이지(시안 설명, 앱 아님) ===== */
+html,body{min-height:100%}
+body{font-family:'Segoe UI','Malgun Gothic','맑은 고딕',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:var(--fs-emph);
+  font-variant-numeric:tabular-nums;word-break:keep-all;overflow-wrap:anywhere;overflow-x:hidden}
+html.dark body{background:#0a0e17}
+.pg{padding:16px;max-width:1180px;margin:0 auto}
+.pg-head h1{font-size:var(--fs-head);font-weight:700}
+.pg-head p{color:var(--muted);font-size:var(--fs-body);margin-top:4px;line-height:1.6}
+.pg-ctl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md)}
+.pg-lb{font-size:var(--fs-meta);color:var(--muted);font-weight:700;min-width:40px}
+.pg-b{border:1px solid var(--line-2);background:var(--panel);color:var(--text);border-radius:999px;padding:4px 11px;font:inherit;font-size:var(--fs-body);cursor:pointer}
+.pg-b:hover{background:var(--hover-bg)}
+.pg-b[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.pg-notes{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 16px;font-size:var(--fs-body);line-height:1.65}
+.pg-notes h2{font-size:var(--fs-title);margin-bottom:6px}
+.pg-notes ul{padding-left:18px}
+.pg-notes li{margin:3px 0}
+
+/* ===== 앱 공통(버튼, 모달, 세그, 체크, 링크) ===== */
+.hidden{display:none !important}
+.btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);background:var(--panel);color:var(--text);padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;font:inherit;font-size:var(--fs-emph);transition:background .15s,border-color .15s;white-space:nowrap}
+.btn:hover{border-color:#bcc4d6;background:var(--hover-bg)}
+.btn.sm{padding:4px 10px;font-size:var(--fs-body)}
+.btn.xs{padding:2px 7px;font-size:var(--fs-meta)}
+.btn.primary{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent);font-weight:600}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.danger{color:var(--danger-text);border-color:var(--danger-line)}
+.btn.danger:hover{background:var(--danger-soft)}
+.btn.danger-solid{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-2);font-weight:600}
+.btn:disabled,button:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible,.lnk:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.lnk{border:none;background:none;color:var(--accent-2);cursor:pointer;font:inherit;padding:0;text-decoration:underline}
+.stage{display:flex;justify-content:center}
+.modal{background:var(--panel);border-radius:var(--r-lg);box-shadow:var(--shadow);width:min(1120px,100%);display:flex;flex-direction:column;border:1px solid var(--line)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:15px 20px;border-bottom:1px solid var(--line);flex:none}
+.modal-head h2{font-size:var(--fs-h2);font-weight:700}
+.x{border:none;background:transparent;font-size:20px;line-height:1;color:var(--muted);cursor:pointer;padding:2px 7px;border-radius:var(--r-sm)}
+.x:hover{background:var(--hover-bg);color:var(--text)}
+.modal-body{padding:var(--sp-4) 20px var(--sp-5);min-width:0}
+.modal-foot{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
+.modal-foot .spacer{flex:1}
+.modal input[type=text],.modal input[type=date],.modal select,.modal textarea{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 10px;font-size:var(--fs-emph);font-family:inherit;background:var(--panel);color:var(--text);min-width:0}
+.modal input:focus,.modal select:focus,.modal textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+.modal input[readonly]{background:var(--dim-bg);color:var(--muted)}
+.modal textarea{resize:vertical;min-height:90px;line-height:1.55}
+.check{display:flex;align-items:center;gap:7px;font-size:var(--fs-body);color:var(--text);cursor:pointer}
+.check input{width:15px;height:15px;accent-color:var(--accent);flex:none}
+.seg{display:inline-flex;flex:0 1 auto;gap:2px;background:var(--bg);border:1px solid var(--line-2);border-radius:var(--r-md);padding:2px}
+.seg-b{flex:0 0 max-content;border:none;background:transparent;color:var(--text);font:inherit;font-size:var(--fs-meta);line-height:1.3;padding:5px 11px;border-radius:calc(var(--r-md) - 3px);cursor:pointer;white-space:nowrap}
+.seg-b:hover{background:var(--hover-bg)}
+.seg-b.active{background:var(--panel);font-weight:600;box-shadow:0 0 0 1px var(--ctl-border),0 1px 2px var(--seg-sh)}
+.seg-b:focus-visible{outline:2px solid var(--accent);outline-offset:-1px}
+.git-hint{font-size:var(--fs-micro);color:var(--muted)}
+.rpt-opt-lb{font-size:var(--fs-meta);font-weight:700;color:var(--muted);white-space:nowrap}
+/* 보고 유형 탭(앱의 .rpt-presets[role=tablist] 밑줄 탭) */
+.rpt-presets[role=tablist]{display:flex;gap:2px;flex-wrap:nowrap;align-items:flex-end;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto;overflow-y:hidden}
+.rpt-presets[role=tablist] .btn{border:none;background:transparent;padding:8px 10px;border-radius:var(--r-sm) var(--r-sm) 0 0;white-space:nowrap;font:inherit;font-size:var(--fs-body);color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.rpt-presets[role=tablist] .btn:hover{background:var(--hover-bg);color:var(--text)}
+.rpt-presets[role=tablist] .btn.active{color:var(--accent-2);font-weight:600;border-bottom-color:var(--accent)}
+.rpt-presets[role=tablist] .btn:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.rpt-other{padding:24px 4px;color:var(--muted);font-size:var(--fs-body)}
+
+/* 토스트(앱 #toastWrap) */
+#toastWrap{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:90%;pointer-events:none}
+.toast{background:#222a3d;color:#fff;padding:10px 17px;border-radius:999px;font-size:var(--fs-body);opacity:0;transform:translateY(10px);transition:opacity .25s,transform .25s;display:inline-flex;align-items:center;gap:8px;max-width:100%}
+.toast.show{opacity:1;transform:translateY(0)}
+.t-ico{font-weight:700;flex:none}
+.toast.success{background:#1f7a4d} .toast.warn{background:#9a5b00} .toast.error{background:#b3322f} .toast.info{background:#222a3d}
+
+/* 확인 창(앱의 확인 모달 모양) */
+.overlay{position:fixed;inset:0;background:rgba(18,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:90;padding:16px}
+.overlay .modal{width:min(440px,100%)}
+.cfm-msg{font-size:var(--fs-emph);line-height:1.6;white-space:pre-line}
+
+/* ===== 월간 보고 탭(새 CSS 는 모두 .rptm- 로 시작) ===== */
+.rptm-set{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 14px;align-items:center;padding:12px 14px;background:var(--dim-bg);border:1px solid var(--line);border-radius:var(--r-md)}
+.rptm-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.rptm-row input[type=date]{flex:1 1 140px;max-width:180px}
+.rptm-row .sep{color:var(--muted)}
+.rptm-row input.rptm-name{flex:0 1 140px;max-width:160px}
+.rptm-hint{font-size:var(--fs-meta);color:var(--muted);line-height:1.5}
+.rptm-set .rptm-hint.full{grid-column:1 / -1;margin-top:-4px}
+.rptm-sec{margin-top:16px}
+.rptm-sec-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;font-size:var(--fs-title);font-weight:700;margin-bottom:8px}
+.rptm-sec-h .rptm-hint{font-weight:400}
+/* 과제 고르기 */
+.rptm-pick{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden}
+.rptm-pi{display:flex;align-items:center;gap:8px;padding:7px 10px;border-top:1px solid var(--line);min-width:0}
+.rptm-pi:first-child{border-top:none}
+.rptm-pi .check{flex:1 1 auto;min-width:0}
+.rptm-pi .nm{min-width:0}
+.rptm-pi.off .nm{color:var(--muted)}
+.rptm-badge{display:inline-block;font-size:var(--fs-micro);font-weight:700;border-radius:999px;padding:1px 8px;border:1px solid var(--line-2);color:var(--muted);white-space:nowrap;flex:none}
+.rptm-badge.has{color:var(--ok);border-color:currentColor}
+.rptm-badge.tbd{color:var(--warn-text);border-color:currentColor}
+.rptm-ord{display:flex;gap:2px;flex:none}
+.rptm-ord .btn{padding:2px 7px;font-size:var(--fs-meta)}
+/* 과제 카드 */
+.rptm-cards{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.rptm-card{border:1px solid var(--line-2);border-radius:var(--r-md);background:var(--panel);min-width:0}
+.rptm-card.act{border-color:var(--accent)}
+.rptm-ch{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--dim-bg);border-radius:var(--r-md) var(--r-md) 0 0}
+.rptm-card.closed .rptm-ch{border-bottom:none;border-radius:var(--r-md)}
+.rptm-tog{border:none;background:transparent;color:var(--muted);cursor:pointer;font-size:14px;width:26px;height:26px;border-radius:var(--r-sm);flex:none}
+.rptm-tog:hover{background:var(--hover-bg);color:var(--text)}
+.rptm-tog:focus-visible{outline:2px solid var(--accent)}
+.rptm-tf{display:flex;align-items:center;gap:8px;flex:1 1 300px;min-width:0}
+.rptm-tf input[type=text]{font-weight:700}
+.rptm-term{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;flex:0 1 auto}
+.rptm-term .v{font-weight:700}
+.rptm-cb{padding:12px 14px 14px;display:flex;flex-direction:column;gap:16px}
+.rptm-card.closed .rptm-cb,.rptm-card.closed .rptm-cf{display:none}
+.rptm-sub-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:6px}
+.rptm-sub-h b{font-size:var(--fs-emph)}
+.rptm-share{font-size:var(--fs-meta);color:var(--warn-text)}
+/* 그림 */
+.rptm-imgs{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.rptm-img{display:flex;flex-direction:column;gap:5px;width:220px;max-width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px;background:var(--panel)}
+.rptm-img .ph{background:#fff;border:1px solid var(--line);border-radius:4px;height:110px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.rptm-img img{max-width:100%;max-height:100%;display:block}
+.rptm-img .no{font-size:var(--fs-micro);font-weight:700;color:var(--muted)}
+.rptm-img .meta{font-size:var(--fs-micro);color:var(--muted)}
+.rptm-img .acts{display:flex;gap:4px;align-items:center}
+.rptm-img .acts .grow{flex:1}
+.rptm-drop{flex:1 1 220px;min-height:110px;border:2px dashed var(--ctl-border);border-radius:var(--r-sm);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:10px;text-align:center;color:var(--muted);font-size:var(--fs-body);cursor:pointer;background:var(--dim-bg)}
+.rptm-drop:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rptm-drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2)}
+.rptm-drop.full{cursor:not-allowed;opacity:.7}
+.rptm-drop .lim{font-size:var(--fs-micro)}
+.rptm-msg{font-size:var(--fs-meta);color:var(--danger-text);margin-top:6px;min-height:0}
+.rptm-msg:empty{display:none}
+.rptm-msg.ok{color:var(--ok)}
+/* 일정 변경이력 */
+.rptm-chg{display:flex;flex-direction:column;gap:6px}
+.rptm-chg-row{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1fr) minmax(0,2.6fr) auto;gap:6px;align-items:center}
+.rptm-chg-head{font-size:var(--fs-meta);font-weight:700;color:var(--muted)}
+.rptm-chg-add{align-self:flex-start}
+/* 세 본문 칸: 양식 폭 비율(수행 계획 2 : 수행 실적 3 : 수행 계획 1.6) */
+.rptm-cols{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr) minmax(0,1.6fr);gap:10px}
+.rptm-col{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rptm-col-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.rptm-col-h b{font-size:var(--fs-body)}
+.rptm-col textarea{min-height:260px;font-family:'Malgun Gothic','맑은 고딕','Segoe UI',sans-serif;font-size:var(--fs-body);white-space:pre;overflow-wrap:normal;overflow-x:auto}
+.rptm-tag{font-size:var(--fs-micro);color:var(--accent-2);background:var(--accent-soft);border-radius:4px;padding:0 6px}
+.rptm-cf{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.rptm-cf .rptm-hint{flex:1 1 240px}
+/* 기타 카드 */
+.rptm-etc-cats{display:flex;flex-wrap:wrap;gap:6px 16px}
+.rptm-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body);border:1px dashed var(--line-2);border-radius:var(--r-md)}
+.rptm-draft{font-size:var(--fs-meta);color:var(--muted)}
+.rptm-draft b{color:var(--ok);font-weight:600}
+
+/* ===== 문서 미리 보기(회사 양식 근사치, 종이는 테마와 무관하게 흰색) ===== */
+.rptm-pv{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
+.rptm-pvwrap{overflow-x:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:16px;max-width:100%}
+.rptm-sheet{background:#fff;color:#000;width:100%;max-width:1123px;min-width:880px;margin:0 auto;box-shadow:0 2px 10px rgba(0,0,0,.18);
+  padding:56px 64px 56px 80px;font-family:'Malgun Gothic','맑은 고딕',sans-serif;font-size:10pt;line-height:1.45;word-break:keep-all}
+.rptm-sheet .ttl{text-align:center;font-weight:700;font-size:12pt;text-decoration:underline;margin-bottom:18px}
+.rptm-sheet table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:14px}
+.rptm-sheet td{border:1px solid #000;padding:3px 6px;vertical-align:middle}
+.rptm-sheet td.a{background:#DBE5F1;font-weight:700;text-align:center}
+.rptm-sheet td.b{background:#F2F2F2;font-weight:700;text-align:center}
+.rptm-sheet td.bv{background:#F2F2F2}
+.rptm-sheet td.nm{text-align:center}
+.rptm-sheet td.c{text-align:center}
+.rptm-sheet td.body{vertical-align:top;height:120px}
+.rptm-sheet .ln{min-height:1.45em;white-space:pre-wrap}
+.rptm-sheet td.img img{display:block;max-width:100%;margin:3px 0}
+
+@media (max-width:900px){
+  .rptm-cols{grid-template-columns:minmax(0,1fr)}
+  .rptm-col textarea{min-height:160px}
+}
+@media (max-width:620px){
+  .pg{padding:16px}
+  .modal-head,.modal-foot{padding-left:14px;padding-right:14px}
+  .modal-body{padding:var(--sp-3) 14px var(--sp-4)}
+  .rptm-set{grid-template-columns:minmax(0,1fr);gap:4px 0;padding:10px}
+  .rptm-set > .rpt-opt-lb{margin-top:6px}
+  .rptm-row input[type=date]{max-width:none}
+  .rptm-chg-head{display:none}
+  .rptm-chg-row{grid-template-columns:minmax(0,1fr) auto;padding-bottom:6px;border-bottom:1px dashed var(--line)}
+  .rptm-chg-row .w{grid-column:1 / -1}
+  .rptm-chg-row .y{grid-column:1 / -1}
+  .rptm-img{width:100%}
+  .rptm-cb{padding:10px}
+}
+</style>
+</head>
+<body>
+<div class="pg">
+  <div class="pg-head">
+    <h1>월간 보고 탭 시안</h1>
+    <p>보고 모달의 네 번째 탭 <b>월간 보고</b>를 앱 모양 그대로 그려 본 클릭 시안입니다. 호스트와 DB 없이 이 파일 하나로 움직이며, 과제명과 사람 이름과 본문은 모두 지어낸 (예시) 값입니다.</p>
+  </div>
+  <div class="pg-ctl" role="group" aria-label="테마">
+    <span class="pg-lb">테마</span>
+    <button type="button" class="pg-b" data-pgtheme="system">시스템</button>
+    <button type="button" class="pg-b" data-pgtheme="light">라이트</button>
+    <button type="button" class="pg-b" data-pgtheme="dark">다크</button>
+    <button type="button" class="pg-b" data-pgtheme="forest">포레스트</button>
+    <button type="button" class="pg-b" data-pgtheme="sepia">세피아</button>
+    <button type="button" class="pg-b" data-pgtheme="contrast">고대비</button>
+  </div>
+
+  <div class="stage">
+    <div class="modal wide" id="reportModal" role="dialog" aria-labelledby="rptTitle">
+      <div class="modal-head"><h2 id="rptTitle">보고서 초안</h2><button type="button" class="x" aria-label="닫기" title="시안에서는 닫지 않습니다">×</button></div>
+      <div class="modal-body">
+        <div class="rpt-presets" role="tablist" aria-label="보고 유형">
+          <button type="button" class="btn sm" data-rmode="daily" role="tab" aria-selected="false" tabindex="-1">일간 작성</button>
+          <button type="button" class="btn sm" data-rmode="weekly" role="tab" aria-selected="false" tabindex="-1">주간 작성</button>
+          <button type="button" class="btn sm" data-rmode="custom" role="tab" aria-selected="false" tabindex="-1">기간 취합</button>
+          <button type="button" class="btn sm active" data-rmode="monthly" role="tab" aria-selected="true" tabindex="0">월간 보고</button>
+        </div>
+
+        <div class="rpt-other hidden" id="rptOther" role="tabpanel">시안에서는 월간 보고 탭만 동작합니다.</div>
+
+        <div id="rptMonthlyPane" role="tabpanel" aria-label="월간 보고">
+          <!-- 기간과 작성 정보 -->
+          <div class="rptm-set">
+            <span class="rpt-opt-lb">실적 기간</span>
+            <div class="rptm-row">
+              <input type="date" id="rptmFrom" aria-label="실적 기간 시작일"><span class="sep">~</span><input type="date" id="rptmTo" aria-label="실적 기간 종료일">
+              <button type="button" class="btn sm primary" id="rptmLoad">읽어 오기</button>
+            </div>
+            <div class="rptm-hint full">문서의 <b>월간 실적</b> 기간은 이 실적 기간이 그대로 찍힙니다.</div>
+
+            <span class="rpt-opt-lb">내용 출처</span>
+            <div class="rptm-row">
+              <div class="seg" id="rptmSrc" role="group" aria-label="내용 출처">
+                <button type="button" class="seg-b active" data-src="cal" aria-pressed="true">캘린더</button>
+                <button type="button" class="seg-b" data-src="week" aria-pressed="false" title="netcus 주간보고 게시판 읽기(400일 한도)">주간보고</button>
+              </div>
+              <span class="rptm-hint" id="rptmSrcHint">기간 취합 아래쪽 글을 과제별로 그대로 붙입니다.</span>
+            </div>
+
+            <span class="rpt-opt-lb">계획 기간</span>
+            <div class="rptm-row">
+              <input type="date" id="rptmPFrom" aria-label="계획 기간 시작일"><span class="sep">~</span><input type="date" id="rptmPTo" aria-label="계획 기간 종료일">
+              <button type="button" class="lnk rptm-hint" id="rptmPlanDef" title="실적 끝 다음 월요일부터 실적 기간과 같은 주 수, 금요일 끝">기본값으로</button>
+            </div>
+            <div class="rptm-hint full">계획 기간은 문서 머리에만 찍히고 내용을 읽어 오는 데는 쓰지 않습니다. 자유롭게 고치세요.</div>
+
+            <span class="rpt-opt-lb">작성일</span>
+            <div class="rptm-row">
+              <input type="date" id="rptmDate" aria-label="작성일">
+              <span class="rpt-opt-lb" style="margin-left:8px">이름</span>
+              <input type="text" class="rptm-name" id="rptmName" value="홍길동" readonly aria-label="이름(로그인 계정)">
+            </div>
+          </div>
+
+          <!-- 과제 고르기 -->
+          <div class="rptm-sec">
+            <div class="rptm-sec-h">과제 고르기 <span class="rptm-hint">구독한 공식 과제입니다. 기록이 있는 과제는 처음부터 체크됩니다. 순서대로 문서에 들어갑니다.</span></div>
+            <div class="rptm-pick" id="rptmPick"></div>
+          </div>
+
+          <!-- 과제 카드와 기타 카드 -->
+          <div class="rptm-cards" id="rptmCards"></div>
+
+          <!-- 문서 미리 보기 -->
+          <div class="rptm-pv hidden" id="rptmPv">
+            <div class="rptm-sec-h">문서 미리 보기 <span class="rptm-hint">회사 양식(A4 가로)을 화면에 비슷하게 그린 것입니다. 실제 글꼴과 줄바꿈은 Word 에서 조금 다를 수 있습니다.</span></div>
+            <div class="rptm-pvwrap"><div class="rptm-sheet" id="rptmSheet"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot" id="rptmFoot">
+        <span class="rptm-draft" id="rptmDraft" role="status" aria-live="polite"></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn" id="rptmPvBtn" aria-pressed="false" aria-controls="rptmPv">문서 미리 보기</button>
+        <button type="button" class="btn primary" id="rptmSave">DOCX 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pg-notes">
+    <h2>시안에서 확인할 것</h2>
+    <ul>
+      <li>캘린더가 채우는 칸은 가운데 <b>수행 실적</b> 하나뿐입니다. 양쪽 수행 계획과 일정 변경이력은 직접 씁니다.</li>
+      <li>과제 수행 기간은 DB 의 개발 시작일 ~ 개발종료일을 보여 주기만 합니다. 세 번째 예시 과제는 값이 비어 있어 미정으로 보입니다.</li>
+      <li>개발 일정 그림은 과제마다 DB 에 두는 공용 그림입니다. 이 과제를 쓰는 누구나 넣고 지우고 순서를 바꿉니다. 시안에서는 붙여넣기(카드에 마우스를 올리거나 그림 칸을 누른 뒤 Ctrl+V), 끌어다 놓기, 파일 고르기가 실제로 됩니다. PNG, JPG 만, 한 장 5MB 까지, 과제마다 5장까지입니다.</li>
+      <li>시안의 그림은 이 페이지 메모리에만 있어 새로 고치면 처음 그림으로 돌아갑니다. 직접 쓴 칸은 초안으로 localStorage 에 남습니다.</li>
+      <li>월간 보고 탭에는 보내기 버튼이 없습니다. DOCX 저장은 시안에서 알림만 띄웁니다.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="overlay hidden" id="cfm" role="alertdialog" aria-modal="true" aria-labelledby="cfmTitle" aria-describedby="cfmMsg">
+  <div class="modal">
+    <div class="modal-head"><h2 id="cfmTitle">확인</h2></div>
+    <div class="modal-body"><div class="cfm-msg" id="cfmMsg"></div></div>
+    <div class="modal-foot">
+      <button type="button" class="btn" id="cfmNo">취소</button>
+      <button type="button" class="btn primary" id="cfmYes">확인</button>
+    </div>
+  </div>
+</div>
+<div id="toastWrap" aria-live="polite"></div>
+<input type="file" id="rptmFile" accept="image/png,image/jpeg" multiple class="hidden" aria-hidden="true" tabindex="-1">
+
+<script>
+'use strict';
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const ME = '홍길동';
+const MAX_IMG = 5, MAX_BYTES = 5 * 1024 * 1024;
+
+/* ---------- 날짜 ---------- */
+const parseD = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+const fmtD = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const nowHM = () => { const d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const nowMDHM = () => { const d = new Date(); return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + nowHM(); };
+const monthDay = s => { const d = parseD(s); return d ? pad(d.getMonth() + 1) + '월 ' + pad(d.getDate()) + '일' : '__월 __일'; };
+const ym = s => { const d = parseD(s); return d ? d.getFullYear() + '/' + pad(d.getMonth() + 1) : ''; };
+/* 지난달 1일 ~ 말일(앱 monthRange 와 같은 기본값) */
+function lastMonth(){
+  const t = new Date();
+  return { from: fmtD(new Date(t.getFullYear(), t.getMonth() - 1, 1)), to: fmtD(new Date(t.getFullYear(), t.getMonth(), 0)) };
+}
+/* 계획 기본값: 실적 끝 다음 월요일부터 실적 기간과 같은 주 수, 금요일 끝 */
+function planDefault(from, to){
+  const f = parseD(from), t = parseD(to);
+  if(!f || !t || t < f) return { from: '', to: '' };
+  const days = Math.round((t - f) / 86400000) + 1;
+  const weeks = Math.max(1, Math.ceil(days / 7));
+  let m = addDays(t, 1);
+  while(m.getDay() !== 1) m = addDays(m, 1);
+  return { from: fmtD(m), to: fmtD(addDays(m, weeks * 7 - 3)) };
+}
+
+/* ---------- 지어낸 데이터 ---------- */
+const PROJECTS = [
+  { uid: 'db-101', name: '(예시) 스마트 공장 관제 고도화', devStart: '2025-08-01', devEnd: '2026-12-31', hasRec: true },
+  { uid: 'db-102', name: '(예시) 해양 관측 자료 수집 체계', devStart: '2026-03-01', devEnd: '2027-02-26', hasRec: true },
+  { uid: 'db-103', name: '(예시) 사내 보안 점검 도구', devStart: '', devEnd: '', hasRec: true },
+  { uid: 'db-104', name: '(예시) 차세대 통합 플랫폼 기획', devStart: '2026-11-02', devEnd: '2027-10-29', hasRec: false }
+];
+/* 기간 취합(캘린더) 또는 주간보고 취합 아래쪽 글에서 과제 부분을 그대로 옮긴 것이라고 가정한 본문 */
+const ACTUAL = {
+  cal: {
+    'db-101': [
+      '▪ 구현',
+      '  1. 기능 보완',
+      '    - 화면 응답 속도 개선',
+      '      ; 목록 갱신 횟수 줄임',
+      '      ; 첫 화면 읽기 순서 정리',
+      '    - 알람 기준값 설정 화면 추가',
+      '  2. 시험',
+      '    - 통합 시험 항목 정리',
+      '▪ 회의',
+      '  - 중간 점검 회의 (09.15, 고객사)',
+      '  - 설비 연동 협의 (09.24, 본사)',
+      '▪ 기타',
+      '  - 내부 검토 자료 작성 (w. 김예시 선임)'
+    ].join('\n'),
+    'db-102': [
+      '▪ 구현',
+      '  - 관측 자료 수신 모듈 정리',
+      '    ; 끊긴 연결 다시 잇기',
+      '  - 자료 보관 주기 설정 추가',
+      '▪ 회의',
+      '  - 착수 후속 회의 (09.08, 고객사)'
+    ].join('\n'),
+    'db-103': [
+      '▪ 구현',
+      '  - 점검 항목 목록 화면',
+      '    ; 항목별 결과 내보내기',
+      '▪ 기타',
+      '  - 점검 기준 문서 검토 (w. 박예시 책임)'
+    ].join('\n')
+  },
+  week: {
+    'db-101': [
+      '- 화면 응답 속도 개선',
+      '  ; 목록 갱신 횟수 줄임',
+      '- 알람 기준값 설정 화면 추가',
+      '- 중간 점검 회의 참석 (09.15)'
+    ].join('\n'),
+    'db-102': [
+      '- 관측 자료 수신 모듈 정리',
+      '- 착수 후속 회의 참석 (09.08)'
+    ].join('\n'),
+    'db-103': [
+      '- 점검 항목 목록 화면 작업'
+    ].join('\n')
+  }
+};
+const ETC_CATS = [
+  { id: 'c-1', name: '(예시) 사내 업무', inc: true, text: { cal: '- 주간 회의 자료 정리\n  ; 팀 공용 폴더 정리\n- 신규 입사자 개발 환경 안내 (w. 김예시 선임)', week: '- 주간 회의 자료 정리' } },
+  { id: 'c-2', name: '(예시) 교육', inc: true, text: { cal: '- 보안 교육 이수 (09.11)', week: '- 보안 교육 이수' } },
+  { id: 'c-3', name: '(예시) 휴가', inc: false, text: { cal: '- 연차 (09.29)', week: '- 연차' } }
+];
+
+/* 개발 일정 그림(지어낸 간트 차트를 SVG 로 그린다. 실제로는 제안서 그림을 잘라 붙인 PNG, JPG) */
+function ganttBars(title, months, rows, color){
+  const W = 640, lw = 150, top = 46, rh = 24, H = top + rows.length * rh + 12;
+  const cw = (W - lw - 10) / months.length;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Malgun Gothic, sans-serif">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
+  s += `<text x="10" y="18" font-size="13" font-weight="700" fill="#1f2d4d">${title}</text>`;
+  months.forEach((m, i) => {
+    const x = lw + i * cw;
+    s += `<rect x="${x}" y="26" width="${cw}" height="18" fill="${i % 2 ? '#e8edf6' : '#dfe6f2'}" stroke="#9aa6bd" stroke-width="0.5"/>`;
+    s += `<text x="${x + cw / 2}" y="39" font-size="10" text-anchor="middle" fill="#1f2d4d">${m}</text>`;
+    s += `<line x1="${x}" y1="${top}" x2="${x}" y2="${H - 10}" stroke="#d3d9e5" stroke-width="0.5"/>`;
+  });
+  rows.forEach((r, i) => {
+    const y = top + i * rh;
+    s += `<text x="10" y="${y + 16}" font-size="11" fill="#1f2d4d">${r[0]}</text>`;
+    s += `<rect x="${lw + r[1] * cw + 2}" y="${y + 5}" width="${(r[2] - r[1]) * cw - 4}" height="14" rx="3" fill="${color}"/>`;
+    s += `<line x1="10" y1="${y + rh}" x2="${W - 10}" y2="${y + rh}" stroke="#eef1f6" stroke-width="0.5"/>`;
+  });
+  return s + '</svg>';
+}
+function ganttCells(title, weeks, rows){
+  const W = 640, lw = 130, top = 44, rh = 22, H = top + rows.length * rh + 12;
+  const cw = (W - lw - 10) / weeks;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Malgun Gothic, sans-serif">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
+  s += `<text x="10" y="18" font-size="13" font-weight="700" fill="#2b3a1f">${title}</text>`;
+  for(let i = 0; i < weeks; i++){
+    const x = lw + i * cw;
+    s += `<text x="${x + cw / 2}" y="38" font-size="9" text-anchor="middle" fill="#2b3a1f">${i + 1}주</text>`;
+  }
+  rows.forEach((r, j) => {
+    const y = top + j * rh;
+    s += `<text x="10" y="${y + 15}" font-size="11" fill="#2b3a1f">${r[0]}</text>`;
+    for(let i = 0; i < weeks; i++){
+      const on = i >= r[1] && i < r[2];
+      s += `<rect x="${lw + i * cw + 1}" y="${y + 3}" width="${cw - 2}" height="${rh - 6}" fill="${on ? r[3] : '#f4f6f2'}" stroke="#c9d1c2" stroke-width="0.5"/>`;
+    }
+  });
+  return s + '</svg>';
+}
+const svgUrl = svg => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+let IMG_SEQ = 1;
+const IMAGES = {
+  'db-101': [
+    { id: IMG_SEQ++, by: '김예시', at: '10/02 14:10', src: svgUrl(ganttBars('(예시) 단계별 추진 일정', ['8월','10월','12월','2월','4월','6월','8월','10월','12월'],
+      [['요구 분석',0,1.5],['설계',1,3],['구현 1차',2.5,5],['구현 2차',4.5,7],['통합 시험',6.5,8],['납품, 안정화',7.5,9]], '#4a6fc7')) },
+    { id: IMG_SEQ++, by: '홍길동', at: '10/06 09:32', src: svgUrl(ganttCells('(예시) 품질 관리 일정(주 단위)', 16,
+      [['코드 검토',0,16,'#7fa65a'],['단위 시험',3,12,'#7fa65a'],['성능 측정',9,14,'#d39b3a'],['결과 보고',14,16,'#c25b4a']])) }
+  ],
+  'db-102': [
+    { id: IMG_SEQ++, by: '박예시', at: '09/18 17:45', src: svgUrl(ganttBars('(예시) 연차별 추진 계획', ['3월','5월','7월','9월','11월','1월'],
+      [['장비 조사',0,1.2],['수집 모듈',1,3.5],['보관 체계',2.5,5],['현장 시험',4.5,6]], '#2e9e6b')) }
+  ],
+  'db-103': [],
+  'db-104': []
+};
+
+/* ---------- 상태와 초안 ---------- */
+let S = null;
+let planEdited = false;
+function freshState(from, to, src){
+  const pd = planDefault(from, to);
+  const t = new Date();
+  const s = {
+    from, to, src: src || 'cal', pFrom: pd.from, pTo: pd.to, date: fmtD(t),
+    order: PROJECTS.map(p => p.uid), checked: {}, cards: {},
+    etcInc: {}, etcText: '', etcOpen: true
+  };
+  PROJECTS.forEach(p => {
+    s.checked[p.uid] = p.hasRec;
+    s.cards[p.uid] = { title: p.name, changes: [{ what: '', date: '', why: '' }], prev: '', actual: actualFor(p.uid, s.src), next: '', open: true };
+  });
+  ETC_CATS.forEach(c => { s.etcInc[c.id] = c.inc; });
+  s.etcText = etcTextFor(s);
+  return s;
+}
+const actualFor = (uid, src) => (ACTUAL[src] && ACTUAL[src][uid]) || '';
+const etcTextFor = s => ETC_CATS.filter(c => s.etcInc[c.id]).map(c => c.text[s.src] || '').filter(Boolean).join('\n');
+
+const draftKey = (from, to) => 'tc_rptDraftM:' + ME + ':' + from + '_' + to;
+const IDX_KEY = 'tc_rptDraftM_idx:' + ME;
+function loadDraft(from, to){
+  try{
+    const raw = localStorage.getItem(draftKey(from, to));
+    if(!raw) return null;
+    const d = JSON.parse(raw);
+    return d && d.state ? d : null;
+  }catch(_){ return null; }
+}
+let saveTimer = 0;
+function saveDraftSoon(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveDraft, 400); }
+function saveDraft(){
+  const at = nowHM();
+  try{
+    const k = draftKey(S.from, S.to);
+    localStorage.setItem(k, JSON.stringify({ at, planEdited, state: S }));
+    let idx = [];
+    try{ idx = JSON.parse(localStorage.getItem(IDX_KEY) || '[]') || []; }catch(_){ idx = []; }
+    idx = [k].concat(idx.filter(x => x !== k));
+    idx.slice(6).forEach(x => { try{ localStorage.removeItem(x); }catch(_){} });
+    localStorage.setItem(IDX_KEY, JSON.stringify(idx.slice(0, 6)));
+    $('#rptmDraft').innerHTML = '<b>초안 저장됨</b> ' + at;
+  }catch(_){
+    $('#rptmDraft').textContent = '초안을 저장하지 못했습니다(이 브라우저에서 저장소를 쓸 수 없음)';
+  }
+  if(PV_ON) renderPreview();
+}
+
+/* ---------- 토스트와 확인 창 ---------- */
+function toast(msg, kind){
+  kind = kind || 'info';
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind;
+  t.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+  t.innerHTML = `<span class="t-ico" aria-hidden="true">${{ success: '✓', warn: '!', error: '✕', info: 'i' }[kind]}</span><span>${esc(msg)}</span>`;
+  $('#toastWrap').appendChild(t);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3200);
+  const all = $$('#toastWrap .toast'); if(all.length > 3) all[0].remove();
+}
+let cfmResolve = null, cfmBack = null;
+function confirmBox(title, msg, okLabel, danger){
+  return new Promise(res => {
+    cfmResolve = res; cfmBack = document.activeElement;
+    $('#cfmTitle').textContent = title;
+    $('#cfmMsg').textContent = msg;
+    const y = $('#cfmYes');
+    y.textContent = okLabel || '확인';
+    y.className = 'btn ' + (danger ? 'danger-solid' : 'primary');
+    $('#cfm').classList.remove('hidden');
+    $('#cfmNo').focus();
+  });
+}
+function closeCfm(v){
+  $('#cfm').classList.add('hidden');
+  const r = cfmResolve; cfmResolve = null;
+  if(cfmBack && cfmBack.focus) try{ cfmBack.focus(); }catch(_){}
+  if(r) r(v);
+}
+$('#cfmYes').addEventListener('click', () => closeCfm(true));
+$('#cfmNo').addEventListener('click', () => closeCfm(false));
+$('#cfm').addEventListener('keydown', e => { if(e.key === 'Escape') closeCfm(false); });
+
+/* ---------- 설정 줄 ---------- */
+function renderSettings(){
+  $('#rptmFrom').value = S.from; $('#rptmTo').value = S.to;
+  $('#rptmPFrom').value = S.pFrom; $('#rptmPTo').value = S.pTo;
+  $('#rptmDate').value = S.date;
+  $$('#rptmSrc .seg-b').forEach(b => { const on = b.dataset.src === S.src; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  $('#rptmSrcHint').textContent = S.src === 'cal'
+    ? '기간 취합 아래쪽 글을 과제별로 그대로 붙입니다.'
+    : 'netcus 주간보고 취합 글을 과제별로 그대로 붙입니다(읽기만, 400일 한도).';
+}
+
+/* ---------- 과제 고르기 ---------- */
+function renderPick(){
+  const ord = S.order;
+  $('#rptmPick').innerHTML = ord.map((uid, i) => {
+    const p = PROJECTS.find(x => x.uid === uid);
+    const on = !!S.checked[uid];
+    return `<div class="rptm-pi${on ? '' : ' off'}" data-uid="${uid}">
+      <label class="check"><input type="checkbox" data-act="pick" ${on ? 'checked' : ''}><span class="nm">${esc(p.name)}</span></label>
+      <span class="rptm-badge${p.hasRec ? ' has' : ''}">${p.hasRec ? '기록 있음' : '기록 없음'}</span>
+      <span class="rptm-ord">
+        <button type="button" class="btn" data-act="up" aria-label="${esc(p.name)} 위로" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button type="button" class="btn" data-act="down" aria-label="${esc(p.name)} 아래로" ${i === ord.length - 1 ? 'disabled' : ''}>▼</button>
+      </span>
+    </div>`;
+  }).join('');
+}
+$('#rptmPick').addEventListener('change', e => {
+  const cb = e.target.closest('[data-act="pick"]'); if(!cb) return;
+  const uid = cb.closest('.rptm-pi').dataset.uid;
+  S.checked[uid] = cb.checked;
+  renderPick(); renderCards(); saveDraftSoon();
+});
+$('#rptmPick').addEventListener('click', e => {
+  const b = e.target.closest('[data-act="up"],[data-act="down"]'); if(!b) return;
+  const uid = b.closest('.rptm-pi').dataset.uid;
+  const i = S.order.indexOf(uid), j = b.dataset.act === 'up' ? i - 1 : i + 1;
+  if(j < 0 || j >= S.order.length) return;
+  S.order.splice(i, 1); S.order.splice(j, 0, uid);
+  renderPick(); renderCards(); saveDraftSoon();
+  const again = $(`#rptmPick .rptm-pi[data-uid="${uid}"] [data-act="${b.dataset.act}"]`);
+  if(again && !again.disabled) again.focus(); else { const cb = $(`#rptmPick .rptm-pi[data-uid="${uid}"] input`); if(cb) cb.focus(); }
+});
+
+/* ---------- 카드 ---------- */
+function termOf(p){
+  const a = ym(p.devStart), b = ym(p.devEnd);
+  if(!a && !b) return '';
+  return (a || '') + ' ~ ' + (b || '');
+}
+function cardHtml(p){
+  const c = S.cards[p.uid];
+  const term = termOf(p);
+  const termHtml = term
+    ? `<span class="v">${esc(term)}</span>`
+    : `<span class="rptm-badge tbd">미정</span>`;
+  const termNote = term
+    ? (!p.devStart || !p.devEnd ? 'DB 개발 시작일 ~ 개발종료일 (빈 쪽은 문서에서도 빈칸)' : 'DB 개발 시작일 ~ 개발종료일')
+    : 'DB 개발 시작일, 개발종료일이 비어 있어 문서 칸도 비워 둡니다';
+  return `<section class="rptm-card${c.open ? '' : ' closed'}" data-uid="${p.uid}" aria-label="${esc(c.title)}">
+    <div class="rptm-ch">
+      <button type="button" class="rptm-tog" data-act="tog" aria-expanded="${c.open}" aria-label="${c.open ? '접기' : '펼치기'}">${c.open ? '▾' : '▸'}</button>
+      <div class="rptm-tf"><span class="rpt-opt-lb">과제명</span><input type="text" data-f="title" value="${esc(c.title)}" aria-label="과제명"></div>
+      <div class="rptm-term"><span class="rpt-opt-lb">과제 수행 기간</span>${termHtml}<span class="git-hint">${termNote}</span></div>
+    </div>
+    <div class="rptm-cb">
+      <div>
+        <div class="rptm-sub-h"><b>개발 일정 그림</b><span class="rptm-share">공용: 이 과제를 쓰는 모든 사람이 같은 그림을 봅니다</span></div>
+        <div class="rptm-imgs" data-imgs></div>
+        <div class="rptm-msg" data-msg role="status" aria-live="polite"></div>
+      </div>
+      <div>
+        <div class="rptm-sub-h"><b>일정 변경이력</b><span class="git-hint">직접 입력합니다. 없으면 빈 줄 하나로 문서에 들어갑니다.</span></div>
+        <div class="rptm-chg" data-chg></div>
+      </div>
+      <div class="rptm-cols">
+        <div class="rptm-col">
+          <div class="rptm-col-h"><b>수행 계획</b><span class="git-hint">이번 기간</span></div>
+          <textarea data-f="prev" placeholder="직접 입력" aria-label="수행 계획(이번 기간)">${esc(c.prev)}</textarea>
+        </div>
+        <div class="rptm-col">
+          <div class="rptm-col-h"><b>수행 실적</b><span class="rptm-tag">${S.src === 'cal' ? '캘린더 기간 취합에서 그대로 붙임' : '주간보고 취합에서 그대로 붙임'}</span></div>
+          <textarea data-f="actual" aria-label="수행 실적">${esc(c.actual)}</textarea>
+        </div>
+        <div class="rptm-col">
+          <div class="rptm-col-h"><b>수행 계획</b><span class="git-hint">다음 기간</span></div>
+          <textarea data-f="next" placeholder="직접 입력" aria-label="수행 계획(다음 기간)">${esc(c.next)}</textarea>
+        </div>
+      </div>
+    </div>
+    <div class="rptm-cf">
+      <span class="rptm-hint">실적은 붙인 뒤 자유롭게 고칠 수 있습니다.</span>
+      <button type="button" class="btn sm" data-act="reload">실적 다시 읽어 오기</button>
+    </div>
+  </section>`;
+}
+function etcHtml(){
+  return `<section class="rptm-card${S.etcOpen ? '' : ' closed'}" data-etc aria-label="기타">
+    <div class="rptm-ch">
+      <button type="button" class="rptm-tog" data-act="tog" aria-expanded="${S.etcOpen}" aria-label="${S.etcOpen ? '접기' : '펼치기'}">${S.etcOpen ? '▾' : '▸'}</button>
+      <div class="rptm-tf"><b>기타</b><span class="git-hint">공식 과제가 아닌 카테고리입니다. 문서 맨 끝 기타 표에 들어가며 계획 칸은 없습니다.</span></div>
+    </div>
+    <div class="rptm-cb">
+      <div>
+        <div class="rptm-sub-h"><b>넣을 카테고리</b><span class="git-hint">바꾸면 아래 본문을 다시 붙입니다. 고른 것은 계정별로 기억합니다.</span></div>
+        <div class="rptm-etc-cats">${ETC_CATS.map(c => `<label class="check"><input type="checkbox" data-etc="${c.id}" ${S.etcInc[c.id] ? 'checked' : ''}>${esc(c.name)}</label>`).join('')}</div>
+      </div>
+      <div class="rptm-col">
+        <div class="rptm-col-h"><b>실적</b><span class="rptm-tag">${S.src === 'cal' ? '캘린더 기간 취합에서 그대로 붙임' : '주간보고 취합에서 그대로 붙임'}</span></div>
+        <textarea data-f="etc" aria-label="기타 실적" style="min-height:120px">${esc(S.etcText)}</textarea>
+      </div>
+    </div>
+  </section>`;
+}
+function renderCards(){
+  const list = S.order.filter(uid => S.checked[uid]).map(uid => PROJECTS.find(p => p.uid === uid));
+  const box = $('#rptmCards');
+  box.innerHTML = (list.length ? list.map(cardHtml).join('') : '<div class="rptm-empty">고른 과제가 없습니다. 위 목록에서 문서에 넣을 과제를 체크하세요.</div>') + etcHtml();
+  list.forEach(p => { renderImgs(p.uid); renderChanges(p.uid); });
+  if(PV_ON) renderPreview();
+}
+const cardEl = uid => $(`#rptmCards .rptm-card[data-uid="${uid}"]`);
+
+/* 그림 */
+function renderImgs(uid){
+  const el = cardEl(uid); if(!el) return;
+  const imgs = IMAGES[uid];
+  const full = imgs.length >= MAX_IMG;
+  el.querySelector('[data-imgs]').innerHTML = imgs.map((im, i) => `
+    <figure class="rptm-img" data-id="${im.id}">
+      <div class="ph"><img src="${im.src}" alt="개발 일정 그림 ${i + 1}"></div>
+      <div class="acts">
+        <span class="no">${i + 1}</span>
+        <button type="button" class="btn xs" data-act="imgL" aria-label="그림 ${i + 1} 앞으로" ${i === 0 ? 'disabled' : ''}>◀</button>
+        <button type="button" class="btn xs" data-act="imgR" aria-label="그림 ${i + 1} 뒤로" ${i === imgs.length - 1 ? 'disabled' : ''}>▶</button>
+        <span class="grow"></span>
+        <button type="button" class="btn xs danger" data-act="imgDel">삭제</button>
+      </div>
+      <figcaption class="meta">등록 ${esc(im.by)}, ${esc(im.at)}</figcaption>
+    </figure>`).join('') + `
+    <div class="rptm-drop${full ? ' full' : ''}" tabindex="0" role="button" data-act="drop" aria-label="그림 넣기: 붙여넣기, 끌어다 놓기, 파일 고르기">
+      ${full ? '<span>그림은 과제마다 5장까지입니다</span>' : '<span>그림을 붙여넣거나(Ctrl+V) 끌어다 놓거나 <u>파일 고르기</u></span>'}
+      <span class="lim">PNG, JPG 한 장 5MB 까지, 과제마다 5장 (${imgs.length}/5)</span>
+    </div>`;
+}
+function setMsg(uid, text, ok){
+  const el = cardEl(uid); if(!el) return;
+  const m = el.querySelector('[data-msg]');
+  m.textContent = text || ''; m.classList.toggle('ok', !!ok);
+}
+function addFiles(uid, files){
+  files = Array.from(files || []);
+  if(!files.length) return;
+  const errs = []; let added = 0; const ok = [];
+  files.forEach(f => {
+    if(IMAGES[uid].length + ok.length >= MAX_IMG){ errs.push(`${f.name || '그림'}: 과제마다 5장까지만 넣을 수 있습니다`); return; }
+    if(f.type !== 'image/png' && f.type !== 'image/jpeg'){ errs.push(`${f.name || '그림'}: PNG, JPG 만 넣을 수 있습니다${f.type ? ' (' + f.type + ')' : ''}`); return; }
+    if(f.size > MAX_BYTES){ errs.push(`${f.name || '그림'}: 5MB 를 넘습니다 (${(f.size / 1048576).toFixed(1)}MB)`); return; }
+    ok.push(f);
+  });
+  if(errs.length) setMsg(uid, errs.join(' / '), false); else setMsg(uid, '', false);
+  ok.forEach(f => {
+    const r = new FileReader();
+    r.onload = () => {
+      if(IMAGES[uid].length >= MAX_IMG) return;
+      IMAGES[uid].push({ id: IMG_SEQ++, by: ME, at: nowMDHM(), src: r.result });
+      added++;
+      renderImgs(uid);
+      if(!errs.length) setMsg(uid, `그림 ${added}장을 넣었습니다(시안: 이 페이지에만, 실제는 DB 에 올라가 모두에게 보임)`, true);
+      if(PV_ON) renderPreview();
+    };
+    r.readAsDataURL(f);
+  });
+}
+async function imgAction(uid, id, act){
+  const arr = IMAGES[uid], i = arr.findIndex(x => x.id === id); if(i < 0) return;
+  if(act === 'imgL' && i > 0){ [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; }
+  else if(act === 'imgR' && i < arr.length - 1){ [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; }
+  else if(act === 'imgDel'){
+    const im = arr[i];
+    const yes = await confirmBox('그림 삭제', `개발 일정 그림 ${i + 1} (등록 ${im.by}, ${im.at})을 지울까요?\n이 그림은 이 과제를 쓰는 모든 사용자에게서 지워집니다. 되돌릴 수 없습니다.`, '지우기', true);
+    if(!yes) return;
+    const k = arr.findIndex(x => x.id === id); if(k >= 0) arr.splice(k, 1);
+    setMsg(uid, '그림을 지웠습니다', true);
+  } else return;
+  renderImgs(uid);
+  const fig = cardEl(uid) && cardEl(uid).querySelector(`.rptm-img[data-id="${id}"] [data-act="${act}"]`);
+  if(fig && !fig.disabled) fig.focus();
+  if(PV_ON) renderPreview();
+}
+let pickUid = null;
+$('#rptmFile').addEventListener('change', e => { if(pickUid) addFiles(pickUid, e.target.files); e.target.value = ''; });
+
+/* 일정 변경이력 */
+function renderChanges(uid){
+  const el = cardEl(uid); if(!el) return;
+  const rows = S.cards[uid].changes;
+  el.querySelector('[data-chg]').innerHTML = `
+    <div class="rptm-chg-row rptm-chg-head" aria-hidden="true"><span>변경 내용</span><span>변경 날짜</span><span>변경 사유</span><span></span></div>
+    ${rows.map((r, i) => `<div class="rptm-chg-row" data-i="${i}">
+      <input type="text" class="w" data-cf="what" value="${esc(r.what)}" placeholder="변경 내용" aria-label="변경 내용 ${i + 1}">
+      <input type="text" class="d" data-cf="date" value="${esc(r.date)}" placeholder="예: 2026.09.10" aria-label="변경 날짜 ${i + 1}">
+      <input type="text" class="y" data-cf="why" value="${esc(r.why)}" placeholder="변경 사유" aria-label="변경 사유 ${i + 1}">
+      <button type="button" class="btn xs danger" data-act="chgDel" aria-label="변경이력 ${i + 1} 삭제">삭제</button>
+    </div>`).join('')}
+    <button type="button" class="btn sm rptm-chg-add" data-act="chgAdd">+ 행 추가</button>`;
+}
+
+/* 카드 이벤트(위임) */
+const cards = $('#rptmCards');
+cards.addEventListener('input', e => {
+  const t = e.target;
+  if(t.dataset.f === 'etc'){ S.etcText = t.value; saveDraftSoon(); return; }
+  const card = t.closest('.rptm-card[data-uid]'); if(!card) return;
+  const c = S.cards[card.dataset.uid];
+  if(t.dataset.f){ c[t.dataset.f] = t.value; if(t.dataset.f === 'title') card.setAttribute('aria-label', t.value); }
+  else if(t.dataset.cf){ const i = +t.closest('.rptm-chg-row').dataset.i; c.changes[i][t.dataset.cf] = t.value; }
+  saveDraftSoon();
+});
+cards.addEventListener('change', e => {
+  const t = e.target;
+  if(t.matches('input[data-etc]')){
+    S.etcInc[t.dataset.etc] = t.checked;
+    S.etcText = etcTextFor(S);
+    const ta = cards.querySelector('[data-etc] textarea[data-f="etc"]'); if(ta) ta.value = S.etcText;
+    saveDraftSoon();
+  }
+});
+cards.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if(!b) return;
+  const act = b.dataset.act;
+  if(act === 'tog'){
+    const sec = b.closest('.rptm-card');
+    if(sec.hasAttribute('data-etc')) S.etcOpen = !S.etcOpen;
+    else { const c = S.cards[sec.dataset.uid]; c.open = !c.open; }
+    const open = sec.hasAttribute('data-etc') ? S.etcOpen : S.cards[sec.dataset.uid].open;
+    sec.classList.toggle('closed', !open);
+    b.setAttribute('aria-expanded', open); b.setAttribute('aria-label', open ? '접기' : '펼치기'); b.textContent = open ? '▾' : '▸';
+    saveDraftSoon();
+    return;
+  }
+  const card = b.closest('.rptm-card[data-uid]'); if(!card) return;
+  const uid = card.dataset.uid, c = S.cards[uid];
+  if(act === 'drop'){
+    if(IMAGES[uid].length >= MAX_IMG){ setMsg(uid, '그림은 과제마다 5장까지입니다. 먼저 하나를 지우세요.', false); return; }
+    pickUid = uid; $('#rptmFile').click();
+  } else if(act === 'imgL' || act === 'imgR' || act === 'imgDel'){
+    await imgAction(uid, +b.closest('.rptm-img').dataset.id, act);
+  } else if(act === 'chgAdd'){
+    c.changes.push({ what: '', date: '', why: '' });
+    renderChanges(uid);
+    const ins = card.querySelectorAll('[data-chg] input[data-cf="what"]'); ins[ins.length - 1].focus();
+    saveDraftSoon();
+  } else if(act === 'chgDel'){
+    const i = +b.closest('.rptm-chg-row').dataset.i;
+    c.changes.splice(i, 1);
+    if(!c.changes.length) c.changes.push({ what: '', date: '', why: '' });
+    renderChanges(uid);
+    const dels = card.querySelectorAll('[data-act="chgDel"]'); (dels[Math.min(i, dels.length - 1)] || card.querySelector('[data-act="chgAdd"]')).focus();
+    saveDraftSoon();
+  } else if(act === 'reload'){
+    const yes = await confirmBox('실적 다시 읽어 오기', '이 과제의 수행 실적 칸을 기록에서 다시 붙입니다.\n실적 칸에서 고친 내용은 덮어씁니다. 수행 계획 두 칸과 일정 변경이력은 그대로 둡니다.', '다시 붙이기', false);
+    if(!yes) return;
+    c.actual = actualFor(uid, S.src);
+    const ta = card.querySelector('textarea[data-f="actual"]'); if(ta) ta.value = c.actual;
+    toast('수행 실적을 다시 붙였습니다', 'success');
+    saveDraftSoon();
+  }
+});
+cards.addEventListener('keydown', e => {
+  const d = e.target.closest('[data-act="drop"]');
+  if(d && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); d.click(); }
+});
+/* 끌어다 놓기 */
+cards.addEventListener('dragover', e => {
+  const d = e.target.closest('.rptm-card[data-uid]'); if(!d) return;
+  e.preventDefault();
+  $$('.rptm-drop.over').forEach(x => x.classList.remove('over'));
+  const z = d.querySelector('.rptm-drop'); if(z) z.classList.add('over');
+});
+cards.addEventListener('dragleave', e => { if(!e.relatedTarget || !cards.contains(e.relatedTarget)) $$('.rptm-drop.over').forEach(x => x.classList.remove('over')); });
+cards.addEventListener('drop', e => {
+  const d = e.target.closest('.rptm-card[data-uid]'); if(!d) return;
+  e.preventDefault();
+  $$('.rptm-drop.over').forEach(x => x.classList.remove('over'));
+  if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) addFiles(d.dataset.uid, e.dataTransfer.files);
+  else setMsg(d.dataset.uid, '파일만 끌어다 놓을 수 있습니다', false);
+});
+/* 붙여넣기: 포커스가 들어간 카드, 아니면 마우스가 올라간 카드 */
+let hoverUid = null;
+cards.addEventListener('mouseover', e => {
+  const c = e.target.closest('.rptm-card[data-uid]');
+  const uid = c ? c.dataset.uid : null;
+  if(uid === hoverUid) return;
+  hoverUid = uid; markActive();
+});
+cards.addEventListener('mouseleave', () => { hoverUid = null; markActive(); });
+document.addEventListener('focusin', markActive);
+function pasteTarget(){
+  const a = document.activeElement;
+  const c = a && a.closest ? a.closest('#rptmCards .rptm-card[data-uid]') : null;
+  return c ? c.dataset.uid : hoverUid;
+}
+function markActive(){
+  const uid = pasteTarget();
+  $$('#rptmCards .rptm-card').forEach(c => c.classList.toggle('act', !!uid && c.dataset.uid === uid));
+}
+document.addEventListener('paste', e => {
+  if(!$('#cfm').classList.contains('hidden')) return;
+  const uid = pasteTarget(); if(!uid) return;
+  const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
+  const files = items.filter(it => it.kind === 'file').map(it => it.getAsFile()).filter(Boolean);
+  if(!files.length) return;          // 글 붙여넣기는 그대로 둔다
+  e.preventDefault();
+  addFiles(uid, files);
+});
+
+/* ---------- 설정 이벤트 ---------- */
+$('#rptmSrc').addEventListener('click', e => {
+  const b = e.target.closest('.seg-b'); if(!b || b.dataset.src === S.src) return;
+  S.src = b.dataset.src;
+  renderSettings();
+  toast('출처를 바꿨습니다. 읽어 오기를 누르면 실적 칸에 새 출처 글을 붙입니다.', 'info');
+  saveDraftSoon();
+});
+async function doLoad(){
+  const from = $('#rptmFrom').value, to = $('#rptmTo').value;
+  if(!parseD(from) || !parseD(to) || parseD(to) < parseD(from)){ toast('실적 기간을 바르게 고르세요(시작이 끝보다 늦을 수 없습니다)', 'warn'); return; }
+  const samePeriod = from === S.from && to === S.to;
+  if(samePeriod){
+    const edited = S.order.some(uid => S.checked[uid] && S.cards[uid].actual !== actualFor(uid, S.src));
+    if(edited){
+      const yes = await confirmBox('읽어 오기', '수행 실적 칸들을 기록에서 다시 붙입니다.\n고친 실적 내용은 덮어씁니다. 수행 계획 칸, 일정 변경이력, 과제명은 그대로 둡니다.', '다시 붙이기', false);
+      if(!yes) return;
+    }
+    PROJECTS.forEach(p => { S.cards[p.uid].actual = actualFor(p.uid, S.src); });
+    S.etcText = etcTextFor(S);
+    renderCards(); saveDraft();
+    toast('실적을 다시 읽어 왔습니다(시안: 지어낸 글)', 'success');
+    return;
+  }
+  const d = loadDraft(from, to);
+  if(d){ S = d.state; planEdited = !!d.planEdited; toast('이 기간의 초안을 이어서 엽니다', 'info'); }
+  else {
+    const src = S.src;
+    S = freshState(from, to, src);
+    planEdited = false;
+    toast('실적을 읽어 왔습니다(시안: 지어낸 글). 계획 기간은 기본값으로 다시 채웠습니다.', 'success');
+  }
+  renderAll(); saveDraft();
+}
+$('#rptmLoad').addEventListener('click', doLoad);
+['#rptmPFrom', '#rptmPTo'].forEach(id => $(id).addEventListener('change', () => {
+  S.pFrom = $('#rptmPFrom').value; S.pTo = $('#rptmPTo').value; planEdited = true; saveDraftSoon();
+}));
+$('#rptmPlanDef').addEventListener('click', () => {
+  const pd = planDefault(S.from, S.to);
+  S.pFrom = pd.from; S.pTo = pd.to; planEdited = false;
+  renderSettings(); saveDraftSoon();
+  toast('계획 기간을 기본값으로 되돌렸습니다', 'info');
+});
+$('#rptmDate').addEventListener('change', () => { S.date = $('#rptmDate').value; saveDraftSoon(); });
+
+/* ---------- 탭 ---------- */
+$('.rpt-presets').addEventListener('click', e => {
+  const b = e.target.closest('[data-rmode]'); if(!b) return;
+  const mon = b.dataset.rmode === 'monthly';
+  $$('.rpt-presets [data-rmode]').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-selected', on ? 'true' : 'false'); x.tabIndex = on ? 0 : -1; });
+  $('#rptMonthlyPane').classList.toggle('hidden', !mon);
+  $('#rptmFoot').classList.toggle('hidden', !mon);
+  $('#rptOther').classList.toggle('hidden', mon);
+});
+$('.rpt-presets').addEventListener('keydown', e => {
+  if(e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  const tabs = $$('.rpt-presets [data-rmode]'); const i = tabs.indexOf(document.activeElement); if(i < 0) return;
+  const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; n.focus(); n.click();
+});
+
+/* ---------- 문서 미리 보기 ---------- */
+let PV_ON = false;
+const GRID = [1126, 1116, 2394, 1548, 1270, 2692, 3642];
+const GSUM = GRID.reduce((a, b) => a + b, 0);
+const colgroup = g => '<colgroup>' + g.map(w => `<col style="width:${(w / GSUM * 100).toFixed(3)}%">`).join('') + '</colgroup>';
+/* 줄 앞 들여쓰기 깊이를 문단 들여쓰기로(글자는 그대로). DocxWriter 와 같이 0~3 단계 */
+function linesHtml(text){
+  const t = String(text || '');
+  if(!t.trim()) return '<div class="ln"></div>';
+  return t.split('\n').map(l => {
+    const lead = (/^ */.exec(l) || [''])[0].length;
+    const lv = Math.max(0, Math.min(3, Math.floor(lead / 2)));
+    return `<div class="ln" style="padding-left:${lv * 14.2}pt">${esc(l.slice(lead))}</div>`;
+  }).join('');
+}
+function renderPreview(){
+  const actualHead = '월간 실적: ' + monthDay(S.from) + ' ~ ' + monthDay(S.to);
+  const planHead = '월간 계획: ' + monthDay(S.pFrom) + ' ~ ' + monthDay(S.pTo);
+  const d = parseD(S.date);
+  const dateTxt = d ? `${d.getFullYear()}년 ${pad(d.getMonth() + 1)}월 ${pad(d.getDate())}일` : '';
+  let h = `<div class="ttl">월간보고 (${esc(ME)}) &#8211; ${esc(dateTxt)}</div>`;
+  S.order.filter(uid => S.checked[uid]).forEach(uid => {
+    const p = PROJECTS.find(x => x.uid === uid), c = S.cards[uid];
+    const changes = c.changes.filter(r => r.what || r.date || r.why);
+    const rowsChg = changes.length ? changes : [{ what: '', date: '', why: '' }];
+    const span = 1 + 1 + 1 + rowsChg.length + 1 + 1;   // 2행부터 끝까지
+    h += `<table>${colgroup(GRID)}
+      <tr><td class="a">과제명</td><td class="a" colspan="4">${esc(actualHead)}</td><td class="a" colspan="2">${esc(planHead)}</td></tr>
+      <tr><td class="nm" rowspan="${span}">${esc(c.title)}</td><td class="b" colspan="2">과제 수행 기간</td><td class="bv" colspan="4">${esc(termOf(p))}</td></tr>
+      <tr><td class="b">개발<br>일정</td><td class="bv img" colspan="5">${IMAGES[uid].map(im => `<img src="${im.src}" alt="">`).join('')}</td></tr>
+      <tr><td class="b" rowspan="${rowsChg.length + 1}">일정<br>변경이력</td><td class="b">변경 내용</td><td class="b">변경 날짜</td><td class="b" colspan="3">변경 사유</td></tr>
+      ${rowsChg.map(r => `<tr><td>${esc(r.what)}</td><td class="c">${esc(r.date)}</td><td colspan="3">${esc(r.why)}</td></tr>`).join('')}
+      <tr><td class="b" colspan="2">수행 계획</td><td class="b" colspan="3">수행 실적</td><td class="b">수행 계획</td></tr>
+      <tr><td class="body" colspan="2">${linesHtml(c.prev)}</td><td class="body" colspan="3">${linesHtml(c.actual)}</td><td class="body">${linesHtml(c.next)}</td></tr>
+    </table>`;
+  });
+  h += `<table><colgroup><col style="width:${(1126 / 13788 * 100).toFixed(3)}%"><col></colgroup>
+    <tr><td class="a">과제명</td><td class="a">${esc(actualHead)}</td></tr>
+    <tr><td class="nm">기타</td><td class="body">${linesHtml(S.etcText)}</td></tr>
+  </table>`;
+  $('#rptmSheet').innerHTML = h;
+}
+$('#rptmPvBtn').addEventListener('click', () => {
+  PV_ON = !PV_ON;
+  $('#rptmPvBtn').setAttribute('aria-pressed', PV_ON ? 'true' : 'false');
+  $('#rptmPv').classList.toggle('hidden', !PV_ON);
+  if(PV_ON){ renderPreview(); const pv = $('#rptmPv'); if(pv.scrollIntoView) pv.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+});
+$('#rptmSave').addEventListener('click', () => {
+  const d = parseD(S.date) || new Date();
+  const yymmdd = String(d.getFullYear()).slice(2) + pad(d.getMonth() + 1) + pad(d.getDate());
+  toast(`저장 창이 열립니다(시안): 월간보고_${ME}_${yymmdd}.docx`, 'info');
+});
+
+/* ---------- 테마(앱과 같은 방식: data-theme + html.dark) ---------- */
+const THEMES = ['system', 'light', 'dark', 'forest', 'sepia', 'contrast'];
+function sysDark(){ try{ return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches); }catch(_){ return false; } }
+function applyTheme(t){
+  if(!THEMES.includes(t)) t = 'system';
+  const root = document.documentElement;
+  root.setAttribute('data-theme', t);
+  root.classList.toggle('dark', t === 'dark' || (t === 'system' && sysDark()));
+  $$('[data-pgtheme]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pgtheme === t ? 'true' : 'false'));
+  try{ localStorage.setItem('tc_theme', t); }catch(_){}
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-pgtheme]'); if(b) applyTheme(b.dataset.pgtheme); });
+try{
+  const mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+  const onCh = () => { let cur = 'system'; try{ cur = localStorage.getItem('tc_theme') || 'system'; }catch(_){} if(cur === 'system') applyTheme('system'); };
+  if(mq && mq.addEventListener) mq.addEventListener('change', onCh); else if(mq && mq.addListener) mq.addListener(onCh);
+}catch(_){}
+
+/* ---------- 시작 ---------- */
+function renderAll(){ renderSettings(); renderPick(); renderCards(); }
+(function init(){
+  let t = 'system'; try{ t = localStorage.getItem('tc_theme') || 'system'; }catch(_){}
+  applyTheme(t);
+  const lm = lastMonth();
+  const d = loadDraft(lm.from, lm.to);
+  if(d){ S = d.state; planEdited = !!d.planEdited; renderAll(); $('#rptmDraft').innerHTML = '<b>초안 저장됨</b> ' + esc(d.at); }
+  else { S = freshState(lm.from, lm.to, 'cal'); renderAll(); saveDraft(); }
+})();
+</script>
+</body>
+</html>
