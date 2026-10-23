@@ -218,6 +218,30 @@ test('변이D10: exportMonthlyDocx 를 관리 창 허용 목록에 넣으면 메
   assert.throws(() => host.mainCase(bad), /허용 목록에 있다/);
 });
 
+//  2026-10-23: 월간 탭은 수행 계획 두 칸(prevPlan, nextPlan)과 일정 변경이력(changes)을 늘 빈 배열로 보낸다.
+//  호스트는 빈 배열과 없는 칸을 받아들이고(거절하지 않음), 문서는 양식 그대로 계획 칸에 빈 문단, 변경이력에 빈 줄 하나를 쓴다.
+//  실제 표 모양은 loop-monthly-docx.mjs 의 과제 D(계획 칸을 비운 과제)가 본다.
+const emptyPlans = {
+  hostTolerant(src) {
+    const lines = csMemberBody(src, /^Lines$/);
+    if (!/if \(!o\.TryGetProperty\(k, out var a\) \|\| a\.ValueKind == JsonValueKind\.Null\) return list;/.test(lines)) throw new Error('본문 칸이 없거나 null 일 때 빈 목록으로 받지 않는다');
+    const parse = csMemberBody(src, /^Parse$/);
+    if (!/if \(o\.TryGetProperty\("changes", out var ch\) && ch\.ValueKind == JsonValueKind\.Array\)/.test(parse)) throw new Error('변경이력이 없을 때 받아들이지 않는다');
+  },
+  writerKeepsForm(src) {
+    const al = listCsMembers(src).find((m) => m.name === 'AppendLines');
+    if (!al || !/if \(!any\) AppendEmptyPara\(sb\);/.test(al.body)) throw new Error('빈 본문 칸에 빈 문단을 쓰지 않는다(셀에 문단이 없으면 Word 가 문서를 고장으로 본다)');
+    const pt = listCsMembers(src).find((m) => m.name === 'ProjectTable');
+    if (!pt || !/if \(changes\.Count == 0\) changes\.Add\(new Change\(\)\);/.test(pt.body)) throw new Error('변경이력이 비면 양식처럼 빈 줄 하나를 쓰지 않는다');
+  },
+};
+test('월간 DOCX 호스트: 빈 계획 칸과 빈 변경이력(2026-10-23 화면 모양)을 받아들인다', () => emptyPlans.hostTolerant(exportCs));
+test('월간 DOCX: 빈 계획 칸은 빈 문단, 빈 변경이력은 빈 줄 하나로 양식 모양을 지킨다', () => emptyPlans.writerKeepsForm(writer));
+test('변이D11: 빈 변경이력의 빈 줄을 빼거나 빈 칸 문단을 빼면 양식 검사가 실패한다', () => {
+  assert.throws(() => emptyPlans.writerKeepsForm(mutate(writer, 'if (changes.Count == 0) changes.Add(new Change());', '')), /빈 줄 하나/);
+  assert.throws(() => emptyPlans.writerKeepsForm(mutate(writer, 'if (!any) AppendEmptyPara(sb);\n        }\n\n        private static void AppendImages', '}\n\n        private static void AppendImages')), /빈 문단/);
+});
+
 //  표 머리 줄은 다음 줄과 같은 쪽에 둔다(2026-10-22 QA: 기타 표 머리 줄만 앞 쪽 끝에 남았다).
 test('과제 표와 기타 표의 머리 줄은 keepNext 로 다음 줄과 붙는다', () => {
   const w = writer.replace(/\r\n/g, '\n');

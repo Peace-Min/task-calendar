@@ -14,6 +14,7 @@ namespace MonthlyDocxMock
     //  - 과제 A 실적 약 45줄(표가 쪽을 넘어 이어지는지 본다), 그림 2장(PNG, JPEG)
     //  - 이스케이프 시료 A&B <태그> "따옴표" 와 제어 문자(\u0007) 줄
     //  - 과제 B 그림 없음, 이력 없음, 왼쪽 계획 빈칸 / 과제 C 기간 빈칸, 그림 1장, 이력 1줄
+    //  - 과제 D 계획 두 칸과 이력이 빈 목록(2026-10-23 월간 탭 모양), 그림 없음
     //  - 기타 표 4줄
     // 시험(tests/loop-monthly-docx.mjs)이 이 값을 기준으로 문서를 검사한다. 값을 바꾸면 그쪽도 같이 본다.
     internal static class Program
@@ -40,7 +41,7 @@ namespace MonthlyDocxMock
                 ActualTo = new DateTime(2026, 10, 16),
                 PlanFrom = new DateTime(2026, 10, 19),
                 PlanTo = new DateTime(2026, 12, 4),
-                Projects = new List<DocxWriter.Project> { ProjectA(ganttA, ganttB), ProjectB(), ProjectC(ganttB) },
+                Projects = new List<DocxWriter.Project> { ProjectA(ganttA, ganttB), ProjectB(), ProjectC(ganttB), ProjectD() },
                 Etc = new List<DocxWriter.Line>
                 {
                     L(0, "- 사내 교육 참석 (09.24)"),
@@ -165,6 +166,15 @@ namespace MonthlyDocxMock
             PrevPlan = new List<DocxWriter.Line> { L(2, "- 착수 준비") },
             Actual = new List<DocxWriter.Line> { L(0, "▪ 회의", true), L(1, "- 착수 회의 (10.08, 고객사)") },
             NextPlan = new List<DocxWriter.Line> { L(2, "- 요구사항 분석") },
+        };
+
+        // 과제 D: 2026-10-23 부터 월간 탭이 보내는 모양 그대로. 수행 계획 두 칸과 변경이력이 비어 있고(빈 목록) 실적만 있다.
+        // 문서에는 계획 두 칸이 빈 문단 하나씩, 변경이력은 빈 줄 하나로 양식 그대로 나와야 한다(loop-monthly-docx.mjs).
+        private static DocxWriter.Project ProjectD() => new DocxWriter.Project
+        {
+            Title = "(예시) 계획 칸을 비운 과제",
+            Term = "2026/01 ~ 2026/12",
+            Actual = new List<DocxWriter.Line> { L(0, "- 자료 정리 화면 보완"), L(1, "; 필터 저장") },
         };
     }
 }

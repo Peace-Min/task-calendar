@@ -143,7 +143,7 @@ ok('표마다 뒤에 문단이 있다', everyTableFollowedByP);
 const gridOf = (t) => kids(kid(t, 'tblGrid'), 'gridCol').map((g) => Number(wattr(g, 'w')));
 const projTables = tables.filter((t) => gridOf(t).length === 7);
 const etcTables = tables.filter((t) => gridOf(t).length === 2);
-ok('과제 표 3개(목업 과제 수) + 기타 표 1개', projTables.length === 3 && etcTables.length === 1 && tables.length === 4,
+ok('과제 표 4개(목업 과제 수) + 기타 표 1개', projTables.length === 4 && etcTables.length === 1 && tables.length === 5,
   `과제 ${projTables.length}, 기타 ${etcTables.length}, 전체 ${tables.length}`);
 ok('기타 표가 마지막 표', tables[tables.length - 1] === etcTables[0]);
 
@@ -182,6 +182,8 @@ const MOCK = [
   { title: '(예시) 관제 시뮬레이터 고도화', term: '2025/08 ~ 2026/12', changes: 2, images: 2 },
   { title: '(예시) 시험장비 운용SW', term: '2026/03 ~ 2027/06', changes: 1, images: 0 },
   { title: '(예시) 신규 과제 착수', term: '', changes: 1, images: 1 },
+  //  2026-10-23 월간 탭 모양: 계획 두 칸과 이력이 빈 목록. 표 모양은 그대로, 계획 칸은 빈 문단 하나, 이력은 빈 줄 하나
+  { title: '(예시) 계획 칸을 비운 과제', term: '2026/01 ~ 2026/12', changes: 1, images: 0, emptyPlans: true, actual: ['- 자료 정리 화면 보완', '; 필터 저장'] },
 ];
 
 projTables.forEach((t, k) => {
@@ -216,6 +218,15 @@ projTables.forEach((t, k) => {
   ok(`${label}: 본문 줄만 쪽 나눔 허용(마지막 줄 cantSplit 없음)`, cant[rows.length - 1] === false && cant[0] && cant[3] && cant[rows.length - 2]);
   const drawings = cellsOf(rows[2])[2].getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'blip').length;
   ok(`${label}: 그림 ${m.images}장`, drawings === m.images, String(drawings));
+  if (m.emptyPlans) {
+    const body = cellsOf(rows[rows.length - 1]);
+    const paras = (tc) => kids(tc, 'p').map(textOf);
+    ok(`${label}: 본문 줄 칸 4개(병합 계속, 계획, 실적, 계획)`, body.length === 4 && vmOf(body[0]) === 'continue' && spanOf(body[1]) === 2 && spanOf(body[2]) === 3 && spanOf(body[3]) === 1);
+    ok(`${label}: 빈 계획 두 칸은 빈 문단 하나씩`, JSON.stringify(paras(body[1])) === '[""]' && JSON.stringify(paras(body[3])) === '[""]', JSON.stringify([paras(body[1]), paras(body[3])]));
+    ok(`${label}: 실적 칸 글 그대로`, JSON.stringify(paras(body[2])) === JSON.stringify(m.actual), JSON.stringify(paras(body[2])));
+    const ch = cellsOf(rows[4]);
+    ok(`${label}: 변경이력 빈 줄 하나(칸 셋이 비어 있다)`, ch.length === 5 && [2, 3, 4].every((i) => textOf(ch[i]) === ''), String(ch.length));
+  }
 });
 if (etcTables[0]) {
   const t = etcTables[0];

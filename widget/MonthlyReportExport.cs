@@ -192,6 +192,8 @@ namespace TaskCalendarWidget
     //  { name, reportDate, actual:{from,to}, plan:{from,to},
     //    projects:[{ uid, title, term, changes:[{what,date,why}], prevPlan, actual, nextPlan }], etc:{ lines } }
     //  본문 칸(prevPlan, actual, nextPlan, etc.lines)은 { level, text, bold } 줄 배열이다. level 은 0..3 으로 자른다.
+    //  2026-10-23 부터 월간 탭은 prevPlan, nextPlan, changes 를 늘 빈 배열로 보낸다(사용자가 Word 에서 채운다). 칸이 없거나 비어도
+    //  받아들이고, DocxWriter 가 양식 그대로 빈 문단과 변경이력 빈 줄 하나를 쓴다. 값이 오면 그대로 쓴다(계약은 바꾸지 않았다).
     //  ★ 상한을 넘으면 자르지 않고 거절한다(ArgumentException, 사용자 문장). 날짜는 YYYY-MM-DD.
     // ================================================================================
     internal sealed class MonthlyReportPayload

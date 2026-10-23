@@ -8,11 +8,14 @@
  *  케이스:
  *    O0  전제: 로그인, conn ok, 새 빌드(rptMOpen), 구조 17(DB 과제에 devStartDate 칸), 가로채기 설치
  *    M1  보고서 버튼 → 월간 보고 탭: 월간 표시, 기존 레일 칸과 미리보기, 보내기와 복사 버튼이 안 보임, 월간 버튼이 보임
- *    M2  기간과 과제: 실적 기간 = 지난달, 계획 기간 = 기본값, 과제 목록 = 구독한 공식 과제(내 순서), 체크한 과제마다 카드
- *    M3  다시 읽어 오기(캘린더, 확인 창): 카드 실적 = 기간 취합 복사 글의 과제 블록(글자 그대로), 계획 칸과 변경이력은 그대로
- *    M4  그림 목록: 카드마다 scheduleImageList 회신(정상이면 목록, 끊겼으면 사본 목록과 안내). 넣기, 지우기는 하지 않는다
- *    M5  저장 payload 모양(rptMPayload): 기간, 과제 uid, 본문 {level, text}. 실제 저장은 저장 창이 떠서 사람이 한다(아래 안내)
- *    정리 이 루프가 바꾼 초안 키를 원래 값으로 되돌리고, 가로채기를 풀고, 보고서 창을 닫는다
+ *    M2  기간과 과제: 실적 기간 = 기억한 값이나 지난달, 계획 기간 = 기본값, 과제 목록 = 구독한 공식 과제(내 순서),
+ *        고치는 칸 없음(입력은 날짜와 체크뿐), 체크한 과제마다 미리 보기 표(목록 순서)
+ *    M3  다시 읽어 오기(캘린더, 확인 창 없음): 과제별 실적 = 기간 취합 복사 글의 과제 블록(글자 그대로)
+ *    M4  그림 목록: 과제 줄마다 scheduleImageList 회신(정상이면 목록, 끊겼으면 사본 목록과 안내)과 그림 단추. 넣기, 지우기는 하지 않는다
+ *    M5  저장 payload 모양(rptMPayload): 기간, 과제 uid, 본문 {level, text}, 계획 두 칸과 변경이력은 빈 배열.
+ *        실제 저장은 저장 창이 떠서 사람이 한다(아래 안내)
+ *    정리 이 루프가 바꾼 고른 것 기억 키(tc_rptMSel:)를 원래 값으로 되돌리고, 가로채기를 풀고, 보고서 창을 닫는다
+ *  2026-10-23: 월간 탭은 모으기와 읽기 전용 미리 보기만 한다(docs/MONTHLY-REPORT-PLAN.md 11.3, 15장).
  *
  *  ★ 회사 사이트로 아무것도 보내지 않는다(세 겹): hpost 가 netcus 로 시작하는 명령은 호스트로 넘기지 않는다(주간보고 읽기도),
  *    Platform.report.submitDaily, submitWeekly 를 가로채 부르면 실패로 센다, 출처는 캘린더만 쓴다.
@@ -122,7 +125,7 @@ const UNINSTALL = `(function(){
 
 async function main() {
   cdp = await Cdp.attach(OPT.port);
-  let draftKey = null, draftWas = null, snap = null;
+  let selKey = null, selWas = null, snap = null;
   try {
     head('O0 전제');
     const pre = await J(`({ conn: typeof conn === 'string' ? conn : '', boot: typeof bootOk === 'undefined' ? null : bootOk, fn: typeof rptMOpen === 'function' && typeof rptMPayload === 'function',
@@ -145,47 +148,46 @@ async function main() {
 
     head('M2 기간과 과제');
     const st = await J(`({ from: __rptM.from, to: __rptM.to, lm: monthRange(new Date(), -1), plan: [__rptM.pFrom, __rptM.pTo], pd: rptMPlanDefault(__rptM.from, __rptM.to), planEdited: __rptM.planEdited,
-      order: __rptM.order, off: rptMOfficial().map(function(c){ return c.id; }), picked: rptMPicked(__rptM), cards: [].map.call(document.querySelectorAll('#rptmCards .rptm-card[data-uid]'), function(c){ return c.dataset.uid; }),
+      order: __rptM.order, off: rptMOfficial().map(function(c){ return c.id; }), picked: rptMPicked(__rptM), cards: [].map.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(c){ return c.dataset.pvUid; }),
+      editors: [].filter.call(document.querySelectorAll('#rptMonthlyPane input, #rptMonthlyPane textarea, #rptMonthlyPane select, #rptMonthlyPane [contenteditable]'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
       terms: rptMPicked(__rptM).map(function(id){ return rptMTerm(id).text; }) })`);
     vlogJSON(st);
-    draftKey = await cdp.ev('rptMDraftKey(__rptM.from, __rptM.to)');
-    draftWas = await cdp.ev(`(function(){ try { return localStorage.getItem(${JSON.stringify(draftKey)}); } catch (_) { return null; } })()`);
-    //  월간 초안 키를 통째로 받아 둔다(이 루프의 저장이 6건 정리로 남의 초안을 밀어내도 정리에서 그대로 되돌린다)
-    snap = await J(`(function(){ var o = {}; try { for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptDraftM:') === 0) o[k] = localStorage.getItem(k); } } catch (_) {} return o; })()`);
-    if (draftWas == null) ok('M2 초안이 없으면 실적 기간 = 지난달', st.from === st.lm[0] && st.to === st.lm[1], JSON.stringify([st.from, st.to]));
-    else note('이 기간 초안이 이미 있어 기간 기본값은 보지 않는다: ' + draftKey);
+    selKey = await cdp.ev('rptMSelKey()');
+    selWas = await cdp.ev(`(function(){ try { return localStorage.getItem(${JSON.stringify(selKey)}); } catch (_) { return null; } })()`);
+    //  고른 것 기억 키를 통째로 받아 둔다(정리에서 그대로 되돌린다)
+    snap = await J(`(function(){ var o = {}; try { for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptMSel:') === 0) o[k] = localStorage.getItem(k); } } catch (_) {} return o; })()`);
+    if (selWas == null) ok('M2 기억한 것이 없으면 실적 기간 = 지난달', st.from === st.lm[0] && st.to === st.lm[1], JSON.stringify([st.from, st.to]));
+    else note('고른 것을 이미 기억하고 있어 기간 기본값은 보지 않는다: ' + selKey);
     if (!st.planEdited) ok('M2 계획 기간 = 기본값', st.plan[0] === st.pd.from && st.plan[1] === st.pd.to, JSON.stringify(st.plan));
     ok('M2 과제 목록 = 구독한 공식 과제 전부', JSON.stringify([...st.order].sort()) === JSON.stringify([...st.off].sort()), JSON.stringify(st.order));
-    ok('M2 체크한 과제마다 카드(목록 순서)', JSON.stringify(st.cards) === JSON.stringify(st.picked), JSON.stringify(st.cards));
+    ok('M2 체크한 과제마다 미리 보기 표(목록 순서)', JSON.stringify(st.cards) === JSON.stringify(st.picked), JSON.stringify(st.cards));
+    ok('M2 고치는 칸 없음(입력은 날짜와 체크뿐)', st.editors === 0, String(st.editors));
     note('과제 수행 기간: ' + JSON.stringify(st.terms));
 
     head('M3 다시 읽어 오기(캘린더)');
     await cdp.ev(`(function(){ const b = document.querySelector('#rptmSrc [data-msrc="cal"]'); if (b) b.click(); return 1; })()`);
-    const ids = st.picked;
-    const mine = await J(`(function(){ var o = {}; rptMPicked(__rptM).forEach(function(id){ var c = __rptM.cards[id]; o[id] = { prev: c.prev, next: c.next, ch: JSON.stringify(c.changes) }; }); return o; })()`);
     await cdp.ev(`document.getElementById('rptmLoad').click(); 1`);
-    if (await waitFor(isOpen('#confirmModal'), 4000)) {
-      await cdp.ev(`document.getElementById('cfOk').click(); 1`);
-      await waitFor(`!${isOpen('#confirmModal')}`, 4000);
-      await sleep(400);
-      const cmp = await J(`(function(){ var a = rptMBuildCal(__rptM.from, __rptM.to); var bad = []; rptMPicked(__rptM).forEach(function(id){ if (__rptM.cards[id].actual !== (a.proj.get(id) || '')) bad.push(id); }); return bad; })()`);
-      ok('M3 카드 실적 = 캘린더 과제별 글', cmp.length === 0, JSON.stringify(cmp));
-      //  기간 취합 복사 글과 글자 그대로(같은 기간으로 탭을 바꿔 보고 돌아온다)
-      const eq = await J(`(function(){ var S = __rptM, etc = rptMAuto(S, false).etc; var joined = state.categories.map(function(c){ var t = isOfficialCat(c) ? (S.cards[c.id] ? S.cards[c.id].actual : '') : (etc.find(function(e){ return e.key === c.id; }) || { text: '' }).text; return '[' + c.name + ']' + (t ? '\\n' + t : ''); }).join('\\n\\n') + '\\n';
-        var f0 = $('#rptFrom').value, t0 = $('#rptTo').value; setReportMode('custom'); $('#rptFrom').value = S.from; $('#rptTo').value = S.to; var prefs = loadRptSourcePrefs().weekly; buildReport(); var copy = buildReportText(); var skip = !!prefs.skipEmpty; $('#rptFrom').value = f0; $('#rptTo').value = t0; setReportMode('monthly'); return { same: joined === copy, skip: skip, a: joined.length, b: copy.length }; })()`);
-      if (eq.skip) undecide('M3 기간 취합 글과 글자 비교', '기간 취합에 "내용 없는 항목 제외" 가 켜져 있어 블록 수가 달라 비교하지 않는다');
-      else ok('M3 이어 붙인 실적 글 = 기간 취합 복사 글(글자 그대로)', eq.same, JSON.stringify(eq));
-      const after = await J(`(function(){ var o = {}; rptMPicked(__rptM).forEach(function(id){ var c = __rptM.cards[id]; o[id] = { prev: c.prev, next: c.next, ch: JSON.stringify(c.changes) }; }); return o; })()`);
-      ok('M3 계획 칸과 변경이력은 그대로', JSON.stringify(after) === JSON.stringify(mine));
-    } else undecide('M3 확인 창', '같은 기간 읽어 오기에 확인 창이 뜨지 않았다');
+    await sleep(800);
+    ok('M3 같은 기간 읽어 오기에 확인 창이 뜨지 않는다', !(await cdp.ev(isOpen('#confirmModal'))));
+    const cmp = await J(`(function(){ var a = rptMBuildCal(__rptM.from, __rptM.to), m = rptMAuto(__rptM, false); var bad = []; rptMPicked(__rptM).forEach(function(id){ if ((m.proj.get(id) || '') !== (a.proj.get(id) || '')) bad.push(id); }); return bad; })()`);
+    ok('M3 과제별 실적 = 캘린더 과제별 글', cmp.length === 0, JSON.stringify(cmp));
+    //  기간 취합 복사 글과 글자 그대로(같은 기간으로 탭을 바꿔 보고 돌아온다)
+    const eq = await J(`(function(){ var S = __rptM, m = rptMAuto(S, false); var joined = state.categories.map(function(c){ var t = isOfficialCat(c) ? (m.proj.get(c.id) || '') : (m.etc.find(function(e){ return e.key === c.id; }) || { text: '' }).text; return '[' + c.name + ']' + (t ? '\\n' + t : ''); }).join('\\n\\n') + '\\n';
+      var f0 = $('#rptFrom').value, t0 = $('#rptTo').value; setReportMode('custom'); $('#rptFrom').value = S.from; $('#rptTo').value = S.to; var prefs = loadRptSourcePrefs().weekly; buildReport(); var copy = buildReportText(); var skip = !!prefs.skipEmpty; $('#rptFrom').value = f0; $('#rptTo').value = t0; setReportMode('monthly'); return { same: joined === copy, skip: skip, a: joined.length, b: copy.length }; })()`);
+    if (eq.skip) undecide('M3 기간 취합 글과 글자 비교', '기간 취합에 "내용 없는 항목 제외" 가 켜져 있어 블록 수가 달라 비교하지 않는다');
+    else ok('M3 이어 붙인 실적 글 = 기간 취합 복사 글(글자 그대로)', eq.same, JSON.stringify(eq));
 
     head('M4 그림 목록');
     await cdp.ev(`setReportMode('custom'); setReportMode('monthly'); 1`);
+    const ids = st.order;
     const okList = await waitFor(`(function(){ var L = __mrLoop.log.filter(function(x){ return x.req === 'scheduleImageList' && x.done; }); return L.length >= ${ids.length}; })()`, 20000);
     const L = await J(`__mrLoop.log.filter(function(x){ return x.req === 'scheduleImageList'; })`);
-    if (!ids.length) undecide('M4 그림 목록', '체크한 공식 과제가 없다');
+    if (!ids.length) undecide('M4 그림 목록', '구독한 공식 과제가 없다');
     else {
-      ok('M4 체크한 과제마다 scheduleImageList 회신', okList, JSON.stringify(L.map((x) => [x.projectUid, x.res])));
+      ok('M4 과제 줄마다 scheduleImageList 회신', okList, JSON.stringify(L.map((x) => [x.projectUid, x.res])));
+      const togs = await J(`[].map.call(document.querySelectorAll('#rptmPick [data-act="imgTog"]'), function(b){ return b.textContent; })`);
+      ok('M4 과제 줄마다 그림 단추(그림 n 또는 그림 추가)', togs.length === ids.length && togs.every((s) => /^그림( \d+| 추가)?$/.test(s)), JSON.stringify(togs));
+      ok('M4 미리 보기 쪽에는 그림 버튼이 없다', (await cdp.ev(`document.querySelectorAll('#rptmPv button').length`)) === 0);
       for (const x of L.filter((y) => y.res)) note(`${x.projectUid}: ${x.res.ok ? '정상' : x.res.stale ? '사본 목록(끊김)' : '실패'} ${x.res.n == null ? '' : x.res.n + '장'} ${x.res.err || ''}`);
     }
 
@@ -193,6 +195,7 @@ async function main() {
     const p = await J('rptMPayload(__rptM)');
     ok('M5 기간, 작성일, 과제, 본문 줄 모양', !!p && /^\d{4}-\d{2}-\d{2}$/.test(p.reportDate) && p.actual && p.plan && Array.isArray(p.projects)
       && p.projects.every((x) => /^db-/.test(x.uid) && Array.isArray(x.actual) && x.actual.every((l) => Number.isInteger(l.level) && l.level >= 0 && l.level <= 3 && typeof l.text === 'string' && l.text === l.text.replace(/^[ \t ]+/, ''))), JSON.stringify(p && p.projects && p.projects.map((x) => x.uid)));
+    ok('M5 과제명은 공식 이름, 계획 두 칸과 변경이력은 빈 배열(문서에서 빈칸)', !!p && p.projects.every((x) => x.title === '' + x.title && JSON.stringify([x.prevPlan, x.nextPlan, x.changes]) === '[[],[],[]]'));
     const blocked = await J('__mrLoop');
     ok('회사로 보낸 것 없음(Platform.report 0회)', blocked.sent.length === 0, JSON.stringify(blocked.sent));
     if (blocked.blocked.length) note('막은 netcus 명령: ' + blocked.blocked.join(', '));
@@ -202,13 +205,15 @@ async function main() {
     2. 성공 토스트에 경로와 [폴더 열기], 아래쪽 [폴더 열기] 버튼이 그 폴더를 여는지
     3. 같은 파일을 Word 로 연 채 다시 저장 → "파일이 열려 있어" 이유가 그대로 뜨는지
     4. 저장한 문서를 Word 와 한컴에서 열어 과제 표, 과제 수행 기간, 개발 일정 그림, 실적 들여쓰기, 기타 표를 보기
-    5. 그림: 카드에서 [파일 고르기]와 [붙여넣기](잘라 복사한 그림), ◀▶ 순서, [삭제] 확인 창, 다른 계정에서는 그 그림이 **보이지 않는지**(사람별 그림, 2026-10-23)
+    5. 그림: 과제 줄의 [그림 n] 또는 [그림 추가]로 칸을 펼쳐 [파일 고르기], [붙여넣기], 그 줄에 마우스를 두고 Ctrl+V, 줄을 누른 뒤 Ctrl+V,
+       ◀▶ 순서, [삭제] 확인 창. 다른 계정에서는 그 그림이 **보이지 않는지**(사람별 그림)
     6. 출처 [주간보고]는 netcus 를 실제로 읽는다(로그인). QA 중에는 읽기만 하고, 호스트 로그에 NetcusSubmit, NetcusWeekFill 이 없는지 본다
-    7. 주간보고 출처에서 내 과제와 맞지 않은 [과제] 가 미식별 항목에 나오고 문서에 없는지, [이관](한 번만, 기억)과 기억한 이관 [해제]`);
+    7. 주간보고 출처에서 내 과제와 맞지 않은 [과제] 가 미리 보기 아래 미식별 항목(읽기만, 접기)에 나오고 문서에 없는지
+    8. 저장한 문서의 수행 계획 두 칸이 비어 있고 일정 변경이력이 빈 줄 하나인지, 과제명이 공식 이름인지`);
   } finally {
     try {
-      if (snap) await cdp.ev(`(function(){ var S = ${JSON.stringify(snap)}; try { var a = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptDraftM:') === 0 && !(k in S)) a.push(k); }
-        a.forEach(function(k){ localStorage.removeItem(k); }); Object.keys(S).forEach(function(k){ localStorage.setItem(k, S[k]); }); } catch (_) {} clearTimeout(__rptMTimer); __rptM = null; return 1; })()`);
+      if (snap) await cdp.ev(`(function(){ var S = ${JSON.stringify(snap)}; try { var a = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptMSel:') === 0 && !(k in S)) a.push(k); }
+        a.forEach(function(k){ localStorage.removeItem(k); }); Object.keys(S).forEach(function(k){ localStorage.setItem(k, S[k]); }); } catch (_) {} __rptM = null; return 1; })()`);
       await cdp.ev(UNINSTALL);
       await cdp.ev(`(function(){ ['#confirmModal', '#reportModal'].forEach(function(s){ try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
     } catch (e) { console.log('정리 실패: ' + e.message); fail++; }
