@@ -2024,6 +2024,18 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 .qa-tblock .rem-block{margin-top:0}
 .modal .qa-tblock .rem-block > .qa-lb{margin:0 0 3px;font-size:var(--fs-meta);font-weight:400}   /* 다른 칸 라벨(.pcf-f)과 같은 크기와 굵기 */
 .qa-one .qa-foot{justify-content:flex-end}
+/* 칸 간격은 규칙 하나(2026-10-23 사용자: 칸마다 간격이 달랐다). 칸과 칸 사이 14px, 라벨과 칸 4px(.pcf-f),
+   안내 줄은 바로 위 칸에 4px 로 붙는다. 비어 있는 안내 줄은 자리를 차지하지 않는다. 종일은 시각 칸의 선택이라 시각 칸에 8px 로 붙인다 */
+.qa-one .pcf-grid{row-gap:14px}
+.qa-one .qa-hint:empty,.qa-one .rem-hint:empty{display:none}
+.qa-one .pcf-grid > .qa-hint,.qa-one .qa-tblock > .qa-hint{margin-top:-10px}
+.qa-one .qa-tblock{gap:14px}
+.qa-one .qa-tblock > .qa-chk + .qa-trow2{margin-top:-6px}
+.qa-one .qa-tblock .rem-hint{margin-top:4px}
+.modal.qa-one .qa-tblock .rem-block > .qa-lb{margin:0 0 4px}
+/* 반복 요약(2주마다 화요일 등)은 라벨 오른쪽 같은 줄. 따로 줄을 잡지 않아 칸 간격이 다른 칸과 같고, 글이 생겨도 높이가 그대로다 */
+.qa-one .qa-recur-lb{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
+.qa-one .qa-recur-lb #qaRecurHint{margin:0;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 시각 칸(결정 7): 한 칸에서 시와 분을 같이 고르는 input type=time, 분은 5분 단위(step=300). 일정 입력과 기록 수정(작업일지), 과제 등록 폼 공통.
    5분 단위가 아닌 예전 값(11:38)도 그대로 보이고 저장된다. 이 앱은 폼 검증(checkValidity)을 쓰지 않아 step 어긋남이 저장을 막지 않는다. */
 .qa-trow2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px}
@@ -3120,8 +3132,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
           </div>
         </div>
         <div class="pcf-full" id="qaRecurWrap">
-          <label class="pcf-f">반복<select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
-          <div class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></div>
+          <label class="pcf-f"><span class="qa-recur-lb">반복<span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span></span><select id="qaRecur"><option value="">안 함</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>
         </div>
         <div class="pcf-f pcf-full" id="qaLocWrap"><label for="qaLoc">장소</label>
           <div class="loc-combo" data-pfx="qa"><input type="text" class="loc-in" id="qaLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qaLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="qaLocPop" role="listbox" aria-label="장소 추천"></div></div>
