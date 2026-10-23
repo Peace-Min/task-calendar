@@ -10,8 +10,10 @@
 //   ④ 열람 창(PEER)은 예전 칸별 칩 그대로다(계획 §3).
 //   ⑤ 한 화면 폼(결정 6, 8, 9, 10): 옵션 더보기 없음, 모든 칸이 처음부터 보인다. 반복은 안 함, 매주, 매월. 예전 세부 값(간격, 끝)은
 //      지우지 않고 보존하며 한 줄 요약을 보인다. 좁은 창은 아래 시트(본문 스크롤, 저장 줄 고정). 작업일지 기록만 기록 창으로 간다.
-//   ⑥ 시각 칸(결정 7): 개인 폼과 과제 폼의 시각 칸이 모두 input type=time step=300(5분 단위). 5분 단위가 아닌 값(11:38)은 그대로 보이고
-//      그대로 저장된다(검증이 막지 않는다). ★ 위젯(WebView2)의 시각 고르기 목록이 실제로 5분 간격인지는 사람이 실제 앱에서 본다.
+//   ⑥ 시각 칸(결정 7): 개인 폼과 과제 폼의 시각 칸 여섯이 모두 앱이 만든 시와 분 고르기(timeField)다. 위젯(WebView2)의
+//      input type=time 은 step=300 을 무시하고 분을 1분 단위로 다 보였다(2026-10-23 실제 앱 확인). 분 목록은 정확히 12개(5분 단위),
+//      고르면 'HH:MM' 과 input, change, 직접 치기는 칸을 떠날 때 맞춤(9:3 = 09:30), 못 읽는 값은 되돌림, Esc 는 목록만 닫는다.
+//      5분 단위가 아닌 값(11:38)은 그대로 보이고 그대로 저장된다(목록은 시 11 만 골라진 표시).
 //
 // 검사 함수를 시험과 변이 시험이 공유한다. 변이는 '되돌아가면 안 되는 판'을 만들고, 같은 검사가 그것을 잡는지 본다.
 import vm from 'node:vm';
@@ -103,13 +105,16 @@ test('변이P: 하루 기록이 빈 차선을 채우지 않거나, 숨은 막대
 /* ── (S) 정적 계약 ───────────────────────────────────────────────────── */
 const TIME_IDS = ['qaStart', 'qaEnd', 'fStart', 'fEnd', 'pcfST', 'pcfET'];
 const statics = {
-  //  결정 7: 시각 칸은 모두 input type=time step=300. 예전 시/분 고르기(select)는 없다. 앱은 폼 검증을 부르지 않는다.
+  //  결정 7: 시각 칸은 모두 앱이 만든 고르기(data-time-field, bind 의 timeFieldAll). 브라우저 시각 칸(type=time)은 없다(WebView2 가 step 을 무시).
+  //  분 간격은 5. 예전 시/분 고르기(select)는 없다. 앱은 폼 검증을 부르지 않는다.
   timeStep(app) {
     const mk = markupOf(app);
-    const inputs = mk.match(/<input[^>]*type="time"[^>]*>/g) || [];
-    assert.ok(inputs.length >= TIME_IDS.length, '시각 칸이 모자란다: ' + inputs.length);
-    for (const tag of inputs) assert.ok(/\sstep="300"/.test(tag), '5분 단위(step=300)가 아닌 시각 칸이 있다: ' + tag);
-    for (const id of TIME_IDS) assert.ok(inputs.some((t) => t.includes(`id="${id}"`)), `시각 칸 #${id} 가 type=time 이 아니다`);
+    assert.ok(!/<input[^>]*type="time"/.test(mk), '브라우저 시각 칸(type=time)이 남아 있다: WebView2 는 step 을 무시하고 분을 1분 단위로 보인다');
+    const inputs = mk.match(/<input[^>]*\sdata-time-field[^>]*>/g) || [];
+    assert.strictEqual(inputs.length, TIME_IDS.length, '앱 시각 칸(data-time-field) 수가 다르다: ' + inputs.length);
+    for (const id of TIME_IDS) assert.ok(inputs.some((t) => t.includes(`id="${id}"`) && /type="text"/.test(t)), `시각 칸 #${id} 가 앱 시각 칸(data-time-field)이 아니다`);
+    assert.ok(/\n  timeFieldAll\(\);/.test(extractFunction(app, 'bind')), 'bind 가 시각 칸을 앱 고르기로 바꾸지 않는다(timeFieldAll)');
+    assert.ok(/\nconst TF_STEP = 5;/.test(app), '분 목록이 5분 단위(TF_STEP = 5)가 아니다');
     assert.ok(!/id="(qa|f)(Start|End)[HM]"/.test(mk) && !/class="timepick"/.test(mk), '예전 시/분 고르기(select)가 남아 있다');
     assert.ok(!/\.(checkValidity|reportValidity)\(/.test(app), '앱이 폼 검증을 부른다: step 어긋남(11:38)이 저장을 막을 수 있다');
   },
@@ -156,14 +161,16 @@ const statics = {
     assert.ok(/flex:1 0 auto;min-height:74px/.test(rule(app, '.grid.bars.expand > .gridrow{')), '펼침 밀도가 막대 달력에 닿지 않는다');
   },
 };
-test('정적①: 시각 칸(개인 폼, 기록 창, 과제 폼)이 모두 type=time step=300 이고 폼 검증을 부르지 않는다(결정 7)', () => statics.timeStep(src));
+test('정적①: 시각 칸(개인 폼, 기록 창, 과제 폼) 여섯이 모두 앱 시각 칸(5분 단위)이고 type=time 이 없으며 폼 검증을 부르지 않는다(결정 7)', () => statics.timeStep(src));
 test('정적②: 한 화면 폼에 옵션 더보기와 자세히 편집이 없고 모든 칸이 있으며 반복은 셋뿐이다(결정 6, 8)', () => statics.oneScreenForm(src));
 test('정적③: 좁은 창(440px 이하)은 아래 시트, 본문 스크롤, 저장 줄 고정(결정 9)', () => statics.narrowSheet(src));
 test('정적④: 작업일지 기록만 기록 창으로, 반복 일정도 한 화면 폼으로(결정 10)', () => statics.editRouting(src));
 test('정적⑤: 내 창은 막대, 열람 창은 칩. 할 일 점선, 좁은 폭 숨김, 밀도 규칙(결정 1~4)', () => statics.barsWiring(src));
-test('변이S: step 을 600 으로, 옵션 더보기 부활, 반복 세부 칸 부활, 시트 규칙 삭제, 반복을 기록 창으로, PEER 갈래 삭제를 잡는다', () => {
-  assert.throws(() => statics.timeStep(mutate('<input type="time" id="qaStart" step="300">', '<input type="time" id="qaStart" step="600">')), /step=300/);
-  assert.throws(() => statics.timeStep(mutate('<input type="time" id="pcfET" step="300">', '<input type="time" id="pcfET">')), /step=300/);
+test('변이S: type=time 부활, 앱 시각 칸 표시 빠짐, bind 배선 빠짐, 분 간격 1, 옵션 더보기 부활, 반복 세부 칸 부활, 시트 규칙 삭제, 반복을 기록 창으로, PEER 갈래 삭제를 잡는다', () => {
+  assert.throws(() => statics.timeStep(mutate('<input type="text" id="qaStart" data-time-field>', '<input type="time" id="qaStart" step="300">')), /type=time/);
+  assert.throws(() => statics.timeStep(mutate('<input type="text" id="pcfET" data-time-field>', '<input type="text" id="pcfET">')), /data-time-field/);
+  assert.throws(() => statics.timeStep(mutate('\n  timeFieldAll();   //', '\n  //')), /timeFieldAll/);
+  assert.throws(() => statics.timeStep(mutate('\nconst TF_STEP = 5;', '\nconst TF_STEP = 1;')), /5분 단위/);
   assert.throws(() => statics.timeStep(mutate('function qaSave(){\n  if(guardEdit()) return;', 'function qaSave(){\n  if(guardEdit()) return; if(!document.getElementById(\'quickAdd\').querySelector(\'form\') || true){ const f = document.createElement(\'form\'); f.checkValidity(); }')), /폼 검증/);
   assert.throws(() => statics.oneScreenForm(mutate('    <div class="qa-foot">\n      <button type="button" class="btn" data-close>취소</button>', '    <div class="qa-foot">\n      <button type="button" class="qa-more" id="qaMore">옵션 더보기 ▾</button>\n      <button type="button" class="btn" data-close>취소</button>')), /qaMore|옵션 더보기/);
   assert.throws(() => statics.oneScreenForm(mutate('<span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>', '<input type="number" id="qaRecurInterval"><span class="qa-hint hidden" id="qaRecurHint" aria-live="polite"></span>')), /세부 칸/);
@@ -517,7 +524,7 @@ if (!JSDOM) {
       await withBoot(source, async (W) => {
         W.ev("editEntry('e-odd')");
         const s = W.$('#qaStart'), e = W.$('#qaEnd');
-        assert.strictEqual(s.getAttribute('step'), '300'); assert.strictEqual(s.type, 'time');
+        assert.ok(s.__tf && e.__tf && s.type === 'text', '시각 칸이 앱 시각 칸(timeField)이 아니다');
         assert.deepStrictEqual([s.value, e.value], ['11:38', '12:07'], '5분 단위가 아닌 값이 그대로 보이지 않는다');
         W.ev('qaSave()');
         const x = W.entry('e-odd');
@@ -530,6 +537,114 @@ if (!JSDOM) {
         assert.strictEqual(pv.ok, true, '과제 폼 검증이 5분 단위가 아닌 시각을 막는다: ' + JSON.stringify(pv));
       });
     },
+    //  시각 고르기(결정 7): 앱이 만든 목록. 위젯의 type=time 은 step 을 무시했다. 직접 치기는 없다(읽기 전용 칸).
+    async picker(source) {
+      await withBoot(source, async (W) => {
+        const w = W.w;
+        const key = (el, k, o) => el.dispatchEvent(new w.KeyboardEvent('keydown', Object.assign({ key: k, bubbles: true, cancelable: true }, o || {})));
+        const click = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true }));
+        const down = (el) => el.dispatchEvent(new w.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        const pop = (el) => el.__tf.pop;
+        const isOpen = (el) => !pop(el).classList.contains('hidden') && el.getAttribute('aria-expanded') === 'true';
+        const opts = (el, c) => [...pop(el).querySelectorAll(`#${el.id}Tf${c} .tf-opt`)];
+        const opt = (el, c, txt) => opts(el, c).find((o) => o.textContent === txt);
+        const sel = (el, c) => opts(el, c).filter((o) => o.getAttribute('aria-selected') === 'true').map((o) => o.textContent);
+        const act = (el) => { const a = el.getAttribute('aria-activedescendant'); return a ? w.document.getElementById(a).textContent : null; };
+        const MIN12 = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'));
+        //  여섯 칸 모두 같은 부품: 읽기 전용 combobox, 시계 단추, 창(.overlay)에 붙은 목록, 시 24개, 분 정확히 12개(5분 단위)
+        for (const id of TIME_IDS) {
+          const el = W.$('#' + id);
+          assert.ok(el && el.__tf && el.type === 'text' && el.readOnly && el.getAttribute('role') === 'combobox' && el.getAttribute('aria-haspopup') === 'listbox', `#${id} 가 읽기 전용 앱 시각 칸(combobox)이 아니다`);
+          assert.ok(el.parentElement.classList.contains('tf') && el.parentElement.querySelector('.tf-btn'), `#${id} 에 시계 단추가 없다`);
+          assert.strictEqual(el.getAttribute('placeholder'), '--:--');
+          const p = pop(el);
+          assert.ok(p.parentElement.classList.contains('overlay') && !el.closest('.modal').contains(p), `#${id} 목록이 창(.overlay)에 붙지 않았다(창 본문 overflow 에 잘린다)`);
+          assert.strictEqual(p.querySelectorAll('[role="listbox"]').length, 2, `#${id} 목록에 시와 분 listbox 가 없다`);
+          assert.strictEqual(opts(el, 'H').length, 24, `#${id} 시 목록이 24개가 아니다`);
+          assert.deepStrictEqual(opts(el, 'M').map((o) => o.textContent), MIN12, `#${id} 분 목록이 5분 단위 12개가 아니다`);
+          assert.ok(opts(el, 'M').every((o) => o.getAttribute('role') === 'option'), `#${id} 분 항목이 option 이 아니다`);
+          assert.ok(p.querySelector('.tf-clr'), `#${id} 목록에 지우기가 없다`);
+        }
+        //  11:38: 그대로 보이고, 목록은 시 11 만 골라진 표시(분 없음)
+        W.ev("editEntry('e-odd')");
+        const s = W.$('#qaStart'), e = W.$('#qaEnd');
+        s.focus(); click(s);
+        assert.ok(isOpen(s), '칸을 눌러도 목록이 뜨지 않는다');
+        assert.strictEqual(s.value, '11:38');
+        assert.deepStrictEqual([sel(s, 'H'), sel(s, 'M')], [['11'], []], '11:38 의 골라진 표시가 시 11, 분 없음이 아니다');
+        assert.strictEqual(act(s), '11', '키보드 자리가 지금 시(11)가 아니다');
+        //  Esc 는 목록만 닫는다(창은 그대로). 한 번 더 누르면 그때 창의 Esc(맨 위 창 닫기)가 돈다
+        key(s, 'Escape');
+        await settle();
+        assert.ok(!isOpen(s), 'Esc 로 목록이 닫히지 않았다');
+        assert.ok(W.ev("isOverlayOpen(document.getElementById('quickAdd')) && !document.getElementById('quickAdd').classList.contains('closing') && openOverlays().pop().id === 'quickAdd'"), 'Esc 가 목록과 함께 창까지 닫았다(또는 확인 창을 띄웠다)');
+        key(s, 'Escape');
+        await settle();
+        assert.ok(!W.ev("isOverlayOpen(document.getElementById('quickAdd'))") || W.$('#quickAdd').classList.contains('closing'), '목록이 닫힌 뒤의 Esc 가 창을 닫지 않는다(전역 Esc 순서가 깨졌다)');
+        //  고르기: 새 일정. 시를 고르면 분은 00, input 과 change 가 가고 시작 변경 처리(종료 +1시간)가 돈다. 분을 고르면 값이 정해지고 닫힌다
+        W.ev("closeOverlay(document.getElementById('quickAdd')); document.getElementById('quickAdd').classList.remove('closing'); document.getElementById('quickAdd').classList.add('hidden'); openQuickAdd('2026-10-16', 'event')");
+        const n = { input: 0, change: 0 };
+        s.addEventListener('input', () => n.input++); s.addEventListener('change', () => n.change++);
+        assert.strictEqual(s.value, '');
+        s.focus(); click(s.parentElement.querySelector('.tf-btn'));
+        assert.ok(isOpen(s), '시계 단추로 목록이 뜨지 않는다');
+        assert.strictEqual(act(s), '09', '빈 칸의 키보드 자리가 09 가 아니다');
+        click(opt(s, 'H', '10'));
+        assert.deepStrictEqual([s.value, n.input, n.change, isOpen(s)], ['10:00', 1, 1, true], '시를 고르면 HH:00, input 과 change 한 번씩, 목록은 열린 채여야 한다');
+        assert.strictEqual(e.value, '11:00', '시작을 고르면 종료가 1시간 뒤로 따라오지 않는다(change 처리가 돌지 않았다)');
+        click(opt(s, 'M', '05'));
+        assert.deepStrictEqual([s.value, n.input, n.change, isOpen(s)], ['10:05', 2, 2, false], '분을 고르면 값이 정해지고 목록이 닫혀야 한다');
+        assert.strictEqual(e.value, '11:05');
+        //  시를 고르면 분은 그대로(11:38 류 포함)
+        W.ev("writeTimeIn($('#qaStart'), '11:38')");
+        click(s); click(opt(s, 'H', '14'));
+        assert.strictEqual(s.value, '14:38', '시를 고르면 분이 그대로여야 한다');
+        key(s, 'Escape');
+        //  키보드: Alt+아래로 열고, 위아래로 한 열 안에서, 오른쪽으로 분 열, Enter 로 고른다. Space 와 Enter 도 연다
+        e.focus(); key(e, 'ArrowDown', { altKey: true });
+        assert.ok(isOpen(e) && act(e) === '15', 'Alt+아래로 열리지 않거나 키보드 자리가 지금 시(15)가 아니다: ' + act(e));
+        key(e, 'ArrowDown'); key(e, 'ArrowDown'); assert.strictEqual(act(e), '17');
+        key(e, 'ArrowUp'); assert.strictEqual(act(e), '16');
+        key(e, 'Enter');
+        assert.deepStrictEqual([e.value, isOpen(e)], ['16:38', true], 'Enter 로 시를 고르지 못했다(분은 그대로여야 한다)');
+        key(e, 'ArrowRight'); assert.strictEqual(act(e), '00', '오른쪽으로 분 열에 가지 않는다');
+        key(e, 'ArrowDown'); key(e, 'ArrowDown'); key(e, 'ArrowDown');
+        key(e, 'Enter');
+        assert.deepStrictEqual([e.value, isOpen(e)], ['16:15', false], '분 열에서 Enter 로 고르고 닫히지 않았다');
+        key(e, ' '); assert.ok(isOpen(e), 'Space 로 열리지 않는다'); key(e, 'Escape');
+        key(e, 'Enter'); assert.ok(isOpen(e), 'Enter 로 열리지 않는다');
+        assert.ok(e.getAttribute('aria-activedescendant') && e.getAttribute('aria-controls') === e.id + 'TfH', 'aria-activedescendant, aria-controls 가 없다');
+        //  지우기(목록 안). 시각 없는 일정이 된다
+        click(pop(e).querySelector('.tf-clr'));
+        assert.deepStrictEqual([e.value, isOpen(e)], ['', false], '지우기가 값을 비우고 닫지 않았다');
+        s.focus(); key(s, 'Delete');
+        assert.strictEqual(s.value, '', 'Delete 로 비워지지 않는다');
+        //  바깥 누르기, 창 닫기에 목록이 닫힌다
+        click(s); assert.ok(isOpen(s));
+        down(W.$('#qaTitle')); assert.ok(!isOpen(s), '바깥을 눌러도 목록이 닫히지 않는다');
+        click(s); W.ev("closeOverlay(document.getElementById('quickAdd'))");
+        assert.ok(!isOpen(s), '창을 닫아도 목록이 남아 있다');
+        //  종일은 시각 줄을 숨긴다(예전 그대로)
+        W.ev("document.getElementById('quickAdd').classList.remove('closing'); document.getElementById('quickAdd').classList.add('hidden'); openQuickAdd('2026-10-16', 'event'); $('#qaAllDay').checked = true; $('#qaAllDay').dispatchEvent(new Event('change', { bubbles: true }))");
+        assert.strictEqual(W.$('#qaTimeRow').style.display, 'none', '종일인데 시각 줄이 보인다');
+        //  과제 폼: 고르면 pcFormSync(안내)가 돌고, 둘 다 또는 둘 다 비움, 하루 일정만 규칙이 그대로
+        const ps = W.$('#pcfST'), pe = W.$('#pcfET');
+        W.ev("document.getElementById('pcfTitle').value = '(예시)'; document.getElementById('pcfStart').value = '2026-10-21'; document.getElementById('pcfEnd').value = '2026-10-22'; writeTimeIn($('#pcfST'), ''); writeTimeIn($('#pcfET'), ''); pcFormSync();");
+        const pv = () => W.evJSON("pcValidate(Object.assign(pcFormRead(), { projectUid: 'p1' }), PCAL_LIMITS)");
+        assert.strictEqual(pv().ok, true, '시각 없는 여러 날 일정이 막힌다');
+        ps.focus(); click(ps); click(opt(ps, 'H', '09')); key(ps, 'Escape');
+        assert.strictEqual(ps.value, '09:00');
+        assert.ok(/하루 일정에서만/.test(W.$('#pcfTimeHint').textContent), '과제 폼 시각을 골라도 안내(pcFormSync)가 돌지 않았다: ' + W.$('#pcfTimeHint').textContent);
+        assert.ok(/둘 다 적거나 둘 다 비웁니다/.test(pv().error || pv().msg || JSON.stringify(pv())), '시작 시각만 있는데 막지 않는다: ' + JSON.stringify(pv()));
+        pe.focus(); click(pe); click(opt(pe, 'H', '10')); click(opt(pe, 'M', '00'));
+        assert.ok(/하루 일정에서만/.test(JSON.stringify(pv())), '여러 날 일정에 시각이 있는데 막지 않는다: ' + JSON.stringify(pv()));
+        W.ev("document.getElementById('pcfEnd').value = '2026-10-21'; document.getElementById('pcfEnd').dispatchEvent(new Event('change', { bubbles: true }))");
+        assert.strictEqual(pv().ok, true, '하루 일정 09:00~10:00 이 막힌다: ' + JSON.stringify(pv()));
+        click(ps); click(pop(ps).querySelector('.tf-clr')); click(pe); click(pop(pe).querySelector('.tf-clr'));
+        assert.deepStrictEqual([ps.value, pe.value, pv().ok], ['', '', true], '지우기로 날짜만 있는 일정이 되지 않는다');
+        assert.ok(/날짜만 있는 일정/.test(W.$('#pcfTimeHint').textContent), '시각을 비워도 안내가 바뀌지 않는다');
+      });
+    },
   };
 
   test('R①: 막대 모양(주 경계 나눔, ◂ ▸, 기간 글자, 할 일 점선과 완료와 별, 시간 일정 점, 반복 발생, 휴일)', () => R.bars(src));
@@ -540,6 +655,7 @@ if (!JSDOM) {
   test('R⑥: 한 화면 폼(일정과 할 일 칸, 옵션 더보기 없음, 저장 형식 그대로)', () => R.form(src));
   test('R⑦: 반복 세부 값 보존과 한 줄 요약, 종류를 바꾸면 기본값, 작업일지만 기록 창', () => R.recur(src));
   test('R⑧: 5분 단위가 아닌 시각(11:38)이 그대로 보이고 저장된다(개인 폼, 기록 창, 과제 폼 검증)', () => R.oddTime(src));
+  test('R⑨: 앱 시각 고르기(여섯 칸 같은 부품, 분 12개, 고르면 HH:MM 과 input change, 11:38 표시, Esc 는 목록만, 키보드, 지우기, 과제 폼 규칙)', () => R.picker(src));
 
   test('변이R①: 할 일 막대에서 점선 표시(range)를 빼면 R① 이 잡는다', async () => {
     await assert.rejects(() => R.bars(mutate("  const edge = (it.multi ? ' range' : '') + (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');", "  const edge = (it.cl ? ' cl' : '') + (it.cr ? ' cr' : '');")), /점선/);
@@ -555,6 +671,12 @@ if (!JSDOM) {
   });
   test('변이R⑤: 반복 세부 값을 버리면(늘 간격 1) R⑦ 이 잡는다', async () => {
     await assert.rejects(() => R.recur(mutate('  if(qaRecurOrig && qaRecurOrig.freq === f) return { freq:f, interval:qaRecurOrig.interval, until:qaRecurOrig.until, count:qaRecurOrig.count };', '')), /세부 값/);
+  });
+  test('변이R⑦: 분 간격 1, Esc 가 창까지 닫기, change 를 안 보내기, 지우기 없애기를 R⑨ 가 잡는다', async () => {
+    await assert.rejects(() => R.picker(mutate('\nconst TF_STEP = 5;', '\nconst TF_STEP = 1;')), /5분 단위 12개/);
+    await assert.rejects(() => R.picker(mutate('    ev.preventDefault(); ev.stopImmediatePropagation();\n    tfClose(__tfOpen);', '    tfClose(__tfOpen);')), /창까지 닫았다/);
+    await assert.rejects(() => R.picker(mutate("  T.el.dispatchEvent(new Event('change', { bubbles: true }));\n  if(__tfOpen === T) tfRender(T);", '  if(__tfOpen === T) tfRender(T);')), /change/);
+    await assert.rejects(() => R.picker(mutate("if(t.closest && t.closest('.tf-clr')){ tfCommit(T, ''); tfClose(T); return; }", '')), /지우기/);
   });
   test('변이R⑥: 시각을 5분 단위로 깎아 읽으면 R⑧ 이 잡는다', async () => {
     await assert.rejects(() => R.oddTime(mutate("function readTimeIn(el){ const v = el ? String(el.value || '') : ''; return HM_RE.test(v) ? v : ''; }", "function readTimeIn(el){ const v = el ? String(el.value || '') : ''; return HM_RE.test(v) ? v.slice(0, 4) + (Number(v[4]) < 5 ? '0' : '5') : ''; }")), /저장에서 바뀌었다/);

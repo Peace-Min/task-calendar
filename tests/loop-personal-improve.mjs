@@ -6,10 +6,11 @@
  *    L2 막대의 그 날 칸 가운데를 누르면 그 날짜가 골라지는지(시작일이 아니라),
  *    L3 진짜 DragEvent(DataTransfer)로 막대의 한 날을 잡아 다른 칸에 놓으면 (놓은 날 - 잡은 날)만큼 옮겨지고(길이 유지) 저장되는지
  *       (서버에서 다시 읽어 확인),
- *    L4 한 화면 폼이 모든 칸을 처음부터 보이는지(옵션 더보기 없음), 시각 칸이 type=time step=300 이고 5분 단위가 아닌 값(11:38)이
+ *    L4 한 화면 폼이 모든 칸을 처음부터 보이는지(옵션 더보기 없음), 시각 칸이 앱 시각 칸(읽기 전용, timeField)이고 5분 단위가 아닌 값(11:38)이
  *       그대로 보이고 저장되는지,
+ *    L5 시각 고르기를 진짜 마우스 누름(CDP Input.dispatchMouseEvent)으로 열어 분 항목이 12개인지 세고, 10 시와 05 분을 눌러 칸이 10:05 인지,
  *  를 본다. 영속과 정리는 앱을 거친다(DB 직접 접속 없음). 끝나면 zz 기록을 지우고 서버에서 0건인지 다시 읽어 본다.
- *  ★ 시각 고르기 목록이 실제로 5분 간격인지(WebView2 의 드롭다운 모양)는 화면을 보는 사람이 확인한다. 이 루프는 속성만 본다.
+ *  ★ 위젯(WebView2)의 input type=time 은 step=300 을 무시하고 분을 1분 단위로 다 보였다(2026-10-23). 그래서 앱이 만든 고르기를 쓰고 L5 가 진짜 누름으로 본다.
  *  실행: node tests/loop-personal-improve.mjs [--port=9222] [--seed=N]
  *  종료코드: 0 통과, 1 실패, 2 판정 없음
  * ==========================================================================*/
@@ -32,6 +33,14 @@ async function connect() {
 }
 const ev = (x) => new Promise((r, j) => { const i = ++id; pend.set(i, m => m.result?.exceptionDetails ? j(new Error(JSON.stringify(m.result.exceptionDetails).slice(0, 300))) : r(m.result?.result?.value)); ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression: x, awaitPromise: true, returnByValue: true } })); });
 const J = async (x) => JSON.parse(await ev(`JSON.stringify(${x})`));
+//  CDP 명령 하나(Input.dispatchMouseEvent 등). 진짜 누름은 페이지 스크립트가 아니라 브라우저 입력으로 들어간다.
+const cdp = (method, params) => new Promise((r, j) => { const i = ++id; pend.set(i, m => m.error ? j(new Error(method + ': ' + JSON.stringify(m.error))) : r(m.result)); ws.send(JSON.stringify({ id: i, method, params: params || {} })); });
+async function realClick(x, y) {
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+  await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+  await sleep(120);
+}
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await ev(fn)) return true; await sleep(250); } return false; }
 const healthy = `(typeof conn!=='undefined' && conn==='ok' && bootOk && !unsaved)`;
 async function reloadAndWait() {
@@ -131,12 +140,12 @@ const D = { evS: '2026-12-07', evE: '2026-12-15', tdS: '2026-12-16', tdE: '2026-
       const ids = ['qaTitle','qaDate','qaEndDate','qaCat','qaAllDay','qaStart','qaEnd','qaRemBlock','qaRecur','qaLoc','qaMemo','qaSave'];
       const s = document.getElementById('qaStart'), en = document.getElementById('qaEnd');
       const r = { open: isOverlayOpen(document.getElementById('quickAdd')), missing: ids.filter(x => !shown(x)), more: !!document.getElementById('qaMore') || !!document.getElementById('qaAdvanced'),
-        type: s && s.type, step: s && s.getAttribute('step'), stepEnd: en && en.getAttribute('step'), v: [s && s.value, en && en.value],
+        type: s && s.type, ro: !!(s && s.readOnly && en && en.readOnly), tf: !!(s && s.__tf && en && en.__tf), native: document.querySelectorAll('input[type=time]').length, v: [s && s.value, en && en.value],
         recurOpts: [...document.querySelectorAll('#qaRecur option')].map(o => o.value),
         sheet: getComputedStyle(document.querySelector('#quickAdd .qa-modal')).maxHeight, bodyScroll: getComputedStyle(document.querySelector('#quickAdd .qa-body')).overflowY };
       qaSave(); return r; })()`);
     ok('L4 일정 수정이 한 화면 폼으로 열리고 모든 칸이 처음부터 보인다(옵션 더보기, 자세히 편집 없음)', l4.open && l4.missing.length === 0 && !l4.more, JSON.stringify({ missing: l4.missing, more: l4.more }));
-    ok('L4 시각 칸은 type=time step=300(시작, 종료)', l4.type === 'time' && l4.step === '300' && l4.stepEnd === '300', JSON.stringify(l4));
+    ok('L4 시각 칸은 앱 시각 칸(읽기 전용 글자 칸 + 앱 목록, 시작과 종료), 브라우저 type=time 없음', l4.type === 'text' && l4.ro && l4.tf && l4.native === 0, JSON.stringify({ type: l4.type, ro: l4.ro, tf: l4.tf, native: l4.native }));
     ok('L4 5분 단위가 아닌 11:38, 12:07 이 그대로 보인다', l4.v[0] === '11:38' && l4.v[1] === '12:07', JSON.stringify(l4.v));
     ok('L4 반복은 안 함, 매주, 매월', JSON.stringify(l4.recurOpts) === JSON.stringify(['', 'weekly', 'monthly']), JSON.stringify(l4.recurOpts));
     console.log(`    (참고) 폼 창 max-height=${l4.sheet}, 본문 overflow-y=${l4.bodyScroll}. 창 폭이 440px 이하이면 88vh 아래 시트여야 한다`);
@@ -149,6 +158,28 @@ const D = { evS: '2026-12-07', evE: '2026-12-15', tdS: '2026-12-16', tdE: '2026-
       const r = { on: ['qaTitle','qaDate','qaEndDate','qaCat','qaPrio','qaMemo'].filter(x => !shown(x)), off: ['qaWhen','qaRecurWrap','qaLocWrap'].filter(x => shown(x)) };
       closeOverlay(document.getElementById('quickAdd')); return r; })()`);
     ok('L4 할 일 폼: 제목, 기한, 종료일, 과제, 중요, 설명이 보이고 시각, 반복, 장소는 없다', l4c.on.length === 0 && l4c.off.length === 0, JSON.stringify(l4c));
+
+    // L5 시각 고르기: 진짜 누름으로 열고, 분 12개, 10 시와 05 분을 누르면 10:05 (저장하지 않고 닫는다)
+    const RECT = `(function(el){ if(!el) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? { x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, t: r.top, r: r.right, b: r.bottom } : null; })`;
+    const OPT = (c, txt) => `(() => { const o = [...document.querySelectorAll('#qaStartTf${c} .tf-opt')].find(x => x.textContent === '${txt}'); if(o) o.scrollIntoView({ block: 'nearest' }); return ${RECT}(o); })()`;
+    const b5 = await J(`(() => { openQuickAdd('2026-12-22', 'event'); const s = document.getElementById('qaStart'); return { v: s.value, btn: ${RECT}(s.parentElement.querySelector('.tf-btn')) }; })()`);
+    if (!b5.btn) undecide('L5 시각 고르기', '시작 시각 칸의 시계 단추가 화면에 없다'); else {
+      await sleep(250);   // 창 열림 애니메이션
+      const btn5 = await J(`${RECT}(document.getElementById('qaStart').parentElement.querySelector('.tf-btn'))`);
+      await realClick(btn5.x, btn5.y);
+      const p5 = await J(`(() => { const s = document.getElementById('qaStart'), p = s.__tf && s.__tf.pop; const r = p && p.getBoundingClientRect();
+        return { open: !!p && !p.classList.contains('hidden') && s.getAttribute('aria-expanded') === 'true', min: p ? [...p.querySelectorAll('#qaStartTfM .tf-opt')].map(o => o.textContent) : [], hours: p ? p.querySelectorAll('#qaStartTfH .tf-opt').length : 0,
+          inView: !!r && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, focus: document.activeElement === s }; })()`);
+      ok('L5 시계 단추를 진짜로 누르면 앱 시각 목록이 뜨고 화면 안에 있다', p5.open && p5.inView, JSON.stringify({ open: p5.open, inView: p5.inView, focus: p5.focus }));
+      ok('L5 분 항목이 정확히 12개(00, 05, ..., 55), 시 24개', p5.min.length === 12 && p5.min.join(',') === Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0')).join(',') && p5.hours === 24, JSON.stringify(p5.min) + ' / 시 ' + p5.hours);
+      const h10 = await J(OPT('H', '10'));
+      if (h10) await realClick(h10.x, h10.y);
+      const m05 = await J(OPT('M', '05'));
+      if (m05) await realClick(m05.x, m05.y);
+      const r5 = await J(`(() => { const s = document.getElementById('qaStart'); return { v: s.value, end: document.getElementById('qaEnd').value, open: !s.__tf.pop.classList.contains('hidden'), form: isOverlayOpen(document.getElementById('quickAdd')) }; })()`);
+      ok('L5 10 시, 05 분을 진짜로 누르면 칸이 10:05 이고 목록이 닫힌다(창은 그대로, 종료는 1시간 뒤)', !!h10 && !!m05 && r5.v === '10:05' && !r5.open && r5.form && r5.end === '11:05', JSON.stringify(r5));
+    }
+    await ev(`(() => { closeOverlay(document.getElementById('quickAdd')); return 1; })()`);
 
     await ev(`(() => { setCalDensity(${JSON.stringify(dens0)}); view = ${JSON.stringify(view0)}; selectedDate = ${JSON.stringify(sel0)}; renderAll(); return 1; })()`);
   } catch (e) { fail++; console.log('  ✗ 예외: ' + e.message); }

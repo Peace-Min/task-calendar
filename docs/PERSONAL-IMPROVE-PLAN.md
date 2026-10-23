@@ -80,12 +80,15 @@
 
 ### 시각 칸(결정 7)
 
-- 개인 폼(qaStart, qaEnd), 기록 창(fStart, fEnd), 과제 폼(pcfST, pcfET, 예전 step 600) 모두 `<input type="time" step="300">` 이다. 값은 `.value` 로만 읽고(`readTimeIn` 은 형식만 본다) 앱은 `checkValidity`, `reportValidity` 를 부르지 않아 11:38 같은 값이 step 어긋남으로 막히지 않는다. 과제 폼 검증(`pcValidate`)도 분 단위를 보지 않는다.
-- ★ WebView2 의 시각 고르기 목록이 실제로 5분 간격으로 나오는지는 실제 앱에서 눈으로 확인해야 한다(헤드리스 Edge 로는 드롭다운 목록을 찍을 수 없다). 한국어 창에서는 '오전 10:00' 처럼 12시간 표기로 보인다(시안 장면 4 의 지적, 결정 7 이 받아들임). 5분 간격이 아니면 계획 §4 대로 시와 분 고르기를 직접 만들어 대신한다.
+- ★ 구현 메모(2026-10-23): 처음엔 여섯 칸 모두 `<input type="time" step="300">` 이었다. 실제 앱에서 보니 **WebView2 의 시각 고르기 목록이 step 을 무시하고 분을 1분 단위로 다 보였다**. 그래서 §4 대로 시와 분 고르기를 앱이 직접 만들어 대신했다(결정 7 의 뜻은 같음: 한 칸, 5분 단위, 개인 폼과 과제 폼 공통).
+- 부품 하나(`timeField`, 마크업 표시 `data-time-field`, `bind` 의 `timeFieldAll()` 이 붙인다)를 개인 폼(qaStart, qaEnd), 기록 창(fStart, fEnd), 과제 폼(pcfST, pcfET)이 같이 쓴다. id 는 그대로이고 `.value` 는 예전처럼 'HH:MM'(24시간) 또는 ''이라 저장, 검증(`readTimeIn`, `pcValidate`), 채우기(`writeTimeIn`)가 그대로 돈다.
+- 칸은 읽기 전용 글자 칸(글자 커서 없음, 직접 치기 없음, 사용자 결정) + 오른쪽 시계 단추다. 칸이나 단추를 누르면, 또는 Enter, Space, Alt+아래 로 목록이 뜬다. 목록은 시 00~23 과 분 00, 05, ..., 55(12개) 두 열(listbox, option)이고 지금 값이 골라진 표시로 보이는 자리에 굴러 있다. 시를 고르면 분은 그대로(비었으면 00), 분을 고르면 값이 정해지고 닫힌다. 아래의 조용한 [지우기](또는 칸에서 Delete)로 시각을 비운다(시각은 선택이다. 과제 폼은 둘 다 또는 둘 다 비움).
+- 목록은 `position:fixed` 로 창(`.overlay`)에 붙어 창 본문의 overflow 에 잘리지 않는다. 칸 아래에, 자리가 없으면 위에 뜨고 400px 창과 아래 시트에서도 화면 안이다. Esc 는 목록만 닫는다(문서 캡처 + stopImmediatePropagation, 전역 Esc 의 맨 위 창 닫기보다 먼저). 바깥 누르기, 칸 떠나기, 창 닫기(`closeOverlay`)에도 닫힌다.
+- 값이 바뀌면 칸에 `input`, `change` 를 보낸다. 시작을 바꾸면 종료 +1시간(`qaAutoEnd`, `fAutoEnd`), 종료 보정, 과제 폼 안내(`pcFormSync`)가 예전 그대로 돈다. 11:38 같은 예전 값은 그대로 보이고 저장된다(목록은 시 11 만 골라진 표시, 분 없음). 색은 모두 테마 토큰이다(골라진 칸 `--accent-fill` 위 `--on-accent`).
 
 ### 시험
 
-- 새 시험: `tests/personal-improve.test.mjs`(순수 3, 정적 5, jsdom 8, 변이 묶음 2 + 6).
+- 새 시험: `tests/personal-improve.test.mjs`(순수 3, 정적 5, jsdom 9, 변이 묶음 2 + 7). 시각 고르기는 R⑨(분 12개, 고르기와 이벤트, 11:38 표시, Esc 순서, 키보드, 지우기, 과제 폼 규칙)와 변이R⑦, 실 위젯은 `loop-personal-improve.mjs` L5(진짜 누름으로 열고 10:05 고르기).
 - 고친 시험(의도와 함께 파일 안에 적었다):
   - `range-chip-click.test.mjs`: 칩이 칸 안이 아니라 주 줄의 막대라 칩 찾기(`barAt`)와 누르기(그 날 칸 가운데 좌표)를 바꿨다. 정적①은 `chipCellDate` 를 보고, 정적②와 K6 은 예전 B5(시작일 기준)를 결정 3(잡은 자리 기준)으로 바꿨다. K6 기대값 10/3~10/6 → 10/1~10/4.
   - `layout-stability.test.mjs`: 반복 안내 대입 문구가 '자세히 편집에서 설정' 에서 반복 요약으로 바뀌었다. 켜짐과 꺼짐 모두 글을 넣는 계약은 그대로 본다.

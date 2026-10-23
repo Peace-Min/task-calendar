@@ -2036,10 +2036,37 @@ body[data-peer][data-peer-layout="side"] .dp-sheet-handle .grab{ width:38px; hei
 /* 반복 요약(2주마다 화요일 등)은 라벨 오른쪽 같은 줄. 따로 줄을 잡지 않아 칸 간격이 다른 칸과 같고, 글이 생겨도 높이가 그대로다 */
 .qa-one .qa-recur-lb{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
 .qa-one .qa-recur-lb #qaRecurHint{margin:0;text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 시각 칸(결정 7): 한 칸에서 시와 분을 같이 고르는 input type=time, 분은 5분 단위(step=300). 일정 입력과 기록 수정(작업일지), 과제 등록 폼 공통.
-   5분 단위가 아닌 예전 값(11:38)도 그대로 보이고 저장된다. 이 앱은 폼 검증(checkValidity)을 쓰지 않아 step 어긋남이 저장을 막지 않는다. */
+/* 시각 칸(결정 7): 한 칸에서 시와 분을 같이 고른다. 앱이 만든 고르기(timeField)다. 위젯(WebView2)의 input type=time 은 step=300 을 무시하고
+   분을 1분 단위로 다 보였다(2026-10-23 실제 앱 확인). 칸은 읽기 전용(직접 치기 없음, 글자 커서 없음) + 오른쪽 시계 단추, 목록은 시 00~23 과 분 00~55(5분 단위 12개).
+   목록은 칸 아래(자리가 없으면 위)에 position:fixed 로 뜨고 창(.overlay)에 붙는다. 창 본문의 overflow 에 잘리지 않는다.
+   일정 입력과 기록 수정(작업일지), 과제 등록 폼 공통. 5분 단위가 아닌 예전 값(11:38)도 그대로 보이고 저장된다. 색은 모두 테마 토큰. */
 .qa-trow2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px}
-.qa-trow2 input[type=time]{font-variant-numeric:tabular-nums}
+.tf{position:relative;display:block;min-width:0}
+.modal .tf input[type=text].tf-in{width:100%;padding-right:36px;font-variant-numeric:tabular-nums;caret-color:transparent;cursor:pointer;user-select:none}
+/* 읽기 전용이지만 고르는 칸이다. .modal input[readonly] 의 흐린 모양(못 고치는 칸)을 되돌린다. 잠긴 칸(disabled)만 흐리게 */
+.modal .tf input.tf-in[readonly]{color:var(--text);background:var(--panel);cursor:pointer}
+.modal .tf input.tf-in:disabled{color:var(--muted);background:var(--dim-bg);cursor:not-allowed}
+.tf-btn{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:none;background:transparent;color:var(--muted);width:28px;height:28px;border-radius:var(--r-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.tf-btn:hover{background:var(--hover-bg);color:var(--text)}
+.tf-btn svg{width:16px;height:16px;flex:none}
+.tf-in:disabled + .tf-btn{cursor:not-allowed;opacity:.5}
+.tf-in:disabled + .tf-btn:hover{background:transparent;color:var(--muted)}
+.tf-pop{position:fixed;left:0;top:0;z-index:60;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line-2);border-radius:var(--r-md);box-shadow:var(--shadow);padding:4px}
+.tf-cols{display:flex;gap:4px}
+.tf-col{display:flex;flex-direction:column;width:60px;min-width:0}
+.tf-cap{font-size:var(--fs-micro);color:var(--muted);text-align:center;padding:2px 0 4px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.tf-list{position:relative;max-height:208px;overflow-y:auto;overscroll-behavior:contain;padding:2px 0;scrollbar-width:thin}
+.tf-opt{padding:5px 0;text-align:center;border-radius:var(--r-sm);cursor:pointer;font-size:var(--fs-body);line-height:1.35;color:var(--text);font-variant-numeric:tabular-nums}
+.tf-opt:hover{background:var(--hover-bg)}
+.tf-opt.act{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.tf-opt[aria-selected="true"]{background:var(--accent-fill);color:var(--on-accent);font-weight:700}
+.tf-opt[aria-selected="true"].act{box-shadow:inset 0 0 0 2px var(--accent-2)}
+/* 지우기: 조용한 글자 단추 하나(목록 아래 오른쪽). 값이 없으면 흐리게 */
+.tf-foot{display:flex;justify-content:flex-end;border-top:1px solid var(--line);margin-top:4px;padding-top:3px}
+.tf-clr{border:none;background:transparent;color:var(--muted);font:inherit;font-size:var(--fs-meta);padding:3px 8px;border-radius:var(--r-sm);cursor:pointer}
+.tf-clr:hover{background:var(--hover-bg);color:var(--text)}
+.tf-clr:disabled{opacity:.45;cursor:default}
+.tf-clr:disabled:hover{background:transparent;color:var(--muted)}
 /* 라벨 + 바로가기 링크 한 줄 */
 .lbl-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .lbl-row>label{margin:0}
@@ -3014,8 +3041,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <div class="fsect-cap">시간과 장소</div>
         <label class="check"><input type="checkbox" id="fAllDay"> 종일</label>
         <div class="qa-trow2" id="timeRow" style="margin-top:8px">
-          <label class="pcf-f">시작 시각<input type="time" id="fStart" step="300"></label>
-          <label class="pcf-f">종료 시각<input type="time" id="fEnd" step="300"></label>
+          <label class="pcf-f">시작 시각<input type="text" id="fStart" data-time-field></label>
+          <label class="pcf-f">종료 시각<input type="text" id="fEnd" data-time-field></label>
         </div>
         <div class="qa-hint" id="fTimeHint" aria-live="polite" style="margin-top:6px"></div>
         <div class="rem-block" id="fRemBlock">
@@ -3110,8 +3137,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <div class="pcf-full qa-tblock" id="qaWhen">
           <label class="qa-chk"><input type="checkbox" id="qaAllDay"> 종일</label>
           <div class="qa-trow2" id="qaTimeRow">
-            <label class="pcf-f">시작 시각<input type="time" id="qaStart" step="300"></label>
-            <label class="pcf-f">종료 시각<input type="time" id="qaEnd" step="300"></label>
+            <label class="pcf-f">시작 시각<input type="text" id="qaStart" data-time-field></label>
+            <label class="pcf-f">종료 시각<input type="text" id="qaEnd" data-time-field></label>
           </div>
           <div class="qa-hint" id="qaTimeHint" aria-live="polite"></div>
           <div class="rem-block" id="qaRemBlock">
@@ -4294,7 +4321,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <h3>3. 시간 입력</h3>
         <ul>
           <li><b>종일</b> 체크 시 시간 칸이 사라지고 하루 종일 일정이 됩니다. 회의처럼 시각이 있는 일정은 종일을 <b>꺼 둡니다</b>(기본 꺼짐).</li>
-          <li>시각은 <b>한 칸</b>에서 시와 분을 함께 고릅니다. 분은 <b>5분 단위</b>로 고릅니다. 예전에 적은 5분 단위가 아닌 시각(예: 11:38)은 그대로 보이고 그대로 저장됩니다.</li>
+          <li>시각은 <b>한 칸</b>에서 시와 분을 함께 고릅니다. 칸이나 시계 단추를 누르면 시와 분 목록이 뜨고, 분은 <b>5분 단위</b>로 고릅니다. 비우려면 목록 아래의 [지우기]를 누릅니다. 예전에 적은 5분 단위가 아닌 시각(예: 11:38)은 그대로 보이고 그대로 저장됩니다.</li>
           <li><b>시작</b>을 정하면 <b>종료</b>가 자동으로 1시간 뒤로 채워집니다. 종료를 직접 바꾸면 그 값이 유지됩니다.</li>
           <li>종료가 시작보다 빠르면 자동으로 1시간 뒤로 보정하고, 자정을 넘기면 <b>23:59</b>로 맞춥니다.</li>
         </ul>
@@ -4821,8 +4848,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <label class="pcf-f">종료일<input type="date" id="pcfEnd"></label>
         <label class="pcf-f pcf-full">과제<select id="pcfProj" aria-describedby="pcfProjHint"></select></label>
         <div class="qa-hint pcf-full" id="pcfProjHint"></div>
-        <label class="pcf-f">시작 시각(선택)<input type="time" id="pcfST" step="300"></label>
-        <label class="pcf-f">종료 시각(선택)<input type="time" id="pcfET" step="300"></label>
+        <label class="pcf-f">시작 시각(선택)<input type="text" id="pcfST" data-time-field></label>
+        <label class="pcf-f">종료 시각(선택)<input type="text" id="pcfET" data-time-field></label>
         <div class="qa-hint pcf-full" id="pcfTimeHint" aria-live="polite"></div>
         <div class="pcf-f pcf-full"><label for="pcfLoc">장소</label>
           <div class="loc-combo" data-pfx="pcf"><input type="text" class="loc-in" id="pcfLoc" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="pcfLocPop" maxlength="200" autocomplete="off" spellcheck="false" placeholder="고르거나 입력"><span class="loc-btns"><button type="button" class="loc-clr hidden" aria-label="장소 지우기" title="지우기">×</button><button type="button" class="loc-tog" tabindex="-1" aria-label="회의실 목록 열기" title="회의실 목록">▾</button></span><div class="loc-pop hidden" id="pcfLocPop" role="listbox" aria-label="장소 추천"></div></div>
@@ -12282,6 +12309,7 @@ function closeOverlay(ov){
   //  ★ 여기에 「구성원 편집」·편집 폼의 뒤처리가 있었다(폼 표 비우기 · 기다리던 푸시 끄기 · R2-W1/R6-W2).
   //    둘 다 사라졌다(2026-09-14): 쓰기가 왕복이 되면서 회신은 보낸 클로저에게만 가고, 갱신 명부는
   //    그 회신에 실려 온다 — 닫힌 화면이 남길 '빚'이 없다. 게다가 왕복 중에는 dataset.busy 가 닫기를 막는다.
+  tfCloseIn(ov);   // 열려 있던 시각 목록(창에 붙어 있다)도 닫는다. 다시 열 때 예전 목록이 떠 있지 않게
   const done = () => { ov.__closeTimer = null; ov.classList.remove('closing'); ov.classList.add('hidden'); if(ov.id === 'adminHub') ahAfterClose(); };
   if(_reducedMotion()){ done(); return; }
   ov.classList.add('closing');
@@ -18781,10 +18809,194 @@ function editEntry(id){
   if(e && e.source !== 'git') openQuickAdd(null, 'event', id);
   else openEntryModal('edit', id);
 }
-/* ---------- 시각 칸(결정 7): <input type="time" step="300"> 한 칸에서 시와 분을 같이 고른다. 분 목록은 5분 단위다.
-   한 화면 폼, 기록 창(작업일지), 과제 등록 폼이 같은 칸을 쓴다. 5분 단위가 아닌 예전 값(11:38)은 그대로 보이고 그대로 저장된다:
-   값은 .value 로만 읽고 이 앱은 checkValidity, reportValidity 를 부르지 않으므로 step 어긋남(stepMismatch)이 저장을 막지 않는다. */
+/* ---------- 시각 칸(결정 7): 한 칸에서 시와 분을 같이 고른다. 분 목록은 5분 단위다.
+   한 화면 폼, 기록 창(작업일지), 과제 등록 폼이 같은 칸(timeField)을 쓴다. 5분 단위가 아닌 예전 값(11:38)은 그대로 보이고 그대로 저장된다.
+   ★ 처음엔 <input type="time" step="300"> 이었는데 위젯(WebView2)의 시각 고르기는 step 을 무시하고 분을 1분 단위로 다 보였다
+     (2026-10-23 실제 앱 확인). 그래서 고르기 목록은 앱이 만든다(계획 §4 의 대안 그대로).
+   ★ 직접 치기는 없다(2026-10-23 사용자 결정). 칸은 읽기 전용 글자 칸이고(글자 커서 없음) 24시간 'HH:MM' 으로 보인다.
+   값 약속은 예전 그대로다: .value 는 'HH:MM' 또는 ''. 저장, 검증, readTimeIn, writeTimeIn 이 그대로 돈다.
+   - 칸이나 시계 단추를 누르면, 또는 Enter, Space, Alt+아래, 아래 로 목록이 뜬다. 시 00~23, 분 00, 05, ..., 55(12개).
+     지금 값이 골라진 표시이고 보이는 자리로 굴러 있다. 11:38 이면 시 11 만 골라진 표시이고 분은 골라진 것이 없다.
+     시를 고르면 분은 그대로(비었으면 00), 분을 고르면 값이 정해지고 목록이 닫힌다. 빈 칸에서 분부터 고르면 시는 키보드 자리의 시(처음엔 09).
+   - 비우기: 목록 아래의 작은 [지우기], 또는 칸에서 Delete, Backspace. 시각은 선택 칸이다(개인 일정은 시각 없이도, 과제 폼은 둘 다 또는 둘 다 비움).
+   - 키보드: 위아래 = 한 열 안에서 이동, 왼쪽 오른쪽 = 시 열과 분 열, Enter 나 Space = 고르기, Esc = 목록만 닫기(창은 그대로), Tab = 닫고 다음 칸.
+   - 바깥을 누르거나 칸을 떠나면 닫힌다. 창을 닫아도 닫힌다(closeOverlay).
+   - 값이 바뀌면 칸에 input, change 를 보낸다(시작을 바꾸면 종료 +1시간, 과제 폼 안내 같은 기존 처리가 그대로 돈다). */
 const HM_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const TF_STEP = 5;   // 분 목록 간격(분)
+const TF_EMPTY_HOUR = 9;   // 빈 칸에서 목록을 열 때 시 열의 키보드 자리
+let __tfOpen = null;   // 지금 열린 시각 목록(한 번에 하나)
+const TF_CLOCK = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.25"/><path d="M8 4.75V8l2.25 1.5"/></svg>';
+function timeField(el){
+  if(!el || el.__tf) return el ? el.__tf : null;
+  const id = el.id || ('tf' + Math.random().toString(36).slice(2, 8));
+  el.type = 'text'; el.readOnly = true; el.classList.add('tf-in');
+  el.setAttribute('role', 'combobox'); el.setAttribute('aria-haspopup', 'listbox'); el.setAttribute('aria-expanded', 'false');
+  el.setAttribute('aria-controls', id + 'TfH'); el.setAttribute('autocomplete', 'off'); el.setAttribute('inputmode', 'none');
+  el.setAttribute('placeholder', '--:--');
+  const wrap = document.createElement('span'); wrap.className = 'tf';
+  el.parentNode.insertBefore(wrap, el); wrap.appendChild(el);
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'tf-btn'; btn.tabIndex = -1; btn.title = '시각 고르기'; btn.setAttribute('aria-label', '시각 목록 열기'); btn.innerHTML = TF_CLOCK;
+  wrap.appendChild(btn);
+  const pad2 = n => String(n).padStart(2, '0');
+  const col = (key, cap, vals) => '<div class="tf-col"><div class="tf-cap" aria-hidden="true">' + cap + '</div><div class="tf-list" role="listbox" id="' + id + 'Tf' + key + '" aria-label="' + cap + '">'
+    + vals.map((v, i) => '<div class="tf-opt" role="option" id="' + id + 'Tf' + key + i + '" data-col="' + key + '" data-i="' + i + '" aria-selected="false">' + v + '</div>').join('') + '</div></div>';
+  const H = Array.from({ length: 24 }, (_, i) => pad2(i)), M = Array.from({ length: 60 / TF_STEP }, (_, i) => pad2(i * TF_STEP));
+  const pop = document.createElement('div');
+  pop.className = 'tf-pop hidden'; pop.id = id + 'TfPop';
+  pop.innerHTML = '<div class="tf-cols">' + col('H', '시', H) + col('M', '분', M) + '</div>'
+    + '<div class="tf-foot"><button type="button" class="tf-clr" tabindex="-1" title="시각 비우기(Delete)">지우기</button></div>';
+  (el.closest('.overlay') || document.body).appendChild(pop);   // 창 본문(overflow) 밖, 창 안. fixed 라 잘리지 않는다
+  const T = el.__tf = { el, wrap, btn, pop, H, M, lists: { H: pop.querySelector('#' + id + 'TfH'), M: pop.querySelector('#' + id + 'TfM') },
+    clr: pop.querySelector('.tf-clr'), col: 'H', act: { H: -1, M: -1 } };
+  el.addEventListener('click', () => { if(__tfOpen === T) tfClose(T); else tfOpen(T); });
+  el.addEventListener('blur', () => { if(__tfOpen === T) tfClose(T); });
+  el.addEventListener('keydown', ev => tfKey(T, ev));
+  btn.addEventListener('mousedown', ev => ev.preventDefault());   // 칸의 포커스를 잃지 않게
+  btn.addEventListener('click', ev => { ev.preventDefault(); if(__tfOpen === T){ tfClose(T); return; } try{ el.focus(); }catch(_){} tfOpen(T); });
+  pop.addEventListener('mousedown', ev => ev.preventDefault());   // 고르는 동안 칸의 포커스를 잃지 않게(목록 스크롤 막대 포함)
+  pop.addEventListener('click', ev => {
+    const t = ev.target;
+    if(t.closest && t.closest('.tf-clr')){ tfCommit(T, ''); tfClose(T); return; }
+    const o = t.closest && t.closest('.tf-opt'); if(o) tfPick(T, o.dataset.col, Number(o.dataset.i));
+  });
+  return T;
+}
+function tfSelIdx(T){   // 지금 값의 [시 자리, 분 자리]. 5분 단위가 아닌 분(11:38)은 분 자리 -1
+  const v = String(T.el.value || '');
+  if(!HM_RE.test(v)) return [-1, -1];
+  const h = +v.slice(0, 2), m = +v.slice(3);
+  return [h, m % TF_STEP === 0 ? m / TF_STEP : -1];
+}
+function tfRender(T){
+  const [h, m] = tfSelIdx(T);
+  T.lists.H.querySelectorAll('.tf-opt').forEach((o, i) => o.setAttribute('aria-selected', String(i === h)));
+  T.lists.M.querySelectorAll('.tf-opt').forEach((o, i) => o.setAttribute('aria-selected', String(i === m)));
+  T.clr.disabled = !T.el.value;
+}
+function tfScrollTo(list, i, center){
+  const o = list.children[i]; if(!o) return;
+  if(center){ list.scrollTop = Math.max(0, o.offsetTop - (list.clientHeight - o.offsetHeight) / 2); return; }
+  if(o.offsetTop < list.scrollTop) list.scrollTop = o.offsetTop;
+  else if(o.offsetTop + o.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = o.offsetTop + o.offsetHeight - list.clientHeight;
+}
+function tfActivate(T, col, i){
+  T.col = col; T.act[col] = i;
+  T.pop.querySelectorAll('.tf-opt.act').forEach(o => o.classList.remove('act'));
+  T.el.setAttribute('aria-controls', T.lists[col].id);
+  const o = T.lists[col].children[i];
+  if(o){ o.classList.add('act'); T.el.setAttribute('aria-activedescendant', o.id); tfScrollTo(T.lists[col], i, false); }
+  else T.el.removeAttribute('aria-activedescendant');
+}
+//  칸 아래에, 자리가 없으면 위에. 400px 창과 아래 시트에서도 화면 안. fixed 기준이 화면이 아니면(변형된 조상) 잰 차이만큼 되돌린다.
+function tfPlace(T){
+  const p = T.pop, r = T.wrap.getBoundingClientRect();
+  const vw = window.innerWidth || document.documentElement.clientWidth || 0, vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  Object.values(T.lists).forEach(l => { l.style.maxHeight = ''; });
+  let pw = p.offsetWidth, ph = p.offsetHeight;
+  const below = vh - r.bottom - 8, above = r.top - 8;
+  const room = Math.max(below, above);
+  if(vh && ph > room && room > 0){   // 위아래 모두 모자라면 목록 높이를 줄인다
+    const cut = ph - room, lh = T.lists.H.clientHeight;
+    Object.values(T.lists).forEach(l => { l.style.maxHeight = Math.max(96, lh - cut) + 'px'; });
+    pw = p.offsetWidth; ph = p.offsetHeight;
+  }
+  const left = Math.max(4, Math.min(r.left, vw - pw - 4));
+  let top = (ph <= below || below >= above) ? r.bottom + 4 : r.top - 4 - ph;
+  if(vh) top = Math.max(4, Math.min(top, vh - ph - 4));
+  p.classList.toggle('up', top < r.top);
+  p.style.left = left + 'px'; p.style.top = top + 'px';
+  const pr = p.getBoundingClientRect(), dx = pr.left - left, dy = pr.top - top;
+  if(dx || dy){ p.style.left = (left - dx) + 'px'; p.style.top = (top - dy) + 'px'; }
+}
+function tfOpen(T){
+  if(!T || T.el.disabled) return;
+  if(__tfOpen && __tfOpen !== T) tfClose(__tfOpen);
+  __tfOpen = T;
+  tfRender(T);
+  T.pop.classList.remove('hidden');
+  T.el.setAttribute('aria-expanded', 'true');
+  tfPlace(T);
+  const [h, m] = tfSelIdx(T);
+  tfScrollTo(T.lists.H, h >= 0 ? h : TF_EMPTY_HOUR, true);
+  tfScrollTo(T.lists.M, m >= 0 ? m : 0, true);
+  T.act.M = m;
+  tfActivate(T, 'H', h >= 0 ? h : TF_EMPTY_HOUR);
+}
+function tfClose(T){
+  if(!T) return;
+  T.pop.classList.add('hidden');
+  T.el.setAttribute('aria-expanded', 'false');
+  T.el.removeAttribute('aria-activedescendant');
+  if(__tfOpen === T) __tfOpen = null;
+}
+function tfCloseIn(root){ if(__tfOpen && root && (root.contains(__tfOpen.el) || root.contains(__tfOpen.pop))) tfClose(__tfOpen); }
+//  값을 정하고 input, change 를 보낸다(값이 같으면 아무것도 보내지 않는다).
+function tfCommit(T, v){
+  if(T.el.value === v) return false;
+  T.el.value = v;
+  T.el.dispatchEvent(new Event('input', { bubbles: true }));
+  T.el.dispatchEvent(new Event('change', { bubbles: true }));
+  if(__tfOpen === T) tfRender(T);
+  return true;
+}
+function tfPick(T, col, i){
+  const v = String(T.el.value || ''), cur = HM_RE.test(v) ? v : '';
+  if(col === 'H'){
+    const hh = T.H[i]; if(!hh) return;
+    tfCommit(T, hh + ':' + (cur ? cur.slice(3) : '00'));
+    tfRender(T);
+    T.act.M = tfSelIdx(T)[1];
+    tfActivate(T, 'H', i);
+    return;
+  }
+  const mm = T.M[i]; if(!mm) return;
+  const hh = cur ? cur.slice(0, 2) : T.H[T.act.H >= 0 ? T.act.H : TF_EMPTY_HOUR];
+  tfCommit(T, hh + ':' + mm);
+  tfClose(T);
+}
+function tfKey(T, ev){
+  if(ev.isComposing || ev.keyCode === 229) return;
+  const open = __tfOpen === T, k = ev.key;
+  if(k === 'Delete' || k === 'Backspace'){ ev.preventDefault(); tfCommit(T, ''); return; }
+  if(!open){
+    if((k === 'ArrowDown' && !ev.ctrlKey) || k === 'Enter' || k === ' '){ ev.preventDefault(); ev.stopPropagation(); tfOpen(T); }
+    return;
+  }
+  const n = T[T.col].length, cur = T.act[T.col];
+  const fromSel = c => { const s = tfSelIdx(T)[c === 'H' ? 0 : 1]; return T.act[c] >= 0 ? T.act[c] : (s >= 0 ? s : (c === 'H' ? TF_EMPTY_HOUR : 0)); };
+  switch(k){
+    case 'ArrowDown': if(ev.altKey) break; ev.preventDefault(); tfActivate(T, T.col, cur < 0 ? fromSel(T.col) : Math.min(n - 1, cur + 1)); return;
+    case 'ArrowUp': ev.preventDefault(); if(ev.altKey){ tfClose(T); return; } tfActivate(T, T.col, cur < 0 ? fromSel(T.col) : Math.max(0, cur - 1)); return;
+    case 'Home': ev.preventDefault(); tfActivate(T, T.col, 0); return;
+    case 'End': ev.preventDefault(); tfActivate(T, T.col, n - 1); return;
+    case 'ArrowLeft': case 'ArrowRight': { ev.preventDefault(); const c = k === 'ArrowLeft' ? 'H' : 'M'; tfActivate(T, c, fromSel(c)); return; }
+    case 'Enter': case ' ': ev.preventDefault(); ev.stopPropagation(); if(cur >= 0) tfPick(T, T.col, cur); else tfClose(T); return;
+    case 'Tab': tfClose(T); return;
+  }
+}
+//  문서 단위 배선(한 번): Esc 는 목록만 닫기(캡처 + stopImmediatePropagation: 전역 Esc 는 맨 위 창 닫기다), 바깥 누르기, 창 크기와 스크롤.
+function timeFieldAll(root){
+  (root || document).querySelectorAll('input[data-time-field]').forEach(timeField);
+  if(timeFieldAll.__wired) return;
+  timeFieldAll.__wired = true;
+  document.addEventListener('keydown', ev => {
+    if(ev.key !== 'Escape' || !__tfOpen || ev.isComposing) return;
+    ev.preventDefault(); ev.stopImmediatePropagation();
+    tfClose(__tfOpen);
+  }, true);
+  document.addEventListener('mousedown', ev => {
+    const T = __tfOpen; if(!T) return;
+    const t = ev.target, lb = T.el.closest('label');
+    if(T.pop.contains(t) || T.wrap.contains(t) || (lb && lb.contains(t))) return;
+    tfClose(T);
+  }, true);
+  window.addEventListener('resize', () => { if(__tfOpen) tfClose(__tfOpen); });
+  document.addEventListener('scroll', ev => { const T = __tfOpen; if(T && !T.pop.contains(ev.target)) tfPlace(T); }, true);
+  //  창이 열리는 움직임(아래 시트가 올라오는 중) 동안 열었으면 움직임이 끝난 자리에 다시 놓는다
+  document.addEventListener('animationend', () => { if(__tfOpen) tfPlace(__tfOpen); }, true);
+}
 function readTimeIn(el){ const v = el ? String(el.value || '') : ''; return HM_RE.test(v) ? v : ''; }
 function writeTimeIn(el, hhmm){ if(el) el.value = HM_RE.test(hhmm || '') ? hhmm : ''; }
 function plusOneHM(hhmm){ const [h,m]=hhmm.split(':').map(Number); let t=h*60+m+60; if(t>=1440) t=1439; return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`; }
@@ -19324,6 +19536,7 @@ function bind(){
     qaSyncType();
     if(clean) ov.__openSnap = formSnapshot(ov);   // 기본값만 바뀐 것은 '고친 것' 이 아니다(닫을 때 버릴지 묻지 않게)
   });
+  timeFieldAll();   // 시각 칸 여섯(한 화면 폼, 기록 창, 과제 폼)을 앱이 만든 시와 분 고르기로(결정 7)
   qaBindForm();
   // 시각 영역(정적): 종일 토글·시작→종료 자동+1h·종료 보정 1회 배선
   $('#qaAllDay').addEventListener('change', qaSyncTimeRow);
