@@ -374,28 +374,28 @@ footer p{margin:0 0 4px; max-width:none}
 </section>
 
 <section id="project_schedule_image">
-<h2><span class="tname">project_schedule_image</span> <span class="ko">과제별 개발 일정 그림(월간보고)</span></h2>
+<h2><span class="tname">project_schedule_image</span> <span class="ko">사람별 과제 개발 일정 그림(월간보고)</span></h2>
 
-<p class="sub">DB 주석: 과제 삭제 때 함께 지워진다. 등록자는 RESTRICT. 앱이 과제당 5장, 장당 5MB 로 막는다.</p>
+<p class="sub">DB 주석: 주인만 보고 고친다. 과제 삭제 때 함께 지워진다. 주인은 RESTRICT. 앱이 사람마다 과제당 5장, 장당 5MB 로 막는다.</p>
 
 <div class="tw">
 <table>
 <thead><tr><th>컬럼</th><th>타입</th><th>제약</th><th>설명</th></tr></thead>
 <tbody>
 <tr class="pk"><td class="col">id</td><td class="type">INT UNSIGNED</td><td><span class="k pk">PK</span><span class="k">AUTO_INC</span></td><td class="note">그림 번호(기본키).</td></tr>
-<tr><td class="col">project_id</td><td class="type">INT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k fk">FK</span><span class="k nn">NOT NULL</span></td><td class="note">과제 번호. <code>project.id</code> 를 가리킵니다. <b>과제를 지우면 그림도 함께 지워집니다</b>(CASCADE).</td></tr>
-<tr><td class="col">seq</td><td class="type">TINYINT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">과제 안 순서(1부터). 지우면 1부터 다시 매깁니다. 과제당 5장까지(앱).</td></tr>
+<tr><td class="col">user_id</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k fk">FK</span><span class="k nn">NOT NULL</span></td><td class="note">그림 주인. <code>app_user.user_id</code> 를 RESTRICT 로 가리킵니다. <b>그림은 사람마다 따로입니다</b>(2026-10-23). 주인만 보고 넣고 지우며, 주인의 월간보고 문서에만 들어갑니다. 그림이 있는 계정은 휴지통에서 지우지 않고 퇴사(숨김)로만 둡니다.</td></tr>
+<tr><td class="col">project_id</td><td class="type">INT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">과제 번호. <code>project.id</code> 를 가리킵니다. <b>과제를 지우면 그림도 함께 지워집니다</b>(CASCADE).</td></tr>
+<tr><td class="col">seq</td><td class="type">TINYINT UNSIGNED</td><td><span class="k uq">UNIQUE</span><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">주인의 그 과제 안 순서(1부터). (user_id, project_id, seq) 가 UNIQUE 입니다. 지우면 1부터 다시 매깁니다. 사람마다 과제당 5장까지(앱).</td></tr>
 <tr><td class="col">mime</td><td class="type">VARCHAR(20)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">image/png 또는 image/jpeg 만 들어갑니다(CHECK).</td></tr>
 <tr><td class="col">bytes</td><td class="type">MEDIUMBLOB</td><td><span class="k nn">NOT NULL</span></td><td class="note">그림 원본. 장당 5MB까지(앱). 백업은 mysqldump --hex-blob 으로 뜹니다.</td></tr>
 <tr><td class="col">width_px</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">가로 화소. 문서에 넣을 때 비율 계산에 씁니다.</td></tr>
 <tr><td class="col">height_px</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">세로 화소.</td></tr>
 <tr><td class="col">sha256</td><td class="type">CHAR(64)</td><td><span class="k nn">NOT NULL</span><span class="k">CHECK</span></td><td class="note">바이트의 SHA-256(소문자 16진수). PC 사본(앱 데이터 폴더의 schedule-images)이 같은지 이 값으로 봅니다.</td></tr>
-<tr><td class="col">uploaded_by</td><td class="type">SMALLINT UNSIGNED</td><td><span class="k fk">FK</span><span class="k nn">NOT NULL</span><span class="k ix">INDEX</span></td><td class="note">등록한 사람. <code>app_user.user_id</code> 를 RESTRICT 로 가리킵니다. 그림을 올린 계정은 휴지통에서 지우지 않고 퇴사(숨김)로만 둡니다.</td></tr>
 <tr><td class="col">uploaded_at</td><td class="type">DATETIME(3)</td><td><span class="k nn">NOT NULL</span></td><td class="note">등록 시각(UTC).</td></tr>
 </tbody>
 </table>
 </div>
-<p class="sub">인덱스: <code>uploaded_by</code> <span class="ko">ix_project_schedule_image_uploader</span>, UNIQUE <code>project_id, seq</code> <span class="ko">uq_project_schedule_image_seq</span></p>
+<p class="sub">인덱스: <code>project_id</code> <span class="ko">ix_project_schedule_image_project</span>, UNIQUE <code>user_id, project_id, seq</code> <span class="ko">uq_project_schedule_image_seq</span></p>
 <p class="sub">CHECK 4개: <code>chk_project_schedule_image_mime</code> <code>(`mime` in ('image/png','image/jpeg'))</code>, <code>chk_project_schedule_image_seq</code> <code>(`seq` &gt;= 1)</code>, <code>chk_project_schedule_image_size</code> <code>((`width_px` &gt;= 1) and (`height_px` &gt;= 1))</code>, <code>chk_project_schedule_image_sha</code> <code>regexp_like(`sha256`,'^[0-9a-f]{64}$')</code></p>
 </section>
 
@@ -1038,7 +1038,7 @@ footer p{margin:0 0 4px; max-width:none}
 <tr><td class="col">customer</td><td class="type">8</td><td class="note">발주처 마스터</td></tr>
 <tr><td class="col">org_unit</td><td class="type">12</td><td class="note">조직 트리</td></tr>
 <tr><td class="col">project</td><td class="type">14</td><td class="note">과제 마스터</td></tr>
-<tr><td class="col">project_schedule_image</td><td class="type">2</td><td class="note">과제별 개발 일정 그림(월간보고)</td></tr>
+<tr><td class="col">project_schedule_image</td><td class="type">2</td><td class="note">사람별 과제 개발 일정 그림(월간보고)</td></tr>
 <tr><td class="col">room_code</td><td class="type">3</td><td class="note">회의실 코드</td></tr>
 <tr><td class="col">section_code</td><td class="type">3</td><td class="note">구분 코드</td></tr>
 <tr><td class="col">status_code</td><td class="type">4</td><td class="note">상태 코드</td></tr>

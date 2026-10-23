@@ -59,7 +59,7 @@ function keyNote(n) {
     case 'room_code':    return `번호(${pkCols(n)})가 기본키이고 이름(name)은 UNIQUE 라벨이다. 회사 공용 회의실 목록이다(2026-10-21, 사람마다 두던 cal_room 을 대신한다). 어떤 표도 이 번호를 가리키지 않는다. 일정의 장소는 글자라서 숨김과 휴지통 없이 바로 지운다. 관리자만 고친다.`;
     case 'cal_project_event':  return `번호(${pkCols(n)})가 기본키이고 uid 는 웹이 만든 안정 id(UNIQUE, 생성 재시도의 멱등 키)다. 이력이 이 번호를 가리킨다. 행을 지우지 않고 is_deleted 로 숨긴다(2026-10-22, 구조 16).`;
     case 'cal_project_change': return `번호(${pkCols(n)})가 기본키다. 정렬과 커서가 이 번호에 기댄다. (project_id, mutation_uid) UNIQUE 가 응답 유실 뒤 재시도의 멱등 키다. 지우지 않는 기록이다(2026-10-22, 구조 16).`;
-    case 'project_schedule_image': return `번호(${pkCols(n)})가 기본키다. (project_id, seq) UNIQUE 가 과제 안 순서다. 과제(project.id)를 CASCADE 로, 등록한 사람(app_user.user_id)을 RESTRICT 로 가리킨다. 그림은 과제에 딸린 공용 데이터라 과제와 함께 지워지고, 그림을 올린 계정은 기록이 있는 계정이 된다(2026-10-22, 구조 17).`;
+    case 'project_schedule_image': return `번호(${pkCols(n)})가 기본키다. (user_id, project_id, seq) UNIQUE 가 주인의 과제 안 순서다. 주인(app_user.user_id)을 RESTRICT 로, 과제(project.id)를 CASCADE 로 가리킨다. 그림은 사람마다 따로라(2026-10-23) 주인만 보고 고치며, 과제와 함께 지워지고, 그림이 있는 계정은 기록이 있는 계정이 된다(2026-10-22, 구조 17).`;
     case 'cal_schema_meta': return `문자열 ${pkCols(n)} 가 키인 이유: 행이 버전 관문 키 다섯 개(db_structure_version 등)뿐인 설정 표이고 앱은 늘 k 로 찾는다. 가리키는 외래키가 없다. 번호를 붙여도 k 에 UNIQUE 를 또 걸어야 한다.`;
     default: return '';
   }

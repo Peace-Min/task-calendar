@@ -3,15 +3,17 @@
 // 이 파일이 지키는 것:
 //   ① 정본과 이관 조각: project_schedule_image 정의가 정본(schema-calendar.sql 16)과 조각(v17)에서 글자까지 같다.
 //      project.dev_start_date 의 자리와 형, CHECK chk_project_dev_dates 가 정본(schema-structure.sql)과 조각에서 같다.
-//      조각은 16 에서 17 한 칸이고 앱 구조 번호와 정본 시드가 17 이다. FK 는 과제 CASCADE, 등록자 RESTRICT.
+//      조각은 16 에서 17 한 칸이고 앱 구조 번호와 정본 시드가 17 이다. FK 는 과제 CASCADE, 주인(user_id) RESTRICT.
+//      그림은 사람마다 따로다(2026-10-23): UNIQUE (user_id, project_id, seq), 과제 FK 는 따로 색인.
 //   ② 권한과 배포 도구: grants-calendar.sql, server-app-account.sql, app-account.ps1 이 SELECT, INSERT, UPDATE, DELETE 를 준다.
 //      init-calendar.ps1 명부, setup 표 수, 데모가 지우는 표, 사용자 기록 표(UserRecordTables 에 '표.열')에 들어 있다.
 //   ③ 백업: backup-taskmgr.ps1(복원 전 안전 덤프, 데모 전 백업도) mysqldump 에 --hex-blob 이 있다.
 //   ④ 개발 시작일 배선: ProjectDb 읽기와 쓰기(@dsd), 순서 검사, saveProject 분기, 엑셀 열, 웹 dbCatalog(mapDbRows), 편집 폼과 payload,
 //      상세 보기. 선진행 잠금 배열에는 없다(개발종료일과 같은 설계 결정).
-//   ⑤ 그림 명령: 추가가 형식(머리 글자와 WPF BitmapDecoder)과 크기(5MB), 과제당 5장을 검사한다. 추가, 삭제, 순서 바꾸기에
-//      관리자 검사가 없다(누구나, 의도). 연결은 DbGate.OpenAsync 뿐이고 커밋은 관문 재확인 한 곳. 신원은 세션에서만.
-//      PC 사본 파일 이름은 해시와 형식에서만 만든다.
+//   ⑤ 그림 명령: 추가가 형식(머리 글자와 WPF BitmapDecoder)과 크기(5MB), 사람마다 과제당 5장을 검사한다. 추가, 삭제, 순서 바꾸기에
+//      관리자 검사가 없다(내 그림은 내가, 의도). 연결은 DbGate.OpenAsync 뿐이고 커밋은 관문 재확인 한 곳. 신원은 세션에서만.
+//      그림 표를 건드리는 SQL 은 모두 세션의 사람(user_id=@u)을 건다(INSERT 는 주인 열을 쓴다). 웹에 등록자 이름을 싣지 않는다.
+//      PC 사본 파일 이름은 해시와 형식에서만 만들고, 색인은 (로그인, 과제)별이다.
 //   ⑥ 메인 창 전용: 그림 명령과 exportMonthlyDocx 가 관리 창, 열람 창 허용 목록(호스트, 웹)에 없고 메인 창 스위치에 case 한 줄씩 있다.
 //   그리고 변이: 위 검사들이 실제로 무는지 원본을 고쳐 본다.
 import { test, assert, readText, extractCsMember, extractFunction, stripCsComments, loadAppSource } from './harness.mjs';
@@ -80,6 +82,8 @@ const checks = {
     const c = canonDef(canon);
     const col = (n) => { const m = new RegExp(`^\\s*${n}\\s+([^\\n]*?)\\s+COMMENT`, 'm').exec(c); assert.ok(m, `${n} 열이 없다`); return m[1].replace(/\s+/g, ' '); };
     assert.strictEqual(col('id'), 'INT UNSIGNED NOT NULL AUTO_INCREMENT', 'id 형이 다르다');
+    assert.strictEqual(col('user_id'), 'SMALLINT UNSIGNED NOT NULL', 'user_id(주인) 형이 app_user.user_id 와 다르다');
+    assert.ok(!/\buploaded_by\b/.test(c), '옛 등록자 열 uploaded_by 가 남았다(주인 열 user_id 로 바뀌었다)');
     assert.strictEqual(col('project_id'), 'INT UNSIGNED NOT NULL', 'project_id 형이 project.id 와 다르다');
     assert.strictEqual(col('seq'), 'TINYINT UNSIGNED NOT NULL', 'seq 형이 다르다');
     assert.ok(/^VARCHAR\(20\)/.test(col('mime')), 'mime 이 VARCHAR(20) 이 아니다');
@@ -87,11 +91,11 @@ const checks = {
     assert.strictEqual(col('width_px'), 'SMALLINT UNSIGNED NOT NULL', 'width_px 형이 다르다');
     assert.strictEqual(col('height_px'), 'SMALLINT UNSIGNED NOT NULL', 'height_px 형이 다르다');
     assert.ok(/^CHAR\(64\)/.test(col('sha256')), 'sha256 이 CHAR(64) 가 아니다');
-    assert.strictEqual(col('uploaded_by'), 'SMALLINT UNSIGNED NOT NULL', 'uploaded_by 형이 app_user.user_id 와 다르다');
     assert.ok(/^DATETIME\(3\) NOT NULL/.test(col('uploaded_at')), 'uploaded_at 이 DATETIME(3) 이 아니다');
-    assert.ok(/UNIQUE KEY \w+ \(project_id, seq\)/.test(c), '(project_id, seq) UNIQUE 가 없다');
+    assert.ok(/UNIQUE KEY \w+ \(user_id, project_id, seq\)/.test(c), '(user_id, project_id, seq) UNIQUE 가 없다(그림은 사람마다 따로)');
+    assert.ok(/\n  KEY \w+ \(project_id\),/.test(c), '과제 FK 열(project_id)의 색인이 없다(UNIQUE 맨 앞 열이 user_id 다)');
     assert.ok(/FOREIGN KEY \(project_id\) REFERENCES project\(id\)\s+ON UPDATE RESTRICT ON DELETE CASCADE/.test(c), '과제 FK 가 ON DELETE CASCADE 가 아니다');
-    assert.ok(/FOREIGN KEY \(uploaded_by\) REFERENCES app_user\(user_id\)\s+ON UPDATE RESTRICT ON DELETE RESTRICT/.test(c), '등록자 FK 가 ON DELETE RESTRICT 가 아니다(UserRecordTables 와 같은 규칙)');
+    assert.ok(/FOREIGN KEY \(user_id\) REFERENCES app_user\(user_id\)\s+ON UPDATE RESTRICT ON DELETE RESTRICT/.test(c), '주인 FK 가 ON DELETE RESTRICT 가 아니다(UserRecordTables 와 같은 규칙)');
     assert.ok(/CHECK \(mime IN \('image\/png','image\/jpeg'\)\)/.test(c), 'mime CHECK 가 PNG, JPEG 둘이 아니다');
     const code = noLineComments(canon);
     assert.ok(new RegExp(`^DROP TABLE IF EXISTS ${TABLE};`, 'm').test(code), `정본 DROP 목록에 ${TABLE} 가 없다(재적용 1050)`);
@@ -139,7 +143,7 @@ const checks = {
     assert.ok(new RegExp(`\\$EXPECTED_TABLE_COUNT = ${n(s.struct) + n(s.canon) + 3}\\b`).test(s.setup), `setup-taskcalendar.ps1 의 표 수가 세 DDL 의 CREATE TABLE 수(구조 ${n(s.struct)}, 캘린더 ${n(s.canon)}, 사용자 3)와 다르다`);
     assert.ok(new RegExp(`WIPE_TABLES = \\[\\s*'${TABLE}',`).test(s.demoGen), '데모가 그림 표를 맨 앞에서 비우지 않는다');
     const urt = /private static readonly string\[\] UserRecordTables\s*=\s*\{([\s\S]*?)\};/.exec(stripCsComments(s.pdb));
-    assert.ok(urt && urt[1].includes(`"${TABLE}.uploaded_by"`), 'UserRecordTables 에 그림 표 등록자(project_schedule_image.uploaded_by)가 없다(그림을 올린 계정을 기록 0건으로 오판한다)');
+    assert.ok(urt && urt[1].includes(`"${TABLE}.user_id"`), 'UserRecordTables 에 그림 표 주인(project_schedule_image.user_id)이 없다(그림이 있는 계정을 기록 0건으로 오판한다)');
     const cnt = extractCsMember(s.pdb, 'private static string UserRefCountSql(');
     assert.ok(/UserRecordRef\(t\)/.test(cnt) && /" WHERE " \+ col \+ "=@u\)"/.test(cnt), '기록 수 세기가 표.열 의 사람 열을 쓰지 않는다');
   },
@@ -197,8 +201,16 @@ const checks = {
     const add = extractCsMember(sidb, 'public async Task<ScheduleImageReply> AddAsync(');
     assert.ok(/ScheduleImageCodec\.InspectAsync\(bytes\)/.test(add), '추가가 그림 검사를 거치지 않는다');
     assert.ok(/if \(n >= Limits\.MaxPerProject\) throw new SiFail\(Kind\.Invalid, MsgTooMany\);/.test(add), '추가가 과제당 5장을 검사하지 않는다');
+    assert.ok(/CountAsync\(conn, tx, me\.UserId, pid, ct\)/.test(add), '추가의 5장 상한이 사람마다가 아니다(세션의 사람 그림만 세야 한다)');
     assert.ok(/ProjectIdAsync\(conn, tx, projectUid, lockRow: true, ct\)/.test(add), '추가가 과제 행을 잠그지 않는다(5장 상한과 seq 가 엇갈린다)');
-    assert.ok(/ins\.Parameters\.AddWithValue\("@u", me\.UserId\)/.test(add) && /"@at"/.test(add), '추가가 등록한 사람과 시각을 남기지 않는다');
+    assert.ok(/ins\.Parameters\.AddWithValue\("@u", me\.UserId\)/.test(add) && /"@at"/.test(add), '추가가 주인(세션의 사람)과 시각을 남기지 않는다');
+    //  주인 격리: 그림 표를 건드리는 SQL 글자마다 세션의 사람을 건다. INSERT 는 주인 열을 쓴다. 등록자 이름을 웹에 싣지 않는다.
+    const lits = [...code.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]).filter((s) => s.includes(TABLE));
+    assert.ok(lits.length >= 10, '그림 표 SQL 글자를 거의 찾지 못했다: ' + lits.length);
+    for (const s of lits) {
+      assert.ok(/\buser_id=@u\b/.test(s) || s.startsWith(`INSERT INTO ${TABLE} (user_id, `), '그림 표 SQL 이 세션의 사람(user_id=@u)을 걸지 않는다(남의 그림이 보이거나 바뀐다): ' + s);
+    }
+    assert.ok(!/uploadedBy|uploaded_by|UploadedBy/.test(code), '등록자(uploadedBy, uploaded_by)가 남았다(그림은 내 것만 보이므로 싣지 않는다)');
     //  관리자 검사가 없다(누구나, §6.1). 관리자 관문이나 역할 판정 낱말이 이 파일에 없다.
     assert.ok(!/OpenAdminAsync|OpenWriteAsync|edit_role|IsAdmin|AdminFrom/.test(code), '그림 명령에 관리자 검사가 있다(누구나 추가, 삭제가 의도)');
     //  연결은 관문 하나, 커밋은 재확인 한 곳
@@ -228,7 +240,12 @@ const checks = {
   // 저장: DB 가 안 되면 사본으로 저장하고, 추가와 삭제는 DB 쓰기 트랜잭션 없이는 성공하지 않는다
   offlineRules(sidb, mre) {
     const exp = extractCsMember(sidb, 'public async Task<ExportImages> ImagesForExportAsync(');
-    assert.ok(/catch \(Exception ex\)[\s\S]*Cache\.Recall\(_dataDir, uid\)[\s\S]*c\.Source = c\.Count > 0 \? "cache" : "none";/.test(exp), 'DOCX 그림이 DB 실패 때 PC 사본으로 넘어가지 않는다');
+    assert.ok(/catch \(Exception ex\)[\s\S]*Cache\.Recall\(_dataDir, login, uid\)[\s\S]*c\.Source = c\.Count > 0 \? "cache" : "none";/.test(exp), 'DOCX 그림이 DB 실패 때 (이 로그인의) PC 사본으로 넘어가지 않는다');
+    assert.ok(/ListMetaAsync\(conn, null, me\.UserId, pid, ct\)/.test(exp), 'DOCX 그림이 저장하는 사람의 그림만 고르지 않는다');
+    //  PC 사본 색인은 (로그인, 과제)별이다. 한 PC 를 둘이 써도 끊겼을 때 남의 목록이 보이지 않는다.
+    assert.ok(/internal static string Key\(string login, string projectUid\) => login \+ "\|" \+ projectUid;/.test(sidb), '사본 색인 키가 로그인과 과제가 아니다');
+    const fb = extractCsMember(sidb, 'public static ImageMeta? FindById(');
+    assert.ok(/string pre = login \+ "\|";/.test(fb) && /StartsWith\(pre, StringComparison\.Ordinal\)/.test(fb), '끊겼을 때 미리 보기가 이 로그인의 색인에서만 찾지 않는다');
     assert.ok(/Cache\.Load\(_dataDir, m\.Sha256, m\.Mime, _log\)[\s\S]*if \(b == null\)[\s\S]*FetchBytesAsync/.test(exp), 'DB 가 될 때 해시가 같은 사본이 있어도 바이트를 다시 받는다');
     const probe = extractCsMember(mre, 'private async Task<ScheduleImageReply> AddScheduleImageAsync(');
     assert.ok(probe.indexOf('await db.ProbeAddAsync(uid)') >= 0 && probe.indexOf('await db.ProbeAddAsync(uid)') < probe.indexOf('new Microsoft.Win32.OpenFileDialog'), '추가가 파일 창을 열기 전에 DB 를 확인하지 않는다(끊겼을 때 막기)');
@@ -271,14 +288,14 @@ const checks = {
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
 test('그림표①a: project_schedule_image 정의가 정본(schema-calendar.sql)과 이관 조각(v17)에서 글자까지 같고 열 10, FK 2 로 검증한다', () => checks.sameDef(src.canon, src.frag));
-test('그림표①b: 열 형, (project_id, seq) UNIQUE, 과제 CASCADE, 등록자 RESTRICT, mime CHECK, 정본 DROP 목록', () => checks.tableRules(src.canon));
+test('그림표①b: 열 형, 주인 user_id, (user_id, project_id, seq) UNIQUE, 과제 CASCADE, 주인 RESTRICT, mime CHECK, 정본 DROP 목록', () => checks.tableRules(src.canon));
 test('그림표①c: project.dev_start_date 는 end_date 와 dev_end_date 사이 DATE NULL 이고 CHECK 식이 정본과 조각에서 같다', () => checks.devStartColumn(src.struct, src.frag));
 test('그림표①d: 조각은 16 에서 17 한 칸, 칸, CHECK, 표, 검증, 올리기 순서이고 GRANT 와 트랜잭션이 없다', () => checks.fragmentShape(src.frag));
 test('그림표①e: 앱 구조 번호와 정본 시드가 17 이다', () => checks.versions(src.gate, src.canon));
 test('그림표②: 권한(SELECT, INSERT, UPDATE, DELETE), init 명부, setup 표 수, 데모, 사용자 기록 표(표.열)', () => checks.grantsAndTools(src));
 test('그림표③: 백업, 복원 전 안전 덤프, 데모 전 백업의 mysqldump 에 --hex-blob 이 있다', () => checks.hexBlob(src.backup, src.restore, src.demoPs));
 test('그림표④: 개발 시작일이 과제 읽기와 쓰기, 순서 검사, saveProject, 엑셀 열, dbCatalog, 편집 폼과 payload 에 이어지고 선진행 잠금에는 없다', () => checks.devStartWiring(src.pdb, src.main, src.html));
-test('그림표⑤a: 추가는 형식(머리 글자, BitmapDecoder), 5MB, 과제당 5장을 검사하고 관리자 검사가 없으며 커밋은 관문 재확인 한 곳', () => checks.imageRules(src.sidb));
+test('그림표⑤a: 추가는 형식(머리 글자, BitmapDecoder), 5MB, 사람마다 과제당 5장을 검사하고 관리자 검사가 없으며 커밋은 관문 재확인 한 곳, 모든 SQL 이 주인을 건다', () => checks.imageRules(src.sidb));
 test('그림표⑤b: DB 가 끊기면 DOCX 그림은 사본으로, 추가는 파일 창 전에 DB 를 확인한다(파일, 클립보드 두 방법)', () => checks.offlineRules(src.sidb, src.mre));
 test('그림표⑥: 그림 명령과 exportMonthlyDocx 는 메인 창 전용이다(호스트와 웹 허용 목록 밖, case 한 줄씩)', () => checks.mainOnly(src.main, src.appwin, src.html, src.sidb));
 
@@ -287,10 +304,26 @@ test('변이SI1: 조각의 그림 표 정의를 한 글자 바꾸면 ①a 가 �
   const bad = mutate(src.frag, "COMMENT ''그림 번호''", "COMMENT ''그림 id''");
   assert.throws(() => checks.sameDef(src.canon, bad), /글자까지 같지 않다/);
 });
-test('변이SI2: 등록자 FK 를 CASCADE 로 바꾸면 ①b 가 실패한다', () => {
-  const bad = mutate(src.canon, 'REFERENCES app_user(user_id)\n    ON UPDATE RESTRICT ON DELETE RESTRICT,\n  CONSTRAINT chk_project_schedule_image_mime',
-    'REFERENCES app_user(user_id)\n    ON UPDATE RESTRICT ON DELETE CASCADE,\n  CONSTRAINT chk_project_schedule_image_mime');
+test('변이SI2: 주인 FK 를 CASCADE 로 바꾸면 ①b 가 실패한다', () => {
+  const bad = mutate(src.canon, 'REFERENCES app_user(user_id)\n    ON UPDATE RESTRICT ON DELETE RESTRICT,\n  CONSTRAINT fk_project_schedule_image_project',
+    'REFERENCES app_user(user_id)\n    ON UPDATE RESTRICT ON DELETE CASCADE,\n  CONSTRAINT fk_project_schedule_image_project');
   assert.throws(() => checks.tableRules(bad), /ON DELETE RESTRICT 가 아니다/);
+});
+test('변이SI19: UNIQUE 를 옛 (project_id, seq) 로 되돌리면 ①b 가 실패한다(사람마다 따로가 깨진다)', () => {
+  const bad = mutate(src.canon, 'UNIQUE KEY uq_project_schedule_image_seq (user_id, project_id, seq),', 'UNIQUE KEY uq_project_schedule_image_seq (project_id, seq),');
+  assert.throws(() => checks.tableRules(bad), /\(user_id, project_id, seq\) UNIQUE/);
+});
+test('변이SI20: 삭제 SQL 에서 주인 조건을 빼면(남의 그림을 지운다) ⑤a 가 실패한다', () => {
+  const bad = mutate(src.sidb, '"DELETE FROM project_schedule_image WHERE id=@id AND user_id=@u AND project_id=@p"', '"DELETE FROM project_schedule_image WHERE id=@id AND project_id=@p"');
+  assert.throws(() => checks.imageRules(bad), /세션의 사람\(user_id=@u\)/);
+});
+test('변이SI21: 목록 SQL 에서 주인 조건을 빼면(남의 그림이 보인다) ⑤a 가 실패한다', () => {
+  const bad = mutate(src.sidb, '"FROM project_schedule_image WHERE user_id=@u AND project_id=@p ORDER BY seq, id"', '"FROM project_schedule_image WHERE project_id=@p ORDER BY seq, id"');
+  assert.throws(() => checks.imageRules(bad), /세션의 사람\(user_id=@u\)/);
+});
+test('변이SI22: 끊겼을 때 DOCX 그림을 로그인 없이 사본 색인에서 찾으면 ⑤b 가 실패한다', () => {
+  const bad = mutate(src.sidb, 'var metas = Cache.Recall(_dataDir, login, uid);', 'var metas = Cache.Recall(_dataDir, "", uid);');
+  assert.throws(() => checks.offlineRules(bad, src.mre), /PC 사본으로 넘어가지 않는다/);
 });
 test('변이SI3: 조각의 CHECK 식이 정본과 다르면 ①c 가 실패한다', () => {
   const bad = mutate(src.frag, 'OR dev_start_date <= dev_end_date)\'', 'OR dev_start_date < dev_end_date)\'');
@@ -304,9 +337,9 @@ test('변이SI5: 권한에서 DELETE 를 빼면 ② 가 실패한다', () => {
   const bad = mutate(src.grants, `GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.${TABLE} TO`, `GRANT SELECT, INSERT, UPDATE ON taskmgr.${TABLE} TO`);
   assert.throws(() => checks.grantsAndTools({ ...src, grants: bad }), /grants-calendar\.sql 의 그림 표 권한/);
 });
-test('변이SI6: UserRecordTables 에서 그림 표 등록자를 빼면 ② 가 실패한다', () => {
-  const bad = mutate(src.pdb, '            "project_schedule_image.uploaded_by",\n', '');
-  assert.throws(() => checks.grantsAndTools({ ...src, pdb: bad }), /UserRecordTables 에 그림 표 등록자/);
+test('변이SI6: UserRecordTables 에서 그림 표 주인을 빼면 ② 가 실패한다', () => {
+  const bad = mutate(src.pdb, '            "project_schedule_image.user_id",\n', '');
+  assert.throws(() => checks.grantsAndTools({ ...src, pdb: bad }), /UserRecordTables 에 그림 표 주인/);
 });
 test('변이SI7: 백업의 --hex-blob 을 빼면 ③ 이 실패한다', () => {
   const bad = mutate(src.backup, '"--triggers" "--hex-blob" "--result-file=$partPath"', '"--triggers" "--result-file=$partPath"');
@@ -332,9 +365,9 @@ test('변이SI11: 그림 검사에서 5MB 상한을 빼면 ⑤a 가 실패한다
     '            string mime = Sniff(bytes);');
   assert.throws(() => checks.imageRules(bad), /5MB 상한/);
 });
-test('변이SI12: 삭제에 관리자 관문을 넣으면 ⑤a 가 실패한다(누구나 삭제가 의도)', () => {
-  const bad = mutate(src.sidb, '            return await WriteOnImageAsync("삭제", id, async (conn, tx, pid, ct) =>',
-    '            await new ProjectDb(_dataDir, _log).OpenAdminAsync(CancellationToken.None);\n            return await WriteOnImageAsync("삭제", id, async (conn, tx, pid, ct) =>');
+test('변이SI12: 삭제에 관리자 관문을 넣으면 ⑤a 가 실패한다(내 그림은 내가 지우는 것이 의도)', () => {
+  const bad = mutate(src.sidb, '            return await WriteOnImageAsync("삭제", id, async (conn, tx, uid, pid, ct) =>',
+    '            await new ProjectDb(_dataDir, _log).OpenAdminAsync(CancellationToken.None);\n            return await WriteOnImageAsync("삭제", id, async (conn, tx, uid, pid, ct) =>');
   assert.throws(() => checks.imageRules(bad), /관리자 검사가 있다/);
 });
 test('변이SI13: 커밋 앞 관문 재확인을 빼면 ⑤a 가 실패한다', () => {

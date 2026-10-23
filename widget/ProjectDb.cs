@@ -2145,9 +2145,10 @@ namespace TaskCalendarWidget
         }
 
         // 인력 '기록 0건'의 기준 표 9개(§3.2). 2026-10-21 회의실 공용화로 cal_room 이 빠져 아홉에서 여덟이 됐고,
-        //   2026-10-22 월간보고(구조 17)로 개발 일정 그림의 등록자(project_schedule_image.uploaded_by)가 더해져 다시 아홉이다.
-        //   ★ 원소는 '표' 또는 '표.열'이다. 열을 적지 않으면 user_id 다. 그림 표는 사람 열이 uploaded_by 라 '표.열' 로 적는다.
-        //     그 표도 app_user 를 RESTRICT 로 붙들므로, 빠지면 그림을 올린 계정을 '기록 0건'으로 오판해 지우려 들다가 1451 로 막힌다.
+        //   2026-10-22 월간보고(구조 17)로 개발 일정 그림의 주인(project_schedule_image.user_id)이 더해져 다시 아홉이다.
+        //   ★ 원소는 '표' 또는 '표.열'이다. 열을 적지 않으면 user_id 다. 그림 표는 2026-10-23 사람별 그림으로 열 이름이 user_id 가
+        //     되었지만, 다른 열로 바뀌어도 눈에 띄게 '표.열' 로 적어 둔다.
+        //     그 표도 app_user 를 RESTRICT 로 붙들므로, 빠지면 그림이 있는 계정을 '기록 0건'으로 오판해 지우려 들다가 1451 로 막힌다.
         //   ★ 정본(db/deploy/schema-calendar.sql)의 `REFERENCES app_user` 집합에서 cal_user_pref·cal_user_rev 를
         //     뺀 것과 **글자까지 같아야 한다** — 시험 계약 ③ 이 정본을 파싱해 이 배열과 대조한다(표 이름 박제 금지).
         //   ★ 뺀 둘은 로그인 한 번이면 생기는 부속 행이라 '기록'이 아니다. 삭제 트랜잭션이 그 둘을 먼저 지운다.
@@ -2156,7 +2157,7 @@ namespace TaskCalendarWidget
         {
             "cal_category", "cal_entry", "cal_todo", "cal_task_hours",
             "cal_attendance", "cal_report_daily", "cal_report_weekly", "cal_migration_log",
-            "project_schedule_image.uploaded_by",
+            "project_schedule_image.user_id",
         };
 
         //  '표' 또는 '표.열' 을 (표, 사람 열)로. 값은 위 배열(코드 상수)에서만 온다.

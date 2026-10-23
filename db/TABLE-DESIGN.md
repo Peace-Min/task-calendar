@@ -183,7 +183,7 @@ project(id)              1 ────< cal_project_event(project_id), cal_proj
 - 사용자 쪽도 같은 모양이다. `app_user.title_id` 가 `title_code.title_id` 를 가리킨다(DDL 은 회사 저장소 `01-schema-users.sql`).
 - 일정↔과제 링크는 `uid` 기반이라 **채번·이관에도 안 깨진다**. `cal_category.project_uid` 는 FK 가 아니라 외부 식별자다(웹과 XML 의 `db-<uid>` 정체성).
 - **과제 캘린더(구조 16)는 다르다.** 공용 일정 표가 `project.id` 를 진짜 FK 로 가리킨다(번호 키, CODE-TABLE-IDS). 그래서 공용 일정(지운 것 포함)이 있는 과제는 휴지통에서 영구 삭제가 거부된다(고정 문구, 최종 방어는 RESTRICT 1451). 공용 일정이 없으면 공용 표에 그 과제의 행이 없어 그대로 지워진다. 설계는 db/CALENDAR-TABLE-DESIGN.md §5.10.
-- **월간보고 개발 일정 그림(구조 17, `project_schedule_image`)** 은 `project.id` 를 CASCADE 로 가리킨다. 그림은 과제에 딸린 공용 데이터라 과제를 영구 삭제하면 함께 지워진다. 등록한 사람(`app_user.user_id`)은 RESTRICT 이고 `ProjectDb.UserRecordTables` 의 기록 표다(그림을 올린 계정은 퇴사 처리만 되고 지워지지 않는다). 같은 판에 `project.dev_start_date`(개발시작일, end_date 와 dev_end_date 사이)와 CHECK `chk_project_dev_dates` 가 들어왔다. 설계는 docs/MONTHLY-REPORT-PLAN.md §6.
+- **월간보고 개발 일정 그림(구조 17, `project_schedule_image`)** 은 `project.id` 를 CASCADE 로 가리킨다. 그림은 **사람마다 따로**다(2026-10-23 결정). 주인 `user_id`(`app_user.user_id`)가 있고 UNIQUE 는 (user_id, project_id, seq), 주인만 보고 고치며 그 사람 문서에만 들어간다. 과제를 영구 삭제하면 함께 지워진다. 주인은 RESTRICT 이고 `ProjectDb.UserRecordTables` 의 기록 표다(그림이 있는 계정은 퇴사 처리만 되고, 지우려면 그 사람 기록을 먼저 지운다). 같은 판에 `project.dev_start_date`(개발시작일, end_date 와 dev_end_date 사이)와 CHECK `chk_project_dev_dates` 가 들어왔다. 설계는 docs/MONTHLY-REPORT-PLAN.md §6.
 
 ---
 

@@ -8,6 +8,8 @@
 //       과제별 블록(글자 그대로, 서식 여러 벌), 공용 일정 제외, 계획과 변경이력은 자동으로 안 채우고 다시 읽어 오기도 안 덮음,
 //       그림 버튼(파일, 붙여넣기, 순서, 삭제 확인, 끊김 사본 목록), 저장(회신 경로, 폴더 열기, notice, 오류 그대로),
 //       초안 키와 6건, 막힌 저장소, 기타 제외 기억, 주간보고 출처(가짜 회신, 로그인 없음, 400일), 보내는 명령 0(가로채기).
+//       그림은 사람마다 따로(2026-10-23): 등록자를 보이지 않고 '나만 봅니다' 안내. 주간보고 나누기 정책(§14): 사업명 맞추기,
+//       미식별 항목(문서에 없음), 이관(한 번만, 다시 읽으면 돌아옴), 기억한 이관(자동, 해제), 기타 넣기 빼기.
 //   (B) jsdom 브라우저 모드: 안내 문구, 저장과 주간보고 막힘, 미리 보기는 동작, 기존 탭(일간, 주간, 기간 취합)이 그대로.
 //   (M) 변이: 위 정적 계약을 되돌리면 같은 검사기가 잡는다.
 // ★ 실제 netcus 읽기, 그림 올리기, 파일 저장은 없다. 호스트 회신은 __hostReply 로 흉내 낸다. 회사로 보내는 함수는 가로채 0 회를 본다.
@@ -166,7 +168,7 @@ if (!JSDOM) {
     await tick(); await tick();
     return msg;
   }
-  const clearStore = (m) => m.ev("(function(){ var a=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && (k.indexOf('tc_rptDraftM:')===0 || k.indexOf('tc_rptMEtcOff:')===0)) a.push(k); } a.forEach(function(k){ localStorage.removeItem(k); }); })()");
+  const clearStore = (m) => m.ev("(function(){ var a=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && (k.indexOf('tc_rptDraftM:')===0 || k.indexOf('tc_rptMEtcOff:')===0 || k.indexOf('tc_rptMNcMap:')===0)) a.push(k); } a.forEach(function(k){ localStorage.removeItem(k); }); })()");
   const monthKeys = (m) => m.evJSON("(function(){ var a=[], p='tc_rptDraftM:' + rptDraftWho() + ':'; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf(p)===0) a.push(k.slice(p.length)); } return a.sort(); })()");
   const $id = (m, id) => m.doc.getElementById(id);
   const card = (m, uid) => [...m.doc.querySelectorAll('#rptmCards .rptm-card[data-uid]')].find((c) => c.dataset.uid === uid) || null;
@@ -389,7 +391,8 @@ if (!JSDOM) {
       await fresh();
       W.ev('__rptMThumbs.clear(); __rptMThumbReq.clear(); __rptMImgs.clear(); rptMRenderCards();');
       const ln0 = W.posted.length;
-      const IMG = (id, seq, by) => ({ id, seq, mime: 'image/png', width: 640, height: 200, bytes: 1000, sha256: String(id).repeat(64).slice(0, 64), uploadedBy: by, uploadedAt: '2026-10-02T05:10:00.000Z' });
+      //  셋째 인자(사람 이름)는 회신에 싣지 않는다: 2026-10-23 부터 그림은 내 것만 오고 등록자를 싣지 않는다.
+      const IMG = (id, seq) => ({ id, seq, mime: 'image/png', width: 640, height: 200, bytes: 1000, sha256: String(id).repeat(64).slice(0, 64), uploadedAt: '2026-10-02T05:10:00.000Z' });
       reply(W, 'scheduleImageList', { ok: true, data: { projectUid: U1, images: [IMG(1, 1, '김예시'), IMG(2, 2, '박예시')], stale: false, notice: '' } }, (x) => x.projectUid === P1);
       //  P2 는 서버가 끊겨 사본 목록(stale)
       reply(W, 'scheduleImageList', { ok: false, data: { projectUid: U2, images: [IMG(3, 1, '홍길동')], stale: true, notice: '서버에 연결되지 않아 PC 에 받아 둔 그림만 보여 줍니다. 추가와 삭제는 연결된 뒤에 하세요.' }, error: { kind: 'connection', message: '서버에 연결할 수 없습니다.' } }, (x) => x.projectUid === P2);
@@ -397,7 +400,8 @@ if (!JSDOM) {
       await tick();
       const c1 = card(W, P1);
       assert.strictEqual(c1.querySelectorAll('.rptm-img').length, 2, '그림 두 장이 보이지 않는다');
-      assert.ok(c1.querySelector('.rptm-img .meta').textContent.includes('김예시'), '등록한 사람이 보이지 않는다');
+      assert.ok(c1.querySelector('.rptm-img .meta').textContent.includes('넣음') && !/등록/.test(c1.querySelector('.rptm-img .meta').textContent), '넣은 시각이 보이지 않거나 등록자 표시가 남았다');
+      assert.ok(c1.querySelector('.rptm-share').textContent.includes('나만 봅니다') && !c1.textContent.includes('공용'), '그림 칸 안내가 사람별(나만 봅니다)이 아니다');
       reply(W, 'scheduleImageThumb', { ok: true, data: { id: 1, sha256: IMG(1).sha256, dataUrl: 'data:image/jpeg;base64,AAAA', width: 10, height: 4, stale: false } }, (x) => x.id === 1);
       await tick();
       assert.strictEqual(card(W, P1).querySelector('.rptm-img img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '미리 보기 그림이 붙지 않았다');
@@ -437,7 +441,7 @@ if (!JSDOM) {
       //  삭제: 확인 창 취소 → 요청 없음, 확인 → 요청
       card(W, P1).querySelector('.rptm-img [data-act="imgDel"]').click();
       const dmsg = await confirmAnswer(W, false);
-      assert.ok(dmsg.includes('되돌릴 수 없습니다') && dmsg.includes('박예시'), '삭제 확인 문구에 등록자와 되돌릴 수 없음이 없다');
+      assert.ok(dmsg.includes('되돌릴 수 없습니다') && dmsg.includes('내 그림만') && !dmsg.includes('모든 사용자'), '삭제 확인 문구가 내 그림만 지운다고 말하지 않는다');
       assert.strictEqual(pending(W, 'scheduleImageDelete').length, 0, '취소했는데 삭제 요청이 갔다');
       card(W, P1).querySelector('.rptm-img [data-act="imgDel"]').click();
       await confirmAnswer(W, true);
@@ -513,7 +517,7 @@ if (!JSDOM) {
       { regdate: '2026-09-07', title: '9월 1주 주간보고', period: '2026.09.01~2026.09.05', endwork: '[(예시) 관제 고도화]\n- 화면 응답 개선\n  ; 목록 갱신 줄임\n[(예시) 사내 업무]\n- 회의 자료 정리\n[(예시) 없는 과제]\n- 미등록 일', content: '[(예시) 관제 고도화] : 10\n합계 : 10', plan: '' },
       { regdate: '2026-09-14', title: '9월 2주 주간보고', period: '2026.09.07~2026.09.11', endwork: '[(예시) 관제 고도화]\n- 알람 기준값 화면\n[(예시) 해양 관측 체계]\n- 수신 모듈 정리', content: '', plan: '' },
     ];
-    test('MW11 (§5.3-4): 주간보고 출처: netcusWeeklyRangeRead(읽기)만 부르고, 과제별 글 = buildNetcusWeeklyText 과제 블록(머리 줄 뺌), 미등록 과제는 기타에 따로', async () => {
+    test('MW11 (§5.3-4, §14): 주간보고 출처: netcusWeeklyRangeRead(읽기)만 부르고, 과제별 글 = buildNetcusWeeklyText 과제 블록(머리 줄 뺌), 안 맞은 과제는 미식별(문서에 없음)', async () => {
       await fresh();
       for (const flat of [false, true]) {
         W.ev('weeklyFlat = ' + flat + ';');
@@ -529,13 +533,118 @@ if (!JSDOM) {
         assert.strictEqual(W.ev(`__rptM.cards[${JSON.stringify(P1)}].actual`), want['(예시) 관제 고도화'], '관제 고도화 실적이 주간보고 과제 블록과 다르다(flat=' + flat + ')');
         assert.strictEqual(W.ev(`__rptM.cards[${JSON.stringify(P2)}].actual`), want['(예시) 해양 관측 체계'], '해양 관측 실적이 다르다');
         assert.ok(want.__all.includes(want['(예시) 관제 고도화']), '전제: 과제 블록이 전체 글 안에 있다');
-        assert.ok(W.ev('__rptM.etcText').includes(want['(예시) 사내 업무']) && W.ev('__rptM.etcText').includes('미등록 일'), '기타에 사내 업무나 미등록 과제 글이 없다');
-        assert.ok([...W.doc.querySelectorAll('#rptmCards [data-etc]')].some((x) => x.parentElement.textContent.includes('(예시) 없는 과제 (미등록)')), '미등록 과제가 기타 고르기에 없다');
+        assert.ok(W.ev('__rptM.etcText').includes(want['(예시) 사내 업무']), '기타에 사내 업무 글이 없다');
+        assert.ok(!W.ev('__rptM.etcText').includes('미등록 일') && !JSON.stringify(W.evJSON('rptMPayload(__rptM)')).includes('미등록 일'), '안 맞은 과제 글이 기타나 문서에 들어갔다(미식별은 문서에 넣지 않는다)');
+        assert.ok(![...W.doc.querySelectorAll('#rptmCards input[data-etc]')].some((x) => x.parentElement.textContent.includes('없는 과제')), '안 맞은 과제가 기타 고르기에 있다');
+        const ui = [...W.doc.querySelectorAll('#rptmCards [data-unid] [data-unid-key]')];
+        assert.ok(ui.length === 1 && ui[0].querySelector('summary').textContent === '[(예시) 없는 과제]' && ui[0].querySelector('.tx').textContent.includes('미등록 일'), '안 맞은 과제가 미식별 항목(머리 이름과 글)에 없다');
         assert.ok(card(W, P1).querySelector('.rptm-tag').textContent.includes('주간보고'), '실적 표시가 주간보고 출처가 아니다');
         W.doc.querySelector('#rptmSrc [data-msrc="cal"]').click(); await tick();
         $id(W, 'rptmLoad').click(); await confirmAnswer(W, true); drainImages(W);
       }
       W.ev('weeklyFlat = false;');
+    });
+
+    //  §14 주간보고 과제 나누기 정책. 머리 이름: 사업명(P1 의 카테고리 이름은 통상명칭), 띄어쓰기만 다른 이름(P2), 개인 카테고리(교육),
+    //  내 카테고리 어디에도 없는 둘(외부 지원, 미정 업무).
+    const WEEKS2 = [
+      { regdate: '2026-09-07', title: '9월 1주 주간보고', period: '2026.09.01~2026.09.05',
+        endwork: '[(예시) 관제 고도화 사업]\n- 사업명 일\n[(예시) 해양관측  체계]\n- 해양 일\n[(예시) 교육]\n- 교육 일\n[(예시) 외부 지원]\n- 외부 지원 일\n[(예시) 미정 업무]\n- 미정 업무 일', content: '', plan: '' },
+    ];
+    const K_EXT = '(예시)외부지원', K_TBD = '(예시)미정업무';
+    const unidKeys = () => [...W.doc.querySelectorAll('#rptmCards [data-unid] [data-unid-key]')].map((r) => r.dataset.unidKey);
+    const unidRow = (k) => [...W.doc.querySelectorAll('#rptmCards [data-unid] [data-unid-key]')].find((r) => r.dataset.unidKey === k);
+    async function readWeek2(first) {
+      if (first) { W.doc.querySelector('#rptmSrc [data-msrc="week"]').click(); await tick(); }
+      $id(W, 'rptmLoad').click(); await confirmAnswer(W, true);
+      reply(W, 'netcusWeeklyRangeRead', { ok: true, error: '', weeks: WEEKS2 }); await tick(); drainImages(W);
+    }
+    async function moveUnid(k, to, remember) {
+      const row = unidRow(k); assert.ok(row, '미식별 항목이 없다: ' + k);
+      row.querySelector('select[data-unid-to]').value = to;
+      row.querySelector('input[data-unid-rem]').checked = !!remember;
+      row.querySelector('[data-act="unidMove"]').click(); await tick(); drainImages(W);
+    }
+    const payloadText = () => JSON.stringify(W.evJSON('rptMPayload(__rptM)'));
+    const actual = (id) => W.ev(`__rptM.cards[${JSON.stringify(id)}].actual`);
+
+    test('MW17 (§14): 사업명과 띄어쓰기만 다른 이름은 그 과제로, 개인 카테고리는 기타로(넣기 빼기 그대로), 안 맞은 것은 미식별이고 문서에 없다', async () => {
+      await fresh();
+      const n0 = W.posted.length;
+      await readWeek2(true);
+      assert.ok(actual(P1).includes('사업명 일'), '사업명(project_name) 머리가 그 공식 과제에 가지 않았다');
+      assert.ok(actual(P2).includes('해양 일'), '띄어쓰기만 다른 머리가 그 과제에 가지 않았다(정규화)');
+      assert.ok(W.ev('__rptM.etcText').includes('교육 일'), '개인 카테고리 머리가 기타에 가지 않았다');
+      assert.deepStrictEqual(unidKeys().sort(), [K_EXT, K_TBD].sort(), '미식별 항목이 안 맞은 둘이 아니다');
+      assert.ok(!/외부 지원 일|미정 업무 일/.test(payloadText()), '미식별 항목이 문서 payload 에 들어갔다');
+      assert.ok($id(W, 'rptmSrcMsg').textContent.includes('미식별'), '읽은 뒤 안내에 미식별 개수가 없다');
+      assert.ok(unidRow(K_EXT).querySelector('details') && unidRow(K_EXT).querySelector('.tx').textContent.includes('외부 지원 일') && !unidRow(K_EXT).querySelector('textarea'), '미식별 항목이 접을 수 있는 읽기 전용 글이 아니다');
+      //  맞은 개인 카테고리도 기타 넣기, 빼기를 그대로 따른다
+      const cb = W.doc.querySelector('#rptmCards input[data-etc="c-ed"]');
+      cb.checked = false; cb.dispatchEvent(new W.w.Event('change', { bubbles: true })); await tick();
+      assert.ok(!W.ev('__rptM.etcText').includes('교육 일') && !payloadText().includes('교육 일'), '기타에서 뺀 개인 카테고리 글이 남았다');
+      const cb2 = W.doc.querySelector('#rptmCards input[data-etc="c-ed"]');
+      cb2.checked = true; cb2.dispatchEvent(new W.w.Event('change', { bubbles: true })); await tick();
+      assert.ok(W.ev('__rptM.etcText').includes('교육 일'), '다시 넣은 개인 카테고리 글이 돌아오지 않았다');
+      const sent = W.posted.slice(n0).map((x) => x && x.cmd).filter(Boolean);
+      assert.ok(!sent.some((c) => /netcusSubmit|netcusWeekSubmit|NetcusWeekFill/i.test(c)), '회사로 보내는 명령이 나갔다');
+    });
+
+    test('MW18 (§14): 이관(한 번만)은 고른 과제 실적 끝에 붙고 문서에 들어간다. 다시 읽어 오면 미식별로 돌아온다(안내 문구)', async () => {
+      await fresh();
+      await readWeek2(true);
+      assert.ok(W.doc.querySelector('#rptmCards [data-unid] .rptm-hint').textContent.includes('다시 읽어 오기를 하면') , '한 번만 이관이 다시 읽으면 돌아온다는 안내가 없다');
+      const before = actual(P3);
+      await moveUnid(K_EXT, P3, false);
+      assert.ok(actual(P3).endsWith('외부 지원 일') && actual(P3).startsWith(before.replace(/\s+$/, '')), '이관한 글이 그 과제 실적 끝에 붙지 않았다');
+      assert.ok(W.evJSON('rptMPayload(__rptM)').projects.find((p) => p.uid === P3).actual.some((l) => l.text.includes('외부 지원 일')), '이관한 글이 문서 payload 에 없다');
+      assert.deepStrictEqual(unidKeys(), [K_TBD], '이관한 항목이 미식별에서 빠지지 않았다');
+      assert.strictEqual(W.ev("localStorage.getItem('tc_rptMNcMap:7')"), null, '한 번만 이관인데 기억했다');
+      //  기타로 한 번만
+      await moveUnid(K_TBD, 'etc', false);
+      assert.ok(W.ev('__rptM.etcText').endsWith('미정 업무 일') && payloadText().includes('미정 업무 일'), '기타로 이관한 글이 기타 실적 끝과 문서에 없다');
+      //  다시 읽어 오기: 실적 칸을 새로 붙이므로 둘 다 미식별로 돌아온다
+      await readWeek2(false);
+      assert.deepStrictEqual(unidKeys().sort(), [K_EXT, K_TBD].sort(), '다시 읽어 왔는데 한 번만 이관한 항목이 미식별로 돌아오지 않았다');
+      assert.ok(!actual(P3).includes('외부 지원 일') && !W.ev('__rptM.etcText').includes('미정 업무 일'), '다시 읽어 왔는데 한 번만 이관한 글이 남았다');
+    });
+
+    test('MW19 (§14): 다음에도 이 과제로(기억)는 계정별로 남고 다음 읽기부터 맞은 것처럼 옮긴다. 목록에 보이고 해제하면 미식별로 돌아온다', async () => {
+      await fresh();
+      await readWeek2(true);
+      //  체크 안 한 과제(P4)로 기억: 그 과제를 문서에 넣게 체크한다
+      assert.strictEqual(W.ev(`!!__rptM.checked[${JSON.stringify(P4)}]`), false, '전제: P4 는 체크 안 됨');
+      await moveUnid(K_EXT, P4, true);
+      await moveUnid(K_TBD, 'etc', true);
+      const map = W.evJSON("JSON.parse(localStorage.getItem('tc_rptMNcMap:7'))");
+      assert.deepStrictEqual(map, { [K_EXT]: P4, [K_TBD]: 'etc' }, '기억한 이관이 tc_rptMNcMap:<who> 에 { 정규화 머리: 옮길 곳 } 으로 남지 않았다');
+      assert.ok(W.ev(`!!__rptM.checked[${JSON.stringify(P4)}]`) && card(W, P4), '이관한 과제가 문서에 들어가게 체크되지 않았다');
+      assert.ok(actual(P4).includes('외부 지원 일') && W.ev('__rptM.etcText').includes('미정 업무 일'), '기억한 이관의 글이 붙지 않았다');
+      assert.deepStrictEqual(unidKeys(), [], '기억한 항목이 미식별에 남았다');
+      const rows = [...W.doc.querySelectorAll('#rptmCards [data-unid] [data-map-key]')];
+      assert.deepStrictEqual(rows.map((r) => r.dataset.mapKey).sort(), [K_EXT, K_TBD].sort(), '기억한 이관 목록이 보이지 않는다');
+      assert.ok(rows.find((r) => r.dataset.mapKey === K_TBD).textContent.includes('기타') && rows.every((r) => r.querySelector('[data-act="unidForget"]')), '기억한 이관 줄에 옮길 곳이나 해제 버튼이 없다');
+      //  다음 읽기: 자동으로 옮긴다(맞은 것처럼)
+      await readWeek2(false);
+      assert.deepStrictEqual(unidKeys(), [], '다시 읽었는데 기억한 항목이 미식별로 나왔다');
+      assert.ok(actual(P4).includes('외부 지원 일') && W.ev('__rptM.etcText').includes('미정 업무 일') && payloadText().includes('미정 업무 일'), '다시 읽었는데 기억한 이관이 자동으로 옮겨지지 않았다');
+      assert.ok([...W.doc.querySelectorAll('#rptmCards input[data-etc]')].some((x) => x.dataset.etc === 'nc:' + K_TBD), '기타로 기억한 항목이 기타 넣기, 빼기에 없다');
+      //  해제: 미식별로 돌아오고, 고치지 않은 칸에서는 글이 빠진다
+      [...W.doc.querySelectorAll('#rptmCards [data-unid] [data-map-key]')].find((r) => r.dataset.mapKey === K_TBD).querySelector('[data-act="unidForget"]').click(); await tick();
+      assert.deepStrictEqual(W.evJSON("JSON.parse(localStorage.getItem('tc_rptMNcMap:7'))"), { [K_EXT]: P4 }, '해제가 기억에서 빠지지 않았다');
+      assert.deepStrictEqual(unidKeys(), [K_TBD], '해제한 항목이 미식별로 돌아오지 않았다');
+      assert.ok(!W.ev('__rptM.etcText').includes('미정 업무 일') && !payloadText().includes('미정 업무 일'), '해제했는데 기타 글과 문서에 남았다');
+      //  계정이 다르면 기억이 없다
+      assert.ok(W.ev("(function(){ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && k.indexOf('tc_rptMNcMap:')===0 && k !== 'tc_rptMNcMap:7') return false; } return true; })()"), '다른 계정 키에 기억이 남았다');
+      //  막힌 저장소: 기억 못 해도 깨지지 않고 한 번만 옮긴다
+      W.ev("window.__ls2 = [Storage.prototype.getItem, Storage.prototype.setItem]; Storage.prototype.setItem = function(){ throw new Error('blocked'); };");
+      try {
+        await moveUnid(K_TBD, 'etc', true);
+        assert.ok(W.ev('__rptM.etcText').includes('미정 업무 일') && W.evJSON('__toasts').some((t) => t.includes('기억하지는 못했습니다')), '저장소가 막혔을 때 한 번만 옮기고 알리지 않았다');
+      } finally { W.ev('Storage.prototype.getItem = __ls2[0]; Storage.prototype.setItem = __ls2[1];'); }
+      W.doc.querySelector('#rptmSrc [data-msrc="cal"]').click(); await tick();
+      $id(W, 'rptmLoad').click(); await confirmAnswer(W, true); drainImages(W);
+      clearStore(W);
     });
 
     test('MW12 (§5.2): 주간보고를 못 읽으면(로그인 없음, 400일 넘음, 시간 초과) 이유를 보이고 캘린더로 되돌린다(실적은 그대로)', async () => {

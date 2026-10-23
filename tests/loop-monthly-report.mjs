@@ -202,8 +202,9 @@ async function main() {
     2. 성공 토스트에 경로와 [폴더 열기], 아래쪽 [폴더 열기] 버튼이 그 폴더를 여는지
     3. 같은 파일을 Word 로 연 채 다시 저장 → "파일이 열려 있어" 이유가 그대로 뜨는지
     4. 저장한 문서를 Word 와 한컴에서 열어 과제 표, 과제 수행 기간, 개발 일정 그림, 실적 들여쓰기, 기타 표를 보기
-    5. 그림: 카드에서 [파일 고르기]와 [붙여넣기](잘라 복사한 그림), ◀▶ 순서, [삭제] 확인 창, 다른 계정에서 같은 그림이 보이는지
-    6. 출처 [주간보고]는 netcus 를 실제로 읽는다(로그인). QA 중에는 읽기만 하고, 호스트 로그에 NetcusSubmit, NetcusWeekFill 이 없는지 본다`);
+    5. 그림: 카드에서 [파일 고르기]와 [붙여넣기](잘라 복사한 그림), ◀▶ 순서, [삭제] 확인 창, 다른 계정에서는 그 그림이 **보이지 않는지**(사람별 그림, 2026-10-23)
+    6. 출처 [주간보고]는 netcus 를 실제로 읽는다(로그인). QA 중에는 읽기만 하고, 호스트 로그에 NetcusSubmit, NetcusWeekFill 이 없는지 본다
+    7. 주간보고 출처에서 내 과제와 맞지 않은 [과제] 가 미식별 항목에 나오고 문서에 없는지, [이관](한 번만, 기억)과 기억한 이관 [해제]`);
   } finally {
     try {
       if (snap) await cdp.ev(`(function(){ var S = ${JSON.stringify(snap)}; try { var a = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptDraftM:') === 0 && !(k in S)) a.push(k); }

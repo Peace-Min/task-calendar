@@ -2728,7 +2728,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .rptm-card.closed .rptm-cb,.rptm-card.closed .rptm-cf{display:none}
 .rptm-sub-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:6px}
 .rptm-sub-h b{font-size:var(--fs-emph)}
-.rptm-share{font-size:var(--fs-meta);color:var(--warn-text)}
+.rptm-share{font-size:var(--fs-meta);color:var(--muted)}
 .rptm-imgs{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
 .rptm-img{display:flex;flex-direction:column;gap:5px;width:220px;max-width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:6px;background:var(--panel);margin:0}
 .rptm-img .ph{background:var(--rptm-paper);border:1px solid var(--line);border-radius:4px;height:110px;display:flex;align-items:center;justify-content:center;overflow:hidden;color:var(--faint-text);font-size:var(--fs-micro)}
@@ -2760,6 +2760,16 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .rptm-cf{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
 .rptm-cf .rptm-hint{flex:1 1 240px}
 .rptm-etc-cats{display:flex;flex-wrap:wrap;gap:6px 16px}
+/* 미식별 항목(주간보고 출처에서 내 과제와 맞지 않은 [과제], 문서에 넣지 않음)과 기억한 이관 목록 */
+.rptm-unid-list{display:flex;flex-direction:column;gap:8px}
+.rptm-ui{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);min-width:0}
+.rptm-ui summary{cursor:pointer;padding:6px 10px;font-weight:700;overflow-wrap:anywhere}
+.rptm-ui summary:focus-visible{outline:2px solid var(--accent)}
+.rptm-ui .tx{margin:0 10px 6px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--dim-bg);white-space:pre-wrap;overflow-wrap:anywhere;font-size:var(--fs-meta);max-height:220px;overflow:auto}
+.rptm-ui .mv{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 10px 8px;border-top:1px solid var(--line)}
+.rptm-ui .mv select{min-width:0;max-width:100%}
+.rptm-map{display:flex;flex-direction:column;gap:4px}
+.rptm-map-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:var(--fs-meta);overflow-wrap:anywhere}
 .rptm-empty{padding:18px;text-align:center;color:var(--muted);font-size:var(--fs-body);border:1px dashed var(--line-2);border-radius:var(--r-md)}
 .rptm-pv{margin-top:20px;border-top:1px solid var(--line);padding-top:14px}
 .rptm-pvwrap{overflow-x:auto;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-md);padding:16px;max-width:100%}
@@ -17412,6 +17422,7 @@ async function copyReport(){
 const RPTM_DRAFT_PREFIX = 'tc_rptDraftM:';   // 키 = tc_rptDraftM:<who>:<실적시작>_<실적끝>
 const RPTM_DRAFT_KEEP = 6;                   // 계정마다 최근 6건(저장 시각 기준)
 const RPTM_ETC_PREFIX = 'tc_rptMEtcOff:';    // 키 = tc_rptMEtcOff:<who>, 값 = 기타 표에서 뺀 카테고리 키 배열(계정별 기억, §11.2-3)
+const RPTM_NCMAP_PREFIX = 'tc_rptMNcMap:';   // 키 = tc_rptMNcMap:<who>, 값 = { 정규화한 주간보고 [과제] 이름: 공식 과제 카테고리 id 또는 'etc' }(기억한 이관, §14)
 const RPTM_IMG_MAX = 5;                      // 과제마다 그림 5장(호스트도 같은 값으로 막는다)
 const RPTM_NC_MAX_DAYS = 400;                // netcus 주간보고 읽기 한도(호스트 NetcusWeeklyRangeRead 와 같다)
 const RPTM_DEBOUNCE_MS = 400;
@@ -17424,7 +17435,8 @@ let __rptMPv = false;       // 문서 미리 보기 켜짐
 let __rptMSaving = false;
 let __rptMReading = false;  // netcus 주간보고 읽는 중
 let __rptMGen = 0;          // 읽기 세대(기간을 바꾸면 늦은 회신을 버린다)
-let __rptMWeek = null;      // { key:'from|to', auto } 마지막으로 읽은 주간보고 과제별 글
+let __rptMWeek = null;      // { key:'from|to', auto, parsed, moved } 마지막으로 읽은 주간보고 과제별 글(moved = 한 번만 이관한 미식별 키)
+let __rptMUnidOpen = true;  // 미식별 항목 칸 펼침
 let __rptMCal = null;       // { key:'from|to', auto } 캘린더 과제별 글(읽어 오기, 탭 열기 때 새로 만든다)
 let __rptMHas = new Set();  // 기록이 있는 공식 과제(목록의 '기록 있음')
 let __rptMDir = '';         // 마지막으로 저장한 폴더(호스트가 준 값)
@@ -17476,20 +17488,56 @@ function rptMBuildCal(from, to){
   return { proj, etc };
 }
 //  주간보고 출처: buildNetcusWeeklyText 의 과제 블록(주차별, 평면은 사용자가 고른 weeklyFlat 그대로)에서 머리 줄을 뺀 것.
-//  카테고리에 맞은 과제는 그 카드나 기타 칸으로, 어느 카테고리에도 안 맞은 과제는 기타 칸에 '(미등록)' 으로 따로 둔다.
+//  나누기 정책(§14, 사용자 결정 2026-10-23): [과제] 머리는 **내 카테고리에만** 맞춘다. 공식 과제는 카테고리 이름, 통상명칭, 사업명
+//  가운데 하나와 같으면(정규화: NFC, 공백 전부 제거) 그 카드로, 개인 카테고리는 이름이 같으면 기타 표로(기타의 넣기, 빼기 그대로).
+//  기억한 이관(tc_rptMNcMap:<who>)이 있는 머리는 맞은 것처럼 그 과제 카드나 기타로 간다. 나머지는 unid(미식별 항목)이고 문서에 넣지 않는다.
+//  반환 auto = { proj, etc, unid: [{ key: 정규화한 머리, name, text }] }.
 function rptMBuildWeek(parsed){
-  const byCat = new Map(), extra = [];
+  const alias = rptMNcAliases(), map = rptMNcMapGet();
+  const byCat = new Map(), extra = [], unid = [];
+  const put = (id, body) => byCat.set(id, byCat.has(id) ? byCat.get(id) + '\n' + body : body);
   for(const t of ((parsed && parsed.tasks) || [])){
     const block = buildNetcusWeeklyText({ tasks: [t] }, !!weeklyFlat);
     const nl = block.indexOf('\n');
     const body = nl < 0 ? '' : block.slice(nl + 1);
-    if(t.catId && state.categories.some(c => c.id === t.catId)) byCat.set(t.catId, byCat.has(t.catId) ? byCat.get(t.catId) + '\n' + body : body);
-    else extra.push({ key: 'nc:' + String(t.norm || t.name || ''), name: String(t.name || '') + ' (미등록)', text: body });
+    const key = rptMNcKey(t.name), name = String(t.name || '');
+    const hit = alias.get(key), to = _rptMOwn(map, key) ? map[key] : '';
+    if(hit) put(hit, body);
+    else if(to === 'etc') extra.push({ key: 'nc:' + key, name, text: body });
+    else if(to && isOfficialCat(catById(to))) put(to, body);
+    else unid.push({ key, name, text: body });
   }
   const proj = new Map();
   for(const c of rptMOfficial()) proj.set(c.id, byCat.get(c.id) || '');
   const etc = state.categories.filter(c => !isOfficialCat(c)).map(c => ({ key: c.id, name: String(c.name || ''), text: byCat.get(c.id) || '' })).concat(extra);
-  return { proj, etc };
+  return { proj, etc, unid };
+}
+//  주간보고 [과제] 머리 이름 정규화(parseNetcusWeekly 와 같은 규칙). 미식별 항목과 기억한 이관의 키다.
+function rptMNcKey(s){ return String(s == null ? '' : s).normalize('NFC').replace(/\s+/g, ''); }
+//  내 카테고리만으로 만든 머리 이름 표(정규화 이름 -> 카테고리 id). 공식 과제는 dbCatalog 의 통상명칭과 사업명도 받는다. 겹치면 내 순서 앞쪽.
+function rptMNcAliases(){
+  const m = new Map();
+  for(const c of state.categories){
+    if(!c) continue;
+    const names = [c.name];
+    if(isOfficialCat(c)){ const d = dbCatalogById(c.id); if(d) names.push(d.name, d.commonName, d.projectName); }
+    for(const n of names){ const k = rptMNcKey(n); if(k && !m.has(k)) m.set(k, c.id); }
+  }
+  return m;
+}
+//  기억한 이관(계정별). 값이 글자가 아니거나 키가 __proto__ 면 버린다. PEER 는 읽지도 쓰지도 않는다.
+function rptMNcMapGet(){
+  if(PEER) return {};
+  try{
+    const o = JSON.parse(localStorage.getItem(RPTM_NCMAP_PREFIX + rptDraftWho()) || '{}');
+    const out = {};
+    if(o && typeof o === 'object' && !Array.isArray(o)) for(const k of Object.keys(o)) if(k && k !== '__proto__' && typeof o[k] === 'string' && o[k]) out[k] = o[k];
+    return out;
+  }catch(_){ return {}; }
+}
+function rptMNcMapSet(map){
+  if(PEER) return false;
+  try{ localStorage.setItem(RPTM_NCMAP_PREFIX + rptDraftWho(), JSON.stringify(map)); return true; }catch(_){ return false; }
 }
 //  지금 상태가 붙인 출처의 과제별 글. 주간보고는 그 기간을 읽어 둔 것이 있을 때만(없으면 null: 읽어 오기를 눌러야 한다).
 function rptMAuto(S, fresh){
@@ -17667,7 +17715,7 @@ function rptMRenderSettings(){
   const lb = $('#rptmLoad'); if(lb) lb.disabled = __rptMReading;
   const h = $('#rptmSrcHint');
   if(h){
-    let t = S.src === 'cal' ? '기간 취합 아래쪽 글을 과제별로 그대로 붙입니다.' : 'netcus 주간보고 취합 글을 과제별로 그대로 붙입니다(읽기만, 400일 한도).';
+    let t = S.src === 'cal' ? '기간 취합 아래쪽 글을 과제별로 그대로 붙입니다.' : 'netcus 주간보고 취합 글을 과제별로 그대로 붙입니다(읽기만, 400일 한도). 내 과제와 맞지 않은 [과제] 는 미식별 항목으로 따로 둡니다.';
     if(!HOST) t += ' 주간보고 출처는 위젯에서만 고를 수 있습니다.';
     else if(S.src !== S.fillSrc) t += ' 읽어 오기를 누르면 실적 칸을 이 출처 글로 바꿉니다.';
     h.textContent = t;
@@ -17704,7 +17752,7 @@ function rptMCardHtml(id){
     + `<div class="rptm-tf"><span class="rpt-opt-lb">과제명</span><input type="text" data-f="title" maxlength="200" value="${esc(c.title)}" aria-label="과제명"></div>`
     + `<div class="rptm-term"><span class="rpt-opt-lb">과제 수행 기간</span>${termHtml}<span class="git-hint">${esc(termNote)}</span></div></div>`
     + '<div class="rptm-cb">'
-    + '<div><div class="rptm-sub-h"><b>개발 일정 그림</b><span class="rptm-share">공용: 이 과제를 쓰는 모든 사람이 같은 그림을 봅니다</span></div>'
+    + '<div><div class="rptm-sub-h"><b>개발 일정 그림</b><span class="rptm-share">내 보고서에 넣을 그림(나만 봅니다)</span></div>'
     + '<div class="rptm-imgs" data-imgs></div><div class="rptm-msg" data-msg role="status" aria-live="polite"></div></div>'
     + '<div><div class="rptm-sub-h"><b>일정 변경이력</b><span class="git-hint">직접 입력합니다. 없으면 빈 줄 하나로 문서에 들어갑니다.</span></div><div class="rptm-chg" data-chg></div></div>'
     + '<div class="rptm-cols">'
@@ -17731,10 +17779,82 @@ function rptMEtcHtml(){
     + `<div class="rptm-col"><div class="rptm-col-h"><b>실적</b><span class="rptm-tag">${esc(tag)}</span></div><textarea data-f="etc" aria-label="기타 실적">${esc(S.etcText)}</textarea></div>`
     + '</div></section>';
 }
+//  미식별 항목 칸(§14). 주간보고 출처일 때만 그린다. 항목은 머리 이름과 글(읽기만, 접기)이고 문서에 넣지 않는다.
+//  항목마다 옮길 곳(공식 과제 카드나 기타), '다음에도 이 과제로', 이관 버튼. 아래에 기억한 이관 목록과 해제 버튼.
+function rptMUnidHtml(){
+  const S = __rptM;
+  if(!S || (S.fillSrc !== 'week' && S.src !== 'week')) return '';
+  const w = S.fillSrc === 'week' ? rptMAuto(S, false) : null;
+  const moved = (__rptMWeek && __rptMWeek.moved) || new Set();
+  const items = (w && w.unid) ? w.unid.filter(u => !moved.has(u.key)) : [];
+  const map = rptMNcMapGet(), keys = Object.keys(map);
+  const opts = '<option value="">옮길 곳 고르기</option>' + S.order.map(id => `<option value="${esc(id)}">${esc(rptMCatName(id))}</option>`).join('') + '<option value="etc">기타</option>';
+  const list = !w ? '<span class="git-hint">읽어 오기를 누르면 주간보고에서 내 과제와 맞지 않은 항목이 여기에 나옵니다.</span>'
+    : !items.length ? '<span class="git-hint">미식별 항목이 없습니다.</span>'
+    : items.map(u => `<div class="rptm-ui" data-unid-key="${esc(u.key)}"><details><summary>${esc('[' + u.name + ']')}</summary>`
+      + `<div class="tx">${esc(u.text)}</div></details>`
+      + `<div class="mv"><select data-unid-to aria-label="${esc(u.name)} 옮길 곳">${opts}</select>`
+      + '<label class="check"><input type="checkbox" data-unid-rem>다음에도 이 과제로</label>'
+      + `<button type="button" class="btn sm" data-act="unidMove" aria-label="${esc(u.name)} 이관">이관</button></div></div>`).join('');
+  const label = v => v === 'etc' ? '기타' : isOfficialCat(catById(v)) ? rptMCatName(v) : '(내 과제에 없음, 미식별로 나옵니다)';
+  const rows = keys.length ? keys.map(k => `<div class="rptm-map-row" data-map-key="${esc(k)}"><span><b>${esc('[' + k + ']')}</b> 옮길 곳: ${esc(label(map[k]))}</span>`
+      + `<button type="button" class="btn rptm-xs" data-act="unidForget" aria-label="${esc(k)} 기억한 이관 해제">해제</button></div>`).join('')
+    : '<span class="git-hint">기억한 이관이 없습니다.</span>';
+  const open = __rptMUnidOpen;
+  return `<section class="rptm-card rptm-unid${open ? '' : ' closed'}" data-unid aria-label="미식별 항목">`
+    + `<div class="rptm-ch"><button type="button" class="rptm-tog" data-act="tog" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? '접기' : '펼치기'}">${open ? '▾' : '▸'}</button>`
+    + `<div class="rptm-tf"><b>미식별 항목</b><span class="rptm-badge">${items.length}</span><span class="git-hint">주간보고의 [과제] 가운데 내 과제 이름(공식 과제는 사업명도)이나 내 카테고리와 맞지 않은 것입니다. 문서에 넣지 않습니다.</span></div></div>`
+    + '<div class="rptm-cb">'
+    + `<div class="rptm-unid-list">${list}</div>`
+    + '<span class="rptm-hint">이관은 그 글을 고른 과제나 기타의 실적 끝에 붙입니다. 한 번만 옮긴 항목은 다시 읽어 오기를 하면 실적 칸을 새로 붙이므로 미식별로 돌아옵니다. 다음에도 이 과제로를 켜면 계정별로 기억해 다음 읽기부터 맞은 과제처럼 옮깁니다.</span>'
+    + `<div><div class="rptm-sub-h"><b>기억한 이관</b><span class="git-hint">해제하면 그 항목이 다시 미식별로 나옵니다.</span></div><div class="rptm-map">${rows}</div></div>`
+    + '</div></section>';
+}
+//  미식별 항목 하나를 옮긴다. to = 공식 과제 카테고리 id 또는 'etc'. 글은 그 실적 칸 끝에 붙인다(고른 과제는 문서에 넣게 체크한다).
+//  remember 면 계정별로 기억하고 주간보고 글을 다시 나눈다(고치지 않은 칸은 새로 나눈 글, 고친 칸은 끝에 붙임).
+//  아니면 한 번만이다: 이번 읽기에서만 미식별 목록에서 빠지고, 다시 읽어 오기를 하면 돌아온다.
+function rptMUnidMove(key, to, remember){
+  const S = __rptM, W = __rptMWeek;
+  if(!S || !W || S.fillSrc !== 'week' || W.key !== S.from + '|' + S.to) return false;
+  const u = ((W.auto && W.auto.unid) || []).find(x => x.key === key); if(!u) return false;
+  if(to !== 'etc' && !(S.order.includes(to) && S.cards[to])){ toast('옮길 곳(공식 과제나 기타)을 고르세요', 'warn'); return false; }
+  const tail = (cur, add) => { const c = String(cur || '').replace(/\s+$/, ''); return c ? c + '\n' + add : add; };
+  let kept = false;
+  if(remember){ const map = rptMNcMapGet(); map[key] = to; kept = rptMNcMapSet(map); }
+  if(kept){
+    W.auto = rptMBuildWeek(W.parsed);
+    if(to === 'etc'){ const et = rptMEtcText(W.auto); S.etcText = S.etcText === S.etcBase ? et : tail(S.etcText, u.text); S.etcBase = et; }
+    else { const c = S.cards[to], t = W.auto.proj.get(to) || ''; c.actual = c.actual === c.actualBase ? t : tail(c.actual, u.text); c.actualBase = t; }
+  } else {
+    W.moved.add(key);
+    if(to === 'etc') S.etcText = tail(S.etcText, u.text); else S.cards[to].actual = tail(S.cards[to].actual, u.text);
+  }
+  if(to !== 'etc') S.checked[to] = true;
+  const where = to === 'etc' ? '기타' : rptMCatName(to);
+  rptMRenderPick(); rptMRenderCards(); rptMDraftSoon();
+  toast('[' + u.name + '] 을(를) ' + where + ' 실적 끝에 붙였습니다.' + (kept ? ' 다음 읽기부터 자동으로 옮깁니다.' : remember ? ' 이 PC 저장소를 쓸 수 없어 기억하지는 못했습니다.' : ' 다시 읽어 오면 미식별로 돌아옵니다.'), kept || !remember ? 'success' : 'warn');
+  return true;
+}
+//  기억한 이관 해제. 지금 주간보고 글이 있으면 다시 나눠 그 항목을 미식별로 돌린다(고치지 않은 칸은 새로 나눈 글로, 고친 칸은 그대로).
+function rptMUnidForget(key){
+  const S = __rptM; if(!S) return false;
+  const map = rptMNcMapGet(); if(!_rptMOwn(map, key)) return false;
+  const to = map[key]; delete map[key];
+  if(!rptMNcMapSet(map)){ toast('이 PC 저장소를 쓸 수 없어 해제하지 못했습니다', 'error'); return false; }
+  const W = __rptMWeek;
+  if(W && S.fillSrc === 'week' && W.key === S.from + '|' + S.to){
+    W.auto = rptMBuildWeek(W.parsed);
+    if(to === 'etc'){ const et = rptMEtcText(W.auto); if(S.etcText === S.etcBase) S.etcText = et; S.etcBase = et; }
+    else if(S.cards[to]){ const c = S.cards[to], t = W.auto.proj.get(to) || ''; if(c.actual === c.actualBase) c.actual = t; c.actualBase = t; }
+  }
+  rptMRenderCards(); rptMDraftSoon();
+  toast('기억한 이관을 해제했습니다. 그 항목은 다시 미식별로 나옵니다.', 'info');
+  return true;
+}
 function rptMRenderCards(){
   const S = __rptM, box = $('#rptmCards'); if(!box) return;
   const ids = rptMPicked(S);
-  box.innerHTML = (ids.length ? ids.map(rptMCardHtml).join('') : '<div class="rptm-empty">고른 과제가 없습니다. 위 목록에서 문서에 넣을 과제를 체크하세요.</div>') + rptMEtcHtml();
+  box.innerHTML = (ids.length ? ids.map(rptMCardHtml).join('') : '<div class="rptm-empty">고른 과제가 없습니다. 위 목록에서 문서에 넣을 과제를 체크하세요.</div>') + rptMEtcHtml() + rptMUnidHtml();
   for(const id of ids){ rptMChgRender(id); rptMImgRender(id); rptMImgEnsure(id); }
   if(__rptMPv) rptMPreview();
 }
@@ -17783,7 +17903,7 @@ function rptMImgRender(id){
       + `<button type="button" class="btn rptm-xs" data-act="imgR" aria-label="그림 ${i + 1} 뒤로"${i === n - 1 || dis ? ' disabled' : ''}>▶</button>`
       + '<span class="grow"></span>'
       + `<button type="button" class="btn rptm-xs danger" data-act="imgDel" aria-label="그림 ${i + 1} 삭제"${dis ? ' disabled' : ''}>삭제</button></div>`
-      + `<figcaption class="meta">등록 ${esc(im.uploadedBy || '(알 수 없음)')}, ${esc(rptMAt(im.uploadedAt))}</figcaption></figure>`;
+      + `<figcaption class="meta">${rptMAt(im.uploadedAt) ? esc(rptMAt(im.uploadedAt)) + ' 넣음' : ''}</figcaption></figure>`;
   }).join('')
     + `<div class="rptm-drop${full ? ' full' : ''}" tabindex="0" data-act="zone" aria-label="그림 넣기: 파일 고르기 또는 붙여넣기(Ctrl+V)">`
     + `<span>${ro ? '서버에 연결되면 그림을 넣고 지울 수 있습니다' : full ? '그림은 과제마다 5장까지입니다' : '잘라 복사한 그림을 붙여넣거나(Ctrl+V) 파일을 고르세요'}</span>`
@@ -17842,7 +17962,7 @@ async function rptMImgAdd(id, mode){
   try{ res = await hostRequest('scheduleImageAdd', { projectUid: id, mode: mode === 'clipboard' ? 'clipboard' : 'file' }, 300000); }
   finally{ st.busy = false; }
   rptMImgTake(id, res, false);
-  if(res && res.ok){ st.msg = '그림을 넣었습니다. 이 과제를 쓰는 모든 사람에게 보입니다.'; st.kind = 'ok'; rptMImgRender(id); }
+  if(res && res.ok){ st.msg = '그림을 넣었습니다. 내 월간보고에만 들어갑니다.'; st.kind = 'ok'; rptMImgRender(id); }
 }
 async function rptMImgAct(id, imgId, act){
   const st = rptMImgState(id);
@@ -17851,8 +17971,8 @@ async function rptMImgAct(id, imgId, act){
   const im = st.list[i];
   let cmd, params;
   if(act === 'imgDel'){
-    const who = im.uploadedBy || '(알 수 없음)';
-    if(await confirmBox('그림 삭제', `개발 일정 그림 ${i + 1} (등록 ${who}, ${rptMAt(im.uploadedAt)})을 지울까요?\n이 그림은 이 과제를 쓰는 모든 사용자에게서 지워집니다. 되돌릴 수 없습니다.`, '지우기') !== 'ok') return;
+    const at = rptMAt(im.uploadedAt);
+    if(await confirmBox('그림 삭제', `개발 일정 그림 ${i + 1}${at ? ' (' + at + ' 넣음)' : ''}을 지울까요?\n내 그림만 지워지고 되돌릴 수 없습니다.`, '지우기') !== 'ok') return;
     cmd = 'scheduleImageDelete'; params = { id: im.id };
   } else if(act === 'imgL' && i > 0){ cmd = 'scheduleImageMove'; params = { id: im.id, seq: i }; }
   else if(act === 'imgR' && i < st.list.length - 1){ cmd = 'scheduleImageMove'; params = { id: im.id, seq: i + 2 }; }
@@ -17900,10 +18020,11 @@ async function rptMFill(S, force, fresh){
       rptMSrcMsg(r.msg + ' 출처를 캘린더로 되돌렸습니다(실적 칸은 그대로입니다).', 'err');
       return;
     }
-    __rptMWeek = { key: S.from + '|' + S.to, auto: rptMBuildWeek(r.parsed) };
+    __rptMWeek = { key: S.from + '|' + S.to, auto: rptMBuildWeek(r.parsed), parsed: r.parsed, moved: new Set() };
     S.fillSrc = 'week';
     rptMApply(S, __rptMWeek.auto, force);
-    rptMSrcMsg('netcus 주간보고 ' + (r.parsed.weekCount || 0) + '주를 읽어 과제별로 붙였습니다.', 'ok');
+    const nu = __rptMWeek.auto.unid.length;
+    rptMSrcMsg('netcus 주간보고 ' + (r.parsed.weekCount || 0) + '주를 읽어 과제별로 붙였습니다.' + (nu ? ' 내 과제와 맞지 않은 ' + nu + '개는 문서에 넣지 않고 아래 미식별 항목에 두었습니다.' : ''), 'ok');
   } else {
     S.fillSrc = 'cal';
     rptMApply(S, rptMAuto(S, true), force);
@@ -18133,12 +18254,19 @@ function rptMBind(){
       const sec = b.closest('.rptm-card');
       let open;
       if(sec.hasAttribute('data-etc')) open = s.etcOpen = !s.etcOpen;
+      else if(sec.hasAttribute('data-unid')) open = __rptMUnidOpen = !__rptMUnidOpen;
       else { const c = s.cards[sec.dataset.uid]; if(!c) return; open = c.open = !c.open; }
       sec.classList.toggle('closed', !open);
       b.setAttribute('aria-expanded', open ? 'true' : 'false'); b.setAttribute('aria-label', open ? '접기' : '펼치기'); b.textContent = open ? '▾' : '▸';
       rptMDraftSoon();
       return;
     }
+    if(act === 'unidMove'){
+      const row = b.closest('[data-unid-key]'); if(!row) return;
+      rptMUnidMove(row.dataset.unidKey, row.querySelector('select[data-unid-to]').value, row.querySelector('input[data-unid-rem]').checked);
+      return;
+    }
+    if(act === 'unidForget'){ const row = b.closest('[data-map-key]'); if(row) rptMUnidForget(row.dataset.mapKey); return; }
     const card = b.closest('.rptm-card[data-uid]'); if(!card) return;
     const id = card.dataset.uid, c = s.cards[id]; if(!c) return;
     if(act === 'imgFile') await rptMImgAdd(id, 'file');

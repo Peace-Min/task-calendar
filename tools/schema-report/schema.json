@@ -2736,7 +2736,7 @@
    "name": "project_schedule_image",
    "engine": "InnoDB",
    "rows": 2,
-   "comment": "과제별 개발 일정 그림(월간보고). 과제 삭제 때 함께 지워진다. 등록자는 RESTRICT. 앱이 과제당 5장, 장당 5MB 로 막는다.",
+   "comment": "사람별 과제 개발 일정 그림(월간보고). 주인만 보고 고친다. 과제 삭제 때 함께 지워진다. 주인은 RESTRICT. 앱이 사람마다 과제당 5장, 장당 5MB 로 막는다.",
    "coll": "utf8mb4_0900_ai_ci",
    "exact": 2,
    "columns": [
@@ -2748,6 +2748,15 @@
      "key": "PRI",
      "extra": "auto_increment",
      "comment": "그림 번호"
+    },
+    {
+     "name": "user_id",
+     "type": "smallint unsigned",
+     "nullable": false,
+     "def": null,
+     "key": "MUL",
+     "extra": "",
+     "comment": "그림 주인(app_user.user_id). 이 사람만 보고 고치며 이 사람 문서에만 들어간다"
     },
     {
      "name": "project_id",
@@ -2765,7 +2774,7 @@
      "def": null,
      "key": "",
      "extra": "",
-     "comment": "과제 안 순서(1부터)"
+     "comment": "주인의 그 과제 안 순서(1부터)"
     },
     {
      "name": "mime",
@@ -2813,15 +2822,6 @@
      "comment": "바이트의 SHA-256(소문자 16진수). PC 사본 확인용"
     },
     {
-     "name": "uploaded_by",
-     "type": "smallint unsigned",
-     "nullable": false,
-     "def": null,
-     "key": "MUL",
-     "extra": "",
-     "comment": "등록한 사람(app_user.user_id)"
-    },
-    {
      "name": "uploaded_at",
      "type": "datetime(3)",
      "nullable": false,
@@ -2833,9 +2833,9 @@
    ],
    "indexes": [
     {
-     "name": "ix_project_schedule_image_uploader",
+     "name": "ix_project_schedule_image_project",
      "unique": false,
-     "cols": "uploaded_by"
+     "cols": "project_id"
     },
     {
      "name": "PRIMARY",
@@ -2845,7 +2845,7 @@
     {
      "name": "uq_project_schedule_image_seq",
      "unique": true,
-     "cols": "project_id,seq"
+     "cols": "user_id,project_id,seq"
     }
    ],
    "fks": [
@@ -2859,7 +2859,7 @@
     },
     {
      "name": "fk_project_schedule_image_user",
-     "cols": "uploaded_by",
+     "cols": "user_id",
      "ref": "app_user",
      "refCols": "user_id",
      "upd": "RESTRICT",

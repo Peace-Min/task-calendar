@@ -16,7 +16,8 @@
 --       값은 모두 NULL 로 시작한다(개발 시작, 종료 값 채우기는 사용자가 따로 한다. 이 조각은 칸만 만든다).
 --    2) project 에 CHECK chk_project_dev_dates(둘 다 있을 때 시작 <= 종료)를 건다. 새 칸이 모두 NULL 이라 기존 행은 통과한다.
 --    3) 새 표 project_schedule_image 를 만든다. 정의는 정본 db/deploy/schema-calendar.sql 의 16 과 글자까지 같다
---       (작은따옴표만 두 겹. 시험이 대조한다). project(id) 를 CASCADE, app_user(user_id) 를 RESTRICT 로 가리킨다.
+--       (작은따옴표만 두 겹. 시험이 대조한다). project(id) 를 CASCADE, 주인 app_user(user_id) 를 RESTRICT 로 가리킨다.
+--       그림은 사람마다 따로다(2026-10-23 결정): UNIQUE (user_id, project_id, seq), 앱은 주인의 그림만 읽고 쓴다.
 --    4) 검증: 새 칸이 있고 DATE, NULL 허용이며 end_date 바로 뒤에 있다. CHECK 가 있다. 새 표의 열 수와 FK 수가 기대와 같다(information_schema).
 --    5) 구조 번호 17.
 --
@@ -75,28 +76,28 @@ PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 SET @s := IF(@go,
   'CREATE TABLE IF NOT EXISTS project_schedule_image (
   id           INT UNSIGNED      NOT NULL AUTO_INCREMENT                                    COMMENT ''그림 번호'',
+  user_id      SMALLINT UNSIGNED NOT NULL                                                   COMMENT ''그림 주인(app_user.user_id). 이 사람만 보고 고치며 이 사람 문서에만 들어간다'',
   project_id   INT UNSIGNED      NOT NULL                                                   COMMENT ''과제 번호(project.id)'',
-  seq          TINYINT UNSIGNED  NOT NULL                                                   COMMENT ''과제 안 순서(1부터)'',
+  seq          TINYINT UNSIGNED  NOT NULL                                                   COMMENT ''주인의 그 과제 안 순서(1부터)'',
   mime         VARCHAR(20)       CHARACTER SET ascii COLLATE ascii_bin NOT NULL             COMMENT ''image/png 또는 image/jpeg'',
   bytes        MEDIUMBLOB        NOT NULL                                                   COMMENT ''그림 원본(앱 상한 5MB)'',
   width_px     SMALLINT UNSIGNED NOT NULL                                                   COMMENT ''가로 화소'',
   height_px    SMALLINT UNSIGNED NOT NULL                                                   COMMENT ''세로 화소'',
   sha256       CHAR(64)          CHARACTER SET ascii COLLATE ascii_bin NOT NULL             COMMENT ''바이트의 SHA-256(소문자 16진수). PC 사본 확인용'',
-  uploaded_by  SMALLINT UNSIGNED NOT NULL                                                   COMMENT ''등록한 사람(app_user.user_id)'',
   uploaded_at  DATETIME(3)       NOT NULL                                                   COMMENT ''등록 시각(UTC)'',
   PRIMARY KEY (id),
-  UNIQUE KEY uq_project_schedule_image_seq (project_id, seq),
-  KEY ix_project_schedule_image_uploader (uploaded_by),
+  UNIQUE KEY uq_project_schedule_image_seq (user_id, project_id, seq),
+  KEY ix_project_schedule_image_project (project_id),
+  CONSTRAINT fk_project_schedule_image_user FOREIGN KEY (user_id) REFERENCES app_user(user_id)
+    ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT fk_project_schedule_image_project FOREIGN KEY (project_id) REFERENCES project(id)
     ON UPDATE RESTRICT ON DELETE CASCADE,
-  CONSTRAINT fk_project_schedule_image_user FOREIGN KEY (uploaded_by) REFERENCES app_user(user_id)
-    ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT chk_project_schedule_image_mime CHECK (mime IN (''image/png'',''image/jpeg'')),
   CONSTRAINT chk_project_schedule_image_seq  CHECK (seq >= 1),
   CONSTRAINT chk_project_schedule_image_size CHECK (width_px >= 1 AND height_px >= 1),
   CONSTRAINT chk_project_schedule_image_sha  CHECK (sha256 REGEXP ''^[0-9a-f]{64}$'')
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
-  COMMENT=''과제별 개발 일정 그림(월간보고). 과제 삭제 때 함께 지워진다. 등록자는 RESTRICT. 앱이 과제당 5장, 장당 5MB 로 막는다.''',
+  COMMENT=''사람별 과제 개발 일정 그림(월간보고). 주인만 보고 고친다. 과제 삭제 때 함께 지워진다. 주인은 RESTRICT. 앱이 사람마다 과제당 5장, 장당 5MB 로 막는다.''',
   'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
 

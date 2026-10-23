@@ -29,7 +29,7 @@ export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // 과제 캘린더 두 표(2026-10-22, 구조 16)가 맨 앞이다. 공용 일정이 project 를 RESTRICT 로 붙들어 아래 DELETE FROM project 가
 //   막히지 않게 먼저 지운다. 데모는 공용 일정을 채우지 않는다.
 // 월간보고 개발 일정 그림(project_schedule_image, 구조 17)도 맨 앞이다. 과제를 지우면 CASCADE 로 함께 지워지지만 데모가 빌려 쓰는
-//   실제 사용자(app_user)를 등록자로 RESTRICT 로 붙들고 실제 그림 바이트가 데모에 남지 않게 먼저 비운다. 데모는 그림을 채우지 않는다.
+//   실제 사용자(app_user)를 주인(user_id)으로 RESTRICT 로 붙들고 실제 그림 바이트가 데모에 남지 않게 먼저 비운다. 데모는 그림을 채우지 않는다.
 export const WIPE_TABLES = [
   'project_schedule_image',
   'cal_project_change', 'cal_project_event',

@@ -16,6 +16,7 @@ namespace TaskCalendarWidget
     //  ★ 파일 창(저장, 열기)의 주인은 요청한 창이다(DialogOwner). 지금은 메인 창뿐이지만 규칙을 ADMIN-WINDOW §3 과 맞춘다.
     //  ★ 회신은 모두 ReplyOnUi(요청 번호). 저장: { ok, path, dir } | { ok:false, cancelled:true } | { ok:false, error }.
     //  ★ 웹은 그림 바이트를 보내지 않는다. 문서의 그림은 호스트가 과제 uid 로 PC 사본(없으면 DB)에서 넣는다(§6.3).
+    //    그림은 사람마다 따로라(2026-10-23) 세션의 사람(저장하는 사람)의 그림만 들어간다(ScheduleImageDb.ImagesForExportAsync).
     //  ★ 이 기능은 회사 사이트로 아무것도 보내지 않는다(Platform.report, netcusSubmit, netcusWeekSubmit 를 부르지 않는다).
     public partial class MainWindow
     {

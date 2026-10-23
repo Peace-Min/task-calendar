@@ -19,8 +19,10 @@ namespace TaskCalendarWidget
     //  과제별 개발 일정 그림(월간보고): docs/MONTHLY-REPORT-PLAN.md §6
     // ================================================================================
     //  표는 project_schedule_image 하나(정본 db/deploy/schema-calendar.sql 16, 구조 번호 17). 그 표의 SQL 은 이 파일에만 있다.
-    //  공식 과제에 딸린 공용 데이터다. 앱 사용자라면 누구나 어느 공식 과제의 그림이든 추가, 삭제, 순서 바꾸기를 한다.
-    //  ★ 관리자 검사는 하지 않는다(의도, §6.1). 대신 등록한 사람(세션의 사람)과 시각을 남긴다.
+    //  그림은 **사람마다 따로**다(사용자 결정 2026-10-23, §6.1). 행마다 주인(user_id)이 하나고, 모든 SQL 이 세션의 사람을 건다:
+    //    목록, 미리 보기, 받기는 내 그림만 돌려주고, 남의 그림 번호로 지우거나 옮기면 없는 그림과 똑같이 notFound 다(있는지 알리지 않는다).
+    //    추가는 세션의 사람을 주인으로 쓴다. 5장 상한, 같은 그림 거절, seq 매기기는 (사람, 과제) 단위다. DOCX 에도 저장하는 사람의 그림만.
+    //  ★ 관리자 검사는 하지 않는다(의도, §6.1). 내 그림은 내가 넣고 지운다.
     //
     //  【명령】 MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 배선은 MonthlyReportExport.cs.
     //    scheduleImageList   { projectUid }            → { projectUid, images:[메타], limits }      바이트 없음
@@ -31,17 +33,17 @@ namespace TaskCalendarWidget
     //    회신은 { ok, data?, error?: { kind, message } }. kind 는 forbidden, invalid, notFound, conflict 와 연결 분류(DbErrorKind).
     //    파일 고르기를 취소하면 { ok:false, cancelled:true }.
     //
-    //  【PC 사본】 앱 데이터 폴더 schedule-images\<sha256>.png|jpg. 목록을 읽을 때마다 과제별 메타를 index.json 에 적어 두고,
+    //  【PC 사본】 앱 데이터 폴더 schedule-images\<sha256>.png|jpg. 목록을 읽을 때마다 (로그인 id, 과제)별 메타를 index.json 에 적어 두고,
     //    바이트는 해시가 같은 사본이 없을 때만 DB 에서 받는다. 사본은 읽을 때마다 해시를 다시 보고, 다르면 지우고 새로 받는다.
     //    DB 가 끊기면 DOCX 저장과 미리 보기는 사본으로 하고(ImagesForExportAsync, ThumbAsync), 추가와 삭제와 순서 바꾸기는 막힌다.
     //
     //  【트랜잭션 규칙】
     //    - 연결은 모두 DbGate.OpenAsync(버전 관문). 쓰기는 READ-COMMITTED 한 트랜잭션이고 커밋은 CommitWithGateAsync 한 곳에서
     //      관문을 다시 읽은 뒤에 한다(VERSION-GATE §2.2, CalendarWriteDb, ProjectCalendarDb 와 같은 규칙).
-    //    - 쓰기 트랜잭션은 신원(세션의 login_id 로 활성 app_user)과 과제 행 FOR UPDATE 로 시작한다. 같은 과제의 그림 쓰기는
+    //    - 쓰기 트랜잭션은 신원(세션의 login_id 로 활성 app_user)과 과제 행 FOR UPDATE 로 시작한다. 같은 과제의 그림 쓰기는(사람이 달라도)
     //      이 잠금으로 줄을 서고(5장 상한, seq 매기기가 엇갈리지 않는다), 휴지통의 과제 영구 삭제(CASCADE)와도 엇갈리지 않는다.
     //      잠금 순서는 어디서나 과제 행 다음 그림 행이다.
-    //    - (project_id, seq) UNIQUE 를 피해 순서를 바꿀 때는 먼저 모두 +100 으로 비켜 놓고 제자리로 하나씩 옮긴다.
+    //    - (user_id, project_id, seq) UNIQUE 를 피해 순서를 바꿀 때는 먼저 내 그림을 모두 +100 으로 비켜 놓고 제자리로 하나씩 옮긴다.
     //    - 사용자 값(projectUid, id, seq)은 형식을 보고 매개변수로만 넣는다. 웹이 보낸 사용자 값은 읽지 않는다.
     // ================================================================================
     internal sealed class ScheduleImageDb
@@ -50,7 +52,7 @@ namespace TaskCalendarWidget
         internal static class Limits
         {
             public const int MaxBytes = 5 * 1024 * 1024;     // 장당 5MB(MEDIUMBLOB 은 16MB 까지 받지만 앱이 막는다)
-            public const int MaxPerProject = 5;              // 과제당 5장
+            public const int MaxPerProject = 5;              // 사람마다 과제당 5장
             public const int MaxEdgePx = 16000;              // 가로, 세로 상한(SMALLINT UNSIGNED 안, 압축 폭탄과 거대 그림 막기)
             public const int ThumbMaxBytes = 40 * 1024;      // 미리 보기 JPEG 상한(약 40KB)
             public const int ThumbEdgePx = 360;              // 미리 보기 긴 변(처음 시도). 크면 줄여 가며 다시 만든다
@@ -107,7 +109,6 @@ namespace TaskCalendarWidget
             public int Height { get; set; }
             public long Size { get; set; }
             public string Sha256 { get; set; } = "";
-            public string UploadedBy { get; set; } = "";
             public string UploadedAt { get; set; } = "";   // ISO UTC(…Z)
         }
 
@@ -263,25 +264,26 @@ namespace TaskCalendarWidget
         // ================================================================================
         public async Task<ScheduleImageReply> ListAsync(string projectUid)
         {
+            string login = "";
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 var ct = cts.Token;
-                string login = SessionLoginId();
+                login = SessionLoginId();
                 await using var conn = await OpenAsync(ct);
-                await IdentityAsync(conn, null, login, ct);
+                var me = await IdentityAsync(conn, null, login, ct);
                 uint pid = await ProjectIdAsync(conn, null, projectUid, false, ct);
-                var images = await ListMetaAsync(conn, null, pid, ct);
-                Cache.Remember(_dataDir, projectUid, images, _log);
+                var images = await ListMetaAsync(conn, null, me.UserId, pid, ct);
+                Cache.Remember(_dataDir, login, projectUid, images, _log);
                 return ScheduleImageReply.Success(ListData(projectUid, images, stale: false));
             }
             catch (Exception ex)
             {
-                //  끊겼거나 막혔으면 PC 사본 색인의 마지막 목록을 함께 준다(stale). 거부(신원, 과제 없음)면 주지 않는다.
+                //  끊겼거나 막혔으면 이 로그인의 PC 사본 색인 마지막 목록을 함께 준다(stale). 거부(신원, 과제 없음)면 주지 않는다.
                 object? data = null;
-                if (!(ex is SiFail))
+                if (!(ex is SiFail) && login.Length > 0)
                 {
-                    var cached = Cache.Recall(_dataDir, projectUid);
+                    var cached = Cache.Recall(_dataDir, login, projectUid);
                     if (cached != null) data = ListData(projectUid, cached, stale: true);
                 }
                 return Fail("목록", ex, data);
@@ -306,17 +308,17 @@ namespace TaskCalendarWidget
             ["height"] = m.Height,
             ["bytes"] = m.Size,
             ["sha256"] = m.Sha256,
-            ["uploadedBy"] = m.UploadedBy,
             ["uploadedAt"] = m.UploadedAt,
         };
 
-        private static async Task<List<ImageMeta>> ListMetaAsync(MySqlConnection conn, MySqlTransaction? tx, uint projectId, CancellationToken ct)
+        //  그 사람의 그 과제 그림(메타만). 남의 그림은 읽지 않는다.
+        private static async Task<List<ImageMeta>> ListMetaAsync(MySqlConnection conn, MySqlTransaction? tx, int userId, uint projectId, CancellationToken ct)
         {
             var list = new List<ImageMeta>();
             await using var cmd = new MySqlCommand(
-                "SELECT i.id, i.seq, i.mime, i.width_px, i.height_px, LENGTH(i.bytes) AS size, i.sha256, IFNULL(u.name, '') AS uploader, i.uploaded_at " +
-                "FROM project_schedule_image i LEFT JOIN app_user u ON u.user_id = i.uploaded_by " +
-                "WHERE i.project_id=@p ORDER BY i.seq, i.id", conn, tx);
+                "SELECT id, seq, mime, width_px, height_px, LENGTH(bytes) AS size, sha256, uploaded_at " +
+                "FROM project_schedule_image WHERE user_id=@u AND project_id=@p ORDER BY seq, id", conn, tx);
+            cmd.Parameters.AddWithValue("@u", userId);
             cmd.Parameters.AddWithValue("@p", projectId);
             await using var rd = await cmd.ExecuteReaderAsync(ct);
             while (await rd.ReadAsync(ct))
@@ -330,7 +332,6 @@ namespace TaskCalendarWidget
                     Height = Convert.ToInt32(rd["height_px"], CultureInfo.InvariantCulture),
                     Size = Convert.ToInt64(rd["size"], CultureInfo.InvariantCulture),
                     Sha256 = Str(rd, "sha256"),
-                    UploadedBy = Str(rd, "uploader"),
                     UploadedAt = Iso(Convert.ToDateTime(rd["uploaded_at"], CultureInfo.InvariantCulture)),
                 });
             }
@@ -349,9 +350,9 @@ namespace TaskCalendarWidget
                 var ct = cts.Token;
                 string login = SessionLoginId();
                 await using var conn = await OpenAsync(ct);
-                await IdentityAsync(conn, null, login, ct);
+                var me = await IdentityAsync(conn, null, login, ct);
                 uint pid = await ProjectIdAsync(conn, null, projectUid, false, ct);
-                long n = await CountAsync(conn, null, pid, ct);
+                long n = await CountAsync(conn, null, me.UserId, pid, ct);
                 if (n >= Limits.MaxPerProject) throw new SiFail(Kind.Invalid, MsgTooMany);
                 return ScheduleImageReply.Success(new Dictionary<string, object?> { ["projectUid"] = projectUid, ["count"] = n });
             }
@@ -378,19 +379,21 @@ namespace TaskCalendarWidget
                     {
                         var me = await IdentityAsync(conn, tx, login, ct);
                         uint pid = await ProjectIdAsync(conn, tx, projectUid, lockRow: true, ct);   // 잠금: 과제 행. 같은 과제의 그림 쓰기가 줄을 선다
-                        long n = await CountAsync(conn, tx, pid, ct);
+                        long n = await CountAsync(conn, tx, me.UserId, pid, ct);   // 내 그림만 센다(사람마다 과제당 5장)
                         if (n >= Limits.MaxPerProject) throw new SiFail(Kind.Invalid, MsgTooMany);
-                        await using (var dup = new MySqlCommand("SELECT COUNT(*) FROM project_schedule_image WHERE project_id=@p AND sha256=@h", conn, tx))
+                        await using (var dup = new MySqlCommand("SELECT COUNT(*) FROM project_schedule_image WHERE user_id=@u AND project_id=@p AND sha256=@h", conn, tx))
                         {
+                            dup.Parameters.AddWithValue("@u", me.UserId);
                             dup.Parameters.AddWithValue("@p", pid);
                             dup.Parameters.AddWithValue("@h", sha);
                             if (Convert.ToInt64(await dup.ExecuteScalarAsync(ct) ?? 0L, CultureInfo.InvariantCulture) > 0) throw new SiFail(Kind.Invalid, MsgDuplicate);
                         }
-                        await Renumber(conn, tx, pid, null, ct);   // 1..n 이 아니면 먼저 바로잡는다(손댄 데이터 대비)
+                        await Renumber(conn, tx, me.UserId, pid, null, ct);   // 1..n 이 아니면 먼저 바로잡는다(손댄 데이터 대비)
                         await using (var ins = new MySqlCommand(
-                            "INSERT INTO project_schedule_image (project_id, seq, mime, bytes, width_px, height_px, sha256, uploaded_by, uploaded_at) " +
-                            "VALUES (@p, @s, @m, @b, @w, @h, @sha, @u, @at)", conn, tx))
+                            "INSERT INTO project_schedule_image (user_id, project_id, seq, mime, bytes, width_px, height_px, sha256, uploaded_at) " +
+                            "VALUES (@u, @p, @s, @m, @b, @w, @h, @sha, @at)", conn, tx))
                         {
+                            ins.Parameters.AddWithValue("@u", me.UserId);   // 주인 = 세션의 사람(웹 값이 아니다)
                             ins.Parameters.AddWithValue("@p", pid);
                             ins.Parameters.AddWithValue("@s", (int)n + 1);
                             ins.Parameters.AddWithValue("@m", info.Mime);
@@ -398,19 +401,18 @@ namespace TaskCalendarWidget
                             ins.Parameters.AddWithValue("@w", info.Width);
                             ins.Parameters.AddWithValue("@h", info.Height);
                             ins.Parameters.AddWithValue("@sha", sha);
-                            ins.Parameters.AddWithValue("@u", me.UserId);
                             ins.Parameters.AddWithValue("@at", DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture));
                             await ins.ExecuteNonQueryAsync(ct);
                             newId = ins.LastInsertedId;
                         }
-                        images = await ListMetaAsync(conn, tx, pid, ct);
+                        images = await ListMetaAsync(conn, tx, me.UserId, pid, ct);
                         await CommitWithGateAsync(conn, tx, ct);
-                        _log("개발 일정 그림 추가: 과제 " + projectUid + ", 번호 " + newId + ", " + bytes.Length + " bytes, 등록 " + me.UserId);
+                        _log("개발 일정 그림 추가: 과제 " + projectUid + ", 번호 " + newId + ", " + bytes.Length + " bytes, 주인 " + me.UserId);
                     }
                     catch { await SafeRollbackAsync(tx); throw; }
                 }
                 Cache.Store(_dataDir, sha, info.Mime, bytes, _log);
-                Cache.Remember(_dataDir, projectUid, images, _log);
+                Cache.Remember(_dataDir, login, projectUid, images, _log);
                 var mine = images.Find(x => x.Id == newId);
                 return ScheduleImageReply.Success(new Dictionary<string, object?>
                 {
@@ -427,41 +429,44 @@ namespace TaskCalendarWidget
             catch (Exception ex) { return Fail("추가", ex); }
         }
 
-        private static async Task<long> CountAsync(MySqlConnection conn, MySqlTransaction? tx, uint pid, CancellationToken ct)
+        private static async Task<long> CountAsync(MySqlConnection conn, MySqlTransaction? tx, int userId, uint pid, CancellationToken ct)
         {
-            await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project_schedule_image WHERE project_id=@p", conn, tx);
+            await using var cmd = new MySqlCommand("SELECT COUNT(*) FROM project_schedule_image WHERE user_id=@u AND project_id=@p", conn, tx);
+            cmd.Parameters.AddWithValue("@u", userId);
             cmd.Parameters.AddWithValue("@p", pid);
             return Convert.ToInt64(await cmd.ExecuteScalarAsync(ct) ?? 0L, CultureInfo.InvariantCulture);
         }
 
         // ================================================================================
-        //  3. 삭제(실제 행 삭제, 휴지통 없음, 관리자 검사 없음) / 4. 순서 바꾸기
+        //  3. 삭제(실제 행 삭제, 휴지통 없음, 관리자 검사 없음, 내 그림만) / 4. 순서 바꾸기(내 그림 안에서)
         // ================================================================================
         public async Task<ScheduleImageReply> DeleteAsync(long id)
         {
-            return await WriteOnImageAsync("삭제", id, async (conn, tx, pid, ct) =>
+            return await WriteOnImageAsync("삭제", id, async (conn, tx, uid, pid, ct) =>
             {
-                await using (var del = new MySqlCommand("DELETE FROM project_schedule_image WHERE id=@id AND project_id=@p", conn, tx))
+                await using (var del = new MySqlCommand("DELETE FROM project_schedule_image WHERE id=@id AND user_id=@u AND project_id=@p", conn, tx))
                 {
                     del.Parameters.AddWithValue("@id", id);
+                    del.Parameters.AddWithValue("@u", uid);
                     del.Parameters.AddWithValue("@p", pid);
                     if (await del.ExecuteNonQueryAsync(ct) == 0) throw new SiFail(Kind.NotFound, MsgGone);
                 }
-                await Renumber(conn, tx, pid, null, ct);
+                await Renumber(conn, tx, uid, pid, null, ct);
             });
         }
 
         public async Task<ScheduleImageReply> MoveAsync(long id, int seq)
         {
-            return await WriteOnImageAsync("순서 바꾸기", id, async (conn, tx, pid, ct) =>
+            return await WriteOnImageAsync("순서 바꾸기", id, async (conn, tx, uid, pid, ct) =>
             {
-                await Renumber(conn, tx, pid, (id, seq), ct);
+                await Renumber(conn, tx, uid, pid, (id, seq), ct);
             });
         }
 
-        //  그림 하나를 바꾸는 쓰기의 뼈대: 신원, 그림의 과제, 과제 행 FOR UPDATE, 본문, 목록, 관문 재확인 커밋.
+        //  그림 하나를 바꾸는 쓰기의 뼈대: 신원, 내 그림의 과제, 과제 행 FOR UPDATE, 본문(사람 번호, 과제 번호), 목록, 관문 재확인 커밋.
+        //  ★ 남의 그림 번호는 없는 번호와 똑같이 notFound(MsgGone)다. 있는지조차 알리지 않는다.
         private async Task<ScheduleImageReply> WriteOnImageAsync(string what, long id,
-            Func<MySqlConnection, MySqlTransaction, uint, CancellationToken, Task> body)
+            Func<MySqlConnection, MySqlTransaction, int, uint, CancellationToken, Task> body)
         {
             try
             {
@@ -477,11 +482,12 @@ namespace TaskCalendarWidget
                     try
                     {
                         var me = await IdentityAsync(conn, tx, login, ct);
-                        //  그림의 과제(잠금 없이 읽고, 과제 행을 잠근 뒤 본문이 그 과제의 그림인지 다시 본다)
+                        //  내 그림의 과제(잠금 없이 읽고, 과제 행을 잠근 뒤 본문이 내 그 과제의 그림인지 다시 본다)
                         string? uid = null;
-                        await using (var q = new MySqlCommand("SELECT p.uid FROM project_schedule_image i JOIN project p ON p.id = i.project_id WHERE i.id=@id", conn, tx))
+                        await using (var q = new MySqlCommand("SELECT p.uid FROM project_schedule_image i JOIN project p ON p.id = i.project_id WHERE i.id=@id AND i.user_id=@u", conn, tx))
                         {
                             q.Parameters.AddWithValue("@id", id);
+                            q.Parameters.AddWithValue("@u", me.UserId);
                             //  ★ project.uid 는 CHAR(36) 이라 MySqlConnector 가 Guid 로 돌려준다(GuidFormat 기본값). 'as string' 이면
                             //    늘 null 이 되어 있는 그림도 '없다' 가 된다(2026-10-22 실 DB 시험에서 잡힘). 글자로 바꿔 읽는다.
                             object? pv = await q.ExecuteScalarAsync(ct);
@@ -490,27 +496,28 @@ namespace TaskCalendarWidget
                         if (string.IsNullOrEmpty(uid)) throw new SiFail(Kind.NotFound, MsgGone);
                         projectUid = uid;
                         uint pid = await ProjectIdAsync(conn, tx, projectUid, lockRow: true, ct);
-                        await body(conn, tx, pid, ct);
-                        images = await ListMetaAsync(conn, tx, pid, ct);
+                        await body(conn, tx, me.UserId, pid, ct);
+                        images = await ListMetaAsync(conn, tx, me.UserId, pid, ct);
                         await CommitWithGateAsync(conn, tx, ct);
                         _log("개발 일정 그림 " + what + ": 번호 " + id + ", 과제 " + projectUid + ", 사람 " + me.UserId);
                     }
                     catch { await SafeRollbackAsync(tx); throw; }
                 }
-                Cache.Remember(_dataDir, projectUid, images, _log);
+                Cache.Remember(_dataDir, login, projectUid, images, _log);
                 return ScheduleImageReply.Success(ListData(projectUid, images, stale: false));
             }
             catch (Exception ex) { return Fail(what, ex); }
         }
 
-        //  그 과제의 그림을 1..n 으로 다시 매긴다. move 가 있으면 그 그림을 seq 자리(1..n 으로 자름)로 옮긴다.
-        //  ★ (project_id, seq) UNIQUE 를 피해 두 번에 나눈다: 모두 +100 으로 비켜 놓고, 하나씩 제자리로.
-        //    이미 맞으면 아무것도 쓰지 않는다. 부르는 쪽이 과제 행을 FOR UPDATE 로 잡고 있어야 한다.
-        private static async Task Renumber(MySqlConnection conn, MySqlTransaction tx, uint pid, (long id, int seq)? move, CancellationToken ct)
+        //  그 사람의 그 과제 그림을 1..n 으로 다시 매긴다. move 가 있으면 그 그림을 seq 자리(1..n 으로 자름)로 옮긴다.
+        //  ★ (user_id, project_id, seq) UNIQUE 를 피해 두 번에 나눈다: 내 그림을 모두 +100 으로 비켜 놓고, 하나씩 제자리로.
+        //    이미 맞으면 아무것도 쓰지 않는다. 부르는 쪽이 과제 행을 FOR UPDATE 로 잡고 있어야 한다. 남의 그림은 읽지도 쓰지도 않는다.
+        private static async Task Renumber(MySqlConnection conn, MySqlTransaction tx, int userId, uint pid, (long id, int seq)? move, CancellationToken ct)
         {
             var rows = new List<(long id, int seq)>();
-            await using (var q = new MySqlCommand("SELECT id, seq FROM project_schedule_image WHERE project_id=@p ORDER BY seq, id FOR UPDATE", conn, tx))
+            await using (var q = new MySqlCommand("SELECT id, seq FROM project_schedule_image WHERE user_id=@u AND project_id=@p ORDER BY seq, id FOR UPDATE", conn, tx))
             {
+                q.Parameters.AddWithValue("@u", userId);
                 q.Parameters.AddWithValue("@p", pid);
                 await using var rd = await q.ExecuteReaderAsync(ct);
                 while (await rd.ReadAsync(ct))
@@ -529,9 +536,9 @@ namespace TaskCalendarWidget
             for (int i = 0; i < order.Count; i++)
                 if (rows[rows.FindIndex(r => r.id == order[i])].seq != i + 1) { same = false; break; }
             if (same) return;
-            await Exec(conn, tx, "UPDATE project_schedule_image SET seq = seq + 100 WHERE project_id=@p", ct, ("@p", pid));
+            await Exec(conn, tx, "UPDATE project_schedule_image SET seq = seq + 100 WHERE user_id=@u AND project_id=@p", ct, ("@u", userId), ("@p", pid));
             for (int i = 0; i < order.Count; i++)
-                await Exec(conn, tx, "UPDATE project_schedule_image SET seq=@s WHERE id=@id AND project_id=@p", ct, ("@s", i + 1), ("@id", order[i]), ("@p", pid));
+                await Exec(conn, tx, "UPDATE project_schedule_image SET seq=@s WHERE id=@id AND user_id=@u AND project_id=@p", ct, ("@s", i + 1), ("@id", order[i]), ("@u", userId), ("@p", pid));
         }
 
         // ================================================================================
@@ -542,6 +549,9 @@ namespace TaskCalendarWidget
             ImageMeta? meta = null;
             byte[]? bytes = null;
             bool stale = false;
+            string login;
+            try { login = SessionLoginId(); }
+            catch (SiFail f) { return Fail("미리 보기", f); }
             try
             {
                 var got = await GetAsync(id);
@@ -551,8 +561,8 @@ namespace TaskCalendarWidget
             catch (Exception ex)
             {
                 if (ex is SiFail || ex is ArgumentException) return Fail("미리 보기", ex);
-                //  끊겼거나 막혔다: 색인에 그 번호가 있고 사본이 온전하면 그것으로 만든다.
-                meta = Cache.FindById(_dataDir, id);
+                //  끊겼거나 막혔다: 이 로그인의 색인에 그 번호가 있고 사본이 온전하면 그것으로 만든다.
+                meta = Cache.FindById(_dataDir, login, id);
                 bytes = meta == null ? null : Cache.Load(_dataDir, meta.Sha256, meta.Mime, _log);
                 if (meta == null || bytes == null) return Fail("미리 보기", ex);
                 stale = true;
@@ -594,7 +604,8 @@ namespace TaskCalendarWidget
             return (Math.Max(1, (int)(w * k)), Math.Max(1, (int)(h * k)));
         }
 
-        //  그림 한 장의 메타와 바이트. 사본이 해시와 같으면 사본, 아니면 DB 에서 받아 해시를 확인하고 사본을 둔다.
+        //  내 그림 한 장의 메타와 바이트. 사본이 해시와 같으면 사본, 아니면 DB 에서 받아 해시를 확인하고 사본을 둔다.
+        //  남의 그림 번호는 없는 번호와 같다(notFound).
         //  ★ 해시가 다른 바이트를 DB 가 주면(손댄 데이터) 쓰지 않는다(invalid). 시험(db-schedule-image)이 이 길로 '받기' 를 본다.
         internal async Task<(ImageMeta meta, byte[] bytes, bool fromCache)> GetAsync(long id)
         {
@@ -602,14 +613,14 @@ namespace TaskCalendarWidget
             var ct = cts.Token;
             string login = SessionLoginId();
             await using var conn = await OpenAsync(ct);
-            await IdentityAsync(conn, null, login, ct);
+            var me = await IdentityAsync(conn, null, login, ct);
             ImageMeta? meta = null;
-            string projectUid = "";
             await using (var q = new MySqlCommand(
-                "SELECT i.id, i.seq, i.mime, i.width_px, i.height_px, LENGTH(i.bytes) AS size, i.sha256, IFNULL(u.name, '') AS uploader, i.uploaded_at, p.uid " +
-                "FROM project_schedule_image i JOIN project p ON p.id = i.project_id LEFT JOIN app_user u ON u.user_id = i.uploaded_by WHERE i.id=@id", conn))
+                "SELECT id, seq, mime, width_px, height_px, LENGTH(bytes) AS size, sha256, uploaded_at " +
+                "FROM project_schedule_image WHERE id=@id AND user_id=@u", conn))
             {
                 q.Parameters.AddWithValue("@id", id);
+                q.Parameters.AddWithValue("@u", me.UserId);
                 await using var rd = await q.ExecuteReaderAsync(ct);
                 if (await rd.ReadAsync(ct))
                 {
@@ -622,33 +633,32 @@ namespace TaskCalendarWidget
                         Height = Convert.ToInt32(rd["height_px"], CultureInfo.InvariantCulture),
                         Size = Convert.ToInt64(rd["size"], CultureInfo.InvariantCulture),
                         Sha256 = Str(rd, "sha256"),
-                        UploadedBy = Str(rd, "uploader"),
                         UploadedAt = Iso(Convert.ToDateTime(rd["uploaded_at"], CultureInfo.InvariantCulture)),
                     };
-                    projectUid = Str(rd, "uid");
                 }
             }
             if (meta == null) throw new SiFail(Kind.NotFound, MsgGone);
             var cached = Cache.Load(_dataDir, meta.Sha256, meta.Mime, _log);
             if (cached != null) return (meta, cached, true);
-            byte[] bytes = await FetchBytesAsync(conn, id, ct);
+            byte[] bytes = await FetchBytesAsync(conn, me.UserId, id, ct);
             if (!string.Equals(Sha256Hex(bytes), meta.Sha256, StringComparison.Ordinal))
                 throw new SiFail(Kind.Invalid, MsgBroken);
             Cache.Store(_dataDir, meta.Sha256, meta.Mime, bytes, _log);
             return (meta, bytes, false);
         }
 
-        private static async Task<byte[]> FetchBytesAsync(MySqlConnection conn, long id, CancellationToken ct)
+        private static async Task<byte[]> FetchBytesAsync(MySqlConnection conn, int userId, long id, CancellationToken ct)
         {
-            await using var q = new MySqlCommand("SELECT bytes FROM project_schedule_image WHERE id=@id", conn);
+            await using var q = new MySqlCommand("SELECT bytes FROM project_schedule_image WHERE id=@id AND user_id=@u", conn);
             q.Parameters.AddWithValue("@id", id);
+            q.Parameters.AddWithValue("@u", userId);
             object? v = await q.ExecuteScalarAsync(ct);
             if (v is byte[] b) return b;
             throw new SiFail(Kind.NotFound, MsgGone);
         }
 
         // ================================================================================
-        //  DOCX 저장용: 과제마다 그림 바이트(순서대로). DB 가 되면 DB 메타 기준(사본이 같으면 사본), 안 되면 사본 색인
+        //  DOCX 저장용: 과제마다 **저장하는 사람의** 그림 바이트(순서대로). DB 가 되면 DB 메타 기준(사본이 같으면 사본), 안 되면 이 로그인의 사본 색인
         // ================================================================================
         //  source: "db"(DB 에서 확인), "cache"(DB 가 안 돼 사본으로), "none"(그림 없음). DOCX 저장 자체는 막지 않는다.
         internal sealed class ExportImages
@@ -665,27 +675,28 @@ namespace TaskCalendarWidget
             var uids = new List<string>();
             foreach (var u in projectUids) if (UuidRe.IsMatch(u) && !uids.Contains(u)) uids.Add(u);
             if (uids.Count == 0) return r;
+            string login = "";
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
                 var ct = cts.Token;
-                string login = SessionLoginId();
+                login = SessionLoginId();
                 await using var conn = await OpenAsync(ct);
-                await IdentityAsync(conn, null, login, ct);
+                var me = await IdentityAsync(conn, null, login, ct);
                 foreach (var uid in uids)
                 {
                     uint pid;
                     try { pid = await ProjectIdAsync(conn, null, uid, false, ct); }
                     catch (SiFail) { continue; }   // 지워진 과제: 그림 없음
-                    var metas = await ListMetaAsync(conn, null, pid, ct);
-                    Cache.Remember(_dataDir, uid, metas, _log);
+                    var metas = await ListMetaAsync(conn, null, me.UserId, pid, ct);   // 내 그림만
+                    Cache.Remember(_dataDir, login, uid, metas, _log);
                     var list = new List<byte[]>();
                     foreach (var m in metas)
                     {
                         var b = Cache.Load(_dataDir, m.Sha256, m.Mime, _log);
                         if (b == null)
                         {
-                            b = await FetchBytesAsync(conn, m.Id, ct);
+                            b = await FetchBytesAsync(conn, me.UserId, m.Id, ct);
                             if (!string.Equals(Sha256Hex(b), m.Sha256, StringComparison.Ordinal)) { _log("개발 일정 그림 해시 불일치(문서에서 뺌): 번호 " + m.Id); continue; }
                             Cache.Store(_dataDir, m.Sha256, m.Mime, b, _log);
                         }
@@ -699,14 +710,16 @@ namespace TaskCalendarWidget
             }
             catch (Exception ex)
             {
-                //  끊겼거나 막혔다(또는 신원이 서지 않는다): 사본 색인으로 넣는다. 저장은 계속한다.
+                //  끊겼거나 막혔다(또는 신원이 서지 않는다): 이 로그인의 사본 색인으로 넣는다. 저장은 계속한다.
+                //  로그인이 없으면 누구의 그림인지 모르므로 사본도 쓰지 않는다(그림 없이 저장).
                 var (kind, detail) = ex is SiFail sf ? (sf.Kind, sf.Message) : DbErrors.Observe(ex, _log, notify: false);
                 _log("DOCX 그림: DB 를 쓰지 못해 PC 사본으로 넣는다(" + kind + "): " + detail);
                 var c = new ExportImages();
                 int missing = 0;
                 foreach (var uid in uids)
                 {
-                    var metas = Cache.Recall(_dataDir, uid);
+                    if (login.Length == 0) break;
+                    var metas = Cache.Recall(_dataDir, login, uid);
                     if (metas == null) continue;
                     var list = new List<byte[]>();
                     foreach (var m in metas)
@@ -787,7 +800,9 @@ namespace TaskCalendarWidget
         // ================================================================================
         //  ★ 파일 이름은 해시와 형식에서만 만든다(웹 값이 경로에 닿지 않는다). 해시는 소문자 16진수 64자만 받는다.
         //  ★ 쓰기는 같은 폴더 임시 파일에 쓰고 옮긴다(반쯤 쓴 사본이 남지 않게). 읽을 때 해시를 다시 본다.
-        //  ★ 색인은 과제마다 마지막으로 본 목록이다. 색인 어디에도 없는 사본은 색인을 고칠 때 지운다(쌓이지 않게).
+        //  ★ 색인은 (로그인 id, 과제)마다 마지막으로 본 목록이다. 키는 '<login>|<과제 uid>'. 한 PC 를 둘이 써도 남의 목록이 보이지 않는다.
+        //    옛 모양(과제 uid 만, 사람별 그림 전 시험판)의 키는 색인을 고칠 때 버린다. 색인 어디에도 없는 사본은 그때 지운다(쌓이지 않게).
+        //    바이트 사본은 해시 이름이라 사람이 달라도 같은 그림이면 한 벌이다.
         internal static class Cache
         {
             private static readonly object Gate = new object();
@@ -847,15 +862,19 @@ namespace TaskCalendarWidget
                 catch (Exception ex) { log("개발 일정 그림 미리 보기 사본 쓰기 실패: " + ex.Message); }
             }
 
-            //  그 과제의 최신 목록을 색인에 적고, 색인 어디에도 없는 사본을 지운다.
-            public static void Remember(string dataDir, string projectUid, List<ImageMeta> images, Action<string> log)
+            internal static string Key(string login, string projectUid) => login + "|" + projectUid;
+
+            //  그 로그인, 그 과제의 최신 목록을 색인에 적고, 색인 어디에도 없는 사본을 지운다.
+            public static void Remember(string dataDir, string login, string projectUid, List<ImageMeta> images, Action<string> log)
             {
+                if (string.IsNullOrEmpty(login)) return;
                 lock (Gate)
                 {
                     try
                     {
                         var idx = ReadIndex(dataDir);
-                        idx[projectUid] = images;
+                        foreach (var k in new List<string>(idx.Keys)) if (k.IndexOf('|') < 0) idx.Remove(k);   // 옛 공용 모양 키
+                        idx[Key(login, projectUid)] = images;
                         Directory.CreateDirectory(Dir(dataDir));
                         WriteAtomic(IndexPath(dataDir), System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(idx, Json)));
                         Prune(dataDir, idx);
@@ -864,21 +883,28 @@ namespace TaskCalendarWidget
                 }
             }
 
-            public static List<ImageMeta>? Recall(string dataDir, string projectUid)
+            public static List<ImageMeta>? Recall(string dataDir, string login, string projectUid)
             {
+                if (string.IsNullOrEmpty(login)) return null;
                 lock (Gate)
                 {
                     var idx = ReadIndex(dataDir);
-                    return idx.TryGetValue(projectUid, out var l) ? l : null;
+                    return idx.TryGetValue(Key(login, projectUid), out var l) ? l : null;
                 }
             }
 
-            public static ImageMeta? FindById(string dataDir, long id)
+            //  이 로그인의 색인에서만 찾는다(남의 목록에 있는 번호는 없는 번호다).
+            public static ImageMeta? FindById(string dataDir, string login, long id)
             {
+                if (string.IsNullOrEmpty(login)) return null;
+                string pre = login + "|";
                 lock (Gate)
                 {
-                    foreach (var l in ReadIndex(dataDir).Values)
-                        foreach (var m in l) if (m.Id == id) return m;
+                    foreach (var kv in ReadIndex(dataDir))
+                    {
+                        if (!kv.Key.StartsWith(pre, StringComparison.Ordinal)) continue;
+                        foreach (var m in kv.Value) if (m.Id == id) return m;
+                    }
                     return null;
                 }
             }

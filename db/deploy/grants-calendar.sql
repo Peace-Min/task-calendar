@@ -221,7 +221,9 @@ GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';
 
 -- ---------- 월간보고 개발 일정 그림(구조 번호 17, docs/MONTHLY-REPORT-PLAN.md §6.4) ----------
 -- project_schedule_image 는 이름이 cal_ 로 시작하지 않지만 schema-calendar.sql 이 만드는 표라 권한도 이 파일이 정본이다.
---   SELECT, INSERT, UPDATE, DELETE  누구나 추가, 순서 바꾸기(UPDATE seq), 삭제(실제 행 삭제, 휴지통 없음). ScheduleImageDb 한 곳.
+--   SELECT, INSERT, UPDATE, DELETE  자기 그림의 추가, 순서 바꾸기(UPDATE seq), 삭제(실제 행 삭제, 휴지통 없음). ScheduleImageDb 한 곳.
+--   그림은 사람마다 따로다(user_id 주인, 2026-10-23). 주인만 보게 하는 것은 앱이 모든 SQL 에 세션의 사람을 거는 것으로 한다
+--   (권한은 표 단위라 행을 가르지 못한다).
 -- ★ 과제 영구 삭제(휴지통) 때는 FK CASCADE 가 함께 지운다(FK 동작은 권한 검사를 받지 않는다).
 -- ★ 배포 SQL(release-v<버전>.sql)은 GRANT 를 하지 않는다. 표마다 권한을 주는 환경은 이 줄을 root 로 따로 돌린다.
 GRANT SELECT, INSERT, UPDATE, DELETE ON taskmgr.project_schedule_image TO 'taskmgr_app'@'%';
