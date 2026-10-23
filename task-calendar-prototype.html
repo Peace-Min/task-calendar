@@ -3497,6 +3497,8 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
         <div><label for="offEdDevStart">개발시작</label><input type="date" id="offEdDevStart"></div>
         <div><label for="offEdDevEnd">개발종료</label><input type="date" id="offEdDevEnd"></div>
       </div>
+      <!-- 새 과제를 등록할 때만 계약 날짜에서 개발 날짜를 채우고 이 줄로 알린다(offEdAutoDev, 2026-10-23 사용자 결정). -->
+      <div class="git-note" id="offEdDevHint" role="status" aria-live="polite" hidden></div>
       <label for="offEdNote">비고 <span class="git-opt">(관리 화면 전용 내부메모, 캘린더·보고서에는 안 보임)</span></label>
       <textarea id="offEdNote" rows="2" maxlength="500" autocomplete="off" placeholder="내부 참고용 메모 (선택)"></textarea>
       <div class="git-note" id="offEdHint">발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.</div>
@@ -13813,6 +13815,64 @@ function offEdApplySectionRule(){
     ? `<b>${esc(preName)}</b>은(는) 계약 전 단계라 계약기간·상태를 비워 둡니다(자동 잠금). 계약이 확정되면 구분을 바꾸고 날짜를 입력하세요.`
     : `발주처는 <b>등록된 목록에서만</b> 고를 수 있습니다(DB 마스터). 같은 발주처에 비슷한 과제가 있으면 확인을 요청합니다.`;
 }
+/* ---------- 개발 날짜 기본값(2026-10-23 사용자 결정, MONTHLY-REPORT-PLAN §6.5) ----------
+   새 과제를 등록할 때만, 계약시작이나 계약종료를 고르면 개발시작 = 계약시작 + 1달, 개발종료 = 계약종료 - 1달로 채운다.
+   ★ 손으로 넣거나 지운 칸(이 폼을 연 동안)은 다시 채우지 않는다. 기존 과제 편집에서는 채우지 않는다.
+   ★ 채운 결과가 시작 > 종료면 아무것도 채우지 않는다(DB CHECK chk_project_dev_dates 가 막는다).
+   ★ 기존 과제는 db/deploy/oneoff/dev-dates-from-contract.sql 이 같은 규칙으로 채운다. 한쪽만 바꾸면 갈린다. */
+// 'YYYY-MM-DD' 에 n 달을 더한다. 그 달에 같은 날이 없으면 그 달 말일로 붙인다(MySQL DATE_ADD/DATE_SUB INTERVAL n MONTH 와 같다).
+function offAddMonths(ymd, n){
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(ymd || '').trim());
+  if(!m || +m[2] < 1 || +m[2] > 12) return '';
+  const total = (+m[1]) * 12 + (+m[2] - 1) + n;
+  const y = Math.floor(total / 12), mo = total - y * 12;
+  const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+  const last = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo];
+  const p = (v, w) => String(v).padStart(w, '0');
+  return `${p(y, 4)}-${p(mo + 1, 2)}-${p(Math.min(+m[3], last), 2)}`;
+}
+let offEdDevTouched = { start: false, end: false };   // 이 폼을 연 동안 손으로 고친(넣거나 지운) 개발 날짜 칸
+let offEdDevAuto = { start: false, end: false };      // 지금 칸의 값이 자동으로 채운 값인가
+function offEdDevHintSet(text){
+  const h = document.getElementById('offEdDevHint'); if(!h) return;
+  h.textContent = text || '';
+  h.hidden = !text;
+}
+// 자동으로 채운 값이 손대지 않은 칸에 남아 있을 때만 안내를 보인다(둘 다 손대면 사라진다).
+function offEdDevHintSync(){
+  const t = offEdDevTouched, a = offEdDevAuto;
+  offEdDevHintSet((a.start && !t.start) || (a.end && !t.end) ? '계약 기간에서 자동으로 채웠습니다. 바꿀 수 있습니다.' : '');
+}
+function offEdDevReset(){
+  offEdDevTouched = { start: false, end: false };
+  offEdDevAuto = { start: false, end: false };
+  offEdDevHintSet('');
+}
+function offEdDevTouch(k){
+  if(k !== 'start' && k !== 'end') return;
+  offEdDevTouched[k] = true;
+  offEdDevAuto[k] = false;
+  offEdDevHintSync();
+}
+function offEdAutoDev(){
+  if(offEdUid) return;   // 기존 과제 편집: 채우지 않는다
+  const ds = document.getElementById('offEdDevStart'), de = document.getElementById('offEdDevEnd');
+  if(!ds || !de) return;
+  const t = offEdDevTouched;
+  if(t.start && t.end){ offEdDevHintSync(); return; }
+  const cv = id => { const e = document.getElementById(id); return e ? String(e.value || '') : ''; };
+  const ns = t.start ? String(ds.value || '') : offAddMonths(cv('offEdStart'), 1);
+  const ne = t.end ? String(de.value || '') : offAddMonths(cv('offEdEnd'), -1);
+  if(ns && ne && ns > ne){
+    if(!t.start){ ds.value = ''; offEdDevAuto.start = false; }
+    if(!t.end){ de.value = ''; offEdDevAuto.end = false; }
+    offEdDevHintSet('계약 기간이 짧아 개발 기간을 채우지 않았습니다. 직접 입력하세요.');
+    return;
+  }
+  if(!t.start){ ds.value = ns; offEdDevAuto.start = !!ns; }
+  if(!t.end){ de.value = ne; offEdDevAuto.end = !!ne; }
+  offEdDevHintSync();
+}
 function offEdMsgSet(html, tone){
   const m = document.getElementById('offEdMsg'); if(!m) return;
   m.innerHTML = html || '';
@@ -13873,6 +13933,7 @@ function offEditOpen(id){
   offEdFillEnums(c ? c.sectionId : '', c ? c.statusId : '', c ? c.section : '', c ? c.status : '');
   offEdFillCustomers(c ? c.customerId : '');
   offEdApplySectionRule();
+  offEdDevReset();   // 개발 날짜 기본값의 손댐 표시와 안내를 새로 시작한다(값은 위에서 넣은 그대로)
   offEdMsgSet('');
   offEdSetBusy(false);
   if(HOST) hpost({ cmd: 'loadCustomers' });   // 최신 발주처 마스터로 드롭다운 보강(__applyCustomers)
@@ -20345,6 +20406,9 @@ function bind(){
       if(hb){ const id = hb.dataset.offhide; offEditGuard(() => offHideProject(id)); }
     }); }
   { const s = $('#offEdSection'); if(s) s.addEventListener('change', offEdApplySectionRule); }
+  //  개발 날짜 기본값: 계약 날짜를 고르면 채우고(새 과제만), 개발 날짜를 손으로 넣거나 지우면 그 칸은 손댄 칸이 된다.
+  ['#offEdStart', '#offEdEnd'].forEach(sel => { const e = $(sel); if(e){ e.addEventListener('input', offEdAutoDev); e.addEventListener('change', offEdAutoDev); } });
+  [['#offEdDevStart', 'start'], ['#offEdDevEnd', 'end']].forEach(([sel, k]) => { const e = $(sel); if(e){ const mark = () => offEdDevTouch(k); e.addEventListener('input', mark); e.addEventListener('change', mark); } });
   { const b = $('#offEdSave'); if(b) b.addEventListener('click', offEdSaveNow); }
   /* 기준 정보(발주처 · 구분·상태) 마스터 관리 — 공식 과제 화면 하단 줄의 **별도 버튼**이 문이다.
      (2026-09-18 사용자 결정: 편집 폼 안의 링크는 없앴다 — 폼은 과제만 고친다.)
