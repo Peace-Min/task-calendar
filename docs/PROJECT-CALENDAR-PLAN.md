@@ -224,6 +224,7 @@ DB-RELEASE-OPS §5 규칙 그대로:
 | `projectCalendarDelete` | `{ projectUid, eventUid, expectedVersion, mutationUid }` | 소프트 삭제, 새 rowVersion |
 | `projectCalendarChanges` | `{ projectUids, changedFrom, changedTo, fieldFilter, cursor, limit }` | 이력 행(기본 50), 다음 커서 `(changedAt, changeNo)`, 더 있음 여부. 묶기(과제별, 날짜순, 일정별)는 웹이 한다 |
 | `projectCalendarCopy` | `{ projectUid, eventUid, expectedVersion, mutationUid }` | 새 개인 일정 uid(부를 때마다 새로), 그리고 개인 스냅샷 재적재 결과 |
+| `projectCalendarMembers` | `{ projectUid }` | 참여자 명단(6.9, 2026-10-23). `{ projectUid, groups: [{ org, users: [{ name, org, title, me }] }], total }`. 읽기 전용, 내 과제에 없으면 forbidden |
 
 - 관리 창(`?win=admin`)과 열람 창(`?peerwin=1`)의 명령 허용 목록에는 넣지 않는다. 병합 때 "허용 목록 밖 명령 거절" 시험이 새 명령을 거르는지 확인한다.
 - 날짜 DTO: `YYYY-MM-DD`, 시각 `HH:mm` 또는 null, UI 종료일은 포함(DB 단일일 `end_date=NULL` 은 시작일과 같은 종료로 회신), `rowVersion` 정수.
@@ -357,6 +358,21 @@ P2 를 실제 앱에서 본 사용자 검토로 정했다. 이 절이 6.4, 6.6, 
 4. **목록 창은 누른 날짜 칸에 붙는다.** 여러 날 막대를 눌러도 목록 창을 막대 요소에 붙이지 않고, 막대가 있는 주 줄(월간 `.pc-week`, 주간 `.pc-wcells`)에서 누른 날짜의 칸(`.pc-day`, `.pc-wday`)을 찾아 거기에 붙인다(못 찾으면 막대). 막대에 붙이면 막대 시작일 쪽(왼쪽 끝)에 떠서 누른 날짜와 멀어졌다(13일을 눌렀는데 11일 쪽에 뜸).
 
 시험: `tests/project-calendar-web.test.mjs` 화면⑦(강조와 줄 초점 없음, 초점은 목록 창), 화면⑦b(방향키로 첫 줄), 화면⑦d(목록 창이 누른 날짜 칸에 붙음, 월간과 주간), 화면⑫와 ⑫b(확인 창 없이 바로 보냄), 정적⑤(강조 코드와 CSS 없음), 변이 R③(강조와 줄 초점 되살림), R⑤(확인 창 되살림), R⑥(막대에 붙임). `tests/project-calendar-host.test.mjs` 과제캘린더⑪(사본 `remind = null`)과 변이PC17. 실 DB 시험 `tests/db-project-calendar.mjs` 는 사본의 `remind IS NULL` 을, 실 위젯 루프 P4 와 P7 은 강조 없음, 날짜 칸, 확인 창 없음, 사본 `remind` null 을 본다.
+
+### 6.9 참여자 명단(2026-10-23)
+
+시안 `docs/prototypes/project-members.html` 을 본 사용자 결정이다.
+
+1. **들어가는 곳은 왼쪽 목록의 n명 하나.** n명이 밑줄 글자 모양의 단추(`.pc-mbc`)가 되고 aria-label 은 "<과제> 참여자 n명 보기"다. 과제 이름은 그대로 글자이고 눌러도 아무 일이 없다(6.7).
+2. **B안: 가운데 창.** 작은 팝오버(A안)가 아니라 앱의 다른 창과 같은 오버레이 모달(`#pcMembersModal`, setupModalA11y, 전역 Esc 의 맨 위 창부터)이다. 좁은 폭(440px 이하)에서는 다른 모달처럼 아래에서 올라오는 시트다. 제목 "<과제> 참여자 n명", 설명 한 줄, 찾기 칸(이름, 소속, 직급), 소속 묶음 머리, 줄마다 굵은 이름, 내 줄에 "나", 오른쪽에 직급, 아래에 닫기.
+3. **소속별로 묶고, 묶음은 조직 순서.** "다른 사람 일정" 명부와 같은 순서다(`widget/ProjectDb.cs` 구성원 조회의 ② 조직 트리 `WHERE t.is_active=1 ORDER BY t.sort_order, t.name` 과 ④ 구성원 `ORDER BY o.name, u.sort_order IS NULL, u.sort_order, u.name` 의 소속 뒤 키). 활성 조직을 그 순서로 읽고 부모가 없거나 활성 목록에 없으면 루트, 루트부터 깊이 우선으로 걷는다(웹 `renderUnitTree`, `pkOrgIndex` 와 같은 걷기, 방문 가드). 묶음 안은 관리자가 정한 순번(NULL 은 뒤), 그다음 이름. 트리에 닿지 않는 소속(비활성 조직)은 트리 뒤에 소속 이름순, 소속 없는 사람은 맨 뒤 "소속 없음". 순서는 호스트가 정하고 화면은 다시 정렬하지 않는다.
+4. **사람의 집합은 참여자 수와 같은 규칙.** 그 과제를 `cal_category`(source='db')로 가진 `app_user.is_active = 1` 인 사람. 그래서 목록의 n명과 명단의 total 이 같다. 열 때 받은 total 이 목록의 수와 다르면(그사이 누가 넣거나 뺐다) 목록의 n명을 고친다.
+5. **보내는 것은 이름, 소속 이름, 직급 이름, 나인지뿐.** 번호, login_id, 이메일은 SQL 이 고르지도 않는다("다른 사람 일정"이 이미 보여 주는 범위).
+6. **숨김 표시 없음:** 과제 탭 체크는 그 PC 에만 저장되어 서버가 모른다. 명단은 내 과제에 넣은 활성 계정 전부. 호스트는 `hidden` 을 보내지 않고 화면도 숨김 배지를 그리지 않는다(2026-10-23 PM 결정, DB 변경 없음).
+7. **호스트 명령 `projectCalendarMembers`(일곱째, 메인 창 전용, 읽기).** 읽기 한 스냅샷(`OpenReadSnapshotAsync`, 버전 관문은 다른 명령과 같이 `DbGate.OpenAsync`), 세션 신원 다음 판정 함수(`RequireProjectAsync`, `EligibleProjectsAsync`, 숨긴 과제도 읽기는 된다), 요청에서 `projectUid` 만 읽는다. 관리 창, 열람 창 허용 목록에는 넣지 않았다.
+8. **웹은 열 때마다 읽는다.** 세대 번호(`PCAL.mb.gen`)로 늦은 회신을 버리고, 읽는 중 안내, 실패하면 창 안에 이유와 다시 시도. 글자는 esc 로만 그린다.
+
+시험: `tests/project-calendar-host.test.mjs` 과제캘린더⑤(일곱 명령, 메인 스위치만), ⑥(`c.source='db'` 세 곳), ⑬(읽기 스냅샷, 판정, projectUid 만, login_id 와 이메일 없음, 회신 키, 참여자 수와 같은 집합, 명부와 같은 ORDER BY, 깊이 우선과 소속 없음 맨 뒤), 변이PC18~20. `tests/project-calendar-web.test.mjs` 화면⑱(단추, 창, 묶음 순서, 나 표시, 찾기, 수 고치기, 이름 누름 그대로, Esc, 기호), 화면⑱b(실패와 다시 시도, 거부 문구, 늦은 회신), 변이R⑦과 R⑧. 실 DB 시험 `tests/db-project-calendar.mjs` 의 [참여자 명단](조직 sort_order 와 하위 조직, 소속 안 순번, 비활성 제외, total 과 참여자 수, 내 과제 밖 거부), 실 위젯 루프 P9(total 과 보이는 n명).
 
 ## 7. 다른 진행 작업과의 관계와 병합 충돌 지점
 

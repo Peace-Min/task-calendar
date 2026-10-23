@@ -2,7 +2,7 @@
 //
 // 이 파일이 지키는 것:
 //   (S) 정적: 웹 글자 상한(PCAL_LIMITS)이 호스트 상수(ProjectCalendarDb.Limits)와 DDL 칸 폭, 입력 칸 maxlength 와 같다.
-//       보내는 명령은 여섯뿐(호스트 Commands 와 같은 목록)이고 pcReq 한 문으로만 나간다. 열람 창과 관리 창 목록에 없다.
+//       보내는 명령은 일곱뿐(호스트 Commands 와 같은 목록)이고 pcReq 한 문으로만 나간다. 열람 창과 관리 창 목록에 없다.
 //       주기 확인(setInterval)이 없다. 장애 띠 자리는 탭 줄 아래. 전역 Esc 와 방향키가 과제 탭을 안다. 기호 규칙.
 //   (P) 순수 계산(node:vm): 막대 차선 배치, 주 경계 자르기, 정렬 고정, 윤년과 같은 날짜와 366일, 월간 보이는 차선 수,
 //       범위, 설정(설정 없음과 빈 선택 구분), 선택 맞추기, 메모 첫 줄, DTO 왕복, 폼 검사, 변경 이력의 전과 후.
@@ -12,6 +12,8 @@
 //       상세의 단추(수정, 개인 일정에 등록, 삭제), 목록 안 방향키와 Esc, 폼 검사와 저장, 충돌(최신 내용 확인, 내 입력 유지),
 //       최근 변경의 종류 필터와 더 보기, 개인 일정에 등록(사본: 누를 때마다 새로, 등록됨과 배지 없음),
 //       계정별 설정, 열람 창과 관리 창과 브라우저에서는 보내지 않음.
+//       참여자 명단(기획 §6.9): n명 단추가 가운데 창을 열고, 호스트가 준 묶음 순서 그대로, 찾기, 나 표시(숨김 표시 없음), 실패와 다시 시도,
+//       늦은 회신 버리기, 목록의 n명 고치기, 과제 이름은 여전히 아무 일 없음, Esc 로 닫힘.
 //   2026-10-22 저녁 검토 반영(기획 §6.7): 단독 보기, 막대 미리보기, 줄의 [수정], 복사 대응과 배지와 "등록됨" 을 걷었다.
 //   (M) 변이: 핵심 줄을 빼면 위 검사가 잡는다.
 // 생략 규약: jsdom 이 없으면 (R)과 그에 기대는 변이는 등록되지 않고 skip(판정 없음)으로 계수된다(러너 exit 2).
@@ -69,7 +71,7 @@ const statics = {
     assert.ok(/if\(!HOST \|\| PEER \|\| SUBWIN\) return/.test(extractFunction(m, 'pcReq')), 'pcReq 가 열람 창, 따로 뜬 창, 브라우저에서 보낸다');
     const sent = new Set([...m.matchAll(/pcReq\('(\w+)'/g)].map((x) => x[1]));
     for (const c of sent) assert.ok(list.includes(c), `목록 밖 명령 ${c} 를 보낸다`);
-    assert.deepStrictEqual([...sent].sort(), [...list].sort(), '여섯 명령 중 쓰지 않는 것이 있다(또는 이름이 다르다)');
+    assert.deepStrictEqual([...sent].sort(), [...list].sort(), '일곱 명령 중 쓰지 않는 것이 있다(또는 이름이 다르다)');
     //  관리 창과 열람 창의 웹 허용 목록에 없다(호스트도 같은 목록으로 거른다, project-calendar-host 시험).
     for (const set of ['ADMINWIN_CMD', 'PEERWIN_CMD', 'PEER_SILENT_CMD']) {
       const b = new RegExp(`const ${set} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(app);
@@ -129,7 +131,7 @@ const statics = {
   },
 };
 test('정적①: 글자 상한이 웹, 호스트, DDL, 입력 칸에서 같다', () => statics.limits(src));
-test('정적②: 명령 여섯만 pcReq 한 문으로, 열람 창과 관리 창 목록 밖, 그 창에서는 탭 줄 없음', () => statics.commands(src));
+test('정적②: 명령 일곱만 pcReq 한 문으로, 열람 창과 관리 창 목록 밖, 그 창에서는 탭 줄 없음', () => statics.commands(src));
 test('정적③: 주기 확인 없음, 띠 자리, Esc, 방향키, 부팅 알림, 숨김 규칙, 글자 이스케이프', () => statics.wiring(src));
 test('정적④: 과제 탭 문구와 주석의 기호 규칙', () => statics.punct(src));
 test('정적⑤: 검토 반영으로 걷은 것(단독 보기, 복사 대응과 배지와 등록됨, 막대 미리보기와 목록 [수정], 누른 줄 강조)이 없다', () => statics.removed(src));
@@ -926,6 +928,124 @@ if (!JSDOM) {
     const bad = seen.flatMap((t) => punctBad(t).map((n) => n + ': ' + t.slice(0, 60)));
     assert.deepStrictEqual(bad, [], '과제 탭 화면 문구에 금지 기호가 있다');
   }));
+
+  //  참여자 명단(기획 §6.9, 2026-10-23 B안). 이름과 소속은 지어낸 값이다. 묶음 순서는 호스트가 정한 그대로 그린다.
+  const MB = () => ({ ok: true, data: { projectUid: P1, total: 5, groups: [
+    { org: '(예시) 개발1팀', users: [{ name: '(예시) 김철수', org: '(예시) 개발1팀', title: '책임', me: false }, { name: '(예시) 홍길동', org: '(예시) 개발1팀', title: '수석', me: true }] },
+    { org: '(예시) 개발2팀', users: [{ name: '(예시) 정하늘', org: '(예시) 개발2팀', title: '선임', me: false }] },
+    { org: '<b>시험</b>팀', users: [{ name: '<img src=x onerror="window.__pwned=3">', org: '<b>시험</b>팀', title: '연구원', me: false }] },
+    { org: '', users: [{ name: '(예시) 윤가을', org: '', title: '', me: false }] },
+  ] } });
+  const mbOpen = (W) => !W.el('pcMembersModal').classList.contains('hidden');
+  const mbGroups = (W) => W.qa('#pcmBox .pcm-grp').map((e) => e.textContent);
+  const mbNames = (W) => W.qa('#pcmBox .pcm-row .pcm-nm').map((e) => e.textContent);
+  //  늦게 온 옛 회신은 버린다: P1 을 연 채 P2 로 다시 열고, P1 회신이 나중에 와도 P2 창에 들지 않는다.
+  async function mbLateCheck(W) {
+    W.ev(`pcOpenMembers(${JSON.stringify(P1)})`); await settle();
+    const a = W.last('projectCalendarMembers');
+    W.ev(`pcOpenMembers(${JSON.stringify(P2)})`); await settle();
+    const b = W.last('projectCalendarMembers');
+    assert.notStrictEqual(a.reqId, b.reqId);
+    W.ev('__hostReply(' + JSON.stringify(a.reqId) + ',' + JSON.stringify(MB()) + ')'); await settle();
+    assert.ok(!W.q('#pcmBox .pcm-row'), '늦게 온 다른 과제(P1)의 명단 회신이 지금 창(P2)에 들어왔다');
+    assert.ok(/^플랫폼 개선 참여자 4명$/.test(W.el('pcmHead').textContent), '늦은 회신이 창 제목을 바꿨다: ' + W.el('pcmHead').textContent);
+  }
+
+  test('화면⑱: n명 단추가 참여자 명단(가운데 창)을 열고, 호스트 순서 그대로 묶음, 나 표시, 숨김 표시 없음, 찾기, 수 고치기, Esc', () => withBoot({}, async (W) => {
+    await W.enter([]);
+    const btn = W.q(`#pcView .pc-mbc[data-uid="${P1}"]`);
+    assert.ok(btn && btn.tagName === 'BUTTON' && btn.textContent === '6명', 'n명이 단추가 아니다');
+    assert.strictEqual(btn.getAttribute('aria-label'), '<b>장비</b> 개발 참여자 6명 보기', 'n명 단추의 aria-label 이 "<과제> 참여자 n명 보기" 가 아니다');
+    //  과제 이름은 그대로 글자다. 눌러도 명단을 읽지 않는다
+    const nm = [...W.qa('#pcView .pc-name')].find((e) => e.textContent === '<b>장비</b> 개발');
+    assert.ok(nm && nm.tagName === 'SPAN' && !nm.closest('button'), '과제 이름이 누를 수 있는 요소가 됐다');
+    await W.click(nm);
+    assert.ok(!mbOpen(W) && W.cmds('projectCalendarMembers').length === 0, '과제 이름을 누르자 명단이 열렸다');
+    await W.click(btn);
+    assert.ok(mbOpen(W), 'n명을 눌렀는데 참여자 창이 열리지 않았다');
+    const rq = W.last('projectCalendarMembers');
+    assert.deepStrictEqual(Object.keys(rq).filter((k) => !['cmd', 'reqId'].includes(k)), ['projectUid'], '명단 요청이 projectUid 말고 다른 값을 보낸다');
+    assert.strictEqual(rq.projectUid, P1);
+    assert.strictEqual(W.el('pcmHead').textContent, '<b>장비</b> 개발 참여자 6명', '창 제목이 "<과제> 참여자 n명" 이 아니다');
+    assert.ok(/읽는 중/.test(W.el('pcmBox').textContent), '읽는 동안 안내가 없다');
+    assert.ok(/내 과제에 넣은 사람/.test(W.q('#pcMembersModal .pcm-sub').textContent), '설명 한 줄이 없다');
+    await W.reply('projectCalendarMembers', MB());
+    assert.deepStrictEqual(mbGroups(W), ['(예시) 개발1팀', '(예시) 개발2팀', '<b>시험</b>팀', '소속 없음'], '묶음이 호스트가 준 순서(소속 없음은 맨 뒤)가 아니다');
+    assert.deepStrictEqual(mbNames(W), ['(예시) 김철수', '(예시) 홍길동', '(예시) 정하늘', '<img src=x onerror="window.__pwned=3">', '(예시) 윤가을'], '묶음 안 순서가 호스트 순서가 아니다');
+    assert.ok(!W.q('#pcmBox img, #pcmBox b') && W.w.__pwned === undefined, '이름이나 소속을 요소로 그렸다');
+    const rows = W.qa('#pcmBox .pcm-row');
+    assert.deepStrictEqual(rows.map((r) => !!r.querySelector('.pcm-me')), [false, true, false, false, false], '"나" 표시가 내 줄에만 있지 않다');
+    assert.strictEqual(rows[1].querySelector('.pcm-me').textContent, '나');
+    assert.strictEqual(rows[0].querySelector('.pcm-title').textContent, '책임', '직급이 줄 오른쪽에 없다');
+    assert.ok(W.w.getComputedStyle(rows[0].querySelector('.pcm-nm')).fontWeight >= 600 || /bold|700/.test(W.w.getComputedStyle(rows[0].querySelector('.pcm-nm')).fontWeight), '이름이 굵지 않다');
+    //  받은 수(5)가 목록의 n명(6)과 다르면 목록을 고친다. 창 제목도 받은 수
+    assert.strictEqual(W.el('pcmHead').textContent, '<b>장비</b> 개발 참여자 5명');
+    const btn2 = W.q(`#pcView .pc-mbc[data-uid="${P1}"]`);
+    assert.ok(btn2.textContent === '5명' && btn2.getAttribute('aria-label') === '<b>장비</b> 개발 참여자 5명 보기', '받은 수와 다른 목록의 n명을 고치지 않았다');
+    assert.strictEqual(W.ev(`pcProj(${JSON.stringify(P1)}).members`), 5);
+    //  찾기: 이름, 소속, 직급
+    const sr = W.el('pcmSearch');
+    const find = async (v) => { sr.value = v; sr.dispatchEvent(new W.w.Event('input', { bubbles: true })); await settle(); };
+    await find('개발2');
+    assert.deepStrictEqual([mbGroups(W), mbNames(W)], [['(예시) 개발2팀'], ['(예시) 정하늘']], '소속으로 찾지 못했다');
+    await find('수석');
+    assert.deepStrictEqual(mbNames(W), ['(예시) 홍길동'], '직급으로 찾지 못했다');
+    await find('윤가');
+    assert.deepStrictEqual([mbGroups(W), mbNames(W)], [['소속 없음'], ['(예시) 윤가을']], '이름으로 찾지 못했다');
+    await find('zz없는사람');
+    assert.ok(!W.q('#pcmBox .pcm-row') && /찾는 사람이 없습니다/.test(W.el('pcmBox').textContent), '찾는 사람이 없을 때 안내가 없다');
+    await find('');
+    assert.strictEqual(mbNames(W).length, 5);
+    //  Esc 로 닫힌다(전역 Esc 의 맨 위 창부터)
+    W.doc.body.dispatchEvent(new W.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await settle();
+    W.clock.advance(500); await settle();
+    assert.ok(!mbOpen(W), 'Esc 로 참여자 창이 닫히지 않았다');
+    //  기호 규칙(창 문구와 title, aria-label, placeholder)
+    const t = [W.el('pcMembersModal').textContent, ...W.qa('#pcMembersModal [title], #pcMembersModal [aria-label], #pcMembersModal [placeholder]').map((e) => [e.getAttribute('title'), e.getAttribute('aria-label'), e.getAttribute('placeholder')].join(' ')), btn2.getAttribute('aria-label')];
+    assert.deepStrictEqual(t.flatMap((x) => punctBad(x)), [], '참여자 창 문구에 금지 기호가 있다');
+  }));
+
+  test('화면⑱b: 명단 읽기 실패는 창 안에 이유와 다시 시도, 다시 시도는 다시 읽는다, 늦게 온 옛 회신은 버린다, 내 과제에 없으면 호스트 문구', () => withBoot({}, async (W) => {
+    await W.enter([]);
+    await W.click(`#pcView .pc-mbc[data-uid="${P2}"]`);
+    await W.reply('projectCalendarMembers', { ok: false, error: { kind: 'network', message: '' } });
+    const al = W.q('#pcmBox [role="alert"]');
+    assert.ok(al && /명단을 읽지 못했습니다/.test(al.textContent) && al.textContent.length > '명단을 읽지 못했습니다. '.length, '실패 이유가 창 안에 없다: ' + (al && al.textContent));
+    const retry = W.q('#pcmBox [data-act="mbRetry"]');
+    assert.ok(retry && retry.textContent === '다시 시도', '다시 시도 단추가 없다');
+    const n0 = W.cmds('projectCalendarMembers').length;
+    await W.click(retry);
+    assert.strictEqual(W.cmds('projectCalendarMembers').length, n0 + 1, '다시 시도가 다시 읽지 않았다');
+    assert.ok(/읽는 중/.test(W.el('pcmBox').textContent));
+    await W.reply('projectCalendarMembers', { ok: true, data: { projectUid: P2, total: 4, groups: [{ org: '(예시) 개발1팀', users: [1, 2, 3, 4].map((i) => ({ name: '(예시) 사람' + i, org: '(예시) 개발1팀', title: '', me: false })) }] } });
+    assert.strictEqual(mbNames(W).length, 4, '다시 시도 뒤 명단이 보이지 않는다');
+    assert.strictEqual(W.q(`#pcView .pc-mbc[data-uid="${P2}"]`).textContent, '4명', '같은 수인데 목록이 바뀌었다');
+    //  거부(내 과제에서 빠졌다)는 호스트의 고정 문구 그대로
+    W.ev(`pcLoadMembers()`); await settle();
+    await W.reply('projectCalendarMembers', { ok: false, error: { kind: 'forbidden', message: '내 과제에 없는 과제입니다. 내 과제에 공식 과제를 넣으면 과제 캘린더를 쓸 수 있습니다.' } });
+    assert.ok(/내 과제에 없는 과제입니다/.test(W.el('pcmBox').textContent), '거부 문구를 보이지 않는다');
+    await mbLateCheck(W);
+  }));
+
+  test('변이R⑦: 명단의 세대 번호 확인을 빼면 화면⑱b 의 늦은 회신 검사가 잡는다', async () => {
+    const bad = mutate('  if(g !== M.gen || M.uid !== uid) return;\n  if(!r.ok){ M.status', '  if(false) return;\n  if(!r.ok){ M.status');
+    const W = await boot({ source: bad });
+    try {
+      await W.enter([]);
+      await assert.rejects(() => mbLateCheck(W), /늦게 온|늦은 회신/, '변이(세대 확인 제거)에서도 늦은 회신이 버려졌다');
+    } finally { W.close(); }
+  });
+  test('변이R⑧: n명을 다시 글자(span)로 되돌리면 화면⑱ 이 잡는다', async () => {
+    const bad = mutate(`'<button type="button" class="pc-mbc" id="pcMbc-' + u + '" data-act="members"`, `'<span class="pc-mbc" id="pcMbc-' + u + '" data-z="members"`);
+    const W = await boot({ source: bad });
+    try {
+      await W.enter([]);
+      const b = W.q(`#pcView .pc-mbc[data-uid="${P1}"]`);
+      assert.ok(b && b.tagName === 'SPAN', '변이가 n명을 글자로 바꾸지 못했다(화면⑱ 이 잡을 차이가 없다)');
+      await W.click(b);
+      assert.ok(!mbOpen(W), '변이본에서도 명단이 열렸다');
+    } finally { W.close(); }
+  });
 
   test('변이R①: 복사 전 개인 저장 기다리기를 빼면 화면⑫ 가 잡는다', async () => {
     const bad = mutate('  await awaitSaveIdle();\n  if(unsaved || __dbSaving', '  if(false && unsaved || __dbSaving');

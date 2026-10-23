@@ -1029,6 +1029,7 @@ namespace TaskCalendarWidget
                     case "projectCalendarDelete":
                     case "projectCalendarChanges":
                     case "projectCalendarCopy":
+                    case "projectCalendarMembers":
                         _ = RunProjectCalendarAsync(cmd, GetStr(doc, "reqId"), raw);   // 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다)
                         break;
 

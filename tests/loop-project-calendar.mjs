@@ -14,6 +14,7 @@
  *    P6 최근 변경: 내 변경이 보이고 종류 필터(수정)가 서버에서 걸린다
  *    P7 개인 일정에 등록(확인 창 없이 바로) → 개인 스냅샷에 새 개인 일정(사본, 미리알림은 새 기록 기본값 null). 상세는 그대로 "개인 일정에 등록"(등록됨 없음), 배지 없음
  *    P8 새로고침 → 목록과 범위를 다시 읽고 일정이 그대로
+ *    P9 참여자 명단: 왼쪽 목록의 n명 단추 → 가운데 창, 받은 total 이 목록에 보이는 수와 같다, Esc 로 닫힘
  *  정리: 과제 일정은 화면(삭제 단추)과 호스트 명령으로 지운다. **공용 일정은 소프트 삭제라 DB 에 행(is_deleted=1)과
  *    변경 이력(cal_project_change)이 남는다. 설계대로다(지우지 않는 기록, 기획 §4.2).** 개인 복사본은 개인 삭제로 지운다.
  *  실행: node tests/loop-project-calendar.mjs [--port=9222] [--seed=N]
@@ -177,6 +178,18 @@ async function fillAndSave(v) {
     await sleep(300);
     const p8 = await waitFor(idle, 20000);
     ok('P8 새로고침: 다시 읽고 일정이 그대로', p8 && (await ev(`PCAL.events.filter(e => e.title.startsWith(${S(TAG)})).length`)) === before, `${before}건`);
+
+    // P9 참여자 명단(기획 §6.9): 왼쪽 목록의 n명 단추 → 가운데 창, 받은 total 이 목록에 보이는 수와 같다(같은 규칙으로 센다)
+    const shown = await ev(`(() => { const b = document.querySelector('#pcView .pc-mbc[data-uid="${projectUid}"]'); if(!b) return -1; const n = parseInt(b.textContent, 10); b.click(); return n; })()`);
+    if (shown < 0) undecide('P9 참여자 단추', '왼쪽 목록에 n명 단추가 없다(좁은 창이면 목록이 접혀 있다)');
+    else {
+      const mbOk = await waitFor(`!document.getElementById('pcMembersModal').classList.contains('hidden') && PCAL.mb.status === 'ok'`, 15000);
+      const mb = await J(`{ status: PCAL.mb.status, err: PCAL.mb.err, total: PCAL.mb.total, rows: document.querySelectorAll('#pcmBox .pcm-row').length, me: document.querySelectorAll('#pcmBox .pcm-me').length,
+        head: document.getElementById('pcmHead').textContent, btn: (document.querySelector('#pcView .pc-mbc[data-uid="${projectUid}"]') || {}).textContent || '' }`);
+      ok('P9 참여자 명단: 창이 열리고 total 이 목록의 n명과 같다(줄 수도 같고 "나" 하나)', mbOk && mb.total === shown && mb.rows === mb.total && mb.me === 1 && mb.btn === mb.total + '명' && mb.head.endsWith(' 참여자 ' + mb.total + '명'), JSON.stringify({ shown, ...mb }));
+      await ev(`(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); return 1; })()`);
+      ok('P9 Esc 로 참여자 창이 닫힌다', await waitFor(`document.getElementById('pcMembersModal').classList.contains('hidden')`, 3000));
+    }
   } catch (e) { fail++; console.log('  ✗ 예외: ' + e.message); }
   finally {
     try {

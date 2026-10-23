@@ -17,7 +17,7 @@ namespace TaskCalendarWidget
     //  정본 db/deploy/schema-calendar.sql 14~15)이고, 그 표의 SQL 규칙은 이 파일에만 있다. 과제별 감시점 표는 없다.
     //  개인 일정에 등록(복사)은 그 순간의 사본을 개인 일정 한 건으로 만들 뿐 대응표가 없다. 원본과 사본은 어느 쪽으로도 이어지지 않는다.
     //
-    //  【명령 여섯】 MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 회신은
+    //  【명령 일곱】 MainWindow 의 메인 창에서만 온다(관리 창, 열람 창 허용 목록 밖). 회신은
     //    { ok, data?, error?: { kind, message } }. kind 는 forbidden, conflict, invalid 와 연결 분류(DbErrorKind).
     //
     //  【신원과 판정】
@@ -63,11 +63,12 @@ namespace TaskCalendarWidget
             public const string Invalid = "invalid";
         }
 
-        //  명령 여섯. MainWindow 의 스위치와 시험이 이 이름을 쓴다.
+        //  명령 일곱. MainWindow 의 스위치와 시험이 이 이름을 쓴다. 참여자 명단(projectCalendarMembers)은 2026-10-23 에 더했다(기획 §6.9).
         internal static readonly string[] Commands =
         {
             "projectCalendarBootstrap", "projectCalendarLoad", "projectCalendarSave",
             "projectCalendarDelete", "projectCalendarChanges", "projectCalendarCopy",
+            "projectCalendarMembers",
         };
 
         private readonly string _dataDir;
@@ -196,6 +197,7 @@ namespace TaskCalendarWidget
                         r.ReloadPersonal = true;
                         return r;
                     }
+                    case "projectCalendarMembers":   return ProjectCalendarReply.Success(await MembersAsync(q, ct));
                     default: throw new PcFail(Kind.Invalid, "알 수 없는 요청입니다.");
                 }
             }
@@ -736,6 +738,115 @@ namespace TaskCalendarWidget
             }
             catch { await SafeRollbackAsync(tx); throw; }
         }
+
+        // ================================================================================
+        //  7. projectCalendarMembers: { projectUid } → 그 과제의 참여자 명단(기획 §6.9, 2026-10-23)
+        // ================================================================================
+        //  읽기 전용 한 스냅샷. 내 과제에 있는 과제만(판정 함수 하나, 숨긴 과제도 읽기는 된다). 아니면 forbidden.
+        //  ★ 사람의 집합은 부트스트랩의 참여자 수와 같은 규칙이다: 그 과제를 cal_category(source='db')로 가진 활성 사용자.
+        //    그래서 목록의 n명과 명단의 total 이 늘 같다.
+        //  ★ 보내는 것은 이름, 소속 이름, 직급 이름, 나인지뿐이다. 번호, login_id, 이메일은 고르지도 않는다.
+        //  ★ 순서는 "다른 사람 일정" 명부와 같다(ProjectDb.cs 구성원 조회의 ② 조직 트리와 ④ 구성원):
+        //    소속 묶음 = 조직 트리 순서. 활성 조직을 ORDER BY sort_order, name 으로 읽고, 부모가 없거나 활성 목록에 없으면 루트,
+        //    루트부터 깊이 우선(형제는 읽은 순서 그대로, 웹 renderUnitTree 와 pkOrgIndex 의 걷기와 같다).
+        //    묶음 안 = u.sort_order IS NULL, u.sort_order, u.name(관리자가 정한 서열, 직급을 끼우지 않는다).
+        //    트리에 닿지 않는 소속(비활성 조직 등)은 트리 뒤에 소속 이름 순, 소속 없는 사람은 맨 뒤 org "" 묶음(웹이 "소속 없음"으로 그린다).
+        //  ★ 숨김 표시는 보내지 않는다. cal_category 에 숨김 칸이 없고, 과제 탭의 표시와 숨김(체크)은 그 PC 의 localStorage 다.
+        private async Task<object> MembersAsync(JsonElement q, CancellationToken ct)
+        {
+            string projectUid = ReqUid(q, "projectUid", "과제");
+
+            string login = SessionLoginId();
+            await using var conn = await OpenReadSnapshotAsync(ct);
+            var me = await IdentityAsync(conn, null, login, ct);
+            await RequireProjectAsync(conn, null, me, projectUid, write: false, ct);
+
+            //  ① 조직 트리(명부 ②와 같은 WHERE 와 ORDER BY)
+            var unitOrder = new List<int>();
+            var unitName = new Dictionary<int, string>();
+            var unitParent = new Dictionary<int, int?>();
+            await using (var cmd = new MySqlCommand(MembersOrgSql, conn))
+            {
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    string n = Str(rd, "name");
+                    if (n.Length == 0) continue;
+                    int oid = Convert.ToInt32(rd["org_id"], CultureInfo.InvariantCulture);
+                    unitOrder.Add(oid);
+                    unitName[oid] = n;
+                    unitParent[oid] = rd.IsDBNull(rd.GetOrdinal("parent_id")) ? (int?)null : Convert.ToInt32(rd["parent_id"], CultureInfo.InvariantCulture);
+                }
+            }
+            //  루트부터 깊이 우선. 형제는 SQL 이 준 순서(sort_order, name). 방문 집합이 부모 순환을 멈춘다.
+            var kids = new Dictionary<int, List<int>>();
+            var roots = new List<int>();
+            foreach (var oid in unitOrder)
+            {
+                int? par = unitParent[oid];
+                if (par == null || !unitName.ContainsKey(par.Value)) roots.Add(oid);
+                else { if (!kids.TryGetValue(par.Value, out var l)) kids[par.Value] = l = new List<int>(); l.Add(oid); }
+            }
+            var treeOrder = new List<int>();
+            var seenUnit = new HashSet<int>();
+            void Walk(int oid)
+            {
+                if (!seenUnit.Add(oid)) return;
+                treeOrder.Add(oid);
+                if (kids.TryGetValue(oid, out var ks)) foreach (var k in ks) Walk(k);
+            }
+            foreach (var r in roots) Walk(r);
+
+            //  ② 사람(명부 ④와 같은 소속 안 순서). 집합은 참여자 수와 같은 규칙(source='db', 활성)이다.
+            var byOrg = new Dictionary<int, List<Dictionary<string, object?>>>();
+            var orgLabel = new Dictionary<int, string>();
+            var noOrg = new List<Dictionary<string, object?>>();
+            int total = 0;
+            await using (var cmd = new MySqlCommand(MembersSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@me", me.UserId);
+                cmd.Parameters.AddWithValue("@pu", projectUid);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                while (await rd.ReadAsync(ct))
+                {
+                    string org = Str(rd, "org_name");
+                    var row = new Dictionary<string, object?>
+                    {
+                        ["name"] = Str(rd, "name"),
+                        ["org"] = org,
+                        ["title"] = Str(rd, "title_name"),
+                        ["me"] = Convert.ToInt32(rd["is_me"], CultureInfo.InvariantCulture) == 1,
+                    };
+                    total++;
+                    int oi = rd.GetOrdinal("org_id");
+                    if (rd.IsDBNull(oi) || org.Length == 0) { noOrg.Add(row); continue; }
+                    int oid = Convert.ToInt32(rd.GetValue(oi), CultureInfo.InvariantCulture);
+                    if (!byOrg.TryGetValue(oid, out var l)) { byOrg[oid] = l = new List<Dictionary<string, object?>>(); orgLabel[oid] = org; }
+                    l.Add(row);
+                }
+            }
+
+            var groups = new List<object>();
+            void Put(string org, List<Dictionary<string, object?>> users) =>
+                groups.Add(new Dictionary<string, object?> { ["org"] = org, ["users"] = users });
+            foreach (var oid in treeOrder) if (byOrg.Remove(oid, out var l)) Put(orgLabel[oid], l);
+            var rest = new List<int>(byOrg.Keys);
+            rest.Sort((a, b) => { int c = string.CompareOrdinal(orgLabel[a], orgLabel[b]); return c != 0 ? c : a.CompareTo(b); });
+            foreach (var oid in rest) Put(orgLabel[oid], byOrg[oid]);
+            if (noOrg.Count > 0) Put("", noOrg);
+            return new Dictionary<string, object?> { ["projectUid"] = projectUid, ["groups"] = groups, ["total"] = total };
+        }
+
+        //  참여자 명단의 두 SQL. 시험(tests/project-calendar-host.test.mjs)이 명부(ProjectDb.cs)의 ORDER BY 와 글자로 대조한다.
+        private const string MembersOrgSql =
+            "SELECT t.org_id, t.name, t.parent_id, t.sort_order FROM org_unit t " +
+            "WHERE t.is_active=1 ORDER BY t.sort_order, t.name";
+        private const string MembersSql =
+            "SELECT u.name, u.org_id, o.name AS org_name, t.name AS title_name, (u.user_id = @me) AS is_me " +
+            "FROM app_user u LEFT JOIN org_unit o ON o.org_id = u.org_id " +
+            "LEFT JOIN title_code t ON t.title_id = u.title_id " +
+            "WHERE u.is_active = 1 AND EXISTS (SELECT 1 FROM cal_category c WHERE c.user_id = u.user_id AND c.source='db' AND c.project_uid = @pu) " +
+            "ORDER BY u.sort_order IS NULL, u.sort_order, u.name";
 
         // ── 일정 읽기 ──────────────────────────────────────────────────────────
         private static async Task<Ev?> EventByUidForUpdateAsync(MySqlConnection conn, MySqlTransaction tx, string uid, CancellationToken ct) =>

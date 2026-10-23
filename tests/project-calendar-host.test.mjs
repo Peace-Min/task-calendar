@@ -8,7 +8,7 @@
 //   ③ 공용 쓰기 트랜잭션은 판정(신원, 내 과제의 쓸 수 있는 과제)으로 시작하고, 일정 행을 잡은 뒤 재시도를 본다.
 //      개인 복사는 판정 다음 원본 일정 행 공유 잠금, 그다음 cal_user_rev.
 //   ④ 커밋은 한 곳(CommitWithGateAsync)이고 바로 앞에서 관문을 다시 읽는다. 쓰기 명령은 모두 그 함수로 커밋한다.
-//   ⑤ 명령 여섯은 메인 창 스위치에만 있다. 관리 창과 열람 창 허용 목록(호스트와 웹 둘 다)에 없고, 그 창에서 오면 거절된다.
+//   ⑤ 명령 일곱은 메인 창 스위치에만 있다. 관리 창과 열람 창 허용 목록(호스트와 웹 둘 다)에 없고, 그 창에서 오면 거절된다.
 //   ⑥ 웹이 보낸 사용자 값을 읽지 않는다: 요청에서 읽는 키가 정해진 목록 안이고, 신원은 세션(UserSession)에서 온다.
 //      edit_role 을 보지 않는다. 판정 SQL 은 한 함수(EligibleProjectsAsync)에만 있고 모든 명령이 그것을 거친다.
 //   ⑦ 글자 상한 상수(호스트 Limits)가 DDL 칸 폭과 같다(정본과 조각 둘 다).
@@ -19,6 +19,9 @@
 //      먼저 돌아가는 길이 없으며, 부트스트랩이 copies 를 돌려주지 않는다. 성공하면 늘 개인 스냅샷을 다시 싣는다.
 //   ⑫ 과제별 감시점 표(cal_project_rev)와 과제별 판(rev, projectRev)이 없다(2026-10-22 저녁 결정). 과제 영구 삭제와 엇갈린
 //      FK 오류(1452, 1451)는 고정 문구 forbidden, 같은 uid 의 동시 생성(1062)은 재시도로 돌려준다.
+//   ⑬ 참여자 명단(projectCalendarMembers, 기획 §6.9): 읽기 한 스냅샷, 판정 함수(내 과제)를 거치고, 요청에서 projectUid 만 읽는다.
+//      사람의 집합은 참여자 수와 같은 규칙(source='db', 활성)이고, SQL 은 login_id 와 이메일을 고르지 않으며 회신 키는 이름, 소속,
+//      직급, 나뿐이다. 순서는 "다른 사람 일정" 명부(ProjectDb.cs)의 조직 트리 ORDER BY 와 소속 안 ORDER BY 를 글자로 따른다.
 //   그리고 변이: 위 검사들이 실제로 무는지 원본을 고쳐 본다.
 import { test, assert, readText, extractCsMember, stripCsComments } from './harness.mjs';
 import { mutate } from './ps-guard-lib.mjs';
@@ -41,7 +44,7 @@ const src = {
 
 const TABLES = ['cal_project_event', 'cal_project_change'];
 const COMMANDS = ['projectCalendarBootstrap', 'projectCalendarLoad', 'projectCalendarSave',
-  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy'];
+  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy', 'projectCalendarMembers'];
 
 // 정본의 CREATE TABLE 한 개(머리부터 COMMENT='...' 까지, 끝 ; 제외)
 function canonDef(canon, t) {
@@ -175,9 +178,9 @@ const checks = {
       assert.ok(!admin.has(c), `${c} 가 관리 창 허용 목록(AdminWinCommands)에 있다`);
       assert.ok(code.includes(`case "${c}":`), `메인 창 스위치에 ${c} 가 없다`);
     }
-    //  여섯 case 가 한 덩어리로 RunProjectCalendarAsync 를 부른다
+    //  일곱 case 가 한 덩어리로 RunProjectCalendarAsync 를 부른다
     assert.ok(new RegExp(COMMANDS.map((c) => `case "${c}":\\s*`).join('') + '_ = RunProjectCalendarAsync\\(cmd, GetStr\\(doc, "reqId"\\), raw\\);\\s*break;').test(code),
-      '여섯 명령이 한 덩어리로 RunProjectCalendarAsync 를 부르지 않는다');
+      '일곱 명령이 한 덩어리로 RunProjectCalendarAsync 를 부르지 않는다');
     //  따로 뜨는 창의 거절: 그 종류의 허용 목록(WinKind.Commands = 위 두 집합) 밖이면 거절 회신
     assert.ok(/if \(!fromWin\.Commands\.Contains\(cmd\)/.test(code) && /에서는 할 수 없는 요청입니다/.test(code), '따로 뜨는 창의 허용 목록 밖 명령을 거절하는 분기가 없다');
     assert.ok(/Commands = MainWindow\.PeerWinCommands/.test(appwin) && /Commands = MainWindow\.AdminWinCommands/.test(appwin), 'AppWindow 의 창 종류 허용 목록이 MainWindow 의 두 집합이 아니다');
@@ -187,10 +190,10 @@ const checks = {
       assert.ok(m, `웹의 ${name} 를 찾지 못했다`);
       for (const c of COMMANDS) assert.ok(!m[1].includes(`'${c}'`), `웹의 ${name} 에 ${c} 가 있다`);
     }
-    //  호스트 쪽 명령 목록과 배선이 같은 여섯이다
+    //  호스트 쪽 명령 목록과 배선이 같은 일곱이다
     const listed = /internal static readonly string\[\] Commands =\s*\{([\s\S]*?)\};/.exec(stripCsComments(pcdb));
     assert.ok(listed, 'ProjectCalendarDb.Commands 가 없다');
-    assert.deepStrictEqual([...listed[1].matchAll(/"(\w+)"/g)].map((x) => x[1]).sort(), [...COMMANDS].sort(), 'ProjectCalendarDb.Commands 가 여섯 명령과 다르다');
+    assert.deepStrictEqual([...listed[1].matchAll(/"(\w+)"/g)].map((x) => x[1]).sort(), [...COMMANDS].sort(), 'ProjectCalendarDb.Commands 가 일곱 명령과 다르다');
     for (const c of COMMANDS) assert.ok(new RegExp(`case "${c}":`).test(stripCsComments(pcdb)), `ProjectCalendarDb.HandleAsync 에 ${c} 가 없다`);
     assert.ok(/new ProjectCalendarDb\(_dataDir, Log\)\.HandleAsync\(cmd, raw\)/.test(host) && /ReplyOnUi\(reqId, r\.ToPayload\(\)\)/.test(host), '배선이 HandleAsync 회신을 ReplyOnUi 로 보내지 않는다');
   },
@@ -215,14 +218,16 @@ const checks = {
     assert.ok(/SELECT user_id, name, is_active FROM app_user WHERE login_id=@id/.test(idf) && /is_active"\], CultureInfo\.InvariantCulture\) != 1\) throw new PcFail\(Kind\.Forbidden/.test(idf), '신원 확인이 활성 사용자(app_user)만 통과시키지 않는다');
     assert.ok(!/edit_role/.test(code), 'ProjectCalendarDb 가 edit_role 을 본다(공용 쓰기는 역할과 무관, §5.2)');
     //  판정 SQL(cal_category, source='db')은 한 함수에만, 모든 명령이 그 함수를 거친다
-    assert.strictEqual((code.match(/c\.source='db'/g) || []).length, 2, "판정 SQL(c.source='db')이 EligibleSql 과 참여자 수 두 곳이 아니다");
+    //  c.source='db' 는 판정(EligibleSql), 참여자 수(부트스트랩), 참여자 명단(MembersSql) 세 곳이다. 뒤의 둘은 같은 사람 집합이다(⑬).
+    assert.strictEqual((code.match(/c\.source='db'/g) || []).length, 3, "c.source='db' 가 EligibleSql, 참여자 수, 참여자 명단 세 곳이 아니다");
     assert.strictEqual((code.match(/\bEligibleSql\b/g) || []).length, 2, 'EligibleSql 을 EligibleProjectsAsync 밖에서도 쓴다');
     assert.ok(extractCsMember(pcdb, 'private static async Task<List<Proj>> EligibleProjectsAsync(').includes('EligibleSql'), '판정 함수가 EligibleSql 을 쓰지 않는다');
     //  공용 쓰기(저장, 삭제)는 BeginSharedWriteAsync 가 신원과 쓰기 판정을 한다
     const begin = extractCsMember(pcdb, 'BeginSharedWriteAsync(\n            MySqlConnection conn');
     assert.ok(/IdentityAsync\(/.test(begin) && /RequireProjectAsync\(conn, tx, me, projectUid, write: true, ct, lockProject: true\)/.test(begin), 'BeginSharedWriteAsync 가 신원과 쓰기 판정(숨긴 과제 거부)을 하지 않는다');
     for (const fn of ['private async Task<object> BootstrapAsync(', 'private async Task<object> LoadAsync(', 'private async Task<object> SaveAsync(',
-      'private async Task<object> DeleteAsync(', 'private async Task<object> ChangesAsync(', 'private async Task<object> CopyAsync(']) {
+      'private async Task<object> DeleteAsync(', 'private async Task<object> ChangesAsync(', 'private async Task<object> CopyAsync(',
+      'private async Task<object> MembersAsync(']) {
       const b = extractCsMember(pcdb, fn);
       const viaBegin = /BeginSharedWriteAsync\(conn, login, projectUid, ct\)/.test(b);
       assert.ok(viaBegin || /EligibleProjectsAsync\(|RequireProjectAsync\(/.test(b), `${fn} 가 판정 함수를 거치지 않는다`);
@@ -332,6 +337,57 @@ const checks = {
     //  같은 uid 의 동시 생성(1062)은 재시도로 돌려준다(원문 오류가 아니다)
     assert.ok(/catch \(MySqlException dx\) when \(dx\.Number == 1062\)[\s\S]{0,400}return SaveData\(won, replayed: true\);/.test(stripCsComments(extractCsMember(pcdb, 'private async Task<object> SaveAsync('))), '같은 uid 동시 생성(1062)을 재시도로 돌려주지 않는다');
   },
+
+  // ══ ⑬ 참여자 명단 ═══════════════════════════════════════════════════
+  members(pcdb, pdb) {
+    const code = stripCsComments(pcdb);
+    assert.ok(/case "projectCalendarMembers":\s*return ProjectCalendarReply\.Success\(await MembersAsync\(q, ct\)\);/.test(code), 'HandleAsync 가 projectCalendarMembers 를 MembersAsync 로 보내지 않는다');
+    const body = stripCsComments(extractCsMember(pcdb, 'private async Task<object> MembersAsync('));
+    //  읽기 한 스냅샷: 트랜잭션도 쓰기 문장도 없다
+    assert.ok(/await using var conn = await OpenReadSnapshotAsync\(ct\);/.test(body), '참여자 명단이 읽기 스냅샷(OpenReadSnapshotAsync)으로 열지 않는다');
+    assert.ok(!/BeginTransactionAsync|OpenAsync\(WritePreambleSql|Exec\(|CommitWithGateAsync|ExecuteNonQueryAsync/.test(body), '참여자 명단이 쓰기 경로(트랜잭션, Exec, 커밋)를 쓴다');
+    //  신원(세션) 다음 판정 함수(내 과제, 읽기). 판정 앞에 다른 조회가 없다
+    const iSess = body.indexOf('SessionLoginId()'), iId = body.indexOf('await IdentityAsync(conn, null, login, ct)'),
+      iReq = body.indexOf('await RequireProjectAsync(conn, null, me, projectUid, write: false, ct)'), iCmd = body.indexOf('new MySqlCommand(');
+    assert.ok(iSess > 0 && iId > iSess && iReq > iId && iCmd > iReq, '참여자 명단이 세션 신원, 판정(RequireProjectAsync, 내 과제) 다음에 읽지 않는다');
+    //  요청에서 읽는 키는 projectUid 하나
+    const keys = new Set([...body.matchAll(/\(q, "(\w+)"/g)].map((m) => m[1]).concat([...body.matchAll(/q\.TryGetProperty\("(\w+)"/g)].map((m) => m[1])));
+    assert.deepStrictEqual([...keys], ['projectUid'], '참여자 명단이 요청에서 projectUid 말고 다른 값을 읽는다: ' + [...keys].join(', '));
+    //  SQL: 고르는 열은 이름, 소속(번호와 이름), 직급 이름, 나인지뿐. login_id, 이메일은 어디에도 없다
+    const cst = (name) => { const m = new RegExp(`private const string ${name} =\\s*([\\s\\S]*?);\\n`).exec(code); assert.ok(m, `${name} 가 없다`); return m[1].replace(/"\s*\+\s*"/g, '').replace(/^"|"$/g, ''); };
+    const msql = cst('MembersSql'), osql = cst('MembersOrgSql');
+    for (const [label, q] of [['MembersSql', msql], ['MembersOrgSql', osql]]) {
+      assert.ok(!/login_id|e_?mail|\bmail\b|password|phone/i.test(q), `${label} 가 login_id 나 연락처를 고른다`);
+    }
+    const sel = /^SELECT (.*?) FROM app_user u /.exec(msql);
+    assert.ok(sel, 'MembersSql 이 app_user 에서 고르지 않는다');
+    const aliases = sel[1].split(',').map((c) => { const t = c.trim(); const a = / AS (\w+)$/.exec(t); return a ? a[1] : t.replace(/^\w+\./, ''); });
+    assert.deepStrictEqual(aliases, ['name', 'org_id', 'org_name', 'title_name', 'is_me'], 'MembersSql 이 고르는 열이 이름, 소속, 직급, 나 말고 더 있다: ' + aliases.join(', '));
+    assert.ok(/\(u\.user_id = @me\) AS is_me/.test(sel[1]), '나 표시가 세션 사람과의 비교가 아니다');
+    //  회신 키: 사람 { name, org, title, me }, 묶음 { org, users }, 전체 { projectUid, groups, total }. 번호와 login_id 를 싣지 않는다
+    const rowKeys = [...(/var row = new Dictionary<string, object\?>\s*\{([\s\S]*?)\};/.exec(body) || ['', ''])[1].matchAll(/\["(\w+)"\] =/g)].map((m) => m[1]);
+    assert.deepStrictEqual(rowKeys, ['name', 'org', 'title', 'me'], '참여자 한 사람의 회신 키가 name, org, title, me 가 아니다');
+    assert.ok(/\["org"\] = org, \["users"\] = users/.test(body) && /\["projectUid"\] = projectUid, \["groups"\] = groups, \["total"\] = total/.test(body), '참여자 명단 회신 모양이 { projectUid, groups: [{ org, users }], total } 가 아니다');
+    assert.ok(!/\["(loginId|userId|login|email|orgId|id)"\]/.test(body), '참여자 명단 회신에 번호나 login_id 가 있다');
+    //  사람의 집합 = 참여자 수(부트스트랩)와 같은 규칙: source='db', 그 과제, 활성 사용자
+    assert.ok(/WHERE u\.is_active = 1 AND EXISTS \(SELECT 1 FROM cal_category c WHERE c\.user_id = u\.user_id AND c\.source='db' AND c\.project_uid = @pu\)/.test(msql), '참여자 명단의 사람 집합이 참여자 수 규칙(source=db, 그 과제, 활성)이 아니다');
+    const boot = stripCsComments(extractCsMember(pcdb, 'private async Task<object> BootstrapAsync('));
+    assert.ok(/JOIN app_user u ON u\.user_id = c\.user_id AND u\.is_active = 1 " \+\s*"WHERE c\.source='db' AND c\.project_uid IN/.test(boot), '부트스트랩의 참여자 수 규칙이 바뀌었다(명단과 같은 규칙인지 다시 맞출 것)');
+    //  순서: 명부(ProjectDb.cs)의 ORDER BY 를 글자로 따른다
+    const pcode = stripCsComments(pdb);
+    const orgOrder = /"WHERE t\.is_active=1 ORDER BY ([^"]+)"/.exec(pcode);
+    assert.ok(orgOrder, '명부의 조직 트리 ORDER BY 를 찾지 못했다(ProjectDb.cs)');
+    assert.ok(osql.endsWith('WHERE t.is_active=1 ORDER BY ' + orgOrder[1]), `참여자 명단의 조직 순서가 명부(ORDER BY ${orgOrder[1]})와 다르다: ${osql}`);
+    const userOrder = /: "ORDER BY o\.name, ([^"]+)"\);/.exec(pcode);
+    assert.ok(userOrder, '명부의 소속 안 ORDER BY 를 찾지 못했다(ProjectDb.cs)');
+    assert.ok(msql.endsWith('ORDER BY ' + userOrder[1]), `참여자 명단의 소속 안 순서가 명부(ORDER BY o.name, ${userOrder[1]})의 소속 뒤 키와 다르다: ${msql}`);
+    //  묶음 순서: 루트(부모 없음이나 활성 목록 밖)부터 깊이 우선(방문 가드), 트리 밖 소속은 그 뒤, 소속 없음은 맨 뒤
+    assert.ok(/if \(par == null \|\| !unitName\.ContainsKey\(par\.Value\)\) roots\.Add\(oid\);/.test(body), '루트 규칙이 명부(부모가 없거나 목록에 없으면 루트)와 다르다');
+    assert.ok(/if \(!seenUnit\.Add\(oid\)\) return;\s*treeOrder\.Add\(oid\);\s*if \(kids\.TryGetValue\(oid, out var ks\)\) foreach \(var k in ks\) Walk\(k\);/.test(body), '조직 트리를 깊이 우선(방문 가드)으로 걷지 않는다');
+    const iTree = body.indexOf('foreach (var oid in treeOrder)'), iRest = body.indexOf('foreach (var oid in rest)'), iNone = body.indexOf('if (noOrg.Count > 0) Put("", noOrg);');
+    assert.ok(iTree > 0 && iRest > iTree && iNone > iRest, '묶음 순서가 트리 순서, 트리 밖 소속, 소속 없음(맨 뒤)이 아니다');
+    assert.ok(!/\.Sort\(/.test(body.slice(body.indexOf('new MySqlCommand(MembersSql'), iTree)), '소속 안 순서를 호스트가 다시 정렬한다(SQL 순서를 그대로 써야 한다)');
+  },
 };
 
 // ══ 계약 ═══════════════════════════════════════════════════════════════
@@ -341,7 +397,7 @@ test('과제캘린더①c: 정본 DROP 목록에 새 표 둘이 있고 시드가
 test('과제캘린더②: 연결은 DbGate.OpenAsync 하나, 읽기와 쓰기 프리앰블이 각자의 격리수준과 UTC 를 건다', () => checks.connections(src.pcdb));
 test('과제캘린더③: 공용 쓰기는 판정으로 시작하고 일정 행을 잡은 뒤 재시도를 본다, 개인 복사는 원본 일정 공유 잠금 다음 cal_user_rev', () => checks.firstStatement(src.pcdb));
 test('과제캘린더④: 커밋은 한 곳이고 바로 앞에서 관문을 다시 읽는다', () => checks.gateBeforeCommit(src.pcdb));
-test('과제캘린더⑤: 명령 여섯은 메인 창 전용이다(관리 창, 열람 창 허용 목록 밖, 거절 분기)', () => checks.mainOnly(src.main, src.appwin, src.html, src.pcdb, src.host));
+test('과제캘린더⑤: 명령 일곱은 메인 창 전용이다(관리 창, 열람 창 허용 목록 밖, 거절 분기)', () => checks.mainOnly(src.main, src.appwin, src.html, src.pcdb, src.host));
 test('과제캘린더⑥: 웹이 보낸 사용자 값을 쓰지 않고, 신원은 세션, 판정은 함수 하나를 모든 명령이 거친다', () => checks.identity(src.pcdb));
 test('과제캘린더⑦: 글자 상한(제목, 장소, 이름 200, 메모 8,000)이 DDL 칸 폭과 같고, 넘으면 자르지 않고 거절한다', () => checks.limits(src.pcdb, src.canon, src.frag));
 test('과제캘린더⑧: 휴지통 과제 영구 삭제는 공용 일정이 있으면 고정 문구로 거부한다(목록 힌트도 같은 문장)', () => checks.trash(src.pdb));
@@ -349,6 +405,7 @@ test('과제캘린더⑨: 새 표 둘에 DELETE 권한이 없고 호스트에도
 test('과제캘린더⑩: 개인 복사가 개인 저장과 같은 행 투영, INSERT 문, rev 증가를 쓴다', () => checks.copyProjection(src.cwdb));
 test('과제캘린더⑪: 개인 복사는 한 번 찍는 사본이다(대응표 없음, 먼저 돌아가는 길 없음, copies 없음, 늘 개인 재적재, 미리알림은 새 기록 기본값)', () => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, src.grants, src.server));
 test('과제캘린더⑫: 과제별 감시점과 판이 없고, 과제 영구 삭제와 엇갈린 FK 오류는 고정 문구 forbidden 이다', () => checks.noProjectRev(src.pcdb, src.canon, src.frag, src.grants, src.server));
+test('과제캘린더⑬: 참여자 명단은 읽기 전용, 내 과제 판정, projectUid 만 읽음, login_id 와 이메일 없음, 참여자 수와 같은 집합, 명부와 같은 순서', () => checks.members(src.pcdb, src.pdb));
 
 // ══ 변이 ═══════════════════════════════════════════════════════════════
 test('변이PC1: 조각의 정의를 정본과 다르게 바꾸면 ①a 가 실패한다', () => {
@@ -434,6 +491,28 @@ test('변이PC16: 공용 쓰기가 과제 행보다 일정 행을 먼저 잠그�
   assert.ok(body.includes(proj), '변이 준비 실패');
   const bad2 = mutate(src.pcdb, proj, '                var pre = await EventByUidForShareAsync(conn, tx, eventUid, ct);\n' + proj);
   assert.throws(() => checks.firstStatement(bad2), /잠금 순서/);
+});
+
+test('변이PC18: 참여자 명단의 소속 안 순서를 이름순으로 바꾸면 ⑬ 이 실패한다', () => {
+  const bad = mutate(src.pcdb, '"ORDER BY u.sort_order IS NULL, u.sort_order, u.name";', '"ORDER BY u.name";');
+  assert.throws(() => checks.members(bad, src.pdb), /소속 안 순서가 명부/);
+  const bad2 = mutate(src.pcdb, '"WHERE t.is_active=1 ORDER BY t.sort_order, t.name";', '"WHERE t.is_active=1 ORDER BY t.name";');
+  assert.throws(() => checks.members(bad2, src.pdb), /조직 순서가 명부/);
+});
+test('변이PC19: 참여자 명단이 판정을 건너뛰거나 login_id 를 고르거나 요청에서 다른 값을 읽으면 ⑬ 이 실패한다', () => {
+  const bad = mutate(src.pcdb, '            await RequireProjectAsync(conn, null, me, projectUid, write: false, ct);\n', '');
+  assert.throws(() => checks.members(bad, src.pdb), /판정\(RequireProjectAsync/);
+  const bad2 = mutate(src.pcdb, '"SELECT u.name, u.org_id, o.name AS org_name,', '"SELECT u.name, u.login_id, u.org_id, o.name AS org_name,');
+  assert.throws(() => checks.members(bad2, src.pdb), /login_id/);
+  const at = '            string projectUid = ReqUid(q, "projectUid", "과제");\n\n            string login = SessionLoginId();\n            await using var conn = await OpenReadSnapshotAsync(ct);\n            var me = await IdentityAsync(conn, null, login, ct);\n            await RequireProjectAsync(';
+  const bad3 = mutate(src.pcdb, at, at.replace('"과제");\n', '"과제");\n            string who = Str(q, "loginId");\n'));
+  assert.throws(() => checks.members(bad3, src.pdb), /projectUid 말고/);
+});
+test('변이PC20: 소속 없음 묶음을 맨 앞에 두면 ⑬ 이 실패한다, 명단을 메인 스위치에서 빼면 ⑤ 가 실패한다', () => {
+  const bad = mutate(src.pcdb, '            foreach (var oid in treeOrder)', '            if (noOrg.Count > 0) Put("", noOrg);\n            foreach (var oid in treeOrder)');
+  assert.throws(() => checks.members(bad, src.pdb), /소속 없음\(맨 뒤\)/);
+  const bad2 = mutate(src.main, 'case "projectCalendarMembers":', '');
+  assert.throws(() => checks.mainOnly(bad2, src.appwin, src.html, src.pcdb, src.host), /projectCalendarMembers|일곱 명령/);
 });
 
 //  생성은 잠그지 않고 읽는다. 아직 없는 uid 를 FOR UPDATE 로 읽으면 uid 색인 빈틈이 잠겨 동시 생성 둘이 교착한다(1213, 2026-10-22).

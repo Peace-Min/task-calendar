@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 namespace TaskCalendarWidget
 {
     // ================================================================================
-    //  과제 캘린더 명령 여섯의 배선(docs/PROJECT-CALENDAR-PLAN.md §5.4)
+    //  과제 캘린더 명령 일곱의 배선(docs/PROJECT-CALENDAR-PLAN.md §5.4, 참여자 명단은 §6.9)
     // ================================================================================
     //  OnWebMessage 의 스위치가 부른다. 메인 창 전용이다: 관리 창(AdminWinCommands)과 열람 창(PeerWinCommands)
     //  허용 목록에 이 명령이 없으므로 그 창에서 오면 OnWebMessage 가 먼저 거절한다(시험이 지킨다).

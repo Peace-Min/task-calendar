@@ -20,6 +20,8 @@
  *      - 개인 복사: 한 번 찍는 사본(대응표 없음). 같은 원본을 두 번 등록하면 개인 일정 두 건, 부트스트랩에 copies 없음,
  *        복사본을 지워도 공용 일정은 그대로, 복사가 중간에 실패하면 개인 행 0
  *      - 글자 상한 초과는 invalid(자르지 않고 아무것도 쓰지 않는다)
+ *      - 참여자 명단(기획 §6.9): 묶음은 명부와 같은 조직 트리 순서(sort_order, 하위는 부모 뒤, 소속 없음 맨 뒤), 소속 안은 관리자 순번,
+ *        비활성 제외, total = 참여자 수, 키는 name, org, title, me 뿐, 내 과제에 없는 과제는 forbidden
  *
  *  【어디에 치나】 공용 개발 DB(taskcalendar)가 아니라 **복사본**(기본 zz_pc_dev, 이름이 zz_ 로 시작해야 한다)이다.
  *    구조 번호가 정확히 같아야 동작하는 관문 때문에 공용 DB 를 16 으로 올리면 다른 세션의 위젯이 막힌다(§8.1).
@@ -383,6 +385,61 @@ async function main() {
       num(`SELECT CHAR_LENGTH(title) FROM cal_project_event WHERE uid='${big}'`) === 200 && num(`SELECT CHAR_LENGTH(memo) FROM cal_project_event WHERE uid='${big}'`) === 8000, JSON.stringify(r).slice(0, 200));
     r = cmd('u1', 'projectCalendarSave', { projectUid: D.p1.uid, eventUid: randomUUID(), mutationUid: randomUUID(), event: ev('zz 시각', { endDate: '2026-11-03', startTime: '09:00', endTime: '10:00' }) });
     ok('여러 날 일정에 시각: invalid', !r.ok && r.error.kind === 'invalid');
+
+    console.log('\n[참여자 명단(기획 §6.9)]');
+    {
+      //  과제 p4 를 따로 만든다(p1 의 참여자 수 검사와 섞이지 않게). 조직 셋: 최상위 둘(sort_order 가 이름순과 반대)과 하위 하나(sort_order 0).
+      //  명부와 같은 순서면 묶음은 B(1), A(2), A 의 하위 C(0, 깊이 우선이라 A 바로 뒤), 소속 없음(맨 뒤).
+      const tag = String(Date.now()).slice(-6);
+      const pn = `zz_pc p4 ${tag}`;
+      const sec = num('SELECT MIN(section_id) FROM section_code'), cus = num('SELECT MIN(customer_id) FROM customer');
+      sql(`INSERT INTO project (section_id, customer_id, project_name) VALUES (${sec}, ${cus}, '${esc(pn)}')`, '과제 p4');
+      const [, p4uid] = sql(`SELECT id, uid FROM project WHERE project_name='${esc(pn)}'`)[0];
+      const org = (name, parent, so) => {
+        sql(`INSERT INTO org_unit (name, parent_id, sort_order) VALUES ('${esc(name)}', ${parent == null ? 'NULL' : parent}, ${so})`, '조직');
+        return { id: num(`SELECT org_id FROM org_unit WHERE name='${esc(name)}'`), name };
+      };
+      const oA = org(`zz_pc 가조직 ${tag}`, null, 2), oB = org(`zz_pc 나조직 ${tag}`, null, 1), oC = org(`zz_pc 다조직 ${tag}`, oA.id, 0);
+      const title = sql('SELECT title_id, name FROM title_code WHERE is_active=1 ORDER BY sort_order, title_id LIMIT 1')[0] || [null, ''];
+      const addUser = (login, name, orgId, so, act = 1) => {
+        sql(`INSERT INTO app_user (login_id, name, edit_role, is_active, org_id, sort_order, title_id) VALUES ('${login}', '${esc(name)}', 'viewer', ${act}, ${orgId == null ? 'NULL' : orgId}, ${so == null ? 'NULL' : so}, ${title[0] == null ? 'NULL' : title[0]})`, '사용자');
+        return num(`SELECT user_id FROM app_user WHERE login_id='${login}'`);
+      };
+      const addCatP4 = (uid) => {
+        const no = num(`SELECT IFNULL(MAX(cat_no),0)+1 FROM cal_category WHERE user_id=${uid}`);
+        sql(`INSERT INTO cal_category (user_id, cat_no, uid, source, name, color, project_uid, sort_order, created_at, updated_at)
+             VALUES (${uid}, ${no}, 'db-${p4uid}', 'db', '${esc(pn)}', '#336699', '${p4uid}', ${no}, UTC_TIMESTAMP(3), UTC_TIMESTAMP(3))`, '내 과제 p4');
+      };
+      //  u1 은 A 조직 순번 10. 같은 A 에 이름이 앞서지만 순번 20 인 사람, 순번 없는(NULL, 맨 뒤) 사람. B, C, 소속 없음에 하나씩, 비활성 하나(빠진다)
+      //  u1 은 맨 앞 seed() 에서 직급 없이 만들었다. 직급 이름 검사를 위해 다른 사람과 같은 직급도 준다(끝에서 되돌린다).
+      sql(`UPDATE app_user SET org_id=${oA.id}, sort_order=10, title_id=${title[0] == null ? 'NULL' : title[0]} WHERE user_id=${D.u1.id}`, 'u1 소속과 직급');
+      const mk = { a2: ['zz_pc_ma2_' + tag, 'zz가나', oA.id, 20], a3: ['zz_pc_ma3_' + tag, 'zz가가', oA.id, null], b: ['zz_pc_mb_' + tag, 'zz나', oB.id, 5],
+        c: ['zz_pc_mc_' + tag, 'zz다', oC.id, 1], n: ['zz_pc_mn_' + tag, 'zz없음', null, 1], x: ['zz_pc_mx_' + tag, 'zz퇴사2', oA.id, 1, 0] };
+      addCatP4(D.u1.id);
+      for (const [, [login, name, orgId, so, act]] of Object.entries(mk)) addCatP4(addUser(login, name, orgId, so, act == null ? 1 : act));
+
+      r = cmd('u1', 'projectCalendarMembers', { projectUid: p4uid });
+      const gs = r.ok ? r.data.groups : [];
+      ok('명단: 묶음 순서가 명부와 같다(조직 sort_order, 하위는 부모 바로 뒤, 소속 없음 맨 뒤)', r.ok && JSON.stringify(gs.map((g) => g.org)) === JSON.stringify([oB.name, oA.name, oC.name, '']), JSON.stringify(r).slice(0, 400));
+      const gA = gs.find((g) => g.org === oA.name);
+      ok('명단: 소속 안은 관리자 순번(NULL 은 맨 뒤), 이름순이 아니다', !!gA && JSON.stringify(gA.users.map((u) => u.name)) === JSON.stringify([D.u1.name, 'zz가나', 'zz가가']), JSON.stringify(gA));
+      ok('명단: 비활성 사용자는 빠지고 total 은 활성 참여자 수(6)', r.ok && r.data.total === 6 && !gs.some((g) => g.users.some((u) => u.name === 'zz퇴사2')));
+      const meUsers = gs.flatMap((g) => g.users).filter((u) => u.me);
+      ok('명단: 나 표시는 세션 사람에게만, 직급 이름, 소속 이름', r.ok && !!gA && meUsers.map((u) => u.name).join() === D.u1.name &&
+        gA.users[0].title === (title[1] || '') && gA.users[1].title === (title[1] || '') && gA.users[0].org === oA.name,
+        JSON.stringify({ meUsers, first: gA && gA.users[0], second: gA && gA.users[1], wantTitle: title[1], wantOrg: oA.name, u1: D.u1.name }));
+      ok('명단: 사람마다 name, org, title, me 만(번호, login_id 없음)', r.ok && gs.every((g) => g.users.every((u) => JSON.stringify(Object.keys(u)) === JSON.stringify(['name', 'org', 'title', 'me']))) &&
+        !JSON.stringify(r.data).includes('zz_pc_m'), JSON.stringify(gs[0] || {}).slice(0, 200));
+      const bs = cmd('u1', 'projectCalendarBootstrap', {});
+      ok('명단: total 이 부트스트랩의 참여자 수와 같다', bs.ok && r.ok && bs.data.projects.find((p) => p.projectUid === p4uid).members === r.data.total);
+      r = cmd('u1', 'projectCalendarMembers', { projectUid: D.p2.uid });
+      ok('명단: 내 과제에 없는 과제는 forbidden', !r.ok && r.error.kind === 'forbidden', JSON.stringify(r));
+      r = cmd('u2', 'projectCalendarMembers', { projectUid: p4uid });
+      ok('명단: 그 과제를 넣지 않은 다른 사람(u2)도 forbidden', !r.ok && r.error.kind === 'forbidden', JSON.stringify(r));
+      r = cmd('u1', 'projectCalendarMembers', { projectUid: 'nope' });
+      ok('명단: 과제 id 형식이 틀리면 invalid', !r.ok && r.error.kind === 'invalid');
+      sql(`UPDATE app_user SET org_id=NULL, sort_order=NULL, title_id=NULL WHERE user_id=${D.u1.id}`, 'u1 소속과 직급 되돌리기');
+    }
 
     console.log('\n[숨긴 과제]');
     sql(`UPDATE project SET is_active=0 WHERE id=${D.p1.id}`, '과제 숨김');

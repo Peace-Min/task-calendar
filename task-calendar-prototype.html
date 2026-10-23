@@ -2466,6 +2466,24 @@ body:not(.pc-on) #pcView{display:none !important}
 .pc-state{font-size:var(--fs-micro);color:var(--warn-text);font-weight:600}
 .pc-meta{font-size:var(--fs-micro);color:var(--muted);flex:none;line-height:20px}
 .pc-hint{font-size:var(--fs-micro);color:var(--faint-text);line-height:1.5;padding:0 4px}
+/* 참여자 수 단추와 참여자 명단(기획 §6.9, 시안 docs/prototypes/project-members.html B안 가운데 창). 과제 이름은 글자 그대로, 숫자만 누른다 */
+.pc-mbc{flex:none;border:1px solid transparent;background:none;color:var(--accent-2);font:inherit;font-size:var(--fs-micro);line-height:18px;padding:0 5px;margin-top:1px;border-radius:99px;cursor:pointer;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+.pc-mbc:hover,.pc-mbc:focus-visible{background:var(--accent-soft);border-color:var(--accent);text-decoration:none}
+.pcm-modal{width:min(460px,100%);height:min(560px,88vh)}
+.pcm-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.pcm-sub{font-size:var(--fs-meta);color:var(--muted);line-height:1.5;margin:0}
+.modal input.pcm-search{width:100%;border:1px solid var(--ctl-border);border-radius:var(--r-sm);padding:7px 10px;font-size:var(--fs-body);font-family:inherit;background:var(--panel);color:var(--text);flex:none}
+.pcm-box{flex:1;min-height:0;overflow:auto}
+.pcm-list{list-style:none;margin:0;padding:0}
+.pcm-grp{font-size:var(--fs-micro);color:var(--faint-text);font-weight:700;padding:10px 2px 3px}
+.pcm-grp:first-child{padding-top:2px}
+.pcm-row{display:flex;align-items:center;gap:8px;padding:6px 2px;border-bottom:1px solid var(--line);font-size:var(--fs-body);min-width:0}
+.pcm-nm{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.pcm-me{flex:none;font-size:var(--fs-micro);color:var(--accent-2);border:1px solid var(--accent);border-radius:99px;padding:0 6px;font-weight:600;line-height:16px}
+.pcm-title{flex:1;text-align:right;color:var(--muted);font-size:var(--fs-meta);white-space:nowrap}
+.pcm-note{color:var(--muted);text-align:center;padding:28px 8px;margin:0;line-height:1.6}
+.pcm-err{color:var(--danger-text)}
+.pcm-err .btn{margin-top:8px}
 /* 오른쪽 달력 영역 */
 .pc-area{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;padding:10px 12px 8px;position:relative}
 .pc-bar1,.pc-bar2{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none}
@@ -2655,6 +2673,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
   .pcc-meta,.pcc-body{padding-left:16px;padding-right:16px}
   .pcd-grid{grid-template-columns:72px minmax(0,1fr)}
   .pc-tab{padding:7px 14px}
+  .pcm-modal{height:88vh}
 }
 /* ===== 월간 보고 탭(docs/MONTHLY-REPORT-PLAN.md §5, 시안 docs/prototypes/monthly-report.html). 새 규칙은 모두 .rptm- 와 #rptm* 다 =====
    이 탭이면 보고 모달에 .rptm-on 이 붙는다(setReportMode). 레일의 탭 줄만 남기고 레일 칸, 미리보기, 보내기와 복사 버튼을 숨긴다.
@@ -4778,6 +4797,18 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
     <div class="pcc-meta" id="pccMeta"></div>
     <div class="pcc-body" id="pccBody"></div>
     <div class="modal-foot"><button type="button" class="btn" id="pccMore">더 보기</button><span class="spacer"></span><button type="button" class="btn" data-close>닫기</button></div>
+  </div>
+</div>
+<!-- 참여자 명단(기획 §6.9, 2026-10-23 B안): 왼쪽 목록의 n명 단추가 연다. 열 때마다 서버에서 읽는다(projectCalendarMembers) -->
+<div class="overlay hidden" id="pcMembersModal">
+  <div class="modal pcm-modal">
+    <div class="modal-head"><h2 id="pcmHead">참여자</h2><button type="button" class="x" data-close aria-label="닫기">×</button></div>
+    <div class="modal-body pcm-body">
+      <p class="pcm-sub">이 과제를 내 과제에 넣은 사람(활성 계정)입니다. 이 사람들이 이 과제의 공용 일정을 보고 고칠 수 있습니다.</p>
+      <input type="search" class="pcm-search" id="pcmSearch" placeholder="이름, 소속, 직급으로 찾기" aria-label="참여자 찾기" autocomplete="off" spellcheck="false">
+      <div class="pcm-box" id="pcmBox" aria-live="polite"></div>
+    </div>
+    <div class="modal-foot"><span class="spacer"></span><button type="button" class="btn" data-close>닫기</button></div>
   </div>
 </div>
 
@@ -20871,9 +20902,9 @@ async function validateExistingRepoFor(kind, path){
  *    목록의 줄은 상세 창이다(미리보기 없음). 개인 일정에 등록은 그때 내용을 찍은 사본이라 원본과 잇는 기록과 표시가 없다. */
 //  글자 상한. 호스트 ProjectCalendarDb.Limits 와 DDL 칸 폭이 같은 숫자다(tests/project-calendar-web.test.mjs 가 대조한다, 기획 §4.1).
 const PCAL_LIMITS = Object.freeze({ title: 200, location: 200, memo: 8000 });
-//  이 화면이 보내는 명령 여섯(기획 §5.4). pcReq 가 이 밖의 이름을 보내지 않는다.
+//  이 화면이 보내는 명령 일곱(기획 §5.4, 참여자 명단은 §6.9). pcReq 가 이 밖의 이름을 보내지 않는다.
 const PCAL_CMDS = Object.freeze(['projectCalendarBootstrap', 'projectCalendarLoad', 'projectCalendarSave',
-  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy']);
+  'projectCalendarDelete', 'projectCalendarChanges', 'projectCalendarCopy', 'projectCalendarMembers']);
 const PCAL = {
   user: null,           // 설정을 읽은 계정. 다른 계정이 들어오면 상태를 비운다
   inited: false,
@@ -20887,6 +20918,7 @@ const PCAL = {
   form: null,           // 등록과 수정 폼
   detail: null,         // 상세 창의 eventUid
   rc: { group: 'project', proj: 'all', days: '7', kind: 'all', rows: [], cursor: null, more: false, busy: false, err: '', gen: 0 },
+  mb: { uid: '', status: '', err: '', groups: [], total: 0, gen: 0 },   // 참여자 명단 창(기획 §6.9). 열 때마다 읽고 기억하지 않는다
   resizeT: 0,
 };
 const PC_DOW = ['일', '월', '화', '수', '목', '금', '토'];
@@ -21110,7 +21142,7 @@ function pcPrefsLoad(){
 //  계정이 정해졌다(부팅 주입). 다른 계정이면 상태를 비우고 그 사람의 설정을 읽는다. 날짜는 늘 오늘.
 function pcResetFor(user){
   PCAL.user = user;
-  PCAL.gen++; PCAL.bootGen++; PCAL.rc.gen++;
+  PCAL.gen++; PCAL.bootGen++; PCAL.rc.gen++; PCAL.mb.gen++;
   const p = pcPrefsLoad();
   Object.assign(PCAL, { view: p.view, anchor: todayYmd(), memoLine: p.memo, sel: p.sel, known: p.known,
     projects: [], loaded: false, booting: false, bootErr: '', events: [], loading: false, loadErr: '', checkedAt: 0,
@@ -21277,7 +21309,8 @@ function pcSideHtml(inDrawer){
         + '<span class="pc-dot" aria-hidden="true"></span>'
         + '<span class="pc-nm"><span class="pc-name">' + esc(p.name) + '</span>'
         + (p.writable ? '' : '<span class="pc-state">종료, 읽기 전용</span>') + '</span>'
-        + '<span class="pc-meta" title="이 과제를 내 과제에 넣은 사람 수">' + p.members + '명</span></li>';
+        //  n명은 참여자 명단 단추다(밑줄 글자 모양, 기획 §6.9). 과제 이름은 그대로 글자다.
+        + '<button type="button" class="pc-mbc" id="pcMbc-' + u + '" data-act="members" data-uid="' + u + '" data-fk="mb-' + u + '" title="참여자 보기" aria-label="' + esc(p.name + ' 참여자 ' + p.members + '명 보기') + '">' + p.members + '명</button></li>';
     }).join('') + '</ul>'
     + '<p class="pc-hint">체크하면 달력에 보이고, 해제하면 숨깁니다. 내 과제에서 빠지지 않습니다.</p>'
     + '</' + tag + '>';
@@ -21751,6 +21784,61 @@ async function pcCopy(uid){
   toast('개인 일정에 등록했습니다. 개인 탭에서 볼 수 있습니다.', 'success');
 }
 
+/* ── 참여자 명단(기획 §6.9, 2026-10-23) ─────────────────────────── */
+//  왼쪽 목록의 n명 단추가 연다. 열 때마다 서버에서 읽는다(세대 번호로 늦은 회신을 버린다). 사람 글은 esc 로만 그린다.
+//  묶음 순서와 묶음 안 순서는 호스트가 정한다("다른 사람 일정" 명부와 같은 조직 트리 순서, 관리자가 정한 서열). 화면은 다시 정렬하지 않는다.
+function pcOpenMembers(uid){
+  const p = pcProj(uid); if(!p) return;
+  pcClosePop(true);
+  const M = PCAL.mb;
+  M.uid = p.projectUid; M.status = 'loading'; M.err = ''; M.groups = []; M.total = p.members;
+  const sr = document.getElementById('pcmSearch'); if(sr) sr.value = '';
+  pcRenderMembers();
+  openModal('#pcMembersModal');
+  pcLoadMembers();
+}
+async function pcLoadMembers(){
+  const M = PCAL.mb, uid = M.uid, g = ++M.gen;
+  M.status = 'loading'; M.err = ''; pcRenderMembers();
+  const r = await pcReq('projectCalendarMembers', { projectUid: uid }, 15000);
+  if(g !== M.gen || M.uid !== uid) return;
+  if(!r.ok){ M.status = 'error'; M.err = pcErrText(r.error); pcRenderMembers(); return; }
+  const d = r.data || {}, str = (v) => String(v == null ? '' : v);
+  M.groups = (Array.isArray(d.groups) ? d.groups : []).map(x => ({ org: str(x && x.org),
+    users: (Array.isArray(x && x.users) ? x.users : []).map(u => ({ name: str(u && u.name), org: str(u && u.org), title: str(u && u.title), me: !!(u && u.me === true) })) }));
+  const n = M.groups.reduce((k, x) => k + x.users.length, 0);
+  M.total = Number.isFinite(Number(d.total)) ? Number(d.total) : n;
+  M.status = 'ok';
+  //  목록의 n명과 명단의 수가 다르면(그사이 누가 넣거나 뺐다) 목록 쪽을 고친다. 같은 규칙으로 센 수라 명단이 최신이다.
+  const p = pcProj(uid);
+  if(p && p.members !== M.total){ p.members = M.total; if(pcOn() && PCAL.loaded) pcRender(); }
+  pcRenderMembers();
+}
+function pcRenderMembers(){
+  const M = PCAL.mb, head = document.getElementById('pcmHead'), box = document.getElementById('pcmBox'), sr = document.getElementById('pcmSearch');
+  if(!head || !box) return;
+  const p = pcProj(M.uid);
+  head.textContent = (p ? p.name : '') + ' 참여자 ' + (M.status === 'ok' ? M.total : (p ? p.members : M.total)) + '명';
+  if(M.status === 'loading'){ box.innerHTML = '<p class="pcm-note">명단을 읽는 중입니다.</p>'; return; }
+  if(M.status === 'error'){
+    box.innerHTML = '<div class="pcm-note pcm-err" role="alert"><div>' + esc('명단을 읽지 못했습니다. ' + (M.err || '잠시 뒤 다시 시도하세요.')) + '</div>'
+      + '<button type="button" class="btn sm" data-act="mbRetry">다시 시도</button></div>';
+    return;
+  }
+  const q = (sr ? sr.value : '').trim().toLowerCase();
+  const hit = (u) => !q || [u.name, u.org, u.title].some(t => t.toLowerCase().indexOf(q) >= 0);
+  let h = '', shown = 0;
+  for(const g of M.groups){
+    const us = g.users.filter(hit);
+    if(!us.length) continue;
+    shown += us.length;
+    h += '<li class="pcm-grp">' + esc(g.org || '소속 없음') + '</li>' + us.map(u => '<li class="pcm-row"><span class="pcm-nm">' + esc(u.name) + '</span>'
+      + (u.me ? '<span class="pcm-me">나</span>' : '')
+      + '<span class="pcm-title">' + esc(u.title) + '</span></li>').join('');
+  }
+  box.innerHTML = shown ? '<ul class="pcm-list">' + h + '</ul>' : '<p class="pcm-note">' + (q ? '찾는 사람이 없습니다.' : '참여자가 없습니다.') + '</p>';
+}
+
 /* ── 최근 변경 ───────────────────────────────────────────────── */
 function pcOpenChanges(){
   pcClosePop(true);
@@ -21906,6 +21994,7 @@ function pcOnViewClick(ev){
     case 'refresh': pcRefresh(true).then(() => { if(pcOn() && PCAL.loaded && !PCAL.loadErr && !PCAL.bootErr) toast('서버에서 다시 읽었습니다.', 'info'); }); break;
     case 'changes': pcOpenChanges(); break;
     case 'new': pcOpenForm({ date: PCAL.anchor }); break;
+    case 'members': pcOpenMembers(a.dataset.uid); break;
   }
 }
 function pcOnPopClick(ev){
@@ -21984,6 +22073,15 @@ function pcInit(){
     const sv = document.getElementById('pcfSave'); if(sv) sv.addEventListener('click', pcSaveForm);
     const tt = document.getElementById('pcfTitle');
     if(tt) tt.addEventListener('keydown', ev => { if(ev.isComposing || ev.keyCode === 229) return; if(ev.key === 'Enter'){ ev.preventDefault(); pcSaveForm(); } });
+  }
+  const mm = document.getElementById('pcMembersModal');
+  if(mm){
+    mm.addEventListener('input', ev => { if(ev.target.id === 'pcmSearch') pcRenderMembers(); });
+    mm.addEventListener('click', ev => {
+      const a = ev.target.closest('[data-act="mbRetry"]'); if(!a) return;
+      const sr = document.getElementById('pcmSearch'); if(sr) try{ sr.focus(); }catch(_){}
+      pcLoadMembers();
+    });
   }
   const cm = document.getElementById('pcChangesModal');
   if(cm){
