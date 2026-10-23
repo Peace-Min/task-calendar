@@ -65,7 +65,9 @@
 
 ## 6. 릴리스 체크리스트와의 관계
 
-- 이 기능이 들어간 뒤의 릴리스 산출물은 지금과 같다(`latest.json`, Setup, `release-v<버전>.sql`). 영상과 `guide.json` 은 릴리스 산출물이 아니라 사용자가 따로 올리는 것이다.
+- 릴리스 산출물은 `latest.json`, Setup, `release-v<버전>.sql` 이고, **영상 판이 바뀐 배포에서만** `dist/installer/guide/`(guide.json, mp4, srt)가 더해진다(2026-10-23 사용자). 영상은 여전히 Setup 에 들어가지 않는다.
+- 판단은 `installer/publish-update.ps1` 이 한다. 저장소 `guide/guide.json` 의 `version` 을 `installer/guide-shipped.txt`(마지막으로 떨군 영상 판 `guide=` 와 그때 앱 버전 `app=`)와 견주어, 영상 판이 다르거나 같은 앱 버전을 다시 빌드하면 떨구고 표시 파일을 고친다. `-Guide` 는 늘 떨군다(새 공유 폴더를 처음 채울 때). 표시 파일은 릴리스 커밋에 같이 넣는다.
+- 올리는 순서: mp4 와 srt 를 먼저, `guide.json` 을 맨 마지막에 올린다(판 번호가 먼저 바뀌면 아직 없는 영상을 안내한다).
 - 화면을 바꾼 릴리스라면, 릴리스 안내에 "영상 다시 찍기 필요 여부"를 한 줄 적어 사용자가 판 번호를 올릴지 정하게 한다.
 
 ## 7. 구현 계획 (2026-10-23)

@@ -11,6 +11,7 @@
        조각 사슬이 끊겼거나 끝이 widget\DbGate.cs 의 AppStructureVersion 과 다르면 빌드 전에 실패한다
        (docs/DB-RELEASE-OPS.md §4, §5, docs/VERSION-GATE.md §4)
     4) dist\installer\latest.json 생성 = 0.23.0 전의 위젯(공유폴더 매니페스트를 보는 옛 업데이트 방식)을 위한 다리
+    4.5) 영상 판(guide\guide.json version)이 바뀐 배포면 dist\installer\guide\ 도 만든다(아래 5.7, -Guide 는 늘)
     5) (선택 -CopyTo) Setup exe 를 공유폴더로 복사하고 복사본의 해시를 다시 대조한 뒤, latest.json 을 임시 이름으로 썼다가 바꿔 단다
 
   사용 예:
@@ -29,7 +30,8 @@
 param(
   [switch]$Build,                # 발행 전 build-installer.ps1로 설치기 새로 빌드
   [string]$Notes = "",           # 배포 요약(release SQL 머리 주석에만 남는다. 배너 문구는 DB 에 두지 않는다)
-  [string]$CopyTo = ""           # UNC/로컬 공유폴더 경로. 주면 Setup exe 만 그리로 복사(옛 파일은 지우지 않는다)
+  [string]$CopyTo = "",          # UNC/로컬 공유폴더 경로. 주면 Setup exe 만 그리로 복사(옛 파일은 지우지 않는다)
+  [switch]$Guide                 # 영상 판이 같아도 dist\installer\guide\ 로 떨군다(새 공유 폴더를 처음 채울 때)
 )
 $ErrorActionPreference = 'Stop'
 
@@ -126,6 +128,40 @@ $latest = Join-Path $distDir 'latest.json'
 [System.IO.File]::WriteAllText($latest, $json, (New-Object System.Text.UTF8Encoding($false)))
 Write-Host "✓ 전환용 매니페스트 생성(0.22 이하 위젯용) → $latest" -ForegroundColor Green
 
+# 5.7) 사용 영상(docs/GUIDE-VIDEOS.md §6): 영상 판이 바뀐 배포에서만 dist\installer\guide\ 로 떨군다.
+#      저장소 guide\guide.json 의 version 을 installer\guide-shipped.txt(마지막으로 떨군 영상 판과 앱 버전)와 견준다.
+#      영상 판이 다르거나, 같은 앱 버전을 다시 빌드하면(그 판에서 이미 떨궜으므로) 떨군다. -Guide 는 늘 떨군다.
+#      떨구면 표시 파일을 고친다. 릴리스 커밋에 같이 넣는다(빌드 PC 가 바뀌어도 판단이 같게).
+$guideSrc  = Join-Path $root 'guide'
+$guideOut  = Join-Path $distDir 'guide'
+$guideMark = Join-Path $here 'guide-shipped.txt'
+if (Test-Path $guideOut) { Remove-Item -LiteralPath $guideOut -Recurse -Force }
+$guideJson = Join-Path $guideSrc 'guide.json'
+$guideVer = $null
+if (Test-Path $guideJson) {
+  try { $guideVer = [string]((Get-Content -LiteralPath $guideJson -Raw -Encoding UTF8 | ConvertFrom-Json).version) } catch { Fail "guide\guide.json 을 읽지 못함: $($_.Exception.Message)" }
+  if (-not $guideVer) { Fail "guide\guide.json 에 version 이 없음" }
+}
+$markGuide = ''; $markApp = ''
+if (Test-Path $guideMark) {
+  foreach ($ln in Get-Content -LiteralPath $guideMark -Encoding UTF8) {
+    if ($ln -match '^guide=(.*)$') { $markGuide = $Matches[1].Trim() }
+    elseif ($ln -match '^app=(.*)$') { $markApp = $Matches[1].Trim() }
+  }
+}
+$guideShipped = $false
+if (-not $guideVer) {
+  Write-Host "* 사용 영상: 저장소에 guide\guide.json 이 없음(영상 없이 배포)" -ForegroundColor DarkGray
+} elseif ($Guide -or $guideVer -ne $markGuide -or $ver -eq $markApp) {
+  Copy-Item -LiteralPath $guideSrc -Destination $guideOut -Recurse -Force
+  [System.IO.File]::WriteAllText($guideMark, "guide=$guideVer`napp=$ver`n", (New-Object System.Text.UTF8Encoding($false)))
+  $guideShipped = $true
+  $n = @(Get-ChildItem -LiteralPath $guideOut -File).Count
+  Write-Host "✓ 사용 영상 판 $guideVer 을 떨굼($n 개) → $guideOut" -ForegroundColor Green
+} else {
+  Write-Host "* 사용 영상: 판 $guideVer 은 $markApp 때 이미 떨궜음. 이번에는 영상 없음(공유 폴더 guide\ 는 그대로)" -ForegroundColor DarkGray
+}
+
 # 6) (선택) 공유폴더로 Setup exe 만 복사. 옛 Setup 은 지우지 않는다(DB-RELEASE-OPS §4.1 1).
 #    복사본을 다시 재서 해시가 같은지 본다. 다르면 SQL 을 돌리지 말아야 하므로 실패로 끝낸다.
 if ($CopyTo) {
@@ -154,6 +190,9 @@ Write-Host "     그다음 latest.json 도 올린다(0.22 이하 사용자용. -
 Write-Host "  2) Workbench Data Export 로 taskcalendar 를 백업한다(파일 끝 '-- Dump completed' 확인)" -ForegroundColor Gray
 Write-Host "  3) Workbench 에서 이 파일 하나를 한 번 실행한다(Ctrl+Shift+Enter): $releaseSql" -ForegroundColor Gray
 Write-Host "     DB 구조가 바뀌는 배포도 이 파일 하나다(이관 조각이 들어 있다)" -ForegroundColor Gray
+if ($guideShipped) {
+  Write-Host "  4) 영상 판이 바뀌었다: $guideOut 의 파일을 공유폴더의 guide\ 에 올린다(mp4 와 srt 먼저, guide.json 은 맨 마지막)" -ForegroundColor Gray
+}
 Write-Host "  예) ftp://<서버IP>/TaskCalendar/, \\<서버>\TaskCalendar\, http(s)://.../TaskCalendar/" -ForegroundColor DarkGray
 Write-Host "  각 위젯이 시작과 30분마다 DB 를 확인해 새 버전이면 상단 배너로 안내합니다." -ForegroundColor DarkGray
 Write-Host "──────────────────────────────────────────────" -ForegroundColor DarkGray
