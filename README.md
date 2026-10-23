@@ -67,7 +67,7 @@
 
 ## 🎬 사용 가이드 영상
 
-처음 쓰는 분은 아래 영상부터 보면 빠릅니다. 영상은 저장소에 넣지 않고 [GitHub 릴리스(guide-videos)](https://github.com/Peace-Min/task-calendar/releases/tag/guide-videos)에 올려 두었습니다. 화면의 과제, 발주처, 다른 구성원은 촬영용 예시 데이터입니다(녹화한 본인 계정만 실제).
+처음 쓰는 분은 아래 영상부터 보면 빠릅니다. 영상은 저장소의 [guide/](guide/) 폴더에 있습니다(사내 공유 폴더의 `guide\` 에 그대로 복사하면 앱 안 사용 영상 안내가 켜집니다, [docs/GUIDE-VIDEOS.md](docs/GUIDE-VIDEOS.md)). 아래 링크는 같은 영상을 올려 둔 [GitHub 릴리스(guide-videos)](https://github.com/Peace-Min/task-calendar/releases/tag/guide-videos)입니다. 화면의 과제, 발주처, 다른 구성원은 촬영용 예시 데이터입니다(녹화한 본인 계정만 실제).
 
 | 영상 | 길이 | 내용 |
 |---|---|---|

@@ -19,3 +19,6 @@ docs/** linguist-documentation
 *.cmd text eol=crlf
 *.bat text eol=crlf
 widget/MainWindow.xaml.cs -text
+
+# 사용 영상(guide/, docs/GUIDE-VIDEOS.md): 공유 폴더에 올릴 바이트 그대로 둔다(mp4 는 바이너리, srt 와 guide.json 도 줄끝을 바꾸지 않는다)
+guide/** -text
