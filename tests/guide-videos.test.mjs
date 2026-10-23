@@ -116,10 +116,37 @@ const statics = {
     assert.deepStrictEqual(bad, [], 'GuideHost.cs 가 DB 계층을 부른다(§4: DB 를 쓰지 않는다)');
     assert.ok(!/\b(SELECT|INSERT|UPDATE|DELETE)\s+(INTO\s+|FROM\s+)?\w/.test(c), 'GuideHost.cs 에 SQL 이 있다');
     assert.ok(/internal const string GuideVirtualHost = "guide\.tcapp\.local";/.test(c), '가상 호스트 이름이 guide.tcapp.local 이 아니다');
-    assert.ok(/SetVirtualHostNameToFolderMapping\(GuideVirtualHost, folder, CoreWebView2HostResourceAccessKind\.Allow\)/.test(c), '가상 호스트를 폴더에 잇지 않는다');
-    assert.ok(/SpecialFolder\.LocalApplicationData\), "TaskCalendar", "guide-cache"\)/.test(c), '네트워크 캐시가 %LOCALAPPDATA%\\TaskCalendar\\guide-cache 가 아니다');
+    assert.ok(/SpecialFolder\.LocalApplicationData\), "TaskCalendar", "guide-cache"\)/.test(c), '캐시가 %LOCALAPPDATA%\\TaskCalendar\\guide-cache 가 아니다');
     assert.ok(/internal static string GuideFolderOf\(string src\) => CombineUrl\(src, "guide"\);/.test(c), 'guide 폴더를 업데이트 폴더 주소에서 정하지 않는다');
     assert.ok(/BoundAsync\(/.test(c) && /GuideReadTimeoutMs = 6000/.test(c), 'guide.json 읽기에 시간 제한이 없다');
+  },
+  //  2026-10-23 실측(PM): 문서가 뜬 뒤의 매핑은 그 문서에 적용되지 않는다. 그래서 캐시 루트 하나에 첫 Navigate 전에 한 번 잇고 다시는 바꾸지 않는다.
+  mapping(cs, mw) {
+    const c = stripCsComments(cs), m = stripCsComments(mw);
+    const calls = [...c.matchAll(/SetVirtualHostNameToFolderMapping\(/g)].length;
+    assert.strictEqual(calls, 1, `GuideHost.cs 의 가상 호스트 매핑이 한 곳이 아니다(${calls}곳)`);
+    const init = /private void GuideMapInit\(CoreWebView2 core\)\s*\{([\s\S]*?)\n        \}/.exec(c);
+    assert.ok(init && /core\.SetVirtualHostNameToFolderMapping\(GuideVirtualHost, GuideCacheRoot, CoreWebView2HostResourceAccessKind\.Allow\)/.test(init[1]),
+      '매핑이 GuideMapInit 안에서 캐시 루트(GuideCacheRoot)로 걸리지 않는다');
+    assert.ok(!/ClearVirtualHostNameToFolderMapping/.test(c), '매핑을 지우는 길이 있다(한 번 걸면 바꾸지 않는다)');
+    for (const fn of ['RunGuideAsync', 'GuideManifestAsync', 'GuideFetchAsync', 'GuideDownloadAsync', 'GuideCacheDir']) {
+      const body = new RegExp('(?:private|internal)[^\\n]*\\b' + fn + '\\([^)]*\\)\\s*\\{([\\s\\S]*?)\\n        \\}').exec(c);
+      assert.ok(body, fn + ' 를 찾지 못했다');
+      assert.ok(!/SetVirtualHostNameToFolderMapping|GuideMapInit/.test(body[1]), fn + ' 가 명령 처리 중에 매핑을 건다(문서가 뜬 뒤라 적용되지 않는다)');
+    }
+    const initCalls = [...m.matchAll(/GuideMapInit\(/g)].map((x) => x.index);
+    assert.strictEqual(initCalls.length, 1, 'MainWindow 의 GuideMapInit 호출이 한 곳이 아니다');
+    const app = m.indexOf('web.CoreWebView2.SetVirtualHostNameToFolderMapping("tcapp.local"'), nav = m.indexOf('web.CoreWebView2.Navigate("https://tcapp.local/index.html")');
+    assert.ok(app >= 0 && nav > app, 'tcapp.local 매핑과 첫 Navigate 를 찾지 못했다');
+    assert.ok(initCalls[0] > app && initCalls[0] < nav, 'GuideMapInit 이 tcapp.local 매핑과 첫 Navigate 사이에 있지 않다');
+    assert.ok(/GuideMapInit\(web\.CoreWebView2\);/.test(m), 'GuideMapInit 이 메인 창 웹뷰에 걸리지 않는다');
+    const f = /private async Task<object> GuideFetchAsync\(string file\)\s*\{([\s\S]*?)\n        \}/.exec(c)[1];
+    assert.ok(/string verDir = GuideRules\.SafeDirName\(g\.Version\);/.test(f) &&
+      /string url = "https:\/\/" \+ GuideVirtualHost \+ "\/" \+ Uri\.EscapeDataString\(verDir\) \+ "\/" \+ Uri\.EscapeDataString\(file\);/.test(f),
+      '재생 주소가 https://guide.tcapp.local/<판 폴더>/<file> 이 아니다');
+    assert.strictEqual([...f.matchAll(/return new \{ ok = true/g)].length, 1, 'guideFetch 의 성공 회신이 캐시 길 하나가 아니다');
+    assert.ok(f.indexOf('GuideDownloadAsync(') >= 0 && f.indexOf('GuideDownloadAsync(') < f.indexOf('return new { ok = true'), '성공 회신 전에 캐시로 복사하거나 받지 않는다');
+    assert.ok(/string dir = Path\.Combine\(root, GuideRules\.SafeDirName\(version\)\);/.test(c), '캐시의 판 폴더 이름이 주소와 같은 규칙(SafeDirName)이 아니다');
   },
   punct(app, cs) {
     const sec = gvSection(app);
@@ -140,6 +167,17 @@ test('정적S3: 이름 규칙(구분자, .., 점 시작, .mp4/.srt)과 목록에
 test('정적S4: 두 명령은 메인 창 전용(호스트와 웹 허용 목록에 없음, 스위치에 있음)', () => statics.mainOnly(host, src, mainwin));
 test('정적S5: GuideHost.cs 는 DB 를 쓰지 않는다, 가상 호스트와 캐시 자리, 시간 제한', () => statics.noDb(host));
 test('정적S6: 사용 영상 화면 문구와 호스트 파일에 금지 기호가 없다', () => statics.punct(src, host));
+test('정적S7: 가상 호스트는 캐시 루트에 첫 Navigate 전 한 번, 명령 처리 중 매핑 없음, 주소에 판 폴더', () => statics.mapping(host, mainwin));
+test('변이M8: 매핑을 Navigate 뒤로 옮기거나 guideFetch 에서 다시 걸면 S7 이 잡는다', () => {
+  const line = '                    GuideMapInit(web.CoreWebView2);';
+  const i = mainwin.indexOf(line); assert.ok(i >= 0, 'GuideMapInit 줄을 찾지 못했다');
+  const eol = mainwin.indexOf('\n', i);
+  const moved = mutate('web.CoreWebView2.Navigate("https://tcapp.local/index.html");', 'web.CoreWebView2.Navigate("https://tcapp.local/index.html");\n' + line,
+    mainwin.slice(0, i) + mainwin.slice(eol + 1));
+  assert.throws(() => statics.mapping(host, moved));
+  assert.throws(() => statics.mapping(mutate('            string dir;\n', '            string dir;\n            web.CoreWebView2.SetVirtualHostNameToFolderMapping(GuideVirtualHost, GuideCacheRoot, CoreWebView2HostResourceAccessKind.Allow);\n', host), mainwin));
+  assert.throws(() => statics.mapping(mutate('Uri.EscapeDataString(verDir) + "/" + ', '', host), mainwin));
+});
 
 test('변이M1: 설치 목록에 guide 폴더를 넣으면 S1 이 잡는다', () => {
   const f = issFiles[0];
@@ -390,22 +428,22 @@ if (!JSDOM) {
     assert.ok(W.open('gvModal'), '보기 창이 열리지 않았다');
     await W.reply('guideManifest', MANIFEST);
     assert.strictEqual(W.el('gvList').querySelectorAll('.gv-item').length, 2);
-    await W.reply('guideFetch', { ok: true, url: 'https://guide.tcapp.local/overview.mp4', srt: '' });
-    assert.strictEqual(W.el('gvVideo').getAttribute('src'), 'https://guide.tcapp.local/overview.mp4');
+    await W.reply('guideFetch', { ok: true, url: 'https://guide.tcapp.local/2026-11/overview.mp4', srt: '' });
+    assert.strictEqual(W.el('gvVideo').getAttribute('src'), 'https://guide.tcapp.local/2026-11/overview.mp4');
     assert.strictEqual(W.el('gvVideo').querySelectorAll('track').length, 0, '자막이 없는데 트랙을 붙였다');
   }));
   test('보기 창: 영상을 고르면 장면 목록과 자막 트랙, 장면을 누르면 그 초로', () => withBoot({}, async (W) => {
     W.ev('gvOpenViewer()'); await settle();
     await W.reply('guideManifest', MANIFEST);
-    await W.reply('guideFetch', { ok: true, url: 'https://guide.tcapp.local/overview.mp4', srt: '' });
+    await W.reply('guideFetch', { ok: true, url: 'https://guide.tcapp.local/2026-11/overview.mp4', srt: '' });
     W.el('gvList').querySelectorAll('.gv-item')[1].click(); await settle();
     assert.strictEqual(W.cmds('guideFetch').at(-1).file, 'report.mp4');
     assert.strictEqual(W.el('gvTitle').textContent, '보고서');
     const chs = [...W.el('gvChapters').querySelectorAll('.gv-ch')];
     assert.deepStrictEqual(chs.map((b) => b.textContent), ['0:00일간', '1:20주간', '2:40월간']);
-    await W.reply('guideFetch', { ok: true, url: 'https://guide.tcapp.local/report.mp4', srt: SRT });
+    await W.reply('guideFetch', { ok: true, url: 'https://guide.tcapp.local/2026-11/report.mp4', srt: SRT });
     const v = W.el('gvVideo');
-    assert.strictEqual(v.getAttribute('src'), 'https://guide.tcapp.local/report.mp4');
+    assert.strictEqual(v.getAttribute('src'), 'https://guide.tcapp.local/2026-11/report.mp4');
     const tr = v.querySelector('track');
     assert.ok(tr, '자막 트랙이 없다');
     assert.strictEqual(tr.getAttribute('kind'), 'subtitles');
@@ -423,7 +461,7 @@ if (!JSDOM) {
     await W.reply('guideManifest', MANIFEST);
     const first = W.cmds('guideFetch').at(-1);
     W.el('gvList').querySelectorAll('.gv-item')[1].click(); await settle();
-    W.ev('__hostReply(' + JSON.stringify(first.reqId) + ',' + JSON.stringify({ ok: true, url: 'https://guide.tcapp.local/overview.mp4', srt: '' }) + ')'); await settle();
+    W.ev('__hostReply(' + JSON.stringify(first.reqId) + ',' + JSON.stringify({ ok: true, url: 'https://guide.tcapp.local/2026-11/overview.mp4', srt: '' }) + ')'); await settle();
     assert.strictEqual(W.el('gvVideo').getAttribute('src'), null, '늦게 온 앞 영상 회신이 재생 주소를 덮었다');
   }));
   test('SRT 를 WebVTT 로: BOM, CRLF, 번호 줄, 쉼표, 한 자리 시, 여러 줄, &와 <, 꼬리 설정, --> 글', () => withBoot({}, async (W) => {
@@ -455,6 +493,12 @@ if (!JSDOM) {
     assert.strictEqual(W.el('gvState').textContent, '내려받는 중 50%');
     W.ev("__guideProgress({ file:'report.mp4', got: 1, total: 2 })");
     assert.strictEqual(W.el('gvState').textContent, '내려받는 중 50%', '다른 영상의 진행이 섞였다');
+  }));
+  test('복사 중 알림: 파일 공유는 캐시로 복사하는 중이라고 말한다', () => withBoot({}, async (W) => {
+    W.ev('gvOpenViewer()'); await settle();
+    await W.reply('guideManifest', MANIFEST);
+    W.ev("__guideProgress({ file:'overview.mp4', got: 1, total: 4 })");
+    assert.strictEqual(W.el('gvState').textContent, '복사하는 중 25%');
   }));
   test('목록 회신을 웹이 한 번 더 거른다(나쁜 이름, 빈 제목, 음수 초)', () => withBoot({}, async (W) => {
     W.ev('gvOpenViewer()'); await settle();

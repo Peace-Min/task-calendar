@@ -74,7 +74,7 @@
 | 단계 | 할 일 | 자리 |
 |---|---|---|
 | P1 호스트 | 업데이트 폴더 주소에서 `guide` 폴더를 정한다(로컬, UNC, file://, ftp://, http(s):// 로 업데이트 코드와 같은 다섯). 명령 둘: `guideManifest`(guide.json 을 읽고 검사해 돌려준다, 시간 제한), `guideFetch(file)`(재생 주소와 자막 글을 돌려준다) | `widget/GuideHost.cs`(새 파일), `MainWindow.xaml.cs` 에는 case 줄만 |
-| P2 재생 | 파일 공유(로컬, UNC, file://)는 가상 호스트 `guide.tcapp.local` 을 guide 폴더에 바로 잇는다(범위 요청으로 바로 재생). FTP, HTTP 는 요청한 mp4 만 `%LOCALAPPDATA%\TaskCalendar\guide-cache\<판>\` 에 받고(진행 알림) 그 폴더를 잇는다. 다른 판 폴더는 지운다 | `GuideHost.cs` |
+| P2 재생 | 가상 호스트 `guide.tcapp.local` 은 캐시 루트 `%LOCALAPPDATA%\TaskCalendar\guide-cache` 에 첫 내비게이션 전 한 번 잇는다. 요청한 mp4 를 `guide-cache\<판>\` 로 복사(파일 공유)하거나 받고(FTP, HTTP, 진행 알림) 거기서 재생한다. 다른 판 폴더는 지운다(2026-10-23 PM 실측으로 고침, §8.1) | `GuideHost.cs` |
 | P3 이름 검사 | guide.json 에 있는 이름만, 경로 구분자와 `..` 없이, `.mp4` 와 `.srt` 만 | 호스트(최종 판정)와 웹(보내기 전) |
 | P4 묻기 | 로그인하고 첫 화면을 그린 뒤 계정마다 실행 한 번. 판 번호 비교, 첫 사용자 문구와 기존 사용자 문구, [보기] [다시 묻지 않기] [나중에]. 다른 창이 떠 있으면 닫힐 때까지 기다린다. 열람 창, 관리 창, 브라우저에서는 묻지 않는다 | `task-calendar-prototype.html` |
 | P5 보기 창 | 영상 목록, `<video controls>`, 장면 목록(누르면 그 초로), 같은 이름의 .srt 가 있으면 WebVTT 로 바꿔 자막 트랙. 공유 폴더에 닿지 않거나 받기가 실패하면 짧은 안내 | 같은 파일 |
@@ -88,10 +88,17 @@
 
 - guide 폴더 = 업데이트 폴더 주소(`widget.settings.json` 의 `UpdateSourceUrl`, 비면 `DeployConfig.UpdateSourceUrl`) + `guide`. 업데이트 코드(`Update.cs` 의 `KindOf`, `CombineUrl`)를 그대로 써서 형식이 같다. 따로 설정하지 않는다(§1).
 
-| 업데이트 폴더 형식 | guide.json 읽기 | 재생 |
+| 업데이트 폴더 형식 | guide.json 읽기 | 영상을 캐시로 |
 |---|---|---|
-| 로컬 경로, UNC(`\서버\공유`), `file://` | 업데이트 폴더가 있는지 먼저 본다(없으면 `unreachable`). 파일을 읽는다 | 가상 호스트 `guide.tcapp.local` 을 guide 폴더에 바로 잇는다(`SetVirtualHostNameToFolderMapping`). 영상은 범위 요청으로 바로 흐른다. 잇기에 실패하면 아래 캐시 길로 간다 |
-| `ftp://`(익명, 수동 모드), `http(s)://` | 받아서 읽는다(404, FTP 550 = `missing`) | 요청한 mp4 만 `%LOCALAPPDATA%\TaskCalendar\guide-cache\<판>\` 에 받고(`.part` 에 쓰고 끝나면 이름 바꿈) 그 폴더를 가상 호스트에 잇는다. 원본 크기(HTTP HEAD, FTP SIZE)가 캐시와 같거나 알 수 없으면 캐시를 쓴다. 판 번호가 바뀌면 다른 판 폴더를 지운다(재생 중인 폴더는 남긴다) |
+| 로컬 경로, UNC(`\\서버\공유`), `file://` | 업데이트 폴더가 있는지 먼저 본다(없으면 `unreachable`). 파일을 읽는다 | 복사한다 |
+| `ftp://`(익명, 수동 모드), `http(s)://` | 받아서 읽는다(404, FTP 550 = `missing`) | 받는다 |
+
+- 재생은 늘 캐시에서 한다. 가상 호스트 `guide.tcapp.local` 은 캐시 루트 `%LOCALAPPDATA%\TaskCalendar\guide-cache` 하나에, 웹뷰 초기화에서 `tcapp.local` 매핑 바로 다음, 첫 `Navigate` 전에 한 번 잇는다(`GuideMapInit`). 그 뒤로는 바꾸거나 지우지 않는다.
+  - 왜(2026-10-23 PM 실측): 문서가 뜬 뒤에 건 `SetVirtualHostNameToFolderMapping` 은 그 문서의 요청에 적용되지 않았다. 다시 읽기 전에는 `fetch('https://guide.tcapp.local/guide.json')` 가 "Failed to fetch", `<video>` 는 오류 없이 readyState 0 에 머물렀고, `Page.reload` 뒤에는 200 이었다. 처음 구현은 명령 처리 중에 guide 폴더나 캐시 폴더로 매핑을 바꿨기 때문에, 실행마다 첫 보기 창에 영상이 나오지 않았다.
+  - 매핑이 바뀌지 않으므로 실행 중에 업데이트 폴더를 바꿔도 다시 읽을 필요가 없다.
+- `guideFetch(file)` 는 요청한 mp4 를 `guide-cache\<판 폴더>\` 로 복사하거나 받는다(`.part` 에 쓰고 끝나면 이름 바꿈, 진행 알림). 그 판 폴더에 같은 크기의 파일이 이미 있으면(원본 크기를 알 수 없을 때도) 건너뛴다. 원본 크기는 파일 공유는 파일 정보, HTTP 는 HEAD, FTP 는 SIZE 로 본다.
+- 재생 주소는 `https://guide.tcapp.local/<판 폴더>/<file>`. 판 폴더 이름은 `GuideRules.SafeDirName`(파일 이름에 못 쓰는 글자는 `_`, 40자, 끝의 점과 공백 제거)이고 캐시 폴더와 같은 규칙이다. Windows 는 폴더 이름 끝의 점을 지우므로, 그대로 두면 지난 판 정리가 이 판을 지운다.
+- 판 번호가 바뀌면 다른 판 폴더를 지운다(재생 중이라 잠겨 있으면 다음 기회에).
 
 - 명령 둘. `guideManifest` 는 `{ ok, version, source:'file'|'net', videos }` 또는 `{ ok:false, reason }`(noSource, unreachable, missing, invalid, tooLarge, noVideos). `guideFetch { file }` 는 `{ ok, url, srt }` 또는 `{ ok:false, reason }`(badName, noGuide, unreachable, missing, download). 받는 동안 `window.__guideProgress({ file, got, total })` 를 0.3초에 한 번 민다.
 - 시간 제한: guide.json 과 자막 읽기, 업데이트 폴더 확인은 6초(`BoundAsync`). 닿지 않는 공유 폴더가 부팅 뒤 화면을 붙잡지 않는다(웹은 부팅이 끝난 뒤에 묻는다). mp4 받기는 전체 15분.
@@ -111,7 +118,7 @@
 ### 8.3 시험
 
 - `tests/guide-videos.test.mjs`: 정적(설치 스크립트에 영상 없음, 저장소 접근 try, 이름 규칙, 메인 창 전용, GuideHost 에 DB 없음, 기호 규칙)과 변이, jsdom(가짜 guideManifest 와 guideFetch 로 묻기 조건, 단추별 기록, 실행당 한 번, 계정 바꿈, 다른 창 기다림, "?" 에서 보기 창, 장면 이동, SRT 를 WebVTT 로, 오류 안내, 열람 창과 관리 창과 브라우저, 저장소가 던질 때).
-- `tests/loop-guide-videos.mjs`: 실 위젯(CDP 9222). `--make=<폴더>` 로 `dist\guide-video\*_v3.*` 에서 시험용 업데이트 폴더를 만들고, `--source=<폴더>` 로 앱의 설정 명령을 거쳐 업데이트 폴더를 잠시 바꾼다. 묻는 창, [보기], 가상 호스트 재생(readyState >= 1), 장면 이동, 자막 트랙, [다시 묻지 않기] 의 다시 읽기 뒤 유지를 보고 기억과 업데이트 폴더를 되돌린다.
+- `tests/loop-guide-videos.mjs`: 실 위젯(CDP 9222). `--make=<폴더>` 로 `dist\guide-video\*_v3.*` 에서 시험용 업데이트 폴더를 만들고, `--source=<폴더>` 로 앱의 설정 명령을 거쳐 업데이트 폴더를 잠시 바꾼다. 묻는 창, [보기], 다시 읽기 없이 같은 문서에서 가상 호스트 재생(readyState >= 1, 주소에 판 폴더), 장면 이동, 자막 트랙, [다시 묻지 않기] 의 다시 읽기 뒤 유지를 보고 기억과 업데이트 폴더를 되돌린다.
 
 ### 8.4 릴리스 체크리스트
 

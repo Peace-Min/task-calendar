@@ -274,6 +274,7 @@ namespace TaskCalendarWidget
                     Directory.CreateDirectory(appDir);
                     File.WriteAllText(Path.Combine(appDir, "index.html"), html, new UTF8Encoding(false));
                     web.CoreWebView2.SetVirtualHostNameToFolderMapping("tcapp.local", appDir, CoreWebView2HostResourceAccessKind.Allow);
+                    GuideMapInit(web.CoreWebView2);   // 사용 영상: guide.tcapp.local 을 캐시 루트에 한 번(첫 Navigate 전이어야 이 문서에 적용된다, GuideHost.cs)
                     _appDir = appDir;   // 따로 뜨는 창(AppWindow)도 같은 폴더를 같은 이름으로 매핑한다(같은 출처라 localStorage 가 하나)
                     Log($"가상 호스트 로드(localStorage 영속) — HTML {html.Length}자 · dir={Path.GetFileName(appDir)}");
                     web.CoreWebView2.Navigate("https://tcapp.local/index.html");

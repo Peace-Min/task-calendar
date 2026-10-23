@@ -19835,7 +19835,8 @@ async function gvSelect(id){
   gvState('영상을 준비하는 중입니다.');
   if(!gvNameOk(v.file)){ gvState(''); gvMsg(gvReasonText('badName')); return; }
   let r = null;
-  try{ r = await hostRequest('guideFetch', { file: v.file }, m.source === 'net' ? 16 * 60 * 1000 : 20000); }catch(_){ r = null; }
+  //  호스트는 늘 캐시로 복사하거나 받은 뒤에 회신한다(첫 재생은 공유 폴더에서도 시간이 걸린다). 호스트 상한(15분)보다 조금 길게 기다린다.
+  try{ r = await hostRequest('guideFetch', { file: v.file }, 16 * 60 * 1000); }catch(_){ r = null; }
   if(seq !== GV.seq) return;   // 그사이 다른 영상을 골랐거나 창을 닫았다
   if(!r || !r.ok || !r.url){ gvState(''); gvMsg(gvReasonText((r && r.reason) || 'download')); return; }
   gvState('');
@@ -19875,12 +19876,13 @@ function gvAfterClose(id){
   GV.seq++; GV.cur = null;
   gvResetPlayer();
 }
-//  받는 중 알림(호스트, FTP 와 HTTP 만). 지금 고른 영상의 것만 보인다.
+//  받는 중 알림(호스트가 캐시로 복사하거나 받는 동안). 지금 고른 영상의 것만 보인다.
 window.__guideProgress = function(o){
   if(!o || !GV.cur || String(o.file) !== GV.cur.file) return;
   const got = Number(o.got) || 0, total = Number(o.total);
   if(total > 0 && got >= total){ gvState('영상을 준비하는 중입니다.'); return; }
-  gvState(total > 0 ? '내려받는 중 ' + Math.min(99, Math.floor(got * 100 / total)) + '%' : '내려받는 중 ' + (got / 1048576).toFixed(1) + 'MB');
+  const verb = GV.manifest && GV.manifest.source === 'file' ? '복사하는 중 ' : '내려받는 중 ';   // 파일 공유는 복사, ftp 와 http 는 받기
+  gvState(verb + (total > 0 ? Math.min(99, Math.floor(got * 100 / total)) + '%' : (got / 1048576).toFixed(1) + 'MB'));
 };
 function gvBind(){
   const on = (id, f) => { const el = document.getElementById(id); if(el) el.addEventListener('click', f); };

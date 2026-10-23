@@ -21,13 +21,16 @@ namespace TaskCalendarWidget
     //  guide.json, mp4, (선택) srt 를 올린다. 화면(목록, 재생, 장면 이동)은 앱 안에 있고 이 파일은 두 명령만 맡는다.
     //    guideManifest        → { ok:true, version, source:'file'|'net', videos:[{ id, file, title, chapters:[{ t, title }] }] }
     //                         | { ok:false, reason:'noSource'|'unreachable'|'missing'|'invalid'|'tooLarge'|'noVideos' }
-    //    guideFetch { file }  → { ok:true, url, srt }   url = https://guide.tcapp.local/<file>, srt = 자막 원문(SRT, 없으면 "")
+    //    guideFetch { file }  → { ok:true, url, srt }   url = https://guide.tcapp.local/<판 폴더>/<file>, srt = 자막 원문(SRT, 없으면 "")
     //                         | { ok:false, reason:'badName'|'noGuide'|'unreachable'|'missing'|'download' }
     //    진행 알림(받는 중)     window.__guideProgress({ file, got, total })   total = -1 이면 크기를 모른다
     //  ★ 메인 창 전용이다. 열람 창(PeerWinCommands)과 관리 창(AdminWinCommands) 허용 목록에 넣지 않는다(그 창에는 "?" 메뉴가 없다).
     //  ★ DB 를 쓰지 않는다(§4). 이 파일에서 연결 문자열이나 DB 계층을 부르지 않는다(시험이 지킨다).
-    //  ★ 재생 주소는 가상 호스트 하나다. 파일 공유(로컬, UNC, file://)는 guide 폴더를 바로 잇고(범위 요청으로 바로 재생),
-    //    FTP 와 HTTP 는 요청한 mp4 만 %LOCALAPPDATA%\TaskCalendar\guide-cache\<판>\ 에 받아 그 폴더를 잇는다.
+    //  ★ 재생은 늘 캐시에서 한다. 가상 호스트 guide.tcapp.local 은 %LOCALAPPDATA%\TaskCalendar\guide-cache 하나에
+    //    첫 내비게이션 전에 한 번 잇고(GuideMapInit, 웹뷰 초기화에서 tcapp.local 바로 옆) 다시는 바꾸지 않는다.
+    //    2026-10-23 실측: 문서가 뜬 뒤에 이은(또는 바꾼) 매핑은 그 문서의 요청에 적용되지 않는다(fetch 실패, video readyState 0, 다시 읽어야 됨).
+    //    guideFetch 가 요청한 mp4 를 guide-cache\<판>\ 로 복사(로컬, UNC, file://)하거나 받는다(ftp, http). 같은 크기가 이미 있으면 건너뛴다.
+    //    매핑이 바뀌지 않으므로 실행 중에 업데이트 폴더를 바꿔도 다시 읽을 필요가 없다.
     //  ★ 자막은 주소가 아니라 글로 돌려준다. 다른 출처(guide.tcapp.local)의 track 과 fetch 는 CORS 에 막히므로
     //    웹이 SRT 를 WebVTT 로 바꿔 blob 주소로 붙인다.
     public partial class MainWindow
@@ -36,11 +39,10 @@ namespace TaskCalendarWidget
         private const int GuideJsonMaxBytes = 256 * 1024;          // guide.json 상한(넘으면 tooLarge)
         private const int GuideSrtMaxBytes = 1024 * 1024;          // 자막 상한(넘으면 자막 없이 재생)
         private const int GuideReadTimeoutMs = 6000;               // guide.json 과 자막 읽기. 닿지 않는 공유 폴더가 부팅 뒤 화면을 붙잡지 않게
-        private const int GuideVideoTimeoutMs = 15 * 60 * 1000;    // mp4 받기(FTP, HTTP) 전체 상한
+        private const int GuideVideoTimeoutMs = 15 * 60 * 1000;    // mp4 복사와 받기 전체 상한
 
         private GuideManifest? _guide;                // 마지막으로 읽은 정상 목록. guideFetch 는 이 목록에 있는 이름만 받는다
         private string _guideSrc = "";                // 그 목록을 읽은 업데이트 폴더 주소(바뀌면 다시 읽는다)
-        private string _guideMapped = "";             // 지금 가상 호스트에 이은 폴더("" = 잇지 않음)
         private readonly Dictionary<string, Task<string>> _guideFetching = new(StringComparer.OrdinalIgnoreCase);   // 받는 중인 파일(같은 파일을 두 번 받지 않는다)
 
         //  OnWebMessage 의 case 두 줄이 부른다(UI 스레드). 회신은 ReplyOnUi.
@@ -100,7 +102,6 @@ namespace TaskCalendarWidget
             m.Folder = folder;
             _guide = m;
             _guideSrc = src;
-            if (!m.Net) GuideMap(folder);                  // 파일 공유는 지금 잇는다(재생 전에 이어 두면 첫 재생이 빠르다)
             Log("사용 영상: 판 " + m.Version + ", 영상 " + m.Videos.Count + "편(" + (m.Net ? "네트워크" : "파일 공유") + ")");
             return new
             {
@@ -130,15 +131,10 @@ namespace TaskCalendarWidget
                 return new { ok = false, reason = "badName" };
             }
             string srtName = GuideRules.SrtNameOf(file);
-            string url = "https://" + GuideVirtualHost + "/" + Uri.EscapeDataString(file);
+            string verDir = GuideRules.SafeDirName(g.Version);
+            string url = "https://" + GuideVirtualHost + "/" + Uri.EscapeDataString(verDir) + "/" + Uri.EscapeDataString(file);
 
-            if (!g.Net && GuideMap(g.Folder))
-            {
-                string srt = await GuideSrtTextAsync(SrcKind.File, g.Folder, srtName);
-                return new { ok = true, url, srt };
-            }
-
-            //  네트워크(또는 파일 공유인데 가상 호스트를 잇지 못했다): 이 판의 캐시 폴더로 받는다.
+            //  파일 공유는 복사, 네트워크는 받기. 어느 쪽이든 이 판의 캐시 폴더에 둔다(가상 호스트는 캐시 루트에 이미 이어져 있다).
             string dir;
             try { dir = GuideCacheDir(g.Version); }
             catch (Exception ex) { Log("사용 영상: 캐시 폴더를 만들지 못했다: " + ex.Message); return new { ok = false, reason = "download" }; }
@@ -160,38 +156,29 @@ namespace TaskCalendarWidget
                 Log("사용 영상: 받기 실패(" + file + "): " + ex.GetType().Name + " " + ex.Message);
                 return new { ok = false, reason = "download" };
             }
-            if (!GuideMap(dir)) return new { ok = false, reason = "download" };
             string srtText = await GuideSrtTextAsync(kind, g.Folder, srtName);
             return new { ok = true, url, srt = srtText };
         }
 
         // ── 가상 호스트 ─────────────────────────────────────────────────────
-        //  guide.tcapp.local 을 폴더에 잇는다. 같은 폴더면 다시 잇지 않는다. 실패하면 false(부른 쪽이 캐시로 돌아간다).
-        private bool GuideMap(string folder)
+        //  웹뷰 초기화에서 한 번, 첫 Navigate 전에 부른다(MainWindow.xaml.cs, tcapp.local 매핑 바로 다음).
+        //  ★ 이 뒤로 guide.tcapp.local 매핑을 바꾸거나 지우지 않는다. 문서가 뜬 뒤의 매핑 변경은 그 문서에 적용되지 않는다.
+        //  실패해도 앱은 뜬다(보기 창이 영상을 읽지 못할 뿐이다). 로그만 남긴다.
+        private void GuideMapInit(CoreWebView2 core)
         {
-            if (string.Equals(_guideMapped, folder, StringComparison.OrdinalIgnoreCase)) return true;
             try
             {
-                var core = web.CoreWebView2;
-                if (core == null) return false;
-                if (_guideMapped.Length > 0) { try { core.ClearVirtualHostNameToFolderMapping(GuideVirtualHost); } catch { } }
-                _guideMapped = "";
-                core.SetVirtualHostNameToFolderMapping(GuideVirtualHost, folder, CoreWebView2HostResourceAccessKind.Allow);
-                _guideMapped = folder;
-                return true;
+                Directory.CreateDirectory(GuideCacheRoot);
+                core.SetVirtualHostNameToFolderMapping(GuideVirtualHost, GuideCacheRoot, CoreWebView2HostResourceAccessKind.Allow);
             }
-            catch (Exception ex)
-            {
-                Log("사용 영상: 가상 호스트를 잇지 못했다: " + ex.Message);
-                return false;
-            }
+            catch (Exception ex) { Log("사용 영상: 가상 호스트를 잇지 못했다: " + ex.Message); }
         }
 
         // ── 캐시(%LOCALAPPDATA%\TaskCalendar\guide-cache\<판>\) ─────────────
         private static string GuideCacheRoot =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TaskCalendar", "guide-cache");
 
-        //  이 판의 폴더를 만들고, 다른 판의 폴더는 지운다(잠겨 있으면 다음 기회에).
+        //  이 판의 폴더를 만들고, 다른 판의 폴더는 지운다(재생 중이라 잠겨 있으면 다음 기회에).
         private string GuideCacheDir(string version)
         {
             string root = GuideCacheRoot;
@@ -201,14 +188,13 @@ namespace TaskCalendarWidget
             {
                 string full = Path.GetFullPath(old);
                 if (string.Equals(full, Path.GetFullPath(dir), StringComparison.OrdinalIgnoreCase)) continue;
-                if (_guideMapped.Length > 0 && string.Equals(full, _guideMapped, StringComparison.OrdinalIgnoreCase)) continue;   // 지금 재생 중일 수 있다
                 try { Directory.Delete(old, true); Log("사용 영상: 지난 판 캐시를 지웠다: " + Path.GetFileName(old)); }
                 catch { }
             }
             return dir;
         }
 
-        //  mp4 하나를 캐시로. 이미 있고 크기가 원본과 같으면(또는 원본 크기를 모르면) 그대로 쓴다.
+        //  mp4 하나를 캐시로(파일 공유는 복사, ftp 와 http 는 받기). 이미 있고 크기가 원본과 같으면(또는 원본 크기를 모르면) 그대로 쓴다.
         //  받는 동안 .part 에 쓰고 끝나면 이름을 바꾼다(중간에 꺼져도 반쪽 파일을 재생하지 않게).
         private async Task<string> GuideDownloadAsync(SrcKind kind, string folder, string file, string dir)
         {

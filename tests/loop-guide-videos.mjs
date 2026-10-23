@@ -16,7 +16,10 @@
  *    G0 호스트가 guide.json 을 읽는다(guideManifest)
  *    G1 새 실행처럼 되돌린 뒤(이 계정의 tc_guideSeen, 실행 안 기억을 비움) 묻는 창이 뜬다. 문구는 기록 유무 규칙대로
  *    G2 [보기] 가 판을 기록하고 보기 창을 연다. 목록이 guide.json 과 같다
- *    G3 영상이 가상 호스트(https://guide.tcapp.local/)로 실제로 읽힌다(readyState >= 1)
+ *    G3 영상이 가상 호스트(https://guide.tcapp.local/<판 폴더>/<파일>)로 실제로 읽힌다(readyState >= 1).
+ *       ★ 다시 읽기 없이 본다. 루프를 시작한 문서 그대로(표시 __gvLoopDoc 유지)에서 업데이트 폴더를 바꾸고 곧바로 보기 창을 연다.
+ *         2026-10-23 PM 실측: 문서가 뜬 뒤에 건 매핑은 그 문서에 적용되지 않아, 앞 판은 다시 읽은 뒤에만 재생됐다.
+ *         위젯을 새로 띄운 직후 이 루프를 처음 돌려야 이 확인이 뜻이 있다(앞선 실행의 G5 가 이미 다시 읽었으면 그 문서는 새 문서다).
  *    G4 장면을 누르면 그 초로 간다. 자막이 있는 영상이면 트랙이 붙는다
  *    G5 [다시 묻지 않기] 가 기록되고 페이지를 다시 읽어도(Page.reload) 남는다. 다시 읽은 뒤에는 묻지 않는다
  *    끝나면 이 계정의 tc_guideSeen 과 실행 안 기억(sessionStorage)을 처음 값으로 되돌린다. DB 는 건드리지 않는다.
@@ -102,6 +105,7 @@ const closeAll = async () => { for (let i = 0; i < 8; i++) { if (!(await ev('ope
     if (!(await ev(`typeof gvOnBootApplied === 'function'`))) { undecide('O0 앱', '사용 영상 코드가 없다(이 브랜치로 빌드한 위젯인가)'); return; }
     if (!(await waitFor(healthy, 30000))) { undecide('O0 정상 연결과 로그인', JSON.stringify(await J(`{ conn, bootOk, me: pkMe(), gate: __gateOn }`))); return; }
     me = await ev('pkMe()');
+    const docMark = await ev(`(window.__gvLoopDoc = 'd' + Date.now())`);   // G3 까지 다시 읽기가 없었는지 볼 표시(다시 읽으면 사라진다)
     seen0 = await ev(`(() => { try{ return localStorage.getItem('tc_guideSeen:' + pkMe()); }catch(_){ return null; } })()`);
     asked0 = await ev(`(() => { try{ return sessionStorage.getItem('tc_guideAsked'); }catch(_){ return null; } })()`);
     if (SOURCE) {
@@ -133,10 +137,11 @@ const closeAll = async () => { for (let i = 0; i < 8; i++) { if (!(await ev('ope
 
     // G3 가상 호스트로 재생 준비
     await ev(`(document.getElementById('gvVideo').muted = true, 1)`);
-    const loadMs = man.source === 'net' ? 300000 : 30000;
-    const ready = await waitFor(`(() => { const v = document.getElementById('gvVideo'); return v.readyState >= 1 && /^https:\\/\\/guide\\.tcapp\\.local\\//.test(v.currentSrc); })()`, loadMs);
+    const loadMs = man.source === 'net' ? 300000 : 120000;   // 첫 재생은 공유 폴더에서도 캐시로 복사한 뒤다
+    const ready = await waitFor(`(() => { const v = document.getElementById('gvVideo'); return v.readyState >= 1 && /^https:\\/\\/guide\\.tcapp\\.local\\/[^\\/]+\\/[^\\/]+$/.test(v.currentSrc); })()`, loadMs);
+    ok('G3 다시 읽기 없이 같은 문서다(업데이트 폴더를 바꾼 뒤 곧바로 연 보기 창)', (await ev('window.__gvLoopDoc')) === docMark);
     const g3 = await J(`(() => { const v = document.getElementById('gvVideo'); return { src: v.currentSrc, rs: v.readyState, dur: v.duration, err: v.error && v.error.code, msg: document.getElementById('gvMsg').textContent }; })()`);
-    ok('G3 첫 영상이 guide.tcapp.local 로 읽힌다(readyState >= 1)', ready, JSON.stringify(g3));
+    ok('G3 첫 영상이 guide.tcapp.local/<판 폴더>/ 로 읽힌다(readyState >= 1)', ready, JSON.stringify(g3));
 
     // G4 장면 이동과 자막
     const withCh = man.videos.find((v) => (v.chapters || []).some((c) => c.t > 1));
