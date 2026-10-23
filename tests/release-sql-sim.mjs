@@ -166,6 +166,7 @@ class Expr {
       const m = /^\s*(\d+)/.exec(String(v)); return m ? Number(m[1]) : 0;
     }
     if (U === 'DATABASE') { this.args(); return this.db.schema; }
+    if (U === 'ROW_COUNT') { this.args(); return this.db.rowCount ?? 0; }
     throw new Error(`모르는 식 요소: ${x.v}`);
   }
 }
@@ -380,6 +381,14 @@ export class FakeDb {
       if (this.project.checks.includes(m[1])) throw new SqlStop(`3822 CHECK ${m[1]} 이 이미 있다`);
       this.project.checks.push(m[1]);
       this.writes.push({ k: `check:${m[1]}`, v: 'add' });
+      return;
+    }
+    //  v17 4b: 기존 과제 개발 날짜 기본값. 과제 행은 흉내 내지 않는다(0행). 칸이 없으면 MySQL 처럼 1054 로 멈춘다.
+    if (/^UPDATE project SET dev_start_date = DATE_ADD\(start_date, INTERVAL 1 MONTH\), dev_end_date = DATE_SUB\(end_date, INTERVAL 1 MONTH\) WHERE id > 0 AND dev_start_date IS NULL AND dev_end_date IS NULL AND start_date IS NOT NULL AND end_date IS NOT NULL AND DATE_ADD\(start_date, INTERVAL 1 MONTH\) <= DATE_SUB\(end_date, INTERVAL 1 MONTH\)$/.test(q)) {
+      this.mutating(s, opts);
+      const names = this.project.cols.map((c) => colOf(c).name);
+      for (const c of ['dev_start_date', 'dev_end_date', 'start_date', 'end_date']) if (!names.includes(c)) throw new SqlStop(`1054 칸 ${c} 이 없다`);
+      this.rowCount = 0;
       return;
     }
     if (q === ROOM_INSERT) {

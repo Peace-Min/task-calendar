@@ -13,8 +13,9 @@
 --  바꾸는 것:
 --    1) project.dev_start_date DATE NULL 을 end_date 뒤(dev_end_date 앞)에 더한다. 정본 schema-structure.sql 과 같은 자리, 같은 형.
 --       ALGORITHM=INSTANT 라 즉시 변경이 안 되는 서버면 표를 복사하지 않고 실패한다(DB-RELEASE-OPS §5.1).
---       값은 모두 NULL 로 시작한다(개발 시작, 종료 값 채우기는 사용자가 따로 한다. 이 조각은 칸만 만든다).
+--       값은 NULL 로 시작한다. 기존 과제의 기본값은 4b 에서 채운다.
 --    2) project 에 CHECK chk_project_dev_dates(둘 다 있을 때 시작 <= 종료)를 건다. 새 칸이 모두 NULL 이라 기존 행은 통과한다.
+--    2b) (4b) 개발 날짜가 둘 다 빈 기존 과제에 기본값(계약 시작 + 1달, 계약 종료 - 1달)을 채운다. 시작 > 종료가 되는 과제는 비워 둔다.
 --    3) 새 표 project_schedule_image 를 만든다. 정의는 정본 db/deploy/schema-calendar.sql 의 16 과 글자까지 같다
 --       (작은따옴표만 두 겹. 시험이 대조한다). project(id) 를 CASCADE, 주인 app_user(user_id) 를 RESTRICT 로 가리킨다.
 --       그림은 사람마다 따로다(2026-10-23 결정): UNIQUE (user_id, project_id, seq), 앱은 주인의 그림만 읽고 쓴다.
@@ -100,6 +101,21 @@ SET @s := IF(@go,
   COMMENT=''사람별 과제 개발 일정 그림(월간보고). 주인만 보고 고친다. 과제 삭제 때 함께 지워진다. 주인은 RESTRICT. 앱이 사람마다 과제당 5장, 장당 5MB 로 막는다.''',
   'DO 0');
 PREPARE _s FROM @s; EXECUTE _s; DEALLOCATE PREPARE _s;
+
+-- 4b) 기존 과제의 개발 날짜 기본값(2026-10-23 사용자 결정): 개발 시작 = 계약 시작 + 1달, 개발 종료 = 계약 종료 - 1달.
+--     개발 시작, 종료가 둘 다 비어 있고 계약 날짜가 둘 다 있으며 계산한 시작 <= 종료인 과제만 채운다(CHECK 통과).
+--     손으로 넣은 값은 건드리지 않는다. 다시 돌려도 이미 채운 행은 조건에서 빠진다. 신규 과제는 앱이 같은 규칙으로 채운다.
+SET @s := IF(@go,
+  'UPDATE project
+      SET dev_start_date = DATE_ADD(start_date, INTERVAL 1 MONTH),
+          dev_end_date   = DATE_SUB(end_date, INTERVAL 1 MONTH)
+    WHERE id > 0
+      AND dev_start_date IS NULL AND dev_end_date IS NULL
+      AND start_date IS NOT NULL AND end_date IS NOT NULL
+      AND DATE_ADD(start_date, INTERVAL 1 MONTH) <= DATE_SUB(end_date, INTERVAL 1 MONTH)',
+  'DO 0');
+PREPARE _s FROM @s; EXECUTE _s; SET @m_dev := ROW_COUNT(); DEALLOCATE PREPARE _s;
+SELECT IF(@go, CONCAT('기존 과제 개발 날짜 채움: ', @m_dev, '건'), '건너뜀') AS `v17 개발 날짜`;
 
 -- 5) 검증: 칸(형, NULL 허용, 자리), CHECK, 새 표의 열 수와 FK 수. 틀리면 db_updating = 1 인 채로 멈춘다(앱은 계속 기다린다).
 --    information_schema 로 다시 보는 이유: 이름이 같은 다른 모양의 칸이나 표가 이미 있으면 위 단계가 건너뛰기 때문이다.

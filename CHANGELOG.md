@@ -7,6 +7,13 @@
 
 ---
 
+## 🆕 2026-10-23, v0.23.0: 과제 공용 캘린더, 월간 보고, 개인 달력 기간 막대와 한 화면 입력, 시각 5분 단위, 개발 시작과 종료 기본값, 사용 영상 안내, 공용 회의실, 관리 창, DB 버전 관문 (구조 13 에서 17)
+
+0.22.0 이후 커밋을 한 판으로 낸다. **DB 구조 번호가 17** 이 된다(`DbGate.AppStructureVersion = 17`, 정확히 같아야 연다). 배포는 `installer/publish-update.ps1 -Build` 가 만드는 `release-v0.23.0.sql` 하나다. 이관 조각 사슬은 `db/deploy/migrations/` 의 v14(버전 관문, cal_schema_meta 키), v15(공용 회의실), v16(cal_project_event, cal_project_change), v17(project.dev_start_date 와 CHECK chk_project_dev_dates, project_schedule_image)이다. 순서는 **Setup 먼저 공유 폴더에, 그다음 SQL**(db_updating 을 닫고 조각을 돌린 뒤 한 트랜잭션으로 연다, docs/DB-RELEASE-OPS.md).
+
+- v17 조각 4b: 개발 시작과 종료가 둘 다 NULL 인 기존 과제를 계약 시작 + 1달, 계약 종료 - 1달로 채운다(계산한 시작 <= 종료일 때만, 다시 돌려도 안전). 일회 SQL `db/deploy/oneoff/dev-dates-from-contract.sql` 과 같은 규칙이고, 신규 과제는 앱이 같은 규칙으로 채운다. 시험 흉내기(tests/release-sql-sim.mjs)가 이 문장과 ROW_COUNT() 를 읽는다.
+- 사용 영상은 DB 를 쓰지 않는다(공유 폴더 guide\guide.json 판 번호, docs/GUIDE-VIDEOS.md).
+
 ## 🆕 2026-10-16, v0.22.0: 창 버튼(최소화, 최대화, 닫기), 맨 앞에 띄우기 단순화, 다른 사람 일정 보기 독립 창(PeerWindow), 펼침 칸 높이 정정 (스키마 변경 없음, v13)
 
 0.21.0(스키마 v13, 코드표 번호 키)은 빌드만 하고 사내에 배포하지 않았다. 사내 설치본(0.19.0)에서 바로 이 버전으로 올린다. **서버 스키마, GRANT 변경 없음**(v13, `CalendarDb.ExpectedSchemaVersion = "13"` 그대로). 0.19.x 나 0.20.0 에서 올리는 곳은 0.21.0 의 DB 단계(v12 DB 면 `db/deploy/migrate-code-ids.cmd`, 회사 서버면 `db/deploy/README.md` 대로 v13 DB)를 먼저 마친 뒤 앱을 올린다. 기획 [docs/WINDOW-UI.md](docs/WINDOW-UI.md).
