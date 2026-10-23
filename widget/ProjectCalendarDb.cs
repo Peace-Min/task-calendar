@@ -708,7 +708,7 @@ namespace TaskCalendarWidget
                 }
 
                 //  개인 일정 한 건. 행 투영은 개인 저장과 같은 함수(CalendarWriteDb.EntryParams)를 쓴다.
-                //  시각이 없으면 all_day = 0 에 시각 NULL(시각 없는 하루 일정), 알림 없음(remind 0), 반복 없음.
+                //  시각이 없으면 all_day = 0 에 시각 NULL(시각 없는 하루 일정), 미리알림은 새 기록과 같은 기본값(remind NULL = 놓침 방지 사다리), 반복 없음.
                 string entryUid = "e-" + Guid.NewGuid().ToString("D");
                 var entry = new Dictionary<string, object?>
                 {
@@ -722,7 +722,7 @@ namespace TaskCalendarWidget
                     ["memo"] = src.F.Memo,
                     ["source"] = "",
                     ["location"] = src.F.Location,
-                    ["remind"] = 0,
+                    ["remind"] = null,   // 새 기록과 같은 기본 미리알림(놓침 방지 사다리). 사본은 보통 개인 일정이다(2026-10-23)
                     ["createdAt"] = "",
                 };
                 using var entryDoc = JsonDocument.Parse(JsonSerializer.Serialize(entry));

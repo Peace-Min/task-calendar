@@ -9,10 +9,10 @@
  *    P1 등록 폼으로 기간 일정과 시간 일정 만들기 → 월간 막대, 시간 일정 점
  *    P2 날짜 칸 → 그날 일정 목록(두 일정 줄, [수정] 없음, 이 날짜에 일정 등록), 체크한 과제가 하나면 폼에 그 과제
  *    P3 주간(과제 행)에 막대
- *    P4 수정: 막대(작은 창은 칸) → 그날 일정 목록(누른 줄 강조) → 줄 → 상세 → 수정 → 판이 오른다
+ *    P4 수정: 막대(작은 창은 칸) → 누른 날짜 칸에 붙은 그날 일정 목록(그 줄이 있고 강조는 없음) → 그 줄 → 상세 → 수정 → 판이 오른다
  *    P5 충돌: 폼을 연 뒤 같은 일정을 호스트 명령으로 한 번 더 고친다(다른 사람 흉내) → 충돌 안내 → 내 입력 유지 → 저장
  *    P6 최근 변경: 내 변경이 보이고 종류 필터(수정)가 서버에서 걸린다
- *    P7 개인 일정에 등록 → 개인 스냅샷에 새 개인 일정(사본). 상세는 그대로 "개인 일정에 등록"(등록됨 없음), 배지 없음
+ *    P7 개인 일정에 등록(확인 창 없이 바로) → 개인 스냅샷에 새 개인 일정(사본, 미리알림은 새 기록 기본값 null). 상세는 그대로 "개인 일정에 등록"(등록됨 없음), 배지 없음
  *    P8 새로고침 → 목록과 범위를 다시 읽고 일정이 그대로
  *  정리: 과제 일정은 화면(삭제 단추)과 호스트 명령으로 지운다. **공용 일정은 소프트 삭제라 DB 에 행(is_deleted=1)과
  *    변경 이력(cal_project_change)이 남는다. 설계대로다(지우지 않는 기록, 기획 §4.2).** 개인 복사본은 개인 삭제로 지운다.
@@ -111,11 +111,15 @@ async function fillAndSave(v) {
 
     // P4 수정: 달력 → 그날 일정 목록 → 줄 → 상세 → 수정
     const rv0 = await ev(`pcEv(${S(E2)}).rowVersion`);
-    //  막대가 보이면 막대(목록에서 그 줄이 강조되고 초점), "+n" 으로 접혔으면 날짜 칸(강조 없음)
+    //  막대가 보이면 막대, "+n" 으로 접혔으면 날짜 칸. 어느 쪽이든 그날 목록이 뜨고 그 일정 줄이 있다.
+    //  누른 줄 강조는 없다(2026-10-23 사용자): 줄에 hit 과 aria-current 가 없고 초점은 목록 창 자체. 목록 창은 막대가 아니라 날짜 칸에 붙는다.
     const p4l = await J(`(() => { const b = document.querySelector('#pcView .pc-ev[data-ev="${E2}"]'); if(b) b.click(); else document.querySelector('#pcView .pc-day[data-date="${today}"]').click();
-      const p = document.getElementById('pcPop'); if(!p) return null; const hit = p.querySelector('.pc-dl .chip.hit'), row = p.querySelector('.pc-dl .chip[data-ev="${E2}"]');
-      const r = { bar: !!b, hit: hit ? hit.dataset.ev : '', focus: !!hit && document.activeElement === hit, row: !!row }; if(row) row.click(); return r; })()`);
-    ok('P4 막대를 누르면 그날 일정 목록에서 그 줄이 강조된다(작은 창은 칸으로 열어 강조 없음)', !!p4l && p4l.row && (p4l.bar ? p4l.hit === E2 && p4l.focus : p4l.hit === ''), JSON.stringify(p4l));
+      const p = document.getElementById('pcPop'); if(!p) return null; const row = p.querySelector('.pc-dl .chip[data-ev="${E2}"]');
+      const a = PCAL.pop && PCAL.pop.anchor;
+      const r = { bar: !!b, row: !!row, marked: !!p.querySelector('.pc-dl .chip.hit, .pc-dl [aria-current]'), popFocus: document.activeElement === p,
+        cell: !!a && a !== b && !!a.matches && a.matches('.pc-day[data-date], .pc-wday[data-date]') };
+      if(row) row.click(); return r; })()`);
+    ok('P4 누르면 그날 일정 목록이 뜨고 그 일정 줄이 있다(강조 없음, 초점은 목록 창, 날짜 칸에 붙음)', !!p4l && p4l.row && !p4l.marked && p4l.popFocus && p4l.cell, JSON.stringify(p4l));
     const det = await waitFor(`!document.getElementById('pcDetailModal').classList.contains('hidden') && !document.getElementById('pcPop')`, 5000);
     ok('P4 목록의 줄은 상세 창(삭제, 개인 일정에 등록, 수정)', det && (await ev(`[...document.querySelectorAll('#pcDetailFoot [data-act]')].map(b => b.dataset.act).join(',')`)) === 'delete,copy,edit');
     await ev(`(() => { document.querySelector('#pcDetailFoot [data-act="edit"]').click(); return 1; })()`);
@@ -154,12 +158,14 @@ async function fillAndSave(v) {
     // P7 개인 일정에 등록: 지금 내용을 찍은 사본(새 개인 일정). 원본과 잇는 기록이 없어 "등록됨" 과 배지가 없다
     const nCopy = `state.entries.filter(e => e.title === ${S(TAG + ' 기간')}).length`;
     const c0 = await ev(nCopy);
+    //  확인 창 없이 바로 보낸다(2026-10-23 사용자). 누른 직후 확인 창이 떠 있으면 실패.
     await ev(`(() => { pcOpenDetail(${S(E1)}); document.querySelector('#pcDetailFoot [data-act="copy"]').click(); return 1; })()`);
-    await waitFor(`!document.getElementById('confirmModal').classList.contains('hidden')`, 5000);
-    await ev(`(() => { document.getElementById('cfOk').click(); return 1; })()`);
+    ok('P7 개인 일정에 등록은 확인 창을 띄우지 않는다', await ev(`document.getElementById('confirmModal').classList.contains('hidden')`));
     const copied = await waitFor(`${nCopy} === ${c0 + 1} && !document.getElementById('pcDetailModal').dataset.busy`, 20000);
     copyEntry = await ev(`(state.entries.find(e => e.title === ${S(TAG + ' 기간')}) || {}).id || ''`);
     ok('P7 개인 일정에 등록: 개인 스냅샷에 새 개인 일정', copied, copyEntry);
+    const rem = await J(`(() => { const e = state.entries.find(x => x.id === ${S(copyEntry)}); return e ? { has: true, remind: e.remind === undefined ? 'undefined' : e.remind } : { has: false }; })()`);
+    ok('P7 사본의 미리알림은 새 기록과 같은 기본값(remind null, 알림 없음 0 이 아니다)', !!rem && rem.has && (rem.remind === null || rem.remind === 'undefined'), JSON.stringify(rem));
     ok('P7 상세는 그대로 "개인 일정에 등록"(등록됨 없음, 다시 누를 수 있음)', await ev(`(() => { const b = document.querySelector('#pcDetailFoot [data-act="copy"]'); return !!b && !b.disabled && !/등록됨/.test(document.getElementById('pcDetailFoot').textContent); })()`));
     ok('P7 개인 탭 출처 배지 없음(배지 함수도 없다)', await ev(`typeof pcCopyBadge === 'undefined' && !document.querySelector('.pc-copy-badge')`));
     await ev(`(() => { closeModal('#pcDetailModal'); return 1; })()`);

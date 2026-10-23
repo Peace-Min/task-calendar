@@ -397,8 +397,8 @@ async function main() {
     let c = cmdFull('u1', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, expectedVersion: 3, mutationUid: randomUUID() });
     const entryUid = c.reply.ok ? c.reply.data.entryUid : '';
     ok('숨긴 과제의 일정도 개인 복사가 된다(새 개인 일정, 재적재 표시)', c.reply.ok && !('existed' in c.reply.data) && c.reload === true && u1Entries() === n0 + 1, JSON.stringify(c).slice(0, 300));
-    const pe = sql(`SELECT e.title, DATE_FORMAT(e.entry_date,'%Y-%m-%d'), DATE_FORMAT(e.end_date,'%Y-%m-%d'), e.location, e.remind, c.project_uid FROM cal_entry e JOIN cal_category c ON c.user_id=e.user_id AND c.cat_no=e.cat_no WHERE e.user_id=${D.u1.id} AND e.uid='${entryUid}'`)[0] || [];
-    ok('복사본: 제목, 기간, 장소 그대로, 알림 없음(0), 분류는 그 공식 과제', pe[0] === 'zz 일정1 고침' && pe[1] === '2026-11-02' && pe[2] === '2026-11-05' && pe[3] === '3층 회의실' && pe[4] === '0' && pe[5] === D.p1.uid, JSON.stringify(pe));
+    const pe = sql(`SELECT e.title, DATE_FORMAT(e.entry_date,'%Y-%m-%d'), DATE_FORMAT(e.end_date,'%Y-%m-%d'), e.location, (e.remind IS NULL), c.project_uid FROM cal_entry e JOIN cal_category c ON c.user_id=e.user_id AND c.cat_no=e.cat_no WHERE e.user_id=${D.u1.id} AND e.uid='${entryUid}'`)[0] || [];
+    ok('복사본: 제목, 기간, 장소 그대로, 미리알림은 새 기록과 같은 기본값(remind NULL, 2026-10-23), 분류는 그 공식 과제', pe[0] === 'zz 일정1 고침' && pe[1] === '2026-11-02' && pe[2] === '2026-11-05' && pe[3] === '3층 회의실' && pe[4] === '1' && pe[5] === D.p1.uid, JSON.stringify(pe));
     //  한 번 찍는 사본(2026-10-22 저녁 결정): 대응표가 없어 같은 원본을 다시 등록하면 개인 일정이 하나 더 생긴다
     c = cmdFull('u1', 'projectCalendarCopy', { projectUid: D.p1.uid, eventUid: e1, mutationUid: randomUUID() });
     const entryUid2 = c.reply.ok ? c.reply.data.entryUid : '';

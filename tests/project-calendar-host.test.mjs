@@ -307,6 +307,8 @@ const checks = {
     const iIns = copy.indexOf('CalendarWriteDb.InsertEntryInTxAsync('), iCommit = copy.indexOf('await CommitWithGateAsync(conn, tx, ct);'), iRet = copy.indexOf('return data;');
     assert.ok(iIns > 0 && iCommit > iIns && iRet > iCommit, '개인 복사가 개인 일정을 넣고 커밋한 뒤 돌아가지 않는다');
     assert.ok(!/existed/.test(stripCsComments(pcdb)), '개인 복사 회신에 existed 가 남아 있다');
+    //  사본의 미리알림은 새 기록과 같은 기본값(remind NULL = 놓침 방지 사다리). 0(알림 없음)이 아니다(2026-10-23 사용자).
+    assert.ok(/\["remind"\] = null,/.test(copy) && !/\["remind"\] = \d/.test(copy), '개인 복사의 미리알림이 새 기록과 같은 기본값(remind = null)이 아니다');
     const boot = stripCsComments(extractCsMember(pcdb, 'private async Task<object> BootstrapAsync('));
     assert.ok(!/copies/.test(boot), '부트스트랩이 아직 copies 를 돌려준다');
     assert.ok(/case "projectCalendarCopy":[\s\S]{0,240}r\.ReloadPersonal = true;/.test(stripCsComments(pcdb)), '개인 복사가 성공할 때마다 개인 스냅샷을 다시 싣지 않는다');
@@ -345,7 +347,7 @@ test('과제캘린더⑦: 글자 상한(제목, 장소, 이름 200, 메모 8,000
 test('과제캘린더⑧: 휴지통 과제 영구 삭제는 공용 일정이 있으면 고정 문구로 거부한다(목록 힌트도 같은 문장)', () => checks.trash(src.pdb));
 test('과제캘린더⑨: 새 표 둘에 DELETE 권한이 없고 호스트에도 DELETE 문이 없다', () => checks.grants(src.grants, src.server, src.pcdb));
 test('과제캘린더⑩: 개인 복사가 개인 저장과 같은 행 투영, INSERT 문, rev 증가를 쓴다', () => checks.copyProjection(src.cwdb));
-test('과제캘린더⑪: 개인 복사는 한 번 찍는 사본이다(대응표 없음, 먼저 돌아가는 길 없음, copies 없음, 늘 개인 재적재)', () => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, src.grants, src.server));
+test('과제캘린더⑪: 개인 복사는 한 번 찍는 사본이다(대응표 없음, 먼저 돌아가는 길 없음, copies 없음, 늘 개인 재적재, 미리알림은 새 기록 기본값)', () => checks.copySnapshot(src.pcdb, src.host, src.canon, src.frag, src.grants, src.server));
 test('과제캘린더⑫: 과제별 감시점과 판이 없고, 과제 영구 삭제와 엇갈린 FK 오류는 고정 문구 forbidden 이다', () => checks.noProjectRev(src.pcdb, src.canon, src.frag, src.grants, src.server));
 
 // ══ 변이 ═══════════════════════════════════════════════════════════════
@@ -398,6 +400,10 @@ test('변이PC11: 개인 복사가 "이미 복사했나" 를 보고 먼저 돌�
   const at = '                //  잠금 3: 내 개인 rev(배타).';
   const bad = mutate(src.pcdb, at, '                if (src.RowVersion < 0) { await SafeRollbackAsync(tx); return CopyData("", eventUid, projectUid); }\n' + at);
   assert.throws(() => checks.copySnapshot(bad, src.host, src.canon, src.frag, src.grants, src.server), /먼저 돌아가는 길/);
+});
+test('변이PC17: 개인 복사의 미리알림을 0(알림 없음)으로 되돌리면 ⑪ 이 실패한다', () => {
+  const bad = mutate(src.pcdb, '["remind"] = null,', '["remind"] = 0,');
+  assert.throws(() => checks.copySnapshot(bad, src.host, src.canon, src.frag, src.grants, src.server), /미리알림/);
 });
 test('변이PC12: 대응표 권한 줄을 되살리면 ⑨ 와 ⑪ 이 실패한다', () => {
   const bad = mutate(src.grants, "GRANT SELECT, INSERT ON taskmgr.cal_project_change TO 'taskmgr_app'@'%';",

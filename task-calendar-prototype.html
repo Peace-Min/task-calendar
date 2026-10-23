@@ -2543,6 +2543,7 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pc-wnone{grid-column:1 / -1;background:var(--panel);padding:30px;text-align:center;color:var(--muted)}
 /* 그날 일정 목록(팝오버) */
 .pc-pop{position:fixed;z-index:45;width:288px;max-width:calc(100vw - 16px);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:var(--r-md);box-shadow:var(--shadow);padding:12px 14px;font-size:var(--fs-body)}
+.pc-pop:focus{outline:none}   /* 열 때 초점은 창 자체(pcOpenDayList), 테두리는 띄우지 않는다 */
 .pc-pop-top{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}
 .pc-pop-title{font-size:var(--fs-title);font-weight:700;line-height:1.4;flex:1;min-width:0}
 .pc-pop-n{font-size:var(--fs-meta);color:var(--muted);flex:none;white-space:nowrap}
@@ -2558,8 +2559,6 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
 .pc-dl .chip.chip-timed:hover{background:var(--hover-bg) !important;filter:none}
 .pc-dl .chip.chip-timed .chip-t{display:block;font-size:var(--fs-body);font-weight:700}
 .pc-dl .chip:focus-visible{outline:2px solid var(--accent);outline-offset:0}
-.pc-dl .chip.hit{box-shadow:0 0 0 2px var(--accent)}   /* 눌러서 연 일정 */
-.pc-dl .chip.chip-timed.hit{background:var(--accent-soft) !important}
 .pc-dl-empty{color:var(--muted);padding:8px 4px}
 .pc-dl-foot{margin-top:8px;display:flex;justify-content:flex-end}
 /* 좁은 창: 과제 목록은 단추 아래로 펼친다 */
@@ -21469,16 +21468,16 @@ function pcDayRowHtml(e, hit){
   const mi = m1 ? '<span class="pc-mi" title="메모 있음">' + PC_IC.memo + '</span>' : '';
   const tip = p.name + ', ' + when;
   const aria = tip + ', ' + e.title + (m1 ? ', 메모 있음' : '') + (p.writable ? '' : ', 읽기 전용');
-  const cls = 'chip' + (timed ? ' chip-timed' : '') + (hit ? ' hit' : '');
+  const cls = 'chip' + (timed ? ' chip-timed' : '');
   const style = timed ? '' : ' style="border-left-color:' + col + ';background:' + tint(col, 0.2) + '"';
   const inner = timed
     ? '<span class="cdot" style="background:' + col + '"></span><span class="chip-t">' + esc(e.startTime) + '</span><span class="ctitle">' + esc(e.title) + '</span>' + mi
     : '<span class="ctitle">' + esc(e.title) + '</span>' + mi;
   return '<li><button type="button" class="' + cls + '" data-act="dlOpen" data-ev="' + esc(e.eventUid) + '"' + style
-    + ' title="' + esc(tip) + '" aria-label="' + esc(aria) + '"' + (hit ? ' aria-current="true"' : '') + '>' + inner + '</button></li>';
+    + ' title="' + esc(tip) + '" aria-label="' + esc(aria) + '">' + inner + '</button></li>';
 }
 //  그날 일정 목록. 머리 "M월 D일 (요일)" 과 오른쪽 "일정 n건", 줄(pcDayRowHtml), 맨 아래 "이 날짜에 일정 등록".
-//  o.hit: 눌러서 연 일정(그 줄을 강조하고 초점을 둔다). o.projectUid: 주간의 과제 행에서 열었으면 등록 폼에 그 과제를 미리 고른다(목록은 같다).
+//  누른 일정 줄을 따로 강조하지 않는다(2026-10-23 사용자: 강조가 오히려 헷갈림). o.projectUid: 주간의 과제 행에서 열었으면 등록 폼에 그 과제를 미리 고른다(목록은 같다).
 function pcOpenDayList(ds, anchor, opt){
   const o = opt || {};
   const order = pcOrder();
@@ -21491,8 +21490,9 @@ function pcOpenDayList(ds, anchor, opt){
   const pop = pcShowPop(html, pcMd(ds) + ' 일정 목록', anchor, null);
   if(!pop) return;
   PCAL.pop.day = { ds, hit, projectUid: o.projectUid || '' };   // 다시 읽기가 화면을 새로 그려도 같은 목록을 다시 연다(pcLoad)
-  const f = pop.querySelector('.pc-dl .chip.hit') || pop.querySelector('.pc-dl .chip') || pop.querySelector('[data-act="newOn"]');
-  if(f) try{ f.focus(); }catch(_){}   // 목록 안에서 그 줄이 보이게 스크롤도 한다
+  //  초점은 목록 창 자체에 둔다(줄에 두면 초점 테두리가 강조처럼 보인다). 방향키를 누르면 첫 줄부터 옮겨 간다(pcPopKey).
+  pop.tabIndex = -1;
+  try{ pop.focus({ preventScroll: true }); }catch(_){}
 }
 function pcReopenDay(k){
   const cell = document.querySelector('#pcView .pc-day[data-date="' + k.ds + '"]') || document.querySelector('#pcView .pc-wday[data-date="' + k.ds + '"]');
@@ -21541,7 +21541,7 @@ function pcRenderDetail(){
     + (e.memo ? '<div class="pcd-memo" tabindex="0">' + esc(e.memo) + '</div>' : '<div class="pcd-memo none">메모 없음</div>')
     + '<p class="pcd-note">' + (ro ? '종료된 과제라 읽기 전용입니다. 고치거나 지울 수 없고, 개인 일정에 등록은 할 수 있습니다.'
       : '공용 일정입니다. 이 과제를 내 과제에 넣은 사람 누구나 고치고 지울 수 있습니다(글쓴이와 관계없이).') + '</p>';
-  //  단추: 수정(쓸 수 있는 과제만), 개인 일정에 등록(늘, 누를 때마다 확인 뒤 새 개인 일정), 삭제(쓸 수 있는 과제만).
+  //  단추: 수정(쓸 수 있는 과제만), 개인 일정에 등록(늘, 누를 때마다 확인 창 없이 새 개인 일정), 삭제(쓸 수 있는 과제만).
   foot.innerHTML = (ro ? '' : '<button type="button" class="btn danger pc-w" data-act="delete">삭제</button>') + '<span class="spacer"></span>'
     + '<button type="button" class="btn pc-w" data-act="copy">' + ICON.copy + ' 개인 일정에 등록</button>'
     + (ro ? '' : '<button type="button" class="btn primary pc-w" data-act="edit">수정</button>');
@@ -21724,12 +21724,11 @@ async function pcDelete(uid){
 }
 //  기획 §5.5: 개인 화면의 저장이 다 끝난 뒤에만 복사한다(호스트가 복사 뒤 개인 스냅샷을 다시 실어 화면을 덮기 때문).
 //  ★ 복사는 지금 내용을 찍은 사본이다(2026-10-22 저녁 결정 A). 원본과 잇는 기록이 없어 "이미 등록됨" 도 없다.
-//    누를 때마다 확인 창을 거쳐 새 개인 일정이 하나씩 생긴다(두 번 등록하면 두 건).
+//    누를 때마다 새 개인 일정이 하나씩 생긴다(두 번 등록하면 두 건). 확인 창은 없다(2026-10-23).
 async function pcCopy(uid){
   const e = pcEv(uid); if(!e) return;
+  //  확인 창 없이 바로 넣고 결과만 알린다(2026-10-23 사용자). 사본은 보통 개인 일정이라 미리알림도 새 기록과 같은 기본값이다(호스트).
   if(guardEdit()) return;
-  const ok = await confirmBox('개인 일정에 등록할까요?', e.title + ', ' + pcWhenText(e) + '. 지금 내용(제목, 날짜, 시간, 장소, 메모)으로 내 개인 일정을 새로 만듭니다. 그 뒤로는 내 개인 일정일 뿐이라, 이 공용 일정이 바뀌거나 지워져도, 내 일정을 고치거나 지워도 서로 이어지지 않습니다. 미리알림은 없음으로 들어갑니다.', '등록', null, { ok: 'safe' });
-  if(ok !== 'ok' || guardEdit()) return;
   await awaitSaveIdle();
   if(unsaved || __dbSaving || document.getElementById('dbConflict')){
     toast('개인 일정의 저장이 끝나지 않아 등록하지 않았습니다. 개인 탭의 저장 상태를 먼저 확인하세요.', 'warn');
@@ -21875,11 +21874,19 @@ function pcOnViewClick(ev){
   const t = ev.target;
   if(PCAL.pop && PCAL.pop.el.contains(t)){ pcOnPopClick(ev); return; }
   if(PCAL.drawer && !t.closest('#pcDrawer') && !t.closest('#pcScope')){ PCAL.drawer = false; pcRender(); return; }
-  //  달력에서 무엇을 누르든 그 날짜의 일정 목록. 막대와 시간 일정은 누른 칸의 날짜(여러 날 막대도 시작일로 튀지 않는다)이고 그 줄을 강조한다.
+  //  달력에서 무엇을 누르든 그 날짜의 일정 목록. 막대와 시간 일정은 누른 칸의 날짜(여러 날 막대도 시작일로 튀지 않는다)이고 그 줄을 따로 강조하지 않는다(2026-10-23).
   //  주간의 과제 행에서 열면 그 과제를 등록 폼에 미리 고를 힌트로만 넘긴다(목록 내용은 같다).
   const row = t.closest('.pc-wcells[data-proj]'), rowProj = row ? row.dataset.proj : '';
   const bar = t.closest('.pc-ev[data-ev]');
-  if(bar){ const ds = pcClickedDate(bar, ev); pcSelectDate(ds); pcOpenDayList(ds, bar, { hit: bar.dataset.ev, projectUid: rowProj }); return; }
+  //  목록 창은 무엇을 누르든 누른 날짜 칸에 붙인다. 여러 날 막대 자체에 붙이면 막대 시작일 쪽(왼쪽 끝)에 떠서
+  //  누른 날짜와 멀어진다(2026-10-23 사용자: 13일을 눌렀는데 11일 쪽에 떴다).
+  if(bar){
+    const ds = pcClickedDate(bar, ev); pcSelectDate(ds);
+    const box = bar.closest('.pc-week, .pc-wcells');
+    const cell = (box && box.querySelector('.pc-day[data-date="' + ds + '"], .pc-wday[data-date="' + ds + '"]')) || bar;
+    pcOpenDayList(ds, cell, { hit: bar.dataset.ev, projectUid: rowProj });
+    return;
+  }
   const more = t.closest('[data-more]');
   if(more){ pcSelectDate(more.dataset.more); pcOpenDayList(more.dataset.more, more); return; }
   const day = t.closest('.pc-day[data-date], .pc-wday[data-date]');
