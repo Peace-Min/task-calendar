@@ -35,6 +35,10 @@ const J = async (x) => JSON.parse(await ev(`JSON.stringify(${x})`));
 async function waitFor(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await ev(fn)) return true; await sleep(250); } return false; }
 const healthy = `(typeof conn!=='undefined' && conn==='ok' && bootOk && !unsaved)`;
 async function reloadAndWait() {
+  //  실 위젯은 저장(dbSave)이 비동기라, 끝나기 전에 다시 읽으면 방금 넣은 기록이 빠진 스냅샷이 온다(2026-10-23 PM 실행).
+  await sleep(300);
+  await ev(`awaitSaveIdle().then(() => 1)`);
+  await waitFor(`!unsaved && !__dbSaving`, 15000);
   await ev(`(() => { window.__piApplied = false; const o = window.__applyState; window.__applyState = function(){ const r = o.apply(this, arguments); window.__piApplied = true; window.__applyState = o; return r; }; hpost({cmd:'reloadState'}); return true; })()`);
   return waitFor('window.__piApplied === true', 20000);
 }

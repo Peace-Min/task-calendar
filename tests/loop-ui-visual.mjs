@@ -478,6 +478,13 @@ function resolveBg(e, styles){
     if (n !== e && px(s.opacity) < 1) return { unknown:'ancestor-opacity' };
     var c = parseColor(s.backgroundColor);
     if (c && c.a > 0){ layers.push(c); if (c.a >= 0.999) break; }
+    //  개인 월간 막대(.chip-bar)는 주 줄(.gridrow)의 자식이지만 화면에서는 그 아래 칸(.cell) 위에 그려진다.
+    //  부모로 올라가면 칸 사이 선 색(gridrow 배경)을 바탕으로 잘못 읽으니, 막대 가운데 아래의 칸으로 건너간다.
+    if (n.classList && n.classList.contains('chip-bar') && n.parentElement && n.parentElement.classList.contains('gridrow')){
+      var rb = n.getBoundingClientRect(), under = null, stack = document.elementsFromPoint(rb.left + rb.width / 2, rb.top + rb.height / 2);
+      for (var k = 0; k < stack.length; k++){ if (stack[k].classList && stack[k].classList.contains('cell') && stack[k].parentElement === n.parentElement){ under = stack[k]; break; } }
+      if (under){ n = under; continue; }
+    }
     n = n.parentElement;
   }
   if (!layers.length) return { unknown:'no-background' };

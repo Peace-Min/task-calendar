@@ -361,7 +361,7 @@ main{flex:1;display:flex;min-height:0;position:relative}
 .chip.chip-bar.cr{margin-right:0;border-top-right-radius:0;border-bottom-right-radius:0}
 .chip.chip-bar[draggable="true"]{cursor:grab}
 .chip-arrow{flex:none;color:var(--muted);font-size:var(--fs-micro)}
-.chip-span{margin-left:auto;font-size:var(--fs-micro);color:var(--muted);flex:none;padding-left:8px}
+.chip-span{margin-left:auto;font-size:var(--fs-micro);color:var(--text);flex:none;padding-left:8px}   /* --muted 는 세피아에서 색 막대 위 3.9:1(작은 글자 기준 4.5 미달, 2026-10-23 화면 시험) */
 .chip-todo.chip-bar{padding:0 5px 0 4px}
 .chip-todo.chip-bar.range{border-style:dashed}   /* 기간 할 일은 막대에서도 점선 띠(결정 4) */
 .chip-todo.chip-bar.cl{border-left-width:0 !important;padding-left:5px}
@@ -2691,9 +2691,9 @@ html.dark .pc-ev:hover{filter:brightness(1.15)}
    2026-10-23 결정: 이 탭은 모으기와 미리 보기만 한다(고치는 칸 없음). 개발 일정 그림은 과제 고르기 줄에서 다룬다.
    이 탭이면 보고 모달에 .rptm-on 이 붙는다(setReportMode). 레일의 탭 줄만 남기고 레일 칸, 미리보기, 보내기와 복사 버튼을 숨긴다.
    !important 는 그 칸들이 인라인 display(JS)를 갖고 있어서다(updateRptSendVis, setReportMode 가 매번 다시 쓴다). */
-/* 탭이 넷이 되어 300px 레일(넓은 폭)과 좁은 폰 폭에서 한 줄을 넘는다: 탭 줄만 가로로 밀리게 하고(스크롤 막대는 숨김) 넓은 폭은 좌우 여백을 줄인다 */
-#reportModal .rpt-presets[role=tablist]{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-#reportModal .rpt-presets[role=tablist]::-webkit-scrollbar{display:none}
+/* 탭이 넷이 되어 300px 레일(넓은 폭)과 좁은 폰 폭에서 한 줄을 넘는다. 숨은 가로 밀기는 넷째 탭이 잘려 보여서(2026-10-23 화면 시험)
+   넘치면 다음 줄로 내린다. 넓은 폭은 좌우 여백을 줄여 되도록 한 줄에 둔다 */
+#reportModal .rpt-presets[role=tablist]{flex-wrap:wrap;row-gap:2px}
 @media (min-width:900px){ #reportModal .rpt-presets[role=tablist] .btn{padding-left:7px;padding-right:7px} }
 #rptMonthlyPane{display:none}
 #reportModal.rptm-on #rptMonthlyPane{display:block}
