@@ -1,6 +1,6 @@
 # 사용 영상 안내 운용 규칙
 
-정한 날: 2026-10-23(사용자). 상태: 규칙 확정, 구현 대기(월간 보고, 개발 시작/종료 운용 다음).
+정한 날: 2026-10-23(사용자). 상태: 규칙 확정, 구현됨(2026-10-23, feat/guide-videos, 아래 §7 계획과 §8 구현 메모).
 이 문서는 앞으로의 구현과 배포에서 계속 쓰는 규칙이다. 바꿀 때는 사용자 확인 뒤 이 문서를 먼저 고친다.
 
 ## 1. 무엇을 어디에 두나
@@ -66,3 +66,53 @@
 
 - 이 기능이 들어간 뒤의 릴리스 산출물은 지금과 같다(`latest.json`, Setup, `release-v<버전>.sql`). 영상과 `guide.json` 은 릴리스 산출물이 아니라 사용자가 따로 올리는 것이다.
 - 화면을 바꾼 릴리스라면, 릴리스 안내에 "영상 다시 찍기 필요 여부"를 한 줄 적어 사용자가 판 번호를 올릴지 정하게 한다.
+
+## 7. 구현 계획 (2026-10-23)
+
+위 규칙을 그대로 옮긴다. DB 와 구조 번호는 건드리지 않는다.
+
+| 단계 | 할 일 | 자리 |
+|---|---|---|
+| P1 호스트 | 업데이트 폴더 주소에서 `guide` 폴더를 정한다(로컬, UNC, file://, ftp://, http(s):// 로 업데이트 코드와 같은 다섯). 명령 둘: `guideManifest`(guide.json 을 읽고 검사해 돌려준다, 시간 제한), `guideFetch(file)`(재생 주소와 자막 글을 돌려준다) | `widget/GuideHost.cs`(새 파일), `MainWindow.xaml.cs` 에는 case 줄만 |
+| P2 재생 | 파일 공유(로컬, UNC, file://)는 가상 호스트 `guide.tcapp.local` 을 guide 폴더에 바로 잇는다(범위 요청으로 바로 재생). FTP, HTTP 는 요청한 mp4 만 `%LOCALAPPDATA%\TaskCalendar\guide-cache\<판>\` 에 받고(진행 알림) 그 폴더를 잇는다. 다른 판 폴더는 지운다 | `GuideHost.cs` |
+| P3 이름 검사 | guide.json 에 있는 이름만, 경로 구분자와 `..` 없이, `.mp4` 와 `.srt` 만 | 호스트(최종 판정)와 웹(보내기 전) |
+| P4 묻기 | 로그인하고 첫 화면을 그린 뒤 계정마다 실행 한 번. 판 번호 비교, 첫 사용자 문구와 기존 사용자 문구, [보기] [다시 묻지 않기] [나중에]. 다른 창이 떠 있으면 닫힐 때까지 기다린다. 열람 창, 관리 창, 브라우저에서는 묻지 않는다 | `task-calendar-prototype.html` |
+| P5 보기 창 | 영상 목록, `<video controls>`, 장면 목록(누르면 그 초로), 같은 이름의 .srt 가 있으면 WebVTT 로 바꿔 자막 트랙. 공유 폴더에 닿지 않거나 받기가 실패하면 짧은 안내 | 같은 파일 |
+| P6 도움말 | "?" 도움말 창 아래에 [사용 영상] 단추(판 번호와 무관) | 같은 파일 |
+| P7 시험 | 정적(설치 스크립트에 영상 없음, localStorage 는 try 안, 이름 검사, 메인 창 전용, GuideHost 에 DB 없음), jsdom(묻기 조건, 단추별 기록, 실행당 한 번, 계정 바꿈, 도움말, 장면 이동, SRT 변환, 열람 창과 관리 창과 브라우저), 실물 루프 `tests/loop-guide-videos.mjs` | `tests/` |
+| P8 문서 | 이 문서의 구현 메모, 위키 `사용-영상` | `docs/` |
+
+## 8. 구현 메모 (2026-10-23)
+
+### 8.1 호스트(`widget/GuideHost.cs`, 메인 창 전용)
+
+- guide 폴더 = 업데이트 폴더 주소(`widget.settings.json` 의 `UpdateSourceUrl`, 비면 `DeployConfig.UpdateSourceUrl`) + `guide`. 업데이트 코드(`Update.cs` 의 `KindOf`, `CombineUrl`)를 그대로 써서 형식이 같다. 따로 설정하지 않는다(§1).
+
+| 업데이트 폴더 형식 | guide.json 읽기 | 재생 |
+|---|---|---|
+| 로컬 경로, UNC(`\서버\공유`), `file://` | 업데이트 폴더가 있는지 먼저 본다(없으면 `unreachable`). 파일을 읽는다 | 가상 호스트 `guide.tcapp.local` 을 guide 폴더에 바로 잇는다(`SetVirtualHostNameToFolderMapping`). 영상은 범위 요청으로 바로 흐른다. 잇기에 실패하면 아래 캐시 길로 간다 |
+| `ftp://`(익명, 수동 모드), `http(s)://` | 받아서 읽는다(404, FTP 550 = `missing`) | 요청한 mp4 만 `%LOCALAPPDATA%\TaskCalendar\guide-cache\<판>\` 에 받고(`.part` 에 쓰고 끝나면 이름 바꿈) 그 폴더를 가상 호스트에 잇는다. 원본 크기(HTTP HEAD, FTP SIZE)가 캐시와 같거나 알 수 없으면 캐시를 쓴다. 판 번호가 바뀌면 다른 판 폴더를 지운다(재생 중인 폴더는 남긴다) |
+
+- 명령 둘. `guideManifest` 는 `{ ok, version, source:'file'|'net', videos }` 또는 `{ ok:false, reason }`(noSource, unreachable, missing, invalid, tooLarge, noVideos). `guideFetch { file }` 는 `{ ok, url, srt }` 또는 `{ ok:false, reason }`(badName, noGuide, unreachable, missing, download). 받는 동안 `window.__guideProgress({ file, got, total })` 를 0.3초에 한 번 민다.
+- 시간 제한: guide.json 과 자막 읽기, 업데이트 폴더 확인은 6초(`BoundAsync`). 닿지 않는 공유 폴더가 부팅 뒤 화면을 붙잡지 않는다(웹은 부팅이 끝난 뒤에 묻는다). mp4 받기는 전체 15분.
+- 검사(`GuideRules`): guide.json 은 256KB 까지. 모르는 칸은 무시. 판 번호는 글이나 숫자(64자까지). 영상 줄은 60개, 장면은 영상마다 60개까지. 규칙에 맞지 않는 영상 줄(이름, id 와 file 중복, 빈 제목)과 장면(음수, 숫자 아님, 하루 넘음)은 버리고 나머지를 쓴다. 쓸 영상이 없으면 `noVideos`.
+- 이름 규칙(`GuideRules.NameOk`, 웹 `gvNameOk` 와 같다): 128자까지, `/ \ : * ? " < > |` 와 제어 문자 없음, `..` 없음, 점으로 시작하지 않음, 앞뒤 공백 없음, `.mp4` 나 `.srt`. `guideFetch` 는 여기에 더해 지금 목록에 있는 mp4 만 받는다. 자막 이름은 mp4 이름의 확장자만 `.srt` 로 바꾼 것이다.
+- 자막은 주소가 아니라 글(1MB 까지)로 돌려준다. 페이지(`https://tcapp.local`)와 가상 호스트(`https://guide.tcapp.local`)는 출처가 달라 `<track>` 과 `fetch` 가 CORS 에 막히기 때문이다. 웹이 WebVTT 로 바꿔 blob 주소로 붙인다. `<video>` 는 출처가 달라도 재생된다.
+- DB 를 쓰지 않는다(§4). 열람 창(`PeerWinCommands`)과 관리 창(`AdminWinCommands`) 허용 목록에 넣지 않았다. 그 창에는 "?" 메뉴가 없다. `MainWindow.xaml.cs` 에는 case 두 줄만 더했다.
+
+### 8.2 웹(`task-calendar-prototype.html`)
+
+- 묻기: `__applyState` 끝(첫 화면을 그린 뒤)과 세션 복원(`bootUserSession`)이 `gvOnBootApplied` 를 부른다. 둘 중 늦은 쪽에서 계정과 그 계정의 화면이 함께 선다. 열람 프레임, 열람 창, 관리 창, 브라우저는 거른다.
+- 계정마다 실행 한 번: 판단을 마친 계정은 메모리와 sessionStorage `tc_guideAsked`(실행이 끝나면 사라진다)에 둔다. 목록이 없어도 그 실행에서는 다시 읽지 않는다. 오래 기억하는 것은 localStorage `tc_guideSeen:<로그인>` 하나다(try 안).
+- 로그인 화면, 버전 관문 카드, 다른 창이 떠 있으면 3초마다 보고 닫힌 뒤 묻는다(20분 넘게 비지 않으면 그 실행에서는 묻지 않는다).
+- 보기 창(`#gvModal`): 열 때마다 목록을 새로 읽는다(운영자가 그사이 올렸을 수 있다). 목록, `<video controls>`, 장면 단추(누르면 그 초로, 재생 중 지금 장면 표시), 자막 트랙(srclang ko). 늦게 온 회신은 버리고, 닫으면 재생을 멈추고 주소를 내려놓는다. 좁은 창(720px 이하)에서는 창을 채우고 목록이 위로 간다. 글은 전부 textContent 로 넣는다.
+- "?" 도움말 창 아래에 [사용 영상] 단추.
+
+### 8.3 시험
+
+- `tests/guide-videos.test.mjs`: 정적(설치 스크립트에 영상 없음, 저장소 접근 try, 이름 규칙, 메인 창 전용, GuideHost 에 DB 없음, 기호 규칙)과 변이, jsdom(가짜 guideManifest 와 guideFetch 로 묻기 조건, 단추별 기록, 실행당 한 번, 계정 바꿈, 다른 창 기다림, "?" 에서 보기 창, 장면 이동, SRT 를 WebVTT 로, 오류 안내, 열람 창과 관리 창과 브라우저, 저장소가 던질 때).
+- `tests/loop-guide-videos.mjs`: 실 위젯(CDP 9222). `--make=<폴더>` 로 `dist\guide-video\*_v3.*` 에서 시험용 업데이트 폴더를 만들고, `--source=<폴더>` 로 앱의 설정 명령을 거쳐 업데이트 폴더를 잠시 바꾼다. 묻는 창, [보기], 가상 호스트 재생(readyState >= 1), 장면 이동, 자막 트랙, [다시 묻지 않기] 의 다시 읽기 뒤 유지를 보고 기억과 업데이트 폴더를 되돌린다.
+
+### 8.4 릴리스 체크리스트
+
+§6 은 그대로다. 릴리스 산출물은 `latest.json`, Setup, `release-v<버전>.sql` 이고, 영상과 `guide.json` 은 넣지 않는다(설치 스크립트에 영상이 없음을 시험 S1 이 지킨다). 화면을 바꾼 릴리스는 릴리스 안내에 "영상 다시 찍기 필요 여부"를 한 줄 적는다.

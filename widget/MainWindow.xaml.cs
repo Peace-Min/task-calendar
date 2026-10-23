@@ -1033,6 +1033,12 @@ namespace TaskCalendarWidget
                         _ = RunProjectCalendarAsync(cmd, GetStr(doc, "reqId"), raw);   // 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다)
                         break;
 
+                    // ----- 사용 영상(docs/GUIDE-VIDEOS.md): 메인 창 전용. 관리 창과 열람 창 허용 목록에 넣지 않는다. 본문은 GuideHost.cs -----
+                    case "guideManifest":
+                    case "guideFetch":
+                        _ = RunGuideAsync(cmd, GetStr(doc, "reqId"), GetStr(doc, "file"));
+                        break;
+
                     // ----- 월간보고(docs/MONTHLY-REPORT-PLAN.md §6.3, §7.4): 메인 창 전용. 관리 창과 열람 창 허용 목록에 넣지 않는다 -----
                     //  본문은 MonthlyReportExport.cs(저장 창, 그림 명령 배선)와 ScheduleImageDb.cs(DB, PC 사본). 원문을 넘긴다(doc 은 이 처리 뒤에 닫힌다).
                     case "exportMonthlyDocx": RunMonthlyDocxExport(DialogOwner(fromWin), GetStr(doc, "reqId"), raw); break;
