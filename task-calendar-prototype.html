@@ -13808,6 +13808,15 @@ function offEdApplySectionRule(){
     if(pre && e.value) e.value = '';
     e.disabled = pre;
   });
+  //  자동으로 채운(손대지 않은) 개발 날짜는 계약 날짜에서 계산한 값이라, 선진행으로 계약 날짜가 비면 함께 비운다
+  //  (2026-10-23 사용자). 손으로 넣은 개발 날짜는 그대로 둔다(위 주석: 선진행에도 개발 날짜는 의미가 있다).
+  //  typeof 확인: 이 함수만 떼어 돌리는 시험(code-ids-app ⑨)에도 그대로 돌게 한다
+  if(pre && typeof offEdDevAuto === 'object' && typeof offEdDevHintSync === 'function'){
+    [['start', 'offEdDevStart'], ['end', 'offEdDevEnd']].forEach(([k, id]) => {
+      if(offEdDevAuto[k] && !offEdDevTouched[k]){ const e = document.getElementById(id); if(e) e.value = ''; offEdDevAuto[k] = false; }
+    });
+    offEdDevHintSync();
+  }
   const h = document.getElementById('offEdHint');
   //  안내 글자는 지금 고른 구분의 이름을 그대로 쓴다(이름을 바꿔도 화면이 거짓말하지 않게).
   const preName = (pre && sec.selectedIndex >= 0 && sec.options[sec.selectedIndex]) ? offTrim(sec.options[sec.selectedIndex].textContent) : '';

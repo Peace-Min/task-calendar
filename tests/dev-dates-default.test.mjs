@@ -211,3 +211,17 @@ if (!jsdom) {
     assert.throws(() => checks.inverted(m.probe), /시작 > 종료|손으로 넣은 개발시작/);
   });
 }
+
+//  ⑧ 선진행으로 바꾸면 계약 날짜가 비므로, 자동으로 채운(손대지 않은) 개발 날짜도 함께 비운다(2026-10-23 사용자).
+//    손으로 넣은 개발 날짜는 그대로 둔다(선진행에도 개발 날짜는 의미가 있다, offEdApplySectionRule 주석).
+function checkPreClear(src) {
+  const fn = extractFunction(src, 'offEdApplySectionRule');
+  assert.ok(/if\(pre[^{]*\)\{[\s\S]*?offEdDevAuto\[k\] && !offEdDevTouched\[k\][\s\S]*?e\.value = ''[\s\S]*?offEdDevAuto\[k\] = false[\s\S]*?offEdDevHintSync\(\)/.test(fn),
+    '선진행으로 바꿀 때 자동으로 채운 개발 날짜(손대지 않은 칸만)를 비우는 줄이 없다');
+}
+test('개발 날짜 기본값⑧: 선진행으로 바꾸면 자동으로 채운 개발 날짜만 비운다(손으로 넣은 값은 그대로)', () => checkPreClear(app));
+test('변이⑧: 손댐 확인을 빼면(손으로 넣은 값까지 비움) ⑧ 이 실패한다', () => {
+  const bad = app.replace('if(offEdDevAuto[k] && !offEdDevTouched[k]){', 'if(offEdDevAuto[k]){');
+  assert.notStrictEqual(bad, app, '변이 준비 실패');
+  assert.throws(() => checkPreClear(bad), /선진행/);
+});
