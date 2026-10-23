@@ -2,17 +2,22 @@
 //
 // 2026-10-23 사용자 결정: 이 탭은 **모으기와 읽기 전용 미리 보기**만 한다. 고치는 칸(과제명, 수행 계획 두 칸, 일정 변경이력,
 // 실적 글 칸)과 초안 저장, 미식별 이관과 기억한 이관은 없앴다. 문서에는 수행 실적과 개발 일정 그림만 채우고 계획과 변경이력은 빈칸이다.
-// 개발 일정 그림은 과제 고르기 줄에서 다룬다.
+// 같은 날 배치 결정(B안 두 칸과 그림 서랍, docs/prototypes/monthly-report-layout.html):
+//   넓은 폭은 왼쪽(설정, 과제와 그림 서랍, 기타 한 줄 요약, 미식별)과 오른쪽(늘 보이는 미리 보기), 좁은 폭은 위 세그로 설정과 미리 보기를 오간다.
+//   과제 순서는 내 과제 순서 그대로(▲▼ 없음), 기억하는 값이 없다(localStorage 를 쓰지 않는다, 열 때마다 처음 값).
+//   앱의 .modal label 여백은 이 탭 안에서만 되돌린다(전역 규칙은 그대로).
 //
 // 이 파일이 지키는 것:
 //   (S) 정적: 네 번째 탭 버튼, setReportMode 의 분기, 월간 함수(rptM*)는 회사로 보내는 길을 부르지 않고 호스트 명령은 RPTM_HOST_CMDS 뿐,
-//       그림 함수는 scheduleImage* 만, 고른 것 기억 키(tc_rptMSel:)와 PEER 관문과 try, 없앤 기능(초안, 이관 기억)의 이름이 없다,
-//       월간 영역에 고치는 칸(textarea, 글 입력, contenteditable)이 없고 입력은 날짜 다섯과 체크뿐, 보내기와 복사 버튼을 숨기는 CSS.
-//   (W) jsdom 위젯 모드(지어낸 상태): 기간이 payload 로 그대로, 과제명은 공식 이름, 과제 수행 기간 = 개발 시작일 ~ 개발종료일,
-//       실적 글 = 기간 취합 복사 글의 과제별 블록(글자 그대로, 서식 여러 벌), 공용 일정 제외, payload 의 계획 두 칸과 변경이력은 빈 배열,
-//       그림은 과제 줄에서(그림 n, 그림 추가, 펼침, 파일, 붙여넣기, 줄 포커스와 마우스 Ctrl+V, 순서, 삭제 확인, 끊김 사본 목록),
-//       저장(회신 경로, 폴더 열기, notice, 오류 그대로), 고른 것 기억과 막힌 저장소, 예전 키 무시, 기타 제외 기억,
-//       주간보고 출처(가짜 회신, 미식별은 미리 보기에만, 로그인 없음, 400일), 보내는 명령 0(가로채기), 미리 보기 = payload.
+//       그림 함수는 scheduleImage* 만, 월간 함수에 저장소(localStorage 등)가 없다, 없앤 기능(초안, 이관 기억, 고른 것 기억, 순서 단추)이 없다,
+//       월간 영역에 고치는 칸(textarea, 글 입력, contenteditable)이 없고 입력은 날짜 다섯과 체크뿐, 보내기와 복사 버튼을 숨기는 CSS,
+//       두 칸 격자와 좁은 폭 세그 CSS, 라벨 되돌림은 .rptm-pane 안에만(전역 .modal label 은 그대로).
+//   (W) jsdom 위젯 모드(지어낸 상태): 두 칸 구조와 세그, 열 때마다 처음 값(두 번 열어도), 저장소 쓰기 0, 기간이 payload 로 그대로,
+//       과제명은 공식 이름, 과제 수행 기간 = 개발 시작일 ~ 개발종료일, 실적 글 = 기간 취합 복사 글의 과제별 블록(글자 그대로, 서식 여러 벌),
+//       공용 일정 제외, payload 의 계획 두 칸과 변경이력은 빈 배열, 순서 = 내 과제 순서, 체크와 기타 칩과 읽어 오기가 미리 보기를 바로 바꾼다,
+//       그림 서랍(그림 n, + 그림, 열기, 파일, 붙여넣기, 줄과 서랍의 포커스와 마우스 Ctrl+V, 순서, 삭제 확인, 끊김 사본 목록, 다시 열어도 그림 n),
+//       저장(회신 경로, 폴더 열기, notice, 오류 그대로), 주간보고 출처(가짜 회신, 미식별은 왼쪽 칸에만, 로그인 없음, 400일),
+//       보내는 명령 0(가로채기), 미리 보기 = payload.
 //   (B) jsdom 브라우저 모드: 안내 문구, 저장과 주간보고와 그림 막힘, 미리 보기는 동작.
 //   (M) 변이: 위 정적 계약을 되돌리면 같은 검사기가 잡는다.
 // ★ 실제 netcus 읽기, 그림 올리기, 파일 저장은 없다. 호스트 회신은 __hostReply 로 흉내 낸다. 회사로 보내는 함수는 가로채 0 회를 본다.
@@ -30,6 +35,19 @@ function mutate(text, find, repl) {
 const rptMNames = (src) => [...new Set([...src.matchAll(/\bfunction\s+(rptM\w+)\s*\(/g)].map((m) => m[1]))];
 const rptMCode = (src) => rptMNames(src).map((n) => extractFunction(src, n)).join('\n');
 const DATE_IDS = ['rptmFrom', 'rptmTo', 'rptmPFrom', 'rptmPTo', 'rptmDate'];
+//  월간 영역 마크업과 월간 CSS 구역(#rptMonthlyPane{display:none} 부터 </style> 까지)
+const paneHtml = (src) => { const a = src.indexOf('<div id="rptMonthlyPane"'), b = src.indexOf('<div class="modal-foot">', a); assert.ok(a > 0 && b > a, '월간 영역 마크업을 찾지 못했다'); return src.slice(a, b); };
+const monthlyCss = (src) => { const a = src.indexOf('#rptMonthlyPane{display:none}'), b = src.indexOf('</style>', a); assert.ok(a > 0 && b > a, '월간 CSS 구역을 찾지 못했다'); return src.slice(a, b); };
+//  CSS 구역에서 @media 조건 하나의 본문(중괄호 짝 맞춤)
+function mediaBody(css, cond) {
+  const a = css.indexOf('@media ' + cond + '{');
+  if (a < 0) return '';
+  let i = css.indexOf('{', a) + 1, depth = 1;
+  const s = i;
+  for (; i < css.length && depth; i++) { if (css[i] === '{') depth++; else if (css[i] === '}') depth--; }
+  return css.slice(s, i - 1);
+}
+const GLOBAL_LABEL = '.modal label{display:block;font-size:var(--fs-body);font-weight:600;color:var(--muted);margin:var(--sp-4) 0 6px}';
 
 // ══════════════════════════════════════════════════════════════════════
 // (S) 정적 검사기
@@ -70,35 +88,34 @@ const S = {
     const used = [...code.matchAll(/hostRequest\('(\w+)'/g)].map((m) => m[1]);
     assert.deepStrictEqual([...new Set(used)].sort(), ['scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageList', 'scheduleImageMove', 'scheduleImageThumb'], '그림 함수가 단계 A 명령 다섯만 쓰지 않는다');
     assert.ok(/mode: mode === 'clipboard' \? 'clipboard' : 'file'/.test(code), '그림 넣기가 {mode:file|clipboard} 로 가지 않는다');
-    //  그림 칸은 과제 고르기 줄에 그린다(2026-10-23): 줄(rptMRowEl) 안의 [data-imgtog] 와 [data-strip]
+    //  그림 서랍은 과제 줄에 그린다: 줄(rptMRowEl) 안의 [data-imgtog] 와 [data-strip]
     const r = extractFunction(src, 'rptMImgRender');
-    assert.ok(r.includes('rptMRowEl(id)') && r.includes("'[data-imgtog]'") && r.includes("'[data-strip]'"), '그림 칸이 과제 고르기 줄에 그려지지 않는다');
+    assert.ok(r.includes('rptMRowEl(id)') && r.includes("'[data-imgtog]'") && r.includes("'[data-strip]'"), '그림 서랍이 과제 줄에 그려지지 않는다');
   },
-  selMemory(src) {
-    assert.ok(src.includes("const RPTM_SEL_PREFIX = 'tc_rptMSel:';"), '고른 것 기억 키 접두가 tc_rptMSel: 가 아니다');
-    for (const fn of ['rptMSelLoad', 'rptMSelSave', 'rptMEtcOffGet', 'rptMEtcOffSet']) {
-      const b = extractFunction(src, fn);
-      const g = b.indexOf('PEER'), ls = b.indexOf('localStorage');
-      assert.ok(g > 0 && ls > g, fn + ' 가 PEER 를 저장소보다 먼저 보지 않는다');
-      assert.ok(b.indexOf('try{') > 0 && b.indexOf('try{') < ls, fn + ' 의 저장소 접근이 try 안에 있지 않다');
-    }
-    //  기억하는 것은 고른 것뿐: 글 칸이 없다
-    const save = extractFunction(src, 'rptMSelSave');
-    assert.ok(/const o = \{ v: 1, from: S\.from, to: S\.to, src: S\.src, pFrom: S\.pFrom, pTo: S\.pTo, planEdited: !!S\.planEdited, order: S\.order, checked: S\.checked \};/.test(save), '고른 것 말고 다른 것(글)을 기억한다');
+  //  기억하는 값이 없다(2026-10-23): 월간 함수와 상수에 브라우저 저장소가 없다
+  noMemory(src) {
+    const code = rptMCode(src);
+    assert.ok(!/localStorage|sessionStorage|indexedDB/.test(code), '월간 함수가 브라우저 저장소를 쓴다(기억하는 값이 없어야 한다)');
+    assert.ok(!/tc_rptM|tc_rptDraftM/.test(code), '월간 함수가 월간 저장 키를 다룬다');
+    assert.ok(!/const RPTM_(SEL|ETC|DRAFT|NCMAP)_/.test(src), '월간 저장 키 상수(고른 것, 기타 제외, 초안, 이관)가 남아 있다');
+    //  열 때마다 처음 값: rptMOpen 은 지난달로 새 상태를 만든다(기억에서 읽지 않는다)
+    const open = extractFunction(src, 'rptMOpen');
+    assert.ok(open.includes('monthRange(new Date(), -1)') && open.includes("__rptM = rptMFresh(r[0], r[1], 'cal');"), 'rptMOpen 이 열 때마다 지난달, 캘린더로 새로 열지 않는다');
   },
   removed(src) {
     const names = new Set(rptMNames(src));
-    for (const gone of ['rptMDraftSave', 'rptMDraftLoad', 'rptMDraftPrune', 'rptMNcMapGet', 'rptMNcMapSet', 'rptMUnidMove', 'rptMUnidForget', 'rptMChgRender', 'rptMReloadCard', 'rptMCardHtml', 'rptMApply']) {
+    for (const gone of ['rptMDraftSave', 'rptMDraftLoad', 'rptMDraftPrune', 'rptMNcMapGet', 'rptMNcMapSet', 'rptMUnidMove', 'rptMUnidForget', 'rptMChgRender', 'rptMReloadCard', 'rptMCardHtml', 'rptMApply',
+      'rptMSelKey', 'rptMSelNorm', 'rptMSelLoad', 'rptMSelSave', 'rptMEtcOffGet', 'rptMEtcOffSet', 'rptMReopen']) {
       assert.ok(!names.has(gone), '없앤 기능의 함수가 남아 있다: ' + gone);
     }
-    assert.ok(!/const RPTM_(DRAFT|NCMAP)_/.test(src), '없앤 저장 키 상수(초안, 기억한 이관)가 남아 있다');
+    //  순서 바꾸기 없음(2026-10-23): ▲▼ 단추도, up/down 동작도, 순서를 손대는 splice 도 없다. 목록 = 내 과제 순서
     const code = rptMCode(src);
-    assert.ok(!/tc_rptDraftM|tc_rptMNcMap/.test(code), '월간 함수가 예전 키(초안, 기억한 이관)를 읽거나 쓴다');
+    assert.ok(!/[▲▼]/.test(code + paneHtml(src)), '월간 탭에 ▲▼ 순서 단추가 남아 있다');
+    assert.ok(!/data-act="(up|down)"|act === 'up'|act === 'down'|\.order\.splice/.test(code), '월간 함수에 과제 순서 바꾸기가 남아 있다');
+    assert.ok(/S\.order = rptMOfficial\(\)\.map\(c => c\.id\);/.test(extractFunction(src, 'rptMSync')), '과제 목록이 내 과제(카테고리) 순서 그대로가 아니다');
   },
   noEditors(src) {
-    const a = src.indexOf('<div id="rptMonthlyPane"'), b = src.indexOf('<div class="modal-foot">', a);
-    assert.ok(a > 0 && b > a, '월간 영역 마크업을 찾지 못했다');
-    const pane = src.slice(a, b);
+    const pane = paneHtml(src);
     assert.ok(!/<textarea|contenteditable|<select/i.test(pane), '월간 영역 마크업에 고치는 칸(textarea, select, contenteditable)이 있다');
     const inputs = [...pane.matchAll(/<input\b[^>]*>/g)].map((m) => m[0]);
     assert.deepStrictEqual(inputs.map((x) => (/type="(\w+)"/.exec(x) || [])[1] + ':' + (/id="(\w+)"/.exec(x) || [])[1]), DATE_IDS.map((id) => 'date:' + id), '월간 영역의 입력이 날짜 다섯(실적, 계획, 작성일)이 아니다');
@@ -113,31 +130,66 @@ const S = {
     assert.ok(css.includes('#reportModal.rptm-on .rpt-rail > :not(.rpt-presets),#reportModal.rptm-on .rpt-preview{display:none !important}'), '월간 탭에서 기존 레일 칸과 미리보기를 숨기는 규칙이 없다');
     assert.ok(css.includes('#reportModal:not(.rptm-on) .rptm-only{display:none !important}'), '다른 탭에서 월간 버튼을 숨기는 규칙이 없다');
   },
+  //  B안 두 칸: 넓은 폭은 360px 왼쪽 칸과 나머지 오른쪽 칸, 좁은 폭(620px 이하)은 세그를 보이고 한 칸씩
+  layout(src) {
+    const css = monthlyCss(src);
+    assert.ok(css.includes('.rptm-grid{display:grid;grid-template-columns:360px minmax(0,1fr);'), '두 칸 격자(왼쪽 360px, 오른쪽 나머지)가 없다');
+    assert.ok(css.includes('.rptm-sub{display:none;'), '넓은 폭에서 세그를 숨기지 않는다');
+    const narrow = mediaBody(css, '(max-width:620px)');
+    for (const r of ['.rptm-sub{display:flex}', '.rptm-grid{display:block}', '.rptm-pane[data-sub="set"] .rptm-right{display:none}', '.rptm-pane[data-sub="pv"] .rptm-left{display:none}']) {
+      assert.ok(narrow.includes(r), '좁은 폭 세그 규칙이 없다: ' + r);
+    }
+    const wide = mediaBody(css, '(min-width:900px)');
+    assert.ok(wide.includes('#reportModal.rptm-on .rptm-left,#reportModal.rptm-on .rptm-right{overflow:auto;'), '넓은 폭에서 두 칸이 따로 스크롤하지 않는다');
+    const pane = paneHtml(src);
+    const at = (s) => pane.indexOf(s);
+    assert.ok(at('id="rptmSub"') > 0 && at('id="rptmSub"') < at('class="rptm-grid"'), '세그가 두 칸 위에 없다');
+    assert.ok(at('class="rptm-left"') < at('id="rptmPick"') && at('id="rptmPick"') < at('id="rptmEtc"') && at('id="rptmEtc"') < at('id="rptmUnid"') && at('id="rptmUnid"') < at('class="rptm-right"'), '왼쪽 칸(설정, 과제, 기타, 미식별) 순서가 아니다');
+    assert.ok(at('class="rptm-right"') < at('id="rptmSheet"'), '미리 보기 종이가 오른쪽 칸에 없다');
+  },
+  //  라벨 되돌림(2026-10-23 원인 고침): 전역 .modal label 은 그대로, 월간 CSS 의 label 규칙은 모두 .modal .rptm-pane 안
+  labelScope(src) {
+    const all = src.slice(src.indexOf('<style>'), src.indexOf('</style>'));
+    assert.strictEqual(all.split(GLOBAL_LABEL).length - 1, 1, '전역 .modal label 규칙이 바뀌었다(이 탭 때문에 고치지 않는다)');
+    const css = monthlyCss(src);
+    assert.ok(css.includes('.modal .rptm-pane label{margin:0;font-weight:400}') && css.includes('.modal .rptm-pane .rpt-chip{display:inline-flex}'), '월간 탭의 라벨 되돌림 규칙이 없다');
+    const sels = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{[^{}]*\}/g)].map((m) => m[1].trim()).filter((s) => /\blabel\b/.test(s));
+    assert.ok(sels.length >= 1, '전제: label 규칙을 찾지 못했다');
+    for (const s of sels) for (const one of s.split(',')) assert.ok(one.trim().startsWith('.modal .rptm-pane '), '월간 CSS 의 label 규칙이 탭 밖으로 샌다: ' + one.trim());
+  },
 };
 test('MS1 (§5.1): 보고 유형 탭은 일간, 주간, 기간 취합, 월간 보고 네 개', () => S.tabs(app));
 test('MS2 (§5.1): setReportMode 는 월간이면 표시를 붙이고 rptMOpen 으로 돌아간다(기존 탭의 길은 그대로)', () => S.modeBranch(app));
 test('MS3 (§10.1): 월간 함수는 회사로 보내는 길을 부르지 않고, 호스트 명령은 RPTM_HOST_CMDS 뿐, 공용 일정을 읽지 않는다', () => S.noSend(app));
-test('MS4 (§6.3, §5.3): 그림 함수는 단계 A 명령(scheduleImage*)만, 넣기는 file 또는 clipboard, 그림 칸은 과제 고르기 줄', () => S.imageCmds(app));
-test('MS5 (§5.4): 고른 것만 기억한다(키 tc_rptMSel:, PEER 관문과 try, 글 칸 없음)', () => S.selMemory(app));
+test('MS4 (§6.3, §5.3): 그림 함수는 단계 A 명령(scheduleImage*)만, 넣기는 file 또는 clipboard, 그림 서랍은 과제 줄', () => S.imageCmds(app));
+test('MS5 (§5.4, 2026-10-23): 기억하는 값이 없다(월간 함수에 저장소와 저장 키가 없고, 열 때마다 지난달로 새로 연다)', () => S.noMemory(app));
 test('MS6 (§5.1): 월간 탭 CSS 는 보내기와 복사, 기존 레일과 미리보기를 숨긴다', () => S.css(app));
 test('MS7 (§5, 2026-10-23): 월간 영역에 고치는 칸이 없다. 입력은 날짜 다섯(마크업)과 과제 체크, 기타 체크(그리는 것)뿐', () => S.noEditors(app));
-test('MS8 (§14, 2026-10-23): 없앤 기능(초안, 변경이력 행, 실적 다시 붙이기, 미식별 이관과 기억)의 함수와 키가 없다', () => S.removed(app));
+test('MS8 (§14, 2026-10-23): 없앤 기능(초안, 변경이력 행, 실적 다시 붙이기, 미식별 이관과 기억, 고른 것 기억, ▲▼ 순서)의 함수와 단추가 없다', () => S.removed(app));
+test('MS9 (§5, B안): 두 칸 격자(왼쪽 설정과 과제, 오른쪽 미리 보기)와 좁은 폭 세그 CSS, 마크업 순서', () => S.layout(app));
+test('MS10 (§5, 2026-10-23): .modal label 여백은 월간 탭 안에서만 되돌린다(전역 규칙 그대로, 월간 label 규칙은 .modal .rptm-pane 안)', () => S.labelScope(app));
 test('변이 MSM1: 월간 저장에 Platform.report 를 넣거나 목록 밖 명령을 쓰면 MS3 이 잡는다', () => {
   assert.throws(() => S.noSend(mutate(app, "  try{ res = await hostRequest('exportMonthlyDocx', rptMPayload(S), 300000); }", "  try{ Platform.report.submitWeekly({ fields: {} }); res = await hostRequest('exportMonthlyDocx', rptMPayload(S), 300000); }")), /Platform\.report|submitWeekly/);
   assert.throws(() => S.noSend(mutate(app, "  const res = await hostRequest('netcusWeeklyRangeRead', { from, to }, 180000);", "  const res = await hostRequest('netcusWeekSubmit', { from, to }, 180000);")), /netcusWeekSubmit/);
   assert.throws(() => S.noSend(mutate(app, "function rptMOpenDir(){ if(HOST && __rptMDir) hpost({ cmd: 'openFolder', path: __rptMDir }); }", "function rptMOpenDir(){ if(HOST && __rptMDir) hpost({ cmd: 'netcusSubmit', path: __rptMDir }); }")), /netcusSubmit|목록 밖/);
 });
-test('변이 MSM2: 분기를 지우거나 그림 명령을 바꾸거나 PEER 관문을 빼면 MS2, MS4, MS5 가 잡는다', () => {
+test('변이 MSM2: 분기를 지우거나 그림 명령을 바꾸거나 저장소에 기억을 되살리면 MS2, MS4, MS5 가 잡는다', () => {
   assert.throws(() => S.modeBranch(mutate(app, "  if(mode === 'monthly'){ rptMOpen(); return; }\n", '')), /월간 분기/);
   assert.throws(() => S.imageCmds(mutate(app, ": await hostRequest('scheduleImageMove', params, 30000); }", ": await hostRequest('scheduleImageReorder', params, 30000); }")), /다섯/);
   assert.throws(() => S.noSend(mutate(app, ": await hostRequest('scheduleImageMove', params, 30000); }", ": await hostRequest(cmd, params, 30000); }")), /글자로 쓰지 않는|거의/);
-  assert.throws(() => S.selMemory(mutate(app, "  if(PEER) return null;\n  try{ const raw = localStorage.getItem(rptMSelKey());", "  try{ const raw = localStorage.getItem(rptMSelKey());")), /PEER/);
-  assert.throws(() => S.selMemory(mutate(app, 'order: S.order, checked: S.checked };', 'order: S.order, checked: S.checked, note: S.note };')), /다른 것/);
+  assert.throws(() => S.noMemory(mutate(app, "  if(on) S.etcOff.delete(key); else S.etcOff.add(key);\n", "  if(on) S.etcOff.delete(key); else S.etcOff.add(key);\n  try{ localStorage.setItem('tc_rptMEtcOff:' + key, '1'); }catch(_){}\n")), /저장소/);
+  assert.throws(() => S.noMemory(mutate(app, "  __rptM = rptMFresh(r[0], r[1], 'cal');\n", "  __rptM = __rptM || rptMFresh(r[0], r[1], 'cal');\n")), /새로 열지 않는다/);
 });
-test('변이 MSM3: 과제 줄에 글 칸을 넣거나 마크업에 textarea 를 넣거나 없앤 함수를 되살리면 MS7, MS8 이 잡는다', () => {
-  assert.throws(() => S.noEditors(mutate(app, "+ `<span class=\"rptm-badge${has ? ' has' : ''}\">", "+ '<textarea data-f=\"memo\"></textarea>' + `<span class=\"rptm-badge${has ? ' has' : ''}\">")), /고치는 칸/);
-  assert.throws(() => S.noEditors(mutate(app, '<div class="rptm-pick" id="rptmPick"></div>', '<div class="rptm-pick" id="rptmPick"></div><input type="text" id="rptmTitle">')), /날짜 다섯/);
-  assert.throws(() => S.removed(mutate(app, 'function rptMEtcToggle(key, on){', 'function rptMUnidMove(){}\nfunction rptMEtcToggle(key, on){')), /rptMUnidMove/);
+test('변이 MSM3: 과제 줄에 글 칸이나 ▲ 를 넣거나 마크업에 textarea 를 넣거나 없앤 함수를 되살리면 MS7, MS8 이 잡는다', () => {
+  assert.throws(() => S.noEditors(mutate(app, "    + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')", "    + '<textarea data-f=\"memo\"></textarea>' + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')")), /고치는 칸/);
+  assert.throws(() => S.noEditors(mutate(app, '<div class="rptm-list" id="rptmPick"></div>', '<div class="rptm-list" id="rptmPick"></div><input type="text" id="rptmTitle">')), /날짜 다섯/);
+  assert.throws(() => S.removed(mutate(app, 'function rptMEtcToggle(key, on){', 'function rptMSelSave(){}\nfunction rptMEtcToggle(key, on){')), /rptMSelSave/);
+  assert.throws(() => S.removed(mutate(app, "    + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')", "    + '<button type=\"button\" class=\"btn\" data-act=\"up\">▲</button>' + (has ? '' : '<span class=\"rptm-none\">기록 없음</span>')")), /▲▼|순서/);
+});
+test('변이 MSM4: 세그 규칙을 빼거나 라벨 되돌림을 전역으로 넓히거나 전역 라벨 규칙을 바꾸면 MS9, MS10 이 잡는다', () => {
+  assert.throws(() => S.layout(mutate(app, '  .rptm-pane[data-sub="pv"] .rptm-left{display:none}\n', '')), /세그/);
+  assert.throws(() => S.labelScope(mutate(app, '.modal .rptm-pane label{margin:0;font-weight:400}', '.modal .rptm-pane label{margin:0;font-weight:400}\n.modal label{margin:0}')), /샌다/);
+  assert.throws(() => S.labelScope(mutate(app, GLOBAL_LABEL, GLOBAL_LABEL.replace('margin:var(--sp-4) 0 6px', 'margin:0'))), /전역/);
 });
 
 // ══════════════════════════════════════════════════════════════════════
@@ -206,10 +258,14 @@ if (!JSDOM) {
     await tick(); await tick();
     return msg;
   }
-  //  월간 키 전부(지금 키와 예전 키)를 지운다
+  //  예전 월간 키(이제는 읽지도 쓰지도 않는다)를 지운다
   const clearStore = (m) => m.ev("(function(){ var a=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(k && (k.indexOf('tc_rptMSel:')===0 || k.indexOf('tc_rptDraftM:')===0 || k.indexOf('tc_rptMEtcOff:')===0 || k.indexOf('tc_rptMNcMap:')===0)) a.push(k); } a.forEach(function(k){ localStorage.removeItem(k); }); })()");
+  //  저장소 쓰기 감시: setItem, removeItem, clear 의 키를 모두 적는다(월간 흐름은 하나도 쓰지 않아야 한다)
+  const spyStore = (m) => m.ev("(function(){ if (window.__lsw) return; window.__lsw = []; var P = Storage.prototype, s = P.setItem, r = P.removeItem, c = P.clear; P.setItem = function(k, v){ __lsw.push('set:' + k); return s.call(this, k, v); }; P.removeItem = function(k){ __lsw.push('remove:' + k); return r.call(this, k); }; P.clear = function(){ __lsw.push('clear'); return c.call(this); }; })()");
+  const lsMark = (m) => m.ev('__lsw.length');
+  const lsSince = (m, n) => m.evJSON('__lsw.slice(' + n + ')');
   const $id = (m, id) => m.doc.getElementById(id);
-  const row = (m, uid) => [...m.doc.querySelectorAll('#rptmPick .rptm-pi[data-uid]')].find((c) => c.dataset.uid === uid) || null;
+  const row = (m, uid) => [...m.doc.querySelectorAll('#rptmPick .rptm-it[data-uid]')].find((c) => c.dataset.uid === uid) || null;
   const pvTable = (m, uid) => [...m.doc.querySelectorAll('#rptmSheet table[data-pv-uid]')].find((t) => t.dataset.pvUid === uid) || null;
   const setVal = (m, el, v, type = 'input') => { el.value = v; el.dispatchEvent(new m.w.Event(type, { bubbles: true })); };
   const check = (m, el, on) => { el.checked = on; el.dispatchEvent(new m.w.Event('change', { bubbles: true })); };
@@ -269,6 +325,7 @@ if (!JSDOM) {
   async function widget() {
     const M = bootWidget(app);
     clearStore(M);
+    spyStore(M);
     M.ev('__applyState(' + JSON.stringify(JSON.stringify(stateFor())) + ',' + JSON.stringify(META) + ')');
     M.ev('__applyProjects(' + JSON.stringify(JSON.stringify(ROWS)) + ')');
     await tick();
@@ -288,23 +345,38 @@ if (!JSDOM) {
     test('MW0: 위젯 모드 부팅', () => { throw bootErr; });
   } else {
     const fresh = async () => {
-      clearStore(W);
-      W.ev("__rptM = null; __rptMWeek = null; setReportMode('daily'); setReportMode('monthly');");
+      W.ev("setReportMode('daily'); setReportMode('monthly');");
       await tick(); drainImages(W);
       await loadPeriod(W, FROM, TO); drainImages(W); await tick();
     };
+    //  지금 화면의 처음 값 모양(열 때마다 같아야 한다)
+    const defaultsNow = () => ({
+      from: $id(W, 'rptmFrom').value, to: $id(W, 'rptmTo').value, pFrom: $id(W, 'rptmPFrom').value, pTo: $id(W, 'rptmPTo').value, date: $id(W, 'rptmDate').value,
+      src: W.ev('__rptM.src'), srcBtn: W.doc.querySelector('#rptmSrc .seg-b.active').dataset.msrc,
+      checked: W.evJSON('__rptM.order.filter(function(id){ return __rptM.checked[id]; })'), has: W.evJSON('__rptM.order.filter(function(id){ return __rptMHas.has(id); })'),
+      etcOn: [...W.doc.querySelectorAll('#rptmEtc input[data-etc]')].filter((x) => x.checked).map((x) => x.dataset.etc), etcAll: W.evJSON('rptMEtcCats().map(function(c){ return c.key; })'),
+      etcOpen: !$id(W, 'rptmEtc').classList.contains('hidden'), sub: $id(W, 'rptMonthlyPane').dataset.sub,
+    });
 
-    test('MW1 (§5.2): 열면 실적 기간은 지난달 1일 ~ 말일, 작성일은 오늘, 계획 기간은 다음 월요일부터 같은 주 수 금요일까지, 이름은 로그인 이름(읽기만)', async () => {
-      clearStore(W);
-      W.ev("__rptM = null; setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
+    test('MW1 (§5.2, 2026-10-23): 열 때마다 처음 값: 실적 기간 지난달, 출처 캘린더, 기록 있는 과제만 체크, 기타 모두 넣음(접힘), 계획 기본값, 작성일 오늘, 이름은 로그인 이름(읽기만)', async () => {
+      //  예전에 기억해 둔 키가 남아 있어도 읽지 않는다
+      W.ev(`localStorage.setItem('tc_rptMSel:7', JSON.stringify({ v: 1, from: '2026-05-01', to: '2026-05-31', src: 'week', pFrom: '2026-06-01', pTo: '2026-06-30', planEdited: true, order: [${JSON.stringify(P4)}], checked: {} })); localStorage.setItem('tc_rptMEtcOff:7', JSON.stringify(['c-ed']));`);
+      W.ev("setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
       const lm = W.evJSON('monthRange(new Date(), -1)');
-      assert.deepStrictEqual([$id(W, 'rptmFrom').value, $id(W, 'rptmTo').value], lm, '기본 실적 기간이 지난달이 아니다');
-      assert.strictEqual($id(W, 'rptmDate').value, W.ev('todayYmd()'), '작성일 기본이 오늘이 아니다');
+      const d0 = defaultsNow();
+      assert.deepStrictEqual([d0.from, d0.to], lm, '기본 실적 기간이 지난달이 아니다(예전 기억을 읽었나)');
+      assert.strictEqual(d0.date, W.ev('todayYmd()'), '작성일 기본이 오늘이 아니다');
       assert.deepStrictEqual(W.evJSON("rptMPlanDefault('2026-08-03', '2026-09-18')"), { from: '2026-09-21', to: '2026-11-06' }, '계획 기본값 예시(§5.2)가 다르다');
-      assert.deepStrictEqual(W.evJSON('rptMPlanDefault(' + JSON.stringify(lm[0]) + ',' + JSON.stringify(lm[1]) + ')'), { from: $id(W, 'rptmPFrom').value, to: $id(W, 'rptmPTo').value }, '화면 계획 기간이 기본값이 아니다');
+      assert.deepStrictEqual(W.evJSON('rptMPlanDefault(' + JSON.stringify(lm[0]) + ',' + JSON.stringify(lm[1]) + ')'), { from: d0.pFrom, to: d0.pTo }, '화면 계획 기간이 기본값이 아니다');
+      assert.deepStrictEqual([d0.src, d0.srcBtn], ['cal', 'cal'], '출처 기본이 캘린더가 아니다');
+      assert.deepStrictEqual(d0.checked, d0.has, '처음 체크가 기록 있는 과제가 아니다');
+      assert.deepStrictEqual([d0.etcOn, d0.etcOpen], [d0.etcAll, false], '기타가 모두 넣음(접힘)으로 열리지 않았다');
+      assert.strictEqual($id(W, 'rptmEtcSum').textContent, d0.etcAll.length + '개 모두 넣음', '기타 한 줄 요약이 아니다');
+      assert.strictEqual(d0.sub, 'set', '좁은 폭 세그가 설정으로 열리지 않았다');
       assert.strictEqual($id(W, 'rptmName').textContent, '시험자', '이름이 로그인 계정 표시 이름이 아니다');
       assert.strictEqual($id(W, 'rptmName').tagName, 'SPAN', '이름이 고치는 칸이다(읽기만이어야 한다)');
       assert.ok(W.doc.getElementById('reportModal').classList.contains('rptm-on'), '월간 표시(rptm-on)가 없다');
+      clearStore(W);
       await fresh();
     });
 
@@ -388,21 +460,37 @@ if (!JSDOM) {
       }
     });
 
-    test('MW5 (§5.3-1): 기록이 있는 과제만 처음부터 체크, 내 카테고리 순서, 위아래로 순서가 바뀌고 문서와 미리 보기도 그 순서', async () => {
+    test('MW5 (§5.3-1, 2026-10-23): 기록이 있는 과제만 처음부터 체크, 순서는 내 과제 순서 그대로(▲▼ 없음), 체크하면 미리 보기와 문서가 바로 바뀐다', async () => {
       await fresh();
       const order = W.evJSON('__rptM.order');
       assert.deepStrictEqual(order, [P1, P2, P3, P4], '과제 목록이 내 카테고리 순서의 공식 과제가 아니다');
       assert.deepStrictEqual(order.map((id) => W.ev(`!!__rptM.checked[${JSON.stringify(id)}]`)), [true, true, true, false], '기본 체크가 기록 있는 과제가 아니다(계획 기간 기록 포함)');
-      const rows = [...W.doc.querySelectorAll('#rptmPick .rptm-pi')];
+      const rows = [...W.doc.querySelectorAll('#rptmPick .rptm-it')];
       assert.strictEqual(rows.length, 4);
-      assert.strictEqual(rows[3].querySelector('.rptm-badge').textContent, '기록 없음');
-      rows[1].querySelector('[data-act="up"]').click(); drainImages(W);
-      assert.deepStrictEqual(W.evJSON('__rptM.order').slice(0, 2), [P2, P1], '위로가 순서를 바꾸지 않았다');
-      assert.deepStrictEqual(payloadOf(W).projects.map((p) => p.uid), [P2, P1, P3], '문서 과제 순서가 목록 순서가 아니다(체크 안 한 과제는 빠진다)');
-      assert.deepStrictEqual([...W.doc.querySelectorAll('#rptmSheet table[data-pv-uid]')].map((t) => t.dataset.pvUid), [P2, P1, P3], '미리 보기 순서가 목록 순서가 아니다');
-      check(W, row(W, P4).querySelector('input[data-act="pick"]'), true); drainImages(W);
-      assert.ok(pvTable(W, P4) && payloadOf(W).projects.some((p) => p.uid === P4), '체크한 과제가 미리 보기와 문서에 들어가지 않았다');
-      assert.ok(!row(W, P4).classList.contains('off') && W.doc.activeElement !== null, '체크한 줄 표시가 바뀌지 않았다');
+      assert.deepStrictEqual(rows.map((r) => (r.querySelector('.rptm-none') || { textContent: '' }).textContent), ['', '', '', '기록 없음'], '기록 없음 표시가 기록 없는 과제에만 있지 않다');
+      assert.strictEqual($id(W, 'rptmPickCnt').textContent, '3/4', '과제 머리의 체크 수가 다르다');
+      //  순서 단추 없음
+      const pane = $id(W, 'rptMonthlyPane');
+      assert.ok(!/[▲▼]/.test(pane.textContent) && !pane.querySelector('[data-act="up"], [data-act="down"], .rptm-ord'), '월간 탭에 ▲▼ 순서 단추가 있다');
+      assert.deepStrictEqual(payloadOf(W).projects.map((p) => p.uid), [P1, P2, P3], '문서 과제 순서가 내 과제 순서가 아니다(체크 안 한 과제는 빠진다)');
+      assert.deepStrictEqual([...W.doc.querySelectorAll('#rptmSheet table[data-pv-uid]')].map((t) => t.dataset.pvUid), [P1, P2, P3], '미리 보기 순서가 내 과제 순서가 아니다');
+      //  체크하면 바로(다른 호출 없이) 미리 보기 표가 생기고, 끄면 바로 빠진다
+      check(W, row(W, P4).querySelector('input[data-act="pick"]'), true);
+      assert.ok(pvTable(W, P4) && payloadOf(W).projects.some((p) => p.uid === P4), '체크한 과제가 미리 보기와 문서에 바로 들어가지 않았다');
+      assert.deepStrictEqual([...W.doc.querySelectorAll('#rptmSheet table[data-pv-uid]')].map((t) => t.dataset.pvUid), [P1, P2, P3, P4], '체크한 과제가 내 과제 순서 자리에 들어가지 않았다');
+      assert.ok(!row(W, P4).classList.contains('off') && $id(W, 'rptmPickCnt').textContent === '4/4' && $id(W, 'rptmPvSum').textContent.startsWith('과제 4개'), '체크한 줄 표시나 개수가 바로 바뀌지 않았다');
+      check(W, row(W, P1).querySelector('input[data-act="pick"]'), false);
+      assert.ok(!pvTable(W, P1) && row(W, P1).classList.contains('off'), '체크를 끈 과제가 미리 보기에서 바로 빠지지 않았다');
+      //  내 과제 순서를 바꾸면(내 과제 창에서) 다음에 열 때 그 순서
+      W.ev(`(function(){ var c = state.categories, i = c.findIndex(function(x){ return x.id === ${JSON.stringify(P2)}; }); var p2 = c.splice(i, 1)[0]; c.unshift(p2); })()`);
+      try {
+        await fresh();
+        assert.deepStrictEqual(W.evJSON('__rptM.order'), [P2, P1, P3, P4], '내 과제 순서를 바꿨는데 목록 순서가 따르지 않았다');
+        assert.deepStrictEqual([...W.doc.querySelectorAll('#rptmSheet table[data-pv-uid]')].map((t) => t.dataset.pvUid), [P2, P1, P3], '미리 보기가 내 과제 순서를 따르지 않았다');
+      } finally {
+        W.ev('state.categories = ' + JSON.stringify(stateFor().categories) + ';');
+        await fresh();
+      }
     });
 
     test('MW6 (§4, §5, 2026-10-23): 고치는 칸이 없다(입력은 날짜 다섯과 체크뿐), payload 의 계획 두 칸과 변경이력은 비고, 미리 보기도 빈칸, 같은 기간 읽어 오기는 확인 없이 다시 모은다', async () => {
@@ -432,6 +520,7 @@ if (!JSDOM) {
       $id(W, 'rptmLoad').click(); await tick(); await tick(); drainImages(W);
       assert.ok(overlayClosed(W, 'confirmModal'), '같은 기간 읽어 오기에 확인 창이 떴다(덮을 글이 없다)');
       assert.ok(actualOf(W, P1).includes('새로 넣은 기록') && JSON.stringify(payloadOf(W)).includes('새로 넣은 기록'), '다시 읽어 오기가 지금 기록으로 다시 모으지 않았다');
+      assert.ok(pvTable(W, P1).textContent.includes('새로 넣은 기록'), '다시 읽어 오기 뒤 미리 보기가 바로 바뀌지 않았다');
       W.ev("state.entries = state.entries.filter(function(e){ return e.id !== 'e9'; });");
       W.ev('__rptMImgOpen.clear();');
       await fresh();
@@ -444,7 +533,7 @@ if (!JSDOM) {
       assert.deepStrictEqual(W.evJSON("rptMLines('')"), []);
     });
 
-    test('MW8 (§6, §5.3): 그림은 과제 고르기 줄에서(그림 n, 그림 추가, 펼침, 파일, 붙여넣기, 줄 포커스와 마우스 Ctrl+V, 순서, 삭제 확인), 끊기면 사본 목록과 안내, 미리 보기 쪽에는 그림 버튼이 없다', async () => {
+    test('MW8 (§6, §5.3, B안): 그림은 과제 줄의 서랍에서(그림 n, + 그림, 열기, 파일, 붙여넣기, 줄과 서랍의 포커스와 마우스 Ctrl+V, 순서, 삭제 확인), 사람별 그림 명령만, 끊기면 사본 목록과 안내, 다시 열어도 그림 n, 미리 보기 쪽에는 그림 버튼이 없다', async () => {
       await fresh();
       W.ev('__rptMThumbs.clear(); __rptMThumbReq.clear(); __rptMImgs.clear(); __rptMImgOpen.clear(); rptMRenderPick();');
       const ln0 = W.posted.length;
@@ -456,19 +545,24 @@ if (!JSDOM) {
       reply(W, 'scheduleImageList', { ok: true, data: { projectUid: U4, images: [], stale: false, notice: '' } }, (x) => x.projectUid === P4);
       await tick();
       const tog = (id) => row(W, id).querySelector('[data-act="imgTog"]');
+      const togText = (id) => tog(id).textContent.replace(/\s*[▾▴]$/, '');
       const strip = (id) => row(W, id).querySelector('[data-strip]');
-      assert.deepStrictEqual([P1, P2, P4].map((id) => tog(id).textContent), ['그림 2', '그림 1', '그림 추가'], '줄의 그림 단추가 그림 n, 그림 추가가 아니다');
+      assert.deepStrictEqual([P1, P2, P4].map(togText), ['그림 2', '그림 1', '+ 그림'], '줄의 그림 단추가 그림 n, + 그림이 아니다');
       assert.ok(tog(P2).classList.contains('warn') && tog(P3).classList.contains('warn') && tog(P3).title.includes('로그인이 필요합니다.'), '끊김이나 거부가 단추에 보이지 않는다');
-      assert.ok([P1, P2, P3, P4].every((id) => strip(id).classList.contains('hidden') && tog(id).getAttribute('aria-expanded') === 'false'), '그림 칸이 처음부터 펼쳐져 있다(줄은 작게)');
+      assert.ok([P1, P2, P3, P4].every((id) => strip(id).classList.contains('hidden') && tog(id).getAttribute('aria-expanded') === 'false'), '그림 서랍이 처음부터 열려 있다(줄은 작게)');
       assert.strictEqual(W.doc.querySelectorAll('#rptmPv [data-act], #rptmPv button').length, 0, '미리 보기 쪽에 그림 버튼이 있다(그림은 과제 줄에서만)');
       //  펼치기
       tog(P1).click(); await tick();
-      assert.ok(!strip(P1).classList.contains('hidden') && tog(P1).getAttribute('aria-expanded') === 'true', '그림 단추가 칸을 펼치지 않는다');
-      assert.strictEqual(strip(P1).querySelectorAll('.rptm-img').length, 2, '그림 두 장이 보이지 않는다');
-      assert.ok(strip(P1).querySelector('.rptm-img .meta').textContent.includes('넣음') && strip(P1).textContent.includes('나만 봅니다'), '넣은 시각이나 사람별 안내가 없다');
+      assert.ok(!strip(P1).classList.contains('hidden') && tog(P1).getAttribute('aria-expanded') === 'true', '그림 단추가 서랍을 열지 않는다');
+      assert.strictEqual(strip(P1).querySelectorAll('.rptm-card').length, 2, '그림 두 장이 보이지 않는다');
+      assert.ok(strip(P1).querySelector('.rptm-card').title.includes('넣음') && strip(P1).querySelector('.rptm-dr-h').textContent.includes('2/5') && strip(P1).textContent.includes('나만 봅니다'), '넣은 시각, 장 수, 사람별 안내가 없다');
+      //  안내는 짧게: 긴 설명은 풍선(title) 하나에만
+      const tip = strip(P1).querySelectorAll('.rptm-tip[title]');
+      assert.ok(tip.length === 1 && tip[0].title.includes('5MB') && tip[0].title.includes('Ctrl+V') && strip(P1).querySelectorAll('.rptm-hint').length === 0, '서랍 안내가 풍선 하나로 모이지 않았다');
+      assert.ok(tog(P1).classList.contains('open') && tog(P1).textContent.includes('▴'), '열린 서랍 단추 표시가 없다');
       reply(W, 'scheduleImageThumb', { ok: true, data: { id: 1, sha256: IMG(1).sha256, dataUrl: 'data:image/jpeg;base64,AAAA', width: 10, height: 4, stale: false } }, (x) => x.id === 1);
       await tick();
-      assert.strictEqual(strip(P1).querySelector('.rptm-img img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '줄의 미리 보기 그림이 붙지 않았다');
+      assert.strictEqual(strip(P1).querySelector('.rptm-card img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '줄의 미리 보기 그림이 붙지 않았다');
       assert.strictEqual(pvTable(W, P1).querySelector('td.img img').getAttribute('src'), 'data:image/jpeg;base64,AAAA', '문서 미리 보기에 그림이 들어가지 않았다');
       tog(P2).click(); await tick();
       assert.ok(strip(P2).querySelector('[data-act="imgFile"]').disabled && strip(P2).querySelector('[data-act="imgDel"]').disabled && strip(P2).querySelector('[data-act="imgPaste"]').disabled, '끊긴 과제에서 추가와 삭제가 막히지 않았다');
@@ -485,21 +579,26 @@ if (!JSDOM) {
       const add2 = reply(W, 'scheduleImageAdd', { ok: true, data: { projectUid: U1, image: IMG(4, 3), images: [IMG(1, 1), IMG(2, 2), IMG(4, 3)] } });
       assert.strictEqual(add2.mode, 'clipboard');
       await tick();
-      assert.strictEqual(strip(P1).querySelectorAll('.rptm-img').length, 3, '넣은 뒤 목록이 갱신되지 않았다');
-      assert.ok(strip(P1).querySelector('[data-msg]').textContent.includes('그림을 넣었습니다') && tog(P1).textContent === '그림 3');
+      assert.strictEqual(strip(P1).querySelectorAll('.rptm-card').length, 3, '넣은 뒤 목록이 갱신되지 않았다');
+      assert.ok(strip(P1).querySelector('[data-msg]').textContent.includes('그림을 넣었습니다') && togText(P1) === '그림 3');
       //  Ctrl+V: 줄 안에 포커스(과제 체크)
       ctrlV(W, row(W, P1).querySelector('input[data-act="pick"]')); await tick();
       const add3 = reply(W, 'scheduleImageAdd', { ok: false, error: { kind: 'invalid', message: '같은 그림이 이 과제에 이미 있습니다.' } });
       assert.deepStrictEqual([add3.projectUid, add3.mode], [P1, 'clipboard'], '포커스가 있는 줄의 Ctrl+V 가 그 과제 붙여넣기로 가지 않았다');
       await tick();
       assert.ok(strip(P1).querySelector('[data-msg]').textContent.includes('같은 그림이 이 과제에 이미 있습니다.'), '거절 이유가 그대로 보이지 않는다');
-      //  Ctrl+V: 마우스가 올라간 줄(접혀 있던 P4). 결과가 보이게 펼친다
-      row(W, P4).querySelector('.rptm-pi-row').dispatchEvent(new W.w.MouseEvent('mouseover', { bubbles: true }));
+      //  Ctrl+V: 서랍 안에 포커스(그림 카드 단추)
+      ctrlV(W, strip(P1).querySelector('.rptm-card [data-act="imgR"]')); await tick();
+      const add3b = reply(W, 'scheduleImageAdd', { ok: false, cancelled: true });
+      assert.deepStrictEqual([add3b.projectUid, add3b.mode], [P1, 'clipboard'], '서랍 안 포커스의 Ctrl+V 가 그 과제 붙여넣기로 가지 않았다');
+      await tick();
+      //  Ctrl+V: 마우스가 올라간 줄(닫혀 있던 P4). 결과가 보이게 서랍을 연다
+      row(W, P4).querySelector('.rptm-row').dispatchEvent(new W.w.MouseEvent('mouseover', { bubbles: true }));
       ctrlV(W, W.doc.body); await tick();
       const add4 = reply(W, 'scheduleImageAdd', { ok: false, cancelled: true });
       assert.deepStrictEqual([add4.projectUid, add4.mode], [P4, 'clipboard'], '마우스가 올라간 줄의 Ctrl+V 가 그 과제 붙여넣기로 가지 않았다');
       await tick();
-      assert.ok(!strip(P4).classList.contains('hidden'), 'Ctrl+V 로 넣을 때 그 줄의 그림 칸을 펼치지 않았다');
+      assert.ok(!strip(P4).classList.contains('hidden'), 'Ctrl+V 로 넣을 때 그 줄의 서랍을 열지 않았다');
       //  마우스가 목록 밖, 날짜 칸 안, 다른 탭의 Ctrl+V 는 그림 넣기가 아니다
       const adds = () => W.posted.filter((x) => x && x.cmd === 'scheduleImageAdd').length;
       $id(W, 'rptmPick').dispatchEvent(new W.w.MouseEvent('mouseleave'));
@@ -507,87 +606,112 @@ if (!JSDOM) {
       ctrlV(W, W.doc.body); ctrlV(W, $id(W, 'rptmDate')); await tick();
       assert.strictEqual(adds(), before, '줄 밖이나 날짜 칸의 Ctrl+V 가 그림 넣기를 불렀다');
       W.ev("reportMode = 'custom';");
-      row(W, P1).querySelector('.rptm-pi-row').dispatchEvent(new W.w.MouseEvent('mouseover', { bubbles: true }));
+      row(W, P1).querySelector('.rptm-row').dispatchEvent(new W.w.MouseEvent('mouseover', { bubbles: true }));
       ctrlV(W, W.doc.body); await tick();
       W.ev("reportMode = 'monthly';");
       assert.strictEqual(adds(), before, '다른 탭에서 Ctrl+V 가 그림 넣기를 불렀다');
       $id(W, 'rptmPick').dispatchEvent(new W.w.MouseEvent('mouseleave'));
       //  순서 ▶
-      strip(P1).querySelector('.rptm-img [data-act="imgR"]').click(); await tick();
+      strip(P1).querySelector('.rptm-card [data-act="imgR"]').click(); await tick();
       const mv = reply(W, 'scheduleImageMove', { ok: true, data: { projectUid: U1, images: [IMG(2, 1), IMG(1, 2), IMG(4, 3)], stale: false, notice: '' } });
       assert.deepStrictEqual([mv.id, mv.seq], [1, 2], '뒤로 가 첫 그림을 2번 자리로 보내지 않았다');
       await tick();
       //  삭제: 확인 창 취소 → 요청 없음, 확인 → 요청
-      strip(P1).querySelector('.rptm-img [data-act="imgDel"]').click();
+      strip(P1).querySelector('.rptm-card [data-act="imgDel"]').click();
       const dmsg = await confirmAnswer(W, false);
       assert.ok(dmsg.includes('되돌릴 수 없습니다') && dmsg.includes('내 그림만'), '삭제 확인 문구가 내 그림만 지운다고 말하지 않는다');
       assert.strictEqual(pending(W, 'scheduleImageDelete').length, 0, '취소했는데 삭제 요청이 갔다');
-      strip(P1).querySelector('.rptm-img [data-act="imgDel"]').click();
+      strip(P1).querySelector('.rptm-card [data-act="imgDel"]').click();
       await confirmAnswer(W, true);
       const del = reply(W, 'scheduleImageDelete', { ok: true, data: { projectUid: U1, images: [IMG(1, 1), IMG(4, 2)], stale: false, notice: '' } });
       assert.strictEqual(del.id, 2);
       await tick();
-      assert.strictEqual(strip(P1).querySelectorAll('.rptm-img').length, 2);
+      assert.strictEqual(strip(P1).querySelectorAll('.rptm-card').length, 2);
       //  그동안 나간 그림 명령은 단계 A 다섯뿐
       const cmds = new Set(W.posted.slice(ln0).map((x) => x && x.cmd).filter((c) => /^scheduleImage|Monthly|netcus/i.test(c || '')));
       for (const c of cmds) assert.ok(['scheduleImageList', 'scheduleImageThumb', 'scheduleImageAdd', 'scheduleImageDelete', 'scheduleImageMove'].includes(c), '그림 버튼이 다른 명령을 보냈다: ' + c);
+      //  다시 열면: 서랍은 닫히고, 사람별 DB 목록을 다시 물어 그림 n 이 보인다(그림만 DB 에 있다)
+      W.ev("setReportMode('daily'); setReportMode('monthly');"); await tick();
+      assert.ok(pending(W, 'scheduleImageList').some((x) => x.projectUid === P1), '다시 열었는데 그림 목록을 묻지 않았다');
+      reply(W, 'scheduleImageList', { ok: true, data: { projectUid: U1, images: [IMG(1, 1), IMG(4, 2)], stale: false, notice: '' } }, (x) => x.projectUid === P1);
+      drainImages(W); await tick();
+      assert.ok(togText(P1) === '그림 2' && strip(P1).classList.contains('hidden'), '다시 열었을 때 그림 n 이 보이지 않거나 서랍이 열려 있다');
       drainImages(W);
       W.ev('__rptMImgOpen.clear();');
+      await fresh();
     });
 
-    test('MW9 (§5.4): 고른 것(기간, 출처, 계획 기간, 과제 순서와 체크)만 계정별로 기억하고 다시 열면 그대로, 예전 키는 읽지 않는다, 저장소가 막혀도 깨지지 않는다', async () => {
+    test('MW9 (§5.4, 2026-10-23): 기억하는 값이 없다: 바꾼 뒤 다시 열면(두 번) 처음 값, 월간 흐름은 저장소에 아무것도 쓰지 않는다, 저장소가 막혀도 깨지지 않는다', async () => {
       await fresh();
-      row(W, P2).querySelector('[data-act="up"]').click(); drainImages(W);
+      W.ev("setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
+      const d0 = defaultsNow();
+      const n0 = lsMark(W);
+      const sink = [];
+      //  고를 수 있는 것을 모두 바꾼다: 과제 체크, 기타 칩(펼쳐서), 출처, 계획 기간, 작성일, 세그, 실적 기간
       check(W, row(W, P3).querySelector('input[data-act="pick"]'), false);
-      setVal(W, $id(W, 'rptmPFrom'), '2026-10-05', 'change'); setVal(W, $id(W, 'rptmPTo'), '2026-11-13', 'change');
+      check(W, row(W, P4).querySelector('input[data-act="pick"]'), true);
+      $id(W, 'rptmEtcTog').click();
+      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-ed"]'), false);
       W.doc.querySelector('#rptmSrc [data-msrc="week"]').click(); await tick();
-      const saved = W.evJSON("JSON.parse(localStorage.getItem('tc_rptMSel:7'))");
-      assert.deepStrictEqual(Object.keys(saved).sort(), ['checked', 'from', 'order', 'pFrom', 'pTo', 'planEdited', 'src', 'to', 'v'], '고른 것 말고 다른 것을 기억한다');
-      assert.deepStrictEqual([saved.from, saved.to, saved.src, saved.pFrom, saved.pTo, saved.planEdited, saved.order, saved.checked[P3]], [FROM, TO, 'week', '2026-10-05', '2026-11-13', true, [P2, P1, P3, P4], false]);
-      //  예전 키(초안, 기억한 이관)는 남아 있어도 읽지 않는다
-      W.ev(`localStorage.setItem('tc_rptDraftM:7:${FROM}_${TO}', JSON.stringify({ v: 1, cards: { [${JSON.stringify(P1)}]: { title: '옛 초안 과제명', prev: '옛 계획', actual: '옛 실적' } } }));`);
-      W.ev("__rptM = null; setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
-      const S2 = W.evJSON('__rptM');
-      assert.deepStrictEqual([S2.from, S2.to, S2.src, S2.fillSrc, S2.pFrom, S2.pTo, S2.order, S2.checked[P3], S2.checked[P1], S2.date], [FROM, TO, 'week', 'cal', '2026-10-05', '2026-11-13', [P2, P1, P3, P4], false, true, W.ev('todayYmd()')], '다시 열었는데 고른 것이 그대로가 아니다(작성일은 오늘)');
-      assert.ok(!JSON.stringify(payloadOf(W)).includes('옛 ') && !$id(W, 'rptMonthlyPane').textContent.includes('옛 '), '예전 초안 키를 읽었다');
-      assert.ok($id(W, 'rptmSrcHint').textContent.includes('읽어 오기를 누르면'), '주간보고를 아직 안 읽은 출처 안내가 없다');
-      //  다른 기간: 순서는 이어 받고, 체크는 그 기간의 기록 있음
+      setVal(W, $id(W, 'rptmPFrom'), '2026-10-05', 'change'); setVal(W, $id(W, 'rptmPTo'), '2026-11-13', 'change');
+      setVal(W, $id(W, 'rptmDate'), '2026-10-23', 'change');
+      W.doc.querySelector('#rptmSub [data-msub="pv"]').click();
       W.doc.querySelector('#rptmSrc [data-msrc="cal"]').click(); await tick();
       await loadPeriod(W, '2026-08-01', '2026-08-31'); drainImages(W);
-      assert.deepStrictEqual(W.evJSON('__rptM.order'), [P2, P1, P3, P4], '다른 기간을 읽었는데 과제 순서를 잃었다');
-      assert.deepStrictEqual(W.evJSON('__rptM.order.filter(function(id){ return __rptM.checked[id]; })'), W.evJSON('__rptM.order.filter(function(id){ return __rptMHas.has(id); })'), '새 기간 체크가 기록 있음이 아니다');
-      //  저장소가 막힘
+      assert.strictEqual(W.ev('__rptM.from'), '2026-08-01', '전제: 기간을 바꿨다');
+      //  월간 탭 안의 조작(체크, 기타, 출처, 계획, 작성일, 세그, 읽어 오기)은 저장소에 아무것도 쓰지 않는다
+      assert.deepStrictEqual(lsSince(W, n0), [], '월간 탭 안의 조작이 저장소에 썼다');
+      const n1 = lsMark(W);
+      //  두 번 열어도 처음 값
+      for (const k of [1, 2]) {
+        W.ev("setReportMode('custom'); setReportMode('monthly');"); await tick(); drainImages(W);
+        assert.deepStrictEqual(defaultsNow(), d0, k + '번째 다시 연 화면이 처음 값이 아니다(무언가 기억했다)');
+      }
+      //  탭을 오가며 다시 연 동안에도 월간 키는 쓰지 않는다(다른 탭이 자기 설정 tc_rptSources 를 쓰는 것은 그 탭의 일)
+      const wrote = lsSince(W, n1);
+      assert.deepStrictEqual(wrote.filter((k) => /rptM|rptm|monthly/i.test(k)), [], '월간 흐름이 월간 키를 저장소에 썼다');
+      void sink;
+      //  저장소가 막혀도: 열기, 체크, 기타, 읽어 오기가 그대로 된다
       W.ev("window.__ls = [Storage.prototype.getItem, Storage.prototype.setItem]; Storage.prototype.getItem = function(){ throw new Error('blocked'); }; Storage.prototype.setItem = function(){ throw new Error('blocked'); };");
       try {
-        assert.strictEqual(W.ev('rptMSelSave()'), false, '막힌 저장소에서 저장이 성공했다고 한다');
-        assert.ok($id(W, 'rptmSelSt').textContent.includes('기억하지 못합니다'), '막힌 저장소 안내가 없다');
-        assert.strictEqual(W.ev('rptMSelLoad()'), null);
-        assert.strictEqual(W.ev('rptMEtcOffGet().size'), 0);
-        W.ev("rptMEtcOffSet(new Set(['c-in']));");
+        W.ev("setReportMode('custom'); setReportMode('monthly');"); await tick(); drainImages(W);
         await loadPeriod(W, '2026-05-01', '2026-05-31'); drainImages(W);
         assert.strictEqual(W.ev('__rptM.from'), '2026-05-01', '막힌 저장소에서 읽어 오기가 깨졌다');
+        check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-in"]'), false);
+        assert.strictEqual($id(W, 'rptmEtcSum').textContent, '1/2', '막힌 저장소에서 기타 넣기 빼기가 깨졌다');
+        assert.strictEqual($id(W, 'rptmFootSt').textContent.includes('기억'), false, '기억 못 한다는 안내가 남아 있다(기억하는 값이 없다)');
       } finally { W.ev('Storage.prototype.getItem = __ls[0]; Storage.prototype.setItem = __ls[1];'); }
-      assert.strictEqual($id(W, 'rptmSelSt').textContent === '' || W.ev('rptMSelSave()'), true);
-      assert.strictEqual($id(W, 'rptmSelSt').textContent, '', '저장소가 돌아왔는데 안내가 남았다');
       await fresh();
     });
 
-    test('MW10 (§11.2-3): 기타는 공식 과제가 아닌 카테고리 전부, 뺀 카테고리는 계정별로 기억하고 다시 열어도 빠져 있다', async () => {
+    test('MW10 (§11.2-3, B안): 기타는 공식 과제가 아닌 카테고리 전부, 처음은 한 줄 요약(모두 넣음), 고르기로 칩을 펼쳐 빼면 미리 보기와 문서가 바로 바뀐다, 다시 열면 모두 넣음', async () => {
       await fresh();
       const etcText = () => payloadOf(W).etc.lines.map((l) => l.text).join('\n');
+      const etcPv = () => (W.doc.querySelector('#rptmSheet table[data-pv-etc]') || { textContent: '' }).textContent;
       assert.ok(etcText().includes('주간 회의 자료 정리') && etcText().includes('보안 교육 이수'), '기타에 공식 과제가 아닌 카테고리 글이 없다');
       assert.ok(!etcText().includes('화면 응답 속도 개선'), '기타에 공식 과제 글이 들어갔다');
-      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-ed"]'), false); await tick();
-      assert.deepStrictEqual(W.evJSON("JSON.parse(localStorage.getItem('tc_rptMEtcOff:7'))"), ['c-ed'], '뺀 카테고리를 계정별 키에 기억하지 않았다');
+      assert.ok($id(W, 'rptmEtc').classList.contains('hidden') && $id(W, 'rptmEtcSum').textContent === '2개 모두 넣음' && $id(W, 'rptmEtcTog').getAttribute('aria-expanded') === 'false', '기타가 한 줄 요약으로 접혀 열리지 않았다');
+      $id(W, 'rptmEtcTog').click();
+      assert.ok(!$id(W, 'rptmEtc').classList.contains('hidden') && $id(W, 'rptmEtcTog').textContent === '접기' && $id(W, 'rptmEtcTog').getAttribute('aria-expanded') === 'true', '고르기가 칩을 펼치지 않았다');
+      const chips = [...W.doc.querySelectorAll('#rptmEtc label.rpt-chip input[data-etc]')];
+      assert.deepStrictEqual(chips.map((x) => [x.dataset.etc, x.checked]), [['c-in', true], ['c-ed', true]], '기타 칩이 내 순서의 모든 카테고리(모두 넣음)가 아니다');
+      const n0 = lsMark(W);
+      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-ed"]'), false);
       assert.ok(!etcText().includes('보안 교육 이수') && etcText().includes('주간 회의 자료 정리'), '뺀 카테고리 글이 기타에 남았다');
-      assert.ok(!W.doc.querySelector('#rptmSheet table[data-pv-etc]').textContent.includes('보안 교육'), '미리 보기 기타 표에 뺀 카테고리가 있다');
+      assert.ok(!etcPv().includes('보안 교육') && etcPv().includes('주간 회의 자료 정리'), '미리 보기 기타 표가 바로 바뀌지 않았다');
+      assert.strictEqual($id(W, 'rptmEtcSum').textContent, '1/2', '기타 요약이 바뀌지 않았다');
       assert.ok(overlayClosed(W, 'confirmModal'), '기타 넣기 빼기에 확인 창이 떴다');
-      W.ev("__rptM = null; setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
-      assert.strictEqual(W.doc.querySelector('#rptmEtc input[data-etc="c-ed"]').checked, false, '다시 열었는데 뺀 카테고리가 다시 들어갔다');
-      assert.strictEqual(W.doc.querySelector('#rptmEtc input[data-etc="c-in"]').checked, true);
-      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-ed"]'), true); await tick();
-      assert.deepStrictEqual(W.evJSON("JSON.parse(localStorage.getItem('tc_rptMEtcOff:7'))"), [], '넣기로 바꾼 것을 기억하지 않았다');
-      clearStore(W);
+      //  둘 다 빼면 기타 표가 미리 보기에서 사라진다
+      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-in"]'), false);
+      assert.ok(!W.doc.querySelector('#rptmSheet table[data-pv-etc]') && !$id(W, 'rptmPvSum').textContent.includes('기타'), '기타를 모두 뺐는데 미리 보기에 기타 표가 남았다');
+      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-in"]'), true);
+      assert.deepStrictEqual(lsSince(W, n0), [], '기타 넣기 빼기가 저장소에 썼다');
+      //  접어도 뺀 것은 그대로, 다시 열면 모두 넣음
+      $id(W, 'rptmEtcTog').click();
+      assert.ok($id(W, 'rptmEtc').classList.contains('hidden') && $id(W, 'rptmEtcSum').textContent === '1/2', '접으니 고른 것이 바뀌었다');
+      W.ev("setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
+      assert.ok(W.doc.querySelector('#rptmEtc input[data-etc="c-ed"]').checked && $id(W, 'rptmEtcSum').textContent === '2개 모두 넣음', '다시 열었는데 뺀 카테고리가 빠져 있다(기억하지 않아야 한다)');
+      await fresh();
     });
 
     const WEEKS = [
@@ -595,12 +719,13 @@ if (!JSDOM) {
       { regdate: '2026-09-14', title: '9월 2주 주간보고', period: '2026.09.07~2026.09.11', endwork: '[(예시) 관제 고도화]\n- 알람 기준값 화면\n[(예시) 해양 관측 체계]\n- 수신 모듈 정리', content: '', plan: '' },
     ];
     const unidKeys = () => [...W.doc.querySelectorAll('#rptmUnid [data-unid] [data-unid-key]')].map((r) => r.dataset.unidKey);
-    test('MW11 (§5.3-4, §14): 주간보고 출처: netcusWeeklyRangeRead(읽기)만 부르고, 과제별 글 = buildNetcusWeeklyText 과제 블록(머리 줄 뺌), 안 맞은 과제는 미리 보기 아래 미식별(문서에 없음)', async () => {
+    test('MW11 (§5.3-4, §14, B안): 주간보고 출처: netcusWeeklyRangeRead(읽기)만 부르고, 과제별 글 = buildNetcusWeeklyText 과제 블록(머리 줄 뺌), 안 맞은 과제는 왼쪽 칸 미식별(문서에 없음)', async () => {
       await fresh();
       for (const flat of [false, true]) {
         W.ev('weeklyFlat = ' + flat + ';');
         W.doc.querySelector('#rptmSrc [data-msrc="week"]').click(); await tick();
         assert.strictEqual(W.ev('__rptM.src'), 'week');
+        assert.ok($id(W, 'rptmSrcHint').textContent.includes('읽어 오기를 누르면'), '아직 안 읽은 출처 안내(짧게)가 없다');
         $id(W, 'rptmLoad').click(); await tick();
         assert.ok(overlayClosed(W, 'confirmModal'), '읽어 오기에 확인 창이 떴다');
         assert.ok($id(W, 'rptmLoad').disabled, '읽는 동안 읽어 오기가 잠기지 않았다');
@@ -617,8 +742,8 @@ if (!JSDOM) {
         assert.ok(!$id(W, 'rptmSheet').textContent.includes('미등록 일'), '안 맞은 과제 글이 문서 미리 보기(종이)에 들어갔다');
         assert.ok(![...W.doc.querySelectorAll('#rptmEtc input[data-etc]')].some((x) => x.parentElement.textContent.includes('없는 과제')), '안 맞은 과제가 기타 고르기에 있다');
         const ui = [...W.doc.querySelectorAll('#rptmUnid [data-unid] [data-unid-key]')];
-        assert.ok(ui.length === 1 && ui[0].querySelector('summary').textContent === '[(예시) 없는 과제]' && ui[0].querySelector('.tx').textContent.includes('미등록 일'), '안 맞은 과제가 미리 보기 아래 미식별 항목(머리 이름과 글)에 없다');
-        assert.ok($id(W, 'rptmPv').contains(ui[0]), '미식별 항목이 미리 보기 영역에 있지 않다');
+        assert.ok(ui.length === 1 && ui[0].querySelector('summary b').textContent === '[(예시) 없는 과제]' && ui[0].querySelector('summary span').textContent === ui[0].querySelector('.tx').textContent.split('\n').find((l) => l.trim()) && ui[0].querySelector('.tx').textContent.includes('미등록 일'), '안 맞은 과제가 미식별 항목(머리 이름, 첫 줄, 글)에 없다');
+        assert.ok($id(W, 'rptmLeft').contains(ui[0]) && !$id(W, 'rptmPv').contains(ui[0]), '미식별 항목이 왼쪽 칸(과제 고르는 자리)에 있지 않다');
         assert.strictEqual($id(W, 'rptmUnid').querySelectorAll('button, select, input, textarea').length, 0, '미식별 항목에 옮기기나 기억 같은 조작이 남았다(읽기만)');
         W.doc.querySelector('#rptmSrc [data-msrc="cal"]').click(); await tick();
         $id(W, 'rptmLoad').click(); await tick(); drainImages(W);
@@ -752,9 +877,10 @@ if (!JSDOM) {
       W.ev("setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
     });
 
-    test('MW15 (§5.3): 문서 미리 보기는 늘 보이고 읽기만 한다. payload 와 같은 값(과제명, 기간, 그림 칸, 실적 줄, 빈 계획, 기타)', async () => {
+    test('MW15 (§5.3, B안): 문서 미리 보기는 오른쪽 칸에 늘 보이고 읽기만 한다. payload 와 같은 값(과제명, 기간, 그림 칸, 실적 줄, 빈 계획, 기타), 머리와 상태 줄의 개수', async () => {
       await fresh();
-      assert.ok(!$id(W, 'rptmPv').classList.contains('hidden') && !$id(W, 'rptmPvBtn'), '미리 보기가 늘 보이지 않거나 켜기 버튼이 남았다');
+      assert.ok(!$id(W, 'rptmPv').classList.contains('hidden') && !$id(W, 'rptmPvBtn') && $id(W, 'rptmPv').classList.contains('rptm-right'), '미리 보기가 오른쪽 칸에 늘 보이지 않거나 켜기 버튼이 남았다');
+      assert.deepStrictEqual([$id(W, 'rptmPvSum').textContent, $id(W, 'rptmFootSt').textContent], ['과제 3개, 기타 표', '과제 3개와 기타 표를 저장합니다'], '미리 보기 머리나 상태 줄의 개수가 다르다');
       const sheet = $id(W, 'rptmSheet');
       const p = payloadOf(W);
       assert.ok(sheet.textContent.includes('월간보고 (시험자)') && sheet.textContent.includes('월간 실적: 09월 01일 ~ 09월 30일') && sheet.textContent.includes('2025/08 ~ 2026/12'), '미리 보기 머리가 다르다');
@@ -767,11 +893,84 @@ if (!JSDOM) {
       assert.deepStrictEqual([...sheet.querySelectorAll('table[data-pv-etc] td.body .ln')].map((x) => x.textContent), p.etc.lines.map((l) => l.text), '미리 보기 기타가 payload 와 다르다');
       assert.strictEqual(sheet.querySelectorAll('input, textarea, button, [contenteditable]').length, 0, '미리 보기에 조작 칸이 있다');
       //  아무것도 안 고르면 안내
-      W.ev('__rptM.order.forEach(function(id){ __rptM.checked[id] = false; }); rptMEtcCats().forEach(function(c){}); rptMEtcOffSet(new Set(rptMEtcCats().map(function(c){ return c.key; }))); rptMPreview();');
+      W.ev('__rptM.order.forEach(function(id){ __rptM.checked[id] = false; }); rptMEtcCats().forEach(function(c){ __rptM.etcOff.add(c.key); }); rptMPreview();');
       assert.ok(!$id(W, 'rptmPvEmpty').classList.contains('hidden'), '고른 과제가 없을 때 안내가 없다');
-      clearStore(W);
+      assert.strictEqual($id(W, 'rptmFootSt').textContent, '', '고른 것이 없는데 저장 안내가 남았다');
       await fresh();
       assert.ok($id(W, 'rptmPvEmpty').classList.contains('hidden'));
+    });
+
+    test('MW19 (§5, B안): 두 칸 구조(왼쪽 설정, 과제, 기타, 미식별 / 오른쪽 미리 보기), 좁은 폭 세그로 설정과 미리 보기를 오가고 다시 열면 설정, 종이 배율은 칸 폭에 맞춘다', async () => {
+      await fresh();
+      const pane = $id(W, 'rptMonthlyPane'), grid = pane.querySelector(':scope > .rptm-grid');
+      assert.ok(grid, '두 칸 격자가 없다');
+      const [left, right] = grid.children;
+      assert.ok(left === $id(W, 'rptmLeft') && right === $id(W, 'rptmPv') && grid.children.length === 2, '격자가 왼쪽 칸과 오른쪽 칸 둘이 아니다');
+      for (const id of ['rptmFrom', 'rptmPFrom', 'rptmDate', 'rptmName', 'rptmSrc', 'rptmLoad', 'rptmPick', 'rptmEtc', 'rptmUnid']) assert.ok(left.contains($id(W, id)), '왼쪽 칸에 없다: ' + id);
+      assert.ok(right.contains($id(W, 'rptmSheet')) && !left.contains($id(W, 'rptmSheet')), '미리 보기 종이가 오른쪽 칸에 없다');
+      assert.ok(left.querySelector('.rptm-set').compareDocumentPosition($id(W, 'rptmPick')) & 4, '설정이 과제 목록 위에 있지 않다');
+      //  세그(좁은 폭에서만 CSS 가 보인다)
+      const seg = (v) => W.doc.querySelector('#rptmSub [data-msub="' + v + '"]');
+      assert.ok(pane.contains($id(W, 'rptmSub')) && !grid.contains($id(W, 'rptmSub')), '세그가 두 칸 위에 없다');
+      assert.deepStrictEqual([pane.dataset.sub, seg('set').getAttribute('aria-pressed'), seg('pv').getAttribute('aria-pressed')], ['set', 'true', 'false']);
+      seg('pv').click();
+      assert.deepStrictEqual([pane.dataset.sub, seg('set').getAttribute('aria-pressed'), seg('pv').getAttribute('aria-pressed'), seg('pv').classList.contains('active')], ['pv', 'false', 'true', true], '미리 보기 세그로 바뀌지 않았다');
+      seg('set').click();
+      assert.strictEqual(pane.dataset.sub, 'set', '설정 세그로 돌아오지 않았다');
+      seg('pv').click();
+      W.ev("setReportMode('daily'); setReportMode('monthly');"); await tick(); drainImages(W);
+      assert.strictEqual(pane.dataset.sub, 'set', '다시 열었는데 세그가 설정이 아니다');
+      //  종이 배율: 칸 폭(안쪽 여백 20px 뺌) / 1000, 1 을 넘지 않는다. 칸이 숨어 폭이 0 이면 그대로 둔다
+      const wrap = $id(W, 'rptmPvWrap'), sheet = $id(W, 'rptmSheet');
+      assert.ok(sheet.classList.contains('fit'), '미리 보기 종이에 맞춤(fit)이 없다');
+      for (const [cw, want] of [[520, '0.500'], [2000, '1.000']]) {
+        Object.defineProperty(wrap, 'clientWidth', { value: cw, configurable: true });
+        W.ev('rptMFit()');
+        assert.strictEqual(sheet.style.getPropertyValue('--fz'), want, '종이 배율이 칸 폭에 맞지 않는다: ' + cw);
+      }
+      Object.defineProperty(wrap, 'clientWidth', { value: 0, configurable: true });
+      W.ev('rptMFit()');
+      assert.strictEqual(sheet.style.getPropertyValue('--fz'), '1.000', '숨은 칸(폭 0)에서 배율을 바꿨다');
+      delete wrap.clientWidth;
+    });
+
+    test('MW20 (§5, B안): 왼쪽에서 바꾸면 미리 보기가 바로 바뀐다(과제 체크, 기타 칩, 읽어 오기 뒤 기간, 계획 기간, 작성일)', async () => {
+      await fresh();
+      const sheetText = () => $id(W, 'rptmSheet').textContent;
+      check(W, row(W, P2).querySelector('input[data-act="pick"]'), false);
+      assert.ok(!pvTable(W, P2) && !sheetText().includes('관측 자료 수신 모듈 정리'), '과제 체크를 끈 것이 미리 보기에 바로 보이지 않는다');
+      check(W, row(W, P2).querySelector('input[data-act="pick"]'), true);
+      assert.ok(pvTable(W, P2) && sheetText().includes('관측 자료 수신 모듈 정리'), '과제 체크를 켠 것이 미리 보기에 바로 보이지 않는다');
+      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-in"]'), false);
+      assert.ok(!sheetText().includes('주간 회의 자료 정리'), '기타 칩을 뺀 것이 미리 보기에 바로 보이지 않는다');
+      check(W, W.doc.querySelector('#rptmEtc input[data-etc="c-in"]'), true);
+      assert.ok(sheetText().includes('주간 회의 자료 정리'), '기타 칩을 넣은 것이 미리 보기에 바로 보이지 않는다');
+      setVal(W, $id(W, 'rptmPFrom'), '2026-10-05', 'change'); setVal(W, $id(W, 'rptmPTo'), '2026-11-13', 'change');
+      assert.ok(sheetText().includes('월간 계획: 10월 05일 ~ 11월 13일'), '계획 기간이 미리 보기 머리에 바로 보이지 않는다');
+      setVal(W, $id(W, 'rptmDate'), '2026-10-22', 'change');
+      assert.ok(sheetText().includes('2026년 10월 22일'), '작성일이 미리 보기 제목에 바로 보이지 않는다');
+      //  기간은 읽어 오기를 눌러야 바뀐다(누르기 전에는 안내만)
+      setVal(W, $id(W, 'rptmFrom'), '2026-08-01', 'change'); setVal(W, $id(W, 'rptmTo'), '2026-08-31', 'change');
+      assert.ok(sheetText().includes('월간 실적: 09월 01일 ~ 09월 30일') && $id(W, 'rptmSrcMsg').textContent.includes('읽어 오기'), '읽어 오기 전에 기간이 바뀌었거나 안내가 없다');
+      $id(W, 'rptmLoad').click(); await tick(); drainImages(W);
+      assert.ok(sheetText().includes('월간 실적: 08월 01일 ~ 08월 31일') && sheetText().includes('기간 밖 일'), '읽어 오기 뒤 미리 보기가 새 기간으로 바뀌지 않았다');
+      await fresh();
+    });
+
+    test('MW21 (§5, 2026-10-23): .modal label 여백(위 16px, 굵게 600)이 월간 탭의 과제 줄과 기타 칩에는 걸리지 않고, 다른 모달 라벨에는 그대로다', async () => {
+      await fresh();
+      const cs = (el) => W.w.getComputedStyle(el);
+      const pickLb = row(W, P1).querySelector('label.check'), chipLb = W.doc.querySelector('#rptmEtc label.rpt-chip');
+      const other = [...W.doc.querySelectorAll('.modal label')].find((l) => !l.closest('#rptMonthlyPane') && !l.matches('.check, .rpt-chip') && !l.closest('.pcf-f'));
+      assert.ok(other, '전제: 대조군(월간 탭 밖 모달 라벨)이 없다');
+      const o = cs(other);
+      //  jsdom 은 var() 가 든 margin 줄임말을 계산하지 못해 여백은 정적 검사(MS10)가 보고, 여기서는 굵기와 display 로 대조한다
+      assert.deepStrictEqual([o.display, o.fontWeight], ['block', '600'], '전제: 대조군 라벨에 앱 폼 라벨 규칙이 걸리지 않는다(jsdom 계산값)');
+      for (const [nm, el] of [['과제 줄', pickLb], ['기타 칩', chipLb]]) {
+        const s = cs(el);
+        assert.deepStrictEqual([s.marginTop, s.marginBottom, s.fontWeight], ['0px', '0px', '400'], nm + ' 라벨에 앱 폼 라벨 여백이나 굵기가 걸린다');
+      }
+      assert.strictEqual(cs(chipLb).display, 'inline-flex', '기타 칩 라벨이 블록으로 늘어난다');
     });
 
     test('MW16: 정리', async () => { clearStore(W); await W.close(); });
@@ -792,6 +991,7 @@ if (!JSDOM) {
       assert.ok($id(B, 'rptmSave').disabled, '브라우저에서 저장이 열려 있다');
       assert.ok(B.doc.querySelector('#rptmSrc [data-msrc="week"]').disabled, '브라우저에서 주간보고 출처가 열려 있다');
       assert.ok(row(B, P1) && !B.doc.querySelector('#rptmPick [data-imgtog], #rptmPick [data-strip]'), '브라우저에서 그림 단추가 있다');
+      assert.ok($id(B, 'rptmSrcHint').textContent.includes('위젯에서만') && $id(B, 'rptmFootSt').textContent === '', '브라우저 출처 안내가 없거나 저장 안내가 보인다');
       assert.ok(!B.posted.length || !B.posted.some((x) => x && /^scheduleImage/.test(x.cmd || '')), '브라우저에서 그림 명령을 보냈다');
       assert.ok(B.ev(`rptMAuto(__rptM, false).proj.get(${JSON.stringify(P1)})`).includes('화면 응답 속도 개선'), '브라우저에서 실적이 모이지 않았다');
       assert.ok($id(B, 'rptmSheet').textContent.includes('화면 응답 속도 개선'), '브라우저에서 미리 보기가 안 된다');

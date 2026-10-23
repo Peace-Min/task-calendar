@@ -8,13 +8,15 @@
  *  케이스:
  *    O0  전제: 로그인, conn ok, 새 빌드(rptMOpen), 구조 17(DB 과제에 devStartDate 칸), 가로채기 설치
  *    M1  보고서 버튼 → 월간 보고 탭: 월간 표시, 기존 레일 칸과 미리보기, 보내기와 복사 버튼이 안 보임, 월간 버튼이 보임
- *    M2  기간과 과제: 실적 기간 = 기억한 값이나 지난달, 계획 기간 = 기본값, 과제 목록 = 구독한 공식 과제(내 순서),
+ *    M2  기간과 과제: 실적 기간 = 지난달(기억하는 값이 없다), 계획 기간 = 기본값, 과제 목록 = 구독한 공식 과제(내 과제 순서 그대로, ▲▼ 없음),
  *        고치는 칸 없음(입력은 날짜와 체크뿐), 체크한 과제마다 미리 보기 표(목록 순서)
+ *    L1  B안 배치(2026-10-23): 지금 창 폭에서 두 칸(넓음) 또는 세그(620px 이하)가 실제로 그렇게 그려지는지, 미리 보기 종이가 칸 폭에 맞게 줄었는지,
+ *        과제 줄 라벨에 앱 폼 라벨 여백(위 16px)이 걸리지 않는지, 체크를 끄고 켜면 미리 보기 표가 바로 빠지고 돌아오는지(돌려 놓는다)
  *    M3  다시 읽어 오기(캘린더, 확인 창 없음): 과제별 실적 = 기간 취합 복사 글의 과제 블록(글자 그대로)
- *    M4  그림 목록: 과제 줄마다 scheduleImageList 회신(정상이면 목록, 끊겼으면 사본 목록과 안내)과 그림 단추. 넣기, 지우기는 하지 않는다
+ *    M4  그림 목록: 과제 줄마다 scheduleImageList 회신(정상이면 목록, 끊겼으면 사본 목록과 안내)과 그림 단추(그림 n 또는 + 그림). 넣기, 지우기는 하지 않는다
  *    M5  저장 payload 모양(rptMPayload): 기간, 과제 uid, 본문 {level, text}, 계획 두 칸과 변경이력은 빈 배열.
  *        실제 저장은 저장 창이 떠서 사람이 한다(아래 안내)
- *    정리 이 루프가 바꾼 고른 것 기억 키(tc_rptMSel:)를 원래 값으로 되돌리고, 가로채기를 풀고, 보고서 창을 닫는다
+ *    정리 가로채기를 풀고, 보고서 창을 닫는다. 루프 동안 월간 키(rptM)를 저장소에 쓴 것이 없는지 본다(기억하는 값이 없다, 2026-10-23)
  *  2026-10-23: 월간 탭은 모으기와 읽기 전용 미리 보기만 한다(docs/MONTHLY-REPORT-PLAN.md 11.3, 15장).
  *
  *  ★ 회사 사이트로 아무것도 보내지 않는다(세 겹): hpost 가 netcus 로 시작하는 명령은 호스트로 넘기지 않는다(주간보고 읽기도),
@@ -114,18 +116,20 @@ const INSTALL = `(function(){
   hpost = function(o){ if (o && /^netcus/i.test(String(o.cmd || ''))) { R.blocked.push(String(o.cmd)); return; } return R.orig.hpost(o); };
   Platform.report.submitDaily = function(){ R.sent.push('submitDaily'); };
   Platform.report.submitWeekly = function(){ R.sent.push('submitWeekly'); };
+  R.orig.setItem = Storage.prototype.setItem; R.ls = [];
+  Storage.prototype.setItem = function(k, v){ R.ls.push(String(k)); return R.orig.setItem.call(this, k, v); };
   return 'ok';
 })()`;
 const UNINSTALL = `(function(){
   const R = window.__mrLoop; if (!R) return 'none';
   hostRequest = R.orig.hostRequest; hpost = R.orig.hpost;
   Platform.report.submitDaily = R.orig.submitDaily; Platform.report.submitWeekly = R.orig.submitWeekly;
+  if (R.orig.setItem) Storage.prototype.setItem = R.orig.setItem;
   delete window.__mrLoop; return 'ok';
 })()`;
 
 async function main() {
   cdp = await Cdp.attach(OPT.port);
-  let selKey = null, selWas = null, snap = null;
   try {
     head('O0 전제');
     const pre = await J(`({ conn: typeof conn === 'string' ? conn : '', boot: typeof bootOk === 'undefined' ? null : bootOk, fn: typeof rptMOpen === 'function' && typeof rptMPayload === 'function',
@@ -147,22 +151,46 @@ async function main() {
     ok('M1 월간 영역과 탭 줄이 보이고, 보내기, 복사, 기존 레일 칸, 미리보기는 숨는다', vis.pane && vis.tabs && vis.save && !vis.send && !vis.copy && !vis.rail && !vis.prev, JSON.stringify(vis));
 
     head('M2 기간과 과제');
-    const st = await J(`({ from: __rptM.from, to: __rptM.to, lm: monthRange(new Date(), -1), plan: [__rptM.pFrom, __rptM.pTo], pd: rptMPlanDefault(__rptM.from, __rptM.to), planEdited: __rptM.planEdited,
+    const st = await J(`({ from: __rptM.from, to: __rptM.to, lm: monthRange(new Date(), -1), plan: [__rptM.pFrom, __rptM.pTo], pd: rptMPlanDefault(__rptM.from, __rptM.to),
+      arrows: (document.getElementById('rptMonthlyPane').textContent.match(/[▲▼]/g) || []).length + document.querySelectorAll('#rptMonthlyPane [data-act="up"], #rptMonthlyPane [data-act="down"]').length,
       order: __rptM.order, off: rptMOfficial().map(function(c){ return c.id; }), picked: rptMPicked(__rptM), cards: [].map.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(c){ return c.dataset.pvUid; }),
       editors: [].filter.call(document.querySelectorAll('#rptMonthlyPane input, #rptMonthlyPane textarea, #rptMonthlyPane select, #rptMonthlyPane [contenteditable]'), function(i){ return !((i.type === 'date') || (i.type === 'checkbox' && (i.matches('#rptmPick input[data-act="pick"]') || i.matches('#rptmEtc input[data-etc]')))); }).length,
       terms: rptMPicked(__rptM).map(function(id){ return rptMTerm(id).text; }) })`);
     vlogJSON(st);
-    selKey = await cdp.ev('rptMSelKey()');
-    selWas = await cdp.ev(`(function(){ try { return localStorage.getItem(${JSON.stringify(selKey)}); } catch (_) { return null; } })()`);
-    //  고른 것 기억 키를 통째로 받아 둔다(정리에서 그대로 되돌린다)
-    snap = await J(`(function(){ var o = {}; try { for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptMSel:') === 0) o[k] = localStorage.getItem(k); } } catch (_) {} return o; })()`);
-    if (selWas == null) ok('M2 기억한 것이 없으면 실적 기간 = 지난달', st.from === st.lm[0] && st.to === st.lm[1], JSON.stringify([st.from, st.to]));
-    else note('고른 것을 이미 기억하고 있어 기간 기본값은 보지 않는다: ' + selKey);
-    if (!st.planEdited) ok('M2 계획 기간 = 기본값', st.plan[0] === st.pd.from && st.plan[1] === st.pd.to, JSON.stringify(st.plan));
-    ok('M2 과제 목록 = 구독한 공식 과제 전부', JSON.stringify([...st.order].sort()) === JSON.stringify([...st.off].sort()), JSON.stringify(st.order));
+    ok('M2 실적 기간 = 지난달(기억하는 값이 없다)', st.from === st.lm[0] && st.to === st.lm[1], JSON.stringify([st.from, st.to]));
+    ok('M2 계획 기간 = 기본값', st.plan[0] === st.pd.from && st.plan[1] === st.pd.to, JSON.stringify(st.plan));
+    ok('M2 과제 목록 = 구독한 공식 과제 전부, 내 과제 순서 그대로', JSON.stringify(st.order) === JSON.stringify(st.off), JSON.stringify(st.order));
+    ok('M2 순서 단추(▲▼) 없음', st.arrows === 0, String(st.arrows));
     ok('M2 체크한 과제마다 미리 보기 표(목록 순서)', JSON.stringify(st.cards) === JSON.stringify(st.picked), JSON.stringify(st.cards));
     ok('M2 고치는 칸 없음(입력은 날짜와 체크뿐)', st.editors === 0, String(st.editors));
     note('과제 수행 기간: ' + JSON.stringify(st.terms));
+
+    head('L1 B안 배치(지금 창 폭)');
+    const lay = await J(`(function(){ var g = document.querySelector('#rptMonthlyPane .rptm-grid'), sub = document.getElementById('rptmSub'), wrap = document.getElementById('rptmPvWrap'), sh = document.getElementById('rptmSheet');
+      var lb = document.querySelector('#rptmPick .rptm-it label.check');
+      return { w: innerWidth, grid: getComputedStyle(g).display, sub: getComputedStyle(sub).display, left: getComputedStyle(document.getElementById('rptmLeft')).display, right: getComputedStyle(document.getElementById('rptmPv')).display,
+        fz: sh.style.getPropertyValue('--fz'), sheetW: sh.getBoundingClientRect().width, wrapW: wrap.clientWidth, lbTop: lb ? getComputedStyle(lb).marginTop : null, lbW: lb ? getComputedStyle(lb).fontWeight : null }; })()`);
+    vlogJSON(lay);
+    if (lay.w > 620) {
+      ok('L1 넓은 폭: 두 칸(격자), 세그 숨김, 미리 보기 칸 보임', lay.grid === 'grid' && lay.sub === 'none' && lay.left !== 'none' && lay.right !== 'none', JSON.stringify(lay));
+      ok('L1 미리 보기 종이가 칸 폭 안에 맞게 줄었다', !!lay.fz && lay.sheetW <= lay.wrapW + 1, JSON.stringify([lay.fz, lay.sheetW, lay.wrapW]));
+    } else {
+      ok('L1 좁은 폭: 세그가 보이고 설정 칸만 보인다', lay.sub !== 'none' && lay.left !== 'none' && lay.right === 'none', JSON.stringify(lay));
+      await cdp.ev(`document.querySelector('#rptmSub [data-msub="pv"]').click(); 1`);
+      await sleep(300);
+      const pv = await J(`({ left: getComputedStyle(document.getElementById('rptmLeft')).display, right: getComputedStyle(document.getElementById('rptmPv')).display, fz: document.getElementById('rptmSheet').style.getPropertyValue('--fz') })`);
+      ok('L1 좁은 폭: 미리 보기 세그를 누르면 미리 보기만, 종이 배율이 맞춰진다', pv.left === 'none' && pv.right !== 'none' && !!pv.fz, JSON.stringify(pv));
+      await cdp.ev(`document.querySelector('#rptmSub [data-msub="set"]').click(); 1`);
+    }
+    if (lay.lbTop == null) undecide('L1 과제 줄 라벨 여백', '과제 줄이 없다');
+    else ok('L1 과제 줄 라벨에 앱 폼 라벨 여백과 굵기가 걸리지 않는다', lay.lbTop === '0px' && String(lay.lbW) === '400', JSON.stringify([lay.lbTop, lay.lbW]));
+    //  체크를 끄고 켜면 미리 보기 표가 바로 빠지고 돌아온다(원래대로 돌려 놓는다)
+    const live = await J(`(function(){ var id = rptMPicked(__rptM)[0]; if (!id) return null; var cb = [].find.call(document.querySelectorAll('#rptmPick .rptm-it'), function(r){ return r.dataset.uid === id; }).querySelector('input[data-act="pick"]');
+      var has = function(){ return [].some.call(document.querySelectorAll('#rptmSheet table[data-pv-uid]'), function(t){ return t.dataset.pvUid === id; }); };
+      cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); var off = has();
+      cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); var on = has(); return { off: off, on: on }; })()`);
+    if (!live) undecide('L1 체크와 미리 보기', '체크한 과제가 없다');
+    else ok('L1 체크를 끄면 미리 보기 표가 바로 빠지고, 켜면 바로 돌아온다', live.off === false && live.on === true, JSON.stringify(live));
 
     head('M3 다시 읽어 오기(캘린더)');
     await cdp.ev(`(function(){ const b = document.querySelector('#rptmSrc [data-msrc="cal"]'); if (b) b.click(); return 1; })()`);
@@ -186,7 +214,7 @@ async function main() {
     else {
       ok('M4 과제 줄마다 scheduleImageList 회신', okList, JSON.stringify(L.map((x) => [x.projectUid, x.res])));
       const togs = await J(`[].map.call(document.querySelectorAll('#rptmPick [data-act="imgTog"]'), function(b){ return b.textContent; })`);
-      ok('M4 과제 줄마다 그림 단추(그림 n 또는 그림 추가)', togs.length === ids.length && togs.every((s) => /^그림( \d+| 추가)?$/.test(s)), JSON.stringify(togs));
+      ok('M4 과제 줄마다 그림 단추(그림 n 또는 + 그림)', togs.length === ids.length && togs.every((s) => /^(그림( \d+ [▾▴])?|\+ 그림)$/.test(s)), JSON.stringify(togs));
       ok('M4 미리 보기 쪽에는 그림 버튼이 없다', (await cdp.ev(`document.querySelectorAll('#rptmPv button').length`)) === 0);
       for (const x of L.filter((y) => y.res)) note(`${x.projectUid}: ${x.res.ok ? '정상' : x.res.stale ? '사본 목록(끊김)' : '실패'} ${x.res.n == null ? '' : x.res.n + '장'} ${x.res.err || ''}`);
     }
@@ -199,21 +227,22 @@ async function main() {
     const blocked = await J('__mrLoop');
     ok('회사로 보낸 것 없음(Platform.report 0회)', blocked.sent.length === 0, JSON.stringify(blocked.sent));
     if (blocked.blocked.length) note('막은 netcus 명령: ' + blocked.blocked.join(', '));
+    ok('월간 키를 저장소에 쓰지 않았다(기억하는 값이 없다)', !blocked.ls.some((k) => /rptM|rptm|monthly/i.test(k)), JSON.stringify(blocked.ls));
 
     console.log(`\n${el()} [PM 이 눈으로 볼 것: DOCX 저장은 저장 창이 떠서 루프가 누르지 않는다]
     1. 월간 보고 탭 아래 [DOCX 저장] → 저장 창 기본 이름이 월간보고_<이름>_<작성일 YYMMDD>.docx 인지, 임시 폴더(예: %TEMP%)에 저장
     2. 성공 토스트에 경로와 [폴더 열기], 아래쪽 [폴더 열기] 버튼이 그 폴더를 여는지
     3. 같은 파일을 Word 로 연 채 다시 저장 → "파일이 열려 있어" 이유가 그대로 뜨는지
     4. 저장한 문서를 Word 와 한컴에서 열어 과제 표, 과제 수행 기간, 개발 일정 그림, 실적 들여쓰기, 기타 표를 보기
-    5. 그림: 과제 줄의 [그림 n] 또는 [그림 추가]로 칸을 펼쳐 [파일 고르기], [붙여넣기], 그 줄에 마우스를 두고 Ctrl+V, 줄을 누른 뒤 Ctrl+V,
-       ◀▶ 순서, [삭제] 확인 창. 다른 계정에서는 그 그림이 **보이지 않는지**(사람별 그림)
+    5. 그림: 과제 줄의 [그림 n] 또는 [+ 그림]으로 서랍을 열어 [파일 고르기], [붙여넣기], 그 줄이나 서랍에 마우스를 두고 Ctrl+V, 줄을 누른 뒤 Ctrl+V,
+       ◀▶ 순서, ✕ 삭제 확인 창. 탭을 닫았다 열어도 [그림 n] 이 보이는지. 다른 계정에서는 그 그림이 **보이지 않는지**(사람별 그림)
     6. 출처 [주간보고]는 netcus 를 실제로 읽는다(로그인). QA 중에는 읽기만 하고, 호스트 로그에 NetcusSubmit, NetcusWeekFill 이 없는지 본다
-    7. 주간보고 출처에서 내 과제와 맞지 않은 [과제] 가 미리 보기 아래 미식별 항목(읽기만, 접기)에 나오고 문서에 없는지
+    7. 주간보고 출처에서 내 과제와 맞지 않은 [과제] 가 왼쪽 칸 미식별 항목(읽기만, 접기)에 나오고 문서에 없는지
+    9. 넓은 창(900px 이상)에서 왼쪽 칸과 오른쪽 미리 보기가 따로 스크롤되는지, 위젯 폭(400px)에서 [설정] [미리 보기] 세그로 오가는지
+   10. 기타 표 [고르기] 로 칩을 펼쳐 빼면 오른쪽 기타 표가 바로 바뀌는지, 탭을 다시 열면 모두 넣음(기억하지 않음)인지
     8. 저장한 문서의 수행 계획 두 칸이 비어 있고 일정 변경이력이 빈 줄 하나인지, 과제명이 공식 이름인지`);
   } finally {
     try {
-      if (snap) await cdp.ev(`(function(){ var S = ${JSON.stringify(snap)}; try { var a = []; for (var i = 0; i < localStorage.length; i++){ var k = localStorage.key(i); if (k && k.indexOf('tc_rptMSel:') === 0 && !(k in S)) a.push(k); }
-        a.forEach(function(k){ localStorage.removeItem(k); }); Object.keys(S).forEach(function(k){ localStorage.setItem(k, S[k]); }); } catch (_) {} __rptM = null; return 1; })()`);
       await cdp.ev(UNINSTALL);
       await cdp.ev(`(function(){ ['#confirmModal', '#reportModal'].forEach(function(s){ try { const m = document.querySelector(s); if (m && !m.classList.contains('hidden')) closeModal(s); } catch (_) {} }); return 1; })()`);
     } catch (e) { console.log('정리 실패: ' + e.message); fail++; }
